@@ -33,10 +33,18 @@ fn only_the_plan_repo_the_workspace_env_and_declared_files_concern_us() {
         Path::new("/w/repos/alpha/src/other.txt")
     ));
     assert!(!concerns(ws, &sp, Path::new("/w/alpha/src/read.txt")));
-    // 盯的目录：工作区根到每份声明文件所在目录一路上的每一层（都只盯直接子项）。
+    // 盯的目录：工作区根到每份声明文件所在目录一路上的每一层（都只盯直接子项）；beta 那一片的仓库还不在（只写文档）也在名单上，
+    // 出现了才挂（上一层看得见它被建出来）。
     assert_eq!(
         sp.dirs,
-        ["/w/repos", "/w/repos/alpha", "/w/repos/alpha/src"].map(std::path::PathBuf::from)
+        [
+            "/w/beta",
+            "/w/repos",
+            "/w/repos/alpha",
+            "/w/repos/alpha/src",
+            "/w/repos/alpha/tests"
+        ]
+        .map(std::path::PathBuf::from)
     );
 }
 

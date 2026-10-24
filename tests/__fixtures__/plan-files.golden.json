@@ -9,11 +9,23 @@
       "title": "甲的读入",
       "statusCode": "done",
       "status": "做完了",
-      "block": "甲功能",
+      "block": null,
       "signAtText": "01-02 00:00",
       "fileState": "ok",
-      "fileNote": "12 字",
-      "dup": [{ "id": "A1-2", "title": "甲的写出" }]
+      "fileNote": "3 字",
+      "dup": []
+    },
+    {
+      "name": "shared.txt",
+      "id": "A2",
+      "title": "乙功能",
+      "statusCode": "open",
+      "status": "没做完",
+      "block": "乙功能",
+      "signAtText": null,
+      "fileState": "ok",
+      "fileNote": "6 字",
+      "dup": []
     },
     {
       "name": "write.txt",
@@ -21,12 +33,13 @@
       "title": "甲的写出",
       "statusCode": "open",
       "status": "没做完",
-      "block": "甲功能",
+      "block": null,
       "signAtText": null,
       "fileState": "missing",
-      "fileNote": null,
+      "fileNote": "",
       "dup": []
     }
   ],
-  "unowned": null
+  "unowned": ["stray.txt"],
+  "unownedWhy": null
 }

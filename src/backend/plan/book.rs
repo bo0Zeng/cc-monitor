@@ -6,7 +6,7 @@
 
 use super::dump::{self, Ran};
 use super::needs;
-use super::product::{self, Views};
+use super::product;
 use super::WhoPort;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -17,7 +17,6 @@ use std::sync::Mutex;
 struct Seen {
     /// 成品（已经按「留上一次好的」处置过）。
     doc: Value,
-    views: Views,
     /// 每一片上一次读好的那一份 ＋ 读到的时刻（epoch ms）。
     good: BTreeMap<String, (Value, u64)>,
     read_at: u64,
@@ -97,7 +96,7 @@ impl Book {
                 let rev = rev_of(&raw);
                 let mut seen = lock(&self.seen);
                 let prev = seen.remove(&ws);
-                let (mut good, prev_views) = prev.map(|s| (s.good, s.views)).unwrap_or_default();
+                let mut good = prev.map(|s| s.good).unwrap_or_default();
                 let mut out = made.doc;
                 if let Some(slices) = out.get_mut("slices").and_then(Value::as_array_mut) {
                     for sl in slices.iter_mut() {
@@ -129,26 +128,10 @@ impl Book {
                 out["rev"] = json!(rev);
                 out["readAt"] = json!(now_ms);
                 out["stale"] = Value::Null;
-                // 读不成的那一片留着上一次的 `agent_view`（成品给的是上一次那一份）。
-                let mut views = made.views;
-                {
-                    for ((sl, id), v) in &prev_views {
-                        let kept = out["slices"].as_array().is_some_and(|a| {
-                            a.iter()
-                                .any(|s| s["name"] == json!(sl) && !s["stale"].is_null())
-                        });
-                        if kept {
-                            views
-                                .entry((sl.clone(), id.clone()))
-                                .or_insert_with(|| v.clone());
-                        }
-                    }
-                }
                 seen.insert(
                     ws,
                     Seen {
                         doc: out.clone(),
-                        views,
                         good,
                         read_at: now_ms,
                     },
@@ -235,13 +218,6 @@ impl Book {
     /// 这个工作区上一次读好的成品。
     pub(crate) fn last(&self, workspace: &str) -> Option<Value> {
         lock(&self.seen).get(workspace).map(|s| s.doc.clone())
-    }
-
-    /// 一格的 `agent_view`（上一次读好的那一份里的）。
-    pub(crate) fn view(&self, workspace: &str, slice: &str, id: &str) -> Option<String> {
-        lock(&self.seen)
-            .get(workspace)
-            .and_then(|s| s.views.get(&(slice.to_string(), id.to_string())).cloned())
     }
 }
 

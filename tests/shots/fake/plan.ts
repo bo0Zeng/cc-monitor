@@ -58,9 +58,11 @@ const daysAgo = (n: number, h: number, m: number): string => {
 };
 
 const SOFT_KINDS = [
-  { name: "能力", edge_words: { to: "指向", with: "连着", after: null, replaces: null } },
-  { name: "模块", edge_words: { to: "指向", with: "实现", after: null, replaces: null } },
-  { name: "测试", edge_words: { to: "指向", with: "测", after: null, replaces: null } },
+  { name: "能力", edge_words: { to: "指向", with: "连着", after: null, replaces: null }, evidence: false, values: ["收下"] },
+  { name: "模块", edge_words: { to: "指向", with: "实现", after: null, replaces: null }, evidence: false, values: ["收下"] },
+  { name: "测试", edge_words: { to: "指向", with: "测", after: null, replaces: null }, evidence: true, values: ["收下"] },
+  { name: "验收", edge_words: { to: "收", with: "收", after: null, replaces: null }, evidence: true, values: ["收下"] },
+  { name: "规矩", edge_words: { to: "管", with: "管", after: null, replaces: null }, evidence: false, values: ["收下"] },
 ];
 const SOFT_PHASES = [
   { name: "定架构", does: "写图", marks: [] },
@@ -100,14 +102,15 @@ function ledgerSlice(o: PlanWorldOpts, landed?: Landed): Record<string, unknown>
     { id: "A1", title: "命令行入口", kind: "能力", status: "做完了", children: ["A1-1", "A1-2"], owner: P.lead, body: "一条命令跑完导入与导出，参数照 A2 与 A3 的约定。" },
     { id: "A1-1", title: "包与分发", kind: "模块", status: "做完了", owner: P.lead, files: [{ path: "pyproject.toml", state: "在", note: "1.2 KB" }], signs: [{ at: daysAgo(2, 23, 56), by: P.lead, reason: "装得上、入口命令跑得起来。" }] },
     { id: "A1-2", title: "入口端到端测试", kind: "测试", status: "做完了", owner: P.lead, edges: { with: ["A1-1"] }, signs: [{ at: daysAgo(2, 23, 56), by: P.lead, reason: "端到端 6 条全过。" }] },
-    { id: "A2", title: "导入账单", kind: "能力", status: "没做完", why: "里面 0/2 做完了", children: ["A2-1", "A2-2"], owner: P.lead, body: "账单 CSV 读进来，逐行校验，坏行列出来不吞。列定义：日期 · 金额 · 摘要 · 对方。" },
-    { id: "A2-1", title: "导入解析", kind: "模块", status: "没做完", why: "里面 2/3 做完了", children: ["A2-1-1", "A2-1-2", "A2-1-3"], owner: SUB_ID, edges: { with: ["A2"] }, body: "把 CSV 读成行对象，交给 A2-2 去验收。" },
+    { id: "A2", title: "导入账单", kind: "能力", status: "没做完", why: "里面 0/1 做完了", children: ["A2-1", "A2-2"], owner: P.lead, coveredBy: ["A8"], body: "账单 CSV 读进来，逐行校验，坏行列出来不吞。列定义：日期 · 金额 · 摘要 · 对方。" },
+    { id: "A2-1", title: "导入解析", kind: "模块", status: "没做完", why: "里面 1/2 做完了", children: ["A2-1-1", "A2-1-2", "A2-1-3", "A2-1-4"], owner: SUB_ID, coveredBy: ["A8"], edges: { with: ["A2"] }, body: "把 CSV 读成行对象，交给 A2-2 去验收。" },
     {
       id: "A2-1-1",
       title: "解析模块",
       kind: "模块",
       status: "做完了",
       owner: SUB_ID,
+      coveredBy: ["A8"],
       edges: { with: ["A2-1"] },
       body: [
         "管什么：账单 CSV 的读入与逐行校验；照 A2 的列定义划边界。",
@@ -127,11 +130,12 @@ function ledgerSlice(o: PlanWorldOpts, landed?: Landed): Record<string, unknown>
         { at: today(1, 52), by: SUB_ID, reason: "读入与校验写完，单测 38 passed。" },
         { at: today(2, 8), by: SUB_ID, reason: "修了 _parse 里没还原的变异：len(cols) < 5 改成 != 5；22/22 被杀。对过 A2 的边界三条。" },
       ],
-      view: "── A2-1-1 解析模块（站在这一格时 pb 印给 agent 的一段）\n> id: A2-1-1 | kind: 模块 | with: A2-1\n> 文件: ledger/import_csv.py\n\n要做成什么样：见上。\n下一步：pb sign A2-1-1 <理由>",
+      view: "── A2-1-1 解析模块（站在这一格时 pb 印给 agent 的一段）\n> id: A2-1-1 | kind: 模块 | with: A2-1\n> 文件: ledger/import_csv.py\n\n要做成什么样：见上。\n下一步：做完了写一格验收 sets A2-1-1 收下",
     },
-    { id: "A2-1-2", title: "解析单元测试", kind: "测试", status: "做完了", owner: SUB_ID, edges: { with: ["A2-1-1"] }, files: [{ path: "tests/test_import.py", state: "在", note: "2.8 KB" }], signs: [{ at: today(2, 8), by: SUB_ID, reason: "tests/test_import.py 41 passed；变异 22/22 被杀。" }] },
-    { id: "A2-1-3", title: "编码探测", kind: "模块", status: "没做完", why: "没签", owner: SUB_ID, edges: { with: ["A2-1"] }, body: "认出 GBK 与 UTF-8，别的编码直接报错。", files: [{ path: "ledger/encoding.py", state: "缺", note: null }] },
-    { id: "A2-2", title: "导入验收测试", kind: "测试", status: "没做完", why: "没签", owner: P.lead, edges: { with: ["A2"], after: ["A2-1-1"] }, files: [{ path: "tests/test_accept_import.py", state: "空", note: "0 字节" }] },
+    { id: "A2-1-2", title: "解析单元测试", kind: "测试", status: "做完了", owner: SUB_ID, coveredBy: ["A8"], edges: { with: ["A2-1-1"] }, files: [{ path: "tests/test_import.py", state: "在", note: "2.8 KB" }], signs: [{ at: today(2, 8), by: SUB_ID, reason: "tests/test_import.py 41 passed；变异 22/22 被杀。" }] },
+    { id: "A2-1-3", title: "编码探测", kind: "模块", status: "没做完", why: "没签", owner: SUB_ID, edges: { with: ["A2-1"] }, coveredBy: ["A8"], body: "认出 GBK 与 UTF-8，别的编码直接报错。", files: [{ path: "ledger/encoding.py", state: "缺", note: null }] },
+    { id: "A2-1-4", title: "收下编码探测", kind: "验收", status: "没做完", owner: SUB_ID, coveredBy: ["A8"], body: "GBK 与 UTF-8 各一份样本读得出，别的编码报错。", sets: [{ target: "A2-1-3", value: "收下" }] },
+    { id: "A2-2", title: "导入验收测试", kind: "测试", status: "没做完", why: "没签", owner: P.lead, coveredBy: ["A8"], edges: { with: ["A2"], after: ["A2-1-1"] }, files: [{ path: "tests/test_accept_import.py", state: "空", note: "0 字节" }] },
     { id: "A3", title: "导出 CSV", kind: "能力", status: "没做完", why: "里面 0/2 做完了", children: ["A3-1", "A3-2"], owner: P.lead, body: "把对过账的行写回 CSV，列序照 A2。" },
     { id: "A3-1", title: "导出实现", kind: "模块", status: "没做完", why: "没签", owner: P.export, edges: { with: ["A3"] }, files: [{ path: "ledger/export_csv.py", state: "坏", note: "第 12 行语法错" }] },
     { id: "A3-2", title: "导出验收测试", kind: "测试", status: "没做完", why: "没签", owner: P.lead, edges: { with: ["A3"] }, view: false },
@@ -143,6 +147,7 @@ function ledgerSlice(o: PlanWorldOpts, landed?: Landed): Record<string, unknown>
     { id: "A4-2", title: "打包配置", kind: "模块", status: "做完了", owner: P.base, signs: [{ at: today(2, 6), by: STRANGER, reason: "pyproject 元数据 ＋ pytest ＋ coverage(fail_under=85)，tomllib 解析通过。" }] },
     { id: "A5", title: "网页导入", kind: "能力", status: "不做了", owner: P.lead, body: "从网页表单导入账单。" },
     { id: "A6", title: "网页导入（换成命令行）", kind: "能力", status: "不做了", owner: P.lead, edges: { replaces: ["A5"] } },
+    { id: "A8", title: "列定义一处", kind: "规矩", status: "没做完", why: "没签", owner: P.lead, covers: ["A2"], edges: { with: ["A2"] }, body: "守什么：导入与导出照同一份列定义（A2）。" },
     ...(landed === "top" ? [{ id: "A7", title: "导出与导入对拍", kind: "能力", status: "没做完" as const, why: "没签", owner: P.lead }] : []),
   ]);
   return {
@@ -153,7 +158,8 @@ function ledgerSlice(o: PlanWorldOpts, landed?: Landed): Record<string, unknown>
     kinds: SOFT_KINDS,
     phases: SOFT_PHASES,
     done: false,
-    top: ["A1", "A2", "A3", "A4", "A5", ...(landed === "top" ? ["A7"] : [])],
+    top: ["A1", "A2", "A3", "A4", "A5", "A8", ...(landed === "top" ? ["A7"] : [])],
+    pending_sets: [{ source: "A2-1-4", target: "A2-1-3", value: "收下", why_not: null }],
     blocks: [
       { id: "project", cells: ["project"], dir: ".planned-build/ledger", owner: P.lead, phase: o.topDone ? "回看" : "执行", at: "A3", row: true },
       { id: "D-1", cells: ["A2-1"], dir: ".planned-build/ledger/D-1", owner: SUB_ID, phase: "审计", at: "A2-1-3", row: true },
@@ -222,7 +228,7 @@ function siteSlice(): Record<string, unknown> {
   };
 }
 
-const dumpOf = (workspace: string, repo: string, slices: Record<string, unknown>[]): Record<string, unknown> => ({ pb: "0.2.0", shape: 1, workspace, repo, auto: false, slices });
+const dumpOf = (workspace: string, repo: string, slices: Record<string, unknown>[]): Record<string, unknown> => ({ pb: "0.3.8", shape: 4, workspace, repo, auto: false, slices });
 
 /** 本机那个工作区此刻的 dump（`landed` ⇒ 退回之后 pb 那一侧加了一格：场景开页之后改写那一份）。 */
 export function ledgerDump(o: PlanWorldOpts, landed?: Landed): Record<string, unknown> {

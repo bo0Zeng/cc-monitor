@@ -109,6 +109,15 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/codex/resume.rs",
         include_str!("../../src/backend/agents/codex/resume.rs"),
     ),
+    // 计划读面起 pb（`pb dump --cell` 按格取 agent 视角 · `pb record --slice` 记原话）：发给 pb 这个子进程的旗标，同上。
+    (
+        "plan/dump.rs",
+        include_str!("../../src/backend/plan/dump.rs"),
+    ),
+    (
+        "plan/command.rs",
+        include_str!("../../src/backend/plan/command.rs"),
+    ),
 ];
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
@@ -228,6 +237,22 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--no-daemon"],
         "`codex` 那一家起会话时垫在最前面的参数（`agents/codex/resume.rs::LAUNCH_ARGS`，不连共享后台）：\
          它是 codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
+    ),
+    // 子进程是仓外的 pb（planned-build 插件）⇒ ② 那一侧读判据用的假 pb（`tests/backend/plan/fixture.rs::fake_pb`，它照实只认这几个）；
+    //   两份文件发给同一个子进程 ⇒ ② 按子进程取并集。
+    (
+        "plan/dump.rs",
+        "tests/backend/plan/fixture.rs",
+        &["--cell"],
+        "`pb dump --cell <片> <格> <工作区>`：点到一格才取 agent 站在那儿时 pb 印的那一段（`plan/dump.rs::run_cell`）。\
+         是 pb 的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
+    ),
+    (
+        "plan/command.rs",
+        "tests/backend/plan/fixture.rs",
+        &["--slice"],
+        "`pb record --slice <片> <定了什么> <原话>…`：以人的身份把原话记进指定的那一片、工作区的当前片不动（`plan/command.rs::record_args`）。\
+         是 pb 的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
     ),
 ];
 
@@ -463,6 +488,10 @@ mod tests {
                     })
                     .flatten()
                     .collect()
+            } else if child.ends_with(".rs") {
+                // 子进程在仓外、判据用的假子进程写在 Rust 夹具里（假 pb 的入口脚本嵌在 `format!` 里）：
+                //   它认的旗标 ＝ 那份夹具里每一个 `"--x"` 字面量（整份都是判据，不剥测试段）。
+                literal_flags(&script)
             } else if script.lines().any(|l| l.trim() == "while true; do") {
                 shell_loop_flags(&script)
             } else {
@@ -470,13 +499,24 @@ mod tests {
             };
             accepts.sort();
             accepts.dedup();
-            let mut want: Vec<String> = reg.clone();
+            // 假子进程夹具（`.rs`）一份认几份文件发的旗标（各登记一行）⇒ ② 比的是这个子进程那几行的并集（同 ① 按文件取并集）；
+            //   金样（`.tsv`）按家分，照旧逐行比。
+            let mut want: Vec<String> = if child.ends_with(".rs") {
+                CHILD_PROCESS_FLAGS
+                    .iter()
+                    .filter(|(_, c, ..)| c == child)
+                    .flat_map(|(_, _, fl, _)| fl.iter().map(|s| s.to_string()))
+                    .collect()
+            } else {
+                reg.clone()
+            };
             for (c, f, _) in CHILD_FLAGS_NOT_SENT {
                 if c == child {
                     want.push(f.to_string());
                 }
             }
             want.sort();
+            want.dedup();
             assert_eq!(
                 accepts, want,
                 "\n`{child}` 认的旗标，与「后端发的 ∪ 刻意不发的」对不上。\n\
@@ -485,6 +525,22 @@ mod tests {
                  `cc-spawn` 那条的后果是「目录不存在：--xxx」）。"
             );
         }
+    }
+
+    /// 判据夹具里的假子进程那一形（Rust 源里嵌着它的脚本）：整份文件里 `"--x"` 字面量（不剥测试段：它整份就是判据）。
+    fn literal_flags(script: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for (at, _) in script.match_indices("\"--") {
+            let tok: String = script[at + 1..]
+                .chars()
+                .take_while(|c| *c == '-' || c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if tok.len() > 2 && script[at + 1 + tok.len()..].starts_with('"') && !out.contains(&tok)
+            {
+                out.push(tok);
+            }
+        }
+        out
     }
 
     /// shell 子进程那一形：`while true; do … done` 旗标循环里 `case` 臂认的旗标。〔BS1b；RM1c 抽成函数〕

@@ -1,11 +1,14 @@
-//! 一份 `pb dump`（形状 1）⇒ 界面直接排版的成品。纯函数：不读盘、不起进程。
+//! 一份 `pb dump`（形状 4，pb 0.3.8）⇒ 界面直接排版的成品。纯函数：不读盘、不起进程。
 //!
 //! 换个方向排、换个名字，再把界面要的数与先后算好（界面照画、不数不排）：
-//! - 摘掉每格的 `agent_view`（研究盘上它占输出的一半），另交一张表，点到那一格再给；
 //! - 每格「指着它的」边：把全片的边倒过来排；每份文件还挂在哪几格：把全片的文件声明倒过来查；
-//! - 块的接手 · 每格在长它的 · 每条签收的「由」：经 [`super::WhoPort`] 对到会话；
-//! - 顶层进度：顶层格按 pb 给的状态数一数；块根格的直接子做完几格 · 没做完的格数 · 签收新的在上 · 行尾原因短词，也在这里数好、排好、写好。
+//! - 块的接手 · 每格在长它的 · 谁的 update 收得了它（`signer`）· 每条签收的「由」· 记原话的人：经 [`super::WhoPort`] 对到会话；
+//! - 顶层进度：顶层格按 pb 给的状态数一数；块根格的直接子做完几格 · 没做完的格数 · 签收新的在上 · 行尾原因短词，也在这里数好、排好、写好；
+//!   凭据类的格（`evidence`）不算活，一个分母都不进；
+//! - 「编号 标题」：每片一张 `labels`（编号 ⇒「编号 标题」），凡出现编号界面照它写，界面不拼；
+//! - 话里提到的格（`refs`）：pb 的 `start · end` 按 Unicode 码位，换成界面切字用的 UTF-16 下标（[`utf16_at`]）。
 //!
+//! 整份 dump 里不带 agent 看到的那一段（0.3.8 起点到一格再 `pb dump --cell` 取，见帧面 `plan-cell-view`）。
 //! 键名一律换成线上惯例（小驼峰）；pb 那边多出来的键不带过来（形状版本没变就不该多，多了说明该升形状版本了）。
 
 use super::{Live, WhoPort, Whose};
@@ -21,12 +24,16 @@ pub(crate) const EDGES: [&str; 4] = ["to", "with", "after", "replaces"];
 pub(crate) const DONE: &str = "做完了";
 pub(crate) const DROPPED: &str = "不做了";
 
-/// pb 的三种状态 ⇒ 线上的码（`statusCode`）；pb 给了别的字 ⇒ `None`（界面照出原话、当没做完画）。
+/// 记原话的是人（不是一个身份）时 pb 写的那个字。
+const HUMAN: &str = "人";
+
+/// pb 的四种状态 ⇒ 线上的码（`statusCode`）；pb 给了别的字 ⇒ `None`（界面照出原话、当没做完画）。
 pub(crate) fn status_code(s: Option<&str>) -> Option<&'static str> {
     match s? {
         DONE => Some("done"),
         "没做完" => Some("open"),
         DROPPED => Some("dropped"),
+        "凭据" => Some("evidence"),
         _ => None,
     }
 }
@@ -86,13 +93,9 @@ pub(crate) fn file_code(s: Option<&str>) -> Option<&'static str> {
     }
 }
 
-/// 一片里每格的 `agent_view`：`(片, 格) ⇒ 原文`。
-pub(crate) type Views = BTreeMap<(String, String), String>;
-
-/// 加工好的一份：成品 ＋ 摘下来的 `agent_view`。
+/// 加工好的一份成品。
 pub(crate) struct Made {
     pub(crate) doc: Value,
-    pub(crate) views: Views,
 }
 
 fn s(v: &Value, k: &str) -> Value {
@@ -110,6 +113,37 @@ fn strs(v: Option<&Value>) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn arr<'a>(v: &'a Value, k: &str) -> impl Iterator<Item = &'a Value> {
+    v.get(k).and_then(Value::as_array).into_iter().flatten()
+}
+
+fn is_evidence(c: &Value) -> bool {
+    c.get("evidence").and_then(Value::as_bool) == Some(true)
+}
+
+/// 一段话的第 `cp` 个码位在 UTF-16 里是第几个单元（越过末尾 ⇒ 停在末尾）。
+pub(crate) fn utf16_at(text: &str, cp: u64) -> u64 {
+    text.chars()
+        .take(usize::try_from(cp).unwrap_or(usize::MAX))
+        .map(|c| c.len_utf16() as u64)
+        .sum()
+}
+
+/// 一段话里提到的格（pb 原样：码位）⇒ 线上那一份（UTF-16 下标）。
+pub(crate) fn refs16(text: Option<&str>, refs: Option<&Value>) -> Value {
+    let text = text.unwrap_or_default();
+    let out: Vec<Value> = refs
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|r| {
+            let at = |k: &str| utf16_at(text, r.get(k).and_then(Value::as_u64).unwrap_or(0));
+            json!({"start": at("start"), "end": at("end"), "ids": strs(r.get("ids"))})
+        })
+        .collect();
+    json!(out)
 }
 
 /// 一个 id 对到的会话（线上那一格）。`null` 的 id ⇒ `null`。
@@ -151,30 +185,53 @@ pub(crate) fn who_json(id: Option<&str>, who: WhoPort) -> Value {
     })
 }
 
+/// 领域表里的类（一片的 · 能选的那几档的，同一形）。
+fn kinds_of(v: &Value) -> Vec<Value> {
+    arr(v, "kinds")
+        .map(|k| {
+            let w = k.get("edge_words");
+            let words: Map<String, Value> = EDGES
+                .iter()
+                .map(|e| ((*e).to_string(), w.map_or(Value::Null, |w| s(w, e))))
+                .collect();
+            json!({
+                "name": s(k, "name"),
+                "edgeWords": words,
+                "evidence": is_evidence(k),
+                "values": strs(k.get("values")),
+            })
+        })
+        .collect()
+}
+
+/// 阶段表（一片的 · 能选的那几档的，同一形）。
+fn phases_of(v: &Value) -> Vec<Value> {
+    arr(v, "phases")
+        .map(|p| json!({"name": s(p, "name"), "does": s(p, "does"), "marks": strs(p.get("marks"))}))
+        .collect()
+}
+
 /// 整份加工。`repo` 是工作区 `.env` 里的当前片（`current` 那一格照它）。
 pub(crate) fn make(doc: &Value, who: WhoPort) -> Made {
     let repo = doc.get("repo").and_then(Value::as_str);
-    let mut views = Views::new();
-    let slices: Vec<Value> = doc
-        .get("slices")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .map(|sl| slice(sl, repo, who, &mut views))
-                .collect()
-        })
-        .unwrap_or_default();
+    let slices: Vec<Value> = arr(doc, "slices").map(|sl| slice(sl, repo, who)).collect();
     let by_session = by_session(&slices);
+    let domains: Vec<Value> = arr(doc, "domains")
+        .map(|d| match d.get("error").filter(|e| !e.is_null()) {
+            Some(e) => json!({"name": s(d, "name"), "error": e, "kinds": [], "phases": []}),
+            None => json!({"name": s(d, "name"), "error": null, "kinds": kinds_of(d), "phases": phases_of(d)}),
+        })
+        .collect();
     Made {
         doc: json!({
             "pb": s(doc, "pb"),
             "workspace": s(doc, "workspace"),
             "repo": s(doc, "repo"),
             "auto": doc.get("auto").and_then(Value::as_bool).unwrap_or(false),
+            "domains": domains,
             "slices": slices,
             "bySession": by_session,
         }),
-        views,
     }
 }
 
@@ -192,12 +249,7 @@ pub(crate) fn by_session(slices: &[Value]) -> Value {
                     .and_then(|cs| cs.iter().find(|c| c["id"] == id))
                     .map_or(Value::Null, |c| c["title"].clone())
             };
-            for b in sl
-                .get("blocks")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
+            for b in arr(sl, "blocks") {
                 let owner = &b["owner"];
                 let Some(sid) = owner["sid"].as_str() else {
                     continue;
@@ -231,8 +283,34 @@ pub(crate) fn by_session(slices: &[Value]) -> Value {
     Value::Object(out)
 }
 
-/// 一片。带 `error` 的片只出名字、领域与那一句（pb 那时给不出别的）。
-pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Views) -> Value {
+/// 「编号 标题」（没有标题 ⇒ 只写编号）。拼这一形只在这一处。
+pub(crate) fn label(id: &str, title: Option<&str>) -> String {
+    match title.filter(|t| !t.is_empty()) {
+        Some(t) => format!("{id} {t}"),
+        None => id.to_string(),
+    }
+}
+
+/// 一片里记下的原话：记的人是人 ⇒ `human`、`by` 为 null；是一个身份 ⇒ 对到会话。
+fn records_of(sl: &Value, who: WhoPort) -> Vec<Value> {
+    arr(sl, "records")
+        .map(|r| {
+            let by = r.get("by").and_then(Value::as_str);
+            let human = by == Some(HUMAN);
+            json!({
+                "n": r.get("n").and_then(Value::as_u64),
+                "summary": s(r, "summary"),
+                "at": s(r, "at"),
+                "human": human,
+                "by": if human { Value::Null } else { who_json(by, who) },
+                "quotes": strs(r.get("quotes")),
+            })
+        })
+        .collect()
+}
+
+/// 一片。带 `error` 的片只出名字、领域、仓库位置、记下的原话与那一句（pb 那时给不出别的）。
+pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> Value {
     let name = sl
         .get("name")
         .and_then(Value::as_str)
@@ -242,17 +320,13 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         let mut m = Map::new();
         m.insert("name".into(), json!(name));
         m.insert("domain".into(), s(sl, "domain"));
-        // 仓库相对工作区根在哪（`pb repo <路径>` 登记的）；pb 没给（旧 pb）⇒ 片名（仓库贴着工作区根）。只在这一处补。
-        let path = sl
-            .get("path")
-            .and_then(Value::as_str)
-            .filter(|p| !p.is_empty())
-            .unwrap_or(&name);
-        m.insert("path".into(), json!(path));
+        // 仓库相对工作区根在哪（`pb repo <路径>` 登记的；没登记 pb 也给片名）：照 pb 给的，这里不补。
+        m.insert("path".into(), s(sl, "path"));
         m.insert("current".into(), json!(repo == Some(name.as_str())));
-        // 只写文档：仓库还没接过来（人 `pb take` 之后才守）；pb 没给 ⇒ 接过了。
+        // 只写文档：仓库还没接过来（人 `pb take` 之后才守）。
         let docs_only = sl.get("docs_only").and_then(Value::as_bool) == Some(true);
         m.insert("docsOnly".into(), json!(docs_only));
+        m.insert("records".into(), json!(records_of(sl, who)));
         m.insert("error".into(), error);
         m.insert("stale".into(), Value::Null);
         m
@@ -261,9 +335,21 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         // 读不成又没读好过：形状照常（空的），`bare` 说「只有头几格」。
         let mut m = head(e.clone());
         m.insert("bare".into(), json!(true));
-        for k in ["kinds", "phases", "top", "blocks", "cells", "archived"] {
+        for k in [
+            "kinds",
+            "phases",
+            "top",
+            "blocks",
+            "unbuiltBlocks",
+            "unsplit",
+            "pendingSets",
+            "cells",
+            "archived",
+        ] {
             m.insert(k.into(), json!([]));
         }
+        m.insert("labels".into(), json!({}));
+        m.insert("unowned".into(), json!({"paths": null, "why": null}));
         m.insert("done".into(), json!(false));
         m.insert("progress".into(), Value::Null);
         m.insert("openCells".into(), json!(0));
@@ -274,11 +360,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         );
         return Value::Object(m);
     }
-    let cells_in: Vec<&Value> = sl
-        .get("cells")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().collect())
-        .unwrap_or_default();
+    let cells_in: Vec<&Value> = arr(sl, "cells").collect();
 
     // 倒过来的两张索引：谁的边指着它 · 同一份文件还挂在哪几格。
     let mut pointed: BTreeMap<String, BTreeMap<&str, Vec<String>>> = BTreeMap::new();
@@ -295,12 +377,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                     .push(id.to_string());
             }
         }
-        for f in c
-            .get("files")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
+        for f in arr(c, "files") {
             if let Some(p) = f.get("path").and_then(Value::as_str) {
                 by_path
                     .entry(p.to_string())
@@ -314,13 +391,6 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         .iter()
         .map(|c| {
             let id = c.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
-            let has_view = match c.get("agent_view").and_then(Value::as_str) {
-                Some(v) => {
-                    views.insert((name.clone(), id.clone()), v.to_string());
-                    true
-                }
-                None => false,
-            };
             let edges: Map<String, Value> = EDGES
                 .iter()
                 .map(|k| ((*k).to_string(), json!(strs(c.get("edges").and_then(|e| e.get(*k))))))
@@ -333,11 +403,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                     ((*k).to_string(), json!(v))
                 })
                 .collect();
-            let files: Vec<Value> = c
-                .get("files")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
+            let files: Vec<Value> = arr(c, "files")
                 .map(|f| {
                     let path = f.get("path").and_then(Value::as_str).unwrap_or_default();
                     let also: Vec<&String> = by_path
@@ -350,20 +416,23 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                     json!({"path": path, "state": s(f, "state"), "stateCode": file_code(state), "note": s(f, "note"), "alsoBy": also})
                 })
                 .collect();
-            let signs: Vec<Value> = c
-                .get("signs")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
+            let signs: Vec<Value> = arr(c, "signs")
                 .map(|g| {
                     json!({
                         "at": s(g, "at"),
                         "by": who_json(g.get("by").and_then(Value::as_str), who),
+                        "value": s(g, "value"),
+                        "via": s(g, "via"),
+                        "done": g.get("done").and_then(Value::as_bool).unwrap_or(false),
                         "reason": s(g, "reason"),
-                        "refs": g.get("refs").cloned().unwrap_or_else(|| json!([])),
+                        "refs": refs16(g.get("reason").and_then(Value::as_str), g.get("refs")),
                     })
                 })
                 .collect();
+            let sets: Vec<Value> = arr(c, "sets")
+                .map(|x| json!({"target": s(x, "target"), "value": s(x, "value")}))
+                .collect();
+            let refs = c.get("refs");
             json!({
                 "id": id,
                 "title": s(c, "title"),
@@ -374,45 +443,57 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 "edges": edges,
                 "pointedBy": pointed_by,
                 "files": files,
+                "evidence": is_evidence(c),
                 "status": s(c, "status"),
                 "statusCode": status_code(c.get("status").and_then(Value::as_str)),
                 "why": s(c, "why"),
                 "whyCode": why_code(c.get("why").and_then(Value::as_str)),
                 "whyShort": why_short(c.get("why").and_then(Value::as_str)),
                 "signs": signs,
+                "counts": s(c, "counts"),
+                "sets": sets,
+                "block": s(c, "block"),
                 "owner": who_json(c.get("owner").and_then(Value::as_str), who),
-                // 签它的那一位（pb 还没给 ⇒ `null`；请求单第 2 条）。
+                // 谁的 update 执行得了收下它的 sets（凭据类的 · 有子的格 ⇒ pb 给 null）。
                 "signer": who_json(c.get("signer").and_then(Value::as_str), who),
-                "refs": c.get("refs").cloned().unwrap_or_else(|| json!({"title": [], "body": []})),
-                "hasView": has_view,
+                "covers": strs(c.get("covers")),
+                "coveredBy": strs(c.get("covered_by")),
+                "refs": {
+                    "title": refs16(c.get("title").and_then(Value::as_str), refs.and_then(|r| r.get("title"))),
+                    "body": refs16(c.get("body").and_then(Value::as_str), refs.and_then(|r| r.get("body"))),
+                },
             })
         })
         .collect();
 
     let top = strs(sl.get("top"));
-    let status_of = |id: &str| {
+    let find = |id: &str| {
         cells_in
             .iter()
             .find(|c| c.get("id").and_then(Value::as_str) == Some(id))
-            .and_then(|c| c.get("status").and_then(Value::as_str))
     };
     let (mut done, mut dropped, mut open) = (0u64, 0u64, 0u64);
     for t in &top {
-        match status_of(t) {
+        let c = find(t);
+        if c.is_some_and(|c| is_evidence(c)) {
+            continue;
+        }
+        match c.and_then(|c| c.get("status").and_then(Value::as_str)) {
             Some(DONE) => done += 1,
             Some(DROPPED) => dropped += 1,
             _ => open += 1,
         }
     }
 
-    // 没做完的格（不是做完了、也不是不做了）。
+    // 没做完的格（不是做完了、也不是不做了；凭据类的不算活）。
     let open_cells = cells_in
         .iter()
         .filter(|c| {
-            !matches!(
-                c.get("status").and_then(Value::as_str),
-                Some(DONE | DROPPED)
-            )
+            !is_evidence(c)
+                && !matches!(
+                    c.get("status").and_then(Value::as_str),
+                    Some(DONE | DROPPED)
+                )
         })
         .count();
     // 全片的签收，新的在上；读不出时刻的排后（同为读不出的照原来的先后）。
@@ -420,18 +501,13 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         .iter()
         .flat_map(|c| {
             let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
-            c.get("signs")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .enumerate()
-                .map(move |(i, g)| {
-                    let ms = g
-                        .get("at")
-                        .and_then(Value::as_str)
-                        .and_then(crate::common::time::parse_iso8601_ms);
-                    (ms, id, i)
-                })
+            arr(c, "signs").enumerate().map(move |(i, g)| {
+                let ms = g
+                    .get("at")
+                    .and_then(Value::as_str)
+                    .and_then(crate::common::time::parse_iso8601_ms);
+                (ms, id, i)
+            })
         })
         .collect();
     recent.sort_by(|a, b| b.0.cmp(&a.0));
@@ -440,41 +516,12 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         .map(|(_, cell, i)| json!({"cell": cell, "i": i}))
         .collect();
 
-    let kinds: Vec<Value> = sl
-        .get("kinds")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|k| {
-            let w = k.get("edge_words");
-            let words: Map<String, Value> = EDGES
-                .iter()
-                .map(|e| ((*e).to_string(), w.map_or(Value::Null, |w| s(w, e))))
-                .collect();
-            json!({"name": s(k, "name"), "edgeWords": words})
-        })
-        .collect();
-    let phases: Vec<Value> = sl
-        .get("phases")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|p| json!({"name": s(p, "name"), "does": s(p, "does"), "marks": strs(p.get("marks"))}))
-        .collect();
-    let blocks: Vec<Value> = sl
-        .get("blocks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    let blocks: Vec<Value> = arr(sl, "blocks")
         .map(|b| {
             let cells = strs(b.get("cells"));
             let inside = cells
                 .first()
-                .and_then(|r| {
-                    cells_in
-                        .iter()
-                        .find(|c| c.get("id").and_then(Value::as_str) == Some(r))
-                })
+                .and_then(|r| find(r))
                 .map_or(Value::Null, |root| kids_done(&cells_in, root));
             json!({
                 "id": s(b, "id"),
@@ -488,33 +535,50 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
             })
         })
         .collect();
+    let unbuilt: Vec<Value> = arr(sl, "unbuilt_blocks")
+        .map(|b| json!({"id": s(b, "id"), "cells": strs(b.get("cells"))}))
+        .collect();
+    let unowned = sl.get("unowned");
+    let unowned = json!({
+        "paths": unowned.and_then(|u| u.get("paths")).filter(|p| p.is_array()).map_or(Value::Null, |p| json!(strs(Some(p)))),
+        "why": unowned.map_or(Value::Null, |u| s(u, "why")),
+    });
+    let unsplit: Vec<Value> = arr(sl, "unsplit")
+        .map(|u| json!({"id": s(u, "id"), "path": s(u, "path")}))
+        .collect();
+    let pending: Vec<Value> = arr(sl, "pending_sets")
+        .map(|p| json!({"source": s(p, "source"), "target": s(p, "target"), "value": s(p, "value"), "whyNot": s(p, "why_not")}))
+        .collect();
     let check = sl.get("check");
     let red: Vec<Value> = check
-        .and_then(|c| c.get("red"))
-        .and_then(Value::as_array)
         .into_iter()
-        .flatten()
-        .map(|r| json!({"rule": s(r, "rule"), "what": s(r, "what"), "block": s(r, "block"), "fix": s(r, "fix")}))
+        .flat_map(|c| arr(c, "red"))
+        .map(|r| json!({"rule": s(r, "rule"), "what": s(r, "what"), "block": s(r, "block"), "fix": s(r, "fix"), "refs": refs16(r.get("what").and_then(Value::as_str), r.get("refs"))}))
         .collect();
     let undecidable: Vec<Value> = check
-        .and_then(|c| c.get("undecidable"))
-        .and_then(Value::as_array)
         .into_iter()
-        .flatten()
+        .flat_map(|c| arr(c, "undecidable"))
         .map(|r| json!({"rule": s(r, "rule"), "why": s(r, "why")}))
         .collect();
-    let archived: Vec<Value> = sl
-        .get("archived")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    let archived: Vec<Value> = arr(sl, "archived")
         .map(|a| json!({"id": s(a, "id"), "title": s(a, "title"), "kind": s(a, "kind"), "replacedBy": s(a, "replaced_by")}))
+        .collect();
+    let labels: Map<String, Value> = cells_in
+        .iter()
+        .chain(arr(sl, "archived").collect::<Vec<_>>().iter())
+        .filter_map(|c| {
+            let id = c.get("id").and_then(Value::as_str)?;
+            Some((
+                id.to_string(),
+                json!(label(id, c.get("title").and_then(Value::as_str))),
+            ))
+        })
         .collect();
 
     let mut m = head(Value::Null);
     m.insert("bare".into(), json!(false));
-    m.insert("kinds".into(), json!(kinds));
-    m.insert("phases".into(), json!(phases));
+    m.insert("kinds".into(), json!(kinds_of(sl)));
+    m.insert("phases".into(), json!(phases_of(sl)));
     m.insert(
         "done".into(),
         json!(sl.get("done").and_then(Value::as_bool).unwrap_or(false)),
@@ -527,6 +591,10 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
     m.insert("openCells".into(), json!(open_cells));
     m.insert("recentSigns".into(), json!(recent_signs));
     m.insert("blocks".into(), json!(blocks));
+    m.insert("unbuiltBlocks".into(), json!(unbuilt));
+    m.insert("unowned".into(), unowned);
+    m.insert("unsplit".into(), json!(unsplit));
+    m.insert("pendingSets".into(), json!(pending));
     m.insert(
         "check".into(),
         json!({
@@ -535,26 +603,32 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
             "undecidable": undecidable,
         }),
     );
+    m.insert("labels".into(), Value::Object(labels));
     m.insert("cells".into(), json!(cells));
     m.insert("archived".into(), json!(archived));
     Value::Object(m)
 }
 
-/// 一格的直接子里做完了几格 / 一共几格（不做了的不算）。
+/// 一格的直接子里做完了几格 / 一共几格（不做了的 · 凭据类的不算）。
 fn kids_done(cells: &[&Value], root: &Value) -> Value {
     let (mut done, mut of) = (0u32, 0u32);
     for k in strs(root.get("children")) {
-        let status = cells
+        let Some(c) = cells
             .iter()
             .find(|c| c.get("id").and_then(Value::as_str) == Some(k.as_str()))
-            .map(|c| c.get("status").and_then(Value::as_str));
-        match status {
-            None | Some(Some(DROPPED)) => {}
-            Some(Some(DONE)) => {
+        else {
+            continue;
+        };
+        if is_evidence(c) {
+            continue;
+        }
+        match c.get("status").and_then(Value::as_str) {
+            Some(DROPPED) => {}
+            Some(DONE) => {
                 done += 1;
                 of += 1;
             }
-            Some(_) => of += 1,
+            _ => of += 1,
         }
     }
     json!({"done": done, "of": of})

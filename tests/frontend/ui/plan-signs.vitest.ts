@@ -70,3 +70,26 @@ describe("「在计划里看」：壳发给主窗口的事件名两边同一个"
     expect(main).toContain("listen<PlanOpenSaid>(PLAN_OPEN_EVENT");
   });
 });
+
+describe("编号一律「编号 标题」：照后端拼好的 labels 写，界面不拼", () => {
+  it("labels 里有 ⇒ 照它；没有 ⇒ 只写编号", async () => {
+    const { labelOf } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const s = { labels: { A1: "A1 读入模块" } } as unknown as PlanSlice;
+    expect(labelOf(s, "A1")).toBe("A1 读入模块");
+    expect(labelOf(s, "Z9")).toBe("Z9");
+  });
+});
+
+describe("话里提到的格：下标是 UTF-16（后端从码位换好的），按 JS 字符串直接切", () => {
+  it("码位外的字在前面：照 UTF-16 下标切出那一段，前后原样", async () => {
+    const { refSpans } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const text = "😀照 A3 的公约";
+    const r = { start: 4, end: 6, ids: ["A3"] };
+    expect(refSpans(text, [r])).toEqual(["😀照 ", r, " 的公约"]);
+  });
+  it("越界 · 倒着 · 叠着的那几段不算，照原文", async () => {
+    const { refSpans } = await import("../../../src/frontend/ui/views/plan-model.ts");
+    const a = { start: 0, end: 2, ids: ["A1"] };
+    expect(refSpans("A1 和 A2", [{ start: 5, end: 99, ids: ["A2"] }, a, { start: 1, end: 3, ids: ["A9"] }])).toEqual([a, " 和 A2"]);
+  });
+});

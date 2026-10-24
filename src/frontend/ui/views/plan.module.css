@@ -317,6 +317,10 @@
     color: var(--text-faint);
   }
 
+  .pvSt[data-look="evidence"] {
+    color: var(--text-2);
+  }
+
   .pvKbar {
     flex: none;
     width: 3px;

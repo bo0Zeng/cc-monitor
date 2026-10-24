@@ -9,7 +9,7 @@ import type { PlanSlice } from "../plan-reads";
 import type { StatusLook } from "./plan-model";
 import s from "./plan-bits.module.css";
 
-export const STATUS_ICON: Record<StatusLook, IconName> = { done: "success", open: "ring", dropped: "prohibit" };
+export const STATUS_ICON: Record<StatusLook, IconName> = { done: "success", open: "ring", dropped: "prohibit", evidence: "note" };
 
 /** 类色：第 i 档（`data-kc` ⇒ `plan-bits.module.css` 把 `--kc` 指到令牌 `--plan-kind-i`）；`null` ⇒ 不设（画淡色）。 */
 export function setKindColor(el: HTMLElement, slot: number | null): void {

@@ -1,4 +1,4 @@
-//! 计划读面的帧面宿主：参数形状 · 没读过的格没有 agent 视角。
+//! 计划读面的帧面宿主：参数形状（一格的 agent 视角点到才起 pb：`dump_tests` 里真起假 pb 判）。
 
 use super::*;
 use crate::wire::typed::tests::ask;
@@ -16,16 +16,6 @@ fn missing_args_are_bad_args() {
         ask("plan-list", json!({"dirs": "x"})).unwrap_err().code,
         "bad_args"
     );
-}
-
-#[test]
-fn a_cell_never_read_has_no_view() {
-    let f = ask(
-        "plan-cell-view",
-        json!({"workspace": "/nowhere-read", "slice": "a", "id": "A1"}),
-    )
-    .unwrap_err();
-    assert_eq!(f.code, "no_view");
 }
 
 /// 入参按类型收：多一个键 ⇒ `bad_args`（不静默不认）。
@@ -85,5 +75,22 @@ fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
         );
         list_in(&b, vec!["/d".into()], true, &read, &tz).expect("列得出");
         assert_eq!(runs.get(), 2, "{name}：fresh ⇒ 重起");
+    }
+}
+
+/// `record` 要 `slice` · `summary` · `quotes` 都在；别的动词带了 `summary` / `quotes` ⇒ `bad_args`（在起 pb 之前）。
+#[test]
+fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
+    for bad in [
+        json!({"workspace": "/w", "cmd": "record", "summary": "x", "quotes": ["y"]}),
+        json!({"workspace": "/w", "cmd": "record", "slice": "a"}),
+        json!({"workspace": "/w", "cmd": "pause", "summary": "x"}),
+        json!({"workspace": "/w", "cmd": "take", "slice": "a", "quotes": ["y"]}),
+    ] {
+        assert_eq!(
+            ask("plan-command", bad.clone()).unwrap_err().code,
+            "bad_args",
+            "{bad}"
+        );
     }
 }

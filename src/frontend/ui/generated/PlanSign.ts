@@ -13,4 +13,24 @@ at: string | null,
 /**
  * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
  */
-atText?: string, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+atText?: string, 
+/**
+ * 执行那一条 sets 的那一位。
+ */
+by: PlanWho | null, 
+/**
+ * 记下的值（`收下` · 那一类登的别的值）。
+ */
+value: string | null, 
+/**
+ * 凭：来处那一格（编号）；早先 `pb sign` 那一笔 ⇒ `null`。
+ */
+via: string | null, 
+/**
+ * 这一笔的值在那一类算不算做完。
+ */
+done: boolean, 
+/**
+ * 早先那一笔的理由（新的一笔理由住来处那一格的正文 ⇒ 空）。
+ */
+reason: string | null, refs: Array<PlanRef>, };

@@ -5,7 +5,7 @@
  * 要做成什么样（md；话里提到的格照 pb 给的位置换成标题链接）→ 里面 → 连着的 · 连着它的（按这一类的人话分组）→
  * 管的文件 → 收下 → agent 站在这一格看到的（折着，展开才问）→ 跟 agent 说时用的编号。
  *
- * 编号只在最底下那一行与 agent 看到的那一段里出现；别处一律写标题。只排版：成品都是后端给的。
+ * 凡出现一格，一律写成「编号 标题」（后端拼好的 `labels`）。只排版：成品都是后端给的。
  */
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
@@ -17,7 +17,7 @@ import { writeClipboard } from "../clipboard";
 import { renderMarkdown } from "../render";
 import type { Origin } from "../ipc/origin";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
-import { ancestry, blockRoots, cellIndex, kindSlot, statusLook } from "./plan-model";
+import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans, statusLook } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
 
@@ -63,7 +63,7 @@ export class CellDetail {
     if (edges) box.appendChild(edges);
     if (cell.files.length > 0) box.appendChild(this.files(slice, cell));
     box.appendChild(this.signs(slice, cell));
-    if (cell.hasView) box.appendChild(this.agentView(slice, cell, rev));
+    box.appendChild(this.agentView(slice, cell, rev));
     box.appendChild(this.idLine(cell));
     return box;
   }
@@ -76,7 +76,7 @@ export class CellDetail {
     const top = link(slice.name, () => this.host.select(null));
     c.appendChild(top);
     for (const a of ancestry(slice, cell.id)) {
-      c.append(icon("caretRight", "compact"), link(a.title ?? a.id, () => this.host.select(a.id)));
+      c.append(icon("caretRight", "compact"), link(labelOf(slice, a.id), () => this.host.select(a.id)));
     }
     return c;
   }
@@ -92,7 +92,11 @@ export class CellDetail {
     const t = document.createElement("span");
     t.className = s.cdTitle;
     t.dataset.look = look;
-    t.append(...this.refText(slice, cell.title ?? cell.id, cell.refs.title));
+    // 「编号 标题」是后端拼的那一份；标题里提到的格照位置换链接，前面那一截（编号）原样。
+    const label = labelOf(slice, cell.id);
+    const title = cell.title ?? "";
+    if (title && label.endsWith(title)) t.append(document.createTextNode(label.slice(0, label.length - title.length)), ...this.refText(slice, title, cell.refs.title));
+    else t.textContent = label;
     h.append(st, t);
     if (cell.kind) h.appendChild(kindChip(slice, cell.kind));
     const badge = document.createElement("span");
@@ -116,7 +120,7 @@ export class CellDetail {
     if (!who && !b) return null;
     const row = document.createElement("div");
     row.className = s.cdPos;
-    if (b) row.appendChild(span(copyText("plan.cell.blockRoot", { block: cell.title ?? cell.id })));
+    if (b) row.appendChild(span(copyText("plan.cell.blockRoot", { block: labelOf(slice, cell.id) })));
     else row.appendChild(span(copyText("plan.cell.grower")));
     if (who) row.appendChild(this.host.who(who));
     if (b?.phase) row.appendChild(phaseBadge(b.phase));
@@ -131,8 +135,7 @@ export class CellDetail {
     const bar = document.createElement("div");
     bar.className = s.cdBar;
     if (by) {
-      const t = cellIndex(slice).get(by);
-      bar.appendChild(span([copyText("plan.bar.droppedBare"), copyText("plan.bar.dropped", { title: t?.title ?? by })].join(copyText("kit.text.sep"))));
+      bar.appendChild(span([copyText("plan.bar.droppedBare"), copyText("plan.bar.dropped", { title: labelOf(slice, by) })].join(copyText("kit.text.sep"))));
     } else bar.appendChild(span(copyText("plan.bar.droppedBare")));
     return bar;
   }
@@ -161,16 +164,14 @@ export class CellDetail {
 
   /** md 里提到的格：先把 pb 给的那几段换成占位，渲完再把占位换成标题链接（代码里的 pb 本就不算）。 */
   private fillMarkdown(el: HTMLElement, slice: PlanSlice, body: string, refs: readonly PlanRef[]): void {
-    const chars = Array.from(body);
-    const sorted = [...refs].filter((r) => r.start >= 0 && r.end <= chars.length && r.start < r.end).sort((a, b) => a.start - b.start);
-    let md = "";
-    let at = 0;
-    sorted.forEach((r, i) => {
-      if (r.start < at) return;
-      md += chars.slice(at, r.start).join("") + `${REF_OPEN}${i}${REF_CLOSE}`;
-      at = r.end;
-    });
-    md += chars.slice(at).join("");
+    const sorted: PlanRef[] = [];
+    const md = refSpans(body, refs)
+      .map((p) => {
+        if (typeof p === "string") return p;
+        sorted.push(p);
+        return `${REF_OPEN}${sorted.length - 1}${REF_CLOSE}`;
+      })
+      .join("");
     el.innerHTML = renderMarkdown(md);
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     const hits: Text[] = [];
@@ -192,17 +193,7 @@ export class CellDetail {
 
   /** 一段话（标题 / 签收理由）照位置换链接。 */
   refText(slice: PlanSlice, text: string, refs: readonly PlanRef[]): Node[] {
-    const chars = Array.from(text);
-    const out: Node[] = [];
-    let at = 0;
-    for (const r of [...refs].sort((a, b) => a.start - b.start)) {
-      if (r.start < at || r.end > chars.length || r.start >= r.end) continue;
-      if (r.start > at) out.push(document.createTextNode(chars.slice(at, r.start).join("")));
-      out.push(...this.refLinks(slice, r));
-      at = r.end;
-    }
-    if (at < chars.length) out.push(document.createTextNode(chars.slice(at).join("")));
-    return out;
+    return refSpans(text, refs).flatMap((p) => (typeof p === "string" ? [document.createTextNode(p)] : this.refLinks(slice, p)));
   }
 
   private refLinks(slice: PlanSlice, r: PlanRef): Node[] {
@@ -214,7 +205,7 @@ export class CellDetail {
       const a = document.createElement("button");
       a.type = "button";
       a.className = `${s.cdRef} plan-ref`;
-      a.textContent = c?.title ?? id;
+      a.textContent = labelOf(slice, id);
       if (c) a.addEventListener("click", () => this.host.select(id));
       out.push(a);
     });
@@ -241,7 +232,7 @@ export class CellDetail {
     st.className = s.cdSt;
     st.dataset.look = look;
     st.appendChild(icon(STATUS_ICON[look], "compact"));
-    row.append(st, link(c.title ?? c.id, () => this.host.select(c.id)));
+    row.append(st, link(labelOf(slice, c.id), () => this.host.select(c.id)));
     if (c.kind) row.appendChild(span(c.kind, s.cdKw));
     if (look === "open" && c.why) row.appendChild(span(c.why, s.cdMuted));
     return row;
@@ -256,11 +247,15 @@ export class CellDetail {
       const c = byId.get(id);
       if (!c) return;
       const g = groups.get(label) ?? [];
+      if (g.includes(c)) return;
       g.push(c);
       groups.set(label, g);
     };
     for (const e of PLAN_EDGE_KINDS) for (const id of cell.edges[e]) add(outLabel(e, wordOf(cell.kind, e)), id);
     for (const e of PLAN_EDGE_KINDS) for (const id of cell.pointedBy[e]) add(inLabel(e, wordOf(byId.get(id)?.kind ?? null, e)), id);
+    // covers 是格身上的一份名单（不是边）：照 pb 列在格的面板上，组名用写它的那一类的词（规矩「管」）；`project` 不是一格，不列。
+    for (const id of cell.covers) if (id !== "project") add(outLabel("with", wordOf(cell.kind, "with")), id);
+    for (const id of cell.coveredBy) add(inLabel("with", wordOf(byId.get(id)?.kind ?? null, "with")), id);
     if (groups.size === 0) return null;
     const sec = section(copyText("plan.cell.edges"));
     for (const [label, cells] of groups) {
@@ -277,7 +272,6 @@ export class CellDetail {
 
   private files(slice: PlanSlice, cell: PlanCell): HTMLElement {
     const sec = section(copyText("plan.cell.files"));
-    const byId = cellIndex(slice);
     const tbl = document.createElement("table");
     tbl.className = s.cdTbl;
     const head = tbl.createTHead().insertRow();
@@ -301,17 +295,36 @@ export class CellDetail {
       if (f.alsoBy.length === 0) also.textContent = copyText("plan.page.none");
       else f.alsoBy.forEach((id, i) => {
         if (i > 0) also.appendChild(document.createTextNode(copyText("plan.page.listSep")));
-        also.appendChild(link(byId.get(id)?.title ?? id, () => this.host.select(id)));
+        also.appendChild(link(labelOf(slice, id), () => this.host.select(id)));
       });
     }
     sec.appendChild(tbl);
     return sec;
   }
 
+  /**
+   * 收下：记下的每一笔（新的在上；值算做完的那几笔标「作数」；值 · 凭照 pb 给的写，凭是来处那一格「编号 标题」）＋
+   * 指着它、还没执行的 sets（虚线：来处 · 值 · 为什么没执行）。凭据类的格不收（不算活）。
+   */
   private signs(slice: PlanSlice, cell: PlanCell): HTMLElement {
     const n = cell.signs.length;
     const sec = section(copyText("plan.cell.signs"), n > 1 ? copyText("plan.sign.count", { n }) : undefined);
+    const pending = slice.pendingSets.filter((p) => p.target === cell.id);
+    for (const p of pending) {
+      const row = document.createElement("div");
+      row.className = s.cdSign;
+      row.dataset.pending = "true";
+      const h = document.createElement("div");
+      h.className = s.cdSignHead;
+      const src = p.source;
+      if (src) h.appendChild(link(labelOf(slice, src), () => this.host.select(src)));
+      if (p.value) h.appendChild(span(p.value, s.cdCounts));
+      row.appendChild(h);
+      if (p.whyNot) row.appendChild(span(p.whyNot, s.cdSignWhy));
+      sec.appendChild(row);
+    }
     if (n === 0) {
+      if (pending.length > 0 || cell.evidence) return sec;
       const line = cell.children.length > 0 ? copyText("plan.sign.inner") : (cell.why ?? copyText("plan.sign.none"));
       sec.appendChild(span(line, s.cdMuted));
       return sec;
@@ -322,9 +335,12 @@ export class CellDetail {
       if (i > 0) row.dataset.old = "true";
       const h = document.createElement("div");
       h.className = s.cdSignHead;
-      if (i === 0) h.appendChild(span(copyText("plan.sign.counts"), s.cdCounts));
+      if (g.done) h.appendChild(span(copyText("plan.sign.counts"), s.cdCounts));
+      if (g.value) h.appendChild(span(g.value));
       h.appendChild(span(g.atText ?? ""));
       if (g.by) h.appendChild(this.host.who(g.by, true));
+      const via = g.via;
+      if (via) h.appendChild(link(labelOf(slice, via), () => this.host.select(via)));
       const r = document.createElement("div");
       r.className = s.cdSignWhy;
       r.append(...this.refText(slice, g.reason ?? "", g.refs));

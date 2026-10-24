@@ -38,6 +38,20 @@ fn rc4_or_an_unknown_shape_means_this_pb_cannot_dump_for_us() {
     assert!(matches!(classify(Some(0), b"{}", b""), Ran::Unsupported(_)));
 }
 
+/// 只认 0.3.8 那一形（shape 4）；更早的（1 · 2 · 3）不硬读、照实说对不上，话里带它给的形状版本。
+#[test]
+fn only_shape_four_is_read_and_older_ones_say_the_pb_version_does_not_match() {
+    assert_eq!(SHAPE, 4);
+    for old in [1, 2, 3, 5] {
+        let mut doc = fixture_dump("/w");
+        doc["shape"] = serde_json::json!(old);
+        match classify(Some(0), doc.to_string().as_bytes(), b"") {
+            Ran::Unsupported(said) => assert!(said.contains(&old.to_string()), "{said}"),
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
 #[test]
 fn other_codes_and_garbage_are_failures_with_the_raw_sentence() {
     match classify(Some(2), b"", b"refused here\n") {
@@ -58,7 +72,7 @@ fn a_real_run_goes_from_the_given_dir_with_only_dump_and_no_pb_id() {
     let d = scratch("dump-run");
     let entry = fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
     let ws = workspace(&d.join("ws"), &fixture_dump("/synthetic"));
-    let inner = ws.join("alpha/src");
+    let inner = ws.join("repos/alpha/src");
     // 只这一条判据碰这个键；别的判据不读它。
     unsafe { std::env::set_var("PB_ID", "should-not-leak") };
     let ran = run(&entry, &inner);
@@ -83,4 +97,41 @@ fn a_real_run_outside_any_workspace_is_not_a_workspace() {
         run(&entry, &d.join("plain")),
         Ran::NotWorkspace(_)
     ));
+}
+
+/// 一格的 agent 视角：`dump --cell` 回的那一份里取 `agent_view` 原文；带 `error`（图上没有那一格）⇒ 失败、话是 pb 那一句。
+#[test]
+fn a_cell_dump_gives_its_agent_view_or_pbs_error() {
+    use crate::plan::fixture::{cell_view, cell_view_missing};
+    let ok = cell_view("/w").to_string();
+    let v = cell_of(classify(Some(0), ok.as_bytes(), b"")).unwrap();
+    assert!(v.starts_with("── A1-2 甲的写出"), "{v}");
+    let bad = cell_view_missing("/w").to_string();
+    match cell_of(classify(Some(0), bad.as_bytes(), b"")) {
+        Err(CellMiss::Gone(said)) => assert!(said.contains("A9"), "{said}"),
+        other => panic!("{other:?}"),
+    }
+    let mut old = cell_view("/w");
+    old["shape"] = serde_json::json!(3);
+    assert!(matches!(
+        cell_of(classify(Some(0), old.to_string().as_bytes(), b"")),
+        Err(CellMiss::Ran(Ran::Unsupported(_)))
+    ));
+}
+
+/// 真起一次 `--cell`：当前目录是工作区根，argv 是 `dump --cell <片> <格> <工作区>`，不带 `PB_ID`。
+#[test]
+fn a_real_cell_run_names_slice_cell_and_workspace() {
+    let d = scratch("dump-cell");
+    let entry = fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
+    let ws = workspace(&d.join("ws"), &fixture_dump("/synthetic"));
+    let v = run_cell(&entry, &ws, "alpha", "A1-2").unwrap();
+    assert!(v.starts_with("── A1-2"));
+    let log: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(d.join("pb/ran.json")).unwrap()).unwrap();
+    assert_eq!(
+        log["argv"],
+        serde_json::json!(["dump", "--cell", "alpha", "A1-2", ws.to_string_lossy()])
+    );
+    assert_eq!(log["pb_id"], false);
 }

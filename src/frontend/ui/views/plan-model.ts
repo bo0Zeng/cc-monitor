@@ -3,13 +3,35 @@
  *
  * 只排版：状态、原因、接手是谁、几格做完、签收先后都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」。
  */
-import type { PlanBlock, PlanCell, PlanSign, PlanSlice } from "../plan-reads";
+import type { PlanBlock, PlanCell, PlanRef, PlanSign, PlanSlice } from "../plan-reads";
 
-/** 三种状态画哪一种（图标 · 颜色）：照后端给的码；认不出的状态当没做完画（字照出）。 */
-export type StatusLook = "done" | "open" | "dropped";
+/** 四种状态画哪一种（图标 · 颜色）：照后端给的码；凭据类的格不算活、不画做完没有；认不出的状态当没做完画（字照出）。 */
+export type StatusLook = "done" | "open" | "dropped" | "evidence";
 
 export function statusLook(c: Pick<PlanCell, "statusCode">): StatusLook {
   return c.statusCode ?? "open";
+}
+
+/** 一格写成「编号 标题」：后端拼好的那一份（`labels`）；表里没有 ⇒ 只写编号。界面不自己拼。 */
+export function labelOf(slice: Pick<PlanSlice, "labels">, id: string): string {
+  return slice.labels[id] ?? id;
+}
+
+/**
+ * 一段话按提到的格切开：原文那几段（字符串）与提到格的那几段（`PlanRef`）照先后排。下标是 UTF-16（后端从 pb 的码位换好的），
+ * 直接按 JS 字符串切；越界 · 空段 · 与前一段叠着的不算（照原文）。
+ */
+export function refSpans(text: string, refs: readonly PlanRef[]): (string | PlanRef)[] {
+  const out: (string | PlanRef)[] = [];
+  let at = 0;
+  for (const r of [...refs].sort((a, b) => a.start - b.start)) {
+    if (r.start < at || r.end > text.length || r.start >= r.end) continue;
+    if (r.start > at) out.push(text.slice(at, r.start));
+    out.push(r);
+    at = r.end;
+  }
+  if (at < text.length) out.push(text.slice(at));
+  return out;
 }
 
 /** 过滤三枚。 */

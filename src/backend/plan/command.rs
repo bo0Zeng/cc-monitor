@@ -1,9 +1,10 @@
-//! 以人的身份代敲 pb 的命令（`continue` · `pause` · `take` · `view`；`take` 不在此刻那一片时先 `repo <片名>`）：
+//! 以人的身份代敲 pb 的命令（`continue` · `pause` · `take` · `view` · `record`；`take` 不在此刻那一片时先 `repo <片名>`）：
 //! 当前目录设在工作区根、环境只给白名单（不带 `PB_ID` ⇒ pb 认作人）、限时；认退出码，拆 `view` 那句话里的页面路径。
-//! 这一侧自己带着 agent 的身份（在 agent 的 shell 里起的）⇒ 用户命令一律不代敲：pb 的用户命令只许人发起。
+//! 这一侧自己带着 agent 的身份（在 agent 的 shell 里起的）⇒ 用户命令一律不代敲：pb 的用户命令只许人发起；
+//! `record` 记下的是「人」说的（pb 记成「人」），同样只在不带 agent 身份时代敲。
 //!
-//! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto`，`repo` / `take` 改工作区配置，`view` 往系统临时目录写一页）；
-//! 本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
+//! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto`，`repo` / `take` 改工作区配置，`view` 往系统临时目录写一页，
+//! `record` 往那一片的 `原话.md` 追加一条、提交计划仓）；本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
 
 use crate::platform::child::Deadline;
 use copy_core::copy_text;
@@ -11,10 +12,34 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 /// 界面能点的那几条（pb 的命令名原样）。
-pub(crate) const VERBS: [&str; 4] = ["continue", "pause", "take", "view"];
+pub(crate) const VERBS: [&str; 5] = ["continue", "pause", "take", "view", "record"];
 
-/// pb 的用户命令（只许人敲）：代敲的这几条只在这一侧不带 agent 身份时起。
-const USER_VERBS: [&str; 4] = ["continue", "pause", "repo", "take"];
+/// 只许人发起的那几条（pb 的用户命令 ＋ 记成「人」说的 `record`）：代敲只在这一侧不带 agent 身份时起。
+const USER_VERBS: [&str; 5] = ["continue", "pause", "repo", "take", "record"];
+
+/// `record --slice <片> <定了什么> <原话>…` 的参数；定了什么不是一行字 · 原话一句没有 · 哪一项带 NUL ⇒ `None`（不起 pb）。
+pub(crate) fn record_args(slice: &str, summary: &str, quotes: &[String]) -> Option<Vec<String>> {
+    let summary = summary.trim();
+    let bad = |s: &str| s.contains('\0');
+    if summary.is_empty()
+        || summary.contains('\n')
+        || bad(summary)
+        || bad(slice)
+        || slice.trim().is_empty()
+        || quotes.is_empty()
+        || quotes.iter().any(|q| q.trim().is_empty() || bad(q))
+    {
+        return None;
+    }
+    let mut a = vec![
+        "record".to_string(),
+        "--slice".to_string(),
+        slice.to_string(),
+        summary.to_string(),
+    ];
+    a.extend(quotes.iter().cloned());
+    Some(a)
+}
 
 /// pb 认 agent 的那个环境变量（钩子递进 agent 的 shell）。
 const AGENT_ENV: &str = "PB_ID";

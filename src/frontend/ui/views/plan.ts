@@ -41,6 +41,7 @@ import {
   cellIndex,
   isFresh,
   kindSlot,
+  labelOf,
   lastSign,
   outlineRows,
   shortId,
@@ -420,7 +421,7 @@ export class PlanView {
       failToast(copyText("plan.review.ackFailed"), e);
       return;
     }
-    const what = need.cell ? (cellIndex(slice).get(need.cell)?.title ?? need.cell) : slice.name;
+    const what = need.cell ? labelOf(slice, need.cell) : slice.name;
     toast(copyText("plan.review.acked", { what }), "", {
       level: "success",
       action: {
@@ -595,7 +596,7 @@ export class PlanView {
     const b = button({
       label: copyText("plan.take.open"),
       icon: "folder",
-      hint: copyText("plan.take.hint", { path: slice.path }),
+      hint: copyText("plan.take.hint", { path: slice.path ?? "" }),
       onClick: () => void this.takeRepo(b, slice),
     });
     b.dataset.act = "take";
@@ -608,7 +609,7 @@ export class PlanView {
     const ok = await confirmDialog({
       title: copyText("plan.take.title", { slice: slice.name }),
       action: copyText("plan.take.action"),
-      body: copyText("plan.take.body", { path: slice.path }),
+      body: copyText("plan.take.body", { path: slice.path ?? "" }),
       note: slice.current ? undefined : copyText("plan.take.switchNote", { slice: slice.name }),
     });
     if (!ok) return;
@@ -666,7 +667,7 @@ export class PlanView {
       if (top.owner) parts.push(this.whoChip(top.owner));
       if (top.phase) parts.push(phaseBadge(top.phase));
       const at = top.at ? cellIndex(slice).get(top.at) : null;
-      if (at) parts.push(document.createTextNode(copyText("plan.sub.standing", { title: at.title ?? at.id })));
+      if (at) parts.push(document.createTextNode(copyText("plan.sub.standing", { title: labelOf(slice, at.id) })));
     }
     if (slice.check.red.length > 0) {
       const red = document.createElement("span");
@@ -682,7 +683,7 @@ export class PlanView {
   private docsOnlyBadge(slice: PlanSlice): HTMLElement {
     const b = phaseBadge(copyText("plan.sub.docsOnly"));
     b.dataset.badge = "docs-only";
-    attachTooltip(b, () => copyText("plan.sub.docsOnlyHint", { path: slice.path }));
+    attachTooltip(b, () => copyText("plan.sub.docsOnlyHint", { path: slice.path ?? "" }));
     return b;
   }
 
@@ -874,7 +875,7 @@ export class PlanView {
     bar.className = s.pvKbar;
     const tt = document.createElement("span");
     tt.className = s.pvTt;
-    tt.textContent = c.title ?? c.id;
+    tt.textContent = labelOf(slice, c.id);
     const kw = document.createElement("span");
     kw.className = s.pvKw;
     kw.textContent = c.kind ?? "";
@@ -966,10 +967,10 @@ export class PlanView {
         const root = byId.get(b.cells[0] ?? "");
         const at = b.at ? byId.get(b.at) : null;
         const tr = tbl.row([
-          text(root?.title ?? b.id),
+          text(labelOf(slice, root?.id ?? b.id)),
           b.owner ? this.whoChip(b.owner) : text(copyText("plan.page.none")),
           b.phase ? phaseBadge(b.phase) : text(copyText("plan.page.none")),
-          text(at ? (at.title ?? at.id) : copyText("plan.page.none")),
+          text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
           text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
         ]);
         if (root) clickRow(tr, () => this.select(root.id));
@@ -990,7 +991,7 @@ export class PlanView {
       setKindColor(name, kindSlot(slice, c.kind));
       const bar = document.createElement("span");
       bar.className = s.pvKbar;
-      name.append(bar, document.createTextNode(c.title ?? c.id));
+      name.append(bar, document.createTextNode(labelOf(slice, c.id)));
       const look = statusLook(c);
       const stw = document.createElement("span");
       stw.className = s.pvStw;
@@ -1072,7 +1073,7 @@ export class PlanView {
     const go = document.createElement("button");
     go.type = "button";
     go.className = s.pvLink;
-    go.textContent = it.cell.title ?? it.cell.id;
+    go.textContent = labelOf(slice, it.cell.id);
     go.addEventListener("click", () => this.select(it.cell.id));
     tl.append(go, kw);
     const why = document.createElement("div");

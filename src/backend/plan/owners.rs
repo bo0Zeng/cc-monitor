@@ -1,10 +1,10 @@
 //! 文件窗口反查：一个目录落在哪一片的仓库里、那里每份文件归哪一格。纯函数，吃标过的成品。
 //!
 //! - 一片的仓库 ＝ `<工作区>/<path>/`：`path` 是成品里那一片的仓库位置（pb `pb repo <路径>` 登记的、相对工作区根，
-//!   如 `repos/app`；旧 pb 没给 ⇒ 成品补成片名）。格的文件声明是相对它的路径。拼这个绝对路径只在 [`repo_dir`]（盯盘也用它）。
+//!   如 `repos/app`；照 pb 给的用，没给 ⇒ 不认这一片的仓库）。格的文件声明是相对它的路径。拼这个绝对路径只在 [`repo_dir`]（盯盘也用它）。
 //! - 一份文件被几格声明（pb 判据红「两个节点声明同一个文件」）⇒ 排期上先出现的那一格作主，其余进 `dup`（文件那一侧也看得出来）。
 //! - 那一格住哪一块：从它往上找第一个块根格（`blocks[].cells` 里的那一格），写块根格的标题；住顶块 ⇒ `null`。
-//! - 无主（没有一格声明）要 pb 给 `unowned`（请求单 3）；没给之前 `unowned` 恒 `null`，文件窗口不出「无主」两个字。
+//! - 无主（没有一格声明）照 pb 的 `unowned`：这个目录里的那几份进 `unowned`（文件名）；仓库读不出（pb 给 `paths: null`）⇒ `unowned` 为 null、`unownedWhy` 是 pb 那一句。
 //! - 那一片读不成（没读好过 ⇒ `error`；读好过 ⇒ `stale`）⇒ `unreadable` 是那一句、条目空（文件窗口整列写「—」）。
 
 use super::needs::TOP_BLOCK;
@@ -73,8 +73,7 @@ pub(crate) fn repo_dir(ws: &str, sl: &Value) -> Option<String> {
 /// `plan-files {dir}` 的本体：`doc` 是一个工作区标过的成品；`dir` 是那台机器上的绝对路径。
 pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
     let ws = str_of(doc, "workspace").unwrap_or_default();
-    let none =
-        json!({"workspace": ws, "slice": null, "unreadable": null, "entries": [], "unowned": null});
+    let none = json!({"workspace": ws, "slice": null, "unreadable": null, "entries": [], "unowned": null, "unownedWhy": null});
     let Some(slices) = doc.get("slices").and_then(Value::as_array) else {
         return none;
     };
@@ -91,7 +90,7 @@ pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
             .and_then(|s| str_of(s, "said"))
             .or_else(|| str_of(sl, "error"));
         if let Some(said) = unreadable {
-            return json!({"workspace": ws, "slice": name, "unreadable": said, "entries": [], "unowned": null});
+            return json!({"workspace": ws, "slice": name, "unreadable": said, "entries": [], "unowned": null, "unownedWhy": null});
         }
         // 文件名 ⇒ 作主的那一条（先声明的格）· 其余声明它的格。
         let mut by_name: BTreeMap<String, (Value, Vec<Value>)> = BTreeMap::new();
@@ -147,7 +146,28 @@ pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
                 head
             })
             .collect();
-        return json!({"workspace": ws, "slice": name, "unreadable": null, "entries": entries, "unowned": null});
+        // 无主：pb 给的是整片（相对仓库根）；只留落在这个目录里的那几份的文件名。
+        let un = sl.get("unowned");
+        let unowned = un
+            .and_then(|u| u.get("paths"))
+            .and_then(Value::as_array)
+            .map(|ps| {
+                ps.iter()
+                    .filter_map(Value::as_str)
+                    .filter_map(|p| {
+                        let (parent, file) = p.rsplit_once('/').unwrap_or(("", p));
+                        (parent == rel && !file.is_empty()).then(|| file.to_string())
+                    })
+                    .collect::<Vec<_>>()
+            });
+        let why = match unowned {
+            Some(_) => Value::Null,
+            None => un
+                .and_then(|u| u.get("why"))
+                .cloned()
+                .unwrap_or(Value::Null),
+        };
+        return json!({"workspace": ws, "slice": name, "unreadable": null, "entries": entries, "unowned": unowned, "unownedWhy": why});
     }
     none
 }

@@ -72,45 +72,42 @@ fn args(id: &str) -> Value {
 #[test]
 fn a_working_owner_gets_the_line_said_to_it_and_the_return_is_kept() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Working));
-    let (out, sent, kept) = run(&doc, args("A1-2"), json!({"result": "delivered"}));
+    let (out, sent, kept) = run(&doc, args("A2-1"), json!({"result": "delivered"}));
     let out = out.unwrap();
     assert_eq!(out["result"], "delivered");
-    assert_eq!(out["line"], "人 · A1-2 甲的写出：单位写错了");
+    assert_eq!(out["line"], "人 · A2-1 乙的一半：单位写错了");
     assert_eq!(out["to"]["kind"], "subagent");
     assert_eq!(out["resumed"], false);
     // 子 agent 接手 ⇒ 说给它的父会话。
     assert_eq!(
         sent,
         vec![
-            json!({"sid": MAIN, "text": "人 · A1-2 甲的写出：单位写错了", "client": "monitor", "seen_screen": "abc"})
+            json!({"sid": MAIN, "text": "人 · A2-1 乙的一半：单位写错了", "client": "monitor", "seen_screen": "abc"})
         ]
     );
     assert_eq!(kept.len(), 1);
     let (ws, sl, id, r) = &kept[0];
     assert_eq!(
         (ws.as_str(), sl.as_str(), id.as_str()),
-        ("/w", "alpha", "A1-2")
+        ("/w", "alpha", "A2-1")
     );
     assert_eq!(r.at, 42);
     assert_eq!(r.to, MAIN);
     assert_eq!(r.result, "delivered");
     assert!(r.children.is_empty());
-    let cell = &doc["slices"][0]["cells"][2];
+    let cell = &doc["slices"][0]["cells"][8];
     assert_eq!(r.body, crate::plan::needs::body_digest(cell));
 }
 
 #[test]
 fn not_knowing_whether_it_arrived_is_kept_too_but_a_refusal_is_not() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Idle));
-    let (_, _, kept) = run(&doc, args("A1"), json!({"result": "unsure"}));
+    let (_, _, kept) = run(&doc, args("A2"), json!({"result": "unsure"}));
     assert_eq!(kept[0].3.result, "unsure");
-    assert_eq!(
-        kept[0].3.children,
-        vec!["A1-1".to_string(), "A1-2".to_string()]
-    );
+    assert_eq!(kept[0].3.children, vec!["A2-1".to_string()]);
     let (out, _, kept) = run(
         &doc,
-        args("A1"),
+        args("A2"),
         json!({"result": "refused", "why": "screen_changed", "said": "x", "screen": "def"}),
     );
     let out = out.unwrap();
@@ -123,25 +120,25 @@ fn not_knowing_whether_it_arrived_is_kept_too_but_a_refusal_is_not() {
 #[test]
 fn an_owner_waiting_for_you_is_refused_without_typing_anything() {
     let doc = doc_with(&live(crate::agents::SessionActivity::NeedsYou));
-    let (out, sent, kept) = run(&doc, args("A1-2"), json!({"result": "delivered"}));
+    let (out, sent, kept) = run(&doc, args("A2-1"), json!({"result": "delivered"}));
     let out = out.unwrap();
     assert_eq!(out["result"], "refused");
     assert_eq!(out["why"], "waiting");
     assert!(out["said"].as_str().is_some_and(|s| !s.is_empty()));
-    assert_eq!(out["line"], "人 · A1-2 甲的写出：单位写错了");
+    assert_eq!(out["line"], "人 · A2-1 乙的一半：单位写错了");
     assert!(sent.is_empty() && kept.is_empty());
 }
 
 #[test]
 fn an_ended_or_unknown_owner_only_gets_a_line_to_copy() {
     let doc = doc_with(&ended);
-    // A2 归主会话（已结束）；A1 归子 agent（这张表里认不出）。
-    let (out, sent, kept) = run(&doc, args("A2"), json!({"result": "delivered"}));
+    // A1 归主会话（已结束）；A2 归子 agent（这张表里认不出）。
+    let (out, sent, kept) = run(&doc, args("A1"), json!({"result": "delivered"}));
     let out = out.unwrap();
     assert_eq!(out["result"], "copy");
     assert_eq!(out["why"], "ended");
-    assert_eq!(out["line"], "人 · A2 乙功能：单位写错了");
-    let (out2, sent2, _) = run(&doc, args("A1"), json!({"result": "delivered"}));
+    assert_eq!(out["line"], "人 · A1 甲功能：单位写错了");
+    let (out2, sent2, _) = run(&doc, args("A2"), json!({"result": "delivered"}));
     let out2 = out2.unwrap();
     assert_eq!(out2["result"], "copy");
     assert_eq!(out2["why"], "unknown");
@@ -151,10 +148,17 @@ fn an_ended_or_unknown_owner_only_gets_a_line_to_copy() {
 #[test]
 fn the_signer_is_a_target_only_when_pb_gives_one() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Working));
-    let mut a = args("A1-2");
+    // A1 有子：做完没有是算出来的，pb 不给 signer ⇒ 没有这一项。
+    let mut a = args("A1");
     a["to"] = json!("signer");
     let (out, _, _) = run(&doc, a.clone(), json!({"result": "delivered"}));
     assert_eq!(out.unwrap_err().code, "no_target");
+    // A2-1 的上一级格在 A2 那一块 ⇒ signer 是那一块的接手（子 agent）⇒ 说给它的父会话。
+    let mut b = args("A2-1");
+    b["to"] = json!("signer");
+    let (out, sent, _) = run(&doc, b, json!({"result": "delivered"}));
+    assert_eq!(out.unwrap()["to"]["id"], SUB);
+    assert_eq!(sent[0]["sid"], MAIN);
     a["to"] = json!("boss");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "bad_args");
 }
@@ -162,14 +166,14 @@ fn the_signer_is_a_target_only_when_pb_gives_one() {
 #[test]
 fn bad_shapes_and_missing_cells_are_errors() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Working));
-    let mut a = args("A1-2");
+    let mut a = args("A2-1");
     a["text"] = json!("   ");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "bad_args");
     assert_eq!(
         run(&doc, args("Z9"), json!({})).0.unwrap_err().code,
         "no_such_cell"
     );
-    let mut a = args("A1-2");
+    let mut a = args("A2-1");
     a["slice"] = json!("beta");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_such_cell");
 }
@@ -189,7 +193,7 @@ fn the_top_block_is_addressed_as_project_and_goes_to_its_owner() {
     assert_eq!(sent[0]["text"], "人 · project alpha：单位写错了");
     let (_, sl, id, r) = &kept[0];
     assert_eq!((sl.as_str(), id.as_str()), ("alpha", "project"));
-    assert_eq!(r.children, vec!["A1".to_string(), "A2".to_string()]);
+    assert_eq!(r.children, ["A1", "A2", "A3", "A4", "A5"].map(String::from));
     let mut a = args("project");
     a["to"] = json!("signer");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_target");
@@ -210,7 +214,7 @@ fn ended(id: &str) -> Whose {
 #[test]
 fn an_ended_owner_is_resumed_with_the_line_when_asked() {
     let doc = doc_with(&ended);
-    let mut a = args("A2");
+    let mut a = args("A1");
     a["resume"] = json!(true);
     let (out, sent, kept) = run_resuming(&doc, a, json!({"result": "delivered", "resumed": true}));
     let out = out.unwrap();
@@ -220,7 +224,7 @@ fn an_ended_owner_is_resumed_with_the_line_when_asked() {
     assert_eq!(
         sent,
         vec![(
-            json!({"sid": MAIN, "text": "人 · A2 乙功能：单位写错了", "client": "monitor"}),
+            json!({"sid": MAIN, "text": "人 · A1 甲功能：单位写错了", "client": "monitor"}),
             true
         )]
     );
@@ -232,7 +236,7 @@ fn an_ended_owner_is_resumed_with_the_line_when_asked() {
 #[test]
 fn a_resume_that_fails_says_why_and_keeps_nothing() {
     let doc = doc_with(&ended);
-    let mut a = args("A2");
+    let mut a = args("A1");
     a["resume"] = json!(true);
     let (out, _, kept) = run_resuming(
         &doc,
@@ -245,7 +249,7 @@ fn a_resume_that_fails_says_why_and_keeps_nothing() {
         (Some("refused"), Some("not_resumed"))
     );
     assert!(kept.is_empty());
-    let mut a = args("A1");
+    let mut a = args("A2");
     a["resume"] = json!(true);
     let (out, sent, _) = run_resuming(&doc, a, json!({"result": "delivered"}));
     assert_eq!(out.unwrap()["result"], "copy");
