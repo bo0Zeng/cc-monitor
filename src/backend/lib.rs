@@ -5,7 +5,7 @@
 //! 远端仍走那个薄 `main` 壳。今天 link 它的只有那个壳（`main.rs`，`Cargo.toml` 的 `[lib]`）；
 //! 本机 GUI 进程内 link 它那一步还没做（monitor 经子进程 / 监听口说话）。
 //!
-//! 模块声明、`PROTO_VERSION`、身份那一块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` 住这里；**分派留在 `main.rs`**。
+//! 模块声明、身份那一块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` 住这里；**分派留在 `main.rs`**。
 //!
 //! 🔴 **`BUILD_ID` 必须住这里，不能留在 `main.rs`** —— in-process 那条路**没有
 //! 那个 `main.rs`**，身份会跟着消失。读它源码的只有发版核对那一侧（字节自报 == 这里的 `BUILD_ID`）：
@@ -100,12 +100,6 @@ pub mod stream; // 进后端的口（最上层）：命令表 · 帧面与 CLI �
 #[path = "../../tests/backend/test_home_guard.rs"]
 mod test_home_guard; // 每个有判据的 Rust crate 都引了 `src/common/test-home`（测试档的家一开始就是沙箱）
 pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸
-
-/// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
-/// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
-/// (e.g. `Overflow`, #32) do NOT bump it — old parsers skip unknown kinds.
-/// The monitor negotiates against its own `EXPECTED_PROTO_V` (#33).
-pub const PROTO_VERSION: u32 = 1;
 
 /// 后端身份（`Hello` 帧的 `build_id`，也烤进二进制的身份戳）：monitor 拿它比内嵌那份的，不同 ⇒ 那台该换后端。
 /// 后端发出去的东西变了（子命令集 · 冻结格 · 形状指纹 · 行为）就打一个新的：`tests/scripts/bump-build-id.sh`，再 re-embed。

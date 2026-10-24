@@ -2544,6 +2544,13 @@ mod g6_dependency_signoff {
              源码在本护栏的人群里。本机写面现打 0 处（要放的字节由宿主经 `Load` 读来，本 crate 不碰本机文件系统）；\
              远端那几下（建目录 · 放 ＋ 读回 · 删残件）全经 `ssh-dial/sftp.rs` 的原语，写面记在 ssh-dial 那一行",
         ),
+        (
+            "resident-client",
+            DEPS,
+            MEASURED_CLEAN,
+            "连远端常驻后端的客户端那一侧（桌面 · 手机同一份；本后端只在测试连接 `dial/probe.rs` 里跑一趟它的常驻流）：仓内 crate，\
+             连它引的 `comms-inward` 现打 0 处写面（`std::fs` · `tokio::fs` · 起进程一处都没有）；字节只经宿主交来的那条链路进出（`feed::Transport`，本后端那份走拨号核心）",
+        ),
         // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
