@@ -107,7 +107,7 @@ class RecordUnits {
         results: Map<String, Result>,
     ): List<RenderUnit> =
         when (r.t) {
-            RecordKind.SAID, RecordKind.QUEUED -> listOfNotNull(said(r))
+            RecordKind.SAID -> listOfNotNull(said(r))
             RecordKind.REPLY -> if (r.autoReply == true) emptyList() else reply(r, results)
             RecordKind.UNREAD -> listOfNotNull(r.text?.let { RenderUnit.Unread(r.id, it, r.timeText, r.excerpt.orEmpty(), r.id) })
             else -> emptyList()

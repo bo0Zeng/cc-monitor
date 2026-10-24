@@ -1,5 +1,5 @@
-// 过程折着时那几张卡真的不见：`turn-fold.ts` 给卡挂 `proc-hidden`（折着的过程）/ `queued-landed`（落成了人话的排队插话），
-// 藏不藏只靠这两个类的 `display: none`。卡自己的样式（如 `.card-steps { display: flex }`）写在它后面、同一权重时会把它盖掉 ⇒
+// 过程折着时那几张卡真的不见：`turn-fold.ts` 给卡挂 `proc-hidden`（折着的过程），
+// 藏不藏只靠这个类的 `display: none`。卡自己的样式（如 `.card-steps { display: flex }`）写在它后面、同一权重时会把它盖掉 ⇒
 // 过程行显示折着、底下的卡照样露着。这里把真样式表交给 jsdom，对 cards/ 里每一种卡各造一张、挂上类再量。
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
@@ -56,7 +56,4 @@ describe("折着的卡真的藏起来", () => {
     expect(displayOf(`${c} proc-hidden`)).toBe("none");
   });
 
-  it.each(cardClasses)("%s ＋ queued-landed ⇒ 不显示", (c) => {
-    expect(displayOf(`${c} queued-landed`)).toBe("none");
-  });
 });

@@ -449,8 +449,8 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
             serde_json::json!({"speaker": {"kind": "agentMessage", "from": "a1", "handback": true, "body": "甲"}, "text": ""}),
         ),
         (
-            r#"{"type":"queue-operation","operation":"remove","timestamp":"t","content":"<task-notification><task-id>x</task-id></task-notification>"}"#,
-            serde_json::json!({"speaker": {"kind": "taskNotification", "taskId": "x"}, "text": ""}),
+            r#"{"type":"attachment","uuid":"d","timestamp":"t","parentUuid":"c","attachment":{"type":"queued_command","prompt":"乙","origin":{"kind":"human"}}}"#,
+            serde_json::json!({"speaker": {"kind": "human"}, "text": "乙"}),
         ),
     ];
     for (line, want) in cases {
@@ -472,14 +472,17 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         .unwrap()
         .get("userText")
         .is_none());
-    let dequeue = super::super::parse::parse_line(&crate::agents::Line::new(
+    // 排队那几行（进队 · 出队 · 被吸进那一轮）都不带：插进去的那一句由紧跟着的那一行 attachment 带。
+    for raw in [
         r#"{"type":"queue-operation","operation":"dequeue","timestamp":"t"}"#,
-        0,
-    ))
-    .unwrap()
-    .unwrap();
-    assert!(serde_json::to_value(&dequeue)
-        .unwrap()
-        .get("userText")
-        .is_none());
+        r#"{"type":"queue-operation","operation":"remove","timestamp":"t","content":"乙","reason":"absorbed_mid_turn"}"#,
+    ] {
+        let q = super::super::parse::parse_line(&crate::agents::Line::new(raw, 0))
+            .unwrap()
+            .unwrap();
+        assert!(
+            serde_json::to_value(&q).unwrap().get("userText").is_none(),
+            "{raw}"
+        );
+    }
 }

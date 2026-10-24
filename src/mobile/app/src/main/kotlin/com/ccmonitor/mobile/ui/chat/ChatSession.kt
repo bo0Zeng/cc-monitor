@@ -863,7 +863,7 @@ class ChatSession(
         put: (List<LineRecord>) -> Unit,
     ) {
         put(rs)
-        rs.filter { it.t == RecordKind.SAID || it.t == RecordKind.QUEUED }.mapNotNullTo(heard) { it.who?.text }
+        rs.filter { it.t == RecordKind.SAID }.mapNotNullTo(heard) { it.who?.text }
     }
 
     /** 新排进来的记录里出现了同一句人话 ⇒ 那一句的本地标消失（一行只消一句）；其余的接在记录后面。 */

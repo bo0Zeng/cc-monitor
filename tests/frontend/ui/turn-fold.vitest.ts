@@ -13,7 +13,7 @@ const placeCardLeft = (host: DOMRect, tip: { width: number; height: number }, vi
 import type { TurnsResult } from "../../../src/frontend/ui/session-reads";
 import type { FoldSegment } from "../../../src/frontend/ui/generated/FoldSegment";
 import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
-import { markCardId, renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
+import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -37,7 +37,6 @@ const turn = (uuid: string, at: number, over: Partial<TurnRow> = {}): TurnRow =>
   peers: 0,
   fails: 0,
   shown: [],
-  landed: [],
   reply: "",
   done: true,
   phase: "idle",
@@ -465,26 +464,6 @@ describe("按段折叠", () => {
   });
 });
 
-describe("排队插话落成了人话", () => {
-  it("★ 后端说它落了（landed）⇒ 插话卡不再单独出，只露人话那一条；还在排队 ⇒ 照常露着", async () => {
-    const q = card("card-user-queued");
-    q.dataset.queuedId = "@40";
-    const { fold: f } = rig([card("card-user", "u1"), card("card-assistant", "a1"), q], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, shown: ["a1"], folds: [] })] },
-      { available: true, from: 0, end: 20, turns: [turn("u1", 0, { shown: ["a1"], folds: [], landed: ["@40"] }), turn("u2", 15, { folds: [] })] },
-    ]);
-    await f.refresh();
-    expect(q.classList.contains("queued-landed")).toBe(false);
-    await f.refresh();
-    expect(q.classList.contains("queued-landed")).toBe(true);
-  });
-
-  it("排队卡带上它的记录 id（`data-queued-id`，不进 `data-id`：它不在链上）", () => {
-    const el = document.createElement("div");
-    markCardId(el, { t: "queued", id: "@40" } as never);
-    expect([el.dataset.queuedId, el.getAttribute("data-id")]).toEqual(["@40", null]);
-  });
-});
 
 describe("轮次刻度", () => {
   const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top }) as DOMRect;

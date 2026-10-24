@@ -783,6 +783,8 @@ pub(crate) struct Direct {
     pub(crate) relay: Option<String>,
     /// 这一家怎么指到中转（适配层那一格的计划形）。
     pub(crate) relay_via: RelayVia,
+    /// 随中转地址一起设的环境（名, 值；适配层 `DefaultUpstream.relay_env`）：注入地址时（`relay` 有）才设，打印那一行与真跑那一趟都按它。
+    pub(crate) relay_env: Vec<(String, String)>,
     /// 环境里本来就有一个不是我们注入的上游地址（用户自己的端点）⇒ 不动它，说一句。
     pub(crate) keeps_user_base_url: bool,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
@@ -1645,6 +1647,13 @@ pub(crate) fn build_among(
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
         relay_pass_key: relay.as_ref().and(env.relay_pass_key.clone()),
+        relay_env: match &relay {
+            Some(_) => crate::agents::relay_env_among(registry, &o.agent)
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            None => Vec::new(),
+        },
         relay,
         relay_via,
         keeps_user_base_url,
@@ -2191,6 +2200,9 @@ fn render_direct(d: &Direct) -> String {
         }
         _ => {}
     }
+    for (k, v) in &d.relay_env {
+        line.push_str(&posix::export(k, &sq(v)));
+    }
     if let Some(off) = d.answer_hook_off {
         line.push_str(&posix::export(
             crate::agents::asks::ANSWER_HOOK_OFF_ENV,
@@ -2255,6 +2267,9 @@ fn render_direct_ps(d: &Direct) -> String {
             line.push_str(&ps::remove_env(&[var]))
         }
         _ => {}
+    }
+    for (k, v) in &d.relay_env {
+        line.push_str(&ps::set_env(k, &pq(v)));
     }
     if let Some(off) = d.answer_hook_off {
         line.push_str(&ps::set_env(

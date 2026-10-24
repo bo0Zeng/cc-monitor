@@ -197,19 +197,18 @@
 |---|---|---|
 | `agent` | string | 哪一家（`claude` · `codex` …） |
 | `id` | string | 这条记录在本会话里的身份：**不透明串**（非空、会话内唯一；主线外清单、分叉、跳转都按它认），前端不解析、不拼。那一家的记录自己有身份就用它（Claude 的 `uuid`）；没有的合成「`@<这一行起点的字节偏移>`」 |
-| `at` | string? | 记录时刻（ISO-8601 原样）；插进正在跑的那一轮的 `queued` 是打字那一刻 |
+| `at` | string? | 记录时刻（ISO-8601 原样）；一轮中途插进去的那一句（`said`）是打字那一刻 |
 | `timeText` | string? | `at` 在那台本地钟上的钟面 `HH:MM`（界面照抄、不换算） |
-| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `queued` · `unread` |
+| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `unread` |
 
 各类的格：
 
 | 类 | 格 |
 |---|---|
-| `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?` `patchTruncated?`；`patch` 至多 32 KiB、整段不劈）· `cwd?` |
+| `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …；人在一轮跑着时插进去的一句也是它，在它自己那一行的位置上） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?` `patchTruncated?`；`patch` 至多 32 KiB、整段不劈）· `cwd?` |
 | `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`；展开画的 `body?`：改动 `{kind: changes, changes: [{old, new}]}` · 命令 `{kind: command, line}`；可在文件窗口定位的绝对路径 `file?`。界面只按这几格画，不读 `tool_use.input` 的键）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
 | `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
-| `queued`（人在一轮跑着时插进去的一句） | `who`（同 `said`） |
 | `unread`（这一家的这一行认不出：没见过的类型 · 见过的类型形状变了） | `why`（闭集 `unknownType` `parseFailed`）· `type`（那一行自己说的类型原样，只当标签、出口不按它取字；没有 ⇒ `null`）· `text`（写好的一句）· `tone`（恒 `warn`）· `excerpt`（原文截到 400 字节、按字符截，给［复制详情］，出口照抄不解析）· `count`（并了几条：出记录页那一遍把相邻、原因与类型都一样的并成一条；实时 `line` 帧每行一条、恒 1） |
 
 内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError}` · `image {source}`。

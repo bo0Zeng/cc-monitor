@@ -51,6 +51,8 @@ pub(crate) enum Lost {
     Gap,
     /// 挂起时攒的件超了上界。
     PendingOverflow,
+    /// 旁路请求（分类头报的是旁路：预测下一句 · 起标题 · 压缩总结）：不进记录、不上活卡。
+    Side,
 }
 
 enum Route {
@@ -78,6 +80,8 @@ pub(crate) struct RunRouter {
     dead_order: VecDeque<u64>,
     /// 至今每种丢了几段。
     lost: BTreeMap<Lost, u64>,
+    /// 至今几段没带分类头（这一家声明了分类头、这一发却没带）。
+    unclassed: u64,
 }
 
 impl RunRouter {
@@ -90,6 +94,7 @@ impl RunRouter {
             dead: HashSet::new(),
             dead_order: VecDeque::new(),
             lost: BTreeMap::new(),
+            unclassed: 0,
         }
     }
 
@@ -152,6 +157,23 @@ impl RunRouter {
                 return Vec::new();
             };
             let face = family.face;
+            // 旁路请求（这一家的分类头报的是旁路）：不进记录 ⇒ 不上活卡。没带分类头 ⇒ 照今天当主运行放，照实说一行、不猜。
+            if let Some(side) = family.side {
+                if side.is_side(&ev.class) {
+                    self.lose(resp, Lost::Side);
+                    return Vec::new();
+                }
+                if ev.class.is_empty() {
+                    self.unclassed += 1;
+                    let n = self.unclassed;
+                    if n.is_power_of_two() {
+                        tracing::warn!(
+                            "[tap] 一段流没带分类头 `{}`（认不出是不是旁路），照对话放（这条连接上第 {n} 次）",
+                            side.header
+                        );
+                    }
+                }
+            }
             // 自报的运行就是会话本身（有的家主运行也带那个头、值等于会话标识）⇒ 主运行。
             let route = if !ev.owner.is_empty() && ev.owner != ev.stream {
                 Route::Run(Some(ev.owner.clone()))

@@ -83,6 +83,8 @@ pub struct TapEvent {
     pub stream: String,
     /// 第二个标签（请求自带的另一个头的值，中转不解释它）；没有 ⇒ 空串。
     pub owner: String,
+    /// 第三个标签（请求自带的又一个头的值，中转不解释它）；没有 ⇒ 空串。
+    pub class: String,
     /// 本进程第几个响应（跨连接单调，[`TeeSink`] 那一个计数器）。
     pub resp: u64,
     /// 这一个响应里第几个事件（从 0 连续）；收尾那一件是「一共占了几个号」。
@@ -194,6 +196,7 @@ impl TeeSink {
         let _ = self.port.offer(TapEvent {
             stream: id.stream.to_string(),
             owner: id.owner.to_string(),
+            class: id.class.to_string(),
             resp: at.resp,
             n,
             body,
@@ -216,6 +219,7 @@ impl TeeSink {
             let _ = self.port.offer(TapEvent {
                 stream: id.stream.to_string(),
                 owner: id.owner.to_string(),
+                class: id.class.to_string(),
                 resp: at.resp,
                 n: at.n,
                 body: TapBody::End { broken },

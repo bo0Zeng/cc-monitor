@@ -49,7 +49,7 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "unread", why: UnreadWhy, 
 /**
  * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
  */

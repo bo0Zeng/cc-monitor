@@ -581,6 +581,7 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
         .map(|(i, e)| comms_outward::TapEvent {
             stream: "k-rl1".into(),
             owner: String::new(),
+            class: String::new(),
             resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
             n: i as u64,
             body: comms_outward::TapBody::Data((*e).to_string()),
@@ -589,6 +590,7 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
     want.push(comms_outward::TapEvent {
         stream: "k-rl1".into(),
         owner: String::new(),
+        class: String::new(),
         resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
         n: k,
         body: comms_outward::TapBody::End { broken: false },

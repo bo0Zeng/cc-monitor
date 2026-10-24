@@ -412,20 +412,22 @@ private fun ThinkingCard(
 ) {
     val tokens = LocalAppTokens.current
     var expanded by rememberExpandable(matched)
+    // 正文是空串 ＝ 后端说「没写进记录」（线上约定，后端判一次）⇒ 只画一行，不给展开（点开是空的）。
+    val recorded = unit.text.isNotEmpty()
     Column(Modifier.fillMaxWidth().matchHighlight(matched)) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(tokens.radius.l))
-                .clickable { expanded = !expanded }
+                .then(if (recorded) Modifier.clickable { expanded = !expanded } else Modifier)
                 .padding(vertical = tokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Caret(expanded)
+            if (recorded) Caret(expanded)
             Spacer(Modifier.width(tokens.spacing.xs))
             Text(copyText("cards.thinking.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        AnimatedVisibility(expanded) {
+        AnimatedVisibility(recorded && expanded) {
             Text(
                 unit.text,
                 style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),

@@ -32,6 +32,21 @@ pub(crate) const LABEL_PROMPT_CHARS: usize = 80;
 /// 子 agent 自报身份的请求头（值 ＝ 记录里的 `agentId`）。
 pub(crate) const OWNER_HEADER: &str = "x-claude-code-agent-id";
 
+/// 请求自报「这一发是哪一类」的头（`DefaultUpstream.side_class`；2.1.310 读码）：值 ∈ main · subagent · workflow ·
+/// compaction · auxiliary · side_reply。预测下一句 · 起标题这类分叉请求是 auxiliary（它是主运行的分叉、不带 [`OWNER_HEADER`]，
+/// 只有这一格分得出它），压缩总结是 compaction，旁问的回答是 side_reply —— 这三类都不进记录 ⇒ 不上活卡。
+/// 只在设了 [`HINT_HEADERS_ENV`] 时发（[`RELAY_ENV`]）；没带 ⇒ 通用层照主运行放、照实说一行。
+pub(crate) const SIDE_CLASS: crate::agents::SideClass = crate::agents::SideClass {
+    header: "x-claude-code-request-class",
+    side: &["compaction", "auxiliary", "side_reply"],
+};
+
+/// 让请求带上 [`SIDE_CLASS`] 那个头的开关（不设 ⇒ 走自定地址时不发）。
+pub(crate) const HINT_HEADERS_ENV: &str = "CLAUDE_CODE_GATEWAY_HINT_HEADERS";
+
+/// 走中转时随地址一起设的环境（`DefaultUpstream.relay_env`）。
+pub(crate) const RELAY_ENV: &[(&str, &str)] = &[(HINT_HEADERS_ENV, "1")];
+
 fn s<'a>(v: &'a Value, k: &str) -> Option<&'a str> {
     v.get(k).and_then(Value::as_str)
 }

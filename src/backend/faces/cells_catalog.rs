@@ -915,10 +915,6 @@ mod specimens {
                 cwd: some("/w"),
             }));
         }
-        // 排队的那一条只出人说的（`record_of`：别的来源排了队不进界面）。
-        out.push(rec(Body::Queued {
-            who: who(Speaker::Human),
-        }));
         // 认不出的一行：两个原因各一个（`why` 是闭集的词，样本各给一种）。
         for why in [
             crate::agents::record::UnreadWhy::UnknownType,

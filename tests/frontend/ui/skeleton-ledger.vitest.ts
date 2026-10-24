@@ -40,10 +40,8 @@ describe("estimateFromFacts / skeletonKind", () => {
     }
   });
 
-  it("认的是通用记录的类：said / queued 按人那一侧的气泡、reply 按回复卡、retry 是细条；盘上的原词不再认", () => {
+  it("认的是通用记录的类：said 按人那一侧的气泡、reply 按回复卡、retry 是细条；盘上的原词不再认", () => {
     expect(skeletonKind(user(10))).toBe("card");
-    expect(skeletonKind({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 })).toBe("card");
-    expect(estimateFromFacts({ o: 0, n: 1, t: "queued", ch: 10, pl: 1 })).toBe(estimateFromFacts(user(10)));
     expect(skeletonKind(asst(10))).toBe("card");
     expect(estimateFromFacts({ o: 0, n: 1, t: "retry" })).toBe(SKEL_OUTER.system);
     for (const raw of ["user", "assistant", "system"]) expect(skeletonKind({ o: 0, n: 1, t: raw as never, ch: 10, pl: 1 })).toBe("none");

@@ -694,9 +694,6 @@ enum class RecordKind {
     @Json(name = "title")
     TITLE,
 
-    @Json(name = "queued")
-    QUEUED,
-
     @Json(name = "unread")
     UNREAD,
 }

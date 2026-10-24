@@ -179,9 +179,63 @@ impl<'a> Facts<'a> {
     }
 }
 
-/// 注册表 `TextFace.user`：一条已解析的记录 ⇒ 它是谁说的；不是 user 记录 ⇒ `None`。
+/// 注册表 `TextFace.user`：一条已解析的记录 ⇒ 它是谁说的；不是 user 记录、也不是人在一轮中途插的那一句 ⇒ `None`。
 pub(crate) fn user_text_of_record(v: &Value) -> Option<UserText> {
-    Facts::of(v).map(|f| user_text(&f))
+    if let Some(f) = Facts::of(v) {
+        return Some(user_text(&f));
+    }
+    if v.get("type").and_then(Value::as_str) != Some("attachment") {
+        return None;
+    }
+    let flag = |k: &str| v.get(k).and_then(Value::as_bool) == Some(true);
+    let has_parent = v
+        .get("parentUuid")
+        .and_then(Value::as_str)
+        .is_some_and(|p| !p.is_empty());
+    let a = v.get("attachment")?;
+    mid_turn_text(
+        &MidTurn {
+            kind: a.get("type").and_then(Value::as_str),
+            prompt: a.get("prompt").unwrap_or(&Value::Null),
+            is_meta: a.get("isMeta").and_then(Value::as_bool) == Some(true),
+            origin: a.get("origin"),
+        },
+        flag("isSidechain"),
+        has_parent,
+    )
+}
+
+/// `attachment` 那一格里判「是不是插进来的那一句」要的几样（解析成品与通用层的已解析 JSON 各取一份，判定是同一个函数）。
+pub(crate) struct MidTurn<'a> {
+    pub(crate) kind: Option<&'a str>,
+    pub(crate) prompt: &'a Value,
+    pub(crate) is_meta: bool,
+    pub(crate) origin: Option<&'a Value>,
+}
+
+/// **一轮中途插进来的那一句**（`attachment` 里 `type: queued_command` 的那一格；2.1.273 起人插的每一句都配着这一行，
+/// 它带着 uuid · parentUuid · 打字那一刻 · 原话 `prompt` · `origin`）是谁说的：判定就是 user 记录那一份（[`user_text`]），
+/// `origin` · `isMeta` 在这一格里；没有 `origin` 的旧版按原话认。只答说了话的那几种（人打的 · 斜杠命令 · `!`）——
+/// 别人那几种（后台通知 · peer 交回 · 协调方）不在这一行另算。不是这一形 ⇒ `None`。
+pub(crate) fn mid_turn_text(
+    a: &MidTurn<'_>,
+    is_sidechain: bool,
+    has_parent: bool,
+) -> Option<UserText> {
+    if a.kind != Some("queued_command") {
+        return None;
+    }
+    let t = user_text(&Facts {
+        content: a.prompt,
+        is_meta: a.is_meta,
+        is_sidechain,
+        is_compact_summary: false,
+        has_parent,
+        origin: a.origin.filter(|o| o.is_object()),
+    });
+    crate::agents::UserTextExt::speech(&t)
+        .is_some()
+        .then_some(t)
 }
 
 /// **一条 user 记录是谁说的**（规则只此一份）。
@@ -221,21 +275,6 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         return shown(Speaker::AgentTask, &raw);
     }
     spoken(&raw)
-}
-
-/// 排队消息（`queue-operation` 的 `content`）是谁说的：它没有记录级字段，只认具名框与固定句，认不出归人。
-/// 一条记录是不是进界面的排队插话（口径同 `record_of` 认 `Queued` 那一支：`queue-operation` 的 `remove`、人说的）⇒ 原文。
-pub(crate) fn queued_of_record(v: &Value) -> Option<String> {
-    let s = |k: &str| v.get(k).and_then(Value::as_str);
-    if s("type") != Some("queue-operation") || s("operation") != Some("remove") {
-        return None;
-    }
-    let who = queued_text(s("content")?);
-    matches!(who.speaker, Speaker::Human).then(|| who.text.trim().to_string())
-}
-
-pub(crate) fn queued_text(content: &str) -> UserText {
-    framed(content, false).unwrap_or_else(|| spoken(content))
 }
 
 /// 整条是不是 ESC 中断标记（子运行被叫停的收场认它）。

@@ -341,28 +341,9 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
       return { kind: "card", element: buildUnreadLine({ text: rec.text, excerpt: rec.excerpt, time }) };
     case "title":
       return { kind: "skip" };
-    // 插进正在跑的那一轮的一句（那一轮里没有它自己的 said 记录）：不在这里建卡，那句话就整条消失。
-    case "queued": {
-      const text = rec.who.speaker.kind === "human" ? rec.who.text : "";
-      if (!text) return { kind: "skip" };
-      return { kind: "card", element: buildQueuedUserCard(text, time) };
-    }
     default:
       return { kind: "skip" };
   }
-}
-
-/** 排队消息的用户卡：多一个「排队」标记 —— 这条消息是插进正在跑的那一轮的，先后只由 `seq` 保证，得让人看出它是插进来的。 */
-function buildQueuedUserCard(text: string, time: string): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "card card-user card-user-queued";
-  card.appendChild(cardHeader(copyText("cards.queuedUser.title"), time));
-
-  const body = document.createElement("div");
-  body.className = "card-body";
-  body.innerHTML = renderPlainText(text);
-  card.appendChild(body);
-  return card;
 }
 
 /** 过程里一条记录的几步：一张卡（`data-id` 由管线写），每步一行。 */

@@ -41,54 +41,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=queued}.who.pasted[].bodyEnd",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.pasted[].bodyStart",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.pasted[].end",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.pasted[].id",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.pasted[].lines",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.pasted[].start",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.speaker.kind",
-          "type": "enum"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "{t=queued}.who.text",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "{t=reply}.autoReply",
           "type": "bool"
         },

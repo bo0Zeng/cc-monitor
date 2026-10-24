@@ -2,7 +2,7 @@
 //! [`Record`]（判定与写字在后端 `agents/`），手机嵌的 Rust 核心按这里的类型解。
 //!
 //! 公共四格 ＋ 时刻字：`agent`（哪一家）· `id`（会话内非空、唯一）· `at`（记录时刻）· `timeText`（看的那一台钟上的 `HH:MM`，出口那一下写，界面照抄）· `t`（哪一类）。
-//! `t` 的闭集：`said` · `reply` · `retry` · `title` · `queued` · `unread`；内容块 [`Block`] 是两家共有的词。
+//! `t` 的闭集：`said` · `reply` · `retry` · `title` · `unread`；内容块 [`Block`] 是两家共有的词。
 //!
 //! 回包里的那一份记录后端照原样的一团写（出口的声明可能去过格），所以 [`ReadRow`] · [`RecordLine`] 及其回包对记录那一格是泛型：
 //! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`replies` 表里登记的是 `HistoryRead<OrUnread>`：解不开的那一条成认不出那一条，整份不失败）；TS 一侧照 `Record` 出（`ts(concrete)`）。
@@ -125,8 +125,6 @@ pub enum Body {
     },
     /// 会话标题（代理起的 · 人改的）。
     Title { text: String, by: TitleBy },
-    /// 人在一轮跑着时插进去的一句（`at` 是打字的时刻）。
-    Queued { who: UserText },
     /// 这一家的这一行，适配层认不出（没见过的类型 · 见过的类型、形状变了）。出口照 `text` 画一行，不按 `type` 分支。
     /// 相邻同类由出记录页那一遍并成一条（[`unread_text`] 重写 `text`、`count` 记几条）。
     Unread {
@@ -784,7 +782,7 @@ impl Body {
 }
 
 /// `t` 的闭集（[`Body`] 各支的标签；判据逐支核过）：解不开的那一条按它分「没见过的类」与「形状变了」。
-const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "queued", "unread"];
+const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "unread"];
 
 /// 客户端解记录那一层：[`Record`] 外面包一层，解得开 ⇒ 那一条原样；解不开 ⇒ 认不出那一支（[`Body::unread`]，带原样的类名与摘录），
 /// 不让整份回包 / 整帧失败（后端照原样的一团写记录，记录的形状不进形状指纹：那一家新出一种记录不该让整页读不出）。
@@ -837,7 +835,7 @@ mod lenient_tests {
         let u = UserText::default();
         let each = [
             Body::Said {
-                who: u.clone(),
+                who: u,
                 blocks: vec![],
                 results: BTreeMap::new(),
                 cwd: None,
@@ -860,7 +858,6 @@ mod lenient_tests {
                 text: String::new(),
                 by: TitleBy::Agent,
             },
-            Body::Queued { who: u },
             Body::unread(UnreadWhy::UnknownType, None, ""),
         ];
         let tags: Vec<String> = each
@@ -872,7 +869,6 @@ mod lenient_tests {
                     | Body::Reply { .. }
                     | Body::Retry { .. }
                     | Body::Title { .. }
-                    | Body::Queued { .. }
                     | Body::Unread { .. } => {}
                 }
                 serde_json::to_value(b).unwrap()["t"]

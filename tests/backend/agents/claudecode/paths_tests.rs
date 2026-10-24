@@ -78,3 +78,22 @@ fn every_uncovered_shape_is_still_uncovered_today() {
         "正控：会话记录没被认出来"
     );
 }
+
+/// 直接敲的 claude 也走中转（设置文件的 `env` 块）：写地址的那一下，随地址一起设的那几条（`DefaultUpstream.relay_env`）也写上 ——
+/// 不然直接敲的 claude 走中转时不带分类头，旁路请求（预测下一句那一类）分不出来。别的格原样。
+#[test]
+fn writing_the_relay_address_also_writes_the_env_that_rides_with_it() {
+    let merged = settings_env_merge(
+        r#"{"env":{"OTHER":"x"},"theme":"dark"}"#,
+        "http://127.0.0.1:1/t/a",
+    )
+    .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&merged).unwrap();
+    assert_eq!(v["env"][BASE_URL_ENV], "http://127.0.0.1:1/t/a");
+    assert_eq!(v["env"]["OTHER"], "x");
+    assert_eq!(v["theme"], "dark");
+    for (k, val) in super::super::UPSTREAM.relay_env {
+        assert_eq!(v["env"][*k], *val, "{k}");
+    }
+    assert!(!super::super::UPSTREAM.relay_env.is_empty());
+}

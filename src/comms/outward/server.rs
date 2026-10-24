@@ -193,6 +193,8 @@ pub struct Relay {
     stream_headers: Vec<&'static str>,
     /// 给流打第二个标签的请求头名单（[`Destinations::stream_owner_headers`]）。
     owner_headers: Vec<&'static str>,
+    /// 给流打第三个标签的请求头名单（[`Destinations::stream_class_headers`]）。
+    class_headers: Vec<&'static str>,
     /// 每发请求要记下「在不在」的那几项（[`Destinations::request_marks`]）。
     marks: Vec<(&'static str, &'static str)>,
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
@@ -223,6 +225,7 @@ impl Relay {
         Self {
             stream_headers: dest.stream_label_headers(),
             owner_headers: dest.stream_owner_headers(),
+            class_headers: dest.stream_class_headers(),
             marks: dest.request_marks(),
             dest,
             door,
@@ -771,6 +774,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let id = StreamId {
         stream: label,
         owner: stream_label(&head, &relay.owner_headers),
+        class: stream_label(&head, &relay.class_headers),
     };
     // 这一发请求里名单上那几项在不在（只交布尔，头的值不出去）。
     relay

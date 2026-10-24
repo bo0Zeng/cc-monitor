@@ -434,10 +434,10 @@ function factCode(f: SkeletonFacts): number {
 
 /** 一条记录属于哪一类（不看邻居）。 */
 export function skeletonKind(f: SkeletonFacts): SkeletonKind {
-  if (f.t !== "said" && f.t !== "reply" && f.t !== "retry" && f.t !== "queued") return "none";
+  if (f.t !== "said" && f.t !== "reply" && f.t !== "retry") return "none";
   if (f.sp === "system") return "strip";
   if (f.sp && !drawsCard(f.sp)) return "none";
-  if (f.t === "retry" || f.t === "queued") return "card";
+  if (f.t === "retry") return "card";
   const hasBody = (f.ch ?? 0) > 0 || (f.cb ?? 0) > 0;
   if (!hasBody) return (f.fd ?? 0) > 0 ? "tool" : "none";
   return "card";
@@ -462,7 +462,7 @@ export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): numbe
   }
   if (f.t === "retry") return SKEL_SYSTEM_H;
   const folded = (f.fd ?? 0) * SUMMARY_H;
-  if (f.t === "said" || f.t === "queued") {
+  if (f.t === "said") {
     const userW = colW * 0.8 - 34;
     return factLines(f, 14, userW) * LH_BASE + factCode(f) + folded + SKEL_USER_CHROME;
   }
@@ -480,7 +480,7 @@ export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): numbe
 
 /**
  * 〔「字节不是成本轴，卡型才是 …… 同一种卡正文越长越贵」〕**这条记录建卡时要当场物化的正文字符数**：
- * said / reply 的正文块 · queued 的正文。thinking / 工具调用 / 工具结果
+ * said / reply 的正文块。thinking / 工具调用 / 工具结果
  * 是折叠卡（展开才物化）、别的不建卡 ⇒ 0。O(块数)：只取 `.length`，不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
  */
 export function eagerBodyChars(record: LineRecord): number {
@@ -491,8 +491,6 @@ export function eagerBodyChars(record: LineRecord): number {
       for (const b of record.blocks ?? []) if (b.type === "text") n += b.text.length; // 残缺记录（夹具）不抛
       return n;
     }
-    case "queued":
-      return record.who?.text.length ?? 0;
     default:
       return 0;
   }

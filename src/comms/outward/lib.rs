@@ -204,6 +204,8 @@ pub(crate) struct StreamId<'a> {
     pub(crate) stream: &'a str,
     /// 第二个标签：名单（[`Destinations::stream_owner_headers`]）里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串。中转不解释它。
     pub(crate) owner: &'a str,
+    /// 第三个标签：名单（[`Destinations::stream_class_headers`]）里第一个出现在请求里、值过段闸的头的值；没有 ⇒ 空串。中转不解释它。
+    pub(crate) class: &'a str,
 }
 
 /// 上游选择算好的**换头材料**。中转拿到只做两件事：**照丢 ＋ 照写**。
@@ -372,6 +374,11 @@ pub trait Destinations: Send + Sync {
 
     /// 哪几个请求头给流打第二个标签（同上一条的取法；中转同样不知道它们是谁的什么头）。
     fn stream_owner_headers(&self) -> Vec<&'static str>;
+
+    /// 哪几个请求头给流打第三个标签（同上一条的取法；中转同样不知道它们是谁的什么头）。缺省 ⇒ 不打。
+    fn stream_class_headers(&self) -> Vec<&'static str> {
+        Vec::new()
+    }
 
     /// 每个请求要记下「在不在」的那几项：（头名, 逗号列表里某一项的前缀）。中转不知道它们是什么意思，
     /// 只把「这条流的这一发带没带」交给 tap 口（[`tee::TapPort::note_marks`]），值本身不出去。缺省 ⇒ 不记。
