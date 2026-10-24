@@ -50,7 +50,7 @@ const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
-  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [], rules: [], marks: [] }] },
+  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [{ key: "caps", kind: "daySegments", window: "5h", label: "夹具·上限 5h", v: null, from: "own", segs: [{ from: 0, to: 1440, v: 90, text: "夹具·90", tip: "夹具·全天 90" }] }], rules: [], marks: [] }] },
   start: "work",
   current: "team",
   lineup: ["team", "work"],
@@ -131,6 +131,62 @@ describe("设置窗（目标 {strategy}）", () => {
   });
 });
 
+describe("设置窗：加时段那一行（草稿）", () => {
+  /** 设置窗、开 work 的编辑小窗、点「加时段」、「从」填 20:00（交不出：还缺两格）。 */
+  const started = async (): Promise<ReturnType<typeof mountRotation>> => {
+    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    document.body.replaceChildren(m.root);
+    m.focus("按权重轮换", "work");
+    await settle();
+    btn(m.root, copyText("rot.seg.add")).click();
+    const from = m.root.querySelector<HTMLInputElement>('[data-rot-seg="new"] input')!;
+    from.value = "20:00";
+    from.dispatchEvent(new Event("input"));
+    from.dispatchEvent(new Event("change"));
+    return m;
+  };
+  const fresh = (root: HTMLElement): HTMLInputElement[] => [...root.querySelectorAll<HTMLInputElement>('[data-rot-seg="new"] input')];
+  const fill = (root: HTMLElement): void => {
+    const [, to, v] = fresh(root);
+    to.value = "23:00";
+    to.dispatchEvent(new Event("change"));
+    v.value = "0";
+    v.dispatchEvent(new Event("change"));
+  };
+
+  it("★ 没填完时来一次重读（推送）⇒ 那一行 · 已打的字 · 焦点都还在、没交；填完交出的是那一段", async () => {
+    const m = await started();
+    await m.refresh();
+    const line = fresh(m.root);
+    expect(line.length, "草稿行还在").toBe(3);
+    expect(line[0].value).toBe("20:00");
+    expect(document.activeElement).toBe(line[0]);
+    expect(calls.some((c) => c.name === "rotation-settings")).toBe(false);
+    fill(m.root);
+    await settle();
+    expect(calls.filter((c) => c.name === "rotation-settings").map((c) => c.req)).toEqual([
+      { strategy: "按权重轮换", edit: { seg: { key: "caps", window: "5h", row: 0, seg: { from: 1200, to: 1380, v: 0 } } }, ifRev: "h:1" },
+    ]);
+  });
+
+  it("★ 交成功 ⇒ 草稿清掉（再重读不再有那一行）", async () => {
+    const m = await started();
+    fill(m.root);
+    await settle();
+    await m.refresh();
+    expect(fresh(m.root)).toEqual([]);
+  });
+
+  it("★ 交出去撞上 conflict ⇒ 草稿与已打的字留着、照后端那一句说（不静默丢）", async () => {
+    const m = await started();
+    refuse.set("rotation-settings", "conflict");
+    fill(m.root);
+    await settle();
+    expect(fresh(m.root).map((x) => x.value)).toEqual(["20:00", "23:00", "0"]);
+    expect(document.body.textContent).toContain(copyText("rot.fail.settings"));
+  });
+});
+
 describe("设置窗：看哪份 · 新建", () => {
   const pick = (root: HTMLElement, label: string): void => {
     root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.top.pick")}"]`)!.click();
@@ -208,7 +264,7 @@ describe("提示里的按钮", () => {
     expect(opened).toEqual([{ origin: "<local>", at: { revealFile: "/夹具/strategies/按权重轮换.rhai" } }]);
   });
 
-  it("★ 写撞上 conflict ⇒ 不自己造提示，重读（提示由后端出）", async () => {
+  it("★ 写撞上 conflict ⇒ 不自己造提示（照后端那一句出失败 toast，见草稿那组），重读此刻的", async () => {
     const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
     await m.refresh();
     calls.length = 0;

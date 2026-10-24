@@ -3,7 +3,7 @@
  * 号名 · 文件名 · 时刻全是合成的；格（`board`）是后端解好的那一形（label / help / 段上的字都是夹具里的字，不是界面写的）。期望手写。
  */
 import { describe, expect, it, vi } from "vitest";
-import { board, type BoardActs, type BoardState } from "../../../src/frontend/ui/rot-board";
+import { board, draftKey, type BoardActs, type BoardState } from "../../../src/frontend/ui/rot-board";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RotAccount } from "../../../src/frontend/ui/generated/RotAccount";
 import type { RotCell } from "../../../src/frontend/ui/generated/RotCell";
@@ -394,6 +394,32 @@ describe("设置页的号牌与点开一个号", () => {
       [{ seg: { key: "caps", window: "5h", row: 2, at: 0 } }],
       [{ seg: { key: "caps", window: "5h", row: 2, seg: { from: 1200, to: 1380, v: 0 } } }],
     ]);
+  });
+
+  it("★ 加时段的草稿住 state：打的字记进去、重画照它补画（一格一窗只一行）；草稿的 ✕ 只删草稿不发；这一次没画到的（切回同第一窗）画完删掉", () => {
+    const a = acts();
+    const st = state({ open: "lab" });
+    let pane = draw(view(), st, a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    button(pane, copyText("rot.seg.add"))!.click();
+    const nf = pane.querySelector<HTMLInputElement>('[data-rot-seg="new"] input')!;
+    nf.value = "20:00";
+    nf.dispatchEvent(new Event("input"));
+    const k5 = draftKey("lab", "caps", "5h");
+    expect(st.drafts).toEqual({ [k5]: { from: "20:00", to: "", v: "" } });
+    pane = draw(view(), st, a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    const lines = () => [...pane.querySelectorAll<HTMLElement>('[data-rot-seg="new"]')];
+    expect(lines().map((r) => r.querySelector("input")!.value)).toEqual(["20:00"]);
+    button(pane, copyText("rot.seg.add"))!.click();
+    expect(lines().length, "再点加时段 ⇒ 聚焦已有那一行，不再开一行").toBe(1);
+    expect(document.activeElement).toBe(lines()[0].querySelector("input"));
+    lines()[0].querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.seg.del")}"]`)!.click();
+    expect(lines()).toEqual([]);
+    expect(st.drafts).toEqual({});
+    expect(a.edit).not.toHaveBeenCalled();
+    st.drafts = { [k5]: { from: "1:00", to: "", v: "" } };
+    const rows = [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", [{ ...caps("5h", "own"), same: "夹具·同第一窗", from: "same" }])];
+    draw(view({ board: { ...BOARD, rows } }), st, a, "settings");
+    expect(st.drafts).toEqual({});
   });
 
   it("★ 后面那一窗：［同 5 小时 · 另设］照回包（字是后端给的），同着时不出段；挂在别格下的缩进；前面那半句 · 「或 ［一有额度］」照声明", () => {

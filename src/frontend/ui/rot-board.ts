@@ -33,12 +33,26 @@ import type { RotPlate } from "./generated/RotPlate";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import s from "./rot-board.module.css";
 
-/** 画的时候界面手上的那几样（不进后端）：推几小时 · 点开了哪个号 · 「现在用」被拦下的那一句 · 旧格式那几份展开没有。 */
+/** 画的时候界面手上的那几样（不进后端）：推几小时 · 点开了哪个号 · 「现在用」被拦下的那一句 · 旧格式那几份展开没有 ·
+ *  「加时段」开出来还没交的那几行（键 ＝ [`draftKey`]；这一次没画到的 ⇒ 画完就删）。 */
 export interface BoardState {
   hours: 12 | 24;
   open: string | null;
   refused: { account: string; text: string } | null;
   oldOpen?: boolean;
+  drafts?: Record<string, SegDraft>;
+}
+
+/** 「加时段」开出来、还没交的那一行：三格已打的字（照打的原样，不解）。 */
+export interface SegDraft {
+  from: string;
+  to: string;
+  v: string;
+}
+
+/** 草稿认哪一格：号（总体那几格 ⇒ `null`）· 格键 · 窗口。 */
+export function draftKey(account: string | null, key: string, window: string): string {
+  return JSON.stringify([account, key, window]);
 }
 
 /** 手势 ⇒ 命令（调用方发、发完重读重画）。会话才有的几样（现在用 · 临时动作 · 编辑策略）在设置页缺。 */
@@ -721,10 +735,16 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
   }
   const segs = cell.segs ?? [];
   box.appendChild(dayBar(segs, cell.from === "all"));
-  /** 一行：给了 `g` ⇒ 第 `at` 段（改哪格都交整段）；没给 ⇒ 新加的那一行，三格都填好才交。 */
-  const line = (g: RotDaySeg | null, at: number | undefined): HTMLElement => {
+  // 草稿（「加时段」开出来还没交的那一行）住 `state.drafts`：重画照它补画，打的字不丢。
+  const account = inRow.row === undefined ? null : (spec.view?.board.rows[inRow.row]?.account ?? null);
+  const dk = draftKey(account, cell.key, win);
+  const drafts = (spec.state.drafts ??= {});
+  drawnDrafts.get(spec.state)?.add(dk);
+  /** 一行：给了 `g` ⇒ 第 `at` 段（改哪格都交整段）；没给 ⇒ 草稿那一行（`d`），三格都填好才交。 */
+  const line = (g: RotDaySeg | null, at: number | undefined, d?: SegDraft): HTMLElement => {
     const r = el("div", (e) => (e.className = s.rotSegRow));
     r.dataset.rotSeg = at === undefined ? "new" : String(at);
+    if (d) r.dataset.rotDraft = dk;
     const time = (min: number | null, name: string): HTMLInputElement => {
       const t = document.createElement("input");
       t.type = "text";
@@ -744,6 +764,14 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
     v.max = String(cell.max ?? 100);
     v.value = g ? String(g.v) : "";
     v.setAttribute("aria-label", copyText("rot.seg.v"));
+    if (d) {
+      const parts: [HTMLInputElement, keyof SegDraft][] = [[from, "from"], [to, "to"], [v, "v"]];
+      for (const [x, part] of parts) {
+        x.value = d[part];
+        x.dataset.part = part;
+        for (const ev of ["input", "change"]) x.addEventListener(ev, () => (d[part] = x.value));
+      }
+    }
     const commit = (): void => {
       const a = minutesOf(from.value);
       const b = minutesOf(to.value);
@@ -755,17 +783,26 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
     const num = el("label", (e) => (e.className = s.rotNum));
     num.append(v, el("span", (e) => (e.className = s.rotNumUnit), copyText("rot.unit.percent")));
     r.append(from, el("span", (e) => (e.className = s.rotNumUnit), copyText("rot.seg.dash")), to, num);
-    if (at !== undefined)
-      r.appendChild(
-        button({ label: copyText("rot.seg.del"), kind: "icon", size: "compact", icon: "close", hint: copyText("rot.seg.del"), onClick: () => edit(at, undefined) }),
-      );
+    // ✕：已存的段 ⇒ 删那一段；草稿 ⇒ 不要这一行了（只删草稿，不发）。
+    const del = (): void => {
+      if (at !== undefined) return edit(at, undefined);
+      delete drafts[dk];
+      r.remove();
+    };
+    r.appendChild(button({ label: copyText("rot.seg.del"), kind: "icon", size: "compact", icon: "close", hint: copyText("rot.seg.del"), onClick: del }));
     return r;
   };
   segs.forEach((g, i) => box.appendChild(line(g, i)));
   const add = button({ label: copyText("rot.seg.add"), kind: "ghost", size: "compact", icon: "plus" });
+  const held = drafts[dk];
+  if (held) box.appendChild(line(null, undefined, held));
+  // 一格一窗只一行草稿：已有 ⇒ 聚焦它。
   add.addEventListener("click", () => {
-    const r = line(null, undefined);
-    add.before(r);
+    let r = box.querySelector<HTMLElement>("[data-rot-draft]");
+    if (!r) {
+      r = line(null, undefined, (drafts[dk] = { from: "", to: "", v: "" }));
+      add.before(r);
+    }
     r.querySelector("input")?.focus();
   });
   box.appendChild(add);
@@ -992,8 +1029,21 @@ function header(text: string, note?: string): HTMLElement {
 
 // ─────────────────────────────── 整块
 
-/** ★ 四块：照回包画；`view` 还没到 ⇒ 只画第一行。 */
+/** ★ 四块：照回包画；`view` 还没到 ⇒ 只画第一行。草稿这一次没画到的（切回同第一窗 · 号移出 · 小窗关了）⇒ 画完删掉。 */
 export function board(spec: BoardSpec): HTMLElement {
+  const seen = new Set<string>();
+  drawnDrafts.set(spec.state, seen);
+  const root = draw(spec);
+  drawnDrafts.delete(spec.state);
+  const drafts = spec.state.drafts;
+  if (drafts) for (const k of Object.keys(drafts)) if (!seen.has(k)) delete drafts[k];
+  return root;
+}
+
+/** 这一次画到了哪几行草稿（`board` 画的那一下才有）。 */
+const drawnDrafts = new WeakMap<BoardState, Set<string>>();
+
+function draw(spec: BoardSpec): HTMLElement {
   const root = el("div", (e) => (e.className = s.rotBoard));
   root.appendChild(firstRow(spec));
   root.appendChild(description(spec));
