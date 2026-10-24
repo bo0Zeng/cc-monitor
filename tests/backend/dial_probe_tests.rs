@@ -1,33 +1,214 @@
-//! 「测试连接：后端组拨号请求、拨一次、回结局（后端持有全部 SSH）」——
-//! `dial/probe.rs` 的三步各自的结局（拨号那一侧用替身：报阶段 · 开成交一条链路 · 没开成交拨号核心那一份 `DialFail`）：
-//! 握手不成 · 通了没 hello · 通了有 hello、控制通道往返 · 到点没等到。
-//! 〔「进度不许倒退」〕进度边拨边推：每条判据同时钉**推了哪几格、什么顺序、每格那一句与四段**（结局是最后一格）。
+//! 「测试连接走真连接那条路」—— `dial/probe.rs` 拿表单那份配置跑一趟连常驻那一层（`resident-client` 的常驻流，真连接同一串）：
+//! attach → 没接上 ensure → 再 attach；接上了问一次 `ping`。拨号那一侧用替身（[`Fake`]：开长 exec 照排好的那一形回 · 收全照排好的回），
+//! 替身只认 `--resident-attach` / `--resident-ensure` 两个词 ⇒ 测试连接走的不是那条路就红。
+//! 〔「进度不许倒退」〕每条判据同时钉**推了哪几格、什么顺序、每格那一句与四段**（结局是最后一格）。
 use super::*;
 use crate::dial::Stage;
 use crate::platform::child::{Deadline, Until};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, DuplexStream};
 
 fn args() -> Value {
     json!({"ticket": "t-1", "machine": {"host": "192.0.2.2", "label": "devbox", "user": "u"}})
 }
 
-/// 跑一趟探针（发起方没带期限），收下它推的每一格（票都得是交来的那张）；回 `(结局那一格, 结局之前那几格)`。
-async fn cells_of<F, Fut>(args: &Value, dial: F) -> (Value, Vec<Value>)
-where
-    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
-    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
-{
+/// 开一条长 exec 时那台怎么回。
+enum Open {
+    /// 拨号核心报这几步，然后没开成。
+    Refused(Vec<Stage>, ssh_dial::DialFail),
+    /// 拨号核心报这几步，然后一直挂着（开不出来、也不回话）。
+    Hang(Vec<Stage>),
+    /// 开成了：那台那一侧照 [`Peer`] 回。
+    Up(Peer),
+}
+
+/// 开成之后那台怎么回 attach。
+#[derive(Clone)]
+enum Peer {
+    /// 一个字节都不回，也不断。
+    Silent,
+    /// 小中继说常驻还没绑上口。
+    Absent,
+    /// 第一行不是 hello。
+    NotOurs,
+    /// 回 hello（这几条命令 · 做不到的那几项）、回「可以」；之后 `ping` 照 `ping` 答（`None` ⇒ 答应）。
+    Serve {
+        hello: String,
+        ping: Option<&'static str>,
+    },
+}
+
+/// 拨号替身：按序取排好的那几形；记下每一趟 exec 的是哪个词。
+struct Fake {
+    opens: Mutex<VecDeque<Open>>,
+    ensure: Mutex<Option<Captured>>,
+    words: Mutex<Vec<String>>,
+}
+
+impl Fake {
+    fn new(opens: Vec<Open>) -> Arc<Fake> {
+        Arc::new(Fake {
+            opens: Mutex::new(opens.into()),
+            ensure: Mutex::new(None),
+            words: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn ensure_says(self: Arc<Self>, c: Captured) -> Arc<Self> {
+        *self.ensure.lock().unwrap() = Some(c);
+        self
+    }
+
+    fn words(&self) -> Vec<String> {
+        self.words.lock().unwrap().clone()
+    }
+
+    /// 那台那一侧的后端词（`… -- --resident-attach` ⇒ `--resident-attach`）。只认真连接那两个词。
+    fn word_of(&self, req: &crate::dial::DialRequest) -> String {
+        let w = req
+            .command
+            .split(" -- ")
+            .nth(1)
+            .unwrap_or_else(|| panic!("不是后端落点上的一条子命令：{}", req.command))
+            .to_string();
+        assert!(
+            w == "--resident-attach" || w == "--resident-ensure",
+            "测试连接走的不是真连接那条路：exec 了 `{w}`"
+        );
+        self.words.lock().unwrap().push(w.clone());
+        w
+    }
+}
+
+impl Dial for Fake {
+    fn open(
+        &self,
+        req: crate::dial::DialRequest,
+        stages: StageTx,
+        _progress: Progress,
+    ) -> resident_client::feed::Boxed<'_, Result<Pipe, ssh_dial::DialFail>> {
+        assert!(req.probe && req.stages, "测试连接是短命探活、要阶段");
+        let w = self.word_of(&req);
+        assert_eq!(w, "--resident-attach", "长 exec 只开 attach");
+        let plan = self
+            .opens
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("多开了一条 attach");
+        Box::pin(async move {
+            match plan {
+                Open::Refused(st, f) => {
+                    st.into_iter().for_each(|s| stages.send(s).unwrap());
+                    Err(f)
+                }
+                Open::Hang(st) => {
+                    st.into_iter().for_each(|s| stages.send(s).unwrap());
+                    std::future::pending().await
+                }
+                Open::Up(peer) => {
+                    let (up_w, up_r) = tokio::io::duplex(64 * 1024);
+                    let (down_w, down_r) = tokio::io::duplex(256 * 1024);
+                    tokio::spawn(serve(peer, up_r, down_w));
+                    Ok(tokio::io::join(down_r, up_w))
+                }
+            }
+        })
+    }
+
+    fn capture(
+        &self,
+        req: crate::dial::DialRequest,
+    ) -> resident_client::feed::Boxed<'_, Result<Captured, ssh_dial::DialFail>> {
+        assert!(req.probe, "测试连接是短命探活");
+        assert_eq!(self.word_of(&req), "--resident-ensure", "收全只跑 ensure");
+        let said = self
+            .ensure
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("没排 ensure 的回话");
+        Box::pin(async move { Ok(said) })
+    }
+}
+
+/// 那台那一侧：读 attach 行，照 `peer` 回。
+async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
+    let mut lines = tokio::io::BufReader::new(up).lines();
+    let Ok(Some(attach)) = lines.next_line().await else {
+        return;
+    };
+    let attach: Value = serde_json::from_str(&attach).unwrap();
+    assert_eq!(attach["attach"], true, "第一行是 attach 行：{attach}");
+    assert_eq!(attach["mine"], crate::BUILD_ID, "attach 行带手上这一版");
+    match peer {
+        Peer::Silent => {
+            let _held = (lines, down);
+            std::future::pending::<()>().await;
+        }
+        Peer::Absent => {
+            let _ = down
+                .write_all(b"{\"attach\":\"refused\",\"reason\":\"absent\"}\n")
+                .await;
+        }
+        Peer::NotOurs => {
+            let _ = down.write_all(b"not json\n").await;
+        }
+        Peer::Serve { hello, ping } => {
+            let _ = down.write_all(format!("{hello}\n").as_bytes()).await;
+            let _ = down
+                .write_all(b"{\"attach\":\"ok\",\"relation\":\"same\"}\n")
+                .await;
+            while let Ok(Some(l)) = lines.next_line().await {
+                let asked: Value = serde_json::from_str(&l).unwrap();
+                assert_eq!(asked["cmd"], "ping", "测试连接只问 ping：{asked}");
+                let reply = match ping {
+                    None => json!({"kind": "reply", "id": asked["id"], "ok": true}),
+                    Some(m) => {
+                        json!({"kind": "reply", "id": asked["id"], "ok": false, "code": "failed", "message": m})
+                    }
+                };
+                let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+            }
+        }
+    }
+}
+
+/// 一行 hello：版本 · 认的命令（连形状指纹）· 做不到的那几项。
+fn hello(build: &str, cmds: &[&str], unavailable: Value) -> String {
+    let shapes: serde_json::Map<String, Value> = cmds
+        .iter()
+        .filter_map(|c| Some((c.to_string(), json!(cmd_wire::shapes::shape_of(c)?))))
+        .collect();
+    let frames: serde_json::Map<String, Value> = cmd_wire::frame_shapes::FRAMES
+        .iter()
+        .map(|(k, h)| (k.to_string(), json!(h)))
+        .collect();
+    json!({
+        "kind": "hello", "build_id": build, "host_arch": "x86_64",
+        "commands": cmds, "unavailable": unavailable, "shapes": shapes, "frames": frames,
+    })
+    .to_string()
+}
+
+fn serving(ping: Option<&'static str>) -> Open {
+    Open::Up(Peer::Serve {
+        hello: hello("b1", &["ping"], json!([])),
+        ping,
+    })
+}
+
+/// 跑一趟测试连接（发起方没带期限），收下它推的每一格（票都得是交来的那张）；回 `(结局那一格, 结局之前那几格)`。
+async fn cells_of(args: &Value, dial: &Arc<Fake>) -> (Value, Vec<Value>) {
     cells_until(args, None, dial).await
 }
 
 /// 同 [`cells_of`]，带分派那一层交来的截止时刻。
-async fn cells_until<F, Fut>(args: &Value, until: Option<Until>, dial: F) -> (Value, Vec<Value>)
-where
-    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
-    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
-{
+async fn cells_until(args: &Value, until: Option<Until>, dial: &Arc<Fake>) -> (Value, Vec<Value>) {
     let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-    probe_with(&crate::wire::typed::take(args).unwrap(), until, dial, &tx)
+    let d: Arc<dyn Dial> = Arc::clone(dial) as Arc<dyn Dial>;
+    probe_with(&crate::wire::typed::take(args).unwrap(), until, d, &tx)
         .await
         .unwrap();
     drop(tx);
@@ -42,7 +223,7 @@ where
                 );
                 cells.push(cell);
             }
-            other => panic!("探针只该推进度格：{other:?}"),
+            other => panic!("测试连接只该推进度格：{other:?}"),
         }
     }
     let end = cells.pop().expect("至少有结局那一格");
@@ -54,40 +235,16 @@ where
     (end, cells)
 }
 
-/// 开成了：那台那一侧跑 `remote`（拿上行读端 · 下行写端；随探针收掉）。
-fn opened<G, GF>(remote: G) -> Result<Link, ssh_dial::DialFail>
-where
-    G: FnOnce(DuplexStream, DuplexStream) -> GF,
-    GF: std::future::Future<Output = ()> + Send + 'static,
-{
-    let (up_w, up_r) = tokio::io::duplex(64 * 1024);
-    let (down_w, down_r) = tokio::io::duplex(2 * 1024 * 1024);
-    Ok(Link {
-        down: down_r,
-        up: up_w,
-        _serve: crate::dial::remote_ask::AbortOnDrop(tokio::spawn(remote(up_r, down_w))),
-    })
-}
-
 /// 没开成：拨号核心写好的那一句 · 复制详情 · 看到的指纹。
-fn refused(
-    error: &str,
-    detail: Option<&str>,
-    fingerprint: Option<&str>,
-) -> Result<Link, ssh_dial::DialFail> {
-    Err(ssh_dial::DialFail {
+fn refused(error: &str, detail: Option<&str>, fingerprint: Option<&str>) -> ssh_dial::DialFail {
+    ssh_dial::DialFail {
         error: error.into(),
         detail: detail.map(str::to_string),
         fingerprint: fingerprint.map(str::to_string),
         reason: None,
         key_type: None,
         expected_fingerprint: None,
-    })
-}
-
-/// 永远开不出来（挂在握手上）。
-async fn never() -> Result<Link, ssh_dial::DialFail> {
-    std::future::pending().await
+    }
 }
 
 /// 一格进度（没有结局）：那一句 · 语气 · 四段（解析 · 连接 · 认证 · 就绪）。
@@ -109,22 +266,19 @@ fn reached_hello() -> Value {
     step(&copy_text("beProbe.reached.hello", &[]), "now", SSH_UP)
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint() {
-    let (r, cells) = cells_of(&args(), |req, stages| async move {
-        assert!(req.probe && req.stages, "测试连接是短命探活、要阶段");
-        stages
-            .send(Stage::Dialing {
-                endpoint: "192.0.2.2:22".into(),
-            })
-            .unwrap();
+    let fake = Fake::new(vec![Open::Refused(
+        vec![Stage::Dialing {
+            endpoint: "192.0.2.2:22".into(),
+        }],
         refused(
             "host key mismatch",
             Some("cmd: dial\nraw: fixture-raw-1"),
             Some("SHA256:x"),
-        )
-    })
-    .await;
+        ),
+    )]);
+    let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(r["tone"], "fail");
     assert_eq!(
         r["segs"],
@@ -149,13 +303,18 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
         )],
         "握手那几步逐条推成一格、带写好的那一句；没过握手 ⇒ 没有「已连上」那一格"
     );
+    assert_eq!(
+        fake.words(),
+        vec!["--resident-attach"],
+        "链路开不出来 ⇒ 不 ensure"
+    );
 }
 
 /// 握手的每一种阶段都有那一句与四段（阶段码 ⇒ 字只在这里，界面照画）。
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn every_handshake_stage_is_a_written_line() {
-    let (r, cells) = cells_of(&args(), |_req, stages| async move {
-        for st in [
+    let fake = Fake::new(vec![Open::Refused(
+        vec![
             Stage::Dialing {
                 endpoint: "h:22".into(),
             },
@@ -174,12 +333,10 @@ async fn every_handshake_stage_is_a_written_line() {
                 ok: false,
                 detail: Some("拒绝-乙".into()),
             },
-        ] {
-            stages.send(st).unwrap();
-        }
-        refused("e", None, None)
-    })
-    .await;
+        ],
+        refused("e", None, None),
+    )]);
+    let (r, cells) = cells_of(&args(), &fake).await;
     let up = ["ok", "ok", "wait", "wait"];
     assert_eq!(
         cells,
@@ -224,21 +381,19 @@ async fn every_handshake_stage_is_a_written_line() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_passed_login_lights_three_segments() {
-    let (_, cells) = cells_of(&args(), |_req, stages| async move {
-        for st in [
+    let fake = Fake::new(vec![Open::Refused(
+        vec![
             Stage::Auth {
                 ok: true,
                 detail: None,
             },
             Stage::Established,
-        ] {
-            stages.send(st).unwrap();
-        }
-        refused("e", None, None)
-    })
-    .await;
+        ],
+        refused("e", None, None),
+    )]);
+    let (_, cells) = cells_of(&args(), &fake).await;
     assert_eq!(
         cells,
         vec![
@@ -248,16 +403,12 @@ async fn a_passed_login_lights_three_segments() {
     );
 }
 
-/// 没带期限 ⇒ 按登记的上限说。
-fn cap_said() -> String {
-    copy_core::format_duration(PROBE_CAP.shown_secs() * 1000)
-}
-
 /// 发起方带了期限 ⇒ 按它执行，到点那一格说的是带来的那个数。
 #[tokio::test(start_paused = true)]
 async fn a_stall_within_the_callers_deadline_says_that_deadline() {
+    let fake = Fake::new(vec![Open::Hang(vec![])]);
     let until = Until::after(Deadline::millis(4_000));
-    let (r, _) = cells_until(&args(), until, |_req, _stages| never()).await;
+    let (r, _) = cells_until(&args(), until, &fake).await;
     let last = copy_text("beProbe.stage.notStarted", &[]);
     assert_eq!(
         r["said"],
@@ -267,64 +418,40 @@ async fn a_stall_within_the_callers_deadline_says_that_deadline() {
         )
     );
     assert_ne!(
-        cap_said(),
+        copy_core::format_duration(PROBE_CAP.shown_secs() * 1000),
         copy_core::format_duration(4_000),
         "两个数一样就分不出照的是哪个"
     );
 }
 
-/// 到点没等到结局：后端自己收掉那一趟，结局那一格说等了多久、最后一步是哪一句；没亮的第一段打 ✗。
+/// 拨出去一直没人回话：与真连接同一个判法（拨号期限里一步进展都没有 ⇒ 没够着那一台），那一句照真连接那一句。
 #[tokio::test(start_paused = true)]
-async fn a_stalled_probe_says_where_it_stopped() {
+async fn a_dial_nobody_answers_says_the_machine_is_unreached() {
+    let fake = Fake::new(vec![Open::Hang(vec![Stage::Dialing {
+        endpoint: "192.0.2.2:22".into(),
+    }])]);
+    let (r, cells) = cells_of(&args(), &fake).await;
     let last = copy_text("beProbe.stage.dial", &[("endpoint", "192.0.2.2:22")]);
-    let (r, cells) = cells_of(&args(), |_req, stages| async move {
-        stages
-            .send(Stage::Dialing {
-                endpoint: "192.0.2.2:22".into(),
-            })
-            .unwrap();
-        never().await
-    })
-    .await;
     assert_eq!(cells, vec![step(&last, "now", ["wait"; 4])]);
-    let dur = cap_said();
+    let offline = copy_text("front.body.offline", &[("machine", "devbox")]);
     assert_eq!(
         r["said"],
-        copy_text("beProbe.test.stalled", &[("dur", &dur), ("last", &last)])
+        copy_text("beProbe.test.sshFailed", &[("why", &offline)])
     );
     assert_eq!(
         (r["tone"].as_str(), r["segs"].clone()),
         (Some("fail"), segs_of(["fail", "wait", "wait", "wait"]))
     );
-    assert_eq!(
-        r["end"],
-        json!({"backendHello": null, "backendGaps": [], "detail": null})
-    );
+    assert_eq!(r["end"]["backendHello"], Value::Null);
 }
 
-#[tokio::test(start_paused = true)]
-async fn a_probe_with_no_progress_at_all_says_it_never_started() {
-    let (r, cells) = cells_of(&args(), |_req, _stages| never()).await;
-    assert_eq!(cells, Vec::<Value>::new());
-    let dur = cap_said();
-    let last = copy_text("beProbe.stage.notStarted", &[]);
-    assert_eq!(
-        r["said"],
-        copy_text("beProbe.test.stalled", &[("dur", &dur), ("last", &last)])
-    );
-}
-
+/// 链路开成了、那台一个字节都不回：到点那一格说最后一步是「SSH 已连上」，就绪那一段打 ✗。
 #[tokio::test(start_paused = true)]
 async fn a_probe_stalled_after_ssh_says_it_waits_for_the_backend() {
-    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
-        opened(|up, down| async move {
-            let _held = (up, down);
-            std::future::pending::<()>().await
-        })
-    })
-    .await;
+    let fake = Fake::new(vec![Open::Up(Peer::Silent)]);
+    let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(cells, vec![reached_ssh()]);
-    let dur = cap_said();
+    let dur = copy_core::format_duration(PROBE_CAP.shown_secs() * 1000);
     let last = copy_text("beProbe.reached.ssh", &[]);
     assert_eq!(
         r["said"],
@@ -333,22 +460,30 @@ async fn a_probe_stalled_after_ssh_says_it_waits_for_the_backend() {
     assert_eq!(r["segs"], segs_of(["ok", "ok", "ok", "fail"]));
 }
 
-#[tokio::test]
-async fn ssh_up_but_no_hello_is_its_own_verdict() {
-    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
-        opened(|_up, mut down| async move {
-            let _ = down.write_all(b"not json\n").await;
-        })
-    })
-    .await;
+/// 第一行不是 hello：与真连接一样先 ensure；ensure 说那台没有后端 ⇒ 结局就是那一句，就绪那一段打 ✗。
+#[tokio::test(start_paused = true)]
+async fn not_our_backend_ensures_like_the_real_connection_then_says_why() {
+    let fake = Fake::new(vec![Open::Up(Peer::NotOurs)]).ensure_says(Captured {
+        stdout: String::new(),
+        stderr: "sh: ccm: not found".into(),
+        exit_status: Some(127),
+    });
+    let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(
-        cells,
-        vec![reached_ssh()],
-        "握手过了、hello 没到 ⇒ 只走完 ssh 那一段"
+        fake.words(),
+        vec!["--resident-attach", "--resident-ensure"],
+        "走真连接那一串：attach → ensure"
     );
-    assert_eq!(r["segs"], segs_of(["ok", "ok", "ok", "fail"]));
-    assert_eq!(r["tone"], "fail");
-    assert_eq!(r["said"], copy_text("beProbe.test.noHello", &[]));
+    assert_eq!(cells, vec![reached_ssh()]);
+    assert_eq!(r["said"], copy_text("remoteHealth.head.notDeployed", &[]));
+    assert_eq!(
+        (r["tone"].as_str(), r["segs"].clone()),
+        (Some("fail"), segs_of(["ok", "ok", "ok", "fail"]))
+    );
+    assert!(
+        r["end"]["detail"].as_str().unwrap().contains("not found"),
+        "原话进复制详情：{r}"
+    );
 }
 
 /// 认形状 ＋ 机器页「测试连接」那一行不露 `v=… build=… caps=[…]` 日志行，
@@ -357,23 +492,17 @@ fn is_not_a_log_line(s: &str) -> bool {
     !s.contains('=') && !s.contains('[')
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_hello_that_answers_ping_is_all_green() {
-    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
-        opened(|up, mut down| async move {
-            let _ = down
-                .write_all(b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/h/.claude\",\"capabilities\":[\"stream\"],\"commands\":[\"ping\",\"kill\",\"files-chmod\"],\"unavailable\":[{\"command\":\"kill\",\"code\":\"no_tmux\"}]}\n")
-                .await;
-            // 真去读那一问、按它的 id 回（证明往返真走了这条流）。
-            let mut lines = tokio::io::BufReader::new(up).lines();
-            let asked: Value =
-                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-            assert_eq!(asked["cmd"], "ping");
-            let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
-            let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
-        })
-    })
-    .await;
+    let fake = Fake::new(vec![Open::Up(Peer::Serve {
+        hello: hello(
+            "b1",
+            &["ping", "kill", "files-chmod"],
+            json!([{"command": "kill", "code": "no_tmux"}]),
+        ),
+        ping: None,
+    })]);
+    let (r, cells) = cells_of(&args(), &fake).await;
     assert_eq!(
         cells,
         vec![reached_ssh(), reached_hello()],
@@ -384,9 +513,9 @@ async fn a_hello_that_answers_ping_is_all_green() {
         (Some("plain"), segs_of(["ok"; 4]))
     );
     assert_eq!(r["said"], copy_text("beProbe.test.ok", &[]));
+    assert_eq!(r["end"]["detail"], Value::Null, "都过了 ⇒ 没有复制详情");
     let r = &r["end"];
     let hello = r["backendHello"].as_str().unwrap();
-    // 往返时长 · 版本 b1 · 做不到 1 项（kill）（时长是现量的，只核以数起头）。
     let want = copy_text(
         "beProbe.hello.okGaps",
         &[("build", "b1"), ("gaps", "1"), ("dur", "\u{0}")],
@@ -397,35 +526,39 @@ async fn a_hello_that_answers_ping_is_all_green() {
         .and_then(|t| t.strip_suffix(post))
         .unwrap_or_else(|| panic!("不是那三格：{hello}"));
     assert!(dur.starts_with(|c: char| c.is_ascii_digit()), "{hello}");
-    // 做不到的按码分类交出去，每类带那一句（与置灰那一句同一个家 `copy_core::unavailable`，称呼那台用表单里的名字）。
     assert_eq!(
         r["backendGaps"],
         json!([{"code": "no_tmux", "count": 1, "said": copy_core::unavailable("no_tmux", "devbox")}])
     );
     assert!(is_not_a_log_line(hello), "机器页那一行又是日志行：{hello}");
+    assert_eq!(fake.words(), vec!["--resident-attach"]);
 }
 
-#[tokio::test]
-async fn an_old_backend_without_commands_says_too_old() {
-    let (tx, rx) = tokio::sync::oneshot::channel::<tokio::io::DuplexStream>();
-    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
-        opened(|up, mut down| async move {
-            let _ = down.write_all(b"{\"kind\":\"hello\",\"v\":1}\n").await;
-            // 上行读端交给判据自己读（本任务随探针返回被收，读端不能跟着它没了）；下行随本任务收尾关掉
-            // ⇒ 探针若错发了 ping 也等不住（读到 EOF、落「不能起会话」），不会挂住判据。
-            let _ = tx.send(up);
-        })
-    })
-    .await;
-    assert_eq!(cells, vec![reached_ssh(), reached_hello()]);
-    let mut up = rx.await.unwrap();
-    let mut got = Vec::new();
-    let _ = tokio::io::AsyncReadExt::read_to_end(&mut up, &mut got).await;
-    assert!(
-        got.is_empty(),
-        "对旧后端发了字节：{:?}",
-        String::from_utf8_lossy(&got)
+/// 常驻还没起（小中继说没人在听）：与真连接一样 ensure 起它、再 attach，接上了照样全绿。
+#[tokio::test(start_paused = true)]
+async fn an_absent_resident_is_ensured_then_attached() {
+    let fake = Fake::new(vec![Open::Up(Peer::Absent), serving(None)]).ensure_says(Captured {
+        stdout: "{\"pid\":7,\"replaced\":false}".into(),
+        stderr: String::new(),
+        exit_status: Some(0),
+    });
+    let (r, cells) = cells_of(&args(), &fake).await;
+    assert_eq!(
+        fake.words(),
+        vec!["--resident-attach", "--resident-ensure", "--resident-attach"]
     );
+    assert_eq!(cells, vec![reached_ssh(), reached_hello()]);
+    assert_eq!(r["said"], copy_text("beProbe.test.ok", &[]));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_backend_without_ping_says_too_old() {
+    let fake = Fake::new(vec![Open::Up(Peer::Serve {
+        hello: hello("b0", &[], json!([])),
+        ping: None,
+    })]);
+    let (r, cells) = cells_of(&args(), &fake).await;
+    assert_eq!(cells, vec![reached_ssh(), reached_hello()]);
     let said = copy_core::backend_old("devbox");
     assert_eq!(r["said"], json!(said));
     assert_eq!(
@@ -434,12 +567,11 @@ async fn an_old_backend_without_commands_says_too_old() {
         "hello 到了 ⇒ 就绪那一段算过"
     );
     let r = &r["end"];
-    let unknown = copy_text("beProbe.hello.noBuild", &[]);
     assert_eq!(
         r["backendHello"],
         json!(copy_text(
             "beProbe.hello.tooOld",
-            &[("build", &unknown), ("said", &said)]
+            &[("build", "b0"), ("said", &said)]
         ))
     );
     assert!(is_not_a_log_line(r["backendHello"].as_str().unwrap()));
@@ -453,47 +585,25 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
         let mut a = args();
         a["ticket"] = bad.clone();
         // 不是串的那一形在收入参那一步就拒（同生产：typed 那一处）。
+        let fake = Fake::new(vec![]);
         let r = match crate::wire::typed::take::<ProbeReq>(&a) {
             Err(f) => Err(f.code),
-            Ok(req) => probe_with(
-                &req,
-                None,
-                |_req, _stages| async move {
-                    if true {
-                        panic!("票不对就不该拨");
-                    }
-                    never().await
-                },
-                &tx,
-            )
-            .await
-            .map_err(|(c, _)| c.to_string()),
+            Ok(req) => probe_with(&req, None, Arc::clone(&fake) as Arc<dyn Dial>, &tx)
+                .await
+                .map_err(|(c, _)| c.to_string()),
         };
         assert_eq!(r, Err("bad_args".to_string()), "票 {bad} 该拒");
+        assert!(fake.words().is_empty(), "票不对就不该拨");
     }
     drop(tx);
     assert!(rx.recv().await.is_none(), "拒了就一格都不推");
 }
 
 /// 通了、hello 也到了，ping 那一问回了「不行」：那台的原话进复制详情，不进那一句（`backendHello` 只留版本与「无应答」）。
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_ping_refusal_keeps_its_raw_words_out_of_the_sentence() {
-    let (r, _) = cells_of(&args(), |_req, _stages| async move {
-        opened(|up, mut down| async move {
-            let _ = down
-                .write_all(
-                    b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
-                )
-                .await;
-            let mut lines = tokio::io::BufReader::new(up).lines();
-            let asked: Value =
-                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-            let reply =
-                json!({"kind": "reply", "id": asked["id"], "ok": false, "message": "fixture-raw-2"});
-            let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
-        })
-    })
-    .await;
+    let fake = Fake::new(vec![serving(Some("fixture-raw-2"))]);
+    let (r, _) = cells_of(&args(), &fake).await;
     assert_eq!(
         (r["said"].clone(), r["tone"].clone()),
         (
@@ -508,41 +618,4 @@ async fn a_ping_refusal_keeps_its_raw_words_out_of_the_sentence() {
         r["detail"].as_str().unwrap().contains("fixture-raw-2"),
         "{r}"
     );
-}
-
-/// 通了，读那台后端的首行就出错（一行超长）：那一句只说「后端探测失败」，读错的原话进复制详情。
-#[tokio::test]
-async fn a_broken_first_line_keeps_its_raw_words_out_of_the_sentence() {
-    let (r, _) = cells_of(&args(), |_req, _stages| async move {
-        opened(|_up, mut down| async move {
-            let _ = down.write_all(&vec![b'x'; 1024 * 1024 + 16]).await;
-            let _ = down.write_all(b"\n").await;
-        })
-    })
-    .await;
-    assert_eq!(r["said"], copy_text("beProbe.test.probeFailed", &[]));
-    let detail = r["end"]["detail"].as_str().unwrap();
-    assert!(!detail.is_empty(), "{r}");
-}
-
-/// 都过了 ⇒ 没有复制详情（成功不出那一格的值）。
-#[tokio::test]
-async fn an_all_green_probe_has_no_detail() {
-    let (r, _) = cells_of(&args(), |_req, _stages| async move {
-        opened(|up, mut down| async move {
-            let _ = down
-                .write_all(
-                    b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
-                )
-                .await;
-            let mut lines = tokio::io::BufReader::new(up).lines();
-            let asked: Value =
-                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-            let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
-            let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
-        })
-    })
-    .await;
-    assert_eq!(r["said"], copy_text("beProbe.test.ok", &[]));
-    assert_eq!(r["end"]["detail"], Value::Null);
 }

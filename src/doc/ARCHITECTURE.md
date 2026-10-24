@@ -62,7 +62,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 
 - 本机固定两个进程：monitor ＋ 本机常驻后端。Linux 上后端脱离起，只听家里的本人 Unix 套接字 `<家>/run/backend.sock`（`run/` 只给本人、收连接时核对端 uid、目录独占锁；没有钥匙），monitor 接上它；monitor 关了，后端按那台机器的「退出行为」留下或退出，下次 monitor 起来接回。Windows 上后端是 monitor 监护的子进程（管道），随 monitor 退出。
 - 远端每台一个常驻后端，与本机同形。本机后端在那条 SSH 连接上开一条链路，在那台跑 `ccm -- --resident-attach` 小中继去连那台的套接字、原样对拷；不另开任何口。那台后端比 monitor 旧就换一份。远端只支持 Linux（x86_64 / aarch64），别的系统连上时显式拒绝。
-- 手机走同一个门：自己拨 SSH，`--backend-probe` 核 `BUILD_ID` → `--resident-ensure` → `--resident-attach` 一条长连接（§3.9）。
+- 手机走同一个门：自己拨 SSH，`--resident-attach` 一条长连接（接不上先 `--resident-ensure`；那台相对这一版的新旧在 attach 回话里，§3.9）。设置页「测试连接」也走这一串（本机后端拿表单那份配置跑一趟同一个连常驻的客户端）。
 - 门与载体的细则（attach 行、拒绝理由）在 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) §1；为什么没有钥匙在 INVARIANTS §48.1。
 - 一个常驻后端可以同时接多个客户（桌面 · 手机 · 小中继），连接数归零那一刻按「退出行为」当场决定退不退。
 
@@ -350,7 +350,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 - 对外的每一句话都从一张表来：`src/shared/copy/table.json`（键 → 每种语言一句 ＋ 具名插值点；`rules.json` · `terms.json` 是写法规矩与用词表）。
 - 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-copy`（经 JNI 调手机那份 `.so` 里的 `copy-core`，大小 · 时长同）。
-- 键必须是字面量，参数名集合等于表里那一条的 `args`；判据 `tests/copy/copy-table.vitest.ts`，手机生产源码不写死界面中文由 `tests/copy/mobile-literals.vitest.ts` 钉。
+- 键必须是字面量，参数名集合等于表里那一条的 `args`；判据 `tests/copy/copy-table.vitest.ts`，手机生产源码不写死界面中文由 `src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/copy/MobileLiteralsTest.kt` 钉。
 - 描述数据与状态的句子由核心写（§2.9），出口只取自己骨架上的字。
 
 ### 3.7 生成类型
