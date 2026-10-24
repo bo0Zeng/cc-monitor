@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream, Join};
+use tokio::io::{AsyncWriteExt, DuplexStream, Join};
 
 /// 交给 Kotlin 的那一个口：`(这台的编号, 种类, 文本)`。
 pub type OnEvent = Arc<dyn Fn(i64, &str, String) + Send + Sync>;
@@ -38,191 +38,76 @@ impl PhoneLink {
         PhoneLink { base }
     }
 
-    /// 在这条连接上开一条用法链路，读到 ack；回下行读端与上行写端。没开成 ⇒ 那一句 ＋ 详情。
-    /// 拨号核心报的进展（ack 之前的 `progress` 行）原样交给 `progress`。
-    async fn open(
-        &self,
-        uses: serde_json::Value,
-        progress: &Progress,
-    ) -> Result<(DuplexStream, DuplexStream), Problem> {
+    /// 在 `base` 上填这一趟的用法与命令，组成拨号请求（读不动 ⇒ 这条连接用不了）。
+    fn request(&self, uses: serde_json::Value) -> Result<ssh_dial::DialRequest, Problem> {
         let mut req = self.base.clone();
         if let (Some(r), Some(u)) = (req.as_object_mut(), uses.as_object()) {
             for (k, v) in u {
                 r.insert(k.clone(), v.clone());
             }
             r.insert("stages".into(), false.into());
-            r.insert("progress".into(), true.into());
         }
-        let req: ssh_dial::DialRequest = serde_json::from_value(req).map_err(|e| {
-            Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string())
-        })?;
-        let (up_w, up_r) = tokio::io::duplex(256 * 1024);
-        let (mut down_w, mut down_r) = tokio::io::duplex(256 * 1024);
-        let dialing = tokio::spawn(async move {
-            let stages = ssh_dial::StageSink::new(false);
-            ssh_dial::uses::run_with(
-                &req,
-                &stages,
-                up_r,
-                &mut down_w,
-                ssh_dial::uses::Control::none(),
-            )
-            .await;
-            let _ = down_w.shutdown().await;
-        });
-        // 等 ack 那一段被丢下（循环到拨号期限放弃 · 宿主叫停）⇒ 这一拨的任务一并收掉：挂在 SYN 上的那一拨不留着占这个身份的拨号锁，
-        // 下一拨才拨得出去。拿到 ack 之后它就是这条链路本身，随两头的读写端收工。
-        let dialing = AbortOnDrop(Some(dialing.abort_handle()));
-        let ack = read_ack(&mut down_r, progress).await?;
-        dialing.keep();
-        Ok((down_r, up_w)).and_then(|pair| {
-            if ack_ok(&ack) {
-                Ok(pair)
-            } else {
-                Err(ack_problem(&ack))
-            }
-        })
-    }
-}
-
-/// 被丢下就 abort 那个任务（[`AbortOnDrop::keep`] 之后不管它）。
-struct AbortOnDrop(Option<tokio::task::AbortHandle>);
-
-impl AbortOnDrop {
-    fn keep(mut self) {
-        self.0 = None;
-    }
-}
-
-impl Drop for AbortOnDrop {
-    fn drop(&mut self) {
-        if let Some(h) = self.0.take() {
-            h.abort();
-        }
+        serde_json::from_value(req)
+            .map_err(|e| Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string()))
     }
 }
 
 impl Transport for PhoneLink {
     type Stream = Join<DuplexStream, DuplexStream>;
 
+    /// 开一条长流：拨号核心报的进展原样交给 `progress`；开成之后那条通道的字节经一对内存管子对拷（随两头的读写端收工）。
+    /// 开的那一段被丢下（循环到拨号期限放弃 · 宿主叫停）⇒ 这一拨随之收掉，不留一拨挂在 SYN 上占这个身份的拨号锁。
     fn stream(
         &self,
         command: String,
         progress: Progress,
     ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         Box::pin(async move {
-            let (down, up) = self
-                .open(
-                    serde_json::json!({ "use": "stream", "command": command }),
-                    &progress,
-                )
-                .await?;
-            Ok(tokio::io::join(down, up))
+            let req = self.request(serde_json::json!({ "use": "stream", "command": command }))?;
+            let stages = ssh_dial::StageSink::new(false);
+            let opened = ssh_dial::uses::open(&req, &stages, |_| progress.step())
+                .await
+                .map_err(problem_of)?;
+            let (up_w, up_r) = tokio::io::duplex(256 * 1024);
+            let (mut down_w, down_r) = tokio::io::duplex(256 * 1024);
+            tokio::spawn(async move {
+                opened
+                    .pump(up_r, &mut down_w, ssh_dial::uses::Control::none())
+                    .await;
+                let _ = down_w.shutdown().await;
+            });
+            Ok(tokio::io::join(down_r, up_w))
         })
     }
 
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
         Box::pin(async move {
-            let (mut down, _up) = self
-                .open(
-                    serde_json::json!({
-                        "use": "capture",
-                        "command": command,
-                        "capture": { "max_bytes": CAPTURE_MAX },
-                    }),
-                    &Progress::default(),
-                )
-                .await?;
-            let line = read_line(&mut down)
-                .await
-                .ok_or_else(|| Problem::new(copy_core::copy_text("reason.link.lost", &[]), ""))?;
-            Ok(exec_of(&line))
+            let req = self.request(serde_json::json!({
+                "use": "capture",
+                "command": command,
+                "capture": { "max_bytes": CAPTURE_MAX },
+            }))?;
+            let got = ssh_dial::uses::capture(&req).await.map_err(problem_of)?;
+            Ok(Exec {
+                exit_status: got.exit_status,
+                stdout: got.stdout,
+                stderr: got.stderr,
+            })
         })
     }
 }
 
-/// 读到 ack 那一行（阶段行跳过、进展行交给 `progress`）。链路没给就收工 ⇒ 当这条连接用不了。
-async fn read_ack(
-    down: &mut DuplexStream,
-    progress: &Progress,
-) -> Result<serde_json::Value, Problem> {
-    loop {
-        let line = read_line(down)
-            .await
-            .ok_or_else(|| Problem::new(copy_core::copy_text("reason.link.lost", &[]), ""))?;
-        let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
-        if v.get("progress").is_some() {
-            progress.step();
-        } else if v.get("stage").is_none() {
-            return Ok(v);
-        }
-    }
-}
-
-/// 一字节一字节读一行（ack 之后紧跟的是 exec 的字节，不许预读过头）。
-async fn read_line(down: &mut DuplexStream) -> Option<String> {
-    let mut out = Vec::new();
-    let mut one = [0u8; 1];
-    loop {
-        match down.read(&mut one).await {
-            Ok(0) | Err(_) => return None,
-            Ok(_) if one[0] == b'\n' => return Some(String::from_utf8_lossy(&out).into_owned()),
-            Ok(_) => out.push(one[0]),
-        }
-    }
-}
-
-pub fn ack_ok(ack: &serde_json::Value) -> bool {
-    ack.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
-}
-
-/// 没拨成的 ack ⇒ 那一句（拨号核心写好）＋ 复制详情 ＋ 原因码与那台出示的指纹。
-pub fn ack_problem(ack: &serde_json::Value) -> Problem {
-    let s = |k: &str| {
-        ack.get(k)
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    let text = s("error");
+/// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与那台出示的 · 库里记下的指纹。
+fn problem_of(f: ssh_dial::DialFail) -> Problem {
     Problem::new(
-        if text.is_empty() {
+        if f.error.is_empty() {
             copy_core::copy_text("reason.link.lost", &[])
         } else {
-            text
+            f.error
         },
-        s("detail"),
+        f.detail.unwrap_or_default(),
     )
-    .because(
-        serde_json::from_value(ack["reason"].clone()).ok(),
-        (
-            ack.get("fingerprint")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string),
-            ack.get("expected_fingerprint")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string),
-        ),
-    )
-}
-
-/// `use: capture` 那一行 `{exit_status, stdout, stderr}`。
-pub fn exec_of(line: &str) -> Exec {
-    let v: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
-    let s = |k: &str| {
-        v.get(k)
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    Exec {
-        exit_status: v
-            .get("exit_status")
-            .and_then(serde_json::Value::as_u64)
-            .and_then(|n| u32::try_from(n).ok()),
-        stdout: s("stdout"),
-        stderr: s("stderr"),
-    }
+    .because(f.reason, (f.fingerprint, f.expected_fingerprint))
 }
 
 // ═══ 表与口 ═════════════════════════════════════════════════════════════════════
@@ -611,44 +496,6 @@ mod tests {
     use super::*;
 
     /// 一问一答的结局逐种落到 Kotlin 认的那一行；事前就拒的那几种照失败交、带码与一句话。
-    /// 开链路等 ack 那一段被丢下（循环到拨号期限放弃 · 宿主叫停）⇒ 那一拨的任务跟着收掉（不留一拨挂在 SYN 上占拨号锁）；
-    /// 拿到 ack 之后 `keep` ⇒ 不管它（它就是那条链路本身）。
-    #[test]
-    fn a_dial_dropped_before_its_ack_takes_its_task_down() {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(dropped_dial_takes_its_task_down());
-    }
-
-    async fn dropped_dial_takes_its_task_down() {
-        let stuck = tokio::spawn(std::future::pending::<()>());
-        drop(AbortOnDrop(Some(stuck.abort_handle())));
-        // 单线程运行时里收掉一个任务只要调度器转几圈：数圈数，不看墙钟。
-        let mut stuck = stuck;
-        let ended = tokio::select! {
-            biased;
-            r = &mut stuck => Some(r),
-            () = async {
-                for _ in 0..64 {
-                    tokio::task::yield_now().await;
-                }
-            } => None,
-        };
-        assert!(
-            matches!(ended, Some(Err(ref e)) if e.is_cancelled()),
-            "丢下了，那一拨还挂着"
-        );
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-        let kept = tokio::spawn(async move {
-            let _ = rx.await;
-        });
-        AbortOnDrop(Some(kept.abort_handle())).keep();
-        tx.send(()).unwrap();
-        assert!(kept.await.is_ok(), "拿到 ack 之后不该被收掉");
-    }
-
     #[test]
     fn every_outcome_lands_as_the_line_kotlin_reads() {
         let j = |r: Result<Option<serde_json::Value>, CallError>| -> serde_json::Value {
@@ -963,31 +810,43 @@ mod tests {
         let _ = std::fs::remove_file(&fresh);
     }
 
-    /// ack 与 capture 那一行的读法。
+    /// 拨号核心没开成的那一份（`DialFail`）原样换成 `Problem`：那一句 · 详情 · 原因码 · 看到的与库里那一把。
     #[test]
-    fn the_ack_and_the_capture_line_are_read_as_the_dial_core_writes_them() {
-        assert!(ack_ok(&serde_json::json!({"ok": true})));
-        let p = ack_problem(&serde_json::json!({"ok": false, "error": "拨号失败", "detail": "d"}));
-        assert_eq!((p.text.as_str(), p.detail.as_str()), ("拨号失败", "d"));
-        assert_eq!((p.why, p.seen_key), (None, None));
-        let p = ack_problem(&serde_json::json!({
-            "ok": false, "error": "指纹变了", "reason": "host_key", "fingerprint": "SHA256:seen"
-        }));
+    fn a_dial_fail_becomes_the_problem_field_for_field() {
+        let p = problem_of(ssh_dial::DialFail {
+            error: "指纹变了".into(),
+            detail: Some("d".into()),
+            fingerprint: Some("SHA256:seen".into()),
+            reason: Some(cmd_wire::machine::Why::HostKey),
+            key_type: Some("ssh-ed25519".into()),
+            expected_fingerprint: Some("SHA256:kept".into()),
+        });
+        assert_eq!((p.text.as_str(), p.detail.as_str()), ("指纹变了", "d"));
         assert_eq!(
-            (p.why, p.seen_key.as_deref()),
-            (Some(cmd_wire::machine::Why::HostKey), Some("SHA256:seen"))
+            (p.why, p.seen_key.as_deref(), p.expected_key.as_deref()),
+            (
+                Some(cmd_wire::machine::Why::HostKey),
+                Some("SHA256:seen"),
+                Some("SHA256:kept")
+            )
         );
-        assert_eq!(
-            exec_of(r#"{"exit_status":127,"stdout":"","stderr":"nope"}"#),
-            Exec {
-                exit_status: Some(127),
-                stdout: String::new(),
-                stderr: "nope".into()
-            }
-        );
-        assert_eq!(
-            exec_of(r#"{"exit_status":null,"stdout":"x","stderr":""}"#).exit_status,
-            None
-        );
+    }
+
+    /// 手机这一侧经有类型的口拨：拨一个没人听的本机口 ⇒ 一口回没开成（原因码「够不着」），不经 ack 那一行。
+    #[test]
+    fn a_capture_to_a_closed_port_comes_back_as_an_unreachable_problem() {
+        let sock = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = sock.local_addr().unwrap().port();
+        drop(sock);
+        let link =
+            PhoneLink::new(serde_json::json!({ "host": "127.0.0.1", "port": port, "user": "u" }));
+        let got = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(link.capture("true".into()));
+        let p = got.err().expect("没人听的口居然开成了");
+        assert_eq!(p.why, Some(cmd_wire::machine::Why::Unreachable), "{p:?}");
+        assert!(!p.text.is_empty());
     }
 }

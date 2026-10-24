@@ -1,7 +1,7 @@
 //! 测试连接：界面把设置页表单里那台（可能还没保存的）配置交过来，本机常驻后端组拨号请求（[`super::machine`]）、
 //! 拨一次（短命探活，不进连接池）、回结局。三步，每步的结论都进结局（部分成功照样回，不当错误）：
 //!
-//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：阶段行逐条写成一格；ack 不成 ⇒ 停在这里；
+//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：拨号核心报的阶段逐条写成一格；没开成 ⇒ 停在这里；
 //! 2. 读那台后端的首行：是 `hello` ⇒ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
 //! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
@@ -19,7 +19,7 @@ use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::platform::child::{bounded, Deadline, Until};
 use crate::wire::Frame;
 
-/// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
+/// 链路上一行的上限（hello · 应答；hello 行是后端出方向单行，同一个量级）。
 const LINE_CAP: u64 = 1024 * 1024;
 /// 探针发的那一问的 id（这条链路只有这一问）。
 const PING_ID: &str = "probe-ping";
@@ -328,17 +328,54 @@ fn ticket_ok(t: &str) -> Result<String, (&'static str, String)> {
     Ok(t.to_string())
 }
 
-/// `remote-probe` 的本体：`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身，拿改好的请求 · 上行读端 · 下行写端）；
+/// 拨号那一侧报阶段的口：报一条就推一格（[`stage_line`]）。
+pub(crate) type StageTx = tokio::sync::mpsc::UnboundedSender<crate::dial::Stage>;
+
+/// 开成的那一条链路：下行读端（那台后端的输出）· 上行写端 · 对面那一侧的任务（随本链路被丢一起收）。
+pub(crate) struct Link {
+    pub(crate) down: tokio::io::DuplexStream,
+    pub(crate) up: tokio::io::DuplexStream,
+    pub(crate) _serve: AbortOnDrop,
+}
+
+/// 生产那一侧：拨号核心开一条（`ssh_dial::uses::open`），阶段照序报给 `stages`；开成之后那条通道接在一对内存管子上对拷（`Opened::pump`）。
+async fn dial_for_real(
+    req: crate::dial::DialRequest,
+    stages: StageTx,
+) -> Result<Link, ssh_dial::DialFail> {
+    let sink = crate::dial::StageSink::new(true);
+    let opened = ssh_dial::uses::open(&req, &sink, |_| {}).await;
+    for st in sink.drain() {
+        if stages.send(st).is_err() {
+            break;
+        }
+    }
+    let opened = opened?;
+    let (up_w, up_r) = tokio::io::duplex(64 * 1024);
+    let (mut down_w, down_r) = tokio::io::duplex(256 * 1024);
+    let serve = tokio::spawn(async move {
+        opened
+            .pump(up_r, &mut down_w, ssh_dial::uses::Control::none())
+            .await;
+    });
+    Ok(Link {
+        down: down_r,
+        up: up_w,
+        _serve: AbortOnDrop(serve),
+    })
+}
+
+/// `remote-probe` 的本体：`dial` 是拨号那一侧（生产 = [`dial_for_real`]；判据用替身，拿改好的请求 · 报阶段的口，交开成的链路或没开成）；
 /// `out` 是进度格的出口（生产 = 本连接的应答通道）；`until` 是分派那一层交来的截止时刻。结局推成最后一格（`end`），应答本身不带体。
 pub(crate) async fn probe_with<F, Fut>(
     req: &ProbeReq,
     until: Option<Until>,
-    serve: F,
+    dial: F,
     out: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)>
 where
-    F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
-    Fut: std::future::Future<Output = ()> + Send + 'static,
+    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
+    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
 {
     let cells = Cells {
         ticket: ticket_ok(&req.ticket)?,
@@ -350,12 +387,7 @@ where
         jump: req.jump.as_ref(),
         prefer: None,
     };
-    let end = match bounded(
-        Deadline::within(PROBE_CAP, until),
-        run(&pick, serve, &cells),
-    )
-    .await
-    {
+    let end = match bounded(Deadline::within(PROBE_CAP, until), run(&pick, dial, &cells)).await {
         Ok(end) => end?,
         Err(total) => {
             let dur = copy_core::format_duration(total.shown_secs().saturating_mul(1000));
@@ -371,12 +403,12 @@ where
 
 async fn run<F, Fut>(
     pick: &super::pick::Pick<'_>,
-    serve: F,
+    dial: F,
     cells: &Cells<'_>,
 ) -> Result<ProbeCell, (&'static str, String)>
 where
-    F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
-    Fut: std::future::Future<Output = ()> + Send + 'static,
+    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
+    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
 {
     let (machine, _) = pick.machines()?;
     let command = format!(
@@ -388,65 +420,38 @@ where
         "stream",
         json!({ "command": command, "stages": true, "probe": true }),
     )?;
-    let (mut up_w, up_r) = tokio::io::duplex(64 * 1024);
-    let (down_w, down_r) = tokio::io::duplex(256 * 1024);
-    // 探完即丢 ⇒ 链路那一侧一起收（后端收掉那条链路；探针不进连接池 ⇒ 那条 SSH 连接随之关）。
-    let _link = AbortOnDrop(tokio::spawn(serve(req, up_r, down_w)));
-    let mut rd = BufReader::new(down_r);
-
-    // ① 阶段行 → ack。
-    let ack = loop {
-        let line = remote_ask::capped_line(&mut rd, LINE_CAP)
-            .await
-            .map_err(|e| ("failed", e))?;
-        let Some(line) = line else {
-            return Ok(stopped(
-                cells,
-                copy_text(
-                    "beProbe.test.sshFailed",
-                    &[("why", &copy_text("beProbe.link.droppedBeforeAck", &[]))],
-                ),
-                failed_detail(None),
-            ));
-        };
-        let v: Value = serde_json::from_str(&line).map_err(|e| {
-            (
-                "failed",
-                crate::common::contract::malformed(&format!("unreadable link line: {e}")),
-            )
-        })?;
-        match v.get("stage") {
-            Some(st) => {
-                let st: ssh_dial::Stage = serde_json::from_value(st.clone()).map_err(|e| {
-                    (
-                        "failed",
-                        crate::common::contract::malformed(&format!("unreadable stage line: {e}")),
-                    )
-                })?;
-                cells.send(stage_line(&st, cells.last().1)).await?;
-            }
-            None => break v,
+    // ① 拨：报来的阶段逐条推成一格；开成 / 没开成之后把还没推的补完。探完即丢 ⇒ 那条链路一起收（探针不进连接池 ⇒ 那条 SSH 连接随之关）。
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let dialing = dial(req, tx);
+    tokio::pin!(dialing);
+    let opened = loop {
+        tokio::select! {
+            biased;
+            Some(st) = rx.recv() => cells.send(stage_line(&st, cells.last().1)).await?,
+            r = &mut dialing => break r,
         }
     };
-    if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-        // 握手失败（含 host key 不匹配被拒）：看到过的指纹不回（信哪一把只在拨号核心那份库里判，比对走机器状态那一格）。
-        // 那一句（原因词，拨号那一侧写好的）进句子；那一侧的复制详情原样带上（原话在那里）。
-        let why = ack
-            .get("error")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let detail = ack
-            .get("detail")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| failed_detail(None));
-        return Ok(stopped(
-            cells,
-            copy_text("beProbe.test.sshFailed", &[("why", &why)]),
-            detail,
-        ));
+    while let Ok(st) = rx.try_recv() {
+        cells.send(stage_line(&st, cells.last().1)).await?;
     }
+    let link = match opened {
+        Ok(link) => link,
+        Err(f) => {
+            // 握手失败（含 host key 不匹配被拒）：看到过的指纹不回（信哪一把只在拨号核心那份库里判，比对走机器状态那一格）。
+            // 那一句（原因词，拨号核心写好的）进句子；它的复制详情原样带上（原话在那里）。
+            return Ok(stopped(
+                cells,
+                copy_text("beProbe.test.sshFailed", &[("why", &f.error)]),
+                f.detail.or_else(|| failed_detail(None)),
+            ));
+        }
+    };
+    let Link {
+        down,
+        up: mut up_w,
+        _serve,
+    } = link;
+    let mut rd = BufReader::new(down);
     let ssh_up = Segs::default().reached(3);
     cells
         .send(step(
@@ -586,16 +591,7 @@ pub(crate) async fn answer_probe(
     until: Option<Until>,
     replies: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)> {
-    probe_with(
-        req,
-        until,
-        |req, up_r, mut down_w| async move {
-            let stages = crate::dial::StageSink::new(true);
-            crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-        },
-        replies,
-    )
-    .await
+    probe_with(req, until, dial_for_real, replies).await
 }
 
 #[cfg(test)]

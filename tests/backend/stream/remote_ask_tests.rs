@@ -72,7 +72,8 @@ fn homes_of(needle: &str) -> (std::collections::BTreeSet<String>, usize) {
 fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
     // (指纹, dial/ 里应当命中的那几份 —— 正控)
     let prints: &[(&str, &[&str])] = &[
-        ("uses::run(", &["dial/link.rs", "dial/remote_ask.rs"]),
+        ("uses::run(", &["dial/link.rs"]),
+        ("uses::capture(", &["dial/remote_ask.rs"]),
         ("abort_marker", &["ssh-dial/uses.rs", "dial/remote_ask.rs"]),
         (
             "parse_request_value(",
@@ -289,54 +290,76 @@ impl Drop for Sentinel {
         }
     }
 }
+/// 一趟收全的替身结果（拨号核心 `uses::capture` 那一形）。
+fn captured(stdout: &str, stderr: &str, exit_status: u32) -> crate::dial::Captured {
+    crate::dial::Captured {
+        stdout: stdout.into(),
+        stderr: stderr.into(),
+        exit_status: Some(exit_status),
+    }
+}
 
-/// A4 ★ 远端永不答：外层 future 被丢（= 后端收到 `cancel` 打断了外层）⇒ 内层任务被收、那一格放掉。
-/// 另一向：内层正常答完 ⇒ 结果照常、那一格同样放掉。异源：真 tokio 任务 ＋ 哨兵（不看源码）。
+/// A4 ★ 远端永不答：外层 future 被丢（= 后端收到 `cancel` 打断了外层）⇒ 那一趟收全一起被丢、那一格放掉。
+/// 另一向：正常答完 ⇒ 结果照常、那一格同样放掉。异源：真 tokio 期限 ＋ 哨兵（不看源码）。
 #[tokio::test]
 async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
-    // ① 永不答：内层攥着哨兵、永远等上行（上行那根管子外层一个字节都不写）。
+    // ① 永不答：那一趟攥着哨兵、永远不回（远端不答的那一形）。
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let outer = pull_over_coded(move |mut up_r, down_w| async move {
+    let outer = pull_over_coded(async move {
         let _slot = Sentinel(Some(tx));
-        let _keep = down_w; // 下行不关：外层就一直等 ack（远端不答的那一形）
-        let mut b = [0u8; 1];
-        let _ = tokio::io::AsyncReadExt::read(&mut up_r, &mut b).await;
-        std::future::pending::<()>().await;
+        std::future::pending::<Result<crate::dial::Captured, ssh_dial::DialFail>>().await
     });
     // 外层等一会儿还没答 ⇒ 调用方期限到点 ⇒ 外层被丢（`timeout` 到点即丢它）。
     let gave_up = tokio::time::timeout(std::time::Duration::from_millis(200), outer).await;
     assert!(gave_up.is_err(), "永不答的那一趟竟然答了");
     tokio::time::timeout(guard_core::wall::CEILING, rx)
         .await
-        .expect("外层被丢 10 秒了，内层任务还攥着那一格 —— 它脱钩了（格永远占着）")
+        .expect("外层被丢 10 秒了，那一趟还攥着那一格 —— 它脱钩了（格永远占着）")
         .expect("哨兵没报信就没了");
 
     // ② 另一向：正常答完 ⇒ 结果照常，那一格同样放掉。
     let (tx2, rx2) = tokio::sync::oneshot::channel::<()>();
-    let got = pull_over_coded(move |_up_r, mut down_w| async move {
+    let got = pull_over_coded(async move {
         let _slot = Sentinel(Some(tx2));
-        let ack = "{\"ok\":true}\n";
-        let res = "{\"stdout\":\"答\",\"stderr\":\"\",\"exit_status\":0}\n";
-        let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, ack.as_bytes()).await;
-        let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, res.as_bytes()).await;
-        std::future::pending::<()>().await;
+        Ok(captured("答", "", 0))
     })
     .await
     .map_err(|s| s.message);
     assert_eq!(got, Ok("答".to_string()));
     tokio::time::timeout(guard_core::wall::CEILING, rx2)
         .await
-        .expect("答完 10 秒了，内层任务还在")
+        .expect("答完 10 秒了，那一趟还在")
         .expect("哨兵没报信就没了");
 }
 
+/// 没开成（拨号核心的 `DialFail`）⇒ 那一句是「那台够不着」、带拨号核心写好的那一句。
+#[tokio::test]
+async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
+    let e = pull_over_coded(async {
+        Err(ssh_dial::DialFail {
+            error: "拨号那一句".into(),
+            detail: None,
+            fingerprint: None,
+            reason: None,
+            key_type: None,
+            expected_fingerprint: None,
+        })
+    })
+    .await
+    .unwrap_err();
+    assert_eq!(
+        e.message,
+        copy_text("beRemoteAsk.run.unreachable", &[("why", "拨号那一句")])
+    );
+}
+
 /// 交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），
-/// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `dial::uses::run` 的。
+/// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `ssh_dial::uses::capture` 的。
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（不进门禁）。
 #[test]
-fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
+fn a_capture_dial_carries_the_stdin_line_verbatim_and_only_when_given() {
     let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});
-    let with = crate::dial::remote_ask::capture_request(
+    let with = crate::dial::remote_ask::for_capture(
         &dial,
         "'/b' '--x'".into(),
         Some("{\"a\":1}\n".into()),
@@ -344,6 +367,7 @@ fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
     .expect("拼得出请求");
     assert_eq!(with.command, "'/b' '--x'");
     assert_eq!(with.use_, crate::dial::Use::Capture);
+    assert!(!with.stages && !with.probe, "一次性 capture 走池、不要阶段");
     let cap = with.capture.expect("capture 参数在");
     assert_eq!(
         cap.stdin.as_deref(),
@@ -355,7 +379,7 @@ fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
         Some(crate::dial::remote_ask::HELLO_MARKER)
     );
     let without =
-        crate::dial::remote_ask::capture_request(&dial, "'/b'".into(), None).expect("拼得出请求");
+        crate::dial::remote_ask::for_capture(&dial, "'/b'".into(), None).expect("拼得出请求");
     assert_eq!(
         without.capture.expect("capture 参数在").stdin,
         None,
@@ -367,18 +391,7 @@ fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
 /// 不压成一个；信封读不出来（不是 JSON）⇒ 码缺席、原话照交。
 #[tokio::test]
 async fn a_failed_remote_command_keeps_its_envelope_code() {
-    let run = |stderr: &'static str| {
-        pull_over_coded(move |_up_r, mut down_w| async move {
-            let ack = "{\"ok\":true}\n";
-            let res = format!(
-                "{}\n",
-                json!({ "stdout": "", "stderr": stderr, "exit_status": 2 })
-            );
-            let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, ack.as_bytes()).await;
-            let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, res.as_bytes()).await;
-            std::future::pending::<()>().await;
-        })
-    };
+    let run = |stderr: &'static str| pull_over_coded(async move { Ok(captured("", stderr, 2)) });
     let e = run("{\"code\":\"stale\",\"message\":\"盘上那份变了\"}")
         .await
         .unwrap_err();
