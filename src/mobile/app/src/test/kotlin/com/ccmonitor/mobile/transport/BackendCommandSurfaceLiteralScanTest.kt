@@ -244,7 +244,7 @@ class BackendCommandSurfaceLiteralScanTest {
          *
          * | 锚点 | 出处 |
          * |---|---|
-         * | `--backend-probe` · `--resident-ensure` · `--resident-attach` | 接常驻流那几步：在嵌的核心里，Kotlin 一处都没有 |
+         * | `--resident-ensure` · `--resident-attach` | 接常驻流那几步：在嵌的核心里，Kotlin 一处都没有 |
          * | `--stream` · `--list-projects` · `--list-sessions` · `--read-session`（前缀）· `--resolve` · `--daemon-probe` · `--fork-session` · `--search` · `--list-accounts` | 后端还认、手机不发的那几条：必须是零 |
          *
          * 零命中的锚点也留在表里：将来有人要接的时候，这张表就是那一刻的拦截点。
@@ -253,7 +253,6 @@ class BackendCommandSurfaceLiteralScanTest {
         private val PINNED_BACKEND_LITERALS: LinkedHashMap<String, Map<String, Int>> =
             linkedMapOf(
                 // ── 接常驻流那几步：起常驻 · 接流都在嵌的核心里（门槛那一问没了：版本门问接上的那一台） ──
-                "--backend-probe" to emptyMap(),
                 "--resident-ensure" to emptyMap(),
                 "--resident-attach" to emptyMap(),
                 // ── 后端还认、我们不发的那几条：必须保持零 ──

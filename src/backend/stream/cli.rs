@@ -36,9 +36,6 @@ use crate::wire::Request;
 use std::io::{Read, Write};
 use std::time::Duration;
 
-/// 能力探测口。集成方按能力兼容，不按版本号；出 JSON（不是 `ccm --ccm-probe` 那种 `key=value` 行：那是 ccm 专用的方言）。
-pub(crate) const PROBE_FLAG: &str = "--backend-probe";
-
 /// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`crate::control::cli_args`]。
 use crate::control::cli_args::{bad_args, read_args, within_of, STDIN_QUIET};
 
@@ -119,7 +116,7 @@ pub(crate) fn reads_stdin(spec: &CommandSpec) -> bool {
 /// 本入口认不认这个 flag。`main` 的分派臂只问它，**不写命令字面量** ——
 /// 于是「帧面加一条命令」不需要回来改 `main`。
 pub fn handles(flag: &str) -> bool {
-    flag == PROBE_FLAG || spec_for(flag).is_some()
+    spec_for(flag).is_some()
 }
 
 /// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
@@ -161,22 +158,6 @@ pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
     emit_failed(&mut std::io::stderr(), &f.settle("stream"), false, tz)
 }
 
-/// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。
-fn probe() -> i32 {
-    let commands: Vec<String> = REGISTRY
-        .iter()
-        .filter(|s| cli_exposed(s))
-        .map(|s| flag_of(s.name))
-        .collect();
-    let body = serde_json::json!({
-        "proto": crate::PROTO_VERSION,
-        "buildId": crate::BUILD_ID,
-        "commands": commands,
-    });
-    println!("{body}");
-    0
-}
-
 /// CLI 控制面的一次性入口。返回进程退出码。
 ///
 /// `tz` ＝ 看的那一台的时区（[`crate::wire::cli_words::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
@@ -205,9 +186,6 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     err: &mut dyn Write,
 ) -> i32 {
     let flag = args.first().map(String::as_str).unwrap_or_default();
-    if flag == PROBE_FLAG {
-        return probe();
-    }
     let opts = &args[1..];
     // 「给人看」那一形：成功 ＝ 回包里写好的格拼成字（`control/ship_text.rs`，不分命令）；失败那一形 ＝ 那一句 ＋ 复制详情。
     let text = opts.iter().any(|a| a == crate::wire::cli_words::TEXT_FLAG);
