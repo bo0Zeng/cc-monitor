@@ -261,7 +261,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
             detail: base.detail.clone(),
             path: base.path.clone(),
             now: base.now,
-            usable_now: usable,
+            usable,
             earliest: earliest.map(|(at, account)| (account, at)),
         },
         rows,

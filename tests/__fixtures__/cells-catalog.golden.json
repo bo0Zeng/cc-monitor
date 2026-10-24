@@ -3091,30 +3091,6 @@
         },
         {
           "frozen": false,
-          "kind": "value",
-          "path": "earliestReturn.account",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "earliestReturn.at",
-          "type": "number"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "earliestReturn.atRelText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "earliestReturn.atText",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "text",
           "path": "fiveHour",
           "type": "string"
@@ -3267,12 +3243,6 @@
           "frozen": true,
           "kind": "text",
           "path": "unseen[].warm.text",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "usableNow[]",
           "type": "string"
         },
         {

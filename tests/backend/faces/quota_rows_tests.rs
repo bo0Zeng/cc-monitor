@@ -92,11 +92,11 @@ fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
         detail: reply["detail"].as_str().map(str::to_string),
         path: reply["path"].as_str().map(str::to_string),
         now,
-        usable_now: serde_json::from_value(reply["usableNow"].clone()).unwrap_or_default(),
-        earliest: reply["earliestReturn"]["account"].as_str().map(|a| {
+        usable: serde_json::from_value(reply["usable"].clone()).unwrap_or_default(),
+        earliest: reply["earliest"]["account"].as_str().map(|a| {
             (
                 a.to_string(),
-                reply["earliestReturn"]["at"].as_u64().unwrap_or_default(),
+                reply["earliest"]["at"].as_u64().unwrap_or_default(),
             )
         }),
     };
@@ -340,7 +340,7 @@ fn an_unreadable_ledger_sends_nothing_and_says_which_file_and_why() {
         {"account": "work", "agent": "claude-code", "kind": "sub", "login": "ok"},
         {"account": "team", "agent": "claude-code", "kind": "sub", "login": "ok"},
     ]);
-    reply["usableNow"] = serde_json::json!([]);
+    reply["usable"] = serde_json::json!([]);
     let v = through_the_exit(&reply, &crate::Tz::default());
     let unseen = v["unseen"].as_array().unwrap();
     assert_eq!(unseen.len(), 2);
@@ -384,7 +384,7 @@ fn the_verdict_says_whether_anything_can_send() {
         detail: None,
         path: None,
         now,
-        usable_now: usable.iter().map(|s| s.to_string()).collect(),
+        usable: usable.iter().map(|s| s.to_string()).collect(),
         earliest: earliest.map(|(a, t)| (a.to_string(), t)),
     };
     let verdict = |b: Base, u: Vec<_>| reply_of(b, Vec::new(), u, &clock).verdict;

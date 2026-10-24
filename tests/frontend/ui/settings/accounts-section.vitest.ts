@@ -133,8 +133,6 @@ function quota(refusedAt?: number): QuotaRead {
     now: NOW,
     accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok", usage: { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } }],
     unseen: [],
-    usableNow: [],
-    earliestReturn: null,
   } as unknown as QuotaRead;
 }
 
