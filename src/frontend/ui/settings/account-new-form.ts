@@ -9,9 +9,9 @@
  * 本文件里每一处 `.value =` 赋值的右边都只许是空串 —— 输入框从不预填、交出去之前先清空。
  * 由 `accounts-section.vitest.ts` 里 `KS6` 那条源码扫描钉着（人群含本文件）。
  */
-import { accountsAdd, validateAcctName, type AccountAddArgs } from "../account-ops";
+import { accountsAdd, type AccountAddArgs } from "../account-ops";
 import { copyText } from "../copy-table";
-import { baseUrlIssue, type BaseUrlIssue } from "../generated/judgment-rules";
+import { refusalIn } from "../ipc/chan-caller";
 
 import { field } from "../kit/field";
 import { button, buttonRow, setButtonLabel } from "../kit/button";
@@ -25,31 +25,6 @@ export type AccountAccess = "subscription" | "apikey";
 
 /** 交给调用方的那一份请求（就是 `accounts-add` 的入参；API 号那一支带着 key）。 */
 export type NewAccountRequest = AccountAddArgs;
-
-/**
- * 〔线框里那一格〕Base URL 的**表单侧**那一句：留空合法（= 默认上游，D3 缺省）；
- * 「能不能用」读生成物 `baseUrlIssue`（规则住 `upstream_url_core::usable`，与后端写口 · 上游选择装表同一条），
- * 这里只按理由挑一句话 —— 让「创建」在填错时是灰的，不让用户建完号才发现端点没配上。
- */
-export function checkBaseUrl(raw: string): { ok: true; value: string | undefined } | { ok: false; reason: string } {
-  const s = raw.trim();
-  if (s === "") return { ok: true, value: undefined };
-  const issue = baseUrlIssue(s);
-  if (issue === null) return { ok: true, value: s };
-  return { ok: false, reason: baseUrlSaid(issue) };
-}
-
-/** 用不了的理由 ⇒ 表单那一句（三句一字没改）。 */
-function baseUrlSaid(issue: BaseUrlIssue): string {
-  switch (issue) {
-    case "plaintextOffLoopback":
-      return copyText("accountNewForm.baseUrl.plainHttp");
-    case "badScheme":
-      return copyText("accountNewForm.baseUrl.scheme");
-    default:
-      return copyText("accountNewForm.baseUrl.shape");
-  }
-}
 
 let formSeq = 0;
 
@@ -155,29 +130,27 @@ export function renderNewAccountForm(
   const create = button({ label: copyText("acctNew.form.createLogin"), kind: "primary" });
   box.appendChild(buttonRow(cancel, create));
 
-  /** 这一份输入的意图（不带 key）：预演问的就是它。名字不合法 / 地址用不了 ⇒ 说为什么。 */
-  const intent = (): { args: AccountAddArgs } | { why: string } => {
-    const n = nameIn.value.trim();
-    const v = validateAcctName(n);
-    if (!v.ok) return { why: n ? v.reason : "" };
-    const args: AccountAddArgs = { name: n, kind: access === "apikey" ? "api-key" : "subscription" };
+  /**
+   * 这一份输入的意图（不带 key）：原样打的字，预演问的就是它 —— 名字 · 地址能不能用只由那台后端判（`accounts-add` 带 `dryRun`）。
+   * 名字那一格还空着 ⇒ `null`（还没什么可问）。
+   */
+  const intent = (): AccountAddArgs | null => {
+    if (!nameIn.value) return null;
+    const args: AccountAddArgs = { name: nameIn.value, kind: access === "apikey" ? "api-key" : "subscription" };
     if (makeDefault) args.isDefault = true;
     if (access === "apikey") {
-      const b = checkBaseUrl(baseIn.value);
-      if (!b.ok) return { why: b.reason };
-      if (b.value !== undefined) args.baseUrl = b.value;
-    } else {
-      const c = credIn.value.trim();
-      if (c) args.credFile = c;
+      if (baseIn.value !== "") args.baseUrl = baseIn.value;
+    } else if (credIn.value !== "") {
+      args.credFile = credIn.value;
     }
-    return { args };
+    return args;
   };
 
   /** 那台后端对「这一份输入」预演过了 ⇒ `true`（只认最后一问）。主按钮要它为真。 */
   let dryOk = false;
   let asked = 0;
   /** 本侧那几格齐不齐（API 号还要有 key）。 */
-  const filled = (): boolean => "args" in intent() && (access !== "apikey" || keyIn.value.trim() !== "");
+  const filled = (): boolean => intent() !== null && (access !== "apikey" || keyIn.value.trim() !== "");
   const dirty = (): boolean => [nameIn, baseIn, keyIn, credIn].some((i) => i.value.trim() !== "");
 
   const sync = (): void => {
@@ -188,15 +161,16 @@ export function renderNewAccountForm(
     if (apikey) credCell.hidden = true;
     setButtonLabel(create, apikey ? copyText("acctNew.form.create") : copyText("acctNew.form.createLogin"));
     const cur = intent();
-    name.setError("args" in cur || cur.why === "" ? null : cur.why);
+    name.setError(null);
+    base.setError(null);
     create.disabled = true;
     dryOk = false;
     const my = ++asked;
-    if (!("args" in cur)) {
+    if (cur === null) {
       setNameHelp("");
       return;
     }
-    void accountsAdd(origin, { ...cur.args, dryRun: true }).then(
+    void accountsAdd(origin, { ...cur, dryRun: true }).then(
       (plan) => {
         if (my !== asked) return; // 输入又变了：这一问作废
         setNameHelp(aliasHintFor(plan.aliasNames));
@@ -206,7 +180,8 @@ export function renderNewAccountForm(
       (e: unknown) => {
         if (my !== asked) return;
         setNameHelp("");
-        name.setError(saidOf(e));
+        // 挑格照那台回的码：`bad_args` 是地址那一格（表单里只有它会被这样拒），其余落在名字上。
+        (refusalIn(e)?.code === "bad_args" ? base : name).setError(saidOf(e));
       },
     );
   };
@@ -239,8 +214,8 @@ export function renderNewAccountForm(
   });
   create.addEventListener("click", () => {
     const cur = intent();
-    if (!("args" in cur) || !dryOk || !filled()) return;
-    const req: NewAccountRequest = { ...cur.args };
+    if (cur === null || !dryOk || !filled()) return;
+    const req: NewAccountRequest = { ...cur };
     if (access === "apikey") req.key = keyIn.value.trim();
     // 先清空再交出去：明文在 DOM 里停留的时间越短越好（`KS6`）。
     clear();
