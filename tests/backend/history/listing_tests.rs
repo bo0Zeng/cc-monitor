@@ -77,9 +77,9 @@ fn analyze_session_detects_bg_kind() {
 #[test]
 fn list_sessions_rejects_path_traversal() {
     let tmp = std::env::temp_dir();
-    assert!(list_sessions_for(&tmp, "../escape", None, &mut Vec::new()).is_err());
-    assert!(list_sessions_for(&tmp, "a/b", None, &mut Vec::new()).is_err());
-    assert!(list_sessions_for(&tmp, r"a\b", None, &mut Vec::new()).is_err());
+    assert!(list_sessions_for(&tmp, "../escape", None).is_err());
+    assert!(list_sessions_for(&tmp, "a/b", None).is_err());
+    assert!(list_sessions_for(&tmp, r"a\b", None).is_err());
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn list_sessions_rejects_symlink_escape() {
     // projects/sneaky -> ../outside（名字合法、无分隔符、无 ..，旧 string 校验放行）
     symlink(&outside, projects.join("sneaky")).unwrap();
     // canonicalize 前缀校验解析 symlink 后落在 projects/ 外 → 拒绝
-    assert!(list_sessions_for(&tmp, "sneaky", None, &mut Vec::new()).is_err());
+    assert!(list_sessions_for(&tmp, "sneaky", None).is_err());
     std::fs::remove_dir_all(&tmp).ok();
 }
 
