@@ -21,13 +21,13 @@ pub(super) struct SessionScan {
 }
 
 impl SessionScan {
-    /// 吸收一行原始字节（带不带换行都行）。不是合法 UTF-8 ⇒ 停（之后的行都不算）。
-    pub(super) fn absorb_bytes(&mut self, line: &[u8]) {
+    /// 吸收一行原始字节（带不带换行都行）。不是合法 UTF-8 ⇒ 停（之后的行都不算）。`kind` ＝ 这份记录是哪一家的（`agents::record_kind_of`，跟着这份文件走）。
+    pub(super) fn absorb_bytes(&mut self, kind: &str, line: &[u8]) {
         if self.stopped || line.is_empty() {
             return;
         }
         match std::str::from_utf8(line) {
-            Ok(s) => self.absorb(s),
+            Ok(s) => self.absorb(kind, s),
             Err(_) => self.stopped = true,
         }
     }
@@ -61,7 +61,7 @@ impl SessionScan {
     /// 〔perfC〕先按 [`ListingHead`] 只取要的那几格（其余跳过、不分配：一行里几 MB 的工具输出不再复制一份）；
     /// 取不了（不是对象 · 同名键 · 坏行）⇒ 退回整行解成 `Value` 那一条，口径逐格相同（值不是串当没有 · 同名键取最后一个）。
     /// 首条人说的话要看整条记录 ⇒ 还没取到摘录时，`user` 那几行另解一次 `Value`（通常第一条就取到）。
-    pub(super) fn absorb(&mut self, line: &str) {
+    pub(super) fn absorb(&mut self, kind: &str, line: &str) {
         let trimmed = line.trim_start_matches('\u{feff}').trim();
         if trimmed.is_empty() {
             return;
@@ -86,8 +86,8 @@ impl SessionScan {
         if !self.is_bg && head.session_kind.is("bg") {
             self.is_bg = true;
         }
-        let kind = head.kind.0.as_deref();
-        if matches!(kind, Some("user") | Some("assistant")) {
+        let rtype = head.kind.0.as_deref();
+        if matches!(rtype, Some("user") | Some("assistant")) {
             if self.started_at.is_none() {
                 self.started_at = head
                     .timestamp
@@ -96,15 +96,13 @@ impl SessionScan {
                     .and_then(crate::common::time::parse_iso8601_ms);
             }
             if self.forked.is_none() {
-                self.forked = head.forked_from.as_ref().and_then(|f| {
-                    crate::agents::fork_pair_of(
-                        crate::agents::record_tree_kind().unwrap_or_default(),
-                        f,
-                    )
-                });
+                self.forked = head
+                    .forked_from
+                    .as_ref()
+                    .and_then(|f| crate::agents::fork_pair_of(kind, f));
             }
         }
-        match kind {
+        match rtype {
             Some("ai-title") => {
                 if let Some(t) = head.ai_title.0 {
                     self.ai_title = Some(t.into_owned()); // 取最新（持续覆盖）
@@ -128,7 +126,6 @@ impl SessionScan {
                         Err(_) => return,
                     },
                 };
-                let kind = crate::agents::record_tree_kind().unwrap_or_default();
                 if let Some(said) = crate::agents::human_speech(kind, v) {
                     self.excerpt = super::search_rules::truncate_excerpt(&said, 120);
                 }
@@ -147,20 +144,43 @@ impl SessionScan {
             Some((s, u)) => (Some(s.clone()), Some(u.clone())),
             None => (None, None),
         };
-        serde_json::json!({
-            "sessionId": session_id,
-            "jsonlPath": p.to_string_lossy(),
-            "startedAtMs": self.started_at.unwrap_or_else(|| super::listing::created_ms_or_mtime(p)),
-            "updatedAtMs": crate::platform::fs::Ro::mtime_ms(p),
-            "messageCountApprox": self.count,
-            "firstUserExcerpt": self.excerpt,
-            "aiTitle": self.ai_title,
-            "cwd": crate::agents::project_dir_of(p),
-            "isBg": self.is_bg,
-            "forkedFromSessionId": forked_sid,
-            "forkedFromMessageUuid": forked_uuid,
+        serde_json::to_value(SessionRow {
+            session_id,
+            record_path: p.to_string_lossy().into_owned(),
+            started_at_ms: self
+                .started_at
+                .unwrap_or_else(|| super::listing::created_ms_or_mtime(p)),
+            updated_at_ms: crate::platform::fs::Ro::mtime_ms(p),
+            message_count_approx: self.count,
+            first_user_excerpt: self.excerpt.clone(),
+            ai_title: self.ai_title.clone(),
+            cwd: crate::agents::project_dir_of(p),
+            is_bg: self.is_bg,
+            forked_from_session_id: forked_sid,
+            forked_from_message_uuid: forked_uuid,
         })
+        .unwrap_or_default()
     }
+}
+
+/// 清单里的一行（[`SessionScan::row`] 写、`history_list` · 叫一条会话什么那几处读）：清单缓存与协议之间那一形，**是我们自己的格式**，
+/// 不是那一家的记录（键名照它从前的样子，读写两头都经这个类型，不按键名取字）。按 sid 只要分组那几格的行只带三格，其余照缺省。
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub(crate) struct SessionRow {
+    pub(crate) session_id: String,
+    /// 记录文件的路径（字符串）。
+    #[serde(rename = "jsonlPath")]
+    pub(crate) record_path: String,
+    pub(crate) started_at_ms: i64,
+    pub(crate) updated_at_ms: i64,
+    pub(crate) message_count_approx: u32,
+    pub(crate) first_user_excerpt: String,
+    pub(crate) ai_title: Option<String>,
+    pub(crate) cwd: Option<String>,
+    pub(crate) is_bg: bool,
+    pub(crate) forked_from_session_id: Option<String>,
+    pub(crate) forked_from_message_uuid: Option<String>,
 }
 
 /// 扫清单时一条记录里要的那几格；其余字段跳过（不分配）。同名键 ⇒ 解不出（退回 `Value` 那一条，那边取最后一个）。

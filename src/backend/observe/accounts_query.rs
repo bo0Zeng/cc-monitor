@@ -33,7 +33,7 @@
 //!   （否则就退化成「任意环境变量读」原语）；判据数着本文件生产段里读环境的调用点，多一处 ⇒ 红。
 
 use crate::common::cells::Words;
-use crate::history::live::{parse_procstart_ticks, pidfiles};
+use crate::history::live::{alive, pidfiles};
 use crate::platform::fs::Ro;
 use crate::wire::SessionFaceExt as _;
 use acct_core::{
@@ -147,8 +147,8 @@ use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
 /// 严于 watcher 的判活：这里的结果直接喂给"按会话切账号"，**错标签比缺标签危害大**，
 /// 所以要求 pidfile 的 `procStart` 与当前 `/proc/<pid>` 的 starttime **精确相等**才认。
 /// 缺 `procStart`（老 pidfile）或读不到 starttime（进程已死）→ 不认（宁缺毋错）。
-fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
-    match (parse_procstart_ticks(pidfile), proc_starttime(pid)) {
+fn session_process_identity_ok(pid: u32, pidfile: &crate::agents::ProcFact) -> bool {
+    match (pidfile.proc_start, proc_starttime(pid)) {
         (Some(recorded), Some(current)) => recorded == current,
         _ => false,
     }
@@ -579,16 +579,10 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let mut out: Vec<LiveMcpFailed> = Vec::new();
     for home in homes {
         for (pid, v) in pidfiles(home) {
-            if crate::agents::pidfile_background(&v)
-                || !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v))
-            {
+            if v.background || !alive(pid, &v) {
                 continue;
             }
-            let Some(sid) = v
-                .get("sessionId")
-                .and_then(|x| x.as_str())
-                .filter(|s| !s.is_empty())
-            else {
+            let Some(sid) = crate::history::live::sid_of(&v) else {
                 continue;
             };
             let Ok(path) = super::query::locate::session_record(home, sid) else {
@@ -631,14 +625,9 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
 pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
     let mut v: Vec<String> = pidfiles(agent_home)
         .into_iter()
-        .filter(|(_, v)| !crate::agents::pidfile_background(v))
-        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
-        .filter_map(|(_, v)| {
-            v.get("cwd")
-                .and_then(|x| x.as_str())
-                .filter(|c| !c.is_empty())
-                .map(str::to_string)
-        })
+        .filter(|(_, v)| !v.background)
+        .filter(|(pid, v)| alive(*pid, v))
+        .filter_map(|(_, v)| v.cwd.filter(|c| !c.is_empty()))
         .collect();
     v.sort();
     v.dedup();
@@ -650,9 +639,9 @@ pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
 pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     let mut pids: Vec<u32> = pidfiles(agent_home)
         .into_iter()
-        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
-        .filter(|(_, v)| !crate::agents::pidfile_background(v))
-        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .filter(|(_, v)| v.sid.as_deref() == Some(sid))
+        .filter(|(_, v)| !v.background)
+        .filter(|(pid, v)| alive(*pid, v))
         .map(|(pid, _)| pid)
         .collect();
     pids.sort_unstable();
@@ -703,15 +692,13 @@ pub(crate) fn session_wait(
 ) -> Option<super::recognize::facts::PidWait> {
     pidfiles(agent_home)
         .into_iter()
-        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
-        .filter(|(_, v)| {
-            crate::agents::pidfile_activity(v) == Some(crate::agents::SessionActivity::NeedsYou)
-        })
-        .filter(|(_, v)| !crate::agents::pidfile_background(v))
-        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .filter(|(_, v)| v.sid.as_deref() == Some(sid))
+        .filter(|(_, v)| v.activity == Some(crate::agents::SessionActivity::NeedsYou))
+        .filter(|(_, v)| !v.background)
+        .filter(|(pid, v)| alive(*pid, v))
         .map(|(_, v)| super::recognize::facts::PidWait {
-            waiting_for: crate::agents::pidfile_wait(&v),
-            since_ms: v.get("statusUpdatedAt").and_then(serde_json::Value::as_u64),
+            waiting_for: v.wait,
+            since_ms: v.status_since_ms,
             read_at_ms: read_at_ms(),
         })
         .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
@@ -730,14 +717,11 @@ fn read_at_ms() -> u64 {
 pub(crate) fn session_background(agent_home: &Path, sid: &str) -> Option<Option<u64>> {
     pidfiles(agent_home)
         .into_iter()
-        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
-        .filter(|(_, v)| {
-            crate::agents::pidfile_activity(v)
-                == Some(crate::agents::SessionActivity::BackgroundWork)
-        })
-        .filter(|(_, v)| !crate::agents::pidfile_background(v))
-        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
-        .map(|(_, v)| v.get("startedAt").and_then(serde_json::Value::as_u64))
+        .filter(|(_, v)| v.sid.as_deref() == Some(sid))
+        .filter(|(_, v)| v.activity == Some(crate::agents::SessionActivity::BackgroundWork))
+        .filter(|(_, v)| !v.background)
+        .filter(|(pid, v)| alive(*pid, v))
+        .map(|(_, v)| v.started_ms)
         .min_by_key(|b| b.unwrap_or(u64::MAX))
 }
 
@@ -836,20 +820,12 @@ pub(crate) fn waiting_now(agent_home: &Path, sid: &str, asked: &[String]) -> boo
     }
 }
 
-/// 这台此刻活着的分身会话（pidfile 那一家说是后台的，`agents::pidfile_background`）。
+/// 这台此刻活着的分身会话（pidfile 那一家说是后台的，`ProcFact::background`）。
 pub(crate) fn live_background(agent_home: &Path) -> std::collections::BTreeSet<String> {
     pidfiles(agent_home)
         .into_iter()
-        .filter(|(pid, v)| {
-            crate::agents::pidfile_background(v)
-                && crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v))
-        })
-        .filter_map(|(_, v)| {
-            v.get("sessionId")
-                .and_then(|x| x.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        })
+        .filter(|(pid, v)| v.background && alive(*pid, v))
+        .filter_map(|(_, v)| crate::history::live::sid_of(&v).map(str::to_string))
         .collect()
 }
 
@@ -882,10 +858,9 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts
 /// 找不到 · 进程不在了 · 环境读不到 ⇒ `None`（不猜）。
 pub(crate) fn session_home(agent_home: &Path, sid: &str) -> Option<PathBuf> {
     let face = crate::agents::account_library_face()?;
-    let (pid, _) = pidfiles(agent_home).into_iter().find(|(pid, v)| {
-        v.get("sessionId").and_then(|x| x.as_str()) == Some(sid)
-            && session_process_identity_ok(*pid, v)
-    })?;
+    let (pid, _) = pidfiles(agent_home)
+        .into_iter()
+        .find(|(pid, v)| v.sid.as_deref() == Some(sid) && session_process_identity_ok(*pid, v))?;
     let owner = owner_of(pid, face.session_env.config_dir, &[]);
     if owner.env_unreadable {
         return None;
@@ -989,8 +964,8 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
 
     let mut out: Vec<SessionRow> = Vec::new();
     for (pid, v) in pidfiles(agent_home) {
-        let sid = v.get("sessionId").and_then(|x| x.as_str());
-        let cwd = v.get("cwd").and_then(|x| x.as_str());
+        let sid = v.sid.as_deref();
+        let cwd = v.cwd.as_deref();
         // 判活必须过 procStart 身份对拍：PID 会被复用，只按 /proc/<pid> 存在性判活会把已死会话误贴成「活着 + 别人的账号」。
         // 身份不符 → 当作该会话已死，不读 environ、不归属。
         let alive = session_process_identity_ok(pid, &v);

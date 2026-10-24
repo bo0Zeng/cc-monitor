@@ -660,7 +660,7 @@ pub(crate) struct RecordFace {
     /// 这一家的记录树（会话按项目目录分、住在家目录下）：根在哪 · 新会话文件怎么命名。`None` ＝ 这一家的会话不住记录树。
     pub(crate) tree: Option<RecordTree>,
     /// 这一行说这条会话此刻进到哪一态（一轮开始 ⇒ 在跑 · 一轮完了 / 中止 ⇒ 闲着）；不说 ⇒ `None`。
-    /// 没有进程状态文件的那一家靠它（[`LocalFace::activity_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
+    /// 没有进程状态文件的那一家靠它（[`LocalFace::proc_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
     pub(crate) activity: Option<fn(&Line<'_>) -> Option<SessionActivity>>,
     /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
     /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
@@ -762,12 +762,40 @@ pub(crate) struct LocalFace {
     pub(crate) cmdline_may_be_agent: fn(&str) -> bool,
     /// 家目录 ⇒ 任务列表的根（其下每个会话一个目录）。`None` ＝ 这一家没有任务列表。
     pub(crate) tasks_dir: Option<fn(&Path) -> PathBuf>,
-    /// 进程状态文件（已解析）⇒ 是不是后台会话（不是人坐在终端里对话的那种，不成 tab）。
-    pub(crate) background_of: fn(&serde_json::Value) -> bool,
-    /// 进程状态文件 ⇒ 此刻在干什么；说不清 ⇒ `None`。
-    pub(crate) activity_of: fn(&serde_json::Value) -> Option<SessionActivity>,
-    /// 进程状态文件 ⇒ 在等人时等的是什么框；没说 / 说不清 ⇒ `None`。
-    pub(crate) wait_of: fn(&serde_json::Value) -> Option<WaitOn>,
+    /// 进程状态文件（已解析）⇒ 它说的那一份事实（[`ProcFact`]）。通用层只读这一份，不认那一家的字段名。
+    pub(crate) proc_of: fn(&serde_json::Value) -> ProcFact,
+}
+
+/// 一个会话进程留下的那份进程状态文件说了什么（[`LocalFace::proc_of`] 从那一家的格式翻好）：
+/// 判活 · 宣告 · 账号归属 · 「在等什么」都只读它。哪一家写的跟着这一行走（`kind`），不另问注册表。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ProcFact {
+    /// 写它的那一家（线上 `agent_kind`）。
+    pub(crate) kind: &'static str,
+    /// 它说的会话 id（原样，可能是空串；不是串 ⇒ 没有）。
+    pub(crate) sid: Option<String>,
+    /// 那一家写下的工作目录。
+    pub(crate) cwd: Option<String>,
+    /// 会话名（那一家给后台任务起的名字之类）。
+    pub(crate) name: Option<String>,
+    /// 那个进程的启动时刻（与 `/proc/<pid>/stat` 的 starttime 同一个数，挡 PID 复用）。
+    pub(crate) proc_start: Option<u64>,
+    /// 是后台会话（不是人坐在终端里对话的那种，不成 tab）。
+    pub(crate) background: bool,
+    /// 此刻在干什么；说不清 ⇒ `None`。
+    pub(crate) activity: Option<SessionActivity>,
+    /// 此刻在干什么的那个词原样（只拿来比「变没变」，不按它分支）。
+    pub(crate) status_word: Option<String>,
+    /// 在等人时等的是什么框；没说 / 说不清 ⇒ `None`。
+    pub(crate) wait: Option<WaitOn>,
+    /// 在等什么的那个词原样（线上 `session_status.waiting_for` 照抄它）。
+    pub(crate) waiting_word: Option<String>,
+    /// 能不能接进它的终端（只认真布尔；没写 ⇒ `None`，照能）。
+    pub(crate) attachable: Option<bool>,
+    /// 此刻这一态从何时起（epoch ms）。
+    pub(crate) status_since_ms: Option<u64>,
+    /// 那个进程何时起的（epoch ms）。
+    pub(crate) started_ms: Option<u64>,
 }
 
 /// 一条活会话此刻在干什么（与哪一家无关的几态）：线上形住 `cmd-wire`。
@@ -1377,9 +1405,14 @@ pub(crate) fn records_root_among(registry: &[Adapter], kind: &str, home: &Path) 
     record_tree_among(registry, kind).map(|t| (t.root)(home))
 }
 
-/// 记录树根底下 id 为 `child_id` 的子运行挂在哪个会话底下（父记录的会话 id）；对不上 ⇒ `None`。问的是记录树那一家（[`record_tree_kind`]）。
+/// 记录树根底下 id 为 `child_id` 的子运行挂在哪个会话底下（父记录的会话 id）；对不上 ⇒ `None`。问的是记录树那一家（[`record_tree_kind_among`]）。
 pub(crate) fn child_parent_sid(records_root: &Path, child_id: &str) -> Option<String> {
-    child_parent_sid_among(REGISTRY, record_tree_kind()?, records_root, child_id)
+    child_parent_sid_among(
+        REGISTRY,
+        record_tree_kind_among(REGISTRY)?,
+        records_root,
+        child_id,
+    )
 }
 
 /// [`child_parent_sid`] 的可喂夹具那一半：问 `kind` 那一家。
@@ -1395,9 +1428,9 @@ pub(crate) fn child_parent_sid_among(
     (r.sid)(&parent)
 }
 
-/// [`records_root_among`] 在生产注册表上、记录树那一家（[`record_tree_kind`]）。
+/// [`records_root_among`] 在生产注册表上、记录树那一家（[`record_tree_kind_among`]）。
 pub(crate) fn records_root(home: &Path) -> Option<PathBuf> {
-    records_root_among(REGISTRY, record_tree_kind()?, home)
+    records_root_among(REGISTRY, record_tree_kind_among(REGISTRY)?, home)
 }
 
 /// [`RecordTree::file_name`]：`kind` 那一家新会话文件的文件名。那一家没有记录树 ⇒ `None`。
@@ -1419,7 +1452,7 @@ pub(crate) fn is_session_file_among(registry: &[Adapter], kind: &str, p: &Path) 
 
 /// [`is_session_file_among`] 在生产注册表上、记录树那一家。
 pub(crate) fn is_tree_session_file(p: &Path) -> bool {
-    record_tree_kind().is_some_and(|k| is_session_file_among(REGISTRY, k, p))
+    record_tree_kind_among(REGISTRY).is_some_and(|k| is_session_file_among(REGISTRY, k, p))
 }
 
 /// 这份文件归的那一家（[`record_face_of`]）认不认它是一份会话记录。
@@ -1445,19 +1478,11 @@ pub(crate) fn pidfile_dir(home: &Path) -> PathBuf {
     tree_local_face().map_or_else(|| home.join(NO_PIDFILES), |f| (f.pidfile_dir)(home))
 }
 
-/// 后端盯着的那一家的进程状态文件 `v` 说这是后台会话（[`LocalFace::background_of`]）。没有那一家 ⇒ `false`。
-pub(crate) fn pidfile_background(v: &serde_json::Value) -> bool {
-    tree_local_face().is_some_and(|f| (f.background_of)(v))
-}
-
-/// 后端盯着的那一家的进程状态文件 `v` 说此刻在干什么（[`LocalFace::activity_of`]）。没有那一家 / 说不清 ⇒ `None`。
-pub(crate) fn pidfile_activity(v: &serde_json::Value) -> Option<SessionActivity> {
-    tree_local_face().and_then(|f| (f.activity_of)(v))
-}
-
-/// 后端盯着的那一家的进程状态文件 `v` 说在等什么框（[`LocalFace::wait_of`]）。没有那一家 / 没说 / 说不清 ⇒ `None`。
-pub(crate) fn pidfile_wait(v: &serde_json::Value) -> Option<WaitOn> {
-    tree_local_face().and_then(|f| (f.wait_of)(v))
+/// [`pidfile_dir`] 里的一份进程状态文件（原样的字节）⇒ 它说的那一份事实（[`LocalFace::proc_of`]，`kind` 是写它的那一家）。
+/// 读不成 JSON / 没有那一家 ⇒ `None`。通用层读进程状态只经这一处。
+pub(crate) fn proc_fact(bytes: &[u8]) -> Option<ProcFact> {
+    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    Some((tree_local_face()?.proc_of)(&v))
 }
 
 /// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。
@@ -1468,12 +1493,12 @@ pub(crate) fn local_face_among(registry: &[Adapter], kind: &str) -> Option<Local
     adapter_among(registry, kind).and_then(|a| a.local)
 }
 
-/// 后端盯着的那一家（记录树那一家，[`record_tree_kind`]）在本机的布局。
+/// 后端盯着的那一家（记录树那一家，[`record_tree_kind_among`]）在本机的布局。
 pub(crate) fn tree_local_face() -> Option<LocalFace> {
-    local_face_among(REGISTRY, record_tree_kind()?)
+    local_face_among(REGISTRY, record_tree_kind_among(REGISTRY)?)
 }
 
-/// 一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家（[`record_tree_kind`]）。
+/// 一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家（[`record_tree_kind_among`]）。
 pub(crate) fn record_kind_of(path: &Path) -> Option<&'static str> {
     record_kind_among(REGISTRY, path)
 }
@@ -1505,7 +1530,11 @@ pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<Rec
 }
 
 /// 家目录记录树那一家的 kind：**恰一家**有记录解释面、却没有合成历史面（它的会话住在按项目分的记录树里）。
-/// 历史清单的记录树那一支、全文搜索、流式 watcher 跟的都是它。不止一家 ⇒ `None`（说不清是哪一家，不猜）。
+/// 记录树根 · pidfile 目录归它；问这几样的入口在本文件里配上它（[`records_root`] · [`tree_local_face`] · [`record_kind_of`]），
+/// 通用层不另问「是哪一家」—— 那一家跟着读出来的那一行走（[`ProcFact::kind`] · 会话行照记录文件认）。不止一家 ⇒ `None`（说不清是哪一家，不猜）。
+///
+/// ⚠ 单例的入口 [`record_tree_kind`] 还剩全文搜索索引（`observe/search_query.rs`，它的索引格不带路径）与几份判据在问；
+/// 那几处改成照记录文件认之后删它（A2-2）。
 pub(crate) fn record_tree_kind() -> Option<&'static str> {
     record_tree_kind_among(REGISTRY)
 }
@@ -1549,7 +1578,7 @@ pub(crate) fn live_by(kind: &str) -> LiveBy {
     live_by_among(REGISTRY, kind)
 }
 
-/// 流式 watcher 跟的那几家（注册序）：家目录记录树那一家（[`record_tree_kind`]，`tree_home` 是它的家目录，判活认 pidfile）·
+/// 流式 watcher 跟的那几家（注册序）：家目录记录树那一家（[`record_tree_kind_among`]，`tree_home` 是它的家目录，判活认 pidfile）·
 /// 记录住在合成历史根下、会话在世期间一直开着记录写的那几家（判活认写者）。别的不跟。
 pub(crate) fn followed(tree_home: &Path) -> Vec<Followed> {
     followed_among(REGISTRY, tree_home)

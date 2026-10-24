@@ -764,6 +764,11 @@ mod tests {
                 "SessionScan",
                 "同上，一份记录累计的那几格",
             ),
+            (
+                "history/listing_scan.rs",
+                "SessionRow",
+                "同上，清单缓存里的一行（`history_list` 读它拼成线上那一形 `HistoryRawRow`，它自己不上线）",
+            ),
         ];
 
         let files: &[(&str, &str)] = &[

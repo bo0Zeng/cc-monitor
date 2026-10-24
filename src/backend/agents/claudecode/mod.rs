@@ -240,9 +240,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     pidfile_dir: paths::sessions_root,
     cmdline_may_be_agent: liveness::cmdline_may_be_agent,
     tasks_dir: Some(paths::tasks_root),
-    background_of: pidfile::background_of,
-    activity_of: pidfile::activity_of,
-    wait_of: pidfile::wait_of,
+    proc_of: pidfile::proc_of,
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace {
@@ -261,7 +259,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         root: paths::projects_root,
         file_name: records::session_file_name,
     }),
-    // 此刻在干什么由进程状态文件说（`LocalFace.activity_of`），记录不说。
+    // 此刻在干什么由进程状态文件说（`LocalFace.proc_of`），记录不说。
     activity: None,
     class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),

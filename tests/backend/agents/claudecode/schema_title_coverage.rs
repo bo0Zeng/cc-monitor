@@ -68,8 +68,11 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
     );
 
     let backend = include_str!("../../../../src/backend/history/listing_scan.rs");
-    let at = guard_core::find_pinned(backend, "pub(super) fn absorb(&mut self, line: &str) {")
-        .unwrap_or_else(|e| panic!("后端逐行吸收记录的那个方法不是恰好一处：{e}"));
+    let at = guard_core::find_pinned(
+        backend,
+        "pub(super) fn absorb(&mut self, kind: &str, line: &str) {",
+    )
+    .unwrap_or_else(|e| panic!("后端逐行吸收记录的那个方法不是恰好一处：{e}"));
     let body_end = backend[at + 1..]
         .find("\n    pub(super) fn ")
         .map_or(backend.len(), |k| at + 1 + k);
