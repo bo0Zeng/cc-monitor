@@ -15,13 +15,8 @@ const { ipcCalls, chanOps, chanSent, ipcReplies } = vi.hoisted(() => ({
   /** 按命令名设定返回值；没设的一律 resolve(undefined)。 */
   ipcReplies: new Map<string, unknown>(),
 }));
-// `onTestConnection` 在进 try 之前就 `new Channel<ConnectStage>()`（连接分阶段泳道）。
-// jsdom 里没有 Tauri 宿主，那句会抛 —— 而调用点是 `() => void this.onTestConnection()`，
-// 抛出去变成一条被吞掉的 unhandled rejection：**按钮点了什么都不发生，测试也看不出原因**。
+// jsdom 里没有 Tauri 宿主：真 `invoke` 一调就抛（调用点多是 `() => void …`，抛出去是一条被吞掉的 unhandled rejection）。
 vi.mock("@tauri-apps/api/core", () => ({
-  Channel: class {
-    onmessage: ((v: unknown) => void) | null = null;
-  },
   invoke: vi.fn(),
 }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({

@@ -2,8 +2,8 @@
 //!
 //! 买到：阶段行按到达顺序交出、ack 读得出 · 拨不通带着指纹回来 · 老代理（不认所请求的用法）出声 ·
 //! 没回应答 / 形状不对 / 行太长各落各的错 · 收全结果与转发计数读得出。
-//! **异源**：下面那几行「代理的输出」逐字抄自对真回环 sshd 跑出来的读数（那一趟的 stdout），不是本侧序列化出来再读回去。阶段 `kind` 的六个字面量另由后端那侧
-//! （`tests/backend/dial_tests.rs::the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads`）从它的类型序列化出来核一遍。
+//! **异源**：下面那几行「代理的输出」逐字抄自对真回环 sshd 跑出来的读数（那一趟的 stdout），不是本侧序列化出来再读回去。
+//! 两头读写的是契约里同一份类型（`cmd_wire::dial`），不再逐字段对拍。
 //! **买不到**：真代理进程（那一圈归宿主 `dial_host` 与读数脚本）。
 
 use super::*;
@@ -35,35 +35,35 @@ const CAP: u64 = 64 * 1024;
 #[tokio::test]
 async fn stages_come_out_in_order_then_the_ack_then_the_captured_line() {
     let mut r = tokio::io::BufReader::new(REAL_OUTPUT.as_bytes());
-    let mut seen: Vec<ConnectStage> = Vec::new();
+    let mut seen: Vec<Stage> = Vec::new();
     let ack = handshake(&mut r, "capture", CAP, &mut |s| seen.push(s), &mut || {})
         .await
         .expect("真读数读不动");
     assert_eq!(
         seen,
         vec![
-            ConnectStage::Dialing {
+            Stage::Dialing {
                 endpoint: "127.0.0.1:1".into()
             },
-            ConnectStage::Dialing {
+            Stage::Dialing {
                 endpoint: "127.0.0.1:22422".into()
             },
-            ConnectStage::Failed {
+            Stage::Failed {
                 endpoint: "127.0.0.1:1".into(),
                 reason: "[tcp] Connection refused (os error 111)".into()
             },
-            ConnectStage::HostKey {
+            Stage::HostKey {
                 endpoint: "127.0.0.1:22422".into(),
                 fingerprint: "SHA256:t3uliopxPzh9UPGAywEklG+BprfkJP07toWVhzBCwB4".into()
             },
-            ConnectStage::Won {
+            Stage::Won {
                 endpoint: "127.0.0.1:22422".into()
             },
-            ConnectStage::Auth {
+            Stage::Auth {
                 ok: true,
                 detail: None
             },
-            ConnectStage::Established,
+            Stage::Established,
         ]
     );
     assert_eq!(ack.endpoint.as_deref(), Some("127.0.0.1:22422"));
@@ -190,29 +190,38 @@ async fn silence_garbage_and_an_endless_line_are_three_different_errors() {
     ));
 }
 
-/// 进展行（请求带 `progress` 时拨号核心每过一步一行）：每一行交一次 `on_step`、不当阶段也不当 ack；之后照读 ack。
+/// 「过了一步」那一形阶段行（请求带 `progress` 时拨号核心每过一步一行，`{"stage":{"kind":"step",…}}`）：每一行交一次 `on_step`、
+/// 不当拨号阶段也不当 ack；之后照读 ack。线上只有阶段行一种：旧的 `{"progress":…}` 那一形不认。
 #[tokio::test]
-async fn progress_lines_tick_once_each_and_are_not_the_ack() {
+async fn step_lines_tick_once_each_and_are_not_the_ack() {
     let text = concat!(
-        r#"{"progress":"tcp"}"#,
+        r#"{"stage":{"kind":"step","step":"tcp"}}"#,
         "\n",
-        r#"{"progress":"banner"}"#,
+        r#"{"stage":{"kind":"step","step":"banner"}}"#,
         "\n",
         r#"{"stage":{"kind":"established"}}"#,
         "\n",
-        r#"{"progress":"channel"}"#,
+        r#"{"stage":{"kind":"step","step":"channel"}}"#,
         "\n",
         r#"{"ok":true,"v":2,"uses":["stream"]}"#,
         "\n",
     );
     let mut r = tokio::io::BufReader::new(text.as_bytes());
     let mut ticks = 0;
-    let mut stages = 0;
-    let ack = handshake(&mut r, "stream", CAP, &mut |_| stages += 1, &mut || {
+    let mut stages = Vec::new();
+    let ack = handshake(&mut r, "stream", CAP, &mut |s| stages.push(s), &mut || {
         ticks += 1
     })
     .await
     .expect("读不动");
     assert!(ack.ok);
-    assert_eq!((ticks, stages), (3, 1));
+    assert_eq!((ticks, stages), (3, vec![Stage::Established]));
+    let mut r = tokio::io::BufReader::new(&b"{\"progress\":\"tcp\"}\n"[..]);
+    assert!(
+        matches!(
+            handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {}).await,
+            Err(LinkError::Garbled(_))
+        ),
+        "第二种行又认了"
+    );
 }
