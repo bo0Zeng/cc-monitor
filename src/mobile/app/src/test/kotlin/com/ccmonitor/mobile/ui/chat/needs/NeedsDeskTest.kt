@@ -430,6 +430,20 @@ class NeedsDeskTest {
         val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.RELEASE) else it })
         assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
     }
+
+    @Test
+    fun `选项说明：没选中的折成两行，选中的全显（一题四项各一整句时抽屉不再竖着拉长）`() {
+        assertEquals(2, optionDetailLines(on = false))
+        assertEquals(Int.MAX_VALUE, optionDetailLines(on = true))
+    }
+
+    @Test
+    fun `要批的全文：8 行以内照全显；超了先收着、下面那颗写全文行数，点开以后不再出`() {
+        assertNull(detailFold(lines = 8, open = false))
+        assertEquals(40, detailFold(lines = 40, open = false))
+        assertNull("点开以后全显、不再收", detailFold(lines = 40, open = true))
+        assertEquals(copyText("bash.output.showAll", "n" to 40), detailExpandLabel(40))
+    }
 }
 
 /** `sessions-needs` 会话那几项（夹具：照先后包成会话那一臂）。 */

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +34,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,7 +43,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -53,6 +59,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -66,11 +73,18 @@ object NeedsTags {
     const val ANSWERED = "needs-answered"
     const val SHEET = "needs-sheet"
     const val DETAIL = "needs-detail"
+    const val DETAIL_MORE = "needs-detail-more"
     const val GONE = "needs-gone"
     const val NOTE = "needs-note"
     const val OTHER = "needs-other"
     const val OTHER_INPUT = "needs-other-input"
     const val CLOSE = "needs-close"
+
+    /** 抽屉头上那颗［关闭］（每一态都有；走 dismiss，不算答）。 */
+    const val HIDE = "needs-hide"
+
+    /** 头一行底下会滚的那一截。 */
+    const val BODY = "needs-body"
 
     fun choice(id: String) = "needs-choice-$id"
 
@@ -81,6 +95,9 @@ object NeedsTags {
 private val TOUCH = 48.dp
 private val BAR_SHAPE = RoundedCornerShape(10.dp)
 private val ROW_SHAPE = RoundedCornerShape(8.dp)
+
+/** 选项行上下留白（说明折两行时不贴框）。 */
+private val OPTION_PAD = 8.dp
 
 /** 本机单调钟，按秒走（「已等」那一格每秒重画，不重问那台）。 */
 @Composable
@@ -198,31 +215,52 @@ fun AskSheetView(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.testTag(NeedsTags.SHEET),
     ) {
+        // 抽屉最高到屏高的 [SHEET_MAX]：上面总留一截点一下就收起；头一行钉住不随内容滚（［关闭］一直够得着）。
         Column(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX)
+                .padding(horizontal = 16.dp),
         ) {
-            SheetHead(sheet, rememberTick(now))
-            sheet.gone?.let { GoneLine(it) }
-            val q = sheet.question
-            if (q == null) {
-                if (sheet.ask.detail.isNotEmpty()) DetailBlock(sheet.ask.detail, dim = sheet.gone != null)
-            } else {
-                QuestionPage(q, sheet, act)
-            }
-            sheet.failed?.let {
-                Text(it.text, color = LocalAppTokens.current.errorText, style = MaterialTheme.typography.bodyMedium)
-                CopyDetailButton(it.text, it.detail)
-            }
-            when {
-                sheet.gone != null -> GoneChoices(sheet, act)
-                sheet.noteFor != null -> NoteBox(sheet, act)
-                else -> Choices(sheet, act)
-            }
+            SheetHead(sheet, rememberTick(now), act.dismiss)
+            SheetBody(sheet, act, Modifier.weight(1f, fill = false))
+        }
+    }
+}
+
+/** 抽屉最高占屏高的这么多。 */
+private const val SHEET_MAX = 0.75f
+
+/** 头一行底下那一截（会滚）：别处先答了那一句 · 全文或题 · 没答成 · 选项。 */
+@Composable
+private fun SheetBody(
+    sheet: AskSheet,
+    act: AskActions,
+    modifier: Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(top = 8.dp, bottom = 24.dp)
+            .testTag(NeedsTags.BODY),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        sheet.gone?.let { GoneLine(it) }
+        val q = sheet.question
+        if (q == null) {
+            if (sheet.ask.detail.isNotEmpty()) DetailBlock(sheet.ask.detail, dim = sheet.gone != null)
+        } else {
+            QuestionPage(q, sheet, act)
+        }
+        sheet.failed?.let {
+            Text(it.text, color = LocalAppTokens.current.errorText, style = MaterialTheme.typography.bodyMedium)
+            CopyDetailButton(it.text, it.detail)
+        }
+        when {
+            sheet.gone != null -> GoneChoices(sheet, act)
+            sheet.noteFor != null -> NoteBox(sheet, act)
+            else -> Choices(sheet, act)
         }
     }
 }
@@ -231,6 +269,7 @@ fun AskSheetView(
 private fun SheetHead(
     sheet: AskSheet,
     tick: Long,
+    onHide: () -> Unit,
 ) {
     val title =
         if (sheet.ask.questions.isEmpty()) {
@@ -265,6 +304,14 @@ private fun SheetHead(
                 Text(copyText("askBlock.head.since", "waited" to it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        // 每一态都有的［关闭］（同桌面抽屉右上角那颗）：收起、不算答。
+        PhIconButton(
+            Ph.X,
+            contentDescription = copyText("kit.drawer.close"),
+            onClick = onHide,
+            modifier = Modifier.testTag(NeedsTags.HIDE),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -279,26 +326,61 @@ private fun GoneLine(said: String) {
     )
 }
 
-/** 要批的全文：等宽、块内可滚、不截。 */
+/**
+ * 要批的全文：等宽、不截字。排出来超过 [DETAIL_LINES] 行先收着（只显前几行），下面一颗「展开 N 行」，点了全显、不再收（同桌面 Bash 卡）；
+ * 块里不自己滚，全交给抽屉那一层滚（不滚中滚）。
+ */
 @Composable
 private fun DetailBlock(
     text: String,
     dim: Boolean,
 ) {
+    var lines by remember(text) { mutableIntStateOf(0) }
+    var cut by remember(text) { mutableFloatStateOf(0f) }
+    var open by rememberSaveable(text) { mutableStateOf(false) }
+    val fold = detailFold(lines, open)
+    val clip = if (fold != null && cut > 0f) Modifier.height(with(LocalDensity.current) { cut.toDp() }).clipToBounds() else Modifier
     Box(
         Modifier
             .fillMaxWidth()
-            .heightIn(max = DETAIL_MAX)
             .background(MaterialTheme.colorScheme.surface, ROW_SHAPE)
-            .verticalScroll(rememberScrollState())
             .padding(12.dp)
             .testTag(NeedsTags.DETAIL),
     ) {
-        Text(text, style = monoBody, color = if (dim) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+        Text(
+            text,
+            style = monoBody,
+            color = if (dim) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            modifier = clip,
+            onTextLayout = { r ->
+                lines = r.lineCount
+                cut = if (r.lineCount > DETAIL_LINES) r.getLineBottom(DETAIL_LINES - 1) else 0f
+            },
+        )
+    }
+    fold?.let { n ->
+        SecondaryButton(onClick = { open = true }, modifier = Modifier.heightIn(min = TOUCH).testTag(NeedsTags.DETAIL_MORE)) {
+            Text(detailExpandLabel(n))
+        }
     }
 }
 
-private val DETAIL_MAX = 220.dp
+/** 要批的全文收着时显几行（按排出来的行算，长命令折行也算）。 */
+internal const val DETAIL_LINES = 8
+
+/** 选项说明：没选中的折两行，选中的全显（点了就看得全）。 */
+internal const val OPTION_DETAIL_LINES = 2
+
+internal fun optionDetailLines(on: Boolean): Int = if (on) Int.MAX_VALUE else OPTION_DETAIL_LINES
+
+/** 全文排出来 [lines] 行：超过 [DETAIL_LINES] 又没点开 ⇒ 要画「展开 N 行」的 N；不然 `null`（全显）。 */
+internal fun detailFold(
+    lines: Int,
+    open: Boolean,
+): Int? = lines.takeIf { !open && it > DETAIL_LINES }
+
+/** 「展开 N 行」：同桌面 Bash 输出那一句（一件事一个说法）。 */
+internal fun detailExpandLabel(lines: Int): String = copyText("bash.output.showAll", "n" to lines)
 
 /** 选项那几段：段与段之间多空一截。 */
 @Composable
@@ -376,11 +458,19 @@ private fun QuestionPage(
     val pick = sheet.picks[q.id]
     for (o in q.options) {
         val on = pick?.options?.contains(o.id) == true
-        OptionRow(on = on, multi = q.multi, enabled = !sheet.locked, tag = NeedsTags.option(o.id), onClick = { act.toggle(o.id) }) {
-            Text(o.text, style = MaterialTheme.typography.bodyLarge)
-            o.detail?.let {
-                Spacer(Modifier.width(8.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OptionRow(on = on, multi = q.multi, enabled = !sheet.locked, tag = NeedsTags.option(o.id), onClick = { act.toggle(o.id) }, top = o.detail != null) {
+            // 说明在选项字下面、占满整宽（并排会被挤成窄列）；没选中的折两行，选中的全显。
+            Column(Modifier.weight(1f)) {
+                Text(o.text, style = MaterialTheme.typography.bodyLarge)
+                o.detail?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = optionDetailLines(on),
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -413,6 +503,8 @@ private fun OptionRow(
     enabled: Boolean,
     tag: String,
     onClick: () -> Unit,
+    /** 底下还有说明 ⇒ 圆点 / 方块贴首行（不居中在几行字中间）。 */
+    top: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.primary
@@ -424,9 +516,9 @@ private fun OptionRow(
             .border(1.dp, if (on) accent else MaterialTheme.colorScheme.outline, ROW_SHAPE)
             .background(if (on) tokens.selectedBg else MaterialTheme.colorScheme.surfaceContainer, ROW_SHAPE)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = 8.dp, vertical = OPTION_PAD)
             .testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = if (top) Alignment.Top else Alignment.CenterVertically,
     ) {
         val mark =
             when {

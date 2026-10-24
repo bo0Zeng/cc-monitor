@@ -131,6 +131,7 @@ class InstrumentedTestInventoryTest {
         val PINNED_FILES =
             listOf(
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/SmokeTest.kt",
+                "app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsSheetShotTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/CacheDaoTest.kt",
@@ -146,6 +147,7 @@ class InstrumentedTestInventoryTest {
         val PINNED_TEST_COUNTS =
             mapOf(
                 "app/src/androidTest/kotlin/com/ccmonitor/mobile/SmokeTest.kt" to 1,
+                "app/src/androidTest/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsSheetShotTest.kt" to 5,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/HostDaoTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/KeystoreCryptoTest.kt" to 4,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/CacheDaoTest.kt" to 4,
@@ -157,7 +159,7 @@ class InstrumentedTestInventoryTest {
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 5,
             )
 
-        const val PINNED_TOTAL_TESTS = 44
+        const val PINNED_TOTAL_TESTS = 49
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
         const val CLASS_FILTER = "testInstrumentationRunnerArguments.class="
