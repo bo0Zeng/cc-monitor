@@ -76,11 +76,11 @@ impl Waits for russh::ChannelReadHalf {
 /// 之后长流一个字节都不来、capture 等不到 Close。
 ///
 /// 答应 ⇒ 回答复之前先到的消息（照序；调用方补交）；回拒 ⇒「登录通过 · 拒绝执行命令」，原话说是哪一种请求；
-/// 没答就关了通道 ⇒ `closed` 那一句。
+/// 没答就关了通道 ⇒ `closed()` 那一句。
 async fn granted(
     ch: &mut impl Waits,
     request: &str,
-    closed: &str,
+    closed: fn() -> String,
 ) -> Result<Vec<russh::ChannelMsg>, Said> {
     let mut early = Vec::new();
     loop {
@@ -95,13 +95,22 @@ async fn granted(
             }
             Some(russh::ChannelMsg::Close) | None => {
                 return Err(Said::with_raw(
-                    copy_text(closed, &[]),
+                    closed(),
                     format!("{request} request: channel closed before the server replied"),
                 ));
             }
             Some(other) => early.push(other),
         }
     }
+}
+
+/// 没答就关了通道时那一句（[`granted`] 的 `closed`）：exec 那一形 · shell 那一形。
+fn exec_failed() -> String {
+    copy_text("beUses.exec.failed", &[])
+}
+
+fn shell_failed() -> String {
+    copy_text("beUses.shell.failed", &[])
 }
 
 /// 答复之前先到的那几条里的输出字节（stdout 那一路）写出去；回「那台已经收了这条通道」（之后不会再有字节）。
@@ -589,7 +598,7 @@ async fn serve<R, W>(
             let fail = |e: Said| DialAck::failed(e, lease.linked.fingerprint.clone());
             // want_reply = true：等远端答应 exec 再回 ack（[`granted`]）。
             let opened = match exec(&channel, req.command.as_bytes().to_vec()).await {
-                Ok(()) => granted(&mut channel, "exec", "beUses.exec.failed").await,
+                Ok(()) => granted(&mut channel, "exec", exec_failed).await,
                 Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
             };
             let early = match opened {
@@ -645,11 +654,16 @@ async fn serve<R, W>(
             // 读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
             let (mut rd, wr) = channel.split();
             let wr = CloseOnDrop::new(wr);
-            let opened = match exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
-                Ok(()) => granted(&mut rd, "exec", "beUses.exec.failed").await,
-                Err(e) => Err(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e)),
-            };
-            let early = match opened {
+            if let Err(e) = exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
+                let _ = write_stages_then_ack(
+                    out,
+                    stages,
+                    &DialAck::failed(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e), fp),
+                )
+                .await;
+                return;
+            }
+            let early = match granted(&mut rd, "exec", exec_failed).await {
                 Ok(early) => early,
                 Err(e) => {
                     let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
@@ -764,9 +778,9 @@ async fn serve<R, W>(
                 |e: russh::Error| Said::with_raw(copy_text("beUses.shell.failed", &[]), &e);
             let opened = async {
                 pty_half(wr.get(), &pty).await.map_err(failed)?;
-                let mut early = granted(&mut rd, "pty-req", "beUses.shell.failed").await?;
+                let mut early = granted(&mut rd, "pty-req", shell_failed).await?;
                 shell_half(wr.get()).await.map_err(failed)?;
-                early.extend(granted(&mut rd, "shell", "beUses.shell.failed").await?);
+                early.extend(granted(&mut rd, "shell", shell_failed).await?);
                 Ok::<_, Said>(early)
             }
             .await;
