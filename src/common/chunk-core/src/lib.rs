@@ -70,7 +70,7 @@ impl Stager {
         let req = FilesStageChunkReq {
             key: self.key.clone(),
             seq: self.chunks,
-            content: ChunkBytes::Hex(bytes),
+            content: ChunkBytes(bytes),
         };
         ask.ask(&req).await?;
         self.chunks += 1;
