@@ -741,6 +741,11 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
     const from = time(g?.fromText ?? "", copyText("rot.seg.from"));
     const to = time(g?.toText ?? "", copyText("rot.seg.to"));
     const v = document.createElement("input");
+    // 重画时认同一格（kit morph：正打着的字 · 焦点留着）：哪一格 · 第几段（草稿那一行是 new）· 哪一格字。
+    const seg = at === undefined ? "new" : String(at);
+    from.dataset.key = `${dk}:${seg}:from`;
+    to.dataset.key = `${dk}:${seg}:to`;
+    v.dataset.key = `${dk}:${seg}:v`;
     v.type = "number";
     v.className = s.rotNumInput;
     v.min = String(cell.min ?? 0);

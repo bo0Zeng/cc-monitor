@@ -17,14 +17,15 @@ const STALE = new Set(["stale", "conflict"]);
 
 export type WriteEnd<T> = { ok: true; value: T } | { ok: false; stale: boolean; said: string; error: unknown };
 
-/** 发一笔写（`run`）；成了或撞上别处改过 ⇒ 再 `reread` 一次。 */
-export async function write<T>(run: () => Promise<T>, reread?: () => Promise<unknown>): Promise<WriteEnd<T>> {
+/** 发一笔写（`run`）。成了 ⇒ 先 `clear`（清掉这一笔交上去的草稿）再 `reread`；撞上别处改过 ⇒ 只 `reread`（草稿留着）。 */
+export async function write<T>(run: () => Promise<T>, then: { reread?: () => Promise<unknown>; clear?: () => void } = {}): Promise<WriteEnd<T>> {
   let end: WriteEnd<T>;
   try {
     end = { ok: true, value: await run() };
   } catch (error) {
     end = { ok: false, stale: STALE.has(refusalIn(error)?.code ?? ""), said: saidOf(error), error };
   }
-  if (reread && (end.ok || end.stale)) await reread();
+  if (end.ok) then.clear?.();
+  if (then.reread && (end.ok || end.stale)) await then.reread();
   return end;
 }

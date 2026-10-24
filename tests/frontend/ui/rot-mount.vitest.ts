@@ -3,6 +3,7 @@
  * （目标 `{strategy}`：改一格当场存成新版）。读写都经 `rot-reads.ts`（这里桩住）。期望手写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ChanError } from "../../../src/comms/inward/chan";
 
 const calls: { name: string; req: unknown }[] = [];
 const opened: { origin: string; at: unknown }[] = [];
@@ -25,7 +26,6 @@ vi.mock("../../../src/frontend/ui/rot-reads", async (orig) => ({
     calls.push({ name: "rotation-view", req: target });
     return shown.view;
   }),
-  refusedCode: (e: unknown) => ((e as { code?: string }).code ? { code: (e as { code: string }).code } : null),
 }));
 vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>()),
@@ -34,7 +34,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
     const code = refuse.get(name);
     if (code) {
       refuse.delete(name);
-      throw Object.assign(new Error(code), { code });
+      throw new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code, message: `那台说：${code}` })) }, `那台说：${code}`);
     }
     return name === "rotation-settings" ? { rev: "h:9" } : name === "rotation-strategy-add" ? { id: "新的" } : {};
   }),
@@ -169,6 +169,21 @@ describe("设置窗：加时段那一行（草稿）", () => {
     ]);
   });
 
+  it("★ 已存的那一段改了一半（没交）来一次重读 ⇒ 那一格还是那个节点、字还在、焦点还在", async () => {
+    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    document.body.replaceChildren(m.root);
+    m.focus("按权重轮换", "work");
+    await settle();
+    const at = m.root.querySelector<HTMLInputElement>('[data-rot-seg="0"] input')!;
+    at.focus();
+    at.value = "06:";
+    await m.refresh();
+    const after = m.root.querySelector<HTMLInputElement>('[data-rot-seg="0"] input')!;
+    expect(after).toBe(at);
+    expect(after.value).toBe("06:");
+    expect(document.activeElement).toBe(at);
+  });
+
   it("★ 交成功 ⇒ 草稿清掉（再重读不再有那一行）", async () => {
     const m = await started();
     fill(m.root);
@@ -183,7 +198,7 @@ describe("设置窗：加时段那一行（草稿）", () => {
     fill(m.root);
     await settle();
     expect(fresh(m.root).map((x) => x.value)).toEqual(["20:00", "23:00", "0"]);
-    expect(document.body.textContent).toContain(copyText("rot.fail.settings"));
+    expect(document.body.textContent).toContain("那台说：conflict");
   });
 });
 

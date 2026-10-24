@@ -2,7 +2,7 @@
  * 轮换（第五版）界面那几块的读与写：都是 typed 命令（入参 · 回包从 Rust 类型生成），问会话或策略所在的那一台。
  * 判定全在后端：这里只把手势翻成命令、把回包交给画的那一处；收不下 ⇒ 抛 `ChanError`（那一句 monitor 写好）。
  */
-import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
@@ -30,10 +30,5 @@ export function readView(
   hours: number,
 ): Promise<RotationViewReply> {
   return callTyped(origin, "rotation-view", { target, hours }, rotBudget());
-}
-
-/** 后端回的拒绝码（不是拒绝 ⇒ `null`）。 */
-export function refusedCode(e: unknown): { code: string } | null {
-  return refusalIn(e);
 }
 
