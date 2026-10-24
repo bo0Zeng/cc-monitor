@@ -13,7 +13,7 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("overflow", "6c57a5a8"),
     ("probe", "9b42ff05"),
     ("reply", "561634f0"),
-    ("session_added", "b068f2ba"),
+    ("session_added", "41a407d8"),
     ("session_branch", "8f2c5c0a"),
     ("session_file_gone", "0284f2c7"),
     ("session_file_reread", "bdab1d4a"),
