@@ -402,8 +402,8 @@ pub(crate) async fn answer_push(
 ) -> Result<PubkeyPushed, (&'static str, String)> {
     let machine = &req.machine;
     let dial = crate::dial::wire_dial(machine, req.jump.as_ref(), None)?;
-    let path = pub_key_path(req.pub_key_path.as_deref(), machine.key())
-        .map_err(|e| ("refused", e))?;
+    let path =
+        pub_key_path(req.pub_key_path.as_deref(), machine.key()).map_err(|e| ("refused", e))?;
     let key = match sanitize_public_key(&read_pub(&path)?) {
         Ok(k) => k,
         Err(SanitizeKeyErr::UnknownType) => {

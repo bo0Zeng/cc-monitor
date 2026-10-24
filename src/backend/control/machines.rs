@@ -185,7 +185,8 @@ impl MachineFault {
 
 /// 机器表成不成立（判准在 `ssh_dial::machine::check_table`）：不成立 ⇒ 第一处，说成界面那一句；成立 ⇒ `None`。**纯函数**。
 pub(crate) fn check_table(hosts: &[Host]) -> Option<MachineFault> {
-    ssh_dial::machine::check_table(hosts).map(|(code, h)| MachineFault::new(code, h.name().to_string()))
+    ssh_dial::machine::check_table(hosts)
+        .map(|(code, h)| MachineFault::new(code, h.name().to_string()))
 }
 
 // ───────────────────────────── 补丁 ─────────────────────────────

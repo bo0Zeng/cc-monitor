@@ -52,12 +52,18 @@ fn one_machine_is_judged_by_one_rule() {
     assert_eq!(with("user", json!("")), Some(MachineFaultCode::NoUser));
     assert_eq!(with("port", json!(0)), Some(MachineFaultCode::Port));
     assert_eq!(with("port", json!(65536)), Some(MachineFaultCode::Port));
-    assert_eq!(with("user", json!("-oX")), Some(MachineFaultCode::LeadingDash));
+    assert_eq!(
+        with("user", json!("-oX")),
+        Some(MachineFaultCode::LeadingDash)
+    );
     assert_eq!(
         with("addresses", json!(["ok", " -x"])),
         Some(MachineFaultCode::LeadingDash)
     );
-    let twin = [m(json!({"host": "a", "user": "u", "label": "x"})), m(json!({"host": "b", "user": "u", "label": " x"}))];
+    let twin = [
+        m(json!({"host": "a", "user": "u", "label": "x"})),
+        m(json!({"host": "b", "user": "u", "label": " x"})),
+    ];
     assert_eq!(
         check_table(&twin).map(|(c, h)| (c, h.host.as_str())),
         Some((MachineFaultCode::NameTaken, "b")),
@@ -67,8 +73,12 @@ fn one_machine_is_judged_by_one_rule() {
 
 #[test]
 fn the_wire_shape_tolerates_nulls_and_extra_keys_but_not_wrong_types() {
-    let h = m(json!({"host": "h", "user": "u", "keyPath": null, "jump": null, "resumeCommand": "x"}));
-    assert_eq!((h.key(), h.jump_name(), h.port, h.connect), (None, None, 22, true));
+    let h =
+        m(json!({"host": "h", "user": "u", "keyPath": null, "jump": null, "resumeCommand": "x"}));
+    assert_eq!(
+        (h.key(), h.jump_name(), h.port, h.connect),
+        (None, None, 22, true)
+    );
     assert_eq!(loose(&json!({"host": 1})).unwrap_err().0, "bad_args");
     assert_eq!(loose(&json!({"port": "22"})).unwrap_err().0, "bad_args");
 }
@@ -99,9 +109,15 @@ fn the_request_carries_the_form_and_no_trust_anchor() {
 
 #[test]
 fn a_machine_that_does_not_hold_is_not_dialed() {
-    for bad in [json!({"host": "h", "user": " "}), json!({"host": "h", "user": "u", "port": 70000})] {
+    for bad in [
+        json!({"host": "h", "user": " "}),
+        json!({"host": "h", "user": "u", "port": 70000}),
+    ] {
         let t = [m(bad)];
-        assert_eq!(code(request(&t, "h", None, "stream", json!({}))), Err("bad_args"));
+        assert_eq!(
+            code(request(&t, "h", None, "stream", json!({}))),
+            Err("bad_args")
+        );
     }
     let t = [
         m(json!({"host": "h", "user": "u", "jump": "j"})),
@@ -124,15 +140,24 @@ fn a_machine_that_does_not_hold_is_not_dialed() {
 fn jumps_are_followed_through_the_table_hop_by_hop() {
     let t = [
         m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"})),
-        m(json!({"host": "b.example", "label": "bastion", "user": "j", "keyPath": "/k", "jump": "edge"})),
+        m(
+            json!({"host": "b.example", "label": "bastion", "user": "j", "keyPath": "/k", "jump": "edge"}),
+        ),
         m(json!({"host": "e.example", "label": "edge", "user": "e"})),
     ];
     let r = request(&t, "devbox", None, "forward", json!({})).unwrap();
     assert_eq!(
-        (r["jump"]["host"].as_str(), r["jump"]["label"].as_str(), r["jump"]["key_path"].as_str()),
+        (
+            r["jump"]["host"].as_str(),
+            r["jump"]["label"].as_str(),
+            r["jump"]["key_path"].as_str()
+        ),
         (Some("b.example"), Some("bastion"), Some("/k"))
     );
-    assert_eq!(r["jump"]["jump"]["host"], "e.example", "跳板自己的跳板再套一层");
+    assert_eq!(
+        r["jump"]["jump"]["host"], "e.example",
+        "跳板自己的跳板再套一层"
+    );
     assert!(r["jump"]["jump"].get("jump").is_none());
     serde_json::from_value::<crate::DialRequest>(r).expect("多跳那一形读得动");
 }
@@ -141,13 +166,25 @@ fn jumps_are_followed_through_the_table_hop_by_hop() {
 fn a_jump_that_is_missing_or_points_back_is_refused() {
     let via = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"}));
     assert_eq!(
-        code(request(&[via.clone()], "devbox", None, "forward", json!({}))),
+        code(request(
+            &[via.clone()],
+            "devbox",
+            None,
+            "forward",
+            json!({})
+        )),
         Err("bad_jump"),
         "跳板不在表里 ⇒ 拒（不回落直连）"
     );
     let wrong = m(json!({"host": "x", "label": "other", "user": "j"}));
     assert_eq!(
-        code(request(&[via.clone(), wrong], "devbox", None, "forward", json!({}))),
+        code(request(
+            &[via.clone(), wrong],
+            "devbox",
+            None,
+            "forward",
+            json!({})
+        )),
         Err("bad_jump")
     );
     let far = m(json!({"host": "b", "label": "bastion", "user": "j", "jump": "elsewhere"}));
@@ -156,7 +193,8 @@ fn a_jump_that_is_missing_or_points_back_is_refused() {
         Err("bad_jump"),
         "再外一台找不到 ⇒ 也拒（不再忽略跳板自己的跳板）"
     );
-    let selfish = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": " devbox "}));
+    let selfish =
+        m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": " devbox "}));
     assert_eq!(
         code(request(&[selfish], "devbox", None, "forward", json!({}))),
         Err("bad_jump"),
@@ -171,7 +209,10 @@ fn a_jump_chain_that_loops_back_is_refused() {
         m(json!({"host": "a.example", "label": "A", "user": "u", "jump": "B"})),
         m(json!({"host": "b.example", "label": "B", "user": "u", "jump": "A"})),
     ];
-    assert_eq!(code(request(&t, "A", None, "stream", json!({}))), Err("bad_jump"));
+    assert_eq!(
+        code(request(&t, "A", None, "stream", json!({}))),
+        Err("bad_jump")
+    );
 }
 
 #[test]
