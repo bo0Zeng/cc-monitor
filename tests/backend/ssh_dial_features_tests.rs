@@ -348,7 +348,7 @@ async fn line_of(rd: &mut BufReader<tokio::io::DuplexStream>) -> serde_json::Val
     serde_json::from_str(&line).expect("不是 JSON")
 }
 
-/// 跑一趟带 `progress` 的拨号，逐行读：进展行的那一步记下、到 ack 为止；`at_step` 读到第几步时调一次 `poke`。
+/// 跑一趟带 `progress` 的拨号，逐行读：「过了一步」那一形阶段行（`{"stage":{"kind":"step",…}}`）的那一步记下、到 ack 为止；`at_step` 读到第几步时调一次 `poke`。
 async fn steps_until_ack(
     req: DialRequest,
     mut poke: impl FnMut(&[String]),
@@ -363,17 +363,18 @@ async fn steps_until_ack(
     let mut steps = Vec::new();
     loop {
         let v = line_of(&mut rd).await;
-        match v.get("progress").and_then(serde_json::Value::as_str) {
-            Some(st) => {
-                steps.push(st.to_string());
-                poke(&steps);
-            }
-            None => return (steps, v),
+        assert!(v.get("progress").is_none(), "又出了第二种行：{v}");
+        let Some(stage) = v.get("stage") else {
+            return (steps, v);
+        };
+        if stage["kind"] == "step" {
+            steps.push(stage["step"].as_str().expect("那一步没名字").to_string());
+            poke(&steps);
         }
     }
 }
 
-/// ★ **进展行**（`progress: true`）：拨号每过一步当场写一行 `{"progress":…}`（不攒到 ack）—— 停在认证之前（服务端还没答密码）时
+/// ★ **过了一步**（`progress: true`）：拨号每过一步当场写一行 `{"stage":{"kind":"step",…}}`（不攒到 ack；线上只有阶段行一种）—— 停在认证之前（服务端还没答密码）时
 /// 对面已经读到 TCP 连上 · 收到 SSH 头 · host key 过了那三步；放行之后认证过 · 通道开了，再是 ack。不要它的请求一行都不出。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn each_step_of_a_dial_is_written_the_moment_it_passes() {

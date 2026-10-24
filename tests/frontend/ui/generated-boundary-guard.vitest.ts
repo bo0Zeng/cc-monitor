@@ -166,7 +166,7 @@ function tsTypesIn(filePath: string, src: string): { name: string; exported: boo
 const TS_DERIVING_SOURCES = tsDerivingSources();
 
 /** 登记的生成物目录（仓根相对）。与 `tests/backend/ts_export_guard.rs::REGISTERED` 保持一致。 */
-const REGISTERED_GENERATED_DIRS = ["src/frontend/ui/generated", "src/comms/ui/generated"] as const;
+const REGISTERED_GENERATED_DIRS = ["src/frontend/ui/generated"] as const;
 
 describe("C01 边界生成物", () => {
   /** 不是 ts-rs 生成的那两份**值表**（ts-rs 只生成类型）：生成物名 → 写它的那个 `export_bindings_*` 所在的文件。 */
@@ -196,7 +196,7 @@ describe("C01 边界生成物", () => {
       }
     }
 
-    // 正控：已知的两份生成物及其产出者与真实落点 —— 发现或抽取坏了，下面两向会零命中地绿。
+    // 正控：已知的那一份生成物及其产出者与真实落点 —— 发现或抽取坏了，下面两向会零命中地绿。
     expect(produced.get("DataPathInfo"), "抽不到 `data_paths.rs` 的 `DataPathInfo` —— 发现 / 抽取坏了").toBe(
       "src/frontend/shell/src/data_paths.rs",
     );
@@ -204,13 +204,6 @@ describe("C01 边界生成物", () => {
       exportedTypes.find((t) => t.name === "DataPathInfo")?.targetDir,
       "DataPathInfo 落点抽取坏了",
     ).toBe("src/frontend/ui/generated");
-    expect(produced.get("ConnectStage"), "抽不到 `ssh_link.rs` 的 `ConnectStage` —— 发现 / 抽取坏了").toBe(
-      "src/comms/inward/ssh_link.rs",
-    );
-    expect(
-      exportedTypes.find((t) => t.name === "ConnectStage")?.targetDir,
-      "ConnectStage 落点抽取坏了",
-    ).toBe("src/comms/ui/generated");
 
     // 方向一：生成目录里每一份（.ts）都有它在相应目录产出它的类型（排除值表）
     for (const dir of REGISTERED_GENERATED_DIRS) {

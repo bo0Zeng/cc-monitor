@@ -312,7 +312,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             key_type: None,
             expected_fingerprint: None,
             v: ACK_V,
-            uses: USES,
+            uses: USES.iter().map(|u| u.to_string()).collect(),
         },
     )
     .await
@@ -548,7 +548,7 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
 }
 
 /// ack 与阶段行的线上形状：ack 带 `v`/`uses`/`endpoint`；阶段行是 `{"stage":{"kind":…}}`，
-/// `kind` 是 camelCase 的六个字面量（界面 `ConnectStage` 那一侧对拍）。
+/// `kind` 是 camelCase 的六个字面量（契约 `cmd_wire::dial::Stage`，读的那一侧同一份）。
 #[tokio::test]
 async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     let mut buf: Vec<u8> = Vec::new();
@@ -575,7 +575,10 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     write_stages_then_ack(
         &mut buf,
         &sink,
-        &DialAck::failed("x".to_string().into(), Some("SHA256:x".into())),
+        &DialAck::of_fail(ssh_dial::fail(
+            "x".to_string().into(),
+            Some("SHA256:x".into()),
+        )),
     )
     .await
     .unwrap();
@@ -609,7 +612,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     write_stages_then_ack(
         &mut quiet,
         &off,
-        &DialAck::failed("x".to_string().into(), None),
+        &DialAck::of_fail(ssh_dial::fail("x".to_string().into(), None)),
     )
     .await
     .unwrap();
@@ -799,7 +802,7 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     let mut buf: Vec<u8> = Vec::new();
     let said =
         crate::common::said::Said::with_raw("step-said".to_string(), "russh: raw-words-here");
-    write_ack(&mut buf, &DialAck::failed(said, None))
+    write_ack(&mut buf, &DialAck::of_fail(ssh_dial::fail(said, None)))
         .await
         .unwrap();
     let v: serde_json::Value =
@@ -812,7 +815,7 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     );
     assert!(detail.contains("dial"), "详情里没有命令那一项：{detail}");
     let mut ok: Vec<u8> = Vec::new();
-    let mut a = DialAck::failed("x".to_string().into(), None);
+    let mut a = DialAck::of_fail(ssh_dial::fail("x".to_string().into(), None));
     a.ok = true;
     a.error = None;
     a.detail = None;
@@ -1093,9 +1096,12 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
             dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE
         }
     );
-    let d = DialAck::failed(crate::common::said::Said::with_raw("x".into(), "raw"), None)
-        .detail
-        .expect("失败的 ack 带详情");
+    let d = DialAck::of_fail(ssh_dial::fail(
+        crate::common::said::Said::with_raw("x".into(), "raw"),
+        None,
+    ))
+    .detail
+    .expect("失败的 ack 带详情");
     assert!(
         d.contains(crate::BUILD_ID),
         "详情里没有本后端的机器那一行：{d}"

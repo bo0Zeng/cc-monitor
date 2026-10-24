@@ -1,4 +1,4 @@
-//! **拨号应答的客户端**：在一条**交给它的**双工管子上，读完拨号代理（后端 `--dial`）的
+//! **拨号应答的客户端**：在一条**交给它的**双工管子上，读完拨号代理（后端那条链路）的
 //! 阶段行与 ack，之后要么把管子原样交回（字节流），要么读一行收全的 exec 结果，要么逐行读转发计数。
 //!
 //! # 它为什么是通信层成员
@@ -11,91 +11,17 @@
 //! - `C5`：不起进程、不绑端口 —— 起代理进程的是宿主（`dial_host.rs`，不是成员），
 //!   本文件只收那两根管子；
 //! - `X2`：零期限字面量 —— 等 ack 要多久由宿主定、由宿主执行；
-//! - `C1`：公开面只有 `ConnectStage` / `Ack` / `Captured` / `LinkError` / `handshake` 这类传输词。
+//! - `C1`：公开面只有 `LinkError` / `handshake` / `captured` 这类传输词。
 //!
-//! # 线上形状（与后端 `dial/mod.rs` 头注同一份，住那边，这里不抄第二份）
+//! # 线上形状（契约 `cmd_wire::dial`，拨号核心写的就是那一份）
 //!
-//! ack 之前零到多行 `{"stage":{…}}` · `{"progress":…}`（后者只在请求带 `progress` 时有，[`handshake`] 交 `on_step`）→ 恰好一行 ack → 之后按用法。
+//! ack 之前零到多行 `{"stage":{…}}`（[`StageLine`]：拨号阶段交 `on_stage`；「过了一步」只在请求带 `progress` 时有，交 `on_step`）
+//! → 恰好一行 ack（[`DialAck`]）→ 之后按用法。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
+use cmd_wire::dial::{Captured, DialAck, Stage, StageLine};
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
-
-/// 连接分阶段事件（测试连接时经 Tauri Channel 流给前端做泳道日志）。
-///
-/// 后端拨号代理在 ack 之前逐行报出来（请求带 `stages=true` 时），本侧**原样反序列化**进这个类型 ——
-/// 形状两侧逐字段相同（后端 `dial::Stage`），对拍判据住 `ssh_link_tests.rs`。
-/// 阶段取 russh 能干净观测的粒度 —— 不含 KEX（HostKey 触发即隐含 TCP ＋ KEX 已过）。
-/// 搬自 `stream_source/`：类型名与线上形状一个字没动（前端生成物 `ConnectStage.ts` 只有这段注释变了）。
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum ConnectStage {
-    /// 某地址开始拨号（TCP ＋ 握手）。
-    Dialing { endpoint: String },
-    /// 某地址握手到 host key 校验（带指纹；隐含 TCP ＋ KEX 已过）。
-    HostKey {
-        endpoint: String,
-        fingerprint: String,
-    },
-    /// 某地址连接失败（reason = 粗分类 ＋ 原始错误）。
-    Failed { endpoint: String, reason: String },
-    /// 竞速胜出地址（其余在飞的已丢弃）。
-    Won { endpoint: String },
-    /// 鉴权结果。
-    Auth { ok: bool, detail: Option<String> },
-    /// 连接就绪（握手 ＋ 鉴权全过）。
-    Established,
-}
-
-/// 单个连接目标（host + port）：后端 ack 里结构化的胜者（[`Ack::winner`]），壳记 last-good 用它。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
-pub struct Endpoint {
-    pub host: String,
-    pub port: u16,
-}
-
-/// 代理的 ack（后端 `dial::DialAck`）。v1 代理没有 `endpoint`/`v`/`uses` ⇒ 缺省值。
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Ack {
-    pub ok: bool,
-    /// 没拨成时那一句（只带原因词）。
-    #[serde(default)]
-    pub error: Option<String>,
-    /// 没拨成时后端写好的复制详情（时刻 · 机器 · 命令 · 下层原话）；老后端 / 拨成了 ⇒ `None`。
-    #[serde(default)]
-    pub detail: Option<String>,
-    /// 握手时看到的 host key 指纹（失败时也尽量带上）。
-    #[serde(default)]
-    pub fingerprint: Option<String>,
-    /// 竞速胜出的地址（`host:port`，给人看）。
-    #[serde(default)]
-    pub endpoint: Option<String>,
-    /// 同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
-    #[serde(default)]
-    pub winner: Option<Endpoint>,
-    /// 没拨成时后端给的原因码；拨成了 ⇒ `None`。
-    #[serde(default)]
-    pub reason: Option<cmd_wire::machine::Why>,
-    /// 因主机指纹被拒时库里记下的那一枚（库里没有同类型的 ⇒ 空串；别的原因 ⇒ `None`）。
-    #[serde(default)]
-    pub expected_fingerprint: Option<String>,
-    #[serde(default)]
-    pub v: u32,
-    #[serde(default)]
-    pub uses: Vec<String>,
-}
-
-/// 收全用法（`capture`）的那一行（后端 `dial::Captured`）。
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Captured {
-    pub stdout: String,
-    pub stderr: String,
-    /// `None` = 远端没送 exit-status。**不许把 `None` 当成 0**。
-    pub exit_status: Option<u32>,
-}
 
 /// 读应答时出的错。每一形的下一步不同，所以不压成一句话。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,11 +32,11 @@ pub enum LinkError {
     Refused {
         why: String,
         fingerprint: Option<String>,
-        /// 库里记下的那一枚（[`Ack::expected_fingerprint`] 原样）。
+        /// 库里记下的那一枚（[`DialAck::expected_fingerprint`] 原样）。
         expected: Option<String>,
-        /// 没拨成的原因码（[`Ack::reason`] 原样）。
+        /// 没拨成的原因码（[`DialAck::reason`] 原样）。
         reason: Option<cmd_wire::machine::Why>,
-        /// 后端写好的复制详情（[`Ack::detail`] 原样；老后端 ⇒ `None`）。
+        /// 后端写好的复制详情（[`DialAck::detail`] 原样；老后端 ⇒ `None`）。
         detail: Option<String>,
     },
     /// 代理不认所请求的用法 —— 它比界面老。
@@ -175,27 +101,26 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
     r: &mut R,
     want: &str,
     cap: u64,
-    on_stage: &mut (dyn FnMut(ConnectStage) + Send),
+    on_stage: &mut (dyn FnMut(Stage) + Send),
     on_step: &mut (dyn FnMut() + Send),
-) -> Result<Ack, LinkError> {
+) -> Result<DialAck, LinkError> {
     loop {
         let Some(line) = read_line_capped(r, cap).await? else {
             return Err(LinkError::Silent);
         };
         let v: serde_json::Value = serde_json::from_str(&line)
             .map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))?;
-        // 进展行（请求带 `progress` 才有）：拨号又过了一步，只交一个记号（哪一步不分支）。
-        if v.get("progress").is_some() {
-            on_step();
-            continue;
-        }
         if let Some(stage) = v.get("stage") {
-            let stage: ConnectStage = serde_json::from_value(stage.clone())
-                .map_err(|e| LinkError::Garbled(format!("stage line: {e}: {line:?}")))?;
-            on_stage(stage);
+            match serde_json::from_value(stage.clone())
+                .map_err(|e| LinkError::Garbled(format!("stage line: {e}: {line:?}")))?
+            {
+                // 拨号又过了一步（请求带 `progress` 才有）：只交一个记号（哪一步不分支）。
+                StageLine::Step { .. } => on_step(),
+                StageLine::Stage(stage) => on_stage(stage),
+            }
             continue;
         }
-        let ack: Ack = serde_json::from_value(v)
+        let ack: DialAck = serde_json::from_value(v)
             .map_err(|e| LinkError::Garbled(format!("ack line: {e}: {line:?}")))?;
         if !ack.ok {
             return Err(LinkError::Refused {

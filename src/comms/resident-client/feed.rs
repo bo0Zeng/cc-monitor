@@ -121,7 +121,7 @@ pub async fn dial_within<F: Future>(progress: &Progress, dial: F) -> Option<F::O
 /// 手机：拨号核心在这台手机上开的链路；桌面：本机常驻后端给的链路（monitor `stream_source/run.rs`）。
 pub trait Transport: Send + Sync + 'static {
     type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
-    /// 开一条长 exec。拨号核心每报一步进展（ack 之前的 `{"progress":…}` 行，`ssh-dial` 的 `step`），宿主原样交给 `progress`（[`Progress`]）。
+    /// 开一条长 exec。拨号核心每报一步进展（ack 之前「过了一步」那一形阶段行 `{"stage":{"kind":"step",…}}`，`ssh-dial` 的 `step`），宿主原样交给 `progress`（[`Progress`]）。
     fn stream(
         &self,
         command: String,

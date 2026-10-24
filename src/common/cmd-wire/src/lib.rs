@@ -4,6 +4,7 @@
 //! - [`frame`]：后端发给客户端的帧（每种一个具名结构，记录那一格是类型参数）与一行解一帧的 [`frame::decode`]；
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
+//! - [`dial`]：拨号核心写、读它的那一侧读的那几行（阶段 · ack · 收全的结果）；
 //! - [`agent`]：线上一家 agent 的名字 [`AgentKind`]（kind；后端里面的路由名不上线）；
 //! - [`attach`]：接常驻流那一段握手的两行（attach 行 · 回话）与新旧三态 [`attach::Relation`]；
 //! - [`watch`]：「这条流在看哪几个会话」（`stream-watch` 的入参与应答；attach 行带的就是同一份入参）；
@@ -27,6 +28,7 @@ pub mod agent;
 pub mod attach;
 pub mod batch;
 pub mod cells;
+pub mod dial;
 pub mod files;
 #[cfg(any(test, feature = "ts"))]
 pub mod fingerprint;

@@ -30,8 +30,9 @@ use tokio::io::BufReader;
 
 use crate::inbound_client::{self, InboundClient};
 use crate::link_mux::LinkStream;
-use crate::ssh_link::{self, Ack, ConnectStage, LinkError};
+use crate::ssh_link::{self, LinkError};
 use crate::stream_source::{RemoteConfig, RemoteExec};
+use cmd_wire::dial::{DialAck, Stage};
 
 /// 等代理回 ack 的上限：握手看门狗（黑洞地址 TCP 连上后握手可以无限阻塞）。与界面侧原来那条
 /// `HANDSHAKE_DEADLINE` 同值。后端不许有 `timeout(`（`no_timer_guard`），⇒ 看门狗在这里执行：
@@ -372,9 +373,9 @@ async fn open(
     cfg: &RemoteConfig,
     req: &serde_json::Value,
     want: &str,
-    on_stage: &mut (dyn FnMut(ConnectStage) + Send),
+    on_stage: &mut (dyn FnMut(Stage) + Send),
     on_step: &mut (dyn FnMut() + Send),
-) -> Result<(DialStream, Ack), Unopened> {
+) -> Result<(DialStream, DialAck), Unopened> {
     // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
     let client = local_channel().await.map_err(Said::written)?;
@@ -462,7 +463,7 @@ pub(crate) fn link_said(e: LinkError) -> Said {
 
 /// **一条长 exec 字节流**（链路 `use:"stream"`：本机常驻后端在池里那条 SSH 连接上开一条 session 通道、exec `cmd`，
 /// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（重连循环经 `stream_source/run.rs::DeskLink` 开：`ccm -- --resident-attach`）。
-/// 出生带一次性总时限；接成流之后由调用方摘。拨号核心每过一步（进展行）调一次 `on_step`（重连循环拿它重新计拨号期限）。
+/// 出生带一次性总时限；接成流之后由调用方摘。拨号核心每过一步（「过了一步」那一形阶段行）调一次 `on_step`（重连循环拿它重新计拨号期限）。
 pub(crate) async fn stream(
     cfg: &RemoteConfig,
     cmd: &str,
