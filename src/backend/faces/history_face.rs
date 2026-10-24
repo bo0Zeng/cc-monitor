@@ -127,11 +127,7 @@ pub(crate) fn read_at(
     )
     .map_err(&lower)?;
     Ok(HistoryRead {
-        rows: crate::observe::query::body::rows_of(
-            &mut reader(&face, tz),
-            offset,
-            &page.bytes,
-        ),
+        rows: crate::observe::query::body::rows_of(&mut reader(&face, tz), offset, &page.bytes),
         next: page.next,
         eof: page.eof,
     })
@@ -428,11 +424,7 @@ pub(crate) fn run_at(
     let (_, face) = record_face(home, &path).map_err(&lower)?;
     let page = body::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
         .map_err(&lower)?;
-    let rows = crate::observe::query::body::run_rows(
-        &mut reader(&face, tz),
-        from,
-        &page.bytes,
-    );
+    let rows = crate::observe::query::body::run_rows(&mut reader(&face, tz), from, &page.bytes);
     let reply = HistoryRun {
         run,
         path,
