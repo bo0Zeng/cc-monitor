@@ -12,6 +12,7 @@
 //! - [`rotation`]：轮换那几条（`rotation-*`）的回包与失败带的 `data`；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
 //! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录）；
+//! - [`plan`]：计划反查 `plan-files` 的回包（文件窗口按它解）；
 //! - [`replies`]：客户端那一侧按类型解回包的那一张表（[`replies::decode_reply`]）；
 //! - [`transfer`]：传输台开单那两条（`transfer-upload` · `-download`）：窗口说给 monitor 的 · monitor 补上拨号转给本机后端的，两层入参各一个类型；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
@@ -36,6 +37,7 @@ pub mod listing;
 pub mod live;
 pub mod machine;
 pub mod needs;
+pub mod plan;
 pub mod quota;
 pub mod record;
 pub mod replies;

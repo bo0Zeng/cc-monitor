@@ -1068,34 +1068,41 @@ fn paint_one_row(
     );
     cell(kind_c, r.type_text.clone(), false);
     cell(size_c, size_text, true);
-    // 「格」那一列：那一格的状态图标 ＋ 标题；被两格声明 ⇒ 后面一个红 ⚠（悬停写另一格）；那一片读不成 ⇒「—」。文件夹空着。
+    // 「格」那一列：那一格的状态图标 ＋「编号 标题」；被两格声明 ⇒ 后面一个红 ⚠（悬停写另一格）；无主 ⇒「无主」；
+    // 那一片读不成 · 判不了无主 ⇒「—」（悬停那一句）。文件夹空着。
     if let (Some(c), Some(d)) = (plan_c, plan) {
-        if let Some(said) = &d.unreadable {
-            let g = one_line(
-                ui,
-                super::plan::unreadable_mark(),
-                c.width() - 2.0 * PAD,
-                minor,
-            );
+        use super::plan::Claim;
+        let hint = |said: &str| {
+            copy_text(
+                "rsFilewinPlan.cell.unreadableHint",
+                &[("slice", &d.slice), ("said", said)],
+            )
+        };
+        let claim = if r.opens_as_dir() {
+            Claim::Unknown
+        } else {
+            d.claim(&r.name)
+        };
+        let mark = match (&d.unreadable, &claim) {
+            (Some(said), _) => Some((super::plan::unreadable_mark(), Some(hint(said)))),
+            (None, Claim::Untold(why)) => Some((super::plan::unreadable_mark(), Some(hint(why)))),
+            (None, Claim::Unowned) => Some((super::plan::unowned_mark(), None)),
+            _ => None,
+        };
+        if let Some((text, tip)) = mark {
+            let g = one_line(ui, text, c.width() - 2.0 * PAD, minor);
             painter.with_clip_rect(c).galley(
                 egui::pos2(c.left() + PAD, rect.center().y - g.size().y / 2.0),
                 g,
                 minor,
             );
-            tips.push((
-                c,
-                copy_text(
-                    "rsFilewinPlan.cell.unreadableHint",
-                    &[("slice", &d.slice), ("said", said)],
-                ),
-            ));
-        } else if let Some(o) = d.owner(&r.name).filter(|_| !r.opens_as_dir()) {
-            let tint = match o.status {
-                super::plan::Status::Done => p.success,
-                _ => minor,
-            };
+            if let Some(t) = tip {
+                tips.push((c, t));
+            }
+        } else if let (None, Claim::Owner(o)) = (&d.unreadable, claim) {
+            let tint = super::plan::status_tint(o.status_code, p.success, minor);
             let ic = painter.layout_no_wrap(
-                super::plan::status_icon(o.status).to_string(),
+                super::plan::status_icon(o.status_code).to_string(),
                 egui::TextStyle::Body.resolve(ui.style()),
                 tint,
             );
@@ -1114,10 +1121,10 @@ fn paint_one_row(
             });
             let ww = warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
             let tx = c.left() + PAD + iw + 6.0;
-            let g = one_line(ui, o.title.clone(), c.right() - PAD - tx - ww, main);
+            let g = one_line(ui, o.label.clone(), c.right() - PAD - tx - ww, main);
             let gw = g.size().x;
             if g.elided {
-                tips.push((c, o.title.clone()));
+                tips.push((c, o.label.clone()));
             }
             painter.with_clip_rect(c).galley(
                 egui::pos2(tx, rect.center().y - g.size().y / 2.0),

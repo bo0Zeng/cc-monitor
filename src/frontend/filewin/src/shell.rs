@@ -1077,7 +1077,8 @@ impl FileWindow {
             )
             .await
             .ok()
-            .and_then(|d| super::plan::from_reply(&d));
+            .and_then(|d| serde_json::from_value::<cmd_wire::plan::PlanFiles>(d).ok())
+            .and_then(super::plan::PlanDir::of);
             if l.epoch.load(Ordering::SeqCst) == mine {
                 *l.plan.lock().unwrap() = got;
             }

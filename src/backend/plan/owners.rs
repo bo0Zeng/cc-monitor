@@ -3,6 +3,7 @@
 //! - 一片的仓库 ＝ `<工作区>/<path>/`：`path` 是成品里那一片的仓库位置（pb `pb repo <路径>` 登记的、相对工作区根，
 //!   如 `repos/app`；照 pb 给的用，没给 ⇒ 不认这一片的仓库）。格的文件声明是相对它的路径。拼这个绝对路径只在 [`repo_dir`]（盯盘也用它）。
 //! - 一份文件被几格声明（pb 判据红「两个节点声明同一个文件」）⇒ 排期上先出现的那一格作主，其余进 `dup`（文件那一侧也看得出来）。
+//! - 每一格（作主的 · `dup` 里的）都带 `label`「编号 标题」（[`super::product::label`] 那一处拼），文件窗口照它写、不自己拼。
 //! - 那一格住哪一块：从它往上找第一个块根格（`blocks[].cells` 里的那一格），写块根格的标题；住顶块 ⇒ `null`。
 //! - 无主（没有一格声明）照 pb 的 `unowned`：这个目录里的那几份进 `unowned`（文件名）；仓库读不出（pb 给 `paths: null`）⇒ `unowned` 为 null、`unownedWhy` 是 pb 那一句。
 //! - 那一片读不成（没读好过 ⇒ `error`；读好过 ⇒ `stale`）⇒ `unreadable` 是那一句、条目空（文件窗口整列写「—」）。
@@ -112,7 +113,9 @@ pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
                 if parent != rel || file.is_empty() {
                     continue;
                 }
-                let me = json!({"id": id, "title": c.get("title").cloned().unwrap_or(Value::Null)});
+                let title = str_of(c, "title");
+                let label = super::product::label(id, title);
+                let me = json!({"id": id, "label": label, "title": title});
                 match by_name.get_mut(file) {
                     Some((_, dup)) => dup.push(me),
                     None => {
@@ -126,7 +129,8 @@ pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
                         let head = json!({
                             "name": file,
                             "id": id,
-                            "title": c.get("title").cloned().unwrap_or(Value::Null),
+                            "label": label,
+                            "title": title,
                             "statusCode": c.get("statusCode").cloned().unwrap_or(Value::Null),
                             "status": c.get("status").cloned().unwrap_or(Value::Null),
                             "block": block_title(sl, id),
