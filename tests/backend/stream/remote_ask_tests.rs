@@ -357,7 +357,7 @@ async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
 /// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `ssh_dial::uses::capture` 的。
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（不进门禁）。
 #[test]
-fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
+fn a_capture_dial_carries_the_stdin_line_verbatim_and_only_when_given() {
     let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});
     let with = crate::dial::remote_ask::for_capture(
         &dial,
