@@ -1496,6 +1496,19 @@ pub(crate) fn dump_broken(workspace: &str) -> Value {
     d
 }
 
+/// 一份 dump 照给定的身份表加工成成品（摘要 `r0`、读到的时刻 0：判据里用不上它俩的那几处）。
+pub(crate) fn made_with(
+    doc: &Value,
+    who: &dyn Fn(&str) -> crate::plan::Whose,
+) -> crate::plan::wire::PlanRead {
+    crate::plan::product::make(doc, who, "r0".into(), 0)
+}
+
+/// 线上那一份（判据按键看成品时用：键名 · 有没有某一格都照线上说）。
+pub(crate) fn as_json<T: serde::Serialize>(t: &T) -> Value {
+    serde_json::to_value(t).unwrap()
+}
+
 /// 夹具的身份表：MAIN 是一个活着、在等你批准的会话；SUB 是 MAIN 底下的子 agent；别的都对不上。
 pub(crate) fn who(id: &str) -> crate::plan::Whose {
     use crate::plan::{Live, Whose};

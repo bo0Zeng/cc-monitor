@@ -16,7 +16,7 @@ use crate::plan::{book, locate, watch, wire, Live, Whose};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -102,13 +102,13 @@ fn review_now() -> crate::plan::review::Review {
 }
 
 /// 给本子出的成品标上认可 · 要你看的数 · 退回的状态（每次答之前现读那份记录，本子里存的是没标的）。不写时刻的字（[`annotated`] 写）。
-pub(crate) fn marked(mut doc: Value) -> Value {
+pub(crate) fn marked(mut doc: wire::PlanRead) -> wire::PlanRead {
     review_now().annotate(&mut doc);
     doc
 }
 
 /// [`marked`] ＋ 时刻写成给人看的字（按请求带来的看的那一台的时区）：要交出去的那一份走它。
-pub(crate) fn annotated(doc: Value, tz: &crate::Tz) -> Value {
+pub(crate) fn annotated(doc: wire::PlanRead, tz: &crate::Tz) -> wire::PlanRead {
     let mut doc = marked(doc);
     crate::plan::product::with_time_texts(
         &mut doc,
@@ -119,14 +119,13 @@ pub(crate) fn annotated(doc: Value, tz: &crate::Tz) -> Value {
 }
 
 /// 读一个目录（并进本子）；读到了就开始盯它的工作区。回的是**没标**认可的那一份（[`annotated`] 再标）。
-fn read_dir(entry: &Path, dir: &Path) -> Result<Value, book::Miss> {
+fn read_dir(entry: &Path, dir: &Path) -> Result<wire::PlanRead, book::Miss> {
     let who = who_port();
     let review = review_now();
     let prior = |ws: &str, slice: &str| review.prior(ws, slice);
     let mut out = book::book().read(entry, dir, &who, now_ms(), &prior)?;
-    if let Some(ws) = out
-        .get("workspace")
-        .and_then(Value::as_str)
+    if let Some(ws) = Some(out.workspace.as_str())
+        .filter(|w| !w.is_empty())
         .map(PathBuf::from)
     {
         // pb 的输出里印的路径可能随当前目录变 ⇒ 一律以工作区根为准再读一次，
@@ -147,34 +146,46 @@ fn arm(entry: &Path, ws: &Path) {
         let prior = |ws: &str, slice: &str| review.prior(ws, slice);
         let mut v = book::book().read(&e, p, &who, now_ms(), &prior).ok()?;
         review.annotate(&mut v);
-        Some((seen_of(&v)?, watch::spots(&v)))
+        Some((seen_of(&v), watch::spots(&v)))
     });
     let now = book::book().last(&ws.to_string_lossy()).map(marked);
     let spots = now.as_ref().map(watch::spots).unwrap_or_default();
-    watch::arm(ws, spots, now.as_ref().and_then(seen_of), reread);
+    watch::arm(ws, spots, now.as_ref().map(seen_of), reread);
 }
 
 /// 一份标过的成品此刻的样子（`changed {plan}` 比的那两样）。
-pub(crate) fn seen_of(v: &Value) -> Option<watch::Seen> {
-    Some((
-        v.get("rev")?.as_str()?.to_string(),
-        v.get("needCount").and_then(Value::as_u64).unwrap_or(0),
-    ))
+pub(crate) fn seen_of(v: &wire::PlanRead) -> watch::Seen {
+    (v.rev.clone(), u64::from(v.need_count))
 }
 
 /// 现读一个工作区（起 pb）并标好；计划审面送退回之前用它拿此刻的接手与状态。
-pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<Value, Fail> {
+pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Fail> {
     let entry = entry()?;
     read_dir(&entry, Path::new(ws))
         .map(|d| annotated(d, tz))
         .map_err(miss)
 }
 
-/// 出口按线上类型收（拼的是 `Value`）；对不上是拼的那一侧的错 ⇒ `failed`。
-pub(crate) fn wired<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, Fail> {
-    serde_json::from_value(v).map_err(|e| {
-        Fail::new("failed", copy_text("bePlan.face.shape", &[])).with_raw(Some(&e.to_string()))
-    })
+/// [`crate::plan::command`] 的回包此刻还是 JSON（`{rc, said, path, took}`，那一形住它那里）⇒ 在这一处照键取成线上类型。
+fn cmd_reply(v: &Value) -> wire::PlanCmdReply {
+    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    wire::PlanCmdReply {
+        rc: v
+            .get("rc")
+            .and_then(Value::as_i64)
+            .and_then(|n| i32::try_from(n).ok())
+            .unwrap_or_default(),
+        said: s(v, "said"),
+        path: s(v, "path"),
+        took: v
+            .get("took")
+            .filter(|t| t.is_object())
+            .map(|t| wire::PlanTook {
+                slice: s(t, "slice").unwrap_or_default(),
+                path: s(t, "path").unwrap_or_default(),
+                switched: t.get("switched").and_then(Value::as_bool) == Some(true),
+            }),
+    }
 }
 
 fn miss(m: book::Miss) -> Fail {
@@ -218,42 +229,35 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
         })?;
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         return run(&args)
-            .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
-            .and_then(wired::<wire::PlanCmdReply>);
+            .map(|v| cmd_reply(&v))
+            .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()));
     }
     let out = match req.slice.as_deref() {
         Some(name) => {
             let doc = read_fresh(&req.workspace, tz)?;
-            let sl = doc
-                .get("slices")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .find(|s| s.get("name").and_then(Value::as_str) == Some(name))
-                .ok_or_else(|| {
-                    Fail::new(
-                        "no_such_slice",
-                        copy_text("bePlan.command.noSlice", &[("slice", name)]),
-                    )
-                })?;
-            let flag = |k: &str| sl.get(k).and_then(Value::as_bool) == Some(true);
+            let sl = doc.slices.iter().find(|s| s.name == name).ok_or_else(|| {
+                Fail::new(
+                    "no_such_slice",
+                    copy_text("bePlan.command.noSlice", &[("slice", name)]),
+                )
+            })?;
             let t = crate::plan::command::Taking {
                 slice: name,
-                path: sl.get("path").and_then(Value::as_str).unwrap_or_default(),
-                docs_only: flag("docsOnly"),
-                current: flag("current"),
+                path: sl.path.as_deref().unwrap_or_default(),
+                docs_only: sl.docs_only,
+                current: sl.current,
             };
             crate::plan::command::take_with(&t, &run)
         }
         None => run(&[cmd]),
     };
-    out.map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
-        .and_then(wired::<wire::PlanCmdReply>)
+    out.map(|v| cmd_reply(&v))
+        .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
 }
 
 /// `plan-files {dir}`：文件窗口反查。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
 /// 不为文件窗口走到的每个目录起一次 pb；目录在最深的那个工作区里才算。不在任何一片的仓库里 ⇒ `slice: null`（文件窗口什么都不多）。
-fn files(dir: &str, tz: &crate::Tz) -> Result<wire::PlanFiles, Fail> {
+fn files(dir: &str, tz: &crate::Tz) -> wire::PlanFiles {
     let b = book::book();
     let ws = b
         .workspaces()
@@ -267,25 +271,23 @@ fn files(dir: &str, tz: &crate::Tz) -> Result<wire::PlanFiles, Fail> {
     let doc = ws
         .and_then(|w| b.last(w.as_str()))
         .map(|d| annotated(d, tz));
-    let out = match doc {
+    match doc {
         Some(d) => crate::plan::owners::of_dir(&d, dir),
-        None => {
-            json!({"workspace": null, "slice": null, "unreadable": null, "entries": [], "unowned": null, "unownedWhy": null})
-        }
-    };
-    wired::<wire::PlanFiles>(out)
+        None => crate::plan::owners::nowhere(None),
+    }
 }
 
-fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
+fn list(req: &PlanListReq, tz: &crate::Tz) -> wire::PlanList {
     let mut dirs: Vec<String> =
         crate::observe::accounts_query::live_cwds(&crate::history::listing::agent_home());
     dirs.extend(req.dirs.iter().flatten().cloned());
     let entry = match entry() {
         Ok(e) => e,
         Err(f) => {
-            return wired::<wire::PlanList>(
-                json!({ "pb": { "state": "missing", "said": f.message }, "workspaces": [] }),
-            )
+            return wire::PlanList {
+                pb: pb_state("missing", Some(f.message)),
+                workspaces: Vec::new(),
+            }
         }
     };
     list_in(
@@ -303,13 +305,13 @@ pub(crate) fn list_in(
     b: &book::Book,
     mut dirs: Vec<String>,
     fresh: bool,
-    read: &dyn Fn(&Path) -> Result<Value, book::Miss>,
+    read: &dyn Fn(&Path) -> Result<wire::PlanRead, book::Miss>,
     tz: &crate::Tz,
-) -> Result<wire::PlanList, Fail> {
+) -> wire::PlanList {
     dirs.sort();
     dirs.dedup();
-    let mut seen: BTreeMap<String, Value> = BTreeMap::new();
-    let mut pb = json!({ "state": "ok", "said": null });
+    let mut seen: BTreeMap<String, wire::PlanRead> = BTreeMap::new();
+    let mut pb = pb_state("ok", None);
     for d in &dirs {
         let dir = Path::new(d);
         let unread = (!fresh).then(|| b.unread(dir)).flatten();
@@ -331,34 +333,36 @@ pub(crate) fn list_in(
         };
         match got.map(|d| annotated(d, tz)) {
             Ok(v) => {
-                let ws = v
-                    .get("workspace")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                seen.entry(ws).or_insert(v);
+                seen.entry(v.workspace.clone()).or_insert(v);
             }
             Err(book::Miss::NotWorkspace(_)) => {}
-            Err(book::Miss::Unsupported(said)) => {
-                pb = json!({ "state": "unsupported", "said": said })
-            }
+            Err(book::Miss::Unsupported(said)) => pb = pb_state("unsupported", Some(said)),
             Err(book::Miss::Failed { .. }) => {}
         }
     }
-    let workspaces: Vec<Value> = seen.values().map(crate::plan::product::list_row).collect();
     if let Some(v) = seen.values().next() {
-        pb["version"] = v["pb"].clone();
+        pb.version = v.pb.clone();
     }
-    wired::<wire::PlanList>(json!({ "pb": pb, "workspaces": workspaces }))
+    wire::PlanList {
+        pb,
+        workspaces: seen.values().map(crate::plan::product::list_row).collect(),
+    }
+}
+
+/// pb 装没装、认不认得它的输出（版本由 [`list_in`] 照读到的那一份填）。
+fn pb_state(state: &str, said: Option<String>) -> wire::PlanPb {
+    wire::PlanPb {
+        state: state.to_string(),
+        said,
+        version: None,
+    }
 }
 
 /// 这台计划里要人看的那几片（工作区 · 片名 · 几格，照 `plan-list` 的先后）：同 `plan-list {}` 那一路取（认过的目录照本子里那一份，不重问 pb）。
-/// 读不出 ⇒ 没有（计划那一截空着，不挡会话那几项）。
+/// 读不出的工作区不在里头（计划那一截空着，不挡会话那几项）。
 pub(crate) fn need_slices(tz: &crate::Tz) -> Vec<(String, String, u32)> {
-    let Ok(list) = list(&PlanListReq::default(), tz) else {
-        return Vec::new();
-    };
-    list.workspaces
+    list(&PlanListReq::default(), tz)
+        .workspaces
         .iter()
         .flat_map(|ws| {
             ws.slices
@@ -466,10 +470,8 @@ pub(crate) struct PlanFilesReq {
 }
 
 typed::codes! {
-    /// `plan-list` 的码：拼出来的成品对不上线上类型（拼的那一侧的错）。
-    pub(crate) enum PlanListErr {
-        Failed = "failed",
-    }
+    /// `plan-list` · `plan-files` · `plan-pb-check` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
+    pub(crate) enum PlanListErr {}
 }
 
 typed::codes! {
@@ -522,7 +524,7 @@ impl Handle for PlanListCmd {
         cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanList, PlanListErr>> + Send + 'static
     {
-        async move { list(&req, &cx.tz).map_err(|f| typed::of_fail(f, PlanListErr::Failed)) }
+        async move { Ok(list(&req, &cx.tz)) }
     }
 }
 
@@ -543,9 +545,7 @@ impl Handle for PlanReadCmd {
         cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanRead, PlanPbErr>> + Send + 'static {
         async move {
-            read_fresh(&req.workspace, &cx.tz)
-                .and_then(wired::<wire::PlanRead>)
-                .map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
+            read_fresh(&req.workspace, &cx.tz).map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
         }
     }
 }
@@ -630,7 +630,7 @@ impl Handle for PlanFilesCmd {
         cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanFiles, PlanListErr>> + Send + 'static
     {
-        async move { files(&req.dir, &cx.tz).map_err(|f| typed::of_fail(f, PlanListErr::Failed)) }
+        async move { Ok(files(&req.dir, &cx.tz)) }
     }
 }
 
@@ -658,8 +658,7 @@ impl Handle for PlanPbCheckCmd {
                     "`dir` must be an absolute path",
                 )));
             }
-            wired::<wire::PlanPbCheck>(locate::check(dir))
-                .map_err(|f| typed::of_fail(f, PlanListErr::Failed))
+            Ok(locate::check(dir))
         }
     }
 }

@@ -51,18 +51,15 @@ fn a_set_pb_dir_is_the_only_place_looked_at() {
 fn checking_a_dir_names_what_is_wrong_with_it() {
     let d = scratch("locate-check");
     let got = check(&d.join("nowhere"));
-    assert_eq!(got["state"], "missing");
+    assert_eq!(got.state, "missing");
     std::fs::create_dir_all(d.join("plain")).unwrap();
-    assert_eq!(check(&d.join("plain"))["state"], "no_entry");
+    assert_eq!(check(&d.join("plain")).state, "no_entry");
     fake_pb(&d.join("broken"), PLUGIN_NAME, Some(1));
-    assert_eq!(check(&d.join("broken"))["state"], "not_runnable");
+    assert_eq!(check(&d.join("broken")).state, "not_runnable");
     fake_pb(&d.join("good"), PLUGIN_NAME, Some(0));
-    assert_eq!(check(&d.join("good"))["state"], "ok");
+    assert_eq!(check(&d.join("good")).state, "ok");
     for dir in ["nowhere", "plain", "broken", "good"] {
-        let said = check(&d.join(dir))["said"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
+        let said = check(&d.join(dir)).said;
         assert!(!said.is_empty(), "{dir}");
     }
     let _ = std::fs::remove_dir_all(&d);

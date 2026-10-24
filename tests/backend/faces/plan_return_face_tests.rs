@@ -2,11 +2,14 @@
 //! 能送走说一句那条路、送到了 / 送达未知记一条。
 
 use super::*;
-use crate::plan::fixture::{dump, MAIN, SUB};
+use crate::plan::fixture::{as_json, dump, MAIN, SUB};
 use crate::plan::{Live, Whose};
 use std::cell::RefCell;
 
-fn doc_with(who: &dyn Fn(&str) -> Whose) -> Value {
+/// 回包的线上那一形（判据按键看）。
+type Out = Result<Value, Fail>;
+
+fn doc_with(who: &dyn Fn(&str) -> Whose) -> PlanRead {
     let b = crate::plan::book::Book::default();
     let d = dump("/w");
     let raw = d.to_string().into_bytes();
@@ -43,13 +46,13 @@ type Sent = RefCell<Vec<(Value, bool)>>;
 type Rec = (String, String, String, Returned);
 type Kept = RefCell<Vec<Rec>>;
 
-fn run(doc: &Value, args: Value, reply: Value) -> (Answer, Vec<Value>, Vec<Rec>) {
+fn run(doc: &PlanRead, args: Value, reply: Value) -> (Out, Vec<Value>, Vec<Rec>) {
     let (out, sent, kept) = run_resuming(doc, args, reply);
     assert!(sent.iter().all(|(_, r)| !r), "没点恢复就不许恢复");
     (out, sent.into_iter().map(|(v, _)| v).collect(), kept)
 }
 
-fn run_resuming(doc: &Value, args: Value, reply: Value) -> (Answer, Vec<(Value, bool)>, Vec<Rec>) {
+fn run_resuming(doc: &PlanRead, args: Value, reply: Value) -> (Out, Vec<(Value, bool)>, Vec<Rec>) {
     let sent: Sent = RefCell::new(Vec::new());
     let kept: Kept = RefCell::new(Vec::new());
     let send = |a: &Value, resume: bool| {
@@ -61,7 +64,7 @@ fn run_resuming(doc: &Value, args: Value, reply: Value) -> (Answer, Vec<(Value, 
         Ok(())
     };
     let req: PlanReturnReq = serde_json::from_value(args).expect("入参解得出");
-    let out = return_with(&req, doc, &send, &record, 42);
+    let out = return_with(&req, doc, &send, &record, 42).map(|r| as_json(&r));
     (out, sent.into_inner(), kept.into_inner())
 }
 
@@ -95,8 +98,12 @@ fn a_working_owner_gets_the_line_said_to_it_and_the_return_is_kept() {
     assert_eq!(r.to, MAIN);
     assert_eq!(r.result, "delivered");
     assert!(r.children.is_empty());
-    let cell = &doc["slices"][0]["cells"][8];
-    assert_eq!(r.body, crate::plan::needs::body_digest(cell));
+    let cell = &doc.slices[0].cells[8];
+    assert_eq!(cell.id, "A2-1");
+    assert_eq!(
+        r.body,
+        crate::plan::needs::body_digest(cell.body.as_deref())
+    );
 }
 
 #[test]

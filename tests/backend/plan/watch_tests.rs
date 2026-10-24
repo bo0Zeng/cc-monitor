@@ -1,11 +1,11 @@
 //! `changed {plan}`：只认计划仓与工作区 `.env`；摘要变了才推，没变不推。
 
 use super::*;
-use crate::plan::fixture::{dump_at, scratch, who};
+use crate::plan::fixture::{dump_at, made_with, scratch, who};
 
 /// 成品（工作区 `ws`，那一片的仓库登记在 `path`）。
-fn product(ws: &Path, path: &str) -> serde_json::Value {
-    crate::plan::product::make(&dump_at(&ws.to_string_lossy(), path), &who).doc
+fn product(ws: &Path, path: &str) -> crate::plan::wire::PlanRead {
+    made_with(&dump_at(&ws.to_string_lossy(), path), &who)
 }
 
 #[test]

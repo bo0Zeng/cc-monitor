@@ -2,7 +2,19 @@
 //! 0.3.8 新给的那几样照搬成线上惯例 · 「编号 标题」后端拼 · refs 的下标换成 UTF-16。
 
 use super::*;
-use crate::plan::fixture::{dump, dump_broken, who, MAIN, STRANGER, SUB};
+use crate::plan::fixture::{as_json, dump, dump_broken, who, MAIN, STRANGER, SUB};
+use serde_json::json;
+
+/// 成品的线上那一份（判据按键看）。
+struct Made {
+    doc: Value,
+}
+
+fn make(doc: &Value, who: WhoPort) -> Made {
+    Made {
+        doc: as_json(&super::make(doc, who, "r0".into(), 0)),
+    }
+}
 
 fn made() -> Made {
     make(&dump("/w"), &who)
@@ -295,24 +307,28 @@ fn status_why_and_file_state_come_with_codes() {
 
 #[test]
 fn every_pb_word_maps_to_its_code_and_strangers_to_null() {
-    assert_eq!(status_code(Some("做完了")), Some("done"));
-    assert_eq!(status_code(Some("没做完")), Some("open"));
-    assert_eq!(status_code(Some("不做了")), Some("dropped"));
+    assert_eq!(status_code(Some("做完了")), Some(PlanStatusCode::Done));
+    assert_eq!(status_code(Some("没做完")), Some(PlanStatusCode::Open));
+    assert_eq!(status_code(Some("不做了")), Some(PlanStatusCode::Dropped));
     assert_eq!(status_code(Some("别的")), None);
-    assert_eq!(why_code(Some("等上一级收下")), json!({"kind": "upper"}));
     assert_eq!(
-        why_code(Some("里面 0/3 做完了")),
+        as_json(&why_code(Some("等上一级收下"))),
+        json!({"kind": "upper"})
+    );
+    assert_eq!(
+        as_json(&why_code(Some("里面 0/3 做完了"))),
         json!({"kind": "inside", "done": 0, "of": 3})
     );
-    assert_eq!(why_code(Some("别的原因")), Value::Null);
-    assert_eq!(why_code(None), Value::Null);
+    assert_eq!(why_code(Some("别的原因")), None);
+    assert_eq!(why_code(Some("里面 x/3 做完了")), None);
+    assert_eq!(why_code(None), None);
     for (w, c) in [
         ("在", "ok"),
         ("缺", "missing"),
         ("空", "empty"),
         ("坏", "broken"),
     ] {
-        assert_eq!(file_code(Some(w)), Some(c));
+        assert_eq!(as_json(&file_code(Some(w))), json!(c));
     }
     assert_eq!(file_code(Some("?")), None);
 }
@@ -343,23 +359,47 @@ fn by_session_maps_each_owner_session_to_its_block_preferring_its_own_claim() {
 #[test]
 fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     let now = 1_767_323_400_000_i64; // 2026-01-02T03:10:00Z
-    let mut v = json!({
-        "readAt": now - 60_000,
-        "stale": {"said": "x", "since": now - 86_400_000},
-        "slices": [{
-            "blocks": [{"id": "B", "at": "A1-2"}],
-            "cells": [{"signs": [{"at": "2026-01-02T00:00:00Z"}], "returned": {"at": now - 3_600_000}}]
-        }]
+    let ms = |d: i64| u64::try_from(now - d).unwrap();
+    let mut r = super::make(&dump("/w"), &who, "r0".into(), ms(60_000));
+    r.stale = Some(crate::plan::wire::PlanStale {
+        said: Some("x".into()),
+        raw: None,
+        since: ms(86_400_000),
+        since_text: None,
     });
-    with_time_texts(&mut v, now, &Default::default());
+    let sl = &mut r.slices[0];
+    sl.blocks[1].at = Some("A1-2".into());
+    sl.records[0].at = Some("2026-01-02T01:00:00Z".into());
+    let c = &mut sl.cells[1];
+    c.signs[0].at = Some("2026-01-02T00:00:00Z".into());
+    c.signs[1].at = Some("不是时刻".into());
+    c.returned = Some(crate::plan::wire::PlanReturned {
+        at: ms(3_600_000),
+        at_text: None,
+        to: None,
+        state: "returned".into(),
+        by: None,
+        child: None,
+    });
+    let mut shanghai = r.clone();
+    with_time_texts(&mut r, now, &Default::default());
+    let v = as_json(&r);
     assert_eq!(v["readAtText"], "03:09");
     assert_eq!(v["stale"]["sinceText"], "01-01 03:10");
-    assert_eq!(v["slices"][0]["cells"][0]["signs"][0]["atText"], "00:00");
-    assert_eq!(v["slices"][0]["cells"][0]["returned"]["atText"], "02:10");
-    assert!(v["slices"][0]["blocks"][0].get("atText").is_none());
-    let mut w = json!({"readAt": now});
-    with_time_texts(&mut w, now, &crate::Tz::named("Asia/Shanghai").unwrap());
-    assert_eq!(w["readAtText"], "11:10");
+    assert_eq!(v["slices"][0]["records"][0]["atText"], "01:00");
+    assert_eq!(v["slices"][0]["cells"][1]["signs"][0]["atText"], "00:00");
+    assert!(v["slices"][0]["cells"][1]["signs"][1]
+        .get("atText")
+        .is_none());
+    assert_eq!(v["slices"][0]["cells"][1]["returned"]["atText"], "02:10");
+    assert!(v["slices"][0]["blocks"][1].get("atText").is_none());
+    shanghai.read_at = u64::try_from(now).unwrap();
+    with_time_texts(
+        &mut shanghai,
+        now,
+        &crate::Tz::named("Asia/Shanghai").unwrap(),
+    );
+    assert_eq!(shanghai.read_at_text.as_deref(), Some("11:10"));
 }
 
 /// 每片的仓库位置照 pb 给的 `path`（相对工作区根），不拿片名补；读不成的片也带。
@@ -433,4 +473,17 @@ fn signs_without_a_readable_time_go_last() {
         make(&d, &who).doc["slices"][0]["recentSigns"],
         json!([{"cell": "A1-1", "i": 1}, {"cell": "A1-1", "i": 0}, {"cell": "A1", "i": 1}, {"cell": "A1", "i": 0}])
     );
+}
+
+/// pb 那一句读不成的原因不是字（形状版本没变却换了形）：照它的原文写进 `error`，那一片照常出（不拿整份去换一个「形状不对」）。
+#[test]
+fn a_reason_that_is_not_text_still_comes_through_as_its_raw_words() {
+    let mut d = dump_broken("/w");
+    d["slices"][0]["error"] = json!({"line": 3});
+    d["domains"][0]["error"] = json!(7);
+    let m = super::make(&d, &who, "r0".into(), 0);
+    assert_eq!(m.slices[0].error.as_deref(), Some(r#"{"line":3}"#));
+    assert!(m.slices[0].bare);
+    assert_eq!(m.slices[1].name, "beta");
+    assert_eq!(m.domains[0].error.as_deref(), Some("7"));
 }
