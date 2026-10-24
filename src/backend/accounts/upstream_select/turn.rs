@@ -280,13 +280,14 @@ impl Hop {
     ) -> Option<f64> {
         let tpp = x.per_pct[0].filter(|t| *t > 0)? as f64;
         let o = self.quota.entry(agent, &x.id)?;
-        let name = crate::accounts::quota::facts::slot_window(
-            Some(&o.reading),
+        let w = crate::accounts::quota::facts::pick(
+            &o.reading,
             "5h",
             now,
             &super::rotate::slot_fn(agent),
-        )?;
-        let total = o.load(&name, now)?;
+        )
+        .filter(|w| crate::accounts::quota::facts::open(w, now))?;
+        let total = o.load(&w.name, now)?;
         let spend = self.quota.spend();
         let away = (total - spend.here(agent, &x.id, now) / tpp).max(0.0);
         let near: f64 = spend

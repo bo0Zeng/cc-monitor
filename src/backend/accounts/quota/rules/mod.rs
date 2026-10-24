@@ -49,7 +49,8 @@ pub(crate) struct Barred {
 }
 
 impl Acct {
-    /// 由一条事实拼（[`super::facts::Fact`]）。
+    /// 由一条事实拼回判看的那几样（[`super::facts::Fact`]）：事实的 `blocked` 本是 [`standing`] 照同一份拼出来判的，
+    /// 这里只把挡着的那一样还原成输入（被拒 · 跟窗口无关的那几种）；「用满」由两窗的数自己说，不另带。
     pub(crate) fn of_fact(f: &super::facts::Fact) -> Self {
         use super::facts::FactWhy;
         let barred = f.blocked.as_ref().and_then(|b| match b.why {

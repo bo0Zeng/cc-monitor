@@ -297,3 +297,47 @@ mod erased_serde_free {
         }
     }
 }
+
+/// ★ 5 小时用到 100%、还没被拒的订阅号：轮换判它发不出去，`quota-read` 的「可发」也不算它，几点回来照它那一窗的重置。
+#[test]
+fn a_window_used_up_but_not_yet_refused_is_not_counted_as_sendable() {
+    let home = Home::new("full");
+    let ctx = home.ctx();
+    let own = crate::platform::fs::Own::issue_data_at(&home.root);
+    let back = NOW + 3600;
+    let win = |name: &str, used: f64, at: u64| crate::agents::QuotaWindow {
+        name: name.into(),
+        used: Some(used),
+        resets_at: Some(at),
+        warned_at: None,
+    };
+    // 起会话时没说是哪个号的那一条：登录照起它的会话（恒接得上），只剩用量这一样挡着。
+    ledger::record_seen(
+        &ctx.hop.quota,
+        &own,
+        None,
+        "claude-code",
+        crate::accounts::upstream_select::endpoint::UNDECLARED_ACCOUNT_SEGMENT,
+        crate::agents::QuotaReading {
+            status: Some(crate::agents::QuotaStatus::Allowed),
+            refused: false,
+            limiting: Some("five_hour".into()),
+            resets_at: Some(back),
+            windows: vec![
+                win("five_hour", 1.0, back),
+                win("seven_day", 0.2, NOW + 5 * 86_400),
+            ],
+            overage: None,
+        },
+        NOW,
+    );
+    let q = serde_json::to_value(crate::faces::rotation_face::quota_read_with(
+        &ctx,
+        NOW,
+        &crate::Tz::default(),
+    ))
+    .expect("json");
+    assert_eq!(q["usableNow"], json!(["api"]), "{}", q["usableNow"]);
+    assert_eq!(q["earliestReturn"]["account"], "_");
+    assert_eq!(q["earliestReturn"]["at"], back);
+}
