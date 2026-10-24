@@ -1,31 +1,33 @@
 //! 「测试连接：后端组拨号请求、拨一次、回结局（后端持有全部 SSH）」——
-//! `dial/probe.rs` 的三步各自的结局（链路那一侧用替身）：握手不成 · 通了没 hello · 通了有 hello、控制通道往返 · 到点没等到。
+//! `dial/probe.rs` 的三步各自的结局（拨号那一侧用替身：报阶段 · 开成交一条链路 · 没开成交拨号核心那一份 `DialFail`）：
+//! 握手不成 · 通了没 hello · 通了有 hello、控制通道往返 · 到点没等到。
 //! 〔「进度不许倒退」〕进度边拨边推：每条判据同时钉**推了哪几格、什么顺序、每格那一句与四段**（结局是最后一格）。
 use super::*;
+use crate::dial::Stage;
 use crate::platform::child::{Deadline, Until};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, DuplexStream};
 
 fn args() -> Value {
     json!({"ticket": "t-1", "machine": {"host": "192.0.2.2", "label": "devbox", "user": "u"}})
 }
 
 /// 跑一趟探针（发起方没带期限），收下它推的每一格（票都得是交来的那张）；回 `(结局那一格, 结局之前那几格)`。
-async fn cells_of<F, Fut>(args: &Value, serve: F) -> (Value, Vec<Value>)
+async fn cells_of<F, Fut>(args: &Value, dial: F) -> (Value, Vec<Value>)
 where
-    F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
-    Fut: std::future::Future<Output = ()> + Send + 'static,
+    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
+    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
 {
-    cells_until(args, None, serve).await
+    cells_until(args, None, dial).await
 }
 
 /// 同 [`cells_of`]，带分派那一层交来的截止时刻。
-async fn cells_until<F, Fut>(args: &Value, until: Option<Until>, serve: F) -> (Value, Vec<Value>)
+async fn cells_until<F, Fut>(args: &Value, until: Option<Until>, dial: F) -> (Value, Vec<Value>)
 where
-    F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
-    Fut: std::future::Future<Output = ()> + Send + 'static,
+    F: FnOnce(crate::dial::DialRequest, StageTx) -> Fut,
+    Fut: std::future::Future<Output = Result<Link, ssh_dial::DialFail>> + Send + 'static,
 {
     let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-    probe_with(&crate::wire::typed::take(args).unwrap(), until, serve, &tx)
+    probe_with(&crate::wire::typed::take(args).unwrap(), until, dial, &tx)
         .await
         .unwrap();
     drop(tx);
@@ -52,6 +54,42 @@ where
     (end, cells)
 }
 
+/// 开成了：那台那一侧跑 `remote`（拿上行读端 · 下行写端；随探针收掉）。
+fn opened<G, GF>(remote: G) -> Result<Link, ssh_dial::DialFail>
+where
+    G: FnOnce(DuplexStream, DuplexStream) -> GF,
+    GF: std::future::Future<Output = ()> + Send + 'static,
+{
+    let (up_w, up_r) = tokio::io::duplex(64 * 1024);
+    let (down_w, down_r) = tokio::io::duplex(2 * 1024 * 1024);
+    Ok(Link {
+        down: down_r,
+        up: up_w,
+        _serve: crate::dial::remote_ask::AbortOnDrop(tokio::spawn(remote(up_r, down_w))),
+    })
+}
+
+/// 没开成：拨号核心写好的那一句 · 复制详情 · 看到的指纹。
+fn refused(
+    error: &str,
+    detail: Option<&str>,
+    fingerprint: Option<&str>,
+) -> Result<Link, ssh_dial::DialFail> {
+    Err(ssh_dial::DialFail {
+        error: error.into(),
+        detail: detail.map(str::to_string),
+        fingerprint: fingerprint.map(str::to_string),
+        reason: None,
+        key_type: None,
+        expected_fingerprint: None,
+    })
+}
+
+/// 永远开不出来（挂在握手上）。
+async fn never() -> Result<Link, ssh_dial::DialFail> {
+    std::future::pending().await
+}
+
 /// 一格进度（没有结局）：那一句 · 语气 · 四段（解析 · 连接 · 认证 · 就绪）。
 fn step(said: &str, tone: &str, segs: [&str; 4]) -> Value {
     json!({"said": said, "tone": tone, "segs": segs_of(segs), "end": null})
@@ -73,12 +111,18 @@ fn reached_hello() -> Value {
 
 #[tokio::test]
 async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint() {
-    let (r, cells) = cells_of(&args(), |req, _up, mut down| async move {
-        assert!(req.probe && req.stages, "测试连接是短命探活、要阶段行");
-        let _ = down.write_all(b"{\"stage\":{\"kind\":\"dialing\",\"endpoint\":\"192.0.2.2:22\"}}\n").await;
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"host key mismatch\",\"detail\":\"cmd: dial\\nraw: fixture-raw-1\",\"fingerprint\":\"SHA256:x\",\"uses\":[]}\n")
-            .await;
+    let (r, cells) = cells_of(&args(), |req, stages| async move {
+        assert!(req.probe && req.stages, "测试连接是短命探活、要阶段");
+        stages
+            .send(Stage::Dialing {
+                endpoint: "192.0.2.2:22".into(),
+            })
+            .unwrap();
+        refused(
+            "host key mismatch",
+            Some("cmd: dial\nraw: fixture-raw-1"),
+            Some("SHA256:x"),
+        )
     })
     .await;
     assert_eq!(r["tone"], "fail");
@@ -90,7 +134,7 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
     assert!(r["said"].as_str().unwrap().contains("host key mismatch"));
     assert_eq!(
         r["end"]["detail"], "cmd: dial\nraw: fixture-raw-1",
-        "拨号 ack 带的复制详情原样进结局（句子里不接原话，原话在这里）"
+        "拨号核心带的复制详情原样进结局（句子里不接原话，原话在这里）"
     );
     assert!(
         r["end"].get("fingerprint").is_none(),
@@ -103,28 +147,37 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
             "now",
             ["wait"; 4]
         )],
-        "握手那几行逐条推成一格、带写好的那一句；没过握手 ⇒ 没有「已连上」那一格"
+        "握手那几步逐条推成一格、带写好的那一句；没过握手 ⇒ 没有「已连上」那一格"
     );
 }
 
-/// 握手的每一种阶段行都有那一句与四段（阶段码 ⇒ 字只在这里，界面照画）。
+/// 握手的每一种阶段都有那一句与四段（阶段码 ⇒ 字只在这里，界面照画）。
 #[tokio::test]
 async fn every_handshake_stage_is_a_written_line() {
-    let (r, cells) = cells_of(&args(), |_req, _up, mut down| async move {
+    let (r, cells) = cells_of(&args(), |_req, stages| async move {
         for st in [
-            json!({"kind": "dialing", "endpoint": "h:22"}),
-            json!({"kind": "failed", "endpoint": "h:22", "reason": "超时-甲"}),
-            json!({"kind": "hostKey", "endpoint": "h2:22", "fingerprint": "SHA256:x"}),
-            json!({"kind": "won", "endpoint": "h2:22"}),
-            json!({"kind": "auth", "ok": false, "detail": "拒绝-乙"}),
+            Stage::Dialing {
+                endpoint: "h:22".into(),
+            },
+            Stage::Failed {
+                endpoint: "h:22".into(),
+                reason: "超时-甲".into(),
+            },
+            Stage::HostKey {
+                endpoint: "h2:22".into(),
+                fingerprint: "SHA256:x".into(),
+            },
+            Stage::Won {
+                endpoint: "h2:22".into(),
+            },
+            Stage::Auth {
+                ok: false,
+                detail: Some("拒绝-乙".into()),
+            },
         ] {
-            let _ = down
-                .write_all(format!("{}\n", json!({"stage": st})).as_bytes())
-                .await;
+            stages.send(st).unwrap();
         }
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"e\",\"uses\":[]}\n")
-            .await;
+        refused("e", None, None)
     })
     .await;
     let up = ["ok", "ok", "wait", "wait"];
@@ -173,10 +226,17 @@ async fn every_handshake_stage_is_a_written_line() {
 
 #[tokio::test]
 async fn a_passed_login_lights_three_segments() {
-    let (_, cells) = cells_of(&args(), |_req, _up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"stage\":{\"kind\":\"auth\",\"ok\":true,\"detail\":null}}\n{\"stage\":{\"kind\":\"established\"}}\n")
-            .await;
+    let (_, cells) = cells_of(&args(), |_req, stages| async move {
+        for st in [
+            Stage::Auth {
+                ok: true,
+                detail: None,
+            },
+            Stage::Established,
+        ] {
+            stages.send(st).unwrap();
+        }
+        refused("e", None, None)
     })
     .await;
     assert_eq!(
@@ -197,11 +257,7 @@ fn cap_said() -> String {
 #[tokio::test(start_paused = true)]
 async fn a_stall_within_the_callers_deadline_says_that_deadline() {
     let until = Until::after(Deadline::millis(4_000));
-    let (r, _) = cells_until(&args(), until, |_req, up, down| async move {
-        let _held = (up, down);
-        std::future::pending::<()>().await
-    })
-    .await;
+    let (r, _) = cells_until(&args(), until, |_req, _stages| never()).await;
     let last = copy_text("beProbe.stage.notStarted", &[]);
     assert_eq!(
         r["said"],
@@ -221,11 +277,13 @@ async fn a_stall_within_the_callers_deadline_says_that_deadline() {
 #[tokio::test(start_paused = true)]
 async fn a_stalled_probe_says_where_it_stopped() {
     let last = copy_text("beProbe.stage.dial", &[("endpoint", "192.0.2.2:22")]);
-    let (r, cells) = cells_of(&args(), |_req, _up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"stage\":{\"kind\":\"dialing\",\"endpoint\":\"192.0.2.2:22\"}}\n")
-            .await;
-        std::future::pending::<()>().await;
+    let (r, cells) = cells_of(&args(), |_req, stages| async move {
+        stages
+            .send(Stage::Dialing {
+                endpoint: "192.0.2.2:22".into(),
+            })
+            .unwrap();
+        never().await
     })
     .await;
     assert_eq!(cells, vec![step(&last, "now", ["wait"; 4])]);
@@ -246,11 +304,7 @@ async fn a_stalled_probe_says_where_it_stopped() {
 
 #[tokio::test(start_paused = true)]
 async fn a_probe_with_no_progress_at_all_says_it_never_started() {
-    let (r, cells) = cells_of(&args(), |_req, up, down| async move {
-        let _held = (up, down);
-        std::future::pending::<()>().await
-    })
-    .await;
+    let (r, cells) = cells_of(&args(), |_req, _stages| never()).await;
     assert_eq!(cells, Vec::<Value>::new());
     let dur = cap_said();
     let last = copy_text("beProbe.stage.notStarted", &[]);
@@ -262,11 +316,11 @@ async fn a_probe_with_no_progress_at_all_says_it_never_started() {
 
 #[tokio::test(start_paused = true)]
 async fn a_probe_stalled_after_ssh_says_it_waits_for_the_backend() {
-    let (r, cells) = cells_of(&args(), |_req, _up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
-            .await;
-        std::future::pending::<()>().await;
+    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
+        opened(|up, down| async move {
+            let _held = (up, down);
+            std::future::pending::<()>().await
+        })
     })
     .await;
     assert_eq!(cells, vec![reached_ssh()]);
@@ -281,10 +335,10 @@ async fn a_probe_stalled_after_ssh_says_it_waits_for_the_backend() {
 
 #[tokio::test]
 async fn ssh_up_but_no_hello_is_its_own_verdict() {
-    let (r, cells) = cells_of(&args(), |_req, _up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":true,\"fingerprint\":\"SHA256:k\",\"endpoint\":\"192.0.2.2:22\",\"uses\":[\"stream\"]}\nnot json\n")
-            .await;
+    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
+        opened(|_up, mut down| async move {
+            let _ = down.write_all(b"not json\n").await;
+        })
     })
     .await;
     assert_eq!(
@@ -305,17 +359,19 @@ fn is_not_a_log_line(s: &str) -> bool {
 
 #[tokio::test]
 async fn a_hello_that_answers_ping_is_all_green() {
-    let (r, cells) = cells_of(&args(), |_req, up, mut down| async move {
-        let _ = down.write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n").await;
-        let _ = down
-            .write_all(b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/h/.claude\",\"capabilities\":[\"stream\"],\"commands\":[\"ping\",\"kill\",\"files-chmod\"],\"unavailable\":[{\"command\":\"kill\",\"code\":\"no_tmux\"}]}\n")
-            .await;
-        // 真去读那一问、按它的 id 回（证明往返真走了这条流）。
-        let mut lines = tokio::io::BufReader::new(up).lines();
-        let asked: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-        assert_eq!(asked["cmd"], "ping");
-        let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
-        let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
+        opened(|up, mut down| async move {
+            let _ = down
+                .write_all(b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/h/.claude\",\"capabilities\":[\"stream\"],\"commands\":[\"ping\",\"kill\",\"files-chmod\"],\"unavailable\":[{\"command\":\"kill\",\"code\":\"no_tmux\"}]}\n")
+                .await;
+            // 真去读那一问、按它的 id 回（证明往返真走了这条流）。
+            let mut lines = tokio::io::BufReader::new(up).lines();
+            let asked: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            assert_eq!(asked["cmd"], "ping");
+            let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
+            let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+        })
     })
     .await;
     assert_eq!(
@@ -352,15 +408,13 @@ async fn a_hello_that_answers_ping_is_all_green() {
 #[tokio::test]
 async fn an_old_backend_without_commands_says_too_old() {
     let (tx, rx) = tokio::sync::oneshot::channel::<tokio::io::DuplexStream>();
-    let (r, cells) = cells_of(&args(), |_req, up, mut down| async move {
-        let _ = down
-            .write_all(
-                b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n{\"kind\":\"hello\",\"v\":1}\n",
-            )
-            .await;
-        // 上行读端交给判据自己读（本任务随探针返回被收，读端不能跟着它没了）；下行随本任务收尾关掉
-        // ⇒ 探针若错发了 ping 也等不住（读到 EOF、落「不能起会话」），不会挂住判据。
-        let _ = tx.send(up);
+    let (r, cells) = cells_of(&args(), |_req, _stages| async move {
+        opened(|up, mut down| async move {
+            let _ = down.write_all(b"{\"kind\":\"hello\",\"v\":1}\n").await;
+            // 上行读端交给判据自己读（本任务随探针返回被收，读端不能跟着它没了）；下行随本任务收尾关掉
+            // ⇒ 探针若错发了 ping 也等不住（读到 EOF、落「不能起会话」），不会挂住判据。
+            let _ = tx.send(up);
+        })
     })
     .await;
     assert_eq!(cells, vec![reached_ssh(), reached_hello()]);
@@ -404,7 +458,12 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
             Ok(req) => probe_with(
                 &req,
                 None,
-                |_req, _up, _down| async move { panic!("票不对就不该拨") },
+                |_req, _stages| async move {
+                    if true {
+                        panic!("票不对就不该拨");
+                    }
+                    never().await
+                },
                 &tx,
             )
             .await
@@ -419,21 +478,20 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
 /// 通了、hello 也到了，ping 那一问回了「不行」：那台的原话进复制详情，不进那一句（`backendHello` 只留版本与「无应答」）。
 #[tokio::test]
 async fn a_ping_refusal_keeps_its_raw_words_out_of_the_sentence() {
-    let (r, _) = cells_of(&args(), |_req, up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
-            .await;
-        let _ = down
-            .write_all(
-                b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
-            )
-            .await;
-        let mut lines = tokio::io::BufReader::new(up).lines();
-        let asked: Value =
-            serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-        let reply =
-            json!({"kind": "reply", "id": asked["id"], "ok": false, "message": "fixture-raw-2"});
-        let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    let (r, _) = cells_of(&args(), |_req, _stages| async move {
+        opened(|up, mut down| async move {
+            let _ = down
+                .write_all(
+                    b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
+                )
+                .await;
+            let mut lines = tokio::io::BufReader::new(up).lines();
+            let asked: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            let reply =
+                json!({"kind": "reply", "id": asked["id"], "ok": false, "message": "fixture-raw-2"});
+            let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+        })
     })
     .await;
     assert_eq!(
@@ -455,12 +513,11 @@ async fn a_ping_refusal_keeps_its_raw_words_out_of_the_sentence() {
 /// 通了，读那台后端的首行就出错（一行超长）：那一句只说「后端探测失败」，读错的原话进复制详情。
 #[tokio::test]
 async fn a_broken_first_line_keeps_its_raw_words_out_of_the_sentence() {
-    let (r, _) = cells_of(&args(), |_req, _up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
-            .await;
-        let _ = down.write_all(&vec![b'x'; 1024 * 1024 + 16]).await;
-        let _ = down.write_all(b"\n").await;
+    let (r, _) = cells_of(&args(), |_req, _stages| async move {
+        opened(|_up, mut down| async move {
+            let _ = down.write_all(&vec![b'x'; 1024 * 1024 + 16]).await;
+            let _ = down.write_all(b"\n").await;
+        })
     })
     .await;
     assert_eq!(r["said"], copy_text("beProbe.test.probeFailed", &[]));
@@ -471,20 +528,19 @@ async fn a_broken_first_line_keeps_its_raw_words_out_of_the_sentence() {
 /// 都过了 ⇒ 没有复制详情（成功不出那一格的值）。
 #[tokio::test]
 async fn an_all_green_probe_has_no_detail() {
-    let (r, _) = cells_of(&args(), |_req, up, mut down| async move {
-        let _ = down
-            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
-            .await;
-        let _ = down
-            .write_all(
-                b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
-            )
-            .await;
-        let mut lines = tokio::io::BufReader::new(up).lines();
-        let asked: Value =
-            serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
-        let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
-        let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    let (r, _) = cells_of(&args(), |_req, _stages| async move {
+        opened(|up, mut down| async move {
+            let _ = down
+                .write_all(
+                    b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
+                )
+                .await;
+            let mut lines = tokio::io::BufReader::new(up).lines();
+            let asked: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
+            let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+        })
     })
     .await;
     assert_eq!(r["said"], copy_text("beProbe.test.ok", &[]));
