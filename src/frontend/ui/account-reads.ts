@@ -1,7 +1,7 @@
 /**
  * **账号域的读面**：经通道问那台机器（本机也一样）的后端。界面不存一份：每一次要用都问那台，推来「变了」也是重问。
  *
- * 两条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 信任预检 `accounts-trust`。会话跑在哪个号下由那台在会话的脸上说（`face.account`）。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
+ * 帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）。会话跑在哪个号下由那台在会话的脸上说（`face.account`）。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
  * 入参 · 回包按生成类型问（`callTyped`，形状由握手指纹管）；规则留在 `accounts.ts`（纯），这里只管「去问、收」。
  */
@@ -62,8 +62,6 @@ async function recallLast(origin: Origin): Promise<AccountsState["last"]> {
  * 盖的是「那台后端读一份 manifest ＋ stat 各账号目录 ＋ 读一份 apikey 表 ＋ 回程」，不含握手（长连接早就连着）。
  */
 const ACCOUNTS_BUDGET_MS = 30_000;
-/** 信任预检那一问的期限：30 秒 —— 与它上一个住址（逐次拨号那条的 `LIST_TIMEOUT`）同值。 */
-const TRUST_BUDGET_MS = 30_000;
 
 /**
  * 账号库那一家（线上的 kind，每条命令收的 `agent` 都是它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
@@ -78,25 +76,4 @@ export function accountsAgentProfile(): AgentProfileRow {
   const got = lookupAgentProfile(DEFAULT_AGENT);
   if (!got.known) throw new Error(got.message);
   return got.facts;
-}
-
-/** 换号前的目录信任预检（A5 会用；A3 先提供）。available:false → 视为"未知"，调用方只警告不拦。 */
-export interface TrustResult {
-  available: boolean;
-  trusted: boolean;
-  known: boolean;
-  error: string | null;
-}
-/**
- * Z01：`configDir` 传 `null` = 问账号 0（它的 `.claude.json` 在那台机器的 `$HOME`）。**绝不传空串**——那会被后端判成不安全路径拒掉。
- *
- * **走通道**，本机与远端同一条路。失败一律 `available:false` ＋ 一句人话（调用方按「未知信任状态」只警告不拦）。
- */
-export async function checkTrust(origin: Origin, configDir: string | null, cwd: string): Promise<TrustResult> {
-  try {
-    const got = await callTyped(origin, "accounts-trust", { configDir, cwd }, budgetWithin(TRUST_BUDGET_MS));
-    return { available: true, error: null, trusted: got.trusted, known: got.known };
-  } catch (e) {
-    return { available: false, trusted: false, known: false, error: saidOf(e) };
-  }
 }

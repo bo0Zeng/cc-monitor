@@ -225,8 +225,6 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("kept_sessions", "comm.face-a.subscribe", Side::Both),
     ("chan_want", "comm.face-a.subscribe", Side::Both),
     ("chan_stop", "comm.face-a.subscribe", Side::Both),
-    // 能力 `accounts.trust` 那一行（`check_account_trust`，A3 起 `Both`）退役：信任预检上了帧面
-    //   （`accounts-trust`），前端经通道直接问、本机与远端同一条路 ⇒ 同上，住到了帧面上。
     // 这两条（`acct-iso.check` · `acct-iso.shellinit`）退役：那台后端出成品（围栏在后端校验），界面经通道直问；两项都对称 ⇒ 不对称数不动。
     // 列 tmux 会话那两条（远端 `tmux.manage` · 本机 `tmux.local-census`，§40 九对合并「第 10 对」那一注记）出表：
     //   那台后端的 `tmux-list` 出成品、界面经通道直问，本机远端同一条路 —— 通道上的问法不是 Tauri 命令、不进本表（同上面抓屏 / 杀会话 / 送键）。

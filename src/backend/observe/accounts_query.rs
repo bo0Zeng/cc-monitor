@@ -1,9 +1,7 @@
 //! 多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的只读消费侧（写侧是 `accounts/manage/`）。
 //!
-//! 帧面两条（`inbound::REGISTRY` 的账号族，宿主 `faces/read_face.rs`）：
+//! 帧面那一条（`inbound::REGISTRY` 的账号族，宿主 `faces/read_face.rs`）：
 //! - `accounts-list` → `{meta, accounts, notice}`（[`list_product_with`]）。
-//! - `accounts-trust` → `{trusted, known}`：目标账号是否已信任该目录（换号 resume 前的预检 —— 首次用某账号进某目录，
-//!   CC 会弹信任确认，会卡住编排）；`configDir` 缺席 = 账号 0（它没有 configDir，`.claude.json` 在 `$HOME`）。
 //!
 //! # 账号 0
 //!
@@ -26,12 +24,9 @@
 //! # 凭据边界
 //!
 //! - `.credentials.json` 只 stat 存在性，绝不读内容。
-//! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；绝不回传文件内容（里面有 `mcpServers` 的环境变量，可能含 API key）。
 //! - `/proc/<pid>/environ` 只抠两个写死的键（账号配置目录 · `ANTHROPIC_BASE_URL`，键名由适配层给），不回传整个环境快照。
 //!   `ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ 只折成一个布尔（`viaRelay`），值本身不出参、不进日志。键名不接受调用方传进来
 //!   （否则就退化成「任意环境变量读」原语）；判据数着本文件生产段里读环境的调用点，多一处 ⇒ 红。
-//! - `accounts-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，否则拒绝（不退化成任意文件读）；
-//!   问账号 0 时不收路径参数。
 
 use crate::common::cells::Words;
 use crate::history::live::{parse_procstart_ticks, pidfiles};
@@ -1125,80 +1120,6 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
         .collect()
 }
 
-/// 目标账号（`configDir`）是否已信任该目录。
-/// `configDir` 必须 ∈ manifest（否则这就成了任意文件读原语）。
-fn account_trust(
-    accts_dir: &Path,
-    config_dir: &str,
-    cwd: &str,
-) -> Result<String, (String, String)> {
-    if !is_safe_config_dir(config_dir) {
-        return Err((
-            "unsafe_config_dir".into(),
-            copy_text("beAccountsQuery.accountTrust.unsafeDir", &[]).into(),
-        ));
-    }
-    let m = load_manifest(accts_dir).map_err(|e| ("manifest_unavailable".to_string(), e))?;
-    let want = norm_dir(config_dir);
-    if !m.accounts.iter().any(|a| {
-        a.config_dir
-            .as_deref()
-            .is_some_and(|c| is_safe_config_dir(c) && norm_dir(c) == want)
-    }) {
-        return Err((
-            "unknown_config_dir".into(),
-            copy_text("beAccountsQuery.accountTrust.notListed", &[]).into(),
-        ));
-    }
-    trust_in(Path::new(want), cwd)
-}
-
-/// **账号 0** 的信任预检。
-///
-/// 为什么要单独一个入口而不是给上一个传个空 `configDir`：账号 0 **没有**
-/// config dir，空串是被明令禁止的拼法（空值 ≠ 未设，见 `RawAccount::config_dir`）。
-/// 而且它的 `.claude.json` 也不在共享库里 —— 原生根是 `$HOME`（身份表 `NATIVE_IDENTITY` 里它的原生根是家目录）⇒ 路径来源本就不同，
-/// 用同一个入口只能靠哨兵值区分，那比多一个动词更容易出错。
-fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
-    let home = home_dir().ok_or_else(|| {
-        (
-            "no_home".to_string(),
-            copy_text("beAccountsQuery.accountTrustZero.noHome", &[]),
-        )
-    })?;
-    trust_in(&home, cwd)
-}
-
-/// 账号库那一家（`AccountsFace.trust_in`）对某个配置根下某个 cwd 的信任状态。没有账号库那一家 ⇒ 照实拒。
-/// 查的键与预标同一组：cwd 本身 ＋ 适配层说的那几个（[`crate::agents::TrustCells::dir_keys`]，如所在仓的根）；
-/// 任一格信任过就算信任过，任一格记过就算记过（子目录里起、信任记在仓根上的，不误报「没信任」）。
-fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
-    let face = crate::agents::account_library_face().ok_or_else(|| {
-        (
-            "no_accounts_face".to_string(),
-            "no agent here keeps an account library".to_string(),
-        )
-    })?;
-    let mut keys = vec![cwd.to_string()];
-    for k in face.trust.map(|c| (c.dir_keys)(cwd)).unwrap_or_default() {
-        if !keys.contains(&k) {
-            keys.push(k);
-        }
-    }
-    let (mut trusted, mut known) = (false, false);
-    for k in &keys {
-        let line = (face.trust_in)(root, k)?;
-        let v: serde_json::Value = serde_json::from_str(&line)
-            .map_err(|e| ("trust_line_invalid".to_string(), e.to_string()))?;
-        trusted |= v["trusted"] == serde_json::Value::Bool(true);
-        known |= v["known"] == serde_json::Value::Bool(true);
-    }
-    Ok(
-        serde_json::json!({"trusted": trusted, "known": known, "error": serde_json::Value::Null})
-            .to_string(),
-    )
-}
-
 /// `machine-interrupts` 的成品：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么。
 /// `lines` 是这台活会话那几行（[`session_accounts`]）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
 /// 活着的都算 `liveStreams`（停的那几秒 cc-monitor 里这几个不更新）。`forwards` 是这台后端账上通往 `machine` 的转发（没给 `machine` ⇒ 0）。
@@ -1256,55 +1177,6 @@ pub(crate) fn app_exit_product(kill: bool, lines: &[String], all_forwards: u32) 
 /// 帧面那几问要的「哪个会话在用哪个号」（[`session_accounts`]，只跟着家走）。
 pub(crate) fn session_lines_for_frame(agent_home: &Path) -> Vec<String> {
     session_accounts(agent_home, &resolve_accts_dir())
-}
-
-/// `accounts-trust` 的回包。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Trust {
-    /// 这个账号接受过该目录的信任对话框。
-    pub(crate) trusted: bool,
-    /// 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）。
-    pub(crate) known: bool,
-}
-
-/// 帧面 `accounts-trust`：换号前的信任预检。`config_dir == None` ⇒ 账号 0（路径写死在 `$HOME`，不收路径参数）；
-/// 否则必须 ∈ manifest（否则就成了任意文件读原语）。拒绝码原样上交。成品 `{trusted, known}`。
-pub(crate) fn trust_product(
-    config_dir: Option<&str>,
-    cwd: &str,
-) -> Result<Trust, (String, String)> {
-    trust_product_at(&resolve_accts_dir(), config_dir, cwd)
-}
-
-/// [`trust_product`] 的本体，账号库目录是参数（判据拿夹具喂它）。账号 0 那一形仍读真 `$HOME`（它不收路径）。
-pub(crate) fn trust_product_at(
-    accts_dir: &Path,
-    config_dir: Option<&str>,
-    cwd: &str,
-) -> Result<Trust, (String, String)> {
-    let line = match config_dir {
-        None => account_trust_zero(cwd)?,
-        Some(c) => account_trust(accts_dir, c, cwd)?,
-    };
-    // 本体的出参是一行 JSON（`trust_of_config` 造的）；帧面只取那两格。缺一格 ⇒ 契约坏了，不猜。
-    let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
-        (
-            "failed".to_string(),
-            crate::common::said::IntoNote::into_note(crate::common::said::Said::with_raw(
-                copy_text("beAccountsQuery.trustProductAt.unparsable", &[]),
-                e,
-            )),
-        )
-    })?;
-    match (v["trusted"].as_bool(), v["known"].as_bool()) {
-        (Some(trusted), Some(known)) => Ok(Trust { trusted, known }),
-        _ => Err((
-            "failed".to_string(),
-            crate::common::contract::malformed("trust line lacks `trusted` / `known`"),
-        )),
-    }
 }
 
 // ---------------------------------------------------------------- tests

@@ -324,64 +324,6 @@ pub(crate) fn interrupts_at(
     accounts_query::machine_product(&lines, forwards)
 }
 
-/// `accounts-trust` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct AccountsTrustReq {
-    /// 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**
-    /// （读 agent 自己那份用户级配置，不收路径）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) config_dir: Option<String>,
-    /// 要预检的工作目录。
-    pub(crate) cwd: String,
-}
-
-crate::wire::typed::codes! {
-    /// `accounts-trust` 的码（拒绝码原样，CLI 那一臂同一个函数）。agent 那一层自己的码（读 / 解析那家的配置文件失败）
-    /// 不在表里：通用层不认任何一家 agent 的名字（`agent_boundary_guard`）⇒ 落 `failed`，原因那句原样带着。
-    pub(crate) enum AccountsTrustErr {
-        Failed = "failed",
-        ManifestUnavailable = "manifest_unavailable",
-        NoHome = "no_home",
-        UnknownConfigDir = "unknown_config_dir",
-        UnsafeConfigDir = "unsafe_config_dir",
-    }
-}
-
-/// `accounts-trust`：换号前的信任预检（读一份 manifest ＋ 一份用户级配置 ⇒ 阻塞档）。
-pub(crate) struct AccountsTrust;
-
-impl crate::wire::typed::Command for AccountsTrust {
-    const NAME: &'static str = "accounts-trust";
-    type Req = AccountsTrustReq;
-    type Reply = crate::observe::accounts_query::Trust;
-    type Err = AccountsTrustErr;
-}
-
-impl crate::wire::typed::Handle for AccountsTrust {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: AccountsTrustReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::accounts_query::Trust, AccountsTrustErr>,
-    > + Send
-           + 'static {
-        async move {
-            crate::observe::accounts_query::trust_product(req.config_dir.as_deref(), &req.cwd)
-                .map_err(|(c, m)| {
-                    crate::wire::typed::of_fail(
-                        crate::wire::spec::Fail::new(&c, m),
-                        AccountsTrustErr::Failed,
-                    )
-                })
-        }
-    }
-}
-
 /// 过围栏 ⇒ 这份记录是哪一家的（注册表按它落在谁的根下认），解释交那一家。
 pub(crate) fn record_face(
     home: &std::path::Path,

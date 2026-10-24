@@ -1,5 +1,5 @@
-//! 资产目录那一族（`assets-catalog` · `assets-catalog-merge` · `ext-note-set` · `skill-install-record`）的回包是线上形：
-//! 前两条壳读、后两条界面读 / 本机后端自己经写口读。换形之前用旧代码跑出字节、钉成字面量；换形之后逐字节比
+//! 资产目录那一族（`assets-catalog` · `assets-catalog-merge` · `ext-note-set`）的回包是线上形：
+//! 前两条壳读、`ext-note-set` 界面读。换形之前用旧代码跑出字节、钉成字面量；换形之后逐字节比
 //! （经 `serde_json::Value` 那一跳，同帧面：键按字典序）。临时目录换成 `<D>`。没有重写开关：对不上就是线上形变了。
 
 use serde_json::{json, Value};
@@ -134,63 +134,12 @@ fn ext_note_set_keeps_its_wire_bytes() {
     );
 }
 
-#[test]
-fn skill_install_record_keeps_its_wire_bytes() {
-    let d = tmp("ledger");
-    let own = crate::platform::fs::Own::issue_at(&d);
-    let root = d.join("skills");
-    let rec = |a: Value| {
-        let got = wire(&super::skill_ledger::record_at(&own, Some(&root), &take(a)).unwrap());
-        got.replace(&d.display().to_string(), "<D>")
-    };
-    let digest = "0123456789abcdef";
-    assert_eq!(
-        rec(
-            json!({"op": "add", "name": "s", "files": {"a.md": {"digest": digest, "created": true}, "b.md": {"digest": digest, "created": false}}})
-        ),
-        r#"{"changed":true,"dir":"<D>/skills/s","name":"s","remaining":2}"#
-    );
-    assert_eq!(
-        rec(
-            json!({"op": "add", "name": "s", "files": {"a.md": {"digest": digest, "created": true}}})
-        ),
-        r#"{"changed":false,"dir":"<D>/skills/s","name":"s","remaining":2}"#
-    );
-    assert_eq!(
-        rec(
-            json!({"op": "add", "name": "h", "at": "home", "files": {"x/h.md": {"digest": digest, "created": true}}})
-        ),
-        r#"{"changed":true,"dir":"<D>","name":"h","remaining":1}"#
-    );
-    assert_eq!(
-        rec(json!({"op": "drop", "dir": root.join("s"), "paths": ["a.md"]})),
-        r#"{"changed":true,"dir":"<D>/skills/s","name":"s","remaining":1}"#
-    );
-    assert_eq!(
-        rec(json!({"op": "drop", "dir": root.join("s"), "paths": []})),
-        r#"{"changed":false,"dir":"<D>/skills/s","name":"s","remaining":1}"#
-    );
-    assert_eq!(
-        rec(json!({"op": "mcp-add", "file": "/p/.mcp.json", "name": "m", "digest": digest})),
-        r#"{"changed":true,"dir":"/p/.mcp.json","name":"m","remaining":1}"#
-    );
-    assert_eq!(
-        rec(json!({"op": "mcp-drop", "file": "/p/.mcp.json", "name": "m"})),
-        r#"{"changed":true,"dir":"/p/.mcp.json","name":"m","remaining":0}"#
-    );
-    assert_eq!(
-        rec(json!({"op": "mcp-drop", "file": "/p/.mcp.json", "name": "m"})),
-        r#"{"changed":false,"dir":"/p/.mcp.json","name":"m","remaining":0}"#
-    );
-    let _ = std::fs::remove_dir_all(&d);
-}
 /// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
 #[test]
 fn an_extra_key_is_bad_args_on_the_frame_path() {
     use crate::wire::spec::{invoke, Prepared};
     let d = tmp("extra");
     let own = crate::platform::fs::Own::issue_at(&d);
-    let digest = "0123456789abcdef";
     let cases = [
         ("assets-catalog", json!({ "bogus": 1 })),
         ("mcp-read", json!({ "projectDir": null, "bogus": 1 })),
@@ -212,10 +161,6 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
         (
             "ext-note-set",
             json!({ "kind": "skill", "name": "a", "text": "t", "bogus": 1 }),
-        ),
-        (
-            "skill-install-record",
-            json!({ "op": "mcp-add", "file": "/p/.mcp.json", "name": "m", "digest": digest, "bogus": 1 }),
         ),
     ];
     for (cmd, args) in cases {

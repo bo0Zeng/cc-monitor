@@ -1,10 +1,9 @@
-//! 资产目录那一族的四条（typed）：`assets-catalog` · `assets-catalog-merge` · `ext-note-set` · `skill-install-record`。
-//! 本体在 `assets/`（`asset_catalog` · `ext` · `skill_ledger`），这里只接上名字 · 入参 · 回包 · 码表与写句柄档：
-//! 四条都只写后端自家状态（`~/.cc-monitor/` 底下的目录 / 装记录）⇒ 只要写句柄那一档，一个用户文件都不写。
+//! 资产目录那一族的四条（typed）：`assets-catalog` · `assets-catalog-merge` · `ext-note-set` · `ext-list-here`。
+//! 本体在 `assets/`（`asset_catalog` · `ext`），这里只接上名字 · 入参 · 回包 · 码表与写句柄档：
+//! 写的那几条只写后端自家状态（`~/.cc-monitor/` 底下的目录）⇒ 只要写句柄那一档，一个用户文件都不写。
 
 use crate::assets::asset_catalog;
 use crate::assets::ext;
-use crate::assets::skill_ledger;
 use crate::wire::typed::{self, codes, Command, NoArgs};
 
 codes! {
@@ -95,47 +94,6 @@ impl crate::wire::typed::Handle for ExtNoteSetCmd {
 
             ext::answer_note(&req, &|k, t| asset_catalog::answer_note(k, t, own))
                 .map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
-        }
-    }
-}
-
-codes! {
-    /// `skill-install-record` 的码。
-    pub(crate) enum RecordErr {
-        /// 家目录 · 建目录 · 拿锁 · 写没成 · skill 根算不出。
-        IoFailed = "io_failed",
-        /// 盘上那份装记录读不懂（不覆盖）。
-        LedgerUnreadable = "ledger_unreadable",
-        /// `drop` 的那个目录不在记录里。
-        NotFound = "not_found",
-        /// 一趟 `add` 的文件超过上限。
-        TooLarge = "too_large",
-    }
-}
-
-/// `skill-install-record`：装记录的写口（skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。
-pub(crate) struct SkillInstallRecordCmd;
-
-impl Command for SkillInstallRecordCmd {
-    const NAME: &'static str = "skill-install-record";
-    type Req = skill_ledger::RecordReq;
-    type Reply = skill_ledger::RecordReply;
-    type Err = RecordErr;
-}
-
-impl crate::wire::typed::Handle for SkillInstallRecordCmd {
-    type Needs = crate::wire::typed::needs::Own;
-    fn run(
-        req: skill_ledger::RecordReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<skill_ledger::RecordReply, RecordErr>> + Send + 'static
-    {
-        let (_cx, needs) = cx.split();
-        async move {
-            let own = &needs;
-
-            skill_ledger::answer_record(&req, own)
-                .map_err(|f| typed::of_fail(f, RecordErr::IoFailed))
         }
     }
 }

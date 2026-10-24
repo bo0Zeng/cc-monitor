@@ -19,7 +19,6 @@ export const ACCOUNTS = [
 
 export function defaultOps(): Record<string, OpHandler> {
   return {
-    "accounts-trust": () => ({ known: true, trusted: true }),
     // 账号页打开时顺手核一次：缺省世界里都对得上。
     "accounts-verify": () => ({ pass: true, fails: 0, warns: 0, checks: [] }),
     // 账号库的改动类（新建 · 设默认 · 删 · 修复 · 回滚）：预演回一步、真做回已做（形状照 `AccountChange`）。

@@ -33,7 +33,7 @@ pub mod asset_catalog; // 资产目录：帧面 `assets-catalog` / `assets-catal
 pub mod asset_sync; // 资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）
 pub mod mcp_sync; // MCP 资产同步的判定：（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
 pub mod skill_install; // skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
-pub mod skill_ledger; // skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，经 `Own`）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写
+pub mod skill_ledger; // skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，经 `Own`）：装完记 / 卸掉摘只在本进程里经写句柄记（`skill_flow` · `ext` · `mcp_sync_flow` · `cc_bus_install`）。一个用户文件都不写
 
 // 资产目录那一族四条的线上字节（换形前钉、换形后比）。
 #[cfg(test)]

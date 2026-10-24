@@ -298,30 +298,26 @@ export async function recordReadReply(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 账号那两问（清单 · 信任预检）改走通道之后，判据那一侧的翻译
+// 账号清单那一问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它们从前是三条 Tauri 命令，判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
-// 今天它们是一发 `chan_call`（op = `accounts-list` / `accounts-trust`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
+// 它从前是两条 Tauri 命令，判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}`）。
+// 今天它是一发 `chan_call`（op = `accounts-list`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
-//   出的那几个（生成类型 `AccountsList` · `Trust`）。
+//   出的那几个（生成类型 `AccountsList`）。
 // ⚠ 旧回包里「老后端」那几种缺格（账号缺 `authKind` / `authReady`、`meta: null`）在成品里不存在 ⇒ 按旧消费侧的回落补齐：
 //   `authKind` 缺 ⇒ 订阅 · `authReady` 缺 ⇒ `loggedIn`（`accountReady` 那条旧回落）· `meta: null` ⇒ 没启用（`deriveUi` 那一档）。
 
-/** 账号那两问各自的名字（判据里的叫法 = 旧命令名，只为让断言读起来是「哪一问」）。 */
-export type AccountRead = "list_remote_accounts" | "list_local_accounts" | "check_account_trust";
+/** 账号清单那一问的两种名字（判据里的叫法 = 旧命令名，只为让断言读起来是「哪一问」）。 */
+export type AccountRead = "list_remote_accounts" | "list_local_accounts";
 
-/** 一发 `chan_call` 若是账号那两问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
+/** 一发 `chan_call` 若是账号清单那一问 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
 export function accountReadOf(cmd: string, args: unknown): [AccountRead, Record<string, unknown>] | null {
   if (cmd !== "chan_call") return null;
   const a = args as ChanCallArgs;
   if (a.op === "accounts-list") {
     return a.origin === "<local>" ? ["list_local_accounts", {}] : ["list_remote_accounts", { origin: a.origin }];
-  }
-  if (a.op === "accounts-trust") {
-    const body = chanArgsJson(a) as Record<string, unknown>;
-    return ["check_account_trust", { origin: a.origin, configDir: body.configDir, cwd: body.cwd }];
   }
   return null;
 }
@@ -371,7 +367,7 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
  * 回包本身是一次拒绝（旧判据用 `mockRejectedValue` 表示「invoke 抛了」）⇒ 同样按对端说不行；
  * 回包是 `undefined` ⇒ 原样 `undefined`（让「形状不对」那一格照样可测）。
  */
-export async function accountReadReply(which: AccountRead, res: unknown): Promise<ArrayBuffer | undefined> {
+export async function accountReadReply(_which: AccountRead, res: unknown): Promise<ArrayBuffer | undefined> {
   let r: Record<string, unknown> | undefined;
   try {
     r = (await res) as Record<string, unknown> | undefined;
@@ -380,7 +376,6 @@ export async function accountReadReply(which: AccountRead, res: unknown): Promis
   }
   if (r === undefined) return undefined;
   if (r.available === false) throw refusedReply("failed", String(r.error ?? ""));
-  if (which === "check_account_trust") return chanReply({ trusted: r.trusted ?? false, known: r.known ?? false });
   const accounts = Array.isArray(r.accounts) ? (r.accounts as Record<string, unknown>[]).map(productAccount) : [];
   const m = r.meta as Record<string, unknown> | null | undefined;
   const meta = {

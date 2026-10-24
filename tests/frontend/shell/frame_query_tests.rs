@@ -15,10 +15,6 @@ const MOVED: &[(&str, &str)] = &[
     ("--list-user-inputs", "history-user-inputs"),
     // 会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
-    // 换号前的信任预检（随账号域一起上帧面）。两形合进**一条**帧命令
-    //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
-    ("--account-trust", "accounts-trust"),
-    ("--account-trust-zero", "accounts-trust"),
 ];
 
 /// **生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
@@ -136,14 +132,12 @@ fn backend_read_face_commands() -> Vec<String> {
 /// ★ 两向相等：[`MOVED`] 右列 ∪ [`BORN_ON_FRAME`] == 后端真登记、交给只读宿主的那几条。
 #[test]
 fn the_moved_table_is_what_the_backend_registers() {
-    // 右列按集合比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
-    let mut right = sorted(
+    let right = sorted(
         MOVED
             .iter()
             .map(|(_, c)| c.to_string())
             .chain(BORN_ON_FRAME.iter().map(|c| c.to_string())),
     );
-    right.dedup();
     assert_eq!(
         right,
         backend_read_face_commands(),
@@ -236,16 +230,11 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-find",
         "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search_rules` · 适配层记录文本），monitor 那份核头尾删了",
     ),
-    // 账号域那两条（账号域读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
+    // 账号域那一条（账号域读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
          monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 按生成类型问，本机与远端同一条路",
-    ),
-    (
-        "accounts-trust",
-        "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
-         界面经 `src/frontend/ui/account-reads.ts::checkTrust` 问",
     ),
 ];
 
@@ -940,8 +929,7 @@ fn chan_ops_in(
 /// （C4a 立它时是 C1 那八条；SR1a 同波又搬上来三条 ⇒ 今天十一条。）
 #[test]
 fn the_eight_are_partitioned_into_channeled_and_held_back() {
-    let mut moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
-    moved.dedup(); // 信任预检两形合进一条帧命令
+    let moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)

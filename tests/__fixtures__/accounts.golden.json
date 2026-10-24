@@ -91,9 +91,5 @@
       "updatedAt": "t0"
     },
     "notice": null
-  },
-  "accounts-trust": {
-    "known": true,
-    "trusted": true
   }
 }

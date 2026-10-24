@@ -195,8 +195,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--sessions-needs",
     // 问到各台的需手动、合成一个先后（`sessions-needs-merge`）派生的 CLI 面（一次性进程里可达表是空的 ⇒ 只答得出本机，别的台照实进 `down`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--sessions-needs-merge",
-    // 帧命令 `accounts-trust` 自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
-    "--accounts-trust",
     // 帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--backend-log",
@@ -332,8 +330,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
-    // 装记录那一条（`skill-install-record`）派生的 CLI 面。
-    "--skill-install-record",
     // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
