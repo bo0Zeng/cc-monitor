@@ -521,7 +521,8 @@ impl StageSink {
         }
     }
 
-    fn drain(&self) -> Vec<Stage> {
+    /// 攒下的阶段照到达顺序取走（写阶段行那一处 · 进程内要阶段的调用方：测试连接）。
+    pub fn drain(&self) -> Vec<Stage> {
         std::mem::take(&mut *self.buf.lock().unwrap_or_else(|e| e.into_inner()))
     }
 }
