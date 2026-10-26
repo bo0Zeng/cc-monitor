@@ -1,0 +1,607 @@
+//! **组**：一群会话 ＋ 一个名字。桌面标签页 · 手机分组 · cc-bus 范围 · agent 自问读的都是这一份。
+//!
+//! ```text
+//! 组本身 {id, name, made}   住家那一台：注解文件 `history-metadata.json` 的 `groups` 那一节（history_annotations::GroupRec）
+//! 组员关系 · 固定           住会话那一台：那条会话注解上的 `groups` · `pinned` 两格（一条会话可在几组）
+//!
+//! groups-here（每台）   ⇒ 家在这台的组 ＋ 这台带组或固定的会话（各带此刻活不活，问 live_table）
+//! groups-read {machines}（本机后端）⇒ remote_ask::ask_each 问各台 groups-here、并成一份：
+//!     名字照家那台 · 组员照各台 · 组头计数与字在这里数一次；某台没答 ⇒ 照它上一次答的那份、标上次所知（那台的组员画成看不见）；
+//!     从没答过 ⇒ 那台读不到、家在那台的组名字不知道（组照出、组员不漏）；各台都答了却谁也没有那一组 ⇒ 已解散、不出
+//! groups-write（家那一台）⇒ 建 · 改名 · 解散；挪成员 · 固定走 history-annotate（成员那一台）
+//! ```
+//!
+//! - 组 id 全局不重（建的那一台随机起），所以注解上只记 id，不记家在哪台（机器名是相对问的那一端的，记了也对不上）。
+//! - 上次所知那一份只在本进程内存里（缓存，按机器名），本机后端重启后第一问之前没有。
+//! - 等多久只归发起方（请求信封 `within_ms`）；问到别的台而它缺 ⇒ `bad_args`。
+
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
+use cmd_wire::cells::Words;
+use cmd_wire::frame::{SessionDot, SessionFace};
+use cmd_wire::listing::RowLife;
+use cmd_wire::Machine;
+use serde::{Deserialize, Serialize};
+
+use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Table};
+use super::history_browse::Read;
+use crate::dial::remote_ask::{Remote, Said};
+use crate::wire::typed::{codes, Command};
+use crate::wire::SessionFaceExt as _;
+
+// ───────────────────────── 这台那一半：groups-here ─────────────────────────
+
+/// 家在这台的一组。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HereGroup {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) made: i64,
+}
+
+/// 这台一条带组或固定的会话：在哪几组 · 固没固定 · 此刻活不活（这台判的）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HereMember {
+    pub(crate) sid: String,
+    pub(crate) groups: Vec<String>,
+    pub(crate) pinned: bool,
+    pub(crate) life: RowLife,
+}
+
+/// `groups-here` 的回包：这台那一半。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupsHere {
+    pub(crate) groups: Vec<HereGroup>,
+    pub(crate) members: Vec<HereMember>,
+}
+
+/// 这台那一半（注解 · 组本 · 活不活由调用方给）：组照 id 排；会话只带有组或固定的，照 sid 排。
+pub(crate) fn here_of(table: &Table, book: &Book, life: impl Fn(&str) -> RowLife) -> GroupsHere {
+    GroupsHere {
+        groups: book
+            .iter()
+            .map(|(id, g)| HereGroup {
+                id: id.clone(),
+                name: g.name.clone(),
+                made: g.made,
+            })
+            .collect(),
+        members: table
+            .iter()
+            .filter(|(_, e)| !e.groups.is_empty() || e.pinned)
+            .map(|(sid, e)| HereMember {
+                sid: sid.clone(),
+                groups: e.groups.clone(),
+                pinned: e.pinned,
+                life: life(sid),
+            })
+            .collect(),
+    }
+}
+
+/// 这台的组那一半此刻的记号（不看活不活）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
+pub(crate) fn mark(table: &Table, book: &Book) -> u64 {
+    let half = here_of(table, book, |_| RowLife::Ended);
+    let bytes = serde_json::to_vec(&half).unwrap_or_default();
+    crate::common::digest::Fnv::default().part(&bytes).value()
+}
+
+/// 这台那一半（生产：这台那份注解文件 ＋ 这台那张活会话表）。推不出家 · 读不懂 ⇒ 那一句。
+fn here_now() -> Result<GroupsHere, String> {
+    let (table, book) = notes::load_all().unwrap_or_else(|| {
+        Err(copy_core::copy_text(
+            "beHistoryAnnotations.needPath.unknown",
+            &[("env", creds_core::store::DATA_DIR_ENV)],
+        ))
+    })?;
+    let live = super::live_table::now(&super::listing::agent_home());
+    Ok(here_of(&table, &book, |sid| live.life_of(sid)))
+}
+
+codes! {
+    /// `groups-here` 的码。
+    pub(crate) enum GroupsHereErr {
+        /// 推不出家 · 注解文件读不懂。
+        Failed = "failed",
+    }
+}
+
+/// `groups-here`：这台那一半（别的后端经 `--resident-call` 问它，本机后端的 `groups-read` 同进程问它）。
+pub(crate) struct GroupsHereCmd;
+
+impl Command for GroupsHereCmd {
+    const NAME: &'static str = "groups-here";
+    type Req = crate::wire::typed::NoArgs;
+    type Reply = GroupsHere;
+    type Err = GroupsHereErr;
+}
+
+impl crate::wire::typed::Handle for GroupsHereCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: crate::wire::typed::NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<GroupsHere, GroupsHereErr>> + Send + 'static {
+        async move { here_now().map_err(GroupsHereErr::Failed) }
+    }
+}
+
+// ───────────────────────── 几台并成一份：groups-read ─────────────────────────
+
+/// `groups-read` 的入参：问哪几台（本机逐字 `"<local>"`）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct GroupsReadReq {
+    #[cfg_attr(test, ts(as = "Vec<String>"))]
+    pub(crate) machines: Vec<Machine>,
+}
+
+/// 一组的名字此刻从哪来。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "is", rename_all = "snake_case")]
+pub(crate) enum GroupKnown {
+    /// 家那台这一问答了。
+    Now,
+    /// 家那台这一问没答：名字是上一次答的（`at` ＝ 那一份几时读到的，写好的字）。
+    Before {
+        #[cfg_attr(test, ts(type = "string"))]
+        at: Words,
+    },
+    /// 哪台是家不知道（有台没答过）：名字缺。
+    Unknown,
+}
+
+/// 组里一条会话：哪台 · 哪条 · 固没固定 · 那张脸（那台这一问没答 ⇒ 看不见的那一张）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupMember {
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: Machine,
+    pub(crate) sid: String,
+    pub(crate) pinned: bool,
+    pub(crate) face: SessionFace,
+}
+
+/// 组头那一颗点：几条 ＋ 那颗点的名字（照组员那张脸上的字）。只出有的那几样，序：需手动 · 在跑 · 后台。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupCount {
+    pub(crate) dot: SessionDot,
+    pub(crate) n: u32,
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) word: Words,
+}
+
+/// 并好的一组。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupRead {
+    pub(crate) id: String,
+    /// 名字（家那台没答过 ⇒ 缺）。
+    pub(crate) name: Option<String>,
+    /// 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
+    #[cfg_attr(test, ts(as = "Option<String>"))]
+    pub(crate) home: Option<Machine>,
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) made: Option<i64>,
+    pub(crate) known: GroupKnown,
+    /// 组员：照问的台序、再照 sid。
+    pub(crate) members: Vec<GroupMember>,
+    pub(crate) counts: Vec<GroupCount>,
+}
+
+/// 一台这一问的结局（同历史页那一列那一格：答了 · 上次所知 · 读不到）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupsMachine {
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: Machine,
+    pub(crate) read: Read,
+}
+
+/// `groups-read` 的回包。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupsRead {
+    /// 各组：照建的先后、再照 id。
+    pub(crate) groups: Vec<GroupRead>,
+    /// 各台固定的会话（不论在不在组里），同组员那一形。
+    pub(crate) pinned: Vec<GroupMember>,
+    /// 问的每一台这一问的结局（照问的先后）。
+    pub(crate) machines: Vec<GroupsMachine>,
+}
+
+codes! {
+    /// `groups-read` 自己没有别的码（哪台没问到只进回包的 `machines`）。
+    pub(crate) enum GroupsReadErr {}
+}
+
+/// 各台上一次答的那一半 ＋ 那一刻（毫秒）：缓存，只在本进程。
+#[derive(Default)]
+pub(crate) struct Kept(Mutex<BTreeMap<String, (GroupsHere, i64)>>);
+
+impl Kept {
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, (GroupsHere, i64)>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+static KEPT: std::sync::LazyLock<Kept> = std::sync::LazyLock::new(Kept::default);
+
+/// `groups-read`：本机后端问到各台的那一半（本机同进程、别的台经 `--resident-call` 问它的常驻 `groups-here`），并成一份再答。
+pub(crate) struct GroupsReadCmd;
+
+impl Command for GroupsReadCmd {
+    const NAME: &'static str = "groups-read";
+    type Req = GroupsReadReq;
+    type Reply = GroupsRead;
+    type Err = GroupsReadErr;
+}
+
+impl crate::wire::typed::Handle for GroupsReadCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: GroupsReadReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<GroupsRead, GroupsReadErr>> + Send + 'static {
+        async move {
+            let local = async {
+                tokio::task::spawn_blocking(here_now)
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r)
+                    .map_err(|message| Said {
+                        code: None,
+                        message,
+                    })
+            };
+            read_with(
+                &req.machines,
+                local,
+                &cx.tz,
+                cx.until,
+                &crate::dial::remote_ask::REACH,
+                &crate::dial::remote_ask::DialRemote,
+                &KEPT,
+                crate::common::time::now_ms(),
+            )
+            .await
+        }
+    }
+}
+
+/// 一台这一问拿到的那一半：这一问答的 · 上一次答的 · 没有。
+enum Half {
+    Now(GroupsHere),
+    Before(GroupsHere, Words),
+    None,
+}
+
+/// [`GroupsReadCmd`] 的本体（本机那一台怎么答 · 可达表 · 对面 · 缓存 · 此刻由调用方给）。
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn read_with(
+    machines: &[Machine],
+    local: impl std::future::Future<Output = Result<GroupsHere, Said>> + Send,
+    tz: &crate::common::time::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn Remote,
+    kept: &Kept,
+    now_ms: i64,
+) -> Result<GroupsRead, GroupsReadErr> {
+    let got = crate::dial::remote_ask::ask_each::<GroupsHereCmd, _>(
+        machines,
+        &crate::wire::typed::NoArgs::default(),
+        local,
+        tz,
+        until,
+        table,
+        remote,
+    )
+    .await
+    .map_err(GroupsReadErr::BadArgs)?;
+    let mut halves: Vec<(Machine, Half)> = Vec::new();
+    let mut heads = Vec::new();
+    {
+        let mut k = kept.lock();
+        for (origin, r) in got {
+            let key = origin.as_wire_str().to_string();
+            let (half, read) = match r {
+                Ok(h) => {
+                    k.insert(key, (h.clone(), now_ms));
+                    (Half::Now(h), Read::Ok { notice: None })
+                }
+                Err(s) => match k.get(&key) {
+                    Some((h, at_ms)) => {
+                        let at = crate::common::time::history_at_text(*at_ms, now_ms, tz);
+                        (
+                            Half::Before(h.clone(), at.clone()),
+                            Read::Stale { why: s.message, at },
+                        )
+                    }
+                    None => (Half::None, Read::Failed { why: s.message }),
+                },
+            };
+            heads.push(GroupsMachine {
+                origin: origin.clone(),
+                read,
+            });
+            halves.push((origin, half));
+        }
+    }
+    Ok(merge(&halves, heads))
+}
+
+/// 并：组记录照找到它的那台（这一问答的优先），组员照各台；判定 · 计数只在这里。
+fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead {
+    let someone_silent = halves.iter().any(|(_, h)| matches!(h, Half::None));
+    // 组 id ⇒ (家, 那一组, 名字从哪来)
+    let mut records: BTreeMap<&str, (&Machine, &HereGroup, GroupKnown)> = BTreeMap::new();
+    for (origin, half) in halves {
+        let (here, known) = match half {
+            Half::Now(h) => (h, GroupKnown::Now),
+            Half::Before(h, at) => (h, GroupKnown::Before { at: at.clone() }),
+            Half::None => continue,
+        };
+        for g in &here.groups {
+            let better = match records.get(g.id.as_str()) {
+                None => true,
+                Some((_, _, k)) => *k != GroupKnown::Now && known == GroupKnown::Now,
+            };
+            if better {
+                records.insert(g.id.as_str(), (origin, g, known.clone()));
+            }
+        }
+    }
+    let mut members: BTreeMap<&str, Vec<GroupMember>> = BTreeMap::new();
+    let mut pinned = Vec::new();
+    for (origin, half) in halves {
+        let (here, seen) = match half {
+            Half::Now(h) => (h, true),
+            Half::Before(h, _) => (h, false),
+            Half::None => continue,
+        };
+        for m in &here.members {
+            let face = if seen {
+                SessionFace::of(crate::wire::Life::of_row(Some(m.life.clone())))
+            } else {
+                SessionFace::of(crate::wire::Life::Unseen)
+            };
+            let row = GroupMember {
+                origin: origin.clone(),
+                sid: m.sid.clone(),
+                pinned: m.pinned,
+                face,
+            };
+            if m.pinned {
+                pinned.push(row.clone());
+            }
+            for g in &m.groups {
+                members.entry(g.as_str()).or_default().push(row.clone());
+            }
+        }
+    }
+    let mut ids: Vec<&str> = records.keys().copied().collect();
+    if someone_silent {
+        ids.extend(
+            members
+                .keys()
+                .copied()
+                .filter(|id| !records.contains_key(id)),
+        );
+    }
+    let mut groups: Vec<GroupRead> = ids
+        .into_iter()
+        .map(|id| {
+            let rows = members.remove(id).unwrap_or_default();
+            let counts = counts_of(&rows);
+            match records.get(id) {
+                Some((home, g, known)) => GroupRead {
+                    id: id.to_string(),
+                    name: Some(g.name.clone()),
+                    home: Some((*home).clone()),
+                    made: Some(g.made),
+                    known: known.clone(),
+                    members: rows,
+                    counts,
+                },
+                None => GroupRead {
+                    id: id.to_string(),
+                    name: None,
+                    home: None,
+                    made: None,
+                    known: GroupKnown::Unknown,
+                    members: rows,
+                    counts,
+                },
+            }
+        })
+        .collect();
+    groups.sort_by(|a, b| {
+        (a.made.unwrap_or(i64::MAX), &a.id).cmp(&(b.made.unwrap_or(i64::MAX), &b.id))
+    });
+    GroupsRead {
+        groups,
+        pinned,
+        machines,
+    }
+}
+
+/// 组头那几颗点：需手动 · 在跑 · 后台各几条，名字照第一条那张脸上的字。
+fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
+    [
+        SessionDot::NeedsYou,
+        SessionDot::Running,
+        SessionDot::Background,
+    ]
+    .into_iter()
+    .filter_map(|dot| {
+        let mut hit = rows.iter().filter(|r| r.face.dot == dot);
+        let first = hit.next()?;
+        Some(GroupCount {
+            dot,
+            n: u32::try_from(1 + hit.count()).unwrap_or(u32::MAX),
+            word: first.face.name.clone(),
+        })
+    })
+    .collect()
+}
+
+// ───────────────────────── 家那一台：groups-write ─────────────────────────
+
+/// 组名至多几个字。
+pub(crate) const NAME_MAX: usize = 80;
+
+/// `groups-write` 的入参：建 · 改名 · 解散（只改家在这台的）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum GroupsWriteReq {
+    Make { name: String },
+    Rename { id: String, name: String },
+    Dissolve { id: String },
+}
+
+/// `groups-write` 的回包：建了 · 改了的那一组，或解散了哪一组。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "is", rename_all = "snake_case")]
+pub(crate) enum GroupsWritten {
+    Made(HereGroup),
+    Renamed(HereGroup),
+    Dissolved { id: String },
+}
+
+codes! {
+    /// `groups-write` 的码（同注解那几条：读不懂拒写 · 写不下去 · 推不出家）。
+    pub(crate) enum GroupsWriteErr {
+        Unreadable = "annotations_unreadable",
+        IoFailed = "io_failed",
+        NoAnnotations = "no_annotations",
+    }
+}
+
+fn write_err(e: AnnotationErr) -> GroupsWriteErr {
+    match e {
+        AnnotationErr::BadArgs(s) => GroupsWriteErr::BadArgs(s),
+        AnnotationErr::Unreadable(s) => GroupsWriteErr::Unreadable(s),
+        AnnotationErr::IoFailed(s) => GroupsWriteErr::IoFailed(s),
+        AnnotationErr::NoAnnotations(s) => GroupsWriteErr::NoAnnotations(s),
+    }
+}
+
+/// 名字：去掉首尾空白，空 · 超过 [`NAME_MAX`] 个字 · 带控制字符 ⇒ `bad_args`。
+fn checked_name(name: &str) -> Result<String, AnnotationErr> {
+    let n = name.trim();
+    if n.is_empty() || n.chars().count() > NAME_MAX || n.chars().any(char::is_control) {
+        return Err(AnnotationErr::BadArgs(crate::common::contract::malformed(
+            &format!("a group name must be 1..={NAME_MAX} characters on one line"),
+        )));
+    }
+    Ok(n.to_string())
+}
+
+/// 家不在这台的组：改名 · 解散问它家那一台（`groups-read` 交了 `home`）。
+fn not_here(id: &str) -> AnnotationErr {
+    AnnotationErr::BadArgs(crate::common::contract::malformed(&format!(
+        "group {id:?} does not live on this machine: ask its home"
+    )))
+}
+
+/// 新组的 id：进程随机种子 ＋ 进程内计数 ＋ 此刻，不可猜、不重。
+fn new_id(now: i64) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u64(SEQ.fetch_add(1, Ordering::Relaxed));
+    h.write_i64(now);
+    h.write_u32(std::process::id());
+    format!("g{:016x}", h.finish())
+}
+
+/// [`GroupsWriteCmd`] 的本体：「现在」由调用方给。
+pub(crate) fn write_at(
+    own: &crate::platform::fs::Own,
+    req: GroupsWriteReq,
+    now: i64,
+) -> Result<GroupsWritten, GroupsWriteErr> {
+    notes::edit_book_at(own, |book| match req {
+        GroupsWriteReq::Make { name } => {
+            let name = checked_name(&name)?;
+            let id = new_id(now);
+            book.insert(
+                id.clone(),
+                GroupRec {
+                    name: name.clone(),
+                    made: now,
+                },
+            );
+            Ok(GroupsWritten::Made(HereGroup {
+                id,
+                name,
+                made: now,
+            }))
+        }
+        GroupsWriteReq::Rename { id, name } => {
+            let name = checked_name(&name)?;
+            let g = book.get_mut(&id).ok_or_else(|| not_here(&id))?;
+            g.name.clone_from(&name);
+            Ok(GroupsWritten::Renamed(HereGroup {
+                id,
+                name,
+                made: g.made,
+            }))
+        }
+        GroupsWriteReq::Dissolve { id } => {
+            book.remove(&id).ok_or_else(|| not_here(&id))?;
+            Ok(GroupsWritten::Dissolved { id })
+        }
+    })
+    .map_err(write_err)
+}
+
+/// `groups-write`：建 · 改名 · 解散家在这台的组。
+pub(crate) struct GroupsWriteCmd;
+
+impl Command for GroupsWriteCmd {
+    const NAME: &'static str = "groups-write";
+    type Req = GroupsWriteReq;
+    type Reply = GroupsWritten;
+    type Err = GroupsWriteErr;
+}
+
+impl crate::wire::typed::Handle for GroupsWriteCmd {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: GroupsWriteReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<GroupsWritten, GroupsWriteErr>> + Send + 'static
+    {
+        let (_cx, own) = cx.split();
+        async move { write_at(&own, req, crate::common::time::now_ms()) }
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/history/groups_tests.rs"]
+mod tests;
