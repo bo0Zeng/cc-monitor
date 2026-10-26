@@ -55,6 +55,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.SearchHit
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.ui.common.BusyLine
@@ -85,6 +86,8 @@ object ChatsTags {
 /** 一屏上点下去的那几件事（交给板 · 导航）。 */
 class ChatsActions(
     val open: (hostId: String, sessionId: String) -> Unit,
+    /** 搜内容的一处命中：落到那一处（命中那一行的字节起点 · 落在哪张工具卡里）。 */
+    val openAt: (hostId: String, sessionId: String, at: Long, tool: String?) -> Unit,
     val menu: (ChatRow) -> Unit,
     /** 一台顶上那一条的［重试］/［重新连接］。 */
     val retry: (HostBar) -> Unit,
@@ -259,14 +262,23 @@ private fun LazyListScope.contentHits(
     }
 }
 
-/** 一个会话的命中：标题 · 时刻（机器小标签在前）／ 每处命中一行（命中的字强调）／ 还有几处。点哪儿都打开那条会话。 */
+/** 点块头 · 「+N 处」：打开那条会话（落在最新处）。 */
+internal fun ChatsActions.openBlock(h: ContentRow) = open(h.hostId, h.row.sessionId)
+
+/** 点一处命中：打开那条会话、落到那一处。 */
+internal fun ChatsActions.openHit(
+    h: ContentRow,
+    hit: SearchHit,
+) = openAt(h.hostId, h.row.sessionId, hit.offset, hit.tool)
+
+/** 一个会话的命中：标题 · 时刻（机器小标签在前）／ 每处命中一行（命中的字强调）／ 还有几处。点一处命中落到那一处，点别处打开那条会话。 */
 @Composable
 private fun HitsBlock(
     h: ContentRow,
     act: ChatsActions,
 ) {
     val r = h.row
-    Column(Modifier.fillMaxWidth().clickable { act.open(h.hostId, r.sessionId) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().clickable { act.openBlock(h) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             h.machineTag?.let { MachineTag(it) }
             Text(r.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle(), modifier = Modifier.weight(1f))
@@ -284,7 +296,7 @@ private fun HitsBlock(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().clickable { act.openHit(h, hit) }.padding(top = 4.dp),
             )
         }
         if (r.moreHits > 0) Text(copyText("history.searchSession.more", "n" to r.moreHits), style = MaterialTheme.typography.bodySmall, color = accent, modifier = Modifier.padding(top = 4.dp))
