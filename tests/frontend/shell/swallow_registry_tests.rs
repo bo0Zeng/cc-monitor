@@ -147,6 +147,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", Why::PeerGone, ""),
     // +1：SIGUSR1 戳名单上的每一份（`PokeSlot` 并进来；那一份可能正在退出）。
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Poke);", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Relay(frame.clone()));", Why::PeerGone, "别台那条流上的一件投给名单上的每一份 watcher：那一份正在退出 ⇒ 它的连接也没了，没人要这一件"),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::RecordSeen { sid: sid.to_string(), present, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Arrive { by: by.clone(), since, tell: tell.clone(), });", Why::PeerGone, ""),
     ("src/backend/observe/arrivals.rs", "let _ = tx.send(sid.to_string());", Why::PeerGone, "报到了：等的那一侧可能已经到期限撤了，没人要这一声"),

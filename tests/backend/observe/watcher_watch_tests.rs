@@ -606,3 +606,61 @@ fn a_report_that_jams_again_is_said_and_reported_again_until_it_gets_through() {
     assert_eq!(heard(&mut rx), vec!["gone t".to_string()], "通了之后不再有");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// ★ ④a：别台那条流转过来的一行挤丢了 ⇒ 这条连接在下一帧之前先收那台一格 `gap`（不说成本机丢了行）；
+/// 那台断了的那一帧挤丢了 ⇒ 补的是 `ended`（断了比丢了一行大：下一条从 hello 起）。
+#[test]
+fn a_relayed_line_lost_on_a_full_channel_is_owed_as_that_machines_gap() {
+    use cmd_wire::frame::Relayed;
+    let line = |n: u32| {
+        Frame::Relayed(Relayed::Line {
+            machine: "m".into(),
+            line: format!("{{\"n\":{n}}}"),
+        })
+    };
+    let (tx, mut rx) = frame_channel(2 * wire_bytes(&line(1)));
+    let mut sink = FrameSink::new(tx);
+    sink.fan(line(1));
+    sink.fan(line(2));
+    sink.fan(line(3)); // 满了：丢
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(f);
+    }
+    assert_eq!(got, vec![line(1), line(2)]);
+    sink.fan(line(4));
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(f);
+    }
+    assert_eq!(
+        got,
+        vec![
+            Frame::Relayed(Relayed::Gap {
+                machine: "m".into()
+            }),
+            line(4)
+        ],
+        "丢的那一行在那台的流上原位留一格 gap，不说成 overflow"
+    );
+    sink.fan(line(5));
+    sink.fan(line(6));
+    sink.fan(Frame::Relayed(Relayed::Ended {
+        machine: "m".into(),
+    })); // 满了：丢
+    while rx.try_recv().is_ok() {}
+    sink.fan(line(7));
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(f);
+    }
+    assert_eq!(
+        got,
+        vec![
+            Frame::Relayed(Relayed::Ended {
+                machine: "m".into()
+            }),
+            line(7)
+        ]
+    );
+}

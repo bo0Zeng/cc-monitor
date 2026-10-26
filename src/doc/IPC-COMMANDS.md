@@ -16,6 +16,7 @@
 |---|---|---|
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`）；换不换后端按它判 |
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
+| `version` | string? | 这份后端出自的那一版（仓根 `package.json` 的 `version`）；机器页那台的版本号就是它 |
 | `commands` | [string]? | 这台后端接受的入方向命令；空 ⇒ 它不读命令 |
 | `unavailable` | [Unavailable]? | 接得下、但这台做不到的命令与原因（见 `Unavailable`）；空 ＝ 没有「做不到」的把握 |
 | `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
@@ -265,6 +266,12 @@ A session file went away。
 | `why` | FollowEnd | 为什么停了（给程序认） |
 | `said` | string | 给人看的那一句（后端写好，界面原样上屏） |
 
+### `relayed`
+
+**本机后端转来的别台那条常驻流上的事**（各台的常驻流归本机后端，`control/feeds.rs`；壳只读本机这一条）。
+
+（无字段）
+
 ## 2. 信封与帧里用到的类型
 
 #### `HelloHead`
@@ -436,6 +443,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
+- `groups` —— 这台的组那一半动了（家在这台的组建 · 改名 · 解散，或这台会话进出组 · 固定变了）：看着组的那一屏重问本机后端 `groups-read`
 
 #### `RereadWhy`
 
@@ -4150,7 +4158,15 @@ autoAnswer?: AutoAnswer,
 /**
  * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
  */
-resumeWith?: ResumeWith, updatedAt: number, };
+resumeWith?: ResumeWith, 
+/**
+ * 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+ */
+groups?: Array<string>, 
+/**
+ * 固定（跟着组一起跨端）；缺 ＝ 没固定。
+ */
+pinned?: boolean, updatedAt: number, };
 type Hide = "on" | "off";
 type HideAsk = "on" | "off" | "rule";
 type Patch = { 
@@ -4169,7 +4185,19 @@ hide?: HideAsk | null,
 /**
  * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
  */
-autoAnswer?: AutoAnswer | null, };
+autoAnswer?: AutoAnswer | null, 
+/**
+ * 进这几组（组 id；已在的不重记）。组住哪台不在这里核：组员关系只住会话这一台。
+ */
+join?: Array<string> | null, 
+/**
+ * 出这几组（不在的不管）。同一组既进又出 ⇒ 出。
+ */
+leave?: Array<string> | null, 
+/**
+ * 固定。
+ */
+pinned?: boolean | null, };
 type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 ```
 
@@ -4197,6 +4225,404 @@ removed: boolean, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
+
+#### `groups-here`
+
+这台的组那一半：家在这台的组 ＋ 带组或固定的会话。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --groups-here`
+
+入参 `NoArgs` · 回包 `GroupsHere`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
+type HereGroup = { id: string, name: string, made: number, };
+type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
+type MemberFacts = { 
+/**
+ * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
+ */
+title: string, 
+/**
+ * 项目目录（清单里没有那一条 ⇒ 缺）。
+ */
+cwd: string | null, 
+/**
+ * 记录文件（resume 照它；清单里没有 ⇒ 缺）。
+ */
+record: string | null, 
+/**
+ * 上次跑在哪个号下（没记 ⇒ 缺）。
+ */
+account: string | null, 
+/**
+ * 后台会话。
+ */
+bg: boolean, 
+/**
+ * 最后活动（毫秒；清单里没有 ⇒ 缺）。
+ */
+at: number | null, };
+type NoArgs = Record<symbol, never>;
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+type Words = string;
+```
+
+码：`bad_args` · `failed`
+
+#### `groups-read`
+
+问到各台的组那一半、并成一份。
+
+收 `args` · 可撤 · CLI：`ccm -- --groups-read`
+
+入参 `GroupsReadReq` · 回包 `GroupsRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type GroupCount = { dot: SessionDot, n: number, word: string, 
+/**
+ * 组头那一句（「需手动 2」那样，出口照摆）。
+ */
+text: string, };
+type GroupKnown = { "is": "now" } | { "is": "before", at: string, } | { "is": "unknown" };
+type GroupMember = { origin: string, sid: string, pinned: boolean, face: SessionFace, facts: MemberFacts, };
+type GroupRead = { id: string, 
+/**
+ * 名字（家那台没答过 ⇒ 缺）。
+ */
+name: string | null, 
+/**
+ * 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
+ */
+title: string, 
+/**
+ * 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
+ */
+home: string | null, made: number | null, known: GroupKnown, 
+/**
+ * 组员：照问的台序、再照 sid。
+ */
+members: Array<GroupMember>, counts: Array<GroupCount>, };
+type GroupsMachine = { origin: string, read: HistoryMachineRead, };
+type GroupsRead = { 
+/**
+ * 各组：照建的先后、再照 id。
+ */
+groups: Array<GroupRead>, 
+/**
+ * 各台固定的会话（不论在不在组里），同组员那一形。
+ */
+pinned: Array<GroupMember>, 
+/**
+ * 问的每一台这一问的结局（照问的先后）。
+ */
+machines: Array<GroupsMachine>, };
+type GroupsReadReq = { machines: Array<string>, };
+type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
+type MemberFacts = { 
+/**
+ * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
+ */
+title: string, 
+/**
+ * 项目目录（清单里没有那一条 ⇒ 缺）。
+ */
+cwd: string | null, 
+/**
+ * 记录文件（resume 照它；清单里没有 ⇒ 缺）。
+ */
+record: string | null, 
+/**
+ * 上次跑在哪个号下（没记 ⇒ 缺）。
+ */
+account: string | null, 
+/**
+ * 后台会话。
+ */
+bg: boolean, 
+/**
+ * 最后活动（毫秒；清单里没有 ⇒ 缺）。
+ */
+at: number | null, };
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+type Words = string;
+```
+
+码：`bad_args`
+
+#### `groups-write`
+
+建 · 改名 · 解散家在这台的组。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --groups-write`
+
+入参 `GroupsWriteReq` · 回包 `GroupsWritten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type GroupsWriteReq = { "op": "make", name: string, } | { "op": "rename", id: string, name: string, } | { "op": "dissolve", id: string, };
+type GroupsWritten = { "is": "made" } & HereGroup | { "is": "renamed" } & HereGroup | { "is": "dissolved", id: string, };
+type HereGroup = { id: string, name: string, made: number, };
+```
+
+码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
+
+#### `session-self`
+
+我是哪条会话 · 在哪几组 · 组员有谁。
+
+收 `args` · 可撤 · CLI：`ccm -- --session-self`
+
+入参 `NoArgs` · 回包 `SessionSelf`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Allow = { "can": "yes" } | { "can": "no", why: Words, };
+type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
+type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type GroupCount = { dot: SessionDot, n: number, word: string, 
+/**
+ * 组头那一句（「需手动 2」那样，出口照摆）。
+ */
+text: string, };
+type GroupKnown = { "is": "now" } | { "is": "before", at: string, } | { "is": "unknown" };
+type GroupMember = { origin: string, sid: string, pinned: boolean, face: SessionFace, facts: MemberFacts, };
+type GroupRead = { id: string, 
+/**
+ * 名字（家那台没答过 ⇒ 缺）。
+ */
+name: string | null, 
+/**
+ * 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
+ */
+title: string, 
+/**
+ * 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
+ */
+home: string | null, made: number | null, known: GroupKnown, 
+/**
+ * 组员：照问的台序、再照 sid。
+ */
+members: Array<GroupMember>, counts: Array<GroupCount>, };
+type Looked = "every" | "this_machine" | "nothing";
+type MemberFacts = { 
+/**
+ * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
+ */
+title: string, 
+/**
+ * 项目目录（清单里没有那一条 ⇒ 缺）。
+ */
+cwd: string | null, 
+/**
+ * 记录文件（resume 照它；清单里没有 ⇒ 缺）。
+ */
+record: string | null, 
+/**
+ * 上次跑在哪个号下（没记 ⇒ 缺）。
+ */
+account: string | null, 
+/**
+ * 后台会话。
+ */
+bg: boolean, 
+/**
+ * 最后活动（毫秒；清单里没有 ⇒ 缺）。
+ */
+at: number | null, };
+type NoArgs = Record<symbol, never>;
+type SessionCan = { 
+/**
+ * 关掉它的标签页。
+ */
+close: CanClose, 
+/**
+ * 恢复（起一个新进程接着那份记录）。
+ */
+resume: Allow, 
+/**
+ * 还有终端可去（拉前 · 停 · 杀 · 终端页）。
+ */
+term: CanTerm, 
+/**
+ * 程序退了、tmux 会话还在 ⇒ 接回。
+ */
+reattach: Allow, 
+/**
+ * 换模型（`session-model`）。
+ */
+model: Allow, 
+/**
+ * 切权限档（`session-permission`）。
+ */
+permission: Allow, };
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type SessionFace = { dot: SessionDot, 
+/**
+ * 进程在不在；在干什么只住在「在」那一支里。
+ */
+live: FaceLive, 
+/**
+ * 那台看不见时照旧作数（已结束 · 记录已不在）。
+ */
+settled: boolean, 
+/**
+ * 短名（运行中 · 需手动 · 已结束 …）。
+ */
+name: Words, 
+/**
+ * 悬停那一句。
+ */
+tip: Words, 
+/**
+ * 没有会话事实时的状态一句。
+ */
+line: Words, tone: Tone, 
+/**
+ * 监控板 · 组内的序（小的在前）：等人 0 · 在干活 1 · 后台 2 · 闲着 / 说不清 3 · Claude 已退出 4 · 已结束 / 记录已不在 5。
+ */
+order: number, can: SessionCan, 
+/**
+ * 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它。
+ * 那一家没有账号库 · 判不了 · 冷读出来的脸（清单行 · 需手动行 · 血缘）⇒ 不上线。
+ */
+account?: string, };
+type SessionSelf = { 
+/**
+ * 我是哪条会话（这台的）。
+ */
+sid: string, 
+/**
+ * 我在的那几组（组员整组）。
+ */
+groups: Array<GroupRead>, looked: Looked, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
+type Words = string;
+```
+
+码：`bad_args` · `not_in_session`
 
 #### `history-list`
 
@@ -4661,7 +5087,15 @@ autoAnswer?: AutoAnswer,
 /**
  * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
  */
-resumeWith?: ResumeWith, updatedAt: number, };
+resumeWith?: ResumeWith, 
+/**
+ * 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+ */
+groups?: Array<string>, 
+/**
+ * 固定（跟着组一起跨端）；缺 ＝ 没固定。
+ */
+pinned?: boolean, updatedAt: number, };
 type Hide = "on" | "off";
 type HistoryFailedDir = { projectDir: string, error: string, };
 type HistoryListingHead = { failed: Array<HistoryFailedDir>, annotations: { [key in string]: Entry } | null, annotationsNotice: string | null, rules: Rules, };
@@ -10540,7 +10974,20 @@ text?: string | null, };
 
 ```ts
 type BusAct = "ask" | "answer" | "request" | "inform" | "handback" | "correct";
-type BusEnvelope = { 
+type BusInbox = { messages: Array<BusInboxItem>, 
+/**
+ * 读不懂的行数（不是规范信封的也算）。
+ */
+skipped: number, 
+/**
+ * 回显超过 4 MiB ⇒ 保尾，`true`。
+ */
+truncated: boolean, };
+type BusInboxItem = { 
+/**
+ * 动作码显示成的那个词（问 · 答 · 请求 · 告知 · 交回 · 更正）。
+ */
+act_said: string, 
 /**
  * 消息 id（`re` · `msg:` 引的就是它）。
  */
@@ -10581,15 +11028,6 @@ refs: Array<string>,
  * 正文。
  */
 text: string, };
-type BusInbox = { messages: Array<BusEnvelope>, 
-/**
- * 读不懂的行数（不是规范信封的也算）。
- */
-skipped: number, 
-/**
- * 回显超过 4 MiB ⇒ 保尾，`true`。
- */
-truncated: boolean, };
 type BusInboxReq = { 
 /**
  * 交给 `cc-log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
@@ -14077,6 +14515,9 @@ type Words = string;
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
+| `--groups-here` | ＝ 帧命令 `groups-here`：这台的组那一半：家在这台的组 ＋ 带组或固定的会话 |
+| `--groups-read` | ＝ 帧命令 `groups-read`：问到各台的组那一半、并成一份 |
+| `--groups-write` | ＝ 帧命令 `groups-write`：建 · 改名 · 解散家在这台的组 |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |
 | `--history-branch` | ＝ 帧命令 `history-branch`：主线外清单 |
 | `--history-browse` | ＝ 帧命令 `history-browse`：历史页那一列（几台并成一列） |
@@ -14162,6 +14603,7 @@ type Words = string;
 | `--session-open-facts` | ＝ 帧命令 `session-open-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
+| `--session-self` | ＝ 帧命令 `session-self`：我是哪条会话 · 在哪几组 · 组员有谁 |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：问到各台的需手动、合成一个先后 |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |

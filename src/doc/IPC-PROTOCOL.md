@@ -51,7 +51,7 @@
 - `unavailable` —— 接得下、但**这台机器上做不到**的命令与原因码（如没有 tmux ⇒ `no_tmux`）。缺 ＝ 没有把握，照发、看回话；列出来的 ＝ 别画那个按钮。它是提示，后端自己绝不拿它拒命令（同一帧会被这个进程后来的连接共用，读数可以很旧）。
 - `shapes` —— 每条 typed 命令的形状指纹（入参 · 回包 · 码 · 撤不撤得动合起来）；跟客户端编进来的那一张对不上的命令不发。撤不撤得动客户端只看自己那一张（指纹对得上 ⇒ 两边一致）。
 
-`build_id` 是这份二进制的身份；monitor 按它判远端后端要不要换。`host_env` 回显起它的宿主交给它的那几格环境（monitor 据此拒接住在别的家的后端）。
+`build_id` 是这份二进制的身份；monitor 按它判远端后端要不要换。`version` 是这份二进制出自的那一版（仓根 `package.json`），本机后端照它写机器页那台的版本号（缺 ⇒ 说不出）。`host_env` 回显起它的宿主交给它的那几格环境（monitor 据此拒接住在别的家的后端）。
 
 ## 4. 入方向：请求 · 应答 · 取消
 
@@ -115,6 +115,7 @@
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume；带离开「活」之后那份 `face`）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / 不可丢主题的 `changed`（`lost` 里 `kind: "changed"`、`subject` ＝ `主题` 或 `主题/key`）这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
+7. 别台：各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事原样转给连着本机后端的每条流连接，一种帧 `relayed`：`machine` 说是哪一台，`what` 分三形 ——`line`（那台流上的一行原样，字符串；每条连接先来它的 hello）· `gap`（那台流上超长丢了一行，或这一端挤丢了一行）· `ended`（那台这一条连接断了，下一条从 hello 起）。不进 `overflow`：挤丢了 ⇒ 这条连接在那台下一帧之前先收那台一格 `gap`（断了的那一帧挤丢 ⇒ 补 `ended`）。
 
 ### `changed` 主题表
 
