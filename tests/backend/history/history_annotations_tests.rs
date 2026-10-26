@@ -282,12 +282,20 @@ fn pin_is_a_cell_on_the_session_and_membership_is_not_patched_here() {
     let mut raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     raw["groups"] = json!({"g1": {"name": "开发", "made": 1, "named": 1}});
     std::fs::write(&p, serde_json::to_vec(&raw).unwrap()).unwrap();
-    let e = answer_annotate_at(&own_of(&p), &json!({"sid": sid, "patch": {"pinned": true}}), 7)
-        .unwrap();
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"pinned": true}}),
+        7,
+    )
+    .unwrap();
     assert_eq!(e["entry"]["pinned"], true);
     assert_eq!(e["entry"]["customTitle"], "占位标题一", "别的格不动");
-    answer_annotate_at(&own_of(&p), &json!({"sid": sid, "patch": {"pinned": false}}), 9)
-        .unwrap();
+    answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"pinned": false}}),
+        9,
+    )
+    .unwrap();
     let disk: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     assert!(disk["entries"][sid].get("pinned").is_none(), "{disk}");
     assert_eq!(disk["groups"]["g1"]["name"], "开发", "组那一节原样");

@@ -139,7 +139,11 @@ async fn g1_a_sees_the_group_through_the_one_slice_it_can_reach() {
     assert_eq!(got.groups.len(), 1, "{got:?}");
     let g = &got.groups[0];
     assert_eq!(g.id, "g1");
-    assert_eq!(g.name.as_deref(), Some("甲"), "名字是 B 起的那个（C 那一片抄着）");
+    assert_eq!(
+        g.name.as_deref(),
+        Some("甲"),
+        "名字是 B 起的那个（C 那一片抄着）"
+    );
     assert_eq!(g.known, GroupKnown::Now);
     let sids: Vec<&str> = g.members.iter().map(|x| x.sid.as_str()).collect();
     assert_eq!(sids, ["c"], "E 不在 A 的表里 ⇒ e 不出，也不经别台转问");
@@ -179,7 +183,11 @@ async fn g2_the_newest_name_across_slices_wins_and_nobody_is_home() {
     )
     .await;
     let g = &got.groups[0];
-    assert_eq!(g.name.as_deref(), Some("新名"), "named 新的那份，不照问的先后");
+    assert_eq!(
+        g.name.as_deref(),
+        Some("新名"),
+        "named 新的那份，不照问的先后"
+    );
     assert_eq!(g.named, Some(20));
     assert_eq!(g.made, Some(3), "建组时刻取最早的");
     assert_eq!(g.members.len(), 2);
@@ -607,7 +615,11 @@ async fn g11_rename_goes_to_every_slice_and_says_which_were_missed() {
         other => panic!("{other:?}"),
     }
     let g1 = &load(&d).1["g1"];
-    assert_eq!((g1.name.name.as_str(), g1.name.named), ("乙", 50), "本机那一片当场写");
+    assert_eq!(
+        (g1.name.name.as_str(), g1.name.named),
+        ("乙", 50),
+        "本机那一片当场写"
+    );
     let fwd: Vec<Value> = peers.asked().into_iter().map(|(_, line)| line).collect();
     assert_eq!(fwd.len(), 2, "devbox · laptop 各一问");
     for line in &fwd {

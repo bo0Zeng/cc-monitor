@@ -229,7 +229,6 @@ const DEPS: Record<string, readonly string[]> = {
   // 固定复活的空态文字住文案表（说到会话状态的字一处定）。
   "src/frontend/ui/tab-bar-prefs.ts": [
     "src/frontend/ui/copy-table.ts",
-    "src/frontend/ui/ipc/origin.ts", // 刚建的组家在本机（`LOCAL_ORIGIN`）
     "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序没交成出声（INVARIANTS §12）
     "src/frontend/ui/tab-bar-state.ts",
   ],

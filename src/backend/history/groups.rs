@@ -663,8 +663,14 @@ pub(crate) struct GroupMissed {
 #[serde(tag = "is", rename_all = "snake_case")]
 pub(crate) enum GroupsWritten {
     Made(HereGroup),
-    Moved { sid: String, groups: Vec<String> },
-    Sent { id: String, missed: Vec<GroupMissed> },
+    Moved {
+        sid: String,
+        groups: Vec<String>,
+    },
+    Sent {
+        id: String,
+        missed: Vec<GroupMissed>,
+    },
 }
 
 codes! {
