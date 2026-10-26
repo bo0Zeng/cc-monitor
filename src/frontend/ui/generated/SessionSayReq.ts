@@ -21,4 +21,8 @@ client?: string,
  * 送之前看到的那一屏的指纹（`terminal-preview` 的 `screen`）：画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`（同 `terminal-input`）。
  * 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
  */
-seen_screen?: string, };
+seen_screen?: string, 
+/**
+ * `true` ⇒ 只在这条会话闲着（等下一句输入）时送；一轮在跑 · 后台在跑 · 判不出 ⇒ 不送、回 `refused` ＋ `not_idle`。缺 ⇒ 不要求。
+ */
+idle_only?: boolean, };
