@@ -35,7 +35,6 @@ describe("一种订阅", () => {
   });
 
   it("`bindEvents(` 只有主窗口调", () => {
-    // login-drawer.ts 这一格还没改：那份文件此刻在另一块（悬停给全名）手里，并回之后改走 subscribeTopics、删这一格。
-    expect(holders(/\bbindEvents\(/)).toEqual([`${UI}/events.ts`, `${UI}/login-drawer.ts`, `${UI}/main.ts`]);
+    expect(holders(/\bbindEvents\(/)).toEqual([`${UI}/events.ts`, `${UI}/main.ts`]);
   });
 });
