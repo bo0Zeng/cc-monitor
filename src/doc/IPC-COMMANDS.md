@@ -701,7 +701,8 @@ type LinkOpenReq = {
  */
 link: string, 
 /**
- * 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）。
+ * 拨哪台 ＋ 怎么用：`{machine: "<那台的名字>", use, command?, capture?, forward?, stages?, probe?, agent_sock?}`（蛇形键）。
+ * 地址 · 端口 · 钥匙 · 跳板 · 先试哪条都照这一端的机器表组（[`super::parse_named`]），线上不交。
  */
 dial: Record<string, unknown>, 
 /**
@@ -850,12 +851,13 @@ overwrite?: boolean,
  * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
  */
 code?: string, reason?: string, detail?: string, };
+type Origin = string;
 type TransferOpened = { items: Array<OpenedItem>, };
 type TransferUploadReq = { 
 /**
- * 拨号请求（同 `link-open` 的 `dial`）：后端拨号核心读它。
+ * 那台远端的名字。
  */
-dial: Record<string, unknown>, items: Array<UploadItem>, remote_dir: WirePath, home?: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+machine: Origin, items: Array<UploadItem>, remote_dir: WirePath, home?: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
 type UploadItem = { local_path: string, };
 type WirePath = string | { b16: string };
 ```
@@ -949,7 +951,12 @@ overwrite?: boolean,
  * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
  */
 code?: string, reason?: string, detail?: string, };
-type TransferDownloadReq = { dial: Record<string, unknown>, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+type Origin = string;
+type TransferDownloadReq = { 
+/**
+ * 那台远端的名字。
+ */
+machine: Origin, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
 type TransferOpened = { items: Array<OpenedItem>, };
 type WirePath = string | { b16: string };
 ```
@@ -1092,15 +1099,16 @@ type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
+type Origin = string;
 type TransferCopyReq = { 
 /**
- * 源那台的拨号请求。
+ * 源那台的名字。
  */
-from: Record<string, unknown>, 
+from: Origin, 
 /**
- * 落点那台的拨号请求。
+ * 落点那台的名字。
  */
-to: Record<string, unknown>, items: Array<CopyFrom>, 
+to: Origin, items: Array<CopyFrom>, 
 /**
  * 落点那台上的目录（绝对路径）。
  */
@@ -9129,16 +9137,12 @@ type CatalogRow = { kind: string, name: string, state: string, from: Array<Catal
 ```ts
 type AssetsSyncReq = { 
 /**
- * 那台的名字（monitor 的 origin 名）。
+ * 那台的名字。
  */
-origin?: string, 
-/**
- * 那台的拨号（只有路径，没有私钥本体）。
- */
-dial?: MachineDial, };
+origin?: string, };
 type AssetsSyncRow = { 
 /**
- * 可达表的键（monitor 交来的 origin 串）。
+ * 那台的名字。
  */
 origin: Origin, 
 /**
@@ -9163,49 +9167,10 @@ type AssetsSynced = {
  */
 self: string, synced: Array<AssetsSyncRow>, 
 /**
- * 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
+ * 「连这台」的那几台 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
  */
 reach: Array<ReachRow>, };
-type Host = { 
-/**
- * 这台的名字（origin）；空 ⇒ 用 `host`。
- */
-label: string, 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 端口（缺 ＝ 22）。
- */
-port: number, user: string, 
-/**
- * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
- */
-keyPath: string, 
-/**
- * 备用地址（竞发）。
- */
-addresses: Array<string>, 
-/**
- * 跳板：另一台的名字（空 ＝ 直连）。
- */
-jump: string, 
-/**
- * 连不连这台。
- */
-connect: boolean, };
-type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
-/**
- * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
- */
-use?: string | null, 
-/**
- * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
- */
-agent_sock?: string | null, };
 type Origin = string;
-type Prefer = { host: string, port: number, };
 type ReachRow = { 
 /**
  * 那台的名字。
@@ -10686,36 +10651,7 @@ class: string, };
 入参 `TerminalSshReq` · 回包 `SshCommand`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Host = { 
-/**
- * 这台的名字（origin）；空 ⇒ 用 `host`。
- */
-label: string, 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 端口（缺 ＝ 22）。
- */
-port: number, user: string, 
-/**
- * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
- */
-keyPath: string, 
-/**
- * 备用地址（竞发）。
- */
-addresses: Array<string>, 
-/**
- * 跳板：另一台的名字（空 ＝ 直连）。
- */
-jump: string, 
-/**
- * 连不连这台。
- */
-connect: boolean, };
-type Prefer = { host: string, port: number, };
+type Origin = string;
 type SshCommand = { 
 /**
  * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
@@ -10723,17 +10659,9 @@ type SshCommand = {
 command: string, };
 type TerminalSshReq = { 
 /**
- * 那台的配置（可能还没保存）。
+ * 那台的名字。
  */
-machine: Host, 
-/**
- * 跳板那一台的配置（`machine.jump` 指它时必给）。
- */
-jump?: Host | null, 
-/**
- * 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
- */
-prefer?: Prefer | null, 
+machine: Origin, 
 /**
  * 要在那台跑的命令。
  */
@@ -12347,40 +12275,11 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
+type DeployInstallReq = { slots: Array<SlotRow>, 
 /**
- * 那台的名字（非空；状态成品按它记）。
+ * 那台的名字（非空；机器表按它查 · 状态成品按它记）。
  */
 machine: string, };
-type Host = { 
-/**
- * 这台的名字（origin）；空 ⇒ 用 `host`。
- */
-label: string, 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 端口（缺 ＝ 22）。
- */
-port: number, user: string, 
-/**
- * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
- */
-keyPath: string, 
-/**
- * 备用地址（竞发）。
- */
-addresses: Array<string>, 
-/**
- * 跳板：另一台的名字（空 ＝ 直连）。
- */
-jump: string, 
-/**
- * 连不连这台。
- */
-connect: boolean, };
 type Installed = { 
 /**
  * `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
@@ -12398,16 +12297,6 @@ build: string,
  * 那台的 OS（表 A 的词）。
  */
 os: string, };
-type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
-/**
- * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
- */
-use?: string | null, 
-/**
- * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
- */
-agent_sock?: string | null, };
-type Prefer = { host: string, port: number, };
 type SlotRow = { os: string, arch: string, id: string, 
 /**
  * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
@@ -12426,50 +12315,11 @@ path: string, };
 入参 `DeployInstallReq` · 回包 `Uninstalled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
+type DeployInstallReq = { slots: Array<SlotRow>, 
 /**
- * 那台的名字（非空；状态成品按它记）。
+ * 那台的名字（非空；机器表按它查 · 状态成品按它记）。
  */
 machine: string, };
-type Host = { 
-/**
- * 这台的名字（origin）；空 ⇒ 用 `host`。
- */
-label: string, 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 端口（缺 ＝ 22）。
- */
-port: number, user: string, 
-/**
- * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
- */
-keyPath: string, 
-/**
- * 备用地址（竞发）。
- */
-addresses: Array<string>, 
-/**
- * 跳板：另一台的名字（空 ＝ 直连）。
- */
-jump: string, 
-/**
- * 连不连这台。
- */
-connect: boolean, };
-type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
-/**
- * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
- */
-use?: string | null, 
-/**
- * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
- */
-agent_sock?: string | null, };
-type Prefer = { host: string, port: number, };
 type SlotRow = { os: string, arch: string, id: string, 
 /**
  * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
@@ -12709,10 +12559,6 @@ type PubkeyPushReq = {
  */
 machine: Host, 
 /**
- * 跳板那一台。
- */
-jump?: Host | null, 
-/**
  * 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
  */
 pubKeyPath?: string | null, };
@@ -12838,6 +12684,7 @@ type ExitPolicySet = { killOnExit: boolean, };
 入参 `NoArgs` · 回包 `PrefsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileState = "absent" | "ok" | "unreadable";
 type NoArgs = Record<symbol, never>;
 type Prefs = { 
 /**
@@ -12881,7 +12728,7 @@ type PrefsReply = {
 /**
  * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
  */
-state: "absent" | "ok" | "unreadable", 
+state: FileState, 
 /**
  * `unreadable` 时的原因（那一句不带原话）。
  */
@@ -12912,6 +12759,7 @@ type Tab = "show" | "hide";
 入参 `PrefsSet` · 回包 `PrefsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileState = "absent" | "ok" | "unreadable";
 type Prefs = { 
 /**
  * 每一家（线上的 kind）用哪条启动命令（原值）；没有那一家 ⇒ 那一家自己的默认启动器。
@@ -12954,7 +12802,7 @@ type PrefsReply = {
 /**
  * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
  */
-state: "absent" | "ok" | "unreadable", 
+state: FileState, 
 /**
  * `unreadable` 时的原因（那一句不带原话）。
  */
@@ -13018,6 +12866,7 @@ type Tab = "show" | "hide";
 入参 `NoArgs` · 回包 `MachinesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileState = "absent" | "ok" | "unreadable";
 type Host = { 
 /**
  * 这台的名字（origin）；空 ⇒ 用 `host`。
@@ -13047,11 +12896,20 @@ jump: string,
  * 连不连这台。
  */
 connect: boolean, };
+type MachineRow = { 
+/**
+ * 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
+ */
+name: string, 
+/**
+ * 那一台原样。
+ */
+host: Host, };
 type MachinesReply = { 
 /**
- * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ * 没有这份 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
  */
-state: "absent" | "ok" | "unreadable", 
+state: FileState, 
 /**
  * `unreadable` 时的原因（那一句不带原话）。
  */
@@ -13065,9 +12923,9 @@ detail: string | null,
  */
 path: string | null, 
 /**
- * 照用的那一张。
+ * 照用的那一张：一台一行，带后端算好的名字（`{name, host}`；名字的算法只在拨号核心 `Host::name`，界面 · 壳都不再算）。
  */
-hosts: Array<Host>, 
+hosts: Array<MachineRow>, 
 /**
  * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
  */
@@ -13123,6 +12981,7 @@ fault: MachineFault | null, };
 
 ```ts
 type ElemKey = { fields: Array<string>, equals: string, };
+type FileState = "absent" | "ok" | "unreadable";
 type Gone = { 
 /**
  * 认出了不止一台（不猜是哪台）。
@@ -13173,12 +13032,21 @@ name: string,
  */
 said: string, };
 type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken" | "leading_dash";
+type MachineRow = { 
+/**
+ * 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
+ */
+name: string, 
+/**
+ * 那一台原样。
+ */
+host: Host, };
 type MachinesEdits = { edits: Array<MachineEdit>, };
 type MachinesReply = { 
 /**
- * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ * 没有这份 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
  */
-state: "absent" | "ok" | "unreadable", 
+state: FileState, 
 /**
  * `unreadable` 时的原因（那一句不带原话）。
  */
@@ -13192,9 +13060,9 @@ detail: string | null,
  */
 path: string | null, 
 /**
- * 照用的那一张。
+ * 照用的那一张：一台一行，带后端算好的名字（`{name, host}`；名字的算法只在拨号核心 `Host::name`，界面 · 壳都不再算）。
  */
-hosts: Array<Host>, 
+hosts: Array<MachineRow>, 
 /**
  * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
  */
@@ -13215,6 +13083,7 @@ type MachinesSet = { machines: MachinesReply, };
 入参 `HostKeysForgetReq` · 回包 `MachinesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileState = "absent" | "ok" | "unreadable";
 type Host = { 
 /**
  * 这台的名字（origin）；空 ⇒ 用 `host`。
@@ -13245,11 +13114,20 @@ jump: string,
  */
 connect: boolean, };
 type HostKeysForgetReq = { machine: Origin, };
+type MachineRow = { 
+/**
+ * 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
+ */
+name: string, 
+/**
+ * 那一台原样。
+ */
+host: Host, };
 type MachinesReply = { 
 /**
- * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ * 没有这份 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
  */
-state: "absent" | "ok" | "unreadable", 
+state: FileState, 
 /**
  * `unreadable` 时的原因（那一句不带原话）。
  */
@@ -13263,9 +13141,9 @@ detail: string | null,
  */
 path: string | null, 
 /**
- * 照用的那一张。
+ * 照用的那一张：一台一行，带后端算好的名字（`{name, host}`；名字的算法只在拨号核心 `Host::name`，界面 · 壳都不再算）。
  */
-hosts: Array<Host>, 
+hosts: Array<MachineRow>, 
 /**
  * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
  */
@@ -13331,7 +13209,7 @@ type NoArgs = Record<symbol, never>;
 ```ts
 type ForwardStartReq = { 
 /**
- * 那台的名字（可达表的键）。
+ * 那台的名字。
  */
 origin: Origin, 
 /**
@@ -13341,49 +13219,12 @@ localPort: number,
 /**
  * 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
  */
-remoteHost: string, remotePort: number, 
-/**
- * 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
- */
-machine?: Host | null, 
-/**
- * 跳板那一台。
- */
-jump?: Host | null, };
+remoteHost: string, remotePort: number, };
 type ForwardStarted = { 
 /**
  * `fwd-<n>`，本进程内单调。
  */
 id: string, };
-type Host = { 
-/**
- * 这台的名字（origin）；空 ⇒ 用 `host`。
- */
-label: string, 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 端口（缺 ＝ 22）。
- */
-port: number, user: string, 
-/**
- * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
- */
-keyPath: string, 
-/**
- * 备用地址（竞发）。
- */
-addresses: Array<string>, 
-/**
- * 跳板：另一台的名字（空 ＝ 直连）。
- */
-jump: string, 
-/**
- * 连不连这台。
- */
-connect: boolean, };
 type Origin = string;
 ```
 
@@ -13435,11 +13276,7 @@ ticket: string,
 /**
  * 那台的配置。
  */
-machine: Host, 
-/**
- * 跳板那一台的配置（可缺）。
- */
-jump?: Host | null, };
+machine: Host, };
 ```
 
 码：`bad_args` · `bad_jump` · `failed`
@@ -13487,78 +13324,6 @@ connCount: number, };
 type Forwards = { forwards: Array<ForwardRow>, };
 type NoArgs = Record<symbol, never>;
 type Origin = string;
-```
-
-码：`bad_args`
-
-#### `remote-reach`
-
-本机后端的可达表登记。
-
-收 `args` · 可撤 · CLI：`ccm -- --remote-reach`
-
-入参 `ReachReq` · 回包 `Reached`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type Host = { 
-/**
- * 这台的名字（origin）；空 ⇒ 用 `host`。
- */
-label: string, 
-/**
- * 首选地址。
- */
-host: string, 
-/**
- * 端口（缺 ＝ 22）。
- */
-port: number, user: string, 
-/**
- * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
- */
-keyPath: string, 
-/**
- * 备用地址（竞发）。
- */
-addresses: Array<string>, 
-/**
- * 跳板：另一台的名字（空 ＝ 直连）。
- */
-jump: string, 
-/**
- * 连不连这台。
- */
-connect: boolean, };
-type MachineDial = { machine: Host, jump?: Host | null, prefer?: Prefer | null, 
-/**
- * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
- */
-use?: string | null, 
-/**
- * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
- */
-agent_sock?: string | null, };
-type Origin = string;
-type Prefer = { host: string, port: number, };
-type ReachReq = { 
-/**
- * 那台的名字（monitor 的 origin 名）。
- */
-origin: Origin, 
-/**
- * 那台的拨号（只有路径，没有私钥本体）。
- */
-dial: MachineDial, };
-type ReachRow = { 
-/**
- * 那台的名字。
- */
-origin: Origin, 
-/**
- * 对面的资产目录 id。
- */
-machine: string | null, };
-type Reached = { origin: Origin, reach: Array<ReachRow>, };
 ```
 
 码：`bad_args`
@@ -13701,14 +13466,14 @@ fresh?: boolean | null, };
 type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, };
 type PlanListWorkspace = { workspace: string, repo: string | null, auto: boolean, rev: string, stale: PlanStale | null, needCount: number, bySession: { [key in string]: PlanSessionBlock }, slices: Array<PlanListSlice>, };
 type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
-type PlanProgress = { done: number, open: number, dropped: number, };
+type PlanProgress = { done: number, of: number, };
 type PlanSessionBlock = { slice: string, block: string, 
 /**
- * 块根格（编号；点会话头那一枚标选中它）。
+ * 根节点（编号；点会话头那一枚标选中它）。
  */
 cell: string | null, 
 /**
- * 块根格的标题；顶块 ⇒ `null`。
+ * 根节点的标题；最上面那一个 ⇒ `null`。
  */
 title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
@@ -13718,7 +13483,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 
 #### `plan-read`
 
-一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view）。
+一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-read`
 
@@ -13730,54 +13495,74 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
-type PlanBlock = { id: string, cells: Array<string>, 
+type PlanBlock = { id: string, 
 /**
- * 块根格的直接子做完几格；根格不在片里 ⇒ `null`。
+ * 根节点（最上面那一个 ⇒ `project`）。
+ */
+cells: Array<string>, 
+/**
+ * 根节点底下算活的直接子签收了几格；根节点不在片里 · 底下没有算活的 ⇒ `null`。
  */
 inside: PlanKids | null, dir: string | null, owner: PlanWho | null, phase: string | null, 
 /**
- * 站在哪一格（编号）。
+ * 站在哪一格（编号）；`null` ⇒ 起点。
  */
-at: string | null, row: boolean, };
+at: string | null, 
+/**
+ * 划出它的那一项还在（false ⇒ 删了，下一趟 update 并回）。
+ */
+listed: boolean, 
+/**
+ * 交接说明（pb 原样，不带认领码：码的位置写着 `<认领码>`，句末说码在哪拿）；给不了 ⇒ `null`。
+ */
+handoff: string | null, 
+/**
+ * 为什么给不了；给了 ⇒ `null`。
+ */
+handoffError: string | null, };
 type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
- * 凭据类的格：不算活（不进进度 · 父做完没有不看它）。
+ * 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
  */
-evidence: boolean, 
+state: Array<PlanState>, 
 /**
- * pb 的原话（做完了 · 没做完 · 不做了 · 凭据）。
+ * 状态那一行字（「已签收 2 · decided」，同 `pb render`）；什么都没记 ⇒ `null`。
  */
-status: string | null, 
+stateLine: string | null, 
 /**
- * 状态的码；pb 给了别的字 ⇒ `null`。
+ * 依据它的是哪几格（pb 给的）。
  */
-statusCode: "done" | "open" | "dropped" | "evidence" | null, 
+evidencedBy: Array<string>, 
 /**
- * 没做完时的原因（pb 原话）。
+ * 算活的：记着收的值 ⇒ `done`，没记 ⇒ `open`；类不许记收的值 ⇒ `null`（不进任何分母）。
  */
-why: string | null, 
+statusCode: "done" | "open" | null, 
 /**
- * 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
+ * 类是待定、还没记 decided。
+ */
+undecided: boolean, 
+/**
+ * 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
  */
 whyCode: PlanWhyCode | null, 
 /**
  * 行尾那一个原因短词；没有原因 ⇒ `null`。
  */
-whyShort: PlanWhyShort | null, signs: Array<PlanSign>, 
-/**
- * 几种值的计数（pb 原话，如「正 2（A1-7 · A1-9）」）；没有 ⇒ `null`。
- */
-counts: string | null, 
+whyShort: PlanWhyShort | null, 
 /**
  * 它自己写的、还没执行的 sets。
  */
 sets: Array<PlanSetsTo>, 
 /**
- * 住哪一块（块的编号；顶那一块 ⇒ `project`）。
+ * 在它底下加节点要在哪个权力范围里做（pb 的 `children_in`；最上面那一个 ⇒ `project`）。
  */
-block: string | null, owner: PlanWho | null, 
+block: string | null, 
 /**
- * 谁的 update 执行得了收下它的 sets（凭据类的 · 有子的格 ⇒ `null`）。
+ * 那个权力范围的负责人（要改它，该说给的那一位）。
+ */
+owner: PlanWho | null, 
+/**
+ * 写得动它元数据的那一位（pb 的 `signer`）。
  */
 signer: PlanWho | null, 
 /**
@@ -13792,19 +13577,27 @@ coveredBy: Array<string>, refs: PlanRefs,
  * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
  */
 returned: PlanReturned | null, };
-type PlanCheck = { unreadable: unknown[], red: Array<PlanRed>, undecidable: Array<PlanUndecidable>, };
+type PlanCheck = { unreadable: Array<PlanReadError>, 
+/**
+ * 元数据坏了、编号还认得出的节点：判不了，不在 `cells` 里。
+ */
+unparsed: Array<string>, red: Array<PlanRed>, undecidable: Array<PlanUndecidable>, };
 type PlanDomain = { name: string | null, error: string | null, kinds: Array<PlanKind>, phases: Array<PlanPhase>, };
 type PlanEdgeWords = { to: string | null, with: string | null, after: string | null, replaces: string | null, };
 type PlanEdges = { to: Array<string>, with: Array<string>, after: Array<string>, replaces: Array<string>, };
 type PlanFile = { path: string, 
 /**
- * pb 的原话（在 · 缺 · 空 · 坏）。
+ * 对账的码；pb 给了认不得的 ⇒ `null`。
  */
-state: string | null, 
+stateCode: "ok" | "missing" | "empty" | "broken" | null, 
 /**
- * 对账的码；认不出 ⇒ `null`。
+ * pb 的那一句（长度 · 坏在哪）。
  */
-stateCode: "ok" | "missing" | "empty" | "broken" | null, note: string | null, 
+note: string | null, 
+/**
+ * 文件核对那一格写的字（在 · 缺 · 空 · 坏，后端照码写好；认不出的码 ⇒ `null`）。
+ */
+checkText: string | null, 
 /**
  * 同一份文件还挂在哪几格（编号）。
  */
@@ -13812,11 +13605,7 @@ alsoBy: Array<string>, };
 type PlanKids = { done: number, of: number, };
 type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, 
 /**
- * 凭据类：这一类的格不算活。
- */
-evidence: boolean, 
-/**
- * 这一类许的状态值（收下在头一个）。
+ * 这一类许记的状态值（照表里的先后）。
  */
 values: Array<string>, };
 type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: string | null, cell: string | null, 
@@ -13825,13 +13614,29 @@ type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: str
  */
 sid: string | null, 
 /**
- * 判据红那一条在 `check.red` 里的位置。
+ * 不通过那一条在 `check.red` 里的位置。
  */
 red?: number, acked: boolean, };
-type PlanPendingSet = { source: string | null, target: string | null, value: string | null, whyNot: string | null, };
-type PlanPhase = { name: string | null, does: string | null, marks: Array<string>, };
-type PlanProgress = { done: number, open: number, dropped: number, };
-type PlanRead = { pb: string | null, workspace: string, repo: string | null, auto: boolean, 
+type PlanPendingSet = { source: string | null, target: string | null, value: string | null, op: "add" | "remove", 
+/**
+ * pb 那一句。
+ */
+blockedReason: string | null, 
+/**
+ * pb 给程序的代号（`source_delegated` …）。
+ */
+blockedCode: string | null, };
+type PlanPhase = { name: string | null, does: string | null, };
+type PlanProgress = { done: number, of: number, };
+type PlanRead = { pb: string | null, workspace: string, 
+/**
+ * 当前仓库（pb 的 `current_repo`）。
+ */
+repo: string | null, 
+/**
+ * 自动继续开没开（pb 的 `auto_continue`）。
+ */
+auto: boolean, 
 /**
  * 能选的领域（`pb repo` 认得的每一档）。
  */
@@ -13840,13 +13645,17 @@ domains: Array<PlanDomain>, slices: Array<PlanSlice>, bySession: { [key in strin
  * 这一份输出的摘要：变了才算计划变了。
  */
 rev: string, readAt: number, readAtText?: string, stale: PlanStale | null, needCount: number, };
+type PlanReadError = { file: string | null, line: number | null, message: string | null, };
 type PlanReadReq = { 
 /**
  * 工作区根（`plan-list` 给的那个）。
  */
 workspace: string, };
-type PlanRecord = { n: number | null, summary: string | null, at: string | null, atText?: string, by: PlanWho | null, quotes: Array<string>, };
-type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, 
+type PlanRed = { rule: string | null, what: string | null, 
+/**
+ * 该哪个权力范围改。
+ */
+block: string | null, fix: string | null, 
 /**
  * `what` 里提到的格（UTF-16 下标）。
  */
@@ -13865,71 +13674,45 @@ by: "child" | "body" | null, child: PlanReturnedChild | null, };
 type PlanReturnedChild = { id: string, title: string | null, };
 type PlanSessionBlock = { slice: string, block: string, 
 /**
- * 块根格（编号；点会话头那一枚标选中它）。
+ * 根节点（编号；点会话头那一枚标选中它）。
  */
 cell: string | null, 
 /**
- * 块根格的标题；顶块 ⇒ `null`。
+ * 根节点的标题；最上面那一个 ⇒ `null`。
  */
 title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
-type PlanSetsTo = { target: string | null, value: string | null, };
-type PlanSign = { 
+type PlanSetsTo = { target: string | null, value: string | null, 
 /**
- * pb 的 ISO 时刻。
+ * 加一笔 · 去一笔。
  */
-at: string | null, 
-/**
- * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
- */
-atText?: string, 
-/**
- * 执行那一条 sets 的那一位。
- */
-by: PlanWho | null, 
-/**
- * 记下的值（`收下` · 那一类登的别的值）。
- */
-value: string | null, 
-/**
- * 凭：来处那一格（编号）；早先 `pb sign` 那一笔 ⇒ `null`。
- */
-via: string | null, 
-/**
- * 这一笔的值在那一类算不算做完。
- */
-done: boolean, 
-/**
- * 早先那一笔的理由（新的一笔理由住来处那一格的正文 ⇒ 空）。
- */
-reason: string | null, refs: Array<PlanRef>, };
-type PlanSignAt = { cell: string, i: number, };
+op: "add" | "remove", };
 type PlanSlice = { name: string, domain: string | null, 
 /**
- * 这一片的仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
+ * 仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
  */
 path: string | null, current: boolean, 
 /**
- * 只写文档：仓库还没接过来（`plan-command take` 接）。
+ * 只做计划：人还没 `pb adopt`（`plan-command adopt` 接）。
  */
 docsOnly: boolean, 
 /**
- * 这一片记下的人的原话（照号）。
- */
-records: Array<PlanRecord>, 
-/**
  * 这一刻读不成的那一句（pb 原样）。
  */
-error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, 
+error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, 
 /**
- * 没做完的格数（不是做完了、也不是不做了）。
+ * 收的值（领域表 update 规则加 · 去的那个，软件是「已签收」）；表里没有 ⇒ `null`（不出进度）。
  */
-openCells: number, 
+doneValue: string | null, top: Array<string>, 
 /**
- * 全片的签收，新的在上（读不出时刻的排后）。
+ * 顶层进度；没有收的值 ⇒ `null`。
  */
-recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, 
+progress: PlanProgress | null, 
 /**
- * 写了「块:」还没立块的。
+ * 算活、还没签收的格数。
+ */
+openCells: number, blocks: Array<PlanBlock>, 
+/**
+ * 划出了、还没建的。
  */
 unbuiltBlocks: Array<PlanUnbuilt>, 
 /**
@@ -13937,15 +13720,11 @@ unbuiltBlocks: Array<PlanUnbuilt>,
  */
 unowned: PlanUnowned, 
 /**
- * 没分下去的文件。
- */
-unsplit: Array<PlanUnsplit>, 
-/**
  * 还没执行的 sets（画虚线，为什么写在目标那一格上）。
  */
 pendingSets: Array<PlanPendingSet>, check: PlanCheck, 
 /**
- * 编号 ⇒「编号 标题」（活图上的格 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
+ * 编号 ⇒「编号 标题」（图上每个节点，连排期的 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
  */
 labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
 /**
@@ -13953,14 +13732,14 @@ labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<Pla
  */
 needCount: number, 
 /**
- * 顶块（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
+ * 最上面那个权力范围（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
  */
 returned: PlanReturned | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+type PlanState = { value: string, count: number, };
 type PlanUnbuilt = { id: string | null, cells: Array<string>, };
 type PlanUndecidable = { rule: string | null, why: string | null, };
 type PlanUnowned = { paths: Array<string> | null, why: string | null, };
-type PlanUnsplit = { id: string | null, path: string | null, };
 type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
@@ -13973,8 +13752,12 @@ needs: string | null,
 /**
  * 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
  */
-face: SessionFace, };
-type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" };
+face: SessionFace, 
+/**
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ */
+label: string | null, };
+type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" } | { "kind": "undecided" };
 type PlanWhyShort = { text: string, wait: boolean, };
 type SessionCan = { 
 /**
@@ -14041,7 +13824,7 @@ type Words = string;
 
 #### `plan-cell-view`
 
-一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样；点到才起 `pb dump --cell`）。
+一个节点的 agent 视角（agent 站在那个节点时 pb 印给它的那一段，原样；点到才起 `pb dump --node`）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-cell-view`
 
@@ -14068,48 +13851,40 @@ id: string, };
 
 #### `plan-command`
 
-以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）· `record`（把人的原话记进 `slice` 那一片，当前片不动）；这一侧带着 agent 身份 ⇒ 这几条都不代敲。
+以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
 
 入参 `PlanCommandReq` · 回包 `PlanCmdReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type PlanAdopted = { slice: string, 
+/**
+ * 仓库相对工作区根在哪。
+ */
+path: string, 
+/**
+ * `true` ⇒ 先把当前仓库切成了它（pb 的 `adopt` 只接当前仓库）。
+ */
+switched: boolean, };
 type PlanCmdReply = { rc: number, said: string | null, path: string | null, 
 /**
- * `take` 才有：接到了哪一片。
+ * `adopt` 才有：接过来的是哪一个仓库。
  */
-took: PlanTook | null, };
+adopted: PlanAdopted | null, };
 type PlanCommandReq = { 
 /**
  * 工作区根。
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `take` · `view` · `record`。
+ * `continue` · `pause` · `adopt` · `render`。
  */
-cmd: "continue" | "pause" | "take" | "view" | "record", 
+cmd: "continue" | "pause" | "adopt" | "render", 
 /**
- * `take` 接哪一片的仓库 · `record` 记进哪一片（片名）；别的动词不带。
+ * `adopt` 接过哪一个仓库（仓库名）；别的动词不带。
  */
-slice?: string | null, 
-/**
- * `record`：定了什么（一行）。
- */
-summary?: string | null, 
-/**
- * `record`：人的原话，一句一项（照抄；没带「」pb 包上）。
- */
-quotes?: Array<string> | null, };
-type PlanTook = { slice: string, 
-/**
- * 仓库相对工作区根在哪。
- */
-path: string, 
-/**
- * `true` ⇒ 先把工作区配置里此刻那一片切成了它（pb 只接此刻那一片）。
- */
-switched: boolean, };
+slice?: string | null, };
 ```
 
 码：`bad_args` · `failed` · `no_pb` · `no_such_slice` · `not_workspace` · `pb_unsupported` · `refused`
@@ -14161,17 +13936,17 @@ id: string,
  */
 label: string, title: string | null, 
 /**
- * 认不出 pb 的状态字 ⇒ `null`（当没做完画）。
+ * 类不许记收的值 ⇒ `null`（不算活）。
  */
-statusCode: "done" | "open" | "dropped" | "evidence" | null, status: string | null, 
+statusCode: "done" | "open" | null, 
+/**
+ * 状态那一行字（后端照 pb 记着的值写好，如「已签收 2」）；什么都没记 ⇒ `null`。
+ */
+status: string | null, 
 /**
  * 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
  */
 block: string | null, 
-/**
- * 作数那一条签收的时刻（成了字）；没签过 ⇒ `null`。
- */
-signAtText: string | null, 
 /**
  * 对账码；认不出 ⇒ `null`。
  */
@@ -14283,7 +14058,7 @@ type PlanReturnReply = { line: string, to: PlanWho | null,
  */
 result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, 
 /**
- * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；接手照旧是它。
+ * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；负责人照旧是它。
  */
 resumed: boolean, };
 type PlanReturnReq = { 
@@ -14331,7 +14106,11 @@ needs: string | null,
 /**
  * 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
  */
-face: SessionFace, };
+face: SessionFace, 
+/**
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ */
+label: string | null, };
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -14511,12 +14290,12 @@ type Words = string;
 | `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
-| `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样；点到才起 `pb dump --cell`） |
-| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）· `record`（把人的原话记进 `slice` 那一片，当前片不动）；这一侧带着 agent 身份 ⇒ 这几条都不代敲 |
+| `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一个节点的 agent 视角（agent 站在那个节点时 pb 印给它的那一段，原样；点到才起 `pb dump --node`） |
+| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲 |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-pb-check` | ＝ 帧命令 `plan-pb-check`：一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问 |
-| `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
+| `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view） |
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回 |
 | `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
@@ -14531,7 +14310,6 @@ type Words = string;
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
-| `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
