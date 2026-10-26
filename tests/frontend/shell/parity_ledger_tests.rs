@@ -176,7 +176,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 正是 §1.2 今天悬着的问题」。**两半都被证伪了**：
     // ① 「还没裁定」——`C1`/`C8` 已裁（「本地要和远端一样」）；
     // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs::local_stdio_consumer` 里逐字
-    //    `inbound_client::register(LOCAL_ORIGIN, client)`，`client_for("<local>")` 实测通。
+    //    `inbound_client::register(client)`，`local_client()` 实测通。
     // ③ 而 **P3 刀 3 让生产段真的用它了**：`runLocalResumeIntoExistingTmux`
     //    以 `<local>` 交后端就地 resume。
     //
@@ -699,7 +699,7 @@ fn every_asymmetry_is_decided() {
 // # 问题（`K-R112` 撞见、一个字没动）
 //
 // `LEDGER` 的 `Side` 栏**没有任何机检**。一条命令的派发跳改走了「origin 无关」的
-// 帧面（`inbound_client::client_for(origin)` / `backend_route`）之后，它对
+// 帧面（`inbound_client::local_client()` / `backend_route`）之后，它对
 // `<local>` 也走得通，而这一行还写着 `Side::Remote` —— **表在撒谎，而且不红**。
 //
 // # 为什么**不是**「让 `Side` 从源码派生」（甲），而是「签字 ＋ 派生的触发器」（乙）
@@ -736,7 +736,7 @@ fn every_asymmetry_is_decided() {
 enum Derived {
     /// 生产段里出现了**只有远端才用得上**的东西（SSH / 远端配置 / 拒绝 `<local>`）。
     RemoteOnly,
-    /// 只走 **origin 无关的帧面**（`client_for(origin)` / 共用分流器）⇒ `<local>` 也走得通。
+    /// 只走 **origin 无关的帧面**（`local_client()` / 共用分流器）⇒ `<local>` 也走得通。
     FramePlane,
     /// 两样都有 —— 它自己分了两条路。本条不判它（人签）。
     Mixed,
@@ -767,7 +767,12 @@ const REMOTE_ONLY_MARKS: &[&str] = &[
 ];
 
 /// 生产段里「走 origin 无关帧面」的标记。
-const FRAME_PLANE_MARKS: &[&str] = &["client_for(", "route_call_error", "backend_route::"];
+const FRAME_PLANE_MARKS: &[&str] = &[
+    "local_client(",
+    "offer_of(",
+    "route_call_error",
+    "backend_route::",
+];
 
 /// 派生器跟同文件调用的**深度**。〔09-14 现打：2 / 3 / 4 三个深度**答案完全相同**
 /// （6 条 `FramePlane` 逐字同一批）⇒ 取最小的那个，别多扫。〕
@@ -958,12 +963,12 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
 
 /// 派生器在**整张** `LEDGER` 上认出的 `FramePlane` 命令数（不分 `Side`）—— 候选集（`Remote` 那一栏里的
 /// `FramePlane`）今天是空集，这个数是派生器不瞎的异源正控（见 `the_remote_side_column_is_signed_off` 第 ③ 步）。
-/// 两向相等（逐条点名，跑出来的）；人群：体里走 `client_for(` / `backend_route::` 的 `#[tauri::command]`。
+/// 两向相等（逐条点名，跑出来的）；人群：体里走 `local_client(` / `backend_route::` 的 `#[tauri::command]`。
 const FRAME_PLANE_ANYWHERE: &[&str] = &[
-    // 〔C4e 现打〕`LEDGER` 里是 `Both`（问那台机器后端的状态，体里走 `client_for(`）—— 不是候选，因为它不在 `Remote` 那一栏。
+    // `LEDGER` 里是 `Both`（那台的通道在不在，体里走 `offer_of(`）—— 不是候选，因为它不在 `Remote` 那一栏。
     "backend_status",
-    // 〔A10-3-2 ①〕`LEDGER` 里是 `Both`：远端那一支先叫醒本机后端手上那台的常驻流（`wake_backend_feed`，体里走 `client_for(`）。
-    "backend_start",
+    // `LEDGER` 里是 `Both`（各台此刻的成品问本机后端，体里走 `local_client(`）。
+    "diagnostics_report",
 ];
 
 /// **候选（派生 = `FramePlane`）的人裁** —— 闭集见 [`FrameVerdict`]，理由必须可追问。
@@ -1118,7 +1123,7 @@ fn the_remote_side_column_is_signed_off() {
     // 3 → **0**：cc-bus 那三行也随命令退役了 —— 候选集今天**真的是空集**（`Side::Remote` 里没有一条
     //   走 origin 无关的帧面派发了）。于是「没塌成空集」这条地板本身不再成立，换成**异源的正控**：
     //   同一个派生器在**整张** `LEDGER` 上（不只 `Remote` 那一栏）认得出多少条 `FramePlane` —— 那一群是 `Both` / `Local`
-    //   命令（`chan_call` 那一族经 `client_for(` 问后端），人群不空 ⇒ 派生器没瞎，下面那条「候选 == 人裁」的空集相等才可信。
+    //   命令（`chan_call` 那一族经 `local_client(` 问后端），人群不空 ⇒ 派生器没瞎，下面那条「候选 == 人裁」的空集相等才可信。
     //   这个数是恒等（跑出来的），不是地板：人群变了要回来改、写清谁加谁减。
     let frame_plane_anywhere: BTreeSet<&str> = derived
         .iter()

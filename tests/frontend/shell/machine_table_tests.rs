@@ -1,4 +1,4 @@
-//! 机器表的最近一份：本机后端那一答 ⇒ 照用的那几台（名字 · 连不连 · 换没换）；读不懂 ⇒ 空表 ＋ 那一句（一台都不连），不在 ⇒ 空表、不出声。
+//! 机器表的最近一份：本机后端那一答 ⇒ 照用的那几台（名字 · 连不连）；读不懂 ⇒ 空表 ＋ 那一句（一台都不连），不在 ⇒ 空表、不出声。
 use super::*;
 use serde_json::json;
 
@@ -13,7 +13,6 @@ fn the_reply_says_which_hosts_to_use() {
             vec![Row {
                 name: "gpu".into(),
                 connect: false,
-                key: h.to_string()
             }],
             None
         )

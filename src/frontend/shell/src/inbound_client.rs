@@ -1,11 +1,12 @@
 //! monitor 侧的入方向客户端：本体（「Hello 之前不许写」的类型 · 一问一答 · 期限与撤单 · 应答路由）住 `resident-client`
 //! （手机核心同一份，`src/comms/resident-client/client.rs`），这里转用；本文件只剩 monitor 自己的那两样 ——
-//! 每台一个客户端的登记表（[`register`] · [`client_for`]）与那台此刻连没连着（[`Link`]）。
+//! 本机后端那一个客户端（[`register`] · [`local_client`]；问别台一律经它 `call_at`）与经它转来的各台此刻那一条连接的能力事实（[`reached`] · [`offer_of`]）。
 
 pub use resident_client::client::*;
 // 判据（`inbound_client_tests.rs`，与本体同一份行为）沿用本体那几样词。
 #[cfg(test)]
 use crate::chan::wire::Withdraw;
+use comms_inward::chan::wire::Offer;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -26,144 +27,108 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 // ============================================================================
-// 每台远端主机一个客户端：origin → 当前连接的客户端
+// 本机后端那一个客户端
 // ============================================================================
 
-/// 形状同 `stream_source::announced_registry`：origin 是那台机器的稳定身份。
-/// 写者 = 远端各台的收事那一头 `stream_source::consume_remote`（接上时登记、断了摘除）· 本机那条流。
-fn registry() -> &'static Mutex<HashMap<String, Arc<InboundClient>>> {
-    static R: std::sync::OnceLock<Mutex<HashMap<String, Arc<InboundClient>>>> =
-        std::sync::OnceLock::new();
-    R.get_or_init(|| Mutex::new(HashMap::new()))
+/// 本机后端此刻那条连接的客户端（写者 = 本机两条载体的读循环：hello 之后登记、断了摘除）。
+fn slot() -> &'static Mutex<Option<Arc<InboundClient>>> {
+    static S: Mutex<Option<Arc<InboundClient>>> = Mutex::new(None);
+    &S
 }
 
-/// 登记本连接的客户端。同 origin 的旧条目会被替换（重连）。
-pub fn register(origin: &str, client: Arc<InboundClient>) {
-    // 记下它通往哪台：形状对不上那一句按这个名字说（一条连接只登记一次）；看的这一台的时区，每条请求信封都带。
-    client.name_machine(origin);
+/// 登记本机这条连接的客户端（重连 ⇒ 换掉旧的）。
+pub fn register(client: Arc<InboundClient>) {
+    // 记下它通往哪台：形状对不上那一句按这个名字说；看的这一台的时区，每条请求信封都带。
+    client.name_machine(LOCAL_ORIGIN);
     client.set_viewer_tz(host_core::viewer_tz());
-    // **先放锁再 shutdown** —— 与 `unregister` 对称。今天两者都不会死锁（没有任何路径是
-    // pending → registry），但两处写法不一致就是给后来人埋的坑。
-    let old = lock(registry()).insert(origin.to_string(), client);
+    // **先放锁再 shutdown** —— 与 `unregister` 对称。
+    let old = lock(slot()).replace(client);
     if let Some(old) = old {
         old.shutdown();
     }
-    set_link(origin, Link::Up);
-    // 换了一条新连接 ⇒ 不论那台原先是不是 `Up`（新的先登记、旧的后摘时一直是）都醒一次订阅者。
-    lock(link_book()).tick.send_modify(|t| *t += 1);
-    // 本机后端起没起来看的就是这条通道在不在（远端各台的状态由本机后端自己那几条常驻流记，壳不交）。
-    if origin == LOCAL_ORIGIN {
-        crate::local_backend_host::local_backend_changed();
-    }
+    // 本机后端起没起来看的就是这条通道在不在。
+    crate::local_backend_host::local_backend_changed();
 }
 
 /// 摘除 —— **只摘自己那条**。重连时新连接可能已经登记上来了，
 /// 拿旧的 `Arc` 比一下指针，不是自己的就别动（否则会把新连接摘掉）。
-pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
-    let mut r = lock(registry());
-    let is_mine = r.get(origin).is_some_and(|cur| Arc::ptr_eq(cur, mine));
+pub fn unregister(mine: &Arc<InboundClient>) {
+    let mut s = lock(slot());
+    let is_mine = s.as_ref().is_some_and(|cur| Arc::ptr_eq(cur, mine));
     if is_mine {
-        r.remove(origin);
+        *s = None;
     }
-    drop(r);
+    drop(s);
     mine.shutdown();
     if is_mine {
-        set_link(origin, Link::Reconnecting);
-        if origin == LOCAL_ORIGIN {
-            crate::local_backend_host::local_backend_changed();
-        }
+        crate::local_backend_host::local_backend_changed();
     }
+}
+
+/// 本机后端此刻那条连接的客户端。没连上 / 还没收到 hello → `None`。
+pub fn local_client() -> Option<Arc<InboundClient>> {
+    lock(slot()).clone()
 }
 
 // ============================================================================
-// 那台机器此刻连没连着（文件窗口「断开 · 重新连接中…」「离线 · 采样 …」那一条的事实）
+// 经本机后端转来的各台：此刻那一条连接的能力事实
 // ============================================================================
 
-/// 一台机器那条长连接此刻的样子（由连接循环写：握上手 ⇒ `Up`；断了 ⇒ `Reconnecting`；重连一轮没连上 ⇒ `Down`）。
-///
-/// 窗口不猜：它订 `link` 那条流（`chan/host.rs`），这里是那条流的唯一来源。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Link {
-    Up,
-    /// 刚断、连接循环正在重连（还没有一轮失败）。
-    Reconnecting,
-    /// 重连至少一轮没连上（或从没连上过）。
-    Down,
+/// 一台此刻那一条连接握手时交出的那几样（那台的 hello，本机后端原样转来）。
+struct Reached {
+    offer: Offer,
+    build: String,
 }
 
-struct LinkBook {
-    links: HashMap<String, Link>,
-    /// 每改一格 +1（订阅者据它醒）。
-    tick: tokio::sync::watch::Sender<u64>,
+fn reached_book() -> &'static Mutex<HashMap<String, Reached>> {
+    static B: std::sync::OnceLock<Mutex<HashMap<String, Reached>>> = std::sync::OnceLock::new();
+    B.get_or_init(Default::default)
 }
 
-fn link_book() -> &'static Mutex<LinkBook> {
-    static B: std::sync::OnceLock<Mutex<LinkBook>> = std::sync::OnceLock::new();
-    B.get_or_init(|| {
-        Mutex::new(LinkBook {
-            links: HashMap::new(),
-            tick: tokio::sync::watch::channel(0).0,
-        })
-    })
+/// 那台这一条连接接上了（收的那一头见到它的 hello）：记下能力事实，回它（同一台换一条连接 ⇒ 换成新的）。
+pub(crate) fn reached(machine: &str, hello: &cmd_wire::frame::Hello) -> Offer {
+    let offer = Offer::of(hello);
+    lock(reached_book()).insert(
+        machine.to_string(),
+        Reached {
+            offer: offer.clone(),
+            build: hello.build_id.clone(),
+        },
+    );
+    offer
 }
 
-fn set_link(origin: &str, l: Link) {
-    let mut b = lock(link_book());
-    if b.links.get(origin) == Some(&l) {
-        return;
+/// 那台这一条连接断了。
+pub(crate) fn gone(machine: &str) {
+    lock(reached_book()).remove(machine);
+}
+
+/// 那台的能力事实：本机 ⇒ 本机那条连接握手时交的；别台 ⇒ 本机后端转来的那台 hello 里的（本机没连着 ⇒ 问不到那台，`None`）。
+pub fn offer_of(origin: &str) -> Option<Offer> {
+    let local = local_client()?;
+    if origin == LOCAL_ORIGIN {
+        return Some(local.offer());
     }
-    b.links.insert(origin.to_string(), l);
-    b.tick.send_modify(|t| *t += 1);
+    lock(reached_book()).get(origin).map(|r| r.offer.clone())
 }
 
-/// 连接循环一轮没连上（这一轮里一次 hello 都没收到）⇒ 那台记成 `Down`。
-pub fn note_round_failed(origin: &str) {
-    set_link(origin, Link::Down);
+/// 那台这一条连接握手时报的构建标识（诊断信息用）；没连着 ⇒ `None`。
+pub fn build_of(machine: &str) -> Option<String> {
+    lock(reached_book()).get(machine).map(|r| r.build.clone())
 }
 
-/// 那台此刻的样子。从没登记过（连接循环还没起 / 一次都没连上）⇒ `Down`。
-pub fn link_of(origin: &str) -> Link {
-    lock(link_book())
-        .links
-        .get(origin)
-        .copied()
-        .unwrap_or(Link::Down)
-}
+// 本机后端的名字（`LOCAL_ORIGIN`）住 `resident-client`（称呼那一句认它），上面整份转用。
 
-/// 每改一格就醒一次的那个收端（`chan/host.rs` 的 `link` 流拿它等）。
-pub fn link_changes() -> tokio::sync::watch::Receiver<u64> {
-    lock(link_book()).tick.subscribe()
-}
-
-/// 「重新连接」：叫醒那台的连接循环，不等退避睡满（循环住 `resident-client`，`stream_source::wake` 拨它）。
-/// 连着 ⇒ 不做事；断着而它此刻正在拨 ⇒ 这一轮没成就不睡；连上那一刻这一下作废，
-/// 不会留到下一次断线时白白跳过一轮退避。主窗口与文件窗口的［重新连接］都只走这一处。
-pub fn kick(origin: &str) {
-    if link_of(origin) == Link::Up {
-        return;
-    }
-    crate::stream_source::wake(origin);
-}
-
-// 本机后端在 registry 里的 key（`LOCAL_ORIGIN`）住 `resident-client`（称呼那一句认它），上面整份转用。
-
-/// **测试期 `<local>` 的独占锁**。
+/// **测试期本机那一格的独占锁**。
 ///
-/// 登记表是**进程内全局**的，而 cargo 默认并行跑用例 ⇒ 两条都在 `<local>` 键上起真 backend
-/// 的用例会互相看见对方登记的通道。实测形态：一条用例的 `等通道出现` 立刻为真
-/// （其实是另一条登记的），随后 `起来了却没有 pid`。
+/// 那一格是**进程内全局**的，而 cargo 默认并行跑用例 ⇒ 两条都在本机那一格上起真 backend
+/// 的用例会互相看见对方登记的通道。
 ///
-/// ⚠ 中毒也要拿到锁（`into_inner`）：一条用例 panic 不该把其余的全变成「锁中毒」，
-/// 那会把**一个**真失败放大成一片假失败，反而盖住原因。
+/// ⚠ 中毒也要拿到锁（`into_inner`）：一条用例 panic 不该把其余的全变成「锁中毒」。
 #[cfg(test)]
 pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
     L.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// 取某台主机当前的入方向客户端。没连上 / 还没收到 hello → `None`。
-pub fn client_for(origin: &str) -> Option<Arc<InboundClient>> {
-    lock(registry()).get(origin).cloned()
 }
 
 #[cfg(test)]

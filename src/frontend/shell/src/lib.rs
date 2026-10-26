@@ -111,9 +111,6 @@ pub mod shots_shell;
 
 mod launch;
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/local_origin_registry.rs"]
-mod local_origin_registry;
 mod logging;
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
@@ -134,10 +131,8 @@ mod spawn_managed;
 mod sftp_pool;
 // 远端自部署：照本机常驻后端出的计划往那台放字节（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）。
 mod deploy;
-// SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
-// `remote.enabled = true` 时，stream_source::run 作为**附加**数据源与本机那条流
-// 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。本机会话内容也经本模块的
-// `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
+// 会话流只读本机后端那一条：各台的常驻流归本机后端，那台流上的事由它原样转来（`relayed`），
+// 本模块按那台分到同一个收口（`LineIntake` / `consume` → flush_lines → batch_to_payloads → on_line_batch_awaited）；
 // 远端行带 origin=host 标签。
 // 问自己放下去的那份后端一次（帧命令的 CLI 面）：本机后端自举那一问。
 mod backend_once;
@@ -618,18 +613,12 @@ pub fn run() {
                     }
                 });
             }
-            // 远端是在本机那条流之外**额外**的数据源（本地 + 远端会话同时显示）；机器表里每台要连的起一条。
-            // 远端那几条流：本机后端答了机器表之后、与之后每帧 `changed {machines}` 走同一条对齐路（`machine_table::refresh`）；
-            //   这里那一趟在本机后端答之前，表是空的、一台不起。
-            if REMOTE_CTX
+            // 主窗口那一侧的把手（机器表问完之后在本机 `changed/machines` 上说一声要它的重放缓冲）。
+            if MAIN_CTX
                 .set((replay.clone(), app.handle().clone()))
                 .is_err()
             {
-                tracing::warn!("remote stream context already set");
-            }
-            let done = reconcile_remote_streams();
-            if !done.started.is_empty() {
-                tracing::info!("remote data source(s) started: {:?}", done.started);
+                tracing::warn!("main context already set");
             }
             // 这一版带着的后端字节 ＋ 清单先落盘：本机后端那几条常驻流装远端时现读（`deploy::place_slots`）。放在起本机后端之前、在自己的线程上（不挡第一屏）。
             if let Err(e) = std::thread::Builder::new()
@@ -639,7 +628,7 @@ pub fn run() {
                 tracing::warn!("place-slots 线程起不来（远端装不了）：{e}");
             }
             // 本机后端在自己的线程上起：第一屏不等它；起着 / 接上 / 起不来走那台的机器状态（`machine-state`），与远端同一条。
-            //   放在远端那几条流的上下文就位之后：接上那一刻要问本机的机器表、起远端流。
+            //   放在主窗口的上下文就位之后：接上那一刻要问本机的机器表。
             local_backend_host::start_at_launch(say_local_start);
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
@@ -868,7 +857,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
     session_book::install_sink(book_tx);
 
     // 本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
-    // 经 `local_lines` → `stream_source::consume_local` → 与远端同一个 `LineIntake`。
+    // 经 `local_lines` → `stream_source::consume` → 与各台同一个 `LineIntake`。
     // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
     // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
@@ -911,51 +900,18 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
     }
 }
 
-/// 起远端流要的两样上下文（启动时放进来，热加载时取用）。
-static REMOTE_CTX: std::sync::OnceLock<(Arc<event_replay::EventReplay>, tauri::AppHandle)> =
+/// 主窗口那一侧的两样：重放缓冲 · 应用把手（setup 时放进来）。
+static MAIN_CTX: std::sync::OnceLock<(Arc<event_replay::EventReplay>, tauri::AppHandle)> =
     std::sync::OnceLock::new();
 
 /// 主窗口那一侧的应用把手（起来之后才有；通道上由 monitor 自己接的那几条要发界面事件时取它）。
 pub(crate) fn main_app() -> Option<tauri::AppHandle> {
-    REMOTE_CTX.get().map(|(_, app)| app.clone())
+    MAIN_CTX.get().map(|(_, app)| app.clone())
 }
 
-/// 一台远端的重起闭包：每次调用起一条新的 `stream_source::run`（只交名字：怎么拨照本机后端的机器表）。
-fn remote_respawn(
-    origin: String,
-    replay: Arc<event_replay::EventReplay>,
-    app: tauri::AppHandle,
-) -> backend_control::Respawn {
-    Box::new(move || {
-        let origin = origin.clone();
-        let replay = replay.clone();
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            let label = origin.clone();
-            stream_source::run(origin, replay, remote_health_out(app)).await;
-            tracing::info!("stream_source::run [{label}] 收工了");
-        })
-    })
-}
-
-/// 照机器表（本机后端最近答的那一份）对齐远端流（要连的才连；那一台那一行变了的重起；其余不动）。
-pub(crate) fn reconcile_remote_streams() -> backend_control::Reconciled {
-    let Some((replay, app)) = REMOTE_CTX.get() else {
-        return backend_control::Reconciled::default();
-    };
-    let wanted = machine_table::rows_now()
-        .into_iter()
-        .filter(|r| r.connect)
-        .map(|r| backend_control::WantedRemote {
-            origin: r.name.clone(),
-            cfg_key: r.key,
-            respawn: remote_respawn(r.name, replay.clone(), app.clone()),
-        })
-        .collect();
-    let done = backend_control::reconcile_remotes(wanted);
-    // 注册表此刻就是机器表的样子了 ⇒ 告诉主窗口（它订的那几台跟着走）。
-    machine_table::tell_followed(replay);
-    done
+/// 主窗口那一侧的重放缓冲（起来之后才有；机器表问完之后在它上面说一声）。
+pub(crate) fn main_replay() -> Option<Arc<event_replay::EventReplay>> {
+    MAIN_CTX.get().map(|(replay, _)| replay.clone())
 }
 
 /// 把后端帧里来的一批 `JsonlLine` 组成可 emit 的 `JsonlLinePayload`。

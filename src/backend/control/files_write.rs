@@ -326,8 +326,26 @@ fn rename_entry_racing(
     to: &Path,
     between: &mut dyn FnMut(),
 ) -> Result<PathBuf, WriteRefusal> {
-    let (src, dst, done) =
-        rename_no_clobber(face, root, from, to, between, false).map_err(WriteRefusal::Refused)?;
+    rename_entry_as(face, root, from, to, between, false)
+}
+
+/// [`rename_entry_racing`] 的本体；`cross` 让判据走跨盘那一支（不动盘、当那一下系统回了 `CrossesDevices`；生产传 `false`）。
+fn rename_entry_as(
+    face: &Face,
+    root: &Path,
+    from: &Path,
+    to: &Path,
+    between: &mut dyn FnMut(),
+    cross: bool,
+) -> Result<PathBuf, WriteRefusal> {
+    let (src, dst, done) = if cross {
+        let src = walk_in_root(Last::Link, root, from).map_err(WriteRefusal::Refused)?;
+        let dst = walk_in_root(Last::Link, root, to).map_err(WriteRefusal::Refused)?;
+        let e = std::io::Error::from(std::io::ErrorKind::CrossesDevices);
+        (src.into_path_buf(), dst.into_path_buf(), Err(e))
+    } else {
+        rename_no_clobber(face, root, from, to, between, false).map_err(WriteRefusal::Refused)?
+    };
     match done {
         Ok(()) => Ok(dst),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -335,6 +353,9 @@ fn rename_entry_racing(
                 "beFilesWrite.rename.exists",
                 &[("path", &dst.display().to_string())],
             )))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            copy_then_remove(face, root, from, to, &src, &dst).map(|()| dst)
         }
         Err(e) => Err(WriteRefusal::io(
             copy_text(
@@ -348,6 +369,65 @@ fn rename_entry_racing(
             &e,
         )),
     }
+}
+
+/// **跨盘改名**（系统回 `CrossesDevices`）：拷完再删，动词全是这一份里已有的那几件。
+///
+/// 1. 目标已在 ⇒ 拒（`exists`），一个字节不动；拷那一步本身也是不覆盖的（`O_EXCL` · 建目录），窗里冒出来的同样拒。
+/// 2. 先排一趟删源的计划（[`plan_tree`]，只读）：删不了的几形（超上限 · 底下有挂载点 · 解析不过）在动手之前就整趟拒。
+/// 3. 拷：链接本身 ⇒ 照原样建一条同文本的（不跟过去）；文件 · 目录 ⇒ [`copy_tree`]（中途失败自己撤掉建了的 ⇒ 目标不留半截，源没动过）。
+/// 4. 拷全了才删源（[`delete_tree`]）。删到一半停下 ⇒ 目标是完整的一份，话里带删到了哪一条。
+///
+/// 每一步的拒都包成「改名失败 · <那一步的话> · 源 → 目标」：线上码沿用那一步的。
+fn copy_then_remove(
+    face: &Face,
+    root: &Path,
+    from: &Path,
+    to: &Path,
+    src: &Path,
+    dst: &Path,
+) -> Result<(), WriteRefusal> {
+    let said = |why: &str| {
+        copy_text(
+            "beFilesWrite.rename.failed",
+            &[
+                ("src", &src.display().to_string()),
+                ("dst", &dst.display().to_string()),
+                ("why", why),
+            ],
+        )
+    };
+    let wrap = |e: WriteRefusal| {
+        let m = said(e.message());
+        e.restated(m)
+    };
+    let unread = |p: &Path, e: std::io::Error| {
+        WriteRefusal::io(
+            copy_text(
+                "reason.fs.readFailed",
+                &[("path", &shown(p)), ("why", &io_reason(e.kind()))],
+            ),
+            &e,
+        )
+    };
+    if Ro::symlink_metadata(dst).is_ok() {
+        return Err(WriteRefusal::Exists(copy_text(
+            "beFilesWrite.rename.exists",
+            &[("path", &dst.display().to_string())],
+        )));
+    }
+    let is_link = Ro::symlink_metadata(src)
+        .map(|m| m.file_type().is_symlink())
+        .map_err(|e| wrap(unread(src, e)))?;
+    plan_tree(root, from).map_err(wrap)?;
+    if is_link {
+        let target = Ro::read_link(src).map_err(|e| wrap(unread(src, e)))?;
+        super::files_extract::land_link(face, root, to, &target).map_err(wrap)?;
+    } else {
+        copy_tree(face, root, from, to).map_err(wrap)?;
+    }
+    delete_tree(face, root, from).map_err(wrap)?;
+    Ok(())
 }
 
 /// 删一个文件或一个**空**目录。**删的是链接本身**（不跟过去）。

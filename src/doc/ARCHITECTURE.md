@@ -371,7 +371,6 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 |---|---|
 | `app` | 屏与导航、注入、前台保活；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏用拨号网关与 tmux 网关 |
 | `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了接回）与核心成品的解码；`model/` 把通用记录映射成渲染单元 |
-| `core-remote` | 中立的远端抽象：一次性 exec（带退出码）|
 | `core-ssh` | 连接管理（单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` |
 | `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里 |
 | `core-terminal` | 终端引擎（termlib） |
@@ -379,18 +378,23 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `core-ui` | 共用主题与反馈 |
 | `core-copy` | 取文口与大小 · 时长格式（同一张文案表） |
 
-谁调谁：`core-ssh` 拨号 → `core-remote` 开长 exec 跑 `ccm -- --resident-attach` → `core-claude` 在上面说帧（与桌面连远端同一条路、同一份后端）→ `app` 排版。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；手机的界面令牌今天是它自己一套，不与桌面共用。
+谁调谁：`core-ssh` 拨号 → `core-rs` 里那份 `resident-client` 在同一份拨号身份上开链路跑 `ccm -- --resident-attach` → `core-claude` 在上面说帧（与桌面连远端同一条路、同一份后端）→ `app` 排版。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；手机的界面令牌今天是它自己一套，不与桌面共用。
 
 ### 3.10 组
 
 组只有一种：一群会话 ＋ 一个名字。桌面标签页、手机分组、cc-bus 的范围、agent 问自己在哪几组，读的都是 `groups-read` 这一份（`src/backend/history/groups.rs`）。
 
+组是跨机器的集合：没有哪一台是它的主人，跟着组员走。每台只存自己有组员的那一片；名字带「几时起的」（`named`）抄进每一片，读时取最新那份。例：A 连 C · D，B 连 C · E，B 把 c（在 C）与 e（在 E）收成 g1 ⇒ C 存「g1：c」、E 存「g1：e」，B 自己没有组员就不存；A 读到「g1：c」，B 读到「g1：c、e」。
+
 | 事实 | 住哪 | 谁写 |
 |---|---|---|
-| 组本身 `{id, name, made}` | 家那一台的 `history-metadata.json` 顶层 `groups` 那一节 | 那台后端 `groups-write`（建 · 改名 · 解散只在家那台） |
-| 组员关系 · 固定 | 会话那一台的注解，条目上的 `groups` · `pinned` 两格 | 那台后端 `history-annotate`（`join` · `leave` · `pinned`） |
+| 组那一片 `{id, name, named, made}` | 每一台有组员的那台 `history-metadata.json` 顶层 `groups` 那一节（只记这台有组员的组） | 那台后端 `groups-write`：`move` 进组时抄进来、最后一位出组时删；`rename` · `dissolve` 由收到的那台发给各片 |
+| 组员关系 · 固定 | 会话那一台的注解，条目上的 `groups` · `pinned` 两格 | 组员关系：那台后端 `groups-write move`（与那一片同一把锁里改）；固定：`history-annotate`（`pinned`） |
 
-谁调谁：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 并好再答：名字照家那台、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（只在本机后端内存里）、组标「上次所知」、那台的组员画成看不见；从没答过 ⇒ 家在那台的组名字缺、组员照出。哪台的组那一半变了，那台 watcher 推 `changed {groups}`，出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
+谁调谁：
+- 读：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 在这里合一次（`groups::merge`，纯函数，手机核心以后调同一份）：名字取 `named` 最新的那一片、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（只在本机后端内存里）、那台的组员画成看不见、名字取自它的标「上次所知」；哪一片都没有记录、只有组员指着它 ⇒ 名字缺、组员照出。够不着的那台照实看不全，不经别台转问。
+- 写：建组只向本机要一个 id（`make`，不写盘：一个组员都没有的组不住任何一台）；进出组问组员那一台（`move`，带整份记录）；改名 · 解散交本机、带上组员所在的那几台（`rename` · `dissolve` `{machines}`），本机经 `ask_each` 发给各片、转过去的那一问只写那台自己，回包 `sent {missed}` 照实列出没送到的那几台与为什么。没送到的下次连上补发还没做：要在发问那台记一份待补（组 id · 哪台 · 改成什么），那台再答 `groups-here` 时补发。
+- 哪台的组那一片变了，那台 watcher 推 `changed {groups}`，出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
 
 ---
 
@@ -404,7 +408,7 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 | `ps-await/<PID>.tty` | Linux bash / zsh 接入块（本机桌面上开的 shell） | monitor `bind.rs` | 那个 shell 的进程号 · 起始时刻 · 终端设备，monitor 据它认窗口（认上 / 认不出就删） |
 | `ps-registry/<PID>.json` | monitor（Linux） | monitor（↗ 沿进程链时先查它） | 那个 shell 显示在哪个窗口（与 shell 进程同寿） |
 | `auto-launch.json` | monitor 设置 | PowerShell 接入块（`__ccm_bind`） | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
-| `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号 · 在哪几组 · 固定）＋ 家在这台的组（§3.10） |
+| `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号 · 在哪几组 · 固定）＋ 这台有组员的那几组那一片（§3.10） |
 | `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
 
 后端自己的状态（`backend.json` · 中转根钥匙 `relay-key` · 额度账 `quota.json` · 轮换 `rotation.json` · 血缘 `lineage.json` · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，都经写句柄 `platform::fs::Own`（订阅号凭据与诊断文件各一个窄句柄）；每一项是「删了会丢」还是「可随手删」见 INVARIANTS §2.1。

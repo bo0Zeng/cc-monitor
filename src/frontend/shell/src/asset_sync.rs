@@ -66,7 +66,7 @@ pub(crate) async fn sync_with(origin: &str, local: &impl LocalBackend) -> Result
     local.call(args_for(origin)).await
 }
 
-/// 远端那条流握手成功那一刻（`stream_source/run.rs::on_attached`）：那台认得资产目录 ⇒ 后台让本机后端对它做一趟同步；
+/// 远端那条流握手成功那一刻（本机后端转来那台的 hello，`stream_source/local.rs::attached`）：那台认得资产目录 ⇒ 后台让本机后端对它做一趟同步；
 /// 不认 ⇒ 不碰（老后端不认一次性子命令会进流模式）。
 pub(crate) fn on_remote_ready(origin: &str, remote_accepts: bool) {
     let label = origin.to_string();

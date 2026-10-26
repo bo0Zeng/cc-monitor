@@ -913,7 +913,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           historyView.onListMoved(origin);
           break;
         case "groups":
-          // 那台的组那一半动了（家在那台的组 · 那台会话进出组 · 固定）⇒ 组的账重问（连着来的合成一问）。
+          // 那台的组那一片动了（那台有组员的组 · 那台会话进出组 · 固定）⇒ 组的账重问（连着来的合成一问）。
           groupBook.poke(origin);
           break;
         case "session_hidden":

@@ -84,7 +84,7 @@ prism4j-bundler = { group = "io.noties", name = "prism4j-bundler", version.ref =
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" } # 纯 JVM 模块（core-claude、core-remote）
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" } # 纯 JVM 模块（core-claude · core-wire · core-copy · detekt-rules）
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }

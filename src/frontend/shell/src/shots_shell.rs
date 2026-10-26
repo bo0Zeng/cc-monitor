@@ -1,15 +1,15 @@
-//! **截图台架的无头壳**：壳那几块真代码（本机那条 stdio 读循环 → `consume_local` → `session_book` → `event_replay` → 通道交格，
+//! **截图台架的无头壳**：壳那几块真代码（本机那条 stdio 读循环 → `consume` → `session_book` → `event_replay` → 通道交格，
 //! 以及 `chan_call` 那一跳 `call_via(InboundBackends)`）不带窗口跑起来，页里的假适配层（`tests/shots/fake/backend.ts`）经它说话。
 //!
 //! 只在特性 `shots` 下编（例子 `ccm-shots-shell`，由 `tests/shots/real/pool.mjs` 编、起）；发版构建里没有它
 //! （判据 `tests/frontend/shell/shots_feature_guard_tests.rs`）。
 //!
 //! # 和产品哪里一样、哪里不一样
-//! - 一样：每台机器的帧都经 [`crate::local_backend::local_stdio_consumer`]（产品本机那条读循环）进一个 [`crate::stream_source::consume_local`]，
+//! - 一样：只起本机那一台，它的帧（连同它转来的各台那几条）经 [`crate::local_backend::local_stdio_consumer`]（产品本机那条读循环）进 [`crate::stream_source::consume`]，
 //!   成品进同一本 `session_book`、同一个 [`EventReplay`]；出口接线是产品那一份 [`crate::wire_replay_outlets`]；页里拿到的格是
 //!   [`crate::chan::webview::webview_item`] 翻的那一形；`chan_call` 走 [`crate::chan::webview::call_via`] ＋ [`InboundBackends`]，失败那一形是 [`crate::chan::webview::fail`]。
-//! - 不一样：远端那几台在产品里走 ssh 那条 `stream_source::run`（握手 · 版本协商 · 重连退避），这里也走本机那条读循环（按 origin 区分）——
-//!   截图台架覆盖不到 ssh 那条路。窗口只有一个（订阅都记在 [`LABEL`] 名下）。
+//!   别台由本机后端经台架那份假 ssh 自己去接。
+//! - 不一样：本机那一台走 stdio 读循环接它的常驻（产品是套接字那一条）；窗口只有一个（订阅都记在 [`LABEL`] 名下）。
 //!
 //! # 线上（标准输入 / 标准输出，一行一个 JSON）
 //! 收：`{"t":"machines","machines":[{"origin","argv":[…]}]}`（起各台后端）·
@@ -150,8 +150,9 @@ pub fn main() {
                         .map(|m| m.origin.as_wire_str().to_string())
                         .collect(),
                 );
-                for m in machines {
-                    start(&m, &replay, &health, &children);
+                // 只起本机那一台：别台的常驻流归本机后端（台架那份假 ssh 由它自己去接），那台流上的事经本机这一条转来。
+                for m in machines.iter().filter(|m| m.origin.is_local()) {
+                    start(m, &replay, &health, &children);
                 }
             }
             Cmd::Offer { n, origin } => {
@@ -237,7 +238,7 @@ pub fn main() {
     }
 }
 
-/// 起一台：那台的后端进程（台架给好整条命令，含沙箱）→ 产品本机那条 stdio 读循环（按 origin）→ 它自己的 `consume_local`。
+/// 起本机那一台：它的后端进程（台架给好整条命令，含沙箱）→ 产品本机那条 stdio 读循环 → 收的那一头 `consume`。
 fn start(
     m: &Machine,
     replay: &Arc<EventReplay>,
@@ -269,16 +270,14 @@ fn start(
         return;
     };
     let (tx, rx) = tokio::sync::mpsc::channel(crate::local_lines::LOCAL_LINES_CAPACITY);
-    tauri::async_runtime::spawn(crate::stream_source::consume_local(
-        m.origin.as_wire_str().to_string(),
+    tauri::async_runtime::spawn(crate::stream_source::consume(
         rx,
         replay.clone(),
         health.clone(),
     ));
     let route = StdioRoute {
-        origin: m.origin.clone(),
-        place: m.origin.as_wire_str().to_string(),
         out: StdioOut::Own(tx),
+        ..StdioRoute::local()
     };
     std::thread::spawn(move || crate::local_backend::local_stdio_consumer(&route, stdin, stdout));
     children

@@ -38,16 +38,26 @@ const UNFOLLOW_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
 /// 经 `lib.rs` 装的那一口调）⇒ 向那台发一次退订，不等结局：那台没连着 ⇒ 连接走时后端整张票表本来就收了；
 /// 那张票早已停了 / 退订先于订阅到了 ⇒ 后端都回 `ok`（退订先到的那张票，之后的订阅那一问不起）。
 pub fn unfollow(origin: &crate::origin::Origin, ticket: &str) {
-    let Some(client) = crate::inbound_client::client_for(origin.as_wire_str()) else {
-        return;
-    };
-    if !client.accepts(UNFOLLOW) {
+    // 那台认不认这一条看它此刻那条连接的能力事实（本机 · 本机后端转来的那台 hello 同一问）。
+    if !crate::inbound_client::offer_of(origin.as_wire_str()).is_some_and(|o| o.admits(UNFOLLOW)) {
         return;
     }
+    let Some(client) = crate::inbound_client::local_client() else {
+        return;
+    };
+    let local = origin.is_local();
     let (origin, ticket) = (origin.as_wire_str().to_string(), ticket.to_string());
     tauri::async_runtime::spawn(async move {
         let args = serde_json::json!({ "ticket": ticket });
-        if let Err(e) = client.call(UNFOLLOW, args, UNFOLLOW_BUDGET).await {
+        let got = if local {
+            client.call(UNFOLLOW, args, UNFOLLOW_BUDGET).await
+        } else {
+            let deadline = tokio::time::Instant::now() + UNFOLLOW_BUDGET;
+            client
+                .call_at(&origin, UNFOLLOW, args, None, deadline)
+                .await
+        };
+        if let Err(e) = got {
             tracing::debug!("替界面退订 [{origin}] 的终端画面票 {ticket} 没成（{e}）—— 连接走时那台整张票表会收");
         }
     });

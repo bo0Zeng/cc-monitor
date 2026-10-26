@@ -59,16 +59,16 @@ function failingBook(): GroupBook {
   return new GroupBook(async (_origin, cmd) => {
     if (cmd === "groups-read") return empty as never;
     await boom();
-    return (cmd === "groups-write" ? { is: "dissolved", id: "g" } : { entry: {}, prev: null }) as never;
+    return (cmd === "groups-write" ? { is: "sent", id: "g", missed: [] } : { entry: {}, prev: null }) as never;
   }, 60_000);
 }
 
-/** 栏里一个 tab 在组 `g` 里（家在本机）—— 解散它就是一次分组写，固定它就是一次固定写。 */
+/** 栏里一个 tab 在组 `g` 里（组员在本机）—— 解散它就是一次分组写，固定它就是一次固定写。 */
 function groupedPrefs(): TabBarPrefs {
   const store = { orderedIds: ["s"], tabs: new Map([["s", { sessionId: "s", origin: "<local>", group: "g", pinned: false }]]), savedOrder: [] };
   const p = new TabBarPrefs(store as never, { refreshTabBar: () => {} } as never);
   p.attachBook(failingBook());
-  p.collections = [{ id: "g", name: "n", home: "<local>", counts: [] }];
+  p.collections = [{ id: "g", name: "n", counts: [] }];
   p.pinnedLoaded = true;
   return p;
 }

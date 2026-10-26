@@ -1075,22 +1075,89 @@ pub async fn watch_cells(
     }
 }
 
-/// 等那台连回来（`link` 那条流说「连着」为止；那条流不在 · 和 monitor 断了 ⇒ 当场回，让调用方照旧再问一次）。
+/// 等那台连回来（那台的成品说「连着」为止；那条流不在 · 和 monitor 断了 ⇒ 当场回，让调用方照旧再问一次）。
 pub async fn link_up(line: &Line, origin: &Origin) {
+    watch_link_until(line, origin, |s| {
+        matches!(s, LinkSeen::Up | LinkSeen::Severed)
+    })
+    .await
+}
+
+/// 「那台怎么了」那条流：本机后端那一台的 `changed/machine`（各台的状态成品住本机后端，`key` ＝ 那台的名字）。
+const MACHINE_KIND: &str = "changed/machine";
+
+/// 那台的状态成品 ⇒ 那台此刻的样子（纯函数）：连着 ⇒ `Up`；正在连 · 装 · 换 ⇒ `Reconnecting`；别的 ⇒ `Down`。
+pub fn seen_of_state(state: cmd_wire::machine::MachineStateKind) -> LinkSeen {
+    use cmd_wire::machine::MachineStateKind as K;
+    match state {
+        K::Up => LinkSeen::Up,
+        K::Connecting | K::Installing | K::Updating => LinkSeen::Reconnecting,
+        _ => LinkSeen::Down,
+    }
+}
+
+/// `changed/machine` 那条流的一格 ⇒ `origin` 那台此刻的样子（纯函数）；`None` ＝ 这一格不说它。
+/// 「看得见 / 看不见」说的是本机后端那一条：本机那台照它（[`link_seen`]）；别台只在看不见时跟着断（本机后端不在 ⇒ 问不到那台）。
+/// 带状态的一格：`key` 是那台的名字 ⇒ 照它的成品（[`seen_of_state`]）。
+pub fn machine_seen(origin: &Origin, item: &comms_inward::chan::wire::Item) -> Option<LinkSeen> {
+    use comms_inward::chan::wire::Item;
+    match item {
+        Item::Frame { body, .. } if !origin.is_local() => {
+            let v: serde_json::Value = serde_json::from_slice(&body.0).ok()?;
+            if v.get("key").and_then(serde_json::Value::as_str) != Some(origin.as_wire_str()) {
+                return None;
+            }
+            let state = serde_json::from_value(v.get("body")?.get("state")?.clone()).ok()?;
+            Some(seen_of_state(state))
+        }
+        Item::Seen { .. } if !origin.is_local() => None,
+        other => link_seen(other),
+    }
+}
+
+/// 别台此刻的样子：问本机后端一次那台的成品（`machine-read`）；问不到 · 表里没有它 ⇒ `None`（窗口当作说不清）。
+async fn machine_now(line: &Line, origin: &Origin) -> Option<LinkSeen> {
+    let got = ask(
+        line,
+        &Origin::local(),
+        "machine-read",
+        &serde_json::json!({}),
+        std::time::Duration::from_secs(10),
+    )
+    .await
+    .ok()?;
+    let state = got
+        .get("machines")?
+        .get(origin.as_wire_str())?
+        .get("state")?;
+    Some(seen_of_state(serde_json::from_value(state.clone()).ok()?))
+}
+
+/// 订「那台怎么了」那条流，每一格交给 `on`，`on` 回真就停；流关了 ⇒ 停。别台先问一次此刻的成品（那条流只在变了时才来一格）。
+async fn watch_link_until(line: &Line, origin: &Origin, mut on: impl FnMut(LinkSeen) -> bool) {
     use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(
-        origin,
-        &Kind(filewin_contract::LINK_KIND.to_string()),
+        &Origin::local(),
+        &Kind(MACHINE_KIND.to_string()),
         None,
         WATCH_CREDIT,
     );
+    if !origin.is_local() {
+        if let Some(s) = machine_now(line, origin).await {
+            if on(s) {
+                return;
+            }
+        }
+    }
     while let Some(item) = sub.next().await {
-        // 连上了 · 流关了 · 和 monitor 断了（再等也不会连上）⇒ 回。
-        if matches!(item, Item::Closed { .. })
-            || matches!(link_seen(&item), Some(LinkSeen::Up | LinkSeen::Severed))
-        {
+        if let Item::Closed { .. } = item {
             return;
+        }
+        if let Some(s) = machine_seen(origin, &item) {
+            if on(s) {
+                return;
+            }
         }
         sub.want(1);
     }
@@ -1213,7 +1280,7 @@ pub async fn watch_coded(
     }
 }
 
-/// 那台此刻连没连着（`link` 那条流的一格；monitor 的连接循环说了算，窗口不猜）。
+/// 那台此刻连没连着（本机后端那台的成品说了算，窗口不猜）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkSeen {
     Up,
@@ -1264,26 +1331,14 @@ pub fn link_seen(item: &comms_inward::chan::wire::Item) -> Option<LinkSeen> {
     }
 }
 
-/// 订「那台连没连着」那条流（[`filewin_contract::LINK_KIND`]，monitor 自己接）到它关掉为止；每一格交给 `on`。
+/// 订「那台怎么了」那条流（本机后端的 `changed/machine`，[`machine_seen`]）到它关掉为止；每一格交给 `on`。
 /// 对端说「没有这条流」/ 流关了 ⇒ 回（窗口当作说不清：不画断线条）。
 pub async fn watch_link(line: &Line, origin: &Origin, mut on: impl FnMut(LinkSeen)) {
-    use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
-    use futures::StreamExt as _;
-    let mut sub = line.subscribe(
-        origin,
-        &Kind(filewin_contract::LINK_KIND.to_string()),
-        None,
-        WATCH_CREDIT,
-    );
-    while let Some(item) = sub.next().await {
-        if let Item::Closed { .. } = item {
-            return;
-        }
-        if let Some(s) = link_seen(&item) {
-            on(s);
-        }
-        sub.want(1);
-    }
+    watch_link_until(line, origin, |s| {
+        on(s);
+        false
+    })
+    .await
 }
 
 /// 订「那台的计划变了」那条流（[`super::plan::PLAN_CHANGED_KIND`]）到它关掉为止；来一格（或丢了几格）就调一次 `on`。
@@ -1404,19 +1459,22 @@ impl DirWatch {
     }
 }
 
-/// 「重新连接」：叫醒那台的连接循环（[`filewin_contract::LINK_RETRY_OP`]，monitor 自己接；回 `{}`）。连没连上看 [`watch_link`]，
-/// 这一下本身没送到 ⇒ 记一行（断线条照旧摆着，人可以再点）。
+/// 「重新连接」：叫醒本机后端手上那台的常驻流（`machine-wake`：断着的不等退避马上再接）。连没连上看 [`watch_link`]；
+/// 本机那一台没有可叫醒的（壳自己接本机后端）。这一下本身没送到 ⇒ 记一行（断线条照旧摆着，人可以再点）。
 pub async fn kick_link(line: &Line, origin: &Origin) {
+    if origin.is_local() {
+        return;
+    }
     if let Err(why) = ask(
         line,
-        origin,
-        filewin_contract::LINK_RETRY_OP,
-        &serde_json::json!({}),
+        &Origin::local(),
+        "machine-wake",
+        &serde_json::json!({ "machine": origin.as_wire_str() }),
         std::time::Duration::from_secs(5),
     )
     .await
     {
-        tracing::warn!("link-retry not delivered: {why}");
+        tracing::warn!("machine-wake not delivered: {why}");
     }
 }
 

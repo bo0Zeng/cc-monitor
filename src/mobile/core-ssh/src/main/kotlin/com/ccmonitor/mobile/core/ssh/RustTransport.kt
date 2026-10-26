@@ -1,8 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.remote.ConnectionDeadException
-import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
 import com.ccmonitor.mobile.core.wire.Wire

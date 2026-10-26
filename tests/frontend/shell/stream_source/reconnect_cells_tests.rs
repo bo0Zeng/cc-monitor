@@ -1,15 +1,16 @@
-//! **断线 → 重连 → 续上，数格**（桌面那一侧）：同一条循环（`resident_client::feed::Feed`）× monitor 收事那一头（[`consume_remote`]）×
-//! 旁路快照 × 续点 × 会话流，整串走生产代码；只有那台远端是替身（一条内存里的流，答 `history-tail` / `history-read`）。
+//! **断线 → 重连 → 续上，数格**（桌面那一侧）：本机后端转来的那台那一串（`relayed`：hello · 帧 · 断了）× 收的那一头（[`consume`]）×
+//! 旁路快照 × 续点 × 会话流，整串走生产代码；只有本机后端是替身（一条内存里的流，照那台那份记录答 `history-tail` / `history-read`）。
 //!
-//! 剧本：那台一份记录 3 行（0..2）、宣告读完了 ⇒ 快照拉 3 行；实时来第 3 行；断网；断着时又写了 2 行（4、5）；
+//! 剧本：那台一份记录 3 行（0..2）、宣告读完了 ⇒ 快照拉 3 行；断了、重连，那一条推来实时第 3 行；断了；断着时又写了 2 行（4、5）；
 //! 重连、再宣告 ⇒ 从续点只拉断线期间新到的那两行。订了这个会话的那条订阅：每一行恰好一格、不重不漏，
 //! 看得见 / 看不见各在该在的位置。只数格、不看墙钟（等条件封顶 `guard_core::wall::CEILING`）。
 
 use super::*;
 use crate::chan::wire::Item;
-use crate::event_replay::ItemSink;
-use std::collections::VecDeque;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use crate::event_replay::{EventReplay, ItemSink};
+use cmd_wire::frame::Relayed;
+use std::sync::{Arc, Mutex};
+use tokio::io::AsyncBufReadExt;
 
 const ORIGIN: &str = "rc-box";
 const SID: &str = "rc-s1";
@@ -19,11 +20,6 @@ const PATH: &str = "/srv/rc/.claude/projects/p/rc-s1.jsonl";
 #[derive(Default)]
 struct Remote {
     lines: Mutex<Vec<String>>,
-    /// 每条连接接上之后先发的那几帧（一条连接取一份）。
-    scripts: Mutex<VecDeque<Vec<String>>>,
-    /// 拨它 ⇒ 接着的那一条当场断（断网）。
-    drop_link: tokio::sync::Notify,
-    attaches: std::sync::atomic::AtomicUsize,
 }
 
 impl Remote {
@@ -119,77 +115,6 @@ fn hello() -> String {
     .to_string()
 }
 
-async fn serve(s: tokio::io::DuplexStream, remote: Arc<Remote>) {
-    let mut r = tokio::io::BufReader::new(s);
-    let _ = r
-        .get_mut()
-        .write_all(format!("{}\n", hello()).as_bytes())
-        .await;
-    let mut line = String::new();
-    if r.read_line(&mut line).await.unwrap_or(0) == 0 {
-        return;
-    }
-    let _ = r.get_mut().write_all(b"{\"attach\":\"ok\"}\n").await;
-    let script = remote
-        .scripts
-        .lock()
-        .unwrap()
-        .pop_front()
-        .unwrap_or_default();
-    for f in script {
-        let _ = r.get_mut().write_all(format!("{f}\n").as_bytes()).await;
-    }
-    loop {
-        line.clear();
-        let got = tokio::select! {
-            n = r.read_line(&mut line) => n.unwrap_or(0),
-            () = remote.drop_link.notified() => 0,
-        };
-        if got == 0 {
-            return;
-        }
-        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
-        let data = remote.answer(v["cmd"].as_str().unwrap_or(""), &v["args"]);
-        let reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":data});
-        let _ = r.get_mut().write_all(format!("{reply}\n").as_bytes()).await;
-    }
-}
-
-/// 那台远端的替身：链路是一条内存里的流；装得了后端（回话不带新旧 ⇒ 不换）。
-struct Fake(Arc<Remote>);
-
-impl Transport for Fake {
-    type Stream = tokio::io::DuplexStream;
-    fn stream(
-        &self,
-        command: String,
-        _progress: resident_client::feed::Progress,
-    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
-        let remote = Arc::clone(&self.0);
-        Box::pin(async move {
-            assert!(command.ends_with("--resident-attach"), "{command}");
-            remote
-                .attaches
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            let (mine, theirs) = tokio::io::duplex(256 * 1024);
-            tokio::spawn(serve(theirs, remote));
-            Ok(mine)
-        })
-    }
-    fn capture(&self, _command: String) -> Boxed<'_, Result<Exec, Problem>> {
-        Box::pin(async {
-            Ok(Exec {
-                exit_status: Some(0),
-                stdout: "{}".into(),
-                stderr: String::new(),
-            })
-        })
-    }
-    fn installs(&self) -> bool {
-        true
-    }
-}
-
 /// 订阅收到的那几格：`line <seq>` · `seen` · `unseen` · 别的照名字。
 #[derive(Default)]
 struct Cells(Mutex<Vec<String>>);
@@ -233,7 +158,7 @@ fn local_backend_for(remote: Arc<Remote>) -> Arc<crate::inbound_client::InboundC
     let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(&[]))
         .expect("是 Hello 帧");
     let client = crate::inbound_client::park(mine).into_client(hello);
-    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    crate::inbound_client::register(client.clone());
     let c = client.clone();
     tokio::spawn(async move {
         let mut r = tokio::io::BufReader::new(theirs);
@@ -256,17 +181,33 @@ fn local_backend_for(remote: Arc<Remote>) -> Arc<crate::inbound_client::InboundC
     client
 }
 
+/// 那台接上一条连接：本机后端先转它的 hello，再转这条连接上的那几帧。
+async fn attach(tx: &tokio::sync::mpsc::Sender<LocalItem>, script: Vec<String>) {
+    for line in std::iter::once(hello()).chain(script) {
+        tx.send(LocalItem::Frame(Ordered::Relayed(Relayed::Line {
+            machine: ORIGIN.into(),
+            line,
+        })))
+        .await
+        .unwrap();
+    }
+}
+
+/// 那台这一条连接断了。
+async fn drop_link(tx: &tokio::sync::mpsc::Sender<LocalItem>) {
+    tx.send(LocalItem::Frame(Ordered::Relayed(Relayed::Ended {
+        machine: ORIGIN.into(),
+    })))
+    .await
+    .unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let remote = Arc::new(Remote::default());
     let local = local_backend_for(Arc::clone(&remote));
     remote.grow(3);
-    remote
-        .scripts
-        .lock()
-        .unwrap()
-        .push_back(vec![remote.primed()]);
     let replay = Arc::new(EventReplay::new());
     let cells = Arc::new(Cells::default());
     replay.attach_sink(cells.clone());
@@ -279,24 +220,8 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
         64,
     );
     let health: HealthOut = Arc::new(|_| Ok(()));
-    let (tx, rx) = tokio::sync::mpsc::channel(EVENT_QUEUE);
-    // 名单台：在看订了的那一条（同产品里 `stream_watch` 交给它的那份）。
-    let desk = resident_client::watch::Desk::new(|_| Vec::new(), |_| {});
-    let o = crate::origin::Origin(ORIGIN.into());
-    desk.set(replay.watched(&o), replay.kept(&o));
-    let feed = Feed::start(
-        feed_config(ORIGIN),
-        Some(Arc::new(Fake(Arc::clone(&remote)))),
-        desk,
-        queue_sink(tx),
-    );
-    let consumer = tokio::spawn(consume_remote(
-        ORIGIN.to_string(),
-        rx,
-        replay.clone(),
-        health,
-    ));
-    let got = |c: &Cells| c.0.lock().unwrap().clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    let consumer = tokio::spawn(consume(rx, replay.clone(), health));
     let lines = |c: &Cells| {
         c.0.lock()
             .unwrap()
@@ -304,31 +229,25 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
             .filter(|x| x.starts_with("line "))
             .count()
     };
+    attach(&tx, vec![remote.primed()]).await;
     until("快照拉到那 3 行", || lines(&cells) == 3).await;
-    // 实时来第 3 行（写进那份记录、沿流推来）。
+    // 断了、重连，那一条推来实时第 3 行。
     remote.grow(4);
-    let live = remote.line_frame(3);
-    // 这条连接上推一帧：替身没有「之后再推」的口，换成下一条连接的剧本里补不了实时那一格 ⇒ 用一条只推它的连接：
-    //   先断网，重连那一条的剧本是「实时第 3 行 ＋ 再断」。
-    remote.scripts.lock().unwrap().push_back(vec![live]);
-    remote.drop_link.notify_waiters();
+    drop_link(&tx).await;
+    attach(&tx, vec![remote.line_frame(3)]).await;
     until("断了一次、重连上推来实时第 3 行", || {
         lines(&cells) == 4
     })
     .await;
-    // 断网；断着的时候那台又写了 2 行。
+    // 断了；断着的时候那台又写了 2 行；重连、再宣告。
+    drop_link(&tx).await;
     remote.grow(6);
-    remote
-        .scripts
-        .lock()
-        .unwrap()
-        .push_back(vec![remote.primed()]);
-    remote.drop_link.notify_waiters();
+    attach(&tx, vec![remote.primed()]).await;
     until("重连之后从续点续上那 2 行", || {
         lines(&cells) == 6
     })
     .await;
-    let cells = got(&cells);
+    let cells = cells.0.lock().unwrap().clone();
     let only_lines: Vec<&String> = cells.iter().filter(|c| c.starts_with("line ")).collect();
     assert_eq!(
         only_lines,
@@ -348,12 +267,7 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
             .collect::<Vec<_>>(),
         "订阅起来时那台还没接上（看不见）→ 接上 → 断两回、各接回一回：{cells:?}"
     );
-    assert_eq!(
-        remote.attaches.load(std::sync::atomic::Ordering::SeqCst),
-        3,
-        "三条连接：起来一条、断后各重连一条"
-    );
-    feed.close();
-    consumer.abort();
-    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &local);
+    drop(tx);
+    let _ = tokio::time::timeout(guard_core::wall::CEILING, consumer).await;
+    crate::inbound_client::unregister(&local);
 }

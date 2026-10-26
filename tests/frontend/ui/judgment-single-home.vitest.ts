@@ -1049,11 +1049,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     terminal_open_cwd: NONE,
     // 「开另一台的文件窗口」那一问（窗口 → monitor），TS 侧零孪生。
     FILEWIN_OPEN_OP: NONE,
-    // 文件窗口断线条那一格（窗口订 `link`、点「重新连接」发 `link-retry`，monitor 自己接），TS 侧零孪生。
-    LINK_KIND: NONE,
     // 文件窗口订一组的进度（`files-batch/<票>`，monitor 按票转），TS 侧零孪生。
     FILES_BATCH_KIND_PREFIX: NONE,
-    LINK_RETRY_OP: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
     // 「在计划里看」那一问（窗口 → monitor → 主窗口），参数形状只在这里；TS 侧收的是壳发的事件（`window-events.ts`），零孪生。

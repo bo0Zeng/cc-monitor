@@ -1,103 +1,12 @@
 //! 每台机一个后端开关 —— 状态 / 起 / 停，本机与远端同一个契约（三个口各只有一条命令，差别塞进各自的实现里）。
 //!
 //! 它只认识 origin（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label），不认识 ssh、不认识进程监护
-//! （那两样住 `stream_source` 与 `local_backend_host`）。远端怎么起，由 `lib.rs` 在启动时注册一个重起闭包，本层只按 origin 找把手。
+//! （本机那一份住 `local_backend_host`；各台的常驻流归本机后端，起停经它的 `machine-wake` · `machine-stop`）。
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 use crate::inbound_client::LOCAL_ORIGIN;
-
-/// 重起闭包：`lib.rs` 注册时把那台机需要的全部上下文关进来。
-pub type Respawn = Box<dyn Fn() -> tauri::async_runtime::JoinHandle<()> + Send + Sync>;
-
-/// 一台远端的「怎么再起」+「现在这条流的把手」+「按哪份连接参数起的」。
-struct RemoteSlot {
-    respawn: Respawn,
-    handle: Option<tauri::async_runtime::JoinHandle<()>>,
-    /// 连接参数的指纹（变了 ⇒ 热加载时按新参数重起）。
-    cfg_key: String,
-}
-
-fn remotes() -> &'static Mutex<HashMap<String, RemoteSlot>> {
-    static R: std::sync::OnceLock<Mutex<HashMap<String, RemoteSlot>>> = std::sync::OnceLock::new();
-    R.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-/// `lib.rs` 启动时每台远端注册一次：给出**怎么起**，并把第一条流的把手交进来。
-///
-/// ⚠ 注册的是**闭包不是配置** —— 本层不认识那台怎么连（那在本机后端的机器表里），也不该认识。
-/// 机器表里要连的一台：名字 · 连接参数指纹 · 怎么起。
-pub struct WantedRemote {
-    pub origin: String,
-    pub cfg_key: String,
-    pub respawn: Respawn,
-}
-
-/// 热加载那一趟做了什么（按名字排序）。
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct Reconciled {
-    pub started: Vec<String>,
-    pub stopped: Vec<String>,
-    pub restarted: Vec<String>,
-}
-
-/// 机器表热加载：注册表照 `wanted` 对齐 —— 表里没有了的停流摘掉；新来的注册并起；
-/// 连接参数变了的停掉按新参数重起；其余一台不碰（在跑的流不断）。启动时与每次改机器表都走这一条。
-pub fn reconcile_remotes(wanted: Vec<WantedRemote>) -> Reconciled {
-    let mut out = Reconciled::default();
-    let mut g = remotes().lock().expect("远端把手表锁毒化");
-    let names: std::collections::HashSet<String> =
-        wanted.iter().map(|w| w.origin.clone()).collect();
-    let gone: Vec<String> = g.keys().filter(|k| !names.contains(*k)).cloned().collect();
-    for origin in gone {
-        if let Some(slot) = g.remove(&origin) {
-            if let Some(h) = slot.handle {
-                h.abort();
-            }
-        }
-        out.stopped.push(origin);
-    }
-    for w in wanted {
-        match g.get_mut(&w.origin) {
-            Some(slot) if slot.cfg_key == w.cfg_key => {}
-            Some(slot) => {
-                if let Some(h) = slot.handle.take() {
-                    h.abort();
-                }
-                slot.handle = Some((w.respawn)());
-                slot.respawn = w.respawn;
-                slot.cfg_key = w.cfg_key;
-                out.restarted.push(w.origin);
-            }
-            None => {
-                let first = (w.respawn)();
-                g.insert(
-                    w.origin.clone(),
-                    RemoteSlot {
-                        respawn: w.respawn,
-                        handle: Some(first),
-                        cfg_key: w.cfg_key,
-                    },
-                );
-                out.started.push(w.origin);
-            }
-        }
-    }
-    out.started.sort();
-    out.stopped.sort();
-    out.restarted.sort();
-    // 机器表换了 ⇒ 会话成品账按新表重算「各台都报完」（同 `backend_machines` 那一份：本机恒第一，远端按名字排）。
-    let mut table = vec![LOCAL_ORIGIN.to_string()];
-    let mut names: Vec<String> = g.keys().cloned().collect();
-    drop(g);
-    names.sort();
-    table.extend(names);
-    crate::session_book::machines_changed(table);
-    out
-}
 
 fn is_local(origin: &str) -> bool {
     origin == LOCAL_ORIGIN
@@ -110,21 +19,13 @@ fn check_origin(origin: &str) -> Result<(), Said> {
     Ok(())
 }
 
-/// 开关面该列哪几台机 —— 由后端的注册表说了算，前端只负责画：前端自己拼清单会在 trim · 重复 label 的后缀化（`"pi" → "pi (#2)"`）·
-/// 远端总开关 · 启动之后新增的机器上与注册表分叉。本机（`<local>`）永远在第一行 —— 它只是不走 ssh 的那一台。
+/// 开关面该列哪几台机 —— 由本机后端的机器表说了算（壳记的最近一答里要连的那几台），前端只负责画。
+/// 本机（`<local>`）永远在第一行 —— 它只是不走 ssh 的那一台。
 #[tauri::command]
-pub fn backend_machines() -> Result<Vec<String>, Said> {
-    let r: Result<Vec<String>, Said> = (move || -> Result<Vec<String>, Said> {
-        let mut out = vec![LOCAL_ORIGIN.to_string()];
-        let g = remotes()
-            .lock()
-            .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
-        let mut names: Vec<String> = g.keys().cloned().collect();
-        names.sort();
-        out.extend(names);
-        Ok(out)
-    })();
-    r.map_err(|s| s.named("backend_machines"))
+pub fn backend_machines() -> Vec<String> {
+    let mut out = vec![LOCAL_ORIGIN.to_string()];
+    out.extend(crate::machine_table::connected_names());
+    out
 }
 
 /// [`backend_status`] 的回包。
@@ -135,7 +36,7 @@ pub struct BackendStatus {
     /// 本机后端起没起来；远端 ⇒ `null`（各台的状态成品在本机后端）。
     pub local: Option<crate::ui_contract::LocalBackend>,
     pub origin: String,
-    /// 那台的通道登记着没有。
+    /// 那台的通道在不在（本机 ⇒ 本机那条连接；别台 ⇒ 本机后端转来的那台此刻那一条）。
     pub channel: bool,
     pub pid: Option<u32>,
     pub attempts: Option<u32>,
@@ -144,7 +45,7 @@ pub struct BackendStatus {
     pub health: crate::backend_policy::HealthFace,
 }
 
-/// 这台机的后端现在什么状态。「通道在不在」两侧共用一张表：`inbound_client` 的登记表按 origin 存活着的通道，本机与远端都在 hello 之后登记。
+/// 这台机的后端现在什么状态。「通道在不在」两侧同一问（`inbound_client::offer_of`：本机那条连接 · 本机后端转来的那台 hello，都在 hello 之后才有）。
 /// `pid` / `attempts` 只有本机有（远端的进程在别人机器上）—— 天然不对称，所以它们是 `null`。
 /// `async`（`INVARIANTS §10`）：本机那一支要拿句柄表的锁，进 `spawn_blocking` —— 读锁这一下不许落在 IPC 派发线程上。
 #[tauri::command]
@@ -163,7 +64,7 @@ pub async fn backend_status(origin: String) -> Result<BackendStatus, Said> {
 /// [`backend_status`] 的本体。
 fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
     check_origin(&origin)?;
-    let channel = crate::inbound_client::client_for(&origin).is_some();
+    let channel = crate::inbound_client::offer_of(&origin).is_some();
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
     // 不许拿 `channel` 或 `pid` 反推（假信号不报错，它只是一直说是）。远端那侧是 `null`（「它脱没脱离」在远端这条路上没有意义）。
     // 三格一起算：`the_three_ports_are_one_command_each_and_all_take_origin` 逐口只许有一处 `is_local(&origin)` 分派。
@@ -229,39 +130,26 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
             .await
             .map_err(Said::crashed)??);
         }
-        // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：先叫醒它（停过的不再停着、断着的马上再接）。
-        wake_backend_feed(&origin).await;
-        let mut g = remotes()
-            .lock()
-            .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
-        let slot = g.get_mut(&origin).ok_or_else(|| {
-            Said::of(
+        if !crate::machine_table::has(&origin) {
+            return Err(Said::of(
                 "rsBackendControl.handle.missing",
                 &[("origin", &origin.to_string())],
-            )
-        })?;
-        // `JoinHandle` 完成之后不会变成 `None` ⇒ 问 tokio 句柄的 `is_finished()`：跑着才算在跑（否则流任务结束之后每次点「起」都恒回「已经在跑」）。
-        if slot
-            .handle
-            .as_ref()
-            .is_some_and(|h| !h.inner().is_finished())
-        {
-            // 在跑、但断着在退避里等 ⇒ 立刻重拨一次（主窗口那条 `{machine} 离线` 的［重新连接］走的就是这里）。
-            crate::inbound_client::kick(&origin);
-            return Ok(format!("{origin} 的流已经在跑（C8①：每台机只许一个）"));
+            ));
         }
-        slot.handle = Some((slot.respawn)());
-        Ok(format!("{origin} 的流已重起"))
+        // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
+        //   主窗口那条 `{machine} 离线` 的［重新连接］走的就是这里。
+        wake_backend_feed(&origin).await;
+        Ok(origin)
     }
     .await;
     r.map_err(|s| s.named("backend_start"))
 }
 
-/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。没交上只记一行：壳这一条照样重起，那台的状态成品等本机后端下一轮。
+/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。没交上只记一行：那台的状态成品等本机后端下一轮。
 async fn wake_backend_feed(origin: &str) {
     const MACHINE_WAKE: &str = "machine-wake";
     const WAKE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
-    let Some(client) = crate::inbound_client::client_for(LOCAL_ORIGIN) else {
+    let Some(client) = crate::inbound_client::local_client() else {
         tracing::warn!("[machine] 叫醒 {origin} 那一条：本机后端不在");
         return;
     };
@@ -273,7 +161,7 @@ async fn wake_backend_feed(origin: &str) {
 
 /// 停这台机的 backend。本机远端同一条：在那台机器上跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），
 /// 这里只发一次、拿回结局 `{stopped: graceful | killed | not_running, pid}`，机器页按它说一句。
-/// 远端先 `abort()` 那条流再发（不能请它自己经那条流停自己）。本机那一支会等到结局 ⇒ 等的那一段进阻塞线程池。
+/// 远端那一条由本机后端先停它手上那台的常驻流再发（`machine-stop`）。本机那一支会等到结局 ⇒ 等的那一段进阻塞线程池。
 #[tauri::command]
 pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, Said> {
     let r: Result<crate::remote_resident::StopAnswer, Said> = async move {
@@ -283,20 +171,6 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
             return spawn_blocking(crate::local_backend_host::stop_local_backend)
                 .await
                 .map_err(Said::crashed)?;
-        }
-        {
-            let mut g = remotes()
-                .lock()
-                .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
-            let slot = g.get_mut(&origin).ok_or_else(|| {
-                Said::of(
-                    "rsBackendControl.handle.missing",
-                    &[("origin", &origin.to_string())],
-                )
-            })?;
-            if let Some(h) = slot.handle.take() {
-                h.abort();
-            }
         }
         Ok(stop_remote_resident(&origin).await?)
     }

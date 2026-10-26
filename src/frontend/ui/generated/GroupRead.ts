@@ -8,7 +8,7 @@ import type { GroupMember } from "./GroupMember";
  */
 export type GroupRead = { id: string, 
 /**
- * 名字（家那台没答过 ⇒ 缺）。
+ * 名字：各片里 `named` 最新的那一份（哪一片都没有记录 ⇒ 缺）。
  */
 name: string | null, 
 /**
@@ -16,9 +16,13 @@ name: string | null,
  */
 title: string, 
 /**
- * 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
+ * 各片里最早的那个建组时刻（没有记录 ⇒ 缺）。
  */
-home: string | null, made: number | null, known: GroupKnown, 
+made: number | null, 
+/**
+ * 取到的那个名字几时起的（没有记录 ⇒ 缺）：进组时同名字一起抄进组员那一台。
+ */
+named: number | null, known: GroupKnown, 
 /**
  * 组员：照问的台序、再照 sid。
  */

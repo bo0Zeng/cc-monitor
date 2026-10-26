@@ -11,7 +11,7 @@ export type BackendStatus = {
  */
 local: LocalBackend | null, origin: string, 
 /**
- * 那台的通道登记着没有。
+ * 那台的通道在不在（本机 ⇒ 本机那条连接；别台 ⇒ 本机后端转来的那台此刻那一条）。
  */
 channel: boolean, pid: number | null, attempts: number | null, 
 /**

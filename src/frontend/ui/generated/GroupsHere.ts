@@ -3,6 +3,6 @@ import type { HereGroup } from "./HereGroup";
 import type { HereMember } from "./HereMember";
 
 /**
- * `groups-here` 的回包：这台那一半。
+ * `groups-here` 的回包：这台那一片。
  */
 export type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
