@@ -2,7 +2,7 @@
 //!
 //! # 这一族错误出现过五次
 //!
-//! `load_remote_config_by_label(&origin)` 对 `<local>` 拿不到东西，于是报
+//! 查机器表（今天是 `machine_table::has(&origin)`，从前是按名字取整份远端配置）对 `<local>` 拿不到东西，于是报
 //! **「未找到远端配置: `<local>`」** —— 一句与真实原因毫无关系的话。真实原因从来不是
 //! 「配置没找到」，而是「这条路是远端专属的，本机根本不该走到这里」。
 //!
@@ -11,7 +11,7 @@
 //!
 //! # 本护栏钉什么
 //!
-//! 每一处 `load_remote_config_by_label(` 调用，**要么**它所在的函数在调用之前就分了本机，
+//! 每一处 `machine_table::has(` 调用，**要么**它所在的函数在调用之前就分了本机，
 //! **要么**它在 [`REMOTE_ONLY`] 里逐条登记「为什么 `<local>` 够不到这里」。
 //!
 //! ## 为什么是**位置**比较，不是「函数里提过 `LOCAL_ORIGIN`」
@@ -47,7 +47,7 @@
 //! 核对过程住。
 
 #[cfg(test)]
-const CALL: &str = "load_remote_config_by_label(";
+const CALL: &str = "machine_table::has(";
 
 /// 本机**结构性够不到**的调用点，逐条登记：(文件, 函数, 为什么 `<local>` 到不了这里)。
 ///
