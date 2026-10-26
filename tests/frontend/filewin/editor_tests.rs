@@ -401,29 +401,6 @@ fn opened_sha() -> String {
     crate::find::testing::fake_sha256(&format!("text of {SAVE_PATH}"))
 }
 
-// 「窗口量的那一行 == monitor 真发出去的那一行」与「切块每块装得进一行」两条要 monitor 编请求行的那个纯函数
-//   （`inbound_client::encode_request`）当异源一侧 ⇒ 随窗口独立成包挪到 monitor 那一侧：`tests/frontend/shell/filewin/cross_half_tests.rs`。
-
-/// 🔴 **逐字转义长度 == `serde_json` 的**，对**全部** Unicode 标量值（异源：`serde_json::to_string`）。
-#[test]
-fn the_per_char_escape_length_matches_serde_json_for_every_scalar_value() {
-    let mut checked = 0u32;
-    for c in (0u32..=0x10FFFF).filter_map(char::from_u32) {
-        let mut buf = [0u8; 4];
-        let real = serde_json::to_string(c.encode_utf8(&mut buf) as &str)
-            .unwrap()
-            .len()
-            - 2;
-        assert_eq!(escaped_len(c), real, "U+{:04X}", c as u32);
-        checked += 1;
-    }
-    assert_eq!(
-        checked,
-        0x110000 - 0x800,
-        "码位没走全（应当是全部标量值：去掉代理区 2048 个）"
-    );
-}
-
 /// 起一台合成后端（认得存盘那三条命令），交回线、`origin`、以及它最近一次提交拼出来的那一份。
 async fn save_rig(
     tag: &str,
@@ -444,25 +421,63 @@ async fn save_rig(
     (wired, origin, committed)
 }
 
-/// 🔴 **刚好装得进一行的一条 `files-write-text`、零块；多一个字节的整份分块走暂存区，合成后端拼回 == 原文。**
+/// 一行写装得下的最长内容（[`fits_one_line`] 对长度单调 ⇒ 二分）。
+fn one_line_room(at: &crate::source::RemotePath) -> usize {
+    let (mut lo, mut hi) = (0usize, SAVE_LINE_CAP);
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        if fits_one_line(at, &"a".repeat(mid)) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
+/// 🔴 **一行写那道判是保守的**：判装得下的最长一份，就算每个字节都是转义最长的控制字符（一个变六个），
+/// 连上最长的 id · 期限 · 时区那一圈信封（异源：`serde_json` 真序列化一次），也不越过后端一行的上限；
+/// 也不保守到没用（至少装得下上限的八分之一）。
+#[test]
+fn the_one_line_check_is_conservative_for_the_worst_escaping() {
+    let at = crate::source::RemotePath::plain(SAVE_PATH);
+    let k = one_line_room(&at);
+    assert!(
+        k >= SAVE_LINE_CAP / 8,
+        "一行写只装得下 {k} 字节，保守过头了"
+    );
+    let worst = "\u{1}".repeat(k);
+    let line = serde_json::to_vec(&serde_json::json!({
+        "id": "m".repeat(75),
+        "cmd": CMD_WRITE_TEXT,
+        "args": save_args_at(&at, &worst, SHA0),
+        "within_ms": u64::MAX,
+        "tz": "Z".repeat(host_core::TZ_ROOM),
+    }))
+    .unwrap()
+    .len();
+    assert!(
+        line <= SAVE_LINE_CAP,
+        "判装得下的那一份最坏转义之后一行 {line} 字节，越过上限 {SAVE_LINE_CAP}"
+    );
+}
+
+/// 🔴 **装得进一行的一条 `files-write-text`、零块；多一个字节的整份走暂存区（`chunk_core` 的块），合成后端拼回 == 原文。**
 ///
 /// 走真通道（生产那个 `chan::client::Client` 拨真回环口）到一台合成后端，数线上出现过的命令序列。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_chunks() {
     let (wired, origin, committed) = save_rig("save-split", None).await;
-    let base = request_line_len(CMD_WRITE_TEXT, &save_args(SAVE_PATH, "", SHA0));
-    let fits = "a".repeat(SAVE_LINE_CAP - base);
-    assert!(fits_one_line(SAVE_PATH, &fits), "夹具没造到刚好装满");
+    let fits = "a".repeat(one_line_room(&crate::source::RemotePath::plain(SAVE_PATH)));
     let over = format!("{fits}a");
-    assert!(!fits_one_line(SAVE_PATH, &over));
 
     let first = write_text(&wired.line, &origin, SAVE_PATH, &fits, &opened_sha())
         .await
-        .expect("刚好装得进一行的那一份没存成");
+        .expect("装得进一行的那一份没存成");
     assert_eq!(
         wired.cmds(),
         vec![CMD_WRITE_TEXT],
-        "刚好装得进一行的那一份没走一条写"
+        "装得进一行的那一份没走一条写"
     );
 
     write_text(
@@ -474,7 +489,7 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
     )
     .await
     .expect("多一个字节的那一份没存成（拿上一次应答交的摘要存）");
-    let n = plan_chunks(&over, chunk_budget()).len();
+    let n = over.len().div_ceil(chunk_core::CHUNK);
     let mut want = vec![CMD_WRITE_TEXT.to_string()];
     want.extend(std::iter::repeat_n(CMD_STAGE_CHUNK.to_string(), n));
     want.push(CMD_COMMIT_TEXT.to_string());
@@ -482,12 +497,6 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
         wired.cmds(),
         want,
         "多一个字节的那一份不是「逐块 ＋ 一次提交」"
-    );
-    // 从前这里是「恰好两块」：那时一整行的写与一块的信封几乎一样大。存盘带上 `expect`（定长 64 位摘要）之后，
-    //   一行写的信封比一块的大 ⇒ 刚好装不进一行写的那一份，一块就装得下 —— 块数照 `plan_chunks` 现算，不写死。
-    assert_eq!(
-        n, 1,
-        "刚好装不进一行写的那一份，一块就该装得下（块的信封比写的小）"
     );
     let got = committed
         .lock()
@@ -503,8 +512,8 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
     );
 }
 
-/// 🔴 **最坏的那一形存得回：满上限的控制字符**（一个字节转义成六个 ⇒ 上一版打开即只读）。
-/// 经真通道逐块送、提交，合成后端拼回 == 原文；一个编辑面照样可改（只读那一档随它的前提一起删了）。
+/// 🔴 **最坏的那一形存得回：满上限的控制字符** —— 块按原始字节切（与上传同一套 `chunk_core`），
+/// 转义多长与块数无关。经真通道逐块送、提交，合成后端拼回 == 原文。
 /// 阴性对照：多一个字节 ⇒ 本地拒、线上零新增，那句话带着两个数。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
@@ -515,8 +524,11 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
     let saved = write_text(&wired.line, &origin, SAVE_PATH, &p.text, &opened_sha())
         .await
         .expect("满上限的控制字符没存成");
-    let n = wired.count(CMD_STAGE_CHUNK);
-    assert_eq!(n, plan_chunks(&text, chunk_budget()).len());
+    assert_eq!(
+        wired.count(CMD_STAGE_CHUNK),
+        MAX_EDIT_BYTES.div_ceil(chunk_core::CHUNK),
+        "块数不是按原始字节切的"
+    );
     assert_eq!(wired.count(CMD_COMMIT_TEXT), 1);
     assert_eq!(wired.count(CMD_WRITE_TEXT), 0);
     assert!(
@@ -556,7 +568,7 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
 async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     let (wired, origin, committed) = save_rig("save-broken", Some(2)).await;
     let text = "\u{1}".repeat(2 * 1024 * 1024);
-    let total = plan_chunks(&text, chunk_budget()).len();
+    let total = text.len().div_ceil(chunk_core::CHUNK);
     assert!(total > 3, "夹具切不出第三块");
     let mut p = Pane::opened(SAVE_PATH, "app.conf", "old".into(), SHA0.to_string(), CAP);
     p.text = text.clone();
@@ -893,24 +905,4 @@ fn a_save_without_a_new_digest_is_saved_with_a_note_and_keeps_the_old_baseline()
     // 下一次真拿到了 ⇒ 那句收起
     p.mark_saved("new", Some(crate::find::testing::fake_sha256("new")));
     assert_eq!(p.save_note, None);
-}
-
-/// 分块那一步不 panic（发布档 panic = abort ⇒ 一 panic 整个窗口没了）：一块的额度放不下最长的那个字时
-/// 照 6 字节切（那一块超出一行的上限，后端拒、原话照常回到界面），拼回来逐字节仍等于原文；
-/// 照常的额度切出来的每一块都不超额。
-#[test]
-fn chunk_planning_never_panics_even_when_the_budget_cannot_fit_a_char() {
-    let text = "a\u{1}\"é字";
-    let tiny = plan_chunks(text, 3);
-    assert_eq!(tiny.concat(), text, "额度太小时切出来的块拼不回原文");
-    assert!(tiny.iter().all(|c| !c.is_empty()), "切出了空块：{tiny:?}");
-    let budget = chunk_budget();
-    assert!(
-        budget >= 6,
-        "常量算出来的一块额度 {budget} 放不下最长的那个字（6 字节）"
-    );
-    for c in plan_chunks(text, 6) {
-        let used: usize = c.chars().map(escaped_len).sum();
-        assert!(used <= 6, "{c:?} 转义后 {used} 字节，超过额度 6");
-    }
 }
