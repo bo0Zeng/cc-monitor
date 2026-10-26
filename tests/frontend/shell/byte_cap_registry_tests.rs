@@ -428,7 +428,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "WAIT_FOREVER",
         "**「一直等」的哨兵值**（`WaitForSingleObject` 的 `INFINITE`，全 1）。不是时长上限、更不是字节量 —— \
-             它的意思恰恰是「没有上限」；`pidwatch_windows_shape_tests` 钉着它必须是全 1（零定时器）。",
+             它的意思恰恰是「没有上限」；`pidwatch-core` 的 `windows_shape_tests.rs` 钉着它必须是全 1（零定时器）。",
     ),
     (
         "WAIT_ABANDONED",
