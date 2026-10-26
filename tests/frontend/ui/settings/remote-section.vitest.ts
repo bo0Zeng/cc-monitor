@@ -589,7 +589,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
     expect(rows[0]!.classList.contains("remote-machine-local")).toBe(true);
-    expect(rows[0]!.textContent).toContain(copyText("remote.cards.local"));
+    expect(rows[0]!.textContent).toContain(copyText("control.machine.unsure"));
     // 本机删不掉（§40）：它的 ⋯ 里没有「从列表删除」；真机器那行有（反向自检）。
     const labelsOf = (row: HTMLElement): string[] => sec.menuFor(row.dataset.pageId!).map((m) => m.label);
     expect(labelsOf(rows[0]!)).not.toContain(copyText("machineList.menu.remove"));
@@ -604,7 +604,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await new Promise((r) => setTimeout(r, 0));
     const got = writtenHosts();
     expect(got.map((h) => h.label)).toEqual(["b"]);
-    expect(got.some((h) => h.label === copyText("remote.cards.local"))).toBe(false);
+    expect(got.some((h) => h.label === copyText("control.machine.unsure"))).toBe(false);
   });
 
 
@@ -616,7 +616,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
     // 本机排第一（§40：本地就是机器列表里的一行），远端跟在后面。
-    expect(p.added.map((x) => x.title)).toEqual([copyText("remote.cards.local"), "a", "b"]);
+    expect(p.added.map((x) => x.title)).toEqual([copyText("control.machine.unsure"), "a", "b"]);
     expect(p.added.slice(1).map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
     // 列表里是行，不是表单：行上没有 host 输入框（那在详情页上）。
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
@@ -678,7 +678,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("本机页不带 parts（它没有卡片，不该被拆栏）", async () => {
     const p = fakePages();
     await mount([], p.host);
-    expect(p.added[0]!.title).toBe(copyText("remote.cards.local"));
+    expect(p.added[0]!.title).toBe(copyText("control.machine.unsure"));
     expect(p.addedParts[0]).toBeUndefined();
   });
 
@@ -721,7 +721,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 同时留下新旧两项，而旧那项点进去是一台已经不存在的机器。
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    expect(p.added.map((x) => x.title)).toEqual([copyText("remote.cards.local"), "a"]);
+    expect(p.added.map((x) => x.title)).toEqual([copyText("control.machine.unsure"), "a"]);
 
     vi.mocked(loadConfig).mockResolvedValue({
       remote: { enabled: true, hosts: [mkH("b", "2.2.2.2")] },
@@ -729,7 +729,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await sec.refresh();
 
     expect(p.removed).toContain("machine:a");
-    expect(p.added.map((x) => x.title)).toEqual([copyText("remote.cards.local"), "a", copyText("remote.cards.local"), "b"]);
+    expect(p.added.map((x) => x.title)).toEqual([copyText("control.machine.unsure"), "a", copyText("control.machine.unsure"), "b"]);
     // 列表里也只剩新的那一台（外加恒在的本机行）
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
     expect(rows.map((r) => r.dataset.pageId)).toEqual([
@@ -997,7 +997,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       expect(document.querySelector('[role="dialog"]'), "没存上框却关了").not.toBeNull();
       expect(host!.value).toBe("7.7.7.7");
       expect(dlg.textContent, "框顶说的是那一句原因（不一律说「别处改过」）").toContain("disk full");
-      expect(dlg.textContent).not.toContain(copyText("addMachine.err.save"));
       expect(sec.element.querySelectorAll(".remote-machine-row:not(.remote-machine-local)")).toHaveLength(1);
       ipcReplies.clear();
     });

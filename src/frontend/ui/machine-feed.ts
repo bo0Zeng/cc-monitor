@@ -40,18 +40,8 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
   };
 }
 
-let watchingNames = false;
-
-/** 机器名照成品叫（`machineName`）：这一窗还没人订机器状态时订一份，只为记名字；订过就不再订。 */
-export function watchMachineNames(): void {
-  if (watchingNames) return;
-  watchingNames = true;
-  onMachineState(() => {});
-}
-
 /** 订一份：每来一台的一帧回调一次（先记下那台的名字，`machineName` 照它叫）。回退订函数。 */
 export function onMachineState(each: (origin: string, machine: MachineState) => void): () => void {
-  watchingNames = true;
   const cb = (origin: string, machine: MachineState): void => {
     noteMachineName(origin, machine.name);
     each(origin, machine);

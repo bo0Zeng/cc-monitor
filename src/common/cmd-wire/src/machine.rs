@@ -93,6 +93,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// **不必再手抄一次**，并让「三处都相等」成为一条会红的事。
 pub const LOCAL: &str = "<local>";
 
+/// 机器键里不能当名字给人看的那几个（哨兵）。别的键就是那台在机器表里的名字。
+/// 读者：界面 `chan-caller.ts::machineName`——那台的成品还没到时，键在这里 ⇒ 说机器不明，不在 ⇒ 键本身
+/// （经 `npm run gen:types` 生成进 `src/frontend/ui/generated/judgment-rules.ts`，生成器 `payload_judgment_rules.rs`）。
+pub const KEYS_NOT_NAMES: &[&str] = &[LOCAL];
+
 /// 「这一趟问的是哪台机器」。线上就是**一个字符串**（本机逐字 `"<local>"`）。
 ///
 /// ⚠ 本机与远端**同一个线上形状**（都是字符串）⇒ `serde` 分不开它们，

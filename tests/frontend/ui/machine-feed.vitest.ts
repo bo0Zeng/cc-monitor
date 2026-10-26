@@ -40,6 +40,7 @@ import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
 import { LOCAL_BACKEND_EVENT, onLocalBackend, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
 import type { LocalBackend } from "../../../src/frontend/ui/generated/LocalBackend";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { KEYS_NOT_NAMES } from "../../../src/frontend/ui/generated/judgment-rules.ts";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 import { SUBSCRIBE_COALESCE_MS } from "../../../src/frontend/ui/events";
 
@@ -53,6 +54,18 @@ beforeEach(() => {
   sink = null;
   reads.length = 0;
   readReply = { machines: {} };
+});
+
+// 放在最前：后面几条会喂进各台（含本机）的成品，名字记在模块里。
+describe("机器名还没到", () => {
+  it("★ 远端那台的成品还没到 ⇒ 叫它在机器表里的键（键就是名字）", () => {
+    expect(machineName("devbox-no-product")).toBe("devbox-no-product");
+  });
+
+  it("★ 键不能当名字（本机那个哨兵）、成品还没到 ⇒ 机器不明（不拿一条「本机」顶）", () => {
+    expect(KEYS_NOT_NAMES, "生成物里没有本机那个哨兵 —— 下一句在空表上恒红").toContain("<local>");
+    expect(machineName("<local>")).toBe(copyText("control.machine.unsure"));
+  });
 });
 
 describe("机器状态成品的推送", () => {
@@ -117,29 +130,26 @@ describe("onMachineUp", () => {
     const got: string[] = [];
     const off = onMachineUp((o) => got.push(o));
     await flush();
+    await flush();
+    vi.useFakeTimers();
     let seq = 0;
-    // 每一帧等过合批窗口再推下一帧（同一台一窗里来的几帧只交最后那一份）。
+    // 每一帧走过合批窗口再推下一帧（同一台一窗里来的几帧只交最后那一份）。
     const push = async (origin: string, m: MachineState, want: number) => {
       sink!([frame(seq++, { key: origin, body: m })]);
-      await new Promise((r) => setTimeout(r, SUBSCRIBE_COALESCE_MS + 50));
+      await vi.advanceTimersByTimeAsync(SUBSCRIBE_COALESCE_MS);
       expect(got.length).toBe(want);
     };
-    await push("<local>", connecting, 0);
-    await push("<local>", up, 1);
-    await push("<local>", up, 1);
-    await push("pi", up, 2);
-    await push("<local>", needsUpdate, 2);
-    await push("<local>", up, 3);
+    try {
+      await push("<local>", connecting, 0);
+      await push("<local>", up, 1);
+      await push("<local>", up, 1);
+      await push("pi", up, 2);
+      await push("<local>", needsUpdate, 2);
+      await push("<local>", up, 3);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(got).toEqual(["<local>", "pi", "<local>"]);
     off();
-  });
-});
-
-describe("机器名还没到", () => {
-  it("★ 那台的成品还没到 ⇒ 说不清是哪台（不拿本机 / 远端各一条字顶）", () => {
-    expect([machineName("<never-seen>"), machineName("never-seen-host")]).toEqual([
-      copyText("control.machine.unsure"),
-      copyText("control.machine.unsure"),
-    ]);
   });
 });

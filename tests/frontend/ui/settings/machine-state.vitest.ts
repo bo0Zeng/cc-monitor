@@ -40,19 +40,19 @@ describe("机器状态成品", () => {
     }
   });
 
-  it("★ 本机后端没起来那一格：字照壳那一格，样子按那一样；被拒的下一步照原样画在问题行下面；没起来才给［重试］", () => {
+  it("★ 本机后端没起来那一格：字与修法照壳那一格，样子按那一样；被拒的下一步照原样画在问题行下面", () => {
     const next = "结束口上那个进程再重开（结构夹具）";
-    const down: LocalBackend = { state: "down", word: "离线（夹具）", said: "本机连接失败（夹具）", next };
+    const fixes = [{ fix: "retry" as const, label: "重试（夹具）" }];
+    const down: LocalBackend = { state: "down", word: "离线（夹具）", said: "本机连接失败（夹具）", fixes, next };
     const f = localBackendFace(down)!;
     expect(localBackendFace({ state: "up" })).toBeNull();
-    expect(f).toMatchObject({ dot: "failed", tone: "error", word: down.word, problem: down.said, next, offline: true });
-    expect(f.fixes.map((x) => x.fix)).toEqual(["retry"]);
+    expect(f).toMatchObject({ dot: "failed", tone: "error", word: down.word, problem: down.said, fixes, next, offline: true });
     const el = document.createElement("div");
     paintProblem(el, f, () => {});
     expect(el.querySelector(".machine-problem-next")?.textContent).toBe(next);
     expect(localBackendFace({ state: "starting", word: "w", said: "s" })).toMatchObject({ dot: "unknown", tone: "busy", fixes: [], next: "" });
-    expect(localBackendFace({ state: "older", word: "w", said: "s", next: null })).toMatchObject({ dot: "needs-you", tone: "warn", needsUpdate: true, next: "" });
-    expect(localBackendFace({ state: "newer", word: "w", said: "s", next: null })).toMatchObject({ tone: "error", offline: false });
+    expect(localBackendFace({ state: "older", word: "w", said: "s", fixes, next: null })).toMatchObject({ dot: "needs-you", tone: "warn", needsUpdate: true, next: "" });
+    expect(localBackendFace({ state: "newer", word: "w", said: "s", fixes, next: null })).toMatchObject({ tone: "error", offline: false });
   });
 
   it("★ 修法按钮：字照成品、点了交那一颗的码；更新那一颗是主按钮", () => {

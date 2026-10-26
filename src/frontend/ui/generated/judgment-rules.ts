@@ -8,3 +8,6 @@
 export const AUTH_KINDS = ["subscription","api-key"] as const;
 /** 见 [`AUTH_KINDS`]。 */
 export type AuthKind = (typeof AUTH_KINDS)[number];
+
+/** 机器键里不能当名字给人看的那几个 —— 契约常量住 `cmd_wire::machine::KEYS_NOT_NAMES`。 */
+export const KEYS_NOT_NAMES: readonly string[] = ["<local>"];

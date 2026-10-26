@@ -269,15 +269,13 @@ describe("C01 边界生成物", () => {
   });
 
   it("camelCase 真的从 serde 属性传下来了（选 ts-rs 的前提）", () => {
-    // **剥注释**（审计 I3）：第一版这两个是裸 `read`，而 `sizeBytes` 在 JSDoc 里也出现一次
-    // （`formatBytes(info.sizeBytes)` 那句散文），所以正向断言在字段被改名后**依然绿**，
-    // 全部承重落在 `not.toContain("size_bytes")` 上。
+    // **剥注释**（审计 I3）：字段名也会在 JSDoc 散文里出现，裸 `read` 时正向断言在字段被改名后**依然绿**。
     const info = code(read("src/frontend/ui/generated/DataPathInfo.ts"));
     const resp = code(read("src/frontend/ui/generated/DataPathsResponse.ts"));
     expect(info, "剥过头了").toContain("export type DataPathInfo");
     expect(resp, "剥过头了").toContain("export type DataPathsResponse");
-    expect(info).toContain("sizeBytes");
-    expect(info).not.toContain("size_bytes");
+    expect(info).toContain("sizeText");
+    expect(info).not.toContain("size_text");
     expect(resp).toContain("monitorDataDir");
     expect(resp).toContain("webviewUserDataDir");
     // `profileBackupDirs` 那一格随 `$PROFILE` 备份改问本机后端摘了 ⇒ 生成物里不该再有它（蛇形那一形同理）。
@@ -362,7 +360,7 @@ describe("C01 边界生成物", () => {
     }
     // 正控（按符号认，不数个数）：三种写法各点名一处 —— 结构体字段 · enum 变体字段 · `cfg_attr` 写在 serde 之前。
     //   扫描瞎了（某种写法整块被跳过），上面逐字段的断言会零命中地绿。
-    for (const anchor of ["SlotShow.full", "Speaker.body", "DataPathInfo.size_bytes"])
+    for (const anchor of ["SlotShow.full", "Speaker.body", "DataPathInfo.size_text"])
       expect(seen, `正控：没扫到 \`${anchor}\` 的 skip_serializing_if —— 扫描瞎了（或那个字段真删了：换一处点名）`).toContain(anchor);
   });
 
@@ -428,7 +426,7 @@ describe("C01 边界生成物", () => {
       }
     }
     // 正控（按符号认，不数个数）：结构体字段 · enum 变体字段各点名一处。
-    for (const anchor of ["DataPathInfo.size_bytes", "StreamEv.i"])
+    for (const anchor of ["UiErrorPayload.at", "StreamEv.i"])
       expect(seen, `正控：没扫到大整数字段 \`${anchor}\` —— 扫描瞎了（或那个字段真删了：换一处点名）`).toContain(anchor);
   });
 
@@ -461,20 +459,20 @@ describe("C01 边界生成物", () => {
       }
     }
     // 正控（按符号认，不数个数）：两个分支各点名一处（省略语义 · 线上是 null）。
-    for (const anchor of ["src/frontend/shell/src/data_paths.rs::size_bytes", "src/frontend/shell/src/diagnostics_report.rs::records"])
+    for (const anchor of ["src/frontend/shell/src/ui_contract.rs::skipped_from", "src/frontend/shell/src/diagnostics_report.rs::records"])
       expect(seen, `正控：没扫到 \`${anchor}\` —— 扫描瞎了（或那个字段真删了：换一处点名）`).toContain(anchor);
   });
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {
-    const info = code(read("src/frontend/ui/generated/DataPathInfo.ts"));
-    const rust = rustCode(read("src/frontend/shell/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
-    expect(info, "剥过头了").toContain("export type DataPathInfo");
-    expect(rust, "剥过头了").toContain("pub struct DataPathInfo");
+    const info = code(read("src/frontend/ui/generated/JsonlLinePayload.ts"));
+    const rust = rustCode(read("src/frontend/shell/src/ui_contract.rs")); // ← 审计 B1：这里以前是裸 read
+    expect(info, "剥过头了").toContain("export type JsonlLinePayload");
+    expect(rust, "剥过头了").toContain("pub struct JsonlLinePayload");
 
     // 性质①：类型必须与运行时一致。Tauri 命令返回值走 `serde_json::to_string`
     // （`tauri-2.11.2/src/ipc/mod.rs:181-183`，审计独立取证）⇒ 线上是 JSON 文本，
     // 而 `JSON.parse` 永不产出 BigInt ⇒ `u64` 到 TS 侧**在原理上不可能**是 bigint。
-    expect(info).toContain("sizeBytes?: number");
+    expect(info).toContain("skipped_from?: number");
     expect(info, "回落到 ts-rs 默认的 bigint 了——那与运行时不一致").not.toContain("bigint");
 
     // 性质②：那个收窄必须是**源码里真的写着的属性**，不是碰巧、也不是注释里提过。
@@ -483,7 +481,7 @@ describe("C01 边界生成物", () => {
     expect(rust, "Rust 侧的 `type = \"number\"` 收窄不见了").toContain('type = "number"');
 
     // **不再断言注释里的上限论证**（审计 S2）：那是散文，有人把 `2^53-1` 重排成 `2^53 - 1`
-    // 就会假红，而假红的守卫会被人关掉。论证留在 `data_paths.rs` 的注释里给人读，不做机检。
+    // 就会假红，而假红的守卫会被人关掉。论证留在 `ui_contract.rs` 的注释里给人读，不做机检。
   });
 
   it("data-section.ts 的类型来自生成物，本地手写 interface 不许回来", () => {

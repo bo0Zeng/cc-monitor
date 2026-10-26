@@ -1,7 +1,7 @@
 //! **契约取值集的生成物 ＋ 标识符 · 上游地址那几条判定的金样**。
 //!
-//! 生成物 `src/frontend/ui/generated/judgment-rules.ts` 今天只装一样：账号种类取值集（J16，`acct_core::AUTH_KINDS`），
-//! 界面拿它派生 `AuthKind` 这个类型，不判任何东西。账号名（J18）与上游 base URL（J9）界面不判：新建账号表单把原样打的字
+//! 生成物 `src/frontend/ui/generated/judgment-rules.ts` 装两样：账号种类取值集（J16，`acct_core::AUTH_KINDS`），
+//! 界面拿它派生 `AuthKind` 这个类型；机器键里不能当名字的那几个（`cmd_wire::machine::KEYS_NOT_NAMES`），`machineName` 照它挑。账号名（J18）与上游 base URL（J9）界面不判：新建账号表单把原样打的字
 //! 交那台后端预演（`accounts-add` 带 `dryRun`），只画它拒的那一句；模型名（J17）同样只在后端写口与起会话时判。
 //!
 //! 三件事：
@@ -31,6 +31,10 @@ fn render_judgment_rules() -> String {
     s.push_str(&format!("export const AUTH_KINDS = {kinds} as const;\n"));
     s.push_str("/** 见 [`AUTH_KINDS`]。 */\n");
     s.push_str("export type AuthKind = (typeof AUTH_KINDS)[number];\n");
+    // 机器键里不能当名字给人看的那几个（`machineName` 成品还没到时照它说）。
+    let keys = serde_json::to_string(&cmd_wire::machine::KEYS_NOT_NAMES).expect("字符串序列化不会失败");
+    s.push_str("\n/** 机器键里不能当名字给人看的那几个 —— 契约常量住 `cmd_wire::machine::KEYS_NOT_NAMES`。 */\n");
+    s.push_str(&format!("export const KEYS_NOT_NAMES: readonly string[] = {keys};\n"));
     s
 }
 /// 生成 `src/frontend/ui/generated/judgment-rules.ts`。

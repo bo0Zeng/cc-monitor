@@ -68,7 +68,7 @@ import { nonEmpty } from "../../test-support/non-empty.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37" | "J38" | "J39";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -198,9 +198,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "session id 形状",
     // 唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
     //   `branch_core::is_plain_sid` 成它的再导出（那个再导出随 branch-core 收进后端删了，调用方直呼这一条）；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
-    //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给手机端。
+    //   分叉 id，后端 ccm argv 都调它。
     //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
-    homes: ["shell-quote-core::session_id_ok", "src/backend/control/resolve_query.rs::is_valid_session_id"],
+    homes: ["shell-quote-core::session_id_ok"],
     status: "zero",
     defs: ["isValidSessionId", "validateLocalLaunch"],
     needles: [{ text: "[A-Za-z0-9_-]{0,127}", count: 0 }],
@@ -636,16 +636,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J37: {
     what: "每台机器此刻是什么样 · 名字旁那个词 · 问题行那一句 · 给哪几颗修法",
-    // 远端各台在后端收事实（本机后端跑它、手机 mobcore 跑同一份）；本机那一行壳只交事实（本机后端没起时没人替它说）。
-    //   「态 ⇒ 字」与本机那一行都在契约 crate 一处。界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。
+    // 各台（含本机）在后端收事实、照「态 ⇒ 字」那几张表出成品（本机后端跑它、手机 mobcore 跑同一份）；本机后端没起来时
+    //   壳只说它起没起来（`LocalBackend`，不是成品）。界面只按那一态挑样子，字照成品的 `word` · `said` · `fixes[].label`。
     //   壳里不造成品（`local_backend_host_tests.rs` 钉）。
     homes: [
       "src/backend/deploy/machine.rs::product",
-      "deploy-contract::word",
-      "deploy-contract::said",
-      "deploy-contract::fixes",
-      "deploy-contract::local",
-      "deploy-contract::offline",
+      "src/backend/deploy/machine.rs::word",
+      "src/backend/deploy/machine.rs::said",
+      "src/backend/deploy/machine.rs::fixes",
+      "src/backend/deploy/machine.rs::offline",
     ],
     status: "zero",
     defs: ["downSaid", "fixLabel"],
@@ -653,6 +652,27 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: 'copyText("machineState.down.', count: 0 },
       { text: 'copyText("machineState.problem.', count: 0 },
     ],
+  },
+  J39: {
+    what: "机器键能不能当名字给人看（那台的成品还没到时 `machineName` 照它挑：键本身 · 机器不明）",
+    // 名字的来处只有那台的成品（`name`）；不能当名字的键（哨兵）住契约 crate，现生成进 `judgment-rules.ts`，界面不另写一份。
+    homes: ["cmd-wire::KEYS_NOT_NAMES"],
+    status: "generated",
+    defs: [],
+    gone: ["KEYS_NOT_NAMES"],
+    needles: [
+      { text: 'copyText("control.machine.local")', count: 0 },
+      { text: 'copyText("acct.machine.here")', count: 0 },
+    ],
+    gen: {
+      file: "src/frontend/ui/generated/judgment-rules.ts",
+      exports: ["KEYS_NOT_NAMES"],
+      importers: ["src/frontend/ui/ipc/chan-caller.ts"],
+    },
+    parity: {
+      via: "src/frontend/ui/generated/judgment-rules.ts",
+      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/machine-feed.vitest.ts"],
+    },
   },
   J38: {
     what: "那台握手时说做不到的一个码 ⇒ 说成哪一句（置灰 · 测试连接那一格的「做不到的那几类」）",
@@ -792,6 +812,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "cmd-wire": {
     LOCAL: "J36",
+    KEYS_NOT_NAMES: "J39",
     // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
     topic: NONE,
     cap_body: NONE,
@@ -1232,20 +1253,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     STAMP_CLOSE: NONE,
     build_order: NONE,
     build_relation: NONE,
-    fixes: "J37",
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,
     key_from_uname: NONE,
     key_of: NONE,
     label: NONE,
-    local: "J37",
-    offline: "J37",
     raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
-    said: "J37",
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,
-    word: "J37",
   },
 };
 

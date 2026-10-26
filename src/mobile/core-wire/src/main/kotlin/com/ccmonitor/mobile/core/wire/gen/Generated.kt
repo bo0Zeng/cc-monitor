@@ -1627,7 +1627,7 @@ data class BackendLogReq(
 
 @Suppress("UNCHECKED_CAST")
 data class BackendStatus(
-    val machine: MachineState?,
+    val local: LocalBackend?,
     val origin: String,
     val channel: Boolean,
     val pid: Long?,
@@ -1640,7 +1640,7 @@ data class BackendStatus(
     companion object {
         val ADAPTER: JsonAdapter<BackendStatus> = obj(
             listOf(
-            Field("machine", { opt(MachineState.ADAPTER) }, optional = false, nullable = true),
+            Field("local", { opt(LocalBackend.ADAPTER) }, optional = false, nullable = true),
             Field("origin", { Str }, optional = false, nullable = false),
             Field("channel", { Bool }, optional = false, nullable = false),
             Field("pid", { opt(Lng) }, optional = false, nullable = true),
@@ -1648,8 +1648,8 @@ data class BackendStatus(
             Field("detached", { opt(Bool) }, optional = false, nullable = true),
             Field("health", { HealthFace.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> BackendStatus(a[0] as MachineState?, a[1] as String, a[2] as Boolean, a[3] as Long?, a[4] as Long?, a[5] as Boolean?, a[6] as HealthFace) },
-            { v -> arrayOf(v.machine, v.origin, v.channel, v.pid, v.attempts, v.detached, v.health) },
+            { a -> BackendStatus(a[0] as LocalBackend?, a[1] as String, a[2] as Boolean, a[3] as Long?, a[4] as Long?, a[5] as Boolean?, a[6] as HealthFace) },
+            { v -> arrayOf(v.local, v.origin, v.channel, v.pid, v.attempts, v.detached, v.health) },
         )
     }
 }
@@ -9930,10 +9930,115 @@ enum class LiveWhy(val wire: String) {
     }
 }
 
+sealed interface LocalBackend {
+    /** 判别格（`state`）那个词。 */
+    val state: String
+
+    data object Up : LocalBackend {
+        override val state: String get() = "up"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Starting(
+        val word: String,
+        val said: String,
+    ) : LocalBackend, Ordered {
+        override val state: String get() = "starting"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Down(
+        val word: String,
+        val said: String,
+        val fixes: List<MachineFixButton>,
+        val next: String?,
+    ) : LocalBackend, Ordered {
+        override val state: String get() = "down"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Older(
+        val word: String,
+        val said: String,
+        val fixes: List<MachineFixButton>,
+        val next: String?,
+    ) : LocalBackend, Ordered {
+        override val state: String get() = "older"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Newer(
+        val word: String,
+        val said: String,
+        val fixes: List<MachineFixButton>,
+        val next: String?,
+    ) : LocalBackend, Ordered {
+        override val state: String get() = "newer"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<LocalBackend> =
+            tagged<LocalBackend>(
+                "state",
+                listOf(
+                Variant("up", LocalBackend.Up::class.java, obj(
+                        listOf(
+                        Field("state", { tag("up") }, optional = false, nullable = false),
+                        ),
+                        { LocalBackend.Up },
+                        { arrayOf("up") },
+                    )),
+                Variant("starting", LocalBackend.Starting::class.java, obj(
+                        listOf(
+                        Field("state", { tag("starting") }, optional = false, nullable = false),
+                        Field("word", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> LocalBackend.Starting(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("starting", v.word, v.said) },
+                    )),
+                Variant("down", LocalBackend.Down::class.java, obj(
+                        listOf(
+                        Field("state", { tag("down") }, optional = false, nullable = false),
+                        Field("word", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
+                        Field("next", { opt(Str) }, optional = false, nullable = true),
+                        ),
+                        { a -> LocalBackend.Down(a[1] as String, a[2] as String, a[3] as List<MachineFixButton>, a[4] as String?) },
+                        { v -> arrayOf("down", v.word, v.said, v.fixes, v.next) },
+                    )),
+                Variant("older", LocalBackend.Older::class.java, obj(
+                        listOf(
+                        Field("state", { tag("older") }, optional = false, nullable = false),
+                        Field("word", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
+                        Field("next", { opt(Str) }, optional = false, nullable = true),
+                        ),
+                        { a -> LocalBackend.Older(a[1] as String, a[2] as String, a[3] as List<MachineFixButton>, a[4] as String?) },
+                        { v -> arrayOf("older", v.word, v.said, v.fixes, v.next) },
+                    )),
+                Variant("newer", LocalBackend.Newer::class.java, obj(
+                        listOf(
+                        Field("state", { tag("newer") }, optional = false, nullable = false),
+                        Field("word", { Str }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
+                        Field("next", { opt(Str) }, optional = false, nullable = true),
+                        ),
+                        { a -> LocalBackend.Newer(a[1] as String, a[2] as String, a[3] as List<MachineFixButton>, a[4] as String?) },
+                        { v -> arrayOf("newer", v.word, v.said, v.fixes, v.next) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class LogFileEntry(
     val path: String,
-    val sizeBytes: Long,
+    val sizeText: String?,
     val modifiedMs: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -10729,7 +10834,6 @@ data class MachineState(
     val seenHostKey: String?,
     val expectedHostKey: String?,
     val detail: String?,
-    val next: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -10750,10 +10854,9 @@ data class MachineState(
             Field("seenHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
-            Field("next", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as List<MachineFixButton>, a[11] as String?, a[12] as String?, a[13] as String?, a[14] as String?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.next) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as List<MachineFixButton>, a[11] as String?, a[12] as String?, a[13] as String?) },
+            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail) },
         )
     }
 }
@@ -10774,25 +10877,6 @@ enum class MachineStateKind(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<MachineStateKind> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class MachineStatePayload(
-    val origin: String,
-    val machine: MachineState,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<MachineStatePayload> = obj(
-            listOf(
-            Field("origin", { Str }, optional = false, nullable = false),
-            Field("machine", { MachineState.ADAPTER }, optional = false, nullable = false),
-            ),
-            { a -> MachineStatePayload(a[0] as String, a[1] as MachineState) },
-            { v -> arrayOf(v.origin, v.machine) },
-        )
     }
 }
 

@@ -4527,6 +4527,10 @@ fn the_local_backend_words_come_from_the_copy_table() {
         L::Down {
             word: copy_text("machinePage.state.down", &[]),
             said: copy_text("machineState.down.local", &[]),
+            fixes: vec![cmd_wire::machine::FixButton {
+                fix: cmd_wire::machine::MachineFix::Retry,
+                label: copy_text("machineState.fix.retry", &[]),
+            }],
             next: Some("结束口上那个进程再重开（结构夹具）".to_string()),
         }
     );

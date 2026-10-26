@@ -4,6 +4,7 @@
  * 那台说了没有 tmux ⇒ 恢复默认的「运行于」回落 · 改过你的文件［前往］带上那台去撤回那一处。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { WALL_CEILING_MS } from "../../../test-support/wall-ceiling";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
 const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed, merges } = vi.hoisted(() => ({
@@ -178,6 +179,8 @@ describe("待办", () => {
     answers.set("devbox", report({ counts: counts({ badge: 2 }), todo: [] }));
     const { page, badge } = mount();
     page.loadNow();
+    // 机器表那一问的替身头一回要现载夹具模块（`config-patch-fake`），几拍空转等不到 ⇒ 等到那一问落下。
+    await vi.waitFor(() => expect(merges.asked.length).toBeGreaterThan(0), { timeout: WALL_CEILING_MS });
     await settle();
     expect(merges.asked, "一趟只问本机后端一次、交机器表那几台").toEqual([[LOCAL_ORIGIN, "devbox", "gpu"]]);
     expect(badge.at(-1)).toBe(3);
@@ -303,7 +306,7 @@ describe("cc-monitor 放了什么", () => {
     const claudeHead = [...pane.querySelectorAll<HTMLElement>(".data-section-head")].find((h) => h.textContent?.includes(copyText("dataPage.claudeDir.title")))!;
     const block = claudeHead.closest<HTMLElement>(".data-local-only")!;
     expect(block.hidden, "远端那台不该出本机的 Claude 目录").toBe(true);
-    chip(copyText("remote.cards.local")).click();
+    chip(copyText("control.machine.unsure")).click();
     expect(block.hidden).toBe(false);
   });
 

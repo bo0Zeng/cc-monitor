@@ -1753,20 +1753,28 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
         (Some(m), Some(theirs)) => deploy_contract::build_relation(&theirs, m),
         _ => Relation::Incomparable,
     };
+    // 起不来那几样只有一颗：［重试］＝ 再起一次本机后端。
+    let fixes = vec![cmd_wire::machine::FixButton {
+        fix: cmd_wire::machine::MachineFix::Retry,
+        label: copy_text("machineState.fix.retry", &[]),
+    }];
     match relation {
         Relation::Older => LocalBackend::Older {
             word: copy_text("machineState.word.needsUpdate", &[]),
             said: copy_text("machineState.problem.needsUpdate", &[("machine", &machine)]),
+            fixes,
             next,
         },
         Relation::Newer => LocalBackend::Newer {
             word: copy_text("machineState.word.newer", &[]),
             said: copy_text("machineState.problem.newer", &[("machine", &machine)]),
+            fixes,
             next,
         },
         Relation::Same | Relation::Incomparable => LocalBackend::Down {
             word: copy_text("machinePage.state.down", &[]),
             said: copy_text("machineState.down.local", &[]),
+            fixes,
             next,
         },
     }

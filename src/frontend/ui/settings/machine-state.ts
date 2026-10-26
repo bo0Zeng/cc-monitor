@@ -4,7 +4,6 @@
  */
 import type { LocalBackend } from "../generated/LocalBackend";
 import type { MachineState } from "../generated/MachineState";
-import { copyText } from "../copy-table";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
 import type { MachineStateKind } from "../generated/MachineStateKind";
@@ -65,10 +64,9 @@ export function machineFace(m: MachineState): MachineFace {
   };
 }
 
-/** 本机后端没起来那一格怎么画（壳的 `local-backend`；连着 ⇒ `null`，看本机后端那一台的成品）。字照壳那一格，样子按那一样挑；没起来那几样给［重试］（起本机后端）。 */
+/** 本机后端没起来那一格怎么画（壳的 `local-backend`；连着 ⇒ `null`，看本机后端那一台的成品）。字与修法照壳那一格，样子按那一样挑。 */
 export function localBackendFace(l: LocalBackend): MachineFace | null {
   if (l.state === "up") return null;
-  const retry: MachineFixButton[] = l.state === "starting" ? [] : [{ fix: "retry", label: copyText("machineState.fix.retry") }];
   const look = {
     starting: { dot: "unknown", tone: "busy" },
     down: { dot: "failed", tone: "error" },
@@ -80,7 +78,7 @@ export function localBackendFace(l: LocalBackend): MachineFace | null {
     word: l.word,
     problem: l.said,
     bar: false,
-    fixes: retry,
+    fixes: l.state === "starting" ? [] : l.fixes,
     offline: l.state === "down",
     needsUpdate: l.state === "older",
     detail: "",
