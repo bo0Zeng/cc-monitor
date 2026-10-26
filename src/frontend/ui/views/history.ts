@@ -10,6 +10,7 @@
  * - 实时：鼠标在列表上或焦点在列表里时不重排，移开再排；选中的那一行按会话认，不因上面插行而移动。
  */
 import { button, setBusy, setDisabled } from "../kit/button";
+import { morph } from "../kit/morph";
 import { splitButton } from "../kit/split-button";
 import { icon } from "../kit/icon";
 import { countBadge } from "../kit/badge";
@@ -647,16 +648,9 @@ export class HistoryView {
       this.renderHead(w);
       this.renderLines(body, w, hooks);
     }
-    const top = this.listEl.scrollTop;
-    const refocus = this.listEl.contains(document.activeElement) && document.activeElement !== this.listEl;
-    this.listEl.replaceChildren(...body);
-    this.listEl.scrollTop = top;
+    morph(this.listEl, body, { keepScroll: true, fallback: this.listEl });
     this.markRows();
     this.paintSticky();
-    if (refocus) {
-      const el = this.selected ? this.rowEl(this.selected) : null;
-      (el ?? this.listEl).focus({ preventScroll: true });
-    }
     if (this.pending) this.settlePending();
     // 答回来那一窗盖不住看得见的那几项（数据变了、整列变短了）⇒ 照现在的位置再问一窗。
     this.onScroll();

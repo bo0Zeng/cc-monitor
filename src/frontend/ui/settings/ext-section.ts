@@ -28,7 +28,6 @@ import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { buildPasteBlock } from "../paste-block";
 import { describeState, fetchHooksReport, type HooksReport } from "../cc-bus-hooks-reads";
 import {
-  ExtRefused,
   extHubApply,
   extHubPreview,
   extList,
@@ -47,7 +46,9 @@ import {
   type McpEntry,
   type McpRead,
 } from "../ext-reads";
-import { copyDetailButton, sayFailure } from "../kit/detail";
+import { copyDetailButton, saidOf, sayFailure } from "../kit/detail";
+import { write } from "../ipc/write";
+import { place } from "../kit/morph";
 import { openLoginDrawer } from "../login-drawer";
 import { accountAvatarEl } from "../account-color";
 
@@ -175,14 +176,10 @@ function button(text: string, onClick: () => void, primary = false): HTMLButtonE
 /** 出错那一句说的是哪个动作。 */
 type ExtVerb = "install" | "uninstall";
 
-/**
- * 一问没成 ⇒ 给人看的那一句：「装到 / 从…卸载 <那台> 失败：」＋ 那台后端说的那句本身（码不上屏，`stale` 只决定给不给「重看」）。
- */
-function said(e: unknown, verb: ExtVerb, m: ExtMachine): { text: string; stale: boolean } {
-  const why = e instanceof Error ? e.message : String(e);
+/** 一问没成 ⇒ 给人看的那一句：「装到 / 从…卸载 <那台> 失败：」＋ 那台后端说的那句本身（结局由统一写口判，`stale` 只决定给不给「重看」）。 */
+function failLine(why: string, verb: ExtVerb, m: ExtMachine): string {
   const machine = machineName(m);
-  const text = verb === "install" ? copyText("extPage.error.install", { machine, said: why }) : copyText("extPage.error.uninstall", { machine, said: why });
-  return { text, stale: e instanceof ExtRefused && e.code === "stale" };
+  return verb === "install" ? copyText("extPage.error.install", { machine, said: why }) : copyText("extPage.error.uninstall", { machine, said: why });
 }
 
 /** 抽屉里一台机器那一行的临时状态：打开的确认卡 · 在路上 · 那一句出错的话（整句，带动作与机器）· 做完那一句。 */
@@ -380,13 +377,13 @@ export class ExtSection {
   }
 
   private renderTable(): void {
-    this.table.replaceChildren();
+    const items: HTMLElement[] = [];
     const list = this.list;
-    if (!list) return;
+    if (!list) return place(this.table, []);
     const rows = list.rows.filter((r) => passes(r, this.query, this.kind));
     if (rows.length === 0) {
       const said = list.rows.length === 0 ? copyText("extPage.table.empty") : copyText("extPage.table.noMatch");
-      this.table.appendChild(el("div", "settings-hint", said));
+      place(this.table, [el("div", "settings-hint", said)]);
       return;
     }
     // 表头：名字 · 种类 · 做什么 · 每台一列（列头是机器名）；断开的那台整列半透明 ＋ 表上方一条。
@@ -399,15 +396,15 @@ export class ExtSection {
       cols.appendChild(c);
     }
     head.appendChild(cols);
-    for (const m of list.machines) if (!m.reachable) this.table.appendChild(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: machineName(m) })));
-    this.table.appendChild(head);
+    for (const m of list.machines) if (!m.reachable) items.push(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: machineName(m) })));
+    items.push(head);
     for (const r of rows) {
       let line = this.rowEls.get(r);
       if (!line) {
         line = this.rowEl(r, list);
         this.rowEls.set(r, line);
       }
-      this.table.appendChild(line);
+      items.push(line);
     }
     const legend = el("div", "ext-legend");
     for (const st of ["same", "differs", "missing", "project"] as const) {
@@ -425,7 +422,9 @@ export class ExtSection {
         legend.appendChild(item);
       }
     }
-    this.table.appendChild(legend);
+    items.push(legend);
+    // 留着的行原地不动（按身份 · kit place）：筛选只挑行，不重建、不丢焦点。
+    place(this.table, items);
   }
 
   /** 表里的一行（名字 · 种类 · 做什么 · 每台一个点）。 */
@@ -750,7 +749,7 @@ export class ExtSection {
       const card = await extUninstallPreview(originOf(m), r.kind, r.name, at);
       this.setSlot(key, { card: { kind: "remove", at, card } });
     } catch (e) {
-      this.setSlot(key, { error: { ...said(e, "uninstall", m), again: () => void this.openRemove(r, m, at) } });
+      this.setSlot(key, { error: { text: failLine(saidOf(e), "uninstall", m), stale: false, again: () => void this.openRemove(r, m, at) } });
     }
   }
 
@@ -932,15 +931,15 @@ export class ExtSection {
   private async run(r: ExtRow, key: string, m: ExtMachine, verb: ExtVerb, go: () => Promise<string>): Promise<void> {
     const keep = this.slots.get(key) ?? {};
     this.setSlot(key, { ...keep, busy: true, error: undefined });
-    try {
-      const done = await go();
-      this.setSlot(key, { done });
+    const end = await write(go);
+    if (end.ok) {
+      this.setSlot(key, { done: end.value });
       await this.reload(false, m.here ? null : originOf(m));
       if (r.builtin?.hooks) void this.readHooks(m);
-    } catch (e) {
-      const card = keep.card;
-      const again = card?.kind === "remove" ? () => void this.openRemove(r, m, card.at) : undefined;
-      this.setSlot(key, { ...keep, busy: false, error: { ...said(e, verb, m), again } });
+      return;
     }
+    const card = keep.card;
+    const again = card?.kind === "remove" ? () => void this.openRemove(r, m, card.at) : undefined;
+    this.setSlot(key, { ...keep, busy: false, error: { text: failLine(end.said, verb, m), stale: end.stale, again } });
   }
 }
