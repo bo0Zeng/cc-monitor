@@ -24,7 +24,7 @@ const READBACK_MS: u64 = 15_000;
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionModelReq {
     /// 会话 id。
-    pub(crate) sid: String,
+    pub(crate) sid: cmd_wire::Sid,
     /// 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
     pub(crate) model: String,
     /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
@@ -265,12 +265,6 @@ async fn answer(req: SessionModelReq, own: crate::platform::Own) -> Result<Model
 /// 认会话 · 核模型 · 判在不在等人 · 先装读回的耳朵 · 再送那一行（同 `session-say` 那一道：窗格里只剩 shell 不送）·
 /// 那一家声明了确认框 ⇒ 送出之后看屏，认出来就替人确认。
 fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail> {
-    if !shell_quote_core::session_id_ok(&req.sid) {
-        return Err(Fail::new(
-            "bad_args",
-            malformed("`sid` must be a session id"),
-        ));
-    }
     let home = crate::history::listing::agent_home();
     let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
         Fail::new(
@@ -308,7 +302,7 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
             .is_some_and(|h| crate::observe::accounts_query::shared_with_other_accounts(&h, rel))
     });
     let sent = crate::control::terminals_wire::say(&TerminalInputReq {
-        sid: Some(req.sid.clone()),
+        sid: Some(req.sid.to_string()),
         text: Some((sw.command)(&req.model)),
         enter: Some(true),
         client: req.client.clone(),

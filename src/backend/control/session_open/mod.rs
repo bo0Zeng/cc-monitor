@@ -71,7 +71,7 @@ pub(crate) enum Open {
     /// 起一个新会话（可分叉、可带第一句）。
     New(NewOpen),
     /// 恢复某条：哪一家 · 目录 · 模型 · 权限档这台从记录里读。
-    Resume { sid: String },
+    Resume { sid: cmd_wire::Sid },
     /// 接回 / 看一眼，不起 agent：按会话（找挂着它的 tmux 会话）或按 tmux 会话名，两格给一格。
     Look {
         #[serde(default)]
@@ -338,7 +338,7 @@ pub(crate) fn with_arrival(o: Opened, since: u64) -> Opened {
     let starts =
         matches!(o.landed, Landed::Started | Landed::InPlace | Landed::Window) && o.agent.is_some();
     let by = match (&o.sid, &o.cwd) {
-        (Some(sid), _) => Some(ArriveBy::Sid { sid: sid.clone() }),
+        (Some(sid), _) => sid.parse().ok().map(|sid| ArriveBy::Sid { sid }),
         (None, Some(cwd)) => Some(ArriveBy::Cwd { cwd: cwd.clone() }),
         (None, None) => None,
     };
@@ -373,9 +373,6 @@ fn dispatch(
             home,
         ),
         Open::Resume { sid } => {
-            if !shell_quote_core::session_id_ok(&sid) {
-                return Err(malformed("`sid` must be a session id"));
-            }
             let Some(r) = facts.resume else {
                 return Err(fail(
                     "record_gone",
@@ -384,7 +381,7 @@ fn dispatch(
                 ));
             };
             let it = Item {
-                sid,
+                sid: sid.to_string(),
                 cwd: r.cwd,
                 account,
                 say: None,

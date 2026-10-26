@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionCommandsReq {
     /// 会话 id。
-    pub(crate) sid: String,
+    pub(crate) sid: cmd_wire::Sid,
 }
 
 /// `session-commands` 的回包与它引到的几样：线上形住 `cmd-wire::session`。
@@ -54,12 +54,6 @@ impl crate::wire::typed::Handle for SessionCommandsCmd {
 }
 
 fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
-    if !shell_quote_core::session_id_ok(&req.sid) {
-        return Err(Fail::new(
-            "bad_args",
-            malformed("`sid` must be a session id"),
-        ));
-    }
     let home = crate::history::listing::agent_home();
     let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
         Fail::new(

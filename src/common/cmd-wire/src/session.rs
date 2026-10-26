@@ -588,7 +588,7 @@ pub struct ArriveAsk {
 )]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ArriveBy {
-    Sid { sid: String },
+    Sid { sid: crate::Sid },
     Cwd { cwd: String },
 }
 

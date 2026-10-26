@@ -82,11 +82,16 @@ impl Host for Prod {
     }
 
     fn arrival(&self, sid: &str, since: u64, ms: u64) -> impl Future<Output = bool> + Send {
-        let by = cmd_wire::session::ArriveBy::Sid {
-            sid: sid.to_string(),
-        };
-        let heard = crate::observe::arrivals::expect(by, since);
-        async move { one_wait::bounded(heard, ms).await.is_some() }
+        // 等的是这一趟自己起的那条（sid 来自已解好的入参）；万一不是会话 id ⇒ 不等，照没等到。
+        let heard = sid.parse().ok().map(|sid| {
+            crate::observe::arrivals::expect(cmd_wire::session::ArriveBy::Sid { sid }, since)
+        });
+        async move {
+            match heard {
+                Some(heard) => one_wait::bounded(heard, ms).await.is_some(),
+                None => false,
+            }
+        }
     }
 }
 

@@ -53,6 +53,12 @@ impl std::str::FromStr for Sid {
     }
 }
 
+impl std::fmt::Display for Sid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 impl std::ops::Deref for Sid {
     type Target = str;
     fn deref(&self) -> &str {

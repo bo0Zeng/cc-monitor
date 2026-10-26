@@ -97,7 +97,7 @@ fn ms_of(k: &str, n: u64) -> Result<u64, Failed> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RestartReq {
     /// 会话 id。
-    pub(crate) sid: String,
+    pub(crate) sid: cmd_wire::Sid,
     /// 工作目录。
     pub(crate) cwd: String,
     /// 用户点名的号（只收名字，非空）。
@@ -122,15 +122,12 @@ pub(crate) struct RestartReq {
 
 /// 入参的值域：sid 的形状 · 号非空 · 两个期限有界。
 pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
-    if !shell_quote_core::session_id_ok(&r.sid) {
-        return Err(bad(&format!("not a session id: {:?}", r.sid)));
-    }
     if r.account.is_empty() {
         return Err(bad("`account` must name an account"));
     }
     Ok(Req {
         item: Item {
-            sid: r.sid.clone(),
+            sid: r.sid.to_string(),
             cwd: r.cwd.clone(),
             account: AccountAsk::Named {
                 name: r.account.clone(),

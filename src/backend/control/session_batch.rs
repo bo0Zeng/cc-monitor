@@ -245,17 +245,14 @@ pub(crate) fn bad(why: &str) -> CmdErr {
     ("bad_args", crate::common::contract::malformed(why))
 }
 
-/// 一串 sid：非空、不超上界、不重复、每个过 sid 那一关。
-fn sids_of(arr: &[String]) -> Result<Vec<String>, CmdErr> {
+/// 一串 sid（每个的形状解入参时已判，`cmd_wire::Sid`）：非空、不超上界、不重复。
+fn sids_of(arr: &[cmd_wire::Sid]) -> Result<Vec<String>, CmdErr> {
     let mut out: Vec<String> = Vec::new();
     for s in arr {
-        if !shell_quote_core::session_id_ok(s) {
-            return Err(bad(&format!("not a session id: {s:?}")));
+        if out.iter().any(|x| x == s.as_str()) {
+            return Err(bad(&format!("duplicate session id: {:?}", s.as_str())));
         }
-        if out.iter().any(|x| x == s) {
-            return Err(bad(&format!("duplicate session id: {s:?}")));
-        }
-        out.push(s.clone());
+        out.push(s.to_string());
     }
     if out.is_empty() || out.len() > MAX_BATCH {
         return Err(bad(&format!("`sids` must hold 1..={MAX_BATCH} ids")));
@@ -312,7 +309,7 @@ pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
 #[serde(deny_unknown_fields)]
 pub(crate) struct SidsReq {
     /// 那几个会话（1–64 个，不重复）。
-    pub(crate) sids: Vec<String>,
+    pub(crate) sids: Vec<cmd_wire::Sid>,
     /// 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]

@@ -92,11 +92,6 @@ pub(crate) async fn run<H: Host>(
     host: &H,
 ) -> Result<ArriveEnd, String> {
     match &ask.by {
-        ArriveBy::Sid { sid } if !shell_quote_core::session_id_ok(sid) => {
-            return Err(crate::common::contract::malformed(&format!(
-                "not a session id: {sid:?}"
-            )));
-        }
         ArriveBy::Cwd { cwd } if cwd.is_empty() => {
             return Err(crate::common::contract::malformed(
                 "`cwd` must not be empty",

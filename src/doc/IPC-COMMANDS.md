@@ -10655,11 +10655,12 @@ terminals: Array<Terminal>,
  * 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
  */
 why?: "detached" | "no-terminal" | "unreadable", };
+type Sid = string;
 type SidReq = { 
 /**
  * 会话 id。
  */
-sid: string, };
+sid: Sid, };
 type SshConnection = { 
 /**
  * 对面地址。
@@ -11085,7 +11086,7 @@ type SessionCommandsReq = {
 /**
  * 会话 id。
  */
-sid: string, };
+sid: Sid, };
 type SessionSkill = { 
 /**
  * 名字。
@@ -11099,6 +11100,7 @@ text: string | null,
  * 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
  */
 say: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `no_such_session`
@@ -11139,7 +11141,7 @@ type SessionModelReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
  */
@@ -11148,6 +11150,7 @@ model: string,
  * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
  */
 client?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unsupported` · `no_such_session` · `no_tmux` · `unobservable` · `child_timed_out`
@@ -11188,7 +11191,7 @@ type SessionPermissionReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
  */
@@ -11197,6 +11200,7 @@ mode: string,
  * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
  */
 client?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unsupported` · `launch_only` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
@@ -11237,7 +11241,7 @@ type SessionSayReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 那一句（字面字，原样送；多行按粘贴送；后端补回车）。
  */
@@ -11251,6 +11255,7 @@ client?: string,
  * 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
  */
 seen_screen?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
@@ -11392,11 +11397,12 @@ copyDetail: string,
  * 落在哪个 tmux 会话上。
  */
 session: string | null, };
+type Sid = string;
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
  */
-sids: Array<string>, 
+sids: Array<Sid>, 
 /**
  * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
  */
@@ -11415,11 +11421,12 @@ client?: string, };
 
 ```ts
 type Run = "tmux" | "direct";
+type Sid = string;
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
  */
-sids: Array<string>, 
+sids: Array<Sid>, 
 /**
  * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
  */
@@ -11501,7 +11508,7 @@ since: number,
  * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
 session: string | null, };
-type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
+type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type FirstSay = { 
 /**
  * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
@@ -11577,7 +11584,7 @@ field: OpenField | null,
  * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
  */
 unavailable: AccountUnavailable | null, };
-type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: string, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
+type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: Sid, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
 type Opened = { 
 /**
  * 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
@@ -11650,6 +11657,7 @@ ticket?: string,
  * 自报的前端（就地键入过身份门，同 `kill`）。
  */
 client?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_in_tmux` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
@@ -11678,7 +11686,7 @@ since: number,
  * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
 session: string | null, };
-type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
+type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type ArriveEnd = { "kind": "arrived", sid: string, } | { "kind": "missed", 
 /**
  * 第一行是标题，其余是正文（含那一屏末几行）。
@@ -11688,6 +11696,7 @@ said: string,
  * 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
  */
 terminal: string | null, };
+type Sid = string;
 ```
 
 码：`bad_args`
@@ -11887,7 +11896,7 @@ type RestartReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 工作目录。
  */
@@ -11937,6 +11946,7 @@ terminal: string,
  * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
  */
 account: LaunchedAccount | null, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `already_live` · `stop_failed` · `start_failed` · `child_timed_out`
