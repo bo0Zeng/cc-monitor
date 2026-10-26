@@ -251,7 +251,7 @@ pub fn load_at(path: &Path) -> Loaded {
     }
 }
 
-/// 读一份，注解连同家在这台的组（文件不在 ⇒ 两样都空；读不懂 ⇒ 那一句）。读这份文件只有这一处。
+/// 读一份，注解连同这台那一片组（文件不在 ⇒ 两样都空；读不懂 ⇒ 那一句）。读这份文件只有这一处。
 pub(crate) fn load_all_at(path: &Path) -> Result<(Table, Book), String> {
     match read_raw(path) {
         Ok(None) => Ok((Table::new(), Book::new())),
