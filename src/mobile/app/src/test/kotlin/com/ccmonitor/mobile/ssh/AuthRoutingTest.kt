@@ -34,7 +34,6 @@ class AuthRoutingTest {
             keystoreAlias = keystoreAlias,
         )
 
-
     // === 身份类型判定（keystore 身份不许裸解密：它的私钥字节是空的）===
     @Test fun keystoreIdentityIsKeystoreBacked() = assertTrue(identity(keystoreAlias = "ccm-key-1").isKeystoreBacked())
 

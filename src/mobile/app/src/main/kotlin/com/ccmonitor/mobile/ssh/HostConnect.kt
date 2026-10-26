@@ -60,13 +60,22 @@ suspend fun planDial(
     val hops = listOf(request.keyPath) + generateSequence(request.jump) { it.jump }.map { it.keyPath }.toList()
     val auths =
         hops.filterNotNull().associateWith { id ->
-            val h = byId[id] ?: throw JumpBroken(copyText("mobConnect.jump.missing"), host.id)
-            if (h.id != host.id && h.authRef == null && h.passwordEnc == null) {
-                throw JumpBroken(copyText("mobConnect.jump.noAuth", "label" to h.label), h.id)
-            }
+            val h = hopHost(byId[id], host)
             resolveHostAuth(h, pendingIdentityId.takeIf { h.id == host.id }, identityRepo, hostRepo)
         }
     return ConnectionConfig(request, auths, ReconnectPolicy(auto = host.autoReconnect))
+}
+
+/** 请求里那一跳写的那一台：表里没有 ⇒ 拒（改 [target]）；是跳板却没身份也没密码 ⇒ 拒（改那一台）。 */
+private fun hopHost(
+    h: Host?,
+    target: Host,
+): Host {
+    val hop = h ?: throw JumpBroken(copyText("mobConnect.jump.missing"), target.id)
+    if (hop.id != target.id && hop.authRef == null && hop.passwordEnc == null) {
+        throw JumpBroken(copyText("mobConnect.jump.noAuth", "label" to hop.label), hop.id)
+    }
+    return hop
 }
 
 /**

@@ -50,12 +50,10 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.machineNames
 import com.ccmonitor.mobile.core.data.db.machineTable
 import com.ccmonitor.mobile.core.rs.Core
-import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.MachineCheck
-import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
@@ -68,6 +66,8 @@ import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.MachineCheck
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
