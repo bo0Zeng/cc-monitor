@@ -548,10 +548,10 @@ class ResidentFeedTest {
                     .text,
             )
             assertEquals(1, broken.size)
-            core.emit("book", Fixtures.repoRoot.resolve("tests/comms/resident-client/book.golden.json").readText())
-            assertEquals(setOf("a", "d"), f.table.value.live.keys)
+            core.emit("book", """{"live":{},"left":{},"runs":{},"successors":{"a":"d"},"rereads":{},"listed":true}""")
+            assertEquals(mapOf("a" to "d"), f.table.value.successors)
             core.emit("book", """{"live":{}}""")
-            assertEquals("认不出的簿不换", setOf("a", "d"), f.table.value.live.keys)
+            assertEquals("认不出的簿不换", mapOf("a" to "d"), f.table.value.successors)
             assertEquals(2, broken.size)
         }
 

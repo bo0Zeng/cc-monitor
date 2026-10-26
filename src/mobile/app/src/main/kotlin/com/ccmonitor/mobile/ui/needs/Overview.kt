@@ -105,7 +105,8 @@ private fun runningOf(
     h: HostName,
     t: SessionBook,
 ): List<RunningLine> =
-    t.faces()
+    t
+        .faces()
         .filterValues { it.dot == SessionDot.RUNNING || it.dot == SessionDot.BACKGROUND }
         .keys
         .map { sid ->

@@ -7,9 +7,12 @@ import com.ccmonitor.mobile.core.wire.gen.Hidden
 import com.ccmonitor.mobile.core.wire.gen.HiddenBy
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionFate
+import com.ccmonitor.mobile.core.wire.gen.SessionState
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,34 +20,41 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class ProductsTest {
-    /** 核心折好交来的那一本：两端对着的那一份 golden（`tests/comms/resident-client/book.golden.json`，桌面壳与手机核心的判据都对着它）。 */
+    /** 整份脸金样里的一形。 */
+    private fun face(key: String): SessionFace = Wire.bind<SessionFace>(Fixtures.json("session-face.golden.json")[key])!!
+
+    /** 核心折好交来的那一本（折法与它对着的 golden 在 Rust 那边，端核心 `resident-client` 的判据管）：这里只摆成品、钉读法。 */
     private val book: SessionBook =
-        Wire.read<SessionBook>(File(Fixtures.repoRoot, "tests/comms/resident-client/book.golden.json").readText())
-            ?: error("book.golden.json 装不进 SessionBook —— 两端契约对不上")
+        EMPTY_BOOK.copy(
+            live =
+                mapOf(
+                    "a" to SessionAdded(sid = "a", agentKind = "claude", path = "/p/a.jsonl", face = face("live-needs-you-tmux"), pid = 1, label = "甲"),
+                    "w" to SessionAdded(sid = "w", agentKind = "claude", face = face("live-working-plain"), pid = 2, label = "乙"),
+                    "d" to SessionAdded(sid = "d", agentKind = "claude", face = face("live-unclear"), pid = 3, label = "丁"),
+                ),
+            left = mapOf("c" to SessionState("c", SessionFate.ENDED, face("ended"))),
+            rereads = mapOf("a" to 1L),
+        )
 
     @Test
-    fun `会话簿：核心交的整份装得进；脸照活的那一张 · 走了的照去向那一张，簿里没有 ⇒ 没有`() {
-        assertEquals(setOf("a", "d"), book.live.keys)
-        assertEquals(setOf("b", "c"), book.left.keys)
+    fun `会话簿：脸照活的那一张 · 走了的照去向那一张，簿里没有 ⇒ 没有`() {
         assertEquals(Toned("需手动", Tone.NEED), book.face("a")?.let { Toned(it.name, it.tone) })
-        assertEquals("/p/a2.jsonl", book.live.getValue("a").path)
         assertEquals(SessionDot.ENDED, book.face("c")?.dot)
         assertNull(book.face("zz"))
-        assertEquals(setOf("a", "b", "c", "d"), book.faces().keys)
-        assertEquals(mapOf("c" to "d"), book.successors)
-        assertTrue(book.listed)
-        assertEquals("先答完需手动", book.face("a")!!.can.model.blocked())
-        assertNull("能换 ⇒ 没有那一句", book.face("d")!!.can.model.blocked())
+        assertEquals(setOf("a", "w", "d", "c"), book.faces().keys)
+        val needs = book.face("a")!!.can
+        assertEquals("先答完需手动", needs.model.blocked())
     }
 
     @Test
-    fun `会话簿：需手动 · 判不出都不算在跑；重读过几回照核心记的`() {
+    fun `会话簿：只有判得出在跑才算在跑；重读过几回照核心记的`() {
+        assertTrue(book.running("w"))
         assertFalse("需手动不算在跑", book.running("a"))
         assertNull((book.face("d")!!.live as? FaceLive.Yes)?.activity)
         assertFalse("判不出不算在跑", book.running("d"))
+        assertFalse("走了的不算", book.running("c"))
         assertFalse("不在 ⇒ 不算", book.running("zz"))
         assertEquals(1L, book.generation("a"))
         assertEquals(0L, book.generation("d"))
@@ -64,7 +74,6 @@ class ProductsTest {
         }
         assertEquals("线上那八颗点都在金样里", SessionDot.entries.toSet(), all.values.mapNotNull { Wire.bind<SessionFace>(it)?.dot }.toSet())
     }
-
 
     @Test
     fun `history-list：金样整份解得出，标题 · 段头 · 时刻都是核心写好的`() {

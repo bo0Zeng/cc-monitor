@@ -253,7 +253,9 @@ class ChatSessionMidTest {
             link.live(cards("子运行", run = "a1"))
             link.live(cards("改好了"))
             runCurrent()
-            val texts = s.state.value.live.map { it.blocks.single().text }
+            val texts =
+                s.state.value.live
+                    .map { it.blocks.single().text }
             assertEquals(listOf("改好了"), texts)
             link.live(cards())
             runCurrent()
