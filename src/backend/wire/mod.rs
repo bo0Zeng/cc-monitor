@@ -30,7 +30,7 @@ pub use cmd_wire::frame::FaceLive;
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
-pub use cmd_wire::frame::{FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer};
+pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
 pub use cmd_wire::frame::{NameFace, SessionActivity};
 pub use cmd_wire::frame::{RemovalCause, SessionFate, Topic, Unavailable};
@@ -565,11 +565,7 @@ impl FrameRules for Frame {
             // 一次性的出声，没有「下一次必然重发」⇒ 丢了那个 tab 就不说那句话（内容本身照旧对：游标已按它处置）。
             Frame::SessionFileGone(_) => false,
             Frame::SessionFileReread(_) => false,
-            // 链路字节：丢一块 = 那条链路上的数据坏了，别处没有第二份。
-            // 与上面两个同理，它们**不走**会丢帧的那条通道（走应答通道、阻塞发送）。
-            Frame::LinkData(_) => false,
-            Frame::LinkEnd(_) => false,
-            // 传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；也走应答通道。
+            // 传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；走应答通道（阻塞发送，不走会丢帧的那条）。
             Frame::Transfer(_) => false,
             // 测试连接的进度 / 结局：同上（走应答通道）。
             Frame::Probe(_) => false,
@@ -609,8 +605,6 @@ impl FrameRules for Frame {
             | Frame::SessionsReplayed(_)
             | Frame::SessionFileGone(_)
             | Frame::SessionFileReread(_)
-            | Frame::LinkData(_)
-            | Frame::LinkEnd(_)
             | Frame::Transfer(_)
             | Frame::Probe(_)
             | Frame::FilesBatch(_)

@@ -74,7 +74,7 @@ async fn every_golden_row_passes_the_gate_and_decodes_as_its_kind() {
         n += 1;
     }
     std::mem::forget(tally);
-    assert!(n >= 48, "金样只读到 {n} 行 —— 读空了");
+    assert!(n >= 44, "金样只读到 {n} 行 —— 读空了");
 }
 
 /// ② 金样的种类 == 帧表的种类 ＋ hello（帧表由 `cmd-wire` 的类型现算，金样由后端的序列化器写）。

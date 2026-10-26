@@ -17,7 +17,7 @@
 //!
 //! - 停订（流被丢）⇒ 发 `transfer-stop`（后端：上传删暂存件、下载留 `.part`）；
 //! - 本机那条流断了 ⇒ 后端的票表随它一起丢、在册的一律撤；这一侧开在那条流上的中继一律收场（`failed`，原因说清），
-//!   不让看的人干等（[`fail_owned_by`]，两条本机读循环结束时各调一次，同 `link_mux::fail_owned_by`）。
+//!   不让看的人干等（[`fail_owned_by`]，两条本机读循环结束时各调一次）。
 
 use crate::copy_table::copy_text;
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ const TRANSFER_START: &str = "transfer-start";
 const TRANSFER_STOP: &str = "transfer-stop";
 
 /// 开单 / 起跑 / 撤这几条等本机后端应答的上限。它们都是后端**就地记账**的命令（不等拨号、不等传输），
-/// 本机那条流上毫秒级回；给 60 s 与 `dial_host::LINK_CALL_BUDGET` 同值（流被别的大应答占着时也不误判）。
+/// 本机那条流上毫秒级回；给 60 s，与 `frame_query` 一页的期限同值（流被别的大应答占着时也不误判）。
 const CALL_BUDGET: Duration = Duration::from_secs(60);
 
 /// 这个操作名是不是传输台的。
@@ -207,7 +207,7 @@ pub async fn copy_call(
     let ask: cmd_wire::transfer::TransferCopyAsk = ask_of(TRANSFER_COPY, payload)?;
     let req = ask.from(cmd_wire::Machine(machine));
     let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
-    let client = crate::dial_host::local_backend_accepting(TRANSFER_COPY)
+    let client = crate::inbound_client::local_backend_accepting(TRANSFER_COPY)
         .await
         .map_err(|e| Refusal::of("backend_unavailable", e))?;
     let v = client
@@ -247,7 +247,7 @@ async fn relay<R: cmd_wire::files::Call<Reply = cmd_wire::transfer::TransferOpen
     req: R,
 ) -> Result<serde_json::Value, Refusal> {
     let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
-    let client = crate::dial_host::local_backend_accepting(R::NAME)
+    let client = crate::inbound_client::local_backend_accepting(R::NAME)
         .await
         .map_err(|e| Refusal::of("backend_unavailable", e))?;
     let v = client
@@ -406,7 +406,7 @@ pub(crate) fn deliver(t: cmd_wire::frame::Transfer) {
 }
 
 /// 本机那条流断了：经它开的中继一律收场（后端那一侧的票随那条流一起撤了）。只结束**经它开的**
-/// （本机后端重连之后，新流上开的不许被旧流的收尾带走 —— 同 `link_mux::fail_owned_by`）。
+/// （本机后端重连之后，新流上开的不许被旧流的收尾带走）。
 pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
     for r in relays().values() {
         if r.owner.upgrade().is_some_and(|o| Arc::ptr_eq(&o, client)) || r.owner.strong_count() == 0

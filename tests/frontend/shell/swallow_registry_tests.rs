@@ -103,7 +103,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
     ("src/backend/control/transfer.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "DP1 之后只清**空的** `.part`（一个字节都没落）；清不掉只剩一个 0 字节文件，主错误已在回"),
-    ("src/backend/dial/link.rs", "let _ = replies.send(Frame::LinkEnd(crate::wire::LinkEnd { link: link.clone(), error, })).await;", Why::PeerGone, ""),
     ("src/backend/dial/probe.rs", "let _ = tx.send(Ev::Feed(e));", Why::PeerGone, "测试连接那一台常驻流交来的事转进这一趟：这一趟已经收场（结局出了 · 到点被丢）就没人要这一下"),
     ("src/backend/ssh-dial/lib.rs", "let _ = tx.send(s);", Why::PeerGone, "拨号进展报给这一趟写进展行的那一头；ack 写出去之后那一头收了，后到的那一步没人要"),
     ("src/backend/ssh-dial/pool.rs", "let _ = self.freed.set(freed);", Why::SetOnce, "族的铃只挂一次"),
@@ -264,9 +263,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
     // 单实例回调那三行收进 `platform::window::raise_main`（与点通知共用，失败各留一行日志），这里不再有。
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_core::backend_old(&copy_core::local_machine()))));", Why::PeerGone, ""),
-    ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", Why::PeerGone, ""),
-    ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(error));", Why::PeerGone, ""),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(crate::ui_error::EVENT, p);", Why::Diag, "把一条要让用户知道的出错推给界面；推不上它照样进了日志文件"),
     // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", Why::Reap, "Windows 句柄 / 内存释放"),

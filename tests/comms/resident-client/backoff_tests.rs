@@ -126,13 +126,8 @@ fn both_ends_take_the_backoff_from_here() {
             );
         }
     }
-    // 两端都在开长 exec 那一处要拨号核心的进展：桌面隔着进程，要的是请求格（`DialRequest::progress`，进展行）；
+    // 两端都在开长 exec 那一处要拨号核心的进展：桌面在本机后端里（上面那条 `.open(req, tx, progress)`）；
     // 手机在进程里，走有类型的口（`uses::open` 的进展回调直接接到循环的 `Progress::step`）。
-    let desk = guard_core::production_code(&read("src/frontend/shell/src/dial_host.rs"));
-    assert!(
-        desk.contains("\"progress\""),
-        "桌面开长 exec 时没要拨号核心的进展行（src/frontend/shell/src/dial_host.rs）"
-    );
     let phone = guard_core::production_code(&read("src/mobile/core-rs/rust/resident.rs"));
     assert!(
         phone.contains("ssh_dial::uses::open(&req, &stages, |_| progress.step())"),

@@ -64,7 +64,7 @@ fn the_two_dispatch_layers_cover_every_frame_kind_without_a_catch_all() {
         include_str!("../../../../src/common/cmd-wire/src/frame.rs"),
         "pub enum Frame<R = Record> {",
     );
-    assert_eq!(kinds.len(), 25, "帧种表读空了 / 读错了：{kinds:?}");
+    assert_eq!(kinds.len(), 23, "帧种表读空了 / 读错了：{kinds:?}");
     assert_eq!(arms(route, "Frame::"), kinds, "`route` 的臂不是全部帧种");
     let ordered = variants(&prod, "pub(crate) enum Ordered {");
     assert!(

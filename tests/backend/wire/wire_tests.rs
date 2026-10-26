@@ -448,20 +448,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             why: RereadWhy::Truncated,
             lines: 7,
         })),
-        both(Frame::LinkData(crate::wire::LinkData {
-            link: s("L1"),
-            data: s("aGkK"),
-        })),
-        [
-            Frame::LinkEnd(crate::wire::LinkEnd {
-                link: s("L1"),
-                error: Some(s("e")),
-            }),
-            Frame::LinkEnd(crate::wire::LinkEnd {
-                link: s("L1"),
-                error: None,
-            }),
-        ],
         [
             Frame::Transfer(crate::wire::Transfer {
                 id: s("x1"),
@@ -715,31 +701,10 @@ fn the_session_stream_golden_is_what_the_serializer_writes() {
     }
 }
 
-/// ★ W1：链路两帧 ＋ `changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
+/// ★ W1：`changed` 的**逐字节**金标准。
 #[test]
-fn link_frames_have_exactly_these_bytes() {
+fn changed_frames_have_exactly_these_bytes() {
     let cases = [
-        (
-            Frame::LinkData(crate::wire::LinkData {
-                link: "m1.0-3".into(),
-                data: b64_encode(b"hi\n"),
-            }),
-            "{\"kind\":\"link_data\",\"link\":\"m1.0-3\",\"data\":\"aGkK\"}\n",
-        ),
-        (
-            Frame::LinkEnd(crate::wire::LinkEnd {
-                link: "m1.0-3".into(),
-                error: None,
-            }),
-            "{\"kind\":\"link_end\",\"link\":\"m1.0-3\"}\n",
-        ),
-        (
-            Frame::LinkEnd(crate::wire::LinkEnd {
-                link: "m1.0-3".into(),
-                error: Some("读链路下行失败".into()),
-            }),
-            "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
-        ),
         (
             Frame::changed(crate::wire::Changed::Accounts {}),
             "{\"kind\":\"changed\",\"topic\":\"accounts\"}\n",

@@ -49,7 +49,7 @@ pub(crate) struct ResidentBackend;
 
 impl LocalBackend for ResidentBackend {
     async fn call(&self, args: Value) -> Result<Value, String> {
-        let client = crate::dial_host::local_backend_accepting(CMD).await?;
+        let client = crate::inbound_client::local_backend_accepting(CMD).await?;
         let data = client.call(CMD, args, BUDGET).await.map_err(|e| {
             match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
                 copy_text("rsAssetSync.call.failed", &[("said", &message.to_string())])

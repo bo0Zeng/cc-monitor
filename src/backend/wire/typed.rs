@@ -408,11 +408,6 @@ pub(crate) fn answer<C: Command>(
     }
 }
 
-/// 一发失败的应答帧（码表里那一格）：硬臂那几条自己发应答的（`link-data` 成功那一下由上行泵回）失败时经它。
-pub(crate) fn refuse<C: Command>(id: &str, e: C::Err) -> crate::wire::Frame {
-    e.into_fail().into_reply(id.to_string(), C::NAME)
-}
-
 /// 帧面硬臂那一档交给通用 spawn 那一路的一份（异步：`cancel` 能在 await 点打断）：入参按类型收 → 本体 future → 结局。
 /// 本体拿到的是入参与信封那两样（[`Cx`]），硬臂要的本连接那几样由它在闭包里带进去。
 pub(crate) fn answer_async<C, F, Fut>(run: F) -> super::spec::DataHandler

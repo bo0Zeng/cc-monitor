@@ -81,10 +81,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   这里要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
     //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
     ("frame_query.rs", Verdict::UsesRouter),
-    // ★ **又一个发送端** —— 链路的 monitor 这一侧（`link_mux.rs`，`link-*` 四条，
-    //   经本机常驻后端那条流开到各远端的字节流）。它**没有第二条路可回落**（`D11`：不起代理进程、
-    //   不进程内拨），失败只渲染成一句话；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
-    ("link_mux.rs", Verdict::UsesRouter),
+    // 链路多路复用那一行摘了：界面不再经本机后端开链路（问别台经本机客户端 `call_at`）。
     // ★ **第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
     //   monitor 问它 / 交它写 / 退出臂现问它，都经 `backend_policy.rs::exit_policy_call` 这一口。
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
@@ -97,7 +94,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
     // ★ 传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
-    //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
+    //   后端说的码原样带回窗口；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
     ("sftp_pool.rs", Verdict::UsesRouter),
     // ★ 装后端：把「怎么够到那台 ＋ 这一版带着的那几格落在哪」交给**本机**后端 `deploy-install`，
     //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与 `asset_sync.rs` 那一行同。

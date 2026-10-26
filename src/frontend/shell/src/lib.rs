@@ -27,10 +27,10 @@ mod auto_launch;
 mod bookmarks_migration;
 // 🔴 `origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
-// 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流 · SSH 链路读应答这里再导出、路径不变；
+// 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流这里再导出、路径不变；
 //   `origin` 那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
 use crate::detail::Said;
-use comms_inward::{backend_route, origin, ssh_link};
+use comms_inward::{backend_route, origin};
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
 mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
@@ -139,13 +139,7 @@ mod backend_once;
 mod stream_source;
 // 每台的「在看」名单（主窗口在看的 tab ∪ 查看窗跟着的会话）交那台的名单台（`resident_client::watch::Desk`）。
 mod stream_watch;
-// 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
-// `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
-//   SFTP 进了本机常驻后端（`src/backend/ssh-dial/sftp.rs`），**界面进程零 SSH**（用户）。
-// 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
-mod dial_host;
-// 链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
-mod link_mux;
+// 界面进程零 SSH：拨号全在本机常驻后端里；问别台一律经本机客户端 `call_at`，各台的流由本机后端转来（`relayed`）。
 // 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
@@ -182,11 +176,9 @@ mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层�
 #[path = "../../../../tests/frontend/shell/dial_home_registry.rs"]
 mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
 #[cfg(test)]
+// audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进。
 #[path = "../../../../tests/frontend/shell/e2e_gate_registry.rs"]
-mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/exec_site_registry.rs"]
-mod exec_site_registry;
+mod e2e_gate_registry;
 // F10（出口④）：本机读面清账 + 递减棘轮。
 // ⚠ 注释写在上一行而不是行尾：行尾放不下，而 `rustfmt`
 //   会把跟在带行尾注释那一行后面的注释块**缩进对齐到那一列**
