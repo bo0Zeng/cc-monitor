@@ -44,11 +44,11 @@ describe("请求", () => {
       seen.push({ op: args.op, origin: args.origin, body: chanArgsJson(args) });
       return Promise.resolve(chanReply(args.op === "forward-list" ? golden : { id: "fwd-1" }));
     });
-    expect(await startForward({ origin: "dev", localPort: 15432, remoteHost: "localhost", remotePort: 5432 })).toBe("fwd-1");
+    expect(await startForward({ origin: "dev", localPort: "15432", remoteHost: "localhost", remotePort: "5432" })).toBe("fwd-1");
     await stopForward("fwd-1");
     expect(await listForwards()).toHaveLength(1);
     expect(seen).toEqual([
-      { op: "forward-start", origin: LOCAL_ORIGIN, body: { origin: "dev", localPort: 15432, remoteHost: "localhost", remotePort: 5432 } },
+      { op: "forward-start", origin: LOCAL_ORIGIN, body: { origin: "dev", localPort: "15432", remoteHost: "localhost", remotePort: "5432" } },
       { op: "forward-stop", origin: LOCAL_ORIGIN, body: { id: "fwd-1" } },
       { op: "forward-list", origin: LOCAL_ORIGIN, body: {} },
     ]);

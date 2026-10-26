@@ -50,10 +50,6 @@ pub(crate) struct Spec {
     pub(crate) remote_port: u16,
 }
 
-fn invalid(detail: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(detail))
-}
-
 /// `forward-start` 的入参：规格四格 ＋ 那台的名字（怎么拨照这一端的机器表组，线上不交那台的配置）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -62,33 +58,38 @@ fn invalid(detail: &str) -> (&'static str, String) {
 pub(crate) struct ForwardStartReq {
     /// 那台的名字。
     pub(crate) origin: cmd_wire::Machine,
-    /// 绑本机 `127.0.0.1:localPort`。
-    pub(crate) local_port: u16,
+    /// 绑本机 `127.0.0.1:localPort`：用户敲进去的原文，这里解（界面不判是不是端口）。
+    pub(crate) local_port: String,
     /// 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
     pub(crate) remote_host: String,
-    pub(crate) remote_port: u16,
+    /// 同 `localPort`：原文。
+    pub(crate) remote_port: String,
+}
+
+/// 一格端口原文 ⇒ 1–65535（两头空白不算）；空 · 不是数 · 0 · 越界 ⇒ `None`。
+fn port_of(text: &str) -> Option<u16> {
+    text.trim().parse::<u16>().ok().filter(|p| *p != 0)
 }
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
-/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`；名字空 ⇒ `bad_args`（缺格 / 类型不对在解入参那一步就回了）。
+/// 没选那台 · 端口不是 1–65535 · 远端 host 空白 ⇒ `bad_spec` 带那一句（界面照抄）；缺格 / 类型不对在解入参那一步就回了（`bad_args`）。
 pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, String)> {
-    if req.origin.as_wire_str().is_empty() {
-        return Err(invalid("`origin` is empty (the machine name)"));
+    let bad = |said: String| ("bad_spec", said);
+    if req.origin.as_wire_str().trim().is_empty() {
+        return Err(bad(copy_text("beForwards.spec.origin", &[])));
     }
-    if req.local_port == 0 {
-        return Err(("bad_spec", copy_text("beForwards.spec.localPort", &[])));
-    }
+    let local_port =
+        port_of(&req.local_port).ok_or_else(|| bad(copy_text("beForwards.spec.localPort", &[])))?;
     if req.remote_host.trim().is_empty() {
-        return Err(("bad_spec", copy_text("beForwards.spec.remoteHost", &[])));
+        return Err(bad(copy_text("beForwards.spec.remoteHost", &[])));
     }
-    if req.remote_port == 0 {
-        return Err(("bad_spec", copy_text("beForwards.spec.remotePort", &[])));
-    }
+    let remote_port = port_of(&req.remote_port)
+        .ok_or_else(|| bad(copy_text("beForwards.spec.remotePort", &[])))?;
     Ok(Spec {
         origin: req.origin.as_wire_str().to_string(),
-        local_port: req.local_port,
-        remote_host: req.remote_host.clone(),
-        remote_port: req.remote_port,
+        local_port,
+        remote_host: req.remote_host.trim().to_string(),
+        remote_port,
     })
 }
 

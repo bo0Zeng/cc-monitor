@@ -10,10 +10,14 @@ export type ForwardStartReq = {
  */
 origin: Origin, 
 /**
- * 绑本机 `127.0.0.1:localPort`。
+ * 绑本机 `127.0.0.1:localPort`：用户敲进去的原文，这里解（界面不判是不是端口）。
  */
-localPort: number, 
+localPort: string, 
 /**
  * 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
  */
-remoteHost: string, remotePort: number, };
+remoteHost: string, 
+/**
+ * 同 `localPort`：原文。
+ */
+remotePort: string, };

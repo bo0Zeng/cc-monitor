@@ -76,7 +76,7 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
     vi.doMock("../../../../src/frontend/ui/profiles-reads", async (orig) => ({
       ...(await orig<typeof import("../../../../src/frontend/ui/profiles-reads")>()),
       readProfiles: () =>
-        Promise.resolve({ home: "/h", path: "/h/p.toml", exists: true, rev: "f", modified: 1, fileProblem: null, profiles: [], seed: [], migrated: null, binDir: "/h/bin", accounts: [] }),
+        Promise.resolve({ home: "/h", path: "/h/p.toml", exists: true, rev: "f", modified: 1, fileProblem: null, profiles: [], seed: [], migrated: null, binDir: "/h/bin", accounts: [], slots: [] }),
       profileBases: () => Promise.resolve([]),
       resolveProfile: () => Promise.resolve({ chain: [], rows: [], line: null, lineError: null, problem: null }),
     }));
