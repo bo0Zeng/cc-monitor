@@ -48,7 +48,7 @@ const targets = (globalOk = true, globalNote: string | null = null) => [
   { at: proj, ok: true, note: null },
 ];
 const bring = (over: Record<string, unknown> = {}) => ({ from: null, fromName: "本机", scope: { from: user, to: user }, targets: targets(), ...over });
-const row = (kind: string, name: string, cells: unknown[], over: Record<string, unknown> = {}) => ({ kind, kindSaid: KIND_SAID[kind], name, about: null, detail: [], new: false, builtin: null, note: null, cells, ...over });
+const row = (kind: string, name: string, cells: unknown[], over: Record<string, unknown> = {}) => ({ kind, kindSaid: KIND_SAID[kind], name, about: null, detail: [], new: false, known: null, note: null, cells, ...over });
 const here = cell("same", [place(user, "same", true)]);
 const demoMissing = cell("missing", [place(user, "missing")], bring());
 const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
@@ -427,7 +427,25 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
 
 describe("备注 · cc-bus 那一行", () => {
   beforeEach(() => invokeMock.mockReset());
-  const ccBus = (cells: unknown[], note: string | null = null) => row("skill", "cc-bus", cells, { builtin: { note: "内置：要加两条钩子", hooks: true }, note });
+  const ccBus = (cells: unknown[], note: string | null = null) => row("skill", "cc-bus", cells, { known: { from: "〈自带〉", note: "内置：要加两条钩子", hooks: true }, note });
+
+  it("认得的那几样：后端排在最前的、带 known 的行前面一条组头，名字后面那一句是后端写的来源；不带 known 的同名行不进组（界面不认名字）", async () => {
+    const pb = row("plugin", "planned-build", [cell("missing", [place(user, "missing")], bring()), here], { known: { from: "〈发布处〉", note: null, hooks: false } });
+    const base = listWith(demoMissing);
+    const list = { ...base, rows: [pb, ...base.rows, row("skill", "code-picture", [here, here])] };
+    const s = await page([list]);
+    const table = s.element.querySelector(".ext-table") as HTMLElement;
+    const order = [...table.children].map((e) => (e.classList.contains("ext-drawer-section") ? "组头" : ((e as HTMLElement).dataset.key ?? null))).filter((k) => k !== null);
+    expect(order).toEqual(["组头", "plugin/planned-build", "skill/demo", "mcp/fs", "skill/code-picture"]);
+    expect(table.querySelector(".ext-drawer-section")?.textContent).toBe(copyText("extPage.table.known"));
+    const name = table.querySelector('[data-key="plugin/planned-build"] .ext-name') as HTMLElement;
+    expect(name.textContent).toBe("planned-build 〈发布处〉");
+    // 没有备注 ⇒ 不带备注记号。
+    expect(name.querySelector(".ext-note-mark")).toBeNull();
+    // 没有认得的那几行 ⇒ 组头也不在。
+    const plain = await page([base]);
+    expect(plain.element.querySelector(".ext-table .ext-drawer-section")).toBeNull();
+  });
 
   it("备注：内置的照画在抽屉顶部；用户写 ⇒ 交本机后端记进目录 ⇒ 让它同步一趟各台、重读", async () => {
     const list = listWith(demoMissing, [ccBus([here, demoMissing])]);

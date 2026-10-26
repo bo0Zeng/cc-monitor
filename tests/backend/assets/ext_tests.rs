@@ -204,14 +204,28 @@ fn the_table_judges_every_cell_place_and_target() {
         ],
         "本机在前；认得出的用可达表里的名字；没连上的用它自报的称呼"
     );
-    let got: Vec<(String, bool, Vec<String>)> = list
+    // 自己发版的那两样（planned-build · code-picture）另有判据（`a_known_extension_…`）。
+    let rows: Vec<&ExtRow> = list
         .rows
+        .iter()
+        .filter(|r| !is_release(r.kind, &r.name))
+        .collect();
+    let got: Vec<(String, bool, Vec<String>)> = rows
         .iter()
         .map(|r| (r.name.clone(), r.new, r.cells.iter().map(brief).collect()))
         .collect();
     let off = format!("note:{}", n("kit.offline.later"));
     let no_proj = format!("note:{}", n("beExt.note.noProject"));
     let want: Vec<(String, bool, Vec<String>)> = vec![
+        (
+            "cc-bus".into(),
+            false,
+            vec![
+                "missing:user=missing bring<here@user>@user [user /h/p✗ /shared✗]".into(),
+                "missing:user=missing bring<here@user>@user [user]".into(),
+                format!("missing:user=missing {off}"),
+            ],
+        ),
         (
             "m-proj".into(),
             false,
@@ -228,15 +242,6 @@ fn the_table_judges_every_cell_place_and_target() {
             vec![
                 "same:user=same! bring<here@user>@/h/p [user✗ /h/p /shared]".into(),
                 format!("missing:user=missing {no_proj}"),
-                format!("missing:user=missing {off}"),
-            ],
-        ),
-        (
-            "cc-bus".into(),
-            false,
-            vec![
-                "missing:user=missing bring<here@user>@user [user /h/p✗ /shared✗]".into(),
-                "missing:user=missing bring<here@user>@user [user]".into(),
                 format!("missing:user=missing {off}"),
             ],
         ),
@@ -270,23 +275,20 @@ fn the_table_judges_every_cell_place_and_target() {
     ];
     assert_eq!(got, want);
     // 不可选的那几项各说为什么（同一句话只住后端一处）。
-    let m_user = &list.rows[1].cells[0];
+    let m_user = &rows[2].cells[0];
     assert_eq!(m_user.places[0].note, Some(n("beExt.note.userMcpReadOnly")));
     let targets = &m_user.bring.as_ref().unwrap().targets;
     assert_eq!(targets[0].note, Some(n("beExt.note.userMcpReadOnly")));
-    let cc = &list.rows[2];
+    let cc = rows[0];
     assert_eq!(
-        cc.builtin,
-        Some(ExtBuiltin {
-            note: n("beExt.builtin.ccBus"),
+        cc.known,
+        Some(ExtKnown {
+            from: n("beExt.from.builtin"),
+            note: Some(n("beExt.builtin.ccBus")),
             hooks: true
         })
     );
-    assert!(list
-        .rows
-        .iter()
-        .filter(|r| r.name != "cc-bus")
-        .all(|r| r.builtin.is_none()));
+    assert!(rows[1..].iter().all(|r| r.known.is_none()));
     let cc_bring = cc.cells[0].bring.as_ref().unwrap();
     assert_eq!(cc_bring.from_name, n("beExt.from.builtin"));
     assert_eq!(
@@ -326,7 +328,7 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
     let got: Vec<(Value, String, Vec<String>)> = list
         .rows
         .iter()
-        .filter(|r| r.builtin.is_none())
+        .filter(|r| r.name == "code-picture")
         .map(|r| {
             (
                 serde_json::to_value(r.kind).unwrap(),
@@ -335,18 +337,19 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
             )
         })
         .collect();
+    // skill 那一行是认得的（排在表顶），MCP 那一行照常。
     assert_eq!(
         got,
         vec![
             (
-                json!("mcp"),
-                "code-picture".to_string(),
-                vec![format!("project:user=missing,/h/p=same+卸 {same}")]
-            ),
-            (
                 json!("skill"),
                 "code-picture".to_string(),
                 vec!["same:user=same+卸 bring<here@user>@/h/p [user✗ /h/p]".to_string()]
+            ),
+            (
+                json!("mcp"),
+                "code-picture".to_string(),
+                vec![format!("project:user=missing,/h/p=same+卸 {same}")]
             ),
         ]
     );
@@ -1591,7 +1594,7 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
     let row = list
         .rows
         .iter()
-        .find(|r| r.kind == ExtKind::Plugin)
+        .find(|r| r.kind == ExtKind::Plugin && r.name == "github")
         .expect("插件那一行");
     // 字都由后端写：种类那一格 · 每个点与每一处那一句（「只在项目里」带上项目）· 图例有插件行才多「关着」。
     let n = |k: &str| copy_text(k, &[]);
@@ -1685,4 +1688,104 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
     .expect_err("插件给卸了");
     assert_eq!((code.as_str(), message), ("refused", ro));
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ cc-monitor 认得的三样（planned-build · code-picture · cc-bus）一张表列着、各写来源，排在表顶、哪台都没装也在：
+/// 一台没装 ⇒ 那一格「推荐 · 未装」、带「装到…」（从发布处来：各台里最新的那一版，不是持有人最多的那一版）；
+/// 装了 ⇒ 同一行那一格「已装 · 版本」，不另起一行。
+#[test]
+fn a_known_extension_is_recommended_where_missing_and_shows_its_version_where_installed() {
+    let pb = |digest: &str, version: &str| Asset {
+        summary: json!({ "version": version, "from": "manifest",
+                         "parts": { "skills": ["planned-build"], "hooks": ["Stop"] } }),
+        ..asset(ExtKind::Plugin, "planned-build", digest, None)
+    };
+    // 什么都没装：三样照列，按表里的次序排在最前，各写来源。
+    let mut empty = asset_catalog::fresh("h".into());
+    empty.machines.insert(
+        "h".into(),
+        snap(
+            "me@h",
+            vec![asset(ExtKind::Skill, "a-skill", "d", None)],
+            &[],
+        ),
+    );
+    let list = table(&empty, &[]);
+    let head: Vec<(ExtKind, String, Option<String>)> = list
+        .rows
+        .iter()
+        .map(|r| {
+            (
+                r.kind,
+                r.name.clone(),
+                r.known.as_ref().map(|k| k.from.clone()),
+            )
+        })
+        .collect();
+    let release = copy_text("beExt.from.release", &[]);
+    assert_eq!(
+        head,
+        vec![
+            (
+                ExtKind::Plugin,
+                "planned-build".into(),
+                Some(release.clone())
+            ),
+            (ExtKind::Skill, "code-picture".into(), Some(release.clone())),
+            (
+                ExtKind::Skill,
+                "cc-bus".into(),
+                Some(copy_text("beExt.from.builtin", &[]))
+            ),
+            (ExtKind::Skill, "a-skill".into(), None),
+        ]
+    );
+    let recommended = copy_text("beExt.state.recommended", &[]);
+    assert!(list.rows[..3]
+        .iter()
+        .all(|r| r.cells[0].state == ExtState::Missing && r.cells[0].said == recommended));
+    // 本机装着 0.5.3（两台）· 一台装着 0.5.4 · 一台没装：「这一版」是最新的 0.5.4，不是人多的 0.5.3。
+    let mut cat = asset_catalog::fresh("h".into());
+    cat.machines
+        .insert("h".into(), snap("me@h", vec![pb("old", "0.5.3")], &[]));
+    cat.machines
+        .insert("a".into(), snap("a", vec![pb("old", "0.5.3")], &[]));
+    cat.machines
+        .insert("b".into(), snap("b", vec![pb("new", "0.5.10")], &[]));
+    cat.machines.insert("c".into(), snap("c", vec![], &["/w"]));
+    let reach: Vec<(String, Option<String>)> = ["a", "b", "c"]
+        .iter()
+        .map(|k| (k.to_string(), Some(k.to_string())))
+        .collect();
+    let list = table(&cat, &reach);
+    let rows: Vec<&ExtRow> = list
+        .rows
+        .iter()
+        .filter(|r| r.name == "planned-build")
+        .collect();
+    assert_eq!(rows.len(), 1, "装了的另起了一行");
+    let row = rows[0];
+    let got: Vec<String> = row.cells.iter().map(brief).collect();
+    assert_eq!(
+        got,
+        vec![
+            "differs:user=differs bring<b@user>@user [user]".to_string(),
+            "differs:user=differs bring<b@user>@user [user]".to_string(),
+            format!(
+                "same:user=same note:{}",
+                copy_text("beExt.card.sameMachine", &[])
+            ),
+            "missing:user=missing bring<b@user>@user [user]".to_string(),
+        ]
+    );
+    assert_eq!(row.cells[3].said, recommended);
+    assert_eq!(
+        row.cells[2].said,
+        copy_text("beExt.state.sameVersion", &[("version", "0.5.10")])
+    );
+    // 认得的插件不能从这里卸（卸照 Claude Code 自己的办法），也不替人默认装：没有一处是「装着」以外的样子被改写。
+    assert!(row
+        .cells
+        .iter()
+        .all(|c| c.places.iter().all(|p| !p.uninstall)));
 }
