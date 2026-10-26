@@ -216,16 +216,21 @@ fn a_jump_chain_that_loops_back_is_refused() {
 }
 
 #[test]
-fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
-    // 线上交来的是一台原样的配置（monitor 不再解析地址 / 组请求）：组法只在这里。
-    let wire = json!({
-        "machine": {"host": "192.0.2.2", "user": "u", "addresses": ["devbox.lan", "[fe80::1]:2200"]},
-        "prefer": {"host": "fe80::1", "port": 2200},
-        "use": "capture",
-        "command": "x",
-        "agent_sock": "/run/agent",
-    });
-    let r = resolve(&wire).unwrap();
+fn the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses() {
+    // 组法只在这里：表里那一台 ＋ 上次赢的那条（后端自己记的）⇒ 拨号请求，其余格原样进请求。
+    let table = vec![m(
+        json!({"label": "devbox", "host": "192.0.2.2", "user": "u",
+        "addresses": ["devbox.lan", "[fe80::1]:2200"]}),
+    )];
+    let extra = json!({"command": "x", "agent_sock": "/run/agent"});
+    let r = req(
+        &table,
+        "devbox",
+        Some(&ep("fe80::1", 2200)),
+        "capture",
+        extra.clone(),
+    )
+    .unwrap();
     let order: Vec<(String, u16)> = r
         .race_order()
         .into_iter()
@@ -246,28 +251,29 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         ("x", Some("/run/agent"))
     );
     // 上次赢的那条已不在这台的地址里（配置改过）⇒ 顺序不动。
-    let mut stale = wire.clone();
-    stale["prefer"] = json!({"host": "gone.lan", "port": 22});
-    let order: Vec<String> = resolve(&stale)
-        .unwrap()
-        .race_order()
-        .into_iter()
-        .map(|e| e.host)
-        .collect();
+    let order: Vec<String> = req(
+        &table,
+        "devbox",
+        Some(&ep("gone.lan", 22)),
+        "capture",
+        extra,
+    )
+    .unwrap()
+    .race_order()
+    .into_iter()
+    .map(|e| e.host)
+    .collect();
     assert_eq!(order, vec!["192.0.2.2", "devbox.lan", "fe80::1"]);
-    // 线上那一份的跳板：`jump` 那一台进表。
-    let mut via = wire.clone();
-    via["machine"]["jump"] = json!("bastion");
-    via["jump"] = json!({"host": "b.example", "label": "bastion", "user": "j", "keyPath": null});
-    assert_eq!(
-        resolve(&via).unwrap().jump.map(|j| j.host).as_deref(),
-        Some("b.example")
-    );
-    // 没有 `machine` ⇒ 拒（线上不再收组好的那一形）。
-    assert_eq!(
-        resolve(&json!({"host": "192.0.2.2", "user": "u", "port": 22}))
-            .map(|_| ())
-            .map_err(|(c, _)| c),
-        Err("bad_args")
-    );
+}
+
+/// 组好之后读成拨号请求（后端拿 [`request`] 那一形读，同一份）。
+fn req(
+    table: &[Host],
+    name: &str,
+    prefer: Option<&Endpoint>,
+    use_: &str,
+    extra: Value,
+) -> Result<crate::DialRequest, Err> {
+    let v = request(table, name, prefer, use_, extra)?;
+    Ok(serde_json::from_value(v).expect("组好的那一形读得成拨号请求"))
 }

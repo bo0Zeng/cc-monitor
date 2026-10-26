@@ -40,7 +40,7 @@ vi.mock("../../../../src/frontend/ui/quota-reads", () => ({ readQuota: (...a: un
 vi.mock("../../../../src/frontend/ui/profiles-reads", () => ({ readProfiles: (...a: unknown[]) => readProfiles(...a) }));
 vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   readRemoteConfig: () => readRemoteConfig(),
-  findHostByOrigin: (hosts: { label: string }[], o: string) => hosts.find((h) => h.label === o) ?? null,
+  findHostByOrigin: (rows: { name: string }[], o: string) => rows.find((r) => r.name === o) ?? null,
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ bindEvents: () => Promise.resolve() }));
 /** 那台有没有 tmux（`session-open-facts` 的 `tmux`）。 */
@@ -172,7 +172,7 @@ beforeEach(() => {
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
   accountsAdd.mockResolvedValue(change());
-  readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ label: "devbox" }, { label: "gpu-01" }] });
+  readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: { label: "devbox" } }, { name: "gpu-01", host: { label: "gpu-01" } }] });
   fetchAccounts.mockResolvedValue(state());
   readQuota.mockResolvedValue(quota());
   accountsVerify.mockResolvedValue({ pass: true, fails: 0, warns: 0, checks: [] });
@@ -359,7 +359,7 @@ describe("各态", () => {
   it("★ 机器表每一趟都问（界面不另存一份）：开着的时候那台从表里删了 ⇒ 刷新一下就是「未连接过」", async () => {
     const el = await mount();
     expect(rowOf(el, "work")).toBeTruthy();
-    readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ label: "gpu-01" }] });
+    readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ name: "gpu-01", host: { label: "gpu-01" } }] });
     fetchAccounts.mockClear();
     buttonNamed(el, copyText("acctPage.head.refresh")).click();
     await settle();

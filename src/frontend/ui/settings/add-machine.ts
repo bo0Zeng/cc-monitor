@@ -7,26 +7,26 @@
  *   与写口同一份规则），这里按回来的码把那一句放在那一格下面；有错时主按钮禁用。
  */
 import { formDialog } from "../kit/dialog";
+import type { Host } from "../generated/Host";
 import { field, type FieldHandle } from "../kit/field";
 import { fold } from "../kit/fold";
 import { tabs } from "../kit/tabs";
 import { checkbox } from "../kit/switch";
 import { copyText } from "../copy-table";
-import type { RemoteHostConfig } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import type { ImportGroup } from "../ssh-config-reads";
 import type { SshImported } from "../generated/SshImported";
 
 export interface AddMachineDeps {
   /** 这几台若现在加进去，机器表那一道过不过（后端试算；过 ⇒ `null`）。 */
-  tryAdd: (cfgs: RemoteHostConfig[]) => Promise<MachineFault | null>;
+  tryAdd: (cfgs: Host[]) => Promise<MachineFault | null>;
   /** 读 ~/.ssh/config（失败 ⇒ 抛）；每组带着后端判的「已在列表里」，`partial` ＝ 有别名在期限内没读完。 */
   imported: () => Promise<SshImported>;
   /** 写进去：成了 ⇒ `null`；没存上 ⇒ 一句原因。 */
-  add: (cfgs: RemoteHostConfig[]) => Promise<string | null>;
+  add: (cfgs: Host[]) => Promise<string | null>;
 }
 
-const blank = (): RemoteHostConfig => ({
+const blank = (): Host => ({
   label: "",
   host: "",
   port: 22,
@@ -45,7 +45,7 @@ const portNumber = (text: string): number => {
 
 interface SshRow {
   g: ImportGroup;
-  cfg: RemoteHostConfig;
+  cfg: Host;
   inList: boolean;
   picked: boolean;
   split: boolean;
@@ -53,12 +53,12 @@ interface SshRow {
 }
 
 /** 组 → 一台（成员多于一个时别名记在备用地址里）。 */
-function groupCfg(g: ImportGroup): RemoteHostConfig {
+function groupCfg(g: ImportGroup): Host {
   return { ...blank(), label: g.label, host: g.host, port: g.port || 22, user: g.user, keyPath: g.keyPath ?? "", addresses: g.addresses, jump: g.jump ?? "" };
 }
 
 /** 拆开：每个成员一台。 */
-function memberCfgs(g: ImportGroup): RemoteHostConfig[] {
+function memberCfgs(g: ImportGroup): Host[] {
   return g.members.map((m) => ({ ...blank(), label: m.alias, host: m.host, port: m.port || 22, user: g.user, keyPath: g.keyPath ?? "", jump: m.proxyJump ?? "" }));
 }
 
@@ -99,8 +99,8 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   list.className = "add-machine-list";
   sshPane.append(sshNote, list, sshAfter);
 
-  const pickedCfgs = (): RemoteHostConfig[] => {
-    const out: RemoteHostConfig[] = [];
+  const pickedCfgs = (): Host[] => {
+    const out: Host[] = [];
     for (const r of rows) {
       if (!r.picked || r.inList) continue;
       if (r.split) out.push(...memberCfgs(r.g));
@@ -217,7 +217,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   manualPane.append(grid, fold({ title: copyText("machineCard.conn.more"), open: false, body: moreBody }), manualAfter);
   for (const f of [fName, fHost, fUser, fPort, fKey, fAddrs, fJump]) f.input.addEventListener("input", update);
 
-  const manualCfg = (): RemoteHostConfig => ({
+  const manualCfg = (): Host => ({
     ...blank(),
     label: fName.input.value.trim(),
     host: fHost.input.value.trim(),
@@ -233,7 +233,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   let seq = 0;
 
   /** 这一框里要加的那几台，以及第一处错（`null` ⇒ 可以加）。错由后端的回答定；还没答回来 ⇒ 先挡着。 */
-  const check = (): { cfgs: RemoteHostConfig[]; why: string | null } => {
+  const check = (): { cfgs: Host[]; why: string | null } => {
     const cfgs = tab === "manual" ? [manualCfg()] : pickedCfgs();
     if (cfgs.length === 0) return { cfgs, why: copyText("addMachine.err.none") };
     const fault = verdict !== null && verdict.asked === JSON.stringify(cfgs) ? verdict.fault : undefined;

@@ -3,7 +3,7 @@
 //! 守的要求：「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
 //! （一切判定都在后端）· 观测方沿它本来就拥有的那条连接去拉（拉的是本机常驻后端，不是 monitor）。
 //!
-//! 买到：握手那一刻交的是「拨号请求（`capture`）＋ origin」；发的字段 == 后端那一条的入参类型（跨半边，读生成的类型声明）；monitor 这一侧零合并规则。
+//! 买到：握手那一刻只交那台的名字（`origin`；怎么够到它照本机后端的机器表）；发的字段 == 后端那一条的入参类型（跨半边，读生成的类型声明）；monitor 这一侧零合并规则。
 //! 买不到：🔴 真远端 / 真本机后端（本机后端那一跳是替身）；连上那一刻的钩子只验「不认就不碰」这一半。
 
 use super::*;
@@ -21,26 +21,6 @@ impl LocalBackend for Recorder {
     }
 }
 
-fn cfg() -> crate::stream_source::RemoteConfig {
-    serde_json::from_value(json!({
-        "host": "192.0.2.2",
-        "label": "dev",
-        "port": 2222,
-        "user": "u",
-        "keyPath": "/home/me/.ssh/id_ed25519",
-    }))
-    .or_else(|_| {
-        serde_json::from_value(json!({
-            "host": "192.0.2.2",
-            "label": "dev",
-            "port": 2222,
-            "user": "u",
-            "key_path": "/home/me/.ssh/id_ed25519",
-        }))
-    })
-    .expect("夹具配置")
-}
-
 fn good_reply() -> Value {
     json!({
         "self": "9f",
@@ -50,26 +30,18 @@ fn good_reply() -> Value {
 }
 
 #[tokio::test]
-async fn the_handshake_hands_over_how_to_reach_that_machine() {
+async fn the_handshake_hands_over_only_the_machine_name() {
     let rec = Recorder {
         sent: Mutex::new(vec![]),
         reply: good_reply(),
     };
     // 应答原样交回（monitor 不解释它，界面那一问经通道直问、`src/frontend/ui/assets-sync-reads.ts` 按形状收）。
-    let got = sync_with(&cfg(), &rec).await.expect("握手那一刻");
+    let got = sync_with("dev", &rec).await.expect("握手那一刻");
     assert_eq!(got, good_reply());
     let sent = rec.sent.lock().unwrap().clone();
     assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0]["origin"], json!("dev"));
-    // 那台后端的路径不交（落点是固定常量）。
-    assert_eq!(sent[0].get("backend"), None);
-    assert_eq!(sent[0]["dial"]["use"], json!("capture"));
-    assert_eq!(sent[0]["dial"]["machine"]["host"], json!("192.0.2.2"));
-    assert_eq!(
-        sent[0]["dial"]["machine"]["keyPath"],
-        json!("/home/me/.ssh/id_ed25519"),
-        "只交路径"
-    );
+    // 只交名字：拨号那一格不交（怎么够到那台由本机后端照它的机器表组）。
+    assert_eq!(sent[0], json!({"origin": "dev"}));
 }
 
 /// 跨半边：本侧发的格 == 后端 `assets-sync` 入参类型的格，回包类型的格 == 本侧认的那三格（两向）；远端要认的那条命令真在后端命令表里。
@@ -89,7 +61,7 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     );
     let req = decl_keys(&gen("src/frontend/ui/generated/AssetsSyncReq.ts"));
     let reply = decl_keys(&gen("src/frontend/ui/generated/AssetsSynced.ts"));
-    let sent: std::collections::BTreeSet<String> = args_for(&cfg())
+    let sent: std::collections::BTreeSet<String> = args_for("dev")
         .as_object()
         .unwrap()
         .keys()
@@ -196,45 +168,4 @@ fn decl_keys(decl: &str) -> std::collections::BTreeSet<String> {
         i += 1;
     }
     out
-}
-
-/// 跨半边：可达表登记那一条 —— 本侧发的格 == 后端 `remote-reach` 入参类型的格，读回的那一格（`reach`）在它回包类型里；
-/// 发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
-///
-/// 守的要求：「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
-/// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
-#[test]
-fn the_reach_registration_sends_what_the_backend_registers() {
-    let gen = |f: &str| {
-        std::fs::read_to_string(guard_core::addr::repo_root().join(f)).expect("生成的类型声明")
-    };
-    // 命令表那一行点的是这两个类型（`generated/TypedCommands.ts`；改了名这里跟着改，下面那条断言会先红）。
-    assert!(
-        gen("src/frontend/ui/generated/TypedCommands.ts")
-            .lines()
-            .any(|l| l.trim()
-                == "\"remote-reach\": { req: ReachReq; reply: Reached; code: \"bad_args\" };"),
-        "后端命令表里没有 `{REACH_CMD}`（或它的入参 · 回包类型换了名）"
-    );
-    let req = decl_keys(&gen("src/frontend/ui/generated/ReachReq.ts"));
-    let reply = decl_keys(&gen("src/frontend/ui/generated/Reached.ts"));
-    let args = args_for(&cfg());
-    let sent: std::collections::BTreeSet<String> =
-        args.as_object().unwrap().keys().cloned().collect();
-    assert_eq!(
-        sent, req,
-        "本侧发的格与后端 `remote-reach` 入参类型的格不相等（两向）"
-    );
-    assert!(
-        reply.contains("reach"),
-        "后端 `remote-reach` 回包里没有本侧读的 `reach`：{reply:?}"
-    );
-    // 拨号那一格的每一格也都在后端那一份类型里（多一格后端就回 bad_args）。
-    let dial: std::collections::BTreeSet<String> =
-        args["dial"].as_object().unwrap().keys().cloned().collect();
-    let declared = decl_keys(&gen("src/frontend/ui/generated/MachineDial.ts"));
-    assert!(
-        dial.is_subset(&declared),
-        "本侧 `dial` 的格 {dial:?} 不全在后端 `MachineDial` 里 {declared:?}"
-    );
 }

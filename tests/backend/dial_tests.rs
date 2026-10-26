@@ -19,8 +19,8 @@ use super::*;
 use ssh_dial::{connect, write_ack, write_stages_then_ack};
 use std::sync::Arc;
 
-/// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的是一台机器的原样配置，
-/// 经 `machine::resolve` 组成这一形之后走的也是这一份）。
+/// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的只是那台的名字，
+/// 照这一端的机器表按名字组成这一形之后走的也是这一份）。
 fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
     serde_json::from_str(raw.trim())
 }
@@ -446,7 +446,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     );
 }
 
-/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值 · 壳 `dial_host::request(cfg, "<用法>", …)`）
+/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值 · 壳 `dial_host::request(machine, "<用法>", …)`）
 /// == 手写的这五种，两向。SFTP 只经帧命令（`deploy-*` · `transfer-*`）用，链路上没有文件那一种用法。
 /// 增删一种用法时同拍改这张表。
 #[test]
@@ -1143,4 +1143,66 @@ fn a_key_path_written_with_a_tilde_is_read_under_the_home() {
         "报错句里的路径不是用户写的那一形：{said}"
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔出口只交机器名〕`link-open` 的 `dial` 只认那台的**名字**：交整台配置（旧入参）· 自带跳板 · 自带「上次赢的那条」⇒ `bad_args`，
+/// 链路一条都不开（怎么拨由这一端的机器表定，不由交来的那几格定）；表里有那台、只交名字 ⇒ 开（正控）。
+#[tokio::test]
+async fn link_open_takes_only_a_machine_name() {
+    let (tx, _rx) = tokio::sync::mpsc::channel::<crate::wire::Frame>(16);
+    // 表里那一台：本机端口 1（拨一定断；正控只看开没开链路，不看拨没拨通）。
+    let table = link::Table::with_machines(
+        tx,
+        Arc::new(|| {
+            vec![machine::loose(
+                &serde_json::json!({"label": "a", "host": "127.0.0.1", "port": 1, "user": "u"}),
+            )
+            .unwrap()]
+        }),
+    );
+    let reply = |f: crate::wire::Frame| match f {
+        crate::wire::Frame::Reply(crate::wire::Reply { ok, code, .. }) => {
+            (ok, code.unwrap_or_default())
+        }
+        _ => (false, String::new()),
+    };
+    let capture = |machine: serde_json::Value| serde_json::json!({"machine": machine, "use": "capture", "command": "true", "capture": {"max_bytes": 16}});
+    let open = |link: &str, dial: serde_json::Value| {
+        reply(table.open(
+            "a",
+            &serde_json::json!({"link": link, "window": 1 << 20, "dial": dial}),
+        ))
+    };
+    let whole =
+        capture(serde_json::json!({"label": "a", "host": "127.0.0.1", "port": 1, "user": "u"}));
+    assert_eq!(
+        open("w", whole),
+        (false, "bad_args".into()),
+        "整台配置当入参还收着"
+    );
+    for (k, v) in [
+        (
+            "jump",
+            serde_json::json!({"host": "j", "user": "u", "label": "j"}),
+        ),
+        (
+            "prefer",
+            serde_json::json!({"host": "127.0.0.1", "port": 1}),
+        ),
+    ] {
+        let mut d = capture(serde_json::json!("a"));
+        d[k] = v;
+        assert_eq!(
+            open(k, d),
+            (false, "bad_args".into()),
+            "`{k}` 由线上交进来还收着"
+        );
+    }
+    assert_eq!(table.len(), 0, "被拒的入参开出了链路");
+    // 正控：只交名字 ⇒ 照表开（同一张表、同一扇门）。
+    assert_eq!(
+        open("n", capture(serde_json::json!("a"))),
+        (true, String::new())
+    );
+    assert_eq!(table.len(), 1);
 }

@@ -13,7 +13,7 @@
  * `tests/__fixtures__/ext-flow.golden.json` · `mcp-read.golden.json` 钉），不比较、不推断。
  */
 import type { Budget } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { ExtBring } from "./generated/ExtBring";
 import type { ExtBuiltin } from "./generated/ExtBuiltin";
@@ -35,24 +35,8 @@ import type { McpReadEntry } from "./generated/McpReadEntry";
 import type { McpReadReply } from "./generated/McpReadReply";
 import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
-import { saidOf } from "./kit/detail";
 
 export type { ExtBring, ExtBuiltin, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
-
-/** 一问没成：那句话 ＋ 后端的码（`stale` ⇒ 看过之后又变了，卡上让人重看）。 */
-export class ExtRefused extends Error {
-  constructor(
-    message: string,
-    readonly code: string | null,
-  ) {
-    super(message);
-  }
-}
-
-function refused(e: unknown): ExtRefused {
-  const code = refusalIn(e)?.code ?? null;
-  return new ExtRefused(saidOf(e), code);
-}
 
 /** 读一趟：表在本机后端，远端慢时同步那一趟另走（`assets-sync-reads.ts`）。 */
 const LIST_BUDGET_MS = 30_000;
@@ -70,13 +54,9 @@ export type ExtManyCard = HubPreview;
 /** 各台各自结局。 */
 export type ExtManyDone = HubApplied;
 
-/** typed 那一对：入参 · 回包的类型从后端生成，形状由握手指纹核过；没成 ⇒ [`ExtRefused`]（带后端的码）。 */
-async function askTyped<T>(go: (budget: Budget) => Promise<T>, ms: number): Promise<T> {
-  try {
-    return await go(budgetWithin(ms));
-  } catch (e) {
-    throw refused(e);
-  }
+/** typed 那一对：入参 · 回包的类型从后端生成，形状由握手指纹核过；没成 ⇒ 原样抛（写的结局归统一写口 `ipc/write.ts` 判）。 */
+function askTyped<T>(go: (budget: Budget) => Promise<T>, ms: number): Promise<T> {
+  return go(budgetWithin(ms));
 }
 
 /** 「装到 N 台」那一张卡：勾上的几台（`null` = 本机后端自己）＋ 用户选的那一处（没选 ⇒ 后端建议）。 */

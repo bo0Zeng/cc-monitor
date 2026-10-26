@@ -1,40 +1,19 @@
 // 机器表数据层（纯数据，无 DOM）：表住本机后端（`~/.cc-monitor/machines.json`，后端 `control/machines.rs`），
 // 这里只经 `machines-read` / `machines-try` / `machines-set` 读写 ＋ 反查 / 筛选纯函数。
+// 一台在界面里是后端读回的那一行（`MachineRow`：后端算好的名字 ＋ 那一台原样）；名字只认后端那一格，界面不再自己算。
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
+import { commands } from "./ipc/commands";
+import type { Host } from "./generated/Host";
 import type { MachineEdit } from "./generated/MachineEdit";
 import type { MachineFault } from "./generated/MachineFault";
+import type { MachineRow } from "./generated/MachineRow";
 import type { MachinesReply } from "./generated/MachinesReply";
 
 /** 一问的期限：读写一份小文件 ＋ 回程。 */
 const MACHINES_BUDGET_MS = 10_000;
 
-/**
- * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
- * `label` 是该台的稳定身份（origin tag，多机 #30）：Tab 前缀 / 历史分组 / 选台 key。
- * 留空时后端回退用 host。port 缺省 22；keyPath 可选。主机指纹不在这张表里（拨号核心那份库，`machines-read` 的 `hostKeys` 只读给出）。
- */
-export interface RemoteHostConfig {
-  label: string;
-  host: string;
-  port: number;
-  user: string;
-  keyPath: string;
-  /**
-   * 备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
-   * `[IPv6]:port` / 裸 IPv6。首选地址仍是 `host` 字段。空数组 = 仅用 host。
-   */
-  addresses: string[];
-  /**
-   * 跳板 ProxyJump：填另一台已配置主机的 `label`（空 = 直连），经那台隧道连这台
-   * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/断开即报错不直连。
-   */
-  jump: string;
-  /** 连接这台：关 ⇒ 不连（盘上 `"connect": false`），开 ⇒ 去连；改了当场生效（本机后端推 `changed {machines}`，壳照它对齐）。 */
-  connect: boolean;
-}
-
-/** 多行文本 ↔ 地址数组（trim ＋ 去空行）。界面用 textarea，config / IPC 用数组。 */
+/** 多行文本 ↔ 地址数组（trim ＋ 去空行）。界面用 textarea，线上用数组。 */
 export function parseAddressLines(text: string): string[] {
   return text
     .split("\n")
@@ -42,9 +21,9 @@ export function parseAddressLines(text: string): string[] {
     .filter((l) => l.length > 0);
 }
 
-/** 机器表：每台自己的「连接这台」。 */
+/** 机器表：后端读回的那几行（照表里的先后）。 */
 export interface RemoteConfig {
-  hosts: RemoteHostConfig[];
+  hosts: MachineRow[];
   /**
    * 机器表那份文件在、却读不懂时那一句（本机后端写好的）；读得懂 / 没有那份 ⇒ 不给。读不懂时 `hosts` 恒空（不猜那是哪台），
    * 设置页把这一句说在机器列表顶上，壳那一侧一台都不连。
@@ -55,53 +34,11 @@ export interface RemoteConfig {
 }
 
 /**
- * 能打开文件窗口的远端主机：`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置）。顶栏文件入口据此决定 0 台提示 / 1 台直开 / 多台选单。
- * 不看 `enabled`：远端数据源没启用也能浏览某台的文件。
+ * 能打开文件窗口的远端主机：`host` 与 `user` 都非空。顶栏文件入口据此决定 0 台提示 / 1 台直开 / 多台选单。
+ * 不看「连不连」：远端数据源没启用也能浏览某台的文件。
  */
-export function sftpEligibleHosts(cfg: RemoteConfig): RemoteHostConfig[] {
-  return cfg.hosts.filter((h) => h.host.trim() !== "" && h.user.trim() !== "");
-}
-
-export const HOST_DEFAULTS: RemoteHostConfig = {
-  label: "",
-  host: "",
-  port: 22,
-  user: "",
-  keyPath: "",
-  addresses: [],
-  jump: "",
-  connect: true,
-};
-
-/** 容忍 config 里 addresses 为数组 / 换行文本 / 缺失。 */
-function coerceAddresses(v: unknown): string[] {
-  if (Array.isArray(v)) {
-    return v
-      .filter((x): x is string => typeof x === "string")
-      .map((x) => x.trim())
-      .filter(Boolean);
-  }
-  if (typeof v === "string") return parseAddressLines(v);
-  return [];
-}
-
-function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
-  const str = (k: string, d: string) => (typeof obj[k] === "string" ? (obj[k] as string) : d);
-  const host = str("host", HOST_DEFAULTS.host);
-  return {
-    // label 缺省回退 host（与 Rust origin_label 一致：空 label → host）
-    label: str("label", "") || host,
-    host,
-    port:
-      typeof obj.port === "number" && Number.isFinite(obj.port)
-        ? (obj.port as number)
-        : HOST_DEFAULTS.port,
-    user: str("user", HOST_DEFAULTS.user),
-    keyPath: str("keyPath", HOST_DEFAULTS.keyPath),
-    addresses: coerceAddresses(obj.addresses),
-    jump: str("jump", HOST_DEFAULTS.jump),
-    connect: obj.connect !== false,
-  };
+export function sftpEligibleHosts(cfg: RemoteConfig): MachineRow[] {
+  return cfg.hosts.filter((r) => r.host.host.trim() !== "" && r.host.user.trim() !== "");
 }
 
 /** 读本机后端的机器表 → RemoteConfig。读不懂 ⇒ 空表 ＋ 那一句；问不到 ⇒ 空表（记一句日志）。永不抛。 */
@@ -117,81 +54,38 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
 /** 那一答 → `RemoteConfig`（纯函数）。 */
 export function remoteConfigOf(r: MachinesReply): RemoteConfig {
   if (r.state === "unreadable") return { hosts: [], unrecognized: r.reason ?? "" };
-  return { hosts: r.hosts.map((h) => coerceHost(h as unknown as Record<string, unknown>)), hostKeys: r.hostKeys };
+  return { hosts: r.hosts, hostKeys: r.hostKeys };
 }
 
-/**
- * 在主机列表里按 origin 反查（纯函数）。origin = `label` 非空则 label 否则 host，与后端 `origin_label()` 同口径
- * （纯空白 label 除外：这里 trim、后端不 trim，那时反查落空，调用方出声）。找不到 → null。
- */
-export function findHostByOrigin(
-  hosts: RemoteHostConfig[],
-  origin: string,
-): RemoteHostConfig | null {
-  return hosts.find((h) => hostKey(h) === origin) ?? null;
+/** 在那几行里按名字（会话来源 · 寻址用的那个）反查（纯函数）。找不到 → null。 */
+export function findHostByOrigin(rows: MachineRow[], origin: string): MachineRow | null {
+  return rows.find((r) => r.name === origin) ?? null;
 }
 
-/** 按 origin（会话来源）反查完整 RemoteHostConfig。找不到（主机被删 / 改名）→ null。 */
-export async function resolveRemoteConfigByOrigin(
-  origin: string,
-): Promise<RemoteHostConfig | null> {
+/** 按名字反查那一行。找不到（主机被删 / 改名）→ null。 */
+export async function resolveRemoteConfigByOrigin(origin: string): Promise<MachineRow | null> {
   return findHostByOrigin((await readRemoteConfig()).hosts, origin);
-}
-
-/**
- * 落盘时要序列化的字段清单（单一来源）。`RemoteHostConfig` 加了字段而这里没跟上 ⇒ 每次保存都静默丢掉它；
- * 下面的 `MissingField` 检查让 `tsc` 当场红，并点名缺的是哪个字段。
- */
-const REMOTE_HOST_FIELDS = [
-  "label",
-  "host",
-  "port",
-  "user",
-  "keyPath",
-  "addresses",
-  "jump",
-  "connect",
-] as const satisfies readonly (keyof RemoteHostConfig)[];
-
-/**
- * 上面清单**漏掉**的字段（应为 `never`）。
- */
-type MissingField = Exclude<keyof RemoteHostConfig, (typeof REMOTE_HOST_FIELDS)[number]>;
-// 漏了字段这一行就红，且 TS 的错误信息会把缺的字段名打出来。
-const _noMissingField: MissingField extends never ? true : MissingField = true;
-void _noMissingField;
-
-/** 按 [`REMOTE_HOST_FIELDS`] 挑字段落盘（不逐字段手抄，杜绝静默丢失）。 */
-function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const k of REMOTE_HOST_FIELDS) out[k] = h[k];
-  return out;
-}
-
-/** 一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
-export function hostKey(h: RemoteHostConfig): string {
-  return h.label.trim() || h.host;
 }
 
 /** 一次局部修改：没被提到的机器不碰（补丁里没有它）。 */
 export interface RemoteHostsPatch {
   /**
-   * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
+   * 要写入的机器。`key` = 这条记录**在盘上当前的名字**（后端读回的那一格）；`null` = 新增（追加到末尾）。
    * key 在盘上找不到（被别处删了 / 改了）⇒ 整批拒、说出来（不当新增）。
    */
-  upsert?: { key: string | null; value: RemoteHostConfig; was?: RemoteHostConfig }[];
-  /** 要删除的机器，按 origin。 */
+  upsert?: { key: string | null; value: Host; was?: Host }[];
+  /** 要删除的机器，按名字。 */
   remove?: string[];
 }
 
 /**
  * 界面写机器表的唯一入口。补丁全按键认那一台（[`remoteHostsEdits`]），不读、不整张写 ——
- * 认那一台在本机后端写口锁内现读现判（`machines-set`）。拒 / 问不到 ⇒ 抛。
+ * 认那一台在本机后端写口锁内现读现判（`machines-set`）。回写完读回的那一张（名字是后端算好的）；一条都没动 ⇒ `null`。拒 / 问不到 ⇒ 抛。
  */
-export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<void> {
+export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<RemoteConfig | null> {
   const edits = remoteHostsEdits(patch);
-  if (edits.length === 0) return;
-  await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS));
+  if (edits.length === 0) return null;
+  return remoteConfigOf((await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS))).machines);
 }
 
 /** 忘掉这台记下的主机指纹（拨号核心那份库里删这台的行；下回连上照首见记）。拒 / 问不到 ⇒ 抛。 */
@@ -209,12 +103,12 @@ export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineF
 }
 
 /**
- * 一次局部修改 ⇒ 交给唯一写口的补丁：**全部按键认元素，没有整段写 `remote`**。**纯函数。**
+ * 一次局部修改 ⇒ 交给唯一写口的补丁：**全部按键认元素，没有整段写**。**纯函数。**
  *
  * - 删（`remove`）⇒ 每台一条 `removein`：盘上认不出 / 认出多台 ⇒ 整批拒；
  * - 改（`key` ＋ 加载时那份 `was`）⇒ 动过的格各一条 `setin`（[`hostCellEdits`]）；
- * - 增（`key = null`）⇒ 一条 `insertin`：那个 origin 盘上已有 ⇒ 整批拒；
- * - `key` 在、`was` 缺（加载时那个 origin 不止一台）⇒ 按那个 origin 删了再插 —— 认出多台 ⇒ `removein` 整批拒，不猜是哪台。
+ * - 增（`key = null`）⇒ 一条 `insertin`：写口照它的名字（`Host::name`）判盘上有没有同名的，有 ⇒ 整批拒；
+ * - `key` 在、`was` 缺（加载时那个名字不止一台）⇒ 按那个名字删了再插 —— 认出多台 ⇒ `removein` 整批拒，不猜是哪台。
  *
  * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；别的窗口改的格不会被盖掉。
  */
@@ -228,31 +122,43 @@ export function remoteHostsEdits(patch: RemoteHostsPatch): MachineEdit[] {
       continue;
     }
     if (u.key !== null) edits.push({ op: "removein", where: hostWhere(u.key) });
-    inserts.push({ op: "insertin", where: hostWhere(hostKey(u.value)), value: serializeHost(u.value) });
+    // 新加那一台：认重名的两格原样交给写口（`label` · `host`），名字由写口照 `Host::name` 算、再判一遍。
+    inserts.push({ op: "insertin", where: insertWhere(u.value), value: u.value });
   }
   return [...edits, ...inserts];
 }
 
-/** 表里一台机器的认法：`label` 非空取它、否则 `host`（后端写口 `ElemKey` 的口径，同 `control/machines.rs::Host::name`）。 */
+/** 表里一台机器的认法：后端读回的那个名字（写口 `ElemKey` 的口径：`label` 非空取它、否则 `host`，同 `Host::name`）。 */
 function hostWhere(key: string): { fields: string[]; equals: string }[] {
   return [{ fields: ["label", "host"], equals: key }];
 }
 
+/** 新加那一台交给写口认重名的那一格：表单里填的 `label`，没填交 `host`（写口照 `Host::name` 认，同一条规则只在后端）。 */
+function insertWhere(h: Host): { fields: string[]; equals: string }[] {
+  return h.label !== "" ? [{ fields: ["label"], equals: h.label }] : [{ fields: ["host"], equals: h.host }];
+}
+
+/** 一台的各格（照 `Host` 的形状；`label` · `host` 认它的那两格另排）。 */
+const HOST_CELLS = ["port", "user", "keyPath", "addresses", "jump", "connect"] as const satisfies readonly (keyof Host)[];
+
+/** 上面那张漏掉的格（应为 `never`；加了格而这里没跟上 ⇒ `tsc` 当场红、点名是哪一格）。 */
+type MissingCell = Exclude<keyof Host, (typeof HOST_CELLS)[number] | "label" | "host">;
+const _noMissingCell: MissingCell extends never ? true : MissingCell = true;
+void _noMissingCell;
+
 /**
- * 一台已在盘上的机器（加载时 origin = `key`、加载时的样子 `was`）改成 `now`：只出动过的那几格，每格一条 `setin`。**纯函数。**
+ * 一台已在盘上的机器（加载时名字 = `key`、加载时的样子 `was`）改成 `now`：只出动过的那几格，每格一条 `setin`。**纯函数。**
  *
- * 认它的键就是 origin，改 `label` / `host` 会换掉它 ⇒ 顺序：两者动了任一 ⇒ 先按旧 origin 把 `label` 写成表单值（盘上空 `label`
- * 读进来时被补成了 `host`，照写才与整台写那一形同一个 origin）；其余格随后按新 origin 认（`label` 空 ⇒ 仍是旧 `host`），`host` 排最后。
+ * 认它的键就是名字，改 `label` / `host` 会换掉它 ⇒ 顺序：两者动了任一 ⇒ 先按旧名字把 `label` 写成表单值；
+ * 其余格随后按新名字认（`label` 空 ⇒ 仍是旧 `host`），`host` 排最后。
  */
-export function hostCellEdits(key: string, was: RemoteHostConfig, now: RemoteHostConfig): MachineEdit[] {
-  const a = serializeHost(was);
-  const b = serializeHost(now);
-  const moved = (f: (typeof REMOTE_HOST_FIELDS)[number]) => JSON.stringify(a[f]) !== JSON.stringify(b[f]);
-  const cell = (k: string, field: string): MachineEdit => ({
+export function hostCellEdits(key: string, was: Host, now: Host): MachineEdit[] {
+  const moved = (f: keyof Host) => JSON.stringify(was[f]) !== JSON.stringify(now[f]);
+  const cell = (k: string, field: keyof Host): MachineEdit => ({
     op: "setin",
     where: hostWhere(k),
     field,
-    value: b[field],
+    value: now[field],
   });
   const out: MachineEdit[] = [];
   let k = key;
@@ -260,9 +166,15 @@ export function hostCellEdits(key: string, was: RemoteHostConfig, now: RemoteHos
     out.push(cell(key, "label"));
     k = now.label !== "" ? now.label : was.host;
   }
-  for (const f of REMOTE_HOST_FIELDS) {
-    if (f !== "label" && f !== "host" && moved(f)) out.push(cell(k, f));
-  }
+  for (const f of HOST_CELLS) if (moved(f)) out.push(cell(k, f));
   if (moved("host")) out.push(cell(k, "host"));
   return out;
+}
+
+/**
+ * 此刻要连的那几台远端的名字（不含本机）：壳的注册表说了算（`backend_machines`，照本机后端机器表对齐过，本机恒第一）。
+ * 历史 · 搜索 · cc-bus 这几页列「哪几台远端」都问它，壳里列机器只此一处。
+ */
+export async function remoteNames(): Promise<string[]> {
+  return (await commands.backend_machines()).filter((o) => !isLocalOrigin(o));
 }

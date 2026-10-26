@@ -31,7 +31,7 @@ use tokio::io::BufReader;
 use crate::inbound_client::{self, InboundClient};
 use crate::link_mux::LinkStream;
 use crate::ssh_link::{self, LinkError};
-use crate::stream_source::{RemoteConfig, RemoteExec};
+use crate::stream_source::RemoteExec;
 use cmd_wire::dial::{DialAck, Stage};
 
 /// 等代理回 ack 的上限：握手看门狗（黑洞地址 TCP 连上后握手可以无限阻塞）。与界面侧原来那条
@@ -112,54 +112,18 @@ fn agent_sock() -> Option<String> {
     }
 }
 
-/// 〔「一个判定一个家」〕把一台远端**原样的配置**交给本机常驻后端，拨号请求由它组
-/// （`src/backend/ssh-dial/machine.rs::resolve`：地址解析 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
-///
-/// 这里只交宿主手里的几样事实（`C4`：读配置是宿主的事）：
-/// - `machine`：这一台（`RemoteConfig` 的 camelCase 形状，与界面那一格同形）；
-/// - `jump`：跳板那一台的配置（查不到 ⇒ `null`，后端照 fail-closed 拒）；
-/// - `prefer`：上次赢的那条（结构化，[`crate::stream_source::last_good_for`]；配置改过就失效）；
+/// 〔「一个判定一个家」〕一条链路的拨号请求只交那台的**名字**：地址 · 端口 · 钥匙 · 跳板 · 先试哪条都由本机常驻后端照它的机器表组
+/// （`src/backend/dial/mod.rs::parse_named`）。这里只交宿主手里的两样事实（`C4`）：
+/// - `machine`：那台的名字；
 /// - `agent_sock`：界面进程此刻的 ssh-agent（常驻后端活得比界面长）。
-pub(crate) fn request(
-    cfg: &RemoteConfig,
-    use_: &str,
-    extra: serde_json::Value,
-) -> serde_json::Value {
-    let mut req = transfer_dial(cfg);
-    if let Some(obj) = req.as_object_mut() {
-        obj.insert("use".into(), serde_json::json!(use_));
-    }
+pub(crate) fn request(machine: &str, use_: &str, extra: serde_json::Value) -> serde_json::Value {
+    let mut req = serde_json::json!({
+        "machine": machine,
+        "use": use_,
+        "agent_sock": agent_sock(),
+    });
     if let (Some(obj), serde_json::Value::Object(more)) = (req.as_object_mut(), extra) {
         obj.extend(more);
-    }
-    req
-}
-
-/// 一台远端**原样的配置**那几格：`{machine, jump, prefer}`（[`request`] 头注逐格）。
-///
-/// 拆出来是给「开终端」那一问（本机后端帧命令 `terminal-ssh`）：它要同一份机器事实，但不开链路 ⇒ 不要 `use` / `agent_sock`。
-/// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿；组请求与渲染都在本机后端（`ssh-dial/machine.rs::resolve`）。
-pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
-    let origin = cfg.origin_label();
-    let jump = cfg
-        .jump
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != origin)
-        // 写成显式调用（不写成 point-free）：`local_origin_registry` 那条护栏按调用形状数「查远端配置」的点，这一处要被它看见。
-        .and_then(|jump_label| crate::load_remote_config_by_label(jump_label));
-    serde_json::json!({
-        "machine": cfg,
-        "jump": jump,
-        "prefer": crate::stream_source::last_good_for(cfg).map(|e| serde_json::json!({ "host": e.host, "port": e.port })),
-    })
-}
-
-/// 传输 · 部署那一趟的拨号请求（本机后端拿它开 sftp 会话）：只有这台的事实与 agent，不点用法（不开链路）。
-pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> serde_json::Value {
-    let mut req = machine_facts(cfg);
-    if let Some(obj) = req.as_object_mut() {
-        obj.insert("agent_sock".into(), serde_json::json!(agent_sock()));
     }
     req
 }
@@ -370,7 +334,7 @@ impl From<Unopened> for Said {
 ///
 /// 后端说没拨成 ⇒ 详情是它写的那一份（远端补「本机」一行，[`crate::detail::relayed`]）；读应答这一跳坏了 ⇒ 壳写、原话进详情。
 async fn open(
-    cfg: &RemoteConfig,
+    machine: &str,
     req: &serde_json::Value,
     want: &str,
     on_stage: &mut (dyn FnMut(Stage) + Send),
@@ -412,16 +376,8 @@ async fn open(
                     ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
                     (
                         "addr",
-                        // 原样列出配置里那几行（地址不在这里解析，组法在后端 `ssh-dial/machine.rs`）。
-                        &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
-                            .chain(
-                                cfg.addresses
-                                    .iter()
-                                    .map(|a| a.trim().to_string())
-                                    .filter(|a| !a.is_empty()),
-                            )
-                            .collect::<Vec<_>>()
-                            .join(", "),
+                        // 那台的名字（地址在本机后端的机器表里，这里不知道也不解析）。
+                        machine,
                     ),
                 ],
             )));
@@ -429,11 +385,8 @@ async fn open(
     };
     // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
     r.get_mut().mark_shaken();
-    // 竞速胜者记成 last-good（下次当 `prefer` 交回去排首）—— 后端交的是结构化的 `winner`，这里不解析地址。
-    if let Some(won) = &ack.winner {
-        crate::stream_source::record_last_good(cfg, won);
-    }
-    let origin = cfg.origin_label();
+    // 竞速胜者由本机后端自己记（下一趟它组请求时排首），这里只记日志。
+    let origin = machine;
     tracing::info!(
         "[perf] stream_source [{origin}] SSH 握手+鉴权 {}ms（经本机常驻后端的链路：开链路＋[池里没有时]TCP＋握手＋指纹校验＋auth＋开通道；\
          winner={:?}；指纹 {:?}）",
@@ -465,36 +418,36 @@ pub(crate) fn link_said(e: LinkError) -> Said {
 /// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（重连循环经 `stream_source/run.rs::DeskLink` 开：`ccm -- --resident-attach`）。
 /// 出生带一次性总时限；接成流之后由调用方摘。拨号核心每过一步（「过了一步」那一形阶段行）调一次 `on_step`（重连循环拿它重新计拨号期限）。
 pub(crate) async fn stream(
-    cfg: &RemoteConfig,
+    machine: &str,
     cmd: &str,
     on_step: &mut (dyn FnMut() + Send),
 ) -> Result<DialStream, Unopened> {
     let req = request(
-        cfg,
+        machine,
         "stream",
         serde_json::json!({ "command": cmd, "progress": true }),
     );
-    open(cfg, &req, "stream", &mut |_| {}, on_step)
+    open(machine, &req, "stream", &mut |_| {}, on_step)
         .await
         .map(|(s, _)| s)
 }
 
 /// **收全一条 exec**：stdout / stderr / 退出码。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
 pub(crate) async fn capture(
-    cfg: &RemoteConfig,
+    machine: &str,
     cmd: &str,
     abort_marker: Option<&str>,
     max_bytes: usize,
 ) -> Result<RemoteExec, Unopened> {
     let req = request(
-        cfg,
+        machine,
         "capture",
         serde_json::json!({
             "command": cmd,
             "capture": { "max_bytes": max_bytes, "abort_marker": abort_marker },
         }),
     );
-    let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}, &mut || {}).await?;
+    let (mut link, _) = open(machine, &req, "capture", &mut |_| {}, &mut || {}).await?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
     let got = ssh_link::captured(&mut link.r, cap)

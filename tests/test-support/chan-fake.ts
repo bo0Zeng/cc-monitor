@@ -758,17 +758,17 @@ export function withTmuxReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 开终端改成三步之后，判据那一侧的翻译
+// 开终端改成两步之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 今天开终端（`src/frontend/ui/terminal-open.ts`）：远端三步 monitor `terminal_dial {origin}`（机器事实）→ 本机后端 `terminal-ssh`
-// （渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command}`；本机只有开窗那一步。
+// 今天开终端（`src/frontend/ui/terminal-open.ts`）：远端两步 本机后端 `terminal-ssh {machine, command}`（只交名字，
+// 渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command}`；本机只有开窗那一步。
 // 判据手里的替身按**旧的那一条**答话、断言（`launch_remote_terminal {origin, remoteCmd}`）⇒ 本节把这几步译回那一条：
 // - `terminal-ssh` **原样回**交进来的那串（ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染）；
-// - 开窗那一步凭「上一次 `terminal_dial` 问的是哪台」补回 origin；没问过 ⇒ 本机串 `<local>`。
+// - 开窗那一步凭「上一次 `terminal-ssh` 问的是哪台」补回 origin；没问过 ⇒ 本机串 `<local>`。
 /** 这一发是不是开终端那几步之一。 */
 export function isTerminalStep(cmd: string, args: unknown): boolean {
-  return cmd === "terminal_dial" || cmd === "open_terminal_window" || isChanCall(cmd, args, "terminal-ssh");
+  return cmd === "open_terminal_window" || isChanCall(cmd, args, "terminal-ssh");
 }
 
 /** 把开终端那几步译回旧的 `launch_remote_terminal`（见本节头注）；别的原样交进去。 */
@@ -777,12 +777,9 @@ export function terminalShim(
 ): (cmd: string, args?: unknown) => Promise<unknown> {
   let asked: string | null = null;
   return async (cmd, args) => {
-    if (cmd === "terminal_dial") {
-      asked = (args as { origin: string }).origin;
-      return { machine: { label: asked } };
-    }
     if (isChanCall(cmd, args, "terminal-ssh")) {
-      const a = chanArgsJson(args) as { command: string };
+      const a = chanArgsJson(args) as { machine: string; command: string };
+      asked = a.machine;
       return chanReply({ command: a.command });
     }
     if (cmd === "open_terminal_window") {

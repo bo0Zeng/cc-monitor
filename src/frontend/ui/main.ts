@@ -418,7 +418,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   会话跑在哪个号下不在这里：那台在会话宣告里说，起停不回头问。
   const accountFacts = createAccountFacts({
     fetchers: { fetchAccounts, currentAccountForBadge, lastAccounts },
-    hosts: async () => (await readRemoteConfig()).hosts.filter((h) => h.connect).map((h) => h.label || h.host),
+    hosts: async () => (await readRemoteConfig()).hosts.filter((r) => r.host.connect).map((r) => r.name),
     publish: (f) => appStore.accountFacts.set(f),
   });
   // 那台连上 / 那台账号清单变了 ⇒ 重问那一台 ＋ chip（经通道订的 `changed/accounts`，下面 `bindEvents` 的 `onChanged`）；不给 ⇒ 各台。

@@ -1,7 +1,5 @@
 //! 一次性远端 exec 与限长读行；远端后端在 shell 里的写法。
 
-use super::*;
-
 //
 // ═══════════ 拨号归后端：接远端后端的每一跳都只经拨号代理 ═══════════
 //
@@ -51,12 +49,12 @@ pub(crate) use resident_client::line::{read_capped_line, CappedLine, BACKEND_FRA
 /// 就只能等调用方的超时兜底，而超时会把「backend 版本过旧」这条最有用的诊断吞成
 /// 一句「超时」。给调用方一个字符串就能提前抽身。`None` = 收到底。
 pub async fn connect_and_exec_capture(
-    cfg: &RemoteConfig,
+    machine: &str,
     cmd: &str,
     abort_marker: Option<&str>,
 ) -> Result<RemoteExec, crate::dial_host::Unopened> {
     // 收全三样的活在本机常驻后端里（`use: capture`）；stdout / stderr 各自的上限由这里给。
-    crate::dial_host::capture(cfg, cmd, abort_marker, EXEC_CAPTURE_MAX_BYTES).await
+    crate::dial_host::capture(machine, cmd, abort_marker, EXEC_CAPTURE_MAX_BYTES).await
 }
 
 // 这里原有 POSIX 单引号转调壳（转 `shell_quote_core::posix_quote`）：最后一个生产调用方（monitor 侧 Gate 1 前检，

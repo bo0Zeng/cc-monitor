@@ -106,7 +106,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 
 vi.mock("../../../../src/frontend/ui/remote-config", () => ({
-  readRemoteConfig: () => Promise.resolve({ hosts: [{ label: "甲机", host: "a" }] }),
+  readRemoteConfig: () => Promise.resolve({ hosts: [{ name: "甲机", host: { label: "甲机", host: "a" } }] }),
   hostKey: (h: { label: string; host: string }) => h.label.trim() || h.host,
 }));
 

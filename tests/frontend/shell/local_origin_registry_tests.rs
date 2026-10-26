@@ -91,7 +91,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
         while let Some(rel_at) = prod[from..].find(CALL) {
             let at = from + rel_at;
             from = at + CALL.len();
-            // `fn load_remote_config_by_label(` 是定义本身，不是调用点。
+            // `fn has(` 那样的定义本身不是调用点。
             let before = &prod[..at];
             if before.ends_with("fn ") {
                 continue;

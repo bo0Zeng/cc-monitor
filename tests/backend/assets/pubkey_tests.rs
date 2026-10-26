@@ -45,6 +45,9 @@ type BoxFut<'a> =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>;
 
 impl Reach for FakeReach {
+    fn hosts(&self) -> Vec<crate::dial::Host> {
+        Vec::new()
+    }
     fn backend_up(&self, _machine: &str) -> bool {
         self.up
     }
@@ -72,8 +75,6 @@ const KEY: &str = "ssh-ed25519 AAAAC3Nza me@x";
 fn args() -> Value {
     json!({
         "machine": { "host": "192.0.2.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519" },
-
-        "jump": null,
     })
 }
 
@@ -123,12 +124,16 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
     assert!(down.added.lock().unwrap().is_empty());
     let execs = down.execs.lock().unwrap();
     assert_eq!(execs.len(), 1, "只许一次 exec");
-    // 那台原样的配置读成一台（`Host`，缺的几格补成缺省）交出去，`resolve` 照它读。
+    // 表单那一台照它组好的拨号请求交出去（蛇形键，线上那一形不往下传）。
     assert_eq!(
-        execs[0].0["machine"],
-        json!({ "host": "192.0.2.2", "label": "dev", "port": 22, "user": "u", "keyPath": "/k/id_ed25519",
-                "addresses": [], "jump": "", "connect": true })
+        (
+            &execs[0].0["host"],
+            &execs[0].0["user"],
+            &execs[0].0["key_path"]
+        ),
+        (&json!("192.0.2.2"), &json!("u"), &json!("/k/id_ed25519"))
     );
+    assert!(execs[0].0.get("machine").is_none(), "{}", execs[0].0);
     assert_eq!(execs[0].1, authorized_keys_cmd(KEY));
     assert_eq!(
         (v["outcome"].clone(), v["via"].clone(), v["pubPath"].clone()),

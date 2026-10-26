@@ -23,7 +23,7 @@
 use copy_core::copy_text;
 use serde_json::Value;
 
-use super::{Host, Prefer};
+use super::Host;
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::shell::posix;
 use crate::platform::ssh_client::SshClient;
@@ -215,24 +215,15 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     }
 }
 
-/// `terminal-ssh` 的入参：拨哪台那几格 ＋ 要在那台跑什么。
+/// `terminal-ssh` 的入参：哪一台（名字；怎么拨照这一端的机器表组，上次赢的那条排首）＋ 要在那台跑什么。
 /// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**恰好给一个**。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TerminalSshReq {
-    /// 那台的配置（可能还没保存）。
-    #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
-    pub(crate) machine: Host,
-    /// 跳板那一台的配置（`machine.jump` 指它时必给）。
-    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<Host>,
-    /// 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) prefer: Option<Prefer>,
+    /// 那台的名字。
+    pub(crate) machine: cmd_wire::Machine,
     /// 要在那台跑的命令。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -273,6 +264,7 @@ impl crate::wire::typed::Handle for TerminalSsh {
         async move {
             answer_in(
                 &req,
+                &super::machines_now(),
                 crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
                 &crate::platform::ssh_client::locate(),
             )
@@ -284,6 +276,7 @@ impl crate::wire::typed::Handle for TerminalSsh {
 /// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）。
 pub(crate) fn answer_in(
     req: &TerminalSshReq,
+    hosts: &[Host],
     powershell: bool,
     ssh: &SshClient,
 ) -> Result<SshCommand, CmdErr> {
@@ -299,10 +292,9 @@ pub(crate) fn answer_in(
             ))
         }
     };
-    let dial = super::dial_of(
-        &req.machine,
-        req.jump.as_ref(),
-        req.prefer.as_ref(),
+    let dial = super::dial_named(
+        hosts,
+        req.machine.as_wire_str(),
         "stream",
         serde_json::json!({ "command": command }),
     )?;

@@ -71,7 +71,7 @@ beforeEach(() => {
 describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
   it("构造时只列一次远端清单，不发任何远端往返；驾驶舱里没有装 cc-bus 的按钮（装在扩展页）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       throw new Error(`不该在构造时调用 ${cmd}`);
     });
     const s = new CcBusSection();
@@ -79,14 +79,14 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
     await flush();
     const called = mockInvoke.mock.calls.map((c) => c[0]);
     // 账号列表经 `fetchAccounts`（已 mock），不走 invoke。
-    expect(called).toEqual(["list_remote_mcp_origins"]);
+    expect(called).toEqual(["backend_machines"]);
     expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain(copyText("ccBus.build.notRead"));
     expect(s.element.querySelector(".cc-bus-deploy")).toBeNull();
   });
 
   it("点「读取」才发一次 read_cc_bus_state", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE;
       throw new Error(cmd);
     });
@@ -114,7 +114,7 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
 describe("B03 登记 ≠ 在线", () => {
   const setup = async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE;
       throw new Error(cmd);
     });
@@ -125,6 +125,18 @@ describe("B03 登记 ≠ 在线", () => {
     await flush();
     return s;
   };
+
+  it("★ 某一行的消息打了一半，再读一次 ⇒ 那句字还在、焦点还在那一格", async () => {
+    const s = await setup();
+    const msg = s.element.querySelectorAll<HTMLInputElement>(".cc-bus-row .cc-bus-msg")[1];
+    msg.focus();
+    msg.value = "打了一半";
+    (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
+    await flush();
+    const after = s.element.querySelectorAll<HTMLInputElement>(".cc-bus-row .cc-bus-msg")[1];
+    expect(after.value).toBe("打了一半");
+    expect(document.activeElement).toBe(after);
+  });
 
   it("读状态**不得**顺带查在线——否则一屏 37 个 agent 就是 37 次往返", async () => {
     const s = await setup();
@@ -171,7 +183,7 @@ describe("B03 登记 ≠ 在线", () => {
 describe("B03 脏数据如实呈现", () => {
   it("skipped 计数显示出来，不假装干净", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE;
       throw new Error(cmd);
     });
@@ -188,7 +200,7 @@ describe("B03 脏数据如实呈现", () => {
 
   it("skipped=0 时不显示那句（不制造无谓噪音）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return { ...STATE, skipped: 0 };
       throw new Error(cmd);
     });
@@ -202,7 +214,7 @@ describe("B03 脏数据如实呈现", () => {
 
   it("读取失败要说清，不能留空面板让人以为「没有 agent」", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       throw new Error("ssh timeout");
     });
     const s = new CcBusSection();
@@ -237,7 +249,7 @@ describe("B03 脏数据如实呈现", () => {
 
   it("spawn 派生与自行登记要区分开", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE;
       throw new Error(cmd);
     });
@@ -258,7 +270,7 @@ describe("B03 脏数据如实呈现", () => {
 describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
   const setup = async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE;
       throw new Error(cmd);
     });
@@ -424,7 +436,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
 
   const load = async (state: unknown) => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return state;
       throw new Error(cmd);
     });
@@ -544,7 +556,7 @@ describe("B03 审计修复：指纹比对是承重机制（隔离测试）", () 
   const ST = { agents: [], spawned: [], skipped: 0 };
   const load = async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return ST;
       throw new Error(cmd);
     });
@@ -657,7 +669,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
   const load = async () => {
     mockFetchAccounts.mockResolvedValue(ACCTS);
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE;
       if (cmd === "cc_bus_spawn") return "已 spawn";
       throw new Error(cmd);
@@ -755,7 +767,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     __resetMachineContextForTests();
     mockFetchAccounts.mockImplementation(byOrigin);
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return [];
+      if (cmd === "backend_machines") return ["<local>"];
       throw new Error(cmd);
     });
     const s = new CcBusSection();
@@ -808,7 +820,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
   it("账号取不到时只留「基座」，不能让人以为选了号而其实没生效", async () => {
     mockFetchAccounts.mockRejectedValue(new Error("backend 太旧"));
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       throw new Error(cmd);
     });
     const s = new CcBusSection();
@@ -835,7 +847,7 @@ describe("P4c 广播与收掉", () => {
   const boot = async (): Promise<CcBusSection> => {
     document.body.replaceChildren();
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "list_remote_mcp_origins") return ["devbox"];
+      if (cmd === "backend_machines") return ["<local>", "devbox"];
       if (cmd === "read_cc_bus_state") return STATE2;
       return "ok";
     });

@@ -9,7 +9,8 @@ export type LinkOpenReq = {
  */
 link: string, 
 /**
- * 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）。
+ * 拨哪台 ＋ 怎么用：`{machine: "<那台的名字>", use, command?, capture?, forward?, stages?, probe?, agent_sock?}`（蛇形键）。
+ * 地址 · 端口 · 钥匙 · 跳板 · 先试哪条都照这一端的机器表组（[`super::parse_named`]），线上不交。
  */
 dial: Record<string, unknown>, 
 /**

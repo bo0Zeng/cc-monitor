@@ -68,7 +68,7 @@ fn ctx_ready() -> egui::Context {
 /// 都可能是**退化**的（全中 / 全不中都会让「相等」变得毫无信息）。
 #[test]
 fn the_synthetic_tree_is_not_a_trivial_shape() {
-    let t = testing::plant("shape", TREE_N, TREE_SEED);
+    let t = testing::plant(&format!("shape-{NEEDLE}"), TREE_N, TREE_SEED);
     let all = t.entries.len();
     let hit = t.expected(NEEDLE).len();
     assert!(
@@ -161,7 +161,7 @@ fn the_synthetic_tree_is_not_a_trivial_shape() {
 /// `decode_find` → `Hit::display` → `show_hit_rows` → galley」整条链。
 #[tokio::test]
 async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
-    let tree = testing::plant("e2e", TREE_N, TREE_SEED);
+    let tree = testing::plant(&format!("e2e-{NEEDLE}"), TREE_N, TREE_SEED);
     let root = tree.remote_root();
     let wired = testing::wire_up(
         "b1-find-e2e",
@@ -348,7 +348,7 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
 /// 每敲一个字走一整棵树（64 万条热缓存 0.99 秒，冷缓存没量过）。
 #[tokio::test]
 async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
-    let tree = testing::plant("fresh", 40, TREE_SEED);
+    let tree = testing::plant(&format!("fresh-{NEEDLE}"), 40, TREE_SEED);
     let root = tree.remote_root();
     let declared = Declared {
         age_secs: 7,
@@ -545,8 +545,8 @@ async fn the_last_row_on_screen_pulls_the_next_page_with_the_same_seq() {
     .await;
     let ctx = ctx_ready();
     let mut w = testing::window_on(&wired, &root);
-    // 根那一段在每条路径里 ⇒ 全树都中，远多于一屏。
-    let q = root.rsplit('/').next().unwrap().to_string();
+    // 一个字母 ⇒ 命中远多于一屏（只比根以下那一段：根的名字随临时目录变，不拿它凑命中）。
+    let q = "a".to_string();
     let want = tree.expected(&q);
     assert!(want.len() > 16, "语料不够两屏，本条说明不了什么");
     let before = w.search.rounds();
@@ -689,7 +689,12 @@ async fn a_header_click_asks_the_backend_for_that_order_and_pages_keep_it() {
     .await;
     let ctx = ctx_ready();
     let mut w = testing::window_on(&wired, &root);
-    let q = root.rsplit('/').next().unwrap().to_string();
+    // 一个字母 ⇒ 命中够好几屏（翻页那一段要有下一屏）。
+    let q = "a".to_string();
+    assert!(
+        tree.expected(&q).len() > 16,
+        "语料不够两屏，翻页那一段说明不了什么"
+    );
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, &q);
     testing::settle(&w.search, before, "相关度那一趟").await;

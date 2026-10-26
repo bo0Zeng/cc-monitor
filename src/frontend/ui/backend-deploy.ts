@@ -6,15 +6,15 @@
 import { commands } from "./ipc/commands";
 import { confirmDialog } from "./kit/dialog";
 import { copyText } from "./copy-table";
-import { resolveRemoteConfigByOrigin, type RemoteHostConfig } from "./remote-config";
+import { resolveRemoteConfigByOrigin } from "./remote-config";
 import { askInterrupts, interruptRows } from "./settings/interrupts";
 
 /**
- * `cfg` 那台换上这一版。`key` 是问会打断什么时认那台的键（origin），`machine` 是框里显示的名字。
+ * 名字叫 `origin` 的那台换上这一版（也是问会打断什么时认那台的键），`machine` 是框里显示的名字。
  * 用户在确认框里取消 ⇒ `null`（不部署、不叫 `onStart`）；部署了 ⇒ 后端那句人读结果；部署失败 ⇒ 原样抛。
  */
-export async function updateBackend(cfg: RemoteHostConfig, key: string, machine: string, onStart?: () => void): Promise<string | null> {
-  const rows = interruptRows(await askInterrupts(key), machine, "update");
+export async function updateBackend(origin: string, machine: string, onStart?: () => void): Promise<string | null> {
+  const rows = interruptRows(await askInterrupts(origin), machine, "update");
   if (
     rows.length > 0 &&
     !(await confirmDialog({ title: copyText("interrupts.update.title", { machine }), action: copyText("interrupts.update.action"), rows }))
@@ -22,17 +22,16 @@ export async function updateBackend(cfg: RemoteHostConfig, key: string, machine:
     return null;
   }
   onStart?.();
-  return commands.deploy_remote_backend({ cfg });
+  return commands.deploy_remote_backend({ origin });
 }
 
 /** 按 origin 找那台的配置再换（主窗口只有 origin）。设置里没有这台 ⇒ 抛（不拿空配置去部署）。 */
 export async function updateBackendOf(origin: string, machine: string, onStart?: () => void): Promise<string | null> {
-  const cfg = await resolveRemoteConfigByOrigin(origin);
-  if (cfg === null) throw new Error(copyText("backendDeploy.update.noMachine", { machine }));
-  return updateBackend(cfg, origin, machine, onStart);
+  if ((await resolveRemoteConfigByOrigin(origin)) === null) throw new Error(copyText("backendDeploy.update.noMachine", { machine }));
+  return updateBackend(origin, machine, onStart);
 }
 
 /** 卸掉那台的后端（确认框与结果区住机器卡）。 */
-export function uninstallBackend(cfg: RemoteHostConfig): Promise<string> {
-  return commands.uninstall_remote_backend({ cfg });
+export function uninstallBackend(origin: string): Promise<string> {
+  return commands.uninstall_remote_backend({ origin });
 }

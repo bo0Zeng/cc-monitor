@@ -24,7 +24,7 @@
  *   世界里的 `reach`（`/__ccm/world` 的那一格，本机后端问得到的那几台远端：`{<origin>: {refuse: [<命令>…]}}`）：跨台合并那几条由本机后端自己扇出（`--resident-call`），
  *   台架照产品那一形让它问得到 —— 每台远端在它的沙箱里另起一个常驻（同一个家 · 同一台私有 tmux；起好了才起 stdio 那一个）；
  *   本机沙箱里起一个只听回环的 sshd（一台远端一个口），登录壳是按口转发的假 ssh（[`forwarderSh`]：只认台架那几台、只转 `--resident-call`，
- *   `refuse` 里的命令照「那一跳断开」拒）；都握上手之后经 `remote-reach` 把每台登记进本机后端的可达表（同壳在远端流握手那一刻交的那一条）。
+ *   `refuse` 里的命令照「那一跳断开」拒）；都握上手之后把每台写进本机后端的机器表（`machines.json`，它按名字现读、照表去问）。
  *   合并只在本机后端那一处，台架不再写一份。
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
@@ -206,9 +206,9 @@ function sshKeys(sandbox) {
   return dir;
 }
 
-/** 登记进本机后端可达表的那一份（`remote-reach` 的入参，同壳 `asset_sync::args_for`）：拨本机沙箱里那个 sshd 给这台听的口。 */
-export function reachArgs(origin, k) {
-  return { origin, dial: { machine: { host: "127.0.0.1", port: PEER_PORT_BASE + k, user: "user", keyPath: `${SSH_DIR}/client` }, use: "capture" } };
+/** 本机后端机器表里的那一台（`machines.json` 的一行）：拨本机沙箱里那个 sshd 给这台听的口。 */
+export function reachHost(origin, k) {
+  return { label: origin, host: "127.0.0.1", port: PEER_PORT_BASE + k, user: "user", keyPath: `${SSH_DIR}/client`, addresses: [], jump: "", connect: true };
 }
 
 /** 台架那一份后端的构建目录（带特性 `shots`）。 */
@@ -572,11 +572,12 @@ export function backendPool({ repo, sandbox }) {
     w.sh = sh;
     sh.send({ t: "machines", machines: list });
     await sh.up(list.map((m) => m.origin));
-    // 每台登记进本机后端的可达表（同壳在远端流握手那一刻交的 `remote-reach`）：之后跨台合并那几问它自己去问。
+    // 那几台写进本机后端的机器表（`~/.cc-monitor/machines.json`，它按名字现读）：之后跨台合并那几问它自己照表去问。
     if (peers.length > 0 && !(LOCAL in machines)) throw new Error("世界里有 reach 却没有本机那一台");
-    for (const p of peers) {
-      const r = await sh.call(LOCAL, "remote-reach", reachArgs(p.origin, p.k), null);
-      if (!r.ok) throw new Error(`${p.origin} 没登记进本机后端的可达表：${JSON.stringify(r.fail)}`);
+    if (peers.length > 0) {
+      const at = path.join(w.homes.get(LOCAL), ".cc-monitor", "machines.json");
+      mkdirSync(path.dirname(at), { recursive: true });
+      writeFileSync(at, JSON.stringify({ version: 1, hosts: peers.map((p) => reachHost(p.origin, p.k)) }));
     }
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }

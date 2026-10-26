@@ -1,42 +1,33 @@
 //! 拨号宿主（`dial_host`）的判据。起它不再起任何进程：链路开在本机常驻后端里。
 //!
-//! 买到：请求是这台原样的配置（与后端 `ssh-dial/machine.rs::resolve` 读的那几格逐键对拍，异源：后端源码）·
-//! 只放私钥**路径**不放本体 · 上次赢的那条当 `prefer` 交（配置改过就不交）· **没有进程内回落、也不起代理进程**
+//! 买到：请求只交那台的名字（与后端 `dial/mod.rs::parse_named` 读的那几格逐键对拍，异源：后端源码）·
+//! 只放私钥**路径**不放本体 · 地址 · 跳板 · 上次赢的那条一格都不交（后端照它的机器表组）· **没有进程内回落、也不起代理进程**
 //! （本文件生产段零 `russh`、零起进程；monitor 生产段 `--dial` 那一套零命中）。
 //! **买不到**：真后端 × 真 sshd（读数脚本 `tests/evidence/SR1a-link-loopback.py`）。
 
 use super::*;
 
-fn cfg(label: &str) -> RemoteConfig {
-    RemoteConfig {
-        host: "h.example".into(),
-        label: label.into(),
-        port: 2222,
-        user: "u".into(),
-        key_path: Some("/home/u/.ssh/id_ed25519".into()),
-        addresses: vec!["192.0.2.9".into(), "[::1]:22".into()],
-        jump: None,
-    }
-}
-
-/// 〔「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `ssh-dial/machine.rs::resolve` 读的那几格
-/// （`machine` · `jump` · `prefer` · `use`）＋ 其余照进 `DialRequest` 的可选格。异源：从后端源码里现抠。
+/// 〔出口只交机器名〕交给本机后端的是**那台的名字** ＋ 用法 ＋ agent 套接字 ＋ 这一趟的可选格：键 == 后端 `parse_named` 读的那几格
+/// （`machine` · `use`）＋ 其余照进 `DialRequest` 的可选格。地址 · 端口 · 钥匙 · 跳板 · 上次赢的那条一格都不在里头。异源：从后端源码里现抠。
 #[test]
-fn the_request_hands_over_the_machine_as_is() {
-    let c = cfg("c2-dial-host-a");
-    let req = request(&c, "stream", serde_json::json!({"command": "x"}));
+fn the_request_hands_over_only_the_name() {
+    let req = request(
+        "c2-dial-host-a",
+        "stream",
+        serde_json::json!({"command": "x"}),
+    );
     let written: std::collections::BTreeSet<String> =
         req.as_object().unwrap().keys().cloned().collect();
-    let machine_rs = include_str!("../../../src/backend/ssh-dial/machine.rs");
-    let resolve = &machine_rs[machine_rs
-        .find("pub fn resolve(")
-        .expect("后端没有 resolve 了")..];
-    let resolve = &resolve[..resolve.find("\n}\n").unwrap()];
-    for k in ["machine", "jump", "prefer", "use"] {
+    let mod_rs = include_str!("../../../src/backend/dial/mod.rs");
+    let parse = &mod_rs[mod_rs
+        .find("pub(crate) fn parse_named(")
+        .expect("后端没有 parse_named 了")..];
+    let parse = &parse[..parse.find("\n}\n").unwrap()];
+    for k in ["machine", "use"] {
         assert!(written.contains(k), "请求里缺 `{k}`");
         assert!(
-            resolve.contains(&format!("\"{k}\"")),
-            "后端 resolve 不读 `{k}` —— 两端契约漂了"
+            parse.contains(&format!("\"{k}\"")),
+            "后端 parse_named 不读 `{k}` —— 两端契约漂了"
         );
     }
     let backend = include_str!("../../../src/backend/ssh-dial/lib.rs");
@@ -51,59 +42,18 @@ fn the_request_hands_over_the_machine_as_is() {
             "后端 DialRequest 不读 `{extra}`"
         );
     }
-    // 这台原样：camelCase 的那一格，地址行不解析、原样过去（组法在后端）。
-    assert_eq!(
-        req["machine"]["addresses"],
-        serde_json::json!(["192.0.2.9", "[::1]:22"])
-    );
-    assert_eq!(req["machine"]["keyPath"], "/home/u/.ssh/id_ed25519");
-    assert!(
-        req.get("endpoints").is_none() && req.get("host").is_none(),
-        "本侧不再组请求"
-    );
+    assert_eq!(req["machine"], "c2-dial-host-a", "交的不是名字");
+    for k in ["jump", "prefer", "host", "endpoints", "key_path"] {
+        assert!(
+            req.get(k).is_none(),
+            "请求里还交着 `{k}`（怎么拨归后端的机器表）"
+        );
+    }
     // 🔴 凭据面 `K11`：只放路径，不放私钥本体
     assert!(
         !req.to_string().contains("PRIVATE KEY"),
         "请求里出现了私钥本体的样子"
     );
-}
-
-/// 上次赢的那条：结构化地当 `prefer` 交过去（排首由后端做）；这台的地址配置改过 ⇒ 不再交。
-#[test]
-fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
-    let c = cfg("c2-dial-host-b");
-    let req = request(&c, "stream", serde_json::json!({}));
-    assert_eq!(req["prefer"], serde_json::Value::Null, "没连过 ⇒ 不交");
-    crate::stream_source::record_last_good(
-        &c,
-        &crate::stream_source::Endpoint {
-            host: "192.0.2.9".into(),
-            port: 2222,
-        },
-    );
-    let req = request(&c, "stream", serde_json::json!({}));
-    assert_eq!(
-        req["prefer"],
-        serde_json::json!({"host": "192.0.2.9", "port": 2222})
-    );
-    let mut moved = c.clone();
-    moved.addresses = vec!["192.0.2.7".into()];
-    let req = request(&moved, "stream", serde_json::json!({}));
-    assert_eq!(
-        req["prefer"],
-        serde_json::Value::Null,
-        "地址配置改过 ⇒ 上次那条失效"
-    );
-}
-
-/// 跳板指向自己：本侧不去查它（`jump` 交 `null`），这台原样过去 —— 环由后端当场拒（`dial_machine_tests` 的跳板那条，fail-closed）。
-#[test]
-fn a_jump_to_itself_is_not_looked_up_here() {
-    let mut c = cfg("c2-dial-host-c");
-    c.jump = Some("c2-dial-host-c".into());
-    let req = request(&c, "stream", serde_json::json!({}));
-    assert_eq!(req["jump"], serde_json::Value::Null);
-    assert_eq!(req["machine"]["jump"], "c2-dial-host-c");
 }
 
 /// 🔴 **没有退路**（`D11`）：宿主生产段里零 `russh`、**零起进程**（C2 那一版恰好一处，起的是
@@ -136,7 +86,7 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
         let body = &prod[at..];
         let body = &body[..body.find("\n}\n").unwrap()];
         assert_eq!(
-            body.matches("open(cfg, &req,").count(),
+            body.matches("open(machine, &req,").count(),
             1,
             "`{entry}` 没有恰好一次经 `open` 拿链路"
         );
@@ -203,6 +153,17 @@ async fn loopback_roundtrip_through_the_resident_backend() {
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     // 起真后端（stdio 载体），用**生产那一个**消费者接上它 ⇒ `<local>` 那条流登记上。
     let home = v["home"].as_str().unwrap();
+    // 那一台写进被测后端自己的机器表（它按名字现读；这一侧只交名字）。
+    std::fs::create_dir_all(format!("{home}/.cc-monitor")).unwrap();
+    std::fs::write(
+        format!("{home}/.cc-monitor/machines.json"),
+        serde_json::json!({"version": 1, "hosts": [{
+            "label": "sr1a-loopback", "host": v["host"], "port": v["port"], "user": v["user"],
+            "keyPath": v["key_path"], "addresses": [], "jump": "", "connect": true,
+        }]})
+        .to_string(),
+    )
+    .unwrap();
     let mut child = std::process::Command::new(v["backend"].as_str().unwrap())
         .args(crate::local_backend::LOCAL_STREAM_ARGS) // 生产起本机流后端那一份起参（零参数是「起会话」）
         .env("HOME", home)
@@ -222,20 +183,12 @@ async fn loopback_roundtrip_through_the_resident_backend() {
             stdout,
         )
     });
-    let cfg = RemoteConfig {
-        host: v["host"].as_str().unwrap().into(),
-        label: "sr1a-loopback".into(),
-        port: v["port"].as_u64().unwrap() as u16,
-        user: v["user"].as_str().unwrap().into(),
-        key_path: v["key_path"].as_str().map(String::from),
-        addresses: vec![],
-        jump: None,
-    };
+    let cfg = "sr1a-loopback";
     // ① 字节流那两段（`head -n1` 往返 · 关写半边链路收工）删了：monitor 不再开 `stream` 用法的链路
     //   （那个一次性 exec 原语随公钥推送进本机后端一起走了）；后端那一侧的流用法照旧由 `remote-probe` 与后端判据驱动。
     // ② 收全：stdout / stderr / 退出码
     let ex =
-        crate::stream_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
+        crate::stream_source::connect_and_exec_capture(cfg, "echo o; echo e >&2; exit 5", None)
             .await
             .expect("收全失败");
     assert_eq!(

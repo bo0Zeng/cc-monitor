@@ -3,7 +3,7 @@
  *
  * | 问什么 | 帧命令 | 成品 |
  * |---|---|---|
- * | 起一条 | `forward-start {origin, localPort, remoteHost, remotePort, machine?, jump?}` | `{id}` |
+ * | 起一条 | `forward-start {origin, localPort, remoteHost, remotePort}` | `{id}` |
  * | 停一条 | `forward-stop {id}` | `{id}` |
  * | 列 | `forward-list` | `{forwards:[{id, origin, localPort, remoteHost, remotePort, state, connCount}]}` |
  *
@@ -12,7 +12,6 @@
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import type { RemoteHostConfig } from "./remote-config";
 import type { ForwardRow } from "./generated/ForwardRow";
 import { saidOf } from "./kit/detail";
 
@@ -28,15 +27,6 @@ export interface ForwardSpec {
 }
 
 /**
- * 〔流没起的远端不许拒〕那台的配置（＋ 跳板那一台）：那台的流没握手过时，本机后端按它自己组请求去拨。
- * 流握手过的那台用后端手里那一份，这两格不看。
- */
-export interface ForwardMachine {
-  machine: RemoteHostConfig;
-  jump: RemoteHostConfig | null;
-}
-
-/**
  * 期限：起 = 查表 ＋ 池里那条 SSH 上开一条链路（没连着就要握手、可能过跳板）⇒ 30 秒；停 / 列 = 本机后端一把锁 ⇒ 10 秒。
  */
 const FORWARD_START_BUDGET_MS = 30_000;
@@ -46,11 +36,10 @@ function said(e: unknown): Error {
   return new Error(saidOf(e));
 }
 
-/** 起一条转发，回它的号。口绑不上 / 断开 ⇒ 抛那句原话。 */
-export async function startForward(spec: ForwardSpec, via: ForwardMachine | null = null): Promise<string> {
+/** 起一条转发，回它的号（只交那台的名字：怎么拨照本机后端的机器表，流起没起来都一样）。口绑不上 / 断开 ⇒ 抛那句原话。 */
+export async function startForward(spec: ForwardSpec): Promise<string> {
   try {
-    const req = via ? { ...spec, machine: via.machine, jump: via.jump } : { ...spec };
-    const { id } = await callTyped(LOCAL_ORIGIN, "forward-start", req, budgetWithin(FORWARD_START_BUDGET_MS));
+    const { id } = await callTyped(LOCAL_ORIGIN, "forward-start", { ...spec }, budgetWithin(FORWARD_START_BUDGET_MS));
     return id;
   } catch (e) {
     throw said(e);

@@ -244,7 +244,7 @@ fn a_comment_only_edit_does_not_move_the_verdict() {
         .expect("只加了一行注释，判据就红了 ⇒ 刀太粗，它钉的是文本不是性质");
 }
 
-// 请求的造法与解析住宿主 `dial_host`：请求键由 `dial_host_tests::the_request_hands_over_the_machine_as_is` 与后端源码异源对拍；
+// 请求的造法与解析住宿主 `dial_host`：请求键由 `dial_host_tests::the_request_hands_over_only_the_name` 与后端源码异源对拍；
 // 找不到代理要报而不是回落，解析含「本机后端自释放那一份」（读 `~/.cc-monitor/bin`，登记在 `local_read_surface_registry`）。
 
 // ── P28：给这条源码扫描型守卫立**负对照** ──

@@ -15,6 +15,7 @@ import { copyText } from "./copy-table";
 import { chip } from "./kit/chip";
 import type { IconName } from "./kit/icon";
 import { emptyState } from "./kit/empty";
+import { place } from "./kit/morph";
 import { tag } from "./kit/badge";
 import type { RunInfo } from "./generated/RunInfo";
 import { panelGroups, runLabel, runLastText, runStateMark, runStateText, type LiveBlockView } from "./runs";
@@ -110,7 +111,8 @@ export class AgentsPanel {
       this.summaryElement.style.display = "none";
       if (this.pageElement.firstChild !== this.empty) this.pageElement.replaceChildren(this.empty);
       this.drawn = "";
-      this.place([]);
+      place(this.list, []);
+      this.nodes.clear();
       this.onLabel?.(this.label);
       return;
     }
@@ -140,26 +142,9 @@ export class AgentsPanel {
       items.push(this.olderToggle(g.older.length));
       if (this.olderOpen) items.push(...g.older.flatMap((r) => this.row(r)));
     }
-    this.place(items);
-  }
-
-  /** 列表换成 `items` 这一串：留着的节点原地不动（只在次序不对时挪），没了的摘掉；焦点若被挪丢了还回去。 */
-  private place(items: HTMLElement[]): void {
-    const focused = document.activeElement;
-    const hadFocus = focused instanceof HTMLElement && this.list.contains(focused);
-    let cur: ChildNode | null = this.list.firstChild;
-    for (const n of items) {
-      if (n === cur) cur = cur.nextSibling;
-      else this.list.insertBefore(n, cur);
-    }
-    while (cur) {
-      const next: ChildNode | null = cur.nextSibling;
-      cur.remove();
-      cur = next;
-    }
+    place(this.list, items);
     const keep = new Set<HTMLElement>(items);
     for (const [id, el] of this.nodes) if (!keep.has(el)) this.nodes.delete(id);
-    if (hadFocus && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
   }
 
   /** 按身份取一个列表项（没有就建）。 */

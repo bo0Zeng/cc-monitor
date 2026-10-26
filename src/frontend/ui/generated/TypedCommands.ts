@@ -260,8 +260,6 @@ import type { PubkeyPushReq } from "./PubkeyPushReq";
 import type { PubkeyPushed } from "./PubkeyPushed";
 import type { QuotaProbeReq } from "./QuotaProbeReq";
 import type { QuotaRead } from "./QuotaRead";
-import type { ReachReq } from "./ReachReq";
-import type { Reached } from "./Reached";
 import type { ReadChunkReply } from "./ReadChunkReply";
 import type { ReadChunkReq } from "./ReadChunkReq";
 import type { ReadTextReply } from "./ReadTextReply";
@@ -506,7 +504,6 @@ export interface TypedCommands {
   "quota-probe": { req: QuotaProbeReq; reply: Probed; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "not_found" | "unsupported" };
   "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
   "remote-probe": { req: ProbeReq; reply: null; code: "bad_args" | "bad_jump" | "failed" };
-  "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
   "rotation-facts": { req: RotationFactsReq; reply: RotationFactsReply; code: "bad_args" };

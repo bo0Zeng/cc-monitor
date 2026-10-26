@@ -392,11 +392,10 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("local_backend::STDERR_MAX_LINE_BYTES", Kind::Carried),
     ("platform::fs::make_executable", Kind::Carried),
     ("platform::fs::ensure_private_dir", Kind::Carried),
-    ("stream_source::RemoteConfig", Kind::Config),
-    // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
-    ("load_remote_configs", Kind::Config),
-    // 左栏「其他机器」点一台：按名字取那台的配置（与「在此打开终端」同一个读口）。
-    ("load_remote_config_by_label", Kind::Config),
+    // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：本机后端机器表最近那一份里的名字，不新建数据源。
+    ("machine_table::rows_now", Kind::Config),
+    // 左栏「其他机器」点一台：那台在不在机器表里（只要名字，怎么连照本机后端的机器表）。
+    ("machine_table::has", Kind::Config),
     // 名单里本机那一项的名字：从前借窗口那一侧 `cross_copy::LOCAL_ORIGIN`，窗口独立成包之后引 monitor 自己那一份哨兵值。
     ("inbound_client::LOCAL_ORIGIN", Kind::Config),
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）

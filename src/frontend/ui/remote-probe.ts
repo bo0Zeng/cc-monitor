@@ -1,19 +1,19 @@
 /**
  * 〔「后端持有全部 SSH」〕「测试连接」**走通道，本机常驻后端拨一次**：
- * `callTyped(<local>, "remote-probe", {ticket, machine, jump})`。
+ * `callTyped(<local>, "remote-probe", {ticket, machine})`。
  *
  * 〔「进度不许倒退」〕**边拨边推**：调用之前先订 `subscribe(<local>, "probe-progress/<ticket>")`，
  * 后端每走一步推一格（{@link ProbeCell}：写好的那一句 ＋ 语气 ＋ 四段），最后一格带结局。界面边收边画（`onCell`）。
  * 期限的值归本文件（{@link PROBE_BUDGET_MS}，随请求信封交过去）；执行在通信层与后端，到点后端收掉那一趟、结局那一格说等了多久停在哪一步。
  *
- * 交过去的是设置页表单里那台（**可能还没保存**）的配置 ＋ 已保存的那一份（表单空着指纹时，同一个 host 才继承）＋ 跳板那一台；
- * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
+ * 交过去的只是设置页表单里那台（**可能还没保存**）的配置；它的跳板由本机后端照它的机器表按名字找，
+ * 拨号请求在后端组（`src/backend/dial/mod.rs::request_draft`）。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, type Item } from "../../comms/inward/chan";
+import type { Host } from "./generated/Host";
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ProbeCell } from "./generated/ProbeCell";
-import { hostKey, type RemoteHostConfig } from "./remote-config";
 import { saidOf } from "./kit/detail";
 
 export type { ProbeCell };
@@ -31,16 +31,13 @@ const PROBE_BUDGET_MS = 15_000;
 const PROBE_WINDOW = 256;
 
 /**
- * 测一台机器。`saved` = 已保存的全部机器（从里面找跳板那一台）。`onCell` 每收到结局之前的一格调一次（边收边画）。
+ * 测一台机器（跳板照本机后端的机器表找）。`onCell` 每收到结局之前的一格调一次（边收边画）。
  * 回结局那一格；问不到 ⇒ 抛一句人话。
  */
 export async function probeMachine(
-  machine: RemoteHostConfig,
-  saved: readonly RemoteHostConfig[],
+  machine: Host,
   onCell: (cell: ProbeCell) => void,
 ): Promise<ProbeCell> {
-  const jumpName = machine.jump.trim();
-  const jump = jumpName ? (saved.find((h) => hostKey(h) === jumpName) ?? null) : null;
   // 一次性的票：进度流的名字（后端只当不透明的串回填）。
   const ticket = crypto.randomUUID();
 
@@ -79,7 +76,7 @@ export async function probeMachine(
   const sub = await chan.subscribe(LOCAL_ORIGIN, `${PROBE_PROGRESS_KIND}/${ticket}`, null, PROBE_WINDOW, onItems);
   try {
     try {
-      await callTyped(LOCAL_ORIGIN, "remote-probe", { ticket, machine, jump }, budgetWithin(PROBE_BUDGET_MS));
+      await callTyped(LOCAL_ORIGIN, "remote-probe", { ticket, machine }, budgetWithin(PROBE_BUDGET_MS));
     } catch (e) {
       if (end !== null) return end;
       throw new Error(saidOf(e));

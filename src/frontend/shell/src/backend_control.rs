@@ -28,7 +28,7 @@ fn remotes() -> &'static Mutex<HashMap<String, RemoteSlot>> {
 
 /// `lib.rs` 启动时每台远端注册一次：给出**怎么起**，并把第一条流的把手交进来。
 ///
-/// ⚠ 注册的是**闭包不是配置** —— 本层不认识 `RemoteConfig`，也不该认识。
+/// ⚠ 注册的是**闭包不是配置** —— 本层不认识那台怎么连（那在本机后端的机器表里），也不该认识。
 /// 机器表里要连的一台：名字 · 连接参数指纹 · 怎么起。
 pub struct WantedRemote {
     pub origin: String,
@@ -290,14 +290,14 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
 
 /// 停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
 async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, Said> {
-    let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
-        Said::of(
+    if !crate::machine_table::has(origin) {
+        return Err(Said::of(
             "rsBackendControl.handle.missing",
             &[("origin", &origin.to_string())],
-        )
-    })?;
+        ));
+    }
     // 那一句只说哪台没停成；没停成的那一步（那台答的 · 链路断在哪）进「断在」，原话照它的详情。
-    crate::remote_resident::stop(&cfg).await.map_err(|e| {
+    crate::remote_resident::stop(origin).await.map_err(|e| {
         let step = e.said.clone();
         Said::restate(
             copy_text(

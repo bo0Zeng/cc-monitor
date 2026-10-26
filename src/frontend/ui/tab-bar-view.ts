@@ -27,6 +27,7 @@ import type { TabBarPrefs } from "./tab-bar-prefs";
 import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindings/registry";
 import rs from "./tab-group-rename.module.css";
 import { copyText } from "./copy-table";
+import { place } from "./kit/morph";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
@@ -400,10 +401,7 @@ export class TabBarView {
     if (JSON.stringify(this.needsFacts()) === this.needsDrawn) return;
     const old = this.needsContent;
     const at = Number(old?.dataset.at ?? 0);
-    const focused = old !== null && old.contains(document.activeElement);
-    const next = this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0);
-    swapPopoverContent(this.needsEl, next);
-    if (focused) next.focus();
+    swapPopoverContent(this.needsEl, this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0));
   }
 
   private reread(): void {
@@ -725,46 +723,28 @@ export class TabBarView {
         this.groupEls.delete(id);
       }
     }
-    const place = (host: HTMLElement, el: HTMLElement, prev: ChildNode | null): void => {
-      const next = prev ? prev.nextSibling : host.firstChild;
-      if (el !== next || el.parentElement !== host) host.insertBefore(el, next);
-    };
-    let cursor: ChildNode | null = null;
-    let inGroup: ChildNode | null = null;
+    // 每个容器收一串，再按身份原地摆（kit `place`：顺序没变的一拍零搬动，挪丢的焦点还回去）。
+    const top: HTMLElement[] = [];
+    const members = new Map<string, HTMLElement[]>();
     const cols = new Map(this.prefs.collections.map((c) => [c.id, c]));
     for (const row of this.rows()) {
       if (row.kind === "head") {
         this.groupElFor(cols.get(row.gid)!);
-        const wrap = this.groupEls.get(row.gid)!.wrap;
-        place(this.listEl, wrap, cursor);
-        cursor = wrap;
-        inGroup = null;
+        top.push(this.groupEls.get(row.gid)!.wrap);
+        members.set(row.gid, []);
         continue;
       }
-      const sid = row.sid;
-      const refs = this.buttonFor(sid);
+      const refs = this.buttonFor(row.sid);
       if (!refs) continue;
-      if (row.gid === null) {
-        place(this.listEl, refs.root, cursor);
-        cursor = refs.root;
-      } else {
-        place(this.groupEls.get(row.gid)!.list, refs.root, inGroup);
-        inGroup = refs.root;
-      }
+      if (row.gid === null) top.push(refs.root);
+      else members.get(row.gid)?.push(refs.root);
     }
+    for (const [gid, els] of members) place(this.groupEls.get(gid)!.list, els);
     // 栏底：占位标签页那几行之后是「已隐藏」那一行（栏的最后）。
     const hiddenList = this.paintHiddenRow(hiddenIds);
     const tail: HTMLElement[] = [this.slotTail, ...(hiddenList && this.hiddenEls ? [this.hiddenEls.wrap] : [])];
-    if (tail.some((el, i) => this.listEl.children[this.listEl.children.length - tail.length + i] !== el)) this.listEl.append(...tail);
-    if (hiddenList) {
-      let at: ChildNode | null = null;
-      for (const sid of hiddenIds) {
-        const refs = this.buttonFor(sid);
-        if (!refs) continue;
-        place(hiddenList, refs.root, at);
-        at = refs.root;
-      }
-    }
+    place(this.listEl, [...top, ...tail]);
+    if (hiddenList) place(hiddenList, hiddenIds.flatMap((sid) => this.buttonFor(sid)?.root ?? []));
     this.updateNeedsStrip();
     this.repaintNeedsPanel();
     this.updateMachineDown();

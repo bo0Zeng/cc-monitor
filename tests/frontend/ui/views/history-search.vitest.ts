@@ -31,7 +31,7 @@ beforeEach(() => invokeMock.mockReset());
 /** 记下每一条通道问答；`history-search-merge` 答 `reply`。 */
 function rig(remotes: string[], reply: () => Promise<ArrayBuffer>) {
   invokeMock.mockImplementation((cmd: string, args: unknown) => {
-    if (cmd === "list_remote_mcp_origins") return Promise.resolve(remotes);
+    if (cmd === "backend_machines") return Promise.resolve(["<local>", ...remotes]);
     if (isChanCall(cmd, args, "history-search-merge")) return reply();
     return Promise.resolve(undefined);
   });

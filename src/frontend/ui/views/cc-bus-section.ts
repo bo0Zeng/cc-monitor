@@ -8,7 +8,7 @@
 //
 // 派生调的是 `cc-spawn`（内部经 `ccm`），这里不碰建会话逻辑、不开标签页（远端 exec，发出即走）。
 import { setCurrentMachine, subscribeMachine } from "../machine-context";
-import { commands } from "../ipc/commands";
+import { remoteNames } from "../remote-config";
 // 查在线 · 发消息 · 收掉 · 派生 · 广播 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
 // 「可选账号」只有 `selectableAccounts` 一个判据；`fetchAccounts` 每次问那台。
@@ -21,6 +21,7 @@ import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 import { sayFailure } from "../kit/detail";
+import { morph } from "../kit/morph";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -177,10 +178,10 @@ export class CcBusSection {
     return box;
   }
 
-  /** 列远端（`list_remote_mcp_origins`：通用的「列远端配置标签」，名字带 mcp 是历史）。 */
+  /** 列远端（`remoteNames`：壳注册表里此刻要连的那几台）。 */
   private async loadOrigins(): Promise<void> {
     // 拿不到就当没有远端，不影响面板其余部分。
-    const origins = await commands.list_remote_mcp_origins().catch(() => [] as string[]);
+    const origins = await remoteNames().catch(() => [] as string[]);
     this.originSel.replaceChildren();
     // 本机永远在列表里（本机的 `~/.cc-bus/` 就在本地）。
     for (const o of origins) {
@@ -261,12 +262,12 @@ export class CcBusSection {
     if (!origin) return;
     this.readBtn.disabled = true;
     this.statusEl.textContent = copyText("kit.state.reading");
-    this.listBox.replaceChildren();
     try {
       this.state = await readState(origin);
       this.render();
     } catch (e) {
       this.state = null;
+      morph(this.listBox, []);
       // 失败说清是哪一步，别留个空面板让人以为「没有 agent」
       sayFailure(this.statusEl, copyText("ccBus.reload.readFailed"), e);
     } finally {
@@ -293,28 +294,18 @@ export class CcBusSection {
     parts.push(copyText("ccBus.summary.notOnline"));
     this.statusEl.textContent = parts.join(copyText("ccBus.summary.sep"));
 
-    this.listBox.replaceChildren();
     if (st.agents.length === 0 && extra.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
       empty.textContent = copyText("ccBus.render.empty");
-      this.listBox.appendChild(empty);
+      morph(this.listBox, [empty]);
       return;
     }
-    for (const a of st.agents) {
-      this.listBox.appendChild(this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id), true));
-    }
+    // 重读时各行整份新画，正打着的那句消息（焦点 · 字）由 kit morph 搬过去。
+    const rows = st.agents.map((a) => this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id), true));
     // 未登记的派生记录：明确标注它没在总线上
-    for (const sp of extra) {
-      this.listBox.appendChild(
-        this.buildRow(
-          { id: sp.id, registered_at: sp.spawned_at },
-          true,
-          sp.dir,
-          false,
-        ),
-      );
-    }
+    for (const sp of extra) rows.push(this.buildRow({ id: sp.id, registered_at: sp.spawned_at }, true, sp.dir, false));
+    morph(this.listBox, rows);
   }
 
   private buildRow(
@@ -372,6 +363,7 @@ export class CcBusSection {
     const msg = document.createElement("input");
     msg.type = "text";
     msg.className = "settings-input cc-bus-msg";
+    msg.dataset.key = `msg:${this.originSel.value}:${a.id}`; // 重画时认同一格（kit morph）
     msg.placeholder = copyText("ccBus.row.messageHint");
     row.appendChild(msg);
 

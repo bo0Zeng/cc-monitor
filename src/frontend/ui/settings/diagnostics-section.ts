@@ -25,7 +25,7 @@ import { homeDir } from "@tauri-apps/api/path";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import { readRecordDrift, type RecordDriftFace } from "../record-reads";
-import { hostKey, readRemoteConfig } from "../remote-config";
+import { readRemoteConfig } from "../remote-config";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import { copyDetailButton, detailOf, failSaid, sayFailure, sayWithDetail } from "../kit/detail";
 
@@ -343,7 +343,7 @@ export function unknownSaid(r: DiagnosticsReport): string {
 async function driftOfAll(): Promise<{ origin: string; report: { faces: RecordDriftFace[] } | null }[]> {
   let hosts: string[] = [];
   try {
-    hosts = (await readRemoteConfig()).hosts.map(hostKey).filter((h) => h.trim() !== "");
+    hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
   } catch {
     hosts = [];
   }

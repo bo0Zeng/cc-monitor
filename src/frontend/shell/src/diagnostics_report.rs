@@ -185,9 +185,8 @@ pub async fn diagnostics_report(
         let local = crate::inbound_client::LOCAL_ORIGIN;
         let mut origins: Vec<(String, String)> =
             vec![(local.to_string(), copy_text("rsDiagReport.text.local", &[]))];
-        for (cfg, _) in crate::load_all_remote_configs() {
-            let label = cfg.origin_label();
-            origins.push((label.clone(), label));
+        for row in crate::machine_table::rows_now() {
+            origins.push((row.name.clone(), row.name));
         }
         let mine = crate::byte_table::my_backend_id();
         let remote = remote_machines().await;

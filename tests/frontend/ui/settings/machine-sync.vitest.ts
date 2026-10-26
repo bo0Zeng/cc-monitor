@@ -32,8 +32,8 @@ const ORIGINS = ["devbox", "nano"];
 
 function routeInvoke(cmd: string): unknown {
   switch (cmd) {
-    case "list_remote_mcp_origins":
-      return ORIGINS;
+    case "backend_machines":
+      return ["<local>", ...ORIGINS];
     case "read_cc_bus_state":
       return { agents: [], skipped: 0 };
     // 钩子诊断改走通道（`chan_call`）：本条不看它的结果，落 `default`。

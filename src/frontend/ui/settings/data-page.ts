@@ -19,7 +19,7 @@ import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { hostKey, readRemoteConfig } from "../remote-config";
+import { readRemoteConfig } from "../remote-config";
 import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
@@ -186,7 +186,7 @@ export class DataPage {
   private async refresh(): Promise<void> {
     const gen = ++this.generation;
     try {
-      const hosts = (await readRemoteConfig()).hosts.map(hostKey).filter((h) => h.trim() !== "");
+      const hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
       this.machines = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }, ...hosts.map((h) => ({ origin: h, name: h }))];
     } catch {
       // 读不到机器表 ⇒ 只问本机（远端那几台这一趟不列，不猜）。

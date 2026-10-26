@@ -266,7 +266,6 @@
 | `machines.json` | `machines-set`（按键认那一台；写完整张表要成立：`control/machines.rs::check_table`） | `machines-read` · monitor（照它起停远端流） | 这一端连各台用的机器表：名字 · 地址 · 端口 · 用户 · 钥匙路径 · 备用地址 · 跳板 · 连不连 |
 | `known_hosts` | 拨号核心（首见的主机钥匙鉴权过了才记）· `host-keys-forget`（忘掉一台） | 拨号核心（每次握手按这台全部地址认）· 开终端那一行（经 `ssh_config`）· `machines-read`（带出每台的指纹） | OpenSSH 格式；一台一行、主机名段写这台的全部地址。规矩只在 `ssh-dial/known_hosts.rs` |
 | `ssh_config` | 本机常驻后端（开终端那一行之前，内容不对才写） | 终端里的 `ssh -F` | 主机钥匙认 `known_hosts` 那一份，之后照读用户与系统的 ssh 配置 |
-| `prefs-handoff.json` | 本机常驻后端起来时那一次换形 · `remote-reach` 之后交出去那一下 | `remote-reach`（那台连上时） | 升级时从 `config.json` 搬来的远端每台的偏好，那台还没有偏好时交过去（`prefs-set`），交完删那一条；下一版删 |
 
 设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：远端各台判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；壳把接常驻那一轮的结论经 `machine-round` 原样交过去），本机那一行由壳照同一批文案键出（`backend_status` 的 `machine`）；形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 

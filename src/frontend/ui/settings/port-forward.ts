@@ -4,7 +4,7 @@
  * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
 import { toast, failToast } from "../kit/toast";
-import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
+import { readRemoteConfig } from "../remote-config";
 
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
 import { listForwards, startForward, stopForward, type ForwardStatus } from "../port-forward-reads";
@@ -37,7 +37,6 @@ class PortForwardPanel {
   private rhostInput!: HTMLInputElement;
   private rportInput!: HTMLInputElement;
   /** 打开时读到的那几台（起转发时一并交它的配置：那台的流没起来时本机后端按它自己拨）。 */
-  private hosts: RemoteHostConfig[] = [];
   /** Esc 栈里的这一层：Esc 只关这个面板，不连带关下面那层（设置窗）。 */
   private readonly layer: OverlayHandle = { handleEsc: () => (this.close(), true) };
 
@@ -102,9 +101,8 @@ class PortForwardPanel {
     this.originSel.innerHTML = "";
     try {
       const { hosts } = await readRemoteConfig();
-      this.hosts = hosts;
       for (const h of hosts) {
-        const origin = h.label.trim() || h.host;
+        const origin = h.name;
         const opt = document.createElement("option");
         opt.value = origin;
         opt.textContent = origin;
@@ -175,11 +173,8 @@ class PortForwardPanel {
       return;
     }
     try {
-      // 那台的配置（＋ 跳板那一台）一并交：它的流没起来时本机后端按配置自己拨，不拒。
-      const machine = this.hosts.find((h) => hostKey(h) === origin) ?? null;
-      const jumpName = machine?.jump.trim() ?? "";
-      const jump = jumpName ? (this.hosts.find((h) => hostKey(h) === jumpName) ?? null) : null;
-      await startForward({ origin, localPort, remoteHost, remotePort }, machine ? { machine, jump } : null);
+      // 只交名字：怎么拨照本机后端的机器表（流没起来也照拨，不拒）。
+      await startForward({ origin, localPort, remoteHost, remotePort });
       this.localInput.value = "";
       this.rportInput.value = "";
       await this.reload();

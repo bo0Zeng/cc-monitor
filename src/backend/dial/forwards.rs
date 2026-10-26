@@ -54,27 +54,19 @@ fn invalid(detail: &str) -> (&'static str, String) {
     ("bad_args", crate::common::contract::malformed(detail))
 }
 
-/// `forward-start` 的入参：规格四格 ＋ 那台的配置（可达表里没有那台时按它自己组请求去拨）。
+/// `forward-start` 的入参：规格四格 ＋ 那台的名字（怎么拨照这一端的机器表组，线上不交那台的配置）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ForwardStartReq {
-    /// 那台的名字（可达表的键）。
+    /// 那台的名字。
     pub(crate) origin: cmd_wire::Machine,
     /// 绑本机 `127.0.0.1:localPort`。
     pub(crate) local_port: u16,
     /// 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
     pub(crate) remote_host: String,
     pub(crate) remote_port: u16,
-    /// 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
-    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) machine: Option<super::Host>,
-    /// 跳板那一台。
-    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<super::Host>,
 }
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
@@ -100,7 +92,7 @@ pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, Stri
     })
 }
 
-/// 把可达表里那份拨号请求改成「绑这个本机口、隧道到那个远端口」（纯；抽出来是为了判据）。
+/// 把照机器表组好的那份拨号请求改成「绑这个本机口、隧道到那个远端口」（纯；抽出来是为了判据）。
 pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, String> {
     let mut v = dial.clone();
     let obj = v
@@ -117,7 +109,7 @@ pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, 
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::parse_request_value(&v).map_err(|(_, m)| m)
+    crate::dial::read_request(&v).map_err(|(_, m)| m)
 }
 
 /// 账上一条。**丢掉它 = 收掉这条转发**（`pump` 是 [`AbortOnDrop`]，它手里攥着链路那一侧的任务）。
@@ -157,7 +149,7 @@ fn id_num(id: &str) -> Option<u64> {
     id.strip_prefix("fwd-")?.parse().ok()
 }
 
-/// `forward-start` 的本体：账与可达表由调用方给，`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身）。
+/// `forward-start` 的本体：账与那几台由调用方给，`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身）。
 /// `serve` 拿到的是：改好的拨号请求 · 上行读端（本侧一个字节都不写，丢了 = 界面走了）· 下行写端（ack ＋ 计数行）。
 pub(crate) async fn start_with<F, Fut>(
     req: &ForwardStartReq,
@@ -170,17 +162,15 @@ where
     Fut: Future<Output = ()> + Send + 'static,
 {
     let spec = spec_of(req)?;
-    // 那台的流握手过 ⇒ 用可达表里那份（带着 monitor 排好的 last-good 顺序与它的 agent 套接字）；
-    //   没握手过（流没起来）⇒ **不拒**：按界面交来的那台配置自己组请求、自己拨（与起流同一个池，`ssh-dial/machine.rs`）。
-    let reached = remote_ask::lock(reach)
-        .get(&spec.origin)
-        .map(|r| r.dial.clone());
-    let dial = match (reached, &req.machine) {
-        (Some(d), _) => d,
-        // 界面交来的那台原样的配置（组法在 `ssh-dial/machine.rs`）；先组一遍，坏了当场拒。
-        (None, Some(machine)) => super::wire_dial(machine, req.jump.as_ref(), None)?,
-        (None, None) => return Err(("unreachable", remote_ask::unreachable_message(&spec.origin))),
-    };
+    // 照这一端的机器表按名字组（上次赢的那条排首 · 界面最近交来的 agent 套接字）；流起没起来都一样拨（与起流同一个池）。
+    //   表里没有那台 ⇒ `unreachable`；跳板成环 · 找不到 ⇒ `bad_jump`（组法在 `ssh-dial/machine.rs`）。
+    let dial = reach
+        .dial(&spec.origin)
+        .map_err(|s| match s.code.as_deref() {
+            Some("bad_jump") => ("bad_jump", s.message),
+            Some("unreachable") => ("unreachable", s.message),
+            _ => ("bad_args", s.message),
+        })?;
     if ledger.rows().len() >= MAX_FORWARDS {
         return Err((
             "full",

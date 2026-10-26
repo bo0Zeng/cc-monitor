@@ -19,6 +19,8 @@
  */
 
 import { openPortForwardPanel } from "./port-forward";
+import type { Host } from "../generated/Host";
+import type { MachineRow } from "../generated/MachineRow";
 import { listForwards, stopForward } from "../port-forward-reads";
 import { askInterrupts } from "./interrupts";
 // 配置数据层在 src/frontend/ui/remote-config.ts，这里只排版。
@@ -26,9 +28,7 @@ import {
   readRemoteConfig,
   tryRemoteConfig,
   patchRemoteConfig,
-  hostKey,
   findHostByOrigin,
-  type RemoteHostConfig,
   type RemoteConfig,
 } from "../remote-config";
 import {
@@ -41,6 +41,7 @@ import { icon } from "../kit/icon";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { toast, undoToast } from "../kit/toast";
+import { write } from "../ipc/write";
 import { forgetSeen } from "../last-seen";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
@@ -173,7 +174,7 @@ async function stopForwardsOf(origin: string): Promise<void> {
 
 /**
  * 一台远端机器的 UI 卡片：自己的字段输入 + 测试连接（含 TOFU 指纹固化）+ 删除。
- * collect() 读出 RemoteHostConfig。所有字段 change 都通过 hooks.onChange 触发 section 保存。
+ * collect() 读出 Host。所有字段 change 都通过 hooks.onChange 触发 section 保存。
  */
 
 // === 远端区（机器列表容器）===
@@ -519,7 +520,7 @@ export class RemoteSection {
     }
     const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
     if (!card) return [];
-    const origin = card.persistedKey ?? hostKey(card.collect());
+    const origin = card.savedName();
     return [
       { label: copyText("machineList.menu.launch"), onClick: () => card.openLauncher() },
       { label: copyText("machineList.menu.files"), onClick: () => card.openFiles() },
@@ -560,7 +561,7 @@ export class RemoteSection {
   }
 
   /** 用 config 里的机器列表重建卡片。 */
-  private rebuildCards(hosts: RemoteHostConfig[]): void {
+  private rebuildCards(hosts: MachineRow[]): void {
     // 重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
     for (const id of this.machinePageIds) this.pages?.removeMachinePage(id);
     this.machinePageIds = [];
@@ -581,11 +582,11 @@ export class RemoteSection {
     }
     for (const h of hosts) {
       // 从 config 重建的卡片默认折叠（只显示机器名）——多机时列表整洁；点名称展开编辑。
-      // 从盘上来的卡片带着它此刻的 origin 当 persistedKey。
-      this.appendCard(h, true, hostKey(h));
+      // 从盘上来的卡片带着后端读回的名字当 persistedKey。
+      this.appendCard(h.host, true, h.name);
     }
     // 本编辑器这次加载时看到的 key 集合：删除以它为基准，不以盘上全量（一页只对自己加载过的负责）。
-    this.loadedKeys = hosts.map(hostKey);
+    this.loadedKeys = hosts.map((r) => r.name);
     if (this.rowExtras) {
       this.rowsTail = this.guardedExtra(() => this.rowExtras!.tail());
       this.machinesContainer.appendChild(this.rowsTail);
@@ -595,7 +596,7 @@ export class RemoteSection {
   }
 
   private appendCard(
-    initial: RemoteHostConfig,
+    initial: Host,
     collapsed = false,
     persistedKey: string | null = null,
   ): MachineCard {
@@ -605,7 +606,7 @@ export class RemoteSection {
         onChange: () => void this.save(),
         onRemove: (c) => void this.removeCard(c),
         onStatusChanged: (c) => this.refreshMachineRow(c),
-        tryCells: (c, next) => tryRemoteConfig({ upsert: [{ key: c.persistedKey, value: next, was: c.persistedKey === null ? undefined : findHostByOrigin(this.original.hosts, c.persistedKey) ?? undefined }] }),
+        tryCells: (c, next) => tryRemoteConfig({ upsert: [{ key: c.persistedKey, value: next, was: c.persistedKey === null ? undefined : findHostByOrigin(this.original.hosts, c.persistedKey)?.host }] }),
       },
       collapsed,
       persistedKey,
@@ -614,12 +615,12 @@ export class RemoteSection {
     this.cards.push(card);
     if (this.pages) {
       // 表单在这台机器自己那一页；列表里只留一行（名字 ＋ 状态 ＋ 点进去）。
-      const id = this.assignPageId(card, persistedKey ?? hostKey(initial));
+      const id = this.assignPageId(card, persistedKey ?? card.displayName());
       card.setPageMode();
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
       const row = this.machinesContainer.insertBefore(
-        this.buildRow(id, card.displayName(), "", card.persistedKey ?? hostKey(card.collect())),
+        this.buildRow(id, card.displayName(), "", card.savedName()),
         this.rowsTail,
       );
       const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
@@ -680,13 +681,13 @@ export class RemoteSection {
 
   /** 这台（按名字）的页 id；列表里没有 ⇒ `null`。 */
   pageIdOfMachine(origin: string): string | null {
-    for (const [card, id] of this.pageIdOf) if (hostKey(card.collect()) === origin) return id;
+    for (const [card, id] of this.pageIdOf) if (card.persistedKey === origin) return id;
     return null;
   }
 
   originOfPage(pageId: string): string | null {
     for (const [card, id] of this.pageIdOf) {
-      if (id === pageId) return hostKey(card.collect()) || null;
+      if (id === pageId) return card.persistedKey;
     }
     return null;
   }
@@ -707,7 +708,7 @@ export class RemoteSection {
     if (nameBtn) nameBtn.textContent = card.displayName();
     const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
     if (meta) meta.textContent = this.listMetaOfPage(pageId);
-    const origin = card.persistedKey ?? hostKey(card.collect());
+    const origin = card.savedName();
     if (row.dataset.origin !== origin) {
       row.dataset.origin = origin;
       delete row.dataset.summaryAsked;
@@ -732,14 +733,16 @@ export class RemoteSection {
       imported: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
       add: async (cfgs) => {
         const cards = cfgs.map((c) => this.appendCard(c));
-        if (await this.save()) {
+        const said = await this.save();
+        if (said === null) {
           this.hideBanner();
           toast(copyText("addMachine.save.done", { names: cards.map((c) => c.displayName()).join(copyText("kit.text.sep")) }), "", { level: "success" });
           return null;
         }
+        // 没存上 ⇒ 卡收回去，框顶照那一句说（后端说的原因，不一律说「别处改过」）。
         for (const c of cards) this.dropCard(c);
         this.hideBanner();
-        return copyText("addMachine.err.save");
+        return said;
       },
     });
   }
@@ -859,17 +862,16 @@ export class RemoteSection {
 
   // === 数据 ===
 
-  /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启。存进去了 ⇒ `true`（没存进去的原因已画在横幅上）。 */
-  private async save(): Promise<boolean> {
+  /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启；写走统一写口。存进去了 ⇒ `null`；没存进去 ⇒ 那一句（原因也画在横幅上）。 */
+  private async save(): Promise<string | null> {
     // 还没落过盘、主机或用户没填的卡（「＋ 添加机器」刚出来那张）不进补丁：
     // 写进去就是一条认不出、删不掉的空机器。它留在界面上，填完了再存。
     const saving = this.cards.filter((c) => {
       const h = c.collect();
       return c.persistedKey !== null || (!!h.host && !!h.user);
     });
-    const next: RemoteConfig = { hosts: saving.map((c) => c.collect()) };
     // best-effort UI 校验：某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
-    const incompleteCount = next.hosts.filter((h) => !h.host || !h.user).length;
+    const incompleteCount = saving.map((c) => c.collect()).filter((h) => !h.host || !h.user).length;
 
     if (incompleteCount > 0) {
       this.showBanner(
@@ -877,22 +879,22 @@ export class RemoteSection {
       );
     }
 
-    try {
-      // 局部合并，不整表覆盖（整表覆盖会把不在本页的机器静默删光）：
-      // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）仍是改那一条，不变成「新增 ＋ 孤儿」；
-      // - remove 只取「加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器字节不动。
-      // 按出现次数比、不按集合比：两台 origin 相同时删掉其中一台，集合比会算出 remove=[]。
-      const countBy = (keys: (string | null)[]): Map<string, number> => {
-        const m = new Map<string, number>();
-        for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
-        return m;
-      };
-      const liveCount = countBy(saving.map((c) => c.persistedKey));
-      // 每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
-      const loadedCount = countBy(this.loadedKeys);
-      const wasOf = (k: string | null): RemoteHostConfig | undefined =>
-        k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
-      await patchRemoteConfig({
+    // 局部合并，不整表覆盖（整表覆盖会把不在本页的机器静默删光）：
+    // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）仍是改那一条，不变成「新增 ＋ 孤儿」；
+    // - remove 只取「加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器字节不动。
+    // 按出现次数比、不按集合比：两台 origin 相同时删掉其中一台，集合比会算出 remove=[]。
+    const countBy = (keys: (string | null)[]): Map<string, number> => {
+      const m = new Map<string, number>();
+      for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
+      return m;
+    };
+    const liveCount = countBy(saving.map((c) => c.persistedKey));
+    // 每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
+    const loadedCount = countBy(this.loadedKeys);
+    const wasOf = (k: string | null): Host | undefined =>
+      k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k)?.host : undefined;
+    const end = await write(() =>
+      patchRemoteConfig({
         upsert: saving.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
@@ -901,28 +903,32 @@ export class RemoteSection {
         remove: [...countBy(this.loadedKeys)]
           .filter(([k, n]) => n > (liveCount.get(k) ?? 0))
           .map(([k]) => k),
-      });
-      // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
-      for (const c of saving) {
-        c.persistedKey = hostKey(c.collect());
-        c.renderStatusStrip();
-      }
-      this.loadedKeys = saving.map((c) => c.persistedKey!);
-
-      const changed = !sameRemote(next, this.original);
-      this.original = next;
-      if (changed && incompleteCount === 0) {
-        this.showBanner(copyText("remote.save.done"));
-      }
-      // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
-      if (changed) this.pages?.machinesReconciled?.();
-      for (const c of saving) this.repaintRow(c);
-      return true;
-    } catch (e) {
-      console.warn("save remote config failed:", e);
-      this.showFailure(copyText("remote.save.failed"), e);
-      return false;
+      }),
+    );
+    if (!end.ok) {
+      console.warn("save remote config failed:", end.error);
+      this.showFailure(copyText("remote.save.failed"), end.error);
+      return end.said;
     }
+    // 落盘成功后卡片身份跟到写口读回的那个名字上（用户这次可能就是在改名；名字只认后端算好的那一格）。
+    const next = end.value ?? this.original;
+    for (const c of saving) {
+      const now = c.collect();
+      const row = next.hosts.find((r) => sameHost(r.host, now));
+      if (row) c.persistedKey = row.name;
+      c.renderStatusStrip();
+    }
+    this.loadedKeys = saving.map((c) => c.persistedKey!);
+
+    const changed = !sameRemote(next, this.original);
+    this.original = next;
+    if (changed && incompleteCount === 0) {
+      this.showBanner(copyText("remote.save.done"));
+    }
+    // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
+    if (changed) this.pages?.machinesReconciled?.();
+    for (const c of saving) this.repaintRow(c);
+    return null;
   }
 
   /** 照这台现在的「连接这台」重画那一行（停用 ⇒ 空心点 ＋「已停用」＋［连接］；开着 ⇒ 照上次问到的连接）。 */
@@ -957,10 +963,10 @@ export class RemoteSection {
 
 // === config.json 读写（多机）===
 
-/** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
+/** 把一个任意 JSON 对象规整成 Host（缺失/类型不对走默认）。 */
 // 读写都在 `remote-config.ts`（写入口 `patchRemoteConfig`，按键认元素局部合并）；`sameHost` / `sameRemote`（下方）是界面的 dirty-check。
 
-function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
+function sameHost(a: Host, b: Host): boolean {
   return (
     a.label === b.label &&
     a.host === b.host &&
@@ -978,6 +984,6 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
 function sameRemote(a: RemoteConfig, b: RemoteConfig): boolean {
   return (
     a.hosts.length === b.hosts.length &&
-    a.hosts.every((h, i) => sameHost(h, b.hosts[i]))
+    a.hosts.every((h, i) => h.name === b.hosts[i].name && sameHost(h.host, b.hosts[i].host))
   );
 }

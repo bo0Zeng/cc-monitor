@@ -67,7 +67,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoTo
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => Promise.resolve({ resumeCommand: "" }),
 }));
-vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: () => Promise.resolve("") }));
+vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: () => Promise.resolve(""), remoteNames: () => Promise.resolve(["dev"]) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
@@ -240,7 +240,7 @@ beforeEach(() => {
   };
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-    if (cmd === "list_remote_mcp_origins") return ["dev"];
+    if (cmd === "backend_machines") return ["<local>", "dev"];
     if (cmd !== "chan_call") return undefined;
     const c = a as ChanCallArgs;
     const args = chanArgsJson(c) as Record<string, unknown>;

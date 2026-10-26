@@ -11,6 +11,6 @@ export type AssetsSynced = {
  */
 self: string, synced: Array<AssetsSyncRow>, 
 /**
- * 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
+ * 「连这台」的那几台 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
  */
 reach: Array<ReachRow>, };

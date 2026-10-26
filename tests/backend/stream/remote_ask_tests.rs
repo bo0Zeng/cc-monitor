@@ -2,7 +2,7 @@
 //!
 //! # 守的要求（住址）
 //!
-//! - 要求：「**口收成一份**：把 `DialRemote` ＋ 可达表从
+//! - 要求：「**口收成一份**：把 `DialRemote` 从
 //!   `asset_sync.rs` 提到中立住址 `src/backend/dial/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它；判据钉
 //!   「**后端生产树里开远端一次性 exec 的只有这一处**」」。
 //! - （逐字）：「观测方沿它本来就拥有的那条连接去拉被观测方。」
@@ -11,10 +11,10 @@
 //!
 //! 1. **一个家**（零命中 ＋ 正控，两向相等）：后端生产树里「开远端一次性 exec」的三个指纹 ——
 //!    调 `uses::run(`（经池开一条链路）· 往拨号请求里钉 `abort_marker`（capture 见 hello 就收工）·
-//!    `parse_request_value(`（把一份拨号请求读成可拨的形状）—— 在 `dial/` 之外**只**出现在本模块；
+//!    `read_request(`（把一份组好的拨号请求读成可拨的形状）—— 在 `dial/` 之外**零处**；
 //!    `dial/` 自己那几处是正控（同一识别器在 `dial/link.rs` 上命中，扫描没瞎）。
-//! 2. **可达表只有一个写口**：`remote-reach` 与 `assets-sync` 登记同一张表、同一个函数（行为：两条路登记后表逐格相等）。
-//! 3. **问法**：查不到那台 ⇒ 明说、对面一次都没被调；查得到 ⇒ 交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行，参数走 stdin 一行。
+//! 2. **那几台只看机器表**：够到一台 ＝ 机器表里有它（按名字组请求）；「每一台」＝ 表里「连这台」的那几台；对面的资产目录 id 按名字记。
+//! 3. **问法**：查不到那台 ⇒ 明说、对面一次都没被调；查得到 ⇒ 交给对面的恰是照表组好的那份拨号请求 ＋ 逐格引号的命令行，参数走 stdin 一行。
 //! 4. **引号**：命令行交给真 `sh` 跑，每一格原样回来（异源：真 shell 对我们的引号）。
 //!
 //! # 买不到
@@ -26,22 +26,10 @@ use crate::assets::hub_wire::{SkillReadCmd, SkillReadReq};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex as StdMutex;
 
-// 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份。
-fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static str, String)> {
-    let req: ReachReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
-    super::answer_reach_with(&req, table).map(|r| serde_json::to_value(r).unwrap())
+/// 机器表里的一台（线上那一形读成的）。
+fn host(v: Value) -> crate::dial::Host {
+    crate::dial::machine::loose(&v).unwrap()
 }
-
-// `assets-sync` 那一扇门的登记：入参经 typed 那一处收（`AssetsSyncReq`），两格都在 ⇒ 交唯一的写口（同 `asset_sync::answer_with`）。
-fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
-    let req: crate::assets::asset_sync::AssetsSyncReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
-    let (Some(o), Some(d)) = (&req.origin, &req.dial) else {
-        panic!("夹具两格都给");
-    };
-    super::register(table, o, d)
-}
-
 /// 生产段（剥测试模块 ＋ 整行注释 ＋ 行尾注释）—— 指纹只认代码，不认说起它的散文。
 fn code_of(body: &str) -> String {
     let prod = guard_core::production_code(body);
@@ -75,10 +63,7 @@ fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
         ("uses::run(", &["dial/link.rs"]),
         ("uses::capture(", &["dial/remote_ask.rs"]),
         ("abort_marker", &["ssh-dial/uses.rs", "dial/remote_ask.rs"]),
-        (
-            "parse_request_value(",
-            &["dial/link.rs", "dial/mod.rs", "dial/remote_ask.rs"],
-        ),
+        ("read_request(", &["dial/mod.rs", "dial/remote_ask.rs"]),
     ];
     for (needle, inside_dial) in prints {
         let (homes, scanned) = homes_of(needle);
@@ -135,21 +120,14 @@ fn probe() -> SkillReadReq {
     }
 }
 
-fn reach_args(origin: &str, host: &str) -> Value {
-    json!({
-        "origin": origin,
-        "dial": {"machine": {"host": host, "port": 22, "user": "u", "keyPath": "/k"}},
-    })
-}
-
 /// ★ 判据 3（反向）：查不到那台 ⇒ 明说是哪台、对面一次都没被调（不猜、不回落）。
 #[tokio::test]
 async fn an_unregistered_origin_is_said_and_never_dialed() {
-    let table = Table::default();
+    let table = crate::dial::remote_ask::test_peers::empty();
     let far = Recorder::default();
     let e = ask_json::<SkillReadCmd>("nowhere", &probe(), &crate::Tz::default(), &table, &far)
         .await
-        .expect_err("没登记的那台不许问出东西来");
+        .expect_err("机器表里没有的那台不许问出东西来");
     assert_eq!(e.code.as_deref(), Some("unreachable"));
     assert_eq!(e.message, unreachable_message("nowhere"));
     assert!(
@@ -157,14 +135,15 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
         "那句话要点名是哪台：{}",
         e.message
     );
-    assert_eq!(far.n.load(Ordering::SeqCst), 0, "没登记也去拨了");
+    assert_eq!(far.n.load(Ordering::SeqCst), 0, "表里没有也去拨了");
 }
 
-/// ★ 判据 3（正向）：交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行（看的人那一台的时区经 `--tz` 转过去），参数走 stdin 一行。
+/// ★ 判据 3（正向）：交给对面的恰是照机器表组好的那份拨号请求 ＋ 逐格引号的命令行（看的人那一台的时区经 `--tz` 转过去），参数走 stdin 一行。
 #[tokio::test]
-async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command() {
-    let table = Table::default();
-    answer_reach_with(&reach_args("dev", "192.0.2.2"), &table).unwrap();
+async fn a_machine_in_the_table_is_asked_with_its_composed_dial_and_a_quoted_command() {
+    let table = Table::of(vec![host(
+        json!({"label": "dev", "host": "192.0.2.2", "user": "u", "keyPath": "/k"}),
+    )]);
     let far = Recorder::default();
     let tz = crate::Tz::iana("Asia/Shanghai").unwrap();
     let _ = ask_json::<SkillReadCmd>("dev", &probe(), &tz, &table, &far)
@@ -172,12 +151,16 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
         .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
-    // 表里存的是读成一台（`Host`，缺的几格补成缺省）的那一份；没交的那几格写成 `null`，`ssh_dial::machine::resolve` 照缺读。
+    // 组好的那一形（蛇形键，`DialRequest` 的形状）：地址 · 用户 · 钥匙照表，线上没交来的什么都不在里头。
+    let d = &calls[0].0;
     assert_eq!(
-        calls[0].0,
-        json!({"machine": {"label": "", "host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k", "addresses": [],
-                           "jump": "", "connect": true},
-               "jump": null, "prefer": null, "use": null, "agent_sock": null})
+        (&d["host"], &d["port"], &d["user"], &d["key_path"]),
+        (&json!("192.0.2.2"), &json!(22), &json!("u"), &json!("/k"))
+    );
+    assert_eq!(d["endpoints"], json!([{"host": "192.0.2.2", "port": 22}]));
+    assert!(
+        d.get("machine").is_none() && d.get("prefer").is_none(),
+        "交给对面的还是线上那一形：{d}"
     );
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 那样两侧同源，拿掉引号也恒绿）。
     // 那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
@@ -195,8 +178,7 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
 /// 看的人就在这一台（终端里敲的那一趟）：转给那台的命令行里恒带 `--tz <这台的名>`；不带 ⇒ 那台按它自己的钟写。
 #[tokio::test]
 async fn a_viewer_on_this_machine_hands_its_zone_name_to_the_far_one() {
-    let table = Table::default();
-    answer_reach_with(&reach_args("dev", "192.0.2.2"), &table).unwrap();
+    let table = crate::dial::remote_ask::test_peers::named(&["dev"]);
     let far = Recorder::default();
     let here = crate::Tz::named(crate::common::time::TZ_HERE).unwrap();
     let _ = ask_json::<SkillReadCmd>("dev", &probe(), &here, &table, &far)
@@ -211,48 +193,42 @@ async fn a_viewer_on_this_machine_hands_its_zone_name_to_the_far_one() {
     );
 }
 
-/// ★ 判据 2：`remote-reach` 与 `assets-sync` 登记的是同一张表、同一个写口 —— 两条路登记同一台之后表逐格相等；
-/// 再登记一次换掉拨号请求、对面的 id 留着。
+/// ★ 判据 2：「每一台」＝ 机器表里「连这台」的那几台（照表里的先后）；对面的资产目录 id 按名字记、跟着出现在那一列里。
 #[test]
-fn both_doors_register_through_the_one_writer() {
-    let a = Table::default();
-    let b = Table::default();
-    answer_reach_with(&reach_args("dev", "h1"), &a).unwrap();
-    register(&b, &reach_args("dev", "h1")).unwrap();
-    assert_eq!(*lock(&a), *lock(&b), "两扇门登记出来的表不一样");
-    // 对面的 id（资产目录那一路拉回来之后写的）在再登记时留着。
-    lock(&a).get_mut("dev").unwrap().peer = Some("p".into());
-    answer_reach_with(&reach_args("dev", "h2"), &a).unwrap();
-    let row = lock(&a).get("dev").cloned().unwrap();
-    assert_eq!(row.peer.as_deref(), Some("p"));
-    assert_eq!(row.dial["machine"]["host"], "h2");
-    // 半给的入参拒，表不动。
-    for bad in [
-        json!({}),
-        json!({"origin": ""}),
-        json!({"origin": "x"}),
-        json!({"origin": "x", "dial": "nope"}),
-    ] {
-        let before = lock(&a).clone();
-        let e = answer_reach_with(&bad, &a).expect_err("半给的入参该拒");
-        assert_eq!(e.0, "bad_args");
-        assert_eq!(*lock(&a), before, "拒了还动了表：{bad}");
-    }
+fn every_machine_means_the_ones_the_table_connects_to() {
+    let t = Table::of(vec![
+        host(json!({"label": "a", "host": "a", "user": "u"})),
+        host(json!({"label": "off", "host": "o", "user": "u", "connect": false})),
+        host(json!({"label": "b", "host": "b", "user": "u"})),
+    ]);
+    assert_eq!(t.connected(), vec!["a", "b"]);
+    assert!(t.has("off"), "不连的那台也在表里（点名问它照样问得到）");
+    t.set_peer("b", "p");
+    let rows: Vec<(String, Option<String>)> = reach_rows(&t)
+        .into_iter()
+        .map(|r| (r.origin.as_wire_str().to_string(), r.machine))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("a".to_string(), None),
+            ("b".to_string(), Some("p".to_string()))
+        ]
+    );
 }
 
-/// 可达表有界：满了拒新的一台，已在表里的照样能再登记。
+/// 机器表里那几格组不成请求 ⇒ 那一码照原样交出去（跳板成环不回落直连）；表里没有 ⇒ `unreachable`。
 #[test]
-fn the_table_is_bounded() {
-    let t = Table::default();
-    for i in 0..MAX_REACH {
-        register(&t, &reach_args(&format!("m{i}"), "h")).unwrap();
-    }
+fn a_dial_the_table_cannot_compose_says_why() {
+    let t = Table::of(vec![
+        host(json!({"label": "A", "host": "a", "user": "u", "jump": "B"})),
+        host(json!({"label": "B", "host": "b", "user": "u", "jump": "A"})),
+    ]);
+    assert_eq!(t.dial("A").unwrap_err().code.as_deref(), Some("bad_jump"));
     assert_eq!(
-        register(&t, &reach_args("one-more", "h")).unwrap_err().0,
-        "bad_args"
+        t.dial("C").unwrap_err().code.as_deref(),
+        Some("unreachable")
     );
-    register(&t, &reach_args("m0", "h9")).expect("已在表里的那台照样能再登记");
-    assert_eq!(lock(&t).len(), MAX_REACH);
 }
 
 /// ★ 判据 4：命令行交给真 `sh`，每一格原样回来（带单引号 / 双引号 / `$HOME` / 反引号 / 空格 / 中文）。
@@ -378,7 +354,12 @@ async fn a_capture_that_never_opened_says_unreachable_with_the_dial_words() {
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（不进门禁）。
 #[test]
 fn a_capture_dial_carries_the_stdin_line_verbatim_and_only_when_given() {
-    let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});
+    let dial = Table::of(vec![crate::dial::machine::loose(
+        &json!({"label": "h", "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
+    )
+    .unwrap()])
+    .dial("h")
+    .unwrap();
     let with = crate::dial::remote_ask::for_capture(
         &dial,
         "'/b' '--x'".into(),

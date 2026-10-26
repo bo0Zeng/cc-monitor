@@ -174,8 +174,8 @@ impl std::ops::Deref for Listed {
 /// 形状上的先例逐字住 `src/frontend/shell/Cargo.toml`（`creds-core` 那条 `harden` feature）：
 /// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
 ///
-/// 它装的是那台机器**寻址用的名字**（`RemoteConfig::origin_label` 的口径，monitor 开窗时算好随种子交来）。
-/// 从前装的是整份 `RemoteConfig`：窗口只拿它取名字、再给「在此打开终端」算机器事实 —— 开终端改由 monitor 接之后只剩名字，
+/// 它装的是那台机器**寻址用的名字**（本机后端机器表里算好的那个名字，monitor 开窗时随种子交来）。
+/// 从前装的是整份远端配置：窗口只拿它取名字、再给「在此打开终端」算机器事实 —— 开终端改由 monitor 接之后只剩名字，
 /// 窗口进程从此不认识 monitor 的配置类型（`filewin` 边界判据那一格「开窗配置的类型」清零）。
 #[derive(Clone, Debug)]
 pub struct Source(String);
