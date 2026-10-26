@@ -966,6 +966,105 @@ fn rename_moves_inside_the_root_never_overwrites_and_moves_a_session_file_too() 
     std::fs::remove_dir_all(&base).ok();
 }
 
+// ── 跨盘改名：系统回 `CrossesDevices` ⇒ 拷完再删 ──────────
+// 注入：`rename_entry_as(…, cross: true)` 不动盘、当那一下系统回了 `CrossesDevices`，之后走的是生产那一支。
+
+fn move_across(root: &Path, from: &str, to: &str) -> Result<PathBuf, WriteRefusal> {
+    rename_entry_as(
+        &Face::issue(),
+        root,
+        Path::new(from),
+        Path::new(to),
+        &mut || {},
+        true,
+    )
+}
+
+/// ★ 跨盘挪一整棵目录 ⇒ 挪成：目标逐字节、权限位、里面的链接照原样；源整棵删掉。
+#[test]
+#[cfg(unix)]
+fn a_rename_across_devices_copies_the_tree_then_removes_the_source() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("mvx");
+    let root = base.join("cfg");
+    let rels = plant_tree(&root);
+    std::os::unix::fs::symlink("one.md", root.join("t/ln")).expect("铺链接");
+    std::fs::set_permissions(root.join("t/a/two.md"), std::fs::Permissions::from_mode(0o640))
+        .expect("设权限位");
+    let got = move_across(&root, "t", "u").expect("🔴 跨盘挪目录没挪成");
+    assert_eq!(got, root.join("u"));
+    assert_eq!(still_there(&root, &rels), Vec::<String>::new(), "🔴 源没删干净");
+    assert!(std::fs::symlink_metadata(root.join("t/ln")).is_err(), "源里的链接还在");
+    assert_eq!(std::fs::read(root.join("u/a/b/three.md")).expect("读"), b"3");
+    assert_eq!(std::fs::read(root.join("u/one.md")).expect("读"), b"1");
+    assert!(root.join("u/empty").is_dir());
+    let mode = std::fs::metadata(root.join("u/a/two.md")).expect("看").permissions().mode();
+    assert_eq!(mode & 0o777, 0o640, "权限位没跟过去");
+    assert_eq!(
+        std::fs::read_link(root.join("u/ln")).expect("🔴 链接没照原样过去"),
+        Path::new("one.md")
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 跨盘挪一份文件 · 一条链接本身（不跟过去）⇒ 挪成、源没了；目标已在 ⇒ 拒、两边都不动。
+#[test]
+#[cfg(unix)]
+fn a_rename_across_devices_moves_a_file_and_a_link_itself_and_never_overwrites() {
+    let base = temp_root("mvxf");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("铺根");
+    std::fs::write(root.join("a.md"), b"A").expect("铺 a");
+    std::fs::write(root.join("b.md"), b"B").expect("铺 b");
+    std::os::unix::fs::symlink("b.md", root.join("l")).expect("铺链接");
+
+    move_across(&root, "a.md", "c.md").expect("🔴 跨盘挪文件没挪成");
+    assert_eq!(std::fs::read(root.join("c.md")).expect("读"), b"A");
+    assert!(std::fs::symlink_metadata(root.join("a.md")).is_err(), "🔴 源没删");
+
+    move_across(&root, "l", "l2").expect("🔴 跨盘挪链接没挪成");
+    assert_eq!(std::fs::read_link(root.join("l2")).expect("落成链接"), Path::new("b.md"));
+    assert!(std::fs::symlink_metadata(root.join("l")).is_err(), "源链接还在");
+    assert_eq!(std::fs::read(root.join("b.md")).expect("b"), b"B", "跟着链接动了它指的那份");
+
+    let err = move_across(&root, "c.md", "b.md").expect_err("🔴 跨盘那一支顶掉了既有文件");
+    assert_eq!(err.code(), "exists", "{err:?}");
+    assert_eq!(std::fs::read(root.join("b.md")).expect("b"), b"B");
+    assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 拷到一半失败 ⇒ 照实说、源一个字节没动、目标没有残留。注入：源里一份读不了（计划只看名字与种类，拷到它才失败）。
+#[test]
+#[cfg(unix)]
+fn a_rename_across_devices_that_fails_midway_leaves_the_source_and_no_target() {
+    use std::os::unix::fs::PermissionsExt as _;
+    if unsafe { libc::geteuid() } == 0 {
+        eprintln!("root 读得了 000 的文件 ⇒ 注入不成立，跳过");
+        return;
+    }
+    let base = temp_root("mvxbad");
+    let root = base.join("cfg");
+    let rels = plant_tree(&root);
+    let bad = root.join("t/a/b/three.md");
+    std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o000)).expect("设不可读");
+    let e = move_across(&root, "t", "u").expect_err("🔴 读不了的源却说挪成了");
+    std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).expect("复原");
+    assert_eq!(e.code(), "io_failed", "{e:?}");
+    assert!(
+        copy_core::copy_matches("beFilesWrite.rename.failed", e.message()),
+        "没说改名失败：{}",
+        e.message()
+    );
+    assert_eq!(still_there(&root, &rels).len(), rels.len(), "🔴 源被动了");
+    assert_eq!(std::fs::read(&bad).expect("读"), b"3");
+    assert!(
+        std::fs::symlink_metadata(root.join("u")).is_err(),
+        "🔴 半截目标留在了盘上"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
 #[test]
 #[cfg(unix)]
 fn delete_removes_files_empty_dirs_links_and_session_files_but_never_a_subtree() {
