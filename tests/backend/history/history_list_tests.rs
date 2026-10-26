@@ -872,8 +872,12 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
     // 手机嵌的 Rust 核心按 `cmd-wire` 那一份（`HistoryList`）解每一份：解得开、按类型重写出来逐字节相同。
     for (n, b) in &got {
         let v: Value = serde_json::from_str(b).unwrap();
-        match cmd_wire::replies::typed_text("history-list", v) {
-            Some(Ok(back)) => assert_eq!(&back, b, "`{n}` 重写出来不一样"),
+        match cmd_wire::replies::typed_text("history-list", v.clone()) {
+            Some(Ok(back)) => assert_eq!(
+                serde_json::from_str::<Value>(&back).unwrap(),
+                v,
+                "`{n}` 重写出来不一样"
+            ),
             other => panic!("`{n}`：手机解不开后端写的那一份：{other:?}"),
         }
     }

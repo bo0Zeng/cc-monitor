@@ -12886,6 +12886,27 @@ data class PlanAckReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanAdopted(
+    val slice: String,
+    val path: String,
+    val switched: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanAdopted> = obj(
+            listOf(
+            Field("slice", { Str }, optional = false, nullable = false),
+            Field("path", { Str }, optional = false, nullable = false),
+            Field("switched", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> PlanAdopted(a[0] as String, a[1] as String, a[2] as Boolean) },
+            { v -> arrayOf(v.slice, v.path, v.switched) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanArchived(
     val id: String,
     val title: String?,
@@ -12917,7 +12938,9 @@ data class PlanBlock(
     val owner: PlanWho?,
     val phase: String?,
     val at: String?,
-    val row: Boolean,
+    val listed: Boolean,
+    val handoff: String?,
+    val handoffError: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12931,10 +12954,12 @@ data class PlanBlock(
             Field("owner", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
             Field("phase", { opt(Str) }, optional = false, nullable = true),
             Field("at", { opt(Str) }, optional = false, nullable = true),
-            Field("row", { Bool }, optional = false, nullable = false),
+            Field("listed", { Bool }, optional = false, nullable = false),
+            Field("handoff", { opt(Str) }, optional = false, nullable = true),
+            Field("handoffError", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean) },
-            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.row) },
+            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?) },
+            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError) },
         )
     }
 }
@@ -12950,14 +12975,13 @@ data class PlanCell(
     val edges: PlanEdges,
     val pointedBy: PlanEdges,
     val files: List<PlanFile>,
-    val evidence: Boolean,
-    val status: String?,
+    val state: List<PlanState>,
+    val stateLine: String?,
+    val evidencedBy: List<String>,
     val statusCode: PlanCellStatusCode?,
-    val why: String?,
+    val undecided: Boolean,
     val whyCode: PlanWhyCode?,
     val whyShort: PlanWhyShort?,
-    val signs: List<PlanSign>,
-    val counts: String?,
     val sets: List<PlanSetsTo>,
     val block: String?,
     val owner: PlanWho?,
@@ -12981,14 +13005,13 @@ data class PlanCell(
             Field("edges", { PlanEdges.ADAPTER }, optional = false, nullable = false),
             Field("pointedBy", { PlanEdges.ADAPTER }, optional = false, nullable = false),
             Field("files", { arr(PlanFile.ADAPTER) }, optional = false, nullable = false),
-            Field("evidence", { Bool }, optional = false, nullable = false),
-            Field("status", { opt(Str) }, optional = false, nullable = true),
+            Field("state", { arr(PlanState.ADAPTER) }, optional = false, nullable = false),
+            Field("stateLine", { opt(Str) }, optional = false, nullable = true),
+            Field("evidencedBy", { arr(Str) }, optional = false, nullable = false),
             Field("statusCode", { opt(PlanCellStatusCode.ADAPTER) }, optional = false, nullable = true),
-            Field("why", { opt(Str) }, optional = false, nullable = true),
+            Field("undecided", { Bool }, optional = false, nullable = false),
             Field("whyCode", { opt(PlanWhyCode.ADAPTER) }, optional = false, nullable = true),
             Field("whyShort", { opt(PlanWhyShort.ADAPTER) }, optional = false, nullable = true),
-            Field("signs", { arr(PlanSign.ADAPTER) }, optional = false, nullable = false),
-            Field("counts", { opt(Str) }, optional = false, nullable = true),
             Field("sets", { arr(PlanSetsTo.ADAPTER) }, optional = false, nullable = false),
             Field("block", { opt(Str) }, optional = false, nullable = true),
             Field("owner", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
@@ -12998,8 +13021,8 @@ data class PlanCell(
             Field("refs", { PlanRefs.ADAPTER }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as Boolean, a[10] as String?, a[11] as PlanCellStatusCode?, a[12] as String?, a[13] as PlanWhyCode?, a[14] as PlanWhyShort?, a[15] as List<PlanSign>, a[16] as String?, a[17] as List<PlanSetsTo>, a[18] as String?, a[19] as PlanWho?, a[20] as PlanWho?, a[21] as List<String>, a[22] as List<String>, a[23] as PlanRefs, a[24] as PlanReturned?) },
-            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.evidence, v.status, v.statusCode, v.why, v.whyCode, v.whyShort, v.signs, v.counts, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned) },
+            { a -> PlanCell(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<String>, a[6] as PlanEdges, a[7] as PlanEdges, a[8] as List<PlanFile>, a[9] as List<PlanState>, a[10] as String?, a[11] as List<String>, a[12] as PlanCellStatusCode?, a[13] as Boolean, a[14] as PlanWhyCode?, a[15] as PlanWhyShort?, a[16] as List<PlanSetsTo>, a[17] as String?, a[18] as PlanWho?, a[19] as PlanWho?, a[20] as List<String>, a[21] as List<String>, a[22] as PlanRefs, a[23] as PlanReturned?) },
+            { v -> arrayOf(v.id, v.title, v.kind, v.body, v.parent, v.children, v.edges, v.pointedBy, v.files, v.state, v.stateLine, v.evidencedBy, v.statusCode, v.undecided, v.whyCode, v.whyShort, v.sets, v.block, v.owner, v.signer, v.covers, v.coveredBy, v.refs, v.returned) },
         )
     }
 }
@@ -13007,8 +13030,6 @@ data class PlanCell(
 enum class PlanCellStatusCode(val wire: String) {
     DONE("done"),
     OPEN("open"),
-    DROPPED("dropped"),
-    EVIDENCE("evidence"),
     ;
 
     companion object {
@@ -13055,11 +13076,34 @@ data class PlanCellViewReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanCheck(
+    val unreadable: List<PlanReadError>,
+    val unparsed: List<String>,
+    val red: List<PlanRed>,
+    val undecidable: List<PlanUndecidable>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanCheck> = obj(
+            listOf(
+            Field("unreadable", { arr(PlanReadError.ADAPTER) }, optional = false, nullable = false),
+            Field("unparsed", { arr(Str) }, optional = false, nullable = false),
+            Field("red", { arr(PlanRed.ADAPTER) }, optional = false, nullable = false),
+            Field("undecidable", { arr(PlanUndecidable.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> PlanCheck(a[0] as List<PlanReadError>, a[1] as List<String>, a[2] as List<PlanRed>, a[3] as List<PlanUndecidable>) },
+            { v -> arrayOf(v.unreadable, v.unparsed, v.red, v.undecidable) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanCmdReply(
     val rc: Long,
     val said: String?,
     val path: String?,
-    val took: PlanTook?,
+    val adopted: PlanAdopted?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13069,10 +13113,10 @@ data class PlanCmdReply(
             Field("rc", { Lng }, optional = false, nullable = false),
             Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("path", { opt(Str) }, optional = false, nullable = true),
-            Field("took", { opt(PlanTook.ADAPTER) }, optional = false, nullable = true),
+            Field("adopted", { opt(PlanAdopted.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanCmdReply(a[0] as Long, a[1] as String?, a[2] as String?, a[3] as PlanTook?) },
-            { v -> arrayOf(v.rc, v.said, v.path, v.took) },
+            { a -> PlanCmdReply(a[0] as Long, a[1] as String?, a[2] as String?, a[3] as PlanAdopted?) },
+            { v -> arrayOf(v.rc, v.said, v.path, v.adopted) },
         )
     }
 }
@@ -13082,8 +13126,6 @@ data class PlanCommandReq(
     val workspace: String,
     val cmd: PlanCommandReqCmd,
     val slice: String? = null,
-    val summary: String? = null,
-    val quotes: List<String>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13093,11 +13135,9 @@ data class PlanCommandReq(
             Field("workspace", { Str }, optional = false, nullable = false),
             Field("cmd", { PlanCommandReqCmd.ADAPTER }, optional = false, nullable = false),
             Field("slice", { opt(Str) }, optional = true, nullable = true),
-            Field("summary", { opt(Str) }, optional = true, nullable = true),
-            Field("quotes", { opt(arr(Str)) }, optional = true, nullable = true),
             ),
-            { a -> PlanCommandReq(a[0] as String, a[1] as PlanCommandReqCmd, a[2] as String?, a[3] as String?, a[4] as List<String>?) },
-            { v -> arrayOf(v.workspace, v.cmd, v.slice, v.summary, v.quotes) },
+            { a -> PlanCommandReq(a[0] as String, a[1] as PlanCommandReqCmd, a[2] as String?) },
+            { v -> arrayOf(v.workspace, v.cmd, v.slice) },
         )
     }
 }
@@ -13105,9 +13145,8 @@ data class PlanCommandReq(
 enum class PlanCommandReqCmd(val wire: String) {
     CONTINUE("continue"),
     PAUSE("pause"),
-    TAKE("take"),
-    VIEW("view"),
-    RECORD("record"),
+    ADOPT("adopt"),
+    RENDER("render"),
     ;
 
     companion object {
@@ -13187,9 +13226,9 @@ data class PlanEdges(
 @Suppress("UNCHECKED_CAST")
 data class PlanFile(
     val path: String,
-    val state: String?,
     val stateCode: PlanFileStateCode?,
     val note: String?,
+    val checkText: String?,
     val alsoBy: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -13198,13 +13237,13 @@ data class PlanFile(
         val ADAPTER: JsonAdapter<PlanFile> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("state", { opt(Str) }, optional = false, nullable = true),
             Field("stateCode", { opt(PlanFileStateCode.ADAPTER) }, optional = false, nullable = true),
             Field("note", { opt(Str) }, optional = false, nullable = true),
+            Field("checkText", { opt(Str) }, optional = false, nullable = true),
             Field("alsoBy", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> PlanFile(a[0] as String, a[1] as String?, a[2] as PlanFileStateCode?, a[3] as String?, a[4] as List<String>) },
-            { v -> arrayOf(v.path, v.state, v.stateCode, v.note, v.alsoBy) },
+            { a -> PlanFile(a[0] as String, a[1] as PlanFileStateCode?, a[2] as String?, a[3] as String?, a[4] as List<String>) },
+            { v -> arrayOf(v.path, v.stateCode, v.note, v.checkText, v.alsoBy) },
         )
     }
 }
@@ -13239,7 +13278,6 @@ data class PlanFileOwner(
     val statusCode: PlanFileOwnerStatusCode?,
     val status: String?,
     val block: String?,
-    val signAtText: String?,
     val fileState: PlanFileOwnerFileState?,
     val fileNote: String?,
     val dup: List<PlanFileDup>,
@@ -13256,13 +13294,12 @@ data class PlanFileOwner(
             Field("statusCode", { opt(PlanFileOwnerStatusCode.ADAPTER) }, optional = false, nullable = true),
             Field("status", { opt(Str) }, optional = false, nullable = true),
             Field("block", { opt(Str) }, optional = false, nullable = true),
-            Field("signAtText", { opt(Str) }, optional = false, nullable = true),
             Field("fileState", { opt(PlanFileOwnerFileState.ADAPTER) }, optional = false, nullable = true),
             Field("fileNote", { opt(Str) }, optional = false, nullable = true),
             Field("dup", { arr(PlanFileDup.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> PlanFileOwner(a[0] as String, a[1] as String, a[2] as String, a[3] as String?, a[4] as PlanFileOwnerStatusCode?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as PlanFileOwnerFileState?, a[9] as String?, a[10] as List<PlanFileDup>) },
-            { v -> arrayOf(v.name, v.id, v.label, v.title, v.statusCode, v.status, v.block, v.signAtText, v.fileState, v.fileNote, v.dup) },
+            { a -> PlanFileOwner(a[0] as String, a[1] as String, a[2] as String, a[3] as String?, a[4] as PlanFileOwnerStatusCode?, a[5] as String?, a[6] as String?, a[7] as PlanFileOwnerFileState?, a[8] as String?, a[9] as List<PlanFileDup>) },
+            { v -> arrayOf(v.name, v.id, v.label, v.title, v.statusCode, v.status, v.block, v.fileState, v.fileNote, v.dup) },
         )
     }
 }
@@ -13282,8 +13319,6 @@ enum class PlanFileOwnerFileState(val wire: String) {
 enum class PlanFileOwnerStatusCode(val wire: String) {
     DONE("done"),
     OPEN("open"),
-    DROPPED("dropped"),
-    EVIDENCE("evidence"),
     ;
 
     companion object {
@@ -13370,7 +13405,6 @@ data class PlanKids(
 data class PlanKind(
     val name: String?,
     val edgeWords: PlanEdgeWords,
-    val evidence: Boolean,
     val values: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -13380,11 +13414,10 @@ data class PlanKind(
             listOf(
             Field("name", { opt(Str) }, optional = false, nullable = true),
             Field("edgeWords", { PlanEdgeWords.ADAPTER }, optional = false, nullable = false),
-            Field("evidence", { Bool }, optional = false, nullable = false),
             Field("values", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> PlanKind(a[0] as String?, a[1] as PlanEdgeWords, a[2] as Boolean, a[3] as List<String>) },
-            { v -> arrayOf(v.name, v.edgeWords, v.evidence, v.values) },
+            { a -> PlanKind(a[0] as String?, a[1] as PlanEdgeWords, a[2] as List<String>) },
+            { v -> arrayOf(v.name, v.edgeWords, v.values) },
         )
     }
 }
@@ -13613,7 +13646,9 @@ data class PlanPendingSet(
     val source: String?,
     val target: String?,
     val value: String?,
-    val whyNot: String?,
+    val op: UserPathOp,
+    val blockedReason: String?,
+    val blockedCode: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13623,10 +13658,12 @@ data class PlanPendingSet(
             Field("source", { opt(Str) }, optional = false, nullable = true),
             Field("target", { opt(Str) }, optional = false, nullable = true),
             Field("value", { opt(Str) }, optional = false, nullable = true),
-            Field("whyNot", { opt(Str) }, optional = false, nullable = true),
+            Field("op", { UserPathOp.ADAPTER }, optional = false, nullable = false),
+            Field("blockedReason", { opt(Str) }, optional = false, nullable = true),
+            Field("blockedCode", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanPendingSet(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as String?) },
-            { v -> arrayOf(v.source, v.target, v.value, v.whyNot) },
+            { a -> PlanPendingSet(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as UserPathOp, a[4] as String?, a[5] as String?) },
+            { v -> arrayOf(v.source, v.target, v.value, v.op, v.blockedReason, v.blockedCode) },
         )
     }
 }
@@ -13635,7 +13672,6 @@ data class PlanPendingSet(
 data class PlanPhase(
     val name: String?,
     val does: String?,
-    val marks: List<String>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13644,10 +13680,9 @@ data class PlanPhase(
             listOf(
             Field("name", { opt(Str) }, optional = false, nullable = true),
             Field("does", { opt(Str) }, optional = false, nullable = true),
-            Field("marks", { arr(Str) }, optional = false, nullable = false),
             ),
-            { a -> PlanPhase(a[0] as String?, a[1] as String?, a[2] as List<String>) },
-            { v -> arrayOf(v.name, v.does, v.marks) },
+            { a -> PlanPhase(a[0] as String?, a[1] as String?) },
+            { v -> arrayOf(v.name, v.does) },
         )
     }
 }
@@ -13655,8 +13690,7 @@ data class PlanPhase(
 @Suppress("UNCHECKED_CAST")
 data class PlanProgress(
     val done: Long,
-    val open: Long,
-    val dropped: Long,
+    val of: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13664,11 +13698,10 @@ data class PlanProgress(
         val ADAPTER: JsonAdapter<PlanProgress> = obj(
             listOf(
             Field("done", { Lng }, optional = false, nullable = false),
-            Field("open", { Lng }, optional = false, nullable = false),
-            Field("dropped", { Lng }, optional = false, nullable = false),
+            Field("of", { Lng }, optional = false, nullable = false),
             ),
-            { a -> PlanProgress(a[0] as Long, a[1] as Long, a[2] as Long) },
-            { v -> arrayOf(v.done, v.open, v.dropped) },
+            { a -> PlanProgress(a[0] as Long, a[1] as Long) },
+            { v -> arrayOf(v.done, v.of) },
         )
     }
 }
@@ -13713,6 +13746,27 @@ data class PlanRead(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanReadError(
+    val file: String?,
+    val line: Long?,
+    val message: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanReadError> = obj(
+            listOf(
+            Field("file", { opt(Str) }, optional = false, nullable = true),
+            Field("line", { opt(Lng) }, optional = false, nullable = true),
+            Field("message", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanReadError(a[0] as String?, a[1] as Long?, a[2] as String?) },
+            { v -> arrayOf(v.file, v.line, v.message) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanReadReq(
     val workspace: String,
 ) : Ordered {
@@ -13725,33 +13779,6 @@ data class PlanReadReq(
             ),
             { a -> PlanReadReq(a[0] as String) },
             { v -> arrayOf(v.workspace) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class PlanRecord(
-    val n: Long?,
-    val summary: String?,
-    val at: String?,
-    val atText: String? = null,
-    val by: PlanWho?,
-    val quotes: List<String>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanRecord> = obj(
-            listOf(
-            Field("n", { opt(Lng) }, optional = false, nullable = true),
-            Field("summary", { opt(Str) }, optional = false, nullable = true),
-            Field("at", { opt(Str) }, optional = false, nullable = true),
-            Field("atText", { opt(Str) }, optional = true, nullable = true),
-            Field("by", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
-            Field("quotes", { arr(Str) }, optional = false, nullable = false),
-            ),
-            { a -> PlanRecord(a[0] as Long?, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as PlanWho?, a[5] as List<String>) },
-            { v -> arrayOf(v.n, v.summary, v.at, v.atText, v.by, v.quotes) },
         )
     }
 }
@@ -14017,6 +14044,7 @@ enum class PlanSessionBlockVia(val wire: String) {
 data class PlanSetsTo(
     val target: String?,
     val value: String?,
+    val op: UserPathOp,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14025,59 +14053,10 @@ data class PlanSetsTo(
             listOf(
             Field("target", { opt(Str) }, optional = false, nullable = true),
             Field("value", { opt(Str) }, optional = false, nullable = true),
+            Field("op", { UserPathOp.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanSetsTo(a[0] as String?, a[1] as String?) },
-            { v -> arrayOf(v.target, v.value) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class PlanSign(
-    val at: String?,
-    val atText: String? = null,
-    val by: PlanWho?,
-    val value: String?,
-    val via: String?,
-    val done: Boolean,
-    val reason: String?,
-    val refs: List<PlanRef>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanSign> = obj(
-            listOf(
-            Field("at", { opt(Str) }, optional = false, nullable = true),
-            Field("atText", { opt(Str) }, optional = true, nullable = true),
-            Field("by", { opt(PlanWho.ADAPTER) }, optional = false, nullable = true),
-            Field("value", { opt(Str) }, optional = false, nullable = true),
-            Field("via", { opt(Str) }, optional = false, nullable = true),
-            Field("done", { Bool }, optional = false, nullable = false),
-            Field("reason", { opt(Str) }, optional = false, nullable = true),
-            Field("refs", { arr(PlanRef.ADAPTER) }, optional = false, nullable = false),
-            ),
-            { a -> PlanSign(a[0] as String?, a[1] as String?, a[2] as PlanWho?, a[3] as String?, a[4] as String?, a[5] as Boolean, a[6] as String?, a[7] as List<PlanRef>) },
-            { v -> arrayOf(v.at, v.atText, v.by, v.value, v.via, v.done, v.reason, v.refs) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class PlanSignAt(
-    val cell: String,
-    val i: Long,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanSignAt> = obj(
-            listOf(
-            Field("cell", { Str }, optional = false, nullable = false),
-            Field("i", { Lng }, optional = false, nullable = false),
-            ),
-            { a -> PlanSignAt(a[0] as String, a[1] as Long) },
-            { v -> arrayOf(v.cell, v.i) },
+            { a -> PlanSetsTo(a[0] as String?, a[1] as String?, a[2] as UserPathOp) },
+            { v -> arrayOf(v.target, v.value, v.op) },
         )
     }
 }
@@ -14089,23 +14068,20 @@ data class PlanSlice(
     val path: String?,
     val current: Boolean,
     val docsOnly: Boolean,
-    val records: List<PlanRecord>,
     val error: String?,
     val stale: PlanStale?,
     val bare: Boolean,
     val kinds: List<PlanKind>,
     val phases: List<PlanPhase>,
-    val done: Boolean,
+    val doneValue: String?,
     val top: List<String>,
     val progress: PlanProgress?,
     val openCells: Long,
-    val recentSigns: List<PlanSignAt>,
     val blocks: List<PlanBlock>,
     val unbuiltBlocks: List<PlanUnbuilt>,
     val unowned: PlanUnowned,
-    val unsplit: List<PlanUnsplit>,
     val pendingSets: List<PlanPendingSet>,
-    val check: Raw,
+    val check: PlanCheck,
     val labels: Map<String, String>,
     val cells: List<PlanCell>,
     val archived: List<PlanArchived>,
@@ -14123,23 +14099,20 @@ data class PlanSlice(
             Field("path", { opt(Str) }, optional = false, nullable = true),
             Field("current", { Bool }, optional = false, nullable = false),
             Field("docsOnly", { Bool }, optional = false, nullable = false),
-            Field("records", { arr(PlanRecord.ADAPTER) }, optional = false, nullable = false),
             Field("error", { opt(Str) }, optional = false, nullable = true),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
             Field("bare", { Bool }, optional = false, nullable = false),
             Field("kinds", { arr(PlanKind.ADAPTER) }, optional = false, nullable = false),
             Field("phases", { arr(PlanPhase.ADAPTER) }, optional = false, nullable = false),
-            Field("done", { Bool }, optional = false, nullable = false),
+            Field("doneValue", { opt(Str) }, optional = false, nullable = true),
             Field("top", { arr(Str) }, optional = false, nullable = false),
             Field("progress", { opt(PlanProgress.ADAPTER) }, optional = false, nullable = true),
             Field("openCells", { Lng }, optional = false, nullable = false),
-            Field("recentSigns", { arr(PlanSignAt.ADAPTER) }, optional = false, nullable = false),
             Field("blocks", { arr(PlanBlock.ADAPTER) }, optional = false, nullable = false),
             Field("unbuiltBlocks", { arr(PlanUnbuilt.ADAPTER) }, optional = false, nullable = false),
             Field("unowned", { PlanUnowned.ADAPTER }, optional = false, nullable = false),
-            Field("unsplit", { arr(PlanUnsplit.ADAPTER) }, optional = false, nullable = false),
             Field("pendingSets", { arr(PlanPendingSet.ADAPTER) }, optional = false, nullable = false),
-            Field("check", { RawJson }, optional = false, nullable = false),
+            Field("check", { PlanCheck.ADAPTER }, optional = false, nullable = false),
             Field("labels", { dict(Str) }, optional = false, nullable = false),
             Field("cells", { arr(PlanCell.ADAPTER) }, optional = false, nullable = false),
             Field("archived", { arr(PlanArchived.ADAPTER) }, optional = false, nullable = false),
@@ -14147,8 +14120,8 @@ data class PlanSlice(
             Field("needCount", { Lng }, optional = false, nullable = false),
             Field("returned", { opt(PlanReturned.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as List<PlanRecord>, a[6] as String?, a[7] as PlanStale?, a[8] as Boolean, a[9] as List<PlanKind>, a[10] as List<PlanPhase>, a[11] as Boolean, a[12] as List<String>, a[13] as PlanProgress?, a[14] as Long, a[15] as List<PlanSignAt>, a[16] as List<PlanBlock>, a[17] as List<PlanUnbuilt>, a[18] as PlanUnowned, a[19] as List<PlanUnsplit>, a[20] as List<PlanPendingSet>, a[21] as Raw, a[22] as Map<String, String>, a[23] as List<PlanCell>, a[24] as List<PlanArchived>, a[25] as List<PlanNeed>, a[26] as Long, a[27] as PlanReturned?) },
-            { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.records, v.error, v.stale, v.bare, v.kinds, v.phases, v.done, v.top, v.progress, v.openCells, v.recentSigns, v.blocks, v.unbuiltBlocks, v.unowned, v.unsplit, v.pendingSets, v.check, v.labels, v.cells, v.archived, v.needs, v.needCount, v.returned) },
+            { a -> PlanSlice(a[0] as String, a[1] as String?, a[2] as String?, a[3] as Boolean, a[4] as Boolean, a[5] as String?, a[6] as PlanStale?, a[7] as Boolean, a[8] as List<PlanKind>, a[9] as List<PlanPhase>, a[10] as String?, a[11] as List<String>, a[12] as PlanProgress?, a[13] as Long, a[14] as List<PlanBlock>, a[15] as List<PlanUnbuilt>, a[16] as PlanUnowned, a[17] as List<PlanPendingSet>, a[18] as PlanCheck, a[19] as Map<String, String>, a[20] as List<PlanCell>, a[21] as List<PlanArchived>, a[22] as List<PlanNeed>, a[23] as Long, a[24] as PlanReturned?) },
+            { v -> arrayOf(v.name, v.domain, v.path, v.current, v.docsOnly, v.error, v.stale, v.bare, v.kinds, v.phases, v.doneValue, v.top, v.progress, v.openCells, v.blocks, v.unbuiltBlocks, v.unowned, v.pendingSets, v.check, v.labels, v.cells, v.archived, v.needs, v.needCount, v.returned) },
         )
     }
 }
@@ -14177,6 +14150,25 @@ data class PlanStale(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanState(
+    val value: String,
+    val count: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanState> = obj(
+            listOf(
+            Field("value", { Str }, optional = false, nullable = false),
+            Field("count", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> PlanState(a[0] as String, a[1] as Long) },
+            { v -> arrayOf(v.value, v.count) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanTitle(
     val waiting: String,
     val approved: String,
@@ -14193,27 +14185,6 @@ data class PlanTitle(
             ),
             { a -> PlanTitle(a[0] as String, a[1] as String, a[2] as String) },
             { v -> arrayOf(v.waiting, v.approved, v.kept) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class PlanTook(
-    val slice: String,
-    val path: String,
-    val switched: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanTook> = obj(
-            listOf(
-            Field("slice", { Str }, optional = false, nullable = false),
-            Field("path", { Str }, optional = false, nullable = false),
-            Field("switched", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> PlanTook(a[0] as String, a[1] as String, a[2] as Boolean) },
-            { v -> arrayOf(v.slice, v.path, v.switched) },
         )
     }
 }
@@ -14276,31 +14247,13 @@ data class PlanUnowned(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class PlanUnsplit(
-    val id: String?,
-    val path: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<PlanUnsplit> = obj(
-            listOf(
-            Field("id", { opt(Str) }, optional = false, nullable = true),
-            Field("path", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> PlanUnsplit(a[0] as String?, a[1] as String?) },
-            { v -> arrayOf(v.id, v.path) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class PlanWho(
     val id: String,
     val kind: PlanWhoKind,
     val sid: String?,
     val needs: String?,
     val face: SessionFace,
+    val label: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -14312,9 +14265,10 @@ data class PlanWho(
             Field("sid", { opt(Str) }, optional = false, nullable = true),
             Field("needs", { opt(Str) }, optional = false, nullable = true),
             Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
+            Field("label", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> PlanWho(a[0] as String, a[1] as PlanWhoKind, a[2] as String?, a[3] as String?, a[4] as SessionFace) },
-            { v -> arrayOf(v.id, v.kind, v.sid, v.needs, v.face) },
+            { a -> PlanWho(a[0] as String, a[1] as PlanWhoKind, a[2] as String?, a[3] as String?, a[4] as SessionFace, a[5] as String?) },
+            { v -> arrayOf(v.id, v.kind, v.sid, v.needs, v.face, v.label) },
         )
     }
 }
@@ -14348,6 +14302,9 @@ sealed interface PlanWhyCode {
     data object Upper : PlanWhyCode {
         override val kind: String get() = "upper"
     }
+    data object Undecided : PlanWhyCode {
+        override val kind: String get() = "undecided"
+    }
 
     companion object {
         val ADAPTER: JsonAdapter<PlanWhyCode> =
@@ -14376,6 +14333,13 @@ sealed interface PlanWhyCode {
                         ),
                         { PlanWhyCode.Upper },
                         { arrayOf("upper") },
+                    )),
+                Variant("undecided", PlanWhyCode.Undecided::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("undecided") }, optional = false, nullable = false),
+                        ),
+                        { PlanWhyCode.Undecided },
+                        { arrayOf("undecided") },
                     )),
                 ),
             )

@@ -237,7 +237,7 @@ class ChatCacheTest {
                     .getValue("s1")
                     .single()
                     .rows
-            assertEquals(mapOf("end" to 20L, "hash" to 0L, "record" to r), grown[1])
+            assertEquals(mapOf("end" to 20L, "record" to r), grown[1])
             assertEquals(Anchor("/p/s1.jsonl", 20, 2, "f1"), cache.anchors["s1"])
         }
 
