@@ -691,7 +691,10 @@ async fn a_header_click_asks_the_backend_for_that_order_and_pages_keep_it() {
     let mut w = testing::window_on(&wired, &root);
     // 一个字母 ⇒ 命中够好几屏（翻页那一段要有下一屏）。
     let q = "a".to_string();
-    assert!(tree.expected(&q).len() > 16, "语料不够两屏，翻页那一段说明不了什么");
+    assert!(
+        tree.expected(&q).len() > 16,
+        "语料不够两屏，翻页那一段说明不了什么"
+    );
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, &q);
     testing::settle(&w.search, before, "相关度那一趟").await;
