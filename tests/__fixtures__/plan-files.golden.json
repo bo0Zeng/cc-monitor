@@ -9,9 +9,8 @@
       "label": "A1-1 甲的读入",
       "title": "甲的读入",
       "statusCode": "done",
-      "status": "做完了",
+      "status": "已签收 2",
       "block": null,
-      "signAtText": "01-02 00:00",
       "fileState": "ok",
       "fileNote": "3 字",
       "dup": []
@@ -22,11 +21,28 @@
       "label": "A2 乙功能",
       "title": "乙功能",
       "statusCode": "open",
-      "status": "没做完",
+      "status": null,
       "block": "乙功能",
-      "signAtText": null,
       "fileState": "ok",
       "fileNote": "6 字",
+      "dup": [
+        {
+          "id": "A2-1",
+          "label": "A2-1 乙的一半",
+          "title": "乙的一半"
+        }
+      ]
+    },
+    {
+      "name": "third.txt",
+      "id": "A7",
+      "label": "A7 丙功能",
+      "title": "丙功能",
+      "statusCode": "open",
+      "status": null,
+      "block": null,
+      "fileState": "missing",
+      "fileNote": null,
       "dup": []
     },
     {
@@ -35,14 +51,15 @@
       "label": "A1-2 甲的写出",
       "title": "甲的写出",
       "statusCode": "open",
-      "status": "没做完",
+      "status": null,
       "block": null,
-      "signAtText": null,
-      "fileState": "missing",
-      "fileNote": "",
+      "fileState": "empty",
+      "fileNote": "0 字",
       "dup": []
     }
   ],
-  "unowned": ["stray.txt"],
+  "unowned": [
+    "stray.txt"
+  ],
   "unownedWhy": null
 }

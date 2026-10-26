@@ -7,7 +7,15 @@ import type { PlanStale } from "./PlanStale";
 /**
  * `plan-read` 的回包：一个工作区的成品。
  */
-export type PlanRead = { pb: string | null, workspace: string, repo: string | null, auto: boolean, 
+export type PlanRead = { pb: string | null, workspace: string, 
+/**
+ * 当前仓库（pb 的 `current_repo`）。
+ */
+repo: string | null, 
+/**
+ * 自动继续开没开（pb 的 `auto_continue`）。
+ */
+auto: boolean, 
 /**
  * 能选的领域（`pb repo` 认得的每一档）。
  */

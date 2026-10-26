@@ -2,9 +2,13 @@
 import type { PlanRef } from "./PlanRef";
 
 /**
- * 判据红的一条。
+ * 校验不通过的一条（pb 的 `failures[]`）。
  */
-export type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, 
+export type PlanRed = { rule: string | null, what: string | null, 
+/**
+ * 该哪个权力范围改。
+ */
+block: string | null, fix: string | null, 
 /**
  * `what` 里提到的格（UTF-16 下标）。
  */

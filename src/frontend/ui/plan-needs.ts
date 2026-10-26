@@ -1,5 +1,5 @@
 /**
- * 计划这一侧的账：每台最后一次 `plan-list`（计划页开页先拿它画）· 每个会话接手的那一块（`bySession`，会话头那一枚标读它）。
+ * 计划这一侧的账：每台最后一次 `plan-list`（计划页开页先拿它画）· 每个会话负责的那个权力范围（`bySession`，会话头那一枚标读它）。
  * 「需手动」里的计划项不在这里数：各台 `sessions-needs` 那一份里有（`needs-book.ts`）。
  *
  * 计划页开着时它问的 `plan-list` 也交进来（同一份）；计划页关着时：起来问一次、那台推「计划变了」且数变了再问、会话结束再问一次。
@@ -14,7 +14,7 @@ export class PlanNeedsBook {
   private readonly listeners = new Set<() => void>();
 
   /** 那台的一份 `plan-list`（计划页问到的也交进来）。 */
-  take(origin: Origin, list: PlanList): void {
+  keep(origin: Origin, list: PlanList): void {
     this.lists.set(origin, list);
     this.emit();
   }
@@ -22,7 +22,7 @@ export class PlanNeedsBook {
   /** 问那台一次；问不到 ⇒ 那台的数作废（不留旧数冒充）。 */
   refresh(origin: Origin): Promise<void> {
     return fetchPlanList(origin, false).then(
-      (list) => this.take(origin, list),
+      (list) => this.keep(origin, list),
       () => {
         if (this.lists.delete(origin)) this.emit();
       },
@@ -44,7 +44,7 @@ export class PlanNeedsBook {
     return this.lists.get(origin) ?? null;
   }
 
-  /** 这个会话接手的那一块（会话头那一枚标）；不是哪一块的接手 ⇒ `null`。 */
+  /** 这个会话负责的那个权力范围（会话头那一枚标）；不负责哪一个 ⇒ `null`。 */
   sessionBlock(origin: Origin, sid: string): (PlanSessionBlock & { workspace: string }) | null {
     for (const ws of this.lists.get(origin)?.workspaces ?? []) {
       const b = ws.bySession[sid];

@@ -1,5 +1,5 @@
 /**
- * 计划页三件里界面那一半：接过仓库那一问的形状 · 退回框对已结束的接手改成［恢复并退回］· 设置里 pb 路径那一行（先问那台能不能用，能用才存）。
+ * 计划页三件里界面那一半：接过仓库（pb 的 `adopt`）那一问的形状 · 退回框对已结束的负责人改成［恢复并退回］· 设置里 pb 路径那一行（先问那台能不能用，能用才存）。
  * 判定都在后端；这里只钉界面把人的那一下原样交给后端、按回包画。期望手写，夹具是合成的中性例子。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,8 +26,8 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
   },
 }));
 
-import { takeRepo } from "../../../src/frontend/ui/plan-reads.ts";
-import { openRecord, openReturn, type ReviewHost, type ReturnTarget } from "../../../src/frontend/ui/views/plan-review.ts";
+import { adoptRepo } from "../../../src/frontend/ui/plan-reads.ts";
+import { openReturn, type ReviewHost, type ReturnTarget } from "../../../src/frontend/ui/views/plan-review.ts";
 import { pbDirRow } from "../../../src/frontend/ui/settings/pb-dir-row.ts";
 import type { PlanSlice, PlanWho } from "../../../src/frontend/ui/plan-reads.ts";
 
@@ -40,15 +40,15 @@ afterEach(() => {
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("接过仓库", () => {
-  it("带片名交 `take`，回包里接到的那一片原样给出", async () => {
-    reply = { rc: 0, said: "接过来了", path: null, took: { slice: "ledger", path: "repos/ledger", switched: true } };
-    const r = await takeRepo("<local>", "/work", "ledger");
-    expect(calls).toEqual([{ op: "plan-command", body: { workspace: "/work", cmd: "take", slice: "ledger" } }]);
-    expect(r.took).toEqual({ slice: "ledger", path: "repos/ledger", switched: true });
+  it("带仓库名交 `adopt`，回包里接过来的那一个原样给出", async () => {
+    reply = { rc: 0, said: "接过来了", path: null, adopted: { slice: "ledger", path: "repos/ledger", switched: true } };
+    const r = await adoptRepo("<local>", "/work", "ledger");
+    expect(calls).toEqual([{ op: "plan-command", body: { workspace: "/work", cmd: "adopt", slice: "ledger" } }]);
+    expect(r.adopted).toEqual({ slice: "ledger", path: "repos/ledger", switched: true });
   });
-  it("回包没说接到哪一片 ⇒ 不当成了", async () => {
-    reply = { rc: 0, said: "x", path: null, took: null };
-    await expect(takeRepo("<local>", "/work", "ledger")).rejects.toThrow();
+  it("回包没说接过来的是哪一个 ⇒ 不当成了", async () => {
+    reply = { rc: 0, said: "x", path: null, adopted: null };
+    await expect(adoptRepo("<local>", "/work", "ledger")).rejects.toThrow();
   });
 });
 
@@ -81,7 +81,7 @@ async function sendReturn(alive: boolean): Promise<{ action: string; note: HTMLE
   return { action, note };
 }
 
-describe("退回框：接手已结束", () => {
+describe("退回框：负责人已结束", () => {
   it("主按钮是［恢复并退回］、框里说一句，送出带 `resume`", async () => {
     const { action, note } = await sendReturn(false);
     expect(action).toBe("plan.return.resumeSend");
@@ -90,7 +90,7 @@ describe("退回框：接手已结束", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].body).toMatchObject({ id: "A1", to: "owner", resume: true });
   });
-  it("接手还活着 ⇒ 照旧［退回］、不带 `resume`", async () => {
+  it("负责人还活着 ⇒ 照旧［退回］、不带 `resume`", async () => {
     const { action, note } = await sendReturn(true);
     expect(action).toBe("plan.return.send");
     expect(note?.hidden).toBe(true);
@@ -130,25 +130,5 @@ describe("设置里 pb 路径那一行", () => {
   });
   it("带锚，计划页「未装」那一屏跳得过来", () => {
     expect(pbDirRow("<local>").row.dataset.anchor).toBe("pb-dir");
-  });
-});
-
-describe("记原话框", () => {
-  it("裁定与原话都有字才放行；原话一行一句、去掉空行，记进看着的那一片", async () => {
-    reply = { rc: 0, said: "记下了 原话 1", path: null, took: null };
-    openRecord(host, slice);
-    const ok = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "") === "plan.record.save")!;
-    expect(ok.getAttribute("aria-disabled")).toBe("true");
-    const sum = document.querySelector<HTMLInputElement>("input.plan-record-summary")!;
-    sum.value = " 读写分两半 ";
-    sum.dispatchEvent(new Event("input"));
-    expect(ok.getAttribute("aria-disabled")).toBe("true");
-    const ta = document.querySelector<HTMLTextAreaElement>("textarea.plan-record-quotes")!;
-    ta.value = "分开做\n\n 先读后写 ";
-    ta.dispatchEvent(new Event("input"));
-    expect(ok.getAttribute("aria-disabled")).toBeNull();
-    ok.click();
-    await flush();
-    expect(calls).toEqual([{ op: "plan-command", body: { workspace: "/work", cmd: "record", slice: "ledger", summary: "读写分两半", quotes: ["分开做", "先读后写"] } }]);
   });
 });

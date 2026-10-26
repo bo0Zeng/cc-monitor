@@ -1,5 +1,5 @@
 /**
- * 计划「需手动」那一侧的排版：详情 / 概览顶上那一条（四种：顶块走到看全局 · 判据红 · agent 提问 · 接手的会话停了）·
+ * 计划「需手动」那一侧的排版：详情 / 概览顶上那一条（四种：顶层全签收 · 校验不通过 · agent 提问 · 负责人的会话停了）·
  * 退回过的那一格的「已退回 / 已落地」· 退回框。哪一条算不算、认可记在哪、那一行怎么拼、能不能送，全在后端；这里只排版、只转发。
  */
 import { button } from "../kit/button";
@@ -9,7 +9,7 @@ import { toast, failToast } from "../kit/toast";
 import { writeClipboard } from "../clipboard";
 import { copyText } from "../copy-table";
 import { saidOf } from "../kit/detail";
-import { recordQuote, returnCell, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
+import { returnCell, type PlanCell, type PlanNeed, type PlanReturned, type PlanSlice, type PlanWho } from "../plan-reads";
 import { blockRoots, cellIndex } from "./plan-model";
 import { isLive } from "../face-can";
 import s from "./plan-review.module.css";
@@ -56,9 +56,9 @@ export function needBar(host: ReviewHost, slice: PlanSlice, need: PlanNeed, pos:
   if (need.kind === "top") {
     title.append(copyText("plan.review.topDone"));
     const p = slice.progress;
-    body.push(copyText("plan.review.topDoneWhat", { phase: blk?.phase ?? "", done: p?.done ?? 0, of: (p?.done ?? 0) + (p?.open ?? 0) }));
+    body.push(copyText("plan.review.topDoneWhat", { phase: blk?.phase ?? "", done: p?.done ?? 0, of: p?.of ?? 0 }));
     acts.push(ackBtn());
-    // 顶块在 pb 里与格同样可寻址（`project`）⇒ 退回它 ＝ 送给顶块接手（后端拼那一行、判落地）。
+    // project 在 pb 里与节点同样可寻址 ⇒ 退回它 ＝ 送给 project 的负责人（后端拼那一行、判落地）。
     const top = topTarget(slice, need);
     if (top) acts.push(button({ label: copyText("plan.review.return"), icon: "send", size: "compact", onClick: () => openReturn(host, slice, top) }));
   } else if (need.kind === "red") {
@@ -313,55 +313,5 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
     }
   });
   sync();
-  void h.done;
-}
-
-/**
- * 记原话框：人写下「裁定」（一行）与原话（一行一句，照抄），后端以人的身份代敲 `pb record --slice`，记进看着的那一片（工作区的当前片不动）。
- * 两样都要有字才放行；记下之后重读这个工作区（原话列表跟着多一条）。
- */
-export function openRecord(host: ReviewHost, slice: PlanSlice): void {
-  const box = document.createElement("div");
-  box.className = s.rvForm;
-  const sumHead = document.createElement("div");
-  sumHead.className = s.rvFormHead;
-  const sumLabel = document.createElement("label");
-  sumLabel.textContent = copyText("plan.record.summary");
-  sumHead.appendChild(sumLabel);
-  const sum = document.createElement("input");
-  sum.type = "text";
-  sum.className = `${s.rvText} plan-record-summary`;
-  sumLabel.htmlFor = sum.id = "plan-record-summary";
-  const qHead = document.createElement("div");
-  qHead.className = s.rvFormHead;
-  const qLabel = document.createElement("label");
-  qLabel.textContent = copyText("plan.record.quotes");
-  qHead.appendChild(qLabel);
-  const ta = document.createElement("textarea");
-  ta.className = `${s.rvText} plan-record-quotes`;
-  ta.rows = 4;
-  qLabel.htmlFor = ta.id = "plan-record-quotes";
-  box.append(sumHead, sum, qHead, ta);
-  const quotes = (): string[] => ta.value.split("\n").map((q) => q.trim()).filter(Boolean);
-  const h = formDialog({
-    title: copyText("plan.record.title", { slice: slice.name }),
-    action: copyText("plan.record.save"),
-    body: box,
-    wide: true,
-    first: () => sum,
-    blocked: () => (sum.value.trim() === "" ? copyText("plan.record.summary") : quotes().length === 0 ? copyText("plan.record.quotes") : null),
-    dirty: () => sum.value.trim() !== "" || ta.value.trim() !== "",
-    submit: async () => {
-      try {
-        await recordQuote(host.origin(), host.workspace(), slice.name, sum.value.trim(), quotes());
-        toast(copyText("plan.record.done"), "", { level: "success" });
-        host.reread();
-        return null;
-      } catch (e) {
-        return saidOf(e);
-      }
-    },
-  });
-  for (const el of [sum, ta]) el.addEventListener("input", () => h.refresh());
   void h.done;
 }

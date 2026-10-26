@@ -251,15 +251,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 历史页那一列（`src/frontend/ui/history-list-reads.ts::fetchBrowse`）：几台在本机后端并成一列、按看得见的那一窗答。
     ("history-browse", "新帧命令：几台的清单在本机后端并成一列（`history_browse.rs`），界面只问 `<local>` 看得见的那一窗；取代界面里逐台问、按 `at` 并"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
-    ("plan-list", "新帧命令：这台的 pb 工作区与片（找 pb · 跑 pb dump 在后端）；计划页只排版"),
-    ("plan-read", "新帧命令：一个工作区的成品（接手 / 签收人对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),
-    ("plan-cell-view", "新帧命令：一格的 agent 视角（pb 原样那一段）；计划页详情折着的那一段只排版"),
+    ("plan-list", "新帧命令：这台的 pb 工作区与仓库（找 pb · 跑 pb dump 在后端）；计划页只排版"),
+    ("plan-read", "新帧命令：一个工作区的成品（负责人 / signer 对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),
+    ("plan-cell-view", "新帧命令：一个节点的 agent 视角（pb 原样那一段）；计划页详情折着的那一段只排版"),
     ("plan-ack", "新帧命令：认可一条需手动（只记在 cc-monitor，键带条目版本，后端判）；计划页那一条只排版"),
     ("plan-unack", "新帧命令：撤掉认可（toast［撤销］那一下）；计划页只排版"),
     ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
     // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
     ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
-    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · take · view（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · adopt · render（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］只排版"),
     ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
     // 登录抽屉（`src/frontend/ui/login-reads.ts`）：在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
     ("login-start", "帧命令（内建档，跟着发起它的那条连接走）：起一趟登录，回登录链接 · 粘什么 · 会不会自己登完；登录抽屉只排版"),

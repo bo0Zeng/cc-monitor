@@ -1,7 +1,7 @@
 //! 认可 · 退回记录那份后端自有文件：写完读回 · 认可只留此刻还在的键 · 读不懂不覆盖 · 照它给成品标认可与退回的状态。
 
 use super::*;
-use crate::plan::fixture::{dump, scratch, who, MAIN};
+use crate::plan::fixture::{dump, dump_top_signed, scratch, who, MAIN};
 
 fn file(tag: &str) -> PathBuf {
     scratch(tag).join(".cc-monitor").join("plan-review.json")
@@ -96,11 +96,11 @@ fn an_unreadable_file_is_never_overwritten() {
 #[test]
 fn annotate_marks_acks_counts_and_return_states_on_the_product() {
     let b = crate::plan::book::Book::default();
-    let raw = dump("/w").to_string().into_bytes();
+    let raw = dump_top_signed("/w").to_string().into_bytes();
     let mut doc = b
-        .take(
+        .ingest(
             crate::plan::dump::Ran::Dump {
-                doc: dump("/w"),
+                doc: dump_top_signed("/w"),
                 raw,
             },
             Path::new("/w"),
@@ -118,22 +118,22 @@ fn annotate_marks_acks_counts_and_return_states_on_the_product() {
     current(Some(&f)).annotate(&mut doc);
     let sl = &doc.slices[0];
     assert!(sl.needs.iter().find(|n| n.kind == "top").unwrap().acked);
-    // 顶块已认可 ⇒ 剩判据红那一条（问人那两条不算）。
+    // top 已认可 ⇒ 剩不通过那一条（问人那两条不算）。
     assert_eq!(sl.need_count, 1);
-    // 整个工作区：alpha 那一条 ＋ beta 那一片的判据红一条。
-    assert_eq!(doc.need_count, 2);
+    // 整个工作区：alpha 那一条（beta 没有要看的）。
+    assert_eq!(doc.need_count, 1);
     let back = sl.cells[0].returned.as_ref().unwrap();
     assert_eq!(back.state, "returned");
     assert_eq!(back.to.as_ref().and_then(|t| t.sid.as_deref()), Some(MAIN));
     assert_eq!(sl.cells[1].returned, None);
 }
 
-/// 退回过顶块（project）⇒ 那一片顶上带 `returned`：顶层多出退回之后新建的一格 ⇒ 已落地（带那一格的标题）；没退回过 ⇒ `null`。
+/// 退回过 project ⇒ 那一片顶上带 `returned`：顶层多出退回之后新建的一格 ⇒ 已落地（带那一格的标题）；没退回过 ⇒ `null`。
 #[test]
 fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
     let b = crate::plan::book::Book::default();
     let take = |b: &crate::plan::book::Book| {
-        b.take(
+        b.ingest(
             crate::plan::dump::Ran::Dump {
                 doc: dump("/w"),
                 raw: dump("/w").to_string().into_bytes(),
@@ -160,8 +160,10 @@ fn a_return_of_the_top_block_lands_when_a_new_top_cell_appears() {
     assert_eq!(got["child"]["title"], "乙功能");
     assert_eq!(got["to"]["sid"], MAIN);
     let mut r = rec(6);
-    r.children = ["A1", "A2", "A3", "A4", "A5"].map(String::from).to_vec();
-    // 顶块没有正文：记下的摘要是空正文那一份（送的那一刻也是这么记的）。
+    r.children = ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]
+        .map(String::from)
+        .to_vec();
+    // project 没有正文：记下的摘要是空正文那一份（送的那一刻也是这么记的）。
     r.body = crate::plan::needs::body_digest(None);
     returned_at(&own_of(&f), "/w", "alpha", "project", r).unwrap();
     let mut doc = take(&b);

@@ -1,11 +1,12 @@
 /**
  * **计划页**：主窗口上的全屏视图，跟历史页同形。
  *
- * - 页头：所有片（同一工作区的挨着；别的机器的带机器徽标）· 按标题找 · 自动接着做 · ［整张图］· 返回。
- * - 子头：工作区 · 顶块接手 · 阶段 · 站在 · 判据 N 红 · 过滤三枚（全部 · 没做完 · 要你看）。
- * - 左：大纲（只写标题；状态图标 · 类一道颜色 ＋ 一个词 · 行尾原因 / 接手 / 阶段）；底下类的图例与「不做了的 藏起」。
- * - 右：没选格 ⇒ 概览（块 · 顶层进度 · 最近签收）；选了 ⇒ 那一格的详情（`plan-cell.ts`）；
- *   概览「最近签收 · 全部 N」⇒ 签收流（整片的签收按时间排成一条、新的在上、按标题找；不进需手动）。
+ * 代码里片 · 块 · 格 ＝ pb 0.5 的仓库 · 权力范围 · 节点（给人看的字照 pb 的叫法，在文案表里）。
+ * - 页头：所有仓库（同一工作区的挨着；别的机器的带机器徽标）· 按标题找 · 自动继续 · ［接过仓库…］（只做计划的）·［整张图］（pb render）· 返回。
+ * - 子头：工作区 · project 的负责人 · 阶段 · 站在 · N 条不通过 · 判不了的节点 · 过滤三枚（全部 · 没签收的 · 需手动）。
+ * - 左：大纲（只写标题；状态图标 · 类一道颜色 ＋ 一个词 · 行尾原因短词 / 负责人 / 阶段）；底下类的图例与圈。
+ * - 右：没选节点 ⇒ 概览（权力范围 · 顶层进度）；选了 ⇒ 那个节点的详情（`plan-cell.ts`，没人接着的根节点带交接说明）。
+ * - 新登记、还没有图的仓库 ⇒ 整页一屏，带 project 的交接说明（不带认领码，码找人要；本页不替人敲 `pb reissue`）。
  *
  * 数据：每台问 `plan-list`，选中的那一片所在的工作区问 `plan-read`；那台推 `plan-changed` ⇒ 摘要变了才重问。
  * 判定全在后端；这里只排版、只认最后一趟回答。
@@ -35,7 +36,7 @@ import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { titleParts } from "../session-face";
 import { faceOf } from "../face-can";
-import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, takeRepo, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
+import { ackNeed, adoptRepo, fetchPlanList, fetchPlanRead, planCommand, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
@@ -43,10 +44,8 @@ import {
   isFresh,
   kindSlot,
   labelOf,
-  lastSign,
   outlineRows,
   shortId,
-  recentSigns,
   ringRules,
   ringsOf,
   statusLook,
@@ -54,8 +53,8 @@ import {
   type PlanFilter,
   type Ring,
 } from "./plan-model";
-import { CellDetail } from "./plan-cell";
-import { cellTarget, needBar, openNeeds, openRecord, openReturn, returnedBar, type ReviewHost } from "./plan-review";
+import { CellDetail, handoffBox } from "./plan-cell";
+import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
@@ -68,14 +67,13 @@ import s from "./plan.module.css";
 interface Prefs {
   /** 上次看的那一片：`机器 \u0000 工作区 \u0000 片名`。 */
   last?: string;
-  hideDropped: boolean;
   /** 手加的工作区目录（每台一份；`""` ＝ 本机）。 */
   dirs: Record<string, string[]>;
 }
 
 function loadPrefs(): Prefs {
   const v = safeGetJson<Partial<Prefs>>(LS_KEYS.planPrefs) ?? {};
-  return { last: typeof v.last === "string" ? v.last : undefined, hideDropped: v.hideDropped === true, dirs: v.dirs && typeof v.dirs === "object" ? v.dirs : {} };
+  return { last: typeof v.last === "string" ? v.last : undefined, dirs: v.dirs && typeof v.dirs === "object" ? v.dirs : {} };
 }
 
 /** 一台此刻的样子。 */
@@ -126,9 +124,6 @@ export class PlanView {
   private query = "";
   private folded = new Set<string>();
   private selected: string | null = null;
-  /** 右栏在签收流上（没选格时）；那一栏自己的「按标题找」。 */
-  private signsOpen = false;
-  private signsQuery = "";
   private seq = 0;
   private autoFail: string | null = null;
   private renderQueued = false;
@@ -144,7 +139,7 @@ export class PlanView {
   constructor() {
     this.detail = new CellDetail({
       select: (id) => this.select(id),
-      who: (w, signer) => this.whoChip(w, signer),
+      who: (w) => this.whoChip(w),
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,
       workspace: () => this.current?.workspace ?? "",
       switchTo: (sid) => this.goSession(sid),
@@ -192,7 +187,6 @@ export class PlanView {
   async openAt(origin: Origin, workspace: string, slice: string, cell: string | null): Promise<void> {
     this.current = { origin, workspace, name: slice };
     this.selected = cell;
-    this.signsOpen = false;
     this.atItem = null;
     // 已经开着（文件窗口那一下常是这样）⇒ 就地换到那一片那一格。
     if (this.isOpen) this.afterList();
@@ -225,16 +219,12 @@ export class PlanView {
     dispatcher.popOverlay(this.layer);
   }
 
-  /** Esc 一次一层：搜索框有字 ⇒ 清空 ＞ 选着格 / 在签收流上 ⇒ 回概览 ＞ 关页。 */
+  /** Esc 一次一层：搜索框有字 ⇒ 清空 ＞ 选着格 ⇒ 回概览 ＞ 关页。 */
   private handleEsc(): boolean {
     if (this.searchInput.value) {
       this.searchInput.value = "";
       this.query = "";
       this.render();
-      return true;
-    }
-    if (this.signsOpen && this.selected === null) {
-      this.openSigns(false);
       return true;
     }
     if (this.selected !== null) {
@@ -273,7 +263,7 @@ export class PlanView {
         (list) => {
           if (seq !== this.seq && only === undefined) return;
           this.per.set(m, { state: "ok", list, at: Date.now() });
-          this.book?.take(m, list);
+          this.book?.keep(m, list);
           this.afterList();
         },
         (e: unknown) => {
@@ -364,7 +354,6 @@ export class PlanView {
     this.prefs.last = refKey(ref);
     this.savePrefs();
     this.selected = null;
-    this.signsOpen = false;
     this.folded.clear();
     this.autoFail = null;
     this.afterList();
@@ -373,16 +362,7 @@ export class PlanView {
   private select(id: string | null): void {
     this.selected = id;
     this.atItem = null;
-    this.signsOpen = false;
     this.render();
-  }
-
-  /** 右栏换到签收流（`false` ⇒ 回概览）。 */
-  private openSigns(on: boolean): void {
-    this.selected = null;
-    this.signsOpen = on;
-    this.signsQuery = "";
-    this.renderBody();
   }
 
   /** 经 Ctrl J 开的那一条：读回来了 ⇒ 选中它所在的格（顶块那一种没有格 ⇒ 概览）。 */
@@ -521,7 +501,7 @@ export class PlanView {
         parts.push(f);
       }
       const slice = this.currentSlice();
-      if (slice?.docsOnly) parts.push(this.takeButton(slice));
+      if (slice?.docsOnly) parts.push(this.adoptButton(slice));
       parts.push(this.wholeButton());
     }
     parts.push(button({ label: copyText("plan.page.back"), kind: "ghost", onClick: () => this.close() }));
@@ -553,7 +533,7 @@ export class PlanView {
     if (slice.progress) {
       const n = document.createElement("span");
       n.className = s.pvNum;
-      n.textContent = `${slice.progress.done}/${slice.progress.done + slice.progress.open}`;
+      n.textContent = `${slice.progress.done}/${slice.progress.of}`;
       b.appendChild(n);
     }
     b.addEventListener("click", () => this.pick(ref));
@@ -595,36 +575,36 @@ export class PlanView {
     return b;
   }
 
-  /** 只写文档的那一片：［接过仓库…］＝ 以人的身份代敲 pb 的 `take`（退不回 ⇒ 先问一句）；接到哪一片照回包说。 */
-  private takeButton(slice: PlanSlice): HTMLButtonElement {
+  /** 只做计划的那个仓库：［接过仓库…］＝ 以人的身份代敲 pb 的 `adopt`（退不回 ⇒ 先问一句）；接过来的是哪一个照回包说。 */
+  private adoptButton(slice: PlanSlice): HTMLButtonElement {
     const b = button({
-      label: copyText("plan.take.open"),
+      label: copyText("plan.adopt.open"),
       icon: "folder",
-      hint: copyText("plan.take.hint", { path: slice.path ?? "" }),
-      onClick: () => void this.takeRepo(b, slice),
+      hint: copyText("plan.adopt.hint", { path: slice.path ?? "" }),
+      onClick: () => void this.adoptRepo(b, slice),
     });
-    b.dataset.act = "take";
+    b.dataset.act = "adopt";
     return b;
   }
 
-  private async takeRepo(b: HTMLButtonElement, slice: PlanSlice): Promise<void> {
+  private async adoptRepo(b: HTMLButtonElement, slice: PlanSlice): Promise<void> {
     const cur = this.current;
     if (!cur) return;
     const ok = await confirmDialog({
-      title: copyText("plan.take.title", { slice: slice.name }),
-      action: copyText("plan.take.action"),
-      body: copyText("plan.take.body", { path: slice.path ?? "" }),
-      note: slice.current ? undefined : copyText("plan.take.switchNote", { slice: slice.name }),
+      title: copyText("plan.adopt.title", { slice: slice.name }),
+      action: copyText("plan.adopt.action"),
+      body: copyText("plan.adopt.body", { path: slice.path ?? "" }),
+      note: slice.current ? undefined : copyText("plan.adopt.switchNote", { slice: slice.name }),
     });
     if (!ok) return;
     b.disabled = true;
     try {
-      const r = await takeRepo(cur.origin, cur.workspace, slice.name);
-      const took = r.took;
-      toast(copyText("plan.take.done", { slice: took.slice, path: took.path }), took.switched ? copyText("plan.take.switched", { slice: took.slice }) : "", { level: "success" });
+      const r = await adoptRepo(cur.origin, cur.workspace, slice.name);
+      const got = r.adopted;
+      toast(copyText("plan.adopt.done", { slice: got.slice, path: got.path }), got.switched ? copyText("plan.adopt.switched", { slice: got.slice }) : "", { level: "success" });
       this.refresh(false, cur.origin);
     } catch (e) {
-      failToast(copyText("plan.take.failed"), e);
+      failToast(copyText("plan.adopt.failed"), e);
     } finally {
       b.disabled = false;
     }
@@ -635,7 +615,7 @@ export class PlanView {
     if (!cur) return;
     b.disabled = true;
     try {
-      const r = await planCommand(cur.origin, cur.workspace, "view");
+      const r = await planCommand(cur.origin, cur.workspace, "render");
       if (!r.path) throw new ControlError(r.said ?? "");
       await openPath(r.path);
       toast(copyText("plan.page.wholeOpened"), "", { level: "success" });
@@ -678,6 +658,13 @@ export class PlanView {
       red.className = s.pvRed;
       red.append(icon("warning", "compact"), document.createTextNode(copyText("plan.sub.red", { n: slice.check.red.length })));
       parts.push(red);
+    }
+    // 元数据坏了、编号还认得出的节点：pb 判不了，不在大纲里 ⇒ 子头照编号列出来。
+    if (slice.check.unparsed.length > 0) {
+      const un = document.createElement("span");
+      un.className = `${s.pvRed} plan-unparsed`;
+      un.append(icon("warning", "compact"), document.createTextNode(copyText("plan.check.unparsed", { list: slice.check.unparsed.join(copyText("plan.page.listSep")) })));
+      parts.push(un);
     }
     parts.push(spacer(), this.filterChips(slice));
     this.subEl.replaceChildren(...parts);
@@ -735,6 +722,8 @@ export class PlanView {
     const slice = this.currentSlice();
     if (doc?.stale) out.push(banner("error", joinSep(copyText("plan.strip.unreadable", { reason: doc.stale.said ?? "" }), copyText("plan.strip.stale", { time: doc.stale.sinceText ?? "" }))));
     else if (slice?.stale) out.push(banner("error", joinSep(copyText("plan.strip.sliceUnreadable", { reason: slice.stale.said ?? "" }), copyText("plan.strip.stale", { time: slice.stale.sinceText ?? "" }))));
+    // pb 读不成的几处（哪一份 · 第几行 · pb 那一句）：那一片照读出来的画，这几处照实列在顶上。
+    for (const e of slice?.check.unreadable ?? []) out.push(banner("warn", joinSep(copyText("plan.check.unreadable", { file: e.line === null ? (e.file ?? "") : `${e.file ?? ""}:${e.line}` }), e.message ?? "")));
     this.stripsEl.replaceChildren(...out);
   }
 
@@ -763,18 +752,18 @@ export class PlanView {
       morph(this.bodyEl, [tree, pane]);
       return;
     }
-    // 新开的一片还没有图：整页一屏（没有大纲可画）。
+    // 新登记的仓库还没有图：整页一屏（没有大纲可画）＋ project 的交接说明。
     if (isFresh(slice)) {
       const ref = this.current!;
       this.bodyEl.className = s.pvWhole;
-      morph(this.bodyEl, [freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd }))]);
+      const top = topBlock(slice);
+      morph(this.bodyEl, [freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd }), top ? handoffBox(top) : undefined)]);
       return;
     }
     tree.append(this.outline(slice), this.legend(slice));
     const cell = this.selected ? cellIndex(slice).get(this.selected) : undefined;
     if (!cell && this.selected) this.selected = null;
     if (cell) pane.append(...this.reviewBars(slice, cell), this.detail.render(slice, cell, this.currentDoc()?.rev ?? ""));
-    else if (this.signsOpen) pane.appendChild(this.signsFlow(slice));
     else pane.append(...this.reviewBars(slice, cell), this.overview(slice));
     morph(this.bodyEl, [tree, pane]);
   }
@@ -830,13 +819,12 @@ export class PlanView {
     hd.textContent = slice.name;
     const trail = document.createElement("span");
     trail.className = s.pvTrail;
-    if (slice.progress) trail.textContent = copyText("plan.outline.rootProgress", { done: slice.progress.done, of: slice.progress.done + slice.progress.open });
+    if (slice.progress) trail.textContent = copyText("plan.outline.rootProgress", { done: slice.progress.done, of: slice.progress.of });
     head.append(icon("plan", "compact"), hd, trail);
     head.addEventListener("click", () => this.select(null));
     box.appendChild(head);
     const rows = outlineRows(slice, {
       filter: this.filter,
-      hideDropped: this.prefs.hideDropped,
       folded: this.folded,
       query: this.query,
       needsCells: new Set((slice.needs ?? []).map((n) => n.cell).filter((x): x is string => x !== null)),
@@ -888,7 +876,7 @@ export class PlanView {
     st.className = s.pvSt;
     st.dataset.look = look;
     st.appendChild(icon(STATUS_ICON[look], "compact"));
-    st.setAttribute("aria-label", c.status ?? "");
+    st.setAttribute("aria-label", c.stateLine ?? c.whyShort?.text ?? "");
     const bar = document.createElement("span");
     bar.className = s.pvKbar;
     const tt = document.createElement("span");
@@ -899,18 +887,15 @@ export class PlanView {
     kw.textContent = c.kind ?? "";
     const trail = document.createElement("span");
     trail.className = s.pvTrail;
-    if (look === "open") {
-      const w = c.whyShort;
-      if (w) {
-        const why = document.createElement("span");
-        why.className = s.pvWhy;
-        if (w.wait) why.dataset.wait = "true";
-        why.textContent = w.text;
-        trail.appendChild(why);
-      }
-    } else if (look === "done" && c.children.length === 0) {
-      const g = lastSign(c);
-      if (g?.atText) trail.appendChild(document.createTextNode(g.atText));
+    // 没签收 · 待定没人定 ⇒ 后端写好的那一个短词；签收了 ⇒ 不写（状态图标已说）。
+    const w = c.whyShort;
+    if (w) {
+      const why = document.createElement("span");
+      why.className = s.pvWhy;
+      if (w.wait) why.dataset.wait = "true";
+      if (c.undecided) why.dataset.undecided = "true";
+      why.textContent = w.text;
+      trail.appendChild(why);
     }
     if ((slice.needs ?? []).some((n) => n.cell === c.id)) {
       const d = document.createElement("span");
@@ -941,19 +926,6 @@ export class PlanView {
       it.textContent = k.name ?? "";
       box.appendChild(it);
     });
-    const dropped = document.createElement("span");
-    dropped.append(document.createTextNode(`${copyText("plan.legend.dropped")} `));
-    const t = document.createElement("button");
-    t.type = "button";
-    t.className = `${s.pvLink} plan-hide-dropped`;
-    t.textContent = this.prefs.hideDropped ? copyText("plan.legend.show") : copyText("plan.legend.hide");
-    t.addEventListener("click", () => {
-      this.prefs.hideDropped = !this.prefs.hideDropped;
-      this.savePrefs();
-      this.renderBody();
-    });
-    dropped.appendChild(t);
-    box.appendChild(dropped);
     // 圈：画圈的每条规矩一项（同括弧一色），点了去那一格。
     const rules = ringRules(slice);
     if (rules.length > 0) {
@@ -991,7 +963,7 @@ export class PlanView {
     if (slice.domain) h1.appendChild(phaseBadge(slice.domain));
     if (slice.progress) {
       const p = slice.progress;
-      h1.appendChild(text(copyText("plan.overview.top", { done: p.done, of: p.done + p.open, dropped: p.dropped }), s.pvMeta));
+      h1.appendChild(text(copyText("plan.overview.top", { done: p.done, of: p.of }), s.pvMeta));
     }
     box.appendChild(h1);
     const doc = this.currentDoc();
@@ -1035,132 +1007,23 @@ export class PlanView {
       const stw = document.createElement("span");
       stw.className = s.pvStw;
       stw.dataset.look = look;
-      stw.append(icon(STATUS_ICON[look], "compact"), document.createTextNode(look === "open" && c.why ? joinSep(c.status ?? "", c.why) : (c.status ?? "")));
+      stw.append(icon(STATUS_ICON[look], "compact"), document.createTextNode(joinSep(c.stateLine ?? "", c.whyShort?.text ?? "")));
       const b = roots.get(c.id);
       const tr = tbl2.row([name, stw, b?.owner ? this.whoChip(b.owner) : text("")]);
       clickRow(tr, () => this.select(c.id));
     }
     sec2.appendChild(tbl2.el);
     box.appendChild(sec2);
-
-    // 最近签收
-    const signs = recentSigns(slice);
-    if (signs.length > 0) {
-      const sec3 = section(copyText("plan.overview.recent"));
-      const all = document.createElement("button");
-      all.type = "button";
-      all.className = `${s.pvLink} plan-signs-all`;
-      all.textContent = copyText("plan.overview.all", { n: signs.length });
-      all.addEventListener("click", () => this.openSigns(true));
-      sec3.firstElementChild?.appendChild(all);
-      for (const it of signs.slice(0, 5)) sec3.appendChild(this.signRow(slice, it));
-      box.appendChild(sec3);
-    }
-
-    // 原话：记下的人的原话（照号，新的在上）＋［记原话…］（记进看着的这一片，工作区的当前片不动）
-    const sec4 = section(copyText("plan.overview.records"));
-    sec4.firstElementChild?.appendChild(button({ label: copyText("plan.record.open"), kind: "ghost", size: "compact", onClick: () => openRecord(this.review, slice) }));
-    if (slice.records.length === 0) sec4.appendChild(text(copyText("plan.record.none"), s.pvMeta));
-    for (const r of [...slice.records].reverse()) sec4.appendChild(this.recordRow(r));
-    box.appendChild(sec4);
     return box;
-  }
-
-  /** 一条原话：时刻 · 号与裁定 · 一句一行的原话 · 谁记的（对不上会话 ⇒ 照出 pb 写的那个字）。 */
-  private recordRow(r: PlanSlice["records"][number]): HTMLElement {
-    const row = document.createElement("div");
-    row.className = s.pvSign;
-    const tm = text(r.atText ?? r.at ?? "", s.pvSignTm);
-    const body = document.createElement("div");
-    body.className = s.pvSignBody;
-    const tl = document.createElement("div");
-    tl.className = s.pvSignTitle;
-    tl.textContent = joinSep(r.n === null ? "" : String(r.n), r.summary ?? "");
-    body.appendChild(tl);
-    for (const q of r.quotes) {
-      const why = document.createElement("div");
-      why.className = s.pvSignWhy;
-      why.textContent = q;
-      body.appendChild(why);
-    }
-    row.append(tm, body);
-    if (r.by) row.appendChild(r.by.kind === "unknown" ? text(r.by.id, s.pvMeta) : this.whoChip(r.by, true));
-    return row;
-  }
-
-  // ───────────────────────── 签收流 ─────────────────────────
-
-  /** 整片的签收排成一条（新的在上；按标题找）。不进需手动、不算琥珀数。 */
-  private signsFlow(slice: PlanSlice): HTMLElement {
-    const box = document.createElement("div");
-    box.dataset.view = "signs";
-    const all = recentSigns(slice);
-    const h1 = document.createElement("div");
-    h1.className = s.pvH1;
-    const t = document.createElement("span");
-    t.className = s.pvH1Text;
-    t.textContent = copyText("plan.signs.title");
-    const meta = text(copyText("plan.signs.meta", { slice: slice.name, n: all.length }), s.pvH1Meta);
-    const find = document.createElement("label");
-    find.className = s.pvSignFind;
-    const q = document.createElement("input");
-    q.type = "search";
-    q.dataset.find = "signs";
-    q.dataset.key = "signs-find"; // 推来一次重画：正打着的筛选字 · 焦点由 kit morph 搬过去
-    q.placeholder = copyText("plan.page.search");
-    q.setAttribute("aria-label", copyText("plan.page.search"));
-    q.value = this.signsQuery;
-    find.append(icon("search", "compact"), q);
-    h1.append(t, meta, spacer(), find);
-    const list = document.createElement("div");
-    list.className = s.pvSec;
-    const fill = (): void => {
-      const got = recentSigns(slice, this.signsQuery);
-      if (got.length === 0) list.replaceChildren(text(copyText("plan.signs.none"), s.pvMeta));
-      else list.replaceChildren(...got.map((it) => this.signRow(slice, it)));
-    };
-    q.addEventListener("input", () => {
-      this.signsQuery = q.value.trim();
-      fill();
-    });
-    fill();
-    box.append(h1, list);
-    return box;
-  }
-
-  /** 签收的一行：时刻 · 那一格（标题 ＋ 类）· 理由（话里的编号换成标题）· 签的那一位。 */
-  private signRow(slice: PlanSlice, it: ReturnType<typeof recentSigns>[number]): HTMLElement {
-    const row = document.createElement("div");
-    row.className = s.pvSign;
-    const tm = text(it.sign.atText ?? "", s.pvSignTm);
-    const body = document.createElement("div");
-    body.className = s.pvSignBody;
-    const tl = document.createElement("div");
-    tl.className = s.pvSignTitle;
-    setKindColor(tl, kindSlot(slice, it.cell.kind));
-    const kw = text(it.cell.kind ?? "", s.pvKw);
-    const go = document.createElement("button");
-    go.type = "button";
-    go.className = s.pvLink;
-    go.textContent = labelOf(slice, it.cell.id);
-    go.addEventListener("click", () => this.select(it.cell.id));
-    tl.append(go, kw);
-    const why = document.createElement("div");
-    why.className = s.pvSignWhy;
-    why.append(...this.detail.refText(slice, it.sign.reason ?? "", it.sign.refs));
-    body.append(tl, why);
-    row.append(tm, body);
-    if (it.sign.by) row.appendChild(this.whoChip(it.sign.by, true));
-    return row;
   }
 
   // ───────────────────────── 会话标签 ─────────────────────────
 
   /**
-   * 接手 / 签收人：会话 ⇒ 那个标签页的点 ＋ 标题 ＋ 机器；子 agent ⇒ 挂在父会话那个标签页上（`signer` ＝ 签收那一行：写明「{父会话} 的 agent」）；
+   * 负责人 / signer：会话 ⇒ 那个标签页的点 ＋ 标题 ＋ 机器；子 agent ⇒ 挂在父会话那个标签页上、写后端给的「{父会话} 的 agent」；
    * 认不出 ⇒ 虚线框「认不出 · 前后几位」，点了复制完整 id。
    */
-  whoChip(w: PlanWho, signer = false): HTMLElement {
+  whoChip(w: PlanWho): HTMLElement {
     const b = document.createElement("button");
     b.type = "button";
     b.className = `${s.pvOwner} plan-who`;
@@ -1180,7 +1043,8 @@ export class PlanView {
     const face = tab ? faceOf(tab) : w.face;
     b.appendChild(statusDot(face.dot, face.name, "compact"));
     const name = tab ? titleParts(tab).title : shortId(w.sid);
-    txt.textContent = w.kind === "subagent" && signer ? copyText("plan.who.sub", { session: name }) : name;
+    // 子 agent ⇒ 后端写好的「{父会话} 的 agent」照画；会话本身 ⇒ 标签页的名字。
+    txt.textContent = w.label ?? name;
     b.appendChild(txt);
     if (tab) {
       const mt = document.createElement("span");
