@@ -625,7 +625,6 @@ internal fun freshLanding(
     newConversationId: () -> String,
 ): String = Screen.Chat.of(hostId, newConversationId(), isNew = true)
 
-/** 挂在一条返回栈记录上：那一条出栈时（且只在那时）[onCleared] 跑 [action]。 */
 /** 会话屏点一条会话 · 搜内容的块头：落在最新处。 */
 internal fun chatsOpen(navigate: (String) -> Unit): (String, String) -> Unit = { host, sid -> navigate(Screen.Chat.of(host, sid)) }
 
@@ -633,6 +632,7 @@ internal fun chatsOpen(navigate: (String) -> Unit): (String, String) -> Unit = {
 internal fun chatsOpenAt(navigate: (String) -> Unit): (String, String, Long, String?) -> Unit =
     { host, sid, at, tool -> navigate(Screen.Chat.of(host, sid, at = at, tool = tool)) }
 
+/** 挂在一条返回栈记录上：那一条出栈时（且只在那时）[onCleared] 跑 [action]。 */
 private class OnLeftBackStack(
     private val action: () -> Unit,
 ) : ViewModel() {
