@@ -48,7 +48,7 @@ beforeEach(() => {
 });
 
 describe("plan-refs 回来的处照排", () => {
-  it("两处 ⇒ 编号原样，各跟一个标题；悬停看全", async () => {
+  it("两处 ⇒ 编号原样，各跟一个标题", async () => {
     const text = "😀 先看 **A1-1**，再看 A1-2/1 的写法。";
     const reply: PlanMsgRefs = {
       workspace: "/w",
@@ -68,7 +68,6 @@ describe("plan-refs 回来的处照排", () => {
     expect(fetchMock.mock.calls[0]).toEqual(["devbox", "sid-1", [text]]);
     const tails = [...c.querySelectorAll<HTMLButtonElement>("button")];
     expect(tails.map((b) => b.textContent)).toEqual(["甲的读入", "甲的写出、甲的读入"]);
-    expect(tails.map((b) => b.title)).toEqual(["甲的读入", "甲的写出、甲的读入"]);
     // 编号原样留在正文里、标题紧跟其后（粗体里的那一处照旧粗）。
     expect(c.querySelector("strong")?.textContent).toBe("A1-1甲的读入");
     expect(tails[1].previousSibling?.textContent?.endsWith("A1-2/1")).toBe(true);

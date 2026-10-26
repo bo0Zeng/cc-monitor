@@ -3,7 +3,7 @@
  *
  * 认编号、拼标题都是后端的事（帧面 `plan-refs`：认片 ＋ 交 pb 的 `dump --refs`）；这里只做三样：
  * - 记原文：建回复正文块时 [`noteProse`] 记下那一块照哪段原文渲的（思考 · 工具输入输出不记 ⇒ 不送）；
- * - 攒一批：卡片挂进流时 [`askRefs`] 把卡里记过原文的块按「哪台 · 哪个会话」排进队，一帧只问一次
+ * - 攒一批：卡片挂进流时 [`askRefs`] 把卡里记过原文的块按「哪台 · 哪个会话」排进队，同一趟挂进来的只问一次
  *   （补历史几百张卡也是一问；后端按段缓存，再问全中不起 pb）；
  * - 照排：回来有处的那一块照占位法重渲 —— 每处 `end` 后面先插一个占位、整段再过一遍 markdown、占位换成标题按钮；回空 ⇒ 那一块一个字不动。
  * 下标是 UTF-16（后端从 pb 的码位换好的），直接按 JS 字符串切。问没成 ⇒ 原样（不报错：带标题只是锦上添花）。
@@ -46,13 +46,8 @@ export function askRefs(card: HTMLElement, origin: string, sid: string): void {
   queue.set(key, w);
   if (scheduled) return;
   scheduled = true;
-  const later =
-    typeof requestAnimationFrame === "function"
-      ? requestAnimationFrame
-      : // 调度：合批 —— 没有帧回调的环境里，同一帧挂进来的卡合成一问
-        (f: () => void) => setTimeout(f, 16);
-  // 调度：合批 —— 这一帧挂进来的卡排到帧末，一台一个会话问一次
-  later(() => {
+  // 调度：合批 —— 这一趟同步挂进来的卡排到它之后，一台一个会话问一次
+  setTimeout(() => {
     scheduled = false;
     const batch = [...queue.values()];
     queue.clear();
@@ -62,7 +57,7 @@ export function askRefs(card: HTMLElement, origin: string, sid: string): void {
       });
       inflight.push(p);
     }
-  });
+  }, 0);
 }
 
 async function ask(w: Waiting): Promise<void> {
@@ -130,8 +125,8 @@ function tail(r: PlanMsgRef, at: Omit<PlanOpenSaid, "id">): HTMLElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = s.prTail;
+  // 截断了悬停看全由 kit/tooltip 给（单行件），这里不另写 title。
   b.textContent = r.label;
-  b.title = r.label;
   b.addEventListener("click", (e) => {
     e.stopPropagation();
     const said: PlanOpenSaid = { ...at, id: r.ids[0] };
