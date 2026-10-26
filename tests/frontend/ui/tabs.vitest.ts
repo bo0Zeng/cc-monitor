@@ -2287,11 +2287,13 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     const tm = makeTM();
     tm.createSkeletonTab("r3", "/p", "devbox", false, null);
     // 壳交回来的失败形状（`wire::WireErr` 的线上形状，`chan.ts::decodeFail` 收）。
-    const hop = (why: "Overrun" | "Unreachable") => ({ err: { Hop: { idx: 0, tag: "wait", reach: "Sent", why } }, body: [] });
+    // 断开那一句是壳随失败交回的（`said`），浮层照摆。
+    const dropped = "壳写的 devbox 断开那一句";
+    const hop = (why: "Overrun" | "Unreachable") => ({ err: { Hop: { idx: 0, tag: "wait", reach: "Sent", why } }, body: [], said: why === "Unreachable" ? dropped : "" });
     const cases: [unknown, string, string, string[]][] = [
       [UNSUPPORTED, copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
       [hop("Overrun"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
-      [hop("Unreachable"), copyText("front.title.failed"), copyText("front.body.offline", { machine: "devbox" }), [copyText("front.act.reconnect")]],
+      [hop("Unreachable"), copyText("front.title.failed"), dropped, [copyText("front.act.reconnect")]],
     ];
     for (const [err, title, body, buttons] of cases) {
       mockInvoke.mockReset();

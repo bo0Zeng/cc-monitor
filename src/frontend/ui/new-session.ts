@@ -23,7 +23,7 @@ import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { machineName } from "./control-said";
+import { machineName, offlineSaid } from "./control-said";
 import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf } from "./agent-profile";
 import { fetchAccounts } from "./account-reads";
 import type { Account } from "./accounts";
@@ -453,6 +453,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const place = (): "tmux" | "window" | null =>
     tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : windowRadio.input.checked ? "window" : null;
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
+  // 连不上时那一句：那台成品写的离线那一句；成品还没到（不知道 ≠ 离线）⇒ 那台状态不明。
+  const offlineLine = (): string => offlineSaid(origin) ?? copyText("settingsNav.dot.unknown", { machine: machineName(origin) });
   const chosenAccountOpt = (): AccountOpt | null =>
     accounts?.find((a) => a.name === accountSel.value()) ?? null;
   const loginBtn = (): HTMLButtonElement => {
@@ -468,7 +470,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       again.addEventListener("click", () => {
         void commands.backend_start({ origin }).catch(() => {});
       });
-      top.appendChild(banner("error", copyText("newSession.machine.offline", { machine: machineName(origin) }), [again]));
+      top.appendChild(banner("error", offlineLine(), [again]));
     } else if (factsFailed !== null) {
       top.appendChild(banner("error", factsFailed));
     } else if (pendingTop) {
@@ -687,7 +689,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     narrow: true,
     focusAction: true,
     blocked: () => {
-      if (!up()) return copyText("newSession.machine.offline", { machine: machineName(origin) });
+      if (!up()) return offlineLine();
       if (facts === null) return copyText("kit.state.reading");
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";

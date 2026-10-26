@@ -28,7 +28,8 @@ export type FrontResult =
   | { kind: "bad-shape"; detail: string }
   | { kind: "too-old" }
   | { kind: "timeout" }
-  | { kind: "offline" }
+  /** `said`：连接层随那一次失败交出的那一句（照摆）。 */
+  | { kind: "offline"; said: string }
   | { kind: "unknown"; detail: string };
 
 /** 浮层上的一颗按钮（做什么由调用方接；名字在文案表）。 */
@@ -87,7 +88,7 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
     case "timeout":
       return v(copyText("front.title.failed"), copyText("front.body.timeout", { machine }), "red", [{ kind: "retry" }]);
     case "offline":
-      return v(copyText("front.title.failed"), copyText("front.body.offline", { machine }), "red", [{ kind: "reconnect" }]);
+      return v(copyText("front.title.failed"), r.said, "red", [{ kind: "reconnect" }]);
     case "refused":
       return v(copyText("front.title.flashing"), copyText("front.body.refused"), "grey");
     case "window-gone":

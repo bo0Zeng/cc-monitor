@@ -69,7 +69,8 @@ export interface MachinePage {
   tabs: SettingsRouter;
   setTitle(name: string): void;
   setMeta(meta: string): void;
-  setConnected(connected: boolean | null): void;
+  /** 连着 · 断着 · 没问到；断着时 `offlineLine` 是那台成品写的离线那一句（照摆，没有 ⇒ 照没问到画：不知道 ≠ 离线）。 */
+  setConnected(connected: boolean | null, offlineLine?: string): void;
   /** 停用了连接：空心点 ＋「已停用」，问题行「连接已停用」（开关在连接设置里）。 */
   setDisabled(on: boolean): void;
   /** 照后端的状态成品画卡头（点 · 词 · 问题行 ＋ 修法）。 */
@@ -166,6 +167,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
 
   let name = spec.name;
   let connected: boolean | null = null;
+  let offlineLine = "";
   let disabled = false;
   const paint = (): void => {
     if (disabled) {
@@ -182,7 +184,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
       setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
       word.textContent = copyText("machinePage.state.up");
     } else if (connected === false) {
-      setDot(dot, "failed", copyText("settingsNav.dot.down", { machine: name }));
+      setDot(dot, "failed", offlineLine);
       word.textContent = copyText("machinePage.state.down");
     } else {
       setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
@@ -193,7 +195,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     if (connected === false) {
       const err = icon("error", "compact");
       const text = document.createElement("span");
-      text.textContent = copyText("machinePage.problem.offline", { machine: name });
+      text.textContent = offlineLine;
       problem.append(err, text);
       if (connFold) {
         const fix = button({ label: copyText("machinePage.conn.toggle"), size: "compact", onClick: () => connFold!.open() });
@@ -215,8 +217,9 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     setMeta(m) {
       meta.textContent = m;
     },
-    setConnected(c) {
-      connected = c;
+    setConnected(c, said = "") {
+      offlineLine = said;
+      connected = c === false && said === "" ? null : c;
       paint();
     },
     setMachine(f) {

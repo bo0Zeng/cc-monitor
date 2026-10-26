@@ -6,7 +6,7 @@
 //! | 「发没发出去」一定说出来：没发出 ≠ 拿不准；发了与拿不准对人是同一件事 | [`whether_it_was_sent_is_always_said`] |
 //! | 对端拒了：它那一句原样；没写 ⇒「后端拒绝 · 原因不明」 | [`a_refusal_says_the_peer_sentence_or_that_it_is_unreadable`] |
 //! | 全产品一份：`rsChanSaid.*` 只在本文件取；调它的恰是那三处（壳交主界面 · 文件窗口 · `CallError` 的 `Display`） | [`the_channel_sentence_lives_in_one_file_with_three_callers`] |
-//! | 离线那一句称呼那台；`link.machine.offline` 在 Rust 里只在本文件取，原先各出口各取的那几把键在 Rust 里不再出现（还没换的登在 [`OFFLINE_LEFT`]，只许删） | [`the_offline_sentence_names_the_machine`] · [`the_offline_sentence_is_taken_in_one_place`] |
+//! | 离线那一句称呼那台；`link.machine.offline` 在三端产品源码里只在本文件取，原先各出口各取的那 12 把键只剩 [`OFFLINE_LEFT`] 登的那几处（只许删） | [`the_offline_sentence_names_the_machine`] · [`the_offline_sentence_is_taken_in_one_place`] |
 
 use super::{machine, offline, said};
 use crate::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
@@ -253,23 +253,31 @@ const OFFLINE_OLD: [&str; 12] = [
     "terminal.liveWhy.offline",
 ];
 
-/// Rust 里还在各取旧键的那几处（键 · 文件）：后端机器状态成品那一句 · 后端转发那台不在时那一句 ·
-/// 文件窗口顶条那一句（窗口进程的边界表要先登 `said::offline` 这一条边）还没并过来。只许删，删光了这一格跟着删。
-const OFFLINE_LEFT: [(&str, &str); 3] = [
-    ("front.body.offline", "backend/control/feeds.rs"),
-    ("machinePage.problem.offline", "backend/deploy/machine.rs"),
-    ("rsFilewinChrome.link.offlineNever", "frontend/filewin/src/chrome.rs"),
-];
+/// 三端的产品源码（Rust · 界面 · 手机），相对 `src/`；测试源码与生成物不算。
+fn product_sources(src: &std::path::Path) -> Vec<String> {
+    let mut all = Vec::new();
+    for ext in ["rs", "ts", "kt"] {
+        all.extend(guard_core::files_by_extension(src, ext));
+    }
+    all.retain(|rel| {
+        !rel.starts_with("vendor/") && !rel.contains("/src/test/") && !rel.contains("/generated/")
+    });
+    all
+}
 
 #[test]
 fn the_offline_sentence_is_taken_in_one_place() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let mut homes = BTreeSet::new();
     let mut old = BTreeSet::new();
-    for rel in guard_core::files_by_extension(&root.join("src"), "rs") {
-        if rel.starts_with("vendor/") {
-            continue;
-        }
+    let files = product_sources(&root.join("src"));
+    assert!(
+        ["rs", "ts", "kt"]
+            .iter()
+            .all(|e| files.iter().any(|f| f.ends_with(&format!(".{e}")))),
+        "三端源码都得扫到"
+    );
+    for rel in files {
         let Ok(raw) = std::fs::read_to_string(root.join("src").join(&rel)) else {
             continue;
         };
@@ -294,6 +302,24 @@ fn the_offline_sentence_is_taken_in_one_place() {
             .iter()
             .map(|(k, f)| (k.to_string(), f.to_string()))
             .collect::<BTreeSet<_>>(),
-        "离线那一句的旧键在 Rust 里只许剩登记的那几处"
+        "离线那一句的旧键在三端产品源码里只许剩登记的那几处：出口照摆连接层交出的那一句"
     );
 }
+
+/// 还在各取旧键的出口（键 · 相对 `src/` 的文件）。只许删，删光了这一格跟着删。
+/// 这几份此刻被另一路（会话簿 · 活卡板收进端核心）占着：桌面 `events.ts`，手机核心那条链（`Link.kt` · `ResidentFeed.kt`）
+/// 与几处手机出口；那一路并回之后照桌面那一套收（成品的 `offlineSaid` 照摆，成品没到不说离线）。
+const OFFLINE_LEFT: [(&str, &str); 12] = [
+    ("events.unseen.droppedTitle", "frontend/ui/events.ts"),
+    ("events.unseen.neverTitle", "frontend/ui/events.ts"),
+    ("events.unseen.unreachableTitle", "frontend/ui/events.ts"),
+    ("front.body.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/link/Problem.kt"),
+    ("front.body.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesScreen.kt"),
+    ("front.body.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesViewModel.kt"),
+    ("front.body.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/rotation/RotationScreen.kt"),
+    ("front.body.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/usage/UsageScreen.kt"),
+    ("mobSession.bar.dropped", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionScreen.kt"),
+    ("newSession.machine.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatChips.kt"),
+    ("newSession.machine.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chats/HostChats.kt"),
+    ("newSession.machine.offline", "mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/settings/SettingsScreen.kt"),
+];

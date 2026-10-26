@@ -7,7 +7,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
-import { budgetWithin, callTyped, noteMachineName } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, noteMachine } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
@@ -40,10 +40,10 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
   };
 }
 
-/** 订一份：每来一台的一帧回调一次（先记下那台的名字，`machineName` 照它叫）。回退订函数。 */
+/** 订一份：每来一台的一帧回调一次（先记下那台的名字与离线那一句，`machineName` · `offlineSaid` 照它）。回退订函数。 */
 export function onMachineState(each: (origin: string, machine: MachineState) => void): () => void {
   const cb = (origin: string, machine: MachineState): void => {
-    noteMachineName(origin, machine.name);
+    noteMachine(origin, machine);
     each(origin, machine);
   };
   let unsub: (() => void) | null = null;

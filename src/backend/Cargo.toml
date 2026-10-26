@@ -154,6 +154,8 @@ deploy = { path = "deploy" }
 # 连远端常驻后端的客户端那一侧（桌面 · 手机同一份）：测试连接拿表单那份配置跑一趟它的常驻流（`dial/probe.rs`），与真连接同一串。
 # 它的期限与退避属客户端那一侧，不进本 crate 的零定时器判据人群。
 resident-client = { path = "../comms/resident-client" }
+# 通道那一句（离线那一句只由连接层写：`chan::said::offline`）。
+comms-inward = { path = "../comms/inward" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

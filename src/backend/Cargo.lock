@@ -260,6 +260,7 @@ dependencies = [
  "acct-core",
  "batch-core",
  "cmd-wire",
+ "comms-inward",
  "comms-outward",
  "copy-core",
  "creds-core",
@@ -705,6 +706,7 @@ name = "deploy"
 version = "0.1.0"
 dependencies = [
  "cmd-wire",
+ "comms-inward",
  "copy-core",
  "deploy-contract",
  "relay-route-core",

@@ -30,7 +30,7 @@ import {
   type MenuItem,
 } from "./kit/menu";
 import type { TabSessionActions } from "./tab-session-actions";
-import { machineName, unavailableSaid } from "./control-said";
+import { machineName, offlineSaid, unavailableSaid } from "./control-said";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { ActionId } from "./keybindings/actions";
 import { terminalFrontAvailable } from "./terminal-front";
@@ -179,7 +179,8 @@ export class TabMenu {
   private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean; remote: string | null; local: boolean } {
     const t = this.host.tab(sid);
     const unseen = t !== undefined && t.face?.dot === "unknown";
-    const unseenWhy = t && unseen ? copyText("tabMenu.unseen.why", { machine: machineName(t.origin) }) : undefined;
+    // 为什么灰：那台成品写的离线那一句；成品还没到（不知道 ≠ 离线）⇒ 照这一格今天的样子说状态不明。
+    const unseenWhy = t && unseen ? (offlineSaid(t.origin) ?? copyText("sessionState.unseen.name")) : undefined;
     const grey = (it: MenuItem): MenuItem => (unseenWhy ? { ...it, enabled: false, pending: false, why: unseenWhy, onClick: () => {} } : it);
     const remote = t !== undefined && isRemoteOrigin(t.origin) && t.projectDir ? t.origin : null;
     const local = t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.face);

@@ -330,7 +330,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
             true,
             down(
                 Some(W::Other),
-                "machinePage.problem.offline",
+                "link.machine.offline",
                 vec![F::Retry, F::ConnSettings],
             ),
         ),
@@ -340,7 +340,7 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
             true,
             down(
                 None,
-                "machinePage.problem.offline",
+                "link.machine.offline",
                 vec![F::Retry, F::ConnSettings],
             ),
         ),
@@ -406,7 +406,10 @@ fn every_fact_lands_on_its_state_word_sentence_and_fixes() {
         ),
     ];
     for (name, facts, enabled, w) in cases {
-        assert_eq!(row(&of(facts, enabled)), want(w), "「{name}」");
+        let p = of(facts, enabled);
+        assert_eq!(row(&p), want(w), "「{name}」");
+        // 离线那一句哪一态都带着，是连接层写的那一句（出口照摆）。
+        assert_eq!(p.offline_said, comms_inward::chan::said::offline(M), "「{name}」");
     }
 }
 
@@ -584,7 +587,7 @@ fn a_session_refused_after_login_is_its_own_state_not_offline() {
         assert!(p.said.contains(M), "那一句要说是哪台：{}", p.said);
         assert_ne!(
             p.said,
-            copy_text("machinePage.problem.offline", &[("machine", M)])
+            comms_inward::chan::said::offline(M)
         );
         assert_eq!(
             p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>(),

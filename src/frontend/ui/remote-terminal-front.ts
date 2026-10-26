@@ -24,11 +24,11 @@ export type RemoteFrontPlan = { chain: Link[] } | { result: FrontResult };
 /** 形状不认（回包类型对，但内容自相矛盾：`elsewhere` 却没带地址 · 对上了却是空链）。 */
 class BadShape extends Error {}
 
-/** 一次经通道的问失败了 ⇒ 结局族（按通道那一跳的归因，不看文字）。 */
+/** 一次经通道的问失败了 ⇒ 结局族（按通道那一跳的归因，不看文字；断开那一句是连接层随失败交出的那一句，原样带着）。 */
 export function failedAsk(e: unknown): FrontResult {
   if (e instanceof BadShape) return { kind: "bad-shape", detail: e.message };
   if (isOldBackend(e)) return { kind: "too-old" };
-  if (e instanceof ChanError && e.error.layer === "hop") return e.error.why === "Overrun" ? { kind: "timeout" } : { kind: "offline" };
+  if (e instanceof ChanError && e.error.layer === "hop") return e.error.why === "Overrun" ? { kind: "timeout" } : { kind: "offline", said: e.message };
   return { kind: "unknown", detail: e instanceof Error ? e.message : String(e) };
 }
 
