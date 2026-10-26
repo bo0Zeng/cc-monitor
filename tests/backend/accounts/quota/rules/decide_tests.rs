@@ -1062,19 +1062,16 @@ fn consistent(
     (checked, crowd, forced)
 }
 
-/// #22 跑 `n` 组（照列表先后）：回（比过几次，挤的几次）。
-fn s22_groups(n: u64) -> (usize, usize) {
-    let (mut total, mut crowd) = (0, 0);
-    for seed in 1..=n {
+/// #22 跑 `seeds` 那几组（照列表先后）：回（比过几次，挤的几次）。
+fn s22_groups(seeds: &[u64]) -> (usize, usize) {
+    let (mut total, mut crowd, n) = (0, 0, seeds.len());
+    for &seed in seeds {
         let (s, f, sigma) = group(seed);
         let (c, k, _) = consistent(&s, &f, &sigma, by_list(), &format!("第 {seed} 组"));
         total += c;
         crowd += k;
     }
-    assert!(
-        total > n as usize,
-        "{n} 组里只比到 {total} 次换号 —— 本条在空转"
-    );
+    assert!(total > n, "{n} 组里只比到 {total} 次换号 —— 本条在空转");
     assert!(
         crowd * 20 <= total,
         "挤在一起分不出先后的有 {crowd} 次（比过 {total} 次），超过 5%"
@@ -1084,16 +1081,16 @@ fn s22_groups(n: u64) -> (usize, usize) {
 
 /// #26 跑 `n` 组：强制切换（余量多的权重高 ＋ 强制切换阈值 25% ＋ 权重容差 10%）。耗尽后启用的号不起强制切换，这里都去掉，
 /// 换号就只有两种：用满了照先后换 · 权重交叉、强制切换（靠策略约的按时刻 · 按读数叫醒，推演才知道那一刻）。
-/// 回（比过几次，挤的几次，其中强制切换几次）。
-fn s26_groups(n: u64) -> (usize, usize, usize) {
+/// 跑 `seeds` 那几组，回（比过几次，挤的几次，其中强制切换几次）。
+fn s26_groups(seeds: &[u64]) -> (usize, usize, usize) {
     let (mut total, mut crowd, mut forced) = (0, 0, 0);
-    for seed in 1..=n {
+    for &seed in seeds {
         let (c, k, x) = s26_one(seed);
         total += c;
         crowd += k;
         forced += x;
     }
-    assert!(total > n as usize - 1, "比到的换号太少：{total}");
+    assert!(total >= seeds.len(), "比到的换号太少：{total}");
     assert!(crowd * 20 <= total.max(20), "挤在一起的有 {crowd} 次");
     assert!(
         forced * 5 >= total,
@@ -1153,15 +1150,24 @@ fn s36_one(seed: u64) -> (usize, usize) {
     (c, k)
 }
 
+/// 常规那一趟跑哪几组：从原先常规跑的那一批（#22 第 1–20 组 · #26 第 1–5 组）里挑出的最少几组，挑法两条都要满足：
+/// · 那一批走到的策略分支（升级材料与积木库里每一个 `{…}` 块）· 判据这边的结局（比上 · 强制切换），这几组一样不少；
+/// · 把策略里约叫醒的那几处逐一改坏（删一处按时刻 · 按读数的叫醒、关掉一段条件，共 20 处），那一批红的，这几组也红：
+///   #22 第 13 组独一份接得住「单次用量上限那一读数」两处，#26 第 5 组独一份接得住「要用的号窗口还没开」两处。
+/// 测试档的 Rhai 一组一到三秒，多跑的组不多走一个分支、不多接一处改坏，只多花时间；大样本照旧由下面 500 组那条在全量里跑。
+/// 策略或积木库改了分支 ⇒ 照这个挑法重挑（挑的时候在判据里给每个块插一个打点、改坏的那几处逐一跑一遍）。
+const S22_SEEDS: [u64; 3] = [13, 16, 19];
+const S26_SEEDS: [u64; 3] = [1, 2, 5];
+
 #[test]
 fn s22_simulation_agrees_with_per_request_decisions() {
-    // 策略跑在沙箱里（测试档的 Rhai 每判几毫秒），常规门禁里跑 20 组、每组至多比 4 次；500 组那一版见下面那条（发布档、发版前的全量里跑）。
-    s22_groups(20);
+    // 策略跑在沙箱里（测试档的 Rhai 每判几毫秒），每组至多比 4 次；500 组那一版见下面那条（发布档、发版前的全量里跑）。
+    s22_groups(&S22_SEEDS);
 }
 
 #[test]
 fn s26_forced_switches_agree_with_per_request_decisions() {
-    s26_groups(5);
+    s26_groups(&S26_SEEDS);
 }
 
 /// ★ #26 第 357 组原样：七个号都在被用、各有用速，约交叉那一段往前看的那几步要在一判的运算量以内（超了 ⇒ 策略出错走兜底）。
@@ -1188,8 +1194,9 @@ fn s36_fallbacks_ranked_by_weight_switch_where_the_simulation_says() {
 #[test]
 #[ignore = "大样本：由门禁 rotation-500 格用 perf 档起"]
 fn consistency_500_groups() {
-    let (t22, k22) = s22_groups(500);
-    let (t26, k26, x26) = s26_groups(500);
+    let all: Vec<u64> = (1..=500).collect();
+    let (t22, k22) = s22_groups(&all);
+    let (t26, k26, x26) = s26_groups(&all);
     let (t36, k36) = s36_groups(500);
     eprintln!("#22：比过 {t22} 次、挤的 {k22} 次 · #26：比过 {t26} 次、挤的 {k26} 次、强制切换 {x26} 次 · #36：比过 {t36} 次、挤的 {k36} 次");
 }

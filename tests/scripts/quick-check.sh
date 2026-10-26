@@ -16,6 +16,7 @@
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（换 HOME 之前定下）。
 #   手机工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev。
 # 红了：每条失败测试的 panic 原话印出来；整趟输出存 `.build/quick-check/<时刻>.log`。
+# 逐条耗时：cargo 那几段存 `.build/quick-check/cargo-times.tsv`（从慢到快，收尾印最慢三条），vitest 存 `vitest-times.json`。
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(git rev-parse --show-toplevel) || exit 2
@@ -97,6 +98,7 @@ panics() { awk '/panicked at /{p=1} p&&/^$/{p=0; print "       ──"} p{print 
 step() { local name=$1; shift; local t0=$SECONDS out
   out=$("$@" 2>&1); local rc=$?
   { echo "════ $name（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
+  printf '%s\n' "$out" | cargo_times "$name"
   local n; n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
   if [ $rc -eq 0 ] && [ "${n:-1}" = 0 ]; then printf '  红   %-16s 0 条跑到\n' "$name"; fails+=("$name"); return; fi
   if [ $rc -eq 0 ]; then printf '  ok   %-16s %ss%s\n' "$name" $((SECONDS-t0)) "${n:+ · $n 条}"
@@ -104,6 +106,22 @@ step() { local name=$1; shift; local t0=$SECONDS out
     hit=$(printf '%s\n' "$out" | grep -E "^ FAIL |^  \\| .*(✗|error|FAIL)|FAILED|panicked|Diff in|^error|error\[E|error TS|AssertionError" | head -25)
     printf '%s\n' "${hit:-$(printf '%s\n' "$out" | tail -5)}" | sed 's/^/       /'
     printf '%s\n' "$out" | panics; fails+=("$name"); fi; }
+
+# cargo 测试的逐条耗时（找慢测试时读它）：libtest 的 `--report-time` 是不稳定选项，只在测试程序跑起来那一下开 ——
+#   runner 给测试进程设 RUSTC_BOOTSTRAP=1，编译那一步看不见它（不重编，依赖的 build.rs 也不因它改判）。
+#   那两段因此不带 -q：逐条一行 `test 名 ... ok <秒>`，收尾抽出来、从慢到快存 `.build/quick-check/cargo-times.tsv`（秒 · 段 · 测试程序 · 名）。
+host=$(rustc -vV 2>/dev/null | sed -n 's/^host: //p'); host=${host^^}; host=${host//-/_}
+timed=(env "CARGO_TARGET_${host}_RUNNER=env RUSTC_BOOTSTRAP=1")
+times=.build/quick-check/cargo-times.tsv
+: > "$times.part"
+cargo_times() { awk -v seg="$1" '
+  /^ *Running /{ b=$NF; gsub(/[()]/, "", b); sub(/.*\//, "", b); sub(/-[0-9a-f]+$/, "", b) }
+  /^test .* <[0-9.]+s>$/{ t=$NF; gsub(/[<>s]/, "", t); print t "\t" seg "\t" b "\t" $2 }' >> "$times.part"; }
+times_line() {
+  sort -t "$(printf '\t')" -k1,1gr "$times.part" > "$times"; rm -f "$times.part"
+  [ -s "$times" ] || return 0
+  printf '  --   %-16s 最慢：%s · 整份 %s\n' cargo-times "$(head -3 "$times" | awk -F '\t' '{printf "%s%s %ss", (NR>1?" · ":""), $4, $1}')" "$times"
+}
 
 # 重的那四段：挑上了才跑（见头注），跑不跑与为什么各印一行。
 ran=(); skipped=()
@@ -137,6 +155,7 @@ clippy_step() {
   step clippy-backend runcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
 }
 verdict() {
+  times_line
   left=$(ls -A "$ctmp")
   if [ -z "$left" ]; then printf '  ok   %-16s cargo 那几步跑完临时目录是空的\n' tmp-left
   else printf '  红   %-16s cargo 那几步跑完临时目录里留下（建的那一处改成随作用域删）：\n' tmp-left
@@ -153,8 +172,9 @@ backend_step() {
   seg_go backend || return 0
   t0=$SECONDS
   # lib ＋ bin ＋ bench 冒烟（bench 那几个目标 `test = true`，CI 的 `cargo test --workspace` 跑它们）
-  out=$(runcargo bash -c 'cd src/backend && cargo test --workspace --lib --bins --benches --no-fail-fast -q' 2>&1); rc=$?
+  out=$(runcargo "${timed[@]}" bash -c 'cd src/backend && cargo test --workspace --lib --bins --benches --no-fail-fast -- -Z unstable-options --report-time' 2>&1); rc=$?
   { echo "════ backend（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
+  printf '%s\n' "$out" | cargo_times backend
   n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
   failed=$(printf '%s\n' "$out" | awk '/^failures:$/{f=1; next} f && /^    [A-Za-z0-9_:]+$/{print $1} /^test result:/{f=0}' | sort -u)
   if [ $rc -eq 0 ] && [ "${n:-0}" -gt 0 ]; then printf '  ok   %-16s %ss · %s 条\n' backend $((SECONDS-t0)) "$n"
@@ -168,7 +188,7 @@ backend_step() {
 }
 shell_step() {
   seg_go shell || return 0
-  step shell runcargo bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -q'
+  step shell runcargo "${timed[@]}" bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -- -Z unstable-options --report-time'
 }
 vitest_step() {
   seg_go vitest || return 0
