@@ -29,6 +29,7 @@ pub(crate) mod locate;
 pub(crate) mod needs;
 pub(crate) mod owners;
 pub(crate) mod product;
+pub(crate) mod refs;
 pub(crate) mod review;
 pub(crate) mod watch;
 pub(crate) mod wire;
@@ -44,6 +45,16 @@ pub(crate) fn pb(
     ws: &std::path::Path,
     argv: &[&str],
 ) -> Result<crate::plugin::invoke::Done, copy_core::said::Said> {
+    pb_fed(entry, ws, argv, None)
+}
+
+/// 同 [`pb`]（起法就这一处），另把 `stdin` 喂进 pb 的标准输入（`dump --refs` 读一段话）；`None` ⇒ 空设备。
+pub(crate) fn pb_fed(
+    entry: &std::path::Path,
+    ws: &std::path::Path,
+    argv: &[&str],
+    stdin: Option<&[u8]>,
+) -> Result<crate::plugin::invoke::Done, copy_core::said::Said> {
     use copy_core::copy_text;
     let py = crate::plugin::discover::find(
         "python3",
@@ -55,7 +66,7 @@ pub(crate) fn pb(
     let all: Vec<&str> = std::iter::once(entry_s.as_str())
         .chain(argv.iter().copied())
         .collect();
-    crate::plugin::invoke::run(&py, &all, PB_DEADLINE_SECS, &[], Some(ws)).map_err(|e| {
+    crate::plugin::invoke::run_fed(&py, &all, PB_DEADLINE_SECS, &[], Some(ws), stdin).map_err(|e| {
         let raw = match e {
             crate::plugin::invoke::NotRun::ArgListTooLong => None,
             crate::plugin::invoke::NotRun::Failed(s) => s.raw.or(Some(s.said)),

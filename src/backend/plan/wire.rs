@@ -630,3 +630,25 @@ pub(crate) struct PlanReturnReply {
 
 /// `plan-files` 的回包住 `cmd-wire`（文件窗口按同一份类型解）；这里只转一下名字，帧面出口照旧写 `wire::PlanFiles`。
 pub(crate) use cmd_wire::plan::PlanFiles;
+
+/// 会话消息里提到的一处：`[start, end)` 按 UTF-16 下标（编号原样留在正文里），`label` 是跟在它后面的那串淡色字
+/// （`ids` 里每个的标题照先后接好；后端写好，界面照排）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanMsgRef {
+    pub start: u32,
+    pub end: u32,
+    pub ids: Vec<String>,
+    pub label: String,
+}
+
+/// `plan-refs` 的回包：照哪一片认的（认不出 ⇒ 两样都 `null`、每段空）；`refs[i]` 对 `texts[i]`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanMsgRefs {
+    pub workspace: Option<String>,
+    pub slice: Option<String>,
+    pub refs: Vec<Vec<PlanMsgRef>>,
+}
