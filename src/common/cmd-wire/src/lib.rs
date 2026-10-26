@@ -14,8 +14,9 @@
 //! - [`rotation`]：轮换那几条（`rotation-*`）的回包与失败带的 `data`；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
 //! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录）；
+//! - [`phone`]：手机嵌的 Rust 核心与 Kotlin 之间那一层（JNI 交上来的几样事 · 几个口的回值；Kotlin 读从这里生成的类）；
 //! - [`plan`]：计划反查 `plan-files` 的回包（文件窗口按它解）；
-//! - [`replies`]：客户端那一侧按类型解回包的那一张表（[`replies::decode_reply`]）；
+//! - [`replies`]：「命令 ⇒ 回包类型」那一张表（判据对后端 · 手机生成的类都照它）；记录那一格的认不认得（[`replies::mend_records`]）；
 //! - [`transfer`]：传输台开单那两条（`transfer-upload` · `-download`）：窗口说给 monitor 的 · monitor 补上拨号转给本机后端的，两层入参各一个类型；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
@@ -41,6 +42,7 @@ pub mod listing;
 pub mod live;
 pub mod machine;
 pub mod needs;
+pub mod phone;
 pub mod plan;
 pub mod quota;
 pub mod record;
@@ -58,6 +60,20 @@ pub use machine::{Machine, Route, LOCAL};
 
 /// 两端形状指纹对不上的那条 op 当「这台做不到」时用的码（客户端事前就拒、一个字节不发；给人看的那一句 `peerVersion.said.differs`）。
 pub const SHAPE_DIFFERS: &str = "backend_differs";
+
+/// 后端自己那一份设置文件此刻什么样（偏好 · 机器表同这一形）：没设过 · 读得懂 · 读不懂（读不懂也照答缺省那一份，不是失败）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "lowercase")]
+pub enum FileState {
+    Absent,
+    Ok,
+    Unreadable,
+}
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
 #[cfg(test)]

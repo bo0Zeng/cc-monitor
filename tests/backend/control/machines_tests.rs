@@ -38,10 +38,10 @@ fn code(e: MachinesSetErr) -> String {
 fn machines_start_absent_and_a_cell_edit_touches_only_that_cell() {
     let home = scratch("cell");
     let r = answer_read_in(Some(&home));
-    assert_eq!((r.state, r.hosts.len()), ("absent", 0));
+    assert_eq!((r.state, r.hosts.len()), (cmd_wire::FileState::Absent, 0));
     set(&home, json!([insert("gpu", "g.lan"), insert("", "pi.lan")])).unwrap();
     let r = answer_read_in(Some(&home));
-    assert_eq!(r.state, "ok");
+    assert_eq!(r.state, cmd_wire::FileState::Ok);
     assert_eq!(
         r.hosts.iter().map(|h| h.name.as_str()).collect::<Vec<_>>(),
         ["gpu", "pi.lan"]
@@ -136,7 +136,11 @@ fn an_unreadable_table_is_reported_and_never_overwritten() {
     ] {
         std::fs::write(path_in(&home), text).unwrap();
         let r = answer_read_in(Some(&home));
-        assert_eq!((r.state, r.hosts.len()), ("unreadable", 0), "{text}");
+        assert_eq!(
+            (r.state, r.hosts.len()),
+            (cmd_wire::FileState::Unreadable, 0),
+            "{text}"
+        );
         assert!(r.reason.is_some());
         assert_eq!(
             code(set(&home, json!([insert("gpu", "g.lan")])).unwrap_err()),

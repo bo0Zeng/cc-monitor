@@ -129,11 +129,11 @@ impl Loaded {
             Loaded::Absent | Loaded::Unreadable(_) => Prefs::default(),
         }
     }
-    fn state(&self) -> PrefsState {
+    fn state(&self) -> FileState {
         match self {
-            Loaded::Absent => PrefsState::Absent,
-            Loaded::Present(_) => PrefsState::Ok,
-            Loaded::Unreadable(_) => PrefsState::Unreadable,
+            Loaded::Absent => FileState::Absent,
+            Loaded::Present(_) => FileState::Ok,
+            Loaded::Unreadable(_) => FileState::Unreadable,
         }
     }
 }
@@ -296,14 +296,8 @@ pub(crate) fn write(own: &Own, p: &Prefs) -> Result<(), Said> {
     own.write(&path, &held, &body)
 }
 
-/// 那份文件的状态：没设过 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum PrefsState {
-    Absent,
-    Ok,
-    Unreadable,
-}
+/// 那份文件的状态：没设过 · 读得懂 · 读不懂（两端同一个名，住契约）。
+pub(crate) use cmd_wire::FileState;
 
 /// `prefs-read` / `prefs-set` 的回包：状态 ＋ 照用的那一份（读不懂 ⇒ 缺省那一份）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -312,8 +306,7 @@ pub(crate) enum PrefsState {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PrefsReply {
     /// `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
-    #[cfg_attr(test, ts(type = "\"absent\" | \"ok\" | \"unreadable\""))]
-    pub(crate) state: PrefsState,
+    pub(crate) state: FileState,
     /// `unreadable` 时的原因（那一句不带原话）。
     pub(crate) reason: Option<String>,
     /// `unreadable` 时的复制详情。

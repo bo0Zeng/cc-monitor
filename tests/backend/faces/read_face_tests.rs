@@ -2100,7 +2100,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         )
     };
     let row_bytes = serde_json::to_string(&serde_json::to_value(&row).unwrap()).unwrap();
-    // 手机嵌的 Rust 核心按 `cmd-wire` 那一份解这几份（`replies::decode_reply`）：解得开、按类型重写出来逐字节相同。
+    // 照 `cmd-wire` 那一份类型解这几份（手机生成的类照同一份类型）：解得开、按类型写回逐字节相同。
     for (cmd, b) in [
         ("history-tail", &tail),
         ("sessions-needs", &needs),
@@ -2185,11 +2185,11 @@ fn every_golden_record_is_decoded_by_the_phone_as_a_whole_record() {
 
 fn phone_decodes_back(cmd: &str, bytes: &str) {
     let v: serde_json::Value = serde_json::from_str(bytes).unwrap();
-    match cmd_wire::replies::decode_reply(cmd, v) {
-        // 记录一条一条地解（解不开的那一条成认不出那一条、整份不失败）⇒ 逐字节相同才说明每一条都按完整记录解开了。
+    match cmd_wire::replies::typed_text(cmd, v.clone()) {
+        // 记录一条一条地解（解不开的那一条成认不出那一条、整份不失败）⇒ 照类型写回与原样同值（键序是类型的序、不比）才说明每一条都按完整记录解开了。
         Some(Ok(back)) => assert_eq!(
-            serde_json::to_string(&back).unwrap(),
-            bytes,
+            serde_json::from_str::<serde_json::Value>(&back).unwrap(),
+            v,
             "{cmd}：重写出来不是原样（有一条没按完整记录解开）"
         ),
         other => panic!("{cmd}：手机解不开后端写的那一份：{other:?}"),

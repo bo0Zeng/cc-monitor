@@ -54,7 +54,7 @@ class TerminalsTest {
     @Test
     fun `kill：按名字结束，自报是手机；应答认 killed`() {
         assertEquals(mapOf("name" to "demo-cc", "client" to "mobile"), Kill.args("demo-cc"))
-        assertEquals(true, Kill.of(mapOf("killed" to true, "session" to "demo-cc", "bus" to null)))
+        assertEquals(true, Kill.of(mapOf("killed" to true, "session" to "demo-cc", "bus" to mapOf("removed" to emptyList<Any>(), "failed" to emptyList<Any>(), "unread" to null, "said" to null, "detail" to ""))))
         assertNull(Kill.of(mapOf("session" to "demo-cc")))
     }
 }

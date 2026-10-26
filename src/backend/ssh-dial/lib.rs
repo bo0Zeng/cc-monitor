@@ -29,7 +29,7 @@
 #![cfg_attr(test, allow(clippy::disallowed_methods))]
 use std::sync::{Arc, Mutex};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 
 pub use copy_core::said::Said;
@@ -99,146 +99,11 @@ pub fn joined(said: String, raw: Option<String>) -> String {
 }
 
 /// 线上那几样（ack 的协议版本与用法表 · 地址 · 阶段 · ack · 没开成 · 收全的结果）住契约（`cmd_wire::dial`），读它的那一侧同一份。
-pub use cmd_wire::dial::{Captured, DialAck, DialFail, Endpoint, Stage, StageLine, ACK_V, USES};
-
-/// 跳板那一台。它自己还要经别的跳板 ⇒ `jump` 再套一层（多跳，同 `ssh -J 外,内`；桌面的机器表今天只给一跳，手机给多跳）。
-#[derive(Debug, Clone, Deserialize)]
-pub struct JumpHop {
-    pub host: String,
-    pub port: u16,
-    pub user: String,
-    pub key_path: Option<String>,
-    /// 报错与阶段行里称呼它用的名字（界面那边的配置标签）。
-    #[serde(default)]
-    pub label: String,
-    /// 这一台自己经哪台跳板到（再外一台；`None` = 本机直连它）。
-    #[serde(default)]
-    pub jump: Option<Box<JumpHop>>,
-}
-
-/// 开出 channel 之后怎么用。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Use {
-    /// exec `command`，stdin/stdout 与 channel 原样对拷（后端长连接流 · 一次性查询）。
-    #[default]
-    Stream,
-    /// exec `command`，收全 stdout / stderr / 退出码，印一行 [`Captured`] 后退出。
-    Capture,
-    /// 本进程绑本机回环口、每接进一条连接开一条 direct-tcpip（端口转发）。
-    Forward,
-    /// 要一个 PTY（[`PtyOpts`]）开交互 shell，之后同 `stream` 原样对拷；改窗口大小走 [`uses::Control`]。
-    Shell,
-    /// 只握着这条连接（不开通道）：ack 之后链路不收工，同一身份的别的链路都复用它；对面走了（上行 EOF）
-    /// 或连接没了（russh 报断开）⇒ 收工。手机那一形：「连上一台机器」就是开一条这个。
-    Hold,
-}
-
-/// `use: shell` 的 PTY。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct PtyOpts {
-    #[serde(default = "PtyOpts::default_term")]
-    pub term: String,
-    pub cols: u32,
-    pub rows: u32,
-}
-
-impl PtyOpts {
-    fn default_term() -> String {
-        "xterm-256color".to_string()
-    }
-}
-
-impl Default for PtyOpts {
-    fn default() -> Self {
-        PtyOpts {
-            term: Self::default_term(),
-            cols: 80,
-            rows: 24,
-        }
-    }
-}
-
-/// `use: capture` 的参数。
-#[derive(Debug, Clone, Deserialize)]
-pub struct CaptureOpts {
-    /// stdout / stderr 各自的收集上限（字节）。
-    pub max_bytes: usize,
-    /// stdout 一出现这个子串就收工（不认参数的老后端会掉进流模式、永不 EOF）。
-    #[serde(default)]
-    pub abort_marker: Option<String>,
-    /// exec 之后原样写进远端进程 stdin 的字节（缺席 = 一个字节不写）。**不关 stdin** ——
-    /// 收它的那一侧是后端 CLI 面的「只读一行」入口（`wire/cli_words.rs::STDIN_LINE_FLAG`），读到换行就动手。
-    /// 有了它，载荷不必拼进命令行（那要求远端登录 shell 认 POSIX 引号与管道）。
-    #[serde(default)]
-    pub stdin: Option<String>,
-}
-
-/// `use: forward` 的参数。
-#[derive(Debug, Clone, Deserialize)]
-pub struct ForwardSpec {
-    pub local_port: u16,
-    pub remote_host: String,
-    pub remote_port: u16,
-}
-
-/// 界面交给代理的那份 JSON。蛇形键（不是界面配置那套 camelCase）：这条管子两端都是我们自己，不与给前端看的契约拴在一起。
-/// v2 的字段全是可选的（老界面发来的请求照样读得动）。
-#[derive(Debug, Clone, Deserialize)]
-pub struct DialRequest {
-    pub host: String,
-    pub port: u16,
-    pub user: String,
-    /// 钥匙那一格（不是私钥本体）：桌面是 OpenSSH 格式私钥的**路径**，手机是那台机器的钥匙编号；
-    /// 由宿主的 [`env::KeySource`] 换成能鉴权的东西（钥匙 · 外部签名器 · 密码）。缺席 = 走 ssh-agent。
-    pub key_path: Option<String>,
-    /// 要 exec 的命令行（`stream` / `capture`；界面已 `shell_quote` 过；`forward` 不用它）。
-    #[serde(default)]
-    pub command: String,
-    /// 竞速的地址顺序（`machine.rs::resolve` 按 `prefer` 排好）。空 = 只有 `host:port`。
-    #[serde(default)]
-    pub endpoints: Vec<Endpoint>,
-    /// 经这台跳板（fail-closed：它断开就报错，不回落直连）。
-    #[serde(default)]
-    pub jump: Option<JumpHop>,
-    #[serde(default, rename = "use")]
-    pub use_: Use,
-    #[serde(default)]
-    pub capture: Option<CaptureOpts>,
-    #[serde(default)]
-    pub forward: Option<ForwardSpec>,
-    /// `use: shell` 的 PTY（缺 ⇒ [`PtyOpts::default`]）。
-    #[serde(default)]
-    pub pty: Option<PtyOpts>,
-    /// ack 之前逐行报阶段（测试连接那六格）。
-    #[serde(default)]
-    pub stages: bool,
-    /// 短命探活（inactivity 拆链）而不是长连接（keepalive 保活）。
-    #[serde(default)]
-    pub probe: bool,
-    /// ssh-agent 套接字的路径（Unix；界面进程此刻的 `SSH_AUTH_SOCK`）。要界面交过来：常驻后端活得比任何一个界面进程都长，
-    /// 它自己环境里那份是第一个起它的界面给的，用户重新登录之后 agent 换了路径。缺席 = 用本进程自己的。
-    /// 它是一条路径、不是凭据本体；不进连接池的身份（换 agent 不该换连接）。
-    #[serde(default)]
-    pub agent_sock: Option<String>,
-    /// ack 之前每过一步当场写一行「过了一步」那一形阶段行（`{"stage":{"kind":"step",…}}`，[`step`]）。重连循环拿它判「这一拨还在动」（`resident-client` 的 `DIAL_WITHIN`）。
-    #[serde(default)]
-    pub progress: bool,
-}
-
-impl DialRequest {
-    /// 竞速顺序：给了就用给的，没给就只有 `host:port`。
-    pub fn race_order(&self) -> Vec<Endpoint> {
-        if self.endpoints.is_empty() {
-            vec![Endpoint {
-                host: self.host.clone(),
-                port: self.port,
-            }]
-        } else {
-            self.endpoints.clone()
-        }
-    }
-}
+/// 拨号请求那几样（[`DialRequest`] · [`JumpHop`] · [`Use`] · [`PtyOpts`] · [`CaptureOpts`] · [`ForwardSpec`]）也住那里：界面 · 手机交的就是那一份。
+pub use cmd_wire::dial::{
+    CaptureOpts, Captured, DialAck, DialFail, DialRequest, Endpoint, ForwardSpec, JumpHop, PtyOpts,
+    Stage, StageLine, Use, ACK_V, USES,
+};
 
 /// 没开成：那一句 ＋ 下层原话（进 `detail`，按宿主的 [`env::Facts`] 写成复制详情）＋ 看到的指纹。
 pub fn fail(error: Said, fingerprint: Option<String>) -> DialFail {

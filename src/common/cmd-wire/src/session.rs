@@ -1,6 +1,6 @@
 //! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-open` · `session-open-facts` · `session-model` ·
 //! `session-permission` · `session-commands` · `session-say` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
-//! 手机嵌的 Rust 核心按这里的类型解（[`decode_reply`]），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
+//! 手机按这里生成的 Kotlin 类解（`gen-kotlin-wire.mjs`），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
 
 use serde::{Deserialize, Serialize};

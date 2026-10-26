@@ -9,6 +9,7 @@ use crate::resident::{self, OnEvent};
 use batch_core::{Board, Failed, Phase, Plan, Rebuff, Tick, Verb};
 use cmd_wire::batch::{BatchReply, Conflict, Decide, ItemState};
 use cmd_wire::files::{Call, WirePath};
+use cmd_wire::phone::{BatchAnswer, BatchKeep, BatchLine, ClashRow};
 use resident_client::client::CallError;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -125,8 +126,15 @@ impl PhoneBoard {
             })
             .to_string()
         });
-        let body = serde_json::json!({ "ticket": self.ticket, "plan": plan });
-        (self.on_event)(self.h, "batch_keep", body.to_string());
+        let body = BatchKeep {
+            ticket: self.ticket.clone(),
+            plan,
+        };
+        (self.on_event)(
+            self.h,
+            "batch_keep",
+            serde_json::to_string(&body).unwrap_or_default(),
+        );
     }
 
     /// 一格进度（帧那一侧）：`{done, total, current?, bytes_done?, bytes_total?}`。
@@ -150,54 +158,65 @@ impl PhoneBoard {
     }
 
     fn emit(&self, phase: &Phase) {
-        (self.on_event)(self.h, "batch", self.event(phase).to_string());
+        (self.on_event)(
+            self.h,
+            "batch",
+            serde_json::to_string(&self.event(phase)).unwrap_or_default(),
+        );
     }
 
     /// 交 Kotlin 的那一行（字全写好）。
-    pub fn event(&self, phase: &Phase) -> serde_json::Value {
+    pub fn event(&self, phase: &Phase) -> BatchLine {
         let (t, current) = lock(&self.tick).clone();
-        let mut v = serde_json::json!({
-            "id": self.id,
-            "title": batch_core::title_of(&self.plan),
-        });
-        let (name, extra) = match phase {
-            Phase::Running => (
-                "running",
-                serde_json::json!({ "current": current, "frac": t.frac() }),
-            ),
-            Phase::Asking => (
-                "asking",
-                serde_json::json!({ "conflicts": clash_rows(&lock(&self.asking)), "go": self.plan.verb.text() }),
-            ),
-            Phase::Cut(line) => ("cut", serde_json::json!({ "line": line })),
+        let (id, title, kept) = (self.id, batch_core::title_of(&self.plan), self.kept);
+        match phase {
+            Phase::Running => BatchLine::Running {
+                id,
+                title,
+                kept,
+                current,
+                frac: t.frac(),
+            },
+            Phase::Asking => BatchLine::Asking {
+                id,
+                title,
+                kept,
+                conflicts: clash_rows(&lock(&self.asking)),
+                go: self.plan.verb.text(),
+            },
+            Phase::Cut(line) => BatchLine::Cut {
+                id,
+                title,
+                kept,
+                line: line.clone(),
+                resume: false,
+            },
             Phase::Ended(r) => {
                 let failed = batch_core::failed_lines(&self.plan, r);
-                (
-                    "ended",
-                    serde_json::json!({
-                        "said": r.said,
-                        "failed_title": copy_core::copy_text("beFiles.batch.segBad", &[("bad", &failed.len().to_string())]),
-                        "failed": failed,
-                        "details": batch_core::copy_details(&self.plan, r),
-                        "retry": batch_core::retry_plan(&self.plan, r).is_some(),
-                        "undo": batch_core::undo_plan(&self.plan, r).is_some(),
-                    }),
-                )
+                BatchLine::Ended {
+                    id,
+                    title,
+                    kept,
+                    said: r.said.clone(),
+                    failed_title: copy_core::copy_text(
+                        "beFiles.batch.segBad",
+                        &[("bad", &failed.len().to_string())],
+                    ),
+                    failed,
+                    details: batch_core::copy_details(&self.plan, r),
+                    retry: batch_core::retry_plan(&self.plan, r).is_some(),
+                    undo: batch_core::undo_plan(&self.plan, r).is_some(),
+                }
             }
-            Phase::Failed(f) => (
-                "failed",
-                serde_json::json!({ "said": f.said, "details": Failed::copy_body(&f.said, &f.detail) }),
-            ),
-            Phase::Dropped | Phase::Opened => ("dropped", serde_json::json!({})),
-        };
-        v["phase"] = name.into();
-        if self.kept {
-            v["kept"] = true.into();
+            Phase::Failed(f) => BatchLine::Failed {
+                id,
+                title,
+                kept,
+                said: f.said.clone(),
+                details: Failed::copy_body(&f.said, &f.detail),
+            },
+            Phase::Dropped | Phase::Opened => BatchLine::Dropped { id, title, kept },
         }
-        if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
-            o.extend(e.clone());
-        }
-        v
     }
 }
 
@@ -239,16 +258,15 @@ impl Board for PhoneBoard {
 }
 
 /// 同名那一问的几行（抽屉照画）：键 · 名字 · 那一行的说明（核心写好）· 这一项能怎么答（那台给的）。
-pub fn clash_rows(conflicts: &[Conflict]) -> serde_json::Value {
+pub fn clash_rows(conflicts: &[Conflict]) -> Vec<ClashRow> {
     conflicts
         .iter()
-        .map(|c| {
-            serde_json::json!({
-                "key": c.key,
-                "name": String::from_utf8_lossy(c.name.bytes()),
-                "meta": batch_core::conflict_meta(c),
-                "answers": c.answers,
-            })
+        .map(|c| ClashRow {
+            key: c.key.clone(),
+            name: String::from_utf8_lossy(c.name.bytes()).into_owned(),
+            meta: batch_core::conflict_meta(c),
+            answers: c.answers.clone(),
+            there: None,
         })
         .collect()
 }
@@ -260,7 +278,7 @@ pub fn clash_rows(conflicts: &[Conflict]) -> serde_json::Value {
 /// - `cut` · `ended`（`outcomes`：逐项结局，同后端一组的那一形）⇒ 断开那一行（给［继续］）· 结局句与没成的那几行。
 ///
 /// 读不动 ⇒ `None`。
-pub fn download_event(want: &serde_json::Value) -> Option<serde_json::Value> {
+pub fn download_event(want: &serde_json::Value) -> Option<BatchLine> {
     let names: Vec<String> = want
         .get("names")?
         .as_array()?
@@ -276,25 +294,20 @@ pub fn download_event(want: &serde_json::Value) -> Option<serde_json::Value> {
         machine: want.get("machine")?.as_str()?.to_string(),
     };
     let id = want.get("id")?.as_i64()?;
-    let head = serde_json::json!({ "id": id, "title": batch_core::title_of(&plan) });
-    let with = |phase: &str, extra: serde_json::Value| {
-        let mut v = head.clone();
-        v["phase"] = phase.into();
-        if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
-            o.extend(e.clone());
-        }
-        v
-    };
+    let title = batch_core::title_of(&plan);
     let outcomes = || {
         serde_json::from_value::<Vec<cmd_wire::batch::BatchOutcome>>(want.get("outcomes")?.clone())
             .ok()
     };
     let running = |done: f64, part: f64, current: Option<&str>| {
         let n = plan.names.len().max(1) as f64;
-        with(
-            "running",
-            serde_json::json!({ "current": current, "frac": ((done + part) / n) as f32 }),
-        )
+        BatchLine::Running {
+            id,
+            title: title.clone(),
+            kept: false,
+            current: current.map(str::to_string),
+            frac: Some(((done + part) / n) as f32),
+        }
     };
     Some(match want.get("phase")?.as_str()? {
         "asking" => {
@@ -308,10 +321,13 @@ pub fn download_event(want: &serde_json::Value) -> Option<serde_json::Value> {
             if rows.is_empty() {
                 return Some(running(0.0, 0.0, None));
             }
-            with(
-                "asking",
-                serde_json::json!({ "conflicts": rows, "go": plan.verb.text() }),
-            )
+            BatchLine::Asking {
+                id,
+                title,
+                kept: false,
+                conflicts: rows,
+                go: plan.verb.text(),
+            }
         }
         "running" => {
             let n = |k: &str| want.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -329,7 +345,13 @@ pub fn download_event(want: &serde_json::Value) -> Option<serde_json::Value> {
                 count(ItemState::Done),
                 count(ItemState::Cancelled),
             );
-            with("cut", serde_json::json!({ "line": line, "resume": true }))
+            BatchLine::Cut {
+                id,
+                title,
+                kept: false,
+                line,
+                resume: true,
+            }
         }
         "ended" => {
             let outcomes = outcomes()?;
@@ -342,20 +364,20 @@ pub fn download_event(want: &serde_json::Value) -> Option<serde_json::Value> {
 }
 
 /// 本机同名那一步：要下的名字里，文件夹里已有（不分大小写：手机的共享存储不分）的那几项 ⇒ 抽屉那几行（只有名字一格；目录不下，恒给覆盖）。
-fn local_clashes(names: &[String], here: &[&str]) -> Vec<serde_json::Value> {
+fn local_clashes(names: &[String], here: &[&str]) -> Vec<ClashRow> {
     let answers = [Decide::Overwrite, Decide::Skip, Decide::KeepBoth];
     names
         .iter()
         .enumerate()
         .filter_map(|(i, n)| {
             let there = here.iter().find(|h| h.to_lowercase() == n.to_lowercase())?;
-            Some(serde_json::json!({
-                "key": i.to_string(),
-                "name": n,
-                "there": there,
-                "meta": "",
-                "answers": answers,
-            }))
+            Some(ClashRow {
+                key: i.to_string(),
+                name: n.clone(),
+                there: Some((*there).to_string()),
+                meta: String::new(),
+                answers: answers.to_vec(),
+            })
         })
         .collect()
 }
@@ -586,21 +608,18 @@ fn launch(b: Arc<PhoneBoard>) -> i64 {
     id
 }
 
-/// 同名那一问的答 ⇒ 每个键一格（`batch_core::answer_of`）：`{all: "skip"|"keep_both"|"overwrite"}` · `{each: {键: 答}}` · 别的（`null`）⇒ 取消。
+/// 同名那一问的答（[`BatchAnswer`]：`{all: 答}` · `{each: {键: 答}}`；`null` · 读不动 ⇒ 取消）⇒ 每个键一格（`batch_core::answer_of`）。
 pub fn decided<'a>(
     keys: impl IntoIterator<Item = &'a str>,
     text: Option<&str>,
 ) -> Option<BTreeMap<String, Decide>> {
-    let v: serde_json::Value = text
-        .and_then(|t| serde_json::from_str(t).ok())
-        .unwrap_or_default();
-    let all = v
-        .get("all")
-        .and_then(|a| serde_json::from_value::<Decide>(a.clone()).ok());
-    let each = v
-        .get("each")
-        .and_then(|e| serde_json::from_value::<BTreeMap<String, Decide>>(e.clone()).ok());
-    batch_core::answer_of(keys, all, each.as_ref())
+    let answer = text.and_then(|t| serde_json::from_str::<BatchAnswer>(t).ok());
+    let (all, each) = match &answer {
+        Some(BatchAnswer::All(d)) => (Some(*d), None),
+        Some(BatchAnswer::Each(m)) => (None, Some(m)),
+        None => (None, None),
+    };
+    batch_core::answer_of(keys, all, each)
 }
 
 /// 核心跑的那几组的答（[`decided`] 那一形）；那一组不在 ⇒ `false`。
@@ -845,7 +864,7 @@ mod tests {
         if let (Some(o), Some(e)) = (w.as_object_mut(), extra.as_object()) {
             o.extend(e.clone());
         }
-        download_event(&w).unwrap()
+        serde_json::to_value(download_event(&w).unwrap()).unwrap()
     }
 
     /// 🔴 下载一组本机同名那一步（纯函数）：文件夹里已有的名字 ⇒ 同名那几项（不分大小写，记下盘上那一份叫什么）；一项都不撞 ⇒ 不问。
@@ -960,7 +979,7 @@ mod tests {
         }
     }
 
-    /// 🔴 同名那一问的答只在核心里拆：手机 Kotlin 生产源里拆开一个答（`is` / `as` 到 `All` · `Each`）的只有交核心那一形（`BatchAnswer.wire`）。
+    /// 🔴 同名那一问的答只在核心里拆：手机 Kotlin 生产源里拆开一个答（`is` / `as` 到 `All` · `Each`）的只有交核心那一形（生成的编解码 `Generated.kt`）。
     #[test]
     fn kotlin_takes_a_clash_answer_apart_only_to_hand_it_over() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -987,7 +1006,17 @@ mod tests {
                     && p.to_string_lossy().contains("/src/main/")
                 {
                     let text = std::fs::read_to_string(&p).unwrap_or_default();
-                    if marks.iter().any(|m| text.contains(m)) {
+                    // 记号后面得是个断点（`is All` 不算 `is Allow.No`）。
+                    let whole = |m: &str| {
+                        text.match_indices(m).any(|(i, _)| {
+                            m.ends_with('.')
+                                || !text[i + m.len()..]
+                                    .chars()
+                                    .next()
+                                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                        })
+                    };
+                    if marks.iter().any(|m| whole(m)) {
                         hits.insert(p.file_name().unwrap().to_string_lossy().into_owned());
                     }
                 }
@@ -995,7 +1024,7 @@ mod tests {
         }
         assert_eq!(
             hits,
-            std::collections::BTreeSet::from(["BatchEvent.kt".to_string()]),
+            std::collections::BTreeSet::from(["Generated.kt".to_string()]),
             "只许交核心那一形拆（它也得在：正控）"
         );
     }

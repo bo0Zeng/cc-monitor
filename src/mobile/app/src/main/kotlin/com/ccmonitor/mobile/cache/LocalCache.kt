@@ -3,8 +3,7 @@ package com.ccmonitor.mobile.cache
 import com.ccmonitor.mobile.core.claude.link.KeptBatches
 import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHead
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.rawHead
 import com.ccmonitor.mobile.core.data.db.CacheDao
 import com.ccmonitor.mobile.core.data.db.CachedSession
 import com.ccmonitor.mobile.core.data.db.Draft
@@ -62,7 +61,7 @@ internal fun handOf(
         held = hold?.held,
         order = items.map { it.first },
         items = items.toMap(),
-        head = hold?.head?.let(RawJson::read)?.let { Wire.bind<SyncHead>(it) },
+        head = hold?.head?.let(RawJson::read)?.let(::rawHead),
     )
 }
 

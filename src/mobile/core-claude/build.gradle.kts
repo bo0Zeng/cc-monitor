@@ -2,7 +2,6 @@
 // 任务名因此不同：测试是 `test`，静态分析是 `detektMain`（带类型解析；plain `detekt` 不做类型解析，会漏规则）。
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.ksp) // 线上类（`link/wire/`）的 Moshi 解码器在编译期生成
 }
 
 java {
@@ -92,8 +91,9 @@ tasks.named<Test>("test") {
 }
 
 dependencies {
+    // 线上类型（生成的类与编解码）住 core-wire；本模块的公开面上就是它们（回包 · 事件的类型），用的那一侧也看得见。
+    api(project(":core-wire"))
     implementation(libs.moshi)
-    ksp(libs.moshi.kotlin.codegen)
     // 传输用 Flow<ByteArray>。用 -core（纯 JVM artifact），不引 Android 耦合。
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)

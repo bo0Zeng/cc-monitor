@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
-import com.ccmonitor.mobile.core.claude.link.wire.RotNote
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
+import com.ccmonitor.mobile.core.wire.gen.RotHint
+import com.ccmonitor.mobile.core.wire.gen.RotNote
+import com.ccmonitor.mobile.core.wire.gen.Tone
 
 /*
  * 轮换屏上的字：全是那台写好的；这里只填会走的钟（停发那一句的「还有多久」，同桌面 `rot-words.ts`）。
@@ -22,7 +22,7 @@ fun hintText(
     n: RotNote,
     now: Long,
 ): String {
-    val until = n.hint.until.takeIf { n.hint.k == RotHintKind.HOLD } ?: return n.text
+    val until = (n.hint as? RotHint.Hold)?.until ?: return n.text
     return DurationFormat.clock(n.text, now * MS, until * MS, now * MS)
 }
 

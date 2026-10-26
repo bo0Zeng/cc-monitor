@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.SessionTable
-import com.ccmonitor.mobile.core.claude.link.wire.ManualItem
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsItem
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.ManualItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.ui.chats.HostName
 
 /** 总览「需手动」组的一行（照那台给的先后）。 */
@@ -84,16 +84,16 @@ private fun linesOf(
 ): List<NeedsLine> {
     val out = mutableListOf<NeedsLine>()
     for (it in items) {
-        val session = it.session
-        val manual = it.manual
-        val slice = it.slice
         val last = out.lastOrNull()
-        when {
-            session != null -> out += NeedsLine.Session(h, session)
-            manual != null -> out += NeedsLine.Manual(h, manual)
-            slice == null -> Unit
-            last is NeedsLine.Plan && last.workspace == it.workspace && last.slice == slice -> out[out.lastIndex] = last.copy(n = last.n + 1)
-            else -> out += NeedsLine.Plan(h, it.workspace.orEmpty(), slice, 1)
+        when (it) {
+            is NeedsItem.Session -> out += NeedsLine.Session(h, it.session)
+            is NeedsItem.Manual -> out += NeedsLine.Manual(h, it.manual)
+            is NeedsItem.Plan ->
+                if (last is NeedsLine.Plan && last.workspace == it.workspace && last.slice == it.slice) {
+                    out[out.lastIndex] = last.copy(n = last.n + 1)
+                } else {
+                    out += NeedsLine.Plan(h, it.workspace, it.slice, 1)
+                }
         }
     }
     return out

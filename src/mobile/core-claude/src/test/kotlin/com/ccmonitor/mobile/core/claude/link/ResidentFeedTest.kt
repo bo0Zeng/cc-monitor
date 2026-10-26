@@ -1,7 +1,14 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFix
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.MenuEntry
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
@@ -98,11 +105,11 @@ class ResidentFeedTest {
 
         val picks = mutableListOf<Pair<Long, String>>()
 
-        override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","answers":["skip"]}]"""
+        override fun clashRows(data: String): String = """[{"key":"0","name":"a","meta":"m","answers":["skip"],"there":null}]"""
 
         override fun searchMerge(data: String): String = ""
 
-        override fun downloadEvent(want: String): String = """{"id":-1,"phase":"cut","title":"t","line":"l","resume":true}"""
+        override fun downloadEvent(want: String): String = """{"id":-1,"phase":"cut","title":"t","kept":false,"line":"l","resume":true}"""
 
         override fun answerOf(
             keys: String,
@@ -320,14 +327,16 @@ class ResidentFeedTest {
             val f = feed(core)
             f.deploy { """[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]""" }
             assertEquals(listOf("""[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]"""), core.deploys)
-            core.emit("deploy", """{"done":"deploy","text":"已安装后端 p10g-mine"}""")
+            core.emit("deploy", """{"end":"done","act":"deploy","text":"已安装后端 p10g-mine"}""")
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("连着"))
             assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
             core.emit("state", line("那台旧"))
             assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
-            core.emit("deploy", """{"failed":"io_failed","text":"上传后校验失败","detail":"d"}""")
+            core.emit("deploy", """{"end":"failed","code":"io_failed","text":"上传后校验失败","detail":"d"}""")
             assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
+            // 缺一格（详情）· 认不出的结局 ⇒ 不补默认、不动，报契约对不上。
+            core.emit("deploy", """{"end":"failed","code":"io_failed","text":"别的"}""")
             core.emit("deploy", """{"what":1}""")
             assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
         }
@@ -339,12 +348,13 @@ class ResidentFeedTest {
             val f = feed(core)
             val ok = async { f.call("history-list", mapOf("limit" to 3), 7_000) }
             assertEquals(Triple("history-list", """{"limit":3}""", 7_000L), core.calls.single())
-            core.emit("reply", """{"call":1,"ok":true,"data":{"rows":[]}}""")
-            assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any>())), ok.await())
+            // 回包里多一格这一版不认的：原样交到这里（核心不先解再转）。
+            core.emit("reply", """{"call":1,"end":"ok","data":{"rows":[],"later":{"x":1}}}""")
+            assertEquals(Reply.Ok(mapOf("rows" to emptyList<Any>(), "later" to mapOf("x" to 1.0))), ok.await())
             val failed = async { f.call("session-open") }
-            core.emit("reply", """{"call":2,"ok":false,"code":"differs","message":"box 后端版本不同","detail":"d"}""")
+            core.emit("reply", """{"call":2,"end":"failed","code":"differs","message":"box 后端版本不同","detail":"d","data":null}""")
             assertEquals(Reply.Failed(CoreFailure("differs", "box 后端版本不同", "d", null)), failed.await())
-            for ((line, want) in listOf("""{"call":3,"timeout":true}""" to Reply.TimedOut, """{"call":4,"down":true}""" to Reply.LinkDown)) {
+            for ((line, want) in listOf("""{"call":3,"end":"timeout"}""" to Reply.TimedOut, """{"call":4,"end":"down"}""" to Reply.LinkDown)) {
                 val r = async { f.call("ping") }
                 core.emit("reply", line)
                 assertEquals(want, r.await())
@@ -362,12 +372,12 @@ class ResidentFeedTest {
             core.emit("moved", """{"call":41,"done":5,"total":10}""")
             core.emit("moved", """{"call":99,"done":1,"total":1}""")
             core.emit("moved", """{"call":41,"done":10,"total":null}""")
-            core.emit("reply", """{"call":41,"ok":true,"data":{"key":"k"}}""")
+            core.emit("reply", """{"call":41,"end":"ok","data":{"key":"k"}}""")
             assertEquals(Reply.Ok(mapOf("key" to "k")), up.await())
             assertEquals("别的那一趟的不算；总数不知道 ⇒ -1", listOf(5L to 10L, 10L to -1L), seen)
             val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f"), { 18 }, 9_000) { _, _ -> } }
             assertEquals(listOf<Any>("pull", 18, """{"path":"/w/f"}""", "/sd/f", 9_000L), core.transfers.last())
-            core.emit("reply", """{"call":42,"down":true}""")
+            core.emit("reply", """{"call":42,"end":"down"}""")
             assertEquals(Reply.LinkDown, down.await())
         }
 
@@ -387,7 +397,7 @@ class ResidentFeedTest {
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
-            assertEquals(mapOf("0" to "skip", "1" to "overwrite"), f.decided(listOf("0", "1"), BatchAnswer.Each(mapOf("1" to "overwrite"))))
+            assertEquals(mapOf("0" to Decide.SKIP, "1" to Decide.OVERWRITE), f.decided(listOf("0", "1"), BatchAnswer.Each(mapOf("1" to Decide.OVERWRITE))))
             assertEquals(listOf("""["0","1"]""" to """{"each":{"1":"overwrite"}}"""), core.answered)
             f.decided(listOf("0"), null)
             assertEquals("""["0"]""" to null, core.answered.last())
@@ -435,7 +445,7 @@ class ResidentFeedTest {
                 """[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":1700000000,"size":12}]""",
                 core.picks.single().second,
             )
-            assertEquals(PickMenu(listOf(PickMenu.Entry("download", "下载", false, "docs")), emptyList(), "open"), menu)
+            assertEquals(PhoneMenu(listOf(MenuEntry("download", "下载", false, "docs")), emptyList(), "open"), menu)
         }
 
     @Test
@@ -447,7 +457,7 @@ class ResidentFeedTest {
             backgroundScope.launch { f.changed.collect { got += it } }
             core.emit("frame", """{"kind":"changed","topic":"needs","key":"s1"}""")
             core.emit("frame", """{"kind":"sessions_replayed"}""")
-            assertEquals(listOf(Changed("needs", "s1")), got)
+            assertEquals(listOf(Changed(Topic.NEEDS, "s1")), got)
         }
 
     @Test
@@ -484,13 +494,16 @@ class ResidentFeedTest {
             assertEquals("核心读不动的那一份不留", listOf("t-1"), disk.rows.keys.toList())
 
             // 接回来的那一组：屏后开也照最后那一格画；收场的那一格只交一次（屏上没人看着时交给后开的那一屏）。
-            after.emit("batch", """{"id":41,"phase":"cut","title":"删除 1 项","line":"box 连接已断开","kept":true}""")
-            after.emit("batch", """{"id":7,"phase":"running","title":"复制 2 项"}""")
+            after.emit("batch", """{"id":41,"phase":"cut","title":"删除 1 项","kept":true,"line":"box 连接已断开","resume":false}""")
+            after.emit("batch", """{"id":7,"phase":"running","title":"复制 2 项","kept":false,"current":null,"frac":null}""")
             val phases = { f.resumed().map { it.id to it.phase } }
-            assertEquals("只记接回来的那几组", listOf(41L to BatchEvent.CUT), phases())
-            assertEquals("没收场的一直交", listOf(41L to BatchEvent.CUT), phases())
-            after.emit("batch", """{"id":41,"phase":"ended","title":"删除 1 项","said":"已删除 1 项","kept":true}""")
-            assertEquals(listOf(41L to BatchEvent.ENDED), phases())
+            assertEquals("只记接回来的那几组", listOf(41L to "cut"), phases())
+            assertEquals("没收场的一直交", listOf(41L to "cut"), phases())
+            after.emit(
+                "batch",
+                """{"id":41,"phase":"ended","title":"删除 1 项","kept":true,"said":"已删除 1 项","failed_title":"","failed":[],"details":null,"retry":false,"undo":false}""",
+            )
+            assertEquals(listOf(41L to "ended"), phases())
             assertEquals("收场那一格只交一次", emptyList<Pair<Long, String>>(), phases())
             after.emit("batch_keep", """{"ticket":"t-1","plan":null}""")
             assertEquals(emptyMap<String, String>(), disk.rows.toMap())
@@ -512,11 +525,11 @@ class ResidentFeedTest {
                     kept = Disk(),
                     onBreak = { broken += it },
                 ).also { it.ensure() }
-            val got = mutableListOf<LiveFrame>()
+            val got = mutableListOf<LiveCard>()
             backgroundScope.launch { f.live.collect { got += it } }
             core.emit("frame", """{"kind":"live_card","sid":"s1","card":4,"n":1,"op":"text","i":0,"s":"字"}""")
             core.emit("frame", """{"kind":"live_card","sid":"s1","card":4,"n":2,"op":"grow"}""")
-            assertEquals(listOf(LiveFrame("s1", null, 4, 1, LiveFrame.Op.Text(0, "字"))), got)
+            assertEquals("字", (got.single() as LiveCard.Text).s)
             assertEquals(1, broken.size)
         }
 
