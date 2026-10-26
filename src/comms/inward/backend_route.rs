@@ -8,7 +8,7 @@
 //!
 //! | 档 | 在 `call` 里的位置 | 判定 |
 //! |---|---|---|
-//! | `client_for(origin) == None` | 连 client 都没有，一个字节没发 | 证明没发出去 ⇒ 可回落 |
+//! | `local_client() == None` | 连 client 都没有，一个字节没发 | 证明没发出去 ⇒ 可回落 |
 //! | `Unsupported` | `call` 第一行 `if !self.accepts(cmd)`，早于 `next_id`/`register`/`send` | 证明没发出去 ⇒ 可回落（旧后端） |
 //! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | 证明没发出去 ⇒ 可回落 |
 //! | `Disconnected` | 两个产地：写队列 send 失败（没入队）或 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
@@ -268,7 +268,7 @@ pub enum Detail {
     BackendOld,
 }
 
-/// 没有控制通道（`client_for` 回 `None`）的分层结果 —— **一个字节都没发出去**。
+/// 没有控制通道（`local_client` 回 `None`）的分层结果 —— **一个字节都没发出去**。
 pub fn layer_no_channel(hop: u8) -> w::CallError {
     w::CallError::Hop {
         at: w::HopId {
@@ -317,7 +317,7 @@ pub fn route_call_error(
     }
 }
 
-/// 没有控制通道（`client_for` 回 `None`）—— **一个字节都没发出去**，可回落。
+/// 没有控制通道（`local_client` 回 `None`）—— **一个字节都没发出去**，可回落。
 pub fn no_channel(origin: &str) -> Routed {
     Routed::NoChannel(copy_text(
         "rsBackendRoute.noChannel.message",

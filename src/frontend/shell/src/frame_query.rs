@@ -104,7 +104,7 @@ pub(crate) async fn call(
     let who = who(origin);
     // 问哪一台都只走本机后端那一条通道：问别的台 ⇒ 信封带那台的名字，本机后端转给它那条常驻流
     // （那台认不认这条 · 做不做得到由本机后端连那台的客户端判、照码回）。本机后端不在 ⇒ 说的是本机没有通道。
-    let Some(client) = inbound_client::client_for(inbound_client::LOCAL_ORIGIN) else {
+    let Some(client) = inbound_client::local_client() else {
         // 说「谁」用同一个 [`who`]：不许把 `<local>` 这个键原样说给人看。
         return Err(Said::written(said(no_channel(&here))));
     };

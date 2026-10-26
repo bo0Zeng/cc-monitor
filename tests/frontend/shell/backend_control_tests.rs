@@ -57,17 +57,12 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
     }
 }
 
-/// ★★ **两条「说成功其实没成」的形态**〔D 阶段补审 08-11 新增，A2 + A6〕。
+/// ★★ **「说成功其实没成」的形态**〔D 阶段补审 08-11，A6〕：`backend_start` 把 `Resolved::Missing{reason}` 当 `Ok(reason)` ⇒
+/// 「没内嵌后端」「释放失败」两种**真失败**在前端只走 `console.info`，**一个 toast 都不弹**。
 ///
-/// | # | 原形态 | 后果 |
-/// |---|---|---|
-/// | A2 | 远端「起」的判据是 `slot.handle.is_some()` | `JoinHandle` 完成后**不会变 `None`** ⇒ 流早就结束了，每次「起」仍恒回「已经在跑」；用户只能先「停」再「起」 |
-/// | A6 | `backend_start` 把 `Resolved::Missing{reason}` 当 `Ok(reason)` | 「没内嵌后端」「释放失败」两种**真失败**在前端只走 `console.info`，**一个 toast 都不弹** |
-///
-/// 本条钉：① 远端那支必须问 `is_finished()`（不是 `is_some()`）；
-/// ② 本机那支必须有 `Failed` ⇒ `Err` 那一格（三态各有去处，不靠 `reason` 字符串猜）。
+/// 本条钉：本机那支必须有 `Failed` ⇒ `Err` 那一格（三态各有去处，不靠 `reason` 字符串猜）。
 #[test]
-fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
+fn starting_reports_failure_as_failure() {
     let src = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/backend_control.rs"
     ));
@@ -85,13 +80,6 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
         body.len()
     );
 
-    guard_core::find_pinned(&body, "is_finished()").unwrap_or_else(|e| {
-        panic!(
-            "远端「起」不再问 `is_finished()`（{e}）。\n\
-                 若换回 `handle.is_some()`：`JoinHandle` 完成后不会变 `None`\n\
-                 ⇒ 流早就结束了，「起」仍恒回「已经在跑」，用户只能先「停」再「起」。"
-        )
-    });
     guard_core::find_pinned(&body, "StartOutcome::Failed").unwrap_or_else(|e| {
         panic!(
             "本机「起」没有把 `Failed` 单独接出来（{e}）。\n\
@@ -106,25 +94,6 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
             || body.contains("Err(Said::"),
         "本机「起」的失败那一格不回 `Err` —— 那就是把失败说成了成功。"
     );
-}
-
-/// ★ **接线钉（远端那半）**：`lib.rs` 起远端（启动时与热加载同一条路）**真的**把把手注册进来。
-///
-/// 不注册的后果**不是编译错，是运行时一句「没有把手」** —— 而本模块的单测全都照样绿
-/// （它们不需要真把手）。这正是 F03 那个坑：「模块存在 ≠ 模块被调用」。
-///
-/// ⚠ 还要钉「把手不是被丢掉的」：原来那处逐字是 `tauri::async_runtime::spawn(async move {…});`
-/// —— **JoinHandle 直接丢**，于是远端流起了就再也停不下来。
-#[test]
-fn the_startup_path_really_registers_remote_handles() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
-    guard_core::find_pinned(&prod, "backend_control::reconcile_remotes(").unwrap_or_else(|e| {
-        panic!(
-            "`lib.rs` 的生产段里没有恰好一处 `reconcile_remotes(`（{e}）。\n\
-                 ⇒ 远端那侧的起/停在运行时只会回一句「没有这台机的把手」，\n\
-                 而本模块的单测**全都照样绿**（它们不需要真把手）。"
-        )
-    });
 }
 
 #[test]
@@ -152,135 +121,4 @@ fn an_unknown_remote_origin_says_so_instead_of_pretending() {
         copy_core::copy_matches("rsBackendControl.handle.missing", &e),
         "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
     );
-}
-
-// ── P28：给这条源码扫描型守卫立**负对照** ──
-//
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 被扫的 `src/frontend/shell/src/lib.rs` 今天 1839 行，第一个 `#[cfg(test)]` 在 **32** 行
-// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 31 行，
-// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
-//
-// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
-// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
-
-/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
-#[test]
-fn the_shared_stripper_keeps_the_registration_this_guard_must_scan() {
-    // ⚠ `lib.rs` 的第一个 `#[cfg(test)]` 远在要扫的那几段前面 ——
-    //    便宜近似只留到那里 ⇒ 本文件那条 `find_pinned` 会报 0 处，
-    //    而它的诊断说的是「远端那侧的起/停只会回一句没有这台机的把手」——
-    //    **一句指向错地方的假诊断**。⇒ 逐针钉住扫描面本身。
-    guard_core::assert_stripper_keeps(
-        "backend_control_tests · lib.rs",
-        include_str!("../../../src/frontend/shell/src/lib.rs"),
-        &["backend_control::reconcile_remotes("],
-    );
-}
-
-/// 机器表热加载：新来的那台起流、拿掉 / 停用的那台断流、连接参数变了的重起，其余一台不碰。
-///
-/// 断流是异步落地的（`abort()` 只把任务记成取消、由运行时的线程去丢 future）⇒ 「断了」**等事件**：
-/// 每条流的 future 被丢时往通道里报一声名字，这边收齐该断的那几声再判。原先是固定睡 50 ms 再看旗子，
-/// 而且旗子挂在 future **第一次被轮到时**才建的守卫上 —— 机器负载 20 以上时起完 50 ms 内任务可能一次都没轮到，
-/// 那时 abort 丢掉的是没开跑的 future、守卫根本没建，旗子永远不立（「停用的那台流没断」）。
-/// 现在守卫在起流时就建好、随 future 一起被捕获：future 一被丢（开没开跑都一样）守卫就落。
-#[test]
-fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::mpsc;
-    use std::sync::Arc;
-
-    /// 流被断（任务被 abort ⇒ future 被丢）时把旗子立起来、往通道里报一声是哪台。
-    struct Dropped(Arc<AtomicBool>, mpsc::Sender<String>, String);
-    impl Drop for Dropped {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::SeqCst);
-            let _ = self.1.send(self.2.clone());
-        }
-    }
-    let (drop_tx, drop_rx) = mpsc::channel::<String>();
-    let starts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
-    let dropped: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let want = |origin: &str, key: &str| {
-        let (o, s, d, tx) = (
-            origin.to_string(),
-            starts.clone(),
-            dropped.clone(),
-            drop_tx.clone(),
-        );
-        WantedRemote {
-            origin: origin.to_string(),
-            cfg_key: key.to_string(),
-            respawn: Box::new(move || {
-                *s.lock().unwrap().entry(o.clone()).or_insert(0) += 1;
-                let flag = Arc::new(AtomicBool::new(false));
-                d.lock().unwrap().insert(o.clone(), flag.clone());
-                let guard = Dropped(flag, tx.clone(), o.clone());
-                tauri::async_runtime::spawn(async move {
-                    let _guard = guard;
-                    std::future::pending::<()>().await;
-                })
-            }),
-        }
-    };
-    // 等这几台的流各断一次（收到它们的那几声）；别的台报来的也记下 —— 「不该断的断了」由调用处判。
-    let mut heard: Vec<String> = Vec::new();
-    let mut await_drops = |which: &[&str]| {
-        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
-        while !which.iter().all(|w| heard.iter().any(|h| h == w)) {
-            let left = deadline.saturating_duration_since(std::time::Instant::now());
-            match drop_rx.recv_timeout(left) {
-                Ok(o) => heard.push(o),
-                Err(_) => panic!("等了 60 s，{which:?} 里还有没断的流（收到的：{heard:?}）"),
-            }
-        }
-        heard.clone()
-    };
-    let count = |o: &str| starts.lock().unwrap().get(o).copied().unwrap_or(0);
-    let was_dropped = |o: &str| dropped.lock().unwrap()[o].load(Ordering::SeqCst);
-
-    let r = reconcile_remotes(vec![
-        want("rc-a", "1"),
-        want("rc-b", "1"),
-        want("rc-c", "1"),
-    ]);
-    assert_eq!(r.started, ["rc-a", "rc-b", "rc-c"]);
-
-    // 停用 b（不在要连的里了）· c 改了连接参数 · a 原样。
-    let r = reconcile_remotes(vec![want("rc-a", "1"), want("rc-c", "2")]);
-    // b 被停、c 的旧流被换掉 ⇒ 恰好这两声（a 那一声若在这之前到了，下面「没动的那台流被断了」照样红）。
-    let heard_now = await_drops(&["rc-b", "rc-c"]);
-    assert_eq!(
-        r,
-        Reconciled {
-            started: vec![],
-            stopped: vec!["rc-b".into()],
-            restarted: vec!["rc-c".into()]
-        }
-    );
-    assert!(was_dropped("rc-b"), "停用的那台流没断");
-    assert!(
-        !heard_now.iter().any(|h| h == "rc-a"),
-        "没动的那台流被断了：{heard_now:?}"
-    );
-    assert!(
-        !backend_machines().unwrap().contains(&"rc-b".to_string()),
-        "停用的那台还在注册表里"
-    );
-    assert_eq!(count("rc-c"), 2, "改了参数的那台没按新参数重起");
-    assert_eq!(count("rc-a"), 1, "没动的那台被重起了");
-    assert!(!was_dropped("rc-a"), "没动的那台流被断了");
-
-    // 再开 b ⇒ 起一条新的；a · c 不动。
-    let r = reconcile_remotes(vec![
-        want("rc-a", "1"),
-        want("rc-b", "1"),
-        want("rc-c", "2"),
-    ]);
-    assert_eq!(r.started, ["rc-b"]);
-    assert!(r.stopped.is_empty() && r.restarted.is_empty());
-    assert_eq!((count("rc-a"), count("rc-b"), count("rc-c")), (1, 2, 2));
-    let _ = reconcile_remotes(vec![]);
 }

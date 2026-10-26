@@ -42,12 +42,7 @@ async fn a_frame_on_the_local_stream_reaches_the_watcher_with_its_bytes() {
         r#"{"kind":"files_batch","ticket":"fbr-local","done":1,"total":3,"bytes_done":512,"bytes_total":2048}"#,
     )
     .expect("认得这一帧");
-    crate::stream_source::route(
-        crate::stream_source::Via::Local,
-        &crate::origin::Origin::local(),
-        None,
-        f,
-    );
+    crate::stream_source::route(&crate::origin::Origin::local(), None, f);
     let got = tokio::time::timeout(guard_core::wall::CEILING, s.next())
         .await
         .expect("等到一格")

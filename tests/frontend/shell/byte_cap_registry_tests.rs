@@ -88,10 +88,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**字数**不是字节：`backend/stream/live.rs` 活卡正文超过留尾多少字才截一次（截一次就整张重发一次，这个数定的是重发的疏密）。",
     ),
     (
-        "EVENT_QUEUE",
-        "**条数**不是体量：`stream_source/run.rs` 重连循环交给收事那一头的那条队列至多排几件事；排满了循环就等（背压回到那台），不丢不截。",
-    ),
-    (
         "TAIL_PROBE",
         "**见证长度**不是上限：`backend/observe/watcher.rs` 续读前核游标前多少字节没被改写（值取 `observe/skeleton.rs::WITNESS`，骨架的见证同一个数）；什么都不截",
     ),

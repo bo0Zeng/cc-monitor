@@ -9,11 +9,13 @@
 //! - 版本号：那台 hello 自报的那一格（`version`；没带 ⇒ 空）。
 //! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `main.rs` 接上）：
 //!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
-//!
-//! 在看名单不在这条上（名单台空着：这条连接那台不往上发会话）。
+//!   新连上来的流先收此刻接着的各台的 hello（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
+//! - 在看名单：每台一张名单台（[`Desk`]，随这个进程一直留着，那台换连接重报）；连着本机后端的各条流报那台的名单
+//!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
 use crate::wire::Frame;
 use cmd_wire::frame::Relayed;
+use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -105,7 +107,7 @@ pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay) {
     t.retain(|name, f| {
         let keep = wanted.contains(name) && !held.contains(name);
         if !keep {
-            f.close();
+            close(name, f);
         }
         keep
     });
@@ -158,8 +160,14 @@ pub(crate) fn running(machine: &str) -> bool {
 pub(crate) fn hold(machine: &str) {
     lock(stopped()).insert(machine.to_string());
     if let Some(f) = lock(table()).remove(machine) {
-        f.close();
+        close(machine, &f);
     }
+}
+
+/// 收掉一台那一条：新连上的流不再先收它那一条的 hello。
+fn close(machine: &str, f: &Feed<Link>) {
+    f.close();
+    lock(hellos()).remove(machine);
 }
 
 /// 「起」/［重试］（[`resume_in`] 的生产那一份）。
@@ -205,7 +213,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
             machine: name.clone(),
             ssh: Arc::clone(ssh),
         })),
-        Desk::new(|_| Vec::new(), |_| {}),
+        desk_of(&name),
         feed::sink(move |e| {
             let machine = name.clone();
             match e {
@@ -215,6 +223,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         .ok()
                         .and_then(|h| h.version);
                     s.attached = true;
+                    lock(hellos()).insert(machine.clone(), hello.clone());
                     relay(Frame::Relayed(Relayed::Line {
                         machine,
                         line: hello,
@@ -231,6 +240,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         (s.version.clone(), ended)
                     };
                     if ended {
+                        lock(hellos()).remove(&machine);
                         relay(Frame::Relayed(Relayed::Ended { machine }));
                     }
                     crate::control::machine_state::note(
@@ -245,6 +255,123 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
             }
         }),
     )
+}
+
+/// 此刻接着的各台那一条连接的 hello（那台换连接就换，断了就摘）。
+fn hellos() -> &'static Mutex<HashMap<String, String>> {
+    static H: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+    H.get_or_init(Default::default)
+}
+
+/// 新连上来的一条流要先收的那几帧：此刻接着的各台那一条连接的 hello（按名字排）。
+/// 之后那台流上的帧照常转来（新流在 watcher 上接好之后才取这一份 ⇒ 不会漏开头；同一台的 hello 至多重一次，收的那一头当换了一条）。
+pub fn attached_hellos() -> Vec<Frame> {
+    let mut all: Vec<(String, String)> = lock(hellos())
+        .iter()
+        .map(|(m, h)| (m.clone(), h.clone()))
+        .collect();
+    all.sort();
+    all.into_iter()
+        .map(|(machine, line)| Frame::Relayed(Relayed::Line { machine, line }))
+        .collect()
+}
+
+/// 各台的名单台（随这个进程一直留着：那台的常驻流断了又起，名单照旧）。
+fn desks() -> &'static Mutex<HashMap<String, Arc<Desk>>> {
+    static D: std::sync::OnceLock<Mutex<HashMap<String, Arc<Desk>>>> = std::sync::OnceLock::new();
+    D.get_or_init(Default::default)
+}
+
+/// 连着本机后端的各条流报来的各台名单：那台 → 连接号 → 那条流报的那一份。
+fn asked() -> &'static Mutex<HashMap<String, HashMap<u64, WatchAsk>>> {
+    static A: std::sync::OnceLock<Mutex<HashMap<String, HashMap<u64, WatchAsk>>>> =
+        std::sync::OnceLock::new();
+    A.get_or_init(Default::default)
+}
+
+/// 那台的名单台（没有就起一张）：手上各份主线外清单照各条流报的交（同一个会话先报的那一份）。
+fn desk_of(machine: &str) -> Arc<Desk> {
+    let mut t = lock(desks());
+    if let Some(d) = t.get(machine) {
+        return Arc::clone(d);
+    }
+    let at = machine.to_string();
+    let d = Desk::new(move |sids| held_of(&at, sids), |_| {});
+    t.insert(machine.to_string(), Arc::clone(&d));
+    d
+}
+
+/// 各条流报来的那台的主线外清单里，名单里那几条的那一份（同一个会话先报的那一份）。
+fn held_of(machine: &str, sids: &BTreeSet<String>) -> Vec<BranchHeld> {
+    let all = lock(asked());
+    let mut out: Vec<BranchHeld> = Vec::new();
+    let mut conns: Vec<_> = all.get(machine).into_iter().flatten().collect();
+    conns.sort_by_key(|(c, _)| **c);
+    for (_, ask) in conns {
+        for b in &ask.branch {
+            if sids.contains(&b.sid) && !out.iter().any(|o| o.sid == b.sid) {
+                out.push(b.clone());
+            }
+        }
+    }
+    out
+}
+
+/// 那台此刻各条流并起来的那一份（在看的 · 手上留着的）。
+fn union_of(machine: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+    let all = lock(asked());
+    let mut sids = BTreeSet::new();
+    let mut kept = BTreeSet::new();
+    for ask in all.get(machine).into_iter().flat_map(|m| m.values()) {
+        sids.extend(ask.sids.iter().cloned());
+        kept.extend(ask.kept.iter().cloned());
+    }
+    (sids, kept)
+}
+
+/// **一条流报那台的在看名单**（`stream-watch` 信封带 `machine`，分派在 `stream/inbound`）：记在这条流名下、并起来交那台的名单台；
+/// 回那一趟报上去之后那台说的 `from[]` 里这条流名单里的那几条（那台此刻没接着 ⇒ 空的，下一条连接的 attach 行照样带上）。
+pub(crate) fn watch_at(
+    machine: &str,
+    conn: u64,
+    ask: WatchAsk,
+) -> impl std::future::Future<Output = Vec<WatchFrom>> + Send + 'static {
+    let mine: BTreeSet<String> = ask.sids.iter().cloned().collect();
+    lock(asked())
+        .entry(machine.to_string())
+        .or_default()
+        .insert(conn, ask);
+    let (sids, kept) = union_of(machine);
+    let heard = desk_of(machine).set_and_hear(sids, kept);
+    async move {
+        heard
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| mine.contains(&f.sid))
+            .collect()
+    }
+}
+
+/// 一条流在各台报过的名单：随它的读循环活着，读循环收了就从各台摘掉、各台的名单台照剩下的那几份重报。
+pub(crate) struct Watching(pub(crate) u64);
+
+impl Drop for Watching {
+    fn drop(&mut self) {
+        let touched: Vec<String> = {
+            let mut all = lock(asked());
+            let touched = all
+                .iter_mut()
+                .filter_map(|(m, by)| by.remove(&self.0).map(|_| m.clone()))
+                .collect();
+            all.retain(|_, by| !by.is_empty());
+            touched
+        };
+        for m in touched {
+            let (sids, kept) = union_of(&m);
+            desk_of(&m).set(sids, kept);
+        }
+    }
 }
 
 /// 生产那一侧：池里那条 SSH（照这一端的机器表按名字组请求），装后端走 `deploy-install` 那一趟。

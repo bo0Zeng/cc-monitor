@@ -126,7 +126,7 @@ impl Backends for WindowBackends {
 //  生产那个后端句柄：`call` 走既有的 `inbound_client`
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 生产的后端句柄 —— `origin` ⇒ `inbound_client::client_for`（本机与远端同一条路）。
+/// 生产的后端句柄 —— 一律经本机后端那一个客户端（`inbound_client::local_client`）：本机直接问，别台经它 `call_at`（本机与远端同一条路）。
 pub struct InboundBackends;
 
 /// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
@@ -136,14 +136,13 @@ const HOP: u8 = 1;
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
 /// 窗口说「手上有什么会被打断」那一条由窗口那条通道的句柄（[`WindowBackends`]）接；从别处（主界面）来的这一条是用错了。
-pub(crate) const HOST_OPS: [&str; 8] = [
+pub(crate) const HOST_OPS: [&str; 7] = [
     filewin_contract::FILEWIN_BUSY_OP,
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
     crate::sftp_pool::TRANSFER_COPY,
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
-    filewin_contract::LINK_RETRY_OP,
     filewin_contract::PLAN_OPEN_OP,
 ];
 
@@ -193,10 +192,6 @@ impl Backends for InboundBackends {
                 })
                 .boxed();
         }
-        // 第二条：那台此刻连没连着（连接循环的事实，`inbound_client::link_of`）。
-        if kind.0 == filewin_contract::LINK_KIND {
-            return link_stream(&origin);
-        }
         // 别的 `kind`（文件窗口订的 `changed/<主题>` …）⇒ 进程里那一份会话流句柄，与主界面同一张订阅表、同一套 credit；
         // 流名认不认得 · 续不续看由它答（认不出 ⇒ 原位 `Closed{Peer(no-such-stream)}`；`from` 给了 ⇒ 原位 `bad_args`）。
         match crate::event_replay::host() {
@@ -208,9 +203,9 @@ impl Backends for InboundBackends {
         }
     }
 
-    /// 那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
+    /// 那台的能力事实 = 它此刻那条连接握手时交出的那一份（`inbound_client::offer_of`，一个家）。
     fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
-        inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer())
+        inbound_client::offer_of(origin.as_wire_str())
     }
 }
 
@@ -245,11 +240,6 @@ impl InboundBackends {
             if op.0 == filewin_contract::PLAN_OPEN_OP {
                 return Box::pin(plan_open(origin, payload));
             }
-            if op.0 == filewin_contract::LINK_RETRY_OP {
-                // 叫醒那台的连接循环（它睡在退避里）；连没连上由 `link` 那条流说。
-                inbound_client::kick(origin.as_wire_str());
-                return Box::pin(async { Ok(Body(b"{}".to_vec())) });
-            }
             return Box::pin(terminal_open(origin, payload, left));
         }
         // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
@@ -259,7 +249,7 @@ impl InboundBackends {
             //    怎么分层、`reach` 是哪一档，唯一的家是 `backend_route` 的
             //    `layer_no_channel` / `layer_call_error`（它们与旧三态同出一源）。
             //    本文件只做搬运，不 match inbound 的错误枚举。
-            let Some(client) = inbound_client::client_for(origin.as_wire_str()) else {
+            let Some(client) = inbound_client::local_client() else {
                 return Err(backend_route::layer_no_channel(HOP));
             };
             // 这个后端说 JSON：载荷在这里（宿主这一侧）才第一次被当成 JSON 读。
@@ -268,9 +258,16 @@ impl InboundBackends {
                 return Err(OursFault::Misuse.into());
             };
             let deadline = tokio::time::Instant::now() + left;
-            let answer = match &view {
-                Some(v) => client.call_until_viewed(&op.0, args, v, deadline).await,
-                None => client.call_until(&op.0, args, deadline).await,
+            // 问别台：经本机后端转给它手上那台的常驻流（信封带 `machine`）；认不认 · 形状对不对由那一端连那台的客户端判。
+            let answer = if origin.is_local() {
+                match &view {
+                    Some(v) => client.call_until_viewed(&op.0, args, v, deadline).await,
+                    None => client.call_until(&op.0, args, deadline).await,
+                }
+            } else {
+                client
+                    .call_at(origin.as_wire_str(), &op.0, args, view.as_ref(), deadline)
+                    .await
             };
             match answer {
                 Ok(v) => Ok(Body(
@@ -279,43 +276,6 @@ impl InboundBackends {
                 Err(e) => Err(backend_route::layer_call_error(&e, HOP).error),
             }
         })
-    }
-}
-
-/// `link` 那条流：先交此刻的样子，之后每变一次交一格（没变不重复说）。连接循环那一侧的事实只住 `inbound_client`。
-fn link_stream(origin: &Origin) -> BoxStream<'static, Item> {
-    use futures::StreamExt as _;
-    let o = origin.as_wire_str().to_string();
-    let rx = inbound_client::link_changes();
-    futures::stream::unfold((rx, None, o), |(mut rx, last, o)| async move {
-        loop {
-            let now = inbound_client::link_of(&o);
-            if last != Some(now) {
-                return Some((link_item(now), (rx, Some(now), o)));
-            }
-            rx.changed().await.ok()?;
-        }
-    })
-    .boxed()
-}
-
-/// 连接循环的一格 → 流上的一格。
-fn link_item(l: inbound_client::Link) -> Item {
-    use super::wire::{HopFault, HopId};
-    let at = HopId {
-        idx: HOP,
-        tag: "open",
-    };
-    match l {
-        inbound_client::Link::Up => Item::Seen { from: None },
-        inbound_client::Link::Reconnecting => Item::Unseen {
-            at,
-            why: HopFault::Dropped,
-        },
-        inbound_client::Link::Down => Item::Unseen {
-            at,
-            why: HopFault::Unreachable,
-        },
     }
 }
 
@@ -438,7 +398,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
         ));
     }
     let ask = serde_json::json!({ "machine": origin.as_wire_str(), "cwd": cwd.clone() });
-    let Some(local) = inbound_client::client_for(inbound_client::LOCAL_ORIGIN) else {
+    let Some(local) = inbound_client::local_client() else {
         return Err(backend_route::layer_no_channel(HOP));
     };
     let reply = match local.call(TERMINAL_SSH, ask, left).await {

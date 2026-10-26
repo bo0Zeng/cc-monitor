@@ -1033,17 +1033,17 @@ fn unregister_never_removes_someone_elses_client() {
         let hello = witness_of(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
+    let _g = local_origin_test_lock();
     let (old, new) = rt.block_on(async { (mk(), mk()) });
-    let origin = "unregister-test-origin";
-    register(origin, old.clone());
-    register(origin, new.clone());
-    unregister(origin, &old); // 旧连接迟到的收尾
+    register(old.clone());
+    register(new.clone());
+    unregister(&old); // 旧连接迟到的收尾
     assert!(
-        client_for(origin).is_some_and(|c| Arc::ptr_eq(&c, &new)),
+        local_client().is_some_and(|c| Arc::ptr_eq(&c, &new)),
         "旧连接的收尾把新连接摘掉了"
     );
-    unregister(origin, &new);
-    assert!(client_for(origin).is_none(), "自己的条目没摘掉");
+    unregister(&new);
+    assert!(local_client().is_none(), "自己的条目没摘掉");
 }
 
 // ── P28：给这条源码扫描型守卫立**负对照** ──
@@ -1187,37 +1187,32 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
     );
 }
 
-/// 文件窗口断线条那一格事实（`link` 流的来源）：登记 ⇒ `Up`；摘掉自己那条 ⇒ `Reconnecting`；连接循环一轮没连上 ⇒ `Down`；
-/// 从没登记过 ⇒ `Down`。每改一格订阅者醒一次，没变不醒。
+/// 经本机后端转来的那台：见到它的 hello ⇒ 能力事实可问（本机没连着 ⇒ 问不到）；那一条断了 ⇒ 问不到。
 #[tokio::test]
-async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
-    let origin = format!("link-fact-{}", std::process::id());
-    assert_eq!(link_of(&origin), Link::Down, "从没连上过却不是 Down");
-    let mut rx = link_changes();
-    rx.borrow_and_update();
-    let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel"]}"#;
+async fn a_relayed_machines_offer_lives_from_its_hello_to_its_end() {
+    let _g = local_origin_test_lock();
+    let machine = format!("reached-{}", std::process::id());
+    let line = r#"{"kind":"hello","v":1,"build_id":"rb","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill"]}"#;
+    let Ok(cmd_wire::frame::Frame::Hello(h)) = crate::stream_source::decode(line) else {
+        panic!("是 hello");
+    };
+    reached(&machine, &h);
+    assert!(
+        offer_of(&machine).is_none(),
+        "本机后端没连着，却说那台问得到"
+    );
     let frame = crate::stream_source::decode(line).expect("是 hello");
-    let hello = witness_of(&frame).expect("是 Hello 帧");
     let (mine, _theirs) = tokio::io::duplex(1024);
-    let client = park(mine).into_client(hello);
-    register(&origin, client.clone());
-    assert_eq!(link_of(&origin), Link::Up);
-    assert!(rx.has_changed().unwrap(), "登记上了，订阅者没醒");
-    rx.borrow_and_update();
-    note_round_failed(&origin);
-    note_round_failed(&origin);
-    assert_eq!(link_of(&origin), Link::Down);
-    rx.borrow_and_update();
-    note_round_failed(&origin);
-    assert!(!rx.has_changed().unwrap(), "没变也叫醒了订阅者");
-    register(&origin, client.clone());
-    unregister(&origin, &client);
-    assert_eq!(link_of(&origin), Link::Reconnecting, "刚断却不是「重连中」");
-    // 「重新连接」叫醒的是那台的重连循环（`resident-client` 那一条）：在拨时按也算数 · 连上那一刻作废 · 连着时不做事，
-    //   判据在 `feed_tests.rs::a_wake_while_dialing_skips_one_wait_and_is_void_once_up`；这里只剩「连着 ⇒ 不做事」这一半。
-    register(&origin, client.clone());
-    kick(&origin);
-    assert_eq!(link_of(&origin), Link::Up);
+    let client = park(mine).into_client(witness_of(&frame).expect("是 Hello 帧"));
+    register(client.clone());
+    assert!(
+        offer_of(&machine).is_some_and(|o| o.admits("kill")),
+        "那台的 hello 交了 kill，能力事实里却没有"
+    );
+    assert_eq!(build_of(&machine).as_deref(), Some("rb"));
+    gone(&machine);
+    assert!(offer_of(&machine).is_none(), "那台断了，还说问得到");
+    unregister(&client);
 }
 
 /// typed 命令两端形状对不上 ⇒ 一个字节不发，回 `Differs`，那一句带这条连接登记的那台的名字（「{机器} 后端版本不同」）；
@@ -1237,13 +1232,12 @@ async fn a_typed_command_with_a_different_shape_is_refused_by_name_and_not_sent(
     let name = "b8-shape-devbox";
     let (ours, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(ours).into_client(hello_with("00000000"));
-    register(name, client.clone());
+    client.name_machine(name);
     let mut peer = tokio::io::BufReader::new(theirs);
     let err = client
         .call(op, serde_json::json!({}), Duration::from_secs(5))
         .await
         .unwrap_err();
-    unregister(name, &client);
     assert_eq!(
         err,
         CallError::Differs {

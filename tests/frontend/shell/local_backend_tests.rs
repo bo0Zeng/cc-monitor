@@ -587,7 +587,9 @@ fn the_read_loop_really_calls_the_dispatch() {
         .expect("常驻载体的读循环里必须恰好有一处分派第一层");
     let flat: String = host[at..].chars().filter(|c| !c.is_whitespace()).collect();
     assert!(
-        flat.starts_with("crate::stream_source::route(crate::stream_source::Via::Local,&crate::origin::Origin::local(),Some(&client),"),
+        flat.starts_with(
+            "crate::stream_source::route(&crate::origin::Origin::local(),Some(&client),"
+        ),
         "常驻载体是本机那一台：分派时说 `<local>`、带这条连接的客户端"
     );
     assert!(
@@ -635,12 +637,7 @@ async fn a_local_reply_reaches_the_caller_through_the_dispatch() {
         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
     ))
     .unwrap();
-    crate::stream_source::route(
-        crate::stream_source::Via::Local,
-        &crate::origin::Origin::local(),
-        Some(&client),
-        reply,
-    );
+    crate::stream_source::route(&crate::origin::Origin::local(), Some(&client), reply);
     let got = call.await.unwrap().expect("应答没路由回来");
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }
@@ -741,7 +738,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
                     "`{name}` 没把**兜底版**消费者 `local_stdio_consumer_guarded` 传下去（{e}）。\n\
                          ⚠ 传裸的 `local_stdio_consumer` 也不行：它体内一次 panic 会 unwind 出 supervise 线程，\n\
                          留下「backend 活着但没人读它 stdout」的**全绿死锁态**（补审 B3）。\n\
-                         管子接出来了却没人读 ⇒ hello 帧没人解 ⇒ `client_for(<local>)` 恒 None，\n\
+                         管子接出来了却没人读 ⇒ hello 帧没人解 ⇒ `local_client()` 恒 None，\n\
                          且不会报任何错。"
                 )
             },
@@ -754,7 +751,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 ///
 /// # 为什么不起 GUI
 ///
-/// 要验的性质是「本机后端起来 ⇒ `client_for(LOCAL_ORIGIN)` 拿得到通道」。
+/// 要验的性质是「本机后端起来 ⇒ `local_client()` 拿得到通道」。
 /// 这条链的全部零件都在本模块 + `inbound_client` 里，GUI 一个字都不参与。
 /// 起整个 app 只会把「哪一步坏了」这个信息埋掉。
 ///
@@ -903,7 +900,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
     let mut client = None;
     for _ in guard_core::wall::rounds() {
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+        if let Some(c) = crate::inbound_client::local_client() {
             client = Some(c);
             break;
         }
@@ -916,7 +913,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let Some(client) = client else {
         cleanup(&h);
         panic!(
-            "到兜底上限 `client_for(<local>)` 仍是 None —— 本机入方向通道没登记上。\n\
+            "到兜底上限 `local_client()` 仍是 None —— 本机入方向通道没登记上。\n\
                  ⚠ 「没报错」不算数：远端那条路的头注记着一次审计变异 ——\n\
                  把注册整段删掉（写半边永不解冻）`cargo test` 照样全绿。所以这里必须**看到通道**。"
         );
@@ -942,7 +939,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
         got
     });
     let alive = Path::new(&format!("/proc/{pid}")).exists();
-    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+    crate::inbound_client::unregister(&client);
     cleanup(&h);
     assert!(
         said,
