@@ -182,7 +182,6 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   const title = document.createElement("span");
   title.className = "viewer-topbar-label one-line";
   title.textContent = r.label;
-  title.title = title.textContent;
   const out: Node[] = [project, sep, title];
   if (live) {
     const b = tag(copyText("history.row.live"));

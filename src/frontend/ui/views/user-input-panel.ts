@@ -163,7 +163,6 @@ export class UserInputPanel {
     // （甲那一轮自抓：第一版真写成了 `data-id`，判据当场把卡和行混在一起数成 350。）
     row.dataset.inputUuid = entry.uuid;
     row.textContent = `${i + 1}. ${entry.excerpt}`;
-    row.title = entry.excerpt;
     row.addEventListener("click", () => this.jump(entry, row));
     return row;
   }

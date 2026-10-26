@@ -144,7 +144,6 @@ export class SessionHead {
     this.title = document.createElement("span");
     this.title.className = s.shTitle;
     this.title.dataset.headTitle = "";
-    attachTooltip(this.title, () => (this.title.scrollWidth > this.title.clientWidth ? (this.title.textContent ?? "") : null));
     this.where = document.createElement("span");
     this.where.className = s.shWhere;
     this.dir = document.createElement("span");

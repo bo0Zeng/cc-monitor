@@ -165,7 +165,6 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-waiting";
     b.textContent = s.needs;
-    b.title = s.needs;
     badges.appendChild(b);
   }
   // 后台任务运行中：徽标写命令那一格（核心写的），悬停给整句（时长那一截按此刻走）。
@@ -433,7 +432,6 @@ export class GridMonitorView {
       const v = document.createElement("span");
       v.className = "grid-monitor-peek-v one-line";
       v.textContent = value;
-      v.title = value;
       row.append(k, v);
       facts.appendChild(row);
     };
@@ -487,7 +485,6 @@ export class GridMonitorView {
         const item = document.createElement("code");
         item.className = "grid-monitor-peek-file one-line";
         item.textContent = f;
-        item.title = f;
         list.appendChild(item);
       }
       filesWrap.appendChild(list);
@@ -544,7 +541,6 @@ export class GridMonitorView {
       }
       if (refs.cwd.textContent !== s.cwd) {
         refs.cwd.textContent = s.cwd;
-        refs.cwd.title = s.cwd;
       }
     } else if (refs.cwd) {
       refs.cwd.remove();
