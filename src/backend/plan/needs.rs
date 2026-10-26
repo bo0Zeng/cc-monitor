@@ -9,11 +9,12 @@
 //! | `ended` | 某个权力范围的负责人对到的会话已结束、它的根节点没签收（子 agent 看父会话：父会话也停了才算） | `ended:<权力范围>@<负责人 id>` |
 //! | `ask` | 某个权力范围的负责人对到的会话此刻在等你 | `ask:<权力范围>@<负责人 id>`（不收认可：答了自己消失；计数由会话那一侧算） |
 //!
-//! 另有「退回」落地的判法（[`landing`]）· 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或 `project`）。
+//! 另有「另开会话接手」那一格（[`takeover`]，与 `ended` 读同一处 [`owner_now`]）· 「退回」落地的判法（[`landing`]）·
+//! 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或 `project`）。
 
 use super::wire::{
     PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
-    PlanStatusCode, PlanWho,
+    PlanStatusCode, PlanTakeover, PlanWho,
 };
 use copy_core::copy_text;
 
@@ -22,6 +23,39 @@ pub(crate) fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActi
     match who.face.live {
         crate::wire::FaceLive::Yes { activity } => Some(activity),
         crate::wire::FaceLive::No => None,
+    }
+}
+
+/// 一个权力范围的负责人那条会话此刻怎样。`ended` 那一种与「另开会话接手」那一格（[`takeover`]）读的是这一处。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OwnerNow {
+    /// 活着：在干什么（说不清 ⇒ `None`）。
+    Live(Option<crate::agents::SessionActivity>),
+    /// 对到这台的一个会话，它停了（子 agent 看父会话）。
+    Stopped,
+    /// 对不上这台的任何会话：说不清停没停。
+    Unsure,
+}
+
+/// 负责人 ⇒ 它那条会话此刻怎样。
+pub(crate) fn owner_now(o: &PlanWho) -> OwnerNow {
+    if o.sid.is_none() {
+        return OwnerNow::Unsure;
+    }
+    live_of(o).map_or(OwnerNow::Stopped, OwnerNow::Live)
+}
+
+/// 一个建了的权力范围给不给「另开会话接手」：划出那一项删了 ⇒ 不出；负责人活着 ⇒ 不出；负责人认不出 ⇒ 说不清、不给；
+/// 没有负责人或它停了 ⇒ 出，pb 给了交接说明就是它，没给 ⇒ 写为什么。
+pub(crate) fn takeover(b: &PlanBlock) -> PlanTakeover {
+    if !b.listed {
+        return PlanTakeover::Merging;
+    }
+    match b.owner.as_ref().map(owner_now) {
+        Some(OwnerNow::Live(_)) => PlanTakeover::Running,
+        Some(OwnerNow::Unsure) => PlanTakeover::Unsure,
+        None | Some(OwnerNow::Stopped) if b.handoff.is_some() => PlanTakeover::Open,
+        None | Some(OwnerNow::Stopped) => PlanTakeover::NoLine,
     }
 }
 
@@ -118,8 +152,8 @@ pub(crate) fn of_slice(sl: &PlanSlice, entered: Option<&str>) -> Vec<PlanNeed> {
         let Some(o) = &b.owner else { continue };
         // 认不出 ⇒ 说不清停没停、问没问。
         let Some(sid) = &o.sid else { continue };
-        let live = live_of(o);
-        if live.is_none() {
+        let now = owner_now(o);
+        if now == OwnerNow::Stopped {
             if !block_finished(sl, b) {
                 let mut n = need(
                     "ended",
@@ -130,7 +164,7 @@ pub(crate) fn of_slice(sl: &PlanSlice, entered: Option<&str>) -> Vec<PlanNeed> {
                 n.sid = Some(sid.clone());
                 out.push(n);
             }
-        } else if live == Some(Some(crate::agents::SessionActivity::NeedsYou)) {
+        } else if now == OwnerNow::Live(Some(crate::agents::SessionActivity::NeedsYou)) {
             let mut n = need(
                 ASK,
                 format!("ask:{}@{}", b.id, o.id),

@@ -751,12 +751,13 @@ export class PlanView {
       morph(this.bodyEl, [tree, pane]);
       return;
     }
-    // 新登记的仓库还没有图：整页一屏（没有大纲可画）＋ project 的交接说明。
+    // 新登记的仓库还没有图：整页一屏（没有大纲可画）＋ project 的交接说明（后端判了给接手才给：`open` 那一句 · `no_line` 为什么）。
     if (isFresh(slice)) {
       const ref = this.current!;
       this.bodyEl.className = s.pvWhole;
       const top = topBlock(slice);
-      morph(this.bodyEl, [freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd }), top ? handoffBox(top) : undefined)]);
+      const hand = top && (top.takeover === "open" || top.takeover === "no_line") ? handoffBox(top) : undefined;
+      morph(this.bodyEl, [freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd }), hand)]);
       return;
     }
     tree.append(this.outline(slice), this.legend(slice));
