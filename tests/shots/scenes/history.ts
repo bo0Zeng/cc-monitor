@@ -96,6 +96,11 @@ export const HISTORY_SCENES: Scene[] = [
       await sleep(700);
       if (document.querySelector('[role="tooltip"]')?.textContent !== cut.textContent) throw new Error("悬停没给全名");
     }),
+    world: () => {
+      const w = defaultWorld();
+      w.sessions[0].convo?.title("把订单服务的重试与超时配置统一改成从环境变量读取 refactor retry and timeout config loading across all services and regions");
+      return w;
+    },
     width: 760,
     height: 560,
   },
