@@ -266,6 +266,7 @@ export function diskOf(w: World): Record<string, MachineDisk> {
       // 本机后端那张机器表（场景那份 `config.remote.hosts`）与每台部署那一侧的事实（系统 · 正在装的那几台）。
       const hosts = ((w.config.remote ?? {}) as { hosts?: { label: string; host: string }[] }).hosts ?? [];
       if (hosts.length > 0) files[".cc-monitor/machines.json"] = JSON.stringify({ version: 1, hosts }, null, 2) + "\n";
+      // 只写地址不带口（＝ 22 口那一条）：对不上表里那几台的口，真拨号照首见收下假 sshd 那把钥匙，不撞这几把合成的。
       const known = hosts.flatMap((h) => (HOST_KEYS[h.label] ? [`${h.host} ${HOST_KEYS[h.label].key}`] : []));
       if (known.length > 0) files[".cc-monitor/known_hosts"] = known.join("\n") + "\n";
       const deploy = Object.fromEntries(
@@ -277,14 +278,19 @@ export function diskOf(w: World): Record<string, MachineDisk> {
 }
 
 /** 每台一样的账号库（`ops.ts::ACCOUNTS`）。额度账 · 轮换账本缺省没有（中转还没见过回包）。 */
-/** 各台远端在机器表里的地址（`~/.ssh/config` 里 devbox 那一条与它同址）。 */
-function hostOf(label: string): string {
-  return `10.0.0.${11 + REMOTES.indexOf(label)}`;
+/**
+ * 各台远端在机器表里的地址：本机沙箱里那个假 ssh 的一个口（回环 ＋ 每台固定一个口，`real/pool.mjs::reachTable` 照它听；
+ * 问不到的那台同一形、那个口没人听）。地址只在这里定，`~/.ssh/config` 里 devbox 那一条与它同址（导入时「已在列表」）。
+ */
+const HOST = "127.0.0.1";
+function portOf(label: string): number {
+  return 2201 + REMOTES.indexOf(label);
 }
 
 const SSH_CONFIG = [
   "Host devbox",
-  `  HostName ${hostOf("devbox")}`,
+  `  HostName ${HOST}`,
+  `  Port ${portOf("devbox")}`,
   "  User user",
   "Host devbox-wan",
   "  HostName devbox.example.com",
@@ -328,8 +334,8 @@ export function defaultConfig(): Record<string, unknown> {
     remote: {
       hosts: REMOTES.map((label) => ({
         label,
-        host: hostOf(label),
-        port: 22,
+        host: HOST,
+        port: portOf(label),
         user: "user",
         keyPath: "~/.ssh/id_ed25519",
         addresses: [],
