@@ -1407,8 +1407,9 @@ export class TabManager {
     this.live.dropTab(sessionId); // 先撤活卡（它的 DOM 随流容器一起走）
     this.view.disposeTab(tab);
     this.store.tasksBySid.delete(sessionId);
-    // 关掉 ＝ 取消固定：× 是明确说要丢，不摘的话下次开 app 它又回来了。只有真被固定过才交那台。关掉不出组（会话结束后仍算组员）。
-    if (tab.pinned) this.prefs.unpinClosed(tab);
+    // 关掉 ＝ 取消固定 ＋ 出组：× 是明确说要丢（「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」）；组里谁都不剩 ⇒ 组也没。
+    // 会话自己结束（进程退出）不走这里，它照旧算组员。必须在 `store.tabs.delete` 之后：「组里还剩谁」不数它。
+    this.prefs.forgetClosed(tab);
     this.prefs.clearPinHint(sessionId);
 
     // 盘上顺序里的那一格只在这里摘（还没到的那些落盘时并回去，`TabStore.mergedOrder`）。

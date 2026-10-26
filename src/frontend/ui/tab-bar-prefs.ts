@@ -471,11 +471,27 @@ export class TabBarPrefs {
     return Promise.all(work).then(() => undefined);
   }
 
-  /** 关掉一个固定的 tab（它已不在栏里）：取消固定交那台（× 是明确说要丢，不摘的话下次开 app 它又回来了）。 */
-  unpinClosed(tab: Tab): void {
-    tab.pinned = false;
-    this.pinRows.delete(keyOf(tab.origin, tab.sessionId));
-    void this.patch(tab.origin, tab.sessionId, { pinned: false });
+  /**
+   * 点 × 关掉一个 tab（它已不在栏里）：固定的取消固定、在组里的出组，各交会话那台一条注解；组里因此谁都不剩 ⇒ 家那台解散它。
+   * （会话自己结束不走这里：进程退出后仍算组员。）
+   */
+  forgetClosed(tab: Tab): void {
+    const k = keyOf(tab.origin, tab.sessionId);
+    const gid = tab.group;
+    const patch: { leave?: string[]; pinned?: boolean } = {};
+    if (tab.pinned) {
+      tab.pinned = false;
+      this.pinRows.delete(k);
+      patch.pinned = false;
+    }
+    if (gid !== null) {
+      tab.group = null;
+      this.placed.delete(k);
+      if (!gid.startsWith("pending-")) patch.leave = [gid];
+    }
+    if (patch.pinned === undefined && patch.leave === undefined) return;
+    void this.patch(tab.origin, tab.sessionId, patch);
+    if (gid !== null && this.emptyAfter(gid, [k])) void this.dropGroup(gid);
   }
 
   /**

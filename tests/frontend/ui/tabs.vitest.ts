@@ -5226,10 +5226,10 @@ describe("〔FW1〕记录文件的出声", () => {
 });
 
 // ==========================================================================
-// 组是后端的数据（A1-5 · A1-8）：组本身住家那台、组员与固定是会话注解（住会话那台），会话结束后仍算组员。
-// K1 这台 config.json 不存组 · K2 关掉不出组 · K3 谁都不剩才解散 · K4 重启照账带组。真 TabManager ＋ 组的后端替身。
+// 组是后端的数据（A1-5 · A1-8）：组本身住家那台、组员与固定是会话注解（住会话那台）；会话自己结束后仍算组员，人点 × 就出组。
+// K1 这台 config.json 不存组 · K2 点 × 出组（会话自己结束不算）· K3 谁都不剩才解散 · K4 重启照账带组。真 TabManager ＋ 组的后端替身。
 // ==========================================================================
-describe("组是后端的数据：栏照账画 · 写到会话那台 · 关掉不出组", () => {
+describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × 出组", () => {
   let tm: TabManager;
   let be: ReturnType<typeof groupBackend>;
   let disk: Record<string, unknown>;
@@ -5290,18 +5290,24 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 关掉�
     expect(["a", "b", "d"].map((s) => be.note(LOCAL_ORIGIN, s).groups), "解散 ⇒ 各组员那台摘掉那一组").toEqual([[], [], []]);
   });
 
-  it("K2 · 关掉组里的 tab 不出组（会话结束后仍算组员）：那台注解里还在、组头还在", async () => {
+  // 守原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」：点 × ＝ 出组（连固定一起取消）。
+  //   「会话结束后仍算组员」说的是会话自己结束（进程退出），不是人点 ×：那一形是 K4（没来的 b 照账还在组里）。
+  it("K2 · 点 × 关掉组里的 tab ＝ 出组（那台那条注解摘掉那一组）；组里谁都不剩 ⇒ 家那台解散；会话只是结束了 ⇒ 照旧是组员", async () => {
     be.group("g", "白天");
     be.note(LOCAL_ORIGIN, "a").groups = ["g"];
     be.note(LOCAL_ORIGIN, "b").groups = ["g"];
     add("a", "b");
     await be.connect(tm);
     expect(membersOf(tm, "g")).toEqual(["a", "b"]);
+    tm.onFace("b", goldenFace("ended")); // b 自己结束了：不是人点 ×
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "b").groups, "会话结束 ≠ 出组").toEqual(["g"]);
     await close("a");
-    expect(be.note(LOCAL_ORIGIN, "a").groups, "关掉 ≠ 出组").toEqual(["g"]);
-    expect(be.calls.filter((c) => c[1] === "history-annotate"), "关一个没固定的 tab 一条注解都不交").toEqual([]);
+    expect(be.note(LOCAL_ORIGIN, "a").groups, "点 × ⇒ 出组").toEqual([]);
+    expect(be.calls.some((c) => c[1] === "groups-write"), "还有 b ⇒ 组在").toBe(false);
     await close("b");
-    expect(home(tm).prefs.collections.map((c) => c.id), "组员都关了，组照旧在").toEqual(["g"]);
+    expect(be.note(LOCAL_ORIGIN, "b").groups).toEqual([]);
+    expect(be.calls, "最后一个点 × ⇒ 组也没").toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g" }]);
   });
 
   it("K3 · 拖出 / 右键移出：组里谁都不剩（账上的 ＋ 栏里的）⇒ 家那台解散；还有不在栏里的组员 ⇒ 不解散", async () => {
