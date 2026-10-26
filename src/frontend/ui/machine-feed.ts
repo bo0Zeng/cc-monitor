@@ -6,7 +6,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
-import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, noteMachineName } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { MachineState } from "./generated/MachineState";
 import type { MachineStatePayload } from "./generated/MachineStatePayload";
@@ -17,8 +17,12 @@ export const MACHINE_STATE_EVENT = "machine-state";
 /** `machine-read` 等多久。 */
 const READ_BUDGET_MS = 5_000;
 
-/** 订一份：每来一台的一帧回调一次。回退订函数。 */
-export function onMachineState(cb: (origin: string, machine: MachineState) => void): () => void {
+/** 订一份：每来一台的一帧回调一次（先记下那台的名字，`machineName` 照它叫）。回退订函数。 */
+export function onMachineState(each: (origin: string, machine: MachineState) => void): () => void {
+  const cb = (origin: string, machine: MachineState): void => {
+    noteMachineName(origin, machine.name);
+    each(origin, machine);
+  };
   let off: (() => void) | null = null;
   let unsub: (() => void) | null = null;
   let dropped = false;

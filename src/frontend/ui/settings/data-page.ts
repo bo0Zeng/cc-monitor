@@ -19,6 +19,7 @@ import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { machineName } from "../ipc/chan-caller";
 import { readRemoteConfig } from "../remote-config";
 import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
@@ -72,7 +73,7 @@ export class DataPage {
   /** 「cc-monitor 的文件」段头 ＋ 那台后端家里那一块（照那台 `data-report` 的 `own` 排，本机远端都是）。 */
   private readonly ownFiles: HTMLElement;
   private readonly ownBody: HTMLElement;
-  private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }];
+  private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: machineName(LOCAL_ORIGIN) }];
   private readings = new Map<Origin, Reading>();
   /** 读成的那几台合起来的件数（本机后端合的；没合成 ⇒ `null`，顶上不出数）。 */
   private total: ChoreCounts | null = null;
@@ -187,7 +188,7 @@ export class DataPage {
     const gen = ++this.generation;
     try {
       const hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
-      this.machines = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }, ...hosts.map((h) => ({ origin: h, name: h }))];
+      this.machines = [LOCAL_ORIGIN, ...hosts].map((origin) => ({ origin, name: machineName(origin) }));
     } catch {
       // 读不到机器表 ⇒ 只问本机（远端那几台这一趟不列，不猜）。
     }

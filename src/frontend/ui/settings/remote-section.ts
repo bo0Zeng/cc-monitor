@@ -48,6 +48,7 @@ import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSectio
 import { fetchAccounts } from "../account-reads";
 import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
+import { machineName } from "../ipc/chan-caller";
 import type { AccountsState } from "../accounts";
 // 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`）。
 import { LOCAL_ORIGIN } from "../backend-policy";
@@ -577,7 +578,7 @@ export class RemoteSection {
       // 本机页的内容由宿主（panel）填 —— 它拿得到那几块 per-machine 分节，本分节拿不到。
       const localPage = document.createElement("div");
       localPage.className = "machine-page-local";
-      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, copyText("remote.cards.local"), localPage);
+      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, machineName(LOCAL_ORIGIN), localPage);
       this.machinePageIds.push(LOCAL_MACHINE_PAGE_ID);
     }
     for (const h of hosts) {

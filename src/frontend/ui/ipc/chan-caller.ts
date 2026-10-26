@@ -71,9 +71,17 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
   return null;
 }
 
-/** 一句话里怎么称呼这台机器：本机说「本机」，远端说它的名字。 */
+/** 每台最近一份机器状态成品里的 `name`（`machine-feed` 收到一份记一份；名字只有后端那一台成品这一个来处）。 */
+const names = new Map<Origin, string>();
+
+/** 收到一台的成品：记下它的名字（只由 `machine-feed` 调）。 */
+export function noteMachineName(origin: Origin, name: string): void {
+  names.set(origin, name);
+}
+
+/** 一句话里怎么称呼这台机器：照那台成品的 `name`，本机远端同一条路。 */
 export function machineName(origin: Origin): string {
-  return isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
+  return names.get(origin) ?? (isLocalOrigin(origin) ? copyText("control.machine.local") : origin);
 }
 
 /** 那台回了、回的东西认不出那一句（[`ReplyUnreadable`] 的 `message`；不抛、只要那一句的几处直接取）。 */

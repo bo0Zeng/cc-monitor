@@ -27,7 +27,8 @@ vi.mock("../../../src/comms/inward/chan", () => ({
     }),
   },
 }));
-vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (actual) => ({
+  ...(await actual<typeof import("../../../src/frontend/ui/ipc/chan-caller")>()),
   budgetWithin: () => ({}),
   callTyped: vi.fn((_origin: string, cmd: string) => {
     reads.push(cmd);
@@ -35,6 +36,7 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
   }),
 }));
 
+import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
 import { MACHINE_STATE_EVENT, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
@@ -87,6 +89,19 @@ describe("机器状态成品的推送", () => {
       ["box", up],
       ["lab", installing],
     ]);
+  });
+});
+
+describe("机器名照成品叫", () => {
+  it("★ 后端那一行的 name 换个字，machineName 跟着换（本机远端同一条路）", async () => {
+    readReply = { machines: { "<local>": { ...up, name: "甲字" }, devbox: { ...up, name: "乙字" } } };
+    const off = onMachineState(() => {});
+    await flush();
+    await flush();
+    expect([machineName("<local>"), machineName("devbox")]).toEqual(["甲字", "乙字"]);
+    sink!([frame(0, { key: "<local>", body: { ...up, name: "丙字" } })]);
+    await vi.waitFor(() => expect(machineName("<local>")).toBe("丙字"), { timeout: WALL_CEILING_MS });
+    off();
   });
 });
 
