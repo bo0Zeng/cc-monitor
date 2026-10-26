@@ -9,6 +9,7 @@
  * 本机自己回跳：等推来的 `changed {login, key: job}`。失败后怎么画全照后端的 `again`（接着粘 · 重新开始 · 没法再来），不按码分。
  */
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { el } from "./kit/el";
 import { openDrawer, type DrawerHandle } from "./kit/drawer";
 import { button, setBusy, setDisabled } from "./kit/button";
 import { field, type FieldHandle } from "./kit/field";
@@ -244,7 +245,7 @@ class LoginDrawer {
           const auto = el("div");
           auto.className = s.ldAuto;
           auto.dataset.part = "auto";
-          auto.append(spinner(), el("span", copyText("login.sheet.auto")));
+          auto.append(spinner(), el("span", "", copyText("login.sheet.auto")));
           parts.push(auto);
         }
         const rule = el("div");
@@ -266,21 +267,21 @@ class LoginDrawer {
     row.className = s.ldWho;
     row.dataset.part = "who";
     const sep = (): HTMLElement => {
-      const d = el("span", copyText("kit.text.sep").trim());
+      const d = el("span", "", copyText("kit.text.sep").trim());
       d.className = s.ldDim;
       return d;
     };
     if (t.kind === "mcp") {
-      const server = el("span", t.server);
+      const server = el("span", "", t.server);
       server.className = s.ldName;
       row.append(icon("plug", "compact"), server, sep());
     }
     if (t.account !== null) {
-      const acct = el("span", accountLabel(t.account));
+      const acct = el("span", "", accountLabel(t.account));
       if (t.kind === "account") acct.className = s.ldName;
       row.append(accountAvatarEl(t.account, { size: 16, origin: this.spec.origin }), acct);
     }
-    const machine = el("span", machineName(this.spec.origin));
+    const machine = el("span", "", machineName(this.spec.origin));
     machine.className = s.ldDim;
     row.append(sep(), machine);
     return row;
@@ -302,7 +303,7 @@ class LoginDrawer {
     const url = step.started.url;
     const copy = button({ label: copyText("login.act.copyLink"), kind: "ghost", icon: "copy", onClick: () => void this.copyLink(copy, url) });
     copy.dataset.action = "login-copy";
-    const shown = el("span", url);
+    const shown = el("span", "", url);
     shown.className = s.ldUrl;
     row.append(copy, shown);
     return row;
@@ -411,10 +412,4 @@ class LoginDrawer {
     f.input.dispatchEvent(new Event("input"));
     f.input.focus();
   }
-}
-
-function el(tag: string, t?: string): HTMLElement {
-  const e = document.createElement(tag);
-  if (t !== undefined) e.textContent = t;
-  return e;
 }

@@ -12,6 +12,8 @@
 import { openPath } from "@tauri-apps/plugin-opener";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
+import { button } from "../kit/button";
+import { el } from "../kit/el";
 import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
 import { morph } from "../kit/morph";
@@ -62,25 +64,21 @@ export interface ProfilesList {
   setClashes(c: readonly ProfileClash[]): void;
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(label: string, cls: string, onClick: () => void): HTMLButtonElement {
-  const b = el("button", cls, label);
-  b.type = "button";
-  b.addEventListener("click", (e) => {
+/** 这一页的点击不往外冒（外面那一行拿点击去开合）。 */
+const quiet =
+  (f: () => void) =>
+  (e: MouseEvent): void => {
     e.stopPropagation();
-    onClick();
-  });
-  return b;
-}
+    f();
+  };
 
-const link = (label: string, onClick: () => void, danger = false): HTMLButtonElement =>
-  button(label, danger ? "cfg-link cfg-link-danger" : "cfg-link", onClick);
+/** 字样的按钮（`cfg-link`）：不是 kit 那几层按钮，照类名画。 */
+const link = (label: string, onClick: () => void, danger = false): HTMLButtonElement => {
+  const b = el("button", danger ? "cfg-link cfg-link-danger" : "cfg-link", label);
+  b.type = "button";
+  b.addEventListener("click", quiet(onClick));
+  return b;
+};
 
 /**
  * 「敲 xx 等于」那一格：标签一行（带「复制整条」）＋ 核心写好的短形（`lineShort`）；算不出 ⇒ 那一句（`lineError` / `problem`）标红。
@@ -243,7 +241,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   headL.append(el("span", "cfg-list-title", copyText("profilesPage.list.title")), el("span", "cfg-hint", copyText("profilesPage.list.hint")));
   const headR = el("div", "prof-head-r");
   const openBtn = link(copyText("profilesPage.list.open"), () => void onOpenFile());
-  const addBtn = button(copyText("profilesPage.list.add"), "settings-btn", () => void openForm(null));
+  const addBtn = button({ label: copyText("profilesPage.list.add"), onClick: quiet(() => void openForm(null)) });
   headR.append(...(opts.local ? [openBtn] : []), addBtn);
   head.append(headL, headR);
   const split = el("div", "prof-split");
@@ -467,7 +465,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const err = el("div", "prof-err", said);
       if (fp.detail !== null) sayWithDetail(err, said, fp.detail);
       card.append(el("div", "prof-card-title", copyText("profilesPage.file.broken")), err);
-      if (opts.local) card.appendChild(button(copyText("profilesPage.list.open"), "settings-btn", () => void onOpenFile()));
+      if (opts.local) card.appendChild(button({ label: copyText("profilesPage.list.open"), onClick: quiet(() => void onOpenFile()) }));
       l.push(card);
       return;
     }
@@ -508,8 +506,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     const acts = el("div", "cfg-acts");
     acts.append(
-      button(b.seedCreate, "settings-btn settings-btn-primary", () => void init(true)),
-      button(copyText("profilesPage.seed.blank"), "settings-btn", () => void init(false)),
+      button({ label: b.seedCreate, kind: "primary", onClick: quiet(() => void init(true)) }),
+      button({ label: copyText("profilesPage.seed.blank"), onClick: quiet(() => void init(false)) }),
       el("span", "cfg-hint", copyText("profilesPage.seed.where", { path: short(b.path) })),
     );
     box.append(tree, acts);
@@ -693,16 +691,17 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     box.appendChild(opts3);
     if (r.open && r.impact) box.appendChild(impactTable(r.impact));
     const acts = el("div", "cfg-acts");
-    const go = button(
-      r.pick === "reparent"
-        ? parent
-          ? copyText("profilesPage.remove.goReparent", { parent })
-          : copyText("profilesPage.remove.goReparentRoot")
-        : copyText("profilesPage.remove.goCascade", { n: String(r.kids.length + 1) }),
-      "settings-btn settings-btn-primary",
-      () => void send([{ op: "remove", name: r.name, children: r.pick }]).then((said) => said === null && cancelRemove()),
-    );
-    acts.append(go, button(copyText("profilesPage.remove.cancel"), "settings-btn", () => cancelRemove()));
+    const go = button({
+      label:
+        r.pick === "reparent"
+          ? parent
+            ? copyText("profilesPage.remove.goReparent", { parent })
+            : copyText("profilesPage.remove.goReparentRoot")
+          : copyText("profilesPage.remove.goCascade", { n: String(r.kids.length + 1) }),
+      kind: "primary",
+      onClick: quiet(() => void send([{ op: "remove", name: r.name, children: r.pick }]).then((said) => said === null && cancelRemove())),
+    });
+    acts.append(go, button({ label: copyText("profilesPage.remove.cancel"), onClick: quiet(() => cancelRemove()) }));
     box.appendChild(acts);
     box.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") cancelRemove();
@@ -854,7 +853,9 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     if (s === "account") {
       const seg = el("div", "prof-seg");
       const chip = (label: string, on: boolean, pick: () => ProfileForm): HTMLButtonElement => {
-        const b = button(label, "prof-segb", () => changed(pick()));
+        const b = el("button", "prof-segb", label);
+        b.type = "button";
+        b.addEventListener("click", quiet(() => changed(pick())));
         b.setAttribute("aria-pressed", String(on));
         return b;
       };
@@ -1016,7 +1017,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     box.append(...equalsBlock(name || copyText("profilesPage.form.unnamed"), formResolved, "form-equals"));
     if (formResolved?.chain.length) box.appendChild(el("div", "cfg-hint", copyText("profilesPage.form.chain", { name, chain: formResolved.chain.join(copyText("beProfile.chain.arrow")) })));
     const acts = el("div", "cfg-acts");
-    const save = button(copyText("profilesPage.form.save"), "settings-btn settings-btn-primary", () => void onSave());
+    const save = button({ label: copyText("profilesPage.form.save"), kind: "primary", onClick: quiet(() => void onSave()) });
     save.dataset.role = "save";
     save.dataset.key = "save";
     const kids = st.was ? kidsOf(st.was) : [];
@@ -1028,7 +1029,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         : st.was
           ? copyText("profilesPage.form.saveHintEdit", { name: st.was })
           : copyText("profilesPage.form.saveHintNew", { name: name || copyText("profilesPage.form.unnamed") });
-    acts.append(save, button(copyText("profilesPage.form.cancel"), "settings-btn", () => void leaveForm()), el("span", "cfg-hint", hint));
+    acts.append(save, button({ label: copyText("profilesPage.form.cancel"), onClick: quiet(() => void leaveForm()) }), el("span", "cfg-hint", hint));
     box.appendChild(acts);
     box.addEventListener("keydown", (ev) => {
       if (ev.isComposing) return;
