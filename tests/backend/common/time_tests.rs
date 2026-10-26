@@ -266,11 +266,7 @@ fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
         // 按 UTC 算，但说不出看的那一台是哪个时区（不冒充成 `UTC`）。
         assert_eq!(Tz::of(&v).offset_secs(0), 0, "{v}");
         assert_eq!(Tz::of(&v).viewer_zone(), None, "{v}");
-        assert_eq!(
-            Tz::of(&v).iana_name(),
-            "UTC",
-            "转给别台时照算的那一个明说"
-        );
+        assert_eq!(Tz::of(&v).iana_name(), "UTC", "转给别台时照算的那一个明说");
     }
     assert_eq!(
         Tz::named("UTC").expect("UTC").viewer_zone().as_deref(),
