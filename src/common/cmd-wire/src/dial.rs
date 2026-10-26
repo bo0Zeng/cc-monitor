@@ -327,7 +327,7 @@ pub struct DialRequest {
     /// 要 exec 的命令行（`stream` / `capture`；界面已 `shell_quote` 过；`forward` 不用它）。
     #[serde(default)]
     pub command: String,
-    /// 竞速的地址顺序（`machine.rs::resolve` 按 `prefer` 排好）。空 = 只有 `host:port`。
+    /// 竞速的地址顺序（组请求的那一侧按 `prefer` 排好）。空 = 只有 `host:port`。
     #[serde(default)]
     pub endpoints: Vec<Endpoint>,
     /// 经这台跳板（fail-closed：它断开就报错，不回落直连）。
