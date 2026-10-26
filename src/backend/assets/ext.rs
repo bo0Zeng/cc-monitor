@@ -507,14 +507,19 @@ fn about_of(a: &Asset) -> Option<String> {
     s.get("url").and_then(Value::as_str).map(str::to_string)
 }
 
-/// 插件组成那几样（`summary.parts` 的键 · 抽屉里那一行的标签）。
-const PLUGIN_PARTS: &[(&str, &str)] = &[
-    ("skills", "beExt.part.skills"),
-    ("commands", "beExt.part.commands"),
-    ("agents", "beExt.part.agents"),
-    ("hooks", "beExt.part.hooks"),
-    ("mcp", "beExt.part.mcp"),
-];
+/// 插件组成那几样（`summary.parts` 的键），按抽屉里的次序。
+const PLUGIN_PARTS: &[&str] = &["skills", "commands", "agents", "hooks", "mcp"];
+
+/// 组成那一样在抽屉里的标签。
+fn part_label(key: &str) -> String {
+    match key {
+        "skills" => copy_text("beExt.part.skills", &[]),
+        "commands" => copy_text("beExt.part.commands", &[]),
+        "agents" => copy_text("beExt.part.agents", &[]),
+        "hooks" => copy_text("beExt.part.hooks", &[]),
+        _ => copy_text("beExt.part.mcp", &[]),
+    }
+}
 
 /// 插件：市场 · 版本 · 组成（每样一行：几个 ＋ 名字）。
 fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
@@ -526,7 +531,7 @@ fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
     if let Some(v) = s.get("version").and_then(Value::as_str) {
         out.push(line(copy_text("beExt.detail.version", &[]), v.to_string()));
     }
-    for (key, label) in PLUGIN_PARTS {
+    for key in PLUGIN_PARTS {
         let names: Vec<&str> = s["parts"][*key]
             .as_array()
             .map(|a| a.iter().filter_map(Value::as_str).collect())
@@ -535,7 +540,7 @@ fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
             continue;
         }
         out.push(line(
-            copy_text(label, &[]),
+            part_label(key),
             copy_text(
                 "beExt.detail.partValue",
                 &[
