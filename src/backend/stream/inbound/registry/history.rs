@@ -131,8 +131,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
 
 // ───────── agent 自问（`session-self`）的接线：本体住 `history/session_self.rs`；转给常驻 · 读机器表是控制面的事，接在命令表这一层 ─────────
 
-/// 转给常驻问各台：等这么久（它问到各台 ＋ 回程）。
-const RESIDENT_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+/// 转给常驻问各台：等这么久（毫秒；它问到各台 ＋ 回程，同「需手动」那一问）。
+fn resident_wait_ms() -> u64 {
+    20_000
+}
 
 /// 这一端问各台的那一张（这台 ＋ 机器表里的每一台）。
 fn machines_here() -> Vec<cmd_wire::Machine> {
@@ -155,7 +157,7 @@ async fn via_resident(
             .to_string(),
         args: serde_json::json!({ "machines": machines_here() }),
     };
-    let ms = u64::try_from(RESIDENT_WAIT.as_millis()).unwrap_or(u64::MAX);
+    let ms = resident_wait_ms();
     let v = crate::control::resident::call_at(
         &home,
         &asked,
