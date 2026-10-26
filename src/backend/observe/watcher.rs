@@ -543,7 +543,7 @@ fn rewatch_agent_home(
     false
 }
 
-/// 这台的会话注解表 ＋ 这台有组员的那几片组（读不了 ⇒ 两样都空：当没有改过名；历史清单 · `groups-read` 那一路照旧说为什么）。
+/// 这台的会话注解表 ＋ 这台有组员的那几片组（读不了 · 推不出家目录 ⇒ 两样都空：当没有改过名；历史清单 · `groups-read` 那一路照旧说为什么）。
 fn annotations_table() -> (
     crate::history::history_annotations::Table,
     crate::history::history_annotations::Book,
