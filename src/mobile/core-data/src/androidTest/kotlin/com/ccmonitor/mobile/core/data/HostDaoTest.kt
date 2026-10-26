@@ -53,7 +53,7 @@ class HostDaoTest {
             assertEquals(1, dao.observeAll().first().size)
             assertEquals("NanoPi-LAN", dao.get("h1")?.label)
 
-            dao.deleteById("h1")
+            db.hostRemovalDao().remove("h1")
             assertEquals(0, dao.observeAll().first().size)
             assertNull(dao.get("h1"))
         }
