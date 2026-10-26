@@ -253,6 +253,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
     ("plan-list", "新帧命令：这台的 pb 工作区与仓库（找 pb · 跑 pb dump 在后端）；计划页只排版"),
     ("plan-read", "新帧命令：一个工作区的成品（负责人 / signer 对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),
+    ("plan-refs", "新帧命令：会话正文里认出的编号与标题（认片 ＋ `pb dump --refs` 在后端）；界面只照处排版"),
     ("plan-cell-view", "新帧命令：一个节点的 agent 视角（pb 原样那一段）；计划页详情折着的那一段只排版"),
     ("plan-ack", "新帧命令：认可一条需手动（只记在 cc-monitor，键带条目版本，后端判）；计划页那一条只排版"),
     ("plan-unack", "新帧命令：撤掉认可（toast［撤销］那一下）；计划页只排版"),
@@ -378,7 +379,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
     (
         "terminal-ssh",
-        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::resolve`）；\
+        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::request`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
     // 远端 ↗ 的前两问：那台谁在显示这个会话 · 本机哪串进程开着那条连接。
