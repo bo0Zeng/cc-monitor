@@ -100,22 +100,26 @@ pub(crate) async fn call(
     view: Option<&Value>,
     deadline: Deadline,
 ) -> Result<Value, Said> {
+    let here = who(&Origin::local());
     let who = who(origin);
-    let Some(client) = inbound_client::client_for(origin.as_wire_str()) else {
+    // 问哪一台都只走本机后端那一条通道：问别的台 ⇒ 信封带那台的名字，本机后端转给它那条常驻流
+    // （那台认不认这条 · 做不做得到由本机后端连那台的客户端判、照码回）。本机后端不在 ⇒ 说的是本机没有通道。
+    let Some(client) = inbound_client::client_for(inbound_client::LOCAL_ORIGIN) else {
         // 说「谁」用同一个 [`who`]：不许把 `<local>` 这个键原样说给人看。
-        return Err(Said::written(said(no_channel(&who))));
+        return Err(Said::written(said(no_channel(&here))));
     };
-    // 能力协商放在发之前：「这台的后端太旧」是问得出答案的，
-    // 不许与超时同形。
-    if !client.accepts(cmd) {
+    let at = origin.host_name();
+    // 能力协商放在发之前：「本机后端太旧」是问得出答案的，不许与超时同形。
+    if at.is_none() && !client.accepts(cmd) {
         return Err(Said::written(copy_core::backend_old(&who)));
     }
     if deadline.passed() {
         return Err(deadline.overdue(&who));
     }
-    let answer = match view {
-        Some(v) => client.call_until_viewed(cmd, args, v, deadline.until).await,
-        None => client.call_until(cmd, args, deadline.until).await,
+    let answer = match (at, view) {
+        (Some(m), v) => client.call_at(m, cmd, args, v, deadline.until).await,
+        (None, Some(v)) => client.call_until_viewed(cmd, args, v, deadline.until).await,
+        (None, None) => client.call_until(cmd, args, deadline.until).await,
     };
     let data = answer.map_err(|e| {
         if deadline.passed() {

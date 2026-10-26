@@ -1193,10 +1193,10 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
 use crate::inbound_client::{park, InboundClient};
 use tokio::io::AsyncBufReadExt;
 
-/// 一个真 `InboundClient` 接一根内存双工管子，登记在全局表里一个**只有本用例用**的 origin 名下；
-/// 对端（后端）由用例扮演：从管子里读请求行、经 `route_reply` 把应答交回（同生产里读循环做的那一步）。
-fn client_for_test(
-    origin: &str,
+/// 一个真 `InboundClient` 接一根内存双工管子，登记在 `<local>` 名下（本机后端那条通道；调用方先拿 `local_origin_test_lock`）；
+/// 对端（本机后端）由用例扮演：从管子里读请求行、经 `route_reply` 把应答交回（同生产里读循环做的那一步）。
+/// 问别的台也走这一条：信封多一格 `machine`，本机后端转给它那条常驻流（A10-3-2-3）。
+fn local_channel_for_test(
     commands: &[&str],
 ) -> (
     std::sync::Arc<InboundClient>,
@@ -1206,7 +1206,7 @@ fn client_for_test(
     let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(commands))
         .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
-    inbound_client::register(origin, client.clone());
+    inbound_client::register(inbound_client::LOCAL_ORIGIN, client.clone());
     (client, tokio::io::BufReader::new(theirs))
 }
 
@@ -1227,7 +1227,8 @@ async fn next_request(
 #[tokio::test]
 async fn an_expired_deadline_sends_nothing() {
     let origin = Origin("dl1-d3-expired".into());
-    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["history-tail"]);
+    let _g = inbound_client::local_origin_test_lock();
+    let (client, mut peer) = local_channel_for_test(&["history-tail"]);
     let gone = Deadline::within(Duration::ZERO);
     let err = tail(&origin, "/p/s.jsonl", 10, None, gone)
         .await
@@ -1266,6 +1267,11 @@ async fn an_expired_deadline_sends_nothing() {
         .await
         .expect("期限还远却一行都没发");
     assert_eq!(req["cmd"], "history-tail");
+    assert_eq!(
+        req["machine"],
+        origin.as_wire_str(),
+        "问那台没经本机后端转：{req}"
+    );
     c.route_reply(
         req["id"].as_str().expect("id"),
         true,
@@ -1285,14 +1291,15 @@ async fn an_expired_deadline_sends_nothing() {
             .is_none(),
         "一问发了不止一行"
     );
-    inbound_client::unregister(origin.as_wire_str(), &client);
+    inbound_client::unregister(inbound_client::LOCAL_ORIGIN, &client);
 }
 
 /// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
 #[tokio::test]
 async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
     let origin = Origin("said3-refused".into());
-    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["machines-read"]);
+    let _g = inbound_client::local_origin_test_lock();
+    let (client, mut peer) = local_channel_for_test(&["machines-read"]);
     let o = origin.clone();
     let asking = tokio::spawn(async move {
         call(
@@ -1307,6 +1314,11 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
     let req = next_request(&mut peer, Duration::from_secs(5))
         .await
         .expect("一行都没发");
+    assert_eq!(
+        req["machine"],
+        origin.as_wire_str(),
+        "问那台没经本机后端转：{req}"
+    );
     let wrote = copy_core::detail::Detail::new()
         .item(copy_core::detail::Label::Raw, "disk full")
         .render();
@@ -1330,7 +1342,7 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
         "远端没补「本机」：{}",
         e.detail
     );
-    inbound_client::unregister(origin.as_wire_str(), &client);
+    inbound_client::unregister(inbound_client::LOCAL_ORIGIN, &client);
 }
 
 /// D4 ★ **本模块只用、不造**：`Deadline` 的构造恰好一处（`within`），生产段零处另起截止时刻
@@ -1577,7 +1589,8 @@ fn the_snapshot_rows_of_the_golden_decode_through_rows_of() {
 #[tokio::test]
 async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
     let origin = Origin("proj6-folded-view".into());
-    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
+    let _g = inbound_client::local_origin_test_lock();
+    let (client, mut peer) = local_channel_for_test(&["history-read"]);
     let o = origin.clone();
     let asking = tokio::spawn(async move {
         read_page(
@@ -1596,6 +1609,11 @@ async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
         serde_json::from_str(include_str!("../../../src/shared/views/folded-record.json"))
             .expect("那份声明是 JSON");
     assert_eq!(req["cmd"], "history-read");
+    assert_eq!(
+        req["machine"],
+        origin.as_wire_str(),
+        "旁路快照问那台没经本机后端转：{req}"
+    );
     assert_eq!(req["view"], shared, "旁路快照没交那份声明：{req}");
     assert!(req["args"].get("view").is_none(), "声明塞进了 args");
     client.route_reply(
@@ -1607,5 +1625,5 @@ async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
         Some(json!({"rows": [], "next": 90, "eof": true})),
     );
     assert!(asking.await.expect("task").is_ok());
-    inbound_client::unregister(origin.as_wire_str(), &client);
+    inbound_client::unregister(inbound_client::LOCAL_ORIGIN, &client);
 }

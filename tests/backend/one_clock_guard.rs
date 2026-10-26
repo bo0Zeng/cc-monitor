@@ -186,7 +186,10 @@ fn c5_production_code_knows_no_rig_but_the_clock() {
         out
     }
     assert!(gated("#[cfg(feature = \"shots\")]\nmod x {}"));
-    assert_eq!(rig_envs("std::env::var(\"CCM_SHOTS_ROUNDS\")"), ["CCM_SHOTS_ROUNDS"]);
+    assert_eq!(
+        rig_envs("std::env::var(\"CCM_SHOTS_ROUNDS\")"),
+        ["CCM_SHOTS_ROUNDS"]
+    );
 
     let mut gates = Vec::new();
     let mut envs = Vec::new();
@@ -200,6 +203,12 @@ fn c5_production_code_knows_no_rig_but_the_clock() {
             }
         }
     }
-    assert!(gates.is_empty(), "生产源码在拨钟之外认特性 `{FEATURE}`：{gates:?}");
-    assert!(envs.is_empty(), "生产源码读了拨钟之外的台架环境变量：{envs:?}");
+    assert!(
+        gates.is_empty(),
+        "生产源码在拨钟之外认特性 `{FEATURE}`：{gates:?}"
+    );
+    assert!(
+        envs.is_empty(),
+        "生产源码读了拨钟之外的台架环境变量：{envs:?}"
+    );
 }
