@@ -182,12 +182,12 @@ pub(crate) async fn apply(
         }
         Ordered::Overflow(o) => on_overflow(origin, health, &o),
         Ordered::Changed(c) => {
-            let topic = serde_json::to_value(c.topic)
+            let topic = serde_json::to_value(c.topic())
                 .ok()
                 .and_then(|v| v.as_str().map(str::to_string))
                 .unwrap_or_default();
             // 本机的机器表变了 ⇒ 本壳重问、对齐远端流，对齐完再告诉界面（`machine_table::tell_followed`）：这一格不往界面转。
-            if c.topic == wire::Topic::Machines && *origin == crate::origin::Origin::local() {
+            if c.topic() == wire::Topic::Machines && *origin == crate::origin::Origin::local() {
                 crate::machine_table::refresh();
                 return;
             }

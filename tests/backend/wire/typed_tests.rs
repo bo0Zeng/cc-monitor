@@ -268,25 +268,6 @@ fn the_ui_command_map_is_what_the_types_say() {
             data.push_str(&format!("  \"{name}\": {{ {} }};\n", per.join("; ")));
         }
     }
-    // 帧里现算小成品的主题：那一份就是重问那条命令的回包（同一个处理器跑出来的），类型照那条命令的。
-    let mut pushed = String::new();
-    use super::super::topic::{Ask, Topic, TopicExt};
-    for t in Topic::ALL {
-        let s = t.spec();
-        if s.ask == Ask::None {
-            continue;
-        }
-        assert!(
-            rows.iter().any(|(n, _)| *n == s.reask),
-            "主题 `{}` 现算小成品照 `{}` 问，它不是 typed 命令",
-            s.name,
-            s.reask
-        );
-        pushed.push_str(&format!(
-            "  \"{}\": TypedCommands[\"{}\"][\"reply\"];\n",
-            s.name, s.reask
-        ));
-    }
     let imports: String = imports
         .iter()
         .map(|t| format!("import type {{ {t} }} from \"./{t}\";\n"))
@@ -298,10 +279,7 @@ fn the_ui_command_map_is_what_the_types_say() {
 export interface TypedCommands {{\n{body}}}\n\
 \n\
 /** 拒绝信封里带 `data` 的码 ⇒ 那一份 `data` 的类型（随那条命令的形状指纹核过）；表里没有的码不带 `data`。 */\n\
-export interface RefusalData {{\n{data}}}\n\
-\n\
-/** `changed` 帧里现算小成品的主题 ⇒ 那一份的类型（＝ 重问那条命令的回包，形状随那条命令的指纹核过）。 */\n\
-export interface TopicProducts {{\n{pushed}}}\n"
+export interface RefusalData {{\n{data}}}\n"
     );
     fresh("src/frontend/ui/generated/TypedCommands.ts", &want);
 }

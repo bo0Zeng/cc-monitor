@@ -418,13 +418,8 @@ pub(crate) trait FrameMake {
     /// 成功、不带数据的那一种应答。
     fn ok(id: &str) -> Frame;
 
-    /// `changed` 帧（只此一处造）：`body` 序列化后超了主题表那一格的上限 ⇒ 不带（客户端重问）；主题不带 `body` 的给了也不带。
-    fn changed(
-        topic: Topic,
-        key: Option<String>,
-        rev: Option<String>,
-        body: Option<serde_json::Value>,
-    ) -> Frame;
+    /// `changed` 帧（只此一处装进帧）：发端造好那个主题那一臂；体序列化后超了主题表那一格的上限 ⇒ 不带（客户端重问）。
+    fn changed(c: Changed) -> Frame;
 
     /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）；`account` 是宣告时判的那个号（脸上带着）。
     fn session_state(sid: String, state: SessionFate, account: Option<String>) -> Frame;
@@ -456,20 +451,9 @@ impl FrameMake for Frame {
         })
     }
 
-    fn changed(
-        topic: Topic,
-        key: Option<String>,
-        rev: Option<String>,
-        body: Option<serde_json::Value>,
-    ) -> Frame {
-        let cap = topic.spec().body_cap;
-        let body = body.filter(|b| serde_json::to_vec(b).is_ok_and(|v| v.len() <= cap));
-        Frame::Changed(Changed {
-            topic,
-            key,
-            rev,
-            body,
-        })
+    fn changed(mut c: Changed) -> Frame {
+        c.cap_body(c.topic().spec().body_cap);
+        Frame::Changed(c)
     }
 
     fn overflow(lines: u64, realigned: bool) -> Frame {
@@ -574,7 +558,7 @@ impl FrameRules for Frame {
             Frame::Cancelled(_) => false,
             // 「X 变了」：按主题表答。可丢的那几样在盘上（重问随时拿得到）、走 tap 那条；
             //   不可丢的（账号清单 · 配置文件 · 任务清单）是一次变化的通知，没有「下一次必然重发」⇒ 丢了那台在重报里再发一帧（不带体），客户端重问。
-            Frame::Changed(Changed { topic, .. }) => topic.spec().lossy,
+            Frame::Changed(c) => c.topic().spec().lossy,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
             //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复算，那台就地重报一次。
             Frame::SessionsReplayed(_) => false,

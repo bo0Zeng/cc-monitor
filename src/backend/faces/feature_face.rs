@@ -24,14 +24,8 @@ pub(crate) struct TasksListReq {
     pub(crate) sid: String,
 }
 
-/// `tasks-list` 的回包（成品）。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TasksList {
-    /// `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
-    pub(crate) tasks: Vec<crate::observe::tasks_query::Task>,
-}
+/// `tasks-list` 的回包（成品；线上形住 cmd-wire，`changed {tasks}` 带的也是这一份）。
+pub(crate) use cmd_wire::tasks::TasksList;
 
 codes! {
     /// `tasks-list` 的码。

@@ -374,7 +374,7 @@ pub struct Warm {
 }
 
 /// `quota-read` 的应答：这台的额度账。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
@@ -429,7 +429,7 @@ pub struct Verdict {
 }
 
 /// 出过数的一个号：账上那一条的原数 ＋ 显示态（`AccountHead`）＋ 照它写好的几格。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
@@ -444,7 +444,7 @@ pub struct QuotaAccount {
 }
 
 /// 出过数的一个号除写好的几行之外的那一截（行与开窗那一判照它的线上样子算）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -476,7 +476,7 @@ pub struct AccountHead {
 }
 
 /// 账上那一条的额度快照（`QuotaReading`）＋ 时刻旁边写好的字（`TextClock::text` · `rel`：有时刻才添、`…RelText` 只给还没到的）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -507,7 +507,7 @@ pub struct ReadingShown {
 }
 
 /// 「几点重置」那一格与它旁边写好的字（三格都可缺：没有时刻 ⇒ 三格都缺；过了 ⇒ 没有 `resetsAtRelText`）。
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -531,7 +531,7 @@ pub struct ResetsAt {
 }
 
 /// 快照里的一个窗口（`QuotaWindow`）＋ 重置时刻旁边写好的字。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -557,7 +557,7 @@ pub struct WindowReadShown {
 }
 
 /// 超额那一档（`QuotaOverage`）＋ 重置时刻旁边写好的字。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -583,7 +583,7 @@ pub struct OverageShown {
 }
 
 /// 一个窗口几点 · 从哪看到的（`WindowSeen`）＋ 那一刻旁边写好的字。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -604,7 +604,7 @@ pub struct WindowSeenShown {
 }
 
 /// 没出过数的一个号。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
@@ -619,7 +619,7 @@ pub struct QuotaUnseen {
 }
 
 /// 没出过数的一个号除写好的几行之外的那一截。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -642,7 +642,7 @@ pub struct UnseenHead {
 }
 
 /// 没出过数的号用量那一格：`Usage` 去掉重置那一格（没出过数就说不出几点重置）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -681,7 +681,7 @@ impl From<Usage> for UnseenUsage {
 }
 
 /// 一个候选号：哪一家 · 哪个号 · 种类（加号那一处要分按量号）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"),
     ts(
@@ -695,4 +695,34 @@ pub struct Candidate {
     pub agent: crate::AgentKind,
     pub account: String,
     pub kind: Kind,
+}
+
+/// 登录失败之后还能怎么办（`login-start` · `login-finish` 失败的 `data.again`）：由后端照码定，界面照它画，不按码去猜。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub enum LoginAgainHow {
+    /// 作业还在，接着粘（粘的框留着）。
+    Paste,
+    /// 作业没了，从头再起一趟（`login-start`）。
+    Restart,
+    /// 没路：再来一趟也是同样的结果（没有这个号 · 这一家不在 app 里登 …）。
+    None,
+}
+
+/// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "state", rename_all = "camelCase", deny_unknown_fields)]
+pub enum SignInState {
+    /// 登成了。
+    Done,
+    /// 登不成：那一句（原话进 `detail`）· 还能怎么办（作业自己收了 ⇒ 恒 `restart`）。
+    Failed {
+        said: String,
+        detail: Option<String>,
+        again: LoginAgainHow,
+    },
 }

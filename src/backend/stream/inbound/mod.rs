@@ -402,16 +402,12 @@ fn dispatch(
                     move |r, _cx| {
                         let on_end: crate::accounts::sign_in::OnEnd =
                             Box::new(move |job, ended| {
-                                let body = serde_json::to_value(
-                                    crate::faces::login_face::SignInState::of(ended),
-                                )
-                                .ok();
-                                use crate::wire::topic::Topic;
+                                use crate::faces::login_face::{SignInState, SignInStateExt as _};
                                 let _ = push.blocking_send(Frame::changed(
-                                    Topic::Login,
-                                    Some(job.to_string()),
-                                    None,
-                                    body,
+                                    crate::wire::Changed::Login {
+                                        key: job.to_string(),
+                                        body: Some(SignInState::of(ended)),
+                                    },
                                 ));
                                 crate::accounts::sign_in::ring_manual();
                             });

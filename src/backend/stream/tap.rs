@@ -13,7 +13,8 @@
 use crate::relay::{TapEvent, TapPort};
 use crate::stream::live::Live;
 use crate::wire::FrameMake as _;
-use crate::wire::{Frame, Topic};
+use crate::wire::{Changed, Frame, Topic};
+use cmd_wire::frame::PlanNeeds;
 use std::sync::{Arc, Mutex};
 
 /// 进程级 hub：整台一份的活卡。
@@ -163,15 +164,15 @@ impl Drop for TapRx {
 }
 
 impl TapRx {
-    /// 一帧 `changed`，小成品照主题表现算（同步：读这台自己的盘，毫秒级；算完才进 `out`，被别的分支抢先也不丢）。
-    fn changed(&self, topic: Topic, key: Option<String>) -> Frame {
-        let body = (self.bodies)(topic, key.as_deref(), &self.tz);
-        Frame::changed(topic, key, None, body)
+    /// 一帧 `changed`：现算得出小成品的主题换成带体的那一臂（同步：读这台自己的盘，毫秒级；算完才进 `out`，被别的分支抢先也不丢）。
+    fn changed(&self, bare: Changed) -> Frame {
+        let c = (self.bodies)(bare.topic(), bare.key(), &self.tz).unwrap_or(bare);
+        Frame::changed(c)
     }
 }
 
 /// 不现算小成品（判据自己接的那一形）。
-fn no_bodies(_: Topic, _: Option<&str>, _: &crate::Tz) -> Option<serde_json::Value> {
+fn no_bodies(_: Topic, _: Option<&str>, _: &crate::Tz) -> Option<Changed> {
     None
 }
 
@@ -189,72 +190,56 @@ impl TapSource for TapRx {
                 () = self.wake.notified() => {}
                 moved = node_moved(&mut self.nodes) => match moved {
                     Some(fs) => {
-                        for (t, sid) in fs {
-                            let f = self.changed(t, sid);
+                        for c in fs {
+                            let f = self.changed(c);
                             self.out.push_back(f);
                         }
                     }
                     None => self.nodes = None,
                 },
                 moved = item_moved(&mut self.plan) => match moved {
-                    Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::changed(
-                        Topic::Plan,
-                        Some(workspace),
-                        Some(rev),
-                        Some(serde_json::json!({ "needs": needs })),
-                    )),
+                    Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::changed(Changed::Plan {
+                        key: workspace,
+                        rev: Some(rev),
+                        body: Some(PlanNeeds { needs }),
+                    })),
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.plan = None,
                 },
                 moved = bell_moved(&mut self.manual) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
-                    Some(()) => {
-                        let f = self.changed(Topic::Manual, None);
-                        self.out.push_back(f);
-                    }
+                    Some(()) => self.out.push_back(Frame::changed(Changed::Manual {})),
                     None => self.manual = None,
                 },
                 moved = bell_moved(&mut self.machines) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
-                    Some(()) => {
-                        let f = self.changed(Topic::Machines, None);
-                        self.out.push_back(f);
-                    }
+                    Some(()) => self.out.push_back(Frame::changed(Changed::Machines {})),
                     None => self.machines = None,
                 },
                 moved = item_moved(&mut self.machine) => match moved {
-                    Some(Some((name, p))) => self.out.push_back(Frame::changed(
-                        Topic::Machine,
-                        Some(name),
-                        None,
-                        serde_json::to_value(p).ok(),
-                    )),
+                    Some(Some((name, p))) => self.out.push_back(Frame::changed(Changed::Machine {
+                        key: name,
+                        body: Some(p),
+                    })),
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.machine = None,
                 },
                 moved = item_moved(&mut self.needs) => match moved {
-                    Some(Some(sid)) => {
-                        let f = self.changed(Topic::Needs, Some(sid));
-                        self.out.push_back(f);
-                    }
+                    Some(Some(sid)) => self.out.push_back(Frame::changed(Changed::Needs { key: sid })),
                     // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.needs = None,
                 },
                 moved = item_moved(&mut self.dirs) => match moved {
-                    Some(Some(dir)) => {
-                        let f = self.changed(Topic::FilesDir, Some(dir));
-                        self.out.push_back(f);
-                    }
+                    Some(Some(dir)) => self.out.push_back(Frame::changed(Changed::FilesDir { key: dir })),
                     // 落后丢了几件：可丢的通道，下一次动静或重问就补上。
                     Some(None) => {}
                     None => self.dirs = None,
                 },
                 moved = latest_moved(&mut self.list) => if moved {
-                    let f = self.changed(Topic::HistoryList, None);
-                    self.out.push_back(f);
+                    self.out.push_back(Frame::changed(Changed::HistoryList {}));
                 } else {
                     self.list = None;
                 }
@@ -319,11 +304,11 @@ async fn bell_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Opt
     }
 }
 
-/// 一件节点 ⇒ 该推的那几帧（topic · key）；落后丢了几件 ⇒ 不知道哪个会话，推不带会话的两帧（客户端整份重问）；
+/// 一件节点 ⇒ 该推的那几帧（不带体的那一臂；现算得出体的由 [`TapRx::changed`] 换上）；落后丢了几件 ⇒ 不知道哪个会话，推不带会话的两帧（客户端整份重问）；
 /// 通道没了 ⇒ `None`（调用方把它摘掉）；没订 ⇒ 永远不醒。
 async fn node_moved(
     r: &mut Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
-) -> Option<Vec<(Topic, Option<String>)>> {
+) -> Option<Vec<Changed>> {
     use crate::accounts::quota::nodes::Source;
     use tokio::sync::broadcast::error::RecvError;
     let Some(r) = r else {
@@ -333,23 +318,23 @@ async fn node_moved(
         Ok(n) => {
             let mut out = Vec::new();
             if n.source.is_fact() {
-                out.push((Topic::Quota, None));
+                out.push(Changed::Quota { body: None });
             }
             if n.source == Source::Strategies {
-                out.push((Topic::RotationStrategies, None));
+                out.push(Changed::RotationStrategies { body: None });
             }
             // 续令牌没成：「需重新登录」那一项可能进了需手动清单。
             if n.source == Source::Login {
-                out.push((Topic::Manual, None));
+                out.push(Changed::Manual {});
             }
             if let Some(sid) = n.sid {
-                out.push((Topic::Rotation, Some(sid)));
+                out.push(Changed::Rotation { key: sid });
             }
             Some(out)
         }
         Err(RecvError::Lagged(_)) => Some(vec![
-            (Topic::Quota, None),
-            (Topic::RotationStrategies, None),
+            Changed::Quota { body: None },
+            Changed::RotationStrategies { body: None },
         ]),
         Err(RecvError::Closed) => None,
     }
