@@ -441,9 +441,12 @@ impl Child {
         let group = os::Group::adopt(&child);
         if let (Some(bytes), Some(mut pipe)) = (self.stdin, child.stdin.take()) {
             // 它先退了 · 不读 stdin ⇒ 写的那一下报管道断：照它退出的结局交，不当起不来。写完 `pipe` 落地 ⇒ 它读到头。
+            let label = program.clone();
             std::thread::spawn(move || {
                 use std::io::Write as _;
-                let _ = pipe.write_all(&bytes);
+                if let Err(e) = pipe.write_all(&bytes) {
+                    tracing::debug!("{label} 没读完喂给它的 stdin（{e}）⇒ 照它退出的结局交");
+                }
             });
         }
 

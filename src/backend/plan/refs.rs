@@ -5,7 +5,7 @@
 //! - 一批正文用 [`SEAM`] 接成一段交 pb，回的码位下标照接缝拆回各段、换成 UTF-16（[`super::product::utf16_at`]）。
 //! - 每处写好 `label`：`ids` 里每个的标题照先后接起来（编号本身留在正文里，不重复）。
 //!
-//! 一段一条记进 [`Memo`]（键 ＝ 工作区 ＋ 片 ＋ 成品摘要 ＋ 正文摘要）：一批全中 ⇒ 不起 pb。pb 起不来 · 读不成 · 回了 `error` ⇒ 那一批每段空、不记。
+//! 一段一条记进 [`Memo`]（键 ＝ 工作区 ＋ 片 ＋ 成品摘要 ＋ 正文散列）：一批全中 ⇒ 不起 pb。pb 起不来 · 读不成 · 回了 `error` ⇒ 那一批每段空、不记。
 //! 已知边界：某段有没合上的代码围栏 ⇒ 同批排在它后面的几段 pb 当代码、认不出；不在这里数围栏（那是 pb 的认法）。
 
 use super::wire::{PlanMsgRef, PlanMsgRefs, PlanRead};
@@ -140,7 +140,8 @@ fn label(ids: &[String], nodes: Option<&Value>) -> String {
     titles.join(&copy_core::copy_text("plan.page.listSep", &[]))
 }
 
-type Key = (String, String, String, Vec<u8>);
+/// 工作区 · 片 · 成品摘要 · 正文的长度与两份 64 位散列（标准库的，种子固定；撞了只会给错一处标题，图一变就作废）。
+type Key = (String, String, String, usize, u64, u64);
 
 /// 认过的每一段（条数到顶 ⇒ 整张清掉重来）。
 pub(crate) struct Memo {
@@ -157,12 +158,20 @@ impl Memo {
     }
 
     fn key(at: &At, text: &str) -> Key {
-        use sha2::Digest as _;
+        use std::hash::{Hash as _, Hasher as _};
+        let digest = |salt: u8| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            salt.hash(&mut h);
+            text.hash(&mut h);
+            h.finish()
+        };
         (
             at.workspace.clone(),
             at.slice.clone(),
             at.rev.clone(),
-            sha2::Sha256::digest(text.as_bytes()).to_vec(),
+            text.len(),
+            digest(0),
+            digest(1),
         )
     }
 }

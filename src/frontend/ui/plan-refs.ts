@@ -46,12 +46,22 @@ export function askRefs(card: HTMLElement, origin: string, sid: string): void {
   queue.set(key, w);
   if (scheduled) return;
   scheduled = true;
-  const later = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (f: () => void) => setTimeout(f, 16);
+  const later =
+    typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : // 调度：合批 —— 没有帧回调的环境里，同一帧挂进来的卡合成一问
+        (f: () => void) => setTimeout(f, 16);
+  // 调度：合批 —— 这一帧挂进来的卡排到帧末，一台一个会话问一次
   later(() => {
     scheduled = false;
     const batch = [...queue.values()];
     queue.clear();
-    for (const one of batch) inflight.push(ask(one));
+    for (const one of batch) {
+      const p: Promise<void> = ask(one).finally(() => {
+        inflight = inflight.filter((x) => x !== p);
+      });
+      inflight.push(p);
+    }
   });
 }
 
@@ -75,10 +85,9 @@ async function ask(w: Waiting): Promise<void> {
 /** 判据用：等排着的与在路上的都落地。 */
 export async function __refsSettledForTests(): Promise<void> {
   for (let k = 0; k < 3 && (scheduled || inflight.length > 0); k++) {
+    // 调度：一次性 —— 让排到帧末的那一问先起，再等在路上的落地（至多三轮）
     await new Promise((r) => setTimeout(r, 20));
-    const now = inflight;
-    inflight = [];
-    await Promise.all(now);
+    await Promise.all(inflight);
   }
 }
 
