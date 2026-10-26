@@ -347,7 +347,7 @@ pub(crate) type Fill = BTreeMap<String, BTreeMap<String, String>>;
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HubReq {
-    pub kind: super::ext::ExtKind,
+    pub kind: super::asset_catalog::ExtKind,
     pub name: String,
     pub to: Vec<Option<String>>,
     #[serde(default)]
@@ -360,7 +360,7 @@ pub(crate) struct HubReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HubApplyReq {
-    pub kind: super::ext::ExtKind,
+    pub kind: super::asset_catalog::ExtKind,
     pub name: String,
     pub to: Vec<Option<String>>,
     #[serde(default)]

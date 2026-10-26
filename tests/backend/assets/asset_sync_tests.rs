@@ -40,7 +40,7 @@ fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     )
 }
 // 这三样原先由 `asset_sync.rs` 顺带引入（`Remote` trait 的签名要它们）；那一跳搬去 `remote_ask` 之后测试自己引。
-use crate::assets::asset_catalog::{self as cat, Asset, KIND_SKILL};
+use crate::assets::asset_catalog::{self as cat, Asset, ExtKind};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -59,12 +59,13 @@ fn skills(names: &[&str]) -> cat::Scanned {
         assets: names
             .iter()
             .map(|n| Asset {
-                kind: KIND_SKILL.into(),
+                kind: ExtKind::Skill,
                 name: (*n).into(),
                 project: None,
                 dir: None,
                 digest: format!("d-{n}"),
                 summary: json!({}),
+                off: false,
             })
             .collect(),
         ..cat::Scanned::default()

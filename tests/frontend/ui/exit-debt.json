@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1930,
+  "ceiling": 1918,
   "groups": [
     {
       "kind": "首登",
@@ -191,8 +191,8 @@
         ["src/frontend/ui/settings/data-section.ts", "branch", 3],
         ["src/frontend/ui/settings/data-section.ts", "key", 5],
         ["src/frontend/ui/settings/diagnostics-section.ts", "key", 11],
-        ["src/frontend/ui/settings/ext-section.ts", "branch", 27],
-        ["src/frontend/ui/settings/ext-section.ts", "key", 32],
+        ["src/frontend/ui/settings/ext-section.ts", "branch", 16],
+        ["src/frontend/ui/settings/ext-section.ts", "key", 31],
         ["src/frontend/ui/settings/first-run.ts", "branch", 9],
         ["src/frontend/ui/settings/first-run.ts", "key", 2],
         ["src/frontend/ui/settings/interrupts.ts", "key", 7],

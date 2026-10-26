@@ -226,9 +226,41 @@ async fn until(what: &str, mut f: impl FnMut() -> bool) {
     assert!(waited.is_ok(), "等不到：{what}");
 }
 
+/// 本机后端那条通道的替身（登记在 `<local>`）：问那台的那几问（信封带 `machine`）经它转给那台 —— 这里就是照那台那份记录答。
+/// 别台 · 不带 `machine` 的一问 ⇒ 判错（快照问那台只许走这一条）。
+fn local_backend_for(remote: Arc<Remote>) -> Arc<crate::inbound_client::InboundClient> {
+    let (mine, theirs) = tokio::io::duplex(256 * 1024);
+    let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(&[]))
+        .expect("是 Hello 帧");
+    let client = crate::inbound_client::park(mine).into_client(hello);
+    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    let c = client.clone();
+    tokio::spawn(async move {
+        let mut r = tokio::io::BufReader::new(theirs);
+        let mut line = String::new();
+        while r.read_line(&mut line).await.unwrap_or(0) > 0 {
+            let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(v["machine"], ORIGIN, "问那台没经本机后端转：{v}");
+            let data = remote.answer(v["cmd"].as_str().unwrap_or(""), &v["args"]);
+            c.route_reply(
+                v["id"].as_str().unwrap(),
+                true,
+                None,
+                None,
+                None,
+                Some(data),
+            );
+            line.clear();
+        }
+    });
+    client
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
+    let _g = crate::inbound_client::local_origin_test_lock();
     let remote = Arc::new(Remote::default());
+    let local = local_backend_for(Arc::clone(&remote));
     remote.grow(3);
     remote
         .scripts
@@ -323,4 +355,5 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
     );
     feed.close();
     consumer.abort();
+    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &local);
 }

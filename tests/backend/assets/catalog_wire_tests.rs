@@ -21,7 +21,7 @@ fn tmp(tag: &str) -> std::path::PathBuf {
     d
 }
 
-use super::asset_catalog::{Asset, Catalog, Note, Snapshot};
+use super::asset_catalog::{Asset, Catalog, ExtKind, Note, Snapshot};
 
 /// 线上 `catalog`（JSON）→ 各台快照：同 `assets-catalog-merge` 那一跳（解码器管形状，`machines_of` 判 id 与种类）。
 fn machines_from_wire(
@@ -38,12 +38,13 @@ fn sample() -> Catalog {
         gen: 2,
         seen_at: 1002,
         assets: vec![Asset {
-            kind: "skill".into(),
+            kind: ExtKind::Skill,
             name: "a".into(),
             project: None,
             dir: Some("/s/a".into()),
             digest: "d-a".into(),
             summary: json!({"files": 1}),
+            off: false,
         }],
         project_dirs: vec!["/p".into()],
         notes: Default::default(),
@@ -62,20 +63,22 @@ fn sample() -> Catalog {
         seen_at: 1005,
         assets: vec![
             Asset {
-                kind: "skill".into(),
+                kind: ExtKind::Skill,
                 name: "a".into(),
                 project: None,
                 dir: None,
                 digest: "d-a2".into(),
                 summary: json!({}),
+                off: false,
             },
             Asset {
-                kind: "mcp".into(),
+                kind: ExtKind::Mcp,
                 name: "m".into(),
                 project: Some("/p".into()),
                 dir: Some("/p/.mcp.json".into()),
                 digest: "d-m".into(),
                 summary: json!({"command": "x"}),
+                off: false,
             },
         ],
         project_dirs: vec![],

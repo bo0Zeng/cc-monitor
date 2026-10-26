@@ -17758,7 +17758,7 @@
       "zh": "详情",
       "args": []
     },
-    "extPage.state.differs": {
+    "beExt.state.differs": {
       "kind": "body",
       "role": "状态",
       "zh": "内容不同",
@@ -17818,6 +17818,140 @@
       "zh": "该机未建账号库 · 全局 MCP 由 Claude 自管 · 此处只读",
       "args": []
     },
+    "beExt.note.pluginReadOnly": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "插件只读 · 装与卸照 Claude Code 自己的办法",
+      "args": [],
+      "limited": ["Claude Code"]
+    },
+    "beExt.kind.plugin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "插件",
+      "args": []
+    },
+    "beExt.state.off": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已装 · 已停用",
+      "args": []
+    },
+    "beExt.legend.off": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已装 · 已停用",
+      "args": []
+    },
+    "beExt.list.sep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
+    "beExt.detail.market": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "市场",
+      "args": []
+    },
+    "beExt.detail.version": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "版本",
+      "args": []
+    },
+    "beExt.detail.partValue": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} · {names}",
+      "args": ["n", "names"]
+    },
+    "beExt.part.skills": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "skill",
+      "args": []
+    },
+    "beExt.part.commands": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "命令",
+      "args": []
+    },
+    "beExt.part.agents": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "agent",
+      "args": []
+    },
+    "beExt.part.hooks": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "钩子",
+      "args": [],
+      "limited": ["hook"]
+    },
+    "beExt.part.mcp": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "MCP",
+      "args": []
+    },
+    "beExt.plugin.on": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已启用",
+      "args": []
+    },
+    "beExt.plugin.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已停用",
+      "args": []
+    },
+    "beExt.plugin.fromManaged": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "托管设置",
+      "args": []
+    },
+    "beExt.plugin.fromLocal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本机项目设置",
+      "args": []
+    },
+    "beExt.plugin.fromProject": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "项目设置",
+      "args": []
+    },
+    "beExt.plugin.fromUser": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用户设置",
+      "args": []
+    },
+    "beExt.plugin.fromManifest": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "清单默认",
+      "args": []
+    },
+    "beExt.plugin.line": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{version} · {on} · {from}",
+      "args": ["version", "on", "from"]
+    },
+    "beExt.plugin.lineNoVersion": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{on} · {from}",
+      "args": ["on", "from"]
+    },
     "beExt.card.blocked": {
       "kind": "body",
       "role": "说明",
@@ -17837,7 +17971,7 @@
       "zh": " · ",
       "args": []
     },
-    "extPage.state.project": {
+    "beExt.state.project": {
       "kind": "body",
       "role": "状态",
       "zh": "仅项目 {dirs}",
@@ -17849,7 +17983,7 @@
       "zh": "「扩展」卸载非 cc-monitor 安装项前的备份 · 可从此找回",
       "args": []
     },
-    "extPage.state.same": {
+    "beExt.state.same": {
       "kind": "body",
       "role": "状态",
       "zh": "已装",
@@ -17928,6 +18062,12 @@
       "zh": "MCP",
       "args": []
     },
+    "extPage.filter.plugin": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "插件",
+      "args": []
+    },
     "beExt.note.noSource": {
       "kind": "body",
       "role": "说明",
@@ -18000,25 +18140,25 @@
       "zh": "cc-monitor 安装 · 只删此条",
       "args": []
     },
-    "extPage.state.missing": {
+    "beExt.state.missing": {
       "kind": "body",
       "role": "状态",
       "zh": "未装",
       "args": []
     },
-    "extPage.legend.same": {
+    "beExt.legend.same": {
       "kind": "body",
       "role": "说明",
       "zh": "已装",
       "args": []
     },
-    "extPage.legend.differs": {
+    "beExt.legend.differs": {
       "kind": "body",
       "role": "说明",
       "zh": "已装 · 内容不同",
       "args": []
     },
-    "extPage.legend.project": {
+    "beExt.legend.project": {
       "kind": "body",
       "role": "说明",
       "zh": "仅项目内",
@@ -18123,7 +18263,7 @@
       "zh": "已装 · {machine} · {said}",
       "args": ["machine", "said"]
     },
-    "extPage.kind.mcp": {
+    "beExt.kind.mcp": {
       "kind": "body",
       "role": "片段",
       "zh": "MCP",
@@ -18243,7 +18383,7 @@
       "zh": "{field} 的 {key} 未填值 · 此机原无 · 不抄来源机的值 · 确认卡上填好再装",
       "args": ["field", "key"]
     },
-    "extPage.kind.skill": {
+    "beExt.kind.skill": {
       "kind": "body",
       "role": "片段",
       "zh": "Skill",
