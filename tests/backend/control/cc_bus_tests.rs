@@ -331,7 +331,9 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
             "{id:?} 该发得出去"
         );
         assert_eq!(
-            parse_inbox(&json!({ "id": id })).map(|(id, _)| id).as_deref(),
+            parse_inbox(&json!({ "id": id }))
+                .map(|(id, _)| id)
+                .as_deref(),
             Ok(id.as_str()),
             "{id:?} 的收件箱该读得到"
         );

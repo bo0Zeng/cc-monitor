@@ -655,7 +655,7 @@ gate_lane 静态
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
 # 反空真：展开出的份数 > 0 且本文件在里面；某组 glob 一个都不匹配由 `shell_lint_registry` 接住。本地与 CI 的二进制版本可能不同。
-GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/shots/perf/*.sh tests/shots/perf/backend/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/shots/perf/*.sh tests/shots/perf/backend/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
 gate_shellcheck() {
   local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
@@ -1129,7 +1129,6 @@ run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`c
 # 20 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。
 gate_lane e2e-1 after e2e-prep
-run_e2e cc-spawn-uplift
 run_e2e backend-tmux-late-server
 run_e2e tmux-target
 run_e2e restart
@@ -1137,7 +1136,6 @@ gate_lane e2e-2 after e2e-prep
 run_e2e backend-sessions-rewatch
 run_e2e backend-cc-bus
 run_e2e resume
-run_e2e cc-bus-queue-drain
 run_e2e graylight-frames
 run_e2e resume-frames
 gate_lane e2e-3 after e2e-prep

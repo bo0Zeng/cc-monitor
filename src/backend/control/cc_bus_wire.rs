@@ -232,4 +232,3 @@ impl crate::wire::typed::Handle for BusSendCmd {
         }
     }
 }
-

@@ -25,7 +25,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
 
     // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
-    //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
+    //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_one_home.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（monitor 里那个发送端，已删）

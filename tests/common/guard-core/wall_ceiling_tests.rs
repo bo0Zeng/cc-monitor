@@ -1481,7 +1481,7 @@ fn w4_the_population_is_what_the_gate_runs() {
         Some("kt")
     );
     assert_eq!(lang_of("src/mobile/app/src/main/kotlin/A.kt"), None);
-    assert_eq!(lang_of("tests/e2e/cc-spawn-uplift.sh"), Some("sh"));
+    assert_eq!(lang_of("tests/e2e/backend-cc-bus.sh"), Some("sh"));
     assert_eq!(lang_of("tests/e2e/f40-suite.sh"), None);
     for (p, _) in SH_NOT_GATED {
         assert!(

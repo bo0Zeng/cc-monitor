@@ -268,13 +268,13 @@ const DETAIL = [
   "原话：can't find window: orders-3:2",
 ].join("\n");
 
-/** 「读取 cc-bus 无应答」那一条的复制详情（与它对得上：命令 bus-state · 码 child_timed_out）。 */
+/** 「读取 cc-bus 无应答」那一条的复制详情（与它对得上：命令 bus-list · 码 child_timed_out）。 */
 const BUS_DETAIL = (at: string): string =>
   [
     `时刻：2026-10-08 ${at} +08:00`,
     "机器：Linux x86_64 · 后端 p9k-flicker",
     "本机：cc-monitor 4.1.5 (p9k-flicker) · Linux x86_64",
-    "命令：bus-state",
+    "命令：bus-list",
     "码：child_timed_out",
     "原话：cc-list did not exit within 8s; process group killed",
   ].join("\n");

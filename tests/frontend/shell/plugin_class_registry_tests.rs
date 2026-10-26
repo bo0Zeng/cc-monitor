@@ -52,7 +52,7 @@ struct Candidate {
     gap: &'static str,
 }
 
-/// ★ `E4` 那张表今天还在仓里的三行（`code-picture` 那一行随代码全景整条摘掉删了：它在 cc-monitor 里零实现，
+/// ★ `E4` 那张表今天还在仓里的两行（派生脚本那一行随派生一起删了；`code-picture` 那一行随代码全景整条摘掉删了：它在 cc-monitor 里零实现，
 /// 只作为扩展经扩展页装）。**分类两列是提案；`today`/`gap` 两列才是本模块钉的东西。**
 const REGISTERED: &[Candidate] = &[
     Candidate {
@@ -65,14 +65,6 @@ const REGISTERED: &[Candidate] = &[
         gap:
             "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
                   今天那处口不再是 cc-bus 专用的，壳只是它的第一个消费者",
-    },
-    Candidate {
-        id: "cc-spawn",
-        home: "src/shared/cc-bus/scripts/cc-spawn",
-        semantics: Semantics::Plugin,
-        shape: Shape::Plugin,
-        today: "已经是 `ccm` 的前端：走 `CCM_BIN` + `--ccm-probe` 能力协商，且不碰总线目录",
-        gap: "「出插件」的落点没定（待决 `EU3`：一条插件命令 vs 整个脚本族当一个包）",
     },
     Candidate {
         id: "ccm",
@@ -281,14 +273,14 @@ fn bus_data_needles() -> Vec<String> {
 
 // ───────────────────────────── 判据 ─────────────────────────────
 
-/// `EF01-Y1`：登记表就是 `E4` 点名、今天还在仓里的那三个候选，**一个不多一个不少**，且住址不烂。
+/// `EF01-Y1`：登记表就是 `E4` 点名、今天还在仓里的那两个候选，**一个不多一个不少**，且住址不烂。
 #[test]
 fn the_registry_covers_exactly_the_candidates_the_charter_names_that_still_live_here() {
     let mut ids: Vec<&str> = REGISTERED.iter().map(|c| c.id).collect();
     ids.sort_unstable();
     assert_eq!(
         ids,
-        vec!["cc-bus", "cc-spawn", "ccm"],
+        vec!["cc-bus", "ccm"],
         "分类表的候选集变了。\n\
              ⇒ **别直接改这里**：`E4` 那张表是定框条款（且今天还没获批），\
              多一个候选意味着先去那张表里答完两轴，再回来登记它今天的形态。"
@@ -409,39 +401,6 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     );
 }
 
-/// `EF01-Y5`：`cc-spawn` 今天**已经是 `ccm` 的前端** —— 走 `CCM_BIN` + 能力协商，
-/// 且「本脚本不碰总线目录了」这句话是真的。
-#[test]
-fn cc_spawn_is_a_frontend_of_ccm_and_touches_no_bus_data() {
-    let spawn = guard_core::strip_hash_comment_lines(include_str!(
-        "../../../src/shared/cc-bus/scripts/cc-spawn"
-    ));
-    for token in ["CCM_BIN", "--ccm-probe"] {
-        assert!(
-            guard_core::contains_word(&spawn, token),
-            "`cc-spawn` 的生产段里没有 `{token}` —— 它就不再是 `ccm` 的前端了。\n\
-                 ⇒ 本表 `cc-spawn` 那一行、以及 `EU3` 默认取「粒度是包」的理由\
-                 （「`cc-spawn` 里有多少是 cc-bus 之外的语义」实测是 0），\
-                 都建立在这两件事上。真要改回自己起会话，先去 `EU3` 把账改了。\n\
-                 ⚠ 尤其是 `--ccm-probe`：脚本头注逐字记着不检的后果 —— \
-                 把「版本太旧」说成「建会话失败」。"
-        );
-    }
-    let mut touched: Vec<String> = Vec::new();
-    for n in bus_data_needles() {
-        if spawn.contains(n.as_str()) {
-            touched.push(n);
-        }
-    }
-    assert!(
-        touched.is_empty(),
-        "`cc-spawn` 又碰总线数据了：{touched:?}\n\
-             ⇒ `C15` 之后那三件 cc-bus 专属逻辑（命名避让 · 总线登记 · 台账）已经搬进 `ccm`，\
-             脚本头注逐字写着「本脚本不碰总线目录了」。\
-             `E6` 的通则同理：拿不到的东西**给它加一条命令**，不是绕到背后读文件。"
-    );
-}
-
 /// `EF01-Y6`：`ccm` 今天是**一套骨架 + 一张 per-agent 适配表**（`E4b`），
 /// 而它在轴二上**落不进三档**（受管工具）。
 #[test]
@@ -469,11 +428,8 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     );
     // 能力协商面（`E7`/`EL3`）：token 是**集合**，判「会不会做某件事」问集合，不比版本号。
     let caps = ccm_const_list("CAPABILITIES");
-    // 两个消费者都是**子集检查**（`cc-spawn` 的 `for _c in …` · `ccm_invocation.rs::CLI_REQUIRED_CAPS`）⇒
-    //   加 token 安全，删 / 改名才危险：判它们要的每一个今天都在能力表里。
-    let spawn = guard_core::strip_comment_lines(&must_read("src/shared/cc-bus/scripts/cc-spawn"));
-    let spawn_loop = segment_after(&spawn, "for _c in ", "; do");
-    let spawn_wants: Vec<&str> = spawn_loop.split_whitespace().collect();
+    // 消费者是**子集检查**（`ccm_invocation.rs::CLI_REQUIRED_CAPS`）⇒
+    //   加 token 安全，删 / 改名才危险：判它要的每一个今天都在能力表里。
     let invocation = rust_production("src/backend/control/launch_render/ccm_invocation.rs");
     let cli_wants: Vec<String> = segment_after(
         &invocation,
@@ -489,19 +445,18 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     })
     .collect();
     assert!(
-        !spawn_wants.is_empty() && !cli_wants.is_empty(),
-        "两个消费者要的 token 抠出来是空的（cc-spawn {spawn_wants:?} · CLI_REQUIRED_CAPS {cli_wants:?}）—— 抠法坏了"
+        !cli_wants.is_empty(),
+        "消费者要的 token 抠出来是空的（CLI_REQUIRED_CAPS {cli_wants:?}）—— 抠法坏了"
     );
-    let missing: Vec<String> = spawn_wants
+    let missing: Vec<String> = cli_wants
         .iter()
-        .map(|s| s.to_string())
-        .chain(cli_wants.iter().cloned())
         .filter(|w| !caps.contains(w))
+        .cloned()
         .collect();
     assert!(
         missing.is_empty(),
         "`--ccm-probe` 的能力表里少了消费者要的 token：{missing:?}（能力表：{caps:?}）\n\
-         ⇒ 删 / 改名 token 前先改两个消费者（`cc-spawn` 的 `for _c in …` · `CLI_REQUIRED_CAPS`）。"
+         ⇒ 删 / 改名 token 前先改消费者（`CLI_REQUIRED_CAPS`）。"
     );
     // `--ccm-probe` 报的 agent 集合不再是 `mod.rs` 里一份手写常量：由后端注册表派生（带起会话事实的那几家，
     //   `agents::launchable_kinds`），值由后端 `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 钉。

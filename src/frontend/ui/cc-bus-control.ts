@@ -46,8 +46,7 @@ const READ_BUDGET_MS = 30_000;
  * 这是刻意的一次往返：只在用户点某一行的「检查」时问，不默认全量查、不轮询。
  */
 export async function agentOnline(origin: Origin, id: string): Promise<boolean> {
-  const sent = callTyped(origin, "bus-list", {}, budgetWithin(ONLINE_BUDGET_MS));
-  const { agents } = await settleTyped(origin, "bus-list", sent);
+  const { agents } = await readRoster(origin, ONLINE_BUDGET_MS);
   const hit = agents.find((a) => a.id === id);
   if (hit === undefined || hit.live === null) {
     throw new ControlError(copyText("ccBus.online.unknown", { id, machine: machineName(origin) }), "not in the roster, or live is null");
@@ -84,8 +83,8 @@ export type BusList = BusListWire;
 export type BusInbox = BusInboxWire;
 
 /** 读 `origin` 那台的名单。失败 ⇒ 抛 [`ControlError`]（读不到 ≠ 一个都没有）。 */
-export async function readRoster(origin: Origin): Promise<BusList> {
-  return settleTyped(origin, "bus-list", callTyped(origin, "bus-list", {}, budgetWithin(READ_BUDGET_MS)));
+export async function readRoster(origin: Origin, budgetMs: number = READ_BUDGET_MS): Promise<BusList> {
+  return settleTyped(origin, "bus-list", callTyped(origin, "bus-list", {}, budgetWithin(budgetMs)));
 }
 
 /** 只读看 `origin` 上 agent `id` 收件箱的尾巴（不推已读位置）。失败 ⇒ 抛 [`ControlError`]。 */

@@ -154,7 +154,7 @@ mod link_mux;
 // 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
-/// `shared/ccm` 的强度契约（仅测试构建）。
+/// 「别人怎么使唤 `ccm`」那条边的契约（仅测试构建；今天只剩空壳，见它的头注）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/ccm_cli_contract.rs"]
 mod ccm_cli_contract;
@@ -714,7 +714,7 @@ pub fn run() {
             config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
-            // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
+            // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-list` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             // 足迹成品由那台后端出（界面经通道问 `footprint-report`）；这里只答 monitor 自己那台那几行的事实。
             footprint_client::footprint_client_facts,

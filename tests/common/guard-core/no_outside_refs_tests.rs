@@ -633,7 +633,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
     let exempt: Vec<&str> = [
         "src/shared/copy/table.json",
         "src/shared/copy/terms.json",
-        "src/shared/cc-bus/examples/kinds.tsv",
+        "src/shared/cc-bus/examples/policy.tsv",
         "tests/evidence/K-T68-A1-outward-copy-census.py",
         "src/shared/copy/rules.json",
         "src/backend/lib.rs",
@@ -646,7 +646,7 @@ fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
         [
             "src/shared/copy/table.json",
             "src/shared/copy/terms.json",
-            "src/shared/cc-bus/examples/kinds.tsv",
+            "src/shared/cc-bus/examples/policy.tsv",
             "tests/evidence/K-T68-A1-outward-copy-census.py",
         ],
         "豁免名单只该放过文案表 · 禁用词表 · cc-bus 包 · 对外文案普查量具"

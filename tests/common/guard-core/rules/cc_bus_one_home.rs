@@ -3,12 +3,9 @@
 
 use super::{equal, none, rule};
 
-/// cc-bus 写面那几个脚本名（现拼，免得本文件自己成了别的扫描的命中）。
+/// cc-bus 写面的脚本名（现拼，免得本文件自己成了别的扫描的命中）。
 fn verbs() -> Vec<String> {
-    ["send", "kill", "spawn", "broadcast"]
-        .iter()
-        .map(|v| format!("cc-{v}"))
-        .collect()
+    ["send"].iter().map(|v| format!("cc-{v}")).collect()
 }
 
 /// 那份生产段里提到的脚本名。
@@ -45,15 +42,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
 #[test]
 fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
     const HOME: &str = "src/frontend/ui/cc-bus-control.ts";
-    const OPS: &[&str] = &[
-        "bus-list",
-        "bus-send",
-        "bus-kill",
-        "bus-spawn",
-        "bus-broadcast",
-        "bus-state",
-        "bus-inbox",
-    ];
+    const OPS: &[&str] = &["bus-list", "bus-send", "bus-inbox"];
     rule(|repo| {
         let mut found: Vec<(String, &str, usize)> = Vec::new();
         for f in repo.under(&["src"], &["ts"]) {

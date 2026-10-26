@@ -230,7 +230,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 抓屏那一条（远端抓屏，Remote）退役：界面经通道直接问那台机器的后端
     //   （`src/frontend/ui/tmux-control.ts::capturePane`，`capture-pane`），本机与远端同一条路；通道上的问法不是 Tauri 命令、不进本表。
     // P4a（08-12）：读面三条**已经支持本机**（同一条命令串，只是不包进 ssh）⇒ 转 Both。
-    // `read_cc_bus_state` / `read_cc_bus_inbox` 两条 Both 退役：驾驶舱读面改由界面经通道问后端 `bus-state` / `bus-inbox`。
+    // 驾驶舱读名单 / 读收件箱两条 Both 退役：驾驶舱读面改由界面经通道问后端 `bus-list` / `bus-inbox`。
 ];
 
 /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
@@ -500,8 +500,8 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
              远端问那台后端的成品（`launch-endpoint`，中转在不在也是它答）。命令体对 origin 不做远端假设 —— \
              分派住 `history::relay_endpoint_on`，判断只在 `payload::relay_endpoint_for` 一处。",
     ),
-    // 这里原来还有两行：`read_cc_bus_state` / `read_cc_bus_inbox`（两条命令退役，界面经通道问后端）。
-    // 这里原来还有两行：查在线（`check_cc_bus_agent_online`）与发消息（`cc_bus_send`，`K-R98` 那条
+    // 这里原来还有两行：驾驶舱读名单 / 读收件箱（两条命令退役，界面经通道问后端）。
+    // 这里原来还有两行：查在线与发消息（`K-R98` 那条
     //   「第一条写面的 `Both`」）—— 两条命令退役（界面经通道直接说后端的 `bus-list` / `bus-send`），登记随之删。
     // 分叉 · 删会话那两行随命令退役（界面经通道直说那台后端），下面只剩三条。
     // 🔴 **下面五条是同一刀落下来的** ——
@@ -600,7 +600,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //
     // ⚠ 这一段是**账**，不是判据。它里面的数**没有**任何东西钉住 ——
     //   真值以 `EXPECTED_LOCAL_OR_BOTH` 与失败时印出来的 `Local {n} + Both {m}` 为准。
-    // - K-R98 **+1**（`cc_bus_send` 从 `Remote` 转 `Both`）—— **不是新增一条命令**，
+    // - K-R98 **+1**（发消息那条从 `Remote` 转 `Both`）—— **不是新增一条命令**，
     //   是同一条命令的两侧收成了一条路（远端那半改走 `bus-send`，不再拼 shell 串）。
     //   ⇒ 命令总数与能力总数都不动，只有这个数 +1；`cc-bus.cockpit` 仍不对称
     //   （spawn / 广播 / 收掉三条还是 `Remote`），所以不对称条数也不动。
@@ -967,7 +967,7 @@ const FRAME_PLANE_ANYWHERE: &[&str] = &[
 /// **候选（派生 = `FramePlane`）的人裁** —— 闭集见 [`FrameVerdict`]，理由必须可追问。
 ///
 /// 🔴 **这张表就是本笔的产出**：`K-R112` 交回时点了 **3** 行（远端抓屏 /
-/// `cc_bus_kill` / `cc_bus_broadcast`）。派工单逐字「别只修它撞见的那三行，先量」——
+/// 收掉 / 广播两条 cc-bus 命令）。派工单逐字「别只修它撞见的那三行，先量」——
 /// **现打是 5 行在说假话**，多出来的两行是 `kill_remote_tmux` 与 `tmux_send_keys`。
 /// ⚠ 那两行最狠的地方：**同一行的 `ASYMMETRY_REASONS` 散文早就写着它们「本机已通」**
 /// （`tmux.manage` 那条理由里逐字「② `kill_remote_tmux` ⇒ **本机已通**」「③
@@ -997,7 +997,7 @@ fn the_remote_side_column_is_signed_off() {
         // 103 → 102：apikey 写 key 那一条删了（人群真少了 1 个）。
         // 103 → 102：`get_session_tasks` 删了（人群真少了 1 个；今天 102）。
         // 基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 98。
-        // 98 → 96：驾驶舱 `read_cc_bus_state` / `read_cc_bus_inbox` 两条删了（人群真少了 2 个）。
+        // 98 → 96：驾驶舱读名单 / 读收件箱两条删了（人群真少了 2 个）。
         // 92 → 85：MCP 读写六条 ＋ 推拉两条 `#[tauri::command]` 删了、`list_remote_mcp_origins` 挪进 `config.rs`（人群真少了 8 个；今天 85）。
         // 85 → 81：资产同步 ＋ skill 装卸三条 `#[tauri::command]` 删了。
         // 81 → 76：载荷 / 调用行渲染 · 中转地址 · 本机新起 / resume / 接回 · 远端 ccm 探测七条删了、开窗 · 中转开关两条新增。

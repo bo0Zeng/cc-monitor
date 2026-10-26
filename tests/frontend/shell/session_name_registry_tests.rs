@@ -20,13 +20,6 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              sid 骑在 `@ccm_sid` 上。",
     ),
     (
-        "src/shared/cc-bus/scripts/cc-spawn",
-        "producer-duplicate",
-        "`<basename>_cc` —— ⚠ **下划线不是连字符**，全仓其余都用 `-cc` ⇒ \
-             `is_ccm_tmux_name` 认不出它。是刻意隔开命名空间还是漂了，**待裁定**。\
-             退役归 **U11 本体**。",
-    ),
-    (
         "src/backend/control/gate_rules.rs",
         "consumer",
         "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
@@ -73,7 +66,7 @@ fn hits(src: &str) -> usize {
         .count()
 }
 
-/// 扫描面：`src/**/*.ts`（排除测试）+ monitor 与 `src/common` 的 `.rs` + 后端两份（`ccm/plan.rs` · `control/gate_rules.rs`）+ `cc-spawn`。
+/// 扫描面：`src/**/*.ts`（排除测试）+ monitor 与 `src/common` 的 `.rs` + 后端两份（`ccm/plan.rs` · `control/gate_rules.rs`）。
 /// 扫描面本体 —— **单独抽出来，好让自检量的是「真正被扫的那一份」**。
 ///
 /// 这一步不是重构洁癖：上一版自检自己又走了一遍遍历器，
@@ -98,7 +91,6 @@ fn scan_files() -> Vec<PathBuf> {
         "src/backend/control/ccm/plan.rs",
         // 原 `src/common/gate-core`（上面 `collect_rs` 扫得到那一棵）收成后端模块 ⇒ 按 extra 点名。
         "src/backend/control/gate_rules.rs",
-        "src/shared/cc-bus/scripts/cc-spawn",
     ] {
         files.push(root.join(extra));
     }
@@ -188,7 +180,6 @@ fn the_scan_actually_reads_all_four_surfaces() {
     for f in [
         "src/backend/control/gate_rules.rs",
         "src/backend/control/ccm/plan.rs",
-        "src/shared/cc-bus/scripts/cc-spawn",
     ] {
         assert!(
             fs::read_to_string(root.join(f)).is_ok_and(|s| !s.trim().is_empty()),

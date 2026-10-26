@@ -236,7 +236,6 @@ pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
         .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
-
 /// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名 · sid 形状 ⇒ 过门 ⇒ 杀 ⇒ 成品。
 pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {
     admit_existing_name(&req.name)?;

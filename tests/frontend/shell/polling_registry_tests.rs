@@ -28,33 +28,10 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     // 一次性 sleep 也会命中。**刻意不收窄针**（宁可宽松让人判断，也不要用严格的错误引入噪声）
     // —— 收窄会漏掉「新加一个 `sleep 1` 在循环里」那种真轮询。代价是一次性的也要登记一行，
     // 而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
-    (
-        "src/shared/cc-bus/scripts/cc-busd",
-        "data-poll",
-        "★ **本表扩面当天逮到的唯一真轮询**：长驻 broker 进程，`while [ \"$running\" = 1 ]` \
-             里每 0.5s 醒一次扫队列目录（`:101` `sleep \"$POLL\"`；`:99` 是「一整轮没进展」的退避）。\
-             它**自己的注释就承认了**：`:20` 逐字「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」。\
-             **事件源**：`$BUS/queue` 目录的 inotify —— 队列是文件系统目录、天然可 watch，\
-             与后端侧看 pidfile 的做法同构。\
-             **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，明确「后面再增强」）。\
-             如实记未排期，不编一个假 owner 让它看起来有人管。\
-             ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; backend_running && break; done` \
-             —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",
-    ),
+    // `src/shared/cc-bus/scripts/` 里那条长驻 broker（本表扩面当天逮到的唯一真轮询：每 0.5s 扫一次队列目录）
+    //   随「投递只一条路」整份删了 ⇒ 行删；同批删的两条一次性 `sleep`（收会话的宽限 · 起会话的让路）跟着删。
     // `src/shared/cc-bus/scripts/cc-bus-lib.sh` 那一行（敲门时两发 send-keys 之间的 `sleep 0.3`）退役：
     //   敲门改经后端 `session-say`（回车由后端补），往窗格里打字那一档整条删了 ⇒ 行删。
-    (
-        "src/shared/cc-bus/scripts/cc-kill",
-        "one-shot",
-        "`:18` `kill $procs; sleep 0.3; kill -9 $procs` —— **优雅退出与强杀之间的宽限**，一次性。",
-    ),
-    (
-        "src/shared/cc-bus/scripts/cc-spawn",
-        "one-shot",
-        "`:146` `sleep 1.5` —— **启动让路**（等被 spawn 的 agent 把自己登记上来）。一次性；\
-             同文件 `:145` 注释逐字「显式保留而非默默删掉——原先 pretrusted 成功路径上就是 \
-             sleep 1.5」，说明它是刻意留的既有行为。",
-    ),
 ];
 
 /// ★ **前提触发器**：本模块头注说「Rust 那半的家是 `rust_timer_registry`」——
@@ -183,7 +160,7 @@ fn repo_root() -> PathBuf {
 /// `setInterval` 这个词（写的是「不许有」）。不剥的话它们会被自己的纪律说明命中 ——
 /// 与 `launch-cli-wire.vitest.ts` 那次「文档注释里就写着 `deny_unknown_fields`」同一个坑。
 /// 一行里有没有周期唤醒的形态。
-/// `shared/` 下的 shell 脚本全集：`.sh` 后缀 **或** 首行有 shebang（`cc-busd`/`cc-send`
+/// `shared/` 下的 shell 脚本全集：`.sh` 后缀 **或** 首行有 shebang（`cc-send`/`cc-recv`
 /// 这些没有后缀）。**按内容认，不按后缀认** —— 后缀是可选的，shebang 才是「它是脚本」的证据。
 fn collect_shell(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -223,12 +200,12 @@ fn is_periodic(line: &str, is_shell: bool) -> bool {
 ///
 /// ⚠ **08-10（devbench F07）扩面**：原来这里是 `files.push(root.join("shared/ccm"))`
 /// —— **一个写死的文件名**。头注当时写的范围「TS 与 `shared/ccm`」在写下时是对的，
-/// 而 `src/shared/cc-bus/` 进仓之后就成了一个没人管的角落：`src/shared/cc-bus/scripts/cc-busd`
-/// 是个**长驻 broker 进程**，每 0.5s 醒一次扫队列目录，它自己的注释逐字承认
+/// 而 `src/shared/cc-bus/` 进仓之后就成了一个没人管的角落：那里当年有个**长驻 broker 进程**（后来删了），
+/// 每 0.5s 醒一次扫队列目录，它自己的注释逐字承认
 /// 「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」—— 而本表看不见它。
 ///
 /// ★ 这不是「另一个仓不该管」：同仓的 `shell_lint_registry`（扫描面含
-/// `src/shared/cc-bus/scripts/*`）与 `session_name_registry`（点名 `cc-spawn`）**都**已经
+/// `src/shared/cc-bus/scripts/*`）与 `session_name_registry` **都**已经
 /// 把那棵树算进人群了，**只有轮询这张表没跟上**。⇒ 人群改成**遍历**，
 /// 加一个脚本自动进人群，不用谁记得回来 push 一行。
 fn scan() -> Vec<(String, usize)> {
@@ -367,10 +344,13 @@ fn every_data_poll_names_its_event_source_and_owner() {
             assert!(why.contains("退役归"), "{f} 记成 data-poll 却没说谁退役它");
         }
     }
-    // 地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；`tab-session-actions.ts` 的
-    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。
+    // 地板 `>= 3` 换成相等：今天 data-poll **0** 条（`tab-session-actions.ts` 的 `awaitExitFor` 随换号重启直接 kill 退役，
+    //   cc-bus 那条长驻 broker 随投递只一条路删了，2 → 0）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
-    assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
+    assert_eq!(
+        polls, 0,
+        "data-poll 条数变了（今天 0）—— 多了请登记事件源与退役去处"
+    );
 }
 
 /// **调度调用点的分类住在调用点旁边**：每个 `setInterval` / `setTimeout` / `requestAnimationFrame` /

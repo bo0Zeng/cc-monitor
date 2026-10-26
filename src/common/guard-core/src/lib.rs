@@ -1291,8 +1291,7 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
             // 用 `production_code`（**连注释一起剥**）而不是 `production_source`：
             // 散文里逐字提到测试属性是**正常的**（本文件的头注就在解释它），
             // 那不是「剥法坏了」。U8a-2a 实测：两侧各有一个文件因此假红
-            //（`guard-core/src/lib.rs` 自己 + monitor
-            //  `ccm_cli_contract_tests.rs::cc_spawn_resolves_a_real_ccm_file_not_a_directory`）。
+            //（`guard-core/src/lib.rs` 自己 + monitor 当年一份判据文件，那份随派生脚本删了）。
             // 🔴 **这个地址从行号改成了符号。**
             // 原来写的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分之后只剩 40 行 ⇒ 行号越界，
             // `structural_scan::line_number_addresses_stay_in_range_and_never_grow` 当场红，

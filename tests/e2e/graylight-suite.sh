@@ -37,7 +37,7 @@ set -euo pipefail
 # 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L <私有名>`**。
 # · 漏什么环境变量都打不偏 —— 选择器写死在 shim 里，不依赖「记得清某个变量」；
 # · 零调用点改动的好处**原样保留**：套件里的裸 `tmux` 一个不用改，
-#   连它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）也一并覆盖；
+#   连它 shell out 出去的东西（`ccm` 内部也裸调 tmux）也一并覆盖；
 # · `unset TMUX` **仍然保留**，但它现在只是「让被测行为发生」（tmux 内会退化成就地起），
 #   **不再是隔离手段** —— 隔离由 shim 独自负责。
 unset TMUX TMUX_PANE

@@ -61,8 +61,8 @@ fn production_sources() -> Vec<(String, String)> {
             .any(|(r, _)| r == "src/backend/observe/watcher.rs")
             && out
                 .iter()
-                .any(|(r, _)| r == "src/shared/cc-bus/scripts/cc-kill"),
-        "扫到的生产源码只有 {} 份、或缺 watcher.rs / cc-kill —— 根没对上，下面的相等会空真",
+                .any(|(r, _)| r == "src/shared/cc-bus/scripts/cc-whoami"),
+        "扫到的生产源码只有 {} 份、或缺 watcher.rs / cc-whoami —— 根没对上，下面的相等会空真",
         out.len()
     );
     out
@@ -200,11 +200,8 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/control/ccm/plan.rs", "list-panes", Carry::Flag, 1, "只读 `#{pane_id}`（`%N`，ASCII）；渲给客户端的命令串一律带旗（`common/tmux_utf8.rs`，判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`）"),
     ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh", "display-message", Carry::None, 1, "无害：只读 `#{pane_pid}`（数字）与 `#{@ccm_sid}`（会话编号，ASCII）"),
-    ("src/shared/cc-bus/scripts/cc-kill", "display-message", Carry::None, 2, "无害：`#{pane_pid}` · `#{session_windows}`（数字）"),
-    ("src/shared/cc-bus/scripts/cc-kill", "list-panes", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::Flag, 1, "读 `#{session_name}:…` 当登记地址（会话名可以非 ASCII）⇒ 旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
-    ("src/shared/cc-bus/scripts/cc-agents", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::Flag, 1, "读 `#{session_name}` 当身份 ⇒ 旗（非 UTF-8 客户端下中文被改写成 `_`，消毒之后与 UTF-8 客户端下的身份不同）；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::Flag, 1, "`#{session_id} #{session_name}` ⇒ 旗（同上）"),
     ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::Flag, 1, "`#{pane_pid} #{session_name}` ⇒ 旗（同上）"),
