@@ -815,7 +815,7 @@ fn the_sole_family_is_answered_only_when_there_is_exactly_one() {
         ("账号库", sole_kind(|a| a.accounts.is_some())),
         ("资产面", sole_kind(|a| a.assets.is_some())),
         ("MCP 读面", sole_kind(|a| a.mcp.is_some())),
-        ("记录树", record_tree_kind()),
+        ("记录树", record_tree_kind_among(crate::agents::REGISTRY)),
     ] {
         assert!(got.is_some(), "生产注册表上「{what}」不是恰一家");
     }

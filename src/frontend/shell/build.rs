@@ -166,7 +166,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
     }
 }
 
-/// 本机内嵌后端的落点 —— `release.yml` 那一步按同一条路径铺，
+/// 本机内嵌后端的落点 —— [`REEMBED_CMD`] 按同一条路径铺（`release.yml` 的 Windows job 经它的 `--stage-native`），
 /// `byte_table.rs`（全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它。
 ///
 /// # 🔴 为什么是**定死的名字**，而不是像 `embedded-backends/` 那样把 triple 编进文件名
@@ -314,7 +314,7 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
 
 /// 文件窗口那份程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那两份）。
 /// 与 `filewin::proc::BIN_STEM`（文件窗口包 `src/frontend/filewin/` 那个 `[[bin]]` 的名字）是同一个词；`byte_table.rs` 用**同一条路径的字面量**
-/// `include_bytes!` 它；`re-embed.sh --native` 与 `release.yml` 两个 job 按同一个名字铺（判据对拍）。
+/// `include_bytes!` 它；按这个名字铺的只有 `re-embed.sh`（`release.yml` 两个 job 经它的 `--stage-native` / `--stage-filewin`）。
 const NATIVE_FILEWIN_FILE: &str = "cc-monitor-filewin";
 
 /// **把文件窗口那份程序也内嵌进 exe**：单文件的 monitor 自己带着它，开窗时放到 `~/.cc-monitor/bin/` 再起
@@ -327,7 +327,7 @@ const NATIVE_FILEWIN_FILE: &str = "cc-monitor-filewin";
 /// ⚠ 没有身份戳：它是哪一版由字节本身答（放的时候逐字节比，见 `local_backend::place_local_program`）。
 /// ⚠ **它不能在同一趟 cargo 里现编现嵌**：它是文件窗口包（`src/frontend/filewin/`）的 `[[bin]]`，不是本包的；
 /// build script 没法依赖别的包编出来的二进制（cargo 的二进制依赖还没稳定），在这里再起一趟 cargo 又要等同一个构建目录的锁
-/// ⇒ 先单编它、铺进落点，再编 monitor（`re-embed.sh --native` 与 `release.yml` 都是这个次序）。
+/// ⇒ 先单编它、铺进落点，再编 monitor（`re-embed.sh` 铺，`release.yml` 在 `tauri build` 之前调它）。
 /// 没铺时开窗只剩环境变量 `filewin::proc::BIN_ENV` 指的那一份（开发树里先 `cargo build -p cc-monitor-filewin`）；安装包不带它。
 fn embed_native_filewin() {
     println!("cargo:rustc-check-cfg=cfg(embedded_native_filewin)");

@@ -69,10 +69,13 @@ categories = ["development-tools", "visualization"]
 default-run = "cc-monitor"
 
 # 「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
-#   （前端宿主原语 · 开窗契约 · 分块传那一圈 · 文件窗口；通道与端核心后端也链，不在这群里）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
-#   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
+#   （前端宿主原语 · 开窗契约 · 分块传那一圈 · 文件窗口），外加通信层客户端那一侧的两包（通道 · 连常驻的端核心）：
+#   后端也链它们（测试连接当一回客户端），但两头都链的包只归一群 —— 归这一群，后端那一群不写。`guard_core::walk_tree` / `module_address` 按它收 / 认；
+#   两向对着「monitor 生产闭包 − 后端生产闭包 ＋ 登记的客户端包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
 [package.metadata.guard]
 population = [
+    "../../comms/inward",
+    "../../comms/resident-client",
     "../../common/host-core",
     "../../common/filewin-contract",
     "../../common/win-manifest",
