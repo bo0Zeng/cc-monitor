@@ -12,6 +12,7 @@
  * 真 `RemoteSection` ＋ 真 `BackendSection`（寄居模式），页宿主照设置窗那样给每页挂那台的几格；只把 IPC 与 config 换成桩。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Host } from "../../../../src/frontend/ui/generated/Host";
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 
 vi.mock("../../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn(), patchConfig: vi.fn() })); // 写口换成按键补丁
@@ -46,7 +47,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
             const op = (args as { op?: unknown } | undefined)?.op;
             const body =
               op === "machines-read"
-                ? { state: "ok", reason: null, detail: null, path: null, hosts: ipc.hosts }
+                ? { state: "ok", reason: null, detail: null, path: null, hosts: (ipc.hosts as Host[]).map((h) => ({ name: h.label || h.host, host: h })) }
                 : { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
             const u = new TextEncoder().encode(JSON.stringify(body));
             return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
@@ -63,12 +64,11 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { BACKEND_UNREGISTERED_WHY, BackendSection } from "../../../../src/frontend/ui/settings/backend-section";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
-import type { RemoteHostConfig } from "../../../../src/frontend/ui/remote-config";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-function mkH(label: string, host: string): RemoteHostConfig {
+function mkH(label: string, host: string): Host {
   return {
     label,
     host,
@@ -101,7 +101,7 @@ const pages = {
 };
 
 async function mount(
-  hosts: RemoteHostConfig[],
+  hosts: Host[],
   opts: { cellsThrow?: boolean } = {},
 ): Promise<{ sec: RemoteSection; backend: BackendSection }> {
   ipc.hosts = hosts;

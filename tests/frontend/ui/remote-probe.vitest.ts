@@ -5,6 +5,7 @@
  * 结局是进度流的最后一格（可以晚于应答到）。停在哪一步、等多久算没结果由后端判（结局那一格说）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Host } from "../../../src/frontend/ui/generated/Host";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -36,12 +37,11 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
 
 import { ChanError } from "../../../src/comms/inward/chan";
 import { probeMachine, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
-import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { ProbeCell } from "../../../src/frontend/ui/generated/ProbeCell";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
+const host = (over: Partial<Host>): Host => ({
   label: "devbox",
   host: "192.0.2.2",
   port: 22,

@@ -41,8 +41,8 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
 #[test]
 fn a_remote_source_is_titled_by_its_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
-    // 「`label` 为空时回退到 `host`」那一半是拨号核心 `Host::name` 的契约（后端 `machines_tests` 钉）
-    //   `entry_tests::the_seed_names_the_machine_by_its_origin_label`。
+    // 「`label` 为空时回退到 `host`」那一半是拨号核心 `Host::name` 的契约：
+    //   后端 `machines_tests::every_row_carries_the_name_the_backend_computed` 钉。
 }
 
 // ════════════════════════════════════════════════════════════════════════

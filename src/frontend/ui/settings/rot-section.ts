@@ -73,7 +73,7 @@ export class RotationSection {
     if (this.subscribed) return;
     this.subscribed = true;
     const hosts = await readRemoteConfig().then(
-      (c) => c.hosts.map((h) => h.label),
+      (c) => c.hosts.map((r) => r.name),
       () => [] as string[],
     );
     const origins: Origin[] = [LOCAL_ORIGIN, ...hosts];

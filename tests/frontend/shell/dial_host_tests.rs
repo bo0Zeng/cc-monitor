@@ -86,7 +86,7 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
         let body = &prod[at..];
         let body = &body[..body.find("\n}\n").unwrap()];
         assert_eq!(
-            body.matches("open(cfg, &req,").count(),
+            body.matches("open(machine, &req,").count(),
             1,
             "`{entry}` 没有恰好一次经 `open` 拿链路"
         );

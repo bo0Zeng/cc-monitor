@@ -8,7 +8,7 @@
 //
 // 派生调的是 `cc-spawn`（内部经 `ccm`），这里不碰建会话逻辑、不开标签页（远端 exec，发出即走）。
 import { setCurrentMachine, subscribeMachine } from "../machine-context";
-import { commands } from "../ipc/commands";
+import { remoteNames } from "../remote-config";
 // 查在线 · 发消息 · 收掉 · 派生 · 广播 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
 // 「可选账号」只有 `selectableAccounts` 一个判据；`fetchAccounts` 每次问那台。
@@ -178,10 +178,10 @@ export class CcBusSection {
     return box;
   }
 
-  /** 列远端（`list_remote_mcp_origins`：通用的「列远端配置标签」，名字带 mcp 是历史）。 */
+  /** 列远端（`remoteNames`：壳注册表里此刻要连的那几台）。 */
   private async loadOrigins(): Promise<void> {
     // 拿不到就当没有远端，不影响面板其余部分。
-    const origins = await commands.list_remote_mcp_origins().catch(() => [] as string[]);
+    const origins = await remoteNames().catch(() => [] as string[]);
     this.originSel.replaceChildren();
     // 本机永远在列表里（本机的 `~/.cc-bus/` 就在本地）。
     for (const o of origins) {

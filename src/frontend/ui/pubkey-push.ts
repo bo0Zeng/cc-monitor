@@ -7,8 +7,8 @@
  * 本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import type { Host } from "./generated/Host";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import type { RemoteHostConfig } from "./remote-config";
 import type { PubkeyPushed } from "./generated/PubkeyPushed";
 import { saidOf } from "./kit/detail";
 
@@ -24,7 +24,7 @@ const PUSH_BUDGET_MS = 60_000;
  * `pubKeyPath` = 用户挑的那份 `.pub`（`null` ⇒ 后端用私钥同名 `.pub`）。问不到 / 没加上 ⇒ 抛一句人话。
  */
 export async function pushPublicKey(
-  machine: RemoteHostConfig,
+  machine: Host,
   pubKeyPath: string | null,
 ): Promise<PushResult> {
   try {

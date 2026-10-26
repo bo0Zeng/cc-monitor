@@ -102,7 +102,7 @@ class PortForwardPanel {
     try {
       const { hosts } = await readRemoteConfig();
       for (const h of hosts) {
-        const origin = h.label.trim() || h.host;
+        const origin = h.name;
         const opt = document.createElement("option");
         opt.value = origin;
         opt.textContent = origin;

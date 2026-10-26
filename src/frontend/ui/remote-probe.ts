@@ -10,10 +10,10 @@
  * 拨号请求在后端组（`src/backend/dial/mod.rs::request_draft`）。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, type Item } from "../../comms/inward/chan";
+import type { Host } from "./generated/Host";
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ProbeCell } from "./generated/ProbeCell";
-import type { RemoteHostConfig } from "./remote-config";
 import { saidOf } from "./kit/detail";
 
 export type { ProbeCell };
@@ -35,7 +35,7 @@ const PROBE_WINDOW = 256;
  * 回结局那一格；问不到 ⇒ 抛一句人话。
  */
 export async function probeMachine(
-  machine: RemoteHostConfig,
+  machine: Host,
   onCell: (cell: ProbeCell) => void,
 ): Promise<ProbeCell> {
   // 一次性的票：进度流的名字（后端只当不透明的串回填）。

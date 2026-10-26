@@ -11,6 +11,7 @@
  *    （就是那个开口）。多一处 ＝ 有人绕开开口另起一条路；少一处 ＝ 某个入口掉线了。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { MachineRow } from "../../../src/frontend/ui/generated/MachineRow";
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -23,21 +24,15 @@ const toastMock = vi.fn();
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ failToast: (...a: unknown[]) => toastMock(...a) }));
 
 import { openFileWindow, fileWindowTheme, FILE_WINDOW_THEME_TOKENS } from "../../../src/frontend/ui/file-window";
-import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import { productionTsFiles } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-const CFG = {
-  label: "devbox",
-  host: "h",
-  port: 22,
-  user: "u",
-  keyPath: "",
-  addresses: [],
-  jump: "",
-  resumeCommand: "",
-} as unknown as RemoteHostConfig;
+/** 机器表里那一行（名字是后端算好的那一格）。 */
+const CFG: MachineRow = {
+  name: "devbox",
+  host: { label: "devbox", host: "h", port: 22, user: "u", keyPath: "", addresses: [], jump: "", connect: true },
+};
 
 describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   beforeEach(() => {
@@ -80,7 +75,7 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     const [title, e, opts] = toastMock.mock.calls[0] as [string, Error & { detail: string }, { fact: string }];
     expect(title).toBe(copyText("fileWindow.openFileWindow.failed"));
     expect([e.message, e.detail]).toEqual(["窗口没起来：没有图形会话", detail]);
-    expect(opts.fact).toBe(CFG.label);
+    expect(opts.fact).toBe(CFG.name);
   });
 });
 

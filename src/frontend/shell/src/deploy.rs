@@ -176,13 +176,30 @@ pub async fn ensure_backend_deployed(machine: &str) -> Result<String, Said> {
 /// 那台不比这一版旧 ⇒ 手动点也不降级：那一句后面接出路（先卸载再部署 = 明确授权覆盖）。
 #[tauri::command]
 pub async fn deploy_remote_backend(origin: String) -> Result<String, Said> {
-    install(&origin)
-        .await
-        .map(|got| match got.did {
-            Did::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
-            Did::Skip | Did::Deploy => got.said,
-        })
-        .map_err(|s| s.named("deploy_remote_backend"))
+    let r = async {
+        remote_in_table(&origin)?;
+        install(&origin).await
+    }
+    .await;
+    r.map(|got| match got.did {
+        Did::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
+        Did::Skip | Did::Deploy => got.said,
+    })
+    .map_err(|s| s.named("deploy_remote_backend"))
+}
+
+/// 装 · 卸只对机器表里的一台远端：本机不经这两条命令（本机那一份由宿主起来时自己放），表里没有那台 ⇒ 说是哪台、不去问后端。
+fn remote_in_table(origin: &str) -> Result<(), Said> {
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        return Err(Said::of("reason.code.bug", &[]));
+    }
+    if !crate::machine_table::has(origin) {
+        return Err(Said::of(
+            "rsBackendControl.handle.missing",
+            &[("origin", &origin.to_string())],
+        ));
+    }
+    Ok(())
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：请本机常驻后端删那台落点那一份（它就是 `ccm`，卸后端就是卸 `ccm`），回后端写的那一句。
@@ -190,6 +207,7 @@ pub async fn deploy_remote_backend(origin: String) -> Result<String, Said> {
 #[tauri::command]
 pub async fn uninstall_remote_backend(origin: String) -> Result<String, Said> {
     let r = async {
+        remote_in_table(&origin)?;
         let slots = slot_rows()?;
         uninstall_for(&origin, slots).await
     }

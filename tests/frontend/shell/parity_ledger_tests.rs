@@ -949,10 +949,11 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 /// 每格的数是**跑出来的**：改了某条命令的 `Side` 或体之后，先让 `hist == want` 那一比印出现打的直方图，照它写，
 /// 不按增减去算（算出来恰好相等不是判据）。
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-    (Derived::RemoteOnly, 3),
+    // A10-2-2 重签：壳里一台远端只剩名字（`RemoteConfig` 那一摊删了），装 · 卸先查 `machine_table::has`（`deploy.rs::remote_in_table`）；`terminal_dial` 退役。
+    (Derived::RemoteOnly, 1),
     (Derived::FramePlane, 0),
     (Derived::Mixed, 1), // `deploy_remote_backend`：两支都走，不是失败退回
-    (Derived::Unclassified, 2),
+    (Derived::Unclassified, 3),
 ];
 
 /// 派生器在**整张** `LEDGER` 上认出的 `FramePlane` 命令数（不分 `Side`）—— 候选集（`Remote` 那一栏里的
@@ -1038,8 +1039,9 @@ fn the_remote_side_column_is_signed_off() {
     // 🔴 **地板 20 → 17。** `~/.ssh/config` 导入那三条 `Side::Remote` 搬进后端帧命令，人群真少了 3 个。
     // 🔴 **地板 17 → 14。** 端口转发三条 `Side::Remote` 退役（转发账进本机常驻后端，界面经通道直问），人群真少了 3 个，现打 14。
     // 🔴 **地板 → 11。** 主线 17 ＋ MIG-1 −6。
+    // 🔴 **地板 6 → 5。** 开终端交机器事实那条 `Side::Remote`（`terminal_dial`）退役（A10-2-2：界面只交名字，经通道直问 `terminal-ssh`），人群真少了 1 个。
     assert!(
-        remote_rows.len() >= 6,
+        remote_rows.len() >= 5,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );

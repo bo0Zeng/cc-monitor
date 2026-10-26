@@ -5,9 +5,9 @@
  *
  * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant` / `report`、`after_ms` 只给正数；`limit` 原样。
  * - typed 帧命令（`callTyped`）：入参 · 回包的类型从 Rust 生成，形状由握手时的指纹核过，这里不再逐格解。
- * - 「哪几台远端」问 `list_remote_mcp_origins`（名字里的 `mcp` 是历史，不是限定）。
+ * - 「哪几台远端」问 `remoteNames`（壳注册表里此刻要连的那几台）。
  */
-import { commands } from "../ipc/commands";
+import { remoteNames } from "../remote-config";
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import type { Origin } from "../generated/Origin";
@@ -45,7 +45,7 @@ const SEARCH_BUDGET_MS = 30_000;
 export async function searchAllMachines(q: FullTextQuery): Promise<SearchResult> {
   let remotes: string[] = [];
   try {
-    remotes = await commands.list_remote_mcp_origins();
+    remotes = await remoteNames();
   } catch (e) {
     console.warn("远端全文搜索：拿不到远端清单（只搜本机）:", e);
   }
