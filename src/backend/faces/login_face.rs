@@ -492,7 +492,7 @@ pub(crate) fn manual_of(
         .map(|a| {
             let who = crate::accounts::quota::name_words::account_text(&a.name);
             ManualItem::AccountLogin {
-                agent: agent.to_string(),
+                agent: agent.into(),
                 account: a.name.clone(),
                 // 盘上有登录、续令牌却被拒 ⇒ 要重新登录；盘上没有 ⇒ 要登录。
                 said: if a.auth_ready {
@@ -503,7 +503,7 @@ pub(crate) fn manual_of(
                 fix: ManualFix {
                     command: "login-start".into(),
                     args: LoginStartReq::Account {
-                        agent: agent.to_string(),
+                        agent: agent.into(),
                         account: a.name.clone(),
                     },
                 },
@@ -578,7 +578,7 @@ pub(crate) fn mcp_fix(
         fix: signs_in.then(|| ManualFix {
             command: "login-start".into(),
             args: LoginStartReq::Mcp {
-                agent: kind.to_string(),
+                agent: kind.into(),
                 account: account.clone(),
                 server: server.to_string(),
                 project_dir: project.map(str::to_string),

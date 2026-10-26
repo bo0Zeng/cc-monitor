@@ -377,6 +377,7 @@ dependencies = [
  "copy-core",
  "serde",
  "serde_json",
+ "shell-quote-core",
  "ts-rs",
 ]
 

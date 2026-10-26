@@ -38,14 +38,11 @@ pub(crate) struct SessionRow {
 
 /// 一个会话里挂着的 sid：活动窗格那个（`active` ＝ 会话上下文里的 `#{@ccm_sid}`）在前，其余按窗口 / 窗格序
 /// （`all` ＝ `#{W:#{P:#{@ccm_sid} }}` 的展开：逐窗口、逐窗格，空格分隔，没挂的窗格是空段；窗格上没有自己的值时
-/// tmux 往上取会话那一级的，那也算挂着）；去重；只认 sid 字符集（极老 tmux 不展开、原样留 `#{…}` 字面量 ⇒ 不当 sid）。
+/// tmux 往上取会话那一级的，那也算挂着）；去重；只认会话 id（`cmd_wire::Sid`；极老 tmux 不展开、原样留 `#{…}` 字面量 ⇒ 不当 sid）。
 pub(crate) fn pane_sids(active: &str, all: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for s in std::iter::once(active).chain(all.split(' ')).map(str::trim) {
-        let shaped = !s.is_empty()
-            && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if shaped && !out.iter().any(|o| o == s) {
+        if s.parse::<cmd_wire::Sid>().is_ok() && !out.iter().any(|o| o == s) {
             out.push(s.to_string());
         }
     }
@@ -159,7 +156,7 @@ pub(crate) fn global() -> &'static SessionSnapshot {
 }
 
 /// 探测格式串。**三列**用 TAB 分隔：会话名（tmux 转义成字面 `\t`）· 活动窗格的 `@ccm_sid` · 各窗格的 `@ccm_sid`
-/// （见 [`pane_sids`]，sid 字符集 `[A-Za-z0-9_-]`）⇒ 下溢与过溢都不会由合法内容触发，下溢只可能是打印通道被改写。
+/// （见 [`pane_sids`]，会话 id 的字符集 `[A-Za-z0-9-]`）⇒ 下溢与过溢都不会由合法内容触发，下溢只可能是打印通道被改写。
 const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}\t#{W:#{P:#{@ccm_sid} }}";
 
 /// `LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数。**

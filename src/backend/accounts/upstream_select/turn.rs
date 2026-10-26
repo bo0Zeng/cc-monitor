@@ -516,7 +516,9 @@ impl Hop {
                     account,
                 } => {
                     commit(&judged, &tried);
-                    let Some(reply) = crate::agents::limit_reply_of(a.agent) else {
+                    let Some(reply) =
+                        crate::agents::route_named(a.agent).and_then(crate::agents::limit_reply_of)
+                    else {
                         return Go::Start;
                     };
                     // 回包里卡着的那个窗口：在这一刻重置的那一窗（先看到时最早恢复的那个号）。
@@ -566,7 +568,11 @@ impl Hop {
 
     /// ★ 发之前：缓存的结论还作数就照它（不叫策略）；不作数 ⇒ 判一次。换到别的号 ⇒ 备那个号的料；停发 ⇒ 回「用满」。
     pub(crate) fn steer(&self, a: &Turn<'_>, own: &Own) -> Go {
-        if a.sid.is_empty() || crate::agents::login_of(a.agent).is_none() {
+        if a.sid.is_empty()
+            || crate::agents::route_named(a.agent)
+                .and_then(crate::agents::login_of)
+                .is_none()
+        {
             return Go::Start;
         }
         let Some(lib) = self.library_here() else {
@@ -690,7 +696,11 @@ impl Hop {
         own: &Own,
     ) -> Option<Go> {
         self.quota.notify(Source::Refused, Some(a.sid));
-        if a.sid.is_empty() || crate::agents::login_of(a.agent).is_none() {
+        if a.sid.is_empty()
+            || crate::agents::route_named(a.agent)
+                .and_then(crate::agents::login_of)
+                .is_none()
+        {
             return None;
         }
         let lib = self.library_here()?;

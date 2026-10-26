@@ -8,7 +8,7 @@ use std::cell::RefCell;
 
 fn req(sid: &str, text: &str) -> SessionSayReq {
     SessionSayReq {
-        sid: sid.into(),
+        sid: sid.parse().unwrap(),
         text: text.into(),
         client: Some("phone".into()),
         seen_screen: None,
@@ -106,18 +106,11 @@ fn a_session_that_does_not_wait_gets_the_line_with_enter() {
 /// ★ 不是会话 id ⇒ `bad_args`，不问在不在等、不送。
 #[test]
 fn a_malformed_sid_is_refused_before_anything_is_asked() {
-    let asked = RefCell::new(0);
-    let got = say_with(
-        &req("../x", "hi"),
-        &|_| {
-            *asked.borrow_mut() += 1;
-            false
-        },
-        &|_| panic!("送了"),
-        &|_| panic!("恢复了"),
-    );
-    assert_eq!(got.unwrap_err().code, "bad_args");
-    assert_eq!(*asked.borrow(), 0);
+    // sid 是会话 id（`cmd_wire::Sid`）：形状不对解入参那一下就解不开，到不了问在不在等 · 送 · 恢复。
+    assert!(serde_json::from_value::<SessionSayReq>(
+        serde_json::json!({"sid": "../x", "text": "hi"})
+    )
+    .is_err());
 }
 
 /// ★ 终端没了（名单里没有 · 送的那一刻没了）⇒ 按记下的号恢复，那一句当第一句交出去；成了 ⇒ 交到了 ＋ `resumed`。
@@ -126,7 +119,7 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
     for gone in [Refused::NotKnown, Refused::Ended] {
         let asked = RefCell::new(Vec::<(String, String)>::new());
         let resume = |r: &SessionSayReq| {
-            asked.borrow_mut().push((r.sid.clone(), r.text.clone()));
+            asked.borrow_mut().push((r.sid.to_string(), r.text.clone()));
             Some(at(Landed::Started, Some("p-cc")))
         };
         let got = say_with(

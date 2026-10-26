@@ -202,11 +202,15 @@ fn a_value_outside_the_table_is_left_unsaid_not_guessed() {
 
 #[test]
 fn the_adapter_registry_hands_this_reading_to_the_relay_route_of_claude() {
-    let f = crate::agents::quota_read_of(super::super::UPSTREAM.route_id).expect("登记了");
+    let f = crate::agents::route_named(super::super::UPSTREAM.route_id)
+        .and_then(crate::agents::quota_read_of)
+        .expect("登记了");
     let sample = h(&[("anthropic-ratelimit-unified-status", "allowed_warning")]);
     assert_eq!(f(200, &sample, NOW), read(200, &sample, NOW));
     assert!(f(200, &sample, NOW).is_some());
-    assert!(crate::agents::quota_read_of("no-such-agent").is_none());
+    assert!(crate::agents::route_named("no-such-agent")
+        .and_then(crate::agents::quota_read_of)
+        .is_none());
 }
 
 /// 硬上限回的那份「用满」回包：429 ＋ 限流器那一族说 `rejected`、卡着的窗口与几点重置、体是 `rate_limit_error`；

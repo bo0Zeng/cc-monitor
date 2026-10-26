@@ -100,15 +100,15 @@ pub(crate) fn answer_probe_with(
     now: u64,
     path: Option<&str>,
 ) -> Answer {
-    let agent = Some(&req.agent)
+    let route = Some(&req.agent)
         .filter(|a| !a.as_str().trim().is_empty())
         .and_then(|a| crate::agents::pick_route(Some(a)).ok())
-        .ok_or_else(|| bad("`agent` must be an agent kind such as \"claude\""))?
-        .id();
+        .ok_or_else(|| bad("`agent` must be an agent kind such as \"claude\""))?;
+    let agent = route.id();
     let account = Some(req.account.as_str())
         .filter(|a| account_ok(a))
         .ok_or_else(|| bad("`account` must be an account id"))?;
-    let face = crate::agents::usage_of(agent).ok_or_else(|| {
+    let face = crate::agents::usage_of(route).ok_or_else(|| {
         (
             "unsupported",
             copy_text(

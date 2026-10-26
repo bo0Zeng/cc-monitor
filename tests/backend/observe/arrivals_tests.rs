@@ -43,7 +43,9 @@ fn by_cwd(c: &str) -> ArriveBy {
 }
 
 fn by_sid(s: &str) -> ArriveBy {
-    ArriveBy::Sid { sid: s.into() }
+    ArriveBy::Sid {
+        sid: s.parse().unwrap(),
+    }
 }
 
 #[test]

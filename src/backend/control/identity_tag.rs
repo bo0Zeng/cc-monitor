@@ -70,7 +70,7 @@ impl Outcome {
         let why = match self {
             Outcome::Failed(why) => why.clone(),
             Outcome::RejectedSid => {
-                "sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写".to_string()
+                "sid 的形状不对（不是会话 id：字母或数字开头，只含字母、数字、`-`，长度 1–64），不往 tmux 里写".to_string()
             }
             Outcome::Tagged(_)
             | Outcome::AlreadyCurrent(_)
@@ -117,19 +117,6 @@ impl Outcome {
             | Outcome::Failed(_) => None,
         }
     }
-}
-
-/// sid 的字符集。**与 `control::launch::parse_request` 同一条**：它会被写进 tmux 会话级 option，
-/// 收紧到确定安全的字符集。
-///
-/// 这里的 sid 来自 pidfile（claude 自己写的），不是用户输入 —— 但「来源可信」不是放行的
-/// 理由：本仓栽过的那些坑里，最贵的一类就是「这个值不可能有问题」。
-fn sid_is_safe(sid: &str) -> bool {
-    !sid.is_empty()
-        && sid.len() <= 128
-        && sid
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// tmux 的 pane id 形状：`%` + 十进制数字。
@@ -191,7 +178,9 @@ pub fn tag_seen(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, 
 pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     // 先取口再做别的：测试构建里没注入假 tmux 就在这里炸，与走不走得到 tmux 无关（人群按「调了 tag」算）。
     let probe_cmd = door::tmux();
-    if !sid_is_safe(sid) {
+    // 它会被写进 tmux 窗格 option：只收会话 id（`cmd_wire::Sid`，全仓一个值域）。这里的 sid 来自 pidfile（claude 自己写的），
+    // 不是用户输入 —— 但「来源可信」不是放行的理由：本仓栽过的那些坑里，最贵的一类就是「这个值不可能有问题」。
+    if sid.parse::<cmd_wire::Sid>().is_err() {
         return Outcome::RejectedSid;
     }
     let pane = match pane_of(pid) {

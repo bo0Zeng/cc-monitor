@@ -23,7 +23,7 @@ pub struct HistoryHead {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryRow {
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub session_id: String,
     pub project_path: String,
     pub project_name: String,
@@ -97,7 +97,7 @@ pub struct ForkedFrom {
 #[serde(rename_all = "camelCase")]
 pub struct HistoryGroup {
     pub key: String,
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub project_name: String,
     pub project_path: String,
     pub project_dir: String,
@@ -233,7 +233,7 @@ pub enum RowLife {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct RawRow {
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub session_id: String,
     pub project_path: String,
     pub project_name: String,
