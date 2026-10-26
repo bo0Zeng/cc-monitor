@@ -24,7 +24,6 @@ import { callStop, type Reply } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import type { KillNote } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
 /** DEV 断言出口：把状态转移写成可 grep 的 `[e2e]` 行。`import.meta.env.DEV` 门控，生产构建整支消除。 */
@@ -173,9 +172,7 @@ export class TabSessionActions {
         else toast(copyText("tabSessionActions.kill.failed", { title }), said, { detail: r.copyDetail });
         return;
       }
-      // 顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说；说法同单个 `kill` 那一份）。
-      const bus: KillNote = { said: r.bus?.said ?? null, detail: r.bus?.detail ?? "" };
-      toast(copyText("sessionState.kill.done", { title }), bus.said ?? "", { level: "success", detail: bus.detail });
+      toast(copyText("sessionState.kill.done", { title }), "", { level: "success" });
     };
     void (async () => {
       if (!(await confirmFn({ ...spec, danger: true }))) return;

@@ -158,7 +158,6 @@ const emptyForm = (name = "", from: string | null = null): ProfileForm => ({
   tmuxSize: null,
   detach: false,
   busRegister: false,
-  busNote: null,
   tab: null,
 });
 
@@ -213,7 +212,6 @@ const SLOT_LABEL: Record<SlotId, () => string> = {
   tmuxSize: () => copyText("beProfile.slot.tmuxSize"),
   detach: () => copyText("beProfile.slot.detach"),
   busRegister: () => copyText("beProfile.slot.busRegister"),
-  busNote: () => copyText("beProfile.slot.busNote"),
   tab: () => copyText("beProfile.slot.tab"),
 };
 
@@ -232,7 +230,7 @@ export const TMUX_NAMING: Record<"auto" | "fixed" | "base", { stepsAside: boolea
 
 /** 表单上直接露出来的几格；其余收在「更多」里。 */
 const MAIN_SLOTS: readonly SlotId[] = ["account", "tmux", "cwdIf", "cwd"];
-const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach", "busRegister", "busNote"];
+const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach", "busRegister"];
 
 export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const root = el("div", "prof");
@@ -934,7 +932,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       return cell;
     }
     const row = el("div", "prof-inhrow");
-    const v = f[s as "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "busNote"] ?? "";
+    const v = f[s as "cwd" | "agent" | "args" | "launcher" | "tmuxSize"] ?? "";
     row.append(text(v, SLOT_LABEL[s](), (nv) => changed({ ...f, [s]: nv }), undefined, `slot.${s}`), back);
     cell.appendChild(row);
     return cell;

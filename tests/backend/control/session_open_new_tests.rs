@@ -62,9 +62,7 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |_: &str,
-                    _: &str|
-         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
+        let kill = |_: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
             unreachable!("起新会话不杀")
         };
         let send_into = |_: &str, _: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {

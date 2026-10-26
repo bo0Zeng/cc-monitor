@@ -130,9 +130,7 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, "/root".into()))
         };
-        let kill = |_: &str,
-                    _: &str|
-         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
+        let kill = |_: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
             unreachable!("session-open 不杀")
         };
         let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {

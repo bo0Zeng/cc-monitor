@@ -8,7 +8,7 @@ BINDIR="${CCBUS_BINDIR:-$HOME/.local/bin}"
 BUSHOME="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SKILLDIR=$(dirname "$SRC")                                # skills/cc-bus
 
-mkdir -p "$BINDIR" "$BUSHOME"/{inbox,state,log,queue}
+mkdir -p "$BINDIR" "$BUSHOME"/{inbox,state,log}
 
 # 前置检查:cc-bus 运行时需要 jq / tmux / flock。缺了只告警(不失败——安装本身不需要它们)。
 miss=""; for c in jq tmux flock; do command -v "$c" >/dev/null 2>&1 || miss="$miss $c"; done
@@ -17,7 +17,7 @@ miss=""; for c in jq tmux flock; do command -v "$c" >/dev/null 2>&1 || miss="$mi
 # 软链可执行脚本(cc-bus-lib.sh 不链:各脚本用 readlink -f 定位真身目录再 source 它)
 # 不静默覆盖用户已有同名命令:仅刷新指向本仓库 scripts/ 的旧软链,其余跳过并告警。
 skipped=""
-for s in cc-whoami cc-register cc-send cc-recv cc-peek cc-commit cc-list cc-broadcast cc-bus-stop-hook cc-busd cc-spawn cc-kill cc-agents; do
+for s in cc-whoami cc-register cc-send cc-recv cc-peek cc-commit cc-list cc-bus-stop-hook; do
   chmod +x "$SRC/$s"
   dst="$BINDIR/$s"
   if [ -e "$dst" ] || [ -L "$dst" ]; then
@@ -38,10 +38,8 @@ done
 # 放示例配置(不覆盖已有;默认不激活任何阀门/ACL)
 [ -f "$BUSHOME/config.example" ]     || cp "$SKILLDIR/examples/config"     "$BUSHOME/config.example"
 [ -f "$BUSHOME/policy.tsv.example" ] || cp "$SKILLDIR/examples/policy.tsv" "$BUSHOME/policy.tsv.example"
-# kinds 表:随包那份本身就生效(脚本找不到 ~/.cc-bus/kinds.tsv 时用它);这里放一份 .example 供复制改
-[ -f "$BUSHOME/kinds.tsv.example" ]  || cp "$SKILLDIR/examples/kinds.tsv"  "$BUSHOME/kinds.tsv.example"
 
-echo "✅ 已安装:13 个命令 → $BINDIR;运行时根 → $BUSHOME"
+echo "✅ 已安装:8 个命令 → $BINDIR;运行时根 → $BUSHOME"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac
 
 cat <<EOF
@@ -60,13 +58,7 @@ cat <<EOF
    无需 CC_BUS_ID。想给同一会话里多个 CC 细分,给各自 pane 打标签:  tmux set -p @cc_id <名字>
    (查自己是谁:cc-whoami;看谁在线:cc-list)
 
-3) 【可选:broker 守护进程】(不装也能用——不在时 cc-send 自动兜底跑同一套管线)
-   手动前台/后台:  cc-busd start   (停:cc-busd stop;状态:cc-busd status)
-   或装成 systemd --user 服务(开机自启):
-     mkdir -p ~/.config/systemd/user && cp "$SKILLDIR/examples/cc-busd.service" ~/.config/systemd/user/
-     systemctl --user backend-reload && systemctl --user enable --now cc-busd
-
-4) 【可选:开路由策略】cp $BUSHOME/config.example $BUSHOME/config,按需开限流/ACL(见文件注释)。
+3) 【可选:开路由策略】cp $BUSHOME/config.example $BUSHOME/config,按需开限流/ACL(见文件注释)。
 
 —— Codex CLI 激活(cc-bus 跨工具:Claude Code 与 Codex 共用同一条 ~/.cc-bus 总线)——
 
@@ -85,9 +77,9 @@ C1) 【收信钩子 · Codex】同样两个钩子(SessionStart→cc-register、S
 
 C2) 【启动 Codex】直接在 tmux pane 里普通启动 \`codex\` 即可——身份 = tmux 会话名,和 CC 完全一样。
     Codex 还需要:宽松的 approval_policy + 能写 ~/.cc-bus/ 的沙箱(否则注入的 cc-* 命令会卡在审批弹窗),
-    且 shell env 要保留 PATH/tmux/\$TMUX。见 Codex 运行配置示例(examples/codex-config.toml)与下方 Codex 派生说明。
+    且 shell env 要保留 PATH/tmux/\$TMUX。见 Codex 运行配置示例(examples/codex-config.toml)。
     注:Codex 在【第一个回合】才触发 SessionStart,而非 TUI 一打开就触发——所以手动启动、空闲着的 Codex 会在它的
-    第一个回合注册(随便发个 prompt 它就注册)。cc-spawn 会自注册,所以派生出来的 Codex 会话立即加入总线。
+    第一个回合注册(随便发个 prompt 它就注册)。
 
 C3) 【Codex 运行配置】没有宽松的运行配置,Codex 不会无人值守地跑 cc-bus。把 $SKILLDIR/examples/codex-config.toml
     里的键拷进 ~/.codex/config.toml(用户级)。它设:approval_policy="never"(注入的 cc-* 不卡审批)、
@@ -96,10 +88,5 @@ C3) 【Codex 运行配置】没有宽松的运行配置,Codex 不会无人值守
     PATH/tmux/\$TMUX 传到钩子与注入命令。把 /home/YOU 换成你的 \$HOME,改完先校验 TOML 语法再依赖它。
     ⚠ approval_policy="never" + 开放沙箱是全局大锤——收敛到项目层、或只在你信任其做无人值守 agent 的机器上用,别无脑开。
 
-C4) 【派生一个 Codex 协作者】cc-spawn 不只能启 Claude,也能启 Codex 会话:
-    \`cc-spawn --tool codex <目录> "<任务>"\`。它会在 ~/.codex/config.toml 里预先信任 <目录>、启动 codex(可用
-    CCSPAWN_LAUNCH 覆盖启动器,例如加 --dangerously-bypass-hook-trust 做无人值守的钩子信任),并立即把会话自注册
-    到总线上(所以它在第一个回合之前就已加入)。默认(不带 --tool)仍派生 claude,不变。
-
-停用:从 ~/.claude/settings.json 删 hooks 段、并从 ~/.codex/hooks.json(或 config.toml)删 cc-bus 钩子;Codex 上若你只为 cc-bus 拷过 C3 运行配置键(approval_policy / sandbox_mode / [sandbox_workspace_write] / [shell_environment_policy]),也一并从 ~/.codex/config.toml 删掉;cc-busd stop;删 $BINDIR 里的软链。脚本本体无害留存。
+停用:从 ~/.claude/settings.json 删 hooks 段、并从 ~/.codex/hooks.json(或 config.toml)删 cc-bus 钩子;Codex 上若你只为 cc-bus 拷过 C3 运行配置键(approval_policy / sandbox_mode / [sandbox_workspace_write] / [shell_environment_policy]),也一并从 ~/.codex/config.toml 删掉;删 $BINDIR 里的软链。脚本本体无害留存。
 EOF

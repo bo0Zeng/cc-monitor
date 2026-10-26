@@ -809,13 +809,6 @@
       "args": [],
       "limited": ["ccm"]
     },
-    "bePlan.bus.noSpawnRecord": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "ccm: {path} 不可执行 · 会话照建也照登记 · cc-bus 新开记录里缺此条",
-      "args": ["path"],
-      "limited": ["ccm"]
-    },
     "beAssetCatalog.digest.walkFailed": {
       "kind": "body",
       "role": "片段",
@@ -1146,53 +1139,11 @@
       "zh": "{reason} · 此机 cc-bus 比后端旧 · 重新部署 cc-bus 后再试",
       "args": ["reason"]
     },
-    "beCcBus.kill.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "cc-bus 拒绝结束此 agent · {detail}",
-      "args": ["detail"]
-    },
-    "beCcBus.kill.failed": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "结束 agent 失败 · {detail} · 退出码 {status}",
-      "args": ["status", "detail"]
-    },
-    "beCcBus.kill.interrupted": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "结束 agent 被中断 · {detail}",
-      "args": ["detail"]
-    },
     "beCcBus.deliver.tooLong": {
       "kind": "error",
       "role": "报错",
       "zh": "{reason} · 消息 {n} 字节",
       "args": ["reason", "n"]
-    },
-    "beCcBus.spawn.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "起 agent 被拒 · {detail}",
-      "args": ["detail"]
-    },
-    "beCcBus.spawn.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{reason}\n会话可能已启动 · 先看名单再定 · 直接重试会再起一个 agent",
-      "args": ["reason"]
-    },
-    "beCcBus.spawn.failed": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "启动 agent 失败 · {detail} · 退出码 {status}",
-      "args": ["status", "detail"]
-    },
-    "beCcBus.spawn.interrupted": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "起 agent 被中断 · {detail}",
-      "args": ["detail"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
@@ -2387,30 +2338,6 @@
       "zh": "结束 {target} 被拒",
       "args": ["target"]
     },
-    "tmuxControl.kill.listSep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
-    "tmuxControl.kill.busRemoved": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已从 cc-bus 名单注销 {ids}",
-      "args": ["ids"]
-    },
-    "tmuxControl.kill.busFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "从 cc-bus 注销 {id} 失败",
-      "args": ["id"]
-    },
-    "tmuxControl.kill.busUnread": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未注销此会话的 id · 读取 cc-bus 名单失败",
-      "args": []
-    },
     "tmuxControl.kill.notConfirmed": {
       "kind": "error",
       "role": "报错",
@@ -2478,35 +2405,11 @@
       "zh": "未发送 · id 不合法",
       "args": []
     },
-    "ccBus.kill.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未结束 · id 不合法",
-      "args": []
-    },
-    "ccBus.spawn.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未新开 agent · 名字不合法",
-      "args": []
-    },
     "beCcBus.parse.badRecipient": {
       "kind": "error",
       "role": "报错",
       "zh": "收件人不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
       "args": ["id"]
-    },
-    "beCcBus.parse.badKillId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "要结束的不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
-      "args": ["id"]
-    },
-    "beCcBus.parse.badAccount": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号名无效 · {account} · 限 字母 · 数字 · _ · - · 不以 - 开头",
-      "args": ["account"]
     },
     "ccBus.send.invalidArgs": {
       "kind": "error",
@@ -2567,138 +2470,6 @@
       "role": "说明",
       "zh": "已投递 {id} · 在线状态未知",
       "args": ["id"]
-    },
-    "ccBus.kill.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未结束 {id} · cc-bus 不接受此名字",
-      "args": ["id"]
-    },
-    "ccBus.kill.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 失败 · 未装",
-      "args": ["id"]
-    },
-    "ccBus.kill.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 结果未知",
-      "args": ["id"]
-    },
-    "ccBus.kill.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 失败",
-      "args": ["id"]
-    },
-    "ccBus.kill.killed": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{id} 的会话与进程树已全部结束",
-      "args": ["id"]
-    },
-    "ccBus.kill.staleOnly": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已摘除 {id} 的登记 · 会话未动 · 此名现挂在另一会话上",
-      "args": ["id"]
-    },
-    "ccBus.kill.nothing": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "未结束 {id} · 会话还在 · 登记未摘",
-      "args": ["id"]
-    },
-    "ccBus.spawn.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未新开 agent · cc-bus 不接受参数",
-      "args": []
-    },
-    "ccBus.spawn.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败 · 未装",
-      "args": []
-    },
-    "ccBus.spawn.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 结果未知 · 先看 cc-bus 名单再重试",
-      "args": []
-    },
-    "ccBus.spawn.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败",
-      "args": []
-    },
-    "ccBus.spawn.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已新开 agent {id}\n{said}",
-      "args": ["id", "said"]
-    },
-    "ccBus.spawn.noName": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已新开 agent · 名字未识别\n会话应已在运行 · 勿重试 · 到 cc-bus 名单里找\n{said}",
-      "args": ["said"]
-    },
-    "ccBus.broadcast.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播内容为空 · 未发送",
-      "args": []
-    },
-    "ccBus.broadcast.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 参数不被接受",
-      "args": []
-    },
-    "ccBus.broadcast.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 未找到 cc-bus",
-      "args": []
-    },
-    "ccBus.broadcast.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 列名单超时",
-      "args": []
-    },
-    "ccBus.broadcast.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播失败",
-      "args": []
-    },
-    "ccBus.broadcast.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped}",
-      "args": ["sent", "skipped"]
-    },
-    "ccBus.broadcast.doneFailed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 ×{failed} · {who}",
-      "args": ["sent", "skipped", "failed", "who"]
-    },
-    "ccBus.broadcast.doneUnknown": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 名单全部 {sent} · 在线状态未知",
-      "args": ["sent"]
-    },
-    "ccBus.broadcast.doneUnknownFailed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 ×{failed} · {who}",
-      "args": ["sent", "failed", "who"]
     },
     "portForward.onStop.failed": {
       "kind": "error",
@@ -8055,90 +7826,6 @@
       "zh": "系统默认",
       "args": []
     },
-    "ccBus.spawn.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败",
-      "args": []
-    },
-    "ccBus.spawn.running": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "新开中",
-      "args": []
-    },
-    "ccBus.spawn.confirmBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "{changed}在 {machine} 的 {dir} 用{account}新开 {tool}\n耗额度",
-      "args": ["changed", "machine", "dir", "account", "tool"]
-    },
-    "ccBus.spawn.changed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "参数已改动 · 需重新确认 · ",
-      "args": []
-    },
-    "ccBus.spawn.confirm": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "新开 agent",
-      "args": []
-    },
-    "ccBus.spawn.needDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "工作目录必填",
-      "args": []
-    },
-    "ccBus.spawn.go": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新开 agent…",
-      "args": []
-    },
-    "ccBus.row.kill": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "结束",
-      "args": []
-    },
-    "ccBus.broadcast.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播失败",
-      "args": []
-    },
-    "ccBus.broadcast.confirm": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "只发在线的 agent · 名单 {n}\n\n{text}",
-      "args": ["n", "text"]
-    },
-    "ccBus.kill.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 agent 失败",
-      "args": []
-    },
-    "ccBus.kill.confirm": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "结束 {id}",
-      "args": ["id"]
-    },
-    "ccBus.acctLabel.none": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "不指定账号",
-      "args": []
-    },
-    "ccBus.acctLabel.named": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "账号 {value}",
-      "args": ["value"]
-    },
     "ccBus.send.failed": {
       "kind": "error",
       "role": "报错",
@@ -8199,12 +7886,6 @@
       "zh": "检查中",
       "args": []
     },
-    "ccBus.row.killHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "结束此 agent 的会话与进程树 · 不可撤销",
-      "args": []
-    },
     "ccBus.row.send": {
       "kind": "action",
       "role": "按钮",
@@ -8235,36 +7916,6 @@
       "zh": "在线未知",
       "args": []
     },
-    "ccBus.row.sep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
-    "ccBus.row.unregistered": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未登记",
-      "args": []
-    },
-    "ccBus.row.selfRegistered": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "自行登记",
-      "args": []
-    },
-    "ccBus.row.spawned": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已新开",
-      "args": []
-    },
-    "ccBus.row.timeUnknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "时间未知",
-      "args": []
-    },
     "ccBus.render.empty": {
       "kind": "body",
       "role": "空态",
@@ -8283,27 +7934,6 @@
       "zh": "登记的不一定在线",
       "args": []
     },
-    "ccBus.summary.skipped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "无法解析 ×{skipped} · 已跳过",
-      "args": ["skipped"],
-      "waive": {
-        "C-W14": "计数格（跳过的无法解析条目数），不是动作失败句"
-      }
-    },
-    "ccBus.summary.unregistered": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "另有新开未登记 {n}",
-      "args": ["n"]
-    },
-    "ccBus.summary.spawned": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "其中新开 {n}",
-      "args": ["n"]
-    },
     "ccBus.summary.registered": {
       "kind": "body",
       "role": "片段",
@@ -8314,18 +7944,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "读取名单失败",
-      "args": []
-    },
-    "ccBus.spawn.accountNamed": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "账号 {n}",
-      "args": ["n"]
-    },
-    "ccBus.spawn.accountNone": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "账号 不指定",
       "args": []
     },
     "ccBus.machine.noRemote": {
@@ -8340,30 +7958,6 @@
       "zh": "本机",
       "args": []
     },
-    "ccBus.spawn.task": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "初始任务（可选）",
-      "args": []
-    },
-    "ccBus.spawn.dir": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "工作目录 · 该机绝对路径",
-      "args": []
-    },
-    "ccBus.spawn.intro": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在所选机器的目录新开独立 agent\n每次新开会话 · 不复用同目录已有的 · 同名往后排\n耗额度",
-      "args": []
-    },
-    "ccBus.spawn.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "新开 agent",
-      "args": []
-    },
     "ccBus.build.notRead": {
       "kind": "body",
       "role": "片段",
@@ -8374,18 +7968,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "读取",
-      "args": []
-    },
-    "ccBus.build.broadcast": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "广播",
-      "args": []
-    },
-    "ccBus.build.broadcastHint": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "广播给所有 agent…",
       "args": []
     },
     "ccBus.build.machine": {
@@ -13374,12 +12956,6 @@
       "zh": "{machine}已报出此会话",
       "args": ["machine"]
     },
-    "ccBus.spawn.arrived": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "新开的 agent 已启动",
-      "args": []
-    },
     "contextLimits.editor.title": {
       "kind": "title",
       "role": "标题",
@@ -14246,12 +13822,6 @@
       "zh": "当前 {mode}",
       "args": ["mode"]
     },
-    "ccBus.broadcast.listSep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
     "beContract.malformed.say": {
       "kind": "error",
       "role": "原因格",
@@ -14297,12 +13867,6 @@
       "role": "命令行",
       "zh": "--tab-from 的值 {name} 不是能用的别名名",
       "args": ["name"]
-    },
-    "beArgv.validate.noteNeedsRegister": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "--bus-note 须配合 --bus-register",
-      "args": []
     },
     "beArgv.validate.registerNeedsDetach": {
       "kind": "error",
@@ -14621,7 +14185,7 @@
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -15945,24 +15509,6 @@
       "role": "报错",
       "zh": "发件身份不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
       "args": ["id"]
-    },
-    "ccBus.broadcast.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 发件人 id 不合法",
-      "args": []
-    },
-    "ccBus.broadcast.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "广播 · agent ×{n}",
-      "args": ["n"]
-    },
-    "ccBus.broadcast.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "广播",
-      "args": []
     },
     "bePlan.build.launcherRefused": {
       "kind": "error",
@@ -25797,12 +25343,6 @@
       "kind": "control",
       "role": "标签",
       "zh": "登记进 cc-bus",
-      "args": []
-    },
-    "beProfile.slot.busNote": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "cc-bus 备注",
       "args": []
     },
     "beProfile.slot.tab": {

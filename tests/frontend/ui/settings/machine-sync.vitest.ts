@@ -101,10 +101,6 @@ describe("S4a 跨分节机器同步", () => {
     expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
     // store 与选择器现在是同一个表示（本机 = `LOCAL_ORIGIN`），原先那处换算没有了。
     expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
-    // 本机派生已走后端 `bus-spawn` 原语（本机、远端同一条路）⇒ 切到本机时派生按钮**不再**禁用。
-    //   原来这里钉的是「写面在本机没有对侧 ⇒ 当场禁用」，那个前提被 BS1b 拆掉了（`refuse_local_write` 已删）。
-    const spawn = bus.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
-    expect(spawn.disabled).toBe(false);
   });
 
   it("切到清单里没有的机器 → 原地不动（清单还没加载 / 那台已被删）", async () => {

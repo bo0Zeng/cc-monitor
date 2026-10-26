@@ -303,8 +303,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J12: {
     what: "cc-bus agent id 形状",
     // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
-    //   后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
-    //   在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`）。界面那一份（发 / 收 / 查在线 / 派生账号名）删了；
+    //   后端 `bus-send` / `bus-inbox` 入口
+    //   在交给 `cc-send` / `cc-log` 之前判（拒码 `bad_id`）。界面那一份（发 / 查在线）删了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
     homes: ["shell-quote-core::bus_id_ok"],
     status: "zero",
@@ -792,6 +792,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "cmd-wire": {
     LOCAL: "J36",
+    // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
+    topic: NONE,
+    cap_body: NONE,
+    // 写口拒绝时那一句（带那台的名字与「未保存」）：后端写成品，界面只画；TS 侧没有孪生。
+    refused_said: NONE,
     // 书签的目录归一（`bookmarks.rs`）：后端存之前归一、文件窗口拿它比；界面不碰书签，TS 侧没有孪生。
     normalize_dir: NONE,
     // 拨号的线上形状（`dial.rs`）：ack 的协议版本与用法表 · 开成 / 没开成那一行 ack 怎么组。拨号核心写、壳与手机核心读；界面不碰拨号的行，TS 侧没有孪生。
