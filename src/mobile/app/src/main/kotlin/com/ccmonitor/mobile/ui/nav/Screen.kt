@@ -45,7 +45,7 @@ sealed class Screen(
     /**
      * 一个对话。由「主机 + 对话编号」共同确定，只用编号的话两台主机上同号的对话会撞（见 `chatKey`）。
      */
-    data object Chat : Screen("chat/{hostId}/{sid}?new={new}&cwd={cwd}") {
+    data object Chat : Screen("chat/{hostId}/{sid}?new={new}&cwd={cwd}&at={at}&tool={tool}") {
         /**
          * [isNew] = 对话刚开，远端还不存在。`ChatRoute` 据此决定加不加 `--resume <编号>`：
          * 对远端没见过的编号 resume 会直接失败（`--resume` 还按目录划分作用域）。
@@ -57,10 +57,20 @@ sealed class Screen(
             isNew: Boolean = false,
             /** 新建会话从哪进来的那个目录（见 `ChatRoute.draftCwd`）。 */
             cwd: String? = null,
-        ): String = "chat/$hostId/$sid?new=$isNew" + (cwd?.let { "&cwd=" + URLEncoder.encode(it, "UTF-8").replace("+", "%20") } ?: "")
+            /** 从搜内容的一处命中打开：命中那一行的字节起点（`SearchHit.offset`）；缺 ⇒ 读最后一屏。 */
+            at: Long? = null,
+            /** 那处命中落在哪次工具调用的卡里（`SearchHit.tool`）。 */
+            tool: String? = null,
+        ): String =
+            "chat/$hostId/$sid?new=$isNew" + (cwd?.let { "&cwd=" + enc(it) } ?: "") + (at?.let { "&at=$it" } ?: "") +
+                (tool?.let { "&tool=" + enc(it) } ?: "")
+
+        private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
         const val ARG_NEW = "new"
         const val ARG_CWD = "cwd"
+        const val ARG_AT = "at"
+        const val ARG_TOOL = "tool"
     }
 
     /** 跨会话的需手动 ＋ 在跑（聊天屏右上那颗入口进）：[hostId] 是进来时的那台（排在最前）。 */
