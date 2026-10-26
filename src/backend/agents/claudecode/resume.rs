@@ -5,21 +5,19 @@
 //! | | Claude | Codex |
 //! |---|---|---|
 //! | 默认命令 | `claude` | `codex` |
-//! | resume 形 | `<base> --resume <sid>`（**flag**） | `<base> resume <sid>`（**子命令**） |
-//! | 会话名前缀 | `cc-` | `cx-` |
+//! | resume 那个词 | `--resume`（**flag**） | `resume`（**子命令**） |
 //!
-//! golden-parity 手机端。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
-//! `CommandPlan` 骨架、错误出口全都共用，留在 `control/resolve_query.rs`。
+//! 起会话 / resume 那一行由 `ccm` 按适配层这几格拼（`agents::LaunchFace`）。
 
 use crate::agents::Choice;
 
-/// 无 `launchCandidate` 时的默认命令基底。
+/// 默认启动器。
 pub(crate) const DEFAULT_COMMAND: &str = "claude";
 
 /// 用户的 shell 集成 wrapper（含代理 / env）：探得到就先用它，探不到回退 [`DEFAULT_COMMAND`]。
 pub(crate) const LAUNCHER_ALIAS: &str = "cc";
 
-/// resume 那个字面量：**flag 形**（`--` 开头）。[`resume_command`] 与画像表（`agents::LaunchFace`）同一份。
+/// resume 那个字面量：**flag 形**（`--` 开头）。画像表（`agents::LaunchFace`）读它。
 pub(crate) const RESUME_TOKEN: &str = "--resume";
 /// 起新会话时先定好 sid 的旗标（`claude --session-id <uuid>`；起会话框带规则时后端按它先写好来源）。
 pub(crate) const SESSION_ID_FLAG: &str = "--session-id";
@@ -40,9 +38,6 @@ pub(crate) const NESTED_ENV: &[&str] = &[
     SELF_SID_ENV,
     "CLAUDE_CODE_CHILD_SESSION",
 ];
-
-/// resume 会话名前缀（Codex 是 `cx`）。
-pub(crate) const SESSION_NAME_PREFIX: &str = "cc";
 
 /// `claude --model` 认得的别名与字（不写 ＝ 它自己的默认）。全名（`claude-sonnet-…`）也收，这里只列别名。
 pub(crate) const MODEL_ALIASES: &[Choice] = &[
@@ -153,11 +148,6 @@ pub(crate) fn mode_on_screen(lines: &[String]) -> Option<&'static str> {
             .find(|(mark, _)| l.contains(mark))
             .map(|(_, mode)| *mode)
     })
-}
-
-/// resume 命令：**flag 形**，与 Codex 的子命令形不同。
-pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
-    format!("{base} {RESUME_TOKEN} {session_id}")
 }
 
 /// 记录里的模型原值（`claude-opus-4-5-20251101` · 旧式 `claude-3-5-sonnet-20241022`）⇒ 写给人看的名字（「Opus 4.5」）：

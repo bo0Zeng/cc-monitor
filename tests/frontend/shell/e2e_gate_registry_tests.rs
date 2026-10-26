@@ -1242,8 +1242,15 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
             bad.truncate(before);
         }
     }
-    // 自检：认法在干活（今天七十来处：派生 · 收会话 · 队列那几套 e2e 删了之后），且合成的坏形状被认出。
-    assert!(sites > 50, "只认出 {sites} 处 tmux 调用 —— 认法坏了");
+    // 自检：认法没变瞎，且合成的坏形状被认出。
+    // 下限钉在今天的实数上：10-26 撤 `launch`、`inbound-backend-frames.sh` 不再起 tmux 之后是 50 处
+    //（脚本里命令位上的 `tmux …` 41 处 · Rust 测试的 `Command::new("tmux")` 9 处；经 `$TMUX_BIN` 变量起的认不出、不算）。
+    // 钉实数 ⇒ 认法少认一处当场红，不靠留一截余量去猜「大概还在干活」；真删了 tmux 调用的人在这里把数减下来，写明删了哪几处。
+    const SITES_TODAY: usize = 50;
+    assert!(
+        sites >= SITES_TODAY,
+        "只认出 {sites} 处 tmux 调用（今天的实数是 {SITES_TODAY}）—— 认法变瞎了，或删了 tmux 调用却没把这个数改下来"
+    );
     let probe = format!(
         "{}::new(\"tmux\")\n    .args([\"-L\", \"x\"])\n    .output()",
         "Command"

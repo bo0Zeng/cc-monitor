@@ -6,7 +6,7 @@
 //!
 //! 上限：stdin [`MAX_CLI_STDIN`]；argv [`MAX_ARGS_B64_LEN`]。超了 `args_too_large`，不截断。
 //!
-//! 单独住一个文件：从前 `resolve_query` 也引它（不引挂着整张命令表的 `stream::cli`）；那条手写臂 10-11 删了，读入参的口留在这里。
+//! 单独住一个文件：读入参的口只这一处（`stream::cli` 经它读）。
 
 use crate::common::contract;
 use std::io::Read;

@@ -194,7 +194,7 @@ echo "===== A′ 组：print↔exec 的 **argv** 一致（A 组只比 env，且�
 #   ② A 组比的是 `ccm_keys`（**环境键**），argv 分家它看不见；六个 pair 又全是默认动作
 #      `new`，**resume 那条路本身没有任何 print↔exec 差分**。
 #
-# ⇒ 于是「把 `--resolve` 接进 resume」这件事今天**没有任何安全网**：print 与 exec 各接
+# ⇒ 于是「把 `--resolve`（已撤）接进 resume」这件事当时**没有任何安全网**：print 与 exec 各接
 # 一半、或只接一边，两套 e2e 都会安静地绿。本组就是接线之前先立的那张网。
 # ⚠ 同 A 组：差分不能单独用（两边一起坏掉时是绿的）⇒ 每格都配一条**绝对断言**。
 cat > "$W/bin/argvstub" <<'STUB'
@@ -227,7 +227,7 @@ pair_argv "resume + --model（交给 agent 的词不许只落一边）" --resume
 pair_argv "new（对照组：证明差分不是只对 resume 有效）"            -- --ccm-agent claude
 # ⚠ **`A′d` / `A′e` 共 13 条整组删了**（判词 `N`，verdicts 第 310–322 行）。
 #   它们量的是「backend 在位/不在位时 argv 从哪来」「不给 `CCM_BACKEND_BIN` 也找得到部署落点」
-#   「后端答不出 `--resolve` 时落回本地那条」—— **全是「ccm 去问另一个进程」这件事的形状**。
+#   「后端答不出 `--resolve`（已撤）时落回本地那条」—— **全是「ccm 去问另一个进程」这件事的形状**。
 #   一个后端之后没有谁要去找谁：`resume` 那一问在进程内直接答。
 #   ⚠ **如实边界**：这 13 条里「`--print` 是纯的（一个请求都不发、stderr 空）」那一格，
 #   与它同义的仍在 —— 上面 `A′` 三对 `pair_argv` 与下面两条绝对断言就是。

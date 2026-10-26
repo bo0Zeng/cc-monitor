@@ -60,7 +60,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///
-/// 值域由既有契约定死（`ResumeSpec.agentKind` 逐字「`"codex"`=codex，**大小写敏感**」·
+/// 值域由既有契约定死（`"codex"`=codex，**大小写敏感** ·
 /// `session_added.agent_kind` 发 `"codex"`），改它 = 改跨仓契约。
 ///
 /// 它住在**适配层**而不是通用层，是为了让 `agents::REGISTRY` 那张注册表里
@@ -92,8 +92,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,
-    resume_command: resume::resume_command,
-    session_name_prefix: resume::SESSION_NAME_PREFIX,
     // 它的沙箱够不着 tmux socket ⇒ cc-bus 身份经 `CC_BUS_ID` 交进去。
     needs_bus_id: true,
     has_identity: false,

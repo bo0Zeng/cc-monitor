@@ -30,10 +30,10 @@
  * # ⚠ 诚实边界（三条）
  *
  * 1. 本条只对拍 **golden 有 key 的那两项**（`default_launcher` / `resume_kind`+`resume_token`）。
- *    起会话事实里的 `has_identity` · `needs_bus_id`（`agents/mod.rs` 的 `LaunchFace`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
+ *    起会话事实里的 `has_identity` · `needs_bus_id`（`agents/mod.rs` 的 `LaunchFace`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有源头、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
- *    下面「缺项逐个点名」那一条把这三项**逐个点名钉住**：
+ *    下面「缺项逐个点名」那一条把这两项**逐个点名钉住**：
  *    哪天有人给 golden 加了 key，那一格会红，提醒把它接进对拍。
  * 2. 抽取是**文本匹配**，不是执行 shell / 编译 Rust。有人把 `resume_flag` 改写成
  *    完全不同的写法（比如查一个数组），抽取器会**抽不到**而不是抽错 ——
@@ -150,11 +150,6 @@ function backendResumeToken(agent: string): string | undefined {
   return /RESUME_TOKEN:\s*&str\s*=\s*"([^"]+)"/.exec(backendSrc(agent))?.[1];
 }
 
-/** backend 侧某 agent 的 resume 命令模板（`format!("…")` 里那一串）。 */
-function backendResumeTemplate(agent: string): string {
-  return /format!\("([^"]+)"/.exec(backendSrc(agent))?.[1] ?? "";
-}
-
 describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => {
   // 三写点收成一个家：值只住后端适配层 `agents/<名>/resume.rs`（注册表 `Adapter.launch`），`ccm` 按注册表读。
   //   ⇒ 这里对的是「金表 ↔ 那一个家」，外加「ccm 那两张 per-agent 表确实没了（按注册表读）」。
@@ -197,17 +192,19 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
       expect(token.startsWith("--") ? "flag" : "subcommand", `resume 形状与 golden 的 resume_kind 对不上（agent=${a}）`).toBe(
         g[a]?.resume_kind,
       );
-      expect(backendResumeTemplate(a), `backend 的 resume 命令没用 RESUME_TOKEN 拼（agent=${a}）`).toBe(
-        "{base} {RESUME_TOKEN} {session_id}",
-      );
     }
+    // resume 那一行由那台后端渲（`ccm <resume 词> <sid> -- …`），词取注册表那一家的 `resume_token`，不另写一份。
+    expect(
+      /tokens\.push\(face\.resume_token\.to_string\(\)\)/.test(productionRust(read("src/backend/control/launch_render/ccm_invocation.rs"))),
+      "渲 resume 那一行不再按注册表那一家的 resume_token 拼",
+    ).toBe(true);
   });
 
   it("★ 缺口是被点名的，不是被忘掉的", () => {
-    // 这三项今天**没有** golden key ⇒ 没有源头。哪天有人加了 key，这一格红，
+    // 这两项今天**没有** golden key ⇒ 没有源头。哪天有人加了 key，这一格红，
     // 提醒把它接进上面的对拍 —— 而不是让它悄悄多出第四份副本。
     const g = golden();
-    const gaps = ["has_identity", "needs_bus_id", "session_name_prefix"] as const;
+    const gaps = ["has_identity", "needs_bus_id"] as const;
     for (const key of gaps) {
       const has = AGENTS.some((a) => g[a]?.[key] !== undefined);
       expect(
@@ -216,8 +213,8 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
           "⇒ 给它补一格对拍，然后把它从这份缺口清单里摘掉（EL6）。",
       ).toBe(false);
     }
-    // 反向：这三项**确实**在别处有实现，不是我记错了。仍用带锚的声明形状，不用子串。
-    // 前两项是适配层起会话事实的两格（`LaunchFace`），ccm 按那一格起。
+    // 反向：这两项**确实**在别处有实现，不是我记错了。仍用带锚的声明形状，不用子串。
+    // 它们是适配层起会话事实的两格（`LaunchFace`），ccm 按那一格起。
     const adapters = read(ADAPTER_INDEX);
     expect(
       /^\s*pub\(crate\) has_identity: bool,/m.test(adapters),
@@ -226,10 +223,6 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
     expect(
       /^\s*pub\(crate\) needs_bus_id: bool,/m.test(adapters),
       "起会话事实里没有 needs_bus_id 那一格",
-    ).toBe(true);
-    expect(
-      /SESSION_NAME_PREFIX:\s*&str\s*=\s*"[^"]+"/.test(backendSrc("claude")),
-      "backend 里没有 SESSION_NAME_PREFIX 的声明",
     ).toBe(true);
   });
 });

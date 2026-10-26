@@ -359,7 +359,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 界面那份 IR 与两个渲染器都已删，理由是起会话只剩一处。今天：monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定，外层容器只包这一行。**表达不了就放弃**照旧：渲不出 ⇒ 回码 `refused` 带那一句，调用方不回落、不拼第二条。
 
-**谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令；唯一登记的例外是给手机端冻结的 `resolve_query.rs`）。
+**谁在守**：`ccm_invocation_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv` · `ccm_tests.rs::nothing_but_ccm_renders_a_command_that_starts_an_agent`（后端生产段除 `ccm` 自己的最终 exec 外零处渲出直接起 agent 的命令，一个例外都没有）。
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
@@ -373,7 +373,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
-送键与杀会话只走后端（界面经 `src/frontend/ui/tmux-control.ts` 说 `kill` / `launch`；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
+送键与杀会话只走后端（结束：界面经 `src/frontend/ui/tmux-control.ts` 说 `kill`；送字：`terminal-input` · `session-say`，就地键入在 `session-open` · 换号重启里头；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
 
 1. **Gate 1（恒强制）**：目标名过 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符）；入口 `kill.rs::admit_existing_name`（kill · capture 共用）与 `src/backend/control/launch.rs::parse_request`。空目标（`=:` 会被当成当前会话）是唯一真正危险的默认值。
 2. **Gate 2（身份，并集）**：`control/gate.rs::admit`：`is_ccm_tmux_name` 前缀命中**或** `@ccm_sid` 已设（只认事实，不认 `_expect`）。判定本体在 `control/gate_rules.rs`。
@@ -381,7 +381,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 **原子 verify ＋ act**：`control/gate.rs::probe` 一次 `display-message -p -t <目标>` 取回 `session_id` · `@ccm_sid` · `session_windows`，判完之后对拿回来的 `#{session_id}` 句柄下命令，不另按名字发第二条（两次往返之间的窗口可被抢跑）。所有形态都先 probe 一次。后端不在 ⇒ 明确失败（文案 `tmuxControl.channel.*`），不走另一条路做掉。
 
-**谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路）· 类型：送键（`launch::type_literal` · `press_key` · `send-into` 那一臂）只收 `gate::Admitted`；结束会话只有 `kill::end` 一个口，只收 `gate::Doomed` 或 `launch::JustMade`（本趟刚建、启动命令没送进的空壳）。三样字段私有、不能复制：前两样只有 `control/gate.rs` 造得出、只由探测结果 `gate::Probed`（同样私有、不能复制，只有 `probe_with` 造）与门自己按 sid 找到的窗格构造，`JustMade` 只有 `launch.rs` 建会话那一臂造 ⇒ 不过门的送键 / 杀编不过。
+**谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`，送字那一路借 `terminal-input` 走 `gate::admit_with`——与就地键入同一道门）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路）· 类型：送键（`launch::type_literal` · `press_key` · `send-into` 那一臂）只收 `gate::Admitted`；结束会话只有 `kill::end` 一个口，只收 `gate::Doomed` 或 `launch::JustMade`（本趟刚建、启动命令没送进的空壳）。三样字段私有、不能复制：前两样只有 `control/gate.rs` 造得出、只由探测结果 `gate::Probed`（同样私有、不能复制，只有 `probe_with` 造）与门自己按 sid 找到的窗格构造，`JustMade` 只有 `launch.rs` 建会话那一臂造 ⇒ 不过门的送键 / 杀编不过。
 
 ## 35. 维度的 `applies` 绝不能条件性跳过 `cliFlags` 的 `null` 安全网（F05 / unify-launch）
 

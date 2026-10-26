@@ -159,19 +159,14 @@ fn every_fake_capability_differs_in_shape_from_both_real_agents() {
         assert!(home().is_none(), "本层在没有 {HOME_ENV} 时不该答得出 home");
     }
 
-    // 10/11/12 resume 三件事：与 Claude **和** Codex 都不同 ——
+    // 10/11 resume 两件事：与 Claude **和** Codex 都不同 ——
     // 与 Codex 也不同才排除了"它只是第三个 codex"。
     assert_ne!(DEFAULT_COMMAND, cc::resume::DEFAULT_COMMAND);
     assert_ne!(DEFAULT_COMMAND, cx::resume::DEFAULT_COMMAND);
-    assert_ne!(SESSION_NAME_PREFIX, cc::resume::SESSION_NAME_PREFIX);
-    assert_ne!(SESSION_NAME_PREFIX, cx::resume::SESSION_NAME_PREFIX);
+    assert_ne!(RESUME_TOKEN, cc::resume::RESUME_TOKEN);
     assert_ne!(
-        resume_command("b", "s"),
-        cc::resume::resume_command("b", "s")
-    );
-    assert_ne!(
-        resume_command("b", "s"),
-        cx::resume::resume_command("b", "s"),
+        RESUME_TOKEN,
+        cx::resume::RESUME_TOKEN,
         "resume 命令形与 Codex 同形 —— 那样它就只是第三个 codex"
     );
 
@@ -281,9 +276,9 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 /// | `history::listing::list_projects_into`（项目清单） | 「记录树根不在」（`Ok(false)`、零行）：调用方据此说「这台还没有会话记录」 |
 /// | `search_query::search_into`（全文搜索） | **零命中** ⇒ 静默 |
 /// | `accounts_query::session_accounts`（会话归属） | **零行** ⇒ 静默 |
-/// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **`bad_args`：不认识这个 agent，说出认得的几家** |
+/// | `agents::pick_kind`（`ccm --ccm-agent fake` · 起会话那一发的 `agent`，生产注册表里没有这一家） | **不认识这个 agent，说出认得的几家** |
 ///
-/// 最后一条：resume 按注册表里那一家的那一格拼（注册了的家走它自己的命令形，见
+/// 最后一条：起会话 / resume 按注册表里那一家的那一格拼（注册了的家走它自己的命令形，见
 /// `the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family`）；**没注册**的 kind 报错、不落默认那一家
 ///（缺 / 空才是默认那家）—— 从前这里落默认，对一个没进注册表的第三家就是误路由。
 ///
@@ -337,13 +332,9 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
         "会话归属的反应变了"
     );
 
-    // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
-    let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
-    let spec: crate::control::resolve_query::ResumeSpec =
-        crate::wire::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
-    let (code, said) = crate::control::resolve_query::resolve(crate::agents::REGISTRY, &spec)
-        .expect_err("`resolve` 对注册表里没有的 agentKind 落了默认那一家");
-    assert_eq!(code, "bad_args");
+    // ④ 认哪一家：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
+    let said = crate::agents::pick_kind(Some(AGENT_KIND))
+        .expect_err("`pick_kind` 对注册表里没有的 kind 落了默认那一家");
     assert_eq!(
         said,
         copy_core::copy_text(
@@ -485,35 +476,30 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             "{} 的判活那一格",
             a.kind
         );
-        // resume 规格：命令形与会话名前缀是这一家的。
-        let spec = format!(
-            "{{\"agentKind\":\"{}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}",
+        // resume 那一行：照这一家的 resume 词写（`session-open` 渲 `ccm` 那一行也是按这一格写，`ccm_invocation.rs`），
+        //   ccm 认得出它在 resume、交给那一家的启动器（`<启动器> … <resume 词> <sid>`，词紧挨着 sid）。
+        let Ok(Plan::Direct(r)) = plan::build_among(
+            &reg,
+            &opts(a.kind, &[face.resume_token, FIXTURE_SESSION_ID]),
+            &env,
+            &t,
+            None,
+        ) else {
+            panic!("{} 的 resume 该是直路", a.kind)
+        };
+        assert_eq!(
+            r.argv.first().map(String::as_str),
+            Some(face.default_launcher),
+            "{} 的 resume 启动器",
             a.kind
         );
-        let spec: crate::control::resolve_query::ResumeSpec =
-            crate::wire::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
-        let rp = serde_json::to_value(
-            crate::control::resolve_query::resolve(&reg, &spec).expect("解析得动"),
-        )
-        .unwrap();
-        assert_eq!(
-            rp["command"],
-            serde_json::json!((face.resume_command)(
-                face.default_launcher,
-                FIXTURE_SESSION_ID
-            )),
-            "{} 的 resume 命令",
-            a.kind
-        );
-        assert_eq!(
-            rp["sessionName"],
-            serde_json::json!(format!(
-                "{}-{}",
-                face.session_name_prefix,
-                &FIXTURE_SESSION_ID[..8]
-            )),
-            "{} 的会话名前缀",
-            a.kind
+        assert!(
+            r.argv
+                .windows(2)
+                .any(|w| w[0] == face.resume_token && w[1] == FIXTURE_SESSION_ID),
+            "{} 的 resume 命令形：{:?}",
+            a.kind,
+            r.argv
         );
     }
     assert_eq!(
