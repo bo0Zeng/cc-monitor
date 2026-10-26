@@ -10,6 +10,10 @@ use crate::accounts::quota::strategy::{Fail, FailKind};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 
+/// 「约下次叫醒」那一段逐块点名（同一套夹具）。
+#[path = "wake_tests.rs"]
+mod wake;
+
 /// 一天的整点起算（UTC），此刻 ＝ 当天 14:30。
 const DAY: u64 = 1_800_000_000 / 86_400 * 86_400;
 const T: u64 = DAY + 14 * 3600 + 30 * 60;
