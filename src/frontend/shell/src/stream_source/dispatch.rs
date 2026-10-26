@@ -146,11 +146,7 @@ pub(crate) async fn apply(
         Ordered::SessionAdded(meta) => {
             let sid = meta.sid.clone();
             tracing::info!("session-added: [{host_label}] sid={sid} → 成品交出口");
-            crate::session_book::feed(BookIn::Live {
-                origin: at,
-                sid,
-                meta,
-            });
+            told(at, Frame::SessionAdded(meta));
         }
         // 读完了：有记录文件就排旁路快照（队列按 sid 幂等）。
         Ordered::SessionPrimed(p) => intake.announced(&p.sid, p.path, p.lines),
@@ -161,26 +157,21 @@ pub(crate) async fn apply(
                 s.face.live,
                 s.waiting_for
             );
-            crate::session_book::feed(BookIn::Status {
-                origin: at,
-                status: s,
-            });
+            told(at, Frame::SessionStatus(s));
         }
         Ordered::SessionRemoved(r) => {
-            // 只剩内容流的边界：摘排队中的快照、给在途的打取消标记、续点作废；去向由下一帧 `session_state` 说。
-            let sid = r.sid;
+            // 只剩内容流的边界：摘排队中的快照、给在途的打取消标记、续点作废；去向由下一帧 `session_state` 说（簿只记顶替它的那一条）。
+            let sid = &r.sid;
             tracing::info!(
                 "session-removed: [{host_label}] sid={sid}（内容流收口；去向看 session_state）"
             );
-            intake.removed(&sid);
+            intake.removed(sid);
+            told(at, Frame::SessionRemoved(r));
         }
         Ordered::SessionState(s) => {
             let (sid, state) = (&s.sid, s.state);
             tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
-            crate::session_book::feed(BookIn::Left {
-                origin: at,
-                state: s,
-            });
+            told(at, Frame::SessionState(s));
         }
         Ordered::Overflow(o) => on_overflow(origin, health, &o),
         Ordered::Changed(c) => {
@@ -195,9 +186,9 @@ pub(crate) async fn apply(
             }
             replay.changed(origin, &topic, body_without(&c, "topic"));
         }
-        Ordered::SessionsReplayed(_) => {
+        Ordered::SessionsReplayed(r) => {
             tracing::info!("sessions-replayed: [{at}] 活会话清单报完了 → 成品交出口");
-            crate::session_book::feed(BookIn::Listed { origin: at });
+            told(at, Frame::SessionsReplayed(r));
         }
         Ordered::SessionFileGone(g) => {
             intake
@@ -211,9 +202,10 @@ pub(crate) async fn apply(
             };
             intake
                 .notice(&r.session_id, &r.path, change, Some(r.lines))
-                .await
+                .await;
+            told(at, Frame::SessionFileReread(r));
         }
-        Ordered::SessionRuns(runs) => crate::session_book::feed(BookIn::Runs { origin: at, runs }),
+        Ordered::SessionRuns(runs) => told(at, Frame::SessionRuns(runs)),
         Ordered::SessionBranch(b) => crate::session_book::feed(BookIn::Branch {
             origin: origin.clone(),
             sid: b.sid,
@@ -223,6 +215,11 @@ pub(crate) async fn apply(
             sum: b.sum,
         }),
     }
+}
+
+/// 会话帧原样交会话账（那台那一本照端核心的折法折）。
+fn told(origin: String, frame: Frame) {
+    crate::session_book::feed(BookIn::Told { origin, frame });
 }
 
 /// 那台管道拥塞丢过帧：日志 ＋ 经 `remote-health` 原样交那台写的那一句（标题位界面排机器名）。

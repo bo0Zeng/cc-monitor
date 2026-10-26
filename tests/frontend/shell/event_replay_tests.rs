@@ -261,14 +261,16 @@ fn when_full_sessions_that_are_not_live_go_first() {
     let mut r = EventReplay::new();
     r.book = book;
     r.inner.lock().held_cap = 3_000;
-    book.write().step(In::Live {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        sid: "live".into(),
-        meta: crate::frame_fixtures::session_added("x", serde_json::json!({})),
+        frame: cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+            "live",
+            serde_json::json!({}),
+        )),
     });
-    book.write().step(In::Left {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("done", "T"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("done", "T")),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -1048,14 +1050,16 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Live {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        sid: "a".into(),
-        meta: crate::frame_fixtures::session_added("x", serde_json::json!({})),
+        frame: cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+            "a",
+            serde_json::json!({}),
+        )),
     });
-    book.write().step(In::Left {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("b", "T"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("b", "T")),
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
@@ -1116,12 +1120,13 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
     use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Listed {
+    book.write().step(In::Told {
         origin: "<local>".into(),
+        frame: cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
     });
-    book.write().step(In::Left {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("p", "那台写的"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("p", "那台写的")),
     });
     r.set_main_kept([("<local>".to_string(), "p".to_string())]);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
@@ -1147,15 +1152,16 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Listed {
+    book.write().step(In::Told {
         origin: "<local>".into(),
+        frame: cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
     });
     r.on_line_batch_awaited(lines("x", 0..1)).await;
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
     r.ready_point(None).await;
-    let out = book.write().step(In::Left {
+    let out = book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("x", "那台写的"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("x", "那台写的")),
     });
     r.on_lifecycle("<local>", out.iter().map(|o| o.frame()).collect());
     let ended: Vec<serde_json::Value> = rec

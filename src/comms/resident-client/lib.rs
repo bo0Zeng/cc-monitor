@@ -7,16 +7,20 @@
 //! - [`backoff`]：重连退避（2 → 30 s，活过 30 s 才清零：F05 / I-1 那个自激循环；拨出去没人回话的那几轮不涨）· 拨号期限 · 心跳的数；
 //! - [`frames`]：帧门（握手那一刻比出哪几种帧形状对不上，那几种的行不解、不交）；
 //! - [`watch`]：`stream-watch` 名单（整份换 · 新连接重报 · `from[]` 补段）；
-//! - [`feed`]：一台的常驻流断了自己接回去（两端同一条重连循环；全仓只这一处，monitor `one_loop_guard` 守着）。
+//! - [`feed`]：一台的常驻流断了自己接回去（两端同一条重连循环；全仓只这一处，monitor `one_loop_guard` 守着）；
+//! - [`book`]：一台的会话簿（会话帧折成整份；两端只调这一份折法）；
+//! - [`live`]：一台的活卡板（`live_card` 帧折成某会话某运行整份的卡；两端只调这一份折法）。
 //!
 //! 有计时器（期限 · 退避），属客户端那一侧：不进后端的判据人群（`no_timer_guard`）。
 
 pub mod attach;
 pub mod backoff;
+pub mod book;
 pub mod client;
 pub mod feed;
 pub mod frames;
 pub mod line;
+pub mod live;
 pub mod watch;
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
