@@ -91,20 +91,18 @@ class NewSessionPickerTest {
     private fun TestScope.picker(
         l: FakeCoreLink,
         from: String? = null,
-        stored: String? = null,
-    ) = NewSessionPicker(l, "smokebox", from, stored, backgroundScope).also { runCurrent() }
+    ) = NewSessionPicker(l, "smokebox", from, backgroundScope).also { runCurrent() }
 
     @Test
-    fun `默认值：目录 ＝ 那台最近用过的第一个；账号 ＝ 那台的默认号；agent ＝ 存的那一家，认不得 ⇒ 第一家`() =
+    fun `默认值：目录 ＝ 那台最近用过的第一个；账号 ＝ 那台的默认号；agent ＝ 那台列的第一家（手机不存缺省哪一家）`() =
         runTest {
-            val p = picker(link(), stored = "codex")
+            val p = picker(link())
             val s = p.state.value
             assertEquals("/h/work/orders", s.cwd)
             assertEquals("work", s.account)
-            assertEquals("codex", s.agent)
+            assertEquals("claude", s.agent)
             assertEquals(listOf("/h/work/orders", "/h/work/billing"), s.recent.map { it.cwd })
             assertEquals("家目录照那台的 files-home（账号库没开也有）", "/h/me", s.home)
-            assertEquals("claude", picker(link(), stored = "gone").state.value.agent)
         }
 
     @Test

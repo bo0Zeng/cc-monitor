@@ -177,7 +177,7 @@ class ChatSession(
     private val chips = ChatChips(link, machine, scope, _state) { sid }
 
     /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
-    val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, null, scope) }
+    val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, scope) }
     private val body = RecordUnits()
 
     /** 上次上屏以后新排进来的那几条里人说的话（只拿它们消本地那几句的标）。 */
