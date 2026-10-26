@@ -13,6 +13,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>(
         "删一条历史注解",
     ),
+    // **组**（`history/groups.rs`）：组本身住家那一台的注解文件 `groups` 那一节，组员与固定是会话注解的两格（挪成员走 `history-annotate`）。
+    //   这台那一半读一份小文件 ＋ 活会话表 ⇒ 阻塞档；几台并成一份由这台自己扇出（本机同进程、别的台经 `--resident-call` 问它的常驻）⇒ 异步档；
+    //   建 · 改名 · 解散只改家在这台的 ⇒ 阻塞档（同注解那两条）。
+    crate::wire::typed::blocking::<crate::history::groups::GroupsHereCmd>(
+        "这台的组那一半：家在这台的组 ＋ 带组或固定的会话",
+    ),
+    crate::wire::typed::asynchronous::<crate::history::groups::GroupsReadCmd>(
+        "问到各台的组那一半、并成一份",
+    ),
+    crate::wire::typed::blocking::<crate::history::groups::GroupsWriteCmd>(
+        "建 · 改名 · 解散家在这台的组",
+    ),
     // ── 只读查询面上线 —— 层 1 ＋ ──────────
     //
     // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），
