@@ -642,7 +642,7 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 脱离那条路上「它跟我们说过话没有」这一维。
 ///
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
-/// [`attach_stream`] 开头两行是 `stream_source::decode` + `inbound_client::witness_of`，
+/// [`attach_stream`] 开头两行是 `stream_source::decode` + `local_backend::local_witness`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
 /// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
@@ -726,7 +726,7 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
 ///
 /// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条套接字的两半。
-/// **复用的是纯零件**（`stream_source::decode` · `inbound_client::witness_of` ·
+/// **复用的是纯零件**（`stream_source::decode` · `local_backend::local_witness` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 /// `carried` ＝ attach 行带过的那份名单（接上之后交本机名单台：握手中变了 ⇒ 它当场补报）。
@@ -737,7 +737,7 @@ fn attach_stream(
 ) -> Result<(), Said> {
     let frame = crate::stream_source::decode(hello_line)
         .map_err(|_| Said::of("rsLocalBackendHost.stream.badFirstLine", &[]))?;
-    let witness = crate::inbound_client::witness_of(&frame)
+    let witness = crate::local_backend::local_witness(&frame)
         .ok_or_else(|| Said::of("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。

@@ -1410,7 +1410,7 @@ pub(crate) fn local_witness(
 /// 远端那一条（重连循环 `resident_client::feed` ＋ 收事那一头 `stream_source::consume_remote`）管 ensure / 换装 / 退避 /
 /// 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
-/// `stream_source::decode` · `inbound_client::witness_of` · `stream_source::route` ·
+/// `stream_source::decode` · `local_witness`（`inbound_client::witness_of` ＋ 记下看不见那张脸）· `stream_source::route` ·
 /// `ParkedWriter::into_client(BackendHello)`。
 /// ⇒ 复用**纯零件**，不把一个绑传输的循环硬掰成泛型。
 ///
