@@ -145,7 +145,7 @@ fn assignee_and_signer_are_resolved_to_sessions() {
     // 负责人是某个会话底下的 agent ⇒ 后端把「{父会话} 的 agent」写好交出去（界面照画，不按码取字）；会话本身 ⇒ 不写（界面写标签页的名字）。
     assert_eq!(
         owner["label"],
-        copy_core::copy_text("plan.who.sub", &[("session", "主会话")])
+        copy_core::copy_text("plan.who.sub", &[("session", "甲会话")])
     );
     assert_eq!(cell(&m.doc, "A1-2")["owner"]["label"], Value::Null);
     assert_eq!(cell(&m.doc, "A2-1")["signer"]["id"], SUB);

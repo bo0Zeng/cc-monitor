@@ -506,7 +506,7 @@ pub(crate) fn as_json<T: serde::Serialize>(t: &T) -> Value {
     serde_json::to_value(t).unwrap()
 }
 
-/// 夹具的身份表：MAIN 是一个活着、在等你批准的会话（叫「主会话」）；SUB 是 MAIN 底下的子 agent；别的都对不上。
+/// 夹具的身份表：MAIN 是一个活着、在等你批准的会话（叫「甲会话」）；SUB 是 MAIN 底下的子 agent；别的都对不上。
 pub(crate) fn who(id: &str) -> crate::plan::Whose {
     use crate::plan::{Live, Whose};
     let live = Some(Live {
@@ -520,7 +520,7 @@ pub(crate) fn who(id: &str) -> crate::plan::Whose {
         },
         SUB => Whose::Subagent {
             parent: MAIN.into(),
-            parent_title: "主会话".into(),
+            parent_title: "甲会话".into(),
             live,
         },
         _ => Whose::Unknown,
