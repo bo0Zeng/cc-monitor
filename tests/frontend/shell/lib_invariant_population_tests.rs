@@ -189,7 +189,7 @@ fn tmux_print_sites() -> BTreeMap<(String, String, Carry), usize> {
 /// 读出来的字段只可能是 ASCII（pid · 窗口数 · `%N` 形 pane id）⇒ 改写成 `_` 也不改一个字节，今天无害；
 /// 读的是**会话名 / 地址**（用户起的会话名可以是中文）⇒ 非 UTF-8 客户端下会被改写成 `_`，**是真违反，待裁**
 /// （改它们是后端载荷字节 / 随部署脚本字节的变更，另做）。
-/// 今天 `Carry::None` 只剩读 ASCII 的那几处。
+/// 今天盘上一处 `Carry::None` 都没有（新长一处就进两向相等那一条红）。
 const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/common/session_snapshot.rs", "list-sessions", Carry::Flag, 1, "argv；`session_snapshot_tests.rs` 钉旗在子命令前"),
     ("src/backend/control/gate.rs", "display-message", Carry::Flag, 1, "argv；`gate_tests.rs` 钉旗在子命令前"),
@@ -212,8 +212,8 @@ fn every_tmux_print_site_is_registered_with_how_it_carries_utf8() {
         .map(|&(f, s, c, n, _)| ((f.to_string(), s.to_string(), c), n))
         .collect();
     assert_eq!(registered.len(), TMUX_PRINT_SITES.len(), "登记表里有重复行");
-    // 正控：带旗 / 带 env / 不带三形各至少一处真在盘上 —— 否则认法坏了也可能恰好两向相等（两边都空那一格）。
-    for c in [Carry::Flag, Carry::Env, Carry::None] {
+    // 正控：带旗 / 带 env 两形各至少一处真在盘上 —— 否则认法坏了也可能恰好两向相等（两边都空那一格）。
+    for c in [Carry::Flag, Carry::Env] {
         assert!(
             on_disk.keys().any(|k| k.2 == c),
             "盘上一处 {c:?} 形都没扫到 —— 认法坏了"

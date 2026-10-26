@@ -5,10 +5,7 @@ use super::*;
 /// 「列全部会话」这件事**只剩快照那一处**（`common/session_snapshot.rs`）。
 /// 本模块回潮（把那条 argv 抄回来）时这一条要红。
 ///
-/// 🔴 **它守的是「面没变大」，不是「快照真被走到」** —— 后面那条由
-/// `the_liveness_answer_comes_from_this_moment_not_from_a_cache` 的行为夹具钉。
-/// 两条缺一不可：只有结构那条，「读快照但读的是陈值」照样绿；
-/// 只有行为那条，「另起一条 argv 自己去问」在没有真 tmux 的沙箱里也可能碰巧绿。
+/// 它守的是「面没变大」：本模块不再列全部会话（谁活着由后端判活那一处答，cc-bus 的名单不再问 tmux）。
 #[test]
 fn listing_every_session_is_no_longer_this_modules_job() {
     let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
