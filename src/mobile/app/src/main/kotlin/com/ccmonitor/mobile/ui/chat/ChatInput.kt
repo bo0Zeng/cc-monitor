@@ -427,7 +427,7 @@ private fun CommandList(
             groupsOf(list.commands).forEach { (head, rows) ->
                 item(key = "head:$head") { SheetHead(head) }
                 items(rows, key = { "cmd:" + it.scope + it.name }) { c ->
-                    SheetRow(SLASH + c.name, sub = c.text, end = commandMarks(c).joinToString(MARK_SEP).ifEmpty { null }) { fill(commandDraft(c)) }
+                    SheetRow(SLASH + c.name, sub = c.text, end = commandMarks(c).joinToString(copyText("kit.text.sep")).ifEmpty { null }) { fill(commandDraft(c)) }
                 }
             }
         }
@@ -526,4 +526,3 @@ private const val INPUT_MAX_LINES = 4
 private const val LIST_MAX_HEIGHT = 480
 private const val SLASH = "/"
 private const val CHECK_GLYPH = "✓"
-private const val MARK_SEP = " · "

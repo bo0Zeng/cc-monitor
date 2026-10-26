@@ -5,8 +5,8 @@ import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.cache.Pending
 import com.ccmonitor.mobile.cache.RawPage
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.HistoryLines
-import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.HistoryTail
 import com.ccmonitor.mobile.core.claude.link.LiveBoard
@@ -26,6 +26,7 @@ import com.ccmonitor.mobile.core.data.db.Draft
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -497,7 +498,7 @@ class ChatSession(
         _state.value = _state.value.copy(failedWhy = text, drafting = draft != null && sid == null)
     }
 
-    /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [pathOf]）。 */
+    /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [freshPath]）。 */
     private suspend fun attach(
         s: String,
         fresh: Boolean = false,
@@ -530,9 +531,9 @@ class ChatSession(
         syncHold()
         watchRunning(s)
         with(chips) { watch(s) }
-        val p = recordPath(s, fresh) ?: return@coroutineScope
+        val (p, facts) = recordOf(s, fresh) ?: return@coroutineScope
         path = p
-        launch { chips.readFacts(p) }
+        if (facts != null) chips.take(facts) else launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { loadLocked(p, at) }
 
@@ -548,24 +549,29 @@ class ChatSession(
     }
 
     /**
-     * 这条会话的记录文件。上次读过的那份（续点里记着）⇒ 照它接，不先问清单：离线时也挂得上，网回来（换了一条流）就整份对齐；
-     * 那样接上的，目录另问一次清单，问不到不说（正文那一侧自己会说断开了）。
+     * 这条会话的记录文件（＋ 为认它已经问到的会话事实）。会话表里有 ⇒ 用它（目录也照它）；上次读过的那份（续点里记着）⇒ 照它接：
+     * 离线时也挂得上，网回来（换了一条流）就整份对齐，目录等读 chip 那一趟事实时取；都没有 ⇒ [byId]。
      */
-    private suspend fun recordPath(
+    private suspend fun recordOf(
         s: String,
         fresh: Boolean,
-    ): String? {
-        if (fresh) return freshPath(s)
-        val p =
-            link.table.value.sessions[s]
-                ?.path ?: anchorPath ?: pathOf(s) ?: return null
-        if (_state.value.cwd == null) {
-            link.table.value.sessions[s]
-                ?.cwd
-                ?.let { _state.value = _state.value.copy(cwd = it) }
+    ): Pair<String, FactsReply?>? {
+        if (fresh) return freshPath(s) to null
+        link.table.value.sessions[s]?.let { live ->
+            if (_state.value.cwd == null) live.cwd?.let { _state.value = _state.value.copy(cwd = it) }
+            live.path?.let { return it to null }
         }
-        if (_state.value.cwd == null && p == anchorPath) scope.launch { cwdOf(s) }
-        return p
+        anchorPath?.let { return it to null }
+        return byId(s)
+    }
+
+    /** 只有会话 id：问那台 `history-facts {sid}`，它在自己的记录树里找那份记录（回包的 `path`）；找不到 · 问不到 ⇒ 那台写好的那一句上屏。 */
+    private suspend fun byId(s: String): Pair<String, FactsReply>? {
+        val r = link.call(HistoryFacts.COMMAND, HistoryFacts.bySid(s), READ_MS)
+        if (r !is Reply.Ok) return null.also { failSession(r.problem(machine, HistoryFacts.COMMAND)?.text) }
+        val f = HistoryFacts.of(r.data)
+        val p = f?.path ?: return null.also { failSession(unreadableReply(machine, HistoryFacts.COMMAND, r.data.toString()).text) }
+        return p to f
     }
 
     /**
@@ -777,31 +783,6 @@ class ChatSession(
                 val running = t.running(s)
                 if (running != _state.value.running) _state.value = _state.value.copy(running = running)
             }
-        }
-    }
-
-    /** 这条会话的目录（清单那一行的 `projectPath`）；问不到就算了。 */
-    private suspend fun cwdOf(s: String) {
-        val r = link.call(HistoryList.COMMAND, null, READ_MS) as? Reply.Ok ?: return
-        HistoryList.of(r.data)?.rows?.firstOrNull { it.sessionId == s }?.projectPath?.let { cwd ->
-            if (_state.value.cwd == null) _state.value = _state.value.copy(cwd = cwd)
-        }
-    }
-
-    /** 那条会话的记录文件：会话表里有就用它，没有（不在跑了）问 `history-list`。 */
-    private suspend fun pathOf(s: String): String? {
-        link.table.value.sessions[s]?.let { live ->
-            live.cwd?.let { _state.value = _state.value.copy(cwd = it) }
-            live.path?.let { return it }
-        }
-        return when (val r = link.call(HistoryList.COMMAND, null, READ_MS)) {
-            is Reply.Ok -> {
-                val list = HistoryList.of(r.data) ?: return null.also { failSession(unreadableReply(machine, HistoryList.COMMAND, r.data.toString()).text) }
-                val row = list.rows.firstOrNull { it.sessionId == s }
-                row?.projectPath?.let { if (_state.value.cwd == null) _state.value = _state.value.copy(cwd = it) }
-                row?.jsonlPath ?: null.also { failSession(copyText("mobChat.record.missing", "machine" to machine)) }
-            }
-            else -> null.also { failSession(r.problem(machine, HistoryList.COMMAND)?.text) }
         }
     }
 

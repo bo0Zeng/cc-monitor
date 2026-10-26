@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.FirstSay
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.JsonValue
@@ -16,7 +17,6 @@ import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.Opened
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
-import com.ccmonitor.mobile.core.wire.gen.SessionFacts
 import com.ccmonitor.mobile.core.wire.gen.HistoryLines as HistoryLinesPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryRead as HistoryReadPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryTail as HistoryTailReply
@@ -163,13 +163,18 @@ object SessionOpenFacts {
     ): AgentFacts? = agents.firstOrNull { it.kind == stored } ?: agents.firstOrNull()
 }
 
-/** `history-facts`：一条会话的事实（聊天屏只读 chip 上的两个显示字：此刻的模型 · 权限档，那台写好的）。 */
+/**
+ * `history-facts`：一条会话的事实（聊天屏读 chip 上的两个显示字：此刻的模型 · 权限档 ＋ 项目目录，那台写好的）。
+ * 手上有记录路径 ⇒ 按路径问；只有会话 id（会话表里没有、续点里也没有）⇒ 按 sid 问，那台找那份记录、回包的 `path` 就是它。
+ */
 object HistoryFacts {
     const val COMMAND: String = "history-facts"
 
     fun args(path: String): Map<String, Any?> = mapOf("path" to path)
 
-    fun of(data: Any?): SessionFacts? = Wire.bind<SessionFacts>(data)
+    fun bySid(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+
+    fun of(data: Any?): FactsReply? = Wire.bind<FactsReply>(data)
 }
 
 /** `session-model`：中途给一条会话换模型（那台送命令、读回来认；在等人不送）。结局照那台写好的那一句说。 */
