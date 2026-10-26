@@ -99,12 +99,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 装后端：把「怎么够到那台 ＋ 这一版带着的那几格落在哪」交给**本机**后端 `deploy-install`，
     //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与 `asset_sync.rs` 那一行同。
     ("deploy.rs", Verdict::UsesRouter),
-    // 终端画面流撤掉时壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
+    // 终端画面流撤掉时会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
     //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
-    (
-        "terminal_screen_relay.rs",
-        Verdict::ProbeOnlyNoFallbackDecision,
-    ),
+    ("event_replay.rs", Verdict::ProbeOnlyNoFallbackDecision),
     // 每台的名单台报「在看哪几个会话」（`resident-client/watch.rs`，那台后端 `stream-watch`）：没报上只记一行日志 ——
     //   没有第二条路，成败也不交给任何人（下一次名单变 / 换连接再报）。
     ("watch.rs", Verdict::ProbeOnlyNoFallbackDecision),
