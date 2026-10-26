@@ -5,7 +5,7 @@
  *
  * - 数据只经 `quota-read` · `rotation-view` 与推送（`acct-center.ts` 收进 `appStore`）。界面不判「能不能换 / 该不该换」。
  */
-import { appStore, type SessionRotationEntry } from "./app-store";
+import { appStore, quotaOf, type QuotaSlot, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
 import { acctAvatar } from "./acct-dom";
 import { machineLabel } from "./acct-view";
@@ -18,7 +18,7 @@ import { openDrawer, type DrawerHandle } from "./kit/drawer";
 import { icon } from "./kit/icon";
 import { closeMenu } from "./kit/menu";
 import { mountRotation, type RotMount } from "./rot-mount";
-import { accountLabel, type QuotaRead } from "./acct-words";
+import { accountLabel } from "./acct-words";
 import s from "./acct.module.css";
 
 /** 主窗口交进来的几样（都是回调，面板不认 tab 栏）。 */
@@ -105,29 +105,29 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
 
 function render(o: Open, host: AcctPanelHost): void {
   const entry = appStore.sessionRotation.get().get(o.sid);
-  const quota = appStore.quota.get().get(o.origin);
-  const head = stub(o, entry, quota, host);
+  const head = stub(o, entry, quotaOf(o.origin), host);
   // 中转没见过这个会话 ⇒ 轮换那几块没得画（头下那一条说清楚了）。
   o.body.replaceChildren(...head, ...(entry !== undefined && entry.read === null ? [] : [o.rot.root]), footer(o, host));
 }
 
 /**
  * 头下那一条：中转没见过这个会话 · 额度账还没问回来（读取中）· 整问失败（出错那一层写好的那一句 ＋ 重试）·
- * 那台读不出（后端写好的那一句）。`quota` 不在表里 ＝ 还没问回来。
+ * 那台读不出（后端写好的那一句）。读取中 · 重试是面板自己的骨架字，不随那份账变。
  */
-function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaRead | null | undefined, host: AcctPanelHost): HTMLElement[] {
+function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaSlot, host: AcctPanelHost): HTMLElement[] {
   const out: HTMLElement[] = [];
   if (entry !== undefined && entry.read === null) {
     const connect = button({ label: copyText("acct.now.connect"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) });
     out.push(banner("warn", copyText("acct.now.noRelay"), [connect]));
     return out;
   }
-  if (quota === undefined) {
-    out.push(banner("info", copyText("kit.state.reading")));
-  } else if (quota === null) {
-    const failed = appStore.quotaFailed.get().get(o.origin);
-    const retry = button({ label: copyText("acct.now.retry"), kind: "ghost", size: "compact", onClick: () => void refreshQuota(o.origin) });
-    if (failed !== undefined) out.push(banner("error", failed.said, [retry], failed.detail));
+  const reading = copyText("kit.state.reading");
+  const retryLabel = copyText("acct.now.retry");
+  if (quota.state === "pending") {
+    out.push(banner("info", reading));
+  } else if (quota.state === "failed") {
+    const retry = button({ label: retryLabel, kind: "ghost", size: "compact", onClick: () => void refreshQuota(o.origin) });
+    out.push(banner("error", quota.said, [retry], quota.detail));
   } else if (quota.state === "unreadable" && quota.text !== null) {
     // 那一句后端写好（`quota_rows::head_text`：读不出恒有），面板照抄。
     out.push(banner("warn", quota.text, [], quota.detail ?? ""));

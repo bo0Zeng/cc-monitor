@@ -36,7 +36,6 @@ beforeEach(() => {
   if (document.querySelector("aside[role=dialog]")) toggleAccountPanel("s1", "<local>", host);
   document.body.replaceChildren();
   appStore.quota.set(new Map());
-  appStore.quotaFailed.set(new Map());
   appStore.sessionRotation.set(new Map());
 });
 
@@ -53,12 +52,10 @@ describe("账号面板", () => {
 
   it("★ quota-read 整问失败 ⇒ 一条红的写出错那一层那一句 ＋ 重试；读到了、会话也见过 ⇒ 头下不出提示，也不画任何轮换的东西", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
-    appStore.quotaFailed.set(new Map([["<local>", { said: "连接层那一句", detail: "D-detail" }]]));
-    appStore.quota.set(new Map([["<local>", null]]));
+    appStore.quota.set(new Map([["<local>", { state: "failed", said: "连接层那一句", detail: "D-detail" }]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[role=alert]")?.textContent).toContain("连接层那一句");
     expect(btn(copyText("acct.now.retry"))).toBeDefined();
-    appStore.quotaFailed.set(new Map());
     appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], candidates: [], text: null, fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null }]]));
     expect(btn(copyText("acct.now.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();

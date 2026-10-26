@@ -66,11 +66,23 @@ export interface SessionRotationEntry {
   read: RotationViewReply | null;
 }
 
-/** 一问失败时出错那一层写好的那一句（`said`）与复制详情（`detail`，没有 ⇒ 空串）。 */
+/** `quota-read` 整问失败：出错那一层写好的那一句（`said`）与复制详情（`detail`，没有 ⇒ 空串）。 */
 export interface QuotaFailed {
+  state: "failed";
   said: string;
   detail: string;
 }
+
+/** 那台的额度账还没问回来。 */
+export interface QuotaPending {
+  state: "pending";
+}
+
+/**
+ * 一台的额度账此刻是哪一形（一个事实一处）：读到的账（那台写好的成品，`state` 照它自己的三态）· 整问失败那一句 · 还没问回来。
+ * 存在 `appStore.quota` 里的只有前两形；没有那一格 ＝ 还没问回来（{@link quotaOf} 补成第三形）。
+ */
+export type QuotaSlot = QuotaRead | QuotaFailed | QuotaPending;
 
 /** 窗口级的几格（每个窗口一份 —— 各窗口本来就是各自的 JS 环境）。 */
 export const appStore = {
@@ -80,10 +92,8 @@ export const appStore = {
   accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
   /** 每个会话的号（按 sid；还没问回来 ⇒ 不在里面）。 */
   sessionAccount: new Slice<ReadonlyMap<string, SessionAccountEntry>>(new Map()),
-  /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果，为什么在 `quotaFailed`；还没问回来 ⇒ 不在里面）。 */
-  quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
-  /** `quota-read` 整问失败的那几台：出错那一层写好的那一句与复制详情（`acct-center.ts` 与 `quota` 那一格一起换；问成了 ⇒ 摘掉）。 */
-  quotaFailed: new Slice<ReadonlyMap<Origin, QuotaFailed>>(new Map()),
+  /** 每台的额度账（{@link QuotaSlot}：读到的账 · 整问失败那一句；还没问回来 ⇒ 不在里面）。只有 `acct-center.ts` 写；读经 {@link quotaOf} / {@link quotaReadOf}。 */
+  quota: new Slice<ReadonlyMap<Origin, QuotaRead | QuotaFailed>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
 };
@@ -95,10 +105,13 @@ export function putIn<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K, value: V): 
   slice.set(next);
 }
 
-/** 从一张按键的表里摘掉一格（本来就没有 ⇒ 不换、不叫订阅者）。 */
-export function dropFrom<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K): void {
-  if (!slice.get().has(key)) return;
-  const next = new Map(slice.get());
-  next.delete(key);
-  slice.set(next);
+/** 那台的额度账此刻是哪一形（没有那一格 ⇒ 还没问回来）。 */
+export function quotaOf(origin: Origin): QuotaSlot {
+  return appStore.quota.get().get(origin) ?? { state: "pending" };
+}
+
+/** 那台读到的账；整问失败 · 还没问回来 ⇒ `null`（只要号的用量那几处用它）。 */
+export function quotaReadOf(origin: Origin): QuotaRead | null {
+  const q = quotaOf(origin);
+  return q.state === "failed" || q.state === "pending" ? null : q;
 }

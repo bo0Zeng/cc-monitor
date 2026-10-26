@@ -3,7 +3,7 @@
  *
  * | 问什么 | 帧命令 | 成品 |
  * |---|---|---|
- * | 起一条 | `forward-start {origin, localPort, remoteHost, remotePort}` | `{id}` |
+ * | 起一条 | `forward-start {origin, localPort, remoteHost, remotePort}`（端口是原文） | `{id}` |
  * | 停一条 | `forward-stop {id}` | `{id}` |
  * | 列 | `forward-list` | `{forwards:[{id, origin, localPort, remoteHost, remotePort, state, connCount}]}` |
  *
@@ -18,12 +18,12 @@ import { saidOf } from "./kit/detail";
 /** 一条转发的状态（列表展示）。 */
 export type ForwardStatus = ForwardRow;
 
-/** 起一条转发的规格。 */
+/** 起一条转发的规格：两个端口是用户敲进去的原文（是不是 1–65535 由本机后端判、写那一句）。 */
 export interface ForwardSpec {
   origin: string;
-  localPort: number;
+  localPort: string;
   remoteHost: string;
-  remotePort: number;
+  remotePort: string;
 }
 
 /**
