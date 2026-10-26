@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.wire.gen.AbsentOrOkOrUnreadable
+import com.ccmonitor.mobile.core.wire.gen.FileState
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -33,11 +33,11 @@ class MachinePrefsTest {
     @Test
     fun `prefs-read：两种会话的那一格 · 每号模型照那台；读不懂照答那一份、带那一句；缺格 ⇒ 解不出`() {
         val r = MachinePrefs.of(prefs())!!
-        assertEquals(AbsentOrOkOrUnreadable.OK, r.state)
+        assertEquals(FileState.OK, r.state)
         assertEquals(Tab.HIDE to Tab.SHOW, r.prefs.childTab to r.prefs.bgTab)
         assertEquals(mapOf("team" to "opus"), r.prefs.models)
         val bad = MachinePrefs.of(prefs(state = "unreadable", child = "show"))!!
-        assertEquals(AbsentOrOkOrUnreadable.UNREADABLE to "第 4 行格式不对", bad.state to bad.reason)
+        assertEquals(FileState.UNREADABLE to "第 4 行格式不对", bad.state to bad.reason)
         assertEquals(Tab.SHOW, bad.prefs.childTab)
         assertNull("认不出的值 ⇒ 契约对不上", MachinePrefs.of(prefs(child = "maybe")))
     }

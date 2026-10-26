@@ -47,7 +47,6 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
-import com.ccmonitor.mobile.core.wire.gen.FailOrPlainOrWarn
 import com.ccmonitor.mobile.core.wire.gen.QuotaCell
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
@@ -129,7 +128,7 @@ private fun Head(
     when {
         v != null ->
             Column(Modifier.testTag(UsageTags.VERDICT)) {
-                Text(v.text, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, color = usageInk(v.tone, MaterialTheme.colorScheme.onSurface))
+                Text(v.text, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, color = cellInk(v.tone, MaterialTheme.colorScheme.onSurface))
                 v.sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         failed != null ->
@@ -180,7 +179,7 @@ private fun Card(
             }
         }
         c.bars.forEach { Bar(it) }
-        c.usage?.let { u -> LabeledLine(copyText("acct.hover.usage"), listOf(QuotaCell(u.text, toneOf(u.tone)))) }
+        c.usage?.let { u -> LabeledLine(copyText("acct.hover.usage"), listOf(QuotaCell(u.text, u.tone))) }
         c.plain.forEach { r -> LabeledLine(r.first().text, r.drop(1)) }
         c.seen?.let { r -> LabeledLine(r.first().text, r.drop(1)) }
         if (expanded) {
@@ -196,9 +195,9 @@ private fun Card(
 @Composable
 private fun Bar(b: UsageBar) {
     val faint = MaterialTheme.colorScheme.onSurfaceVariant
-    val ink = usageInk(b.slot.tone, faint)
+    val ink = cellInk(b.slot.tone, faint)
     val track = MaterialTheme.colorScheme.surfaceContainerHigh
-    val fill = usageInk(b.slot.tone, MaterialTheme.colorScheme.onSurfaceVariant)
+    val fill = cellInk(b.slot.tone, MaterialTheme.colorScheme.onSurfaceVariant)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(b.label, style = MaterialTheme.typography.bodySmall, color = faint, modifier = Modifier.width(LABEL_W.dp))
@@ -265,17 +264,6 @@ private fun SkeletonCard() {
 }
 
 @Composable
-private fun usageInk(
-    tone: FailOrPlainOrWarn,
-    plain: Color,
-): Color =
-    when (tone) {
-        FailOrPlainOrWarn.FAIL -> LocalAppTokens.current.errorText
-        FailOrPlainOrWarn.WARN -> LocalAppTokens.current.warn
-        FailOrPlainOrWarn.PLAIN -> plain
-    }
-
-@Composable
 private fun cellInk(
     tone: Tone,
     plain: Color,
@@ -284,13 +272,6 @@ private fun cellInk(
         Tone.FAIL -> LocalAppTokens.current.errorText
         Tone.WARN, Tone.NEED -> LocalAppTokens.current.warn
         Tone.PLAIN, Tone.NOW, Tone.BUSY -> plain
-    }
-
-private fun toneOf(t: FailOrPlainOrWarn): Tone =
-    when (t) {
-        FailOrPlainOrWarn.FAIL -> Tone.FAIL
-        FailOrPlainOrWarn.WARN -> Tone.WARN
-        FailOrPlainOrWarn.PLAIN -> Tone.PLAIN
     }
 
 /** 给冒烟与 UI 测试认的 tag（与字解耦）。 */

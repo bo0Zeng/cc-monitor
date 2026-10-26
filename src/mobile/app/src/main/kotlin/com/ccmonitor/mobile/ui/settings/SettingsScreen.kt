@@ -57,8 +57,8 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
-import com.ccmonitor.mobile.core.wire.gen.AbsentOrOkOrUnreadable
-import com.ccmonitor.mobile.core.wire.gen.FailOrPlainOrWarn
+import com.ccmonitor.mobile.core.wire.gen.FileState
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.link.HostBackends
@@ -260,18 +260,18 @@ private fun DefaultAccount(ui: MachineSettingsUi) {
     }
 }
 
-/** 用量那一格：用满 · 被拒 ⇒ 红；快满 · 超额在兜 ⇒ 琥珀；否则淡字。 */
+/** 用量那一格：用满 · 被拒 ⇒ 红；快满 · 超额在兜 ⇒ 琥珀；否则淡字（用量那几格只出 `plain` · `fail` · `warn`，别的三个照同类的那一支）。 */
 @Composable
 internal fun UsageText(
     text: String,
-    tone: FailOrPlainOrWarn,
+    tone: Tone,
 ) {
     val tokens = LocalAppTokens.current
     val color =
         when (tone) {
-            FailOrPlainOrWarn.FAIL -> tokens.errorText
-            FailOrPlainOrWarn.WARN -> tokens.warn
-            FailOrPlainOrWarn.PLAIN -> MaterialTheme.colorScheme.onSurfaceVariant
+            Tone.FAIL -> tokens.errorText
+            Tone.WARN, Tone.NEED -> tokens.warn
+            Tone.PLAIN, Tone.NOW, Tone.BUSY -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     Text(text, style = MaterialTheme.typography.bodySmall, color = color)
 }
@@ -308,7 +308,7 @@ private fun Prefs(
     val ui by board.state.collectAsState()
     SectionHead(copyText("mobSettings.section.prefs", "machine" to here.machine))
     val p = ui.prefs?.takeIf { readable }
-    if (p?.state == AbsentOrOkOrUnreadable.UNREADABLE) {
+    if (p?.state == FileState.UNREADABLE) {
         val text = listOfNotNull(copyText("machinePrefs.read.failed"), p.reason).joinToString(copyText("kit.text.sep"))
         Column(
             Modifier

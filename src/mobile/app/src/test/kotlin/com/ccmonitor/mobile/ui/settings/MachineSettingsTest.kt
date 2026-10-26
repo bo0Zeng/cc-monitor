@@ -4,7 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.wire.gen.Changed
-import com.ccmonitor.mobile.core.wire.gen.FailOrPlainOrWarn
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.link.Fetched
@@ -86,7 +86,7 @@ class MachineSettingsTest {
             val s = m.state.value
             assertEquals(listOf("work", "lab"), s.accounts.map { it.name })
             assertEquals("work", s.defaultAccount)
-            assertEquals("5h 63%" to FailOrPlainOrWarn.PLAIN, s.usage("personal")?.let { it.text to it.tone })
+            assertEquals("5h 63%" to Tone.PLAIN, s.usage("personal")?.let { it.text to it.tone })
             assertEquals(QuotaGolden.reply("没出过数").let { r -> (r["unseen"] as List<*>).map { ((it as Map<*, *>)["usage"] as Map<*, *>)["text"] } }, listOf("team", "api").map { s.usage(it)?.text })
             assertEquals(Tab.HIDE to Tab.SHOW, s.shown(TabKind.CHILD) to s.shown(TabKind.BG))
         }
