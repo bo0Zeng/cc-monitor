@@ -11,6 +11,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { formDialog } from "./kit/dialog";
 import { banner, type BannerTone } from "./kit/banner";
+import { el } from "./kit/el";
 import { button } from "./kit/button";
 import { fold } from "./kit/fold";
 import { icon } from "./kit/icon";
@@ -143,17 +144,11 @@ function machineOption(m: MachineOpt, chosen: Origin): SelectOption {
   };
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
 /** 一行：左标签 ＋ 右格（格里一个控件框 ＋ 一行说明 / 错误）。 */
 function row(label: string, control: HTMLElement, boxed = true): { root: HTMLElement; cell: HTMLElement; note: HTMLElement; setNote: (text: string, tone?: "error" | "warn", acts?: HTMLElement[]) => void } {
   const root = el("div");
   root.className = s.nsRow;
-  const lab = el("div", label);
+  const lab = el("div", "", label);
   lab.className = s.nsLabel;
   root.append(lab);
   const cell = el("div");
@@ -178,7 +173,7 @@ function row(label: string, control: HTMLElement, boxed = true): { root: HTMLEle
     else delete note.dataset.intent;
     if (tone === "error") cell.dataset.error = "true";
     else delete cell.dataset.error;
-    if (text) note.append(el("span", text));
+    if (text) note.append(el("span", "", text));
     note.append(...acts);
   };
   return { root, cell, note, setNote };
@@ -217,9 +212,9 @@ function forkBox(title: string): { box: HTMLElement; fromLine: HTMLElement } {
   box.appendChild(icon("fork"));
   const text = el("div");
   text.className = s.nsForkText;
-  const fromLine = el("div", copyText("newSession.fork.fromBare", { title }));
+  const fromLine = el("div", "", copyText("newSession.fork.fromBare", { title }));
   fromLine.className = s.nsForkFrom;
-  const forkNote = el("div", copyText("newSession.fork.note"));
+  const forkNote = el("div", "", copyText("newSession.fork.note"));
   forkNote.className = s.nsForkNote;
   text.append(fromLine, forkNote);
   box.appendChild(text);
@@ -238,7 +233,7 @@ function cwdField(cwd: string): { cwdInput: HTMLInputElement; recentBtn: HTMLBut
   recentBtn.type = "button";
   recentBtn.className = s.nsRecent;
   recentBtn.setAttribute("aria-label", copyText("newSession.recent.label"));
-  recentBtn.append(el("span", copyText("newSession.recent.label")), icon("caretDown", "compact"));
+  recentBtn.append(el("span", "", copyText("newSession.recent.label")), icon("caretDown", "compact"));
   const cwdWrap = el("div");
   cwdWrap.className = s.nsBox;
   cwdWrap.append(cwdInput, recentBtn);
@@ -263,7 +258,7 @@ function placeRadio(places: HTMLElement, value: "tmux" | "window"): PlaceRadio {
   t.className = s.nsPlaceText;
   const note = el("div");
   note.className = s.nsPlaceNote;
-  t.append(el("div", value === "tmux" ? copyText("newSession.place.tmux") : copyText("newSession.place.window")), note);
+  t.append(el("div", "", value === "tmux" ? copyText("newSession.place.tmux") : copyText("newSession.place.window")), note);
   label.append(input, t);
   places.appendChild(label);
   return { label, input, note };

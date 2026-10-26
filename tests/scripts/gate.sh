@@ -1280,7 +1280,7 @@ gate_mobile() {
     fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain --stacktrace ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease :app:assembleDebug || {
+      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :detekt-rules:test :app:assembleRelease :app:assembleDebug || {
       rc=$?
       # 打包那几步红而只有一句「A failure occurred …」时，盘满是头一个嫌疑：顺手印一行剩多少
       df -h . | tail -1 | sed 's/^/mobile: 盘 /'

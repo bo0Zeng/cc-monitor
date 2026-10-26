@@ -46,7 +46,7 @@ const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}):
 
 describe("buildProfilesList", () => {
   let book: ProfilesBook;
-  let writes: Array<{ changes: ProfileOp[]; fingerprint: string | null }>;
+  let writes: Array<{ changes: ProfileOp[]; ifRev: string | null }>;
   let staleOnce: boolean;
   let undoToasts: Array<{ title: string; undo: () => void; commit: () => void }>;
 
@@ -57,7 +57,7 @@ describe("buildProfilesList", () => {
       home: "/h",
       path: "/h/.cc-monitor/profiles.toml",
       exists: true,
-      fingerprint: "fp-1",
+      rev: "fp-1",
       editedAt: null,
       fileProblem: null,
       profiles: [row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名" }), row("workcc", "cc"), row("cct", "cc"), row("teamcct", "cct"), row("pcc", null)],
@@ -99,8 +99,8 @@ describe("buildProfilesList", () => {
             problem: null,
           }),
         profileImpact: () => Promise.resolve([{ name: "teamcct", changes: [{ slot: "tmux", label: "在哪起", before: "A", after: "B" }], problem: null }]),
-        writeProfiles: async (_o: string, changes: ProfileOp[], fingerprint: string | null) => {
-          writes.push({ changes, fingerprint });
+        writeProfiles: async (_o: string, changes: ProfileOp[], ifRev: string | null) => {
+          writes.push({ changes, ifRev });
           if (staleOnce) {
             staleOnce = false;
             // 那台拒了、码 stale（与线上同形：通道里的拒绝体）。
@@ -108,7 +108,7 @@ describe("buildProfilesList", () => {
             const body = new TextEncoder().encode(JSON.stringify({ code: "stale", message: "被别处改过" }));
             throw new ChanError({ layer: "peer", why: "refused", body }, "被别处改过");
           }
-          return Promise.resolve({ wrote: true, fingerprint: "fp-2", reload: null });
+          return Promise.resolve({ wrote: true, rev: "fp-2", reload: null });
         },
       };
     });
@@ -158,7 +158,7 @@ describe("buildProfilesList", () => {
     expect(clip.writeClipboard).toHaveBeenCalledWith("LINE teamcct");
   });
 
-  it("改一条：表单回填后端给的那一份；存时交 set（带原来的名字与读回时的指纹），存完收起、选中它", async () => {
+  it("改一条：表单回填后端给的那一份；存时交 set（带原来的名字与读回时的版本），存完收起、选中它", async () => {
     const { el } = await mount();
     const edit = [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link')][0];
     edit.click();
@@ -170,7 +170,7 @@ describe("buildProfilesList", () => {
     await flush();
     el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
     await flush();
-    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "work" } } }], fingerprint: "fp-1" }]);
+    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "work" } } }], ifRev: "fp-1" }]);
     expect(el.querySelector('[data-role="profile-form"]')).toBeNull();
   });
 
@@ -298,7 +298,7 @@ describe("buildProfilesList", () => {
       expect(writes).toEqual([]);
       [...box.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === create)!.click();
       await flush();
-      expect(writes).toEqual([{ changes: [{ op: "init", seed: true }], fingerprint: "fp-1" }]);
+      expect(writes).toEqual([{ changes: [{ op: "init", seed: true }], ifRev: "fp-1" }]);
     }
   });
 });

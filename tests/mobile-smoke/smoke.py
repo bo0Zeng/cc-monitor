@@ -789,7 +789,7 @@ def seed_alias():
     if any(p.get("name") == SMOKE_ALIAS for p in book.get("profiles") or []):
         return
     r = frames("profiles-write", {"changes": [{"op": "set", "was": None, "form": {"name": SMOKE_ALIAS, "tmux": {"mode": "auto"}}}],
-                                  "fingerprint": book.get("fingerprint")})
+                                  "ifRev": book.get("rev")})
     if not (r.get("data") or {}).get("wrote"):
         raise Step.Fail(f"台架建不了别名：{r!r}"[:300])
 

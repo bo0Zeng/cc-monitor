@@ -102,14 +102,13 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  * 🔴 **与上一轮那份「11 个前缀」清单的关系（这是最要紧的一条读数）**：
  * 登记了 11 个前缀，`S21` 三处说「今天的 11 个不够，至少还要加
  * `FIRST_RUN_HINT_CLASS` 这类常量拼接、第三方 `katex-*`，以及现打到的 8 处模板拼接点
- * （`settings-btn-` · `cc-bus-hooks-` · `cc-bus-online-` · `remote-test-` · `history-chip` ·
+ * （设置页按钮类前缀（那一族已随 `kit/button` 删）· `cc-bus-hooks-` · `cc-bus-online-` · `remote-test-` · `history-chip` ·
  * `bash-output-body` · `block-collapsible` · `paste-block`）」。
  *
  * **现打的答案不是"补到 19 个"，是"那三族根本不该由前缀来管"**：
  * - 常量拼接 → 归 `const-concat`（把 `${CONST}` 填回去再扫），不占前缀格；
  * - 第三方 → 归 `vendor`（从 `import "<包>/….css"` 现读），不占前缀格；
- * - 那 8 处模板拼接点里有 7 处**根本不需要登记** —— 它们拼出来的类名（`settings-btn-secondary`、
- *   `cc-bus-hooks-ok`、`history-chip`…）在别处有**直接字面量**住址，`literal` 那一档先接住了。
+ * - 那 8 处模板拼接点里有 7 处**根本不需要登记** —— 它们拼出来的类名（`cc-bus-hooks-ok`、`history-chip`…）在别处有**直接字面量**住址，`literal` 那一档先接住了。
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
  * `paste-block` 那条死规则已删）。**每条都带住址与理由，缺一条本表就不该有它。**
@@ -306,7 +305,7 @@ const DANGLING: readonly string[] = [
   "data-machine", "data-page", "data-pane", "diag-fallback", "diag-page", "has-unread",
   "history-search", "kind-ls", "machine-aliases", "machine-conn-fp", "machine-conn-toggle", "machine-page",
   "machine-page-local", "machine-page-sections", "machine-part-components", "machine-part-connection", "md", "paste-block-actions",
-  "paste-block-copy", "pf-close", "pf-start", "remote-config-unrecognized", "remote-machine-count", "remote-machine-local",
+  "paste-block-copy", "pf-close", "pf-start", "remote-config-unrecognized", "remote-machine-count", "remote-machine-local", "remote-machine-remove",
   "settings-nav-badge", "settings-section", "status-agents", "status-tasks", "tab-bar-reread", "tab-dot",
   "tab-needs-kbd", "tasks-page", "text", "turn-tip",
 ];

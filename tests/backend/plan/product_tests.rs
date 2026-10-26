@@ -302,6 +302,49 @@ fn scopes_come_through_with_their_handoff() {
     );
 }
 
+/// 「另开会话接手」那一格由后端判，只放码（字照旧在 handoff · handoffError）：
+/// 划出了、没有负责人 ⇒ open；负责人那条会话停了 ⇒ open；交接说明拿不到 ⇒ no_line；负责人在跑 ⇒ running；
+/// 负责人对不上这台的会话 ⇒ unsure（说不清停没停，不给）；划出那一项删了 ⇒ merging。
+#[test]
+fn each_scope_says_whether_a_new_session_may_take_it_over() {
+    let takeover = |d: &Value, who: WhoPort, slice: usize, block: usize| {
+        make(d, who).doc["slices"][slice]["blocks"][block]["takeover"].clone()
+    };
+    let d = dump("/w");
+    // 负责人在跑（夹具里 MAIN · SUB 都活着、在等你）⇒ 不出。
+    assert_eq!(takeover(&d, &who, 0, 0), "running");
+    assert_eq!(takeover(&d, &who, 0, 1), "running");
+    // 没有负责人、交接说明拿不到 ⇒ 出不了，写为什么。
+    assert_eq!(takeover(&d, &who, 1, 0), "no_line");
+    // 划出了、没有负责人 ⇒ 出，开口那句是 handoff。
+    let mut free = dump("/w");
+    free["repos"][0]["scopes"][1]["assignee"] = Value::Null;
+    assert_eq!(takeover(&free, &who, 0, 1), "open");
+    // 负责人那条会话停了（子 agent 看父会话）⇒ 出。
+    let ended = |id: &str| match who(id) {
+        crate::plan::Whose::Session { sid, .. } => crate::plan::Whose::Session { sid, live: None },
+        crate::plan::Whose::Subagent {
+            parent,
+            parent_title,
+            ..
+        } => crate::plan::Whose::Subagent {
+            parent,
+            parent_title,
+            live: None,
+        },
+        w => w,
+    };
+    assert_eq!(takeover(&d, &ended, 0, 1), "open");
+    assert_eq!(takeover(&d, &ended, 0, 0), "open");
+    // 负责人对不上这台 ⇒ 说不清。
+    let mut stranger = dump("/w");
+    stranger["repos"][0]["scopes"][1]["assignee"] = json!(STRANGER);
+    assert_eq!(takeover(&stranger, &who, 0, 1), "unsure");
+    // 划出那一项删了 ⇒ 不出（就算没有负责人）。
+    free["repos"][0]["scopes"][1]["listed"] = json!(false);
+    assert_eq!(takeover(&free, &who, 0, 1), "merging");
+}
+
 /// 还没执行的 sets：一片一张（带加 · 去与 pb 的原因、代号）· 每格自己写的那几条。
 #[test]
 fn pending_sets_carry_op_reason_and_code() {

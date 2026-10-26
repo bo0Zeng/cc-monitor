@@ -23,6 +23,7 @@ import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 import { buildMachinePage, localMeta, type MachinePage } from "./machine-page";
+import { button } from "../kit/button";
 import { icon, type IconName } from "../kit/icon";
 // 「重启才生效」的改动给常驻条供货（`markRestartNeeded`）。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
@@ -850,7 +851,7 @@ export class SettingsPanel {
     const resetRow = document.createElement("div");
     resetRow.className = "settings-row settings-row-end";
     resetRow.appendChild(
-      this.makeBtn(copyText("settingsPanel.appearance.reset"), "secondary", () => void this.resetAll()),
+      button({ label: copyText("settingsPanel.appearance.reset"), onClick: () => void this.resetAll() }),
     );
     appearancePage.appendChild(resetRow);
 
@@ -1251,13 +1252,12 @@ export class SettingsPanel {
     row.style.gap = "8px";
     row.style.alignItems = "center";
 
-    const openBtn = document.createElement("button");
-    openBtn.type = "button";
-    openBtn.className = "settings-btn";
-    openBtn.textContent = copyText("settingsPanel.keybindings.open");
-    openBtn.addEventListener("click", () => {
-      if (!this.kbEditor) this.kbEditor = new KeybindingsEditor({ onChange: () => this.refreshKbChip() });
-      this.kbEditor.open();
+    const openBtn = button({
+      label: copyText("settingsPanel.keybindings.open"),
+      onClick: () => {
+        if (!this.kbEditor) this.kbEditor = new KeybindingsEditor({ onChange: () => this.refreshKbChip() });
+        this.kbEditor.open();
+      },
     });
     row.appendChild(openBtn);
 
@@ -1298,17 +1298,8 @@ export class SettingsPanel {
       );
     });
     row.appendChild(this.claudeDirInput);
-    const resetBtn = document.createElement("button");
-    resetBtn.type = "button";
-    resetBtn.className = "settings-btn";
-    resetBtn.textContent = copyText("settingsPanel.dataDir.reset");
-    resetBtn.title = copyText("settingsPanel.dataDir.resetHint");
-    resetBtn.addEventListener("click", () => this.resetClaudeDir());
-    const pickBtn = document.createElement("button");
-    pickBtn.type = "button";
-    pickBtn.className = "settings-btn";
-    pickBtn.textContent = copyText("settingsPanel.dataDir.browse");
-    pickBtn.addEventListener("click", () => void this.pickClaudeDir());
+    const resetBtn = button({ label: copyText("settingsPanel.dataDir.reset"), hint: copyText("settingsPanel.dataDir.resetHint"), onClick: () => this.resetClaudeDir() });
+    const pickBtn = button({ label: copyText("settingsPanel.dataDir.browse"), onClick: () => void this.pickClaudeDir() });
     row.append(resetBtn, pickBtn);
     group.appendChild(row);
     this.claudeDirRestart = document.createElement("div");
@@ -1493,19 +1484,6 @@ export class SettingsPanel {
       this.commitTheme();
     });
     return input;
-  }
-
-  private makeBtn(
-    label: string,
-    variant: "primary" | "secondary",
-    onClick: () => void,
-  ): HTMLElement {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = variant === "primary" ? "settings-btn settings-btn-primary" : "settings-btn";
-    btn.textContent = label;
-    btn.addEventListener("click", onClick);
-    return btn;
   }
 
   // === 数据同步 ===

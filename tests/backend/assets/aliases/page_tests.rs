@@ -115,7 +115,7 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
     let t = tmp("read", Some(BOOK));
     let r = read(&t);
     assert_eq!(r["exists"], true);
-    assert!(r["fingerprint"].is_string());
+    assert!(r["rev"].is_string());
     let b = prof(&r, "teamcct");
     assert_eq!(b["from"], "cct");
     assert_eq!(b["usable"], true);
@@ -185,7 +185,7 @@ fn with_no_file_read_offers_the_first_two_as_a_seed_and_writes_nothing() {
     let t = tmp("empty", None);
     let r = read(&t);
     assert_eq!(r["exists"], false);
-    assert!(r["fingerprint"].is_null());
+    assert!(r["rev"].is_null());
     let names: Vec<&str> = r["seed"]
         .as_array()
         .unwrap()
@@ -317,8 +317,8 @@ fn bases_lists_only_what_cannot_loop_and_greys_itself() {
 }
 
 fn write(t: &Tmp, changes: Value) -> Result<Value, (&'static str, String)> {
-    let fp = read(t)["fingerprint"].clone();
-    answer_write(&t.door(), &json!({"changes": changes, "fingerprint": fp}))
+    let rev = read(t)["rev"].clone();
+    answer_write(&t.door(), &json!({"changes": changes, "ifRev": rev}))
 }
 
 #[test]
@@ -384,11 +384,11 @@ fn removing_a_base_needs_a_choice_and_each_choice_does_what_it_says() {
 }
 
 #[test]
-fn a_stale_fingerprint_writes_nothing() {
+fn a_stale_rev_writes_nothing() {
     let t = tmp("stale", Some(BOOK));
     let r = answer_write(
         &t.door(),
-        &json!({"changes": [{"op": "remove", "name": "pcc"}], "fingerprint": "0-0000000000000000"}),
+        &json!({"changes": [{"op": "remove", "name": "pcc"}], "ifRev": "0-0000000000000000"}),
     );
     assert_eq!(r.unwrap_err().0, "stale");
     assert_eq!(t.text(), BOOK);
@@ -404,6 +404,16 @@ fn edited_at_says_the_file_changed_after_cc_monitor_last_wrote_it() {
     let w = write(&t, json!([{"op": "remove", "name": "pcc"}])).unwrap();
     assert!(w.get("modified").is_none(), "{w}");
     assert!(read(&t)["editedAt"].is_null(), "刚写过 ⇒ 不说");
+    let note: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(t.0.join(relay_route_core::PROFILES_WRITTEN_REL)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        note.as_object()
+            .map(|o| o.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["rev".to_string()]),
+        "盘上那张小记录只记写出去的那一版：{note}"
+    );
     std::fs::write(
         t.0.join(relay_route_core::PROFILES_REL),
         format!("{}# 手加的一行\n", t.text()),
@@ -559,7 +569,7 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
     let bases = answer_bases(&t.door(), &json!({"name": "mycct"})).unwrap();
     let write = answer_write(
         &t.door(),
-        &json!({"changes": g["impactArgs"]["changes"], "fingerprint": read["fingerprint"]}),
+        &json!({"changes": g["impactArgs"]["changes"], "ifRev": read["rev"]}),
     )
     .unwrap();
     // 现打的那份 ＝ 金样里的夹具原样 ＋ 五口现算的回包 ＋ 登记表里五口的码集合。
@@ -681,7 +691,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     let t = tmp("pin-seed", None);
     assert_eq!(
         wire_in(&without_path_facts(read(&t)), &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"fingerprint":null,"home":"<HOME>","migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tab":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tab":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"seedCreate":"建这两条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条","tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"home":"<HOME>","migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"rev":null,"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tab":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tab":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"seedCreate":"建这两条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条","tmux":true}"#
     );
 
     let t = tmp(
@@ -701,7 +711,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     r["fileProblem"]["detail"] = json!("<DETAIL>");
     assert_eq!(
         wire_in(&r, &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"fingerprint":"33-2c4c3ef6bd89afa9","home":"<HOME>","migrated":{"count":2,"path":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"seed":[],"seedCreate":"","seedHint":"","tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"home":"<HOME>","migrated":{"count":2,"path":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","seed":[],"seedCreate":"","seedHint":"","tmux":true}"#
     );
 
     let lost = BOOK.to_string() + "\n[orphan]\nfrom = \"nope\"\n";
@@ -750,12 +760,12 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
 
     assert_eq!(
         wire_in(&write(&t, json!([{"op": "ackMigrated"}])).unwrap(), &t),
-        r#"{"fingerprint":"221-66c4ac7d0a5265d6","reload":null,"wrote":false}"#
+        r#"{"reload":null,"rev":"221-66c4ac7d0a5265d6","wrote":false}"#
     );
 
     let (code, said) = answer_write(
         &t.door(),
-        &json!({"changes": [{"op": "remove", "name": "pcc"}], "fingerprint": "0-0"}),
+        &json!({"changes": [{"op": "remove", "name": "pcc"}], "ifRev": "0-0"}),
     )
     .unwrap_err();
     assert_eq!(

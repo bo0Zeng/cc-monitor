@@ -277,9 +277,9 @@ fn argv_split(args: &[String]) -> (&[String], Option<&[String]>) {
     }
 }
 
-/// 别名文件的指纹（盘上原样的字节：长度 ＋ FNV-1a 64）。不在 ⇒ `None`。
+/// 别名文件的版本（盘上原样的字节：长度 ＋ FNV-1a 64）。不在 ⇒ `None`。
 /// 只用来认「读回之后盘上那份变没变」（写那一跳另有 CAS），不是摘要形 —— 不借文件管理面那一份 SHA-256（那是它的内部）。
-fn fingerprint_of(text: Option<&str>) -> Option<String> {
+fn rev_of(text: Option<&str>) -> Option<String> {
     text.map(|t| format!("{}-{:016x}", t.len(), cmd_wire::fnv::fnv1a64(t.as_bytes())))
 }
 
@@ -583,9 +583,9 @@ fn write_profiles(
     }
 }
 
-/// 记下这一份是 cc-monitor 写出去的（[`relay_route_core::PROFILES_WRITTEN_REL`]：只存指纹）。记不下只进日志 —— 代价只是之后少说一句「手改过」。
+/// 记下这一份是 cc-monitor 写出去的（[`relay_route_core::PROFILES_WRITTEN_REL`]：只存版本）。记不下只进日志 —— 代价只是之后少说一句「手改过」。
 fn remember_written(d: &dyn Door, home: &str, text: &str) {
-    let note = json!({ "fingerprint": fingerprint_of(Some(text)) }).to_string();
+    let note = json!({ "rev": rev_of(Some(text)) }).to_string();
     if let Err(e) = write_ours(d, home, relay_route_core::PROFILES_WRITTEN_REL, &mut |_| {
         Ok(Some(note.clone()))
     }) {
@@ -593,7 +593,7 @@ fn remember_written(d: &dyn Door, home: &str, text: &str) {
     }
 }
 
-/// 配置文件上次经 cc-monitor 写出去之后**有人改过**：盘上那份的指纹与记下的不一样。没记过（cc-monitor 没写过）· 文件不在 ⇒ `false`。
+/// 配置文件上次经 cc-monitor 写出去之后**有人改过**：盘上那份的版本与记下的不一样。没记过（cc-monitor 没写过）· 文件不在 ⇒ `false`。
 pub(crate) fn edited_since_written(d: &dyn Door, store: &Store) -> bool {
     let Some(text) = store.text.as_deref() else {
         return false;
@@ -602,12 +602,8 @@ pub(crate) fn edited_since_written(d: &dyn Door, store: &Store) -> bool {
         .ok()
         .and_then(|p| p.text)
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|v| {
-            v.get("fingerprint")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        });
-    recorded.is_some_and(|r| Some(r) != fingerprint_of(Some(text)))
+        .and_then(|v| v.get("rev").and_then(Value::as_str).map(str::to_string));
+    recorded.is_some_and(|r| Some(r) != rev_of(Some(text)))
 }
 
 /// 照配置文件生成的那几样动了什么：别名文件（要重读的那一种）动没动 · 链接动没动 · 没做成的几句。

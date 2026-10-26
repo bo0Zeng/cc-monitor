@@ -48,6 +48,8 @@ val ktlintToolVersion = libs.versions.ktlintTool.get()
 subprojects {
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
     apply(plugin = "dev.detekt") // detekt 2.0（dev.detekt 命名空间，K2 类型解析）
+    // 本仓自己的规则（出口扫描判据，`detekt-rules`）装进每个模块的 detekt；它自己不装自己。
+    if (name != "detekt-rules") dependencies.add("detektPlugins", project(":detekt-rules"))
 
     extensions.configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
         version.set(ktlintToolVersion)

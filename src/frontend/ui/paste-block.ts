@@ -35,6 +35,7 @@
 //
 // 只产出待贴文本 + 复制到剪贴板。写用户的 `~/.bashrc` / `~/.claude/settings.json`
 // 是用户明确定过调的红线，有测试守着。
+import { button } from "./kit/button";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { writeClipboard } from "./clipboard";
@@ -119,10 +120,8 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
 
   const btnRow = document.createElement("div");
   btnRow.className = "settings-row settings-row-end paste-block-actions";
-  const copyBtn = document.createElement("button");
-  copyBtn.type = "button";
-  copyBtn.className = "settings-btn paste-block-copy";
-  copyBtn.textContent = copyText("pasteBlock.buildPasteBlock.copy");
+  const copyBtn = button({ label: copyText("pasteBlock.buildPasteBlock.copy") });
+  copyBtn.classList.add("paste-block-copy");
   btnRow.appendChild(copyBtn);
   root.appendChild(btnRow);
 

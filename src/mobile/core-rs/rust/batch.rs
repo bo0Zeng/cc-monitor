@@ -1097,7 +1097,10 @@ mod tests {
         let first = seen.first().expect("那台没回之前一格都没交：屏上没有卡");
         assert_eq!(first["phase"], "running", "{seen:?}");
         assert_eq!(first["id"], 7);
-        assert!(first["frac"].is_null(), "还没有一格进度 ⇒ 不写几成：{first}");
+        assert!(
+            first["frac"].is_null(),
+            "还没有一格进度 ⇒ 不写几成：{first}"
+        );
     }
 
     /// 🔴 一组落盘的那一份 ＝ 最后发出去的入参（带票 · 带答过的 `decide`）＋ 断开时的完成数：开始时写、答了重写、断开重写、收场删；

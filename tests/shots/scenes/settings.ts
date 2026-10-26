@@ -9,7 +9,7 @@ import { HOME, putAccounts, putPrefs, putQuota } from "../disk";
 import { ACCOUNTS } from "../fake/ops";
 import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfileAccounts, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
 import { emit } from "@tauri-apps/api/event";
-import { byText, click, sleep, waitFor } from "./helpers";
+import { byText, click, sleep, until, waitFor } from "./helpers";
 
 function settings(id: string, title: string, desc: string, act: Scene["act"], world: () => World = defaultWorld, height = 740, width = 960): Scene {
   return { id, page: "settings", dir: "设置", title, desc, width, height, world, act };
@@ -159,11 +159,12 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-ssh-import-taken", "设置 · 添加机器 · 撞名", "从 ~/.ssh/config 选：build-02 改名成 gpu-01（列表里已有），就地拦", async () => {
     await go("machines");
     await click(await byText("button", "添加机器"));
-    await sleep(1200);
-    const box = [...document.querySelectorAll<HTMLInputElement>(".add-machine-row input[type=text]")].find((i) => i.value === "build-02")!;
+    // 那一行要等真后端逐个 `ssh -G` 读完才画出来：等它出现，不按固定时长猜。
+    const box = await until(() => [...document.querySelectorAll<HTMLInputElement>(".add-machine-row input[type=text]")].find((i) => i.value === "build-02"));
     box.value = "gpu-01";
     box.dispatchEvent(new Event("input", { bubbles: true }));
-    await sleep(800);
+    // 撞名由后端判、落回那一格（`aria-invalid`）：等它落下。
+    await until(() => (box.getAttribute("aria-invalid") === "true" ? box : null));
   }),
   settings("settings-stop-interrupts", "设置 · 停止前问会打断什么", "devbox「这台上的 cc-monitor」点［停止…］：中断几项 · 保留会话照跑", async () => {
     await go("machine:devbox");
@@ -270,9 +271,9 @@ export const SETTINGS_SCENES: Scene[] = [
     async () => {
       await go("data");
       await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
-      await sleep(400);
       await click(await byText(".settings-page:not([hidden]) .data-chip", "gpu-01"));
-      await sleep(700);
+      // 那台断开 ⇒ 读回不成、警告条落下：等它出来。
+      await waitFor(".settings-page:not([hidden]) .data-offline:not([hidden]) [role]");
     },
     troubleWorld,
   ),
@@ -495,9 +496,7 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machine-disabled-conn", "设置 · 停用的那台 · 连接设置", "gpu-01 卡头展开「连接设置」：「连接这台」关着", async () => {
     await go("machine:gpu-01");
     await click(await byText(".settings-page:not([hidden]) button", "连接设置"));
-    await sleep(400);
-    document.querySelector(".settings-page:not([hidden]) .machine-conn-switch")?.scrollIntoView({ block: "center" });
-    await sleep(300);
+    (await waitFor(".settings-page:not([hidden]) .machine-conn-switch")).scrollIntoView({ block: "center" });
   }, disabledWorld),
   settings("settings-machines-trouble", "设置 · 机器 · 一台断开", "gpu-01 断开：机器列表里那一行的样子", async () => {
     await go("machines");
@@ -655,10 +654,11 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machine-port-range", "设置 · 远端 · 端口越界", "devbox 的端口填 70000", async () => {
     await go("machine:devbox");
     await click(await byText(".settings-page:not([hidden]) button", "连接设置"));
-    const port = document.querySelector<HTMLInputElement>('.settings-page:not([hidden]) input[type="number"]')!;
+    const port = await waitFor<HTMLInputElement>('.settings-page:not([hidden]) input[type="number"]');
     port.value = "70000";
     port.dispatchEvent(new Event("change"));
-    await sleep(700);
+    // 越界由后端判、落回那一格：等它标红。
+    await waitFor('.settings-page:not([hidden]) input[type="number"][aria-invalid="true"]');
   }),
   settings("settings-appearance-font-size-range", "设置 · 外观 · 字号越界", "基础字号填 1", async () => {
     await go("appearance");
