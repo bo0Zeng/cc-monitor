@@ -3385,3 +3385,28 @@ async fn a_moved_directory_re_asks_only_the_tabs_showing_it_with_their_held() {
     );
     crate::find::testing::synth_fs::remove_all(&root);
 }
+
+/// 🔴 退出 cc-monitor 那一问的这一半：窗口手上「会打断什么」的数（与关窗那一问同一份 `close_ask`）变了才告诉 monitor 一次，没变不再说。
+/// 有一份没存 ⇒ 说 `{unsaved: 1}`；同一个样子再问 ⇒ 不说；存掉（改回原样）⇒ 说回 0。
+#[test]
+fn the_window_tells_the_monitor_its_unsaved_count_only_when_it_changes() {
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    assert_eq!(ws.busy_to_tell(), None, "什么都没有，开窗起就不该先说一句");
+    open_text(ws.pane_on_mut(1), "x\n");
+    *ws.pane_on_mut(1).editing_text_mut().unwrap() = "x2\n".into();
+    assert_eq!(
+        ws.busy_to_tell(),
+        Some(filewin_contract::Busy {
+            unsaved: 1,
+            running: 0
+        }),
+        "有一份没存，没告诉 monitor"
+    );
+    assert_eq!(ws.busy_to_tell(), None, "数没变又说了一次");
+    *ws.pane_on_mut(1).editing_text_mut().unwrap() = "x\n".into();
+    assert_eq!(
+        ws.busy_to_tell(),
+        Some(filewin_contract::Busy::default()),
+        "改回原样了，没告诉 monitor 回到 0"
+    );
+}

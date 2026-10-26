@@ -37,11 +37,25 @@ where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    serve_with(rd, wr, Arc::new(InboundBackends));
+    // 这扇窗在「会打断什么」那张表上的编号：它说的记在这一格，管子断了这一格删掉（`filewin/busy.rs`）。
+    let book = busy::book();
+    let id = book.enrol();
+    serve_then(rd, wr, Arc::new(WindowBackends { id }), move || {
+        book.forget(id);
+    });
 }
 
 /// 同上，句柄是入参（判据挂合成句柄）。
 pub fn serve_with<R, W>(rd: R, wr: W, backends: Arc<dyn Backends>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    serve_then(rd, wr, backends, || {});
+}
+
+/// 同上，那一对管子走了之后再做 `after`（不论正常走还是坏了）。
+fn serve_then<R, W>(rd: R, wr: W, backends: Arc<dyn Backends>, after: impl FnOnce() + Send + 'static)
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -60,7 +74,47 @@ where
             Ended::Left => {}
             Ended::Broken(why) => tracing::warn!("通道：窗口进程那一对管子坏了，已关（{why}）"),
         }
+        after();
     });
+}
+
+/// 一扇文件窗口那条通道上的句柄：它说「手上有什么会被打断」（[`filewin_contract::FILEWIN_BUSY_OP`]）记进它那一格，别的一切照 [`InboundBackends`]。
+struct WindowBackends {
+    id: u64,
+}
+
+impl Backends for WindowBackends {
+    fn call(
+        &self,
+        origin: Origin,
+        op: Op,
+        payload: Body,
+        view: Option<serde_json::Value>,
+        left: Duration,
+        cancel: CancelToken,
+    ) -> BoxFuture<'static, Result<Body, CallError>> {
+        if op.0 == filewin_contract::FILEWIN_BUSY_OP {
+            let said = busy::book().said(self.id, &payload.0);
+            return Box::pin(async move {
+                said.map(|()| Body(b"{}".to_vec()))
+                    .map_err(|_| OursFault::Misuse.into())
+            });
+        }
+        InboundBackends.call(origin, op, payload, view, left, cancel)
+    }
+
+    fn subscribe(
+        &self,
+        origin: Origin,
+        kind: Kind,
+        from: Option<Cursor>,
+    ) -> BoxStream<'static, Item> {
+        InboundBackends.subscribe(origin, kind, from)
+    }
+
+    fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
+        InboundBackends.offer(origin)
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -76,7 +130,9 @@ const HOP: u8 = 1;
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
-pub(crate) const HOST_OPS: [&str; 7] = [
+/// 窗口说「手上有什么会被打断」那一条由窗口那条通道的句柄（[`WindowBackends`]）接；从别处（主界面）来的这一条是用错了。
+pub(crate) const HOST_OPS: [&str; 8] = [
+    filewin_contract::FILEWIN_BUSY_OP,
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
     crate::sftp_pool::TRANSFER_COPY,
@@ -141,6 +197,9 @@ impl InboundBackends {
         //    其余一切照旧按 `origin` 去 `inbound_client`。
         // 通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
         if HOST_OPS.contains(&op.0.as_str()) {
+            if op.0 == filewin_contract::FILEWIN_BUSY_OP {
+                return Box::pin(async { Err(OursFault::Misuse.into()) });
+            }
             if crate::sftp_pool::is_transfer_op(&op.0) {
                 return Box::pin(transfer_open(origin, op, payload));
             }
@@ -565,3 +624,94 @@ mod transfer_stream_tests;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/chan/changed_stream_tests.rs"]
 mod changed_stream_tests;
+
+/// 各文件窗口「手上有什么会被打断」那张表：窗口在数变了时说一句（[`filewin_contract::FILEWIN_BUSY_OP`]，发在窗口那头 `workspace.rs::settle_busy`），
+/// 那扇窗的通道句柄（[`WindowBackends`]）记进它那一格，管子断了（[`serve_window`] 收尾）删掉；退出 / 重启 cc-monitor 那一问经 Tauri 命令
+/// [`filewin_interrupts`] 现读加起来的数（界面 `settings/interrupts.ts`），界面那头不存一份。
+/// 买不到：窗口说了之后、下一句到之前那一小段里的变化；窗口进程卡死、管子还连着 ⇒ 它最后说的那一份照算。
+pub mod busy {
+    use filewin_contract::Busy;
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Mutex, OnceLock};
+
+    /// 退出那一问要的加总：手上有事的窗口几扇 · 没存的几份 · 还在跑的几趟。
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+    #[cfg_attr(test, derive(ts_rs::TS))]
+    #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+    #[serde(rename_all = "camelCase")]
+    pub struct FilewinTotals {
+        pub windows: u32,
+        pub unsaved: u32,
+        pub running: u32,
+    }
+
+    /// 那张表：窗口编号 → 它最后说的那一份。
+    #[derive(Default)]
+    pub struct Book {
+        next: AtomicU64,
+        rows: Mutex<BTreeMap<u64, Busy>>,
+    }
+
+    impl Book {
+        /// 一扇新窗接上了：给它一个编号（一个进程内不重复）。
+        pub fn enrol(&self) -> u64 {
+            self.next.fetch_add(1, Ordering::Relaxed)
+        }
+
+        /// 那扇窗说了它此刻的数。
+        pub fn set(&self, id: u64, busy: Busy) {
+            if let Ok(mut rows) = self.rows.lock() {
+                rows.insert(id, busy);
+            }
+        }
+
+        /// 窗口在通道上说的那一句（[`filewin_contract::FILEWIN_BUSY_OP`] 的载荷）；解不出 ⇒ `Err`、表不动（不当成 0 记）。
+        ///
+        /// # Errors
+        ///
+        /// 载荷不是 [`Busy`] 那个形状。
+        pub fn said(&self, id: u64, payload: &[u8]) -> Result<(), serde_json::Error> {
+            let busy: Busy = serde_json::from_slice(payload)?;
+            self.set(id, busy);
+            Ok(())
+        }
+
+        /// 那扇窗的管子断了：它那一份不再算。
+        pub fn forget(&self, id: u64) {
+            if let Ok(mut rows) = self.rows.lock() {
+                rows.remove(&id);
+            }
+        }
+
+        /// 此刻加起来的数（说回 0 的窗口不算「手上有事」）。
+        pub fn total(&self) -> FilewinTotals {
+            let Ok(rows) = self.rows.lock() else {
+                return FilewinTotals::default();
+            };
+            rows.values()
+                .filter(|b| **b != Busy::default())
+                .fold(FilewinTotals::default(), |t, b| FilewinTotals {
+                    windows: t.windows.saturating_add(1),
+                    unsaved: t.unsaved.saturating_add(b.unsaved),
+                    running: t.running.saturating_add(b.running),
+                })
+        }
+    }
+
+    /// 进程里那一张。
+    pub fn book() -> &'static Book {
+        static BOOK: OnceLock<Book> = OnceLock::new();
+        BOOK.get_or_init(Book::default)
+    }
+}
+
+/// IPC：退出 / 重启 cc-monitor 之前，各文件窗口手上会被打断的加起来（现读 [`busy`] 那张表）。
+#[tauri::command]
+pub fn filewin_interrupts() -> busy::FilewinTotals {
+    busy::book().total()
+}
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/filewin/busy_tests.rs"]
+mod busy_tests;
