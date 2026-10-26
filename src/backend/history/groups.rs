@@ -43,7 +43,28 @@ pub(crate) struct HereGroup {
     pub(crate) made: i64,
 }
 
-/// 这台一条带组或固定的会话：在哪几组 · 固没固定 · 此刻活不活（这台判的）。
+/// 复活一个标签要的那几格（重启后那条会话没有活进程，照它造灰标签）：这台照自己那份清单那一行给。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct MemberFacts {
+    /// 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) title: Words,
+    /// 项目目录（清单里没有那一条 ⇒ 缺）。
+    pub(crate) cwd: Option<String>,
+    /// 记录文件（resume 照它；清单里没有 ⇒ 缺）。
+    pub(crate) record: Option<String>,
+    /// 上次跑在哪个号下（没记 ⇒ 缺）。
+    pub(crate) account: Option<String>,
+    /// 后台会话。
+    pub(crate) bg: bool,
+    /// 最后活动（毫秒；清单里没有 ⇒ 缺）。
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) at: Option<i64>,
+}
+
+/// 这台一条带组或固定的会话：在哪几组 · 固没固定 · 这台此刻给它画的样子 · 复活那几格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -51,7 +72,8 @@ pub(crate) struct HereMember {
     pub(crate) sid: String,
     pub(crate) groups: Vec<String>,
     pub(crate) pinned: bool,
-    pub(crate) life: RowLife,
+    pub(crate) face: SessionFace,
+    pub(crate) facts: MemberFacts,
 }
 
 /// `groups-here` 的回包：这台那一半。
@@ -63,8 +85,11 @@ pub(crate) struct GroupsHere {
     pub(crate) members: Vec<HereMember>,
 }
 
-/// 这台那一半（注解 · 组本 · 活不活由调用方给）：组照 id 排；会话只带有组或固定的，照 sid 排。
-pub(crate) fn here_of(table: &Table, book: &Book, life: impl Fn(&str) -> RowLife) -> GroupsHere {
+/// 一条组员此刻的样子 ＋ 复活那几格（这台判的）。
+pub(crate) type Seen = (SessionFace, MemberFacts);
+
+/// 这台那一半（注解 · 组本 · 每条的样子与那几格由调用方给）：组照 id 排；会话只带有组或固定的，照 sid 排。
+pub(crate) fn here_of(table: &Table, book: &Book, seen: impl Fn(&str) -> Seen) -> GroupsHere {
     GroupsHere {
         groups: book
             .iter()
@@ -77,24 +102,77 @@ pub(crate) fn here_of(table: &Table, book: &Book, life: impl Fn(&str) -> RowLife
         members: table
             .iter()
             .filter(|(_, e)| !e.groups.is_empty() || e.pinned)
-            .map(|(sid, e)| HereMember {
-                sid: sid.clone(),
-                groups: e.groups.clone(),
-                pinned: e.pinned,
-                life: life(sid),
+            .map(|(sid, e)| {
+                let (face, facts) = seen(sid);
+                HereMember {
+                    sid: sid.clone(),
+                    groups: e.groups.clone(),
+                    pinned: e.pinned,
+                    face,
+                    facts,
+                }
             })
             .collect(),
     }
 }
 
-/// 这台的组那一半此刻的记号（不看活不活）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
+/// 这台清单的行 ⇒ 每条的样子与那几格（样子 · 标题照清单那一行同一处判：[`super::history_list::face_and_label`]）。
+pub(crate) fn seen_from(
+    rows: Vec<cmd_wire::listing::RawRow>,
+    table: &Table,
+) -> BTreeMap<String, Seen> {
+    rows.into_iter()
+        .filter(|r| {
+            table
+                .get(&r.session_id)
+                .is_some_and(|e| !e.groups.is_empty() || e.pinned)
+        })
+        .map(|r| {
+            let facts_of = |label: String| MemberFacts {
+                title: Words(label),
+                cwd: (!r.project_path.is_empty()).then(|| r.project_path.clone()),
+                record: (!r.jsonl_path.is_empty()).then(|| r.jsonl_path.clone()),
+                account: r.last_account.clone(),
+                bg: r.is_bg,
+                at: Some(r.updated_at),
+            };
+            let sid = r.session_id.clone();
+            let (face, label) = super::history_list::face_and_label(r.clone(), Some(table));
+            (sid, (face, facts_of(label)))
+        })
+        .collect()
+}
+
+/// 清单里没有的那一条（记录已不在 · 还没落盘）：样子照活会话表，标题照注解（没有 ⇒ 清单那一句「没名字」）。
+pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: RowLife) -> Seen {
+    let label = super::search_rules::session_label(&super::search_rules::LabelFacts {
+        custom: entry.and_then(|e| e.custom_title.clone()),
+        title: None,
+        first: String::new(),
+        project_dir: None,
+    })
+    .0;
+    (
+        SessionFace::of(crate::wire::Life::of_row(Some(life))),
+        MemberFacts {
+            title: Words(label),
+            cwd: None,
+            record: None,
+            account: None,
+            bg: false,
+            at: None,
+        },
+    )
+}
+
+/// 这台的组那一半此刻的记号（不看样子与那几格）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
 pub(crate) fn mark(table: &Table, book: &Book) -> u64 {
-    let half = here_of(table, book, |_| RowLife::Ended);
+    let half = here_of(table, book, |_| unlisted(None, RowLife::Ended));
     let bytes = serde_json::to_vec(&half).unwrap_or_default();
     crate::common::digest::Fnv::default().part(&bytes).value()
 }
 
-/// 这台那一半（生产：这台那份注解文件 ＋ 这台那张活会话表）。推不出家 · 读不懂 ⇒ 那一句。
+/// 这台那一半（生产：这台那份注解文件 ＋ 这台的清单 ＋ 活会话表）。推不出家 · 读不懂 ⇒ 那一句。
 fn here_now() -> Result<GroupsHere, String> {
     let (table, book) = notes::load_all().unwrap_or_else(|| {
         Err(copy_core::copy_text(
@@ -102,8 +180,17 @@ fn here_now() -> Result<GroupsHere, String> {
             &[("env", creds_core::store::DATA_DIR_ENV)],
         ))
     })?;
+    // 清单读不了 ⇒ 每条照活会话表画、那几格缺（组照出，组员不漏）。
+    let rows = super::history_list::machine_listing()
+        .map(|l| l.rows)
+        .unwrap_or_default();
+    let seen = seen_from(rows, &table);
     let live = super::live_table::now(&super::listing::agent_home());
-    Ok(here_of(&table, &book, |sid| live.life_of(sid)))
+    Ok(here_of(&table, &book, |sid| {
+        seen.get(sid)
+            .cloned()
+            .unwrap_or_else(|| unlisted(table.get(sid), live.life_of(sid)))
+    }))
 }
 
 codes! {
@@ -163,7 +250,7 @@ pub(crate) enum GroupKnown {
     Unknown,
 }
 
-/// 组里一条会话：哪台 · 哪条 · 固没固定 · 那张脸（那台这一问没答 ⇒ 看不见的那一张）。
+/// 组里一条会话：哪台 · 哪条 · 固没固定 · 那张脸（那台这一问没答 ⇒ 看不见的那一张）· 复活那几格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -173,6 +260,7 @@ pub(crate) struct GroupMember {
     pub(crate) sid: String,
     pub(crate) pinned: bool,
     pub(crate) face: SessionFace,
+    pub(crate) facts: MemberFacts,
 }
 
 /// 组头那一颗点：几条 ＋ 那颗点的名字（照组员那张脸上的字）。只出有的那几样，序：需手动 · 在跑 · 后台。
@@ -379,16 +467,18 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
             Half::None => continue,
         };
         for m in &here.members {
+            // 这一问答了 ⇒ 那台画的样子；上次所知 ⇒ 看不见的那一张（不冒充在跑）。
             let face = if seen {
-                SessionFace::of(crate::wire::Life::of_row(Some(m.life.clone())))
+                m.face.clone()
             } else {
-                SessionFace::of(crate::wire::Life::Unseen)
+                crate::wire::unseen_face()
             };
             let row = GroupMember {
                 origin: origin.clone(),
                 sid: m.sid.clone(),
                 pinned: m.pinned,
                 face,
+                facts: m.facts.clone(),
             };
             if m.pinned {
                 pinned.push(row.clone());

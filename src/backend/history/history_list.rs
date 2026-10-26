@@ -499,6 +499,15 @@ struct Finished {
     hidden: Option<cmd_wire::session::Hidden>,
 }
 
+/// 一行的样子与显示标题（组员那一行照它：与清单这一行同一处判，`history/groups.rs`）。
+pub(crate) fn face_and_label(
+    raw: RawRow,
+    ann: Option<&Table>,
+) -> (crate::wire::SessionFace, String) {
+    let f = finish_row(raw, ann);
+    (f.face, f.label)
+}
+
 /// 并上这台的注解（那一台的行也并这台的：注解只住本机），判 `face` · `label` · `untitled`。
 fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
     let meta = ann

@@ -10,6 +10,8 @@
 //! | G6 | 这台那一半：家在这台的组 ＋ 带组或固定的会话（各带此刻活不活） |
 //! | G7 | 建 · 改名 · 解散只在家那台；名字空白 · 过长拒；不是这台的组 ⇒ 拒、文件不动 |
 //! | G8 | 组那一节认不出的键原样留着；读不懂的文件拒写、一个字节不动 |
+//! | G9 | 组员 · 固定那一行带着复活要的几格（标题 · 目录 · 记录 · 号 · 后台 · 最后活动），照那台给的原样过 `groups-read` |
+//! | G10 | 这台给的那几格照清单那一行出：改过的标题优先、记录路径 · 号 · 目录照行；清单里没有的照活会话表画样子、标题照注解，没有就是清单那一句「没名字」 |
 
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
@@ -22,12 +24,30 @@ fn m(name: &str) -> Machine {
     Machine(name.into())
 }
 
+fn face(life: RowLife) -> cmd_wire::frame::SessionFace {
+    use crate::wire::SessionFaceExt as _;
+    cmd_wire::frame::SessionFace::of(crate::wire::Life::of_row(Some(life)))
+}
+
+/// 复活那几格（占位的值，照真东西的形状）。
+fn facts(sid: &str) -> MemberFacts {
+    MemberFacts {
+        title: format!("标题-{sid}").into(),
+        cwd: Some(format!("/w/{sid}")),
+        record: Some(format!("/r/{sid}.jsonl")),
+        account: Some("work".into()),
+        bg: false,
+        at: Some(42),
+    }
+}
+
 fn member(sid: &str, groups: &[&str], pinned: bool, life: RowLife) -> HereMember {
     HereMember {
         sid: sid.into(),
         groups: groups.iter().map(|g| g.to_string()).collect(),
         pinned,
-        life,
+        face: face(life),
+        facts: facts(sid),
     }
 }
 
@@ -226,11 +246,12 @@ fn g6_this_machines_half_is_its_groups_and_its_grouped_or_pinned_sessions() {
         },
     );
     let got = here_of(&t, &book, |sid| {
-        if sid == "s1" {
+        let life = if sid == "s1" {
             running()
         } else {
             RowLife::Ended
-        }
+        };
+        (face(life), facts(sid))
     });
     assert_eq!(
         got.groups,
@@ -242,7 +263,8 @@ fn g6_this_machines_half_is_its_groups_and_its_grouped_or_pinned_sessions() {
     );
     let sids: Vec<&str> = got.members.iter().map(|x| x.sid.as_str()).collect();
     assert_eq!(sids, ["s1", "s2"], "只带有组或固定的");
-    assert_eq!(got.members[0].life, running());
+    assert_eq!(got.members[0].face, face(running()), "样子是这台算的");
+    assert_eq!(got.members[1].facts, facts("s2"), "复活那几格跟着走");
 }
 
 fn temp_dir(tag: &str) -> PathBuf {
@@ -358,4 +380,86 @@ fn g8_unknown_keys_in_the_groups_section_survive_and_an_unreadable_file_is_never
     let before = std::fs::read(&p).unwrap();
     assert!(write(&own, GroupsWriteReq::Make { name: "丙".into() }).is_err());
     assert_eq!(std::fs::read(&p).unwrap(), before);
+}
+
+#[tokio::test]
+async fn g9_member_rows_carry_what_resurrecting_a_tab_needs() {
+    let kept = Kept::default();
+    let b = serde_json::to_string(&GroupsHere {
+        groups: vec![HereGroup {
+            id: "g1".into(),
+            name: "开发".into(),
+            made: 7,
+        }],
+        members: vec![member("s-b", &["g1"], true, RowLife::Ended)],
+    })
+    .unwrap();
+    let got = read(&Peers::new(&[("devbox", b)]), &kept, 1_000).await;
+    let g = &got.groups[0];
+    let sb = g.members.iter().find(|x| x.sid == "s-b").expect("组员");
+    assert_eq!(sb.facts, facts("s-b"), "照那台给的原样");
+    let pin = got
+        .pinned
+        .iter()
+        .find(|x| x.sid == "s-b")
+        .expect("固定那一行");
+    assert_eq!(pin.facts, facts("s-b"));
+    assert_eq!(pin.origin.0, "devbox");
+}
+
+fn raw_row(sid: &str, life: Option<RowLife>) -> cmd_wire::listing::RawRow {
+    let mut v = serde_json::json!({
+        "agent": "claude",
+        "sessionId": sid,
+        "projectPath": "/w/app",
+        "projectName": "app",
+        "aiTitle": "修登录",
+        "firstUserExcerpt": "第一句",
+        "title": "修登录",
+        "startedAt": 1,
+        "updatedAt": 99,
+        "jsonlPath": format!("/r/{sid}.jsonl"),
+        "life": null,
+        "messageCountApprox": 3,
+        "isBg": true,
+        "starred": false,
+        "customTitle": null,
+        "projectDir": "-w-app",
+        "group": "claude:/w/app",
+        "lastAccount": "work",
+    });
+    v["life"] = serde_json::to_value(life).unwrap();
+    serde_json::from_value(v).expect("清单行的形状")
+}
+
+#[test]
+fn g10_this_machines_facts_come_from_its_listing_row() {
+    let mut t = crate::history::history_annotations::Table::new();
+    t.insert(
+        "s1".into(),
+        cmd_wire::listing::Entry {
+            custom_title: Some("改过的".into()),
+            groups: vec!["g1".into()],
+            ..Default::default()
+        },
+    );
+    let seen = seen_from(vec![raw_row("s1", Some(running()))], &t);
+    let (f, x) = seen.get("s1").expect("清单里那一条");
+    assert_eq!(f.dot, cmd_wire::frame::SessionDot::Running);
+    assert_eq!(x.title.0, "改过的", "改过的标题优先");
+    assert_eq!(x.cwd.as_deref(), Some("/w/app"));
+    assert_eq!(x.record.as_deref(), Some("/r/s1.jsonl"));
+    assert_eq!(x.account.as_deref(), Some("work"));
+    assert!(x.bg);
+    assert_eq!(x.at, Some(99));
+    let (f, x) = unlisted(t.get("s1"), running());
+    assert_eq!(f.dot, cmd_wire::frame::SessionDot::Running, "照活会话表");
+    assert_eq!(x.record, None);
+    assert_eq!(x.title.0, "改过的", "改过的标题照注解");
+    let (_, x) = unlisted(None, RowLife::Ended);
+    assert_eq!(
+        x.title.0,
+        copy_core::copy_text("history.row.untitled", &[]),
+        "没名字照清单那一句"
+    );
 }
