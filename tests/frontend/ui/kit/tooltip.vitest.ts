@@ -487,3 +487,79 @@ describe("接管 title 不丢读屏名、全文已显示就不重复出", () => 
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("整理这周的笔记");
   });
 });
+
+describe("单行件（`.one-line`）自己带悬停全名：截断了出自己的正文，没截断让给外层的说明", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    hideTooltips();
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(1000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const truncate = (el: HTMLElement): void => {
+    Object.defineProperty(el, "scrollWidth", { configurable: true, value: 300 });
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: 120 });
+  };
+  const over = (el: HTMLElement): void => {
+    el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+  };
+  const out = (el: HTMLElement): void => {
+    el.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    vi.advanceTimersByTime(1000);
+  };
+  const shown = (): string | null => document.querySelector('[role="tooltip"]')?.textContent ?? null;
+
+  it("★ 截断了、没写 title ⇒ 悬停出它整句正文（指针落在里面那几截上也一样）", () => {
+    adoptNativeTitles(document);
+    const line = document.createElement("span");
+    line.className = "one-line";
+    const a = document.createElement("span");
+    a.textContent = "整理这周的笔记";
+    line.append(a, document.createTextNode(" · 第二截"));
+    document.body.appendChild(line);
+    truncate(line);
+    over(a);
+    expect(shown()).toBe("整理这周的笔记 · 第二截");
+  });
+
+  it("没截断 ⇒ 不出", () => {
+    adoptNativeTitles(document);
+    const line = document.createElement("span");
+    line.className = "one-line";
+    line.textContent = "整理这周的笔记";
+    document.body.appendChild(line);
+    over(line);
+    expect(tipsInBody()).toBe(0);
+  });
+
+  it("★ 在带说明的宿主里：没截断 ⇒ 出外层那句说明；截断了 ⇒ 出全名", () => {
+    adoptNativeTitles(document);
+    const row = document.createElement("div");
+    row.title = "点开看它的窗口";
+    const line = document.createElement("span");
+    line.className = "one-line";
+    line.textContent = "整理这周的笔记";
+    row.appendChild(line);
+    document.body.appendChild(row);
+    over(line);
+    expect(shown()).toBe("点开看它的窗口");
+    out(line);
+    truncate(line);
+    over(line);
+    expect(shown()).toBe("整理这周的笔记");
+  });
+
+  it("单行件自己写了说明（title）⇒ 出那句说明，不换成正文", () => {
+    adoptNativeTitles(document);
+    const line = document.createElement("span");
+    line.className = "one-line";
+    line.textContent = "1. 整理这周的笔记";
+    line.title = "跳不过去：那一轮已被压缩";
+    document.body.appendChild(line);
+    truncate(line);
+    over(line);
+    expect(shown()).toBe("跳不过去：那一轮已被压缩");
+  });
+});

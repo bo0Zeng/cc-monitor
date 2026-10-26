@@ -8,6 +8,8 @@
  *    `composes: one-line from global`，全局 CSS 画的那几处在 TS 里挂这个类 ⇒ 别处再写一份 `text-overflow` 就红。
  * ② 登记的右侧按钮组：不缩（宽度固定，永远不被压）。
  * ③ 标签页行尾按钮盖在标题尾巴上：底色每一层都垫着不透的 `--bg-2`（只写半透明的选中色 ⇒ 标题字透出来，就是那次撞见的样子）。
+ * ④ 悬停给全名只住一处：单行件截断了，悬停出它自己的正文由 `kit/tooltip.ts` 给（行为测在 `kit/tooltip.vitest.ts`）⇒
+ *    TS 里再写 `X.title = <X 自己的正文>` 就红。显示的不是全文、悬停给另一句的是说明，照旧写 title。
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
@@ -116,5 +118,35 @@ describe("单行文字不压按钮", () => {
     });
     nonEmpty(backgrounds);
     for (const b of backgrounds) expect(b, "最底层不是 --bg-2 ⇒ 半透明，标题字会透出来").toMatch(/(^|,)\s*var\(--bg-2\)\s*$/);
+  });
+});
+
+/** 一段 TS 里「title 就是自己的正文」那几行：`行号: 那一句`。三种写法：`X.title = X.textContent` · 同一份里 `X.textContent = 同一式` · `const X = el(…, 同一式)`。 */
+function ownTextTitles(ts: string): string[] {
+  const hits: string[] = [];
+  for (const m of ts.matchAll(/([\w$.]+)\.title = ([^;\n]+);/g)) {
+    const [whole, rx, rhs] = m as unknown as [string, string, string];
+    const esc = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const same =
+      rhs === `${rx}.textContent` ||
+      rhs === `${rx}.textContent ?? ""` ||
+      new RegExp(`${esc(rx)}\\.textContent = ${esc(rhs)};`).test(ts) ||
+      new RegExp(`const ${esc(rx)} = el\\([^;]*, ${esc(rhs)}\\);`).test(ts);
+    if (same) hits.push(`${ts.slice(0, m.index).split("\n").length}: ${whole}`);
+  }
+  return hits;
+}
+
+describe("悬停给全名只住 kit 一处", () => {
+  it("④ 正控：认得出三种写法，说明（另一句）不算", () => {
+    expect(ownTextTitles("a.title = a.textContent;")).toEqual(["1: a.title = a.textContent;"]);
+    expect(ownTextTitles('a.b.textContent = name;\na.b.title = name;')).toEqual(["2: a.b.title = name;"]);
+    expect(ownTextTitles('const c = el("span", "x", machineName(m));\nc.title = machineName(m);')).toEqual(["2: c.title = machineName(m);"]);
+    expect(ownTextTitles('a.textContent = name;\na.title = copyText("x.hint");')).toEqual([]);
+  });
+
+  it("④ TS 里没有「title ＝ 自己正文」（单行件截断了，悬停全名由 kit/tooltip 给）", () => {
+    const ts = nonEmpty(files.filter((f) => f.endsWith(".ts") && !f.endsWith(".d.css.ts")));
+    expect(ts.flatMap((f) => ownTextTitles(readFileSync(f, "utf8")).map((h) => `${relative(SRC, f)}:${h}`))).toEqual([]);
   });
 });

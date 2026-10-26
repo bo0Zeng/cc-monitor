@@ -135,7 +135,6 @@ export function sessionRow(
   const t = document.createElement("span");
   t.className = s.hvTitle;
   t.textContent = labelOf(r);
-  t.title = labelOf(r);
   if (r.untitled) t.dataset.untitled = "true";
   l1.appendChild(t);
   const badges = rowBadges(r, needs, o.compact);
@@ -219,7 +218,6 @@ export function groupHead(
   const p = document.createElement("span");
   p.className = s.hvGroupPath;
   p.textContent = g.projectPath;
-  p.title = g.projectPath;
   el.appendChild(p);
   if (g.failed !== null) {
     const f = document.createElement("span");

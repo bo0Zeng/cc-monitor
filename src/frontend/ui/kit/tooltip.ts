@@ -231,22 +231,32 @@ export function delegateTooltip(root: HTMLElement, selector: string, content: (e
   });
 }
 
+/** 会出提示的宿主：带说明（`title`，接管后在 `data-kit-title`）的，与单行件（`.one-line`，截断了出自己的正文）。 */
+const HOST = "[title], [data-kit-title], .one-line";
+const titled = (el: HTMLElement): boolean => el.hasAttribute("title") || el.dataset.kitTitle !== undefined;
+/** 放不下、被截断了。 */
+const cut = (el: HTMLElement): boolean => el.scrollWidth > el.clientWidth + 1;
+
 /**
  * 全产品的 `title` 属性改走本模块的悬停提示：系统自己画的那种提示（WebKitGTK 黑底白字 · WebView2 各版本各样）不跟主题、
  * 不按 500ms 节奏、也不摆在宿主上方。带 `title` 的元素一挂上（或代码改了它的 `title`）就把它挪进 `data-kit-title`（系统提示就不出了），
- * 再按这里的节奏出提示；指针 / 焦点进来那一刻再兜一次。三个窗口的入口各装一次（`entry-common.ts`）。
+ * 再按这里的节奏出提示；指针 / 焦点进来那一刻再兜一次。单行件（`.one-line`）不写 title：截断了悬停就出它自己的正文（全名只这一处给）。三个窗口的入口各装一次（`entry-common.ts`）。
  * 读屏（按 accname 判，{@link adoptTitle}）：已有可访问名的不覆盖，那句挂成说明（`aria-description`），与名字相同就不挂；
  * 只有 title 能当名字的（图标按钮 · 可聚焦的一行）才把它写成 `aria-label`。不等悬停：读屏不悬停。
  */
 export function adoptNativeTitles(doc: Document = document): void {
+  // 宿主：从落处往上第一个会出提示的 —— 带说明（title）的，或截断了的单行件；没截断的单行件让给外层。
   const hostOf = (t: EventTarget | null): HTMLElement | null => {
     if (!(t instanceof Element) || typeof t.closest !== "function") return null;
-    return t.closest<HTMLElement>("[title], [data-kit-title]");
+    let el = t.closest<HTMLElement>(HOST);
+    while (el && !titled(el) && !cut(el)) el = el.parentElement?.closest<HTMLElement>(HOST) ?? null;
+    return el;
   };
   const take = adoptTitle;
   const c = controller((h) => {
     const t = h.dataset.kitTitle ?? null;
-    return t !== null && shownInFull(h, t) ? null : t;
+    if (t === null) return cut(h) ? (h.textContent ?? "") : null;
+    return shownInFull(h, t) ? null : t;
   }, {});
   const enter = (e: Event): void => {
     const el = hostOf(e.target);
@@ -367,5 +377,5 @@ function shownInFull(host: HTMLElement, text: string): boolean {
   // 最里层那个整句等于它的元素（截断看的是它自己的宽）；没有 ⇒ 宿主自己。
   const leaf = [...host.querySelectorAll<HTMLElement>("*")].find((el) => el.children.length === 0 && (el.textContent ?? "").trim() === want);
   const el = leaf ?? ((host.textContent ?? "").trim() === want ? host : null);
-  return el !== null && el.scrollWidth <= el.clientWidth + 1;
+  return el !== null && !cut(el);
 }

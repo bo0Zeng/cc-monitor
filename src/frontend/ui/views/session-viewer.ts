@@ -122,7 +122,6 @@ export function viewerPath(text: string): HTMLElement {
   const span = document.createElement("span");
   span.className = sv.svPath;
   span.textContent = text;
-  span.title = text;
   return span;
 }
 
@@ -342,7 +341,6 @@ export class SessionViewer {
   /** 换头（同一份会话、事实变了：标星 · 改标题 · 在跑变已结束）。不重读记录。 */
   setHead(title: string, head: ViewerHead | undefined): void {
     this.titleEl.textContent = title;
-    this.titleEl.title = title;
     this.leadEl.replaceChildren(...(head?.lead ? [head.lead] : []));
     this.badgesEl.replaceChildren(...(head?.badges ?? []));
     this.actionsEl.replaceChildren(...(head?.actions ? [head.actions] : []));

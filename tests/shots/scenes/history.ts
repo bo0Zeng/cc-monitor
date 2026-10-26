@@ -8,7 +8,7 @@ import { arrivalOf } from "../fake/ops";
 import type { Opened } from "../../../src/frontend/ui/generated/Opened";
 import { putQuota, type QuotaSpec } from "../disk";
 import { codexRolloutRel, codexSaidRollout, SEARCH_WORD } from "../fake/history";
-import { byText, click, key, mainReady, sleep, type, waitFor } from "./helpers";
+import { byText, click, hover, key, mainReady, sleep, type, waitFor } from "./helpers";
 
 const ALL_TABS = 7;
 
@@ -87,6 +87,18 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await row(0));
     await sleep(800);
   }),
+  {
+    ...hist("history-long-title-hover", "历史 · 窄窗口 · 省略的标题悬停给全名", "窗口 760 宽：清单里被省略的那个会话名，悬停 500ms 出整句（单行件自己带，那一行不写 title）", async () => {
+      await openHistory();
+      const cut = [...document.querySelectorAll<HTMLElement>('.history-view [role="option"] .one-line')].find((e) => e.scrollWidth > e.clientWidth + 1);
+      if (!cut) throw new Error("窄窗口里清单上没有被省略的单行件");
+      await hover(cut);
+      await sleep(700);
+      if (document.querySelector('[role="tooltip"]')?.textContent !== cut.textContent) throw new Error("悬停没给全名");
+    }),
+    width: 760,
+    height: 560,
+  },
   hist("history-02-by-project", "历史 · 按项目", "切到「按项目」，点开第一组", async () => {
     await openHistory();
     await click(await byText('.history-view [role="tab"]', "按项目"));
