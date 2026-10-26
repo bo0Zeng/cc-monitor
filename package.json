@@ -43,6 +43,7 @@
     "test:local-backend": "bash tests/e2e/local-backend-supervise.sh",
     "test:graylight": "bash tests/e2e/graylight-suite.sh",
     "test:graylight-frames": "bash tests/e2e/graylight-backend-frames.sh",
+    "test:graylight-verdict": "bash tests/e2e/graylight-suite-verdict.sh",
     "test:inbound-frames": "bash tests/e2e/inbound-backend-frames.sh",
     "test:restart": "bash tests/e2e/restart-suite.sh",
     "test:resume": "bash tests/e2e/resume-suite.sh",

@@ -192,6 +192,8 @@ where
         let _logins = crate::accounts::sign_in::Desk::of(asks.conn());
         // 本连接交的浏览名单：同上，随本读循环一起死 ⇒ 它在看的目录（别人没在看的）不再盯（`files_face::Browsing` 的 `Drop`）。
         let _browsing = files_face::Browsing(asks.conn());
+        // 本连接报的各台在看名单：同上，随本读循环一起死 ⇒ 各台的名单台照剩下的那几条流重报（`control::feeds::Watching` 的 `Drop`）。
+        let _watching = crate::control::feeds::Watching(asks.conn());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -301,6 +303,28 @@ async fn handle_line(
     // 信封带 `machine` ⇒ 这一问是问那台的：经那台的常驻流转过去（`control/feeds.rs::forward`），出口声明原样交那台、由它裁；
     //   本后端不认这条命令也不拦（认不认 · 形状对不对是连那台的客户端判）。撤单照本连接的 `id` 撤这一趟（转过去那一问随之撤）。
     if let Some(machine) = machine_of(raw) {
+        // 那台的在看名单不转过去：交那台的名单台（本后端持有那台的常驻流，名单跟着它走、那台换连接照样带上），各条流的并起来报。
+        if req.cmd == resident_client::watch::WATCH_CMD {
+            match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
+                Err(f) => send(replies, f.into_reply(req.id, &req.cmd)).await,
+                Ok(ask) => {
+                    let answer = crate::control::feeds::watch_at(&machine, asks, ask);
+                    let run = crate::wire::typed::answer_later::<crate::wire::conn::StreamWatch, _>(
+                        async move { Ok(crate::wire::WatchReply { from: answer.await }) },
+                    );
+                    spawn_handler(
+                        req,
+                        replies.clone(),
+                        running.clone(),
+                        run,
+                        true,
+                        views::Plan::default(),
+                    )
+                    .await;
+                }
+            }
+            return;
+        }
         spawn_handler(
             req,
             replies.clone(),

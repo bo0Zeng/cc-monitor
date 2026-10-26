@@ -276,7 +276,7 @@ impl InboundClient {
     /// 而且每一环都是本仓自己写下来的事实：
     ///
     /// ```text
-    /// monitor 读侧一停（收事那一头 `consume_remote` 卡在 flush_lines，重连循环交事那一步跟着等）
+    /// monitor 读侧一停（收事那一头卡住，重连循环交事那一步跟着等）
     ///   → backend stdout 反压
     ///   → backend 应答通道满（IPC-PROTOCOL 第 4 条：「满时阻塞入方向正是想要的」）
     ///   → backend 停读 stdin

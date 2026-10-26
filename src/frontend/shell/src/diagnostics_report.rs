@@ -152,7 +152,7 @@ fn wire_word(v: impl serde::Serialize) -> Option<String> {
 /// 各台（含本机）此刻的成品（本机后端 `machine-read`）；问不到 ⇒ 空表（那几台照「说不出」写）。
 async fn remote_machines() -> std::collections::BTreeMap<String, cmd_wire::machine::MachineState> {
     const CMD: &str = "machine-read";
-    let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) else {
+    let Some(c) = crate::inbound_client::local_client() else {
         return Default::default();
     };
     match c
@@ -197,7 +197,7 @@ pub async fn diagnostics_report(
                 let build = if origin == local {
                     mine.map(str::to_string)
                 } else {
-                    crate::stream_source::theirs_of(&origin)
+                    crate::inbound_client::build_of(&origin)
                 };
                 // 本机后端没答（没起来 · 正在起 · 口上占着别的）⇒ 本机那一行的状态照壳那一格说。
                 let unanswered = (origin == local && m.is_none())

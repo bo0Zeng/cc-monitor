@@ -79,9 +79,8 @@ async fn local_channel() -> Result<Arc<InboundClient>, String> {
 /// 同上，但问的是**哪一条命令**：本机后端那条流在、且认 `cmd` ⇒ 回它的客户端。
 /// 不在 ⇒ 报「本机后端不在」；不认 ⇒ 报「本机后端太旧」。传输台的中继（`sftp_pool.rs`）也从这里拿。
 pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClient>, String> {
-    let local = inbound_client::LOCAL_ORIGIN;
     for attempt in 0..LOCAL_WAIT_TRIES {
-        if let Some(c) = inbound_client::client_for(local) {
+        if let Some(c) = inbound_client::local_client() {
             if !c.accepts(cmd) {
                 return Err(copy_core::backend_old(&copy_core::local_machine()));
             }
@@ -415,7 +414,7 @@ pub(crate) fn link_said(e: LinkError) -> Said {
 }
 
 /// **一条长 exec 字节流**（链路 `use:"stream"`：本机常驻后端在池里那条 SSH 连接上开一条 session 通道、exec `cmd`，
-/// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（重连循环经 `stream_source/run.rs::DeskLink` 开：`ccm -- --resident-attach`）。
+/// stdin/stdout 原样对拷）。壳里已没有调用方（各台的常驻流归本机后端，随拨号代理那一族一起删）。
 /// 出生带一次性总时限；接成流之后由调用方摘。拨号核心每过一步（「过了一步」那一形阶段行）调一次 `on_step`（重连循环拿它重新计拨号期限）。
 pub(crate) async fn stream(
     machine: &str,

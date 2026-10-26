@@ -1137,6 +1137,7 @@ run_e2e backend-sessions-rewatch
 run_e2e backend-cc-bus
 run_e2e resume
 run_e2e graylight-frames
+run_e2e graylight-verdict
 run_e2e resume-frames
 gate_lane e2e-3 after e2e-prep
 # `backend-gate2` · `local-backend` 按环境显式分支：版本门 / 没铺 `embedded-backends/` 的格记 SKIP 并说原因；
@@ -1263,7 +1264,7 @@ gate_lane 手机端
 # 工具链：外面给了 `JAVA_HOME` 与 `ANDROID_HOME` 就用（CI 的 setup-java / setup-android）；没给就 source
 #   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
 # 跑：ktlint · detekt（带类型解析）· Android Lint（`:app:lintDebug`，error 一条就红；warning 不拦）·
-#   各模块 JVM 单测（`:core-claude` · `:core-wire` · `:core-remote` · `:core-copy` 是纯 JVM 模块，要显式点）·
+#   各模块 JVM 单测（`:core-claude` · `:core-wire` · `:core-copy` 是纯 JVM 模块，要显式点）·
 #   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）· debug 构建（模拟器那一份）。
 #   两趟各编手机嵌的 Rust 核心那一个 ABI（release = arm64-v8a · debug = x86_64），打完核包里恰好那一个 ABI（`:app:verify<变体>Abis`）。
 #   要 cargo ＋ 两个 android target ＋ NDK（版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`）。
@@ -1280,7 +1281,7 @@ gate_mobile() {
     fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain --stacktrace ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :detekt-rules:test :app:assembleRelease :app:assembleDebug || {
+      :core-claude:test :core-claude:detektMain :core-wire:test :core-wire:detektMain :core-copy:test :core-copy:detektMain :detekt-rules:test :app:assembleRelease :app:assembleDebug || {
       rc=$?
       # 打包那几步红而只有一句「A failure occurred …」时，盘满是头一个嫌疑：顺手印一行剩多少
       df -h . | tail -1 | sed 's/^/mobile: 盘 /'

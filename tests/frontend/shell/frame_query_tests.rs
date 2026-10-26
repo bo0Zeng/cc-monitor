@@ -755,12 +755,13 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "machines-read",
         1,
         "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
-         照它起停远端流、读不懂上屏 —— 壳自己的起流对齐，答案不给界面（界面那一问经通道直问本机后端）",
+         记账、读不懂上屏 —— 壳自己的账，答案不给界面（界面那一问经通道直问本机后端）",
     ),
     (
         "machine-read",
-        1,
-        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面",
+        2,
+        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面；\
+         文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）",
     ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
@@ -1073,8 +1074,8 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // 「后端是给定的、不留退路」。RT1 F2 读数：旧那条 `run_query` 只认 exe 旁边那一份文件、
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
-// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`；
-// ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
+// ① 发送：本机那几问只经 `inbound_client::local_client()`；
+// ② 谁能登记在 `<local>` 上：生产段里 `register(…)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
 // ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点零处（查询不用它，起后端也不用它）。
 // ④给终端窗口的 `CCM_BACKEND_BIN` 同病：两处都交 `local_backend_host::running_backend_bin()`。
@@ -1118,24 +1119,9 @@ fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
 
 #[test]
 fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() {
-    // ② 谁能登记在 `<local>` 上（多行调用：`register(` 与 `LOCAL_ORIGIN` 分两行 ⇒ 按「函数里两样都有」认）。
-    let registers = loc1a_sites("inbound_client::register(");
-    let with_local: std::collections::BTreeSet<String> = registers
+    // ② 谁能登记本机那一格（登记表只有这一格：每一处 `register(` 都是）。
+    let with_local: std::collections::BTreeSet<String> = loc1a_sites("inbound_client::register(")
         .into_iter()
-        .filter(|site| {
-            let (file, _) = site.split_once("::").unwrap();
-            let src =
-                std::fs::read_to_string(guard_core::addr::shell_src_root().join(file)).unwrap();
-            // 路径短了一截，rustfmt 可能把实参折回同一行 ⇒ 去掉空白再认。
-            let flat: String = guard_core::production_code(&src)
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect();
-            // stdio 那条载体登记在它那一条路的名下（`StdioRoute`）；产品那一条（`StdioRoute::local`）就是 `<local>`。
-            flat.contains("register(crate::inbound_client::LOCAL_ORIGIN")
-                || (flat.contains("register(route.origin.as_wire_str()")
-                    && flat.contains("origin:crate::origin::Origin::local()"))
-        })
         .collect();
     let want: std::collections::BTreeSet<String> = [
         "local_backend.rs::local_stdio_consumer",
@@ -1206,7 +1192,7 @@ fn local_channel_for_test(
     let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(commands))
         .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
-    inbound_client::register(inbound_client::LOCAL_ORIGIN, client.clone());
+    inbound_client::register(client.clone());
     (client, tokio::io::BufReader::new(theirs))
 }
 
@@ -1291,7 +1277,7 @@ async fn an_expired_deadline_sends_nothing() {
             .is_none(),
         "一问发了不止一行"
     );
-    inbound_client::unregister(inbound_client::LOCAL_ORIGIN, &client);
+    inbound_client::unregister(&client);
 }
 
 /// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
@@ -1342,7 +1328,7 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
         "远端没补「本机」：{}",
         e.detail
     );
-    inbound_client::unregister(inbound_client::LOCAL_ORIGIN, &client);
+    inbound_client::unregister(&client);
 }
 
 /// D4 ★ **本模块只用、不造**：`Deadline` 的构造恰好一处（`within`），生产段零处另起截止时刻
@@ -1625,5 +1611,5 @@ async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
         Some(json!({"rows": [], "next": 90, "eof": true})),
     );
     assert!(asking.await.expect("task").is_ok());
-    inbound_client::unregister(inbound_client::LOCAL_ORIGIN, &client);
+    inbound_client::unregister(&client);
 }

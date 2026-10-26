@@ -371,7 +371,6 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 |---|---|
 | `app` | 屏与导航、注入、前台保活；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏用拨号网关与 tmux 网关 |
 | `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了接回）与核心成品的解码；`model/` 把通用记录映射成渲染单元 |
-| `core-remote` | 中立的远端抽象：一次性 exec（带退出码）|
 | `core-ssh` | 连接管理（单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` |
 | `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里 |
 | `core-terminal` | 终端引擎（termlib） |
@@ -379,7 +378,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `core-ui` | 共用主题与反馈 |
 | `core-copy` | 取文口与大小 · 时长格式（同一张文案表） |
 
-谁调谁：`core-ssh` 拨号 → `core-remote` 开长 exec 跑 `ccm -- --resident-attach` → `core-claude` 在上面说帧（与桌面连远端同一条路、同一份后端）→ `app` 排版。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；手机的界面令牌今天是它自己一套，不与桌面共用。
+谁调谁：`core-ssh` 拨号 → `core-rs` 里那份 `resident-client` 在同一份拨号身份上开链路跑 `ccm -- --resident-attach` → `core-claude` 在上面说帧（与桌面连远端同一条路、同一份后端）→ `app` 排版。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；手机的界面令牌今天是它自己一套，不与桌面共用。
 
 ### 3.10 组
 

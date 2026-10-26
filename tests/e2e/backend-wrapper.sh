@@ -123,8 +123,13 @@ if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
   #   `sh -n` 当场报 `Syntax error: redirection unexpected`，backend 于是**根本没起来**
   #   （两个 tap 都是 0 行，而我差点把「空 tap」读成「backend 沉默」）。
   #   ⇒ stderr 直接**追加重定向到文件**：不经 tee、不丢诊断，SSH 那侧本来也不读它。
-  exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_BACKEND" "$@" \
-    2>> "${CCM_E2E_FRAME_TAP}.err" \
-    | stdbuf -oL tee -a "$CCM_E2E_FRAME_TAP"
+  # ⚠⚠ 管道里的 `exec` 只换掉管道那一格的子 shell，主 shell 走完管道照样往下走 ⇒ 不在这里退出，就又落到文件末尾那一行
+  #   `exec` 上，把后端再跑一趟（10-26 实测：`--resident-ensure` 的回答印两行，本机后端解析不了，远端一直「这一轮没接上」）。
+  #   退出码取后端那一格的（`tee` 那一格恒 0）：POSIX sh 没有 pipefail ⇒ 经 fd 3 把它递出来，帧照旧经 fd 4 出到原 stdout。
+  #   后端与 tee 都不带着 fd 3 / 4 走：后端起的常驻会脱离出去，带着 fd 3 的话这一条命令替换永远等不到 EOF。
+  exec 4>&1
+  _rc=$( { { env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_BACKEND" "$@" 2>> "${CCM_E2E_FRAME_TAP}.err" 3>&- 4>&-; echo $? >&3; } \
+      | stdbuf -oL tee -a "$CCM_E2E_FRAME_TAP" >&4 3>&-; } 3>&1 )
+  exit "${_rc:-1}"
 fi
 exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_BACKEND" "$@"

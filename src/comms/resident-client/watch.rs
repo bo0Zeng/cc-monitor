@@ -26,6 +26,8 @@ type FromFn = Box<dyn Fn(Vec<WatchFrom>) + Send + Sync>;
 
 /// 一台的名单台。
 pub struct Desk {
+    /// 报给谁：`None` ＝ 连接通往的那个后端自己；`Some(那台)` ＝ 经连接通往的后端转给它手上那一台（`call_at`：桌面问别台都经本机后端）。
+    at: Option<String>,
     now: Mutex<Now>,
     /// 名单里各条手上那份主线外清单有什么（读在报的那一刻）。
     held: HeldFn,
@@ -44,6 +46,8 @@ struct Now {
     link: Weak<InboundClient>,
     /// 那条连接已经知道的那一份（attach 行带过的 · 报过的：在看的 ＋ 手上留着的）；`None` ＝ 它还什么都不知道（全发）。
     told: Option<(BTreeSet<String>, BTreeSet<String>)>,
+    /// 等「这一份报上去了」的那几位（[`Desk::set_and_hear`]）：报完交那一趟的 `from[]`；没有连接 · 已经知道 ⇒ 交空的。
+    waiting: Vec<tokio::sync::oneshot::Sender<Vec<WatchFrom>>>,
 }
 
 impl Desk {
@@ -52,7 +56,25 @@ impl Desk {
         held: impl Fn(&BTreeSet<String>) -> Vec<BranchHeld> + Send + Sync + 'static,
         from: impl Fn(Vec<WatchFrom>) + Send + Sync + 'static,
     ) -> Arc<Desk> {
+        Self::start(None, held, from)
+    }
+
+    /// 起一张报给 `machine` 的（经连接通往的后端转给它手上那一台）。
+    pub fn at(
+        machine: &str,
+        held: impl Fn(&BTreeSet<String>) -> Vec<BranchHeld> + Send + Sync + 'static,
+        from: impl Fn(Vec<WatchFrom>) + Send + Sync + 'static,
+    ) -> Arc<Desk> {
+        Self::start(Some(machine.to_string()), held, from)
+    }
+
+    fn start(
+        at: Option<String>,
+        held: impl Fn(&BTreeSet<String>) -> Vec<BranchHeld> + Send + Sync + 'static,
+        from: impl Fn(Vec<WatchFrom>) + Send + Sync + 'static,
+    ) -> Arc<Desk> {
         let desk = Arc::new(Desk {
+            at,
             now: Mutex::new(Now::default()),
             held: Box::new(held),
             from: Box::new(from),
@@ -74,6 +96,24 @@ impl Desk {
         if moved {
             self.poke.notify_one();
         }
+    }
+
+    /// 同 [`Desk::set`]，回一个收端：这一份报上去那一趟的 `from[]`（刚进名单的那几条从第几行起上流）；
+    /// 当前连接已经知道这一份 · 此刻没有连接 ⇒ 交空的（下一条连接的 attach 行照样带上这一份）。
+    pub fn set_and_hear(
+        &self,
+        sids: BTreeSet<String>,
+        kept: BTreeSet<String>,
+    ) -> tokio::sync::oneshot::Receiver<Vec<WatchFrom>> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        {
+            let mut n = lock(&self.now);
+            n.sids = sids;
+            n.kept = kept;
+            n.waiting.push(tx);
+        }
+        self.poke.notify_one();
+        rx
     }
 
     /// 此刻的名单。
@@ -118,34 +158,51 @@ impl Desk {
     /// 当前连接还不知道此刻的名单 ⇒ 报到它知道为止（报的时候又变了 ⇒ 接着报最新那份）。
     async fn flush(&self) {
         loop {
-            let (client, now) = {
+            let (client, now, waiting) = {
                 let mut n = lock(&self.now);
                 let Some(client) = n.link.upgrade() else {
+                    for w in n.waiting.drain(..) {
+                        let _ = w.send(Vec::new());
+                    }
                     return;
                 };
                 let now = (n.sids.clone(), n.kept.clone());
                 if n.told.as_ref() == Some(&now) {
+                    for w in n.waiting.drain(..) {
+                        let _ = w.send(Vec::new());
+                    }
                     return;
                 }
                 n.told = Some(now.clone());
-                (client, now)
+                (client, now, std::mem::take(&mut n.waiting))
             };
             let args = serde_json::to_value(self.ask(now.0, now.1)).unwrap_or_default();
-            match client.call(WATCH_CMD, args, WATCH_BUDGET).await {
-                Ok(data) => {
-                    let from = match data.map(serde_json::from_value::<WatchReply>) {
-                        Some(Ok(r)) => r.from,
-                        Some(Err(e)) => {
-                            tracing::warn!("stream_watch 应答形状不对，不收：{e}");
-                            Vec::new()
-                        }
-                        None => Vec::new(),
-                    };
-                    if !from.is_empty() {
-                        (self.from)(from);
-                    }
+            let answer = match &self.at {
+                None => client.call(WATCH_CMD, args, WATCH_BUDGET).await,
+                Some(m) => {
+                    let deadline = tokio::time::Instant::now() + WATCH_BUDGET;
+                    client.call_at(m, WATCH_CMD, args, None, deadline).await
                 }
-                Err(e) => tracing::warn!("stream_watch 报名单没报上：{e:?}"),
+            };
+            let from = match answer {
+                Ok(data) => match data.map(serde_json::from_value::<WatchReply>) {
+                    Some(Ok(r)) => r.from,
+                    Some(Err(e)) => {
+                        tracing::warn!("stream_watch 应答形状不对，不收：{e}");
+                        Vec::new()
+                    }
+                    None => Vec::new(),
+                },
+                Err(e) => {
+                    tracing::warn!("stream_watch 报名单没报上：{e:?}");
+                    Vec::new()
+                }
+            };
+            for w in waiting {
+                let _ = w.send(from.clone());
+            }
+            if !from.is_empty() {
+                (self.from)(from);
             }
         }
     }

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 /// Line 帧攒批缓冲。backend 线协议一行一帧；首连 snapshot 的几千行若一帧一批地交重放缓冲，恒小于 INCREMENTAL_BATCH_THRESHOLD → 全部走逐条渲染管线（刷屏）。
 /// 客户端把连续到达的 Line 帧聚合成批：snapshot 密集连发天然聚成大批 → 跨过阈值走 chunked 回放；日常单行增量只多一个静默窗口（~30ms）的延迟。
-/// 时序判定（静默窗口）在 [`LineIntake::recv_or_flush`] 的 `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
+/// 时序判定（静默窗口）在收的那一头（`consume`）的 `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
 struct Batcher {
     pending: Vec<JsonlLine>,
     cap: usize,
@@ -52,8 +52,8 @@ impl Batcher {
 }
 
 /// 攒批静默窗口：一行到达后最多再等这么久看有没有后续行。首连 snapshot 帧间
-/// 隔远小于此值 → 聚合；live 单行只付一次窗口的延迟（对流式渲染无感）。
-const BATCH_QUIET_MS: u64 = 30;
+/// 隔远小于此值 → 聚合；live 单行只付一次窗口的延迟（对流式渲染无感）。收的那一头（`consume`）按它等。
+pub(super) const BATCH_QUIET: Duration = Duration::from_millis(30);
 /// 单批行数上限（与本地 replay CHUNK_SIZE 同量级，控制单次 IPC 体积）。
 const BATCH_CAP: usize = 600;
 /// 批龄上限：无论帧流多密集，首行入缓冲后最迟这么久必 flush（见 Batcher.born）。
@@ -83,19 +83,17 @@ pub(super) async fn flush_lines(
     );
 }
 
-/// **内容那一半的唯一收口** —— 远端每条连接一个、本机每条流一个。
+/// **内容那一半的唯一收口** —— 每台每条连接一个（本机那条流 · 本机后端转来的各台那几条，同一个收的那一头 `consume`）。
 ///
 /// # 为什么要它
 ///
-/// 「一条流，一个来源；本机与远端走同一条帧路」。本机那条流改走后端的 `line` 帧之后，
-/// 「行怎么攒批、什么时候冲、历史怎么旁路补、会话走了撤什么」这几件事若在本机再写一份，
-/// 就又是两份实现。⇒ 收成一个结构，**两个帧源各构造一次**：
-/// `on_attached`（远端，每条连接一个）与 [`consume_local`]（本机）。判据钉的就是「构造点恰好这两处」。
+/// 「一条流，一个来源；本机与远端走同一条帧路」：「行怎么攒批、什么时候冲、历史怎么旁路补、会话走了撤什么」只有这一份。
+/// 构造点只有一处（`local.rs` 的 `Conn::open`）。
 ///
 /// # 它管什么、不管什么
 ///
-/// 管：[`Batcher`] ＋ 带静默窗的收（[`LineIntake::recv_or_flush`]）· 旁路快照队列与分发器（后端不重放历史，历史一律走它）·
-/// 续点（`snapshot_resume`）。**不管会话的起停**：那是后端出的成品，两条流各自交 `session_book`。
+/// 管：[`Batcher`]（静默窗由收的那一头按 [`BATCH_QUIET`] 等）· 旁路快照队列与分发器（后端不重放历史，历史一律走它）·
+/// 续点（`snapshot_resume`）。**不管会话的起停**：那是后端出的成品，收的那一头交 `session_book`。
 ///
 /// 丢掉它 ⇒ 快照队列当场关（连接断了那一刻）。
 pub(crate) struct LineIntake {
@@ -132,22 +130,9 @@ impl LineIntake {
         }
     }
 
-    /// 带静默窗地收下一件：手里攒着行时最多等 [`BATCH_QUIET_MS`]，窗内没来新东西就先把攒的冲掉再回去等。
-    ///
-    /// ⚠ 超时打在 `recv` 上（cancel-safe），不打在读行上：tokio 的读行不是 cancellation-safe（超时取消会丢缓冲里的半帧）。
-    pub(super) async fn recv_or_flush<T>(
-        &mut self,
-        rx: &mut tokio::sync::mpsc::Receiver<T>,
-    ) -> Option<T> {
-        loop {
-            if self.batcher.pending.is_empty() {
-                return rx.recv().await;
-            }
-            match tokio::time::timeout(Duration::from_millis(BATCH_QUIET_MS), rx.recv()).await {
-                Ok(m) => return m,
-                Err(_) => self.flush().await,
-            }
-        }
+    /// 手里攒着行没有（收的那一头据它决定要不要带静默窗等，[`BATCH_QUIET`]）。
+    pub(super) fn holding(&self) -> bool {
+        !self.batcher.pending.is_empty()
     }
 
     /// 收一行（达容量 / 批龄就整批冲出去）。

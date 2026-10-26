@@ -104,7 +104,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/e2e_gate_registry.rs",
     "tests/frontend/shell/exec_site_registry.rs",
     "tests/frontend/shell/fixture_guard.rs",
-    "tests/frontend/shell/local_origin_registry.rs",
     "tests/frontend/shell/local_read_surface_registry.rs",
     "tests/frontend/shell/lockfile_conflict_guard.rs",
     "tests/frontend/shell/needle_anchor_registry.rs",

@@ -52,12 +52,7 @@ fn rig() -> Rig {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
             if let Ok(f) = crate::stream_source::decode(&l) {
-                crate::stream_source::route(
-                    crate::stream_source::Via::Local,
-                    &crate::origin::Origin::local(),
-                    Some(&c2),
-                    f,
-                );
+                crate::stream_source::route(&crate::origin::Origin::local(), Some(&c2), f);
             }
         }
     });

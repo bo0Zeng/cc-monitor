@@ -11,7 +11,7 @@
 //! 一条活几个小时的流上**看得见在丢**，又不会一帧一行把日志刷满（逐帧刷 warn 是噪声，真正的坏帧淹没在里面）。
 //! 流结束（这本账被丢掉）时 [`Drop`] 出一行总账；两样都是 0 就不说。
 //!
-//! 三个读帧的地方：远端 `stream_source::consume_remote`（只数认不出；非 UTF-8 由读流的重连循环 `resident_client::feed` 说）·
+//! 三个读帧的地方：收的那一头 `stream_source::consume`（转来的各台，只数认不出；那台流上的非 UTF-8 由本机后端那条重连循环 `resident_client::feed` 说）·
 //! 本机脱离载体 `local_backend_host::attach_stream` · 本机 stdio 载体 `local_backend` 的 stdout 读循环。
 //! 接线由 `tests/frontend/shell/frame_tally_tests.rs` 的判据按文件逐一钉住。
 

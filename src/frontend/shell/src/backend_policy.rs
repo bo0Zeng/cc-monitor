@@ -63,14 +63,22 @@ async fn exit_policy_call(
     args: Value,
     budget: std::time::Duration,
 ) -> Result<Value, String> {
+    let at = origin;
     let origin = origin.as_wire_str();
-    let Some(client) = inbound_client::client_for(origin) else {
+    let Some(client) = inbound_client::local_client() else {
         return Err(said(no_channel(origin)));
     };
-    if !client.accepts(cmd) {
-        return Err(copy_core::backend_old(&machine_label(origin)));
-    }
-    let data = client.call(cmd, args, budget).await.map_err(|e| {
+    // 本机：这条连接的命令表先拦；别台：经本机后端转过去（认不认由那一端连那台的客户端判）。
+    let got = if at.is_local() {
+        if !client.accepts(cmd) {
+            return Err(copy_core::backend_old(&machine_label(origin)));
+        }
+        client.call(cmd, args, budget).await
+    } else {
+        let deadline = tokio::time::Instant::now() + budget;
+        client.call_at(origin, cmd, args, None, deadline).await
+    };
+    let data = got.map_err(|e| {
         said(route_call_error(
             &e,
             &machine_label(origin),

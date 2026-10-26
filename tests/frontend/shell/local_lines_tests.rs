@@ -12,7 +12,7 @@
 //! | F5 | 两条载体的起参是同一份常量，且其中每一个旗标都 ∈ 后端 `STREAM_FLAGS`；`--tail-only` 在 ⟺ 消费者认定 tail-only | 后端源码 —— 住 `stream_source/stream_flag_gate_tests.rs`（同一条跨半边已登记，不另开一条） |
 //! | F6 | 快照被撤时的补偿归档：本机不补、远端补 | — |
 //! | F7 | monitor 生产段里那套 watcher 的名字零命中（带正控） | — |
-//! | Q1 | 本机后端推来的 `changed` 走生产那一串（分派第一层 → 本机通道 → `consume_local` → 第二层）⇒ `<local>` 上各主题的 `changed/<主题>` 订阅逐格收到；交这一格的生产调用方只有分派第二层 | 期望手写；全仓生产段扫描，两向集合相等 |
+//! | Q1 | 本机后端推来的 `changed` 走生产那一串（分派第一层 → 本机通道 → `consume` → 第二层）⇒ `<local>` 上各主题的 `changed/<主题>` 订阅逐格收到；交这一格的生产调用方只有分派第二层 | 期望手写；全仓生产段扫描，两向集合相等 |
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
@@ -109,12 +109,7 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
             .unwrap()
             .to_string();
         fed.insert(kind.clone());
-        if let Some(back) = crate::stream_source::route(
-            crate::stream_source::Via::Local,
-            &crate::origin::Origin::local(),
-            None,
-            f,
-        ) {
+        if let Some(back) = crate::stream_source::route(&crate::origin::Origin::local(), None, f) {
             let back_kind = format!("{back:?}");
             let name: String = back_kind
                 .chars()
@@ -162,6 +157,8 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_branch",
             // 拥塞丢帧那一句（本机那条流也说）。
             "overflow",
+            // 本机后端转来的别台那条流上的事（收的那一头按那台分走）。
+            "relayed",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -171,17 +168,13 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
 }
 
 /// 分身会话不再在壳里整条丢（从前「显示分身会话」关掉 ⇒ 连它的批准框一起丢；隐藏只管占不占标签页，在等人的会话照样要人答）：
-/// 本机与远端两条读循环里都没有那道门，也不再读那个开关。
+/// 收的那一头里没有那道门，也不再读那个开关。
 #[test]
 fn no_read_loop_drops_background_sessions() {
     for (name, src) in [
         (
             "stream_source/local.rs",
             include_str!("../../../src/frontend/shell/src/stream_source/local.rs"),
-        ),
-        (
-            "stream_source/run.rs",
-            include_str!("../../../src/frontend/shell/src/stream_source/run.rs"),
         ),
         (
             "lib.rs",
@@ -282,10 +275,9 @@ fn every_line_leaves_through_the_one_intake_both_sources_share() {
         (
             "LineIntake::open(",
             &[
-                ("stream_source/local.rs", "consume_local"),
-                ("stream_source/run.rs", "on_attached"),
+                ("stream_source/local.rs", "open"),
             ],
-            "两个帧源（远端 on_attached · 本机 consume_local）各构造一次同一个收口",
+            "收口只在收的那一头每台每条连接开一份（`Conn::open`）",
         ),
         (
             "Batcher::new(",
@@ -524,7 +516,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
 // 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」—— 远端那条收事那一头
 // 收到 `changed` 就交 `changed/<主题>` 订阅；本机这条从前在吸收点丢过额度 · 账号清单 · 配置文件，界面只能等别的事件顺带重读。
 
-/// 手写线上帧走生产那一串：`decode` → 分派第一层 → 本机内容通道 → `consume_local` → 第二层 → 重放缓冲；
+/// 手写线上帧走生产那一串：`decode` → 分派第一层 → 本机内容通道 → `consume` → 第二层 → 重放缓冲；
 /// 订了 `<local>` 上 `changed/quota` · `changed/rotation` · `changed/accounts` 的订阅各逐格收到自己那一格（期望手写）。
 #[tokio::test]
 async fn local_changed_pushes_reach_the_ui_subscription() {
@@ -559,24 +551,14 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
     }
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(16);
     let health: crate::stream_source::HealthOut = std::sync::Arc::new(|_| Ok(()));
-    let consumer = tokio::spawn(crate::stream_source::consume_local(
-        crate::origin::LOCAL.to_string(),
-        rx,
-        replay.clone(),
-        health,
-    ));
+    let consumer = tokio::spawn(crate::stream_source::consume(rx, replay.clone(), health));
     for line in [
         r#"{"kind":"changed","topic":"quota"}"#,
         r#"{"kind":"changed","topic":"rotation","key":"s1"}"#,
         r#"{"kind":"changed","topic":"accounts"}"#,
     ] {
         let f = crate::stream_source::decode(line).expect("手写帧解不出来");
-        if let Some(f) = crate::stream_source::route(
-            crate::stream_source::Via::Local,
-            &crate::origin::Origin::local(),
-            None,
-            f,
-        ) {
+        if let Some(f) = crate::stream_source::route(&crate::origin::Origin::local(), None, f) {
             tx.send(LocalItem::Frame(f)).await.unwrap();
         }
     }

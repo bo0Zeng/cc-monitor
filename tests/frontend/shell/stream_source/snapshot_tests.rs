@@ -141,7 +141,7 @@ fn local_peer() -> (
     ]))
     .expect("是 Hello 帧");
     let client = crate::inbound_client::park(mine).into_client(hello);
-    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    crate::inbound_client::register(client.clone());
     (client, tokio::io::BufReader::new(theirs))
 }
 
@@ -215,11 +215,11 @@ async fn one_snapshot(
     let extra = next_ask(&mut peer, std::time::Duration::from_millis(300)).await;
     if extra.is_some() {
         run.abort();
-        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+        crate::inbound_client::unregister(&client);
         return (first, extra, Err("多问了一趟".into()));
     }
     let out = run.await.expect("快照那一趟崩了");
-    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+    crate::inbound_client::unregister(&client);
     (first, extra, out)
 }
 
