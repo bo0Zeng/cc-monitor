@@ -70,13 +70,13 @@ export interface World {
   older?: Record<string, string[]>;
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */
   closedMachines: string[];
-  /** 那台的 cc-monitor 比这一版旧（那一轮 `up` · `older`，`machine.ts::roundsOf`）。 */
+  /** 那台的 cc-monitor 比这一版旧（假 ssh 把那台 attach 回话的新旧换成 `older`，`backend.ts::reachOf`）。 */
   staleMachines: string[];
-  /** 正在接那台常驻的那几台（那一轮 `connecting`，`machine.ts::roundsOf`）。 */
+  /** 正在接那台常驻的那几台（假 ssh 在接常驻那一跳上拖住不回）。 */
   connectingMachines?: string[];
-  /** 主机指纹与记下的不一样的那几台（那一轮 `down` · `host_key`，带那台出示的那一枚）。 */
+  /** 主机指纹与记下的不一样的那几台（本机库里那台的口上记的是另一把钥，`world.ts::diskOf`）。 */
   hostKeyChanged?: string[];
-  /** 正在把 cc-monitor 装上去的那几台（部署那一侧的事实，`MachineDisk.deploy`）。 */
+  /** 正在把 cc-monitor 装上去的那几台（那台说自己旧了，本机后端去装，假 ssh 在放字节那一步拖住）。 */
   installingMachines?: string[];
   /** 订阅时看得见、交完会话之后断了的那几台（交完清单一会儿之后那台后端被杀：壳那一侧照真的那一套作废它的成品、通道说断了）。 */
   droppedMachines?: string[];

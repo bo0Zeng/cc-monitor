@@ -163,3 +163,43 @@ fn c4_default_build_reads_the_system_clock() {
         "默认构建里 `now_ms()` 就是系统钟：{ours} vs {sys}"
     );
 }
+
+/// C5 ★ **产品代码不认台架**（10-26 定：截图要的各态由台架的世界真长成那样，不由后端读台架交的结论）：
+/// 生产源码里特性闸 `shots` 只在拨钟那一份（[`CLOCK_FILE`]）；台架的环境变量（`CCM_SHOTS_` 打头）只有拨钟那一个。
+/// 正控：同一识别器在合成语料里认得出一处多出来的特性闸、一个多出来的台架环境变量。
+#[test]
+fn c5_production_code_knows_no_rig_but_the_clock() {
+    fn gated(prod: &str) -> bool {
+        prod.contains(&format!("feature = \"{FEATURE}\""))
+    }
+    fn rig_envs(prod: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = prod;
+        while let Some(i) = rest.find("CCM_SHOTS_") {
+            let tail = &rest[i..];
+            let end = tail
+                .find(|c: char| !(c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'))
+                .unwrap_or(tail.len());
+            out.push(tail[..end].to_string());
+            rest = &tail[end..];
+        }
+        out
+    }
+    assert!(gated("#[cfg(feature = \"shots\")]\nmod x {}"));
+    assert_eq!(rig_envs("std::env::var(\"CCM_SHOTS_ROUNDS\")"), ["CCM_SHOTS_ROUNDS"]);
+
+    let mut gates = Vec::new();
+    let mut envs = Vec::new();
+    for (rel, prod) in production_files() {
+        if rel != CLOCK_FILE && gated(&prod) {
+            gates.push(rel.clone());
+        }
+        for e in rig_envs(&prod) {
+            if e != ENV {
+                envs.push(format!("{rel}: {e}"));
+            }
+        }
+    }
+    assert!(gates.is_empty(), "生产源码在拨钟之外认特性 `{FEATURE}`：{gates:?}");
+    assert!(envs.is_empty(), "生产源码读了拨钟之外的台架环境变量：{envs:?}");
+}
