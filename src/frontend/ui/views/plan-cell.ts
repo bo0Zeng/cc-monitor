@@ -308,7 +308,7 @@ export class CellDetail {
       p.className = s.cdMono;
       p.append(icon("file", "compact"), document.createTextNode(f.path));
       const st = tr.insertCell();
-      const b = span(f.stateCode ? copyText(FILE_STATE[f.stateCode]) : copyText("plan.page.none"), s.cdFileState);
+      const b = span(f.stateCode ? fileStateText(f.stateCode) : copyText("plan.page.none"), s.cdFileState);
       b.dataset.state = f.stateCode === "ok" ? "ok" : f.stateCode === "empty" ? "warn" : "bad";
       st.appendChild(b);
       tr.insertCell().textContent = f.note ?? "";
@@ -430,7 +430,18 @@ export class CellDetail {
 }
 
 /** 文件核对的码 ⇒ 那一格写的字（pb 的 present · missing · empty · invalid）。 */
-const FILE_STATE = { ok: "plan.fileState.ok", missing: "plan.fileState.missing", empty: "plan.fileState.empty", broken: "plan.fileState.broken" } as const;
+function fileStateText(c: "ok" | "missing" | "empty" | "broken"): string {
+  switch (c) {
+    case "ok":
+      return copyText("plan.fileState.ok");
+    case "missing":
+      return copyText("plan.fileState.missing");
+    case "empty":
+      return copyText("plan.fileState.empty");
+    case "broken":
+      return copyText("plan.fileState.broken");
+  }
+}
 
 /**
  * 交接说明那一块（划出的根节点没人接着 · 新登记的仓库还没人认领 project）：pb 给的那一句原样（码的位置写着 `<认领码>`，
