@@ -31,8 +31,6 @@
     "test:ccm-cli": "bash tests/e2e/ccm-cli.test.sh",
     "test:answer-hook": "bash tests/e2e/answer-hook.sh",
     "test:ccm-contract-parity": "bash tests/e2e/ccm-contract-parity.sh",
-    "test:cc-spawn-uplift": "bash tests/e2e/cc-spawn-uplift.sh",
-    "test:cc-bus-queue-drain": "bash tests/e2e/cc-bus-queue-drain.sh",
     "test:backend-cc-bus": "bash tests/e2e/backend-cc-bus.sh",
     "test:ccm-print-parity": "bash tests/e2e/ccm-print-parity.sh",
     "gate": "bash tests/scripts/gate.sh",

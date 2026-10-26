@@ -12,9 +12,9 @@
 //!
 //! # 买不到的
 //!
-//! - 订阅四种流：`transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）· `link`（那台连没连着）·
-//!   `files-batch/<票>`（一组做到哪了，`files_batch_relay`）· `changed/<主题>`（那台推来的「X 变了」原样，判据 `changed_stream_tests`）；别的 `kind`
-//!   [`InboundBackends::subscribe`] 原位回 `Closed{Peer(…)}`，不装作订阅成功。
+//! - 订阅：本文件自己接三种流 `transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）· `link`（那台连没连着）·
+//!   `files-batch/<票>`（一组做到哪了，`files_batch_relay`）；别的 `kind` 交进程里那一份会话流句柄（[`crate::event_replay::EventReplay::subscribe_stream`]：
+//!   `changed/<主题>` 等，与主界面同一张订阅表，判据 `changed_stream_tests`），它认不出的原位回 `Closed{Peer(…)}`，不装作订阅成功。
 //! - 对端撤活是尽力的：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client` 调用随之被丢 ⇒ 它的 `AbandonGuard`
 //!   补发一条 `cancel{target}`（判据 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。可取消档真停下；阻塞档照跑完。
 //! - 不接回：monitor 退了，管子断了，窗口里之后每一件都会出声说没走通（`client.rs` 头注）。
@@ -177,7 +177,35 @@ impl Backends for InboundBackends {
         kind: Kind,
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item> {
-        self.subscribe_raw(origin, kind, from)
+        // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
+        if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
+            return transfer_stream(&origin, id, from);
+        }
+        // 一组做到哪了：按票（窗口铸的）转后端推来的 `files_batch` 帧，那一组在哪台做都一样。`from` 没有意义（只留最新那一格）。
+        if let Some(ticket) = kind.0.strip_prefix(crate::files_batch_relay::KIND_PREFIX) {
+            use futures::StreamExt as _;
+            let _ = from;
+            return crate::files_batch_relay::watch(ticket)
+                .enumerate()
+                .map(|(i, cell)| Item::Frame {
+                    seq: i as u64 + 1,
+                    body: Body(cell.into_bytes()),
+                })
+                .boxed();
+        }
+        // 第二条：那台此刻连没连着（连接循环的事实，`inbound_client::link_of`）。
+        if kind.0 == filewin_contract::LINK_KIND {
+            return link_stream(&origin);
+        }
+        // 别的 `kind`（文件窗口订的 `changed/<主题>` …）⇒ 进程里那一份会话流句柄，与主界面同一张订阅表、同一套 credit；
+        // 流名认不认得 · 续不续看由它答（认不出 ⇒ 原位 `Closed{Peer(no-such-stream)}`；`from` 给了 ⇒ 原位 `bad_args`）。
+        match crate::event_replay::host() {
+            Some(replay) => replay.subscribe_stream(&origin, &kind.0, from),
+            // 会话流句柄还没起（进程起步那一下之前）：不装作订阅成功。
+            None => Box::pin(futures::stream::iter([Item::Closed {
+                by: By::Ours(OursFault::Broken),
+            }])),
+        }
     }
 
     /// 那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
@@ -252,53 +280,6 @@ impl InboundBackends {
             }
         })
     }
-
-    fn subscribe_raw(
-        &self,
-        origin: Origin,
-        kind: Kind,
-        from: Option<Cursor>,
-    ) -> BoxStream<'static, Item> {
-        // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
-        if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
-            return transfer_stream(&origin, id, from);
-        }
-        // 一组做到哪了：按票（窗口铸的）转后端推来的 `files_batch` 帧，那一组在哪台做都一样。`from` 没有意义（只留最新那一格）。
-        if let Some(ticket) = kind.0.strip_prefix(crate::files_batch_relay::KIND_PREFIX) {
-            use futures::StreamExt as _;
-            let _ = from;
-            return crate::files_batch_relay::watch(ticket)
-                .enumerate()
-                .map(|(i, cell)| Item::Frame {
-                    seq: i as u64 + 1,
-                    body: Body(cell.into_bytes()),
-                })
-                .boxed();
-        }
-        // 第二条：那台此刻连没连着（连接循环的事实，`inbound_client::link_of`）。
-        if kind.0 == filewin_contract::LINK_KIND {
-            return link_stream(&origin);
-        }
-        // 第三条：那台的某样东西变了（`changed/<主题>`，后端 `changed` 帧按主题原样交，主题不在这里认）。文件窗口订 `changed/plan`。
-        if let Some(rest) = kind.0.strip_prefix(crate::event_replay::CHANGED_KIND) {
-            if let Some(topic) = rest
-                .strip_prefix('/')
-                .filter(|t| !t.is_empty() && !t.contains('/'))
-            {
-                return changed_stream(&origin, topic);
-            }
-        }
-        // 别的 `kind` 今天照旧没有流。对端原位说「没有这条流」，不装作订阅成功、也不静默挂着。
-        let _ = (origin, from);
-        let body = serde_json::to_vec(&serde_json::json!({
-            "code": "no-such-stream",
-            "kind": kind.0,
-        }))
-        .unwrap_or_default();
-        Box::pin(futures::stream::iter([Item::Closed {
-            by: By::Peer(Body(body)),
-        }]))
-    }
 }
 
 /// `link` 那条流：先交此刻的样子，之后每变一次交一格（没变不重复说）。连接循环那一侧的事实只住 `inbound_client`。
@@ -313,40 +294,6 @@ fn link_stream(origin: &Origin) -> BoxStream<'static, Item> {
                 return Some((link_item(now), (rx, Some(now), o)));
             }
             rx.changed().await.ok()?;
-        }
-    })
-    .boxed()
-}
-
-/// `changed/<主题>` 那条流：从订的这一刻起，那台推来的这个主题的每一格原样出一格（序号从 1 连续）；落后了 ⇒ 原位 `Gap`（不知道丢到哪）。
-fn changed_stream(origin: &Origin, topic: &str) -> BoxStream<'static, Item> {
-    use futures::StreamExt as _;
-    use tokio::sync::broadcast::error::RecvError;
-    let rx = crate::event_replay::changed_tap();
-    let (o, t) = (origin.as_wire_str().to_string(), topic.to_string());
-    futures::stream::unfold((rx, 0u64), move |(mut rx, seq)| {
-        let (o, t) = (o.clone(), t.clone());
-        async move {
-            loop {
-                match rx.recv().await {
-                    Ok(c) if c.origin.as_wire_str() == o && c.topic == t => {
-                        let item = Item::Frame {
-                            seq: seq + 1,
-                            body: Body(c.cell.into_bytes()),
-                        };
-                        return Some((item, (rx, seq + 1)));
-                    }
-                    Ok(_) => {}
-                    Err(RecvError::Lagged(_)) => {
-                        let item = Item::Gap {
-                            from_seq: seq + 1,
-                            to_seq: None,
-                        };
-                        return Some((item, (rx, seq)));
-                    }
-                    Err(RecvError::Closed) => return None,
-                }
-            }
         }
     })
     .boxed()

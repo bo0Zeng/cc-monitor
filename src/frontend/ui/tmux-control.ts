@@ -12,11 +12,6 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { Killed } from "./generated/Killed";
 
-/** 结束成了之后顺手注销 cc-bus 那几行（后端写好的句子 ＋ 复制详情；没什么可说 ⇒ `said` 是 `null`）。 */
-export interface KillNote {
-  said: string | null;
-  detail: string;
-}
 
 /** 结束的期限（见头注）。 */
 const CONTROL_BUDGET_MS = 10_000;
@@ -25,14 +20,13 @@ const CONTROL_BUDGET_MS = 10_000;
 
 /** 结束会话的拒绝码 ⇒ 一句话。身份门 / 窗口门两档说清拦下的原因（它们的下一步与「会话不在」完全不同）。 */
 /**
- * `kill` 的回包 ⇒ 做成了没有 ＋顺手从 cc-bus 名册注销的结局那一句（没有要说的 ⇒ `null`）。
+ * `kill` 的回包 ⇒ 做成了没有。
  * `killed` 不为真 ⇒ 「后端没确认结束」（**不当成功**：破坏性动作在未知状态上不许往下走）。
  */
-export function killedOf(origin: Origin, target: string, v: Killed): KillNote {
+export function killedOf(origin: Origin, target: string, v: Killed): void {
   if ((v.killed as boolean) !== true) {
     throw new ControlError(copyText("tmuxControl.kill.notConfirmed", { machine: machineName(origin), target }), "");
   }
-  return { said: v.bus.said, detail: v.bus.detail };
 }
 
 /**
@@ -40,8 +34,8 @@ export function killedOf(origin: Origin, target: string, v: Killed): KillNote {
  * 后端对**句柄**下手（不是名字）。给了 `sid` ⇒ 结束挂着它的那个窗格（同会话里还有别的 claude 时不关整个会话）。
  * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
-export async function killSession(origin: Origin, target: string, sid?: string): Promise<KillNote> {
+export async function killSession(origin: Origin, target: string, sid?: string): Promise<void> {
   const req = sid === undefined ? { name: target } : { name: target, sid };
   const budget = budgetWithin(CONTROL_BUDGET_MS);
-  return killedOf(origin, target, await settleTyped(origin, "kill", callTyped(origin, "kill", req, budget)));
+  killedOf(origin, target, await settleTyped(origin, "kill", callTyped(origin, "kill", req, budget)));
 }

@@ -22,7 +22,7 @@ set -euo pipefail
 #      tmux 报 `File name too long`（实测在 scratchpad 那种长路径上必踩）。
 #
 # 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
-# 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
+# 也自动覆盖它 shell out 出去的东西（`ccm` 内部也是裸调 tmux）。
 # `C7i` 隔离：走**共享原语**（`P0e` 08-12 抽出来的，原本这段在各套件里各抄一份）。
 # 它把 `$BIN/tmux` shim 放进 PATH 最前、强插 `-L <本趟私有名>` —— 漏什么环境变量都打不偏。
 # ⚠ 本套件此前靠 `TMUX_TMPDIR` 隔离，那是 `C7i` 逐字禁止的形态

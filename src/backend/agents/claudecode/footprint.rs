@@ -71,7 +71,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         // 例外本身写成 `src/doc/INVARIANTS.md` 的第 7 条。
         // ⚠ `uninstallable` **仍是 `false`** —— 卸载没做，如实声明（不因为「装做了」就顺手标 true）。
         //
-        // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份 `cc-spawn`，而 `~/.local/bin/cc-*`
+        // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份脚本，而 `~/.local/bin/cc-*`
         // 指向的是 `~/.claude/skills/cc-bus/`（实测两份差 167 行）—— **改动到不了本机**。
         //
         // 🔴 **09-11 `K-R60`：上面那句「翻成 true」到今天才真的落到字段上。**

@@ -123,8 +123,9 @@ fn caps_child() {
     });
 }
 
-/// 过了门之后每发 tmux 都卡（`kill` 上限 8 s；不装总期限时是「两发 × 一发 5 s」＝ 10 s）：
-/// 带 3 s 的那条在 3 s − 余量 2 s ＝ 1 s 上回 `child_timed_out`；不带的、带坏了的都按上限 8 s 回。
+/// 过了门之后每发 tmux 都卡。杀会话过了门只剩一发 tmux（`kill-session`，一发 5 s；杀之前不再读窗格 pid
+/// —— 那一发随「杀会话顺手注销 cc-bus」一起删了），总期限上限 8 s 这时够不着：
+/// 带 3 s 的那条在 3 s − 余量 2 s ＝ 1 s 上回 `child_timed_out`；不带的、带坏了的按那一发自己的 5 s 回。
 #[cfg(unix)]
 #[test]
 fn a_stuck_command_answers_by_the_carried_deadline_or_else_by_the_cap() {
@@ -182,8 +183,8 @@ fn a_stuck_command_answers_by_the_carried_deadline_or_else_by_the_cap() {
         let (code, ms) = got(id);
         assert_eq!(code, "child_timed_out", "{id}");
         assert!(
-            (7_900..9_500).contains(&ms),
-            "{id} 该按上限 8 s 回，用了 {ms} ms"
+            (4_900..6_500).contains(&ms),
+            "{id} 该按那一发 tmux 的 5 s 回（上限 8 s 够不着），用了 {ms} ms"
         );
     }
 }

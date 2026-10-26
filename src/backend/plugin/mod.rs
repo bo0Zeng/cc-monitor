@@ -1,6 +1,6 @@
 //! 插件通用调用口：宿主怎么把一个外部可执行文件当插件使唤。
 //!
-//! 这一层装什么，由两个真实实现反推（`control/cc_bus.rs`：Rust，宿主调 cc-bus；`src/shared/cc-bus/scripts/cc-spawn`：shell，宿主调 ccm）：
+//! 这一层装什么，当年由两个真实实现反推（`control/cc_bus.rs`：Rust，宿主调 cc-bus；一个起会话的 shell 壳：宿主调 ccm，后来删了）：
 //!
 //! | 段 | 两处的形状 | 落在哪 |
 //! |---|---|---|

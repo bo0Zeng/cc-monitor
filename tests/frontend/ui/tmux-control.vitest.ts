@@ -130,15 +130,11 @@ describe("按 sid 找窗格：结束带上会话 ID", () => {
   });
 });
 
-describe("FIX4 · 杀会话顺手注销的结局", () => {
-  /** 「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
-  it("★ bus 那一格 ⇒ 那台写好的那几行 ＋ 复制详情原样带出；全空不说", () => {
-    const bus = (b: unknown) => ({ ...KILL.reply, bus: b }) as unknown as Killed;
-    expect(killedOf("devbox", "demo-cc", KILL.reply as unknown as Killed)).toEqual({ said: null, detail: "" });
-    const b = { removed: [], failed: [{ id: "r_cc", why: "w-1" }], unread: null, said: "S-1", detail: "D-1" };
-    expect(killedOf("devbox", "demo-cc", bus(b))).toEqual({ said: "S-1", detail: "D-1" });
+describe("杀会话的成品只有会话名与杀成了", () => {
+  it("★ 金样成品里没有 cc-bus 注销那一格（杀会话不碰 cc-bus 名册）", () => {
+    expect(Object.keys(KILL.reply).sort()).toEqual(["killed", "session"]);
+    expect(() => killedOf("devbox", "demo-cc", KILL.reply as unknown as Killed)).not.toThrow();
   });
-
 });
 
 describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {

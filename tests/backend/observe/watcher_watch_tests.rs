@@ -466,7 +466,11 @@ fn heard(rx: &mut FrameRx) -> Vec<String> {
             Frame::SessionsReplayed(_) => "listed".into(),
             Frame::SessionState(s) => format!("{:?} {}", s.state, s.sid),
             Frame::Changed(c) => {
-                format!("changed {} {}", c.topic.name(), c.key.unwrap_or_default())
+                format!(
+                    "changed {} {}",
+                    c.topic().name(),
+                    c.key().unwrap_or_default()
+                )
             }
             Frame::SessionBranch(b) => format!("branch {} {}", b.sid, b.at),
             Frame::SessionFileGone(g) => format!("gone {}", g.session_id),
@@ -540,12 +544,10 @@ fn only_lost_lines_say_so_and_report_nothing_again() {
 fn a_lost_change_and_a_lost_branch_page_come_back_in_the_report() {
     let (dir, mut state, mut sink, mut rx) = narrow("changed");
     fill(&mut sink, 8);
-    sink.send(Frame::changed(
-        crate::wire::Topic::Tasks,
-        Some("x".into()),
-        None,
-        None,
-    ));
+    sink.send(Frame::changed(crate::wire::Changed::Tasks {
+        key: "x".into(),
+        body: None,
+    }));
     let pa = file(&dir, A);
     sink.branch(A, &pa.to_string_lossy(), &[], 0);
     while rx.try_recv().is_ok() {}
