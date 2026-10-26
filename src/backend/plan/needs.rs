@@ -1,19 +1,19 @@
 //! 计划这一侧「要你看」的判定：纯函数，跑在 [`super::product::make`] 之后（吃成品，不吃 pb 的原样），不读盘、不起进程。
 //!
-//! 只收四种（人只是顶块的上一级：子块交回由上一级 agent 收，新签收按时间排成一条，都不进这里）：
+//! 只收四种（人只是 project 的上一级：划出的权力范围交回由上一级 agent 收，都不进这里）：
 //!
 //! | 种 | 什么时候出 | 键（带条目版本：版本换了，认可就失效、再出） |
 //! |---|---|---|
-//! | `top` | 顶块（id 为 `project` 的那一块）的阶段带「看全局」标 | `top:<进那一步那次的 rev>` |
-//! | `red` | `check.red` 每条一项 | `red:<规则>@<块>` |
-//! | `ended` | 某块的接手对到的会话已结束、那一块没全做完（子 agent 当接手看父会话：父会话也停了才算） | `ended:<块>@<接手 id>` |
-//! | `ask` | 某块的接手对到的会话此刻在等你 | `ask:<块>@<接手 id>`（不收认可：答了自己消失；计数由会话那一侧算） |
+//! | `top` | 顶层算活的节点全签收了（顶层进度 done ＝ of ＞ 0） | `top:<全签收那一次的 rev>` |
+//! | `red` | `check.red`（校验不通过）每条一项 | `red:<规则>@<权力范围>` |
+//! | `ended` | 某个权力范围的负责人对到的会话已结束、它的根节点没签收（子 agent 看父会话：父会话也停了才算） | `ended:<权力范围>@<负责人 id>` |
+//! | `ask` | 某个权力范围的负责人对到的会话此刻在等你 | `ask:<权力范围>@<负责人 id>`（不收认可：答了自己消失；计数由会话那一侧算） |
 //!
-//! 另有「退回」落地的判法（[`landing`]）· 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或顶块 `project`）。
+//! 另有「退回」落地的判法（[`landing`]）· 送进会话的那一行（[`line`]）· 退回的对象（[`target`]：一格，或 `project`）。
 
-use super::product::{DONE, DROPPED};
 use super::wire::{
-    PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice, PlanWho,
+    PlanBlock, PlanCell, PlanNeed, PlanRead, PlanReturned, PlanReturnedChild, PlanSlice,
+    PlanStatusCode, PlanWho,
 };
 use copy_core::copy_text;
 
@@ -25,11 +25,8 @@ pub(crate) fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActi
     }
 }
 
-/// 顶块的 id（pb 的规矩：顶那一块叫 project）。
+/// 最上面那个权力范围的 id（pb 的规矩：叫 project）。
 pub(crate) const TOP_BLOCK: &str = "project";
-
-/// 阶段表里「交回的关口」那个标（pb 的协议值）。
-pub(crate) const LOOK_GLOBAL: &str = "看全局";
 
 /// 不收认可的那一种（答了自己消失）。
 const ASK: &str = "ask";
@@ -58,27 +55,21 @@ fn cell<'a>(sl: &'a PlanSlice, id: &str) -> Option<&'a PlanCell> {
     sl.cells.iter().find(|c| c.id == id)
 }
 
-/// 顶块此刻站在带「看全局」标的那一步上。
-pub(crate) fn top_at_look_global(sl: &PlanSlice) -> bool {
-    let Some(phase) = block(sl, TOP_BLOCK).and_then(|b| b.phase.as_deref()) else {
-        return false;
-    };
-    sl.phases
-        .iter()
-        .any(|p| p.name.as_deref() == Some(phase) && p.marks.iter().any(|m| m == LOOK_GLOBAL))
+/// 顶层算活的节点全签收了（有收的值、顶层至少一个算活的）。
+pub(crate) fn top_done(sl: &PlanSlice) -> bool {
+    sl.progress
+        .as_ref()
+        .is_some_and(|p| p.of > 0 && p.done == p.of)
 }
 
-/// 一块收没收尾：顶块看整片的 `done`；别的块看它的根格（`cells`）是不是都做完了 / 不做了（找不到那一格 ⇒ 算没收尾）。
+/// 一个权力范围收没收尾：project 看顶层全签收没有；别的看它的根节点是不是都签收了（找不到那一格 · 不算活 ⇒ 算没收尾）。
 fn block_finished(sl: &PlanSlice, b: &PlanBlock) -> bool {
     if b.id == TOP_BLOCK {
-        return sl.done;
+        return top_done(sl);
     }
-    b.cells.iter().all(|id| {
-        matches!(
-            cell(sl, id).and_then(|c| c.status.as_deref()),
-            Some(DONE) | Some(DROPPED)
-        )
-    })
+    b.cells
+        .iter()
+        .all(|id| cell(sl, id).and_then(|c| c.status_code) == Some(PlanStatusCode::Done))
 }
 
 /// 一块的根格（`cells` 第一项）。
@@ -98,10 +89,10 @@ fn need(kind: &str, key: String, block: Option<String>, cell: Option<String>) ->
     }
 }
 
-/// 一片（成品）的要你看。`entered` ＝ 顶块进「看全局」那一步那次的 rev（不知道 ⇒ 不出 `top` 那一条）。
+/// 一片（成品）的要你看。`entered` ＝ 顶层全签收那一次的 rev（不知道 ⇒ 不出 `top` 那一条）。
 pub(crate) fn of_slice(sl: &PlanSlice, entered: Option<&str>) -> Vec<PlanNeed> {
     let mut out = Vec::new();
-    if let (true, Some(rev)) = (top_at_look_global(sl), entered) {
+    if let (true, Some(rev)) = (top_done(sl), entered) {
         let root = block(sl, TOP_BLOCK).and_then(root_of);
         out.push(need(
             "top",

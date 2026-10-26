@@ -7,7 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError } from "../../../src/comms/inward/chan";
-import { fetchPlanRead, takeRepo } from "../../../src/frontend/ui/plan-reads";
+import { adoptRepo, fetchPlanRead } from "../../../src/frontend/ui/plan-reads";
 import { chanReply, refusedReply } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -23,8 +23,8 @@ describe("plan-* 没成", () => {
     expect(e).toBeInstanceOf(ChanError);
     expect([(e as ChanError).message, (e as ChanError).detail]).toEqual(["这台没装 pb", refusedReply("no_pb", "").detail]);
   });
-  it("接过仓库回包没说接到哪一片 ⇒ 不当成了，那一句是回包里那一句", async () => {
-    invokeMock.mockResolvedValueOnce(chanReply({ said: "pb 没认这一片", took: null, path: null }));
-    await expect(takeRepo("devbox", "/w", "invoice")).rejects.toThrow("pb 没认这一片");
+  it("接过仓库回包没说接过来的是哪一个 ⇒ 不当成了，那一句是回包里那一句", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply({ said: "pb 没认这个仓库", adopted: null, path: null }));
+    await expect(adoptRepo("devbox", "/w", "invoice")).rejects.toThrow("pb 没认这个仓库");
   });
 });

@@ -8,7 +8,7 @@ use copy_core::said::Said;
 use std::path::Path;
 
 /// 认得的形状版本（`pb dump` 顶上的 `shape`）。pb 改了形状会把它加一 ⇒ 这里不认 ⇒ 当作「pb 太旧 / 太新」说出来，不硬读。
-pub(crate) const SHAPE: u64 = 4;
+pub(crate) const SHAPE: u64 = 6;
 
 /// pb 的退出码：读不成 · 用法错。
 const RC_UNREADABLE: i32 = 3;
@@ -103,37 +103,37 @@ pub(crate) fn classify(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Ran {
     }
 }
 
-/// 在工作区根 `ws` 里跑 `<entry> dump --cell <片> <格> <工作区>`：一格的 agent 视角（pb 原样那一段）。
-/// 不成 ⇒ [`CellMiss`]。
-pub(crate) fn run_cell(entry: &Path, ws: &Path, slice: &str, id: &str) -> Result<String, CellMiss> {
+/// 在工作区根 `ws` 里跑 `<entry> dump --node <仓库> <编号> <工作区>`：一个节点的 agent 视角（pb 原样那一段）。
+/// 不成 ⇒ [`NodeMiss`]。
+pub(crate) fn run_node(entry: &Path, ws: &Path, repo: &str, id: &str) -> Result<String, NodeMiss> {
     let ws_s = ws.to_string_lossy().to_string();
-    cell_of(ran_of(super::pb(
+    node_of(ran_of(super::pb(
         entry,
         ws,
-        &["dump", "--cell", slice, id, ws_s.as_str()],
+        &["dump", "--node", repo, id, ws_s.as_str()],
     )))
 }
 
-/// `dump --cell` 没给出那一段：pb 说那一片 · 那一格不在（`error`，pb 那一句）· 别的结局（同 [`run`]）。
+/// `dump --node` 没给出那一段：pb 说那个仓库 · 那个节点不在（`error`，pb 那一句）· 别的结局（同 [`run`]）。
 #[derive(Debug)]
-pub(crate) enum CellMiss {
+pub(crate) enum NodeMiss {
     Gone(String),
     Ran(Ran),
 }
 
-/// `dump --cell` 的结局 ⇒ 那一段原文（纯函数）：带 `error` ⇒ `Gone`；读到了却没有 `agent_view` ⇒ 读不懂。
-pub(crate) fn cell_of(ran: Ran) -> Result<String, CellMiss> {
+/// `dump --node` 的结局 ⇒ 那一段原文（纯函数）：带 `error` ⇒ `Gone`；读到了却没有 `agent_view` ⇒ 读不懂。
+pub(crate) fn node_of(ran: Ran) -> Result<String, NodeMiss> {
     let Ran::Dump { doc, .. } = ran else {
-        return Err(CellMiss::Ran(ran));
+        return Err(NodeMiss::Ran(ran));
     };
     if let Some(e) = doc.get("error").and_then(serde_json::Value::as_str) {
-        return Err(CellMiss::Gone(e.to_string()));
+        return Err(NodeMiss::Gone(e.to_string()));
     }
     doc.get("agent_view")
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| {
-            CellMiss::Ran(Ran::Failed {
+            NodeMiss::Ran(Ran::Failed {
                 said: copy_text("bePlan.dump.unparsable", &[]),
                 raw: None,
             })

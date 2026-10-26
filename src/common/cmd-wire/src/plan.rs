@@ -3,18 +3,17 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 那一格的状态码（后端 `plan::product` 从 pb 的状态字 · 凭据类认出来的）。TS 那一侧在字段上写成字面量并集（不另出一份生成文件）。
+/// 一个节点算不算活、签收了没有（后端 `plan::product` 照领域表算：收的值 ＝ 表里 update 规则加 · 去的那个值，
+/// 节点的类许记它 ⇒ 算活）：记着它 ⇒ `Done`，没记 ⇒ `Open`；类不许记它（测试 · 规矩 · 原话 …）⇒ 字段为 `null`。
+/// TS 那一侧在字段上写成字面量并集（不另出一份生成文件）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlanStatusCode {
     Done,
     Open,
-    Dropped,
-    /// 凭据类的格（不论 pb 的状态字）。
-    Evidence,
 }
 
-/// 一份文件的对账码（pb 的 在 · 缺 · 空 · 坏）。TS 那一侧同上，写在字段上。
+/// 一份文件的对账码（pb 的 `file_check`：present · missing · empty · invalid）。TS 那一侧同上，写在字段上。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlanFileState {
@@ -37,17 +36,13 @@ pub struct PlanFileOwner {
     /// 「编号 标题」（没有标题 ⇒ 只写编号），后端拼好。
     pub label: String,
     pub title: Option<String>,
-    /// 认不出 pb 的状态字 ⇒ `null`（当没做完画）。
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(type = "\"done\" | \"open\" | \"dropped\" | \"evidence\" | null")
-    )]
+    /// 类不许记收的值 ⇒ `null`（不算活）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"done\" | \"open\" | null"))]
     pub status_code: Option<PlanStatusCode>,
+    /// 状态那一行字（后端照 pb 记着的值写好，如「已签收 2」）；什么都没记 ⇒ `null`。
     pub status: Option<String>,
     /// 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
     pub block: Option<String>,
-    /// 作数那一条签收的时刻（成了字）；没签过 ⇒ `null`。
-    pub sign_at_text: Option<String>,
     /// 对账码；认不出 ⇒ `null`。
     #[cfg_attr(
         any(test, feature = "ts"),

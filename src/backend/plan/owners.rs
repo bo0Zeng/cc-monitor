@@ -4,7 +4,7 @@
 //!   如 `repos/app`；照 pb 给的用，没给 ⇒ 不认这一片的仓库）。格的文件声明是相对它的路径。拼这个绝对路径只在 [`repo_dir`]（盯盘也用它）。
 //! - 一份文件被几格声明（pb 判据红「两个节点声明同一个文件」）⇒ 排期上先出现的那一格作主，其余进 `dup`（文件那一侧也看得出来）。
 //! - 每一格（作主的 · `dup` 里的）都带 `label`「编号 标题」（[`super::product::label`] 那一处拼），文件窗口照它写、不自己拼。
-//! - 那一格住哪一块：从它往上找第一个块根格（`blocks[].cells` 里的那一格），写块根格的标题；住顶块 ⇒ `null`。
+//! - 那一格住哪个权力范围：从它往上找第一个划出的根节点（`blocks[].cells` 里的那一格），写它的标题；住 project ⇒ `null`。
 //! - 无主（没有一格声明）照 pb 的 `unowned`：这个目录里的那几份进 `unowned`（文件名）；仓库读不出（pb 给 `paths: null`）⇒ `unowned` 为 null、`unownedWhy` 是 pb 那一句。
 //! - 那一片读不成（没读好过 ⇒ `error`；读好过 ⇒ `stale`）⇒ `unreadable` 是那一句、条目空（文件窗口整列写「—」）。
 
@@ -111,9 +111,8 @@ pub(crate) fn of_dir(doc: &PlanRead, dir: &str) -> PlanFiles {
                             label,
                             title: c.title.clone(),
                             status_code: c.status_code,
-                            status: c.status.clone(),
+                            status: c.state_line.clone(),
                             block: block_title(sl, &c.id),
-                            sign_at_text: c.signs.last().and_then(|g| g.at_text.clone()),
                             file_state: f.state_code,
                             file_note: f.note.clone(),
                             dup: Vec::new(),

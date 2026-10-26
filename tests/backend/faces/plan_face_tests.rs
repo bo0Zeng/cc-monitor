@@ -64,7 +64,7 @@ fn an_unfresh_list_runs_pb_once_per_dir_whatever_it_said() {
         let runs = std::cell::Cell::new(0);
         let read = |dir: &Path| {
             runs.set(runs.get() + 1);
-            b.take(ran(), dir, &crate::plan::fixture::who, 1)
+            b.ingest(ran(), dir, &crate::plan::fixture::who, 1)
         };
         let first = list_in(&b, vec!["/d".into()], false, &read, &tz);
         let again = list_in(&b, vec!["/d".into()], false, &read, &tz);

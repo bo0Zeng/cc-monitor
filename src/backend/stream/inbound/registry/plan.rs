@@ -1,5 +1,5 @@
-//! 命令表 · 计划：读面 `plan-list` · `plan-read` · `plan-cell-view`（planned-build 的工作区 · 片 · 一格的 agent 视角；只读）；
-//! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `take` · `view` · `record`；写盘的是 pb）；
+//! 命令表 · 计划：读面 `plan-list` · `plan-read` · `plan-cell-view`（planned-build 的工作区 · 仓库 · 一个节点的 agent 视角；只读）；
+//! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `adopt` · `render`；写盘的是 pb）；
 //! 校验 `plan-pb-check`（一个路径能不能当 pb 用）；
 //! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
 
@@ -12,14 +12,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区）",
     ),
     typed::blocking::<crate::faces::plan_face::PlanReadCmd>(
-        "一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view）",
+        "一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view）",
     ),
     typed::blocking::<crate::faces::plan_face::PlanCellViewCmd>(
-        "一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样；点到才起 `pb dump --cell`）",
+        "一个节点的 agent 视角（agent 站在那个节点时 pb 印给它的那一段，原样；点到才起 `pb dump --node`）",
     ),
-    // 代敲也在阻塞档：起一次 pb（`view` 要画整张图）。写盘的是 pb（工作区配置 · 系统临时目录里那一页），本族不写。
+    // 代敲也在阻塞档：起一次 pb（`render` 要画整张图）。写盘的是 pb（工作区配置 · 系统临时目录里那一页），本族不写。
     typed::blocking::<crate::faces::plan_face::PlanCommandCmd>(
-        "以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）· `record`（把人的原话记进 `slice` 那一片，当前片不动）；这一侧带着 agent 身份 ⇒ 这几条都不代敲",
+        "以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲",
     ),
     typed::blocking::<crate::faces::plan_face::PlanPbCheckCmd>(
         "一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问",

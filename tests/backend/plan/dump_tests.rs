@@ -38,11 +38,11 @@ fn rc4_or_an_unknown_shape_means_this_pb_cannot_dump_for_us() {
     assert!(matches!(classify(Some(0), b"{}", b""), Ran::Unsupported(_)));
 }
 
-/// 只认 0.3.8 那一形（shape 4）；更早的（1 · 2 · 3）不硬读、照实说对不上，话里带它给的形状版本。
+/// 只认 pb 0.5 那一形（shape 6）；别的（更早的 1–5 · 更新的 7）不硬读、照实说对不上，话里带它给的形状版本。
 #[test]
-fn only_shape_four_is_read_and_older_ones_say_the_pb_version_does_not_match() {
-    assert_eq!(SHAPE, 4);
-    for old in [1, 2, 3, 5] {
+fn only_shape_six_is_read_and_others_say_the_pb_version_does_not_match() {
+    assert_eq!(SHAPE, 6);
+    for old in [1, 2, 3, 4, 5, 7] {
         let mut doc = fixture_dump("/w");
         doc["shape"] = serde_json::json!(old);
         match classify(Some(0), doc.to_string().as_bytes(), b"") {
@@ -99,45 +99,45 @@ fn a_real_run_outside_any_workspace_is_not_a_workspace() {
     ));
 }
 
-/// 一格的 agent 视角：`dump --cell` 回的那一份里取 `agent_view` 原文；带 `error`（图上没有那一格）⇒ 失败、话是 pb 那一句。
+/// 一个节点的 agent 视角：`dump --node` 回的那一份里取 `agent_view` 原文；带 `error`（图上没有那个节点）⇒ 失败、话是 pb 那一句。
 #[test]
-fn a_cell_dump_gives_its_agent_view_or_pbs_error() {
-    use crate::plan::fixture::{cell_view, cell_view_missing};
-    let ok = cell_view("/w").to_string();
-    let v = cell_of(classify(Some(0), ok.as_bytes(), b"")).unwrap();
+fn a_node_dump_gives_its_agent_view_or_pbs_error() {
+    use crate::plan::fixture::{node_view, node_view_missing};
+    let ok = node_view("/w").to_string();
+    let v = node_of(classify(Some(0), ok.as_bytes(), b"")).unwrap();
     assert!(v.starts_with("── A1-2 甲的写出"), "{v}");
-    let bad = cell_view_missing("/w").to_string();
-    match cell_of(classify(Some(0), bad.as_bytes(), b"")) {
-        Err(CellMiss::Gone(said)) => assert!(said.contains("A9"), "{said}"),
+    let bad = node_view_missing("/w").to_string();
+    match node_of(classify(Some(0), bad.as_bytes(), b"")) {
+        Err(NodeMiss::Gone(said)) => assert!(said.contains("A9"), "{said}"),
         other => panic!("{other:?}"),
     }
-    let mut old = cell_view("/w");
+    let mut old = node_view("/w");
     old["shape"] = serde_json::json!(3);
     assert!(matches!(
-        cell_of(classify(Some(0), old.to_string().as_bytes(), b"")),
-        Err(CellMiss::Ran(Ran::Unsupported(_)))
+        node_of(classify(Some(0), old.to_string().as_bytes(), b"")),
+        Err(NodeMiss::Ran(Ran::Unsupported(_)))
     ));
 }
 
-/// 真起一次 `--cell`：当前目录是工作区根，argv 是 `dump --cell <片> <格> <工作区>`，不带 `PB_ID`。
+/// 真起一次 `--node`：当前目录是工作区根，argv 是 `dump --node <仓库> <编号> <工作区>`，不带 `PB_ID`。
 #[test]
-fn a_real_cell_run_names_slice_cell_and_workspace() {
-    let d = scratch("dump-cell");
+fn a_real_node_run_names_repo_node_and_workspace() {
+    let d = scratch("dump-node");
     let entry = fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
     let ws = workspace(&d.join("ws"), &fixture_dump("/synthetic"));
-    let v = run_cell(&entry, &ws, "alpha", "A1-2").unwrap();
+    let v = run_node(&entry, &ws, "alpha", "A1-2").unwrap();
     assert!(v.starts_with("── A1-2"));
     let log: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(d.join("pb/ran.json")).unwrap()).unwrap();
     assert_eq!(
         log["argv"],
-        serde_json::json!(["dump", "--cell", "alpha", "A1-2", ws.to_string_lossy()])
+        serde_json::json!(["dump", "--node", "alpha", "A1-2", ws.to_string_lossy()])
     );
     assert_eq!(log["pb_id"], false);
 }
 
 /// 起 pb 只有一处（`plan::pb`）：找 python · 说「没装 python」那一句 · 定期限 · 认超时，整个 `plan/` 里各至多一处，
-/// dump · cell · command 各自只判结局。数的是 `plan/` 底下全部源文件，新加一份照样算进来。
+/// dump · node · command 各自只判结局。数的是 `plan/` 底下全部源文件，新加一份照样算进来。
 #[test]
 fn starting_pb_lives_in_one_function() {
     // 扫的是 `src/backend/plan/`（生产源码），本文件不在里面 ⇒ 不用摘自己。

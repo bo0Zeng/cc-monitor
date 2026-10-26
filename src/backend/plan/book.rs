@@ -40,7 +40,7 @@ pub(crate) struct Book {
     dirs: Mutex<BTreeMap<PathBuf, Option<String>>>,
     /// 起 pb 读不成、又没有上一次好的可给的目录 ⇒ 那一次的结局（不重问时照它答，不再起 pb；读成了 · 认出不是工作区就摘掉）。
     unread: Mutex<BTreeMap<PathBuf, Miss>>,
-    /// `(工作区, 片)` ⇒ 顶块进「看全局」那一步那次的 rev（顶块离开那一步就删；「要你看」顶块那一条的键用它）。
+    /// `(工作区, 片)` ⇒ 顶层全签收那一次的 rev（又有没签收的就删；「要你看」top 那一条的键用它）。
     entered: Mutex<BTreeMap<(String, String), String>>,
 }
 
@@ -69,11 +69,11 @@ impl Book {
         now_ms: u64,
         prior: Prior,
     ) -> Result<PlanRead, Miss> {
-        self.take_with(dump::run(entry, dir), dir, who, now_ms, prior)
+        self.ingest_with(dump::run(entry, dir), dir, who, now_ms, prior)
     }
 
     /// [`Self::read`] 的后一半：一次 dump 的结局进本子（判据直接喂结局）；每片加 `needs`（[`needs::of_slice`]）。
-    pub(crate) fn take_with(
+    pub(crate) fn ingest_with(
         &self,
         ran: Ran,
         dir: &Path,
@@ -94,13 +94,8 @@ impl Book {
                 for sl in &mut out.slices {
                     match sl.error.clone() {
                         None => {
-                            let at = self.entered_at(
-                                &ws,
-                                &sl.name,
-                                needs::top_at_look_global(sl),
-                                &rev,
-                                prior,
-                            );
+                            let at =
+                                self.entered_at(&ws, &sl.name, needs::top_done(sl), &rev, prior);
                             sl.needs = needs::of_slice(sl, at.as_deref());
                             good.insert(sl.name.clone(), (sl.clone(), now_ms));
                         }
@@ -156,7 +151,7 @@ impl Book {
         }
     }
 
-    /// 顶块此刻在不在「看全局」那一步：在 ⇒ 记着的那次 rev（没记过 ⇒ 先问 `prior`，再没有就是这一次）；不在 ⇒ 忘掉、`None`。
+    /// 顶层此刻全签收没有：是 ⇒ 记着的那次 rev（没记过 ⇒ 先问 `prior`，再没有就是这一次）；不是 ⇒ 忘掉、`None`。
     fn entered_at(
         &self,
         ws: &str,

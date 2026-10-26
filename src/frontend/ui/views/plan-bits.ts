@@ -9,7 +9,7 @@ import type { PlanSlice } from "../plan-reads";
 import type { StatusLook } from "./plan-model";
 import s from "./plan-bits.module.css";
 
-export const STATUS_ICON: Record<StatusLook, IconName> = { done: "success", open: "ring", dropped: "prohibit", evidence: "note" };
+export const STATUS_ICON: Record<StatusLook, IconName> = { done: "success", open: "ring", undecided: "question", none: "note" };
 
 /** 类色：第 i 档（`data-kc` ⇒ `plan-bits.module.css` 把 `--kc` 指到令牌 `--plan-kind-i`）；`null` ⇒ 不设（画淡色）。 */
 export function setKindColor(el: HTMLElement, slot: number | null): void {
@@ -25,10 +25,11 @@ export function phaseBadge(t: string): HTMLElement {
 }
 
 /**
- * 新开的一片还没有图那一屏：「名字 · 领域 · 无图」＋ 一行怎么让它有 ＋［起新会话…］（全产品那一个框，工作目录预填工作区根）。
+ * 新登记的仓库还没有图那一屏：「名字 · 领域 · 无图」＋ 一行怎么让它有 ＋［起新会话…］（全产品那一个框，工作目录预填工作区根）
+ * ＋ project 的交接说明那一块（`handoff`：计划页照 pb 给的那一句拼好交进来；新会话开口说它，认领码找人要）。
  * `newSession` 收要预填的目录。
  */
-export function freshPane(slice: Pick<PlanSlice, "name" | "domain">, workspace: string, newSession: (cwd: string) => void): HTMLElement {
+export function freshPane(slice: Pick<PlanSlice, "name" | "domain">, workspace: string, newSession: (cwd: string) => void, handoff?: HTMLElement): HTMLElement {
   const go = button({ label: copyText("plan.fresh.newSession"), icon: "plus", onClick: () => newSession(workspace) });
   const box = emptyState({
     icon: "plan",
@@ -37,5 +38,6 @@ export function freshPane(slice: Pick<PlanSlice, "name" | "domain">, workspace: 
     action: go,
   });
   box.dataset.view = "fresh";
+  if (handoff) box.appendChild(handoff);
   return box;
 }

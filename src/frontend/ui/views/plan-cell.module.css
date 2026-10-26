@@ -50,22 +50,17 @@
     color: var(--text-2);
   }
 
-  .cdSt[data-look="dropped"] {
-    color: var(--text-faint);
+  .cdSt[data-look="undecided"] {
+    color: var(--warn);
   }
 
-  .cdSt[data-look="evidence"] {
-    color: var(--text-2);
+  .cdSt[data-look="none"] {
+    color: var(--text-faint);
   }
 
   .cdTitle {
     font-size: var(--font-size-title);
     font-weight: 600;
-  }
-
-  .cdTitle[data-look="dropped"] {
-    color: var(--text-faint);
-    text-decoration: line-through;
   }
 
   .cdKind {
@@ -117,7 +112,7 @@
     font-size: var(--font-size-small);
   }
 
-  .cdBar {
+  .cdHandoff {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
@@ -143,11 +138,6 @@
     color: var(--text-2);
     font-size: var(--font-size-small);
     font-weight: 600;
-  }
-
-  .cdAside {
-    margin-left: auto;
-    font-weight: 400;
   }
 
   .cdProse {
@@ -273,12 +263,12 @@
     color: var(--error-text);
   }
 
-  .cdSign {
+  .cdSet {
     padding: var(--space-4) 0 10px;
     border-bottom: 1px solid var(--border-faint);
   }
 
-  .cdSignHead {
+  .cdSetHead {
     display: flex;
     align-items: center;
     gap: var(--space-4);
@@ -294,19 +284,28 @@
     font-size: var(--font-size-xs);
   }
 
-  .cdSignWhy {
+  .cdSetWhy {
     margin-top: 3px;
     color: var(--text);
     font-size: var(--font-size-small);
     line-height: 1.6;
   }
 
-  .cdSign[data-old="true"] .cdSignWhy {
-    color: var(--text-2);
+  .cdStateLine {
+    color: var(--text);
+    font-size: var(--font-size-small);
   }
 
-  /* 还没执行的 sets：虚线（同 pb view），为什么没执行写在下面。 */
-  .cdSign[data-pending="true"] {
+  /* 交接说明那一行：pb 那一句（等宽，可换行）＋［复制］。 */
+  .cdHandoffRow {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    overflow-wrap: anywhere;
+  }
+
+  /* 还没执行的 sets：虚线（同 pb render），为什么没执行写在下面。 */
+  .cdSet[data-pending="true"] {
     margin-bottom: var(--space-4);
     padding: var(--space-4);
     border: 1px dashed var(--border-soft);
