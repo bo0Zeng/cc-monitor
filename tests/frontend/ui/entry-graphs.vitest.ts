@@ -670,6 +670,13 @@ function moduleStacking(
       }
     }
     if (names.size === 0) continue;
+    /** 本文件里 kit `el()` 的本地名（`import { el } from "…/kit/el"`）。 */
+    const elNames = new Set<string>();
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !/(^|\/)kit\/el$/.test(st.moduleSpecifier.text)) continue;
+      const b = st.importClause?.namedBindings;
+      if (b && ts.isNamedImports(b)) for (const sp of b.elements) if ((sp.propertyName ?? sp.name).text === "el") elNames.add(sp.name.text);
+    }
     const isModRef = (n: ts.Node): boolean =>
       ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && names.has(n.expression.text);
     /** 接收者文本 → 挂上去的 `{ module: 有没有, globals: 哪几个 }`。 */
@@ -707,6 +714,12 @@ function moduleStacking(
         n.expression.expression.name.text === "classList"
       ) {
         collect(n.expression.expression.expression.getText(sf), n.arguments);
+      } else if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && elNames.has(n.expression.text) && n.arguments.length >= 2) {
+        // kit `el(tag, 类, 字)`：第二个实参就是新元素的全部类名（第三个是字，不算）。
+        // 接收者：赋给哪个变量就是哪个（之后 `x.classList.add(…)` 归到同一个元素）；没赋给变量 ⇒ 这一次调用自己。
+        const p = n.parent;
+        const recv = ts.isVariableDeclaration(p) && ts.isIdentifier(p.name) ? p.name.text : `el@${n.getStart(sf)}`;
+        collect(recv, [n.arguments[1]]);
       }
       ts.forEachChild(n, visit);
     };
@@ -913,6 +926,11 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
     expect(probe(`help(s.a);`), "认不出挂到哪 ⇒ 按叠算（保守）").toBe(true);
     expect(probe(`a.className = s.a; b.className = "status-cmdk";`), "不同元素不算叠").toBe(false);
     expect(probe(`a.className = s.a; a.classList.remove(s.a); a.className = "not-a-global-xyz";`), "非全局类 / remove 不算叠").toBe(false);
+    const probeEl = (body: string): boolean => probe(`import { el } from "./kit/el";\n${body}`);
+    expect(probeEl(`const a = el("div", s.a, "status-cmdk");`), "kit el()：第二个实参是类、第三个是字，字里的词不算挂").toBe(false);
+    expect(probeEl("el(\"div\", `status-cmdk ${s.a}`);"), "kit el()：类那一格里叠").toBe(true);
+    expect(probeEl(`const a = el("div", s.a); a.classList.add("status-cmdk");`), "kit el() 赋给的变量之后再挂一个全局类也算叠").toBe(true);
+    expect(probe(`el("div", s.a);`), "没从 kit 导入的 el() ⇒ 认不出 ⇒ 按叠算").toBe(true);
   }); // 全仓生产 TS 逐份建一次语法树（`parsedOnce`）
 
   it("次序：每个窗口产物 CSS 里，第一条**叠在全局基类上的** module 规则之后不再有全局样式的规则（module 的 delta 叠在全局基类之上）", () => {

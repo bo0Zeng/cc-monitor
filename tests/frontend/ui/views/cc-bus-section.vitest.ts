@@ -100,13 +100,9 @@ describe("cc-bus 驾驶舱：不预取、不轮询", () => {
 
   it("★ 驾驶舱不起、不收会话，也不广播：按钮只有读取 · 检查 · 收件箱 · 发送，输入框只有每行那一格消息", async () => {
     const s = await readOnce();
-    const buttons = new Set([...s.element.querySelectorAll("button")].map((b) => b.className));
-    expect([...buttons].sort()).toEqual([
-      "settings-btn cc-bus-check",
-      "settings-btn cc-bus-inbox",
-      "settings-btn cc-bus-read",
-      "settings-btn cc-bus-send",
-    ]);
+    // 按钮的样子归 kit/button；这里只认各自那一个 `cc-bus-*` 钩子。
+    const buttons = new Set([...s.element.querySelectorAll("button")].flatMap((b) => [...b.classList].filter((c) => c.startsWith("cc-bus-"))));
+    expect([...buttons].sort()).toEqual(["cc-bus-check", "cc-bus-inbox", "cc-bus-read", "cc-bus-send"]);
     const inputs = new Set([...s.element.querySelectorAll("input")].map((i) => i.className));
     expect([...inputs]).toEqual(["settings-input cc-bus-msg"]);
   });

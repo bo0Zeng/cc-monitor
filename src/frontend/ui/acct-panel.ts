@@ -11,6 +11,7 @@ import { acctAvatar } from "./acct-dom";
 import { machineLabel } from "./acct-view";
 import { copyText } from "./copy-table";
 import type { Origin } from "./ipc/origin";
+import { el } from "./kit/el";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { openDrawer, type DrawerHandle } from "./kit/drawer";
@@ -100,13 +101,6 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
   // 打开那一刻再问一次这个会话（推送丢过也能补上）；额度账同理。
   void refreshSessions(origin, [sid]);
   void refreshQuota(origin);
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
 }
 
 function render(o: Open, host: AcctPanelHost): void {

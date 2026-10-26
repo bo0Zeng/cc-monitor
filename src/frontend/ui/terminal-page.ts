@@ -26,6 +26,7 @@ import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
 import type { Origin } from "./ipc/origin";
+import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
 import { banner } from "./kit/banner";
 import { copyDetailButton, detailOf, saidOf } from "./kit/detail";
@@ -101,12 +102,6 @@ const KEYS: readonly { label: string; what: TerminalSend }[] = [
 
 /** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
 type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; detail?: string };
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
 
 /** 页内元素 id 的流水号（「送往 …」那一行给输入框当名字）。 */
 let pageSeq = 0;
@@ -196,7 +191,7 @@ export class TerminalPage {
     this.liveTag = el("span");
     this.liveTag.className = s.termLive;
     this.liveTag.title = copyText("terminal.head.liveHint");
-    this.snapTag = el("span", copyText("terminal.head.snapshotOnly"));
+    this.snapTag = el("span", "", copyText("terminal.head.snapshotOnly"));
     this.snapTag.className = s.termTag;
     const sp = el("span");
     sp.className = s.termSp;
@@ -247,7 +242,7 @@ export class TerminalPage {
     boxRow.append(this.box, this.sendBtn);
     const keys = el("div");
     keys.className = s.termKeys;
-    const keysLabel = el("span", copyText("terminal.input.keys"));
+    const keysLabel = el("span", "", copyText("terminal.input.keys"));
     keysLabel.className = s.termKeysLabel;
     keys.appendChild(keysLabel);
     for (const k of KEYS) {
@@ -588,7 +583,7 @@ export class TerminalPage {
     if (this.phase === "loading") {
       const l = el("div");
       l.className = s.termLoading;
-      l.append(spinner(), el("span", copyText("terminal.state.loading")));
+      l.append(spinner(), el("span", "", copyText("terminal.state.loading")));
       this.body.replaceChildren(l);
       return;
     }
@@ -619,7 +614,7 @@ export class TerminalPage {
 
     const bars: HTMLElement[] = [];
     if (row.programExited) {
-      const line = el("div", copyText("terminal.bar.programExited", { state: copyText("sessionState.reconnectable.name") }));
+      const line = el("div", "", copyText("terminal.bar.programExited", { state: copyText("sessionState.reconnectable.name") }));
       line.className = s.termBarLine;
       bars.push(line);
     }
@@ -647,7 +642,7 @@ export class TerminalPage {
     for (const b of this.keyBtns) setDisabled(b, no);
     this.noteEl.replaceChildren();
     if (this.note) {
-      const t = el("span", this.note.text);
+      const t = el("span", "", this.note.text);
       t.className = this.note.tone === "ok" ? s.termNoteOk : s.termNoteError;
       this.noteEl.appendChild(t);
       const retry = this.note.retry;
