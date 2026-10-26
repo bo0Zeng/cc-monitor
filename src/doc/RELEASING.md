@@ -2,17 +2,13 @@
 
 ## 1. 发版前 checklist
 
-- [ ] 改**版本号**，`release.yml` 的 `Verify version consistency with tag` 卡这四处：`package.json` · `src/frontend/shell/Cargo.toml` · `src/frontend/shell/tauri.conf.json` · `src/frontend/shell/Cargo.lock` 里 `name = "monitor"` 紧跟的那一行 version。漏一处，那一步就失败，而那时 tag 已经推出去了。
-- [ ] `Cargo.lock` 提交（上一条改的就是它，`cargo` 不会替你 `git add`）。
-- [ ] `package-lock.json` 顶上两处 `"version"`：bump 完 `package.json` 后跑一次 `npm install` 顺手对齐，纯手改一定漏这两处（`the_npm_lockfile_claims_the_version_we_ship` 查它们）。
-- [ ] [CHANGELOG.md](../../CHANGELOG.md) 加本版那一段（写法见 § 3）。流水线从这一段生成 Release 正文，没有就红在渲染那一步。
-- [ ] 改 **README 的版本号**，共五处：
-      `README.md` ① 抬头那行「当前版本: vX.Y.Z」· ②「项目当前状态」里「当前发布 **vX.Y.Z**」· ③ 同一块的「- **版本**：vX.Y.Z（Released）」；
-      `README.en.md` ④ 抬头那行 `Current: vX.Y.Z` · ⑤「Project status」里 `current release **vX.Y.Z**`。
-      > 五处都有判据：①③④ 与三份清单由 `the_release_version_is_the_same_in_all_six_places` 对拍 `package.json`，②⑤ 由 `the_docs_self_reported_release_is_the_version_we_ship` 对拍这棵树要发的版本。数**落点**，别拿 `git grep -c '<上一版版本号>'` 当尺子——漂得越久，尺子越看不见它。
-      > 版本号必须每版跟；测试数、CI job 数、代码行数那几处不写在 README 里，不用跟。
+- [ ] 改**版本号**，手改的只有这四处，`release.yml` 的 `Verify version consistency with tag` 卡的也正是这四处：`package.json` · `src/frontend/shell/Cargo.toml` · `src/frontend/shell/tauri.conf.json` · `src/frontend/shell/Cargo.lock` 里 `name = "monitor"` 紧跟的那一行 version（改完 `Cargo.toml` 跑一次 `cargo check` 就跟上，记得提交）。漏一处，那一步就失败，而那时 tag 已经推出去了。
+      > 别处都从这几处读：后端编译时读 `package.json`（`src/backend/build.rs`），手机的 versionName 也读它（`src/mobile/app/build.gradle.kts`）。
+- [ ] `package-lock.json` 不手改：改完 `package.json` 跑一次 `npm install`，顶上那两处 `"version"` 由它跟上，一起提交。
+- [ ] [CHANGELOG.md](../../CHANGELOG.md) 加本版那一段（写法见 § 3）。流水线从这一段生成 Release 正文，没有就红在渲染那一步；最上面那一节与 `Cargo.toml` 的版本号对不上由 `the_changelog_top_section_is_the_version_we_ship` 拦。
+- [ ] README 不写版本号：两份 README 的抬头与「项目当前状态」只写「见 Releases / CHANGELOG」，不用跟（`the_entry_readmes_write_no_version_number` 守着两份 README 里没有 `X.Y.Z` 形的号）。
 - [ ] **README 的「平台」与功能列表**：本版新增了平台或用户看得见的大功能，抬头那行的「平台」与功能段要跟上。
-- [ ] 本地全绿：壳 workspace（`src/frontend/shell`）`cargo fmt --all --check` · `cargo clippy --workspace --all-targets` · `cargo test --workspace`；后端（`src/backend`）`cargo fmt --check` · `cargo test`——它不是 workspace 成员，是独立的一处；前端 `npm test`（node 纯函数 ＋ vitest）· `npm run coverage` · `npm run build`。fmt 不过 CI 会红。Linux 应用构建与那几个 e2e 是 CI 里各自独立的 job；CI 有哪些 job 以 `.github/workflows/ci.yml` 为准，引用前现数，别抄数。
+- [ ] 本地全量门禁：`bash tests/scripts/gate-affected.sh --full`，`GATE: OK` 才往下走。
 - [ ] **若本版动过滚动 / 渲染管线**（stream · tabs · 会话查看器 · 分支折叠 · render-*）：在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核 WebView2（WebKitGTK 没有 `overflow-anchor`，两端补批语义不同）。
 - [ ] **若本版加删过依赖**（任一份 `Cargo.lock` 或 `package-lock.json` 变了）：`python3 tests/scripts/third-party-notices.py` 重新生成第三方许可声明并提交（门禁 `release-gate` ⑰ 不一致就红，发版那一趟 `--check` 也拦）。
 - [ ] **若本版改过后端源码**：`src/backend/lib.rs` 的 `BUILD_ID` 已随改动 bump。走 tag 发版时 `release.yml` 的 `build-backends` job 从源码重编内嵌字节，官方渠道恒一致；**本地手工打包分发**则必须先重编并换掉 `src/frontend/shell/embedded-backends/` 里的字节（`bash tests/scripts/re-embed.sh`），否则装出去的是旧后端，连上后无限重装。
@@ -30,28 +26,32 @@
 
 ## 2. Git 操作 + CI
 
-```powershell
-git commit -m "release: vX.Y.Z"            # 不加 AI 署名行
-git tag vX.Y.Z
-git push origin main                       # ← 先推 main，等 CI 绿
-git push origin vX.Y.Z                     # tag push 触发 release.yml
+在合并工作树里（§ 1 那几样都已提交、`gate-affected.sh --full` 绿了）：
+
+```bash
+git commit -m "release: vX.Y.Z"                       # 不加 AI 署名行
+bash tests/scripts/push-candidate.sh <合并工作树名>   # 先推 next，CI 全绿才快进 main，再等 main 上那一趟
+git tag vX.Y.Z main
+git push origin vX.Y.Z                                # tag push 触发 release.yml
 ```
+
+`main` 不直接推：它只经 `push-candidate.sh` 收 CI 绿过的提交（头注写着它每一步做什么）。tag 打在 `main` 上那个提交上。
 
 ### 2.1 发版的第一道门：CI 必须绿
 
-`release.yml` 的第一个 job 是 **`ci-gate`**：它按 `head_sha` 查同一个 commit 上 `ci.yml` 的 run，没有一条绿的就不放行，后面三个 job（后端交叉编译 / Windows 打包 / Linux 打包）全部不起。
+`release.yml` 的第一个 job 是 **`ci-gate`**：它按 `head_sha` 查同一个 commit 上 `ci.yml` 的 run，没有一条绿的就不放行，后面四个 job（后端交叉编译 / Windows 打包 / Linux 打包 / 手机打包）全部不起。
 
 对发版流程的影响，三条：
 
-1. **先推 `main` 等它绿，再推 tag**——main 只收 CI 绿过的提交：先推候选分支 `next`（`ci.yml` 在它上面跑与 main 同一套 job，不打标签、不发版），全绿了才把 main 快进过去。这道门接受这个 commit 上任意一条绿的 CI run，main 那次与 tag 那次跑的是同一棵树、同一份 `ci.yml`；main 已经绿了，它立刻放行。
+1. **tag 打在 CI 已经绿过的提交上**：`push-candidate.sh` 把 main 快进过去之前，同一个提交已在 `next` 上跑绿过。这道门接受这个 commit 上任意一条绿的 CI run（`next`、main 与 tag 那几次跑的是同一棵树、同一份 `ci.yml`），所以它立刻放行。
 2. **CI 红 ⇒ 发不出去，这是设计意图，不是故障。** 修 CI，然后在 GitHub 的 Release run 页面只重跑 `ci-gate` 这一个 job（Re-run failed jobs），不必重打 tag。
 3. **超时也拦**：查不到 CI run 等 10 分钟、CI 还在跑等 45 分钟，到点判红。
 
 ### 2.2 产物
 
-下面这张表是 Release 资产的**登记**：资产名、由哪个 job 上传、进哪份校验和。`release.yml` 两处发布步骤的 `files:` 与它两向相等，两份校验和由各自 job 里的生成步骤逐个算、算的那几份也与它两向相等（门禁 `release-gate` 那一格核）。改资产名先改这张表。
+下面这张表是 Release 资产的**登记**：资产名、由哪个 job 上传、进哪份校验和。`release.yml` 三处发布步骤（Windows · Linux · 手机）的 `files:` 与它两向相等，三份校验和由各自 job 里的生成步骤逐个算、算的那几份也与它两向相等（门禁 `release-gate` 那一格核）。改资产名先改这张表。
 
-手机端今天不从 Release 下后端：它连上一台只核那台后端的 `BUILD_ID` 与自己这一版是否相同，不同就提示那台要更新，自己不上传、不安装 `ccm`（远端的后端由桌面端部署）。后端两行（两个 musl 目标 x86_64 / aarch64）与 `SHA256SUMS-linux.txt` 照旧是对外的资产名，不随手改。
+手机端不从 Release 下后端：APK 里带着同一趟 `build-backends` 编的那两份 Linux 后端，连上一台、那台后端与自己不是同一版就提示更新，按了就从包里装上去。后端两行（两个 musl 目标 x86_64 / aarch64）与 `SHA256SUMS-linux.txt` 照旧是对外的资产名，不随手改。
 
 <!-- 发版资产登记：起 -->
 | 资产 | job | 校验和 | 是什么 |
@@ -82,6 +82,14 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 远端后端的身份在字节自己里（`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或跑 `./cc-monitor-backend --ccm-probe` 读 `build=` 那一行。
 
 发布到 https://github.com/bo0Zeng/cc-monitor/releases/tag/vX.Y.Z
+
+### 2.4 发后核对
+
+发版清单只住这一份。Release 页出齐之后，把资产全下到一个空目录里核三件：
+
+- [ ] **校验和**：`sha256sum -c SHA256SUMS.txt` · `sha256sum -c SHA256SUMS-linux.txt` · `sha256sum -c SHA256SUMS-mobile.txt`，每行 `OK`；资产名与 § 2.2 那张表逐个对得上。
+- [ ] **各处 `ccm-build-id` 同值**：两份远端后端、`cc-monitor` 与 `cc-monitor.exe`（内嵌的那几份）、APK 里带的那两份（`unzip -p` 出来再 `grep -a`），扫出来的 `<<ccm-build-id:…:ccm-build-id>>` 全是同一个，且等于 `src/backend/lib.rs` 的 `BUILD_ID`。
+- [ ] **安装包覆盖装**：装着上一版的机器上直接装新的 NSIS / MSI / `.deb` / APK（不先卸载），装完起得来、版本是新号、原来的设置与会话还在。
 
 ---
 
@@ -164,7 +172,7 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 
 ## 5. Release Notes
 
-Release 正文由流水线生成：`release.yml` 两处发布步骤（`build-windows` 的 `Create / update GitHub Release` · `build-linux` 的 `Append Linux artifacts to the release`）各跑一次 `node tests/scripts/release-notes.mjs RELEASE_BODY.md`，`body_path` 指向它，正文就是 **`CHANGELOG.md` 对应版本段**。发版前要做的只有一件：`CHANGELOG.md` 里有本版那一段；没有就红在渲染那一步，不会静默回落（本地门禁 `release-gate` 那一格提前一步逮同一件事）。
+Release 正文由流水线生成：`release.yml` 三处发布步骤（`build-windows` 的 `Create / update GitHub Release` · `build-linux` 的 `Append Linux artifacts to the release` · `build-mobile` 的 `Append Android app to the release`）各跑一次 `node tests/scripts/release-notes.mjs RELEASE_BODY.md`，`body_path` 指向它，正文就是 **`CHANGELOG.md` 对应版本段**。发版前要做的只有一件：`CHANGELOG.md` 里有本版那一段；没有就红在渲染那一步，不会静默回落（本地门禁 `release-gate` 那一格提前一步逮同一件事）。
 
 生成器不带下载清单（Release 页本来就逐个列出资产）。要在正文里加一段下载说明就手工加，名字与 § 2.2 那张表逐字相同：
 
@@ -175,7 +183,8 @@ Release 正文由流水线生成：`release.yml` 两处发布步骤（`build-win
 - `cc-monitor.exe` — Windows 裸 exe（需 WebView2 + 自管路径）
 - `cc-monitor_X.Y.Z_amd64.deb` — Linux（Debian / Ubuntu 系）
 - `cc-monitor` — Linux 裸二进制
-- `SHA256SUMS.txt` / `SHA256SUMS-linux.txt` — 校验和（Windows / Linux 各一份）
+- `cc-monitor-X.Y.Z.apk` — Android 手机端
+- `SHA256SUMS.txt` / `SHA256SUMS-linux.txt` / `SHA256SUMS-mobile.txt` — 校验和（Windows / Linux / 手机各一份）
 
 完整 CHANGELOG 见 [CHANGELOG.md](https://github.com/bo0Zeng/cc-monitor/blob/main/CHANGELOG.md)
 ```

@@ -116,8 +116,8 @@ jobs:
   #    只改其中一样仍会命中另一把；两把都不中 ⇒ **拦下**，不静默放行。
   # ⚠ **fail-closed**：查不到 CI run · CI 不绿 · 等超时 · API 调不通，四种都拦。
   #    要绕过它只能**改这个文件**（那会留在 git 历史上），不能靠「今天先不管」。
-  # ⚠ **它接受这个 commit 上任意一条绿的 CI run** —— 同一个 sha 上 main 那次与 tag 那次
-  #    跑的是同一棵树、同一份 `ci.yml`，所以先推 main 等它绿、再推 tag，这道门几乎不加等待。
+  # ⚠ **它接受这个 commit 上任意一条绿的 CI run** —— 同一个 sha 上 next、main 与 tag 那几次
+  #    跑的是同一棵树、同一份 `ci.yml`；tag 打在 `push-candidate.sh` 快进过去的 main 上，那时 CI 已经绿过，这道门几乎不加等待。
   ci-gate:
     name: Gate on CI (same commit)
     runs-on: ubuntu-latest
@@ -452,8 +452,8 @@ jobs:
             ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
             Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
 
-      # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源**。本文件两处发布步骤**各跑一次这一步**
-      #   —— 不是「Windows 生成、Linux 沿用」：两个 job 在不同 runner 上，沿用不了。
+      # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源**。本文件三处发布步骤（Windows · Linux · 手机）**各跑一次这一步**
+      #   —— 不是「Windows 生成、别处沿用」：三个 job 在不同 runner 上，沿用不了。
       #   生成器只有一个住址（`tests/scripts/release-notes.mjs`），正文取自 `CHANGELOG.md` 里本版那一段
       #   （`src/doc/RELEASING.md § 5` 早就写着这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做）。
       #   ⚠ 命令刻意写成**不带任何 shell 语法**的一行：本 job 的默认 shell 是 pwsh，
@@ -464,7 +464,7 @@ jobs:
         if: env.PUBLISH == 'true'
         run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
-      # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
+      # 🔴 KR114D1：**本文件三处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Create / update GitHub Release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
@@ -587,7 +587,7 @@ jobs:
           n=0
           # 二进制名是 `src/frontend/shell/Cargo.toml` 里主 `[[bin]]` 的名字 `cc-monitor`（包名仍是 `monitor`）——
           # 与 build-windows 里的 `cc-monitor.exe` 同源；打包器按 `default-run` 认它做主二进制。
-          # 两个远端后端也进这一份：手机端从 Release 下它们、按这份校验（登记表在 src/doc/RELEASING.md §2.2）。
+          # 两个远端后端也进这一份：它们是对外的 Release 资产，下载的人按这份校验（登记表在 src/doc/RELEASING.md §2.2）。
           for f in .build/shell/release/bundle/deb/*.deb .build/shell/release/cc-monitor backend-artifacts/cc-monitor-backend-x86_64 backend-artifacts/cc-monitor-backend-aarch64; do
             [ -f "$f" ] || { echo "::error::产物不在盘上：$f —— 产物根搬过一次（见 build-windows 那一步的头注）"; exit 1; }
             # 只把**路径**收成 basename，别顺手把 hash 也剥了
@@ -662,12 +662,12 @@ jobs:
       #   本 job 不给正文，那一次 PATCH 会把 Windows 刚写上去的正文按它自己的口径再处理一遍。
       #   两处给**同一个生成器、同一个版本号**产出的同一份字节 ⇒ 第二次写是幂等的。
       #   ⚠ **竞态一个字没动**：`needs: [build-backends, build-windows]` 还在，
-      #     release 仍然由 `build-windows` 创建，本 job 仍然只追加（文件头 `:452` 那段头注的第 ①）。
+      #     release 仍然由 `build-windows` 创建，本 job 仍然只追加（`build-linux` 头注的第 ①）。
       - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
         run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
-      # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
+      # 🔴 KR114D1：**本文件三处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Append Linux artifacts to the release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
@@ -683,7 +683,8 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # 手机端（`src/mobile`，Android）：**正式签名的 APK**，与桌面同一个版本号、挂同一个 Release。
   #
-  # 1. `needs: [build-windows]` —— 理由与 `build-linux` 那两条同一条：Release 由 `build-windows` 建
+  # 1. `needs: [build-backends, build-windows]` —— `build-backends`：APK 里带的两份后端就是它编的那两份；
+  #    `build-windows`：理由与 `build-linux` 那两条同一条，Release 由它建
   #    （并排去抢会竞争同一个 release）；「四处版本号与 tag 一致」那道检查住在那里，本 job 继承它。
   #    手机的 versionName 就是 `package.json` 的 version（`src/mobile/app/build.gradle.kts` 构建时现读），
   #    下面核 APK 那一步再对着真字节核一次。
@@ -692,8 +693,8 @@ jobs:
   #    只写在 `$RUNNER_TEMP`（不落工作树），打包那一步用 `-Pccm.keystoreProperties` 指过去；
   #    打包一结束（成败都算）就删。碰签名变量的每一行都重定向进文件，不往日志写，不开 xtrace。
   #    这几条由 `K-R124-ruler.py` ⑱ 逐条核。`ci.yml` 的 mobile 格照旧只打未签名包，一个 secret 都不碰。
-  # 3. 手机端不带后端字节：手机核远端的 `BUILD_ID`（`EmbeddedBuild.ID`，构建时从 `src/backend/lib.rs` 抄），
-  #    今天还没有给远端上传 / 装后端那条路 ⇒ 本 job 不编、不塞后端。
+  # 3. APK 里带给远端装的两份 Linux 后端（x86_64 / aarch64）：本 job 不另编，下载 `build-backends` 的 artifact
+  #    放进 `:app` 读的目录；手机连上一台、那台后端与自己不是同一版 ⇒ 提示更新，按了就从包里这两份装上去。
   build-mobile:
     name: Build Android app (signed APK)
     # 包里带给远端装的两份后端：同一趟 `build-backends` 编的那两份（`build-windows` 已对同一批 artifact 问过字节里的身份）。
