@@ -111,6 +111,27 @@ fn a_child_within_its_deadline_hands_back_status_and_both_streams() {
     assert_eq!(out.stderr, b"err");
 }
 
+/// 喂标准输入：给定的字节原样进它的 stdin、写完就关（1 MiB 大过管道缓冲：写与读各一条线，不互等）。
+#[cfg(unix)]
+#[test]
+fn fed_bytes_reach_the_childs_stdin_whole_and_then_close() {
+    let unit = "ab\n一".as_bytes();
+    let big: Vec<u8> = unit.iter().copied().cycle().take(1 << 20).collect();
+    let out = Child::new("sh")
+        .args(["-c", "cat; printf end >&2"])
+        .stdin_bytes(big.clone())
+        .run(Deadline::secs(20))
+        .expect("跑完");
+    assert_eq!(out.status.code(), Some(0));
+    assert!(
+        out.stdout == big,
+        "原样读回（{} 字节，应 {}）",
+        out.stdout.len(),
+        big.len()
+    );
+    assert_eq!(out.stderr, b"end", "stdin 写完关了 ⇒ cat 读到头、往下走");
+}
+
 #[test]
 fn a_missing_program_is_not_found() {
     let r = Child::new("/nonexistent/ccm-child-test-prog").run(Deadline::secs(5));

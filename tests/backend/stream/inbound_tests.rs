@@ -1239,17 +1239,8 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         "no_such_session"
     );
     assert_eq!(
-        wire(&crate::control::kill::reply("demo-cc", &Default::default())),
-        r##"{"bus":{"detail":"","failed":[],"removed":[],"said":null,"unread":null},"killed":true,"session":"demo-cc"}"##
-    );
-    let removed = crate::control::cc_bus::BusCleanup {
-        removed: vec!["p_cc".into(), "q_cc".into()],
-        failed: vec![],
-        unread: None,
-    };
-    assert_eq!(
-        wire(&crate::control::kill::reply("demo-cc", &removed)),
-        r##"{"bus":{"detail":"","failed":[],"removed":["p_cc","q_cc"],"said":"已从 cc-bus 名单注销 p_cc · q_cc","unread":null},"killed":true,"session":"demo-cc"}"##
+        wire(&crate::control::kill::reply("demo-cc")),
+        r##"{"killed":true,"session":"demo-cc"}"##
     );
     assert_eq!(
         run_registered(

@@ -1488,9 +1488,8 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("launch_tests.rs", "launch.rs", 122),
         // 🔴 **这一行删了 —— 那处行号地址改成了符号地址。**
         // 原来是 `guard-core/src/lib.rs` 里那句「两侧各有一个文件因此假红」的注，
-        // 点的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分后只剩 40 行 ⇒ 越界，
-        // 已按本条的第 ① 条出路改成
-        // `ccm_cli_contract_tests.rs::cc_spawn_resolves_a_real_ccm_file_not_a_directory`。
+        // 点的是当年一份契约判据文件里的一个行号。那份文件剖分后只剩 40 行 ⇒ 越界，
+        // 已按本条的第 ① 条出路改成符号地址（那份判据后来随派生脚本整份删了）。
         // ⇒ 本条的保鲜自检逐字要求把这一行删掉（「多半是有人把它改成符号地址了，那是好事」）。
         // **存量少一条，这是往下走**（递减方向），不是把账挂空。
         ("lib.rs", "main.rs", 26),

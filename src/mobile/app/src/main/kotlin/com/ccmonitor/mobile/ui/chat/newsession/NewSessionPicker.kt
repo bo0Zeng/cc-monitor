@@ -85,8 +85,6 @@ class NewSessionPicker(
     private val machine: String,
     /** 从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`。 */
     private val from: String?,
-    /** 这台存的那一家（主机设置里选的）。 */
-    private val storedAgent: String?,
     private val scope: CoroutineScope,
 ) {
     private val _state = MutableStateFlow(NewSessionUi(cwd = from ?: HOME))
@@ -120,7 +118,7 @@ class NewSessionPicker(
             _state.update { it.copy(factsFailed = copyText("newSession.facts.failed", "machine" to machine, "why" to failed(r, SessionOpenFacts.COMMAND))) }
             return
         }
-        val agent = SessionOpenFacts.pick(facts.agents, storedAgent)?.kind
+        val agent = SessionOpenFacts.pick(facts.agents, null)?.kind
         _state.update { s ->
             s.copy(
                 agents = facts.agents,
@@ -139,7 +137,7 @@ class NewSessionPicker(
     }
 
     private suspend fun loadAccounts(keep: Boolean = false) {
-        val agent = _state.value.agent ?: storedAgent.orEmpty()
+        val agent = _state.value.agent.orEmpty()
         val r = link.call(AccountsList.COMMAND, AccountsList.args(agent), READ_MS)
         val list = (r as? Reply.Ok)?.let { AccountsList.of(it.data) }
         if (list == null) {
@@ -231,7 +229,7 @@ class NewSessionPicker(
         val s = _state.value
         val account = s.account?.takeIf { it != s.defaultAccount }
         val rotation = s.strategies?.let { if (s.rotation != s.forNew) SessionOpen.Rotation(s.rotation) else null }
-        return Chosen(s.cwd, s.agent ?: storedAgent.orEmpty(), account, rotation)
+        return Chosen(s.cwd, s.agent.orEmpty(), account, rotation)
     }
 
     private fun a(

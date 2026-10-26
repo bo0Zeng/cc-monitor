@@ -95,3 +95,27 @@ fn record_takes_slice_summary_and_quotes_and_nothing_else_does() {
         );
     }
 }
+
+/// `plan-refs {sid, texts}`：入参按类型收（缺 · 多 ⇒ `bad_args`）；认不出片 ⇒ 两样 `null`、一段对一段地空，不起 pb。
+#[test]
+fn plan_refs_takes_sid_and_texts_and_answers_one_list_per_text() {
+    assert_eq!(
+        ask("plan-refs", json!({"texts": ["A1"]})).unwrap_err().code,
+        "bad_args"
+    );
+    assert_eq!(
+        ask("plan-refs", json!({"sid": "s", "texts": [], "x": 1}))
+            .unwrap_err()
+            .code,
+        "bad_args"
+    );
+    let r = ask(
+        "plan-refs",
+        json!({"sid": "00000000-no-such-session", "texts": ["看 A1", "", "B2"]}),
+    )
+    .unwrap();
+    assert_eq!(
+        r,
+        Some(json!({"workspace": null, "slice": null, "refs": [[], [], []]}))
+    );
+}

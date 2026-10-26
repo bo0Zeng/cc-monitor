@@ -1,6 +1,6 @@
 //! 命令表 · 计划：读面 `plan-list` · `plan-read` · `plan-cell-view`（planned-build 的工作区 · 仓库 · 一个节点的 agent 视角；只读）；
 //! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `adopt` · `render`；写盘的是 pb）；
-//! 校验 `plan-pb-check`（一个路径能不能当 pb 用）；
+//! 校验 `plan-pb-check`（一个路径能不能当 pb 用）；认消息里的编号 `plan-refs`（认编号交 pb 的 `dump --refs`）；
 //! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
 
 use crate::wire::spec::CommandSpec;
@@ -27,6 +27,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 反查只读本子里那一份（不起 pb），照样放阻塞档（读认可那份小文件）。
     typed::blocking::<crate::faces::plan_face::PlanFilesCmd>(
         "文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb）",
+    ),
+    // 认消息里的编号：认片只读本子（不起 pb），认出了起一次 `pb dump --refs`（正文经标准输入）⇒ 阻塞档。
+    typed::blocking::<crate::faces::plan_face::PlanRefsCmd>(
+        "会话消息里提到的格：照会话接手的那块（否则工作目录所在的那片）认片，几段正文一次交 pb 的 `dump --refs`，回每段的几处（UTF-16 下标 ＋ 跟在编号后面的标题）；认不出片 · pb 不在 ⇒ 每段空",
     ),
     // 审面三条也在阻塞档：认可读—改—写后端自己那份小文件（跨进程锁）；退回现读一次计划（起 pb）再走 `session-say` 的本体（起 tmux）。
     typed::blocking::<crate::faces::plan_review_face::PlanAckCmd>(

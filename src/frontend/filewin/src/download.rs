@@ -55,7 +55,6 @@
 //!    那要平台的拖放协议，与这里不是一件事。
 
 use copy_core::copy_text;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// 行上那颗按钮。
@@ -127,25 +126,18 @@ pub enum Outcome {
 
 #[derive(Default)]
 struct Board {
-    /// 正在拉哪一行（`None` = 没在拉）。
-    in_flight: Option<String>,
     got: u64,
     total: u64,
-    last: Option<Outcome>,
     /// 上一趟结局旁边要说的那一句（Windows 上有损名改成了什么）。
     note: Option<String>,
 }
 
-/// 跨线程共享的那一格（UI 线程画，tokio 那条写）。同 `transfer::DropBoard` 的理由。
+/// 跨线程共享的那一格（UI 线程画，tokio 那条写）：在拉哪一行 · 结局走通用的那一格（[`super::trip::Lane`]），
+/// 这里只加下载独有的读数 · 那一句 · 取消台。
 #[derive(Clone, Default)]
 pub struct DownloadBoard {
+    lane: super::trip::Lane<Outcome>,
     inner: Arc<Mutex<Board>>,
-    /// 跑完的趟数 —— 给判据与诊断一个可观测的数（同 `DropBoard::rounds`）。
-    rounds: Arc<AtomicU64>,
-    /// 🔴 **拿来敲窗口的那只手。** 进度是从 tokio 那条线程写进来的，而 egui
-    /// **只在有事发生时才画下一帧** ⇒ 没有它，进度行会冻在第一个读数上
-    /// （`transfer::DropBoard` 那个字段的头注逐字记着同一形）。
-    ctx: Arc<Mutex<Option<egui::Context>>>,
     /// 取消登记 —— **与上传/复制那两条路同一个类型**，因为那是池子取消登记表的
     /// 唯一造键落点（`transfer::CancelDesk::mint` 的头注：两趟同键会互相摘登记）。
     desk: super::transfer::CancelDesk,
@@ -154,7 +146,7 @@ pub struct DownloadBoard {
 impl DownloadBoard {
     /// 把窗口交给它，好让它在进度动的时候敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        self.lane.attach(ctx);
     }
 
     /// 取消登记那一格（同上传/复制两条路，唯一造键落点在它里面）。
@@ -162,20 +154,15 @@ impl DownloadBoard {
         self.desk.clone()
     }
 
-    /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
-    pub fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
-            c.request_repaint();
-        }
-    }
-
     pub fn begin(&self, name: &str) {
         // 新的一趟 ⇒ 取消台复位（上一趟按过的取消不许拦下这一趟）。
         self.desk.reset();
-        let mut b = self.lock();
-        b.in_flight = Some(name.to_string());
-        b.got = 0;
-        b.total = 0;
+        {
+            let mut b = self.lock();
+            b.got = 0;
+            b.total = 0;
+        }
+        self.lane.begin(name);
     }
 
     pub fn progress(&self, got: u64, total: u64) {
@@ -184,25 +171,16 @@ impl DownloadBoard {
             b.got = got;
             b.total = total;
         }
-        // ⚠ 锁放掉之后才敲 —— `request_repaint` 会走进 egui 自己的锁，
-        //   两把锁嵌着拿是死锁的常规做法（同 `DropBoard::progress` 那一句）。
-        self.poke();
+        // ⚠ 锁放掉之后才敲 —— `request_repaint` 会走进 egui 自己的锁，两把锁嵌着拿是死锁的常规做法。
+        self.lane.poke();
     }
 
     pub fn finish(&self, o: Outcome) {
-        {
-            let mut b = self.lock();
-            b.in_flight = None;
-            b.last = Some(o);
-        }
-        // ⚠ 顺序要紧：先落 `last`、再加 `rounds` —— 反了的话判据看见
-        // `rounds > 0` 之后去读 `last` 可能还是上一趟的（现打过一次这一形）。
-        self.rounds.fetch_add(1, Ordering::SeqCst);
-        self.poke();
+        self.lane.finish(o);
     }
 
     pub fn in_flight(&self) -> Option<String> {
-        self.lock().in_flight.clone()
+        self.lane.running()
     }
 
     /// 这一趟结局旁边要说的那一句（`None` ＝ 不说）。每一趟开头都要设一次（上一趟的不留）。
@@ -220,15 +198,14 @@ impl DownloadBoard {
     }
 
     pub fn last(&self) -> Option<Outcome> {
-        self.lock().last.clone()
+        self.lane.last()
     }
 
     pub fn rounds(&self) -> u64 {
-        self.rounds.load(Ordering::SeqCst)
+        self.lane.rounds()
     }
 
-    /// 毒化容忍（同 `index_testing::serial` 的理由：一次 panic 不该让
-    /// 后面每一帧都跟着 panic —— 这个窗口崩掉 = 用户丢掉整个文件管理器）。
+    /// 毒化容忍（一次 panic 不该让后面每一帧都跟着 panic —— 这个窗口崩掉 = 用户丢掉整个文件管理器）。
     fn lock(&self) -> std::sync::MutexGuard<'_, Board> {
         match self.inner.lock() {
             Ok(g) => g,

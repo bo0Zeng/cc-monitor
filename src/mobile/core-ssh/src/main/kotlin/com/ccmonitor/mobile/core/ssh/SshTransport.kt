@@ -16,12 +16,10 @@ interface SshTransport :
     val isConnected: Boolean
 
     /**
-     * 连接并认证。[configs] 是多个地址，首个成功者胜；各地址共用 `configs.first().jumpVia` 的同一条跳板，跳板只连一次。
-     * 直连多地址或单地址并发竞速；跳板 + 多地址串行（共享跳板上并发拆活隧道会拖垮整条跳板）。
-     * [onEvent] 非空时按阶段发 [SshConnectEvent]。
+     * 照 [config] 那一份请求连接并认证（多地址竞速 · 跳板都在核心里）。[onEvent] 非空时按阶段发 [SshConnectEvent]。
      */
     suspend fun connect(
-        configs: List<ConnectionConfig>,
+        config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)? = null,
     )
 
@@ -46,9 +44,3 @@ interface SshTransport :
     /** 握着的那条被核心收了（对端断 · 保活判死）时叫 [f] 一次；自己 [close] 的不叫。 */
     fun onDrop(f: () -> Unit) = Unit
 }
-
-/** 单地址便捷入口：委托给多地址 [connect]，单元素列表不竞速。 */
-suspend fun SshTransport.connect(
-    config: ConnectionConfig,
-    onEvent: ((SshConnectEvent) -> Unit)? = null,
-) = connect(listOf(config), onEvent)

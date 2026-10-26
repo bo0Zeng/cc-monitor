@@ -2762,7 +2762,7 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
         .expect("Notify 那一臂里不是恰好一处问 manifest_touched");
     // 「重新对齐」那一臂也发一帧（整机时）⇒ 全文两处；这里只认 Notify 那一臂里、问完之后的那一处。
     let emit = prod[ask..]
-        .find("sink.send(Frame::changed(Topic::Accounts, None, None, None));")
+        .find("sink.send(Frame::changed(Changed::Accounts {}));")
         .map(|k| ask + k)
         .expect("问完之后没有发 changed {accounts}");
     let per_event = prod[ask..]
@@ -3999,7 +3999,7 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
         .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
     let emit = prod[ask..]
-        .find("Frame::changed(Topic::Tasks, Some(sid.clone()), None, body)")
+        .find("Frame::changed(c.unwrap_or_else(|| Changed::Tasks {")
         .map(|k| ask + k)
         .expect("问完之后没有发 changed {tasks}");
     let per_event = prod[ask..]
@@ -4696,31 +4696,24 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     state.reload_annotations(pin(true), &mut sink);
     let mut pushed = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Changed(crate::wire::Changed {
-            topic, key, body, ..
-        }) = f
-        {
-            pushed.push((topic, key, body));
+        if let Frame::Changed(c) = f {
+            pushed.push(c);
         }
     }
     assert!(pushed.is_empty(), "没变也推了：{pushed:?}");
     // 取消隐藏（摘掉单个那一格、规则也不隐藏）⇒ 推一帧 `hidden: null`。
     state.reload_annotations(pin(false), &mut sink);
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Changed(crate::wire::Changed {
-            topic, key, body, ..
-        }) = f
-        {
-            pushed.push((topic, key, body));
+        if let Frame::Changed(c) = f {
+            pushed.push(c);
         }
     }
     assert_eq!(
         pushed,
-        vec![(
-            crate::wire::topic::Topic::SessionHidden,
-            Some("sid-h".to_string()),
-            Some(serde_json::json!({ "hidden": null }))
-        )]
+        vec![crate::wire::Changed::SessionHidden {
+            key: "sid-h".to_string(),
+            body: Some(cmd_wire::frame::HiddenNow { hidden: None }),
+        }]
     );
     assert!(matches!(
         state.added.get("sid-h"),

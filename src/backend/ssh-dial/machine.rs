@@ -81,24 +81,8 @@ impl Default for Host {
     }
 }
 
-// 机器表那一道没过的是哪一种（码与界面那一侧同一份；生成的 TS 不带说明）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
-#[serde(rename_all = "snake_case")]
-pub enum MachineFaultCode {
-    NoHost,
-    NoUser,
-    Port,
-    NameTaken,
-    LeadingDash,
-}
+/// 机器表那一道没过的是哪一种 · 那一处（形状住两端同一份线上类型；判法 · 说法在这里）。
+pub use cmd_wire::machine::{MachineFault, MachineFaultCode};
 
 impl Host {
     /// 这台的名字：`label` 去首尾空白后非空取它，否则 `host`（去首尾空白）。名字的规矩只此一处。
@@ -172,6 +156,46 @@ pub fn check_table(hosts: &[Host]) -> Option<(MachineFaultCode, &Host)> {
         }
     }
     None
+}
+
+/// 机器表那一道（[`check_table`]）没过的第一处，说成界面那一句（桌面 `machines-try` · 写口 · 手机编辑页同读这一处）。**纯函数**。
+pub fn table_fault(hosts: &[Host]) -> Option<MachineFault> {
+    check_table(hosts).map(|(code, h)| MachineFault::new(code, h.name().to_string()))
+}
+
+/// 机器表里的一行（线上形）：后端算好的名字 ＋ 那一台原样（盘上那一形）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub struct MachineRow {
+    /// 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
+    pub name: String,
+    /// 那一台原样。
+    pub host: Host,
+}
+
+impl MachineRow {
+    /// 一台 ⇒ 一行（名字照 [`Host::name`]）。桌面 `machines-read` 与手机核心同交这一形。
+    pub fn of(host: Host) -> Self {
+        MachineRow {
+            name: host.name().to_string(),
+            host,
+        }
+    }
+}
+
+/// 一行读起来就是那一台（名字 · 连不连 · 各格）。
+impl std::ops::Deref for MachineRow {
+    type Target = Host;
+    fn deref(&self) -> &Host {
+        &self.host
+    }
 }
 
 /// 一行地址 → 一个拨号地址。四形态：`host` · `host:port` · `[v6]:port` · `[v6]` / 裸 v6（「>1 个冒号」判裸 v6）。

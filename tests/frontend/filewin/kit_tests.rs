@@ -604,3 +604,27 @@ fn a_menu_row_is_icon_text_and_a_right_aligned_key_with_no_border() {
     );
     assert_eq!(at[3], (2, 0));
 }
+
+/// 🔴 文件窗口的确认框只有一种样式（R19：出现第三种确认样式 ⇒ 不进）：
+/// 生产代码里摆模态框 · 浮窗的那两个口（`egui::Modal::new` · `egui::Window::new`）只住 `kit.rs`（[`dialog`] 与它的同族），
+/// 别的文件要问人一律调 [`dialog`]。
+#[test]
+fn every_dialog_in_the_window_goes_through_the_kit() {
+    let root = guard_core::addr::filewin_src_root();
+    let mut outside = Vec::new();
+    for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        if path.file_name().is_some_and(|n| n == "kit.rs") {
+            continue;
+        }
+        let prod = guard_core::production_code(&src);
+        for mark in ["Modal::new(", "Window::new("] {
+            if prod.contains(mark) {
+                outside.push(format!("{} · {mark}", path.display()));
+            }
+        }
+    }
+    assert!(
+        outside.is_empty(),
+        "kit.rs 以外摆了自己的框（另一种确认样式）：{outside:#?}"
+    );
+}

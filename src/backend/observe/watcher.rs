@@ -62,8 +62,9 @@
 
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
-use crate::wire::{Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
+use crate::wire::{Changed, Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
+use cmd_wire::frame::HiddenNow;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1350,7 +1351,7 @@ fn watch_loop(
                     &accounts_manifest,
                 ) || dir_moved
                 {
-                    sink.send(Frame::changed(Topic::Accounts, None, None, None));
+                    sink.send(Frame::changed(Changed::Accounts {}));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
                     crate::accounts::sign_in::ring_manual();
                 }
@@ -1366,7 +1367,7 @@ fn watch_loop(
                 // 配置文件动了 ⇒ 一帧 `changed {profiles}`（批内合并）。
                 if let Some(ear) = profiles_ear.as_mut() {
                     if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
-                        sink.send(Frame::changed(Topic::Profiles, None, None, None));
+                        sink.send(Frame::changed(Changed::Profiles {}));
                     }
                 }
                 // 注解动了 ⇒ 重读，改了名的活会话各一帧 `session_status`、隐不隐藏变了的各一帧 `changed {session_hidden}`。
@@ -1388,8 +1389,11 @@ fn watch_loop(
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
                     // 体按各连接看的那一台的时区现写。
                     sink.send_each(|tz| {
-                        let body = crate::wire::topic_hook::body(Topic::Tasks, Some(&sid), tz);
-                        Frame::changed(Topic::Tasks, Some(sid.clone()), None, body)
+                        let c = crate::wire::topic_hook::body(Topic::Tasks, Some(&sid), tz);
+                        Frame::changed(c.unwrap_or_else(|| Changed::Tasks {
+                            key: sid.clone(),
+                            body: None,
+                        }))
                     });
                 }
                 // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
@@ -1631,7 +1635,7 @@ fn watch_loop(
                         ear.arm(&mut debouncer);
                     }
                     state.reload_annotations(annotations_table(), &mut sink);
-                    sink.send(Frame::changed(Topic::Accounts, None, None, None));
+                    sink.send(Frame::changed(Changed::Accounts {}));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
                     crate::accounts::sign_in::ring_manual();
                 }
@@ -1861,13 +1865,10 @@ impl ReaderState {
             {
                 hidden.clone_from(&now);
             }
-            let body = serde_json::json!({ "hidden": now });
-            sink.send(Frame::changed(
-                Topic::SessionHidden,
-                Some(sid.clone()),
-                None,
-                Some(body),
-            ));
+            sink.send(Frame::changed(Changed::SessionHidden {
+                key: sid.clone(),
+                body: Some(HiddenNow { hidden: now }),
+            }));
         }
     }
 
@@ -2816,8 +2817,9 @@ fn report_owed(state: &mut ReaderState, sink: &mut FrameSink) {
             .collect();
         stale.sort();
         report_to(id, state, sink);
-        for (topic, key) in changed {
-            sink.send_to(id, Frame::changed(topic, key, None, None));
+        // 丢掉的那一帧只补报「这一样变过」（不带 `rev` 与体，客户端重问）。
+        for c in changed.into_iter().filter_map(|(t, k)| Changed::bare(t, k)) {
+            sink.send_to(id, Frame::changed(c));
         }
         for (sid, p) in stale {
             branch_to(state, sink, id, &sid, &p);
@@ -5075,7 +5077,8 @@ impl Sub {
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 match &frame {
                     Frame::Changed(c) => {
-                        self.changed_lost.insert((c.topic, c.key.clone()));
+                        self.changed_lost
+                            .insert((c.topic(), c.key().map(str::to_string)));
                         self.realign = true;
                     }
                     Frame::SessionBranch(crate::wire::SessionBranch { path, .. }) => {

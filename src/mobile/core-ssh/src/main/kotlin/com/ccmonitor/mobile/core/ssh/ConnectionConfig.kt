@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.wire.gen.DialRequest
+
 /** 认证方式。 */
 sealed interface AuthMethod {
     data class Password(
@@ -25,14 +27,18 @@ data class ReconnectPolicy(
     val auto: Boolean = true,
 )
 
-/** 一次 SSH 连接所需的配置。 */
+/**
+ * 一次 SSH 连接所需的配置：拨号核心照机器表组好的那一份请求（地址展开 · 多跳跳板都在里面，`Core.dialPlan`）＋ 路上每一台的认证。
+ * 请求里每一跳的 `keyPath` 是那一台的编号（机器表交核心时写的），[auths] 照它给认证；连的那一刻换成核心的钥匙编号。
+ * 工作目录与 tmux 不进连接层：由 app 在终端 shell 通道里发初始命令。
+ */
 data class ConnectionConfig(
-    val host: String,
-    val port: Int = 22,
-    val username: String,
-    val auth: AuthMethod,
-    // 工作目录与 tmux 不进连接层：由 app 在终端 shell 通道里发初始命令。
+    val request: DialRequest,
+    val auths: Map<String, AuthMethod>,
     val reconnect: ReconnectPolicy = ReconnectPolicy(),
-    // 经跳板机连接（ssh -J）：先连 [jumpVia] 并认证，再经其 direct-tcpip 隧道握手本目标。可嵌套成多跳；null 为直连。
-    val jumpVia: ConnectionConfig? = null,
-)
+) {
+    /** 目标那一台的首选地址（日志 · 「钥匙变了」页说的是它）。 */
+    val host: String get() = request.host
+
+    val port: Int get() = request.port
+}

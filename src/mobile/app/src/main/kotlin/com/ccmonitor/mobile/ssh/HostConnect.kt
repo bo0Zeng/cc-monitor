@@ -2,70 +2,80 @@ package com.ccmonitor.mobile.ssh
 
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
-import com.ccmonitor.mobile.core.data.db.endpoints
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
+import com.ccmonitor.mobile.core.data.db.machineNames
+import com.ccmonitor.mobile.core.data.db.machineTable
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
+import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.ssh.AuthMethod
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
 import com.ccmonitor.mobile.core.ssh.ReconnectPolicy
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.DialPlan
 
 /**
- * 把 [Host] 的全部可连地址（[endpoints]）展开成竞速用的 [ConnectionConfig] 列表。
- * 放在 app：只有这一层同时看得到 core-data 的 [Host] 和 core-ssh 的 [ConnectionConfig]。
- * 终端和文件屏共用，免得两处构造字段走样。
- */
-fun Host.toConnectionConfigs(
-    auth: AuthMethod,
-    jumpVia: ConnectionConfig? = null, // 跳板链（见 resolveJumpChain），各地址共用
-): List<ConnectionConfig> =
-    endpoints().map { ep ->
-        ConnectionConfig(
-            host = ep.host,
-            port = ep.port,
-            username = username,
-            auth = auth,
-            jumpVia = jumpVia,
-            reconnect = ReconnectPolicy(auto = autoReconnect),
-        )
-    }
-
-/**
- * 跳板设置坏了（跳板机不在了 · 跳板机无密钥或密码），拒连。[fixHostId] 是改哪一台能修好：界面据它给［编辑］。
+ * 跳板设置坏了（成环 · 跳板机不在了 · 跳板机无密钥或密码 · 那一台不成立），拒连。[fixHostId] 是改哪一台能修好：界面据它给［编辑］。
  */
 class JumpBroken(
     message: String,
     val fixHostId: String,
 ) : IllegalStateException(message)
 
-/**
- * 把 [Host.proxyJumpHostId] 递归解析成跳板 [ConnectionConfig] 链（ssh -J）；null = 直连。
- * 每跳身份走 [resolveHostAuth]；跳板只取首地址，不参与多地址竞速。[visited] 防环（A→B→A）。
- */
-suspend fun resolveJumpChain(
-    host: Host,
-    hostRepo: HostRepository,
-    identityRepo: IdentityRepository,
-    visited: Set<String> = emptySet(),
-): ConnectionConfig? {
-    // 没配跳板、自环、成环截断 → 直连。
-    val jumpId = host.proxyJumpHostId?.trim()?.takeIf { it.isNotEmpty() && it != host.id && it !in visited } ?: return null
-    // 配了跳板却解析不了（跳板主机没了、没身份）→ 拒连并报错，绝不静默直连：那会绕过跳板这道安全边界，
-    // 还会把「跳板坏了」报成「目标断开」。
-    val jumpHost = hostRepo.get(jumpId) ?: throw JumpBroken(copyText("mobConnect.jump.missing"), host.id)
-    // 跳板身份或密码有一样即可；都没有同样拒连。
-    if (jumpHost.authRef == null && jumpHost.passwordEnc == null) {
-        throw JumpBroken(copyText("mobConnect.jump.noAuth", "label" to jumpHost.label), jumpHost.id)
+/** 照这一端的机器表组 [target] 那一台的拨号（组法在拨号核心：地址展开 · 多跳跳板 · 成环与找不到就拒）。 */
+fun interface DialPlanner {
+    fun plan(
+        hosts: List<Host>,
+        target: Host,
+    ): DialPlan
+}
+
+/** 生产那一份：名字与组法都问手机嵌的核心（`Core.machines` · `Core.dialPlan`）。 */
+val CoreDialPlanner =
+    DialPlanner { hosts, target ->
+        val name = machineNames(hosts)[hosts.indexOfFirst { it.id == target.id }]
+        Wire.read<DialPlan>(Core.dialPlan(hosts.machineTable(), name)) ?: error("wire contract mismatch: dial plan")
     }
-    val ep = jumpHost.endpoints().first()
-    return ConnectionConfig(
-        host = ep.host,
-        port = ep.port,
-        username = jumpHost.username,
-        auth = resolveHostAuth(jumpHost, null, identityRepo, hostRepo),
-        // 加入 visited 的是当前 host 而不是 jumpId：A→B→A 时解析 B 的跳板 A 会命中 visited，截成 A→B。
-        jumpVia = resolveJumpChain(jumpHost, hostRepo, identityRepo, visited + host.id),
-    )
+
+/**
+ * [host] 那一台的连接配置：核心照机器表（[hosts]，库里那一份；[host] 替掉库里同 id 的那一行）组好的那一份请求 ＋ 路上每一台的认证
+ * （请求里每一跳写着那台的 id，认证照它解）。核心拒了 ⇒ [JumpBroken]（改这一台）；路上的跳板机没身份也没密码 ⇒ [JumpBroken]（改那一台）——
+ * 绝不静默直连：那会绕过跳板这道安全边界，还会把「跳板坏了」报成「目标断开」。
+ */
+suspend fun planDial(
+    host: Host,
+    hosts: List<Host>,
+    pendingIdentityId: String?,
+    identityRepo: IdentityRepository,
+    hostRepo: HostRepository,
+    planner: DialPlanner = CoreDialPlanner,
+): ConnectionConfig {
+    val table = hosts.map { if (it.id == host.id) host else it }.let { t -> if (t.any { it.id == host.id }) t else t + host }
+    val request =
+        when (val plan = planner.plan(table, host)) {
+            is DialPlan.Ready -> plan.request
+            is DialPlan.Refused -> throw JumpBroken(plan.said, host.id)
+        }
+    val byId = table.associateBy { it.id }
+    val hops = listOf(request.keyPath) + generateSequence(request.jump) { it.jump }.map { it.keyPath }.toList()
+    val auths =
+        hops.filterNotNull().associateWith { id ->
+            val h = hopHost(byId[id], host)
+            resolveHostAuth(h, pendingIdentityId.takeIf { h.id == host.id }, identityRepo, hostRepo)
+        }
+    return ConnectionConfig(request, auths, ReconnectPolicy(auto = host.autoReconnect))
+}
+
+/** 请求里那一跳写的那一台：表里没有 ⇒ 拒（改 [target]）；是跳板却没身份也没密码 ⇒ 拒（改那一台）。 */
+private fun hopHost(
+    h: Host?,
+    target: Host,
+): Host {
+    val hop = h ?: throw JumpBroken(copyText("mobConnect.jump.missing"), target.id)
+    if (hop.id != target.id && hop.authRef == null && hop.passwordEnc == null) {
+        throw JumpBroken(copyText("mobConnect.jump.noAuth", "label" to hop.label), hop.id)
+    }
+    return hop
 }
 
 /**

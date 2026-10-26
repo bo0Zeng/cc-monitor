@@ -58,15 +58,6 @@ class SshConnectionManager(
 
     private val scope = CoroutineScope(SupervisorJob() + reconnectDispatcher)
 
-    /** 单地址连接（委托给多地址版；竞速本身在核心里）。 */
-    suspend fun connect(
-        id: String,
-        hostId: String,
-        label: String,
-        config: ConnectionConfig,
-        onEvent: ((SshConnectEvent) -> Unit)? = null,
-    ): SshTransport = connect(id, hostId, label, listOf(config), onEvent)
-
     /**
      * 连接一个会话：多地址竞速与跳板都在核心里。全失败置 ERROR 并抛出。[onEvent] 透传连接阶段事件。
      * 已有活连接 ⇒ 复用。握着的那条已死、配置没变 ⇒ 在同一份拨号身份上再握一条（[SshTransport.again]），拨号请求不变。
@@ -76,12 +67,11 @@ class SshConnectionManager(
         id: String,
         hostId: String,
         label: String,
-        addressConfigs: List<ConnectionConfig>,
+        config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)? = null,
         expectedGen: Int? = null,
     ): SshTransport {
-        require(addressConfigs.isNotEmpty()) { "no address to connect" }
-        val first = addressConfigs.first()
+        val first = config
         val emit: (String) -> Unit = { msg -> onEvent?.invoke(SshConnectEvent(first.host, first.port, SshConnectEvent.Stage.ESTABLISHED, msg)) }
         states[id]?.connection?.takeIf { it.isConnected }?.let {
             emit(copyText("mobSsh.log.reused"))
@@ -94,7 +84,7 @@ class SshConnectionManager(
                 emit(copyText("mobSsh.log.reused"))
                 return@withLock it
             }
-            doConnect(id, hostId, label, addressConfigs, onEvent, expectedGen)
+            doConnect(id, hostId, label, config, onEvent, expectedGen)
         }
     }
 
@@ -107,7 +97,7 @@ class SshConnectionManager(
         id: String,
         hostId: String,
         label: String,
-        addressConfigs: List<ConnectionConfig>,
+        config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)?,
         expectedGen: Int?,
     ): SshTransport {
@@ -118,14 +108,14 @@ class SshConnectionManager(
             throwIfEpochExpired(id, expectedGen) // 代号已变说明已被 disconnect：弃用
             myGen = st.generation // 之后 disconnect 自增代号即作废本次
             // 同一份配置上那条死了 ⇒ 同一份拨号身份上再来一条（常驻流照的那份拨号请求不变）；否则造一条新的。
-            conn = st.connection?.takeIf { st.configs == addressConfigs }?.again() ?: transportFactory()
+            conn = st.connection?.takeIf { st.config == config }?.again() ?: transportFactory()
             put(SessionState(id, hostId, label, SessionStatus.CONNECTING))
-            st.configs = addressConfigs
+            st.config = config
             st.connecting = conn // disconnect 靠它关掉在飞的那一条
         }
         // 注意：close() 是网络写，在主线程调会抛 NetworkOnMainThreadException；connect 可能从主线程调进来，失败路径一律走 [closeInBackground]。
         try {
-            conn.connect(addressConfigs, onEvent)
+            conn.connect(config, onEvent)
         } catch (ce: CancellationException) {
             closeInBackground(listOf(conn))
             throw ce // 协程被取消：不标 ERROR，交给结构化取消
@@ -267,17 +257,17 @@ class SshConnectionManager(
     /** 跟着共用那条换一条：装着的那条已死、有配置、这台开着自动重连才换；同一台同时只换一次，没换成就等共用那条下一次报。 */
     private fun follow(id: String) {
         val st = states[id] ?: return
-        val (cfgs, entry, gen) =
+        val (cfg, entry, gen) =
             synchronized(lockFor(id)) {
                 val dead = st.connection?.let { !it.isConnected } == true
-                val cfgs = st.configs?.takeIf { dead && autoOf(st) } ?: return
+                val cfg = st.config?.takeIf { dead && autoOf(st) } ?: return
                 val entry = _sessions.value[id] ?: return
-                Triple(cfgs, entry, st.generation)
+                Triple(cfg, entry, st.generation)
             }
         if (!st.following.compareAndSet(false, true)) return
         scope.launch {
             try {
-                connect(id, entry.hostId, entry.label, cfgs, expectedGen = gen)
+                connect(id, entry.hostId, entry.label, cfg, expectedGen = gen)
             } catch (ce: CancellationException) {
                 throw ce // 期间被断开（代号过期）· 收场：这一次落空
             } catch (
@@ -291,10 +281,7 @@ class SshConnectionManager(
     }
 
     private fun autoOf(st: HostConnectionState): Boolean =
-        st.configs
-            ?.firstOrNull()
-            ?.reconnect
-            ?.auto != false
+        st.config?.reconnect?.auto != false
 
     // 持有者集在 [HostConnectionState.holders]：多 tab 共享同一 id 的连接，只在 lockFor 内访问。
     // 用集合而不是计数：强制断开清集后，存活的 VM 重新 retain 即可恢复持有。
@@ -355,7 +342,7 @@ class SshConnectionManager(
         st.connecting = null
         st.connection = null
         dials.update { it - id } // 共用那条随之停在断开
-        st.configs = null // 防跟着共用循环复活手动断开的会话
+        st.config = null // 防跟着共用循环复活手动断开的会话
         _sessions.update { it - id }
         return doomed
     }
