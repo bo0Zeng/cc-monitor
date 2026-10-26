@@ -3,7 +3,8 @@ use super::*;
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
 fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
     let req: CcmPrintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
-    super::answer_print(&req).map(|r| serde_json::to_value(r).unwrap())
+    super::answer_print(&req, crate::faces::launch_account_face::list_at)
+        .map(|r| serde_json::to_value(r).unwrap())
 }
 
 // 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
@@ -178,7 +179,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
         other => panic!("{other:?}"),
     };
     let Ok(Plan::Container(c)) =
-        plan::build(&o, &Env::for_preview(), &ManifestRead::Ok(None), None)
+        plan::build(&o, &Env::for_preview(), &plan::tests::no_library, None)
     else {
         panic!("不是容器路")
     };
@@ -326,7 +327,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
-        match plan::build(&o, env, &ManifestRead::Ok(None), None).expect("该算得出计划") {
+        match plan::build(&o, env, &plan::tests::no_library, None).expect("该算得出计划") {
             Plan::Container(c) => c.payload,
             other => panic!("`--tmux=` 该走容器路，实得 {other:?}"),
         }
@@ -477,7 +478,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
-    match plan::build(&o, &e, &ManifestRead::Ok(None), None).expect("该算得出计划") {
+    match plan::build(&o, &e, &plan::tests::no_library, None).expect("该算得出计划") {
         Plan::Direct(d) => d,
         other => panic!("直路测试却算出 {other:?}"),
     }
@@ -651,8 +652,8 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     let prod = guard_core::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
     for pin in [
-        "plan_of(&o, env, true)",
-        "plan_of(&o, Env::for_preview(), false)",
+        "plan_of(&o, env, true, accounts)",
+        "plan_of(&o, Env::for_preview(), false, accounts)",
     ] {
         guard_core::find_pinned(&prod, pin).unwrap_or_else(|e| {
             panic!("`{pin}` 不是恰好一处（{e}）—— 预览与 `--print` 不再走同一个计划函数")
@@ -689,12 +690,8 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
             bus_scripts: plan::discover_bus_scripts(),
             ..Default::default()
         };
-        // 账号表照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 读法与真跑同一个 `plan::read_accounts`（账号库那一个读口）。
-        let table = if needs_account_table(&o, &e) {
-            plan::read_accounts(&e.accts_manifest)
-        } else {
-            ManifestRead::Ok(None)
-        };
+        // 账号清单成品照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 与真跑同一个入口交的那一份。
+        let table = || crate::faces::launch_account_face::list_at(&e.home, &o.agent);
         let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
         assert_eq!(
             got["line"].as_str().expect("line"),
@@ -1265,7 +1262,7 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
         else {
             panic!("不该是 Early")
         };
-        plan::render(&plan::build(&o, &e, &ManifestRead::Ok(None), None).expect("计划"))
+        plan::render(&plan::build(&o, &e, &plan::tests::no_library, None).expect("计划"))
     };
     assert!(
         line("claude").contains("unset ANTHROPIC_BASE_URL; "),

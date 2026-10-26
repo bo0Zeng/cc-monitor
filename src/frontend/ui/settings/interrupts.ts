@@ -1,20 +1,26 @@
 /**
  * 停下 / 重启 / 更新 / 卸载那台之前「会打断什么」：问那台后端（`machine-interrupts`：经它中转的活会话 · 活着的会话）
  * ＋ 问本机后端（同一条，`machine` = 那台：通往那台的端口转发），两份事实并排排成对话框里的两行（中断 · 保留）。
+ * 退出 / 重启 cc-monitor 还多一份：各文件窗口手上没存的 · 在跑的（壳现读它那张表，`filewin_interrupts`）。
  * 什么都不会断 ⇒ 空，调用方就不弹框。这里不判什么，只排版。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { copyText } from "../copy-table";
+import { commands } from "../ipc/commands";
 import type { DialogRow } from "../kit/dialog";
 import type { Interrupts as InterruptsReply } from "../generated/Interrupts";
 
-/** 那两份事实并起来（问不到的那一格是 `null`，不当成 0）。 */
+/** 那几份事实并起来（问不到的那一格是 `null`，不当成 0）。 */
 export interface Interrupts {
   relayedSessions: number | null;
   relayedMaybe: number;
   liveStreams: number;
   forwards: number | null;
+  /** 文件窗口里没存的改动几份（只有退出 / 重启 cc-monitor 那一问数它；别的问不带这一格）。 */
+  unsaved?: number | null;
+  /** 文件窗口「进度」表里还在跑的几趟（同上）。 */
+  filewinRunning?: number | null;
 }
 
 /** 那一问的期限：那台扫一遍活会话 ＋ 回程。 */
@@ -43,12 +49,26 @@ export async function askInterrupts(origin: string): Promise<Interrupts> {
   };
 }
 
+/** 各文件窗口手上的（壳现读那张表）；问不到 ⇒ `null`（说数不出）。 */
+async function askFileWindows(): Promise<{ unsaved: number; running: number } | null> {
+  try {
+    return await commands.filewin_interrupts();
+  } catch (e) {
+    console.warn("[interrupts] 问不到文件窗口会打断什么：", e);
+    return null;
+  }
+}
+
 /**
  * 「现在重启 cc-monitor」之前：问本机与各台（`appExit`，各台照它自己的退出行为答会不会跟着停），加起来。
- * 本机问不到 ⇒ 会话那一格 `null`（说数不出）；远端问不到 ⇒ 那台本来就没连着，不算。
+ * 本机问不到 ⇒ 会话那一格 `null`（说数不出）；远端问不到 ⇒ 那台本来就没连着，不算。文件窗口那两格随 cc-monitor 一起没（照算）。
  */
 export async function askAppExitInterrupts(remotes: readonly string[]): Promise<Interrupts> {
-  const [here, ...there] = await Promise.all([askOne(LOCAL_ORIGIN, null, true), ...remotes.map((o) => askOne(o, null, true))]);
+  const [files, here, ...there] = await Promise.all([
+    askFileWindows(),
+    askOne(LOCAL_ORIGIN, null, true),
+    ...remotes.map((o) => askOne(o, null, true)),
+  ]);
   const got = [here, ...there].filter((x): x is InterruptsReply => x !== null);
   const sum = (k: keyof InterruptsReply): number => got.reduce((n, x) => n + x[k], 0);
   return {
@@ -56,6 +76,8 @@ export async function askAppExitInterrupts(remotes: readonly string[]): Promise<
     relayedMaybe: sum("relayedMaybe"),
     liveStreams: sum("liveStreams"),
     forwards: here === null ? null : sum("forwards"),
+    unsaved: files?.unsaved ?? null,
+    filewinRunning: files?.running ?? null,
   };
 }
 
@@ -66,6 +88,9 @@ export type InterruptAct = "stop" | "restart" | "update" | "uninstall";
 export function interruptRows(i: Interrupts | null, machine: string, act: InterruptAct): DialogRow[] {
   const brief = act === "restart" || act === "update";
   const items: string[] = [];
+  if (i !== null && (i.unsaved === null || i.filewinRunning === null)) items.push(copyText("interrupts.item.filewinUnknown"));
+  if (i?.unsaved != null && i.unsaved > 0) items.push(copyText("interrupts.item.unsaved", { n: i.unsaved }));
+  if (i?.filewinRunning != null && i.filewinRunning > 0) items.push(copyText("interrupts.item.filewinRunning", { n: i.filewinRunning }));
   if (i === null || i.relayedSessions === null) items.push(copyText("interrupts.item.relayedUnknown"));
   else if (i.relayedSessions > 0) items.push(copyText("interrupts.item.relayed", { n: i.relayedSessions }));
   if (i !== null && i.relayedMaybe > 0) items.push(copyText("interrupts.item.relayedMaybe", { n: i.relayedMaybe }));

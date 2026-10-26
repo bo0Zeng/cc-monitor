@@ -12,7 +12,7 @@ use serde_json::json;
 
 /// 夹具都是记录树那一家的记录。
 fn tree() -> &'static str {
-    crate::agents::record_tree_kind().unwrap_or_default()
+    crate::agents::claudecode::AGENT_KIND
 }
 
 /// 一条已解析的记录不过快路、直接累加（「过滤 / 不过滤」对拍的那一侧）。

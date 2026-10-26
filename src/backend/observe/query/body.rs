@@ -131,23 +131,27 @@ pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec
 /// 原因与类型都一样 ⇒ `count` 加上、`text` 照新的数重写（[`crate::agents::record::unread_text`]），回 `true`；否则不动、回 `false`。
 /// 只看通用记录的格，不认哪一家。
 pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
-    use crate::agents::record::{unread_text, UnreadWhy};
-    let same = |k: &str| into.get(k) == next.get(k);
-    if into.get("t").and_then(Value::as_str) != Some("unread")
-        || !same("t")
-        || !same("why")
-        || !same("type")
-    {
+    use crate::agents::record::{unread_text, Body};
+    use serde::Deserialize as _;
+    // 先按类别那一格挑（便宜）：两条都是认不出的那一类才解成通用记录看原因与类型（不按键名取字）。
+    let is_unread = |v: &Value| v.get("t").and_then(Value::as_str) == Some("unread");
+    if !is_unread(into) || !is_unread(next) {
         return false;
     }
-    let why = match into.get("why").and_then(Value::as_str) {
-        Some("unknownType") => UnreadWhy::UnknownType,
-        Some("parseFailed") => UnreadWhy::ParseFailed,
-        _ => return false,
+    let unread = |v: &Value| match Body::deserialize(v) {
+        Ok(Body::Unread {
+            why, kind, count, ..
+        }) => Some((why, kind, count)),
+        _ => None,
     };
-    let n = |v: &Value| v.get("count").and_then(Value::as_u64).unwrap_or(1);
-    let count = u32::try_from(n(into) + n(next)).unwrap_or(u32::MAX);
-    let kind = into.get("type").and_then(Value::as_str).map(str::to_string);
+    let (Some((why, kind, a)), Some((why_next, kind_next, b))) = (unread(into), unread(next))
+    else {
+        return false;
+    };
+    if why != why_next || kind != kind_next {
+        return false;
+    }
+    let count = a.saturating_add(b);
     into["count"] = json!(count);
     into["text"] = json!(unread_text(why, kind.as_deref(), count).0);
     true

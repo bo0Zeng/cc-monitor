@@ -1,7 +1,10 @@
 /**
  * 截图工具：把 cc-monitor 的每个界面、每种状态真画出来截图，出一页图集（`index.html`）。
  *
- *   npm run shots -- [--out <目录>] [--only <正则>] [--no-filewin] [--no-web]
+ *   npm run shots -- [--out <目录>] [--only <正则>] [--repeat <N>] [--no-filewin] [--no-web]
+ *
+ * `--repeat N`：每个网页场景连拍 N 次（同一份代码、同一份世界），各次的 PNG 与消息流的 scrollTop 要逐字节相同，
+ *   不同 ⇒ 记进问题表（同一份输入画出两种样子 = 先后不定）。图只存第一次的。
  *
  * - 网页那三扇窗：仓里那份 vite ＋ 无头 Chromium ＋ 页里的假适配层（`fake/`，站在壳的位置）＋ 真后端（`real/pool.mjs`：每个场景每台机器一个，
  *   读场景造的盘上原始文件 `disk/`）。场景见 `scenes/`。
@@ -34,6 +37,11 @@ const args = parseArgs(process.argv.slice(2));
 const out = path.resolve(args.out ?? path.join(repo, ".build/shots"));
 const sandbox = path.join(repo, ".build/shots-sandbox");
 const only = args.only ? new RegExp(args.only) : null;
+const repeat = args.repeat === undefined ? 1 : Number(args.repeat);
+if (!Number.isInteger(repeat) || repeat < 1) {
+  console.error(`--repeat 要一个正整数（给的是 ${args.repeat}）`);
+  process.exit(2);
+}
 
 const children = [];
 const cleanup = () => {
@@ -173,7 +181,9 @@ async function shootWeb() {
   await pageFinished(warm).catch(() => {});
   await warm.close();
 
-  for (const s of scenes) {
+  // 连拍（`--repeat`）：每个场景第一次拍的 PNG 与流的 scrollTop，后几次拿来比。
+  const firstShot = new Map();
+  for (const s of scenes) for (let rep = 0; rep < repeat; rep++) {
     const file = path.join(out, s.dir, `${s.id}.png`);
     mkdirSync(path.dirname(file), { recursive: true });
     const page = await Page.open(cdp, s.width, s.height, s.scale ?? 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
@@ -213,7 +223,18 @@ async function shootWeb() {
       if (h.unhandled.length > 0) problems.push(`${s.id}：假后端答不上 ${h.unhandled.join("、")}`);
       // 让最后一帧落定（过渡动画、字体）
       await sleep(350);
-      writeFileSync(file, await page.png());
+      const png = await page.png();
+      const top = await page.eval("document.querySelector('.stream.active')?.scrollTop ?? null");
+      if (rep === 0) {
+        writeFileSync(file, png);
+        firstShot.set(s.id, { png, top });
+      } else {
+        const f = firstShot.get(s.id);
+        if (f && (f.top !== top || !f.png.equals(png))) {
+          problems.push(`${s.id}：连拍第 ${rep + 1} 次与第 1 次不同（流的 scrollTop ${f.top} → ${top}${f.png.equals(png) ? "" : "，图不同"}）`);
+        }
+      }
+      if (repeat > 1) console.log(`  ${s.id} 第 ${rep + 1} 次：流的 scrollTop ${top}`);
       // 排版量出了问题：图照存（看得见哪里不对），这一张算没过。
       if (h.layout.length > 0) {
         ok = false;
@@ -235,6 +256,7 @@ async function shootWeb() {
     if (!ok) problems.push(`${s.id}：${note.startsWith("排版：") ? note : `没截成 —— ${note.split("\n")[0]}`}`);
     writeFileSync(path.join(sandbox, `${s.id}.console.txt`), page.consoleLines.join("\n"));
     await page.close();
+    if (rep > 0) continue;
     results.push({ ...s, file: path.relative(out, file), ok });
     console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}${ok ? "" : ` —— ${note.split("\n")[0].slice(0, 300)}`}`);
   }
@@ -355,7 +377,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
     const k = a.slice(2);
-    if (["out", "only"].includes(k)) o[k] = argv[++i];
+    if (["out", "only", "repeat"].includes(k)) o[k] = argv[++i];
     else o[k] = true;
   }
   return o;

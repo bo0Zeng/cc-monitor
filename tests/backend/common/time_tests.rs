@@ -266,11 +266,7 @@ fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
         // 按 UTC 算，但说不出看的那一台是哪个时区（不冒充成 `UTC`）。
         assert_eq!(Tz::of(&v).offset_secs(0), 0, "{v}");
         assert_eq!(Tz::of(&v).viewer_zone(), None, "{v}");
-        assert_eq!(
-            Tz::of(&v).iana_name().as_deref(),
-            Some("UTC"),
-            "转给别台时照算的那一个明说"
-        );
+        assert_eq!(Tz::of(&v).iana_name(), "UTC", "转给别台时照算的那一个明说");
     }
     assert_eq!(
         Tz::named("UTC").expect("UTC").viewer_zone().as_deref(),
@@ -356,4 +352,17 @@ fn t13_clock_face_follows_the_shared_golden() {
         })
         .collect();
     assert!(wrong.is_empty(), "{wrong:?}");
+}
+
+/// 转给别台的那个名（`--tz` · 信封 `tz`）恒说得出：说了名 ⇒ 那个名；没说 ⇒ `UTC`；
+/// 「这一台」⇒ 这台系统的 IANA 名，说不出 ⇒ `UTC`（不交 ⇒ 那台按它自己的钟写，就错到那台去了）。
+#[test]
+fn t11b_the_name_handed_to_another_machine_is_always_said() {
+    assert_eq!(sh().iana_name(), "Asia/Shanghai");
+    assert_eq!(Tz::default().iana_name(), "UTC");
+    let here = Tz::named(TZ_HERE).expect("local");
+    assert_eq!(
+        here.iana_name(),
+        crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".to_string())
+    );
 }

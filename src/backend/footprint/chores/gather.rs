@@ -118,8 +118,36 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::
         relay: relay(),
         hooks: hooks(),
         mcp_login: mcp_login(),
+        sshd: sshd_config_path().and_then(|p| sshd_at(&p)),
         declined: marks.declined,
     }
+}
+
+/// 这台 sshd 的主配置住哪。
+#[cfg(unix)]
+fn sshd_config_path() -> Option<std::path::PathBuf> {
+    Some(std::path::PathBuf::from("/etc/ssh/sshd_config"))
+}
+
+/// Windows 的 OpenSSH 服务端这里不看（说不清 ⇒ 不出那一件）。
+#[cfg(not(unix))]
+fn sshd_config_path() -> Option<std::path::PathBuf> {
+    None
+}
+
+/// 读真文件、列真目录走 [`super::sshd::forwarding_off`]（主配置不在 = 没装 sshd ⇒ `None`）。
+/// 读不到的（不少发行版这份只许 root 读）留一行日志、不报这一件（[`read_small`]）。
+pub(crate) fn sshd_at(main: &Path) -> Option<super::sshd::ForwardingOff> {
+    if !main.exists() {
+        return None;
+    }
+    let read = |p: &Path| read_small(p);
+    let list = |dir: &Path| match crate::platform::fs::Ro::read_dir(dir) {
+        Ok(it) => Some(it.filter_map(|e| Some(e.ok()?.path())).collect()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
+        Err(_) => None,
+    };
+    super::sshd::forwarding_off(main, &read, &list)
 }
 
 /// 用户自己配的、要登录的 MCP：全局那一段 ＋ 这台此刻活着的会话所在项目的那两段（判定在 `mcp-read` 那一份）。同名并成一件、号取并集。
@@ -186,14 +214,28 @@ fn relay() -> Vec<Relay> {
         &home,
         &crate::accounts::upstream_select::file_face::machine_rows(),
         &|agent| up.as_ref().is_some_and(|u| u.has(agent)),
+        &live_projects(),
     )
 }
 
-/// [`relay`] 的本体（家目录 · 表 · 哪几家登记了默认上游都是参数，判据喂夹具）。
+/// 这台此刻活着的会话所在的项目（各家的家目录里登记的会话；同 MCP 登录那一件的取法）。
+fn live_projects() -> Vec<String> {
+    let mut v: Vec<String> = crate::agents::REGISTRY
+        .iter()
+        .filter_map(|a| crate::agents::home_of_kind(a.kind))
+        .flat_map(|h| crate::observe::accounts_query::live_cwds(&h))
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// [`relay`] 的本体（家目录 · 表 · 哪几家登记了默认上游 · 活着的会话在哪几个项目都是参数，判据喂夹具）。
 pub(crate) fn relay_at(
     home: &Path,
     routed: &[String],
     registered: &dyn Fn(&str) -> bool,
+    projects: &[String],
 ) -> Vec<Relay> {
     crate::agents::settings_env_families()
         .into_iter()
@@ -215,6 +257,12 @@ pub(crate) fn relay_at(
                 text: read_small(&r.source),
                 path,
                 url: r.url,
+                covered: projects.iter().find_map(|p| {
+                    (face.covered_in)(Path::new(p)).map(|f| super::Covered {
+                        project: p.clone(),
+                        file: f.display().to_string(),
+                    })
+                }),
             }
         })
         .collect()

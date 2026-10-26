@@ -319,7 +319,7 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
 }
 
 /// 自带那份的名字**一处定、处处同**：`build.rs` 的 `NATIVE_BACKEND_DIR` ＋ `NATIVE_FILEWIN_FILE` == 本模块的 [`BIN_STEM`]
-/// == `byte_table.rs` 的 `include_bytes!` 字面量 == `re-embed.sh --native` 铺的 == `release.yml` 两个 job 铺的。
+/// == `byte_table.rs` 的 `include_bytes!` 字面量 == `re-embed.sh` 铺的（`release.yml` 两个 job 经它的 `--stage-*` 铺）。
 /// 漂一处就是「嵌进去一个空 cfg」或「铺了没人吃」。异源：五份文件现读。
 #[test]
 fn the_carried_window_binary_is_spelled_the_same_in_every_place() {
@@ -350,22 +350,24 @@ fn the_carried_window_binary_is_spelled_the_same_in_every_place() {
     );
     let reembed = include_str!("../../../../tests/scripts/re-embed.sh");
     for line in [
+        format!("NATIVE_DIR=\"$ROOT/src/frontend/shell/{dir}\""),
         format!("cp \"$ROOT/.build/shell/release/{file}$exe\" \"$NATIVE_DIR/{file}\""),
         format!("printf '%s\\n' \"$triple\" > \"$NATIVE_DIR/{file}.target\""),
     ] {
         assert!(
             guard_core::find_pinned(reembed, &line).is_ok(),
-            "`re-embed.sh --native` 没有恰好一行 `{line}`"
+            "`re-embed.sh` 没有恰好一行 `{line}`"
         );
     }
+    // 发版两个 job 不另写铺法：各调一次 re-embed.sh 的口（Windows 两件都铺 · Linux 只铺文件窗口），铺法只住上面那几行。
     let yml = include_str!("../../../../.github/workflows/release.yml");
     for line in [
-        format!("$dst = \"src/frontend/shell/{landing}\""),
-        format!("dst=src/frontend/shell/{landing}"),
+        "run: bash tests/scripts/re-embed.sh --stage-native",
+        "run: bash tests/scripts/re-embed.sh --stage-filewin",
     ] {
         assert!(
-            guard_core::find_pinned(yml, &line).is_ok(),
-            "`release.yml` 没有恰好一处铺 `{landing}` 的 `{line}`（Windows 那一格 `$dst = …` · Linux 那一格 `dst=…`）"
+            guard_core::find_pinned(yml, line).is_ok(),
+            "`release.yml` 没有恰好一步 `{line}` —— 有个 job 的单文件 monitor 没带文件窗口程序，或又手抄了一份铺法"
         );
     }
 }

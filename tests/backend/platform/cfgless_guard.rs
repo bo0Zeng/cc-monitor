@@ -1001,16 +1001,16 @@ mod tests {
         assert!(
             gated_a1 >= 10,
             "全树只找到 {gated_a1} 处**有门的** A1 平台原语 —— \
-             信号表或剥法坏了（这棵树光 `platform/pidwatch/linux.rs` 一份就不止这个数）"
+             信号表或剥法坏了（这棵树光 `platform/writers/linux.rs` 一份就不止这个数）"
         );
-        let pidwatch = all
+        let writers = all
             .iter()
-            .filter(|f| f.rel == "platform/pidwatch/linux.rs")
+            .filter(|f| f.rel == "platform/writers/linux.rs")
             .count();
         assert!(
-            pidwatch >= 5,
-            "`platform/pidwatch/linux.rs` 只贡献 {pidwatch} 处命中 —— \
-             它是这棵树上平台原语最密的一份（`SYS_pidfd_open` / `std::os::fd` / `libc::poll` …）；\
+            writers >= 5,
+            "`platform/writers/linux.rs` 只贡献 {writers} 处命中 —— \
+             它整份带文件级门、平台原语很密（`libc::` / `std::os::fd` …）；\
              数不出来说明**文件级门**那一段把整份文件漏掉了，而不是它变干净了"
         );
     }

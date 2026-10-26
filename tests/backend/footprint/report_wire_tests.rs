@@ -128,6 +128,7 @@ fn base() -> Facts {
         relay: vec![],
         hooks: None,
         mcp_login: vec![],
+        sshd: None,
         declined: vec![],
     }
 }
@@ -143,6 +144,7 @@ fn relay(state: &str, path: &str, text: Option<&str>, url: Option<&str>) -> Rela
         path: path.into(),
         text: text.map(Into::into),
         url: url.map(Into::into),
+        covered: None,
     }
 }
 

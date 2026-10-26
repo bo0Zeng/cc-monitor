@@ -25,6 +25,11 @@ pub(crate) fn user_settings_files(agent_home: &Path) -> [PathBuf; 2] {
     ]
 }
 
+/// 项目级 settings 的两个作用域（`<项目>/.claude/settings.json` · `settings.local.json`），按优先级从低到高；都压过用户级那两份。
+pub(crate) fn project_settings_files(project: &Path) -> [PathBuf; 2] {
+    user_settings_files(&project.join(HOME_DIR_NAME))
+}
+
 // ═══ 足迹申报表（`footprint/registry.rs`）里落在 Claude 布局里的那几条 —— 字面量只住这里 ═══
 
 /// cc-bus 装成 skill 的那个目录（`LocalHomeRelative` 那一格：家目录相对，不带 `~/`）。

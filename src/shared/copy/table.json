@@ -6995,6 +6995,18 @@
       "zh": "重启失败",
       "args": []
     },
+    "quitNow.dialog.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "退出 cc-monitor",
+      "args": []
+    },
+    "quitNow.dialog.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "仍然退出",
+      "args": []
+    },
     "openSettings.openSettingsWindow.failed": {
       "kind": "error",
       "role": "报错",
@@ -14468,12 +14480,6 @@
       "role": "命令行",
       "zh": "attach 与 --detach 不能同用 · attach 就是接进去",
       "args": []
-    },
-    "bePlan.resolveAccount.defaultMissing": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "默认账号 '{name}' 目录不存在 · 用 --base 或 --account <名>",
-      "args": ["name"]
     },
     "bePlan.resolveAccount.unavailable": {
       "kind": "error",
@@ -23839,6 +23845,24 @@
       "zh": "会话照跑",
       "args": []
     },
+    "interrupts.item.unsaved": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件窗口里没存的改动 ×{n}",
+      "args": ["n"]
+    },
+    "interrupts.item.filewinRunning": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件窗口里在跑的传输 · 删除 · 解压 ×{n}",
+      "args": ["n"]
+    },
+    "interrupts.item.filewinUnknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件窗口 · 数量不明",
+      "args": []
+    },
     "interrupts.update.title": {
       "kind": "title",
       "role": "标题",
@@ -26271,6 +26295,54 @@
       "kind": "body",
       "role": "说明",
       "zh": "该机中转未起过 · 起来后再查",
+      "args": []
+    },
+    "beChore.relay.saidCovered": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已贴 · 被 {project} 里的设置盖过",
+      "args": ["project"]
+    },
+    "beChore.relay.whyCovered": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{file} 自带上游地址 · 在该项目里起的会话写进记录才显示",
+      "args": ["file"]
+    },
+    "beChore.sshd.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "该机的 sshd 不许端口转发",
+      "args": []
+    },
+    "beChore.sshd.loc": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{path} 行 {line}",
+      "args": ["path", "line"]
+    },
+    "beChore.sshd.said": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "到该机的端口转发无法开启",
+      "args": []
+    },
+    "beChore.sshd.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{path} 行 {line} 关闭本地端口转发 · 从别处到该机的转发均无法开启",
+      "args": ["path", "line"]
+    },
+    "beChore.sshd.stepOpen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "以 root 打开 {path}",
+      "args": ["path"]
+    },
+    "beChore.sshd.stepReload": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "存盘 · 再重启 sshd",
       "args": []
     },
     "beChore.hooks.name": {

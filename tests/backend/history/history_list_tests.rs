@@ -674,7 +674,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
     let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
     let v = listing_from(tree, &[], &live, &json!({}));
     let _ = std::fs::remove_dir_all(&home);
-    let agent = crate::agents::record_tree_kind().unwrap_or_default();
+    let agent = crate::agents::claudecode::AGENT_KIND;
     let mut got: Vec<(String, String, String, bool)> = v["rows"]
         .as_array()
         .expect("rows")

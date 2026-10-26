@@ -437,11 +437,17 @@ pub(crate) fn answer_plan_with(
             Some(mcp_sync::plan(&rows, &t, &overwrite.unwrap_or_default())?)
         }
     };
-    // 真要写的那几个各自「装时写进去的那一份」的摘要 ＋ 装之前在不在（`new` ⇒ 新建；`differs` ⇒ 盖掉原有的）。
-    //   写完把真写成了的那几个原样记进装记录（摘要与新旧是**这台**判的，不由 monitor 算）。
+    // 装完之后与来源相同的每一个文件 —— 真要写的那几个 ＋ 本来就相同的（`same`）—— 各自来源那一份的摘要
+    //   ＋ 装之前在不在（`new` ⇒ 新建；`differs` · `same` ⇒ 原本就在）。`same` 也记：它被别处换成了这一份之后，
+    //   记录里不能还留着旧摘要（卸时会误判「装完改过」）。写完把真写成了的与相同的那几个原样记进装记录（摘要与新旧是**这台**判的，不由 monitor 算）。
     let ledger = write.as_ref().map(|w| {
         let states: BTreeMap<&str, State> = rows.iter().map(|(p, s)| (p.as_str(), *s)).collect();
+        let same = rows
+            .iter()
+            .filter(|(_, s)| *s == State::Same)
+            .map(|(p, _)| p);
         w.iter()
+            .chain(same)
             .filter_map(|p| {
                 let text = source.get(p)?.text.as_deref()?;
                 Some((

@@ -245,10 +245,19 @@ impl SynthTree {
     /// 这棵树里路径含 `needle` 的那些条目 —— **预期集**（[`remote_form`] 那一形：窗口看见的就是它）。
     ///
     /// 纯路径过滤，不碰磁盘、不碰那台合成后端。
+    ///
+    /// 🔴 只比**根以下那一段**：根借的是本机临时目录的名字，它碰巧含 `needle` 时
+    /// 拿整条比就是全集都中（如临时目录 `qc.M5Kg7q` 含 `7q`）—— 同一份代码看临时目录名红绿。
+    /// 搜的本来就只是这棵树里的名字。
     pub fn expected(&self, needle: &str) -> std::collections::BTreeSet<String> {
+        let root = self.root.to_string_lossy();
         self.entries
             .iter()
-            .filter(|p| p.contains(needle))
+            .filter(|p| {
+                p.strip_prefix(root.as_ref())
+                    .and_then(|r| r.strip_prefix(std::path::MAIN_SEPARATOR))
+                    .is_some_and(|r| r.contains(needle))
+            })
             .map(|p| remote_form(p))
             .collect()
     }
@@ -416,8 +425,8 @@ pub struct FakeBackend {
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
     pub log: WireLog,
-    /// 送进来的块（`(key, seq)` → 内容），`files-commit-text` 按块号读回拼起来。
-    chunks: std::collections::BTreeMap<(String, u64), String>,
+    /// 送进来的块（`(key, seq)` → 原始字节），`files-commit-text` 按块号读回拼起来。
+    chunks: std::collections::BTreeMap<(String, u64), Vec<u8>>,
     /// 最近一次提交成功拼出来的那一份（`(root/rel, 全文)`）—— 判据拿它与原文比。
     pub committed: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
     /// 第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
@@ -771,9 +780,18 @@ impl FakeBackend {
                 let name = |p: &[u8]| {
                     p[p.iter().rposition(|&b| b == b'/').map_or(0, |i| i + 1)..].to_vec()
                 };
+                // 只比索引根以下那一段（同 [`SynthTree::expected`]）：根住临时目录，它的名字碰巧含搜索词
+                //   ⇒ 拿整条比就成了全集都中（如临时目录 `qc.M5Kg7q` 含 `7q`）。
+                let below_root = |p: &'_ [u8]| -> Vec<u8> {
+                    let r = root.trim_end_matches('/').as_bytes();
+                    match p.strip_prefix(r) {
+                        Some(rest) if rest.first() == Some(&b'/') => rest[1..].to_vec(),
+                        _ => p.to_vec(),
+                    }
+                };
                 let mut all: Vec<&(Vec<u8>, bool)> = idx
                     .iter()
-                    .filter(|(p, _)| inside(p) && contains(p, q.as_bytes()))
+                    .filter(|(p, _)| inside(p) && contains(&below_root(p), q.as_bytes()))
                     .collect();
                 // 排序：合成后端只认「名称」「位置」两列（其余照索引序），倒序就倒过来。
                 match args.get("sort").and_then(|v| v.as_str()) {
@@ -1258,7 +1276,11 @@ impl FakeBackend {
                         None,
                     );
                 };
-                let content = args["content"].as_str().unwrap_or("").to_string();
+                // 两形都认（同后端）：字符串 / `{"b16": …}`，存原始字节。
+                let content =
+                    serde_json::from_value::<cmd_wire::files::ChunkBytes>(args["content"].clone())
+                        .map(|c| c.bytes().to_vec())
+                        .unwrap_or_default();
                 if content.is_empty() {
                     return (false, Some("bad_args".into()), Some("空块".into()), None);
                 }
@@ -1288,16 +1310,18 @@ impl FakeBackend {
                         None,
                     );
                 };
-                let mut whole = String::new();
+                let mut joined = Vec::new();
                 let mut missing = false;
                 for seq in 0..chunks {
                     match self.chunks.get(&(key.clone(), seq)) {
-                        Some(c) => whole.push_str(c),
+                        Some(c) => joined.extend_from_slice(c),
                         None => missing = true,
                     }
                 }
                 self.chunks.retain(|(k, _), _| k != &key);
-                if missing || whole.len() as u64 != bytes {
+                let n = joined.len() as u64;
+                let whole = String::from_utf8(joined).unwrap_or_default();
+                if missing || n != bytes || whole.len() as u64 != bytes {
                     return (
                         false,
                         Some("io_failed".into()),
