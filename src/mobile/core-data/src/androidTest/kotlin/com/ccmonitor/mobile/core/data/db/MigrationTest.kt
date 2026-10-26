@@ -751,11 +751,50 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→23 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    /**
+     * 23→24：机器表换成拨号核心那一形 —— 跳板从 id 换成那一台的名字（名字是核心算的：`label` 空 ⇒ `host`）；A→B→A 原样留着（拨号时核心拒）；
+     * 跳板指着已不在的那一台 ⇒ 照抄那个 id（拨号时核心照「找不到」拒，不悄悄变直连）；备用地址原样；「起哪一家」那一格删。
+     */
     @Test
-    fun migrateAll1To23Validates() {
+    fun migrate23To24NamesTheJumpAndKeepsTheRest() {
+        helper.createDatabase(dbName, 23).apply {
+            fun host(
+                id: String,
+                label: String,
+                jump: String?,
+            ) = execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,agentKind) " +
+                    "VALUES (?,?,?,2222,'pi','k1','backup.example:22\n[::1]:2200','g',3,99,'~/w','tmux',0,?,'ENC','claude')",
+                arrayOf(id, label, "$id.example", jump),
+            )
+            host("a", "A", "b")
+            host("b", "  ", "a")
+            host("c", "C", "gone")
+            host("d", "D", null)
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 24, true, MIGRATION_23_24)
+        db.query("SELECT id, jump FROM hosts ORDER BY id").use { c ->
+            val got = generateSequence { if (c.moveToNext()) c.getString(0) to c.getString(1) else null }.toList()
+            assertEquals(listOf("a" to "b.example", "b" to "A", "c" to "gone", "d" to ""), got)
+        }
+        db.query("SELECT label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager,autoReconnect,passwordEnc FROM hosts WHERE id='a'").use { c ->
+            assertTrue(c.moveToFirst())
+            val got = (0 until c.columnCount).map { if (c.isNull(it)) null else c.getString(it) }
+            assertEquals(listOf("A", "a.example", "2222", "pi", "k1", "backup.example:22\n[::1]:2200", "g", "3", "99", "~/w", "tmux", "0", "ENC"), got)
+        }
+        db.query("PRAGMA table_info(hosts)").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
+            assertTrue("旧那三格应已删掉：$names", names.none { it in setOf("proxyJumpHostId", "extraAddresses", "agentKind") })
+        }
+    }
+
+    /** 全链路 1→24 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
+    @Test
+    fun migrateAll1To24Validates() {
         helper.createDatabase(dbName, 1).close()
-        val db = helper.runMigrationsAndValidate(dbName, 23, true, *allMigrations(crypto))
+        val db = helper.runMigrationsAndValidate(dbName, 24, true, *allMigrations(crypto))
         db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
             val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
             assertEquals(listOf("常用", "shell", "vim"), names)

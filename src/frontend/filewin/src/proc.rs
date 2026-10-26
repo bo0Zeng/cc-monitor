@@ -155,7 +155,7 @@ fn run_on(rt: &tokio::runtime::Runtime, req: filewin_contract::OpenRequest) -> i
         Err(e) => return refuse(e, EXIT_NOT_LISTED),
     };
     say(&Ready::Listed(first.order.len()));
-    let h = super::shell::open_detached_seeded(
+    let h = super::shell::window::open_detached_seeded(
         source,
         cwd,
         Some(rt.handle().clone()),

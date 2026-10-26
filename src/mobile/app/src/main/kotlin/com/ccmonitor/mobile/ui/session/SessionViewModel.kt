@@ -189,7 +189,7 @@ class SessionViewModel(
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
     /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行 · 推公钥）。 */
-    val terminals = TerminalOps(backends.of(hostId), { hostRepo.get(hostId)?.label ?: hostId }, { hostRepo.get(hostId)?.agentKind })
+    val terminals = TerminalOps(backends.of(hostId), { hostRepo.get(hostId)?.label ?: hostId })
 
     private val _reach = MutableStateFlow(Reach())
     val reach: StateFlow<Reach> = _reach.asStateFlow()

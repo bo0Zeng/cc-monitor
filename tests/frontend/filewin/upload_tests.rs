@@ -57,7 +57,11 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     let _ = painted(&mut w, crate::rows::testing::click_at(at[0].center()));
     let asking = tokio::time::timeout(guard_core::wall::CEILING, async {
         loop {
-            if let Some(b) = w.batches.iter().find(|b| b.is_asking()).cloned() {
+            let ask = w.my_trips().into_iter().find_map(|j| match j.trip {
+                crate::progress::Trip::Upload { ask, .. } if ask.is_asking() => Some(ask),
+                _ => None,
+            });
+            if let Some(b) = ask {
                 return b;
             }
             let _ = painted(&mut w, Vec::new());
