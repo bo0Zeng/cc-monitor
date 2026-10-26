@@ -23,7 +23,7 @@ import s from "./plan-cell.module.css";
 
 export interface CellDetailHost {
   select(id: string | null): void;
-  who(w: PlanWho, signer?: boolean): HTMLElement;
+  who(w: PlanWho): HTMLElement;
   origin(): Origin;
   workspace(): string;
   switchTo(sid: string): void;
