@@ -1,11 +1,11 @@
 //! cc-bus 钩子诊断 —— 帧命令 `hooks-diag` 的本体（只读）。
 //!
 //! 这台后端读它自己那台的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
-//! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：两条钩子直接指向这台装好的 cc-bus 里的那两个脚本
+//! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：一条 Stop 钩子直接指向这台装好的 cc-bus 里的那个脚本
 //! （脚本靠 `readlink -f` 认自己的目录；不依赖 `PATH`）；cc-bus 没装 ⇒ 不给。本机远端同一条命令（`chan.call(origin, "hooks-diag")`），
 //! 帧面宿主在顶层 `feature_face`。
 //!
-//! 判据不是字符串等值：`"$HOME/.local/bin/cc-register" >/dev/null 2>&1 || true` 与规范片段 `cc-register …` 功能等价、字符串不等
+//! 判据不是字符串等值：`"$HOME/.local/bin/cc-bus-stop-hook"` 与规范片段 `cc-bus-stop-hook` 功能等价、字符串不等
 //! ⇒ 按「被执行的程序」判。看不懂的形态答「无法判断」，不猜「未装」。
 //! 只读：不写 `settings.json`（用户的共享全局配置，由用户自己合并），只生成要加的内容。
 
@@ -16,8 +16,8 @@ use serde::Serialize;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
-/// 钩子命令里那两个程序（`SessionStart` → `cc-register` · `Stop` → `cc-bus-stop-hook`）。
-pub(crate) const PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
+/// 钩子命令里那个程序（`Stop` → `cc-bus-stop-hook`）。会话起来时不用登记：会话 id 由 cc-monitor 认。
+pub(crate) const PROGRAM: &str = "cc-bus-stop-hook";
 
 /// 读 `settings.json` 的上限（它是几 KB 的配置；超了按「读不到」说）。
 const SETTINGS_CAP_BYTES: u64 = 1 << 20;
@@ -55,7 +55,6 @@ impl HookState {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct HooksDiagnosis {
-    pub(crate) session_start: HookState,
     pub(crate) stop: HookState,
     pub(crate) note: String,
 }
@@ -186,10 +185,9 @@ pub(crate) fn diagnose_event(
     fallback.unwrap_or(HookState::NotInstalled)
 }
 
-/// 完整诊断。`raw` = settings.json 原文；读不到 / 坏 JSON / 顶层不是对象 ⇒ 两态皆 `NotInstalled` ＋ `note` 说原因。
+/// 完整诊断。`raw` = settings.json 原文；读不到 / 坏 JSON / 顶层不是对象 ⇒ `NotInstalled` ＋ `note` 说原因。
 pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagnosis {
     let noted = |note: String| HooksDiagnosis {
-        session_start: HookState::NotInstalled,
         stop: HookState::NotInstalled,
         note,
     };
@@ -204,35 +202,27 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
         return noted(copy_text("rsHooksDiag.diagnose.notObject", &[]));
     }
     HooksDiagnosis {
-        session_start: diagnose_event(&v, "SessionStart", PROGRAMS[0], exists),
-        stop: diagnose_event(&v, "Stop", PROGRAMS[1], exists),
+        stop: diagnose_event(&v, "Stop", PROGRAM, exists),
         note: String::new(),
     }
 }
 
-/// 要加的内容：两条钩子直接指向 `<skills 根>/cc-bus/scripts/` 里那两个脚本（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）。
-/// 两个脚本有一个不在 ⇒ `None`（cc-bus 没装，先装）。
+/// 要加的内容：一条 Stop 钩子直接指向 `<skills 根>/cc-bus/scripts/` 里那个脚本（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）。
+/// 脚本不在 ⇒ `None`（cc-bus 没装，先装）。
 pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
-    let scripts: Vec<PathBuf> = PROGRAMS
-        .iter()
-        .map(|p| {
-            skills
-                .join(crate::assets::cc_bus_install::NAME)
-                .join("scripts")
-                .join(p)
-        })
-        .collect();
-    if !scripts.iter().all(|p| p.is_file()) {
+    let script: PathBuf = skills
+        .join(crate::assets::cc_bus_install::NAME)
+        .join("scripts")
+        .join(PROGRAM);
+    if !script.is_file() {
         return None;
     }
-    let word = |p: &Path| match home.and_then(|h| p.strip_prefix(h).ok()) {
+    let word = match home.and_then(|h| script.strip_prefix(h).ok()) {
         Some(rel) => posix::home_path_word(&rel.to_string_lossy().replace('\\', "/")),
-        None => shell_quote_core::posix_quote(&p.display().to_string()),
+        None => shell_quote_core::posix_quote(&script.display().to_string()),
     };
     let v = json!({ "hooks": {
-        "SessionStart": [ { "hooks": [ { "type": "command",
-            "command": format!("{} >/dev/null 2>&1 || true", word(&scripts[0])) } ] } ],
-        "Stop": [ { "hooks": [ { "type": "command", "command": word(&scripts[1]) } ] } ],
+        "Stop": [ { "hooks": [ { "type": "command", "command": word } ] } ],
     } });
     serde_json::to_string_pretty(&v).ok()
 }

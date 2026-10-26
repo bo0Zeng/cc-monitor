@@ -23,11 +23,10 @@ const form = (name: string, from: string | null): ProfileForm => ({
   launcher: null,
   tmuxSize: null,
   detach: false,
-  busRegister: false,
   tab: null,
 });
 
-const SLOT_IDS = ["account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "busRegister", "tab"] as const;
+const SLOT_IDS = ["account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "tab"] as const;
 
 const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}): ProfileRow => ({
   name,
@@ -183,7 +182,7 @@ describe("buildProfilesList", () => {
     [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link')][0].click();
     await flush();
     const text = el.querySelector<HTMLElement>('[data-role="profile-form"]')!.textContent ?? "";
-    for (const id of ["account", "tmux", "cwdIf", "cwd", "agent", "launcher", "tmuxSize", "detach", "busRegister"]) expect(text, id).toContain(`L-${id}`);
+    for (const id of ["account", "tmux", "cwdIf", "cwd", "agent", "launcher", "tmuxSize", "detach"]) expect(text, id).toContain(`L-${id}`);
     expect(text).not.toContain(copyText("beProfile.slot.cwdIf"));
   });
 

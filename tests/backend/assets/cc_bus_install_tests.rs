@@ -400,7 +400,7 @@ fn deployed_scripts_are_executable() {
     );
 }
 
-/// 命令面只剩收发这几条（A13-1 减法：起停会话 · 保活 · 守护进程 · 广播都删了）。
+/// 命令面只剩收发这几条（起停会话 · 保活 · 守护进程 · 广播 · 登记都不在：会话 id 由 cc-monitor 认）。
 /// 装出去的 `scripts/`（去掉被 source 的 `.sh`）· 安装脚本链进 PATH 的那一串 · 装出去的 `examples/` 都照这一份。
 const COMMANDS: &[&str] = &[
     "cc-bus-stop-hook",
@@ -409,7 +409,6 @@ const COMMANDS: &[&str] = &[
     "cc-log",
     "cc-peek",
     "cc-recv",
-    "cc-register",
     "cc-send",
     "cc-whoami",
 ];

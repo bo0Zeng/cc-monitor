@@ -28,7 +28,7 @@ import { saidOf } from "./kit/detail";
 /** 一段的表单：`null` / `false` ＝ 继承（没写进这一段）。 */
 export type ProfileForm = ProfileFormWire;
 
-/** 表单里可以写的几格（`detach` / `busRegister` 是开关，其余是值）。 */
+/** 表单里可以写的几格（`detach` 是开关，其余是值）。 */
 export type SlotId = ProfileSlotId;
 
 /** 树里的一段（`said` 是后端按表单同一套词写好的那一行；`accountShape` 是「账号那一形」，其余 `null`）。 */

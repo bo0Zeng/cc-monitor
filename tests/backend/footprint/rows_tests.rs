@@ -1406,7 +1406,7 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
     };
     let read = |p: &Path| {
         if p.to_string_lossy().ends_with("settings.local.json") {
-            Some("{\"hooks\":{\"SessionStart\":\"cc-register\"}}".to_string())
+            Some("{\"hooks\":{\"Stop\":\"cc-bus-stop-hook\"}}".to_string())
         } else {
             Some("{}".to_string())
         }

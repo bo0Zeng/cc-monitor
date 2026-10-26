@@ -356,47 +356,6 @@ fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
     }
 }
 
-/// 登记上 cc-bus 时这一发知道会话编号（`--ccm-sid`）⇒ 一并交给 cc-register（第 5 列，敲门按它经后端说一句）；不知道 ⇒ 不写那一格。
-#[test]
-fn bus_registration_carries_the_session_id_when_the_launch_knows_it() {
-    let tail = |sid: &[&str]| {
-        let mut a: Vec<String> = [
-            "--",
-            "--ccm-tmux=bus-sid",
-            "--detach",
-            "--bus-register",
-            "--cwd",
-            "/p",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-        a.extend(sid.iter().map(|s| s.to_string()));
-        let crate::ccm_line::argv::Parsed::Opts(o) =
-            crate::ccm_line::argv::parse(&a).expect("解析得动")
-        else {
-            panic!()
-        };
-        let mut e = env();
-        e.bus_scripts = Some("/b".into());
-        let Plan::Container(c) = build(&o, &e, &super::tests::no_library, None).expect("计划")
-        else {
-            panic!("该是容器路")
-        };
-        render_container_tail(&c)
-    };
-    let with = tail(&["--ccm-sid", "s-1"]);
-    assert!(
-        with.contains("'/b/cc-register' --sid 's-1' 'bus-sid'"),
-        "{with}"
-    );
-    let without = tail(&[]);
-    assert!(
-        without.contains("'/b/cc-register' 'bus-sid'") && !without.contains("--sid"),
-        "{without}"
-    );
-}
-
 /// 标签页那一格（继承表 `Item::Tab`）：不随调用方 —— 没写 `--tab` ⇒ 这一发不带（照这台偏好，观测侧判）；
 /// 命令行写了 ⇒ 便条带它、来自「命令行」；别名写了 ⇒ 带上别名的名字、来自「别名 <名>」；容器路把它（连同别名名）交给窗格那一趟。
 #[test]

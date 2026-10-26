@@ -155,7 +155,6 @@ const emptyForm = (name = "", from: string | null = null): ProfileForm => ({
   launcher: null,
   tmuxSize: null,
   detach: false,
-  busRegister: false,
   tab: null,
 });
 
@@ -168,7 +167,7 @@ function own(f: ProfileForm, s: SlotId): boolean {
 /** 回到继承：把这一格清掉。 */
 function clearSlot(f: ProfileForm, s: SlotId): ProfileForm {
   const n = { ...f };
-  if (s === "detach" || s === "busRegister") n[s] = false;
+  if (s === "detach") n[s] = false;
   else n[s] = null;
   return n;
 }
@@ -187,7 +186,6 @@ function startSlot(f: ProfileForm, s: SlotId, accounts: readonly string[]): Prof
       n.cwdIf = [{ at: "", to: "" }];
       break;
     case "detach":
-    case "busRegister":
       n[s] = true;
       break;
     case "tab":
@@ -214,7 +212,7 @@ export const TMUX_NAMING: Record<"auto" | "fixed" | "base", { stepsAside: boolea
 
 /** 表单上直接露出来的几格；其余收在「更多」里。 */
 const MAIN_SLOTS: readonly SlotId[] = ["account", "tmux", "cwdIf", "cwd"];
-const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach", "busRegister"];
+const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach"];
 
 export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const root = el("div", "prof");
@@ -914,7 +912,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       cell.appendChild(more);
       return cell;
     }
-    if (s === "detach" || s === "busRegister") {
+    if (s === "detach") {
       const row = el("div", "prof-inhrow");
       row.append(el("span", "", copyText("beProfile.val.on")), back);
       cell.appendChild(row);

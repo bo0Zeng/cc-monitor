@@ -50,7 +50,7 @@ export async function agentOnline(origin: Origin, id: string): Promise<boolean> 
 // ─── 驾驶舱读面（`bus-list` · `bus-inbox`）───
 // 后端转调 cc-bus 的机器可读读命令（`cc-list --tsv` · `cc-log`）出成品；形状由握手指纹管。
 
-/** 名单（每一行的 `live` / `ccm_sid` 对身份空间对账，「登记 ≠ 在线」）。 */
+/** 名单（每一行一个收件箱；`title` · `live` 由后端判，`live` 判不了是 null）。 */
 export type BusList = BusListWire;
 
 /** 收件箱：信封 ＋ 坏行数 ＋ 截没截。 */

@@ -181,13 +181,6 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--tsv"],
         "`bus-list` 转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
     ),
-    (
-        "control/cc_bus.rs",
-        "src/shared/cc-bus/scripts/cc-register",
-        &["--sid"],
-        "ccm 起会话的收尾登记上 cc-bus 时（`control/cc_bus.rs::REGISTER_SID`，`plan::render_container_tail` 用），这一发知道会话编号就带上它：\
-         登记那一格的第 5 列，敲门按它经后端说一句。是 cc-register 的命令面，不是后端的子命令。",
-    ),
     // 子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
     //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
     (

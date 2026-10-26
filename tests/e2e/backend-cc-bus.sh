@@ -36,7 +36,7 @@ D="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$D" ] || { echo "需要先 build backend：cd src/backend && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }
-REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[10] 的身份空间对账要它）"; exit 1; }
+REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[13] 的窗格诱饵 · [SH1-c] 杀会话要它）"; exit 1; }
 
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"; tmux_shim_cleanup' EXIT
@@ -85,17 +85,24 @@ echo "[1] --bus-list：空总线"
 out="$(d --bus-list </dev/null)"
 chk "空总线回空数组（不是报错）" "$(printf '%s' "$out" | jq -c '.agents')" "[]"
 
-echo "[2] --bus-list：读得出 id / 地址 / 待读数"
-# 台架**直接写** agents.tsv：它扮演的是"cc-bus 的状态"。
+echo "[2] --bus-list：名单的行是收件箱（会话 id · 待读），标题与在不在由后端判"
+# 台架**直接写**收件箱：它扮演的是"cc-bus 的状态"。
 # ⚠ 被测的 backend **不许**读这个格式（`no_cc_bus_data_layout_leaks_into_the_backend` 钉着），
 #   台架知道它是可以的 —— 格式变了这套件会红，那正是我们要的信号。
-printf 'alpha_cc\talpha_cc:0.0\t2026-08-13T00:00:00-07:00\t111\n' > "$BUS/agents.tsv"
-printf 'a\nb\n' > "$BUS/inbox/alpha_cc.jsonl"
-echo 0 > "$BUS/state/alpha_cc.pos"
-out="$(d --bus-list </dev/null)"
-chk "id" "$(printf '%s' "$out" | jq -r '.agents[0].id')" "alpha_cc"
-chk "tmux 地址" "$(printf '%s' "$out" | jq -r '.agents[0].target')" "alpha_cc:0.0"
-chk "待读数（真数出来的，不是猜的）" "$(printf '%s' "$out" | jq -r '.agents[0].unread')" "2"
+# 两条会话：SR 这台有记录（沙箱里的一份两行记录，正文是占位）、没有进程持着它；SU 这台没有记录。
+LB="$SANDBOX/lbus"; mkdir -p "$LB"/{inbox,state,log}
+SR="a1000000-0000-4000-8000-000000000001"; SU="a2000000-0000-4000-8000-000000000002"
+mkdir -p "$CLA/projects/-lw"
+printf '%s\n' "{\"type\":\"user\",\"uuid\":\"u1\",\"parentUuid\":null,\"sessionId\":\"$SR\",\"timestamp\":\"2026-10-26T00:00:00Z\",\"cwd\":\"/lw\",\"message\":{\"role\":\"user\",\"content\":\"占位的第一句\"}}" > "$CLA/projects/-lw/$SR.jsonl"
+printf 'a\nb\n' > "$LB/inbox/$SR.jsonl"; echo 0 > "$LB/state/$SR.pos"
+printf 'a\n' > "$LB/inbox/$SU.jsonl"
+out="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$LB" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null 2>/dev/null)"
+chk "★ 名单就是那两个收件箱（不读登记表）" "$(printf '%s' "$out" | jq -c '[.agents[].id] | sort')" "$(jq -cn --arg a "$SR" --arg b "$SU" '[$a,$b] | sort')"
+chk "  待读数（真数出来的，不是猜的）" "$(printf '%s' "$out" | jq -r --arg s "$SR" '.agents[] | select(.id==$s) | .unread')" "2"
+chk "★ 有记录的那条：标题是会话自己的（不是会话 id）· 没人持着它 ⇒ live=false" \
+  "$(printf '%s' "$out" | jq -r --arg s "$SR" '.agents[] | select(.id==$s) | [(.title != $s and .title != ""), .live] | map(tostring) | join("|")')" "true|false"
+chk "★ 这台没记录的那条：判不了 ⇒ live=null（不是 false）· 标题照实就是会话 id" \
+  "$(printf '%s' "$out" | jq -r --arg s "$SU" '.agents[] | select(.id==$s) | [.title, .live] | map(tostring) | join("|")')" "$SU|null"
 
 # ===== 发信：cc-send 问后端 `bus-envelope` 核信封（唯一一处），再自己走管线投递 =====
 # 台架的 ccm：一份记账的桩 —— `--bus-envelope` 原样转给被测的后端二进制（真核），看屏 / 说一句只记下来、答「送到了」。
@@ -112,6 +119,7 @@ case " $* " in
   *" --session-self "*)
     if [ -n "${SELF_SID:-}" ]; then printf '{"sid":"%s","groups":[],"looked":"this_machine"}\n' "$SELF_SID"
     else printf '{"code":"not_in_session","message":"no session above","detail":""}\n' >&2; exit 2; fi ;;
+  *" --bus-list "*) exec "$D" "$@" ;;
   *" --terminal-preview "*) cat >/dev/null; printf '{"screen":"fp-0"}\n' ;;
   *" --session-say "*) cat >> "$SAYS"; printf '\n'; printf '{"result":"delivered"}\n' ;;
   *) echo "fake ccm: 没想到会被问 $*" >&2; exit 9 ;;
@@ -228,40 +236,17 @@ for _c in --ping --bus-list; do
     "$([ -n "$_o" ] && [ "$_rc9" -ne 124 ] && echo yes || echo "no（退出码 $_rc9，输出 ${_o:-<空>}）")" "yes"
 done
 
-echo "[10] ★ 总线成员是**身份空间的子集**，不是第二套名单"
-# 〔用@08-13〕逐字：「那他不应该是身份空间的子集吗? 他应该去调用身份空间啊」。
-# cc-bus 的 agents.tsv 记的地址**会过期**（会话名被重用是常态）——08-13 实测后果是
-# 敲门文字打进**陌生占用者**的屏幕。⇒ live/ccm_sid 由后端去问 tmux，agents.tsv
-# 只回答「谁登记过 + 还剩几条没读」。
-# ⚠ live 是**三态**：true / false / null。判据三格全钉——只钉前两格的话，
-#   「问不到就当成不在」这种最坏的读法会溜过去（把一屋子活人判成死人）。
-tmux new-session -d -s alive_cc -c /tmp 'cat'
-tmux set-option -t alive_cc @ccm_sid 'sid-1234' >/dev/null 2>&1
-new_bus_state() {
-  printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
-  : > "$BUS/inbox/alive_cc.jsonl"; : > "$BUS/inbox/gone_cc.jsonl"
-}
-new_bus_state
-_j="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-      "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null 2>/dev/null)"
-chk "★ 活着的成员 live=true" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .live')" "true"
-chk "  且挂到了真身份上（@ccm_sid）" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .ccm_sid')" "sid-1234"
-chk "★ 名单里有、会话已经没了的 live=false" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="gone_cc") | .live')" "false"
-
-# 第三态：**问不到身份空间**。造一个有 coreutils、只缺 tmux 的 PATH
-#（`PATH` 清空是不行的 —— 那样 cc-list 自己的 awk 也没了，测的就不是这件事了）。
-_NT="$SANDBOX/notmux"; mkdir -p "$_NT"
-for _t in bash sh env awk cat wc date tr sed grep head tail mkdir touch flock mv rm sort cut timeout; do
-  [ -x "/usr/bin/$_t" ] && ln -sf "/usr/bin/$_t" "$_NT/$_t"
-done
-chk "  台架自检：这个 PATH 里确实没有 tmux" \
-  "$(PATH="$_NT" command -v tmux >/dev/null 2>&1 && echo 有 || echo 没有)" "没有"
-_j2="$(env PATH="$_NT" CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-       "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null 2>/dev/null)"
-chk "★ 问不到身份空间 ⇒ live 是 **null**（不是 false）" \
-  "$(printf '%s' "$_j2" | jq -r '.agents[0].live')" "null"
-chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）" \
-  "$(printf '%s' "$_j2" | jq -r '.agents | length')" "2"
+echo "[10] ★ 人读的 cc-list：名字与在不在只问 cc-monitor；没装就只列收件箱、说判不了"
+# 装了：桩把 `--bus-list` 转给被测的后端（真判），cc-list 照它答的原样印。
+_l="$(env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" CC_BUS_HOME="$LB" CC_BUS_BIN_DIR="$SCRIPTS" \
+      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-list" 2>/dev/null)"
+chk "★ 装了 ccm：每个收件箱一行，在不在照后端答的（有记录的 false · 没记录的 null）" \
+  "$(printf '%s\n' "$_l" | awk -F'\t' -v a="$SR" -v b="$SU" '$1==a||$1==b{print $1"|"$2}' | sort | tr '\n' ' ')" "$(printf '%s|false\n%s|null\n' "$SR" "$SU" | sort | tr '\n' ' ')"
+_NL="$SANDBOX/noccm-list"; mkdir -p "$_NL"
+for _t in bash sh env awk cat basename dirname readlink grep sed tr; do _p="$(command -v "$_t")" && ln -sf "$_p" "$_NL/$_t"; done
+_l="$(env PATH="$_NL" HOME="$NOHOME" CC_BUS_HOME="$LB" "$SCRIPTS/cc-list" 2>"$SANDBOX/cl.err")"
+chk "★ 没装 ccm：只列会话 id 与待读，并说名字与在不在判不了" \
+  "$(printf '%s\n' "$_l" | sort | tr '\n' ' ')|$(grep -c 'cannot be told' "$SANDBOX/cl.err")" "$(printf '%s\t2\n%s\t1\n' "$SR" "$SU" | sort | tr '\n' ' ')|1"
 
 echo "[11] ★ 收信的那一段只印线上码（act · tier），不放显示用的词"
 _r="$(env CCM_BIN="$FK/ccm" CALLS="$CALLS" SELF_SID="$SB" CC_BUS_HOME="$BUS" HOME="$NOHOME" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-recv" 2>/dev/null)"
@@ -347,68 +332,43 @@ env PATH="$_NC" HOME="$NOHOME" CC_BUS_HOME="$IB" bash -c '. "$1/cc-bus-lib.sh" &
 chk "★ 没装 ccm：敲门那一步照实记 NUDGE noccm（只入收件箱，等 Stop 钩子）" "$(grep -c "NUDGE noccm sid=$SC" "$IB/log/bus.log")" "1"
 tmux kill-session -t "=whoami_cc" 2>/dev/null || true
 
-echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
-# `cc-register` 记登记地址，读的是**会话名**（可以是中文）。
-# 台架：pane 里整条命令跑在 `LC_ALL=C` 下 —— tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`，
-# 这一形就是「非 UTF-8 客户端」。不带旗的话，中文被改写成 `_`、退出码仍是 0。
-# ⚠ 〔SH1 09-26 现打，tmux 3.6〕`TMUX` 已设的客户端 tmux **一律按 UTF-8 打**、不看 locale —— 生产上都跑在
-#   tmux 里（`TMUX` 恒设），所以 3.6 上它们今天其实没被改写（潜伏的违反，靠的是一条手册里没写的启发式）。
-#   旗保证的是不靠它 ⇒ 台架给 pane 里的 `tmux` 另挂一层 shim：摘掉客户端那一侧的 `TMUX` 再转给隔离 socket，
-#   才造得出真正的非 UTF-8 客户端（反向正控就是验这一格）。
-_u8d="$SANDBOX/u8"; _u8bus="$SANDBOX/u8bus"; _u8shim="$SANDBOX/u8shim"; mkdir -p "$_u8d" "$_u8bus" "$_u8shim"
-printf '#!/bin/bash\nunset TMUX\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_u8shim/tmux"
-chmod +x "$_u8shim/tmux"
-_u8name="u8甲乙"
-tmux new-session -d -s "$_u8name" -c /tmp \
-  env LC_ALL=C LANG=C LC_CTYPE=C PATH="$_u8shim:$PATH" CC_BUS_HOME="$_u8bus" SCRIPTS="$SCRIPTS" OUT="$_u8d" sh -c '
-    "$SCRIPTS/cc-register" u8id > "$OUT/reg" 2>&1
-    tmux display-message -p "#S" > "$OUT/raw" 2>&1
-    touch "$OUT/done"; exec sleep 30' 2>/dev/null
-wall_until '[ -f "$_u8d/done" ]' || true
-chk "  反向正控：同台架上不带旗的 display-message 确实被改写（台架真是非 UTF-8 客户端）" \
-  "$([ "$(cat "$_u8d/raw" 2>/dev/null)" != "$_u8name" ] && [ -f "$_u8d/done" ] && echo yes || echo no)" "yes"
-chk "★ cc-register 记下的登记地址是那个中文会话名（不是 _ 改写过的）" \
-  "$(awk -F'\t' '$1=="u8id"{print $2}' "$_u8bus/agents.tsv" 2>/dev/null)" "$_u8name:0.0"
-tmux kill-session -t "=$_u8name" 2>/dev/null || true
-
-echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好行 · 收件箱只看尾巴）"
-# 台架写一份**脏**的名册（只采结构：`--help` 行 · 缺字段行 · 真空行 · 只有 TAB 的行）。
-printf 'alpha_cc\talpha_cc:0.0\t2026-01-01T00:00:00+00:00\t111\n--help\tx:0.0\tts\t1\nshort\tonly\n\n\t\t\t\nbeta_cc\tbeta_cc:0.0\tts2\t\n' > "$BUS/agents.tsv"
+echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好名字 · 收件箱只看尾巴）"
+# 台架造一个**脏**的总线家（只采结构：文件名不过字符集的收件箱 · 坏行 · 已读位置）。
+DB="$SANDBOX/dirtybus"; mkdir -p "$DB"/{inbox,state,log}
 _env1='{"id":"m19a1b2c3d4e0001","ts":"t1","from":"peer-a","to":"alpha-b","tier":2,"act":"inform","title":"占位","re":null,"refs":[],"text":"占位一"}'
 _env2='{"id":"m19a1b2c3d4e0002","ts":"t2","from":"peer-a","to":"alpha-b","tier":2,"act":"inform","title":"占位","re":null,"refs":[],"text":"占位二"}'
-printf '%s\nnot json\n%s\n' "$_env1" "$_env2" > "$BUS/inbox/alpha_cc.jsonl"
-echo 1 > "$BUS/state/alpha_cc.pos"
-out="$(d --bus-list </dev/null)"
-chk "名单两条好行（--help 被本侧 id 判定拒掉）" "$(printf '%s' "$out" | jq -c '[.agents[].id]')" '["alpha_cc","beta_cc"]'
+printf '%s\nnot json\n%s\n' "$_env1" "$_env2" > "$DB/inbox/alpha_cc.jsonl"
+echo 1 > "$DB/state/alpha_cc.pos"
+: > "$DB/inbox/--help.jsonl"; : > "$DB/inbox/a b.jsonl"
+dd() { env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$DB" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- "$@" 2>"$SANDBOX/err.txt"; }
+out="$(dd --bus-list </dev/null)"
+chk "名单只有那一个好名字（--help 被本侧 id 判定拒、带空格的被 cc-bus 记成坏行）" "$(printf '%s' "$out" | jq -c '[.agents[].id]')" '["alpha_cc"]'
 chk "  待读数照旧（3 行 − 已读 1）" "$(printf '%s' "$out" | jq -r '.agents[0].unread')" "2"
-_pos_before="$(cat "$BUS/state/alpha_cc.pos")"; _state_before="$(ls "$BUS/state" | tr '\n' ' ')"
-out="$(printf '{"id":"alpha_cc","lines":2}' | d --bus-inbox)"
+_pos_before="$(cat "$DB/state/alpha_cc.pos")"; _state_before="$(ls "$DB/state" | tr '\n' ' ')"
+out="$(printf '{"id":"alpha_cc","lines":2}' | dd --bus-inbox)"
 chk "★ 收件箱只看尾巴（末 2 行：一条坏、一条好）" "$(printf '%s' "$out" | jq -c '[.messages[].text, .skipped]')" '["占位二",1]'
-chk "★ 读收件箱不推已读位置" "$(cat "$BUS/state/alpha_cc.pos")" "$_pos_before"
-chk "  也不在 state/ 里写任何东西" "$(ls "$BUS/state" | tr '\n' ' ')" "$_state_before"
-printf '{"id":"--help"}' | d --bus-inbox >/dev/null
+chk "★ 读收件箱不推已读位置" "$(cat "$DB/state/alpha_cc.pos")" "$_pos_before"
+chk "  也不在 state/ 里写任何东西" "$(ls "$DB/state" | tr '\n' ' ')" "$_state_before"
+printf '{"id":"--help"}' | dd --bus-inbox >/dev/null
 chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
-# 老 cc-bus：`cc-list` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
-_old="$SANDBOX/oldbus"; mkdir -p "$_old"
-printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; chmod +x "$_old/cc-list"
-env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err.txt"
-# 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
+# 老 cc-bus：`cc-list` 不认 --tsv（照打人读表）或还是上一版的名册 ⇒ 明说要重新部署，不解成一份空名单。
 _TOOOLD="$(zh_frag beCcBus.read.tooOld)"
-chk "★ 老 cc-bus ⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
-rm -f "$BUS/agents.tsv"
+_old="$SANDBOX/oldbus"; mkdir -p "$_old"
+for _shape in 'echo "ID           TMUX               待读"' 'printf "#cc-list-tsv\\t1\\nalpha_cc\\talpha_cc:0.0\\tts\\t1\\t0\\n#skipped\\t0\\n"'; do
+  printf '#!/bin/sh\n%s\n' "$_shape" > "$_old/cc-list"; chmod +x "$_old/cc-list"
+  env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$DB" CC_BUS_BIN_DIR="$_old" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err.txt"
+  # 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
+  chk "★ 老 cc-bus（${_shape:0:12}…）⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
+done
 
-echo "[SH1-c] ★ 杀会话不碰 cc-bus 名册（顺手注销那一段删了；名册改按会话 id 推之前，登记照旧留着）"
-: > "$BUS/agents.tsv"
+echo "[SH1-c] ★ 杀会话不碰 cc-bus 的收件箱"
 _dg="$SANDBOX/dg"; mkdir -p "$_dg"
-tmux new-session -d -s dg-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
-  "$SCRIPTS/cc-register" dg_cc >/dev/null 2>&1; touch "$OUT/a"; exec sleep 60' 2>/dev/null
+tmux new-session -d -s dg-cc -c /tmp env OUT="$_dg" sh -c 'touch "$OUT/a"; exec sleep 60' 2>/dev/null
 wall_until '[ -f "$_dg/a" ]' || true
 printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
-chk "  台架：会话登记上了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
 out="$(printf '{"name":"dg-cc"}' | d --kill)"
 chk "杀会话本身照旧成功" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
-chk "★ 名册里那一行没被动" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
-chk "★ 收件箱也没被动" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "在"
+chk "★ 收件箱没被动" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "在"
 
 echo "[CLI2] ★ CLI 面的入参不再隐含「调用方写得了 stdin」：argv 载荷口 · 开着不写不挂 · --stdin-line 任意位置 · 超大回码"
 # 一份沙箱里的会话记录（夹具文字，不是真正文）。

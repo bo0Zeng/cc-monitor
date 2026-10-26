@@ -92,8 +92,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,
-    // 它的沙箱够不着 tmux socket ⇒ cc-bus 身份经 `CC_BUS_ID` 交进去。
-    needs_bus_id: true,
     has_identity: false,
     models: None,
     model_default: None,

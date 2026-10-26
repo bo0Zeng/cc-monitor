@@ -680,8 +680,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "sessions-stop",
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),
-    ("bus-list", "`control/cc_bus.rs::agents_via_cc_list` 经 `gate::list_sessions().ok()` 挂「还活着吗」那一栏 —— 问不到回 `live: null`（「不假装知道」），命令本身照做；它的能力是转调 cc-bus，不是 tmux"),
-    ("bus-envelope", "只因与 `bus-list` 同住 `control/cc_bus_wire.rs`（引用图按文件算，因此连带）；核信封本身是纯函数（`control/cc_bus_envelope.rs`），不碰 tmux"),
     (
         "ccm-probe",
         "同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
@@ -703,7 +701,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
          （`plan::build` 头注的诚实降级），预览照出；它的能力是渲计划，不是 tmux",
     ),
     // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
-    ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
     ("resync", "打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
     ("hooks-diag", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
     ("mcp-read", "与 `session-terminals` 同住 `feature_face.rs`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
@@ -866,11 +863,6 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
         "backend-discover",
         &["--resume", "11111111-2222-3333-4444-555555555555"], // 交给 claude 的那一形
         &[],
-    ),
-    (
-        "bus-register",
-        &["--ccm-tmux", "--detach", "--bus-register"],
-        &["--ccm-tmux", "--detach"],
     ),
     ("cwd", &["--cwd", "/srv"], &[]),
     ("detach", &["--ccm-tmux", "--detach"], &["--ccm-tmux"]),
