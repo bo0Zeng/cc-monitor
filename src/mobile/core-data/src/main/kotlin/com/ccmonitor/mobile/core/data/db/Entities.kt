@@ -2,6 +2,12 @@ package com.ccmonitor.mobile.core.data.db
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.TypeConverter
+import com.ccmonitor.mobile.core.rs.Core
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.MachineRow
+import com.ccmonitor.mobile.core.wire.gen.arr
+import com.ccmonitor.mobile.core.wire.gen.Host as WireHost
 
 /** 机器表与身份表的表名：两张表里的密文按「表名 · 行 id」绑在那一行（见 rowBinding）。 */
 const val HOSTS_TABLE = "hosts"
@@ -16,8 +22,8 @@ data class Host(
     val port: Int = 22,
     val username: String,
     val authRef: String? = null, // FK → Identity.id（密钥认证）；它与 passwordEnc 都为 null 表示未绑身份
-    // 额外地址（换行分隔 `host[:port]`），连接时与主地址并发竞速、先连通者胜。
-    val extraAddresses: String? = null,
+    // 备用地址（一行一条 `host` / `host:port` / `[v6]:port`，原样存）：怎么解析 · 怎么竞速都在拨号核心。
+    val addresses: List<String> = emptyList(),
     val groupId: String? = null,
     val sortOrder: Int = 0,
     val lastConnected: Long? = null,
@@ -26,14 +32,41 @@ data class Host(
     val sessionManager: String? = null, // "tmux" | null
     // 断了要不要自己接回来（网络变了 · 重试几次不归这里：重连只有常驻流那一条循环）。
     val autoReconnect: Boolean = true,
-    // 经跳板机连接，指向另一个 Host 的 id（ssh -J A B）；null = 直连。
-    val proxyJumpHostId: String? = null,
+    // 跳板：表里另一台的名字（同桌面那张表；空 = 直连）。多跳 · 成环 · 找不到怎么办都在拨号核心。
+    val jump: String = "",
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。
     val passwordEnc: String? = null,
-    // 这台起会话用哪一家。旧值（`ClaudeCode` / `Codex`）不迁：那台认不出 ⇒ 当没选。
-    // 存那台 `session-open-facts` 给的线上 kind 原值（主机设置里选的那一家）；没选 ⇒ null。
-    val agentKind: String? = null,
 )
+
+/** 交拨号核心的那一形（`ssh_dial::machine::Host`）：`keyPath` 写这一台的 id —— 核心组好的请求里每一跳带着它，认证照它解。 */
+fun Host.wire(): WireHost =
+    WireHost(
+        label = label,
+        host = host,
+        port = port.toLong(),
+        user = username,
+        keyPath = id,
+        addresses = addresses,
+        jump = jump,
+        connect = true,
+    )
+
+/** 这一端的机器表交核心的那一份（JSON 数组，一台一个 [wire]）。 */
+fun List<Host>.machineTable(): String = arr(WireHost.ADAPTER).toJson(map { it.wire() })
+
+/** 每台的名字（拨号核心算的，同桌面那张表；跳板指的就是它），与 [hosts] 一一对应。要那份 .so。 */
+fun machineNames(hosts: List<Host>): List<String> =
+    (Wire.read(arr(MachineRow.ADAPTER), Core.machines(hosts.machineTable())) ?: error("wire contract mismatch: machine rows"))
+        .map { it.name }
+
+/** 备用地址那一格在库里一行一条（原样存，不解析）。 */
+class HostConverters {
+    @TypeConverter
+    fun linesToText(lines: List<String>): String = lines.joinToString("\n")
+
+    @TypeConverter
+    fun textToLines(text: String): List<String> = text.lines().filter { it.isNotBlank() }
+}
 
 /**
  * SSH 身份/密钥。privateKeyEnc 为 CryptoBox 加密后的字节。

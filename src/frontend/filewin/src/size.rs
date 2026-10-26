@@ -14,9 +14,6 @@
 //! - 取消与进度：后端阻塞档一趟做完才回话（与复制同）⇒ 只有「正在那台机器上算 …」一行。
 //! - 真远端：合成后端上真跑（线上那一行逐格相等），后端那一侧在本机临时目录上真跑，连起来经真远端没有读数。
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-
 use copy_core::copy_text;
 
 /// 菜单上那一项的字。**唯一住址**。
@@ -119,58 +116,8 @@ pub async fn size_remote(
     Ok(sized_from_reply(name, r))
 }
 
-/// 窗口上的样子：在算哪一项 · 上一摞的结局。**跨线程共享**（UI 线程画，tokio 那条写）。形状照 [`super::extract::ExtractBoard`]。
-#[derive(Clone, Default)]
-pub struct SizeBoard {
-    inner: Arc<Mutex<Desk>>,
-    rounds: Arc<AtomicU64>,
-    ctx: Arc<Mutex<Option<egui::Context>>>,
-}
-
-#[derive(Default)]
-struct Desk {
-    running: Option<String>,
-    last: Option<Vec<SizeResult>>,
-}
-
-impl SizeBoard {
-    pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
-    }
-
-    fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
-            c.request_repaint();
-        }
-    }
-
-    pub fn begin(&self, name: &str) {
-        self.inner.lock().unwrap().running = Some(name.to_string());
-        self.poke();
-    }
-
-    pub fn running(&self) -> Option<String> {
-        self.inner.lock().unwrap().running.clone()
-    }
-
-    pub fn finish(&self, results: Vec<SizeResult>) {
-        {
-            let mut d = self.inner.lock().unwrap();
-            d.running = None;
-            d.last = Some(results);
-        }
-        self.rounds.fetch_add(1, Ordering::SeqCst);
-        self.poke();
-    }
-
-    pub fn rounds(&self) -> u64 {
-        self.rounds.load(Ordering::SeqCst)
-    }
-
-    pub fn last(&self) -> Option<Vec<SizeResult>> {
-        self.inner.lock().unwrap().last.clone()
-    }
-}
+/// 窗口上的样子：在算哪一项 · 上一摞的结局 —— 就是通用的那一格（[`super::trip::Lane`]），算大小没有自己独有的。
+pub type SizeBoard = super::trip::Lane<Vec<SizeResult>>;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/size_tests.rs"]

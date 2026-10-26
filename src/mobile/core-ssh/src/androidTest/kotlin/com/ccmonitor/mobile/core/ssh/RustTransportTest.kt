@@ -4,6 +4,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.rs.Core
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.DialPlan
+import com.ccmonitor.mobile.core.wire.gen.Host
+import com.ccmonitor.mobile.core.wire.gen.arr
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -40,8 +44,13 @@ class RustTransportTest {
 
     @After fun teardown() = open.forEach { it.close() }
 
-    private fun config(auth: AuthMethod = AuthMethod.PrivateKey(requireNotNull(pem))) =
-        ConnectionConfig(host = host, port = port, username = user(), auth = auth)
+    /** 一台的机器表交核心组拨号（`Core.dialPlan`，生产同一口），`keyPath` 写那台的编号，认证照它给。 */
+    private fun config(auth: AuthMethod = AuthMethod.PrivateKey(requireNotNull(pem))): ConnectionConfig {
+        val row = Host("rig", host, port.toLong(), user(), "rig", emptyList(), "", true)
+        val plan = Wire.read<DialPlan>(Core.dialPlan(arr(Host.ADAPTER).toJson(listOf(row)), "rig"))
+        val request = (plan as? DialPlan.Ready ?: error("组不出拨号：$plan")).request
+        return ConnectionConfig(request, mapOf("rig" to auth))
+    }
 
     /** 台架只认跑它的那个用户（宿主机上的用户名由入口交进来；缺 ⇒ 读 `sshUser`）。 */
     private fun user(): String = requireNotNull(args.getString("sshUser")) { "缺 sshUser" }

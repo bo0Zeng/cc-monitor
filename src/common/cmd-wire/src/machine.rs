@@ -420,3 +420,67 @@ pub struct RoundProblem {
     /// 因主机指纹被拒时库里记下的那一枚（库里没有同类型的 ⇒ 空串；别的原因 ⇒ `None`）。
     pub expected_key: Option<String>,
 }
+
+// ───────────────────────────── 机器表那一道 ─────────────────────────────
+
+// 机器表那一道没过的是哪一种（码与界面那一侧同一份；生成的 TS 不带说明）。判法在拨号核心（`ssh_dial::machine`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineFaultCode {
+    NoHost,
+    NoUser,
+    Port,
+    NameTaken,
+    LeadingDash,
+}
+
+/// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineFault {
+    /// `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名 ·
+    /// `leading_dash` 地址 / 用户以 `-` 打头（开终端时会被 ssh 当成选项）。
+    pub code: MachineFaultCode,
+    /// 出问题的那台的名字（`label` 非空取它、否则 `host`）。
+    pub name: String,
+    /// 那一格下面的那一句（添加机器框 · 机器卡同读）。
+    pub said: String,
+}
+
+impl MachineFault {
+    /// 一处错（那一格下面的那一句照码写）。
+    pub fn new(code: MachineFaultCode, name: String) -> Self {
+        let said = match code {
+            MachineFaultCode::NoHost => copy_text("addMachine.err.host", &[]),
+            MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
+            MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
+            MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
+            MachineFaultCode::LeadingDash => copy_text("addMachine.err.dash", &[]),
+        };
+        Self { code, name, said }
+    }
+
+    /// 写口拒绝时的那一句（带那台的名字与「未保存」）。
+    pub fn refused_said(&self) -> String {
+        let name = self.name.as_str();
+        match self.code {
+            MachineFaultCode::NoHost => copy_text("rsConfig.machine.noHost", &[("name", name)]),
+            MachineFaultCode::NoUser => copy_text("rsConfig.machine.noUser", &[("name", name)]),
+            MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", name)]),
+            MachineFaultCode::NameTaken => {
+                copy_text("rsConfig.machine.nameTaken", &[("name", name)])
+            }
+            MachineFaultCode::LeadingDash => copy_text("rsConfig.machine.dash", &[("name", name)]),
+        }
+    }
+}

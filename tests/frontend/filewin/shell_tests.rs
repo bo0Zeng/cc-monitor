@@ -281,18 +281,18 @@ fn a_drop_with_no_runtime_says_so_instead_of_swallowing_the_files() {
 /// 传完一趟要重列目录（新文件得出现），而且**只重列一次**。
 #[test]
 fn finishing_a_drop_round_triggers_exactly_one_reload() {
-    // ⚠ 本条要的只是「有一个窗口」（它数的是那个消化计数器），
-    //   从前拿本机一棵真目录树当窗口；本机侧退役之后换 `seeded`。
+    // ⚠ 本条要的只是「有一个窗口」，从前拿本机一棵真目录树当窗口；本机侧退役之后换 `seeded`。
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    assert!(!w.settle_finished_drops(), "一趟都没跑却说要重列");
-
-    w.board.finish(crate::transfer::DropOutcome {
+    assert!(!w.settle_trips(), "一趟都没跑却说要重列");
+    let (_, up) = adopt_upload(&mut w);
+    assert!(!w.settle_trips(), "还在传就重列了");
+    up.finish(crate::transfer::DropOutcome {
         skipped: 0,
         ok: 1,
         ..Default::default()
     });
-    assert!(w.settle_finished_drops(), "跑完一趟却不重列");
-    assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
+    assert!(w.settle_trips(), "跑完一趟却不重列");
+    assert!(!w.settle_trips(), "同一趟重列了第二次");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -982,7 +982,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 
 /// 🔴 **进程 DPI 归属〔09-24 改写〕：窗口进程里没有 Tauri ⇒ winit 自己设 DPI。**
 ///
-/// 论证与四格现打读数住 `shell.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
+/// 论证与四格现打读数住 `shell/window.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
 /// 承重的是「起 `tao` = 否」那两行：
 /// - `dpi_aware=true` ⇒ `UNAWARE` → `PER_MONITOR_AWARE_V2`；
 /// - `dpi_aware=false` ⇒ **全程 `UNAWARE`**（没有别人替它设 ⇒ 高 DPI 下整窗发糊）。
@@ -993,7 +993,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 ///
 /// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
 /// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
-///    `main.rs`（窗口进程入口，本包那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
+///    `main.rs`（窗口进程入口，本包那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::window::open_detached_seeded` → `any_thread_hook`，
 ///    每个符号的「生产段里提到它的文件」集合与期望**两向相等**；且链上两份文件的生产段里
 ///    一个 `tauri` / `tao` 都没有。哪天有人在 monitor 进程里开这个窗口（集合多一个文件），
 ///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
@@ -1066,14 +1066,20 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             "any_thread_hook",
             set(&[
                 "cc-monitor-filewin/platform.rs",
-                "cc-monitor-filewin/shell.rs",
+                "cc-monitor-filewin/shell/window.rs",
             ]),
         ),
         (
             "open_detached_seeded",
-            set(&["cc-monitor-filewin/shell.rs", "cc-monitor-filewin/proc.rs"]),
+            set(&[
+                "cc-monitor-filewin/shell/window.rs",
+                "cc-monitor-filewin/proc.rs",
+            ]),
         ),
-        ("open_detached", set(&["cc-monitor-filewin/shell.rs"])),
+        (
+            "open_detached",
+            set(&["cc-monitor-filewin/shell/window.rs"]),
+        ),
         (
             "child_main",
             set(&["cc-monitor-filewin/proc.rs", "cc-monitor-filewin/lib.rs"]),
@@ -1104,7 +1110,7 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             assert!(
                 !guard_core::contains_word(window_proc_prod, word),
                 "`{rel}` 的生产段里出现了 `{word}` —— 窗口进程里有了 Tauri / tao，\n\
-                 那 `any_thread_hook` 就又回到了「一个进程两个 DPI 主人」那一格（`shell.rs` 头注四格表下半）。"
+                 那 `any_thread_hook` 就又回到了「一个进程两个 DPI 主人」那一格（`shell/window.rs` 头注四格表下半）。"
             );
         }
     }
@@ -1367,12 +1373,11 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
 /// 买的是：多选长出来那天，它自动落在「一次问完」那条路上。
 #[test]
 fn the_window_starts_a_batch_through_the_shared_three_step_function() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/filewin/src/shell.rs"));
+    let prod = shell_module_production_code();
     assert_eq!(
         prod.matches("writeops::run_writes(").count(),
         1,
-        "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
+        "`writeops::run_writes(` 在 `shell` 模块生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
     // 落点（根可以是当前目录的字节，有损名全寻址；交回应答与码）各恰好一处：`run_writes` 的 `apply` 里走
@@ -1597,8 +1602,13 @@ async fn a_real_click_on_download_asks_the_system_save_box() {
         "真点了「下载」，存盘框要下的不是被点那一行"
     );
     // 🔴 **一个字节都没动**：存盘框还没答，传输一趟都没起。
-    assert_eq!(w.pull.rounds(), 0, "还在选落点，传输就起来了");
-    assert!(w.pull.in_flight().is_none());
+    assert!(
+        w.progress
+            .jobs()
+            .iter()
+            .all(|j| !matches!(j.trip, crate::progress::Trip::Download { .. })),
+        "还在选落点，传输就起来了"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -3133,7 +3143,18 @@ async fn a_second_trip_of_the_same_kind_runs_beside_the_first_and_leaves_its_can
     assert_eq!(ups, 2, "两摞上传不是「进度」表里的两行");
     // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载照样起存盘框（这扇窗没有运行时 ⇒ 框起不来、说一句，但要下的那一项记下了）。
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    w.pull.begin("big.iso");
+    let pull = crate::download::DownloadBoard::default();
+    pull.begin("big.iso");
+    w.adopt_trip(
+        crate::progress::Trip::Download {
+            board: pull,
+            name: "big.iso".into(),
+            src: "/srv/data/big.iso".into(),
+            dest: "/tmp/big.iso".into(),
+        },
+        None,
+        None,
+    );
     pick_row(&mut w, 0);
     w.perform(crate::select::Action::Download, None);
     assert!(w.pull_want().is_some(), "在下的时候再要下载，没起存盘框");
@@ -3706,32 +3727,77 @@ fn an_edit_page_that_was_refused_says_why_where_the_text_would_be() {
     }
 }
 
-/// 一组全成了 ⇒ 右下角一句回执（后端拼好的那一行，原样）；有没成的 ⇒ 不出回执（看「进度」表那一行）。上传一摞全成同理（那一行写的是几项）。
-#[test]
-fn a_group_that_fully_succeeds_says_so_in_a_toast() {
-    use cmd_wire::batch::{BatchOutcome, BatchReply, ItemState};
-    let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    let plan = batch_core::Plan {
+/// 一组 · 一摞上传开在这个标签页上（「进度」表里一行，记进这个标签页起的那几趟）。
+fn copy_plan() -> batch_core::Plan {
+    batch_core::Plan {
         verb: batch_core::Verb::Copy,
         cmd: "files-copy",
         args: serde_json::json!({"root": "/srv", "items": [{}, {}]}),
         names: vec!["a".into(), "b".into()],
         into: Some("/srv/b".into()),
         machine: "devbox".into(),
-    };
-    let landed = |w: &mut FileWindow, states: &[ItemState], said: &str| {
-        let b = crate::batch::BatchBoard::new(plan.clone());
-        w.batches.push(b.clone());
-        b.set(batch_core::Phase::Ended(BatchReply {
-            outcomes: states
-                .iter()
-                .enumerate()
-                .map(|(i, s)| BatchOutcome::bare(i.to_string(), *s))
-                .collect(),
-            said: said.into(),
-        }));
+    }
+}
+
+fn adopt_batch(w: &mut FileWindow) -> (u64, crate::batch::BatchBoard) {
+    let b = crate::batch::BatchBoard::new(copy_plan());
+    let id = w.adopt_trip(
+        crate::progress::Trip::Batch {
+            board: b.clone(),
+            icon: "",
+        },
+        Some(w.cwd.clone()),
+        None,
+    );
+    (id, b)
+}
+
+fn adopt_upload(w: &mut FileWindow) -> (u64, crate::transfer::DropBoard) {
+    let board = w.board.fresh_like();
+    let ask = crate::batch::BatchBoard::new(copy_plan());
+    let id = w.adopt_trip(
+        crate::progress::Trip::Upload {
+            board: board.clone(),
+            items: Vec::new(),
+            dir: "data".into(),
+            ask,
+        },
+        Some(w.cwd.clone()),
+        None,
+    );
+    (id, board)
+}
+
+fn ended(b: &crate::batch::BatchBoard, states: &[cmd_wire::batch::ItemState], said: &str) {
+    b.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
+        outcomes: states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| cmd_wire::batch::BatchOutcome::bare(i.to_string(), *s))
+            .collect(),
+        said: said.into(),
+    }));
+}
+
+fn row_state(w: &FileWindow, id: u64) -> crate::progress::State {
+    w.progress
+        .jobs()
+        .into_iter()
+        .find(|j| j.id == id)
+        .expect("表里没有那一行")
+        .state()
+}
+
+/// 一组全成了 ⇒ 右下角一句回执（后端拼好的那一行，原样）；有没成的 ⇒ 不出回执（看「进度」表那一行）。上传一摞全成同理（那一行写的是几项）。
+#[test]
+fn a_group_that_fully_succeeds_says_so_in_a_toast() {
+    use cmd_wire::batch::ItemState;
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let mut landed = |w: &mut FileWindow, states: &[ItemState], said: &str| {
+        let (_, b) = adopt_batch(w);
+        ended(&b, states, said);
         w.receipt = None;
-        w.settle_finished_batches();
+        assert!(w.settle_trips(), "落地了却没收场");
         w.receipt.clone()
     };
     assert_eq!(
@@ -3751,12 +3817,13 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
         None,
         "有没成的也出了回执"
     );
+    let (_, up) = adopt_upload(&mut w);
     w.receipt = None;
-    w.board.finish(crate::transfer::DropOutcome {
+    up.finish(crate::transfer::DropOutcome {
         ok: 2,
         ..Default::default()
     });
-    assert!(w.settle_finished_drops());
+    assert!(w.settle_trips());
     assert_eq!(
         w.receipt,
         Some(copy_core::copy_text(
@@ -3764,14 +3831,88 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
             &[("n", "2")]
         ))
     );
+    let (_, up) = adopt_upload(&mut w);
     w.receipt = None;
-    w.board.finish(crate::transfer::DropOutcome {
+    up.finish(crate::transfer::DropOutcome {
         ok: 1,
         failed: vec![("x".into(), "盘满了".into())],
         ..Default::default()
     });
-    assert!(w.settle_finished_drops());
+    assert!(w.settle_trips());
     assert_eq!(w.receipt, None, "上传有失败的也出了回执");
+}
+
+/// 🔴 一趟一个结局：「进度」表那一行说什么，开它的标签页收场就照什么做（回执 · 重列都从那一个结局来，不另判一次）。
+/// 一组里一项照答跳过了 ⇒ 表说「成了」⇒ 回执就是后端拼好的那一句；一摞上传中途一件失败 ⇒ 表说「失败」⇒ 不出回执。
+/// 同一趟只收一次场。
+#[test]
+fn the_tab_lands_each_trip_on_the_ending_the_table_shows() {
+    use crate::progress::State;
+    use cmd_wire::batch::ItemState;
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let (id, b) = adopt_batch(&mut w);
+    assert!(!w.settle_trips(), "还在跑就收场了");
+    ended(
+        &b,
+        &[ItemState::Done, ItemState::Skipped],
+        "复制 2 项 · 完成 1 · 跳过 1",
+    );
+    assert!(w.settle_trips());
+    assert_eq!(row_state(&w, id), State::Done);
+    assert_eq!(
+        w.receipt.as_deref(),
+        Some("复制 2 项 · 完成 1 · 跳过 1"),
+        "表那一行说成了，标签页却没出回执"
+    );
+    w.receipt = None;
+    assert!(!w.settle_trips(), "同一趟收了第二次场");
+    assert_eq!(w.receipt, None);
+
+    let (id, up) = adopt_upload(&mut w);
+    up.finish(crate::transfer::DropOutcome {
+        ok: 3,
+        failed: vec![("b.bin".into(), "盘满了".into())],
+        ..Default::default()
+    });
+    assert!(w.settle_trips());
+    assert_eq!(row_state(&w, id), State::Failed);
+    assert_eq!(w.receipt, None, "表那一行说失败，标签页却出了成了的回执");
+}
+
+/// 🔴 同一个标签页连起两摞上传，先起的那一摞后落地：它的结局照样由这个标签页收（回执 · 重列），
+/// 不因为后一摞起了、换了一块看板就丢给窗口那一级、回执没了。
+#[test]
+fn an_earlier_trip_landing_last_still_lands_on_its_own_tab() {
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let (_, first) = adopt_upload(&mut w);
+    let (_, second) = adopt_upload(&mut w);
+    second.finish(crate::transfer::DropOutcome {
+        ok: 1,
+        ..Default::default()
+    });
+    assert!(w.settle_trips());
+    assert_eq!(
+        w.receipt,
+        Some(copy_core::copy_text(
+            "rsFilewinProgress.upload.done",
+            &[("n", "1")]
+        ))
+    );
+    w.receipt = None;
+    first.finish(crate::transfer::DropOutcome {
+        ok: 2,
+        ..Default::default()
+    });
+    assert!(w.settle_trips(), "先起的那一摞落地了，这个标签页却没收场");
+    assert_eq!(
+        w.receipt,
+        Some(copy_core::copy_text(
+            "rsFilewinProgress.upload.done",
+            &[("n", "2")]
+        )),
+        "先起的那一摞的回执丢了"
+    );
+    assert!(!w.has_running_jobs(), "两摞都落地了，标签上还亮着忙点");
 }
 
 /// 带记号的那一趟落地：照回包换手上那一份 —— 只盖变了的那几行、按新的先后摆，没变的那几行留着；
@@ -3826,4 +3967,24 @@ fn a_held_listing_lands_only_what_changed_and_the_next_ask_carries_its_held() {
     let (mine, _) = l.start_held();
     assert!(store_listed_if_current(&l, mine, Err("断了".into())));
     assert_eq!(l.start_held().1, None, "问不成之后还带着旧记号");
+}
+
+/// 整个 `shell` 模块（`shell.rs` ＋ `shell/` 底下按职责拆出去的那几份）的生产段，接成一份：
+/// 扫「窗口那一侧某件事只有一处」的判据扫的是这个模块，不是哪一份文件。
+pub(crate) fn shell_module_production_code() -> String {
+    let root = guard_core::addr::filewin_src_root();
+    let mut files = guard_core::scan_tree_excluding(&root.join("shell"), &["rs"], &[]);
+    files.push((
+        root.join("shell.rs"),
+        include_str!("../../../src/frontend/filewin/src/shell.rs").to_string(),
+    ));
+    assert!(
+        files.len() > 1,
+        "`shell/` 底下一份都没扫到 —— 本条此刻在空转"
+    );
+    files
+        .iter()
+        .map(|(_, raw)| guard_core::production_code(raw))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

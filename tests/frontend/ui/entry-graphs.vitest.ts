@@ -746,6 +746,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/views/plan-cell.module.css": { stacked: true, why: "一格详情：给 kit 建的按钮 · 徽标 · 提示条挂本页的版位类" },
   "src/frontend/ui/views/plan-review.module.css": { stacked: false, why: "计划需手动那一条 · 退回框：全是自己的类（按钮用 kit 原样）" },
   "src/frontend/ui/views/plan.module.css": { stacked: true, why: "计划页：给 kit 建的按钮 · 开关 · 状态点挂本页的版位类" },
+  "src/frontend/ui/plan-refs.module.css": { stacked: false, why: "编号后面那枚淡色标题，只挂在正文里那一处按钮上，不叠别的类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
   "src/frontend/ui/rot-board.module.css": { stacked: false, why: "轮换四块（会话面板 · 设置窗「轮换」栏共用）：只挂自己的哈希类（`el()` 的挂类写成 `(e) => (e.className = s.x)`，量具认得出）；按钮 · 下拉 · 开关是 kit 的，上面加挂的版位类也是本文件的哈希类" },

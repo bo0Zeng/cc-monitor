@@ -318,6 +318,49 @@ pub fn ssh_config_json(text: &str) -> String {
     serde_json::to_string(&ssh_dial::config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// 手机那张机器表（`ssh_dial::machine::Host` 的 JSON 数组）；读不懂 ⇒ 那一句（契约错，不当空表）。
+fn machine_table(table: &str) -> Result<Vec<ssh_dial::machine::Host>, String> {
+    serde_json::from_str(table).map_err(|e| ssh_dial::malformed(&format!("machine table: {e}")))
+}
+
+/// 手机那张机器表 ＋ 名字 ⇒ 组拨号的结局（[`cmd_wire::phone::DialPlan`]）：组法是拨号核心那一份（`ssh_dial::machine::request`，
+/// 跳板一路照表找、成环 · 找不到 ⇒ 拒，不回落直连）。每一跳的 `key_path` 是那一行交进来的原值（手机写那台的编号）。
+pub fn dial_plan_json(table: &str, name: &str) -> String {
+    use cmd_wire::phone::DialPlan;
+    let plan = machine_table(table)
+        .and_then(|hosts| {
+            ssh_dial::machine::request(&hosts, name, None, "stream", serde_json::json!({}))
+                .map_err(|(_, said)| said)
+        })
+        .and_then(|v| serde_json::from_value(v).map_err(|e| ssh_dial::malformed(&e.to_string())))
+        .map_or_else(
+            |said| DialPlan::Refused { said },
+            |request| DialPlan::Ready { request },
+        );
+    serde_json::to_string(&plan).unwrap_or_default()
+}
+
+/// 手机那张机器表 ⇒ 一台一行（名字是拨号核心算的，[`ssh_dial::machine::MachineRow`]）；读不懂 ⇒ `[]`。
+pub fn machines_json(table: &str) -> String {
+    let rows: Vec<_> = machine_table(table)
+        .unwrap_or_default()
+        .into_iter()
+        .map(ssh_dial::machine::MachineRow::of)
+        .collect();
+    serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// 编辑页那张表（连正在编的那一台，第 [`at`] 行）⇒ 判得怎样 ＋ 那一台展开的拨号地址（[`cmd_wire::phone::MachineCheck`]）。
+/// 判法 · 说法与桌面 `machines-try` 同一处（`ssh_dial::machine::table_fault`）；表读不懂 ⇒ 没毛病 · 没地址。
+pub fn machine_check_json(table: &str, at: usize) -> String {
+    let hosts = machine_table(table).unwrap_or_default();
+    let check = cmd_wire::phone::MachineCheck {
+        fault: ssh_dial::machine::table_fault(&hosts),
+        endpoints: hosts.get(at).map(|h| h.endpoints()).unwrap_or_default(),
+    };
+    serde_json::to_string(&check).unwrap_or_default()
+}
+
 /// 文件页选中这几项（`files-ls` 回包 `up` 里的原行）· 此刻那一台（[`resident::here`]）⇒ 顶栏 · ⋯ · 点一下做什么
 /// （`pick_core::PhoneMenu`）；读不动 ⇒ 什么都不给。
 pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
@@ -721,6 +764,51 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_parseSshConfig<'l>
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &text).unwrap_or_default();
         new_jstring(&env, ssh_config_json(&text))
+    })
+}
+
+/// `Core.dialPlan(table, name)`：照机器表按名字组拨号的结局（[`dial_plan_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_dialPlan<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    table: JString<'l>,
+    name: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let table = string(&mut env, &table).unwrap_or_default();
+        let name = string(&mut env, &name).unwrap_or_default();
+        new_jstring(&env, dial_plan_json(&table, &name))
+    })
+}
+
+/// `Core.machines(table)`：机器表一台一行、带拨号核心算的名字（[`machines_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_machines<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    table: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let table = string(&mut env, &table).unwrap_or_default();
+        new_jstring(&env, machines_json(&table))
+    })
+}
+
+/// `Core.machineCheck(table, at)`：编辑页那张表判得怎样 ＋ 第 `at` 台展开的地址（[`machine_check_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_machineCheck<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    table: JString<'l>,
+    at: jint,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let table = string(&mut env, &table).unwrap_or_default();
+        new_jstring(
+            &env,
+            machine_check_json(&table, usize::try_from(at).unwrap_or(usize::MAX)),
+        )
     })
 }
 
@@ -1131,6 +1219,96 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentClose<'l>(
 #[cfg(test)]
 mod tests {
     use resident_client::backoff::DIAL_WITHIN;
+
+    /// 手机那张机器表（Room 一行一台，`keyPath` 写 Room 那台的 id）：照它交给核心的那一形。
+    fn room(rows: &[(&str, &str, &str)]) -> String {
+        let v: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|(id, label, jump)| {
+                serde_json::json!({"label": label, "host": format!("{label}.lan"), "port": 22, "user": "u",
+                    "keyPath": id, "addresses": ["192.0.2.9:2222"], "jump": jump, "connect": true})
+            })
+            .collect();
+        serde_json::to_string(&v).unwrap()
+    }
+
+    /// Room 里 A→B→A：连 A ⇒ 拒（之前手机截成 A→B 照连）；拒的那一句是拨号核心那一句。
+    #[test]
+    fn a_jump_loop_in_the_room_table_is_refused() {
+        let table = room(&[("id-a", "A", "B"), ("id-b", "B", "A")]);
+        let plan: cmd_wire::phone::DialPlan =
+            serde_json::from_str(&super::dial_plan_json(&table, "A")).unwrap();
+        let cmd_wire::phone::DialPlan::Refused { said } = plan else {
+            panic!("A→B→A 该拒")
+        };
+        assert_eq!(said, copy_core::copy_text("beMachine.jump.loop", &[]));
+    }
+
+    /// 跳板找不到 · 表读不懂也拒；一跳照表组好：地址展开在核心（备用地址跟在首选后面），每一跳的 `key_path` 是那台的 id。
+    #[test]
+    fn the_room_table_plans_a_dial_by_name() {
+        let refused = |table: &str| {
+            matches!(
+                serde_json::from_str(&super::dial_plan_json(table, "A")).unwrap(),
+                cmd_wire::phone::DialPlan::Refused { .. }
+            )
+        };
+        assert!(refused(&room(&[("id-a", "A", "Z")])));
+        assert!(refused("{"));
+        let table = room(&[("id-a", "A", "B"), ("id-b", "B", "")]);
+        let plan: cmd_wire::phone::DialPlan =
+            serde_json::from_str(&super::dial_plan_json(&table, "A")).unwrap();
+        let cmd_wire::phone::DialPlan::Ready { request } = plan else {
+            panic!("A→B 该组得出来")
+        };
+        assert_eq!(
+            (request.host.as_str(), request.key_path.as_deref()),
+            ("A.lan", Some("id-a"))
+        );
+        assert_eq!(
+            request
+                .endpoints
+                .iter()
+                .map(|e| format!("{}:{}", e.host, e.port))
+                .collect::<Vec<_>>(),
+            ["A.lan:22", "192.0.2.9:2222"]
+        );
+        let hop = request.jump.expect("经 B");
+        assert_eq!(
+            (
+                hop.host.as_str(),
+                hop.key_path.as_deref(),
+                hop.jump.is_none()
+            ),
+            ("B.lan", Some("id-b"), true)
+        );
+    }
+
+    /// 一张表 ⇒ 一台一行（名字是拨号核心算的）；判第几台：表那一道的毛病（桌面同一句）· 这一台展开的地址。
+    #[test]
+    fn the_table_reads_back_named_and_checked() {
+        let table = room(&[("id-a", "", ""), ("id-b", "B", "")]);
+        let rows: Vec<ssh_dial::machine::MachineRow> =
+            serde_json::from_str(&super::machines_json(&table)).unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            [".lan", "B"]
+        );
+        let twin = room(&[("id-a", "B", ""), ("id-b", "B", "")]);
+        let c: cmd_wire::phone::MachineCheck =
+            serde_json::from_str(&super::machine_check_json(&twin, 1)).unwrap();
+        assert_eq!(
+            c.fault.map(|f| (f.code, f.said)),
+            Some((
+                cmd_wire::machine::MachineFaultCode::NameTaken,
+                copy_core::copy_text("addMachine.err.taken", &[("name", "B")])
+            ))
+        );
+        assert_eq!(c.endpoints.len(), 2);
+        let fine: cmd_wire::phone::MachineCheck =
+            serde_json::from_str(&super::machine_check_json(&table, 1)).unwrap();
+        assert_eq!(fine.fault, None);
+    }
 
     /// 文件页那一问：交进 `files-ls` 的原行 ⇒ 顶栏 · ⋯（每项四格）· 点一下做什么；那台断着 ⇒ 灰着说离线；读不动 ⇒ 什么都不给。
     #[test]

@@ -132,12 +132,12 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
         w.key_notice()
     );
     for _ in guard_core::wall::rounds() {
-        if w.size_board.rounds() > 0 {
+        if size_board(&w).rounds() > 0 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    assert_eq!(w.size_board.rounds(), 1, "到兜底上限那一摞还没回话");
+    assert_eq!(size_board(&w).rounds(), 1, "到兜底上限那一摞还没回话");
     let sent: Vec<serde_json::Value> = wired
         .log
         .lock()
@@ -153,7 +153,7 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
             serde_json::json!({"path": "/srv/refuse-me"}),
         ]
     );
-    let said = outcome_text(&w.size_board.last().expect("没有结局"));
+    let said = outcome_text(&size_board(&w).last().expect("没有结局"));
     assert!(
         said.starts_with(&format!(
             "{}{}",
@@ -178,4 +178,17 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
         )) && said.contains("这个路径读不到：PermissionDenied"),
         "被拒那一项没带原话：{said}"
     );
+}
+
+/// 这个窗口最近起的那一摞算大小的看板（「进度」表里那一行的）。
+fn size_board(w: &crate::shell::FileWindow) -> SizeBoard {
+    w.progress
+        .jobs()
+        .into_iter()
+        .rev()
+        .find_map(|j| match j.trip {
+            crate::progress::Trip::Size { board, .. } => Some(board),
+            _ => None,
+        })
+        .unwrap_or_default()
 }

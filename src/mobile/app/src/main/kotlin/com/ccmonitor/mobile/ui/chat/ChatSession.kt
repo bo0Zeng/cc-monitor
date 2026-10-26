@@ -142,8 +142,6 @@ sealed interface ChatTarget {
         val ticket: String,
         /** 从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`，见 [NewSessionPicker]）。 */
         val cwd: String?,
-        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-open-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
-        val agent: String?,
     ) : ChatTarget
 }
 
@@ -179,7 +177,7 @@ class ChatSession(
     private val chips = ChatChips(link, machine, scope, _state) { sid }
 
     /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
-    val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, it.agent, scope) }
+    val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, scope) }
     private val body = RecordUnits()
 
     /** 上次上屏以后新排进来的那几条里人说的话（只拿它们消本地那几句的标）。 */
@@ -316,7 +314,7 @@ class ChatSession(
             sid?.let {
                 link.table.value.sessions[it]
                     ?.agentKind
-            } ?: draft?.agent,
+            },
         )
 
     /** ［+］面板打开：问那台这条会话能用的命令与 Skill（每开一次问一次：项目里的命令文件可能刚改过）。 */

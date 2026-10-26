@@ -601,7 +601,7 @@ pub struct Shown {
 /// 每块板子一个搜索框名（同一进程里不重）。
 static NEXT_STREAM: AtomicU64 = AtomicU64::new(1);
 
-/// 搜索这件事的**共享落点** —— 形状照 [`super::shell::Listing`] 办（UI 线程读，tokio 那条写）。
+/// 搜索这件事的**共享落点** —— 形状照 [`super::shell::listing::Listing`] 办（UI 线程读，tokio 那条写）。
 ///
 /// 🔴 `epoch` 既是这一侧丢旧答案的号，也是发给后端的 `seq`：
 /// 用户打字比往返快，「t」的答案可能在「te」的答案之后才到 —— 号对不上就整份丢掉；

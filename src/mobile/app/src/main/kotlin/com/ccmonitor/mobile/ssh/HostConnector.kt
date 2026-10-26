@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.ssh.SshTransport
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -33,9 +34,11 @@ class HostConnector(
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
+    /** 照机器表组拨号的那一口（生产问核心；JVM 测试换假的）。 */
+    private val planner: DialPlanner = CoreDialPlanner,
 ) {
     /**
-     * 连接一台主机，得到 transport（多地址竞速在 [SshConnectionManager] 里）。
+     * 连接一台主机，得到 transport（照机器表组拨号在核心里：多地址竞速 · 跳板，[planDial]）。
      * @param host 调用方已取的主机，这里不重取。
      * @param pendingIdentityId 本次选定但还没存下的身份；没有传 null。
      * @param onEvent 逐阶段的连接日志；不需要传 null。
@@ -52,10 +55,7 @@ class HostConnector(
             host.id,
             host.id,
             host.label,
-            host.toConnectionConfigs(
-                resolveHostAuth(host, pendingIdentityId, identityRepo, hostRepo),
-                resolveJumpChain(host, hostRepo, identityRepo),
-            ),
+            planDial(host, hostRepo.observeAll().first(), pendingIdentityId, identityRepo, hostRepo, planner),
             onEvent = onEvent,
             expectedGen = expectedGen,
         )

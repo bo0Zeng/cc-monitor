@@ -259,7 +259,7 @@ pub(crate) const TIMED_OUT: &str = "child_timed_out";
 #[cfg_attr(test, path = "../../../tests/backend/platform/child_tmux_fence.rs")]
 mod tmux_fence;
 
-/// 要起的那个子进程（程序 · argv · 显式环境）。stdin 恒为空设备（今天没有调用方要喂它）。
+/// 要起的那个子进程（程序 · argv · 显式环境）。stdin 默认是空设备；[`Child::stdin_bytes`] 给了 ⇒ [`Child::run`] 把那几个字节喂进去、写完就关。
 pub(crate) struct Child {
     program: OsString,
     args: Vec<OsString>,
@@ -270,6 +270,8 @@ pub(crate) struct Child {
     no_console_window: bool,
     /// 工作目录；`None` ＝ 照宿主的。
     cwd: Option<std::path::PathBuf>,
+    /// 喂给它 stdin 的字节（只 [`Child::run`] 认）；`None` ＝ 空设备。
+    stdin: Option<Vec<u8>>,
 }
 
 impl Child {
@@ -281,7 +283,14 @@ impl Child {
             envs: Vec::new(),
             no_console_window: false,
             cwd: None,
+            stdin: None,
         }
+    }
+
+    /// [`Child::run`] 把这几个字节喂进它的 stdin（另一条线写，写完就关：大过管道缓冲也不与读输出互等）。
+    pub(crate) fn stdin_bytes(mut self, bytes: Vec<u8>) -> Child {
+        self.stdin = Some(bytes);
+        self
     }
 
     /// 在这个目录里起它。
@@ -420,12 +429,26 @@ impl Child {
             },
         };
         let mut cmd = self.command();
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.stdin(if self.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
         os::own_group(&mut cmd);
         let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;
         let group = os::Group::adopt(&child);
+        if let (Some(bytes), Some(mut pipe)) = (self.stdin, child.stdin.take()) {
+            // 它先退了 · 不读 stdin ⇒ 写的那一下报管道断：照它退出的结局交，不当起不来。写完 `pipe` 落地 ⇒ 它读到头。
+            let label = program.clone();
+            std::thread::spawn(move || {
+                use std::io::Write as _;
+                if let Err(e) = pipe.write_all(&bytes) {
+                    tracing::debug!("{label} 没读完喂给它的 stdin（{e}）⇒ 照它退出的结局交");
+                }
+            });
+        }
 
         // 读两条输出（一个线程一条），读完交 `Ev::Piped`。
         let (ev_tx, ev_rx) = mpsc::channel::<Ev>();

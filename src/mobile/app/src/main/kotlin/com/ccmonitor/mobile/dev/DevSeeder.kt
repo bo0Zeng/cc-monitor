@@ -47,7 +47,7 @@ class DevSeeder(
                     username = "pi",
                     authRef = identityId,
                     // 额外配一个不可达地址，用来看多地址竞速：先连通者胜，不等死地址超时。
-                    extraAddresses = "203.0.113.1:22",
+                    addresses = listOf("203.0.113.1:22"),
                 ),
             )
         }
