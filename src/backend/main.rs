@@ -35,11 +35,11 @@ use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use wire::{Frame, FrameRules as _};
 
-/// watcher 看见、控制面去做的那两件事（观测侧不改世界，只在那一刻报一声；两处起 watcher 都接这一份）。
+/// watcher 看见、控制面去做的那三件事（观测侧不改世界，只在那一刻报一声；两处起 watcher 都接这一份）。
 const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions {
     tmux_server_up: control::tmux_hook::install_for_this_process,
     session_seen: control::launch_account::adopt_seen,
-    asks_moved: control::asks::moved_rx,
+    tag: control::identity_tag::tag_seen,
 };
 
 /// 答题 hook 判「终端那边答了」读的那一处：活会话表（hook 在 control 层，够不着 history，由这里交进去）。

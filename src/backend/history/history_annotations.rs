@@ -575,7 +575,7 @@ pub(crate) fn annotate_at(
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
     if auto_changed {
-        crate::control::asks::moved(sid);
+        super::needs_changed::moved(sid);
     }
     Ok(Annotated { entry, prev })
 }

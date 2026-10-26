@@ -176,10 +176,18 @@ enum PaneRead {
 /// tmux 注给 pane 的那个变量名（键名是常量、不是参数：本文件不回传整份环境）。
 const TMUX_PANE_ENV: &str = "TMUX_PANE";
 
-/// **把 `sid` 打到 `pid` 所在的那个 tmux 会话上。**
-///
-/// 调用点只有一处：`observe/watcher.rs::process_session_added`，在「这个 pid 确实是写
-/// 那份 pidfile 的那个 claude」被证过之后。跨层边已登记进 `layering_guard`。
+/// watcher 打标那一手（`observe::watcher::Reactions::tag`，由 `main.rs` 接上）：观测侧在「这个 pid 确实是写那份 pidfile 的那个 claude」
+/// 被证过之后调它。打不上的那两形说出来，回（容器，这次真写了没有）。**[`tag`] 在生产里的唯一调用点。**
+pub fn tag_seen(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+    let outcome = tag(pid, sid);
+    if let Some(note) = outcome.failure_note(pid, sid) {
+        tracing::warn!("{note}");
+    }
+    let wrote = outcome.wrote();
+    (outcome.container(), wrote)
+}
+
+/// **把 `sid` 打到 `pid` 所在的那个 tmux 会话上。** 生产只经 [`tag_seen`]。
 pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     // 先取口再做别的：测试构建里没注入假 tmux 就在这里炸，与走不走得到 tmux 无关（人群按「调了 tag」算）。
     let probe_cmd = door::tmux();

@@ -5,7 +5,7 @@
 //! - [`exit_policy`]：写后端自己的那一份状态文件（`~/.cc-monitor/backend.json`）；不碰用户数据，`readonly_guard` 为它单开一层。
 //! - [`tmux_hook`]：改 tmux server 状态（`tmux set-hook -g`）+ 发信号（`SIGUSR1`）。
 //! - [`gate`]：Gate 2（identity）在本侧的承载，判定本身在 [`gate_rules`]。它只读 tmux，但归 control/：它是「能不能改这个会话」这个决策的一部分。
-//! - [`identity_tag`]：把 `@ccm_sid` 打到 tmux 窗格上；触发来自 observe 侧的 pidfile inotify（`layering_guard` 里登记在案的 `observe → control` 跨层边）。
+//! - [`identity_tag`]：把 `@ccm_sid` 打到 tmux 窗格上；触发来自 observe 侧的 pidfile inotify（watcher 只报一声，`main.rs` 把 `identity_tag::tag_seen` 接成 `observe::watcher::Reactions::tag`）。
 //! - [`capture_pane`]：抓一次某个窗格此刻那一屏（只读、只抓一次；`readonly_guard::capture_is_read_only` 逐元素钉 argv）。
 //! - [`kill`]：杀一个 tmux 会话，过三道门（Gate 3 = `windows==1` 只给它），对 `#{session_id}` 句柄下手。
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
@@ -48,7 +48,7 @@ pub mod fork_write;
 pub(crate) mod gate;
 // §34 Gate 2 与 tmux 会话名两条规则（原共享 crate `gate-core`：monitor 那一侧的门删了，只剩本层用）。
 pub(crate) mod gate_rules;
-pub(crate) mod identity_tag;
+pub mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
 // 起会话用哪个号：判定（`pick`）＋「这条会话上次用哪个号起的」（ccm 留便条、观测侧认便条记账；后端自有状态，经 `Own`）。

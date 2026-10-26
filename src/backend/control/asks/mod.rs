@@ -16,6 +16,8 @@ pub mod hook;
 use crate::agents::asks::{product_of, Ask, NoteNeed};
 use crate::agents::{AskIn, PlanMode, Verdict};
 use crate::common::cells::Words;
+/// 挂上 · 撤掉 · 答掉都报这一声（`history::needs_changed`）。
+use crate::history::needs_changed::moved;
 pub(crate) use cmd_wire::needs::{
     AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer,
 };
@@ -115,24 +117,6 @@ fn book() -> std::sync::MutexGuard<'static, Book> {
     })
     .lock()
     .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// 某条会话挂着的请求变了（挂上 · 撤掉 · 答掉）⇒ 那个会话 id（流的 tap 订它推 `changed {needs, key: sid}`）。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
-    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
-        std::sync::OnceLock::new();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
-}
-
-/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 推 `changed {needs, key: sid}`
-/// （流的 tap 订它；`main` 也订它，把此刻挂着请求的那几条交给 watcher 改那几条会话的点）。
-pub(crate) fn moved(sid: &str) {
-    let _ = changes().send(sid.to_string());
-}
-
-/// 订「挂着的请求变了」那一声（`main` 交给 watcher：它照此刻挂着请求的那几条改会话的点）。
-pub fn moved_rx() -> tokio::sync::broadcast::Receiver<String> {
-    changes().subscribe()
 }
 
 fn now_ms() -> u64 {

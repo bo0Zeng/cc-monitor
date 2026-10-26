@@ -227,16 +227,25 @@ fn spawn_pid_watcher(
     );
 }
 
-/// watcher 看见、控制面去做的那两件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `main.rs` 接上控制面那两个函数）。
-/// 两件的时机都只有观测侧有：「tmux server 起来了」是 socket 目录 inotify 看到的；`(pid, sid)` 只在 pidfile 出现 / 改写那一刻同时在手。
+/// watcher 看见、控制面去做的那三件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `main.rs` 接上控制面那三个函数）。
+/// 三件的时机都只有观测侧有：「tmux server 起来了」是 socket 目录 inotify 看到的；`(pid, sid)` 只在 pidfile 出现 / 改写那一刻同时在手。
 #[derive(Clone, Copy)]
 pub struct Reactions {
     /// tmux server（重新）起来了 ⇒ 给它装通知 hook（hook 活在 server 内存里，server 每次起来都要重装；`control::tmux_hook::install_for_this_process`）。
     pub tmux_server_up: fn(),
     /// pidfile 出现 / 改写：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt_seen`；写句柄是起 watcher 时交进来的那一份）。
     pub session_seen: fn(&crate::platform::fs::Own, u32, &str),
-    /// 订「挂着的待答请求变了」那一声（`control::asks::moved_rx`）：每响一声，照活会话表此刻挂着请求的那几条改会话的点。
-    pub asks_moved: fn() -> tokio::sync::broadcast::Receiver<String>,
+    /// 给这个 pid 的窗格打身份标（`control::identity_tag::tag_seen`）：回（这条会话住在什么容器里，这次真写了没有）——
+    /// 容器随 `session_added` 报出去，写了几个进对账的回数。
+    pub tag: Tag,
+}
+
+/// 打身份标那一手的形状（[`Reactions::tag`]）。
+pub type Tag = fn(u32, &str) -> (Option<crate::wire::SessionContainer>, bool);
+
+/// 没接上打标的那一手（夹具）：不打、不写。
+fn untagged(_: u32, _: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+    (None, false)
 }
 
 /// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
@@ -1005,7 +1014,7 @@ pub fn spawn(
     let poke = WatcherPoke(events_tx.clone());
     // 登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
     let me = live_enter(events_tx.clone());
-    hear_asks(reactions.asks_moved, events_tx.clone());
+    hear_asks(events_tx.clone());
     let b = book.clone();
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
@@ -1172,6 +1181,7 @@ fn watch_loop(
         .map(|r| r.root.clone())
         .collect();
     state.scans = Some(crate::observe::record_scan::global());
+    state.tag = reactions.tag;
     state.launch = Some((reactions, own));
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
@@ -1475,7 +1485,7 @@ fn watch_loop(
                 // 🔴 上面这段原先还有一句：「`@ccm_sid` 由 `shared/ccm` 的
                 // 1 秒 poller 回填，这次探测很可能仍抓到**旧** tag」。**今天两半都不成立**：
                 //   · 那个 poller 08-14 被整条删掉（`0085d0d`），事实键改由后端自己写
-                //     （`control::identity_tag::tag`，就在本文件 `process_session_added` 里）；
+                //     （`process_session_added` 里经 `Reactions::tag` 交控制面打）；
                 //   · 而 `tag()` 是**同步**跑完的、在重探线程 spawn 之前 ⇒ 这次探测
                 //     **必然**抓到**新** tag，不是「很可能仍是旧的」。
                 // ⚠ 留这条订正是因为那句话不是无害的陈账：`tests/e2e/graylight-backend-frames.sh`
@@ -1706,6 +1716,8 @@ struct ReaderState {
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
     branches: HashMap<PathBuf, crate::agents::mainline::Chain>,
+    /// 打身份标那一手（[`Reactions::tag`]）：生产由 [`watch_loop`] 接上；默认不打（夹具要打标就自己接上）。
+    tag: Tag,
     /// 认起会话便条、记账号：控制面那一手 ＋ 写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
     /// 默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入启动时造的那一份。
     launch: Option<(Reactions, crate::platform::fs::Own)>,
@@ -1992,6 +2004,7 @@ impl ReaderState {
             roots: Vec::new(),
             book: std::sync::Arc::default(),
             launch: None,
+            tag: untagged,
             scans: None,
             branches: HashMap::new(),
             annotations: Default::default(),
@@ -3235,7 +3248,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         // pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
         // 便条也再认一次（Windows 上起好进程才写便条，可能晚于第一次宣告）。
         adopt_launch_note(state, pid, &sid);
-        return tag_identity(pid, &sid).1;
+        return tag_identity(state, pid, &sid).1;
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
     // 必须走 removed 路径：旧实现 insert 直接覆盖 entry，旧 sid 既不清
@@ -3372,13 +3385,13 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
     let announced = !state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
-    // `control::identity_tag`（跨层边已登记进 `layering_guard`）。放在冒名检查**之后**。
+    // [`Reactions::tag`]（控制面那一手，`main.rs` 接上）。放在冒名检查**之后**。
     //
     // 这一次探测的**结局**不再丢：它同时就是「这条会话住在什么容器里」的答案
-    // （`identity_tag::Outcome::container`，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
+    // （回值的头一格，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
     // 打不上的那两形（tmux 报错 / sid 形状不对）**说出来** —— 标没写上的会话
     // 之后过不了身份门，而「为什么」原先整条链零线索。
-    let (container, wrote) = tag_identity(pid, &sid);
+    let (container, wrote) = tag_identity(state, pid, &sid);
     adopt_launch_note(state, pid, &sid);
     // 隐不隐藏（启动台账要在认完便条之后读）：判定住 `control/session_hidden.rs`。
     let hidden = state.hidden_of(
@@ -3508,13 +3521,10 @@ fn publish_table(agent_home: &Path, state: &mut ReaderState) {
     crate::history::live_table::publish(table);
 }
 
-/// 挂着的待答请求每变一次（`asks_moved` 那一声；漏听了几声也照样）⇒ 把此刻挂着请求的那几条交给 watcher（[`WatchEvent::Asked`]）。
+/// 需手动那几格每变一次（`history::needs_changed::moved` 那一声；漏听了几声也照样）⇒ 把此刻挂着请求的那几条交给 watcher（[`WatchEvent::Asked`]）。
 /// 那一声的发端没了 · watcher 已退 ⇒ 这条线程跟着收。
-fn hear_asks(
-    asks_moved: fn() -> tokio::sync::broadcast::Receiver<String>,
-    tx: std::sync::mpsc::Sender<WatchEvent>,
-) {
-    let mut rx = asks_moved();
+fn hear_asks(tx: std::sync::mpsc::Sender<WatchEvent>) {
+    let mut rx = crate::history::needs_changed::moved_rx();
     let spawned = std::thread::Builder::new()
         .name("asks-moved".into())
         .spawn(move || loop {
@@ -3828,15 +3838,14 @@ fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
     }
 }
 
-/// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，
-/// 回（容器，这次真写了没有）。`tag()` 自带「值一样就不动」⇒ 对账不多写一次。
-fn tag_identity(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
-    let outcome = crate::control::identity_tag::tag(pid, sid);
-    if let Some(note) = outcome.failure_note(pid, sid) {
-        tracing::warn!("{note}");
-    }
-    let wrote = outcome.wrote();
-    (outcome.container(), wrote)
+/// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：交给控制面那一手（[`Reactions::tag`]），
+/// 回（容器，这次真写了没有）。那一手自带「值一样就不动」⇒ 对账不多写一次。
+fn tag_identity(
+    state: &ReaderState,
+    pid: u32,
+    sid: &str,
+) -> (Option<crate::wire::SessionContainer>, bool) {
+    (state.tag)(pid, sid)
 }
 
 /// 对在跟的每个会话（`only` 给了就只对那个 sid）重比一次标签；回真写了几个。
@@ -3845,7 +3854,7 @@ fn retag_tracked(state: &ReaderState, only: Option<&str>) -> usize {
         .sessions
         .values()
         .filter(|e| only.is_none_or(|s| s == e.sid))
-        .filter(|e| tag_identity(e.pid, &e.sid).1)
+        .filter(|e| tag_identity(state, e.pid, &e.sid).1)
         .count()
 }
 
