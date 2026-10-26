@@ -375,6 +375,11 @@ class Gen {
         return;
       }
     }
+    // 别名（`type Words = string` 一类）：Kotlin 里照名字可写，编解码照它指的那一个（[ty] 不经这里）。
+    if (["prim", "ref", "array", "map"].includes(t.k) && !params.length) {
+      this.out.set(name, `typealias ${name} = ${this.ty(t, ctx).kt}\n`);
+      return;
+    }
     if (t.k === "tuple") {
       this.out.set(name, this.tupleCode(name, t.items, c));
       return;
@@ -845,6 +850,8 @@ function main() {
     return;
   }
   const g = new Gen(decls, floats);
+  // 每个导出的线上类型都出一份（回包 · 帧 · 入参 · 手机核心交的事件，读哪一个都照同一份）；值表那两份不是类型。
+  for (const d of [...decls.values()].sort((a, b) => a.name.localeCompare(b.name))) if (d.name !== "TypedCommands") g.emit(d);
   const table = [];
   for (const c of phone) {
     const x = g.ty(cmds.get(c).reply, { owner: pascal(c) + "Reply" });
