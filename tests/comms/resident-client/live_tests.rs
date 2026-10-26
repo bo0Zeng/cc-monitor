@@ -134,11 +134,3 @@ fn dropping_a_session_or_clearing_says_which_places_changed() {
     assert_eq!(b.clear(), [("s2".to_string(), None)]);
     assert!(b.clear().is_empty(), "空板再清 ⇒ 没有哪处变了");
 }
-
-#[test]
-fn a_wild_block_number_is_taken_as_not_following() {
-    let mut b = Board::default();
-    b.apply(&card("s1", 1, "m", &[], None)[0]);
-    b.apply(&f(serde_json::json!({"sid":"s1","card":1,"n":1,"op":"block","i":1u64 << 40,"block":"text"})));
-    assert!(b.is_empty());
-}

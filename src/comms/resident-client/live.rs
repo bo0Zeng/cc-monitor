@@ -45,9 +45,6 @@ pub struct LiveCards {
     pub cards: Vec<LiveCardNow>,
 }
 
-/// 一张卡最多认多少块（块号到这里 ⇒ 当接不上）。
-const MAX_BLOCKS: u64 = 4096;
-
 /// 哪个会话的哪个运行（`None` ＝ 主运行）。
 pub type Where = (String, Option<String>);
 
@@ -105,9 +102,7 @@ impl Board {
         }
         let c = self.cards.get_mut(&f.card)?;
         let at = (c.sid.clone(), c.run.clone());
-        // 块号大得离谱（一张卡不会有这么多块）⇒ 当接不上：不按它垫出一长串空块。
-        let wild = matches!(&f.op, LiveOp::Block { i, .. } if *i >= MAX_BLOCKS);
-        if f.n != c.next || wild || matches!(f.op, LiveOp::Close { .. }) {
+        if f.n != c.next || matches!(f.op, LiveOp::Close { .. }) {
             self.cards.remove(&f.card);
             return Some(at);
         }
