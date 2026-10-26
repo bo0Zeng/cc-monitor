@@ -85,7 +85,7 @@ cargo clippy --all-targets
 - 平时不直接敲 `npm run gate`，也不拿它当调试回路；写的时候只跑改到的那几块测试，之后走这几个入口（都在 `tests/scripts/`，跑法见各自头注与 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
   - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿锁；两棵 Rust 树的全部单测 ＋ 整套 vitest ＋ 后端那棵改到的包的 clippy，改到手机读的东西时加跑手机的 ktlint · detekt · 单测；跑哪几条见它的头注）。
   - 合并用的工作树推送之前：`bash tests/scripts/gate-affected.sh --trust-ci`（按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <合并工作树名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。
-  - 打发版标签之前：`bash tests/scripts/gate-affected.sh --full`（清掉会话变量、排门禁锁的全量一趟，`GATE: OK` 才打）。
+  - 发版：照 [RELEASING.md](RELEASING.md) 走，步骤只写在那里。
   - 重活（编译 · 测试 · 门禁）经 `bash tests/scripts/heavy.sh <命令…>`：单独一个封顶内存的 systemd scope ＋ 槽位排队；没有 `systemd-run --user` 的机器上直接跑。
   - 门禁锁 · 槽位 · 推送日志在 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）；私人扫描的脚本与词表不在仓里，只认 PATH 上的 `private-scan.sh`，找不到时门禁不说绿、推送拒推。
 
