@@ -13315,6 +13315,50 @@ data class PlanListWorkspace(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanMsgRef(
+    val start: Long,
+    val end: Long,
+    val ids: List<String>,
+    val label: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanMsgRef> = obj(
+            listOf(
+            Field("start", { Lng }, optional = false, nullable = false),
+            Field("end", { Lng }, optional = false, nullable = false),
+            Field("ids", { arr(Str) }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            ),
+            { a -> PlanMsgRef(a[0] as Long, a[1] as Long, a[2] as List<String>, a[3] as String) },
+            { v -> arrayOf(v.start, v.end, v.ids, v.label) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanMsgRefs(
+    val workspace: String?,
+    val slice: String?,
+    val refs: List<List<PlanMsgRef>>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanMsgRefs> = obj(
+            listOf(
+            Field("workspace", { opt(Str) }, optional = false, nullable = true),
+            Field("slice", { opt(Str) }, optional = false, nullable = true),
+            Field("refs", { arr(arr(PlanMsgRef.ADAPTER)) }, optional = false, nullable = false),
+            ),
+            { a -> PlanMsgRefs(a[0] as String?, a[1] as String?, a[2] as List<List<PlanMsgRef>>) },
+            { v -> arrayOf(v.workspace, v.slice, v.refs) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanNeed(
     val key: String,
     val kind: PlanNeedKind,
@@ -13638,6 +13682,25 @@ data class PlanRefs(
             ),
             { a -> PlanRefs(a[0] as List<PlanRef>, a[1] as List<PlanRef>) },
             { v -> arrayOf(v.title, v.body) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanRefsReq(
+    val sid: String,
+    val texts: List<String>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanRefsReq> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("texts", { arr(Str) }, optional = false, nullable = false),
+            ),
+            { a -> PlanRefsReq(a[0] as String, a[1] as List<String>) },
+            { v -> arrayOf(v.sid, v.texts) },
         )
     }
 }
