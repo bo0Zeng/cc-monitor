@@ -23,12 +23,19 @@ use std::sync::{Arc, Mutex};
 /// 🔴**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/stream/inbound/mod.rs::MAX_LINE_BYTES`，
 /// 审计加的防 OOM 线，所有命令共用；多一个字节整行丢弃）。
 ///
-/// 存盘用它分两支：整份装得进一行 ⇒ 一条 `files-write-text`；装不进 ⇒ 按它切块（[`plan_chunks`]），
-/// 每块那一行都装得进。与后端那一处由 `byte_cap_registry` 对 F 读两侧源码钉相等：
-/// 窗口多给一个字节 ⇒ 后端整行丢弃；少给 ⇒ 只是多切几块。
+/// 存盘用它分两支：整份装得进一行（[`fits_one_line`]，保守地判）⇒ 一条 `files-write-text`；
+/// 装不进 ⇒ 与上传同一套分块（`chunk_core::stage`，块按字节切、恒发 `{"b16": …}`）＋ `files-commit-text`。
+/// 与后端那一处由 `byte_cap_registry` 对 F 读两侧源码钉相等：窗口多给 ⇒ 后端整行丢弃；少给 ⇒ 只是多走几趟分块。
 pub const SAVE_LINE_CAP: usize = 1 << 20;
 
-/// 存盘那条线上命令的名字（装得进一行的那一支）。量的与发的必须是**同一条**命令同一份参数（[`save_args`]）。
+/// 一行写里内容与路径以外那一圈（`id` · 命令名 · 字段名 · 摘要 · 期限 · 时区）留多少字节。
+/// 真用的不到四百（最长的 `id` 75 · 时区 [`host_core::TZ_ROOM`] · 摘要 64 · 期限 20 位），这里宽留，不逐字节量。
+const LINE_ENVELOPE_ROOM: usize = 1024;
+
+/// 一个字节放进 JSON 字符串最多占几个字节（`\u00XX`）。
+const WORST_ESCAPE: usize = 6;
+
+/// 存盘那条线上命令的名字（装得进一行的那一支）。
 pub const CMD_WRITE_TEXT: &str = "files-write-text";
 
 /// 装不进一行的那一支：逐块进暂存区（后端 `control/files_commit.rs`）。
@@ -36,11 +43,6 @@ pub const CMD_STAGE_CHUNK: &str = "files-stage-chunk";
 
 /// 装不进一行的那一支：读回拼起来、原地覆盖（与 `files-write-text` 同一个原语）。
 pub const CMD_COMMIT_TEXT: &str = "files-commit-text";
-
-/// 请求行里 `id` 最长能占多少字节 —— monitor 那一侧 `inbound_client` 发号的形状是
-/// `m{毫秒:x}.{连接号}-{序号}`：`m` ＋ u128 十六进制最多 32 ＋ `.` ＋ u64 十进制最多 20 ＋ `-` ＋ 20 ＝ 75。
-/// 窗口量的时候按这个最长的 id 算 ⇒ **只会比真发出去的那一行长、不会短**（最多保守 75 字节）。
-pub const REQUEST_ID_ROOM: usize = 1 + 32 + 1 + 20 + 1 + 20;
 
 /// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形）。
 ///
@@ -75,81 +77,33 @@ pub fn save_args_at(
     }
 }
 
-/// 送一块的参数。`key` 是这一次存盘现造的 32 位小写十六进制（后端只收这个形状）。块按字切、按字符串发（[`plan_chunks`] 按转义之后的长度装满一行）。
-pub fn stage_args(key: &str, seq: u64, chunk: &str) -> w::FilesStageChunkReq {
-    w::FilesStageChunkReq {
-        key: key.to_string(),
-        seq,
-        content: w::ChunkBytes::Text(chunk.to_string()),
-    }
-}
-
-/// 提交那一趟的参数：块数与总字节数**显式**给，后端读回来必须对得上。
-pub fn commit_args(
-    path: &str,
-    key: &str,
-    chunks: usize,
-    bytes: usize,
-    expect_sha256: &str,
-) -> w::FilesCommitTextReq {
-    commit_args_at(
-        &super::source::RemotePath::plain(path),
-        key,
-        chunks,
-        bytes,
-        expect_sha256,
-    )
-}
-
-/// 同 [`commit_args`]，路径可以带字节。
-pub fn commit_args_at(
+/// 提交那一趟的参数：块数与总字节数**显式**给（`chunk_core` 送完交的那两个数），后端读回来必须对得上。
+fn commit_args_at(
     at: &super::source::RemotePath,
-    key: &str,
-    chunks: usize,
-    bytes: usize,
+    s: &chunk_core::Staged,
     expect_sha256: &str,
 ) -> w::FilesCommitTextReq {
     w::FilesCommitTextReq {
         root: at.parent().path(),
         rel: at.tail(),
-        key: key.to_string(),
-        chunks: chunks as u64,
-        bytes: bytes as u64,
+        key: s.key.clone(),
+        chunks: s.chunks,
+        bytes: s.bytes,
         expect: expect_of(expect_sha256),
     }
 }
 
-/// 请求行的形状（字段顺序与 monitor 那一侧 `inbound_client::encode_request` 的 `RequestLine` 相同；
-/// 两者逐字节相等由判据对拍）。
-#[derive(serde::Serialize)]
-struct RequestLine<'a, A: serde::Serialize> {
-    id: &'a str,
-    cmd: &'a str,
-    args: &'a A,
-    within_ms: u64,
-    tz: &'a str,
-}
-
-/// 🔴 **真序列化一次**：这条命令发到后端时那一行有多少字节（**不含**行尾 `\n` ——
-/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]），发起方期限那一格按最长的数位算，
-/// 时区那一格按最长的名算（[`host_core::TZ_ROOM`]；比它长的那一台不带这一格）。
-pub fn request_line_len<A: serde::Serialize>(cmd: &str, args: &A) -> usize {
-    let id = "0".repeat(REQUEST_ID_ROOM);
-    serde_json::to_vec(&RequestLine {
-        id: &id,
-        cmd,
-        args,
-        within_ms: u64::MAX,
-        tz: &"Z".repeat(host_core::TZ_ROOM),
-    })
-    .map_or(usize::MAX, |v| v.len())
-}
-
-/// 整份装得进**一条** `files-write-text` 吗（真序列化量，按最长 id）。
-/// `expect` 那一格定长（摘要恒 [`SHA256_HEX_LEN`] 位），按一份同长的占位量 —— 与真发的逐字节同长。
-pub fn fits_one_line(path: &str, content: &str) -> bool {
-    let room = "0".repeat(SHA256_HEX_LEN);
-    request_line_len(CMD_WRITE_TEXT, &save_args(path, content, &room)) <= SAVE_LINE_CAP
+/// 整份装得进**一条** `files-write-text` 吗 —— 只按一个保守上限判，不量请求行：
+/// 内容与路径（`root` ＋ `rel` 合起来不过全路径多一个字节）每个字节都按转义最长的六个算，再加一圈宽留的信封。
+/// 判错的那一边只会是「其实装得下却走了分块」，落在盘上是同一个结果。
+pub fn fits_one_line(at: &super::source::RemotePath, content: &str) -> bool {
+    let path = at.bytes().len() + 1;
+    content
+        .len()
+        .saturating_add(path)
+        .saturating_mul(WORST_ESCAPE)
+        .saturating_add(LINE_ENVELOPE_ROOM)
+        <= SAVE_LINE_CAP
 }
 
 /// 后端 CAS 摘要（SHA-256）的十六进制长度。窗口不算摘要，只认形状：读回来的那一格不是这个形状 ⇒ 不打开
@@ -166,52 +120,6 @@ pub fn is_sha256_hex(s: &str) -> bool {
 /// 存盘那一问的「盘上那份在你打开之后被改过了」那句（`stale` 那一档；后端原话接在后面）。
 pub fn stale_notice(why: &str) -> String {
     copy_text("rsFilewinEditor.stale.notice", &[("why", why)])
-}
-
-/// 一个字放进 JSON 字符串之后占几个字节 —— 与 `serde_json` 的转义**逐码位**相同
-/// （判据对全部 Unicode 标量值对拍）：引号 · 反斜杠 · 五个有短写法的控制字符 ⇒ 2；
-/// 其余 `U+0000..=U+001F` ⇒ 6（`\u00XX`）；别的字原样（UTF-8 字节数）。
-pub fn escaped_len(c: char) -> usize {
-    match c {
-        // 引号与反斜杠按码位写（`\u{22}` / `\u{5c}`）：本仓按文本抠字符串字面量的量具
-        // （`fonts_tests` 的探针人群）会把一个裸的引号字符字面量当成字符串的开头。
-        '\u{22}' | '\u{5c}' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => 2,
-        '\u{0}'..='\u{1f}' => 6,
-        _ => c.len_utf8(),
-    }
-}
-
-/// 每块内容（转义之后）最多占多少字节 ＝ 一行上限 − 空内容那一块的信封（块号按最大的算）。
-pub fn chunk_budget() -> usize {
-    let key = "0".repeat(32);
-    SAVE_LINE_CAP.saturating_sub(request_line_len(
-        CMD_STAGE_CHUNK,
-        &stage_args(&key, u64::MAX, ""),
-    ))
-}
-
-/// 把全文按字切成几块：每块转义之后 ≤ `budget`，**贪心取满**（下一块的第一个字放不进上一块）。
-///
-/// 按字符边界切 ⇒ 每块都是合法 UTF-8、能原样作为 JSON 字符串发出去；拼回来逐字节等于原文。
-/// `budget` 要放得下一个最长的字（6 字节；[`chunk_budget`] 由常量算出，判据钉着它够）。放不下时照 6 切、不 panic：
-/// 那一块超出一行的上限，后端拒，原话照常回到界面（发布档 panic = abort，一 panic 整个窗口就没了）。
-pub fn plan_chunks(content: &str, budget: usize) -> Vec<&str> {
-    let budget = budget.max(6);
-    let mut out = Vec::new();
-    let (mut start, mut used) = (0usize, 0usize);
-    for (at, c) in content.char_indices() {
-        let e = escaped_len(c);
-        if used + e > budget {
-            out.push(&content[start..at]);
-            start = at;
-            used = 0;
-        }
-        used += e;
-    }
-    if start < content.len() {
-        out.push(&content[start..]);
-    }
-    out
 }
 
 /// 敲超上限（`cap` ＝ 打开时后端给的编辑上限）、存的时候本地拒那句话（一个字节都没发）。
@@ -738,12 +646,12 @@ pub fn text_from_reply(
 ///
 /// | 整份装得进一行（[`fits_one_line`]） | 一条 `files-write-text` |
 /// |---|---|
-/// | 装不进 | 现造一个键 ⇒ [`plan_chunks`] 切块 ⇒ 逐块 `files-stage-chunk`（顺序发）⇒ `files-commit-text` |
+/// | 装不进 | 现造一个键 ⇒ `chunk_core::stage`（与上传同一套：按字节切块、逐块 `files-stage-chunk`）⇒ `files-commit-text` |
 ///
 /// ⚠ 某一块没送成 ⇒ **不发提交**、当场回错（第几段、共几段、原话）；已经送进暂存区的块由后端孤儿扫收，
 ///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed`]）。
 /// ⚠ 超上限 ⇒ 本地拒、一个字节不发（[`over_cap_notice`]）。
-/// 路径可以带字节；一行装不装得下按真要发的那一形量；`cap` ＝ 打开时后端给的编辑上限。
+/// 路径可以带字节；`cap` ＝ 打开时后端给的编辑上限。
 pub async fn write_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
@@ -758,26 +666,54 @@ pub async fn write_text_at(
         ));
     }
     let budget = super::writeops::WRITE_BUDGET;
-    let room = "0".repeat(SHA256_HEX_LEN);
-    let r = if request_line_len(CMD_WRITE_TEXT, &save_args_at(at, content, &room)) <= SAVE_LINE_CAP
-    {
+    let r = if fits_one_line(at, content) {
         let req = save_args_at(at, content, expect_sha256);
         super::source::ask_typed(line, origin, &req, budget).await
     } else {
-        let key = uuid::Uuid::new_v4().simple().to_string();
-        let chunks = plan_chunks(content, chunk_budget());
-        for (seq, chunk) in chunks.iter().enumerate() {
-            let req = stage_args(&key, seq as u64, chunk);
-            super::source::ask_typed(line, origin, &req, budget)
-                .await
-                .map_err(|f| {
-                    SaveError::Failed(chunk_failed_notice(seq, chunks.len(), &f.said).into())
-                })?;
-        }
-        let req = commit_args_at(at, &key, chunks.len(), content.len(), expect_sha256);
+        let staged = stage_text(line, origin, content).await?;
+        let req = commit_args_at(at, &staged, expect_sha256);
         super::source::ask_typed(line, origin, &req, budget).await
     };
     saved_from_reply(content, r)
+}
+
+/// 存盘分块那一圈的进度：只记送过去几个字节（断了时据它说第几段）；存盘不能撤。
+struct Sent(u64);
+
+impl chunk_core::Watch for Sent {
+    fn stopped(&self) -> bool {
+        false
+    }
+    fn moved(&mut self, done: u64, _total: Option<u64>) {
+        self.0 = done;
+    }
+}
+
+/// 全文逐块进暂存区（`chunk_core::stage`，与上传同一套）。某一块没送成 ⇒ 那句话说第几段、共几段、原话。
+async fn stage_text(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    content: &str,
+) -> Result<chunk_core::Staged, SaveError> {
+    let key = chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes());
+    let total = content.len().div_ceil(chunk_core::CHUNK);
+    let mut sent = Sent(0);
+    let over = super::chunk_upload::Over { line, origin };
+    // 读的是内存里那一份、也不撤 ⇒ 后两口走不到；照样给一句原话，不 panic。
+    chunk_core::stage(
+        &over,
+        key,
+        content.as_bytes(),
+        Some(content.len() as u64),
+        &mut sent,
+        || super::source::Failed::from(String::new()),
+        |e| super::source::Failed::from(e.to_string()),
+    )
+    .await
+    .map_err(|f| {
+        let seq = (sent.0 as usize) / chunk_core::CHUNK;
+        SaveError::Failed(chunk_failed_notice(seq, total, &f.said).into())
+    })
 }
 
 /// 存成了：发出去的那一份 ＋ 后端交的新摘要（下一次存的 `expect`；后端写了却没交像样的摘要 ⇒ `None`）。
