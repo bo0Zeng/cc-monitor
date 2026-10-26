@@ -53,7 +53,9 @@ pub fn unfollow(origin: &crate::origin::Origin, ticket: &str) {
             client.call(UNFOLLOW, args, UNFOLLOW_BUDGET).await
         } else {
             let deadline = tokio::time::Instant::now() + UNFOLLOW_BUDGET;
-            client.call_at(&origin, UNFOLLOW, args, None, deadline).await
+            client
+                .call_at(&origin, UNFOLLOW, args, None, deadline)
+                .await
         };
         if let Err(e) = got {
             tracing::debug!("替界面退订 [{origin}] 的终端画面票 {ticket} 没成（{e}）—— 连接走时那台整张票表会收");

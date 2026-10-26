@@ -1299,8 +1299,15 @@ fn a_machines_link_is_read_from_its_state_product() {
         machine_seen(&gpu, &cell("gpu", "connecting")),
         Some(LinkSeen::Reconnecting)
     );
-    assert_eq!(machine_seen(&gpu, &cell("gpu", "down")), Some(LinkSeen::Down));
-    assert_eq!(machine_seen(&gpu, &cell("other", "up")), None, "别台那一格被当成这台的");
+    assert_eq!(
+        machine_seen(&gpu, &cell("gpu", "down")),
+        Some(LinkSeen::Down)
+    );
+    assert_eq!(
+        machine_seen(&gpu, &cell("other", "up")),
+        None,
+        "别台那一格被当成这台的"
+    );
     assert_eq!(machine_seen(&gpu, &Item::Seen { from: None }), None);
     assert_eq!(
         machine_seen(&Origin::local(), &Item::Seen { from: None }),
@@ -1308,7 +1315,10 @@ fn a_machines_link_is_read_from_its_state_product() {
     );
     assert_eq!(machine_seen(&Origin::local(), &cell("gpu", "down")), None);
     let gone = Item::Unseen {
-        at: HopId { idx: 1, tag: "open" },
+        at: HopId {
+            idx: 1,
+            tag: "open",
+        },
         why: HopFault::Dropped,
     };
     assert_eq!(machine_seen(&gpu, &gone), Some(LinkSeen::Reconnecting));

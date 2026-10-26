@@ -44,7 +44,10 @@ pub(crate) fn route(
         Frame::Hello(_) => tracing::warn!("[{at}] 流中间来了 hello，丢掉"),
         Frame::Relayed(r) if local => return Some(Ordered::Relayed(r)),
         Frame::Relayed(r) => {
-            tracing::warn!("[{at}] 别台那条流上又套着一件转来的（{}），丢掉", r.machine())
+            tracing::warn!(
+                "[{at}] 别台那条流上又套着一件转来的（{}），丢掉",
+                r.machine()
+            )
         }
         f @ (Frame::Reply(_) | Frame::Cancelled(_)) => match client {
             Some(c) => {

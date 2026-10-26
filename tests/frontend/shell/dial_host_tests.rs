@@ -259,8 +259,7 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
 }
 
 /// 长活那几形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**。
-const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
-];
+const LIVES_LONG: &[(&str, &str, usize, &str)] = &[];
 
 /// 一份生产段里 `.lives_long` / `::lives_long` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。
 /// 注释先经共用原语剥掉（`guard_core::strip_comment_lines`），这里不另写一份剥法。

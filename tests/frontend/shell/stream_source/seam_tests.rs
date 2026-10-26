@@ -73,8 +73,8 @@ async fn an_overflow_on_the_local_stream_is_said() {
         health,
     ));
     let f = super::decode(r#"{"kind":"overflow","said":"那台写的一句"}"#).unwrap();
-    let item = super::route(&crate::origin::Origin::local(), None, f)
-        .expect("overflow 是有序的那几种");
+    let item =
+        super::route(&crate::origin::Origin::local(), None, f).expect("overflow 是有序的那几种");
     tx.send(super::LocalItem::Frame(item)).await.unwrap();
     drop(tx);
     tokio::time::timeout(guard_core::wall::CEILING, consumer)
@@ -91,4 +91,3 @@ async fn an_overflow_on_the_local_stream_is_said() {
         "本机那条流上的拥塞丢帧没原样说出来"
     );
 }
-

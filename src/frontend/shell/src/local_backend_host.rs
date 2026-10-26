@@ -811,11 +811,9 @@ fn attach_stream(
                 continue;
             };
             // 与 stdio 那条载体同一处分派；有序的那几种送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::stream_source::route(
-                &crate::origin::Origin::local(),
-                Some(&client),
-                f,
-            ) {
+            if let Some(f) =
+                crate::stream_source::route(&crate::origin::Origin::local(), Some(&client), f)
+            {
                 crate::local_lines::deliver(f).await;
             }
         }

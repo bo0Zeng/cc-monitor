@@ -417,9 +417,10 @@ async fn a_new_stream_first_gets_the_hello_of_each_machine_attached_now() {
     };
     align_in(&[machine.to_string()], &ssh, &relay);
     until("那台接上了、它的 hello 转出去了", || {
-        got.lock().unwrap().iter().any(|f| {
-            matches!(f, Frame::Relayed(Relayed::Line { machine: m, .. }) if m == machine)
-        })
+        got.lock()
+            .unwrap()
+            .iter()
+            .any(|f| matches!(f, Frame::Relayed(Relayed::Line { machine: m, .. }) if m == machine))
     })
     .await;
     assert!(hello_now(), "那台接着的时候新流拿不到它的 hello");
@@ -439,7 +440,11 @@ fn ask(sids: &[&str], kept: &[&str]) -> WatchAsk {
 #[tokio::test]
 async fn each_streams_watch_list_for_a_machine_unions_into_that_machines_desk() {
     let machine = "feeds-watch-union";
-    let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<BTreeSet<String>>();
+    let set = |v: &[&str]| {
+        v.iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>()
+    };
     let a = Watching(9_001);
     let b = Watching(9_002);
     let from = watch_at(machine, a.0, ask(&["s1", "s2"], &["k1"])).await;

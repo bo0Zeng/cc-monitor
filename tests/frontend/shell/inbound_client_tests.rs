@@ -1197,7 +1197,10 @@ async fn a_relayed_machines_offer_lives_from_its_hello_to_its_end() {
         panic!("是 hello");
     };
     reached(&machine, &h);
-    assert!(offer_of(&machine).is_none(), "本机后端没连着，却说那台问得到");
+    assert!(
+        offer_of(&machine).is_none(),
+        "本机后端没连着，却说那台问得到"
+    );
     let frame = crate::stream_source::decode(line).expect("是 hello");
     let (mine, _theirs) = tokio::io::duplex(1024);
     let client = park(mine).into_client(witness_of(&frame).expect("是 Hello 帧"));

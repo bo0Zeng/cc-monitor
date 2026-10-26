@@ -84,7 +84,9 @@ fn from(machine: &str, line: String) -> LocalItem {
 }
 
 /// 起一个收的那一头，订那台那个会话的内容流。
-fn harness(machine: &str) -> (
+fn harness(
+    machine: &str,
+) -> (
     tokio::sync::mpsc::Sender<LocalItem>,
     Arc<Cells>,
     tokio::task::JoinHandle<()>,
@@ -129,7 +131,10 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
     for item in [from_box(hello()), from_box(added()), from_box(line(0))] {
         tx.send(item).await.unwrap();
     }
-    until("那台的那一行到了", || got(&cells).contains(&"line 0".into())).await;
+    until("那台的那一行到了", || {
+        got(&cells).contains(&"line 0".into())
+    })
+    .await;
     until("那台的会话进了会话账", || live(SID)).await;
     tx.send(relay(Relayed::Gap {
         machine: BOX.into(),
@@ -145,10 +150,7 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
         got(&cells).iter().filter(|c| *c == "unseen").count() == 2
     })
     .await;
-    let seen: Vec<String> = got(&cells)
-        .into_iter()
-        .filter(|c| c != "frame")
-        .collect();
+    let seen: Vec<String> = got(&cells).into_iter().filter(|c| c != "frame").collect();
     assert_eq!(
         seen,
         ["unseen", "seen", "line 0", "gap", "unseen"],
@@ -176,9 +178,10 @@ async fn the_local_stream_ending_ends_every_relayed_machine() {
     const BOX2: &str = "rl-box2";
     let (tx, cells, consumer) = harness(BOX2);
     let added_other = {
-        let f: Frame = cmd_wire::frame::Frame::SessionAdded(
-            crate::frame_fixtures::session_added(OTHER, serde_json::json!({})),
-        );
+        let f: Frame = cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+            OTHER,
+            serde_json::json!({}),
+        ));
         serde_json::to_string(&f).unwrap()
     };
     for item in [from(BOX2, hello()), from(BOX2, added_other)] {
@@ -190,7 +193,10 @@ async fn the_local_stream_ending_ends_every_relayed_machine() {
         got(&cells).iter().filter(|c| *c == "unseen").count() == 2
     })
     .await;
-    assert!(!live_at(BOX2, OTHER), "本机那条流断了，经它转来的那台的成品还当活的留着");
+    assert!(
+        !live_at(BOX2, OTHER),
+        "本机那条流断了，经它转来的那台的成品还当活的留着"
+    );
     drop(tx);
     tokio::time::timeout(guard_core::wall::CEILING, consumer)
         .await

@@ -235,12 +235,18 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
     remote.grow(4);
     drop_link(&tx).await;
     attach(&tx, vec![remote.line_frame(3)]).await;
-    until("断了一次、重连上推来实时第 3 行", || lines(&cells) == 4).await;
+    until("断了一次、重连上推来实时第 3 行", || {
+        lines(&cells) == 4
+    })
+    .await;
     // 断了；断着的时候那台又写了 2 行；重连、再宣告。
     drop_link(&tx).await;
     remote.grow(6);
     attach(&tx, vec![remote.primed()]).await;
-    until("重连之后从续点续上那 2 行", || lines(&cells) == 6).await;
+    until("重连之后从续点续上那 2 行", || {
+        lines(&cells) == 6
+    })
+    .await;
     let cells = cells.0.lock().unwrap().clone();
     let only_lines: Vec<&String> = cells.iter().filter(|c| c.starts_with("line ")).collect();
     assert_eq!(

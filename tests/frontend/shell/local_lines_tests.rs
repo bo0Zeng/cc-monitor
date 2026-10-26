@@ -109,11 +109,7 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
             .unwrap()
             .to_string();
         fed.insert(kind.clone());
-        if let Some(back) = crate::stream_source::route(
-            &crate::origin::Origin::local(),
-            None,
-            f,
-        ) {
+        if let Some(back) = crate::stream_source::route(&crate::origin::Origin::local(), None, f) {
             let back_kind = format!("{back:?}");
             let name: String = back_kind
                 .chars()
@@ -555,22 +551,14 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
     }
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(16);
     let health: crate::stream_source::HealthOut = std::sync::Arc::new(|_| Ok(()));
-    let consumer = tokio::spawn(crate::stream_source::consume(
-        rx,
-        replay.clone(),
-        health,
-    ));
+    let consumer = tokio::spawn(crate::stream_source::consume(rx, replay.clone(), health));
     for line in [
         r#"{"kind":"changed","topic":"quota"}"#,
         r#"{"kind":"changed","topic":"rotation","key":"s1"}"#,
         r#"{"kind":"changed","topic":"accounts"}"#,
     ] {
         let f = crate::stream_source::decode(line).expect("手写帧解不出来");
-        if let Some(f) = crate::stream_source::route(
-            &crate::origin::Origin::local(),
-            None,
-            f,
-        ) {
+        if let Some(f) = crate::stream_source::route(&crate::origin::Origin::local(), None, f) {
             tx.send(LocalItem::Frame(f)).await.unwrap();
         }
     }

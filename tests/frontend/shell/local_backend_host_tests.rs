@@ -420,8 +420,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     };
     let wait_channel = |want: bool| -> bool {
         for _ in guard_core::wall::rounds() {
-            let on =
-                crate::inbound_client::local_client().is_some();
+            let on = crate::inbound_client::local_client().is_some();
             if on == want {
                 return true;
             }

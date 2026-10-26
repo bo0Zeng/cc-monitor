@@ -1126,7 +1126,10 @@ async fn machine_now(line: &Line, origin: &Origin) -> Option<LinkSeen> {
     )
     .await
     .ok()?;
-    let state = got.get("machines")?.get(origin.as_wire_str())?.get("state")?;
+    let state = got
+        .get("machines")?
+        .get(origin.as_wire_str())?
+        .get("state")?;
     Some(seen_of_state(serde_json::from_value(state.clone()).ok()?))
 }
 

@@ -101,13 +101,14 @@ pub(crate) async fn consume(
             return;
         };
         if !matches!(item, LocalItem::StreamEnded) && !conns.contains_key(local.as_wire_str()) {
-            conns.insert(local.as_wire_str().to_string(), Conn::open(&local, &replay, &health));
+            conns.insert(
+                local.as_wire_str().to_string(),
+                Conn::open(&local, &replay, &health),
+            );
             replay.origin_seen(&local, true);
         }
         match item {
-            LocalItem::Frame(Ordered::Relayed(r)) => {
-                relayed(r, &mut conns, &replay, &health).await
-            }
+            LocalItem::Frame(Ordered::Relayed(r)) => relayed(r, &mut conns, &replay, &health).await,
             LocalItem::Frame(f) => {
                 if let Some(c) = conns.get_mut(local.as_wire_str()) {
                     apply(&local, f, &mut c.intake, &replay, &health).await

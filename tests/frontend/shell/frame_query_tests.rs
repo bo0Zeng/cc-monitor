@@ -1120,8 +1120,9 @@ fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
 #[test]
 fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() {
     // ② 谁能登记本机那一格（登记表只有这一格：每一处 `register(` 都是）。
-    let with_local: std::collections::BTreeSet<String> =
-        loc1a_sites("inbound_client::register(").into_iter().collect();
+    let with_local: std::collections::BTreeSet<String> = loc1a_sites("inbound_client::register(")
+        .into_iter()
+        .collect();
     let want: std::collections::BTreeSet<String> = [
         "local_backend.rs::local_stdio_consumer",
         "local_backend_host.rs::attach_stream",

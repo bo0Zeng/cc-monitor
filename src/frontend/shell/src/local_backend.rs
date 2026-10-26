@@ -1514,11 +1514,9 @@ pub(crate) fn local_stdio_consumer(
             None
         };
         let Some(witness) = witness else {
-            if let Some(f) = crate::stream_source::route(
-                &route.origin,
-                registered.as_deref(),
-                frame,
-            ) {
+            if let Some(f) =
+                crate::stream_source::route(&route.origin, registered.as_deref(), frame)
+            {
                 route.out.deliver(f);
             }
             continue;

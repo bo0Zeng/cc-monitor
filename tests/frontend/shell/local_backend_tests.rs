@@ -587,7 +587,9 @@ fn the_read_loop_really_calls_the_dispatch() {
         .expect("常驻载体的读循环里必须恰好有一处分派第一层");
     let flat: String = host[at..].chars().filter(|c| !c.is_whitespace()).collect();
     assert!(
-        flat.starts_with("crate::stream_source::route(&crate::origin::Origin::local(),Some(&client),"),
+        flat.starts_with(
+            "crate::stream_source::route(&crate::origin::Origin::local(),Some(&client),"
+        ),
         "常驻载体是本机那一台：分派时说 `<local>`、带这条连接的客户端"
     );
     assert!(
@@ -635,11 +637,7 @@ async fn a_local_reply_reaches_the_caller_through_the_dispatch() {
         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
     ))
     .unwrap();
-    crate::stream_source::route(
-        &crate::origin::Origin::local(),
-        Some(&client),
-        reply,
-    );
+    crate::stream_source::route(&crate::origin::Origin::local(), Some(&client), reply);
     let got = call.await.unwrap().expect("应答没路由回来");
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }
