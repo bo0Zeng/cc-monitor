@@ -149,7 +149,7 @@ internal fun tabBaseLabel(
 ): String {
     val term = s.target as? SessionTabManager.TabTarget.Terminal
     val suffix = s.label ?: term?.tmuxSession
-    return if (suffix != null) "$hostLabel · $suffix" else hostLabel
+    return if (suffix != null) hostLabel + copyText("kit.text.sep") + suffix else hostLabel
 }
 
 /**

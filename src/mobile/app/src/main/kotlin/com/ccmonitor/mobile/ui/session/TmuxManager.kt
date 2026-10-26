@@ -217,7 +217,7 @@ private fun TmuxSessionRow(
                 buildString {
                     if (s.title.isNotBlank()) append(copyText("mobTmux.row.running", "command" to s.title))
                     if (s.attached) append(copyText("mobTmux.row.attached"))
-                }.removePrefix(" · "),
+                }.removePrefix(copyText("kit.text.sep")),
                 style = monoSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
