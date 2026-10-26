@@ -63,8 +63,8 @@
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
-use cmd_wire::frame::HiddenNow;
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
+use cmd_wire::frame::HiddenNow;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{BTreeSet, HashMap, HashSet};

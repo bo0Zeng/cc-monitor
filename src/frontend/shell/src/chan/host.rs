@@ -280,7 +280,6 @@ impl InboundBackends {
             }
         })
     }
-
 }
 
 /// `link` 那条流：先交此刻的样子，之后每变一次交一格（没变不重复说）。连接循环那一侧的事实只住 `inbound_client`。
@@ -299,7 +298,6 @@ fn link_stream(origin: &Origin) -> BoxStream<'static, Item> {
     })
     .boxed()
 }
-
 
 /// 连接循环的一格 → 流上的一格。
 fn link_item(l: inbound_client::Link) -> Item {

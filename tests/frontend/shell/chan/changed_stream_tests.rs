@@ -25,9 +25,7 @@ async fn next(s: &mut BoxStream<'static, Item>) -> Option<Item> {
 
 /// 进程里那一份会话流句柄（本判据二进制里先装的那一份；各条判据用各自的机器名，不串）。
 fn replay() -> std::sync::Arc<crate::event_replay::EventReplay> {
-    crate::event_replay::install(std::sync::Arc::new(
-        crate::event_replay::EventReplay::new(),
-    ))
+    crate::event_replay::install(std::sync::Arc::new(crate::event_replay::EventReplay::new()))
 }
 
 #[tokio::test]

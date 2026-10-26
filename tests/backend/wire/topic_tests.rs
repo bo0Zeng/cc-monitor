@@ -156,7 +156,9 @@ fn each_arm_has_the_cells_the_table_says() {
         let arm = crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂");
         assert_eq!(arm.topic(), t, "{t:?} 那一臂说的是别的主题");
         let head = format!("{{ \"topic\": \"{}\",", s.name);
-        let at = decl.find(&head).unwrap_or_else(|| panic!("{t:?} 在 Changed 里没有那一臂：{decl}"));
+        let at = decl
+            .find(&head)
+            .unwrap_or_else(|| panic!("{t:?} 在 Changed 里没有那一臂：{decl}"));
         let cells = &decl[at + head.len()..];
         let cells = &cells[..cells.find('}').expect("那一臂没收尾")];
         for (cell, want) in [("key", s.key), ("rev", s.rev), ("body", s.body)] {
@@ -176,7 +178,10 @@ fn a_computed_body_is_a_declared_body() {
         }
     }
     for (t, cmd) in [
-        (Topic::Quota, crate::faces::rotation_face::QuotaReadCmd::NAME),
+        (
+            Topic::Quota,
+            crate::faces::rotation_face::QuotaReadCmd::NAME,
+        ),
         (
             Topic::RotationStrategies,
             crate::faces::rotation_view_face::RotationStrategies::NAME,

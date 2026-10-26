@@ -1608,7 +1608,11 @@ async fn a_stream_subscription_shares_the_table_and_the_credit() {
         .iter()
         .map(|(l, id, _)| (l.clone(), *id))
         .collect();
-    assert_eq!(to_webview, vec![("w".to_string(), 1)], "界面那一路收到了流那一路的格");
+    assert_eq!(
+        to_webview,
+        vec![("w".to_string(), 1)],
+        "界面那一路收到了流那一路的格"
+    );
     // 收到一格就还一格：窗口还是满的。不取，推满窗口再多一格 ⇒ 多的那一格丢、位置照占。
     for i in 0..STREAM_WINDOW + 1 {
         r.changed(&o, "plan", format!(r#"{{"key":"/{i}"}}"#));
@@ -1631,7 +1635,13 @@ async fn a_stream_subscription_shares_the_table_and_the_credit() {
     );
     assert!(next(&mut s).await.is_none(), "丢掉的那一格不该交");
     drop(s);
-    let left: Vec<String> = r.inner.lock().subs.iter().map(|s| s.label.clone()).collect();
+    let left: Vec<String> = r
+        .inner
+        .lock()
+        .subs
+        .iter()
+        .map(|s| s.label.clone())
+        .collect();
     assert_eq!(left, vec!["w".to_string()], "丢掉的流还在订阅表里");
 }
 

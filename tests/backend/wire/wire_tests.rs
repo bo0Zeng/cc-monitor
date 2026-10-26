@@ -1667,7 +1667,9 @@ fn a_changed_body_over_its_cap_is_left_off() {
 #[test]
 fn changed_loss_follows_the_topic_table() {
     for t in Topic::ALL {
-        let f = Frame::changed(crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"));
+        let f = Frame::changed(
+            crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"),
+        );
         assert_eq!(f.loss_is_recoverable(), t.spec().lossy, "{t:?}");
     }
 }

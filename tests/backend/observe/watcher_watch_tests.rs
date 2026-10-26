@@ -466,7 +466,11 @@ fn heard(rx: &mut FrameRx) -> Vec<String> {
             Frame::SessionsReplayed(_) => "listed".into(),
             Frame::SessionState(s) => format!("{:?} {}", s.state, s.sid),
             Frame::Changed(c) => {
-                format!("changed {} {}", c.topic().name(), c.key().unwrap_or_default())
+                format!(
+                    "changed {} {}",
+                    c.topic().name(),
+                    c.key().unwrap_or_default()
+                )
             }
             Frame::SessionBranch(b) => format!("branch {} {}", b.sid, b.at),
             Frame::SessionFileGone(g) => format!("gone {}", g.session_id),

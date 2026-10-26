@@ -575,8 +575,7 @@ impl Changed {
     /// 体序列化后超了 `cap` 字节 ⇒ 去掉体（客户端重问）。
     pub fn cap_body(&mut self, cap: usize) {
         fn cap_one<B: Serialize>(b: &mut Option<B>, cap: usize) {
-            if b
-                .as_ref()
+            if b.as_ref()
                 .is_some_and(|v| serde_json::to_vec(v).map_or(true, |t| t.len() > cap))
             {
                 *b = None;

@@ -26,10 +26,9 @@ pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<Chang
             .ok(),
         },
         Topic::RotationStrategies => Changed::RotationStrategies {
-            body: crate::wire::spec::finish(crate::faces::rotation_view_face::RotationStrategies::run(
-                Default::default(),
-                cx(),
-            ))
+            body: crate::wire::spec::finish(
+                crate::faces::rotation_view_face::RotationStrategies::run(Default::default(), cx()),
+            )
             .ok(),
         },
         Topic::Tasks => {
