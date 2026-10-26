@@ -1,9 +1,11 @@
 /**
- * 「那台某样东西变了」那一种流在界面这一侧的全部知识（叶子模块：只 import 通道的格类型与生成的主题类型）。
+ * 「那台某样东西变了」那一种流在界面这一侧的全部知识（叶子模块：只 import 通道的格类型、生成的主题类型与那一个解码）。
  * 那台后端发 `changed {topic, key?, rev?, body?}`（主题表只住后端 `wire/topic.rs`）；monitor 按主题交进 `subscribe(origin, "changed/<topic>")`，
  * 格体是帧去掉 `kind` / `topic` 的那一份；界面读格、按主题重问（带了 `body` 的可以不问）。
+ * 订只经 `events.ts`（主窗口 `bindEvents` 的 `changed` · 别处 `subscribeTopics`）；本文件只读格。
  */
 import type { Item } from "../../comms/inward/chan";
+import { tryDecodeJson } from "./ipc/decode";
 import type { Topic } from "./generated/Topic";
 import type { TopicProducts } from "./generated/TypedCommands";
 
@@ -40,12 +42,7 @@ export function changedItems(items: readonly Item[]): Changed & { frames: number
   for (const it of items) {
     if (it.t === "frame") {
       frames += 1;
-      let v: unknown = null;
-      try {
-        v = JSON.parse(it.body);
-      } catch {
-        v = null;
-      }
+      const v = tryDecodeJson<unknown>(it.body);
       const o = v !== null && typeof v === "object" && !Array.isArray(v) ? (v as { key?: unknown; rev?: unknown; body?: unknown }) : null;
       const okKey = o !== null && (o.key === undefined || typeof o.key === "string");
       const okRev = o !== null && (o.rev === undefined || typeof o.rev === "string");

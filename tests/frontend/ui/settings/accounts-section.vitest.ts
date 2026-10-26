@@ -42,7 +42,7 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   readRemoteConfig: () => readRemoteConfig(),
   findHostByOrigin: (rows: { name: string }[], o: string) => rows.find((r) => r.name === o) ?? null,
 }));
-vi.mock("../../../../src/frontend/ui/events", () => ({ bindEvents: () => Promise.resolve() }));
+vi.mock("../../../../src/frontend/ui/events", () => ({ subscribeTopics: () => Promise.resolve(() => {}) }));
 /** 那台有没有 tmux（`session-open-facts` 的 `tmux`）。 */
 const facts = vi.hoisted(() => ({ tmux: true, asked: 0 }));
 vi.mock("../../../../src/frontend/ui/new-session-reads", () => ({

@@ -5,7 +5,7 @@
  * 判据：`tests/frontend/ui/settings/rot-section.vitest.ts`。
  */
 import { machineName } from "../control-said";
-import { bindEvents } from "../events";
+import { subscribeTopics } from "../events";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { readRemoteConfig } from "../remote-config";
@@ -78,23 +78,9 @@ export class RotationSection {
     );
     const origins: Origin[] = [LOCAL_ORIGIN, ...hosts];
     try {
-      await bindEvents(
-        {
-          onLine: () => {},
-          onSessionFace: () => {},
-          onChanged: (origin) => {
-            if (origin === this.origin) void this.mount?.refresh();
-          },
-        },
-        {
-          changed: origins.flatMap((origin) =>
-            (["rotation_strategies", "rotation"] as const).map((topic) => ({
-              origin,
-              topic,
-            })),
-          ),
-        },
-      );
+      await subscribeTopics(origins, ["rotation_strategies", "rotation"], (origin) => {
+        if (origin === this.origin) void this.mount?.refresh();
+      });
     } catch (e) {
       console.warn("[rot] 订不上轮换推送：", e);
     }

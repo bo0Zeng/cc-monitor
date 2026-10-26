@@ -5,6 +5,7 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { toast } from "./kit/toast";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
+import { tryDecodeJson } from "./ipc/decode";
 import { emitPerfSummary, noteFirstBatch } from "./startup-perf";
 // 这几个 payload 类型从生成物 re-export（源：`src/frontend/shell/src/ui_contract.rs` 的 ts-rs 派生）。
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
@@ -575,12 +576,7 @@ export async function bindEvents(
     };
     for (const it of items) {
       if (it.t === "frame") {
-        let f: SessionStreamFrame | null = null;
-        try {
-          f = JSON.parse(it.body) as SessionStreamFrame;
-        } catch {
-          f = null;
-        }
+        const f = tryDecodeJson<SessionStreamFrame>(it.body);
         if (f !== null && typeof f === "object" && "line" in f) {
           take({ kind: "payload", payload: f.line });
           // 突发检测：逐行来的实时格没有批哨兵包着，任何突发源积压到阈值就主动进批模式 —— 哨兵插到队首，剩下的积压走惰性路径。
@@ -690,12 +686,7 @@ export async function bindEvents(
     for (const it of items) {
       if (it.t === "frame") {
         used += 1;
-        let p: SessionLiveCardPayload | null = null;
-        try {
-          p = JSON.parse(it.body) as SessionLiveCardPayload;
-        } catch {
-          p = null;
-        }
+        const p = tryDecodeJson<SessionLiveCardPayload>(it.body);
         if (p !== null && typeof p === "object" && typeof p.card?.sid === "string") {
           handlers.onLiveCard?.(p);
         } else {
@@ -713,20 +704,8 @@ export async function bindEvents(
     if (used > 0) hold.sub?.want(used);
   };
 
-  // `changed/<topic>`：一批格 ⇒ 变了的那几格 / 要不要整份重问（`changedItems` 答）；`frame` 占的 credit 当场还
-  //   （格可能先于 `subscribe` 的返回到达 ⇒ 那时欠着，下一批一起还）。
-  const onChangedItems = (origin: Origin, topic: Topic, hold: StreamHold, items: Item[]): void => {
-    const { cells, all, frames } = changedItems(items);
-    if (frames > 0) {
-      if (hold.sub) {
-        hold.sub.want(frames + hold.owed);
-        hold.owed = 0;
-      } else {
-        hold.owed += frames;
-      }
-    }
-    if (all || cells.length > 0) handlers.onChanged?.(origin, topic, { cells, all });
-  };
+  const onChangedItems = (origin: Origin, topic: Topic, hold: StreamHold, items: Item[]): void =>
+    feedChanged(hold, items, (change) => handlers.onChanged?.(origin, topic, change));
 
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
@@ -800,6 +779,49 @@ function openStream(origin: Origin, kind: string, window: number, sink: (items: 
   return chan.subscribe(origin, kind, null, window, sink);
 }
 
+/**
+ * `changed/<topic>` 的一批格 ⇒ 变了的那几格 / 要不要整份重问（`changedItems` 答），有事才交 `on`；`frame` 占的 credit 当场还
+ * （格可能先于 `subscribe` 的返回到达 ⇒ 那时欠着，下一批一起还）。主窗口与 {@link subscribeTopics} 同用这一份。
+ */
+function feedChanged(hold: StreamHold, items: Item[], on: (change: Changed) => void): void {
+  const { cells, all, frames } = changedItems(items);
+  if (frames > 0) {
+    if (hold.sub) {
+      hold.sub.want(frames + hold.owed);
+      hold.owed = 0;
+    } else {
+      hold.owed += frames;
+    }
+  }
+  if (all || cells.length > 0) on({ cells, all });
+}
+
+/**
+ * **订这几台的这几个主题**（「那台某样东西变了」）：主窗口之外的那几页（设置各栏 · 登录抽屉 · 机器状态）只调这一个。
+ * 每台每个主题一条 `changed/<topic>`，一批交一次 `on(origin, topic, change)`（`change.all` ⇒ 那台这一样整份重问）。
+ * 「只看在看的那台」由调用方在 `on` 里按 `origin` 挑。返回时 monitor 那一侧已登记好；回的函数退掉这几条。
+ */
+export async function subscribeTopics(
+  origins: readonly Origin[],
+  topics: readonly Topic[],
+  on: (origin: Origin, topic: Topic, change: Changed) => void,
+): Promise<() => void> {
+  const subs = await Promise.all(
+    origins.flatMap((origin) =>
+      topics.map(async (topic) => {
+        const hold: StreamHold = { sub: null, owed: 0 };
+        hold.sub = await openStream(origin, changedStream(topic), CHANGED_WINDOW, (items) =>
+          feedChanged(hold, items, (change) => on(origin, topic, change)),
+        );
+        return hold.sub;
+      }),
+    ),
+  );
+  return () => {
+    for (const s of subs) s.stop();
+  };
+}
+
 /** 跟着一个会话（查看器 · 独立查看窗）：流里那一个会话的事。 */
 export type FollowEvent =
   /** 新的记录行（含订阅当场交的留存；已经有的由调用方按 `seq` 去重）。 */
@@ -829,12 +851,7 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
     const out: FollowEvent[] = [];
     for (const it of items) {
       if (it.t === "frame") {
-        let f: SessionStreamFrame | null = null;
-        try {
-          f = JSON.parse(it.body) as SessionStreamFrame;
-        } catch {
-          f = null;
-        }
+        const f = tryDecodeJson<SessionStreamFrame>(it.body);
         used += 1;
         if (f === null || typeof f !== "object") continue;
         if ("line" in f) {

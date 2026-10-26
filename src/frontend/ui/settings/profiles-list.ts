@@ -9,7 +9,6 @@
  *
  * 本文件一个 ccm 选项都不认、不合并：五问见 `../profiles-reads`。构造零 I/O：第一次 `load()` 才发第一条。
  */
-import { chan, type Sub } from "../../../comms/inward/chan";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
@@ -22,7 +21,7 @@ import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { sayWithDetail } from "../kit/detail";
 import type { Origin } from "../generated/Origin";
 import type { ClashWins } from "../alias-reads";
-import { changedItems, changedStream } from "../changed-stream";
+import { subscribeTopics } from "../events";
 import {
   profileBases,
   profileImpact,
@@ -266,7 +265,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   /** 「上次 cc-monitor 写过之后有人改过」那一格（后端判、后端写好时刻）。开着表单时来的那一份不换清单，只换这一格。 */
   let editedAt: string | null = null;
   let clashes: readonly ProfileClash[] = [];
-  let sub: Sub | null = null;
+  let subscribed = false;
   let seq = 0;
 
   const short = (p: string): string => homeShort(p, book?.home ?? null);
@@ -295,18 +294,10 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   };
 
   const subscribe = async (): Promise<void> => {
-    if (sub) return;
-    // 订上那一刻的第一格 `seen` 不算变（读回那一下刚做过）；之后的 `seen`（断了又接上）· 帧 · `gap` 都算。
-    let first = true;
-    sub = await chan.subscribe(opts.origin(), changedStream("profiles"), null, 8, (items) => {
-      const fresh = first ? items.filter((it, i) => !(i === 0 && it.t === "seen")) : items;
-      first = false;
-      const { cells, all, frames } = changedItems(fresh);
-      if (frames > 0) sub?.want(frames);
-      if (!all && cells.length === 0) return;
-      // 开着表单也照重读：表单里正打着的字由重画（kit morph）留着。
-      void reread();
-    });
+    if (subscribed) return;
+    subscribed = true;
+    // 那台推来一批（帧 · 又接上 · 丢了几格）⇒ 重读；开着表单也照重读：表单里正打着的字由重画（kit morph）留着。
+    await subscribeTopics([opts.origin()], ["profiles"], () => void reread());
   };
 
   // ── 合并表 ──
