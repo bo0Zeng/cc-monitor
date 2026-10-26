@@ -117,7 +117,7 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
 /** 那一答 → `RemoteConfig`（纯函数）。 */
 export function remoteConfigOf(r: MachinesReply): RemoteConfig {
   if (r.state === "unreadable") return { hosts: [], unrecognized: r.reason ?? "" };
-  return { hosts: r.hosts.map((h) => coerceHost(h as unknown as Record<string, unknown>)), hostKeys: r.hostKeys };
+  return { hosts: r.hosts.map((row) => coerceHost(row.host as unknown as Record<string, unknown>)), hostKeys: r.hostKeys };
 }
 
 /**

@@ -153,6 +153,17 @@ async fn loopback_roundtrip_through_the_resident_backend() {
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     // 起真后端（stdio 载体），用**生产那一个**消费者接上它 ⇒ `<local>` 那条流登记上。
     let home = v["home"].as_str().unwrap();
+    // 那一台写进被测后端自己的机器表（它按名字现读；这一侧只交名字）。
+    std::fs::create_dir_all(format!("{home}/.cc-monitor")).unwrap();
+    std::fs::write(
+        format!("{home}/.cc-monitor/machines.json"),
+        serde_json::json!({"version": 1, "hosts": [{
+            "label": "sr1a-loopback", "host": v["host"], "port": v["port"], "user": v["user"],
+            "keyPath": v["key_path"], "addresses": [], "jump": "", "connect": true,
+        }]})
+        .to_string(),
+    )
+    .unwrap();
     let mut child = std::process::Command::new(v["backend"].as_str().unwrap())
         .args(crate::local_backend::LOCAL_STREAM_ARGS) // 生产起本机流后端那一份起参（零参数是「起会话」）
         .env("HOME", home)
@@ -172,20 +183,12 @@ async fn loopback_roundtrip_through_the_resident_backend() {
             stdout,
         )
     });
-    let cfg = RemoteConfig {
-        host: v["host"].as_str().unwrap().into(),
-        label: "sr1a-loopback".into(),
-        port: v["port"].as_u64().unwrap() as u16,
-        user: v["user"].as_str().unwrap().into(),
-        key_path: v["key_path"].as_str().map(String::from),
-        addresses: vec![],
-        jump: None,
-    };
+    let cfg = "sr1a-loopback";
     // ① 字节流那两段（`head -n1` 往返 · 关写半边链路收工）删了：monitor 不再开 `stream` 用法的链路
     //   （那个一次性 exec 原语随公钥推送进本机后端一起走了）；后端那一侧的流用法照旧由 `remote-probe` 与后端判据驱动。
     // ② 收全：stdout / stderr / 退出码
     let ex =
-        crate::stream_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
+        crate::stream_source::connect_and_exec_capture(cfg, "echo o; echo e >&2; exit 5", None)
             .await
             .expect("收全失败");
     assert_eq!(

@@ -38,7 +38,7 @@ describe("backend-deploy：把这一版换到那台", () => {
     expect(await updateBackend(CFG, "devbox", "devbox", started)).toBe("已部署");
     expect(vi.mocked(askInterrupts).mock.calls).toEqual([["devbox"]]);
     expect(confirmDialog).not.toHaveBeenCalled();
-    expect(vi.mocked(commands.deploy_remote_backend).mock.calls).toEqual([[{ cfg: CFG }]]);
+    expect(vi.mocked(commands.deploy_remote_backend).mock.calls).toEqual([[{ origin: "devbox" }]]);
     expect(started).toHaveBeenCalledTimes(1);
   });
 
@@ -64,7 +64,7 @@ describe("backend-deploy：把这一版换到那台", () => {
     vi.mocked(interruptRows).mockReturnValue([]);
     vi.mocked(resolveRemoteConfigByOrigin).mockResolvedValueOnce(CFG);
     expect(await updateBackendOf("devbox", "devbox")).toBe("已部署");
-    expect(vi.mocked(commands.deploy_remote_backend).mock.calls).toEqual([[{ cfg: CFG }]]);
+    expect(vi.mocked(commands.deploy_remote_backend).mock.calls).toEqual([[{ origin: "devbox" }]]);
     vi.mocked(resolveRemoteConfigByOrigin).mockResolvedValueOnce(null);
     await expect(updateBackendOf("gone", "gone")).rejects.toThrow();
     expect(commands.deploy_remote_backend).toHaveBeenCalledTimes(1);

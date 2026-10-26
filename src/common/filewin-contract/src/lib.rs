@@ -24,7 +24,7 @@ pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
 /// 例外两格由窗口进程自己补：`rows`（那一屏，`proc::first_screen` 列）与 `cwd` 缺席时的 home。
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OpenRequest {
-    /// 这个窗口看哪台机器（寻址用的那个名字，`RemoteConfig::origin_label` 的口径）。开终端由 monitor 接（它自己查配置），窗口只要这个名字。
+    /// 这个窗口看哪台机器（寻址用的那个名字：本机后端机器表里算好的那一个，`machines-read` 每行的 `name`）。开终端由 monitor 接（它自己查配置），窗口只要这个名字。
     pub origin: String,
     /// 开在哪个目录；`None` = 问那台机器的 home（`files-home`，窗口进程自己问）。
     pub cwd: Option<String>,

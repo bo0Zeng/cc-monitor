@@ -6,7 +6,7 @@
 import { commands } from "./ipc/commands";
 import { confirmDialog } from "./kit/dialog";
 import { copyText } from "./copy-table";
-import { resolveRemoteConfigByOrigin, type RemoteHostConfig } from "./remote-config";
+import { hostKey, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "./remote-config";
 import { askInterrupts, interruptRows } from "./settings/interrupts";
 
 /**
@@ -22,7 +22,7 @@ export async function updateBackend(cfg: RemoteHostConfig, key: string, machine:
     return null;
   }
   onStart?.();
-  return commands.deploy_remote_backend({ cfg });
+  return commands.deploy_remote_backend({ origin: hostKey(cfg) });
 }
 
 /** 按 origin 找那台的配置再换（主窗口只有 origin）。设置里没有这台 ⇒ 抛（不拿空配置去部署）。 */
@@ -34,5 +34,5 @@ export async function updateBackendOf(origin: string, machine: string, onStart?:
 
 /** 卸掉那台的后端（确认框与结果区住机器卡）。 */
 export function uninstallBackend(cfg: RemoteHostConfig): Promise<string> {
-  return commands.uninstall_remote_backend({ cfg });
+  return commands.uninstall_remote_backend({ origin: hostKey(cfg) });
 }

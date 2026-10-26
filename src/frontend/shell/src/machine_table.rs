@@ -9,20 +9,50 @@
 use serde_json::Value;
 use std::sync::Mutex;
 
-/// 最近一答里的那几台（原样的 JSON 对象，形状同后端 `Host`）。
-static LATEST: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+/// 最近一答里的一台：本壳只拿三样 —— 名字（后端算好的）· 连不连 · 换没换（那一台原样那一行的字节，只拿来比，不解析）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Row {
+    pub(crate) name: String,
+    pub(crate) connect: bool,
+    /// 那一台原样那一行（JSON 串）：变了 ⇒ 那台的流重起。
+    pub(crate) key: String,
+}
+
+impl Row {
+    /// 后端那一行（`{name, host}`）⇒ 一台；没有名字 ⇒ 不认。
+    fn of(v: &Value) -> Option<Row> {
+        let name = v
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|n| !n.is_empty())?;
+        let host = v.get("host").cloned().unwrap_or(Value::Null);
+        Some(Row {
+            name: name.to_string(),
+            connect: host.get("connect").and_then(Value::as_bool) != Some(false),
+            key: host.to_string(),
+        })
+    }
+}
+
+/// 最近一答里的那几台。
+static LATEST: Mutex<Vec<Row>> = Mutex::new(Vec::new());
 
 /// 最近一答里的那几台（本机后端还没答过 ⇒ 空）。
-pub(crate) fn hosts_now() -> Vec<Value> {
+pub(crate) fn rows_now() -> Vec<Row> {
     LATEST.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
+/// 机器表里有没有叫这个名字的那一台（连不连都算：卸载 · 测试连接照样要它）。
+pub(crate) fn has(name: &str) -> bool {
+    rows_now().iter().any(|r| r.name == name)
+}
+
 /// 那一答 ⇒ 照用的那几台 ＋ 读不懂时那一句（`(路径, 原因)`）。**纯函数**。
-pub(crate) fn hosts_of(reply: &Value) -> (Vec<Value>, Option<(String, String)>) {
+pub(crate) fn hosts_of(reply: &Value) -> (Vec<Row>, Option<(String, String)>) {
     let hosts = reply
         .get("hosts")
         .and_then(Value::as_array)
-        .cloned()
+        .map(|a| a.iter().filter_map(Row::of).collect())
         .unwrap_or_default();
     let text = |k: &str| {
         reply

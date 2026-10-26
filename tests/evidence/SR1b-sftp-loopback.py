@@ -200,13 +200,13 @@ def main():
 
         def upload(local):
             """开一单上传（一组一项，落点目录 = rhome）⇒ (id, 暂存件的键)；没开成 ⇒ (None, None) 与那一份回包。"""
-            r = be.call("transfer-upload", {"dial": base, "items": [{"local_path": local}], "remote_dir": rhome, "home": rhome})
+            r = be.call("transfer-upload", {"machine": "sr1b", "items": [{"local_path": local}], "remote_dir": rhome, "home": rhome})
             it = (r or {}).get("data", {}).get("items", [{}])[0] if r and r.get("ok") else {}
             return (it.get("id"), it.get("staged"), r) if it.get("state") == "opened" else (None, None, r)
 
         def download(remote, local):
             """开一单下载（落点目录 = `local` 那一层、落名 = 它的名字）⇒ (id, 回包)。"""
-            r = be.call("transfer-download", {"dial": base, "items": [{"remote_path": remote, "name": os.path.basename(local)}], "local_dir": os.path.dirname(local)})
+            r = be.call("transfer-download", {"machine": "sr1b", "items": [{"remote_path": remote, "name": os.path.basename(local)}], "local_dir": os.path.dirname(local)})
             it = (r or {}).get("data", {}).get("items", [{}])[0] if r and r.get("ok") else {}
             return (it.get("id") if it.get("state") == "opened" else None), r
 
@@ -220,8 +220,13 @@ def main():
                     n = int(ln.rsplit(" written ", 1)[1].split()[0])
             return n
 
-        # 〔WIN3 §2〕拨号只收界面那一格原样的配置（MIG-1 之后 `ssh-dial/machine.rs::resolve`）；平铺 host/port 那一形会被回 `invalid_args`。
-        base = {"machine": {"host": "127.0.0.1", "port": port, "user": user, "label": "sr1b", "keyPath": f"{d}/client_key"}}
+        # 〔WIN3 §2〕拨号只收那台的名字（A10-2-2 之后照本机后端的机器表组，`dial/mod.rs::parse_named`）；平铺 host/port 那一形会被回 `invalid_args`。
+        # 那一台写进后端自己的机器表（它按名字现读）；链路与传输只交名字。
+        os.makedirs(os.path.join(home, ".cc-monitor"), exist_ok=True)
+        with open(os.path.join(home, ".cc-monitor", "machines.json"), "w") as fh:
+            json.dump({"version": 1, "hosts": [{"label": "sr1b", "host": "127.0.0.1", "port": port, "user": user,
+                                                "keyPath": f"{d}/client_key", "addresses": [], "jump": "", "connect": True}]}, fh)
+        base = {"machine": "sr1b"}
         be = Backend(bin_path, home)
         cmds = be.hello.get("commands", [])
         check("后端的 hello 声明了传输四条", all(c in cmds for c in ("transfer-upload", "transfer-download", "transfer-start", "transfer-stop")), cmds)

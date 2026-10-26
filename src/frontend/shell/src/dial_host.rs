@@ -31,7 +31,7 @@ use tokio::io::BufReader;
 use crate::inbound_client::{self, InboundClient};
 use crate::link_mux::LinkStream;
 use crate::ssh_link::{self, LinkError};
-use crate::stream_source::{RemoteConfig, RemoteExec};
+use crate::stream_source::RemoteExec;
 use cmd_wire::dial::{DialAck, Stage};
 
 /// 等代理回 ack 的上限：握手看门狗（黑洞地址 TCP 连上后握手可以无限阻塞）。与界面侧原来那条
@@ -126,12 +126,6 @@ pub(crate) fn request(machine: &str, use_: &str, extra: serde_json::Value) -> se
         obj.extend(more);
     }
     req
-}
-
-/// 「开终端」那一问（本机后端帧命令 `terminal-ssh`）要的那一格：`{machine: <名字>}`；怎么拨照本机后端的机器表组。
-/// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿。
-pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
-    serde_json::json!({ "machine": cfg.origin_label() })
 }
 
 /// 总时限落在链路读写上的那一层：到点之后每一次读 / 写都报 `TimedOut`，不再碰里面那条链路。
@@ -340,7 +334,7 @@ impl From<Unopened> for Said {
 ///
 /// 后端说没拨成 ⇒ 详情是它写的那一份（远端补「本机」一行，[`crate::detail::relayed`]）；读应答这一跳坏了 ⇒ 壳写、原话进详情。
 async fn open(
-    cfg: &RemoteConfig,
+    machine: &str,
     req: &serde_json::Value,
     want: &str,
     on_stage: &mut (dyn FnMut(Stage) + Send),
@@ -382,16 +376,8 @@ async fn open(
                     ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
                     (
                         "addr",
-                        // 原样列出配置里那几行（地址不在这里解析，组法在后端 `ssh-dial/machine.rs`）。
-                        &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
-                            .chain(
-                                cfg.addresses
-                                    .iter()
-                                    .map(|a| a.trim().to_string())
-                                    .filter(|a| !a.is_empty()),
-                            )
-                            .collect::<Vec<_>>()
-                            .join(", "),
+                        // 那台的名字（地址在本机后端的机器表里，这里不知道也不解析）。
+                        machine,
                     ),
                 ],
             )));
@@ -400,7 +386,7 @@ async fn open(
     // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
     r.get_mut().mark_shaken();
     // 竞速胜者由本机后端自己记（下一趟它组请求时排首），这里只记日志。
-    let origin = cfg.origin_label();
+    let origin = machine;
     tracing::info!(
         "[perf] stream_source [{origin}] SSH 握手+鉴权 {}ms（经本机常驻后端的链路：开链路＋[池里没有时]TCP＋握手＋指纹校验＋auth＋开通道；\
          winner={:?}；指纹 {:?}）",
@@ -432,38 +418,36 @@ pub(crate) fn link_said(e: LinkError) -> Said {
 /// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（重连循环经 `stream_source/run.rs::DeskLink` 开：`ccm -- --resident-attach`）。
 /// 出生带一次性总时限；接成流之后由调用方摘。拨号核心每过一步（「过了一步」那一形阶段行）调一次 `on_step`（重连循环拿它重新计拨号期限）。
 pub(crate) async fn stream(
-    cfg: &RemoteConfig,
+    machine: &str,
     cmd: &str,
     on_step: &mut (dyn FnMut() + Send),
 ) -> Result<DialStream, Unopened> {
-    let machine = cfg.origin_label();
     let req = request(
-        &machine,
+        machine,
         "stream",
         serde_json::json!({ "command": cmd, "progress": true }),
     );
-    open(cfg, &req, "stream", &mut |_| {}, on_step)
+    open(machine, &req, "stream", &mut |_| {}, on_step)
         .await
         .map(|(s, _)| s)
 }
 
 /// **收全一条 exec**：stdout / stderr / 退出码。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
 pub(crate) async fn capture(
-    cfg: &RemoteConfig,
+    machine: &str,
     cmd: &str,
     abort_marker: Option<&str>,
     max_bytes: usize,
 ) -> Result<RemoteExec, Unopened> {
-    let machine = cfg.origin_label();
     let req = request(
-        &machine,
+        machine,
         "capture",
         serde_json::json!({
             "command": cmd,
             "capture": { "max_bytes": max_bytes, "abort_marker": abort_marker },
         }),
     );
-    let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}, &mut || {}).await?;
+    let (mut link, _) = open(machine, &req, "capture", &mut |_| {}, &mut || {}).await?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
     let got = ssh_link::captured(&mut link.r, cap)

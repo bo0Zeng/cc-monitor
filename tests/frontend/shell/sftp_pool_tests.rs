@@ -126,16 +126,9 @@ pub(crate) const ALL: [&str; 4] = [
     "transfer-stop",
 ];
 
-pub(crate) fn cfg(label: &str) -> RemoteConfig {
-    RemoteConfig {
-        host: "example.invalid".into(),
-        label: label.into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: Some("/k".into()),
-        addresses: Vec::new(),
-        jump: None,
-    }
+/// 一台远端：壳里只剩它的名字（怎么拨照本机后端的机器表）。
+pub(crate) fn cfg(label: &str) -> String {
+    label.to_string()
 }
 
 /// 收一条快照流直到收场（或 10 s）。

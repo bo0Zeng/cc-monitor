@@ -52,11 +52,11 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     expect(await openFileWindow(CFG)).toBe(true);
     expect(invokeMock.mock.calls).toEqual([
       // `path` 非空 ⇒ Rust 侧 `Target::Dir`
-      ["open_file_window", { cfg: CFG, path: "/srv/data", revealFile: null, theme: fileWindowTheme() }],
+      ["open_file_window", { origin: "devbox", path: "/srv/data", revealFile: null, theme: fileWindowTheme() }],
       // `path` 空 ＋ `revealFile` ⇒ `Target::Reveal`（父目录与尾段由 Rust 侧切，这里原样交）
-      ["open_file_window", { cfg: CFG, path: "", revealFile: "/srv/data/a.md", theme: fileWindowTheme() }],
+      ["open_file_window", { origin: "devbox", path: "", revealFile: "/srv/data/a.md", theme: fileWindowTheme() }],
       // 两个都空 ⇒ `Target::Home`
-      ["open_file_window", { cfg: CFG, path: "", revealFile: null, theme: fileWindowTheme() }],
+      ["open_file_window", { origin: "devbox", path: "", revealFile: null, theme: fileWindowTheme() }],
     ]);
     expect(toastMock, "成功那一支不该出声（窗口自己出现就是回应）").not.toHaveBeenCalled();
   });

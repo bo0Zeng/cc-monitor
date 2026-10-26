@@ -43,7 +43,7 @@ fn machines_start_absent_and_a_cell_edit_touches_only_that_cell() {
     let r = answer_read_in(Some(&home));
     assert_eq!(r.state, "ok");
     assert_eq!(
-        r.hosts.iter().map(Host::name).collect::<Vec<_>>(),
+        r.hosts.iter().map(|h| h.name.as_str()).collect::<Vec<_>>(),
         ["gpu", "pi.lan"]
     );
     assert!(r.hosts.iter().all(|h| h.connect), "缺 ⇒ 连");
@@ -247,5 +247,26 @@ fn reading_shows_each_hosts_keys_and_forgetting_drops_only_that_one() {
         answer_forget_in(Some(&home), &own, &req("nope")),
         Err(HostKeysForgetErr::ElementGone(_))
     ));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 〔出口只交机器名〕读回的每一行带着后端算好的名字（`{name, host}`）：`label` 空 ⇒ 用 `host`；
+/// 线上那一形逐键就是 `name` 与 `host` 两格（界面 · 壳照它取名字，不再自己算）。
+#[test]
+fn every_row_carries_the_name_the_backend_computed() {
+    let home = scratch("named");
+    set(&home, json!([insert("gpu", "g.lan"), insert("", "pi.lan")])).unwrap();
+    let r = answer_read_in(Some(&home));
+    let names: Vec<&str> = r.hosts.iter().map(|h| h.name.as_str()).collect();
+    assert_eq!(names, ["gpu", "pi.lan"]);
+    let wire = serde_json::to_value(&r).unwrap();
+    let keys: Vec<String> = wire["hosts"][1]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(keys, ["host", "name"]);
+    assert_eq!(wire["hosts"][1]["name"], "pi.lan");
     let _ = std::fs::remove_dir_all(&home);
 }

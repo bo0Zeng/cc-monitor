@@ -30,7 +30,7 @@
 //! ⚠ 刻意不回一个结构体：`设计` 那条纪律是「返回类型只在 TS 侧真消费字段时才生成」
 //! （`tests/frontend/ui/ipc/commands.vitest.ts` 头注逐字），一个 `usize` 不需要 `ts-rs`。
 //!
-//! # 🔴 三、签名为什么只吃 `RemoteConfig` —— 因为**只有一侧**
+//! # 🔴 三、签名为什么只吃一台远端的名字 —— 因为**只有一侧**
 //!
 //! 〔2026-09-23 本机侧退役〕这一节从前讲的是一处不对称：窗口的数据面两侧都通，
 //! 而这条命令只开远端那一侧，本机侧靠窗口自己工具栏上那颗按钮走到。
@@ -50,7 +50,6 @@
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
-use crate::stream_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest, ProcFail, Unopened};
 
@@ -109,7 +108,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     }
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一个占位配置，那是买到的东西之一。**
     //    从前 `parent_dir` 的签名吃 `&Source`（两侧不是同一个切法），于是这一行
-    //    得合成一份「一个字段都不会被读」的 `RemoteConfig` 喂给它（`synthetic_remote`）。
+    //    得合成一份「一个字段都不会被读」的远端配置喂给它（`synthetic_remote`）。
     //    本机那一侧退役之后 `parent_dir` 只吃一条字符串 ⇒ 那个占位整个不需要了。
     let dir = filewin_contract::parent_dir(f);
     Ok(Target::Reveal { dir, name })
@@ -149,14 +148,15 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 ///
 /// - `path` 是空的、且远端 home 问不出来 ⇒ 带着原文回错，不开窗。
 /// - 目录列不出来（断开 / 没权限 / 不是目录）⇒ 把窗口进程说的那句原文带回去。
-/// 「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
+/// 「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（本机后端机器表里算好的名字，与通道寻址同一个名字）。
 /// 来自已有的配置读口，不新建数据源。
 fn machine_names() -> Vec<String> {
     std::iter::once(crate::inbound_client::LOCAL_ORIGIN.to_string())
         .chain(
-            crate::load_remote_configs()
-                .iter()
-                .map(RemoteConfig::origin_label),
+            crate::machine_table::rows_now()
+                .into_iter()
+                .filter(|r| r.connect)
+                .map(|r| r.name),
         )
         .collect()
 }
@@ -164,7 +164,7 @@ fn machine_names() -> Vec<String> {
 #[tauri::command]
 pub async fn open_file_window(
     app: tauri::AppHandle,
-    cfg: RemoteConfig,
+    origin: String,
     path: String,
     reveal_file: Option<String>,
     theme: std::collections::BTreeMap<String, String>,
@@ -179,11 +179,11 @@ pub async fn open_file_window(
             .as_ref()
             .and_then(crate::work_area_of);
         // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
-        let origin = cfg.origin_label();
+        let late_origin = origin.clone();
         let late: super::proc::LateExit = Box::new(move |f| {
             let said = process_said(f);
             let payload = crate::ui_contract::RemoteHealthPayload {
-                origin,
+                origin: late_origin,
                 kind: FILEWIN_EXIT_KIND.to_string(),
                 message: said.said,
                 detail: said.detail,
@@ -192,7 +192,7 @@ pub async fn open_file_window(
                 tracing::warn!("文件窗口没了那一条没有发出去：{e}");
             }
         });
-        Ok(open_with(cfg, path, reveal_file, work_area, theme, late).await?)
+        Ok(open_with(origin, path, reveal_file, work_area, theme, late).await?)
     }
     .await;
     r.map_err(|s| s.named("open_file_window"))
@@ -203,15 +203,14 @@ pub(crate) const FILEWIN_EXIT_KIND: &str = "filewin-exit";
 
 /// [`open_file_window`] 去掉「问 Tauri」那一步之后的全部（判据从这里进：判据进程里没有 `AppHandle`）。
 pub(crate) async fn open_with(
-    cfg: RemoteConfig,
+    origin: String,
     path: String,
     reveal_file: Option<String>,
     work_area: Option<host_core::WorkArea>,
     theme: filewin_contract::Theme,
     late: super::proc::LateExit,
 ) -> Result<usize, Said> {
-    // 窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
-    let origin = cfg.origin_label();
+    // 窗口进程只拿那台的名字（寻址用，本机后端机器表里的那个名字）。
     // 视图文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
     //   书签不在这里：它归那台后端，窗口按机器名自己问（`bookmarks-read` / `-edit`）。
     let view = crate::config::resolve_monitor_data_dir()
@@ -276,7 +275,7 @@ pub(crate) async fn open_from_window(
     let Some(theme) = filewin_contract::filewin_open_theme(args) else {
         return Err(("bad_args", copy_text("rsFilewinEntry.other.badArgs", &[])));
     };
-    let Some(cfg) = crate::load_remote_config_by_label(machine) else {
+    if !crate::machine_table::has(machine) {
         return Err((
             "no_such_origin",
             copy_text(
@@ -284,10 +283,10 @@ pub(crate) async fn open_from_window(
                 &[("machine", &machine.to_string())],
             ),
         ));
-    };
+    }
     let late: super::proc::LateExit =
         Box::new(|f| tracing::warn!("另开的文件窗口退了：{} {:?} {:?}", f.said, f.code, f.raw));
-    open_with(cfg, String::new(), None, None, theme, late)
+    open_with(machine.to_string(), String::new(), None, None, theme, late)
         .await
         .map(|_| ())
         .map_err(|why| ("open_failed", why.said))

@@ -1132,7 +1132,7 @@ mod tests {
         (
             "dial",
             "control",
-            "`remote-reach` 登记完再交偏好，接线住 `faces::remote_reach_face`；控制面经 dial 拨号",
+            "机器表的读法由 `faces::install_machines` 装进拨号层；控制面经 dial 拨号",
         ),
         (
             "history",

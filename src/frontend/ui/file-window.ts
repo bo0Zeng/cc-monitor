@@ -22,7 +22,7 @@
  */
 import { commands } from "./ipc/commands";
 import { failToast } from "./kit/toast";
-import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "./remote-config";
+import { findHostByOrigin, hostKey, readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { revealInFolder } from "./reveal-in-folder";
@@ -100,7 +100,7 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
   const path = at && "dir" in at ? at.dir : "";
   const revealFile = at && "revealFile" in at ? at.revealFile : null;
   try {
-    await commands.open_file_window({ cfg, path, revealFile, theme: fileWindowTheme() });
+    await commands.open_file_window({ origin: hostKey(cfg), path, revealFile, theme: fileWindowTheme() });
     return true;
   } catch (e) {
     failToast(copyText("fileWindow.openFileWindow.failed"), e, { fact: cfg.label.trim() || cfg.host });

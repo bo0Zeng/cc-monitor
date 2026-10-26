@@ -369,7 +369,7 @@ pub fn landing_dir() -> &'static str {
 pub type Exec = Box<dyn Fn(String) -> Fut<'static, Result<Captured, String>> + Send + Sync>;
 
 /// 生产那一个对面：一次性命令走宿主给的 [`Exec`] · 文件走池里那条连接上的一条 SFTP 会话（第一问时才开）。
-/// 拨号请求是组好的那一形（后端 `ssh_dial::machine::resolve` 出 · 手机 Kotlin 交）；宿主那一套（钥匙 · host key · 写规矩）由宿主先装好。
+/// 拨号请求是组好的那一形（后端照它的机器表按名字组 · 手机 Kotlin 交）；宿主那一套（钥匙 · host key · 写规矩）由宿主先装好。
 pub struct DialFacing {
     req: DialRequest,
     exec: Exec,

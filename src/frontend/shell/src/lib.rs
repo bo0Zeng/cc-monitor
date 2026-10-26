@@ -773,7 +773,6 @@ pub fn run() {
             launch::open_terminal_window,
             // 设置页「终端」那一行的事实（挑终端的判定住平台层）。
             launch::terminal_choices,
-            launch::terminal_dial,
             // 最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。
             // 🔴 `24e` 第二刀（第三段）：**原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
@@ -841,29 +840,6 @@ pub fn run() {
         });
 }
 
-/// SSH-remote（issue #15 / 多机 #30）：从 monitor 的 config.json 读 `remote` 段，构造
-/// **0..N 个** [`stream_source::RemoteConfig`]。**空 Vec = 本地模式**（与历史 bit-for-bit
-/// 一致）：config.json 不存在 / 解析失败 / 无 `remote` 键 / `enabled != true` / 无任何
-/// 合法 host → 空 Vec。
-///
-/// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
-/// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。
-///
-/// remote 段 schema（S6/S7 的设置 UI 负责写）：
-/// ```json
-/// "remote": {
-///   "enabled": true,
-///   "hosts": [
-///     { "label": "pi", "host": "raspberrypi.local", "port": 22, "user": "pi",
-///       "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",
-///       "backendPath": "/home/pi/cc-monitor-backend" }
-///   ]
-/// }
-/// ```
-/// 每台缺必填字段(host/user/backendPath) 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
-/// 〔「不为旧配置留兼容」〕旧单对象形态（`"remote": { "enabled": true, "host": …, … }`，
-/// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
-/// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
 /// `remote-health` 事件的出口：窗口把手只在这一层，交给 `stream_source`（它不认识 GUI 宿主）的是一个闭包。
 pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthOut {
     Arc::new(move |payload| {
@@ -945,173 +921,42 @@ pub(crate) fn main_app() -> Option<tauri::AppHandle> {
     REMOTE_CTX.get().map(|(_, app)| app.clone())
 }
 
-/// 一台远端的重起闭包：每次调用起一条新的 `stream_source::run`。
+/// 一台远端的重起闭包：每次调用起一条新的 `stream_source::run`（只交名字：怎么拨照本机后端的机器表）。
 fn remote_respawn(
-    cfg: stream_source::RemoteConfig,
+    origin: String,
     replay: Arc<event_replay::EventReplay>,
     app: tauri::AppHandle,
 ) -> backend_control::Respawn {
     Box::new(move || {
-        let cfg = cfg.clone();
+        let origin = origin.clone();
         let replay = replay.clone();
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            let label = cfg.origin_label();
-            stream_source::run(cfg, replay, remote_health_out(app)).await;
+            let label = origin.clone();
+            stream_source::run(origin, replay, remote_health_out(app)).await;
             tracing::info!("stream_source::run [{label}] 收工了");
         })
     })
 }
 
-/// 照机器表（本机后端最近答的那一份）对齐远端流（要连的才连；连接参数变了的重起；其余不动）。
+/// 照机器表（本机后端最近答的那一份）对齐远端流（要连的才连；那一台那一行变了的重起；其余不动）。
 pub(crate) fn reconcile_remote_streams() -> backend_control::Reconciled {
     let Some((replay, app)) = REMOTE_CTX.get() else {
         return backend_control::Reconciled::default();
     };
-    let wanted = load_remote_configs()
+    let wanted = machine_table::rows_now()
         .into_iter()
-        .map(|cfg| backend_control::WantedRemote {
-            origin: cfg.origin_label(),
-            cfg_key: serde_json::to_string(&cfg).unwrap_or_default(),
-            respawn: remote_respawn(cfg, replay.clone(), app.clone()),
+        .filter(|r| r.connect)
+        .map(|r| backend_control::WantedRemote {
+            origin: r.name.clone(),
+            cfg_key: r.key,
+            respawn: remote_respawn(r.name, replay.clone(), app.clone()),
         })
         .collect();
     let done = backend_control::reconcile_remotes(wanted);
     // 注册表此刻就是机器表的样子了 ⇒ 告诉主窗口（它订的那几台跟着走）。
     machine_table::tell_followed(replay);
     done
-}
-
-/// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。
-pub(crate) fn load_remote_configs() -> Vec<stream_source::RemoteConfig> {
-    load_all_remote_configs()
-        .into_iter()
-        .filter(|(_, connect)| *connect)
-        .map(|(cfg, _)| cfg)
-        .collect()
-}
-
-/// 机器表里的每一台，连同它的「连接这台」（缺省 = 连）。表住本机后端，这里读的是它最近答的那一份（[`machine_table`]）。
-pub(crate) fn load_all_remote_configs() -> Vec<(stream_source::RemoteConfig, bool)> {
-    let mut remote = serde_json::Map::new();
-    remote.insert(
-        "hosts".into(),
-        serde_json::Value::Array(machine_table::hosts_now()),
-    );
-    parse_remote_entries(&remote).unwrap_or_default()
-}
-
-/// `remote` 段没有 `hosts` 数组时那句话（旧单对象写法、或者 `hosts` 写成了别的类型）。
-pub(crate) const REMOTE_HOSTS_UNRECOGNIZED: &str =
-    "认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器";
-
-/// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。**只认 `hosts` 数组**；
-/// 没有它 ⇒ `Err`（旧单对象那一支删了）。重复 label 后缀化去重。
-/// 每台连同它的「连接这台」（`"connect": false` ⇒ 不连；缺省 = 连）。
-fn parse_remote_entries(
-    remote: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Vec<(stream_source::RemoteConfig, bool)>, &'static str> {
-    let Some(arr) = remote.get("hosts").and_then(|v| v.as_array()) else {
-        return Err(REMOTE_HOSTS_UNRECOGNIZED);
-    };
-    let host_objs: Vec<&serde_json::Map<String, serde_json::Value>> =
-        arr.iter().filter_map(|v| v.as_object()).collect();
-
-    let mut out: Vec<(stream_source::RemoteConfig, bool)> = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for obj in host_objs {
-        let Some(mut cfg) = parse_host_obj(obj) else {
-            continue; // parse_host_obj 已 warn
-        };
-        // label 去重：重复则后缀化 " (#2)"、" (#3)"…，保证 by_label 选台唯一。
-        if !seen.insert(cfg.label.clone()) {
-            let base = cfg.label.clone();
-            let mut n = 2u32;
-            let unique = loop {
-                let cand = format!("{base} (#{n})");
-                if seen.insert(cand.clone()) {
-                    break cand;
-                }
-                n += 1;
-            };
-            tracing::warn!("remote label 重复，'{base}' 改为 '{unique}'");
-            cfg.label = unique;
-        }
-        let connect = obj.get("connect").and_then(|v| v.as_bool()) != Some(false);
-        out.push((cfg, connect));
-    }
-    Ok(out)
-}
-
-/// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user) → None+warn。
-fn parse_host_obj(
-    obj: &serde_json::Map<String, serde_json::Value>,
-) -> Option<stream_source::RemoteConfig> {
-    let str_field = |k: &str| {
-        obj.get(k)
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-    };
-
-    // `backendPath` 那一格删了（落点恒是那台的 `~/.cc-monitor/bin/ccm`）；盘上旧值不读。
-    let (host, user) = match (str_field("host"), str_field("user")) {
-        (Some(h), Some(u)) => (h.to_string(), u.to_string()),
-        _ => {
-            tracing::warn!("remote host 缺必填字段(host/user)，跳过该台");
-            return None;
-        }
-    };
-
-    let label = str_field("label")
-        .map(str::to_string)
-        .unwrap_or_else(|| host.clone());
-    let port = obj
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .and_then(|p| u16::try_from(p).ok())
-        .unwrap_or(22);
-    let key_path = str_field("keyPath").map(str::to_string);
-    // Batch14-F56：跳板 label（指向另一台已配置主机的 origin_label）。
-    let jump = str_field("jump").map(str::to_string);
-    // 🔴 `K-R59`（定框 `K35`）：这里原来读 `daemonless`（per-host 降级开关）。
-    //    那个键今天**故意不读** —— 盘上还留着 `true` 的旧配置由界面侧
-    //    （`src/frontend/ui/remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY`）认出来、指名告知一次，
-    //    后端这一侧一律按「有后端」走，不再有第二条路。
-    // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
-    let addresses: Vec<String> = match obj.get("addresses") {
-        Some(serde_json::Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect(),
-        Some(serde_json::Value::String(s)) => s
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect(),
-        _ => Vec::new(),
-    };
-
-    Some(stream_source::RemoteConfig {
-        label,
-        host,
-        port,
-        user,
-        key_path,
-        addresses,
-        jump,
-    })
-}
-
-/// 按 label 选台（停用连接的那台也选得到：卸载 · 测试连接照样要它的参数）。
-pub(crate) fn load_remote_config_by_label(label: &str) -> Option<stream_source::RemoteConfig> {
-    load_all_remote_configs()
-        .into_iter()
-        .map(|(c, _)| c)
-        .find(|c| c.origin_label() == label)
 }
 
 /// 把后端帧里来的一批 `JsonlLine` 组成可 emit 的 `JsonlLinePayload`。
@@ -1662,10 +1507,6 @@ mod agent_window_label_tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_mod_decl_hygiene_tests.rs"]
 mod mod_decl_hygiene_tests;
-
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/lib_remote_config_tests.rs"]
-mod remote_config_tests;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_window_lifecycle_tests.rs"]

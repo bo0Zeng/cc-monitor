@@ -5,7 +5,6 @@
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
-use crate::stream_source::RemoteConfig;
 
 /// 不认这条子命令的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就收工、当「太旧」（循环那一侧同一个记号）。
 use cmd_wire::dial::OLD_BACKEND_MARKER;
@@ -59,7 +58,7 @@ pub(crate) fn read_stop(
 }
 
 /// **停那台的常驻后端**（机器页「停」）：发**一次** `--resident-stop`，等与强杀由那台自己做（同机监督者），这里只拿回结局。
-pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, Said> {
+pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
     // 落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
     let cmd = format!(
         "{} {} --resident-stop",
@@ -67,8 +66,9 @@ pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, Said> {
         crate::local_backend::BACKEND_SEP
     );
     let exec =
-        crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    read_stop(&exec, &cfg.origin_label())
+        crate::stream_source::connect_and_exec_capture(machine, &cmd, Some(OLD_BACKEND_MARKER))
+            .await?;
+    read_stop(&exec, machine)
 }
 
 #[cfg(test)]

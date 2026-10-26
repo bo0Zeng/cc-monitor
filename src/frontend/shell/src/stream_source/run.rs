@@ -38,7 +38,8 @@ fn problem_of(u: crate::dial_host::Unopened) -> Problem {
 
 /// 远端那台的链路：本机常驻后端开的（`dial_host`）。monitor 装得了后端 ⇒ 每一轮先部署预检、版本门问本机常驻后端。
 pub(crate) struct DeskLink {
-    cfg: RemoteConfig,
+    /// 那台的名字（怎么拨照本机后端的机器表）。
+    machine: String,
     health: HealthOut,
 }
 
@@ -51,10 +52,10 @@ impl Transport for DeskLink {
         progress: Progress,
     ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         Box::pin(async move {
-            let host_label = self.cfg.origin_label();
+            let host_label = self.machine.clone();
             let t_exec = std::time::Instant::now();
             // 接成了就是订阅：摘掉一次性总时限（握手那两行各有自己的期限，`HANDSHAKE_LINE`）。
-            let got = crate::dial_host::stream(&self.cfg, &command, &mut || progress.step())
+            let got = crate::dial_host::stream(&self.machine, &command, &mut || progress.step())
                 .await
                 .map(crate::dial_host::DialStream::lives_long)
                 .map_err(problem_of);
@@ -67,7 +68,7 @@ impl Transport for DeskLink {
         Box::pin(async move {
             // 不认 `--resident-ensure` 的老后端会掉进流模式永不 EOF ⇒ 见到 hello 就提前收（读法认它、说「要更新」）。
             let exec = connect_and_exec_capture(
-                &self.cfg,
+                &self.machine,
                 &command,
                 Some(cmd_wire::dial::OLD_BACKEND_MARKER),
             )
@@ -82,7 +83,7 @@ impl Transport for DeskLink {
     }
 
     fn before_round(&self) -> Boxed<'_, ()> {
-        Box::pin(preflight(&self.cfg, &self.health))
+        Box::pin(preflight(&self.machine, &self.health))
     }
 
     fn installs(&self) -> bool {
@@ -232,17 +233,12 @@ pub(crate) fn feed_config(origin: &str) -> resident_client::feed::Config {
 
 /// **一台远端的那条流**：起它的循环（[`Feed`]）、收它交出来的事，直到这个任务被停（机器页「停」· 机器表改了）。
 /// 那台不是 Unix ⇒ 循环停在「要人动手」、不按退避空转；机器页「起」叫醒它再试一次（`backend_control::backend_start`）。
-pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut) {
-    let origin = cfg.origin_label();
-    tracing::info!(
-        "stream_source connecting to {}@{}:{}",
-        cfg.user,
-        cfg.host,
-        cfg.port
-    );
+pub async fn run(machine: String, replay: Arc<EventReplay>, health: HealthOut) {
+    let origin = machine.clone();
+    tracing::info!("stream_source connecting to [{machine}]");
     let (tx, rx) = tokio::sync::mpsc::channel(EVENT_QUEUE);
     let link = Arc::new(DeskLink {
-        cfg: cfg.clone(),
+        machine: machine.clone(),
         health: health.clone(),
     });
     let feed = Feed::start(
@@ -256,12 +252,12 @@ pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut)
         .unwrap_or_else(|e| e.into_inner())
         .insert(origin, Arc::downgrade(&(feed.clone() as Arc<dyn Looped>)));
     let _closing = Closing(feed);
-    consume_remote(cfg, rx, replay, health).await;
+    consume_remote(machine, rx, replay, health).await;
 }
 
 /// 每一轮开拨之前：部署预检（这台自证过就是期望 build 则跳过）。部署失败不阻断（手动部署的后端照样能连），但那句话要到界面上。
-async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
-    let host_label = cfg.origin_label();
+async fn preflight(machine: &str, health: &HealthOut) {
+    let host_label = machine.to_string();
     // 冷启动最贵的三段（用户点开应用到看见远端会话之间唯一的那条链）埋 `[perf]`：不改任何行为，只让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
     // 连接前确保远端后端已部署到固定落点（`~/.cc-monitor/bin/ccm`）；这一版没带字节 ⇒ `byte_table::choose` 回「这一版没带」→ 优雅 no-op。
@@ -274,7 +270,7 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     let confirmed_build = if skip_preflight {
         mine.map(str::to_string)
     } else {
-        match crate::deploy::ensure_backend_deployed(cfg).await {
+        match crate::deploy::ensure_backend_deployed(machine).await {
             Ok(c) => Some(c),
             Err(said) => {
                 tracing::warn!(
@@ -317,12 +313,12 @@ struct Conn {
 /// - 帧：按类型解、经 [`route`] · [`apply`] 落下（本机那条流同一处）；
 /// - 断了（`Down`）：残批冲完、摘登记、这台的成品整份作废（说不清）、订阅收 `Unseen`；这一轮没接上 ⇒ 那台记「离线」（不是 Unix ⇒「不支持」并出声）。
 pub(crate) async fn consume_remote(
-    cfg: RemoteConfig,
+    machine: String,
     mut rx: tokio::sync::mpsc::Receiver<Event>,
     replay: Arc<EventReplay>,
     health: HealthOut,
 ) {
-    let host_label = cfg.origin_label();
+    let host_label = machine.clone();
     let mut conn: Option<Conn> = None;
     // 接上了、还没交 `Up`：那一行 hello 与它的客户端（版本那句话要等 `Up` 里的那一句）。
     let mut attached: Option<(String, Arc<crate::inbound_client::InboundClient>)> = None;
@@ -351,7 +347,7 @@ pub(crate) async fn consume_remote(
                     continue;
                 };
                 conn = Some(on_attached(
-                    &cfg,
+                    &machine,
                     Round {
                         replay: &replay,
                         health: &health,
@@ -425,13 +421,13 @@ pub(crate) async fn consume_remote(
 
 /// 接上那一刻：登记客户端（写半边解冻之后才有它）· 资产同步 · hello 那一臂的记账。
 fn on_attached(
-    cfg: &RemoteConfig,
+    machine: &str,
     round: Round,
     hello: &str,
     client: Arc<crate::inbound_client::InboundClient>,
 ) -> Conn {
     let Round { replay, health, .. } = round;
-    let host_label = cfg.origin_label();
+    let host_label = machine.to_string();
     crate::inbound_client::register(&host_label, client.clone());
     // 连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
     crate::asset_sync::on_remote_ready(
