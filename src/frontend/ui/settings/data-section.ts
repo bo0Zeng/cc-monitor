@@ -10,7 +10,6 @@ import { commands } from "../ipc/commands";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { failToast } from "../kit/toast";
 import { enumeratePrefix } from "../local-storage";
-import { sizeText } from "../format";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { revealInFolder } from "../reveal-in-folder";
 
@@ -233,9 +232,8 @@ export class DataSection {
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
     if (info.exists) {
-      // `sizeBytes` 是 number：Rust 侧 `#[ts(type = "number")]` 的显式决定（JSON IPC 到 TS 侧本来就是 number），见 `data_paths.rs`。
-      meta.textContent =
-        info.sizeBytes !== undefined ? sizeText(info.sizeBytes) : copyText("data.item.created");
+      // 大小是壳写好的字（`data_paths.rs`），照抄；目录不给大小。
+      meta.textContent = info.sizeText ?? copyText("data.item.created");
     } else {
       meta.textContent = copyText("data.item.notCreated");
     }

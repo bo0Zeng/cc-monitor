@@ -4,7 +4,6 @@
  * 每一格照后端那一份画，界面不判、不另拼句子。只给位置、不给删。
  */
 import { copyText } from "../copy-table";
-import { sizeText } from "../format";
 import { dataClassCell } from "./data-section";
 import type { OwnItem } from "./data-reads";
 
@@ -54,7 +53,7 @@ export function ownBlock(
     desc.textContent = o.what;
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
-    meta.textContent = !o.exists ? copyText("data.item.notCreated") : o.size !== null ? sizeText(o.size) : copyText("data.item.created");
+    meta.textContent = !o.exists ? copyText("data.item.notCreated") : (o.size_text ?? copyText("data.item.created"));
     const abs = o.path.replace(/^~/, home);
     const acts = document.createElement("span");
     acts.className = "settings-data-item-actions";

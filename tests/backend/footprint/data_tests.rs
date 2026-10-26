@@ -264,13 +264,21 @@ fn 自己家里的每一样一行_文件给大小_目录不给_不在的照实�
     let p = by("profiles");
     assert_eq!(p["path"], json!("~/.cc-monitor/profiles.toml"));
     assert_eq!(
-        (p["exists"].clone(), p["size"].clone(), p["dir"].clone()),
-        (json!(true), json!(5), json!(false))
+        (
+            p["exists"].clone(),
+            p["size_text"].clone(),
+            p["dir"].clone()
+        ),
+        (json!(true), json!(copy_core::size_text(5)), json!(false))
     );
     assert_eq!(p["class"], json!("truth"));
     let a = by("accounts");
     assert_eq!(
-        (a["exists"].clone(), a["size"].clone(), a["dir"].clone()),
+        (
+            a["exists"].clone(),
+            a["size_text"].clone(),
+            a["dir"].clone()
+        ),
         (json!(true), Value::Null, json!(true))
     );
     let b = by("bin");
@@ -283,7 +291,7 @@ fn 自己家里的每一样一行_文件给大小_目录不给_不在的照实�
         keys.sort();
         assert_eq!(
             keys,
-            vec!["class", "dir", "exists", "id", "path", "size", "what"]
+            vec!["class", "dir", "exists", "id", "path", "size_text", "what"]
         );
     }
 }

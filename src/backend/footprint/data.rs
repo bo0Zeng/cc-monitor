@@ -114,9 +114,8 @@ pub(crate) struct OwnItem {
     pub(crate) dir: bool,
     pub(crate) class: OwnClass,
     pub(crate) exists: bool,
-    /// 文件的字节数；目录 / 不在 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) size: Option<u64>,
+    /// 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
+    pub(crate) size_text: Option<crate::common::cells::Words>,
 }
 
 /// `data-report` 的回包。也收（`Deserialize`）：本机后端替界面记的「上次值」按它核存档（`last_seen`）。
@@ -189,7 +188,7 @@ pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Missing> {
     report.rows.iter().filter_map(missing).collect()
 }
 
-/// 这台家里那几样（契约里那一份 `relay_route_core::OWN_HOME_ENTRIES`）各一行 `{id, path, dir, class, exists, size}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
+/// 这台家里那几样（契约里那一份 `relay_route_core::OWN_HOME_ENTRIES`）各一行 `{id, path, dir, class, exists, size_text}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
 pub(crate) fn own_rows(home: &std::path::Path) -> Vec<OwnItem> {
     relay_route_core::OWN_HOME_ENTRIES
         .iter()
@@ -197,7 +196,9 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<OwnItem> {
             let p = crate::platform::paths::home_join(home, rel);
             let meta = Ro::metadata(&p).ok();
             let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
-            let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
+            let size_text = meta
+                .filter(|m| exists && m.is_file())
+                .map(|m| crate::common::cells::Words(copy_core::size_text(m.len())));
             OwnItem {
                 id: Cow::Borrowed(id),
                 what: own_what(id),
@@ -209,7 +210,7 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<OwnItem> {
                     OwnClass::Cache
                 },
                 exists,
-                size,
+                size_text,
             }
         })
         .collect()

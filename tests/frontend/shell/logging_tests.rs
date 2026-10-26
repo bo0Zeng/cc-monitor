@@ -222,15 +222,21 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
         .unwrap();
     drop(f);
-    let got: Vec<(String, u64)> = list_log_entries(&dir, None)
+    let got: Vec<(String, Option<String>)> = list_log_entries(&dir, None)
         .into_iter()
-        .map(|e| (e.path, e.size_bytes))
+        .map(|e| (e.path, e.size_text))
         .collect();
     assert_eq!(
         got,
         vec![
-            (cur.to_string_lossy().into_owned(), 8),
-            (old.to_string_lossy().into_owned(), 3)
+            (
+                cur.to_string_lossy().into_owned(),
+                Some(copy_core::size_text(8))
+            ),
+            (
+                old.to_string_lossy().into_owned(),
+                Some(copy_core::size_text(3))
+            )
         ]
     );
     // monitor 那一层按 `.log` 收：后端那一族不混进来。
@@ -320,9 +326,16 @@ fn log_file_info_reports_the_backend_stderr_file_from_the_same_path_it_was_hande
     assert_eq!(
         info.backend_stderr
             .iter()
-            .map(|e| (e.path.clone(), e.size_bytes))
+            .map(|e| (e.path.clone(), e.size_text.clone()))
             .collect::<Vec<_>>(),
-        vec![(cur.to_string_lossy().into_owned(), 12)]
+        vec![(
+            cur.to_string_lossy().into_owned(),
+            Some(copy_core::size_text(12))
+        )]
+    );
+    assert_eq!(
+        info.current_size_text, None,
+        "monitor 自己一份日志都没有时，当前文件的大小该是缺，不是一个像真的数"
     );
     assert_eq!(
         info.current_file, None,
