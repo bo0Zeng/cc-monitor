@@ -2,14 +2,22 @@
  * 「那台某样东西变了」那一种流在界面这一侧的全部知识（叶子模块：只 import 通道的格类型、生成的主题类型与那一个解码）。
  * 那台后端发 `changed {topic, key?, rev?, body?}`（主题表只住后端 `wire/topic.rs`）；monitor 按主题交进 `subscribe(origin, "changed/<topic>")`，
  * 格体是帧去掉 `kind` / `topic` 的那一份；界面读格、按主题重问（带了 `body` 的可以不问）。
+ * 体的形状按主题有类型（生成的 {@link ChangedFrame}，一个主题一臂）：壳按同一份类型解那一帧，体换了形 ⇒ 那一帧进不来、壳报一次，
+ * 到这里的体都对得上那一臂 —— 读体只经 {@link pushedProducts}，读口不各自 `as`。
  * 订只经 `events.ts`（主窗口 `bindEvents` 的 `changed` · 别处 `subscribeTopics`）；本文件只读格。
  */
 import type { Item } from "../../comms/inward/chan";
 import { tryDecodeJson } from "./ipc/decode";
+import type { Changed as ChangedFrame } from "./generated/Changed";
 import type { Topic } from "./generated/Topic";
-import type { TopicProducts } from "./generated/TypedCommands";
 
 export type { Topic };
+
+/** 那个主题那一臂的体（主题不带体 ⇒ `never`）。 */
+export type TopicBody<T extends Topic> = Extract<ChangedFrame, { topic: T }> extends { body?: infer B } ? B : never;
+
+/** 带体的那几个主题。 */
+export type BodiedTopic = { [T in Topic]: [TopicBody<T>] extends [never] ? never : T }[Topic];
 
 /** 与 Rust `event_replay.rs::CHANGED_KIND` 同一个串；流名是 `changed/<topic>`。 */
 export const CHANGED_KIND = "changed";
@@ -69,24 +77,25 @@ export interface PlanMoved {
 
 /** `changed/plan` 那一批 ⇒ 变了的工作区（没 `key` / `rev` 的格当整台重问，已在 `all` 里）。 */
 export function planMoves(c: Changed): PlanMoved[] {
+  const { got } = pushedProducts(c, "plan");
   return c.cells.flatMap((x) => {
     if (x.key === null || x.key === "" || x.rev === null) return [];
-    const b = x.body as { needs?: unknown } | undefined;
-    return [{ workspace: x.key, rev: x.rev, needs: typeof b?.needs === "number" ? b.needs : null }];
+    return [{ workspace: x.key, rev: x.rev, needs: got.get(x.key)?.needs ?? null }];
   });
 }
 
 /**
- * 一批里帧带来的小成品：那一份就是重问那条命令的回包（{@link TopicProducts}，主题表生成），带了的进 `got`（`key` ⇒ 成品）；
+ * 一批里帧带来的小成品（{@link TopicBody}：那个主题那一臂的体；现算的那几样就是重问那条命令的回包），带了的进 `got`（`key` ⇒ 成品）；
  * 没带的那几格的 `key` 进 `ask`（照旧重问）。`all` 照传（期间可能漏了 ⇒ 调用方整份重问）。
  * 不带 `key` 的主题（额度账 · 规则表）用 `key === null` 那一项：同一批留后一格。
+ * `c` 须是 `changed/<topic>` 那一条流来的（壳已按那一臂的类型解过那一帧，这里是界面里唯一一处把格体看成那一臂的类型）。
  */
-export function pushedProducts<T extends keyof TopicProducts>(c: Changed, _topic: T): { got: Map<string | null, TopicProducts[T]>; ask: (string | null)[]; all: boolean } {
-  const got = new Map<string | null, TopicProducts[T]>();
+export function pushedProducts<T extends BodiedTopic>(c: Changed, _topic: T): { got: Map<string | null, TopicBody<T>>; ask: (string | null)[]; all: boolean } {
+  const got = new Map<string | null, TopicBody<T>>();
   const ask: (string | null)[] = [];
   for (const cell of c.cells) {
     if (cell.body === undefined) ask.push(cell.key);
-    else got.set(cell.key, cell.body as TopicProducts[T]);
+    else got.set(cell.key, cell.body as TopicBody<T>);
   }
   return { got, ask, all: c.all };
 }
