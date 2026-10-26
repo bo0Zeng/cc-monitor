@@ -145,10 +145,59 @@ fn annotations_moving_ring_the_list_node() {
     let mut sink = FrameSink::new(tx);
     let mut list = sink.list.subscribe();
     let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
-    state.reload_annotations(crate::history::history_annotations::Table::new(), &mut sink);
+    state.reload_annotations(Default::default(), &mut sink);
     assert!(list_rang(&mut list), "注解动了 ⇒ 响");
     state.rejudge_hidden(&mut sink);
     assert!(list_rang(&mut list), "隐藏规则动了 ⇒ 响");
+}
+
+/// ★ 注解文件重读时这台的组那一半变了（会话进出组 · 固定 · 家在这台的组建 · 改名 · 解散）⇒ 推一帧 `changed {groups}`；
+/// 头一次只记下；只改了名 · 星标（组那一半没变）⇒ 不推。
+#[test]
+fn the_groups_half_moving_pushes_changed_groups_once() {
+    use crate::history::history_annotations::{Book, Entry, GroupRec, Table};
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(std::path::PathBuf::from("/nonexistent-projects"));
+    let one = |groups: &[&str], starred: bool| {
+        let mut t = Table::new();
+        t.insert(
+            "s".into(),
+            Entry {
+                groups: groups.iter().map(|g| g.to_string()).collect(),
+                starred,
+                ..Default::default()
+            },
+        );
+        t
+    };
+    let groups_pushed = |rx: &mut FrameRx| {
+        let mut n = 0;
+        while let Ok(f) = rx.try_recv() {
+            if matches!(f, Frame::Changed(crate::wire::Changed::Groups {})) {
+                n += 1;
+            }
+        }
+        n
+    };
+    state.reload_annotations((one(&[], false), Book::new()), &mut sink);
+    assert_eq!(groups_pushed(&mut rx), 0, "头一次只记下");
+    state.reload_annotations((one(&[], true), Book::new()), &mut sink);
+    assert_eq!(groups_pushed(&mut rx), 0, "只动了星标");
+    state.reload_annotations((one(&["g1"], true), Book::new()), &mut sink);
+    assert_eq!(groups_pushed(&mut rx), 1, "进了一组");
+    let mut book = Book::new();
+    book.insert(
+        "g1".into(),
+        GroupRec {
+            name: "开发".into(),
+            made: 1,
+        },
+    );
+    state.reload_annotations((one(&["g1"], true), book.clone()), &mut sink);
+    assert_eq!(groups_pushed(&mut rx), 1, "家在这台的组建了");
+    state.reload_annotations((one(&["g1"], true), book), &mut sink);
+    assert_eq!(groups_pushed(&mut rx), 0, "没变不推");
 }
 
 // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
@@ -1779,9 +1828,9 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         matches!(rx.try_recv(), Ok(Frame::SessionPrimed(_))),
         "读完那一帧紧跟着宣告（夹具没有池：就地读完）"
     );
-    state.reload_annotations(note(Some("甲")), &mut sink);
+    state.reload_annotations((note(Some("甲")), Default::default()), &mut sink);
     assert!(rx.try_recv().is_err(), "名字没变不发帧");
-    state.reload_annotations(note(Some("乙")), &mut sink);
+    state.reload_annotations((note(Some("乙")), Default::default()), &mut sink);
     match rx.try_recv() {
         Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             name_face, face, ..
@@ -1797,7 +1846,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         }
         other => panic!("expected SessionStatus, got {other:?}"),
     }
-    state.reload_annotations(note(None), &mut sink);
+    state.reload_annotations((note(None), Default::default()), &mut sink);
     assert!(
         matches!(rx.try_recv(), Ok(Frame::SessionStatus(crate::wire::SessionStatus { name_face, .. })) if name_face.label.0 == copy_core::copy_text("history.row.untitled", &[])),
         "改的名删了 ⇒ 落回下一档（记录里什么都没有 ⇒ 文案表那一句）"
@@ -4697,7 +4746,7 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     assert_eq!(hidden.map(|h| h.by), Some(cmd_wire::session::HiddenBy::Own));
     while rx.try_recv().is_ok() {}
     // 同一张表再读一遍 ⇒ 没变，不推。
-    state.reload_annotations(pin(true), &mut sink);
+    state.reload_annotations((pin(true), Default::default()), &mut sink);
     let mut pushed = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Changed(c) = f {
@@ -4706,7 +4755,7 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     }
     assert!(pushed.is_empty(), "没变也推了：{pushed:?}");
     // 取消隐藏（摘掉单个那一格、规则也不隐藏）⇒ 推一帧 `hidden: null`。
-    state.reload_annotations(pin(false), &mut sink);
+    state.reload_annotations((pin(false), Default::default()), &mut sink);
     while let Ok(f) = rx.try_recv() {
         if let Frame::Changed(c) = f {
             pushed.push(c);

@@ -342,6 +342,14 @@ pub struct Entry {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub resume_with: Option<ResumeWith>,
+    /// 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
+    pub groups: Vec<String>,
+    /// 固定（跟着组一起跨端）；缺 ＝ 没固定。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub pinned: bool,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,

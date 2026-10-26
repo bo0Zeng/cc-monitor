@@ -273,6 +273,58 @@ fn patch_semantics_match_what_the_monitor_did() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
+/// 组员关系与固定（`join` · `leave` · `pinned`）：进的不重记 · 出的摘掉 · 同一组既进又出 ⇒ 出 · 别的格不动；
+/// 都摘光了盘上那两格也没了；组 id 形状不对 ⇒ 拒、文件不动；家在这台的组那一节写注解时原样留着。
+#[test]
+fn group_membership_and_pin_are_two_cells_on_the_session() {
+    let p = temp_copy("groups");
+    let sid = "0000aaaa-0000-4000-8000-000000000001";
+    let mut raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    raw["groups"] = json!({"g1": {"name": "开发", "made": 1}});
+    std::fs::write(&p, serde_json::to_vec(&raw).unwrap()).unwrap();
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"join": ["g1", "g2", "g1"], "pinned": true}}),
+        7,
+    )
+    .unwrap();
+    assert_eq!(e["entry"]["groups"], json!(["g1", "g2"]));
+    assert_eq!(e["entry"]["pinned"], true);
+    assert_eq!(e["entry"]["customTitle"], "占位标题一", "别的格不动");
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"join": ["g3"], "leave": ["g2", "g3"]}}),
+        8,
+    )
+    .unwrap();
+    assert_eq!(e["entry"]["groups"], json!(["g1"]), "既进又出 ⇒ 出");
+    answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"leave": ["g1"], "pinned": false}}),
+        9,
+    )
+    .unwrap();
+    let disk: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    assert!(disk["entries"][sid].get("groups").is_none(), "{disk}");
+    assert!(disk["entries"][sid].get("pinned").is_none(), "{disk}");
+    assert_eq!(disk["groups"]["g1"]["name"], "开发", "组那一节原样");
+    let before = std::fs::read(&p).unwrap();
+    assert_eq!(
+        answer_annotate_at(
+            &own_of(&p),
+            &json!({"sid": sid, "patch": {"join": ["g 1"]}}),
+            10
+        )
+        .unwrap_err()
+        .code,
+        "bad_args"
+    );
+    assert_eq!(std::fs::read(&p).unwrap(), before);
+    let (_, book) = load_all_at(&p).unwrap();
+    assert_eq!(book["g1"].name, "开发");
+    let _ = std::fs::remove_dir_all(p.parent().unwrap());
+}
+
 /// 「没人答时自动答」那一格的值域：0 ＝ 关 · 超了分钟上限拒 · 那一句去首尾空白、空白 ⇒ 缺省 · 过长拒；分钟上限短于那一家给 hook 的期限（到点时 hook 还活着）。
 #[test]
 fn the_auto_answer_setting_is_checked_before_it_is_written() {

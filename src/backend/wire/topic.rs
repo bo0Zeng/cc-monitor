@@ -33,7 +33,7 @@ pub struct TopicSpec {
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
     /// 全部主题（表的行序）。
-    const ALL: [Topic; 15];
+    const ALL: [Topic; 16];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
     /// 线上名。
@@ -41,7 +41,7 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
-    const ALL: [Topic; 15] = [
+    const ALL: [Topic; 16] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -57,6 +57,7 @@ impl TopicExt for Topic {
         Topic::SessionHidden,
         Topic::FilesDir,
         Topic::HistoryList,
+        Topic::Groups,
     ];
 
     fn spec(self) -> TopicSpec {
@@ -202,6 +203,16 @@ impl TopicExt for Topic {
                 body: false,
                 body_cap: 0,
                 reask: "history-list",
+            },
+            // 走 watcher 的出方向（不可丢）：注解文件重读时组那一半变了才推（`observe/watcher.rs::reload_annotations`）。
+            Topic::Groups => TopicSpec {
+                name: "groups",
+                lossy: false,
+                key: false,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "groups-read",
             },
         }
     }
