@@ -75,11 +75,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧一台常驻流的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，后端那棵 workspace，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
-        "src/comms/resident-client/feed.rs",
-        "client_by",
-        "手机那一侧一问一答取连接的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
-    ),
-    (
         "src/common/batch-core/src/lib.rs",
         "CMD_STOP",
         "手机那一侧停一组发的命令名：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/batch.rs`，后端那棵 workspace，不在扫描面里）",

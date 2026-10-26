@@ -332,6 +332,20 @@ impl InboundClient {
         self.send_until(cmd, args, Some(view), deadline).await
     }
 
+    /// **问另一台**：经这条连接通往的那个后端（本机后端）转给它持有的 `machine` 那台的常驻流 —— 信封多一格 `machine`，
+    /// `view` 照带（那台照它裁）。那台认不认这条 · 形状对不对 · 做不做得到由本机后端连那台的客户端判、照码回；
+    /// 这里不拿这条连接的命令表拦（那是本机后端的，不是那台的）。
+    pub async fn call_at(
+        &self,
+        machine: &str,
+        cmd: &str,
+        args: Value,
+        view: Option<&Value>,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
+        self.send(Some(machine), cmd, args, view, deadline).await
+    }
+
     /// [`Self::call`] · [`Self::call_until`] · [`Self::call_until_viewed`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
     async fn send_until(
         &self,
@@ -340,8 +354,42 @@ impl InboundClient {
         view: Option<&Value>,
         deadline: tokio::time::Instant,
     ) -> Result<Option<Value>, CallError> {
+        self.send(None, cmd, args, view, deadline).await
+    }
+
+    /// 发一条命令（`at` ＝ 问的是这条连接通往的后端持有的哪一台；`None` ＝ 问它自己）、在 `deadline` 之前等它的结局。
+    async fn send(
+        &self,
+        at: Option<&str>,
+        cmd: &str,
+        args: Value,
+        view: Option<&Value>,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
         // 只为报错里那一格「等了多久」（`Timeout.after`）：这一问开始时还剩多少。
         let timeout = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if at.is_none() {
+            self.gate(cmd)?;
+        }
+        let id = self.fresh_id();
+        let rx = self
+            .register_waiter(&id, None)
+            .ok_or(CallError::TooManyPending)?;
+        // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
+        let line = WriteJob::Line(encode_line(
+            &id,
+            cmd,
+            &args,
+            Some(timeout),
+            self.tz.get().map(String::as_str),
+            view,
+            at,
+        ));
+        self.settle(id, cmd, rx, line, timeout, deadline).await
+    }
+
+    /// 这条连接通往的后端认不认 · 形状对不对 · 做不做得到：不行就不发，事前就拒（一个字节不出本侧）。
+    fn gate(&self, cmd: &str) -> Result<(), CallError> {
         if !self.accepts(cmd) {
             return Err(CallError::Unsupported {
                 cmd: cmd.to_string(),
@@ -362,19 +410,19 @@ impl InboundClient {
                 code,
             });
         }
-        let id = self.fresh_id();
-        let rx = self
-            .register_waiter(&id, None)
-            .ok_or(CallError::TooManyPending)?;
-        // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
-        let line = WriteJob::Line(encode_request(
-            &id,
-            cmd,
-            &args,
-            Some(timeout),
-            self.tz.get().map(String::as_str),
-            view,
-        ));
+        Ok(())
+    }
+
+    /// 编好的那一行入队、等它的结局（入队之后调用方走人 ⇒ 补发撤单）。
+    async fn settle(
+        &self,
+        id: String,
+        cmd: &str,
+        rx: oneshot::Receiver<Outcome>,
+        line: WriteJob,
+        timeout: Duration,
+        deadline: tokio::time::Instant,
+    ) -> Result<Option<Value>, CallError> {
         match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
@@ -683,6 +731,9 @@ struct RequestLine<'a> {
     /// 出口的声明（要哪几格 · 哪几格不要），原样搬上线。
     #[serde(skip_serializing_if = "Option::is_none")]
     view: Option<&'a Value>,
+    /// 问的是这条连接通往的后端持有的哪一台（[`InboundClient::call_at`]）；缺 ＝ 问它自己。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    machine: Option<&'a str>,
 }
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
@@ -704,6 +755,19 @@ pub fn encode_request(
     tz: Option<&str>,
     view: Option<&Value>,
 ) -> String {
+    encode_line(id, cmd, args, within, tz, view, None)
+}
+
+/// [`encode_request`] 外加问的是哪一台（`machine`，[`InboundClient::call_at`]）。
+fn encode_line(
+    id: &str,
+    cmd: &str,
+    args: &Value,
+    within: Option<Duration>,
+    tz: Option<&str>,
+    view: Option<&Value>,
+    machine: Option<&str>,
+) -> String {
     let within_ms = within.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1));
     let mut s = serde_json::to_string(&RequestLine {
         id,
@@ -712,6 +776,7 @@ pub fn encode_request(
         within_ms,
         tz,
         view,
+        machine,
     })
     .expect("RequestLine 只含 &str/&Value/u64，序列化不可失败");
     s.push('\n');

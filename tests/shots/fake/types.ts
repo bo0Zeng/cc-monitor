@@ -72,6 +72,8 @@ export interface World {
   closedMachines: string[];
   /** 那台的 cc-monitor 比这一版旧（那一轮 `up` · `older`，`machine.ts::roundsOf`）。 */
   staleMachines: string[];
+  /** 正在接那台常驻的那几台（那一轮 `connecting`，`machine.ts::roundsOf`）。 */
+  connectingMachines?: string[];
   /** 主机指纹与记下的不一样的那几台（那一轮 `down` · `host_key`，带那台出示的那一枚）。 */
   hostKeyChanged?: string[];
   /** 正在把 cc-monitor 装上去的那几台（部署那一侧的事实，`MachineDisk.deploy`）。 */

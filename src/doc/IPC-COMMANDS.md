@@ -8882,16 +8882,17 @@ path: string, dir: boolean, class: OwnClass, exists: boolean,
  * 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
  */
 size_text: Words | null, };
-type Seen<T> = { "state": "kept", 
+type Seen<T> = { "state": "kept", seen: SeenAt, value: T, } | { "state": "unreadable", seen: SeenAt, };
+type Seen<T> = { "state": "kept", seen: SeenAt, value: T, } | { "state": "unreadable", seen: SeenAt, };
+type SeenAt = { 
 /**
  * 记下的时刻（毫秒）。
  */
-atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
-type Seen<T> = { "state": "kept", 
+atMs: number, 
 /**
- * 记下的时刻（毫秒）。
+ * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
  */
-atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
+said: Words, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
 type Words = string;
 ```
@@ -12104,82 +12105,6 @@ removed: boolean, said: string, };
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `not_carried` · `fenced` · `place_failed`
 
-#### `machine-round`
-
-交那台接常驻这一轮的结论。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-入参 `MachineRoundReq` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
-type MachineBlocker = "not_unix" | "no_backend" | "old_backend";
-type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
-type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineRound = { "state": "connecting" } | { "state": "up", relation: VersionRelation, differs: Array<string>, } | { "state": "down", problem: MachineRoundProblem, blocker: MachineBlocker | null, };
-type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, 
-/**
- * 因主机指纹被拒时库里记下的那一枚（库里没有同类型的 ⇒ 空串；别的原因 ⇒ `None`）。
- */
-expected_key: string | null, };
-type MachineRoundReq = { machine: string, round: MachineRound, version: string, };
-type MachineStage = "deploy" | "attach";
-type MachineState = { 
-/**
- * 给人看的那台的名字（问题行那一句里说的就是它）。
- */
-name: string, state: MachineStateKind, 
-/**
- * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
- */
-offline: boolean, 
-/**
- * 没连上的原因码（`down` · `host_key_changed` 才有）。
- */
-reason: DialWhy | null, 
-/**
- * 正在连时到哪一步。
- */
-stage: MachineStage | null, 
-/**
- * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
- */
-version: string | null, 
-/**
- * 与这一版的版本关系（握手过才有）。
- */
-versionRelation: VersionRelation | null, 
-/**
- * 那台的系统（部署问到过才有）。
- */
-os: string | null, 
-/**
- * 名字旁那个词（连着时空）。
- */
-word: string, 
-/**
- * 问题行那一句（空 ⇒ 不出问题行）。
- */
-said: string, fixes: Array<MachineFixButton>, 
-/**
- * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
- */
-seenHostKey: string | null, 
-/**
- * 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。拨号核心说的，不在这里算。
- */
-expectedHostKey: string | null, 
-/**
- * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
- */
-detail: string | null, };
-type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
-type VersionRelation = "same" | "older" | "newer" | "incomparable";
-```
-
-码：`bad_args`
-
 #### `machine-read`
 
 机器表里每台此刻的状态。
@@ -12249,6 +12174,35 @@ type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
 码：`bad_args`
+
+#### `machine-wake`
+
+叫醒那台的常驻流（不再停着、断着就马上再接）。
+
+收 `args` · 可撤 · 只在流上
+
+入参 `MachineName` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineName = { machine: string, };
+```
+
+码：`bad_args`
+
+#### `machine-stop`
+
+停那台的常驻流、再停那台的常驻后端。
+
+收 `args` · 可撤 · 只在流上
+
+入参 `MachineName` · 回包 `MachineStopped`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineName = { machine: string, };
+type MachineStopped = { stopped: string, pid: number | null, };
+```
+
+码：`bad_args` · `stop_failed`
 
 #### `place-verdict`
 
@@ -13411,7 +13365,11 @@ domains: Array<PlanDomain>, slices: Array<PlanSlice>, bySession: { [key in strin
 /**
  * 这一份输出的摘要：变了才算计划变了。
  */
-rev: string, readAt: number, readAtText?: string, stale: PlanStale | null, needCount: number, };
+rev: string, readAt: number, readAtText?: string, 
+/**
+ * 上次读数那一格（与 `readAtText` 同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
+ */
+seen?: SeenAt, stale: PlanStale | null, needCount: number, };
 type PlanReadError = { file: string | null, line: number | null, message: string | null, };
 type PlanReadReq = { 
 /**
@@ -13527,6 +13485,15 @@ face: SessionFace,
 label: string | null, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" } | { "kind": "undecided" };
 type PlanWhyShort = { text: string, wait: boolean, };
+type SeenAt = { 
+/**
+ * 记下的时刻（毫秒）。
+ */
+atMs: number, 
+/**
+ * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+ */
+said: Words, };
 type SessionCan = { 
 /**
  * 关掉它的标签页。

@@ -1,16 +1,16 @@
 //! **一台的常驻流，断了自己接回去** —— 桌面与手机同一条重连循环（全仓只这一处，`one_loop_guard`）。宿主只接几根线：
-//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 每一轮装不装后端（[`Transport::installs`]）。
+//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 装不装后端（[`Transport::installs`]）。
 //!
 //! 接一台只有一条路：先直接接常驻流（`--resident-attach`，平时一条 exec 就接上）；没接上 ⇒ `--resident-ensure`（常驻不在就起）
 //! ⇒ 再接（小中继回 `absent` 时隔 [`RELAY_WAIT`] 再试）。新旧由那台在 attach 回话里给（attach 行带手上这一版）；认不得这一形 attach 行的当旧：
-//! - 每一轮自己装后端的宿主（桌面）：接上的不是手上这一版 ⇒ `--resident-ensure --replace`（只升不降由那台判）、换了就再接；
+//! - 自己装后端的宿主（本机后端）：接不上 ⇒ 先装再 ensure；接上的不是手上这一版 ⇒ 先装、再 `--resident-ensure --replace`（只升不降由那台判）、换了就再接；
 //! - 不装的（手机）：旧 ⇒ 照接、说「要更新」（认不得 attach 行的接不上 ⇒ 断着、修法「更新」）；同或新 ⇒ 接。
 //!
 //! 能不能用逐条命令由形状指纹判（[`InboundClient::call`]）。
 //!
 //! 什么时候接：
 //! - 宿主交了一条 SSH（[`Feed::set_transport`]）⇒ 当场接；换了一条 ⇒ 旧流关掉、在新的上接；交 `None` ⇒ 不接、停在断开。
-//! - 每一轮开拨之前先做宿主那一步（[`Transport::before_round`]，桌面：把这一版的后端放到那台）。
+//! - 装得了后端的宿主（本机后端）只在接不上、或接上的不是这一版时先装（[`Transport::install`]），接上的就是这一版就什么都不多做。
 //! - 流断了 ⇒ 按退避接（[`crate::backoff`]，活过 30 s 才清零）。下面那条 SSH 死没死不问宿主：再拨那一拨在拨号核心的池里自己换一条。
 //! - 开链路那一步 [`DIAL_WITHIN`] 里拨号核心一步进展都没报（静默断网；慢链路每过一步重新计时，[`Progress`]）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
 //!   换了一条 SSH）⇒ 丢下马上再拨。
@@ -118,8 +118,8 @@ pub async fn dial_within<F: Future>(progress: &Progress, dial: F) -> Option<F::O
     }
 }
 
-/// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全；外加宿主那两样（每一轮之前做的那一步 · 装不装得了后端）。
-/// 手机：拨号核心在这台手机上开的链路；桌面：本机常驻后端给的链路（monitor `stream_source/run.rs`）。
+/// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全；外加宿主那两样（装不装得了后端 · 装那一步）。
+/// 手机：拨号核心在这台手机上开的链路；本机常驻后端：池里那条 SSH（`control/feeds.rs`）。
 pub trait Transport: Send + Sync + 'static {
     type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
     /// 开一条长 exec。拨号核心每报一步进展（ack 之前「过了一步」那一形阶段行 `{"stage":{"kind":"step",…}}`，`ssh-dial` 的 `step`），宿主原样交给 `progress`（[`Progress`]）。
@@ -129,11 +129,13 @@ pub trait Transport: Send + Sync + 'static {
         progress: Progress,
     ) -> Boxed<'_, Result<Self::Stream, Problem>>;
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>>;
-    /// 每一轮开拨之前（桌面：部署预检，把这一版的后端放到那台的落点）。缺省不做事。
-    fn before_round(&self) -> Boxed<'_, ()> {
+    /// 把手上这一版的后端放到那台的落点（本机后端：`deploy-install` 那一趟）。只在 [`Self::installs`] 的宿主上、
+    /// 接不上或接上的不是这一版（`Relation::Same` 以外）时走，紧接着 `--resident-ensure [--replace]`。装没装成由宿主自己记（机器状态那几步）、
+    /// 不阻断这一轮：手动装的后端照样接。缺省不做事。
+    fn install(&self) -> Boxed<'_, ()> {
         Box::pin(async {})
     }
-    /// 这一侧每一轮自己装后端（桌面）⇒ 接上的不是这一版时请那台 `--replace`；不装 ⇒ `false`（手机，缺省）。
+    /// 这一侧自己装后端（本机后端）⇒ 接不上 / 接上的不是这一版时先 [`Self::install`]、再请那台 `--replace`；不装 ⇒ `false`（手机，缺省）。
     fn installs(&self) -> bool {
         false
     }
@@ -148,6 +150,8 @@ pub const ATTACH: &str = "--resident-attach";
 pub const ENSURE: &str = "--resident-ensure";
 /// 换装：在跑的那一个停掉、换成落点上这一版。
 pub const ENSURE_REPLACE: &str = "--resident-ensure --replace";
+/// 停那台的常驻（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），回话读法同 [`read_one_shot`]。
+pub const STOP: &str = "--resident-stop";
 
 /// 一台此刻通不通（只有控制要的：成品由后端 `deploy::machine` 照它定）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -483,7 +487,6 @@ impl<T: Transport> Feed<T> {
             };
             self.set_state(State::Connecting).await;
             let started = tokio::time::Instant::now();
-            t.before_round().await;
             let cut = Arc::new(Notify::new());
             *lock(&self.cut) = Some(Arc::clone(&cut));
             let installs = t.installs();
@@ -594,13 +597,18 @@ impl<T: Transport> Feed<T> {
                 return Err(self.attach_problem(e))
             }
             Err(_) => {
+                // 接不上（没人在听 · 不是我们的后端 …）：装得了的宿主先把这一版放到落点，再 ensure。
+                if t.installs() {
+                    t.install().await;
+                }
                 self.ensure(t, ENSURE).await?;
                 Some(self.attach_after_ensure(t, cut).await?)
             }
         };
-        // 每一轮自己装后端的宿主：那台不是手上这一版 ⇒ 请它确保在听的不旧于落点（只升不降由 `--replace` 自己判）；换了才重接。
+        // 自己装后端的宿主：那台不是手上这一版 ⇒ 先装、再请它确保在听的不旧于落点（只升不降由 `--replace` 自己判）；换了才重接。
         let attached = match attached {
             Some(a) if t.installs() && a.relation != Relation::Same => {
+                t.install().await;
                 if self.ensure(t, ENSURE_REPLACE).await? {
                     tracing::info!(
                         "resident feed [{}] 那台换上了落点那一份 ⇒ 重接",
@@ -615,9 +623,10 @@ impl<T: Transport> Feed<T> {
             Some(a) => a,
             None if t.installs() => {
                 tracing::info!(
-                    "resident feed [{}] 那台认不得这一形 attach 行 ⇒ 换掉再接",
+                    "resident feed [{}] 那台认不得这一形 attach 行 ⇒ 装上这一版、换掉再接",
                     self.cfg.machine
                 );
+                t.install().await;
                 self.ensure(t, ENSURE_REPLACE).await?;
                 self.attach_after_ensure(t, cut).await?
             }

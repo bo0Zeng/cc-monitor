@@ -825,3 +825,34 @@ fn the_promise_face_in_the_ledger_equals_the_code() {
         "本机 (Linux, aarch64) 不在「不承诺」里"
     );
 }
+
+/// 各台的常驻流装后端那一步读 monitor 落在盘上的那几格（`slots/<os>-<arch>`，同 `deploy-install` 的 `slots`）：
+/// 名字认得出、字节里恰好一个身份戳的才算带着，身份照字节自报；目录不在 ⇒ 那一句（这一轮不装），不装作带着零格。
+#[test]
+fn the_carried_slots_are_the_stamped_files_monitor_left_on_disk() {
+    let home = std::env::temp_dir().join(format!("ccm-slots-dir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let err = carried_slots_in(&home).expect_err("目录不在 ⇒ 读不成");
+    assert!(err.contains("slots"), "{err}");
+    let at = home.join(".cc-monitor/bin/slots");
+    std::fs::create_dir_all(&at).unwrap();
+    let stamped = |id: &str| format!("ELF..{}{id}{}..", MARKS.open, MARKS.close);
+    std::fs::write(at.join("linux-x86_64"), stamped("b1")).unwrap();
+    std::fs::write(at.join("linux-arm64"), "没有身份戳").unwrap();
+    std::fs::write(at.join("solaris-sparc"), stamped("b2")).unwrap();
+    let rows = carried_slots_in(&home).expect("读得出那一格");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(
+        (
+            rows[0].os.as_str(),
+            rows[0].arch.as_str(),
+            rows[0].id.as_str()
+        ),
+        ("Linux", "x86_64", "b1")
+    );
+    assert!(
+        super::slots_of(&rows).is_ok(),
+        "读出来的那一行 `deploy-install` 认得"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

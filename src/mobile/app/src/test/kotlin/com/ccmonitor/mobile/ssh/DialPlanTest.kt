@@ -157,8 +157,4 @@ private object NoHostDao : HostDao {
     override suspend fun upsert(host: Host) = throw NotImplementedError()
 
     override suspend fun upsertAll(hosts: List<Host>) = throw NotImplementedError()
-
-    override suspend fun delete(host: Host) = throw NotImplementedError()
-
-    override suspend fun deleteById(id: String) = throw NotImplementedError()
 }

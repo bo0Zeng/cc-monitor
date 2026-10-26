@@ -962,6 +962,8 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
 const FRAME_PLANE_ANYWHERE: &[&str] = &[
     // 〔C4e 现打〕`LEDGER` 里是 `Both`（问那台机器后端的状态，体里走 `client_for(`）—— 不是候选，因为它不在 `Remote` 那一栏。
     "backend_status",
+    // 〔A10-3-2 ①〕`LEDGER` 里是 `Both`：远端那一支先叫醒本机后端手上那台的常驻流（`wake_backend_feed`，体里走 `client_for(`）。
+    "backend_start",
 ];
 
 /// **候选（派生 = `FramePlane`）的人裁** —— 闭集见 [`FrameVerdict`]，理由必须可追问。

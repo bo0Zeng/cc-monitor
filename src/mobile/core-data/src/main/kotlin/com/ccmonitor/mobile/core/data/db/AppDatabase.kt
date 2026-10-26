@@ -40,4 +40,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun settingsDao(): SettingsDao
 
     abstract fun cacheDao(): CacheDao
+
+    abstract fun hostRemovalDao(): HostRemovalDao
 }

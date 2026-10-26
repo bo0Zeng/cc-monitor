@@ -1,14 +1,11 @@
-//! 一次性远端 exec 与限长读行；远端后端在 shell 里的写法。
+//! 一次性远端 exec 与限长读行。
 
 //
 // ═══════════ 拨号归后端：接远端后端的每一跳都只经拨号代理 ═══════════
 //
 // 拨号全部在后端的拨号代理里（`src/backend/dial/`）；界面这一侧拿链路的唯一入口是宿主 `dial_host`，读应答的是通信层成员 `ssh_link`。
 // 没有回落：找不到本机后端二进制就报（`D11`），不在进程内拨（`dial_move_judge` 钉着）。
-
-/// 远端后端在 shell 里的写法：恒是那台的 `~/.cc-monitor/bin/ccm`（后端二进制本身），
-/// 可填的 `backendPath` 删了。常量一份住 `relay_route_core`（后端往远端拼命令也读它）。
-pub(crate) const BACKEND_CMD: &str = relay_route_core::BACKEND_LANDING_SHELL;
+// 远端后端在 shell 里的写法（`~/.cc-monitor/bin/ccm`）只住 `relay_route_core`：往那台拼命令的都在后端（停 · 装 · 接常驻）。
 
 // 一次性远端命令只有 [`connect_and_exec_capture`]（收全、有上限、带退出码）。
 
