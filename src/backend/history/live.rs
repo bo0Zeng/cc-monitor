@@ -1,5 +1,5 @@
-//! **过渡**：活会话表（[`super::live_table`]）之前的那几个名字，只剩 `history_list` · `faces/history_face` 两份还在问
-//! （它们此刻在别的权力范围手里）。一律转问那张表，不另判；那两份改读表之后整份删。
+//! **过渡**：活会话表（[`super::live_table`]）之前的那两个名字，只剩 `history_list`（与它的判据，在别的权力范围手里）还在问。
+//! 一律转问那张表，不另判；它改读表之后整份删。
 
 /// 这台此刻活着的每个会话在干什么（[`super::live_table::LiveTable::doing`]）。
 pub(crate) fn live_activity(

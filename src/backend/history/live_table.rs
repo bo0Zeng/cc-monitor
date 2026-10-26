@@ -103,12 +103,12 @@ pub(crate) struct PidWait {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LiveTable {
     /// 造它的那个家（发布的那份只答问同一个家的）。
-    home: PathBuf,
-    rows: Vec<LiveRow>,
+    pub(crate) home: PathBuf,
+    pub(crate) rows: Vec<LiveRow>,
     /// 此刻有待答请求挂着的会话（常驻进程那一份登记表）。
-    asked: BTreeSet<String>,
+    pub(crate) asked: BTreeSet<String>,
     /// 此刻可重连的那几条（claude 退了、tmux 里还挂着它；会话账本交来）。
-    reconnectable: BTreeSet<String>,
+    pub(crate) reconnectable: BTreeSet<String>,
 }
 
 impl LiveTable {

@@ -799,6 +799,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一条链路手里的信用（= 在途下行字节）：`link-open` 的初始窗口与累计 `link-credit`",
         "拒收+回错",
     ),
+    (
+        "src/backend/dial/link.rs",
+        "ACK_HEAD_MAX",
+        "开链路那一趟从下行开头认 ack 时攒的那几行（超了就不再认：字节照样往下走，只是这一次不记「上次连上的那条地址」）",
+        "索引截断（不丢数据）",
+    ),
     // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
     (
         "src/backend/assets/pubkey.rs",

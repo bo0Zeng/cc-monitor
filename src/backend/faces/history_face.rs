@@ -717,7 +717,6 @@ pub(crate) fn needs_with(
     crate::observe::recognize::facts::needs_list(
         crate::observe::accounts_query::live_needs(
             home,
-            &crate::control::asks::sids(),
             &|n, sid| {
                 let path = locate::session_record(home, sid)
                     .ok()
@@ -1048,7 +1047,7 @@ fn dress_open_turn(home: &Path, path: &str, last: &mut crate::observe::recognize
         crate::observe::recognize::facts::needs_of(
             crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
             &last.pending,
-            crate::observe::accounts_query::session_wait(home, sid).as_ref(),
+            crate::history::live_table::now(home).wait_of(sid).as_ref(),
         ),
         sid,
         off.as_ref(),
@@ -1285,25 +1284,26 @@ pub(crate) fn facts_at(
         facts::needs_of(
             crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
             &facts.pending,
-            accounts_query::session_wait(home, sid).as_ref(),
+            crate::history::live_table::now(home).wait_of(sid).as_ref(),
         ),
         sid,
         facts.answer_off.as_ref(),
     );
     // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加）。
-    facts.background = accounts_query::session_background(home, sid).map(|born| {
-        let now = crate::common::time::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-        facts::background_of(&facts.bg_tasks, born, now)
-    });
+    facts.background = crate::history::live_table::now(home)
+        .background_since(sid)
+        .map(|born| {
+            let now = crate::common::time::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+            facts::background_of(&facts.bg_tasks, born, now)
+        });
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
     facts::settle_pending(&mut facts, holders.is_some());
     // 状态一句会走的那一截：照 pidfile 此刻那一态 ＋ 上面这几格写（不活 ⇒ 不带）。
     facts.line = facts::line_of(
-        crate::history::live::live_activity(home)
-            .get(sid)
-            .copied()
+        crate::history::live_table::now(home)
+            .doing_one(sid)
             .flatten(),
         &facts,
         crate::common::time::now()
@@ -1354,14 +1354,12 @@ pub(crate) fn kin_of(
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
     };
-    let live = crate::history::live::live_activity(home);
-    let bg = crate::observe::accounts_query::live_background(home);
+    let live = crate::history::live_table::now(home);
+    let bg = live.background();
     let kin = |k: &str| Kin {
         sid: k.to_string(),
         title: title_here(k, &annotations),
-        face: crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(
-            crate::history::live::life_of(&live, k),
-        ))),
+        face: crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(live.life_of(k)))),
         hidden: crate::history::session_hidden::hidden_here(
             here,
             &annotations,

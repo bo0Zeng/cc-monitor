@@ -201,6 +201,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
     "src/frontend/ui/kit/fold.ts", // 组头 ⌄（同一颗折叠号：开合转 90°）
     "src/frontend/ui/kit/menu.ts", // 组的菜单（「⋯」/ 组头右键）
+    "src/frontend/ui/kit/morph.ts", // 行与组头照新的一串摆（`place`：留着的原地不动、次序不对才挪）
     "src/frontend/ui/kit/popover.ts", // 「需手动」点开的那个浮层（开 · 关 · 数据变了原地换内容）
     "src/frontend/ui/needs-panel.ts", // 那个浮层里排什么（会话 · 计划项 · 会话外的每一项 · 断开 / 无法读取）
     "src/frontend/ui/kit/status-dot.ts", // 状态点

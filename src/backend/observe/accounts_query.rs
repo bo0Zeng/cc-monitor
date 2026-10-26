@@ -644,19 +644,6 @@ pub(crate) fn session_holders_by(
     }
 }
 
-/// 过渡：`faces/history_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表（`LiveTable::wait_of`）。
-pub(crate) fn session_wait(
-    agent_home: &Path,
-    sid: &str,
-) -> Option<super::recognize::facts::PidWait> {
-    crate::history::live_table::now(agent_home).wait_of(sid)
-}
-
-/// 过渡：同上（`LiveTable::background_since`）。
-pub(crate) fn session_background(agent_home: &Path, sid: &str) -> Option<Option<u64>> {
-    crate::history::live_table::now(agent_home).background_since(sid)
-}
-
 /// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（活会话表）· 在等你时等的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Doing {
@@ -684,10 +671,8 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 /// **这台上需手动的会话**：活会话表说在等人的每一个（那台说在等 ∪ 有请求挂着，`LiveTable::needs`），带它在等什么（[`waiting_needs`]，不另判），
 /// 先答的在前（`needs.rank` 小的先，[`super::recognize::facts::needs_rank`]）。
 /// `dress` ＝ 给一条 `needs` 配上它挂着的请求（顶层壳交进来）。`hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
-/// `_asked` 过渡：调用方（`faces/history_face.rs`，在别的权力范围手里）还交这一格；挂着的请求表里已有。
 pub(crate) fn live_needs(
     agent_home: &Path,
-    _asked: &[String],
     dress: &dyn Fn(
         Option<super::recognize::facts::Needs>,
         &str,
@@ -739,11 +724,6 @@ pub(crate) fn live_needs(
 /// 过渡：`faces/plan_return_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表（`LiveTable::waiting`）。
 pub(crate) fn waiting_now(agent_home: &Path, sid: &str, _asked: &[String]) -> bool {
     crate::history::live_table::now(agent_home).waiting(sid)
-}
-
-/// 过渡：`faces/history_face.rs` 还问这个名字 —— 转问活会话表（`LiveTable::background`）。
-pub(crate) fn live_background(agent_home: &Path) -> std::collections::BTreeSet<String> {
-    crate::history::live_table::now(agent_home).background()
 }
 
 /// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::recognize::facts::needs_of`] 判（同 `history-facts.needs`）；

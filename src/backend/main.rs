@@ -104,6 +104,8 @@ async fn main() {
     topic_hook::install(topic_body::body_now);
     // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那一处写根。
     dial::host();
+    // 拨号层要的「这一端的机器表怎么读」：起来那一下装一次（之后 `link-open` · 问那台 · 传输 · 部署都按名字查它）。
+    faces::install_machines();
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
