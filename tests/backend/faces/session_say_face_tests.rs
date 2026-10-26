@@ -87,8 +87,17 @@ fn idle_only_refuses_unless_the_session_is_idle() {
     r.idle_only = Some(true);
     let case = |d: Option<Option<A>>| idle_gate(&r, &move |_: &str| d).map(|s| s.why);
     assert_eq!(case(Some(Some(A::Idle))), None, "闲着 ⇒ 放行");
-    assert_eq!(case(Some(Some(A::NeedsYou))), None, "等人那一档交给 say_with");
-    for d in [Some(Some(A::Working)), Some(Some(A::BackgroundWork)), Some(None), None] {
+    assert_eq!(
+        case(Some(Some(A::NeedsYou))),
+        None,
+        "等人那一档交给 say_with"
+    );
+    for d in [
+        Some(Some(A::Working)),
+        Some(Some(A::BackgroundWork)),
+        Some(None),
+        None,
+    ] {
         assert_eq!(case(d), Some(Some(Refused::NotIdle)), "{d:?}");
     }
     let refused = idle_gate(&r, &|_: &str| Some(Some(A::Working))).unwrap();

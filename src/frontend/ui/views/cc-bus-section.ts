@@ -13,28 +13,9 @@ import { agentOnline, readInbox, readRoster, type BusList } from "../cc-bus-cont
 import { LOCAL_ORIGIN } from "../backend-policy";
 
 import { copyText } from "../copy-table";
-import type { BusAct } from "../generated/BusAct";
 import { button } from "../kit/button";
 import { sayFailure } from "../kit/detail";
 import { morph } from "../kit/morph";
-
-/** 信封动作码 ⇒ 给人看的那个词（住文案表）；码集合由生成的 `BusAct` 管，少一个编不过。 */
-function actWord(a: BusAct): string {
-  switch (a) {
-    case "ask":
-      return copyText("ccBus.act.ask");
-    case "answer":
-      return copyText("ccBus.act.answer");
-    case "request":
-      return copyText("ccBus.act.request");
-    case "inform":
-      return copyText("ccBus.act.inform");
-    case "handback":
-      return copyText("ccBus.act.handback");
-    case "correct":
-      return copyText("ccBus.act.correct");
-  }
-}
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -241,7 +222,7 @@ export class CcBusSection {
         line.className = "cc-bus-msg-line";
         const none = copyText("ccBus.inbox.missing");
         const [ts, from] = [m.ts || none, m.from || none];
-        line.textContent = copyText("ccBus.inbox.line", { ts, from, act: actWord(m.act), title: m.title, text: m.text });
+        line.textContent = copyText("ccBus.inbox.line", { ts, from, act: m.act_said, title: m.title, text: m.text });
         box.appendChild(line);
       }
     } catch (e) {

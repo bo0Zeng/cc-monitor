@@ -184,6 +184,7 @@ function env(over: Record<string, unknown>): Record<string, unknown> {
     to: "proj-b",
     tier: 2,
     act: "inform",
+    act_said: "SAID-inform",
     title: "占位标题",
     re: null,
     refs: [],
@@ -211,7 +212,7 @@ describe("收件箱", () => {
     const s = await readOnce((op) =>
       op === "bus-inbox"
         ? {
-            messages: [env({ act: "ask", title: "要不要合", text: "hello" }), env({ from: "", ts: "", title: "只有标题" })],
+            messages: [env({ act: "ask", act_said: "SAID-ask", title: "要不要合", text: "hello" }), env({ from: "", ts: "", title: "只有标题" })],
             skipped: 0,
             truncated: false,
           }
@@ -223,8 +224,8 @@ describe("收件箱", () => {
     const lines = [...row.querySelectorAll(".cc-bus-msg-line")].map((l) => l.textContent);
     const none = copyText("ccBus.inbox.missing");
     expect(lines).toEqual([
-      copyText("ccBus.inbox.line", { ts: "2026-07-26T12:06:19Z", from: "peer-a", act: copyText("ccBus.act.ask"), title: "要不要合", text: "hello" }),
-      copyText("ccBus.inbox.line", { ts: none, from: none, act: copyText("ccBus.act.inform"), title: "只有标题", text: "" }),
+      copyText("ccBus.inbox.line", { ts: "2026-07-26T12:06:19Z", from: "peer-a", act: "SAID-ask", title: "要不要合", text: "hello" }),
+      copyText("ccBus.inbox.line", { ts: none, from: none, act: "SAID-inform", title: "只有标题", text: "" }),
     ]);
   });
 

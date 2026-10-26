@@ -66,7 +66,7 @@ use crate::plugin::invoke::Done;
 use crate::plugin::invoke::NotRun;
 use crate::plugin::invoke::TIMED_OUT_CODE;
 
-use super::cc_bus_wire::{BusAgent, BusEnvelope, BusInbox, BusInboxReq, BusList};
+use super::cc_bus_wire::{BusAgent, BusEnvelope, BusInbox, BusInboxItem, BusInboxReq, BusList};
 
 /// `bus-list` 整条命令总期限的上限（`cc-list` ＋ 列 tmux 会话）。
 pub(crate) const BUS_LIST_CAP: Deadline = Deadline::secs(13);
@@ -525,7 +525,10 @@ pub(crate) fn inbox_reply(text: &str) -> Result<BusInbox, (String, String)> {
         }
         // 一行就是一封规范信封（`bus-envelope` 盖的那一份）；不是的（坏 JSON · 别的工具写的 · 少格）算坏行。
         match serde_json::from_str::<BusEnvelope>(line) {
-            Ok(m) => messages.push(m),
+            Ok(m) => messages.push(BusInboxItem {
+                act_said: super::cc_bus_wire::act_said(m.act),
+                envelope: m,
+            }),
             Err(_) => skipped += 1,
         }
     }

@@ -61,7 +61,10 @@ fn ref_ok(r: &str) -> bool {
     if let Some(rest) = r.strip_prefix("commit:") {
         return (7..=40).contains(&rest.len()) && rest.bytes().all(|b| b.is_ascii_hexdigit());
     }
-    if let Some(rest) = r.strip_prefix("https://").or_else(|| r.strip_prefix("http://")) {
+    if let Some(rest) = r
+        .strip_prefix("https://")
+        .or_else(|| r.strip_prefix("http://"))
+    {
         return !rest.is_empty();
     }
     // 余下当路径。认不出的 `前缀:`（`ftp://` · `foo:bar`）不当路径：冒号出现在第一个 `/` 之前就是一个没登记的前缀。
@@ -75,7 +78,10 @@ fn ref_ok(r: &str) -> bool {
 /// 核一封信：照次序一格一格判，第一格不过就拒。
 pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Refusal> {
     if !sid_ok(&req.from) {
-        return Err(("bad_from", format!("`from` is not a session id: {:?}", req.from)));
+        return Err((
+            "bad_from",
+            format!("`from` is not a session id: {:?}", req.from),
+        ));
     }
     if !sid_ok(&req.to) {
         return Err(("bad_to", format!("`to` is not a session id: {:?}", req.to)));
@@ -161,7 +167,7 @@ pub(crate) fn envelope_now(req: &BusEnvelopeReq) -> Result<BusEnvelope, Refusal>
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let checked = check(req)?;
-    let nanos = std::time::SystemTime::now()
+    let nanos = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos() as u64)
         .unwrap_or(0);

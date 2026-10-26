@@ -39,8 +39,16 @@ fn a_well_formed_envelope_passes_and_tier_defaults_to_two() {
 
 #[test]
 fn from_must_be_a_session_id() {
-    assert_eq!(code_of(with("from", json!("planner"))), "ok", "正控：字母数字也是会话 id 的形状");
-    assert_eq!(code_of(with("from", json!("a_cc"))), "bad_from", "下划线不在会话 id 里（旧名字）");
+    assert_eq!(
+        code_of(with("from", json!("planner"))),
+        "ok",
+        "正控：字母数字也是会话 id 的形状"
+    );
+    assert_eq!(
+        code_of(with("from", json!("a_cc"))),
+        "bad_from",
+        "下划线不在会话 id 里（旧名字）"
+    );
     assert_eq!(code_of(with("from", json!("../x"))), "bad_from");
     assert_eq!(code_of(with("from", json!(""))), "bad_from");
     assert_eq!(code_of(with("from", json!("cc-monitor x"))), "bad_from");
@@ -86,10 +94,22 @@ fn title_is_required_one_line_at_most_eighty_chars() {
     assert_eq!(code_of(no_title), "bad_args", "缺标题：解不出入参");
     assert_eq!(code_of(with("title", json!(""))), "bad_title", "空标题");
     assert_eq!(code_of(with("title", json!("   "))), "bad_title", "全空白");
-    assert_eq!(code_of(with("title", json!("一行\n两行"))), "bad_title", "两行");
+    assert_eq!(
+        code_of(with("title", json!("一行\n两行"))),
+        "bad_title",
+        "两行"
+    );
     assert_eq!(code_of(with("title", json!("a\rb"))), "bad_title");
-    assert_eq!(code_of(with("title", json!("字".repeat(80)))), "ok", "80 个字刚好");
-    assert_eq!(code_of(with("title", json!("字".repeat(81)))), "bad_title", "81 个字");
+    assert_eq!(
+        code_of(with("title", json!("字".repeat(80)))),
+        "ok",
+        "80 个字刚好"
+    );
+    assert_eq!(
+        code_of(with("title", json!("字".repeat(81)))),
+        "bad_title",
+        "81 个字"
+    );
 }
 
 #[test]
@@ -151,7 +171,14 @@ fn every_refusal_code_is_in_the_command_code_table() {
     use crate::wire::typed::Codes;
     let table = crate::control::cc_bus_wire::BusEnvelopeErr::ALL;
     for c in [
-        "bad_from", "bad_to", "bad_tier", "bad_title", "need_re", "bad_re", "bad_ref", "too_long",
+        "bad_from",
+        "bad_to",
+        "bad_tier",
+        "bad_title",
+        "need_re",
+        "bad_re",
+        "bad_ref",
+        "too_long",
     ] {
         assert!(table.contains(&c), "{c} 不在 bus-envelope 的码表里");
     }

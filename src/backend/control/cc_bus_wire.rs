@@ -103,12 +103,37 @@ pub(crate) struct BusEnvelope {
     pub(crate) text: String,
 }
 
+/// 收件箱里的一封：信封原样 ＋ 给人看的动作词（后端照码取文案表写好，界面照摆）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BusInboxItem {
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub(crate) envelope: BusEnvelope,
+    /// 动作码显示成的那个词（问 · 答 · 请求 · 告知 · 交回 · 更正）。
+    pub(crate) act_said: String,
+}
+
+/// 动作码 ⇒ 给人看的那个词（只这一处取，界面不按码分支）。
+pub(crate) fn act_said(a: cmd_wire::bus::BusAct) -> String {
+    use cmd_wire::bus::BusAct as A;
+    match a {
+        A::Ask => copy_text("ccBus.act.ask", &[]),
+        A::Answer => copy_text("ccBus.act.answer", &[]),
+        A::Request => copy_text("ccBus.act.request", &[]),
+        A::Inform => copy_text("ccBus.act.inform", &[]),
+        A::Handback => copy_text("ccBus.act.handback", &[]),
+        A::Correct => copy_text("ccBus.act.correct", &[]),
+    }
+}
+
 /// `bus-inbox` 的应答。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct BusInbox {
-    pub(crate) messages: Vec<BusEnvelope>,
+    pub(crate) messages: Vec<BusInboxItem>,
     /// 读不懂的行数（不是规范信封的也算）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) skipped: usize,
