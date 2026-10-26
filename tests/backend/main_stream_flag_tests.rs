@@ -96,3 +96,28 @@ fn query_args_pass_through() {
     assert_eq!(rest, v(&["--read-session", "/p/s.jsonl"]));
     assert_eq!(wants, crate::stream::inbound::views::StreamWants::default());
 }
+
+/// 命令行这一形**没写** `--tz` ⇒ 看的人就在这一台（终端里敲的 · 本机脚本 · 壳起本机后端）：钟面按这台的钟写；
+/// 写了却说不清（缺值 · 认不得）⇒ 照旧 UTC，不猜。一次性命令与流模式同一处读。
+#[test]
+fn no_time_zone_flag_means_the_viewer_is_on_this_machine() {
+    use super::Tz;
+    let here = Tz::named(crate::common::time::TZ_HERE).expect("认得 local");
+    for argv in [
+        &["--rotation-view"][..],
+        &["--quota-read", "--text"][..],
+        &["--stream"][..],
+    ] {
+        let (_, got) = split_stream_flags(v(argv)).unwrap();
+        assert_eq!(got.tz, here, "{argv:?} 没写 --tz 却没按这一台");
+    }
+    let (_, got) = split_stream_flags(v(&["--rotation-view", "--tz", "Nowhere/Atlantis"])).unwrap();
+    assert_eq!(got.tz, Tz::default(), "认不得 ⇒ UTC");
+    let (_, got) = split_stream_flags(v(&["--rotation-view", "--tz"])).unwrap();
+    assert_eq!(got.tz, Tz::default(), "缺值 ⇒ UTC");
+    let la = Tz::iana("America/Los_Angeles").expect("洛杉矶");
+    let (_, got) =
+        split_stream_flags(v(&["--rotation-view", "--tz", "America/Los_Angeles"])).unwrap();
+    assert_eq!(got.tz, la);
+    assert_ne!(here, Tz::default(), "反空真：这一台不等于没说");
+}
