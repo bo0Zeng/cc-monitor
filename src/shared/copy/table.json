@@ -17117,34 +17117,6 @@
       "zh": "读取失败 · {path} · 原因不明",
       "args": ["path"]
     },
-    "beLink.install.tooMany": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端连接已达上限 {max}",
-      "args": ["max"],
-      "limited": ["连接"]
-    },
-    "beLink.gone.say": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "与远端的连接已断开",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "beLink.gone.withError": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "与远端的连接已中断",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "beLink.gone.bug": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "与远端的连接已中断 · 程序出错",
-      "args": [],
-      "limited": ["连接"]
-    },
     "resync.call.refused": {
       "kind": "error",
       "role": "报错",
@@ -22368,12 +22340,6 @@
       "role": "说明",
       "zh": "上滑重试",
       "args": []
-    },
-    "mobChat.record.missing": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到会话记录 · {machine}",
-      "args": ["machine"]
     },
     "mobIdentity.import.unreadable": {
       "kind": "error",
