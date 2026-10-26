@@ -1,5 +1,5 @@
 /**
- * 机器状态成品的推送照生成的类型交：本机那一帧（`machine-state`）与远端那几格（`changed/machine` 的 `body`）原样到订的人手里；
+ * 机器状态成品的推送照生成的类型交：各台（含本机）那几格（`changed/machine` 的 `body`）与本机后端起没起来那一格（`local-backend`）原样到订的人手里；
  * 订上就问一次 `machine-read`（订的那一刻那台已经接着时，壳不再交 `seen`，只等它就一台都拿不到）；帧里没带成品的那一格 ⇒ 整份重问，回包里每台各交一次。
  * 那台「连上了」那一刻：只在从别的样子变成连着时叫一次（起着 → 连着 · 断了 → 又连着），连着时再来的帧不重复叫。
  */
@@ -37,8 +37,11 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (actual) => ({
 }));
 
 import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
-import { MACHINE_STATE_EVENT, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
+import { LOCAL_BACKEND_EVENT, onLocalBackend, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
+import type { LocalBackend } from "../../../src/frontend/ui/generated/LocalBackend";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
+import { SUBSCRIBE_COALESCE_MS } from "../../../src/frontend/ui/events";
 
 // 金样里的成品各取几形（哪一形不要紧：这里只核原样交到）。
 const [up, connecting, installing, , , , , needsUpdate] = (golden.cases as unknown as { machine: MachineState }[]).map((c) => c.machine);
@@ -64,11 +67,15 @@ describe("机器状态成品的推送", () => {
     off();
   });
 
-  it("★ 本机那一帧原样交（形状是壳导出的类型）", () => {
-    const got: [string, MachineState][] = [];
-    onMachineState((o, m) => got.push([o, m]));
-    listeners.get(MACHINE_STATE_EVENT)!({ payload: { origin: "<local>", machine: connecting } });
-    expect(got).toEqual([["<local>", connecting]]);
+  it("★ 本机后端起没起来那一格原样交（形状是壳导出的类型），不冒充哪一台的成品", () => {
+    const got: LocalBackend[] = [];
+    const states: string[] = [];
+    onLocalBackend((l) => got.push(l));
+    onMachineState((o) => states.push(o));
+    const down: LocalBackend = { state: "down", word: "w", said: "s", next: null };
+    listeners.get(LOCAL_BACKEND_EVENT)!({ payload: down });
+    expect(got).toEqual([down]);
+    expect(states).toEqual([]);
   });
 
   it("★ 远端那几格：带了成品的原样交；没带的那一格 ⇒ 整份重问 machine-read、每台交一次", async () => {
@@ -106,17 +113,33 @@ describe("机器名照成品叫", () => {
 });
 
 describe("onMachineUp", () => {
-  it("只在变成连着的那一刻叫，每台各算", () => {
+  it("只在变成连着的那一刻叫，每台各算", async () => {
     const got: string[] = [];
     const off = onMachineUp((o) => got.push(o));
-    const push = (origin: string, m: MachineState) => listeners.get(MACHINE_STATE_EVENT)!({ payload: { origin, machine: m } });
-    push("<local>", connecting);
-    push("<local>", up);
-    push("<local>", up);
-    push("pi", up);
-    push("<local>", needsUpdate);
-    push("<local>", up);
+    await flush();
+    let seq = 0;
+    // 每一帧等过合批窗口再推下一帧（同一台一窗里来的几帧只交最后那一份）。
+    const push = async (origin: string, m: MachineState, want: number) => {
+      sink!([frame(seq++, { key: origin, body: m })]);
+      await new Promise((r) => setTimeout(r, SUBSCRIBE_COALESCE_MS + 50));
+      expect(got.length).toBe(want);
+    };
+    await push("<local>", connecting, 0);
+    await push("<local>", up, 1);
+    await push("<local>", up, 1);
+    await push("pi", up, 2);
+    await push("<local>", needsUpdate, 2);
+    await push("<local>", up, 3);
     expect(got).toEqual(["<local>", "pi", "<local>"]);
     off();
+  });
+});
+
+describe("机器名还没到", () => {
+  it("★ 那台的成品还没到 ⇒ 说不清是哪台（不拿本机 / 远端各一条字顶）", () => {
+    expect([machineName("<never-seen>"), machineName("never-seen-host")]).toEqual([
+      copyText("control.machine.unsure"),
+      copyText("control.machine.unsure"),
+    ]);
   });
 });

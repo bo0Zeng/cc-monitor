@@ -6,7 +6,7 @@ import { copyPattern } from "./copy-pattern";
 describe("copyPattern：按文案键认一句话（占位处任意值）", () => {
   it("认得出取文口插出来的句子，值是 ASCII 还是汉字都认（接缝空格可有可无）", () => {
     expect(copyText("peerVersion.said.old", { machine: "gpu-01" })).toMatch(copyPattern("peerVersion.said.old"));
-    expect(copyText("peerVersion.said.old", { machine: copyText("control.machine.local") })).toMatch(copyPattern("peerVersion.said.old"));
+    expect(copyText("peerVersion.said.old", { machine: copyText("control.machine.unsure") })).toMatch(copyPattern("peerVersion.said.old"));
     expect(`前缀 ${copyText("peerVersion.said.old", { machine: "gpu-01" })}`).toMatch(copyPattern("peerVersion.said.old"));
   });
 

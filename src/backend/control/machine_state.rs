@@ -119,12 +119,7 @@ fn local_row() -> MachineState {
             version: Some(env!("CC_MONITOR_VERSION").to_string()),
         },
     );
-    product(
-        &e,
-        &copy_core::copy_text("remote.cards.local", &[]),
-        true,
-        true,
-    )
+    product(&e, &copy_core::local_machine(), true, true)
 }
 
 /// `machine-round` 的入参：那台 · 接常驻那一段的一轮结论（通信层交出的那一态原样）· 本侧的产品版本号。

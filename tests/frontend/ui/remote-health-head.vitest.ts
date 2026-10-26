@@ -11,7 +11,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 describe("远端健康提示：拥塞那一条的标题", () => {
   it("正文是那台后端写的那一句（不带机器名）⇒ 标题是机器名，本机称「本机」那一格", () => {
     expect(headlineFor("overflow", "devbox")).toBe("devbox");
-    expect(headlineFor("overflow", "<local>")).toBe(copyText("acct.machine.here"));
+    expect(headlineFor("overflow", "<local>")).toBe(copyText("control.machine.unsure"));
   });
 });
 

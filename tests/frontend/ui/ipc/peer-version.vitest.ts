@@ -18,7 +18,7 @@ describe("界面只说认不出、只判版本旧那一形", () => {
     expect(e.message).not.toContain("x reply shape");
     expect(e.detail).toBe("");
     expect(new ReplyUnreadable("<local>", "y").message).toBe(
-      copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.local") }),
+      copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.unsure") }),
     );
   });
 

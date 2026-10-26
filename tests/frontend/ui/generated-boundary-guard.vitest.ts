@@ -635,7 +635,7 @@ describe("C02 事件名钉死", () => {
     //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`ui_contract.rs::SessionStreamFrame`）；
     //   剩 `frontend-ready` · `remote-health` · `task-update`。
     // 主线 11 ＋ MIG-1 −9 ⇒ 2（剩 `frontend-ready` · `remote-health`）。
-    // 2 → 3：`MACHINE_STATE`（"machine-state"，每台机器的状态成品一变就推一帧），由 `machine-feed.ts` 订阅。
+    // 2 → 3：`LOCAL_BACKEND`（"local-backend"，本机后端起没起来一变就推一帧；各台的状态成品走本机后端的 `changed/machine`），由 `machine-feed.ts` 订阅。
     // 3 → 4：`UI_ERROR`（"monitor-error"，要让用户知道的出错：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），由 `backend-errors.ts` 订阅。
     //   名字原来只在 `logging.rs` 里一个私有常量上，没进这张表。
     expect(pairs.length, `期望恰好 4 个事件名常量，实得 ${pairs.length}`).toBe(4);

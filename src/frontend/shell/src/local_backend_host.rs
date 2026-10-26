@@ -336,7 +336,7 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
             Probe::Ours(sock, line)
         }
         HelloVerdict::Stranger(why) => {
-            // 在听的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
+            // 在听的是另一份构建（终端里先起的那一份）⇒ 本机后端那一格按两边构建的序说（[`local_backend`]）。
             if let Some(cmd_wire::frame::HelloHead { build_id, .. }) =
                 cmd_wire::frame::HelloHead::of(&line)
             {
@@ -891,7 +891,7 @@ fn start_detached(
         }
         // ⚠ **不静默复用，也不静默再起一个** —— 两条都会让状态更糟。
         Adopt::Refused(why) => {
-            // 被拒是动得了手的那一档（结束占着口的那个进程）：下一步交给本机那一台的状态成品，设置窗照画。
+            // 被拒是动得了手的那一档（结束占着口的那个进程）：下一步交给本机后端那一格（[`local_backend`]），设置窗照画。
             // 只在这一臂写，不从 `reason` 串里认字；诚实降级那几档（没带后端 · 释放失败）只进日志。
             note_local_refused(Some(&copy_text(
                 "rsLocalBackendHost.start.refusedNext",
@@ -1666,38 +1666,38 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
 // 生产段，各条扫生产段的守卫跟着去扫测试代码。
 // `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
 // **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
-// ─── 本机那一台的状态成品 ───────────────────────────────────────────────────────
-// 远端各台的成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话（起没起 · 口上占着谁是宿主的事实），
-// 本机那一行由这里交事实、照同一张表出（`deploy_contract::machine::local`）。
+// ─── 本机后端起没起来 ───────────────────────────────────────────────────────────
+// 各台（含本机）的状态成品由本机后端定（`deploy::machine`）；本机后端没起来时没人能替它说话，
+// 起没起 · 口上占着谁 · 起的时候被拒是这台电脑上的进程的事实，由这里说（[`LocalBackend`]）。
 
-use cmd_wire::machine::MachineState;
+use crate::ui_contract::LocalBackend;
 
 /// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
 /// 起本机后端那一趟探口时记（[`probe_listen_socket`]）；是我们这一版 / 没人 ⇒ 清掉。
 static LOCAL_FOREIGN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
-/// 本机那一行变了之后往外推一帧的出口（壳起来时装上：发 `machine-state` 事件）。没装 ⇒ 不推。
-type MachineOut = Box<dyn Fn(MachineState) + Send + Sync>;
-static MACHINE_OUT: std::sync::OnceLock<MachineOut> = std::sync::OnceLock::new();
+/// 本机后端起没起来变了之后往外推一帧的出口（壳起来时装上：发 `local-backend` 事件）。没装 ⇒ 不推。
+type LocalOut = Box<dyn Fn(LocalBackend) + Send + Sync>;
+static LOCAL_OUT: std::sync::OnceLock<LocalOut> = std::sync::OnceLock::new();
 
 /// 装推送出口（只装一次）。
-pub(crate) fn install_machine_out(out: impl Fn(MachineState) + Send + Sync + 'static) {
-    if MACHINE_OUT.set(Box::new(out)).is_err() {
-        tracing::warn!("[machine] 本机那一行的推送出口装了第二次，沿用第一次那个");
+pub(crate) fn install_local_backend_out(out: impl Fn(LocalBackend) + Send + Sync + 'static) {
+    if LOCAL_OUT.set(Box::new(out)).is_err() {
+        tracing::warn!("[local-backend] 推送出口装了第二次，沿用第一次那个");
     }
 }
 
-/// 本机那一行可能变了（通道接上 / 断了 · 口上换了人）⇒ 推一帧。
-pub(crate) fn machine_changed() {
-    if let Some(out) = MACHINE_OUT.get() {
-        out(local_machine_now());
+/// 本机后端起没起来可能变了（通道接上 / 断了 · 口上换了人 · 正在起 · 被拒）⇒ 推一帧。
+pub(crate) fn local_backend_changed() {
+    if let Some(out) = LOCAL_OUT.get() {
+        out(local_backend_now());
     }
 }
 
 /// 记下（或清掉）本机口上那一份别的构建。
 fn note_local_foreign(build: Option<&str>) {
     *LOCAL_FOREIGN.lock().unwrap_or_else(|e| e.into_inner()) = build.map(str::to_string);
-    machine_changed();
+    local_backend_changed();
 }
 
 /// 起本机后端被拒（口上有东西、接不上）时那一句下一步；每次起之前清掉（[`start_local_backend`]）。
@@ -1706,7 +1706,7 @@ static LOCAL_REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(N
 /// 记下（或清掉）起本机后端被拒的那一句下一步。
 pub(crate) fn note_local_refused(next: Option<&str>) {
     *LOCAL_REFUSED.lock().unwrap_or_else(|e| e.into_inner()) = next.map(str::to_string);
-    machine_changed();
+    local_backend_changed();
 }
 
 /// 本机后端那一趟起着没有（[`start_local_backend`] 起止各记一次）。
@@ -1715,30 +1715,61 @@ static LOCAL_STARTING: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// 记下本机后端起着 / 起完了。
 pub(crate) fn note_local_starting(on: bool) {
     LOCAL_STARTING.store(on, std::sync::atomic::Ordering::SeqCst);
-    machine_changed();
+    local_backend_changed();
 }
 
-/// 本机那一行此刻的成品（通道在不在现看）。
-pub(crate) fn local_machine_now() -> MachineState {
+/// 本机后端此刻起没起来（通道在不在现看）。
+pub(crate) fn local_backend_now() -> LocalBackend {
     let channel = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
-    local_product(channel, crate::byte_table::my_backend_id())
+    local_backend(channel, crate::byte_table::my_backend_id())
 }
 
-/// 本机那一台的成品：交手上的事实（通道 · 口上那一份别的构建 · 起没起 · 被拒那一句），态与字由 [`deploy_contract::machine::local`] 定。
-/// 版本就是手上这一版（本机后端换装只认同一版，[`hello_verdict`]；没带后端字节 ⇒ 开发构建、不可比）。
-pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
+/// 本机后端起没起来：通道在 ⇒ 连着；正在起 ⇒ 正在起（到「启动 cc-monitor」那一步）；
+/// 不在而口上占着别的构建 ⇒ 按两边构建的序说旧 / 新（解不出序 · 手上没带后端字节 ⇒ 照没起来说）；别的 ⇒ 没起来。
+/// 被拒那一句下一步只在没连着时带。`mine` 是手上这一版的构建标识。
+pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
+    use cmd_wire::attach::Relation;
+    if channel {
+        return LocalBackend::Up;
+    }
     let lock = |m: &'static std::sync::Mutex<Option<String>>| {
         m.lock().unwrap_or_else(|e| e.into_inner()).clone()
     };
-    let foreign = lock(&LOCAL_FOREIGN);
-    deploy_contract::machine::local(deploy_contract::machine::Local {
-        channel,
-        starting: LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst),
-        mine,
-        foreign: foreign.as_deref(),
-        version: crate::PRODUCT_VERSION,
-        refused: lock(&LOCAL_REFUSED),
-    })
+    let machine = copy_core::local_machine();
+    if LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst) {
+        return LocalBackend::Starting {
+            word: copy_text("machineState.word.connecting", &[]),
+            said: copy_text(
+                "machineState.busy.connecting",
+                &[
+                    ("machine", &machine),
+                    ("stage", &copy_text("machineState.stage.attach", &[])),
+                ],
+            ),
+        };
+    }
+    let next = lock(&LOCAL_REFUSED);
+    let relation = match (mine, lock(&LOCAL_FOREIGN)) {
+        (Some(m), Some(theirs)) => deploy_contract::build_relation(&theirs, m),
+        _ => Relation::Incomparable,
+    };
+    match relation {
+        Relation::Older => LocalBackend::Older {
+            word: copy_text("machineState.word.needsUpdate", &[]),
+            said: copy_text("machineState.problem.needsUpdate", &[("machine", &machine)]),
+            next,
+        },
+        Relation::Newer => LocalBackend::Newer {
+            word: copy_text("machineState.word.newer", &[]),
+            said: copy_text("machineState.problem.newer", &[("machine", &machine)]),
+            next,
+        },
+        Relation::Same | Relation::Incomparable => LocalBackend::Down {
+            word: copy_text("machinePage.state.down", &[]),
+            said: copy_text("machineState.down.local", &[]),
+            next,
+        },
+    }
 }
 
 #[cfg(test)]

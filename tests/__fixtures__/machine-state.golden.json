@@ -6,7 +6,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -26,7 +25,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -46,7 +44,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -66,7 +63,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -95,7 +91,6 @@
           }
         ],
         "name": "gpu-01",
-        "next": null,
         "offline": true,
         "os": null,
         "reason": "auth",
@@ -124,7 +119,6 @@
           }
         ],
         "name": "gpu-01",
-        "next": null,
         "offline": true,
         "os": null,
         "reason": "timeout",
@@ -149,7 +143,6 @@
           }
         ],
         "name": "gpu-01",
-        "next": null,
         "offline": true,
         "os": null,
         "reason": "host_key",
@@ -174,7 +167,6 @@
           }
         ],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -194,7 +186,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -214,7 +205,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -234,7 +224,6 @@
         "expectedHostKey": null,
         "fixes": [],
         "name": "gpu-01",
-        "next": null,
         "offline": true,
         "os": null,
         "reason": null,
@@ -259,7 +248,6 @@
           }
         ],
         "name": "gpu-01",
-        "next": null,
         "offline": true,
         "os": null,
         "reason": "password",
@@ -284,7 +272,6 @@
           }
         ],
         "name": "gpu-01",
-        "next": null,
         "offline": false,
         "os": null,
         "reason": null,
@@ -297,63 +284,12 @@
         "word": "已停用"
       },
       "name": "停用"
-    },
-    {
-      "machine": {
-        "detail": null,
-        "expectedHostKey": null,
-        "fixes": [
-          {
-            "fix": "retry",
-            "label": "重试"
-          }
-        ],
-        "name": "本机",
-        "next": "结束口上那个进程再重开（结构夹具）",
-        "offline": true,
-        "os": null,
-        "reason": null,
-        "said": "本机连接失败",
-        "seenHostKey": null,
-        "stage": null,
-        "state": "down",
-        "version": "<ver>",
-        "versionRelation": "same",
-        "word": "离线"
-      },
-      "name": "本机被拒"
-    },
-    {
-      "machine": {
-        "detail": null,
-        "expectedHostKey": null,
-        "fixes": [
-          {
-            "fix": "retry",
-            "label": "重试"
-          }
-        ],
-        "name": "本机",
-        "next": null,
-        "offline": true,
-        "os": null,
-        "reason": null,
-        "said": "本机连接失败",
-        "seenHostKey": null,
-        "stage": null,
-        "state": "down",
-        "version": "<ver>",
-        "versionRelation": "same",
-        "word": "离线"
-      },
-      "name": "本机没连上"
     }
   ],
   "说明": [
-    "设置窗机器列表 / 卡头那一格的成品（远端：本机后端 `changed {machine}` 的 body 与 `machine-read`；本机：`backend_status` 的 machine）的跨语言金样。",
-    "Rust：tests/backend/control/machine_state_tests.rs 按 name 走生产函数现产（本机那一形在 tests/frontend/shell/local_backend_host_tests.rs），逐字相等。",
+    "设置窗机器列表 / 卡头那一格的成品（本机后端 `changed {machine}` 的 body 与 `machine-read`，本机远端同一份）的跨语言金样。",
+    "Rust：tests/backend/control/machine_state_tests.rs 按 name 走生产函数现产，逐字相等。",
     "TS：tests/frontend/ui/settings/machine-state.vitest.ts 读同一份，逐形严格解码、逐形画出那一句与修法。",
-    "机器名 · 版本号 · 原因码是结构夹具，不取自任何真机；version 写成占位 <ver>（本机那一形由壳把现产的号换成它再比）。",
-    "next 是壳写好的下一步那一句（只有本机起后端被拒时有），界面照原样画在问题行下面。"
+    "机器名 · 版本号 · 原因码是结构夹具，不取自任何真机；version 写成占位 <ver>。"
   ]
 }

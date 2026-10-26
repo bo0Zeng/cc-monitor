@@ -2176,10 +2176,10 @@
       "zh": "…前文已省略",
       "args": []
     },
-    "control.machine.local": {
+    "control.machine.unsure": {
       "kind": "body",
       "role": "片段",
-      "zh": "本机",
+      "zh": "机器不明",
       "args": []
     },
     "control.machine.peer": {
@@ -8069,12 +8069,6 @@
       "zh": "本机",
       "args": []
     },
-    "remote.localRow.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "本机",
-      "args": []
-    },
     "remote.refresh.failed": {
       "kind": "error",
       "role": "报错",
@@ -8614,12 +8608,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "查询中",
-      "args": []
-    },
-    "backend.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
       "args": []
     },
     "backend.paintUnregistered.unregistered": {
@@ -20403,12 +20391,6 @@
       "kind": "body",
       "role": "空态",
       "zh": "无采样",
-      "args": []
-    },
-    "acct.machine.here": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
       "args": []
     },
     "acct.text.readFail": {

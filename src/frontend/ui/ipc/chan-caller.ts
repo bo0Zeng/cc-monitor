@@ -13,7 +13,7 @@
 import { chan, ChanError, type Budget } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
 import { decodeJson } from "./decode";
-import { isLocalOrigin, type Origin } from "./origin";
+import type { Origin } from "./origin";
 import type { RefusalData, TypedCommands } from "../generated/TypedCommands";
 
 /**
@@ -79,9 +79,16 @@ export function noteMachineName(origin: Origin, name: string): void {
   names.set(origin, name);
 }
 
-/** 一句话里怎么称呼这台机器：照那台成品的 `name`，本机远端同一条路。 */
+/** 一句话里怎么称呼这台机器：照那台成品的 `name`，本机远端同一条路；成品还没到 ⇒ 说不清是哪台（这一窗还没订就订上）。 */
 export function machineName(origin: Origin): string {
-  return names.get(origin) ?? (isLocalOrigin(origin) ? copyText("control.machine.local") : origin);
+  const name = names.get(origin);
+  if (name !== undefined) return name;
+  // 订法住 `machine-feed`（它要从这里取问法）⇒ 用到时才取，不成环。宿主不是壳（没有通道）⇒ 只是一直机器不明。
+  import("../machine-feed").then(
+    (m) => m.watchMachineNames(),
+    (e: unknown) => console.warn("[machine-name] 订不上各台的成品：", e),
+  );
+  return copyText("control.machine.unsure");
 }
 
 /** 那台回了、回的东西认不出那一句（[`ReplyUnreadable`] 的 `message`；不抛、只要那一句的几处直接取）。 */

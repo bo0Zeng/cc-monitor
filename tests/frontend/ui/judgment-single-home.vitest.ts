@@ -441,7 +441,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
     // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）；回的认不出是界面自己知道的事，两侧各一个取句口，
-    // 取的是表里同一条键（`peerVersion.said.unreadable`）与同一个本机称呼（`control.machine.local`）。
+    // 取的是表里同一条键（`peerVersion.said.unreadable`）；那台叫什么，Rust 取 `remote.cards.local`，界面照成品的 `name`。
     homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
     defs: ["unreadableSaid"],

@@ -277,7 +277,7 @@ export class RemoteSection {
    * `remote-section.vitest.ts`「加了本机行之后写出去的机器数不变」钉着）。
    */
   private buildLocalRow(): HTMLElement {
-    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_ORIGIN);
+    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, machineName(LOCAL_ORIGIN), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_ORIGIN);
     row.classList.add("remote-machine-local");
     return row;
   }
@@ -403,10 +403,20 @@ export class RemoteSection {
 
   /** 宿主照后端的状态成品喂进来：那一行的点 · 词 · 问题行 ＋ 修法；页头那一句按它数。 */
   setMachine(pageId: string, m: MachineState): void {
+    this.states.set(pageId, m);
+    const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
+    this.paintFace(pageId, machineFace(m), up, m.state !== "disabled" && m.state !== "unknown");
+  }
+
+  /** 宿主照壳的「本机后端没起来」那一格喂进来（连着时不喂，看本机后端那一台的成品）：本机那一行照同一个画法。 */
+  setLocalBackend(face: MachineFace): void {
+    this.paintFace(LOCAL_MACHINE_PAGE_ID, face, false, true);
+  }
+
+  private paintFace(pageId: string, face: MachineFace, up: boolean, summary: boolean): void {
     const row = this.findMachineRow(pageId);
     if (!row) return;
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
-    const face = machineFace(m);
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
     if (dot) setDot(dot, face.dot, face.word ? `${name} · ${face.word}` : copyText("settingsNav.dot.up", { machine: name }));
     const word = row.querySelector<HTMLElement>(".remote-machine-word");
@@ -414,12 +424,10 @@ export class RemoteSection {
     const problem = row.querySelector<HTMLElement>(".machine-problem");
     if (problem) paintProblem(problem, face, (fix) => this.runFix(pageId, fix));
     this.faces.set(pageId, face);
-    this.states.set(pageId, m);
-    const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
     this.connected.set(pageId, up);
     this.paintCount();
     // 连着 ⇒ 问那台；没连着 ⇒ 问一次拿「上次的」（壳记的最近一次）。连没连着一变就重问。
-    if (m.state !== "disabled" && m.state !== "unknown") void this.loadSummary(row, up ? "up" : "down");
+    if (summary) void this.loadSummary(row, up ? "up" : "down");
     [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(up);
   }
 
