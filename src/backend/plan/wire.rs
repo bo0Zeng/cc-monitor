@@ -631,16 +631,6 @@ pub(crate) struct PlanReturnReply {
 /// `plan-files` 的回包住 `cmd-wire`（文件窗口按同一份类型解）；这里只转一下名字，帧面出口照旧写 `wire::PlanFiles`。
 pub(crate) use cmd_wire::plan::PlanFiles;
 
-/// `plan-refs` 的入参：哪个会话的几段正文（照先后，回包一段对一段）。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PlanRefsReq {
-    pub sid: String,
-    pub texts: Vec<String>,
-}
-
 /// 会话消息里提到的一处：`[start, end)` 按 UTF-16 下标（编号原样留在正文里），`label` 是跟在它后面的那串淡色字
 /// （`ids` 里每个的标题照先后接好；后端写好，界面照排）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
