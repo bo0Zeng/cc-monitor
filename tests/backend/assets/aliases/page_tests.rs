@@ -26,7 +26,7 @@ fn answer_resolve(d: &HomeDoor, args: &Value) -> Wired {
     wired(super::answer_resolve(
         d,
         &taken(args)?,
-        crate::control::ccm::preview_resolved,
+        crate::faces::profiles_face::preview_resolved,
     ))
 }
 

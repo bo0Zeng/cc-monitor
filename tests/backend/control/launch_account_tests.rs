@@ -10,22 +10,24 @@ use std::path::PathBuf;
 fn lib(accounts: Vec<AccountRow>) -> AccountsList {
     list(accounts)
 }
-fn take(name: &str) -> Picked {
-    Picked::Account {
+type Got = Result<Settled, AccountUnavailable>;
+fn take(name: &str) -> Got {
+    Ok(Settled::Account(LaunchedAccount {
         name: name.into(),
         config_dir: format!("/h/{name}"),
-    }
+        model: None,
+    }))
 }
-fn refused(requested: &str, pinned: bool, list_known: bool, alternative: Option<&str>) -> Picked {
-    Picked::Unavailable(AccountUnavailable {
+fn refused(requested: &str, pinned: bool, list_known: bool, alternative: Option<&str>) -> Got {
+    Err(AccountUnavailable {
         requested: requested.into(),
         pinned,
         list_known,
         alternative: alternative.map(Into::into),
     })
 }
-fn named(n: &str) -> Asked {
-    Asked::Named(n.into())
+fn named(n: &str) -> AccountAsk {
+    AccountAsk::Named { name: n.into() }
 }
 fn default_(name: &str) -> AccountRow {
     acct(name, |a| a.is_default = true)
@@ -35,17 +37,14 @@ fn default_(name: &str) -> AccountRow {
 
 #[test]
 fn a_named_usable_account_is_used() {
-    assert_eq!(
-        pick(&named("z"), &lib(vec![ok("z")]), None, None),
-        take("z")
-    );
+    assert_eq!(pick(&named("z"), &lib(vec![ok("z")]), None), take("z"));
 }
 
 #[test]
 fn a_named_account_that_cannot_be_used_is_refused_with_the_default_as_alternative() {
     let l = lib(vec![acct("z", |a| a.auth_ready = false), default_("b")]);
     assert_eq!(
-        pick(&named("z"), &l, None, None),
+        pick(&named("z"), &l, None),
         refused("z", false, true, Some("b"))
     );
 }
@@ -59,13 +58,12 @@ fn each_unusable_shape_is_refused() {
         ),
         ("auth not ready", |a| a.auth_ready = false),
         ("dir missing", |a| a.exists = false),
-        ("empty dir", |a| a.config_dir = Some(String::new())),
         ("account 0", |a| {
             a.config_dir = None;
             a.mode = "bare".into();
         }),
     ] {
-        let got = pick(&named("z"), &lib(vec![acct("z", f)]), None, None);
+        let got = pick(&named("z"), &lib(vec![acct("z", f)]), None);
         assert_eq!(got, refused("z", false, true, None), "{why}");
     }
 }
@@ -76,7 +74,7 @@ fn an_api_key_account_without_a_credentials_file_is_usable() {
         a.auth_kind = "apikey".into();
         a.logged_in = false;
     })]);
-    assert_eq!(pick(&named("k"), &l, None, None), take("k"));
+    assert_eq!(pick(&named("k"), &l, None), take("k"));
 }
 
 #[test]
@@ -153,14 +151,14 @@ fn settle_maps_follow_and_named_onto_pick_and_attaches_the_model() {
 #[test]
 fn follow_uses_the_last_account_over_the_default() {
     let l = lib(vec![ok("z"), default_("b")]);
-    assert_eq!(pick(&Asked::Follow, &l, Some("z"), None), take("z"));
+    assert_eq!(pick(&AccountAsk::Follow, &l, Some("z")), take("z"));
 }
 
 #[test]
 fn follow_never_swaps_a_last_account_that_cannot_be_used() {
     let l = lib(vec![acct("z", |a| a.auth_ready = false), default_("b")]);
     assert_eq!(
-        pick(&Asked::Follow, &l, Some("z"), None),
+        pick(&AccountAsk::Follow, &l, Some("z")),
         refused("z", true, true, Some("b"))
     );
 }
@@ -169,7 +167,7 @@ fn follow_never_swaps_a_last_account_that_cannot_be_used() {
 fn follow_with_a_last_account_gone_from_the_list_is_refused_too() {
     let l = lib(vec![default_("b")]);
     assert_eq!(
-        pick(&Asked::Follow, &l, Some("gone"), None),
+        pick(&AccountAsk::Follow, &l, Some("gone")),
         refused("gone", true, true, Some("b"))
     );
 }
@@ -177,19 +175,19 @@ fn follow_with_a_last_account_gone_from_the_list_is_refused_too() {
 #[test]
 fn follow_without_a_last_account_takes_the_default() {
     let l = lib(vec![ok("b"), default_("z")]);
-    assert_eq!(pick(&Asked::Follow, &l, None, None), take("z"));
+    assert_eq!(pick(&AccountAsk::Follow, &l, None), take("z"));
 }
 
 #[test]
 fn the_default_is_the_first_account_when_none_is_marked() {
     let l = lib(vec![ok("b"), ok("z")]);
-    assert_eq!(pick(&Asked::Follow, &l, None, None), take("b"));
+    assert_eq!(pick(&AccountAsk::Follow, &l, None), take("b"));
 }
 
 #[test]
 fn follow_without_a_last_account_and_an_unusable_default_is_base() {
     let l = lib(vec![acct("z", |a| a.auth_ready = false)]);
-    assert_eq!(pick(&Asked::Follow, &l, None, None), Picked::Base);
+    assert_eq!(pick(&AccountAsk::Follow, &l, None), Ok(Settled::Unsaid));
 }
 
 #[test]
@@ -199,7 +197,7 @@ fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
         a.is_default = true;
     })]);
     assert_eq!(
-        pick(&Asked::Follow, &l, Some("z"), None),
+        pick(&AccountAsk::Follow, &l, Some("z")),
         refused("z", true, true, None)
     );
     let l = lib(vec![
@@ -210,7 +208,7 @@ fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
         }),
     ]);
     assert_eq!(
-        pick(&named("gone"), &l, None, None),
+        pick(&named("gone"), &l, None),
         refused("gone", false, true, None)
     );
 }
@@ -219,20 +217,14 @@ fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
 fn an_unreadable_list_refuses_named_and_pinned_and_offers_nothing() {
     let l = unreadable("坏了");
     assert_eq!(
-        pick(&named("z"), &l, None, None),
+        pick(&named("z"), &l, None),
         refused("z", false, false, None)
     );
     assert_eq!(
-        pick(&Asked::Follow, &l, Some("z"), None),
+        pick(&AccountAsk::Follow, &l, Some("z")),
         refused("z", true, false, None)
     );
-    assert_eq!(pick(&Asked::Follow, &l, None, None), Picked::Base);
-}
-
-#[test]
-fn the_pinned_now_slot_does_not_change_anything_today() {
-    let l = lib(vec![ok("z"), default_("b")]);
-    assert_eq!(pick(&Asked::Follow, &l, Some("z"), Some("b")), take("z"));
+    assert_eq!(pick(&AccountAsk::Follow, &l, None), Ok(Settled::Unsaid));
 }
 
 // ───────── 记录 ─────────

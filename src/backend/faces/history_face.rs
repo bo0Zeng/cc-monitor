@@ -1159,7 +1159,9 @@ pub(crate) fn find_at(
         Some(r) => r,
         None => {
             let r = locate::open_session_at(home, &req.path, 0).map_err(HistoryFindErr::Failed)?;
-            search_query::scan_session_find(r, &req.query, include_tools, scope, page, |h| {
+            // 哪一家跟着这份记录走（照它落在哪棵树下认）。
+            let kind = crate::agents::record_kind_of(&target).unwrap_or_default();
+            search_query::scan_session_find(kind, r, &req.query, include_tools, scope, page, |h| {
                 hits.push(&search_query::with_hit_text(h, tz))
             })
         }

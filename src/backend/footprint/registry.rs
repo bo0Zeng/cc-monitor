@@ -177,8 +177,8 @@ pub const TOOLS: &[ToolSpec] = &[
     // 那一份不是「远端的后端」，是**那台机器的本地后端**（`K36` 逐字
     // 「两份后端应该要一样的」·`K33` 逐字「后端只有一个」）。
     //
-    // 🔴 **这个名字已经花过一次真钱**：`build-linux` 没有 `Stage native backend for
-    // self-extract` 那一步而 `build-windows` 有 ⇒ **Linux 裸 exe 装出来没有本机后端**
+    // 🔴 **这个名字已经花过一次真钱**：当时 `build-linux` 没有铺本机后端那一步而 `build-windows` 有
+    // ⇒ **Linux 裸 exe 装出来没有本机后端**
     // （用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
     // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，这里只把名字与闭集说对。
     ToolSpec {

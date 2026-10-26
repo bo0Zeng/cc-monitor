@@ -18,7 +18,7 @@
 # 4. 防篡改：身份戳防的是漂移与手滑，不防恶意（那要签名）。
 #
 # 开发构建也要起得来本机后端：`--native` 编出本机原生后端铺进 `src/frontend/shell/native-backend/`，
-#   `build.rs::embed_native_backend` 把它内嵌进 exe（配方与发版那两步同源）。「起得来」是真起一趟那份字节判的
+#   `build.rs::embed_native_backend` 把它内嵌进 exe（发版那两个 job 经 `--stage-native` / `--stage-filewin` 走同一份）。「起得来」是真起一趟那份字节判的
 #   （`native_starts`：空 stdin、隔离的 HOME、一律失败的 tmux 替身），stdout 第一行必须是一帧 hello、自报的 `build_id` 等于源码。
 #   `--check-dev` 与 `--check` 同一套，差别只在本机那一份缺席 = 红（`--check` 里是 skip，给 CI / 没铺字节的树）。
 #
@@ -28,6 +28,8 @@
 #   bash tests/scripts/re-embed.sh --check     # 只问「盘上的字节与源码对不对得上 · 铺了的起不起得来」，不产字节
 #   bash tests/scripts/re-embed.sh --check-dev # 同上，但本机那一份缺席就是红：开发构建起得来本机后端吗
 #   bash tests/scripts/re-embed.sh --native    # 本机那几份（裸 exe 自带的后端 · 文件窗口程序）重编并重铺，铺完按 --check-dev 自检
+#   bash tests/scripts/re-embed.sh --stage-native  # 同上只编只铺、不判：发版 Windows job 调它（核对在发版那几步）
+#   bash tests/scripts/re-embed.sh --stage-filewin # 只编只铺文件窗口程序：发版 Linux job 调它
 #   bash tests/scripts/re-embed.sh --clean     # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
 #
 # 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过 / 铺了却起不来 /（`--check-dev`）本机那一份没铺。
@@ -108,13 +110,18 @@ do_build() {
   done
 }
 
-# 本机那一份（裸 exe 自己带着的后端）。与 `release.yml` 的
-# `Build local backend (native)` ＋ `Stage native backend for self-extract` 同一条配方。
-# 它不进缺省那一趟：缺省那趟只管远端那两份 musl；本机这一份只在 Windows job 上铺，开发树上缺席是常态。
+# 这台的 host triple 与可执行文件后缀（本机那几份按它编、按它写旁挂的 `.target`）。
+host_triple() { rustc -vV | sed -n 's/^host: //p' | tr -d '\r'; }
+exe_suffix() { case "$1" in *windows*) printf '.exe' ;; esac; }
+
+# 本机那一份（裸 exe 自己带着的后端）＋ 文件窗口程序。本机这几份的配方只住这里：
+#   `release.yml` 的 Windows job 调 `--stage-native`（两件都编都铺），Linux job 调 `--stage-filewin`（只文件窗口：
+#   那一格的本机后端用 musl 那份自释放，不另编）。
+# 它不进缺省那一趟：缺省那趟只管远端那两份 musl；本机后端开发树上缺席是常态。
 do_native() {
   local triple exe
-  triple="$(rustc -vV | sed -n 's/^host: //p')"
-  case "$triple" in *windows*) exe=".exe" ;; *) exe="" ;; esac
+  triple="$(host_triple)"
+  exe="$(exe_suffix "$triple")"
   printf '==> cargo build %s（本机 target %s）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
   ( cd "$ROOT/src/backend" && cargo build "${REEMBED_BUILD_FLAGS[@]}" )
   mkdir -p "$NATIVE_DIR"
@@ -123,9 +130,16 @@ do_native() {
   # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
   printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
-  # 文件窗口程序（monitor 开窗时把它放到 `~/.cc-monitor/bin/` 再起）。它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，
-  #   monitor 的 build.rs 吃不到它 ⇒ 先单编、铺好，之后再编 monitor 才嵌得进去。与 `release.yml` 两个 job 的 `Build local filewin (native)` ＋
-  #   `Stage native filewin for self-extract` 同一条配方；落点名字定死在 `build.rs::NATIVE_FILEWIN_FILE`（判据对拍）。
+  do_filewin
+}
+
+# 文件窗口程序（monitor 开窗时把它放到 `~/.cc-monitor/bin/` 再起）。它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，
+#   monitor 的 build.rs 吃不到它 ⇒ 先单编、铺好，之后再编 monitor 才嵌得进去。落点名字定死在 `build.rs::NATIVE_FILEWIN_FILE`。
+do_filewin() {
+  local triple exe
+  triple="$(host_triple)"
+  exe="$(exe_suffix "$triple")"
+  mkdir -p "$NATIVE_DIR"
   printf '==> cargo build %s -p cc-monitor-filewin --bin cc-monitor-filewin（本机 target %s，src/frontend/shell）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
   ( cd "$ROOT/src/frontend/shell" && cargo build "${REEMBED_BUILD_FLAGS[@]}" -p cc-monitor-filewin --bin cc-monitor-filewin )
   cp "$ROOT/.build/shell/release/cc-monitor-filewin$exe" "$NATIVE_DIR/cc-monitor-filewin"
@@ -314,10 +328,12 @@ case "${1:---reembed}" in
   --check-dev) do_check 1 ;;
   --clean) do_clean ;;
   --native) do_native; do_check 1 ;;
+  --stage-native) do_native ;;
+  --stage-filewin) do_filewin ;;
   --reembed) do_build; do_check 0 ;;
   --build-only) do_compile ;;
   *)
-    printf 'usage: %s [--build-only|--check|--check-dev|--clean|--native]\n' "$0" >&2
+    printf 'usage: %s [--build-only|--stage-native|--stage-filewin|--check|--check-dev|--clean|--native]\n' "$0" >&2
     exit 2
     ;;
 esac

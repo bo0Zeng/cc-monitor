@@ -916,8 +916,8 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
 #[test]
 fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     use crate::ccm_line::argv::{parse, Parsed};
-    use crate::control::ccm::plan::{build, tests::library_of, Env, Plan};
-    use acct_core::ManifestAccount as Account;
+    use crate::control::ccm::plan::tests::{library_of, product_row};
+    use crate::control::ccm::plan::{build, Env, Plan};
     use std::collections::BTreeSet;
     let env = Env {
         home: "/home/pi".into(),
@@ -927,23 +927,14 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
         self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     };
-    // 账号那一格要一个**真在盘上**的目录（`resolve_account` 会看它在不在）：借后端源码根（一定在，不建不删 ——
+    // 账号那一格要一个**真在盘上**的目录（成品照盘上的目录判选不选得了）：借后端源码根（一定在，不建不删 ——
     // 建临时目录会让本文件在测试层分区里从「源码扫描」升成「集成」，`test_tiers` 那张表跟着要挪）。
     let acct_dir = guard_core::addr::backend_src_root();
     // 账号 0 排第一个：没标默认号 ⇒ 默认号是它（不指定号），基线不落到 `acct-x` 上（否则 `--account acct-x` 与基线同形）。
+    let acct_dir = acct_dir.to_string_lossy().into_owned();
     let table = library_of(vec![
-        Account {
-            name: "zero".into(),
-            config_dir: None,
-            is_default: false,
-            ..Default::default()
-        },
-        Account {
-            name: "acct-x".into(),
-            config_dir: Some(acct_dir.to_string_lossy().into_owned()),
-            is_default: false,
-            ..Default::default()
-        },
+        product_row("zero", None, false),
+        product_row("acct-x", Some(&acct_dir), false),
     ]);
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();

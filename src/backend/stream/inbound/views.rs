@@ -175,12 +175,23 @@ pub fn to_line_viewed(
 mod tests;
 
 /// 一条流的客户端要了什么：时区 ＋ 出口的声明。缺 ＝ 全量（bg 会话照宣告、`session_added` 带 `pid`；历史一律不重放，客户端按骨架 / 尾段补）。
-#[derive(Debug, Clone, Default, PartialEq)]
+/// 只从 argv 造（`stream::cli::split_stream_flags`）。
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamWants {
     /// [`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
-    /// 一次性 CLI 面的回包同样按它写。缺 · 认不得 ⇒ UTC。
+    /// 一次性 CLI 面的回包同样按它写。没写 ⇒ 这一台（[`crate::Tz::here`]）；写了却缺值 · 认不得 ⇒ UTC。
     pub tz: crate::Tz,
     /// 这条流的出口声明（attach 行的 `view` · 流模式起参的 [`crate::wire::cli_words::VIEW_FLAG`]，与请求信封的 `view` 同一套词）：推出去的帧照它裁格
     /// （[`StreamView`]）。缺 ＝ 全量。
     pub view: Option<StreamView>,
+}
+
+/// 什么都没写：看的人就在这一台、全量。
+impl Default for StreamWants {
+    fn default() -> Self {
+        Self {
+            tz: crate::Tz::here(),
+            view: None,
+        }
+    }
 }

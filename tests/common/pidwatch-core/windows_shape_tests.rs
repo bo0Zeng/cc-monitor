@@ -1,20 +1,19 @@
-//! **`pidwatch/win32.rs` 与 `pidwatch/linux.rs` 逐形对拍。**
+//! **`pidwatch-core` 的 `win32.rs` 与 `linux.rs` 逐形对拍。**
 //!
 //! `win32.rs` 是 `#![cfg(windows)]` ⇒ 本机（Linux）根本不编译它，行为判据结构上不可能存在；
-//! 能钉的只有**把源码当数据读**（同 `pidwatch_fallback_shape_tests.rs` 那条的处境）。
+//! 能钉的只有**把源码当数据读**（同 `fallback_shape_tests.rs` 那条的处境）。
 //! 对拍的另一侧是 `linux.rs` —— 它**在执行链上**：`linux_tests.rs` 真开 pidfd、真等进程死，
 //! 「`poll` 真错误不报死」那一格也有自己的判据。⇒ 两份文件各自取数、再比相等，不是一份拿自己比自己。
 //!
-//! 钉的是 `mod.rs` 头注「三条判死路径 ＋ 一条**不**判死的路径」那张契约：
-//! ① 判死次数两边相等（三条）；② 复核身份用的是同一个函数、同一行；
+//! 钉的是 `lib.rs` 头注「三条判死路径 ＋ 一条**不**判死的路径」那张契约：
+//! ① 判死次数两边相等（三条）；② 复核身份问的是调用方给的同一个 `still_same`、同一行；
 //! ③ 次序相同：开 → 复核 → 起线程；④ 不判死的那几条臂里一次 `on_dead()` 都没有；
 //! ⑤ 等待不带超时（零定时器：那个等待只等内核那一个事件）。
 //!
 //! 🚫 买不到：Win32 调用在真 Windows 上的语义。那要真机。
 
-const LINUX: &str = include_str!("../../../src/backend/platform/pidwatch/linux.rs");
-const WIN32: &str = include_str!("../../../src/backend/platform/pidwatch/win32.rs");
-const WIN_PROC: &str = include_str!("../../../src/backend/platform/win_proc.rs");
+const LINUX: &str = include_str!("../../../src/common/pidwatch-core/src/linux.rs");
+const WIN32: &str = include_str!("../../../src/common/pidwatch-core/src/win32.rs");
 
 fn prod(src: &str) -> String {
     guard_core::production_code(src)
@@ -50,7 +49,7 @@ fn the_windows_watch_has_the_same_three_deaths_and_the_same_non_death_as_linux()
     assert_eq!(
         deaths(&linux),
         3,
-        "`linux.rs` 的判死不再是三条 —— 契约（`mod.rs` 头注）变了，先回去改契约"
+        "`linux.rs` 的判死不再是三条 —— 契约（`lib.rs` 头注）变了，先回去改契约"
     );
     assert_eq!(
         deaths(&win32),
@@ -63,10 +62,10 @@ fn the_windows_watch_has_the_same_three_deaths_and_the_same_non_death_as_linux()
     );
 
     // ② 复核身份：同一个函数、同一行。
-    let recheck = "if !crate::platform::proc::session_alive(pid, expected_start) {";
+    let recheck = "if !still_same() {";
     for (who, text) in [("linux.rs", &linux), ("win32.rs", &win32)] {
         guard_core::pin_line(text, recheck).unwrap_or_else(|e| {
-            panic!("{e}\n⇒ `{who}` 开完之后不再用 `session_alive` 复核身份（挡「读 pidfile → 开」之间的 PID 复用）")
+            panic!("{e}\n⇒ `{who}` 开完之后不再问 `still_same` 复核身份（挡「记下进程号 → 开」之间的 PID 复用）")
         });
     }
 
@@ -82,7 +81,13 @@ fn the_windows_watch_has_the_same_three_deaths_and_the_same_non_death_as_linux()
     };
     for (who, idx) in [
         ("linux.rs", order(&linux, "pidfd_open(pid)")),
-        ("win32.rs", order(&win32, "win_proc::open_for_wait(pid)")),
+        (
+            "win32.rs",
+            order(
+                &win32,
+                "open(pid, PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE)",
+            ),
+        ),
     ] {
         assert!(
             idx.windows(2).all(|w| w[0] < w[1]),
@@ -103,7 +108,7 @@ fn the_windows_watch_has_the_same_three_deaths_and_the_same_non_death_as_linux()
             !body.contains("on_dead"),
             "`win32.rs` 的 `{head}` 那条臂里出现了 `on_dead` —— 那两条是**不判死**的：\n\
              拒绝访问 = 进程在、我们等不了它；等待出错 = 等这件事坏了，不是进程死了。\n\
-             判死就是把一个活着的会话归档（`mod.rs` 头注：宁可留在 live，也不误归档）。\n臂体：\n{body}"
+             判死就是把一个活着的进程当成退了（`lib.rs` 头注：宁可留着，也不误判死）。\n臂体：\n{body}"
         );
     }
 }
@@ -115,7 +120,7 @@ fn the_windows_watch_has_the_same_three_deaths_and_the_same_non_death_as_linux()
 /// 那道护栏**零命中地绿**。本条补的就是这一格。
 #[test]
 fn the_windows_wait_never_times_out() {
-    let p = prod(WIN_PROC);
+    let p = prod(WIN32);
     guard_core::pin_line(&p, "const WAIT_FOREVER: u32 = 0xFFFF_FFFF;").unwrap_or_else(|e| {
         panic!("{e}\n⇒ 「一直等」那个值变了 —— 不是全 1 就是一个超时，看守就成了节拍器")
     });
@@ -126,11 +131,9 @@ fn the_windows_wait_never_times_out() {
     .unwrap_or_else(|e| {
         panic!("{e}\n⇒ 等待那一行不再只用 `WAIT_FOREVER` —— 带了超时，或者多了一处等待")
     });
-    // 第三处是一次性子命令 `--resident-stop` 那一个带期限的等（`wait_within`）—— 它不在看守路上，
-    //   `no_timer_guard::windows_arm` 钉着「Windows 那一臂带期限的等只有这一处」。
     assert_eq!(
         p.matches("WaitForSingleObject(").count(),
-        3,
-        "`WaitForSingleObject(` 应当恰好三处：`extern` 里的声明 ＋ 上面那一次调用 ＋ 一次性子命令那一处（`wait_within`）"
+        2,
+        "`WaitForSingleObject(` 应当恰好两处：`extern` 里的声明 ＋ 上面那一次调用"
     );
 }

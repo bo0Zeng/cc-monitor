@@ -2027,16 +2027,16 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
             "{what}：默认号"
         );
         // 起会话跟随（没有上次的号）：默认号选得了 ⇒ 它；否则不指定号。
-        use crate::control::launch_account::{pick, Asked, Picked};
+        use crate::control::launch_account::{pick, AccountAsk, Settled};
         let typed =
             super::list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
-        let picked = pick(&Asked::Follow, &typed, None, None);
+        let picked = pick(&AccountAsk::Follow, &typed, None).expect("跟随没有上次的号不会拒");
         let want_pick = case["effectiveDefault"]
             .as_str()
             .filter(|d| want.contains(d));
         match (picked, want_pick) {
-            (Picked::Account { name, .. }, Some(d)) => assert_eq!(name, d, "{what}：跟随落的号"),
-            (Picked::Base, None) => {}
+            (Settled::Account(a), Some(d)) => assert_eq!(a.name, d, "{what}：跟随落的号"),
+            (Settled::Unsaid, None) => {}
             (p, w) => panic!("{what}：跟随落成 {p:?}，金样要 {w:?}"),
         }
         let _ = fs::remove_dir_all(&root);

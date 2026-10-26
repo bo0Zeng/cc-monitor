@@ -158,14 +158,12 @@ COMPILE_STEPS = [
     ("build-backends", "Cross-compile backend for both musl targets",
      "两个 musl target 的静态字节（x86_64 ＋ aarch64）",
      "远端 Linux（musl 两个 arch）· 本机 Linux（同一份字节自释放，不另编）"),
-    ("build-windows", "Build local backend (native)",
-     "runner host triple 的原生 `.exe`",
-     "本机 Windows x86_64"),
-    # 文件窗口程序（文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，内嵌进 monitor；开窗时放到 `~/.cc-monitor/bin/` 再起）：同一格平台的**第二件字节**。
-    ("build-windows", "Build local filewin (native)",
-     "runner host triple 的原生 `cc-monitor-filewin.exe`",
-     "本机 Windows x86_64（文件窗口；内嵌进 `cc-monitor.exe`）"),
-    ("build-linux", "Build local filewin (native)",
+    # 本机后端 ＋ 文件窗口程序（文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，内嵌进 monitor；开窗时放到 `~/.cc-monitor/bin/` 再起）
+    #   一步编完、铺进 `native-backend/`（`re-embed.sh --stage-native`）。
+    ("build-windows", "Build and stage native backend + filewin",
+     "runner host triple 的原生 `cc-monitor-backend.exe` ＋ `cc-monitor-filewin.exe`",
+     "本机 Windows x86_64（本机后端 · 文件窗口，都内嵌进 `cc-monitor.exe`）"),
+    ("build-linux", "Build and stage native filewin",
      "runner host triple 的原生 glibc `cc-monitor-filewin`（链 GTK，musl 那两份替不了它）",
      "本机 Linux x86_64（文件窗口；内嵌进裸 `cc-monitor`）"),
     # 本机 Linux 不另编后端（size2 10-11）：从前 deb 旁边另放一份 glibc 后端（`externalBin`），与 musl 那份自释放并存两份来源；
@@ -180,11 +178,8 @@ BYTE_LINES = [
         "plat": "本机 Windows x86_64",
         "runner": ("build-windows", "windows-latest"),
         "steps": [
-            ("build-windows", "Build local backend (native)"),
-            ("build-windows", "Stage native backend for self-extract"),
-            # 同一格的第二件字节：文件窗口程序。
-            ("build-windows", "Build local filewin (native)"),
-            ("build-windows", "Stage native filewin for self-extract"),
+            # 本机后端与文件窗口程序两件字节，同一步编、铺。
+            ("build-windows", "Build and stage native backend + filewin"),
         ],
         "into": "`build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`），"
                 "起的时候放到 `~/.cc-monitor/bin/ccm` 再跑；安装包旁边不另放一份（size2 10-11）。"
@@ -209,8 +204,7 @@ BYTE_LINES = [
         "steps": [
             ("build-linux", "Place embedded backends"),
             # 文件窗口程序：这一格唯一另编的一份（原生 glibc，链 GTK）。
-            ("build-linux", "Build local filewin (native)"),
-            ("build-linux", "Stage native filewin for self-extract"),
+            ("build-linux", "Build and stage native filewin"),
         ],
         "into": "后端**不另编一份**（待点① 逐字：`local_daemon.rs::start_local_backend` 里"
                 "那道 `cfg!(target_os = \"linux\")` 闸让本机 Linux 直接用远端那两份 **musl 静态**字节自释放）"
@@ -253,7 +247,7 @@ IDENTITY_READS = {
 # `tests/scripts/re-embed.sh`：一条真跑得起来的命令 ＋ 一条 `--check`。
 #
 # ⚠ **本组买不到什么**（与本文件头注第 4 条同一条边界，别读宽）：
-#   · ⑬a–⑬e、⑬j 全是**盘上文本**的对拍；⑬i 真跑 `--build-only` 用的是一个只记账的 `cargo` 替身 ——
+#   · ⑬a–⑬e 全是**盘上文本**的对拍；⑬i 真跑 `--build-only` · `--stage-*` 用的是一个只记账的 `cargo` 替身 ——
 #     「配方对」≠「那条命令今天在这台机器上跑得出字节」（它要 `cargo-zigbuild` ＋ `zig`，本判据一次都不装、不编）。
 #   · ⑬g 真跑的是 `--check`（**只读**），不是 re-embed 本身。它在一棵**没铺字节**的树上
 #     只答得出「这里没有一份对不上的字节」——那不是「字节是对的」。
@@ -269,15 +263,12 @@ BRIDGE_GITIGNORE = "src/frontend/shell/.gitignore"
 #: 🔴 `build.rs` 里那个**出路唯一住址**常量的值，逐字。
 #: 它指的脚本必须在盘上 —— 「出路指着一个不存在的命令」与「没有出路」在文案上一模一样。
 REEMBED_CMD = "bash tests/scripts/re-embed.sh"
-#: ⑬i：`release.yml` 里产 musl 字节那一步（与 `COMPILE_STEPS` 第一条同源）只调这一条（配方只住 re-embed.sh）。
-MUSL_STEP = ("build-backends", "Cross-compile backend for both musl targets")
-MUSL_RUN = REEMBED_CMD + " --build-only"
-#: ⑬j 的对照物：两个 job 里那条原生编译（`--native` 那一趟要与它同配方）。
-NATIVE_STEP = "Build local backend (native)"
-#: ⑬j 的第二个对照物：两个 job 里编文件窗口程序那一步（`--native` 那一趟也编它，同配方、同工作目录）。
-FILEWIN_STEP = "Build local filewin (native)"
-FILEWIN_BIN_ARG = "-p cc-monitor-filewin --bin cc-monitor-filewin"
-FILEWIN_WORKDIR = "src/frontend/shell"
+#: ⑬i：`release.yml` 里编字节的每一步（与 `COMPILE_STEPS` 同一批）→ 它逐字只调的那个口（配方只住 re-embed.sh）。
+REEMBED_STEPS = {
+    ("build-backends", "Cross-compile backend for both musl targets"): "--build-only",
+    ("build-windows", "Build and stage native backend + filewin"): "--stage-native",
+    ("build-linux", "Build and stage native filewin"): "--stage-filewin",
+}
 #: ⑬d 注册侧：`build.rs` 里登记落点目录名的那两个常量。
 LANDING_CONSTS = ["EMBEDDED_BACKENDS_DIR", "NATIVE_BACKEND_DIR"]
 #: ⑬d 从前还有第三个落点 `binaries/`（Tauri `externalBin` 的暂存区）；安装包不再旁放本机后端（size2 10-11），它跟着撤了。
@@ -1059,7 +1050,8 @@ def run_checks(emit):
     # ── ⑨b 本文件里「跑 cargo 编后端」的步骤（直接跑，或经 re-embed.sh 跑）↔ 登记，两向集合相等 ────────────────
     on_disk = set()
     for jname, _, st in steps:
-        if re.search(r"\bcargo\s+(?:zigbuild|build)\b|\bre-embed\.sh\s+--build-only\b", str(st.get("run") or "")):
+        if re.search(r"\bcargo\s+(?:zigbuild|build)\b|\bre-embed\.sh\s+--(?:build-only|stage-native|stage-filewin)\b",
+                     str(st.get("run") or "")):
             on_disk.add((jname, str(st.get("name") or "<无名步骤>")))
     registered = {(j, n) for j, n, _, _ in COMPILE_STEPS}
     check(on_disk == registered, "⑨b编后端的步骤 ↔ 登记，两向集合相等",
@@ -1161,38 +1153,25 @@ def run_checks(emit):
         emit("::error::⑬ 的地板没过 —— 本组后面几条一律不算数")
         return (1 if fails else 0), passes[0], fails
 
-    # ── 配方的唯一住址是 re-embed 那两个数组；发版那一步只调它 ─────────────────────
-    #   musl 那两份字节只有一条配方（`REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`）：发版那一步与门禁 `muslbuild`
-    #   都经 `--build-only` 走它，「只编不铺」真跑一趟是下面的 ⑬i。这里只钉发版那一步没被换回一条手抄的配方。
+    # ── 配方的唯一住址是 re-embed.sh；发版里编字节的每一步只调它 ─────────────────────
+    #   musl 两份（`REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`）与本机那几份（本机后端 · 文件窗口）都只住那份脚本：
+    #   发版的编字节步逐字只调它的一个口，且没有一步自己跑 cargo 编字节（`tauri build` 是打包器起的 cargo，不在射程里）。
+    #   各口「只编不铺 / 只编只铺」真跑一趟是下面的 ⑬i。
     targets = sh_array(reembed, "REEMBED_TARGETS")
     flags = sh_array(reembed, "REEMBED_BUILD_FLAGS")
-    musl_run = next((str(st.get("run") or "") for jn, _, st in steps
-                     if (jn, str(st.get("name") or "")) == MUSL_STEP), "")
     check(bool(targets) and bool(flags), "⑬i地板·配方的两个数组抠得到",
           "`%s` 的 REEMBED_TARGETS=%r REEMBED_BUILD_FLAGS=%r" % (REEMBED_SH, targets, flags))
-    check(musl_run.strip() == MUSL_RUN, "⑬i发版那一步只经 `re-embed.sh --build-only` 产字节",
-          "`%s / %s` 那一步现打 %r（要逐字 %r）—— 换回手抄的 `cargo zigbuild` 就又是两条配方"
-          % (MUSL_STEP[0], MUSL_STEP[1], musl_run.strip(), MUSL_RUN))
-    if flags:
-        want = " ".join(flags)
-        # 本机那一份（`--native`）与文件窗口：发版两个 job 里的原生编译仍是手抄的一份（另一格收它），这里逐字对拍。
-        native_runs = [str(st.get("run") or "").strip() for _, _, st in steps
-                       if str(st.get("name") or "") == NATIVE_STEP]
-        check(bool(native_runs) and all(r == "cargo build " + want for r in native_runs),
-              "⑬j`--native` 那一趟 ↔ 发版那两步，逐字相同",
-              "发版那两步现打 %r · 脚本那一趟是 `cargo build %s` —— 本条盯的是"
-              "「本机那一份字节」的配方，与上面 musl 那两格是两条产线" % (native_runs, want))
-        # 文件窗口程序：两个 job 各一步，run 与工作目录逐字相同；脚本 `--native` 在同一个目录里跑同一条。
-        fw = [(str(st.get("run") or "").strip(), str(st.get("working-directory") or ""), jn)
-              for jn, _, st in steps if str(st.get("name") or "") == FILEWIN_STEP]
-        fw_want = "cargo build %s %s" % (want, FILEWIN_BIN_ARG)
-        fw_sh = '( cd "$ROOT/%s" && cargo build "${REEMBED_BUILD_FLAGS[@]}" %s )' % (FILEWIN_WORKDIR, FILEWIN_BIN_ARG)
-        check(sorted(j for _, _, j in fw) == ["build-linux", "build-windows"]
-              and all(r == fw_want and w == FILEWIN_WORKDIR for r, w, _ in fw) and fw_sh in reembed,
-              "⑬j`--native` 编文件窗口那一趟 ↔ 发版那两步，逐字相同",
-              "发版那两步现打 %r（要两个 job 各一步、run = %r、工作目录 = %r）· 脚本里 %r %s —— "
-              "差一格就是「本机铺的那份与发版内嵌的那份不是同一条路编的」，或某个 job 的单文件 monitor 没带它"
-              % (fw, fw_want, FILEWIN_WORKDIR, fw_sh, "在" if fw_sh in reembed else "**不在**"))
+    for (jn0, sn0), mode in REEMBED_STEPS.items():
+        runs = [str(st.get("run") or "").strip() for jn, _, st in steps
+                if (jn, str(st.get("name") or "")) == (jn0, sn0)]
+        want_run = "%s %s" % (REEMBED_CMD, mode)
+        check(runs == [want_run], "⑬i发版那一步只经 `re-embed.sh %s` 产字节·%s" % (mode, jn0),
+              "`%s / %s` 现打 %r（要恰好一步、逐字 %r）—— 换回手抄的 cargo 就又是两条配方"
+              % (jn0, sn0, runs, want_run))
+    direct = [(jn, str(st.get("name") or "<无名步骤>")) for jn, _, st in steps
+              if re.search(r"\bcargo\s+(?:zigbuild|build)\b", str(st.get("run") or ""))]
+    check(not direct, "⑬i发版里没有一步自己跑 cargo 编字节",
+          "这几步现打一条手抄的 cargo 编译 %r —— 那是 `%s` 那条配方的第二个家" % (direct, REEMBED_SH))
 
     # ── ⑬c 落点的 arch ↔ `build.rs` 吃字节那一侧，两向集合相等 ──────────────────
     eb = rust_fn_body(brs, "embed_backends") or ""
@@ -1365,6 +1344,48 @@ def run_checks(emit):
             check(False, "⑬i`--build-only` 只编不铺", "跑超时 60s —— 判不了，按红记")
         finally:
             shutil.rmtree(d, ignore_errors=True)
+
+        # ── ⑬i 只编只铺（`--stage-native` · `--stage-filewin`）：发版两个 job 经它们产本机那几份字节 ──
+        #   真跑：cargo 替身只记账、在 cargo 该落产物的地方放一份假字节（一个字节都不编）。
+        #   要：退 0；替身被叫的次数与目录对；`native-backend/` 里恰好铺了该铺的那几对（字节 ＋ `.target` = 这台的 host）；
+        #   不判（不印 `re-embed:` 那一行：发版那一侧的核对另有其步，Windows runner 上也不起字节）。
+        exe = ".exe" if "windows" in host else ""
+        for mode, want_files in (("--stage-native", ["cc-monitor-filewin", "cc-monitor-native"]),
+                                 ("--stage-filewin", ["cc-monitor-filewin"])):
+            d = fixture(None)
+            try:
+                (d / "bin").mkdir()
+                (d / "bin" / "cargo").write_text(
+                    '#!/bin/sh\nprintf "%%s|%%s\\n" "$PWD" "$*" >> "%s"\n'
+                    'case "$*" in *cc-monitor-filewin*) o="%s" ;; *) o="%s" ;; esac\n'
+                    'mkdir -p "$(dirname "$o")" && printf fake > "$o"\n'
+                    % (d / "cargo.log", d / ".build" / "shell" / "release" / ("cc-monitor-filewin" + exe),
+                       d / ".build" / "backend" / "release" / ("cc-monitor-backend" + exe)), encoding="utf-8")
+                (d / "bin" / "cargo").chmod(0o755)
+                env = dict(os.environ, PATH="%s:%s" % (d / "bin", os.environ.get("PATH", "")))
+                p = subprocess.run(["bash", str(d / "tests" / "scripts" / "re-embed.sh"), mode],
+                                   capture_output=True, text=True, timeout=60, env=env)
+                log = (d / "cargo.log").read_text(encoding="utf-8").splitlines() if (d / "cargo.log").exists() else []
+                fl = " ".join(sh_array(reembed, "REEMBED_BUILD_FLAGS") or [])
+                want_log = (["%s|build %s" % (d / "src" / "backend", fl)] if "cc-monitor-native" in want_files else []) \
+                    + ["%s|build %s -p cc-monitor-filewin --bin cc-monitor-filewin" % (d / "src" / "frontend" / "shell", fl)]
+                nd = d / "src" / "frontend" / "shell" / "native-backend"
+                landed = sorted(f.name for f in nd.iterdir()) if nd.exists() else []
+                want_landed = sorted(want_files + [f + ".target" for f in want_files])
+                targets_ok = all((nd / (f + ".target")).exists()
+                                 and (nd / (f + ".target")).read_text(encoding="utf-8").strip() == host
+                                 for f in want_files)
+                judged = any(l.startswith("re-embed:") for l in p.stdout.splitlines())
+                check(p.returncode == 0 and log == want_log and landed == want_landed and targets_ok and not judged,
+                      "⑬i`%s` 只编只铺" % mode,
+                      "rc=%d · cargo 替身记下 %r（要 %r）· 铺下 %r（要 %r）· .target %s · %s —— 红 = 发版那一步"
+                      "与 `--native` 不再是同一条配方，或铺漏 / 铺多（stderr：%s）"
+                      % (p.returncode, log, want_log, landed, want_landed, "对" if targets_ok else "**不对**",
+                         "**判了**" if judged else "没判", (p.stderr or "").strip()[-200:]))
+            except subprocess.TimeoutExpired:
+                check(False, "⑬i`%s` 只编只铺" % mode, "跑超时 60s —— 判不了，按红记")
+            finally:
+                shutil.rmtree(d, ignore_errors=True)
 
     # ══ ⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ══════════════════════
     cargo_doc = toml_load(BRIDGE_CARGO)

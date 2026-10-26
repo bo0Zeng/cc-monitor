@@ -447,9 +447,15 @@ fn local_face(
         pidfile_dir,
         cmdline_may_be_agent,
         tasks_dir: Some(|h| h.join("todo")),
-        background_of: |v| v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
-        activity_of: |_| None,
-        wait_of: |_| None,
+        proc_of: |v| crate::agents::ProcFact {
+            kind: AGENT_KIND,
+            sid: v
+                .get("sid")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+            background: v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
+            ..Default::default()
+        },
     }
 }
 
