@@ -13112,29 +13112,11 @@
       "zh": "{who}未在 {dur} 内答完 · 已停下",
       "args": ["who", "dur"]
     },
-    "accounts.sessionBadge.noneHint": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "账号未知 · 非 cc-monitor 启动或已停止",
-      "args": []
-    },
     "accounts.sessionBadge.none": {
       "kind": "body",
       "role": "空态",
       "zh": "—",
       "args": []
-    },
-    "accounts.sessionBadge.last": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "账号 {last}{email} · 来自上次 cc-monitor 启动",
-      "args": ["last", "email"]
-    },
-    "accounts.sessionBadge.live": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "账号 {account}{email} · 来自实时探测",
-      "args": ["account", "email"]
     },
     "accounts.badge.signedIn": {
       "kind": "body",

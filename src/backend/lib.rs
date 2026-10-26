@@ -235,6 +235,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-refs",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
+    // 一条会话的号那一份成品（`inbound::REGISTRY` 的 `session-account`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--session-account",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`，轮换第五版，typed）自动派生的 CLI 面；入参从 stdin 读。
     // ⚠ 第三版那 15 条（配置 · 会话副本 · 推演 · 现在就换）随第五版删了，换成下面这些 ⇒ BUILD_ID 打版本号时统一 bump。
     "--rotation-facts",
@@ -326,11 +328,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 扩展页写备注那一条（`ext-note-set`）派生的 CLI 面。
     "--ext-note-set",
     // 测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `stream::cli` 判据的 `NOT_ON_CLI`）。
-    // 历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
-    // 文件住家里，一次性进程与常驻那一个按家推出同一份。加这三行会逼出一次 `BUILD_ID` bump（打版本号时统一做）。
+    // 历史注解那两条（`inbound::REGISTRY` 的 `history-annotate` / `-forget`）派生的 CLI 面。
+    // 文件住家里，一次性进程与常驻那一个按家推出同一份。「上次用哪个号起的」那一条删了（并进 `session-account`）⇒ `BUILD_ID` 打版本号时统一 bump。
     "--history-annotate",
     "--history-forget",
-    "--history-last-accounts",
     // `--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
     //  ⚠ 摘这一行会让 `build_id_guard` 红 —— 这里**不 bump**，打版本号时统一做。

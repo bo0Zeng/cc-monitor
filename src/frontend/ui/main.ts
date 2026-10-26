@@ -69,12 +69,9 @@ import { bindErrorToast } from "./backend-errors";
 import { bindRemoteHealthToast } from "./remote-health";
 // 顶栏远端文件入口：按远端主机数 0 / 1 / N 分支（`sftp-host-picker.ts`）。
 import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
-import { readRemoteConfig } from "./remote-config";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./open-settings"; // 点「设置」有反馈（不 import 设置面板）
 import * as dest from "./settings-dest";
-import { createAccountFacts } from "./account-facts";
-import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
@@ -88,15 +85,13 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
-import { onQuotaChanged, syncSessions } from "./acct-center";
+import { onAccountsChanged as reaskSessionAccounts, onQuotaChanged, syncSessions } from "./acct-center";
 import { planMoves, pushedProducts } from "./changed-stream";
 import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
-import { currentAccountForBadge } from "./accounts";
-import { fetchAccounts } from "./account-reads";
 import { setLaunchSlots } from "./session-open";
 import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
 import { copyText } from "./copy-table";
@@ -361,9 +356,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // `finally` 不是 `then`：`loadPinned` 失败也得让顺序照常回来。
   void tabs.loadPinned().finally(() => void tabs.loadOrder());
 
-  // 状态栏「当前账号」chip：绑第一台可用远端的默认账号；未连远端 / 未启用多账号安静降级。点击弹选单切默认账号。
-  // 构造在 `accountFacts`（下方 `const`）之前：`onDefaultChanged` 回调间接调它，只在用户切号时才执行，
-  //   那时它早已初始化 —— 别在这中间插一个会触发回调的 await（会踩 TDZ）。
+  // 状态栏「当前账号」chip：有当前会话 ⇒ 画会话那台写好的那一份；没有 ⇒ 本机的默认号（未启用多账号安静降级）。点击弹选单切默认账号。
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
   // 会话里停发提示的重画（接线在下面 `acctSessionWiring`）。
   let noticeRepaint = (_sid: string): void => {};
@@ -406,24 +399,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   const accountChipDeps = {
     openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(activeOrigin() ?? LOCAL_ORIGIN)),
     togglePanel: openAcctPanel,
-    // 切号后立刻重问那一台：currentByOrigin 只由下面那一路喂，不主动问的话
-    // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
-    onDefaultChanged: (origin: Origin) => accountFacts.refresh(origin),
+    // 切号后立刻重问那一台有 tab 的会话的号（与默认号比在那一份里），不等那台推 `changed/accounts`。
+    onDefaultChanged: (origin: Origin) => reaskSessionAccounts(origin),
   };
   const accountChip = new AccountChip(accountChipDeps);
   status.append(statusDivider, accountChip.element); // 还没有当前会话：账号排在竖线后（有会话时挪到前面那一组）
   void accountChip.refresh();
 
-  // 账号徽章要的清单那一侧（`account-facts.ts`）：各台的账号清单 ＋ 上次用的号，并好放进 store。
-  //   会话跑在哪个号下不在这里：那台在会话宣告里说，起停不回头问。
-  const accountFacts = createAccountFacts({
-    fetchers: { fetchAccounts, currentAccountForBadge, lastAccounts },
-    hosts: async () => (await readRemoteConfig()).hosts.filter((r) => r.host.connect).map((r) => r.name),
-    publish: (f) => appStore.accountFacts.set(f),
-  });
-  // 那台连上 / 那台账号清单变了 ⇒ 重问那一台 ＋ chip（经通道订的 `changed/accounts`，下面 `bindEvents` 的 `onChanged`）；不给 ⇒ 各台。
+  // 那台连上 / 那台账号清单变了 ⇒ 那台有 tab 的会话的号重问 ＋ chip（经通道订的 `changed/accounts`，下面 `bindEvents` 的 `onChanged`）；不给 ⇒ 各台。
   const onAccountsChanged = (origin?: Origin): void => {
-    accountFacts.refresh(origin);
+    reaskSessionAccounts(origin);
     void accountChip.refresh();
   };
 
@@ -459,7 +444,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);
-    const cur = a.sid !== null && origin !== null ? { sid: a.sid, origin, account: a.account } : null;
+    const cur = a.sid !== null && origin !== null ? { sid: a.sid, origin } : null;
     accountChip.setActive(cur);
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);

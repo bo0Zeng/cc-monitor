@@ -410,8 +410,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 问这台机器登记了哪些插件市场：无入参，输出 `lines`。
         // 这台现扫一次资产、记进目录、回整份：无入参。
         "assets-catalog",
-        // sid → 上次用哪个号起：无入参（读本机那份注解文件）。
-        "history-last-accounts",
         // 列这台的 tmux 会话：无入参（问的就是「这台」）。
         // 列转发：无入参（问的就是本进程那张账）。
         "forward-list",

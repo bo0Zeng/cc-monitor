@@ -39,6 +39,7 @@ import { copyText } from "./copy-table";
 import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
+import { appStore } from "./app-store";
 
 /** 集合到上界、这一下没做成 ⇒ 说一句（判定 `tab-collections.ts::createRefusal`）；右键菜单与拖放都经这一处说。 */
 export function sayCollectionRefusal(r: CollectionRefusal): void {
@@ -440,10 +441,10 @@ export class TabBarPrefs {
       jsonlPath: tab.parentPath,
       cwd: tab.projectDir,
       origin: tab.origin,
-      // 缺了 resume 会静默落到默认号：两个源都读不到 ⇒ `null`（没记到，不是默认号）。
+      // 缺了 resume 会静默落到默认号：会话宣告 · 那台写好的会话的号（连上次的号）都读不到 ⇒ `null`（没记到，不是默认号）。
       account:
         tab.face?.account ??
-        this.store.accountLastByS.get(tab.sessionId) ??
+        appStore.sessionAccount.get().get(tab.sessionId)?.read.account ??
         prev?.account ??
         null,
       // 按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」。

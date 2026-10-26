@@ -12,6 +12,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
         "每个号此刻的事实",
     ),
+    // 一条会话的号那一份成品（帧面宿主 `faces/session_account_face.rs`）：状态栏按钮 · 号徽章 · 手机照画。只读。
+    crate::wire::typed::blocking::<crate::faces::session_account_face::SessionAccountCmd>(
+        "一条会话的号",
+    ),
     // 轮换第五版：拿一份策略原文照此刻的事实判一次、往后推演，不写盘不换号（skill 试跑 · 测试台）。
     crate::wire::typed::blocking::<crate::faces::rotation_try_face::RotationTry>(
         "试跑一份策略",
