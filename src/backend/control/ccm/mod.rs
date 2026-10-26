@@ -598,7 +598,7 @@ pub(crate) fn terminal_name_mint_with(
     Ok(name)
 }
 
-/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；`cc-spawn` 的能力协商读 `capabilities=` 那一行）。
+/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；调用方的能力协商读 `capabilities=` 那一行）。
 ///
 /// # 🔴 `K-R70`：`build=` 那一行答的是「**你是哪一份**」，与 `version=` 不是同一个问题
 ///

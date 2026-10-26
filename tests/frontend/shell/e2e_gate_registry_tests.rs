@@ -759,7 +759,7 @@ fn hardcoded_private_names(files: &[(String, String)]) -> Vec<String> {
 /// (挂了共享原语 `tmux-shim.sh`, 自建了 shim)。`--names-only` 只取名字、不装 shim ⇒ 不算挂了共享原语。
 ///
 /// 自建 shim 的形状 = **两件事同时成立**：① 往一个**名为 `tmux` 的文件**里写；② 那个文件里 `exec` 时带选择器。
-/// ⚠ 第一版只找「同一行里有 `exec` + `tmux` + `-L`」，**漏了 `cc-spawn-uplift`**
+/// ⚠ 第一版只找「同一行里有 `exec` + `tmux` + `-L`」，**漏了当年那份派生 e2e**
 ///   —— 它写的是 `exec "$REALTMUX" -L $SOCK "$@"`，那一行里**没有字面量 `tmux`**
 ///   （真 tmux 的路径在变量里），而且「写文件」与「exec」分在两行（heredoc）。
 ///   ⇒ 判定要按**形状**认，别按某一行的字面量。
@@ -977,11 +977,6 @@ const INHERITED_PATH_ALLOWED: &[(&str, &str, &str)] = &[
         "tests/e2e/p3t-local-tmux.sh",
         "CLAUDE_CONFIG_DIR",
         "只读：假启动器把自己拿到的那个值记进本趟日志，不往那里写",
-    ),
-    (
-        "tests/e2e/cc-bus-queue-drain.sh",
-        "CC_BUS_HOME",
-        "只读：按 cc-send 同一个取法算出脚本眼里的 bus，断言它落在沙箱里（落不进 ⇒ 拒跑）",
     ),
 ];
 
@@ -1247,8 +1242,8 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
             bad.truncate(before);
         }
     }
-    // 自检：认法在干活（今天几百处），且合成的坏形状被认出。
-    assert!(sites > 100, "只认出 {sites} 处 tmux 调用 —— 认法坏了");
+    // 自检：认法在干活（今天七十来处：派生 · 收会话 · 队列那几套 e2e 删了之后），且合成的坏形状被认出。
+    assert!(sites > 50, "只认出 {sites} 处 tmux 调用 —— 认法坏了");
     let probe = format!(
         "{}::new(\"tmux\")\n    .args([\"-L\", \"x\"])\n    .output()",
         "Command"

@@ -303,8 +303,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J12: {
     what: "cc-bus agent id 形状",
     // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
-    //   后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
-    //   在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`）。界面那一份（发 / 收 / 查在线 / 派生账号名）删了；
+    //   后端 `bus-send` / `bus-inbox` 入口
+    //   在交给 `cc-send` / `cc-log` 之前判（拒码 `bad_id`）。界面那一份（发 / 查在线）删了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
     homes: ["shell-quote-core::bus_id_ok"],
     status: "zero",

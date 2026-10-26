@@ -38,7 +38,7 @@ trap 'tmux_shim_cleanup' EXIT
 自带 shim 的套件与 docker 台架（网络名、容器名）用 `. tmux-shim.sh --names-only` 只取名字，
 套件里只写前缀、不写名字本身；写死的私有名字由 `e2e_gate_registry` 的扫描判据拦（`-L default` 那一处
 canary 例外：它问的正是用户那台默认 server）。
-调用点一个字都不用改，连套件 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）
+调用点一个字都不用改，连套件 shell out 出去的东西（`ccm` 内部也裸调 tmux）
 也一并覆盖。
 
 **绝不用 `TMUX_TMPDIR` 做隔离** —— `$TMUX` 一有值就压过它。2026-08-11 一条探针就是这么把
@@ -100,7 +100,7 @@ E2E_DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude bash tests/e2e/
 ① `local_backend` 那条 `#[ignore]` 两天里被判成「验不出来」，其实是**测试与后端不在同一台
    tmux server**（修法：给后端一条挂着 shim 的 PATH，强插同一个 `-S`）；
 ② `backend-gate2` **每跑必 RC=1**，因为它自己写的「造不出的名字应当…从表里说明」没人执行；
-③ `cc-spawn-uplift` 还在断言 `cc-spawn` **已被删掉的复用行为**（`P4b` 的 E 阶段横扫漏了它）。
+③ 当年那份派生 e2e 还在断言派生脚本**已被删掉的复用行为**（`P4b` 的 E 阶段横扫漏了它；那份 e2e 后来随派生一起删了）。
 
 ⇒ **「改了语义要跟改测试」这条纪律，在一套没人跑的测试上是失效的** —— 它不会红给你看。
 

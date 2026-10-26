@@ -192,7 +192,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
 
 /// 〔搬自 `ccm-contract-parity` 的 `--ccm-probe` 那 5 条〕
 ///
-/// 这份输出是**外部契约**：`cc-spawn` 按行读 `capabilities=`。
+/// 这份输出是**外部契约**：调用方按行读 `capabilities=`。
 #[test]
 fn the_probe_output_is_the_shape_its_parser_expects() {
     let out = probe_output("/usr/local/bin/ccm");

@@ -34,8 +34,7 @@ pub(crate) fn with_deps_as<T>(
         crate::observe::query::locate::record_for(&crate::history::listing::agent_home(), dir, sid)
             .map(|p| (p.present, p.root))
     };
-    let kill =
-        |name: &str, sid: &str| crate::control::kill::run_as(name, sid, client).map(|b| b.note());
+    let kill = |name: &str, sid: &str| crate::control::kill::run_as(name, sid, client);
     let send_into = |name: &str, sid: &str, line: &str| {
         let req = crate::control::launch::parse_request(crate::control::launch::LaunchReq {
             mode: crate::control::launch::Mode::SendInto,

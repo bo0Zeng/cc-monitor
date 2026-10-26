@@ -2,7 +2,7 @@
 import type { ArriveBy } from "./ArriveBy";
 
 /**
- * `session-arrive` 的入参（`session-open` · `bus-spawn` 的回包里那一格，原样交回）：等那一条起好的会话在这台报到。
+ * `session-arrive` 的入参（`session-open` 的回包里那一格，原样交回）：等那一条起好的会话在这台报到。
  * 等多久 ＝ 请求信封的期限（减余量）；到了没见到 ⇒ `missed`。
  */
 export type ArriveAsk = { 

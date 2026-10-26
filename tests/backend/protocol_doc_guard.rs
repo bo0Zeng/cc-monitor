@@ -157,9 +157,9 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
 ///
 /// [`dispatched_subcommands`] 把 [`DISPATCH_FILES`] 里**每一个** `"--x"` 字面量都当成
 /// 「后端自己认的 token」，于是要求它进 `lib.rs` 的 argv 三分表、进 `IPC-PROTOCOL.md §10`。
-/// 而 `bus-spawn` 转调 `cc-spawn` 时要发 `--tool` / `--account` / `--base` —— 那是**cc-spawn 的**
-/// 旗标：塞进 `SUBCOMMAND_OPTIONS` 会改 `is_query_mode` 的行为（`--tool` 打头的 argv 从此被当成
-/// 「子命令选项脱离了子命令」），写进 §10 会让冻结契约描述一件它不负责的事。
+/// 而后端转调 `cc-list` 时要发 `--tsv` —— 那是**cc-list 的**旗标：塞进 `SUBCOMMAND_OPTIONS`
+/// 会改 `is_query_mode` 的行为（`--tsv` 打头的 argv 从此被当成「子命令选项脱离了子命令」），
+/// 写进 §10 会让冻结契约描述一件它不负责的事。
 /// 旧模型里只有两类（wire 面 · 终端面 [`TERMINAL_SURFACE_FILES`]），这是第三类。
 ///
 /// # ⚠ 它**不是**豁免，是换了一格判据（同 [`TERMINAL_SURFACE_FILES`] 的取法）
@@ -175,19 +175,12 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
 /// 🔴 **不许**把旗标拼成运行期字符串（`format!("--{}", "tool")`）来躲 [`dispatched_subcommands`] ——
 /// 那是把扫描面静默挖空；正路就是登记在这里、让 ①② 接住。
 pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
-    (
-        "control/cc_bus.rs",
-        "src/shared/cc-bus/scripts/cc-spawn",
-        &["--account", "--base", "--tool"],
-        "`bus-spawn` 转调 `cc-spawn` 时的旗标（`control/cc_bus.rs::spawn_argv`）。\
-         它们是 cc-spawn 的命令面：后端 argv 从不认它们，线上契约里也没有它们的位置。",
-    ),
-    // 同一份文件发给另两个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
+    // 一份文件发给几个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
     (
         "control/cc_bus.rs",
         "src/shared/cc-bus/scripts/cc-list",
         &["--tsv"],
-        "`bus-state` / 杀会话顺手注销转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
+        "`bus-list` / `bus-send` 转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
     ),
     (
         "control/cc_bus.rs",
@@ -195,12 +188,6 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--sid"],
         "ccm 起会话的收尾登记上 cc-bus 时（`control/cc_bus.rs::REGISTER_SID`，`plan::render_container_tail` 用），这一发知道会话编号就带上它：\
          登记那一格的第 5 列，敲门按它经后端说一句。是 cc-register 的命令面，不是后端的子命令。",
-    ),
-    (
-        "control/cc_bus.rs",
-        "src/shared/cc-bus/scripts/cc-agents",
-        &["--tsv"],
-        "`bus-state` 转调 `cc-agents --tsv`（机器可读的派生台账）。是 cc-agents 的命令面，不是后端的子命令。",
     ),
     // 子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
     //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
@@ -245,18 +232,7 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
 ];
 
 /// 子进程认、而后端**刻意不发**的旗标 —— 每条带理由（②那一向的另一半）。
-pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[
-    (
-        "src/shared/cc-bus/scripts/cc-spawn",
-        "--new",
-        "P4b 之后 cc-spawn **默认就是新建**，`--new` 是为兼容外面的老调用方保留的 no-op；后端没有理由发它。",
-    ),
-    (
-        "src/shared/cc-bus/scripts/cc-spawn",
-        "--as",
-        "照一条别名起（交成 `ccm @<别名>`）是给终端里与 agent 自己用的；`bus-spawn` 的入参里没有别名这一格，后端不发它。",
-    ),
-];
+pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[];
 
 /// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
 /// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。
@@ -400,7 +376,7 @@ mod tests {
 
     /// 🔴 [`CHILD_PROCESS_FLAGS`] 的接盘判据：**①② 两向相等**（登记表头注写着为什么）。
     ///
-    /// ⚠ 买不到：「旗标的**值**对不对」（`--tool` 后面跟的是什么）—— 那一格由 cc-spawn 自己 rc=2 判，
+    /// ⚠ 买不到：「旗标的**值**对不对」—— 那一格由子进程自己 rc=2 判，
     /// 行为判据住 `control::cc_bus::tests`（argv 形状）与 `tests/e2e/backend-cc-bus.sh`（真跑）。
     #[test]
     fn child_process_flags_are_exactly_what_the_file_sends_and_what_the_child_accepts() {
@@ -510,7 +486,7 @@ mod tests {
                 "\n`{child}` 认的旗标，与「后端发的 ∪ 刻意不发的」对不上。\n\
                  左边多 ⇒ 子进程新认了一个旗标、这边没表态（发不发都要写一句）；\n\
                  右边多 ⇒ 后端发了一个子进程**不认**的旗标（它会被当成位置参数吃掉，\
-                 `cc-spawn` 那条的后果是「目录不存在：--xxx」）。"
+                 后果多半是「目录不存在：--xxx」那一类）。"
             );
         }
     }
@@ -568,7 +544,7 @@ mod tests {
         accepts
     }
 
-    /// 没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-list` / `cc-agents` 的 `--tsv`）。
+    /// 没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-list` 的 `--tsv`）。
     fn shell_first_arg_flags(script: &str) -> Vec<String> {
         let pat = "[ \"${1:-}\" = --";
         script

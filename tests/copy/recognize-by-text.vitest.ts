@@ -17,16 +17,12 @@ import { nonEmpty } from "../test-support/non-empty.ts";
 
 /**
  * 登记的例外：
- * - cc_bus 三条认的是 cc-bus 脚本自己的输出行（cc-bus 的文本不归文案表），不是表里的句子；
+ * - cc_bus 那三条（认 cc-bus 脚本自己的输出行）随收会话 · 派生两条转调一起删了；
  * - `accounts.ts::deriveUi` 按「过旧」「不支持账号」认的那两条删了（少了两条）：「需更新」改认结构化的 `AccountsState.oldBackend`（`chan-caller.ts::isOldBackend`）；
  * - `tab-drop.ts::defaultGroupName` 认默认组名「组 N」续号那一条删了：改成照 `tabDrop.group.defaultName` 现取模板认（`tab-drop-default-name.vitest.ts`）。
  * - `plan/product.rs::why_code` 认 pb 0.3.8 `why` 原话的那两条删了（少了两条）：pb 0.5 不给原因的话，后端照 dump 的结构化字段数（`state` · `pending_sets[].blocked_code`）。
  */
-const RECOGNIZE_BY_TEXT = [
-  "src/backend/control/cc_bus.rs · 已杀会话",
-  "src/backend/control/cc_bus.rs · 已摘掉",
-  "src/backend/control/cc_bus.rs · 已 spawn:",
-];
+const RECOGNIZE_BY_TEXT: readonly string[] = [];
 
 const MATCH_CALL =
   /\.(?:contains|starts_with|ends_with|strip_prefix|strip_suffix|find|rfind|split_once|rsplit_once|matches|includes|startsWith|endsWith|indexOf|lastIndexOf)\(\s*b?(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`([^`]*)`)/g;

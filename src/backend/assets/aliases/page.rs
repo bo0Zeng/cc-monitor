@@ -44,7 +44,6 @@ pub(crate) enum SlotId {
     TmuxSize,
     Detach,
     BusRegister,
-    BusNote,
     Tab,
 }
 
@@ -114,11 +113,6 @@ pub(crate) const SLOTS: &[Slot] = &[
         id: SlotId::BusRegister,
         label: || copy_text("beProfile.slot.busRegister", &[]),
         flags: &[flag::BUS_REGISTER],
-    },
-    Slot {
-        id: SlotId::BusNote,
-        label: || copy_text("beProfile.slot.busNote", &[]),
-        flags: &[flag::BUS_NOTE],
     },
     Slot {
         id: SlotId::Tab,
@@ -261,8 +255,6 @@ pub(crate) struct ProfileForm {
     pub detach: bool,
     #[serde(default)]
     pub bus_register: bool,
-    #[serde(default)]
-    pub bus_note: Option<String>,
     /// 标签页：显示 / 隐藏（`null` ＝ 继承）。
     #[serde(default)]
     pub tab: Option<cmd_wire::session::Tab>,
@@ -317,7 +309,6 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
     if f.bus_register {
         ccm.push(flag::BUS_REGISTER.to_string());
     }
-    pair(flag::BUS_NOTE, s(&f.bus_note), &mut ccm);
     if let Some(t) = f.tab {
         ccm.extend([flag::TAB.to_string(), argv::tab_word(t).to_string()]);
     }
@@ -442,7 +433,6 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
             flag::TMUX_SIZE => f.tmux_size = Some(one()),
             flag::DETACH => f.detach = true,
             flag::BUS_REGISTER => f.bus_register = true,
-            flag::BUS_NOTE => f.bus_note = Some(one()),
             flag::TAB => f.tab = argv::tab_of(&one()),
             _ => {}
         }
