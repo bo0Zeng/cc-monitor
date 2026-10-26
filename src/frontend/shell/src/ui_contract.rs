@@ -267,7 +267,6 @@ pub enum BatchEdge {
 pub struct SessionUnseenPayload {
     pub origin: crate::origin::Origin,
     /// 那几条落成的那一张脸：本机后端造好、随它的 hello 交来的那一份（界面照它画，不自己拼）；本机后端还没握上手 ⇒ `null`（不画点）。
-    #[cfg_attr(test, ts(type = "import(\"./SessionFace\").SessionFace | null"))]
     pub face: Option<cmd_wire::frame::SessionFace>,
 }
 

@@ -545,9 +545,9 @@ describe("TabManager 生命周期", () => {
     tm.onFace("u3", goldenFace("ended"));
     tm.onFace("u4", goldenFace("gone"));
     const tab = (sid: string) => home(tm).store.tabs.get(sid)!;
-    tm.markOriginUnseen("gpu-01", goldenFace("unclear"));
+    tm.markOriginUnseen("gpu-01", goldenFace("unseen"));
     expect(["u1", "u2", "u3", "u4", "o1"].map((sid) => tab(sid).face?.dot)).toEqual(["unknown", "unknown", "ended", "gone", "running"]);
-    expect(stateLine(tab("u1"), Date.now()).text, "那一句照后端交来的那张脸").toBe(goldenFace("unclear").line);
+    expect(stateLine(tab("u1"), Date.now()).text, "那一句照后端交来的那张脸").toBe(goldenFace("unseen").line);
     tm.onFace("u1", liveFace("idle"));
     tm.onFace("u2", goldenFace("reconnectable"));
     expect(["u1", "u2"].map((sid) => tab(sid).face?.dot)).toEqual(["idle", "exited"]);
@@ -4361,13 +4361,13 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     await tm.loadPinned();
     for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).face, "复活出来还没人说过它 ⇒ 不画点").toBeNull();
     // 重放到了：那几条那台还没报（壳的「说不清」那一格）⇒ 落成本机后端交来的那一张。
-    for (const o of [LOCAL_ORIGIN, "pi"]) tm.markOriginUnseen(o, goldenFace("unclear"));
+    for (const o of [LOCAL_ORIGIN, "pi"]) tm.markOriginUnseen(o, goldenFace("unseen"));
     for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).face?.dot).toBe("unknown");
     // T4：说不清那一刻，tab 的提示句 · 状态名 · 固定空态，一处都不许说「已结束」。
     const said = (): string =>
       ["p1", "p2", "p3"].map((sid) => cardText(tm, sid)).join("\n") +
       [...document.querySelectorAll<HTMLElement>(".pin-revived-hint")].map((n) => n.textContent).join("\n");
-    expect(said()).toContain(goldenFace("unclear").name);
+    expect(said()).toContain(goldenFace("unseen").name);
     expect(said()).not.toContain(copyText("sessionState.ended.name"));
     // 清单报完不下结论；p3 被宣告 ⇒ 活。
     tm.markOriginSeen(LOCAL_ORIGIN);
@@ -4430,7 +4430,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u2", "/x", "p", "pi");
     tm.onFace("u2", goldenFace("reconnectable")); // 可重连
     tm.ensureTab("o1", "/x", "p", "mu"); // 别的机器上的活会话
-    tm.markOriginUnseen("pi", goldenFace("unclear")); // 机器级一格
+    tm.markOriginUnseen("pi", goldenFace("unseen")); // 机器级一格
     expect([tabOf("u1").face?.dot, tabOf("u2").face?.dot]).toEqual(["unknown", "unknown"]);
     expect(tabOf("o1").face?.dot, "别的机器不受牵连").toBe("running");
     // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
@@ -4442,7 +4442,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u4", "/x", "p", "pi");
     tm.onFace("u4", goldenFace("ended"));
     tm.onFace("u4", goldenFace("gone"));
-    tm.markOriginUnseen("pi", goldenFace("unclear"));
+    tm.markOriginUnseen("pi", goldenFace("unseen"));
     expect([tabOf("u3").face?.dot, tabOf("u4").face?.dot]).toEqual(["ended", "gone"]);
     expect(titles()).toContain(copyText("sessionState.ended.name"));
   });
@@ -4450,7 +4450,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的照旧说不清，等那台答（它在手上的 tab 里，随名单报上去）", () => {
     tm.ensureTab("r1", "/x", "p", "pi");
     tm.ensureTab("r2", "/x", "p", "pi");
-    tm.markOriginUnseen("pi", goldenFace("unclear"));
+    tm.markOriginUnseen("pi", goldenFace("unseen"));
     expect([tabOf("r1").face?.dot, tabOf("r2").face?.dot]).toEqual(["unknown", "unknown"]);
     tm.onFace("r1", liveFace("working")); // 重连后后端初扫重宣告 r1：那一帧带着脸
     tm.createSkeletonTab("r1", "/x", "pi");
@@ -4485,7 +4485,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("k2", "/x", "p", "pi");
     tm.onFace("k1", goldenFace("reconnectable"));
     tm.onFace("k2", goldenFace("reconnectable"));
-    tm.markOriginUnseen("pi", goldenFace("unclear"));
+    tm.markOriginUnseen("pi", goldenFace("unseen"));
     expect([tabOf("k1").face?.dot, tabOf("k2").face?.dot]).toEqual(["unknown", "unknown"]);
     // emitter 那一笔：k1 的 tmux 还在 ⇒ idle 格；k2 不在 ⇒ ended 格；**然后**才是 listed 格。
     tm.onFace("k1", goldenFace("reconnectable"));
@@ -4497,7 +4497,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   });
 
   it("★ 那台一个 tab 都没有时收到 unseen ⇒ 什么都不建", () => {
-    tm.markOriginUnseen("nowhere", goldenFace("unclear"));
+    tm.markOriginUnseen("nowhere", goldenFace("unseen"));
     expect(home(tm).store.tabs.size).toBe(0);
   });
 });

@@ -2024,34 +2024,44 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
 /// 正控：同一把尺量得到一段造脸的写法（原先界面自己拼的那一张就是这个形）。
 #[test]
 fn the_interface_never_builds_a_face_of_its_own() {
+    // 运行时拼，免得命中本条自己（同上一条）。
+    let face = ["Session", "Face"].concat();
+    let ret = format!("): {face}");
+    let settled = ["sett", "led:"].concat();
     let built = |code: &str| -> Vec<String> {
-        let ret = format!("): {}", "SessionFace");
-        code.lines()
-            .filter(|l| !l.trim_start().starts_with("//") && !l.trim_start().starts_with('*'))
+        guard_core::strip_comment_lines(code)
+            .lines()
             .filter(|l| {
                 l.find(&ret).is_some_and(|i| {
                     let rest = l[i + ret.len()..].trim_start();
                     rest.starts_with('{') || rest.starts_with("=>")
-                }) || l.contains(&format!("{}:", "settled"))
+                }) || guard_core::contains_word(l, &settled)
             })
             .map(|l| l.trim().to_string())
             .collect()
     };
+    let specimen = format!(
+        "// {settled} 注释里不算\nexport function unseenFace(machine: string): {face} {{\n  return {{ {settled} false }};\n}}"
+    );
     assert_eq!(
-        built("export function unseenFace(machine: string): SessionFace {\n  return { settled: false };\n}"),
+        built(&specimen),
         vec![
-            "export function unseenFace(machine: string): SessionFace {".to_string(),
-            "return { settled: false };".to_string()
+            format!("export function unseenFace(machine: string): {face} {{"),
+            format!("return {{ {settled} false }};")
         ],
-        "正控：这把尺量得到界面自己造脸的那一形"
+        "正控：这把尺量得到界面自己造脸的那一形（注释里的不算）"
     );
     let repo = guard_core::addr::repo_root();
     let mut found = Vec::new();
     for (path, raw) in guard_core::scan_tree!(&repo.join("src/frontend"), &["ts"]) {
-        let rel = path.strip_prefix(&repo).unwrap_or(&path).to_string_lossy().replace('\\', "/");
-        if rel.contains("/generated/") {
+        if path.components().any(|c| c.as_os_str() == "generated") {
             continue;
         }
+        let rel = path
+            .strip_prefix(&repo)
+            .unwrap_or(&path)
+            .display()
+            .to_string();
         for l in built(&raw) {
             found.push(format!("{rel}: {l}"));
         }

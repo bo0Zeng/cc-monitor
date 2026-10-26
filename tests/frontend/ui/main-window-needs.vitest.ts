@@ -309,7 +309,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 
   it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", async () => {
-    const r = await bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: null }), tab("g2", { origin: "gpu-01" as never, face: null })]);
+    const r = await bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: goldenFace("unseen") }), tab("g2", { origin: "gpu-01" as never, face: goldenFace("unseen") })]);
     r.view.markOriginDown("gpu-01", true, Date.now() - 180_000);
     r.view.refresh();
     const row = r.el.querySelector<HTMLElement>(".tab-machine-down-row")!;
@@ -329,7 +329,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 
   it("状态不明的行不当已结束画：虚线环、标题常色、行尾没有 ×（只右键能关）", async () => {
-    const r = await bar([tab("g1", { origin: "gpu-01" as never, face: null })]);
+    const r = await bar([tab("g1", { origin: "gpu-01" as never, face: goldenFace("unseen") })]);
     const b = r.view.tabButtons.get("g1")!;
     expect(b.dot.dataset.state).toBe("unknown");
     expect([b.root.classList.contains("unseen"), b.root.classList.contains("ended")]).toEqual([true, false]);
@@ -379,7 +379,7 @@ describe("会话头", () => {
     const exited = head(tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") }));
     expect(labels(exited.h.el)).toContain(copyText("sessionHead.act.openTerm"));
     expect(labels(head(tab("b2", { face: goldenFace("reconnectable") })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
-    const unseen = head(tab("c", { origin: "gpu-01" as never, face: null }));
+    const unseen = head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") }));
     const re = [...unseen.h.el.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionHead.act.reconnect"))!;
     re.click();
     expect(unseen.host.reconnect).toHaveBeenCalledWith("gpu-01");
