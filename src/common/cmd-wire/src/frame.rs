@@ -43,6 +43,7 @@ pub enum Frame<R = Record> {
     SessionBranch(SessionBranch),
     TerminalScreen(TerminalScreen),
     TerminalFollowEnd(TerminalFollowEnd),
+    Relayed(Relayed),
 }
 
 /// `line` 帧的 `kind`（[`decode`] 认它走直解那一路）。
@@ -107,6 +108,7 @@ pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
         SessionBranch => "session_branch",
         TerminalScreen => "terminal_screen",
         TerminalFollowEnd => "terminal_follow_end",
+        Relayed => "relayed",
     }
 }
 
@@ -156,6 +158,10 @@ pub struct Hello {
     pub build_id: String,
     /// 这台机器的架构（`x86_64` / `aarch64` …）。
     pub host_arch: String,
+    /// 这份后端出自的那一版（仓根 `package.json` 的 `version`）；机器页那台的版本号就是它。没带 ⇒ 说不出是哪一版。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub version: Option<String>,
     /// 这台后端接受的入方向命令；空 ⇒ 它不读命令。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
@@ -779,6 +785,33 @@ pub struct TerminalFollowEnd {
     pub why: FollowEnd,
     /// 给人看的那一句（后端写好，界面原样上屏）。
     pub said: String,
+}
+
+/// **本机后端转来的别台那条常驻流上的事**（各台的常驻流归本机后端，`control/feeds.rs`；壳只读本机这一条）。
+/// 每条连接先来它的 hello（一行 `line`），接着是那台流上的帧（`reply` · `cancelled` 以外的，一行一帧），断了来一帧 `ended`。
+/// 丢不得：挤丢了一行 ⇒ 那条连接在下一帧之前先收那台一格 `gap`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "what", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Relayed {
+    /// 那台流上的一行，原样（不建树、不改一个字节）。
+    Line { machine: String, line: String },
+    /// 那台流上有一行超长、整行丢了（或这一端转的时候挤丢了一行）。
+    Gap { machine: String },
+    /// 那台这一条连接断了（下一条从它的 hello 起）。
+    Ended { machine: String },
+}
+
+impl Relayed {
+    /// 说的是哪一台。
+    pub fn machine(&self) -> &str {
+        match self {
+            Relayed::Line { machine, .. }
+            | Relayed::Gap { machine }
+            | Relayed::Ended { machine } => machine,
+        }
+    }
 }
 
 // ───────────────────────────── 帧里的零件 ─────────────────────────────

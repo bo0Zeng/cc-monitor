@@ -64,10 +64,10 @@ use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
-use cmd_wire::frame::HiddenNow;
+use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -147,6 +147,8 @@ enum WatchEvent {
     /// 发它。没有它的话，删掉 ticker 之后 reader 线程会一直阻塞在 `recv()`
     ///（进程退出时才随之消亡——不是泄漏，但「没人听就停读」这条性质会丢）。
     Shutdown,
+    /// 别台那条常驻流上的事（本机后端那几条 feed 交的，[`relay`]）：投给每条连接。
+    Relay(Frame),
     /// 「开着即活」那几家的记录根下，一批文件被新建 / 打开 / 写完关闭（`platform::writers::watch_opens` 交的一批）。
     Writers(crate::platform::writers::OpenBatch),
     /// 用户按了「重新对齐」：与起步同一套（耳朵重挂 · pidfile 对表 · 重探 tmux · 账号清单），
@@ -1050,6 +1052,14 @@ fn live_leave(id: u64) {
         .retain(|(k, _)| *k != id);
 }
 
+/// 别台那条常驻流上的一件事（`control/feeds.rs` 那几条 feed 交的 `relayed` 帧）：交每一份在跑的 watcher，投给连着它的每条流连接
+/// （同出方向那条大通道：字节封顶，挤丢了那台欠一格，[`Sub::push`]）。没有在跑的 watcher ＝ 没人连着，不交。
+pub fn relay(frame: Frame) {
+    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let _ = w.send(WatchEvent::Relay(frame.clone()));
+    }
+}
+
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下（语义同 [`WatcherPoke::poke`]）。
 pub fn poke_all() {
     for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
@@ -1625,6 +1635,7 @@ fn watch_loop(
             }
             WatchEvent::Join(sub, watch) => join(sub, watch, &mut state, &mut sink),
             WatchEvent::Leave(id) => sink.leave(id),
+            WatchEvent::Relay(f) => sink.fan(f),
             WatchEvent::Arrive { by, since, tell } => sink.arrivals.expect(by, since, tell),
             WatchEvent::RecordSeen { sid, present } => sink.record_seen(&sid, present),
             WatchEvent::Asked(now) => asked_now(now, &mut state, &mut sink),
@@ -4813,6 +4824,8 @@ pub(crate) struct Sub {
     kept: BTreeSet<String>,
     /// 其中已经答过已结束的（[`FrameSink::settle_kept`]；不在 `kept` 里了就摘）。
     kept_answered: BTreeSet<String>,
+    /// 别台那条流上挤丢过帧、欠一格的那几台（那台 ⇒ 欠的是 `ended`）：下一帧之前先补（[`Sub::push`]）。
+    relays_owed: BTreeMap<String, bool>,
 }
 
 impl FrameSink {
@@ -5051,6 +5064,7 @@ impl Sub {
             branch_held: HashMap::new(),
             kept: BTreeSet::new(),
             kept_answered: BTreeSet::new(),
+            relays_owed: BTreeMap::new(),
         }
     }
 
@@ -5078,6 +5092,12 @@ impl Sub {
         }
     }
 
+    /// 别台那条流上的一帧没投成：欠那台一格（丢了一行 ⇒ `gap`；断了的那一帧 ⇒ `ended`，断了比丢一行大）。
+    fn owe_relay(&mut self, r: &Relayed) {
+        let ended = matches!(r, Relayed::Ended { .. });
+        *self.relays_owed.entry(r.machine().to_string()).or_default() |= ended;
+    }
+
     /// 推一帧；先补欠着的那一帧 `overflow`（客户端最晚在下一帧之前知道丢过）。通道还满 ⇒ 接着欠；关了 ⇒ 不说（连接摘掉）。
     fn push(&mut self, frame: Frame) {
         if self.lines_lost > 0 || self.realign {
@@ -5103,10 +5123,36 @@ impl Sub {
                 Err(mpsc::error::TrySendError::Closed(_)) => return,
             }
         }
+        // 别台那条流上欠着的那几格先补；还补不上 ⇒ 那几台的帧接着欠（不许越过欠着的那一格先到）。
+        for (machine, ended) in std::mem::take(&mut self.relays_owed) {
+            let owed = if ended {
+                Relayed::Ended {
+                    machine: machine.clone(),
+                }
+            } else {
+                Relayed::Gap {
+                    machine: machine.clone(),
+                }
+            };
+            match self.tx.try_send(Frame::Relayed(owed)) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.relays_owed.insert(machine, ended);
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => return,
+            }
+        }
+        if let Frame::Relayed(r) = &frame {
+            if self.relays_owed.contains_key(r.machine()) {
+                self.owe_relay(r);
+                return;
+            }
+        }
         match self.tx.try_send(frame) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 match &frame {
+                    Frame::Relayed(r) => self.owe_relay(r),
                     Frame::Changed(c) => {
                         self.changed_lost
                             .insert((c.topic(), c.key().map(str::to_string)));

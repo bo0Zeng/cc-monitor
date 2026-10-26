@@ -257,6 +257,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
                 host_arch: s("x86_64"),
+                version: Some(s("4.2.0")),
                 commands: vec![s("ping")],
                 unavailable: vec![Unavailable {
                     command: s("tmux-list"),
@@ -270,6 +271,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
                 host_arch: s("x86_64"),
+                version: None,
                 commands: vec![],
                 unavailable: vec![],
                 host_env: Default::default(),
@@ -606,6 +608,13 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 why: crate::wire::FollowEnd::Gone,
                 said: s("that-sentence-2"),
             }),
+        ],
+        [
+            Frame::Relayed(cmd_wire::frame::Relayed::Line {
+                machine: s("m1"),
+                line: s(r#"{"kind":"sessions_replayed"}"#),
+            }),
+            Frame::Relayed(cmd_wire::frame::Relayed::Ended { machine: s("m1") }),
         ],
     ]
 }
@@ -1297,6 +1306,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
         to_line(&Frame::Hello(crate::wire::Hello {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
+            version: None,
             commands: vec![],
             unavailable: vec![],
             host_env,
@@ -1383,6 +1393,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         Frame::Hello(crate::wire::Hello {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
+            version: None,
             commands: vec![],
             unavailable: vec![],
             host_env: Default::default(),

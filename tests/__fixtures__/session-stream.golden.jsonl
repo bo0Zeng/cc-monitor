@@ -1,4 +1,4 @@
-{"kind":"hello","build_id":"b1","host_arch":"x86_64","commands":["ping"],"unavailable":[{"command":"tmux-list","code":"no_tmux"}],"host_env":{"CCM_RELAY_PORT":"47001"},"shapes":{"ping":"0000abcd"},"frames":{"line":"0000abcd"}}
+{"kind":"hello","build_id":"b1","host_arch":"x86_64","version":"4.2.0","commands":["ping"],"unavailable":[{"command":"tmux-list","code":"no_tmux"}],"host_env":{"CCM_RELAY_PORT":"47001"},"shapes":{"ping":"0000abcd"},"frames":{"line":"0000abcd"}}
 {"kind":"hello","build_id":"b1","host_arch":"x86_64"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"record":{"agent":"claude","id":"u1","at":"2026-10-09T01:30:00.000Z","timeText":"09:30","atMs":1791509400000,"t":"said","who":{"speaker":{"kind":"human"},"text":"q"},"blocks":[{"type":"text","text":"q"}]},"cwd":"/w","byte_offset":120,"rid":"r1"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"byte_offset":120}
@@ -46,3 +46,5 @@
 {"kind":"terminal_screen","ticket":"t1","seq":1,"view":{"screen":"0000000000000000","cols":1,"rows":0,"cursor":{"x":0,"y":0,"visible":false},"lines":[],"scrollback_lines":0,"capped":false,"captured_at":0,"captured_at_text":"00:00:00"}}
 {"kind":"terminal_follow_end","ticket":"t1","why":"too_big","said":"that-sentence-1"}
 {"kind":"terminal_follow_end","ticket":"t1","why":"gone","said":"that-sentence-2"}
+{"kind":"relayed","what":"line","machine":"m1","line":"{\"kind\":\"sessions_replayed\"}"}
+{"kind":"relayed","what":"ended","machine":"m1"}

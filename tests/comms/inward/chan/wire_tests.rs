@@ -244,6 +244,7 @@ fn an_offer_takes_the_hello_as_typed_and_names_the_frame_kinds_that_differ() {
     let hello = cmd_wire::frame::Hello {
         build_id: "b".into(),
         host_arch: "x86_64".into(),
+        version: None,
         commands: vec!["tmux-ls".into()],
         unavailable: vec![cmd_wire::frame::Unavailable {
             command: "tmux-ls".into(),

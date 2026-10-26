@@ -50,6 +50,8 @@ pub(crate) fn route(
     let local = via == Via::Local;
     match frame {
         Frame::Hello(_) => tracing::warn!("[{at}] 流中间来了 hello，丢掉"),
+        // 本机后端转来的别台那条流：壳这一侧还是各台自己那条在收（下一步改读这一条），这里先不读。
+        Frame::Relayed(r) => tracing::debug!("[{at}] 别台 {} 转来的一件，这一版不读", r.machine()),
         f @ (Frame::Reply(_) | Frame::Cancelled(_)) => match client {
             Some(c) => {
                 resident_client::client::deliver_answer(c, f);

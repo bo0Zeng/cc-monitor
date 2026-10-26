@@ -200,3 +200,51 @@ fn a_changed_body_off_its_topics_shape_does_not_decode() {
     assert!(decode::<Record>(r#"{"kind":"changed","topic":"plan","key":"/w"}"#).is_ok());
     assert!(decode::<Record>(r#"{"kind":"changed","topic":"accounts"}"#).is_ok());
 }
+
+/// 本机后端转来的别台那一行：三形各一行字面，`machine` 说是哪一台；那一行原样是个字符串（不建树、不改一个字节）。
+#[test]
+fn a_relayed_frame_has_three_shapes() {
+    let inner = r#"{"kind":"hello","build_id":"b"}"#;
+    let cases = [
+        (
+            Relayed::Line {
+                machine: "devbox".into(),
+                line: inner.into(),
+            },
+            r#"{"kind":"relayed","what":"line","machine":"devbox","line":"{\"kind\":\"hello\",\"build_id\":\"b\"}"}"#,
+        ),
+        (
+            Relayed::Gap {
+                machine: "devbox".into(),
+            },
+            r#"{"kind":"relayed","what":"gap","machine":"devbox"}"#,
+        ),
+        (
+            Relayed::Ended {
+                machine: "devbox".into(),
+            },
+            r#"{"kind":"relayed","what":"ended","machine":"devbox"}"#,
+        ),
+    ];
+    for (r, want) in cases {
+        let f: Frame = Frame::Relayed(r.clone());
+        assert_eq!(serde_json::to_string(&f).unwrap(), want);
+        match decode::<Record>(want).unwrap() {
+            Frame::Relayed(back) => {
+                assert_eq!(back, r);
+                assert_eq!(back.machine(), "devbox");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
+/// hello 带这份后端是哪一版（`version`）；没带也解得开（说不出是哪一版）。
+#[test]
+fn a_hello_says_its_version() {
+    let h: Hello =
+        serde_json::from_str(r#"{"build_id":"b","host_arch":"x86_64","version":"4.2.0"}"#).unwrap();
+    assert_eq!(h.version.as_deref(), Some("4.2.0"));
+    let h: Hello = serde_json::from_str(r#"{"build_id":"b","host_arch":"x86_64"}"#).unwrap();
+    assert_eq!(h.version, None);
+}
