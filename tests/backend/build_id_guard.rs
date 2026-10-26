@@ -303,6 +303,54 @@ mod tests {
         }
     }
 
+    /// 一份 64 位小端 ELF 里名叫 `name` 的那一段的字节：只读文件头 · 段表 · 段名表与那一段，不读整份。
+    fn section_of(exe: &std::path::Path, name: &str) -> Vec<u8> {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut f =
+            std::fs::File::open(exe).unwrap_or_else(|e| panic!("打不开 {}：{e}", exe.display()));
+        let mut at = |off: u64, len: usize| -> Vec<u8> {
+            let mut b = vec![0u8; len];
+            f.seek(SeekFrom::Start(off))
+                .and_then(|_| f.read_exact(&mut b))
+                .unwrap_or_else(|e| panic!("读不到 {} 的 {off}+{len}：{e}", exe.display()));
+            b
+        };
+        let n = |b: &[u8], o: usize, w: usize| -> u64 {
+            b[o..o + w]
+                .iter()
+                .rev()
+                .fold(0, |x, &y| x << 8 | u64::from(y))
+        };
+        let h = at(0, 64);
+        assert!(
+            h.starts_with(b"\x7fELF") && h[4] == 2 && h[5] == 1,
+            "{} 不是 64 位小端 ELF（后端的测试只在 Linux 上跑）",
+            exe.display()
+        );
+        let (shoff, shentsize, shnum, shstrndx) = (
+            n(&h, 0x28, 8),
+            n(&h, 0x3A, 2),
+            n(&h, 0x3C, 2),
+            n(&h, 0x3E, 2),
+        );
+        let table = at(shoff, (shentsize * shnum) as usize);
+        let sh = |i: u64| {
+            let o = (i * shentsize) as usize;
+            (
+                n(&table, o, 4) as usize,
+                n(&table, o + 24, 8),
+                n(&table, o + 32, 8) as usize,
+            )
+        };
+        let (_, stroff, strsize) = sh(shstrndx);
+        let names = at(stroff, strsize);
+        let hit = (0..shnum)
+            .map(sh)
+            .find(|&(nm, _, _)| names[nm..].split(|&c| c == 0).next() == Some(name.as_bytes()));
+        let (_, off, size) = hit.unwrap_or_else(|| panic!("{} 里没有 {name} 段", exe.display()));
+        at(off, size)
+    }
+
     /// 反向自检：**扫描器真的在扫**，不是恒答一个好看的答案。
     ///
     /// 一个「永远返回 `BUILD_ID`」的扫描器会让上面两条判据全绿而什么都没证。
@@ -351,19 +399,25 @@ mod tests {
     ///
     /// # 它证的与不证的
     ///
-    /// ✅ 证：这一份二进制里**恰好一个**身份戳，值 = `BUILD_ID`。
+    /// ✅ 证：这一份二进制的 `.rodata` 里**恰好一个**身份戳，值 = `BUILD_ID`。
     /// ⚠ 不证：**发版那份 release 二进制**也如此 —— 那是另一套 profile
     ///   （`lto` / `strip` / `opt-level`）。开工时在沙箱里用一份 `lto=true, strip=true`
     ///   的 release 壳单独打过一趟、同样扫出恰好一处，**但那是一次实验不是一条常驻判据**；
     ///   常驻的那条在 `src/frontend/shell/build.rs`：内嵌任何一个载体之前都要从**它的字节**里
     ///   把身份扫出来，扫不出当场 panic ⇒ release 那一侧由发版路自己守。
+    ///
+    /// # 只扫 `.rodata`
+    ///
+    /// 戳是一段只读的 `static` 字节，链接后落在 `.rodata`；调试档的测试壳近 1 GB、大头是调试信息，
+    /// 整份读进来再扫要十几秒，只读 `.rodata` 那十几 MB 不到一秒。代价照实：别的段里另有一个戳，本条看不见
+    /// （部署那一侧扫整份字节，由上面那条「发版路自己守」兜）。后端的测试只在 Linux 上跑 ⇒ 只认 64 位小端 ELF。
     #[test]
     fn the_build_stamp_is_byte_scannable_in_this_very_binary() {
         let exe = std::env::current_exe().expect("拿不到本测试壳自己的路径");
-        let bytes = std::fs::read(&exe).unwrap_or_else(|e| panic!("读不到 {}：{e}", exe.display()));
+        let bytes = section_of(&exe, ".rodata");
         assert!(
             bytes.len() > 100_000,
-            "读到的字节只有 {} —— 读错文件了，本条会零命中地绿",
+            "读到的 `.rodata` 只有 {} 字节 —— 读错段了，本条会零命中地绿",
             bytes.len()
         );
         let ids = build_ids_in(&bytes);
