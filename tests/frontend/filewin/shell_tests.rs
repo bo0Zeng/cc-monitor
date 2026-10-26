@@ -281,18 +281,18 @@ fn a_drop_with_no_runtime_says_so_instead_of_swallowing_the_files() {
 /// 传完一趟要重列目录（新文件得出现），而且**只重列一次**。
 #[test]
 fn finishing_a_drop_round_triggers_exactly_one_reload() {
-    // ⚠ 本条要的只是「有一个窗口」（它数的是那个消化计数器），
-    //   从前拿本机一棵真目录树当窗口；本机侧退役之后换 `seeded`。
+    // ⚠ 本条要的只是「有一个窗口」，从前拿本机一棵真目录树当窗口；本机侧退役之后换 `seeded`。
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    assert!(!w.settle_finished_drops(), "一趟都没跑却说要重列");
-
-    w.board.finish(crate::transfer::DropOutcome {
+    assert!(!w.settle_trips(), "一趟都没跑却说要重列");
+    let (_, up) = adopt_upload(&mut w);
+    assert!(!w.settle_trips(), "还在传就重列了");
+    up.finish(crate::transfer::DropOutcome {
         skipped: 0,
         ok: 1,
         ..Default::default()
     });
-    assert!(w.settle_finished_drops(), "跑完一趟却不重列");
-    assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
+    assert!(w.settle_trips(), "跑完一趟却不重列");
+    assert!(!w.settle_trips(), "同一趟重列了第二次");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1597,8 +1597,13 @@ async fn a_real_click_on_download_asks_the_system_save_box() {
         "真点了「下载」，存盘框要下的不是被点那一行"
     );
     // 🔴 **一个字节都没动**：存盘框还没答，传输一趟都没起。
-    assert_eq!(w.pull.rounds(), 0, "还在选落点，传输就起来了");
-    assert!(w.pull.in_flight().is_none());
+    assert!(
+        w.progress
+            .jobs()
+            .iter()
+            .all(|j| !matches!(j.trip, crate::progress::Trip::Download { .. })),
+        "还在选落点，传输就起来了"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -3133,7 +3138,18 @@ async fn a_second_trip_of_the_same_kind_runs_beside_the_first_and_leaves_its_can
     assert_eq!(ups, 2, "两摞上传不是「进度」表里的两行");
     // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载照样起存盘框（这扇窗没有运行时 ⇒ 框起不来、说一句，但要下的那一项记下了）。
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    w.pull.begin("big.iso");
+    let pull = crate::download::DownloadBoard::default();
+    pull.begin("big.iso");
+    w.adopt_trip(
+        crate::progress::Trip::Download {
+            board: pull,
+            name: "big.iso".into(),
+            src: "/srv/data/big.iso".into(),
+            dest: "/tmp/big.iso".into(),
+        },
+        None,
+        None,
+    );
     pick_row(&mut w, 0);
     w.perform(crate::select::Action::Download, None);
     assert!(w.pull_want().is_some(), "在下的时候再要下载，没起存盘框");
@@ -3706,32 +3722,77 @@ fn an_edit_page_that_was_refused_says_why_where_the_text_would_be() {
     }
 }
 
-/// 一组全成了 ⇒ 右下角一句回执（后端拼好的那一行，原样）；有没成的 ⇒ 不出回执（看「进度」表那一行）。上传一摞全成同理（那一行写的是几项）。
-#[test]
-fn a_group_that_fully_succeeds_says_so_in_a_toast() {
-    use cmd_wire::batch::{BatchOutcome, BatchReply, ItemState};
-    let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    let plan = batch_core::Plan {
+/// 一组 · 一摞上传开在这个标签页上（「进度」表里一行，记进这个标签页起的那几趟）。
+fn copy_plan() -> batch_core::Plan {
+    batch_core::Plan {
         verb: batch_core::Verb::Copy,
         cmd: "files-copy",
         args: serde_json::json!({"root": "/srv", "items": [{}, {}]}),
         names: vec!["a".into(), "b".into()],
         into: Some("/srv/b".into()),
         machine: "devbox".into(),
-    };
-    let landed = |w: &mut FileWindow, states: &[ItemState], said: &str| {
-        let b = crate::batch::BatchBoard::new(plan.clone());
-        w.batches.push(b.clone());
-        b.set(batch_core::Phase::Ended(BatchReply {
-            outcomes: states
-                .iter()
-                .enumerate()
-                .map(|(i, s)| BatchOutcome::bare(i.to_string(), *s))
-                .collect(),
-            said: said.into(),
-        }));
+    }
+}
+
+fn adopt_batch(w: &mut FileWindow) -> (u64, crate::batch::BatchBoard) {
+    let b = crate::batch::BatchBoard::new(copy_plan());
+    let id = w.adopt_trip(
+        crate::progress::Trip::Batch {
+            board: b.clone(),
+            icon: "",
+        },
+        Some(w.cwd.clone()),
+        None,
+    );
+    (id, b)
+}
+
+fn adopt_upload(w: &mut FileWindow) -> (u64, crate::transfer::DropBoard) {
+    let board = w.board.fresh_like();
+    let ask = crate::batch::BatchBoard::new(copy_plan());
+    let id = w.adopt_trip(
+        crate::progress::Trip::Upload {
+            board: board.clone(),
+            items: Vec::new(),
+            dir: "data".into(),
+            ask,
+        },
+        Some(w.cwd.clone()),
+        None,
+    );
+    (id, board)
+}
+
+fn ended(b: &crate::batch::BatchBoard, states: &[cmd_wire::batch::ItemState], said: &str) {
+    b.set(batch_core::Phase::Ended(cmd_wire::batch::BatchReply {
+        outcomes: states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| cmd_wire::batch::BatchOutcome::bare(i.to_string(), *s))
+            .collect(),
+        said: said.into(),
+    }));
+}
+
+fn row_state(w: &FileWindow, id: u64) -> crate::progress::State {
+    w.progress
+        .jobs()
+        .into_iter()
+        .find(|j| j.id == id)
+        .expect("表里没有那一行")
+        .state()
+}
+
+/// 一组全成了 ⇒ 右下角一句回执（后端拼好的那一行，原样）；有没成的 ⇒ 不出回执（看「进度」表那一行）。上传一摞全成同理（那一行写的是几项）。
+#[test]
+fn a_group_that_fully_succeeds_says_so_in_a_toast() {
+    use cmd_wire::batch::ItemState;
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let mut landed = |w: &mut FileWindow, states: &[ItemState], said: &str| {
+        let (_, b) = adopt_batch(w);
+        ended(&b, states, said);
         w.receipt = None;
-        w.settle_finished_batches();
+        assert!(w.settle_trips(), "落地了却没收场");
         w.receipt.clone()
     };
     assert_eq!(
@@ -3751,12 +3812,13 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
         None,
         "有没成的也出了回执"
     );
+    let (_, up) = adopt_upload(&mut w);
     w.receipt = None;
-    w.board.finish(crate::transfer::DropOutcome {
+    up.finish(crate::transfer::DropOutcome {
         ok: 2,
         ..Default::default()
     });
-    assert!(w.settle_finished_drops());
+    assert!(w.settle_trips());
     assert_eq!(
         w.receipt,
         Some(copy_core::copy_text(
@@ -3764,14 +3826,88 @@ fn a_group_that_fully_succeeds_says_so_in_a_toast() {
             &[("n", "2")]
         ))
     );
+    let (_, up) = adopt_upload(&mut w);
     w.receipt = None;
-    w.board.finish(crate::transfer::DropOutcome {
+    up.finish(crate::transfer::DropOutcome {
         ok: 1,
         failed: vec![("x".into(), "盘满了".into())],
         ..Default::default()
     });
-    assert!(w.settle_finished_drops());
+    assert!(w.settle_trips());
     assert_eq!(w.receipt, None, "上传有失败的也出了回执");
+}
+
+/// 🔴 一趟一个结局：「进度」表那一行说什么，开它的标签页收场就照什么做（回执 · 重列都从那一个结局来，不另判一次）。
+/// 一组里一项照答跳过了 ⇒ 表说「成了」⇒ 回执就是后端拼好的那一句；一摞上传中途一件失败 ⇒ 表说「失败」⇒ 不出回执。
+/// 同一趟只收一次场。
+#[test]
+fn the_tab_lands_each_trip_on_the_ending_the_table_shows() {
+    use crate::progress::State;
+    use cmd_wire::batch::ItemState;
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let (id, b) = adopt_batch(&mut w);
+    assert!(!w.settle_trips(), "还在跑就收场了");
+    ended(
+        &b,
+        &[ItemState::Done, ItemState::Skipped],
+        "复制 2 项 · 完成 1 · 跳过 1",
+    );
+    assert!(w.settle_trips());
+    assert_eq!(row_state(&w, id), State::Done);
+    assert_eq!(
+        w.receipt.as_deref(),
+        Some("复制 2 项 · 完成 1 · 跳过 1"),
+        "表那一行说成了，标签页却没出回执"
+    );
+    w.receipt = None;
+    assert!(!w.settle_trips(), "同一趟收了第二次场");
+    assert_eq!(w.receipt, None);
+
+    let (id, up) = adopt_upload(&mut w);
+    up.finish(crate::transfer::DropOutcome {
+        ok: 3,
+        failed: vec![("b.bin".into(), "盘满了".into())],
+        ..Default::default()
+    });
+    assert!(w.settle_trips());
+    assert_eq!(row_state(&w, id), State::Failed);
+    assert_eq!(w.receipt, None, "表那一行说失败，标签页却出了成了的回执");
+}
+
+/// 🔴 同一个标签页连起两摞上传，先起的那一摞后落地：它的结局照样由这个标签页收（回执 · 重列），
+/// 不因为后一摞起了、换了一块看板就丢给窗口那一级、回执没了。
+#[test]
+fn an_earlier_trip_landing_last_still_lands_on_its_own_tab() {
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let (_, first) = adopt_upload(&mut w);
+    let (_, second) = adopt_upload(&mut w);
+    second.finish(crate::transfer::DropOutcome {
+        ok: 1,
+        ..Default::default()
+    });
+    assert!(w.settle_trips());
+    assert_eq!(
+        w.receipt,
+        Some(copy_core::copy_text(
+            "rsFilewinProgress.upload.done",
+            &[("n", "1")]
+        ))
+    );
+    w.receipt = None;
+    first.finish(crate::transfer::DropOutcome {
+        ok: 2,
+        ..Default::default()
+    });
+    assert!(w.settle_trips(), "先起的那一摞落地了，这个标签页却没收场");
+    assert_eq!(
+        w.receipt,
+        Some(copy_core::copy_text(
+            "rsFilewinProgress.upload.done",
+            &[("n", "2")]
+        )),
+        "先起的那一摞的回执丢了"
+    );
+    assert!(!w.has_running_jobs(), "两摞都落地了，标签上还亮着忙点");
 }
 
 /// 带记号的那一趟落地：照回包换手上那一份 —— 只盖变了的那几行、按新的先后摆，没变的那几行留着；

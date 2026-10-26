@@ -441,20 +441,15 @@ pub struct FileWindow {
     pub line: Option<Line>,
     /// 这台机器的能力事实（接上通道时问一次，`chan::wire::Offer`）：做不到的那几件在菜单上置灰并说为什么。
     pub offer: std::sync::Arc<std::sync::Mutex<Option<comms_inward::chan::wire::Offer>>>,
-    /// 拖入那一摞的状态机（**先一次问完，再并行传**）。
+    /// 拖入的样板：这一窗记着的两样（那台的 `$HOME` · 改走后端链路那一句）。每一摞从它 `fresh_like` 一块新看板。
     pub board: DropBoard,
-    /// 已经消化过几趟拖入。`board.rounds()` 走在它前面 ⇒ 该重列一次目录了。
+    /// 🔴 **这个标签页起的、还没收场的那几趟**（「进度」表里那几行的号）。
     ///
-    /// ⚠ 为什么不让那条 tokio 任务自己 `reload()`：它手上没有 `&mut self`，
-    /// 而把 `cwd` 也塞进 `Arc` 只为了让它能读，是把窗口状态搬到共享内存里去。
-    /// ⇒ 换个方向：任务只记「我跑完了」，**换目录这件事一直留在 UI 线程手上**。
-    seen_rounds: u64,
-    /// 算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
-    pub size_board: super::size::SizeBoard,
-    /// 解压那一趟的看板（在解哪一个 · 撞名那一问 · 结局）。
-    pub extract_board: super::extract::ExtractBoard,
-    /// 已经消化过几趟解压（同 [`Self::seen_rounds`]）。
-    seen_extract_rounds: u64,
+    /// 每一趟的状态只住它那块看板里、结局只在 [`super::progress::Job::landing`] 判一次；这里只记号，
+    /// 收场（回执 · 重列 · 清选中）由 [`Self::settle_trips`] 照那一个结局做。
+    /// ⚠ 为什么不让那条 tokio 任务自己 `reload()`：它手上没有 `&mut self` ⇒ 任务只记「我跑完了」，
+    /// **换目录这件事一直留在 UI 线程手上**。
+    trips: Vec<u64>,
     /// 正在读的那一份的原始字节（到货时交给编辑面；`(显示路径, 字节)`）。
     edit_raw: Option<(String, Vec<u8>)>,
     /// 〔「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
@@ -468,9 +463,6 @@ pub struct FileWindow {
     cross_prompt: Option<super::cross_copy::CrossPrompt>,
     /// 那一问里「放到」那一块小目录选择器（那台的文件夹；`cross_copy::DirPick`）。
     pub cross_pick: super::cross_copy::DirPick,
-    /// 这个标签页起的、还没落地的那几组（一组一条命令：复制到另一栏 · 复制到另一台 · 删除 · 改权限）：
-    /// 冲突框画在这里，落地后重列目录。
-    pub batches: Vec<super::batch::BatchBoard>,
     /// 框选按下那一刻的选中（Ctrl 框加进它 · Esc 回到它）；没在框选 ⇒ `None`。
     band_base: Option<select::Selection>,
     /// 下载多项：选目录框开着时要下的那几行。
@@ -517,10 +509,8 @@ pub struct FileWindow {
     inline_select: Option<usize>,
     /// 上一次就地那一趟没成时框里那串字：没改过就不让「点别处」再发一趟（回车照样重试）。
     inline_failed_text: Option<String>,
-    /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
+    /// 已经消化过几摞写操作（`write_board.rounds()` 走在它前面 ⇒ 该收场了）。
     seen_write_rounds: u64,
-    /// 🔴**往外拖**那一趟的共享落点（进度 · 结局）。
-    pub pull: super::download::DownloadBoard,
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
     /// 系统存盘框开着时要下的那一项：`(远端整条路径, 名字)`（选完落点就起下载；取消 ⇒ 什么都不做）。
@@ -560,9 +550,6 @@ pub struct FileWindow {
     pub(super) receipt_undo: Option<(String, Vec<WriteOp>)>,
     /// 列表上按了空格（「看一眼」开 / 收）：窗口那一级每帧收走。
     pub(super) want_peek: bool,
-    /// 这个标签页开过的那几趟里，每一类最近那一趟在表里的号
-    /// （换一块新看板时，上一趟改由窗口那一级在落地时重列目录，[`Self::track_job`]）。
-    job_ids: Vec<(&'static str, u64)>,
     /// 用户按过「重建索引」（换目录就清）：新鲜度那一行这时也摆出来，答他刚问的那一下。
     pub(super) status_wanted: bool,
     /// 「属性」那一问（`None` ＝ 没摆）。逻辑住 [`super::props`]。
@@ -612,8 +599,6 @@ pub struct FileWindow {
     pub dragging: bool,
     /// 起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
     writes_started: u64,
-    /// 起过几摞上传 / 跨机复制（与各自看板的 `rounds()` 比 ⇒ 那一类还有一趟没完）。
-    drops_started: u64,
     /// 框里那一问做不成的原因（画在框里；框外列表上方那一行被暗底盖着）。框收掉就清。
     pub(super) prompt_error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
@@ -761,10 +746,7 @@ impl FileWindow {
             line: None,
             offer: Default::default(),
             board: DropBoard::default(),
-            seen_rounds: 0,
-            size_board: super::size::SizeBoard::default(),
-            extract_board: super::extract::ExtractBoard::default(),
-            seen_extract_rounds: 0,
+            trips: Vec::new(),
             edit_raw: None,
             picker: super::picker::native(),
             pick_board: super::picker::PickBoard::default(),
@@ -772,7 +754,6 @@ impl FileWindow {
             machines: Vec::new(),
             cross_prompt: None,
             cross_pick: Default::default(),
-            batches: Vec::new(),
             band_base: None,
             pull_many: Vec::new(),
             dual: false,
@@ -795,7 +776,6 @@ impl FileWindow {
             inline_select: None,
             inline_failed_text: None,
             seen_write_rounds: 0,
-            pull: super::download::DownloadBoard::default(),
             pull_want: None,
             pull_raw: None,
             edits: super::editor::EditBoard::default(),
@@ -815,7 +795,6 @@ impl FileWindow {
             receipt_copy: None,
             receipt_undo: None,
             want_peek: false,
-            job_ids: Vec::new(),
             props: None,
             status_wanted: false,
             term_notice: Arc::new(Mutex::new(None)),
@@ -830,7 +809,6 @@ impl FileWindow {
             focused: true,
             dragging: false,
             writes_started: 0,
-            drops_started: 0,
             prompt_error: Arc::new(Mutex::new(None)),
             hit_rows: (u64::MAX, u64::MAX, Arc::new(Vec::new())),
             edit_tab: false,
@@ -1502,10 +1480,8 @@ impl FileWindow {
         //    新看板的取消台是新的 ⇒ 上一摞按过的取消拦不下这一摞。
         let board = self.board.fresh_like();
         self.board = board.clone();
-        self.seen_rounds = 0;
         // 🔴 **把窗口交给看板**，它自己会在「进度动了 / 跑完了」时敲一下。
         board.attach(ctx.clone());
-        self.drops_started += 1;
         let dir = super::source::parent_dir(&items[0].remote_path);
         // 开单那一问（同名冲突框挂在这个标签页上，与复制 · 下载同一个框）。
         let ask = super::batch::BatchBoard::new(batch_core::Plan {
@@ -1518,8 +1494,7 @@ impl FileWindow {
             machine: self.source.label(),
         });
         ask.attach(ctx);
-        self.batches.push(ask.clone());
-        let id = self.progress.add(
+        self.adopt_trip(
             super::progress::Trip::Upload {
                 board: board.clone(),
                 items: items.clone(),
@@ -1529,7 +1504,6 @@ impl FileWindow {
             Some(dir),
             None,
         );
-        self.track_job("upload", id);
         h.spawn(async move {
             let (up_line, up_origin) = (line.clone(), origin.clone());
             let up_board = board.clone();
@@ -1645,26 +1619,60 @@ impl FileWindow {
         }
     }
 
-    /// 传完一趟就重列一次当前目录（新文件要出现在列表里）。
-    ///
-    /// 回值 = 这一帧真的重列了。**放在 UI 线程**，理由见 [`Self::seen_rounds`]。
-    pub fn settle_finished_drops(&mut self) -> bool {
-        let now = self.board.rounds();
-        if now == self.seen_rounds {
+    /// 开一趟：「进度」表里一行，记进这个标签页起的那几趟（收场由 [`Self::settle_trips`] 照它的结局做）。回那一行的号。
+    pub fn adopt_trip(
+        &mut self,
+        trip: super::progress::Trip,
+        dir: Option<String>,
+        no_stop: Option<String>,
+    ) -> u64 {
+        let id = self.progress.add(trip, dir, no_stop);
+        self.trips.push(id);
+        id
+    }
+
+    /// 🔴 **这个标签页起的那几趟，落地一趟收一趟** —— 只照那一行的结局（[`super::progress::Job::landing`]）做，不另判：
+    /// 成了带回执的 ⇒ 右下角一句；落在一个目录上的 ⇒ 重列（新文件要出现 · 删掉的要消失）；一组 ⇒ 选中清掉。
+    /// 那一问上答了「取消」/ 已交出去的（[`super::progress::Job::dropped`]）· 表里已经没有了的 ⇒ 不收场，只不再记。
+    /// 回值 ＝ 这一帧有一趟收了场。**放在 UI 线程**（理由见 [`Self::trips`]）。
+    pub fn settle_trips(&mut self) -> bool {
+        if self.trips.is_empty() {
             return false;
         }
-        self.seen_rounds = now;
-        // 一摞全传成了 ⇒ 右下角一句回执；有失败的 · 停了的看「进度」表那一行。
-        if let Some(o) = self.board.last() {
-            if o.ok > 0 && o.failed.is_empty() && !self.board.cancels().is_cancelled() {
-                self.receipt = Some(copy_text(
-                    "rsFilewinProgress.upload.done",
-                    &[("n", &o.ok.to_string())],
-                ));
+        let jobs = self.progress.jobs();
+        let (mut landed, mut reload, mut unpick) = (false, false, false);
+        self.trips.retain(|id| {
+            let Some(j) = jobs.iter().find(|j| j.id == *id) else {
+                return false;
+            };
+            if j.dropped() {
+                return false;
             }
+            let Some(l) = j.landing() else {
+                return true;
+            };
+            if let Some(t) = l.receipt {
+                self.receipt = Some(t);
+            }
+            reload |= j.dir.is_some();
+            unpick |= matches!(j.trip, super::progress::Trip::Batch { .. });
+            landed = true;
+            false
+        });
+        if unpick {
+            self.selection.clear_picked();
         }
-        self.reload();
-        true
+        if reload {
+            self.reload();
+        }
+        landed
+    }
+
+    /// 这个标签页起的、还没收场的那几趟（表里那几行，判据与画那几问用）。
+    pub fn my_trips(&self) -> Vec<super::progress::Job> {
+        let mut jobs = self.progress.jobs();
+        jobs.retain(|j| self.trips.contains(&j.id));
+        jobs
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -1771,7 +1779,7 @@ impl FileWindow {
         };
         let board = super::batch::BatchBoard::new(plan);
         board.attach(ctx);
-        let id = self.progress.add(
+        self.adopt_trip(
             super::progress::Trip::Batch {
                 board: board.clone(),
                 icon,
@@ -1779,55 +1787,7 @@ impl FileWindow {
             Some(self.cwd.clone()),
             None,
         );
-        self.track_job("batch", id);
-        self.batches.push(board.clone());
         super::batch::spawn(&h, line, self.source.origin(), home, board);
-        true
-    }
-
-    /// 这个标签页起的那几组落地了 ⇒ 重列目录（复制进来的要出现 · 删掉的要消失）、选中清掉。
-    pub fn settle_finished_batches(&mut self) -> bool {
-        use batch_core::Phase;
-        let before = self.batches.len();
-        let mut landed = false;
-        let mut said = None;
-        self.batches.retain(|b| match b.phase() {
-            Phase::Ended(r) => {
-                // 全成了 ⇒ 右下角一句回执（后端拼好的那一行）；有没成的看「进度」表那一行。
-                if r.outcomes
-                    .iter()
-                    .all(|o| o.state == cmd_wire::batch::ItemState::Done)
-                {
-                    said = Some(r.said);
-                }
-                landed = true;
-                false
-            }
-            Phase::Failed(_) => {
-                landed = true;
-                false
-            }
-            Phase::Dropped | Phase::Opened => false,
-            _ => true,
-        });
-        if let Some(t) = said {
-            self.receipt = Some(t);
-        }
-        if landed {
-            self.selection.clear_picked();
-            self.reload();
-        }
-        before != self.batches.len()
-    }
-
-    /// 解压跑完一趟就重列当前目录（新目录要出现在列表里）。
-    pub fn settle_finished_extracts(&mut self) -> bool {
-        let now = self.extract_board.rounds();
-        if now == self.seen_extract_rounds {
-            return false;
-        }
-        self.seen_extract_rounds = now;
-        self.reload();
         true
     }
 
@@ -1858,12 +1818,10 @@ impl FileWindow {
         let origin = self.source.origin();
         // 一趟一块新看板（「进度」表里独立的一行）。
         let board = super::extract::ExtractBoard::default();
-        self.extract_board = board.clone();
-        self.seen_extract_rounds = 0;
         board.attach(ctx);
         board.begin(&name);
         let no_stop = self.no_stop(super::extract::CMD_EXTRACT);
-        let id = self.progress.add(
+        self.adopt_trip(
             super::progress::Trip::Extract {
                 board: board.clone(),
                 name: name.clone(),
@@ -1871,7 +1829,6 @@ impl FileWindow {
             Some(self.cwd.clone()),
             no_stop,
         );
-        self.track_job("extract", id);
         h.spawn(async move {
             let asker = board.clone();
             let o = super::extract::run(&line, &origin, &root, &rel, |said| async move {
@@ -2559,7 +2516,7 @@ impl FileWindow {
     }
 
     /// 一摞写操作跑完就重列当前目录（新目录要出现、删掉的要消失）。
-    /// 同 [`Self::settle_finished_drops`]。
+    /// 同 [`Self::settle_trips`]。
     pub fn settle_finished_writes(&mut self) -> bool {
         let now = self.write_board.rounds();
         if now == self.seen_write_rounds {
@@ -2712,7 +2669,15 @@ impl FileWindow {
             machine: self.source.label(),
         });
         board.attach(ctx);
-        self.batches.push(board.clone());
+        // 开单那一问也是「进度」表里一行（开成了 ⇒ 开了单的每一项各一行，这一行拿掉；开不成 ⇒ 这一行说没成）。
+        self.adopt_trip(
+            super::progress::Trip::Batch {
+                board: board.clone(),
+                icon: egui_phosphor::regular::DOWNLOAD_SIMPLE,
+            },
+            None,
+            None,
+        );
         let srcs = rows
             .iter()
             .map(|r| (r.path.clone(), r.name.clone()))
@@ -2782,11 +2747,10 @@ impl FileWindow {
         let origin = self.source.origin();
         // 一趟一块新看板（「进度」表里独立的一行）：上一趟还在下也不碍事。
         let board = super::download::DownloadBoard::default();
-        self.pull = board.clone();
         board.attach(ctx);
         let src = src_path.to_string();
         let to = dest.to_string();
-        let id = self.progress.add(
+        let id = self.adopt_trip(
             super::progress::Trip::Download {
                 board: board.clone(),
                 name: super::source::remote_basename(&src).to_string(),
@@ -2796,7 +2760,6 @@ impl FileWindow {
             None,
             None,
         );
-        self.track_job("download", id);
         // 有损名：远端按字节（就地拷进暂存区再下）、本机按平台落名；否则与此前逐字同一条路。
         let (local, note) = self.pull_local(dest);
         let raw_src = self.pull_raw.take().map(|(b, _, _)| b);
@@ -3983,28 +3946,16 @@ impl FileWindow {
     }
 
     /// 记下这一类最近那一趟在表里的号；上一趟（这个标签页手上已经换了一块新看板）改由窗口那一级在落地时重列目录。
-    fn track_job(&mut self, kind: &'static str, id: u64) {
-        match self.job_ids.iter_mut().find(|(k, _)| *k == kind) {
-            Some(slot) => {
-                self.progress.orphan(slot.1);
-                slot.1 = id;
-            }
-            None => self.job_ids.push((kind, id)),
-        }
-    }
-
     /// 这个标签页开的那几趟里还有在跑的吗（标签上那个忙点）。
     pub fn has_running_jobs(&self) -> bool {
-        let jobs = self.progress.jobs();
-        self.job_ids.iter().any(|(_, id)| {
-            jobs.iter()
-                .any(|j| j.id == *id && j.shown() && j.state() == super::progress::State::Running)
-        })
+        self.my_trips()
+            .iter()
+            .any(|j| j.shown() && j.state() == super::progress::State::Running)
     }
 
     /// 这个标签页要关了：它开过的那几趟照跑，落地后由窗口那一级重列目录。
     pub fn orphan_jobs(&mut self) {
-        for (_, id) in self.job_ids.drain(..) {
+        for id in self.trips.drain(..) {
             self.progress.orphan(id);
         }
     }
@@ -4119,11 +4070,10 @@ impl FileWindow {
 
     /// 编辑面以外的那几个框有没有一个摆着。
     fn asking_up(&self) -> bool {
-        // 解压撞名那一问。
-        self.extract_board.is_asking()
+        // 这个标签页起的那几趟开头那一问（同名冲突 · 解压撞名）。
+        self.my_trips().iter().any(|j| j.trip.is_asking())
             // 复制到另一台：填机器名那一问 · 盖不盖那一问。
             || self.cross_prompt.is_some()
-            || self.batches.iter().any(|b| b.is_asking())
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
@@ -4460,11 +4410,10 @@ impl FileWindow {
         let origin = self.source.origin();
         // 一摞一块新看板（「进度」表里独立的一行）。
         let board = super::size::SizeBoard::default();
-        self.size_board = board.clone();
         board.attach(ctx);
         let no_stop = self.no_stop(super::size::CMD_SIZE);
         let first = items.first().map(|(_, n)| n.clone()).unwrap_or_default();
-        let id = self.progress.add(
+        self.adopt_trip(
             super::progress::Trip::Size {
                 board: board.clone(),
                 name: first,
@@ -4472,7 +4421,6 @@ impl FileWindow {
             None,
             no_stop,
         );
-        self.track_job("size", id);
         h.spawn(async move {
             let mut out = Vec::with_capacity(items.len());
             for (path, name) in items {
@@ -4853,9 +4801,8 @@ impl FileWindow {
         self.props_ui(ui);
         // 后台那几趟（上传 · 下载 · 复制 · 解压 · 算大小 · 删除）的进度、停与结局不在这里画：
         //   它们是窗口底部「进度」表里的一行（`super::progress`，由 `Workspace` 画）。这里只剩每一趟开头那一问（模态，画在列表之前）。
-        self.extract_board.ui(ui);
-        for b in &self.batches {
-            super::batch::ask_ui(ui, b);
+        for j in self.my_trips() {
+            j.trip.ask_ui(ui);
         }
         self.cross_ui(ui);
         self.copy_ui(ui);
@@ -4877,9 +4824,7 @@ impl FileWindow {
         self.settle_opened_edits();
         self.settle_saved_edits();
         self.take_drops(&ui.ctx().clone());
-        self.settle_finished_drops();
-        self.settle_finished_batches();
-        self.settle_finished_extracts();
+        self.settle_trips();
         self.settle_finished_writes();
         self.settle_inline();
         // 每帧从零数起 —— 这两个数是「这一帧物化了多少行」，不是累计。

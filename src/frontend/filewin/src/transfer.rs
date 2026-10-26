@@ -601,18 +601,13 @@ async fn upload_once(
 // 窗口那一侧的状态：**传到哪儿了**（同名那一问是 [`super::batch`] 的冲突框）
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 一摞拖入在窗口上的样子。**跨线程共享**（UI 线程画，tokio 那条写）。
+/// 一摞拖入在窗口上的样子。**跨线程共享**（UI 线程画，tokio 那条写）：落地与结局走通用的那一格
+/// （[`super::trip::Lane`]，连敲窗口的那只手 —— 进度从 tokio 那条写进来，不敲一下进度条要等到用户下次动鼠标才跳一格），
+/// 这里只加上传独有的逐件读数 · 重传过的 · 这一窗记着的两样 · 取消台。
 #[derive(Clone, Default)]
 pub struct DropBoard {
+    lane: super::trip::Lane<DropOutcome>,
     inner: Arc<Mutex<Board>>,
-    /// 已经跑完的趟数 —— 给判据与诊断一个可观测的数。
-    rounds: Arc<AtomicU64>,
-    /// 🔴 **拿来敲窗口的那只手。**
-    ///
-    /// 进度是从 tokio 那条线程写进来的，而 egui **只在有事发生时才画下一帧** ——
-    /// 不敲一下，进度条要等到用户下次动鼠标才跳一格（看起来就是「卡住了」）。
-    /// ⚠ `Option`：判据里没有窗口，那时它就是 `None`，`progress` 照常记数。
-    ctx: Arc<Mutex<Option<egui::Context>>>,
     /// 🔴这一摞的取消台（键 ＋ 旗）。理由住本模块头注那一节。
     desk: CancelDesk,
 }
@@ -621,8 +616,6 @@ pub struct DropBoard {
 struct Board {
     /// 在传的那几件：名字 → (已传, 总共)。
     progress: Vec<(String, u64, u64)>,
-    /// 上一趟的结果（画在窗口上，不是 `println!`）。
-    last: Option<DropOutcome>,
     /// 这一趟里从头重传过的那几件（[`DropBoard::note_redone`] 记、[`DropBoard::finish`] 并进结局）。
     redone: Vec<String>,
     /// 那台后端的 `$HOME`（问过一次就记着；开单时交给传输台比 SFTP 起始目录）。
@@ -639,14 +632,12 @@ impl DropBoard {
 
     /// 把窗口交给它，好让它在进度动的时候敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        self.lane.attach(ctx);
     }
 
     /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
-            c.request_repaint();
-        }
+        self.lane.poke();
     }
 
     pub fn progress(&self, name: &str, got: u64, total: u64) {
@@ -666,30 +657,31 @@ impl DropBoard {
     }
 
     pub fn finish(&self, mut outcome: DropOutcome) {
-        let mut b = self.inner.lock().unwrap();
-        b.progress.clear();
-        outcome.redone.append(&mut b.redone);
-        b.last = Some(outcome);
-        drop(b);
-        self.rounds.fetch_add(1, Ordering::SeqCst);
-        self.poke();
+        {
+            let mut b = self.inner.lock().unwrap();
+            b.progress.clear();
+            outcome.redone.append(&mut b.redone);
+        }
+        self.lane.finish(outcome);
     }
 
     pub fn rounds(&self) -> u64 {
-        self.rounds.load(Ordering::SeqCst)
+        self.lane.rounds()
     }
 
     /// 新开一趟用的一块新看板，只带上「这一窗」记着的两样（那台的 `$HOME` · 改走后端链路那一句），
     /// 进度、取消、结局都是新的（一趟一块：互不清掉）。
     pub fn fresh_like(&self) -> DropBoard {
-        let next = DropBoard::default();
+        let next = DropBoard {
+            lane: self.lane.fresh_like(),
+            ..DropBoard::default()
+        };
         {
             let b = self.inner.lock().unwrap();
             let mut n = next.inner.lock().unwrap();
             n.backend_home = b.backend_home.clone();
             n.via_backend = b.via_backend.clone();
         }
-        *next.ctx.lock().unwrap() = self.ctx.lock().unwrap().clone();
         next
     }
 
@@ -754,7 +746,7 @@ impl DropBoard {
     }
 
     pub fn last(&self) -> Option<DropOutcome> {
-        self.inner.lock().unwrap().last.clone()
+        self.lane.last()
     }
 }
 
