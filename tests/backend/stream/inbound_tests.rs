@@ -195,6 +195,19 @@ async fn a_request_naming_a_machine_is_forwarded_not_answered_here() {
     assert_eq!(here, vec![r#"{"kind":"reply","id":"f2","ok":true}"#]);
 }
 
+/// 信封带 `machine` 的 `stream-watch` 不转给那台：交本后端手上那台的名单台（那台此刻没接着也照收，回空的 `from[]`），不是「那一跳断开」。
+#[tokio::test]
+async fn a_watch_list_naming_a_machine_goes_to_its_desk_here() {
+    let out = one_line(
+        "{\"id\":\"w1\",\"cmd\":\"stream-watch\",\"machine\":\"inbound-watch-box\",\"args\":{\"sids\":[\"s1\"]},\"within_ms\":2000}\n",
+    )
+    .await;
+    assert_eq!(out.len(), 1, "{out:?}");
+    let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert_eq!((&v["id"], &v["ok"]), (&"w1".into(), &true.into()), "{v}");
+    assert_eq!(v["data"]["from"], serde_json::json!([]), "{v}");
+}
+
 /// ★ `id` 是**不透明**的：backend 不解析、不规范化、只回显。
 #[tokio::test]
 async fn id_is_echoed_back_byte_for_byte() {

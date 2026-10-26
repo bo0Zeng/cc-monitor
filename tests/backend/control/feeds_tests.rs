@@ -396,3 +396,63 @@ async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello
         "接上那一刻那台的版本号是它 hello 里那一格"
     );
 }
+
+/// 新连上来的流先收的那几帧：此刻接着的那台那一条连接的 hello；那一条收了 ⇒ 不再给。
+#[tokio::test]
+async fn a_new_stream_first_gets_the_hello_of_each_machine_attached_now() {
+    use cmd_wire::frame::Relayed;
+    let machine = "feeds-hello-now";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    let hello_now = || {
+        attached_hellos().into_iter().any(|f| {
+            matches!(&f, Frame::Relayed(Relayed::Line { machine: m, line }) if m == machine && *line == hello(crate::BUILD_ID))
+        })
+    };
+    align_in(&[machine.to_string()], &ssh, &relay);
+    until("那台接上了、它的 hello 转出去了", || {
+        got.lock().unwrap().iter().any(|f| {
+            matches!(f, Frame::Relayed(Relayed::Line { machine: m, .. }) if m == machine)
+        })
+    })
+    .await;
+    assert!(hello_now(), "那台接着的时候新流拿不到它的 hello");
+    align_in(&[], &ssh, &quiet());
+    assert!(!hello_now(), "那台那一条收了，新流还先收它的 hello");
+}
+
+fn ask(sids: &[&str], kept: &[&str]) -> WatchAsk {
+    WatchAsk {
+        sids: sids.iter().map(|s| s.to_string()).collect(),
+        branch: Vec::new(),
+        kept: kept.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+/// 各条流报那台的在看名单 ⇒ 那台的名单台是它们的并集；一条流走了 ⇒ 只剩别的那几条的；那台没接着 ⇒ 回空的 `from[]`。
+#[tokio::test]
+async fn each_streams_watch_list_for_a_machine_unions_into_that_machines_desk() {
+    let machine = "feeds-watch-union";
+    let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<BTreeSet<String>>();
+    let a = Watching(9_001);
+    let b = Watching(9_002);
+    let from = watch_at(machine, a.0, ask(&["s1", "s2"], &["k1"])).await;
+    assert!(from.is_empty(), "那台没接着，却回了从第几行起：{from:?}");
+    let _ = watch_at(machine, b.0, ask(&["s2", "s3"], &[])).await;
+    assert_eq!(desk_of(machine).sids(), set(&["s1", "s2", "s3"]));
+    assert_eq!(union_of(machine).1, set(&["k1"]));
+    drop(a);
+    assert_eq!(
+        desk_of(machine).sids(),
+        set(&["s2", "s3"]),
+        "那条流走了，它报的那几条还在那台的名单里"
+    );
+    drop(b);
+    assert!(desk_of(machine).sids().is_empty());
+}
