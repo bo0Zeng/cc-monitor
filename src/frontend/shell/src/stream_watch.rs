@@ -11,9 +11,6 @@ use resident_client::watch::Desk;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// 会话流那一份（起步时 [`spawn`] 交）。
-static REPLAY: OnceLock<Arc<EventReplay>> = OnceLock::new();
-
 /// 每台一张（键是那台的线上串；本机 · 远端同一张表，进程里一直留着）。
 fn desks() -> &'static Mutex<HashMap<String, Arc<Desk>>> {
     static D: OnceLock<Mutex<HashMap<String, Arc<Desk>>>> = OnceLock::new();
@@ -36,12 +33,12 @@ pub(crate) fn desk(origin: &Origin) -> Arc<Desk> {
                 .branch_held(&held_at, sids)
         },
         move |rows| {
-            if let Some(r) = REPLAY.get() {
+            if let Some(r) = crate::event_replay::host() {
                 r.on_watch_from(&from_at, rows);
             }
         },
     );
-    if let Some(r) = REPLAY.get() {
+    if let Some(r) = crate::event_replay::host() {
         d.set(r.watched(origin), r.kept(origin));
     }
     t.insert(origin.as_wire_str().to_string(), Arc::clone(&d));
@@ -50,7 +47,7 @@ pub(crate) fn desk(origin: &Origin) -> Arc<Desk> {
 
 /// 起那条循环（`lib.rs` 起步时一次）：名单一变，逐台交名单台。
 pub(crate) fn spawn(replay: Arc<EventReplay>) {
-    let replay = Arc::clone(REPLAY.get_or_init(|| replay));
+    let replay = crate::event_replay::install(replay);
     tauri::async_runtime::spawn(async move {
         let mut ticks = replay.watch_changes();
         loop {
