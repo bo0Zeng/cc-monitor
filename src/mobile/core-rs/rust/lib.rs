@@ -333,7 +333,10 @@ pub fn dial_plan_json(table: &str, name: &str) -> String {
                 .map_err(|(_, said)| said)
         })
         .and_then(|v| serde_json::from_value(v).map_err(|e| ssh_dial::malformed(&e.to_string())))
-        .map_or_else(|said| DialPlan::Refused { said }, |request| DialPlan::Ready { request });
+        .map_or_else(
+            |said| DialPlan::Refused { said },
+            |request| DialPlan::Ready { request },
+        );
     serde_json::to_string(&plan).unwrap_or_default()
 }
 
@@ -802,7 +805,10 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_machineCheck<'l>(
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
         let table = string(&mut env, &table).unwrap_or_default();
-        new_jstring(&env, machine_check_json(&table, usize::try_from(at).unwrap_or(usize::MAX)))
+        new_jstring(
+            &env,
+            machine_check_json(&table, usize::try_from(at).unwrap_or(usize::MAX)),
+        )
     })
 }
 
@@ -1220,7 +1226,7 @@ mod tests {
             .iter()
             .map(|(id, label, jump)| {
                 serde_json::json!({"label": label, "host": format!("{label}.lan"), "port": 22, "user": "u",
-                    "keyPath": id, "addresses": ["10.0.0.9:2222"], "jump": jump, "connect": true})
+                    "keyPath": id, "addresses": ["192.0.2.9:2222"], "jump": jump, "connect": true})
             })
             .collect();
         serde_json::to_string(&v).unwrap()
@@ -1265,11 +1271,15 @@ mod tests {
                 .iter()
                 .map(|e| format!("{}:{}", e.host, e.port))
                 .collect::<Vec<_>>(),
-            ["A.lan:22", "10.0.0.9:2222"]
+            ["A.lan:22", "192.0.2.9:2222"]
         );
         let hop = request.jump.expect("经 B");
         assert_eq!(
-            (hop.host.as_str(), hop.key_path.as_deref(), hop.jump.is_none()),
+            (
+                hop.host.as_str(),
+                hop.key_path.as_deref(),
+                hop.jump.is_none()
+            ),
             ("B.lan", Some("id-b"), true)
         );
     }

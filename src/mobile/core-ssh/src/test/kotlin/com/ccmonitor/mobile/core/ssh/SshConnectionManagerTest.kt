@@ -149,14 +149,14 @@ class SshConnectionManagerTest {
             assertEquals(2, mgr.activeCount()) // 两者都计入
         }
 
-    // 连不上时置 ERROR 并抛出（竞速 · 跳板都在核心里）。
+    // 建连失败时置 ERROR 并抛出（竞速 · 跳板都在核心里）。
 
     @Test
     fun failedConnectMarksErrorAndThrows() =
         runTest {
             val mgr = manager { throw IOException("fail ${it.host}") }
             val ex = runCatching { mgr.connect("id", "h", "L", cfg("a")) }.exceptionOrNull()
-            assertTrue("连不上应抛出", ex is IOException)
+            assertTrue("建连失败应抛出", ex is IOException)
             assertEquals(SessionStatus.ERROR, mgr.sessions.value["id"]?.status)
         }
 
