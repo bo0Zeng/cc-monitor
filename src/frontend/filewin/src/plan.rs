@@ -174,7 +174,7 @@ pub fn unreadable_mark() -> String {
     copy_text("rsFilewinPlan.cell.unreadable", &[])
 }
 
-/// 也声明它的那一句（悬停 · 预览头那一行红字）。
+/// 被几格声明的那一段灰色读数「共用 · 也在 {编号 标题}」（「格」一列标题后面 · 预览头那一行）；「编号 标题」照抄后端拼好的。
 pub fn dup_text(o: &Owner) -> String {
     copy_text(
         "rsFilewinPlan.cell.dup",

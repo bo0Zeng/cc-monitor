@@ -298,11 +298,11 @@ pub(crate) struct PlanBlock {
     pub handoff: Option<String>,
     /// 为什么给不了；给了 ⇒ `null`。
     pub handoff_error: Option<String>,
-    /// 「另开会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
+    /// 「新会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
     pub takeover: PlanTakeover,
 }
 
-/// 一个建了的权力范围此刻给不给「另开会话接手」。还没划出（`unbuiltBlocks`）⇒ 灰：那一列本身就是这一判，不另带一格。
+/// 一个建了的权力范围此刻给不给「新会话接手」。还没划出（`unbuiltBlocks`）⇒ 灰：那一列本身就是这一判，不另带一格。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(test, derive(ts_rs::TS))]

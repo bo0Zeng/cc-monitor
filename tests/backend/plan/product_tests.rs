@@ -302,7 +302,7 @@ fn scopes_come_through_with_their_handoff() {
     );
 }
 
-/// 「另开会话接手」那一格由后端判，只放码（字照旧在 handoff · handoffError）：
+/// 「新会话接手」那一格由后端判，只放码（字照旧在 handoff · handoffError）：
 /// 划出了、没有负责人 ⇒ open；负责人那条会话停了 ⇒ open；交接说明拿不到 ⇒ no_line；负责人在跑 ⇒ running；
 /// 负责人对不上这台的会话 ⇒ unsure（说不清停没停，不给）；划出那一项删了 ⇒ merging。
 #[test]

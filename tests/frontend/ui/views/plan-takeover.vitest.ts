@@ -8,7 +8,7 @@ vi.mock("../../../../src/frontend/ui/copy-table", () => ({
   copyText: (k: string, a?: Record<string, unknown>) => (a ? `${k}(${Object.entries(a).map(([x, y]) => `${x}=${String(y)}`).join(",")})` : k),
 }));
 
-import { CellDetail, takeoverCell, takeoverSpec } from "../../../../src/frontend/ui/views/plan-cell.ts";
+import { CellDetail, takeoverCell, takeoverSpec, unbuiltTakeoverCell } from "../../../../src/frontend/ui/views/plan-cell.ts";
 import type { PlanBlock, PlanCell, PlanSlice, PlanWho } from "../../../../src/frontend/ui/plan-reads.ts";
 
 const HANDOFF = "你负责 ledger 的 A2 导入 csv：先 pb claim A2 <认领码>，再 pb where。认领码找上一级要";
@@ -44,8 +44,12 @@ describe("权力范围那一行：另开会话接手", () => {
     expect(opened).toBe(1);
   });
 
-  it("开框交出的：那台 · 机器锁住 · 目录是工作区根", () => {
-    expect(takeoverSpec("gpu-box", "/work/ledger")).toEqual({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger" });
+  it("开框交出的：那台 · 机器锁住 · 目录锁在工作区根 · 开口那句是交接说明", () => {
+    expect(takeoverSpec("gpu-box", "/work/ledger", block())).toEqual({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true, prompt: HANDOFF });
+  });
+
+  it("交接说明拿不到（handoff 为 null）⇒ 不预填开口那句", () => {
+    expect(takeoverSpec("gpu-box", "/work/ledger", block({ handoff: null }))).toEqual({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true });
   });
 
   it("该出、交接说明拿不到（no_line）⇒ 不给按钮，写 pb 说的为什么", () => {
@@ -63,13 +67,11 @@ describe("权力范围那一行：另开会话接手", () => {
   });
 
   it("还没建的（下一趟 update 建）⇒ 灰着的按钮，悬停说为什么", () => {
-    let opened = 0;
-    const el = takeoverCell("unbuilt", () => opened++);
+    const el = unbuiltTakeoverCell();
     const b = takeBtn(el);
     expect(b, "还没建的那一行要有灰按钮").toBeTruthy();
     expect(b!.disabled || b!.getAttribute("aria-disabled") === "true").toBe(true);
-    b!.click();
-    expect(opened).toBe(0);
+    expect(b!.title || b!.dataset.kitTitle).toBe("plan.takeover.unbuilt");
   });
 });
 

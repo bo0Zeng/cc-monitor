@@ -32,6 +32,6 @@ handoff: string | null,
  */
 handoffError: string | null, 
 /**
- * 「另开会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
+ * 「新会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
  */
 takeover: PlanTakeover, };

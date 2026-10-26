@@ -35,7 +35,7 @@ import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { titleParts } from "../session-face";
-import { ackNeed, adoptRepo, fetchPlanList, fetchPlanRead, planCommand, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
+import { ackNeed, adoptRepo, fetchPlanList, fetchPlanRead, planCommand, type PlanBlock, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
@@ -52,7 +52,7 @@ import {
   type PlanFilter,
   type RingRow,
 } from "./plan-model";
-import { CellDetail, handoffBox, takeoverCell, takeoverSpec } from "./plan-cell";
+import { CellDetail, handoffBox, takeoverCell, takeoverSpec, unbuiltTakeoverCell } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
@@ -143,7 +143,7 @@ export class PlanView {
       workspace: () => this.current?.workspace ?? "",
       switchTo: (sid) => this.goSession(sid),
       returnCell: (slice, cell) => openReturn(this.review, slice, cellTarget(slice, cell)),
-      takeover: () => this.takeover(),
+      takeover: (b) => this.takeover(b),
     });
     this.review = {
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,
@@ -436,10 +436,10 @@ export class PlanView {
     return out;
   }
 
-  /** ［另开会话接手…］：全产品那一个新建会话框，机器锁这一片那台、目录是工作区根。 */
-  private takeover(): void {
+  /** ［新会话接手…］：全产品那一个新建会话框，机器锁这一片那台、目录锁在工作区根、第一句是那一块的交接说明。 */
+  private takeover(b: PlanBlock): void {
     const cur = this.current;
-    if (cur) void openNewSession(takeoverSpec(cur.origin, cur.workspace));
+    if (cur) void openNewSession(takeoverSpec(cur.origin, cur.workspace, b));
   }
 
   private goSession(sid: string): void {
@@ -991,7 +991,7 @@ export class PlanView {
     if (doc?.readAtText) box.appendChild(text(copyText("plan.overview.readAt", { time: doc.readAtText }), s.pvMeta));
 
     // 块
-    // 末一格「另开会话接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
+    // 末一格「接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
     const blocks = slice.blocks.filter((b) => b.id !== "project");
     const unbuilt = slice.unbuiltBlocks;
     if (blocks.length + unbuilt.length > 0) {
@@ -1007,13 +1007,13 @@ export class PlanView {
           b.phase ? phaseBadge(b.phase) : none(),
           text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
           text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
-          stop(takeoverCell(b, () => this.takeover())),
+          stop(takeoverCell(b, () => this.takeover(b))),
         ]);
         if (root) clickRow(tr, () => this.select(root.id));
       }
       for (const u of unbuilt) {
         const root = byId.get(u.cells[0] ?? "");
-        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), stop(takeoverCell("unbuilt", () => {}))]);
+        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), stop(unbuiltTakeoverCell())]);
         if (root) clickRow(tr, () => this.select(root.id));
       }
       sec.appendChild(tbl.el);

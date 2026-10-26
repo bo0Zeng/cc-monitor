@@ -1266,16 +1266,16 @@ async fn screenshot_for_the_shots_tool() {
     if scene.starts_with("plan") {
         be.offered.push(crate::plan::CMD_PLAN_FILES.to_string());
         *be.plan_reply.lock().unwrap() = Some(
-            serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
-                {"name": "main.rs", "id": "A2-1", "title": "下单入口", "statusCode": "done", "block": "下单流程",
-                 "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
-                {"name": "Cargo.toml", "id": "A1-1", "title": "打包配置", "statusCode": "done", "block": null,
+            serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "unownedWhy": null, "entries": [
+                {"name": "main.rs", "id": "A2-1", "label": "A2-1 下单入口", "title": "下单入口", "statusCode": "done", "status": null, "block": "下单流程",
+                 "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "label": "A3-2 重试策略", "title": "重试策略"}]},
+                {"name": "Cargo.toml", "id": "A1-1", "label": "A1-1 打包配置", "title": "打包配置", "statusCode": "done", "status": null, "block": null,
                  "fileState": "ok", "fileNote": null, "dup": []},
-                {"name": "README.md", "id": "A1-2", "title": "说明文档", "statusCode": "open", "block": null,
+                {"name": "README.md", "id": "A1-2", "label": "A1-2 说明文档", "title": "说明文档", "statusCode": "open", "status": null, "block": null,
                  "fileState": "ok", "fileNote": null, "dup": []},
-                {"name": "notes.txt", "id": "A3-1", "title": "库存客户端", "statusCode": "open", "block": "下单流程",
+                {"name": "notes.txt", "id": "A3-1", "label": "A3-1 库存客户端", "title": "库存客户端", "statusCode": "open", "status": null, "block": "下单流程",
                  "fileState": "ok", "fileNote": null, "dup": []},
-                {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": null, "block": null,
+                {"name": "report.pdf", "id": "A4", "label": "A4 导出报表", "title": "导出报表", "statusCode": null, "status": null, "block": null,
                  "fileState": "ok", "fileNote": null, "dup": []}
             ]}),
         );
