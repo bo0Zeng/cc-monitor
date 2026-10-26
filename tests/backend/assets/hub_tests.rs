@@ -448,6 +448,34 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
     assert_eq!(code, "bad_path");
 }
 
+/// ★ 自己发版的插件（planned-build）不拒：照 skill 那条路，来源那台读整个目录、被写那台判、看卡；
+/// 项目里不装（插件只有用户级那一处）。别的插件照旧拒（上一条）。
+#[tokio::test]
+async fn the_hub_installs_planned_build_like_a_skill_directory() {
+    let files = json!([{ "path": ".claude-plugin/plugin.json", "text": "{}", "exec": false, "why": null, "bytes": 2 }]);
+    let plan = json!({ "root": "/s", "dir": "/s/planned-build", "target": [], "base": "/s", "prefix": "planned-build",
+                       "rows": [{ "path": ".claude-plugin/plugin.json", "state": "new", "suspects": [], "blocked": null }],
+                       "write": null, "ledger": null });
+    let t = table_with("devbox");
+    let (h, dyn_h) = here(&[("skill-install-plan", plan)]);
+    let r = remote(&[
+        json!({ "root": "/r", "dir": "/r/planned-build", "files": files, "skipped": [] }),
+    ]);
+    let args = json!({ "kind": "plugin", "name": "planned-build", "from": "devbox", "to": null,
+                       "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
+    let card = pv(&dyn_h, &args, &t, &r)
+        .await
+        .expect("planned-build 给拒了");
+    assert_eq!(card["kind"], "plugin");
+    assert_eq!(card["path"], "/s/planned-build");
+    assert_eq!(card["writes"], json!([".claude-plugin/plugin.json"]));
+    assert_eq!(h.asked.lock().unwrap()[0].0, "skill-install-plan");
+    let mut proj = args.clone();
+    proj["scope"]["to"] = json!({ "level": "project", "dir": "/w" });
+    let (code, _) = pv(&dyn_h, &proj, &t, &r).await.expect_err("插件装进了项目");
+    assert_eq!(code, "refused");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 一次装到几台：落点取交集 · 要填格并成一份 · 会写的文件逐台一行（判定都在枢纽）
 // ═══════════════════════════════════════════════════════════════════════════

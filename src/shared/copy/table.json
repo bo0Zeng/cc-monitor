@@ -11107,83 +11107,11 @@
       "zh": "加锁 {dir} 失败",
       "args": ["dir"]
     },
-    "rsSshLink.dial.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接失败 · {why}",
-      "args": ["why"],
-      "limited": ["连接"]
-    },
-    "rsSshLink.dial.silent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端连接远端失败 · 原因不明 · 详见其日志",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "rsDialHost.open.timeout": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "连接超时 · {dur} 无回应 · 地址 {addr}",
-      "args": ["addr", "dur"],
-      "limited": ["连接"]
-    },
     "rsDialHost.local.absent": {
       "kind": "error",
       "role": "报错",
       "zh": "本机离线 · 远端也离线 · 已等 {dur}",
       "args": ["dur"]
-    },
-    "rsLinkMux.b64.badChar": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "base64 里有字母表外的字符 {char}",
-      "args": ["char"]
-    },
-    "rsLinkMux.b64.badPadding": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "base64 补位不在末尾",
-      "args": []
-    },
-    "rsLinkMux.b64.badLength": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "base64 长度 {len} 不是 4 的倍数",
-      "args": ["len"]
-    },
-    "rsLinkMux.write.notSent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "数据未送达 · {said}",
-      "args": ["said"]
-    },
-    "rsLinkMux.write.closed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接已关闭",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "rsLinkMux.flight.unfinished": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "发送任务未完成 · 程序出错",
-      "args": []
-    },
-    "rsLinkMux.open.refused": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端未接下此连接 · {said}",
-      "args": ["said"],
-      "limited": ["连接"]
-    },
-    "rsLinkMux.said.refused": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端拒绝连接 · {said}",
-      "args": ["said"],
-      "limited": ["连接"]
     },
     "rsSftpPool.watch.lost": {
       "kind": "error",
@@ -13652,18 +13580,6 @@
       "role": "说明",
       "zh": "装到哪台就记在哪台 · 该机后端自己的安装记录\n记每个写入文件的摘要与装前在不在\n卸载只认此处记着的 · 卸掉的从此摘掉",
       "args": []
-    },
-    "rsDialHost.deadline.expired": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{dur} 未完成 · 已放弃 · 连上远端用时 {shake} · 之后在远端运行 {run}",
-      "args": ["shake", "run", "dur"]
-    },
-    "rsDialHost.deadline.expiredInShake": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{dur} 未连上远端 · 已放弃",
-      "args": ["dur"]
     },
     "rsFilewinShell.mode.reading": {
       "kind": "body",
@@ -17201,34 +17117,6 @@
       "zh": "读取失败 · {path} · 原因不明",
       "args": ["path"]
     },
-    "beLink.install.tooMany": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端连接已达上限 {max}",
-      "args": ["max"],
-      "limited": ["连接"]
-    },
-    "beLink.gone.say": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "与远端的连接已断开",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "beLink.gone.withError": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "与远端的连接已中断",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "beLink.gone.bug": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "与远端的连接已中断 · 程序出错",
-      "args": [],
-      "limited": ["连接"]
-    },
     "resync.call.refused": {
       "kind": "error",
       "role": "报错",
@@ -18516,12 +18404,6 @@
       "args": ["said"],
       "limited": ["hook"]
     },
-    "extPage.hooks.sessionStart": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "SessionStart → cc-register",
-      "args": []
-    },
     "extPage.hooks.stop": {
       "kind": "body",
       "role": "说明",
@@ -18562,10 +18444,40 @@
       "args": [],
       "limited": ["hook"]
     },
+    "beExt.target.pluginUserOnly": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "插件只装到全局 · 该机各账号共用一份",
+      "args": []
+    },
     "beExt.from.builtin": {
       "kind": "body",
       "role": "说明",
       "zh": "cc-monitor 自带",
+      "args": []
+    },
+    "beExt.from.release": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "发布处 · 取各台里最新的一版",
+      "args": []
+    },
+    "beExt.state.recommended": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "推荐 · 未装",
+      "args": []
+    },
+    "beExt.state.sameVersion": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已装 · {version}",
+      "args": ["version"]
+    },
+    "beExt.list.known": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "cc-monitor 认得",
       "args": []
     },
     "beExt.builtin.ccBus": {
@@ -22428,12 +22340,6 @@
       "role": "说明",
       "zh": "上滑重试",
       "args": []
-    },
-    "mobChat.record.missing": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到会话记录 · {machine}",
-      "args": ["machine"]
     },
     "mobIdentity.import.unreadable": {
       "kind": "error",
@@ -26418,13 +26324,6 @@
       "role": "进度",
       "zh": "读取中",
       "args": []
-    },
-    "reason.dial.unparsable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "连接失败 · 内容无法解析",
-      "args": [],
-      "limited": ["连接"]
     },
     "reason.local.linkLost": {
       "kind": "error",

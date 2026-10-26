@@ -7,7 +7,8 @@
 //! 机器那一行的「装到…」（从哪台拿哪一版 · 建议装到哪 · 哪几处能选、不能选的为什么），全由 [`table`] 答；摘要不出后端（线上一个 `digest` 都没有）。
 //!
 //! - `same` / `differs` 只拿**用户级**那几份比：持有人最多的那一版算「这一版」（打平时本机那一份优先），和它一样 ⇒ `same`。
-//!   cc-monitor 自带的（[`BUILTIN`]）「这一版」= 本机后端二进制里那一份，装它用被写那台自己二进制里那一份。
+//!   cc-monitor 认得的（[`KNOWN`]，表顶一组）：嵌在后端里的（cc-bus）「这一版」= 本机后端二进制里那一份，装它用被写那台自己二进制里那一份；
+//!   自己发版的（planned-build · code-picture）「这一版」= 各台用户级里版本最新的那一份，装它从持有那一份的那台拿。没装的那一格说「推荐 · 未装」。
 //! - 用户级没有、只在项目里有 ⇒ `project`；哪儿都没有 ⇒ `missing`。
 //! - 哪一处能写只问 [`writable`] / [`target_refused`]：用户级 MCP 住 agent 自己的热状态文件（它自己一直在重写）⇒ 只读；自带的只装全局。
 //! - 「新见到」：这台目录第一次见到这个条目的时刻晚于上一次来看这一页（`asset_catalog::Visits`）。
@@ -154,12 +155,15 @@ pub struct ExtDetail {
     pub value: String,
 }
 
-/// cc-monitor 自带的扩展：内置备注 ＋ 要不要列各台的钩子状态。
+/// cc-monitor 认得的那一样（表顶那一组，[`KNOWN`]）：从哪来 ＋ 内置备注 ＋ 要不要列各台的钩子状态。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct ExtBuiltin {
-    pub note: String,
+pub struct ExtKnown {
+    /// 名字底下那一句：从哪来（cc-monitor 自带 · 发布处）。
+    pub from: String,
+    /// 内置备注（有才有）。
+    pub note: Option<String>,
     /// 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
     pub hooks: bool,
 }
@@ -177,7 +181,8 @@ pub struct ExtRow {
     pub about: Option<String>,
     pub detail: Vec<ExtDetail>,
     pub new: bool,
-    pub builtin: Option<ExtBuiltin>,
+    /// cc-monitor 认得的那几样才有（表顶一组，排在最前）。
+    pub known: Option<ExtKnown>,
     /// 用户写的备注（随目录在后端之间同步）。
     pub note: Option<String>,
     pub cells: Vec<ExtCell>,
@@ -191,8 +196,11 @@ pub struct ExtList {
     pub machines: Vec<ExtMachine>,
     pub rows: Vec<ExtRow>,
     pub problems: Vec<String>,
-    /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+    /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有一台装着插件时列）。
     pub legend: Vec<ExtLegend>,
+    /// 表顶「认得」那一组的组头（带 `known` 的那几行排在最前，界面在它们前面放这一句）。
+    #[serde(rename = "knownTitle", default)]
+    pub known_title: String,
 }
 
 /// 图例里一项。
@@ -230,7 +238,7 @@ fn kind_said(kind: ExtKind) -> String {
     }
 }
 
-/// 表下图例：四态，有插件行再加「关着」。
+/// 表下图例：四态，有一台装着插件再加「关着」（认得的 planned-build 那一行哪台都没装也列，不按「有插件行」判）。
 fn legend_of(rows: &[ExtRow]) -> Vec<ExtLegend> {
     let mut states = vec![
         ExtState::Same,
@@ -238,7 +246,11 @@ fn legend_of(rows: &[ExtRow]) -> Vec<ExtLegend> {
         ExtState::Missing,
         ExtState::Project,
     ];
-    if rows.iter().any(|r| r.kind == ExtKind::Plugin) {
+    let installed = |r: &ExtRow| r.cells.iter().any(|c| c.state != ExtState::Missing);
+    if rows
+        .iter()
+        .any(|r| r.kind == ExtKind::Plugin && installed(r))
+    {
         states.push(ExtState::Off);
     }
     states
@@ -687,27 +699,103 @@ pub(crate) fn shared_mcp_file(d: &dyn Door) -> Result<String, crate::wire::spec:
     Ok(store.unwrap_or_default())
 }
 
-/// cc-monitor 自带的扩展：（种类, 名字, 内置备注, 要不要列各台的钩子状态）。
-const BUILTIN: &[(ExtKind, &str, fn() -> String, bool)] = &[(
-    ExtKind::Skill,
-    super::cc_bus_install::NAME,
-    cc_bus_note,
-    true,
-)];
+/// 认得的那一样从哪来（闭集）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    /// 嵌在 cc-monitor 后端二进制里：「这一版」= 本机后端那一份，装它用被写那台自己二进制里那一份。
+    Embedded,
+    /// 它自己发版（发版即装进那台的用户级 skills 目录）：「这一版」= 各台用户级里版本最新的那一份，装它从持有那一份的那台拿。
+    Release,
+}
+
+/// cc-monitor 认得的一样（表顶那一组的一行）。
+struct Known {
+    kind: ExtKind,
+    name: &'static str,
+    origin: Origin,
+    note: Option<fn() -> String>,
+    /// 装上之后要在那台的 agent 配置里加钩子（抽屉里每台一行钩子状态）。
+    hooks: bool,
+}
+
+/// cc-monitor 认得的那几样，按表顶的次序。哪台都没装也列；没装的那一格说「推荐 · 未装」，不替人默认装。
+const KNOWN: &[Known] = &[
+    Known {
+        kind: ExtKind::Plugin,
+        // 与 `plan::locate::PLUGIN_NAME` 同一个名字（不从那里引：assets → plan 会让顶层模块成环）。
+        name: "planned-build",
+        origin: Origin::Release,
+        note: None,
+        hooks: false,
+    },
+    Known {
+        kind: ExtKind::Skill,
+        name: "code-picture",
+        origin: Origin::Release,
+        note: None,
+        hooks: false,
+    },
+    Known {
+        kind: ExtKind::Skill,
+        name: super::cc_bus_install::NAME,
+        origin: Origin::Embedded,
+        note: Some(cc_bus_note),
+        hooks: true,
+    },
+];
 
 fn cc_bus_note() -> String {
     copy_text("beExt.builtin.ccBus", &[])
 }
 
-/// 是不是 cc-monitor 自带的那一个（装它用被写那台二进制里那一份，不从别的机器拿）。
-pub(crate) fn is_builtin(kind: ExtKind, name: &str) -> bool {
-    BUILTIN.iter().any(|(k, n, _, _)| *k == kind && *n == name)
+fn known_of(kind: ExtKind, name: &str) -> Option<&'static Known> {
+    KNOWN.iter().find(|k| k.kind == kind && k.name == name)
 }
 
-/// 自带的只装全局（枢纽收到的落点先过这一道；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
+/// 是不是嵌在 cc-monitor 里的那一个（装它用被写那台二进制里那一份，不从别的机器拿）。
+pub(crate) fn is_builtin(kind: ExtKind, name: &str) -> bool {
+    known_of(kind, name).is_some_and(|k| k.origin == Origin::Embedded)
+}
+
+/// 自己发版的那几样（[`Origin::Release`]）：装它照 skill 那条路，从持有最新那一版的那台拷进被写那台的用户级 skills 目录
+/// （插件也一样：它发版就是整个目录拷进 skills 目录）。
+pub(crate) fn is_release(kind: ExtKind, name: &str) -> bool {
+    known_of(kind, name).is_some_and(|k| k.origin == Origin::Release)
+}
+
+/// 版本号逐段比：数字段按数比，别的按字比（「0.5.10」比「0.5.9」新）。
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let seg = |s: &str| -> Vec<(u64, String)> {
+        s.split(['.', '-', '+'])
+            .map(|p| (p.parse::<u64>().unwrap_or(0), p.to_string()))
+            .collect()
+    };
+    seg(a).cmp(&seg(b))
+}
+
+fn version_of(a: &Asset) -> Option<&str> {
+    a.summary.get("version").and_then(Value::as_str)
+}
+
+/// 自己发版的那几样的「这一版」：用户级那几份里版本最新的；没有一份带版本 ⇒ `None`（照持有人最多的判）。
+fn newest<'a>(held: &[Option<&'a Asset>]) -> Option<&'a str> {
+    held.iter()
+        .flatten()
+        .filter_map(|a| version_of(a).map(|v| (v, a.digest.as_str())))
+        .max_by(|x, y| version_cmp(x.0, y.0))
+        .map(|(_, d)| d)
+}
+
+/// 自带的 · 自己发版的插件只装全局（枢纽收到的落点先过这一道；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
 pub(crate) fn builtin_refused(kind: ExtKind, name: &str, at: &ExtLoc) -> Option<String> {
-    (is_builtin(kind, name) && *at != ExtLoc::User)
-        .then(|| copy_text("beExt.target.builtinUserOnly", &[]))
+    if *at == ExtLoc::User {
+        return None;
+    }
+    if is_builtin(kind, name) {
+        return Some(copy_text("beExt.target.builtinUserOnly", &[]));
+    }
+    (kind == ExtKind::Plugin && is_release(kind, name))
+        .then(|| copy_text("beExt.target.pluginUserOnly", &[]))
 }
 
 /// 装到这一处行不行（表上「装到哪」的选项）：不能写的那一级 · 自带的只装全局。行 ⇒ `None`。
@@ -717,6 +805,10 @@ pub(crate) fn target_refused(
     at: &ExtLoc,
     shared: bool,
 ) -> Option<String> {
+    // 自己发版的插件装进那台的用户级 skills 目录（各号共用那一份），不经插件那条只读的路。
+    if kind == ExtKind::Plugin && is_release(kind, name) {
+        return builtin_refused(kind, name, at);
+    }
     writable(kind, at, shared)
         .err()
         .or_else(|| builtin_refused(kind, name, at))
@@ -736,9 +828,9 @@ pub(crate) fn same_place(
 pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
     let cols = columns(cat, reach);
     let mut by_key: BTreeMap<(ExtKind, String), Vec<Vec<&Asset>>> = BTreeMap::new();
-    for (k, n, _, _) in BUILTIN {
+    for k in KNOWN {
         by_key
-            .entry((*k, n.to_string()))
+            .entry((k.kind, k.name.to_string()))
             .or_insert_with(|| vec![Vec::new(); cols.len()]);
     }
     for (i, c) in cols.iter().enumerate() {
@@ -749,7 +841,16 @@ pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
                 .push(a);
         }
     }
-    let rows: Vec<ExtRow> = by_key
+    // 认得的那几样按 [`KNOWN`] 的次序排在最前，其余按（种类, 名字）。
+    let rank = |kind: ExtKind, name: &str| {
+        KNOWN
+            .iter()
+            .position(|k| k.kind == kind && k.name == name)
+            .unwrap_or(KNOWN.len())
+    };
+    let mut keyed: Vec<_> = by_key.into_iter().collect();
+    keyed.sort_by_key(|((kind, name), _)| rank(*kind, name));
+    let rows: Vec<ExtRow> = keyed
         .into_iter()
         .map(|((kind, name), per)| row(cat, &cols, kind, &name, &per))
         .collect();
@@ -759,6 +860,7 @@ pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
         rows,
         problems: Vec::new(),
         legend,
+        known_title: copy_text("beExt.list.known", &[]),
     }
 }
 
@@ -769,20 +871,24 @@ enum Source<'c, 'a> {
 }
 
 fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
-    let builtin = BUILTIN.iter().find(|(k, n, _, _)| *k == kind && *n == name);
+    let known = known_of(kind, name);
     let user: Vec<Option<&Asset>> = per
         .iter()
         .map(|v| v.iter().copied().find(|a| a.project.is_none()))
         .collect();
-    // 「这一版」：自带的 ⇒ 本机后端二进制里那一份；否则用户级持有人最多的那一版。
-    let canon: Option<String> = match builtin {
-        Some(_) => Some(super::cc_bus_install::embedded_digest()),
+    // 「这一版」：嵌在 cc-monitor 里的 ⇒ 本机后端二进制里那一份；自己发版的 ⇒ 用户级里版本最新的那一份；
+    // 否则（或自己发版的却没有一份带版本）用户级持有人最多的那一版。
+    let canon: Option<String> = match known.map(|k| k.origin) {
+        Some(Origin::Embedded) => Some(super::cc_bus_install::embedded_digest()),
+        Some(Origin::Release) => newest(&user)
+            .or_else(|| canonical(&user, cols))
+            .map(str::to_string),
         None => canonical(&user, cols).map(str::to_string),
     };
     // 来源：持有「这一版」的那几台里本机优先、再按列序、要连得上；用户级谁都没有 ⇒ 项目里有的那几台里同样挑。
-    let source = match builtin {
-        Some(_) => Some(Source::Builtin),
-        None => {
+    let source = match known.map(|k| k.origin) {
+        Some(Origin::Embedded) => Some(Source::Builtin),
+        _ => {
             let held: Vec<Option<&Asset>> = match canon.as_deref() {
                 Some(d) => user.iter().map(|a| a.filter(|a| a.digest == d)).collect(),
                 None => per.iter().map(|v| v.first().copied()).collect(),
@@ -825,9 +931,13 @@ fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&As
         about: shown.and_then(about_of),
         detail: shown.map(detail_of).unwrap_or_default(),
         new,
-        builtin: builtin.map(|(_, _, note, hooks)| ExtBuiltin {
-            note: note(),
-            hooks: *hooks,
+        known: known.map(|k| ExtKnown {
+            from: match k.origin {
+                Origin::Embedded => copy_text("beExt.from.builtin", &[]),
+                Origin::Release => copy_text("beExt.from.release", &[]),
+            },
+            note: k.note.map(|f| f()),
+            hooks: k.hooks,
         }),
         note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind, name)),
         cells,
@@ -888,8 +998,8 @@ fn cell(
     }
     let (bring, note) = if !live {
         (None, Some(copy_text("kit.offline.later", &[])))
-    } else if let Some(why) = read_only(kind) {
-        // 整种只读（插件）：没有「装到…」，说为什么。
+    } else if let Some(why) = read_only(kind).filter(|_| !is_release(kind, name)) {
+        // 整种只读（插件）：没有「装到…」，说为什么。自己发版的那几样例外：从持有最新那一版的那台装进用户级。
         (None, Some(why))
     } else {
         match source {
@@ -897,8 +1007,16 @@ fn cell(
             Some(src) => bring_for(kind, name, c, src),
         }
     };
+    // 认得的那几样：没装 ⇒ 「推荐 · 未装」；装着最新那一版、带版本 ⇒ 「已装 · 版本」。
+    let said = match (known_of(kind, name), state, user.and_then(version_of)) {
+        (Some(_), ExtState::Missing, _) => copy_text("beExt.state.recommended", &[]),
+        (Some(_), ExtState::Same, Some(v)) => {
+            copy_text("beExt.state.sameVersion", &[("version", v)])
+        }
+        _ => state_said(state, &places),
+    };
     ExtCell {
-        said: state_said(state, &places),
+        said,
         state,
         places,
         bring,
@@ -956,12 +1074,14 @@ fn bring_for(
         ),
     };
     let from_machine = matches!(src, Source::Machine(..));
+    // 插件只有用户级那一处（装进 skills 目录、各号共用），不列项目。
+    let projects: &[String] = if kind == ExtKind::Plugin {
+        &[]
+    } else {
+        &c.m.projects
+    };
     let targets: Vec<ExtTarget> = std::iter::once(ExtLoc::User)
-        .chain(
-            c.m.projects
-                .iter()
-                .map(|d| ExtLoc::Project { dir: d.clone() }),
-        )
+        .chain(projects.iter().map(|d| ExtLoc::Project { dir: d.clone() }))
         .map(|at| {
             let why = target_refused(kind, name, &at, c.shared).or_else(|| {
                 (from_machine && same_place(from.as_deref(), &from_loc, c.m.key.as_deref(), &at))

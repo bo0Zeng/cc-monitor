@@ -48,13 +48,14 @@ const targets = (globalOk = true, globalNote: string | null = null) => [
   { at: proj, ok: true, note: null },
 ];
 const bring = (over: Record<string, unknown> = {}) => ({ from: null, fromName: "本机", scope: { from: user, to: user }, targets: targets(), ...over });
-const row = (kind: string, name: string, cells: unknown[], over: Record<string, unknown> = {}) => ({ kind, kindSaid: KIND_SAID[kind], name, about: null, detail: [], new: false, builtin: null, note: null, cells, ...over });
+const row = (kind: string, name: string, cells: unknown[], over: Record<string, unknown> = {}) => ({ kind, kindSaid: KIND_SAID[kind], name, about: null, detail: [], new: false, known: null, note: null, cells, ...over });
 const here = cell("same", [place(user, "same", true)]);
 const demoMissing = cell("missing", [place(user, "missing")], bring());
 const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
   machines,
   problems: [],
   legend: LEGEND,
+  knownTitle: "〈认得〉",
   rows: [
     row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("machineList.summary.count", { n: "1" }) }], new: true }),
     row("mcp", "fs", [cell("same", [place(user, "same", false, copyText("agentWindow.status.plain"))], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
@@ -67,7 +68,7 @@ const card = { kind: "skill", name: "demo", path: "/g/.claude/skills/demo", writ
 const synced = { self: "h", synced: [], reach: [{ origin: "laptop", machine: "g" }] };
 const diag = (snippet: string | null, supported = true) => ({
   supported,
-  diagnosis: { session_start: { kind: "not-installed" }, stop: { kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" }, note: "" },
+  diagnosis: { stop: { kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" }, note: "" },
   snippet,
   source: "/h/.claude/settings.json",
 });
@@ -348,7 +349,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
 
   it("各台结局逐台说：一台没成（如看过之后变了）不挡别台；做完重问那张卡（没成的那台拿到新卡，再点就是重试它）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
-    const lst = { machines: m3, problems: [], legend: LEGEND, rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
+    const lst = { machines: m3, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
     const s = await page([lst], (a) =>
       chanReply({
         machines: a.to.map((t) =>
@@ -427,7 +428,25 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
 
 describe("备注 · cc-bus 那一行", () => {
   beforeEach(() => invokeMock.mockReset());
-  const ccBus = (cells: unknown[], note: string | null = null) => row("skill", "cc-bus", cells, { builtin: { note: "内置：要加两条钩子", hooks: true }, note });
+  const ccBus = (cells: unknown[], note: string | null = null) => row("skill", "cc-bus", cells, { known: { from: "〈自带〉", note: "内置：要加两条钩子", hooks: true }, note });
+
+  it("认得的那几样：后端排在最前的、带 known 的行前面一条组头，名字后面那一句是后端写的来源；不带 known 的同名行不进组（界面不认名字）", async () => {
+    const pb = row("plugin", "planned-build", [cell("missing", [place(user, "missing")], bring()), here], { known: { from: "〈发布处〉", note: null, hooks: false } });
+    const base = listWith(demoMissing);
+    const list = { ...base, rows: [pb, ...base.rows, row("skill", "code-picture", [here, here])] };
+    const s = await page([list]);
+    const table = s.element.querySelector(".ext-table") as HTMLElement;
+    const order = [...table.children].map((e) => (e.classList.contains("ext-drawer-section") ? "组头" : ((e as HTMLElement).dataset.key ?? null))).filter((k) => k !== null);
+    expect(order).toEqual(["组头", "plugin/planned-build", "skill/demo", "mcp/fs", "skill/code-picture"]);
+    expect(table.querySelector(".ext-drawer-section")?.textContent).toBe("〈认得〉");
+    const name = table.querySelector('[data-key="plugin/planned-build"] .ext-name') as HTMLElement;
+    expect(name.textContent).toBe("planned-build 〈发布处〉");
+    // 没有备注 ⇒ 不带备注记号。
+    expect(name.querySelector(".ext-note-mark")).toBeNull();
+    // 没有认得的那几行 ⇒ 组头也不在。
+    const plain = await page([base]);
+    expect(plain.element.querySelector(".ext-table .ext-drawer-section")).toBeNull();
+  });
 
   it("备注：内置的照画在抽屉顶部；用户写 ⇒ 交本机后端记进目录 ⇒ 让它同步一趟各台、重读", async () => {
     const list = listWith(demoMissing, [ccBus([here, demoMissing])]);
@@ -467,10 +486,10 @@ describe("备注 · cc-bus 那一行", () => {
     ]);
     const lines = [...s.element.querySelectorAll(".ext-hooks .ext-hook")];
     expect(lines.map((l) => [...l.querySelectorAll(".ext-hook-state")].map((x) => (x as HTMLElement).dataset.kind))).toEqual([
-      ["not-installed", "installed-at-path"],
-      ["not-installed", "installed-at-path"],
+      ["installed-at-path"],
+      ["installed-at-path"],
     ]);
-    expect(lines[0].querySelector(".ext-hook-state")?.className).toBe("ext-hook-state is-bad");
+    expect(lines[0].querySelector(".ext-hook-state")?.className).toBe("ext-hook-state is-ok");
     expect((lines[0].querySelector(".paste-block-out") as HTMLTextAreaElement).value).toBe(snippet);
     expect(lines[0].querySelector(".paste-block-target")?.textContent).toContain("/h/.claude/settings.json");
     expect(lines[1].querySelector(".paste-block-out")).toBeNull();
@@ -511,7 +530,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     mcpAnswers = {};
   });
   const both = cell("same", [place(user, "same")]);
-  const mcpList = () => ({ machines, problems: [], legend: LEGEND, rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
+  const mcpList = () => ({ machines, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
   const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
   const fixArgs = { kind: "mcp" as const, agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
   const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), fix: [{ account: "acct-a", fix: { command: "login-start", args: fixArgs } }] };
@@ -676,7 +695,7 @@ describe("一次装到几台：要填的值只填一次", () => {
   it("★ 后端并好的那一格只出一次、说哪台已有这个值；填一次 ⇒ 交上去的就是它（每台只拿它那张卡要的几格由后端分）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
     const mcpMissing = cell("missing", [place(user, "missing")], bring());
-    const lst = { machines: m3, problems: [], legend: LEGEND, rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
+    const lst = { machines: m3, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
     let applied: ManyArgs | null = null;
     const s = await page(
       [lst],

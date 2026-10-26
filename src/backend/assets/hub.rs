@@ -159,11 +159,12 @@ fn refused_pair(kind: ExtKind) -> (String, String) {
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     let own = |e: crate::wire::spec::Fail| (e.code, e.message);
     let kind = ExtKind::from_arg(args).map_err(own)?;
-    if super::ext::read_only(kind).is_some() {
+    let name = str_arg(args, "name")?;
+    // 自己发版的插件（planned-build）照 skill 那条路装：整个目录拷进用户级 skills 目录；别的插件只读。
+    if super::ext::read_only(kind).is_some() && !super::ext::is_release(kind, name) {
         return Err(refused_pair(kind));
     }
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
-    let name = str_arg(args, "name")?;
     let (at_from, at_to) = scope_of(args)?;
     if let Some(why) = builtin_refused(kind, name, &at_to) {
         return Err(("refused".to_string(), why));
@@ -289,7 +290,7 @@ fn skill_card(a: &Ask<'_>, source: &[SkillSourceFile], plan: &SkillPlan) -> ExtC
         stop.get_or_insert_with(|| copy_text("beExt.card.binary", &[("path", &p.path)]));
     }
     ExtCard {
-        kind: ExtKind::Skill,
+        kind: a.kind,
         name: a.name.to_string(),
         path: plan.dir.clone(),
         unchanged: writes.is_empty(),
@@ -381,11 +382,11 @@ pub(crate) async fn ext_preview(
         return Ok(builtin_card(&a, &st));
     }
     Ok(match a.kind {
-        ExtKind::Skill => {
+        // 走到这里的插件只有自己发版的那一样（[`ask_of`] 已拒掉别的）：整个目录照 skill 拷。
+        ExtKind::Skill | ExtKind::Plugin => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
             skill_card(&a, &source, &plan)
         }
-        ExtKind::Plugin => return Err(refused_pair(a.kind)),
         ExtKind::Mcp => {
             let (src, pre) = mcp_look(here, &a, table, remote).await?;
             mcp_card(&a, &src, &pre)
@@ -431,7 +432,7 @@ pub(crate) async fn ext_apply(
                 note: (!note.is_empty()).then(|| note.join(" ")),
             }
         }
-        ExtKind::Skill => {
+        ExtKind::Skill | ExtKind::Plugin => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
             let card = skill_card(&a, &source, &plan);
             if card.tokens != *tokens {
@@ -475,7 +476,6 @@ pub(crate) async fn ext_apply(
                 note: (!note.is_empty()).then(|| note.join(" ")),
             }
         }
-        ExtKind::Plugin => return Err(refused_pair(a.kind)),
         ExtKind::Mcp => {
             let (src, pre) = mcp_look(here, &a, table, remote).await?;
             let card = mcp_card(&a, &src, &pre);
@@ -659,8 +659,9 @@ pub(crate) fn merge_slots(cards: &[(String, &ExtCard)]) -> Vec<HubSlot> {
 pub(crate) fn files_of(c: &ExtCard) -> Vec<String> {
     match c.kind {
         ExtKind::Mcp => vec![format!("{} · mcpServers", c.path)],
-        ExtKind::Skill => vec![format!("{} · {}", c.path, c.writes.join(", "))],
-        ExtKind::Plugin => Vec::new(),
+        ExtKind::Skill | ExtKind::Plugin => {
+            vec![format!("{} · {}", c.path, c.writes.join(", "))]
+        }
     }
 }
 
