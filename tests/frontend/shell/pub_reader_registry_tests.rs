@@ -130,6 +130,11 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "鉴权方式的闭集：判定单家表 J16 拿它与界面那一份联合逐个对拍，产品逻辑按单个常量读",
     ),
     (
+        "src/common/cmd-wire/src/machine.rs",
+        "KEYS_NOT_NAMES",
+        "机器键里不能当名字的那几个：读者是界面，经 `payload_judgment_rules.rs` 现生成进 `judgment-rules.ts`，由 `chan-caller.ts::machineName` 读",
+    ),
+    (
         "src/common/copy-core/src/lib.rs",
         "copy_matches",
         "共享 crate 给各包测试按文案键断言的口子：读者是别的包的测试，收不进本 crate 的 `cfg(test)`",

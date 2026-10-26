@@ -149,7 +149,7 @@ fn wire_word(v: impl serde::Serialize) -> Option<String> {
         .and_then(|v| v.as_str().map(str::to_string))
 }
 
-/// 远端各台此刻的成品（本机后端 `machine-read`）；问不到 ⇒ 空表（那几台照「说不出」写）。
+/// 各台（含本机）此刻的成品（本机后端 `machine-read`）；问不到 ⇒ 空表（那几台照「说不出」写）。
 async fn remote_machines() -> std::collections::BTreeMap<String, cmd_wire::machine::MachineState> {
     const CMD: &str = "machine-read";
     let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) else {
@@ -193,17 +193,17 @@ pub async fn diagnostics_report(
         let machines: Vec<MachineLine> = origins
             .into_iter()
             .map(|(origin, name)| {
-                let (m, build) = if origin == local {
-                    (
-                        Some(crate::local_backend_host::local_machine_now()),
-                        mine.map(str::to_string),
-                    )
+                let m = remote.get(&origin).cloned();
+                let build = if origin == local {
+                    mine.map(str::to_string)
                 } else {
-                    (
-                        remote.get(&origin).cloned(),
-                        crate::stream_source::theirs_of(&origin),
-                    )
+                    crate::stream_source::theirs_of(&origin)
                 };
+                // 本机后端没答（没起来 · 正在起 · 口上占着别的）⇒ 本机那一行的状态照壳那一格说。
+                let unanswered = (origin == local && m.is_none())
+                    .then(crate::local_backend_host::local_backend_now)
+                    .and_then(|l| serde_json::to_value(l).ok())
+                    .and_then(|v| v["state"].as_str().map(str::to_string));
                 let records = drift
                     .iter()
                     .find(|d| d.origin == origin)
@@ -215,6 +215,7 @@ pub async fn diagnostics_report(
                     state: m
                         .as_ref()
                         .and_then(|m| wire_word(m.state))
+                        .or(unanswered)
                         .unwrap_or_default(),
                     reason: m.as_ref().and_then(|m| m.reason).and_then(wire_word),
                     version: m.as_ref().and_then(|m| m.version.clone()),

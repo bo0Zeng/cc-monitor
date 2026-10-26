@@ -3,6 +3,7 @@ import type { SessionHidden } from "./session-hidden";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
+import { machineName } from "./ipc/chan-caller";
 import { toast } from "./kit/toast";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { tryDecodeJson } from "./ipc/decode";
@@ -285,7 +286,7 @@ const UNSEEN_SAY_MS = 20_000;
 
 /** 一台机器一直看不见：哪台 · 为什么（从没看见过 ⇒ 只说还没连上）· 能做什么。 */
 function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (() => void) | undefined): void {
-  const machine = isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
+  const machine = machineName(origin);
   const title = !ever
     ? copyText("events.unseen.neverTitle", { machine })
     : why === "Dropped"

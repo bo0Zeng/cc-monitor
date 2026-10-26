@@ -29,7 +29,7 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { commands } from "../ipc/commands";
 import { ChanError } from "../../../comms/inward/chan";
-import { ControlError } from "../control-said";
+import { ControlError, machineName } from "../control-said";
 import { saidOf } from "../kit/detail";
 import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
@@ -635,7 +635,7 @@ export class PlanView {
     this.subEl.hidden = false;
     const parts: (HTMLElement | Text)[] = [];
     const where = document.createElement("span");
-    where.textContent = joinSep(isRemoteOrigin(cur.origin) ? cur.origin : copyText("control.machine.local"), cur.workspace);
+    where.textContent = joinSep(machineName(cur.origin), cur.workspace);
     // 无图：子头只留在哪（没有顶块可写、没有格可过滤）。
     if (isFresh(slice)) {
       this.subEl.replaceChildren(where);
@@ -1049,7 +1049,7 @@ export class PlanView {
     if (tab) {
       const mt = document.createElement("span");
       mt.className = s.pvOwnerMt;
-      mt.textContent = isRemoteOrigin(tab.origin) ? tab.origin : copyText("control.machine.local");
+      mt.textContent = machineName(tab.origin);
       b.appendChild(mt);
     }
     const sid = w.sid;

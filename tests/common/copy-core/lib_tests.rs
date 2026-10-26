@@ -151,9 +151,9 @@ fn the_two_peer_version_codes_each_say_their_one_line() {
 #[test]
 fn copy_matches_finds_an_entry_whatever_its_values_are() {
     // 无参：整句在里头才算
-    let plain = copy_text("control.machine.local", &[]);
+    let plain = copy_text("remote.cards.local", &[]);
     assert!(copy_matches(
-        "control.machine.local",
+        "remote.cards.local",
         &format!("前缀 {plain} 后缀")
     ));
     // 有参：值换成什么都认，值挨着汉字时取文口补的那个空格也认

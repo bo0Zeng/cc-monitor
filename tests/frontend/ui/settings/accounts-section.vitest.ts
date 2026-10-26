@@ -473,7 +473,7 @@ describe("登录与指路", () => {
     setCurrentMachine(LOCAL_ORIGIN);
     fetchAccounts.mockResolvedValue(state({ origin: LOCAL_ORIGIN }));
     const el = await mount();
-    expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: copyText("control.machine.local") }));
+    expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: copyText("control.machine.unsure") }));
     expect(fetchAccounts.mock.calls[0][0]).toBe(LOCAL_ORIGIN);
   });
 });

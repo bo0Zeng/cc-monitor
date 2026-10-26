@@ -13,7 +13,8 @@
 import { chan, ChanError, type Budget } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
 import { decodeJson } from "./decode";
-import { isLocalOrigin, type Origin } from "./origin";
+import { KEYS_NOT_NAMES } from "../generated/judgment-rules";
+import type { Origin } from "./origin";
 import type { RefusalData, TypedCommands } from "../generated/TypedCommands";
 
 /**
@@ -71,9 +72,20 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
   return null;
 }
 
-/** 一句话里怎么称呼这台机器：本机说「本机」，远端说它的名字。 */
+/** 每台最近一份机器状态成品里的 `name`（`machine-feed` 收到一份记一份；名字只有后端那一台成品这一个来处）。 */
+const names = new Map<Origin, string>();
+
+/** 收到一台的成品：记下它的名字（只由 `machine-feed` 调）。 */
+export function noteMachineName(origin: Origin, name: string): void {
+  names.set(origin, name);
+}
+
+/**
+ * 一句话里怎么称呼这台机器：照那台成品的 `name`（这一窗订着机器状态时记下的），本机远端同一条路。成品还没到 ⇒
+ * 那个键能当名字（就是机器表里那台的名字）就叫键本身；不能（{@link KEYS_NOT_NAMES} 里的哨兵）⇒ 机器不明。
+ */
 export function machineName(origin: Origin): string {
-  return isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
+  return names.get(origin) ?? (KEYS_NOT_NAMES.includes(origin) ? copyText("control.machine.unsure") : origin);
 }
 
 /** 那台回了、回的东西认不出那一句（[`ReplyUnreadable`] 的 `message`；不抛、只要那一句的几处直接取）。 */

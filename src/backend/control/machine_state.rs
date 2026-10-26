@@ -1,5 +1,6 @@
-//! 每台远端机器的状态（桌面这一端）：按名字一张表。写点三处是本机后端自己的（部署每一步 · 部署收了 · 机器表改了），
+//! 每台机器的状态（桌面这一端）：按名字一张表。写点三处是本机后端自己的（部署每一步 · 部署收了 · 机器表改了），
 //! 第四处是壳原样交来的接常驻那一轮（`machine-round`）。判定在 `deploy::machine`；每变一次推 `changed {machine, key: 名字, body: 成品}`。
+//! 本机（键 `<local>`）也是其中一台：这个后端在答就是连着、与手上同一份字节，那一行由这里出（[`local_row`]）。
 //! 后端重启表就空：壳在本机通道接上那一刻把每台最新那一轮重交一遍。
 
 use cmd_wire::machine::{MachineState, Round};
@@ -89,10 +90,10 @@ pub(crate) fn read() -> BTreeMap<String, MachineState> {
     read_in(&hosts())
 }
 
-/// [`read`] 的本体（机器表由调用方给）。
+/// [`read`] 的本体（机器表由调用方给）：表里每台，外加本机那一行。
 pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState> {
     let t = table();
-    hosts
+    let mut out: BTreeMap<String, MachineState> = hosts
         .iter()
         .map(|(n, c)| {
             (
@@ -100,7 +101,25 @@ pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState
                 product(t.get(n).unwrap_or(&Entry::default()), n, *c, true),
             )
         })
-        .collect()
+        .collect();
+    out.insert(cmd_wire::machine::LOCAL.to_string(), local_row());
+    out
+}
+
+/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`build.rs` 交的）。
+fn local_row() -> MachineState {
+    let mut e = Entry::default();
+    fold(
+        &mut e,
+        Fact::Round {
+            round: Round::Up {
+                relation: cmd_wire::attach::Relation::Same,
+                differs: Vec::new(),
+            },
+            version: Some(env!("CC_MONITOR_VERSION").to_string()),
+        },
+    );
+    product(&e, &copy_core::local_machine(), true, true)
 }
 
 /// `machine-round` 的入参：那台 · 接常驻那一段的一轮结论（通信层交出的那一态原样）· 本侧的产品版本号。

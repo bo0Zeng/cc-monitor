@@ -112,7 +112,7 @@ describe("一台机器的会话流一直看不见 ⇒ 说出来", () => {
     streamFake.subscriptions[0].sink([{ t: "seen", from: null }]);
     streamFake.subscriptions[0].sink([unseen("Dropped")]);
     vi.advanceTimersByTime(20_000);
-    const local = copyText("control.machine.local");
+    const local = copyText("control.machine.unsure");
     expect(said()).toEqual([[copyText("events.unseen.droppedTitle", { machine: local }), copyText("events.unseen.lostBody", { machine: local })]]);
   });
 

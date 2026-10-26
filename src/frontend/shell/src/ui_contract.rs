@@ -26,9 +26,10 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
-    /// **本机那一台的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
-    /// `local_backend_host::local_product`）。通道接上 / 断了 · 口上换了人就推一帧；远端各台走本机后端的 `changed {machine}`。
-    pub const MACHINE_STATE: &str = "machine-state";
+    /// **本机后端起没起来变了**：[`LocalBackend`](super::LocalBackend)（与 `backend_status` 的 `local` 那一格同形，
+    /// `local_backend_host::local_backend_now`）。通道接上 / 断了 · 正在起 · 口上换了人 · 起的时候被拒就推一帧；
+    /// 各台（含本机）的状态成品走本机后端的 `changed {machine}`。
+    pub const LOCAL_BACKEND: &str = "local-backend";
     /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情）。
     /// 壳推给界面的出错只这一种；日志行不上屏。
     pub const UI_ERROR: &str = "monitor-error";
@@ -302,13 +303,39 @@ pub struct FrontendReadyPayload {
     pub priority_sid: Option<String>,
 }
 
-/// [`events::MACHINE_STATE`] 那一帧：本机那一台 ＋ 它的状态成品（与 `backend_status` 的 `machine` 同一份类型）。
-#[derive(Debug, Serialize, Clone)]
+/// 本机后端此刻起没起来（壳自己的事实：这台电脑上的进程）。[`events::LOCAL_BACKEND`] 那一帧与 `backend_status` 的 `local` 那一格。
+/// 连着 ⇒ 本机那一台的状态成品由本机后端出，这里只说连着；没连着的几样各带名字旁那个词 · 问题行那一句 · 修法
+/// （壳写好的；起不来那几样只有［重试］＝ 再起一次本机后端），被拒时再带一句下一步。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct MachineStatePayload {
-    pub origin: String,
-    pub machine: cmd_wire::machine::MachineState,
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum LocalBackend {
+    /// 通道在：本机那一行看本机后端的成品。
+    Up,
+    /// 起本机后端那一趟正在走。
+    Starting { word: String, said: String },
+    /// 没起来、接不上。
+    Down {
+        word: String,
+        said: String,
+        fixes: Vec<cmd_wire::machine::FixButton>,
+        next: Option<String>,
+    },
+    /// 口上占着的那一份比这一版旧（终端里先起的旧版）。
+    Older {
+        word: String,
+        said: String,
+        fixes: Vec<cmd_wire::machine::FixButton>,
+        next: Option<String>,
+    },
+    /// 口上占着的那一份比这一版新。
+    Newer {
+        word: String,
+        said: String,
+        fixes: Vec<cmd_wire::machine::FixButton>,
+        next: Option<String>,
+    },
 }
 
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label

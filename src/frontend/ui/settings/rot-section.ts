@@ -6,8 +6,7 @@
  */
 import { machineName } from "../control-said";
 import { subscribeTopics } from "../events";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { copyText } from "../copy-table";
+import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { readRemoteConfig } from "../remote-config";
 import { mountRotation, parseRotAnchor, type RotMount } from "../rot-mount";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
@@ -53,10 +52,7 @@ export class RotationSection {
   }
 
   private remount(): void {
-    const machine = isLocalOrigin(this.origin)
-      ? copyText("remote.cards.local")
-      : machineName(this.origin);
-    this.mount = mountRotation({ origin: this.origin, sid: null, machine });
+    this.mount = mountRotation({ origin: this.origin, sid: null, machine: machineName(this.origin) });
     this.element.replaceChildren(this.mount.root);
     if (!this.takePending()) void this.mount.refresh();
   }

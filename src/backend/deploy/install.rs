@@ -52,7 +52,7 @@ impl Step {
     /// 这一步对人说的那一句（`machine` = 那台的名字；与那台状态成品问题行那一句同一句）。
     pub fn said(self, machine: &str) -> String {
         let (state, stage) = self.kind();
-        deploy_contract::machine::said(state, stage, None, machine)
+        crate::machine::said(state, stage, None, machine)
     }
 }
 

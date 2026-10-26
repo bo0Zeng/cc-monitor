@@ -132,8 +132,8 @@ pub fn backend_machines() -> Result<Vec<String>, Said> {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct BackendStatus {
-    /// 本机那一台的状态成品；远端 ⇒ `null`（远端各台的成品在本机后端）。
-    pub machine: Option<cmd_wire::machine::MachineState>,
+    /// 本机后端起没起来；远端 ⇒ `null`（各台的状态成品在本机后端）。
+    pub local: Option<crate::ui_contract::LocalBackend>,
     pub origin: String,
     /// 那台的通道登记着没有。
     pub channel: bool,
@@ -167,14 +167,14 @@ fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
     // 不许拿 `channel` 或 `pid` 反推（假信号不报错，它只是一直说是）。远端那侧是 `null`（「它脱没脱离」在远端这条路上没有意义）。
     // 三格一起算：`the_three_ports_are_one_command_each_and_all_take_origin` 逐口只许有一处 `is_local(&origin)` 分派。
-    // 本机那一台的状态成品同一处分派（按通道与手上这一版）；远端各台的成品在本机后端（`machine-read` · `changed {machine}`）⇒ `null`。
-    let (pid, attempts, detached, machine) = if is_local(&origin) {
+    // 本机后端起没起来同一处分派（按通道与手上这一版）；各台的状态成品在本机后端（`machine-read` · `changed {machine}`）⇒ 远端 `null`。
+    let (pid, attempts, detached, local) = if is_local(&origin) {
         let (p, a) = crate::local_backend_host::local_pid_and_attempts()?;
         (
             p,
             a,
             Some(crate::local_backend_host::is_detached()),
-            Some(crate::local_backend_host::local_product(
+            Some(crate::local_backend_host::local_backend(
                 channel,
                 crate::byte_table::my_backend_id(),
             )),
@@ -187,7 +187,7 @@ fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
     // 不填 `null`：那与 `pid` / `attempts` 不是一件事。再开一个 `is_local(&origin)` 分派会撞那条「逐口恰好一处」的判据。
     let h = crate::backend_policy::health(&origin);
     Ok(BackendStatus {
-        machine,
+        local,
         origin,
         channel,
         pid,

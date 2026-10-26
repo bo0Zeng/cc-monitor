@@ -53,7 +53,7 @@ const UI = join(SRC, "frontend", "ui");
  * 🔴 `K-R93`（09-12）：原句写的是「生成物是叶子**类型**」—— 那半句今天过期了。
  * `src/frontend/ui/generated/agent-profile-table.ts` 是一份**值**表（agent 画像，源在
  * 后端注册表 `src/backend/agents/mod.rs`，从前是 monitor `adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
- * `judgment-rules.ts` 今天只装账号种类取值集，只被 `import type` 引用，不算运行期目标。
+ * `judgment-rules.ts` 也是：机器键里不能当名字的那几个（`KEYS_NOT_NAMES`）被 `chan-caller.ts` 运行期读。
  * 「不会成环」那一半**仍然成立且现在被机检**：见下面自检里那条「生成物真的是叶子」。
  */
 function productionTsFiles(dir: string, out: string[] = []): string[] {
@@ -241,9 +241,9 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     const generatedTargets = [...new Set([...graph.values()].flat())].filter(isGenerated);
     expect(
       generatedTargets.length,
-      "今天有 1 份生成物被**运行期** import（`agent-profile-table`，K-R93；`judgment-rules` 只剩 `import type`）—— " +
+      "今天有 2 份生成物被**运行期** import（`agent-profile-table`，K-R93；`judgment-rules` 的 `KEYS_NOT_NAMES`，`chan-caller.ts::machineName` 读）—— " +
         "这个数变了就在这里红一次，好让新的那一份也过一遍「它是不是叶子」",
-    ).toBe(1);
+    ).toBe(2);
     for (const g of generatedTargets) {
       expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }

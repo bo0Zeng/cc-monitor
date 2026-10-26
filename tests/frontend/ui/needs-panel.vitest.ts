@@ -116,7 +116,7 @@ describe("浮层", () => {
     expect(panel()!.children[1].tagName, "会话与会话外之间一条分隔线").toBe("SPAN");
     const [, m1, m2] = rows();
     expect(m1.textContent).toContain("核心·t1 需登录");
-    expect(m1.textContent).toContain(copyText("control.machine.local"));
+    expect(m1.textContent).toContain(copyText("control.machine.unsure"));
     expect(m2.textContent).toContain("gpu-01");
     expect(m1.querySelector('[data-action="manual-login"]')?.textContent).toBe(copyText("newSession.account.login"));
     await settle();
@@ -163,7 +163,7 @@ describe("浮层", () => {
     const inert = panel()!.querySelector<HTMLElement>('[data-inert="true"]')!;
     expect(inert.dataset.row).toBe("manual");
     expect(inert.textContent).toContain("核心·钥匙文件 /h/k：太宽");
-    expect(inert.textContent).toContain(copyText("control.machine.local"));
+    expect(inert.textContent).toContain(copyText("control.machine.unsure"));
     expect(inert.textContent).toContain("核心·只给本人");
     expect(inert.querySelector("button")).toBeNull();
     expect(inert.querySelector("svg")?.outerHTML).toBe(icon("warning", "compact").outerHTML);

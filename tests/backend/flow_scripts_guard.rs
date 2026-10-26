@@ -11,7 +11,8 @@
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
 //!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
 //! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
-//!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红。
+//!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红；
+//!   cargo 那几段的逐条耗时从慢到快存进 `.build/quick-check/cargo-times.tsv`，收尾印最慢三条。
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -1021,6 +1022,84 @@ mod tests {
         assert!(
             said.contains("不跑：相对 main 的改动没有一条落在它读的面上"),
             "跳过了却没说：{said}"
+        );
+        assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+    }
+
+    /// ★ quick-check 的 cargo 逐条耗时：测试程序带 `--report-time` 跑（runner 给它 RUSTC_BOOTSTRAP=1，编译那一步看不见），
+    /// 逐条 `test 名 ... ok <秒>` 抽进 `.build/quick-check/cargo-times.tsv`：四列（秒 · 段 · 测试程序 · 名）、从慢到快；
+    /// 收尾那一行印最慢三条。假仓 ＋ 假 cargo（照 libtest 的样子印两个测试程序、五条），只跑后端那一段。
+    #[test]
+    fn quick_check_keeps_cargo_test_times_slowest_first() {
+        let d = scratch("cargo-times");
+        git(&d, &["init", "-q", "-b", "main"]);
+        write(&d, "src/backend/lib.rs", "\n");
+        write(
+            &d,
+            ".gitignore",
+            ".build/\nbin/\ncargo-args\ncargo-runner\n",
+        );
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "base"]);
+        git(&d, &["checkout", "-q", "-b", "work"]);
+        write(&d, "src/backend/lib.rs", "// changed\n");
+        git(&d, &["commit", "-q", "-am", "work"]);
+        write(
+            &d,
+            "bin/cargo",
+            "#!/bin/sh\necho \"$@\" > ../../cargo-args\nenv | grep '^CARGO_TARGET_.*_RUNNER=' > ../../cargo-runner\ncat <<'OUT'\n     Running unittests lib.rs (../../.build/backend/debug/deps/cc_monitor_backend-0123456789abcdef)\n\nrunning 4 tests\ntest a::quick ... ok <0.002s>\ntest a::slow ... ok <3.250s>\ntest b::mid ... ok <0.400s>\ntest b::slower ... ok <12.000s>\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.01s\n\n     Running unittests main.rs (../../.build/backend/debug/deps/ccm-89abcdef01234567)\n\nrunning 1 test\ntest cli::one ... ok <1.500s>\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.50s\nOUT\n",
+        );
+        assert!(Command::new("chmod")
+            .args(["+x", "bin/cargo"])
+            .current_dir(&d)
+            .status()
+            .unwrap()
+            .success());
+        let path = format!(
+            "{}:{}",
+            d.join("bin").display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let out = Command::new("bash")
+            .arg(root().join("tests/scripts/quick-check.sh"))
+            .args(["--only", "backend"])
+            .env("PATH", &path)
+            .env("GATE_STATE_DIR", d.join("state"))
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
+            .current_dir(&d)
+            .output()
+            .unwrap();
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let args = std::fs::read_to_string(d.join("cargo-args")).unwrap_or_default();
+        let runner = std::fs::read_to_string(d.join("cargo-runner")).unwrap_or_default();
+        let times = std::fs::read_to_string(d.join(".build/quick-check/cargo-times.tsv"))
+            .unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(
+            args.contains("-- -Z unstable-options --report-time"),
+            "测试程序没带 --report-time：{args}\n{said}"
+        );
+        assert!(
+            runner.trim_end().ends_with("_RUNNER=env RUSTC_BOOTSTRAP=1"),
+            "runner 没给测试程序 RUSTC_BOOTSTRAP：{runner:?}"
+        );
+        assert_eq!(
+            times,
+            "12.000\tbackend\tcc_monitor_backend\tb::slower\n\
+             3.250\tbackend\tcc_monitor_backend\ta::slow\n\
+             1.500\tbackend\tccm\tcli::one\n\
+             0.400\tbackend\tcc_monitor_backend\tb::mid\n\
+             0.002\tbackend\tcc_monitor_backend\ta::quick\n",
+            "{said}"
+        );
+        assert!(
+            said.contains("最慢：b::slower 12.000s · a::slow 3.250s · cli::one 1.500s"),
+            "{said}"
         );
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
     }

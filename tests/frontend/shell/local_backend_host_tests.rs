@@ -2639,26 +2639,49 @@ fn the_start_refusal_reaches_the_local_machine_row() {
     );
 }
 
-/// 本机后端那一趟正在起（还没接上）⇒ 连接中、停在「启动 cc-monitor」那一步、没有修法；起完没接上 ⇒ 没连上；接上了 ⇒ 连着。
+/// 本机后端那一趟正在起（还没接上）⇒ 正在起、说的是「启动 cc-monitor」那一步；起完没接上 ⇒ 没起来；接上了 ⇒ 连着。
 #[test]
-fn a_local_backend_being_started_reads_as_connecting() {
-    use cmd_wire::machine::{MachineStateKind, Stage};
+fn a_local_backend_being_started_reads_as_starting() {
+    use crate::ui_contract::LocalBackend as L;
     let _g = crate::inbound_client::local_origin_test_lock();
     super::note_local_foreign(None);
     super::note_local_starting(true);
-    let starting = super::local_product(false, Some("p8c-mine"));
-    let attached = super::local_product(true, Some("p8c-mine")).state;
+    let starting = super::local_backend(false, Some("p8c-mine"));
+    let attached = super::local_backend(true, Some("p8c-mine"));
     super::note_local_starting(false);
-    assert_eq!(
-        (starting.state, starting.stage, starting.reason),
-        (MachineStateKind::Connecting, Some(Stage::Attach), None)
+    let stage = copy_text("machineState.stage.attach", &[]);
+    assert!(
+        matches!(&starting, L::Starting { said, .. } if said.contains(&stage)),
+        "{starting:?}"
     );
-    assert_eq!(starting.fixes, vec![], "起着时不给修法");
-    assert_eq!(attached, MachineStateKind::Up);
-    assert_eq!(
-        super::local_product(false, Some("p8c-mine")).state,
-        MachineStateKind::Down
-    );
+    assert_eq!(attached, L::Up);
+    assert!(matches!(
+        super::local_backend(false, Some("p8c-mine")),
+        L::Down { .. }
+    ));
+}
+
+/// 口上占着别的构建 ⇒ 按两边构建的序说旧 / 新；解不出序、或手上没带后端字节（开发构建）⇒ 照没起来说。
+#[test]
+fn a_foreign_build_on_the_port_reads_by_its_order() {
+    use crate::ui_contract::LocalBackend as L;
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let at = |foreign: Option<&str>, mine: Option<&str>| {
+        super::note_local_foreign(foreign);
+        let got = super::local_backend(false, mine);
+        super::note_local_foreign(None);
+        got
+    };
+    assert!(matches!(
+        at(Some("p7a-old"), Some("p8c-mine")),
+        L::Older { .. }
+    ));
+    assert!(matches!(
+        at(Some("p9a-new"), Some("p8c-mine")),
+        L::Newer { .. }
+    ));
+    assert!(matches!(at(Some("odd"), Some("p8c-mine")), L::Down { .. }));
+    assert!(matches!(at(Some("p7a-old"), None), L::Down { .. }));
 }
 
 /// 起本机后端的失败分两档：动得了手的（删文件 / 停进程 / 改权限位）把下一步交给本机那一台的状态成品；
@@ -4288,9 +4311,14 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
 /// 放它说 hello ⇒ 起那一趟回来、读作连着。起完不等握手就回来 ⇒ 第一句断言红（中间那一段读作没连上）。
 #[cfg(unix)]
 #[test]
-fn the_supervised_start_reads_as_connecting_until_the_hello() {
-    use cmd_wire::machine::MachineStateKind;
+fn the_supervised_start_reads_as_starting_until_the_hello() {
     use std::sync::Arc;
+    let kind = |l: crate::ui_contract::LocalBackend| {
+        serde_json::to_value(l).unwrap()["state"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
     let _guard = crate::inbound_client::local_origin_test_lock();
     super::note_local_foreign(None);
     let dir = std::env::temp_dir().join(format!("ccm-sup-hello-{}", std::process::id()));
@@ -4343,10 +4371,10 @@ fn the_supervised_start_reads_as_connecting_until_the_hello() {
     }
     let early = rx.try_recv().ok();
     let returned_early = early.is_some();
-    let between = super::local_machine_now().state;
+    let between = kind(super::local_backend_now());
     std::fs::write(&gate, "").expect("放行不了替身");
     let h = early.or_else(|| rx.recv_timeout(guard_core::wall::CEILING).ok());
-    let after = super::local_machine_now().state;
+    let after = kind(super::local_backend_now());
     if let Some(h) = &h {
         h.stop();
     }
@@ -4359,12 +4387,12 @@ fn the_supervised_start_reads_as_connecting_until_the_hello() {
     }
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
-        (between, returned_early),
-        (MachineStateKind::Connecting, false),
-        "被监护那一支起完、还没握手：起那一趟已经回来了 ⇒ 本机那一行读作没连上"
+        (between.as_str(), returned_early),
+        ("starting", false),
+        "被监护那一支起完、还没握手：起那一趟已经回来了 ⇒ 本机后端读作没起来"
     );
     assert!(h.is_some(), "说上话之后起那一趟没回来");
-    assert_eq!(after, MachineStateKind::Up, "说上话之后本机那一行不是连着");
+    assert_eq!(after, "up", "说上话之后本机后端不是连着");
 }
 
 /// 刚起的后端晚 3 秒才听上口（冷启动 · 机器忙）：照样等到、接上；假钟每一拍走 20ms，不真等。
@@ -4491,67 +4519,57 @@ fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
         .any(|(k, v)| k == crate::config::DATA_DIR_ENV && v == "/iso/home"));
 }
 
-/// 本机那一行的成品与跨语言金样「本机没连上」「本机被拒」两形逐格相等（远端那几形由后端现产，`tests/backend/control/machine_state_tests.rs`）。
+/// 没起来那几样的字：名字旁那个词 · 问题行那一句照文案表；被拒的下一步只在没连着时带。
 #[test]
-fn the_local_row_matches_the_cross_language_golden() {
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/machine-state.golden.json"))
-            .expect("金样不是 JSON");
-    for (name, refused) in [
-        ("本机没连上", None),
-        ("本机被拒", Some("结束口上那个进程再重开（结构夹具）")),
-    ] {
-        let want = golden["cases"]
-            .as_array()
-            .and_then(|c| c.iter().find(|c| c["name"] == name))
-            .unwrap_or_else(|| panic!("金样里没有「{name}」那一形"))["machine"]
-            .clone();
-        let got = {
-            let _g = crate::inbound_client::local_origin_test_lock();
-            note_local_foreign(None);
-            note_local_refused(refused);
-            let p = local_product(false, Some("p7z"));
-            note_local_refused(None);
-            p
-        };
-        let got = serde_json::to_value(got)
-            .unwrap()
-            .to_string()
-            .replace(&format!("\"{}\"", crate::PRODUCT_VERSION), "\"<ver>\"");
-        let got: serde_json::Value = serde_json::from_str(&got).unwrap();
-        assert_eq!(got, want, "本机「{name}」那一形与金样对不上\n现产：{got}");
-    }
-}
-
-/// 起本机后端被拒（口上有东西、接不上）：下一步那一句跟着本机那一台的成品走，直到再起一次把它清掉；接上了不说。
-#[test]
-fn a_refused_local_start_carries_the_next_step() {
-    use cmd_wire::machine::MachineStateKind;
+fn the_local_backend_words_come_from_the_copy_table() {
+    use crate::ui_contract::LocalBackend as L;
     let _g = crate::inbound_client::local_origin_test_lock();
     note_local_foreign(None);
-    note_local_refused(Some("停掉那个进程再重开"));
-    let p = local_product(false, Some("p8c-mine"));
+    note_local_refused(Some("结束口上那个进程再重开（结构夹具）"));
+    let got = local_backend(false, Some("p8c-mine"));
+    note_local_refused(None);
     assert_eq!(
-        (p.state, p.next.as_deref()),
-        (MachineStateKind::Down, Some("停掉那个进程再重开"))
+        got,
+        L::Down {
+            word: copy_text("machinePage.state.down", &[]),
+            said: copy_text("machineState.down.local", &[]),
+            fixes: vec![cmd_wire::machine::FixButton {
+                fix: cmd_wire::machine::MachineFix::Retry,
+                label: copy_text("machineState.fix.retry", &[]),
+            }],
+            next: Some("结束口上那个进程再重开（结构夹具）".to_string()),
+        }
+    );
+}
+
+/// 起本机后端被拒（口上有东西、接不上）：下一步那一句跟着走，直到再起一次把它清掉；接上了不说。
+#[test]
+fn a_refused_local_start_carries_the_next_step() {
+    use crate::ui_contract::LocalBackend as L;
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let next = |l: L| match l {
+        L::Down { next, .. } | L::Older { next, .. } | L::Newer { next, .. } => next,
+        L::Up | L::Starting { .. } => None,
+    };
+    note_local_foreign(None);
+    note_local_refused(Some("停掉那个进程再重开"));
+    assert_eq!(
+        next(local_backend(false, Some("p8c-mine"))).as_deref(),
+        Some("停掉那个进程再重开")
     );
     note_local_foreign(Some("p7a-old"));
     assert_eq!(
-        local_product(false, Some("p8c-mine")).next.as_deref(),
+        next(local_backend(false, Some("p8c-mine"))).as_deref(),
         Some("停掉那个进程再重开"),
-        "口上是旧版那一形（要更新）也带着"
+        "口上是旧版那一形也带着"
     );
     note_local_foreign(None);
-    assert_eq!(
-        local_product(true, Some("p8c-mine")).next,
-        None,
-        "接上了就不说"
-    );
+    assert_eq!(local_backend(true, Some("p8c-mine")), L::Up, "接上了就不说");
     note_local_refused(None);
-    assert_eq!(local_product(false, Some("p8c-mine")).next, None);
+    assert_eq!(next(local_backend(false, Some("p8c-mine"))), None);
 }
 
-/// 壳里不造机器状态成品：本机那一行也是交事实、照 `deploy_contract::machine::local` 出（远端各台的成品在后端定）。
+/// 壳里不造机器状态成品（各台的成品在后端 `deploy::machine` 定）。
 /// 正控：同一个认法在那张表的家里认得出那一处构造。
 #[test]
 fn the_shell_builds_no_machine_state_of_its_own() {
@@ -4561,7 +4579,7 @@ fn the_shell_builds_no_machine_state_of_its_own() {
             l.contains("MachineState {") && !l.contains("-> MachineState {")
         })
     };
-    let home = guard_core::addr::repo_root().join("src/common/deploy-contract/src/machine.rs");
+    let home = guard_core::addr::repo_root().join("src/backend/deploy/machine.rs");
     assert!(
         builds(&std::fs::read_to_string(&home).expect("读那张表的家")),
         "认法在那张表的家里认不出构造 —— 认法坏了"

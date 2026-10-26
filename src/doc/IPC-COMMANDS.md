@@ -12142,11 +12142,7 @@ expectedHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, 
-/**
- * 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
- */
-next: string | null, };
+detail: string | null, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
@@ -12215,11 +12211,7 @@ expectedHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, 
-/**
- * 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
- */
-next: string | null, };
+detail: string | null, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type NoArgs = Record<symbol, never>;
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
