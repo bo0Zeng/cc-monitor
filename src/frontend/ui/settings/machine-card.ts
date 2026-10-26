@@ -10,7 +10,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
-import { forgetHostKeys, hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
+import { forgetHostKeys, hostKey, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
@@ -695,7 +695,7 @@ export class MachineCard {
     this.testResult.appendChild(segs.el);
     try {
       // 表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
-      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (c) => segs.paint(c.segs, c.said));
+      const res = await probeMachine(cfg, (c) => segs.paint(c.segs, c.said));
       segs.paint(res.segs, res.end?.backendHello ?? "");
       this.renderTestResult(res, null, segs.el);
     } catch (e) {
@@ -761,7 +761,7 @@ export class MachineCard {
     }
     await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
       // 表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
-      const r = await pushPublicKey(cfg, (await readRemoteConfig()).hosts, pubKeyPath);
+      const r = await pushPublicKey(cfg, pubKeyPath);
       return r.outcome === "added"
         ? copyText("machineCard.pushKey.added", { path: r.pubPath })
         : copyText("machineCard.pushKey.already", { path: r.pubPath });

@@ -4,10 +4,10 @@
  *
  * | 性质 | 判据 |
  * |---|---|
- * | 远端三步：monitor 交机器事实 → 本机后端 `terminal-ssh` 渲 → monitor 开窗（交的是后端渲的那一行） | 「远端」 |
- * | 本机：交来的已是后端渲好的成品 ⇒ monitor 直接开窗，不问机器事实、不问后端 | 「本机」 |
+ * | 远端两步：只交名字给本机后端 `terminal-ssh` 渲（怎么拨照它的机器表）→ monitor 开窗（交的是后端渲的那一行） | 「远端」 |
+ * | 本机：交来的已是后端渲好的成品 ⇒ monitor 直接开窗，不问后端 | 「本机」 |
  * | 后端回的形状不认 / 问不到 ⇒ 抛，一个窗口都不开（不拿原串顶上） | 「问不到」 |
- * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts} | 「一个家」 |
+ * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` 的文件 == {terminal-open.ts} | 「一个家」 |
  * | 壳回 `"noWindow"`（POSIX 既定设计）⇒ 抛 `NoTerminalWindow`；回 `"opened"` ⇒ 不抛 | 「不开窗」 |
  *
  * ssh 外壳的字节归 Rust（`tests/backend/dial_terminal_tests.rs`）；这里的替身写死后端渲了什么，不重抄渲染。
@@ -35,18 +35,11 @@ import {
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
-const FACTS = {
-  machine: { host: "192.0.2.2", user: "u", port: 22, label: "devbox" },
-  saved: null,
-  jump: null,
-  prefer: null,
-};
 const LINE = "& ssh -t -p 22 u@192.0.2.2 -- 'bash -lic ''claude --resume s1'''";
 
-/** 替身：机器事实 · 后端渲的那一行（`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
+/** 替身：后端渲的那一行（`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
 function serve(render: () => unknown): void {
   invokeMock.mockImplementation((cmd: string, args: unknown) => {
-    if (cmd === "terminal_dial") return Promise.resolve(FACTS);
     if (isChanCall(cmd, args, "terminal-ssh")) {
       const r = render();
       return r === undefined
@@ -66,15 +59,14 @@ const asked = (frame: string): ChanCallArgs[] =>
 beforeEach(() => invokeMock.mockReset());
 
 describe("远端", () => {
-  it("★ 三步：交机器事实 ＋ 命令给本机后端，开窗交的是后端渲的那一行", async () => {
+  it("★ 两步：只交名字 ＋ 命令给本机后端，开窗交的是后端渲的那一行", async () => {
     serve(() => ({ command: LINE }));
     await openTerminal("devbox", "claude --resume s1");
-    expect(calls("terminal_dial")).toEqual([{ origin: "devbox" }]);
     const ssh = asked("terminal-ssh");
     expect(ssh).toHaveLength(1);
     expect(ssh[0].origin).toBe(LOCAL_ORIGIN);
     expect(chanArgsJson(ssh[0])).toEqual({
-      ...FACTS,
+      machine: "devbox",
       command: "claude --resume s1",
     });
     expect(calls("open_terminal_window")).toEqual([
@@ -84,10 +76,9 @@ describe("远端", () => {
 });
 
 describe("本机", () => {
-  it("★ 交来的就是成品：直接开窗，不问机器事实、不问后端", async () => {
+  it("★ 交来的就是成品：直接开窗，不问后端", async () => {
     serve(() => ({ command: "不该被问到" }));
     await openTerminal(LOCAL_ORIGIN, "claude --resume s1");
-    expect(calls("terminal_dial")).toEqual([]);
     expect(asked("terminal-ssh")).toEqual([]);
     expect(calls("open_terminal_window")).toEqual([
       { command: "claude --resume s1" },
@@ -99,7 +90,6 @@ describe("不开窗", () => {
   it("★ 壳回 noWindow ⇒ 抛 NoTerminalWindow（本机 · 远端两条路都是）；回 opened ⇒ 不抛", async () => {
     const shell = (outcome: "opened" | "noWindow") =>
       invokeMock.mockImplementation((cmd: string, args: unknown) => {
-        if (cmd === "terminal_dial") return Promise.resolve(FACTS);
         if (isChanCall(cmd, args, "terminal-ssh"))
           return Promise.resolve(chanReply({ command: LINE }));
         return Promise.resolve(
@@ -130,11 +120,11 @@ describe("问不到", () => {
 
 describe("一个家", () => {
   it(
-    "★ 生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts}",
+    "★ 生产段调 `commands.open_terminal_window(` 的文件 == {terminal-open.ts}",
     () => {
       const hits = productionTsFiles()
         .filter((f) =>
-          /\bcommands\.(?:open_terminal_window|terminal_dial)\s*\(/.test(
+          /\bcommands\.open_terminal_window\s*\(/.test(
             stripComments(f.text, "ts"),
           ),
         )
