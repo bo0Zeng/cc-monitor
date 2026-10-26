@@ -329,7 +329,7 @@ private fun HostRow(
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     if (dot == MachineDot.FAILED) {
-                        Text(" · " + hostDotLabel(dot), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
+                        Text(copyText("kit.text.sep") + hostDotLabel(dot), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
                     }
                 }
             }

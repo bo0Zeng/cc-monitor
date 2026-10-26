@@ -89,8 +89,7 @@ fun SessionsOverviewScreen(
                             val sub =
                                 when {
                                     isFiles -> copyText("mobTabs.row.files")
-                                    s.label != null -> s.label + (tmuxName?.let { " · tmux: $it" } ?: "")
-                                    tmuxName != null -> "tmux: $tmuxName"
+                                    s.label != null || tmuxName != null -> listOfNotNull(s.label, tmuxName).joinToString(copyText("kit.text.sep"))
                                     else -> term?.cd
                                 }
                             sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
