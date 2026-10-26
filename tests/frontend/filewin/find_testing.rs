@@ -245,10 +245,19 @@ impl SynthTree {
     /// 这棵树里路径含 `needle` 的那些条目 —— **预期集**（[`remote_form`] 那一形：窗口看见的就是它）。
     ///
     /// 纯路径过滤，不碰磁盘、不碰那台合成后端。
+    ///
+    /// 🔴 只比**根以下那一段**：根借的是本机临时目录的名字，它碰巧含 `needle` 时
+    /// 拿整条比就是全集都中（10-25 合并树那一趟 `qc.M5Kg7q` 含 `7q`，三条一起红）——
+    /// 同一份代码看临时目录名红绿。搜的本来就只是这棵树里的名字。
     pub fn expected(&self, needle: &str) -> std::collections::BTreeSet<String> {
+        let root = self.root.to_string_lossy();
         self.entries
             .iter()
-            .filter(|p| p.contains(needle))
+            .filter(|p| {
+                p.strip_prefix(root.as_ref())
+                    .and_then(|r| r.strip_prefix(std::path::MAIN_SEPARATOR))
+                    .is_some_and(|r| r.contains(needle))
+            })
             .map(|p| remote_form(p))
             .collect()
     }
@@ -771,9 +780,18 @@ impl FakeBackend {
                 let name = |p: &[u8]| {
                     p[p.iter().rposition(|&b| b == b'/').map_or(0, |i| i + 1)..].to_vec()
                 };
+                // 只比索引根以下那一段（同 [`SynthTree::expected`]）：根住临时目录，它的名字碰巧含搜索词
+                //   ⇒ 拿整条比就成了全集都中（10-25 那一趟 `qc.M5Kg7q` 含 `7q`）。
+                let below_root = |p: &'_ [u8]| -> Vec<u8> {
+                    let r = root.trim_end_matches('/').as_bytes();
+                    match p.strip_prefix(r) {
+                        Some(rest) if rest.first() == Some(&b'/') => rest[1..].to_vec(),
+                        _ => p.to_vec(),
+                    }
+                };
                 let mut all: Vec<&(Vec<u8>, bool)> = idx
                     .iter()
-                    .filter(|(p, _)| inside(p) && contains(p, q.as_bytes()))
+                    .filter(|(p, _)| inside(p) && contains(&below_root(p), q.as_bytes()))
                     .collect();
                 // 排序：合成后端只认「名称」「位置」两列（其余照索引序），倒序就倒过来。
                 match args.get("sort").and_then(|v| v.as_str()) {
