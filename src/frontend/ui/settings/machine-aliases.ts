@@ -24,6 +24,8 @@
  */
 import { commands } from "../ipc/commands";
 import { isLocalOrigin } from "../ipc/origin";
+import { button } from "../kit/button";
+import { el } from "../kit/el";
 import { failToast } from "../kit/toast";
 import { markChore } from "./data-reads";
 import { SETTINGS_GO_EVENT } from "./events";
@@ -60,35 +62,19 @@ export function buildUnknownOsAliasBlock(): HTMLElement {
   wrap.dataset.shell = "unknown";
   wrap.appendChild(el("summary", "", copyText("machineAliases.manager.title")));
   wrap.appendChild(el("p", "settings-hint", copyText("machineAliases.unknownOs.said")));
-  const install = el("button", "settings-btn", copyText("machineAliases.access.connect"));
-  install.type = "button";
+  const install = button({ label: copyText("machineAliases.access.connect"), hint: copyText("machineAliases.unknownOs.said") });
   install.disabled = true;
-  install.title = copyText("machineAliases.unknownOs.said");
   wrap.appendChild(install);
   return wrap;
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-// `variant` 空串 = 默认那一种按钮。
-function button(label: string, variant: string, onClick: () => void): HTMLButtonElement {
-  const b = el("button", variant ? `settings-btn ${variant}` : "settings-btn", label);
-  b.type = "button";
-  b.addEventListener("click", (e) => {
+/** 这几格的点击不往外冒（外面那一行拿点击去开合）。 */
+const quiet =
+  (f: () => void) =>
+  (e: MouseEvent): void => {
     e.stopPropagation();
-    onClick();
-  });
-  return b;
-}
+    f();
+  };
 
 /**
  * 已经露出来读过的那几组别名（本机那一组与每张远端卡各一组）。别处改了那台的别名清单（账号增删）、
@@ -161,12 +147,8 @@ function buildAccessDom(local: boolean, on: { allow(): void; other(): void; open
   const rcPolicy = document.createElement("div");
   rcPolicy.className = "cfg-hint";
   rcPolicy.hidden = true;
-  const allowBtn = document.createElement("button");
-  allowBtn.type = "button";
-  allowBtn.className = "settings-btn";
-  allowBtn.textContent = copyText("machineAliases.policy.allow");
+  const allowBtn = button({ label: copyText("machineAliases.policy.allow"), onClick: () => on.allow() });
   allowBtn.hidden = true;
-  allowBtn.addEventListener("click", () => on.allow());
   const accessNote = el("div", "cfg-hint");
   accessNote.dataset.role = "access-note";
   // 「换一份文件」：候选（单选）＋ 其它文件，选定之后「接到这份」。
@@ -180,10 +162,8 @@ function buildAccessDom(local: boolean, on: { allow(): void; other(): void; open
   const otherErr = el("div", "cfg-hint");
   const chooserBtns = el("div", "cfg-acts");
   chooserBtns.append(
-    button(copyText("machineAliases.rc.useOther"), "", () => on.other()),
-    ...(local
-      ? [Object.assign(button(copyText("machineAliases.rc.open"), "", () => on.openRc()), { title: copyText("machineAliases.rc.openHint") })]
-      : []),
+    button({ label: copyText("machineAliases.rc.useOther"), onClick: quiet(() => on.other()) }),
+    ...(local ? [button({ label: copyText("machineAliases.rc.open"), hint: copyText("machineAliases.rc.openHint"), onClick: quiet(() => on.openRc()) })] : []),
   );
   chooser.append(rcSel, otherIn, chooserBtns, otherErr);
   access.append(pathCcm, accessRows, panel, accessWarn, rcPolicy, allowBtn, accessNote);
@@ -200,8 +180,12 @@ function accessLine(dot: CfgDot, text: string, ...tail: HTMLElement[]): HTMLElem
   return r;
 }
 
-const linkBtn = (label: string, onClick: () => void, danger = false): HTMLButtonElement =>
-  button(label, danger ? "cfg-link cfg-link-danger" : "cfg-link", onClick);
+const linkBtn = (label: string, onClick: () => void, danger = false): HTMLButtonElement => {
+  const b = el("button", danger ? "cfg-link cfg-link-danger" : "cfg-link", label);
+  b.type = "button";
+  b.addEventListener("click", quiet(onClick));
+  return b;
+};
 
 /** 执行策略那一行的话：不会挡（或没有这一项）⇒ 空串。 */
 function policyText(p: ExecPolicy | null): string {
@@ -324,10 +308,9 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 
   /** 「卸载」那一块的头与按钮（要拿掉的那几行跟在 `code` 里）。 */
   const uninstallPanel = (t: StartupFile, code: HTMLElement): HTMLElement[] => {
-    const go = button(copyText("machineAliases.rc.uninstall"), "", () => void runRc("remove", t.path));
-    go.title = copyText("machineAliases.rc.uninstallHint");
+    const go = button({ label: copyText("machineAliases.rc.uninstall"), hint: copyText("machineAliases.rc.uninstallHint"), onClick: quiet(() => void runRc("remove", t.path)) });
     const acts = el("div", "cfg-acts");
-    acts.append(go, button(copyText("machineAliases.form.cancel"), "", () => togglePanel("uninstall")));
+    acts.append(go, button({ label: copyText("machineAliases.form.cancel"), onClick: quiet(() => togglePanel("uninstall")) }));
     return [
       el("div", "cfg-sub", shell === "powershell" ? copyText("machineAliases.access.uninstallSubWindow") : copyText("machineAliases.access.uninstallSub")),
       el("div", "cfg-panel-title", copyText("machineAliases.access.uninstallWhat", { path: short(t.path) })),
@@ -384,9 +367,14 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 选中那份没接上：醒目的「接上 …」＋ 会加几行 · 看一眼 · 换一份文件 · 自己贴。 */
   const renderOffRow = (on: StartupFile[], t: StartupFile | undefined): void => {
     const connect = t
-      ? button(copyText("machineAliases.access.connectTo", { path: short(t.path) }), "settings-btn-primary ccm-access-connect", () => void runRc("install", t.path))
+      ? button({
+          label: copyText("machineAliases.access.connectTo", { path: short(t.path) }),
+          kind: "primary",
+          hint: shell === "powershell" ? copyText("machineAliases.powershell.blockInstallTitle") : copyText("machineAliases.posix.blockInstallTitle"),
+          onClick: quiet(() => void runRc("install", t.path)),
+        })
       : null;
-    if (connect) connect.title = shell === "powershell" ? copyText("machineAliases.powershell.blockInstallTitle") : copyText("machineAliases.posix.blockInstallTitle");
+    connect?.classList.add("ccm-access-connect");
     accessRows.appendChild(
       accessLine("off", on.length ? copyText("machineAliases.access.otherFile", { path: short(t!.path) }) : shell === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off"), ...(connect ? [connect] : [])),
     );
@@ -410,7 +398,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (!on.length && t && selfPaste && selfPaste.state !== "done") {
       const tp = t.path;
       accessRows.appendChild(
-        accessLine("warn", copyText("machineAliases.selfPaste.waiting"), button(copyText("machineAliases.selfPaste.go"), "", goChores), linkBtn(copyText("machineAliases.selfPaste.undo"), () => void onUnSelfPaste(tp))),
+        accessLine("warn", copyText("machineAliases.selfPaste.waiting"), button({ label: copyText("machineAliases.selfPaste.go"), onClick: quiet(goChores) }), linkBtn(copyText("machineAliases.selfPaste.undo"), () => void onUnSelfPaste(tp))),
       );
     } else if (!on.length || (t && !t.block.present)) {
       renderOffRow(on, t);
@@ -450,7 +438,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       row.setAction(null);
     } else {
       dot = "off";
-      row.setAction(t ? button(copyText("machineAliases.status.connect", { path: short(t.path) }), "settings-btn-primary", () => row.setOpen(true)) : null);
+      row.setAction(t ? button({ label: copyText("machineAliases.status.connect", { path: short(t.path) }), kind: "primary", onClick: quiet(() => row.setOpen(true)) }) : null);
     }
     row.setStatus(names.length ? "warn" : dot, headText + tail);
   };

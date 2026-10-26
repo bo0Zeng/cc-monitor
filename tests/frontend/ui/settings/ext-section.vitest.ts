@@ -435,7 +435,7 @@ describe("备注 · cc-bus 那一行", () => {
     input.value = "我的话";
     input.dispatchEvent(new Event("input"));
     invokeMock.mockClear();
-    (s.element.querySelector(".ext-notes .settings-btn-primary") as HTMLButtonElement).click();
+    (s.element.querySelector('.ext-notes [data-kind="primary"]') as HTMLButtonElement).click();
     await settle();
     expect(ops().filter(([, op]) => op !== "hooks-diag" && op !== "mcp-read")).toEqual([
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "我的话" }],

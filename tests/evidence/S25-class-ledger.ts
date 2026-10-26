@@ -28,7 +28,7 @@
  * |---|---|---|
  * | ① **常量拼接** | `` `${FIRST_RUN_HINT_CLASS}-open` `` ⇒ `.status-first-run-open` | 先收 `const X = "字面量"`，把 `${X}` 这种洞**填回去**再扫一遍（`constConcat`） |
  * | ② **第三方库自产** | `.katex-display` 由 `katex/dist/katex.min.css` 产出 | 从 `src/**\/*.ts` 里**现读** `import "<包>/….css"`，把那几份 CSS 的类名收成 `vendorClasses` |
- * | ③ **模板拼接** | `` `settings-btn-${variant}` `` ⇒ `.settings-btn-secondary` | 词法器给出模板的**静态段 ＋ 洞**，紧挨着洞的那个尾 token 记成 `prefixes` |
+ * | ③ **模板拼接** | `` `agent-${r.state}` `` ⇒ `.agent-running` | 词法器给出模板的**静态段 ＋ 洞**，紧挨着洞的那个尾 token 记成 `prefixes` |
  * | ④ **HTML 片段里的 class 属性** | `` `<div class="code-bar">` `` | token 切分按「类名能用的字符」切，不按空白切 ⇒ `class="code-bar"` 里切得出 `code-bar` |
  *
  * ⚠ ③ 那条**只产出候选**。哪些前缀准拿来解释一个类名，由判据那边的登记表说了算 ——
