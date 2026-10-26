@@ -24,7 +24,7 @@ description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消
   窗格真是那条会话才送 · 不闲不送 · 两下之间画面变了(人正在打字)不送。**不往窗格里打字。**
 
 ## 你的身份(自动,无需手动设)
-**身份就是你的会话 id**。优先级:`$CC_BUS_ID`(可选覆盖)→ agent 自己报的会话 id(Claude 是 `CLAUDE_CODE_SESSION_ID`)→ 窗格上 cc-monitor 打的身份标记。SessionStart 钩子会自动 `cc-register` 把你登记进总线。
+**身份就是你的会话 id**,只问 cc-monitor:`cc-whoami` 调 `ccm -- --session-self`(后端按调用进程往上找是哪条会话,Claude · Codex 一样)。没装 cc-monitor ⇒ 认不出身份,cc-bus 不工作。SessionStart 钩子会自动 `cc-register` 把你登记进总线。
 - 查自己是谁:`cc-whoami`。
 - **找对方**:`cc-list` 列出登记过的会话 id + pane。收件人一律写会话 id。
 
@@ -72,15 +72,14 @@ cc-peek --max-lines 20              # 分段读:积压太大时一轮只吃 20 �
 `cc-recv` 继续用完全可以;它语义上 ≡ `cc-peek` 之后立刻 `cc-commit`,两边同一套渲染。
 Stop 钩子已经换成两阶段(喂回成功才推进),`CCBUS_PEEK_MAX_LINES` 可让它分段喂。
 
-## 三个适配面(agent / OS / 存储)
+## 两个适配面(agent / 存储)
 
-cc-bus 是**额外的东西,解耦清楚**:它不住在 monitor 后端里,缝切在 shell 这一层。
+cc-bus 是**额外的东西,解耦清楚**:它不住在 monitor 后端里,缝切在 shell 这一层。「我是哪条会话」不是适配面:只问 cc-monitor(`cc-whoami`)。
 
 | 面 | 契约(函数名) | POSIX | Windows |
 |---|---|---|---|
-| ① agent | `agent_caps` · `agent_block_reason` · `agent_self_sid` | claude 词典:有 Stop 钩子、能敲门、能读回、`can_peer`(够得着同机 Claude);codex 词典(`CCBUS_ADAPT_AGENT=codex`):有 Stop 钩子、能敲门、能读回 | 同几份词典 |
-| ② OS | `os_caps` · `os_pane_identity` | 读窗格上的身份标记 ＋ 核窗格根进程 pid | ❌ **没做**(ConPTY 那条路一行都没写)⇒ 显式 rc=13,读不到会话 ⇒ 只入收件箱 |
-| ③ 存储 | `store_caps` · `store_lock_shared` · `store_lock_exclusive` · `store_append_line` · `store_now` · `store_path_real` | `flock`(含 `-s` 共享读锁) | 有 `flock` 就用(MSYS2);**没有共享读锁** ⇒ peek 退化成排他并记一行 `DEGRADE`;连 `flock` 都没有就 rc=13 |
+| ① agent | `agent_caps` · `agent_block_reason` | claude 词典:有 Stop 钩子、能敲门、能读回、`can_peer`(够得着同机 Claude);codex 词典(`CCBUS_ADAPT_AGENT=codex`):有 Stop 钩子、能敲门、能读回 | 同几份词典 |
+| ② 存储 | `store_caps` · `store_lock_shared` · `store_lock_exclusive` · `store_append_line` · `store_now` · `store_path_real` | `flock`(含 `-s` 共享读锁) | 有 `flock` 就用(MSYS2);**没有共享读锁** ⇒ peek 退化成排他并记一行 `DEGRADE`;连 `flock` 都没有就 rc=13 |
 
 投递的行为在 agent 不支持时**按能力降级,不硬失败**:
 拦停 ⇒ 敲门 ⇒ 只入收件箱 ⇒ 都不支持就**投递前拒**(别让消息烂在收件箱里)。
@@ -124,7 +123,7 @@ echo "$长正文" | cc-send <sid> --act inform --title "日志摘要" -         
 ```bash
 bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 ```
-它软链 8 个命令到 `~/.local/bin`、建 `~/.cc-bus/`、放示例配置,并**打印剩下需你手动做的激活步骤**(合并 hooks 进 `~/.claude/settings.json`、启动 CC 无需 CC_BUS_ID、可选开策略)。**刻意不改你的全局 settings.json、不 systemctl。** 停用:删 settings.json 的 hooks 段 + 删软链。
+它软链 8 个命令到 `~/.local/bin`、建 `~/.cc-bus/`、放示例配置,并**打印剩下需你手动做的激活步骤**(合并 hooks 进 `~/.claude/settings.json`、用 cc-monitor 开会话、可选开策略)。**刻意不改你的全局 settings.json、不 systemctl。** 停用:删 settings.json 的 hooks 段 + 删软链。
 
 ## 礼仪(防乒乓)
 - 回复带**结论**,别只说"收到"。**只在有实质进展或被问时回**;任务完成即停,收尾带 `#done`。

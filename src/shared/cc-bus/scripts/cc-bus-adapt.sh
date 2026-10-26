@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# cc-bus-adapt.sh —— 三个适配面的【契约 ＋ 装载口】(设计)。
+# cc-bus-adapt.sh —— 两个适配面的【契约 ＋ 装载口】(设计)。
 #
 # ## 为什么有这一层
 #
-# 现打:cc-bus 的脚本里 tmux 47 处、flock 20 处 —— **三个适配面全糊在通用层里**,
-# 换一个 OS 或换一个 agent 就要改遍所有脚本。本文件把那道缝写成**函数名的契约**:
-#   ① agent 适配 —— 结束钩子形状(能不能拦停)、自己是哪条会话、能力位
-#   ② OS   适配 —— 读窗格身份(那个窗格里跑的是哪条会话;POSIX: tmux 窗格上的标记 ↔ Windows: 没做)
-#   ③ 存储 适配 —— 排他/共享锁、原子追加、时间戳、路径原语
+# 换一个 OS 或换一个 agent 不该改遍所有脚本 ⇒ 本文件把那道缝写成**函数名的契约**:
+#   ① agent 适配 —— 结束钩子形状(能不能拦停)、能力位
+#   ② 存储 适配 —— 排他/共享锁、原子追加、时间戳、路径原语(按 OS 族一份:posix · windows)
+# 「我是哪条会话」不在这里:只问 cc-monitor 的公开命令(`cc-whoami` → `ccm -- --session-self`)。
 #
 # 🔴 **缝切在 shell 里,不搬进后端**(「不要. cc-bus 就是额外的
 #    东西解耦清楚」)⇒ 通用层(cc-peek / cc-commit / cc-bus-lib.sh 的阀门段)不认识
-#    tmux / flock,只认识下面这三张表里的函数名。
+#    tmux / flock,只认识下面这两张表里的函数名。
 #
-# ## ①②③ 刻意用两种抄法,不是一种
+# ## ①② 刻意用两种抄法,不是一种
 #
-# · ② OS 与 ③ 存储 照 `platform/` 抄:**判定相同、只是读法不同** ⇒ 翻译官形。
+# · ② 存储 照 `platform/` 抄:**判定相同、只是读法不同** ⇒ 翻译官形。
 # · ① agent 照 `agents/` 抄:**词典式,不立大 trait** —— 今天只有 claude 那一份是已知的
 #   (`D4`:接口由现有能力反推)。而且它比翻译官**多一维**:别的 agent 可能**根本没有**
 #   结束钩子 ⇒ 那不是"说法不同",是**能力缺失**,翻译官在这一格失效。
@@ -26,11 +25,10 @@
 # 返回码:13 = 适配层能力缺失(没装齐 / 这一侧没做)—— 与 11/12 同族:不是崩,是"办不到"。
 
 # ── 契约:每个 trait 的必备函数 ───────────────────────────────────────────────
-# ⚠ 这三张表是**判据的分母**:装载后逐项现打 `declare -F`,少一个就 13(fail-closed)。
+# ⚠ 这两张表是**判据的分母**:装载后逐项现打 `declare -F`,少一个就 13(fail-closed)。
 #   表空了判据当场红(反空真),不会因为"扫不到"而放行。
 CCBUS_TRAIT_STORE_FNS="store_caps store_lock_shared store_lock_exclusive store_append_line store_now store_path_real"
-CCBUS_TRAIT_OS_FNS="os_caps os_pane_identity"
-CCBUS_TRAIT_AGENT_FNS="agent_caps agent_block_reason agent_self_sid"
+CCBUS_TRAIT_AGENT_FNS="agent_caps agent_block_reason"
 
 # ── 能力降级链:§3.2b 那张表的**唯一的家** ───────────────────────────────────
 # 投递要的每一项行为,在 agent 不支持时都必须有一个**明确的去处** ——
@@ -116,9 +114,8 @@ ccbus_adapt_load() {
   . "$osf" || return 13
   # shellcheck disable=SC1090
   . "$agentf" || return 13
-  CCBUS_ADAPT_OS_LOADED="$os"; CCBUS_ADAPT_AGENT_LOADED="$agent"
+  CCBUS_ADAPT_AGENT_LOADED="$agent"
   ccbus_adapt_require 存储 "$CCBUS_TRAIT_STORE_FNS"  || return 13
-  ccbus_adapt_require OS    "$CCBUS_TRAIT_OS_FNS"    || return 13
   ccbus_adapt_require agent "$CCBUS_TRAIT_AGENT_FNS" || return 13
   return 0
 }
