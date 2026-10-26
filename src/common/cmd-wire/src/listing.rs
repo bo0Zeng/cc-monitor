@@ -342,7 +342,7 @@ pub struct Entry {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub resume_with: Option<ResumeWith>,
-    /// 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+    /// 这条会话在哪几组（组 id；那一组的名字等抄在这一台注解文件 `groups` 那一节，每台只记自己有组员的那几组）。一条会话可在几组；空 ＝ 不在组里。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
     pub groups: Vec<String>,

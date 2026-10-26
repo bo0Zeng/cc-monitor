@@ -1,6 +1,6 @@
 //! 历史清单与注解 ＋ 会话清单那一族（项目 / 会话清单 · 叫会话什么 · 判活；observe 反过来调这里，这里不引 observe）。
 
-pub(crate) mod groups; // 组（一群会话 ＋ 一个名字）：帧面 `groups-here`（这台那一半）· `groups-read`（本机后端问到各台并成一份）· `groups-write`（家那台建 · 改名 · 解散）
+pub(crate) mod groups; // 组（一群会话 ＋ 一个名字）：帧面 `groups-here`（这台那一片）· `groups-read`（发问那台问到各台合一次）· `groups-write`（起组 · 进出组写组员那台 · 改名解散发给各片）
 pub mod history_annotations; // 历史注解（星标 / 改名 / 隐藏 / 上次账号 / 在哪几组 · 固定 ＋ 家在这台的组）：帧面 `history-annotate` / `history-forget`（自家状态，经 `Own`；文件就是 monitor 从前那一份，路径由它交）
 pub(crate) mod history_browse; // 历史页那一列：帧面 `history-browse`（几台的清单在本机后端并成一列，按看得见的那一窗答）
 pub mod history_list; // 历史页的平铺会话清单：帧面 `history-list`（每行带状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名）

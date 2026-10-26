@@ -11,7 +11,7 @@
 //! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "resumeWith"?, "groups"?, "pinned"?, "updatedAt"}}, "groups"?: {组 id: {"name", "made"}}}`；
 //! 两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
 //! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `history/session_hidden.rs`）。
-//! 条目上的 `groups`（在哪几组）· `pinned`（固定）是这条会话的组员关系；顶层 `groups` 那一节是家在这台的组（并几台的那一层住 `history/groups.rs`）。
+//! 条目上的 `groups`（在哪几组）· `pinned`（固定）是这条会话的组员关系；顶层 `groups` 那一节是这台那一片：这台有组员的那几组各一份 `{name, made, named}`（并几台的那一层住 `history/groups.rs`）。
 //!
 //! # 升级链（一节，下一个大版本删）
 //!
@@ -99,20 +99,40 @@ struct Doc {
     version: u32,
     #[serde(default)]
     entries: BTreeMap<String, Entry>,
-    /// 家在这台的组（组 id ⇒ 那一组）；组员关系不在这里，在各条会话的注解上（[`Entry::groups`]）。
+    /// 这台那一片：这台有组员的那几组（组 id ⇒ 那一组）；组员关系不在这里，在各条会话的注解上（[`Entry::groups`]）。
     #[serde(default)]
     groups: Book,
 }
 
-/// 家在这台的一组（文件 `groups` 那一节的一项）：名字 ＋ 几时建的（毫秒）。认不出的键写回时原样留着。
+/// 这一片里的一组（文件 `groups` 那一节的一项）：名字（带它几时起的）＋ 几时建的（毫秒）。认不出的键写回时原样留着。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct GroupRec {
-    pub(crate) name: String,
+    #[serde(flatten)]
+    pub(crate) name: Named,
     #[serde(default)]
     pub(crate) made: i64,
 }
 
-/// 组 id ⇒ 那一组（家在这台的）。
+/// 集合的一样属性 ＋ 它几时改的（毫秒）：每一片各抄一份，读时取最新的那份（盘上是 `name` · `named` 两格）。
+/// 以后的颜色之类各带各的时刻，同此。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Named {
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) named: i64,
+}
+
+/// 没有时刻的名字（盘上缺 `named` 那一格同此：0，任何改过的名字都比它新）。
+impl From<&str> for Named {
+    fn from(name: &str) -> Named {
+        Named {
+            name: name.to_string(),
+            named: 0,
+        }
+    }
+}
+
+/// 组 id ⇒ 那一组（这台有组员的）。
 pub(crate) type Book = BTreeMap<String, GroupRec>;
 
 /// 读的结局。「推不出家」「文件不在」「读不懂」三件事分开说 —— 后两件对界面的意思完全不同：
@@ -298,14 +318,6 @@ pub(crate) struct Patch {
     #[serde(default, rename = "autoAnswer")]
     #[cfg_attr(test, ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,
-    /// 进这几组（组 id；已在的不重记）。组住哪台不在这里核：组员关系只住会话这一台。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    join: Option<Vec<String>>,
-    /// 出这几组（不在的不管）。同一组既进又出 ⇒ 出。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    leave: Option<Vec<String>>,
     /// 固定。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -491,7 +503,7 @@ fn err(f: crate::wire::spec::Fail) -> AnnotationErr {
 }
 
 /// 会话 id：非空、至多 256 字节、不含控制字符；不像 ⇒ `bad_args`（形状对、值不对，由处理器回）。
-fn checked_sid(sid: &str) -> Result<&str, AnnotationErr> {
+pub(crate) fn checked_sid(sid: &str) -> Result<&str, AnnotationErr> {
     if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
         return Err(AnnotationErr::BadArgs(crate::common::contract::malformed(
             &format!("`sid` does not look like a session id: {sid:?}"),
@@ -609,15 +621,6 @@ pub(crate) fn annotate_at(
         }
         entry.auto_answer = auto_checked(a).map_err(AnnotationErr::BadArgs)?;
     }
-    for id in patch.join.iter().flatten() {
-        let id = checked_group_id(id).map_err(AnnotationErr::BadArgs)?;
-        if !entry.groups.iter().any(|g| g == id) {
-            entry.groups.push(id.to_string());
-        }
-    }
-    if let Some(gone) = &patch.leave {
-        entry.groups.retain(|g| !gone.contains(g));
-    }
     if let Some(p) = patch.pinned {
         entry.pinned = p;
     }
@@ -710,20 +713,29 @@ pub(crate) fn checked_group_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
-/// 改家在这台的组（`groups-write` 的唯一写者）：在那个目录的锁里严格读一遍（读不懂 ⇒ 拒、一个字节不动），
-/// 交 `edit` 改那一本；`edit` 回 `Err` ⇒ 不写。写回只动 `groups` 那一节：留下的组在原文那一项上换 `name` · `made`（认不出的键留着），删掉的摘掉。
-pub(crate) fn edit_book_at<T>(
+/// 改这台那一片（组员关系与组那一本，`groups-write` 的唯一写者）：在那个目录的锁里严格读一遍（读不懂 ⇒ 拒、一个字节不动），
+/// 交 `edit` 改注解表与组那一本；`edit` 回 `Err` ⇒ 不写。写回只动变了的那几条（`updatedAt` 记成 `now`）与 `groups` 那一节：
+/// 留下的组在原文那一项上换 `name` · `made` · `named`（认不出的键留着），删掉的摘掉。
+pub(crate) fn edit_slice_at<T>(
     own: &Own,
-    edit: impl FnOnce(&mut Book) -> Result<T, AnnotationErr>,
+    now: i64,
+    edit: impl FnOnce(&mut Table, &mut Book) -> Result<T, AnnotationErr>,
 ) -> Result<T, AnnotationErr> {
     let (dir, file) = need_path(own).map_err(err)?;
     let held = lock_for_write(own, &dir).map_err(err)?;
     let (doc, mut raw, moved) = read_for_write(file.as_path()).map_err(err)?;
+    let mut table = doc.entries.clone();
     let mut book = doc.groups;
-    let out = edit(&mut book)?;
+    let out = edit(&mut table, &mut book)?;
     if moved {
         keep_old(own, &dir, &file, &held)
             .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    }
+    for (sid, e) in &mut table {
+        if doc.entries.get(sid) != Some(e) {
+            e.updated_at = now;
+            put_entry(&mut raw, sid, Some(e));
+        }
     }
     let root = raw.as_object_mut().expect("read_for_write 已核过是对象");
     let mut old = match root.remove("groups") {
