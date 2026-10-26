@@ -77,7 +77,7 @@ CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-remote-claude}"
 GRAY_WAIT="${E2E_GRAY_WAIT:-30}"    # 灰:backend 判活 + 会话账本成品帧 + 会话流
 ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 hook → 重探 → 会话账本裁已结束
 
-[ -f "$LOG" ] || { echo "monitor 日志不存在:$LOG(dev 实例在跑吗?)"; exit 1; }
+[ -f "$LOG" ] || { echo "  ABORT monitor 日志不存在:$LOG(dev 实例在跑吗?)"; exit 2; }
 
 # ★★★ **开跑前自证台架**。**不满足一律 `ABORT`（exit 2），不许 FAIL。**
 #
@@ -95,6 +95,21 @@ ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 hook → 重探 �
 #
 # 三格，各挡上面一族：
 _abort() { echo "  ABORT $1"; echo "        —— 台架不成立，本跑测不到任何东西。**这不是 FAIL**。"; exit 2; }
+
+# 戊：后端的文件监视挂得上（挡 ⑦：inotify 额度满 · 起不来）。挂不上 ⇒ 它听不见 fixture 目录，会话不出现、claude 死了也不知道
+#   ⇒ 下面两条主断言失败起来与 #60 一模一样。后端只在 stderr 上说这件事（tracing），台架把它抄进一份文件
+#   （`tier2-rig.sh run` 交 `$RIG/frames.tap.err`，wrapper 往里追加）⇒ 开跑前看一次，报任何一条 FAIL 之前再看一次。
+#   认的是 notify / 后端自己的那几句原话：`OS file watch limit reached`（额度满）· `debouncer init failed` ·
+#   `inotify_init1 失败` · `Too many open files`（实例数满）。
+BACKEND_ERR="${E2E_BACKEND_ERR:-}"
+{ [ -n "$BACKEND_ERR" ] && [ -f "$BACKEND_ERR" ]; } \
+  || _abort "没交后端的 stderr（E2E_BACKEND_ERR=${BACKEND_ERR:-<空>}；台架里是 frames.tap.err）—— 判不了后端的文件监视挂没挂上"
+_watch_gate() {
+  local hit
+  hit="$(grep -E 'OS file watch limit reached|debouncer init failed|inotify_init1 失败|Too many open files' "$BACKEND_ERR" | tail -1 || true)"
+  [ -z "$hit" ] || _abort "后端的文件监视挂不上（inotify 额度满 / 起不来）：$hit"
+}
+_watch_gate
 
 # 甲：app 活着且**正在写这份日志**（挡 ⑥）。日志尾行时间戳与现在差太远 = 它已经不写了。
 _last_ts="$(tail -200 "$LOG" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}' | tail -1)"
@@ -227,7 +242,8 @@ SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }
-bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+# 报 FAIL 之前先再问一次戊：跑到一半后端的监视掉了（套件下面会删了重建 fixture 的 sessions/，后端要重挂）⇒ 那也是台架不成立。
+bad() { _watch_gate; echo "  FAIL $1"; fail=$((fail+1)); }
 
 cleanup() {
   set +e
@@ -296,9 +312,18 @@ for _ in $(seq 1 20); do
   [ -n "$FAKE_PID" ] && break
   sleep 0.5
 done
-[ -n "$FAKE_PID" ] \
-  && ok "live 前置:fake-claude pidfile 落地 pid=$FAKE_PID(app 经 backend SessionAdded 建 live tab)" \
-  || bad "10s 内 fake-claude 未落 pidfile 到隔离目录(fixture 失败)"
+[ -n "$FAKE_PID" ] || _abort "10s 内 fake-claude 未落 pidfile 到隔离目录（fixture 没建起来）"
+echo "  OK   fake-claude pidfile 落地 pid=$FAKE_PID"
+
+# live 前置 = app 里**真有了这个会话的 tab**，不是「pidfile 落地」（那只说明 fixture 起来了，后端看没看见、app 建没建 tab 都没说）。
+#   远端会话那一帧（`added`）到 app ⇒ 先建骨架 tab、紧跟着落那一刻的脸 ⇒ `tabs.onFace` 打第一行 `[e2e] tab-state sid=… dot=<活着的那几样>`。
+#   等不到 ⇒ 链路上某一段没起来（后端没看见 · 本机后端没转 · app 没收），**下面两条主断言测不到任何东西** ⇒ ABORT，不报 FAIL。
+TAB_WAIT="${E2E_TAB_WAIT:-30}"
+TAB="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 dot=(running|needs-you|background|idle)" "$TAB_WAIT")" || {
+  _watch_gate
+  _abort "${TAB_WAIT}s 内 app 里没出现这个会话的 tab（日志里没有 \`[e2e] tab-state sid=$SID8 dot=<活>\`）—— 链路没通，与 #60 无关"
+}
+ok "live 前置:app 建出了这个会话的 tab:$TAB"
 
 # 裁决在后端会话账本：它要先见过一份挂着 @ccm_sid=sid 的 tmux 快照（起步初探即有）再杀 claude，
 # 否则 SessionRemoved 那一刻账本判不出「还挂着」→ 裁已结束而非可重连。留一段余量（原来等的是 app 收到 TmuxSessions 帧，那一帧已删）。
