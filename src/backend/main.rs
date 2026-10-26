@@ -1007,3 +1007,7 @@ mod claim_tests;
 #[cfg(test)]
 #[path = "../../tests/backend/writer_task_tests.rs"]
 mod writer_task_tests; // 写者的优先序：tap 灌满时内容帧一条不少、顺序不变
+
+#[cfg(test)]
+#[path = "../../tests/backend/main_startup_tests.rs"]
+mod startup_tests; // 起来那一下：机器表的读法装上了
