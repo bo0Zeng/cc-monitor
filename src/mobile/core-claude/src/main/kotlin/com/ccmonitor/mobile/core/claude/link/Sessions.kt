@@ -379,7 +379,7 @@ data class RecordLine(
 ) {
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
-            if (frame.str("kind") != "line") return null
+            if (frame["kind"] != "line") return null
             val f = Wire.bind(Line.adapter(JsonValue), frame) ?: return null
             val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
             return RecordLine(f.sessionId, f.path, f.seq, f.byteOffset, record, frame["record"])
@@ -387,9 +387,5 @@ data class RecordLine(
     }
 }
 
-/** `stream-watch` 应答里的一格（核心报名单、交回来）：这个会话刚进名单，这条流从第 [seq] 行起发它；`[已有, seq)` 由看的那一方补。 */
-data class WatchFrom(
-    val sid: String,
-    val path: String,
-    val seq: Long,
-)
+/** `stream-watch` 应答里的一格（核心报名单、交回来）：这个会话刚进名单，这条流从第 `seq` 行起发它；`[已有, seq)` 由看的那一方补。 */
+typealias WatchFrom = com.ccmonitor.mobile.core.claude.link.wire.gen.WatchFrom

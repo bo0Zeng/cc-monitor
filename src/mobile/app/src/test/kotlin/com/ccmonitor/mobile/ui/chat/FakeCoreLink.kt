@@ -1,13 +1,9 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
-import com.ccmonitor.mobile.core.claude.link.LiveFrame
 import com.ccmonitor.mobile.core.claude.link.LiveSession
-import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
@@ -15,7 +11,13 @@ import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
 import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
 import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -32,11 +34,11 @@ internal class FakeCoreLink :
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
     override val epoch = MutableStateFlow(0L)
-    private val liveFlow = MutableSharedFlow<LiveFrame>(extraBufferCapacity = 64)
-    override val live: SharedFlow<LiveFrame> = liveFlow.asSharedFlow()
+    private val liveFlow = MutableSharedFlow<LiveCard>(extraBufferCapacity = 64)
+    override val live: SharedFlow<LiveCard> = liveFlow.asSharedFlow()
 
-    /** 流上来一帧活卡（照线上那一形，经 [LiveFrame.of] 解）。 */
-    suspend fun live(frame: Map<String, Any?>) = liveFlow.emit(LiveFrame.of(frame + ("kind" to LiveFrame.KIND))!!)
+    /** 流上来一帧活卡（照线上那一形，经生成的 [LiveCard] 解）。 */
+    suspend fun live(frame: Map<String, Any?>) = liveFlow.emit(Wire.bind<LiveCard>(frame + ("kind" to "live_card"))!!)
 
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
@@ -86,10 +88,10 @@ internal class FakeCoreLink :
         return transferred(how)
     }
 
-    private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = 64)
-    override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
+    private val batchFlow = MutableSharedFlow<BatchLine>(extraBufferCapacity = 64)
+    override val batches: SharedFlow<BatchLine> = batchFlow.asSharedFlow()
 
-    override fun resumed(): List<BatchEvent> = emptyList()
+    override fun resumed(): List<BatchLine> = emptyList()
 
     /** 起过的每一组（要做什么）· 每一答 · 每一停。 */
     val wants = mutableListOf<Map<String, Any?>>()
@@ -114,23 +116,24 @@ internal class FakeCoreLink :
 
     /** 「能做什么」那一问交进来的原行（每一问一份）；回 [menu]。 */
     val picked = mutableListOf<List<Any?>>()
-    var menu: (List<Any?>) -> PickMenu = { PickMenu() }
+    var menu: (List<Any?>) -> PhoneMenu? = { null }
 
     /** 同名清单 ⇒ 抽屉那几行（核心那一份的替身：名字照抄、说明写成那台给的大小）。 */
-    override fun clashes(data: Any?): List<BatchEvent.Clash> =
+    override fun clashes(data: Any?): List<ClashRow> =
         ((data as? Map<*, *>)?.get("conflicts") as? List<*>).orEmpty().map { c ->
             val m = c as Map<*, *>
-            BatchEvent.Clash(m["key"] as String, m["name"] as String, m["there_size_text"] as String, (m["answers"] as List<*>).map { it as String })
+            val answers = (m["answers"] as List<*>).map { a -> Decide.entries.first { it.wire == a } }
+            ClashRow(m["key"] as String, m["name"] as String, m["there_size_text"] as String, answers, null)
         }
 
     /** 交核心认的同名那几答（键 · 答）；回 [decide] 给的（核心那一份的替身，规矩在核心里判）。 */
     val decisions = mutableListOf<Pair<List<String>, BatchAnswer?>>()
-    var decide: (List<String>, BatchAnswer?) -> Map<String, String>? = { _, _ -> null }
+    var decide: (List<String>, BatchAnswer?) -> Map<String, Decide>? = { _, _ -> null }
 
     override fun decided(
         keys: List<String>,
         answer: BatchAnswer?,
-    ): Map<String, String>? {
+    ): Map<String, Decide>? {
         decisions += keys to answer
         return decide(keys, answer)
     }
@@ -142,10 +145,11 @@ internal class FakeCoreLink :
      * 下载一组那几格（核心那一份的替身）：同名照名字逐字比（`there` 照抄）；断开 · 结局那一句把逐项结局原样排出来
      * （`cut:done,cancelled` · `ended:done,failed`），看得出 Kotlin 交的是哪几格；没成的那几行是 `名字：原因`。
      */
-    override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
+    override fun downloadEvent(want: Map<String, Any?>): BatchLine? {
         downloads += want
         val names = (want["names"] as List<*>).map { it as String }
-        val head = mapOf("id" to want["id"], "title" to "下载 ${names.size} 项")
+        val head = mapOf("id" to want["id"], "title" to "下载 ${names.size} 项", "kept" to false)
+        val running = mapOf("phase" to "running", "current" to want["current"], "frac" to null)
         val outs = (want["outcomes"] as? List<*>).orEmpty().map { it as Map<*, *> }
         val states = outs.joinToString(",") { it["state"] as String }
         val m: Map<String, Any?> =
@@ -156,25 +160,34 @@ internal class FakeCoreLink :
                         names.withIndex().filter { it.value in here }.map { (i, n) ->
                             mapOf("key" to "$i", "name" to n, "there" to n, "meta" to "", "answers" to listOf("overwrite", "skip", "keep_both"))
                         }
-                    if (rows.isEmpty()) head + ("phase" to "running") else head + mapOf("phase" to "asking", "conflicts" to rows, "go" to "下载")
+                    if (rows.isEmpty()) head + running + ("current" to null) else head + mapOf("phase" to "asking", "conflicts" to rows, "go" to "下载")
                 }
-                "running" -> head + mapOf("phase" to "running", "current" to want["current"])
+                "running" -> head + running
                 "cut" -> head + mapOf("phase" to "cut", "line" to "cut:$states", "resume" to true)
                 else -> {
                     val bad = outs.filter { it["state"] == "failed" }.map { "${names[(it["key"] as String).toInt()]}：${it["reason"]}" }
-                    head + mapOf("phase" to "ended", "said" to "ended:$states", "failed" to bad, "retry" to bad.isNotEmpty())
+                    head +
+                        mapOf(
+                            "phase" to "ended",
+                            "said" to "ended:$states",
+                            "failed_title" to "",
+                            "failed" to bad,
+                            "details" to null,
+                            "retry" to bad.isNotEmpty(),
+                            "undo" to false,
+                        )
                 }
             }
-        return BatchEvent.of(m)
+        return Wire.bind<BatchLine>(m)
     }
 
-    override fun picks(rows: List<Any?>): PickMenu {
+    override fun picks(rows: List<Any?>): PhoneMenu? {
         picked.add(rows)
         return menu(rows)
     }
 
-    /** 核心交来一格（照核心那一行，经 [BatchEvent.of] 解）。 */
-    suspend fun batchEvent(m: Map<String, Any?>) = batchFlow.emit(BatchEvent.of(m)!!)
+    /** 核心交来一格（照核心那一行，经生成的 [BatchLine] 解：线上必有的格都得在）。 */
+    suspend fun batchEvent(m: Map<String, Any?>) = batchFlow.emit(Wire.bind<BatchLine>(m) ?: error("核心那一行装不进 BatchLine：$m"))
 
     suspend fun line(
         sid: String,

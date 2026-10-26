@@ -47,7 +47,7 @@ class HostViewModel(
     ): Host = hostRepo.withPassword(host, plain)
 
     /** 解密现有主机的密码，供编辑时回显。 */
-    suspend fun hostPassword(host: Host): String? = hostRepo.password(host)
+    fun hostPassword(host: Host): String? = hostRepo.password(host)
 
     fun deleteHost(host: Host) = viewModelScope.launch(Dispatchers.IO) { hostRepo.delete(host) }
 

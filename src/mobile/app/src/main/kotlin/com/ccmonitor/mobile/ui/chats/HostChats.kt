@@ -23,6 +23,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.HostBackends
@@ -163,7 +164,7 @@ class HostChats(
 
     companion object {
         /** 推帧主题：那台的会话清单动了（会话来去 · 名字 / 状态 · 记录长了 · 注解 · 隐藏规则，那台判的）。 */
-        const val LIST_TOPIC = "history_list"
+        val LIST_TOPIC = Topic.HISTORY_LIST
         const val LIST_DEBOUNCE_MS = 1_000L
     }
 }

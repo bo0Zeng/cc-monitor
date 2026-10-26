@@ -1,5 +1,5 @@
 //! 轮换那几条命令（`rotation-*`）的回包与失败带的 `data` 的线上形 —— 两侧同一份：后端照这里的类型回（判 · 推演 · 拼字都在后端），
-//! 手机嵌的 Rust 核心按这里的类型解（`replies::decode_reply`），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
+//! 手机按这里生成的 Kotlin 类解，界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 策略文件头里那份设置声明（`FormCell` 那几样）与换号记录（`RotLog`）后端也拿来读写盘上那几份，同一个形。
 
 use crate::cells::{Tone, Words};

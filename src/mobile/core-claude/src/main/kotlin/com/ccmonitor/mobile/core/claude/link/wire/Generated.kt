@@ -1688,6 +1688,25 @@ data class Badge(
     }
 }
 
+sealed interface BatchAnswer {
+    data class All(
+        val value: Decide,
+    ) : BatchAnswer
+    data class Each(
+        val value: Map<String, Decide>,
+    ) : BatchAnswer
+
+    companion object {
+        val ADAPTER: JsonAdapter<BatchAnswer> =
+            external<BatchAnswer>(
+                listOf(
+                Ext("all", BatchAnswer.All::class.java, { Decide.ADAPTER }, { BatchAnswer.All(it as Decide) }, { (it as BatchAnswer.All).value }),
+                Ext("each", BatchAnswer.Each::class.java, { dict(Decide.ADAPTER) }, { BatchAnswer.Each(it as Map<String, Decide>) }, { (it as BatchAnswer.Each).value }),
+                ),
+            )
+    }
+}
+
 enum class BatchEdge(val wire: String) {
     START("start"),
     END("end"),
@@ -1695,6 +1714,188 @@ enum class BatchEdge(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<BatchEdge> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BatchKeep(
+    val ticket: String,
+    val plan: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BatchKeep> = obj(
+            listOf(
+            Field("ticket", { Str }, optional = false, nullable = false),
+            Field("plan", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> BatchKeep(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.ticket, v.plan) },
+        )
+    }
+}
+
+sealed interface BatchLine {
+    /** 判别格（`phase`）那个词。 */
+    val phase: String
+
+    val id: Long
+
+    val title: String
+
+    val kept: Boolean
+
+    @Suppress("UNCHECKED_CAST")
+    data class Running(
+        override val id: Long,
+        override val title: String,
+        override val kept: Boolean,
+        val current: String?,
+        val frac: Double?,
+    ) : BatchLine, Ordered {
+        override val phase: String get() = "running"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Asking(
+        override val id: Long,
+        override val title: String,
+        override val kept: Boolean,
+        val conflicts: List<ClashRow>,
+        val go: String,
+    ) : BatchLine, Ordered {
+        override val phase: String get() = "asking"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Cut(
+        override val id: Long,
+        override val title: String,
+        override val kept: Boolean,
+        val line: String,
+        val resume: Boolean,
+    ) : BatchLine, Ordered {
+        override val phase: String get() = "cut"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Ended(
+        override val id: Long,
+        override val title: String,
+        override val kept: Boolean,
+        val said: String,
+        val failedTitle: String,
+        val failed: List<String>,
+        val details: String?,
+        val retry: Boolean,
+        val undo: Boolean,
+    ) : BatchLine, Ordered {
+        override val phase: String get() = "ended"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Failed(
+        override val id: Long,
+        override val title: String,
+        override val kept: Boolean,
+        val said: String,
+        val details: String?,
+    ) : BatchLine, Ordered {
+        override val phase: String get() = "failed"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Dropped(
+        override val id: Long,
+        override val title: String,
+        override val kept: Boolean,
+    ) : BatchLine, Ordered {
+        override val phase: String get() = "dropped"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<BatchLine> =
+            tagged<BatchLine>(
+                "phase",
+                listOf(
+                Variant("running", BatchLine.Running::class.java, obj(
+                        listOf(
+                        Field("phase", { tag("running") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("kept", { Bool }, optional = false, nullable = false),
+                        Field("current", { opt(Str) }, optional = false, nullable = true),
+                        Field("frac", { opt(Dbl) }, optional = false, nullable = true),
+                        ),
+                        { a -> BatchLine.Running(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as String?, a[5] as Double?) },
+                        { v -> arrayOf("running", v.id, v.title, v.kept, v.current, v.frac) },
+                    )),
+                Variant("asking", BatchLine.Asking::class.java, obj(
+                        listOf(
+                        Field("phase", { tag("asking") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("kept", { Bool }, optional = false, nullable = false),
+                        Field("conflicts", { arr(ClashRow.ADAPTER) }, optional = false, nullable = false),
+                        Field("go", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> BatchLine.Asking(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as List<ClashRow>, a[5] as String) },
+                        { v -> arrayOf("asking", v.id, v.title, v.kept, v.conflicts, v.go) },
+                    )),
+                Variant("cut", BatchLine.Cut::class.java, obj(
+                        listOf(
+                        Field("phase", { tag("cut") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("kept", { Bool }, optional = false, nullable = false),
+                        Field("line", { Str }, optional = false, nullable = false),
+                        Field("resume", { Bool }, optional = false, nullable = false),
+                        ),
+                        { a -> BatchLine.Cut(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as String, a[5] as Boolean) },
+                        { v -> arrayOf("cut", v.id, v.title, v.kept, v.line, v.resume) },
+                    )),
+                Variant("ended", BatchLine.Ended::class.java, obj(
+                        listOf(
+                        Field("phase", { tag("ended") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("kept", { Bool }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("failed_title", { Str }, optional = false, nullable = false),
+                        Field("failed", { arr(Str) }, optional = false, nullable = false),
+                        Field("details", { opt(Str) }, optional = false, nullable = true),
+                        Field("retry", { Bool }, optional = false, nullable = false),
+                        Field("undo", { Bool }, optional = false, nullable = false),
+                        ),
+                        { a -> BatchLine.Ended(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as String, a[5] as String, a[6] as List<String>, a[7] as String?, a[8] as Boolean, a[9] as Boolean) },
+                        { v -> arrayOf("ended", v.id, v.title, v.kept, v.said, v.failedTitle, v.failed, v.details, v.retry, v.undo) },
+                    )),
+                Variant("failed", BatchLine.Failed::class.java, obj(
+                        listOf(
+                        Field("phase", { tag("failed") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("kept", { Bool }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        Field("details", { opt(Str) }, optional = false, nullable = true),
+                        ),
+                        { a -> BatchLine.Failed(a[1] as Long, a[2] as String, a[3] as Boolean, a[4] as String, a[5] as String?) },
+                        { v -> arrayOf("failed", v.id, v.title, v.kept, v.said, v.details) },
+                    )),
+                Variant("dropped", BatchLine.Dropped::class.java, obj(
+                        listOf(
+                        Field("phase", { tag("dropped") }, optional = false, nullable = false),
+                        Field("id", { Lng }, optional = false, nullable = false),
+                        Field("title", { Str }, optional = false, nullable = false),
+                        Field("kept", { Bool }, optional = false, nullable = false),
+                        ),
+                        { a -> BatchLine.Dropped(a[1] as Long, a[2] as String, a[3] as Boolean) },
+                        { v -> arrayOf("dropped", v.id, v.title, v.kept) },
+                    )),
+                ),
+            )
     }
 }
 
@@ -2523,6 +2724,125 @@ data class BusUndelivered(
     }
 }
 
+sealed interface CallEnd {
+    /** 判别格（`end`）那个词。 */
+    val end: String
+
+    val call: Long
+
+    @Suppress("UNCHECKED_CAST")
+    data class Ok(
+        override val call: Long,
+        val data: Raw,
+    ) : CallEnd, Ordered {
+        override val end: String get() = "ok"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Failed(
+        override val call: Long,
+        val code: String,
+        val message: String,
+        val detail: String,
+        val data: Raw,
+    ) : CallEnd, Ordered {
+        override val end: String get() = "failed"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Timeout(
+        override val call: Long,
+    ) : CallEnd, Ordered {
+        override val end: String get() = "timeout"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Cancelled(
+        override val call: Long,
+    ) : CallEnd, Ordered {
+        override val end: String get() = "cancelled"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Down(
+        override val call: Long,
+    ) : CallEnd, Ordered {
+        override val end: String get() = "down"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Unreadable(
+        override val call: Long,
+        val detail: String,
+    ) : CallEnd, Ordered {
+        override val end: String get() = "unreadable"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<CallEnd> =
+            tagged<CallEnd>(
+                "end",
+                listOf(
+                Variant("ok", CallEnd.Ok::class.java, obj(
+                        listOf(
+                        Field("end", { tag("ok") }, optional = false, nullable = false),
+                        Field("call", { Lng }, optional = false, nullable = false),
+                        Field("data", { RawJson }, optional = false, nullable = false),
+                        ),
+                        { a -> CallEnd.Ok(a[1] as Long, a[2] as Raw) },
+                        { v -> arrayOf("ok", v.call, v.data) },
+                    )),
+                Variant("failed", CallEnd.Failed::class.java, obj(
+                        listOf(
+                        Field("end", { tag("failed") }, optional = false, nullable = false),
+                        Field("call", { Lng }, optional = false, nullable = false),
+                        Field("code", { Str }, optional = false, nullable = false),
+                        Field("message", { Str }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        Field("data", { RawJson }, optional = false, nullable = false),
+                        ),
+                        { a -> CallEnd.Failed(a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as Raw) },
+                        { v -> arrayOf("failed", v.call, v.code, v.message, v.detail, v.data) },
+                    )),
+                Variant("timeout", CallEnd.Timeout::class.java, obj(
+                        listOf(
+                        Field("end", { tag("timeout") }, optional = false, nullable = false),
+                        Field("call", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> CallEnd.Timeout(a[1] as Long) },
+                        { v -> arrayOf("timeout", v.call) },
+                    )),
+                Variant("cancelled", CallEnd.Cancelled::class.java, obj(
+                        listOf(
+                        Field("end", { tag("cancelled") }, optional = false, nullable = false),
+                        Field("call", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> CallEnd.Cancelled(a[1] as Long) },
+                        { v -> arrayOf("cancelled", v.call) },
+                    )),
+                Variant("down", CallEnd.Down::class.java, obj(
+                        listOf(
+                        Field("end", { tag("down") }, optional = false, nullable = false),
+                        Field("call", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> CallEnd.Down(a[1] as Long) },
+                        { v -> arrayOf("down", v.call) },
+                    )),
+                Variant("unreadable", CallEnd.Unreadable::class.java, obj(
+                        listOf(
+                        Field("end", { tag("unreadable") }, optional = false, nullable = false),
+                        Field("call", { Lng }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> CallEnd.Unreadable(a[1] as Long, a[2] as String) },
+                        { v -> arrayOf("unreadable", v.call, v.detail) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class Can(
     val resume: CanResume,
@@ -2699,6 +3019,48 @@ data class Capabilities(
             ),
             { a -> Capabilities(a[0] as Boolean, a[1] as Boolean, a[2] as Boolean, a[3] as Boolean) },
             { v -> arrayOf(v.supportsSendKeys, v.supportsCapture, v.supportsMultiClient, v.supportsMultiWindow) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class CaptureOpts(
+    val maxBytes: Long,
+    val abortMarker: String?,
+    val stdin: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<CaptureOpts> = obj(
+            listOf(
+            Field("max_bytes", { Lng }, optional = false, nullable = false),
+            Field("abort_marker", { opt(Str) }, optional = false, nullable = true),
+            Field("stdin", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> CaptureOpts(a[0] as Long, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.maxBytes, v.abortMarker, v.stdin) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Captured(
+    val stdout: String,
+    val stderr: String,
+    val exitStatus: Int?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Captured> = obj(
+            listOf(
+            Field("stdout", { Str }, optional = false, nullable = false),
+            Field("stderr", { Str }, optional = false, nullable = false),
+            Field("exit_status", { opt(Int32) }, optional = false, nullable = true),
+            ),
+            { a -> Captured(a[0] as String, a[1] as String, a[2] as Int?) },
+            { v -> arrayOf(v.stdout, v.stderr, v.exitStatus) },
         )
     }
 }
@@ -3407,6 +3769,31 @@ data class ChunkBytesObjValue(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ClashRow(
+    val key: String,
+    val name: String,
+    val meta: String,
+    val answers: List<Decide>,
+    val there: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ClashRow> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("meta", { Str }, optional = false, nullable = false),
+            Field("answers", { arr(Decide.ADAPTER) }, optional = false, nullable = false),
+            Field("there", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> ClashRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<Decide>, a[4] as String?) },
+            { v -> arrayOf(v.key, v.name, v.meta, v.answers, v.there) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class CommandPlan(
     val command: String,
     val mode: String,
@@ -3503,6 +3890,31 @@ sealed interface ConfigEdit {
                     )),
                 ),
             )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ConfigHost(
+    val alias: String,
+    val hostName: String,
+    val port: Int,
+    val user: String?,
+    val identityFile: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ConfigHost> = obj(
+            listOf(
+            Field("alias", { Str }, optional = false, nullable = false),
+            Field("host_name", { Str }, optional = false, nullable = false),
+            Field("port", { Int32 }, optional = false, nullable = false),
+            Field("user", { opt(Str) }, optional = false, nullable = true),
+            Field("identity_file", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> ConfigHost(a[0] as String, a[1] as String, a[2] as Int, a[3] as String?, a[4] as String?) },
+            { v -> arrayOf(v.alias, v.hostName, v.port, v.user, v.identityFile) },
+        )
     }
 }
 
@@ -3801,6 +4213,70 @@ data class DeleteItem(
     }
 }
 
+enum class DeployAct(val wire: String) {
+    SKIP("skip"),
+    DEPLOY("deploy"),
+    KEEP("keep"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<DeployAct> = enumOf(entries) { it.wire }
+    }
+}
+
+sealed interface DeployEnd {
+    /** 判别格（`end`）那个词。 */
+    val end: String
+
+    val text: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Done(
+        val act: DeployAct,
+        override val text: String,
+    ) : DeployEnd, Ordered {
+        override val end: String get() = "done"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Failed(
+        val code: String,
+        override val text: String,
+        val detail: String,
+    ) : DeployEnd, Ordered {
+        override val end: String get() = "failed"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<DeployEnd> =
+            tagged<DeployEnd>(
+                "end",
+                listOf(
+                Variant("done", DeployEnd.Done::class.java, obj(
+                        listOf(
+                        Field("end", { tag("done") }, optional = false, nullable = false),
+                        Field("act", { DeployAct.ADAPTER }, optional = false, nullable = false),
+                        Field("text", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> DeployEnd.Done(a[1] as DeployAct, a[2] as String) },
+                        { v -> arrayOf("done", v.act, v.text) },
+                    )),
+                Variant("failed", DeployEnd.Failed::class.java, obj(
+                        listOf(
+                        Field("end", { tag("failed") }, optional = false, nullable = false),
+                        Field("code", { Str }, optional = false, nullable = false),
+                        Field("text", { Str }, optional = false, nullable = false),
+                        Field("detail", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> DeployEnd.Failed(a[1] as String, a[2] as String, a[3] as String) },
+                        { v -> arrayOf("failed", v.code, v.text, v.detail) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class DeployInstallReq(
     val dial: MachineDial,
@@ -3863,6 +4339,103 @@ data class DiagnosticsReport(
             { a -> DiagnosticsReport(a[0] as String, a[1] as List<UnknownOnMachine>, a[2] as Long) },
             { v -> arrayOf(v.text, v.unknown, v.configUnknown) },
         )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class DialAck(
+    val ok: Boolean,
+    val error: String?,
+    val detail: String? = null,
+    val fingerprint: String?,
+    val endpoint: String?,
+    val winner: Endpoint?,
+    val reason: DialWhy?,
+    val keyType: String? = null,
+    val expectedFingerprint: String? = null,
+    val v: Int,
+    val uses: List<String>,
+    val unreached: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<DialAck> = obj(
+            listOf(
+            Field("ok", { Bool }, optional = false, nullable = false),
+            Field("error", { opt(Str) }, optional = false, nullable = true),
+            Field("detail", { opt(Str) }, optional = true, nullable = true),
+            Field("fingerprint", { opt(Str) }, optional = false, nullable = true),
+            Field("endpoint", { opt(Str) }, optional = false, nullable = true),
+            Field("winner", { opt(Endpoint.ADAPTER) }, optional = false, nullable = true),
+            Field("reason", { opt(DialWhy.ADAPTER) }, optional = false, nullable = true),
+            Field("key_type", { opt(Str) }, optional = true, nullable = true),
+            Field("expected_fingerprint", { opt(Str) }, optional = true, nullable = true),
+            Field("v", { Int32 }, optional = false, nullable = false),
+            Field("uses", { arr(Str) }, optional = false, nullable = false),
+            Field("unreached", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> DialAck(a[0] as Boolean, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as Endpoint?, a[6] as DialWhy?, a[7] as String?, a[8] as String?, a[9] as Int, a[10] as List<String>, a[11] as Boolean) },
+            { v -> arrayOf(v.ok, v.error, v.detail, v.fingerprint, v.endpoint, v.winner, v.reason, v.keyType, v.expectedFingerprint, v.v, v.uses, v.unreached) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class DialRequest(
+    val host: String,
+    val port: Int,
+    val user: String,
+    val keyPath: String?,
+    val command: String,
+    val endpoints: List<Endpoint>,
+    val jump: JumpHop?,
+    val use: DialUse,
+    val capture: CaptureOpts?,
+    val forward: ForwardSpec?,
+    val pty: PtyOpts?,
+    val stages: Boolean,
+    val probe: Boolean,
+    val agentSock: String?,
+    val progress: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<DialRequest> = obj(
+            listOf(
+            Field("host", { Str }, optional = false, nullable = false),
+            Field("port", { Int32 }, optional = false, nullable = false),
+            Field("user", { Str }, optional = false, nullable = false),
+            Field("key_path", { opt(Str) }, optional = false, nullable = true),
+            Field("command", { Str }, optional = false, nullable = false),
+            Field("endpoints", { arr(Endpoint.ADAPTER) }, optional = false, nullable = false),
+            Field("jump", { opt(JumpHop.ADAPTER) }, optional = false, nullable = true),
+            Field("use", { DialUse.ADAPTER }, optional = false, nullable = false),
+            Field("capture", { opt(CaptureOpts.ADAPTER) }, optional = false, nullable = true),
+            Field("forward", { opt(ForwardSpec.ADAPTER) }, optional = false, nullable = true),
+            Field("pty", { opt(PtyOpts.ADAPTER) }, optional = false, nullable = true),
+            Field("stages", { Bool }, optional = false, nullable = false),
+            Field("probe", { Bool }, optional = false, nullable = false),
+            Field("agent_sock", { opt(Str) }, optional = false, nullable = true),
+            Field("progress", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> DialRequest(a[0] as String, a[1] as Int, a[2] as String, a[3] as String?, a[4] as String, a[5] as List<Endpoint>, a[6] as JumpHop?, a[7] as DialUse, a[8] as CaptureOpts?, a[9] as ForwardSpec?, a[10] as PtyOpts?, a[11] as Boolean, a[12] as Boolean, a[13] as String?, a[14] as Boolean) },
+            { v -> arrayOf(v.host, v.port, v.user, v.keyPath, v.command, v.endpoints, v.jump, v.use, v.capture, v.forward, v.pty, v.stages, v.probe, v.agentSock, v.progress) },
+        )
+    }
+}
+
+enum class DialUse(val wire: String) {
+    STREAM("stream"),
+    CAPTURE("capture"),
+    FORWARD("forward"),
+    SHELL("shell"),
+    HOLD("hold"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<DialUse> = enumOf(entries) { it.wire }
     }
 }
 
@@ -4030,6 +4603,25 @@ data class ElemKey(
             ),
             { a -> ElemKey(a[0] as List<String>, a[1] as String) },
             { v -> arrayOf(v.fields, v.equals) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Endpoint(
+    val host: String,
+    val port: Int,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Endpoint> = obj(
+            listOf(
+            Field("host", { Str }, optional = false, nullable = false),
+            Field("port", { Int32 }, optional = false, nullable = false),
+            ),
+            { a -> Endpoint(a[0] as String, a[1] as Int) },
+            { v -> arrayOf(v.host, v.port) },
         )
     }
 }
@@ -5331,6 +5923,27 @@ data class FilesWrittenReply(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class FilewinTotals(
+    val windows: Long,
+    val unsaved: Long,
+    val running: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<FilewinTotals> = obj(
+            listOf(
+            Field("windows", { Lng }, optional = false, nullable = false),
+            Field("unsaved", { Lng }, optional = false, nullable = false),
+            Field("running", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> FilewinTotals(a[0] as Long, a[1] as Long, a[2] as Long) },
+            { v -> arrayOf(v.windows, v.unsaved, v.running) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class FindHit(
     val uuid: String,
     val line: Long,
@@ -5997,6 +6610,27 @@ enum class ForwardRowState(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<ForwardRowState> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class ForwardSpec(
+    val localPort: Int,
+    val remoteHost: String,
+    val remotePort: Int,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ForwardSpec> = obj(
+            listOf(
+            Field("local_port", { Int32 }, optional = false, nullable = false),
+            Field("remote_host", { Str }, optional = false, nullable = false),
+            Field("remote_port", { Int32 }, optional = false, nullable = false),
+            ),
+            { a -> ForwardSpec(a[0] as Int, a[1] as String, a[2] as Int) },
+            { v -> arrayOf(v.localPort, v.remoteHost, v.remotePort) },
+        )
     }
 }
 
@@ -8181,7 +8815,7 @@ data object IndexStatusReq {
 
 @Suppress("UNCHECKED_CAST")
 data class Installed(
-    val action: InstalledAction,
+    val action: DeployAct,
     val said: String,
     val build: String,
     val os: String,
@@ -8191,25 +8825,14 @@ data class Installed(
     companion object {
         val ADAPTER: JsonAdapter<Installed> = obj(
             listOf(
-            Field("action", { InstalledAction.ADAPTER }, optional = false, nullable = false),
+            Field("action", { DeployAct.ADAPTER }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             Field("build", { Str }, optional = false, nullable = false),
             Field("os", { Str }, optional = false, nullable = false),
             ),
-            { a -> Installed(a[0] as InstalledAction, a[1] as String, a[2] as String, a[3] as String) },
+            { a -> Installed(a[0] as DeployAct, a[1] as String, a[2] as String, a[3] as String) },
             { v -> arrayOf(v.action, v.said, v.build, v.os) },
         )
-    }
-}
-
-enum class InstalledAction(val wire: String) {
-    SKIP("skip"),
-    DEPLOY("deploy"),
-    KEEP("keep"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<InstalledAction> = enumOf(entries) { it.wire }
     }
 }
 
@@ -8250,6 +8873,33 @@ enum class ItemState(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class JumpHop(
+    val host: String,
+    val port: Int,
+    val user: String,
+    val keyPath: String?,
+    val label: String,
+    val jump: JumpHop?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<JumpHop> = obj(
+            listOf(
+            Field("host", { Str }, optional = false, nullable = false),
+            Field("port", { Int32 }, optional = false, nullable = false),
+            Field("user", { Str }, optional = false, nullable = false),
+            Field("key_path", { opt(Str) }, optional = false, nullable = true),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("jump", { opt(JumpHop.ADAPTER) }, optional = false, nullable = true),
+            ),
+            { a -> JumpHop(a[0] as String, a[1] as Int, a[2] as String, a[3] as String?, a[4] as String, a[5] as JumpHop?) },
+            { v -> arrayOf(v.host, v.port, v.user, v.keyPath, v.label, v.jump) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class KeyAddReq(
     val key: String,
 ) : Ordered {
@@ -8279,6 +8929,25 @@ data class KeyAdded(
             ),
             { a -> KeyAdded(a[0] as PushOutcome) },
             { v -> arrayOf(v.outcome) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class KeyPair(
+    val pem: String,
+    val public: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<KeyPair> = obj(
+            listOf(
+            Field("pem", { Str }, optional = false, nullable = false),
+            Field("public", { Str }, optional = false, nullable = false),
+            ),
+            { a -> KeyPair(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.pem, v.public) },
         )
     }
 }
@@ -9094,6 +9763,70 @@ data class LinkDataReq(
             { a -> LinkDataReq(a[0] as String, a[1] as String) },
             { v -> arrayOf(v.link, v.data) },
         )
+    }
+}
+
+sealed interface LinkLine {
+    /** 判别格（`state`）那个词。 */
+    val state: String
+
+    val machine: MachineState
+
+    @Suppress("UNCHECKED_CAST")
+    data class Connecting(
+        override val machine: MachineState,
+    ) : LinkLine, Ordered {
+        override val state: String get() = "connecting"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Up(
+        val epoch: Long,
+        override val machine: MachineState,
+    ) : LinkLine, Ordered {
+        override val state: String get() = "up"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Down(
+        override val machine: MachineState,
+    ) : LinkLine, Ordered {
+        override val state: String get() = "down"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<LinkLine> =
+            tagged<LinkLine>(
+                "state",
+                listOf(
+                Variant("connecting", LinkLine.Connecting::class.java, obj(
+                        listOf(
+                        Field("state", { tag("connecting") }, optional = false, nullable = false),
+                        Field("machine", { MachineState.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> LinkLine.Connecting(a[1] as MachineState) },
+                        { v -> arrayOf("connecting", v.machine) },
+                    )),
+                Variant("up", LinkLine.Up::class.java, obj(
+                        listOf(
+                        Field("state", { tag("up") }, optional = false, nullable = false),
+                        Field("epoch", { U64 }, optional = false, nullable = false),
+                        Field("machine", { MachineState.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> LinkLine.Up(a[1] as Long, a[2] as MachineState) },
+                        { v -> arrayOf("up", v.epoch, v.machine) },
+                    )),
+                Variant("down", LinkLine.Down::class.java, obj(
+                        listOf(
+                        Field("state", { tag("down") }, optional = false, nullable = false),
+                        Field("machine", { MachineState.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> LinkLine.Down(a[1] as MachineState) },
+                        { v -> arrayOf("down", v.machine) },
+                    )),
+                ),
+            )
     }
 }
 
@@ -10873,6 +11606,29 @@ data class McpTrouble(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class MenuEntry(
+    val id: String,
+    val text: String,
+    val enabled: Boolean,
+    val why: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MenuEntry> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("enabled", { Bool }, optional = false, nullable = false),
+            Field("why", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> MenuEntry(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as String?) },
+            { v -> arrayOf(v.id, v.text, v.enabled, v.why) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Merged(
     val totalHits: Long,
     val sessionCount: Long,
@@ -11023,6 +11779,27 @@ data class ModelSwitched(
             ),
             { a -> ModelSwitched(a[0] as ModeSwitchResult, a[1] as String?, a[2] as String?, a[3] as Refused?, a[4] as String?) },
             { v -> arrayOf(v.result, v.model, v.effort, v.why, v.said) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Moved(
+    val call: Long,
+    val done: Long,
+    val total: Long?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Moved> = obj(
+            listOf(
+            Field("call", { Lng }, optional = false, nullable = false),
+            Field("done", { U64 }, optional = false, nullable = false),
+            Field("total", { opt(U64) }, optional = false, nullable = true),
+            ),
+            { a -> Moved(a[0] as Long, a[1] as Long, a[2] as Long?) },
+            { v -> arrayOf(v.call, v.done, v.total) },
         )
     }
 }
@@ -12018,6 +12795,27 @@ data class PendingCall(
             ),
             { a -> PendingCall(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as StepWait, a[6] as UnclearWhy?, a[7] as String?, a[8] as String?) },
             { v -> arrayOf(v.id, v.name, v.what, v.at, v.atMs, v.state, v.why, v.text, v.whyText) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PhoneMenu(
+    val bar: List<MenuEntry>,
+    val more: List<MenuEntry>,
+    val tap: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PhoneMenu> = obj(
+            listOf(
+            Field("bar", { arr(MenuEntry.ADAPTER) }, optional = false, nullable = false),
+            Field("more", { arr(MenuEntry.ADAPTER) }, optional = false, nullable = false),
+            Field("tap", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PhoneMenu(a[0] as List<MenuEntry>, a[1] as List<MenuEntry>, a[2] as String?) },
+            { v -> arrayOf(v.bar, v.more, v.tap) },
         )
     }
 }
@@ -14678,6 +15476,27 @@ enum class PsHost(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<PsHost> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PtyOpts(
+    val term: String,
+    val cols: Int,
+    val rows: Int,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PtyOpts> = obj(
+            listOf(
+            Field("term", { Str }, optional = false, nullable = false),
+            Field("cols", { Int32 }, optional = false, nullable = false),
+            Field("rows", { Int32 }, optional = false, nullable = false),
+            ),
+            { a -> PtyOpts(a[0] as String, a[1] as Int, a[2] as Int) },
+            { v -> arrayOf(v.term, v.cols, v.rows) },
+        )
     }
 }
 
@@ -19707,6 +20526,112 @@ data class SshImported(
             { a -> SshImported(a[0] as List<SshImportGroup>, a[1] as Boolean) },
             { v -> arrayOf(v.groups, v.partial) },
         )
+    }
+}
+
+sealed interface Stage {
+    /** 判别格（`kind`）那个词。 */
+    val kind: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Dialing(
+        val endpoint: String,
+    ) : Stage, Ordered {
+        override val kind: String get() = "dialing"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class HostKey(
+        val endpoint: String,
+        val fingerprint: String,
+    ) : Stage, Ordered {
+        override val kind: String get() = "hostKey"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Failed(
+        val endpoint: String,
+        val reason: String,
+    ) : Stage, Ordered {
+        override val kind: String get() = "failed"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Won(
+        val endpoint: String,
+    ) : Stage, Ordered {
+        override val kind: String get() = "won"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Auth(
+        val ok: Boolean,
+        val detail: String?,
+    ) : Stage, Ordered {
+        override val kind: String get() = "auth"
+        override var wireOrder: IntArray? = null
+    }
+    data object Established : Stage {
+        override val kind: String get() = "established"
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<Stage> =
+            tagged<Stage>(
+                "kind",
+                listOf(
+                Variant("dialing", Stage.Dialing::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("dialing") }, optional = false, nullable = false),
+                        Field("endpoint", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Stage.Dialing(a[1] as String) },
+                        { v -> arrayOf("dialing", v.endpoint) },
+                    )),
+                Variant("hostKey", Stage.HostKey::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("hostKey") }, optional = false, nullable = false),
+                        Field("endpoint", { Str }, optional = false, nullable = false),
+                        Field("fingerprint", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Stage.HostKey(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("hostKey", v.endpoint, v.fingerprint) },
+                    )),
+                Variant("failed", Stage.Failed::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("failed") }, optional = false, nullable = false),
+                        Field("endpoint", { Str }, optional = false, nullable = false),
+                        Field("reason", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Stage.Failed(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("failed", v.endpoint, v.reason) },
+                    )),
+                Variant("won", Stage.Won::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("won") }, optional = false, nullable = false),
+                        Field("endpoint", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Stage.Won(a[1] as String) },
+                        { v -> arrayOf("won", v.endpoint) },
+                    )),
+                Variant("auth", Stage.Auth::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("auth") }, optional = false, nullable = false),
+                        Field("ok", { Bool }, optional = false, nullable = false),
+                        Field("detail", { opt(Str) }, optional = false, nullable = true),
+                        ),
+                        { a -> Stage.Auth(a[1] as Boolean, a[2] as String?) },
+                        { v -> arrayOf("auth", v.ok, v.detail) },
+                    )),
+                Variant("established", Stage.Established::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("established") }, optional = false, nullable = false),
+                        ),
+                        { Stage.Established },
+                        { arrayOf("established") },
+                    )),
+                ),
+            )
     }
 }
 

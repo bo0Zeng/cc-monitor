@@ -829,10 +829,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     bytes: NONE,
     // 路径字节当集合键 · 推送 `key` 用的那一串（`files-ls` 每行的键、`changed {files_dir}` 的键）。界面不列目录，TS 侧没有孪生。
     key: NONE,
-    // 会话族手机问的那几条：回包类型住这里的那几条命令 · 按类型解回包 · 判据对后端 `impl Command` 用的名字。
-    //   只有手机嵌的 Rust 核心解（界面按生成的 TS 类型收，不另解），TS 侧没有孪生。
+    // 会话族手机问的那几条：回包类型住这里的那几条命令 · 记录那一格认不认得（手机嵌的 Rust 核心判）· 判据对后端 `impl Command` 用的名字。
+    //   界面按生成的 TS 类型收、不另判，TS 侧没有孪生。
     COMMANDS: NONE,
-    decode_reply: NONE,
+    mend_records: NONE,
     reply_names: NONE,
     // 通用记录的两处纯形状（`record`）：「谁说的」那一格的线上词（`Speaker::kind`，骨架索引也存它）· 没有正文的那一形（`UserText::of`）。
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。

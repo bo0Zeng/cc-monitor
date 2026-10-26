@@ -2,14 +2,16 @@ package com.ccmonitor.mobile.ui.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ccmonitor.mobile.core.claude.link.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesReadText
 import com.ccmonitor.mobile.core.claude.link.LinkState
-import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
+import com.ccmonitor.mobile.core.claude.link.over
 import com.ccmonitor.mobile.core.claude.link.retry
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.Notice
@@ -84,10 +86,10 @@ class FilesViewModel(
     val online: StateFlow<Boolean> = feed.state.map { it is LinkState.Up }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** 选中那几项此刻能做什么（核心照那几行与此刻那一台判；不在选择模式 ⇒ 空）。 */
-    val menu: StateFlow<PickMenu> =
+    val menu: StateFlow<PhoneMenu> =
         combine(_selection, _listing, feed.state) { sel, l, _ ->
-            if (sel.active) feed.picks(sel.of(l.entries).map { it.row }) else PickMenu()
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, PickMenu())
+            (if (sel.active) feed.picks(sel.of(l.entries).map { it.row }) else null) ?: NO_MENU
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, NO_MENU)
 
     /** 这一屏的那一层（[dir] 换了 ⇒ 选中清空；同一层重列 ⇒ 只留还在的）。 */
     private fun shown(
@@ -117,7 +119,7 @@ class FilesViewModel(
     fun picked(): List<FilesLs.Entry> = _selection.value.of(_listing.value.entries)
 
     /** 不在选择模式时点一下这一行做什么（核心照表给：`open` · `preview` · `download`；什么都不做 ⇒ `null`）。 */
-    fun tapOf(e: FilesLs.Entry): String? = feed.picks(listOf(e.row)).tap
+    fun tapOf(e: FilesLs.Entry): String? = feed.picks(listOf(e.row))?.tap
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -260,23 +262,23 @@ class FilesViewModel(
         typed: String,
     ) = write { ops.rename(it, entry.rel, typed) }
 
-    private val _batch = MutableStateFlow<BatchEvent?>(null)
+    private val _batch = MutableStateFlow<BatchLine?>(null)
 
     /** 底部浮卡画的那一组（在做 · 在问同名 · 断开 · 收场了还有没成的）；全成了 ⇒ `null`（结局句走 toast）。 */
-    val batch: StateFlow<BatchEvent?> = _batch.asStateFlow()
+    val batch: StateFlow<BatchLine?> = _batch.asStateFlow()
 
     private val _undos = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 4)
 
     /** 全成了、撤得了（改权限）：那一句 ＋ 那一组的编号（屏上 toast［撤销］）。 */
     val undos: SharedFlow<Pair<String, Long>> = _undos.asSharedFlow()
 
-    /** 这一屏起的那几组（别处起的不画；接回来的那几组 [BatchEvent.kept] 也画）。 */
+    /** 这一屏起的那几组（别处起的不画；接回来的那几组 [BatchLine.kept] 也画）。 */
     private val mine = mutableSetOf<Long>()
 
     /** 编号还没回到这里、核心已经交来的那一格（每组只留最后一格；编号一回来照它画）。 */
-    private val early = LinkedHashMap<Long, BatchEvent>()
+    private val early = LinkedHashMap<Long, BatchLine>()
 
-    private fun onBatch(e: BatchEvent) {
+    private fun onBatch(e: BatchLine) {
         if (e.id !in mine && !e.kept) {
             early[e.id] = e
             if (early.size > EARLY_KEPT) early.remove(early.keys.first())
@@ -287,13 +289,13 @@ class FilesViewModel(
     }
 
     /** 浮卡照这一格画（核心跑的那几组与这台下载那几组同一张）；全成了 ⇒ 结局句走 toast（撤得了带［撤销］）。 */
-    private fun show(e: BatchEvent) {
+    private fun show(e: BatchLine) {
         when {
-            e.phase == BatchEvent.ENDED && e.failed.isEmpty() -> {
+            e is BatchLine.Ended && e.failed.isEmpty() -> {
                 _batch.value = null
-                if (e.undo) _undos.tryEmit(e.said.orEmpty() to e.id) else _events.tryEmit(Notice(e.said.orEmpty()))
+                if (e.undo) _undos.tryEmit(e.said to e.id) else _events.tryEmit(Notice(e.said))
             }
-            e.phase == BatchEvent.DROPPED -> _batch.value = null
+            e is BatchLine.Dropped -> _batch.value = null
             else -> _batch.value = e
         }
     }
@@ -383,7 +385,12 @@ class FilesViewModel(
         val (dir, c) = _clash.value ?: return
         _clash.value = null
         val key = c.rows.firstOrNull()?.key ?: return
-        val onExists = feed.decided(listOf(key), a)?.get(key)?.takeIf { it != SKIP } ?: return
+        val onExists =
+            feed
+                .decided(listOf(key), a)
+                ?.get(key)
+                ?.takeIf { it != Decide.SKIP }
+                ?.wire ?: return
         landed(c.name, dir) { ops.commit(it, c.name, c.staged, onExists) }
     }
 
@@ -483,7 +490,7 @@ class FilesViewModel(
         /** 编号还没回来时先收着几组的那一格。 */
         const val EARLY_KEPT = 16
 
-        /** 那一项答了跳过（提交不收这个答）。 */
-        const val SKIP = "skip"
+        /** 核心那一行认不出（已报契约对不上）· 不在选择模式 ⇒ 什么都不给。 */
+        val NO_MENU = PhoneMenu(emptyList(), emptyList(), null)
     }
 }

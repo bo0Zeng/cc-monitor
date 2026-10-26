@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
 import com.ccmonitor.mobile.core.claude.link.wire.gen.RotPlate
 import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply

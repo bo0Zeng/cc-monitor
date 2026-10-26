@@ -24,8 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -41,13 +42,13 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 fun ConflictSheet(
     title: String,
     said: String?,
-    rows: List<BatchEvent.Clash>,
+    rows: List<ClashRow>,
     go: String?,
     onAnswer: (BatchAnswer?) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     var each by remember(rows) { mutableStateOf(false) }
-    val picks = remember(rows) { mutableStateMapOf<String, String>() }
+    val picks = remember(rows) { mutableStateMapOf<String, Decide>() }
     ModalBottomSheet(onDismissRequest = { onAnswer(null) }) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.lg).padding(bottom = tokens.spacing.lg),
@@ -63,7 +64,7 @@ fun ConflictSheet(
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
                                 c.answers.forEach { a ->
                                     FilterChip(
-                                        selected = (picks[c.key] ?: SKIP) == a,
+                                        selected = (picks[c.key] ?: Decide.SKIP) == a,
                                         onClick = { picks[c.key] = a },
                                         label = { Text(pickText(a)) },
                                     )
@@ -85,7 +86,7 @@ fun ConflictSheet(
                 } else {
                     // 按钮字是界面自己的骨架词（同桌面冲突框那几颗）；清单里没有一项给的答不画。
                     WHOLE.filter { a -> rows.any { a in it.answers } }.forEach { a ->
-                        SecondaryButton(onClick = { onAnswer(BatchAnswer.All(a)) }, danger = a == OVERWRITE) { Text(wholeText(a)) }
+                        SecondaryButton(onClick = { onAnswer(BatchAnswer.All(a)) }, danger = a == Decide.OVERWRITE) { Text(wholeText(a)) }
                     }
                 }
             }
@@ -93,22 +94,19 @@ fun ConflictSheet(
     }
 }
 
-private const val OVERWRITE = "overwrite"
-private const val SKIP = "skip"
-
 /** 整组那几颗的先后（跳过在前、覆盖在最后）。 */
-private val WHOLE = listOf(SKIP, "keep_both", OVERWRITE)
+private val WHOLE = listOf(Decide.SKIP, Decide.KEEP_BOTH, Decide.OVERWRITE)
 
-private fun wholeText(a: String): String =
+private fun wholeText(a: Decide): String =
     when (a) {
-        SKIP -> copyText("rsFilewinBatch.btn.skip")
-        OVERWRITE -> copyText("rsFilewinBatch.btn.overwrite")
-        else -> copyText("rsFilewinBatch.btn.keepBoth")
+        Decide.SKIP -> copyText("rsFilewinBatch.btn.skip")
+        Decide.OVERWRITE -> copyText("rsFilewinBatch.btn.overwrite")
+        Decide.KEEP_BOTH -> copyText("rsFilewinBatch.btn.keepBoth")
     }
 
-private fun pickText(a: String): String =
+private fun pickText(a: Decide): String =
     when (a) {
-        SKIP -> copyText("rsFilewinBatch.pick.skip")
-        OVERWRITE -> copyText("rsFilewinBatch.pick.overwrite")
-        else -> copyText("rsFilewinBatch.pick.keepBoth")
+        Decide.SKIP -> copyText("rsFilewinBatch.pick.skip")
+        Decide.OVERWRITE -> copyText("rsFilewinBatch.pick.overwrite")
+        Decide.KEEP_BOTH -> copyText("rsFilewinBatch.pick.keepBoth")
     }

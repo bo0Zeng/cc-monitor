@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.settings
 
 import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.AccountsSetDefault
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.MachinePrefs
 import com.ccmonitor.mobile.core.claude.link.QuotaRead
@@ -11,8 +10,10 @@ import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
 import com.ccmonitor.mobile.core.claude.link.wire.gen.PrefsReply
 import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
 import com.ccmonitor.mobile.core.claude.link.wire.gen.Usage
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
@@ -94,8 +95,9 @@ class MachineSettings(
         scope.launch {
             changes.collect { c ->
                 when (c.topic) {
-                    TOPIC_ACCOUNTS -> loadAccounts()
-                    TOPIC_QUOTA -> loadQuota()
+                    Topic.ACCOUNTS -> loadAccounts()
+                    Topic.QUOTA -> loadQuota()
+                    else -> Unit
                 }
             }
         }
@@ -219,8 +221,6 @@ class MachineSettings(
     companion object {
         private const val READ_MS = 15_000L
         private const val WRITE_MS = 20_000L
-        private const val TOPIC_ACCOUNTS = "accounts"
-        private const val TOPIC_QUOTA = "quota"
 
         /** 两行的名字（桌面「这台上的 cc-monitor」那两格同一份字）。 */
         fun tabLabel(kind: TabKind): String =

@@ -4,20 +4,8 @@
 //! 认 `Host` · `HostName` · `Port` · `User` · `IdentityFile`（键不分大小写；`Key value` 与 `Key=value` 都行）；忽略注释与空行；
 //! 别名里带通配（`*` `?` `!`）的那一块跳过；`Host a b` 多别名各出一条。不处理 `Include` · `ProxyJump` · `Match`。
 
-use serde::Serialize;
-
-/// 一个具体主机。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ConfigHost {
-    /// `Host` 别名（作标签）。
-    pub alias: String,
-    /// `HostName`（缺 ⇒ 别名）。
-    pub host_name: String,
-    pub port: u16,
-    pub user: Option<String>,
-    /// `IdentityFile` 原值（手机读不到那个文件，只按文件名去配已导入的钥匙）。
-    pub identity_file: Option<String>,
-}
+/// 一个具体主机（线上形住契约，Kotlin 读同一份生成的类）。
+pub use cmd_wire::phone::ConfigHost;
 
 /// 解析整段文本。
 pub fn parse(text: &str) -> Vec<ConfigHost> {

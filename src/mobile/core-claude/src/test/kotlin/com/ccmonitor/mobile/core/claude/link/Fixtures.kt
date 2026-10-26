@@ -83,3 +83,18 @@ internal object Fixtures {
     @Suppress("UNCHECKED_CAST")
     fun face(key: String): Map<String, Any?> = json("session-face.golden.json")[key] as? Map<String, Any?> ?: error("整份脸金样里没有 $key")
 }
+
+// 金样是 `Any` 形读进来的（[Json.obj]）：判据里往下取一格用这几样（生产代码照线上类型解，不手取）。
+
+fun Map<String, Any?>.str(key: String): String? = this[key] as? String
+
+fun Map<String, Any?>.num(key: String): Long? = (this[key] as? Number)?.toLong()
+
+@Suppress("UNCHECKED_CAST")
+fun Map<String, Any?>.obj(key: String): Map<String, Any?>? = this[key] as? Map<String, Any?>
+
+@Suppress("UNCHECKED_CAST")
+fun Map<String, Any?>.objs(key: String): List<Map<String, Any?>>? = (this[key] as? List<*>)?.map { it as Map<String, Any?> }
+
+/** 金样里该有的那一格没有 ⇒ 判据当场红。 */
+fun <T> T?.need(): T = this ?: error("金样里缺这一格")

@@ -1,8 +1,21 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineState
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchKeep
+import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CallEnd
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
+import com.ccmonitor.mobile.core.claude.link.wire.gen.DeployEnd
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LinkLine
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
 import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineStateKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Moved
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.claude.link.wire.gen.arr
+import com.ccmonitor.mobile.core.claude.link.wire.gen.dict
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +38,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）：
+ * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（生成的类照它解，缺一格就是两端契约对不上，不补默认值）。
  */
 interface ResidentCore {
     fun open(
@@ -91,22 +105,22 @@ interface ResidentCore {
 
     fun batchStop(id: Long)
 
-    /** 文件页那一问（`files-ls` 的原行，JSON 数组）⇒ 核心那一行（[PickMenu.of]）；[handle] 还没开 ⇒ 0（当断着）。 */
+    /** 文件页那一问（`files-ls` 的原行，JSON 数组）⇒ 核心那一行（[PhoneMenu]）；[handle] 还没开 ⇒ 0（当断着）。 */
     fun pickMenu(
         handle: Long,
         rows: String,
     ): String
 
-    /** 同名清单（JSON）⇒ 抽屉那几行（JSON 数组）。 */
+    /** 同名清单（JSON）⇒ 抽屉那几行（[ClashRow] 的 JSON 数组）。 */
     fun clashRows(data: String): String
 
     /** 几台搜内容的结果（`[{origin, reply}]`，JSON）⇒ 合好的那一份（[SearchMerge.of]）；读不动 ⇒ 空串。 */
     fun searchMerge(data: String): String
 
-    /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchEvent.of]）；读不动 ⇒ 空串。 */
+    /** 下载一组那几格（JSON）⇒ `batch` 那一形的一行（[BatchLine]）；读不动 ⇒ 空串。 */
     fun downloadEvent(want: String): String
 
-    /** 手机这一侧问的同名那一答（JSON；`null` ＝ 取消）⇒ [keys]（JSON 数组）每个键一格（JSON）。 */
+    /** 手机这一侧问的同名那一答（JSON；`null` ＝ 取消）⇒ [keys]（JSON 数组）每个键一格（键 ⇒ [Decide] 的 JSON）。 */
     fun answerOf(
         keys: String,
         answer: String?,
@@ -166,8 +180,8 @@ class ResidentFeed(
     /** 流上的 `line` 帧。满了 ⇒ 这里停收（核心那一侧跟着停读、SSH 窗口停发），不丢。 */
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
 
-    private val liveFlow = MutableSharedFlow<LiveFrame>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    override val live: SharedFlow<LiveFrame> = liveFlow.asSharedFlow()
+    private val liveFlow = MutableSharedFlow<LiveCard>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val live: SharedFlow<LiveCard> = liveFlow.asSharedFlow()
 
     private val fromFlow = MutableSharedFlow<WatchFrom>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val from: SharedFlow<WatchFrom> = fromFlow.asSharedFlow()
@@ -274,14 +288,14 @@ class ResidentFeed(
         }
     }
 
-    private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = BUFFER)
-    override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
+    private val batchFlow = MutableSharedFlow<BatchLine>(extraBufferCapacity = BUFFER)
+    override val batches: SharedFlow<BatchLine> = batchFlow.asSharedFlow()
 
     /** 接回来的那几组各自最后那一格（[resumed]）。 */
-    private val resumedLast = LinkedHashMap<Long, BatchEvent>()
+    private val resumedLast = LinkedHashMap<Long, BatchLine>()
 
-    override fun resumed(): List<BatchEvent> =
-        synchronized(resumedLast) { resumedLast.values.toList().also { resumedLast.values.removeAll(BatchEvent::over) } }
+    override fun resumed(): List<BatchLine> =
+        synchronized(resumedLast) { resumedLast.values.toList().also { resumedLast.values.removeAll { e -> e.over } } }
 
     override suspend fun batch(want: Map<String, Any?>): Long {
         ensure()
@@ -292,32 +306,36 @@ class ResidentFeed(
     override fun batchAnswer(
         id: Long,
         answer: BatchAnswer?,
-    ) = core.batchAnswer(id, BatchAnswer.wire(answer)?.let(Json::args))
+    ) = core.batchAnswer(id, answer?.let { Wire.line(it) })
 
     override fun batchStop(id: Long) = core.batchStop(id)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun picks(rows: List<Any?>): PickMenu {
+    override fun picks(rows: List<Any?>): PhoneMenu? {
         ensure()
         val h = if (opened.isCompleted) opened.getCompleted() else 0L
-        return PickMenu.of(core.pickMenu(h, Json.line(rows)))
+        val line = core.pickMenu(h, Json.line(rows))
+        return Wire.read<PhoneMenu>(line) ?: null.also { broke("pick_menu", line) }
     }
 
-    override fun clashes(data: Any?): List<BatchEvent.Clash> =
-        (Json.value(core.clashRows(Json.line(data))) as? List<*>).orEmpty().mapNotNull { m ->
-            @Suppress("UNCHECKED_CAST")
-            (m as? Map<String, Any?>)?.let(BatchEvent.Clash::of)
-        }
+    override fun clashes(data: Any?): List<ClashRow> {
+        val line = core.clashRows(Json.line(data))
+        return Wire.read(arr(ClashRow.ADAPTER), line) ?: emptyList<ClashRow>().also { broke("clash_rows", line) }
+    }
 
-    @Suppress("UNCHECKED_CAST")
     override fun decided(
         keys: List<String>,
         answer: BatchAnswer?,
-    ): Map<String, String>? = Json.value(core.answerOf(Json.line(keys), BatchAnswer.wire(answer)?.let(Json::args))) as? Map<String, String>
+    ): Map<String, Decide>? {
+        val line = core.answerOf(Json.line(keys), answer?.let { Wire.line(it) })
+        // 取消 ⇒ 核心回 `null`。
+        if (line == "null") return null
+        return Wire.read(dict(Decide.ADAPTER), line) ?: null.also { broke("answer_of", line) }
+    }
 
-    override fun downloadEvent(want: Map<String, Any?>): BatchEvent? {
-        @Suppress("UNCHECKED_CAST")
-        return (Json.value(core.downloadEvent(Json.args(want))) as? Map<String, Any?>)?.let(BatchEvent::of)
+    override fun downloadEvent(want: Map<String, Any?>): BatchLine? {
+        val line = core.downloadEvent(Json.args(want))
+        return Wire.read<BatchLine>(line) ?: null.also { broke("download", line) }
     }
 
     override fun hold(sid: String): AutoCloseable {
@@ -340,7 +358,7 @@ class ResidentFeed(
         body: String,
     ) {
         when (kind) {
-            "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
+            "state" -> Wire.read<LinkLine>(body)?.let(::onState) ?: broke(kind, body)
             "frame" -> onFrameLine(body)
             // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
             "unread" -> broke("frame", body)
@@ -355,9 +373,9 @@ class ResidentFeed(
         }
     }
 
-    /** `state` 那一行：通没通（`state` · `epoch`）＋ 那台的状态成品（`machine`，按线上类型装；部署走到哪一步也在它里面）。 */
-    private fun onState(m: Map<String, Any?>) {
-        val machine = Wire.bind<MachineState>(m["machine"]) ?: return broke("state", m.toString())
+    /** `state` 那一行：通没通（[LinkLine] 那几支）＋ 那台的状态成品（部署走到哪一步也在它里面）。 */
+    private fun onState(line: LinkLine) {
+        val machine = line.machine
         val said = Said(machine.said, machine.detail.orEmpty())
         val busy =
             when (machine.state) {
@@ -366,18 +384,16 @@ class ResidentFeed(
                 MachineStateKind.CONNECTING -> Busy(machine.said, bar = false)
                 else -> null
             }
-        when (m.str("state")) {
-            "connecting" -> {
+        when (line) {
+            is LinkLine.Connecting -> {
                 tableFlow.value = SessionTable()
                 stateFlow.value = LinkState.Connecting
             }
-            "up" -> {
-                val e = m.num("epoch") ?: 0L
-                if (e != epochFlow.value) epochFlow.value = e
+            is LinkLine.Up -> {
+                if (line.epoch != epochFlow.value) epochFlow.value = line.epoch
                 stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes, busy)
             }
-            "down" -> stateFlow.value = LinkState.Down(said, machine.fixes, busy)
-            else -> broke("state", m.toString())
+            is LinkLine.Down -> stateFlow.value = LinkState.Down(said, machine.fixes, busy)
         }
         // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。
         val now = stateFlow.value
@@ -391,15 +407,17 @@ class ResidentFeed(
     private suspend fun onFrame(frame: Map<String, Any?>) {
         val next = tableFlow.value.step(frame, onBreak)
         tableFlow.value = next
-        Changed.of(frame)?.let(changedFlow::tryEmit)
-        if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
+        when (frame["kind"]) {
+            CHANGED -> Wire.bind<Changed>(frame)?.let(changedFlow::tryEmit) ?: broke("frame", frame.toString())
+            LIVE_CARD -> Wire.bind<LiveCard>(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
+        }
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
     }
 
     /** `batch` 那一行落进 [batches]（接回来的那几组另记最后那一格：收场时有人在看 ⇒ 算交过）；认不出 ⇒ 报一次契约对不上。 */
     private suspend fun onBatchLine(body: String) {
-        val e = Json.obj(body)?.let(BatchEvent::of) ?: return broke("batch", body)
+        val e = Wire.read<BatchLine>(body) ?: return broke("batch", body)
         if (e.kept) {
             synchronized(resumedLast) {
                 if (e.over && batchFlow.subscriptionCount.value > 0) resumedLast.remove(e.id) else resumedLast[e.id] = e
@@ -410,57 +428,47 @@ class ResidentFeed(
 
     /** `batch_keep {ticket, plan}`：那一串原样落盘；`plan` 是 `null` ⇒ 删。 */
     private suspend fun onKeepLine(body: String) {
-        val m = Json.obj(body) ?: return broke("batch_keep", body)
-        val ticket = m.str("ticket") ?: return broke("batch_keep", body)
-        when (val plan = m.str("plan")) {
-            null -> kept.drop(ticket)
-            else -> kept.put(ticket, plan)
+        val k = Wire.read<BatchKeep>(body) ?: return broke("batch_keep", body)
+        when (val plan = k.plan) {
+            null -> kept.drop(k.ticket)
+            else -> kept.put(k.ticket, plan)
         }
     }
 
     /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */
     private fun onDeployLine(body: String) {
-        Json.obj(body)?.let(::deployOf)?.let { deployFlow.value = it } ?: broke("deploy", body)
+        deployFlow.value =
+            when (val e = Wire.read<DeployEnd>(body) ?: return broke("deploy", body)) {
+                is DeployEnd.Done -> Deploying.Done(e.text)
+                is DeployEnd.Failed -> Deploying.Failed(Said(e.text, e.detail))
+            }
     }
 
-    /** `deploy` 那一行 ⇒ 结局 · 失败；认不出 ⇒ `null`。 */
-    private fun deployOf(m: Map<String, Any?>): Deploying? {
-        val text = m.str("text") ?: return null
-        return when {
-            m.str("done") != null -> Deploying.Done(text)
-            m.str("failed") != null -> Deploying.Failed(Said(text, m.str("detail").orEmpty()))
-            else -> null
-        }
+    /** `watch_from [{sid, path, seq}]`：每一条从哪一行接着读。 */
+    private fun onWatchFrom(body: String) {
+        Wire.read(arr(WatchFrom.ADAPTER), body)?.forEach { fromFlow.tryEmit(it) } ?: broke("watch_from", body)
     }
 
     /** `moved {call, done, total}`：交给在等那一趟的那一口（总数不知道 ⇒ `-1`）。 */
-    private fun onWatchFrom(body: String) {
-        watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke("watch_from", body)
-    }
-
     private fun onMoved(body: String) {
-        val m = Json.obj(body) ?: return broke("moved", body)
-        val id = m.num("call") ?: return broke("moved", body)
-        moving[id]?.invoke(m.num("done") ?: 0L, m.num("total") ?: -1L)
+        val m = Wire.read<Moved>(body) ?: return broke("moved", body)
+        moving[m.call]?.invoke(m.done, m.total ?: -1L)
     }
 
+    /** `reply` 那一行（[CallEnd] 那几支）落到在等那一问；那一行本身认不出 ⇒ 报一次契约对不上（在等的那一问到期限当断了）。 */
     private fun onReply(body: String) {
-        val m = Json.obj(body) ?: return broke("reply", body)
-        val id = m.num("call") ?: return broke("reply", body)
+        val e = Wire.read<CallEnd>(body) ?: return broke("reply", body)
         val reply =
-            when {
-                m.bool("ok") == true -> Reply.Ok(m["data"])
-                m.bool("ok") == false ->
-                    m.str("code")?.let { code -> Reply.Failed(CoreFailure(code, m.str("message").orEmpty(), m.str("detail").orEmpty(), m["data"])) }
-                        ?: Reply.Unreadable(body)
-                m.bool("timeout") == true -> Reply.TimedOut
-                m.bool("cancelled") == true -> Reply.Cancelled
-                m.bool("down") == true -> Reply.LinkDown
-                // 核心按 `cmd-wire` 那一份类型解回包没解开（形状对不上）：原样带回，详情里是 serde 那一句。
-                m.bool("unreadable") == true -> Reply.Unreadable(body)
-                else -> Reply.Unreadable(body)
+            when (e) {
+                is CallEnd.Ok -> Reply.Ok(e.data.value)
+                is CallEnd.Failed -> Reply.Failed(CoreFailure(e.code, e.message, e.detail, e.data.value))
+                is CallEnd.Timeout -> Reply.TimedOut
+                is CallEnd.Cancelled -> Reply.Cancelled
+                is CallEnd.Down -> Reply.LinkDown
+                // 传文件那一趟的回包核心照类型解不开（形状对不上）：原样带回，详情里是 serde 那一句。
+                is CallEnd.Unreadable -> Reply.Unreadable(body)
             }
-        replies.computeIfAbsent(id) { CompletableDeferred() }.complete(reply)
+        replies.computeIfAbsent(e.call) { CompletableDeferred() }.complete(reply)
     }
 
     private companion object {
@@ -474,10 +482,8 @@ class ResidentFeed(
         /** 装后端之前等 SSH 那层交到核心，最多等这么久。 */
         const val SSH_WAIT_MS = 15_000L
 
-        /** `watch_from` 那一段：`[{sid, path, seq}]`。 */
-        fun watchFromOf(body: String): List<WatchFrom>? =
-            Json.obj("""{"from":$body}""")?.let { m ->
-                decoding { m.objs("from").need().map { WatchFrom(it.str("sid").need(), it.str("path").need(), it.num("seq").need()) } }
-            }
+        /** 流上 `changed` · `live_card` 那两种帧的 `kind`。 */
+        const val CHANGED = "changed"
+        const val LIVE_CARD = "live_card"
     }
 }

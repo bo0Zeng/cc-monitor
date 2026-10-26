@@ -1,11 +1,12 @@
 package com.ccmonitor.mobile.ui.settings
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
 import com.ccmonitor.mobile.core.claude.link.wire.gen.FailOrPlainOrWarn
 import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -95,10 +96,10 @@ class MachineSettingsTest {
         runTest {
             val l = link()
             val (_, changes) = open(l)
-            changes.emit(Changed("quota", null))
+            changes.emit(Changed(Topic.QUOTA, null))
             runCurrent()
             assertEquals(listOf(1, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
-            changes.emit(Changed("accounts", null))
+            changes.emit(Changed(Topic.ACCOUNTS, null))
             runCurrent()
             assertEquals(listOf(2, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
             l.epoch.value = 1
@@ -121,7 +122,7 @@ class MachineSettingsTest {
             val (m, changes) = open(link(quotaReply = { answer() }))
             val held = m.state.value.quota
             answer = { Reply.TimedOut }
-            changes.emit(Changed("quota", null))
+            changes.emit(Changed(Topic.QUOTA, null))
             runCurrent()
             assertEquals(held, m.state.value.quota)
             assertEquals(
@@ -130,7 +131,7 @@ class MachineSettingsTest {
                     ?.text,
             )
             answer = { Reply.Ok(QuotaGolden.reply("订阅 · 快满")) }
-            changes.emit(Changed("quota", null))
+            changes.emit(Changed(Topic.QUOTA, null))
             runCurrent()
             assertEquals(QuotaGolden.reply("订阅 · 快满")["verdict"].let { (it as Map<*, *>)["text"] }, (m.state.value.quota as Fetched.Got).value.verdict?.text)
             assertNull(m.state.value.quotaRereadFailed)

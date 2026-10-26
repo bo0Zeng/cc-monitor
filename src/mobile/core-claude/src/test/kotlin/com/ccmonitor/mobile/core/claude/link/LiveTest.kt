@@ -1,5 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LivePhase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -37,21 +40,22 @@ class LiveTest {
         i: Long = 0,
     ) = frame(card, n, mapOf("op" to "text", "i" to i.toDouble(), "s" to s))
 
-    private fun LiveBoard.feed(vararg fs: Map<String, Any?>) = fs.map { apply(LiveFrame.of(it)!!) }
+    private fun card(f: Map<String, Any?>): LiveCard = Wire.bind<LiveCard>(f)!!
+
+    private fun LiveBoard.feed(vararg fs: Map<String, Any?>) = fs.map { apply(card(it)) }
 
     @Test
-    fun `帧解得出五种 op；不是活卡 · 缺格 · 认不出的 op ⇒ null`() {
-        assertEquals(LiveFrame.Op.Awaiting, LiveFrame.of(frame(1, 1, mapOf("op" to "awaiting")))?.op)
-        assertEquals(LiveFrame.Op.Close, LiveFrame.of(frame(1, 1, mapOf("op" to "close", "why" to "record")))?.op)
-        assertEquals(LiveFrame.Op.Text(0, "字"), LiveFrame.of(text(1, 1, "字"))?.op)
-        assertEquals(LiveFrame.Op.Block(2, "tool", "Bash"), LiveFrame.of(frame(1, 1, mapOf("op" to "block", "i" to 2.0, "block" to "tool", "tool" to "Bash")))?.op)
-        val o = LiveFrame.of(open(7, "你好", run = "a1"))!!
-        assertEquals("a1", o.run)
-        assertEquals(LiveFrame.Op.Open("r7", awaiting = false, clipped = false, blocks = listOf(LiveBlock("text", "你好", null))), o.op)
-        assertNull(LiveFrame.of(mapOf("kind" to "line", "sid" to "s1")))
-        assertNull("缺 n", LiveFrame.of(mapOf("kind" to "live_card", "sid" to "s1", "card" to 1.0, "op" to "awaiting")))
-        assertNull("认不出的 op", LiveFrame.of(frame(1, 1, mapOf("op" to "grow"))))
-        assertNull("认不出的相", LiveFrame.of(frame(1, 0, mapOf("op" to "open", "rid" to "r", "phase" to "x", "clipped" to false, "blocks" to emptyList<Any>()))))
+    fun `帧照生成的类解出五种 op；缺格 · 认不出的 op · 认不出的相 ⇒ 装不进`() {
+        assertTrue(card(frame(1, 1, mapOf("op" to "awaiting"))) is LiveCard.Awaiting)
+        assertTrue(card(frame(1, 1, mapOf("op" to "close", "why" to "record"))) is LiveCard.Close)
+        assertEquals("字", (card(text(1, 1, "字")) as LiveCard.Text).s)
+        val b = card(frame(1, 1, mapOf("op" to "block", "i" to 2.0, "block" to "tool", "tool" to "Bash"))) as LiveCard.Block
+        assertEquals(Triple(2L, "tool", "Bash"), Triple(b.i, b.block.wire, b.tool))
+        val o = card(open(7, "你好", run = "a1")) as LiveCard.Open
+        assertEquals(Triple("a1", "r7", LivePhase.STREAMING), Triple(o.run, o.rid, o.phase))
+        assertNull("缺 n", Wire.bind<LiveCard>(mapOf("kind" to "live_card", "sid" to "s1", "card" to 1.0, "op" to "awaiting")))
+        assertNull("认不出的 op", Wire.bind<LiveCard>(frame(1, 1, mapOf("op" to "grow"))))
+        assertNull("认不出的相", Wire.bind<LiveCard>(frame(1, 0, mapOf("op" to "open", "rid" to "r", "phase" to "x", "clipped" to false, "blocks" to emptyList<Any>()))))
     }
 
     @Test
@@ -79,7 +83,7 @@ class LiveTest {
         val b = LiveBoard()
         b.feed(open(1, "a"), text(1, 2, "跳号"))
         assertEquals(0, b.size)
-        assertFalse("没开过的卡来的长帧不认", b.apply(LiveFrame.of(text(1, 3, "x"))!!))
+        assertFalse("没开过的卡来的长帧不认", b.apply(card(text(1, 3, "x"))))
         b.feed(open(1, "整张", n = 4))
         assertEquals(
             "整张",

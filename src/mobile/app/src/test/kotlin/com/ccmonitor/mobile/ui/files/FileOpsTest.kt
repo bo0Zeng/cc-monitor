@@ -1,11 +1,12 @@
 package com.ccmonitor.mobile.ui.files
 
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
@@ -60,7 +61,7 @@ class FileOpsTest {
             val ops = FileOps(link) { "box" }
             val c = ops.upload(dir, "up.bin", { 17 }) { _, _ -> }.getOrThrow() as FileOps.Upload.Clash
             assertEquals("同名 1 项", c.said)
-            assertEquals(listOf(BatchEvent.Clash("0", "up.bin", "3 字节", listOf("overwrite", "keep_both"))), c.rows)
+            assertEquals(listOf(ClashRow("0", "up.bin", "3 字节", listOf(Decide.OVERWRITE, Decide.KEEP_BOTH), null)), c.rows)
             assertEquals(FileOps.Upload.Done, ops.commit(dir, c.name, c.staged, "keep_both").getOrThrow())
             assertEquals("块不重送", 1, link.transfers.size)
             val again = link.calls("files-commit-upload").last()!!

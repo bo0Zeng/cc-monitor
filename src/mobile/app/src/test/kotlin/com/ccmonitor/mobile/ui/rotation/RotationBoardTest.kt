@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.Rotation
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
 import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFrom
 import com.ccmonitor.mobile.core.claude.link.wire.gen.RotHint
 import com.ccmonitor.mobile.core.copy.copyText

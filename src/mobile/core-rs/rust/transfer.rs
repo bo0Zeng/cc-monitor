@@ -6,6 +6,7 @@
 
 use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
+use cmd_wire::phone::{CallEnd, Moved};
 use cmd_wire::files::{Call, WirePath};
 use resident_client::client::CallError;
 use std::collections::HashMap;
@@ -46,8 +47,10 @@ pub fn typed<C: Call>(
 ) -> Result<C::Reply, String> {
     match got {
         Ok(v) => serde_json::from_value(v.unwrap_or(serde_json::Value::Null)).map_err(|e| {
-            serde_json::json!({ "call": id, "unreadable": true, "detail": format!("{}: {e}", C::NAME) })
-                .to_string()
+            line(&CallEnd::Unreadable {
+                call: id,
+                detail: format!("{}: {e}", C::NAME),
+            })
         }),
         Err(e) => Err(resident::reply_json(id, machine, C::NAME, Err(e))),
     }
@@ -109,6 +112,11 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// 交 Kotlin 的那一行（[`CallEnd`]）。
+fn line(v: &CallEnd) -> String {
+    serde_json::to_string(v).unwrap_or_default()
+}
+
 /// 撤问答编号 `id` 那一趟；不在走 ⇒ `false`。
 pub fn halt(id: i64) -> bool {
     lock(halts()).get(&id).map(|h| h.set()).is_some()
@@ -116,13 +124,18 @@ pub fn halt(id: i64) -> bool {
 
 /// 不看这台了（流收了）⇒ 下一块不送。
 fn cancelled(id: i64) -> String {
-    serde_json::json!({ "call": id, "cancelled": true }).to_string()
+    line(&CallEnd::Cancelled { call: id })
 }
 
 /// 本机那一份读 / 写不动：那一句 ＋ 系统原话进详情。
 fn local(id: i64, said: String, e: &std::io::Error) -> String {
-    serde_json::json!({ "call": id, "ok": false, "code": "io_failed", "message": said, "detail": e.to_string() })
-        .to_string()
+    line(&CallEnd::Failed {
+        call: id,
+        code: "io_failed".into(),
+        message: said,
+        detail: e.to_string(),
+        data: None,
+    })
 }
 
 /// 撤与进度：流收了 ⇒ 撤；每一块报一次 `moved`。
@@ -140,7 +153,12 @@ impl Watch for Moves {
         (self.on_event)(
             self.h,
             "moved",
-            serde_json::json!({ "call": self.id, "done": done, "total": total }).to_string(),
+            serde_json::to_string(&Moved {
+                call: self.id,
+                done,
+                total,
+            })
+            .unwrap_or_default(),
         );
     }
 }
@@ -174,11 +192,10 @@ pub async fn stage_with<A: Ask<Fail = String>>(
     )
     .await
     {
-        Ok(s) => serde_json::json!({
-            "call": id, "ok": true,
-            "data": { "key": s.key, "chunks": s.chunks, "bytes": s.bytes, "sha256": s.sha256 },
-        })
-        .to_string(),
+        Ok(s) => line(&CallEnd::Ok {
+            call: id,
+            data: serde_json::json!({ "key": s.key, "chunks": s.chunks, "bytes": s.bytes, "sha256": s.sha256 }),
+        }),
         Err(line) => line,
     }
 }
@@ -214,7 +231,10 @@ pub async fn pull_with<A: Ask<Fail = String>>(
 ) -> String {
     let mut sink = ToFile { file, id, shown };
     match chunk_core::pull(ask, path, &mut sink, watch, || cancelled(id)).await {
-        Ok(n) => serde_json::json!({ "call": id, "ok": true, "data": { "bytes": n } }).to_string(),
+        Ok(n) => line(&CallEnd::Ok {
+            call: id,
+            data: serde_json::json!({ "bytes": n }),
+        }),
         Err(line) => line,
     }
 }
@@ -412,8 +432,8 @@ mod tests {
         ));
         let v = json(&line);
         assert_eq!(
-            (v["call"].as_i64(), v["ok"].as_bool()),
-            (Some(3), Some(true)),
+            (v["call"].as_i64(), v["end"].as_str()),
+            (Some(3), Some("ok")),
             "{v}"
         );
         assert_eq!(v["data"]["key"], key.as_str());
@@ -456,8 +476,8 @@ mod tests {
             &mut Seen::default(),
         )));
         assert_eq!(
-            (v["ok"].as_bool(), v["code"].as_str(), v["message"].as_str()),
-            (Some(false), Some("refused"), Some("那台拒了"))
+            (v["end"].as_str(), v["code"].as_str(), v["message"].as_str()),
+            (Some("failed"), Some("refused"), Some("那台拒了"))
         );
 
         let v = json(&run(stage_with(
@@ -514,10 +534,10 @@ mod tests {
         assert_eq!(
             (
                 v["call"].as_i64(),
-                v["ok"].as_bool(),
+                v["end"].as_str(),
                 v["data"]["bytes"].as_u64()
             ),
-            (Some(8), Some(true), Some(file.len() as u64))
+            (Some(8), Some("ok"), Some(file.len() as u64))
         );
         assert_eq!(out, file);
         assert_eq!(
@@ -604,7 +624,7 @@ mod tests {
                 });
             assert_eq!(
                 json(&line),
-                serde_json::json!({"call": 11, "cancelled": true})
+                serde_json::json!({"call": 11, "end": "cancelled"})
             );
             assert_eq!(out.len(), chunk_core::CHUNK, "撤之前写下的只有第一块");
         }
@@ -628,8 +648,8 @@ mod tests {
             .unwrap_err();
         let v = json(&e);
         assert_eq!(
-            (v["call"].as_i64(), v["unreadable"].as_bool()),
-            (Some(9), Some(true))
+            (v["call"].as_i64(), v["end"].as_str()),
+            (Some(9), Some("unreadable"))
         );
         assert!(v["detail"]
             .as_str()

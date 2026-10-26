@@ -78,7 +78,7 @@ data class SessionTable(
         frame: Map<String, Any?>,
         onBreak: (String) -> Unit,
     ): SessionTable {
-        val kind = frame.str("kind")
+        val kind = frame["kind"]
         val folded: SessionTable? =
             when (kind) {
                 "session_added" -> Wire.bind<SessionAdded>(frame)?.let(::added)
