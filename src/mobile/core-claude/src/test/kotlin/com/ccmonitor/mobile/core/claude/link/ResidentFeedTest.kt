@@ -3,12 +3,12 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.HiddenNow
 import com.ccmonitor.mobile.core.wire.gen.LiveCard
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
-import com.ccmonitor.mobile.core.wire.gen.Topic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
@@ -449,15 +449,20 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `changed 帧出成主题 ＋ 键（出口据此重问那一份）；别的帧不出`() =
+    fun `changed 帧按主题出成那一臂、体是那一臂的类型；缺那一臂的必填格 ⇒ 不出、报契约对不上；别的帧不出`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            val f = feed(core)
+            val breaks = mutableListOf<String>()
+            val f = feed(core, onBreak = { breaks += it })
             val got = mutableListOf<Changed>()
             backgroundScope.launch { f.changed.collect { got += it } }
-            core.emit("frame", """{"kind":"changed","topic":"needs","key":"s1"}""")
+            core.emit("frame", """{"kind":"changed","topic":"rotation","key":"s1"}""")
+            core.emit("frame", """{"kind":"changed","topic":"session_hidden","key":"s2","body":{"hidden":null}}""")
+            core.emit("frame", """{"kind":"changed","topic":"history_list"}""")
+            core.emit("frame", """{"kind":"changed","topic":"needs"}""")
             core.emit("frame", """{"kind":"sessions_replayed"}""")
-            assertEquals(listOf(Changed(Topic.NEEDS, "s1")), got)
+            assertEquals(listOf(Changed.Rotation("s1"), Changed.SessionHidden("s2", HiddenNow(null)), Changed.HistoryList), got)
+            assertEquals(1, breaks.size)
         }
 
     @Test

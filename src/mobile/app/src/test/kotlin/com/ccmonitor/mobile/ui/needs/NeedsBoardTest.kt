@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
-import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.needs.NeedsDesk
@@ -136,16 +135,16 @@ class NeedsBoardTest {
             val a = Machine(listOf(session("a1")))
             val b = Machine(listOf())
             val board = boardOf("a" to a, "b" to b)
-            for (topic in listOf(Topic.NEEDS, Topic.PLAN, Topic.MANUAL)) {
-                a.pushes.emit(Changed(topic, null))
+            for (c in listOf(Changed.Needs("a1"), Changed.Plan("/w"), Changed.Manual)) {
+                a.pushes.emit(c)
                 settle()
             }
-            a.pushes.emit(Changed(Topic.TASKS, null))
+            a.pushes.emit(Changed.Tasks("a1"))
             settle()
             assertEquals(4, a.asked("sessions-needs"))
             assertEquals(1, b.asked("sessions-needs"))
             b.unreadable = "账号库无法解析"
-            b.pushes.emit(Changed(Topic.MANUAL, null))
+            b.pushes.emit(Changed.Manual)
             settle()
             val ov = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
             assertTrue(ov.uncertain)

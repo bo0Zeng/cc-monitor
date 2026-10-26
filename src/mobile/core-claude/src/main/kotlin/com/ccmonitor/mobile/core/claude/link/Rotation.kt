@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.RotStrategyId
 import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
-import com.ccmonitor.mobile.core.wire.gen.Topic
 
 /*
  * 轮换（第五版）那几条命令（`IPC-COMMANDS.md` 各节，桌面 `rot-mount.ts` 同一套）：手机只拼入参、解成品。
@@ -42,10 +41,6 @@ object Rotation {
     const val RENAME = "rotation-strategy-rename"
     const val DELETE = "rotation-strategy-delete"
     const val TZ = "rotation-strategy-tz"
-
-    /** 推送主题：这个会话的轮换（`key` ＝ sid）· 这台的策略目录。 */
-    val TOPIC = Topic.ROTATION
-    val TOPIC_STRATEGIES = Topic.ROTATION_STRATEGIES
 
     fun view(
         where: RotWhere,

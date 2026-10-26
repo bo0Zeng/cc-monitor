@@ -22,9 +22,6 @@ data class NeedsPick(
 object NeedsAnswer {
     const val COMMAND: String = "needs-answer"
 
-    /** 推送 `changed` 的主题：某条会话挂着的待答请求变了（挂上 · 撤掉 · 答掉），键是 sid。 */
-    const val TOPIC: String = "needs"
-
     /** 入参：[note] · [picks] 只在给了时才交（提问那一种选 `answer` 时每题都交）。 */
     fun args(
         sid: String,
