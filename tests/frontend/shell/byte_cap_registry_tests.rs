@@ -1239,7 +1239,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "硬报错",
     ),
     (
-        "src/backend/history/live.rs",
+        "src/backend/history/live_table.rs",
         "MAX_SESSION_FILE_BYTES",
         "读单个 `sessions/<PID>.json`",
         "跳过+说清",
