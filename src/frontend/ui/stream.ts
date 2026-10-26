@@ -43,6 +43,8 @@ export class MessageStream {
   private resizeObserver: ResizeObserver;
   private scrollHandler: () => void;
   private disposed = false;
+  /** 流自己上一次写 `scrollTop` 后读回的值；下一次 `scroll` 用掉（见 scroll 处理）。 */
+  private ownTop: number | null = null;
 
   constructor(root: HTMLElement) {
     this.scrollEl = root;
@@ -53,6 +55,12 @@ export class MessageStream {
 
     this.scrollHandler = () => {
       if (this.parked) return; // 收起那一下的 scroll：读数是假的，粘不粘底照切走那一刻的
+      // 自己写 scrollTop 引来的那一次：scroll 是下一帧才派发的，期间卡片可能又长高了（一帧里先跑 scroll、后跑 RO）——
+      // 按此刻的几何重判会把「自己贴完底、内容又长了」当成人往上翻，解开粘底、流停在离底处（同一份会话两种样子）。
+      // 粘底只由人的滚动改：scrollTop 还是写完读回的那个值 ⇒ 不是人动的，不判。
+      const own = this.ownTop;
+      this.ownTop = null;
+      if (own !== null && this.scrollEl.scrollTop === own) return;
       const distFromBottom =
         this.scrollEl.scrollHeight -
         this.scrollEl.scrollTop -
@@ -168,7 +176,10 @@ export class MessageStream {
     // 已把 scrollTop 维持在底部，这里就不再每帧 scrollTop=scrollHeight 重钉 —— 那会在
     // HiDPI 分数像素布局下因整数 scrollHeight 与分数布局的舍入误差每帧不同，整块内容 ±0.5px 抖。
     if (el.scrollHeight - el.clientHeight - el.scrollTop > 1) {
+      const before = el.scrollTop;
       el.scrollTop = el.scrollHeight;
+      // 真挪了才会来 scroll：没挪就不记（记了会一直挂着，吞掉之后人停在同一处的那一次）
+      if (el.scrollTop !== before) this.ownTop = el.scrollTop;
     }
   }
 
