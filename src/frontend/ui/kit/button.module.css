@@ -22,6 +22,11 @@
       border-color var(--dur-press);
   }
 
+  /* 上面写了 display ⇒ 盖过浏览器自带的 `[hidden]`；藏起来的按钮要在这里收掉。 */
+  .btnButton[hidden] {
+    display: none;
+  }
+
   .btnButton[data-size="compact"] {
     height: var(--control-h-compact);
     padding: 0 var(--control-pad-x-compact);

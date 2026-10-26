@@ -13,6 +13,7 @@ import { agentOnline, readInbox, readRoster, sendMessage, type BusList } from ".
 import { LOCAL_ORIGIN } from "../backend-policy";
 
 import { copyText } from "../copy-table";
+import { button } from "../kit/button";
 import { sayFailure } from "../kit/detail";
 import { morph } from "../kit/morph";
 
@@ -53,11 +54,8 @@ export class CcBusSection {
     this.originSel.className = "settings-input cc-bus-origin";
     row.appendChild(this.originSel);
 
-    this.readBtn = document.createElement("button");
-    this.readBtn.type = "button";
-    this.readBtn.className = "settings-btn cc-bus-read";
-    this.readBtn.textContent = copyText("ccBus.build.read");
-    this.readBtn.addEventListener("click", () => void this.reload());
+    this.readBtn = button({ label: copyText("ccBus.build.read"), onClick: () => void this.reload() });
+    this.readBtn.classList.add("cc-bus-read");
     row.appendChild(this.readBtn);
 
     // 装 cc-bus 不在这里：它是扩展页里的一行（装到哪台、钩子装了没都在那儿）。
@@ -166,11 +164,8 @@ export class CcBusSection {
     stateEl.textContent = copyText("ccBus.row.onlineUnknown");
     row.appendChild(stateEl);
 
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "settings-btn cc-bus-check";
-    btn.textContent = copyText("ccBus.row.check");
-    btn.addEventListener("click", () => void this.checkOne(a.id, stateEl, btn));
+    const btn = button({ label: copyText("ccBus.row.check"), onClick: () => void this.checkOne(a.id, stateEl, btn) });
+    btn.classList.add("cc-bus-check");
     row.appendChild(btn);
 
     // 收信 ＋ 发消息：都是按需一次往返，不订阅、不轮询。
@@ -178,11 +173,8 @@ export class CcBusSection {
     detail.className = "cc-bus-detail";
     row.appendChild(detail);
 
-    const inboxBtn = document.createElement("button");
-    inboxBtn.type = "button";
-    inboxBtn.className = "settings-btn cc-bus-inbox";
-    inboxBtn.textContent = copyText("ccBus.row.inbox");
-    inboxBtn.addEventListener("click", () => void this.loadInbox(a.id, detail, inboxBtn));
+    const inboxBtn = button({ label: copyText("ccBus.row.inbox"), onClick: () => void this.loadInbox(a.id, detail, inboxBtn) });
+    inboxBtn.classList.add("cc-bus-inbox");
     row.appendChild(inboxBtn);
 
     const msg = document.createElement("input");
@@ -192,11 +184,8 @@ export class CcBusSection {
     msg.placeholder = copyText("ccBus.row.messageHint");
     row.appendChild(msg);
 
-    const sendBtn = document.createElement("button");
-    sendBtn.type = "button";
-    sendBtn.className = "settings-btn cc-bus-send";
-    sendBtn.textContent = copyText("ccBus.row.send");
-    sendBtn.addEventListener("click", () => void this.sendTo(a.id, msg, detail, sendBtn));
+    const sendBtn = button({ label: copyText("ccBus.row.send"), onClick: () => void this.sendTo(a.id, msg, detail, sendBtn) });
+    sendBtn.classList.add("cc-bus-send");
     row.appendChild(sendBtn);
 
     return row;
