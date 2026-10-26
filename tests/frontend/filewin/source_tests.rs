@@ -1280,6 +1280,40 @@ fn the_link_stream_tells_a_gone_monitor_apart_from_a_reconnecting_machine() {
     );
 }
 
+/// 那台通不通读本机后端那台的成品（`changed/machine`，`key` ＝ 那台的名字）：别台只认说它的那一格、照它的状态画；
+/// 本机后端那一条看得见 ⇒ 本机那台连着、不替别台说；看不见 ⇒ 两边都跟着断。期望手写。
+#[test]
+fn a_machines_link_is_read_from_its_state_product() {
+    use comms_inward::chan::wire::{Body, HopFault, HopId, Item};
+    let gpu = Origin("gpu".into());
+    let cell = |key: &str, state: &str| Item::Frame {
+        seq: 1,
+        body: Body(
+            serde_json::json!({"key": key, "body": {"state": state}})
+                .to_string()
+                .into_bytes(),
+        ),
+    };
+    assert_eq!(machine_seen(&gpu, &cell("gpu", "up")), Some(LinkSeen::Up));
+    assert_eq!(
+        machine_seen(&gpu, &cell("gpu", "connecting")),
+        Some(LinkSeen::Reconnecting)
+    );
+    assert_eq!(machine_seen(&gpu, &cell("gpu", "down")), Some(LinkSeen::Down));
+    assert_eq!(machine_seen(&gpu, &cell("other", "up")), None, "别台那一格被当成这台的");
+    assert_eq!(machine_seen(&gpu, &Item::Seen { from: None }), None);
+    assert_eq!(
+        machine_seen(&Origin::local(), &Item::Seen { from: None }),
+        Some(LinkSeen::Up)
+    );
+    assert_eq!(machine_seen(&Origin::local(), &cell("gpu", "down")), None);
+    let gone = Item::Unseen {
+        at: HopId { idx: 1, tag: "open" },
+        why: HopFault::Dropped,
+    };
+    assert_eq!(machine_seen(&gpu, &gone), Some(LinkSeen::Reconnecting));
+}
+
 /// 一趟命令没成、断在第 0 跳（窗口与 cc-monitor 之间那对管子）⇒ 那一句说与 cc-monitor 断开，不说那台离线；
 /// 断在后面那几跳 ⇒ 照通道那一句（那台离线）。期望手写。
 #[test]
