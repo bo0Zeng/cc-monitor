@@ -1174,14 +1174,48 @@ pub(crate) fn find_at(
 
 // ───────────────────────── history-facts ─────────────────────────
 
-/// `history-facts` 的入参。
+/// `history-facts` 的入参：认哪一份记录，二选一 —— 交记录路径（手上有路径的那一端），或交会话 id（那台在自己的家目录里找那份记录）。
+/// 接着上一次算由后端按路径留着（`observe::record_scan`），调用方什么都不带。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(untagged)]
+pub(crate) enum HistoryFactsReq {
+    Path(FactsByPath),
+    Sid(FactsBySid),
+}
+
+/// [`HistoryFactsReq`] 交路径的那一形。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct HistoryFactsReq {
-    /// jsonl 路径（围栏同 `history-read`）。接着上一次算由后端按路径留着（`observe::record_scan`），调用方什么都不带。
+pub(crate) struct FactsByPath {
+    /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
+}
+
+/// [`HistoryFactsReq`] 交会话 id 的那一形。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FactsBySid {
+    /// 会话 id（那台按它在自己的记录树里找，同 `session-commands`）。
+    pub(crate) sid: String,
+}
+
+/// `history-facts` 的回包：会话事实 ＋ 按 sid 问时找到的那份记录（那一端拿它接着读正文；按路径问的不带：就是交来的那一份）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct FactsReply {
+    /// 按 sid 找到的那份记录（全路径）；按路径问的 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) path: Option<String>,
+    #[serde(flatten)]
+    pub(crate) facts: crate::observe::recognize::facts::SessionFacts,
 }
 
 codes! {
@@ -1191,6 +1225,8 @@ codes! {
         Failed = "failed",
         /// 整份回包过上限（不截断）。
         TooLarge = "too_large",
+        /// 按 sid 问的：这台找不到那条会话的记录。
+        NoSuchSession = "no_such_session",
     }
 }
 
@@ -1200,7 +1236,7 @@ pub(crate) struct HistoryFactsCmd;
 impl Command for HistoryFactsCmd {
     const NAME: &'static str = "history-facts";
     type Req = HistoryFactsReq;
-    type Reply = crate::observe::recognize::facts::SessionFacts;
+    type Reply = FactsReply;
     type Err = HistoryFactsErr;
 }
 
@@ -1209,10 +1245,8 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
     fn run(
         req: HistoryFactsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::recognize::facts::SessionFacts, HistoryFactsErr>,
-    > + Send
-           + 'static {
+    ) -> impl std::future::Future<Output = Result<FactsReply, HistoryFactsErr>> + Send + 'static
+    {
         async move {
             // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
             let limits = crate::common::machine_prefs::read_now().prefs().limits();
@@ -1226,9 +1260,21 @@ pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
-) -> Result<crate::observe::recognize::facts::SessionFacts, HistoryFactsErr> {
-    use crate::observe::{accounts_query, recognize::facts};
-    let path = req.path.as_str();
+) -> Result<FactsReply, HistoryFactsErr> {
+    use crate::observe::recognize::facts;
+    let (path, found) = match req {
+        HistoryFactsReq::Path(FactsByPath { path }) => (path, false),
+        HistoryFactsReq::Sid(FactsBySid { sid }) => {
+            let at = locate::session_record(home, &sid).map_err(|_| {
+                HistoryFactsErr::NoSuchSession(copy_core::copy_text(
+                    "beSessionCommands.session.noRecord",
+                    &[],
+                ))
+            })?;
+            (at.to_string_lossy().into_owned(), true)
+        }
+    };
+    let path = path.as_str();
     // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
     let sid = Path::new(path)
         .file_stem()
@@ -1314,9 +1360,13 @@ pub(crate) fn facts_at(
     let (parent, children) = kin_of(home, sid, &crate::history::session_hidden::Here::read_now());
     facts.started_by = parent;
     facts.children = children;
-    match over_cap(&facts) {
+    let reply = FactsReply {
+        path: found.then(|| path.to_string()),
+        facts,
+    };
+    match over_cap(&reply) {
         Some(said) => Err(HistoryFactsErr::TooLarge(said)),
-        None => Ok(facts),
+        None => Ok(reply),
     }
 }
 
@@ -1384,3 +1434,7 @@ mod needs_merge_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_bytes_tests.rs"]
 mod bytes_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/history/facts_by_sid_tests.rs"]
+mod facts_by_sid_tests;
