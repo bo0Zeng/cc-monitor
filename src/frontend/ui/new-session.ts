@@ -51,6 +51,10 @@ export interface NewSessionSpec {
   lockMachine?: boolean;
   /** 预填的工作目录（缺 ⇒ 那台最近用过的第一个）。 */
   cwd?: string;
+  /** 目录那一格锁定（计划页接手：工作区根）：只读、没有［最近的］。 */
+  lockCwd?: boolean;
+  /** 预填的第一句（计划页接手：交接说明）；起的时候交给那一家，只跟 tmux。 */
+  prompt?: string;
   /** 预选哪一家（历史条目的那一家；缺 ⇒ 默认那一家）。 */
   agent?: string;
   /** 分叉：源会话 · 从哪条消息处 · 源会话的标题（框顶那一句）。 */
@@ -221,13 +225,14 @@ function forkBox(title: string): { box: HTMLElement; fromLine: HTMLElement } {
   return { box, fromLine };
 }
 
-/** 工作目录那一行：目录格 ＋「最近的」（那台最近用过的目录，点一项填进目录格）。 */
-function cwdField(cwd: string): { cwdInput: HTMLInputElement; recentBtn: HTMLButtonElement; cwdRow: Row } {
+/** 工作目录那一行：目录格 ＋「最近的」（那台最近用过的目录，点一项填进目录格）；锁定 ⇒ 只读、没有「最近的」。 */
+function cwdField(cwd: string, locked: boolean): { cwdInput: HTMLInputElement; recentBtn: HTMLButtonElement; cwdRow: Row } {
   const cwdInput = el("input");
   cwdInput.className = s.nsInput;
   cwdInput.type = "text";
   cwdInput.spellcheck = false;
   cwdInput.value = cwd;
+  cwdInput.readOnly = locked;
   cwdInput.setAttribute("aria-label", copyText("newSession.label.cwd"));
   const recentBtn = el("button");
   recentBtn.type = "button";
@@ -236,7 +241,8 @@ function cwdField(cwd: string): { cwdInput: HTMLInputElement; recentBtn: HTMLBut
   recentBtn.append(el("span", "", copyText("newSession.recent.label")), icon("caretDown", "compact"));
   const cwdWrap = el("div");
   cwdWrap.className = s.nsBox;
-  cwdWrap.append(cwdInput, recentBtn);
+  cwdWrap.append(cwdInput);
+  if (!locked) cwdWrap.append(recentBtn);
   return { cwdInput, recentBtn, cwdRow: row(copyText("newSession.label.cwd"), cwdWrap, false) };
 }
 
@@ -360,7 +366,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   form.appendChild(machineRow.root);
 
   // 工作目录 ＋「最近的」
-  const { cwdInput, recentBtn, cwdRow } = cwdField(spec.cwd ?? "");
+  const cwdLocked = spec.lockCwd === true;
+  const { cwdInput, recentBtn, cwdRow } = cwdField(spec.cwd ?? "", cwdLocked);
   form.appendChild(cwdRow.root);
 
   // agent（那台能起的多于一家才出）
@@ -428,6 +435,16 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const windowRadio = placeRadio(places, "window");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
 
+  // 第一句（只跟 tmux：选了终端窗口 ⇒ 那一格灰着、不交，字留着，切回 tmux 照样交）
+  const promptInput = el("textarea");
+  promptInput.className = s.nsInput;
+  promptInput.rows = 3;
+  promptInput.spellcheck = false;
+  promptInput.value = spec.prompt ?? "";
+  promptInput.setAttribute("aria-label", copyText("newSession.label.prompt"));
+  const promptRow = row(copyText("newSession.label.prompt"), promptInput);
+  form.appendChild(promptRow.root);
+
   // 更多
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
   form.appendChild(moreRow);
@@ -478,6 +495,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     tmuxRadio.label.hidden = !hasTmux;
     windowRadio.note.textContent = windowNote(origin, hasTmux);
     tmuxRow.root.hidden = place() !== "tmux";
+    promptInput.disabled = place() !== "tmux";
   };
 
   const paintAgent = (): void => {
@@ -536,7 +554,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       const kinds = f.agents.map((a) => a.kind);
       if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
-    if (cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
+    if (!cwdLocked && cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
     // 默认「运行于」那台定（有 tmux 就 tmux，分叉照源会话那一种）。
     (f.run === "tmux" ? tmuxRadio : windowRadio).input.checked = true;
   };
@@ -574,6 +592,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") what.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") what.command = cmdInput.value.trim();
     if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
+    if (place() === "tmux" && promptInput.value.trim() !== "") what.prompt = promptInput.value;
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
     if (rot !== forNew) what.rotation = { strategy: rot === "" ? null : rot };

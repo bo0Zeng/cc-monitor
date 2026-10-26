@@ -512,6 +512,65 @@ describe("目录格 · 最近的 · 更多那几格", () => {
   });
 });
 
+describe("锁住的目录 · 第一句", () => {
+  const prompt = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+  const recentBtn = (): HTMLButtonElement | null => dialog().querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.recent.label")}"]`);
+
+  it("★ 入口锁了目录 ⇒ 目录格只读、不拿最近用过的顶替、［最近的］不出；交的就是那个目录", async () => {
+    const done = openNewSession({ origin: "devbox", cwd: "/work/ledger", lockCwd: true });
+    await flush();
+    const cwd = input(copyText("newSession.label.cwd"));
+    expect(cwd.value).toBe("/work/ledger");
+    expect(cwd.readOnly).toBe(true);
+    expect(recentBtn()?.hidden ?? true, "锁了目录就没有［最近的］").toBe(true);
+    createBtn().click();
+    await flush();
+    await done;
+    expect(whatOf(newRequests()[0]).cwd).toBe("/work/ledger");
+  });
+
+  it("没锁 ⇒ 目录格照常可改、［最近的］在", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(input(copyText("newSession.label.cwd")).readOnly).toBe(false);
+    expect(recentBtn()!.hidden).toBe(false);
+  });
+
+  it("★ 入口给了开口那句 ⇒ 预填进「第一句」那一格，点［新建］交 `what.prompt`（照原样）", async () => {
+    const said = "你负责 ledger 的 A2 导入 csv：先 pb claim A2 <认领码>，再 pb where";
+    const done = openNewSession({ origin: "devbox", prompt: said });
+    await flush();
+    expect(prompt().value).toBe(said);
+    createBtn().click();
+    await flush();
+    await done;
+    expect(whatOf(newRequests()[0]).prompt).toBe(said);
+  });
+
+  it("「第一句」空着（或只有空白）⇒ 请求不带 prompt", async () => {
+    const done = openNewSession({ origin: "devbox" });
+    await flush();
+    expect(prompt().value).toBe("");
+    prompt().value = "  ";
+    createBtn().click();
+    await flush();
+    await done;
+    expect("prompt" in whatOf(newRequests()[0])).toBe(false);
+  });
+
+  it("切到终端窗口 ⇒ 「第一句」那一格灰着（字留着）、请求里不带它（第一句只跟 tmux）", async () => {
+    void openNewSession({ origin: "devbox", prompt: "开口那句" });
+    await flush();
+    expect(prompt().disabled).toBe(false);
+    dialog().querySelector<HTMLInputElement>('input[value="window"]')!.click();
+    expect(prompt().disabled).toBe(true);
+    expect(prompt().value).toBe("开口那句");
+    createBtn().click();
+    await flush();
+    expect("prompt" in whatOf(newRequests()[0])).toBe(false);
+  });
+});
+
 describe("那台说不行的其余几形", () => {
   it("哪一格不行落在哪一格下（终端名 · 启动命令）；那一格收着 ⇒ 落到框顶", async () => {
     refusal = { op: "session-open", code: "tmux_taken", message: "原话", data: { field: "tmuxName", unavailable: null } };

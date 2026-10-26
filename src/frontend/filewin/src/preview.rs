@@ -167,7 +167,7 @@ impl Default for Preview {
 }
 
 /// 预览头「归属」那一块：左边一道状态色（做完绿 · 其余灰）；状态图标 ＋「编号 标题」·［在计划里看］；
-/// 一行「{片} · 块「…」· 签 …」；被两格声明 ⇒ 一行红字；对账「坏」⇒ 一行 pb 给的原因。回值 ＝ 点了［在计划里看］。
+/// 一行「{片} · 块「…」· 签 …」；被几格声明 ⇒ 一行灰色读数「共用 · 也在 …」；对账「坏」⇒ 一行 pb 给的原因。回值 ＝ 点了［在计划里看］。
 fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
     let p = super::theme::palette(ui.ctx());
     let m = super::theme::metrics(ui.ctx());
@@ -210,13 +210,9 @@ fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
             );
             if !o.dup.is_empty() {
                 ui.label(
-                    egui::RichText::new(format!(
-                        "{} {}",
-                        egui_phosphor::regular::WARNING,
-                        super::plan::dup_text(o)
-                    ))
-                    .color(p.error)
-                    .small(),
+                    egui::RichText::new(super::plan::dup_text(o))
+                        .color(p.text2)
+                        .small(),
                 );
             }
             if let Some(why) = super::plan::broken(o) {

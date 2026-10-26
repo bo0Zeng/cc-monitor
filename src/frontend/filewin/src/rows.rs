@@ -1068,7 +1068,7 @@ fn paint_one_row(
     );
     cell(kind_c, r.type_text.clone(), false);
     cell(size_c, size_text, true);
-    // 「格」那一列：那一格的状态图标 ＋「编号 标题」；被两格声明 ⇒ 后面一个红 ⚠（悬停写另一格）；无主 ⇒「无主」；
+    // 「格」那一列：那一格的状态图标 ＋「编号 标题」；被几格声明 ⇒ 后面一段灰色读数「共用 · 也在 …」；无主 ⇒「无主」；
     // 那一片读不成 · 判不了无主 ⇒「—」（悬停那一句）。文件夹空着。
     if let (Some(c), Some(d)) = (plan_c, plan) {
         use super::plan::Claim;
@@ -1112,32 +1112,41 @@ fn paint_one_row(
                 ic,
                 tint,
             );
-            let warn = (!o.dup.is_empty()).then(|| {
-                painter.layout_no_wrap(
-                    egui_phosphor::regular::WARNING.to_string(),
-                    egui::TextStyle::Body.resolve(ui.style()),
-                    p.error,
-                )
-            });
-            let ww = warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
             let tx = c.left() + PAD + iw + 6.0;
-            let g = one_line(ui, o.label.clone(), c.right() - PAD - tx - ww, main);
+            let room = c.right() - PAD - tx;
+            // 被几格声明 ⇒ 标题后面一段次要字色的读数；放不下时标题至少留一半，两段各自截成「…」。
+            let shared = (!o.dup.is_empty()).then(|| super::plan::dup_text(o));
+            let label_room = match &shared {
+                Some(s) => {
+                    let sw = one_line(ui, s.clone(), f32::INFINITY, minor).size().x;
+                    (room - sw - 8.0).max(room / 2.0)
+                }
+                None => room,
+            };
+            let g = one_line(ui, o.label.clone(), label_room, main);
             let gw = g.size().x;
-            if g.elided {
-                tips.push((c, o.label.clone()));
-            }
+            let elided = g.elided;
             painter.with_clip_rect(c).galley(
                 egui::pos2(tx, rect.center().y - g.size().y / 2.0),
                 g,
                 main,
             );
-            if let Some(w) = warn {
+            let mut cut = elided;
+            if let Some(s) = &shared {
+                let sg = one_line(ui, s.clone(), room - gw - 8.0, minor);
+                cut |= sg.elided;
                 painter.with_clip_rect(c).galley(
-                    egui::pos2(tx + gw + 6.0, rect.center().y - w.size().y / 2.0),
-                    w,
-                    p.error,
+                    egui::pos2(tx + gw + 8.0, rect.center().y - sg.size().y / 2.0),
+                    sg,
+                    minor,
                 );
-                tips.push((c, super::plan::dup_text(o)));
+            }
+            if cut {
+                let full = match shared {
+                    Some(s) => format!("{}\n{s}", o.label),
+                    None => o.label.clone(),
+                };
+                tips.push((c, full));
             }
         }
     }

@@ -38,7 +38,7 @@ export const FILEWIN_SCENES = [
   { id: "filewin-drag-in", scene: "drag-in", title: "文件窗口 · 从桌面拖进来", desc: "拖着两个文件经过列表：列表区一层淡强调色底 ＋ 虚线框「松开上传 → orders-service（2 个文件）」" },
   { id: "filewin-narrow-drawer", scene: "narrow-drawer", width: 720, title: "文件窗口 · 窄档 720 · 左栏抽屉", desc: "窗宽 720：左栏收成盖在列表上的抽屉（不挤列表），开关打开着" },
   { id: "filewin-peek", scene: "peek", width: 720, title: "文件窗口 · 窄档 · 空格看一眼", desc: "窗宽 720、main.rs 上按空格：窗口正中一块「看一眼」浮层（代码高亮）；Esc / 空格 / 点别处收" },
-  { id: "filewin-plan", scene: "plan", title: "文件窗口 · 计划反查", desc: "目录落在一片的仓库里：列表多一列「格」（状态图标 ＋ 那一格的标题；被两格声明带红 ⚠）；选中 main.rs，预览头多一块「归属」（标题 ·［在计划里看］· 片 · 块 · 签收时刻 · 也声明了它的那一格）。回包是合成的（真后端 `plan-files` 判）" },
+  { id: "filewin-plan", scene: "plan", title: "文件窗口 · 计划反查", desc: "目录落在一片的仓库里：列表多一列「节点」（状态图标 ＋「编号 标题」；被几格声明 ⇒ 标题后面一段灰字「共用 · 也在 A3-2 重试策略」）；选中 main.rs，预览头多一块「归属」（标题 ·［在计划里看］· 仓库 · 权力范围 · 同一段灰字）。回包是合成的（真后端 `plan-files` 判）" },
   { id: "filewin-plan-menu", scene: "plan-menu", title: "文件窗口 · 右键 · 在计划里看", desc: "main.rs 上右键：删除之前多一项「在计划里看 · 下单入口」；不归哪一格的文件这一项不出" },
   { id: "filewin-view", scene: "view", title: "文件窗口 · 图片查看页", desc: "docs 里回车 architecture.png ⇒ 同一栏开一个查看页（标签图片图标 ＋ 名字）：头条面包屑 ·「‹ 1 / 2 ›」· 适应窗口（亮）· 原尺寸 · − 百分比 + · 下载；画面里整张放进来、透明处棋盘格；状态栏「1600 × 1000 · 大小 · 时间」" },
   { id: "filewin-view-menu", scene: "view-menu", title: "文件窗口 · 右键查看 ＋ 预览头查看", desc: "docs 里选中 architecture.png、右键：第一项「查看」（图片不给「编辑」）；预览头上「查看」「下载」，预览里摆的是与查看页共用的那一份" },

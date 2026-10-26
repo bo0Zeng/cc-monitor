@@ -166,6 +166,13 @@ export const PLAN_SCENES: Scene[] = [
     await row("A3-3");
     await waitFor(".plan-view .plan-cell .plan-handoff");
   }),
+  plan("plan-29-takeover", "一个节点 · 新会话接手", "「导出格式选项」交接说明底下点［新会话接手…］：全产品那一个新建会话框，机器锁住、工作目录锁在工作区根（没有［最近的］）、「第一句话」预填 pb 那一句交接说明", async () => {
+    await openPlan();
+    await row("A3-3");
+    await click(await byText(".plan-view .plan-cell .plan-handoff button", copyText("plan.takeover.open")));
+    await waitFor("[role=dialog] textarea");
+    await sleep(900);
+  }),
   plan("plan-31-needs-strip", "需手动 · 标签栏的数 ＋ 会话头那一枚标", "标签栏「需手动 N」含计划项（会话在前、计划项在后）；切到总负责：会话头多一枚「ledger · project · 开发」", async () => {
     await mainReady(TABS);
     await click(await byText("#tab-bar .tab", /^(?!.*站点).*总负责/));
