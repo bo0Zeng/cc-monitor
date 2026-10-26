@@ -169,6 +169,8 @@ echo "===== 账号三态（D 审计 B1/B2 回归）====="
 # 夹具就是生产形状：临时家目录下的 `.cc-monitor/accounts/accounts.json` ＋ 每个号一个目录（账号库只跟着家走）。
 # 被测对象**只可能**是本工作树刚 build 出来的那一份（文件顶上那道 `[ -x "$CCM_NATIVE" ]` fail-closed）。
 ACCTMP="$(mktemp -d)"; AL="$ACCTMP/.cc-monitor/accounts"; mkdir -p "$AL/z" "$AL/b"
+# 起会话选号照界面那一条判（成品的 `selectable`：要登录）⇒ 两个号目录里各放一份造的凭据（内容是假的，只 stat 它在不在）。
+printf '{"fake":"z"}' > "$AL/z/.credentials.json"; printf '{"fake":"b"}' > "$AL/b/.credentials.json"
 cat > "$AL/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$AL/z", "isDefault": true },
@@ -225,6 +227,7 @@ echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
 # 夹具同上一组（临时家目录里的账号库）。
 inherit_acct() { nofrom env -u TMUX -u TMUX_PANE CLAUDE_CONFIG_DIR="$AL/b" HOME="$ACCTMP" "$CCM" "$@"; }
 ACCTMP="$(mktemp -d)"; AL="$ACCTMP/.cc-monitor/accounts"; mkdir -p "$AL/z" "$AL/b"
+printf '{"fake":"z"}' > "$AL/z/.credentials.json"; printf '{"fake":"b"}' > "$AL/b/.credentials.json"  # 同上：造的凭据
 cat > "$AL/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$AL/z", "isDefault": true },

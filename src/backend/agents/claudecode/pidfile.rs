@@ -1,9 +1,39 @@
-//! Claude 的进程状态文件（`<家>/sessions/<PID>.json`）里两格的读法：`kind`（是不是后台会话）· `status`（此刻在干什么）。
-//! 通用层只拿这里翻好的结论（`agents::pidfile_background` · `agents::pidfile_activity`），不认 Claude 的词。
+//! Claude 的进程状态文件（`<家>/sessions/<PID>.json`）怎么读：一份 ⇒ 一行 [`ProcFact`]（[`proc_of`]，注册表 `LocalFace.proc_of`）。
+//! 字段名与那几格的词只住这里；通用层只拿翻好的那一行（`agents::proc_fact`），不认 Claude 的词。
 
 use super::drift::{record, DriftFace};
-use crate::agents::{SessionActivity, WaitOn};
+use crate::agents::{ProcFact, SessionActivity, WaitOn};
 use serde_json::Value;
+
+/// 一份进程状态文件 ⇒ 它说的那一份事实。各格照那一家写的原样取：串格不是串 ⇒ 没有；
+/// `procStart` 是 starttime ticks 的十进制串（也容忍裸数字）；`attachable` 只认真布尔（字符串 `"false"` 之类当没写）。
+pub(crate) fn proc_of(v: &Value) -> ProcFact {
+    let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    ProcFact {
+        kind: super::AGENT_KIND,
+        sid: s("sessionId"),
+        cwd: s("cwd"),
+        name: s("name"),
+        proc_start: proc_start_of(v),
+        background: background_of(v),
+        activity: activity_of(v),
+        status_word: s("status"),
+        wait: wait_of(v),
+        waiting_word: s("waitingFor"),
+        attachable: v.get("attachable").and_then(Value::as_bool),
+        status_since_ms: v.get("statusUpdatedAt").and_then(Value::as_u64),
+        started_ms: v.get("startedAt").and_then(Value::as_u64),
+    }
+}
+
+/// `procStart`：Linux 上 CC 照抄 `/proc/<pid>/stat` 的 starttime ticks，写成十进制串；也容忍裸数字。别的 ⇒ `None`。
+fn proc_start_of(v: &Value) -> Option<u64> {
+    let field = v.get("procStart")?;
+    if let Some(s) = field.as_str() {
+        return s.trim().parse::<u64>().ok();
+    }
+    field.as_u64()
+}
 
 /// 人坐在终端里对话的那种会话。
 const INTERACTIVE: &str = "interactive";

@@ -74,7 +74,7 @@ fn fixture(turns: usize) -> String {
 
 /// 逐行各问各的（每一样只调它自己那一处口径，不经扫描图）：骨架索引行 · 用户输入 · 轮次，外加 end。
 fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64) {
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let kind = crate::agents::claudecode::AGENT_KIND;
     let (mut index, mut inputs, mut turns) = (Vec::new(), Vec::new(), Vec::new());
     let mut scan = crate::observe::recognize::turns::TurnScan::default();
     let mut lines = crate::observe::lines::Lines::new(bytes, 0);
@@ -96,14 +96,14 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
             continue;
         };
         if let Some(mut r) = crate::observe::recognize::user_inputs::user_input_of(
-            crate::agents::record_tree_kind().unwrap_or_default(),
+            crate::agents::claudecode::AGENT_KIND,
             &v,
         ) {
             r.at = row.at;
             r.line = at_line;
             inputs.push(serde_json::to_string(&r).unwrap());
         }
-        let kind = crate::agents::record_tree_kind().unwrap_or_default();
+        let kind = crate::agents::claudecode::AGENT_KIND;
         let Some(beat) = crate::agents::beat_of(kind, &v) else {
             continue;
         };
@@ -122,7 +122,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     let map = ScanMap::scan_with(
         bytes,
         bytes.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         None,
     )
     .expect("scan");
@@ -156,7 +156,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     while let Some(row) = lines.next().unwrap() {
         crate::observe::recognize::facts::note_line(
             &mut want_facts,
-            crate::agents::record_tree_kind().unwrap_or_default(),
+            crate::agents::claudecode::AGENT_KIND,
             row.body(),
         );
     }
@@ -298,7 +298,7 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
     let map = ScanMap::scan_with(
         bytes,
         bytes.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         chain,
     )
     .expect("scan");
@@ -364,7 +364,7 @@ fn branched(turns: usize) -> String {
 fn r6_resuming_from_any_line_through_the_skeleton_equals_one_pass() {
     let text = branched(3);
     let bytes = text.as_bytes();
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let kind = crate::agents::claudecode::AGENT_KIND;
     let chain = Some(crate::agents::claudecode::RECORDS);
     let full = ScanMap::scan_with(bytes, bytes.len() as u64, kind, chain).unwrap();
     assert!(!full.off.is_empty(), "夹具该有主线外的");
@@ -449,7 +449,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     let fresh = ScanMap::scan_with(
         &all[..],
         all.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();
@@ -562,7 +562,7 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
     let fresh = ScanMap::scan_with(
         &all[..],
         all.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();
@@ -583,7 +583,7 @@ fn r10_an_evicted_map_leaves_a_facts_tail_that_reads_only_the_appended_bytes() {
         let mut f = ScanMap::scan_with(
             &all[..],
             all.len() as u64,
-            crate::agents::record_tree_kind().unwrap_or_default(),
+            crate::agents::claudecode::AGENT_KIND,
             None,
         )
         .unwrap()
@@ -650,7 +650,7 @@ fn r10_turns_folds_and_inputs_carry_the_index_row_of_their_uuid() {
     let map = ScanMap::scan_with(
         bytes,
         bytes.len() as u64,
-        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::AGENT_KIND,
         Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();

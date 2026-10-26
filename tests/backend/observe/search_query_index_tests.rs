@@ -712,7 +712,10 @@ fn facts_of(e: &FileEntry) -> String {
             .collect();
         format!(
             "cwd={:?} bg={} title={:?} excerpt={:?} recs={recs:?}",
-            x.cwd, x.bg, x.title, x.excerpt
+            x.session.cwd(),
+            x.session.bg(),
+            x.session.title(),
+            x.session.excerpt()
         )
     };
     format!(
@@ -761,13 +764,13 @@ fn reading_in_blocks_gives_the_same_entry_as_one_block() {
     ] {
         for tools in [false, true] {
             let one = {
-                let mut e = FileEntry::empty(tools);
+                let mut e = FileEntry::empty(crate::agents::claudecode::AGENT_KIND, tools);
                 e.take(None, &mut Blocks::new(&bytes[..], 1 << 20))
                     .expect("读得动");
                 facts_of(&e)
             };
             for block in [1usize, 7, 64, 4096] {
-                let mut e = FileEntry::empty(tools);
+                let mut e = FileEntry::empty(crate::agents::claudecode::AGENT_KIND, tools);
                 e.take(None, &mut Blocks::new(&bytes[..], block))
                     .expect("读得动");
                 assert_eq!(
@@ -779,12 +782,15 @@ fn reading_in_blocks_gives_the_same_entry_as_one_block() {
         }
     }
     // 正控：后半那一段里的 `bg` 并进来了（完整行里的才算数：今天的金样只有它在残尾里那一形）。
-    let mut e = FileEntry::empty(false);
+    let mut e = FileEntry::empty(crate::agents::claudecode::AGENT_KIND, false);
     e.take(None, &mut Blocks::new(&good[..], 7))
         .expect("读得动");
-    assert!(e.done.bg, "`sessionKind:\"bg\"` 在一整行里，并段之后丢了");
+    assert!(
+        e.done.session.bg(),
+        "`sessionKind:\"bg\"` 在一整行里，并段之后丢了"
+    );
     // 正控：坏的那一句的位置按整段算。
-    let mut e = FileEntry::empty(false);
+    let mut e = FileEntry::empty(crate::agents::claudecode::AGENT_KIND, false);
     e.take(None, &mut Blocks::new(&bad_mid[..], 7))
         .expect("读得动");
     assert_eq!(

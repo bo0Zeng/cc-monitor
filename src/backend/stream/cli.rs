@@ -23,7 +23,7 @@
 //! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::wire::cli_words::TEXT_FLAG`]（所有命令通用）：
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
 //! · 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
-//! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ UTC。
+//! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ 这一台的钟（[`crate::Tz::here`]）；缺值 · 认不得 ⇒ UTC。
 //! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
@@ -331,7 +331,8 @@ use crate::stream::inbound::views::{StreamView, StreamWants};
 
 /// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流要什么）。
 ///
-/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。[`crate::wire::cli_words::TZ_FLAG`] 任意位置都剥（一次性 CLI 面同样按它写钟面）；
+/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。[`crate::wire::cli_words::TZ_FLAG`] 任意位置都剥（一次性 CLI 面同样按它写钟面；
+/// 没写 ⇒ 这一台，见 [`StreamWants`]）；
 /// [`crate::wire::cli_words::VIEW_FLAG`] 只在流模式那一形里剥（打头不是子命令；子命令的 `--view` 归它自己的 CLI 臂解）。
 /// 声明解不出 · 认不出 ⇒ `Err(那几处)`（不起流）。
 pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamWants), String> {

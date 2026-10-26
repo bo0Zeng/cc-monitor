@@ -185,7 +185,7 @@ pub(crate) const INHERIT: &[Inherit] = &[
         direct: Pass::Caller,
         tmux: Pass::Carried,
         change: Change::Flags(&[flag::ACCOUNT, flag::ACCOUNT_DIR, flag::BASE]),
-        judge: "crate::control::ccm::plan::resolve_account",
+        judge: "crate::control::ccm::plan::account_for",
     },
     Inherit {
         item: Item::Rotation,
@@ -571,54 +571,28 @@ pub(crate) fn discover_bus_scripts() -> Option<String> {
     }
 }
 
-pub(crate) use crate::accounts::manage::scan::ManifestRead;
-use acct_core::ManifestAccount as Account;
+use crate::control::launch_account::{pick, AccountAsk, Settled};
+pub(crate) use cmd_wire::accounts::AccountsList;
 
-/// 读这台的账号库清单：只经 `accounts/manage` 那一个读口（剥 BOM · 读取上限 · 版本闸与账号页同一份）。
-///
-/// 三个状态，不是两个：没有这份文件 ⇒ `Ok(None)`（这台没有账号库，合法 —— 退化为基座启动器）· 读懂了 ⇒ 用它 ·
-/// **在却用不了**（读不动 · 坏 JSON · 版本不认）⇒ `Err`，[`names`] 把这件事说出来，不谎称「没有账号库」。
-/// 🔴 来历：2026-09-21 Win11 虚拟机上那份带 UTF-8 BOM 的清单（PowerShell 5.1 `-Encoding UTF8` 的默认值）被从前那句
-/// `unwrap_or_default()` 整张吃掉、还被报成「(无账号库)」—— BOM 现由读口剥掉，读不懂的照实说。
-pub(crate) fn read_accounts(manifest_path: &str) -> ManifestRead {
-    crate::accounts::manage::scan::manifest_at(std::path::Path::new(manifest_path))
-}
-
-/// 号表（`Manifest::book`）里照顺序的每一个号（含账号 0：`config_dir: None`）；没有 / 用不了 ⇒ 空。
-fn accounts_of(lib: &ManifestRead) -> &[Account] {
-    match lib {
-        Ok(Some(m)) => &m.book.accounts,
-        _ => &[],
+/// 报「不可用」必须同时告诉用户有哪些可用（成品里的号名）。⚠ 无尾空格。
+/// 🔴 清单**在却读不懂**（读不动 · 坏 JSON · 版本不认）⇒ 照实说，不谎称「没有账号库」（来历：2026-09-21 Win11 虚拟机上那份带
+/// UTF-8 BOM 的清单被从前那句 `unwrap_or_default()` 整张吃掉、还被报成「(无账号库)」—— BOM 现由账号库那一个读口剥掉）。
+fn names(list: &AccountsList, manifest_path: &str) -> String {
+    if !list.meta.enabled {
+        return if std::path::Path::new(manifest_path).exists() {
+            copy_text("bePlan.names.unreadable", &[])
+        } else {
+            copy_text("bePlan.names.none", &[])
+        };
     }
-}
-
-/// 名字 → 存在的 configDir。**目录不存在 ⇒ 当作不可用**
-///（「manifest 里写着」与「盘上真有」是两件事）。
-fn config_dir_of(lib: &ManifestRead, want: &str) -> Option<String> {
-    let a = lib.as_ref().ok()?.as_ref()?.book.by_name(want)?;
-    let c = a.config_dir.as_deref().filter(|c| !c.is_empty())?;
-    std::path::Path::new(c).is_dir().then(|| c.to_string())
-}
-
-/// 报「不可用」必须同时告诉用户有哪些可用。⚠ 无尾空格。
-fn names(lib: &ManifestRead) -> String {
-    // 🔴 「用不了」优先于「是空的」—— 反了就又谎称「没有账号库」。
-    if lib.is_err() {
-        return copy_text("bePlan.names.unreadable", &[]);
-    }
-    let all = accounts_of(lib);
-    if all.is_empty() {
+    if list.accounts.is_empty() {
         return copy_text("bePlan.names.none", &[]);
     }
-    all.iter()
-        .map(|a| a.name.as_str())
+    list.accounts
+        .iter()
+        .map(|a| a.scanned.name.as_str())
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// 这台的默认号（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，与清单成品 `meta.effectiveDefault` 同一条。
-fn effective_default(lib: &ManifestRead) -> Option<&Account> {
-    lib.as_ref().ok()?.as_ref()?.book.default_account()
 }
 
 /// 一趟要干的事。`--ccm-print` 与真跑读的是**同一个**。
@@ -994,72 +968,56 @@ fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
     words
 }
 
-/// 账号解析。三态，**一个字都没改**（这是从 `shared/ccm:996-1015` 搬过来的语义）：
+/// 账号那一格：命令行这几形先定「要哪个号」，**判**只经 `launch_account::pick`（界面起会话同一条：能不能用照成品的 `selectable`）。
 ///
-/// - 显式 `--account X` ⇒ 必须解析成功，否则**中止**（显式选号绝不静默降级到别的号）。
-/// - 显式 `--base` ⇒ 不注入（issue #75 逃生口）。
-/// - 都不传 ⇒ **只在调用方没有已选定账号时**才落 manifest 的 `isDefault`。
+/// - 显式 `--account X` ⇒ 必须选得了，否则**中止**（显式选号绝不静默降级到别的号；没登录 · 目录不在 · 逃生口模式同界面那一侧一样拒）。
+/// - 显式 `--base` ⇒ 不注入（issue #75 逃生口）。直接给了目录（`--account-dir`，说不出名字的那一形）⇒ 就用它，不查账号库。
+/// - 都不传 ⇒ **只在调用方没有已选定账号时**才跟随这台的默认号（选得了才用，用不了 ⇒ 不指定号，同界面「跟随」）。
 ///
-/// ✅ **最后那一条已经裁了**——
-/// 逐字：「把调用方选中的号静默换掉 / **不要这么做** / 不是有选默认账号吗? **就用那个**」。
-/// ⇒ 拆成本函数的两支，**两支都是裁定的一部分，缺一条这一裁就没落地**：
+/// ✅ 裁定逐字：「把调用方选中的号静默换掉 / **不要这么做** / 不是有选默认账号吗? **就用那个**」⇒ 两支都是裁定的一部分：
 ///   · **继承那一支**（`CLAUDE_CONFIG_DIR` 非空 ⇒ 保留，不覆盖）= 「不要静默换掉」。
-///     🔴 **来历不许删**：这道闸是 `R08` 加的（`-z "$CLAUDE_CONFIG_DIR"`），
-///     由一次**真机复现过的静默换号**逼出来 —— 删了来历，下一个人会以为它是可有可无的防御。
-///   · **裸终端那一支**（都没给 ⇒ 落 manifest `isDefault`）= 「就用那个」。
-/// ⚠ **09-11 那三句读法（「已知病灶」/「归待问用户」/「判不了不自批」）已经过期**，
-/// 别再照它把一个定了的问题重新打开。要改行为的落点仍然只在这个函数，别处没有第二处。
+///     🔴 **来历不许删**：这道闸是 `R08` 加的（`-z "$CLAUDE_CONFIG_DIR"`），由一次**真机复现过的静默换号**逼出来。
+///   · **裸终端那一支**（都没给 ⇒ 跟随默认号）= 「就用那个」。
 ///
-/// 〔继承表〕账号那一格。
-pub(crate) fn resolve_account(
+/// `accounts` 只在真要判的时候读（这台的账号清单成品，由入口交：control 不读观测层）。〔继承表〕账号那一格。
+pub(crate) fn account_for(
     o: &Opts,
     env: &Env,
-    accounts: &ManifestRead,
+    accounts: &dyn Fn() -> AccountsList,
 ) -> Result<(String, String), Die> {
+    let none = || Ok((String::new(), String::new()));
     // 这一家没有账号这一维（载体名空）⇒ 不选号、不落默认号（选号的那几形 `argv::validate` 已经拒了）。
     if env.account_env.is_empty() {
-        return Ok((String::new(), String::new()));
+        return none();
     }
-    if !o.account.is_empty() {
-        return match config_dir_of(accounts, &o.account) {
-            Some(d) => Ok((d, o.account.clone())),
-            None => Err(Die(copy_text(
-                "bePlan.resolveAccount.unavailable",
-                &[
-                    ("account", &o.account.to_string()),
-                    ("manifestPath", &env.accts_manifest.to_string()),
-                    ("names", &(names(accounts)).to_string()),
-                ],
-            ))),
-        };
-    }
-    if !o.account_dir.is_empty() {
-        // 直接给了目录（说不出名字的那一形）⇒ 就用它，不查账号库、不换成别的号。
+    let asked = if !o.account.is_empty() {
+        AccountAsk::Named {
+            name: o.account.clone(),
+        }
+    } else if !o.account_dir.is_empty() {
         return Ok((o.account_dir.clone(), String::new()));
-    }
-    if o.use_base {
-        return Ok((String::new(), String::new()));
-    }
-    if env
-        .inherited_config_dir
-        .as_deref()
-        .is_some_and(|v| !v.is_empty())
+    } else if o.use_base
+        || env
+            .inherited_config_dir
+            .as_deref()
+            .is_some_and(|v| !v.is_empty())
     {
         // 调用方已经选好号 ⇒ **尊重它**，不覆盖（`R08`：真机复现过的静默换号）。
-        return Ok((String::new(), String::new()));
-    }
-    // 没有默认号 · 默认号是账号 0（清单里没写号目录）⇒ 不指定号。
-    let Some(def) = effective_default(accounts)
-        .filter(|a| a.config_dir.is_some())
-        .map(|a| a.name.clone())
-    else {
-        return Ok((String::new(), String::new()));
+        return none();
+    } else {
+        AccountAsk::Follow
     };
-    match config_dir_of(accounts, &def) {
-        Some(d) => Ok((d, def)),
-        None => Err(Die(copy_text(
-            "bePlan.resolveAccount.defaultMissing",
-            &[("name", &def.to_string())],
+    let list = accounts();
+    match pick(&asked, &list, None) {
+        Ok(Settled::Account(a)) => Ok((a.config_dir, a.name)),
+        Ok(Settled::Base | Settled::Unsaid) => none(),
+        Err(u) => Err(Die(copy_text(
+            "bePlan.resolveAccount.unavailable",
+            &[
+                ("account", &u.requested),
+                ("manifestPath", &env.accts_manifest.to_string()),
+                ("names", &names(&list, &env.accts_manifest)),
+            ],
         ))),
     }
 }
@@ -1149,7 +1107,7 @@ fn refuse(what: &str, v: &str) -> Die {
 pub(crate) fn build(
     o: &Opts,
     env: &Env,
-    accounts: &ManifestRead,
+    accounts: &dyn Fn() -> AccountsList,
     taken: Option<&TakenNames>,
 ) -> Result<Plan, Die> {
     build_among(crate::agents::REGISTRY, o, env, accounts, taken)
@@ -1161,7 +1119,7 @@ pub(crate) fn build_among(
     registry: &[crate::agents::Adapter],
     o: &Opts,
     env: &Env,
-    accounts: &ManifestRead,
+    accounts: &dyn Fn() -> AccountsList,
     taken: Option<&TakenNames>,
 ) -> Result<Plan, Die> {
     let face = crate::agents::launch_face_among(registry, &o.agent);
@@ -1182,7 +1140,7 @@ pub(crate) fn build_among(
 
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
-    let (config_dir, account) = resolve_account(o, env, accounts)?;
+    let (config_dir, account) = account_for(o, env, accounts)?;
     // 〔§47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表（`acct_core::config_dir_ok`，全仓唯一一份）。
     //   空串 = 账号 0 / 继承，不注入、不判。
     if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
@@ -1752,12 +1710,12 @@ fn given_by(origins: &[crate::ccm_line::argv::Origin], flags: &[&str]) -> Option
 /// 「来自」那几行（只给起会话的两形：直路 · 容器路；接回 / 接上已在跑的不起新会话，一行都不写）。按 [`INHERIT`] 的项与次序写：
 /// 这一发有值的那几项各一行；哪几个旗标改得了它照表里那一格（`change`）去合并结果里找最后落下的那一层；
 /// 都没写 ⇒ 那一格在这条路上是从调用方拿的（`Caller` · `Carried`）就是「继承」，否则「默认」。
-/// 值与这一发的计划同源：工作目录 · 号照 [`cwd_and_why`] / [`resolve_account`] 现判（同一份 `o` / `env` / `accounts` ⇒ 与计划逐字一样）。
+/// 值与这一发的计划同源：工作目录 · 号照 [`cwd_and_why`] / [`account_for`] 现判（同一份 `o` / `env` / `accounts` ⇒ 与计划逐字一样）。
 pub(crate) fn from_rows(
     o: &Opts,
     origins: &[crate::ccm_line::argv::Origin],
     env: &Env,
-    accounts: &ManifestRead,
+    accounts: &dyn Fn() -> AccountsList,
     plan: &Plan,
 ) -> Vec<FromRow> {
     let tmux_name = match plan {
@@ -1801,7 +1759,7 @@ pub(crate) fn from_rows(
                 );
             }
             Item::Account if !env.account_env.is_empty() => {
-                let (dir, name) = resolve_account(o, env, accounts).unwrap_or_default();
+                let (dir, name) = account_for(o, env, accounts).unwrap_or_default();
                 let inherited = env
                     .inherited_config_dir
                     .as_deref()

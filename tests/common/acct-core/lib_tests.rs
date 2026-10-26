@@ -265,10 +265,10 @@ fn row(name: &str, dir: Option<&str>, default: bool, auth: Option<&str>) -> Mani
     }
 }
 
-/// ★ 号表只有一张：换号认的路由段 · 按量号 · 默认号 · 按名字找，都是同一行上现算的。
+/// ★ 号表只有一张：换号认的路由段 · 按量号 · 按名字找，都是同一行上现算的。
 /// 账号 0（没写号目录的那一条，不认名字）路由段恒是 [`BARE_ACCOUNT`]；其余是号目录末段（同 [`apikey_account_id_of_dir`]）。
 #[test]
-fn one_account_book_answers_routes_kinds_and_the_default() {
+fn one_account_book_answers_routes_and_kinds() {
     let book = AccountBook {
         accounts: vec![
             row("work", Some("/h/accts/acct-w"), false, None),
@@ -301,7 +301,6 @@ fn one_account_book_answers_routes_kinds_and_the_default() {
         book.by_name("work").and_then(|a| a.config_dir.as_deref()),
         Some("/h/accts/acct-w")
     );
-    assert_eq!(book.default_account().map(|a| a.name.as_str()), Some("key"));
     assert_eq!(
         book.named().map(|a| a.name.as_str()).collect::<Vec<_>>(),
         ["work", "key"],

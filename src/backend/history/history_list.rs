@@ -89,35 +89,37 @@ fn last_segment(p: &str) -> Option<&str> {
 /// 记录树里的一行（会话清单那一形）＋ 判活 ⇒ 清单的一行（注解格先按没有填，并注解在 [`answer_from`]）。
 /// 没有 `sessionId` ⇒ `None`。
 fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
-    let sid = v["sessionId"].as_str().filter(|s| !s.is_empty())?;
-    let cwd = v["cwd"].as_str().unwrap_or_default();
-    let excerpt = v["firstUserExcerpt"].as_str().unwrap_or_default();
-    let agent = crate::agents::record_tree_kind()
+    let r =
+        <crate::history::listing_scan::SessionRow as serde::Deserialize>::deserialize(v).ok()?;
+    if r.session_id.is_empty() {
+        return None;
+    }
+    let sid = r.session_id.as_str();
+    let cwd = r.cwd.as_deref().unwrap_or_default();
+    // 哪一家跟着这一行走：照它的记录文件落在哪棵树下认（`agents::record_kind_of`）。
+    let agent = crate::agents::record_kind_of(std::path::Path::new(&r.record_path))
         .unwrap_or_default()
         .to_string();
     // 分叉关系：两格都有才带。
-    let fork = match (
-        v["forkedFromSessionId"].as_str(),
-        v["forkedFromMessageUuid"].as_str(),
-    ) {
-        (Some(s), Some(u)) => Some((s.to_string(), u.to_string())),
-        _ => None,
-    };
+    let fork = r
+        .forked_from_session_id
+        .clone()
+        .zip(r.forked_from_message_uuid.clone());
     Some(RawRow {
         group: group_key(&agent, cwd),
         agent,
         session_id: sid.to_string(),
         project_path: cwd.to_string(),
         project_name: last_segment(cwd).unwrap_or(project_dir).to_string(),
-        ai_title: v["aiTitle"].as_str().map(str::to_string),
-        first_user_excerpt: excerpt.to_string(),
-        title: label_of(None, v["aiTitle"].as_str(), excerpt, cwd, sid),
-        started_at: v["startedAtMs"].as_i64().unwrap_or(0),
-        updated_at: v["updatedAtMs"].as_i64().unwrap_or(0),
-        jsonl_path: v["jsonlPath"].as_str().unwrap_or_default().to_string(),
+        title: label_of(None, r.ai_title.as_deref(), &r.first_user_excerpt, cwd, sid),
+        ai_title: r.ai_title.clone(),
+        first_user_excerpt: r.first_user_excerpt.clone(),
+        started_at: r.started_at_ms,
+        updated_at: r.updated_at_ms,
+        jsonl_path: r.record_path.clone(),
         life: Some(crate::history::live::life_of(&live.0, sid)),
-        message_count_approx: v["messageCountApprox"].as_u64().unwrap_or(0) as u32,
-        is_bg: v["isBg"].as_bool().unwrap_or(false),
+        message_count_approx: r.message_count_approx,
+        is_bg: r.is_bg,
         starred: false,
         custom_title: None,
         launch_tab: None,
@@ -544,7 +546,12 @@ fn row_of(
     tz: &crate::Tz,
     labels: &BTreeMap<String, String>,
 ) -> HistoryRow {
-    let r = f.raw;
+    let mut r = f.raw;
+    // 记录文件的路径先拿出来（其余各格下面逐格搬过去）。
+    let record_path = {
+        let RawRow { jsonl_path, .. } = &mut r;
+        std::mem::take(jsonl_path)
+    };
     let forked_from = r
         .forked_from_session_id
         .as_deref()
@@ -575,7 +582,7 @@ fn row_of(
         title: r.title,
         started_at: r.started_at,
         updated_at: r.updated_at,
-        jsonl_path: r.jsonl_path,
+        jsonl_path: record_path,
         message_count_approx: r.message_count_approx,
         is_bg: r.is_bg,
         starred: r.starred,
@@ -831,7 +838,8 @@ fn groups_of(
     for f in &listing.failed {
         out.push(HistoryGroup {
             key: format!("dir:{}", f.project_dir),
-            agent: crate::agents::record_tree_kind()
+            // 读不了的是记录树里的一个目录（不在任何一家合成历史的根下）⇒ 照这个目录名问是哪一家（`agents::record_kind_of`）。
+            agent: crate::agents::record_kind_of(std::path::Path::new(&f.project_dir))
                 .unwrap_or_default()
                 .to_string(),
             project_name: f.project_dir.clone(),

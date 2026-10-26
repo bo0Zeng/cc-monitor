@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::ccm_line::argv::Parsed;
+use crate::observe::accounts_query::AccountRow;
 
 /// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `--` 切分的排列（意图逐词不变）。
 fn parse(a: &[String]) -> Result<Parsed, crate::ccm_line::argv::Die> {
@@ -29,7 +30,7 @@ fn env() -> Env {
     }
 }
 
-fn plan_of(args: &[&str], env: &Env, t: &ManifestRead) -> Plan {
+fn plan_of(args: &[&str], env: &Env, t: &dyn Fn() -> AccountsList) -> Plan {
     plan_of_with(args, env, t, None)
 }
 
@@ -51,7 +52,12 @@ fn snapshot_of(names: &[&str]) -> TakenNames {
         .expect("固定夹具问得到")
 }
 
-fn plan_of_with(args: &[&str], env: &Env, t: &ManifestRead, taken: Option<&TakenNames>) -> Plan {
+fn plan_of_with(
+    args: &[&str],
+    env: &Env,
+    t: &dyn Fn() -> AccountsList,
+    taken: Option<&TakenNames>,
+) -> Plan {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     match parse(&a).expect("该解析得动") {
         Parsed::Opts(o) => build(&o, env, t, taken).expect("该算得出计划"),
@@ -60,7 +66,7 @@ fn plan_of_with(args: &[&str], env: &Env, t: &ManifestRead, taken: Option<&Taken
 }
 
 fn printed(args: &[&str]) -> String {
-    render(&plan_of(args, &env(), &ManifestRead::Ok(None)))
+    render(&plan_of(args, &env(), &no_library))
 }
 
 /// 〔搬自 `ccm-cli`「零修饰」「resume <sid>」「--launcher 覆盖」「--base」「--model」
@@ -119,7 +125,7 @@ fn only_codex_gets_the_bus_id_recipe() {
 /// 〔搬自 `ccm-cli` 账号那一族：显式 / 继承 / 默认号 / --base 四条路〕
 ///
 /// ✅ 最后那条（裸终端落默认号）**是要的行为**，
-/// 不是病灶；③ 那条（不许覆盖继承）是同一裁的另一半。见 [`resolve_account`] 头注。
+/// 不是病灶；③ 那条（不许覆盖继承）是同一裁的另一半。见 [`account_for`] 头注。
 #[test]
 fn the_four_ways_an_account_gets_picked() {
     let dz = tempdir();
@@ -174,7 +180,7 @@ fn picking_an_account_never_falls_back_to_a_different_one() {
         "{msg}"
     );
     // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
-    let empty = ManifestRead::Ok(None);
+    let empty = no_library;
     assert!(!render(&plan_of(&["--cwd", "/p"], &env(), &empty)).contains("CLAUDE_CONFIG_DIR="));
 }
 
@@ -237,7 +243,7 @@ fn the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name() {
 #[test]
 fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
     let e = env();
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     // 🔴 `K-R96`：量的是**最终名**，不是那个「要不要退让」的布尔。
     //    原版量布尔 ⇒ 「布尔为 true 而退让根本没被执行」照样绿 ——
     //    那正好是这条判据当初逮到的那个病（退让被静默吃掉）换个位置复发。
@@ -276,7 +282,7 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
 #[test]
 fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
     let e = env();
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     let taken = snapshot_of(&["proj-cc", "proj-cc-2"]);
     let once = render(&plan_of_with(
         &["--ccm-tmux", "--cwd", "/x/proj"],
@@ -304,7 +310,7 @@ fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
 #[test]
 fn a_different_snapshot_moves_the_name() {
     let e = env();
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     let name = |taken: &TakenNames| match plan_of_with(
         &["--ccm-tmux", "--cwd", "/x/proj"],
         &e,
@@ -326,7 +332,7 @@ fn a_different_snapshot_moves_the_name() {
 #[test]
 fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
     let e = env();
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     const SID: &str = "cb3230f3-dead-beef-0000-111122223333";
     let plan = plan_of_with(
         &[
@@ -456,7 +462,7 @@ fn the_container_path_carries_every_intent_inward() {
             "opus",
         ],
         &env(),
-        &ManifestRead::Ok(None),
+        &no_library,
     );
     let Plan::Container(c4) = &p4 else {
         panic!("该是容器路")
@@ -520,11 +526,7 @@ fn the_container_path_carries_every_intent_inward() {
 fn the_container_path_forwards_every_inherited_variable_inward() {
     let db = tempdir();
     let base = |e: &Env| -> String {
-        let p = plan_of(
-            &["--ccm-tmux=n1", "--cwd", "/p"],
-            e,
-            &ManifestRead::Ok(None),
-        );
+        let p = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], e, &no_library);
         let Plan::Container(c) = p else {
             panic!("该是容器路")
         };
@@ -671,7 +673,7 @@ fn every_value_that_reaches_a_shell_is_quoted() {
     let out = render(&plan_of(
         &["--ccm-tmux", "--cwd", "/home/pi/my proj"],
         &env(),
-        &ManifestRead::Ok(None),
+        &no_library,
     ));
     assert!(out.contains("-c '/home/pi/my proj'"), "{out}");
     assert!(out.contains("-s 'my-proj-cc'"), "{out}");
@@ -713,7 +715,7 @@ fn naming_a_session_from_inside_tmux_switches_the_client() {
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     let tail_of = |args: &[&str]| -> String {
-        let Plan::Container(c) = plan_of(args, &env(), &ManifestRead::Ok(None)) else {
+        let Plan::Container(c) = plan_of(args, &env(), &no_library) else {
             panic!("该是容器路：{args:?}")
         };
         render_container_tail(&c)
@@ -839,11 +841,7 @@ fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
 /// 渲染函数的全部输入只有 `Plan`，没有第二个来源（删了进程内 `resolve` 那一问）。
 #[test]
 fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
-    let p = plan_of(
-        &["--cwd", "/p", "--model", "opus"],
-        &env(),
-        &ManifestRead::Ok(None),
-    );
+    let p = plan_of(&["--cwd", "/p", "--model", "opus"], &env(), &no_library);
     assert_eq!(render(&p), render(&p), "渲染必须是纯函数");
     let Plan::Direct(d) = &p else {
         panic!("该是 Direct")
@@ -873,8 +871,8 @@ fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
         ..env()
     };
     let args = &["--ccm-agent", "codex", "--cwd", "/p"];
-    let po = plan_of(args, &outside, &ManifestRead::Ok(None));
-    let pi = plan_of(args, &inside, &ManifestRead::Ok(None));
+    let po = plan_of(args, &outside, &no_library);
+    let pi = plan_of(args, &inside, &no_library);
 
     // 反空真①：两份计划**真的不同** —— 否则下面那条相等是恒真。
     assert_ne!(
@@ -918,214 +916,194 @@ fn tempdir() -> String {
     p.to_string_lossy().to_string()
 }
 
-/// 现成的一摞号 ⇒ 一份读懂了的清单（判据夹具用；生产侧只经 [`read_accounts`] 进来）。
-pub(crate) fn library_of(rows: Vec<Account>) -> ManifestRead {
-    let mut m = crate::accounts::manage::model::Manifest::default();
-    m.book.accounts = rows;
-    Ok(Some(m))
+/// 这台没有账号库（成品 `meta.enabled = false`、一行都没有）。
+pub(crate) fn no_library() -> AccountsList {
+    let mut l = crate::observe::accounts_query::test_support::list(Vec::new());
+    l.meta.enabled = false;
+    l
 }
 
-fn table(rows: &[(&str, Option<&str>, bool)]) -> ManifestRead {
+/// 一个号在成品里的样子（夹具一律当已登录的订阅号）：号目录在盘上 ⇒ 选得了；没写号目录 ＝ 账号 0（`bare`，恒不经选号）。
+pub(crate) fn product_row(name: &str, dir: Option<&str>, default: bool) -> AccountRow {
+    crate::observe::accounts_query::test_support::row_with(name, |a| {
+        let there = dir.is_some_and(|d| std::path::Path::new(d).is_dir());
+        a.config_dir = dir.map(str::to_string);
+        a.is_default = default;
+        a.mode = if dir.is_none() { "bare" } else { "isolated" }.to_string();
+        a.exists = there || dir.is_none();
+        a.selectable = there;
+    })
+}
+
+/// 现成的一摞号 ⇒ 一份账号清单成品（默认号照成品的规则补，`test_support::list`）；生产侧由入口交（`AccountsScan`）。
+pub(crate) fn library_of(rows: Vec<AccountRow>) -> impl Fn() -> AccountsList {
+    let l = crate::observe::accounts_query::test_support::list(rows);
+    move || l.clone()
+}
+
+fn table(rows: &[(&str, Option<&str>, bool)]) -> impl Fn() -> AccountsList {
     library_of(
         rows.iter()
-            .map(|(n, c, d)| Account {
-                name: (*n).to_string(),
-                config_dir: c.map(|x| x.to_string()),
-                is_default: *d,
-                ..Default::default()
-            })
+            .map(|(n, c, d)| product_row(n, *c, *d))
             .collect(),
     )
 }
 
-/// 账号表的**读法只有一处**：那份 manifest，经 `accounts/manage` 那一个读口。〔承接 `ccm-cli` KCY1 那一族的语义半〕
+/// 照盘上 `<accts>/accounts.json` 现扫一份成品（与生产同一个扫描：`accounts_query::list_product_with`）。
+fn product_at(accts: &str) -> impl Fn() -> AccountsList + '_ {
+    move || {
+        crate::observe::accounts_query::list_product_with(
+            std::path::Path::new(accts),
+            None,
+            &[],
+            &[],
+            "claude-code",
+            "claude-code",
+            false,
+        )
+    }
+}
+
+/// 夹具：临时账号库目录（`<d>/accts`）里写一份清单正文 `body`（`{dir}` 换成号目录 `<d>/accts/work`，那个目录建好），
+/// `logged_in` ⇒ 号目录里放一份**造的**凭据文件（内容是假的，只 stat 它在不在）。回 `(账号库目录, 清单路径, 号目录)`。
+fn library_on_disk(body: &str, logged_in: bool) -> (String, String, String) {
+    let accts = format!("{}/accts", tempdir());
+    let dir = format!("{accts}/work");
+    std::fs::create_dir_all(&dir).expect("造夹具");
+    if logged_in {
+        std::fs::write(
+            format!("{dir}/{}", acct_core::CREDENTIALS_NAME),
+            "{\"fake\":1}",
+        )
+        .expect("造夹具");
+    }
+    let manifest = format!("{accts}/accounts.json");
+    std::fs::write(&manifest, body.replace("{dir}", &dir)).expect("造夹具");
+    (accts, manifest, dir)
+}
+
+/// `ccm … --account <名>` 走真 argv 解析、照盘上那份清单现扫的成品判号（与生产同一个扫描）。
+fn named_on(accts: &str, manifest: &str, name: &str) -> Result<(String, String), Die> {
+    let mut e = env();
+    e.accts_manifest = manifest.to_string();
+    let a: Vec<String> = ["--cwd", "/p", "--account", name]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let o = match parse(&a).expect("解析得动") {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    account_for(&o, &e, &product_at(accts))
+}
+
+const ONE: &str =
+    r#"{"version":1,"accounts":[{"name":"work","configDir":"{dir}","isDefault":true}]}"#;
+
+/// 账号那一格的**判只有一处**：`launch_account::pick`，读的是账号清单成品（清单经 `accounts/manage` 那一个读口）。〔承接 `ccm-cli` KCY1 那一族的语义半〕
 #[test]
-fn the_account_table_has_exactly_one_source() {
-    let d = tempdir();
-    let m = format!("{d}/accounts.json");
-    std::fs::write(
-        &m,
-        format!(
-            r#"{{"version":1,"accounts":[{{"name":"z","configDir":"{d}","isDefault":true}}]}}"#
-        ),
-    )
-    .expect("造夹具");
-    let t = read_accounts(&m);
-    assert_eq!(accounts_of(&t).len(), 1);
-    assert_eq!(effective_default(&t).map(|a| a.name.as_str()), Some("z"));
-    assert_eq!(config_dir_of(&t, "z"), Some(d.clone()));
-    // manifest 不在 ⇒ **没有账号库**，不是失败（那台机器就是没有账号库）
-    assert!(matches!(
-        read_accounts("/nonexistent/accounts.json"),
-        Ok(None)
-    ));
-    // manifest 里写着、盘上没有 ⇒ 当作不可用（目录存在性自己判）
-    let m2 = format!("{d}/a2.json");
-    std::fs::write(
-        &m2,
-        r#"{"version":1,"accounts":[{"name":"g","configDir":"/nonexistent/gone"}]}"#,
-    )
-    .expect("造夹具");
-    assert_eq!(config_dir_of(&read_accounts(&m2), "g"), None);
+fn the_account_is_judged_from_the_listing_product() {
+    let (accts, m, dir) = library_on_disk(ONE, true);
+    assert_eq!(
+        named_on(&accts, &m, "work").expect("登录了的号该选得了"),
+        (dir.clone(), "work".to_string())
+    );
+    // 裸 `ccm`（没给号、没继承）⇒ 跟随这台的默认号。
+    let a: Vec<String> = ["--cwd", "/p"].iter().map(|s| s.to_string()).collect();
+    let Parsed::Opts(o) = parse(&a).expect("解析得动") else {
+        panic!("该是起会话那一形")
+    };
+    let mut e = env();
+    e.accts_manifest = m.clone();
+    assert_eq!(
+        account_for(&o, &e, &product_at(&accts)).expect("默认号"),
+        (dir.clone(), "work".to_string())
+    );
+    // 号目录不在 ⇒ 选不了（「清单里写着」与「盘上真有」是两件事）。
+    std::fs::remove_dir_all(&dir).expect("删号目录");
+    named_on(&accts, &m, "work").expect_err("号目录不在的号照起了");
+    // 默认号用不了 ⇒ 不指定号（同界面「跟随」），不中止。
+    assert_eq!(
+        account_for(&o, &e, &product_at(&accts)).expect("跟随不中止"),
+        (String::new(), String::new())
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
 // 🔴〔2026-09-21 真机现打〕那份 manifest 带 UTF-8 BOM ⇒ **整张账号库被静默吃掉**
 // ════════════════════════════════════════════════════════════════════════
 //
-// # 怎么量到的
-//
-// 在本机那台 Win11 虚拟机上跑 `ccm.exe --account …`：报「账号不可用（不在
-// …accounts.json）」，而那份文件里明明写着那个号。根因是它带 **UTF-8 BOM**
-//（`EF BB BF` —— **PowerShell 5.1 `-Encoding UTF8` 的默认值**），`serde_json`
-// 在第 1 列就失手（独立复算逐字：`expected value at line 1 column 1`），
-// 而 `load` 那句 `unwrap_or_default()` 把失手**吞成空表**。
-//
-// ⇒ **用户拿 PowerShell 碰过这份文件，他的号全消失，还被告知本来就没有。**
-//
-// ⚠ 这一形本机（Linux）在构造上量不到：没人会用 PowerShell 写这份文件。
+// 在本机那台 Win11 虚拟机上跑 `ccm.exe --account …`：报「账号不可用」，而那份文件里明明写着那个号。根因是它带
+// **UTF-8 BOM**（`EF BB BF` —— PowerShell 5.1 `-Encoding UTF8` 的默认值），从前那句 `unwrap_or_default()` 把失手吞成空表。
 // 判据这一侧**不需要真 Windows** —— BOM 是三个字节，造得出来。
-// ⇒ 平台专有的**触发条件**与平台专有的**行为**是两件事，别把前者当成「判不了」。
 
-/// 🔴 带 BOM 的 manifest 照样读得出来（BOM 不是错误，是字节序标记）。
+/// 🔴 带 BOM 的清单照样读得出来，号照样选得了；不许被报成「读不懂」。
 #[test]
 fn a_manifest_with_a_utf8_bom_is_read_not_silently_eaten() {
-    let d = tempdir();
-    let m = format!("{d}/bom.json");
-    let body = format!(
-        r#"{{"version":1,"accounts":[{{"name":"work","configDir":"{d}","isDefault":true}}]}}"#
-    );
-    // PowerShell 5.1 `-Encoding UTF8` 就是这么写的：正文前面三个字节 EF BB BF。
-    std::fs::write(&m, format!("\u{FEFF}{body}")).expect("造夹具");
-    // 夹具本身先自证：那三个字节真的在盘上（否则这条判据在量一个没有 BOM 的文件）。
+    let (accts, m, dir) = library_on_disk(&format!("\u{FEFF}{ONE}"), true);
     let raw = std::fs::read(&m).expect("读夹具");
     assert_eq!(
         &raw[..3],
         &[0xEF, 0xBB, 0xBF],
         "夹具没写出 BOM —— 这条判据此刻在量别的东西"
     );
-
-    let t = read_accounts(&m);
     assert_eq!(
-        accounts_of(&t).len(),
-        1,
-        "带 BOM 的账号库被吃掉了 —— 实得 {} 个号",
-        accounts_of(&t).len()
+        named_on(&accts, &m, "work").expect("带 BOM 的账号库被吃掉了"),
+        (dir, "work".to_string())
     );
-    assert_eq!(effective_default(&t).map(|a| a.name.as_str()), Some("work"));
-    assert_eq!(config_dir_of(&t, "work"), Some(d.clone()));
-    // 而且**不许**被报成「解析不动」：它解析得动，只是带了 BOM。
+    let said = names(&product_at(&accts)(), &m);
     assert!(
-        !names(&t).contains("读不懂"),
-        "一份合法的（只是带 BOM 的）账号库被报成了坏文件：{}",
-        names(&t)
+        !said.contains(copy_core::copy_static!("bePlan.names.unreadable")),
+        "一份合法的（只是带 BOM 的）账号库被报成了坏文件：{said}"
     );
 }
 
-/// 🔴 真解析不动的那一份 ⇒ 照旧空表，**但那句话不许谎称「没有账号库」**。
-///
-/// # 少了它会怎样
-///
-/// 上一条只买「BOM 这一种」。而 `unwrap_or_default()` 那个形状的毛病不是 BOM ——
-/// 是**把所有解析失败都说成「这台机器没有账号库」**。手写坏一个逗号是同一形，
-/// 而那时用户会去找一个不存在的原因。
-#[test]
-fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() {
-    let d = tempdir();
-    let m = format!("{d}/broken.json");
-    std::fs::write(&m, r#"{"accounts":[{"name":"work",]}"#).expect("造夹具");
-    let t = read_accounts(&m);
-    assert!(accounts_of(&t).is_empty(), "坏 JSON 竟然读出了号");
-    let said = names(&t);
-    assert!(
-        said.contains(copy_core::copy_static!("bePlan.names.unreadable")),
-        "坏掉的账号库被报成了别的东西：{said}"
-    );
-    assert!(
-        !said.contains(copy_core::copy_static!("bePlan.names.none")),
-        "坏掉的账号库被谎称成「没有账号库」—— 用户会去找一个不存在的原因：{said}"
-    );
-
-    // 🔴 阴性对照：**真的**没有账号库时，那句话仍然是「无账号库」
-    //（少了这一半，上面那两比可以靠「恒说解析不动」全绿，
-    //  那时没装过账号库的用户会收到一句「你的文件坏了」）。
-    let none = read_accounts("/nonexistent/accounts.json");
-    assert!(
-        names(&none).contains(copy_core::copy_static!("bePlan.names.none")),
-        "实得 {}",
-        names(&none)
-    );
-    assert!(!names(&none).contains("读不懂"), "实得 {}", names(&none));
-
-    // 空文件：文件在、却不是一份清单 ⇒ 与账号页同一个读口、同一个说法（读不懂），不谎称「没有账号库」。
-    let e = format!("{d}/empty.json");
-    std::fs::write(&e, "   \n").expect("造夹具");
-    assert!(
-        names(&read_accounts(&e)).contains(copy_core::copy_static!("bePlan.names.unreadable")),
-        "空文件被报成了别的东西"
-    );
-}
-
-/// 🔴 清单的版本是这个后端不认的（未来版本）⇒ 起会话那条路**拒**，不照读：与账号页读的是同一个读口、同一句「版本不认」。
+/// 🔴 读不懂的那一份（坏 JSON · 空文件 · 未来版本）⇒ 点名的号选不了，**用户看到的那句话说「读不懂」、不谎称「没有账号库」**；
+/// 阴性对照：真的没有账号库时那句话仍是「无账号库」。
 ///
 /// 从前起会话自己解析那份文件、不看 `version`：写成未来版本的清单照样交出号目录，而账号页那边早就说它读不懂。
 #[test]
-fn a_manifest_from_a_future_version_is_refused_on_the_launch_path() {
-    let d = tempdir();
-    let m = format!("{d}/future.json");
-    std::fs::write(
-        &m,
-        format!(
-            r#"{{"version":99,"accounts":[{{"name":"work","configDir":"{d}","isDefault":true}}]}}"#
-        ),
-    )
-    .expect("造夹具");
-    let mut e = env();
-    e.accts_manifest = m;
-    let a: Vec<String> = ["--cwd", "/p", "--account", "work"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let o = match parse(&a).expect("解析得动") {
-        Parsed::Opts(o) => o,
-        other => panic!("{other:?}"),
-    };
-    let Die(msg) = resolve_account(&o, &e, &read_accounts(&e.accts_manifest))
-        .expect_err("未来版本的清单照读了：交出了号目录");
+fn a_manifest_we_cannot_read_says_so_and_the_named_account_is_refused() {
+    let unreadable = copy_core::copy_static!("bePlan.names.unreadable");
+    let none = copy_core::copy_static!("bePlan.names.none");
+    for (what, body) in [
+        ("坏 JSON", r#"{"accounts":[{"name":"work",]}"#.to_string()),
+        ("只有空白", "   \n".to_string()),
+        ("未来版本", ONE.replace(r#""version":1"#, r#""version":99"#)),
+    ] {
+        let (accts, m, _) = library_on_disk(&body, true);
+        let Die(msg) = named_on(&accts, &m, "work").expect_err(what);
+        assert!(
+            msg.contains(unreadable),
+            "{what}：用户看到的那句话里没有原因：{msg}"
+        );
+        assert!(
+            !msg.contains(none),
+            "{what}：坏掉的账号库被谎称成「没有账号库」：{msg}"
+        );
+    }
+    let (accts, m, _) = library_on_disk(ONE, true);
+    std::fs::remove_file(&m).expect("删清单");
+    let said = names(&product_at(&accts)(), &m);
     assert!(
-        msg.contains(copy_core::copy_static!("bePlan.names.unreadable")),
-        "拒了，但那句话没说清单读不懂：{msg}"
+        said.contains(none) && !said.contains(unreadable),
+        "实得 {said}"
     );
 }
 
-/// 用户看得见的那句话里**真的**带上了这个说法 —— 不是只有 `names()` 自己知道。
+/// 🔴 `ccm --account <没登录的号>` ⇒ **拒**，与界面起会话同一条判（`launch_account::pick`）：号目录在、却没登录 ⇒ 选不了。
 ///
-/// ⚠ 本条走 `resolve_account` 那条真路（`--account` 指名一个不存在的号），
-/// 因为 `names()` 今天唯一的消费点就在那句报错里；只判 `names()` 的话，
-/// 哪天那句报错不再喊它，这件事会静默失效。
+/// 从前命令行这一路只看号目录在不在，界面那一侧说「需登录」的号它照起。
 #[test]
-fn the_message_the_user_actually_sees_carries_the_reason() {
-    let d = tempdir();
-    let m = format!("{d}/broken2.json");
-    std::fs::write(&m, "{oops").expect("造夹具");
-    let mut e = env();
-    e.accts_manifest = m;
-    // 走**真 argv 解析**拿 `Opts`（本仓判据的惯例，见上方 `--account nope` 那条）——
-    // 手搓一个 `Opts` 会绕开解析那一段，而那一段也在用户那条路上。
-    let a: Vec<String> = ["--cwd", "/p", "--account", "work"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let o = match parse(&a).expect("解析得动") {
-        Parsed::Opts(o) => o,
-        other => panic!("{other:?}"),
-    };
-    let Die(msg) = resolve_account(&o, &e, &read_accounts(&e.accts_manifest))
-        .expect_err("指名一个读不出来的号竟然成功了");
+fn a_named_account_that_is_not_logged_in_is_refused_like_the_ui_refuses_it() {
+    let (accts, m, dir) = library_on_disk(ONE, false);
     assert!(
-        msg.contains(copy_core::copy_static!("bePlan.names.unreadable")),
-        "用户看到的那句话里没有原因：{msg}"
+        !std::path::Path::new(&dir)
+            .join(acct_core::CREDENTIALS_NAME)
+            .exists(),
+        "夹具：号目录里不该有凭据文件"
     );
+    named_on(&accts, &m, "work").expect_err("没登录的号照起了");
 }
 
 /// ★ 自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
@@ -1149,7 +1127,7 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
         // 旗标排在最前（排到 `--` 后面就成了透传参数）。
         let mut a = vec!["--bus-register", "--detach"];
         a.extend_from_slice(args);
-        let p = plan_of(&a, &e, &ManifestRead::Ok(None));
+        let p = plan_of(&a, &e, &no_library);
         let Plan::Container(c) = &p else {
             panic!("该是容器路：{p:?}")
         };
@@ -1184,7 +1162,7 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
 /// （它只写 tmux 会话上的意图标，直路上没有可写的地方）。
 #[test]
 fn the_direct_print_does_not_change_with_ccm_sid() {
-    let direct = |args: &[&str]| match plan_of(args, &env(), &ManifestRead::Ok(None)) {
+    let direct = |args: &[&str]| match plan_of(args, &env(), &no_library) {
         Plan::Direct(d) => d,
         other => panic!("直路测试却算出 {other:?}"),
     };
@@ -1397,11 +1375,7 @@ fn an_inherited_relay_address_of_ours_never_goes_into_the_pane() {
     let container_of = |v: &str| -> Container {
         let mut e = env();
         e.inherited_base_url = Some(v.to_string());
-        let Plan::Container(c) = plan_of(
-            &["--ccm-tmux=n1", "--cwd", "/p"],
-            &e,
-            &ManifestRead::Ok(None),
-        ) else {
+        let Plan::Container(c) = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], &e, &no_library) else {
             panic!("该是容器路")
         };
         c
@@ -1563,7 +1537,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     let build_of = |args: &[&str], e: &Env| {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         match parse(&a).expect("该解析得动") {
-            Parsed::Opts(o) => build(&o, e, &ManifestRead::Ok(None), None),
+            Parsed::Opts(o) => build(&o, e, &no_library, None),
             other => panic!("{other:?}"),
         }
     };
@@ -1711,7 +1685,7 @@ fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
             .map(|s| s.to_string())
             .collect();
         match parse(&a).expect("该解析得动") {
-            Parsed::Opts(o) => build(&o, &env(), &ManifestRead::Ok(None), None),
+            Parsed::Opts(o) => build(&o, &env(), &no_library, None),
             other => panic!("{other:?}"),
         }
     };
@@ -1762,7 +1736,7 @@ fn snapshot_rows(rows: &[(&str, &str)]) -> TakenNames {
 #[test]
 fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
     let snap = snapshot_rows(&[("other", ""), ("work", "sid-1"), ("third", "sid-9")]);
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     let rejoin = |detach| Plan::Rejoin {
         name: "work".into(),
         sid: "sid-1".into(),
@@ -1820,7 +1794,7 @@ fn fake_scan(dir: Option<&std::path::Path>) -> Vec<(String, u32)> {
 /// ★ 注入的扫描说 `sid-1` 在跑（pid 4242）、快照里没它 ⇒ 拒并说出 pid；tmux 里认得出 ⇒ 仍是接上；扫描问的是这一趟那个账号的目录。
 #[test]
 fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     let mut e = env();
     e.running_sessions = Some(fake_scan);
     let a: Vec<String> = ["--resume", "sid-1"]
@@ -1876,7 +1850,7 @@ fn two_writers_scan(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
 /// 注入的扫描说 `sid-1` 有两个活进程在写 ⇒ 拒并说出两个 pid（升序）：tmux 里认得出也不接（接哪一个都不对），更不另起。
 #[test]
 fn a_resume_of_a_session_two_processes_are_writing_is_refused() {
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     let mut e = env();
     e.running_sessions = Some(two_writers_scan);
     let a: Vec<String> = ["--resume", "sid-1"]
@@ -1902,7 +1876,7 @@ fn a_resume_of_a_session_two_processes_are_writing_is_refused() {
 fn plan_split(args: &[&str], env: &Env) -> Result<Plan, crate::ccm_line::argv::Die> {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     match crate::ccm_line::argv::parse(&a)? {
-        Parsed::Opts(o) => build(&o, env, &ManifestRead::Ok(None), None),
+        Parsed::Opts(o) => build(&o, env, &no_library, None),
         other => panic!("{other:?}"),
     }
 }
@@ -2085,17 +2059,17 @@ fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
     let mut e = env();
     e.running_sessions = Some(dead);
     assert!(matches!(
-        build(&o, &e, &ManifestRead::Ok(None), Some(&tagged)).unwrap(),
+        build(&o, &e, &no_library, Some(&tagged)).unwrap(),
         Plan::Direct(_)
     ));
     e.running_sessions = Some(live);
     assert!(matches!(
-        build(&o, &e, &ManifestRead::Ok(None), Some(&tagged)).unwrap(),
+        build(&o, &e, &no_library, Some(&tagged)).unwrap(),
         Plan::Rejoin { .. }
     ));
     e.running_sessions = None;
     assert!(matches!(
-        build(&o, &e, &ManifestRead::Ok(None), Some(&tagged)).unwrap(),
+        build(&o, &e, &no_library, Some(&tagged)).unwrap(),
         Plan::Rejoin { .. }
     ));
 }
@@ -2212,12 +2186,7 @@ fn codex_runs_without_the_shared_daemon_and_without_an_account() {
 #[test]
 fn on_windows_the_printed_line_speaks_powershell() {
     use crate::platform::shell::dialect::Shell;
-    let ps = |args: &[&str]| {
-        render_for(
-            &plan_of(args, &env(), &ManifestRead::Ok(None)),
-            Shell::PowerShell,
-        )
-    };
+    let ps = |args: &[&str]| render_for(&plan_of(args, &env(), &no_library), Shell::PowerShell);
     let nested = "Remove-Item Env:CLAUDECODE, Env:CLAUDE_CODE_ENTRYPOINT, Env:CLAUDE_CODE_SESSION_ID, Env:CLAUDE_CODE_CHILD_SESSION -ErrorAction Ignore";
     assert_eq!(
         ps(&["--cwd", "/w/z's work", "--", "-p", "hi there"]),
@@ -2228,7 +2197,7 @@ fn on_windows_the_printed_line_speaks_powershell() {
         format!("Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction Ignore; {nested}; Set-Location -LiteralPath '/p'; & 'claude'")
     );
     // 同一条计划在 POSIX 那一侧照旧（真跑经 `sh -c` 的那一趟读的是它）。
-    let p = plan_of(&["--cwd", "/p"], &env(), &ManifestRead::Ok(None));
+    let p = plan_of(&["--cwd", "/p"], &env(), &no_library);
     assert_eq!(render_for(&p, Shell::Posix), render(&p));
     // `/s/` 中转地址：钥匙现读家目录底下那份文件，不进打印出来的命令。
     let mut d = match p {
@@ -2316,8 +2285,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
             panic!()
         };
         o.agent = kind.to_string();
-        let Plan::Direct(d) = build_among(&reg, &o, &e, &ManifestRead::Ok(None), None).unwrap()
-        else {
+        let Plan::Direct(d) = build_among(&reg, &o, &e, &no_library, None).unwrap() else {
             panic!("{kind} 该是直路")
         };
         d
@@ -2429,11 +2397,7 @@ fn the_relay_address_carries_where_the_session_came_from() {
 fn the_container_path_hands_its_parent_inward_and_never_a_stale_one() {
     let var = crate::agents::self_sid_envs()[0];
     let payload_of = |e: &Env| {
-        let Plan::Container(c) = plan_of(
-            &["--ccm-tmux=n1", "--cwd", "/p"],
-            e,
-            &ManifestRead::Ok(None),
-        ) else {
+        let Plan::Container(c) = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], e, &no_library) else {
             panic!("该是容器路")
         };
         (c.payload, c.self_check)
@@ -2499,7 +2463,15 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
     for case in golden["cases"].as_array().unwrap() {
         let what = case["what"].as_str().unwrap();
         let root = tempdir();
-        let accounts: Vec<Account> = case["accounts"]
+        let selectable = |n: &str| {
+            case["selectable"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s == n)
+        };
+        // 成品照金样那几格造（能不能选由夹具照成品的规则算）；期望照金样逐字写着的 `selectable`。
+        let accounts: Vec<AccountRow> = case["accounts"]
             .as_array()
             .unwrap()
             .iter()
@@ -2509,15 +2481,13 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
                     .as_bool()
                     .unwrap()
                     .then(|| format!("{root}/{name}"));
-                if let (Some(d), true) = (&dir, a["exists"].as_bool().unwrap()) {
-                    std::fs::create_dir_all(d).unwrap();
-                }
-                Account {
-                    name,
-                    config_dir: dir,
-                    is_default: a["isDefault"].as_bool().unwrap(),
-                    ..Default::default()
-                }
+                crate::observe::accounts_query::test_support::row_with(&name, |r| {
+                    r.config_dir = dir.clone();
+                    r.is_default = a["isDefault"].as_bool().unwrap();
+                    r.mode = a["mode"].as_str().unwrap().to_string();
+                    r.auth_ready = a["authReady"].as_bool().unwrap();
+                    r.exists = a["exists"].as_bool().unwrap();
+                })
             })
             .collect();
         let want = case["effectiveDefault"].as_str().and_then(|d| {
@@ -2526,12 +2496,11 @@ fn a_bare_launch_lands_on_the_same_default_as_the_listing() {
                 .unwrap()
                 .iter()
                 .find(|a| a["name"] == d)?;
-            row["hasDir"]
-                .as_bool()
-                .unwrap()
+            // 默认号选得了才用（同界面「跟随」）；用不了 ⇒ 不指定号。
+            (row["hasDir"].as_bool().unwrap() && selectable(d))
                 .then(|| (format!("{root}/{d}"), d.to_string()))
         });
-        let got = resolve_account(&o, &env(), &library_of(accounts))
+        let got = account_for(&o, &env(), &library_of(accounts))
             .unwrap_or_else(|Die(m)| panic!("{what}：{m}"));
         assert_eq!(got, want.unwrap_or_default(), "{what}");
         let _ = std::fs::remove_dir_all(&root);
@@ -2602,7 +2571,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
     };
 
     // ① ccm 每一形：接回 · resume 接上在跑的 · 建容器接进去 / 不接 · 带 cc-bus 登记 · codex 的总线身份配方。
-    let t = ManifestRead::Ok(None);
+    let t = no_library;
     let container = |args: &[&str]| match plan_of(args, &env(), &t) {
         Plan::Container(c) => c,
         other => panic!("该是容器路：{args:?} ⇒ {other:?}"),
@@ -2684,7 +2653,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
 fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
     let mut e = env();
     e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
-    let Plan::Direct(d) = plan_of(&["--model", "opus"], &e, &ManifestRead::Ok(None)) else {
+    let Plan::Direct(d) = plan_of(&["--model", "opus"], &e, &no_library) else {
         panic!("该是 Direct")
     };
     let mut want = vec!["claude".to_string()];
@@ -2694,7 +2663,7 @@ fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
     want.extend(["--model".to_string(), "opus".to_string()]);
     assert_eq!(d.argv, want);
 
-    let Plan::Direct(d) = plan_of(&["--model", "opus"], &env(), &ManifestRead::Ok(None)) else {
+    let Plan::Direct(d) = plan_of(&["--model", "opus"], &env(), &no_library) else {
         panic!("该是 Direct")
     };
     assert_eq!(
@@ -2768,7 +2737,7 @@ fn a_changed_launcher_gets_the_answer_plugin_through_the_environment() {
     ] {
         let mut args: Vec<&str> = lead.to_vec();
         args.extend(["do-it", "--launcher", launcher]);
-        let Plan::Direct(d) = plan_of(&args, &e, &ManifestRead::Ok(None)) else {
+        let Plan::Direct(d) = plan_of(&args, &e, &no_library) else {
             panic!("该是 Direct")
         };
         let mut want: Vec<String> = launcher.split(' ').map(str::to_string).collect();
@@ -2792,11 +2761,7 @@ fn a_changed_launcher_gets_the_answer_plugin_through_the_environment() {
             "打印那一行也看得见"
         );
     }
-    let Plan::Direct(d) = plan_of(
-        &["do-it", "--launcher", "claude"],
-        &e,
-        &ManifestRead::Ok(None),
-    ) else {
+    let Plan::Direct(d) = plan_of(&["do-it", "--launcher", "claude"], &e, &no_library) else {
         panic!("该是 Direct")
     };
     let mut want = vec!["claude".to_string()];
@@ -2825,7 +2790,7 @@ fn a_users_own_plugin_dirs_are_appended_to_not_replaced() {
         let Plan::Direct(d) = plan_of(
             &["WRAPVAR=x", "claude", "--launcher", "env"],
             &e,
-            &ManifestRead::Ok(None),
+            &no_library,
         ) else {
             panic!("该是 Direct")
         };
@@ -2852,7 +2817,7 @@ fn a_changed_launcher_that_cannot_take_the_plugin_says_why() {
         let Plan::Direct(d) = plan_of(
             &["WRAPVAR=x", "claude", "do-it", "--launcher", "env"],
             &e,
-            &ManifestRead::Ok(None),
+            &no_library,
         ) else {
             panic!("该是 Direct")
         };
@@ -2893,7 +2858,7 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
             .clone()
     };
     for args in [&["--settings", "u.json"][..], &["--settings=/p/u.json"][..]] {
-        let Plan::Direct(d) = plan_of(args, &e, &ManifestRead::Ok(None)) else {
+        let Plan::Direct(d) = plan_of(args, &e, &no_library) else {
             panic!("该是 Direct")
         };
         assert_eq!(d.answer_hook_off, None);
@@ -2916,8 +2881,7 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
         );
     }
     // JSON 串也认。
-    let Plan::Direct(d) = plan_of(&["--settings", r#"{"a":1}"#], &e, &ManifestRead::Ok(None))
-    else {
+    let Plan::Direct(d) = plan_of(&["--settings", r#"{"a":1}"#], &e, &no_library) else {
         panic!()
     };
     let v: serde_json::Value = serde_json::from_str(d.argv.last().unwrap()).unwrap();
@@ -2932,7 +2896,7 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
         (&["--settings", "gone.json"][..], SettingsWhy::Unread),
         (&["--settings"][..], SettingsWhy::Unread),
     ] {
-        let Plan::Direct(d) = plan_of(bad, &e, &ManifestRead::Ok(None)) else {
+        let Plan::Direct(d) = plan_of(bad, &e, &no_library) else {
             panic!()
         };
         assert_eq!(

@@ -395,7 +395,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
 #[test]
 fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
     use crate::ccm_line::argv::{self, Parsed};
-    use crate::control::ccm::plan::{self, Env, ManifestRead, Plan};
+    use crate::control::ccm::plan::{self, Env, Plan};
     let reg = registry_with_fake();
     let env = Env {
         home: "/home/pi".into(),
@@ -417,7 +417,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         o.agent = agent.to_string();
         *o
     };
-    let t = ManifestRead::Ok(None);
+    let t = plan::tests::no_library;
     let mut seen: Vec<&str> = Vec::new();
     for a in &reg {
         let face = a.launch.expect("这张注册表里每一家都带起会话事实");
