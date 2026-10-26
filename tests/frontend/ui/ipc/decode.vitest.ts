@@ -1,7 +1,18 @@
-// 严格收的两个小件只住 `ipc/decode.ts` 一处：键恰好这几格 · 必有几格 ＋ 可缺几格。
+// `ipc/decode.ts`：线上来的那一个解码 ＋ 严格收的两个小件（键恰好这几格 · 必有几格 ＋ 可缺几格）只住这一处。
 import { describe, it, expect } from "vitest";
-import { exactKeys, optionalKeys } from "../../../../src/frontend/ui/ipc/decode";
+import { decodeJson, exactKeys, optionalKeys, tryDecodeJson } from "../../../../src/frontend/ui/ipc/decode";
 import { productionTsFiles } from "../../../test-support/production-sources.ts";
+
+describe("线上的那一个解码", () => {
+  it("decodeJson：解得出交值，解不出就抛", () => {
+    expect(decodeJson('{"a":[1,null]}')).toEqual({ a: [1, null] });
+    expect(() => decodeJson("{a")).toThrow();
+  });
+  it("tryDecodeJson：解不出 ⇒ null（不抛）", () => {
+    expect(tryDecodeJson<{ a: number }>('{"a":1}')).toEqual({ a: 1 });
+    expect(tryDecodeJson("not json")).toBeNull();
+  });
+});
 
 describe("ipc/decode", () => {
   it("exactKeys：多一格 / 缺一格都不收，顺序不论", () => {
@@ -44,7 +55,8 @@ const USERS: Record<string, string> = {
 
 describe("回包照生成类型用、不手核", () => {
   it("用严格收小件的恰好是登记的那几份", () => {
-    const imports = /from\s+"[./]*(?:ipc\/)?decode"/;
+    // 只数拿严格收小件的那几份（线上那一个解码 `decodeJson` · `tryDecodeJson` 谁都该用，不在这张表里）。
+    const imports = /import\s*\{[^}]*\b(?:exactKeys|optionalKeys)\b[^}]*\}\s*from\s+"[./]*(?:ipc\/)?decode"/;
     const users = productionTsFiles("src/frontend/ui")
       .filter((s) => s.file !== "src/frontend/ui/ipc/decode.ts" && imports.test(s.text))
       .map((s) => s.file)

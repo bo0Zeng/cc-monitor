@@ -12,6 +12,7 @@
  */
 import { chan, ChanError, type Budget } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
+import { decodeJson } from "./decode";
 import { isLocalOrigin, type Origin } from "./origin";
 import type { RefusalData, TypedCommands } from "../generated/TypedCommands";
 
@@ -50,7 +51,7 @@ export function jsonBody(args: Record<string, unknown>): Uint8Array {
 
 /** 帧命令应答体 ⇒ JSON 值。解不出来就抛（那是两端契约对不上，不是「空答案」）。 */
 export function readJson(body: Uint8Array): unknown {
-  return JSON.parse(dec.decode(body));
+  return decodeJson(dec.decode(body));
 }
 
 /**

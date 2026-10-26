@@ -15,9 +15,10 @@ const { opened } = vi.hoisted(() => ({ opened: [] as string[] }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (u: string) => void opened.push(u) }));
 const { pushes } = vi.hoisted(() => ({ pushes: [] as { origin: string; onChanged: (o: string, topic: string, c: { cells: { key: string | null; rev: null; body: unknown }[]; all: boolean }) => void }[] }));
 vi.mock("../../../src/frontend/ui/events", () => ({
-  bindEvents: (h: { onChanged: never }, o: { changed: { origin: string; topic: string }[] }) => {
-    for (const c of o.changed) if (c.topic === "login") pushes.push({ origin: c.origin, onChanged: h.onChanged });
-    return Promise.resolve();
+  subscribeTopics: (origins: string[], topics: string[], on: (o: string, changes: Map<string, unknown>) => void) => {
+    if (topics.includes("login"))
+      for (const origin of origins) pushes.push({ origin, onChanged: (o, topic, c) => on(o, new Map([[topic, c]])) });
+    return Promise.resolve(() => {});
   },
 }));
 

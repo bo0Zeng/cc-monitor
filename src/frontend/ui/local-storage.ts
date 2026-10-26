@@ -5,7 +5,8 @@
  *    注册，否则模块内 grep 不到无法定位。
  * 2. **safeGet / safeSet 包 try/catch** —— 私密模式 / disk quota / WebView2 沙盒
  *    异常时不抛，只 console.warn。
- * 3. **safeGetJson / safeSetJson** —— JSON 序列化对象时复用。
+ * 3. **safeGetJson / safeSetJson** —— JSON 序列化对象时复用；**parseStored** 是存储里那一格原文的唯一解法
+ *    （会话存储 · 调用方自己读出来的原文也走它）。
  * 4. **enumeratePrefix** —— data-section 列出所有 `cc-monitor.*` key 时用。
  *
  * INVARIANT § 14：所有 key 必须 `cc-monitor.` 前缀。
@@ -60,15 +61,21 @@ export function safeSet(key: string, value: string): void {
   }
 }
 
-export function safeGetJson<T>(key: string): T | null {
-  const raw = safeGet(key);
+/** 存储里那一格的原文 ⇒ JSON 值；没有 / 读不懂 ⇒ `null`（本地 · 会话存储里的东西，界面里只这一口解）。 */
+export function parseStored(raw: string | null): unknown {
   if (raw === null) return null;
   try {
-    return JSON.parse(raw) as T;
-  } catch (e) {
-    console.warn(`[local-storage] parse ${key} failed:`, e);
+    return JSON.parse(raw) as unknown;
+  } catch {
     return null;
   }
+}
+
+export function safeGetJson<T>(key: string): T | null {
+  const raw = safeGet(key);
+  const v = parseStored(raw);
+  if (v === null && raw !== null && raw !== "null") console.warn(`[local-storage] parse ${key} failed`);
+  return v as T | null;
 }
 
 export function safeSetJson<T>(key: string, value: T): void {

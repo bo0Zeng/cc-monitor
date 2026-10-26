@@ -26,7 +26,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({ commands: new Proxy({}, { get: () => vi.fn() }) }));
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
-import { bindEvents, LIVE_CARD_WINDOW } from "../../../src/frontend/ui/events";
+import { bindEvents, LIVE_CARD_WINDOW, SUBSCRIBE_COALESCE_MS, subscribeTopics } from "../../../src/frontend/ui/events";
 import { CHANGED_KIND, CHANGED_WINDOW, type Changed, type Topic } from "../../../src/frontend/ui/changed-stream";
 import { chanStreamModule, streamFake } from "../../test-support/chan-stream-fake.ts";
 
@@ -142,6 +142,55 @@ describe("〔DL1 · MIG-3b〕changed/<topic> 走 subscribe（不是裸事件）"
   it("两侧同一个串：Rust `event_replay.rs::CHANGED_KIND` == TS `CHANGED_KIND`", () => {
     const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
     expect(rs).toContain(`pub const CHANGED_KIND: &str = "${CHANGED_KIND}";`);
+  });
+});
+
+// 主窗口之外那几页只调 `subscribeTopics`：同一台在合批窗口里连着来的几批（跨主题、跨批）合成一次交，各页不各合各的。
+describe("subscribeTopics：一台一窗合一次", () => {
+  beforeEach(() => {
+    streamFake.reset();
+    chanStreamModule.chan.subscribe.mockClear();
+  });
+
+  it("同一台几个主题、几批连着来 ⇒ 窗口到点只交一次（主题各一份、同 key 留后一格）；别的台各自一次；credit 每批当场还；退订之后不再交", async () => {
+    vi.useFakeTimers();
+    try {
+      const got: { origin: string; topics: Record<string, Changed> }[] = [];
+      const stop = await subscribeTopics(["<local>", "box-a"], ["accounts", "quota"], (origin, changes) =>
+        got.push({ origin, topics: Object.fromEntries(changes) }),
+      );
+      expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([
+        ["<local>", "changed/accounts"],
+        ["<local>", "changed/quota"],
+        ["box-a", "changed/accounts"],
+        ["box-a", "changed/quota"],
+      ]);
+      const [la, lq, ba] = streamFake.subscriptions;
+      la!.sink([{ t: "frame", seq: 0, body: JSON.stringify({ key: "w", rev: "1" }) }]);
+      la!.sink([{ t: "frame", seq: 1, body: JSON.stringify({ key: "w", rev: "2" }) }]);
+      lq!.sink([{ t: "frame", seq: 0, body: JSON.stringify({}) }]);
+      ba!.sink([{ t: "seen" }]);
+      expect(la!.wants).toEqual([1, 1]);
+      expect(got).toEqual([]);
+      vi.advanceTimersByTime(SUBSCRIBE_COALESCE_MS);
+      expect(got).toEqual([
+        {
+          origin: "<local>",
+          topics: {
+            accounts: { cells: [{ key: "w", rev: "2", body: undefined }], all: false },
+            quota: { cells: [{ key: null, rev: null, body: undefined }], all: false },
+          },
+        },
+        { origin: "box-a", topics: { accounts: { cells: [], all: true } } },
+      ]);
+      stop();
+      la!.sink([{ t: "frame", seq: 2, body: JSON.stringify({ key: "w", rev: "3" }) }]);
+      vi.advanceTimersByTime(SUBSCRIBE_COALESCE_MS);
+      expect(got).toHaveLength(2);
+      expect(streamFake.subscriptions.every((s) => s.stopped)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
