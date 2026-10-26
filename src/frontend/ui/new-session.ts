@@ -453,7 +453,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const place = (): "tmux" | "window" | null =>
     tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : windowRadio.input.checked ? "window" : null;
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
-  // 连不上时那一句：那台成品写的离线那一句；成品还没到（不知道 ≠ 离线）⇒ 那台状态不明。
+  // 断开时框顶那一句：照那台成品写的离线那一句；成品还没到 ⇒ 那台状态不明（未知不当离线）。
   const offlineLine = (): string => offlineSaid(origin) ?? copyText("settingsNav.dot.unknown", { machine: machineName(origin) });
   const chosenAccountOpt = (): AccountOpt | null =>
     accounts?.find((a) => a.name === accountSel.value()) ?? null;
