@@ -270,19 +270,42 @@
     cursor: pointer;
   }
 
-  /* covers 的括弧：最左一条槽，一条规矩一道（类色那一套，按规矩先后隔两色取），连着的几行连成一条。 */
+  /*
+   * covers 的括弧：最左一条槽，一条规矩固定一列（`--col`；类色那一套，按规矩先后隔两色取），连着的几行连成一条；
+   * 一段起头那一行带上钩、末一行带下钩。选中画圈的规矩 ⇒ 它那几道亮、别的淡到 .28，圈住的行铺 7% 圈色（`--rc`）。
+   */
   .pvRings {
     position: absolute;
     top: 0;
     bottom: 0;
     left: 2px;
-    display: flex;
-    gap: 2px;
   }
 
   .pvRing {
-    width: 2px;
-    background: var(--kc, var(--text-faint));
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--col, 0) * 5px);
+    width: 4px;
+    border-left: 2px solid var(--kc, var(--text-faint));
+  }
+
+  .pvRing[data-start="true"] {
+    top: 4px;
+    border-top: 2px solid var(--kc, var(--text-faint));
+  }
+
+  .pvRing[data-end="true"] {
+    bottom: 4px;
+    border-bottom: 2px solid var(--kc, var(--text-faint));
+  }
+
+  .pvRing[data-look="dim"] {
+    opacity: 0.28;
+  }
+
+  .pvRow[data-ringed="true"] {
+    background: color-mix(in srgb, var(--rc) 7%, transparent);
   }
 
   .pvRow:hover {

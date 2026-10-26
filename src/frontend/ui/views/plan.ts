@@ -45,12 +45,12 @@ import {
   labelOf,
   outlineRows,
   shortId,
+  ringLanes,
   ringRules,
-  ringsOf,
   statusLook,
   topBlock,
   type PlanFilter,
-  type Ring,
+  type RingRow,
 } from "./plan-model";
 import { CellDetail, handoffBox, takeoverCell, takeoverSpec } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
@@ -836,12 +836,17 @@ export class PlanView {
       query: this.query,
       needsCells: new Set((slice.needs ?? []).map((n) => n.cell).filter((x): x is string => x !== null)),
     });
-    const rings = ringsOf(slice);
-    for (const r of rows) box.appendChild(this.row(slice, r, rings.get(r.cell.id) ?? []));
+    const lanes = ringLanes(
+      slice,
+      rows.map((r) => r.cell.id),
+      new Set(rows.filter((r) => r.folded).map((r) => r.cell.id)),
+      this.selected,
+    );
+    rows.forEach((r, i) => box.appendChild(this.row(slice, r, lanes[i])));
     return box;
   }
 
-  private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number], rings: readonly Ring[]): HTMLElement {
+  private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number], rings: RingRow): HTMLElement {
     const c = r.cell;
     const look = statusLook(c);
     const el = document.createElement("div");
@@ -854,18 +859,27 @@ export class PlanView {
     if (r.hasKids) el.setAttribute("aria-expanded", String(!r.folded));
     el.style.paddingLeft = `${16 + r.depth * 18}px`;
     setKindColor(el, kindSlot(slice, c.kind));
-    // covers 画圈：最左一条槽，圈住它的每条规矩一道（同一条规矩同一色，几道并排），停在上面说是哪一条。
-    if (rings.length > 0) {
+    // covers 画圈：最左一条槽，一条规矩固定一列（同一条规矩同一色），一段起头带上钩、末行带下钩，停在上面说是哪一条；
+    // 选中了画圈的规矩 ⇒ 它那几道亮、别的淡，圈住的行铺它的色。
+    if (rings.marks.length > 0) {
       const slot = document.createElement("span");
       slot.className = s.pvRings;
-      for (const g of rings) {
+      for (const g of rings.marks) {
         const b = document.createElement("span");
         b.className = s.pvRing;
         setKindColor(b, g.slot);
+        b.style.setProperty("--col", String(g.col));
+        if (g.start) b.dataset.start = "true";
+        if (g.end) b.dataset.end = "true";
+        if (g.look) b.dataset.look = g.look;
         b.title = labelOf(slice, g.rule);
         slot.appendChild(b);
       }
       el.appendChild(slot);
+    }
+    if (rings.tint !== null) {
+      el.dataset.ringed = "true";
+      el.style.setProperty("--rc", `var(--plan-kind-${rings.tint})`);
     }
     const chev = document.createElement("span");
     chev.className = s.pvChev;
