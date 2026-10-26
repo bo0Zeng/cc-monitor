@@ -45,14 +45,12 @@ pub struct DataPathInfo {
     pub description: String,
     /// 是否存在
     pub exists: bool,
-    /// 文件大小（bytes）；目录返 None（不递归算大小，避免大目录卡 IPC）。两个 `ts` 属性都是承重的：
-    /// 1. `optional`：本字段带 `skip_serializing_if`，`None` 时字段在 JSON 里整个缺席，TS 侧收到 `undefined`；ts-rs 只在 `maybe_omitted && has_default` 时兜底，
-    ///    本字段没有 `#[serde(default)]` ⇒ 显式 `ts(optional)` 必需（`ts(optional = nullable, type = "number")` 产出的也是 `sizeBytes?: number`：type override 吃掉 nullable）。
-    /// 2. `type = "number"`：ts-rs 默认把 `u64` 映射成 `bigint`，而 Tauri 的命令 IPC 走 JSON（`impl<T: Serialize> IpcResponse for T` 走 `serde_json::to_string`），
-    ///    `JSON.parse` 永不产出 BigInt。收窄成 `number` 安全：只用于展示文件大小，f64 的安全整数上限 2^53-1 ≈ 8 PB。类型不许与运行时不一致。
+    /// 文件大小，写好的字（`copy_core::size_text`，界面照抄）；目录返 None（不递归算大小，避免大目录卡 IPC）。
+    /// `optional`：本字段带 `skip_serializing_if`，`None` 时字段在 JSON 里整个缺席，TS 侧收到 `undefined`；
+    /// 本字段没有 `#[serde(default)]` ⇒ 显式 `ts(optional)` 必需。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub size_bytes: Option<u64>,
+    #[cfg_attr(test, ts(optional))]
+    pub size_text: Option<String>,
 }
 
 /// `INVARIANTS §2.1` 那两类：**真相**（用户手写 / 意图，删了丢东西）与**缓存 / 派生**（能从别处重建，随便删）。
@@ -194,8 +192,10 @@ fn backend_stderr_dir(monitor_data_dir: &Path) -> DataPathInfo {
 
 fn probe_file(path: PathBuf, label: &str, description: &str, class: DataClass) -> DataPathInfo {
     let exists = path.is_file();
-    let size_bytes = if exists {
-        std::fs::metadata(&path).ok().map(|m| m.len())
+    let size_text = if exists {
+        std::fs::metadata(&path)
+            .ok()
+            .map(|m| copy_core::size_text(m.len()))
     } else {
         None
     };
@@ -206,7 +206,7 @@ fn probe_file(path: PathBuf, label: &str, description: &str, class: DataClass) -
         kind: "file".to_string(),
         description: description.to_string(),
         exists,
-        size_bytes,
+        size_text,
     }
 }
 
@@ -221,7 +221,7 @@ fn probe_dir(path: PathBuf, label: &str, description: &str, class: DataClass) ->
         kind: "dir".to_string(),
         description: description.to_string(),
         exists,
-        size_bytes: None,
+        size_text: None,
     }
 }
 

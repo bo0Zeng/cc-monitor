@@ -1251,18 +1251,19 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
     let log_tail = |p: Option<&Path>, max| serde_json::to_value(log_tail(p, max).unwrap()).unwrap();
     assert_eq!(
         log_tail(None, 100),
-        serde_json::json!({"path": null, "size": 0, "text": "", "truncated": false})
+        serde_json::json!({"path": null, "size_text": null, "text": "", "truncated": false})
     );
+    // 整份的大小由后端写好（同一个写法 `copy_core::size_text`），界面照抄。
     let all = log_tail(Some(&p), 1000);
     assert_eq!(
         (
             all["text"].as_str(),
-            all["size"].as_u64(),
+            all["size_text"].as_str(),
             all["truncated"].as_bool()
         ),
         (
             Some("first line\nsecond line\nthird\n"),
-            Some(29),
+            Some(copy_core::size_text(29).as_str()),
             Some(false)
         )
     );

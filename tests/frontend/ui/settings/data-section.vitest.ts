@@ -92,7 +92,6 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "../kit/toast": ["failToast"],
       "../kit/detail": ["sayFailure"], // 读失败那一句 ＋ 它的［复制详情］：只取那一句与详情、排版，不是效应
       "../local-storage": ["enumeratePrefix"],
-      "../format": ["sizeText"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
       "../copy-table": ["copyText"], // 取文口：只读一张表，不是效应
       "../kit/icon": ["icon"], // 画图标：不是效应
@@ -108,7 +107,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       kind: "file",
       description: `${label} 是什么`,
       exists: true,
-      sizeBytes: 12,
+      sizeText: "台架写的大小",
     });
     const entries = [
       item("config.json", "/h/.cc-monitor/config.json"),
@@ -130,6 +129,9 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     );
     // 「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
     expect(shown).toEqual([...entries, webview].map((e) => e.path));
+    // 大小是壳写好的字，界面照抄（台架故意给一个不是换算得出来的字）。
+    const metas = [...sec.element.querySelectorAll(".settings-data-item-meta")].map((e) => e.textContent);
+    expect(metas).toEqual([...entries, webview].map(() => "台架写的大小"));
     // `get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     nonEmpty(buttons);
@@ -151,7 +153,7 @@ describe("数据位置「真相 / 缓存」那一格", () => {
     kind: "file",
     description: `${label} 是什么`,
     exists: true,
-    sizeBytes: 1,
+    sizeText: "1 B",
   });
 
   it("★★ 每一行都说得出删了会怎样，且说的是**它自己那一类**（两向：行 ↔ 类）", async () => {
@@ -249,7 +251,7 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
       kind,
       description: `${label} 是什么`,
       exists,
-      sizeBytes: exists ? 1 : undefined,
+      sizeText: exists ? "1 B" : undefined,
     });
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
@@ -318,7 +320,7 @@ describe("每一行的每一格都在网格里认领了一个区（本机后端�
   });
 
   it("★★ 界面那张卡（连同「在「日志」页打开」那一行）", async () => {
-    const mk = (label: string, cls: string) => ({ label, class: cls, path: `/h/.cc-monitor/${label}`, kind: "file", description: `${label} 是什么`, exists: true, sizeBytes: 1 });
+    const mk = (label: string, cls: string) => ({ label, class: cls, path: `/h/.cc-monitor/${label}`, kind: "file", description: `${label} 是什么`, exists: true, sizeText: "1 B" });
     paths.value = { monitorDataDir: "/h", entries: [mk("config.json", "truth"), mk(LOGS_DIR_LABEL, "cache")], webviewUserDataDir: null };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
@@ -332,8 +334,8 @@ describe("每一行的每一格都在网格里认领了一个区（本机后端�
   it("★★ 那台后端家里那一块（本机 · 远端同一个 ownBlock）", async () => {
     const { ownBlock, remoteOpen } = await import("../../../../src/frontend/ui/settings/own-block");
     const items = [
-      { id: "bin", what: "编的一句", path: "~/.cc-monitor/bin", dir: true, class: "cache" as const, exists: true, size: null },
-      { id: "policy", what: "编的一句", path: "~/.cc-monitor/backend.json", dir: false, class: "truth" as const, exists: false, size: null },
+      { id: "bin", what: "编的一句", path: "~/.cc-monitor/bin", dir: true, class: "cache" as const, exists: true, size_text: null },
+      { id: "policy", what: "编的一句", path: "~/.cc-monitor/backend.json", dir: false, class: "truth" as const, exists: false, size_text: null },
     ];
     const rows = [...ownBlock(items, "/h", remoteOpen(null)).querySelectorAll<HTMLElement>(".settings-data-item")];
     expect(rows.length).toBe(2);
