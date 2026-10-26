@@ -401,27 +401,197 @@ pub struct Cancelled {
     pub id: String,
 }
 
-/// **这台的某样东西变了，客户端重读那一份**（主题 [`Topic`]）。
+/// **这台的某样东西变了，客户端重读那一份**：按主题（[`Topic`]，线上 `topic`）分臂，每臂只有那个主题带的那几格。
 ///
-/// `key` 说是哪一个（会话 · 工作区）；`rev` 说变成了哪一版；`body` 是那一样的小成品（超了上限就不带，客户端重问）。
+/// `key` 说是哪一个（会话 · 工作区 · 作业 · 机器 · 目录）；`rev` 说变成了哪一版；`body` 是那一样的小成品，类型就是那一臂的
+/// （超了上限 · 断线之后补报 ⇒ 不带，客户端重问）。体换了形 ⇒ 整帧解不开（两端契约对不上），不交给读口去猜。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct Changed {
+#[serde(tag = "topic", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Changed {
+    /// 账号清单。
+    Accounts {},
+    /// 配置文件。
+    Profiles {},
+    /// 额度账（体 ＝ `quota-read` 的回包）。
+    Quota {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::quota::QuotaRead>,
+    },
+    /// 某个会话的轮换（`key` ＝ sid）。
+    Rotation { key: String },
+    /// 策略目录（体 ＝ `rotation-strategies` 的回包）。
+    RotationStrategies {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::rotation::RotationStrategiesReply>,
+    },
+    /// 某个 pb 工作区的计划（`key` ＝ 工作区根；`rev` ＝ 新的输出摘要，断线补报不带）。
+    Plan {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        rev: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<PlanNeeds>,
+    },
+    /// 某个会话的任务清单（`key` ＝ sid；体 ＝ `tasks-list` 的回包）。
+    Tasks {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::tasks::TasksList>,
+    },
+    /// 某个会话挂着的待答请求（`key` ＝ sid）。
+    Needs { key: String },
+    /// 一份登录作业自己收了（`key` ＝ 作业号）。
+    Login {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::quota::SignInState>,
+    },
+    /// 会话外的需手动清单可能变了。
+    Manual {},
+    /// 这一端的机器表。
+    Machines {},
+    /// 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字）。
+    Machine {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::machine::MachineState>,
+    },
+    /// 某个活会话隐不隐藏变了（`key` ＝ sid）。
+    SessionHidden {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<HiddenNow>,
+    },
+    /// 某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`）。
+    FilesDir { key: String },
+    /// 会话清单可能动了。
+    HistoryList {},
+}
+
+/// `changed {plan}` 的体：这个工作区此刻要你看的数（没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct PlanNeeds {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub needs: u64,
+}
+
+/// `changed {session_hidden}` 的体：那个会话隐藏那一格此刻的样子（不隐藏 ⇒ `null`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(deny_unknown_fields)]
+pub struct HiddenNow {
+    pub hidden: Option<Hidden>,
+}
+
+impl Changed {
     /// 哪一样变了。
-    pub topic: Topic,
-    /// 哪一个（会话 id · 工作区根）；主题不带 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub key: Option<String>,
-    /// 变成了哪一版；主题不带 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub rev: Option<String>,
-    /// 那一样的小成品；主题不带或超了上限 ⇒ 缺（客户端重问）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "unknown"))]
-    pub body: Option<Value>,
+    pub fn topic(&self) -> Topic {
+        match self {
+            Changed::Accounts {} => Topic::Accounts,
+            Changed::Profiles {} => Topic::Profiles,
+            Changed::Quota { .. } => Topic::Quota,
+            Changed::Rotation { .. } => Topic::Rotation,
+            Changed::RotationStrategies { .. } => Topic::RotationStrategies,
+            Changed::Plan { .. } => Topic::Plan,
+            Changed::Tasks { .. } => Topic::Tasks,
+            Changed::Needs { .. } => Topic::Needs,
+            Changed::Login { .. } => Topic::Login,
+            Changed::Manual {} => Topic::Manual,
+            Changed::Machines {} => Topic::Machines,
+            Changed::Machine { .. } => Topic::Machine,
+            Changed::SessionHidden { .. } => Topic::SessionHidden,
+            Changed::FilesDir { .. } => Topic::FilesDir,
+            Changed::HistoryList {} => Topic::HistoryList,
+        }
+    }
+
+    /// 哪一个；主题不带 `key` ⇒ `None`。
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            Changed::Rotation { key }
+            | Changed::Needs { key }
+            | Changed::FilesDir { key }
+            | Changed::Plan { key, .. }
+            | Changed::Tasks { key, .. }
+            | Changed::Login { key, .. }
+            | Changed::Machine { key, .. }
+            | Changed::SessionHidden { key, .. } => Some(key),
+            _ => None,
+        }
+    }
+
+    /// 同一个主题 · 同一个 `key`、不带 `rev` 与体的那一臂（断线之后补报「这一样变过」、发端只知道变了的那几帧：客户端重问）。
+    /// 主题带 `key` 而没给 ⇒ `None`。
+    pub fn bare(topic: Topic, key: Option<String>) -> Option<Changed> {
+        Some(match topic {
+            Topic::Accounts => Changed::Accounts {},
+            Topic::Profiles => Changed::Profiles {},
+            Topic::Quota => Changed::Quota { body: None },
+            Topic::Rotation => Changed::Rotation { key: key? },
+            Topic::RotationStrategies => Changed::RotationStrategies { body: None },
+            Topic::Plan => Changed::Plan {
+                key: key?,
+                rev: None,
+                body: None,
+            },
+            Topic::Tasks => Changed::Tasks {
+                key: key?,
+                body: None,
+            },
+            Topic::Needs => Changed::Needs { key: key? },
+            Topic::Login => Changed::Login {
+                key: key?,
+                body: None,
+            },
+            Topic::Manual => Changed::Manual {},
+            Topic::Machines => Changed::Machines {},
+            Topic::Machine => Changed::Machine {
+                key: key?,
+                body: None,
+            },
+            Topic::SessionHidden => Changed::SessionHidden {
+                key: key?,
+                body: None,
+            },
+            Topic::FilesDir => Changed::FilesDir { key: key? },
+            Topic::HistoryList => Changed::HistoryList {},
+        })
+    }
+
+    /// 体序列化后超了 `cap` 字节 ⇒ 去掉体（客户端重问）。
+    pub fn cap_body(&mut self, cap: usize) {
+        fn cap_one<B: Serialize>(b: &mut Option<B>, cap: usize) {
+            if b.as_ref()
+                .is_some_and(|v| serde_json::to_vec(v).map_or(true, |t| t.len() > cap))
+            {
+                *b = None;
+            }
+        }
+        match self {
+            Changed::Quota { body } => cap_one(body, cap),
+            Changed::RotationStrategies { body } => cap_one(body, cap),
+            Changed::Plan { body, .. } => cap_one(body, cap),
+            Changed::Tasks { body, .. } => cap_one(body, cap),
+            Changed::Login { body, .. } => cap_one(body, cap),
+            Changed::Machine { body, .. } => cap_one(body, cap),
+            Changed::SessionHidden { body, .. } => cap_one(body, cap),
+            _ => {}
+        }
+    }
 }
 
 /// **这台机器的活会话清单报完了**：观察那一侧第一趟扫完、对每个活会话发过 `session_added` 之后发**一次**。

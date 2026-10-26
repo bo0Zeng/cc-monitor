@@ -24,12 +24,25 @@ fn file_row(name: &str) -> crate::source::Listed {
     )
 }
 
+/// 这个窗口最近起的那一趟解压的看板（「进度」表里那一行的；落地收了场那一行照样在表里）。
+fn extract_board(w: &crate::shell::FileWindow) -> crate::extract::ExtractBoard {
+    w.progress
+        .jobs()
+        .into_iter()
+        .rev()
+        .find_map(|j| match j.trip {
+            crate::progress::Trip::Extract { board, .. } => Some(board),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
 async fn settle(w: &crate::shell::FileWindow, want: u64) {
     for _ in guard_core::wall::rounds() {
-        if w.extract_board.rounds() >= want {
+        if extract_board(w).rounds() >= want {
             return;
         }
-        if w.extract_board.is_asking() {
+        if extract_board(w).is_asking() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -65,11 +78,11 @@ async fn extract_on_the_menu_asks_once_when_the_name_is_taken_and_only_then_send
             w.key_notice()
         );
         settle(&w, 1).await;
-        assert!(w.extract_board.is_asking(), "撞名却没问");
+        assert!(extract_board(&w).is_asking(), "撞名却没问");
         assert!(w.busy_reason().is_some(), "摆着一问的标签却说没活");
-        assert!(w.extract_board.settle(answer), "那一问收不了");
+        assert!(extract_board(&w).settle(answer), "那一问收不了");
         settle(&w, 1).await;
-        assert_eq!(w.extract_board.rounds(), 1, "答完之后那一趟没回话");
+        assert_eq!(extract_board(&w).rounds(), 1, "答完之后那一趟没回话");
         let lines = sent(&wired);
         assert_eq!(lines.len(), want_lines, "线上行数不对：{lines:?}");
         assert_eq!(
@@ -82,7 +95,7 @@ async fn extract_on_the_menu_asks_once_when_the_name_is_taken_and_only_then_send
                 serde_json::json!({"root": "/srv", "rel": "taken.tar.gz", "fresh": true})
             );
         }
-        let (name, o) = w.extract_board.last().expect("没有结局");
+        let (name, o) = extract_board(&w).last().expect("没有结局");
         match (want_path, &o) {
             (Some(p), Outcome::Done(e)) => assert_eq!(e.path, p),
             (None, Outcome::Skipped(said)) => assert!(said.contains("已经在了"), "{said}"),
@@ -105,7 +118,7 @@ async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
     w.apply_intent(crate::select::Intent::SelectAll, 0.0, None);
     assert!(w.perform(Action::Extract, None));
     settle(&w, 1).await;
-    let (name, o) = w.extract_board.last().expect("没有结局");
+    let (name, o) = extract_board(&w).last().expect("没有结局");
     let said = outcome_text(&name, &o);
     assert!(
         said.starts_with(&copy_core::copy_text(

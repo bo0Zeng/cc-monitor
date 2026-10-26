@@ -49,12 +49,10 @@ class FakeTransport(
     }
 
     override suspend fun connect(
-        configs: List<ConnectionConfig>,
+        config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)?,
     ) {
         connectCalls.incrementAndGet()
-        // 只代表一次连接，用首地址。
-        val config = configs.first()
         // 发合成事件，供断言 onEvent 被转发（带 host:port）。
         onEvent?.invoke(SshConnectEvent(config.host, config.port, SshConnectEvent.Stage.TCP, "fake connecting"))
         connectBehavior(config) // 可 delay / throw / awaitClose

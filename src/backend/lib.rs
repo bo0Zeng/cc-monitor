@@ -201,20 +201,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `stream::cli::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
-    // 广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
-    //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
-    //   （`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
-    "--bus-broadcast",
-    // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump（打版本号时统一做）。
+    // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。
     "--bus-inbox",
-    "--bus-kill",
     "--bus-list",
     "--bus-send",
-    // 派生协作 agent（`inbound::REGISTRY` 的 `bus-spawn`）。登记理由同上面那三条。
-    "--bus-spawn",
-    // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
-    // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
-    "--bus-state",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
@@ -241,6 +231,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-files",
     // 校验 pb 路径（`plan-pb-check`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-pb-check",
+    // 认会话消息里的编号（`plan-refs`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--plan-refs",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`，轮换第五版，typed）自动派生的 CLI 面；入参从 stdin 读。

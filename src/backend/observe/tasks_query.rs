@@ -145,31 +145,8 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     Ok(out.into_iter().map(|(_, l)| l).collect())
 }
 
-/// `tasks-list` 回包 `tasks[]` 里的一格（成品：字段语义只住这里，[`task_entry`] 从原文对象收）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Task {
-    /// 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）。
-    pub(crate) id: String,
-    /// 同上。
-    pub(crate) subject: String,
-    /// 同上。
-    pub(crate) status: String,
-    /// 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
-    pub(crate) blocks: Vec<String>,
-    /// 同上。
-    pub(crate) blocked_by: Vec<String>,
-    /// 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) description: Option<String>,
-    /// 同上。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) active_form: Option<String>,
-}
+/// `tasks-list` 回包 `tasks[]` 里的一格（线上形住 cmd-wire；字段语义只住这里，[`task_entry`] 从原文对象收）。
+pub(crate) use cmd_wire::tasks::Task;
 
 /// 一个任务对象 → **成品**（`tasks-list` 的 `tasks` 里的一格）；解不成任务 ⇒ `None`。**纯函数**。
 pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {

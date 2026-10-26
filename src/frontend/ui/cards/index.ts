@@ -131,6 +131,7 @@ function childRunsOf(rec: LineRecord): ChildRuns {
 import type { LineRecord } from "../generated/LineRecord";
 import type { Block } from "../generated/Block";
 import { copyText } from "../copy-table";
+import { noteProse } from "../plan-refs";
 
 // 本文件内部也用这些名字，所以 import + re-export 都要有：只写 `export type { … } from` 不会把名字带进本地作用域。
 export type { Block, LineRecord };
@@ -1023,13 +1024,16 @@ function splitOversizeBlock(lines: string[], max: number): string[] {
 function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
   const div = document.createElement("div");
   div.className = "block-text";
+  // 记下原文：进了可视区问一次后端里面提到哪几格（`plan-refs.ts`）；长回复只记已渲的第一片。
   if (text.length <= LONG_REPLY_HEAD_CHARS) {
     div.innerHTML = renderMarkdown(text, { lazy });
+    noteProse(div, text);
     return div;
   }
   const pieces = markdownPieces(text, LONG_REPLY_HEAD_CHARS);
   const head = document.createElement("div");
   head.innerHTML = renderMarkdown(pieces[0], { lazy });
+  noteProse(head, pieces[0]);
   const more = document.createElement("button");
   more.type = "button";
   more.className = "block-body-show-full";

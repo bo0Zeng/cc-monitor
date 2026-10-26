@@ -9,6 +9,7 @@
 //! - `plan-command {workspace, cmd: continue|pause|adopt|render, slice?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；`adopt` 接过 `slice` 那个仓库。
 //! - `plan-files {dir}`：文件窗口反查（[`crate::plan::owners`]）：这个目录落在哪一片的仓库里、每份文件归哪一格。
 //! - `plan-pb-check {dir}`：这个路径能不能当 pb 用（[`locate::check`]），设置里存 pb 路径之前问。
+//! - `plan-refs {sid, texts}`：会话消息里提到的格（[`crate::plan::refs`]：认片在这一侧，认编号交 pb 的 `dump --refs`）。
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
@@ -426,7 +427,7 @@ pub(crate) struct PlanFilesReq {
 }
 
 typed::codes! {
-    /// `plan-list` · `plan-files` · `plan-pb-check` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
+    /// `plan-list` · `plan-files` · `plan-pb-check` · `plan-refs` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
     pub(crate) enum PlanListErr {}
 }
 
@@ -616,6 +617,62 @@ impl Handle for PlanPbCheckCmd {
             }
             Ok(locate::check(dir))
         }
+    }
+}
+
+/// `plan-refs {sid, texts}` 的本体（[`crate::plan::refs::answer`]）：照读好过的各工作区成品认片（不为认片起 pb）；
+/// 会话的工作目录照这台活会话表（停了的会话只认它接手的那一块）；认出了才找 pb、起一次 `dump --refs`。
+fn refs(req: &PlanRefsReq) -> wire::PlanMsgRefs {
+    let b = book::book();
+    let docs: Vec<wire::PlanRead> = b.workspaces().iter().filter_map(|w| b.last(w)).collect();
+    let home = crate::history::listing::agent_home();
+    let cwd = crate::history::live_table::now(&home)
+        .rows()
+        .iter()
+        .find(|r| r.sid() == Some(req.sid.as_str()))
+        .and_then(|r| r.fact.cwd.clone())
+        .filter(|c| !c.is_empty());
+    crate::plan::refs::answer(
+        &docs,
+        &req.sid,
+        cwd.as_deref(),
+        &req.texts,
+        crate::plan::refs::memo(),
+        &|at, one| {
+            let entry = entry().ok()?;
+            crate::plan::dump::run_refs(&entry, Path::new(&at.workspace), &at.slice, one)
+        },
+    )
+}
+
+/// `plan-refs` 的入参：哪个会话的几段正文（照先后，回包一段对一段）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanRefsReq {
+    pub(crate) sid: String,
+    pub(crate) texts: Vec<String>,
+}
+
+/// `plan-refs`：会话消息里提到的格（可能起一次 pb ⇒ 阻塞档；pb 不在 · 读不成都回空，不报错）。
+pub(crate) struct PlanRefsCmd;
+
+impl Command for PlanRefsCmd {
+    const NAME: &'static str = "plan-refs";
+    type Req = PlanRefsReq;
+    type Reply = wire::PlanMsgRefs;
+    type Err = PlanListErr;
+}
+
+impl Handle for PlanRefsCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanRefsReq,
+        _cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanMsgRefs, PlanListErr>> + Send + 'static
+    {
+        async move { Ok(refs(&req)) }
     }
 }
 

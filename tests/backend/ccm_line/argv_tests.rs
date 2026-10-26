@@ -14,14 +14,13 @@ fn parse(a: &[String]) -> Result<Parsed, Die> {
 /// 〔只给测试〕把旧写法（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成
 /// `<交给 agent 的…> -- <ccm 的…>`。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
 pub(crate) fn mixed_to_split(old: &[String]) -> Vec<String> {
-    const WITH_VALUE: [&str; 10] = [
+    const WITH_VALUE: [&str; 9] = [
         flag::TMUX_BASE,
         flag::TMUX_SIZE,
         flag::ACCOUNT,
         flag::CWD,
         flag::AGENT,
         flag::LAUNCHER,
-        flag::BUS_NOTE,
         flag::ATTACH,
         flag::CCM_SID,
         flag::END,
@@ -205,8 +204,8 @@ fn the_combination_rules_all_fail_loudly() {
             "beArgv.validate.registerNeedsDetach"
         ))
     );
-    assert!(err(&["--bus-note", "x"])
-        .starts_with(copy_core::copy_static!("beArgv.validate.noteNeedsRegister")));
+    // `--bus-note` 删了（起会话不记派生台账，没有备注可记）：ccm 不认它，原样交给 agent。
+    assert_eq!(ok(&["--bus-note", "x"]).passthru, v(&["--bus-note", "x"]));
     // 这几形不报「未知选项 / 多余的位置参数」，原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
     assert_eq!(

@@ -42,7 +42,6 @@ pub(crate) const PROFILE_FLAGS: &[&str] = &[
     flag::AGENT,
     flag::LAUNCHER,
     flag::BUS_REGISTER,
-    flag::BUS_NOTE,
     flag::TAB,
 ];
 

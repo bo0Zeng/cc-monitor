@@ -639,13 +639,19 @@ async fn across_rig(tag: &str) -> (crate::find::testing::Wired, Workspace) {
 /// 等这一栏起的那一组落地，交回它（它的结局是后端那一行）。
 async fn settle_copy(w: &FileWindow) -> crate::batch::BatchBoard {
     for _ in guard_core::wall::rounds() {
-        if let Some(b) = w.batches.iter().find(|b| {
-            matches!(
-                b.phase(),
-                batch_core::Phase::Ended(_) | batch_core::Phase::Failed(_)
-            )
-        }) {
-            return b.clone();
+        let landed = w.my_trips().into_iter().find_map(|j| match j.trip {
+            crate::progress::Trip::Batch { board, .. }
+                if matches!(
+                    board.phase(),
+                    batch_core::Phase::Ended(_) | batch_core::Phase::Failed(_)
+                ) =>
+            {
+                Some(board)
+            }
+            _ => None,
+        });
+        if let Some(b) = landed {
+            return b;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
@@ -697,8 +703,8 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
         "线上那一行与期望不等"
     );
     // 结局落在**目标那一栏**（冲突框与结局画在那一侧），源那一栏一组都没起。
-    assert_eq!(ws.pane_on(1).batches.len(), 1);
-    assert!(ws.pane_on(0).batches.is_empty());
+    assert_eq!(ws.pane_on(1).my_trips().len(), 1);
+    assert!(ws.pane_on(0).my_trips().is_empty());
 }
 
 /// 一份 `plan-files` 回包（中性例子）：`x.txt` 归「读入模块」、状态与标题由用例给。
@@ -1354,11 +1360,12 @@ async fn screenshot_for_the_shots_tool() {
     }
     // 一趟下载在路上（进度那一行）。
     if scene == "pull" {
-        w.pull.begin("release.tar.gz");
-        w.pull.progress(1_200_000, 3_400_000);
-        w.progress.add(
+        let pull = crate::download::DownloadBoard::default();
+        pull.begin("release.tar.gz");
+        pull.progress(1_200_000, 3_400_000);
+        w.adopt_trip(
             crate::progress::Trip::Download {
-                board: w.pull.clone(),
+                board: pull,
                 name: "release.tar.gz".into(),
                 src: vdir.join("release.tar.gz").to_string_lossy().to_string(),
                 dest: "~/下载/release.tar.gz".into(),
@@ -1607,7 +1614,7 @@ async fn screenshot_for_the_shots_tool() {
             into: Some("~/work/b".into()),
             machine: "devbox".into(),
         });
-        w.progress.add(
+        w.adopt_trip(
             Trip::Batch {
                 board: all.clone(),
                 icon: egui_phosphor::regular::COPY,
@@ -1626,7 +1633,6 @@ async fn screenshot_for_the_shots_tool() {
                 .collect(),
             said: "已复制 2 项 → ~/work/b".into(),
         }));
-        w.batches.push(all);
     }
     // 断线 · 过期：那条流说「离线」；摆着的那一屏是 13:40 列到的。
     if scene == "stale" {
@@ -1729,7 +1735,14 @@ async fn screenshot_for_the_shots_tool() {
             c("0", "main.rs", 2_380, "14:02", 1_940, "10-01 09:10"),
             c("1", "README.md", 1_210, "11:47", 1_210, "09-28 18:03"),
         ]));
-        w.batches.push(b);
+        w.adopt_trip(
+            crate::progress::Trip::Batch {
+                board: b,
+                icon: egui_phosphor::regular::COPY,
+            },
+            Some(d.clone()),
+            None,
+        );
     }
     // 复制到另一台：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
     if scene == "cross-copy" {
@@ -1796,7 +1809,14 @@ async fn screenshot_for_the_shots_tool() {
             b.pick("0", cmd_wire::batch::Decide::Overwrite);
             b.pick("1", cmd_wire::batch::Decide::KeepBoth);
         }
-        w.batches.push(b);
+        w.adopt_trip(
+            crate::progress::Trip::Batch {
+                board: b,
+                icon: egui_phosphor::regular::COPY,
+            },
+            Some(d.clone()),
+            None,
+        );
     }
     // 删除那一问。
     if scene == "delete-ask" {
@@ -2397,7 +2417,7 @@ fn frames_at(ws: &mut Workspace, screen: egui::Vec2, n: usize) -> Vec<PaintedTex
 /// 搜索框、「⋯」、当前目录、列表头那几样都还在。
 #[test]
 fn a_narrow_window_cuts_nothing_off() {
-    let [w0, h0] = crate::shell::MIN_WINDOW;
+    let [w0, h0] = crate::shell::window::MIN_WINDOW;
     for (screen, split) in [
         (egui::vec2(w0, h0), false),
         (egui::vec2(640.0, 480.0), true),
@@ -3138,7 +3158,7 @@ async fn perf_rig_worker() {
     println!("perf.list.rows={}", first.order.len());
     println!("perf.list.ms={}", t_ls.elapsed().as_millis());
     let line = wired.line.clone();
-    let h = crate::shell::open_detached_seeded(
+    let h = crate::shell::window::open_detached_seeded(
         Source::remote("devbox".into()),
         bigd.clone(),
         tokio::runtime::Handle::try_current().ok(),

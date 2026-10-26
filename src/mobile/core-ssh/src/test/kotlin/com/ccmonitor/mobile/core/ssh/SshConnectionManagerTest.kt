@@ -24,9 +24,9 @@ import java.io.IOException
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SshConnectionManagerTest {
-    private val good = ConnectionConfig(host = "good", port = 22, username = "u", auth = AuthMethod.Password("p"))
+    private val good = testCfg("good")
 
-    private fun cfg(host: String) = ConnectionConfig(host = host, port = 22, username = "u", auth = AuthMethod.Password("p"))
+    private fun cfg(host: String) = testCfg(host)
 
     @Test
     fun staleExpectedGenAbortsWithoutReviving() =
@@ -35,7 +35,7 @@ class SshConnectionManagerTest {
             val mgr = manager()
             mgr.connect("id", "h", "L", good) // gen=0，连上
             mgr.disconnect("id") // gen→1，移除会话
-            val result = runCatching { mgr.connect("id", "h", "L", listOf(good), expectedGen = 0) } // 旧纪元
+            val result = runCatching { mgr.connect("id", "h", "L", good, expectedGen = 0) } // 旧纪元
             assertTrue("过期纪元重连应弃用（CE）", result.exceptionOrNull() is CancellationException)
             assertNull("不得复活已断开的会话", mgr.sessions.value["id"])
         }
@@ -48,7 +48,7 @@ class SshConnectionManagerTest {
             val mgr = manager()
             val epoch = mgr.retain("id", "tok") // VM retain，原子捕获纪元（gen=0）
             mgr.disconnect("id") // 窄窗内强制断开：gen 0→1，清持有者
-            val result = runCatching { mgr.connect("id", "h", "L", listOf(good), expectedGen = epoch) }
+            val result = runCatching { mgr.connect("id", "h", "L", good, expectedGen = epoch) }
             assertTrue("纪元过期 → connect 弃用（CE）", result.exceptionOrNull() is CancellationException)
             assertNull("不得装入无人持有的孤儿连接", mgr.connection("id"))
             assertEquals("activeCount 不因孤儿恒≥1", 0, mgr.activeCount())
@@ -60,7 +60,7 @@ class SshConnectionManagerTest {
             // 无强制断开时带该纪元的 connect 正常连上。
             val mgr = manager()
             val epoch = mgr.retain("id", "tok")
-            val t = mgr.connect("id", "h", "L", listOf(good), expectedGen = epoch)
+            val t = mgr.connect("id", "h", "L", good, expectedGen = epoch)
             assertTrue("无 force → 正常连上", t.isConnected)
             assertEquals(SessionStatus.CONNECTED, mgr.sessions.value["id"]?.status)
         }
@@ -149,14 +149,14 @@ class SshConnectionManagerTest {
             assertEquals(2, mgr.activeCount()) // 两者都计入
         }
 
-    // 全失败时置 ERROR 并抛出。竞速本身的语义在 RaceConnectTest。
+    // 建连失败时置 ERROR 并抛出（竞速 · 跳板都在核心里）。
 
     @Test
-    fun allAddressesFailMarksErrorAndThrows() =
+    fun failedConnectMarksErrorAndThrows() =
         runTest {
             val mgr = manager { throw IOException("fail ${it.host}") }
-            val ex = runCatching { mgr.connect("id", "h", "L", listOf(cfg("a"), cfg("b"))) }.exceptionOrNull()
-            assertTrue("全失败应抛聚合错误", ex is IOException)
+            val ex = runCatching { mgr.connect("id", "h", "L", cfg("a")) }.exceptionOrNull()
+            assertTrue("建连失败应抛出", ex is IOException)
             assertEquals(SessionStatus.ERROR, mgr.sessions.value["id"]?.status)
         }
 

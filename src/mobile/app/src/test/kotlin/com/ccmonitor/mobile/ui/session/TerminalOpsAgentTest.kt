@@ -145,10 +145,10 @@ class TerminalOpsAgentTest {
         }
 
     @Test
-    fun withNothingStoredTheFirstAgentTheMachineListsIsUsed() =
+    fun theFirstAgentTheMachineListsIsUsed() =
         runTest {
             val l = link()
-            val ops = TerminalOps(l, { "box" }, { "ClaudeCode" }) // 旧值：那台认不出 ⇒ 当没选
+            val ops = TerminalOps(l, { "box" })
             ops.startAgent("w")
             val what = l.calls("session-open").single().what()
             assertEquals(mapOf("kind" to "new", "agent" to "claude", "cwd" to "~", "tmuxName" to "w"), what)

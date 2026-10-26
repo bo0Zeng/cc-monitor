@@ -165,7 +165,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/sign_in.rs", "let _ = w.send(Waited::SignInEnd(ended));", Why::PeerGone, "`login-finish` 等结局已过期限放手 ⇒ 这份结局没人收；结束回调在它之前已经推给发起它的连接"),
     ("src/backend/platform/child.rs", "let _ = r.join();", Why::Reap, "一问一答的子进程收尾：等两条读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
     ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
-    ("src/backend/stream/inbound/mod.rs", "let _ = push.blocking_send(Frame::changed(Topic::Login, Some(job.to_string()), None, body));", Why::PeerGone, "发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）"),
+    ("src/backend/stream/inbound/mod.rs", "let _ = push.blocking_send(Frame::changed(crate::wire::Changed::Login { key: job.to_string(), body: Some(SignInState::of", Why::PeerGone, "发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）"),
     ("src/backend/platform/child.rs", "let _ = child.kill();", Why::Reap, "伪终端里起的那一个说不出 pid（杀不准它那一组）⇒ 当场杀掉、收尸、照实报起不来；杀 / 收失败没有更好的补救"),
     ("src/backend/platform/child.rs", "let _ = reader.join();", Why::Reap, "伪终端那一问一答收尾：等读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
     ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
@@ -199,7 +199,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // 一台的常驻流（手机那一侧的循环）睡退避时一起等「SSH 换了一条」：等到了就重接，结果本身没有信息量（发端没了 ⇒ 也该醒）。
     ("src/comms/resident-client/feed.rs", "let _ = ssh.changed().await;", Why::Signal, ""),
     ("src/comms/resident-client/feed.rs", "let _ = kicks.changed().await;", Why::Signal, ""),
-    ("src/frontend/shell/src/event_replay.rs", "let _ = CHANGED_TAP.send(seen);", Why::PeerGone, "「X 变了」另交旁听口一份：此刻没有文件窗口在订 ⇒ 没人收（订上之后的每一格照常收到）"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", Why::Reap, ""),
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = ended_tx.lock().unwrap_or_else(|e| e.into_inner()).send(how);", Why::PeerGone, "被监护那一命结束了，告诉起它的那一趟别再等：那一趟已经等到握手回去了，就没人要这一声"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", Why::Reap, ""),

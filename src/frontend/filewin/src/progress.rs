@@ -19,6 +19,7 @@ use super::download::DownloadBoard;
 use super::extract::ExtractBoard;
 use super::size::SizeBoard;
 use super::transfer::{DropBoard, Pending};
+use super::trip::{End, Landing};
 use batch_core::Phase;
 
 /// 已完成的行最多留几行（更早的自动清掉）。
@@ -50,6 +51,28 @@ pub enum Trip {
     Size { board: SizeBoard, name: String },
     /// 解压到这里。
     Extract { board: ExtractBoard, name: String },
+}
+
+impl Trip {
+    /// 这一趟开头那一问摆着吗（同名冲突 · 解压撞名）。
+    pub fn is_asking(&self) -> bool {
+        match self {
+            Trip::Upload { ask: board, .. } | Trip::Batch { board, .. } => board.is_asking(),
+            Trip::Extract { board, .. } => board.is_asking(),
+            Trip::Download { .. } | Trip::Size { .. } => false,
+        }
+    }
+
+    /// 画这一趟开头那一问（模态；没在问 ⇒ 什么都不画）。挂在开它的那个标签页上画。
+    pub fn ask_ui(&self, ui: &mut egui::Ui) {
+        match self {
+            Trip::Upload { ask: board, .. } | Trip::Batch { board, .. } => {
+                super::batch::ask_ui(ui, board)
+            }
+            Trip::Extract { board, .. } => board.ui(ui),
+            Trip::Download { .. } | Trip::Size { .. } => {}
+        }
+    }
 }
 
 /// 一行此刻的状态。
@@ -396,52 +419,59 @@ impl Job {
     pub fn shown(&self) -> bool {
         match &self.trip {
             Trip::Upload { ask, .. } => !ask.is_asking() && ask.phase() != Phase::Dropped,
-            Trip::Batch { board, .. } => !board.is_asking() && board.phase() != Phase::Dropped,
+            Trip::Batch { board, .. } => !board.is_asking() && !self.dropped(),
             Trip::Extract { board, .. } => !board.is_asking(),
             Trip::Download { .. } | Trip::Size { .. } => true,
         }
     }
 
-    /// 人在那一问上答了「取消」⇒ 这一趟没开过，整行拿掉。
-    fn dropped(&self) -> bool {
+    /// 这一趟没开过 · 已经交出去了，整行拿掉：人在那一问上答了「取消」；
+    /// 或一组开单回的是开了哪几单（下载一组：开了单的每一项各自一行，这一行不留）。
+    pub fn dropped(&self) -> bool {
         match &self.trip {
-            Trip::Batch { board, .. } | Trip::Upload { ask: board, .. } => {
-                board.phase() == Phase::Dropped
-            }
+            Trip::Batch { board, .. } => matches!(board.phase(), Phase::Dropped | Phase::Opened),
+            Trip::Upload { ask, .. } => ask.phase() == Phase::Dropped,
             _ => false,
         }
     }
 
-    /// 此刻的状态（从那块看板读）。
-    pub fn state(&self) -> State {
+    /// 🔴 **这一趟落地了没、落成什么** —— 只在这里判一次（[`super::trip::Landing`]）：
+    /// 表里那一行的状态（[`Self::state`]）与开它的那个标签页收场（回执 · 重列，`FileWindow::settle_trips`）都读它。
+    /// 还在跑 ⇒ `None`。
+    pub fn landing(&self) -> Option<Landing> {
+        let land = |end, receipt| Some(Landing { end, receipt });
         match &self.trip {
             Trip::Upload { board, .. } => {
                 if board.rounds() == 0 {
-                    return State::Running;
+                    return None;
                 }
                 let o = board.last().unwrap_or_default();
                 if board.cancels().is_cancelled() {
-                    State::Stopped
+                    land(End::Stopped, None)
                 } else if o.failed.is_empty() {
-                    State::Done
+                    // 一摞全传成了 ⇒ 右下角一句回执（几项）；一项都没传（全照答跳过）⇒ 不说。
+                    let receipt = (o.ok > 0).then(|| {
+                        copy_text("rsFilewinProgress.upload.done", &[("n", &o.ok.to_string())])
+                    });
+                    land(End::Done, receipt)
                 } else {
-                    State::Failed
+                    land(End::Failed, None)
                 }
             }
             Trip::Download { board, .. } => match (board.rounds(), board.last()) {
-                (0, _) => State::Running,
-                (_, Some(super::download::Outcome::Done { .. })) => State::Done,
-                _ if board.cancels().is_cancelled() => State::Stopped,
-                _ => State::Failed,
+                (0, _) => None,
+                (_, Some(super::download::Outcome::Done { .. })) => land(End::Done, None),
+                _ if board.cancels().is_cancelled() => land(End::Stopped, None),
+                _ => land(End::Failed, None),
             },
             Trip::Batch { board, .. } => match board.phase() {
-                Phase::Running | Phase::Asking | Phase::Cut(_) => State::Running,
+                Phase::Running | Phase::Asking | Phase::Cut(_) => None,
                 Phase::Ended(r)
                     if r.outcomes
                         .iter()
                         .any(|o| o.state == cmd_wire::batch::ItemState::Cancelled) =>
                 {
-                    State::Stopped
+                    land(End::Stopped, None)
                 }
                 Phase::Ended(r)
                     if r.outcomes.iter().any(|o| {
@@ -451,21 +481,33 @@ impl Job {
                         )
                     }) =>
                 {
-                    State::Failed
+                    land(End::Failed, None)
                 }
-                Phase::Ended(_) | Phase::Dropped | Phase::Opened => State::Done,
-                Phase::Failed(_) => State::Failed,
+                // 成了（连照答跳过的那几项）⇒ 回执是后端拼好的那一行，原样。
+                Phase::Ended(r) => land(End::Done, Some(r.said)),
+                Phase::Dropped | Phase::Opened => land(End::Done, None),
+                Phase::Failed(_) => land(End::Failed, None),
             },
             Trip::Size { board, .. } => match (board.rounds(), board.last()) {
-                (0, _) => State::Running,
-                (_, Some(r)) if r.iter().any(Result::is_err) => State::Failed,
-                _ => State::Done,
+                (0, _) => None,
+                (_, Some(r)) if r.iter().any(Result::is_err) => land(End::Failed, None),
+                _ => land(End::Done, None),
             },
             Trip::Extract { board, .. } => match (board.rounds(), board.last()) {
-                (0, _) => State::Running,
-                (_, Some((_, super::extract::Outcome::Failed(_)))) => State::Failed,
-                _ => State::Done,
+                (0, _) => None,
+                (_, Some((_, super::extract::Outcome::Failed(_)))) => land(End::Failed, None),
+                _ => land(End::Done, None),
             },
+        }
+    }
+
+    /// 此刻的状态（[`Self::landing`] 那一个结局；没落地 ⇒ 在跑）。
+    pub fn state(&self) -> State {
+        match self.landing().map(|l| l.end) {
+            None => State::Running,
+            Some(End::Done) => State::Done,
+            Some(End::Failed) => State::Failed,
+            Some(End::Stopped) => State::Stopped,
         }
     }
 

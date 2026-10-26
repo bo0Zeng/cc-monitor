@@ -24,7 +24,6 @@ const form = (name: string, from: string | null): ProfileForm => ({
   tmuxSize: null,
   detach: false,
   busRegister: false,
-  busNote: null,
   tab: null,
 });
 

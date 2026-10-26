@@ -157,9 +157,25 @@ pub(crate) fn run(
     env: &[(&str, &str)],
     dir: Option<&Path>,
 ) -> Result<Done, NotRun> {
+    run_fed(bin, args, deadline_secs, env, dir, None)
+}
+
+/// 同 [`run`]，另把 `stdin` 那几个字节喂进它的标准输入（`None` ⇒ 空设备）：读一段话的程序用（pb 的 `dump --refs`）。
+pub(crate) fn run_fed(
+    bin: &Path,
+    args: &[&str],
+    deadline_secs: u64,
+    env: &[(&str, &str)],
+    dir: Option<&Path>,
+    stdin: Option<&[u8]>,
+) -> Result<Done, NotRun> {
     let child = child_for(bin, args, env);
     let child = match dir {
         Some(d) => child.current_dir(d),
+        None => child,
+    };
+    let child = match stdin {
+        Some(b) => child.stdin_bytes(b.to_vec()),
         None => child,
     };
     match child.run(Deadline::secs(deadline_secs)) {

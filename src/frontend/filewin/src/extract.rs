@@ -7,7 +7,6 @@
 //! ② 后端答 `exists`（那个目录已在）⇒ **问人**：「另起一个名字解」（再发一趟带 `fresh: true`，后端取第一个不在的 `名 (n)`）/「不解了」；
 //! ③ 结局一句话，跑完重列目录。后端阻塞档一趟做完才回话 ⇒ 不可取消、没有进度，只画「正在那台机器上解压 …」。
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use copy_core::copy_text;
@@ -131,108 +130,91 @@ where
     }
 }
 
-/// 窗口上的样子：在解哪一个 · 撞名那一问 · 上一趟的结局。**跨线程共享**（UI 线程画，tokio 那条写）。
+/// 窗口上的样子：在解哪一个 · 上一趟的结局（通用的那一格 [`super::trip::Lane`]）＋ 解压独有的撞名那一问。
+/// **跨线程共享**（UI 线程画，tokio 那条写）。
 #[derive(Clone, Default)]
 pub struct ExtractBoard {
-    inner: Arc<Mutex<Desk>>,
-    rounds: Arc<AtomicU64>,
-    ctx: Arc<Mutex<Option<egui::Context>>>,
-}
-
-#[derive(Default)]
-struct Desk {
-    running: Option<String>,
-    asking: Option<(String, tokio::sync::oneshot::Sender<bool>)>,
-    last: Option<(String, Outcome)>,
+    lane: super::trip::Lane<(String, Outcome)>,
+    asking: Arc<Mutex<Option<(String, tokio::sync::oneshot::Sender<bool>)>>>,
 }
 
 impl ExtractBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
-    }
-
-    fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
-            c.request_repaint();
-        }
+        self.lane.attach(ctx);
     }
 
     pub fn begin(&self, name: &str) {
-        self.inner.lock().unwrap().running = Some(name.to_string());
-        self.poke();
+        self.lane.begin(name);
     }
 
     pub fn running(&self) -> Option<String> {
-        self.inner.lock().unwrap().running.clone()
+        self.lane.running()
     }
 
     /// 摆出撞名那一问；回的收端落地 ＝ 人答了（`true` ＝ 另起一个名字）。
     pub fn ask(&self, said: String) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.inner.lock().unwrap().asking = Some((said, tx));
-        self.poke();
+        *self.asking.lock().unwrap() = Some((said, tx));
+        self.lane.poke();
         rx
     }
 
     pub fn is_asking(&self) -> bool {
-        self.inner.lock().unwrap().asking.is_some()
+        self.asking.lock().unwrap().is_some()
     }
 
     /// 人答了那一问（判据与界面同一个口）。没在问 ⇒ `false`。
     pub fn settle(&self, fresh: bool) -> bool {
-        let Some((_, tx)) = self.inner.lock().unwrap().asking.take() else {
+        let Some((_, tx)) = self.asking.lock().unwrap().take() else {
             return false;
         };
         tx.send(fresh).ok();
-        self.poke();
+        self.lane.poke();
         true
     }
 
     pub fn finish(&self, name: &str, o: Outcome) {
-        {
-            let mut d = self.inner.lock().unwrap();
-            d.running = None;
-            d.asking = None;
-            d.last = Some((name.to_string(), o));
-        }
-        self.rounds.fetch_add(1, Ordering::SeqCst);
-        self.poke();
+        *self.asking.lock().unwrap() = None;
+        self.lane.finish((name.to_string(), o));
     }
 
     pub fn rounds(&self) -> u64 {
-        self.rounds.load(Ordering::SeqCst)
+        self.lane.rounds()
     }
 
     pub fn last(&self) -> Option<(String, Outcome)> {
-        self.inner.lock().unwrap().last.clone()
+        self.lane.last()
     }
 
     /// 画撞名那一问（模态）。「正在解」与结局是「进度」表里的一行（`super::progress`，那一句从 [`outcome_text`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let asking = self
-            .inner
-            .lock()
-            .unwrap()
-            .asking
-            .as_ref()
-            .map(|(s, _)| s.clone());
-        if let Some(said) = asking {
-            let (mut fresh, mut skip) = (false, false);
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-extract-taken", |ui| {
+        let asking = self.asking.lock().unwrap().as_ref().map(|(s, _)| s.clone());
+        let Some(said) = asking else {
+            return;
+        };
+        // Esc / 点压暗的底 ＝「不解了」（第 0 颗）。
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-extract-taken",
+            EXTRACT_LABEL.as_str(),
+            |ui| {
                 ui.label(copy_text("rsFilewinExtract.ask.taken", &[("said", &said)]));
-                ui.horizontal(|ui| {
-                    fresh = ui
-                        .button(copy_text("rsFilewinExtract.ask.fresh", &[]))
-                        .clicked();
-                    skip = ui
-                        .button(copy_text("rsFilewinExtract.ask.skip", &[]))
-                        .clicked();
-                });
-            });
-            skip |= esc;
-            if fresh || skip {
-                self.settle(fresh);
-            }
+            },
+            &[
+                (
+                    copy_text("rsFilewinExtract.ask.skip", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text("rsFilewinExtract.ask.fresh", &[]),
+                    super::kit::Btn::Primary,
+                ),
+            ],
+            1,
+            0,
+        );
+        if let Some(i) = hit {
+            self.settle(i == 1);
         }
     }
 }

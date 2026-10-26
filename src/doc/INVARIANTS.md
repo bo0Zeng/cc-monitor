@@ -363,7 +363,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
-`ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值，如 `BUS_ID_RECIPE`）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（`cc-spawn` 的能力协商读同一张名片），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
+`ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值，如 `BUS_ID_RECIPE`）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（调用方的能力协商读同一张名片），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
 
 **谁在守**：`tests/e2e/ccm-contract-parity.sh`（差分 ＋ 每条保住项各一条绝对断言 ＋ 「真跑确实产出了环境」自检 ＋ 顺序两侧各钉一条）。
 
@@ -544,7 +544,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 - **② 自由文本类**（路径 · 已有 tmux 会话的 attach 目标）：走唯一的 quote ＋ 这种值的形式判定（绝对 · 不含 `..` · 不空）＋ 拒绝集权威表（控制字符 · shell 元字符 · 视觉欺骗字符，`acct-core` 的 `config_dir_char_unsafe` 一族）。这一形是拒绝集，不是白名单。
 - **③ 命令片段类**（启动器）：不 quote（要被 shell 拆词、按 alias / PATH 解析），只能是一张对 bash 与 PowerShell 都安全的白名单（ASCII 字母数字 · 空格 · `-_./` · 打头的 `~/`），住 `shell_quote_core::launcher_refused_char`。
 
-本侧判的是**形状**，不是成员资格（「这个账号存不存在」归拥有那份名单的一方）。cc-bus 的 id 在后端交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`），规则住 `shell_quote_core::bus_id_ok`。
+本侧判的是**形状**，不是成员资格（「这个账号存不存在」归拥有那份名单的一方）。cc-bus 的 id 在后端交给 `cc-send` / `cc-log` 之前判（拒码 `bad_id`），规则住 `shell_quote_core::bus_id_ok`。
 
 **为什么不能松动**：对端校验的是它自己的入口，本侧不判，拼错的那一段已经在路上了（收掉一个 agent 的后果是杀掉一棵进程树）；盘上真出现过没人预料的 id（一份名叫 `--help.jsonl` 的收件箱文件）。
 

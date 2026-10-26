@@ -35,6 +35,7 @@ import type { PlanSessionBlock } from "./generated/PlanSessionBlock";
 import type { PlanState } from "./generated/PlanState";
 import type { PlanPendingSet } from "./generated/PlanPendingSet";
 import type { PlanReadError } from "./generated/PlanReadError";
+import type { PlanMsgRefs } from "./generated/PlanMsgRefs";
 import type { PlanSlice } from "./generated/PlanSlice";
 import type { PlanStale } from "./generated/PlanStale";
 import type { PlanUndecidable } from "./generated/PlanUndecidable";
@@ -94,6 +95,11 @@ export async function fetchPlanList(origin: Origin, fresh: boolean, dirs: readon
 /** 一个工作区的成品。 */
 export async function fetchPlanRead(origin: Origin, workspace: string): Promise<PlanRead> {
   return callTyped(origin, "plan-read", { workspace }, budgetWithin(READ_BUDGET_MS));
+}
+
+/** 一个会话的几段正文里提到的格（`refs[i]` 对 `texts[i]`；认不出片 ⇒ 每段空）。 */
+export async function fetchMsgRefs(origin: Origin, sid: string, texts: readonly string[]): Promise<PlanMsgRefs> {
+  return callTyped(origin, "plan-refs", { sid, texts: [...texts] }, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 一个节点的 agent 视角（pb 原样那一段）。 */
