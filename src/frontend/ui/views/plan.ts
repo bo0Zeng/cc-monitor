@@ -876,7 +876,7 @@ export class PlanView {
     st.className = s.pvSt;
     st.dataset.look = look;
     st.appendChild(icon(STATUS_ICON[look], "compact"));
-    st.setAttribute("aria-label", c.stateText ?? c.whyShort?.text ?? "");
+    st.setAttribute("aria-label", c.stateLine ?? c.whyShort?.text ?? "");
     const bar = document.createElement("span");
     bar.className = s.pvKbar;
     const tt = document.createElement("span");
@@ -893,7 +893,7 @@ export class PlanView {
       const why = document.createElement("span");
       why.className = s.pvWhy;
       if (w.wait) why.dataset.wait = "true";
-      if (look === "undecided") why.dataset.undecided = "true";
+      if (c.undecided) why.dataset.undecided = "true";
       why.textContent = w.text;
       trail.appendChild(why);
     }
@@ -1007,7 +1007,7 @@ export class PlanView {
       const stw = document.createElement("span");
       stw.className = s.pvStw;
       stw.dataset.look = look;
-      stw.append(icon(STATUS_ICON[look], "compact"), document.createTextNode(joinSep(c.stateText ?? "", c.whyShort?.text ?? "")));
+      stw.append(icon(STATUS_ICON[look], "compact"), document.createTextNode(joinSep(c.stateLine ?? "", c.whyShort?.text ?? "")));
       const b = roots.get(c.id);
       const tr = tbl2.row([name, stw, b?.owner ? this.whoChip(b.owner) : text("")]);
       clickRow(tr, () => this.select(c.id));
@@ -1020,7 +1020,7 @@ export class PlanView {
   // ───────────────────────── 会话标签 ─────────────────────────
 
   /**
-   * 负责人 / signer：会话 ⇒ 那个标签页的点 ＋ 标题 ＋ 机器；子 agent ⇒ 挂在父会话那个标签页上、写明「{父会话} 的 agent」；
+   * 负责人 / signer：会话 ⇒ 那个标签页的点 ＋ 标题 ＋ 机器；子 agent ⇒ 挂在父会话那个标签页上；
    * 认不出 ⇒ 虚线框「认不出 · 前后几位」，点了复制完整 id。
    */
   whoChip(w: PlanWho): HTMLElement {
@@ -1043,7 +1043,7 @@ export class PlanView {
     const face = tab ? faceOf(tab) : w.face;
     b.appendChild(statusDot(face.dot, face.name, "compact"));
     const name = tab ? titleParts(tab).title : shortId(w.sid);
-    txt.textContent = w.kind === "subagent" ? copyText("plan.who.sub", { session: name }) : name;
+    txt.textContent = name;
     b.appendChild(txt);
     if (tab) {
       const mt = document.createElement("span");

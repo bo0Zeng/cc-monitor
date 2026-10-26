@@ -20,7 +20,7 @@ state: Array<PlanState>,
 /**
  * 状态那一行字（「已签收 2 · decided」，同 `pb render`）；什么都没记 ⇒ `null`。
  */
-stateText: string | null, 
+stateLine: string | null, 
 /**
  * 依据它的是哪几格（pb 给的）。
  */

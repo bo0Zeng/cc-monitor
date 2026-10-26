@@ -42,6 +42,8 @@ pub(crate) struct PlanFile {
     pub state_code: Option<PlanFileState>,
     /// pb 的那一句（长度 · 坏在哪）。
     pub note: Option<String>,
+    /// 文件核对那一格写的字（在 · 缺 · 空 · 坏，后端照码写好；认不出的码 ⇒ `null`）。
+    pub check_text: Option<String>,
     /// 同一份文件还挂在哪几格（编号）。
     pub also_by: Vec<String>,
 }
@@ -223,7 +225,7 @@ pub(crate) struct PlanCell {
     /// 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
     pub state: Vec<PlanState>,
     /// 状态那一行字（「已签收 2 · decided」，同 `pb render`）；什么都没记 ⇒ `null`。
-    pub state_text: Option<String>,
+    pub state_line: Option<String>,
     /// 依据它的是哪几格（pb 给的）。
     pub evidenced_by: Vec<String>,
     /// 算活的：记着收的值 ⇒ `done`，没记 ⇒ `open`；类不许记收的值 ⇒ `null`（不进任何分母）。

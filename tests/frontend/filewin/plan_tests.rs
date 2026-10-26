@@ -9,7 +9,11 @@ fn dir(v: serde_json::Value) -> Option<PlanDir> {
 }
 
 fn entry(name: &str, id: &str, status: &str) -> serde_json::Value {
-    let code = if status == "none" { serde_json::Value::Null } else { json!(status) };
+    let code = if status == "none" {
+        serde_json::Value::Null
+    } else {
+        json!(status)
+    };
     json!({"name": name, "id": id, "label": id, "title": null, "statusCode": code, "status": null, "block": null,
            "fileState": "ok", "fileNote": null, "dup": []})
 }
@@ -50,7 +54,12 @@ fn entries_become_owners_by_name_with_label_status_block_and_double_claims() {
     assert_eq!(r.block.as_deref(), Some("甲功能"));
     assert_eq!(r.status.as_deref(), Some("已签收"));
     // 预览头那一行：仓库 · 权力范围，不带签收时刻（pb 0.5 不给）。
-    assert_eq!(owner_line("alpha", r).matches(&copy_text("rsFilewinRows.tip.sep", &[])).count(), 1);
+    assert_eq!(
+        owner_line("alpha", r)
+            .matches(&copy_text("rsFilewinRows.tip.sep", &[]))
+            .count(),
+        1
+    );
     assert_eq!(broken(r), None);
     // 也声明它的那一格照「编号 标题」写。
     assert!(dup_text(r).starts_with("A1-2 甲的写出"), "{}", dup_text(r));

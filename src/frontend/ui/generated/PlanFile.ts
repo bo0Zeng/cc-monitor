@@ -13,6 +13,10 @@ stateCode: "ok" | "missing" | "empty" | "broken" | null,
  */
 note: string | null, 
 /**
+ * 文件核对那一格写的字（在 · 缺 · 空 · 坏，后端照码写好；认不出的码 ⇒ `null`）。
+ */
+checkText: string | null, 
+/**
  * 同一份文件还挂在哪几格（编号）。
  */
 alsoBy: Array<string>, };

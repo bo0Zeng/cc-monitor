@@ -27802,12 +27802,6 @@
       "zh": "权力范围",
       "args": []
     },
-    "plan.who.sub": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{session} 的 agent",
-      "args": ["session"]
-    },
     "plan.who.unknown": {
       "kind": "body",
       "role": "片段",

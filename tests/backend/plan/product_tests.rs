@@ -104,10 +104,15 @@ fn files_carry_their_check_code_and_who_else_declares_them() {
     let m = made();
     assert_eq!(
         cell(&m.doc, "A1-1")["files"][0],
-        json!({"path": "src/read.txt", "stateCode": "ok", "note": "3 字", "alsoBy": []})
+        json!({"path": "src/read.txt", "stateCode": "ok", "checkText": copy_core::copy_text("plan.fileState.ok", &[]), "note": "3 字", "alsoBy": []})
     );
     assert_eq!(cell(&m.doc, "A1-2")["files"][0]["stateCode"], "empty");
     assert_eq!(cell(&m.doc, "A1-3")["files"][0]["stateCode"], "broken");
+    // 那一格写的字由后端照码写好（界面照抄，不认码）。
+    assert_eq!(
+        cell(&m.doc, "A1-3")["files"][0]["checkText"],
+        copy_core::copy_text("plan.fileState.broken", &[])
+    );
     assert_eq!(cell(&m.doc, "A1-3")["files"][0]["note"], "是个目录");
     assert_eq!(cell(&m.doc, "A7")["files"][0]["stateCode"], "missing");
     assert_eq!(
@@ -195,13 +200,13 @@ fn state_values_come_with_counts_a_text_line_and_evidence_links() {
         cell(&m.doc, "A1-1")["state"],
         json!([{"value": "已签收", "count": 2}])
     );
-    assert_eq!(cell(&m.doc, "A1-1")["stateText"], "已签收 2");
+    assert_eq!(cell(&m.doc, "A1-1")["stateLine"], "已签收 2");
     assert_eq!(cell(&m.doc, "A1-1")["evidencedBy"], json!(["A1-4"]));
-    assert_eq!(cell(&m.doc, "A2-1")["stateText"], "已签收");
-    assert_eq!(cell(&m.doc, "A1-2")["stateText"], Value::Null);
-    assert_eq!(cell_in(&m.doc, 1, "B1-1")["stateText"], "支持");
+    assert_eq!(cell(&m.doc, "A2-1")["stateLine"], "已签收");
+    assert_eq!(cell(&m.doc, "A1-2")["stateLine"], Value::Null);
+    assert_eq!(cell_in(&m.doc, 1, "B1-1")["stateLine"], "支持");
     assert_eq!(
-        state_text(&[
+        state_line(&[
             PlanState {
                 value: "已签收".into(),
                 count: 1

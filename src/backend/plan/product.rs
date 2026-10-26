@@ -59,8 +59,18 @@ pub(crate) fn file_code(s: Option<&str>) -> Option<PlanFileState> {
     }
 }
 
+/// 文件核对的码 ⇒ 那一格写的字（界面照抄）。
+pub(crate) fn file_text(c: PlanFileState) -> String {
+    match c {
+        PlanFileState::Ok => copy_text("plan.fileState.ok", &[]),
+        PlanFileState::Missing => copy_text("plan.fileState.missing", &[]),
+        PlanFileState::Empty => copy_text("plan.fileState.empty", &[]),
+        PlanFileState::Broken => copy_text("plan.fileState.broken", &[]),
+    }
+}
+
 /// 状态那一行字：值照给的先后，笔数大于一写在值后面，用文案表的分隔（同 `pb render`）；一个值都没有 ⇒ `None`。
-pub(crate) fn state_text(state: &[PlanState]) -> Option<String> {
+pub(crate) fn state_line(state: &[PlanState]) -> Option<String> {
     (!state.is_empty()).then(|| {
         state
             .iter()
@@ -490,6 +500,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                     PlanFile {
                         path: path.to_string(),
                         state_code: file_code(f.get("file_check").and_then(Value::as_str)),
+                        check_text: file_code(f.get("file_check").and_then(Value::as_str))
+                            .map(file_text),
                         note: s(f, "note").filter(|n| !n.is_empty()),
                         also_by: by_path
                             .get(path)
@@ -550,7 +562,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 edges: edges_of(|k| strs(c.get("edges").and_then(|e| e.get(k)))),
                 pointed_by: edges_of(|k| back.and_then(|b| b.get(k)).cloned().unwrap_or_default()),
                 files,
-                state_text: state_text(&state),
+                state_line: state_line(&state),
                 state,
                 evidenced_by: strs(c.get("evidenced_by")),
                 status_code,

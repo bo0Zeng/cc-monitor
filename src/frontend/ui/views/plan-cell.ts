@@ -104,7 +104,7 @@ export class CellDetail {
     const badge = document.createElement("span");
     badge.className = s.cdBadge;
     badge.dataset.look = look;
-    badge.textContent = cell.stateText ?? "";
+    badge.textContent = cell.stateLine ?? "";
     h.appendChild(badge);
     if (cell.whyShort) h.appendChild(span(cell.whyShort.text, s.cdWhy));
     if (cell.covers.includes("project")) h.appendChild(span(copyText("plan.cell.coversAll"), s.cdWhy));
@@ -308,7 +308,7 @@ export class CellDetail {
       p.className = s.cdMono;
       p.append(icon("file", "compact"), document.createTextNode(f.path));
       const st = tr.insertCell();
-      const b = span(f.stateCode ? fileStateText(f.stateCode) : copyText("plan.page.none"), s.cdFileState);
+      const b = span(f.checkText ?? copyText("plan.page.none"), s.cdFileState);
       b.dataset.state = f.stateCode === "ok" ? "ok" : f.stateCode === "empty" ? "warn" : "bad";
       st.appendChild(b);
       tr.insertCell().textContent = f.note ?? "";
@@ -329,7 +329,7 @@ export class CellDetail {
    */
   private state(slice: PlanSlice, cell: PlanCell): HTMLElement {
     const sec = section(copyText("plan.cell.state"));
-    if (cell.stateText) sec.appendChild(span(cell.stateText, s.cdStateText));
+    if (cell.stateLine) sec.appendChild(span(cell.stateLine, s.cdStateLine));
     if (cell.evidencedBy.length > 0) {
       const row = document.createElement("div");
       row.className = s.cdSetHead;
@@ -355,8 +355,8 @@ export class CellDetail {
       if (p.blockedReason) row.appendChild(span(p.blockedReason, s.cdSetWhy));
       sec.appendChild(row);
     }
-    if (!cell.stateText && pending.length === 0) {
-      const line = cell.whyCode?.kind === "inside" ? copyText("plan.state.inner") : copyText("plan.state.none");
+    if (!cell.stateLine && pending.length === 0) {
+      const line = cell.children.length > 0 && cell.statusCode !== null ? copyText("plan.state.inner") : copyText("plan.state.none");
       sec.appendChild(span(line, s.cdMuted));
     }
     return sec;
@@ -429,20 +429,6 @@ export class CellDetail {
   }
 }
 
-/** 文件核对的码 ⇒ 那一格写的字（pb 的 present · missing · empty · invalid）。 */
-function fileStateText(c: "ok" | "missing" | "empty" | "broken"): string {
-  switch (c) {
-    case "ok":
-      return copyText("plan.fileState.ok");
-    case "missing":
-      return copyText("plan.fileState.missing");
-    case "empty":
-      return copyText("plan.fileState.empty");
-    case "broken":
-      return copyText("plan.fileState.broken");
-  }
-}
-
 /**
  * 交接说明那一块（划出的根节点没人接着 · 新登记的仓库还没人认领 project）：pb 给的那一句原样（码的位置写着 `<认领码>`，
  * 句末 pb 写了码找谁要）＋［复制］；给不了 ⇒ pb 说的为什么。复制的是那一句本身，交给另开的会话、认领码找上一级要。
@@ -511,13 +497,12 @@ function link(t: string, go: () => void): HTMLButtonElement {
   return b;
 }
 
-function section(title: string, aside?: string): HTMLElement {
+function section(title: string): HTMLElement {
   const sec = document.createElement("div");
   sec.className = s.cdSec;
   const h = document.createElement("div");
   h.className = s.cdSecHead;
   h.appendChild(document.createTextNode(title));
-  if (aside) h.appendChild(span(aside, s.cdAside));
   sec.appendChild(h);
   return sec;
 }

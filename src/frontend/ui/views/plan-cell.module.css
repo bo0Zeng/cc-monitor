@@ -140,11 +140,6 @@
     font-weight: 600;
   }
 
-  .cdAside {
-    margin-left: auto;
-    font-weight: 400;
-  }
-
   .cdProse {
     color: var(--text);
     font-family: var(--font-prose);
@@ -296,7 +291,7 @@
     line-height: 1.6;
   }
 
-  .cdStateText {
+  .cdStateLine {
     color: var(--text);
     font-size: var(--font-size-small);
   }

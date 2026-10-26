@@ -111,7 +111,7 @@ pub(crate) fn of_dir(doc: &PlanRead, dir: &str) -> PlanFiles {
                             label,
                             title: c.title.clone(),
                             status_code: c.status_code,
-                            status: c.state_text.clone(),
+                            status: c.state_line.clone(),
                             block: block_title(sl, &c.id),
                             file_state: f.state_code,
                             file_note: f.note.clone(),
