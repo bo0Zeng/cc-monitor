@@ -222,9 +222,8 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { TabStreamView } from "../../../src/frontend/ui/tab-stream-view";
 import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { appStore } from "../../../src/frontend/ui/app-store";
-import { createAccountFacts } from "../../../src/frontend/ui/account-facts";
-import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
+import { appStore, putIn } from "../../../src/frontend/ui/app-store";
+import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
@@ -1910,89 +1909,63 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   //   （`recognize/facts_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
-describe("account-ux U5 tab 徽章「信息才显」", () => {
+describe("account-ux U5 tab 徽章：照会话那台写好的那一份（`session-account`）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
-    // 别的判据留下的 TabManager 不再订阅
-    appStore.accountFacts.__resetForTests(null);
+    appStore.sessionAccount.__resetForTests(new Map());
     tm = makeTM();
   });
   const badge = (): HTMLElement | null =>
     document.body.querySelector<HTMLElement>(".tab-acct-badge");
-  /** 账号清单那一侧（各台问回来的）：上次用的号 · 那台默认号。 */
-  function facts(last: Map<string, string>, current: Map<string, string>): void {
-    appStore.accountFacts.set({ emailByName: new Map(), lastByS: last, readyOrigins: new Set(["devbox"]), currentByOrigin: current });
+  /** 那台写好的这条会话的号（夹具照线上形手写）。 */
+  function said(sid: string, origin: string, p: Partial<SessionAccountReply>): void {
+    const read: SessionAccountReply = {
+      account: "b",
+      name: "b",
+      when: "now",
+      from: null,
+      accountLine: copyText("tabBar.hover.account", { name: "b" }),
+      fromLine: null,
+      usage: null,
+      stale: false,
+      hover: [["b"]],
+      sampled: null,
+      differs: false,
+      badge: null,
+      queryable: true,
+      ...p,
+    };
+    putIn(appStore.sessionAccount, sid, { origin, read });
   }
-  /** 那台宣告一条会话，脸上说它跑在哪个号下（`null` ＝ 没说）。 */
-  const announce = (sid: string, account: string | null): void => {
+  const announce = (sid: string): void => {
     tm.createSkeletonTab(sid, "/w", "devbox", false, null, null, null);
-    tm.onFace(sid, account === null ? liveFace("working") : { ...liveFace("working"), account });
+    tm.onFace(sid, liveFace("working"));
   };
 
-  it("★ 3 台、起停一条会话：账号那一侧一问不发；徽章照脸上说的号（活着实心、结束了幽灵）", async () => {
-    const asked: string[] = [];
-    const feed = createAccountFacts({
-      fetchers: {
-        fetchAccounts: async (origin) => {
-          asked.push(`${origin} accounts-list`);
-          return { origin, available: true, accounts: [] } as unknown as AccountsState;
-        },
-        currentAccountForBadge: () => ({ name: "z" }) as Account,
-        lastAccounts: async (origin) => {
-          asked.push(`${origin} history-last-accounts`);
-          return {};
-        },
-      },
-      hosts: async () => ["devbox", "nano", "pi"],
-      publish: (f) => appStore.accountFacts.set(f),
-    });
-    feed.refresh();
-    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
-    expect(asked.length, "量具自检：连上时各台各问一次清单 ＋ 上次用的号").toBe(6);
-    asked.length = 0;
-
-    announce("r1", "b");
-    expect(badge()?.querySelector(".acct-avatar.ghost") ?? null).toBeNull();
-    expect(badge()?.querySelector(".acct-avatar"), "宣告说了号，徽章没跟上").not.toBeNull();
-    tm.onFace("r1", { ...goldenFace("ended"), account: "b" });
-    expect(badge()?.querySelector(".acct-avatar.ghost"), "结束了 ⇒ 幽灵头像（上次用的号）").not.toBeNull();
-    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
-    expect(asked, "会话起停又去各台问账号了").toEqual([]);
-  });
-  it("会话账号 != 当前账号(live) → 挂实心头像", () => {
-    announce("r1", "b");
-    facts(new Map(), new Map([["devbox", "z"]]));
+  it("★ 那台说与默认号不同 ⇒ 挂头像；此刻的实心、上次的幽灵；悬停那一句照那台写的", () => {
+    announce("r1");
+    expect(badge()?.style.display, "还没问回来 ⇒ 不挂").toBe("none");
+    said("r1", "devbox", { differs: true, badge: { ghost: false, title: "账号 b（那台写的）" } });
     const el = badge();
     expect(el?.style.display).not.toBe("none");
     expect(el?.querySelector(".acct-avatar")).not.toBeNull();
-    expect(el?.querySelector(".acct-avatar.ghost")).toBeNull(); // live = 实心
+    expect(el?.querySelector(".acct-avatar.ghost")).toBeNull();
+    expect(el?.title).toBe("账号 b（那台写的）");
+    said("r1", "devbox", { when: "last", differs: true, badge: { ghost: true, title: "账号 b（那台写的）" } });
+    expect(badge()?.querySelector(".acct-avatar.ghost"), "上次的号 ⇒ 幽灵头像").not.toBeNull();
   });
-  // 头像**只在这个会话的号 ≠ 那台默认号时出**——全都出 ⇒ 每行一块、信息为零。
-  // 悬停卡里永远写账号（下一条）；头像悬停说「账号 {name}」。
-  it("会话账号 == 默认账号 → 不挂头像；悬停卡里照样写账号", () => {
-    announce("r1", "z");
-    facts(new Map(), new Map([["devbox", "z"]]));
-    expect(badge()?.style.display).toBe("none");
-    expect(cardText(tm, "r1")).toContain(copyText("tabBar.hover.account", { name: "z" }));
-  });
-  it("lastAccount 软来源且 != 当前 → 幽灵头像", () => {
-    announce("r1", null);
-    facts(new Map([["r1", "b"]]), new Map([["devbox", "z"]]));
-    const av = badge()?.querySelector(".acct-avatar");
-    expect(av).not.toBeNull();
-    expect(av?.classList.contains("ghost")).toBe(true);
-  });
-  it("未知账号(宣告没说 · 无 last) → 不挂徽章", () => {
-    announce("r1", null);
-    facts(new Map(), new Map([["devbox", "z"]]));
-    expect(badge()?.style.display).toBe("none");
-  });
-  it("默认账号未就绪(currentByOrigin 无该 origin) → 不挂头像（说不出「不同」，不猜）；悬停卡里写账号", () => {
-    announce("r1", "b");
-    facts(new Map(), new Map()); // 无 current
+  it("那台说一致（没有徽章）⇒ 不挂头像；悬停卡里照那台写的那一行、换来那一行", () => {
+    announce("r1");
+    said("r1", "devbox", { fromLine: "从 a 换过来（那台写的）" });
     expect(badge()?.style.display).toBe("none");
     expect(cardText(tm, "r1")).toContain(copyText("tabBar.hover.account", { name: "b" }));
+    expect(cardText(tm, "r1")).toContain("从 a 换过来（那台写的）");
+  });
+  it("那一份是别的台的（sid 撞了）⇒ 不认", () => {
+    announce("r1");
+    said("r1", "nano", { differs: true, badge: { ghost: false, title: "x" } });
+    expect(badge()?.style.display).toBe("none");
   });
 });
 

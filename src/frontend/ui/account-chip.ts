@@ -138,7 +138,7 @@ export class AccountChip {
     const tone = m.usage?.tone ?? "plain";
     const tones: Record<number, "refused" | "warn"> = {};
     if (tone !== "plain") tones[1] = tone === "fail" ? "refused" : "warn";
-    return hoverTable(this.chipModel.account, rows, tones);
+    return hoverTable(m.account, rows, tones);
   }
 
   /** 画本会话那一形（`m` 由 [`sessionModel`] 算）。 */

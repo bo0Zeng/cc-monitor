@@ -25,6 +25,8 @@ describe("session-account 问会话所在那台", () => {
       name: "bob",
       when: "now",
       from: null,
+      accountLine: "账号 bob",
+      fromLine: null,
       usage: null,
       stale: false,
       hover: [["bob"]],

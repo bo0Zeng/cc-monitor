@@ -18,7 +18,6 @@ import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
-import { detectAccountMismatch } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { failToast, toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
@@ -42,7 +41,7 @@ import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
-import { appStore, type AccountFacts, type Slice } from "./app-store";
+import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
 import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
@@ -115,10 +114,8 @@ export class TabManager {
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
     this.store.subscribe(() => this.reportKept());
-    // 账号清单那一侧换了 ⇒ 同一拍重画徽章。
-    appStore.accountFacts.subscribe((f) => {
-      if (f) this.setAccountFacts(f);
-    });
+    // 会话的号那一份（会话那台写好的）换了 ⇒ 同一拍重画徽章。
+    appStore.sessionAccount.subscribe(() => this.bar.refreshAccountBadges());
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
       closeEndedIn: (gid) => this.closeEndedIn(gid),
@@ -568,15 +565,6 @@ export class TabManager {
     return this.store.tabs.has(sessionId);
   }
 
-  /** 账号清单那一侧换了一份 ⇒ 刷新所有 tab 的账号徽章。只由 `appStore.accountFacts` 的订阅调。 */
-  private setAccountFacts(f: AccountFacts): void {
-    this.store.accountEmailByName = f.emailByName;
-    this.store.accountLastByS = f.lastByS;
-    this.store.accountReadyOrigins = f.readyOrigins;
-    this.store.currentByOrigin = f.currentByOrigin;
-    this.bar.refreshAccountBadges();
-  }
-
   snapshotSessions(): GridSessionSnapshot[] {
     const out: GridSessionSnapshot[] = [];
     for (const tab of this.store.tabs.values()) {
@@ -604,7 +592,7 @@ export class TabManager {
   }
 
   /**
-   * e2e 探针：全会话状态一行 JSON（含 `mismatch`：活会话账号与那台当前账号确知且不一致）。
+   * e2e 探针：全会话状态一行 JSON（含 `mismatch`：会话那台说这个会话的号与它的默认号不一致）。
    * 与 `debugSnapshot` 并列、不动它的形状。生产不接线，无副作用。
    */
   debugSessionsSnapshot(): string {
@@ -613,10 +601,7 @@ export class TabManager {
       dot: s.face.dot,
       origin: s.origin,
       account: s.account,
-      mismatch: detectAccountMismatch(
-        s.account,
-        isRemoteOrigin(s.origin) ? this.store.currentByOrigin.get(s.origin) ?? null : null,
-      ),
+      mismatch: appStore.sessionAccount.get().get(s.sessionId)?.read.differs ?? false,
     }));
     return JSON.stringify(sessions);
   }
