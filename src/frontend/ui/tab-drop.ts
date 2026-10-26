@@ -22,12 +22,12 @@ export const DRAG_THRESHOLD_PX = 4;
  */
 export function contiguous(
   order: readonly string[],
-  groupOf: (sid: string) => string | null,
+  groupAt: (sid: string) => string | null,
   known: ReadonlySet<string>,
 ): string[] {
   const members = new Map<string, string[]>();
   for (const sid of order) {
-    const g = groupOf(sid);
+    const g = groupAt(sid);
     if (g === null || !known.has(g)) continue;
     const list = members.get(g);
     if (list) list.push(sid);
@@ -36,7 +36,7 @@ export function contiguous(
   const out: string[] = [];
   const done = new Set<string>();
   for (const sid of order) {
-    const g = groupOf(sid);
+    const g = groupAt(sid);
     if (g === null || !known.has(g)) out.push(sid);
     else if (!done.has(g)) {
       done.add(g);
@@ -57,7 +57,7 @@ export type BarRow =
  */
 export function barRows(
   order: readonly string[],
-  groupOf: (sid: string) => string | null,
+  groupAt: (sid: string) => string | null,
   groups: readonly string[],
   collapsed: ReadonlySet<string> = new Set(),
 ): BarRow[] {
@@ -65,8 +65,8 @@ export function barRows(
   const rows: BarRow[] = [];
   const seen = new Set<string>();
   const head = (gid: string): BarRow => (collapsed.has(gid) ? { kind: "head", gid, collapsed: true } : { kind: "head", gid });
-  for (const sid of contiguous(order, groupOf, known)) {
-    const g = groupOf(sid);
+  for (const sid of contiguous(order, groupAt, known)) {
+    const g = groupAt(sid);
     const gid = g !== null && known.has(g) ? g : null;
     if (gid !== null && !seen.has(gid)) {
       seen.add(gid);
@@ -166,17 +166,17 @@ export type GroupMove =
   | { kind: "leave" }; // 移出所在的组，变成散的
 
 export function groupMoveForDrop(
-  groupOf: (sid: string) => string | null,
+  groupAt: (sid: string) => string | null,
   dragged: readonly string[],
   target: DropTarget,
 ): GroupMove {
   let dest: string | null;
   if (target.kind === "onto") {
     if (dragged.includes(target.sid)) return { kind: "stay" };
-    dest = groupOf(target.sid);
+    dest = groupAt(target.sid);
     if (dest === null) return { kind: "found", with: target.sid };
   } else dest = target.gid;
-  if (dragged.every((s) => groupOf(s) === dest)) return { kind: "stay" };
+  if (dragged.every((s) => groupAt(s) === dest)) return { kind: "stay" };
   return dest === null ? { kind: "leave" } : { kind: "join", gid: dest };
 }
 
@@ -190,14 +190,14 @@ const FOUNDING = "\u0000found";
  */
 export function planDrop(
   order: readonly string[],
-  groupOf: (sid: string) => string | null,
+  groupAt: (sid: string) => string | null,
   known: ReadonlySet<string>,
   dragged: readonly string[],
   target: DropTarget,
 ): { order: string[]; move: GroupMove } {
-  const base = contiguous(order, groupOf, known);
+  const base = contiguous(order, groupAt, known);
   if (target.kind === "onto" && dragged.includes(target.sid)) return { order: base, move: { kind: "stay" } };
-  const move = groupMoveForDrop(groupOf, dragged, target);
+  const move = groupMoveForDrop(groupAt, dragged, target);
   const at: InsertAt = target.kind === "onto" ? { sid: target.sid, side: "after" } : target.at;
   const set = new Set(dragged);
   const anchor = at === null ? -1 : base.indexOf(at.sid);
@@ -208,7 +208,7 @@ export function planDrop(
   const dest =
     move.kind === "found" ? FOUNDING : move.kind === "join" ? move.gid : move.kind === "leave" ? null : undefined;
   const after = (s: string): string | null =>
-    set.has(s) && dest !== undefined ? dest : move.kind === "found" && s === move.with ? FOUNDING : groupOf(s);
+    set.has(s) && dest !== undefined ? dest : move.kind === "found" && s === move.with ? FOUNDING : groupAt(s);
   return { order: contiguous(next, after, new Set([...known, FOUNDING])), move };
 }
 
@@ -242,18 +242,18 @@ export function pickGroupDropTarget(rows: readonly RowRect[], y: number, gid: st
 /** 整个组挪到 `at`（组外）：组员按原次序整块搬过去，组还是那个组。 */
 export function planGroupDrop(
   order: readonly string[],
-  groupOf: (sid: string) => string | null,
+  groupAt: (sid: string) => string | null,
   known: ReadonlySet<string>,
   gid: string,
   at: InsertAt,
 ): string[] {
-  const base = contiguous(order, groupOf, known);
-  const block = base.filter((s) => groupOf(s) === gid);
+  const base = contiguous(order, groupAt, known);
+  const block = base.filter((s) => groupAt(s) === gid);
   if (block.length === 0 || (at !== null && block.includes(at.sid))) return base;
-  const rest = base.filter((s) => groupOf(s) !== gid);
+  const rest = base.filter((s) => groupAt(s) !== gid);
   const anchor = at === null ? -1 : rest.indexOf(at.sid);
   const cut = at === null || anchor < 0 ? rest.length : anchor + (at.side === "after" ? 1 : 0);
-  return contiguous([...rest.slice(0, cut), ...block, ...rest.slice(cut)], groupOf, known);
+  return contiguous([...rest.slice(0, cut), ...block, ...rest.slice(cut)], groupAt, known);
 }
 
 /**

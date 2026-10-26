@@ -70,6 +70,8 @@ import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybind
 import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { GroupBook } from "../../../src/frontend/ui/group-book";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 import { announced, goldenFace } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
@@ -235,7 +237,7 @@ describe("有分组时数字键 / ] [ / 关掉当前 tab 后的落点都按条�
   function grouped(): TabManager {
     const tm = makeTabs(["a", "b", "c", "d", "e"]);
     const { store, prefs } = inside(tm);
-    prefs.collections = [{ id: "g", name: "G" }];
+    prefs.collections = [{ id: "g", name: "G", home: LOCAL_ORIGIN, counts: [] }];
     // 组员聚在第一个组员那一格 ⇒ 条上是 a e（组）b c d，不是到达的 a b c d e。
     (store.tabs.get("a") as Tab).group = "g";
     (store.tabs.get("e") as Tab).group = "g";
@@ -307,64 +309,41 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
   });
 });
 
-describe("重启后各台都报完了、组员一个都没回来的组不留空组头", () => {
-  it("没报完之前留着（组员可能还在路上）；各台都报完 ⇒ 没回来的收掉、空组消失，有人在的组留着", () => {
-    const tm = makeTabs(["a"]);
-    const { store, prefs } = inside(tm);
-    prefs.collectionsLoaded = true;
-    prefs.collections = [
-      { id: "g", name: "已结束的那组" },
-      { id: "h", name: "还有人" },
-    ];
-    prefs.savedGroupOf = new Map([
-      ["gone", "g"],
-      ["late", "h"],
-    ]);
-    (store.tabs.get("a") as Tab).group = "h";
-    tm.setMachines([LOCAL_ORIGIN, "pi" as never]);
-    tm.markOriginSeen(LOCAL_ORIGIN);
-    tm.markOriginSeen("pi" as never);
-    expect(prefs.collections.map((c) => c.id), "各台各自报完不算：等壳那一刻").toEqual(["g", "h"]);
-    tm.markAllListed();
-    expect(prefs.collections.map((c) => c.id)).toEqual(["h"]);
-    expect([...prefs.savedGroupOf]).toEqual([]);
-    expect(document.querySelectorAll(".tab-group")).toHaveLength(1);
-  });
-});
-
-describe("「各台都报完」先于某台自己那几格到：那台的组员不算没回来（组不丢）", () => {
+describe("旧的分组三格等每台自己那条流都报完了才迁（组员照那一刻标签在哪台写）", () => {
   /**
    * 每台一条会话流：壳在最后报完的那一台的流上说「各台都报完」（`listed.all`），别的台那条流上它自己的宣告与「报完了」可能还在路上。
-   * 从前那一刻就把还没建出 tab 的组员当「不会再来了」收掉 ⇒ 那几个 tab 随后照样到了、却已不在组里，组头整个没了
-   * （截图台架拖组头那几张：「训练」组头找不到）。组员关系是盘上的状态：每台都在自己那条流上报完了，才认「没回来」。
+   * 那一刻就迁 ⇒ 还没建出标签的组员认不出在哪台、被丢掉。每台都在自己那条流上报完了，才迁。
    */
-  it("★ 壳说各台都报完、gpu 那台的格还没到 ⇒ 组留着；gpu 的两个 tab 随后到了照旧在组里；gpu 也报完了才收真没回来的", () => {
-    const tm = makeTabs(["a"]);
-    const { prefs } = inside(tm);
+  it("★ 壳说各台都报完、gpu 那台的格还没到 ⇒ 不迁；gpu 的标签到了、也报完了 ⇒ 建组一次、两台各一条 join、删那三格", async () => {
     const GPU = "gpu" as never;
-    tm.setMachines([LOCAL_ORIGIN, GPU]);
-    prefs.collectionsLoaded = true;
-    prefs.collections = [
-      { id: "g1", name: "近处那组" },
-      { id: "g2", name: "训练" },
-    ];
-    prefs.savedGroupOf = new Map([
-      ["a", "g1"],
-      ["t1", "g2"],
-      ["t2", "g2"],
-      ["gone", "g2"],
-    ]);
-    for (const t of inside(tm).store.tabs.values()) prefs.adoptGroup(t);
-    tm.markOriginSeen(LOCAL_ORIGIN);
-    tm.markAllListed(); // 壳那一刻（在本机那条流上到的）
-    expect(prefs.collections.map((c) => c.id), "gpu 那条流还没报完：它的组员不算没回来").toEqual(["g1", "g2"]);
-    tm.ensureTab("t1", "/w/t1", "/p/t1.jsonl", GPU);
-    tm.ensureTab("t2", "/w/t2", "/p/t2.jsonl", GPU);
-    tm.markOriginSeen(GPU);
-    expect(prefs.groupOf("t1")?.id).toBe("g2");
-    expect(prefs.groupOf("t2")?.id).toBe("g2");
-    expect([...prefs.savedGroupOf], "真没回来的那一个这时才收").toEqual([]);
-    expect(prefs.collections.map((c) => c.id)).toEqual(["g1", "g2"]);
+    vi.mocked(invoke).mockImplementation((async (cmd: string) =>
+      cmd === "load_config" ? { tabCollections: [{ id: "c1", name: "训练" }], tabBar: { groupOf: { a: "c1", t1: "c1" } } } : undefined) as never);
+    try {
+      const calls: Array<[string, string, unknown]> = [];
+      const book = new GroupBook(async (origin, cmd, req) => {
+        calls.push([origin, cmd, req]);
+        return (cmd === "groups-write" ? { is: "made", id: "g-new", name: "训练", made: 1 } : cmd === "groups-read" ? { groups: [], pinned: [], machines: [] } : { entry: {}, prev: null }) as never;
+      }, 60_000);
+      const tm = makeTabs(["a"]);
+      tm.setMachines([LOCAL_ORIGIN, GPU]);
+      tm.attachGroups(book);
+      tm.markOriginSeen(LOCAL_ORIGIN);
+      tm.markAllListed(); // 壳那一刻（在本机那条流上到的）
+      await new Promise((r) => setTimeout(r, 0));
+      expect(calls.filter((c) => c[1] !== "groups-read"), "gpu 那条流还没报完：不迁").toEqual([]);
+      tm.ensureTab("t1", "/w/t1", "/p/t1.jsonl", GPU);
+      tm.markOriginSeen(GPU);
+      await vi.waitFor(() => expect(calls.filter((c) => c[1] === "history-annotate")).toHaveLength(2), UNTIL_CEILING);
+      await vi.waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([c, a]) => c === "patch_config" && JSON.stringify(a).includes("tabCollections"))).toBe(true), UNTIL_CEILING);
+      expect(calls.filter((c) => c[1] !== "groups-read")).toEqual([
+        [LOCAL_ORIGIN, "groups-write", { op: "make", name: "训练" }],
+        [LOCAL_ORIGIN, "history-annotate", { sid: "a", patch: { join: ["g-new"] } }],
+        ["gpu", "history-annotate", { sid: "t1", patch: { join: ["g-new"] } }],
+      ]);
+    } finally {
+      vi.mocked(invoke).mockReset();
+      vi.mocked(invoke).mockResolvedValue(undefined);
+    }
   });
 });
 

@@ -600,6 +600,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-annotate",
         "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::annotate` 按类型收）",
     ),
+    // 组（`history/groups.rs`）：生来就走通道。读只问本机（它问到各台并成一份），建 · 改名 · 解散问家那台；进出组 · 固定走上面那条注解。
+    (
+        "groups-read",
+        "本机后端问到各台的组那一半、并成一份（名字 · 组员 · 组头那一句 · 哪台上次所知）；界面 `group-book.ts` 按类型收、照画",
+    ),
+    (
+        "groups-write",
+        "建 · 改名 · 解散家在那台的组：后端经 `Own` 写那台的注解文件 `groups` 那一节（`group-book.ts` 交、回那一组）",
+    ),
     (
         "history-branch",
         "主线外清单冷读：查看器与子运行窗口打开时问一次（`record-reads.ts::decodeBranch` 按形状收），之后跟实时帧 `branch`",

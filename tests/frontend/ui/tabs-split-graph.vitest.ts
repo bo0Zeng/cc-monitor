@@ -94,6 +94,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
     "src/frontend/ui/app-store.ts", // 会话的号那一份（`appStore.sessionAccount`）换了 ⇒ 重画徽章；e2e 探针的「不一致」照那台写的
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
+    "src/frontend/ui/config.ts", // 旧分组三格迁一次：读整份 `config.json`、迁完删那三格（5.0.3 之后第一版带它，再下一版连同迁移一起删）
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
     "src/frontend/ui/kit/detail.ts", // ↗ 浮层更新没成：［复制详情］复制壳带回的那份详情（`detailOf`）
@@ -117,6 +118,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
+    "src/frontend/ui/tab-groups-migrate.ts", // 旧分组三格迁进各台（同上，随迁移一起删）
     "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
     "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`；「没人答时自动答」那一格同一条命令
@@ -213,31 +215,23 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
     "src/frontend/ui/tab-quota.module.css", // 停发标那一格的样式
   ],
-  // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
+  // ④ 拖拽：落点算术；建组交给分组那一份（组的 id 由家那台起）。
   // 「松开 → 独立窗口」进了文案表 ⇒ 取文口。
-  // 拖进满了的组 / 建不出组 ⇒ 经落盘偏好那一份的 `sayCollectionRefusal` 说一句。
   "src/frontend/ui/tab-bar-drag.ts": [
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/keybindings/registry.ts", // 拖拽中 Esc ＝ 取消：走弹层栈
     "src/frontend/ui/kit/status-dot.ts", // 影子：状态点 ＋ 标题（同行上的写法）
     "src/frontend/ui/session-face.ts", // 影子那一行读成什么（`dotOf` · `titleParts` · 点的名字 `stateWord`）
-    "src/frontend/ui/tab-bar-prefs.ts",
-    "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-drop.ts",
     "src/frontend/ui/tab-group.module.css", // 插入线 · 引导线点亮 · 小标签 · 出栏影子 · 落下淡出
   ],
-  // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
-  // 固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
+  // ④ 分组 · 固定 · 顺序：组与固定照组的账（`group-book.ts`，只有类型依赖）画、改的动作交给它；这扇窗的看法（顺序 · 收着的组）落 `config.json`。
   // 固定复活的空态文字住文案表（说到会话状态的字一处定）。
-  // 集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/frontend/ui/tab-bar-prefs.ts": [
-    "src/frontend/ui/app-store.ts", // 固定那一条记会话的号：宣告没说 ⇒ 那台写好的会话的号（连上次的号）
-    "src/frontend/ui/config.ts", // 分组一次改动的全部补丁一次 `patchConfig`
     "src/frontend/ui/copy-table.ts",
-    "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句
+    "src/frontend/ui/ipc/origin.ts", // 刚建的组家在本机（`LOCAL_ORIGIN`）
+    "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序没交成出声（INVARIANTS §12）
     "src/frontend/ui/tab-bar-state.ts",
-    "src/frontend/ui/tab-collections.ts",
-    "src/frontend/ui/face-can.ts",
   ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
@@ -312,7 +306,7 @@ describe("〔U2〕拆 tabs.ts：每一份的直接运行期依赖 == 登记（�
   });
 
   it("★ 登记的份数 == 盘上 src/tab-*.ts ＋ tabs.ts 里「U2 拆出来的」那几份（拆出去的每一份都得进表）", () => {
-    // `tab-collections.ts` / `tab-bar-state.ts` 是拆之前就在的两份（盘上那一层），不在这张表里。
+    // `tab-bar-state.ts` 是拆之前就在的那一份（盘上那一层），不在这张表里。
     const src = read("src/frontend/ui/tabs.ts");
     const header = src.slice(0, src.indexOf("*/")); // 只认文件头那一块注释（拆分地图）
     const named = new Set([...header.matchAll(/`(tab-[a-z-]+\.ts)`/g)].map((m) => `src/frontend/ui/${m[1]}`));

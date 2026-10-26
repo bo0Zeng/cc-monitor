@@ -54,7 +54,7 @@ beforeEach(() => {
     collectionsLoaded: vi.fn(() => true),
     collections: vi.fn(() => [{ id: "g", name: "白天" }]),
     pinnedLoaded: vi.fn(() => true),
-    setPinned: vi.fn(),
+    setPinnedMany: vi.fn(),
     joinGroup: vi.fn(),
     foundGroup: vi.fn(() => null),
     leaveGroup: vi.fn(),
@@ -172,7 +172,7 @@ describe("批量菜单", () => {
   it("B3 · 固定 / 分组：一次交出能做的那几个；新建分组整批进同一个新组，不问名字", async () => {
     open();
     await press(copyText("tabBatch.menu.pin", { n: 2 }));
-    expect(calls(host.setPinned)).toEqual([[["a", "c"], true]]);
+    expect(calls(host.setPinnedMany)).toEqual([[["a", "c"], true]]);
     expect(toastHead()).toBe(copyText("tabBatch.result.done", { action: copyText("tabBatch.action.pin"), done: 2 }));
     open();
     await press(copyText("tabBatch.menu.leave", { n: 1 }));

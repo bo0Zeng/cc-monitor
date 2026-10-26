@@ -80,31 +80,6 @@ export function fullTitle(tab: Tab): string {
   return p.proj ? `${p.proj} ${t}` : t;
 }
 
-/** 收着的组头上那一格汇总：几个在等你、几个在跑、几个后台任务运行中（按状态点数；空闲 · 已结束 · 状态不明 · Claude 已退出不算）。 */
-export function groupSummary(members: readonly Tab[]): { needs: number; running: number; background: number; needsWord: string; runningWord: string; backgroundWord: string } {
-  let needs = 0;
-  let running = 0;
-  let background = 0;
-  // 那几颗点的名字照抄组员身上核心写的字（同一种语气的字是同一个），不按点自己取字。
-  let needsWord = "";
-  let runningWord = "";
-  let backgroundWord = "";
-  for (const t of members) {
-    const d = dotOf(t);
-    if (d === "needs-you") {
-      needs++;
-      needsWord ||= stateWord(t) ?? "";
-    } else if (d === "running") {
-      running++;
-      runningWord ||= stateWord(t) ?? "";
-    } else if (d === "background") {
-      background++;
-      backgroundWord ||= stateWord(t) ?? "";
-    }
-  }
-  return { needs, running, background, needsWord, runningWord, backgroundWord };
-}
-
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
 export function abbrOf(tab: Tab): string {
   const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.label ?? tab.sessionId;

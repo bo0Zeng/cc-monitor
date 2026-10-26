@@ -2050,18 +2050,6 @@
       "zh": "状态不明 · 机器离线",
       "args": []
     },
-    "tabCollections.full.collectionsTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新建集合失败",
-      "args": []
-    },
-    "tabCollections.full.collectionsBody": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "集合已达上限 {cap} · 删一个不用的再建",
-      "args": ["cap"]
-    },
     "sessionState.recordFile.gone": {
       "kind": "body",
       "role": "说明",
@@ -14528,6 +14516,30 @@
       "zh": "未找到主目录（HOME 与 USERPROFILE 均未设） · 未写入",
       "args": []
     },
+    "beGroups.name.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "组名未知 · 组所在的机器没答过",
+      "args": []
+    },
+    "beGroups.count.needs": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动 {n}",
+      "args": ["n"]
+    },
+    "beGroups.count.running": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在跑 {n}",
+      "args": ["n"]
+    },
+    "beGroups.count.background": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "后台任务 {n}",
+      "args": ["n"]
+    },
     "beHistoryAnnotations.needPath.unknown": {
       "kind": "error",
       "role": "报错",
@@ -24999,22 +25011,10 @@
       "zh": "已移动分组「{name}」",
       "args": ["name"]
     },
-    "tabBar.group.sumNeeds": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "需手动 {n}",
-      "args": ["n"]
-    },
     "tabBar.group.sumRunning": {
       "kind": "body",
       "role": "说明",
       "zh": "在跑 {n}",
-      "args": ["n"]
-    },
-    "tabBar.group.sumBackground": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "后台任务 {n}",
       "args": ["n"]
     },
     "tabBar.group.more": {
