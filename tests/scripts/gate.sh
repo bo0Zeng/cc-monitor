@@ -1137,6 +1137,7 @@ run_e2e backend-sessions-rewatch
 run_e2e backend-cc-bus
 run_e2e resume
 run_e2e graylight-frames
+run_e2e graylight-verdict
 run_e2e resume-frames
 gate_lane e2e-3 after e2e-prep
 # `backend-gate2` · `local-backend` 按环境显式分支：版本门 / 没铺 `embedded-backends/` 的格记 SKIP 并说原因；

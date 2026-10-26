@@ -15,7 +15,7 @@
 #   · tmux 一律带 `-L`：远端后端那一台由 wrapper 钉（名字在 `tmux-sock`），app 那一台由台架放进 PATH 最前的垫片钉。
 #
 # 用法：
-#   bash tests/e2e/tier2-rig.sh setup     # 建沙箱 ＋ 起回环 sshd ＋ 写 config.json ＋ 起 Xvfb（自证：钉住的后端是这一版 · 远端的家在沙箱里）
+#   bash tests/e2e/tier2-rig.sh setup     # 内嵌本机后端 ＋ 建沙箱 ＋ 起回环 sshd ＋ 写机器表 ＋ 起 Xvfb（自证：钉住的后端是这一版 · 远端的家在沙箱里）
 #   bash tests/e2e/tier2-rig.sh dev       # 起 dev 实例（前台；或自己加 &）
 #   bash tests/e2e/tier2-rig.sh run       # 跑 graylight-suite ＋ f40-suite
 #   bash tests/e2e/tier2-rig.sh teardown  # 收 dev（整个进程组，vite 在里面）· 两头的常驻后端 · sshd · Xvfb · 两台私有 tmux（都按记下的 pid / 名字）
@@ -30,6 +30,9 @@ RIG="$SBX/rig"
 LHOME="$SBX/h"                       # app 的家
 RHOME="$SBX/r"                       # 回环 sshd 那一头的家
 LANDING="$RHOME/.cc-monitor/bin"     # 远端后端的落点目录（`relay_route_core::BACKEND_LANDING_SHELL` 那一份）
+RBACKEND_HOME="$LANDING/home"        # 远端后端真正住的家：wrapper 把 HOME 换成它旁边的 `home/`（常驻 · 诊断文件都在这底下）
+# 常驻后端的 stderr 诊断文件（家目录相对；`src/backend/stderr_log.rs::STDERR_LOG_REL` 那一份）。
+BACKEND_STDERR_REL=".cc-monitor/logs/backend/stderr.log"
 BACKEND="$REPO/.build/backend/debug/cc-monitor-backend"
 # 真 HOME 只用来指回 rustup / cargo 的家（沙箱 HOME 会把它们一起换掉；那两个不是账号数据）。
 REAL_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
@@ -51,6 +54,9 @@ setup() {
   [ -x "$BACKEND" ] || die "后端 debug 二进制不在：$BACKEND
    先跑：cd src/backend && cargo build"
   [ ! -e "$RIG/sshd.pid" ] || die "上一次的台架没收（$RIG/sshd.pid 还在）—— 先跑：bash $0 teardown"
+  # app 连哪台都经本机后端（常驻 · 壳问远端的转发都在它那里）⇒ 开发树的 app 不内嵌本机后端就一台都不拨，套件测不到任何东西。
+  #   每次 setup 都重编重铺（cargo 增量，没改就是几秒）：只判「铺了没有」会放过一份 build_id 没变、代码已经变了的旧字节。
+  bash "$REPO/tests/scripts/re-embed.sh" --native || die "本机后端没编出来 / 铺了起不来（tests/scripts/re-embed.sh --native）"
   local bid said
   bid="$(_build_id)"
   # 台架自证 ①：钉住的那份后端就是这一版（旧的那份会让套件测的不是这棵树）。它自己答（流模式第一行 hello 的 `build_id`）。
@@ -68,7 +74,12 @@ setup() {
   done
   [ -n "$sftp_server" ] || die "没有 sftp-server"
 
+  # 两头的家每次 setup 整份重建：上一次留下的机器表 · 常驻的套接字 · 后端 stderr 诊断文件（套件按它判文件监视）都不许带进这一次。
+  #   两个目录名是本台架自己起的（`$SBX/h` · `$SBX/r`），只删这两个。
+  rm -rf -- "$LHOME" "$RHOME"
   mkdir -p "$LHOME/.cc-monitor" "$LHOME/.claude/sessions" "$LANDING" "$RIG/xdg" "$RIG/bin"   # f40 把宿主 pidfile 落进 app 那一头的 sessions/
+  # wrapper 的帧 tap：上一次台架留下的不许混进这一次的读数（两头的家在上面已整份重建）。
+  rm -f -- "$RIG/frames.tap" "$RIG/frames.tap.err"
   chmod 700 "$LHOME/.cc-monitor" "$RHOME/.cc-monitor" "$RIG/xdg"   # 数据目录与后端的家同一个，只给本人
   cp "$REPO/tests/e2e/backend-wrapper.sh" "$LANDING/ccm"
   chmod +x "$LANDING/ccm"
@@ -128,32 +139,30 @@ F
     || die "台架的回环 sshd 连接失败（看 $RIG/sshd.log）"
   [ "$rh" = "$RHOME" ] || die "回环 sshd 那一头的家是「$rh」，不是沙箱 $RHOME"
 
-  local fp
-  fp="$(ssh-keygen -lf "$RIG/host_key.pub" | awk '{print $2}')"
-  python3 - "$LHOME" "$RIG" "$port" "$fp" <<'PY'
+  # 机器表与主机钥匙照今天的落盘形状直接写（住拨号那一端的本机后端读：`~/.cc-monitor/machines.json` · `~/.cc-monitor/known_hosts`）。
+  #   从前写的是 `config.json` 的 `remote` 段，靠第一次起 app 时那趟迁移搬进机器表 —— 迁移只搬一次，
+  #   第二次 setup 换了端口，app 照旧拨上一次的（10-26 实测：一直「端口不通 · 已试 <旧端口>」）。
+  python3 - "$LHOME" "$RIG" "$port" <<'PY'
 import json, os, sys
-home, rig, port, fp = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
-cfg = {
-    "remote": {
-        "enabled": True,
-        "legacyNoBackend": [],
-        "hosts": [{
-            "label": "e2e-loopback",
-            "host": "127.0.0.1",
-            "port": port,
-            "user": os.environ.get("USER") or os.getlogin(),
-            "keyPath": f"{rig}/client_key",
-            "hostKeyFingerprint": fp,
-            "addresses": [],
-            "jump": "",
-            "resumeCommand": "",
-        }],
-    }
-}
-p = f"{home}/.cc-monitor/config.json"
+home, rig, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+machines = {"version": 1, "hosts": [{
+    "label": "e2e-loopback",
+    "host": "127.0.0.1",
+    "port": port,
+    "user": os.environ.get("USER") or os.getlogin(),
+    "keyPath": f"{rig}/client_key",
+    "addresses": [],
+    "jump": "",
+    "connect": True,
+}]}
+p = f"{home}/.cc-monitor/machines.json"
 with open(p, "w", encoding="utf-8") as f:
-    json.dump(cfg, f, ensure_ascii=False, indent=2)
-print(f"  写了 {p}")
+    json.dump(machines, f, ensure_ascii=False)
+with open(f"{rig}/host_key.pub", encoding="utf-8") as f:
+    kind, key = f.read().split()[:2]
+with open(f"{home}/.cc-monitor/known_hosts", "w", encoding="utf-8") as f:
+    f.write(f"[127.0.0.1]:{port} {kind} {key}\n")
+print(f"  写了 {p} 与旁边的 known_hosts")
 PY
 
   # Xvfb —— 用 setsid 起、记 pid，收尾按 pid 收（不用 `pkill -f`：那个模式会匹配到执行它的那条 shell 自己的命令行）。
@@ -172,7 +181,7 @@ PY
 }
 
 dev() {
-  [ -f "$LHOME/.cc-monitor/config.json" ] || die "先跑 setup"
+  [ -f "$LHOME/.cc-monitor/machines.json" ] || die "先跑 setup"
   cd "$REPO"
   # 环境从空起（不带开发机会话的 TMUX · CLAUDE_CONFIG_DIR · 真端口那些）；RUSTUP_HOME / CARGO_HOME 显式指回真路径。
   # 自己一个进程组（setsid）、pid 记下：收尾整组收（vite 在组里）。
@@ -195,6 +204,7 @@ run() {
     printf '▼ %s\n' "$s"
     E2E_DISPLAY="$DISP" E2E_LOG="$log" HOME="$LHOME" CLAUDE_CONFIG_DIR="$LHOME/.claude" \
       CCM_E2E_CLAUDE_DIR="$(cat "$RIG/claude-dir")" CCM_E2E_TMUX_SOCK="$(cat "$RIG/tmux-sock")" \
+      E2E_BACKEND_ERR="$LHOME/$BACKEND_STDERR_REL:$RBACKEND_HOME/$BACKEND_STDERR_REL" \
       bash "$REPO/tests/e2e/$s.sh" || { rc=$?; echo "  rc=$rc"; }
   done
   return "$rc"

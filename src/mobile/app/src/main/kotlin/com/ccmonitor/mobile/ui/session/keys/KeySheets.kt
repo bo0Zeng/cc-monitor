@@ -313,7 +313,7 @@ private fun RecorderKeys(
 ) {
     val tokens = LocalAppTokens.current
     var showF by remember { mutableStateOf(false) }
-    SectionLabel(copyText("mobKeys.rec.mods") + " · " + copyText("mobKeys.rec.modsTip"))
+    SectionLabel(copyText("mobKeys.rec.mods") + copyText("kit.text.sep") + copyText("mobKeys.rec.modsTip"))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         KeyMod.entries.forEach { m -> MiniCap(modName(m), active = m in rec.armed, onClick = { onRec(rec.toggle(m)) }) }
     }

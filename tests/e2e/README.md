@@ -67,7 +67,7 @@ GUI 那几套（`graylight-suite` · `f40-suite`）的台架用脚本搭，不�
 每个会话的 `HOME` 换成 `r/`，wrapper 就放在那一头的后端落点 `r/.cc-monitor/bin/ccm`；tmux 两头各一台私有的（`-L`）。
 
 ```bash
-bash tests/e2e/tier2-rig.sh setup     # 沙箱 ＋ 回环 sshd ＋ config.json ＋ Xvfb（自证：钉住的后端是这一版 · 远端的家在沙箱里）
+bash tests/e2e/tier2-rig.sh setup     # 先 re-embed --native（app 经本机后端拨远端，不内嵌就一台都不拨）＋ 两头的家整份重建 ＋ 回环 sshd ＋ 机器表（machines.json · known_hosts）＋ Xvfb（自证：钉住的后端是这一版 · 远端的家在沙箱里）
 bash tests/e2e/tier2-rig.sh dev &     # dev 实例（环境从空起、HOME 指沙箱）
 bash tests/e2e/tier2-rig.sh run       # graylight-suite ＋ f40-suite
 bash tests/e2e/tier2-rig.sh teardown  # 按记下的 pid / 名字收：dev 进程组（含 vite）· 两头常驻 · sshd · Xvfb · 私有 tmux
@@ -75,16 +75,19 @@ bash tests/e2e/tier2-rig.sh teardown  # 按记下的 pid / 名字收：dev 进�
 
 没有窗口管理器时 `xdotool getmouselocation` 报 `window:0`（指针与窗口关联不上），装 `openbox` 再跑。
 
-## 全链套件（`graylight-suite`）手跑
+`run` 把两头常驻后端的 stderr 诊断文件（`<家>/.cc-monitor/logs/backend/stderr.log`，远端那一头的家是 wrapper 换的 `r/.cc-monitor/bin/home/`）
+经 `E2E_BACKEND_ERR`（冒号隔开）交给 `graylight-suite`。
 
-```
-Xvfb :80 -screen 0 1400x900x24 &
-DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude \
-  RUSTUP_HOME=$HOME/.rustup CARGO_HOME=$HOME/.cargo npx tauri dev &
-E2E_DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude bash tests/e2e/graylight-suite.sh
-```
+## 全链套件（`graylight-suite`）怎么判
 
-四条**踩过才知道**的前提：
+台架不成立一律 **ABORT（exit 2）**，不报 FAIL：日志不在 / 不在写 · 没握手 · 没有盯 fixture 的后端 · 不是 dev 实例 · 多余后端 ·
+后端 stderr 没交或里面有文件监视挂不上（`OS file watch limit reached` · `debouncer init failed` · `inotify_init1 失败` · `Too many open files`）·
+fixture 的 pidfile 没落 · **app 里等不到这个会话的 tab**（`E2E_TAB_WAIT` 秒内没有 `[e2e] tab-state sid=… dot=<活>`）。
+台架成立之后，可重连 · 已结束两条主断言不满足才是 FAIL；报 FAIL 之前再看一次后端 stderr（跑到一半监视掉了也是 ABORT）。
+这几格怎么判由 `graylight-suite-verdict.sh` 钉住：照真东西形状搭一个假世界（日志 · 按身份认得出的后端进程 · devUrl 上的静态服务 ·
+私有 tmux · 一个照序写日志的假 app），在里面跑真套件，判四种情况（watch 挂不上 · tab 等不到 ⇒ ABORT；写全 ⇒ 全过；不写可重连 ⇒ FAIL）。
+
+几条**踩过才知道**的前提（台架都已照做，手搓才要记）：
 
 1. **`RUSTUP_HOME`/`CARGO_HOME` 要显式指回真路径**：沙箱 `HOME` 会把 rustup 的家一起换掉，
    `npx tauri dev` 报 `rustup could not find toolchain`。（那两个不是账号数据，与沙箱意图不冲突。）
