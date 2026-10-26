@@ -21,22 +21,22 @@ class HostRemovalKeysTest {
     fun onlyTheAddressesNoOtherMachineUsesAreForgotten() {
         val table =
             listOf(
-                host("a", "10.0.0.1").copy(addresses = listOf("a.lan")),
-                // 同址另一个用户：10.0.0.1 那把钥匙它还用着。
-                host("b", "10.0.0.1"),
-                host("c", "10.0.0.3"),
+                host("a", "192.0.2.1").copy(addresses = listOf("a.lan")),
+                // 同址另一个用户：192.0.2.1 那把钥匙它还用着。
+                host("b", "192.0.2.1"),
+                host("c", "192.0.2.3"),
             )
         assertEquals(listOf(Endpoint("a.lan", 22)), keysOnlyItUsed(table, "a", endpoints))
     }
 
     @Test
     fun theLastMachineOnAnAddressTakesItsKeysWithIt() {
-        val table = listOf(host("a", "10.0.0.1").copy(addresses = listOf("a.lan")), host("c", "10.0.0.3"))
-        assertEquals(listOf(Endpoint("10.0.0.1", 22), Endpoint("a.lan", 22)), keysOnlyItUsed(table, "a", endpoints))
+        val table = listOf(host("a", "192.0.2.1").copy(addresses = listOf("a.lan")), host("c", "192.0.2.3"))
+        assertEquals(listOf(Endpoint("192.0.2.1", 22), Endpoint("a.lan", 22)), keysOnlyItUsed(table, "a", endpoints))
     }
 
     @Test
     fun aMachineNotInTheTableForgetsNothing() {
-        assertEquals(emptyList<Endpoint>(), keysOnlyItUsed(listOf(host("c", "10.0.0.3")), "a", endpoints))
+        assertEquals(emptyList<Endpoint>(), keysOnlyItUsed(listOf(host("c", "192.0.2.3")), "a", endpoints))
     }
 }
