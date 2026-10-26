@@ -54,9 +54,9 @@ class ExitScanTest {
     /** 假仓：一张表、一份名单、一份 `src/main` 下的文件；规则照名单报。 */
     private fun lintInRepo(debtN: Int?): List<String> {
         val repo = Files.createTempDirectory("exit-scan")
-        Files.createDirectories(repo.resolve("src/shared/copy"))
+        Files.createDirectories(repo.resolve(Ledger.TABLE).parent)
         Files.writeString(repo.resolve(Ledger.TABLE), """{"entries":{"b.k.x":{"kind":"body","role":"说明","zh":"字","args":[]}}}""")
-        Files.createDirectories(repo.resolve("tests/frontend/ui"))
+        Files.createDirectories(repo.resolve(Ledger.DEBT).parent)
         val cells = debtN?.let { """["m/src/main/A.kt","key",$it]""" } ?: ""
         Files.writeString(repo.resolve(Ledger.DEBT), """{"roots":[],"ceiling":0,"groups":[{"kind":"首登","why":"x","cells":[$cells]}]}""")
         val src = repo.resolve("m/src/main/A.kt")
