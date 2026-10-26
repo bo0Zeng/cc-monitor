@@ -40,7 +40,7 @@ fn install(p: &Path) -> Result<Value, crate::wire::spec::Fail> {
 }
 
 /// ★ 装卸账**复用 skill 装记录那一份**：装完交给记录写口的是 `{op:"add", name:"cc-bus", files:{路径:{digest, created}}}`
-/// —— 与 skill「装到这台」同形，每个内嵌文件一行、摘要就是那份原文的摘要；一致那一趟（什么都没写）不记。
+/// —— 与 skill「装到这台」同形，每个内嵌文件一行、摘要就是那份原文的摘要；一致那一趟（什么都没写）照样交，记录没变就不写盘。
 #[test]
 fn an_install_is_recorded_in_the_skill_install_ledger() {
     let t = tmpdir("ledger");
@@ -64,11 +64,39 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
         ))
     );
     install_at(&LocalFiles, &t.0.join("skills"), &rec).expect("再装");
-    assert_eq!(
-        seen.lock().unwrap().len(),
-        1,
-        "一致那一趟什么都没写，不该再记"
-    );
+    let got = seen.lock().unwrap().clone();
+    assert_eq!(got.len(), 2, "一致那一趟也交给记录（记录没变由写口不写盘）");
+    for (rel, d) in got[1]["files"].as_object().unwrap() {
+        assert_eq!(d["digest"], files[rel]["digest"], "{rel}");
+    }
+}
+
+/// 记录里是旧摘要、盘上已经与内嵌那一份全一致（别处换成了这一版）⇒ 再装一趟之后，卸判定全是「原样」；
+/// 什么都不写、不备份，记录换成这一份的摘要（A9-2）。
+#[test]
+fn an_install_over_identical_files_refreshes_a_stale_record() {
+    let t = tmpdir("stale-record");
+    let skills = t.0.join("skills");
+    let ledger = t.0.join(relay_route_core::SKILL_LEDGER_REL);
+    let own = crate::platform::fs::Own::issue_at(&t.0);
+    let rec = |a: &crate::assets::skill_ledger::RecordReq| {
+        crate::assets::skill_ledger::record_at(&own, Some(&skills), a)
+    };
+    install_at(&LocalFiles, &skills, &rec).expect("装");
+    let mut l = crate::assets::skill_ledger::load_at(&ledger).unwrap();
+    for f in l.installs.values_mut().flat_map(|i| i.files.values_mut()) {
+        f.digest = "0000000000000000".into();
+    }
+    std::fs::write(&ledger, serde_json::to_string(&l).unwrap()).unwrap();
+    let again = install_at(&LocalFiles, &skills, &rec).expect("再装");
+    assert_eq!(again["written"], json!([]), "{again}");
+    let dir = skills.join(NAME).display().to_string();
+    let seen =
+        crate::assets::skill_install::answer_uninstall_plan_at(&ledger, &json!({ "dir": dir }))
+            .unwrap();
+    for r in seen["rows"].as_array().unwrap() {
+        assert_eq!(r["state"], "intact", "{r}");
+    }
 }
 
 /// 内嵌清单必须与仓内那份**逐文件对得上**。
