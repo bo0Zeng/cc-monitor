@@ -132,8 +132,14 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             json!({ "known": [{ "host": "h", "user": "u", "port": 22, "label": "x" }] }),
         ),
         ("bus-list", json!({ "extra": 1 })),
-        ("bus-send", json!({ "to": "a_cc", "text": "x", "extra": 1 })),
-        ("bus-send", json!({ "to": "a_cc", "text": 3 })),
+        (
+            "bus-envelope",
+            json!({ "from": "a", "to": "b", "act": "ask", "title": "t", "extra": 1 }),
+        ),
+        (
+            "bus-envelope",
+            json!({ "from": "a", "to": "b", "act": "ask", "title": 3 }),
+        ),
         ("bus-inbox", json!({ "id": "a_cc", "lines": "200" })),
         (
             "aliases-read",

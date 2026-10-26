@@ -24,7 +24,6 @@ fn codes(g: &serde_json::Value, cmd: &str) -> Vec<String> {
 
 #[test]
 fn every_golden_code_has_its_own_sentence_without_raw_words() {
-    let bus = golden("cc-bus-control.golden.json");
     let tmux = golden("tmux-control.golden.json");
     let term = golden("terminals.golden.json");
     type Table = Box<dyn Fn(&str) -> String>;
@@ -41,11 +40,15 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
             codes(&term, "terminal-preview"),
             None,
         ),
+        // 信封的码不在跨语言金样里（界面不发信）：取命令自己的码表。
         (
-            "bus-send",
-            Box::new(|c| cc_bus_wire::send_said("agent-a", c)),
-            codes(&bus, "bus-send"),
-            Some("agent-a"),
+            "bus-envelope",
+            Box::new(cc_bus_wire::envelope_said),
+            <cc_bus_wire::BusEnvelopeErr as crate::wire::typed::Codes>::ALL
+                .iter()
+                .map(|c| c.to_string())
+                .collect(),
+            None,
         ),
     ];
     for (cmd, table, codes, object) in cases {
@@ -82,7 +85,7 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
 fn the_wire_layer_keeps_the_handlers_sentence() {
     for (cmd, code) in [
         ("kill", "kill_failed"),
-        ("bus-send", "rejected"),
+        ("bus-list", "failed"),
         ("accounts-add", "bad_args"),
     ] {
         let f = crate::wire::spec::Fail::new(code, "处理器那句".to_string());

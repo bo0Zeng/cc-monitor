@@ -1,5 +1,6 @@
 //! 帧面 `session-say` 的宿主壳：往一条会话说一句（聊天屏 ➤ · 压缩上下文 · 清空会话 · 点 Skill · cc-bus 敲门都走它）。
 //! 那台说这条会话在等人（批准 · 回答）⇒ 不送（框开着时打的字会落进框里）；不在等 ⇒ 照 `terminal-input` 那一条送、补回车。
+//! 要求「只在闲着时送」（`idle_only`，cc-bus 一档敲门用）而它此刻不闲 ⇒ 不送、回 `not_idle`（不插进那一轮中间）。
 //! 挂着它的那个窗格前台只剩 shell（agent 退了）⇒ 不送进去，当作终端没了（`terminals::say_on`）。
 //! 送的时候这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 只剩 shell）⇒ 按记下的号恢复这条会话，那一句当第一句交出去
 //! （模型 · 权限档取会话记录里最后那一条，同 `history-facts` 那一处扫描；起法同 `session-open` 恢复进 tmux 那一支，`session_open::resume_saying`）。
@@ -31,6 +32,10 @@ pub(crate) struct SessionSayReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) seen_screen: Option<String>,
+    /// `true` ⇒ 只在这条会话闲着（等下一句输入）时送；一轮在跑 · 后台在跑 · 判不出 ⇒ 不送、回 `refused` ＋ `not_idle`。缺 ⇒ 不要求。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) idle_only: Option<bool>,
 }
 
 typed::codes! {
@@ -68,6 +73,10 @@ impl crate::wire::typed::Handle for SessionSay {
             let files = needs;
 
             let home = crate::history::listing::agent_home();
+            let doing = |sid: &str| crate::history::live_table::now(&home).doing_one(sid);
+            if let Some(no) = idle_gate(&req, &doing) {
+                return Ok(no);
+            }
             let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
             let resume =
                 |r: &SessionSayReq| resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files);
@@ -110,6 +119,28 @@ pub(crate) fn resume_here(
 
 /// 恢复那一下的结局（同 `session-open` 恢复那一支）。
 pub(crate) type Reopened = Result<open::Opened, open::Failed>;
+
+/// 「只在闲着时送」那一道：要求了、而 `doing`（活着 ⇒ `Some(那一态)`，不活 ⇒ `None`）说它不闲 ⇒ 被拒的那一份；否则 `None`（往下走）。
+/// 在等人那一档放过去，由 [`say_with`] 说 `waiting`（话更准）。
+pub(crate) fn idle_gate(
+    req: &SessionSayReq,
+    doing: &dyn Fn(&str) -> Option<Option<crate::agents::SessionActivity>>,
+) -> Option<Sent> {
+    use crate::agents::SessionActivity as A;
+    if req.idle_only != Some(true) {
+        return None;
+    }
+    match doing(req.sid.as_str()) {
+        Some(Some(A::Idle | A::NeedsYou)) => None,
+        _ => Some(Sent {
+            result: SentResult::Refused,
+            why: Some(Refused::NotIdle),
+            said: Some(no_said(Refused::NotIdle)),
+            screen: None,
+            resumed: false,
+        }),
+    }
+}
 
 /// `session-say` 的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送。
 pub(crate) fn say_with(

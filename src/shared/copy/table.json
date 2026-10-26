@@ -1067,12 +1067,6 @@
       "zh": "该机可能未装 cc-bus · 装在别处就用 CC_BUS_BIN_DIR 指过去",
       "args": []
     },
-    "beCcBus.notRun.tooLong": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "消息过长 · 删短再发",
-      "args": []
-    },
     "beCcBus.timedOut.say": {
       "kind": "error",
       "role": "报错",
@@ -1091,35 +1085,65 @@
       "zh": "{cmd} 的输出只读到一半 · 未采用",
       "args": ["cmd"]
     },
-    "beCcBus.send.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "cc-bus 拒绝收件人 · {detail}",
-      "args": ["detail"]
-    },
-    "beCcBus.send.rejected": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "被 cc-bus 路由规则拦下 · {detail}",
-      "args": ["detail"]
-    },
-    "beCcBus.send.failed": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "发送失败 · {detail} · 退出码 {status}",
-      "args": ["status", "detail"]
-    },
-    "beCcBus.send.interrupted": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "发送被中断 · {detail}",
-      "args": ["detail"]
-    },
     "beCcBus.run.refused": {
       "kind": "error",
       "role": "命令行",
       "zh": "{name} 拒绝这组参数 · {detail}",
       "args": ["name", "detail"]
+    },
+    "beCcBus.envelope.badFrom": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 发件人不是会话 id",
+      "args": []
+    },
+    "beCcBus.envelope.badTo": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 收件人不是会话 id",
+      "args": []
+    },
+    "beCcBus.envelope.badTier": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 档只有 1 和 2",
+      "args": []
+    },
+    "beCcBus.envelope.badTitle": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 标题必填、一行、不超过 80 字",
+      "args": []
+    },
+    "beCcBus.envelope.needRe": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 答 · 交回 · 更正要写明接在哪一条后面",
+      "args": []
+    },
+    "beCcBus.envelope.badRe": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 接的不是消息 id",
+      "args": []
+    },
+    "beCcBus.envelope.badRef": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 引用的前缀不对 · 只许路径 · pb: · msg: · commit: · 网址",
+      "args": []
+    },
+    "beCcBus.envelope.tooLong": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 正文超过 1200 字节 · 写成文件，给路径",
+      "args": []
+    },
+    "beCcBus.envelope.badArgs": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 信封缺格或格式不对",
+      "args": []
     },
     "beCcBus.run.failed": {
       "kind": "error",
@@ -1138,12 +1162,6 @@
       "role": "报错",
       "zh": "{reason} · 此机 cc-bus 比后端旧 · 重新部署 cc-bus 后再试",
       "args": ["reason"]
-    },
-    "beCcBus.deliver.tooLong": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{reason} · 消息 {n} 字节",
-      "args": ["reason", "n"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
@@ -2392,84 +2410,6 @@
       "role": "报错",
       "zh": "读取 cc-bus 失败",
       "args": []
-    },
-    "ccBus.send.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "消息为空 · 未发送",
-      "args": []
-    },
-    "ccBus.send.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未发送 · id 不合法",
-      "args": []
-    },
-    "beCcBus.parse.badRecipient": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "收件人不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
-      "args": ["id"]
-    },
-    "ccBus.send.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未发给 {id} · cc-bus 不接受此收件人或参数",
-      "args": ["id"]
-    },
-    "ccBus.send.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发给 {id} 失败 · 未装",
-      "args": ["id"]
-    },
-    "ccBus.send.rejected": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未发给 {id} · cc-bus 路由规则拦下",
-      "args": ["id"]
-    },
-    "ccBus.send.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发给 {id} 结果未知",
-      "args": ["id"]
-    },
-    "ccBus.send.tooLong": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发给 {id} 失败 · 超出上限",
-      "args": ["id"]
-    },
-    "ccBus.send.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发给 {id} 失败",
-      "args": ["id"]
-    },
-    "ccBus.send.delivered": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已投递给 {id}",
-      "args": ["id"]
-    },
-    "ccBus.send.offline": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已投递 {id} · 离线 · 上线后读取",
-      "args": ["id"]
-    },
-    "ccBus.send.ghost": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已投递 {id} · 此名未在总线登记\n无进程读它的收件箱 · 核对名字拼写",
-      "args": ["id"]
-    },
-    "ccBus.send.unknownLive": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已投递 {id} · 在线状态未知",
-      "args": ["id"]
     },
     "portForward.onStop.failed": {
       "kind": "error",
@@ -7826,12 +7766,6 @@
       "zh": "系统默认",
       "args": []
     },
-    "ccBus.send.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发送失败",
-      "args": []
-    },
     "ccBus.inbox.failed": {
       "kind": "error",
       "role": "报错",
@@ -7844,17 +7778,47 @@
       "zh": "收件箱为空",
       "args": []
     },
+    "ccBus.act.ask": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "问",
+      "args": []
+    },
+    "ccBus.act.answer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "答",
+      "args": []
+    },
+    "ccBus.act.request": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "请求",
+      "args": []
+    },
+    "ccBus.act.inform": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "告知",
+      "args": []
+    },
+    "ccBus.act.handback": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "交回",
+      "args": []
+    },
+    "ccBus.act.correct": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "更正",
+      "args": []
+    },
     "ccBus.inbox.line": {
       "kind": "body",
       "role": "片段",
-      "zh": "{ts} · {from} · {text}",
-      "args": ["ts", "from", "text"]
-    },
-    "ccBus.inbox.lineClass": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{ts} · {from} · {cls} · {text}",
-      "args": ["ts", "from", "cls", "text"]
+      "zh": "{ts} · {from} · {act} · {title} · {text}",
+      "args": ["ts", "from", "act", "title", "text"]
     },
     "ccBus.inbox.missing": {
       "kind": "body",
@@ -7884,18 +7848,6 @@
       "kind": "body",
       "role": "进度",
       "zh": "检查中",
-      "args": []
-    },
-    "ccBus.row.send": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "发送",
-      "args": []
-    },
-    "ccBus.row.messageHint": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "消息…",
       "args": []
     },
     "ccBus.row.inbox": {
@@ -11726,6 +11678,12 @@
       "zh": "会话在等批准或回答",
       "args": []
     },
+    "beTerminal.no.notIdle": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "会话不在闲着 · 没送",
+      "args": []
+    },
     "beTerminal.no.elsewhere": {
       "kind": "body",
       "role": "片段",
@@ -15443,12 +15401,6 @@
       "role": "报错",
       "zh": "隐藏失败",
       "args": []
-    },
-    "beCcBus.parse.badSender": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "发件身份不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
-      "args": ["id"]
     },
     "bePlan.build.launcherRefused": {
       "kind": "error",

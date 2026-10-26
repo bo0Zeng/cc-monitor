@@ -1,4 +1,4 @@
-// cc-bus 驾驶舱：读名单 · 查在线 · 收信 / 发消息。起会话走「开会话」，这里不起、不收会话。
+// cc-bus 驾驶舱：读名单 · 查在线 · 看收件箱。起会话走「开会话」，这里不起、不收会话；也不发信（人要说话就在会话里说）。
 //
 // 三条约束决定了这个形状：
 //  ① 不轮询：状态在跑着 cc-bus 的那台机器的 `~/.cc-bus/`（本机也读，后端同一条命令串、只是不包进 ssh），
@@ -7,8 +7,8 @@
 //  ③ 脏数据不能把面板搞崩：后端解析器跳过坏行并计数，这里如实显示「N 条无法解析」。
 import { setCurrentMachine, subscribeMachine } from "../machine-context";
 import { remoteNames } from "../remote-config";
-// 查在线 · 发消息 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
-import { agentOnline, readInbox, readRoster, sendMessage, type BusList } from "../cc-bus-control";
+// 查在线 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
+import { agentOnline, readInbox, readRoster, type BusList } from "../cc-bus-control";
 // 本机 ＝ `LOCAL_ORIGIN`（与 Rust 侧逐字相同，跨语言钉住）。
 import { LOCAL_ORIGIN } from "../backend-policy";
 
@@ -137,7 +137,7 @@ export class CcBusSection {
       morph(this.listBox, [empty]);
       return;
     }
-    // 重读时各行整份新画，正打着的那句消息（焦点 · 字）由 kit morph 搬过去。
+    // 重读时各行整份新画，展开着的收件箱由 kit morph 搬过去。
     morph(this.listBox, st.agents.map((a) => this.buildRow(a)));
   }
 
@@ -168,7 +168,7 @@ export class CcBusSection {
     btn.classList.add("cc-bus-check");
     row.appendChild(btn);
 
-    // 收信 ＋ 发消息：都是按需一次往返，不订阅、不轮询。
+    // 看收件箱：按需一次往返，不订阅、不轮询。
     const detail = document.createElement("div");
     detail.className = "cc-bus-detail";
     row.appendChild(detail);
@@ -176,17 +176,6 @@ export class CcBusSection {
     const inboxBtn = button({ label: copyText("ccBus.row.inbox"), onClick: () => void this.loadInbox(a.id, detail, inboxBtn) });
     inboxBtn.classList.add("cc-bus-inbox");
     row.appendChild(inboxBtn);
-
-    const msg = document.createElement("input");
-    msg.type = "text";
-    msg.className = "settings-input cc-bus-msg";
-    msg.dataset.key = `msg:${this.originSel.value}:${a.id}`; // 重画时认同一格（kit morph）
-    msg.placeholder = copyText("ccBus.row.messageHint");
-    row.appendChild(msg);
-
-    const sendBtn = button({ label: copyText("ccBus.row.send"), onClick: () => void this.sendTo(a.id, msg, detail, sendBtn) });
-    sendBtn.classList.add("cc-bus-send");
-    row.appendChild(sendBtn);
 
     return row;
   }
@@ -233,34 +222,11 @@ export class CcBusSection {
         line.className = "cc-bus-msg-line";
         const none = copyText("ccBus.inbox.missing");
         const [ts, from] = [m.ts || none, m.from || none];
-        line.textContent = m.class
-          ? copyText("ccBus.inbox.lineClass", { ts, from, cls: m.class, text: m.text })
-          : copyText("ccBus.inbox.line", { ts, from, text: m.text });
+        line.textContent = copyText("ccBus.inbox.line", { ts, from, act: m.act_said, title: m.title, text: m.text });
         box.appendChild(line);
       }
     } catch (e) {
       sayFailure(box, copyText("ccBus.inbox.failed"), e);
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  private async sendTo(
-    id: string,
-    input: HTMLInputElement,
-    box: HTMLElement,
-    btn: HTMLButtonElement,
-  ): Promise<void> {
-    const origin = this.originSel.value;
-    const text = input.value;
-    if (!origin || !text.trim()) return;
-    btn.disabled = true;
-    try {
-      // 那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到）。
-      box.textContent = await sendMessage(origin, id, text);
-      input.value = "";
-    } catch (e) {
-      sayFailure(box, copyText("ccBus.send.failed"), e);
     } finally {
       btn.disabled = false;
     }

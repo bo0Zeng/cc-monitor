@@ -1,22 +1,17 @@
 /**
- * 界面直接说的 cc-bus 那几条帧命令（`src/frontend/ui/cc-bus-control.ts`）的判据。
+ * 界面直接说的 cc-bus 那几条帧命令（`src/frontend/ui/cc-bus-control.ts`）的判据。界面只读：名单 · 查在线 · 收件箱，不发信。
  *
  * 守的要求：「正路是**把解释挪进后端、直接出成品**：后端帧命令的应答就是界面要的那个形状，
- * 前端经 `chan.call` 直接问、按形状收（不解释），monitor 那一份解释与发送点一起删」·「成品的两侧对拍：界面按形状严格收
- * （多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」；
- * 另守 `INVARIANTS` 那条「调用方不能靠对端校验」（空正文一个字节都不发，好的发得出去 —— 正反各一格；
- * id 的形状今天由后端在交给 cc-bus 之前判，界面只把 `bad_id` 说成人话）
- * 与「失败要显式、归因要准确」（问不到 ≠ 不在线）。
+ * 前端经 `chan.call` 直接问、按形状收（不解释）」·「成品的两侧对拍：线上形状由一份跨语言金样钉住」；
+ * 另守「id 的形状由后端在交给 cc-bus 之前判，界面只把 `bad_id` 说成人话」与「失败要显式、归因要准确」（问不到 ≠ 不在线）。
  *
  * | 性质 | 判据 |
  * |---|---|
- * | 两条的请求体 == 金样那一份；解码器读得懂后端真出的成品（后端那侧 `cc_bus_tests::the_bus_products_match_the_cross_language_golden` 对拍同一份，异源：Rust 构造器造、TS 解） | 「金样」 |
- * | 界面不判 id：金样 `ids` 里坏的也原样交给后端；后端回 `bad_id` ⇒ 各动作一句、带后端原话（规则只有一份，后端那侧 `bus_ids_are_judged_here_before_they_reach_cc_bus` 读同一份 `ids`） | 「id」 |
- * | 空正文就地拒，一个字节都不发；好的发得出去 | 「发出去之前」 |
+ * | 请求体 == 金样那一份；解码器读得懂后端真出的成品（后端那侧 `cc_bus_tests::the_bus_products_match_the_cross_language_golden` 对拍同一份） | 「金样」 |
+ * | 界面不判 id：金样 `ids` 里坏的也原样交给后端；后端回 `bad_id` ⇒ 照它写好的那一句说 | 「id」 |
  * | 查在线只回确定的答案，问不到一律抛（结构上造不出灭灯） | 「查在线」 |
- * | 回值几态逐态一句、两两不同 | 「发消息」 |
- * | 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码不上屏（只说原话，码在诊断里） | 「拒绝码」 |
- * | 本机与远端同一条路，通道不在时两句话不同 | 「本机」 |
+ * | 拒绝码（取自金样）逐码原样上屏、复制详情带码 | 「拒绝码」 |
+ * | 本机与远端同一条路，通道不在时原样取 monitor 那一句 | 「本机」 |
  *
  * 买不到：真 Tauri IPC 与真后端（后端那一侧在 Rust 里，`tests/e2e/backend-cc-bus.sh` 真起过假 agent）；真机上的驾驶舱。
  */
@@ -28,14 +23,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import {
-  agentOnline,
-  MONITOR_BUS_ID,
-  saidOfDelivery,
-  sendMessage,
-} from "../../../src/frontend/ui/cc-bus-control";
+import { agentOnline, readInbox } from "../../../src/frontend/ui/cc-bus-control";
 import { detailOf as errDetail, writtenSaid } from "../../../src/frontend/ui/kit/detail";
-import type { BusSent } from "../../../src/frontend/ui/generated/BusSent";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
@@ -54,7 +43,6 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/cc
   unknown
 >;
 const LIST = golden["bus-list"] as GoldenOp;
-const SEND = golden["bus-send"] as GoldenOp;
 const IDS = golden.ids as { ok: string[]; bad: string[] };
 
 // ⚠ 花括号不能省：`mockReset()` 返回 mock 本身，箭头函数直接返回它 ⇒ vitest 把它当成清理钩子在用例结束时再调一次。
@@ -110,14 +98,6 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     await expect(agentOnline("devbox", "gone_cc")).resolves.toBe(false);
     expect(sentCalls()[0]).toEqual(["devbox", "bus-list", LIST.request]);
   });
-
-  it("★★ 发消息（bus-send）：以 cc-monitor 的身份发", async () => {
-    answer({ ok: SEND.reply });
-    await expect(sendMessage("devbox", String(SEND.request.to), String(SEND.request.text))).resolves.toMatch(copyText("ccBus.send.delivered", { id: "alpha_cc" }));
-    expect(sentCalls()).toEqual([["devbox", "bus-send", SEND.request]]);
-    expect(SEND.request.from).toBe(MONITOR_BUS_ID);
-  });
-
 });
 
 describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）", () => {
@@ -126,19 +106,10 @@ describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）
     nonEmpty(IDS.bad);
     const bad = IDS.bad.find((id) => id === "--help")!;
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
-    expect(await saidOf(() => sendMessage("devbox", bad, "hi")), "那台写好的那一句没原样上屏").toBe("BACKEND-SAYS");
-    expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-send"]);
-    expect((sentCalls()[0][2] as Record<string, unknown>).to, "交给后端的不是原样那个 id").toBe(bad);
+    expect(await saidOf(() => readInbox("devbox", bad)), "那台写好的那一句没原样上屏").toBe("BACKEND-SAYS");
+    expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-inbox"]);
+    expect((sentCalls()[0][2] as Record<string, unknown>).id, "交给后端的不是原样那个 id").toBe(bad);
   });
-});
-
-describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
-  it("★ 空正文就地拒，一个字节都不发", async () => {
-    answer({ ok: SEND.reply });
-    expect(await saidOf(() => sendMessage("devbox", "alpha_cc", "  \n"))).toMatch(copyText("ccBus.send.empty"));
-    expect(invokeMock).not.toHaveBeenCalled();
-  });
-
 });
 
 describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
@@ -154,51 +125,27 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
       answer(reply);
       const said = await saidOf(() => agentOnline("devbox", id));
       expect(said, what).toMatch(copyPattern(key));
-      expect(said, `${what}：说成了「不在线」`).not.toMatch(copyPattern("ccBus.send.offline"));
+      expect(said, `${what}：说成了「不在线」`).not.toMatch(copyPattern("ccBus.check.offline"));
     }
-    answer({ ok: withNull });
-    expect(await saidOf(() => agentOnline("devbox", "n_cc"))).toMatch(copyPattern("ccBus.online.unknown"));
   });
-});
-
-describe("〔C4e〕回值几态逐态一句", () => {
-  it("★★ 发消息：在线 / 不在线 / 没登记过 / 问不到在不在线 —— 四句两两不同", () => {
-    const said = [
-      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), live: true }),
-      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), live: false }),
-      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), registered: false, live: null }),
-      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), live: null }),
-    ];
-    expect(new Set(said).size, JSON.stringify(said)).toBe(4);
-    expect(said[1]).toMatch(copyText("ccBus.check.offline"));
-    expect(said[2]).toMatch(copyPattern("ccBus.send.ghost"));
-    expect(said[3]).toMatch(copyPattern("ccBus.send.unknownLive"));
-  });
-
 });
 
 describe("〔C4e〕失败怎么说", () => {
   it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）", async () => {
-    const drives: [string, GoldenOp, () => Promise<unknown>][] = [
-      ["bus-list", LIST, () => agentOnline("devbox", "alpha_cc")],
-      ["bus-send", SEND, () => sendMessage("devbox", "alpha_cc", "hi")],
-    ];
-    for (const [op, g, act] of drives) {
-      nonEmpty(g.codes);
-      for (const code of g.codes) {
-        answer({ fail: refusedReply(code, `S-${code}`) });
-        expect(await saidOf(act), op).toBe(`S-${code}`);
-        answer({ fail: refusedReply(code, `S-${code}`) });
-        expect(await detailOf(act), `${op}：复制详情里没有码`).toContain(code);
-      }
+    nonEmpty(LIST.codes);
+    for (const code of LIST.codes) {
+      answer({ fail: refusedReply(code, `S-${code}`) });
+      expect(await saidOf(() => agentOnline("devbox", "alpha_cc")), code).toBe(`S-${code}`);
+      answer({ fail: refusedReply(code, `S-${code}`) });
+      expect(await detailOf(() => agentOnline("devbox", "alpha_cc")), `${code}：复制详情里没有码`).toContain(code);
     }
   });
 
   it("★ 本机照样经通道问；通道不在时原样取 monitor 写的那一句（本机远端怎么称呼由它说）", async () => {
-    answer({ ok: SEND.reply });
-    await sendMessage(LOCAL_ORIGIN, "alpha_cc", "hi");
-    expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-send", SEND.request]]);
+    answer({ ok: LIST.reply });
+    await agentOnline(LOCAL_ORIGIN, "alpha_cc");
+    expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-list", LIST.request]]);
     answer({ fail: { ...NO_CHANNEL, said: "M-kr-remote-label" } });
-    expect(await saidOf(() => sendMessage("kr-remote-label", "alpha_cc", "hi"))).toBe("M-kr-remote-label");
+    expect(await saidOf(() => agentOnline("kr-remote-label", "alpha_cc"))).toBe("M-kr-remote-label");
   });
 });

@@ -722,6 +722,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
     ),
+    // 一封 cc-bus 信的正文：信封只放短话和引用，长的写成文件、给路径。超了：`bus-envelope` 拒成 `too_long`，那一句叫写成文件。
+    (
+        "src/backend/control/cc_bus_envelope.rs",
+        "TEXT_MAX_BYTES",
+        "一封 cc-bus 信的正文（`bus-envelope` 核信封那一处）",
+        "拒收+回错",
+    ),
     // 这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
     //   发消息 `K-R98`、派生 BS1b 先后改走后端原语，那两条回显不再经 SSH 读 ⇒ 常量随最后一个用户删了。
     //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。

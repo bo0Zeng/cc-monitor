@@ -196,15 +196,20 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 分派臂按 `stream::cli::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
     // 而且 `build_id_guard` 的指纹也取自它 ⇒ 加在这里会**逼出一次 BUILD_ID bump**，那正是要的。
-    // P4f：cc-bus 的两条基础命令。⚠ **不加这两行的后果是静默的** ——
+    // P4f：cc-bus 的几条命令。⚠ **不加这几行的后果是静默的** ——
     // 分派臂是派生的（认得出来），但 `is_query_mode` 这道**闸门**读的是本表：
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `stream::cli::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
+    // 帧面 `bus-envelope` 的 CLI 面（`cc-send` 发之前问它核信封）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--bus-envelope",
     // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。
     "--bus-inbox",
     "--bus-list",
-    "--bus-send",
+    // 组那三条（`groups-here` · `groups-read` · `groups-write`）自动派生的 CLI 面。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--groups-here",
+    "--groups-read",
+    "--groups-write",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。

@@ -9,7 +9,6 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { diskOf } from "./world";
 import type { Convo } from "./records";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
-import { roundsOf } from "./machine";
 
 const LOCAL = "<local>";
 
@@ -91,8 +90,8 @@ export const REAL_OPS = new Set([
   "plan-return",
   "plan-files",
   "plan-pb-check",
-  // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：每台那一轮的结论由台架起本机后端时交（`CCM_SHOTS_ROUNDS`，[`roundsOf`]），
-  // 部署那一侧的事实在盘上（`MachineDisk.deploy`），名字旁的词 · 问题行 · 修法 · 复制详情都是本机后端算的。
+  // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：本机后端那几条常驻流经台架那份假 ssh 真去接各台（[`reachOf`] 的 `fake`），
+  // 名字旁的词 · 问题行 · 修法 · 复制详情都是本机后端照它接到的样子算的。
   "machines-read",
   "machines-try",
   "machine-read",
@@ -162,9 +161,7 @@ export class FakeBackend {
     }
     const machines = diskOf(world);
     const reach = reachOf(world);
-    // 每台接常驻那一轮的结论随世界一起交（台架起本机后端时经 `CCM_SHOTS_ROUNDS` 交给它，`real/pool.mjs`）。
-    const rounds = roundsOf(world);
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, reach, rounds, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
       // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
@@ -495,12 +492,19 @@ export function downOf(
 /**
  * 本机后端问得到的那几台（交 `real/pool.mjs` 的 `reach`：那几台各起一个常驻、登记进本机后端的可达表）：看不见的 · 会话流被关掉的不登记
  * （壳只在远端流握手那一刻登记，这两种握不上手）；`hopDown` 里那几条 ⇒ 那一台转发时照「那一跳断开」拒。
+ * 本机后端那条常驻流接那几台时，场景要的那一样由假 ssh 在那一跳上真长成那样（`fake`，`real/pool.mjs::forwarderSh`）：
+ * 旧了 ⇒ `older` · 正在连 ⇒ `hang` · 正在装 ⇒ `install`。
  */
-export function reachOf(w: World): Record<string, { refuse: string[] }> {
+export function reachOf(w: World): Record<string, { refuse: string[]; fake?: "older" | "hang" | "install" }> {
+  const fake = (m: string) =>
+    w.installingMachines?.includes(m) ? "install" : w.connectingMachines?.includes(m) ? "hang" : w.staleMachines.includes(m) ? "older" : undefined;
   return Object.fromEntries(
     w.machines
       .filter((m) => m !== LOCAL && !w.unseenMachines.includes(m) && !w.closedMachines.includes(m))
-      .map((m) => [m, { refuse: w.hopDown?.[m] ?? [] }]),
+      .map((m) => {
+        const f = fake(m);
+        return [m, { refuse: w.hopDown?.[m] ?? [], ...(f ? { fake: f } : {}) }];
+      }),
   );
 }
 

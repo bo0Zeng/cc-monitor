@@ -98,29 +98,16 @@ describe("cc-bus 驾驶舱：不预取、不轮询", () => {
     expect(code).not.toMatch(/setTimeout\s*\(/);
   });
 
-  it("★ 驾驶舱不起、不收会话，也不广播：按钮只有读取 · 检查 · 收件箱 · 发送，输入框只有每行那一格消息", async () => {
+  it("★ 驾驶舱不起、不收会话，不广播，也不发信：按钮只有读取 · 检查 · 收件箱，没有输入框", async () => {
     const s = await readOnce();
     // 按钮的样子归 kit/button；这里只认各自那一个 `cc-bus-*` 钩子。
     const buttons = new Set([...s.element.querySelectorAll("button")].flatMap((b) => [...b.classList].filter((c) => c.startsWith("cc-bus-"))));
-    expect([...buttons].sort()).toEqual(["cc-bus-check", "cc-bus-inbox", "cc-bus-read", "cc-bus-send"]);
-    const inputs = new Set([...s.element.querySelectorAll("input")].map((i) => i.className));
-    expect([...inputs]).toEqual(["settings-input cc-bus-msg"]);
+    expect([...buttons].sort()).toEqual(["cc-bus-check", "cc-bus-inbox", "cc-bus-read"]);
+    expect(s.element.querySelectorAll("input")).toHaveLength(0);
   });
 });
 
 describe("登记 ≠ 在线", () => {
-  it("★ 某一行的消息打了一半，再读一次 ⇒ 那句字还在、焦点还在那一格", async () => {
-    const s = await readOnce();
-    const msg = s.element.querySelectorAll<HTMLInputElement>(".cc-bus-row .cc-bus-msg")[1];
-    msg.focus();
-    msg.value = "打了一半";
-    (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
-    await flush();
-    const after = s.element.querySelectorAll<HTMLInputElement>(".cc-bus-row .cc-bus-msg")[1];
-    expect(after.value).toBe("打了一半");
-    expect(document.activeElement).toBe(after);
-  });
-
   it("读名单**不得**顺带逐行查在线：名单里带着 `live` 也照样显示「未知」，等人点「检查」", async () => {
     const s = await readOnce();
     expect(ops("bus-list")).toHaveLength(1);
@@ -188,29 +175,44 @@ describe("如实呈现", () => {
   });
 });
 
-describe("收信 / 发消息", () => {
+/** 收件箱的一封信（规范信封的形状；占位值）。 */
+function env(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: "m19a1b2c3d4e0001",
+    ts: "2026-07-26T12:06:19Z",
+    from: "peer-a",
+    to: "proj-b",
+    tier: 2,
+    act: "inform",
+    act_said: "SAID-inform",
+    title: "占位标题",
+    re: null,
+    refs: [],
+    text: "",
+    ...over,
+  };
+}
+
+describe("收件箱", () => {
   it("收件箱按需读，一次一个 agent", async () => {
     const s = await readOnce((op) =>
       op === "bus-inbox"
-        ? { messages: [{ from: "KVM_cc", ts: "2026-07-26T05:06:19-07:00", text: "A 好了", class: "" }], skipped: 0, truncated: false }
+        ? { messages: [env({ from: "KVM-cc", title: "A 好了" })], skipped: 0, truncated: false }
         : ROSTER,
     );
     const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
     (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
     await flush();
     expect(ops("bus-inbox")).toEqual([["devbox", "bus-inbox", { id: "proj_cc" }]]);
-    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("KVM_cc");
+    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("KVM-cc");
     expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("A 好了");
   });
 
-  it("收件箱一行的拼法走文案表：时刻 · 发信方 · 类别 · 正文，缺值写「—」", async () => {
+  it("收件箱一行的拼法走文案表：时刻 · 发信方 · 动作 · 标题 · 正文，缺值写「—」", async () => {
     const s = await readOnce((op) =>
       op === "bus-inbox"
         ? {
-            messages: [
-              { from: "peer_a", ts: "2026-07-26T05:06:19-07:00", text: "hello", class: "direct" },
-              { from: "", ts: "", text: "bare", class: "" },
-            ],
+            messages: [env({ act: "ask", act_said: "SAID-ask", title: "要不要合", text: "hello" }), env({ from: "", ts: "", title: "只有标题" })],
             skipped: 0,
             truncated: false,
           }
@@ -222,8 +224,8 @@ describe("收信 / 发消息", () => {
     const lines = [...row.querySelectorAll(".cc-bus-msg-line")].map((l) => l.textContent);
     const none = copyText("ccBus.inbox.missing");
     expect(lines).toEqual([
-      copyText("ccBus.inbox.lineClass", { ts: "2026-07-26T05:06:19-07:00", from: "peer_a", cls: "direct", text: "hello" }),
-      copyText("ccBus.inbox.line", { ts: none, from: none, text: "bare" }),
+      copyText("ccBus.inbox.line", { ts: "2026-07-26T12:06:19Z", from: "peer-a", act: "SAID-ask", title: "要不要合", text: "hello" }),
+      copyText("ccBus.inbox.line", { ts: none, from: none, act: "SAID-inform", title: "只有标题", text: "" }),
     ]);
   });
 
@@ -233,28 +235,5 @@ describe("收信 / 发消息", () => {
     (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
     await flush();
     expect(row.querySelector(".cc-bus-detail")?.textContent).toBe(copyText("ccBus.inbox.empty"));
-  });
-
-  it("发消息把原文原样交给后端（引用是后端的事，前端不得自己加工）", async () => {
-    const s = await readOnce((op, body) =>
-      op === "bus-send" ? { to: body.to, sent: true, registered: true, live: true, from: body.from } : ROSTER,
-    );
-    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
-    const input = row.querySelector<HTMLInputElement>(".cc-bus-msg")!;
-    const evil = "hi'; rm -rf ~; echo '";
-    input.value = evil;
-    (row.querySelector(".cc-bus-send") as HTMLButtonElement).click();
-    await flush();
-    expect(ops("bus-send").map((c) => [c[2].to, c[2].text])).toEqual([["proj_cc", evil]]);
-    expect(input.value).toBe(""); // 发完清空，免得手滑重发
-  });
-
-  it("空消息不发（不浪费一次往返）", async () => {
-    const s = await readOnce();
-    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
-    row.querySelector<HTMLInputElement>(".cc-bus-msg")!.value = "   ";
-    (row.querySelector(".cc-bus-send") as HTMLButtonElement).click();
-    await flush();
-    expect(ops("bus-send")).toHaveLength(0);
   });
 });

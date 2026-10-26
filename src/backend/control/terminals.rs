@@ -295,6 +295,7 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::Waiting => copy_text("beTerminal.no.waiting", &[]),
         Refused::Elsewhere => copy_text("beTerminal.no.elsewhere", &[]),
         Refused::NotResumed => copy_text("beTerminal.no.notResumed", &[]),
+        Refused::NotIdle => copy_text("beTerminal.no.notIdle", &[]),
     }
 }
 

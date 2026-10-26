@@ -1,4 +1,4 @@
-//! cc-bus 的写面只有一条路：monitor 不拼 cc-bus 脚本的 shell 串（只经后端的 `bus-*` 原语），
+//! cc-bus 的写面只有一条路（`cc-send`）：monitor 不拼 cc-bus 脚本的 shell 串（只经后端的 `bus-*` 读），
 //! 界面说 `bus-*` 那几条只经 `src/frontend/ui/cc-bus-control.ts` 一处。
 
 use super::{equal, none, rule};
@@ -29,10 +29,10 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
                     .map(move |v| format!("{} ({v})", f.rel))
             })
             .collect();
-        // 正控：后端 `control/cc_bus.rs` 真在转调 `cc-send`，同一个认法认得出。
-        let control = named(repo.file("src/backend/control/cc_bus.rs").prod()).len();
+        // 正控：发信那条脚本自己的报错行里有它的名字，同一个认法认得出（shell 没有测试段，取全文）。
+        let control = named(repo.file("src/shared/cc-bus/scripts/cc-send").text()).len();
         none(
-            "monitor 生产段里提到 cc-bus 写面脚本名（只许经后端的 `bus-*` 原语）",
+            "monitor 生产段里提到 cc-bus 写面脚本名（monitor 不发信，只经后端的 `bus-*` 读）",
             found,
             control,
         );
@@ -42,7 +42,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
 #[test]
 fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
     const HOME: &str = "src/frontend/ui/cc-bus-control.ts";
-    const OPS: &[&str] = &["bus-list", "bus-send", "bus-inbox"];
+    const OPS: &[&str] = &["bus-list", "bus-inbox"];
     rule(|repo| {
         let mut found: Vec<(String, &str, usize)> = Vec::new();
         for f in repo.under(&["src"], &["ts"]) {

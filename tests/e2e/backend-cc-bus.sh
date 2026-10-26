@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# `P4f`：backend 的 cc-bus 基础命令 —— `--bus-list` / `--bus-send` **真跑**。
+# `P4f`：backend 的 cc-bus 命令 —— `--bus-list` / `--bus-inbox` **真跑**；发信 `cc-send` 问 `--bus-envelope` 核信封、再自己投（A13-2）。
 #
 # ## 为什么必须有真跑这一层
 #
-# 单测把 `parse_list` / `classify_send` 那些纯函数钉住了，但它们**证明不了命令调得动**：
+# 单测把 `parse_roster_tsv` / `classify_exit` / 信封校验那些纯函数钉住了，但它们**证明不了命令调得动**：
 # 08-13 实测撞到过一次 —— 两条命令进了 `inbound::REGISTRY`、`hello.commands` 也报了它们、
 # 分派臂也认（`stream::cli::handles` 是派生的），而 `main::is_query_mode` 这道**闸门**
 # 读的是手写的 `SUBCOMMANDS`。漏加两行的后果是**静默的**：backend 打一行
@@ -97,30 +97,80 @@ chk "id" "$(printf '%s' "$out" | jq -r '.agents[0].id')" "alpha_cc"
 chk "tmux 地址" "$(printf '%s' "$out" | jq -r '.agents[0].target')" "alpha_cc:0.0"
 chk "待读数（真数出来的，不是猜的）" "$(printf '%s' "$out" | jq -r '.agents[0].unread')" "2"
 
-echo "[3] --bus-send：真的送到了收件人的收件箱"
-before="$(wc -l < "$BUS/inbox/alpha_cc.jsonl")"
-out="$(printf '{"to":"alpha_cc","text":"来自后端的一条"}' | d --bus-send)"
-chk "回 sent=true" "$(printf '%s' "$out" | jq -r '.sent')" "true"
-chk "回显收件人" "$(printf '%s' "$out" | jq -r '.to')" "alpha_cc"
-chk "★ 收件箱真的多了一行" "$(( $(wc -l < "$BUS/inbox/alpha_cc.jsonl") - before ))" "1"
-chk "  正文一字不差" \
-  "$(tail -1 "$BUS/inbox/alpha_cc.jsonl" | jq -r .text)" "来自后端的一条"
+# ===== 发信：cc-send 问后端 `bus-envelope` 核信封（唯一一处），再自己走管线投递 =====
+# 台架的 ccm：一份记账的桩 —— `--bus-envelope` 原样转给被测的后端二进制（真核），看屏 / 说一句只记下来、答「送到了」。
+#   不起真 claude、不碰真会话：敲门那一下到桩为止，桩里看得见 cc-bus 要后端做什么（`idle_only` 带没带）。
+SA="aaaaaaaa-1111-2222-3333-444444444444"   # 发件人（会话 id 的形状，占位）
+SB="bbbbbbbb-1111-2222-3333-444444444444"   # 收件人
+FK="$SANDBOX/fakeccm"; mkdir -p "$FK"; CALLS="$SANDBOX/ccm-calls.txt"; SAYS="$SANDBOX/ccm-says.txt"
+cat > "$FK/ccm" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$CALLS"
+case " $* " in
+  *" --bus-envelope "*) exec "$D" "$@" ;;
+  *" --terminal-preview "*) cat >/dev/null; printf '{"screen":"fp-0"}\n' ;;
+  *" --session-say "*) cat >> "$SAYS"; printf '\n'; printf '{"result":"delivered"}\n' ;;
+  *) echo "fake ccm: 没想到会被问 $*" >&2; exit 9 ;;
+esac
+EOF
+chmod +x "$FK/ccm"
+# 一次发信 = 一个干净的 env（逐次给全）。FROM 缺 ⇒ SA。
+snd() {
+  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
+      CC_BUS_HOME="$BUS" CC_BUS_ID="${FROM-$SA}" CCBUS_POLICY_MODE="${POLICY:-off}" \
+      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$@" 2>"$SANDBOX/snd.err"
+}
+lines_of() { if [ -f "$BUS/inbox/$1.jsonl" ]; then wc -l < "$BUS/inbox/$1.jsonl" | tr -d ' '; else echo 0; fi; }
 
-echo "[4] ★ 收件人非法：交给 cc-send 之前后端先判形状（INVARIANTS §47 ①，拒码 bad_id）"
-printf '{"to":"a/b","text":"x"}' | d --bus-send >"$SANDBOX/o4.txt"; rc4=$?
-chk "退出码非 0" "$([ "$rc4" -ne 0 ] && echo yes || echo no)" "yes"
-chk "码是 bad_id" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
-# 失败信封 {code, message, detail}：message 是按码定的那一句，处理器原话（点名那个值 · 查过哪几处 · 实测字节数）在复制详情 detail 里。
-chk "  消息里点名那个值（后端拒的，不是 cc-send）" \
-  "$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err.txt" | grep -c '"a/b"')" "1"
+echo "[3] cc-send：信封过后端、落进收件人的收件箱；缺省二档、不敲门"
+: > "$CALLS"; : > "$SAYS"
+snd "$SB" --act inform --title "占位标题" "占位正文" >/dev/null; _rc=$?
+chk "退出 0" "$_rc" "0"
+chk "★ 收件箱（按会话 id）多了一行" "$(lines_of "$SB")" "1"
+_e="$(tail -1 "$BUS/inbox/$SB.jsonl")"
+chk "  信封各格：from · to · tier 缺省 2 · act · title · 正文" \
+  "$(printf '%s' "$_e" | jq -c '[.from, .to, .tier, .act, .title, .text]')" "[\"$SA\",\"$SB\",2,\"inform\",\"占位标题\",\"占位正文\"]"
+chk "  id 与时间是后端盖的（m 打头 · UTC）" \
+  "$(printf '%s' "$_e" | jq -r '(.id | startswith("m")) and (.ts | endswith("Z"))')" "true"
+chk "★ 二档不敲门：一次看屏 / 说一句都没问" "$(grep -cE -- '--terminal-preview|--session-say' "$CALLS")" "0"
+chk "  信封确实是问后端核的（问过一次 bus-envelope）" "$(grep -c -- '--bus-envelope' "$CALLS")" "1"
 
-echo "[5] ★ 被路由层拦下：与「名字写错了」必须分得开"
-printf 'probe_cc\tnobody\n' > "$BUS/policy.tsv"
-POLICY=on
-printf '{"to":"alpha_cc","text":"x"}' | d --bus-send >/dev/null; rc5=$?
-POLICY=off
-chk "退出码非 0" "$([ "$rc5" -ne 0 ] && echo yes || echo no)" "yes"
-chk "★ 码是 rejected（不是 bad_args）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "rejected"
+echo "[4] ★ 信封不合格当场拒（rc=2）、一个字节都不写；那一句是后端文案表里的那一句"
+_before="$(lines_of "$SB")"
+rej() {  # <期望的那一句的文案键> <cc-send 参数…>
+  local key="$1"; shift
+  snd "$@" >/dev/null; local rc=$?
+  chk "  [$key] 退出码 2" "$rc" "2"
+  chk "  [$key] stderr 里是那一句" "$(grep -cF "$(zh "$key")" "$SANDBOX/snd.err")" "1"
+}
+rej beCcBus.envelope.badTitle "$SB" --act ask "没给标题"
+rej beCcBus.envelope.badTitle "$SB" --act ask --title "$(printf '一行\n两行')" "x"
+rej beCcBus.envelope.badTitle "$SB" --act ask --title "$(printf '字%.0s' $(seq 81))" "x"
+rej beCcBus.envelope.needRe "$SB" --act answer --title "答了却没说答哪一条"
+rej beCcBus.envelope.badRe "$SB" --act answer --re "not-an-id" --title "t"
+rej beCcBus.envelope.tooLong "$SB" --act inform --title "长正文" "$(head -c 1201 /dev/zero | tr '\0' x)"
+rej beCcBus.envelope.badRef "$SB" --act inform --title "t" --ref "ftp://x" "x"
+rej beCcBus.envelope.badTier "$SB" --tier 3 --act inform --title "t"
+rej beCcBus.envelope.badTo "a/b" --act inform --title "t"
+FROM="a_cc" rej beCcBus.envelope.badFrom "$SB" --act inform --title "t"
+FROM="" rej beCcBus.envelope.badFrom "$SB" --act inform --title "t"
+snd "$SB" --act notify --title "t" >/dev/null; _rc=$?
+chk "  写错的 act 码：退出码 2（解入参那一下就拒）" "$_rc" "2"
+chk "★ 拒掉的一封都没进收件箱" "$(lines_of "$SB")" "$_before"
+head -c 1200 /dev/zero | tr '\0' y | snd "$SB" --act inform --title "正好 1200 字节" - >/dev/null; _rc=$?
+chk "  对照：正好 1200 字节（从 stdin 读）照样发得出去" "$_rc|$(lines_of "$SB")" "0|$((_before + 1))"
+
+echo "[5] ★ 一档：投完敲门，且要后端「只在闲着时送」；被路由层拦下 ⇒ rc=3"
+: > "$CALLS"; : > "$SAYS"
+snd "$SB" --tier 1 --act request --title "合一下" --ref commit:393349b8b >/dev/null; _rc=$?
+chk "退出 0" "$_rc" "0"
+chk "★ 敲了门：先看屏、再说一句" "$(grep -c -- '--terminal-preview' "$CALLS")|$(grep -c -- '--session-say' "$CALLS")" "1|1"
+chk "★ 说的那一句要后端只在闲着时送（idle_only）、敲的是收件人那条会话、带着看到的指纹" \
+  "$(jq -sc '.[0] | [.idle_only, .sid, .seen_screen]' "$SAYS")" "[true,\"$SB\",\"fp-0\"]"
+chk "  敲门那一句不带正文（只说去收信）" "$(jq -s -r '.[0].text | contains("合一下")' "$SAYS")" "false"
+printf 'probe*\tnobody\n%s\tnobody\n' "$SA" > "$BUS/policy.tsv"
+POLICY=on snd "$SB" --act inform --title "t" >/dev/null; _rc=$?
+chk "★ 被路由层拦下：rc=3（与信封被拒的 2 分得开）" "$_rc" "3"
 rm -f "$BUS/policy.tsv"
 
 echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
@@ -140,19 +190,18 @@ chk "★ --bus-list 调得动（漏了闸门这格会红）" \
   "$(printf '%s' "$out" | jq -e 'has("agents")' >/dev/null 2>&1 && echo yes || echo no)" "yes"
 
 echo "[8] ★ cc-bus 命令卡住时，backend 不许陪着一起卡"
-# ★ 真事故：`Command::output()` **无限等**。把 cc-send 换成 sleep 300 的桩，
-#   --bus-send 25 秒没回来（25 是从外面掐的，backend 自己没有期限）。
-#   而这两条是阻塞档，一条卡住占死一个 tokio worker，且 cancel 对 spawn_blocking 是空操作。
+# ★ 真事故：`Command::output()` **无限等**。把被调的 cc-bus 命令换成 sleep 300 的桩，
+#   那条帧命令 25 秒没回来（25 是从外面掐的，backend 自己没有期限）。
+#   而这几条是阻塞档，一条卡住占死一个 tokio worker，且 cancel 对 spawn_blocking 是空操作。
 # ⚠ 修法**不是**在后端里加计时器（零定时器铁律 + 协议逐字「超时一律推给客户端」）——
 #   而是让**子进程自己**有期限（timeout 前缀，同 ccm 问后端那条）。
 mkdir -p "$SANDBOX/hangbin"
-printf '#!/bin/bash\nsleep %s\n' "$((2 * WALL_CEILING_S))" > "$SANDBOX/hangbin/cc-send"
-chmod +x "$SANDBOX/hangbin/cc-send"
-cp "$SCRIPTS/cc-list" "$SANDBOX/hangbin/cc-list"
+printf '#!/bin/bash\nsleep %s\n' "$((2 * WALL_CEILING_S))" > "$SANDBOX/hangbin/cc-log"
+chmod +x "$SANDBOX/hangbin/cc-log"
 # 卡住的那一个睡两倍兜底上限、外面按兜底上限掐 ⇒ 期限不生效就是被掐（退出码 124）。不按墙钟数「几秒内回来」。
-printf '{"to":"x_cc","text":"hi"}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" \
+printf '{"id":"x_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" \
     CC_BUS_BIN_DIR="$SANDBOX/hangbin" CC_BUS_TIMEOUT_SECS=2 \
-    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send >/dev/null 2>"$SANDBOX/err8.txt"
+    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-inbox >/dev/null 2>"$SANDBOX/err8.txt"
 _rc8=$?
 chk "★ 2 秒的期限：自己回来了（不是等到我们从外面掐）" \
   "$([ "$_rc8" -ne 124 ] && echo yes || echo "no（被外面掐了）")" "yes"
@@ -210,108 +259,73 @@ chk "★ 问不到身份空间 ⇒ live 是 **null**（不是 false）" \
 chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）" \
   "$(printf '%s' "$_j2" | jq -r '.agents | length')" "2"
 
-echo "[11] ★ bus-send 也要说清「有没有人会读」"
-# 两种「没人会读」今天都长得像成功：① 收件人压根没登记（打错一个字母就造出幽灵收件箱）；
-# ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
-# ⚠ 不改变投递（先发后到是正当用法），只是把话说清楚。
-printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
-_snd() {
-  printf '{"to":"%s","text":"x"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send 2>/dev/null
-}
-_a="$(_snd alive_cc)"; _g="$(_snd gone_cc)"; _n="$(_snd nobody_cc)"
-chk "★ 活着的收件人：registered=true live=true" \
-  "$(printf '%s' "$_a" | jq -c '[.registered,.live]')" "[true,true]"
-chk "★ 登记过但会话没了：registered=true **live=false**" \
-  "$(printf '%s' "$_g" | jq -c '[.registered,.live]')" "[true,false]"
-chk "★ 压根没登记：registered=false live=null" \
-  "$(printf '%s' "$_n" | jq -c '[.registered,.live]')" "[false,null]"
-chk "  三种都**照发不误**（先发后到是正当用法）" \
-  "$(printf '%s\n%s\n%s' "$_a" "$_g" "$_n" | jq -r .sent | grep -c true)" "3"
-chk "  且消息真的落进了各自的收件箱" \
-  "$(wc -l < "$BUS/inbox/nobody_cc.jsonl" 2>/dev/null || echo 0)" "1"
+echo "[11] ★ 收信的那一段只印线上码（act · tier），不放显示用的词"
+_r="$(env CC_BUS_HOME="$BUS" CC_BUS_ID="$SB" HOME="$NOHOME" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-recv" 2>/dev/null)"
+chk "★ 每一封印 act= · tier= · title:" \
+  "$(printf '%s\n' "$_r" | grep -c '^\[cc-bus\] id=m[0-9a-f]* from='"$SA"' ts=[^ ]* tier=[12] act=[a-z]*')" "3"
+chk "  标题一行" "$(printf '%s\n' "$_r" | grep -c '^title: 占位标题$')" "1"
+chk "  引用一行（只在有引用时）" "$(printf '%s\n' "$_r" | grep -c '^refs: commit:393349b8b$')" "1"
+chk "  不印显示用的词（那是界面照码取文案表的事）" "$(printf '%s\n' "$_r" | grep -cF "$(zh ccBus.act.inform)")" "0"
+chk "  读完推进已读位置" "$(cat "$BUS/state/$SB.pos")" "$(lines_of "$SB")"
 
-echo "[12] ★ 正文太长要**归对因**：不是 cc-bus 坏了，是塞不进 argv"
-# 实测：200KB 正文 → 原来回 {"code":"failed","message":"起不来 cc-send：Argument list too long"}。
-# 两处不对：① failed 是兜底桶，调用方分不出「我的消息太长」（自己能修）与「cc-bus 坏了」；
-# ② 那句话归错了因 —— cc-send 好好的。⇒ 单独的 too_long + 实测字节数。
-# ⚠ 上限是**内核**的（MAX_ARG_STRLEN 128 KiB，P4b §7g-8b 量过：131000 OK / 131072 E2BIG），
-#   不是我们能改的东西；能保证的是**说得准**。
-python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"x"*200000}))' \
-  > "$SANDBOX/big.json"
-env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
-chk "★ 码是 too_long（不是兜底的 failed）" "$(jq -r .code < "$SANDBOX/err12.txt" 2>/dev/null)" "too_long"
-_m12="$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err12.txt" 2>/dev/null)"
-chk "  说了实测字节数（别让人自己去量）" "$(printf '%s' "$_m12" | grep -cF "$(zh beCcBus.deliver.tooLong reason= n=200000)")" "1"
-chk "  明说不是 cc-bus 坏了（归因不许甩锅）" "$(printf '%s' "$_m12" | grep -cF "$(zh beCcBus.notRun.tooLong)")" "1"
-# 对照：120KB 必须仍然发得出去（免得判据把上限收窄成"长的都不让发"）
-python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"y"*120000}))' \
-  > "$SANDBOX/mid.json"
-_o12="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-        "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
-chk "  对照：120KB 照样发得出去" "$(printf '%s' "$_o12" | jq -r .sent)" "true"
-
-echo "[13] ★ 以谁的身份发：不给 from 的话，回复会掉进没人读的收件箱"
-# 实测：backend 跑 cc-send 时不在任何 tmux pane 里 ⇒ cc-whoami 解不出身份 ⇒
-# 收信人看到「来自 unknown」，而它给的回复方式是 `cc-send unknown "…"` ——
-# **那是我们自己制造的幽灵收件箱**（同 [4] 那条打错名字的病，只是这次是工具造的）。
-# ⇒ bus-send 收可选的 from，作为 CC_BUS_ID 传给子进程（cc-whoami 优先级第一条，
-#   是 cc-bus **现成的契约**，不改它本体）。
-_fb="$SANDBOX/frombus"; mkdir -p "$_fb"/{inbox,state,log}
-printf 'x_cc	x_cc:0.0	ts	1
-' > "$_fb/agents.tsv"
-_send_from() {
-  printf '%s' "$2" | env -u TMUX -u TMUX_PANE -u CC_BUS_ID CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$_fb" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send 2>/dev/null
-}
-: > "$_fb/inbox/x_cc.jsonl"
-_r1="$(_send_from x '{"to":"x_cc","text":"没给 from"}')"
-chk "不给 from ⇒ 回值里 from 是 null（如实回显，别让调用方以为有身份）" \
-  "$(printf '%s' "$_r1" | jq -r '.from')" "null"
-chk "  ⚠ 而收信人看到的确实是 unknown（这就是那条幽灵）" \
-  "$(jq -r .from < "$_fb/inbox/x_cc.jsonl" | tail -1)" "unknown"
-_r2="$(_send_from x '{"to":"x_cc","text":"给了 from","from":"cc-monitor"}')"
-chk "★ 给了 from ⇒ 回值回显它" "$(printf '%s' "$_r2" | jq -r '.from')" "cc-monitor"
-chk "★ 且收信人看到的就是它（不再是 unknown）" \
-  "$(jq -r .from < "$_fb/inbox/x_cc.jsonl" | tail -1)" "cc-monitor"
+echo "[12] ★ 旧收件箱迁一次：没读的补成新信封（过后端那一处）、别的进存档，盘上只留一种读法"
+MB="$SANDBOX/migbus"; mkdir -p "$MB"/{inbox,state,log}
+SX="cccccccc-1111-2222-3333-444444444444"; SY="dddddddd-1111-2222-3333-444444444444"
+# 台架写旧版的样子（只采结构）：名字当地址 · 第 5 列是会话 id · 已读位置 · 自动接回复那套状态。
+printf 'old_x\told_x:0.0\tts\t1\t%s\nold_y\told_y:0.0\tts\t2\t%s\nold_z\told_z:0.0\tts\t3\t\n' "$SX" "$SY" > "$MB/agents.tsv"
+printf '%s\n' '{"from":"old_y","ts":"t1","text":"读过的一条"}' '{"from":"old_y","ts":"t2","text":"没读的一条\n第二行"}' '{"from":"old_z","ts":"t3","text":"发件人换不出会话 id"}' > "$MB/inbox/old_x.jsonl"
+echo 1 > "$MB/state/old_x.pos"
+printf 'm-old\t0\told_y\n' > "$MB/state/lastread-old_x__old_y"
+printf '%s\n' '{"from":"old_x","ts":"t4","text":"收件人换不出会话 id"}' > "$MB/inbox/old_z.jsonl"
+env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
+    CC_BUS_HOME="$MB" CC_BUS_ID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "迁完之后的第一封" >/dev/null 2>&1
+chk "★ 迁过一次：标记在" "$([ -e "$MB/state/envelope-2" ] && echo 在 || echo 没有)" "在"
+chk "★ 旧的按名字的收件箱不在原处了" "$(ls "$MB/inbox" | grep -c '^old_')" "0"
+chk "  旧状态（已读位置 · lastread）也挪走了" "$(ls "$MB/state" | grep -cE '^old_|^lastread-')" "0"
+chk "  存档里原样留着" "$(cat "$MB"/legacy/*/inbox/old_x.jsonl | wc -l | tr -d ' ')|$(ls "$MB"/legacy/*/state | grep -c lastread)" "3|1"
+_m="$(head -1 "$MB/inbox/$SX.jsonl" 2>/dev/null)"
+chk "★ 没读的那一条补成了新信封：发件人换成会话 id · 二档 inform · 标题取正文第一行" \
+  "$(printf '%s' "$_m" | jq -c '[.from, .to, .tier, .act, .title, .text]' 2>/dev/null)" "[\"$SY\",\"$SX\",2,\"inform\",\"没读的一条\",\"没读的一条\\n第二行\"]"
+chk "  读过的那一条不搬、换不出会话 id 的不搬（只在存档里）" "$(wc -l < "$MB/inbox/$SX.jsonl" | tr -d ' ')" "1"
+chk "  bus.log 记下了留在存档里的那两条" "$(grep -c 'MIGRATE archived-only' "$MB/log/bus.log")" "2"
+chk "  迁完之后那一封照常投到" "$(wc -l < "$MB/inbox/$SY.jsonl" | tr -d ' ')" "1"
+env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
+    CC_BUS_HOME="$MB" CC_BUS_ID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "再一封" >/dev/null 2>&1
+chk "★ 只迁一次：再发一封不再迁（存档只有一份）" "$(ls -d "$MB"/legacy/*/ | wc -l | tr -d ' ')|$(wc -l < "$MB/inbox/$SX.jsonl" | tr -d ' ')" "1|1"
 
 echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
-# `cc-register` 记登记地址 · `cc-whoami` 三条认身份的路，读的都是**会话名**（可以是中文）。
+# `cc-register` 记登记地址，读的是**会话名**（可以是中文）。`cc-whoami` 不再读会话名（身份是会话 id，A13-2）。
 # 台架：pane 里整条命令跑在 `LC_ALL=C` 下 —— tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`，
 # 这一形就是「非 UTF-8 客户端」。不带旗的话，中文被改写成 `_`、退出码仍是 0。
-# 期望值由**同一个 locale 下的同一条消毒**现算（`cc-whoami::resolve` 的那条 sed），不写死。
-# ⚠ 〔SH1 09-26 现打，tmux 3.6〕`TMUX` 已设的客户端 tmux **一律按 UTF-8 打**、不看 locale —— 这五处在生产上都跑在
+# ⚠ 〔SH1 09-26 现打，tmux 3.6〕`TMUX` 已设的客户端 tmux **一律按 UTF-8 打**、不看 locale —— 生产上都跑在
 #   tmux 里（`TMUX` 恒设），所以 3.6 上它们今天其实没被改写（潜伏的违反，靠的是一条手册里没写的启发式）。
 #   旗保证的是不靠它 ⇒ 台架给 pane 里的 `tmux` 另挂一层 shim：摘掉客户端那一侧的 `TMUX` 再转给隔离 socket，
-#   才造得出真正的非 UTF-8 客户端（反向正控就是验这一格）。脚本自己读到的 `$TMUX` 不动（`cc-whoami` 兜底 1 要它）。
+#   才造得出真正的非 UTF-8 客户端（反向正控就是验这一格）。
 _u8d="$SANDBOX/u8"; _u8bus="$SANDBOX/u8bus"; _u8shim="$SANDBOX/u8shim"; mkdir -p "$_u8d" "$_u8bus" "$_u8shim"
 printf '#!/bin/bash\nunset TMUX\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_u8shim/tmux"
 chmod +x "$_u8shim/tmux"
 _u8name="u8甲乙"
 tmux new-session -d -s "$_u8name" -c /tmp \
   env LC_ALL=C LANG=C LC_CTYPE=C PATH="$_u8shim:$PATH" CC_BUS_HOME="$_u8bus" SCRIPTS="$SCRIPTS" OUT="$_u8d" sh -c '
-    "$SCRIPTS/cc-register" > "$OUT/reg" 2>&1
-    "$SCRIPTS/cc-whoami" > "$OUT/who1" 2>&1
-    env -u TMUX_PANE "$SCRIPTS/cc-whoami" > "$OUT/who2" 2>&1
-    env -u TMUX_PANE TMUX="${TMUX%,*}," "$SCRIPTS/cc-whoami" > "$OUT/who3" 2>&1
+    "$SCRIPTS/cc-register" u8id > "$OUT/reg" 2>&1
+    tmux set-option -p -t "$TMUX_PANE" @ccm_sid u8-sid-0001 >/dev/null 2>&1
+    env -u CLAUDE_CODE_SESSION_ID "$SCRIPTS/cc-whoami" > "$OUT/who" 2>&1
     tmux display-message -p "#S" > "$OUT/raw" 2>&1
     touch "$OUT/done"; exec sleep 30' 2>/dev/null
 wall_until '[ -f "$_u8d/done" ]' || true
-_u8want="$(printf '%s' "$_u8name" | LC_ALL=C sed 's/[^A-Za-z0-9_-]/-/g; s/^-*//; s/-*$//')"
 chk "  反向正控：同台架上不带旗的 display-message 确实被改写（台架真是非 UTF-8 客户端）" \
   "$([ "$(cat "$_u8d/raw" 2>/dev/null)" != "$_u8name" ] && [ -f "$_u8d/done" ] && echo yes || echo no)" "yes"
 chk "★ cc-register 记下的登记地址是那个中文会话名（不是 _ 改写过的）" \
-  "$(awk -F'\t' -v id="$_u8want" '$1==id{print $2}' "$_u8bus/agents.tsv" 2>/dev/null)" "$_u8name:0.0"
-chk "★ cc-whoami（TMUX_PANE 那一条）认出的身份" "$(cat "$_u8d/who1" 2>/dev/null)" "$_u8want"
-chk "★ cc-whoami（按 \$TMUX 反查会话 id 那一条）认出的身份" "$(cat "$_u8d/who2" 2>/dev/null)" "$_u8want"
-chk "★ cc-whoami（沿进程树找 pane 那一条）认出的身份" "$(cat "$_u8d/who3" 2>/dev/null)" "$_u8want"
+  "$(awk -F'\t' '$1=="u8id"{print $2}' "$_u8bus/agents.tsv" 2>/dev/null)" "$_u8name:0.0"
+chk "★ cc-whoami 给的是窗格上的会话 id（不是会话名）" "$(cat "$_u8d/who" 2>/dev/null)" "u8-sid-0001"
 tmux kill-session -t "=$_u8name" 2>/dev/null || true
 
 echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好行 · 收件箱只看尾巴）"
 # 台架写一份**脏**的名册（只采结构：`--help` 行 · 缺字段行 · 真空行 · 只有 TAB 的行）。
 printf 'alpha_cc\talpha_cc:0.0\t2026-01-01T00:00:00+00:00\t111\n--help\tx:0.0\tts\t1\nshort\tonly\n\n\t\t\t\nbeta_cc\tbeta_cc:0.0\tts2\t\n' > "$BUS/agents.tsv"
-printf '{"from":"peer_cc","ts":"t1","text":"占位一"}\nnot json\n{"from":"peer_cc","ts":"t2","text":"占位二"}\n' > "$BUS/inbox/alpha_cc.jsonl"
+_env1='{"id":"m19a1b2c3d4e0001","ts":"t1","from":"peer-a","to":"alpha-b","tier":2,"act":"inform","title":"占位","re":null,"refs":[],"text":"占位一"}'
+_env2='{"id":"m19a1b2c3d4e0002","ts":"t2","from":"peer-a","to":"alpha-b","tier":2,"act":"inform","title":"占位","re":null,"refs":[],"text":"占位二"}'
+printf '%s\nnot json\n%s\n' "$_env1" "$_env2" > "$BUS/inbox/alpha_cc.jsonl"
 echo 1 > "$BUS/state/alpha_cc.pos"
 out="$(d --bus-list </dev/null)"
 chk "名单两条好行（--help 被本侧 id 判定拒掉）" "$(printf '%s' "$out" | jq -c '[.agents[].id]')" '["alpha_cc","beta_cc"]'
@@ -430,9 +444,9 @@ chk "★ history-read 缺 path：非 0 · stderr 正好一行 · 那一行是带
   "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | .code' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_args"
 # history-read 是 typed 命令：缺入参那一句是 serde 的原话（`missing field `path``，第 8 批第 3 刀起）。
 chk "  契约错的诊断进了日志文件（不在 stderr）" "$(grep -c 'contract: malformed request: missing field `path`' "$LOGF" 2>/dev/null)|$(grep -c 'malformed request' "$SANDBOX/err.txt")" "1|0"
-printf '{"to":"a/b","text":"x"}' | one --bus-send >/dev/null; _rc=$?
-chk "★ bus-send 拒：非 0 · stderr 正好一行信封" \
-  "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | (.code)' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_id"
+printf '{"from":"a/b","to":"b","act":"ask","title":"t"}' | one --bus-envelope >/dev/null; _rc=$?
+chk "★ bus-envelope 拒：非 0 · stderr 正好一行信封" \
+  "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | (.code)' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_from"
 # 诊断文件那一层目录不在 ⇒ 不替它建（只建文件不建目录），stderr 照样干净。
 NL="$SANDBOX/nolog"; mkdir -p "$NL"
 HOME="$NL" d --history-read </dev/null >/dev/null
