@@ -704,11 +704,6 @@ mod tests {
                 "同上，帧命令 `history-record` 的应答 `data`",
             ),
             (
-                "observe/tasks_query.rs",
-                "Task",
-                "typed 帧命令 `tasks-list` 回包 `tasks[]` 的一格（`faces/feature_face.rs`；生成类型从它来）",
-            ),
-            (
                 "observe/search_query.rs",
                 "FindHit",
                 "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
