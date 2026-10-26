@@ -2,6 +2,7 @@
 // 「库里记着这台的指纹才显示」这条判定,防未来误改成没记也显示(忘掉无意义)。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Host } from "../../../../src/frontend/ui/generated/Host";
+import type { MachineState } from "../../../../src/frontend/ui/generated/MachineState";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
@@ -680,6 +681,37 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await mount([], p.host);
     expect(p.added[0]!.title).toBe(copyText("control.machine.unsure"));
     expect(p.addedParts[0]).toBeUndefined();
+  });
+
+  it("★ 本机那一行的标题跟着本机成品重画：建页时成品没到 ⇒ 机器不明；到了 ⇒ 成品的 name", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    const localRow = () => sec.element.querySelector<HTMLElement>(`.remote-machine-row[data-page-id="${LOCAL_MACHINE_PAGE_ID}"]`)!;
+    const localName = () => localRow().querySelector<HTMLElement>(".remote-machine-open")!.textContent;
+    expect(localName()).toBe(copyText("control.machine.unsure"));
+    const m: MachineState = {
+      name: "box-1",
+      state: "up",
+      offline: false,
+      reason: null,
+      stage: null,
+      version: null,
+      versionRelation: null,
+      os: null,
+      word: "",
+      said: "",
+      fixes: [],
+      seenHostKey: null,
+      expectedHostKey: null,
+      detail: null,
+    };
+    sec.setMachine(LOCAL_MACHINE_PAGE_ID, m);
+    expect(localName()).toBe("box-1");
+    expect(p.renamed).toContainEqual({ id: LOCAL_MACHINE_PAGE_ID, title: "box-1" });
+    // 点的那一句也叫成品的名字（先换标题、再画点）。
+    expect(localRow().querySelector(".remote-machine-dot")!.outerHTML).toContain("box-1");
+    // 远端那一行的标题是机器表里的键，不跟着动。
+    expect(p.renamed.some((r) => r.id === "machine:a")).toBe(false);
   });
 
   it("★ 点机器名 → 跳到它那一页", async () => {
