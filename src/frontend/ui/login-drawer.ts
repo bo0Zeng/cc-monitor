@@ -312,7 +312,6 @@ class LoginDrawer {
     copy.dataset.action = "login-copy";
     const shown = el("span", url);
     shown.className = s.ldUrl;
-    shown.title = url;
     row.append(copy, shown);
     return row;
   }

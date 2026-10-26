@@ -23,7 +23,6 @@ export function setFoldSummary(root: HTMLElement, text: string): void {
   const sum = summaries.get(root);
   if (sum && sum.textContent !== text) {
     sum.textContent = text;
-    sum.title = text;
   }
 }
 
@@ -50,7 +49,6 @@ export function fold(spec: FoldSpec): HTMLDivElement {
   const sum = document.createElement("span");
   sum.className = s.foldSummary;
   sum.textContent = spec.summary ?? "";
-  sum.title = sum.textContent;
   summaries.set(root, sum);
   head.appendChild(sum);
   const body = document.createElement("div");
