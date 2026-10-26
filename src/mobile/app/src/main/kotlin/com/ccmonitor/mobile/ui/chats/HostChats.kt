@@ -15,15 +15,16 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.retry
-import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
-import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.CanDelete
+import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
+import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
+import com.ccmonitor.mobile.core.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.Tone
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
@@ -163,7 +164,7 @@ class HostChats(
 
     companion object {
         /** 推帧主题：那台的会话清单动了（会话来去 · 名字 / 状态 · 记录长了 · 注解 · 隐藏规则，那台判的）。 */
-        const val LIST_TOPIC = "history_list"
+        val LIST_TOPIC = Topic.HISTORY_LIST
         const val LIST_DEBOUNCE_MS = 1_000L
     }
 }

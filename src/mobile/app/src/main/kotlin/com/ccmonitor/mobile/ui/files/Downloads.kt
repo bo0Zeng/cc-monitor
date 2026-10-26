@@ -1,9 +1,11 @@
 package com.ccmonitor.mobile.ui.files
 
-import com.ccmonitor.mobile.core.claude.link.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesLs
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.link.Problem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -44,7 +46,7 @@ class Downloads(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val machine: suspend () -> String,
-    private val show: (BatchEvent) -> Unit,
+    private val show: (BatchLine) -> Unit,
 ) {
     /** 要下的一项：[over] ＝ 盖本机那一份（答了覆盖）· [skip] ＝ 答了跳过。 */
     private data class Pull(
@@ -97,16 +99,16 @@ class Downloads(
             val m = machine()
             val id = last.decrementAndGet()
             val here = runCatching { folder.names() }.getOrDefault(emptyList())
-            val ask = feed.downloadEvent(want(id, m, entries.map { it.name }, BatchEvent.ASKING, mapOf("here" to here))) ?: return@launch
+            val ask = feed.downloadEvent(want(id, m, entries.map { it.name }, ASKING, mapOf("here" to here))) ?: return@launch
             var items = entries.map { Pull(it) }
-            if (ask.phase == BatchEvent.ASKING) {
+            if (ask is BatchLine.Asking) {
                 val asked = CompletableDeferred<BatchAnswer?>().also { asks[id] = it }
                 show(ask)
                 val a = asked.await()
                 asks.remove(id)
                 val d = feed.decided(ask.conflicts.map { it.key }, a)
                 if (d == null) {
-                    show(BatchEvent(id, BatchEvent.DROPPED, ask.title))
+                    show(BatchLine.Dropped(id, ask.title, kept = false))
                     return@launch
                 }
                 items = decided(items, ask.conflicts, d)
@@ -158,16 +160,16 @@ class Downloads(
             for ((i, p) in g.items.withIndex()) {
                 if (!one(g, i, p)) {
                     g.rest(i)
-                    g.event(BatchEvent.CUT, mapOf("outcomes" to g.outcomes))
+                    g.event(CUT, mapOf("outcomes" to g.outcomes))
                     return
                 }
             }
         } catch (ce: CancellationException) {
             g.rest(0)
-            g.event(BatchEvent.ENDED, mapOf("outcomes" to g.outcomes))
+            g.event(ENDED, mapOf("outcomes" to g.outcomes))
             throw ce
         }
-        g.event(BatchEvent.ENDED, mapOf("outcomes" to g.outcomes))
+        g.event(ENDED, mapOf("outcomes" to g.outcomes))
     }
 
     /** 一项：跳过 · 下成 · 没成 ⇒ 记下、回真；断了 ⇒ 回假。没下成的那一份（撤了也算）删掉。 */
@@ -181,7 +183,7 @@ class Downloads(
             return true
         }
         val name = p.entry.name
-        g.event(BatchEvent.RUNNING, mapOf("done" to i, "part" to 0, "current" to name))
+        g.event(RUNNING, mapOf("done" to i, "part" to 0, "current" to name))
         var file: LocalFile? = null
         val open = {
             g.folder
@@ -192,7 +194,7 @@ class Downloads(
         val r =
             try {
                 ops.download(p.entry.path, open, name) { got, total ->
-                    if (total > 0) g.event(BatchEvent.RUNNING, mapOf("done" to i, "part" to got.toDouble() / total, "current" to name))
+                    if (total > 0) g.event(RUNNING, mapOf("done" to i, "part" to got.toDouble() / total, "current" to name))
                 }
             } catch (ce: CancellationException) {
                 file?.drop?.invoke()
@@ -219,6 +221,12 @@ class Downloads(
     ): Map<String, Any?> = mapOf("id" to id, "machine" to machine, "names" to names, "phase" to phase) + more
 
     private companion object {
+        /** 交核心那几格的 `phase`（核心照它写那一格）。 */
+        const val ASKING = "asking"
+        const val RUNNING = "running"
+        const val CUT = "cut"
+        const val ENDED = "ended"
+
         const val DONE = "done"
         const val SKIPPED = "skipped"
         const val FAILED = "failed"
@@ -230,16 +238,16 @@ class Downloads(
         /** 核心认过的答（每个键一格）⇒ 每项怎么下：跳过 · 盖本机撞的那一份 · 另起名。 */
         fun decided(
             items: List<Pull>,
-            rows: List<BatchEvent.Clash>,
-            d: Map<String, String>,
+            rows: List<ClashRow>,
+            d: Map<String, Decide>,
         ): List<Pull> {
             val by = rows.associateBy { it.key }
             return items.mapIndexed { i, p ->
                 val c = by["$i"] ?: return@mapIndexed p
                 when (d[c.key]) {
-                    "skip" -> p.copy(skip = true)
-                    "overwrite" -> p.copy(over = c.there)
-                    else -> p
+                    Decide.SKIP -> p.copy(skip = true)
+                    Decide.OVERWRITE -> p.copy(over = c.there)
+                    Decide.KEEP_BOTH, null -> p
                 }
             }
         }

@@ -313,6 +313,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             expected_fingerprint: None,
             v: ACK_V,
             uses: USES.iter().map(|u| u.to_string()).collect(),
+            unreached: false,
         },
     )
     .await

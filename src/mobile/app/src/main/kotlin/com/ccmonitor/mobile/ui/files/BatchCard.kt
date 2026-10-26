@@ -22,10 +22,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
@@ -34,7 +34,7 @@ import com.ccmonitor.mobile.ui.common.CopyDetailButton
  */
 @Composable
 fun BatchCard(
-    e: BatchEvent,
+    e: BatchLine,
     onStop: () -> Unit,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
@@ -47,59 +47,82 @@ fun BatchCard(
         shape = MaterialTheme.shapes.medium,
         tonalElevation = 3.dp,
         // 断开 ⇒ 边框换成提示那一色（虚线那一态，等那台连回来同一张票再问）。
-        border = if (e.phase == BatchEvent.CUT) BorderStroke(1.dp, tokens.borderStrong) else null,
+        border = if (e is BatchLine.Cut) BorderStroke(1.dp, tokens.borderStrong) else null,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            when (e.phase) {
-                BatchEvent.RUNNING, BatchEvent.ASKING -> {
+            when (e) {
+                is BatchLine.Running -> {
                     e.current?.let { Text(it, color = tokens.textFaint, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    val f = e.frac
+                    val f = e.frac?.toFloat()
                     if (f != null) LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth()) else LinearProgressIndicator(Modifier.fillMaxWidth())
                     Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
                 }
-                BatchEvent.CUT -> {
-                    Text(e.line.orEmpty(), color = tokens.textFaint)
-                    if (e.resume) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.resume")) }
-                            SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
-                        }
-                    } else {
-                        Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
-                    }
+                is BatchLine.Asking -> {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
                 }
-                BatchEvent.ENDED -> {
-                    Text(e.said.orEmpty())
+                is BatchLine.Cut -> CutBody(e, onStop, onRetry, onDismiss)
+                is BatchLine.Ended -> EndedBody(e, { showFailed = true }, onRetry, onDismiss)
+                is BatchLine.Failed -> {
+                    Text(e.said)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (e.failed.isNotEmpty()) SecondaryButton(onClick = { showFailed = true }) { Text(copyText("mobFiles.batch.failedShow")) }
-                        if (e.retry) SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.retry")) }
+                        CopyDetailButton(e.said, e.details.orEmpty())
                         SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
                     }
                 }
-                else -> {
-                    Text(e.said.orEmpty())
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CopyDetailButton(e.said.orEmpty(), e.details.orEmpty())
-                        SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
-                    }
-                }
+                is BatchLine.Dropped -> Row { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) } }
             }
         }
     }
-    if (showFailed) FailedSheet(e) { showFailed = false }
+    if (showFailed && e is BatchLine.Ended) FailedSheet(e) { showFailed = false }
+}
+
+/** 断开：断开那一行；等［继续］的那一种 ⇒［继续］［关］，否则［停］。 */
+@Composable
+private fun CutBody(
+    e: BatchLine.Cut,
+    onStop: () -> Unit,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Text(e.line, color = LocalAppTokens.current.textFaint)
+    if (e.resume) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.resume")) }
+            SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
+        }
+    } else {
+        Row { SecondaryButton(onClick = onStop) { Text(copyText("rsFilewinProgress.action.stop")) } }
+    }
+}
+
+/** 收场了：结局句 ＋［看失败的］［重试失败的］［关］。 */
+@Composable
+private fun EndedBody(
+    e: BatchLine.Ended,
+    onShowFailed: () -> Unit,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Text(e.said)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (e.failed.isNotEmpty()) SecondaryButton(onClick = onShowFailed) { Text(copyText("mobFiles.batch.failedShow")) }
+        if (e.retry) SecondaryButton(onClick = onRetry) { Text(copyText("rsFilewinBatch.btn.retry")) }
+        SecondaryButton(onClick = onDismiss) { Text(copyText("kit.toast.close")) }
+    }
 }
 
 /** 看失败的（抽屉）：标题（核心写好的「失败 ×{n}」）· 没成的那几行（核心写好）·［复制详情］。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FailedSheet(
-    e: BatchEvent,
+    e: BatchLine.Ended,
     onClose: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onClose) {
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(e.failedTitle.orEmpty(), style = MaterialTheme.typography.titleMedium)
+            Text(e.failedTitle, style = MaterialTheme.typography.titleMedium)
             e.failed.forEach { Text(it) }
             e.details?.let { CopyDetailButton(e.title, it.removePrefix(e.title + "\n")) }
         }

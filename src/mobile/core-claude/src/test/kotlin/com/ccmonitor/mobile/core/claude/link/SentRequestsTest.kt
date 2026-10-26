@@ -1,12 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.ArriveAsk
-import com.ccmonitor.mobile.core.claude.link.wire.ArriveBy
-import com.ccmonitor.mobile.core.claude.link.wire.Held
-import com.ccmonitor.mobile.core.claude.link.wire.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
-import com.ccmonitor.mobile.core.claude.link.wire.LoginTarget
-import com.ccmonitor.mobile.core.claude.link.wire.TabPref
+import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
+import com.ccmonitor.mobile.core.wire.gen.ArriveBy
+import com.ccmonitor.mobile.core.wire.gen.Held
+import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.wire.gen.Tab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,8 +64,8 @@ class SentRequestsTest {
             Login.START to
                 listOf(
                     Login.start(Login.account("claude", "a")),
-                    Login.start(LoginStartReq(LoginTarget.MCP, "claude", "a", "notes", null)),
-                    Login.start(LoginStartReq(LoginTarget.MCP, "claude", null, "notes", "/w")),
+                    Login.start(LoginStartReq.Mcp("claude", "a", "notes", null)),
+                    Login.start(LoginStartReq.Mcp("claude", null, "notes", "/w")),
                 ),
             NeedsAnswer.COMMAND to
                 listOf(
@@ -80,8 +79,8 @@ class SentRequestsTest {
             MachinePrefs.READ to listOf(null),
             MachinePrefs.SET to
                 listOf(
-                    MachinePrefs.tab(TabKind.CHILD, TabPref.SHOW),
-                    MachinePrefs.tab(TabKind.BG, TabPref.HIDE),
+                    MachinePrefs.tab(TabKind.CHILD, Tab.SHOW),
+                    MachinePrefs.tab(TabKind.BG, Tab.HIDE),
                     MachinePrefs.model("work", "opus"),
                     MachinePrefs.model("work", null),
                 ),
@@ -115,8 +114,8 @@ class SentRequestsTest {
                 ),
             SessionArrive.COMMAND to
                 listOf(
-                    SessionArrive.args(ArriveAsk(ArriveBy("cwd", null, "/w"), 3L, "w-cc")),
-                    SessionArrive.args(ArriveAsk(ArriveBy("sid", "s", null), 3L, null)),
+                    SessionArrive.args(ArriveAsk(ArriveBy.Cwd("/w"), 3L, "w-cc")),
+                    SessionArrive.args(ArriveAsk(ArriveBy.Sid("s"), 3L, null)),
                 ),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),

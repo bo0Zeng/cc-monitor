@@ -1,13 +1,14 @@
 package com.ccmonitor.mobile.ui.chat.needs
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.needs.NeedsBoard
@@ -143,7 +144,7 @@ class NeedsDeskTest {
             assertNull(r.desk.state.value.answered)
             r.board.mine = null
             r.board.answered = "10 分钟没人答，已自动答：继续"
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             val ui = r.desk.state.value
             assertNull(ui.bar)
@@ -152,7 +153,7 @@ class NeedsDeskTest {
             r.desk.dismiss()
             r.board.mine = needs("approve")
             r.board.answered = null
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             assertNull(r.desk.state.value.answered)
             assertNotNull(r.desk.state.value.bar)
@@ -164,11 +165,11 @@ class NeedsDeskTest {
             val r = rig(needs("approve", call = "toolu_1"))
             assertEquals(AwaitingStep("toolu_1", "等批准"), r.desk.state.value.awaiting)
             r.board.mine = needs("approve")
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             assertNull("判不出是哪一步 ⇒ 不标", r.desk.state.value.awaiting)
             r.board.mine = null
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             assertNull(r.desk.state.value.awaiting)
         }
@@ -190,11 +191,11 @@ class NeedsDeskTest {
             val r = rig(null)
             assertNull(r.desk.state.value.bar)
             val before = r.link.calls("sessions-needs").size
-            r.pushes.emit(Changed("tasks", "s1"))
+            r.pushes.emit(Changed(Topic.TASKS, "s1"))
             settle()
             assertEquals(before, r.link.calls("sessions-needs").size)
             r.board.mine = needs("approve")
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             assertEquals(before + 1, r.link.calls("sessions-needs").size)
             assertNotNull(r.desk.state.value.bar)
@@ -220,7 +221,7 @@ class NeedsDeskTest {
                     .canAnswer,
             )
             r.board.mine = null
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             assertNull(r.desk.state.value.bar)
         }
@@ -281,7 +282,7 @@ class NeedsDeskTest {
             val r = rig(needs("approve"))
             r.desk.open()
             r.board.mine = null
-            r.pushes.emit(Changed("needs", "s1"))
+            r.pushes.emit(Changed(Topic.NEEDS, "s1"))
             settle()
             assertEquals(
                 copyText("askBlock.gone.elsewhere"),

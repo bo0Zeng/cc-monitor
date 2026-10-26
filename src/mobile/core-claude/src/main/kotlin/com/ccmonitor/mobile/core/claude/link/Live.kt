@@ -1,83 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.LiveCardFrame
-import com.ccmonitor.mobile.core.claude.link.wire.LiveOpWord
-import com.ccmonitor.mobile.core.claude.link.wire.LivePhaseWord
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-
-/**
- * 流上的 `live_card` 帧（`IPC-COMMANDS.md`「`live_card`」，后端 `stream/live.rs` 出的成品）：某个会话某个运行里正在说的那一次上游应答，
- * 一张一张地开、长、撤。只发 `stream-watch` 名单里的会话。对账 · 缺口 · 截头 · 挤谁全在后端，这里只认几种 `op`。
- */
-data class LiveFrame(
-    val sid: String,
-    /** 归哪个子运行；`null` ＝ 主运行。 */
-    val run: String?,
-    /** 卡号（那台整台唯一）。 */
-    val card: Long,
-    /** 这条连接上这张卡的第几帧：`open` 从它起，之后连续。 */
-    val n: Long,
-    val op: Op,
-) {
-    sealed interface Op {
-        /** 整张卡：照它整张换。 */
-        data class Open(
-            /** 对账键（与那一轮记录的 `rid` 同值）。 */
-            val rid: String,
-            /** 上游说完了、那一轮的记录还没到。 */
-            val awaiting: Boolean,
-            /** 正文截过头（只留了尾巴）。 */
-            val clipped: Boolean,
-            val blocks: List<LiveBlock>,
-        ) : Op
-
-        /** 第 [i] 块开始了。 */
-        data class Block(
-            val i: Int,
-            val kind: String,
-            val tool: String?,
-        ) : Op
-
-        /** 第 [i] 块（文字块）接着一段字。 */
-        data class Text(
-            val i: Int,
-            val s: String,
-        ) : Op
-
-        /** 上游说完了，等写入记录。 */
-        data object Awaiting : Op
-
-        /** 撤卡（为什么都一样：撤）。 */
-        data object Close : Op
-    }
-
-    companion object {
-        /** 是活卡帧 ⇒ 装进声明的类（核心按 `cmd-wire` 那一份重写过）；不是 ⇒ `null`；装不进 · 那一种 `op` 该有的格缺 ⇒ `null`（调用方报一次契约对不上）。 */
-        fun of(frame: Map<String, Any?>): LiveFrame? {
-            if (frame.str("kind") != KIND) return null
-            val f = Wire.bind<LiveCardFrame>(frame) ?: return null
-            return decoding {
-                val op =
-                    when (f.op) {
-                        LiveOpWord.OPEN ->
-                            Op.Open(
-                                rid = f.rid.need(),
-                                awaiting = f.phase.need() == LivePhaseWord.AWAITING,
-                                clipped = f.clipped.need(),
-                                blocks = f.blocks.need().map { LiveBlock(it.kind, it.text.orEmpty(), it.tool) },
-                            )
-                        LiveOpWord.BLOCK -> Op.Block(f.i.need().toInt(), f.block.need(), f.tool)
-                        LiveOpWord.TEXT -> Op.Text(f.i.need().toInt(), f.s.need())
-                        LiveOpWord.AWAITING -> Op.Awaiting
-                        LiveOpWord.CLOSE -> Op.Close
-                    }
-                LiveFrame(f.sid, f.run, f.card, f.n, op)
-            }
-        }
-
-        const val KIND: String = "live_card"
-    }
-}
+import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.LivePhase
 
 /** 活卡里的一块：[kind] 是那台的块种（`text` · `thinking` · `tool` · `other`）；[text] 只有文字块有；[tool] 只有工具块有。 */
 data class LiveBlock(
@@ -111,32 +35,40 @@ class LiveBoard {
     private val cards = LinkedHashMap<Long, Card>()
     private var born = 0L
 
-    /** 一帧。卡变了 ⇒ `true`。 */
-    fun apply(f: LiveFrame): Boolean {
-        val op = f.op
-        if (op is LiveFrame.Op.Open) {
+    /**
+     * 流上的一帧 `live_card`（[LiveCard]：后端 `stream/live.rs` 出的成品，某个会话某个运行里正在说的那一次上游应答，一张一张地开、长、撤）。
+     * 对账 · 缺口 · 截头 · 挤谁全在后端，这里只认几种 `op`。卡变了 ⇒ `true`。
+     */
+    fun apply(f: LiveCard): Boolean {
+        if (f is LiveCard.Open) {
             val was = cards[f.card]
-            cards[f.card] = Card(f.sid, f.run, f.n + 1, LiveCardState(f.card, op.rid, op.awaiting, op.clipped, op.blocks), was?.born ?: born++)
+            val blocks = f.blocks.map { LiveBlock(it.kind.wire, it.text.orEmpty(), it.tool) }
+            val state = LiveCardState(f.card, f.rid, f.phase == LivePhase.AWAITING, f.clipped, blocks)
+            cards[f.card] = Card(f.sid, f.run, f.n + 1, state, was?.born ?: born++)
             return true
         }
         val c = cards[f.card] ?: return false
-        if (f.n != c.next || op == LiveFrame.Op.Close) {
+        if (f.n != c.next || f is LiveCard.Close) {
             cards.remove(f.card)
             return true
         }
         c.next += 1
         val s = c.state
         c.state =
-            when (op) {
-                is LiveFrame.Op.Block -> {
+            when (f) {
+                is LiveCard.Block -> {
+                    val i = f.i.toInt()
                     val blocks = s.blocks.toMutableList()
-                    while (blocks.size <= op.i) blocks += LiveBlock(OTHER, "", null)
-                    blocks[op.i] = LiveBlock(op.kind, "", op.tool)
+                    while (blocks.size <= i) blocks += LiveBlock(OTHER, "", null)
+                    blocks[i] = LiveBlock(f.block.wire, "", f.tool)
                     s.copy(blocks = blocks)
                 }
-                is LiveFrame.Op.Text ->
-                    s.copy(blocks = s.blocks.mapIndexed { i, b -> if (i == op.i) b.copy(text = b.text + op.s) else b })
-                LiveFrame.Op.Awaiting -> s.copy(awaiting = true)
+                is LiveCard.Text -> {
+                    val i = f.i.toInt()
+                    s.copy(blocks = s.blocks.mapIndexed { j, b -> if (j == i) b.copy(text = b.text + f.s) else b })
+                }
+                is LiveCard.Awaiting -> s.copy(awaiting = true)
+                is LiveCard.Open, is LiveCard.Close -> s
             }
         return true
     }

@@ -158,7 +158,7 @@ fn compact_and_clear_come_with_the_line_to_say() {
 }
 
 /// ★ 回包逐字节（线上形挪进 `cmd-wire` 前后同一份字节）：顶层键序 · 每条命令的键序 · 为假的标字照出 `null`；
-/// 手机按 `cmd_wire::replies::decode_reply` 解得开、按类型重写出来是同一份。
+/// 照 `cmd-wire` 那一份类型解得开、按类型写回逐字节同（手机生成的类照同一份类型）。
 #[test]
 fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
     let face = crate::agents::asset_face("claude").expect("Claude 的资产面");
@@ -175,11 +175,8 @@ fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
     let bytes = serde_json::to_string(&got).unwrap();
     assert_eq!(bytes, want);
     let back =
-        cmd_wire::replies::decode_reply("session-commands", serde_json::from_str(&bytes).unwrap())
+        cmd_wire::replies::typed_text("session-commands", serde_json::from_str(&bytes).unwrap())
             .expect("表里有 session-commands")
             .expect("解得开");
-    assert_eq!(
-        back,
-        serde_json::from_str::<serde_json::Value>(&want).unwrap()
-    );
+    assert_eq!(back, want);
 }

@@ -1,12 +1,14 @@
 package com.ccmonitor.mobile.ui.settings
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
-import com.ccmonitor.mobile.core.claude.link.wire.TabPref
-import com.ccmonitor.mobile.core.claude.link.wire.UsageTone
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.Tone
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.link.Fetched
+import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.usage.QuotaGolden
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,19 +29,14 @@ class MachineSettingsTest {
     private fun acct(
         name: String,
         selectable: Boolean = true,
-    ) = mapOf(
+    ) = Wires.accountRow(
         "name" to name,
         "label" to name,
-        "newSession" to true,
         "selectable" to selectable,
-        "color" to 0.0,
         "plate" to name.take(2),
-        "quota" to null,
         "unselectable" to if (selectable) null else "需登录",
         "login" to !selectable,
-        "authKind" to "subscription",
-        "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable),
-        "login" to !selectable,
+        "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),
     )
 
     private fun prefs(
@@ -50,7 +47,7 @@ class MachineSettingsTest {
         "reason" to null,
         "detail" to null,
         "path" to null,
-        "prefs" to mapOf("models" to models, "childTab" to child, "bgTab" to "show"),
+        "prefs" to Wires.prefs("models" to models, "childTab" to child),
     )
 
     /** 出过数的 `personal`（5h 63%）＋ 没出过数的那两个（金样两例拼成一份）。 */
@@ -63,7 +60,7 @@ class MachineSettingsTest {
         FakeCoreLink().also { l ->
             l.answer = { cmd, args ->
                 when (cmd) {
-                    "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(acct("work"), acct("lab", selectable = false)), "meta" to mapOf("effectiveDefault" to "work", "home" to "/h")))
+                    "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(acct("work"), acct("lab", selectable = false)), "meta" to Wires.accountsMeta("effectiveDefault" to "work", "home" to "/h"), "notice" to null))
                     "quota-read" -> quotaReply()
                     "prefs-read" -> Reply.Ok(prefs())
                     "prefs-set" -> set(args)
@@ -89,9 +86,9 @@ class MachineSettingsTest {
             val s = m.state.value
             assertEquals(listOf("work", "lab"), s.accounts.map { it.name })
             assertEquals("work", s.defaultAccount)
-            assertEquals("5h 63%" to UsageTone.PLAIN, s.usage("personal")?.let { it.text to it.tone })
+            assertEquals("5h 63%" to Tone.PLAIN, s.usage("personal")?.let { it.text to it.tone })
             assertEquals(QuotaGolden.reply("没出过数").let { r -> (r["unseen"] as List<*>).map { ((it as Map<*, *>)["usage"] as Map<*, *>)["text"] } }, listOf("team", "api").map { s.usage(it)?.text })
-            assertEquals(TabPref.HIDE to TabPref.SHOW, s.shown(TabKind.CHILD) to s.shown(TabKind.BG))
+            assertEquals(Tab.HIDE to Tab.SHOW, s.shown(TabKind.CHILD) to s.shown(TabKind.BG))
         }
 
     @Test
@@ -99,10 +96,10 @@ class MachineSettingsTest {
         runTest {
             val l = link()
             val (_, changes) = open(l)
-            changes.emit(Changed("quota", null))
+            changes.emit(Changed(Topic.QUOTA, null))
             runCurrent()
             assertEquals(listOf(1, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
-            changes.emit(Changed("accounts", null))
+            changes.emit(Changed(Topic.ACCOUNTS, null))
             runCurrent()
             assertEquals(listOf(2, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
             l.epoch.value = 1
@@ -125,7 +122,7 @@ class MachineSettingsTest {
             val (m, changes) = open(link(quotaReply = { answer() }))
             val held = m.state.value.quota
             answer = { Reply.TimedOut }
-            changes.emit(Changed("quota", null))
+            changes.emit(Changed(Topic.QUOTA, null))
             runCurrent()
             assertEquals(held, m.state.value.quota)
             assertEquals(
@@ -134,7 +131,7 @@ class MachineSettingsTest {
                     ?.text,
             )
             answer = { Reply.Ok(QuotaGolden.reply("订阅 · 快满")) }
-            changes.emit(Changed("quota", null))
+            changes.emit(Changed(Topic.QUOTA, null))
             runCurrent()
             assertEquals(QuotaGolden.reply("订阅 · 快满")["verdict"].let { (it as Map<*, *>)["text"] }, (m.state.value.quota as Fetched.Got).value.verdict?.text)
             assertNull(m.state.value.quotaRereadFailed)
@@ -145,10 +142,10 @@ class MachineSettingsTest {
         runTest {
             val l = link()
             val (m, _) = open(l)
-            m.setTab(TabKind.CHILD, TabPref.SHOW)
+            m.setTab(TabKind.CHILD, Tab.SHOW)
             runCurrent()
             assertEquals(listOf<Map<String, Any?>?>(mapOf("childTab" to "show")), l.calls("prefs-set"))
-            assertEquals(TabPref.SHOW, m.state.value.shown(TabKind.CHILD))
+            assertEquals(Tab.SHOW, m.state.value.shown(TabKind.CHILD))
             assertNull(m.state.value.notSaved[TabKind.CHILD])
         }
 
@@ -157,11 +154,11 @@ class MachineSettingsTest {
         runTest {
             val l = link(set = { Reply.Failed(CoreFailure("io_failed", "写入失败 · 磁盘满", "d", null)) })
             val (m, _) = open(l)
-            m.setTab(TabKind.CHILD, TabPref.SHOW)
+            m.setTab(TabKind.CHILD, Tab.SHOW)
             runCurrent()
-            assertEquals("退回读到的值", TabPref.HIDE, m.state.value.shown(TabKind.CHILD))
+            assertEquals("退回读到的值", Tab.HIDE, m.state.value.shown(TabKind.CHILD))
             assertEquals("子会话未保存 · 写入失败 · 磁盘满", m.state.value.notSaved[TabKind.CHILD])
-            m.setTab(TabKind.CHILD, TabPref.HIDE)
+            m.setTab(TabKind.CHILD, Tab.HIDE)
             runCurrent()
             assertEquals("拨到此刻画着的那一段不再交", 1, l.calls("prefs-set").size)
         }

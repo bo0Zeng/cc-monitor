@@ -21,7 +21,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
     let r = answer_read_in(Some(&home));
     assert_eq!(
         (r.state, r.prefs.clone()),
-        (PrefsState::Absent, Prefs::default())
+        (FileState::Absent, Prefs::default())
     );
     set(
         &home,
@@ -33,7 +33,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
         serde_json::json!({"models": {"a": null}, "resumeInTmux": true, "launchers": {"codex": "cx"}, "agentHomes": {"codex": "/srv/x"}}),
     )
     .unwrap();
-    assert_eq!(r.state, PrefsState::Ok);
+    assert_eq!(r.state, FileState::Ok);
     assert_eq!(
         serde_json::to_value(&r.prefs).unwrap(),
         serde_json::json!({
@@ -76,7 +76,7 @@ fn prefs_set_refuses_values_a_launch_could_not_use() {
     }
     assert_eq!(
         answer_read_in(Some(&home)).state,
-        PrefsState::Absent,
+        FileState::Absent,
         "拒了还落了盘"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -95,7 +95,7 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
     ] {
         std::fs::write(&path, &body).unwrap();
         let r = answer_read_in(Some(&home));
-        assert_eq!((r.state, r.prefs.clone()), (PrefsState::Unreadable, Prefs::default()), "{body}");
+        assert_eq!((r.state, r.prefs.clone()), (FileState::Unreadable, Prefs::default()), "{body}");
         assert!(r.reason.is_some(), "{body}");
         let e = set(&home, serde_json::json!({"resumeInTmux": true})).unwrap_err();
         assert!(matches!(e, PrefsSetErr::Unreadable(_)), "{body} ⇒ {e:?}");

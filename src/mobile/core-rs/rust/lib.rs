@@ -331,7 +331,7 @@ pub fn pick_menu_json(rows: &str, here: &pick_core::Here) -> String {
 /// 一问一答撞了同名（码 `exists` 的 `data`：同名清单）⇒ 抽屉那几行（[`batch::clash_rows`]，一组那一问同一份）；读不动 ⇒ `[]`。
 pub fn clash_rows_json(data: &str) -> String {
     serde_json::from_str::<cmd_wire::batch::Conflicts>(data)
-        .map(|c| batch::clash_rows(&c.conflicts).to_string())
+        .map(|c| serde_json::to_string(&batch::clash_rows(&c.conflicts)).unwrap_or_default())
         .unwrap_or_else(|_| "[]".to_string())
 }
 
@@ -364,7 +364,7 @@ pub fn download_event_json(want: &str) -> String {
     serde_json::from_str::<serde_json::Value>(want)
         .ok()
         .and_then(|w| batch::download_event(&w))
-        .map(|v| v.to_string())
+        .map(|v| serde_json::to_string(&v).unwrap_or_default())
         .unwrap_or_default()
 }
 
@@ -703,7 +703,8 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_generateEd25519<'l
         match generate_ed25519(&comment) {
             Some((pem, public)) => new_jstring(
                 &env,
-                serde_json::json!({"pem": pem, "public": public}).to_string(),
+                serde_json::to_string(&cmd_wire::phone::KeyPair { pem, public })
+                    .unwrap_or_default(),
             ),
             None => std::ptr::null_mut(),
         }
@@ -1171,7 +1172,7 @@ mod tests {
         assert_eq!(
             v,
             serde_json::json!([{ "key": "0", "name": "up.bin",
-                "meta": batch_core::conflict_meta(&c.conflicts[0]), "answers": ["overwrite", "keep_both"] }])
+                "meta": batch_core::conflict_meta(&c.conflicts[0]), "answers": ["overwrite", "keep_both"], "there": null }])
         );
         assert_eq!(super::clash_rows_json("{"), "[]");
     }

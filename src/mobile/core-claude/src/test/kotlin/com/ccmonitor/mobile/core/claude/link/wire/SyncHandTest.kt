@@ -15,7 +15,7 @@ class SyncHandTest {
                 .lines()
                 .filter(String::isNotBlank)
                 .map { Json.obj(it) ?: error("不是 JSON 对象：$it") }
-        val patches = cases.map { Wire.bind<SyncPatch>(it["patch"]) ?: error("这一答装不进 SyncPatch：${it["patch"]}") }
+        val patches = cases.map { rawPatch(it["patch"]) ?: error("这一答装不进 SyncPatch：${it["patch"]}") }
         // 正控：三种答（整份 · 没变 · 只给变了的）金样里都有，本条不在空转。
         val kinds =
             patches
@@ -33,6 +33,6 @@ class SyncHandTest {
     @Suppress("UNCHECKED_CAST")
     private fun hand(v: Any?): SyncHand {
         val m = v as Map<String, Any?>
-        return SyncHand(m["held"] as String?, m["order"] as List<String>, m["items"] as Map<String, Any>, m["head"]?.let { Wire.bind<SyncHead>(it) })
+        return SyncHand(m["held"] as String?, m["order"] as List<String>, m["items"] as Map<String, Any>, m["head"]?.let(::rawHead))
     }
 }

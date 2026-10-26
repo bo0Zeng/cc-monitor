@@ -20,6 +20,11 @@ pub const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
 pub struct Endpoint {
     pub host: String,
     pub port: u16,
@@ -27,6 +32,11 @@ pub struct Endpoint {
 
 /// ack 之前的一行（`{"stage":…}`）。阶段取 russh 能干净观测的粒度 —— 不含 KEX（`HostKey` 触发即隐含 TCP ＋ KEX 已过）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Stage {
     /// 某地址开始拨号（TCP ＋ 握手）。
@@ -48,6 +58,11 @@ pub enum Stage {
 
 /// ack 之前那一行 `{"stage":…}` 的值：拨号又过了一步，或者一条拨号阶段（[`Stage`]）。同一种行、同一个 `kind` 标签。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StageLine {
     /// 拨号又过了一步（`tcp` · `banner` · `hostkey` · `auth` · `tunnel` · `channel`，经跳板时每一台各走一遍）。
@@ -60,6 +75,11 @@ pub enum StageLine {
 
 /// 拨号代理回的那一行 ack。读的那一侧对老代理宽容：除 `ok` 之外的格缺席都按缺省读。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
 pub struct DialAck {
     pub ok: bool,
     /// `ok=false` 时的那一句（只带原因词，不带下层原话）。
@@ -67,6 +87,7 @@ pub struct DialAck {
     pub error: Option<String>,
     /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话）。成功 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub detail: Option<String>,
     /// 实际观察到的 host key 指纹（展示用；失败时也尽量带上）。
     #[serde(default)]
@@ -82,9 +103,11 @@ pub struct DialAck {
     pub reason: Option<Why>,
     /// 目标那一台握手时给的 host key 类型。没握到那一步 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub key_type: Option<String>,
     /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串）。没因钥匙被拒 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub expected_fingerprint: Option<String>,
     /// 协议版本（[`ACK_V`]；v1 代理没有这一格 ⇒ 0）。
     #[serde(default)]
@@ -92,6 +115,17 @@ pub struct DialAck {
     /// 这个代理认得的用法（[`USES`]）。
     #[serde(default)]
     pub uses: Vec<String>,
+    /// 没够着那一台（[`unreached`]：解析 · 拨不通 · 到期限一步都没动 · 跳板那一台断了）：读的那一侧照它分「那台不在」与别的失败，不自己按原因码判。
+    #[serde(default)]
+    pub unreached: bool,
+}
+
+/// 没够着那一台的那几个原因码（拨号的 [`Why`]）。
+pub fn unreached(why: Option<Why>) -> bool {
+    matches!(
+        why,
+        Some(Why::Resolve | Why::Unreachable | Why::Timeout | Why::Jump)
+    )
 }
 
 impl DialAck {
@@ -109,6 +143,7 @@ impl DialAck {
             expected_fingerprint: None,
             v: ACK_V,
             uses: uses(),
+            unreached: false,
         }
     }
 
@@ -126,6 +161,7 @@ impl DialAck {
             expected_fingerprint: f.expected_fingerprint,
             v: ACK_V,
             uses: uses(),
+            unreached: unreached(f.reason),
         }
     }
 }
@@ -153,9 +189,185 @@ pub struct DialFail {
 
 /// `use: capture` 的结果行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
 pub struct Captured {
     pub stdout: String,
     pub stderr: String,
     /// `None` = 远端没送 exit-status（连接被掐 / 服务端不守规矩）。**不许把 `None` 当成 0**。
     pub exit_status: Option<u32>,
+}
+
+// ───── 拨号请求（界面 · 手机 Kotlin 交给拨号核心的那一份） ─────
+
+/// 跳板那一台。它自己还要经别的跳板 ⇒ `jump` 再套一层（多跳，同 `ssh -J 外,内`；桌面的机器表今天只给一跳，手机给多跳）。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct JumpHop {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub key_path: Option<String>,
+    /// 报错与阶段行里称呼它用的名字（界面那边的配置标签）。
+    #[serde(default)]
+    pub label: String,
+    /// 这一台自己经哪台跳板到（再外一台；`None` = 本机直连它）。
+    #[serde(default)]
+    pub jump: Option<Box<JumpHop>>,
+}
+
+/// 开出 channel 之后怎么用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, rename = "DialUse", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Use {
+    /// exec `command`，stdin/stdout 与 channel 原样对拷（后端长连接流 · 一次性查询）。
+    #[default]
+    Stream,
+    /// exec `command`，收全 stdout / stderr / 退出码，印一行 [`Captured`] 后退出。
+    Capture,
+    /// 本进程绑本机回环口、每接进一条连接开一条 direct-tcpip（端口转发）。
+    Forward,
+    /// 要一个 PTY（[`PtyOpts`]）开交互 shell，之后同 `stream` 原样对拷；改窗口大小走 `uses::Control`。
+    Shell,
+    /// 只握着这条连接（不开通道）：ack 之后链路不收工，同一身份的别的链路都复用它；对面走了（上行 EOF）
+    /// 或连接没了（russh 报断开）⇒ 收工。手机那一形：「连上一台机器」就是开一条这个。
+    Hold,
+}
+
+/// `use: shell` 的 PTY。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct PtyOpts {
+    #[serde(default = "PtyOpts::default_term")]
+    pub term: String,
+    pub cols: u32,
+    pub rows: u32,
+}
+
+impl PtyOpts {
+    fn default_term() -> String {
+        "xterm-256color".to_string()
+    }
+}
+
+impl Default for PtyOpts {
+    fn default() -> Self {
+        PtyOpts {
+            term: Self::default_term(),
+            cols: 80,
+            rows: 24,
+        }
+    }
+}
+
+/// `use: capture` 的参数。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct CaptureOpts {
+    /// stdout / stderr 各自的收集上限（字节）。
+    pub max_bytes: usize,
+    /// stdout 一出现这个子串就收工（不认参数的老后端会掉进流模式、永不 EOF）。
+    #[serde(default)]
+    pub abort_marker: Option<String>,
+    /// exec 之后原样写进远端进程 stdin 的字节（缺席 = 一个字节不写）。**不关 stdin** ——
+    /// 收它的那一侧是后端 CLI 面的「只读一行」入口（`wire/cli_words.rs::STDIN_LINE_FLAG`），读到换行就动手。
+    /// 有了它，载荷不必拼进命令行（那要求远端登录 shell 认 POSIX 引号与管道）。
+    #[serde(default)]
+    pub stdin: Option<String>,
+}
+
+/// `use: forward` 的参数。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct ForwardSpec {
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+}
+
+/// 界面交给代理的那份 JSON。蛇形键（不是界面配置那套 camelCase）：这条管子两端都是我们自己，不与给前端看的契约拴在一起。
+/// v2 的字段全是可选的（老界面发来的请求照样读得动）。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct DialRequest {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    /// 钥匙那一格（不是私钥本体）：桌面是 OpenSSH 格式私钥的**路径**，手机是那台机器的钥匙编号；
+    /// 由宿主的 `env::KeySource` 换成能鉴权的东西（钥匙 · 外部签名器 · 密码）。缺席 = 走 ssh-agent。
+    pub key_path: Option<String>,
+    /// 要 exec 的命令行（`stream` / `capture`；界面已 `shell_quote` 过；`forward` 不用它）。
+    #[serde(default)]
+    pub command: String,
+    /// 竞速的地址顺序（组请求的那一侧按 `prefer` 排好）。空 = 只有 `host:port`。
+    #[serde(default)]
+    pub endpoints: Vec<Endpoint>,
+    /// 经这台跳板（fail-closed：它断开就报错，不回落直连）。
+    #[serde(default)]
+    pub jump: Option<JumpHop>,
+    #[serde(default, rename = "use")]
+    pub use_: Use,
+    #[serde(default)]
+    pub capture: Option<CaptureOpts>,
+    #[serde(default)]
+    pub forward: Option<ForwardSpec>,
+    /// `use: shell` 的 PTY（缺 ⇒ [`PtyOpts::default`]）。
+    #[serde(default)]
+    pub pty: Option<PtyOpts>,
+    /// ack 之前逐行报阶段（测试连接那六格）。
+    #[serde(default)]
+    pub stages: bool,
+    /// 短命探活（inactivity 拆链）而不是长连接（keepalive 保活）。
+    #[serde(default)]
+    pub probe: bool,
+    /// ssh-agent 套接字的路径（Unix；界面进程此刻的 `SSH_AUTH_SOCK`）。要界面交过来：常驻后端活得比任何一个界面进程都长，
+    /// 它自己环境里那份是第一个起它的界面给的，用户重新登录之后 agent 换了路径。缺席 = 用本进程自己的。
+    /// 它是一条路径、不是凭据本体；不进连接池的身份（换 agent 不该换连接）。
+    #[serde(default)]
+    pub agent_sock: Option<String>,
+    /// ack 之前每过一步当场写一行「过了一步」那一形阶段行（`{"stage":{"kind":"step",…}}`，`step`）。重连循环拿它判「这一拨还在动」（`resident-client` 的 `DIAL_WITHIN`）。
+    #[serde(default)]
+    pub progress: bool,
+}
+
+impl DialRequest {
+    /// 竞速顺序：给了就用给的，没给就只有 `host:port`。
+    pub fn race_order(&self) -> Vec<Endpoint> {
+        if self.endpoints.is_empty() {
+            vec![Endpoint {
+                host: self.host.clone(),
+                port: self.port,
+            }]
+        } else {
+            self.endpoints.clone()
+        }
+    }
 }

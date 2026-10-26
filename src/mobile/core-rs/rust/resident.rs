@@ -5,6 +5,7 @@
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
 
+use cmd_wire::phone::{CallEnd, LinkLine};
 use cmd_wire::record::OrUnread;
 use deploy::machine::{fold, product, Entry, Fact};
 use resident_client::client::CallError;
@@ -216,14 +217,16 @@ impl Facts {
     /// `state` 那一行：`state` 通没通（`connecting` · `up` 带第几条流 `epoch` · `down`）＋ `machine` 那台的状态成品
     /// （由 `deploy::machine` 定，同桌面那一份；这一端不自己装后端 ⇒ 没有后端那一轮给［安装］）。
     fn line(&self, machine: &str) -> String {
-        let mut line = match &self.last {
-            None | Some(State::Connecting) => serde_json::json!({ "state": "connecting" }),
-            Some(State::Up { epoch, .. }) => serde_json::json!({ "state": "up", "epoch": epoch }),
-            Some(State::Down { .. }) => serde_json::json!({ "state": "down" }),
+        let machine = product(&self.entry, machine, true, false);
+        let line = match &self.last {
+            None | Some(State::Connecting) => LinkLine::Connecting { machine },
+            Some(State::Up { epoch, .. }) => LinkLine::Up {
+                epoch: *epoch,
+                machine,
+            },
+            Some(State::Down { .. }) => LinkLine::Down { machine },
         };
-        line["machine"] =
-            serde_json::to_value(product(&self.entry, machine, true, false)).unwrap_or_default();
-        line.to_string()
+        serde_json::to_string(&line).unwrap_or_default()
     }
 }
 
@@ -440,11 +443,9 @@ pub fn close(h: i64) {
     }
 }
 
-/// 一问一答的结局 ⇒ 交 Kotlin 的那一行：`{call, ok:true, data}` · `{call, ok:false, code, message, detail, data?}` ·
-/// `{call, timeout:true}` · `{call, cancelled:true}` · `{call, down:true}` · `{call, unreadable:true, detail}`。
-/// 成了的回包按两端同一份线上类型解（`cmd_wire::replies::decode_reply`）：解得开 ⇒ `data` 是按类型重写的那一份；
-/// 形状对不上 ⇒ `unreadable`（serde 那一句进详情）；回包类型还不住那里的命令 ⇒ 原样。事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）
-/// 经通信层那一份分流器说成一句（`route_call_error`），照失败交。
+/// 一问一答的结局 ⇒ 交 Kotlin 的那一行（[`CallEnd`]）。
+/// 成了的回包原样交（Kotlin 由 `cmd-wire` 那一份生成的类解那一次），只有记录那一格先一条一条判认不认得（`cmd_wire::replies::mend_records`）。
+/// 事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）经通信层那一份分流器说成一句（`route_call_error`），照失败交。
 pub fn reply_json(
     id: i64,
     machine: &str,
@@ -452,43 +453,49 @@ pub fn reply_json(
     got: Result<Option<serde_json::Value>, CallError>,
 ) -> String {
     use comms_inward::backend_route::{route_call_error, Routed};
-    let v = match &got {
+    let call = id;
+    let end = match got {
         Ok(data) => {
-            let data = data.clone().unwrap_or(serde_json::Value::Null);
-            match cmd_wire::replies::decode_reply(cmd, data.clone()) {
-                None => serde_json::json!({ "call": id, "ok": true, "data": data }),
-                Some(Ok(typed)) => serde_json::json!({ "call": id, "ok": true, "data": typed }),
-                Some(Err(why)) => serde_json::json!({
-                    "call": id, "unreadable": true,
-                    "detail": format!("{cmd}: {why}"),
-                }),
-            }
+            let mut data = data.unwrap_or(serde_json::Value::Null);
+            cmd_wire::replies::mend_records(cmd, &mut data);
+            CallEnd::Ok { call, data }
         }
         Err(CallError::Remote {
             code,
             message,
             detail,
             data,
-        }) => serde_json::json!({
-            "call": id, "ok": false, "code": code, "message": message, "detail": detail,
-            "data": data.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()),
-        }),
-        Err(CallError::Timeout { .. }) => serde_json::json!({ "call": id, "timeout": true }),
-        Err(CallError::Cancelled) => serde_json::json!({ "call": id, "cancelled": true }),
-        Err(CallError::Disconnected) => serde_json::json!({ "call": id, "down": true }),
+        }) => CallEnd::Failed {
+            call,
+            code,
+            message,
+            detail,
+            data: data
+                .as_deref()
+                .and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()),
+        },
+        Err(CallError::Timeout { .. }) => CallEnd::Timeout { call },
+        Err(CallError::Cancelled) => CallEnd::Cancelled { call },
+        Err(CallError::Disconnected) => CallEnd::Down { call },
         Err(e) => {
-            let code = match e {
+            let code = match &e {
                 CallError::Unsupported { .. } => "unsupported".to_string(),
                 CallError::Differs { .. } => "differs".to_string(),
                 CallError::Unavailable { code, .. } => code.clone(),
                 _ => "busy".to_string(),
             };
             let (Routed::NoChannel(said) | Routed::Refused(said)) =
-                route_call_error(e, machine, |_code, message| message.to_string());
-            serde_json::json!({ "call": id, "ok": false, "code": code, "message": said, "detail": e.to_string() })
+                route_call_error(&e, machine, |_code, message| message.to_string());
+            CallEnd::Failed {
+                call,
+                code,
+                message: said,
+                detail: e.to_string(),
+                data: None,
+            }
         }
     };
-    v.to_string()
+    serde_json::to_string(&end).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -503,7 +510,7 @@ mod tests {
         };
         assert_eq!(
             j(Ok(Some(serde_json::json!({"a": 1})))),
-            serde_json::json!({"call": 7, "ok": true, "data": {"a": 1}})
+            serde_json::json!({"call": 7, "end": "ok", "data": {"a": 1}})
         );
         let failed = j(Err(CallError::Remote {
             code: "no_tmux".into(),
@@ -511,11 +518,11 @@ mod tests {
             detail: "d".into(),
             data: Some("{\"x\":1}".into()),
         }));
-        assert_eq!(failed["ok"], false);
+        assert_eq!(failed["end"], "failed");
         assert_eq!(failed["code"], "no_tmux");
         assert_eq!(failed["data"], serde_json::json!({"x": 1}));
-        assert_eq!(j(Err(CallError::Cancelled))["cancelled"], true);
-        assert_eq!(j(Err(CallError::Disconnected))["down"], true);
+        assert_eq!(j(Err(CallError::Cancelled))["end"], "cancelled");
+        assert_eq!(j(Err(CallError::Disconnected))["end"], "down");
         let differs = j(Err(CallError::Differs {
             cmd: "history-search".into(),
             said: copy_core::backend_differs("box"),
@@ -530,24 +537,22 @@ mod tests {
         assert_eq!(old["message"], copy_core::backend_old("box"));
     }
 
-    /// 回包类型住 `cmd-wire` 的那几条：按类型解；缺一格 ⇒ 交 `unreadable`（不交 `ok`，Kotlin 不会拿去当成功用）；别的命令原样。
+    /// 回包原样交 Kotlin（由生成的类解那一次）：多一格未知的照带着、缺一格的也不在这里判；记录那一格好的也原样。
     #[test]
-    fn typed_replies_are_decoded_here_once_and_a_short_one_is_unreadable() {
+    fn replies_go_to_kotlin_as_they_came() {
         let j = |cmd: &str, data: serde_json::Value| -> serde_json::Value {
             serde_json::from_str(&reply_json(9, "box", cmd, Ok(Some(data)))).expect("JSON")
         };
-        let sent = serde_json::json!({"result": "delivered"});
+        let sent = serde_json::json!({"result": "delivered", "later": {"x": 1}});
         assert_eq!(
             j("terminal-input", sent.clone()),
-            serde_json::json!({"call": 9, "ok": true, "data": sent})
+            serde_json::json!({"call": 9, "end": "ok", "data": sent})
         );
-        let short = j("history-tail", serde_json::json!({"total": 1}));
-        assert_eq!(short["unreadable"], true);
-        assert!(short.get("ok").is_none());
-        assert!(short["detail"]
-            .as_str()
-            .unwrap()
-            .starts_with("history-tail: "));
+        let short = serde_json::json!({"total": 1});
+        assert_eq!(j("history-tail", short.clone())["data"], short);
+        let good = serde_json::json!({"agent": "claude", "by": "agent", "id": "@1", "t": "title", "text": "Fix", "later": 2});
+        let read = serde_json::json!({"rows": [{"end": 10, "hash": 1, "record": good, "cwd": "/w", "later": 3}], "next": 10, "eof": true, "later": 4});
+        assert_eq!(j("history-read", read.clone())["data"], read);
         let raw = serde_json::json!({"anything": [1, 2]});
         assert_eq!(j("history-facts", raw.clone())["data"], raw);
     }
@@ -577,7 +582,7 @@ mod tests {
         let got: serde_json::Value =
             serde_json::from_str(&reply_json(4, "box", "history-read", Ok(Some(read))))
                 .expect("JSON");
-        assert_eq!(got["ok"], true, "{got}");
+        assert_eq!(got["end"], "ok", "{got}");
         assert_eq!(got["data"]["rows"][0]["record"], good);
         assert_eq!(
             got["data"]["rows"][1]["record"],
@@ -594,7 +599,7 @@ mod tests {
         let got: serde_json::Value =
             serde_json::from_str(&reply_json(5, "box", "history-lines", Ok(Some(lines))))
                 .expect("JSON");
-        assert_eq!(got["ok"], true, "{got}");
+        assert_eq!(got["end"], "ok", "{got}");
         assert_eq!(got["data"]["lines"][0]["record"], good);
         assert_eq!(
             got["data"]["lines"][1]["record"],

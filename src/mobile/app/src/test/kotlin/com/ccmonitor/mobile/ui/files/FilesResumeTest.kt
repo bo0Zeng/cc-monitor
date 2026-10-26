@@ -87,7 +87,7 @@ class FilesResumeTest {
             want: String,
         ): Long {
             kept += want
-            events!!.invoke("batch", """{"id":$ID,"phase":"cut","title":"删除 1 项","line":"box 连接已断开","kept":true}""")
+            events!!.invoke("batch", """{"id":$ID,"phase":"cut","title":"删除 1 项","kept":true,"line":"box 连接已断开","resume":false}""")
             return ID
         }
 

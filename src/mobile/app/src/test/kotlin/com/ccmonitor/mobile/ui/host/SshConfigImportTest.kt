@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.host
 
 import com.ccmonitor.mobile.core.data.db.Identity
-import com.ccmonitor.mobile.core.ssh.SshConfigHost
+import com.ccmonitor.mobile.core.wire.gen.ConfigHost
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -16,8 +16,8 @@ import org.junit.Test
 class SshConfigImportTest {
     private val cfg =
         listOf(
-            SshConfigHost(alias = "devbox", hostName = "192.0.2.20", port = 22, user = "user", identityFile = "~/.ssh/id_ed25519"),
-            SshConfigHost(alias = "box", hostName = "example.com", port = 2222, user = null, identityFile = null),
+            ConfigHost(alias = "devbox", hostName = "192.0.2.20", port = 22, user = "user", identityFile = "~/.ssh/id_ed25519"),
+            ConfigHost(alias = "box", hostName = "example.com", port = 2222, user = null, identityFile = null),
         )
     private val keys =
         listOf(
