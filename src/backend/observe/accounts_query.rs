@@ -602,11 +602,6 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     out
 }
 
-/// 过渡：`faces/plan_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表。
-pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
-    crate::history::live_table::now(agent_home).cwds()
-}
-
 /// **这条会话此刻谁持着它**（冷读那几处判活只问这一处）：`record` 是这条会话的记录（已过围栏），
 /// 哪一家照它落在哪棵树下认（`agents::record_kind_of`），怎么判照那一家声明的（[`crate::agents::Adapter::live`]，见 [`session_holders_by`]）。
 pub(crate) fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {
@@ -719,11 +714,6 @@ pub(crate) fn live_needs(
             .then_with(|| a.sid.cmp(&b.sid))
     });
     rows
-}
-
-/// 过渡：`faces/plan_return_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表（`LiveTable::waiting`）。
-pub(crate) fn waiting_now(agent_home: &Path, sid: &str, _asked: &[String]) -> bool {
-    crate::history::live_table::now(agent_home).waiting(sid)
 }
 
 /// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::recognize::facts::needs_of`] 判（同 `history-facts.needs`）；

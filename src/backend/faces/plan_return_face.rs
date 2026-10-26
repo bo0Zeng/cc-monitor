@@ -162,8 +162,7 @@ fn give_back(
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
     // 说的那一句是本条现拼的（`return_with`）⇒ 按 `session-say` 的入参类型解一次，形状不对同那一条回 `bad_args`。
     let home = crate::history::listing::agent_home();
-    let asked = crate::control::asks::sids();
-    let waiting = |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
+    let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
     let send = |a: &Value, resume: bool| {
         use crate::faces::session_say_face as say;
         let req: say::SessionSayReq = typed::take(a)?;
