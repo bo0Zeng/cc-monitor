@@ -7,7 +7,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WALL_CEILING_MS } from "../../../test-support/wall-ceiling";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
-const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed, merges } = vi.hoisted(() => ({
+const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed, merges, SEEN } = vi.hoisted(() => ({
+  /** 本机后端写好的上次读数那一格（一句认得出的字：界面照摆，不自己算时长）。 */
+  SEEN: { atMs: 7, said: "采样于 夹具那一刻" },
   /** 交给本机后端 `chores-merge` 的每一趟问的那几台（替身照 `answers` 逐台答；`reply` 设了合计就照它，否则逐格相加）。 */
   merges: { asked: [] as unknown[][], reply: null as Record<string, number> | null },
   localOpened: [] as string[],
@@ -56,7 +58,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         if (origin !== "<local>") return Promise.reject(new Error("上次值只问本机后端"));
         const mine = seen.get(a.origin) ?? {};
         // `data` 那一份后端按回包类型核过、读回来带 `state`（这里只记合法的那一形；读不懂那一形另由判据塞）。
-        if (op === "last-seen-write") seen.set(a.origin, { ...mine, [a.kind!]: a.kind === "data" ? { state: "kept", atMs: Date.now(), value: a.value } : { atMs: Date.now(), value: a.value } });
+        if (op === "last-seen-write") seen.set(a.origin, { ...mine, [a.kind!]: a.kind === "data" ? { state: "kept", seen: SEEN, value: a.value } : { seen: SEEN, value: a.value } });
         const out = op === "last-seen-read" ? { accounts: mine.accounts ?? null, data: mine.data ?? null } : { atMs: 1 };
         return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
       }
@@ -166,9 +168,9 @@ beforeEach(() => {
 
 describe("上次值", () => {
   it("★ 后端核过的那一份照用；后端说读不懂（存档不是这一版）⇒ 当没有上次值，不拿原样画", async () => {
-    seen.set("devbox", { data: { state: "kept", atMs: 7, value: report() } });
-    expect(await recallDataReport("devbox")).toEqual({ report: report(), atMs: 7 });
-    seen.set("devbox", { data: { state: "unreadable", atMs: 7 } });
+    seen.set("devbox", { data: { state: "kept", seen: SEEN, value: report() } });
+    expect(await recallDataReport("devbox")).toEqual({ report: report(), seen: SEEN });
+    seen.set("devbox", { data: { state: "unreadable", seen: SEEN } });
     expect(await recallDataReport("devbox")).toBeNull();
   });
 });
@@ -383,7 +385,7 @@ describe("cc-monitor 放了什么", () => {
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
     const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
     expect(pane.textContent).toContain("~/.zshrc");
-    expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", ago: copyText("durationFormat.short.under") }));
+    expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", seen: SEEN.said }));
     expect(pane.querySelectorAll(".data-own-files [data-own]").length).toBe(3);
     expect([...pane.querySelectorAll<HTMLButtonElement>(".data-own-files [data-own] button")].every((b) => b.disabled), "断开的那台打不开文件窗口 ⇒ 置灰").toBe(true);
     // 从没读成过的那台照旧说读不到。

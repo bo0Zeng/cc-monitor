@@ -715,7 +715,7 @@ export class PlanView {
     const m = cur ? this.per.get(cur.origin) : undefined;
     if (cur && m?.state === "failed" && m.offline && m.prev) {
       const re = button({ label: copyText("plan.strip.reconnect"), size: "compact", onClick: () => this.reconnect(cur.origin) });
-      out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, time: this.currentDoc()?.readAtText ?? copyText("plan.page.none") }), [re]));
+      out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, seen: this.currentDoc()?.seen?.said ?? copyText("plan.page.none") }), [re]));
     }
     const doc = this.currentDoc();
     const slice = this.currentSlice();

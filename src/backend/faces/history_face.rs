@@ -1240,7 +1240,7 @@ pub(crate) fn facts_at(
         facts.project_dir = locate::facts_project_dir(home, path);
     }
     if facts.agent.is_none() {
-        facts.agent = locate::facts_agent(home, path);
+        facts.agent = locate::facts_agent(home, path).map(Into::into);
     }
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = locate::facts_holders(home, path);
@@ -1326,7 +1326,7 @@ pub(crate) fn dress_kept(
     kept: Option<cmd_wire::listing::ResumeWith>,
 ) {
     let Some(k) = kept else { return };
-    let kind = facts.agent.clone().unwrap_or_default();
+    let kind = facts.agent.as_deref().unwrap_or_default().to_string();
     if let Some(m) = k.permission_mode {
         facts.permission_mode_text =
             crate::agents::permission_mode_text(&kind, &m).map(crate::common::cells::Words);

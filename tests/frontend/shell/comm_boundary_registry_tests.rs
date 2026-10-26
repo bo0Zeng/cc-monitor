@@ -26,6 +26,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
             "copy-core",
             // 契约 crate：机器名（`Origin` ＝ `cmd_wire::Machine`）· typed 命令的形状指纹表；不是业务。
             "cmd-wire",
+            // 契约 crate、零依赖：经 `cmd-wire` 的 `Sid` 进来（会话 id 解码按它那一份 `session_id_ok` 判）。
+            "shell-quote-core",
             "serde",
             "serde_json",
             "tokio",

@@ -42,7 +42,7 @@ pub(crate) enum Shown {
 #[serde(deny_unknown_fields)]
 pub(crate) struct SidReq {
     /// 会话 id。
-    pub(crate) sid: String,
+    pub(crate) sid: cmd_wire::Sid,
 }
 
 /// 帧面入口（宿主 `faces/feature_face.rs` 交家目录）：此刻显示它的终端，或一条原因。
@@ -52,12 +52,6 @@ pub(crate) fn answer_at(
     req: &SidReq,
 ) -> Result<Showing, (&'static str, String)> {
     let sid = req.sid.as_str();
-    if !shell_quote_core::session_id_ok(sid) {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("malformed `sid`"),
-        ));
-    }
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
         .find(|(s, _)| s == sid)

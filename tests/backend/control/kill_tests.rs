@@ -140,3 +140,20 @@ fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
         "{detail}"
     );
 }
+
+/// 带的 `sid` 是会话 id（`cmd_wire::Sid`）：形状不对在解入参那一下就是 `bad_args`，一发 tmux 都不起；真 sid 照收。
+#[test]
+fn an_off_shape_sid_does_not_decode() {
+    for bad in ["", "-x", "a_b", "a b", "../x"] {
+        let r = serde_json::from_value::<KillReq>(json!({"name": "w-cc", "sid": bad}));
+        assert!(r.is_err(), "坏形 sid 解开了：{bad:?}");
+    }
+    let ok: KillReq = serde_json::from_value(
+        json!({"name": "w-cc", "sid": "0473c3a0-1111-2222-3333-444455556666"}),
+    )
+    .unwrap();
+    assert_eq!(
+        ok.sid.as_deref(),
+        Some("0473c3a0-1111-2222-3333-444455556666")
+    );
+}

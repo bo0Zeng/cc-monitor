@@ -914,6 +914,7 @@ dependencies = [
  "copy-core",
  "serde",
  "serde_json",
+ "shell-quote-core",
  "test-home",
  "ts-rs",
 ]

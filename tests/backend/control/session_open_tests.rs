@@ -986,7 +986,11 @@ fn resume_req_tmux() -> Value {
 /// ★ 起了一家 ⇒ 回包带等它报到那一问（有 sid 按 sid，没有按目录；抓屏按落在的那个 tmux 会话）；在跑 · 接回 · 进目录 ⇒ 不等。
 #[test]
 fn what_was_started_comes_back_with_its_arrival_and_nothing_else_does() {
-    let by_sid = |s: &str| Some(ArriveBy::Sid { sid: s.into() });
+    let by_sid = |s: &str| {
+        Some(ArriveBy::Sid {
+            sid: s.parse().unwrap(),
+        })
+    };
     let rig = Rig::new(Some(vec![]));
     let o = rig.open(resume(Some("tmux"))).unwrap();
     let a = o.arrival.expect("恢复进 tmux ⇒ 等它报到");

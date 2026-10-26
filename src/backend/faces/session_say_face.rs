@@ -19,7 +19,7 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionSayReq {
     /// 会话 id。
-    pub(crate) sid: String,
+    pub(crate) sid: cmd_wire::Sid,
     /// 那一句（字面字，原样送；多行按粘贴送；后端补回车）。
     pub(crate) text: String,
     /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
@@ -118,12 +118,6 @@ pub(crate) fn say_with(
     send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
     resume: &dyn Fn(&SessionSayReq) -> Option<Reopened>,
 ) -> Result<Sent, CmdErr> {
-    if !shell_quote_core::session_id_ok(&req.sid) {
-        return Err(CmdErr::new(
-            "bad_args",
-            malformed("`sid` must be a session id"),
-        ));
-    }
     if waiting(&req.sid) {
         return Ok(Sent {
             result: SentResult::Refused,
@@ -134,7 +128,7 @@ pub(crate) fn say_with(
         });
     }
     let sent = send(&TerminalInputReq {
-        sid: Some(req.sid.clone()),
+        sid: Some(req.sid.to_string()),
         text: Some(req.text.clone()),
         enter: Some(true),
         client: req.client.clone(),

@@ -2954,7 +2954,7 @@ fn a_new_process_taking_a_live_sid_counts_as_its_arrival() {
     let (tell, mut heard) = tokio::sync::oneshot::channel::<String>();
     sink.arrivals.expect(
         cmd_wire::session::ArriveBy::Sid {
-            sid: "again-sid".into(),
+            sid: "again-sid".parse().unwrap(),
         },
         since,
         std::sync::Arc::new(std::sync::Mutex::new(Some(tell))),

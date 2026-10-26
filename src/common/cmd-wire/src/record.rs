@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 )]
 pub struct Record {
     /// 哪一家（注册表里那一家的 `kind`）。
-    pub agent: String,
+    pub agent: crate::AgentKind,
     /// 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
     pub id: String,
     /// 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
@@ -809,7 +809,7 @@ impl OrUnread {
             .filter(|i| !i.is_empty())
             .unwrap_or_else(|| format!("unread:{:016x}", crate::fnv::fnv1a64(text.as_bytes())));
         Self(Record {
-            agent: s("agent").unwrap_or_default(),
+            agent: s("agent").unwrap_or_default().into(),
             id,
             at: s("at"),
             time_text: s("timeText").map(Words),

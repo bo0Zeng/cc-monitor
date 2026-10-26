@@ -4043,6 +4043,7 @@ notes: Array<string>, };
 入参 `LoginStartArgs` · 回包 `LoginStarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type LoginAgain = { again: LoginAgainHow, };
 type LoginAgainHow = "paste" | "restart" | "none";
 type LoginStartArgs = { 
@@ -4050,7 +4051,7 @@ type LoginStartArgs = {
  * 打开登录链接的浏览器在后端这台上（桌面连本机）：登录页回跳到这台的本机端口，那一家自己登完。
  * 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
  */
-browserHere?: boolean, } & ({ "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, });
+browserHere?: boolean, } & ({ "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, });
 type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, 
 /**
  * 那一家自己在这台开了登录页（它那一形自己开浏览器、发起它的浏览器又在这台）⇒ 界面不再开第二页。
@@ -4072,6 +4073,7 @@ type PasteKind = "code" | "redirectUrl";
 入参 `LoginFinishReq` · 回包 `LoginDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type LoginAgain = { again: LoginAgainHow, };
 type LoginAgainHow = "paste" | "restart" | "none";
 type LoginDone = { target: LoginStartReq, };
@@ -4080,7 +4082,7 @@ type LoginFinishReq = { job: string,
  * 登录页上给的那一段（原样；不进日志、不回显）。
  */
 pasted: string, };
-type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 ```
 
 码：`bad_args` · `bad_paste` · `refused` · `no_job` · `child_timed_out`
@@ -4205,6 +4207,7 @@ removed: boolean, };
 入参 `HistoryListReq` · 回包 `SyncPatch<HistoryHead, HistoryRow>`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type Can = { 
 /**
@@ -4231,7 +4234,7 @@ type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" 
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
+type HistoryGroup = { key: string, agent: AgentKind, projectName: string, projectPath: string, projectDir: string, count: number, 
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
@@ -4290,7 +4293,7 @@ held?: SyncHeld,
  * 只要排好的那一窗（`limit` 1–20000）；缺 ⇒ 头 2000 行。总数在回包的头里。
  */
 range?: SyncRange, };
-type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
@@ -4404,6 +4407,7 @@ type Words = string;
 入参 `HistoryBrowseReq` · 回包 `SyncPatch<HistoryBrowseHead, HistoryLine>`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type Can = { 
 /**
@@ -4478,7 +4482,7 @@ forks: Array<HistoryRowId>,
 range: SyncRange, };
 type HistoryBy = "time" | "project";
 type HistoryFold = { open: boolean, except: Array<HistoryGroupId>, };
-type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
+type HistoryGroup = { key: string, agent: AgentKind, projectName: string, projectPath: string, projectDir: string, count: number, 
 /**
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
@@ -4515,7 +4519,7 @@ origin?: string,
  */
 total: number, read: HistoryMachineRead, };
 type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
-type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+type HistoryRow = { agent: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
@@ -4635,6 +4639,7 @@ type Words = string;
 入参 `HistoryListingReq` · 回包 `SyncPatch<HistoryListingHead, HistoryRawRow>`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type AutoAnswer = { 
 /**
  * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
@@ -4661,7 +4666,7 @@ type Hide = "on" | "off";
 type HistoryFailedDir = { projectDir: string, error: string, };
 type HistoryListingHead = { failed: Array<HistoryFailedDir>, annotations: { [key in string]: Entry } | null, annotationsNotice: string | null, rules: Rules, };
 type HistoryListingReq = { held: SyncHeld | null, };
-type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
+type HistoryRawRow = { agent: AgentKind, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
 /**
  * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
  */
@@ -4708,6 +4713,7 @@ type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 入参 `HistorySearchReq` · 回包 `HistorySearchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type Can = { 
 /**
@@ -4817,7 +4823,7 @@ hidden: Hidden | null,
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
  */
-agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+agent: AgentKind, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
 /**
  * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
  */
@@ -4923,6 +4929,7 @@ type Words = string;
 入参 `HistorySearchMergeReq` · 回包 `Merged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type Can = { 
 /**
@@ -5028,7 +5035,7 @@ hidden: Hidden | null,
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
  */
-agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+agent: AgentKind, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
 /**
  * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
  */
@@ -5157,6 +5164,7 @@ type Words = string;
 入参 `HistoryRunReq` · 回包 `HistoryRun`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -5229,7 +5237,7 @@ type LineRecord = {
 /**
  * 哪一家（注册表里那一家的 `kind`）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
  */
@@ -5520,6 +5528,7 @@ root: string, };
 入参 `HistoryLinesReq` · 回包 `HistoryLines`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -5588,7 +5597,7 @@ type LineRecord = {
 /**
  * 哪一家（注册表里那一家的 `kind`）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
  */
@@ -5864,6 +5873,7 @@ pasted?: Array<Pasted>, };
 入参 `HistoryReadReq` · 回包 `HistoryRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -5924,7 +5934,7 @@ type LineRecord = {
 /**
  * 哪一家（注册表里那一家的 `kind`）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
  */
@@ -6192,6 +6202,7 @@ pasted?: Array<Pasted>, };
 入参 `HistoryPageReq` · 回包 `HistoryPage`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -6260,7 +6271,7 @@ type LineRecord = {
 /**
  * 哪一家（注册表里那一家的 `kind`）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
  */
@@ -6667,6 +6678,7 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 入参 `NoArgs` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
@@ -6675,9 +6687,9 @@ type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
-type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
+type ManualItem = { "kind": "accountLogin", agent: AgentKind, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
 /**
  * 在哪个号里；没设账号的那一份 ⇒ `null`。
  */
@@ -6913,6 +6925,7 @@ type Words = string;
 入参 `NeedsMergeReq` · 回包 `NeedsMerged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
@@ -6920,9 +6933,9 @@ type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
-type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
-type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
+type ManualItem = { "kind": "accountLogin", agent: AgentKind, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
 /**
  * 在哪个号里；没设账号的那一份 ⇒ `null`。
  */
@@ -7150,8 +7163,9 @@ type Words = string;
 入参 `AskReq` · 回包 `AskReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type AskReply = { decision: unknown, };
-type AskReq = { agent: string, hook: unknown, };
+type AskReq = { agent: AgentKind, hook: unknown, };
 ```
 
 码：`bad_args`
@@ -7214,6 +7228,7 @@ text?: string | null, };
 入参 `HistoryFactsReq` · 回包 `SessionFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type BgTask = { 
@@ -7571,7 +7586,7 @@ projectDir: string | null,
 /**
  * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
  */
-agent: string | null, 
+agent: AgentKind | null, 
 /**
  * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
  * 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
@@ -7967,6 +7982,7 @@ limit?: number | null, };
 入参 `HistoryTailReq` · 回包 `HistoryTail`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
 type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
 type AskOption = { label: string, description?: string, };
@@ -8072,7 +8088,7 @@ type LineRecord = {
 /**
  * 哪一家（注册表里那一家的 `kind`）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
  */
@@ -9325,7 +9341,8 @@ type SkillTargetFile = { path: string, text: string, };
 入参 `McpReadReq` · 回包 `McpReadReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type AgentKind = string;
+type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
 type McpFailedMark = { said: string, tip: string, detail: string | null, };
 type McpLoginFix = { 
@@ -10638,11 +10655,12 @@ terminals: Array<Terminal>,
  * 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
  */
 why?: "detached" | "no-terminal" | "unreadable", };
+type Sid = string;
 type SidReq = { 
 /**
  * 会话 id。
  */
-sid: string, };
+sid: Sid, };
 type SshConnection = { 
 /**
  * 对面地址。
@@ -10687,6 +10705,7 @@ window?: string, };
 入参 `TerminalsListReq` · 回包 `TerminalsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Attached = { 
 /**
  * 客户端种类（`terminal-window`）。
@@ -10717,7 +10736,7 @@ sid: string,
 /**
  * 哪一家（没标就缺）。
  */
-agent?: string, };
+agent?: AgentKind, };
 type TermState = "running" | "idle" | "program_exited";
 type TerminalCan = { 
 /**
@@ -11067,7 +11086,7 @@ type SessionCommandsReq = {
 /**
  * 会话 id。
  */
-sid: string, };
+sid: Sid, };
 type SessionSkill = { 
 /**
  * 名字。
@@ -11081,6 +11100,7 @@ text: string | null,
  * 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
  */
 say: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `no_such_session`
@@ -11121,7 +11141,7 @@ type SessionModelReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 要换成的模型（原值；必须是 `session-open-facts` 那一家 `models` 里的一个）。
  */
@@ -11130,6 +11150,7 @@ model: string,
  * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
  */
 client?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unsupported` · `no_such_session` · `no_tmux` · `unobservable` · `child_timed_out`
@@ -11170,7 +11191,7 @@ type SessionPermissionReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
  */
@@ -11179,6 +11200,7 @@ mode: string,
  * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
  */
 client?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unsupported` · `launch_only` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
@@ -11219,7 +11241,7 @@ type SessionSayReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 那一句（字面字，原样送；多行按粘贴送；后端补回车）。
  */
@@ -11233,6 +11255,7 @@ client?: string,
  * 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
  */
 seen_screen?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
@@ -11322,9 +11345,9 @@ name: string,
  */
 client?: string, 
 /**
- * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（1–128 个 `[A-Za-z0-9_-]`）。
+ * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（会话 id 的形状由 `Sid` 解码就判）。
  */
-sid?: string, };
+sid?: Sid, };
 type Killed = { 
 /**
  * 杀掉的 tmux 会话名。
@@ -11334,6 +11357,7 @@ session: string,
  * 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
  */
 killed: true, };
+type Sid = string;
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
@@ -11373,11 +11397,12 @@ copyDetail: string,
  * 落在哪个 tmux 会话上。
  */
 session: string | null, };
+type Sid = string;
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
  */
-sids: Array<string>, 
+sids: Array<Sid>, 
 /**
  * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
  */
@@ -11396,11 +11421,12 @@ client?: string, };
 
 ```ts
 type Run = "tmux" | "direct";
+type Sid = string;
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
  */
-sids: Array<string>, 
+sids: Array<Sid>, 
 /**
  * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
  */
@@ -11482,7 +11508,7 @@ since: number,
  * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
 session: string | null, };
-type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
+type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type FirstSay = { 
 /**
  * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
@@ -11558,7 +11584,7 @@ field: OpenField | null,
  * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
  */
 unavailable: AccountUnavailable | null, };
-type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: string, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
+type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: Sid, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
 type Opened = { 
 /**
  * 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
@@ -11631,6 +11657,7 @@ ticket?: string,
  * 自报的前端（就地键入过身份门，同 `kill`）。
  */
 client?: string, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `record_gone` · `already_live` · `not_in_tmux` · `wrong_owner` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
@@ -11659,7 +11686,7 @@ since: number,
  * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
  */
 session: string | null, };
-type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
+type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
 type ArriveEnd = { "kind": "arrived", sid: string, } | { "kind": "missed", 
 /**
  * 第一行是标题，其余是正文（含那一屏末几行）。
@@ -11669,6 +11696,7 @@ said: string,
  * 起在的那个 tmux 会话此刻还在 ⇒ 它在终端名单里的句柄；不在 · 读不到 · 开窗起的 ⇒ `null`。
  */
 terminal: string | null, };
+type Sid = string;
 ```
 
 码：`bad_args`
@@ -11712,6 +11740,7 @@ permissionModes: Array<AgentPick>,
  * 从这台起新会话默认的那一档（这台偏好里设了、且还在上面那张清单里）；没设 ⇒ `null`（跟随那一家自己的默认）。
  */
 permissionDefault: AgentPick | null, };
+type AgentKind = string;
 type AgentPick = { 
 /**
  * 原值（`session-open` 的 `model` / `permissionMode` 收的就是它）。
@@ -11725,7 +11754,7 @@ type ForkFacts = {
 /**
  * 源会话是哪一家（说不出 ⇒ 空串）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
  */
@@ -11854,6 +11883,7 @@ listKnown: boolean,
  * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
  */
 alternative: string | null, };
+type AgentKind = string;
 type Arrival = "arrived" | "missed";
 type Compact = "done" | "timed_out" | "skipped" | "unsupported" | "failed";
 type LaunchedAccount = { name: string, configDir: string, 
@@ -11866,7 +11896,7 @@ type RestartReq = {
 /**
  * 会话 id。
  */
-sid: string, 
+sid: Sid, 
 /**
  * 工作目录。
  */
@@ -11894,7 +11924,7 @@ local: boolean,
 /**
  * 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 自报的前端，同 `kill`。
  */
@@ -11916,6 +11946,7 @@ terminal: string,
  * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
  */
 account: LaunchedAccount | null, };
+type Sid = string;
 ```
 
 码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `already_live` · `stop_failed` · `start_failed` · `child_timed_out`

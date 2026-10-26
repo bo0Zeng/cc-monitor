@@ -154,7 +154,7 @@ pub struct TermSession {
     /// 哪一家（没标就缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub agent: Option<String>,
+    pub agent: Option<crate::AgentKind>,
 }
 
 /// 谁起的这个终端。
@@ -588,7 +588,7 @@ pub struct ArriveAsk {
 )]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ArriveBy {
-    Sid { sid: String },
+    Sid { sid: crate::Sid },
     Cwd { cwd: String },
 }
 
@@ -716,7 +716,7 @@ pub struct AgentPick {
 #[serde(rename_all = "camelCase")]
 pub struct ForkFacts {
     /// 源会话是哪一家（说不出 ⇒ 空串）。
-    pub agent: String,
+    pub agent: crate::AgentKind,
     /// 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
     pub launch: ForkLaunch,
     /// `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。

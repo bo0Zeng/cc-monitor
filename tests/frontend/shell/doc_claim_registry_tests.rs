@@ -467,54 +467,6 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
     );
 }
 
-/// **发版版本号六处必须一致**（`package.json` 是权威源，其余对拍）。
-///
-/// **为什么建它**：`src/doc/RELEASING.md` 自己逐字记着 ——
-/// 「v3.1→v3.4 **连续四次**发版漏改 README，于是 README 的『当前版本』长期落后一个大版本；
-/// BACKLOG 早把『checklist 里没有 README 这一条』点名为**机制性根因**，
-/// 而根因没修 ⇒ 第四次照样复发」。
-///
-/// 那次的修法是**在 checklist 里加一行散文**。散文接不住它：第四次复发时 checklist 已经在了。
-/// ⇒ 这正是 E12 ①「送进一条会红的判据」该管的形状，也是 E3 的标准解
-/// （一个事实六个副本 ⇒ 定权威源 + 其余对拍）。
-///
-/// ⚠ 本条**故意在发版中途也会红**：改了 `package.json` 而 README 还没跟上时它就红 ——
-/// 那不是误报，那是它的岗位（`RELEASING` 的 checklist 要求这几处一起改）。
-///
-/// ⚠ 建判据当天六处全部是 `3.6.0`，**一处不差** —— 又是「今天干净、但没人守着」：
-/// 这个位置**已经腐过四次**，靠的是人记得，不是机制。
-///
-/// # 与 `release.yml` 那道 guard 的关系（E3：别造第二个权威源）
-///
-/// 建完本条的**第二天**才查到：`release.yml` 里早有一道
-/// 「Verify version consistency with tag」，查**四处**（`package.json` / `tauri.conf.json` /
-/// `Cargo.toml` / **`Cargo.lock`**），CHANGELOG 记着它是「防 v2.4.2 漂移事故复发」加的。
-///
-/// 两者**不是一个事实两个权威源**，因为比的东西不同：
-/// 那道 guard 的权威是 **git tag**（发版时「代码里的版本 == tag」），
-/// 本条的权威是 `package.json`（任何时候「所有副本彼此一致」）。
-///
-/// ★ 但它给出一条更要紧的教训：**「已经有 guard」不等于「有信号」**。
-/// `release.yml` 逐字写着 `on: push: tags: ['v*']` —— 而〔用 08-05〕已裁定不再 push
-/// ⇒ 那道 guard **今天结构上一次都不会跑**。README 那四次复发也正是发生在
-/// 「代码侧四处有人查、README 没人查」的缝里。
-///
-/// # 诚实边界：`Cargo.lock` **钉不进本条**（试过，是恒绿的）
-///
-/// 先把它当第七处加了进来，然后按 E11 造变异（把 lock 里 monitor 包改成 `3.5.0`）——
-/// **测试照样绿**。查下去才明白：`cargo test` 启动时会先解析依赖，
-/// **把 `Cargo.lock` 自动改回与 `Cargo.toml` 一致**（实测：变异后 `3.5.0` → 跑完 `3.6.0`，exit 0）。
-/// ⇒ 任何住在 `cargo test` 里的判据都**看不见** lock 漂移：它在被观察之前就被治好了。
-///
-/// ⚠ 也不能改成读 `git show HEAD:` 那一份：那样「bump 版本」这个提交本身会被自己挡住
-/// （提交前跑测试 → HEAD 里还是旧版本 → 红 → 提交不了），**造出一个解不开的死结**。
-///
-/// ⇒ 结论如实记着：lock 这一处**本地钉不住**，唯一能查它的是 `release.yml` 那道
-/// PowerShell 步骤（它不经 cargo 读文件），而那道今天不会跑。这是一条**真的诚实边界**，
-/// 不是「以后补」—— 记进。
-///
-/// ★ 它差一点就成了本仓最讨厌的那种东西：**一条永远不会红的判据**。
-/// 逮住它的不是「测试失败」，是**变异之后诊断栏一个字都没有** —— 只看 exit code 会当它绿了。
 /// **那道版本 guard 被 Linux job「继承」这件事，压在一条 `needs:` 边上**。
 ///
 /// `release.yml` 的 `build-linux` 头上逐字写着为什么它串在 Windows 之后：
@@ -532,7 +484,6 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
 /// ⇒ 本条钉两件：那条边还在 · 那道 guard**仍然只有一处**（没被人「顺手也加到 Linux」，
 /// 那会变成第二个会漂的副本，正是上面那段论证要避免的）。
 ///
-/// ⚠ 与上一条的分工：上一条比的是**六处副本彼此一致**（权威是 `package.json`），
 /// 本条不看版本号，只看**那道以 tag 为权威的检查还罩不罩得住 Linux 产物**。
 #[test]
 fn the_linux_job_still_inherits_the_version_guard() {
@@ -590,88 +541,6 @@ fn the_linux_job_still_inherits_the_version_guard() {
     );
 }
 
-#[test]
-fn the_release_version_is_the_same_in_all_six_places() {
-    /// 从 `hay` 里按 `needle` 抠出紧随其后的 `X.Y.Z`。
-    /// **needle 必须恰好命中一次** —— 命中零次（那行被改写）或多次（抠错地方）都当场红，
-    /// 否则这条判据会在「读不到东西」的时候安静地绿。
-    fn pick(who: &str, hay: &str, needle: &str) -> String {
-        let n = hay.matches(needle).count();
-        assert_eq!(
-            n, 1,
-            "在 {who} 里，锚点 {needle:?} 命中 {n} 次（要求恰好 1 次）——\n\
-                 那一行被改写或挪走了。**先修锚点再谈版本对不对**，否则本条会零命中地绿。"
-        );
-        let at = hay.find(needle).expect("上面已断言命中一次") + needle.len();
-        let rest = &hay[at..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-            .unwrap_or(rest.len());
-        let v = &rest[..end];
-        assert!(
-            v.split('.').count() == 3 && v.split('.').all(|s| !s.is_empty()),
-            "{who} 在锚点之后抠到的是 {v:?} —— 形状不像 `X.Y.Z`"
-        );
-        v.to_string()
-    }
-
-    let root = repo_root();
-    let rd = |p: &str| {
-        std::fs::read_to_string(root.join(p)).unwrap_or_else(|e| panic!("读 {p} 失败: {e}"))
-    };
-    let (pkg, cargo, conf, readme, readme_en) = (
-        rd("package.json"),
-        rd("src/frontend/shell/Cargo.toml"),
-        rd("src/frontend/shell/tauri.conf.json"),
-        rd("README.md"),
-        rd("README.en.md"),
-    );
-
-    // 权威源（E3）：npm 包清单。其余五处都只是它的副本。
-    let authority = pick("package.json", &pkg, "\n  \"version\": \"");
-    let others: [(&str, String); 5] = [
-        (
-            "src/frontend/shell/Cargo.toml",
-            pick("src/frontend/shell/Cargo.toml", &cargo, "\nversion = \""),
-        ),
-        (
-            "src/frontend/shell/tauri.conf.json",
-            pick(
-                "src/frontend/shell/tauri.conf.json",
-                &conf,
-                "\n  \"version\": \"",
-            ),
-        ),
-        (
-            "README.md 抬头那行",
-            pick("README.md 抬头那行", &readme, "当前版本: v"),
-        ),
-        (
-            "README.md 「项目当前状态」块",
-            pick("README.md 「项目当前状态」块", &readme, "- **版本**：v"),
-        ),
-        (
-            "README.en.md 抬头那行",
-            pick("README.en.md 抬头那行", &readme_en, "| Current: v"),
-        ),
-    ];
-
-    let off: Vec<String> = others
-        .iter()
-        .filter(|(_, v)| *v != authority)
-        .map(|(who, v)| format!("  {who}：{v}"))
-        .collect();
-    assert!(
-        off.is_empty(),
-        "版本号对不上。权威源 `package.json` = {authority}，而这几处是别的数：\n{}\n\n\
-             ⚠ 这个位置**已经连续腐过四次**（v3.1→v3.4 每次发版都漏改 README，\n\
-             `src/doc/RELEASING.md` 自己记着这件事）。当时的修法是往 checklist 里加一行散文，\n\
-             而第四次复发时那行散文已经在了 —— 所以现在由本条判据接着。\n\
-             修法：把落后的那几处改成 {authority}（`RELEASING.md § 1` 的 checklist 列了全部落点）。",
-        off.join("\n")
-    );
-}
-
 /// 读仓根的一份文本。
 ///
 /// ⚠ **刻意包成函数，不在 `let` 右边直接写 `read_to_string`**：
@@ -697,7 +566,7 @@ const BREAKING_MARK: &str = "会改变已有行为";
 /// # 它从哪来 —— 一条**现打出来**的缺口，不是设想
 ///
 /// `K-R118` 的死值验第 ⑦ 刀：
-/// 把版本号那六处 ＋ `src/frontend/shell/Cargo.lock` **一起** bump，而 `CHANGELOG.md`
+/// 把版本号各处 **一起** bump，而 `CHANGELOG.md`
 /// 一个字不动 ⇒ 实测 `GATE: OK —— 16 格全绿，一条都没红`
 /// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形当时**没有任何东西在守**。
 /// 它的后果正是本区最贵的那一族：一次**静默的行为改变** —— 用户拿到的包只涨了小版本号，
@@ -708,19 +577,12 @@ const BREAKING_MARK: &str = "会改变已有行为";
 /// 那种判法一个字都买不到：版本号写在这份文件的**任何地方**（一句散文、一条旧条目、
 /// 甚至一段注释）都能骗过它。本条判的是**最上面那一节标题里的那个版本号**。
 ///
-/// # 为什么只跟**一处**比，而不是把七处都读一遍
+/// # 为什么只跟**一处**比
 ///
-/// 「七处」今天已经各有各的家，本条只接最后那一段，**不再复述一份锚点表**
-/// （闭集只许有一个住址）：
-///
-/// | 谁 ↔ 谁 | 由谁守 |
-/// |---|---|
-/// | 权威源 `package.json` ↔ 另外四处（`Cargo.toml` · `tauri.conf.json` · `README.md` ×2 · `README.en.md`） | 同模块的 [`the_release_version_is_the_same_in_all_six_places`] |
-/// | `src/frontend/shell/Cargo.toml` ↔ `src/frontend/shell/Cargo.lock` | 门禁 `winchk` 那一格的 `cargo check --locked`；发版路上另有 `release.yml` 的 `Verify version consistency with tag`（四处对账） |
-/// | **`CHANGELOG.md` 最上一节 ↔ `src/frontend/shell/Cargo.toml`** | **本条**（`env!("CARGO_PKG_VERSION")`，编译期注入，不抠锚点） |
-///
-/// ⇒ **三段接起来**才等于「最上一节 == 那七处」。少任何一段都不等于 ——
-/// 上面那两行不是背景，是本条结论的**承重件**。
+/// 版本号手写的四处（`package.json` · `Cargo.toml` · `tauri.conf.json` · `Cargo.lock`）彼此一致
+/// 由发版那一趟 `release.yml` 的 `Verify version consistency with tag` 对着 tag 核；
+/// 本条只接 **`CHANGELOG.md` 最上一节 ↔ `src/frontend/shell/Cargo.toml`** 这一段
+/// （`env!("CARGO_PKG_VERSION")`，编译期注入，不抠锚点）。
 ///
 /// # 第二条判定：breaking 段不许被埋在列表里
 ///
@@ -782,9 +644,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
              出路二选一（**不是**「把这一条放宽」）：\n\
              ① 版本号真的要 bump ⇒ 在 `CHANGELOG.md` 顶上补 `## [{shipping}] — <日期>` 那一节，\n\
                 破坏性变更写在**最前**（`R77`）；\n\
-             ② 版本号 bump 错了 ⇒ 改回去，七处一起\n\
-                （另外五处由 `the_release_version_is_the_same_in_all_six_places` 看着，\n\
-                 `Cargo.lock` 由 `cargo check --locked` 看着）。\n\n\
+             ② 版本号 bump 错了 ⇒ 改回去，四处一起（`src/doc/RELEASING.md` § 1）。\n\n\
              ⚠ **这条前提本来就该变的时候去哪里重裁**：顶上挂一个 `## [Unreleased]` 会让本条红。\n\
              本仓至今没用过那种写法（所以这里没有那一档豁免，也就没有一条没夹具的分支）；\n\
              真要用，去 `src/doc/RELEASING.md` 把发版次序整个重裁一次 —— 别在这里加一行豁免。"
@@ -838,201 +698,75 @@ fn the_changelog_top_section_is_the_version_we_ship() {
     }
 }
 
-/// 〔`K-R120` 收窗口补，09-14〕**两份 README 里「这份文档此刻自称的版本」那一处，
-/// 必须就是这棵树此刻要发的那个版本号。**
+/// **两份入口 README 不写版本号**：抬头与「项目当前状态」只指向 Releases 与 `CHANGELOG.md`。
 ///
-/// # 它从哪来 —— 收窗口现打逮到的漏，而漏在**人群**上，不在实现上
+/// 版本号只住工具非要不可的那四处（`package.json` · `src/frontend/shell/Cargo.toml` ·
+/// `src/frontend/shell/tauri.conf.json` · `src/frontend/shell/Cargo.lock`），发版那一趟由
+/// `release.yml` 的 `Verify version consistency with tag` 对着 tag 核。README 里再抄一份，
+/// 每版都得手跟、跟漏了就说假话 —— 所以不抄。
 ///
-/// 按 `KR120D1` 把「七处」一次改齐到 `3.8.0` 之后，收窗口现打逮到
-/// `README.md` 与 `README.en.md` 的发布沿革段抬头仍写着 `当前发布 **v3.7.0**` /
-/// `current release **v3.7.0**` —— **这棵树会带着「当前发布 v3.7.0」把 3.8.0 发出去。**
-///
-/// 🔴 **成因不是「有人改漏了」，是「人群里根本没有它」**：那一件的「七处」＝
-/// [`the_release_version_is_the_same_in_all_six_places`] 数得到的那几处 ＋ `Cargo.lock`，
-/// 而现打 `grep -c '当前发布\|current release' tests/frontend/shell/doc_claim_registry.rs`
-/// **零命中** —— **判据在，而它的人群不含这一处**。
-/// ★ 这与 `R73` 第五节登记的「判据在、执行面没有」是**同一族的镜像**：执行面在，人群不够。
-/// 而它的默认结局一样：**静默的绿**。
-///
-/// # 🔴 射程刻意很窄：判「此刻自称的版本」，不判「文档里出现过的所有版本号」
-///
-/// 那两行是**发布沿革**段 —— 现打各含 **11** 个形如 `vX.Y.Z` 的串
-/// （`v2.19.0` `v2.19.1` `v2.20.0` `v2.21.0` `v2.22.0` `v2.22.2` `v3.3.0` `v3.4.0`
-/// `v3.5.0` `v3.6.0` ＋ 自称的那一个），其中 **10 个是历史沿革，本来就该停在旧号上**。
-/// ⇒ 本条只钉**紧跟在那两个锚点之后**的那一个。
-/// **把整段收进人群 = 下次发版红一片**，那不是守，是拆（
-/// 扫描面按**语义**划，不按「碰巧只有它长这样」划）。
-/// 同理，`README.md` 与 `README.en.md` 里那两句「v3.6.0 与 v3.7.0 的实际产物是 `en-US`」
-/// 是 09-10 落的**历史订正**，**刻意不在射程里**。
-///
-/// # 跟谁比
-///
-/// 与 [`the_changelog_top_section_is_the_version_we_ship`] 同一条路：
-/// `env!("CARGO_PKG_VERSION")`（＝ `src/frontend/shell/Cargo.toml` 的 `version`，编译期注入）——
-/// **不抠第二份权威源锚点**。它与另外五处的一致由
-/// [`the_release_version_is_the_same_in_all_six_places`] 守，与 `Cargo.lock` 的一致由
-/// 门禁 `winchk` 那一格的 `cargo check --locked` 守。
-///
-/// # ⚠ 诚实边界（三条）
-///
-/// 1. 人群是**两处，按锚点点名**。README 里别处再长出第三句「当前发布 …」，本条看不见 ——
-///    它判的是**这两个锚点**，不是「所有自称」。
-/// 2. 锚点里带着 markdown 的 `**` ⇒ 排版一改（比如去掉加粗），本条**当场红在
-///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与那条「六处一致」的 `pick`
-///    同一条纪律：命中必须恰好 1 次。
-/// 3. 本条**不判那一整段散文对不对**（沿革列得全不全、里面的话有没有过期），一个字都不判。
+/// 判法：两份 README 里任何 `数字.数字.数字` 形的串（带不带前缀 `v` 都算）零命中。
+/// 人群是仓根这两份，不含别的 `README*.md`（手机端那份写着工具链版本，那是事实不是本版号）。
 #[test]
-fn the_docs_self_reported_release_is_the_version_we_ship() {
-    let shipping = env!("CARGO_PKG_VERSION");
+fn the_entry_readmes_write_no_version_number() {
+    const READMES: [&str; 2] = ["README.md", "README.en.md"];
 
-    // 人群：**两处，按锚点点名**。
-    // ⚠ 刻意写成函数体里的 `let`，不是模块级 `const …: &[…]` ——
-    //   后者要起 `scanning_guard_registry::TABLE_DECLS` 里**已有的**名字（那条元判据
-    //   按名字认表），而往那张闭集里加一个新名字必须同拍改 `MUST_BE_RECOGNISED`，
-    //   两处这里都不改。同形先例就在上面那条「六处一致」里（它的 `others` 也是
-    //   函数体里的 `let`）。
-    let places: [(&str, &str, &str); 2] = [
-        ("README.md 发布沿革段抬头", "README.md", "当前发布 **v"),
-        (
-            "README.en.md 发布沿革段抬头",
-            "README.en.md",
-            "current release **v",
-        ),
-    ];
-
-    let mut off: Vec<String> = Vec::new();
-    for (who, file, needle) in places {
-        let doc = read_repo_file(file);
-        let hits = doc.matches(needle).count();
-        assert_eq!(
-            hits, 1,
-            "在 {who}（`{file}`）里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
-                 那一行被改写、被挪走，或者排版变了（锚点里带着 markdown 的 `**`）。\n\
-                 **先修锚点再谈版本号对不对**，否则本条会零命中地绿。"
-        );
-        let at = doc.find(needle).expect("上面已断言命中一次") + needle.len();
-        let rest = &doc[at..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-            .unwrap_or(rest.len());
-        let got = &rest[..end];
-        assert!(
-            got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
-            "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
-        );
-        if got != shipping {
-            off.push(format!("  {who}（`{file}`）：{got}"));
+    /// 从 `at` 起读一段十进制数字，返回读到的末尾（没读到 ⇒ 原样返回 `at`）。
+    fn digits_end(b: &[u8], at: usize) -> usize {
+        let mut i = at;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
         }
+        i
     }
 
-    assert!(
-        off.is_empty(),
-        "这棵树要发的是 `{shipping}`，而这几处文档**自称**的是别的号：\n{}\n\n\
-             ★ 本条是 `K-R120` 收窗口现打逮到的那个漏的处置：那时七处都已经是新号，\n\
-             而这两处**不在任何判据的人群里** ⇒ 这棵树会带着「当前发布 <旧号>」把新版发出去。\n\
-             「判据在、而它的人群不含这一处」与「判据在、执行面没有」是同一族，\n\
-             两边的默认结局都是**静默的绿**。\n\n\
-             修法：把上面点名的那几处改成 {shipping}。\n\
-             ⚠ **只改紧跟锚点的那一个** —— 同一段里另外十个 `vX.Y.Z` 是**历史沿革**，\n\
-             它们本来就该停在旧号上，跟着改就是把沿革改成假的。",
-        off.join("\n")
-    );
-}
-
-/// 〔`K-R122`（09-14）`KR122D3`〕**`package-lock.json` 自称的那个版本，
-/// 必须就是这棵树此刻要发的那个版本号。**
-///
-/// # 它从哪来 —— `K-R119` 推 tag 之前现打逮到的第十、十一处旧号
-///
-/// `K-R119` 在推 `v3.8.0` 之前逐处 grep 了一遍（不是「判据绿了」，是真去看那几行），
-/// 七处版本号 ＋ `R79` 那两处 README 自称全是 `3.8.0`，而 `package-lock.json`
-/// 的**顶层两处**仍是 `3.7.0`。
-///
-/// 🔴 **成因与 `K-R120` 那两处 README 同源，不是「有人改漏了」**：
-/// 那两处**不在任何判据的人群里** —— 现打 `grep -c 'package-lock' src/frontend/shell/src/` 在本条
-/// 落地之前是 **0**。`src/doc/RELEASING.md § 1` 自己逐字记着这一条「**没有任何东西卡它**」。
-/// ⇒ 「判据在、而它的人群不含这一处」，默认结局是**静默的绿**。
-///
-/// # 🔴 射程刻意很窄：只钉**顶层那两处**，不钉几百个依赖的 `version`
-///
-/// 这份文件里 `"version": "` 这个串现打有 **790** 处 —— 其中 **788** 处是**依赖自己的
-/// 版本**，它们跟本包的版本号一点关系都没有，跟着改就是把 lockfile 改成假的。
-/// 本条只钉 npm 自己写的那两处「**这个包是谁、什么版本**」：
-///   ① 文件顶层的 `version`（紧跟顶层 `name` 那一个）；
-///   ② `packages` 里 `""` 这个键（npm 用它表示**根包自己**）底下的 `version`。
-/// ⇒ 锚点按**语义**划，不按「碰巧只有它长这样」划。
-///
-/// # 跟谁比
-///
-/// 与 [`the_changelog_top_section_is_the_version_we_ship`] 和
-/// [`the_docs_self_reported_release_is_the_version_we_ship`] 同一条路：
-/// `env!("CARGO_PKG_VERSION")`（＝ `src/frontend/shell/Cargo.toml` 的 `version`，编译期注入），
-/// **不抠第二份权威源锚点**。它与 `package.json` 那个权威源的一致由
-/// [`the_release_version_is_the_same_in_all_six_places`] 守。
-/// ⇒ **三段接起来**才等于「lockfile == `package.json`」；少任何一段都不等于。
-///
-/// # ⚠ 诚实边界（四条，别读宽）
-///
-/// 1. **不判 lockfile 的其余任何一个字节** —— 依赖树对不对、`integrity` 对不对、
-///    与 `package.json` 的依赖区间合不合，本条一个字都不问（那是 `npm ci` 的事）。
-/// 2. 人群是**两处，按锚点点名**。npm 换一种排版（缩进变了 / 键序变了）⇒ 本条**当场红在
-///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与本模块另外两条 `pick` 同一条纪律。
-/// 3. 锚点 ② 里带着包名 `cc-monitor`。改包名 ⇒ 本条红在命中 0 次上，
-///    **那正是该有人看一眼的时刻**（改包名要同拍改 `package.json`）。
-/// 4. 🔴 **它不会让构建红，这正是它当初漏掉的原因** —— `K-R119` 那趟演练里
-///    `npm ci` 与 `npm install` 两步都 success（读数同上）。lockfile 里这个号是
-///    「**这棵树自称的版本**」的一处，不是构建的输入 ⇒ 没有第二个机制会替它出声。
-#[test]
-fn the_npm_lockfile_claims_the_version_we_ship() {
-    let shipping = env!("CARGO_PKG_VERSION");
-    let lock = read_repo_file("package-lock.json");
-
-    // 人群：**两处，按锚点点名**。刻意写成函数体里的 `let`（理由同上一条：
-    // 模块级 `const …: &[…]` 要进 `scanning_guard_registry::TABLE_DECLS` 那张闭集）。
-    let places: [(&str, &str); 2] = [
-        ("package-lock.json 顶层的 version", "\n  \"version\": \""),
-        (
-            "package-lock.json 的 packages[\"\"]（npm 用它表示根包自己）",
-            "\n    \"\": {\n      \"name\": \"cc-monitor\",\n      \"version\": \"",
-        ),
-    ];
-
-    let mut off: Vec<String> = Vec::new();
-    for (who, needle) in places {
-        let hits = lock.matches(needle).count();
-        assert_eq!(
-            hits, 1,
-            "在 {who} 里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
-                 npm 换了排版、或者包名改了。**先修锚点再谈版本号对不对**，\n\
-                 否则本条会零命中地绿（这份文件里另外那几百个 `version` 字段是依赖的，\n\
-                 锚点一松就会抠到它们身上）。"
-        );
-        let at = lock.find(needle).expect("上面已断言命中一次") + needle.len();
-        let rest = &lock[at..];
-        let end = rest
-            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-            .unwrap_or(rest.len());
-        let got = &rest[..end];
-        assert!(
-            got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
-            "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
-        );
-        if got != shipping {
-            off.push(format!("  {who}：{got}"));
+    /// 一行里所有 `数字.数字.数字` 形的串。
+    fn triples(line: &str) -> Vec<String> {
+        let b = line.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            if !(b[i].is_ascii_digit() && (i == 0 || !b[i - 1].is_ascii_digit())) {
+                i += 1;
+                continue;
+            }
+            let mut end = digits_end(b, i);
+            let mut parts = 1;
+            while parts < 3 && end < b.len() && b[end] == b'.' {
+                let n = digits_end(b, end + 1);
+                if n == end + 1 {
+                    break;
+                }
+                end = n;
+                parts += 1;
+            }
+            if parts == 3 {
+                out.push(line[i..end].to_string());
+            }
+            i = end.max(i + 1);
         }
+        out
     }
 
+    // 读法自检：带 `v` 与不带的都认得，`10/11` · 两段的 `1.2` 不当版本号。
+    assert_eq!(triples("当前版本: v5.0.3（Released）"), vec!["5.0.3"]);
+    assert_eq!(triples("current release **12.0.10**"), vec!["12.0.10"]);
+    assert!(triples("Windows 10/11 · 1.2 · v3").is_empty());
+
+    let mut hits: Vec<String> = Vec::new();
+    for rel in READMES {
+        for (n, line) in read_repo_file(rel).lines().enumerate() {
+            for t in triples(line) {
+                hits.push(format!("  {rel}:{}  {t}", n + 1));
+            }
+        }
+    }
     assert!(
-        off.is_empty(),
-        "这棵树要发的是 `{shipping}`，而 `package-lock.json` **自称**的是别的号：\n{}\n\n\
-             ★ 本条是 `K-R119` 推 tag 之前现打逮到的那个漏的处置：那时七处版本号 ＋ 两处 README\n\
-             自称都已经是新号，而这两处**不在任何判据的人群里** ⇒ 这棵树会带着一个旧号的 lockfile 发版。\n\
-             ⚠ 它**不会**让 `npm ci` 红（`K-R119` 演练实测两步都 success）—— 所以没有第二个机制\n\
-             会替它出声，只有本条。\n\n\
-             修法：把 `package-lock.json` **顶层那两处**改成 {shipping}。\n\
-             ⚠ **只改那两处** —— 同一份文件里另外几百个 `version` 是**依赖自己的版本**，\n\
-             跟着改就是把 lockfile 改成假的。",
-        off.join("\n")
+        hits.is_empty(),
+        "入口 README 里写着版本号：\n{}\n\n\
+             版本号只住 `package.json` · `Cargo.toml` · `tauri.conf.json` · `Cargo.lock` 那四处，\n\
+             README 只写「见 Releases / CHANGELOG」（`src/doc/RELEASING.md` § 1）。删掉，别改成新号。",
+        hits.join("\n")
     );
 }
 

@@ -108,7 +108,7 @@ fn session_row(
         .zip(r.forked_from_message_uuid.clone());
     Some(RawRow {
         group: group_key(&agent, cwd),
-        agent,
+        agent: agent.into(),
         session_id: sid.to_string(),
         project_path: cwd.to_string(),
         project_name: last_segment(cwd).unwrap_or(project_dir).to_string(),
@@ -137,7 +137,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
     let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
     let title = label_of(None, None, &excerpt, &s.cwd, &s.sid);
     RawRow {
-        agent: kind.to_string(),
+        agent: kind.into(),
         session_id: s.sid.clone(),
         project_path: s.cwd.clone(),
         project_name: name,
@@ -840,7 +840,7 @@ fn groups_of(
             // 读不了的是记录树里的一个目录（不在任何一家合成历史的根下）⇒ 照这个目录名问是哪一家（`agents::record_kind_of`）。
             agent: crate::agents::record_kind_of(std::path::Path::new(&f.project_dir))
                 .unwrap_or_default()
-                .to_string(),
+                .into(),
             project_name: f.project_dir.clone(),
             project_path: String::new(),
             project_dir: f.project_dir.clone(),
@@ -862,7 +862,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
     let s = |v: &str| v.to_string();
     let w = |v: &str| Words(v.to_string());
     let mut rows = vec![HistoryRow {
-        agent: s("agent"),
+        agent: s("agent").into(),
         session_id: s("s"),
         project_path: s("/w"),
         project_name: s("w"),
@@ -903,7 +903,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
     }];
     let groups = vec![HistoryGroup {
         key: s("agent:/w"),
-        agent: s("agent"),
+        agent: s("agent").into(),
         project_name: s("w"),
         project_path: s("/w"),
         project_dir: s("-w"),

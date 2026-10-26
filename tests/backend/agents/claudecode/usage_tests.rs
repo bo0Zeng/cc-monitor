@@ -97,10 +97,14 @@ fn anything_off_shape_is_unreadable_not_guessed() {
 /// 起法照这一家：`claude -p /usage` · 配置目录交 `CLAUDE_CONFIG_DIR` · `TZ=UTC` · 摘掉会盖掉那个号登录的那几格；登记在注册表上。
 #[test]
 fn the_face_is_registered_for_the_claude_route() {
-    let f = crate::agents::usage_of("claude-code").expect("登记了");
+    let f = crate::agents::route_named("claude-code")
+        .and_then(crate::agents::usage_of)
+        .expect("登记了");
     assert_eq!((f.program, f.args), ("claude", &["-p", "/usage"][..]));
     assert_eq!(f.dir_env, "CLAUDE_CONFIG_DIR");
     assert!(f.env_set.contains(&("TZ", "UTC")));
     assert!(f.env_remove.contains(&"ANTHROPIC_API_KEY"));
-    assert!(crate::agents::usage_of("codex").is_none());
+    assert!(crate::agents::route_named("codex")
+        .and_then(crate::agents::usage_of)
+        .is_none());
 }

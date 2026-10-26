@@ -37,10 +37,10 @@ pub(crate) struct KillReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
-    /// 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（1–128 个 `[A-Za-z0-9_-]`）。
+    /// 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（会话 id 的形状由 `Sid` 解码就判）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) sid: Option<String>,
+    pub(crate) sid: Option<cmd_wire::Sid>,
 }
 
 /// `kill` 的回包：线上形住 `cmd-wire::session`。
@@ -224,13 +224,12 @@ pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
         .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
-/// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名 · sid 形状 ⇒ 过门 ⇒ 杀 ⇒ 成品。
+/// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名（sid 的形状解入参时已判）⇒ 过门 ⇒ 杀 ⇒ 成品。
 pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {
     admit_existing_name(&req.name)?;
     let client = super::gate::requester(req.client.as_deref())?;
     // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
-    let sid = super::gate::sid_shape(req.sid.as_deref())?;
-    run_expecting(&req.name, sid.as_deref(), client.as_deref())?;
+    run_expecting(&req.name, req.sid.as_deref(), client.as_deref())?;
     Ok(reply(&req.name))
 }
 

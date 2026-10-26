@@ -18,7 +18,7 @@ const REDRAWS_PER_PRESS: usize = 4;
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionPermissionReq {
     /// 会话 id。
-    pub(crate) sid: String,
+    pub(crate) sid: cmd_wire::Sid,
     /// 要切到的档（原值；必须是 `session-open-facts` 那一家 `permissionModes` 里的一个）。
     pub(crate) mode: String,
     /// 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
@@ -268,12 +268,6 @@ pub(crate) fn offered(perm: &crate::agents::PermissionFace, mode: &str) -> Resul
 }
 
 fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<ModeSwitched, CmdErr> {
-    if !shell_quote_core::session_id_ok(&req.sid) {
-        return Err(CmdErr::new(
-            "bad_args",
-            malformed("`sid` must be a session id"),
-        ));
-    }
     let home = crate::history::listing::agent_home();
     let record = crate::observe::query::locate::session_record(&home, &req.sid).ok();
     let kind = record.as_deref().and_then(crate::agents::record_kind_of);

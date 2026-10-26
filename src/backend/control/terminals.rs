@@ -337,7 +337,7 @@ pub(crate) fn terminal_json(
         cwd: row.cwd.clone(),
         session: nonempty(&row.sid).map(|sid| TermSession {
             sid,
-            agent: nonempty(&row.agent),
+            agent: nonempty(&row.agent).map(Into::into),
         }),
         started_by: StartedBy {
             client: nonempty(&row.client),
