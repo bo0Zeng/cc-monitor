@@ -37,7 +37,7 @@ where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    // 这扇窗在「会打断什么」那张表上的编号：它说的记在这一格，管子断了这一格删掉（`filewin/busy.rs`）。
+    // 这扇窗在「会打断什么」那张表上的编号：它说的记在这一格，管子断了这一格删掉（[`busy`]）。
     let book = busy::book();
     let id = book.enrol();
     serve_then(rd, wr, Arc::new(WindowBackends { id }), move || {
