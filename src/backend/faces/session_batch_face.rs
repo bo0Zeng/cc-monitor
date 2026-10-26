@@ -59,7 +59,9 @@ pub(crate) fn with_deps_as<T>(
             crate::common::session_snapshot::global(),
         )
     };
-    let writers = |sid: &str| crate::history::live_table::now(&crate::history::listing::agent_home()).writers(sid);
+    let writers = |sid: &str| {
+        crate::history::live_table::now(&crate::history::listing::agent_home()).writers(sid)
+    };
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
     let open_shell =
         |name: &str, cwd: Option<&str>| crate::control::launch::open_shell(name, cwd, client);

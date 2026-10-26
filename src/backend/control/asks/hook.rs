@@ -18,8 +18,12 @@ const STDIN_CAP: u64 = 1_048_576;
 /// 这一问的请求 id（一条连接只问这一次）。
 const REQ_ID: &str = "answer-hook";
 
+/// 这条会话各个活进程此刻的（那一态, 这一态从何时起）：读那一家的 pidfile 目录（`main` 交进来：活会话表那一处，`history::live_table::states_in`）。
+pub type StatesOf = fn(&std::path::Path, &str) -> Vec<(Option<SessionActivity>, Option<u64>)>;
+
 /// 入口（`args[0]` ＝ 子命令本身，`args[1]` ＝ 那一家的 kind）。恒退 0：hook 的退出码那一家不当决定看，空手退就是「不答」。
-pub async fn run(args: &[String]) -> i32 {
+/// `states` 判「终端那边答了」用（[`StatesOf`]）。
+pub async fn run(args: &[String], states: StatesOf) -> i32 {
     let Some(agent) = args.get(1) else { return 0 };
     let Some(face) = crate::agents::ask_face(agent) else {
         return 0;
@@ -58,7 +62,7 @@ pub async fn run(args: &[String]) -> i32 {
         }
     }
     let closed = (!asked.blocks_terminal)
-        .then(|| watch_terminal(agent, &asked.sid))
+        .then(|| watch_terminal(agent, &asked.sid, states))
         .flatten();
     if let Some(out) = ask_resident(agent, &hook, closed).await {
         let mut stdout = tokio::io::stdout();
@@ -110,6 +114,7 @@ async fn ask_resident(
 fn watch_terminal(
     agent: &str,
     sid: &str,
+    states: StatesOf,
 ) -> Option<(
     crate::platform::watch_file::Watching,
     tokio::sync::oneshot::Receiver<()>,
@@ -130,8 +135,8 @@ fn watch_terminal(
             if tx.is_none() {
                 return;
             }
-            let states = crate::history::live_table::LiveTable::scan_dir(&read_dir).states(&sid);
-            if closed_now(&states, started, &mut seen_waiting) {
+            let now = states(&read_dir, &sid);
+            if closed_now(&now, started, &mut seen_waiting) {
                 if let Some(tx) = tx.take() {
                     let _ = tx.send(());
                 }

@@ -113,7 +113,7 @@ use walkdir::WalkDir;
 enum WatchEvent {
     /// 这台问过一条会话的记录在不在（[`record_seen`]）。
     RecordSeen { sid: String, present: bool },
-    /// 活会话表换上了此刻挂着待答请求的那几条（[`asked_moved`]）。
+    /// 此刻挂着待答请求的那几条（[`hear_asks`]）。
     Asked(std::collections::BTreeSet<String>),
     /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
     Notify(DebounceEventResult),
@@ -234,6 +234,8 @@ pub struct Reactions {
     pub tmux_server_up: fn(),
     /// pidfile 出现 / 改写：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt_seen`；写句柄是起 watcher 时交进来的那一份）。
     pub session_seen: fn(&crate::platform::fs::Own, u32, &str),
+    /// 订「挂着的待答请求变了」那一声（`control::asks::moved_rx`）：每响一声，照活会话表此刻挂着请求的那几条改会话的点。
+    pub asks_moved: fn() -> tokio::sync::broadcast::Receiver<String>,
 }
 
 /// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
@@ -994,7 +996,6 @@ pub fn spawn(
     reactions: Reactions,
 ) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
     crate::observe::record_hook::install(record_seen);
-    crate::history::live_table::on_asked(asked_moved);
     let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
@@ -1003,6 +1004,7 @@ pub fn spawn(
     let poke = WatcherPoke(events_tx.clone());
     // 登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
     let me = live_enter(events_tx.clone());
+    hear_asks(reactions.asks_moved, events_tx.clone());
     let b = book.clone();
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
@@ -3481,10 +3483,7 @@ fn asked_now(
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) {
-    let moved: Vec<String> = now
-        .symmetric_difference(&state.asked)
-        .cloned()
-        .collect();
+    let moved: Vec<String> = now.symmetric_difference(&state.asked).cloned().collect();
     state.asked = now;
     for sid in &moved {
         send_heard(state, sink, sid);
@@ -3507,10 +3506,29 @@ fn publish_table(agent_home: &Path, state: &mut ReaderState) {
     crate::history::live_table::publish(table);
 }
 
-/// 活会话表换上了新的一份挂着请求的会话（`live_table::on_asked` 装的那一个）：交每一份在跑的 watcher。
-fn asked_moved(now: &std::collections::BTreeSet<String>) {
-    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
-        let _ = w.send(WatchEvent::Asked(now.clone()));
+/// 挂着的待答请求每变一次（`asks_moved` 那一声；漏听了几声也照样）⇒ 把此刻挂着请求的那几条交给 watcher（[`WatchEvent::Asked`]）。
+/// 那一声的发端没了 · watcher 已退 ⇒ 这条线程跟着收。
+fn hear_asks(
+    asks_moved: fn() -> tokio::sync::broadcast::Receiver<String>,
+    tx: std::sync::mpsc::Sender<WatchEvent>,
+) {
+    let mut rx = asks_moved();
+    let spawned = std::thread::Builder::new()
+        .name("asks-moved".into())
+        .spawn(move || loop {
+            use tokio::sync::broadcast::error::RecvError;
+            if matches!(rx.blocking_recv(), Err(RecvError::Closed)) {
+                break;
+            }
+            if tx
+                .send(WatchEvent::Asked(crate::history::live_table::asked_sids()))
+                .is_err()
+            {
+                break;
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("起不了听待答请求的线程（挂着请求的会话不改点）：{e}");
     }
 }
 

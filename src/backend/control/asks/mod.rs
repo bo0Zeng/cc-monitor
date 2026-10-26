@@ -121,11 +121,15 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
 }
 
-/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 活会话表换上此刻挂着请求的那几条，
-/// 再推 `changed {needs, key: sid}`（watcher 也订它，改那条会话的点）。调用时不许拿着登记表的锁。
+/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 推 `changed {needs, key: sid}`
+/// （流的 tap 订它；`main` 也订它，把此刻挂着请求的那几条交给 watcher 改那几条会话的点）。
 pub(crate) fn moved(sid: &str) {
-    crate::history::live_table::set_asked(sids().into_iter().collect());
     let _ = changes().send(sid.to_string());
+}
+
+/// 订「挂着的请求变了」那一声（`main` 交给 watcher：它照此刻挂着请求的那几条改会话的点）。
+pub fn moved_rx() -> tokio::sync::broadcast::Receiver<String> {
+    changes().subscribe()
 }
 
 fn now_ms() -> u64 {

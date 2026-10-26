@@ -422,8 +422,11 @@ fn session_accounts_rejects_pid_reuse() {
 fn sid_map(rows: &[SessionAccount]) -> std::collections::HashMap<String, serde_json::Value> {
     let mut m = std::collections::HashMap::new();
     for r in rows {
-        let v = serde_json::to_value(r).unwrap();
-        m.insert(v["sessionId"].as_str().unwrap().to_string(), v);
+        let v = serde_json::json!({
+            "pid": r.pid, "sessionId": r.sid, "cwd": r.cwd, "configDir": r.config_dir,
+            "account": r.account, "alive": r.alive, "bare": r.bare, "viaRelay": r.via_relay,
+        });
+        m.insert(r.sid.clone().unwrap(), v);
     }
     m
 }
@@ -1807,7 +1810,7 @@ fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_lea
         assert_eq!(by[*sid]["viaRelay"], *want, "{sid}：{:?}", by[*sid]);
     }
     assert_eq!(by["sid-dead"]["viaRelay"], serde_json::Value::Null);
-    let all = serde_json::to_string(&lines).unwrap();
+    let all = format!("{lines:?}");
     assert!(
         !all.contains(&key) && !all.contains("api.example.invalid"),
         "上游地址（带钥匙）进了出参：{all}"

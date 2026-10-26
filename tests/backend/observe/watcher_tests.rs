@@ -1087,12 +1087,7 @@ fn imposter_by_bg_spare_before_exact_identity() {
         "bg-spare 必须在 exact-identity Alive 之前拦下"
     );
     assert_eq!(
-        add_time_verdict(
-            false,
-            None,
-            None,
-            Some("/usr/bin/claude bg-spare --foo")
-        ),
+        add_time_verdict(false, None, None, Some("/usr/bin/claude bg-spare --foo")),
         AddTimeVerdict::Imposter("bg-spare")
     );
     // 普通 claude 会话不受影响（procStart 自洽仍 Alive）。
@@ -2088,12 +2083,7 @@ fn procstart_identity_match_short_circuits_all_heuristics() {
     // heuristics would individually scream imposter (stale mtime, bad
     // cmdline): identity evidence is strictly stronger.
     assert_eq!(
-        add_time_verdict(
-            true,
-            Some(9_999_999),
-            Some(1000),
-            Some("tmux")
-        ),
+        add_time_verdict(true, Some(9_999_999), Some(1000), Some("tmux")),
         AddTimeVerdict::Alive
     );
 }
@@ -2109,12 +2099,7 @@ fn procstart_mismatch_falls_through_to_heuristics() {
     // (defends against CC changing the procStart format: a hard reject
     // would black out every real session).
     assert_eq!(
-        add_time_verdict(
-            false,
-            Some(990),
-            Some(1000),
-            Some("claude")
-        ),
+        add_time_verdict(false, Some(990), Some(1000), Some("claude")),
         AddTimeVerdict::Alive
     );
 }
@@ -5002,11 +4987,27 @@ fn an_ask_coming_and_going_flips_the_announced_dot() {
             .filter_map(|f| face_of(&f).map(|f| f.dot))
             .last()
     };
-    asked_now(["hb-flip".to_string()].into_iter().collect(), &mut state, &mut sink);
-    assert_eq!(dot(&mut rx), Some(crate::wire::SessionDot::NeedsYou), "挂上 ⇒ 需手动");
-    asked_now(["hb-flip".to_string()].into_iter().collect(), &mut state, &mut sink);
+    asked_now(
+        ["hb-flip".to_string()].into_iter().collect(),
+        &mut state,
+        &mut sink,
+    );
+    assert_eq!(
+        dot(&mut rx),
+        Some(crate::wire::SessionDot::NeedsYou),
+        "挂上 ⇒ 需手动"
+    );
+    asked_now(
+        ["hb-flip".to_string()].into_iter().collect(),
+        &mut state,
+        &mut sink,
+    );
     assert_eq!(dot(&mut rx), None, "没变 ⇒ 不发");
     asked_now(Default::default(), &mut state, &mut sink);
-    assert_eq!(dot(&mut rx), Some(crate::wire::SessionDot::Running), "撤掉 ⇒ 回到在跑");
+    assert_eq!(
+        dot(&mut rx),
+        Some(crate::wire::SessionDot::Running),
+        "撤掉 ⇒ 回到在跑"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }

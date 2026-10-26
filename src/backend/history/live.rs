@@ -21,8 +21,6 @@ pub(crate) fn life_of(
     }
 }
 
-/// 会话账本交来的那一份（[`super::live_table::set_reconnectable`]）。
+/// 会话账本交来的那一份（`history_list` 的判据还问这个名字）。
 #[cfg(test)]
-pub(crate) fn set_reconnectable(now: &std::collections::BTreeSet<String>) {
-    super::live_table::set_reconnectable(now);
-}
+pub(crate) use super::live_table::set_reconnectable;

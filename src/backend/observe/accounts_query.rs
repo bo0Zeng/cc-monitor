@@ -136,11 +136,9 @@ fn manifest_or_why(accts_dir: &Path) -> Result<Manifest, String> {
 use crate::platform::proc::{proc_env_var, EnvRead};
 
 /// 一条会话进程跑在哪个号下（[`session_accounts`] 一个进程一行）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionAccount {
     pub(crate) pid: u32,
-    #[serde(rename = "sessionId")]
     pub(crate) sid: Option<String>,
     pub(crate) cwd: Option<String>,
     /// 进程环境里的配置目录（规范过的写法）；没设 · 不知道 ⇒ `None`。
@@ -629,9 +627,9 @@ pub(crate) fn session_holders_by(
 ) -> Option<Vec<u32>> {
     use crate::agents::LiveBy;
     match live {
-        LiveBy::Pidfiles => Some(
-            crate::history::live_table::now(agent_home).writers(record.file_stem()?.to_str()?),
-        ),
+        LiveBy::Pidfiles => {
+            Some(crate::history::live_table::now(agent_home).writers(record.file_stem()?.to_str()?))
+        }
         LiveBy::HeldOpen => {
             let want = crate::platform::writers::absolute(record);
             let found = crate::platform::writers::writers_of(&|p| p == want)?;
@@ -718,8 +716,9 @@ pub(crate) fn live_needs(
                 // 那台说在等 ⇒ 配上它在等什么；只挂着请求（挡着终端的那种 pidfile 不说在等）⇒ 交 `dress` 配请求。
                 needs: dress(
                     table
-                        .wait_of(&sid)
-                        .and_then(|_| waiting_needs(agent_home, &table, &sid)),
+                        .says_waiting(&sid)
+                        .then(|| waiting_needs(agent_home, &table, &sid))
+                        .flatten(),
                     &sid,
                 )?,
                 hidden: hidden(&sid, bg.contains(&sid)),
@@ -792,7 +791,6 @@ pub(crate) fn session_home(table: &LiveTable, sid: &str) -> Option<PathBuf> {
         false,
     ))
 }
-
 
 /// 家目录 `home` 下的 `<rel>` 跟这台账号库里别的号共用同一份（[`shared_with_other_accounts_in`]）。
 pub(crate) fn shared_with_other_accounts(home: &Path, rel: &str) -> bool {
@@ -973,7 +971,11 @@ pub(crate) struct Interrupts {
 
 /// 「现在重启 cc-monitor」之前那一问（`machine-interrupts` 带 `appExit`）：这台后端随 cc-monitor 退出一起停（`kill` ＝ 它自己那份退出行为）
 /// ⇒ 这台的活会话照 [`machine_product`] 数、账上全部转发（`all_forwards`）都断；留着 ⇒ 什么都不断。**纯函数**。
-pub(crate) fn app_exit_product(kill: bool, rows: &[SessionAccount], all_forwards: u32) -> Interrupts {
+pub(crate) fn app_exit_product(
+    kill: bool,
+    rows: &[SessionAccount],
+    all_forwards: u32,
+) -> Interrupts {
     if kill {
         machine_product(rows, all_forwards)
     } else {
