@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionPermission
 import com.ccmonitor.mobile.core.claude.link.blocked
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -147,14 +148,22 @@ internal class ChatChips(
         }
     }
 
-    /** chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）与模型抽屉勾哪一项（`modelPick`）：还没换过才用它；问不到就算了，chip 写这颗是什么。 */
+    /** 按记录路径问一次会话事实、落进 chip（[take]）；问不到就算了，chip 写这颗是什么。 */
     suspend fun readFacts(p: String) {
-        val f = (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) } ?: return
+        (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) }?.let(::take)
+    }
+
+    /**
+     * 会话事实落进屏上：chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）与模型抽屉勾哪一项（`modelPick`）还没换过才用它；
+     * 目录还不知道 ⇒ 取那台读记录开头给的项目目录。
+     */
+    fun take(f: FactsReply) {
         val now = state.value
         state.value =
             now.copy(
                 model = now.model.copy(text = now.model.text ?: f.modelText, value = now.model.value ?: f.modelPick),
                 permission = if (now.permission.text == null) now.permission.copy(text = f.permissionModeText) else now.permission,
+                cwd = now.cwd ?: f.projectDir,
             )
     }
 

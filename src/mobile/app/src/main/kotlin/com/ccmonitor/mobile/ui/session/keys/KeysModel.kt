@@ -191,7 +191,7 @@ fun secondLine(
     listOfNotNull(
         k.doubleTap?.let { copyText("mobKeys.trigger.double") + " " + bindingName(it, groupName) },
         k.longPress?.let { copyText("mobKeys.trigger.long") + " " + bindingName(it, groupName) },
-    ).joinToString(" · ").ifEmpty { null }
+    ).joinToString(copyText("kit.text.sep")).ifEmpty { null }
 
 /** 这颗绑着「切到某一组」、而那组已经不在了的触发。 */
 fun goneTargets(
@@ -257,12 +257,13 @@ data class ResetLines(
 )
 
 fun resetLines(p: ResetPreview): ResetLines {
-    val changed = p.changedDefaultGroups.takeIf { it.isNotEmpty() }?.let { copyText("mobKeys.reset.back", "names" to it.joinToString(" · ")) }
+    val sep = copyText("kit.text.sep")
+    val changed = p.changedDefaultGroups.takeIf { it.isNotEmpty() }?.let { copyText("mobKeys.reset.back", "names" to it.joinToString(sep)) }
     val deleted =
         listOfNotNull(
-            p.deletedGroups.takeIf { it.isNotEmpty() }?.let { gs -> copyText("mobKeys.reset.groups", "names" to gs.joinToString(" · ") { "「${it.name}」" }) },
+            p.deletedGroups.takeIf { it.isNotEmpty() }?.let { gs -> copyText("mobKeys.reset.groups", "names" to gs.joinToString(sep) { "「${it.name}」" }) },
             p.changedKeys.takeIf { it > 0 }?.let { copyText("mobKeys.reset.keys", "n" to it) },
-        ).joinToString(" · ").ifEmpty { null }
+        ).joinToString(sep).ifEmpty { null }
     return ResetLines(changed, deleted)
 }
 
@@ -281,5 +282,5 @@ fun durationLine(
             single -> copyText("mobKeys.dur.followAll")
             else -> copyText("mobKeys.dur.followSys")
         }
-    return "$effective ms · $how"
+    return "$effective ms" + copyText("kit.text.sep") + how
 }

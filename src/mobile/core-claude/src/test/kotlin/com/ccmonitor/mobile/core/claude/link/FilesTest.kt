@@ -23,12 +23,15 @@ class FilesTest {
     }
 
     @Test
-    fun `files-ls：先后 · 末段名 · 上一级 · 面包屑都照那台交来的；目录链接算目录；按大小排交 sort`() {
+    fun `files-ls：先后 · 末段名 · 上一级 · 面包屑都照那台交来的；点不点得进去只照那台的 class；按大小排交 sort`() {
         val reply =
             lsWhole(
                 listOf(
                     mapOf("path" to "/w/src", "name" to "src", "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
-                    mapOf("path" to "/w/ln", "name" to "ln", "kind" to "symlink", "class" to "link", "type_text" to "链接", "link_dir" to true, "link_to" to "dir"),
+                    // 指向目录的链接：那台画成文件夹（`class_of_entry`）。
+                    mapOf("path" to "/w/ln", "name" to "ln", "kind" to "symlink", "class" to "folder", "type_text" to "链接", "link_dir" to true, "link_to" to "dir"),
+                    // kind · link_dir 说是目录、class 说不是 ⇒ 照 class（手机不按 kind 自己判）。
+                    mapOf("path" to "/w/odd", "name" to "odd", "kind" to "symlink", "class" to "text", "type_text" to "链接", "link_dir" to true, "link_to" to "dir"),
                     mapOf("path" to "/w/a.txt", "name" to "a.txt", "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 12.0, "mtime_text" to "10-14 09:00"),
                     mapOf("path" to mapOf("b16" to "2f772fff"), "name" to mapOf("b16" to "ff"), "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 1.0),
                 ),
@@ -36,16 +39,16 @@ class FilesTest {
                     "up" to "/",
                     "crumbs" to listOf(mapOf("name" to "/", "path" to "/"), mapOf("name" to "w", "path" to "/w")),
                     "truncated" to false,
-                    "total" to 4.0,
+                    "total" to 5.0,
                     "unreadable" to 0.0,
                 ),
             )
         val got = FilesLs.of(reply)!!
-        assertEquals("照交来的先后，不另排", listOf("src", "ln", "a.txt", "�"), got.entries.map { it.name })
-        assertEquals(listOf(true, true, false, false), got.entries.map { it.isDir })
-        assertEquals("名字里那一段字节原样留着", mapOf("b16" to "ff"), got.entries[3].rel.wire)
-        assertEquals(12L, got.entries[2].size)
-        assertEquals("10-14 09:00", got.entries[2].mtime)
+        assertEquals("照交来的先后，不另排", listOf("src", "ln", "odd", "a.txt", "�"), got.entries.map { it.name })
+        assertEquals(listOf(true, true, false, false, false), got.entries.map { it.isDir })
+        assertEquals("名字里那一段字节原样留着", mapOf("b16" to "ff"), got.entries[4].rel.wire)
+        assertEquals(12L, got.entries[3].size)
+        assertEquals("10-14 09:00", got.entries[3].mtime)
         assertEquals("/", got.up?.shown)
         assertEquals(listOf("/" to "/", "w" to "/w"), got.crumbs.map { (l, p) -> l to p.shown })
         assertEquals(mapOf("path" to "/w", "limit" to FilesLs.LIMIT), FilesLs.args(RemotePath.of("/w")))

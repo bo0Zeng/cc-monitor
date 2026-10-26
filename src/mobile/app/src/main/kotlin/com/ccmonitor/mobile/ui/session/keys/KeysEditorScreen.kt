@@ -401,7 +401,7 @@ private fun GroupHeader(
     val tokens = LocalAppTokens.current
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(start = tokens.spacing.lg), verticalAlignment = Alignment.CenterVertically) {
-        HintLine(group.name + " · " + copyText("mobKeys.group.count", "n" to count), Modifier.weight(1f))
+        HintLine(group.name + copyText("kit.text.sep") + copyText("mobKeys.group.count", "n" to count), Modifier.weight(1f))
         Box {
             PhIconButton(Ph.DotsThree, copyText("mobKeys.tool.more"), onClick = { open = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = tokens.card) {
