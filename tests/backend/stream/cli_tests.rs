@@ -369,10 +369,9 @@ fn the_probe_reports_exactly_what_it_can_dispatch() {
 fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 不收入方向载荷的命令。**加一条就来这里写一行**。
     ///
-    /// `bus-state` 是第三条：它与 `bus-list` 同族 —— **无输入、有输出字段**，
-    /// 正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
+    /// `bus-list` 那一形：**无输入、有输出字段**，正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
     ///
-    /// `files-index-status` 是第四条，**同一形**：
+    /// `files-index-status` **同一形**：
     /// 它一个入参都没有（`cmd_wire::files::IndexStatusReq` 一个字段都没有），
     /// 出方向却有十个字段。声明成收输入 ⇒ `--files-index-status` 会挂在那儿等 EOF，
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
@@ -394,7 +393,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 这台上需手动的整份：问的就是「这台」此刻在等人的会话 · 计划格 · 会话外的，不收参数（手机一次问一台）。
         "sessions-needs",
         "bus-list",
-        "bus-state",
         // `files-home`：问这台机器的 home，无入参、有输出字段 `path`。
         "files-home",
         // `bookmarks-read`：这台的书签，无入参、有输出字段 `dirs`（同族 `bookmarks-edit` 要输入，不在表里）。

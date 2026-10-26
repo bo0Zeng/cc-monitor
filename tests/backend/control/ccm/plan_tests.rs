@@ -235,10 +235,10 @@ fn the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name() {
     }
 }
 
-/// 〔搬自 `ccm-cli` / `cc-spawn-uplift` 的取名那一族〕**三条取名路的退让态度不一样。**
+/// 〔搬自 `ccm-cli` 与当年那份派生 e2e 的取名那一族〕**三条取名路的退让态度不一样。**
 ///
 /// 🔴 这一条是**自查逮到的**（铁律 15 那次）：头一版原生实现**整个没有退让**，
-/// 于是 `--tmux-base=<基名>`（`C15` 给 cc-spawn 的那条路，它的全部意义就是「撞了就退让」）
+/// 于是 `--tmux-base=<基名>`（`C15` 那条路，它的全部意义就是「撞了就退让」）
 /// **静默退化成了 `--tmux=<名>`** —— 写了个修饰、看起来生效了、实际被吃掉。
 #[test]
 fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
@@ -254,7 +254,7 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
     };
     // 显式名：**不退让** —— 调用方说的就是要这个名，撞了走 C14 响亮失败
     assert_eq!(path(&["--ccm-tmux=n1", "--cwd", "/p"]), "n1");
-    // 基名：退让（cc-spawn 随后要读回真名字）
+    // 基名：退让（调用方随后要读回真名字）
     assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), "n1-2");
     // 不给名、从 cwd 派生：退让
     assert_eq!(path(&["--ccm-tmux", "--cwd", "/x/proj"]), "proj-cc-2");
@@ -2701,7 +2701,7 @@ fn sideload_blind(f: &crate::agents::PluginFace) -> Sideload {
 
 const OUR_PLUGIN: &str = "/home/pi/.cc-monitor/answer-plugin";
 
-/// 换了启动器（`--launcher`，cc-spawn 的 `CCSPAWN_LAUNCH`、别名配置里那一格）⇒ 后面的词一个不垫（它们由那个启动器自己原样转交，
+/// 换了启动器（`--launcher`，别名配置里那一格）⇒ 后面的词一个不垫（它们由那个启动器自己原样转交，
 /// `env VAR=x <agent>` 那一形里头几个词是 env 的）；答题 hook 改经环境交下去：`CLAUDE_CODE_PLUGIN_DIRS` 指到我们那个小插件，
 /// 不标挂不上。启动器写的就是这一家的默认那一个（`claude`）⇒ 照垫 `--settings`、不设那个变量。
 #[test]
@@ -2709,7 +2709,7 @@ fn a_changed_launcher_gets_the_answer_plugin_through_the_environment() {
     let mut e = env();
     e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
     e.sideload = Some(sideload_ok);
-    // `env WRAPVAR=x <agent>` 那一形：首词给 `--launcher`，其余的词在透传最前面（cc-spawn 的 `CCSPAWN_LAUNCH` 就这么拆）。
+    // `env WRAPVAR=x <agent>` 那一形：首词给 `--launcher`，其余的词在透传最前面。
     for (launcher, lead) in [
         ("/opt/bin/fake-agent", &[][..]),
         ("env", &["WRAPVAR=x", "claude"][..]),
