@@ -415,7 +415,7 @@ pub(crate) async fn hand_over(
     table: &Table,
     remote: &dyn Remote,
 ) -> HandedOver {
-    use machine_prefs::{PrefsRead, PrefsSetCmd, PrefsState};
+    use machine_prefs::{FileState, PrefsRead, PrefsSetCmd};
     let origin = machine.as_wire_str();
     let mut pending = read_pending(own);
     let Some(share) = pending.get(origin).cloned() else {
@@ -424,14 +424,14 @@ pub(crate) async fn hand_over(
     let read = ask_json::<PrefsRead>(origin, &Default::default(), tz, table, remote).await;
     let got = match read.map(|r| r.state) {
         Err(e) => return HandedOver::Kept(e.message),
-        Ok(PrefsState::Absent) => {
+        Ok(FileState::Absent) => {
             let set = machine_prefs::PrefsSet::from(&share);
             match ask_json::<PrefsSetCmd>(origin, &set, tz, table, remote).await {
                 Ok(_) => HandedOver::Given,
                 Err(e) => return HandedOver::Kept(e.message),
             }
         }
-        Ok(PrefsState::Ok | PrefsState::Unreadable) => HandedOver::AlreadyThere,
+        Ok(FileState::Ok | FileState::Unreadable) => HandedOver::AlreadyThere,
     };
     pending.remove(origin);
     if let Err(why) = write_pending(own, pending) {

@@ -60,11 +60,11 @@ impl Loaded {
             Loaded::Absent | Loaded::Unreadable(_) => Vec::new(),
         }
     }
-    fn state(&self) -> &'static str {
+    fn state(&self) -> cmd_wire::FileState {
         match self {
-            Loaded::Absent => "absent",
-            Loaded::Present(_) => "ok",
-            Loaded::Unreadable(_) => "unreadable",
+            Loaded::Absent => cmd_wire::FileState::Absent,
+            Loaded::Present(_) => cmd_wire::FileState::Ok,
+            Loaded::Unreadable(_) => cmd_wire::FileState::Unreadable,
         }
     }
 }
@@ -418,9 +418,8 @@ fn ring() {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MachinesReply {
-    /// `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
-    #[cfg_attr(test, ts(type = "\"absent\" | \"ok\" | \"unreadable\""))]
-    pub(crate) state: &'static str,
+    /// 没有这份 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
+    pub(crate) state: cmd_wire::FileState,
     /// `unreadable` 时的原因（那一句不带原话）。
     pub(crate) reason: Option<String>,
     /// `unreadable` 时的复制详情。

@@ -61,6 +61,20 @@ pub use machine::{Machine, Route, LOCAL};
 /// 两端形状指纹对不上的那条 op 当「这台做不到」时用的码（客户端事前就拒、一个字节不发；给人看的那一句 `peerVersion.said.differs`）。
 pub const SHAPE_DIFFERS: &str = "backend_differs";
 
+/// 后端自己那一份设置文件此刻什么样（偏好 · 机器表同这一形）：没设过 · 读得懂 · 读不懂（读不懂也照答缺省那一份，不是失败）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "lowercase")]
+pub enum FileState {
+    Absent,
+    Ok,
+    Unreadable,
+}
+
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
 #[cfg(test)]
 #[used]

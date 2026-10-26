@@ -305,6 +305,20 @@ class Gen {
     return this.wordSets.get(alts.map((a) => a.v).sort().join("\u0000")) ?? null;
   }
 
+  /** 收窄过的那几个词（Rust 那一格是有名的枚举、TS 照 `ts(type)` 只写了它的一部分）⇒ 含这几个词、词最少的那个有名枚举；没有 ⇒ `null`。 */
+  namedSuperset(alts) {
+    if (!alts.every((a) => a.k === "lit")) return null;
+    const want = alts.map((a) => a.v);
+    let best = null;
+    for (const d of this.decls.values()) {
+      const as = d.ty.k === "union" ? d.ty.alts : [d.ty];
+      if (d.params.length || !as.every((a) => a.k === "lit")) continue;
+      const words = new Set(as.map((a) => a.v));
+      if (want.every((w) => words.has(w)) && (!best || words.size < best.size)) best = { name: d.name, size: words.size };
+    }
+    return best?.name ?? null;
+  }
+
   /** 每一组内联的字面量（不是自己导出的那一种）在全部声明里出现几回。 */
   inlineCounts() {
     if (this.counts) return this.counts;
@@ -330,10 +344,15 @@ class Gen {
   anon(t, ctx) {
     const named = t.k === "union" ? this.namedWords(t.alts) : null;
     if (named) return this.ty({ k: "ref", name: named, args: [] }, ctx);
-    // 内联的同一组词出现在不止一格 ⇒ 只出一个枚举，名字就是那几个词（照字序，与哪一格先出无关）。
+    // 内联的同一组词出现在不止一格：Rust 那头是有名的枚举（收窄过）⇒ 用那个名；没有名字 ⇒ 生成不了，去 `cmd-wire` 给这个概念起一个名（不拼词当名）。
     const sorted = t.k === "union" && t.alts.every((a) => a.k === "lit") ? t.alts.map((a) => a.v).sort() : null;
     const shared = sorted && sorted.length > 1 && this.inlineCounts().get(sorted.join("\u0000")) > 1;
-    const name = shared ? sorted.map((w) => pascal(w) || "Empty").join("Or") : ctx.owner + pascal(ctx.field ?? "Item");
+    if (shared) {
+      const sup = this.namedSuperset(t.alts);
+      if (sup) return this.ty({ k: "ref", name: sup, args: [] }, ctx);
+      throw new Error(`${ctx.owner}.${ctx.field}：几格共用的一组词 ${sorted.join(" | ")} 没有名字 —— 在 cmd-wire 里给它起一个`);
+    }
+    const name = ctx.owner + pascal(ctx.field ?? "Item");
     this.emitDecl(name, [], t, { ...ctx, owner: name });
     if (this.rawNames.has(name)) return { kt: "Raw", ad: "RawJson" };
     return { kt: name, ad: `${name}.ADAPTER` };

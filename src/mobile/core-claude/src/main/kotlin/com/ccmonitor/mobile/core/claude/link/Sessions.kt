@@ -14,7 +14,6 @@ import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
 import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.Opened
-import com.ccmonitor.mobile.core.wire.gen.ReadRow
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.SessionFacts
@@ -322,15 +321,21 @@ object HistoryRead {
     /** 回包里的 `rows[]` 原样（缓存存的就是它）；不是那一形 ⇒ `null`。 */
     fun rawRows(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("rows") as? List<*>)?.toList()
 
-    /** 缓存里那几格（`rows[]` 原样）⇒ 记录，与 [of] 同一个解码器；有一格解不出 ⇒ `null`（整页不认）。 */
+    /**
+     * 缓存里那几格 ⇒ 记录（每格只取 `record`，与 [of] 同一个解码器；不带记录的那一格不进界面）；有一格解不出 ⇒ `null`（整页不认）。
+     * 缓存的格有两种来处：`rows[]` 原样（带摘要）· 流上的行（[row]，不带摘要）—— 手机只读记录那一格。
+     */
     fun decodeRows(rows: List<Any?>): List<LineRecord>? =
-        rows.map { Wire.bind<ReadRow>(it) ?: return null }.mapNotNull { it.record }
+        rows.mapNotNull { r ->
+            val m = r as? Map<*, *> ?: return null
+            m["record"]?.let { Wire.bind<LineRecord>(it) ?: return null }
+        }
 
-    /** 一行记录（流上的 `line` · `history-lines` 的一格）照 `rows[]` 那一格的形装起来：`{end, hash, record}`，[record] 原样；流上的行不带摘要，记 0（摘要只有后端比，手机不读它）。 */
+    /** 一行记录（流上的 `line` · `history-lines` 的一格）进缓存的那一格：`{end, record}`，[record] 原样（流上的行不带摘要，就不写这一格）。 */
     fun row(
         end: Long?,
         record: Any?,
-    ): Map<String, Any?> = mapOf("end" to end, "hash" to 0L, "record" to record)
+    ): Map<String, Any?> = mapOf("end" to end, "record" to record)
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
