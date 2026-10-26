@@ -1088,10 +1088,6 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
     /// 允许名单（文件, 为什么）。默认拒绝；名单上的文件照算红，算不出红的那一条就得删。
     const ALLOWED: &[(&str, &str)] = &[
         (
-            "src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh",
-            "随部署装到用户机器上的 cc-bus：读用户自己那台 tmux 里窗格的身份，本就该连那台",
-        ),
-        (
             "tests/e2e/gen-idle-tmux.sh",
             "夹具生成器，被别的套件调：隔离与摘 `$TMUX` 由调用方给（调用方 PATH 上有强插 `-L` 的 shim）",
         ),

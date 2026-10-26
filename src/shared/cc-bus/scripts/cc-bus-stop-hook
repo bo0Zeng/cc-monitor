@@ -5,8 +5,8 @@ BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 cat >/dev/null                     # CC 从 stdin 传入 JSON(含 stop_hook_active 等),这里不需要就丢弃
 id=$("$SELFDIR/cc-whoami" 2>/dev/null || true)
-[ -n "$id" ] || exit 0             # 不在 tmux/无身份 = 不是 bus 成员,直接放行(非 bus 会话零影响)
-# 路由库自己会装载三个适配面(拦停这一格是 agent 能力,`agent_block_reason`)。
+[ -n "$id" ] || exit 0             # cc-monitor 说不出这是哪条会话(没装 · 不在会话里)= 不是 bus 成员,直接放行
+# 路由库自己会装载两个适配面(拦停这一格是 agent 能力,`agent_block_reason`)。
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh" || exit 0   # 适配层装不齐:**放行**(钩子的失败不该卡死用户的本轮)
 ccbus_migrate_once || true             # 旧收件箱迁一次(迁过就是一次 stat)

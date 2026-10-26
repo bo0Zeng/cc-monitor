@@ -75,7 +75,7 @@ chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "
 # 一次调用 = 一个干净的 env（**逐次显式给全**，免得上一格的变量漏进来）
 d() {
   env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-      CCBUS_POLICY_MODE="${POLICY:-off}" CC_BUS_ID=probe_cc \
+      CCBUS_POLICY_MODE="${POLICY:-off}" \
       "$TIMEOUT" "$WALL_CEILING_S" "$D" -- "$@" 2>"$SANDBOX/err.txt"
 }
 
@@ -99,6 +99,7 @@ chk "待读数（真数出来的，不是猜的）" "$(printf '%s' "$out" | jq -
 
 # ===== 发信：cc-send 问后端 `bus-envelope` 核信封（唯一一处），再自己走管线投递 =====
 # 台架的 ccm：一份记账的桩 —— `--bus-envelope` 原样转给被测的后端二进制（真核），看屏 / 说一句只记下来、答「送到了」。
+#   `--session-self`（「我是哪条会话」）答 `$SELF_SID`；它空着 ⇒ 照后端的形状拒成 `not_in_session`。
 #   不起真 claude、不碰真会话：敲门那一下到桩为止，桩里看得见 cc-bus 要后端做什么（`idle_only` 带没带）。
 SA="aaaaaaaa-1111-2222-3333-444444444444"   # 发件人（会话 id 的形状，占位）
 SB="bbbbbbbb-1111-2222-3333-444444444444"   # 收件人
@@ -108,6 +109,9 @@ cat > "$FK/ccm" <<'EOF'
 printf '%s\n' "$*" >> "$CALLS"
 case " $* " in
   *" --bus-envelope "*) exec "$D" "$@" ;;
+  *" --session-self "*)
+    if [ -n "${SELF_SID:-}" ]; then printf '{"sid":"%s","groups":[],"looked":"this_machine"}\n' "$SELF_SID"
+    else printf '{"code":"not_in_session","message":"no session above","detail":""}\n' >&2; exit 2; fi ;;
   *" --terminal-preview "*) cat >/dev/null; printf '{"screen":"fp-0"}\n' ;;
   *" --session-say "*) cat >> "$SAYS"; printf '\n'; printf '{"result":"delivered"}\n' ;;
   *) echo "fake ccm: 没想到会被问 $*" >&2; exit 9 ;;
@@ -117,7 +121,7 @@ chmod +x "$FK/ccm"
 # 一次发信 = 一个干净的 env（逐次给全）。FROM 缺 ⇒ SA。
 snd() {
   env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-      CC_BUS_HOME="$BUS" CC_BUS_ID="${FROM-$SA}" CCBUS_POLICY_MODE="${POLICY:-off}" \
+      CC_BUS_HOME="$BUS" SELF_SID="${FROM-$SA}" CCBUS_POLICY_MODE="${POLICY:-off}" \
       "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$@" 2>"$SANDBOX/snd.err"
 }
 lines_of() { if [ -f "$BUS/inbox/$1.jsonl" ]; then wc -l < "$BUS/inbox/$1.jsonl" | tr -d ' '; else echo 0; fi; }
@@ -260,7 +264,7 @@ chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）"
   "$(printf '%s' "$_j2" | jq -r '.agents | length')" "2"
 
 echo "[11] ★ 收信的那一段只印线上码（act · tier），不放显示用的词"
-_r="$(env CC_BUS_HOME="$BUS" CC_BUS_ID="$SB" HOME="$NOHOME" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-recv" 2>/dev/null)"
+_r="$(env CCM_BIN="$FK/ccm" CALLS="$CALLS" SELF_SID="$SB" CC_BUS_HOME="$BUS" HOME="$NOHOME" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-recv" 2>/dev/null)"
 chk "★ 每一封印 act= · tier= · title:" \
   "$(printf '%s\n' "$_r" | grep -c '^\[cc-bus\] id=m[0-9a-f]* from='"$SA"' ts=[^ ]* tier=[12] act=[a-z]*')" "3"
 chk "  标题一行" "$(printf '%s\n' "$_r" | grep -c '^title: 占位标题$')" "1"
@@ -278,7 +282,7 @@ echo 1 > "$MB/state/old_x.pos"
 printf 'm-old\t0\told_y\n' > "$MB/state/lastread-old_x__old_y"
 printf '%s\n' '{"from":"old_x","ts":"t4","text":"收件人换不出会话 id"}' > "$MB/inbox/old_z.jsonl"
 env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-    CC_BUS_HOME="$MB" CC_BUS_ID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "迁完之后的第一封" >/dev/null 2>&1
+    CC_BUS_HOME="$MB" SELF_SID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "迁完之后的第一封" >/dev/null 2>&1
 chk "★ 迁过一次：标记在" "$([ -e "$MB/state/envelope-2" ] && echo 在 || echo 没有)" "在"
 chk "★ 旧的按名字的收件箱不在原处了" "$(ls "$MB/inbox" | grep -c '^old_')" "0"
 chk "  旧状态（已读位置 · lastread）也挪走了" "$(ls "$MB/state" | grep -cE '^old_|^lastread-')" "0"
@@ -290,11 +294,61 @@ chk "  读过的那一条不搬、换不出会话 id 的不搬（只在存档里
 chk "  bus.log 记下了留在存档里的那两条" "$(grep -c 'MIGRATE archived-only' "$MB/log/bus.log")" "2"
 chk "  迁完之后那一封照常投到" "$(wc -l < "$MB/inbox/$SY.jsonl" | tr -d ' ')" "1"
 env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-    CC_BUS_HOME="$MB" CC_BUS_ID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "再一封" >/dev/null 2>&1
+    CC_BUS_HOME="$MB" SELF_SID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "再一封" >/dev/null 2>&1
 chk "★ 只迁一次：再发一封不再迁（存档只有一份）" "$(ls -d "$MB"/legacy/*/ | wc -l | tr -d ' ')|$(wc -l < "$MB/inbox/$SX.jsonl" | tr -d ' ')" "1|1"
 
+echo "[13] ★ 「我是哪条会话」只问 ccm 的 --session-self（装与不装 cc-monitor 各一条 · Codex 会话照样收得到）"
+SC="eeeeeeee-1111-2222-3333-444444444444"   # 桩答的那条会话
+DECOY="ffffffff-1111-2222-3333-444444444444" # 摆在环境与窗格上的诱饵：一个都不该认
+IB="$SANDBOX/idbus"; mkdir -p "$IB"/{inbox,state,log}; touch "$IB/state/envelope-2"   # 新家：不走旧收件箱那一迁
+# 一个私有 socket 上的窗格，挂着诱饵 `@ccm_sid`（cc-bus 不读 ccm 的私有标记）。
+tmux new-session -d -s whoami_cc -c /tmp 'sleep 120' 2>/dev/null
+_wp="$(tmux display-message -p -t "=whoami_cc:" '#{pane_id}' 2>/dev/null)"
+tmux set-option -p -t "$_wp" @ccm_sid "$DECOY" >/dev/null 2>&1
+chk "  台架自检：窗格上确实挂着诱饵标记" "$(tmux display-message -p -t "$_wp" '#{@ccm_sid}' 2>/dev/null)" "$DECOY"
+# 一次 = 一个干净的 env；诱饵三样（CC_BUS_ID · CLAUDE_CODE_SESSION_ID · 窗格标记）全摆上。
+idrun() {  # <要跑的脚本> [参数…]；SELF_SID / AGENT / CCM 由调用方给
+  local s="$1"; shift
+  env ${CCM:+CCM_BIN="$CCM"} D="$D" CALLS="$CALLS" SAYS="$SAYS" SELF_SID="${SELF_SID-}" HOME="$NOHOME" PATH="${IDPATH:-$PATH}" \
+      CC_BUS_HOME="$IB" CCBUS_ADAPT_AGENT="${AGENT:-claude}" CLAUDE_CONFIG_DIR="$CLA" \
+      CC_BUS_ID="$DECOY" CLAUDE_CODE_SESSION_ID="$DECOY" TMUX_PANE="$_wp" \
+      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/$s" "$@" 2>"$SANDBOX/id.err"
+}
+# 收件箱里给两条会话各放一封（经 cc-send 正常投：信封过后端）。
+FROM="$SA" snd "$SC" --act inform --title "给真身份的一封" "x" >/dev/null
+FROM="$SA" snd "$DECOY" --act inform --title "给诱饵的一封" "x" >/dev/null
+cp "$BUS/inbox/$SC.jsonl" "$IB/inbox/"; cp "$BUS/inbox/$DECOY.jsonl" "$IB/inbox/"
+for AGENT in claude codex; do
+  CCM="$FK/ccm" SELF_SID="$SC" idrun cc-whoami > "$SANDBOX/who.txt"; _rc=$?
+  chk "★ 装了 ccm（$AGENT 词典）：cc-whoami 给的是 --session-self 答的那条（诱饵一个不认）" "$_rc|$(cat "$SANDBOX/who.txt")" "0|$SC"
+  rm -f "$IB/state/"*.pos
+  _h="$(printf '{}' | CCM="$FK/ccm" SELF_SID="$SC" idrun cc-bus-stop-hook)"; _rc=$?
+  chk "★ 装了 ccm（$AGENT 词典）：Stop 钩子把那条会话的信喂回（拦停 · 是给真身份的那一封）" \
+    "$_rc|$(printf '%s' "$_h" | jq -r '.decision' 2>/dev/null)|$(printf '%s' "$_h" | jq -r '.reason' 2>/dev/null | grep -c '给真身份的一封')|$(printf '%s' "$_h" | jq -r '.reason' 2>/dev/null | grep -c '给诱饵的一封')" "0|block|1|0"
+done
+AGENT=claude
+CCM="$FK/ccm" SELF_SID="" idrun cc-whoami >/dev/null; _rc=$?
+chk "★ ccm 说不在会话里：cc-whoami 退 1（不退回去认诱饵）" "$_rc" "1"
+# 没装：PATH 里只有基本工具（没有 ccm · cc-monitor-backend），家目录里也没有 ~/.cc-monitor/bin/ccm。
+_NC="$SANDBOX/noccm"; mkdir -p "$_NC"
+for _t in bash sh env awk cat wc date tr sed grep head tail mkdir touch flock mv rm sort cut timeout jq cksum mktemp readlink dirname basename; do
+  _p="$(command -v "$_t")" && ln -sf "$_p" "$_NC/$_t"
+done
+chk "  台架自检：这个 PATH 里没有 ccm" "$(PATH="$_NC" command -v ccm cc-monitor-backend >/dev/null 2>&1 && echo 有 || echo 没有)" "没有"
+rm -f "$IB/state/"*.pos
+IDPATH="$_NC" SELF_SID="$SC" idrun cc-whoami >/dev/null; _rc=$?
+chk "★ 没装 ccm：cc-whoami 退 1、说没装 cc-monitor（诱饵一个不认）" "$_rc|$(grep -c 'no cc-monitor backend' "$SANDBOX/id.err")" "1|1"
+_h="$(printf '{}' | IDPATH="$_NC" SELF_SID="$SC" idrun cc-bus-stop-hook)"; _rc=$?
+chk "★ 没装 ccm：Stop 钩子静默放行（不喂、不推已读位置）" "$_rc|${_h:-<空>}|$(ls "$IB/state" | grep -c '\.pos$')" "0|<空>|0"
+_before="$(wc -l < "$IB/inbox/$SC.jsonl" | tr -d ' ')"
+IDPATH="$_NC" idrun cc-send "$SC" --act inform --title "t" >/dev/null; _rc=$?
+chk "★ 没装 ccm：cc-send 退 1、一个字节不写" "$_rc|$(wc -l < "$IB/inbox/$SC.jsonl" | tr -d ' ')" "1|$_before"
+env PATH="$_NC" HOME="$NOHOME" CC_BUS_HOME="$IB" bash -c '. "$1/cc-bus-lib.sh" && route_load_config && route_nudge "$2" "$3"' _ "$SCRIPTS" "$SC" "$SA" 2>/dev/null
+chk "★ 没装 ccm：敲门那一步照实记 NUDGE noccm（只入收件箱，等 Stop 钩子）" "$(grep -c "NUDGE noccm sid=$SC" "$IB/log/bus.log")" "1"
+tmux kill-session -t "=whoami_cc" 2>/dev/null || true
+
 echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
-# `cc-register` 记登记地址，读的是**会话名**（可以是中文）。`cc-whoami` 不再读会话名（身份是会话 id，A13-2）。
+# `cc-register` 记登记地址，读的是**会话名**（可以是中文）。
 # 台架：pane 里整条命令跑在 `LC_ALL=C` 下 —— tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`，
 # 这一形就是「非 UTF-8 客户端」。不带旗的话，中文被改写成 `_`、退出码仍是 0。
 # ⚠ 〔SH1 09-26 现打，tmux 3.6〕`TMUX` 已设的客户端 tmux **一律按 UTF-8 打**、不看 locale —— 生产上都跑在
@@ -308,8 +362,6 @@ _u8name="u8甲乙"
 tmux new-session -d -s "$_u8name" -c /tmp \
   env LC_ALL=C LANG=C LC_CTYPE=C PATH="$_u8shim:$PATH" CC_BUS_HOME="$_u8bus" SCRIPTS="$SCRIPTS" OUT="$_u8d" sh -c '
     "$SCRIPTS/cc-register" u8id > "$OUT/reg" 2>&1
-    tmux set-option -p -t "$TMUX_PANE" @ccm_sid u8-sid-0001 >/dev/null 2>&1
-    env -u CLAUDE_CODE_SESSION_ID "$SCRIPTS/cc-whoami" > "$OUT/who" 2>&1
     tmux display-message -p "#S" > "$OUT/raw" 2>&1
     touch "$OUT/done"; exec sleep 30' 2>/dev/null
 wall_until '[ -f "$_u8d/done" ]' || true
@@ -317,7 +369,6 @@ chk "  反向正控：同台架上不带旗的 display-message 确实被改写�
   "$([ "$(cat "$_u8d/raw" 2>/dev/null)" != "$_u8name" ] && [ -f "$_u8d/done" ] && echo yes || echo no)" "yes"
 chk "★ cc-register 记下的登记地址是那个中文会话名（不是 _ 改写过的）" \
   "$(awk -F'\t' '$1=="u8id"{print $2}' "$_u8bus/agents.tsv" 2>/dev/null)" "$_u8name:0.0"
-chk "★ cc-whoami 给的是窗格上的会话 id（不是会话名）" "$(cat "$_u8d/who" 2>/dev/null)" "u8-sid-0001"
 tmux kill-session -t "=$_u8name" 2>/dev/null || true
 
 echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好行 · 收件箱只看尾巴）"
@@ -340,7 +391,7 @@ chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -
 # 老 cc-bus：`cc-list` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
 _old="$SANDBOX/oldbus"; mkdir -p "$_old"
 printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; chmod +x "$_old/cc-list"
-env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err.txt"
+env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err.txt"
 # 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
 _TOOOLD="$(zh_frag beCcBus.read.tooOld)"
 chk "★ 老 cc-bus ⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"

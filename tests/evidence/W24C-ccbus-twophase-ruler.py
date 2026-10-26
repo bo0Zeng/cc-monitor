@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""`w24c` 步 24c:**cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧**的判据本体。
+"""`w24c` 步 24c:**cc-bus 两阶段读口 ＋ 两个适配 trait ＋ Windows 那一侧**的判据本体。
 
 ## 它治的是什么
 
@@ -271,7 +271,7 @@ def check_s4():
                 hits[f"{f}:{w}"] = n
     if hits:
         bad("S4", f"通用层里出现了适配面的词:{hits}\n"
-                  f"      ⇒ 通用层只认识 store_*/os_*/agent_* 那三张表里的函数名")
+                  f"      ⇒ 通用层只认识 store_*/agent_* 那两张表里的函数名")
         return
     ok("S4", f"通用层零脚印:{len(CORE_FILES)} 份文件 × {len(FORBIDDEN_IN_CORE)} 个词 = 0 命中;"
              f"正控在 {ADAPTER_POSITIVE} 上命中 {ctrl} 次")
@@ -326,6 +326,10 @@ class Bus:
         # 台架写的就是新版信封 ⇒ 标成「已迁过」(不然第一次跑 cc-recv / 钩子会把它当旧收件箱挪进存档)。
         (self.home / "state" / "envelope-2").touch()
         self.inbox = self.home / "inbox" / "tester.jsonl"
+        # 「我是哪条会话」只问后端(`cc-whoami` → `ccm -- --session-self`):每份台架带一个后端替身,答 `W24C_SELF`。
+        self.ccm = self.home / "ccm-shim"
+        self.ccm.write_text(SHIM_CCM, encoding="utf-8")
+        self.ccm.chmod(0o755)
 
     def add(self, n, frm="alice"):
         with self.inbox.open("a", encoding="utf-8") as fh:
@@ -335,7 +339,9 @@ class Bus:
     def env(self, **extra):
         e = dict(os.environ)
         e["CC_BUS_HOME"] = str(self.home)
-        e["CC_BUS_ID"] = "tester"
+        e["CCM_BIN"] = str(self.ccm)
+        e["W24C_SELF"] = "tester"
+        e["W24C_CCMLOG"] = str(self.home / "ccm.log")
         e.update(extra)
         return e
 
@@ -475,22 +481,21 @@ def behavioral(tmp):
     else:
         bad("B9", f"钩子的成功路径不对:rc={rc} pos={b5.pos()} out={out[:80]!r}")
 
-    # B10 Windows 那一侧:整段跑通 ＋ 能力自陈 ＋ 降级留痕 ＋ 投递显式办不到
+    # B10 Windows 那一侧:整段跑通 ＋ 能力自陈 ＋ 降级留痕
     b6 = Bus(tmp, "b6")
     b6.add(2)
     wenv = b6.env(CCBUS_ADAPT_OS="windows")
     rc, out, tok6 = peek_token(b6, env=wenv)
     rc_c, _, _ = run(["cc-commit", "tester", tok6], wenv)
     caps = subprocess.run(
-        ["bash", "-c", f'. "{SCRIPTS}/cc-bus-adapt.sh"; ccbus_adapt_load && store_caps && os_caps; '
-                       f'os_pane_identity x; echo "id_rc=$?"'],
+        ["bash", "-c", f'. "{SCRIPTS}/cc-bus-adapt.sh"; ccbus_adapt_load && store_caps'],
         env=wenv, capture_output=True, text=True).stdout
     log = (b6.home / "log" / "bus.log").read_text(encoding="utf-8") if (b6.home / "log" / "bus.log").exists() else ""
     if (rc == 0 and rc_c == 0 and b6.pos() == "2"
-            and "shared_lock=no" in caps and "identity=none" in caps and "id_rc=13" in caps
+            and "shared_lock=no" in caps
             and "DEGRADE lock:shared→exclusive" in log):
         ok("B10", "Windows 那一侧:两阶段口整段跑通(pos→2)· `shared_lock=no` 自陈 · "
-                  "共享锁退化成排他且 bus.log 里留了 DEGRADE · 读窗格身份 os_pane_identity 显式 rc=13(不假装敲门)")
+                  "共享锁退化成排他且 bus.log 里留了 DEGRADE")
     else:
         bad("B10", f"Windows 那一侧不对:peek={rc} commit={rc_c} pos={b6.pos()} "
                    f"caps={caps.strip()[:120]!r} 降级日志={'有' if 'DEGRADE' in log else '无'}")
@@ -562,13 +567,15 @@ SHIM_TMUX = (
     'if [ "$1" = send-keys ]; then printf \'%s\\037\' "$@" >> "$W24C_SHIMLOG"; printf \'\\036\' >> "$W24C_SHIMLOG"; fi\n'
     "exit 0\n"
 )
-# 后端替身(`CCM_BIN`):认 `-- --bus-envelope` / `-- --terminal-preview` / `-- --session-say`,stdin 一段 JSON;每一问记进 `W24C_CCMLOG`。
+# 后端替身(`CCM_BIN`):认 `-- --session-self`(答 `W24C_SELF`)/ `-- --bus-envelope` / `-- --terminal-preview` / `-- --session-say`,
+# stdin 一段 JSON;每一问记进 `W24C_CCMLOG`。
 # 信封那一问照入参盖一份规范信封(真校验住后端,另有单测与 e2e;这里只管管线拿到之后怎么投、怎么敲)。
 # `W24C_NO_SCREEN` 设了 ⇒ 看不到那一屏(预览失败);`W24C_SAY` ⇒ 说那一句的结局(缺省 delivered)。
 SHIM_CCM = (
     "#!/usr/bin/env bash\n"
     'a=$(cat); printf \'%s\\037%s\\036\' "$2" "$a" >> "$W24C_CCMLOG"\n'
     'case "$2" in\n'
+    '  --session-self) printf \'{"sid":"%s","groups":[],"looked":"this_machine"}\\n\' "$W24C_SELF" ;;\n'
     '  --bus-envelope) printf \'%s\' "$a" | jq -c \'{id:"m0000000000001",ts:"2026-10-26T00:00:00Z",from,to,tier:(.tier // 2),act,title,re:(.re // null),refs:(.refs // []),text:(.text // "")}\' ;;\n'
     '  --terminal-preview) [ -n "${W24C_NO_SCREEN:-}" ] && { echo \'{"code":"no_such_session"}\' >&2; exit 2; }\n'
     '                      echo \'{"screen":"00ff00ff00ff00ff","cols":80,"rows":24}\' ;;\n'
@@ -594,7 +601,7 @@ def nudge_bus(tmp, name):
     (shim / "ccm").write_text(SHIM_CCM, encoding="utf-8")
     (shim / "ccm").chmod(0o755)
     log = Path(tmp) / f"{name}-ccm.log"
-    env = b.env(CC_BUS_ID=SENDER, PATH=f"{shim}:{os.environ['PATH']}",
+    env = b.env(W24C_SELF=SENDER, PATH=f"{shim}:{os.environ['PATH']}",
                 W24C_SHIMLOG=str(Path(tmp) / f"{name}-tmux.log"), W24C_CCMLOG=str(log),
                 CCM_BIN=str(shim / "ccm"), CCBUS_NUDGE_DEBOUNCE="0")
     return b, env, log
@@ -649,18 +656,18 @@ def check_k7(tmp):
     rc, _, _ = run(send[:2] + ["--tier", "1"] + send[2:], env)
     calls = ccm_calls(log)
     tlog = Path(tmp) / "k7b-tmux.log"
-    b_ok = (rc == 0 and [c for c, _ in calls] == ["--bus-envelope", "--terminal-preview", "--session-say"]
-            and calls[1][1].get("sid") == BOB and calls[2][1].get("sid") == BOB
-            and calls[2][1].get("seen_screen") == "00ff00ff00ff00ff"
-            and calls[2][1].get("idle_only") is True
-            and calls[2][1].get("text") == OLD_T2.replace("{from}", SENDER)
+    b_ok = (rc == 0 and [c for c, _ in calls] == ["--session-self", "--bus-envelope", "--terminal-preview", "--session-say"]
+            and calls[2][1].get("sid") == BOB and calls[3][1].get("sid") == BOB
+            and calls[3][1].get("seen_screen") == "00ff00ff00ff00ff"
+            and calls[3][1].get("idle_only") is True
+            and calls[3][1].get("text") == OLD_T2.replace("{from}", SENDER)
             and len(bob_inbox(b)) == 1
             and not (tlog.exists() and tlog.read_text(encoding="utf-8")))
     # c) 二档(缺省)⇒ 只进收件箱,一次看屏 / 说一句都不问,记一笔
     b3, env3, log3 = nudge_bus(tmp, "k7c")
     rc3, _, _ = run(send, env3)
     l3 = (b3.home / "log" / "bus.log").read_text(encoding="utf-8")
-    c_ok = (rc3 == 0 and [c for c, _ in ccm_calls(log3)] == ["--bus-envelope"]
+    c_ok = (rc3 == 0 and [c for c, _ in ccm_calls(log3)] == ["--session-self", "--bus-envelope"]
             and len(bob_inbox(b3)) == 1 and f"NUDGE tier2 {BOB}" in l3)
     # d) 看不到那一屏 ⇒ 不说;那台不送(不闲)⇒ 记一笔、不算敲过
     b5, env5, log5 = nudge_bus(tmp, "k7e")
@@ -691,7 +698,7 @@ def check_k7(tmp):
 
 
 def main():
-    print(f"# `w24c` 步 24c —— cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧(量于 `{SCRIPTS}`)")
+    print(f"# `w24c` 步 24c —— cc-bus 两阶段读口 ＋ 两个适配 trait ＋ Windows 那一侧(量于 `{SCRIPTS}`)")
     print()
     if not preflight():
         return 1

@@ -8,13 +8,8 @@ if [ "${1:-}" = --sid ]; then sid="${2:-}"; shift 2 2>/dev/null || { echo "cc-re
 # 无参则从 tmux 自动认领身份(cc-whoami);不在 tmux/无身份则静默不登记(非 bus 成员)
 if [ -n "${1:-}" ]; then id="$1"; else
   id=$("$SELFDIR/cc-whoami") || exit 0
-  # 自己登记自己(agent 的钩子里跑):会话编号问 agent 词典(那一家导给子进程的「我是哪个会话」)。
-  # ⚠ 替别的窗格登记(给了 <id>,如 ccm 起会话的收尾)不读它:那时环境里的是调用方那条会话的编号。
-  if [ -z "$sid" ]; then
-    # shellcheck source=cc-bus-adapt.sh
-    . "$SELFDIR/cc-bus-adapt.sh"
-    if ccbus_adapt_load 2>/dev/null; then sid=$(agent_self_sid); fi
-  fi
+  # 自己登记自己(agent 的钩子里跑):cc-whoami 给的就是会话编号。
+  [ -n "$sid" ] || sid="$id"
 fi
 case "$sid" in *[!A-Za-z0-9_-]*) echo "cc-register: 会话编号 '$sid' 形状不对,不记这一格" >&2; sid="" ;; esac
 # id 会拼进文件路径,做白名单校验防路径穿越
@@ -36,7 +31,7 @@ target=$(tmux -u display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_in
 #(在 shell 里那行会被当命令执行;在编辑器里会被插进正文。)
 #
 # ⇒ 记下**登记那一刻 pane 的根进程 pid**,敲门前读窗格身份时核一次:对不上就别敲(见 route_nudge)。
-# 第 5 列是会话编号(登记那一刻说得出才有;空 ⇒ 敲门时从窗格读一次身份标记)。
+# 第 5 列是会话编号(自己登记 ⇒ cc-whoami 给的那个;替别的窗格登记 ⇒ `--sid` 给的,没给就空)。
 # ⚠ 只增一列、不改前三列:老表(用户盘上有 07-18 起的 86 行)第 4 列为空 ⇒ 按老行为敲,
 #   不制造假跳过;新登记的才有得核。
 pane_pid=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null || true)
