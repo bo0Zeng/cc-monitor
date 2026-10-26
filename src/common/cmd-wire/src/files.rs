@@ -155,9 +155,9 @@ impl<'de> Deserialize<'de> for HexBytes {
     }
 }
 
-/// 存盘的一块：发的那一方定哪一形，收的那一方两形都认（同 [`WirePath`]）。
-/// 编辑器存文本按字切块、按 JSON 转义之后的长度装满一行 ⇒ 发字符串；上传按字节切 ⇒ 恒发 `{"b16": …}`
-/// （任意字节是 UTF-8 也不发字符串：控制字符转义成 `\u0000` 一个字节要占六个，一块装不装得进一行就算不准了）。
+/// 暂存区的一块原始字节（存盘与上传同一套，`chunk_core` 按字节切）：发恒是 `{"b16": …}`
+/// （是 UTF-8 也不发字符串：控制字符转义成 `\u0000` 一个字节要占六个，一块装不装得进一行就算不准了）；
+/// 收的那一方两形都认（同 [`WirePath`]）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -168,36 +168,23 @@ impl<'de> Deserialize<'de> for HexBytes {
         export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
-pub enum ChunkBytes {
-    Text(String),
-    Hex(Vec<u8>),
-}
+pub struct ChunkBytes(pub Vec<u8>);
 
 impl ChunkBytes {
     pub fn bytes(&self) -> &[u8] {
-        match self {
-            ChunkBytes::Text(t) => t.as_bytes(),
-            ChunkBytes::Hex(b) => b,
-        }
+        &self.0
     }
 }
 
 impl Serialize for ChunkBytes {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self {
-            ChunkBytes::Text(t) => s.serialize_str(t),
-            ChunkBytes::Hex(b) => HexBytes(b.clone()).serialize(s),
-        }
+        HexBytes(self.0.clone()).serialize(s)
     }
 }
 
 impl<'de> Deserialize<'de> for ChunkBytes {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let w = WirePath::deserialize(d)?;
-        Ok(match String::from_utf8(w.0) {
-            Ok(t) => ChunkBytes::Text(t),
-            Err(e) => ChunkBytes::Hex(e.into_bytes()),
-        })
+        Ok(ChunkBytes(WirePath::deserialize(d)?.0))
     }
 }
 
