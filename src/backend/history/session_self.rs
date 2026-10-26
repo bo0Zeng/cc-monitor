@@ -4,6 +4,7 @@
 //!   不收 agent 自报的 id（参数 · 环境变量都不认）。链上一个都没有 ⇒ `not_in_session`。
 //! - 组照 `groups-read` 那一份（并几台 · 判定 · 计数都在那里）：先转给这台的常驻后端问到各台（一次性进程里可达表是空的）；
 //!   常驻不在 ⇒ 只问这台、照实标 [`Looked::ThisMachine`]；两边都没答成 ⇒ [`Looked::Nothing`]，组一个不编。
+//!   转给常驻 · 读机器表是控制面的事：那一段接线住命令表（`stream/inbound/registry/history.rs`），历史这一层不往控制面里引。
 //! - 只留有「这台这一条」的那几组，组员整组带上（别的台的组员也在）。
 
 use serde::Serialize;
@@ -11,13 +12,9 @@ use serde::Serialize;
 use super::groups::{GroupRead, GroupsRead};
 use super::live_table::LiveRow;
 use crate::wire::typed::{codes, Command};
-use cmd_wire::Machine;
 
 /// 往上最多找几层（进程树再深也到不了这么多；挡住读坏的父进程号绕圈）。
 pub(crate) const MAX_HOPS: usize = 64;
-
-/// 转给常驻问各台：等这么久（它问到各台 ＋ 回程）。
-const RESIDENT_MS: u64 = 20_000;
 
 /// 从 `start` 往上的进程链（含它自己）：到顶（没有父进程 · 父进程号是 0）· 绕回 · 满 [`MAX_HOPS`] 都停。
 pub(crate) fn chain_from(start: u32, parent: impl Fn(u32) -> Option<u32>) -> Vec<u32> {
@@ -125,36 +122,6 @@ codes! {
     }
 }
 
-/// 这一端问各台的那一张（这台 ＋ 机器表里的每一台）。
-fn machines_here() -> Vec<Machine> {
-    std::iter::once(Machine(cmd_wire::LOCAL.into()))
-        .chain(
-            crate::control::machines::here()
-                .iter()
-                .map(|h| Machine(h.name().to_string())),
-        )
-        .collect()
-}
-
-/// 转给这台的常驻：`groups-read {这一端的机器表}`。
-async fn via_resident(tz: crate::common::time::Tz) -> Result<GroupsRead, String> {
-    let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
-    let asked = crate::wire::listen::ResidentCall {
-        cmd: <super::groups::GroupsReadCmd as Command>::NAME.to_string(),
-        args: serde_json::json!({ "machines": machines_here() }),
-    };
-    let v = crate::control::resident::call_at(
-        &home,
-        &asked,
-        Some(RESIDENT_MS),
-        &tz,
-        crate::platform::child::Deadline::millis(RESIDENT_MS),
-    )
-    .await
-    .map_err(|f| f.message)?;
-    serde_json::from_value(v).map_err(|e| e.to_string())
-}
-
 /// `session-self`：调用进程往上找这台的哪一条会话、它在哪几组。
 pub(crate) struct SessionSelfCmd;
 
@@ -163,26 +130,6 @@ impl Command for SessionSelfCmd {
     type Req = crate::wire::typed::NoArgs;
     type Reply = SessionSelf;
     type Err = SessionSelfErr;
-}
-
-impl crate::wire::typed::Handle for SessionSelfCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: crate::wire::typed::NoArgs,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SessionSelf, SessionSelfErr>> + Send + 'static
-    {
-        async move {
-            let sid =
-                who_at(&super::listing::agent_home(), std::process::id()).ok_or_else(|| {
-                    SessionSelfErr::NotInSession(crate::common::contract::malformed(
-                        "no process above this one is a session on this machine",
-                    ))
-                })?;
-            let tz = cx.tz.clone();
-            Ok(answer(sid, via_resident(tz.clone()), super::groups::read_here(tz)).await)
-        }
-    }
 }
 
 #[cfg(test)]

@@ -128,3 +128,72 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     crate::wire::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
 ];
+
+// ───────── agent 自问（`session-self`）的接线：本体住 `history/session_self.rs`；转给常驻 · 读机器表是控制面的事，接在命令表这一层 ─────────
+
+/// 转给常驻问各台：等这么久（毫秒；它问到各台 ＋ 回程）。
+const RESIDENT_WAIT_MS: u64 = 20_000;
+
+/// 这一端问各台的那一张（这台 ＋ 机器表里的每一台）。
+fn machines_here() -> Vec<cmd_wire::Machine> {
+    std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
+        .chain(
+            crate::control::machines::here()
+                .iter()
+                .map(|h| cmd_wire::Machine(h.name().to_string())),
+        )
+        .collect()
+}
+
+/// 转给这台的常驻：`groups-read {这一端的机器表}`。
+async fn via_resident(
+    tz: crate::common::time::Tz,
+) -> Result<crate::history::groups::GroupsRead, String> {
+    let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
+    let asked = crate::wire::listen::ResidentCall {
+        cmd: <crate::history::groups::GroupsReadCmd as crate::wire::typed::Command>::NAME
+            .to_string(),
+        args: serde_json::json!({ "machines": machines_here() }),
+    };
+    let v = crate::control::resident::call_at(
+        &home,
+        &asked,
+        Some(RESIDENT_WAIT_MS),
+        &tz,
+        crate::platform::child::Deadline::millis(RESIDENT_WAIT_MS),
+    )
+    .await
+    .map_err(|f| f.message)?;
+    serde_json::from_value(v).map_err(|e| e.to_string())
+}
+
+impl crate::wire::typed::Handle for crate::history::session_self::SessionSelfCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: crate::wire::typed::NoArgs,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<
+            crate::history::session_self::SessionSelf,
+            crate::history::session_self::SessionSelfErr,
+        >,
+    > + Send
+           + 'static {
+        use crate::history::session_self as me;
+        async move {
+            let sid = me::who_at(&crate::history::listing::agent_home(), std::process::id())
+                .ok_or_else(|| {
+                    me::SessionSelfErr::NotInSession(crate::common::contract::malformed(
+                        "no process above this one is a session on this machine",
+                    ))
+                })?;
+            let tz = cx.tz.clone();
+            Ok(me::answer(
+                sid,
+                via_resident(tz.clone()),
+                crate::history::groups::read_here(tz),
+            )
+            .await)
+        }
+    }
+}

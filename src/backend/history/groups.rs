@@ -116,7 +116,7 @@ pub(crate) fn here_of(table: &Table, book: &Book, seen: impl Fn(&str) -> Seen) -
     }
 }
 
-/// 这台清单的行 ⇒ 每条的样子与那几格（样子 · 标题照清单那一行同一处判：[`super::history_list::face_and_label`]）。
+/// 这台清单的行 ⇒ 每条的样子与那几格（照清单那一行同一处判：[`super::history_list::member_facts`]）。
 pub(crate) fn seen_from(
     rows: Vec<cmd_wire::listing::RawRow>,
     table: &Table,
@@ -128,17 +128,10 @@ pub(crate) fn seen_from(
                 .is_some_and(|e| !e.groups.is_empty() || e.pinned)
         })
         .map(|r| {
-            let facts_of = |label: String| MemberFacts {
-                title: Words(label),
-                cwd: (!r.project_path.is_empty()).then(|| r.project_path.clone()),
-                record: (!r.jsonl_path.is_empty()).then(|| r.jsonl_path.clone()),
-                account: r.last_account.clone(),
-                bg: r.is_bg,
-                at: Some(r.updated_at),
-            };
-            let sid = r.session_id.clone();
-            let (face, label) = super::history_list::face_and_label(r.clone(), Some(table));
-            (sid, (face, facts_of(label)))
+            (
+                r.session_id.clone(),
+                super::history_list::member_facts(r, Some(table)),
+            )
         })
         .collect()
 }

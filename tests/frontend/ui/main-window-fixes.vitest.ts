@@ -71,6 +71,7 @@ import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { GroupBook } from "../../../src/frontend/ui/group-book";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 import { announced, goldenFace } from "../../test-support/session-faces";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
@@ -332,8 +333,8 @@ describe("旧的分组三格等每台自己那条流都报完了才迁（组员�
       expect(calls.filter((c) => c[1] !== "groups-read"), "gpu 那条流还没报完：不迁").toEqual([]);
       tm.ensureTab("t1", "/w/t1", "/p/t1.jsonl", GPU);
       tm.markOriginSeen(GPU);
-      await vi.waitFor(() => expect(calls.filter((c) => c[1] === "history-annotate")).toHaveLength(2));
-      await vi.waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([c, a]) => c === "patch_config" && JSON.stringify(a).includes("tabCollections"))).toBe(true));
+      await vi.waitFor(() => expect(calls.filter((c) => c[1] === "history-annotate")).toHaveLength(2), UNTIL_CEILING);
+      await vi.waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([c, a]) => c === "patch_config" && JSON.stringify(a).includes("tabCollections"))).toBe(true), UNTIL_CEILING);
       expect(calls.filter((c) => c[1] !== "groups-read")).toEqual([
         [LOCAL_ORIGIN, "groups-write", { op: "make", name: "训练" }],
         [LOCAL_ORIGIN, "history-annotate", { sid: "a", patch: { join: ["g-new"] } }],

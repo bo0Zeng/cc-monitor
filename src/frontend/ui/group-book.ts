@@ -24,8 +24,17 @@ type GroupCmd = "groups-read" | "groups-write" | "history-annotate";
 /** 问一台一条组那几条命令（生产 ＝ `callTyped`；判据换成替身）。 */
 export type GroupCall = <K extends GroupCmd>(origin: Origin, cmd: K, req: TypedCommands[K]["req"]) => Promise<TypedCommands[K]["reply"]>;
 
-const callGroups: GroupCall = (origin, cmd, req) =>
-  callTyped(origin, cmd, req, budgetWithin(cmd === "groups-read" ? READ_BUDGET_MS : WRITE_BUDGET_MS));
+const callGroups: GroupCall = (async (origin: Origin, cmd: GroupCmd, req: unknown) => {
+  // 每条命令名照字面写（交通道的那一处认得出说的是哪条）。
+  switch (cmd) {
+    case "groups-read":
+      return callTyped(origin, "groups-read", req as TypedCommands["groups-read"]["req"], budgetWithin(READ_BUDGET_MS));
+    case "groups-write":
+      return callTyped(origin, "groups-write", req as TypedCommands["groups-write"]["req"], budgetWithin(WRITE_BUDGET_MS));
+    case "history-annotate":
+      return callTyped(origin, "history-annotate", req as TypedCommands["history-annotate"]["req"], budgetWithin(WRITE_BUDGET_MS));
+  }
+}) as GroupCall;
 
 export class GroupBook {
   /** 要问的那几台（问过的都记着，照先来的先后）。 */
@@ -69,6 +78,7 @@ export class GroupBook {
   poke(origin: Origin): void {
     if (!this.origins.includes(origin)) this.origins.push(origin);
     if (this.timer !== null) return;
+    // 调度：合批 —— 那台连着推来的几帧 `changed {groups}` 合成一问
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.ask();
