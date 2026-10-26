@@ -106,7 +106,7 @@ pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState
     out
 }
 
-/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节（产品版本号这一端报不出 ⇒ 空）。
+/// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`build.rs` 交的）。
 fn local_row() -> MachineState {
     let mut e = Entry::default();
     fold(
@@ -116,7 +116,7 @@ fn local_row() -> MachineState {
                 relation: cmd_wire::attach::Relation::Same,
                 differs: Vec::new(),
             },
-            version: None,
+            version: Some(env!("CC_MONITOR_VERSION").to_string()),
         },
     );
     product(

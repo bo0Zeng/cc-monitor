@@ -228,11 +228,19 @@ fn the_local_row_comes_from_this_backend() {
                 relation: Relation::Same,
                 differs: vec![],
             },
-            version: None,
+            version: Some(shipped_version()),
         },
     );
     let want = product(&e, &copy_core::copy_text("remote.cards.local", &[]), true, true);
+    assert_eq!(local.version, Some(shipped_version()), "本机那一行的版本号不是这份二进制出自的那一版");
     assert_eq!(local, &want);
     assert_eq!(local.state, MachineStateKind::Up);
     assert!(got.contains_key("ms-local-peer"), "远端那台被挤掉了");
+}
+
+/// 这棵树要发的那一版：仓根 `package.json` 的 `version`（发版改的就是它）。
+fn shipped_version() -> String {
+    let v: serde_json::Value = serde_json::from_str(include_str!("../../../package.json"))
+        .expect("仓根 package.json 读不成");
+    v["version"].as_str().expect("package.json 没有 version").to_string()
 }
