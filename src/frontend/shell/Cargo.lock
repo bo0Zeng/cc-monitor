@@ -3429,6 +3429,7 @@ dependencies = [
  "notify-debouncer-mini",
  "own-chan",
  "parking_lot",
+ "pidwatch-core",
  "relay-route-core",
  "resident-client",
  "serde",
@@ -4278,6 +4279,16 @@ dependencies = [
  "serde",
  "serde_json",
  "test-home",
+]
+
+[[package]]
+name = "pidwatch-core"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "libc",
+ "test-home",
+ "tracing",
 ]
 
 [[package]]

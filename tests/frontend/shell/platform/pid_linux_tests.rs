@@ -2,9 +2,9 @@
 
 use super::*;
 
-/// ★ 起始时刻 = `/proc/<pid>/stat` 第 22 格；往上的祖先第一个是父进程、带名字；本进程活着，一个不存在的进程号不活。
+/// ★ 起始时刻 = `/proc/<pid>/stat` 第 22 格；往上的祖先第一个是父进程、带名字；一个不存在的进程号读不出起始时刻。
 #[test]
-fn start_stamp_ancestors_and_liveness_read_proc() {
+fn start_stamp_and_ancestors_read_proc() {
     let me = std::process::id();
     let stat = std::fs::read_to_string(format!("/proc/{me}/stat")).unwrap();
     let after = &stat[stat.rfind(')').unwrap() + 2..];
@@ -15,7 +15,5 @@ fn start_stamp_ancestors_and_liveness_read_proc() {
     assert_eq!(up.first().map(|(p, _)| *p), Some(ppid), "{up:?}");
     assert!(!up[0].1.is_empty(), "祖先带名字");
     assert!(!up.iter().any(|(p, _)| *p == me), "不含自己");
-    assert!(is_alive(me));
-    assert!(!is_alive(u32::MAX - 7));
     assert_eq!(start_stamp(u32::MAX - 7), None);
 }

@@ -18,9 +18,10 @@
 //!
 //! 远端那台还会回显窗口标签（`LC_CCM_WINDOW`，`<shell 进程号>-<起始时刻>`，接入块设的）：对得上 ⇒ 直接问那个 shell（[`labeled_window`]）。
 //!
-//! ## 心跳清理
+//! ## shell 退了，登记就没了
 //!
-//! 每 10s 扫一遍内存中的握手表，逐个 shell 进程号问一次还活着没有，死了的从内存 + 磁盘移除。
+//! 握手表里每一条（monitor 起来时从盘上读回来的、之后认上的）都挂一个退出看守（`pidwatch_core`：内核在那个 shell 退出的那一刻叫醒，
+//! 不扫、不轮询）：一醒就从内存与盘上删那一条（[`forget`]）。挂的那一刻那个 shell 已经不在、或进程号已被别人复用（起始时刻对不上）⇒ 当场删。
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
@@ -58,7 +59,7 @@ pub struct BindRegistry {
 }
 
 impl BindRegistry {
-    /// 启动 watcher 线程 + 心跳线程。返回 Arc 给外部持有引用。
+    /// 启动 watcher 线程，读回来的每一条挂上退出看守。返回 Arc 给外部持有引用。
     /// 这台没有 bash / zsh 终端记录那一套（[`crate::platform::console::TTY_RECORDS`]：只有 Linux 有）⇒ 一张空表，不建目录、不读盘、不起线程
     /// （Windows 按控制台认窗口，这张表在那里永远是空的）。
     pub fn spawn(monitor_data_dir: PathBuf) -> Arc<Self> {
@@ -87,12 +88,14 @@ impl BindRegistry {
 
         let me = Arc::new(Self {
             monitor_data_dir,
-            by_ps_pid: Arc::new(RwLock::new(initial)),
+            by_ps_pid: Arc::new(RwLock::new(HashMap::new())),
             tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
         });
+        for entry in initial.into_values() {
+            keep(&me, entry);
+        }
 
         Self::spawn_await_watcher(me.clone(), await_dir);
-        Self::spawn_heartbeat(me.clone());
         me
     }
 
@@ -115,17 +118,47 @@ impl BindRegistry {
             tracing::error!("spawn bind-await-watcher failed: {e}");
         }
     }
+}
 
-    fn spawn_heartbeat(this: Arc<Self>) {
-        if let Err(e) = std::thread::Builder::new()
-            .name("bind-heartbeat".into())
-            .spawn(move || {
-                run_heartbeat(this);
-            })
-        {
-            tracing::error!("spawn bind-heartbeat failed: {e}");
+/// 把一条登记放进内存、给它那个 shell 挂上退出看守（读回来的、新认上的都走这一处）。
+/// 看守在挂的那一刻就可能叫醒（shell 已不在 · 起始时刻对不上）⇒ 先放进去再挂，醒了删的就是它。
+fn keep(this: &Arc<BindRegistry>, entry: HwndEntry) {
+    let pid = entry.ps_pid;
+    let recorded = entry.ps_proc_start.clone();
+    this.by_ps_pid.write().insert(pid, entry);
+    let weak = Arc::downgrade(this);
+    let mine = recorded.clone();
+    pidwatch_core::watch_pid_until_exit(
+        pid,
+        // 开到之后才读（挡「记下 → 开」之间的复用）。
+        move || same_shell(&mine, crate::platform::pid::start_stamp(pid)),
+        move || {
+            if let Some(this) = weak.upgrade() {
+                forget(&this, pid, &recorded);
+            }
+        },
+    );
+}
+
+/// 那个 shell 退了：删内存与盘上那一条 —— 只删还是**它**的那一条（同一个进程号后来又登记了一个新 shell ⇒ 不碰）。
+fn forget(this: &BindRegistry, pid: u32, recorded: &str) {
+    {
+        let mut w = this.by_ps_pid.write();
+        if w.get(&pid).map(|e| e.ps_proc_start.as_str()) != Some(recorded) {
+            return;
         }
+        w.remove(&pid);
     }
+    let _ = std::fs::remove_file(this.registry_dir().join(format!("{pid}.json")));
+    tracing::info!("bind: shell {pid} 退了，删掉它的窗口登记");
+}
+
+/// 记下的起始时刻与此刻读到的对得上 = 还是那个 shell（进程号没被复用）。读不到 ⇒ 不是。
+fn same_shell(recorded: &str, start_now: Option<u64>) -> bool {
+    matches!(
+        (recorded.trim().parse::<u64>().ok(), start_now),
+        (Some(a), Some(b)) if a == b
+    )
 }
 
 use shell_quote_core::AWAIT_SUBDIR;
@@ -162,7 +195,7 @@ fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
 }
 
 /// 处理 await_dir 下所有 *.tty（bash / zsh：见 [`process_tty_file`]）
-fn drain_await_dir(this: &BindRegistry, await_dir: &Path) {
+fn drain_await_dir(this: &Arc<BindRegistry>, await_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(await_dir) else {
         return;
     };
@@ -259,7 +292,7 @@ fn probe_tty_title(tty: &str, marker: &str) -> Option<MarkerHit> {
     hit
 }
 
-fn process_tty_file(this: &BindRegistry, file: &Path) {
+fn process_tty_file(this: &Arc<BindRegistry>, file: &Path) {
     if this.tty_tried.lock().contains(file) {
         return;
     }
@@ -296,7 +329,7 @@ fn process_tty_file(this: &BindRegistry, file: &Path) {
                 entry.owner_pid,
                 rec.tty
             );
-            this.by_ps_pid.write().insert(entry.ps_pid, entry);
+            keep(this, entry);
             let _ = std::fs::remove_file(file);
         }
         TtyClaim::Keep => {
@@ -650,11 +683,7 @@ pub(crate) fn registration_holds(
     start_now: Option<u64>,
     window_ok: impl Fn(&FoundWindow) -> bool,
 ) -> bool {
-    let same_shell = matches!(
-        (entry.ps_proc_start.trim().parse::<u64>().ok(), start_now),
-        (Some(a), Some(b)) if a == b
-    );
-    same_shell && window_ok(&FoundWindow::of(entry))
+    same_shell(&entry.ps_proc_start, start_now) && window_ok(&FoundWindow::of(entry))
 }
 
 impl FoundWindow {
@@ -964,50 +993,6 @@ pub fn pick_main() -> Option<i32> {
         serde_json::to_string(&outcome).unwrap_or_else(|_| format!("{outcome:?}"))
     );
     Some(0)
-}
-
-fn run_heartbeat(this: Arc<BindRegistry>) {
-    loop {
-        std::thread::sleep(Duration::from_secs(10));
-        cleanup_dead(&this);
-    }
-}
-
-fn cleanup_dead(this: &BindRegistry) {
-    let snapshot: Vec<(u32, HwndEntry)> = this
-        .by_ps_pid
-        .read()
-        .iter()
-        .map(|(k, v)| (*k, v.clone()))
-        .collect();
-
-    let dead: Vec<u32> = snapshot
-        .into_iter()
-        .filter(|(pid, _)| !crate::platform::pid::is_alive(*pid))
-        .map(|(pid, _)| pid)
-        .collect();
-
-    if dead.is_empty() {
-        return;
-    }
-
-    {
-        let mut w = this.by_ps_pid.write();
-        for pid in &dead {
-            w.remove(pid);
-        }
-    }
-
-    for pid in &dead {
-        let p = this.registry_dir().join(format!("{}.json", pid));
-        let _ = std::fs::remove_file(&p);
-    }
-
-    tracing::info!(
-        "bind heartbeat: removed {} dead PS registration(s): {:?}",
-        dead.len(),
-        dead
-    );
 }
 
 // P3 归并：本地 atomic_write_json / now_ms 已删，全部走 crate::utils。
