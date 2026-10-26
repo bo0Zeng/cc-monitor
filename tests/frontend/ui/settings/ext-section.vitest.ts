@@ -37,19 +37,24 @@ const machines = [
   { key: null, here: true, reachable: true, name: "me@h", projects: ["/h/p"] },
   { key: "laptop", here: false, reachable: true, name: "laptop", projects: ["/g/p"] },
 ];
-const place = (at: object, state: string, uninstall = false, note: string | null = null, dir: string | null = null) => ({ at, state, dir, uninstall, note });
-const cell = (state: string, places: object[], bring: unknown = null, note: string | null = null) => ({ state, places, bring, note });
+/** 后端写好的那几句（夹具：界面只原样画，不自己按态取文）。 */
+const SAID: Record<string, string> = { same: "〈装着〉", differs: "〈不一样〉", missing: "〈没有〉", project: "〈只在项目〉", off: "〈关着〉" };
+const KIND_SAID: Record<string, string> = { skill: "〈S〉", mcp: "〈M〉", plugin: "〈P〉" };
+const LEGEND = ["same", "differs", "missing", "project"].map((state) => ({ state, said: `〈图例 ${state}〉` }));
+const place = (at: object, state: string, uninstall = false, note: string | null = null, dir: string | null = null) => ({ at, state, said: SAID[state], dir, uninstall, note });
+const cell = (state: string, places: object[], bring: unknown = null, note: string | null = null) => ({ state, said: SAID[state], places, bring, note });
 const targets = (globalOk = true, globalNote: string | null = null) => [
   { at: user, ok: globalOk, note: globalNote },
   { at: proj, ok: true, note: null },
 ];
 const bring = (over: Record<string, unknown> = {}) => ({ from: null, fromName: "本机", scope: { from: user, to: user }, targets: targets(), ...over });
-const row = (kind: string, name: string, cells: unknown[], over: Record<string, unknown> = {}) => ({ kind, name, about: null, detail: [], new: false, builtin: null, note: null, cells, ...over });
+const row = (kind: string, name: string, cells: unknown[], over: Record<string, unknown> = {}) => ({ kind, kindSaid: KIND_SAID[kind], name, about: null, detail: [], new: false, builtin: null, note: null, cells, ...over });
 const here = cell("same", [place(user, "same", true)]);
 const demoMissing = cell("missing", [place(user, "missing")], bring());
 const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
   machines,
   problems: [],
+  legend: LEGEND,
   rows: [
     row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("machineList.summary.count", { n: "1" }) }], new: true }),
     row("mcp", "fs", [cell("same", [place(user, "same", false, copyText("agentWindow.status.plain"))], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
@@ -152,8 +157,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const noted = row("skill", "noted", [here, demoMissing], { note: "我写的" });
     const s = await page([listWith(demoMissing, [noted])]);
     expect(dots(s, "demo")).toEqual([
-      ["icon:success", copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: copyText("extPage.state.same") })],
-      ["icon:ring", copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.missing") })],
+      ["icon:success", copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: SAID.same })],
+      ["icon:ring", copyText("extPage.dot.title", { machine: "laptop", state: SAID.missing })],
     ]);
     const rows = () => [...s.element.querySelectorAll(".ext-row[data-key]")].map((r) => r.getAttribute("data-key"));
     expect(rows()).toEqual(["skill/demo", "mcp/fs", "skill/noted"]);
@@ -205,7 +210,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     s.loadNow();
     await settle();
     expect(s.element.querySelector('.ext-row[data-key="skill/demo"]'), "表变了：重画").not.toBe(demo);
-    expect(dots(s, "demo")[1][1]).toBe(copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.same") }));
+    expect(dots(s, "demo")[1][1]).toBe(copyText("extPage.dot.title", { machine: "laptop", state: SAID.same }));
   });
 
   it("抽屉：安装位置每台一行（装得了的才给勾 · 现状 · 只有全局一处的「卸载…」跟在后面）；装在项目里的逐处列；没有可装的说后端给的那一句", async () => {
@@ -244,10 +249,10 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(s.element.querySelector(".ext-offline")?.textContent).toBe(copyText("extPage.offline.bar", { machine: "laptop" }));
     expect([...s.element.querySelectorAll('.ext-row[data-key="skill/demo"] .ext-dot')].map((d) => d.classList.contains("is-offline"))).toEqual([false, true]);
     expect([...s.element.querySelectorAll(".ext-legend-item")].map((i) => [glyph(i.querySelector(".ext-dot")!), i.textContent])).toEqual([
-      ["icon:success", copyText("extPage.legend.same")],
-      ["icon:half", copyText("extPage.legend.differs")],
-      ["icon:ring", copyText("extPage.state.missing")],
-      ["icon:folder", copyText("extPage.legend.project")],
+      ["icon:success", LEGEND[0].said],
+      ["icon:half", LEGEND[1].said],
+      ["icon:ring", LEGEND[2].said],
+      ["icon:folder", LEGEND[3].said],
       ["icon:success", copyText("extPage.legend.needsLogin")],
       ["icon:success", copyText("extPage.legend.failed")],
     ]);
@@ -262,7 +267,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     open(s, "skill/demo");
     const [on, off] = machineLines(s);
     expect([on.classList.contains("is-offline"), off.classList.contains("is-offline")]).toEqual([false, true]);
-    expect(off.querySelector(".ext-machine-state")?.textContent).toBe(copyText("extPage.install.offline", { state: copyText("extPage.state.same") }));
+    expect(off.querySelector(".ext-machine-state")?.textContent).toBe(copyText("extPage.install.offline", { state: SAID.same }));
     expect(on.querySelector(".ext-machine-state")?.textContent).not.toContain(copyText("extPage.install.offline", { state: "" }).trim());
     expect((off.querySelector(".ext-pick") as HTMLInputElement).disabled).toBe(true);
     expect([...off.querySelectorAll("button")].map((b) => [b.textContent, b.disabled]), "离线那台的「卸载」不可用").toEqual([[copyText("extPage.button.uninstall"), true]]);
@@ -343,7 +348,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
 
   it("各台结局逐台说：一台没成（如看过之后变了）不挡别台；做完重问那张卡（没成的那台拿到新卡，再点就是重试它）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
-    const lst = { machines: m3, problems: [], rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
+    const lst = { machines: m3, problems: [], legend: LEGEND, rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
     const s = await page([lst], (a) =>
       chanReply({
         machines: a.to.map((t) =>
@@ -506,7 +511,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     mcpAnswers = {};
   });
   const both = cell("same", [place(user, "same")]);
-  const mcpList = () => ({ machines, problems: [], rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
+  const mcpList = () => ({ machines, problems: [], legend: LEGEND, rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
   const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
   const fixArgs = { kind: "mcp" as const, agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
   const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), fix: [{ account: "acct-a", fix: { command: "login-start", args: fixArgs } }] };
@@ -520,7 +525,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
   };
   const marks = (s: ExtSection, name: string) =>
     [...s.element.querySelectorAll(`.ext-row[data-key$="/${name}"] .ext-dot`)].map((d) => [d.querySelector(".ext-dot-mark")?.className ?? null, (d as HTMLElement).title]);
-  const sameSaid = copyText("extPage.state.same");
+  const sameSaid = SAID.same;
 
   it("小标：哪一种照那台后端的 mark 画，悬停在态后面接它写好的那一截；skill 行不问也不画", async () => {
     answers();
@@ -591,6 +596,63 @@ describe("MCP：每台的小标与抽屉那一行", () => {
   });
 });
 
+describe("插件：一种 · 一颗筛选 · 关着一态（只读）", () => {
+  beforeEach(() => invokeMock.mockReset());
+  const line = "1.4.0 · 开着 · 用户设置";
+  const plugin = row(
+    "plugin",
+    "github",
+    [
+      cell("same", [{ ...place(user, "same"), line }], null, "插件只读"),
+      cell("off", [{ ...place(user, "off"), line: "1.3.2 · 关着 · 用户设置" }], null, "插件只读"),
+    ],
+    { about: "读写 GitHub" },
+  );
+
+  it("★ 种类一格画后端那一句；点多一态「关着」（自己一个图标 · 悬停是后端那一句）；图例照后端给的列（含「关着」）", async () => {
+    const offLegend = { state: "off", said: "〈图例 off〉" };
+    const s = await page([{ ...listWith(demoMissing, [plugin]), legend: [...LEGEND, offLegend] }]);
+    expect(s.element.querySelector('.ext-row[data-key="plugin/github"] .ext-kind')?.textContent).toBe(KIND_SAID.plugin);
+    const got = dots(s, "github");
+    expect(got[1]).toEqual(["icon:stop", copyText("extPage.dot.title", { machine: "laptop", state: SAID.off })]);
+    expect(new Set(got.map(([g]) => g)).size, "关着与开着不是同一个图标").toBe(2);
+    const legend = [...s.element.querySelectorAll(".ext-legend-item")].map((i) => [glyph(i.querySelector(".ext-dot")!), i.textContent]);
+    expect(legend.slice(0, 5)).toEqual([
+      ["icon:success", LEGEND[0].said],
+      ["icon:half", LEGEND[1].said],
+      ["icon:ring", LEGEND[2].said],
+      ["icon:folder", LEGEND[3].said],
+      ["icon:stop", offLegend.said],
+    ]);
+  });
+
+  it("★ 筛选多一颗「插件」：只留插件行；别的几颗不挑插件", async () => {
+    const s = await page([listWith(demoMissing, [plugin])]);
+    const rows = () => [...s.element.querySelectorAll(".ext-row[data-key]")].map((r) => r.getAttribute("data-key"));
+    const buttons = [...s.element.querySelectorAll(".ext-filter button")] as HTMLButtonElement[];
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      copyText("extPage.filter.all"),
+      copyText("extPage.filter.skill"),
+      copyText("extPage.filter.mcp"),
+      copyText("extPage.filter.plugin"),
+    ]);
+    buttons[3].click();
+    expect(rows()).toEqual(["plugin/github"]);
+    buttons[1].click();
+    expect(rows()).not.toContain("plugin/github");
+  });
+
+  it("★ 抽屉：每台没有勾（只读）、说后端那一句；那一处后端写好的那一句（版本 · 开关 · 出处）原样列出", async () => {
+    const s = await page([listWith(demoMissing, [plugin])]);
+    open(s, "plugin/github");
+    const lines = machineLines(s);
+    expect(lines.map((l) => (l.querySelector(".ext-pick") as HTMLInputElement).disabled)).toEqual([true, true]);
+    expect(lines.map((l) => l.querySelector(":scope > .settings-hint")?.textContent)).toEqual(["插件只读", "插件只读"]);
+    expect(lines.map((l) => l.querySelector(".ext-place-line")?.textContent)).toEqual([line, "1.3.2 · 关着 · 用户设置"]);
+    expect(s.element.querySelectorAll(`.ext-drawer [data-action="install-many"]`).length).toBe(0);
+  });
+});
+
 describe("界面层零判定：扩展页不比较指纹、不读配置文件", () => {
   it("扩展页与它的读口两份源码里零处（正控：同一把尺子认得出一处现造的比较）", () => {
     expect(comparesFingerprints("if (a.digest === b.digest) x();")).toHaveLength(1);
@@ -614,7 +676,7 @@ describe("一次装到几台：要填的值只填一次", () => {
   it("★ 后端并好的那一格只出一次、说哪台已有这个值；填一次 ⇒ 交上去的就是它（每台只拿它那张卡要的几格由后端分）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
     const mcpMissing = cell("missing", [place(user, "missing")], bring());
-    const lst = { machines: m3, problems: [], rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
+    const lst = { machines: m3, problems: [], legend: LEGEND, rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
     let applied: ManyArgs | null = null;
     const s = await page(
       [lst],
