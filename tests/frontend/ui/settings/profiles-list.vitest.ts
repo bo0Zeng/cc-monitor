@@ -27,6 +27,8 @@ const form = (name: string, from: string | null): ProfileForm => ({
   tab: null,
 });
 
+const SLOT_IDS = ["account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "busRegister", "tab"] as const;
+
 const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}): ProfileRow => ({
   name,
   from,
@@ -68,6 +70,8 @@ describe("buildProfilesList", () => {
       binDir: "/h/.cc-monitor/bin",
       accounts: ["team", "work"],
       tmux: true,
+      // 格名是那台后端写好的（`profiles-read` 的 `slots`）；夹具用占位字，判据按它认格名出自成品。
+      slots: SLOT_IDS.map((id) => ({ id, label: `L-${id}` })),
     };
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
@@ -172,6 +176,15 @@ describe("buildProfilesList", () => {
     await flush();
     expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "work" } } }], ifRev: "fp-1" }]);
     expect(el.querySelector('[data-role="profile-form"]')).toBeNull();
+  });
+
+  it("★ 表单各格的名字照抄后端交来的 slots（界面不另存一份标签表）", async () => {
+    const { el } = await mount();
+    [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link')][0].click();
+    await flush();
+    const text = el.querySelector<HTMLElement>('[data-role="profile-form"]')!.textContent ?? "";
+    for (const id of ["account", "tmux", "cwdIf", "cwd", "agent", "launcher", "tmuxSize", "detach", "busRegister"]) expect(text, id).toContain(`L-${id}`);
+    expect(text).not.toContain(copyText("beProfile.slot.cwdIf"));
   });
 
   it("★ 这台没有 tmux（那台后端判的）⇒ tmux 那一格不藏，旁边说一句；有 tmux 的那台不说", async () => {

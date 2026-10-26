@@ -10599,6 +10599,7 @@ accountShape: ProfileAccountShape | null,
  * 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
  */
 start: string, };
+type ProfileSlot = { id: ProfileSlotId, label: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
@@ -10650,7 +10651,11 @@ accounts: Array<string>,
 /**
  * 这台有没有 tmux（「在哪起」那一格选不选得了 tmux 看它）；探不出 ⇒ `null`。
  */
-tmux: boolean | null, };
+tmux: boolean | null, 
+/**
+ * 表单各格的标签，按表单从上到下的顺序（表单 · 删一段时「会丢哪几项」那一句照它写格名）。
+ */
+slots: Array<ProfileSlot>, };
 type ProfilesMigrated = { 
 /**
  * 转进来几段。
@@ -13497,13 +13502,17 @@ type ForwardStartReq = {
  */
 origin: Origin, 
 /**
- * 绑本机 `127.0.0.1:localPort`。
+ * 绑本机 `127.0.0.1:localPort`：用户敲进去的原文，这里解（界面不判是不是端口）。
  */
-localPort: number, 
+localPort: string, 
 /**
  * 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
  */
-remoteHost: string, remotePort: number, };
+remoteHost: string, 
+/**
+ * 同 `localPort`：原文。
+ */
+remotePort: string, };
 type ForwardStarted = { 
 /**
  * `fwd-<n>`，本进程内单调。

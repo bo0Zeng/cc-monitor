@@ -199,20 +199,6 @@ function startSlot(f: ProfileForm, s: SlotId, accounts: readonly string[]): Prof
   return n;
 }
 
-const SLOT_LABEL: Record<SlotId, () => string> = {
-  account: () => copyText("beProfile.slot.account"),
-  tmux: () => copyText("beProfile.slot.tmux"),
-  cwdIf: () => copyText("beProfile.slot.cwdIf"),
-  cwd: () => copyText("beProfile.slot.cwd"),
-  agent: () => copyText("beProfile.slot.agent"),
-  args: () => copyText("beProfile.slot.args"),
-  launcher: () => copyText("beProfile.slot.launcher"),
-  tmuxSize: () => copyText("beProfile.slot.tmuxSize"),
-  detach: () => copyText("beProfile.slot.detach"),
-  busRegister: () => copyText("beProfile.slot.busRegister"),
-  tab: () => copyText("beProfile.slot.tab"),
-};
-
 /**
  * 「在哪起」那三种 tmux 取名**撞名时会怎样**（下拉的选项只有名字，没有一句说撞了会怎样）。
  *
@@ -267,6 +253,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const short = (p: string): string => homeShort(p, book?.home ?? null);
   const find = (n: string): ProfileRow | undefined => book?.profiles.find((p) => p.name === n);
   const kidsOf = (n: string): string[] => (book?.profiles ?? []).filter((p) => p.from === n).map((p) => p.name);
+  /** 表单那一格的名字：后端 `profiles-read` 写好的（`slots`），这里不另存一份。 */
+  const slotName = (s: SlotId): string => book?.slots.find((x) => x.id === s)?.label ?? "";
 
   // ── 读 ──
 
@@ -671,7 +659,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       });
       return o;
     };
-    const lost = (find(r.name)?.own ?? []).map((o) => SLOT_LABEL[o.slot]()).join(copyText("profilesPage.list.sep"));
+    const lost = (find(r.name)?.own ?? []).map((o) => slotName(o.slot)).join(copyText("profilesPage.list.sep"));
     const reparentTitle = parent ? copyText("profilesPage.remove.reparent", { parent }) : copyText("profilesPage.remove.reparentRoot");
     const reparentHint = copyText("profilesPage.remove.reparentHint", { name: r.name, items: lost || copyText("profilesPage.impact.none") });
     const showImpact = link((r.open ? copyText("profilesPage.impact.hide") : copyText("profilesPage.impact.show")), () => {
@@ -934,7 +922,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     const row = el("div", "prof-inhrow");
     const v = f[s as "cwd" | "agent" | "args" | "launcher" | "tmuxSize"] ?? "";
-    row.append(text(v, SLOT_LABEL[s](), (nv) => changed({ ...f, [s]: nv }), undefined, `slot.${s}`), back);
+    row.append(text(v, slotName(s), (nv) => changed({ ...f, [s]: nv }), undefined, `slot.${s}`), back);
     cell.appendChild(row);
     return cell;
   };
@@ -1000,12 +988,12 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     fromSel.el.dataset.key = "from";
     field(copyText("profilesPage.form.from"), fromSel.el, el("div", "cfg-hint", copyText("profilesPage.form.fromHelp")));
     const accounts = book?.accounts ?? [];
-    for (const s of MAIN_SLOTS) field(SLOT_LABEL[s](), slotEditor(s, f, accounts));
+    for (const s of MAIN_SLOTS) field(slotName(s), slotEditor(s, f, accounts));
     const more = el("details", "prof-more");
     if (MORE_SLOTS.some((s) => own(f, s))) more.open = true;
     more.appendChild(el("summary", "", copyText("profilesPage.form.more")));
     const moreGrid = el("div", "cfg-fg prof-fg");
-    for (const s of MORE_SLOTS) moreGrid.append(el("div", "cfg-fl", SLOT_LABEL[s]()), slotEditor(s, f, accounts));
+    for (const s of MORE_SLOTS) moreGrid.append(el("div", "cfg-fl", slotName(s)), slotEditor(s, f, accounts));
     more.appendChild(moreGrid);
     const prevMore = (prev ?? st.el).querySelector("details.prof-more") as HTMLDetailsElement | null;
     if (prevMore) more.open = prevMore.open;

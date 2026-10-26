@@ -3,7 +3,8 @@
  * 转发账住本机常驻后端：起 / 停 / 列经通道直接问它（`../port-forward-reads.ts`），
  * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
-import { toast, failToast } from "../kit/toast";
+import { failToast } from "../kit/toast";
+import { saidOf } from "../kit/detail";
 import { readRemoteConfig } from "../remote-config";
 
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
@@ -151,35 +152,14 @@ class PortForwardPanel {
   }
 
   private async onStart(): Promise<void> {
-    const origin = this.originSel.value;
-    const localPort = Number.parseInt(this.localInput.value, 10);
-    const remoteHost = this.rhostInput.value.trim();
-    const remotePort = Number.parseInt(this.rportInput.value, 10);
-    if (!origin) {
-      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noRemote"));
-      return;
-    }
-    const validPort = (p: number): boolean => Number.isInteger(p) && p > 0 && p <= 65535;
-    if (!validPort(localPort)) {
-      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badLocalPort"));
-      return;
-    }
-    if (!remoteHost) {
-      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noHost"));
-      return;
-    }
-    if (!validPort(remotePort)) {
-      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badRemotePort"));
-      return;
-    }
     try {
-      // 只交名字：怎么拨照本机后端的机器表（流没起来也照拨，不拒）。
-      await startForward({ origin, localPort, remoteHost, remotePort });
+      // 只交名字与敲进去的原文：没选机器 · 端口不对 · 主机空都由本机后端判、写好那一句；怎么拨照它的机器表（流没起来也照拨，不拒）。
+      await startForward({ origin: this.originSel.value, localPort: this.localInput.value, remoteHost: this.rhostInput.value, remotePort: this.rportInput.value });
       this.localInput.value = "";
       this.rportInput.value = "";
       await this.reload();
     } catch (e) {
-      failToast(copyText("portForward.onStart.failed"), e);
+      failToast(saidOf(e), e);
     }
   }
 
