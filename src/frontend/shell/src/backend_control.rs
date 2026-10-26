@@ -139,7 +139,7 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
         // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：叫醒它（停过的不再停着、断着的不等退避马上再接）。
         //   主窗口那条 `{machine} 离线` 的［重新连接］走的就是这里。
         wake_backend_feed(&origin).await;
-        Ok(format!("{origin} 的流已叫醒"))
+        Ok(origin)
     }
     .await;
     r.map_err(|s| s.named("backend_start"))
