@@ -155,7 +155,7 @@ async fn drain(mut s: futures::stream::BoxStream<'static, Step>) -> Vec<Step> {
     out
 }
 
-/// 🔴🔴 **M2：开单 → 订阅即起跑 → 帧 → 终局**，而且转给后端的是**本机**那条流、带着那台远端的拨号请求。
+/// 🔴🔴 **M2：开单 → 订阅即起跑 → 帧 → 终局**，而且转给后端的是**本机**那条流、带着那台远端的名字。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_they_are() {
     let _g = crate::inbound_client::local_origin_test_lock();
@@ -180,14 +180,12 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_t
         req["args"]["home"], "/home/u",
         "后端的 home 没原样转给传输台"
     );
+    // 只交那台的名字：怎么拨（地址 · 钥匙路径）照本机后端的机器表，一格都不交。
     assert_eq!(
-        req["args"]["dial"]["machine"]["host"], "example.invalid",
-        "拨号请求不是那台远端的"
+        req["args"]["machine"], "中继·上传",
+        "交的不是那台远端的名字"
     );
-    assert_eq!(
-        req["args"]["dial"]["machine"]["keyPath"], "/k",
-        "拨号请求只该带私钥路径（且要带）"
-    );
+    assert!(req["args"].get("dial").is_none(), "还在交拨号请求");
 
     let origin = crate::origin::Origin("中继·上传".to_string());
     let s = watch_ticket(&origin, "xfer-1").expect("订阅");
@@ -443,13 +441,12 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
             .expect("假后端没收到")
             .expect("口关了");
         let v: Value = serde_json::from_str(&line).unwrap();
-        let dial = serde_json::to_string(&v["args"]["dial"]).unwrap();
         // 只钉 `args` 那一段（信封的 id · 余下期限 · 时区每趟不同）。
         let from = line.find(r#""args":"#).expect("没有 args") + r#""args":"#.len();
         let to = line.find(r#","within_ms""#).expect("没有 within_ms");
         got.push(format!(
             "{op} {} => {}",
-            line[from..to].replace(&dial, "<dial>"),
+            line[from..to].to_string(),
             serde_json::to_string(&back).unwrap()
         ));
     }
@@ -479,10 +476,10 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         got.push(format!("{op} {payload} => {code} {said}"));
     }
     let want = [
-        r#"transfer-upload {"dial":<dial>,"items":[{"local_path":"/tmp/x.bin"}],"remote_dir":"/srv"} => {"items":[{"id":"xfer-1","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
-        r#"transfer-upload {"dial":<dial>,"home":"/home/u","items":[{"local_path":"/tmp/x.bin"}],"remote_dir":"/srv"} => {"items":[{"id":"xfer-2","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
-        r#"transfer-download {"dial":<dial>,"items":[{"name":"a b","remote_path":"/srv/a b"}],"local_dir":"/tmp"} => {"items":[{"id":"xfer-3","key":"0","state":"opened"}]}"#,
-        r#"transfer-download {"dial":<dial>,"items":[{"name":{"b16":"ff"},"remote_path":"/srv/a"}],"local_dir":"/tmp"} => {"items":[{"id":"xfer-4","key":"0","state":"opened"}]}"#,
+        r#"transfer-upload {"items":[{"local_path":"/tmp/x.bin"}],"machine":"中继·字节","remote_dir":"/srv"} => {"items":[{"id":"xfer-1","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
+        r#"transfer-upload {"home":"/home/u","items":[{"local_path":"/tmp/x.bin"}],"machine":"中继·字节","remote_dir":"/srv"} => {"items":[{"id":"xfer-2","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
+        r#"transfer-download {"items":[{"name":"a b","remote_path":"/srv/a b"}],"local_dir":"/tmp","machine":"中继·字节"} => {"items":[{"id":"xfer-3","key":"0","state":"opened"}]}"#,
+        r#"transfer-download {"items":[{"name":{"b16":"ff"},"remote_path":"/srv/a"}],"local_dir":"/tmp","machine":"中继·字节"} => {"items":[{"id":"xfer-4","key":"0","state":"opened"}]}"#,
         r#"transfer-upload {} => bad_args 请求格式不对 · transfer-upload"#,
         r#"transfer-upload {"items":[{"local_path":7}]} => bad_args 请求格式不对 · transfer-upload"#,
         r#"transfer-download {"items":[{"name":"/tmp/a"}],"local_dir":"/tmp"} => bad_args 请求格式不对 · transfer-download"#,

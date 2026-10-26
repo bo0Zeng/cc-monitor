@@ -253,16 +253,6 @@ pub fn loose_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Host, D::Er
     loose(&v).map_err(|(_, m)| serde::de::Error::custom(m))
 }
 
-/// 同 [`loose_field`]，可缺 / `null` 的那一格。
-pub fn loose_opt<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Host>, D::Error> {
-    match <Value as serde::Deserialize>::deserialize(d)? {
-        Value::Null => Ok(None),
-        v => loose(&v)
-            .map(Some)
-            .map_err(|(_, m)| serde::de::Error::custom(m)),
-    }
-}
-
 /// 拨不了这一台（没地址 · 没用户 · 端口不在 1–65535）⇒ `bad_args`（调用方是我们自己：契约错）。
 /// 以 `-` 打头那一条不在这里拒：russh 拨号不经命令行；写表那一处照 [`Host::fault`] 拒，开终端那一行另按它的裸词白名单拒、说清是哪一格。
 fn usable(h: &Host) -> Result<&Host, Err> {
@@ -348,23 +338,6 @@ pub fn request(
         obj.extend(more);
     }
     Ok(req)
-}
-
-/// 同 [`request`]，组好之后读成拨号请求。
-pub fn dial_request(
-    table: &[Host],
-    name: &str,
-    prefer: Option<&Endpoint>,
-    use_: &str,
-    extra: Value,
-) -> Result<crate::DialRequest, Err> {
-    let req = request(table, name, prefer, use_, extra)?;
-    <crate::DialRequest as serde::Deserialize>::deserialize(&req).map_err(|e| {
-        (
-            "bad_args",
-            crate::malformed(&format!("dial request unreadable: {e}")),
-        )
-    })
 }
 
 #[cfg(test)]

@@ -381,10 +381,10 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
         }
     }
     let body = dp1_body(&prod, "async fn install_for(");
-    guard_core::find_pinned(&body, "ask_backend(cfg, INSTALL_CMD, slots, &dial)")
+    guard_core::find_pinned(&body, "ask_backend(cfg, INSTALL_CMD, slots)")
         .unwrap_or_else(|e| panic!("装那一口不是恰好一处问本机后端（{e}）"));
     let body = dp1_body(&prod, "async fn uninstall_for(");
-    guard_core::find_pinned(&body, "ask_backend(cfg, UNINSTALL_CMD, slots, &dial)")
+    guard_core::find_pinned(&body, "ask_backend(cfg, UNINSTALL_CMD, slots)")
         .unwrap_or_else(|e| panic!("卸那一口不是恰好一处问本机后端（{e}）"));
     let body = dp1_body(&prod, "async fn ask_backend(");
     guard_core::find_pinned(&body, ".call(cmd, args, INSTALL_BUDGET)")

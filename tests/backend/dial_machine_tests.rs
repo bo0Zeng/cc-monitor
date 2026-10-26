@@ -223,7 +223,7 @@ fn the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses() {
         "addresses": ["devbox.lan", "[fe80::1]:2200"]}),
     )];
     let extra = json!({"command": "x", "agent_sock": "/run/agent"});
-    let r = dial_request(
+    let r = req(
         &table,
         "devbox",
         Some(&ep("fe80::1", 2200)),
@@ -251,7 +251,7 @@ fn the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses() {
         ("x", Some("/run/agent"))
     );
     // 上次赢的那条已不在这台的地址里（配置改过）⇒ 顺序不动。
-    let order: Vec<String> = dial_request(
+    let order: Vec<String> = req(
         &table,
         "devbox",
         Some(&ep("gone.lan", 22)),
@@ -264,4 +264,16 @@ fn the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses() {
     .map(|e| e.host)
     .collect();
     assert_eq!(order, vec!["192.0.2.2", "devbox.lan", "fe80::1"]);
+}
+
+/// 组好之后读成拨号请求（后端拿 [`request`] 那一形读，同一份）。
+fn req(
+    table: &[Host],
+    name: &str,
+    prefer: Option<&Endpoint>,
+    use_: &str,
+    extra: Value,
+) -> Result<crate::DialRequest, Err> {
+    let v = request(table, name, prefer, use_, extra)?;
+    Ok(serde_json::from_value(v).expect("组好的那一形读得成拨号请求"))
 }

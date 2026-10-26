@@ -48,7 +48,7 @@ pub(crate) mod known_hosts; // cc-monitor 自己那份 known_hosts（握手认�
 pub use known_hosts::install as install_known_hosts;
 pub mod link;
 pub(crate) mod probe; // 测试连接（`remote-probe`）
-                      // 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`。
+                      // 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 那几台（照机器表按名字够到）—— 全后端只此一处。
                       // 住拨号层：它只用拨号与契约那几样，不碰帧面（审计二 B2e：原住 `stream/`，那时 `dial ⇄ stream` 双向都因它多出几条边）。
 pub mod remote_ask;
 pub(crate) mod ssh_config;
@@ -158,9 +158,11 @@ type CmdErr = (&'static str, String);
 /// 这一端的机器表怎么读（`control::machines` 那一份）：起来那一下装一次（拨号层不认控制面，`layering_guard` 的 dial ↛ control）。
 static MACHINES: std::sync::OnceLock<fn() -> Vec<Host>> = std::sync::OnceLock::new();
 
-/// 装上「这一端的机器表怎么读」。装过再装 ⇒ 不换（一个进程一张表）。
+/// 装上「这一端的机器表怎么读」。装过再装 ⇒ 不换（一个进程一张表），记一行。
 pub fn install_machines(read: fn() -> Vec<Host>) {
-    let _ = MACHINES.set(read);
+    if MACHINES.set(read).is_err() {
+        tracing::warn!("dial: 机器表的读法已经装过了，这一次不换");
+    }
 }
 
 /// 这一端的机器表此刻那一张（现读；没装 ⇒ 空表）。
