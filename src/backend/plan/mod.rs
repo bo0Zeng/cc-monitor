@@ -29,6 +29,7 @@ pub(crate) mod locate;
 pub(crate) mod needs;
 pub(crate) mod owners;
 pub(crate) mod product;
+pub(crate) mod refs;
 pub(crate) mod review;
 pub(crate) mod watch;
 pub(crate) mod wire;
