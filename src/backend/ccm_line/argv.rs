@@ -25,7 +25,6 @@ pub(crate) mod flag {
     pub(crate) const AGENT: &str = "--ccm-agent";
     pub(crate) const LAUNCHER: &str = "--launcher";
     pub(crate) const BUS_REGISTER: &str = "--bus-register";
-    pub(crate) const BUS_NOTE: &str = "--bus-note";
     pub(crate) const ATTACH: &str = "--attach";
     pub(crate) const CCM_PRINT: &str = "--ccm-print";
     pub(crate) const CCM_HELP: &str = "--ccm-help";
@@ -105,7 +104,6 @@ pub(crate) struct Opts {
     pub(crate) tmux_name: String,
     pub(crate) tmux_base: String,
     pub(crate) bus_register: bool,
-    pub(crate) bus_note: String,
     /// 空串 = **没给** —— 它与「给了一个空值」在本 CLI 上同形（bash 那侧也是）。
     pub(crate) account: String,
     pub(crate) use_base: bool,
@@ -187,7 +185,6 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         tmux_name: String::new(),
         tmux_base: String::new(),
         bus_register: Defaults::BUS_REGISTER,
-        bus_note: String::new(),
         account: String::new(),
         use_base: Defaults::USE_BASE,
         cwd_spec: Defaults::CWD,
@@ -221,7 +218,6 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::AGENT,
     flag::LAUNCHER,
     flag::BUS_REGISTER,
-    flag::BUS_NOTE,
     flag::ATTACH,
     flag::CCM_PRINT,
     flag::CCM_HELP,
@@ -284,7 +280,6 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
             (vec![String::new()], 2)
         }
         flag::TMUX_BASE
-        | flag::BUS_NOTE
         | flag::ACCOUNT
         | flag::CWD
         | flag::AGENT
@@ -326,7 +321,6 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
             o.tmux_base = v(0);
         }
         flag::BUS_REGISTER => o.bus_register = true,
-        flag::BUS_NOTE => o.bus_note = v(0),
         flag::ACCOUNT => o.account = v(0),
         flag::BASE => o.use_base = true,
         flag::CWD => o.cwd_spec = CwdSpec::Explicit(v(0)),
@@ -568,9 +562,6 @@ fn validate(o: &Opts) -> Result<(), Die> {
     }
     if o.bus_register && !o.detach {
         return die(&copy_text("beArgv.validate.registerNeedsDetach", &[]));
-    }
-    if !o.bus_note.is_empty() && !o.bus_register {
-        return die(&copy_text("beArgv.validate.noteNeedsRegister", &[]));
     }
     if !o.tab_from.is_empty() && o.tab.is_none() {
         return die(&copy_text("beArgv.validate.tabFromNeedsTab", &[]));

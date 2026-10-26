@@ -20,7 +20,7 @@
 # · ★★ **全程把 shim 放在 PATH 最前面**，任何裸 `tmux` 都被强制 `-L <隔离socket>`
 #   （`C7i`：backend 与 cc-bus 内部都是裸调 `tmux`，塞不进 `-L`，只能这样拦）。
 #   ⚠⚠ **这条是事故换来的**：本套件原来只在用到 tmux 的那一格前面挂 shim，
-#   头注还写着「本套件不用 tmux」。后来我往 `[15]` 里加了几行裸 `tmux new-session` ——
+#   头注还写着「本套件不用 tmux」。后来我往一格里加了几行裸 `tmux new-session` ——
 #   **那句过时的注释正是我省掉 shim 的理由** —— 于是 `kreal_cc` / `kocc_cc`
 #   **建到了用户的默认 socket 上**（事后按名字精确收掉了，两个里面都只有本套件的 sleep）。
 #   ⇒ 修法不是「下次记得加前缀」，是让它**写不出来**：shim 全程在 PATH 上 + 起飞前双向自检。
@@ -41,7 +41,7 @@ REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[10] 的身份空间对�
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"; tmux_shim_cleanup' EXIT
 BUS="$SANDBOX/bus"; CLA="$SANDBOX/claude"; EMPTY="$SANDBOX/empty"; NOHOME="$SANDBOX/nohome"
-mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
+mkdir -p "$BUS"/{inbox,state,log} "$CLA/projects" "$EMPTY" "$NOHOME"
 
 # ===== 起飞前：把 tmux 钉死在隔离 socket 上（C7i）=====
 # shellcheck source=tests/e2e/tmux-shim.sh
@@ -53,7 +53,7 @@ _SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
 printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
 chmod +x "$_SHIM/tmux"
 export PATH="$_SHIM:$PATH"
-# 双向 canary：**两个方向都必须观测到确定的东西**（否定式守卫会空转，`cc-spawn-uplift` 记着为什么）。
+# 双向 canary：**两个方向都必须观测到确定的东西**（否定式守卫会空转）。
 _canary="ccbuscanary$$"
 tmux new-session -d -s "$_canary" -c /tmp 'sleep 60' 2>/dev/null
 if ! tmux has-session -t "=$_canary" 2>/dev/null; then
@@ -258,7 +258,7 @@ echo "[13] ★ 以谁的身份发：不给 from 的话，回复会掉进没人�
 # **那是我们自己制造的幽灵收件箱**（同 [4] 那条打错名字的病，只是这次是工具造的）。
 # ⇒ bus-send 收可选的 from，作为 CC_BUS_ID 传给子进程（cc-whoami 优先级第一条，
 #   是 cc-bus **现成的契约**，不改它本体）。
-_fb="$SANDBOX/frombus"; mkdir -p "$_fb"/{inbox,state,log,queue}
+_fb="$SANDBOX/frombus"; mkdir -p "$_fb"/{inbox,state,log}
 printf 'x_cc	x_cc:0.0	ts	1
 ' > "$_fb/agents.tsv"
 _send_from() {
@@ -275,208 +275,6 @@ _r2="$(_send_from x '{"to":"x_cc","text":"给了 from","from":"cc-monitor"}')"
 chk "★ 给了 from ⇒ 回值回显它" "$(printf '%s' "$_r2" | jq -r '.from')" "cc-monitor"
 chk "★ 且收信人看到的就是它（不再是 unknown）" \
   "$(jq -r .from < "$_fb/inbox/x_cc.jsonl" | tail -1)" "cc-monitor"
-
-echo "[15] ★ bus-kill：收掉一个成员，且不许收错人"
-# ⚠ 真跑撞出来一条：我给 cc-kill 传了 `--`（那是 cc-send 的参数形状，cc-kill **不解析旗标**）
-#   ⇒ 它去杀一个名叫 `--` 的 agent（`-` 在它的白名单里，连报错都没有），
-#   三种情形全回 killed:false 而真 agent 好好活着。★ 抄参数形状前先看被调方怎么解析。
-tmux new-session -d -s kreal_cc -c /tmp 'sleep 300'
-TMUX_PANE="$(tmux list-panes -t '=kreal_cc' -F '#{pane_id}' | head -1)" \
-  CC_BUS_HOME="$BUS" bash "$SCRIPTS/cc-register" kreal_cc >/dev/null 2>&1
-tmux new-session -d -s kocc_cc -c /tmp 'sleep 300'
-TMUX_PANE="$(tmux list-panes -t '=kocc_cc' -F '#{pane_id}' | head -1)" \
-  CC_BUS_HOME="$BUS" bash "$SCRIPTS/cc-register" kocc_cc >/dev/null 2>&1
-tmux kill-session -t '=kocc_cc'
-tmux new-session -d -s kocc_cc -c /tmp 'sleep 999'     # 同名的无辜占用者
-_occpid="$(tmux list-panes -t '=kocc_cc' -F '#{pane_pid}' | head -1)"
-_dk() {
-  printf '{"id":"%s"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-kill 2>"$SANDBOX/kerr.txt"
-}
-_k1="$(_dk kreal_cc)"
-chk "★ 真 agent：killed=true" "$(printf '%s' "$_k1" | jq -r .killed)" "true"
-chk "  会话真的没了" "$(tmux has-session -t '=kreal_cc' 2>/dev/null && echo 还在 || echo 没了)" "没了"
-_k2="$(_dk kocc_cc)"
-chk "★★ 名字被别人占：**不是 killed**，而是 stale_only" \
-  "$(printf '%s' "$_k2" | jq -c '[.killed,.stale_only]')" "[false,true]"
-chk "★★ 无辜会话还在" "$(tmux has-session -t '=kocc_cc' 2>/dev/null && echo 在 || echo 没了)" "在"
-chk "★★ 无辜进程还在" "$(ps -p "$_occpid" >/dev/null 2>&1 && echo 在 || echo 被杀了)" "在"
-_dk 'bad/id' >/dev/null
-chk "  非法 id ⇒ bad_id（交给 cc-kill 之前后端先判形状，§47 ①）" \
-  "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "bad_id"
-
-echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc-spawn，启动器是假 agent"
-# ⚠ 后端起插件前先 `env_clear()`，只放行白名单 ＋ `CC_BUS_*`/`CCBUS_*` 两个前缀
-#   （`plugin::invoke::INHERITED_ENV_KEYS`）⇒ `CCSPAWN_LAUNCH` / `CCM_BIN` 这类测试钩子**到不了** cc-spawn。
-#   ⇒ 本格改从 **PATH** 与 **HOME**（两者都在白名单里）喂，而且 PATH 是**收窄过的**
-#   （`$_SB` ＋ tmux 垫片 ＋ 系统目录，**不含**用户的 `~/.local/bin` / `~/.cc-monitor/bin`）：
-#   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
-#   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份），它再起 PATH 上的
-#   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
-_SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
-mkdir -p "$_SB" "$_SH" "$_SW/proj"
-ln -sf "$D" "$_SB/ccm"
-_SPATH="$_SB:$_SHIM:/usr/local/bin:/usr/bin:/bin"
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "%s/agent-args.txt"\nsleep 300\n' "$_SW" > "$_SB/claude"
-chmod +x "$_SB/claude"
-# 🔴🔴 **启动器是在 tmux 的 pane 里按名字找的**：pane 里 `claude` 解析到谁，决定了会不会起一个
-#   用户**真的** claude（带着任务文本、用他的账号烧额度）。现打：pane 的环境取自**起会话的那个
-#   tmux 客户端**（只改服务端全局 PATH，pane 里看到的仍是客户端那份；本机 `~/.local/bin/claude`
-#   就是真的那个）。⇒ 两道闸：
-#   ① 隔离服务端的全局 PATH / HOME 也换成沙箱的（兜底：有哪一跳没带客户端环境时仍落在沙箱里）；
-#   ② **起飞前自检**：用与派生那一趟**同样的客户端环境**在同一台服务端上开一个 pane 问
-#      `command -v claude`，不是 `$_SB/claude` 就**整格不跑**（记一条 FAIL），
-#      绝不在没证明是假 agent 的时候派生。
-tmux set-environment -g PATH "$_SPATH"
-tmux set-environment -g HOME "$_SH"
-# ⚠ 自检的 tmux **客户端**要带与派生那一趟同样的 PATH / HOME：新会话的环境取自**客户端**
-#   （现打：只改服务端全局 PATH，pane 里看到的仍是客户端那份），而派生那一趟的客户端是 ccm，
-#   它的 PATH / HOME 就是下面 `_ds` 交给后端的那一份（后端按白名单原样传下去）。
-env HOME="$_SH" PATH="$_SPATH" \
-  tmux new-session -d -s spawncanary -c /tmp "command -v claude > '$_SW/which.txt'; sleep 30"
-wall_until '[ -s "$_SW/which.txt" ]'
-tmux kill-session -t '=spawncanary' 2>/dev/null || true
-_which="$(cat "$_SW/which.txt" 2>/dev/null)"
-chk "起飞前：隔离服务端的 pane 里 claude 解析到假 agent" "$_which" "$_SB/claude"
-_ds() {
-  printf '%s' "$1" | env HOME="$_SH" PATH="$_SPATH" CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" CC_BUS_SCRIPTS="$SCRIPTS" CC_BUS_TIMEOUT_SECS=40 \
-    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-spawn 2>"$SANDBOX/serr.txt"
-}
-if [ "$_which" != "$_SB/claude" ]; then
-  echo "  !! 自检没过 —— 本格不派生（宁可少判，也不在用户的 claude 上起会话）"
-else
-_s1="$(_ds "{\"tool\":\"claude\",\"dir\":\"$_SW/proj\",\"task\":\"跑一遍门禁\",\"base\":true}")"
-chk "★ spawned=true" "$(printf '%s' "$_s1" | jq -r .spawned 2>/dev/null)" "true"
-chk "★ 回值里认出了新会话的 id" "$(printf '%s' "$_s1" | jq -r .id 2>/dev/null)" "proj_cc"
-chk "  会话真的起了（隔离 socket 上）" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo 在 || echo 没有)" "在"
-wall_until '[ -s "$_SW/agent-args.txt" ]'
-# 启动器就是 claude（PATH 上那一个）⇒ ccm 在任务前面垫答题 hook（会话级 `--settings`，入口是那个家里的 ccm），任务是最后一个参数。
-_hook="{\"hooks\":{\"PermissionRequest\":[{\"hooks\":[{\"args\":[\"--\",\"--answer-hook\",\"claude\"],\"command\":\"$_SH/.cc-monitor/bin/ccm\",\"timeout\":3600,\"type\":\"command\"}]}]}}"
-chk "  初始任务作为参数送到了启动器（前面垫着答题 hook）" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "--settings $_hook 跑一遍门禁"
-chk "  登记进了总线名册" "$(cut -f1 "$BUS/agents.tsv" 2>/dev/null | grep -cx proj_cc || true)" "1"
-_ds '{"tool":"claude","dir":"/tmp"}' >/dev/null
-chk "★ 账号不表态 ⇒ bad_args（不替用户选默认号）" "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "bad_args"
-_ds "{\"tool\":\"not-an-agent\",\"dir\":\"$_SW/proj\",\"base\":true}" >/dev/null
-chk "★ 不认的 tool ⇒ 由 cc-spawn 自己拒成 bad_args（后端不写第二份白名单）" \
-  "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "bad_args"
-chk "  …而且没起出第二个会话" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo 起了 || echo 没起)" "没起"
-fi
-echo "[17] ★ ccm 在 pane 里重起自己：名叫 ccm 与名叫 cc-monitor-backend 同形（CC1；分流不看 argv0）"
-# 〔BS1b 现打〕从前走入口②时，pane 里那一跳丢了 `ccm` 这个词 ⇒ 空 bash 而 cc-spawn 照报 rc=0（假成功）。
-# 入口②删了、分流不看名字 ⇒ 本格改钉「换个文件名结果逐字节一样」：两个名字各真跑一次
-#   cc-spawn，把 pane 里真正执行的那条 argv 抓出来比。
-# ⚠ **两个入口是同一份 wrapper 换个名字**：它把「自己被怎么叫」（`$0` ＋ argv）按 NUL 逐字落一个文件，
-#   再用**同一个 argv0**（`exec -a`）交给真二进制 ⇒ ccm 看到的入口就是那个名字，而我们看到的是
-#   **真实产物**（cc-spawn 怎么叫它的、pane 里怎么叫它的），不是任何一个拼串函数的自述。
-# ⚠ 启动器用**绝对路径**的假 agent（`CCSPAWN_LAUNCH`）⇒ pane 里不按名字找，碰不到用户真的 claude。
-_EW="$SANDBOX/entrywork"
-mkdir -p "$_EW/e1" "$_EW/e2" "$_EW/e3" "$_EW/bin" "$_EW/proj" "$_EW/bus"/{inbox,state,log,queue}
-for _e in e1/ccm e2/cc-monitor-backend e3/ccm; do
-  printf '#!/bin/bash\nprintf "%%s\\0" "$0" "$@" > "%s/call.$$"\nexec -a "$0" "%s" "$@"\n' \
-    "$_EW/$(dirname "$_e")" "$D" > "$_EW/$_e"
-  chmod +x "$_EW/$_e"
-done
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$PWD/agent-args.$PPID"\nexec sleep 300\n' > "$_EW/bin/fake-agent"
-chmod +x "$_EW/bin/fake-agent"
-_sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样内层参数才可能逐字相等）
-  env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
-      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" \
-      "$@" \
-      "$TIMEOUT" "$WALL_CEILING_S" bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
-}
-# 判据：每个入口的调用按内容分三类（探针 `--ccm-probe` / 建会话那趟 `--detach` / 其余 = pane 里那一跳；
-#   带 `--ccm-print` 的是自检那一趟，单列）。「入口前缀」**从 cc-spawn 那一趟的真实 argv 里现取**：
-#   两个入口的建会话 argv 取最长公共后缀 = cc-spawn 交给 ccm 的那串，余下的前段就是各自的入口前缀
-#   ⇒ 判据里**不写死** `ccm` 这个词。要求：pane 那一跳 = 各自入口前缀 ＋ 同一串参数（逐字节）。
-_entry_judge() {
-  python3 - "$_EW/e1" "$_EW/e2" <<'PY'
-import glob, sys
-def calls(d):
-    return [open(f, 'rb').read().split(b'\0')[:-1] for f in sorted(glob.glob(d + '/call.*'))]
-def split(cs):
-    outer = [c for c in cs if b'--detach' in c]
-    rest = [c for c in cs if b'--ccm-probe' not in c and b'--detach' not in c]
-    return outer, [c for c in rest if b'--ccm-print' not in c]  # 自检那一趟带的是 --ccm-print
-(o1, p1), (o2, p2) = split(calls(sys.argv[1])), split(calls(sys.argv[2]))
-if len(o1) != 1 or len(o2) != 1:
-    print(f"建会话那趟不是恰好各一次：{len(o1)}/{len(o2)}"); sys.exit()
-if len(p1) != 1 or len(p2) != 1:
-    print(f"pane 里那一跳不是恰好各一次：{len(p1)}/{len(p2)}"); sys.exit()
-o1, o2, p1, p2 = o1[0], o2[0], p1[0], p2[0]
-k = 0
-while k < min(len(o1), len(o2)) and o1[-1 - k] == o2[-1 - k]:
-    k += 1
-pre1, pre2 = o1[:len(o1) - k], o2[:len(o2) - k]
-if p1[:len(pre1)] != pre1 or p2[:len(pre2)] != pre2:
-    print(f"pane 那一跳没走 cc-spawn 叫它的那个入口：入口前缀 {pre1!r}/{pre2!r}，pane 实得 {p1!r}/{p2!r}"); sys.exit()
-t1, t2 = p1[len(pre1):], p2[len(pre2):]
-print("同形" if t1 == t2 else f"参数不同：{t1!r} ≠ {t2!r}")
-PY
-}
-_wait_agent() {  # 等到第 $1 个假 agent 真的起来（坏了永远等不到，上限是兜底的那一个数）
-  _want_agents="$1"
-  wall_until '[ "$(find "$_EW/proj" -maxdepth 1 -name "agent-args.*" | wc -l)" -ge "$_want_agents" ]' || true
-}
-_o1="$(_sp CCM_BIN="$_EW/e1/ccm" 2>"$_EW/err1.txt")"; _r1=$?
-_wait_agent 1
-_o2="$(_sp CCM_BIN="$_EW/e2/cc-monitor-backend" 2>"$_EW/err2.txt")"; _r2=$?
-_wait_agent 2
-_n1="$(printf '%s\n' "$_o1" | sed -n 's/^已 spawn: \([^ ]*\).*/\1/p')"
-_n2="$(printf '%s\n' "$_o2" | sed -n 's/^已 spawn: \([^ ]*\).*/\1/p')"
-chk "  对照：名叫 ccm cc-spawn rc=0" "$_r1" "0"
-chk "★ 名叫 cc-monitor-backend cc-spawn rc=0" "$_r2" "0"
-chk "★★ pane 里那一跳：两个名字 = 各自入口前缀 ＋ **逐字节同一串**参数" "$(_entry_judge)" "同形"
-chk "★ 两个名字的 pane 都真的起到了 agent（任务原样送达）" \
-  "$(cat "$_EW/proj"/agent-args.* 2>/dev/null | grep -cx '任务乙')" "2"
-chk "  两个名字都登记上了总线（各一条）" \
-  "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cxF -e "${_n1:-<无>}" -e "${_n2:-<无>}")" "2"
-
-echo "[17b] ★ pane 里起的东西当场报参数错误 ⇒ cc-spawn **不许**报成功、**不许**登记（CC1）"
-# 造一个「不认这套参数」的入口（旧副本的形状：认不得就 exit 2），让 ccm 在 pane 里叫的是它。
-# 从前经环境变量 `CCM_SELF` 指过去；那个变量删了，内层载荷
-#   只认「这个进程自己被怎么叫的」⇒ 改成**真的**那样叫它：一个入口脚本 `exec -a <旧副本路径>` 真身，
-#   真身跑起来 `argv[0]` 就是旧副本的路径（basename 仍是 `ccm` ⇒ 入口①）——正是「PATH 上那个 `ccm`
-#   是一份不认新参数的旧副本」的现场形状。这一格钉的「假成功看得见」一个字没变。
-mkdir -p "$_EW/old"
-printf '#!/bin/bash\necho "ccm(旧副本): 未知选项: $1" >&2\nexit 2\n' > "$_EW/old/ccm"
-chmod +x "$_EW/old/ccm"
-mkdir -p "$_EW/e4"
-printf '#!/bin/bash\nexec -a "%s" "%s" "$@"\n' "$_EW/old/ccm" "$D" > "$_EW/e4/ccm"
-chmod +x "$_EW/e4/ccm"
-mkdir -p "$_EW/bad"
-_ob="$(env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
-      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" \
-      CCM_BIN="$_EW/e4/ccm" \
-      "$TIMEOUT" "$WALL_CEILING_S" bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?
-wall_until "tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -q '未知选项'" || true
-chk "  前提：pane 里那一跳真的当场报了参数错误（不是本格没打到）" \
-  "$(tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -c '未知选项')" "1"
-chk "★ cc-spawn 退出码非 0（不是假成功）" "$([ "$_rb" -ne 0 ] && echo 非0 || echo "0（假成功）")" "非0"
-chk "★ 没有登记上总线" "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cx 'bad_cc' || true)" "0"
-chk "  也没有报「已 spawn」" "$(printf '%s\n' "$_ob" | grep -c '^已 spawn: ' || true)" "0"
-
-echo "[18] ★ bus-broadcast：广播这个组合收进后端（C4e）—— 只发在线的、三个数分开、不发给自己"
-# 此前广播是 monitor 里的组合（列名单 ＋ 逐个发）；界面改经通道直接说后端之后收进后端。
-# 名册：一个活着（隔离 socket 上真有会话）· 一个会话没了 · 一个是 `from` 自己（也活着）。
-tmux new-session -d -s bcast_cc -c /tmp 'cat' 2>/dev/null
-tmux new-session -d -s bcme_cc -c /tmp 'cat' 2>/dev/null
-printf 'bcast_cc\tbcast_cc:0.0\tts\t1\nbgone_cc\tbgone_cc:0.0\tts\t2\nbcme_cc\tbcme_cc:0.0\tts\t3\n' > "$BUS/agents.tsv"
-: > "$BUS/inbox/bcast_cc.jsonl"; : > "$BUS/inbox/bgone_cc.jsonl"; : > "$BUS/inbox/bcme_cc.jsonl"
-_b="$(printf '{"text":"来自后端的广播","from":"bcme_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" \
-      CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-broadcast 2>"$SANDBOX/berr.txt")"
-chk "★ 只投给在线的那一个（sent=1）" "$(printf '%s' "$_b" | jq -r .sent 2>/dev/null)" "1"
-chk "★ 会话没了的那一个计进 skipped_offline（不是悄悄丢掉）" "$(printf '%s' "$_b" | jq -r .skipped_offline 2>/dev/null)" "1"
-chk "  身份空间答得上 ⇒ liveness_unknown=false" "$(printf '%s' "$_b" | jq -r .liveness_unknown 2>/dev/null)" "false"
-chk "  没有失败的" "$(printf '%s' "$_b" | jq -c .failed 2>/dev/null)" "[]"
-chk "★ 在线那一个的收件箱真的收到了" "$(grep -c '来自后端的广播' "$BUS/inbox/bcast_cc.jsonl" 2>/dev/null || true)" "1"
-chk "★ 会话没了的那一个没被投（不再造幽灵收件箱）" "$(grep -c '来自后端的广播' "$BUS/inbox/bgone_cc.jsonl" 2>/dev/null || true)" "0"
-chk "★ 不发给自己（from）" "$(grep -c '来自后端的广播' "$BUS/inbox/bcme_cc.jsonl" 2>/dev/null || true)" "0"
-printf '{"text":"   "}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-  "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
-chk "★ 空正文 ⇒ bad_args（空广播不是缺省）" "$(jq -r .code < "$SANDBOX/berr.txt" 2>/dev/null)" "bad_args"
-tmux kill-session -t '=bcast_cc' 2>/dev/null || true
-tmux kill-session -t '=bcme_cc' 2>/dev/null || true
 
 echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
 # `cc-register` 记登记地址 · `cc-whoami` 三条认身份的路，读的都是**会话名**（可以是中文）。
@@ -510,19 +308,14 @@ chk "★ cc-whoami（按 \$TMUX 反查会话 id 那一条）认出的身份" "$(
 chk "★ cc-whoami（沿进程树找 pane 那一条）认出的身份" "$(cat "$_u8d/who3" 2>/dev/null)" "$_u8want"
 tmux kill-session -t "=$_u8name" 2>/dev/null || true
 
-echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）"
-# 台架写一份**脏**的名册与台账（只采结构：`--help` 行 · 缺字段行 · 真空行 · 只有 TAB 的行 · 任务里带 TAB），
-# 坏行数期望由这份夹具手算，不从被测输出里取。
+echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好行 · 收件箱只看尾巴）"
+# 台架写一份**脏**的名册（只采结构：`--help` 行 · 缺字段行 · 真空行 · 只有 TAB 的行）。
 printf 'alpha_cc\talpha_cc:0.0\t2026-01-01T00:00:00+00:00\t111\n--help\tx:0.0\tts\t1\nshort\tonly\n\n\t\t\t\nbeta_cc\tbeta_cc:0.0\tts2\t\n' > "$BUS/agents.tsv"
-printf 'gamma_cc\t/d\tts3\ttask\twith tab\nbroken\n' > "$BUS/spawned.tsv"
 printf '{"from":"peer_cc","ts":"t1","text":"占位一"}\nnot json\n{"from":"peer_cc","ts":"t2","text":"占位二"}\n' > "$BUS/inbox/alpha_cc.jsonl"
 echo 1 > "$BUS/state/alpha_cc.pos"
-out="$(d --bus-state </dev/null)"
-chk "名册两条好行（--help 被本侧 id 判定拒掉、计进坏行）" "$(printf '%s' "$out" | jq -c '[.agents[].id]')" '["alpha_cc","beta_cc"]'
-chk "★ 登记时间回来了" "$(printf '%s' "$out" | jq -r '.agents[0].registered_at')" "2026-01-01T00:00:00+00:00"
+out="$(d --bus-list </dev/null)"
+chk "名单两条好行（--help 被本侧 id 判定拒掉）" "$(printf '%s' "$out" | jq -c '[.agents[].id]')" '["alpha_cc","beta_cc"]'
 chk "  待读数照旧（3 行 − 已读 1）" "$(printf '%s' "$out" | jq -r '.agents[0].unread')" "2"
-chk "★ 派生时间回来了、任务里的 TAB 没被截" "$(printf '%s' "$out" | jq -c '.spawned[0] | [.spawned_at, .task]')" '["ts3","task\twith tab"]'
-chk "★ 坏行数：名册 short · 只有 TAB · --help 三行 ＋ 台账 broken 一行 = 4（真空行不算）" "$(printf '%s' "$out" | jq -r '.skipped')" "4"
 _pos_before="$(cat "$BUS/state/alpha_cc.pos")"; _state_before="$(ls "$BUS/state" | tr '\n' ' ')"
 out="$(printf '{"id":"alpha_cc","lines":2}' | d --bus-inbox)"
 chk "★ 收件箱只看尾巴（末 2 行：一条坏、一条好）" "$(printf '%s' "$out" | jq -c '[.messages[].text, .skipped]')" '["占位二",1]'
@@ -530,33 +323,27 @@ chk "★ 读收件箱不推已读位置" "$(cat "$BUS/state/alpha_cc.pos")" "$_p
 chk "  也不在 state/ 里写任何东西" "$(ls "$BUS/state" | tr '\n' ' ')" "$_state_before"
 printf '{"id":"--help"}' | d --bus-inbox >/dev/null
 chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
-# 老 cc-bus：`cc-list` / `cc-agents` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
+# 老 cc-bus：`cc-list` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
 _old="$SANDBOX/oldbus"; mkdir -p "$_old"
-printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; cp "$_old/cc-list" "$_old/cc-agents"; chmod +x "$_old/cc-list" "$_old/cc-agents"
-env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
+printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; chmod +x "$_old/cc-list"
+env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err.txt"
 # 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
 _TOOOLD="$(zh_frag beCcBus.read.tooOld)"
 chk "★ 老 cc-bus ⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
-rm -f "$BUS/agents.tsv" "$BUS/spawned.tsv"
+rm -f "$BUS/agents.tsv"
 
-echo "[SH1-c] ★ D-g：monitor 杀会话成功 ⇒ 对登记在那个会话 pane 上的 id 调 cc-kill（认 pane pid，不按会话名猜）"
+echo "[SH1-c] ★ 杀会话不碰 cc-bus 名册（顺手注销那一段删了；名册改按会话 id 推之前，登记照旧留着）"
 : > "$BUS/agents.tsv"
 _dg="$SANDBOX/dg"; mkdir -p "$_dg"
 tmux new-session -d -s dg-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
   "$SCRIPTS/cc-register" dg_cc >/dev/null 2>&1; touch "$OUT/a"; exec sleep 60' 2>/dev/null
-tmux new-session -d -s dgother-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
-  "$SCRIPTS/cc-register" dgother_cc >/dev/null 2>&1; touch "$OUT/b"; exec sleep 60' 2>/dev/null
-wall_until '[ -f "$_dg/a" ] && [ -f "$_dg/b" ]' || true
+wall_until '[ -f "$_dg/a" ]' || true
 printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
-chk "  台架：两个会话都登记上了（带 pane pid）" "$(awk -F'\t' '$4!=""{n++} END{print n+0}' "$BUS/agents.tsv")" "2"
+chk "  台架：会话登记上了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
 out="$(printf '{"name":"dg-cc"}' | d --kill)"
 chk "杀会话本身照旧成功" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
-# 注销的结局进成品的 `bus` 那一格：注销了谁 · 谁没注销成 · 名册读得到。
-chk "★ 成品 bus 那一格说出注销了 dg_cc（没有失败、名册读得到）" "$(printf '%s' "$out" | jq -c '[.bus.removed, .bus.failed, .bus.unread]')" '[["dg_cc"],[],null]'
-chk "★ 登记在被杀会话上的 dg_cc 从名册里没了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "0"
-chk "★ 它的收件箱也清了（cc-bus「收掉成员」的全套）" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "没了"
-chk "★ 别的会话上登记的 dgother_cc 原样在" "$(awk -F'\t' '$1=="dgother_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
-tmux kill-session -t '=dgother-cc' 2>/dev/null || true
+chk "★ 名册里那一行没被动" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
+chk "★ 收件箱也没被动" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "在"
 
 echo "[CLI2] ★ CLI 面的入参不再隐含「调用方写得了 stdin」：argv 载荷口 · 开着不写不挂 · --stdin-line 任意位置 · 超大回码"
 # 一份沙箱里的会话记录（夹具文字，不是真正文）。

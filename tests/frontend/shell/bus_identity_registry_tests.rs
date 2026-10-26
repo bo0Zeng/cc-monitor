@@ -42,8 +42,8 @@ fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
     assert!(
         files
             .iter()
-            .any(|f| f.replace('\\', "/").ends_with("/scripts/cc-kill")),
-        "列到的 cc-bus 脚本里没有 `cc-kill` —— 清单取法坏了，本断言在空转：{files:?}"
+            .any(|f| f.replace('\\', "/").ends_with("/scripts/cc-send")),
+        "列到的 cc-bus 脚本里没有 `cc-send` —— 清单取法坏了，本断言在空转：{files:?}"
     );
     let mut targeting: Vec<String> = Vec::new();
     let mut unverified: Vec<String> = Vec::new();
@@ -69,7 +69,7 @@ fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
         // 同一行里既有 `display-message` 又有 `pane_pid`。
         //
         // ⚠ 证据第一版只要求「文件里提到 pane_pid」，**变异当场存活**：
-        //   把 `cc-kill` 的核对换成恒等（`_have_pid="$_want_pid"`）之后，
+        //   把当年收会话那条脚本的核对换成恒等（`_have_pid="$_want_pid"`）之后，
         //   文件里**别处**仍有 `pane_pid`（收进程树那句 `list-panes … '#{pane_pid}'`）
         //   ⇒ 判据照样绿。★ 证据要选**只有做了那件事才会出现**的东西。
         let verified = prod
@@ -79,21 +79,17 @@ fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
             unverified.push(name);
         }
     }
+    // 今天一处都没有；认法会不会红由下面那条反向自检钉。
     targeting.sort();
-    // 正控：`cc-kill` 按名字点名 tmux（收会话那一下），它必须被认出来。
-    assert!(
-        targeting.iter().any(|n| n == "cc-kill"),
-        "按名字点名 tmux 的脚本里没认出 `cc-kill` —— 抽取坏了，本断言在空转：{targeting:?}"
-    );
     assert!(
         unverified.is_empty(),
         "这些 cc-bus 脚本拿 id 去点名 tmux，却**没有核身份**：{unverified:?}\n\
-             ⇒ cc-bus 的地址是名字型的，而名字会被重用（`cc-spawn` 按目录基名取名）。\n\
+             ⇒ cc-bus 的地址是名字型的，而名字会被重用（起会话常按目录基名取名）。\n\
              不核身份的后果 08-13 实测过三次：敲门打进陌生人的屏幕 · **杀掉无辜进程与会话** ·\n\
              假报「活」。\n\
              核法：拿 `agents.tsv` 第 2 列那个**完整地址**去问 `#{{pane_pid}}`，与第 4 列比。\n\
              ⚠ 别用 `list-panes -t \"=<id>\"` —— 那取的是**当前窗口**的 pane，\n\
-             用户开个新窗口就假阳性（`cc-kill` 第一版栽过；假阳性比不查更坏）。\n\
+             用户开个新窗口就假阳性（假阳性比不查更坏）。\n\
              实在不需要核的，登记进 `EXEMPT` 并写明理由。"
     );
 }

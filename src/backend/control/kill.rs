@@ -6,11 +6,6 @@
 //! `admit_destructive` 回的令牌里是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
 //! 名字在窗口期内被重新绑定到别的会话也杀不到别人（同 `super::gate` 头注的 TOCTOU 分析）。
 //!
-//! # 杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
-//!
-//! 杀之前读下全部 pane 的根进程 pid，杀成之后按 `agents.tsv` 第 4 列那个 pid 认人、逐个 `cc-kill`（`cc_bus::unregister_panes`）；
-//! 那一步失败不改杀会话的结局；注销的结局进成品的 `bus` 那一格（注销了谁 · 谁没注销成 · 名册读不到），界面说一句。
-//!
 //! # 错误码
 //!
 //! 命令级（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
@@ -22,7 +17,7 @@ use copy_core::copy_text;
 /// `kill-session` / `kill-pane` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
-/// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀 · 顺手注销 cc-bus 共用）。
+/// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀共用）。
 pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
@@ -144,23 +139,15 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
 /// 按 `sid` 认：要求此刻有窗格挂着它（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）；
 /// 那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
-pub(crate) fn run_as(
-    name: &str,
-    sid: &str,
-    requester: Option<&str>,
-) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+pub(crate) fn run_as(name: &str, sid: &str, requester: Option<&str>) -> Result<(), CmdErr> {
     run_expecting(name, Some(sid), requester)
 }
 
-fn run_expecting(
-    name: &str,
-    sid: Option<&str>,
-    requester: Option<&str>,
-) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), CmdErr> {
     let target = super::launch::exact_target(name);
     // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
     let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
-    end(Ending::Doomed(name, doomed))
+    end(Ending::Doomed(doomed))
 }
 
 /// 一发 tmux（`launch::run_with` 那一口的形状）。
@@ -168,16 +155,15 @@ type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, CmdErr> + 'a;
 
 /// 结束会话的两种令牌：门放行的（`kill`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
 pub(crate) enum Ending<'a> {
-    /// `name`：说给人听的会话名（杀成之后按它认 cc-bus 名册）。
-    Doomed(&'a str, super::gate::Doomed),
+    Doomed(super::gate::Doomed),
     /// 只在仍是空壳时收；`tmux` 同 `launch::run_with` 那一口（判据交隔离 socket 上的）。
     Bare(super::launch::JustMade, &'a Tmux<'a>),
 }
 
 /// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
-pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
-    let (name, doomed) = match ending {
-        Ending::Doomed(n, d) => (n, d),
+pub(crate) fn end(ending: Ending<'_>) -> Result<(), CmdErr> {
+    let doomed = match ending {
+        Ending::Doomed(d) => d,
         Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
     };
     let (handle, only) = match doomed.at() {
@@ -196,23 +182,20 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdEr
             }
         }
     }
-    // 杀之前记下要走的那几个 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
-    let panes = pane_pids(handle, only);
     let out = Child::new("tmux")
         .args(&argv)
         .run(KILL_TMUX_WITHIN)
         .map_err(tmux_unavailable)?;
     if out.status.success() {
-        let bus = super::cc_bus::unregister_panes(name, &panes);
-        return Ok(bus);
+        return Ok(());
     }
     Err(kill_refused(&out.stderr))
 }
 
 /// [`end`] 的空壳那一臂。判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell
 /// （`pane_start_command` 空）、没有客户端接着 ⇒ `kill-session`；别的形一律不动。不看窗格前台是什么：shell 刚起时
-/// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ 空的注销结局（空壳上没有登记）；不在 · 不是空壳 ⇒ `kill_failed`。
-fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+/// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ `Ok`；不在 · 不是空壳 ⇒ `kill_failed`。
+fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), CmdErr> {
     const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
     let there = || matches!(tmux(&["has-session", "-t", t]), Ok(r) if r.ok);
     let kill = format!("kill-session -t {t}");
@@ -220,7 +203,7 @@ fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdEr
         && matches!(tmux(&["if-shell", "-F", "-t", t, BARE, &kill]), Ok(r) if r.ok)
         && !there()
     {
-        return Ok(Default::default());
+        return Ok(());
     }
     Err(CmdErr::new(
         "kill_failed",
@@ -241,32 +224,22 @@ pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
         .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
-/// 要走的那几个 pane 的根进程 pid（`only` ＝ 只结束这几个窗格；`None` ＝ 整个会话）。问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
-fn pane_pids(handle: &str, only: Option<&[String]>) -> Vec<u32> {
-    super::gate::panes_on(None, handle)
-        .into_iter()
-        .filter(|p| only.is_none_or(|ps| ps.contains(&p.pane)))
-        .map(|p| p.pid)
-        .collect()
-}
-
 /// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名 · sid 形状 ⇒ 过门 ⇒ 杀 ⇒ 成品。
 pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {
     admit_existing_name(&req.name)?;
     let client = super::gate::requester(req.client.as_deref())?;
     // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
     let sid = super::gate::sid_shape(req.sid.as_deref())?;
-    let bus = run_expecting(&req.name, sid.as_deref(), client.as_deref())?;
-    Ok(reply(&req.name, &bus))
+    run_expecting(&req.name, sid.as_deref(), client.as_deref())?;
+    Ok(reply(&req.name))
 }
 
-/// 帧面成品 `{session, killed, bus}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍，
+/// 帧面成品 `{session, killed}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍，
 /// 界面（`src/frontend/ui/tmux-control.ts::killSession`）直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn reply(name: &str, bus: &super::cc_bus::BusCleanup) -> Killed {
+pub(crate) fn reply(name: &str) -> Killed {
     Killed {
         session: name.to_string(),
         killed: true,
-        bus: bus.note(),
     }
 }
 

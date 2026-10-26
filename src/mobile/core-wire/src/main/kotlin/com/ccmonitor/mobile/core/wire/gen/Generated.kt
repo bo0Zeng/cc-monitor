@@ -2320,67 +2320,6 @@ data class BusAgent(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class BusBroadcast(
-    val sent: Long,
-    val skippedOffline: Long,
-    val livenessUnknown: Boolean,
-    val failed: List<BusUndelivered>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusBroadcast> = obj(
-            listOf(
-            Field("sent", { Lng }, optional = false, nullable = false),
-            Field("skipped_offline", { Lng }, optional = false, nullable = false),
-            Field("liveness_unknown", { Bool }, optional = false, nullable = false),
-            Field("failed", { arr(BusUndelivered.ADAPTER) }, optional = false, nullable = false),
-            ),
-            { a -> BusBroadcast(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as List<BusUndelivered>) },
-            { v -> arrayOf(v.sent, v.skippedOffline, v.livenessUnknown, v.failed) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusBroadcastReq(
-    val text: String,
-    val from: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusBroadcastReq> = obj(
-            listOf(
-            Field("text", { Str }, optional = false, nullable = false),
-            Field("from", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> BusBroadcastReq(a[0] as String, a[1] as String?) },
-            { v -> arrayOf(v.text, v.from) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusFailed(
-    val id: String,
-    val why: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusFailed> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            Field("why", { Str }, optional = false, nullable = false),
-            ),
-            { a -> BusFailed(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.id, v.why) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class BusInbox(
     val messages: List<BusMessage>,
     val skipped: Long,
@@ -2421,44 +2360,6 @@ data class BusInboxReq(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class BusKillReq(
-    val id: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusKillReq> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            ),
-            { a -> BusKillReq(a[0] as String) },
-            { v -> arrayOf(v.id) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusKilled(
-    val id: String,
-    val killed: Boolean,
-    val staleOnly: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusKilled> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            Field("killed", { Bool }, optional = false, nullable = false),
-            Field("stale_only", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> BusKilled(a[0] as String, a[1] as Boolean, a[2] as Boolean) },
-            { v -> arrayOf(v.id, v.killed, v.staleOnly) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class BusList(
     val agents: List<BusAgent>,
 ) : Ordered {
@@ -2494,58 +2395,6 @@ data class BusMessage(
             ),
             { a -> BusMessage(a[0] as String, a[1] as String, a[2] as String, a[3] as String) },
             { v -> arrayOf(v.from, v.ts, v.text, v.`class`) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusNote(
-    val removed: List<String>,
-    val failed: List<BusFailed>,
-    val unread: String?,
-    val said: String?,
-    val detail: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusNote> = obj(
-            listOf(
-            Field("removed", { arr(Str) }, optional = false, nullable = false),
-            Field("failed", { arr(BusFailed.ADAPTER) }, optional = false, nullable = false),
-            Field("unread", { opt(Str) }, optional = false, nullable = true),
-            Field("said", { opt(Str) }, optional = false, nullable = true),
-            Field("detail", { Str }, optional = false, nullable = false),
-            ),
-            { a -> BusNote(a[0] as List<String>, a[1] as List<BusFailed>, a[2] as String?, a[3] as String?, a[4] as String) },
-            { v -> arrayOf(v.removed, v.failed, v.unread, v.said, v.detail) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusRosterRow(
-    val id: String,
-    val target: String,
-    val registeredAt: String,
-    val unread: Long,
-    val live: Boolean?,
-    val ccmSid: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusRosterRow> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            Field("target", { Str }, optional = false, nullable = false),
-            Field("registered_at", { Str }, optional = false, nullable = false),
-            Field("unread", { Lng }, optional = false, nullable = false),
-            Field("live", { opt(Bool) }, optional = false, nullable = true),
-            Field("ccm_sid", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> BusRosterRow(a[0] as String, a[1] as String, a[2] as String, a[3] as Long, a[4] as Boolean?, a[5] as String?) },
-            { v -> arrayOf(v.id, v.target, v.registeredAt, v.unread, v.live, v.ccmSid) },
         )
     }
 }
@@ -2592,121 +2441,6 @@ data class BusSent(
             ),
             { a -> BusSent(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as Boolean?, a[4] as String?) },
             { v -> arrayOf(v.to, v.sent, v.registered, v.live, v.from) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusSpawnReq(
-    val tool: String? = null,
-    val dir: String,
-    val task: String? = null,
-    val account: String? = null,
-    val base: Boolean? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusSpawnReq> = obj(
-            listOf(
-            Field("tool", { opt(Str) }, optional = true, nullable = true),
-            Field("dir", { Str }, optional = false, nullable = false),
-            Field("task", { opt(Str) }, optional = true, nullable = true),
-            Field("account", { opt(Str) }, optional = true, nullable = true),
-            Field("base", { opt(Bool) }, optional = true, nullable = true),
-            ),
-            { a -> BusSpawnReq(a[0] as String?, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean?) },
-            { v -> arrayOf(v.tool, v.dir, v.task, v.account, v.base) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusSpawned(
-    val id: String,
-    val dir: String,
-    val spawnedAt: String,
-    val task: String,
-    val live: Boolean?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusSpawned> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            Field("dir", { Str }, optional = false, nullable = false),
-            Field("spawned_at", { Str }, optional = false, nullable = false),
-            Field("task", { Str }, optional = false, nullable = false),
-            Field("live", { opt(Bool) }, optional = false, nullable = true),
-            ),
-            { a -> BusSpawned(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Boolean?) },
-            { v -> arrayOf(v.id, v.dir, v.spawnedAt, v.task, v.live) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusSpawnedNow(
-    val spawned: Boolean,
-    val id: String?,
-    val said: String,
-    val arrival: ArriveAsk,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusSpawnedNow> = obj(
-            listOf(
-            Field("spawned", { Bool }, optional = false, nullable = false),
-            Field("id", { opt(Str) }, optional = false, nullable = true),
-            Field("said", { Str }, optional = false, nullable = false),
-            Field("arrival", { ArriveAsk.ADAPTER }, optional = false, nullable = false),
-            ),
-            { a -> BusSpawnedNow(a[0] as Boolean, a[1] as String?, a[2] as String, a[3] as ArriveAsk) },
-            { v -> arrayOf(v.spawned, v.id, v.said, v.arrival) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusState(
-    val agents: List<BusRosterRow>,
-    val spawned: List<BusSpawned>,
-    val skipped: Long,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusState> = obj(
-            listOf(
-            Field("agents", { arr(BusRosterRow.ADAPTER) }, optional = false, nullable = false),
-            Field("spawned", { arr(BusSpawned.ADAPTER) }, optional = false, nullable = false),
-            Field("skipped", { Lng }, optional = false, nullable = false),
-            ),
-            { a -> BusState(a[0] as List<BusRosterRow>, a[1] as List<BusSpawned>, a[2] as Long) },
-            { v -> arrayOf(v.agents, v.spawned, v.skipped) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusUndelivered(
-    val id: String,
-    val error: String,
-    val detail: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusUndelivered> = obj(
-            listOf(
-            Field("id", { Str }, optional = false, nullable = false),
-            Field("error", { Str }, optional = false, nullable = false),
-            Field("detail", { Str }, optional = false, nullable = false),
-            ),
-            { a -> BusUndelivered(a[0] as String, a[1] as String, a[2] as String) },
-            { v -> arrayOf(v.id, v.error, v.detail) },
         )
     }
 }
@@ -9047,7 +8781,6 @@ data class KillReq(
 data class Killed(
     val session: String,
     val killed: Boolean,
-    val bus: BusNote,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -9056,10 +8789,9 @@ data class Killed(
             listOf(
             Field("session", { Str }, optional = false, nullable = false),
             Field("killed", { Bool }, optional = false, nullable = false),
-            Field("bus", { BusNote.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> Killed(a[0] as String, a[1] as Boolean, a[2] as BusNote) },
-            { v -> arrayOf(v.session, v.killed, v.bus) },
+            { a -> Killed(a[0] as String, a[1] as Boolean) },
+            { v -> arrayOf(v.session, v.killed) },
         )
     }
 }
@@ -12649,7 +12381,6 @@ data class Outcome(
     val said: String?,
     val copyDetail: String,
     val session: String?,
-    val bus: BusNote?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12662,10 +12393,9 @@ data class Outcome(
             Field("said", { opt(Str) }, optional = false, nullable = true),
             Field("copyDetail", { Str }, optional = false, nullable = false),
             Field("session", { opt(Str) }, optional = false, nullable = true),
-            Field("bus", { opt(BusNote.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> Outcome(a[0] as String, a[1] as OutcomeOutcome, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String?, a[6] as BusNote?) },
-            { v -> arrayOf(v.sid, v.outcome, v.why, v.said, v.copyDetail, v.session, v.bus) },
+            { a -> Outcome(a[0] as String, a[1] as OutcomeOutcome, a[2] as String?, a[3] as String?, a[4] as String, a[5] as String?) },
+            { v -> arrayOf(v.sid, v.outcome, v.why, v.said, v.copyDetail, v.session) },
         )
     }
 }
@@ -13585,6 +13315,50 @@ data class PlanListWorkspace(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanMsgRef(
+    val start: Long,
+    val end: Long,
+    val ids: List<String>,
+    val label: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanMsgRef> = obj(
+            listOf(
+            Field("start", { Lng }, optional = false, nullable = false),
+            Field("end", { Lng }, optional = false, nullable = false),
+            Field("ids", { arr(Str) }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            ),
+            { a -> PlanMsgRef(a[0] as Long, a[1] as Long, a[2] as List<String>, a[3] as String) },
+            { v -> arrayOf(v.start, v.end, v.ids, v.label) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanMsgRefs(
+    val workspace: String?,
+    val slice: String?,
+    val refs: List<List<PlanMsgRef>>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanMsgRefs> = obj(
+            listOf(
+            Field("workspace", { opt(Str) }, optional = false, nullable = true),
+            Field("slice", { opt(Str) }, optional = false, nullable = true),
+            Field("refs", { arr(arr(PlanMsgRef.ADAPTER)) }, optional = false, nullable = false),
+            ),
+            { a -> PlanMsgRefs(a[0] as String?, a[1] as String?, a[2] as List<List<PlanMsgRef>>) },
+            { v -> arrayOf(v.workspace, v.slice, v.refs) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanNeed(
     val key: String,
     val kind: PlanNeedKind,
@@ -13908,6 +13682,25 @@ data class PlanRefs(
             ),
             { a -> PlanRefs(a[0] as List<PlanRef>, a[1] as List<PlanRef>) },
             { v -> arrayOf(v.title, v.body) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanRefsReq(
+    val sid: String,
+    val texts: List<String>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanRefsReq> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("texts", { arr(Str) }, optional = false, nullable = false),
+            ),
+            { a -> PlanRefsReq(a[0] as String, a[1] as List<String>) },
+            { v -> arrayOf(v.sid, v.texts) },
         )
     }
 }
@@ -14883,7 +14676,6 @@ data class ProfileForm(
     val tmuxSize: String?,
     val detach: Boolean,
     val busRegister: Boolean,
-    val busNote: String?,
     val tab: Tab?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -14903,11 +14695,10 @@ data class ProfileForm(
             Field("tmuxSize", { opt(Str) }, optional = false, nullable = true),
             Field("detach", { Bool }, optional = false, nullable = false),
             Field("busRegister", { Bool }, optional = false, nullable = false),
-            Field("busNote", { opt(Str) }, optional = false, nullable = true),
             Field("tab", { opt(Tab.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> ProfileForm(a[0] as String, a[1] as String?, a[2] as ProfileAccountPick?, a[3] as ProfileTmuxPick?, a[4] as List<ProfileCwdCase>?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Boolean, a[12] as String?, a[13] as Tab?) },
-            { v -> arrayOf(v.name, v.from, v.account, v.tmux, v.cwdIf, v.cwd, v.agent, v.args, v.launcher, v.tmuxSize, v.detach, v.busRegister, v.busNote, v.tab) },
+            { a -> ProfileForm(a[0] as String, a[1] as String?, a[2] as ProfileAccountPick?, a[3] as ProfileTmuxPick?, a[4] as List<ProfileCwdCase>?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Boolean, a[12] as Tab?) },
+            { v -> arrayOf(v.name, v.from, v.account, v.tmux, v.cwdIf, v.cwd, v.agent, v.args, v.launcher, v.tmuxSize, v.detach, v.busRegister, v.tab) },
         )
     }
 }
@@ -15171,7 +14962,6 @@ enum class ProfileSlotId(val wire: String) {
     TMUX_SIZE("tmuxSize"),
     DETACH("detach"),
     BUS_REGISTER("busRegister"),
-    BUS_NOTE("busNote"),
     TAB("tab"),
     ;
 
