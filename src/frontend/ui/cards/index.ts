@@ -361,14 +361,17 @@ export const PASTE_FOLD_LINES = 12;
  * 块的边界、正文那一截与行数都是后端的 `who.pasted`（UTF-16 下标），界面不认标记的写法。
  */
 function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | undefined): void {
+  // 露在外面的每一段记下原文（照原文排）：里面提到的格由 `plan-refs.ts` 跟回复正文同一批问；折起的粘贴块不记 ⇒ 不送。
   if (!pasted || pasted.length === 0) {
     body.innerHTML = renderPlainText(text);
+    noteProse(body, text, renderPlainText);
     return;
   }
   const plain = (s: string): void => {
     if (!s) return;
     const span = document.createElement("span");
     span.innerHTML = renderPlainText(s);
+    noteProse(span, s, renderPlainText);
     body.appendChild(span);
   };
   let at = 0;
