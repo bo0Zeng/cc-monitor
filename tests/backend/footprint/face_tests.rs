@@ -101,7 +101,7 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     let secretish = "SENTENCE-THAT-MUST-NOT-CROSS-THE-WIRE";
     std::fs::write(
         agent.join("settings.json"),
-        format!("{{\"cmd\":\"cc-register\",\"x\":\"{secretish}\"}}"),
+        format!("{{\"cmd\":\"cc-bus-stop-hook\",\"x\":\"{secretish}\"}}"),
     )
     .unwrap();
     let got = answer_with(

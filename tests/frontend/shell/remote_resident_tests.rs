@@ -161,10 +161,10 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
 }
 
 /// **monitor 等那一趟的期限 > 那台停它的最长时间**（宽限期 ＋ 强杀后再等的那一段）：否则 monitor 先放弃、
-/// 那台其实停成了，界面却说「超时」。跨半边：现抠后端 `control/resident.rs` 两个毫秒字面量（各恰好一处），与 `dial_host::ONE_SHOT_DEADLINE` 比。
+/// 那台其实停成了，界面却说「超时」。跨半边：现抠后端 `control/resident.rs` 两个毫秒字面量（各恰好一处），与 [`STOP_BUDGET`] 比。
 /// 要求：「远端控制方只发一次『停』并拿回结局，不远程轮询」。
 #[test]
-fn the_one_shot_deadline_outlasts_the_remote_stop() {
+fn the_stop_budget_outlasts_the_remote_stop() {
     let be = guard_core::production_code(include_str!("../../../src/backend/control/resident.rs"));
     let lit = |name: &str| -> u128 {
         let anchor = format!("pub(crate) const {name}: u32 = ");
@@ -182,7 +182,7 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
             .expect("毫秒字面量")
     };
     let worst = lit("STOP_GRACE_MS") + lit("KILL_WAIT_MS");
-    let ours = crate::dial_host::ONE_SHOT_DEADLINE.as_millis();
+    let ours = STOP_BUDGET.as_millis();
     assert!(
         worst < ours,
         "那台停一次最长 {worst}ms，monitor 只等 {ours}ms —— 会在结局出来之前放弃"

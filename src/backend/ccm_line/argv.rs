@@ -24,7 +24,6 @@ pub(crate) mod flag {
     pub(crate) const CWD_IF: &str = "--cwd-if";
     pub(crate) const AGENT: &str = "--ccm-agent";
     pub(crate) const LAUNCHER: &str = "--launcher";
-    pub(crate) const BUS_REGISTER: &str = "--bus-register";
     pub(crate) const ATTACH: &str = "--attach";
     pub(crate) const CCM_PRINT: &str = "--ccm-print";
     pub(crate) const CCM_HELP: &str = "--ccm-help";
@@ -85,8 +84,6 @@ impl Defaults {
     pub(crate) const DETACH: bool = false;
     /// 不给 `--ccm-print` ⇒ 真跑。
     pub(crate) const PRINT: bool = false;
-    /// 不给 `--bus-register` ⇒ 不登记 cc-bus。
-    pub(crate) const BUS_REGISTER: bool = false;
     /// 不给 `--no-rotation` ⇒ 照「新会话用」那一份轮换。
     pub(crate) const NO_ROTATION: bool = false;
     // 工作目录不在这张表里：它的默认是恒等（上面 `CWD`），不替用户挑一个具体目录。
@@ -103,7 +100,6 @@ pub(crate) struct Opts {
     pub(crate) use_tmux: bool,
     pub(crate) tmux_name: String,
     pub(crate) tmux_base: String,
-    pub(crate) bus_register: bool,
     /// 空串 = **没给** —— 它与「给了一个空值」在本 CLI 上同形（bash 那侧也是）。
     pub(crate) account: String,
     pub(crate) use_base: bool,
@@ -184,7 +180,6 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         use_tmux: Defaults::USE_TMUX,
         tmux_name: String::new(),
         tmux_base: String::new(),
-        bus_register: Defaults::BUS_REGISTER,
         account: String::new(),
         use_base: Defaults::USE_BASE,
         cwd_spec: Defaults::CWD,
@@ -217,7 +212,6 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::CWD_IF,
     flag::AGENT,
     flag::LAUNCHER,
-    flag::BUS_REGISTER,
     flag::ATTACH,
     flag::CCM_PRINT,
     flag::CCM_HELP,
@@ -320,7 +314,6 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
             o.use_tmux = true;
             o.tmux_base = v(0);
         }
-        flag::BUS_REGISTER => o.bus_register = true,
         flag::ACCOUNT => o.account = v(0),
         flag::BASE => o.use_base = true,
         flag::CWD => o.cwd_spec = CwdSpec::Explicit(v(0)),
@@ -559,9 +552,6 @@ fn validate(o: &Opts) -> Result<(), Die> {
     }
     if !o.tmux_name.is_empty() && !o.tmux_base.is_empty() {
         return die(&copy_text("beArgv.validate.nameAndBase", &[]));
-    }
-    if o.bus_register && !o.detach {
-        return die(&copy_text("beArgv.validate.registerNeedsDetach", &[]));
     }
     if !o.tab_from.is_empty() && o.tab.is_none() {
         return die(&copy_text("beArgv.validate.tabFromNeedsTab", &[]));

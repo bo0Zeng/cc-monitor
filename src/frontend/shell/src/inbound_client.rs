@@ -70,6 +70,35 @@ pub fn local_client() -> Option<Arc<InboundClient>> {
     lock(slot()).clone()
 }
 
+/// 本机后端那条流还没登记时，等它多久：`LOCAL_WAIT_TRIES × LOCAL_WAIT_INTERVAL_MS` ≈ 3 s。
+/// **`wait-for-condition`**（登记在 `rust_timer_registry`）：等的是一次性条件（本机那条流的 hello 到了），
+/// 等到就走、等不到就如实报。对端就在本机，从起进程到 hello 是毫秒级。
+const LOCAL_WAIT_TRIES: u32 = 60;
+const LOCAL_WAIT_INTERVAL_MS: u64 = 50;
+
+/// 本机后端那条流在、且认 `cmd` ⇒ 回它的客户端（有界地等它出现）。**找不到就报，不回落**（`D11`）：
+/// 不在 ⇒ 报「本机后端不在」；不认 ⇒ 报「本机后端太旧」。
+pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClient>, String> {
+    for attempt in 0..LOCAL_WAIT_TRIES {
+        if let Some(c) = local_client() {
+            if !c.accepts(cmd) {
+                return Err(copy_core::backend_old(&copy_core::local_machine()));
+            }
+            return Ok(c);
+        }
+        if attempt + 1 < LOCAL_WAIT_TRIES {
+            tokio::time::sleep(std::time::Duration::from_millis(LOCAL_WAIT_INTERVAL_MS)).await;
+        }
+    }
+    Err(crate::copy_table::copy_text(
+        "rsDialHost.local.absent",
+        &[(
+            "dur",
+            &copy_core::format_duration(u64::from(LOCAL_WAIT_TRIES) * LOCAL_WAIT_INTERVAL_MS),
+        )],
+    ))
+}
+
 // ============================================================================
 // 经本机后端转来的各台：此刻那一条连接的能力事实
 // ============================================================================

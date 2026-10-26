@@ -12,7 +12,7 @@ export type ProfileForm = { name: string, from: string | null, account: ProfileA
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */

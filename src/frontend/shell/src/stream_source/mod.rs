@@ -1,11 +1,11 @@
 //! 会话流从哪来：只读本机后端那一条；各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事由它原样转来（`relayed`），进同一条收口。
 //!
 //! 各份分工：`config` 远端配置 · `snapshot` 旁路快照 ·
-//! `exec` 一次性远端 exec 与限长读行 · `frame` 按类型解帧 · `dispatch` 一帧落到哪（本机与各台同一处）· `batch` 攒批与收行 ·
+//! `exec` 一次性 exec 结果的形状与限长读行 · `frame` 按类型解帧 · `dispatch` 一帧落到哪（本机与各台同一处）· `batch` 攒批与收行 ·
 //! `local` 收的那一头（按那台分收口）。外面一律写 `crate::stream_source::X`。
 //!
-//! 本模块不拨 SSH：链路只经宿主 `dial_host`，读代理应答的是通信层成员 `ssh_link`
-//! （所以它不登记为通信层成员，理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
+//! 本模块不拨 SSH，也不开任何到远端的字节流：只读本机后端那一条
+//! （它不登记为通信层成员，理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
 
 mod batch;
 mod config;

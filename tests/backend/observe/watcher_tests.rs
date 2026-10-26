@@ -2783,7 +2783,6 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
 
 /// ★ A1 的判定那一半：一批文件事件里**有** manifest ⇒ 真；只有无关文件（同目录里的别的文件、
 /// 写 manifest 时的临时文件）⇒ 假。事件循环里每批只调一次它、真就发**恰好一帧**（结构判据见下一条）。
-/// 真进程读数（manifest 改一次 ⇒ 恰好一帧；同目录别的文件 ⇒ 零帧）见 `tests/evidence/SR1a-link-loopback.py` ⑪。
 #[test]
 fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
     let m = PathBuf::from("/h/.claude-alt/accounts.json");

@@ -21,7 +21,7 @@
 //!
 //! # ③ ★ 把 cc-bus 的**命令**当接口，不要把它的**文件格式**当接口
 //!
-//! 本模块**不读** cc-bus 的任何数据文件（地址簿 / 收件箱 / 已读位置），只调它的命令。
+//! 本模块**不读** cc-bus 的任何数据文件（收件箱 / 已读位置），只调它的命令。
 //! 理由不是"读文件难"——读文件其实更快更省一个进程——而是：
 //! **命令是给外人用的，文件格式是给自己用的**。用户说他后面要改 cc-bus，
 //! 改的时候前者会被当接口对待，后者不会。
@@ -160,7 +160,7 @@ fn timeout_secs() -> u64 {
 /// （常驻监听口的地址与令牌）顺着环境漏进插件」这条没人设计过的回程。
 ///
 /// ⚠ **代价落在这里**：本插件族此前是靠**继承**拿到自己的配置的
-/// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · `CC_BUS_ID`），
+/// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE`），
 /// 而本模块**一个都没显式交办过**。现打读数：只加 `env_clear()` 那一刀之后
 /// `tests/e2e/backend-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
 /// 其中最重的一格是 `[15]`：`CC_BUS_HOME` 一没，被调的那条命令就照着**另一个家里的空名册**
@@ -223,12 +223,9 @@ pub(crate) fn waited_secs(out: &Done) -> u64 {
     out.waited_secs.unwrap_or_else(timeout_secs)
 }
 
-/// 机器可读形的首行标记（`cc-list --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
-/// 照打人读表 ⇒ 见不到标记就明说「cc-bus 比后端旧」，不猜着按人读表解（命令是接口，接口认不出就说）。
-/// `cc-register` 的「这一格会话编号」旗标（ccm 起会话的收尾登记时知道编号就带上，`plan::render_container_tail`）。
-pub(crate) const REGISTER_SID: &str = "--sid";
-
-const ROSTER_TSV_HEAD: &str = "#cc-list-tsv\t1";
+/// 机器可读形的首行标记（`cc-list --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、照打人读表，或还是上一版的名册（带登记地址那一形）
+/// ⇒ 见不到这一版的标记就明说「cc-bus 比后端旧」，不猜着解（命令是接口，接口认不出就说）。
+const ROSTER_TSV_HEAD: &str = "#cc-list-tsv\t2";
 const LOG_HEAD: &str = "#cc-log\t1";
 /// 两张表的末行：`#skipped<TAB><坏行数>`。缺它 = 只读到半份。
 const SKIPPED_TAIL: &str = "#skipped\t";
@@ -266,30 +263,25 @@ fn framed<'a>(
     Ok((lines[1..lines.len() - 1].to_vec(), skipped))
 }
 
-/// 名册一行（`cc-list --tsv` 的五格里本侧用到的三格：id · 地址 · 待读）。
+/// 名册一行：一个收件箱（会话 id · 待读）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RosterRow {
     pub(crate) id: String,
-    pub(crate) target: String,
     pub(crate) unread: i64,
 }
 
-/// `cc-list --tsv` → `(名册, 坏行数)` —— 纯函数。行的形状归 cc-bus（恰好 5 格）；id 的形状由本侧判
+/// `cc-list --tsv` → `(名册, 坏行数)` —— 纯函数。行的形状归 cc-bus（恰好 2 格）；id 的形状由本侧判
 /// （`INVARIANTS §47`，唯一一份 `bus_id_ok`），过不了的算坏行（`--help` 那种 cc-bus 自己的字符集放得过）。
 pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (String, String)> {
     let (rows, mut skipped) = framed("cc-list --tsv", text, ROSTER_TSV_HEAD)?;
     let mut out = Vec::new();
     for l in rows {
         let f: Vec<&str> = l.split('\t').collect();
-        let unread = f.get(4).and_then(|u| u.parse::<i64>().ok());
-        match unread {
-            Some(unread) if f.len() == 5 && shell_quote_core::bus_id_ok(f[0]) => {
-                out.push(RosterRow {
-                    id: f[0].to_string(),
-                    target: f[1].to_string(),
-                    unread,
-                })
-            }
+        match (f.as_slice(), f.get(1).and_then(|u| u.parse::<i64>().ok())) {
+            ([id, _], Some(unread)) if shell_quote_core::bus_id_ok(id) => out.push(RosterRow {
+                id: id.to_string(),
+                unread,
+            }),
             _ => skipped += 1,
         }
     }
@@ -355,70 +347,34 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
     Err(("bad_id", said(&format!("{v:?}"))))
 }
 
-/// 从总线地址（`proj_cc:0.0`）里取**会话名**那一段 —— 纯函数。
-///
-/// 身份空间的键是**会话名**；总线地址是 `名字:窗口.面板`。对账按前者。
-pub(crate) fn session_name_of(target: &str) -> &str {
-    target.split(':').next().unwrap_or(target)
+/// 后端对一条会话判的那两样（判官住能读观测层的帧面宿主，`faces::bus_list_face`）：叫它什么 · 此刻有没有谁持着它。
+/// 这台没有它的记录 · 那一家判不了活 ⇒ 对应那一格是 `None`（不是「不在」）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Seen {
+    pub(crate) title: Option<String>,
+    pub(crate) live: Option<bool>,
 }
 
-/// 把总线成员**挂到身份空间上** —— 纯函数（真身份由调用方查好传进来）。
-///
-/// # 用户提的那条架构点〔用@08-13〕
-///
-/// 逐字：「**那他不应该是身份空间的子集吗? 他应该去调用身份空间啊**」。**对的。**
-///
-/// `agents.tsv` 是 cc-bus 的**第二套名单**，它的地址会过期（会话名被重用是常态）。
-/// 08-13 实测过后果：敲门文字打进**陌生占用者**的屏幕。
-/// ⇒ 这里不再复述那份名单，而是**对账**：
-/// · `live` = 这个成员的会话名在**活着的 tmux 会话**里找得到吗（真身份说了算）；
-/// · `ccm_sid` = 那个会话绑的 Claude sid（`@ccm_sid`），空串 ⇒ 回 `null`，不猜。
-///
-/// ⚠ 拿不到身份空间（没装 tmux / 起不来）⇒ `live` 回 `null` 而不是 `false`：
-/// **「不知道」和「不在」是两件事**，混起来会让调用方把一屋子活人当成死人。
-pub(crate) fn liveness(
-    target: &str,
-    sessions: Option<&[(String, String)]>,
-) -> (Option<bool>, Option<String>) {
-    let name = session_name_of(target);
-    match sessions {
-        None => (None, None),
-        // `K-R96`：`gate::list_sessions` 今天回的是**二元组**（会话名 ＋ `@ccm_sid`）——
-        // 中间那列 `#{session_id}` 本函数从来没问过，快照那边也不再取它。
-        Some(list) => match list.iter().find(|(n, _)| n == name) {
-            None => (Some(false), None),
-            Some((_, ccm_sid)) => (Some(true), (!ccm_sid.is_empty()).then(|| ccm_sid.clone())),
-        },
-    }
-}
-
-/// 总线名单 —— `bus-list` 读它。读机器可读形（[`roster`]，
-/// `cc-list --tsv`）：名册只有一个解析器。没重部署 cc-bus 的机器上老脚本不认 `--tsv` ⇒ 明说「cc-bus 比后端旧」（[`too_old`]），
-/// 不退回去按人读表猜（命令是接口，接口认不出就说）。
-fn agents_via_cc_list() -> Result<Vec<BusAgent>, (String, String)> {
+/// 总线名单 —— `bus-list` 读它。行只来自 cc-bus 的收件箱（[`roster`]，`cc-list --tsv`）；
+/// 叫它什么 · 在不在问 `seen`（后端那一处）。没重部署 cc-bus 的机器上老脚本 ⇒ 明说「cc-bus 比后端旧」（[`too_old`]）。
+pub(crate) fn list_for_inbound(seen: &dyn Fn(&str) -> Seen) -> Result<BusList, (String, String)> {
     let (rows, skipped) = roster()?;
     if skipped > 0 {
         tracing::warn!("cc-bus 名册里有 {skipped} 行读不懂，这一趟没算进去");
     }
-    // ★ 去问**身份空间**谁还活着。问不到就回 `null`，不假装知道。
-    let sessions = super::gate::list_sessions().ok();
-    Ok(roster_agents(&rows, sessions.as_deref()))
+    Ok(list_reply(roster_agents(&rows, seen)))
 }
 
-/// 名册行 → `bus-list` 那一格（纯函数；`live` / `ccm_sid` 挂到身份空间上，见 [`liveness`]）。
-pub(crate) fn roster_agents(
-    rows: &[RosterRow],
-    sessions: Option<&[(String, String)]>,
-) -> Vec<BusAgent> {
+/// 名册行 → `bus-list` 那一格（纯函数）。标题判不出 ⇒ 照实就是会话 id；在不在判不出 ⇒ `null`（界面说「查不到」）。
+pub(crate) fn roster_agents(rows: &[RosterRow], seen: &dyn Fn(&str) -> Seen) -> Vec<BusAgent> {
     rows.iter()
         .map(|r| {
-            let (live, ccm_sid) = liveness(&r.target, sessions);
+            let s = seen(&r.id);
             BusAgent {
                 id: r.id.clone(),
-                target: r.target.clone(),
+                title: s.title.unwrap_or_else(|| r.id.clone()),
                 unread: r.unread,
-                live,
-                ccm_sid,
+                live: s.live,
             }
         })
         .collect()
@@ -437,10 +393,6 @@ fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
 /// 名册（机器可读形）：`bus-list` 读它。
 pub(crate) fn roster() -> Result<(Vec<RosterRow>, usize), (String, String)> {
     parse_roster_tsv(&read_via("cc-list", &["--tsv"])?)
-}
-
-pub(crate) fn list_for_inbound() -> Result<BusList, (String, String)> {
-    Ok(list_reply(agents_via_cc_list()?))
 }
 
 /// `bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），

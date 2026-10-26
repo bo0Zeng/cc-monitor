@@ -26,7 +26,6 @@ pub(crate) type CmdErr = (&'static str, String);
 // ① 本机 argv 直传 ⇒ 用旗，而且必须排在子命令之前。
 // ② 这一处刻意不看退出码（没有会话时 `tmux ls` 就是非零 + 空输出），放错位置的 `-u` 会被压成「探不到」⇒
 //    判据钉的是旗的位置，不只是有没有。
-use crate::common::session_snapshot::SessionSnapshot;
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_FLAG};
 
 /// 探测回来的四格。字段私有、不能复制 ⇒ 只有 [`probe_with`] 造得出，门放不放只按探回来的判。
@@ -58,29 +57,6 @@ impl Probed {
     }
 }
 
-/// 列出本机所有 tmux 会话的身份二元组：`(会话名, @ccm_sid)`。
-///
-/// 总线成员 ⊆ 活着的 tmux 会话：谁活着由这里说了算，cc-bus 的 `agents.tsv` 只回答「谁登记过 + 还有几条没读」
-/// （它记的 `session:win.pane` 会过期，会话名被重用是常态）。
-///
-/// 本函数是 [`crate::common::session_snapshot`] 的一层投影：问它一次、它更新一次，交出来的恒是这一刻的名单。
-/// 别加缓存、也别自己再起一条「列全部会话」的 tmux 命令：判活拿陈值会把敲门文字打进陌生占用者的屏幕。
-/// 不带 `session_id`：两个消费者（`cc_bus::join_identity` · `ccm` 的铸名避让）都不问它；要句柄走 [`probe`]。
-///
-/// `@ccm_sid` 空 = 那个会话不是 `ccm` 起的（或还没绑 sid）—— 如实回空串，不猜。
-pub(crate) fn list_sessions() -> Result<Vec<(String, String)>, CmdErr> {
-    list_sessions_from(crate::common::session_snapshot::global())
-}
-
-/// [`list_sessions`] 的本体，**快照由调用方给** —— 这样「拿到的值是不是这一刻的」
-/// 才有得测（判据喂一个会变的假快照进来，见本模块测试段那条）。
-fn list_sessions_from(snap: &SessionSnapshot) -> Result<Vec<(String, String)>, CmdErr> {
-    Ok(snap
-        .query()?
-        .into_iter()
-        .map(|r| (r.name, r.ccm_sid))
-        .collect())
-}
 
 /// 探测格式串。三个字段用 TAB 分隔：`session_id` 恒是 `$<数字>`，`@ccm_sid` 是会话 id（`cmd_wire::Sid`，字符集 `[A-Za-z0-9-]`）
 /// （`launch::parse_request`），`session_windows` 对存在的会话恒为正整数。

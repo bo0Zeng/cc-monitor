@@ -209,12 +209,6 @@ const EXEMPT: &[(&str, &str, &str, &str)] = &[
         "sleep(",
         "同上：真窗口按键那一趟的 xdotool 节拍，两段打字之间要隔过「停一秒重来」那个窗",
     ),
-    (
-        "tests/frontend/shell/dial_host_tests.rs",
-        "rs-wait",
-        "tokio::time::Instant::now() + total",
-        "被测期限：交给生产 `Bounded` 的那个绝对时刻（1 秒），判的是到点之前 / 之后的先后，判据自己等的上限另用兜底的数",
-    ),
 ];
 
 pub(super) const RS_CEILING: &str = "CEILING";

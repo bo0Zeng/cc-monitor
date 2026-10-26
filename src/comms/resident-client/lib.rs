@@ -1,6 +1,6 @@
 //! **连远端常驻后端的客户端那一侧**：桌面 monitor 与手机嵌的 Rust 核心（`src/mobile/core-rs`）链同一份。
 //!
-//! 下面接任何 `AsyncRead + AsyncWrite`：桌面是本机常驻后端给的那条链路（`dial_host`），手机是拨号核心开的长 exec（`use: stream`）。两端的整条重连循环都是 [`feed`]。
+//! 下面接任何 `AsyncRead + AsyncWrite`：桌面是本机常驻后端替各台开的那条长 exec（`control/feeds.rs`），手机是拨号核心开的长 exec（`use: stream`）。两端的整条重连循环都是 [`feed`]。
 //!
 //! - [`client`]：帧客户端 —— 「hello 之前不许写」做成类型 · 一问一答（期限 · 超时补发撤单 · 放弃等待也补发）· 应答路由；
 //! - [`attach`]：接常驻流那一段握手的零件（attach 行 · 小中继的拒绝行 · hello · 回话里那台相对这一版的新旧）；

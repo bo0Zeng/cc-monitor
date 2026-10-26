@@ -1,5 +1,4 @@
-//! base64（RFC 4648 §4，标准字母表、带 `=` 补位）：链路字节进 JSON 串的那一种编码。
-//! 帧面与 CLI 经本模块用它。
+//! base64（RFC 4648 §4，标准字母表、带 `=` 补位）：CLI 面入参（`--args-b64`）的那一种编码。
 
 /// base64 的字母表（RFC 4648 §4，标准字母表、带 `=` 补位）。
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -18,7 +17,7 @@ const B64_DECODE: [u8; 256] = {
     t
 };
 
-/// 链路字节进 JSON 串的编码（`link_data` 帧 / `link-data` 命令的 `data`）。
+/// 字节 ⇒ base64（CLI 入参那一种；判据与造入参的那一侧用它）。
 ///
 /// ⚠ **为什么手写而不加一条依赖**：本 crate 每加一条依赖都要过 `readonly_guard` 的依赖签字，
 /// 而这一段是 20 行、无状态、有 RFC 4648 §10 的七条标准向量可对拍

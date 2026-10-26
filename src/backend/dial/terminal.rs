@@ -1,14 +1,13 @@
 //! 〔「待迁」最后一行〕**给一台远端开终端要跑的那一串** —— `ssh -t[ -J …] …` 外壳，按这台电脑的终端方言渲
 //! （Windows：PowerShell 窗口载荷；别处：一行 POSIX shell），在本机常驻后端里渲。
 //!
-//! 界面交来的是那台机器的配置（`{machine, jump?, prefer?}`，monitor 从它自己的机器表与「上次赢的那条」给出，
-//! 同 `remote-probe` / `pubkey-push` 那几格）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::request`]
+//! 界面交来的是那台的名字（怎么拨照这一端的机器表组）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::request`]
 //! （地址排序 · 跳板查无 / 环都在那里），这里只把它渲成一行：
 //!
 //! - PowerShell：`& '<ssh 全路径>' -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -F '<cc-monitor 那份 ssh 配置>' <用户>@<地址> -- '<bash -lic ''…''>'`
 //! - POSIX：同一组参数，不带 `& `，引号按 POSIX 单引号写（`'bash -lic '\''…'\'''`）。
 //!
-//! - 地址取竞速顺序的第一条（交了 `prefer` 且它仍在这台的地址里 ⇒ 就是上次赢的那条，F45：终端与数据源走同一条路）；
+//! - 地址取竞速顺序的第一条（照表里的次序）；
 //! - 远端命令包成 `bash -lic '<命令>'`（PATH / 别名按「用户粘贴进交互终端」解析），再以本机方言的单引号字面量嵌入；
 //! - 主机钥匙认 cc-monitor 那份库（[`super::known_hosts`]，经 `-F` 那份配置，跳板那一跳也认同一份），终端里不再问、不写用户的 `~/.ssh`；
 //! - 钥匙路径尾 `\` 剥掉（PS < 7.3 给含空格参数加壳时尾部 `\"` 会吃掉收尾引号）；没给钥匙 ⇒ 走 ssh-agent，不带 `-i`。
@@ -215,7 +214,7 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     }
 }
 
-/// `terminal-ssh` 的入参：哪一台（名字；怎么拨照这一端的机器表组，上次赢的那条排首）＋ 要在那台跑什么。
+/// `terminal-ssh` 的入参：哪一台（名字；怎么拨照这一端的机器表组）＋ 要在那台跑什么。
 /// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**恰好给一个**。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

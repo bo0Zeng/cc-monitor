@@ -292,8 +292,6 @@ pub(crate) struct Env {
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
     pub(crate) self_argv: Vec<String>,
-    /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
-    pub(crate) bus_scripts: Option<String>,
     /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
     /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
     pub(crate) running_sessions: Option<super::RunningScan>,
@@ -395,7 +393,6 @@ impl Env {
             //   （「`CCM_SELF` 这个环境变量随之删掉」）。
             // argv 由调用方交（`main.rs` 取的那一次），本模块不再自己读。
             self_argv: super::self_invocation(process_argv),
-            bus_scripts: discover_bus_scripts(),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
             inherited_parent: parent_from(&|k| std::env::var(k).ok()),
@@ -420,7 +417,7 @@ impl Env {
     /// - `pwd = home` · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌；
     /// - 账号目录变量不继承（由 [`super::plan_of`] 的 `inherit_account = false` 管）。
     ///
-    /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录。
+    /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV`。
     pub(crate) fn for_preview() -> Self {
         Self::for_preview_in(home_of(|k| std::env::var(k).ok()))
     }
@@ -438,7 +435,6 @@ impl Env {
             inherited_config_dir: None,
             account_env: String::new(),
             self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
-            bus_scripts: discover_bus_scripts(),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_preview),
             // 预览是「从这台家目录里的一个新终端敲」：不在任何会话里，也不铸来处（每次预览都一样）。
@@ -455,53 +451,6 @@ impl Env {
             home,
         }
     }
-}
-
-/// 这个文件在不在、而且**跑得起来**吗。
-///
-/// 🔴 **`is_file()` 不够**〔`K-R48` 第二拍 09-11 实测逮到〕：旧 bash 实现这三处判的全是
-/// `-x`，而首版原生实现写的是 `is_file()` ——「脚本在、但没有执行位」于是被读成「它能用」，
-/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。
-fn is_exec(p: &std::path::Path) -> bool {
-    #[cfg(unix)]
-    {
-        return Ro::metadata(p)
-            .map(|m| m.is_file() && Ro::mode(&m).is_some_and(|mode| mode & 0o111 != 0))
-            .unwrap_or(false);
-    }
-    // 〔WN1 件 G〕从前这一臂是 `p.is_file()` ⇒ Windows 上「可执行」退化成「存在」
-    //   （种一个两行文本的 `cc-register`，照样被认了）。Windows 上「跑得起来」
-    //   看的是扩展名在不在 `PATHEXT` 里 —— 判定住 [`runnable_on_windows`]（纯函数，Linux 上直接测）。
-    #[cfg(not(unix))]
-    {
-        runnable_on_windows(p.is_file(), p, std::env::var("PATHEXT").ok().as_deref())
-    }
-}
-
-/// Windows 上「这个文件跑得起来吗」：**是文件，且扩展名在 `PATHEXT` 里**（大小写不敏感）。
-///
-/// `PATHEXT` 缺席 / 空 ⇒ 用 Windows 自己的默认值（`.COM;.EXE;.BAT;.CMD`）—— 不是猜，
-/// 那是 `cmd.exe` 在这个变量没设时认的那一份。没有扩展名的文件（例如 POSIX 的 `cc-register`）
-/// 在 Windows 上**不是**可执行的 ⇒ 判 `false`。
-#[cfg(any(not(unix), test))]
-pub(crate) fn runnable_on_windows(
-    is_file: bool,
-    p: &std::path::Path,
-    pathext: Option<&str>,
-) -> bool {
-    if !is_file {
-        return false;
-    }
-    let Some(ext) = p.extension().and_then(|e| e.to_str()) else {
-        return false;
-    };
-    let list = pathext
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or(".COM;.EXE;.BAT;.CMD");
-    list.split(';')
-        .map(|e| e.trim().trim_start_matches('.'))
-        .any(|e| !e.is_empty() && e.eq_ignore_ascii_case(ext))
 }
 
 /// 从一组环境变量里取家目录（规则住 `platform::paths::home_dir_from`）；没有 ⇒ 空串（照旧）。
@@ -531,43 +480,6 @@ pub(crate) fn under_home(home: &str, rel: &str) -> String {
         return format!("/{rel}");
     }
     crate::platform::paths::join_under(home, rel)
-}
-
-/// cc-bus 的脚本目录：`CC_BUS_SCRIPTS` → 本二进制旁边的 `cc-bus/scripts` → `PATH`。
-///
-/// 🔴 **第三档（`PATH`）是 `K-R48` 第二拍补回来的，别再删**：旧 bash `ccm` 住在
-/// `shared/`（部署形态下 `~/.claude/skills/ccm`），它的**兄弟目录**正好就是
-/// `cc-bus/scripts` ⇒ 第二档几乎总是命中。今天 `ccm` 是后端二进制、住
-/// `~/.cc-monitor/bin/` —— **它旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**，
-/// 而 `PATH` 那一档是唯一还够得着的。首版漏了它（docstring 写着、实现里没有），
-/// 后果是「`--bus-register` 要了登记，却谁也没登记」。
-pub(crate) fn discover_bus_scripts() -> Option<String> {
-    if let Ok(d) = std::env::var("CC_BUS_SCRIPTS") {
-        if !d.is_empty() && is_exec(&std::path::Path::new(&d).join("cc-register")) {
-            return Some(d);
-        }
-    }
-    if let Some(sibling) = std::env::current_exe()
-        .ok()
-        .and_then(|me| me.parent().map(|p| p.join("cc-bus").join("scripts")))
-    {
-        if is_exec(&sibling.join("cc-register")) {
-            return Some(sibling.to_string_lossy().to_string());
-        }
-    }
-    // `PATH` 上的 `cc-register`（`command -v cc-register` 再取 `dirname`；找法只住 `platform::shell::find_session_command`）。
-    let path = std::env::var("PATH").ok();
-    match crate::platform::shell::find_session_command(
-        "cc-register",
-        path.as_deref(),
-        cfg!(windows),
-        &is_exec,
-    ) {
-        crate::platform::shell::SessionCommand::Found { file, .. } => {
-            file.parent().map(|d| d.to_string_lossy().to_string())
-        }
-        _ => None,
-    }
 }
 
 use crate::control::launch_account::{pick, AccountAsk, Settled};
@@ -639,32 +551,12 @@ pub(crate) struct Container {
     // - 显式 `--tmux=<名>` ⇒ **不退让**（调用方说的就是要这个名；撞了走 `C14` 响亮失败）；
     // - `--tmux-base=<基名>` ⇒ **退让**（`C15`：调用方随后要读回真名字）；
     // - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
-    /// `--bus-register` 要的登记；找不到 cc-bus 脚本就是 `None`（并出一句声）。
-    pub(crate) bus: Option<BusRegister>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BusRegister {
-    pub(crate) scripts_dir: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Direct {
     /// `CCM_ENV`（机器级 env，先于会话级）。
     pub(crate) ccm_env: String,
-    /// codex 要的 cc-bus 身份配方（claude 不要 —— 会盖掉 `@cc_id` 细分）。
-    pub(crate) bus_id_recipe: bool,
-    /// 🔴 这一趟**真的在 tmux 里**吗（`$TMUX` 非空）。
-    ///
-    /// 上一行那段配方（[`super::BUS_ID_RECIPE`]）**整段裹在 `if [ -n "${TMUX:-}" ]` 里** ⇒
-    /// 这一格为假时它**一个字都不做**。真跑那一侧靠这一格判断「还要不要请一个 shell 进来」
-    /// （[`super::needs_shell`]）—— 而那正是 `--agent codex` 在 Windows 上
-    /// `program not found` 的那一跳（读数住）。
-    ///
-    /// ⚠ **只有真跑那一侧读它；[`render`] 一个字不看** —— `--ccm-print` 必须对宿主环境
-    /// 逐字节稳定（`INVARIANTS §33a` 铁律 2：不查实时 tmux 状态，**值不知道就打印配方**）。
-    /// 把这一格接进 `render` 会让同一条计划在 tmux 内外吐出两种输出，那正是 `§33a` 的原病。
-    pub(crate) inside_tmux: bool,
     /// 账号维度的载体（环境变量名）—— 见 [`Env::account_env`]。
     pub(crate) account_env: String,
     /// 要 export 的账号目录。
@@ -1312,25 +1204,6 @@ pub(crate) fn build_among(
             dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
         );
 
-        // 🔴 **要了登记而登记不成，必须出声**〔`K-R48` 第二拍 09-11 补回〕。
-        //
-        // 找不到 cc-bus 脚本目录 ⇒ stderr 说「**没有登记**」：首版原生实现把这句丢过 ——
-        // `--bus-register` 于是变成一个「要了、没做、也不说」的旗标，而那正是本工作区反复消灭的那类静默降级。
-        // 起会话只登记（`cc-register`），不记派生台账：「谁起的谁」读血缘。
-        let bus = if o.bus_register {
-            match env.bus_scripts.as_ref() {
-                None => {
-                    eprintln!("{}", copy_text("bePlan.bus.noScripts", &[]));
-                    None
-                }
-                Some(d) => Some(BusRegister {
-                    scripts_dir: d.clone(),
-                }),
-            }
-        } else {
-            None
-        };
-
         return Ok(Plan::Container(Container {
             name,
             cwd,
@@ -1341,7 +1214,6 @@ pub(crate) fn build_among(
             payload,
             self_check,
             inner_head,
-            bus,
         }));
     }
 
@@ -1492,10 +1364,6 @@ pub(crate) fn build_among(
 
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
-        bus_id_recipe: face.is_some_and(|f| f.needs_bus_id),
-        // 与那段配方的 `if [ -n "${TMUX:-}" ]` **同一个判准**：`Env::tmux` 就是
-        // `var("TMUX").ok().filter(|v| !v.is_empty())` ⇒ 两侧逐字等价，不是近似。
-        inside_tmux: env.tmux.is_some(),
         account_env: env.account_env.clone(),
         config_dir,
         account_name: account,
@@ -1945,14 +1813,13 @@ fn render_container(c: &Container) -> String {
     seq
 }
 
-/// 容器路的**收尾**：自检 · attach · cc-bus 登记。
+/// 容器路的**收尾**：自检 · attach。
 ///
 /// 建会话与键入载荷在真跑那条路上已经由 [`crate::control::launch`] 在**本进程里**做完了，
 /// 剩下这几件仍是本机的事（attach 尤其：后端开不了你面前的窗）。
 pub(crate) fn render_container_tail(c: &Container) -> String {
-    let t = sq(&format!("={}:", c.name));
     let mut seq = String::new();
-    // ★★ **先自检，再谈接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
+    // ★★ **先自检，再谈接进去** —— 排在收尾的最前面，而且只能在这里。
     //
     // 从前 ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
     // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而调用方照报成功、
@@ -1982,27 +1849,6 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
             crate::common::tmux_utf8::join_session(&c.name)
         ));
     }
-    if let Some(b) = &c.bus {
-        seq.push_str(&format!(
-            "; {{ _p=$(tmux -u list-panes -t {t} -F '#{{pane_id}}' 2>/dev/null | head -1)"
-        ));
-        // 这一发知道会话编号（`--ccm-sid`）⇒ 一并登记（第 5 列；敲门按它经后端说一句）；不知道 ⇒ 敲门时从窗格读身份标记。
-        let sid = if c.ccm_sid.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "{} {} ",
-                crate::control::cc_bus::REGISTER_SID,
-                sq(&c.ccm_sid)
-            )
-        };
-        seq.push_str(&format!(
-            "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {sid}{} >/dev/null",
-            sq(&format!("{}/cc-register", b.scripts_dir)),
-            sq(&c.name)
-        ));
-        seq.push_str("; } || true");
-    }
     seq
 }
 
@@ -2023,10 +1869,6 @@ fn render_direct(d: &Direct) -> String {
     let mut line = String::new();
     if !d.ccm_env.is_empty() {
         line.push_str(&format!("{}; ", d.ccm_env));
-    }
-    if d.bus_id_recipe {
-        line.push_str(&super::BUS_ID_RECIPE);
-        line.push(' ');
     }
     let cfg_env = &d.account_env;
     if !d.config_dir.is_empty() {

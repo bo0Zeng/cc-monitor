@@ -5,10 +5,7 @@ use super::*;
 /// 「列全部会话」这件事**只剩快照那一处**（`common/session_snapshot.rs`）。
 /// 本模块回潮（把那条 argv 抄回来）时这一条要红。
 ///
-/// 🔴 **它守的是「面没变大」，不是「快照真被走到」** —— 后面那条由
-/// `the_liveness_answer_comes_from_this_moment_not_from_a_cache` 的行为夹具钉。
-/// 两条缺一不可：只有结构那条，「读快照但读的是陈值」照样绿；
-/// 只有行为那条，「另起一条 argv 自己去问」在没有真 tmux 的沙箱里也可能碰巧绿。
+/// 它守的是「面没变大」：本模块不再列全部会话（谁活着由后端判活那一处答，cc-bus 的名单不再问 tmux）。
 #[test]
 fn listing_every_session_is_no_longer_this_modules_job() {
     let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
@@ -28,54 +25,6 @@ fn listing_every_session_is_no_longer_this_modules_job() {
     );
 }
 
-/// ★★ **`KR96D1` 死值验第二刀（Gate 这一侧）：判活拿到的值必须是「这一刻的」。**
-///
-/// 🔴 **失效方向（件文件逐字）：只判「有没有调那个快照函数」。**
-/// ⇒ 夹具是一个**会变的世界**（探测器第 1 次回 A、第 2 次回 B），
-/// 判的是 `list_sessions_from` 第二次交出来的是 **B**。
-/// 把 `SessionSnapshot::query` 改成「先看缓存」⇒ 这里当场红。
-#[test]
-fn the_liveness_answer_comes_from_this_moment_not_from_a_cache() {
-    use crate::common::session_snapshot::SessionRow;
-    let calls = std::sync::atomic::AtomicUsize::new(0);
-    let snap = SessionSnapshot::with_prober(move || {
-        let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(if n == 0 {
-            vec![
-                SessionRow {
-                    name: "alive-cc".into(),
-                    ccm_sid: "sid-a".into(),
-                },
-                SessionRow {
-                    name: "doomed-cc".into(),
-                    ccm_sid: "sid-d".into(),
-                },
-            ]
-        } else {
-            // `doomed-cc` 这一刻死了。
-            vec![SessionRow {
-                name: "alive-cc".into(),
-                ccm_sid: "sid-a".into(),
-            }]
-        })
-    });
-
-    let before = list_sessions_from(&snap).expect("问得到");
-    assert_eq!(
-        before,
-        vec![
-            ("alive-cc".to_string(), "sid-a".to_string()),
-            ("doomed-cc".to_string(), "sid-d".to_string()),
-        ]
-    );
-    let after = list_sessions_from(&snap).expect("问得到");
-    assert_eq!(
-        after,
-        vec![("alive-cc".to_string(), "sid-a".to_string())],
-        "`doomed-cc` 已经死了，判活却还把它报成活的 —— 拿的是陈值。\n\
-             ★ 这就是 08-13 实测过的那个后果：敲门文字被打进**陌生占用者**的屏幕。"
-    );
-}
 
 /// ★★ **K-R12：本模块起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
 ///

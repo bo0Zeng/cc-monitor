@@ -146,7 +146,7 @@ async fn ask_backend(
         "slots": slots,
         "machine": machine,
     });
-    let client = crate::dial_host::local_backend_accepting(cmd)
+    let client = crate::inbound_client::local_backend_accepting(cmd)
         .await
         .map_err(|said| Said::new(said, cmd, None))?;
     // 那一趟在本机常驻后端里 ⇒ 它写的那份详情（那台答 `uname` 的原话也在里面）原样带上。

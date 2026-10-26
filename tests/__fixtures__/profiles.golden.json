@@ -118,7 +118,6 @@
           "account": null,
           "agent": null,
           "args": null,
-          "busRegister": false,
           "cwd": null,
           "cwdIf": [
             {
@@ -162,7 +161,6 @@
           "account": null,
           "agent": null,
           "args": null,
-          "busRegister": false,
           "cwd": null,
           "cwdIf": null,
           "detach": false,
@@ -207,7 +205,6 @@
           },
           "agent": null,
           "args": null,
-          "busRegister": false,
           "cwd": null,
           "cwdIf": null,
           "detach": false,
@@ -245,7 +242,6 @@
           "account": null,
           "agent": null,
           "args": null,
-          "busRegister": false,
           "cwd": null,
           "cwdIf": null,
           "detach": false,
@@ -283,7 +279,6 @@
           },
           "agent": null,
           "args": "--model opus",
-          "busRegister": false,
           "cwd": "/srv/p",
           "cwdIf": null,
           "detach": false,
@@ -370,10 +365,6 @@
       {
         "id": "detach",
         "label": "起完不接进去"
-      },
-      {
-        "id": "busRegister",
-        "label": "登记进 cc-bus"
       },
       {
         "id": "tab",

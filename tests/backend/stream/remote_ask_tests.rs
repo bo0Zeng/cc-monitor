@@ -12,7 +12,7 @@
 //! 1. **一个家**（零命中 ＋ 正控，两向相等）：后端生产树里「开远端一次性 exec」的三个指纹 ——
 //!    调 `uses::run(`（经池开一条链路）· 往拨号请求里钉 `abort_marker`（capture 见 hello 就收工）·
 //!    `read_request(`（把一份组好的拨号请求读成可拨的形状）—— 在 `dial/` 之外**零处**；
-//!    `dial/` 自己那几处是正控（同一识别器在 `dial/link.rs` 上命中，扫描没瞎）。
+//!    `dial/` 自己那几处是正控（同一识别器在 `dial/forwards.rs` 上命中，扫描没瞎）。
 //! 2. **那几台只看机器表**：够到一台 ＝ 机器表里有它（按名字组请求）；「每一台」＝ 表里「连这台」的那几台；对面的资产目录 id 按名字记。
 //! 3. **问法**：查不到那台 ⇒ 明说、对面一次都没被调；查得到 ⇒ 交给对面的恰是照表组好的那份拨号请求 ＋ 逐格引号的命令行，参数走 stdin 一行。
 //! 4. **引号**：命令行交给真 `sh` 跑，每一格原样回来（异源：真 shell 对我们的引号）。
@@ -60,7 +60,7 @@ fn homes_of(needle: &str) -> (std::collections::BTreeSet<String>, usize) {
 fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
     // (指纹, dial/ 里应当命中的那几份 —— 正控)
     let prints: &[(&str, &[&str])] = &[
-        ("uses::run(", &["dial/link.rs"]),
+        ("uses::run(", &["dial/forwards.rs"]),
         ("uses::capture(", &["dial/remote_ask.rs"]),
         ("abort_marker", &["ssh-dial/uses.rs", "dial/remote_ask.rs"]),
         ("read_request(", &["dial/mod.rs", "dial/remote_ask.rs"]),

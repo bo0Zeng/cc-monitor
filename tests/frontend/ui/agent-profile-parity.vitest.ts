@@ -30,7 +30,7 @@
  * # ⚠ 诚实边界（三条）
  *
  * 1. 本条只对拍 **golden 有 key 的那两项**（`default_launcher` / `resume_kind`+`resume_token`）。
- *    起会话事实里的 `has_identity` · `needs_bus_id`（`agents/mod.rs` 的 `LaunchFace`）
+ *    起会话事实里的 `has_identity`（`agents/mod.rs` 的 `LaunchFace`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有源头、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
  *    下面「缺项逐个点名」那一条把这两项**逐个点名钉住**：
@@ -201,10 +201,10 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
   });
 
   it("★ 缺口是被点名的，不是被忘掉的", () => {
-    // 这两项今天**没有** golden key ⇒ 没有源头。哪天有人加了 key，这一格红，
+    // 这一项今天**没有** golden key ⇒ 没有源头。哪天有人加了 key，这一格红，
     // 提醒把它接进上面的对拍 —— 而不是让它悄悄多出第四份副本。
     const g = golden();
-    const gaps = ["has_identity", "needs_bus_id"] as const;
+    const gaps = ["has_identity"] as const;
     for (const key of gaps) {
       const has = AGENTS.some((a) => g[a]?.[key] !== undefined);
       expect(
@@ -213,16 +213,12 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
           "⇒ 给它补一格对拍，然后把它从这份缺口清单里摘掉（EL6）。",
       ).toBe(false);
     }
-    // 反向：这两项**确实**在别处有实现，不是我记错了。仍用带锚的声明形状，不用子串。
-    // 它们是适配层起会话事实的两格（`LaunchFace`），ccm 按那一格起。
+    // 反向：这一项**确实**在别处有实现，不是我记错了。仍用带锚的声明形状，不用子串。
+    // 它是适配层起会话事实的一格（`LaunchFace`），ccm 按那一格起。
     const adapters = read(ADAPTER_INDEX);
     expect(
       /^\s*pub\(crate\) has_identity: bool,/m.test(adapters),
       "起会话事实里没有 has_identity 那一格",
-    ).toBe(true);
-    expect(
-      /^\s*pub\(crate\) needs_bus_id: bool,/m.test(adapters),
-      "起会话事实里没有 needs_bus_id 那一格",
     ).toBe(true);
   });
 });

@@ -4,4 +4,4 @@ import type { HookState } from "./HookState";
 /**
  * 整份诊断。`note` 装「为什么没读到」（文件缺失 / 坏 JSON），不为空即应展示。
  */
-export type HooksDiagnosis = { session_start: HookState, stop: HookState, note: string, };
+export type HooksDiagnosis = { stop: HookState, note: string, };

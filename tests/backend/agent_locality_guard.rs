@@ -425,7 +425,7 @@ mod tests {
         }
         for good in [
             "let m = under_home(&home, \".cc-monitor/accounts/accounts.json\");",
-            "if face.is_some_and(|f| f.needs_bus_id) {}",
+            "if face.is_some_and(|f| f.has_identity) {}",
         ] {
             assert!(
                 !needles.iter().any(|n| good.contains(n.as_str())),

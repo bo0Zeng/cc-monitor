@@ -33,8 +33,6 @@ pub enum Frame<R = Record> {
     SessionsReplayed(SessionsReplayed),
     SessionFileGone(SessionFileGone),
     SessionFileReread(SessionFileReread),
-    LinkData(LinkData),
-    LinkEnd(LinkEnd),
     Transfer(Transfer),
     FilesBatch(FilesBatch),
     Probe(Probe),
@@ -98,8 +96,6 @@ pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
         SessionsReplayed => "sessions_replayed",
         SessionFileGone => "session_file_gone",
         SessionFileReread => "session_file_reread",
-        LinkData => "link_data",
-        LinkEnd => "link_end",
         Transfer => "transfer",
         FilesBatch => "files_batch",
         Probe => "probe",
@@ -639,30 +635,6 @@ pub struct SessionFileReread {
     /// 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub lines: u64,
-}
-
-/// **一条链路的下行字节**。`data` 是 base64（标准字母表、带补位）。🔴 **不丢**：走应答那条独立通道。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct LinkData {
-    /// 链路 id（`link-open` 时客户端给的）。
-    pub link: String,
-    /// 下行字节，标准 base64（解码后 ≤ 32 KiB）。
-    pub data: String,
-}
-
-/// **一条链路不会再有字节了**；后端已经忘掉这个 `link` id。`error` 省略 = 正常收尾。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct LinkEnd {
-    /// 链路 id。
-    pub link: String,
-    /// 非正常收尾的原话；缺 ＝ 正常收尾。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub error: Option<String>,
 }
 
 /// **一趟传输此刻的样子**（`transfer-start` 之后才出现）。每一帧都是一整份快照；带 `end` 的那一帧是这一趟的最后一帧。

@@ -377,7 +377,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 #[test]
 fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     // 「那条过渡期回落还在不在」原来读的是 `tmux.rs` 里杀会话那条 Tauri 命令的函数体
-    //   （体里有没有 `connect_and_exec_cmd`）。那条命令整个迁到界面删了 ⇒ 问题换成**整棵 monitor 生产段**里
+    //   （体里有没有那个已删的远端 exec 原语）。那条命令整个迁到界面删了 ⇒ 问题换成**整棵 monitor 生产段**里
     //   还有没有一处自己拼杀会话的 shell 串（`kill-session`）—— 界面那一侧结构上没有 SSH，回落只可能长回 monitor。
     //   正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词（那是真杀会话的那一处）。
     let verb = ["kill", "session"].join("-");

@@ -17,7 +17,7 @@ miss=""; for c in jq tmux flock; do command -v "$c" >/dev/null 2>&1 || miss="$mi
 # 软链可执行脚本(cc-bus-lib.sh 不链:各脚本用 readlink -f 定位真身目录再 source 它)
 # 不静默覆盖用户已有同名命令:仅刷新指向本仓库 scripts/ 的旧软链,其余跳过并告警。
 skipped=""
-for s in cc-whoami cc-register cc-send cc-recv cc-peek cc-commit cc-list cc-bus-stop-hook; do
+for s in cc-whoami cc-send cc-recv cc-peek cc-commit cc-list cc-bus-stop-hook; do
   chmod +x "$SRC/$s"
   dst="$BINDIR/$s"
   if [ -e "$dst" ] || [ -L "$dst" ]; then
@@ -39,7 +39,7 @@ done
 [ -f "$BUSHOME/config.example" ]     || cp "$SKILLDIR/examples/config"     "$BUSHOME/config.example"
 [ -f "$BUSHOME/policy.tsv.example" ] || cp "$SKILLDIR/examples/policy.tsv" "$BUSHOME/policy.tsv.example"
 
-echo "✅ 已安装:8 个命令 → $BINDIR;运行时根 → $BUSHOME"
+echo "✅ 已安装:7 个命令 → $BINDIR;运行时根 → $BUSHOME"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac
 
 cat <<EOF
@@ -48,8 +48,6 @@ cat <<EOF
 
 1) 【收信钩子】把下面合并进 ~/.claude/settings.json 的顶层(保留你现有字段,只加 hooks):
    "hooks": {
-     "SessionStart": [ { "hooks": [ { "type": "command",
-        "command": "cc-register >/dev/null 2>&1 || true" } ] } ],
      "Stop": [ { "hooks": [ { "type": "command", "command": "cc-bus-stop-hook" } ] } ]
    }
    校验:jq . ~/.claude/settings.json
@@ -62,24 +60,22 @@ cat <<EOF
 
 —— Codex CLI 激活(cc-bus 跨工具:Claude Code 与 Codex 共用同一条 ~/.cc-bus 总线)——
 
-C1) 【收信钩子 · Codex】同样两个钩子(SessionStart→cc-register、Stop→cc-bus-stop-hook),两种接法:
+C1) 【收信钩子 · Codex】同样一个钩子(Stop→cc-bus-stop-hook),两种接法:
     (a) 插件形态(进阶):Codex 从 *marketplace*(一个 marketplace.json 目录清单)装插件,而非直接给仓库路径。
         本仓库已具备插件形态(.codex-plugin/plugin.json + hooks/hooks.json;钩子命令用 \$CLAUDE_PLUGIN_ROOT,Codex
         为兼容会设它),但要装它得先加一个指向 en/ 或 zh/ 插件目录的 marketplace.json 条目,再
         \`codex plugin marketplace add <那个 marketplace>\` + \`codex plugin add cc-bus\`,然后 /hooks 信任。见 Codex
         "Build plugins"。除非你本就在跑 marketplace,否则用下面的 (b)——它这些都不需要。
     (b) 非插件形态(推荐):把 $SKILLDIR/examples/codex-hooks.json 合并进 ~/.codex/hooks.json
-        (或在 ~/.codex/config.toml 里用内联 [[hooks.SessionStart]] / [[hooks.Stop]] 表)。
+        (或在 ~/.codex/config.toml 里用内联 [[hooks.Stop]] 表)。
         校验:jq . ~/.codex/hooks.json
-    然后【信任钩子】(Claude 不需要、Codex 独有的一步):在 Codex 里运行 /hooks 审查并信任这两个钩子——
+    然后【信任钩子】(Claude 不需要、Codex 独有的一步):在 Codex 里运行 /hooks 审查并信任这个钩子——
     Codex 对未信任的非管理命令钩子会跳过不跑——或对你已自行审核过来源的无人值守自动化,用
     --dangerously-bypass-hook-trust 启动 Codex(别无脑开 bypass)。
 
 C2) 【启动 Codex】用 cc-monitor 开会话 —— 身份 = 会话 id,和 CC 完全一样。
     Codex 还需要:宽松的 approval_policy + 能写 ~/.cc-bus/ 的沙箱(否则注入的 cc-* 命令会卡在审批弹窗),
     且 shell env 要保留 PATH/tmux/\$TMUX。见 Codex 运行配置示例(examples/codex-config.toml)。
-    注:Codex 在【第一个回合】才触发 SessionStart,而非 TUI 一打开就触发——所以手动启动、空闲着的 Codex 会在它的
-    第一个回合注册(随便发个 prompt 它就注册)。
 
 C3) 【Codex 运行配置】没有宽松的运行配置,Codex 不会无人值守地跑 cc-bus。把 $SKILLDIR/examples/codex-config.toml
     里的键拷进 ~/.codex/config.toml(用户级)。它设:approval_policy="never"(注入的 cc-* 不卡审批)、

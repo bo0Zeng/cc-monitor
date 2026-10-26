@@ -469,7 +469,6 @@ fn req(id: &str, cmd: &str) -> Request {
 fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     assert!(
@@ -482,7 +481,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
+                dispatch(req("x", name), &tx, &running, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
                 Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. }))
                     if c == "unknown_command"
             )
@@ -499,7 +498,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
             Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. })) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -512,7 +511,6 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
 fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
     let (tx, _rx) = mpsc::channel::<Frame>(64);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     let blocking: Vec<String> = REGISTRY
@@ -524,7 +522,6 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     req("x", name),
                     &tx,
                     &running,
-                    &links,
                     &xfers,
                     &follows,
                     &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
@@ -575,14 +572,12 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
     .await;
 
     // 对它发 cancel。
-    let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
         &tx,
         &running,
-        &links,
         &xfers,
         &follows,
         &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
@@ -795,17 +790,10 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
     );
 }
 
-/// 硬臂那几条（链路 · 传输 · 终端订阅：`Run::Builtin`，就地回应答）被拒：复制详情里也有「命令」那一项（同处理器回的失败）。
+/// 硬臂那几条（传输 · 终端订阅：`Run::Builtin`，就地回应答）被拒：复制详情里也有「命令」那一项（同处理器回的失败）。
 #[tokio::test]
 async fn a_builtin_refusal_names_its_command_in_the_detail() {
-    let cmds = [
-        "link-open",
-        "link-credit",
-        "link-close",
-        "transfer-start",
-        "terminal-follow-ack",
-        "terminal-unfollow",
-    ];
+    let cmds = ["transfer-start", "terminal-follow-ack", "terminal-unfollow"];
     let input: String = cmds
         .iter()
         .enumerate()

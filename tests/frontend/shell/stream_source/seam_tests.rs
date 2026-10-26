@@ -18,9 +18,9 @@ impl std::io::Write for Warns {
     }
 }
 
-/// 链路 · 传输 · 测试连接只开在本机后端那条流上：远端来了 ⇒ 分派第一层照实说一句、丢掉（不交、也不当有序的那几种往下送）。
+/// 传输 · 测试连接只开在本机后端那条流上：远端来了 ⇒ 分派第一层照实说一句、丢掉（不交、也不当有序的那几种往下送）。
 #[test]
-fn a_link_frame_from_a_remote_is_said_and_dropped() {
+fn a_local_only_frame_from_a_remote_is_said_and_dropped() {
     let warns = Warns::default();
     let sink = warns.clone();
     let subscriber = tracing_subscriber::fmt()
@@ -32,8 +32,6 @@ fn a_link_frame_from_a_remote_is_said_and_dropped() {
     let got = tracing::subscriber::with_default(subscriber, || {
         tracing::callsite::rebuild_interest_cache();
         [
-            r#"{"kind":"link_data","link":"L","data":"aGk="}"#,
-            r#"{"kind":"link_end","link":"L"}"#,
             r#"{"kind":"transfer","id":"x","got":1,"total":2}"#,
             r#"{"kind":"probe","ticket":"t","cell":{"reached":"ssh"}}"#,
         ]
@@ -44,15 +42,12 @@ fn a_link_frame_from_a_remote_is_said_and_dropped() {
         })
         .collect::<Vec<_>>()
     });
-    assert_eq!(
-        got, [false; 4],
-        "远端来的链路 / 传输 / 测试连接帧被往下送了"
-    );
+    assert_eq!(got, [false; 2], "远端来的传输 / 测试连接帧被往下送了");
     let log = String::from_utf8(warns.0.lock().unwrap().clone()).unwrap();
     assert_eq!(
         log.matches("[devbox] 远端后端发来了只开在本机后端上的帧")
             .count(),
-        4,
+        2,
         "远端来的那几帧没有照实说：\n{log}"
     );
 }

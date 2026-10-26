@@ -363,7 +363,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
-`ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值，如 `BUS_ID_RECIPE`）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（调用方的能力协商读同一张名片），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
+`ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（调用方的能力协商读同一张名片），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
 
 **谁在守**：`tests/e2e/ccm-contract-parity.sh`（差分 ＋ 每条保住项各一条绝对断言 ＋ 「真跑确实产出了环境」自检 ＋ 顺序两侧各钉一条）。
 
@@ -501,9 +501,9 @@ monitor 生产段每一处会让线程自己醒来的构件都登记在 `rust_ti
 
 ## 44. **monitor 侧**起进程的面也要逐条登记 —— 而它**不是**「防写盘」
 
-monitor 生产段每一处起进程的地方都登记在 `write_site_registry::spawn_sites`，经拨号链路跑 shell 的每一处登记在 `exec_site_registry`（写明为什么它不是那台后端的具名命令）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
+monitor 生产段每一处起进程的地方都登记在 `write_site_registry::spawn_sites`；远端那一侧界面进程一处都不跑（零拨号：问别台一律经本机后端）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
 
-**谁在守**：`write_site_registry_spawn_sites.rs::every_local_spawn_is_declared` · `exec_site_registry_tests.rs::every_remaining_dial_shell_says_why_it_is_not_a_backend_command`。
+**谁在守**：`write_site_registry_spawn_sites.rs::every_local_spawn_is_declared` · `dial_move_judge.rs::the_monitor_dials_nothing`。
 
 ---
 

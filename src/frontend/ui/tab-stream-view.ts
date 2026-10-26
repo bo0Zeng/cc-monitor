@@ -151,8 +151,8 @@ export class TabStreamView {
    */
   private static readonly BELOW_BUDGET_MS = 60_000;
   /**
-   * 会话流丢格之后「往后补到末尾」那一**件**的总期限：120 秒（= 一次性远端那一趟的天花板
-   * `dial_host::ONE_SHOT_DEADLINE`，monitor 那一侧读整段 `frame_query::READ_LINES_BUDGET` 同值）。
+   * 会话流丢格之后「往后补到末尾」那一**件**的总期限：120 秒（与
+   * monitor 那一侧读整段 `frame_query::READ_LINES_BUDGET` 同值）。
    * 开头造一次，之后每一问交剩下的（`remaining`）—— 每页各拿一整份的话，遇上一页一页慢慢吐的对端停不下来。
    */
   private static readonly GAP_FILL_BUDGET_MS = 120_000;

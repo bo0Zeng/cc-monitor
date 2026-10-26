@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1902,
+  "ceiling": 1890,
   "groups": [
     {
       "kind": "首登",
@@ -64,15 +64,14 @@
         ["src/frontend/shell/src/deploy.rs", "key", 5],
         ["src/frontend/shell/src/detail.rs", "key", 2],
         ["src/frontend/shell/src/diagnostics_report.rs", "key", 7],
-        ["src/frontend/shell/src/dial_host.rs", "key", 3],
         ["src/frontend/shell/src/filewin/entry.rs", "key", 6],
         ["src/frontend/shell/src/filewin/proc.rs", "key", 14],
         ["src/frontend/shell/src/frame_query.rs", "key", 2],
+        ["src/frontend/shell/src/inbound_client.rs", "key", 1],
         ["src/frontend/shell/src/launch.rs", "key", 2],
         ["src/frontend/shell/src/lib.rs", "key", 4],
-        ["src/frontend/shell/src/link_mux.rs", "key", 8],
-        ["src/frontend/shell/src/local_backend.rs", "key", 9],
-        ["src/frontend/shell/src/local_backend_host.rs", "key", 29],
+        ["src/frontend/shell/src/local_backend.rs", "key", 8],
+        ["src/frontend/shell/src/local_backend_host.rs", "key", 28],
         ["src/frontend/shell/src/logging.rs", "key", 4],
         ["src/frontend/shell/src/platform/fs.rs", "key", 6],
         ["src/frontend/shell/src/platform/terminal.rs", "key", 2],

@@ -499,16 +499,9 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              由 `the_two_thresholds_are_what_the_readings_derive` 每趟钉住「推算式 == 常量」。",
         ),
         (
-            "loopback_roundtrip_through_the_resident_backend",
-            "不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的后端二进制（起成本机常驻后端，\
-             stdio 载体、私有 HOME / TMUX_TMPDIR）。触发器是读数脚本 `tests/evidence/SR1a-link-loopback.py --monitor`\
-             （它起 sshd、设好 `SR1A_LOOPBACK` 再按名字跑这一条，并核输出里那句 `SR1A-LOOPBACK-MONITOR ok`）。\
-             门禁沙箱里起不了 sshd ⇒ 进不了门禁。谁什么时候跑：改 `dial_host` / `link_mux` / `ssh_link` / 后端 `dial/` 时，\
-             交付前跑一趟、把输出贴进报告。",
-        ),
-        (
             "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
-            "不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
+            "不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd，sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制\
+             （起成本机常驻后端，stdio 载体、私有 HOME / TMUX_TMPDIR）。门禁沙箱里起不了 sshd ⇒ 进不了门禁。\
              触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
              核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `deploy.rs` / `sftp_pool.rs` 中继 /\
              后端 `ssh-dial/sftp.rs` · `deploy/` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
@@ -641,7 +634,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     assert!(
         ignored
             .iter()
-            .any(|(_, n)| n == "loopback_roundtrip_through_the_resident_backend"),
+            .any(|(_, n)| n == "sr1b_loopback_deploy_and_transfer_through_the_resident_backend"),
         "收到的 {} 条 `#[ignore]` 测试里没有回环那一条 —— 剥法坏了",
         ignored.len()
     );

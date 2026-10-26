@@ -93,7 +93,6 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "detach",
     "tmux-size",
     "tmux-base",
-    "bus-register",
     "backend-discover",
     "account-via-backend",
     "base-url-across-tmux",
@@ -107,7 +106,6 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
     "attach",               // 实现就是 `tmux attach`
     "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
-    "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
     "ccm-sid",              // 写的是 tmux 会话上的意图标（`@ccm_sid_expect`）；直路上没有可写的地方
     "detach",               // 实现就是 `tmux detach`
     "tmux",                 // 它本身
@@ -131,20 +129,6 @@ pub(crate) static NAME_TAKEN_FMT: std::sync::LazyLock<String> =
 /// 有它自己的三道门（`§34`），不在这条路上顺手做。
 pub(crate) static SELF_CHECK_FAILED_FMT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.selfCheckFailed.say", &[("name", "%s")]) + "\\n");
-
-/// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--ccm-print` 仍然不查实时 tmux 状态。
-///
-/// 〔`INVARIANTS §49`〕`#S` 是**会话名**，用户起的会话名可以是中文 ⇒ 读它的那个 tmux 客户端必须是
-/// UTF-8 客户端（非 UTF-8 客户端下非 ASCII 被改写成 `_`，codex 的 cc-bus 身份就错了，且退出码仍是 0）。
-/// 这是拼进 pane 里跑的命令串 ⇒ 按 `common/tmux_utf8.rs` 那张表用**旗**（`-u`，排在子命令之前）。
-/// `export` / `unset` 的写法住 `platform::shell::posix`（原是一条 `const`，产出逐字节不变）。
-pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    format!(
-        "if [ -n \"${{TMUX:-}}\" ]; then _ccm_bus=\"$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && {}{}fi;",
-        crate::platform::shell::posix::export("CC_BUS_ID", "\"$_ccm_bus\""),
-        crate::platform::shell::posix::unset(&["_ccm_bus"]),
-    )
-});
 
 /// `--help` 的正文。**每个认得的旗标都要在这里有一行** ——
 /// 由 `protocol_doc_guard` 那条受管例外的配套判据机检。
@@ -818,9 +802,6 @@ fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
 /// 「找不到的不是 `hostname`，是 `sh`」—— 错的归因比失败本身更贵。
 pub(crate) static WHY_SHELL_CCM_ENV: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.ccmEnv", &[]));
-/// 同上：codex 的 cc-bus 身份配方，**而且这一趟真在 tmux 里**。
-pub(crate) static WHY_SHELL_BUS_ID: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.busId", &[]));
 /// 同上：`attach`。
 pub(crate) static WHY_SHELL_ATTACH: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.attach", &[]));
@@ -832,32 +813,16 @@ pub(crate) static WHY_SHELL_CONTAINER_TAIL: std::sync::LazyLock<String> =
 ///
 /// 返回 `Some(why)` 时 `why` 就是报错时要说的那句归因（见上面那几条常量）。
 ///
-/// # 从前这里有一条多余的闸，而它是 Windows 上 `--agent codex` 那句 `program not found`
-///
-/// 上一版的条件逐字是 `!d.ccm_env.is_empty() || d.bus_id_recipe || resolved.is_some()`
-/// —— **`bus_id_recipe` 单独就把整条改走 `sh -c`**。而 `needs_bus_id("codex")` 恒真
-/// ⇒ 每一趟 `--agent codex` 都要一个 `sh`，Windows 上没有 ⇒ `EXIT=4 program not found`
-///（真机现打过 `agent` 那一行）。
-///
-/// 🔴 **收窄靠的是一条等价，不是一条近似**（`INVARIANTS §33` 那条「不得近似」）：
-/// [`BUS_ID_RECIPE`] **整段**裹在 `if [ -n "${TMUX:-}" ]; then … fi;` 里，
-/// 而 [`plan::Direct::inside_tmux`] 就是 `var("TMUX").ok().filter(|v| !v.is_empty()).is_some()`
-/// ⇒ 这一格为假时，那个 shell 进来之后**在 `exec` 之前一个字都不做**：
-/// 剩下的几件（`export` 账号目录 / `unset` / `cd` / `exec argv`）本函数下面那段
-/// 逐条都有原生对应物。⇒ **省掉的是一个什么都不做的中间进程，不是一件功能。**
-/// 这条等价由 [`tests::the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact`]
-/// 钉着 —— 谁把配方改成「无条件做点什么」，那条当场红。
+/// 直路上 `export` 账号目录 / `unset` / `cd` / `exec argv` 逐条都有原生对应物 ⇒ 不要 shell；
+/// 起会话不替 cc-bus 交身份（cc-bus 问 cc-monitor 的 `session-self`），所以 codex 与 claude 一样不要。
 ///
 /// # 它**没有**买到什么
 ///
-/// 另一条（`CCM_ENV`）**是真的要 shell**，本函数不假装它不要
-/// ⇒ 在没有 `sh` 的机器上它们照旧做不到，只是从今天起**说得出口**（`no_shell:`）。
+/// `CCM_ENV` **是真的要 shell**，本函数不假装它不要
+/// ⇒ 在没有 `sh` 的机器上它照旧做不到，只是从今天起**说得出口**（`no_shell:`）。
 fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
     if !d.ccm_env.is_empty() {
         return Some(WHY_SHELL_CCM_ENV.as_str());
-    }
-    if d.bus_id_recipe && d.inside_tmux {
-        return Some(WHY_SHELL_BUS_ID.as_str());
     }
     None
 }

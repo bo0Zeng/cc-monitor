@@ -54,7 +54,7 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 /// 本模块原来只看住**两个写死的签名**（`GUARDED_COMMANDS`，随那两条命令迁到界面一起删了）。
 /// 实测：往 `tmux.rs` 追加一条
 /// `pub async fn tmux_respawn_pane(..)`，里面直接 `format!("tmux respawn-pane -k -t {..}")`
-/// 再 `connect_and_exec_cmd` —— **`respawn-pane -k` 会杀掉 pane 里正在跑的进程**，
+/// 再经当时的远端 exec 原语发出去 ——**`respawn-pane -k` 会杀掉 pane 里正在跑的进程**，
 /// 是彻头彻尾的破坏性操作，而且**完全不经 §34 的任何一道 Gate**。
 /// 全量 `cargo test --workspace`：**985 条全绿，一条都没响。**
 ///

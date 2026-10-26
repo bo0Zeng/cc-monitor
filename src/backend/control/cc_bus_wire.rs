@@ -50,22 +50,20 @@ pub(crate) fn envelope_said(code: &str) -> String {
     }
 }
 
-/// 总线名单的一行（`bus-list`）。
+/// 总线名单的一行（`bus-list`）：一个收件箱。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct BusAgent {
-    /// 总线身份。
+    /// 会话 id（收件人就写它）。
     pub(crate) id: String,
-    /// tmux 地址。
-    pub(crate) target: String,
+    /// 叫它什么（出口照摆）：这台有它的记录 ⇒ 会话标题；没有 ⇒ 照实就是会话 id。
+    pub(crate) title: String,
     /// 待读条数。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) unread: i64,
-    /// 这个地址今天还在不在：`true` / `false` / `null`（问不到身份空间，**不是**「不在」）。
+    /// 这条会话此刻活着没有：`true` / `false` / `null`（判不了，**不是**「不在」）。
     pub(crate) live: Option<bool>,
-    /// 那个会话绑的会话 id，没绑 ⇒ `null`。
-    pub(crate) ccm_sid: Option<String>,
 }
 
 /// `bus-list` 的应答。
@@ -220,7 +218,8 @@ typed::codes! {
     }
 }
 
-/// `bus-list`：谁在线 ＋ 各自待读多少（起子进程并等它退出 ⇒ 阻塞档，下同）。
+/// `bus-list`：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少（起子进程并等它退出 ⇒ 阻塞档，下同）。
+/// 它的 Handle 住帧面宿主（`faces/mod.rs`）：在不在问观测层那一处，control 不引用 observe。
 pub(crate) struct BusListCmd;
 impl Command for BusListCmd {
     const NAME: &'static str = "bus-list";
@@ -229,14 +228,10 @@ impl Command for BusListCmd {
     type Reply = BusList;
     type Err = BusReadErr;
 }
-impl crate::wire::typed::Handle for BusListCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: NoArgs,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<BusList, BusReadErr>> + Send + 'static {
-        async move { cc_bus::list_for_inbound().map_err(of(BusReadErr::Failed, list_said)) }
-    }
+
+/// `bus-list` 的本体：名单问 cc-bus，每条会话的那两样问 `seen`；码表照这一条的换。
+pub(crate) fn bus_list(seen: &dyn Fn(&str) -> cc_bus::Seen) -> Result<BusList, BusReadErr> {
+    cc_bus::list_for_inbound(seen).map_err(of(BusReadErr::Failed, list_said))
 }
 
 /// `bus-inbox`：只读看一个 agent 收件箱的尾巴。

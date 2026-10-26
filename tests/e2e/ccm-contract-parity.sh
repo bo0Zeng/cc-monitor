@@ -30,8 +30,6 @@
 #
 # - **A 组 print↔exec 环境差分**：同一组 flag，`--print` 那条串跑出来的环境，
 #   必须与真跑出来的环境在「ccm 受控的那几个键」上逐字相等。
-#   ★ 本组开张时就抓到一条真的：codex + 已在 tmux 内时，exec 路 `export CC_BUS_ID`
-#     而 `--print` 只字未提（实测 `cd '…' && exec codex`）。
 # - **B 组 `CCM_ENV`**：S10 七项里**唯一全仓零覆盖**的一项（摸底 `grep -rn CCM_ENV`
 #   只命中 ccm 自己与计划文档）。它是「真正非 shell 不可」的那一条，U9b 之后也必须还在。
 # - **C 组 `--ccm-probe` 契约**：首行**字面** `name=ccm`（认得出这是 ccm 的名片），`src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
@@ -75,8 +73,7 @@ mkdir -p "$W/bin" "$W/proj" "$W/acct-z" "$W/acct-b" "$W/home"
 CWD="$W/proj"
 
 # ===== tmux shim：**绝不碰用户真 tmux server** =====
-# 只需要两件事：`display-message -p '#S'` 回一个会话名（CC_BUS_ID 派生源），
-# 其余（set-option 等）一律吞掉回 0。PATH 前置 ⇒ ccm 与它起的 poller 都只看得到这份。
+# 只需要一件事：一律吞掉回 0（起会话不该问它会话名；问了就回一个假名字，下面的绝对断言会看见）。PATH 前置 ⇒ ccm 与它起的 poller 都只看得到这份。
 cat > "$W/bin/tmux" <<'SHIM'
 #!/bin/sh
 [ "$1" = "-u" ] && shift   # 〔§49〕配方里那一发带 `-u`（UTF-8 客户端）
@@ -100,8 +97,7 @@ cat > "$W/home/.cc-monitor/accounts/accounts.json" <<JSON
 JSON
 
 # ===== 受控环境 =====
-# `TMUX` **要设**（这是与既有五套的关键差别：它们全 `env -u TMUX`，于是 CC_BUS_ID
-# 那条分支从来没被任何判据走到过）。`CLAUDECODE`/`CLAUDE_CODE_ENTRYPOINT` 预置成有值，
+# `TMUX` **要设**（这是与既有五套的关键差别：它们全 `env -u TMUX`；在 tmux 里起会话也不许替谁注入身份）。`CLAUDECODE`/`CLAUDE_CODE_ENTRYPOINT` 预置成有值，
 # 这样「嵌套 env 要被 unset」才有可观测的差别（否则两边都是「本来就没有」）。
 BASE_EXTRA=()
 base_env() {
@@ -155,8 +151,7 @@ pair() { # pair <标签> <flags…>
 }
 
 echo "===== A 组：--ccm-print 说的 == 真跑做的 ====="
-# ★ 这一格是本套件的开张理由：修复前 exec 侧有 CC_BUS_ID=faux-sess、print 侧没有。
-pair "codex（CC_BUS_ID 派生）"            -- --ccm-agent codex
+pair "codex（不清 claude 的嵌套标记）"     -- --ccm-agent codex
 pair "claude（嵌套 env 清理）"             -- --ccm-agent claude
 pair "claude + --account b"               -- --ccm-agent claude --account b
 # Codex 没有账号这一维 ⇒ `--account` 真跑与 print 都明说不收（从前静默导出一个它不读的变量）。
@@ -168,8 +163,8 @@ ck "codex + --account b：--ccm-print 同样不收" "$NOACCT" \
 pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PASSTHRU=1 -- --ccm-agent claude --account b
 
 # `--base` 要有意义，基础环境里必须**先有**一个 CLAUDE_CONFIG_DIR 让它去 unset。
-# 从前靠再带一个 `--model` 撑住受控键集合，今天换成 codex（它留着 CC_BUS_ID 与嵌套标记）：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
-# （config_dir 被 unset、四个嵌套标记被 unset、codex 专属的 CC_BUS_ID 又不适用）⇒
+# 从前靠再带一个 `--model` 撑住受控键集合，今天换成 codex（它留着嵌套标记）：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
+# （config_dir 被 unset、四个嵌套标记被 unset）⇒
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
 pair "codex + --base（没有账号这一维：什么都不做）" -- --ccm-agent codex --base
@@ -240,12 +235,13 @@ ck "A′ · resume 的 --ccm-print 串也必须说出同一句" "ARGV|--resume a
 
 echo
 echo "===== A 组绝对断言（差分两边一起坏掉时它们才是最后一道）====="
-ck "codex 在 tmux 内：真跑必须 export CC_BUS_ID=<会话名>" "CC_BUS_ID=faux-sess" \
-   "$(actual_env -- --ccm-agent codex | tr '|' '\n' | grep '^CC_BUS_ID=')"
-ck "codex 在 tmux 内：--ccm-print 也必须说出这一句（U9a 修复点）" "CC_BUS_ID=faux-sess" \
-   "$(predicted_env -- --ccm-agent codex | tr '|' '\n' | grep '^CC_BUS_ID=')"
-ck "claude 不得被注入 CC_BUS_ID（会盖掉 @cc_id 细分）" "" \
-   "$(actual_env -- --ccm-agent claude | tr '|' '\n' | grep '^CC_BUS_ID=')"
+# 起会话不替 cc-bus 交身份（cc-bus 问 cc-monitor 的 session-self）：哪一家、真跑与 print 都不注入。
+for _ag in codex claude; do
+  ck "$_ag 在 tmux 内：真跑不注入 CC_BUS_ID" "" \
+     "$(actual_env -- --ccm-agent "$_ag" | tr '|' '\n' | grep '^CC_BUS_ID=')"
+  ck "$_ag 在 tmux 内：--ccm-print 也不说这一句" "" \
+     "$(predicted_env -- --ccm-agent "$_ag" | tr '|' '\n' | grep '^CC_BUS_ID=')"
+done
 ck "--account b 真跑注入其 configDir" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(actual_env -- --ccm-agent claude --account b | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
 # `--model` 与 `--base` 原先**只有差分**，两边一起坏掉时全绿（审计变异 M6/M7 实证）。

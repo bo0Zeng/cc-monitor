@@ -94,8 +94,10 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
 describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出的成品", () => {
   it("★★ 查在线（bus-list）", async () => {
     answer({ ok: LIST.reply });
-    await expect(agentOnline("devbox", "alpha_cc")).resolves.toBe(true);
-    await expect(agentOnline("devbox", "gone_cc")).resolves.toBe(false);
+    await expect(agentOnline("devbox", "aaaaaaaa-0000-4000-8000-000000000001")).resolves.toBe(true);
+    await expect(agentOnline("devbox", "bbbbbbbb-0000-4000-8000-000000000002")).resolves.toBe(false);
+    // 后端判不了（这台没有它的记录）⇒ `live` 是 null ⇒ 抛，不说成「不在线」。
+    await expect(agentOnline("devbox", "cccccccc-0000-4000-8000-000000000003")).rejects.toThrow();
     expect(sentCalls()[0]).toEqual(["devbox", "bus-list", LIST.request]);
   });
 });
@@ -114,12 +116,12 @@ describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）
 
 describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
   it("★★ 不在名单里 / `live` 是 null / 通道不在 / 被拒 ⇒ 一律抛，没有一条路回 false", async () => {
-    const withNull = { agents: [{ id: "n_cc", target: "n_cc:0.0", unread: 0, live: null, ccm_sid: null }] };
+    const withNull = { agents: [{ id: "n_cc", title: "n_cc", unread: 0, live: null }] };
     const cases: [string, { ok: unknown } | { fail: unknown }, string, CopyKey][] = [
       ["不在名单里", { ok: LIST.reply }, "nobody_cc", "ccBus.online.unknown"],
       ["live 是 null", { ok: withNull }, "n_cc", "ccBus.online.unknown"],
-      ["通道不在", { fail: NO_CHANNEL }, "alpha_cc", "rsChanSaid.hop.localDown"],
-      ["被拒", { fail: refusedReply("child_timed_out", copyText("ccBus.online.timedOut")) }, "alpha_cc", "ccBus.online.timedOut"],
+      ["通道不在", { fail: NO_CHANNEL }, "aaaaaaaa-0000-4000-8000-000000000001", "rsChanSaid.hop.localDown"],
+      ["被拒", { fail: refusedReply("child_timed_out", copyText("ccBus.online.timedOut")) }, "aaaaaaaa-0000-4000-8000-000000000001", "ccBus.online.timedOut"],
     ];
     for (const [what, reply, id, key] of cases) {
       answer(reply);
@@ -135,17 +137,17 @@ describe("〔C4e〕失败怎么说", () => {
     nonEmpty(LIST.codes);
     for (const code of LIST.codes) {
       answer({ fail: refusedReply(code, `S-${code}`) });
-      expect(await saidOf(() => agentOnline("devbox", "alpha_cc")), code).toBe(`S-${code}`);
+      expect(await saidOf(() => agentOnline("devbox", "aaaaaaaa-0000-4000-8000-000000000001")), code).toBe(`S-${code}`);
       answer({ fail: refusedReply(code, `S-${code}`) });
-      expect(await detailOf(() => agentOnline("devbox", "alpha_cc")), `${code}：复制详情里没有码`).toContain(code);
+      expect(await detailOf(() => agentOnline("devbox", "aaaaaaaa-0000-4000-8000-000000000001")), `${code}：复制详情里没有码`).toContain(code);
     }
   });
 
   it("★ 本机照样经通道问；通道不在时原样取 monitor 写的那一句（本机远端怎么称呼由它说）", async () => {
     answer({ ok: LIST.reply });
-    await agentOnline(LOCAL_ORIGIN, "alpha_cc");
+    await agentOnline(LOCAL_ORIGIN, "aaaaaaaa-0000-4000-8000-000000000001");
     expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-list", LIST.request]]);
     answer({ fail: { ...NO_CHANNEL, said: "M-kr-remote-label" } });
-    expect(await saidOf(() => agentOnline("kr-remote-label", "alpha_cc"))).toBe("M-kr-remote-label");
+    expect(await saidOf(() => agentOnline("kr-remote-label", "aaaaaaaa-0000-4000-8000-000000000001"))).toBe("M-kr-remote-label");
   });
 });

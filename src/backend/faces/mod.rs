@@ -2,6 +2,7 @@
 
 pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在 accounts/manage/，接上 apikey 表与别名文件那两步
 pub(crate) mod assets_sync_face; // 帧面 `assets-sync`（typed）：沿池里那条 SSH 同步资产目录，本体在 assets/asset_sync.rs
+pub(crate) mod bus_list_face; // 帧面 `bus-list`（typed）：名单问 cc-bus，叫它什么 · 在不在问观测层那一处
 pub(crate) mod bookmarks_face; // 书签那两条（typed）：bookmarks-read · bookmarks-edit，本体在 control/bookmarks.rs
 pub(crate) mod catalog_face; // 资产目录那一族四条（typed）：assets-catalog · assets-catalog-merge · ext-note-set · ext-list-here
 pub(crate) mod cells_catalog; // 格目录：每件成品有哪些格（从成品的 Rust 类型序列化出来，不手写第二份；`view` 投影按它认成品名与路径）

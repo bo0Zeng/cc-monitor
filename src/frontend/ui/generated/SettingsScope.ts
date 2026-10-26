@@ -8,6 +8,6 @@ import type { SurfaceState } from "./SurfaceState";
  */
 export type SettingsScope = { scope: string, path: string, state: SurfaceState, 
 /**
- * 文件里有没有 cc-bus 那两个钩子程序的字样。读不到 → `None`（**不猜**）。
+ * 文件里有没有 cc-bus 钩子程序的字样。读不到 → `None`（**不猜**）。
  */
 has_cc_bus_hooks: boolean | null, precedence_note: string, };
