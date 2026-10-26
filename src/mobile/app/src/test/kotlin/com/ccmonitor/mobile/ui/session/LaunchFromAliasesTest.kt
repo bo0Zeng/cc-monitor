@@ -33,6 +33,8 @@ class LaunchFromAliasesTest {
                     row("cx", usable = true),
                 ),
             "seed" to listOf(row("seeded", usable = true)),
+            "seedHint" to "",
+            "seedCreate" to "",
             "migrated" to null,
             "binDir" to "/h/.cc-monitor/bin",
             "accounts" to emptyList<String>(),
@@ -42,7 +44,21 @@ class LaunchFromAliasesTest {
     private fun row(
         name: String,
         usable: Boolean,
-    ) = mapOf("name" to name, "from" to null, "usable" to usable, "said" to name, "kind" to "link", "start" to "'/h/.cc-monitor/bin/ccm' @$name")
+    ) = mapOf(
+        "name" to name,
+        "from" to null,
+        "own" to emptyList<Any>(),
+        "agent" to emptyList<Any>(),
+        "usable" to usable,
+        "problem" to null,
+        "kind" to "link",
+        "functionWhy" to null,
+        "functionLine" to null,
+        "said" to name,
+        "form" to mapOf("name" to name, "from" to null, "account" to null, "tmux" to null, "cwdIf" to null, "cwd" to null, "agent" to null, "args" to null, "launcher" to null, "tmuxSize" to null, "detach" to false, "busRegister" to false, "busNote" to null, "tab" to null),
+        "accountShape" to null,
+        "start" to "'/h/.cc-monitor/bin/ccm' @$name",
+    )
 
     private val folded = mapOf("name" to "cc", "args" to "--resume x")
 

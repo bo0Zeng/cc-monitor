@@ -25,7 +25,7 @@
     "coverage": "vitest run --coverage",
     "coverage:floors": "vitest run --coverage && node tests/scripts/assert-coverage-floors.mjs",
     "test": "npm run test:diff && npm run test:api-error && npm run test:remote-health && npm run test:format && npm run test:dom",
-    "gen:types": "(cd src/frontend/shell && cargo test --workspace --lib export_bindings) && (cd src/backend && cargo test --lib export_bindings)",
+    "gen:types": "(cd src/frontend/shell && cargo test --workspace --lib export_bindings) && (cd src/backend && cargo test --lib export_bindings) && node tests/scripts/gen-kotlin-wire.mjs",
     "check:types": "npm run gen:types && tsc --noEmit && bash tests/scripts/generated-drift.sh",
     "test:tmux-target": "bash tests/e2e/tmux-target-acceptance.sh",
     "test:ccm-cli": "bash tests/e2e/ccm-cli.test.sh",

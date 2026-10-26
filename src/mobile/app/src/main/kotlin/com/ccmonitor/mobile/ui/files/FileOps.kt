@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.files
 
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
 import com.ccmonitor.mobile.core.claude.link.FilesCreate
@@ -14,8 +13,9 @@ import com.ccmonitor.mobile.core.claude.link.FilesWriteText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
-import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.FileKind
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -102,7 +102,7 @@ class FileOps(
     }
 
     /** 此刻的权限位；那台没有这一说 ⇒ `null`。 */
-    suspend fun mode(path: RemotePath): Result<Long?> =
+    suspend fun mode(path: RemotePath): Result<Int?> =
         when (val r = feed.call(FilesStat.COMMAND, FilesStat.args(path))) {
             is Reply.Ok -> Result.success(FilesStat.modeOf(r.data))
             else -> Result.failure(Failed(r.problem(machine(), FilesStat.COMMAND) ?: Problem("", "")))
@@ -138,7 +138,7 @@ class FileOps(
             /** 那台写的那一句（「同名 1 项」）。 */
             val said: String,
             /** 抽屉那几行（核心写好的）。 */
-            val rows: List<BatchEvent.Clash>,
+            val rows: List<ClashRow>,
         ) : Upload
     }
 

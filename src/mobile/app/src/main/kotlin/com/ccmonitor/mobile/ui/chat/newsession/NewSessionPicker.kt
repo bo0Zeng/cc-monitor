@@ -9,10 +9,10 @@ import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionOpenDir
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
-import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
-import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
-import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyItem
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.wire.gen.RotStrategyItem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CompletableDeferred

@@ -10,15 +10,15 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ccmonitor.mobile.core.claude.link.NeedsPick
-import com.ccmonitor.mobile.core.claude.link.wire.AskKind
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoice
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestionOption
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.ui.theme.AppTheme
+import com.ccmonitor.mobile.core.wire.gen.AskKind
+import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoice
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
+import com.ccmonitor.mobile.core.wire.gen.NeedsNote
+import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
+import com.ccmonitor.mobile.core.wire.gen.NeedsQuestionOption
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -143,13 +143,14 @@ class NeedsSheetShotTest {
     private fun quiz(questions: List<NeedsQuestion>) =
         NeedsAsk(
             id = "ask-quiz",
-            kind = AskKind.QUESTION,
+            kind = AskKind.ANSWER,
             tool = "AskUserQuestion",
             run = null,
             what = null,
             detail = "",
             choices = listOf(choice("answer", "提交答案", NeedsChoiceRow.MAIN), choice("dismiss", "不回答", NeedsChoiceRow.RELEASE)),
             questions = questions,
+            sinceMs = 0,
         )
 
     private fun approve(script: String) =
@@ -169,6 +170,7 @@ class NeedsSheetShotTest {
                     choice("deny-stop", "拒绝并停下", NeedsChoiceRow.HOLD),
                 ),
             questions = emptyList(),
+            sinceMs = 0,
         )
 
     /** 一题四项、每项说明一整句（真 Claude 的 AskUserQuestion 每项都带 description）。 */
@@ -180,6 +182,7 @@ class NeedsSheetShotTest {
         text = "迁移旧数据时，用户表的结构怎么处理？",
         header = "表结构",
         multi = multi,
+        other = false,
         options =
             listOf(
                 NeedsQuestionOption("${id}o0", "沿用现有表结构，只加一列（推荐）", "保留现在的 users 表，新增 last_seen 一列并补一条迁移；改动最小、回滚容易，但旧字段的命名问题还留着，以后再改名时还要再迁一次，相关的查询与报表也得跟着改。"),

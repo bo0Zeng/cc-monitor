@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.ui.session
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -20,6 +20,7 @@ class TerminalOpsAgentTest {
         mapOf(
             "recent" to emptyList<Any>(),
             "tmux" to true,
+            "run" to "tmux",
             "agents" to
                 listOf(
                     mapOf("kind" to "claude", "text" to "Claude Code", "models" to listOf(mapOf("value" to "opus", "text" to "Opus")), "permissionModes" to emptyList<Any>()),
@@ -33,10 +34,18 @@ class TerminalOpsAgentTest {
         agent: String?,
     ) = mapOf(
         "terminal" to "h-$name",
+        "host" to "tmux",
         "tmux_name" to name,
         "title" to name,
-        "clients" to emptyList<Any>(),
+        "program" to "claude",
+        "cwd" to "/w",
         "session" to sid?.let { mapOf("sid" to it, "agent" to agent) },
+        "started_by" to mapOf("client" to null, "mine" to true),
+        "clients" to emptyList<Any>(),
+        "input" to "shared",
+        "state" to "running",
+        "last_activity" to 0,
+        "can" to mapOf("input" to true, "end" to true),
     )
 
     private fun opened(landed: String) =

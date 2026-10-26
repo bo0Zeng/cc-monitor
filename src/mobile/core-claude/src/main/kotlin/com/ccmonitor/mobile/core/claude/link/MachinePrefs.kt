@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.PrefsReply
-import com.ccmonitor.mobile.core.claude.link.wire.QuotaReadReply
-import com.ccmonitor.mobile.core.claude.link.wire.TabPref
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.PrefsReply
+import com.ccmonitor.mobile.core.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
 /*
  * 设置屏问那台的几条（`IPC-COMMANDS.md` 各节，桌面「这台上的 cc-monitor」读写同一份）：手机只拼入参、解成品。
@@ -26,8 +26,8 @@ object MachinePrefs {
 
     fun tab(
         kind: TabKind,
-        value: TabPref,
-    ): Map<String, Any?> = mapOf(kind.wire to if (value == TabPref.SHOW) "show" else "hide")
+        value: Tab,
+    ): Map<String, Any?> = mapOf(kind.wire to if (value == Tab.SHOW) "show" else "hide")
 
     /** 一个号的默认模型；[model] 为 `null` ⇒ 删掉那一条（跟随那一家的默认）。 */
     fun model(

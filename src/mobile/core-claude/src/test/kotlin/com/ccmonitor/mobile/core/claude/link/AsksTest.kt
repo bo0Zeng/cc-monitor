@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.AnsweredRow
-import com.ccmonitor.mobile.core.claude.link.wire.AskKind
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AnsweredRow
+import com.ccmonitor.mobile.core.wire.gen.AskKind
+import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -12,7 +12,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 答题口的成品（`needs.ask`）与答那一条（`needs-answer`）：手机装进线上类型（`wire/WireTypes.kt`，对着 `cmd-wire` 导出的 TS 核），
+ * 答题口的成品（`needs.ask`）与答那一条（`needs-answer`）：手机装进线上类型（生成的 `wire/Generated.kt`，从 `cmd-wire` 导出的声明来），
  * 一个字不拼、不另写解码。读的是跨语言金样 `needs-ask.golden.json`（后端真序列化器写的，桌面同读一份）。
  */
 class AsksTest {
@@ -35,7 +35,7 @@ class AsksTest {
         assertEquals(NeedsNote.OPTIONAL, plan.choices.last().note)
 
         val q = ask("question")
-        assertEquals(AskKind.QUESTION, q.kind)
+        assertEquals(AskKind.ANSWER, q.kind)
         assertEquals(listOf("q0", "q1"), q.questions.map { it.id })
         assertEquals(false, q.questions[0].multi)
         assertEquals(true, q.questions[1].multi)
@@ -152,7 +152,7 @@ class AsksTest {
         assertTrue("一份源都没找到 —— 本条在空转", sources.size > 20)
         val decl = Regex("""\bclass (${FAMILY.joinToString("|")})\b""")
         val where = sources.flatMap { f -> decl.findAll(f.readText()).map { it.groupValues[1] to f.name }.toList() }
-        val outside = where.filter { it.second != "WireTypes.kt" }
+        val outside = where.filter { it.second != "Generated.kt" }
         assertTrue("线上类型之外又声明了：$outside", outside.isEmpty())
         assertEquals("每个都在线上类型里", FAMILY.toSet(), where.map { it.first }.toSet())
         val asks = sources.single { it.name == "Asks.kt" }.readText()

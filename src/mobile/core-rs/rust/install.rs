@@ -3,14 +3,16 @@
 //!
 //! 一个入口（`Core.deploy(handle, slots)`）。走到哪一步收进那台的状态成品（`deploy::machine`，同桌面那一份），经 `state` 那一行交 Kotlin
 //! （正在装 / 更新那一句与进度条照成品画）；结局经常驻流同一个口交（种类 `deploy`，一行 JSON）：
-//! - `{"done": "skip" | "deploy" | "keep", "text"}`：做完了（已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它）；
-//! - `{"failed": <码>, "text", "detail"}`：没做成（那一句 ＋ 复制详情）。
+//! - `{"end": "done", "act": "skip" | "deploy" | "keep", "text"}`：做完了（已是这一版 · 装上了这一版 · 那台不比这一版旧、没动它）；
+//! - `{"end": "failed", "code", "text", "detail"}`：没做成（那一句 ＋ 复制详情）。
+//! 形状住契约（`cmd_wire::phone::DeployEnd`），Kotlin 读同一份生成的类。
 //!
 //! 字节：App 把包里那两格解到自己的私有目录（每版一次），交路径；这里从文件读，不经 JNI 传数组。
 
 use std::sync::{Arc, Mutex, OnceLock};
 
 use copy_core::copy_text;
+use cmd_wire::phone::{DeployAct, DeployEnd};
 use deploy_contract::DeployAction;
 
 use crate::resident::{self, OnEvent};
@@ -26,18 +28,27 @@ fn busy() -> &'static Mutex<std::collections::HashSet<i64>> {
 
 /// 做完了 ⇒ 那一行（那一句是 `deploy` crate 写的）。
 pub fn done_json(plan: &deploy::Plan) -> String {
-    let done = match &plan.action {
-        DeployAction::Skip => "skip",
-        DeployAction::Deploy(_) => "deploy",
-        DeployAction::Keep { .. } => "keep",
+    let act = match &plan.action {
+        DeployAction::Skip => DeployAct::Skip,
+        DeployAction::Deploy(_) => DeployAct::Deploy,
+        DeployAction::Keep { .. } => DeployAct::Keep,
     };
-    serde_json::json!({ "done": done, "text": plan.said() }).to_string()
+    serde_json::to_string(&DeployEnd::Done {
+        act,
+        text: plan.said(),
+    })
+    .unwrap_or_default()
 }
 
 /// 没做成 ⇒ 那一行（详情：命令 · 码 · 原话，钟是这台手机的）。
 pub fn failed_json(code: &str, text: &str, raw: Option<&str>) -> String {
     let detail = ssh_dial::env::get().facts.detail("deploy", Some(code), raw);
-    serde_json::json!({ "failed": code, "text": text, "detail": detail }).to_string()
+    serde_json::to_string(&DeployEnd::Failed {
+        code: code.to_string(),
+        text: text.to_string(),
+        detail,
+    })
+    .unwrap_or_default()
 }
 
 /// `slots` 那一段：`[{os, arch, id, path}]`（Kotlin 交：包里带的那几格、各自构建时扫出来的身份、解到哪个文件）。
@@ -168,14 +179,14 @@ mod tests {
     #[test]
     fn the_outcome_names_what_was_done() {
         let d = v(&done_json(&plan(DeployAction::Deploy("该机无后端".into()))));
-        assert_eq!(d["done"], "deploy");
+        assert_eq!((d["end"].as_str(), d["act"].as_str()), (Some("done"), Some("deploy")));
         assert!(
             copy_core::copy_matches("rsSftp.deploy.done", d["text"].as_str().unwrap()),
             "{d}"
         );
         assert!(d["text"].as_str().unwrap().contains("p9b-mine"));
         let s = v(&done_json(&plan(DeployAction::Skip)));
-        assert_eq!(s["done"], "skip");
+        assert_eq!(s["act"], "skip");
         assert!(copy_core::copy_matches(
             "rsSftp.deploy.upToDate",
             s["text"].as_str().unwrap()
@@ -185,11 +196,11 @@ mod tests {
             why: "那台更新".into(),
         })));
         assert_eq!(
-            (k["done"].as_str(), k["text"].as_str()),
+            (k["act"].as_str(), k["text"].as_str()),
             (Some("keep"), Some("那台更新"))
         );
         let f = v(&failed_json("refused", "box 不装", Some("uname: x")));
-        assert_eq!(f["failed"], "refused");
+        assert_eq!((f["end"].as_str(), f["code"].as_str()), (Some("failed"), Some("refused")));
         assert!(f["detail"].as_str().unwrap().contains("uname: x"), "{f}");
     }
 

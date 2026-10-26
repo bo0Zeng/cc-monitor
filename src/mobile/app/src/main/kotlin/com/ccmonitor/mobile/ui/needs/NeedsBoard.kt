@@ -1,11 +1,12 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.NeedsList
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -128,6 +129,6 @@ class NeedsBoard(
         private const val READ_MS = 15_000L
 
         /** 那台这几样变了 ⇒ 整份可能变了。 */
-        private val TOPICS = setOf("needs", "plan", "manual")
+        private val TOPICS = setOf(Topic.NEEDS, Topic.PLAN, Topic.MANUAL)
     }
 }
