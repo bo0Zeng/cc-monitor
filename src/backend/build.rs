@@ -1,20 +1,12 @@
 //! 编译期交一个变量 `CC_MONITOR_VERSION`：这份二进制出自哪一版，取仓根 `package.json` 顶层那行 `"version": "X.Y.Z",`
 //! （发版改的就是它；手机的 versionName 读同一行）。认不出 ⇒ 编不过，不填默认值。
 
-use std::path::Path;
+const PACKAGE_JSON: &str = include_str!("../../package.json");
 
 fn main() {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("cargo 没给 CARGO_MANIFEST_DIR");
-    let path = Path::new(&manifest).join("../../package.json");
-    println!("cargo:rerun-if-changed={}", path.display());
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("读不到仓根 package.json（{}）：{e}", path.display()));
-    let version = top_level_version(&text).unwrap_or_else(|| {
-        panic!(
-            "仓根 package.json 里认不出顶层那行 `\"version\": \"X.Y.Z\",`（{}）",
-            path.display()
-        )
-    });
+    println!("cargo:rerun-if-changed=../../package.json");
+    let version = top_level_version(PACKAGE_JSON)
+        .expect("仓根 package.json 里认不出顶层那行 `\"version\": \"X.Y.Z\",`");
     println!("cargo:rustc-env=CC_MONITOR_VERSION={version}");
 }
 
