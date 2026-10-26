@@ -1468,10 +1468,7 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
 
     let none: Arc<Feed<T>> = Feed::start(cfg(), None, desk(), sink(|_| {}));
     let e = none.replace().await.unwrap_err();
-    assert_eq!(
-        e.text,
-        copy_core::copy_text("front.body.offline", &[("machine", "box")])
-    );
+    assert_eq!(e.text, comms_inward::chan::said::offline("box"));
     assert_eq!(none.theirs(), None);
 }
 

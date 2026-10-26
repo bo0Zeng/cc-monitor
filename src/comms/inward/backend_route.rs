@@ -319,10 +319,7 @@ pub fn route_call_error(
 
 /// 没有控制通道（`local_client` 回 `None`）—— **一个字节都没发出去**，可回落。
 pub fn no_channel(origin: &str) -> Routed {
-    Routed::NoChannel(copy_text(
-        "rsBackendRoute.noChannel.message",
-        &[("machine", &origin.to_string())],
-    ))
+    Routed::NoChannel(crate::chan::said::offline(origin))
 }
 
 #[cfg(test)]

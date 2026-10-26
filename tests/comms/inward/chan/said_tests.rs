@@ -6,8 +6,9 @@
 //! | 「发没发出去」一定说出来：没发出 ≠ 拿不准；发了与拿不准对人是同一件事 | [`whether_it_was_sent_is_always_said`] |
 //! | 对端拒了：它那一句原样；没写 ⇒「后端拒绝 · 原因不明」 | [`a_refusal_says_the_peer_sentence_or_that_it_is_unreadable`] |
 //! | 全产品一份：`rsChanSaid.*` 只在本文件取；调它的恰是那三处（壳交主界面 · 文件窗口 · `CallError` 的 `Display`） | [`the_channel_sentence_lives_in_one_file_with_three_callers`] |
+//! | 离线那一句称呼那台；`link.machine.offline` 在 Rust 里只在本文件取，原先各出口各取的那几把键在 Rust 里不再出现（还没换的登在 [`OFFLINE_LEFT`]，只许删） | [`the_offline_sentence_names_the_machine`] · [`the_offline_sentence_is_taken_in_one_place`] |
 
-use super::{machine, said};
+use super::{machine, offline, said};
 use crate::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
 use crate::origin::Origin;
 use std::collections::BTreeSet;
@@ -223,5 +224,75 @@ fn the_channel_sentence_lives_in_one_file_with_three_callers() {
             "frontend/shell/src/chan/webview.rs".to_string(),
         ]),
         "调通道那一句的应恰是这三处：壳交给主界面的失败 · 文件窗口 · `CallError` 的 `Display`"
+    );
+}
+
+#[test]
+fn the_offline_sentence_names_the_machine() {
+    let s = offline("devbox");
+    assert_eq!(
+        s,
+        copy_core::copy_text("link.machine.offline", &[("machine", "devbox")])
+    );
+    assert!(s.contains("devbox"), "{s}");
+}
+
+/// 「{machine} 离线」原先各出口各取的键。
+const OFFLINE_OLD: [&str; 12] = [
+    "events.unseen.droppedTitle",
+    "events.unseen.neverTitle",
+    "events.unseen.unreachableTitle",
+    "front.body.offline",
+    "machinePage.problem.offline",
+    "mobSession.bar.dropped",
+    "newSession.machine.offline",
+    "rsBackendRoute.noChannel.message",
+    "rsFilewinChrome.link.offlineNever",
+    "settingsNav.dot.down",
+    "tabMenu.unseen.why",
+    "terminal.liveWhy.offline",
+];
+
+/// Rust 里还在各取旧键的那几处（键 · 文件）：后端机器状态成品那一句 · 后端转发那台不在时那一句还没并过来。
+/// 只许删，删光了这一格跟着删。
+const OFFLINE_LEFT: [(&str, &str); 2] = [
+    ("front.body.offline", "backend/control/feeds.rs"),
+    ("machinePage.problem.offline", "backend/deploy/machine.rs"),
+];
+
+#[test]
+fn the_offline_sentence_is_taken_in_one_place() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut homes = BTreeSet::new();
+    let mut old = BTreeSet::new();
+    for rel in guard_core::files_by_extension(&root.join("src"), "rs") {
+        if rel.starts_with("vendor/") {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(root.join("src").join(&rel)) else {
+            continue;
+        };
+        let code = guard_core::production_code(&raw);
+        if code.contains("\"link.machine.offline\"") {
+            homes.insert(rel.clone());
+        }
+        for k in OFFLINE_OLD {
+            if code.contains(&format!("\"{k}\"")) {
+                old.insert((k.to_string(), rel.clone()));
+            }
+        }
+    }
+    assert_eq!(
+        homes,
+        BTreeSet::from(["comms/inward/chan/said.rs".to_string()]),
+        "离线那一句只许在 `chan/said.rs` 取"
+    );
+    assert_eq!(
+        old,
+        OFFLINE_LEFT
+            .iter()
+            .map(|(k, f)| (k.to_string(), f.to_string()))
+            .collect::<BTreeSet<_>>(),
+        "离线那一句的旧键在 Rust 里只许剩登记的那几处"
     );
 }

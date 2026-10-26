@@ -70,8 +70,11 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
                  而 `wrong_owner`/`too_many_windows` 更是把门拒绝洗成另一条路的成功"
         );
     }
-    // 「没有通道」那一档也必须是可回落的。
-    assert!(matches!(no_channel("h1"), Routed::NoChannel(_)));
+    // 「没有通道」那一档也必须是可回落的，那一句是连接层的离线那一句。
+    assert_eq!(
+        no_channel("h1"),
+        Routed::NoChannel(crate::chan::said::offline("h1"))
+    );
 }
 
 /// ★★ **收拢表逐档穷举**—— `route_call_error` 对
