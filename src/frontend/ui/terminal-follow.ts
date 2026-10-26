@@ -13,6 +13,7 @@
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, isOldBackend, machineName, refusalIn } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
+import { tryDecodeJson } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { shotOf, type TerminalShot } from "./terminal-reads";
 import type { TerminalFollowEnd } from "./generated/TerminalFollowEnd";
@@ -120,10 +121,8 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
     for (const it of items) {
       if (over) return;
       if (it.t === "frame") {
-        let cell: ScreenCell;
-        try {
-          cell = JSON.parse(it.body) as ScreenCell;
-        } catch {
+        const cell = tryDecodeJson<ScreenCell>(it.body);
+        if (cell === null) {
           halt(lost());
           return;
         }

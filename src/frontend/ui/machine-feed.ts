@@ -4,8 +4,7 @@
  * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。哪一态、那一句、修法都是后端定的（`deploy::machine`）。
  */
 import { listen } from "@tauri-apps/api/event";
-import { chan, type Sub } from "../../comms/inward/chan";
-import { CHANGED_WINDOW, changedItems, changedStream } from "./changed-stream";
+import { subscribeTopics } from "./events";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { MachineRead } from "./generated/MachineRead";
@@ -21,7 +20,7 @@ const READ_BUDGET_MS = 5_000;
 /** 订一份：每来一台的一帧回调一次。回退订函数。 */
 export function onMachineState(cb: (origin: string, machine: MachineState) => void): () => void {
   let off: (() => void) | null = null;
-  let sub: Sub | null = null;
+  let unsub: (() => void) | null = null;
   let dropped = false;
   try {
     listen<MachineStatePayload>(MACHINE_STATE_EVENT, (e) => cb(e.payload.origin, e.payload.machine)).then(
@@ -43,19 +42,19 @@ export function onMachineState(cb: (origin: string, machine: MachineState) => vo
       console.warn("[machine-state] 问不到远端各台：", e);
     }
   };
-  chan
-    .subscribe(LOCAL_ORIGIN, changedStream("machine"), null, CHANGED_WINDOW, (items) => {
-      const { cells, all, frames } = changedItems(items);
-      if (frames > 0) sub?.want(frames);
-      const keyed = cells.flatMap((c) => (c.key !== null && c.key !== "" ? [{ key: c.key, body: c.body }] : []));
-      if (all || keyed.some((c) => c.body === undefined)) void readAll();
-      // 帧里那一份就是 `machine-read` 回包里那一台。
-      for (const c of keyed) if (c.body !== undefined) cb(c.key, c.body as MachineRead["machines"][string]);
-    })
+  subscribeTopics([LOCAL_ORIGIN], ["machine"], (_o, changes) => {
+    const c = changes.get("machine");
+    if (dropped || !c) return;
+    const { cells, all } = c;
+    const keyed = cells.flatMap((c) => (c.key !== null && c.key !== "" ? [{ key: c.key, body: c.body }] : []));
+    if (all || keyed.some((c) => c.body === undefined)) void readAll();
+    // 帧里那一份就是 `machine-read` 回包里那一台。
+    for (const c of keyed) if (c.body !== undefined) cb(c.key, c.body as MachineRead["machines"][string]);
+  })
     .then(
-      (s) => {
-        if (dropped) return s.stop();
-        sub = s;
+      (stop) => {
+        if (dropped) return stop();
+        unsub = stop;
         // 订上之后问一次：那台早已接着时壳不再交 `seen`（只在接没接着变了时说），等它就一台都拿不到。
         void readAll();
       },
@@ -64,7 +63,7 @@ export function onMachineState(cb: (origin: string, machine: MachineState) => vo
   return () => {
     dropped = true;
     off?.();
-    sub?.stop();
+    unsub?.();
   };
 }
 

@@ -22,7 +22,7 @@ import { accountAvatarEl } from "./account-color";
 import { accountLabel } from "./acct-words";
 import { machineName } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { bindEvents } from "./events";
+import { subscribeTopics } from "./events";
 import type { PasteKind } from "./generated/PasteKind";
 import { LoginFailed, loginCancel, loginFinish, loginStart, type LoginAgainHow, type LoginStartReq, type LoginStarted, type SignInState } from "./login-reads";
 import s from "./login-drawer.module.css";
@@ -53,22 +53,14 @@ const fed = new Map<Origin, Promise<void>>();
 function feed(origin: Origin): Promise<void> {
   let p = fed.get(origin);
   if (!p) {
-    p = (async (): Promise<void> => {
-      await bindEvents(
-        {
-          onLine: () => {},
-          onSessionFace: () => {},
-          onChanged: (_o, topic, change) => {
-            if (topic !== "login") return;
-            for (const c of change.cells) {
-              const st = signInOf(c.body);
-              if (c.key !== null && st) waiting.get(c.key)?.(st);
-            }
-          },
-        },
-        { changed: [{ origin, topic: "login" }] },
-      );
-    })().catch((e: unknown) => console.warn("[login] 订不上登录推送：", e));
+    p = subscribeTopics([origin], ["login"], (_o, changes) => {
+      for (const c of changes.get("login")?.cells ?? []) {
+        const st = signInOf(c.body);
+        if (c.key !== null && st) waiting.get(c.key)?.(st);
+      }
+    })
+      .then(() => undefined)
+      .catch((e: unknown) => console.warn("[login] 订不上登录推送：", e));
     fed.set(origin, p);
   }
   return p;
@@ -312,7 +304,6 @@ class LoginDrawer {
     copy.dataset.action = "login-copy";
     const shown = el("span", url);
     shown.className = s.ldUrl;
-    shown.title = url;
     row.append(copy, shown);
     return row;
   }

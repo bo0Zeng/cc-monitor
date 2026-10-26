@@ -20,7 +20,7 @@ TypeScript ＋ Vite，原生 DOM，不引框架。界面只排版后端给的成
 
 | 用途 | 文件 |
 |---|---|
-| 对后端只有两个动作 | `call` / `subscribe` 的客户端是 `src/comms/inward/chan.ts`；`origin` 的判定只在 `ipc/origin.ts`；Tauri 命令只经 `ipc/commands.ts` 调（全仓唯一直接 `invoke` 的地方）；读回包的解码在各 `*-reads.ts` 与 `ipc/decode.ts` |
+| 对后端只有两个动作 | `call` / `subscribe` 的客户端是 `src/comms/inward/chan.ts`；`origin` 的判定只在 `ipc/origin.ts`；Tauri 命令只经 `ipc/commands.ts` 调（全仓唯一直接 `invoke` 的地方）；线上来的 JSON 只在 `ipc/decode.ts` 解（本地 · 会话存储里的只在 `local-storage.ts::parseStored`），回包照生成类型在各 `*-reads.ts` 用；「那台某样东西变了」只经 `events.ts` 订（主窗口 `bindEvents` · 别处 `subscribeTopics`） |
 | 界面状态 | `app-store.ts`（当前机器 · 账号快照 · 当前 tab）· `tab-store.ts` ＋ `tab-router.ts` · `overlay-router.ts` |
 | 会话流管线 | `events.ts`（订会话流、还 credit、按行号补 gap）→ `tabs.ts`（`TabManager`）→ `render-stream-record.ts` → `record-timeline.ts`（按 `seq` 二分插入）→ `stream.ts`（守卫式贴底）→ `render.ts`（marked · KaTeX · highlight.js · DOMPurify） |
 | 视口外不渲染 | `skeleton-view.ts`（有会话索引的 tab 与查看器）· `live-window.ts`（`TailWindow`，只物化尾部）· `height-estimate.ts`（估高，绝不许抛） |

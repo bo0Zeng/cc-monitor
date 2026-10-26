@@ -18,6 +18,7 @@
  * ⚠ 本模块是给主窗用的：不许 import 设置面板。
  */
 import { commands } from "./ipc/commands";
+import { tryDecodeJson } from "./ipc/decode";
 import { failToast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
@@ -30,14 +31,7 @@ export interface SettingsTarget {
 
 /** 设置窗收到的目的地：只留四格里是非空串的。不是对象 / 解析不了 ⇒ `null`。 */
 export function parseSettingsTarget(raw: unknown): SettingsTarget | null {
-  let v: unknown = raw;
-  if (typeof v === "string") {
-    try {
-      v = JSON.parse(v);
-    } catch {
-      return null;
-    }
-  }
+  const v: unknown = typeof raw === "string" ? tryDecodeJson<unknown>(raw) : raw;
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const o = v as Record<string, unknown>;
   const out: SettingsTarget = {};

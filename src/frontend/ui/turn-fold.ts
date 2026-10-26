@@ -618,7 +618,6 @@ export function paintLine(line: HTMLElement, fold: FoldSegment, open: boolean, n
     s.textContent = p.text;
     text.appendChild(s);
   }
-  text.title = text.textContent ?? "";
   const span = document.createElement("span");
   span.className = "proc-span";
   span.textContent = dur;
