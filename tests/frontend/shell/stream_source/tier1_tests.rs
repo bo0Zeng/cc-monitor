@@ -103,6 +103,6 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
 
 // 远端开终端在本机后端（`terminal-ssh`，只交名字）。首选地址那一半判据都在后端：
 //   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ `dial_machine_tests::the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses`
-//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`（上次赢的那条由后端记，`dial::last_good`）。
+//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order`（后端今天不记上次赢的那条，照表里的次序）。
 
 // 后端落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`，没有外来值可判。

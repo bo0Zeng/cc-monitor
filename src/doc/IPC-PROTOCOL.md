@@ -11,7 +11,7 @@
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
-| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"` · `"watch"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的，客户端当旧）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（本机后端经池里那条 SSH 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"` · `"watch"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的，客户端当旧）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
@@ -85,7 +85,7 @@
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（每条连接按字节封顶）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
-  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 装后端那一趟的进度（`deploy`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
+  同走这条通道的还有几种「丢了就停住」的帧：传输进度（`transfer`）· 测试连接进度（`probe`）· 装后端那一趟的进度（`deploy`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
   终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。

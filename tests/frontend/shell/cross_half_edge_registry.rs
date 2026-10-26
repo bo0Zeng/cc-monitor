@@ -200,7 +200,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   大纲清单与会话内查找的**线上词**、monitor 造的 **argv** 两侧同形）。monitor 那一侧的读者（核头尾、造 argv）
     //   随两条命令改走通道一起删了 ⇒ 四条边没有读者了。两侧同形的牙换到了**帧面成品**上：
     //   跨语言金样（`tests/__fixtures__/session-reads.golden.json`，后端写、TS 解码器读）—— 那不是编译期边。
-    // 链路那两条边（monitor 的拨号宿主 → `dial/mod.rs` 请求键同形 · monitor 的链路多路复用 → `dial/link.rs` 步长与窗口）摘了：
+    // 链路那两条边（monitor 的拨号宿主 → 后端组请求那一处请求键同形 · monitor 的链路多路复用 → 后端链路表步长与窗口）摘了：
     //   界面不再经本机后端开链路，monitor 那一侧的写者随之删了。
     (
         "monitor→backend",

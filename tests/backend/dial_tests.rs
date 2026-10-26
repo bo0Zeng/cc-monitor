@@ -153,46 +153,10 @@ fn the_dial_only_happens_under_dial_home() {
     }
 }
 
-/// ★ **拨号真的接得到 —— 不只是「代码住在这儿」**（`7u` 探针逮出来的那一格，换了入口）。
-///
-/// C2 那一版的入口是 `main.rs` 里那条 `--dial` 分派臂（实打：摘掉那条臂，`dial/` 一个字不动，
-/// backend 侧判据一条都不红 —— 「住在哪」断不了「接没接上」）。SR1a 之后入口换成**流上的链路四条**：
-/// `inbound::dispatch` 里四条硬臂各调 `dial::link::Table` 的一个方法。本条钉两件：
-/// ① 四条硬臂各恰好调一次它那个方法（摘掉任一条 ⇒ 那条命令落进 `lookup` 的 `Run::Builtin` 兜底臂、回 `unknown_command`）；
-/// ② `--dial` 那条老入口**零处**（它删了；留着一半 = `is_query_mode` 认它却没有臂接，v3.4.0 那一形）。
+/// ★ `--dial` 那条老入口**零处**（拨号代理子进程那一形删了；留着一半 = `is_query_mode` 认它却没有臂接，v3.4.0 那一形）。
+/// 拨号今天只在本后端自己的几处用（各台的常驻流 · 问那台 · 传输 · 部署 · 开终端），没有一条入方向命令替界面开字节流。
 #[test]
-fn the_link_arms_are_actually_wired_into_the_dispatch() {
-    let inbound_prod =
-        guard_core::production_code(include_str!("../../src/backend/stream/inbound/mod.rs"));
-    assert!(
-        inbound_prod.len() > 3_000,
-        "剥完 stream/inbound/ 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",
-        inbound_prod.len()
-    );
-    // 运行时拼，免得本模块自己的文本被别的扫描器命中。
-    let arms = [
-        ("link-open", "open"),
-        ("link-data", "data"),
-        ("link-credit", "credit"),
-        ("link-close", "close"),
-    ];
-    for (cmd, method) in arms {
-        let arm = format!("\"{cmd}\" => ");
-        let call = format!("links.{method}(&req.id, &req.args)");
-        assert_eq!(
-            inbound_prod.matches(arm.as_str()).count(),
-            1,
-            "`stream/inbound/` 生产段里 `{arm}` 不是恰好 1 条硬臂"
-        );
-        assert_eq!(
-            inbound_prod.matches(call.as_str()).count(),
-            1,
-            "`stream/inbound/` 生产段里 `{call}` 不是恰好 1 处 —— `{cmd}` 那条臂没接到链路表上"
-        );
-        // 反向自检：把这一处调用剔掉，本条必须看得见（否则它在测「文本里有这个词」）。
-        let without = inbound_prod.replace(call.as_str(), "nothing_at_all(");
-        assert_eq!(without.matches(call.as_str()).count(), 0);
-    }
+fn the_old_dial_entry_is_gone() {
     let root_prod = guard_core::production_code(&guard_core::addr::backend_root_source());
     let flag = format!("{}{}", "\"--", "dial\"");
     assert_eq!(
@@ -1119,66 +1083,4 @@ fn a_key_path_written_with_a_tilde_is_read_under_the_home() {
         "报错句里的路径不是用户写的那一形：{said}"
     );
     let _ = std::fs::remove_dir_all(&home);
-}
-
-/// 〔出口只交机器名〕`link-open` 的 `dial` 只认那台的**名字**：交整台配置（旧入参）· 自带跳板 · 自带「上次赢的那条」⇒ `bad_args`，
-/// 链路一条都不开（怎么拨由这一端的机器表定，不由交来的那几格定）；表里有那台、只交名字 ⇒ 开（正控）。
-#[tokio::test]
-async fn link_open_takes_only_a_machine_name() {
-    let (tx, _rx) = tokio::sync::mpsc::channel::<crate::wire::Frame>(16);
-    // 表里那一台：本机端口 1（拨一定断；正控只看开没开链路，不看拨没拨通）。
-    let table = link::Table::with_machines(
-        tx,
-        Arc::new(|| {
-            vec![machine::loose(
-                &serde_json::json!({"label": "a", "host": "127.0.0.1", "port": 1, "user": "u"}),
-            )
-            .unwrap()]
-        }),
-    );
-    let reply = |f: crate::wire::Frame| match f {
-        crate::wire::Frame::Reply(crate::wire::Reply { ok, code, .. }) => {
-            (ok, code.unwrap_or_default())
-        }
-        _ => (false, String::new()),
-    };
-    let capture = |machine: serde_json::Value| serde_json::json!({"machine": machine, "use": "capture", "command": "true", "capture": {"max_bytes": 16}});
-    let open = |link: &str, dial: serde_json::Value| {
-        reply(table.open(
-            "a",
-            &serde_json::json!({"link": link, "window": 1 << 20, "dial": dial}),
-        ))
-    };
-    let whole =
-        capture(serde_json::json!({"label": "a", "host": "127.0.0.1", "port": 1, "user": "u"}));
-    assert_eq!(
-        open("w", whole),
-        (false, "bad_args".into()),
-        "整台配置当入参还收着"
-    );
-    for (k, v) in [
-        (
-            "jump",
-            serde_json::json!({"host": "j", "user": "u", "label": "j"}),
-        ),
-        (
-            "prefer",
-            serde_json::json!({"host": "127.0.0.1", "port": 1}),
-        ),
-    ] {
-        let mut d = capture(serde_json::json!("a"));
-        d[k] = v;
-        assert_eq!(
-            open(k, d),
-            (false, "bad_args".into()),
-            "`{k}` 由线上交进来还收着"
-        );
-    }
-    assert_eq!(table.len(), 0, "被拒的入参开出了链路");
-    // 正控：只交名字 ⇒ 照表开（同一张表、同一扇门）。
-    assert_eq!(
-        open("n", capture(serde_json::json!("a"))),
-        (true, String::new())
-    );
-    assert_eq!(table.len(), 1);
 }

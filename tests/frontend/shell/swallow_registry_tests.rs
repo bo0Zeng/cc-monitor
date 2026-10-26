@@ -103,7 +103,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
     ("src/backend/control/transfer.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "DP1 之后只清**空的** `.part`（一个字节都没落）；清不掉只剩一个 0 字节文件，主错误已在回"),
-    ("src/backend/dial/link.rs", "let _ = replies.send(Frame::LinkEnd(crate::wire::LinkEnd { link: link.clone(), error, })).await;", Why::PeerGone, ""),
     ("src/backend/dial/probe.rs", "let _ = tx.send(Ev::Feed(e));", Why::PeerGone, "测试连接那一台常驻流交来的事转进这一趟：这一趟已经收场（结局出了 · 到点被丢）就没人要这一下"),
     ("src/backend/ssh-dial/lib.rs", "let _ = tx.send(s);", Why::PeerGone, "拨号进展报给这一趟写进展行的那一头；ack 写出去之后那一头收了，后到的那一步没人要"),
     ("src/backend/ssh-dial/pool.rs", "let _ = self.freed.set(freed);", Why::SetOnce, "族的铃只挂一次"),

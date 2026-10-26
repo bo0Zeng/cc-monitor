@@ -263,11 +263,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何东西的大小。",
     ),
     (
-        "PIPE_BUFFER",
-        "**缓冲**不是体量：后端一条链路内部那两根内存管子（`tokio::io::duplex`）各自的缓冲。\
-             写满了写方**等**（背压），不丢、不截 —— 它不限任何总量，只决定一次能攒多少没被读走。",
-    ),
-    (
         "TREE_ENTRY_CAP",
         "**条数**不是体量：一趟递归删最多动多少条（含目标自己，\
              后端 `files_write·rs::plan_tree_within` 的计划趟）。超了**整趟拒、一个字节不动**\
@@ -775,25 +770,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_LINE_BYTES",
         "入方向单行",
         "拒收+回错",
-    ),
-    // 链路（本机常驻后端那一半，`dial/link.rs`）。
-    (
-        "src/backend/dial/link.rs",
-        "LINK_CHUNK_BYTES",
-        "一块链路字节（`link-data` 上行一块 / `link_data` 下行一块，解码后）",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/dial/link.rs",
-        "MAX_WINDOW",
-        "一条链路手里的信用（= 在途下行字节）：`link-open` 的初始窗口与累计 `link-credit`",
-        "拒收+回错",
-    ),
-    (
-        "src/backend/dial/link.rs",
-        "ACK_HEAD_MAX",
-        "开链路那一趟从下行开头认 ack 时攒的那几行（超了就不再认：字节照样往下走，只是这一次不记「上次连上的那条地址」）",
-        "索引截断（不丢数据）",
     ),
     // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
     (

@@ -32,7 +32,7 @@ pub(crate) enum Ordered {
 }
 
 /// 第一层：就地交的那几种交掉（回 `None`），有序的那几种回 `Some`。`client` ＝ 这条连接的客户端（应答按 `id` 交回请求方）。
-/// 只开在本机那条流上的那几种（链路 · 传输 · 测试连接 · 转来的别台）从别台来 ⇒ 照实说、丢；hello 只在接上那一刻来，流中间再来 ⇒ 照实说、丢。
+/// 只开在本机那条流上的那几种（传输 · 测试连接 · 转来的别台）从别台来 ⇒ 照实说、丢；hello 只在接上那一刻来，流中间再来 ⇒ 照实说、丢。
 pub(crate) fn route(
     origin: &crate::origin::Origin,
     client: Option<&crate::inbound_client::InboundClient>,
@@ -55,18 +55,12 @@ pub(crate) fn route(
             }
             None => tracing::warn!("[{at}] 还没握手就来了应答，丢掉"),
         },
-        // 界面不再开链路（问别台经 `call_at`）⇒ 链路帧没有收的人。
-        Frame::LinkData(_) | Frame::LinkEnd(_) if local => {
-            tracing::warn!("[{at}] 来了链路帧，界面没开过链路，丢掉")
-        }
         // 传输台住本机后端：进度 / 终局交中继（从不阻塞）。
         Frame::Transfer(t) if local => crate::sftp_pool::deliver(t),
         // 测试连接在本机常驻后端里跑：那一格原样交中继（界面严格收）。
         Frame::Probe(p) if local => crate::probe_relay::deliver(&p.ticket, p.cell.to_string()),
-        Frame::LinkData(_) | Frame::LinkEnd(_) | Frame::Transfer(_) | Frame::Probe(_) => {
-            tracing::warn!(
-                "[{at}] 远端后端发来了只开在本机后端上的帧（链路 / 传输 / 测试连接），丢掉"
-            )
+        Frame::Transfer(_) | Frame::Probe(_) => {
+            tracing::warn!("[{at}] 远端后端发来了只开在本机后端上的帧（传输 / 测试连接），丢掉")
         }
         // 一组复制 · 删除 · 改权限的进度：按票交给订了它的那扇文件窗口（没人订就丢）。
         Frame::FilesBatch(b) => {

@@ -163,7 +163,7 @@ where
     Fut: Future<Output = ()> + Send + 'static,
 {
     let spec = spec_of(req)?;
-    // 照这一端的机器表按名字组（上次赢的那条排首 · 界面最近交来的 agent 套接字）；流起没起来都一样拨（与起流同一个池）。
+    // 照这一端的机器表按名字组；流起没起来都一样拨（与起流同一个池）。
     //   表里没有那台 ⇒ `unreachable`；跳板成环 · 找不到 ⇒ `bad_jump`（组法在 `ssh-dial/machine.rs`）。
     let dial = reach
         .dial(&spec.origin)

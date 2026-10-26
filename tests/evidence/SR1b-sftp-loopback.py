@@ -17,20 +17,17 @@ exec 那一侧的 `HOME` 也设成它（`SetEnv HOME=<rhome>`；上传开单探�
 **不进门禁**（门禁的沙箱里没有 sshd 可起）—— 它是一份读数，不是判据；交付报告里贴的是它的输出。
 
 覆盖（每条都是「真 TCP ＋ 真 SSH 握手 ＋ 真鉴权 ＋ 真 sftp 子系统」）：
-  ① 链路：ack 的 uses 里没有文件那一种用法（SFTP 只经帧命令用）；use=files ⇒ bad_args
+  （① 链路上没有文件那一种用法 · ⑧ 长流一条 ＋ 传输分道一条 · ⑨ 子系统留口不开：三格经 `link-open` 量，随链路那一族删了）
   ② 落点上摆一份无身份戳的字节（给 ⑩ 用：部署要显式失败、不覆盖它）
   ③ 远端写围栏只在合成服务端上判（`dial_sftp_tests`）：这里的上传键由后端起，够不着暂存区外
   ④ 上传：只写 `~/.cc-monitor/staging/<key>.part`，逐字节等于本机那份；帧序 got 单调、最后一帧 done
   ⑤ 续传：暂存件先放前 N 字节 ⇒ sftp-server 记下的这一趟写入字节数 == 总长 − N
   ⑥ 撤：上传撤 ⇒ 暂存件删；下载撤 ⇒ `.part` 留
   ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（没有数据围栏）
-  ⑧ 长流一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
-  ⑨ 子系统留口仍不开：use=subsystem ⇒ unsupported_use
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
 """
 
-import base64
 import hashlib
 import json
 import os
@@ -54,13 +51,8 @@ def free_port():
     return p
 
 
-def established(port):
-    out = subprocess.run(["ss", "-Htn", "state", "established", f"( dport = :{port} )"], capture_output=True, text=True).stdout
-    return len([ln for ln in out.splitlines() if ln.strip()])
-
-
 class Backend:
-    """一个流模式的后端（stdio 载体）：链路协议 ＋ 传输四条。"""
+    """一个流模式的后端（stdio 载体）：传输四条。"""
 
     def __init__(self, bin_path, home):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "TMUX_TMPDIR": home, "RUST_LOG": "info"}
@@ -68,7 +60,7 @@ class Backend:
         self.p = subprocess.Popen([bin_path, "--", "--stream"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, env=env)
         self.hello = json.loads(self.p.stdout.readline())
         self.cv = threading.Condition()
-        self.replies, self.data, self.ends, self.xfer = {}, {}, {}, {}
+        self.replies, self.xfer = {}, {}
         self.n = 0
         self.wlock = threading.Lock()
         threading.Thread(target=self._pump, daemon=True).start()
@@ -83,10 +75,6 @@ class Backend:
                 k = f.get("kind")
                 if k == "reply":
                     self.replies[f["id"]] = f
-                elif k == "link_data":
-                    self.data.setdefault(f["link"], bytearray()).extend(base64.b64decode(f["data"]))
-                elif k == "link_end":
-                    self.ends[f["link"]] = f.get("error")
                 elif k == "transfer":
                     self.xfer.setdefault(f["id"], []).append(f)
                 self.cv.notify_all()
@@ -114,12 +102,6 @@ class Backend:
                 if left <= 0:
                     return None
                 self.cv.wait(left)
-
-    def lines(self, link):
-        return [ln for ln in bytes(self.data.get(link, b"")).decode("utf-8", "replace").split("\n") if ln]
-
-    def open(self, link, dial, window=1 << 24):
-        return self.call("link-open", {"link": link, "window": window, "dial": dial})
 
     def end_of(self, xid, timeout=120):
         """这一趟的最后一帧（带 end 的那一帧）。"""
@@ -191,13 +173,6 @@ def main():
             print(f"远端 shell 的 HOME 不是临时目录（要 {rhome}，是 {said!r}）—— 不跑")
             return 3
 
-        def slog_text():
-            with open(slog, errors="replace") as fh:
-                return fh.read()
-
-        def auths():
-            return slog_text().count("Accepted publickey")
-
         def upload(local):
             """开一单上传（一组一项，落点目录 = rhome）⇒ (id, 暂存件的键)；没开成 ⇒ (None, None) 与那一份回包。"""
             r = be.call("transfer-upload", {"machine": "sr1b", "items": [{"local_path": local}], "remote_dir": rhome, "home": rhome})
@@ -220,28 +195,15 @@ def main():
                     n = int(ln.rsplit(" written ", 1)[1].split()[0])
             return n
 
-        # 〔WIN3 §2〕拨号只收那台的名字（A10-2-2 之后照本机后端的机器表组，`dial/mod.rs::parse_named`）；平铺 host/port 那一形会被回 `invalid_args`。
-        # 那一台写进后端自己的机器表（它按名字现读）；链路与传输只交名字。
+        # 〔WIN3 §2〕拨号只收那台的名字（A10-2-2 之后照本机后端的机器表组，`dial/mod.rs::request_named`）；平铺 host/port 那一形会被回 `invalid_args`。
+        # 那一台写进后端自己的机器表（它按名字现读）；传输只交名字。
         os.makedirs(os.path.join(home, ".cc-monitor"), exist_ok=True)
         with open(os.path.join(home, ".cc-monitor", "machines.json"), "w") as fh:
             json.dump({"version": 1, "hosts": [{"label": "sr1b", "host": "127.0.0.1", "port": port, "user": user,
                                                 "keyPath": f"{d}/client_key", "addresses": [], "jump": "", "connect": True}]}, fh)
-        base = {"machine": "sr1b"}
         be = Backend(bin_path, home)
         cmds = be.hello.get("commands", [])
         check("后端的 hello 声明了传输四条", all(c in cmds for c in ("transfer-upload", "transfer-download", "transfer-start", "transfer-stop")), cmds)
-
-        print("⑧（起点）先开一条长流，之后全部经它那条连接")
-        a0 = auths()
-        be.open("s", {**base, "command": "cat", "use": "stream"})
-        be.wait(lambda: be.lines("s") or None, 15)
-        check("长流 ack ok", bool(be.lines("s")) and json.loads(be.lines("s")[0]).get("ok"), be.lines("s"))
-
-        print("① 链路上没有文件那一种用法")
-        ack = json.loads(be.lines("s")[0]) if be.lines("s") else {}
-        check("ack 的 uses == stream · capture · forward · shell · hold", ack.get("uses") == ["stream", "capture", "forward", "shell", "hold"], ack)
-        r = be.open("f", {**base, "use": "files"})
-        check("use=files ⇒ bad_args（拨号核心不认这种用法）", bool(r) and not r["ok"] and r.get("code") == "bad_args", r)
 
         print("② 落点上摆一份无身份戳的字节（⑩ 用）")
         os.makedirs(f"{rhome}/.cc-monitor/bin")
@@ -332,17 +294,6 @@ def main():
         sess = os.path.join(home, ".claude", "projects", "p", "x.jsonl")
         xid7, r = download(rsrc, sess)
         check("本机落点是会话文件 ⇒ 照样开单（没有数据围栏）", bool(xid7), r)
-
-        # 长流在时传输分道（`ssh-dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
-        #   被主连接托着、之后的传输都复用它）⇒ 长流一条、六趟传输一条：恰好两次鉴权、两条 TCP。
-        #   分道本身的读数（下载期间长流回声 314 → 116 ms）住 `NT1-net-loopback.py` ①⑤。
-        print("⑧ 两条连接（长流一条 · 传输分道一条）")
-        check("sshd 鉴权恰好两次（长流 ＋ 六趟起跑的传输；传输那条只握一次手）", auths() - a0 == 2, auths() - a0)
-        check("恰好两条 TCP", established(port) == 2, established(port))
-
-        print("⑨ 子系统留口不开")
-        r = be.open("sub", {**base, "use": "subsystem"})
-        check("use=subsystem ⇒ unsupported_use", bool(r) and not r["ok"] and r.get("code") == "unsupported_use", r)
 
         if with_monitor:
             print("⑩ 界面那一侧（deploy-* · 中继 → 真后端 → 真 sshd）")
