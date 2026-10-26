@@ -48,13 +48,18 @@ class NavRoutesTest {
     @Test
     fun theBuiltPathsMatchTheirTemplates() {
         assertEquals(Screen.Conversations.route.replace("{hostId}", "h1"), Screen.Conversations.of("h1"))
+
+        // `cwd` 只在新建会话带了从哪进来的目录时才有；`at` · `tool` 只在从搜内容的一处命中打开时才有。
+        fun String.without(arg: String) = replace("&$arg={$arg}", "")
         assertEquals(
             Screen.Chat.route
                 .replace("{hostId}", "h1")
                 .replace("{sid}", "s1")
-                // `new` 是可选查询参数，缺省填保守的一侧（已有对话）；`cwd` 只在新建会话带了从哪进来的目录时才有。
+                // `new` 是可选查询参数，缺省填保守的一侧（已有对话）。
                 .replace("{${Screen.Chat.ARG_NEW}}", "false")
-                .replace("&${Screen.Chat.ARG_CWD}={${Screen.Chat.ARG_CWD}}", ""),
+                .without(Screen.Chat.ARG_CWD)
+                .without(Screen.Chat.ARG_AT)
+                .without(Screen.Chat.ARG_TOOL),
             Screen.Chat.of("h1", "s1"),
         )
         assertEquals(
@@ -62,8 +67,20 @@ class NavRoutesTest {
                 .replace("{hostId}", "h1")
                 .replace("{sid}", "t1")
                 .replace("{${Screen.Chat.ARG_NEW}}", "true")
-                .replace("{${Screen.Chat.ARG_CWD}}", "%2Fh%2Fa%20b"),
+                .replace("{${Screen.Chat.ARG_CWD}}", "%2Fh%2Fa%20b")
+                .without(Screen.Chat.ARG_AT)
+                .without(Screen.Chat.ARG_TOOL),
             Screen.Chat.of("h1", "t1", isNew = true, cwd = "/h/a b"),
+        )
+        assertEquals(
+            Screen.Chat.route
+                .replace("{hostId}", "h1")
+                .replace("{sid}", "s1")
+                .replace("{${Screen.Chat.ARG_NEW}}", "false")
+                .without(Screen.Chat.ARG_CWD)
+                .replace("{${Screen.Chat.ARG_AT}}", "1000")
+                .replace("{${Screen.Chat.ARG_TOOL}}", "c%201"),
+            Screen.Chat.of("h1", "s1", at = 1000, tool = "c 1"),
         )
     }
 
@@ -143,7 +160,7 @@ class NavRoutesTest {
         }
         assertEquals(
             "查询参数名要与模板一致",
-            "${Screen.Chat.ARG_NEW}={${Screen.Chat.ARG_NEW}}&${Screen.Chat.ARG_CWD}={${Screen.Chat.ARG_CWD}}",
+            listOf(Screen.Chat.ARG_NEW, Screen.Chat.ARG_CWD, Screen.Chat.ARG_AT, Screen.Chat.ARG_TOOL).joinToString("&") { "$it={$it}" },
             Screen.Chat.route.substringAfter('?'),
         )
     }
