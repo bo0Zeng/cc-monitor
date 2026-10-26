@@ -405,14 +405,15 @@ chk "★ argv 值超本后端的上限：args_too_large" "$(jq -r .code < "$SAND
 d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(exec sleep "$((2 * WALL_CEILING_S))") >/dev/null 2>&1; _rc=$?; kill "$!" 2>/dev/null
 chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && echo 是 || echo "否 rc=$_rc")" "是"
 
-# `--resolve`（帧命令 `resolve` 派生的那一面，手写臂删了）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input。
-_rq='{"sessionId":"s1"}'
-printf '%s' "$_rq" | d --resolve >"$SANDBOX/c2-rs-in.txt"; _rc_in=$?
-d --resolve --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-rs-av.txt"; _rc_av=$?
-chk "★ --resolve：argv 载荷口与 stdin 逐字一样（退出 0）" "$_rc_in|$_rc_av|$(cmp -s "$SANDBOX/c2-rs-in.txt" "$SANDBOX/c2-rs-av.txt" && echo 同 || echo 不同)" "0|0|同"
-chk "  --resolve 成品是那条恢复命令" "$(jq -r .command < "$SANDBOX/c2-rs-av.txt" 2>/dev/null)" "claude --resume s1"
-d --resolve < <(exec sleep "$((2 * WALL_CEILING_S))") >/dev/null; _rc=$?; kill "$!" 2>/dev/null
-chk "★ --resolve 开着不写：立即回 no_input" "$([ "$_rc" -eq 2 ] && echo 是 || echo "否 rc=$_rc")|$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "是|no_input"
+# 帧命令派生的另一条（`--profiles-from-line`：把一条命令行拆成配置那几格，纯函数、不碰盘）同一套口：
+#   argv 与 stdin 逐字一样 · 开着不写回 no_input。从前这一格用的是 `--resolve`，10-26 随那条帧命令撤了。
+_rq='{"name":"p","line":"claude --model opus"}'
+printf '%s' "$_rq" | d --profiles-from-line >"$SANDBOX/c2-pf-in.txt"; _rc_in=$?
+d --profiles-from-line --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-pf-av.txt"; _rc_av=$?
+chk "★ --profiles-from-line：argv 载荷口与 stdin 逐字一样（退出 0）" "$_rc_in|$_rc_av|$(cmp -s "$SANDBOX/c2-pf-in.txt" "$SANDBOX/c2-pf-av.txt" && echo 同 || echo 不同)" "0|0|同"
+chk "  --profiles-from-line 成品是拆出来的那几格" "$(jq -r '.name + "|" + .args' < "$SANDBOX/c2-pf-av.txt" 2>/dev/null)" "p|--model opus"
+d --profiles-from-line < <(exec sleep "$((2 * WALL_CEILING_S))") >/dev/null; _rc=$?; kill "$!" 2>/dev/null
+chk "★ --profiles-from-line 开着不写：立即回 no_input" "$([ "$_rc" -eq 2 ] && echo 是 || echo "否 rc=$_rc")|$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "是|no_input"
 
 echo "[CLI3] ★ 一次性模式的 stderr 是协议通道：成功 ⇒ 一个字节都没有；失败 ⇒ 正好一行信封 {code, message, detail}；诊断进后端日志文件"
 # 日志落点 = 那台后端自己的 stderr 诊断文件（`~/.cc-monitor/logs/backend/stderr.log`，宿主交了 CCM_BACKEND_STDERR_LOG 就用交的那份）。

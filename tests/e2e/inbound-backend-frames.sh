@@ -91,7 +91,7 @@ HELLO="$(head -1 "$OUT")"
 # F04a：新增 kill（第一条破坏性入方向命令）—— 这一行与后端命令表里的单词命令（`hello.commands` 从命令表派生）
 # 由 monitor 侧 `the_e2e_command_list_matches_the_backend_command_table` 逐项钉住，两处要一起动。
 # 新增 resync（手动对齐）。
-for c in ping cancel resolve kill resync; do
+for c in ping cancel kill resync; do
   if printf '%s' "$HELLO" | grep -qF "\"$c\""; then ok "hello.commands 声明了 $c"; else
     bad "hello 里没有 $c：$HELLO"
   fi

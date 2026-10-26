@@ -1452,18 +1452,22 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
     }
 }
 
-/// 没人调的帧命令不留在登记表里：`launch`（建 tmux 会话 / 就地键入）界面 · 手机 · 壳都不发，
-/// 就地键入只经 `session-open` · 换号重启那两条活命令内部走 `launch::run`，过门的真机验收改走 `terminal-input`。
+/// 没人调的帧命令不留在登记表里：
+/// - `launch`（建 tmux 会话 / 就地键入）界面 · 手机 · 壳都不发；就地键入只经 `session-open` · 换号重启那两条活命令内部走
+///   `launch::run`，过门的真机验收改走 `terminal-input`。
+/// - `resolve`（`ResumeSpec` → 恢复命令）手机与界面都不问了：恢复由 `session-open` 在那台渲好那一行 `ccm …`。
 #[test]
-fn the_dead_launch_command_is_not_registered() {
+fn the_dead_commands_are_not_registered() {
     let names: Vec<&str> = REGISTRY.iter().map(|spec| spec.name).collect();
     assert!(
         names.len() >= 4,
         "注册表只有 {} 条 —— 本条在空转",
         names.len()
     );
-    assert!(
-        !names.contains(&"launch"),
-        "`launch` 还登记在帧命令表里：没有调用方的命令要撤"
-    );
+    for dead in ["launch", "resolve"] {
+        assert!(
+            !names.contains(&dead),
+            "`{dead}` 还登记在帧命令表里：没有调用方的命令要撤"
+        );
+    }
 }

@@ -8,7 +8,7 @@
 //! 病灶不是"代码散"，是**「加一个 agent 要改哪几处」这份清单只住在人的脑子里**。
 //! `S2` 开工前实测：codex 的知识在三处，而三处**长得完全不一样** ——
 //! `usage_query.rs` 里是 `aggregate(claude_dir).and_then(|()| aggregate_codex())`，
-//! `resolve_query.rs` 里是 `spec.agent_kind.trim() == "codex"`，
+//! `resolve_query.rs`（10-26 随帧命令 `resolve` 删了）里是 `spec.agent_kind.trim() == "codex"`，
 //! grep 出其中一处**找不到另一处**。接第三个 agent 的人得先把它们找出来，而没有东西会告诉他有几处。
 //!
 //! # 分界：**格式知识**进来，**值判别**留在通用层
@@ -18,7 +18,7 @@
 //! | 归这里 | 留通用层 |
 //! |---|---|
 //! | 会话文件长什么样（信封 / 事件名 / 用量字段在哪一层） | `agent_kind == "codex"` 这种**值**上的派发 |
-//! | 会话住哪个目录、文件怎么命名 | 派发之后两边**共用**的形状（校验、错误出口、CommandPlan 骨架） |
+//! | 会话住哪个目录、文件怎么命名 | 派发之后两边**共用**的形状（校验、错误出口） |
 //! | 起会话/resume 的**命令形状**与默认命令名 | |
 //!
 //! 两条判据钉住这个分界，都住 [`crate::agent_locality_guard`]：
@@ -309,13 +309,9 @@ pub(crate) struct LaunchFace {
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
     pub(crate) nested_env: &'static [&'static str],
-    /// 不说是哪一家时就起这一家（`ccm` 不给 `--agent` · resume 规格里没写或写了认不出的 `agentKind` · 载荷内核）。
+    /// 不说是哪一家时就起这一家（`ccm` 不给 `--agent` · 载荷内核）。
     /// 注册表里恰一家为真（`agents_tests.rs` 钉着）。
     pub(crate) is_default: bool,
-    /// resume 命令怎么拼：`(启动器, sid) → 整条命令`。
-    pub(crate) resume_command: fn(&str, &str) -> String,
-    /// resume 那个 tmux 会话名的前缀（会话名 ＝ `<前缀>-<sid 前 8 个字符>`）。
-    pub(crate) session_name_prefix: &'static str,
     /// 这一家自己够不着 tmux socket ⇒ 起它时要把 cc-bus 身份（tmux 会话名）经 `CC_BUS_ID` 交进去。
     ///
     /// ⚠ 它答的是「**要不要**」，不是「**能不能**」：值恒来自 tmux 的会话名（`control::ccm::BUS_ID_RECIPE`），
@@ -501,7 +497,7 @@ fn pick_among(
     })
 }
 
-/// 按 wire 上的 kind 认（`ccm --ccm-agent` · resume 规格的 `agentKind` · cc-bus 派生的 `tool` · 起会话那一发的 `agent`）。规则见 [`pick_among`]。
+/// 按 wire 上的 kind 认（`ccm --ccm-agent` · cc-bus 派生的 `tool` · 起会话那一发的 `agent`）。规则见 [`pick_among`]。
 pub(crate) fn pick_kind_among(
     registry: &[Adapter],
     name: Option<&str>,

@@ -644,7 +644,7 @@ mod tests {
     /// `resolve_query.rs`」。**实测那个前提是错的** —— 今天有 **3 个文件、6 个类型**，
     /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
     ///
-    /// - `resolve_query.rs` 的几个：命令 `resolve` 的入参与成品（当时与手机端冻结，10-11 解冻）；
+    /// - `resolve_query.rs` 的几个：命令 `resolve` 的入参与成品（10-26 随那条没人调的帧命令删了）；
     /// - `fork_write.rs` 的几个：分叉的出参（当时是一次性子命令 `--fork-session` 的出参，今天是 typed 帧命令 `session-fork`），不是流协议。
     /// （当时还有账号清单那一侧解析清单**文件**的一个类型；10-24 账号库清单收成 `accounts/manage` 一个读口，它删了。）
     ///
@@ -657,17 +657,6 @@ mod tests {
     fn every_serde_type_outside_wire_is_registered() {
         /// (文件, 类型名, 它是什么 —— 为什么不在 `wire.rs`)
         const ALLOWED: &[(&str, &str, &str)] = &[
-            (
-                "control/resolve_query.rs",
-                "ResumeSpec",
-                "命令 `resolve` 的入参（形状钉在金样 `resolve-contract.golden.json`），命令应答不是流协议帧",
-            ),
-            (
-                "control/resolve_query.rs",
-                "Capabilities",
-                "同上，`CommandPlan` 的一部分",
-            ),
-            ("control/resolve_query.rs", "CommandPlan", "同上，出参"),
             (
                 "control/fork_write.rs",
                 "ForkReq",
@@ -723,10 +712,6 @@ mod tests {
             (
                 "control/launch.rs",
                 include_str!("../../src/backend/control/launch.rs"),
-            ),
-            (
-                "control/resolve_query.rs",
-                include_str!("../../src/backend/control/resolve_query.rs"),
             ),
             (
                 "control/fork_write.rs",
@@ -850,27 +835,19 @@ mod tests {
     /// vs 命令级（参数不合适 ⇒ 可能是用户输入）。客户端拿到的只有 `code` 字符串，分不出来。
     /// 命令级的形状错误叫 `bad_args`（全部命令一个码）；本条把这条分层**钉住**。
     ///
-    /// ⚠ **`resolve` 是登记在案的例外**：它的命令级 parse 错误仍叫 `bad_request`，
-    /// 因为一次性 `--resolve` 与手机端的契约冻结在 2026-07-18，两条路复用同一个纯函数。
-    /// 改它会破坏那份契约 ⇒ 如实登记，不顺手改。
+    /// 从前登记在案的例外 `resolve`（命令级 parse 错误也叫 `bad_request`）10-26 随那条帧命令删了 ⇒ 闭集整个进本条，一个例外都没有。
     #[test]
     fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
         // 协议级闭集：协议参考的第 3 节从同一张表生成。**只有 `stream/inbound/` 可以发这些。**
-        // `bad_request` 不进本条：`resolve` 的命令级 parse 错误也叫它（登记在案的例外，见上）。
         let protocol_codes: Vec<&str> = crate::protocol_doc_gen::PROTOCOL_CODES
             .iter()
             .map(|(c, _)| *c)
-            .filter(|c| *c != "bad_request")
             .collect();
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
         let files: &[(&str, &str)] = &[
             (
                 "control/launch.rs",
                 include_str!("../../src/backend/control/launch.rs"),
-            ),
-            (
-                "control/resolve_query.rs",
-                include_str!("../../src/backend/control/resolve_query.rs"),
             ),
             (
                 "control/fork_write.rs",
@@ -904,7 +881,7 @@ mod tests {
              命令自己的失败请用命令级 code（并登记进 `CommandSpec::codes`）。"
         );
 
-        // 反面：注册表里登记的命令级 code 不许与协议级重名（`resolve` 的 `bad_request` 例外）。
+        // 反面：注册表里登记的命令级 code 不许与协议级重名。
         for spec in crate::stream::inbound::REGISTRY {
             for c in spec.codes {
                 assert!(

@@ -378,7 +378,7 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
         backend.len()
     );
 
-    // e2e 侧：`for c in ping cancel resolve; do`
+    // e2e 侧：`for c in ping cancel kill resync; do`
     let key = "for c in ";
     let at = SUITE
         .find(key)
@@ -387,7 +387,7 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
     let line = &rest[..rest.find('\n').unwrap_or(rest.len())];
     let mut suite: Vec<String> = line
         .split_whitespace()
-        // 行尾是 `resolve; do` —— 剥掉分号，遇到 `do` 停。
+        // 行尾是 `resync; do` —— 剥掉分号，遇到 `do` 停。
         .map(|t| t.trim_end_matches(';'))
         .take_while(|t| {
             !t.is_empty() && *t != "do" && t.chars().all(|c| c.is_ascii_lowercase() || c == '_')
