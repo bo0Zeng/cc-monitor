@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::agents::{AskKind, AskOption, AskQuestion, AskSuggestion};
+use crate::history::history_annotations::AUTO_MAX_MIN;
 use serde_json::json;
 
 /// 线上那一份入参照分派那一层解（`typed::take`，`deny_unknown_fields`）再交本体；回包投成线上那一份。
@@ -437,6 +438,18 @@ async fn pass(min: u64, secs: u64) {
     }
 }
 
+/// 挂着请求的会话：活会话表那一侧（`history::needs_changed::asked_sids`）读到的就是登记表此刻那几条 —— 挂上就在、连接断了就不在。
+#[tokio::test]
+async fn the_live_table_sees_the_sessions_that_have_an_ask_hanging() {
+    let sid = "t-asked-seen";
+    let desk = Desk::new();
+    let h = hang(desk.conn(), hook_of(sid, "Bash"), None).await;
+    assert!(crate::history::needs_changed::asked_sids().contains(sid));
+    drop(desk);
+    assert_eq!(h.await.unwrap().decision, None);
+    assert!(!crate::history::needs_changed::asked_sids().contains(sid));
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
     let sid = "t-auto-due";
@@ -550,20 +563,6 @@ async fn with_the_setting_off_a_question_just_waits() {
         assert_eq!(h.await.unwrap().decision, None);
         assert_eq!(answered(&sid), None);
     }
-}
-
-#[test]
-fn the_setting_is_checked_before_it_is_written() {
-    assert_eq!(auto_checked(on(0, Some("x")).unwrap()), Ok(None), "0 ＝ 关");
-    assert!(auto_checked(on(AUTO_MAX_MIN + 1, None).unwrap()).is_err());
-    assert_eq!(
-        auto_checked(on(3, Some("  往下做  ")).unwrap()),
-        Ok(on(3, Some("往下做")))
-    );
-    assert_eq!(auto_checked(on(3, Some("   ")).unwrap()), Ok(on(3, None)));
-    assert!(auto_checked(on(3, Some(&"字".repeat(501))).unwrap()).is_err());
-    // 到点时 hook 还活着：至多等的那几分钟短于那一家给 hook 的期限。
-    assert!(u64::from(AUTO_MAX_MIN) * 60 < crate::agents::claudecode::asks::HOOK_TIMEOUT_SECS);
 }
 
 /// ★ 替人答的缺省那一句不预设有推荐项：有推荐 · 没推荐两种都说得通（选项都没标推荐时也对得上）。

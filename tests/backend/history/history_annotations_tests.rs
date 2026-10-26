@@ -273,6 +273,24 @@ fn patch_semantics_match_what_the_monitor_did() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
+/// 「没人答时自动答」那一格的值域：0 ＝ 关 · 超了分钟上限拒 · 那一句去首尾空白、空白 ⇒ 缺省 · 过长拒；分钟上限短于那一家给 hook 的期限（到点时 hook 还活着）。
+#[test]
+fn the_auto_answer_setting_is_checked_before_it_is_written() {
+    let on = |min: u32, say: Option<&str>| cmd_wire::needs::AutoAnswer {
+        after_min: min,
+        say: say.map(str::to_string),
+    };
+    assert_eq!(auto_checked(on(0, Some("x"))), Ok(None), "0 ＝ 关");
+    assert!(auto_checked(on(AUTO_MAX_MIN + 1, None)).is_err());
+    assert_eq!(
+        auto_checked(on(3, Some("  往下做  "))),
+        Ok(Some(on(3, Some("往下做"))))
+    );
+    assert_eq!(auto_checked(on(3, Some("   "))), Ok(Some(on(3, None))));
+    assert!(auto_checked(on(3, Some(&"字".repeat(501)))).is_err());
+    assert!(u64::from(AUTO_MAX_MIN) * 60 < crate::agents::claudecode::asks::HOOK_TIMEOUT_SECS);
+}
+
 /// 「没人答时自动答」那一格：写上 · 只换分钟留着那一句 · 空白那一句回到缺省 · 0 摘掉（盘上那一格也没了）· 超了上限拒、文件不动。
 #[test]
 fn the_auto_answer_cell_is_written_kept_and_removed() {
@@ -316,12 +334,9 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
     );
     let before = std::fs::read(&p).unwrap();
     assert_eq!(
-        at(
-            json!({"autoAnswer": {"afterMin": crate::control::asks::AUTO_MAX_MIN + 1}}),
-            5
-        )
-        .unwrap_err()
-        .code,
+        at(json!({"autoAnswer": {"afterMin": AUTO_MAX_MIN + 1}}), 5)
+            .unwrap_err()
+            .code,
         "bad_args"
     );
     assert_eq!(std::fs::read(&p).unwrap(), before, "拒了也写了");

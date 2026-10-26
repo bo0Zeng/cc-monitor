@@ -1491,9 +1491,7 @@ mod tests {
     }
 
     /// 引用图上的环：互相走得到的顶层模块各成一组，只留多于一个的那几组（组内按名排，组按名排）。两个模块互相引用是两元的环，也在里面。
-    fn rings(
-        m: &std::collections::BTreeMap<(String, String), (usize, usize)>,
-    ) -> Vec<Vec<String>> {
+    fn rings(m: &std::collections::BTreeMap<(String, String), (usize, usize)>) -> Vec<Vec<String>> {
         use std::collections::{BTreeMap, BTreeSet};
         let mut out_of: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
         for (a, b) in m.keys() {

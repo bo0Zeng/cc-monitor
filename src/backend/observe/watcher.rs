@@ -1159,7 +1159,7 @@ fn watch_loop(
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
     let mut state = ReaderState::new(projects.clone());
-    state.asked = crate::history::live_table::asked_sids();
+    state.asked = crate::history::needs_changed::asked_sids();
     // 别的那几家（记录不住记录树、判活认写者）：一并跟上。
     for f in crate::agents::followed(&agent_home) {
         state.follow(&f);
@@ -3523,7 +3523,9 @@ fn hear_asks(
                 break;
             }
             if tx
-                .send(WatchEvent::Asked(crate::history::live_table::asked_sids()))
+                .send(WatchEvent::Asked(
+                    crate::history::needs_changed::asked_sids(),
+                ))
                 .is_err()
             {
                 break;
