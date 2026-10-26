@@ -55,6 +55,10 @@ pub(crate) struct SessionAccountReply {
     pub(crate) when: SessionAccountWhen,
     /// 轮换换过号 ⇒ 开会话的那个号（按钮前那个 ⇄ · 悬停卡末行）；没换过 ⇒ `null`。
     pub(crate) from: Option<String>,
+    /// 标签页悬停卡那一行「账号 X」；号不知道 ⇒ `null`。
+    pub(crate) account_line: Option<String>,
+    /// 标签页悬停卡那一行「从 X 换过来」；没换过 ⇒ `null`。
+    pub(crate) from_line: Option<String>,
     /// 用量那几格（额度账里在用那个号那一条）；没走中转 · 账上没有 ⇒ `null`（只画名字）。
     pub(crate) usage: Option<Usage>,
     /// 那一条最后一次看到距今超过 30 分钟。
@@ -190,6 +194,7 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
         ]
     };
     let mut from = None;
+    let mut from_line = None;
     let (usage, stale, hover, sampled) = match (rot, &account) {
         // 走中转：用量 · 悬停照额度账里在用那个号那一段；换过号 ⇒ 末尾一行从哪个号换来。
         (Some((start, cur)), _) => {
@@ -202,10 +207,9 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
             let sampled = led.and_then(|_| rows.len().checked_sub(1));
             if start != cur {
                 from = Some(start.clone());
-                rows.push(vec![copy_text(
-                    "rot.hover.from",
-                    &[("account", &label(start))],
-                )]);
+                let line = copy_text("rot.hover.from", &[("account", &label(start))]);
+                rows.push(vec![line.clone()]);
+                from_line = Some(line);
             }
             (
                 led.map(|l| l.head.show.usage.clone()),
@@ -247,14 +251,16 @@ pub(crate) fn product(f: &Facts, quota: &QuotaRead) -> SessionAccountReply {
         ),
     };
     let differs = matches!((&account, &f.default), (Some(a), Some(d)) if a != d);
+    let account_line = account
+        .as_deref()
+        .map(|a| copy_text("tabBar.hover.account", &[("name", a)]));
     let badge = (differs && f.queryable).then(|| SessionAccountBadge {
         ghost: when == SessionAccountWhen::Last,
-        title: copy_text(
-            "tabBar.hover.account",
-            &[("name", account.as_deref().unwrap_or_default())],
-        ),
+        title: account_line.clone().unwrap_or_default(),
     });
     SessionAccountReply {
+        account_line,
+        from_line,
         name: account
             .as_deref()
             .map_or_else(|| copy_text("acct.hover.noRelay", &[]), label),

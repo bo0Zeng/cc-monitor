@@ -12,11 +12,8 @@ vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast:
 // 好断言「chip 不该再发任何用量请求」。
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
-import {
-  pickPrimaryOrigin,
-  chipLabel,
-  AccountChip,
-} from "../../../src/frontend/ui/account-chip";
+import { chipLabel, AccountChip } from "../../../src/frontend/ui/account-chip";
+import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 import type { AccountsState, Account } from "../../../src/frontend/ui/accounts";
 // 读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
 import * as readsMod from "../../../src/frontend/ui/account-reads";
@@ -99,19 +96,78 @@ function state(p: Partial<AccountsState>, def: string | null = null): AccountsSt
   };
 }
 
-describe("pickPrimaryOrigin", () => {
-  // 🔴 `K-R59`：这一组此前有两条断「跳过 daemonless 的主机」/「全 daemonless → null」。
-  //    定框 `K35` 把那一档删了 ⇒ **今天一台都不跳**，两条一起下岗。
-  // 名字只认后端读回的那一格（`label` 空 ⇒ `host` 那条规则在后端 `Host::name`，这里不再算）。
-  it("取第一台", () => {
-    expect(pickPrimaryOrigin([{ name: "a", host: host({ label: "a" }) }, { name: "b", host: host({ label: "b" }) }])).toBe("a");
+/** 会话那台写好的那一份（`session-account`）。 */
+function reply(p: Partial<SessionAccountReply>): SessionAccountReply {
+  return {
+    account: "bob",
+    name: "Bob",
+    when: "now",
+    from: null,
+    usage: null,
+    stale: false,
+    hover: [["Bob"]],
+    sampled: null,
+    differs: false,
+    badge: null,
+    queryable: true,
+    ...p,
+  };
+}
+
+describe("本会话那一形照会话那台写好的那一份（`session-account`）", () => {
+  beforeEach(() => {
+    appStore.sessionAccount.set(new Map());
+    appStore.accounts.set(new Map());
   });
-  // 「没有一台有身份的远端」就是本机（上一版回 `null`、调用方再把 `null` 读成本机）。
-  it("名字空 → 本机（那台远端没有身份）", () => {
-    expect(pickPrimaryOrigin([{ name: "", host: host({ label: "", host: "" }) }])).toBe(LOCAL_ORIGIN);
+
+  it("★ 当前 tab 是远端 b 的会话 ⇒ chip 画 b 那台说的号 · 换来的那个 ⇄ · 用量那几格；不问第一台远端", () => {
+    appStore.sessionAccount.set(
+      new Map([
+        [
+          "s1",
+          {
+            origin: "b",
+            read: reply({
+              from: "amy",
+              usage: { slot: "5h", window: "5h", value: "63%", reset: "↻19:00", text: "5h 63% ↻19:00", tone: "warn" },
+              stale: true,
+            }),
+          },
+        ],
+      ]),
+    );
+    const chip = new AccountChip({ openSettings: () => {} });
+    chip.setActive({ sid: "s1", origin: "b" });
+    const el = chip.element;
+    expect(el.dataset.mode).toBe("session");
+    expect(el.style.display).toBe("");
+    expect(el.textContent).toContain("Bob");
+    expect(el.textContent).toContain("5h");
+    expect(el.textContent).toContain("63%");
+    expect(el.textContent).toContain("↻19:00");
+    expect(el.dataset.shade).toBe("warn");
+    expect(el.dataset.stale).toBe("true");
+    expect(el.querySelector("[class*=acctChipSwap]"), "换过号 ⇒ 名字前一个 ⇄").not.toBeNull();
+    expect(readRemoteConfigMock, "chip 不再替人挑「第一台远端」").not.toHaveBeenCalled();
   });
-  it("空列表 → 本机", () => {
-    expect(pickPrimaryOrigin([])).toBe(LOCAL_ORIGIN);
+
+  it("★ b 那台的那一份换了 ⇒ 同一拍重画；别的会话的那一份不动它", () => {
+    const chip = new AccountChip({ openSettings: () => {} });
+    chip.setActive({ sid: "s1", origin: "b" });
+    putIn(appStore.sessionAccount, "s2", { origin: "c", read: reply({ name: "Carol" }) });
+    expect(chip.element.textContent).not.toContain("Carol");
+    putIn(appStore.sessionAccount, "s1", { origin: "b", read: reply({ name: "Dave", from: null }) });
+    expect(chip.element.textContent).toContain("Dave");
+    expect(chip.element.querySelector("[class*=acctChipSwap]")).toBeNull();
+  });
+
+  it("★ 没有会话 ⇒ 看本机那台的默认号", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL_ORIGIN, accounts: [acct({ name: "wei", isDefault: true })] }, "wei"));
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    expect(fetchAccountsMock).toHaveBeenCalledWith(LOCAL_ORIGIN);
+    expect(chip.element.dataset.mode).toBe("default");
+    expect(chip.element.textContent).toContain("wei");
   });
 });
 

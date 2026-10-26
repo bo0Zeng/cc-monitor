@@ -22,6 +22,14 @@ when: "now" | "last" | "unknown",
  */
 from: string | null, 
 /**
+ * 标签页悬停卡那一行「账号 X」；号不知道 ⇒ `null`。
+ */
+accountLine: string | null, 
+/**
+ * 标签页悬停卡那一行「从 X 换过来」；没换过 ⇒ `null`。
+ */
+fromLine: string | null, 
+/**
  * 用量那几格（额度账里在用那个号那一条）；没走中转 · 账上没有 ⇒ `null`（只画名字）。
  */
 usage: Usage | null, 

@@ -137,6 +137,17 @@ fn relayed_swapped_session_answers_current_account_with_usage_and_badge() {
         })
     );
     assert!(got.queryable);
+    assert_eq!(
+        got.account_line,
+        Some(copy_text("tabBar.hover.account", &[("name", "work")]))
+    );
+    assert_eq!(
+        got.from_line,
+        Some(copy_text(
+            "rot.hover.from",
+            &[("account", &label("personal"))]
+        ))
+    );
 }
 
 /// ★ 走中转、在用号额度账上没出过数（personal）：用量空着、悬停照没出过数那一段、不接采样；与默认号相同 ⇒ 不出徽章。
@@ -153,6 +164,7 @@ fn relayed_unseen_account_has_no_usage_and_matches_default() {
     let got = product(&f, &q);
     assert_eq!(got.account.as_deref(), Some("personal"));
     assert_eq!(got.from, None);
+    assert_eq!(got.from_line, None);
     assert_eq!(got.usage, None);
     let un = q
         .unseen
@@ -235,6 +247,7 @@ fn nothing_known_says_so_and_never_differs() {
     };
     let got = product(&f, &q);
     assert_eq!(got.account, None);
+    assert_eq!(got.account_line, None);
     assert_eq!(got.when, SessionAccountWhen::Unknown);
     assert_eq!(got.name, copy_text("acct.hover.noRelay", &[]));
     assert_eq!(
