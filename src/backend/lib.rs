@@ -206,6 +206,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。
     "--bus-inbox",
     "--bus-list",
+    // 组那三条（`groups-here` · `groups-read` · `groups-write`）自动派生的 CLI 面。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--groups-here",
+    "--groups-read",
+    "--groups-write",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
