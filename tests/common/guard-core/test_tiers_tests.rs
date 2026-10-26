@@ -138,6 +138,7 @@ const E2E: &[&str] = &[
     "tests/e2e/files-manager.sh",
     "tests/e2e/graylight-backend-frames.sh",
     "tests/e2e/graylight-suite.sh",
+    "tests/e2e/graylight-suite-verdict.sh",
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
     "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ 门禁 `run_e2e`）
