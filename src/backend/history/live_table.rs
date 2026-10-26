@@ -386,7 +386,20 @@ pub(crate) fn live_here() -> BTreeSet<String> {
     now(&super::listing::agent_home()).sids()
 }
 
-/// 待答登记表交来此刻挂着请求的会话（整份换）；发布过的那份跟着换。
+/// 挂着请求的会话换了一份 ⇒ 叫谁（watcher 起来时装：它要改那几条会话的点）。
+static ON_ASKED: Mutex<Option<fn(&BTreeSet<String>)>> = Mutex::new(None);
+
+/// 装上「挂着请求的会话换了」那一声的接收者（[`set_asked`] 换了之后叫它）。
+pub(crate) fn on_asked(f: fn(&BTreeSet<String>)) {
+    *lock(&ON_ASKED) = Some(f);
+}
+
+/// 此刻挂着请求的会话（待答登记表交来的那一份）。
+pub(crate) fn asked_sids() -> BTreeSet<String> {
+    lock(&ASKED).clone()
+}
+
+/// 待答登记表交来此刻挂着请求的会话（整份换）；发布过的那份跟着换，再叫 [`on_asked`] 装上的那一个。
 pub(crate) fn set_asked(now: BTreeSet<String>) {
     let mut g = lock(&ASKED);
     if *g == now {
@@ -395,7 +408,11 @@ pub(crate) fn set_asked(now: BTreeSet<String>) {
     g.clone_from(&now);
     drop(g);
     if let Some(t) = lock(&PUBLISHED).as_mut() {
-        Arc::make_mut(t).asked = now;
+        Arc::make_mut(t).asked = now.clone();
+    }
+    let tell = *lock(&ON_ASKED);
+    if let Some(tell) = tell {
+        tell(&now);
     }
 }
 
