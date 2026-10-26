@@ -52,8 +52,10 @@ pub enum ExtState {
     Differs,
     /// 哪儿都没有。
     Missing,
-    /// 用户级没有，只在项目里有。
+    /// 用户级没有（或关着），只在项目里有 / 开着。
     Project,
+    /// 装了、关着（只有插件有这一态）。
+    Off,
 }
 
 /// 装到一台时两头各在哪一级。
@@ -103,6 +105,10 @@ pub struct ExtPlace {
     pub uninstall: bool,
     /// 有它、却没有「卸载」时为什么。
     pub note: Option<String>,
+    /// 这一处自己的一句（插件：版本 · 开着 / 关着 · 出处）；别的种类没有。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub line: Option<String>,
 }
 
 /// 表里一台机器（一列）。
@@ -334,7 +340,7 @@ impl ExtKind {
         serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
             crate::wire::spec::Fail::new(
                 "bad_args",
-                crate::common::contract::malformed("`kind` must be skill or mcp"),
+                crate::common::contract::malformed("`kind` must be skill, mcp or plugin"),
             )
         })
     }
@@ -409,7 +415,7 @@ fn pick_project(m: &ExtMachine, like: Option<&str>) -> Option<String> {
 
 fn about_of(a: &Asset) -> Option<String> {
     let s = &a.summary;
-    if a.kind == ExtKind::Skill {
+    if matches!(a.kind, ExtKind::Skill | ExtKind::Plugin) {
         return s
             .get("description")
             .and_then(Value::as_str)
@@ -431,6 +437,80 @@ fn about_of(a: &Asset) -> Option<String> {
     s.get("url").and_then(Value::as_str).map(str::to_string)
 }
 
+/// 插件组成那几样（`summary.parts` 的键 · 抽屉里那一行的标签）。
+const PLUGIN_PARTS: &[(&str, &str)] = &[
+    ("skills", "beExt.part.skills"),
+    ("commands", "beExt.part.commands"),
+    ("agents", "beExt.part.agents"),
+    ("hooks", "beExt.part.hooks"),
+    ("mcp", "beExt.part.mcp"),
+];
+
+/// 插件：市场 · 版本 · 组成（每样一行：几个 ＋ 名字）。
+fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
+    let line = |label: String, value: String| ExtDetail { label, value };
+    let mut out = Vec::new();
+    if let Some(m) = s.get("market").and_then(Value::as_str) {
+        out.push(line(copy_text("beExt.detail.market", &[]), m.to_string()));
+    }
+    if let Some(v) = s.get("version").and_then(Value::as_str) {
+        out.push(line(copy_text("beExt.detail.version", &[]), v.to_string()));
+    }
+    for (key, label) in PLUGIN_PARTS {
+        let names: Vec<&str> = s["parts"][*key]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if names.is_empty() {
+            continue;
+        }
+        out.push(line(
+            copy_text(label, &[]),
+            copy_text(
+                "beExt.detail.partValue",
+                &[
+                    ("n", &names.len().to_string()),
+                    (
+                        "names",
+                        &names.join(&copy_text("beExt.detail.partSep", &[])),
+                    ),
+                ],
+            ),
+        ));
+    }
+    out
+}
+
+/// 插件那一处自己的一句：版本 · 开着 / 关着 · 出处（`summary.from` 的码在这里成字）。不是插件 ⇒ `None`。
+fn plugin_line(a: &Asset) -> Option<String> {
+    if a.kind != ExtKind::Plugin {
+        return None;
+    }
+    let s = &a.summary;
+    let on = if a.off {
+        copy_text("beExt.plugin.off", &[])
+    } else {
+        copy_text("beExt.plugin.on", &[])
+    };
+    let from = match s.get("from").and_then(Value::as_str) {
+        Some("managed") => copy_text("beExt.plugin.fromManaged", &[]),
+        Some("local") => copy_text("beExt.plugin.fromLocal", &[]),
+        Some("project") => copy_text("beExt.plugin.fromProject", &[]),
+        Some("user") => copy_text("beExt.plugin.fromUser", &[]),
+        _ => copy_text("beExt.plugin.fromManifest", &[]),
+    };
+    Some(match s.get("version").and_then(Value::as_str) {
+        Some(v) => copy_text(
+            "beExt.plugin.line",
+            &[("version", v), ("on", &on), ("from", &from)],
+        ),
+        None => copy_text(
+            "beExt.plugin.lineNoVersion",
+            &[("on", &on), ("from", &from)],
+        ),
+    })
+}
+
 fn detail_of(a: &Asset) -> Vec<ExtDetail> {
     let s = &a.summary;
     let line = |label: String, value: String| ExtDetail { label, value };
@@ -450,6 +530,9 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
             ));
         }
         return out;
+    }
+    if a.kind == ExtKind::Plugin {
+        return plugin_detail(s);
     }
     // MCP：目录里那一份本来就不带密钥值（`asset_catalog::mcp_summary`），字段名是用户自己写在配置里的那几个。
     let mut out = Vec::new();
@@ -479,12 +562,25 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
 /// 这一级能不能往里写 / 从里删。用户级 MCP：那台有账号库（`shared` = 各账号共用一份）⇒ 写进共用的那一份、同步到所有号；
 /// 没有 ⇒ 它住 agent 自己的热状态文件（agent 自己一直在重写）⇒ 只读。
 pub(crate) fn writable(kind: ExtKind, at: &ExtLoc, shared: bool) -> Result<(), String> {
+    if let Some(why) = read_only(kind) {
+        return Err(why);
+    }
     match (kind, at) {
         (ExtKind::Mcp, ExtLoc::User) if !shared => {
             Err(copy_text("beExt.note.userMcpReadOnly", &[]))
         }
         _ => Ok(()),
     }
+}
+
+/// 整种只读（哪一级都不经 cc-monitor 写）⇒ 为什么。插件这一版只读。
+pub(crate) fn read_only(kind: ExtKind) -> Option<String> {
+    (kind == ExtKind::Plugin).then(|| copy_text("beExt.note.pluginReadOnly", &[]))
+}
+
+/// 整种只读的那一种进了写的那几条命令（卸载 · 装）⇒ 拒。
+pub(crate) fn read_only_refused(kind: ExtKind) -> crate::wire::spec::Fail {
+    crate::wire::spec::Fail::new("refused", read_only(kind).unwrap_or_default())
 }
 
 /// 这一处的 MCP 配置文件在这台上的（根, 相对段）：项目 = `<项目>/.mcp.json`；用户级 = 各账号共用的那一份（没有账号库 ⇒ 拒）。
@@ -675,16 +771,20 @@ fn cell(
     source: Option<&Source>,
 ) -> ExtCell {
     let is_this = |a: &Asset, d: Option<&str>| {
-        if Some(a.digest.as_str()) == d {
+        if a.off {
+            ExtState::Off
+        } else if Some(a.digest.as_str()) == d {
             ExtState::Same
         } else {
             ExtState::Differs
         }
     };
+    // 用户级开着 ⇒ 与「这一版」比；否则项目里有开着的 ⇒ 只在项目里；否则装着却都关着 ⇒ 关着；都没有 ⇒ 没装。
     let state = match user {
-        Some(a) => is_this(a, canon),
-        None if !mine.is_empty() => ExtState::Project,
-        None => ExtState::Missing,
+        Some(a) if !a.off => is_this(a, canon),
+        _ if mine.iter().any(|a| a.project.is_some() && !a.off) => ExtState::Project,
+        _ if !mine.is_empty() => ExtState::Off,
+        _ => ExtState::Missing,
     };
     let live = c.m.reachable;
     let mut places = vec![place(
@@ -713,6 +813,9 @@ fn cell(
     }
     let (bring, note) = if !live {
         (None, Some(copy_text("kit.offline.later", &[])))
+    } else if let Some(why) = read_only(kind) {
+        // 整种只读（插件）：没有「装到…」，说为什么。
+        (None, Some(why))
     } else {
         match source {
             None => (None, Some(copy_text("beExt.note.noSource", &[]))),
@@ -738,12 +841,13 @@ fn place(
 ) -> ExtPlace {
     let dir = match kind {
         ExtKind::Mcp => None,
-        ExtKind::Skill => held.and_then(|a| a.dir.clone()),
+        ExtKind::Skill | ExtKind::Plugin => held.and_then(|a| a.dir.clone()),
     };
     let (uninstall, note) = match (held, writable(kind, &at, shared)) {
         (None, _) => (false, None),
         (Some(_), Ok(())) => (live, None),
-        (Some(_), Err(why)) => (false, Some(why)),
+        // 整种只读的那一句已在那一格上说过（[`cell`]），每处不再重复。
+        (Some(_), Err(why)) => (false, read_only(kind).is_none().then_some(why)),
     };
     ExtPlace {
         at,
@@ -751,6 +855,7 @@ fn place(
         dir,
         uninstall,
         note,
+        line: held.and_then(plugin_line),
     }
 }
 
@@ -1211,6 +1316,7 @@ pub(crate) fn answer_uninstall_preview(
                 token: crate::common::digest::fnv_digest(&m.text),
             }
         }
+        ExtKind::Plugin => return Err(read_only_refused(kind)),
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
             let intact = m.recorded.as_deref() == Some(&super::skill_ledger::mcp_digest(&m.def));
@@ -1342,6 +1448,7 @@ pub(crate) fn answer_uninstall_apply(
                 note: (!view.notes.is_empty()).then(|| view.notes.join(" ")),
             }
         }
+        ExtKind::Plugin => return Err(read_only_refused(kind)),
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
             if crate::common::digest::fnv_digest(&m.text) != token {

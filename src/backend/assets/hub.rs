@@ -150,9 +150,18 @@ struct Ask<'a> {
     at_to: ExtLoc,
 }
 
+/// 整种只读的那一种（插件）进了「装」⇒ 拒（同 [`super::ext::read_only_refused`]）。
+fn refused_pair(kind: ExtKind) -> (String, String) {
+    let f = super::ext::read_only_refused(kind);
+    (f.code, f.message)
+}
+
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     let own = |e: crate::wire::spec::Fail| (e.code, e.message);
     let kind = ExtKind::from_arg(args).map_err(own)?;
+    if super::ext::read_only(kind).is_some() {
+        return Err(refused_pair(kind));
+    }
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let name = str_arg(args, "name")?;
     let (at_from, at_to) = scope_of(args)?;
@@ -376,6 +385,7 @@ pub(crate) async fn ext_preview(
             let (source, plan) = skill_look(here, &a, table, remote).await?;
             skill_card(&a, &source, &plan)
         }
+        ExtKind::Plugin => return Err(refused_pair(a.kind)),
         ExtKind::Mcp => {
             let (src, pre) = mcp_look(here, &a, table, remote).await?;
             mcp_card(&a, &src, &pre)
@@ -465,6 +475,7 @@ pub(crate) async fn ext_apply(
                 note: (!note.is_empty()).then(|| note.join(" ")),
             }
         }
+        ExtKind::Plugin => return Err(refused_pair(a.kind)),
         ExtKind::Mcp => {
             let (src, pre) = mcp_look(here, &a, table, remote).await?;
             let card = mcp_card(&a, &src, &pre);
@@ -649,6 +660,7 @@ pub(crate) fn files_of(c: &ExtCard) -> Vec<String> {
     match c.kind {
         ExtKind::Mcp => vec![format!("{} · mcpServers", c.path)],
         ExtKind::Skill => vec![format!("{} · {}", c.path, c.writes.join(", "))],
+        ExtKind::Plugin => Vec::new(),
     }
 }
 

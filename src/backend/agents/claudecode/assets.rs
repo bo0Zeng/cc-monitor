@@ -106,9 +106,16 @@ pub(crate) fn project_skills_root(project: &Path) -> PathBuf {
     project.join(PROJECT_CONFIG_DIR).join(SKILLS_DIR)
 }
 
-/// 注册表那一格的实现：用户级 skill 的根 ＋ 交进来的那份用户级 MCP ＋ 每个项目各两处，现扫。
+/// 注册表那一格的实现：用户级 skill 的根 ＋ 交进来的那份用户级 MCP ＋ 每个项目各两处 ＋ 这台的插件，现扫。
 pub(crate) fn scan(projects: &[String], user_mcp: Option<&Path>) -> Sightings {
-    scan_at(skills_root().as_deref(), user_mcp, projects)
+    let mut out = scan_at(skills_root().as_deref(), user_mcp, projects);
+    scan_plugins_at(
+        &resolve_home(),
+        &super::asks::policy_files(),
+        projects,
+        &mut out,
+    );
+    out
 }
 
 /// [`scan`] 的本体：用户级两个根由调用方给（判据拿临时家目录喂）。
@@ -173,6 +180,9 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
         };
         if name.starts_with('.') {
             continue;
+        }
+        if project.is_none() && is_plugin_root(&path) {
+            continue; // 带清单的是插件（[`scan_plugins_at`]），它带的 skill 不另成一行
         }
         let doc = path.join(SKILL_DOC);
         let description = match skill_description(&doc) {
@@ -305,6 +315,340 @@ fn servers_into(v: &serde_json::Value, file: &Path, project: Option<&str>, out: 
             file: file.to_path_buf(),
         });
     }
+}
+
+// ───────────────────────── 插件 ─────────────────────────
+
+/// 插件安装记录（配置根下）：`{"version": 2, "plugins": {"<名>@<市场>": [{scope, installPath, version, projectPath}]}}`。
+const PLUGIN_RECORD: [&str; 2] = ["plugins", "installed_plugins.json"];
+/// 认得的安装记录格式版本。
+const PLUGIN_RECORD_V: u64 = 2;
+/// 安装记录的读取上限（几百条也远不到）。
+const PLUGIN_RECORD_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// 放在 skills 目录里的插件属的那个市场名（`enabledPlugins` 里写 `<名>@skills-dir`）。
+const SKILLS_DIR_MARKET: &str = "skills-dir";
+/// 设置里写开关的那一格。
+const ENABLED_KEY: &str = "enabledPlugins";
+/// 远端下发的托管设置（配置根下；与策略文件同一级）。
+const REMOTE_SETTINGS: &str = "remote-settings.json";
+/// 一份设置的读取上限。
+const SETTINGS_MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// 插件里装 hook 的那份（相对插件根）。
+const PLUGIN_HOOKS: [&str; 2] = ["hooks", "hooks.json"];
+
+/// 这个目录是插件根（底下有清单）。
+fn is_plugin_root(dir: &Path) -> bool {
+    PLUGIN_MANIFEST
+        .iter()
+        .fold(dir.to_path_buf(), |p, s| p.join(s))
+        .is_file()
+}
+
+/// 盘上看到的一处安装：`<名>@<市场>` · 插件根 · 装在哪个项目里 · 安装记录里写的版本。
+struct Install {
+    name: String,
+    market: String,
+    root: PathBuf,
+    project: Option<String>,
+    version: Option<String>,
+}
+
+/// 读一份 JSON：不在 ⇒ `None`（不是问题）；在却读不出 ⇒ 说出来、`None`。
+fn read_json_said(file: &Path, cap: u64, problems: &mut Vec<String>) -> Option<serde_json::Value> {
+    match Ro::metadata(file) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        _ => {}
+    }
+    match Ro::read_json_capped(file, cap) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            problems.push(
+                e.wrap(|why| {
+                    copy_text(
+                        "reason.fs.readFailed",
+                        &[("path", &file.display().to_string()), ("why", why)],
+                    )
+                })
+                .into_note(),
+            );
+            None
+        }
+    }
+}
+
+/// 一份设置里的 `enabledPlugins`（`<名>@<市场>` → 开 / 关）；没有这一格 ⇒ 空。
+fn enabled_in(file: &Path, problems: &mut Vec<String>) -> Vec<(String, bool)> {
+    read_json_said(file, SETTINGS_MAX_BYTES, problems)
+        .and_then(|v| v.get(ENABLED_KEY).and_then(|e| e.as_object()).cloned())
+        .map(|m| {
+            m.into_iter()
+                .filter_map(|(k, v)| v.as_bool().map(|b| (k, b)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 几份设置按优先级从低到高叠：后写的压过先写的。
+fn layered(
+    files: &[PathBuf],
+    problems: &mut Vec<String>,
+) -> std::collections::BTreeMap<String, bool> {
+    files.iter().flat_map(|f| enabled_in(f, problems)).collect()
+}
+
+/// 目录底下的子目录名 / 某种扩展名的文件名（去扩展名），排好序；读不了 ⇒ 空。
+fn names_in(dir: &Path, ext: Option<&str>, want_dir: bool) -> Vec<String> {
+    let mut v: Vec<String> = Ro::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| {
+                    let p = e.path();
+                    let is_dir = Ro::metadata(&p).map(|m| m.is_dir()).unwrap_or(false);
+                    if is_dir != want_dir {
+                        return None;
+                    }
+                    match ext {
+                        Some(x) => (p.extension().and_then(|s| s.to_str()) == Some(x))
+                            .then(|| p.file_stem()?.to_str().map(str::to_string))
+                            .flatten(),
+                        None => e.file_name().to_str().map(str::to_string),
+                    }
+                })
+                .filter(|n| !n.starts_with('.'))
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// 一个对象的键（排好序）；不是对象 ⇒ 空。
+fn keys_of(v: Option<&serde_json::Value>) -> Vec<String> {
+    let mut k: Vec<String> = v
+        .and_then(|v| v.as_object())
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    k.sort();
+    k
+}
+
+/// 插件根里带了什么：skills（带 `SKILL.md` 的子目录）· commands / agents（`.md`）· hooks（事件名）· MCP（server 名）。
+/// 清单里内联写的 hooks / mcpServers 一并算。
+fn parts_of(root: &Path, manifest: Option<&serde_json::Value>) -> crate::agents::PluginParts {
+    let skills = names_in(&root.join(SKILLS_DIR), None, true)
+        .into_iter()
+        .filter(|n| root.join(SKILLS_DIR).join(n).join(SKILL_DOC).is_file())
+        .collect();
+    let mut sink = Vec::new();
+    let hooks_file = PLUGIN_HOOKS
+        .iter()
+        .fold(root.to_path_buf(), |p, s| p.join(s));
+    let mut hooks = keys_of(
+        read_json_said(&hooks_file, SETTINGS_MAX_BYTES, &mut sink)
+            .as_ref()
+            .and_then(|v| v.get("hooks")),
+    );
+    hooks.extend(keys_of(manifest.and_then(|m| m.get("hooks"))));
+    hooks.sort();
+    hooks.dedup();
+    let mut mcp = keys_of(
+        read_json_said(
+            &root.join(PROJECT_MCP_FILE),
+            MAX_PROJECT_MCP_BYTES,
+            &mut sink,
+        )
+        .as_ref()
+        .and_then(|v| v.get(SERVERS_KEY)),
+    );
+    mcp.extend(keys_of(manifest.and_then(|m| m.get(SERVERS_KEY))));
+    mcp.sort();
+    mcp.dedup();
+    crate::agents::PluginParts {
+        skills,
+        commands: names_in(&root.join(COMMANDS_DIR), Some("md"), false),
+        agents: names_in(&root.join("agents"), Some("md"), false),
+        hooks,
+        mcp,
+    }
+}
+
+/// 盘上的各处安装：安装记录（第 [`PLUGIN_RECORD_V`] 版）记的 ＋ `skills/<名>/` 里带清单的。
+fn installs_at(config_root: &Path, problems: &mut Vec<String>) -> Vec<Install> {
+    let mut out = Vec::new();
+    let record = PLUGIN_RECORD
+        .iter()
+        .fold(config_root.to_path_buf(), |p, s| p.join(s));
+    if let Some(v) = read_json_said(&record, PLUGIN_RECORD_MAX_BYTES, problems) {
+        match v.get("plugins").and_then(|p| p.as_object()) {
+            Some(plugins) if v.get("version").and_then(|x| x.as_u64()) == Some(PLUGIN_RECORD_V) => {
+                for (id, entries) in plugins {
+                    let Some((name, market)) = id.rsplit_once('@') else {
+                        continue;
+                    };
+                    for e in entries.as_array().into_iter().flatten() {
+                        let Some(root) = e.get("installPath").and_then(|p| p.as_str()) else {
+                            continue;
+                        };
+                        let in_project = matches!(
+                            e.get("scope").and_then(|s| s.as_str()),
+                            Some("project" | "local")
+                        );
+                        out.push(Install {
+                            name: name.to_string(),
+                            market: market.to_string(),
+                            root: PathBuf::from(root),
+                            project: in_project
+                                .then(|| e.get("projectPath").and_then(|p| p.as_str()))
+                                .flatten()
+                                .map(str::to_string),
+                            version: e
+                                .get("version")
+                                .and_then(|x| x.as_str())
+                                .map(str::to_string),
+                        });
+                    }
+                }
+            }
+            _ => problems.push(copy_text(
+                "reason.fs.readFailed",
+                &[
+                    ("path", &record.display().to_string()),
+                    ("why", &copy_text("reason.content.unparsable", &[])),
+                ],
+            )),
+        }
+    }
+    let skills = config_root.join(SKILLS_DIR);
+    for dir in names_in(&skills, None, true) {
+        let root = skills.join(&dir);
+        if !is_plugin_root(&root) {
+            continue;
+        }
+        let name = manifest_at(&root, &mut Vec::new())
+            .and_then(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string))
+            .unwrap_or(dir);
+        out.push(Install {
+            name,
+            market: SKILLS_DIR_MARKET.to_string(),
+            root,
+            project: None,
+            version: None,
+        });
+    }
+    out
+}
+
+fn manifest_at(root: &Path, problems: &mut Vec<String>) -> Option<serde_json::Value> {
+    let m = PLUGIN_MANIFEST
+        .iter()
+        .fold(root.to_path_buf(), |p, s| p.join(s));
+    read_json_said(&m, PLUGIN_MANIFEST_MAX_BYTES, problems)
+}
+
+/// 插件：两处读盘（[`installs_at`]），开不开照六处 `enabledPlugins` 合并 ——
+/// 托管（策略文件 ＋ 配置根下 [`REMOTE_SETTINGS`]）＞ 本机项目设置 ＞ 项目设置 ＞ 用户设置（`settings.json` · `settings.local.json`）＞ 清单 `defaultEnabled`（没写 ⇒ 关）。
+/// 用户级装着的出一条用户级的，再给设置里写了它的每个项目各出一条；装在项目里的只出那个项目的。不读 `plugins/synced/`，不读凭据。
+pub(crate) fn scan_plugins_at(
+    config_root: &Path,
+    policy: &[PathBuf],
+    projects: &[String],
+    out: &mut Sightings,
+) {
+    use crate::agents::{PluginFrom, PluginSeen};
+    let mut problems = Vec::new();
+    let installs = installs_at(config_root, &mut problems);
+    if installs.is_empty() {
+        out.problems.extend(problems);
+        return;
+    }
+    let mut managed_files = policy.to_vec();
+    managed_files.push(config_root.join(REMOTE_SETTINGS));
+    let managed = layered(&managed_files, &mut problems);
+    let user = layered(
+        &super::footprint::user_settings_files(config_root),
+        &mut problems,
+    );
+    let mut by_project: std::collections::BTreeMap<
+        String,
+        [std::collections::BTreeMap<String, bool>; 2],
+    > = Default::default();
+    let mut project_layers = |dir: &str, problems: &mut Vec<String>| {
+        by_project
+            .entry(dir.to_string())
+            .or_insert_with(|| {
+                let [shared, local] = super::footprint::project_settings_files(Path::new(dir));
+                [layered(&[shared], problems), layered(&[local], problems)]
+            })
+            .clone()
+    };
+    let mut seen: std::collections::BTreeSet<(String, Option<String>)> = Default::default();
+    for i in installs {
+        let id = format!("{}@{}", i.name, i.market);
+        let manifest = manifest_at(&i.root, &mut problems);
+        let text = |k: &str| {
+            manifest
+                .as_ref()
+                .and_then(|m| m.get(k))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        let default_on = manifest
+            .as_ref()
+            .and_then(|m| m.get("defaultEnabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let parts = parts_of(&i.root, manifest.as_ref());
+        let decide = |layers: Option<&[std::collections::BTreeMap<String, bool>; 2]>| {
+            if let Some(b) = managed.get(&id) {
+                return (*b, PluginFrom::Managed);
+            }
+            if let Some([shared, local]) = layers {
+                if let Some(b) = local.get(&id) {
+                    return (*b, PluginFrom::Local);
+                }
+                if let Some(b) = shared.get(&id) {
+                    return (*b, PluginFrom::Project);
+                }
+            }
+            match user.get(&id) {
+                Some(b) => (*b, PluginFrom::User),
+                None => (default_on, PluginFrom::Manifest),
+            }
+        };
+        let mut emit = |project: Option<String>, (on, from): (bool, PluginFrom)| {
+            if !seen.insert((i.name.clone(), project.clone())) {
+                return;
+            }
+            out.plugins.push(PluginSeen {
+                project,
+                name: i.name.clone(),
+                market: i.market.clone(),
+                root: i.root.clone(),
+                version: text("version").or_else(|| i.version.clone()),
+                description: text("description"),
+                parts: parts.clone(),
+                on,
+                from,
+            });
+        };
+        match &i.project {
+            Some(dir) => {
+                let layers = project_layers(dir, &mut problems);
+                emit(Some(dir.clone()), decide(Some(&layers)));
+            }
+            None => {
+                emit(None, decide(None));
+                for dir in projects {
+                    let layers = project_layers(dir, &mut problems);
+                    if layers.iter().any(|l| l.contains_key(&id)) {
+                        emit(Some(dir.clone()), decide(Some(&layers)));
+                    }
+                }
+            }
+        }
+    }
+    problems.dedup();
+    out.problems.extend(problems);
 }
 
 #[cfg(test)]

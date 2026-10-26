@@ -41,6 +41,8 @@ pub const FORMAT_V: u64 = 1;
 pub enum ExtKind {
     Skill,
     Mcp,
+    /// 插件（这一版只读：装 · 卸不经 cc-monitor）。
+    Plugin,
 }
 
 impl ExtKind {
@@ -49,6 +51,7 @@ impl ExtKind {
         match self {
             ExtKind::Skill => "skill",
             ExtKind::Mcp => "mcp",
+            ExtKind::Plugin => "plugin",
         }
     }
 }
@@ -117,9 +120,13 @@ pub struct Asset {
     #[cfg_attr(test, ts(optional))]
     pub dir: Option<String>,
     pub digest: String,
-    /// 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+    /// 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义；插件：市场 · 版本 · 说明 · 组成 · 开关出处）。
     #[cfg_attr(test, ts(type = "unknown"))]
     pub summary: Value,
+    /// 装了、关着（只有插件有这一态；缺 ＝ 开着）。
+    #[serde(default, skip_serializing_if = "is_false")]
+    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    pub off: bool,
 }
 
 /// 一台机器自己扫出来的一整份。
@@ -236,6 +243,7 @@ pub fn mcp_asset(project: Option<&str>, name: &str, def: &Value, file: Option<&P
         dir: file.map(|p| p.display().to_string()),
         digest: f.hex(),
         summary: mcp_summary(def),
+        off: false,
     }
 }
 
@@ -374,6 +382,50 @@ pub fn skill_asset(
             "truncated": !notice.is_empty(),
             "notice": notice,
         }),
+        off: false,
+    }
+}
+
+/// 插件开关出处的线上写法（目录 `summary.from`；字由扩展页那一层写）。
+pub fn plugin_from_code(from: crate::agents::PluginFrom) -> &'static str {
+    use crate::agents::PluginFrom as F;
+    match from {
+        F::Managed => "managed",
+        F::Local => "local",
+        F::Project => "project",
+        F::User => "user",
+        F::Manifest => "manifest",
+    }
+}
+
+/// 一个插件 → 目录条目。`digest` 按市场 · 版本 · 组成算（同一版各台相同）；开不开不进摘要，记在 `off`。
+pub fn plugin_asset(p: &crate::agents::PluginSeen) -> Asset {
+    let parts = json!({
+        "skills": p.parts.skills,
+        "commands": p.parts.commands,
+        "agents": p.parts.agents,
+        "hooks": p.parts.hooks,
+        "mcp": p.parts.mcp,
+    });
+    let mut f = crate::common::digest::Fnv::default();
+    f.part(ExtKind::Plugin.as_str().as_bytes())
+        .part(p.market.as_bytes())
+        .part(p.version.as_deref().unwrap_or("").as_bytes())
+        .part(canonical(&parts).as_bytes());
+    Asset {
+        kind: ExtKind::Plugin,
+        name: p.name.clone(),
+        project: p.project.clone(),
+        dir: Some(p.root.display().to_string()),
+        digest: f.hex(),
+        summary: json!({
+            "market": p.market,
+            "version": p.version,
+            "description": p.description,
+            "parts": parts,
+            "from": plugin_from_code(p.from),
+        }),
+        off: !p.on,
     }
 }
 
@@ -398,6 +450,7 @@ pub(crate) fn assets_from(sightings: &[crate::agents::Sightings]) -> (Vec<Asset>
                 Some(&m.file),
             ));
         }
+        out.extend(s.plugins.iter().map(plugin_asset));
         problems.extend(s.problems.iter().cloned());
     }
     out.sort_by(|a, b| (&a.kind, &a.name, &a.project).cmp(&(&b.kind, &b.name, &b.project)));

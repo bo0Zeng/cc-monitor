@@ -44,6 +44,7 @@ fn sample() -> Catalog {
             dir: Some("/s/a".into()),
             digest: "d-a".into(),
             summary: json!({"files": 1}),
+            off: false,
         }],
         project_dirs: vec!["/p".into()],
         notes: Default::default(),
@@ -68,6 +69,7 @@ fn sample() -> Catalog {
                 dir: None,
                 digest: "d-a2".into(),
                 summary: json!({}),
+                off: false,
             },
             Asset {
                 kind: ExtKind::Mcp,
@@ -76,6 +78,7 @@ fn sample() -> Catalog {
                 dir: Some("/p/.mcp.json".into()),
                 digest: "d-m".into(),
                 summary: json!({"command": "x"}),
+                off: false,
             },
         ],
         project_dirs: vec![],

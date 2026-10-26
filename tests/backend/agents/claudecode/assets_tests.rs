@@ -305,3 +305,235 @@ fn a_session_sees_its_project_and_account_commands_and_skills() {
     assert_eq!(super::session_scan(None, &cfg).commands.len(), 2);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// ★ 插件两处读盘：安装记录 `plugins/installed_plugins.json`（第 2 版）记的各处 ＋ `skills/<名>/.claude-plugin/`（市场 `skills-dir`）。
+/// 清单给名字 · 版本 · 说明；组成按插件根里的 skills · commands · agents · hooks · `.mcp.json` 数名字。
+/// 开不开照六处 `enabledPlugins` 合并：托管 ＞ 本机项目设置 ＞ 项目设置 ＞ 用户设置两份 ＞ 清单默认；只给出处的码。
+/// 项目设置写了它的那个项目另出一条；装在项目里的那一条住那个项目。带清单的 skill 目录不再算 skill。
+#[test]
+fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings_merged() {
+    use crate::agents::{PluginFrom, PluginParts, PluginSeen};
+    let d = temp_dir("plugin-scan");
+    let cfg = d.join(".claude");
+    let proj = d.join("proj");
+    let proj2 = d.join("proj2");
+    // 市场插件：用户级装着，组成齐全。
+    let gh = cfg.join("plugins/cache/mkt/github/1.4.0");
+    put(
+        &gh,
+        ".claude-plugin/plugin.json",
+        r#"{"name":"github","version":"1.4.0","description":"GitHub 议题"}"#,
+    );
+    put(&gh, "skills/triage/SKILL.md", "---\ndescription: x\n---\n");
+    put(&gh, "commands/pr.md", "x");
+    put(&gh, "commands/issue.md", "x");
+    put(&gh, "agents/helper.md", "x");
+    put(
+        &gh,
+        "hooks/hooks.json",
+        r#"{"hooks":{"Stop":[],"PreToolUse":[]}}"#,
+    );
+    put(
+        &gh,
+        ".mcp.json",
+        r#"{"mcpServers":{"github":{"type":"http"}}}"#,
+    );
+    // 装在 proj2 里的那一个。
+    let fmt = cfg.join("plugins/cache/team/formatter/0.1.0");
+    put(
+        &fmt,
+        ".claude-plugin/plugin.json",
+        r#"{"name":"formatter","version":"0.1.0"}"#,
+    );
+    let record = serde_json::json!({
+        "version": 2,
+        "plugins": {
+            "github@mkt": [{ "scope": "user", "installPath": gh.display().to_string(), "version": "1.4.0" }],
+            "formatter@team": [{ "scope": "project", "installPath": fmt.display().to_string(),
+                                 "projectPath": proj2.display().to_string() }],
+        }
+    });
+    put(&cfg, "plugins/installed_plugins.json", &record.to_string());
+    // skills 目录里的插件：清单默认开，用户设置里关掉。
+    put(
+        &cfg,
+        "skills/pb/.claude-plugin/plugin.json",
+        r#"{"name":"planned-build","version":"0.5.4","defaultEnabled":true}"#,
+    );
+    put(
+        &cfg,
+        "skills/pb/skills/planned-build/SKILL.md",
+        "---\ndescription: x\n---\n",
+    );
+    put(
+        &cfg,
+        "skills/plain/SKILL.md",
+        "---\ndescription: plain\n---\n",
+    );
+    // 设置：用户级开 github · 关 planned-build（local 压过 settings.json）；proj 的 local 关 github；托管开 formatter。
+    put(
+        &cfg,
+        "settings.json",
+        r#"{"enabledPlugins":{"github@mkt":true,"planned-build@skills-dir":true}}"#,
+    );
+    put(
+        &cfg,
+        "settings.local.json",
+        r#"{"enabledPlugins":{"planned-build@skills-dir":false}}"#,
+    );
+    put(
+        &proj,
+        ".claude/settings.json",
+        r#"{"enabledPlugins":{"github@mkt":true}}"#,
+    );
+    put(
+        &proj,
+        ".claude/settings.local.json",
+        r#"{"enabledPlugins":{"github@mkt":false}}"#,
+    );
+    let policy = d.join("managed-settings.json");
+    put(
+        &d,
+        "managed-settings.json",
+        r#"{"enabledPlugins":{"formatter@team":true}}"#,
+    );
+
+    let projects = vec![proj.display().to_string(), proj2.display().to_string()];
+    let mut out = Sightings::default();
+    scan_plugins_at(&cfg, &[policy], &projects, &mut out);
+    scan_skills_at(&cfg.join(SKILLS_DIR), None, &mut out);
+    assert!(out.problems.is_empty(), "{:?}", out.problems);
+
+    let gh_parts = PluginParts {
+        skills: vec!["triage".into()],
+        commands: vec!["issue".into(), "pr".into()],
+        agents: vec!["helper".into()],
+        hooks: vec!["PreToolUse".into(), "Stop".into()],
+        mcp: vec!["github".into()],
+    };
+    let seen = |project: Option<&Path>,
+                name: &str,
+                market: &str,
+                root: &Path,
+                version: &str,
+                description: Option<&str>,
+                parts: PluginParts,
+                on: bool,
+                from: PluginFrom| PluginSeen {
+        project: project.map(|p| p.display().to_string()),
+        name: name.into(),
+        market: market.into(),
+        root: root.to_path_buf(),
+        version: Some(version.into()),
+        description: description.map(str::to_string),
+        parts,
+        on,
+        from,
+    };
+    let pb_parts = PluginParts {
+        skills: vec!["planned-build".into()],
+        ..Default::default()
+    };
+    let mut want = vec![
+        seen(
+            None,
+            "github",
+            "mkt",
+            &gh,
+            "1.4.0",
+            Some("GitHub 议题"),
+            gh_parts.clone(),
+            true,
+            PluginFrom::User,
+        ),
+        seen(
+            Some(&proj),
+            "github",
+            "mkt",
+            &gh,
+            "1.4.0",
+            Some("GitHub 议题"),
+            gh_parts,
+            false,
+            PluginFrom::Local,
+        ),
+        seen(
+            Some(&proj2),
+            "formatter",
+            "team",
+            &fmt,
+            "0.1.0",
+            None,
+            PluginParts::default(),
+            true,
+            PluginFrom::Managed,
+        ),
+        seen(
+            None,
+            "planned-build",
+            "skills-dir",
+            &cfg.join("skills/pb"),
+            "0.5.4",
+            None,
+            pb_parts,
+            false,
+            PluginFrom::User,
+        ),
+    ];
+    let key = |p: &PluginSeen| (p.name.clone(), p.project.clone());
+    want.sort_by_key(key);
+    let mut got = out.plugins.clone();
+    got.sort_by_key(key);
+    assert_eq!(got, want);
+    let skills: Vec<&str> = out.skills.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        skills,
+        vec!["plain"],
+        "带清单的 skill 目录算插件，不另成 skill"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 哪份设置都没写 ⇒ 照清单默认（没写默认 ⇒ 关着）；安装记录格式不认得 ⇒ 说出来，不当成没装。
+#[test]
+fn an_unmentioned_plugin_follows_its_manifest_and_an_unknown_record_is_said() {
+    use crate::agents::PluginFrom;
+    let d = temp_dir("plugin-default");
+    let cfg = d.join(".claude");
+    put(
+        &cfg,
+        "skills/a/.claude-plugin/plugin.json",
+        r#"{"name":"a","defaultEnabled":true}"#,
+    );
+    put(
+        &cfg,
+        "skills/b/.claude-plugin/plugin.json",
+        r#"{"name":"b"}"#,
+    );
+    put(
+        &cfg,
+        "plugins/installed_plugins.json",
+        r#"{"version":9,"plugins":{}}"#,
+    );
+    let mut out = Sightings::default();
+    scan_plugins_at(&cfg, &[], &[], &mut out);
+    let got: Vec<(&str, bool, PluginFrom)> = out
+        .plugins
+        .iter()
+        .map(|p| (p.name.as_str(), p.on, p.from))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("a", true, PluginFrom::Manifest),
+            ("b", false, PluginFrom::Manifest)
+        ]
+    );
+    assert_eq!(out.problems.len(), 1, "{:?}", out.problems);
+    assert!(
+        out.problems[0].contains("installed_plugins.json"),
+        "{:?}",
+        out.problems
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

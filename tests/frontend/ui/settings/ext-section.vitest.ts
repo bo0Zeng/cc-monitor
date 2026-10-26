@@ -591,6 +591,50 @@ describe("MCP：每台的小标与抽屉那一行", () => {
   });
 });
 
+describe("插件：一种 · 一颗筛选 · 关着一态（只读）", () => {
+  beforeEach(() => invokeMock.mockReset());
+  const line = "1.4.0 · 开着 · 用户设置";
+  const plugin = row(
+    "plugin",
+    "github",
+    [
+      cell("same", [{ ...place(user, "same"), line }], null, "插件只读"),
+      cell("off", [{ ...place(user, "off"), line: "1.3.2 · 关着 · 用户设置" }], null, "插件只读"),
+    ],
+    { about: "读写 GitHub" },
+  );
+
+  it("★ 种类一格写「插件」；点多一态「关着」（自己一个图标 · 悬停照态）；表下图例也有它", async () => {
+    const s = await page([listWith(demoMissing, [plugin])]);
+    expect(s.element.querySelector('.ext-row[data-key="plugin/github"] .ext-kind')?.textContent).toBe(copyText("extPage.kind.plugin"));
+    const got = dots(s, "github");
+    expect(got[1]).toEqual(["icon:stop", copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.off") })]);
+    expect(new Set(got.map(([g]) => g)).size, "关着与开着不是同一个图标").toBe(2);
+    expect(s.element.querySelector(".ext-legend")?.textContent).toContain(copyText("extPage.legend.off"));
+  });
+
+  it("★ 筛选多一颗「插件」：只留插件行；别的几颗不挑插件", async () => {
+    const s = await page([listWith(demoMissing, [plugin])]);
+    const rows = () => [...s.element.querySelectorAll(".ext-row[data-key]")].map((r) => r.getAttribute("data-key"));
+    const buttons = [...s.element.querySelectorAll(".ext-filter button")] as HTMLButtonElement[];
+    expect(buttons.map((b) => b.textContent)).toEqual(["all", "skill", "mcp", "plugin"].map((k) => copyText(`extPage.filter.${k}`)));
+    buttons[3].click();
+    expect(rows()).toEqual(["plugin/github"]);
+    buttons[1].click();
+    expect(rows()).not.toContain("plugin/github");
+  });
+
+  it("★ 抽屉：每台没有勾（只读）、说后端那一句；那一处后端写好的那一句（版本 · 开关 · 出处）原样列出", async () => {
+    const s = await page([listWith(demoMissing, [plugin])]);
+    open(s, "plugin/github");
+    const lines = machineLines(s);
+    expect(lines.map((l) => (l.querySelector(".ext-pick") as HTMLInputElement).disabled)).toEqual([true, true]);
+    expect(lines.map((l) => l.querySelector(":scope > .settings-hint")?.textContent)).toEqual(["插件只读", "插件只读"]);
+    expect(lines.map((l) => l.querySelector(".ext-place-line")?.textContent)).toEqual([line, "1.3.2 · 关着 · 用户设置"]);
+    expect(s.element.querySelectorAll(`.ext-drawer [data-action="install-many"]`).length).toBe(0);
+  });
+});
+
 describe("界面层零判定：扩展页不比较指纹、不读配置文件", () => {
   it("扩展页与它的读口两份源码里零处（正控：同一把尺子认得出一处现造的比较）", () => {
     expect(comparesFingerprints("if (a.digest === b.digest) x();")).toHaveLength(1);

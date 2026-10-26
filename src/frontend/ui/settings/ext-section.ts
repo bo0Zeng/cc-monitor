@@ -54,7 +54,7 @@ import { place } from "../kit/morph";
 import { openLoginDrawer } from "../login-drawer";
 import { accountAvatarEl } from "../account-color";
 
-type KindFilter = "all" | "skill" | "mcp";
+type KindFilter = "all" | ExtRow["kind"];
 
 /** 点的样式类（逐字写出：CSS 对账按字面认类名）。 */
 const DOT_CLASS: Record<ExtCell["state"], string> = {
@@ -62,6 +62,7 @@ const DOT_CLASS: Record<ExtCell["state"], string> = {
   differs: "ext-dot is-differs",
   missing: "ext-dot is-missing",
   project: "ext-dot is-project",
+  off: "ext-dot is-off",
 };
 
 /** 钩子那一行的语气类（逐字写出，同上）。 */
@@ -71,7 +72,7 @@ const TONE_CLASS: Record<"ok" | "bad" | "unknown", string> = {
   unknown: "ext-hook-state is-unknown",
 };
 
-const DOT_ICON: Record<ExtCell["state"], IconName> = { same: "success", differs: "half", missing: "ring", project: "folder" };
+const DOT_ICON: Record<ExtCell["state"], IconName> = { same: "success", differs: "half", missing: "ring", project: "folder", off: "stop" };
 
 /** MCP 那一格右上角的小标（哪一种由那台后端的 `mcp-read` 定：`mark`）。 */
 const MARK_CLASS: Record<NonNullable<McpEntry["mark"]>, string> = {
@@ -109,6 +110,8 @@ export function stateText(state: ExtCell["state"], places: readonly ExtPlace[]):
       return copyText("extPage.state.project", {
         dirs: places.flatMap((p) => (p.at.level === "project" ? [p.at.dir] : [])).join(copyText("extPage.list.sep")),
       });
+    case "off":
+      return copyText("extPage.state.off");
   }
 }
 
@@ -133,11 +136,20 @@ function legendText(state: ExtCell["state"]): string {
       return copyText("extPage.state.missing");
     case "project":
       return copyText("extPage.legend.project");
+    case "off":
+      return copyText("extPage.legend.off");
   }
 }
 
 function kindText(r: ExtRow): string {
-  return r.kind === "skill" ? copyText("extPage.kind.skill") : copyText("extPage.kind.mcp");
+  switch (r.kind) {
+    case "skill":
+      return copyText("extPage.kind.skill");
+    case "mcp":
+      return copyText("extPage.kind.mcp");
+    case "plugin":
+      return copyText("extPage.kind.plugin");
+  }
 }
 
 function machineName(m: ExtMachine): string {
@@ -241,6 +253,7 @@ export class ExtSection {
       ["all", copyText("extPage.filter.all")],
       ["skill", copyText("extPage.filter.skill")],
       ["mcp", copyText("extPage.filter.mcp")],
+      ["plugin", copyText("extPage.filter.plugin")],
     ];
     for (const [k, label] of kinds) {
       const b = button({ label, onClick: () => {
@@ -394,7 +407,9 @@ export class ExtSection {
       items.push(line);
     }
     const legend = el("div", "ext-legend");
-    for (const st of ["same", "differs", "missing", "project"] as const) {
+    // 「关着」只有插件有：有插件行才列它。
+    const states = rows.some((r) => r.kind === "plugin") ? (["same", "differs", "missing", "project", "off"] as const) : (["same", "differs", "missing", "project"] as const);
+    for (const st of states) {
       const item = el("span", "ext-legend-item");
       item.append(dotOf(st), el("span", "", legendText(st)));
       legend.appendChild(item);
@@ -639,7 +654,7 @@ export class ExtSection {
     const mcp = this.mcpEntry(r, m);
     if (mcp) this.mcpLines(line, m, mcp);
     if (!bring && c.note) line.appendChild(el("div", "settings-hint", c.note));
-    if (!only || only.note !== null || (r.kind === "skill" && only.dir !== null)) {
+    if (!only || only.note !== null || only.line !== undefined || (r.kind === "skill" && only.dir !== null)) {
       const places = el("div", "ext-places");
       for (const p of c.places) places.appendChild(this.placeRow(r, m, p, slot, only !== null));
       line.appendChild(places);
@@ -697,6 +712,7 @@ export class ExtSection {
     const row = el("div", "ext-place");
     row.appendChild(el("span", "ext-place-at", locText(p.at)));
     row.appendChild(el("span", "ext-machine-state", stateText(p.state, [])));
+    if (p.line !== undefined) row.appendChild(el("span", "ext-place-line", p.line));
     if (p.uninstall && !uninstallAbove) {
       const b = button({ label: copyText("extPage.button.uninstall"), onClick: () => void this.openRemove(r, m, p.at) });
       b.disabled = slot.busy === true || slot.card !== undefined || !m.reachable;

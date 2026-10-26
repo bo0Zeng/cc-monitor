@@ -58,6 +58,7 @@ fn snap(gen: u64, names: &[&str]) -> Snapshot {
                 dir: None,
                 digest: format!("d-{n}"),
                 summary: json!({}),
+                off: false,
             })
             .collect(),
         project_dirs: vec![],
@@ -188,6 +189,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
         dir: None,
         digest: d.into(),
         summary: json!({}),
+        off: false,
     };
     let me = Snapshot {
         label: "me".into(),

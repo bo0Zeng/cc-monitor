@@ -2620,8 +2620,54 @@ pub(crate) struct McpSeen {
 pub(crate) struct Sightings {
     pub skills: Vec<SkillSeen>,
     pub mcp: Vec<McpSeen>,
+    pub plugins: Vec<PluginSeen>,
     /// 读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」不许合成一句。
     pub problems: Vec<String>,
+}
+
+/// 看到的一个插件：`project` 同 [`SkillSeen::project`]（装在那个项目里，或那个项目的设置里写了它开不开）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PluginSeen {
+    pub project: Option<String>,
+    /// 清单里的名字。
+    pub name: String,
+    /// 它从哪个市场来（`enabledPlugins` 里 `<名>@<市场>` 的后一半）。
+    pub market: String,
+    /// 插件根（清单在它下面）。
+    pub root: PathBuf,
+    /// 清单里的 `version` / `description`（原话）。
+    pub version: Option<String>,
+    pub description: Option<String>,
+    pub parts: PluginParts,
+    /// 合并完那一家所有设置之后开着。
+    pub on: bool,
+    /// 那个开 / 关出自哪儿。
+    pub from: PluginFrom,
+}
+
+/// 一个插件带了什么：每样列名字（排好序）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PluginParts {
+    pub skills: Vec<String>,
+    pub commands: Vec<String>,
+    pub agents: Vec<String>,
+    pub hooks: Vec<String>,
+    pub mcp: Vec<String>,
+}
+
+/// 插件开不开那一句出自哪儿（码；字由通用层写）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PluginFrom {
+    /// 托管设置（策略文件 · 远端下发的那一份）。
+    Managed,
+    /// 项目里只在这台的那份设置。
+    Local,
+    /// 项目设置。
+    Project,
+    /// 用户设置。
+    User,
+    /// 哪份设置都没写，照清单默认。
+    Manifest,
 }
 
 /// 这几个配置根底下装着的插件（插件根 ＋ 名字）：逐家问（注册序）、配置根的次序。

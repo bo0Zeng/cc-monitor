@@ -1773,6 +1773,10 @@ body.settings-window-mode .settings-panel {
   .ext-dot.is-project {
     color: var(--accent);
   }
+  /* 装了 · 关着（只有插件）：比「未装」重一档，不着色。 */
+  .ext-dot.is-off {
+    color: var(--text-2);
+  }
   .ext-drawer {
     position: absolute;
     top: 0;
@@ -1842,6 +1846,11 @@ body.settings-window-mode .settings-panel {
   .ext-place-at {
     font-family: var(--font-mono);
     font-size: var(--font-size-mono);
+  }
+  /* 那一处后端写好的那一句（插件：版本 · 开关 · 出处）。 */
+  .ext-place-line {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
   }
   /* 备注：内置的（自带的扩展）＋ 用户写的；表上那一行一个小记号。 */
   .ext-note-mark {

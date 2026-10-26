@@ -77,6 +77,7 @@ fn asset(kind: ExtKind, name: &str, digest: &str, project: Option<&str>) -> Asse
         dir: Some(format!("/d/{name}")),
         digest: digest.into(),
         summary: json!({ "description": format!("about {name}") }),
+        off: false,
     }
 }
 
@@ -1136,6 +1137,8 @@ fn no_production_code_writes_the_agent_settings_file() {
         "src/backend/agents/claudecode/accounts.rs",
         // 本机 managed 策略文件 `managed-settings.json`（只读：起会话前看它许不许加载会话插件）。
         "src/backend/agents/claudecode/asks.rs",
+        // 读插件开关：远端下发的那份 `remote-settings.json` 与各级设置里的 `enabledPlugins`（只读）。
+        "src/backend/agents/claudecode/assets.rs",
         "src/backend/agents/claudecode/footprint.rs",
         "src/backend/agents/claudecode/paths.rs",
     ];
@@ -1549,4 +1552,101 @@ fn ext_loc_judged_bad_args_omits_sentinel_value_from_rejection() {
         rejection.contains("place"),
         "拒绝体应包含字段名：{rejection}"
     );
+}
+
+/// ★ 插件一格：用户级开着 ⇒ 与「这一版」比（`same` / `differs`）· 用户级关着、项目里开着 ⇒ `project` · 装着却都关着 ⇒ `off` · 没有 ⇒ `missing`。
+/// 插件只读：哪一格都没有「装到…」也没有「卸载」，说同一句为什么；每处带自己那一句（版本 · 开关 · 出处）。卸载那条命令收到插件 ⇒ 拒。
+#[test]
+fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
+    let ro = copy_text("beExt.note.pluginReadOnly", &[]);
+    let plugin = |digest: &str, project: Option<&str>, off: bool| Asset {
+        off,
+        summary: json!({ "market": "mkt", "version": "1.0", "from": "user",
+                         "parts": { "skills": ["triage"], "commands": [], "agents": [], "hooks": ["Stop"], "mcp": [] } }),
+        ..asset(ExtKind::Plugin, "github", digest, project)
+    };
+    let mut cat = asset_catalog::fresh("h".into());
+    let reach: Vec<(String, Option<String>)> = ["a", "b", "c", "d", "e"]
+        .iter()
+        .map(|k| (k.to_string(), Some(k.to_string())))
+        .collect();
+    cat.machines.insert("h".into(), snap("me@h", vec![], &[]));
+    cat.machines
+        .insert("a".into(), snap("a", vec![plugin("p1", None, false)], &[]));
+    cat.machines
+        .insert("b".into(), snap("b", vec![plugin("p1", None, false)], &[]));
+    cat.machines
+        .insert("c".into(), snap("c", vec![plugin("p2", None, false)], &[]));
+    cat.machines.insert(
+        "d".into(),
+        snap(
+            "d",
+            vec![plugin("p1", None, true), plugin("p1", Some("/w"), false)],
+            &["/w"],
+        ),
+    );
+    cat.machines
+        .insert("e".into(), snap("e", vec![plugin("p1", None, true)], &[]));
+    let list = table(&cat, &reach);
+    let row = list
+        .rows
+        .iter()
+        .find(|r| r.kind == ExtKind::Plugin)
+        .expect("插件那一行");
+    let got: Vec<String> = row.cells.iter().map(brief).collect();
+    let note = format!("note:{ro}");
+    assert_eq!(
+        got,
+        vec![
+            format!("missing:user=missing {note}"),
+            format!("same:user=same {note}"),
+            format!("same:user=same {note}"),
+            format!("differs:user=differs {note}"),
+            format!("project:user=off,/w=same {note}"),
+            format!("off:user=off {note}"),
+        ]
+    );
+    assert!(row.cells.iter().all(|c| c.bring.is_none()));
+    let line = row.cells[1].places[0].line.clone().expect("那一处的那一句");
+    assert_eq!(
+        line,
+        copy_text(
+            "beExt.plugin.line",
+            &[
+                ("version", "1.0"),
+                ("on", &copy_text("beExt.plugin.on", &[])),
+                ("from", &copy_text("beExt.plugin.fromUser", &[])),
+            ],
+        )
+    );
+    let labels: Vec<String> = row.detail.iter().map(|d| d.label.clone()).collect();
+    assert_eq!(
+        labels,
+        [
+            "beExt.detail.market",
+            "beExt.detail.version",
+            "beExt.part.skills",
+            "beExt.part.hooks"
+        ]
+        .iter()
+        .map(|k| copy_text(k, &[]))
+        .collect::<Vec<_>>()
+    );
+    // 卸载那条命令收到插件 ⇒ 拒。
+    let d = temp("plugin-uninstall");
+    let env = Env {
+        home: Some(d.clone()),
+        skills: None,
+        user_mcp: None,
+        ledger: None,
+    };
+    let door = HomeDoor(d.clone());
+    let crate::wire::spec::Fail { code, message, .. } = answer_uninstall_preview(
+        &door,
+        &env,
+        &json!({ "kind": "plugin", "name": "github", "at": { "level": "user" } }),
+    )
+    .expect_err("插件给卸了");
+    assert_eq!((code.as_str(), message), ("refused", ro));
+    let _ = std::fs::remove_dir_all(&d);
 }

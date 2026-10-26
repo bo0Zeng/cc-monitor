@@ -65,6 +65,7 @@ fn skills(names: &[&str]) -> cat::Scanned {
                 dir: None,
                 digest: format!("d-{n}"),
                 summary: json!({}),
+                off: false,
             })
             .collect(),
         ..cat::Scanned::default()
