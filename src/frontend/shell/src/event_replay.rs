@@ -67,7 +67,7 @@ pub trait ItemSink: Send + Sync {
 /// 本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
-/// 本文件认的第二种流：一台机器上的活卡（体是 [`crate::ui_contract::SessionLiveCardPayload`]，后端拼好的成品）。
+/// 本文件认的第二种流：一台机器上的活卡（体是 [`crate::ui_contract::SessionLiveCardsPayload`]：某会话某运行此刻整份的卡，壳照端核心的活卡板折好）。
 ///
 /// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（一条帧路 ＋ `subscribe`），差别只有三处：
 /// ① **没有留存**：活卡不进留存，订阅当场就是实时的（没有就绪点、没有重放）；
@@ -206,6 +206,8 @@ struct Inner {
     snapshot_level: u32,
     /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
     kept_moved: bool,
+    /// 每台的活卡板（端核心那一份折法，键 = origin 线上串）：界面收的是折好的整份。那台看不见了 ⇒ 清空。
+    live: HashMap<String, resident_client::live::Board>,
 }
 
 /// 替界面向那台退订终端画面的那条帧命令（后端 `control/terminal_follow.rs::UNFOLLOW`）。
@@ -620,6 +622,7 @@ impl EventReplay {
                 main_kept: BTreeSet::new(),
                 snapshot_level: 0,
                 kept_moved: false,
+                live: HashMap::new(),
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
@@ -1171,22 +1174,23 @@ impl EventReplay {
     }
 
     /// 那台后端发来的一帧活卡（核心拼好的成品；分派第一层 `stream_source::route` 直接交来，本机远端同一处）：**不进留存**，
-    /// 帧体原样、带上哪台，交给订了那台机器 `session-live-card` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
-    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：活卡可丢，攒着只会让它更晚。
-    /// **不认识活卡**：对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
+    /// 交那台的活卡板折（端核心 `resident_client::live`，手机核心同一份），变了的那一处（某会话某运行）整份、带上哪台，
+    /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
+    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：每一格都是那一处的整份，丢了一格下一格就补齐。
+    /// 对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
     pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
-        let payload = crate::ui_contract::SessionLiveCardPayload {
-            origin: origin.clone(),
-            card: crate::ui_contract::RecordBody::from_json(
-                serde_json::to_string(&card).unwrap_or_default(),
-            )
-            .unwrap_or_else(|| {
-                crate::ui_contract::RecordBody::from_json("{}".to_string()).expect("{} is JSON")
-            }),
-        };
-        let origin = origin.as_wire_str().to_string();
+        let at = origin.as_wire_str().to_string();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
+            let board = inner.live.entry(at.clone()).or_default();
+            let Some((sid, run)) = board.apply(&card) else {
+                return;
+            };
+            let payload = crate::ui_contract::SessionLiveCardsPayload {
+                origin: origin.clone(),
+                live: board.cards_of(&sid, run.as_deref()),
+            };
+            let origin = at;
             let sink = Arc::clone(&inner.sink);
             let body = Body(serde_json::to_vec(&payload).unwrap_or_default());
             let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
@@ -1249,6 +1253,10 @@ impl EventReplay {
         let (sink, told) = {
             let mut inner = self.inner.lock();
             inner.seen.insert(origin.to_string(), seen);
+            // 看不见了 ⇒ 那台的活卡不会再有下文（界面收到 `Unseen` 自己全撤）；接回来那台给名单里的会话补整卡。
+            if !seen {
+                inner.live.remove(origin);
+            }
             let sink = Arc::clone(&inner.sink);
             let told: Vec<(String, u64)> = inner
                 .subs
@@ -1440,6 +1448,10 @@ impl EventReplay {
             .collect();
         for k in keys {
             drop_tail(&mut inner, &k);
+        }
+        // tab 关了 ⇒ 它的活卡也不留（界面那一侧同一刻摘掉）。
+        for board in inner.live.values_mut() {
+            board.drop_session(session_id);
         }
         self.tell_kept(&mut inner);
     }

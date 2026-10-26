@@ -38,7 +38,7 @@ async fn a_live_card_frame_goes_straight_into_that_machines_live_card_stream() {
     let r = replay();
     let box_a = crate::origin::Origin("handoff-live-a".into());
     let mut s = r.subscribe_stream(&box_a, "session-live-card", None);
-    let line = r#"{"kind":"live_card","sid":"s1","card":7,"n":2,"op":"close","why":"record"}"#;
+    let line = r#"{"kind":"live_card","sid":"s1","card":7,"n":0,"op":"open","rid":"m","phase":"awaiting","clipped":false,"blocks":[]}"#;
     assert!(
         route(&box_a, None, frame(line)).is_none(),
         "活卡不是有序的那几种"
@@ -46,8 +46,8 @@ async fn a_live_card_frame_goes_straight_into_that_machines_live_card_stream() {
     let got = next_frame(&mut s).await.expect("活卡没进那台的活卡流");
     assert_eq!(got["origin"], "handoff-live-a");
     assert_eq!(
-        got["card"],
-        serde_json::json!({"sid": "s1", "card": 7, "n": 2, "op": "close", "why": "record"})
+        got["live"],
+        serde_json::json!({"sid": "s1", "cards": [{"card": 7, "rid": "m", "phase": "awaiting", "clipped": false, "blocks": []}]})
     );
 }
 

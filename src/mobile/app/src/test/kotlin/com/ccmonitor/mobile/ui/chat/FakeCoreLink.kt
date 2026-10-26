@@ -2,11 +2,10 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
 import com.ccmonitor.mobile.core.claude.link.LinkState
-import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
@@ -16,9 +15,12 @@ import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
-import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionFate
+import com.ccmonitor.mobile.core.wire.gen.SessionState
 import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,15 +32,15 @@ internal class FakeCoreLink :
     CoreLink,
     SessionWatch {
     override val state = MutableStateFlow<LinkState>(LinkState.Up())
-    override val table = MutableStateFlow(SessionTable())
+    override val table = MutableStateFlow(EMPTY_BOOK)
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
     override val epoch = MutableStateFlow(0L)
-    private val liveFlow = MutableSharedFlow<LiveCard>(extraBufferCapacity = 64)
-    override val live: SharedFlow<LiveCard> = liveFlow.asSharedFlow()
+    private val liveFlow = MutableSharedFlow<LiveCards>(extraBufferCapacity = 64)
+    override val live: SharedFlow<LiveCards> = liveFlow.asSharedFlow()
 
-    /** 流上来一帧活卡（照线上那一形，经生成的 [LiveCard] 解）。 */
-    suspend fun live(frame: Map<String, Any?>) = liveFlow.emit(Wire.bind<LiveCard>(frame + ("kind" to "live_card"))!!)
+    /** 核心交来一处整份的活卡（照线上那一形，经生成的 [LiveCards] 解）。 */
+    suspend fun live(cards: Map<String, Any?>) = liveFlow.emit(Wire.bind<LiveCards>(cards)!!)
 
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
@@ -224,11 +226,15 @@ internal class FakeCoreLink :
         face: SessionFace = Faces.of("live-idle"),
         path: String? = "/p/$sid.jsonl",
     ) {
-        table.value =
-            table.value.copy(
-                sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd)),
-                faces = table.value.faces + (sid to face),
-            )
+        table.value = table.value.copy(live = table.value.live + (sid to liveSeat(sid, face, path = path, cwd = cwd)))
+    }
+
+    /** 那台说这一条走了（去向那一张脸）。 */
+    fun left(
+        sid: String,
+        face: SessionFace,
+    ) {
+        table.value = table.value.copy(live = table.value.live - sid, left = table.value.left + (sid to leftSeat(sid, face)))
     }
 
     companion object {
@@ -352,3 +358,17 @@ internal class FakeCoreLink :
         }
     }
 }
+
+/** 簿里活着的一条（宣告格只摆测试要的那几格；整份由核心折，测试直接摆成品）。 */
+internal fun liveSeat(
+    sid: String,
+    face: SessionFace,
+    path: String? = null,
+    cwd: String? = null,
+) = SessionAdded(sid = sid, agentKind = "claude", cwd = cwd, path = path, face = face, pid = 0, label = sid)
+
+/** 簿里走了的一条（可重连那一种；测试只看脸）。 */
+internal fun leftSeat(
+    sid: String,
+    face: SessionFace,
+) = SessionState(sid, SessionFate.RECONNECTABLE, face)

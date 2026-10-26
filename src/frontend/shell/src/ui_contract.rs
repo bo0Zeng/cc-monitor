@@ -271,14 +271,15 @@ pub struct SessionUnseenPayload {
     pub face: Option<cmd_wire::frame::SessionFace>,
 }
 
-/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：后端 `live` 帧的帧体原样（核心拼好的活卡，见后端 `wire::LiveCard`）＋ 哪台机器。
+/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台某会话某运行此刻整份的活卡（壳照端核心的活卡板折好，
+/// `resident_client::live`；界面照画、不认 `op`）。空 ⇒ 那里此刻没有卡。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionLiveCardPayload {
+pub struct SessionLiveCardsPayload {
     pub origin: crate::origin::Origin,
-    #[cfg_attr(test, ts(type = "import(\"./LiveCard\").LiveCard"))]
-    pub card: RecordBody,
+    #[cfg_attr(test, ts(type = "import(\"./LiveCards\").LiveCards"))]
+    pub live: resident_client::live::LiveCards,
 }
 
 /// `listed` 格 的 payload：哪台机器的清单报完了。

@@ -261,14 +261,16 @@ fn when_full_sessions_that_are_not_live_go_first() {
     let mut r = EventReplay::new();
     r.book = book;
     r.inner.lock().held_cap = 3_000;
-    book.write().step(In::Live {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        sid: "live".into(),
-        meta: crate::frame_fixtures::session_added("x", serde_json::json!({})),
+        frame: cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+            "live",
+            serde_json::json!({}),
+        )),
     });
-    book.write().step(In::Left {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("done", "T"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("done", "T")),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -858,24 +860,67 @@ async fn the_changed_accounts_stream_carries_only_reachability_and_account_notic
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
+/// 那张卡的第 `n` 帧：0 ＝ 整卡（一块空正文），之后每帧在那一块后面接一个 `x`（折好的正文长度就是 `n`）。
 fn tap(n: u64) -> cmd_wire::live::LiveCard {
-    serde_json::from_str(&format!(
-        "{{\"sid\":\"sid-t\",\"card\":0,\"n\":{n},\"op\":\"text\",\"i\":0,\"s\":\"x\"}}"
-    ))
-    .unwrap()
+    let v = if n == 0 {
+        serde_json::json!({"sid":"sid-t","card":0,"n":0,"op":"open","rid":"m","phase":"streaming","clipped":false,
+            "blocks":[{"kind":"text","text":""}]})
+    } else {
+        serde_json::json!({"sid":"sid-t","card":0,"n":n,"op":"text","i":0,"s":"x"})
+    };
+    serde_json::from_value(v).unwrap()
 }
 
+/// 交出去的一格是那一处整份的活卡（壳折好的）：读出它折到了第几帧（正文长度）。
 fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
     match i {
         WItem::Frame { seq, body } => {
             let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-            match v.get("card") {
-                Some(l) => ("tap", *seq, l["n"].as_u64().unwrap()),
+            match v.get("live") {
+                Some(l) => {
+                    let text = l["cards"][0]["blocks"][0]["text"].as_str().unwrap_or("");
+                    ("tap", *seq, text.chars().count() as u64)
+                }
                 None => what(i),
             }
         }
         other => what(other),
     }
+}
+
+/// 交的是折好的整份：丢过的那几帧不用补，下一格就是此刻的整张；那台看不见了 ⇒ 板清空，接回来之前的增量不再接到旧卡上；关 tab ⇒ 那个会话的卡不留。
+#[tokio::test]
+async fn live_cards_go_out_folded_whole_and_a_lost_machine_starts_from_an_empty_board() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 7, &local(), "session-live-card", None, 100);
+    rec.clear();
+    for n in 0..3 {
+        r.on_live_card(&local(), tap(n));
+    }
+    let last = rec.all().last().cloned().expect("交了");
+    let WItem::Frame { body, .. } = last else {
+        panic!("{last:?}")
+    };
+    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({"origin":"<local>","live":{"sid":"sid-t","cards":[
+            {"card":0,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"xx"}]}]}})
+    );
+    r.origin_seen(&local(), false);
+    rec.clear();
+    r.on_live_card(&local(), tap(3));
+    assert!(
+        rec.all().iter().all(|i| tap_what(i).0 != "tap"),
+        "看不见之后的增量接到了旧卡上"
+    );
+    r.origin_seen(&local(), true);
+    r.on_live_card(&local(), tap(0));
+    r.forget("sid-t");
+    rec.clear();
+    r.on_live_card(&local(), tap(1));
+    assert!(rec.all().is_empty(), "关了 tab 的卡还在板上");
 }
 
 /// T5b：订了 `session-live-card` ⇒ 当场就是实时的（没有就绪点、没有重放）；有 credit 交、没 credit 丢且位置照占、`want` 回来原位 `Gap`；
@@ -1048,14 +1093,16 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Live {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        sid: "a".into(),
-        meta: crate::frame_fixtures::session_added("x", serde_json::json!({})),
+        frame: cmd_wire::frame::Frame::SessionAdded(crate::frame_fixtures::session_added(
+            "a",
+            serde_json::json!({}),
+        )),
     });
-    book.write().step(In::Left {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("b", "T"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("b", "T")),
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
@@ -1116,12 +1163,13 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
     use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Listed {
+    book.write().step(In::Told {
         origin: "<local>".into(),
+        frame: cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
     });
-    book.write().step(In::Left {
+    book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("p", "那台写的"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("p", "那台写的")),
     });
     r.set_main_kept([("<local>".to_string(), "p".to_string())]);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
@@ -1147,15 +1195,16 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     use crate::session_book::In;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
-    book.write().step(In::Listed {
+    book.write().step(In::Told {
         origin: "<local>".into(),
+        frame: cmd_wire::frame::Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
     });
     r.on_line_batch_awaited(lines("x", 0..1)).await;
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
     r.ready_point(None).await;
-    let out = book.write().step(In::Left {
+    let out = book.write().step(In::Told {
         origin: "<local>".into(),
-        state: ended_state("x", "那台写的"),
+        frame: cmd_wire::frame::Frame::SessionState(ended_state("x", "那台写的")),
     });
     r.on_lifecycle("<local>", out.iter().map(|o| o.frame()).collect());
     let ended: Vec<serde_json::Value> = rec

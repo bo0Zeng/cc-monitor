@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
+import com.ccmonitor.mobile.core.claude.link.faces
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
 import kotlinx.coroutines.CoroutineScope
@@ -94,7 +95,7 @@ class NeedsBoard(
                 merge(
                     src.pushes.filter { it.wholeMayChange() }.map { },
                     src.link.table
-                        .map { t -> t.faces.mapValues { it.value.dot } }
+                        .map { t -> t.faces().mapValues { it.value.dot } }
                         .distinctUntilChanged()
                         .drop(1)
                         .map { },

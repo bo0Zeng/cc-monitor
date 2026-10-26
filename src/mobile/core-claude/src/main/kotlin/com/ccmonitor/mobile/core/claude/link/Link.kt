@@ -4,10 +4,11 @@ import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
-import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -69,15 +70,17 @@ sealed interface Deploying {
     ) : Deploying
 }
 
-/** 一台的常驻流对外的那几样：会话表 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */
+/** 一台的常驻流对外的那几样：会话簿 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */
 interface CoreLink {
     /** 此刻通不通（核心判的）：断着 ⇒ 那台离线，屏上那几颗要连着那台的按钮都灰。 */
     val state: StateFlow<LinkState>
-    val table: StateFlow<SessionTable>
+
+    /** 这台的会话簿：核心折好的整份（`resident_client::book`，桌面同一份折法）。 */
+    val table: StateFlow<SessionBook>
     val lines: SharedFlow<RecordLine>
 
-    /** 流上的活卡帧（只有名单里的会话）。可丢：丢了一帧那张卡接不上、先不画，等那台下一张整卡。 */
-    val live: SharedFlow<LiveCard>
+    /** 活卡：某会话某运行此刻整份的卡（核心折好，只有名单里的会话）。可丢：丢了一格，下一格就是那一处的整份。 */
+    val live: SharedFlow<LiveCards>
 
     /**
      * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），

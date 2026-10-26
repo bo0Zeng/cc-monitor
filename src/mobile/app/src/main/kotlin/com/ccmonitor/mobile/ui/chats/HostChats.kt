@@ -11,9 +11,9 @@ import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.deployFix
+import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.retry
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.copy.copyText
@@ -23,6 +23,7 @@ import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
@@ -185,7 +186,7 @@ data class HostSnap(
     val hostId: String,
     val machine: String,
     val link: LinkState,
-    val table: SessionTable,
+    val table: SessionBook,
     val list: Fetched<HistoryListPage>,
     val cached: HistoryListPage?,
     val deploying: Deploying?,
@@ -298,9 +299,9 @@ private fun rowOf(
     hostId: String,
     machine: String,
     r: HistoryRow,
-    table: SessionTable?,
+    table: SessionBook?,
 ): ChatRow {
-    val face = if (table == null) r.face.takeIf { it.settled } else table.faces[r.sessionId] ?: r.face
+    val face = if (table == null) r.face.takeIf { it.settled } else table.face(r.sessionId) ?: r.face
     val (status, dot) =
         if (face == null) {
             Toned(copyText("newSession.machine.offline", "machine" to machine), Tone.PLAIN) to SessionDot.UNKNOWN

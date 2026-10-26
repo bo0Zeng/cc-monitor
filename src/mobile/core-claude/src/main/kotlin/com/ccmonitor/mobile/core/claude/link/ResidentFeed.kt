@@ -10,10 +10,11 @@ import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.DeployEnd
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
-import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.Moved
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.arr
 import com.ccmonitor.mobile.core.wire.gen.dict
 import kotlinx.coroutines.CancellationException
@@ -38,8 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）：
- * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（生成的类照它解，缺一格就是两端契约对不上，不补默认值）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `book` · `live` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `moved` · `deploy` · `batch` · `batch_keep`）：
+ * 每一样的形状是 `cmd-wire` 的 `phone` 那一份（会话簿 · 活卡是端核心 `resident-client` 那一份）—— 生成的类照它解，缺一格就是两端契约对不上，不补默认值。
  */
 interface ResidentCore {
     fun open(
@@ -164,8 +165,8 @@ class ResidentFeed(
     /** SSH 够没够着那一台（拨通 · 认证过），与 [state] 分开：那台常驻后端起不来时照样是 `true`。SSH 那层（终端 · 文件）跟它走。 */
     val sshReached: StateFlow<Boolean> = sshFlow.asStateFlow()
 
-    private val tableFlow = MutableStateFlow(SessionTable())
-    override val table: StateFlow<SessionTable> = tableFlow.asStateFlow()
+    private val tableFlow = MutableStateFlow(EMPTY_BOOK)
+    override val table: StateFlow<SessionBook> = tableFlow.asStateFlow()
 
     private val epochFlow = MutableStateFlow(0L)
     override val epoch: StateFlow<Long> = epochFlow.asStateFlow()
@@ -180,8 +181,8 @@ class ResidentFeed(
     /** 流上的 `line` 帧。满了 ⇒ 这里停收（核心那一侧跟着停读、SSH 窗口停发），不丢。 */
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
 
-    private val liveFlow = MutableSharedFlow<LiveCard>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    override val live: SharedFlow<LiveCard> = liveFlow.asSharedFlow()
+    private val liveFlow = MutableSharedFlow<LiveCards>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val live: SharedFlow<LiveCards> = liveFlow.asSharedFlow()
 
     private val fromFlow = MutableSharedFlow<WatchFrom>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val from: SharedFlow<WatchFrom> = fromFlow.asSharedFlow()
@@ -359,9 +360,7 @@ class ResidentFeed(
     ) {
         when (kind) {
             "state" -> Wire.read<LinkLine>(body)?.let(::onState) ?: broke(kind, body)
-            "frame" -> onFrameLine(body)
-            // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
-            "unread" -> broke("frame", body)
+            "frame", "unread", "book", "live" -> onStream(kind, body)
             "watch_from" -> onWatchFrom(body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
@@ -385,10 +384,8 @@ class ResidentFeed(
                 else -> null
             }
         when (line) {
-            is LinkLine.Connecting -> {
-                tableFlow.value = SessionTable()
-                stateFlow.value = LinkState.Connecting
-            }
+            // 会话簿随旧连接作废：核心在这一行之前交了空簿。
+            is LinkLine.Connecting -> stateFlow.value = LinkState.Connecting
             is LinkLine.Up -> {
                 if (line.epoch != epochFlow.value) epochFlow.value = line.epoch
                 stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes, busy)
@@ -400,17 +397,26 @@ class ResidentFeed(
         if (deployFlow.value is Deploying.Done && (now is LinkState.Down || (now as? LinkState.Up)?.notice != null)) deployFlow.value = null
     }
 
+    /** 流上来的那几样：别的帧 · 核心解不开的一帧 · 核心折好的整份（会话簿换掉手上那一本；活卡是那一处此刻整份的卡）。 */
+    private suspend fun onStream(
+        kind: String,
+        body: String,
+    ) {
+        when (kind) {
+            "frame" -> onFrameLine(body)
+            // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
+            "unread" -> broke("frame", body)
+            "book" -> Wire.read<SessionBook>(body)?.let { tableFlow.value = it } ?: broke(kind, body)
+            else -> Wire.read<LiveCards>(body)?.let(liveFlow::tryEmit) ?: broke(kind, body)
+        }
+    }
+
     private suspend fun onFrameLine(body: String) {
         Json.obj(body)?.let { onFrame(it) } ?: broke("frame", body)
     }
 
     private suspend fun onFrame(frame: Map<String, Any?>) {
-        val next = tableFlow.value.step(frame, onBreak)
-        tableFlow.value = next
-        when (frame["kind"]) {
-            CHANGED -> Wire.bind<Changed>(frame)?.let(changedFlow::tryEmit) ?: broke("frame", frame.toString())
-            LIVE_CARD -> Wire.bind<LiveCard>(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
-        }
+        if (frame["kind"] == CHANGED) Wire.bind<Changed>(frame)?.let(changedFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
     }
@@ -482,8 +488,7 @@ class ResidentFeed(
         /** 装后端之前等 SSH 那层交到核心，最多等这么久。 */
         const val SSH_WAIT_MS = 15_000L
 
-        /** 流上 `changed` · `live_card` 那两种帧的 `kind`。 */
+        /** 流上 `changed` 那种帧的 `kind`。 */
         const val CHANGED = "changed"
-        const val LIVE_CARD = "live_card"
     }
 }
