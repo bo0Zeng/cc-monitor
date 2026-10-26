@@ -96,7 +96,7 @@ fun ChatTranscript(
     // 视口高度也在 key 里：键盘弹起把消息区压矮时，贴着底的照样看得到最新那几行。
     // 活卡逐字长在正文尾巴上：它的字数也在 key 里，贴着底时跟着它长。
     val lastUnit = state.units.lastOrNull()
-    val liveLength = state.live.sumOf { c -> c.blocks.sumOf { it.text.length } + 1 }
+    val liveLength = state.live.sumOf { c -> c.blocks.sumOf { it.text.orEmpty().length } + 1 }
     val total = state.units.size + state.live.size
     val viewport by remember { derivedStateOf { listState.layoutInfo.viewportSize.height } }
 

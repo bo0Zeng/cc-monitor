@@ -4763,6 +4763,7 @@ dependencies = [
  "test-home",
  "tokio",
  "tracing",
+ "ts-rs",
 ]
 
 [[package]]

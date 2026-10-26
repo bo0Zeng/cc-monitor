@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionPermission
 import com.ccmonitor.mobile.core.claude.link.blocked
+import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.FactsReply
@@ -137,7 +138,7 @@ internal class ChatChips(
                     if (st is LinkState.Down) {
                         copyText("newSession.machine.offline", "machine" to machine).let { it to it }
                     } else {
-                        val can = t.faces[s]?.can
+                        val can = t.face(s)?.can
                         can?.model?.blocked() to can?.permission?.blocked()
                     }
                 val now = state.value

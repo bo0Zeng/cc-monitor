@@ -2,12 +2,11 @@ package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
 import com.ccmonitor.mobile.core.claude.link.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
-import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
-import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Can
@@ -18,12 +17,15 @@ import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ui.Faces
+import com.ccmonitor.mobile.ui.chat.leftSeat
+import com.ccmonitor.mobile.ui.chat.liveSeat
 import com.ccmonitor.mobile.ui.common.HostLink
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -91,7 +93,7 @@ class ChatsViewTest {
 
     private fun snap(
         link: LinkState = LinkState.Up(),
-        table: SessionTable = SessionTable(),
+        table: SessionBook = EMPTY_BOOK,
         got: Fetched<HistoryListPage> = list,
         cached: HistoryListPage? = null,
         deploying: Deploying? = null,
@@ -103,7 +105,7 @@ class ChatsViewTest {
     private fun live(
         sid: String,
         face: String,
-    ) = SessionTable(sessions = mapOf(sid to LiveSession(sid)), faces = mapOf(sid to Faces.of(face)))
+    ) = EMPTY_BOOK.copy(live = mapOf(sid to liveSeat(sid, Faces.of(face))))
 
     private fun view(
         vararg parts: HostPart,
@@ -178,9 +180,9 @@ class ChatsViewTest {
     fun `每行一颗状态点：流上有它的脸 ⇒ 取流上的（离开活了是那一帧的），流上没有 ⇒ 清单那一行的；字跟着那一份`() {
         val rows = listOf(row("a", "今天", face = Faces.of("live-idle")), row("b", "今天", face = Faces.of("live-idle")), row("c", "今天", face = Faces.of("unclear")))
         val table =
-            SessionTable(
-                sessions = mapOf("a" to LiveSession("a")),
-                faces = mapOf("a" to Faces.of("live-needs-you-tmux"), "b" to Faces.of("reconnectable")),
+            EMPTY_BOOK.copy(
+                live = mapOf("a" to liveSeat("a", Faces.of("live-needs-you-tmux"))),
+                left = mapOf("b" to leftSeat("b", Faces.of("reconnectable"))),
             )
         val by = hostPart(snap(table = table, got = Fetched.Got(page(*rows.toTypedArray())))).rows.associateBy { it.sessionId }
         assertEquals(SessionDot.NEEDS_YOU, by.getValue("a").dot)

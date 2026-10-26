@@ -30,7 +30,8 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { LiveCards } from "../../../src/frontend/ui/live-card";
-import type { LiveCard } from "../../../src/frontend/ui/generated/LiveCard";
+import type { LiveCardNow } from "../../../src/frontend/ui/generated/LiveCardNow";
+import type { SessionLiveCardsPayload } from "../../../src/frontend/ui/generated/SessionLiveCardsPayload";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
 import type { RunState } from "../../../src/frontend/ui/generated/RunState";
@@ -43,9 +44,9 @@ import { installViewerRig, line, userLine } from "../../test-support/session-vie
 const O = "<local>";
 const SID = "s1";
 
-/** 一张卡的整卡（后端拼好的成品）。 */
-function opened(no: number, rid: string, blocks: Extract<LiveCard, { op: "open" }>["blocks"], run?: string): { origin: string; card: LiveCard } {
-  return { origin: O, card: { sid: SID, card: no, n: 0, op: "open", rid, phase: "streaming", clipped: false, blocks, ...(run ? { run } : {}) } };
+/** 壳交来的一格：那一处（这个会话 · 某个运行）此刻只有这一张卡。 */
+function opened(no: number, rid: string, blocks: LiveCardNow["blocks"], run?: string): SessionLiveCardsPayload {
+  return { origin: O, live: { sid: SID, ...(run ? { run } : {}), cards: [{ card: no, rid, phase: "streaming", clipped: false, blocks }] } };
 }
 
 const run = (id: string, state: RunState, label = id, tool?: string): RunInfo => ({ run: id, label, state, ...(tool ? { tool } : {}) });
@@ -78,15 +79,15 @@ describe("运行表 × 活卡", () => {
       () => null,
     );
     live.onRuns(SID, [run("w1", "running", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]);
-    live.onCard(opened(1, "r1", [{ kind: "tool", tool: "Bash" }], "w1"));
-    live.onCard(opened(2, "r2", [{ kind: "thinking" }], "w2"));
-    live.onCard(opened(0, "r0", [{ kind: "text", text: "主" }]));
+    live.onCards(opened(1, "r1", [{ kind: "tool", tool: "Bash" }], "w1"));
+    live.onCards(opened(2, "r2", [{ kind: "thinking" }], "w2"));
+    live.onCards(opened(0, "r0", [{ kind: "text", text: "主" }]));
 
-    const main = live.cards.cardsOf(SID);
+    const main = live.cardsOf(SID);
     expect(main.map((c) => c.messageId)).toEqual(["r0"]);
     expect(main.flatMap((c) => c.blocks.map((b) => b.tool ?? b.kind))).toEqual(["text"]);
-    expect(live.cards.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
-    expect(live.cards.liveBlockOf(SID, "w2")?.kind).toBe("thinking");
+    expect(live.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
+    expect(live.liveBlockOf(SID, "w2")?.kind).toBe("thinking");
 
     const finished = live.onRuns(SID, [run("w1", "stopped", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]);
     expect(finished.map((r) => r.run)).toEqual(["w1"]);

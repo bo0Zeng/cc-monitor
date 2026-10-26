@@ -31,7 +31,7 @@ fn the_session_added_arm_is_not_silent() {
     //   仍走 `find_pinned`：恰好一处 + 两侧有边界。窗口小到只含本臂 ⇒ 唯一性天然成立。
     let window = &prod[at..(at + 400).min(prod.len())];
     assert!(
-        guard_core::find_pinned(window, "crate::session_book::feed(BookIn::Live {").is_ok(),
+        guard_core::find_pinned(window, "told(at, Frame::SessionAdded(meta));").is_ok(),
         "那行日志与它要守的那次 `app.emit` 之间隔太远（或被排到了后面）——\
              排在 emit 后面的话，emit 卡住时就连「收到了」都没留下"
     );
@@ -64,7 +64,7 @@ fn the_session_removed_arm_is_not_silent() {
         .expect("`SessionState` 那一臂必须留下一行「收到了、去向是什么」—— 少了它，灰灯与归档分不出走了哪条");
     let fwd = &prod[at..(at + 400).min(prod.len())];
     assert!(
-        guard_core::find_pinned(fwd, "crate::session_book::feed(BookIn::Left {").is_ok(),
+        guard_core::find_pinned(fwd, "told(at, Frame::SessionState(s));").is_ok(),
         "那行日志与它要守的那次转交之间隔太远（或被排到了后面）"
     );
 }

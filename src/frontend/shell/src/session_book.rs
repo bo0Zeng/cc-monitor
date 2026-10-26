@@ -9,41 +9,24 @@
 //! 唯一一件 monitor 自己知道、后端不知道的事是**到那台的连接断了**（[`In::LinkLost`]）：那台的成品随之作废（整份摘掉），
 //! 当时还活的 / 可重连的交出去说「说不清」（不许显示成已结束）。重连之后那台的新连接自己重报一遍。
 //!
-//! 裁决一条都不在这一侧。
+//! 裁决一条都不在这一侧。**每台那一本就是端核心的会话簿**（[`SessionBook`]，手机核心同一份）：会话帧原样交进来（[`In::Told`]），
+//! 折法只调 [`SessionBook::fold`]，这一侧不另写一份。
 
 use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use cmd_wire::frame::{SessionAdded, SessionFate, SessionRuns, SessionState, SessionStatus};
-
-/// 一条会话此刻的最新成品。
-#[derive(Debug, Clone, PartialEq)]
-pub enum Product {
-    Live(SessionAdded),
-    /// 那台答的去向（`session_state`：哪一种 · 写好的字与语气 · 监控板组内的序 · 能不能换），原样转交。
-    Left(SessionState),
-}
+use cmd_wire::frame::{Frame, SessionAdded, SessionFate, SessionRuns, SessionState, SessionStatus};
+use resident_client::book::{Seat, SessionBook};
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum In {
-    Live {
+    /// 那台说的一帧会话帧（`session_added` · `session_status` · `session_state` · `session_removed` · `session_file_reread` ·
+    /// `sessions_replayed` · `session_runs`），原样交进来。
+    Told {
         origin: String,
-        sid: String,
-        meta: SessionAdded,
-    },
-    Status {
-        origin: String,
-        status: SessionStatus,
-    },
-    Left {
-        origin: String,
-        state: SessionState,
-    },
-    /// `sessions_replayed`：那台的活会话清单报完了（可重连的也已报过）。
-    Listed {
-        origin: String,
+        frame: crate::stream_source::Frame,
     },
     /// 到那台的连接断了。
     LinkLost {
@@ -52,11 +35,6 @@ pub enum In {
     /// 本机后端握上手时 hello 带来的那一张「那台看不见」的脸（`Hello.unseen`）：此后每一格「说不清」都带上它。
     UnseenFace {
         face: Option<cmd_wire::frame::SessionFace>,
-    },
-    /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个。
-    Runs {
-        origin: String,
-        runs: SessionRuns,
     },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
     /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
@@ -112,14 +90,6 @@ pub enum Out {
     },
 }
 
-#[derive(Debug, Default)]
-struct OriginBook {
-    sessions: BTreeMap<String, Product>,
-    listed: bool,
-    /// 活会话的最新运行表（F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
-    runs: BTreeMap<String, SessionRuns>,
-}
-
 /// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
 #[derive(Debug, Default, Clone)]
 struct BranchCopy {
@@ -138,7 +108,8 @@ pub struct Replay {
 /// 全部机器的成品账（见模块头注）。
 #[derive(Debug, Default)]
 pub struct Book {
-    origins: HashMap<String, OriginBook>,
+    /// 每台那一本（端核心的会话簿；运行表也在里面，F5 重放跟在宣告后面再说一次）。
+    origins: HashMap<String, SessionBook>,
     /// 每台每个会话手上那份主线外清单（F5 重放跟在宣告后面再说一次 · 报名单时交回手上有什么）。
     /// **断线不摘**（不跟 `origins` 那一台一起走）：重接之后交回它，那台只补缺的那一截。会话离开 · 关 tab · 那台报完清单时不在了 ⇒ 摘。
     branch: HashMap<String, BTreeMap<String, BranchCopy>>,
@@ -152,42 +123,11 @@ impl Book {
     /// **纯**：一件事 × 这本账 ⇒ 账怎么变 ＋ 交给出口什么。
     pub fn step(&mut self, ev: In) -> Vec<Out> {
         match ev {
-            In::Live { origin, sid, meta } => {
-                self.origins
-                    .entry(origin.clone())
-                    .or_default()
-                    .sessions
-                    .insert(sid.clone(), Product::Live(meta.clone()));
-                vec![Out::Live { origin, sid, meta }]
-            }
-            In::Status { origin, status } => {
-                if let Some(Product::Live(m)) = self
-                    .origins
-                    .get_mut(&origin)
-                    .and_then(|b| b.sessions.get_mut(&status.sid))
-                {
-                    m.face = status.face.clone();
-                    m.name_face = status.name_face.clone();
+            In::Told { origin, frame } => {
+                if !self.origins.entry(origin.clone()).or_default().fold(&frame) {
+                    return Vec::new();
                 }
-                vec![Out::Status { origin, status }]
-            }
-            In::Left { origin, state } => {
-                let b = self.origins.entry(origin.clone()).or_default();
-                b.sessions
-                    .insert(state.sid.clone(), Product::Left(state.clone()));
-                b.runs.remove(&state.sid);
-                if let Some(m) = self.branch.get_mut(&origin) {
-                    m.remove(&state.sid);
-                }
-                vec![Out::Left { origin, state }]
-            }
-            In::Runs { origin, runs } => {
-                self.origins
-                    .entry(origin.clone())
-                    .or_default()
-                    .runs
-                    .insert(runs.sid.clone(), runs.clone());
-                vec![Out::Runs { origin, runs }]
+                self.told(origin, frame)
             }
             In::Branch {
                 origin,
@@ -222,16 +162,6 @@ impl Book {
                     off: held.off.clone(),
                 }]
             }
-            In::Listed { origin } => {
-                self.origins.entry(origin.clone()).or_default().listed = true;
-                // 清单报完了：那台此刻不在的会话，手上那份清单没用了。
-                let live = &self.origins[&origin].sessions;
-                if let Some(m) = self.branch.get_mut(&origin) {
-                    m.retain(|sid, _| matches!(live.get(sid), Some(Product::Live(_))));
-                }
-                let all = self.all_listed();
-                vec![Out::Listed { origin, all }]
-            }
             In::UnseenFace { face } => {
                 self.unseen = face;
                 Vec::new()
@@ -241,12 +171,9 @@ impl Book {
                     return Vec::new();
                 };
                 let sids: Vec<String> = b
-                    .sessions
-                    .into_iter()
-                    .filter(
-                        |(_, p)| !matches!(p, Product::Left(s) if s.state == SessionFate::Ended),
-                    )
-                    .map(|(s, _)| s)
+                    .seats()
+                    .filter(|(_, p)| !matches!(p, Seat::Left(s) if s.state == SessionFate::Ended))
+                    .map(|(s, _)| s.clone())
                     .collect();
                 if sids.is_empty() {
                     return Vec::new();
@@ -258,6 +185,42 @@ impl Book {
                 }]
             }
         }
+    }
+
+    /// 那台那一本刚折进一帧会话帧 ⇒ 交给出口什么（帧原样；清单报完了带「各台都报完」）。
+    fn told(&mut self, origin: String, frame: crate::stream_source::Frame) -> Vec<Out> {
+        match frame {
+            Frame::SessionAdded(meta) => vec![Out::Live {
+                origin,
+                sid: meta.sid.clone(),
+                meta,
+            }],
+            Frame::SessionStatus(status) => vec![Out::Status { origin, status }],
+            Frame::SessionState(state) => {
+                if let Some(m) = self.branch.get_mut(&origin) {
+                    m.remove(&state.sid);
+                }
+                vec![Out::Left { origin, state }]
+            }
+            Frame::SessionRuns(runs) => vec![Out::Runs { origin, runs }],
+            Frame::SessionsReplayed(_) => {
+                // 清单报完了：那台此刻不在的会话，手上那份清单没用了。
+                let live = &self.origins[&origin].live;
+                if let Some(m) = self.branch.get_mut(&origin) {
+                    m.retain(|sid, _| live.contains_key(sid));
+                }
+                let all = self.all_listed();
+                vec![Out::Listed { origin, all }]
+            }
+            // 顶替 · 重读只记进簿（内容那一路由收口说）。
+            _ => Vec::new(),
+        }
+    }
+
+    /// 那台那一本（判据 · 两端对拍读）。
+    #[cfg(test)]
+    pub(crate) fn of(&self, origin: &str) -> Option<&SessionBook> {
+        self.origins.get(origin)
     }
 
     /// 报名单时交回的那一格（`stream-watch.branch`）：那台这几个会话的主线外清单手上各有什么（没有 / 说不准 ⇒ `at: 0`）。
@@ -311,31 +274,23 @@ impl Book {
 
     /// 那台那个会话此刻是活的（它最近的成品是 `Live`）。
     pub fn is_live(&self, origin: &crate::origin::Origin, sid: &str) -> bool {
-        matches!(
-            self.origins
-                .get(origin.as_wire_str())
-                .and_then(|b| b.sessions.get(sid)),
-            Some(Product::Live(_))
-        )
+        self.origins
+            .get(origin.as_wire_str())
+            .is_some_and(|b| b.live.contains_key(sid))
     }
 
     /// 那台那个会话此刻活着时，宣告它的那一帧带来的 agent 进程号（↗ 点那一刻从它往上走进程链；没带 / 不活 ⇒ `None`）。
     pub fn live_pid(&self, origin: &crate::origin::Origin, sid: &str) -> Option<u32> {
-        match self
-            .origins
+        self.origins
             .get(origin.as_wire_str())
-            .and_then(|b| b.sessions.get(sid))
-        {
-            Some(Product::Live(meta)) => Some(meta.pid),
-            _ => None,
-        }
+            .and_then(|b| b.live.get(sid))
+            .map(|meta| meta.pid)
     }
 
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
     pub fn forget(&mut self, sid: &str) {
         for b in self.origins.values_mut() {
-            b.sessions.remove(sid);
-            b.runs.remove(sid);
+            b.forget(sid);
         }
         for m in self.branch.values_mut() {
             m.remove(sid);
@@ -353,9 +308,9 @@ impl Book {
         origins.sort();
         for o in &origins {
             let b = &self.origins[*o];
-            for (sid, p) in &b.sessions {
+            for (sid, p) in b.seats() {
                 match p {
-                    Product::Live(m) => {
+                    Seat::Live(m) => {
                         r.before.push(Out::Live {
                             origin: (*o).clone(),
                             sid: sid.clone(),
@@ -375,13 +330,13 @@ impl Book {
                             });
                         }
                     }
-                    Product::Left(s) if s.state == SessionFate::Reconnectable => {
+                    Seat::Left(s) if s.state == SessionFate::Reconnectable => {
                         r.after.push(Out::Left {
                             origin: (*o).clone(),
                             state: s.clone(),
                         })
                     }
-                    Product::Left(_) => {}
+                    Seat::Left(_) => {}
                 }
             }
         }
@@ -389,10 +344,10 @@ impl Book {
         let mut settled = Vec::new();
         for (sid, origin) in kept {
             let b = self.origins.get(origin);
-            match b.and_then(|b| b.sessions.get(sid)) {
-                Some(Product::Live(_)) => {}
-                Some(Product::Left(s)) if s.state == SessionFate::Reconnectable => {}
-                Some(Product::Left(s)) => settled.push(Out::Left {
+            match b.and_then(|b| b.seat(sid)) {
+                Some(Seat::Live(_)) => {}
+                Some(Seat::Left(s)) if s.state == SessionFate::Reconnectable => {}
+                Some(Seat::Left(s)) => settled.push(Out::Left {
                     origin: origin.clone(),
                     state: s.clone(),
                 }),
@@ -470,20 +425,20 @@ impl Book {
             face: self.unseen.clone(),
         }];
         if let Some(b) = self.origins.get(origin) {
-            for (sid, p) in &b.sessions {
+            for (sid, p) in b.seats() {
                 match p {
-                    Product::Live(m) => v.push(Out::Live {
+                    Seat::Live(m) => v.push(Out::Live {
                         origin: origin.to_string(),
                         sid: sid.clone(),
                         meta: m.clone(),
                     }),
-                    Product::Left(s) if s.state == SessionFate::Reconnectable => {
+                    Seat::Left(s) if s.state == SessionFate::Reconnectable => {
                         v.push(Out::Left {
                             origin: origin.to_string(),
                             state: s.clone(),
                         })
                     }
-                    Product::Left(_) => {}
+                    Seat::Left(_) => {}
                 }
             }
         }

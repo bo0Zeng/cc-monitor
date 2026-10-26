@@ -29,6 +29,10 @@ guard-core = { path = "../../common/guard-core" }
 # 替身后端回 attach 行的新旧照后端同一个函数算。
 deploy-contract = { path = "../../common/deploy-contract" }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }
+# 会话簿 · 活卡的整份导给界面与手机（`src/frontend/ui/generated/` ⇒ Kotlin 照它生成）：codegen 只在测试档（同壳那一份 C01）。
+ts-rs = "12.0.1"
+# 整份里嵌着会话帧与活卡那几样 ⇒ 测试档开它们的 TS 派生（发布二进制不开）。
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 
 [features]
 default = []

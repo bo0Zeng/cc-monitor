@@ -8,12 +8,17 @@ fn meta(cwd: &str) -> cmd_wire::frame::SessionAdded {
     crate::frame_fixtures::session_added("x", serde_json::json!({ "cwd": cwd }))
 }
 
-fn live(o: &str, s: &str) -> In {
-    In::Live {
+fn told(o: &str, frame: crate::stream_source::Frame) -> In {
+    In::Told {
         origin: o.into(),
-        sid: s.into(),
-        meta: meta("/w"),
+        frame,
     }
+}
+
+fn live(o: &str, s: &str) -> In {
+    let mut m = meta("/w");
+    m.sid = s.into();
+    told(o, Frame::SessionAdded(m))
 }
 
 fn left(o: &str, s: &str, fate: SessionFate) -> In {
@@ -21,10 +26,30 @@ fn left(o: &str, s: &str, fate: SessionFate) -> In {
         SessionFate::Reconnectable => "reconnectable",
         SessionFate::Ended => "ended",
     };
-    In::Left {
-        origin: o.into(),
-        state: crate::frame_fixtures::session_state(s, state, "T"),
+    told(
+        o,
+        Frame::SessionState(crate::frame_fixtures::session_state(s, state, "T")),
+    )
+}
+
+fn listed(o: &str) -> In {
+    told(o, Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}))
+}
+
+/// ★ 同一串帧喂桌面与手机，两端拿到的会话簿逐格相同、出自同一个函数：壳这一侧照分派那一路（会话帧原样交 `In::Told`）喂夹具那一串，
+/// 那台那一本就是端核心对着的那一份 golden（手机核心那一侧的判据对着同一份，`mobcore::resident`）。
+#[test]
+fn the_shared_frames_fold_into_the_same_book_the_phone_gets() {
+    let mut b = Book::default();
+    for line in include_str!("../../comms/resident-client/book-frames.jsonl").lines() {
+        let frame: crate::stream_source::Frame =
+            cmd_wire::frame::decode(line).expect("夹具每一行是一帧");
+        b.step(told("pi", frame));
     }
+    let got = serde_json::to_value(b.of("pi").expect("那台那一本")).unwrap();
+    let want: serde_json::Value =
+        serde_json::from_str(include_str!("../../comms/resident-client/book.golden.json")).unwrap();
+    assert_eq!(got, want);
 }
 
 #[test]
@@ -37,9 +62,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         live("pi", "c"),
         left("pi", "b", SessionFate::Reconnectable),
         left("pi", "c", SessionFate::Ended),
-        In::Listed {
-            origin: "pi".into(),
-        },
+        listed("pi"),
         live("<local>", "x"),
         In::LinkLost {
             origin: "pi".into(),
@@ -87,9 +110,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         live("pi", "a"),
         left("pi", "r", SessionFate::Reconnectable),
         left("pi", "e", SessionFate::Ended),
-        In::Listed {
-            origin: "pi".into(),
-        },
+        listed("pi"),
         live("mu", "m"),
     ] {
         b.step(ev);
@@ -211,7 +232,6 @@ fn the_live_cell_is_the_backends_session_added_frame() {
 /// 机器表换了按新表重算（摘掉的正是唯一没报完的那台 ⇒ 当场再说一次「报完了」带 `all`）；F5 重放带同一份。
 #[test]
 fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
-    let listed = |o: &str| In::Listed { origin: o.into() };
     let all_of = |v: Vec<Out>| -> Vec<(String, bool)> {
         v.into_iter()
             .filter_map(|o| match o {
@@ -375,9 +395,7 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     );
     // 重接：那台报完清单时 a 不在了 ⇒ 摘。
     b.step(live("pi", "b"));
-    b.step(In::Listed {
-        origin: "pi".into(),
-    });
+    b.step(listed("pi"));
     assert_eq!(b.branch_held(&pi, &sids(&["a"])), vec![nothing("a")]);
 }
 

@@ -7,8 +7,12 @@ import com.ccmonitor.mobile.core.wire.gen.Hidden
 import com.ccmonitor.mobile.core.wire.gen.HiddenBy
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionAdded
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionFate
+import com.ccmonitor.mobile.core.wire.gen.SessionState
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -18,107 +22,42 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProductsTest {
-    private val frames = Fixtures.text("session-stream.golden.jsonl").lines().mapNotNull(Json::obj)
+    /** 整份脸金样里的一形。 */
+    private fun face(key: String): SessionFace = Wire.bind<SessionFace>(Fixtures.json("session-face.golden.json")[key])!!
 
-    private fun golden(kind: String) = frames.filter { it.str("kind") == kind }
+    /** 核心折好交来的那一本（折法与它对着的 golden 在 Rust 那边，端核心 `resident-client` 的判据管）：这里只摆成品、钉读法。 */
+    private val book: SessionBook =
+        EMPTY_BOOK.copy(
+            live =
+                mapOf(
+                    "a" to SessionAdded(sid = "a", agentKind = "claude", path = "/p/a.jsonl", face = face("live-needs-you-tmux"), pid = 1, label = "甲"),
+                    "w" to SessionAdded(sid = "w", agentKind = "claude", face = face("live-working-plain"), pid = 2, label = "乙"),
+                    "d" to SessionAdded(sid = "d", agentKind = "claude", face = face("live-unclear"), pid = 3, label = "丁"),
+                ),
+            left = mapOf("c" to SessionState("c", SessionFate.ENDED, face("ended"))),
+            rereads = mapOf("a" to 1L),
+        )
 
     @Test
-    fun `会话表：金样里 session_added 全格与最少格都折得进来，脸照那台给的那一份`() {
-        val breaks = mutableListOf<String>()
-        val (full, least) = golden("session_added").take(2)
-        val t = SessionTable().step(full, breaks::add)
-        assertEquals(SessionDot.NEEDS_YOU, t.faces.getValue("s1").dot)
-        assertEquals(Toned("需手动", Tone.NEED), t.faces.getValue("s1").let { Toned(it.name, it.tone) })
-        assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path)
-        assertFalse("需手动不算在跑", t.running("s1"))
-        val t2 = SessionTable().step(least, breaks::add)
-        // 最少格：那台判不出在干什么（脸上 `live` 不带 `activity`）⇒ 「状态不明」；不算在跑（停止键不亮）。
-        assertEquals("状态不明", t2.faces.getValue("s1").name)
-        assertNull(
-            t2.faces
-                .getValue("s1")
-                .live
-                .let { it as? FaceLive.Yes }
-                ?.activity,
-        )
-        assertFalse("判不出不算在跑", t2.running("s1"))
-        assertTrue(breaks.toString(), breaks.isEmpty())
+    fun `会话簿：脸照活的那一张 · 走了的照去向那一张，簿里没有 ⇒ 没有`() {
+        assertEquals(Toned("需手动", Tone.NEED), book.face("a")?.let { Toned(it.name, it.tone) })
+        assertEquals(SessionDot.ENDED, book.face("c")?.dot)
+        assertNull(book.face("zz"))
+        assertEquals(setOf("a", "w", "d", "c"), book.faces().keys)
+        val needs = book.face("a")!!.can
+        assertEquals("先答完需手动", needs.model.blocked())
     }
 
     @Test
-    fun `会话表：同一条后到的脸覆盖先到的（宣告 → 状态 → 离开活 → 又宣告），摘掉了 ⇒ 脸一并拿掉`() {
-        val breaks = mutableListOf<String>()
-        var t = SessionTable().step(golden("session_added")[0], breaks::add)
-        t = t.step(golden("session_status")[1], breaks::add)
-        assertEquals("状态不明", t.faces.getValue("s1").name)
-        assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path) // 状态帧不抹掉宣告时的格
-        t = t.step(golden("sessions_replayed")[0], breaks::add)
-        assertTrue(t.replayed)
-        t = t.step(golden("session_removed")[1], breaks::add)
-        assertTrue(t.sessions.isEmpty())
-        assertNull("摘掉了、去向还没裁 ⇒ 流上没有它的脸", t.faces["s1"])
-        t = t.step(golden("session_state")[0], breaks::add)
-        assertEquals(SessionDot.EXITED, t.faces.getValue("s1").dot)
-        assertFalse("离开活的不进活会话表", "s1" in t.sessions)
-        t = t.step(golden("session_state")[1], breaks::add)
-        assertEquals(SessionDot.ENDED, t.faces.getValue("s1").dot)
-        t = t.step(golden("session_added")[0], breaks::add)
-        assertEquals("又宣告 ⇒ 换回活的那一份", SessionDot.NEEDS_YOU, t.faces.getValue("s1").dot)
-        assertTrue(breaks.toString(), breaks.isEmpty())
-    }
-
-    @Test
-    fun `会话表：状态帧带着记录路径（宣告以后记录才出现 · 换了一份）⇒ 那一条的路径换成它；不带就不动`() {
-        val breaks = mutableListOf<String>()
-        val bare = golden("session_added")[0] - "path"
-        var t = SessionTable().step(bare, breaks::add)
-        assertNull("宣告时记录还没有", t.sessions.getValue("s1").path)
-        val withPath = golden("session_status").first { it.containsKey("path") }
-        t = t.step(withPath, breaks::add)
-        assertEquals(withPath.str("path"), t.sessions.getValue("s1").path)
-        t = t.step(golden("session_status").first { !it.containsKey("path") }, breaks::add)
-        assertEquals("不带路径的状态帧不抹掉已有的", withPath.str("path"), t.sessions.getValue("s1").path)
-        assertTrue(breaks.toString(), breaks.isEmpty())
-    }
-
-    @Test
-    fun `会话表：能不能换照脸上的 can 抄（宣告 · 状态 · 离开活），被顶替的记下顶替它的那一条`() {
-        val breaks = mutableListOf<String>()
-        var t = SessionTable().step(golden("session_added")[0], breaks::add)
-        assertEquals(
-            "先答完需手动",
-            t.faces
-                .getValue("s1")
-                .can.model
-                .blocked(),
-        )
-        assertEquals(
-            "先答完需手动",
-            t.faces
-                .getValue("s1")
-                .can.permission
-                .blocked(),
-        )
-        t = t.step(golden("session_status")[1], breaks::add)
-        assertNull(
-            "能换 ⇒ 没有那一句",
-            t.faces
-                .getValue("s1")
-                .can.model
-                .blocked(),
-        )
-        t = t.step(golden("session_state")[0], breaks::add)
-        assertNull(
-            "离开「活」两样都能换（记在注解上、下次恢复用上）",
-            t.faces
-                .getValue("s1")
-                .can.model
-                .blocked(),
-        )
-        val (superseded, gone) = golden("session_removed")
-        assertEquals(mapOf("s1" to "s2"), t.step(superseded, breaks::add).successors)
-        assertTrue("不是顶替 ⇒ 不记", t.step(gone, breaks::add).successors.isEmpty())
-        assertTrue(breaks.toString(), breaks.isEmpty())
+    fun `会话簿：只有判得出在跑才算在跑；重读过几回照核心记的`() {
+        assertTrue(book.running("w"))
+        assertFalse("需手动不算在跑", book.running("a"))
+        assertNull((book.face("d")!!.live as? FaceLive.Yes)?.activity)
+        assertFalse("判不出不算在跑", book.running("d"))
+        assertFalse("走了的不算", book.running("c"))
+        assertFalse("不在 ⇒ 不算", book.running("zz"))
+        assertEquals(1L, book.generation("a"))
+        assertEquals(0L, book.generation("d"))
     }
 
     @Test
@@ -134,28 +73,6 @@ class ProductsTest {
             assertEquals(key, m["settled"], f.settled)
         }
         assertEquals("线上那八颗点都在金样里", SessionDot.entries.toSet(), all.values.mapNotNull { Wire.bind<SessionFace>(it)?.dot }.toSet())
-    }
-
-    @Test
-    fun `会话表：那份记录从头重读了 ⇒ 那一条换一代（读过的作废、整份重来），别的不动`() {
-        val breaks = mutableListOf<String>()
-        val reread = golden("session_file_reread")[0]
-        var t = SessionTable().step(golden("session_added")[0], breaks::add)
-        assertEquals(0L, t.generation("s1"))
-        t = t.step(reread, breaks::add)
-        assertEquals(1L, t.generation("s1"))
-        t = t.step(reread, breaks::add)
-        assertEquals(2L, t.generation("s1"))
-        assertEquals(0L, t.generation("s2"))
-        assertTrue(breaks.toString(), breaks.isEmpty())
-    }
-
-    @Test
-    fun `会话表：缺必填格报出来、表不动`() {
-        val breaks = mutableListOf<String>()
-        val t = SessionTable().step(mapOf("kind" to "session_added", "sid" to "s"), breaks::add)
-        assertTrue(t.sessions.isEmpty())
-        assertEquals(1, breaks.size)
     }
 
     @Test

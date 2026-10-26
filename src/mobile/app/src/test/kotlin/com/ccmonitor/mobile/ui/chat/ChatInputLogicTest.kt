@@ -1,10 +1,12 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.LiveBlock
-import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.BlockKind
 import com.ccmonitor.mobile.core.wire.gen.CommandScope
+import com.ccmonitor.mobile.core.wire.gen.LiveBlock
+import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
+import com.ccmonitor.mobile.core.wire.gen.LivePhase
 import com.ccmonitor.mobile.core.wire.gen.SessionAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommand
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -59,16 +61,23 @@ class ChatInputLogicTest {
     @Test
     fun `活卡画成纯文字：头一行照相取字；截过头先说一句；思考 · 工具块各一句；空的文字块不出`() {
         val card =
-            LiveCardState(
+            LiveCardNow(
                 1,
                 "r",
-                awaiting = false,
+                LivePhase.STREAMING,
                 clipped = true,
-                blocks = listOf(LiveBlock("thinking", "", null), LiveBlock("text", "正文", null), LiveBlock("tool", "", "Bash"), LiveBlock("text", "", null), LiveBlock("other", "", null)),
+                blocks =
+                    listOf(
+                        LiveBlock(BlockKind.THINKING),
+                        LiveBlock(BlockKind.TEXT, "正文"),
+                        LiveBlock(BlockKind.TOOL, tool = "Bash"),
+                        LiveBlock(BlockKind.TEXT, ""),
+                        LiveBlock(BlockKind.OTHER),
+                    ),
             )
         val (head, body) = liveCardText(card)
         assertEquals(copyText("liveCard.state.streaming"), head)
         assertEquals(listOf(copyText("liveCard.body.clipped"), copyText("liveCard.block.thinking"), "正文", copyText("liveCard.block.toolUse", "tool" to "Bash")).joinToString("\n"), body)
-        assertEquals(copyText("liveCard.state.awaitingRecord"), liveCardText(card.copy(awaiting = true)).first)
+        assertEquals(copyText("liveCard.state.awaitingRecord"), liveCardText(card.copy(phase = LivePhase.AWAITING)).first)
     }
 }
