@@ -819,6 +819,7 @@ object Commands {
             SearchHit::class.java to SearchHit.ADAPTER,
             SearchRow::class.java to SearchRow.ADAPTER,
             SearchScope::class.java to SearchScope.ADAPTER,
+            SeenAt::class.java to SeenAt.ADAPTER,
             SeenKind::class.java to SeenKind.ADAPTER,
             SegMark::class.java to SegMark.ADAPTER,
             Segs::class.java to Segs.ADAPTER,

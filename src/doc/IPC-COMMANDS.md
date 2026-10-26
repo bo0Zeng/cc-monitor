@@ -8882,16 +8882,17 @@ path: string, dir: boolean, class: OwnClass, exists: boolean,
  * 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
  */
 size_text: Words | null, };
-type Seen<T> = { "state": "kept", 
+type Seen<T> = { "state": "kept", seen: SeenAt, value: T, } | { "state": "unreadable", seen: SeenAt, };
+type Seen<T> = { "state": "kept", seen: SeenAt, value: T, } | { "state": "unreadable", seen: SeenAt, };
+type SeenAt = { 
 /**
  * 记下的时刻（毫秒）。
  */
-atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
-type Seen<T> = { "state": "kept", 
+atMs: number, 
 /**
- * 记下的时刻（毫秒）。
+ * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
  */
-atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
+said: Words, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
 type Words = string;
 ```
@@ -13364,7 +13365,11 @@ domains: Array<PlanDomain>, slices: Array<PlanSlice>, bySession: { [key in strin
 /**
  * 这一份输出的摘要：变了才算计划变了。
  */
-rev: string, readAt: number, readAtText?: string, stale: PlanStale | null, needCount: number, };
+rev: string, readAt: number, readAtText?: string, 
+/**
+ * 上次读数那一格（与 `readAtText` 同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
+ */
+seen?: SeenAt, stale: PlanStale | null, needCount: number, };
 type PlanReadError = { file: string | null, line: number | null, message: string | null, };
 type PlanReadReq = { 
 /**
@@ -13480,6 +13485,15 @@ face: SessionFace,
 label: string | null, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" } | { "kind": "undecided" };
 type PlanWhyShort = { text: string, wait: boolean, };
+type SeenAt = { 
+/**
+ * 记下的时刻（毫秒）。
+ */
+atMs: number, 
+/**
+ * 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+ */
+said: Words, };
 type SessionCan = { 
 /**
  * 关掉它的标签页。

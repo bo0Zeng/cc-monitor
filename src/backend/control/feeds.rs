@@ -397,6 +397,10 @@ const FORWARD_WITHOUT_DEADLINE: Duration = Duration::from_secs(60);
 /// **问那台的一问经它的常驻流转过去**（请求信封带 `machine` 的那一形，分派在 `stream/inbound`）：命令 · 入参 · 出口声明原样交那台，
 /// 那台的回包原样回来；那台拒了 ⇒ 码 · 那一句 · 原话 · 按码定形的 `data` 原样交回。能不能发（那台认不认 · 形状对不对得上）
 /// 由这一端连那台的客户端判（`InboundClient::call`），判下来的那几种照码说。期限是发起方那一份（`within_ms`）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "不是本后端的定时器：发起方那一份期限（`within_ms` 换成的截止时刻）原样换成连那台的客户端要的那一刻，交它去等"
+)]
 pub(crate) async fn forward(
     machine: String,
     req: crate::wire::Request,
@@ -440,12 +444,19 @@ pub(crate) async fn forward(
             raw: (!detail.is_empty()).then_some(detail),
         },
         CallError::Disconnected => unreachable(),
-        CallError::Unsupported { .. } => Fail::new("unknown_command", e.to_string()),
-        CallError::Unavailable { ref code, .. } => Fail::new(code, e.to_string()),
-        CallError::Differs { ref said, .. } => Fail::new("differs", said.clone()),
-        CallError::Timeout { .. } => Fail::new("timeout", e.to_string()),
-        CallError::TooManyPending => Fail::new("busy", e.to_string()),
-        CallError::Cancelled => Fail::new("cancelled", e.to_string()),
+        // 连那台的客户端事前就拒的那几种：那一句是它自己的（`CallError` 的 `Display` 照文案表写），码照它是哪一种。
+        other => {
+            let code = match &other {
+                CallError::Unsupported { .. } => "unknown_command".to_string(),
+                CallError::Unavailable { code, .. } => code.clone(),
+                CallError::Differs { .. } => "differs".to_string(),
+                CallError::Timeout { .. } => "timeout".to_string(),
+                CallError::TooManyPending => "busy".to_string(),
+                _ => "cancelled".to_string(),
+            };
+            let said = other.to_string();
+            Fail::new(&code, said)
+        }
     })
 }
 
