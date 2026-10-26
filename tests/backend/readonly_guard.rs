@@ -1067,9 +1067,8 @@ mod spawn_registry {
              （`list-sessions -F '#{session_name}\t#{@ccm_sid}'`，argv 直传不过 shell）。\
              用户 `R52` 裁定一逐字：「Gate 能不能改成直接读那份快照. **可以** / \
              改为**向快照发一次询问, 快照更新一次**」⇒ 这一处就是那「一次询问」。\
-             两个消费者：① Gate 判活（`bus-list` 的「这个总线成员今天还活着吗」——\
-             **总线成员 ⊆ 活着的会话**，谁活着由身份空间说了算，不由 cc-bus 那份会过期的 \
-             agents.tsv 说了算）；② `ccm` 铸名避让（`R52` 裁定二那张 hash 表）。\
+             两个消费者：① `faces/session_batch_face.rs`；② `ccm` 铸名避让（`R52` 裁定二那张 hash 表）。\
+             （Gate 判 `bus-list` 成员活不活那一路随 A13-3 删了：判活改问 `session_holders`。）\
              **只读 tmux**，不改任何状态。\
              ⚠ **一次调用列全部**，不是每个成员探一次（用户那台的总线有 86 行）。\
              ⚠ **这一条从 `control/gate.rs` 搬来，不是新增的面**：净处数不变。",

@@ -2311,10 +2311,9 @@ enum class BusAct(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class BusAgent(
     val id: String,
-    val target: String,
+    val title: String,
     val unread: Long,
     val live: Boolean?,
-    val ccmSid: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -2322,13 +2321,12 @@ data class BusAgent(
         val ADAPTER: JsonAdapter<BusAgent> = obj(
             listOf(
             Field("id", { Str }, optional = false, nullable = false),
-            Field("target", { Str }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
             Field("unread", { Lng }, optional = false, nullable = false),
             Field("live", { opt(Bool) }, optional = false, nullable = true),
-            Field("ccm_sid", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> BusAgent(a[0] as String, a[1] as String, a[2] as Long, a[3] as Boolean?, a[4] as String?) },
-            { v -> arrayOf(v.id, v.target, v.unread, v.live, v.ccmSid) },
+            { a -> BusAgent(a[0] as String, a[1] as String, a[2] as Long, a[3] as Boolean?) },
+            { v -> arrayOf(v.id, v.title, v.unread, v.live) },
         )
     }
 }
@@ -8985,7 +8983,6 @@ sealed interface HookState {
 
 @Suppress("UNCHECKED_CAST")
 data class HooksDiagnosis(
-    val sessionStart: HookState,
     val stop: HookState,
     val note: String,
 ) : Ordered {
@@ -8994,12 +8991,11 @@ data class HooksDiagnosis(
     companion object {
         val ADAPTER: JsonAdapter<HooksDiagnosis> = obj(
             listOf(
-            Field("session_start", { HookState.ADAPTER }, optional = false, nullable = false),
             Field("stop", { HookState.ADAPTER }, optional = false, nullable = false),
             Field("note", { Str }, optional = false, nullable = false),
             ),
-            { a -> HooksDiagnosis(a[0] as HookState, a[1] as HookState, a[2] as String) },
-            { v -> arrayOf(v.sessionStart, v.stop, v.note) },
+            { a -> HooksDiagnosis(a[0] as HookState, a[1] as String) },
+            { v -> arrayOf(v.stop, v.note) },
         )
     }
 }
@@ -15491,7 +15487,6 @@ data class ProfileForm(
     val launcher: String?,
     val tmuxSize: String?,
     val detach: Boolean,
-    val busRegister: Boolean,
     val tab: Tab?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -15510,11 +15505,10 @@ data class ProfileForm(
             Field("launcher", { opt(Str) }, optional = false, nullable = true),
             Field("tmuxSize", { opt(Str) }, optional = false, nullable = true),
             Field("detach", { Bool }, optional = false, nullable = false),
-            Field("busRegister", { Bool }, optional = false, nullable = false),
             Field("tab", { opt(Tab.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> ProfileForm(a[0] as String, a[1] as String?, a[2] as ProfileAccountPick?, a[3] as ProfileTmuxPick?, a[4] as List<ProfileCwdCase>?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Boolean, a[12] as Tab?) },
-            { v -> arrayOf(v.name, v.from, v.account, v.tmux, v.cwdIf, v.cwd, v.agent, v.args, v.launcher, v.tmuxSize, v.detach, v.busRegister, v.tab) },
+            { a -> ProfileForm(a[0] as String, a[1] as String?, a[2] as ProfileAccountPick?, a[3] as ProfileTmuxPick?, a[4] as List<ProfileCwdCase>?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Tab?) },
+            { v -> arrayOf(v.name, v.from, v.account, v.tmux, v.cwdIf, v.cwd, v.agent, v.args, v.launcher, v.tmuxSize, v.detach, v.tab) },
         )
     }
 }
@@ -15796,7 +15790,6 @@ enum class ProfileSlotId(val wire: String) {
     LAUNCHER("launcher"),
     TMUX_SIZE("tmuxSize"),
     DETACH("detach"),
-    BUS_REGISTER("busRegister"),
     TAB("tab"),
     ;
 

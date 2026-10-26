@@ -8867,7 +8867,7 @@ type FootprintClient = { home: string, path?: string | null, };
 type FootprintReq = { client?: FootprintClient | null, };
 type SettingsScope = { scope: string, path: string, state: SurfaceState, 
 /**
- * 文件里有没有 cc-bus 那两个钩子程序的字样。读不到 → `None`（**不猜**）。
+ * 文件里有没有 cc-bus 钩子程序的字样。读不到 → `None`（**不猜**）。
  */
 has_cc_bus_hooks: boolean | null, precedence_note: string, };
 type SurfaceRow = { tool_id: string, tool_name: string, 
@@ -10345,7 +10345,7 @@ cc-bus 钩子诊断。
 
 ```ts
 type HookState = { "kind": "not-installed" } | { "kind": "installed-via-path", command: string, } | { "kind": "installed-at-path", command: string, path: string, } | { "kind": "path-missing", command: string, path: string, } | { "kind": "unknown", command: string, };
-type HooksDiagnosis = { session_start: HookState, stop: HookState, note: string, };
+type HooksDiagnosis = { stop: HookState, note: string, };
 type HooksReport = { 
 /**
  * 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
@@ -10482,7 +10482,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10512,7 +10512,7 @@ accountShape: ProfileAccountShape | null,
  */
 start: string, };
 type ProfileSlot = { id: ProfileSlotId, label: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
@@ -10601,7 +10601,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10628,7 +10628,7 @@ lineError: string | null,
  * 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`。
  */
 problem: string | null, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesResolveReq = { 
@@ -10660,7 +10660,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10698,14 +10698,14 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
 tab: Tab | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesImpact = { affected: Array<ProfileAffected>, };
@@ -10747,7 +10747,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10820,25 +10820,21 @@ type BlockReq = { rcPath: string, };
 ```ts
 type BusAgent = { 
 /**
- * 总线身份。
+ * 会话 id（收件人就写它）。
  */
 id: string, 
 /**
- * tmux 地址。
+ * 叫它什么（出口照摆）：这台有它的记录 ⇒ 会话标题；没有 ⇒ 照实就是会话 id。
  */
-target: string, 
+title: string, 
 /**
  * 待读条数。
  */
 unread: number, 
 /**
- * 这个地址今天还在不在：`true` / `false` / `null`（问不到身份空间，**不是**「不在」）。
+ * 这条会话此刻活着没有：`true` / `false` / `null`（判不了，**不是**「不在」）。
  */
-live: boolean | null, 
-/**
- * 那个会话绑的会话 id，没绑 ⇒ `null`。
- */
-ccm_sid: string | null, };
+live: boolean | null, };
 type BusList = { agents: Array<BusAgent>, };
 type NoArgs = Record<symbol, never>;
 ```
