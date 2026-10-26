@@ -39,6 +39,7 @@ class LaunchFromAliasesTest {
             "binDir" to "/h/.cc-monitor/bin",
             "accounts" to emptyList<String>(),
             "tmux" to true,
+            "slots" to emptyList<Any>(),
         )
 
     private fun row(
