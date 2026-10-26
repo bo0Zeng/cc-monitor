@@ -11,31 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 「这条对话跑在哪台主机上」的具名载体。
- *
- * Koin 的 `parametersOf` 按类型取，两个裸 `String` 一起传会静默错配。
- */
-@JvmInline
-value class HostId(
-    val value: String,
-)
-
-/**
- * 「是哪个对话」的具名载体。
- *
- * 不用裸 `String`：`ParametersHolder.getOrNull` 游标优先、仍然位置敏感，裸字符串参数会静默错配。
- */
-@JvmInline
-value class ChatSessionKey(
-    val value: String,
-) {
-    companion object {
-        /** 没指定时的默认对话，debug 重放屏只有这一个对话。 */
-        const val DEFAULT = "default"
-    }
-}
-
-/**
  * 应用级的对话持有者（单例，见 `di/AppModule.kt`）。
  *
  * 下行活在这里而不在 ViewModel 里：离开聊天屏不断流。

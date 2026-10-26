@@ -156,7 +156,7 @@ enum Verdict {
     /// —— 而后者一旦悄悄开始走后端，就该被逼回来重新表态。
     ///
     /// 🔴 牙（缺一当场红）：生产段**零** `route_call_error`（用了 ⇒ 它其实有回落决策）·
-    /// **零** `inbound_client` / `InboundClient` / `client_for`（碰了 ⇒ 它不再只转交注入的句柄，
+    /// **零** `inbound_client` / `InboundClient` / `local_client`（碰了 ⇒ 它不再只转交注入的句柄，
     /// 而且它生产段里那些 `CallError::` 从此可能是本模块分流的那个枚举 ——
     /// 这一档之所以能免掉 `own` 那条检查，**全靠**这一条把 inbound 的类型挡在文件外）。
     PureRouterNoFallbackDecision,
@@ -168,7 +168,7 @@ enum Verdict {
 const PURE_ROUTER_MUST_NOT_NAME: &[&str] = &[
     "inbound_client",
     "InboundClient",
-    "client_for",
+    "local_client",
     "layer_no_channel",
 ];
 
@@ -348,7 +348,7 @@ fn the_pure_router_verdict_has_teeth() {
         ("let r = route_call_error(&e, f);\n", "route_call_error"),
         ("use crate::inbound_client::CallError;\n", "inbound_client"),
         ("fn f(c: Arc<InboundClient>) {}\n", "InboundClient"),
-        ("let c = client_for(&o);\n", "client_for"),
+        ("let c = local_client();\n", "local_client"),
         ("let l = layer_call_error(&e, 1);\n", "layer_call_error"),
         ("let l = layer_no_channel(1);\n", "layer_no_channel"),
     ] {

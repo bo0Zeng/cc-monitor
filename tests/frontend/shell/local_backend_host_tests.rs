@@ -420,8 +420,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     };
     let wait_channel = |want: bool| -> bool {
         for _ in guard_core::wall::rounds() {
-            let on =
-                crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
+            let on = crate::inbound_client::local_client().is_some();
             if on == want {
                 return true;
             }
@@ -3066,8 +3065,8 @@ impl E2eSandbox {
             self.kept.lock().unwrap_or_else(|e| e.into_inner()).push(c);
         }
         // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：那条流还挂着，下一个宿主认不出已有实例。
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
-            crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
+        if let Some(c) = crate::inbound_client::local_client() {
+            crate::inbound_client::unregister(&c);
             // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**；关写半边才是后端那边的 EOF。
             //   等到后端处理完这条流结束（它收掉这条流、我们的读端见了底）。
             let ended = c.close_write();
@@ -3255,7 +3254,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         assert_eq!(pid2, pid1, "第二个宿主接上的不是同一个进程");
         assert!(
-            crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some(),
+            crate::inbound_client::local_client().is_some(),
             "接上了却没登记入方向通道 —— 那只是「连上了」，不是「接上了」"
         );
         println!("E2E-OK KPY2 第二个宿主**接上**了同一个后端（pid 不变），没起第二个");
@@ -4283,7 +4282,7 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
     assert!(h.current_pid().is_some(), "到兜底上限没起来");
     // 等 hello 被读到（说过话那一维：读到 hello 才登记本机入方向通道）再叫停。
     let t0 = std::time::Instant::now();
-    while crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_none() {
+    while crate::inbound_client::local_client().is_none() {
         assert!(
             t0.elapsed() < guard_core::wall::CEILING,
             "到兜底上限还没读到 hello"
@@ -4378,7 +4377,7 @@ fn the_supervised_start_reads_as_starting_until_the_hello() {
     if let Some(h) = &h {
         h.stop();
     }
-    while crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some() {
+    while crate::inbound_client::local_client().is_some() {
         assert!(
             t0.elapsed() < guard_core::wall::CEILING,
             "到兜底上限通道还没摘"

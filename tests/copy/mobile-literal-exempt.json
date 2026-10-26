@@ -19,13 +19,6 @@
         "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
       }
     ],
-    "src/mobile/core-remote/src/main/kotlin/com/ccmonitor/mobile/core/remote/RemoteExecutor.kt": [
-      {
-        "text": "{…} 失败（退出码 {…}）：{…}",
-        "use": "内部",
-        "why": "ExecResult.orThrow 的异常说明：生产代码里没有调用方，只在异常栈；接上屏的调用方时改成表里一句 ＋ 原话"
-      }
-    ],
     "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt": [
       {
         "text": "会话在连接期间已被断开",

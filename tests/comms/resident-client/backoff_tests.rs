@@ -67,7 +67,7 @@ fn rounds_that_never_reached_the_far_side_stay_at_the_floor() {
 }
 
 /// 两端同一份阈值：退避的数只在本文件定义一次；用它的循环全仓只一条（`feed.rs`，monitor `one_loop_guard` 守着），
-/// 手机（嵌的 Rust 核心 `src/mobile/core-rs`）与桌面（monitor `stream_source/run.rs`）都经本 crate 的 `Feed` 跑；Kotlin 那一侧一个退避的数都没有。
+/// 手机（嵌的 Rust 核心 `src/mobile/core-rs`）与桌面（本机后端 `control/feeds.rs`，各台的常驻流归它）都经本 crate 的 `Feed` 跑；Kotlin 那一侧一个退避的数都没有。
 #[test]
 fn both_ends_take_the_backoff_from_here() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -89,9 +89,18 @@ fn both_ends_take_the_backoff_from_here() {
             "{name} 在本 crate 里不是恰好定义一次"
         );
     }
-    for (who, rel) in [
-        ("桌面", "src/frontend/shell/src/stream_source/run.rs"),
-        ("手机核心", "src/mobile/core-rs/rust/resident.rs"),
+    for (who, rel, step) in [
+        // 本机后端把进展原样交给拨号核心（它每过一步调一次）。
+        (
+            "桌面",
+            "src/backend/control/feeds.rs",
+            ".open(req, tx, progress)",
+        ),
+        (
+            "手机核心",
+            "src/mobile/core-rs/rust/resident.rs",
+            "progress.step()",
+        ),
     ] {
         let src = guard_core::production_code(&read(rel));
         assert!(
@@ -100,7 +109,7 @@ fn both_ends_take_the_backoff_from_here() {
         );
         // 拨号期限按拨号核心报的进展算：宿主只把进展行原样转给循环（要它 · 转它），不自己数哪一步。
         assert!(
-            src.contains("progress.step()"),
+            src.contains(step),
             "{who}没把拨号核心报的进展交给循环（{rel}）"
         );
         // 判死（心跳问活）· 拨号期限只在循环里：宿主那一侧不许自己问活、自己给拨号掐表。

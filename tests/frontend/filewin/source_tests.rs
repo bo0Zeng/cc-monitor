@@ -1255,7 +1255,7 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
 /// 「那台连没连着」那条流的一格 ⇒ 窗口画成什么：monitor 说连着 · 在重连 · 一轮没连上照说；
 /// 第 0 跳（窗口自己和 monitor 之间那对管子）断了 ⇒ 不是「重新连接中」（没有谁在重连），是和 monitor 断了。期望手写。
 #[test]
-fn the_link_stream_tells_a_gone_monitor_apart_from_a_reconnecting_machine() {
+fn a_gone_monitor_is_told_apart_from_a_reconnecting_machine() {
     use comms_inward::chan::wire::{HopFault, HopId, Item};
     let unseen = |idx: u8, tag: &'static str, why: HopFault| Item::Unseen {
         at: HopId { idx, tag },
@@ -1278,6 +1278,50 @@ fn the_link_stream_tells_a_gone_monitor_apart_from_a_reconnecting_machine() {
         link_seen(&unseen(0, "open", HopFault::Dropped)),
         Some(LinkSeen::Severed)
     );
+}
+
+/// 那台通不通读本机后端那台的成品（`changed/machine`，`key` ＝ 那台的名字）：别台只认说它的那一格、照它的状态画；
+/// 本机后端那一条看得见 ⇒ 本机那台连着、不替别台说；看不见 ⇒ 两边都跟着断。期望手写。
+#[test]
+fn a_machines_link_is_read_from_its_state_product() {
+    use comms_inward::chan::wire::{Body, HopFault, HopId, Item};
+    let gpu = Origin("gpu".into());
+    let cell = |key: &str, state: &str| Item::Frame {
+        seq: 1,
+        body: Body(
+            serde_json::json!({"key": key, "body": {"state": state}})
+                .to_string()
+                .into_bytes(),
+        ),
+    };
+    assert_eq!(machine_seen(&gpu, &cell("gpu", "up")), Some(LinkSeen::Up));
+    assert_eq!(
+        machine_seen(&gpu, &cell("gpu", "connecting")),
+        Some(LinkSeen::Reconnecting)
+    );
+    assert_eq!(
+        machine_seen(&gpu, &cell("gpu", "down")),
+        Some(LinkSeen::Down)
+    );
+    assert_eq!(
+        machine_seen(&gpu, &cell("other", "up")),
+        None,
+        "别台那一格被当成这台的"
+    );
+    assert_eq!(machine_seen(&gpu, &Item::Seen { from: None }), None);
+    assert_eq!(
+        machine_seen(&Origin::local(), &Item::Seen { from: None }),
+        Some(LinkSeen::Up)
+    );
+    assert_eq!(machine_seen(&Origin::local(), &cell("gpu", "down")), None);
+    let gone = Item::Unseen {
+        at: HopId {
+            idx: 1,
+            tag: "open",
+        },
+        why: HopFault::Dropped,
+    };
+    assert_eq!(machine_seen(&gpu, &gone), Some(LinkSeen::Reconnecting));
 }
 
 /// 一趟命令没成、断在第 0 跳（窗口与 cc-monitor 之间那对管子）⇒ 那一句说与 cc-monitor 断开，不说那台离线；

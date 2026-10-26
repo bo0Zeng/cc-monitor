@@ -800,6 +800,14 @@ async fn serve_listening(
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
+                // 此刻接着的各台那一条连接的 hello 先交这条流（它在 watcher 上接好之后才取 ⇒ 那几台往后的帧不会排到它前面：
+                //   应答这一路先写，写的那一头还没起）。不然这条流收不到那几台这一条连接的开头。
+                for f in control::feeds::attached_hellos() {
+                    if reply_tx.try_send(f).is_err() {
+                        tracing::warn!("新连上的流收不下此刻接着的那几台的 hello（应答通道满了）");
+                        break;
+                    }
+                }
                 // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
                 let tap_rx = tap::attach(tz.clone(), watch.as_ref().map(|w| &w.sids[..]));
                 let mut inbound_task =

@@ -749,7 +749,7 @@ fn attach_stream(
                 Said::with_raw(copy_text("rsLocalBackendHost.stream.asyncFailed", &[]), &e)
             })?;
     let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
-    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    crate::inbound_client::register(client.clone());
     crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
@@ -811,12 +811,9 @@ fn attach_stream(
                 continue;
             };
             // 与 stdio 那条载体同一处分派；有序的那几种送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::stream_source::route(
-                crate::stream_source::Via::Local,
-                &crate::origin::Origin::local(),
-                Some(&client),
-                f,
-            ) {
+            if let Some(f) =
+                crate::stream_source::route(&crate::origin::Origin::local(), Some(&client), f)
+            {
                 crate::local_lines::deliver(f).await;
             }
         }
@@ -828,7 +825,7 @@ fn attach_stream(
         // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
         crate::sftp_pool::fail_owned_by(&client, &copy_text("reason.local.linkLost", &[]));
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
-        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+        crate::inbound_client::unregister(&client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
         // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一刻才拿得到第三维（退出状态）。
         reap_detached(handshake, reader_end);
@@ -1527,7 +1524,7 @@ fn start_supervised<R>(
     }));
     let spoke = wait_listening(
         std::path::Path::new(crate::inbound_client::LOCAL_ORIGIN),
-        || Ok(crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).map(|_| ())),
+        || Ok(crate::inbound_client::local_client().map(|_| ())),
         || match ended.try_recv() {
             Ok(how) => Some(how),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(String::new()),
@@ -1720,7 +1717,7 @@ pub(crate) fn note_local_starting(on: bool) {
 
 /// 本机后端此刻起没起来（通道在不在现看）。
 pub(crate) fn local_backend_now() -> LocalBackend {
-    let channel = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
+    let channel = crate::inbound_client::local_client().is_some();
     local_backend(channel, crate::byte_table::my_backend_id())
 }
 
