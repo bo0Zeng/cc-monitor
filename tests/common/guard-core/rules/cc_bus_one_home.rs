@@ -29,8 +29,8 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
                     .map(move |v| format!("{} ({v})", f.rel))
             })
             .collect();
-        // 正控：发信那条脚本自己的用法行里有它的名字，同一个认法认得出。
-        let control = named(repo.file("src/shared/cc-bus/scripts/cc-send").prod()).len();
+        // 正控：发信那条脚本自己的报错行里有它的名字，同一个认法认得出（shell 没有测试段，取全文）。
+        let control = named(repo.file("src/shared/cc-bus/scripts/cc-send").text()).len();
         none(
             "monitor 生产段里提到 cc-bus 写面脚本名（monitor 不发信，只经后端的 `bus-*` 读）",
             found,

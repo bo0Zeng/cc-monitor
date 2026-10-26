@@ -9,6 +9,7 @@ id=$("$SELFDIR/cc-whoami" 2>/dev/null || true)
 # 路由库自己会装载三个适配面(拦停这一格是 agent 能力,`agent_block_reason`)。
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh" || exit 0   # 适配层装不齐:**放行**(钩子的失败不该卡死用户的本轮)
+ccbus_migrate_once || true             # 旧收件箱迁一次(迁过就是一次 stat)
 # ★★ **`cc-recv` 是有副作用的:它会推进已读位置**。而"喂回给 Claude"这一步在它之后
 #    ——中间任何一步失败,消息就**被消费掉却没人看见**。〔08-13 实测事故〕
 #

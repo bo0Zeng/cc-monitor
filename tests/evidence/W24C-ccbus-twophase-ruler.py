@@ -96,9 +96,9 @@ EXPECTED_TAGS = [
 ]
 
 # ── 登记:静态面的那些数 ─────────────────────────────────────────────────────
-# `cc-recv` 的 sha256(2026-09-19 现打)。要求逐字「`cc-recv` 不降薄壳」——
-# 一个字节都不许动它,而「没动」这件事只有恒等才钉得住。
-CC_RECV_SHA256 = "277fc2fc87291a5ab1992c2d008a7bed50f33b78231d8f10e9f5a2d29caddec8"
+# `cc-recv` 的 sha256(A13-2 现打:换了信封的渲染、删了自动接回复那一段、开头迁一次旧收件箱)。
+# 要求逐字「`cc-recv` 不降薄壳」—— 改它要有理由并回来重打这个值,而「没动」这件事只有恒等才钉得住。
+CC_RECV_SHA256 = "3cf1e28aa16edb3294defc7810cdeafebf8fb9673993030086a724cfe59c9f7b"
 
 # `cc-peek` 里允许出现的写形,**逐条登记理由**(`D6`:相等断言 ＋ 登记豁免,不要下界)。
 PEEK_WRITE_EXEMPT = {
@@ -115,6 +115,7 @@ LOCK_FAMILIES = {
     '$f.lock': "B 限流窗口",
     '$nf.lock': "D 敲门去抖",
     '$BUS/agents.tsv.lock': "E 名册与台账",
+    '$BUS/state/migrate.lock': "F 旧收件箱迁一次(只在升级后第一次跑时拿,迁完是一次 stat)",
 }
 
 # `cc-bus-lib.sh` 里还剩几处**直接** `flock`(B/D 两族,保的是别的不变式;C 去重表随去重删了)。
@@ -313,8 +314,8 @@ def check_s7():
 # 行为面:在一次性 CC_BUS_HOME 里真跑
 # ════════════════════════════════════════════════════════════════════════════
 
-MSG = ('{{"v":2,"id":"m{i}","from":"{f}","to":"tester","ts":"t{i}",'
-       '"text":"消息 {i}","hops":0,"trace":"{f}"}}\n')
+MSG = ('{{"id":"m{i}","ts":"t{i}","from":"{f}","to":"tester","tier":2,"act":"inform",'
+       '"title":"t{i}","re":null,"refs":[],"text":"消息 {i}"}}\n')
 
 
 class Bus:
@@ -322,6 +323,8 @@ class Bus:
         self.home = Path(tmp) / name
         for d in ("inbox", "state", "log"):
             (self.home / d).mkdir(parents=True, exist_ok=True)
+        # 台架写的就是新版信封 ⇒ 标成「已迁过」(不然第一次跑 cc-recv / 钩子会把它当旧收件箱挪进存档)。
+        (self.home / "state" / "envelope-2").touch()
         self.inbox = self.home / "inbox" / "tester.jsonl"
 
     def add(self, n, frm="alice"):
@@ -378,16 +381,17 @@ def behavioral(tmp):
     else:
         bad("B1", f"peek 写了东西:rc={rc} 变了 {sorted(changed)} 新增 {sorted(new)}")
 
-    # B2 令牌形状 ＋ commit 推进 ＋ lastread 落地
-    if re.fullmatch(r"\d+\.\d+\.\d+-\d+", tok) and out.count("【cc-bus 来自") == 3:
+    # B2 令牌形状 ＋ commit 推进，state/ 里只多那一个 .pos(接在哪一条后面由发信人写进信封,不再替谁记)
+    if re.fullmatch(r"\d+\.\d+\.\d+-\d+", tok) and out.count("[cc-bus] id=") == 3:
+        before2 = set(bus.snapshot())
         rc2, _, err2 = run(["cc-commit", "tester", tok], bus.env())
-        lr = (bus.home / "state" / "lastread-tester__alice").exists()
-        if rc2 == 0 and bus.pos() == "3" and lr:
-            ok("B2", f"令牌 {tok} → commit rc=0,pos 0→3,lastread-* 落地(那段副作用已搬到第二跳)")
+        extra = set(bus.snapshot()) - before2
+        if rc2 == 0 and bus.pos() == "3" and extra == {"state/tester.pos"}:
+            ok("B2", f"令牌 {tok} → commit rc=0,pos 0→3,state/ 里只多了已读位置那一份")
         else:
-            bad("B2", f"commit 没做对:rc={rc2} pos={bus.pos()} lastread={lr} err={err2.strip()[:120]}")
+            bad("B2", f"commit 没做对:rc={rc2} pos={bus.pos()} 多出 {sorted(extra)} err={err2.strip()[:120]}")
     else:
-        bad("B2", f"peek 的形状不对:令牌={tok!r} 正文里 {out.count('【cc-bus 来自')} 条")
+        bad("B2", f"peek 的形状不对:令牌={tok!r} 正文里 {out.count('[cc-bus] id=')} 条")
 
     # B3 同一个令牌再 commit ⇒ STALE,且**一个字节都不写**
     snap = bus.snapshot()
@@ -400,7 +404,7 @@ def behavioral(tmp):
     # B4 收件箱在两跳之间变了 ⇒ CHANGED
     bus.add(1, "bob")
     rc, _, tok4 = peek_token(bus)
-    txt = bus.inbox.read_text(encoding="utf-8").replace("消息 0\",\"hops", "消息 0 改过\",\"hops")
+    txt = bus.inbox.read_text(encoding="utf-8").replace("消息 0\"}", "消息 0 改过\"}")
     bus.inbox.write_text(txt, encoding="utf-8")
     rc4, _, err4 = run(["cc-commit", "tester", tok4], bus.env())
     if rc4 == 12 and bus.pos() == "3" and "CHANGED" in err4:
@@ -425,7 +429,7 @@ def behavioral(tmp):
     poses = []
     for _ in range(4):
         rc, out, tk = peek_token(b2, extra=("--max-lines", "1"))
-        if out.count("【cc-bus 来自") != 1:
+        if out.count("[cc-bus] id=") != 1:
             break
         rc, _, _ = run(["cc-commit", "tester", tk], b2.env())
         poses.append(b2.pos())
@@ -457,7 +461,7 @@ def behavioral(tmp):
     (shim / "jq").chmod(0o755)
     env = b5.env(PATH=f"{shim}:{os.environ['PATH']}")
     rc, out, err = run(["cc-bus-stop-hook"], env, stdin="{}")
-    again = run(["cc-peek", "tester"], b5.env())[1].count("【cc-bus 来自")
+    again = run(["cc-peek", "tester"], b5.env())[1].count("[cc-bus] id=")
     if rc == 0 and out.strip() == "" and b5.pos() is None and again == 2:
         ok("B8", "喂回失败 ⇒ 钩子 rc=0、无拦停、`.pos` 根本没建过,两条消息下一跳照样读得到"
                  "(「推进了再退回」换成了「没确认就不推进」)")
@@ -545,30 +549,30 @@ def behavioral(tmp):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 敲门(10-14):经后端往会话说一句
+# 敲门:经后端往会话说一句(两档:一档敲门、对方闲着才送;二档只进收件箱)
 # ════════════════════════════════════════════════════════════════════════════
 
 # 敲门那一句,**逐字**抄在这里当金标准(不从仓里现取:现取就是两侧同源恒真)。
 OLD_T2 = "🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-recv 读取并按内容处理"
-OLD_T2 = "🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-recv 读取并按内容处理"
-PANE_SID = "11111111-2222-4333-8444-555555555555"
-# tmux 替身:读窗格身份那一问答「根进程 4242 ＋ 窗格上的会话编号」(`W24C_PANE_SID` 可换,空 ⇒ 没打标记);
-# 谁要是还往窗格里打字(send-keys),记进 `W24C_SHIMLOG` —— 判据要它恒空。
+SENDER = "aaaaaaaa-1111-2222-3333-444444444444"
+BOB = "bbbbbbbb-1111-2222-3333-444444444444"
+# tmux 替身:谁要是还往窗格里打字(send-keys),记进 `W24C_SHIMLOG` —— 判据要它恒空。
 SHIM_TMUX = (
     "#!/usr/bin/env bash\n"
-    'if [ "$1" = display-message ]; then printf \'4242 %s\\n\' "${W24C_PANE_SID-' + PANE_SID + '}"; exit 0; fi\n'
     'if [ "$1" = send-keys ]; then printf \'%s\\037\' "$@" >> "$W24C_SHIMLOG"; printf \'\\036\' >> "$W24C_SHIMLOG"; fi\n'
     "exit 0\n"
 )
-# 后端替身(`CCM_BIN`):只认 `-- --terminal-preview` / `-- --session-say`,stdin 一段 JSON;每一问记进 `W24C_CCMLOG`。
+# 后端替身(`CCM_BIN`):认 `-- --bus-envelope` / `-- --terminal-preview` / `-- --session-say`,stdin 一段 JSON;每一问记进 `W24C_CCMLOG`。
+# 信封那一问照入参盖一份规范信封(真校验住后端,另有单测与 e2e;这里只管管线拿到之后怎么投、怎么敲)。
 # `W24C_NO_SCREEN` 设了 ⇒ 看不到那一屏(预览失败);`W24C_SAY` ⇒ 说那一句的结局(缺省 delivered)。
 SHIM_CCM = (
     "#!/usr/bin/env bash\n"
     'a=$(cat); printf \'%s\\037%s\\036\' "$2" "$a" >> "$W24C_CCMLOG"\n'
     'case "$2" in\n'
+    '  --bus-envelope) printf \'%s\' "$a" | jq -c \'{id:"m0000000000001",ts:"2026-10-26T00:00:00Z",from,to,tier:(.tier // 2),act,title,re:(.re // null),refs:(.refs // []),text:(.text // "")}\' ;;\n'
     '  --terminal-preview) [ -n "${W24C_NO_SCREEN:-}" ] && { echo \'{"code":"no_such_session"}\' >&2; exit 2; }\n'
     '                      echo \'{"screen":"00ff00ff00ff00ff","cols":80,"rows":24}\' ;;\n'
-    '  --session-say) printf \'{"result":"%s"}\\n\' "${W24C_SAY:-delivered}" ;;\n'
+    '  --session-say) printf \'{"result":"%s","why":"%s"}\\n\' "${W24C_SAY:-delivered}" "${W24C_WHY:-}" ;;\n'
     '  *) exit 2 ;;\n'
     "esac\n"
 )
@@ -583,7 +587,6 @@ def bash_lib(snippet, env, scripts=None):
 
 def nudge_bus(tmp, name):
     b = Bus(tmp, name)
-    (b.home / "agents.tsv").write_text("bob\tbob:0.0\t2026-09-24\t4242\n", encoding="utf-8")
     shim = Path(tmp) / f"{name}-shim"
     shim.mkdir(exist_ok=True)
     (shim / "tmux").write_text(SHIM_TMUX, encoding="utf-8")
@@ -591,7 +594,7 @@ def nudge_bus(tmp, name):
     (shim / "ccm").write_text(SHIM_CCM, encoding="utf-8")
     (shim / "ccm").chmod(0o755)
     log = Path(tmp) / f"{name}-ccm.log"
-    env = b.env(CC_BUS_ID="alice", PATH=f"{shim}:{os.environ['PATH']}",
+    env = b.env(CC_BUS_ID=SENDER, PATH=f"{shim}:{os.environ['PATH']}",
                 W24C_SHIMLOG=str(Path(tmp) / f"{name}-tmux.log"), W24C_CCMLOG=str(log),
                 CCM_BIN=str(shim / "ccm"), CCBUS_NUDGE_DEBOUNCE="0")
     return b, env, log
@@ -616,7 +619,7 @@ def knocks(log):
 
 
 def bob_inbox(b):
-    p = b.home / "inbox" / "bob.jsonl"
+    p = b.home / "inbox" / f"{BOB}.jsonl"
     return p.read_text(encoding="utf-8").splitlines() if p.exists() else []
 
 
@@ -635,62 +638,56 @@ def preflight():
 
 
 def check_k7(tmp):
-    """〔10-14〕敲门不再往窗格里打字:经后端 `session-say`(先 `terminal-preview` 拿那一屏的指纹、带着它说);
-    会话编号先看登记的第 5 列、没有再读窗格身份(核第 4 列 pid);读不到 ⇒ 只入收件箱。claude 词典 can_peer ⇒ 回执提一句;codex 词典装得上。"""
-    import json
+    """敲门不往窗格里打字:经后端 `session-say`(先 `terminal-preview` 拿那一屏的指纹、带着它、只在闲着时说);
+    收件人就是会话 id,敲的就是它;一档才敲、二档只进收件箱;看不到那一屏 / 那台不送 ⇒ 只入收件箱、不算敲过;codex 词典装得上。"""
+    send = ["cc-send", BOB, "--act", "inform", "--title", "t", "x"]
     # a) 静态:通用层与 POSIX 适配面里都没有 send-keys 了(往窗格里打字那一档整条退出)
     typed = {f: src(f).count("send-keys") for f in ("cc-bus-lib.sh", "cc-bus-adapt-posix.sh", "cc-bus-adapt.sh")}
     a_ok = not any(typed.values())
-    # b) 读窗格身份 ⇒ 先预览、再带着那一屏的指纹说;一个字都没往窗格里打
+    # b) 一档 ⇒ 核信封 → 先预览 → 带着那一屏的指纹、只在闲着时说;一个字都没往窗格里打
     b, env, log = nudge_bus(tmp, "k7b")
-    rc, _, _ = run(["cc-send", "bob", "x"], env)
+    rc, _, _ = run(send[:2] + ["--tier", "1"] + send[2:], env)
     calls = ccm_calls(log)
     tlog = Path(tmp) / "k7b-tmux.log"
-    b_ok = (rc == 0 and [c for c, _ in calls] == ["--terminal-preview", "--session-say"]
-            and calls[0][1].get("sid") == PANE_SID and calls[1][1].get("sid") == PANE_SID
-            and calls[1][1].get("seen_screen") == "00ff00ff00ff00ff"
-            and calls[1][1].get("text") == OLD_T2.replace("{from}", "alice")
+    b_ok = (rc == 0 and [c for c, _ in calls] == ["--bus-envelope", "--terminal-preview", "--session-say"]
+            and calls[1][1].get("sid") == BOB and calls[2][1].get("sid") == BOB
+            and calls[2][1].get("seen_screen") == "00ff00ff00ff00ff"
+            and calls[2][1].get("idle_only") is True
+            and calls[2][1].get("text") == OLD_T2.replace("{from}", SENDER)
+            and len(bob_inbox(b)) == 1
             and not (tlog.exists() and tlog.read_text(encoding="utf-8")))
-    # c) 窗格上没有身份标记 ⇒ 不敲、只入收件箱、记一笔
+    # c) 二档(缺省)⇒ 只进收件箱,一次看屏 / 说一句都不问,记一笔
     b3, env3, log3 = nudge_bus(tmp, "k7c")
-    rc3, _, _ = run(["cc-send", "bob", "x"], dict(env3, W24C_PANE_SID=""))
+    rc3, _, _ = run(send, env3)
     l3 = (b3.home / "log" / "bus.log").read_text(encoding="utf-8")
-    c_ok = rc3 == 0 and not ccm_calls(log3) and len(bob_inbox(b3)) == 1 and "NUDGE nosid bob" in l3
-    # d) 登记里有第 5 列 ⇒ 用它,不读窗格
-    b4, env4, log4 = nudge_bus(tmp, "k7d")
-    (b4.home / "agents.tsv").write_text("bob\tbob:0.0\t2026-10-14\t4242\tsid-from-register\n", encoding="utf-8")
-    run(["cc-send", "bob", "x"], dict(env4, W24C_PANE_SID=""))
-    d_ok = [r.get("sid") for _, r in ccm_calls(log4)] == ["sid-from-register"] * 2
-    # e) 看不到那一屏 ⇒ 不说;那台不送(在等人)⇒ 记一笔、不算敲过
+    c_ok = (rc3 == 0 and [c for c, _ in ccm_calls(log3)] == ["--bus-envelope"]
+            and len(bob_inbox(b3)) == 1 and f"NUDGE tier2 {BOB}" in l3)
+    # d) 看不到那一屏 ⇒ 不说;那台不送(不闲)⇒ 记一笔、不算敲过
     b5, env5, log5 = nudge_bus(tmp, "k7e")
-    run(["cc-send", "bob", "x"], dict(env5, W24C_NO_SCREEN="1"))
+    run(send[:2] + ["--tier", "1"] + send[2:], dict(env5, W24C_NO_SCREEN="1"))
     l5 = (b5.home / "log" / "bus.log").read_text(encoding="utf-8")
     b6, env6, log6 = nudge_bus(tmp, "k7f")
-    run(["cc-send", "bob", "x"], dict(env6, W24C_SAY="refused"))
+    run(send[:2] + ["--tier", "1"] + send[2:], dict(env6, W24C_SAY="refused", W24C_WHY="not_idle"))
     l6 = (b6.home / "log" / "bus.log").read_text(encoding="utf-8")
-    e_ok = (not knocks(log5) and "NUDGE noscreen" in l5 and len(bob_inbox(b5)) == 1
-            and "NUDGE refused" in l6 and not (b6.home / "state" / "nudge-bob").exists())
-    # f) 登记时的窗格根进程对不上(名字被别人占了)⇒ 不认它的身份、不敲
-    b7, env7, log7 = nudge_bus(tmp, "k7g")
-    (b7.home / "agents.tsv").write_text("bob\tbob:0.0\t2026-10-14\t9999\n", encoding="utf-8")
-    run(["cc-send", "bob", "x"], env7)
-    f_ok = not ccm_calls(log7) and "NUDGE stale bob" in (b7.home / "log" / "bus.log").read_text(encoding="utf-8")
-    # g) 同机两头都是 Claude 也照投、不劝改道(那句提示删了);codex 词典 ⇒ 三档照降级链
+    d_ok = (not knocks(log5) and "NUDGE noscreen" in l5 and len(bob_inbox(b5)) == 1
+            and "NUDGE refused" in l6 and "why=not_idle" in l6 and len(bob_inbox(b6)) == 1
+            and not (b6.home / "state" / f"nudge-{BOB}").exists())
+    # e) 同机两头都是 Claude 也照投、不劝改道;codex 词典 ⇒ 三档照降级链
     b8, env8, _ = nudge_bus(tmp, "k7h")
-    _, _, err8 = run(["cc-send", "bob", "x"], env8)
+    _, _, err8 = run(send, env8)
     b9, env9, _ = nudge_bus(tmp, "k7i")
-    rc9, _, err9 = run(["cc-send", "bob", "x"], dict(env9, CCBUS_ADAPT_AGENT="codex"))
+    rc9, _, err9 = run(send, dict(env9, CCBUS_ADAPT_AGENT="codex"))
     _, out9, _ = bash_lib('printf "%s %s %s" "$(ccbus_degrade block)" "$(ccbus_degrade nudge)" "$(ccbus_degrade inbox)"',
                           dict(env9, CCBUS_ADAPT_AGENT="codex"))
-    g_ok = ("SendMessage" not in err8 and len(bob_inbox(b8)) == 1
+    e_ok = ("SendMessage" not in err8 and len(bob_inbox(b8)) == 1
             and rc9 == 0 and "SendMessage" not in err9 and out9 == "block nudge inbox")
-    if a_ok and b_ok and c_ok and d_ok and e_ok and f_ok and g_ok:
-        ok("K7", "敲门经后端说一句(真跑七形):通用层 ＋ POSIX 适配面零 send-keys · 先预览再带着那一屏的指纹说 · "
-                 "窗格没身份 ⇒ 只入收件箱并记 nosid · 登记第 5 列优先 · 看不到那一屏 / 那台不送 ⇒ 不算敲过 · "
-                 "窗格根进程对不上 ⇒ 不敲 · 同机不劝改道(claude / codex 都不提 SendMessage)· codex 三档照降级链")
+    if a_ok and b_ok and c_ok and d_ok and e_ok:
+        ok("K7", "敲门经后端说一句(真跑五形):通用层 ＋ POSIX 适配面零 send-keys · 一档先核信封、再预览、带着指纹只在闲着时说 · "
+                 "二档只进收件箱、不问看屏 · 看不到那一屏 / 那台不送 ⇒ 不算敲过 · "
+                 "同机不劝改道(claude / codex 都不提 SendMessage)· codex 三档照降级链")
     else:
-        bad("K7", f"敲门那一格不对:a零打字={a_ok}({typed}) b={b_ok}({calls}) c={c_ok} d={d_ok}({ccm_calls(log4)}) "
-                  f"e={e_ok} f={f_ok} g={g_ok}({err8.strip()[-60:]!r} {err9.strip()[-60:]!r} {out9!r})")
+        bad("K7", f"敲门那一格不对:a零打字={a_ok}({typed}) b={b_ok}({calls}) c={c_ok}({ccm_calls(log3)}) "
+                  f"d={d_ok} e={e_ok}({err8.strip()[-60:]!r} {err9.strip()[-60:]!r} {out9!r})")
 
 
 def main():

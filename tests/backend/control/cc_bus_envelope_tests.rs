@@ -12,7 +12,7 @@ fn check_json(v: serde_json::Value) -> Result<Checked, &'static str> {
 }
 
 fn ok_req() -> serde_json::Value {
-    json!({"from": A, "to": B, "act": "inform", "title": "合并树已更新", "text": "看 w8/mg73"})
+    json!({"from": A, "to": B, "act": "inform", "title": "占位标题", "text": "占位正文"})
 }
 
 fn with(k: &str, v: serde_json::Value) -> serde_json::Value {
