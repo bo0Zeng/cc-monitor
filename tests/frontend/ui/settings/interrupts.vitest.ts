@@ -32,14 +32,14 @@ describe("会打断什么", () => {
 describe("会打断什么 · 文件窗口那一份", () => {
   const none = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
   it("★ 文件窗口里有没存的改动 ⇒ 列出来（只有它也弹）；在跑的照列；数不出 ⇒ 说数不出", () => {
-    const rows = interruptRows({ ...none, unsaved: 1, filewinRunning: 0 }, "各机器", "stop");
+    const rows = interruptRows({ ...none, unsaved: 1, filewinRunning: 0 }, copyText("restartNow.dialog.everywhere"), "stop");
     expect(rows[0]!.items).toEqual([copyText("interrupts.item.unsaved", { n: 1 })]);
-    expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 2 }, "各机器", "restart")[0]!.items).toEqual([
+    expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 2 }, copyText("restartNow.dialog.everywhere"), "restart")[0]!.items).toEqual([
       copyText("interrupts.item.filewinRunning", { n: 2 }),
     ]);
-    expect(interruptRows({ ...none, unsaved: null, filewinRunning: null }, "各机器", "stop")[0]!.items).toEqual([
+    expect(interruptRows({ ...none, unsaved: null, filewinRunning: null }, copyText("restartNow.dialog.everywhere"), "stop")[0]!.items).toEqual([
       copyText("interrupts.item.filewinUnknown"),
     ]);
-    expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 0 }, "各机器", "stop")).toEqual([]);
+    expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 0 }, copyText("restartNow.dialog.everywhere"), "stop")).toEqual([]);
   });
 });

@@ -35,7 +35,11 @@ fn the_book_sums_what_each_window_said_and_drops_a_gone_window() {
         "说回 0 的那扇窗还算成手上有事"
     );
     book.forget(one);
-    assert_eq!(book.total(), FilewinTotals::default(), "管子断了，那扇窗的数还留着");
+    assert_eq!(
+        book.total(),
+        FilewinTotals::default(),
+        "管子断了，那扇窗的数还留着"
+    );
 }
 
 /// 窗口说的那一句解不出来 ⇒ 用错了（不当成 0 记下）。

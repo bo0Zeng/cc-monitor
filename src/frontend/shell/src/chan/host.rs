@@ -46,6 +46,7 @@ where
 }
 
 /// 同上，句柄是入参（判据挂合成句柄）。
+#[cfg(test)]
 pub fn serve_with<R, W>(rd: R, wr: W, backends: Arc<dyn Backends>)
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
@@ -55,8 +56,12 @@ where
 }
 
 /// 同上，那一对管子走了之后再做 `after`（不论正常走还是坏了）。
-fn serve_then<R, W>(rd: R, wr: W, backends: Arc<dyn Backends>, after: impl FnOnce() + Send + 'static)
-where
+fn serve_then<R, W>(
+    rd: R,
+    wr: W,
+    backends: Arc<dyn Backends>,
+    after: impl FnOnce() + Send + 'static,
+) where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
@@ -625,26 +630,27 @@ mod transfer_stream_tests;
 #[path = "../../../../../tests/frontend/shell/chan/changed_stream_tests.rs"]
 mod changed_stream_tests;
 
+/// 退出那一问要的加总（[`busy`] 那张表现读出来的）：手上有事的窗口几扇 · 没存的几份 · 还在跑的几趟。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct FilewinTotals {
+    pub windows: u32,
+    pub unsaved: u32,
+    pub running: u32,
+}
+
 /// 各文件窗口「手上有什么会被打断」那张表：窗口在数变了时说一句（[`filewin_contract::FILEWIN_BUSY_OP`]，发在窗口那头 `workspace.rs::settle_busy`），
 /// 那扇窗的通道句柄（[`WindowBackends`]）记进它那一格，管子断了（[`serve_window`] 收尾）删掉；退出 / 重启 cc-monitor 那一问经 Tauri 命令
 /// [`filewin_interrupts`] 现读加起来的数（界面 `settings/interrupts.ts`），界面那头不存一份。
 /// 买不到：窗口说了之后、下一句到之前那一小段里的变化；窗口进程卡死、管子还连着 ⇒ 它最后说的那一份照算。
 pub mod busy {
+    pub use super::FilewinTotals;
     use filewin_contract::Busy;
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
-
-    /// 退出那一问要的加总：手上有事的窗口几扇 · 没存的几份 · 还在跑的几趟。
-    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
-    #[cfg_attr(test, derive(ts_rs::TS))]
-    #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-    #[serde(rename_all = "camelCase")]
-    pub struct FilewinTotals {
-        pub windows: u32,
-        pub unsaved: u32,
-        pub running: u32,
-    }
 
     /// 那张表：窗口编号 → 它最后说的那一份。
     #[derive(Default)]
@@ -689,13 +695,14 @@ pub mod busy {
             let Ok(rows) = self.rows.lock() else {
                 return FilewinTotals::default();
             };
-            rows.values()
-                .filter(|b| **b != Busy::default())
-                .fold(FilewinTotals::default(), |t, b| FilewinTotals {
+            rows.values().filter(|b| **b != Busy::default()).fold(
+                FilewinTotals::default(),
+                |t, b| FilewinTotals {
                     windows: t.windows.saturating_add(1),
                     unsaved: t.unsaved.saturating_add(b.unsaved),
                     running: t.running.saturating_add(b.running),
-                })
+                },
+            )
         }
     }
 
