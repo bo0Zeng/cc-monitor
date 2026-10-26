@@ -507,7 +507,6 @@ export class FindStrip {
     mark.className = s.fsMark;
     mark.textContent = t.matched;
     snip.append(document.createTextNode(t.before), mark, document.createTextNode(t.after));
-    el.title = `${t.before}${t.matched}${t.after}`;
     const state = document.createElement("div");
     state.className = s.fsState;
     state.dataset.role = "find-state";

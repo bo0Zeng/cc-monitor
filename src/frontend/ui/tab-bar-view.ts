@@ -1373,7 +1373,6 @@ function paintHead(g: GroupEls, label: string, members: readonly Tab[], collapse
   if (g.drawn === drawn) return;
   g.drawn = drawn;
   if (g.name.textContent !== label) g.name.textContent = label;
-  g.name.title = label;
   g.count.textContent = String(members.length);
   g.caret.setAttribute("aria-expanded", String(!collapsed));
   g.caret.setAttribute("aria-label", collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"));

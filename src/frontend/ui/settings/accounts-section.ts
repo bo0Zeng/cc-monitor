@@ -25,7 +25,7 @@ import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
 import { openOnMachine } from "../file-window";
 import { findHostByOrigin, readRemoteConfig } from "../remote-config";
-import { bindEvents } from "../events";
+import { subscribeTopics } from "../events";
 import { openLoginDrawer } from "../login-drawer";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, type VerifyReport } from "../account-ops";
 import { refusalIn } from "../ipc/chan-caller";
@@ -63,9 +63,6 @@ export interface AccountsSectionOptions {
   confirm?: ConfirmFn;
 }
 
-/** 推来的帧合并成一次重读的间隔。 */
-const PUSH_COALESCE_MS = 300;
-
 export class AccountsSection {
   readonly element: HTMLElement;
   private readonly titleEl: HTMLElement;
@@ -87,7 +84,6 @@ export class AccountsSection {
   private readonly repaired = new Set<Origin>();
   private form: NewAccountForm | null = null;
   private facts: Facts | null = null;
-  private pushTimer: ReturnType<typeof setTimeout> | null = null;
   private subscribed = false;
   /** 宿主调过 `loadNow` 没有（之前切机器只记下，不发 I/O）。 */
   private loaded = false;
@@ -144,25 +140,16 @@ export class AccountsSection {
     void this.subscribe();
   }
 
-  /** 每台订 `changed/accounts` ＋ `changed/quota`：一来就合并成一次重读（只重读此刻在看的那台）。 */
+  /** 每台订 `changed/accounts` ＋ `changed/quota`：在看的那台推来一批就原位重读一次（几趟叠着的只留最后一趟，`seq` 管）。 */
   private async subscribe(): Promise<void> {
     if (this.subscribed) return;
     this.subscribed = true;
     // 机器表读不到：只订本机。
     const origins: Origin[] = [LOCAL_ORIGIN, ...(await readRemoteConfig()).hosts.map((r) => r.name)];
-    const pushed = (): void => {
-      if (this.pushTimer !== null) clearTimeout(this.pushTimer);
-      // 调度：合批 —— 后端推来的账号 / 额度变更：300ms 内几帧合成一次重读
-      this.pushTimer = setTimeout(() => {
-        this.pushTimer = null;
-        void this.reload(true);
-      }, PUSH_COALESCE_MS);
-    };
     try {
-      await bindEvents(
-        { onLine: () => {}, onSessionFace: () => {}, onChanged: pushed },
-        { changed: origins.flatMap((origin) => (["accounts", "quota"] as const).map((topic) => ({ origin, topic }))) },
-      );
+      await subscribeTopics(origins, ["accounts", "quota"], (origin) => {
+        if (origin === this.origin) void this.reload(true);
+      });
     } catch (e) {
       console.warn("[accounts] 订不上账号推送：", e);
     }
