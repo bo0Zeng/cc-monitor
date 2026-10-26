@@ -1483,17 +1483,75 @@ mod tests {
                 ));
             }
         }
-        for (a, b) in m.keys().filter(|(a, b)| a < b) {
-            if let (Some(x), Some(y)) = (count(a, b), count(b, a)) {
-                bad.push(format!(
-                    "互相引用：{a} → {b} {} 处 · {b} → {a} {} 处 —— 挑一个方向，把反方向那几处搬走（再加一行到 `ONE_WAY` 把方向钉住）",
-                    x.0, y.0
-                ));
-            }
-        }
         assert!(
             bad.is_empty(),
             "后端模块之间的方向不对：\n  {}",
+            bad.join("\n  ")
+        );
+    }
+
+    /// 引用图上的环：互相走得到的顶层模块各成一组，只留多于一个的那几组（组内按名排，组按名排）。两个模块互相引用是两元的环，也在里面。
+    fn rings(
+        m: &std::collections::BTreeMap<(String, String), (usize, usize)>,
+    ) -> Vec<Vec<String>> {
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut out_of: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+        for (a, b) in m.keys() {
+            out_of.entry(a).or_default().insert(b);
+            out_of.entry(b).or_default();
+        }
+        let reach_of = |from: &str| -> BTreeSet<&str> {
+            let mut seen = BTreeSet::new();
+            let mut stack = vec![from];
+            while let Some(n) = stack.pop() {
+                for &t in &out_of[n] {
+                    if seen.insert(t) {
+                        stack.push(t);
+                    }
+                }
+            }
+            seen
+        };
+        let reach: BTreeMap<&str, BTreeSet<&str>> =
+            out_of.keys().map(|&n| (n, reach_of(n))).collect();
+        let mut groups: BTreeSet<Vec<String>> = BTreeSet::new();
+        for (&a, from_a) in &reach {
+            let mut g: Vec<String> = from_a
+                .iter()
+                .filter(|&&b| reach[b].contains(a))
+                .map(|b| b.to_string())
+                .collect();
+            if !g.iter().any(|x| x == a) {
+                g.push(a.to_string());
+            }
+            g.sort();
+            if g.len() > 1 {
+                groups.insert(g);
+            }
+        }
+        groups.into_iter().collect()
+    }
+
+    /// ★ **顶层模块之间不成环**：两两单向还不够 —— a → b → c → a 每一对都只有一个方向，却绕回了自己。
+    /// 环上的模块谁也离不开谁，拆不成各自的 crate。
+    #[test]
+    fn the_top_modules_form_no_ring() {
+        let m = reference_matrix();
+        let bad: Vec<String> = rings(&m)
+            .iter()
+            .map(|g| {
+                let edges: Vec<String> = m
+                    .iter()
+                    .filter(|((a, b), _)| g.contains(a) && g.contains(b))
+                    .map(|((a, b), (n, files))| format!("{a} → {b} {n} 处 / {files} 份"))
+                    .collect();
+                format!("{{{}}}：{}", g.join(", "), edges.join(" · "))
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "后端顶层模块成环（环上每一对都可能只有一个方向）：\n  {}\n  \
+             拆法：在环上挑一条边，被引的那一头要的「读」挪到下面一层，「写」留在原处；挑定了方向再加一行到 `ONE_WAY` 钉住",
             bad.join("\n  ")
         );
     }
@@ -1566,6 +1624,20 @@ mod tests {
             "fake"
         ));
         assert!(!declared_test_only("pub(crate) mod fake;\n", "fake"));
+        // 认环：三个首尾相接 ⇒ 一个三元环（挂在环外、只往里引的那一个不算）；断一条 ⇒ 没有；两个互相引用 ⇒ 两元环。
+        let graph = |edges: &[(&str, &str)]| {
+            edges
+                .iter()
+                .map(|(a, b)| ((a.to_string(), b.to_string()), (1usize, 1usize)))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        let three = [("a", "b"), ("b", "c"), ("c", "a"), ("d", "a")];
+        assert_eq!(rings(&graph(&three)), vec![vec!["a", "b", "c"]]);
+        assert!(rings(&graph(&three[1..])).is_empty());
+        assert_eq!(
+            rings(&graph(&[("a", "b"), ("b", "a"), ("c", "d")])),
+            vec![vec!["a", "b"]]
+        );
         // 根上转出：`crate::REPLY_PAGE_BYTES` 记到它住的那个模块头上（此刻 lib.rs 里就有这一行）。
         let via = root_reexports(&top_modules());
         assert_eq!(
