@@ -3,7 +3,7 @@
  *
  * | # | 判据 |
  * |---|---|
- * | M1 | ★ 一组「开发」、两个标签指着它（一台本机一台远端）⇒ 本机建一组「开发」、两台各一条 `join`，全成了才删那三格 |
+ * | M1 | ★ 一组「开发」、两个标签指着它（一台本机一台远端）⇒ 向本机要一组「开发」、两台各一条进组（带那一组的记录），全成了才删那三格 |
  * | M2 | 有一条没写成 ⇒ 那三格原样留着（下次再迁），不说「迁完」 |
  * | M3 | 固定那几条照记录里的机器写 `pinned`；指着不存在的组 · 认不出机器的那几条丢掉、交回丢了哪几条 |
  * | M4 | 收着的组迁过去照新 id 记成收着；盘上没有那三格 ⇒ 一条都不发 |
@@ -27,11 +27,15 @@ function io(fail: (what: string) => boolean = () => false): { io: MigrateIo; sen
         if (fail(`make:${name}`)) throw new Error("写不下去");
         sent.made.push(name);
         n += 1;
-        return `g-new-${n}`;
+        return { id: `g-new-${n}`, name, made: n, named: n };
       },
-      annotate: async (origin, sid, patch) => {
+      join: async (origin, sid, group) => {
         if (fail(`annotate:${sid}`)) throw new Error("那台没答");
-        sent.patched.push({ origin, sid, patch: patch as Record<string, unknown> });
+        sent.patched.push({ origin, sid, patch: { join: group.id, name: group.name } });
+      },
+      pin: async (origin, sid) => {
+        if (fail(`annotate:${sid}`)) throw new Error("那台没答");
+        sent.patched.push({ origin, sid, patch: { pinned: true } });
       },
       dropOld: async () => {
         sent.dropped += 1;
@@ -52,15 +56,15 @@ const CFG = {
 const ORIGINS: Record<string, string> = { "s-local": "<local>", "s-remote": "devbox" };
 
 describe("旧的分组三格迁进各台", () => {
-  it("M1 一组两个组员：本机建组、两台各一条 join、全成了才删那三格", async () => {
+  it("M1 一组两个组员：向本机要组、两台各一条进组、全成了才删那三格", async () => {
     const { io: x, sent } = io();
     const got = await migrateTabGroups(oldTabGroups(CFG), new Map(Object.entries(ORIGINS)), x);
     expect(got.done).toBe(true);
     expect(sent.made).toEqual(["开发"]);
     expect(sent.patched).toEqual(
       expect.arrayContaining([
-        { origin: "<local>", sid: "s-local", patch: { join: ["g-new-1"] } },
-        { origin: "devbox", sid: "s-remote", patch: { join: ["g-new-1"] } },
+        { origin: "<local>", sid: "s-local", patch: { join: "g-new-1", name: "开发" } },
+        { origin: "devbox", sid: "s-remote", patch: { join: "g-new-1", name: "开发" } },
       ]),
     );
     expect(sent.dropped).toBe(1);

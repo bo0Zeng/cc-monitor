@@ -271,7 +271,7 @@ const opens = (): unknown[][] => vi.mocked(openSession).mock.calls.map((c) => [c
  * `tabs` 里的 sid 必须已经在栏里；没列到的 tab 一律散着。
  */
 function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: string[] }[]): void {
-  home(tm).prefs.collections = groups.map(({ id, name }) => ({ id, name, home: LOCAL_ORIGIN, counts: [] }));
+  home(tm).prefs.collections = groups.map(({ id, name }) => ({ id, name, counts: [] }));
   for (const t of home(tm).store.tabs.values()) t.group = null;
   for (const g of groups) for (const sid of g.tabs ?? []) home(tm).store.tabs.get(sid)!.group = g.id;
 }
@@ -287,17 +287,18 @@ function membersOf(tm: TabManager, gid: string): string[] {
 }
 
 /**
- * 组的后端替身（照 `history/groups.rs` 那几条的形状、只做判据要的）：组住家那台（建在问的那台），组员与固定是会话注解（住会话那台）；
+ * 组的后端替身（照 `history/groups.rs` 那几条的形状、只做判据要的）：组跟着组员走——有组员才读得出那一组（名字取最新那份），
+ * 组员与固定是会话注解（住会话那台）；建组只起 id，进组带记录，改名 · 解散发给 `machines` 那几台。
  * 读回来的各组照建的先后、组员带那台给的复活那几格。`calls` 记下每一问 `[哪台, 命令, 入参]`。
  */
 function groupBackend(): {
   book: GroupBook;
   calls: Array<[string, string, unknown]>;
   note: (origin: string, sid: string) => { groups: string[]; pinned: boolean; facts: MemberFacts };
-  group: (id: string, name: string, home?: string) => void;
+  group: (id: string, name: string) => void;
   connect: (tm: TabManager) => Promise<void>;
 } {
-  const groups: Array<{ id: string; name: string; home: string }> = [];
+  const groups: Array<{ id: string; name: string; named: number }> = [];
   const notes = new Map<string, { origin: string; sid: string; groups: string[]; pinned: boolean; facts: MemberFacts }>();
   const calls: Array<[string, string, unknown]> = [];
   let made = 0;
@@ -317,17 +318,20 @@ function groupBackend(): {
     face: goldenFace("ended"),
     facts: m.facts,
   });
+  const membersOfGroup = (id: string): ReturnType<typeof note>[] => [...notes.values()].filter((m) => m.groups.includes(id));
   const read = (): GroupsRead => ({
-    groups: groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      title: g.name,
-      home: g.home,
-      made: 0,
-      known: { is: "now" },
-      members: [...notes.values()].filter((m) => m.groups.includes(g.id)).map(row),
-      counts: [],
-    })),
+    groups: groups
+      .filter((g) => membersOfGroup(g.id).length > 0)
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        title: g.name,
+        made: 0,
+        named: g.named,
+        known: { is: "now" },
+        members: membersOfGroup(g.id).map(row),
+        counts: [],
+      })),
     pinned: [...notes.values()].filter((m) => m.pinned).map(row),
     machines: [],
   });
@@ -338,18 +342,27 @@ function groupBackend(): {
       const r = req as GroupsWriteReq;
       if (r.op === "make") {
         made += 1;
-        groups.push({ id: `g${made}`, name: r.name, home: origin });
-        return { is: "made", id: `g${made}`, name: r.name, made } as never;
+        return { is: "made", id: `g${made}`, name: r.name, made, named: made } as never;
       }
-      const i = groups.findIndex((g) => g.id === r.id);
-      if (r.op === "rename") groups[i].name = r.name;
-      else groups.splice(i, 1);
-      return (r.op === "rename" ? { is: "renamed", id: r.id, name: r.name, made: 0 } : { is: "dissolved", id: r.id }) as never;
+      if (r.op === "move") {
+        const m = note(origin, r.sid);
+        if (r.leave != null) m.groups = m.groups.filter((g) => g !== r.leave);
+        if (r.join != null) {
+          const j = r.join;
+          if (!m.groups.includes(j.id)) m.groups.push(j.id);
+          const had = groups.find((g) => g.id === j.id);
+          if (!had) groups.push({ id: j.id, name: j.name, named: j.named });
+          else if (j.named > had.named) Object.assign(had, { name: j.name, named: j.named });
+        }
+        return { is: "moved", sid: r.sid, groups: m.groups } as never;
+      }
+      const g = groups.find((x) => x.id === r.id);
+      if (r.op === "rename" && g) Object.assign(g, { name: r.name, named: g.named + 1 });
+      if (r.op === "dissolve") for (const m of notes.values()) if (r.machines.includes(m.origin)) m.groups = m.groups.filter((x) => x !== r.id);
+      return { is: "sent", id: r.id, missed: [] } as never;
     }
     const { sid, patch } = req as { sid: string; patch: Patch };
     const m = note(origin, sid);
-    for (const g of patch.join ?? []) if (!m.groups.includes(g)) m.groups.push(g);
-    m.groups = m.groups.filter((g) => !(patch.leave ?? []).includes(g));
     if (patch.pinned != null) m.pinned = patch.pinned;
     return { entry: {}, prev: null } as never;
   };
@@ -358,7 +371,7 @@ function groupBackend(): {
     book,
     calls,
     note,
-    group: (id, name, homeAt = LOCAL_ORIGIN) => void groups.push({ id, name, home: homeAt }),
+    group: (id, name) => void groups.push({ id, name, named: 0 }),
     connect: async (tm) => {
       tm.attachGroups(book);
       await book.refreshAll([LOCAL_ORIGIN]);
@@ -3408,7 +3421,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     expect(colsOf(), "拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
   });
 
-  it("拖放压在一个散 tab 上建组 ⇒ 建出来、恰是这两个、不出声；家那台回了新 id 再把两条写进去", async () => {
+  it("拖放压在一个散 tab 上建组 ⇒ 建出来、恰是这两个、不出声；本机回了新 id 再把两条写进各自那台", async () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", "devbox");
     const be = groupBackend();
@@ -3418,7 +3431,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     expect(membersOf(tm, colsOf()[0].id), "建出来的组里恰是这两个").toEqual(["b", "a"]);
     expect(showActionFailureToast).not.toHaveBeenCalled();
     await settleGroups();
-    expect(colsOf().map((c) => c.id), "占位的 id 换成家那台回的").toEqual(["g1"]);
+    expect(colsOf().map((c) => c.id), "占位的 id 换成本机回的").toEqual(["g1"]);
     expect(be.note(LOCAL_ORIGIN, "a").groups).toEqual(["g1"]);
     expect(be.note("devbox", "b").groups, "组员照它那台写").toEqual(["g1"]);
   });
@@ -5226,13 +5239,14 @@ describe("〔FW1〕记录文件的出声", () => {
 });
 
 // ==========================================================================
-// 组是后端的数据（A1-5 · A1-8）：组本身住家那台、组员与固定是会话注解（住会话那台）；会话自己结束后仍算组员，人点 × 就出组。
-// K1 这台 config.json 不存组 · K2 点 × 出组（会话自己结束不算）· K3 谁都不剩才解散 · K4 重启照账带组。真 TabManager ＋ 组的后端替身。
+// 组是后端的数据（A1-5 · A1-8 · A95-9）：组跟着组员走（每台只存自己有组员的那一片）、组员与固定是会话注解（住会话那台）；会话自己结束后仍算组员，人点 × 就出组。
+// K1 这台 config.json 不存组 · K1b 组员在两台 · K2 点 × 出组（会话自己结束不算）· K3 谁都不剩栏里那一组才没 · K4 重启照账带组。真 TabManager ＋ 组的后端替身。
 // ==========================================================================
 describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × 出组", () => {
   let tm: TabManager;
   let be: ReturnType<typeof groupBackend>;
   let disk: Record<string, unknown>;
+  const colsOf = (): TabGroup[] => home(tm).prefs.collections;
   const add = (...sids: string[]): void => {
     for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
   };
@@ -5262,14 +5276,14 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     be = groupBackend();
   });
 
-  it("K1 · 走遍写组的入口：这台 `config.json` 一个组的字都不写（段里只有顺序 · 收着的组），每一下都落在那台的注解 · 家那台的组上", async () => {
+  it("K1 · 走遍写组的入口：这台 `config.json` 一个组的字都不写（段里只有顺序 · 收着的组），每一下都落在组员那台 · 发给各片", async () => {
     await be.connect(tm);
     await tm.loadCollections();
     add("a", "b", "c", "d");
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" }); // 拖放现建
     await settleGroups();
     const g = home(tm).store.tabs.get("a")!.group!;
-    expect(g, "家那台回了新 id").toBe("g1");
+    expect(g, "本机回了新 id").toBe("g1");
     home(tm).dragger.applyDrop("c", before("a", g)); // 拖放进组
     await settleGroups();
     expect(be.note(LOCAL_ORIGIN, "c").groups).toEqual(["g1"]);
@@ -5281,18 +5295,42 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     void home(tm).prefs.setCollapsed([g], true);
     await settleGroups();
     expect(be.note(LOCAL_ORIGIN, "d").groups).toEqual(["g1"]);
-    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "rename", id: "g1", name: "改" }]);
+    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "rename", id: "g1", name: "改", machines: [LOCAL_ORIGIN] }]);
     expect(Object.keys(disk).sort(), "顶层只有 tab 栏那一段").toEqual(["tabBar"]);
     expect(Object.keys(disk.tabBar as object).sort(), "段里只有这扇窗的看法").toEqual(["collapsed", "order"]);
     void home(tm).prefs.dissolveGroup(g);
     await settleGroups();
-    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g1" }]);
+    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g1", machines: [LOCAL_ORIGIN] }]);
     expect(["a", "b", "d"].map((s) => be.note(LOCAL_ORIGIN, s).groups), "解散 ⇒ 各组员那台摘掉那一组").toEqual([[], [], []]);
+  });
+
+  it("K1b · 组员在两台：进组带着那一组的记录问组员那台；改名 · 解散交本机、带上两台", async () => {
+    await be.connect(tm);
+    await tm.loadCollections();
+    tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", "devbox");
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    await settleGroups();
+    const rec = { id: "g1", name: expect.any(String), made: 1, named: 1 };
+    expect(be.calls).toContainEqual(["devbox", "groups-write", { op: "move", sid: "b", join: rec }]);
+    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "move", sid: "a", join: rec }]);
+    const sentTo = (op: string): string[] | undefined => {
+      const c = be.calls.find((x) => x[0] === LOCAL_ORIGIN && (x[2] as { op?: string }).op === op);
+      return (c?.[2] as { machines?: string[] } | undefined)?.machines?.slice().sort();
+    };
+    void home(tm).prefs.renameGroup("g1", "两台");
+    await settleGroups();
+    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", expect.objectContaining({ op: "rename", id: "g1", name: "两台" })]);
+    expect(sentTo("rename"), "发给组员在的两台").toEqual([LOCAL_ORIGIN, "devbox"].sort());
+    void home(tm).prefs.dissolveGroup("g1");
+    await settleGroups();
+    expect(sentTo("dissolve"), "解散也发给两台").toEqual([LOCAL_ORIGIN, "devbox"].sort());
+    expect(be.calls.some((c) => c[0] === "devbox" && c[1] === "groups-write" && (c[2] as { op: string }).op !== "move"), "改名 · 解散不直接问别的台").toBe(false);
   });
 
   // 守原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」：点 × ＝ 出组（连固定一起取消）。
   //   「会话结束后仍算组员」说的是会话自己结束（进程退出），不是人点 ×：那一形是 K4（没来的 b 照账还在组里）。
-  it("K2 · 点 × 关掉组里的 tab ＝ 出组（那台那条注解摘掉那一组）；组里谁都不剩 ⇒ 家那台解散；会话只是结束了 ⇒ 照旧是组员", async () => {
+  it("K2 · 点 × 关掉组里的 tab ＝ 出组（那台那条摘掉那一组）；组里谁都不剩 ⇒ 栏里那一组没了、不另发解散；会话只是结束了 ⇒ 照旧是组员", async () => {
     be.group("g", "白天");
     be.note(LOCAL_ORIGIN, "a").groups = ["g"];
     be.note(LOCAL_ORIGIN, "b").groups = ["g"];
@@ -5304,14 +5342,15 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     expect(be.note(LOCAL_ORIGIN, "b").groups, "会话结束 ≠ 出组").toEqual(["g"]);
     await close("a");
     expect(be.note(LOCAL_ORIGIN, "a").groups, "点 × ⇒ 出组").toEqual([]);
-    expect(be.calls.some((c) => c[1] === "groups-write"), "还有 b ⇒ 组在").toBe(false);
+    expect(colsOf().map((c) => c.id), "还有 b ⇒ 组在").toEqual(["g"]);
     await close("b");
     expect(be.note(LOCAL_ORIGIN, "b").groups).toEqual([]);
-    expect(be.calls, "最后一个点 × ⇒ 组也没").toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g" }]);
+    expect(colsOf(), "最后一个点 × ⇒ 组也没").toEqual([]);
+    expect(be.calls.some((c) => (c[2] as { op?: string }).op === "dissolve"), "最后一位出组那一片自己删，不另发解散").toBe(false);
   });
 
-  it("K3 · 拖出 / 右键移出：组里谁都不剩（账上的 ＋ 栏里的）⇒ 家那台解散；还有不在栏里的组员 ⇒ 不解散", async () => {
-    be.group("g", "白天", "devbox");
+  it("K3 · 拖出 / 右键移出：组里谁都不剩（账上的 ＋ 栏里的）⇒ 栏里那一组没了；还有不在栏里的组员 ⇒ 组在", async () => {
+    be.group("g", "白天");
     be.group("h", "夜里");
     be.note(LOCAL_ORIGIN, "a").groups = ["g"];
     be.note(LOCAL_ORIGIN, "b").groups = ["g"];
@@ -5321,13 +5360,14 @@ describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × �
     await be.connect(tm);
     home(tm).dragger.applyDrop("a", END); // 拖出，b 还在
     await settleGroups();
-    expect(be.calls.some((c) => c[1] === "groups-write"), "还有 b ⇒ g 不解散").toBe(false);
+    expect(colsOf().map((c) => c.id), "还有 b ⇒ g 在").toEqual(["g", "h"]);
     void home(tm).prefs.leaveGroup("b"); // 右键移出最后一个
     await settleGroups();
-    expect(be.calls).toContainEqual(["devbox", "groups-write", { op: "dissolve", id: "g" }]);
+    expect(colsOf().map((c) => c.id), "g 谁都不剩 ⇒ 没了").toEqual(["h"]);
     void home(tm).prefs.leaveGroup("c");
     await settleGroups();
-    expect(be.calls.some((c) => c[1] === "groups-write" && (c[2] as { id?: string }).id === "h"), "x 还在 h 里 ⇒ h 不解散").toBe(false);
+    expect(colsOf().map((c) => c.id), "x 还在 h 里 ⇒ h 在").toEqual(["h"]);
+    expect(be.calls.some((c) => (c[2] as { op?: string }).op === "dissolve"), "出组从不另发解散").toBe(false);
   });
 
   it("K4 · 重启后：在栏里的 tab 照账带组；固定了却没标签的复活出来、也带组；没来的不凭空造", async () => {
