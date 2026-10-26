@@ -50,14 +50,36 @@ describe("账号面板", () => {
     expect(btn(copyText("acct.foot.manage"))).toBeDefined();
   });
 
-  it("★ 额度账读不出 ⇒ 一条红的 ＋ 重试；读到了、会话也见过 ⇒ 头下不出提示，也不画任何轮换的东西", () => {
+  it("★ quota-read 整问失败 ⇒ 一条红的写出错那一层那一句 ＋ 重试；读到了、会话也见过 ⇒ 头下不出提示，也不画任何轮换的东西", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
-    appStore.quota.set(new Map([["<local>", null]]));
+    appStore.quota.set(new Map([["<local>", { state: "failed", said: "连接层那一句", detail: "D-detail" }]]));
     openAccountPanel("s1", "<local>", host);
+    expect(panel().querySelector("[role=alert]")?.textContent).toContain("连接层那一句");
     expect(btn(copyText("acct.now.retry"))).toBeDefined();
     appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], candidates: [], text: null, fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null }]]));
     expect(btn(copyText("acct.now.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
+  });
+
+  it("★ 那份账那台读不出 ⇒ 头下照抄后端写好的那一句（text），面板不自己补一句", () => {
+    appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
+    const unreadable = { state: "unreadable" as const, reason: "原因一句", detail: "D-detail", path: null, now: 1, accounts: [], unseen: [], candidates: [], text: "后端那一句", fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null };
+    appStore.quota.set(new Map([["<local>", unreadable]]));
+    openAccountPanel("s1", "<local>", host);
+    expect(panel().textContent).toContain("后端那一句");
+    expect(panel().textContent).not.toContain("原因一句");
+    // 成品里没有那一句（违约）⇒ 不拿 reason 或自己的「读取失败」顶上。
+    appStore.quota.set(new Map([["<local>", { ...unreadable, text: null }]]));
+    expect(panel().textContent).not.toContain("原因一句");
+    expect(panel().textContent).not.toContain(copyText("acct.text.readFail"));
+  });
+
+  it("★ 额度账还没问回来 ⇒ 不说读取失败、不出重试，头下说读取中", () => {
+    appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
+    openAccountPanel("s1", "<local>", host);
+    expect(panel().querySelector("[role=alert]")).toBeNull();
+    expect(btn(copyText("acct.now.retry"))).toBeUndefined();
+    expect(panel().textContent).toContain(copyText("kit.state.reading"));
   });
 });
 

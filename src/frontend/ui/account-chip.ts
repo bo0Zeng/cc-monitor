@@ -11,7 +11,7 @@ import { accountAvatarEl } from "./account-color";
 import { failToast } from "./kit/toast";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { appStore } from "./app-store";
+import { appStore, quotaReadOf } from "./app-store";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
 import { attachTooltip } from "./kit/tooltip";
 import { icon } from "./kit/icon";
@@ -288,7 +288,7 @@ export class AccountChip {
     const selectable = a.selectable;
     const badge = a.badge;
     // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
-    const led = appStore.quota.get().get(origin)?.accounts.find((x) => x.account === a.name);
+    const led = quotaReadOf(origin)?.accounts.find((x) => x.account === a.name);
     const u = led && badge.warn !== true ? led.usage : null;
     const usage = u ? u.text : null;
     return {

@@ -9,7 +9,7 @@
  * 这里不判；选了之后怎么起（问那台判号、起会话）由宿主做。
  */
 import { copyText } from "./copy-table";
-import { appStore } from "./app-store";
+import { quotaOf, quotaReadOf } from "./app-store";
 import { refreshQuota } from "./acct-center";
 import { fetchAccounts } from "./account-reads";
 import { selectableAccounts } from "./accounts";
@@ -109,8 +109,8 @@ export async function resumeAccounts(
     return { kind: "off" };
   }
   if (names.length === 0) return { kind: "off" };
-  if (!appStore.quota.get().has(origin)) await refreshQuota(origin);
-  const q = appStore.quota.get().get(origin);
+  if (quotaOf(origin).state === "pending") await refreshQuota(origin);
+  const q = quotaReadOf(origin);
   // 额度账按路由第 1 段（那一家的适配器 id）记号，会话行上是那一家的名字 ⇒ 经那一家的事实表换过去。
   const prof = lookupAgentProfile(agent);
   const five = (account: string): string | null => (prof.known ? fiveHourCell(q, prof.facts.agent, account) : null);

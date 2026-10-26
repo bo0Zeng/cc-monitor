@@ -10,6 +10,7 @@
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
+import { detailOf, saidOf } from "./kit/detail";
 import { readQuota, tookQuota } from "./quota-reads";
 import { readSessionView } from "./rotation-view-reads";
 import { readSessionAccount } from "./session-account-reads";
@@ -18,12 +19,13 @@ import { pushedProducts, type Changed } from "./changed-stream";
 /** 每台此刻有 tab 的会话。 */
 const known = new Map<Origin, Set<string>>();
 
+/** 问一次那台的额度账。整问失败 ⇒ 那一格记下出错那一层写好的那一句与复制详情（界面照它说，不自己补一句）。 */
 export async function refreshQuota(origin: Origin): Promise<void> {
   try {
     putIn(appStore.quota, origin, await readQuota(origin));
   } catch (e) {
     console.warn(`[acct] quota-read [${origin}] 失败：`, e);
-    putIn(appStore.quota, origin, null);
+    putIn(appStore.quota, origin, { state: "failed", said: saidOf(e), detail: detailOf(e) });
   }
 }
 
