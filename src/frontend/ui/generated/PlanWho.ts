@@ -2,7 +2,7 @@
 import type { SessionFace } from "./SessionFace";
 
 /**
- * 一个 id（块的接手 · 签收的「由」· 在长它的 · 签它的）对到的会话。
+ * 一个 id（权力范围的负责人 · 节点的负责人 · 签它的）对到的会话。
  */
 export type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**

@@ -108,14 +108,10 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/codex/resume.rs",
         include_str!("../../src/backend/agents/codex/resume.rs"),
     ),
-    // 计划读面起 pb（`pb dump --cell` 按格取 agent 视角 · `pb record --slice` 记原话）：发给 pb 这个子进程的旗标，同上。
+    // 计划读面起 pb（`pb dump --node` 按节点取 agent 视角）：发给 pb 这个子进程的旗标，同上。
     (
         "plan/dump.rs",
         include_str!("../../src/backend/plan/dump.rs"),
-    ),
-    (
-        "plan/command.rs",
-        include_str!("../../src/backend/plan/command.rs"),
     ),
 ];
 
@@ -237,20 +233,12 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         "`codex` 那一家起会话时垫在最前面的参数（`agents/codex/resume.rs::LAUNCH_ARGS`，不连共享后台）：\
          它是 codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
     ),
-    // 子进程是仓外的 pb（planned-build 插件）⇒ ② 那一侧读判据用的假 pb（`tests/backend/plan/fixture.rs::fake_pb`，它照实只认这几个）；
-    //   两份文件发给同一个子进程 ⇒ ② 按子进程取并集。
+    // 子进程是仓外的 pb（planned-build 插件）⇒ ② 那一侧读判据用的假 pb（`tests/backend/plan/fixture.rs::fake_pb`，它照实只认这几个）。
     (
         "plan/dump.rs",
         "tests/backend/plan/fixture.rs",
-        &["--cell"],
-        "`pb dump --cell <片> <格> <工作区>`：点到一格才取 agent 站在那儿时 pb 印的那一段（`plan/dump.rs::run_cell`）。\
-         是 pb 的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
-    ),
-    (
-        "plan/command.rs",
-        "tests/backend/plan/fixture.rs",
-        &["--slice"],
-        "`pb record --slice <片> <定了什么> <原话>…`：以人的身份把原话记进指定的那一片、工作区的当前片不动（`plan/command.rs::record_args`）。\
+        &["--node"],
+        "`pb dump --node <仓库> <编号> <工作区>`：点到一格才取 agent 站在那个节点时 pb 印的那一段（`plan/dump.rs::run_node`）。\
          是 pb 的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
     ),
 ];

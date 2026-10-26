@@ -3,4 +3,8 @@
 /**
  * 一格自己写的、还没执行的 sets。
  */
-export type PlanSetsTo = { target: string | null, value: string | null, };
+export type PlanSetsTo = { target: string | null, value: string | null, 
+/**
+ * 加一笔 · 去一笔。
+ */
+op: "add" | "remove", };

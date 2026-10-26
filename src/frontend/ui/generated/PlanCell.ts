@@ -4,53 +4,57 @@ import type { PlanFile } from "./PlanFile";
 import type { PlanRefs } from "./PlanRefs";
 import type { PlanReturned } from "./PlanReturned";
 import type { PlanSetsTo } from "./PlanSetsTo";
-import type { PlanSign } from "./PlanSign";
+import type { PlanState } from "./PlanState";
 import type { PlanWho } from "./PlanWho";
 import type { PlanWhyCode } from "./PlanWhyCode";
 import type { PlanWhyShort } from "./PlanWhyShort";
 
 /**
- * 一格。
+ * 一格（pb 的一个节点；只收 permanent 那一种图的）。
  */
 export type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
- * 凭据类的格：不算活（不进进度 · 父做完没有不看它）。
+ * 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
  */
-evidence: boolean, 
+state: Array<PlanState>, 
 /**
- * pb 的原话（做完了 · 没做完 · 不做了 · 凭据）。
+ * 状态那一行字（「已签收 2 · decided」，同 `pb render`）；什么都没记 ⇒ `null`。
  */
-status: string | null, 
+stateText: string | null, 
 /**
- * 状态的码；pb 给了别的字 ⇒ `null`。
+ * 依据它的是哪几格（pb 给的）。
  */
-statusCode: "done" | "open" | "dropped" | "evidence" | null, 
+evidencedBy: Array<string>, 
 /**
- * 没做完时的原因（pb 原话）。
+ * 算活的：记着收的值 ⇒ `done`，没记 ⇒ `open`；类不许记收的值 ⇒ `null`（不进任何分母）。
  */
-why: string | null, 
+statusCode: "done" | "open" | null, 
 /**
- * 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
+ * 类是待定、还没记 decided。
+ */
+undecided: boolean, 
+/**
+ * 没签收（或待定没人定）的原因；签收了 · 不算活 ⇒ `null`。
  */
 whyCode: PlanWhyCode | null, 
 /**
  * 行尾那一个原因短词；没有原因 ⇒ `null`。
  */
-whyShort: PlanWhyShort | null, signs: Array<PlanSign>, 
-/**
- * 几种值的计数（pb 原话，如「正 2（A1-7 · A1-9）」）；没有 ⇒ `null`。
- */
-counts: string | null, 
+whyShort: PlanWhyShort | null, 
 /**
  * 它自己写的、还没执行的 sets。
  */
 sets: Array<PlanSetsTo>, 
 /**
- * 住哪一块（块的编号；顶那一块 ⇒ `project`）。
+ * 在它底下加节点要在哪个权力范围里做（pb 的 `children_in`；最上面那一个 ⇒ `project`）。
  */
-block: string | null, owner: PlanWho | null, 
+block: string | null, 
 /**
- * 谁的 update 执行得了收下它的 sets（凭据类的 · 有子的格 ⇒ `null`）。
+ * 那个权力范围的负责人（要改它，该说给的那一位）。
+ */
+owner: PlanWho | null, 
+/**
+ * 写得动它元数据的那一位（pb 的 `signer`）。
  */
 signer: PlanWho | null, 
 /**

@@ -13,7 +13,7 @@ fn doc_with(who: &dyn Fn(&str) -> Whose) -> PlanRead {
     let b = crate::plan::book::Book::default();
     let d = dump("/w");
     let raw = d.to_string().into_bytes();
-    b.take(
+    b.ingest(
         crate::plan::dump::Ran::Dump { doc: d, raw },
         std::path::Path::new("/w"),
         who,
@@ -98,7 +98,7 @@ fn a_working_owner_gets_the_line_said_to_it_and_the_return_is_kept() {
     assert_eq!(r.to, MAIN);
     assert_eq!(r.result, "delivered");
     assert!(r.children.is_empty());
-    let cell = &doc.slices[0].cells[8];
+    let cell = &doc.slices[0].cells[7];
     assert_eq!(cell.id, "A2-1");
     assert_eq!(
         r.body,
@@ -111,7 +111,10 @@ fn not_knowing_whether_it_arrived_is_kept_too_but_a_refusal_is_not() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Idle));
     let (_, _, kept) = run(&doc, args("A2"), json!({"result": "unsure"}));
     assert_eq!(kept[0].3.result, "unsure");
-    assert_eq!(kept[0].3.children, vec!["A2-1".to_string()]);
+    assert_eq!(
+        kept[0].3.children,
+        vec!["A2-1".to_string(), "A2-2".to_string()]
+    );
     let (out, _, kept) = run(
         &doc,
         args("A2"),
@@ -155,12 +158,13 @@ fn an_ended_or_unknown_owner_only_gets_a_line_to_copy() {
 #[test]
 fn the_signer_is_a_target_only_when_pb_gives_one() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Working));
-    // A1 有子：做完没有是算出来的，pb 不给 signer ⇒ 没有这一项。
-    let mut a = args("A1");
+    // beta 的 B1：没人接着，pb 给的 signer 是 null ⇒ 没有这一项。
+    let mut a = args("B1");
+    a["slice"] = json!("beta");
     a["to"] = json!("signer");
     let (out, _, _) = run(&doc, a.clone(), json!({"result": "delivered"}));
     assert_eq!(out.unwrap_err().code, "no_target");
-    // A2-1 的上一级格在 A2 那一块 ⇒ signer 是那一块的接手（子 agent）⇒ 说给它的父会话。
+    // A2-1 的元数据写在 A2 那个权力范围 ⇒ signer 是它的负责人（子 agent）⇒ 说给它的父会话。
     let mut b = args("A2-1");
     b["to"] = json!("signer");
     let (out, sent, _) = run(&doc, b, json!({"result": "delivered"}));
@@ -185,7 +189,7 @@ fn bad_shapes_and_missing_cells_are_errors() {
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_such_cell");
 }
 
-/// 顶块（project）在 pb 里可寻址（`pb see project`）⇒ 退回它 ＝ 送给顶块的接手；那一行与普通格同一处拼，标题是片名；
+/// project 在 pb 里可寻址（`pb see project`）⇒ 退回它 ＝ 送给 project 的负责人；那一行与普通格同一处拼，标题是仓库名；
 /// 记下的子格是顶层那几格（落地看顶层多出新的一格）。project 谁都签不了 ⇒ 没有「签它的」那一项。
 #[test]
 fn the_top_block_is_addressed_as_project_and_goes_to_its_owner() {
@@ -200,7 +204,10 @@ fn the_top_block_is_addressed_as_project_and_goes_to_its_owner() {
     assert_eq!(sent[0]["text"], "人 · project alpha：单位写错了");
     let (_, sl, id, r) = &kept[0];
     assert_eq!((sl.as_str(), id.as_str()), ("alpha", "project"));
-    assert_eq!(r.children, ["A1", "A2", "A3", "A4", "A5"].map(String::from));
+    assert_eq!(
+        r.children,
+        ["A1", "A2", "A3", "A4", "A5", "A6", "A7"].map(String::from)
+    );
     let mut a = args("project");
     a["to"] = json!("signer");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_target");

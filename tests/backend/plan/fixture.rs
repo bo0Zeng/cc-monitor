@@ -1,16 +1,20 @@
-//! 计划读面的夹具：pb 0.3.8 对一份合成工作区真跑出来的 `pb dump`（形状 4）与 `pb dump --cell` · 一个假 pb 插件（入口脚本把夹具原样吐出来，并记下自己被怎么起的）。
-//! 合成工作区：两片 `alpha`（软件，仓库登记在 `repos/alpha`）· `beta`（研究，只写文档、仓库还不在）；名字与正文全是合成的（「甲功能」之类），
+//! 计划读面的夹具：一份照 pb 0.5（`pb dump` 形状 6）写的合成 dump 与 `pb dump --node` · 一个假 pb 插件（入口脚本把夹具原样吐出来，并记下自己被怎么起的）。
+//! 键与值的写法照插件 `人与集成.md`「pb dump」那几张字段表，逐键对过 0.5.2 对一份真工作区跑出来的那一份（只对键的形状，不抄内容）。
+//! 合成工作区：两个仓库 `alpha`（软件，登记在 `repos/alpha`）· `beta`（研究，只做计划、仓库还不在）；名字与正文全是合成的（「甲功能」之类），
 //! 不引 pb 仓与任何真工作区的文件。工作区根在常量里写成占位 `/synthetic/ws`，[`dump`] 换成交进来的那个。
 //!
-//! alpha 那一片：顶层 A1 能力（子 A1-1 做完了 · A1-2 没签 · A1-3 测试 · A1-4 / A1-6 验收带没执行的 sets · A1-5 验收是收下 A1-1 那一笔的凭）·
-//! A2 能力派出去成一块（子 A2-1，接手 SUB，执行那一步）· A3 规矩 covers A1 · A4 规矩 covers project · A5 写了「块:」还没立块；
-//! A1-1 签过两笔（早先 `pb sign` 那一笔没有值 · 凭，后一笔凭 A1-5）；A1-2 指着一格不在的 A9（判据红）；`src/stray.txt` 无主；A2 拿着 `src/shared.txt` 没分下去。
-//! beta 那一片：B1 问题 · B1-1 来源 · B1-2 事实（记了一笔值「正」，不算做完）；仓库不在 ⇒ `unowned.paths` 为 null、`why` 说为什么。
+//! alpha：顶层 A1 能力（A1-1 模块已签收 2 笔、依据它的是 A1-4 · A1-2 模块没签、`to: A9` 指着图上没有的节点（不通过）、
+//! 它的文件是空的 · A1-3 测试 · A1-4 验收记录（执行过，成了 with）· A1-5 验收记录 sets A1-2 已签收（还没执行，查都过了））·
+//! A2 能力划成一个权力范围（负责人 SUB，在回看；A2-1 已签收 · A2-2 交回的那一条 sets A2 已签收，等上一级删掉划出那一项）·
+//! A3 规矩 covers A1 · A4 规矩 covers project · A5 待定（还没定）· A6 待定（定了，A6-1 原话）· A7 能力划出了、还没建（pending_scopes）·
+//! A8 元数据坏了（判不了的节点）· 排期 P1–P5（P3 划出 A2 · P5 划出 A7）· P2-1 在 A2 那一份排期里；`src/stray.txt` 无主。
+//! beta：B1 问题 · B1-1 来源（支持 1，依据它的是 B1-2）· B1-2 佐证；仓库不在 ⇒ `unowned.paths` 为 null、`error` 说为什么；
+//! project 没人接着、不在当前仓库 ⇒ `handoff` 为 null、`handoff_error` 说为什么。研究那一张表没有加 · 去的值 ⇒ 不出进度。
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// 主会话 id · 子 agent id · 对不上的 id（造合成工作区时写进块的接手与签收的「由」）。
+/// 主会话 id · 子 agent id · 对不上的 id（写进权力范围的负责人与节点的 signer）。
 pub(crate) const MAIN: &str = "11111111-2222-3333-4444-555555555555";
 pub(crate) const SUB: &str = "a0b1c2d3e4f5a6b7c";
 pub(crate) const STRANGER: &str = "99999999-0000-0000-0000-000000000000";
@@ -18,1481 +22,474 @@ pub(crate) const STRANGER: &str = "99999999-0000-0000-0000-000000000000";
 /// 常量里工作区根的占位。
 const WS: &str = "/synthetic/ws";
 
-/// `pb dump`（0.3.8 真跑的，工作区根换成占位）。
-const DUMP: &str = r##"{
- "pb": "0.3.8",
- "shape": 4,
- "workspace": "/synthetic/ws",
- "repo": "alpha",
- "auto": false,
- "domains": [
-  {
-   "name": "小说",
-   "kinds": [
-    {
-     "name": "纲",
-     "edge_words": {
-      "to": "连着",
-      "with": "连着",
-      "after": "连着",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "设定",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "线",
-     "edge_words": {
-      "to": "收在",
-      "with": "收在",
-      "after": "收在",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "埋",
-      "推",
-      "收"
-     ]
-    },
-    {
-     "name": "验收",
-     "edge_words": {
-      "to": "收",
-      "with": "收",
-      "after": "收",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "规矩",
-     "edge_words": {
-      "to": "管",
-      "with": "管",
-      "after": "管",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    }
-   ],
-   "phases": [
-    {
-     "name": "定纲",
-     "does": "把这一块拆成下一级，每一格写清出口；再写排期：先后与分块，按这个仓库自己的设计与工作原则",
-     "marks": []
-    },
-    {
-     "name": "核",
-     "does": "定纲之后审纲；写之后对着纲核这一段",
-     "marks": []
-    },
-    {
-     "name": "写",
-     "does": "写这一段的正文",
-     "marks": []
-    },
-    {
-     "name": "看全局",
-     "does": "通读这一级：衔接 · 文风 · 线；要改就加一格",
-     "marks": [
-      "看全局"
-     ]
-    }
-   ]
-  },
-  {
-   "name": "研究",
-   "kinds": [
-    {
-     "name": "问题",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "来源",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "正",
-      "反"
-     ]
-    },
-    {
-     "name": "事实",
-     "edge_words": {
-      "to": "凭",
-      "with": "凭",
-      "after": "凭",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "正",
-      "反"
-     ]
-    },
-    {
-     "name": "推断",
-     "edge_words": {
-      "to": "推自",
-      "with": "推自",
-      "after": "推自",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "正",
-      "反"
-     ]
-    },
-    {
-     "name": "诠释",
-     "edge_words": {
-      "to": "读",
-      "with": "读",
-      "after": "读",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "价值判断",
-     "edge_words": {
-      "to": "凭",
-      "with": "凭",
-      "after": "凭",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "正文",
-     "edge_words": {
-      "to": "写到",
-      "with": "写到",
-      "after": "写到",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "佐证",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "反证",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "规矩",
-     "edge_words": {
-      "to": "管",
-      "with": "管",
-      "after": "管",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    }
-   ],
-   "phases": [
-    {
-     "name": "定题",
-     "does": "把这一格的问题拆成子问题；报告分几节、各占哪个文件也在这一步定；再写排期：先后与分块，按这个仓库自己的设计与工作原则",
-     "marks": []
-    },
-    {
-     "name": "搜集",
-     "does": "找来源、读：一份来源一格，读出的论断各立一格，with 到它凭的那几格",
-     "marks": []
-    },
-    {
-     "name": "核证",
-     "does": "核来源与论断：摘录对得上原件，论断从它连着的格推得出",
-     "marks": []
-    },
-    {
-     "name": "写",
-     "does": "按签过的论断写正文，每一节 with 到它写到的论断",
-     "marks": []
-    },
-    {
-     "name": "对比整合",
-     "does": "横着比这一块底下：相同的并，冲突的并排写清，缺的和没走的路加格，问题本身站不站得住",
-     "marks": [
-      "看全局"
-     ]
-    }
-   ]
-  },
-  {
-   "name": "软件",
-   "kinds": [
-    {
-     "name": "能力",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "模块",
-     "edge_words": {
-      "to": "实现",
-      "with": "实现",
-      "after": "实现",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "测试",
-     "edge_words": {
-      "to": "测",
-      "with": "测",
-      "after": "测",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "验收",
-     "edge_words": {
-      "to": "收",
-      "with": "收",
-      "after": "收",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "规矩",
-     "edge_words": {
-      "to": "管",
-      "with": "管",
-      "after": "管",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    }
-   ],
-   "phases": [
-    {
-     "name": "定架构",
-     "does": "先定结构：这一块拆成哪几格、各管什么、格之间怎么连（已有代码的仓库，结构可以先用 code-picture 看）；结构定了再写排期：先后与分块，按这个仓库自己的设计与工作原则",
-     "marks": []
-    },
-    {
-     "name": "审计",
-     "does": "定架构之后审架构；执行之后从设计看到实现，跑测试与读数见 quality-gates，代码跟图上的边对不对得上（import · 线程 · 跨进程）用 code-picture 查",
-     "marks": []
-    },
-    {
-     "name": "执行",
-     "does": "写代码 · 推远端 · 打 tag · 发 release；测试怎么写见 quality-gates",
-     "marks": []
-    },
-    {
-     "name": "回看",
-     "does": "看全局，决定下一步",
-     "marks": [
-      "看全局"
-     ]
-    }
-   ]
-  }
- ],
- "slices": [
-  {
-   "name": "alpha",
-   "domain": "软件",
-   "path": "repos/alpha",
-   "docs_only": false,
-   "records": [
-    {
-     "n": 1,
-     "summary": "读写分两半",
-     "at": "2026-01-03T00:00:00Z",
-     "by": "人",
-     "quotes": [
-      "「分开做」",
-      "「先读后写」"
-     ]
-    }
-   ],
-   "kinds": [
-    {
-     "name": "能力",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "模块",
-     "edge_words": {
-      "to": "实现",
-      "with": "实现",
-      "after": "实现",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "测试",
-     "edge_words": {
-      "to": "测",
-      "with": "测",
-      "after": "测",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "验收",
-     "edge_words": {
-      "to": "收",
-      "with": "收",
-      "after": "收",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "规矩",
-     "edge_words": {
-      "to": "管",
-      "with": "管",
-      "after": "管",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    }
-   ],
-   "phases": [
-    {
-     "name": "定架构",
-     "does": "先定结构：这一块拆成哪几格、各管什么、格之间怎么连（已有代码的仓库，结构可以先用 code-picture 看）；结构定了再写排期：先后与分块，按这个仓库自己的设计与工作原则",
-     "marks": []
-    },
-    {
-     "name": "审计",
-     "does": "定架构之后审架构；执行之后从设计看到实现，跑测试与读数见 quality-gates，代码跟图上的边对不对得上（import · 线程 · 跨进程）用 code-picture 查",
-     "marks": []
-    },
-    {
-     "name": "执行",
-     "does": "写代码 · 推远端 · 打 tag · 发 release；测试怎么写见 quality-gates",
-     "marks": []
-    },
-    {
-     "name": "回看",
-     "does": "看全局，决定下一步",
-     "marks": [
-      "看全局"
-     ]
-    }
-   ],
-   "done": false,
-   "top": [
-    "A1",
-    "A2",
-    "A3",
-    "A4",
-    "A5"
-   ],
-   "blocks": [
-    {
-     "id": "project",
-     "cells": [
-      "project"
-     ],
-     "dir": ".planned-build/alpha",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "phase": "回看",
-     "at": null,
-     "row": true
-    },
-    {
-     "id": "A2",
-     "cells": [
-      "A2"
-     ],
-     "dir": ".planned-build/alpha/A2",
-     "owner": "a0b1c2d3e4f5a6b7c",
-     "phase": "执行",
-     "at": "A2-1",
-     "row": true
-    }
-   ],
-   "unbuilt_blocks": [
-    {
-     "id": "A5",
-     "cells": [
-      "A5"
-     ]
-    }
-   ],
-   "unowned": {
-    "paths": [
-     "src/stray.txt"
-    ],
-    "why": null
-   },
-   "unsplit": [
-    {
-     "id": "A2",
-     "path": "src/shared.txt"
-    }
-   ],
-   "check": {
-    "unreadable": [],
-    "red": [
-     {
-      "rule": "悬空",
-      "what": "A1-2 --to--> A9，A9 不在盘上",
-      "block": "project",
-      "fix": "边指的格不在盘上：改成一个在的编号，或先把那一格建出来；编号的每一段前缀都要是一个在的格",
-      "refs": [
-       {
-        "start": 0,
-        "end": 4,
-        "ids": [
-         "A1-2"
+/// 软件那张表（插件那一份的形状；阶段说明 · 规则只留判据用得上的几条）。
+fn software() -> Value {
+    let labels = |w: &str| json!({"to": w, "with": w, "after": "排在后面", "covers": w, "file": "管文件", "replaces": "替换", "sets": "改状态"});
+    let kind = |name: &str, w: &str, evidence: bool, values: Value| json!({"name": name, "graph": "架构", "evidence": evidence, "values": values, "edge_labels": labels(w)});
+    json!({
+        "name": "软件", "source": "plugin",
+        "graphs": [
+            {"name": "架构", "file": "图.md", "lifetime": "permanent", "copies": "per_scope", "prefix": null, "order_by": null, "scope_by": null},
+            {"name": "排期", "file": "排期.md", "lifetime": "temporary", "copies": "per_scope", "prefix": "P", "order_by": "to", "scope_by": "covers"}
+        ],
+        "kinds": [
+            kind("能力", "连着", false, json!(["已签收", "decided"])),
+            kind("模块", "实现", false, json!(["已签收", "decided"])),
+            kind("测试", "测", false, json!(["decided"])),
+            kind("验收记录", "签收", true, json!([])),
+            kind("原话", "连着", true, json!([])),
+            kind("规矩", "管", false, json!(["decided"])),
+            kind("待定", "连着", false, json!(["decided"])),
+            {"name": "排期", "graph": "排期", "evidence": false, "values": [], "edge_labels": labels("指向")}
+        ],
+        "phases": [
+            {"name": "定架构", "description": "先定结构"},
+            {"name": "审计", "description": "审架构与实现"},
+            {"name": "开发", "description": "写代码"},
+            {"name": "回看", "description": "回看整体，决定下一步"}
+        ],
+        "views": [{"name": "没签收的", "query": "subtree=this kind=能力,模块 state!=已签收"}],
+        "rules": [
+            {"moments": ["update"], "when": "when: state!=已签收 delegated=false | all_children: kind=能力,模块 state=已签收", "effect": "add", "arg": "已签收", "line": 33},
+            {"moments": ["update"], "when": "when: state=已签收 delegated=false | any_child: kind=能力,模块 state!=已签收", "effect": "remove", "arg": "已签收", "line": 34},
+            {"moments": ["update"], "when": "when: value=decided,-decided | source: kind!=原话", "effect": "deny", "arg": "decided 只由原话节点记", "line": 38},
+            {"moments": ["write"], "when": "when: phase!=开发", "effect": "deny", "arg": "只在开发阶段改仓库、推远端、打 tag、发版", "line": 41},
+            {"moments": ["claim"], "when": "", "effect": "show", "arg": ["where"], "line": 42},
+            {"moments": ["move"], "when": "", "effect": "move_to", "arg": "next", "line": 47}
         ]
-       }
-      ]
-     }
-    ],
-    "undecidable": []
-   },
-   "cells": [
-    {
-     "id": "A1",
-     "title": "甲功能",
-     "kind": "能力",
-     "body": "照 A3 的公约；读写两半见 A1-1/2，`A2` 在代码里不算。",
-     "parent": null,
-     "children": [
-      "A1-1",
-      "A1-2",
-      "A1-3",
-      "A1-4",
-      "A1-5",
-      "A1-6"
-     ],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "里面 1/2 做完了",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": null,
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": [
-       {
-        "start": 2,
-        "end": 4,
-        "ids": [
-         "A3"
-        ]
-       },
-       {
-        "start": 15,
-        "end": 21,
-        "ids": [
-         "A1-1",
-         "A1-2"
-        ]
-       }
-      ]
-     }
-    },
-    {
-     "id": "A1-1",
-     "title": "甲的读入",
-     "kind": "模块",
-     "body": "读入。",
-     "parent": "A1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "A1"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [
-      {
-       "path": "src/read.txt",
-       "state": "在",
-       "note": "3 字"
-      }
-     ],
-     "evidence": false,
-     "status": "做完了",
-     "why": null,
-     "signs": [
-      {
-       "at": "2026-01-01T00:00:00Z",
-       "by": "a0b1c2d3e4f5a6b7c",
-       "value": "收下",
-       "via": null,
-       "done": true,
-       "reason": "第一次，照 A1 看过",
-       "refs": [
-        {
-         "start": 6,
-         "end": 8,
-         "ids": [
-          "A1"
-         ]
-        }
-       ]
-      },
-      {
-       "at": "2026-01-02T00:00:00Z",
-       "by": "99999999-0000-0000-0000-000000000000",
-       "value": "收下",
-       "via": "A1-5",
-       "done": true,
-       "reason": "",
-       "refs": []
-      }
-     ],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A1-2",
-     "title": "甲的写出",
-     "kind": "模块",
-     "body": "写出。",
-     "parent": "A1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "A1"
-      ],
-      "after": [
-       "A1-1"
-      ],
-      "replaces": []
-     },
-     "files": [
-      {
-       "path": "src/write.txt",
-       "state": "缺",
-       "note": ""
-      }
-     ],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A1-3",
-     "title": "测读入",
-     "kind": "测试",
-     "body": "测读入的两形。",
-     "parent": "A1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "A1-1"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [
-      {
-       "path": "tests/read_test.txt",
-       "state": "在",
-       "note": "4 字"
-      }
-     ],
-     "evidence": true,
-     "status": "凭据",
-     "why": null,
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": null,
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A1-4",
-     "title": "收下甲的写出",
-     "kind": "验收",
-     "body": "看了 A1-2 的对账。",
-     "parent": "A1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": true,
-     "status": "凭据",
-     "why": null,
-     "signs": [],
-     "counts": null,
-     "sets": [
-      {
-       "target": "A1-2",
-       "value": "收下"
-      }
-     ],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": null,
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": [
-       {
-        "start": 3,
-        "end": 7,
-        "ids": [
-         "A1-2"
-        ]
-       }
-      ]
-     }
-    },
-    {
-     "id": "A1-5",
-     "title": "收下甲的读入",
-     "kind": "验收",
-     "body": "跑了测读入，两形都过。",
-     "parent": "A1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": true,
-     "status": "凭据",
-     "why": null,
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": null,
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A1-6",
-     "title": "收下乙的一半",
-     "kind": "验收",
-     "body": "越过块去收。",
-     "parent": "A1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": true,
-     "status": "凭据",
-     "why": null,
-     "signs": [],
-     "counts": null,
-     "sets": [
-      {
-       "target": "A2-1",
-       "value": "收下"
-      }
-     ],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": null,
-     "covers": [],
-     "covered_by": [
-      "A3",
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A2",
-     "title": "乙功能",
-     "kind": "能力",
-     "body": "派出去的一块。",
-     "parent": null,
-     "children": [
-      "A2-1"
-     ],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [
-      {
-       "path": "src/shared.txt",
-       "state": "在",
-       "note": "6 字"
-      }
-     ],
-     "evidence": false,
-     "status": "没做完",
-     "why": "里面 0/1 做完了",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "A2",
-     "owner": "a0b1c2d3e4f5a6b7c",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [],
-     "covered_by": [
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A2-1",
-     "title": "乙的一半",
-     "kind": "模块",
-     "body": "乙的一半，照 A1 走。",
-     "parent": "A2",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "A2"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "A2",
-     "owner": "a0b1c2d3e4f5a6b7c",
-     "signer": "a0b1c2d3e4f5a6b7c",
-     "covers": [],
-     "covered_by": [
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": [
-       {
-        "start": 7,
-        "end": 9,
-        "ids": [
-         "A1"
-        ]
-       }
-      ]
-     }
-    },
-    {
-     "id": "A3",
-     "title": "公约",
-     "kind": "规矩",
-     "body": "守什么：读写同一份格式。",
-     "parent": null,
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "A1"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [
-      "A1"
-     ],
-     "covered_by": [
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A4",
-     "title": "总则",
-     "kind": "规矩",
-     "body": "守什么：全片一样。",
-     "parent": null,
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "A1"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [
-      "project"
-     ],
-     "covered_by": [],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "A5",
-     "title": "丙功能",
-     "kind": "能力",
-     "body": "还没立的一块。",
-     "parent": null,
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [],
-     "covered_by": [
-      "A4"
-     ],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    }
-   ],
-   "pending_sets": [
-    {
-     "source": "A1-4",
-     "target": "A1-2",
-     "value": "收下",
-     "why_not": null
-    },
-    {
-     "source": "A1-6",
-     "target": "A2-1",
-     "value": "收下",
-     "why_not": "来处在 project 那一块，A2-1 的上一级格在 A2 那一块 —— 两头落进同一块，那一块的 update 才执行"
-    }
-   ],
-   "archived": []
-  },
-  {
-   "name": "beta",
-   "domain": "研究",
-   "path": "beta",
-   "docs_only": true,
-   "records": [],
-   "kinds": [
-    {
-     "name": "问题",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "来源",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "正",
-      "反"
-     ]
-    },
-    {
-     "name": "事实",
-     "edge_words": {
-      "to": "凭",
-      "with": "凭",
-      "after": "凭",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "正",
-      "反"
-     ]
-    },
-    {
-     "name": "推断",
-     "edge_words": {
-      "to": "推自",
-      "with": "推自",
-      "after": "推自",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下",
-      "正",
-      "反"
-     ]
-    },
-    {
-     "name": "诠释",
-     "edge_words": {
-      "to": "读",
-      "with": "读",
-      "after": "读",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "价值判断",
-     "edge_words": {
-      "to": "凭",
-      "with": "凭",
-      "after": "凭",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "正文",
-     "edge_words": {
-      "to": "写到",
-      "with": "写到",
-      "after": "写到",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "佐证",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "反证",
-     "edge_words": {
-      "to": "指向",
-      "with": "连着",
-      "after": "排在后面",
-      "replaces": "顶掉"
-     },
-     "evidence": true,
-     "values": [
-      "收下"
-     ]
-    },
-    {
-     "name": "规矩",
-     "edge_words": {
-      "to": "管",
-      "with": "管",
-      "after": "管",
-      "replaces": "顶掉"
-     },
-     "evidence": false,
-     "values": [
-      "收下"
-     ]
-    }
-   ],
-   "phases": [
-    {
-     "name": "定题",
-     "does": "把这一格的问题拆成子问题；报告分几节、各占哪个文件也在这一步定；再写排期：先后与分块，按这个仓库自己的设计与工作原则",
-     "marks": []
-    },
-    {
-     "name": "搜集",
-     "does": "找来源、读：一份来源一格，读出的论断各立一格，with 到它凭的那几格",
-     "marks": []
-    },
-    {
-     "name": "核证",
-     "does": "核来源与论断：摘录对得上原件，论断从它连着的格推得出",
-     "marks": []
-    },
-    {
-     "name": "写",
-     "does": "按签过的论断写正文，每一节 with 到它写到的论断",
-     "marks": []
-    },
-    {
-     "name": "对比整合",
-     "does": "横着比这一块底下：相同的并，冲突的并排写清，缺的和没走的路加格，问题本身站不站得住",
-     "marks": [
-      "看全局"
-     ]
-    }
-   ],
-   "done": false,
-   "top": [
-    "B1"
-   ],
-   "blocks": [
-    {
-     "id": "project",
-     "cells": [
-      "project"
-     ],
-     "dir": ".planned-build/beta",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "phase": "回看",
-     "at": null,
-     "row": true
-    }
-   ],
-   "unbuilt_blocks": [],
-   "unowned": {
-    "paths": null,
-    "why": "fatal: cannot change to '/synthetic/ws/beta': 没有那个文件或目录"
-   },
-   "unsplit": [],
-   "check": {
-    "unreadable": [],
-    "red": [
-     {
-      "rule": "只出不进",
-      "what": "B1-1 --with--> B1，B1-1 是 来源（out: 无）",
-      "block": "project",
-      "fix": "写了 out: 无 的那一类不往外连：删掉那条边；要两头都印的，改由对面那一格写 with 指过来",
-      "refs": [
-       {
-        "start": 0,
-        "end": 4,
-        "ids": [
-         "B1-1"
-        ]
-       },
-       {
-        "start": 15,
-        "end": 17,
-        "ids": [
-         "B1"
-        ]
-       },
-       {
-        "start": 18,
-        "end": 22,
-        "ids": [
-         "B1-1"
-        ]
-       }
-      ]
-     }
-    ],
-    "undecidable": []
-   },
-   "cells": [
-    {
-     "id": "B1",
-     "title": "问题",
-     "kind": "问题",
-     "body": "问一个合成的问题。",
-     "parent": null,
-     "children": [
-      "B1-1",
-      "B1-2"
-     ],
-     "edges": {
-      "to": [],
-      "with": [],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "里面 0/2 做完了",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": null,
-     "covers": [],
-     "covered_by": [],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "B1-1",
-     "title": "一份来源",
-     "kind": "来源",
-     "body": "合成的来源。",
-     "parent": "B1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "B1"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [],
-     "counts": null,
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [],
-     "covered_by": [],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    },
-    {
-     "id": "B1-2",
-     "title": "一条事实",
-     "kind": "事实",
-     "body": "合成的事实。",
-     "parent": "B1",
-     "children": [],
-     "edges": {
-      "to": [],
-      "with": [
-       "B1-1"
-      ],
-      "after": [],
-      "replaces": []
-     },
-     "files": [],
-     "evidence": false,
-     "status": "没做完",
-     "why": "没签",
-     "signs": [
-      {
-       "at": "2026-01-04T00:00:00Z",
-       "by": "11111111-2222-3333-4444-555555555555",
-       "value": "正",
-       "via": "B1-1",
-       "done": false,
-       "reason": "",
-       "refs": []
-      }
-     ],
-     "counts": "正 1（B1-1）",
-     "sets": [],
-     "block": "project",
-     "owner": "11111111-2222-3333-4444-555555555555",
-     "signer": "11111111-2222-3333-4444-555555555555",
-     "covers": [],
-     "covered_by": [],
-     "refs": {
-      "title": [],
-      "body": []
-     }
-    }
-   ],
-   "pending_sets": [],
-   "archived": []
-  }
- ]
-}"##;
+    })
+}
 
-/// `pb dump --cell alpha A1-2`（同一份工作区）。
-const CELL: &str = r##"{
- "pb": "0.3.8",
- "shape": 4,
- "workspace": "/synthetic/ws",
- "slice": "alpha",
- "id": "A1-2",
- "agent_view": "── A1-2 甲的写出（模块 · 没做完 · 元行住 .planned-build/alpha/图.md）\n> id: A1-2 | kind: 模块 | with: A1 | after: A1-1 | to: A9\n> 文件: src/write.txt\n\n写出。\n文件声明 1 个：src/write.txt\n\n父那一层\n── A1 甲功能（能力 · 没做完 · 元行住 .planned-build/alpha/图.md）\n> id: A1 | kind: 能力\n\n照 A3 的公约；读写两半见 A1-1/2，`A2` 在代码里不算。\nA1 这一层  1+0/2  没做完\n  A1-1  甲的读入  做完了 · 收下：凭 A1-5 · 99999999-0000-0000-0000-000000000000 @ 2026-01-02T00:00:00Z · 没排上\n  A1-2  甲的写出  没做完 · 收下：— · 没排上 · 待收 A1-4 收下：等 project 那一块的 update 执行\n  凭据 4 格（不算活，不进分母）：A1-3 测读入 · A1-4 收下甲的写出 · A1-5 收下甲的读入 · A1-6 收下乙的一半\nA1 那一层的排期 0 格，A1-2 还没排上\n  下一格 A3 公约\n\n这一格的边 3 条\n  A1-2 --to--> A9 · A9 不在盘上\n  A1-2 --with--> A1 · A1 住 .planned-build/alpha/图.md\n  A1-2 --after--> A1-1 · A1-1 住 .planned-build/alpha/图.md\n  被 A3 covers（范围 A1）\n  被 A4 covers（范围 project）\n\n全局 5 格\n  A1  甲功能\n  A2  乙功能\n  A3  公约\n  A4  总则\n  A5  丙功能\n待收：A1-4 sets 它 收下 —— 等 project 那一块的 update 执行\nA1-2 底下下一个空号：A1-2-1"
-}"##;
+/// 研究那张表（没有加 · 去状态的规则）。
+fn research() -> Value {
+    let labels = |w: &str| json!({"to": w, "with": w, "after": "排在后面", "covers": w, "file": "管文件", "replaces": "替换", "sets": "改状态"});
+    let kind = |name: &str, w: &str, evidence: bool, values: Value| json!({"name": name, "graph": "知识", "evidence": evidence, "values": values, "edge_labels": labels(w)});
+    json!({
+        "name": "研究", "source": "plugin",
+        "graphs": [
+            {"name": "知识", "file": "图.md", "lifetime": "permanent", "copies": "per_scope", "prefix": null, "order_by": null, "scope_by": null},
+            {"name": "排期", "file": "排期.md", "lifetime": "temporary", "copies": "per_scope", "prefix": "P", "order_by": "to", "scope_by": "covers"}
+        ],
+        "kinds": [
+            kind("问题", "连着", false, json!(["decided"])),
+            kind("来源", "连着", false, json!(["支持", "反对", "decided"])),
+            kind("佐证", "连着", true, json!([])),
+            kind("待定", "连着", false, json!(["decided"]))
+        ],
+        "phases": [
+            {"name": "定题", "description": "拆问题"},
+            {"name": "搜集", "description": "找来源"}
+        ],
+        "views": [],
+        "rules": [
+            {"moments": ["update"], "when": "when: value=支持,-支持 | source: kind!=佐证", "effect": "deny", "arg": "支持只由佐证写", "line": 34},
+            {"moments": ["move"], "when": "", "effect": "move_to", "arg": "next", "line": 46}
+        ]
+    })
+}
 
-/// `pb dump --cell alpha A9`（图上没有的一格）。
-const CELL_MISSING: &str = r##"{
- "pb": "0.3.8",
- "shape": 4,
- "workspace": "/synthetic/ws",
- "slice": "alpha",
- "id": "A9",
- "error": "A9 不在「alpha」的图上"
-}"##;
+fn edges(
+    to: &[&str],
+    with: &[&str],
+    after: &[&str],
+    covers: &[&str],
+    file: &[&str],
+    sets: Value,
+) -> Value {
+    json!({"to": to, "with": with, "after": after, "covers": covers, "file": file, "replaces": [], "sets": sets})
+}
 
-fn at(text: &str, workspace: &str) -> Value {
-    serde_json::from_str(&text.replace(WS, workspace)).unwrap()
+fn no_refs() -> Value {
+    json!({"title": [], "body": []})
+}
+
+/// 一个节点（没写的键给空）。
+#[allow(clippy::too_many_arguments)]
+fn node(
+    id: &str,
+    title: &str,
+    kind: &str,
+    graph: &str,
+    body: &str,
+    parent: Option<&str>,
+    children: &[&str],
+    edges: Value,
+    scope: (&str, Option<&str>, Option<&str>),
+    covered_by: &[&str],
+) -> Value {
+    let (children_in, assignee, signer) = scope;
+    json!({
+        "id": id, "title": title, "kind": kind, "graph": graph, "body": body,
+        "parent": parent, "children": children, "edges": edges,
+        "files": [], "state": [], "evidenced_by": [],
+        "children_in": children_in, "assignee": assignee, "signer": signer,
+        "covered_by": covered_by, "refs": no_refs()
+    })
+}
+
+fn alpha() -> Value {
+    let top = ("project", Some(MAIN), Some(MAIN));
+    let a2 = ("A2", Some(SUB), Some(SUB));
+    let none = json!([]);
+    let in_a1 = ["A3", "A4"];
+    let mut a1 = node(
+        "A1",
+        "甲功能",
+        "能力",
+        "架构",
+        "照 A3 的公约；读写两半见 A1-1/2，`A2` 在代码里不算。",
+        None,
+        &["A1-1", "A1-2", "A1-3", "A1-4", "A1-5"],
+        edges(&[], &[], &[], &[], &[], none.clone()),
+        top,
+        &in_a1,
+    );
+    // 「A3」在码位 2..4；「A1-1/2」在 15..21（简写两个）；行内代码里的 `A2` 不算。
+    a1["refs"]["body"] = json!([{"start": 2, "end": 4, "ids": ["A3"]}, {"start": 15, "end": 21, "ids": ["A1-1", "A1-2"]}]);
+    let mut a1_1 = node(
+        "A1-1",
+        "甲的读入",
+        "模块",
+        "架构",
+        "读入。",
+        Some("A1"),
+        &[],
+        edges(&[], &["A1"], &[], &[], &["src/read.txt"], none.clone()),
+        top,
+        &in_a1,
+    );
+    a1_1["files"] = json!([{"path": "src/read.txt", "file_check": "present", "note": "3 字", "chars": 3, "bytes": 3}]);
+    a1_1["state"] = json!([{"value": "已签收", "count": 2}]);
+    a1_1["evidenced_by"] = json!(["A1-4"]);
+    let mut a1_2 = node(
+        "A1-2",
+        "甲的写出",
+        "模块",
+        "架构",
+        "照 A1-1 读进来的写出去。",
+        Some("A1"),
+        &[],
+        edges(
+            &[],
+            &["A1"],
+            &["A1-1"],
+            &[],
+            &["src/write.txt"],
+            none.clone(),
+        ),
+        top,
+        &in_a1,
+    );
+    a1_2["files"] = json!([{"path": "src/write.txt", "file_check": "empty", "note": "0 字", "chars": 0, "bytes": 0}]);
+    a1_2["refs"]["body"] = json!([{"start": 2, "end": 6, "ids": ["A1-1"]}]);
+    let mut a1_3 = node(
+        "A1-3",
+        "测读入",
+        "测试",
+        "架构",
+        "测三种情况。",
+        Some("A1"),
+        &[],
+        edges(&[], &["A1-1"], &[], &[], &["tests/a.txt"], none.clone()),
+        top,
+        &in_a1,
+    );
+    a1_3["files"] = json!([{"path": "tests/a.txt", "file_check": "invalid", "note": "是个目录", "chars": null, "bytes": null}]);
+    let a1_4 = node(
+        "A1-4",
+        "签收甲的读入",
+        "验收记录",
+        "架构",
+        "跑了 tests/a.txt，过了。",
+        Some("A1"),
+        &[],
+        edges(&[], &["A1-1"], &[], &[], &[], none.clone()),
+        top,
+        &in_a1,
+    );
+    let a1_5 = node(
+        "A1-5",
+        "签收甲的写出",
+        "验收记录",
+        "架构",
+        "写出照 A1-2 写的做了。",
+        Some("A1"),
+        &[],
+        edges(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            json!([{"target": "A1-2", "value": "已签收", "op": "add"}]),
+        ),
+        top,
+        &in_a1,
+    );
+    let mut a2n = node(
+        "A2",
+        "乙功能",
+        "能力",
+        "架构",
+        "乙那一半。",
+        None,
+        &["A2-1", "A2-2"],
+        edges(&[], &[], &[], &[], &["src/shared.txt"], none.clone()),
+        ("A2", Some(SUB), Some(MAIN)),
+        &["A4", "P3"],
+    );
+    a2n["files"] = json!([{"path": "src/shared.txt", "file_check": "present", "note": "6 字", "chars": 6, "bytes": 6}]);
+    let mut a2_1 = node(
+        "A2-1",
+        "乙的一半",
+        "模块",
+        "架构",
+        "乙的那一半。",
+        Some("A2"),
+        &[],
+        edges(&[], &["A2"], &[], &[], &["src/shared.txt"], none.clone()),
+        a2,
+        &["A4", "P3"],
+    );
+    a2_1["files"] = a2n["files"].clone();
+    a2_1["state"] = json!([{"value": "已签收", "count": 1}]);
+    let a2_2 = node(
+        "A2-2",
+        "交回乙功能",
+        "验收记录",
+        "架构",
+        "A2-1 已签收。",
+        Some("A2"),
+        &[],
+        edges(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            json!([{"target": "A2", "value": "已签收", "op": "add"}]),
+        ),
+        a2,
+        &["A4", "P3"],
+    );
+    let a3 = node(
+        "A3",
+        "公约",
+        "规矩",
+        "架构",
+        "守什么：甲那一块的公约。",
+        None,
+        &[],
+        edges(&[], &[], &[], &["A1"], &[], none.clone()),
+        top,
+        &["A4"],
+    );
+    let a4 = node(
+        "A4",
+        "总则",
+        "规矩",
+        "架构",
+        "守什么：全部。",
+        None,
+        &[],
+        edges(&[], &[], &[], &["project"], &[], none.clone()),
+        top,
+        &["A4"],
+    );
+    let a5 = node(
+        "A5",
+        "要不要导出 csv",
+        "待定",
+        "架构",
+        "问题：导出要不要 csv。",
+        None,
+        &[],
+        edges(&[], &[], &[], &[], &[], none.clone()),
+        top,
+        &["A4"],
+    );
+    let mut a6 = node(
+        "A6",
+        "编码先只做 UTF-8",
+        "待定",
+        "架构",
+        "问题：编码。",
+        None,
+        &["A6-1"],
+        edges(&[], &[], &[], &[], &[], none.clone()),
+        top,
+        &["A4"],
+    );
+    a6["state"] = json!([{"value": "decided", "count": 1}]);
+    a6["evidenced_by"] = json!(["A6-1"]);
+    let a6_1 = node(
+        "A6-1",
+        "只做 UTF-8",
+        "原话",
+        "架构",
+        "「先只做 UTF-8」",
+        Some("A6"),
+        &[],
+        edges(&[], &["A6"], &[], &[], &[], none.clone()),
+        top,
+        &["A4"],
+    );
+    let mut a7 = node(
+        "A7",
+        "丙功能",
+        "能力",
+        "架构",
+        "丙那一半。",
+        None,
+        &[],
+        edges(&[], &[], &[], &[], &["src/third.txt"], none.clone()),
+        top,
+        &["A4", "P5"],
+    );
+    a7["files"] = json!([{"path": "src/third.txt", "file_check": "missing", "note": "", "chars": null, "bytes": null}]);
+    let p = |id: &str, to: &[&str], covers: &[&str], scope| {
+        node(
+            id,
+            if covers.is_empty() {
+                "先后"
+            } else {
+                "划出"
+            },
+            "排期",
+            "排期",
+            "",
+            None,
+            &[],
+            edges(to, &[], &[], covers, &[], json!([])),
+            scope,
+            &[],
+        )
+    };
+    json!({
+        "name": "alpha", "domain": "软件", "path": "repos/alpha", "plan_only": false,
+        "graphs": software()["graphs"], "kinds": software()["kinds"], "phases": software()["phases"],
+        "views": software()["views"], "rules": software()["rules"],
+        "top_level": ["A1", "A2", "A3", "A4", "A5", "A6", "A7"],
+        "scopes": [
+            {"id": "project", "root_nodes": ["project"], "dir": ".planned-build/alpha", "assignee": MAIN,
+             "first_claimed_at": "2026-01-01T08:00:00+00:00", "created_at": "2026-01-01T07:00:00+00:00",
+             "phase": "开发", "current_node": "A1-2", "listed": true,
+             "handoff": "你负责 alpha 的 project：先 pb claim project <认领码>，再 pb where。认领码只在人登记这个仓库与重发时印出来；丢了请人敲 `pb reissue project`",
+             "handoff_error": null},
+            {"id": "A2", "root_nodes": ["A2"], "dir": ".planned-build/alpha/A2", "assignee": SUB,
+             "first_claimed_at": "2026-01-01T10:00:00+00:00", "created_at": "2026-01-01T09:00:00+00:00",
+             "phase": "回看", "current_node": "A2-1", "listed": true,
+             "handoff": "你负责 alpha 的 A2 乙功能：先 pb claim A2 <认领码>，再 pb where。认领码只在划出与重发时印出来；丢了找上一级重发",
+             "handoff_error": null}
+        ],
+        "pending_scopes": [{"id": "A7", "root_nodes": ["A7"]}],
+        "unowned": {"paths": ["src/stray.txt"], "error": null},
+        "check": {
+            "read_errors": [{"file": ".planned-build/alpha/图.md", "line": 71, "message": "元数据那一行写不对：`with A1` 少了冒号"}],
+            "unparsed_nodes": ["A8"],
+            "failures": [{"rule": "边指着图上的节点", "message": "A1-2 --to--> A9：A9 不在图上", "scope": "project",
+                          "fix": "改掉那条边，或者补上 A9", "refs": [{"start": 0, "end": 4, "ids": ["A1-2"]}]}],
+            "unknown": [{"rule": "无主文件", "reason": "beta 的仓库不在"}]
+        },
+        "nodes": [a1, a1_1, a1_2, a1_3, a1_4, a1_5, a2n, a2_1, a2_2, a3, a4, a5, a6, a6_1, a7,
+            p("P1", &["A1"], &[], top), p("P2", &["A2"], &[], top), p("P2-1", &["A2-1"], &[], a2),
+            p("P3", &[], &["A2"], top), p("P4", &["A7"], &[], top), p("P5", &[], &["A7"], top)],
+        "pending_sets": [
+            {"source": "A1-5", "target": "A1-2", "value": "已签收", "op": "add", "blocked_reason": null, "blocked_code": null, "rule": null},
+            {"source": "A2-2", "target": "A2", "value": "已签收", "op": "add",
+             "blocked_reason": "源节点在 A2 那个权力范围（还划出着）：等上一级删掉划出那一项",
+             "blocked_code": "source_delegated", "rule": null}
+        ],
+        "pending_replaces": [],
+        "archived": []
+    })
+}
+
+fn beta() -> Value {
+    let top = ("project", None, None);
+    let mut b1_1 = node(
+        "B1-1",
+        "一份调查",
+        "来源",
+        "知识",
+        "调查说要表头。",
+        Some("B1"),
+        &[],
+        edges(&[], &["B1"], &[], &[], &[], json!([])),
+        top,
+        &[],
+    );
+    b1_1["state"] = json!([{"value": "支持", "count": 1}]);
+    b1_1["evidenced_by"] = json!(["B1-2"]);
+    json!({
+        "name": "beta", "domain": "研究", "path": "beta", "plan_only": true,
+        "graphs": research()["graphs"], "kinds": research()["kinds"], "phases": research()["phases"],
+        "views": research()["views"], "rules": research()["rules"],
+        "top_level": ["B1"],
+        "scopes": [
+            {"id": "project", "root_nodes": ["project"], "dir": ".planned-build/beta", "assignee": null,
+             "first_claimed_at": null, "created_at": "2026-01-01T07:00:00+00:00",
+             "phase": "定题", "current_node": null, "listed": true,
+             "handoff": null, "handoff_error": "project 不在当前仓库：先请人敲 `pb repo beta`"}
+        ],
+        "pending_scopes": [],
+        "unowned": {"paths": null, "error": "仓库 beta 不在盘上"},
+        "check": {"read_errors": [], "unparsed_nodes": [], "failures": [], "unknown": []},
+        "nodes": [
+            node("B1", "导出该不该带表头", "问题", "知识", "问题：表头。", None, &["B1-1", "B1-2"],
+                edges(&[], &[], &[], &[], &[], json!([])), top, &[]),
+            b1_1,
+            node("B1-2", "调查的佐证", "佐证", "知识", "见 B1-1。", Some("B1"), &[],
+                edges(&[], &["B1-1"], &[], &[], &[], json!([])), top, &[])
+        ],
+        "pending_sets": [], "pending_replaces": [], "archived": []
+    })
 }
 
 /// 一份 dump，工作区根是 `workspace`。
 pub(crate) fn dump(workspace: &str) -> Value {
-    at(DUMP, workspace)
+    json!({
+        "pb": "0.5.2", "shape": 6, "workspace": workspace, "current_repo": "alpha", "auto_continue": false,
+        "domains": [research(), software()],
+        "repos": [alpha(), beta()]
+    })
 }
 
-/// `pb dump --cell alpha A1-2` 那一份。
-pub(crate) fn cell_view(workspace: &str) -> Value {
-    at(CELL, workspace)
+/// `pb dump --node alpha A1-2` 那一份。
+pub(crate) fn node_view(workspace: &str) -> Value {
+    json!({
+        "pb": "0.5.2", "shape": 6, "workspace": workspace, "repo": "alpha", "id": "A1-2",
+        "agent_view": "── A1-2 甲的写出（模块 · — · 元数据写在 .planned-build/alpha/图.md）\n> id: A1-2 | kind: 模块 | with: A1 | after: A1-1 | to: A9\n> file: src/write.txt\n\n照 A1-1 读进来的写出去。\n\nA1-2 的边 3 条\n  A1-2 --with--> A1 · A1 住 .planned-build/alpha/图.md\n待执行 1 条：\n  A1-5 sets A1-2 已签收\nA1-2 底下下一个可用编号：A1-2-1"
+    })
 }
 
-/// `pb dump --cell alpha A9` 那一份（带 `error`）。
-pub(crate) fn cell_view_missing(workspace: &str) -> Value {
-    at(CELL_MISSING, workspace)
+/// `pb dump --node alpha A9` 那一份（图上没有的节点，带 `error`）。
+pub(crate) fn node_view_missing(workspace: &str) -> Value {
+    json!({"pb": "0.5.2", "shape": 6, "workspace": workspace, "repo": "alpha", "id": "A9", "error": "A9 不在 alpha 的图上"})
 }
 
-/// 同一份，只是那一片的仓库登记在别处（`pb repo <路径>`：dump 每片带 `path`，相对工作区根）。
-pub(crate) fn dump_at(workspace: &str, path: &str) -> Value {
+/// 同一份，只是 alpha 顶层算活的那几个（A1 · A2 · A7）都记成了已签收（顶层全签收 ⇒ 要人过目那一条）。
+pub(crate) fn dump_top_signed(workspace: &str) -> Value {
     let mut d = dump(workspace);
-    d["slices"][0]["path"] = json!(path);
+    for c in d["repos"][0]["nodes"].as_array_mut().unwrap() {
+        if ["A1", "A2", "A7"].iter().any(|i| c["id"] == *i) {
+            c["state"] = json!([{"value": "已签收", "count": 1}]);
+        }
+    }
     d
 }
 
-/// 同一份，只是 alpha 那一片这一刻读不成（pb 给 `error`，就没有下面那几样）。
+/// 同一份，只是那个仓库登记在别处（`pb repo <路径>`：dump 每个仓库带 `path`，相对工作区根）。
+pub(crate) fn dump_at(workspace: &str, path: &str) -> Value {
+    let mut d = dump(workspace);
+    d["repos"][0]["path"] = json!(path);
+    d
+}
+
+/// 同一份，只是 alpha 这一刻读不成（pb 给 `error`，就只有上面那几样）。
 pub(crate) fn dump_broken(workspace: &str) -> Value {
     let mut d = dump(workspace);
-    d["slices"][0] = json!({"name": "alpha", "domain": "软件", "path": "repos/alpha", "docs_only": false, "error": "图.md 第 3 行：元行缺 id"});
+    d["repos"][0] = json!({"name": "alpha", "domain": "软件", "path": "repos/alpha", "plan_only": false, "error": "图.md 第 3 行：元数据缺 id"});
     d
 }
 
@@ -1539,7 +536,7 @@ pub(crate) fn scratch(tag: &str) -> PathBuf {
 
 /// 在 `root` 底下造一个假 pb 插件：清单名字是 pb，入口脚本
 /// ① 把自己的 argv · 当前目录 · 环境里有没有 `PB_ID` 记进 `<root>/ran.json`（最近那一次），argv 另追加一行进 `<root>/runs.log`（每一次）；
-/// ② 当前目录（往上找）有 `.planned-build/` ⇒ `record --slice` 说一句记下了；`dump --cell` 印 `<那个目录>/cell.json`、别的印 `<那个目录>/dump.json`，退 0；没有 ⇒ stderr 一句、退 3。
+/// ② 当前目录（往上找）有 `.planned-build/` ⇒ `dump --node` 印 `<那个目录>/node.json`、别的印 `<那个目录>/dump.json`，退 0；没有 ⇒ stderr 一句、退 3。
 /// 它认的 `--` 旗标就是真 pb 那边后端会发的那几个（`protocol_doc_guard` 的子进程旗标对拍读这份）。
 /// `rc` 给了就不管上面，直接以它退出（造「没有 dump」「别的失败」）。
 pub(crate) fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
@@ -1565,9 +562,7 @@ if forced is not None:
 d = os.getcwd()
 while True:
     if os.path.isdir(os.path.join(d, ".planned-build")):
-        if sys.argv[1:3] == ["record", "--slice"]:
-            print("记下了 原话 1"); sys.exit(0)
-        f = "cell.json" if sys.argv[1:3] == ["dump", "--cell"] else "dump.json"
+        f = "node.json" if sys.argv[1:3] == ["dump", "--node"] else "dump.json"
         sys.stdout.write(open(os.path.join(d, f)).read()); sys.exit(0)
     up = os.path.dirname(d)
     if up == d:
@@ -1582,16 +577,16 @@ while True:
     tools.join("entry.py")
 }
 
-/// 造一个工作区：`.planned-build/alpha/` ＋ 工作区根上的 `.env` ＋ 一份 `dump.json` 与 `cell.json`（假 pb 吐它们）。
-/// 仓库目录照 dump 里那一片的 `path`（没有 ⇒ 片名）。
+/// 造一个工作区：`.planned-build/alpha/` ＋ 工作区根上的 `.env` ＋ 一份 `dump.json` 与 `node.json`（假 pb 吐它们）。
+/// 仓库目录照 dump 里头一个仓库的 `path`（没有 ⇒ 仓库名）。
 pub(crate) fn workspace(root: &Path, doc: &Value) -> PathBuf {
-    let repo = doc["slices"][0]["path"].as_str().unwrap_or("alpha");
+    let repo = doc["repos"][0]["path"].as_str().unwrap_or("alpha");
     std::fs::create_dir_all(root.join(".planned-build/alpha")).unwrap();
     std::fs::create_dir_all(root.join(repo).join("src")).unwrap();
-    std::fs::write(root.join(".env"), r#"{"仓库": "alpha"}"#).unwrap();
+    std::fs::write(root.join(".env"), r#"{"current_repo": "alpha"}"#).unwrap();
     std::fs::write(root.join("dump.json"), doc.to_string()).unwrap();
     let ws = doc["workspace"].as_str().unwrap_or(WS);
-    std::fs::write(root.join("cell.json"), cell_view(ws).to_string()).unwrap();
+    std::fs::write(root.join("node.json"), node_view(ws).to_string()).unwrap();
     root.to_path_buf()
 }
 

@@ -18,17 +18,17 @@ id: string,
  */
 label: string, title: string | null, 
 /**
- * 认不出 pb 的状态字 ⇒ `null`（当没做完画）。
+ * 类不许记收的值 ⇒ `null`（不算活）。
  */
-statusCode: "done" | "open" | "dropped" | "evidence" | null, status: string | null, 
+statusCode: "done" | "open" | null, 
+/**
+ * 状态那一行字（后端照 pb 记着的值写好，如「已签收 2」）；什么都没记 ⇒ `null`。
+ */
+status: string | null, 
 /**
  * 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
  */
 block: string | null, 
-/**
- * 作数那一条签收的时刻（成了字）；没签过 ⇒ `null`。
- */
-signAtText: string | null, 
 /**
  * 对账码；认不出 ⇒ `null`。
  */

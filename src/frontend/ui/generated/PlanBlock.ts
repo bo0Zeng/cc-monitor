@@ -3,14 +3,30 @@ import type { PlanKids } from "./PlanKids";
 import type { PlanWho } from "./PlanWho";
 
 /**
- * 派出去的一块。
+ * 建了的一个权力范围（pb 的 `scopes[]`）。
  */
-export type PlanBlock = { id: string, cells: Array<string>, 
+export type PlanBlock = { id: string, 
 /**
- * 块根格的直接子做完几格；根格不在片里 ⇒ `null`。
+ * 根节点（最上面那一个 ⇒ `project`）。
+ */
+cells: Array<string>, 
+/**
+ * 根节点底下算活的直接子签收了几格；根节点不在片里 · 底下没有算活的 ⇒ `null`。
  */
 inside: PlanKids | null, dir: string | null, owner: PlanWho | null, phase: string | null, 
 /**
- * 站在哪一格（编号）。
+ * 站在哪一格（编号）；`null` ⇒ 起点。
  */
-at: string | null, row: boolean, };
+at: string | null, 
+/**
+ * 划出它的那一项还在（false ⇒ 删了，下一趟 update 并回）。
+ */
+listed: boolean, 
+/**
+ * 交接说明（pb 原样，不带认领码：码的位置写着 `<认领码>`，句末说码在哪拿）；给不了 ⇒ `null`。
+ */
+handoff: string | null, 
+/**
+ * 为什么给不了；给了 ⇒ `null`。
+ */
+handoffError: string | null, };
