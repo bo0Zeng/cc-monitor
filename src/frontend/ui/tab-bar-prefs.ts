@@ -1,7 +1,7 @@
 /**
  * tab 栏的分组 · 固定 · 顺序。
  *
- * 组与固定是后端的数据（`history/groups.rs`）：组本身住家那一台，组员与固定是会话注解（住会话那一台）。这里只照组的账（`group-book.ts`）
+ * 组与固定是后端的数据（`history/groups.rs`）：组跟着组员走（每台只存自己有组员的那一片），组员与固定是会话注解（住会话那一台）。这里只照组的账（`group-book.ts`）
  * 读回来的那一份画：组表 · 每个 tab 在哪一组（`Tab.group`）· 固没固定（`Tab.pinned`）· 固定了却没有标签的会话复活成灰标签。
  * 改的动作先改内存（栏当场跟着动），再交给那一台；那台推 `changed {groups}`，账重读一次，读回来的就是真相。
  * 一条会话可在几组，栏里一个标签只画在一处：画在读回来的那一份里排在最前、有它的那一组；挪进另一组 ＝ 出原来那组、进新的。
@@ -21,16 +21,16 @@ import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import type { Origin } from "./ipc/origin";
 import type { GroupBook } from "./group-book";
 import type { GroupCount } from "./generated/GroupCount";
+import type { HereGroup } from "./generated/HereGroup";
 import type { MemberFacts } from "./generated/MemberFacts";
 
-/** 栏里的一组：名字 · 家（改名 · 解散问它；不知道 ⇒ `null`）· 组头那几颗点（后端数好的）· 收着（这扇窗的看法）。 */
+/** 栏里的一组：名字 · 组头那几颗点（后端数好的）· 收着（这扇窗的看法）。 */
 export interface TabGroup {
   id: string;
   name: string;
-  home: Origin | null;
   counts: GroupCount[];
   /** 收着（组员不显示，组头汇总需手动 / 在跑）；展开 ⇒ 不写这一格。 */
   collapsed?: true;
@@ -65,7 +65,7 @@ function keyOf(origin: Origin, sid: string): string {
   return `${origin}\n${sid}`;
 }
 
-/** 刚建、家那台还没回新 id 的组（栏里先画着）。 */
+/** 刚建、本机还没回新 id 的组（栏里先画着）。 */
 let pendingSeq = 0;
 function pendingId(): string {
   pendingSeq += 1;
@@ -88,7 +88,9 @@ export class TabBarPrefs {
   /** 最近一份账里：会话 ⇒ 画在哪一组 · 固定的那几条（带复活那几格）。 */
   private placed = new Map<string, string>();
   private pinRows = new Map<string, { origin: Origin; sid: string; facts: MemberFacts }>();
-  /** 这扇窗这一趟建的组（占位 id 与家那台回的 id）：撤销只撤掉它们，别处建的组不碰。 */
+  /** 每组的整份记录（id · 名字 · 时刻）：进组时随 `move` 抄进组员那一台。照账上的那一份，加上这一趟刚起的。 */
+  private records = new Map<string, HereGroup>();
+  /** 这扇窗这一趟建的组（占位 id 与本机回的 id）：撤销只撤掉它们，别处建的组不碰。 */
   private founded = new Set<string>();
   /** 这一趟里复活过的固定会话（关掉的不再复活，除非账上又有它）。 */
   private revived = new Set<string>();
@@ -128,9 +130,10 @@ export class TabBarPrefs {
   private applyRead(): void {
     const read = this.book?.read();
     if (!read) return;
-    this.collections = read.groups.map((g) =>
-      this.withCollapsed({ id: g.id, name: g.title, home: g.home, counts: g.counts }),
-    );
+    this.collections = read.groups.map((g) => this.withCollapsed({ id: g.id, name: g.title, counts: g.counts }));
+    for (const g of read.groups) {
+      if (g.name !== null) this.records.set(g.id, { id: g.id, name: g.name, made: g.made ?? 0, named: g.named ?? 0 });
+    }
     this.placed = new Map();
     for (const g of read.groups) for (const m of g.members) {
       const k = keyOf(m.origin, m.sid);
@@ -175,14 +178,15 @@ export class TabBarPrefs {
 
   /**
    * 右键「新建集合…」/ 拖放压在一个散 tab 上：建一个组、把 `sids` 放进去，回栏里那一组此刻的 id（名字框照它开）。
-   * 栏里当场画上（本机回新 id 之前用一个占位的 id），建成了再把这几条写进去；期间改了名 ⇒ 建成后再改一次。名字空 ⇒ 什么都不做、回 `null`。
+   * 栏里当场画上（本机回新 id 之前用一个占位的 id），拿到 id 再把这几条写进各自那台（记录带着此刻栏里的名字，期间改过名也跟上）。
+   * 名字空 ⇒ 什么都不做、回 `null`。
    */
   foundGroup(sids: readonly string[], name: string): string | null {
     const n = name.trim();
     if (!n) return null;
     const temp = pendingId();
     this.founded.add(temp);
-    this.collections = [...this.collections, { id: temp, name: n, home: null, counts: [] }];
+    this.collections = [...this.collections, { id: temp, name: n, counts: [] }];
     const moved: Array<{ tab: Tab; from: string | null }> = [];
     for (const sid of sids) {
       const t = this.store.tabs.get(sid);
@@ -194,17 +198,18 @@ export class TabBarPrefs {
     if (!book) return temp;
     void book
       .make(n)
-      .then(async (id) => {
+      .then(async (rec) => {
         const now = this.collections.find((c) => c.id === temp);
-        // 家那台回话之前已经撤销了（组从栏里没了）⇒ 刚建的那一组解散掉，谁都不写进去。
-        if (!now) return book.dissolve(LOCAL_ORIGIN, id);
+        // 本机回话之前已经撤销了（组从栏里没了）⇒ 什么都没写过，就此作罢。
+        if (!now) return;
+        const id = rec.id;
+        this.records.set(id, { ...rec, name: now.name });
         this.founded.add(id);
-        this.collections = this.collections.map((c) => (c.id === temp ? { ...c, id, home: LOCAL_ORIGIN } : c));
+        this.collections = this.collections.map((c) => (c.id === temp ? { ...c, id } : c));
         if (this.collapsed.delete(temp)) this.collapsed.add(id);
         for (const { tab } of moved) if (tab.group === temp) tab.group = id;
         this.host.refreshTabBar();
         await Promise.all(moved.map(({ tab, from }) => this.move(tab, from, id)));
-        if (now && now.name !== n) await book.rename(LOCAL_ORIGIN, id, now.name);
       })
       .catch((e: unknown) => this.failed(e));
     return temp;
@@ -226,7 +231,13 @@ export class TabBarPrefs {
     const remade = new Map<string, Promise<string>>();
     for (const g of snap.groups) {
       if (now.has(g.id) || !this.book) continue;
-      remade.set(g.id, this.book.make(g.name));
+      remade.set(
+        g.id,
+        this.book.make(g.name).then((rec) => {
+          this.records.set(rec.id, rec);
+          return rec.id;
+        }),
+      );
       this.collections = [...this.collections, { ...g }];
     }
     for (const [sid, gid] of snap.groupAt) {
@@ -242,11 +253,11 @@ export class TabBarPrefs {
         return this.move(t, from, real);
       }).catch((e: unknown) => this.failed(e));
     }
-    // 这扇窗期间新建、此刻栏里一个组员都不剩的组：撤掉（还没建成的只摘栏里那一格，建成那一刻自己解散）。
+    // 这扇窗期间新建、此刻栏里一个组员都不剩的组：从栏里摘掉（组员都出了，各片已删；还没建成的建成那一刻见栏里没它就作罢）。
     const had = new Set(snap.groups.map((c) => c.id));
     for (const c of [...this.collections]) {
       if (had.has(c.id) || !this.founded.has(c.id) || [...this.store.tabs.values()].some((t) => t.group === c.id)) continue;
-      void this.dropGroup(c.id);
+      this.forgetGroup(c.id);
     }
     const back = new Set(snap.order);
     const order = [...snap.order.filter((s) => this.store.tabs.has(s)), ...this.store.orderedIds.filter((s) => !back.has(s))];
@@ -287,7 +298,7 @@ export class TabBarPrefs {
     return this.leaveGroupMany([sid]);
   }
 
-  /** 批量「移出集合」：每一个同 [`leaveGroup`]；组里因此谁都不剩 ⇒ 组也解散（不留空组头）。 */
+  /** 批量「移出集合」：每一个同 [`leaveGroup`]；组里因此谁都不剩 ⇒ 栏里那一组也摘掉（各片随最后一位出组自己删，不另发解散）。 */
   leaveGroupMany(sids: readonly string[]): Promise<void> {
     const left = new Map<string, string[]>();
     const work: Array<Promise<void>> = [];
@@ -299,7 +310,7 @@ export class TabBarPrefs {
       left.set(from, [...(left.get(from) ?? []), keyOf(t.origin, sid)]);
       work.push(this.move(t, from, null));
     }
-    for (const [gid, gone] of left) if (this.emptyAfter(gid, gone)) work.push(this.dropGroup(gid));
+    for (const [gid, gone] of left) if (this.emptyAfter(gid, gone)) this.forgetGroup(gid);
     return Promise.all(work).then(() => undefined);
   }
 
@@ -314,25 +325,31 @@ export class TabBarPrefs {
     return true;
   }
 
-  /** 组头 ×：解散。只去掉分组，一个 tab 都不动（集合是视图，不是容器）：家那台去掉组、各组员那台摘掉那一组。 */
+  /** 组头 ×：解散。只去掉分组，一个 tab 都不动（集合是视图，不是容器）：本机发给组员所在的每一片，各片摘掉那一组。 */
   dissolveGroup(gid: string): Promise<void> {
-    const work: Array<Promise<void>> = [];
+    const machines = this.machinesOf(gid);
     for (const t of this.store.tabs.values()) if (t.group === gid) t.group = null;
-    for (const g of this.book?.read()?.groups ?? []) {
-      if (g.id !== gid) continue;
-      for (const m of g.members) work.push(this.patch(m.origin, m.sid, { leave: [gid] }));
-    }
-    work.push(this.dropGroup(gid));
-    return Promise.all(work).then(() => undefined);
+    this.forgetGroup(gid);
+    if (!this.book || machines.length === 0 || gid.startsWith("pending-")) return Promise.resolve();
+    return this.book.dissolve(gid, machines).catch((e: unknown) => this.failed(e));
   }
 
-  /** 组表去掉 `gid`、家那台解散它。 */
-  private dropGroup(gid: string): Promise<void> {
-    const g = this.collections.find((c) => c.id === gid);
+  /** 组表去掉 `gid`（只是栏里这一格，不写哪一台）。 */
+  private forgetGroup(gid: string): void {
     this.collections = this.collections.filter((c) => c.id !== gid);
+    this.records.delete(gid);
     if (this.collapsed.delete(gid)) void this.persistCollapsed();
-    if (!g || g.home === null || !this.book) return Promise.resolve();
-    return this.book.dissolve(g.home, gid).catch((e: unknown) => this.failed(e));
+  }
+
+  /** 组 `gid` 的组员在哪几台（账上的 ＋ 栏里画在它里面的），照先见的先后：改名 · 解散发给这几片。 */
+  private machinesOf(gid: string): Origin[] {
+    const out: Origin[] = [];
+    const add = (o: Origin): void => {
+      if (!out.includes(o)) out.push(o);
+    };
+    for (const g of this.book?.read()?.groups ?? []) if (g.id === gid) for (const m of g.members) add(m.origin);
+    for (const t of this.store.tabs.values()) if (t.group === gid) add(t.origin);
+    return out;
   }
 
   /** 收起 / 展开这几个组（这扇窗的看法 `tabBar.collapsed`，落盘）。都已是那个样子 ⇒ 零写。 */
@@ -382,28 +399,32 @@ export class TabBarPrefs {
     return true;
   }
 
-  /** 组头就地改名（问家那一台）。空名 / 与现名相同 ⇒ 零写。 */
+  /** 组头就地改名（本机发给组员所在的每一片）。空名 / 与现名相同 ⇒ 零写；还没建成的组只改栏里（建成时记录带着这个名字）。 */
   renameGroup(gid: string, name: string): Promise<void> {
     const n = name.trim();
     const g = this.collections.find((c) => c.id === gid);
     if (!g || !n || g.name === n) return Promise.resolve();
     this.collections = this.collections.map((c) => (c.id === gid ? { ...c, name: n } : c));
-    if (g.home === null || !this.book) return Promise.resolve();
-    return this.book.rename(g.home, gid, n).catch((e: unknown) => this.failed(e));
+    const rec = this.records.get(gid);
+    if (rec) this.records.set(gid, { ...rec, name: n });
+    const machines = this.machinesOf(gid);
+    if (!this.book || machines.length === 0 || gid.startsWith("pending-")) return Promise.resolve();
+    return this.book.rename(gid, n, machines).catch((e: unknown) => this.failed(e));
   }
 
-  /** 一个 tab 从 `from` 挪进 `to`（`null` ＝ 散着）：会话那台一条注解（出 · 进一起交）。 */
+  /** 一个 tab 从 `from` 挪进 `to`（`null` ＝ 散着）：会话那台一问（出 · 进一起交，进组带那一组的记录）。 */
   private move(tab: Tab, from: string | null, to: string | null): Promise<void> {
-    const join = to === null ? undefined : [to];
-    const leave = from === null || from === to || from.startsWith("pending-") ? undefined : [from];
-    if (!join && !leave) return Promise.resolve();
-    return this.patch(tab.origin, tab.sessionId, { ...(join ? { join } : {}), ...(leave ? { leave } : {}) });
+    const join = to === null ? null : (this.records.get(to) ?? null);
+    const leave = from === null || from === to || from.startsWith("pending-") ? null : from;
+    if (!join && leave === null) return Promise.resolve();
+    if (!this.book) return Promise.resolve();
+    return this.book.move(tab.origin, tab.sessionId, join, leave).catch((e: unknown) => this.failed(e));
   }
 
-  private patch(origin: Origin, sid: string, patch: { join?: string[]; leave?: string[]; pinned?: boolean }): Promise<void> {
+  /** 固定 · 取消固定：会话那台一条注解。 */
+  private pin(origin: Origin, sid: string, on: boolean): Promise<void> {
     if (!this.book) return Promise.resolve();
-    const title = patch.pinned === undefined ? undefined : copyText("tabBar.persist.pinnedFailed");
-    return this.book.member(origin, sid, patch).catch((e: unknown) => this.failed(e, title));
+    return this.book.pin(origin, sid, on).catch((e: unknown) => this.failed(e, copyText("tabBar.persist.pinnedFailed")));
   }
 
   /** 分组 · 固定没交成：toast ＋ 记日志；账重读一次（栏回到真相）。 */
@@ -465,33 +486,29 @@ export class TabBarPrefs {
       const tab = this.store.tabs.get(sid);
       if (!tab || tab.pinned === on) continue;
       tab.pinned = on;
-      work.push(this.patch(tab.origin, sid, { pinned: on }));
+      work.push(this.pin(tab.origin, sid, on));
     }
     if (work.length > 0) this.host.refreshTabBar();
     return Promise.all(work).then(() => undefined);
   }
 
   /**
-   * 点 × 关掉一个 tab（它已不在栏里）：固定的取消固定、在组里的出组，各交会话那台一条注解；组里因此谁都不剩 ⇒ 家那台解散它。
+   * 点 × 关掉一个 tab（它已不在栏里）：固定的取消固定、在组里的出组，各交会话那台；组里因此谁都不剩 ⇒ 栏里那一组摘掉（那一片随最后一位出组自己删）。
    * （会话自己结束不走这里：进程退出后仍算组员。）
    */
   forgetClosed(tab: Tab): void {
     const k = keyOf(tab.origin, tab.sessionId);
     const gid = tab.group;
-    const patch: { leave?: string[]; pinned?: boolean } = {};
     if (tab.pinned) {
       tab.pinned = false;
       this.pinRows.delete(k);
-      patch.pinned = false;
+      void this.pin(tab.origin, tab.sessionId, false);
     }
-    if (gid !== null) {
-      tab.group = null;
-      this.placed.delete(k);
-      if (!gid.startsWith("pending-")) patch.leave = [gid];
-    }
-    if (patch.pinned === undefined && patch.leave === undefined) return;
-    void this.patch(tab.origin, tab.sessionId, patch);
-    if (gid !== null && this.emptyAfter(gid, [k])) void this.dropGroup(gid);
+    if (gid === null) return;
+    tab.group = null;
+    this.placed.delete(k);
+    void this.move(tab, gid, null);
+    if (this.emptyAfter(gid, [k])) this.forgetGroup(gid);
   }
 
   /**

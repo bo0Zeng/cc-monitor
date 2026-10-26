@@ -23,14 +23,6 @@ hide?: HideAsk | null,
  */
 autoAnswer?: AutoAnswer | null, 
 /**
- * 进这几组（组 id；已在的不重记）。组住哪台不在这里核：组员关系只住会话这一台。
- */
-join?: Array<string> | null, 
-/**
- * 出这几组（不在的不管）。同一组既进又出 ⇒ 出。
- */
-leave?: Array<string> | null, 
-/**
  * 固定。
  */
 pinned?: boolean | null, };
