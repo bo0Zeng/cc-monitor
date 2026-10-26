@@ -253,11 +253,12 @@ const OFFLINE_OLD: [&str; 12] = [
     "terminal.liveWhy.offline",
 ];
 
-/// Rust 里还在各取旧键的那几处（键 · 文件）：后端机器状态成品那一句 · 后端转发那台不在时那一句还没并过来。
-/// 只许删，删光了这一格跟着删。
-const OFFLINE_LEFT: [(&str, &str); 2] = [
+/// Rust 里还在各取旧键的那几处（键 · 文件）：后端机器状态成品那一句 · 后端转发那台不在时那一句 ·
+/// 文件窗口顶条那一句（窗口进程的边界表要先登 `said::offline` 这一条边）还没并过来。只许删，删光了这一格跟着删。
+const OFFLINE_LEFT: [(&str, &str); 3] = [
     ("front.body.offline", "backend/control/feeds.rs"),
     ("machinePage.problem.offline", "backend/deploy/machine.rs"),
+    ("rsFilewinChrome.link.offlineNever", "frontend/filewin/src/chrome.rs"),
 ];
 
 #[test]

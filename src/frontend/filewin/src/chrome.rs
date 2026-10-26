@@ -1000,7 +1000,10 @@ impl Workspace {
                             ],
                         )
                     } else {
-                        comms_inward::chan::said::offline(&machine)
+                        copy_text(
+                            "rsFilewinChrome.link.offlineNever",
+                            &[("machine", &machine)],
+                        )
                     };
                     (text, vec![copy_text("rsFilewinChrome.link.retry", &[])])
                 }

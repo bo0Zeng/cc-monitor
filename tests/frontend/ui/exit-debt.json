@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1889,
+  "ceiling": 1890,
   "groups": [
     {
       "kind": "首登",
@@ -19,7 +19,7 @@
         ["src/frontend/filewin/src/batch.rs", "key", 1],
         ["src/frontend/filewin/src/bigfile.rs", "branch", 2],
         ["src/frontend/filewin/src/bigfile.rs", "key", 6],
-        ["src/frontend/filewin/src/chrome.rs", "key", 15],
+        ["src/frontend/filewin/src/chrome.rs", "key", 16],
         ["src/frontend/filewin/src/chunk_upload.rs", "key", 1],
         ["src/frontend/filewin/src/copy.rs", "key", 1],
         ["src/frontend/filewin/src/download.rs", "key", 1],

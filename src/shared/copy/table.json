@@ -21113,6 +21113,12 @@
       "zh": "{machine} 离线 · 采样 {time}",
       "args": ["machine", "time"]
     },
+    "rsFilewinChrome.link.offlineNever": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} 离线",
+      "args": ["machine"]
+    },
     "rsFilewinChrome.link.retry": {
       "kind": "action",
       "role": "按钮",
