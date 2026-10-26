@@ -809,13 +809,6 @@
       "args": [],
       "limited": ["ccm"]
     },
-    "bePlan.bus.noSpawnRecord": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "ccm: {path} 不可执行 · 会话照建也照登记 · cc-bus 新开记录里缺此条",
-      "args": ["path"],
-      "limited": ["ccm"]
-    },
     "beAssetCatalog.digest.walkFailed": {
       "kind": "body",
       "role": "片段",
@@ -1146,53 +1139,11 @@
       "zh": "{reason} · 此机 cc-bus 比后端旧 · 重新部署 cc-bus 后再试",
       "args": ["reason"]
     },
-    "beCcBus.kill.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "cc-bus 拒绝结束此 agent · {detail}",
-      "args": ["detail"]
-    },
-    "beCcBus.kill.failed": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "结束 agent 失败 · {detail} · 退出码 {status}",
-      "args": ["status", "detail"]
-    },
-    "beCcBus.kill.interrupted": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "结束 agent 被中断 · {detail}",
-      "args": ["detail"]
-    },
     "beCcBus.deliver.tooLong": {
       "kind": "error",
       "role": "报错",
       "zh": "{reason} · 消息 {n} 字节",
       "args": ["reason", "n"]
-    },
-    "beCcBus.spawn.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "起 agent 被拒 · {detail}",
-      "args": ["detail"]
-    },
-    "beCcBus.spawn.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{reason}\n会话可能已启动 · 先看名单再定 · 直接重试会再起一个 agent",
-      "args": ["reason"]
-    },
-    "beCcBus.spawn.failed": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "启动 agent 失败 · {detail} · 退出码 {status}",
-      "args": ["status", "detail"]
-    },
-    "beCcBus.spawn.interrupted": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "起 agent 被中断 · {detail}",
-      "args": ["detail"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
@@ -2478,35 +2429,11 @@
       "zh": "未发送 · id 不合法",
       "args": []
     },
-    "ccBus.kill.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未结束 · id 不合法",
-      "args": []
-    },
-    "ccBus.spawn.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未新开 agent · 名字不合法",
-      "args": []
-    },
     "beCcBus.parse.badRecipient": {
       "kind": "error",
       "role": "报错",
       "zh": "收件人不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
       "args": ["id"]
-    },
-    "beCcBus.parse.badKillId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "要结束的不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
-      "args": ["id"]
-    },
-    "beCcBus.parse.badAccount": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号名无效 · {account} · 限 字母 · 数字 · _ · - · 不以 - 开头",
-      "args": ["account"]
     },
     "ccBus.send.invalidArgs": {
       "kind": "error",
@@ -2567,138 +2494,6 @@
       "role": "说明",
       "zh": "已投递 {id} · 在线状态未知",
       "args": ["id"]
-    },
-    "ccBus.kill.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未结束 {id} · cc-bus 不接受此名字",
-      "args": ["id"]
-    },
-    "ccBus.kill.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 失败 · 未装",
-      "args": ["id"]
-    },
-    "ccBus.kill.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 结果未知",
-      "args": ["id"]
-    },
-    "ccBus.kill.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 {id} 失败",
-      "args": ["id"]
-    },
-    "ccBus.kill.killed": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{id} 的会话与进程树已全部结束",
-      "args": ["id"]
-    },
-    "ccBus.kill.staleOnly": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已摘除 {id} 的登记 · 会话未动 · 此名现挂在另一会话上",
-      "args": ["id"]
-    },
-    "ccBus.kill.nothing": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "未结束 {id} · 会话还在 · 登记未摘",
-      "args": ["id"]
-    },
-    "ccBus.spawn.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未新开 agent · cc-bus 不接受参数",
-      "args": []
-    },
-    "ccBus.spawn.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败 · 未装",
-      "args": []
-    },
-    "ccBus.spawn.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 结果未知 · 先看 cc-bus 名单再重试",
-      "args": []
-    },
-    "ccBus.spawn.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败",
-      "args": []
-    },
-    "ccBus.spawn.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已新开 agent {id}\n{said}",
-      "args": ["id", "said"]
-    },
-    "ccBus.spawn.noName": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已新开 agent · 名字未识别\n会话应已在运行 · 勿重试 · 到 cc-bus 名单里找\n{said}",
-      "args": ["said"]
-    },
-    "ccBus.broadcast.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播内容为空 · 未发送",
-      "args": []
-    },
-    "ccBus.broadcast.invalidArgs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 参数不被接受",
-      "args": []
-    },
-    "ccBus.broadcast.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 未找到 cc-bus",
-      "args": []
-    },
-    "ccBus.broadcast.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 列名单超时",
-      "args": []
-    },
-    "ccBus.broadcast.otherCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播失败",
-      "args": []
-    },
-    "ccBus.broadcast.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped}",
-      "args": ["sent", "skipped"]
-    },
-    "ccBus.broadcast.doneFailed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 ×{failed} · {who}",
-      "args": ["sent", "skipped", "failed", "who"]
-    },
-    "ccBus.broadcast.doneUnknown": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 名单全部 {sent} · 在线状态未知",
-      "args": ["sent"]
-    },
-    "ccBus.broadcast.doneUnknownFailed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 ×{failed} · {who}",
-      "args": ["sent", "failed", "who"]
     },
     "portForward.onStop.failed": {
       "kind": "error",
@@ -8055,90 +7850,6 @@
       "zh": "系统默认",
       "args": []
     },
-    "ccBus.spawn.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开 agent 失败",
-      "args": []
-    },
-    "ccBus.spawn.running": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "新开中",
-      "args": []
-    },
-    "ccBus.spawn.confirmBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "{changed}在 {machine} 的 {dir} 用{account}新开 {tool}\n耗额度",
-      "args": ["changed", "machine", "dir", "account", "tool"]
-    },
-    "ccBus.spawn.changed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "参数已改动 · 需重新确认 · ",
-      "args": []
-    },
-    "ccBus.spawn.confirm": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "新开 agent",
-      "args": []
-    },
-    "ccBus.spawn.needDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "工作目录必填",
-      "args": []
-    },
-    "ccBus.spawn.go": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新开 agent…",
-      "args": []
-    },
-    "ccBus.row.kill": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "结束",
-      "args": []
-    },
-    "ccBus.broadcast.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "广播失败",
-      "args": []
-    },
-    "ccBus.broadcast.confirm": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "只发在线的 agent · 名单 {n}\n\n{text}",
-      "args": ["n", "text"]
-    },
-    "ccBus.kill.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "结束 agent 失败",
-      "args": []
-    },
-    "ccBus.kill.confirm": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "结束 {id}",
-      "args": ["id"]
-    },
-    "ccBus.acctLabel.none": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "不指定账号",
-      "args": []
-    },
-    "ccBus.acctLabel.named": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "账号 {value}",
-      "args": ["value"]
-    },
     "ccBus.send.failed": {
       "kind": "error",
       "role": "报错",
@@ -8199,12 +7910,6 @@
       "zh": "检查中",
       "args": []
     },
-    "ccBus.row.killHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "结束此 agent 的会话与进程树 · 不可撤销",
-      "args": []
-    },
     "ccBus.row.send": {
       "kind": "action",
       "role": "按钮",
@@ -8235,36 +7940,6 @@
       "zh": "在线未知",
       "args": []
     },
-    "ccBus.row.sep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
-    "ccBus.row.unregistered": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未登记",
-      "args": []
-    },
-    "ccBus.row.selfRegistered": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "自行登记",
-      "args": []
-    },
-    "ccBus.row.spawned": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已新开",
-      "args": []
-    },
-    "ccBus.row.timeUnknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "时间未知",
-      "args": []
-    },
     "ccBus.render.empty": {
       "kind": "body",
       "role": "空态",
@@ -8283,27 +7958,6 @@
       "zh": "登记的不一定在线",
       "args": []
     },
-    "ccBus.summary.skipped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "无法解析 ×{skipped} · 已跳过",
-      "args": ["skipped"],
-      "waive": {
-        "C-W14": "计数格（跳过的无法解析条目数），不是动作失败句"
-      }
-    },
-    "ccBus.summary.unregistered": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "另有新开未登记 {n}",
-      "args": ["n"]
-    },
-    "ccBus.summary.spawned": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "其中新开 {n}",
-      "args": ["n"]
-    },
     "ccBus.summary.registered": {
       "kind": "body",
       "role": "片段",
@@ -8314,18 +7968,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "读取名单失败",
-      "args": []
-    },
-    "ccBus.spawn.accountNamed": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "账号 {n}",
-      "args": ["n"]
-    },
-    "ccBus.spawn.accountNone": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "账号 不指定",
       "args": []
     },
     "ccBus.machine.noRemote": {
@@ -8340,30 +7982,6 @@
       "zh": "本机",
       "args": []
     },
-    "ccBus.spawn.task": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "初始任务（可选）",
-      "args": []
-    },
-    "ccBus.spawn.dir": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "工作目录 · 该机绝对路径",
-      "args": []
-    },
-    "ccBus.spawn.intro": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在所选机器的目录新开独立 agent\n每次新开会话 · 不复用同目录已有的 · 同名往后排\n耗额度",
-      "args": []
-    },
-    "ccBus.spawn.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "新开 agent",
-      "args": []
-    },
     "ccBus.build.notRead": {
       "kind": "body",
       "role": "片段",
@@ -8374,18 +7992,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "读取",
-      "args": []
-    },
-    "ccBus.build.broadcast": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "广播",
-      "args": []
-    },
-    "ccBus.build.broadcastHint": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "广播给所有 agent…",
       "args": []
     },
     "ccBus.build.machine": {
@@ -13374,12 +12980,6 @@
       "zh": "{machine}已报出此会话",
       "args": ["machine"]
     },
-    "ccBus.spawn.arrived": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "新开的 agent 已启动",
-      "args": []
-    },
     "contextLimits.editor.title": {
       "kind": "title",
       "role": "标题",
@@ -14245,12 +13845,6 @@
       "role": "片段",
       "zh": "当前 {mode}",
       "args": ["mode"]
-    },
-    "ccBus.broadcast.listSep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
     },
     "beContract.malformed.say": {
       "kind": "error",
@@ -15945,24 +15539,6 @@
       "role": "报错",
       "zh": "发件身份不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
       "args": ["id"]
-    },
-    "ccBus.broadcast.badId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未广播 · 发件人 id 不合法",
-      "args": []
-    },
-    "ccBus.broadcast.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "广播 · agent ×{n}",
-      "args": ["n"]
-    },
-    "ccBus.broadcast.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "广播",
-      "args": []
     },
     "bePlan.build.launcherRefused": {
       "kind": "error",
