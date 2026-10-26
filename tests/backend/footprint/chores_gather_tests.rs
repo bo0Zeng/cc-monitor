@@ -113,7 +113,7 @@ fn 待办里的钥匙只有只许直通那一把() {
         if let Some(s) = &settings {
             std::fs::write(&file, s).unwrap();
         }
-        let relay = relay_at(&h, &[], &|_| true);
+        let relay = relay_at(&h, &[], &|_| true, &[]);
         assert!(!relay.is_empty(), "该有「直接敲的也走中转」那几件");
         let f = Facts {
             windows: false,
@@ -163,5 +163,40 @@ fn sshd_配置读真文件_include_目录照展开() {
     );
     assert_eq!(got.line, 1);
     assert!(sshd_at(&h.join("gone")).is_none());
+    let _ = std::fs::remove_dir_all(&h);
+}
+
+/// 贴好了的那一家：活着的会话所在的项目里有一份自己写了上游地址 ⇒ 记下那个项目与那份文件；别的项目没写 ⇒ 不记。
+#[test]
+fn 中转_项目里自己写了地址_记下盖住它的那一份() {
+    let h = tmp("covered");
+    let root = "0123456789abcdef".repeat(4);
+    std::fs::create_dir_all(h.join(".cc-monitor")).unwrap();
+    std::fs::write(h.join(".cc-monitor/relay-key"), &root).unwrap();
+    let (plain, app) = (h.join("plain"), h.join("app"));
+    std::fs::create_dir_all(plain.join(".claude")).unwrap();
+    std::fs::create_dir_all(app.join(".claude")).unwrap();
+    std::fs::write(
+        app.join(".claude/settings.json"),
+        r#"{"env":{"ANTHROPIC_BASE_URL":"https://p.example"}}"#,
+    )
+    .unwrap();
+    let projects = [plain.display().to_string(), app.display().to_string()];
+    let claude = |ps: &[String]| {
+        relay_at(&h, &[], &|_| true, ps)
+            .into_iter()
+            .find(|r| r.agent == "claude-code")
+            .expect("该有 Claude 那一件")
+    };
+    let c = claude(&projects).covered.expect("该认出被盖住");
+    assert_eq!(c.project, app.display().to_string());
+    assert_eq!(
+        c.file,
+        app.join(".claude/settings.json").display().to_string()
+    );
+    assert!(
+        claude(&projects[..1]).covered.is_none(),
+        "没写的项目不算盖住"
+    );
     let _ = std::fs::remove_dir_all(&h);
 }

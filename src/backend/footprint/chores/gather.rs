@@ -216,14 +216,28 @@ fn relay() -> Vec<Relay> {
         &home,
         &crate::accounts::upstream_select::file_face::machine_rows(),
         &|agent| up.as_ref().is_some_and(|u| u.has(agent)),
+        &live_projects(),
     )
 }
 
-/// [`relay`] 的本体（家目录 · 表 · 哪几家登记了默认上游都是参数，判据喂夹具）。
+/// 这台此刻活着的会话所在的项目（各家的家目录里登记的会话；同 MCP 登录那一件的取法）。
+fn live_projects() -> Vec<String> {
+    let mut v: Vec<String> = crate::agents::REGISTRY
+        .iter()
+        .filter_map(|a| crate::agents::home_of_kind(a.kind))
+        .flat_map(|h| crate::observe::accounts_query::live_cwds(&h))
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// [`relay`] 的本体（家目录 · 表 · 哪几家登记了默认上游 · 活着的会话在哪几个项目都是参数，判据喂夹具）。
 pub(crate) fn relay_at(
     home: &Path,
     routed: &[String],
     registered: &dyn Fn(&str) -> bool,
+    projects: &[String],
 ) -> Vec<Relay> {
     crate::agents::settings_env_families()
         .into_iter()
@@ -245,7 +259,12 @@ pub(crate) fn relay_at(
                 text: read_small(&r.source),
                 path,
                 url: r.url,
-                covered: None,
+                covered: projects.iter().find_map(|p| {
+                    (face.covered_in)(Path::new(p)).map(|f| super::Covered {
+                        project: p.clone(),
+                        file: f.display().to_string(),
+                    })
+                }),
             }
         })
         .collect()
