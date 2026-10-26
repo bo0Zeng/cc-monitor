@@ -346,10 +346,10 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     // ② backend 命令表里的 `bus-*`。
     let names = backend_command_names();
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
-    // 正控：转调 cc-bus 的命令今天确实抠得到（`bus-send` 是最早那一条）。
+    // 正控：转调 cc-bus 的命令今天确实抠得到（`bus-list` 是最早留下来的那一条）。
     assert!(
-        bus.iter().any(|n| *n == "bus-send"),
-        "后端命令表里抠不到 `bus-send` —— 抽取器坏了（或那条命令改了名），下面那条零命中会恒绿：{bus:?}"
+        bus.iter().any(|n| *n == "bus-list"),
+        "后端命令表里抠不到 `bus-list` —— 抽取器坏了（或那条命令改了名），下面那条零命中会恒绿：{bus:?}"
     );
     // ★ **刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），backend 代读等于把消息从人那里偷走
     //   （理由全文在 `src/backend/control/cc_bus.rs` 的模块头注 ①）。

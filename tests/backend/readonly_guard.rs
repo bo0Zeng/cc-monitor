@@ -1107,9 +1107,10 @@ mod spawn_registry {
             "`K-W1A`（08-26）：**插件通用调用口**里唯一一处起进程 —— argv 直传不过 shell，\
              期限由起子进程原语执行（调用方给秒数，到点杀整组）。\
              程序名是**查出来的路径**（PATH 里未必有用户级 bin 目录）⇒ 非字面量。\
-             这条登记覆盖的 cc-bus 写面**今天是这样**：`cc-list` 只读；`cc-send` 写收件人的收件箱；\
+             这条登记覆盖的 cc-bus 写面**今天是这样**：`cc-list` 只读；\
              `cc-log` 只读（共享锁，收件箱初次被看时它会建出那个空锁文件 —— 与 `cc-peek` 同一格）。\
-             三者都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
+             后端不再转调发信那一条（A13-2：发信由 agent 自己跑的脚本投，后端只核信封）。\
+             万一将来有写的，也是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
              （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**\
              不写用户既有数据）。当年一条**破坏性**的转调命令漏登过 13 天（键分不出被调命令、判据全绿），\
              下面那条相等断言就是为它补的闸。\
@@ -1865,7 +1866,7 @@ mod g6_reach {
         }
     }
 
-    /// ★ 那条 `<非字面量>` 键今天覆盖了**恰好三条**被调命令（`cc-list` · `cc-log` · `cc-send`）。
+    /// ★ 那条 `<非字面量>` 键今天覆盖了**恰好两条**被调命令（`cc-list` · `cc-log`，都只读）。
     ///
     /// # 它钉的是 `ALLOWED` 逮不到的那一面（活体标本，不是设想）
     ///
@@ -1874,11 +1875,11 @@ mod g6_reach {
     /// 08-13 加进来的一条**破坏性**命令因此漏登 13 天，三条判据全绿。
     /// 本条把今天的那几条钉成**相等**：多一条就必须回来重读那条豁免理由。
     #[test]
-    fn the_non_literal_spawn_key_still_covers_exactly_three_commands() {
+    fn the_non_literal_spawn_key_still_covers_exactly_two_commands() {
         let prod = guard_core::production_source(source_of("control/cc_bus.rs"));
         let mut cmds: Vec<&str> = Vec::new();
-        // 只读三条经 `read_via("…"` 转调（同一个起进程口）。
-        for opener in ["run(\"", "run_as(\"", "read_via(\""] {
+        // 只读的经 `read_via("…"` 转调（同一个起进程口）。
+        for opener in ["run(\"", "read_via(\""] {
             let mut from = 0usize;
             while let Some(k) = prod[from..].find(opener) {
                 let at = from + k + opener.len();
@@ -1893,7 +1894,7 @@ mod g6_reach {
         cmds.dedup();
         assert_eq!(
             cmds,
-            vec!["cc-list", "cc-log", "cc-send"],
+            vec!["cc-list", "cc-log"],
             "经 `plugin/invoke.rs` 那个 `<非字面量>` 键转调的命令变了：{cmds:?}\n\
              ⇒ 回 `ALLOWED` 里 `plugin/invoke.rs` 那条**重读它的豁免理由**，\n\
              把新命令的写面写进去。**不许只改这个断言。**\n\

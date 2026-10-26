@@ -631,10 +631,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "查一个 agent 在不在线：后端应答就是成品（名单 ＋ 每人 `live`），monitor 那条命令只在转 ＋ 按 id 挑一个 ——\
          挑人与「问不到 ≠ 离线」搬到 `src/frontend/ui/cc-bus-control.ts::agentOnline`",
     ),
-    (
-        "bus-send",
-        "发一条消息：后端应答就是成品 `{to, sent, registered, live, from}`，monitor 那条命令只在核 id / 正文、转、按三态说人话 —— 搬到 `sendMessage`",
-    ),
     // `session.tasks`。
     (
         "tasks-list",

@@ -12,10 +12,10 @@
       "want": "刷新"
     },
     {
-      "key": "ccBus.send.ghost",
-      "zh": "已投递 {id} · 此名未在总线登记\n无进程读它的收件箱 · 核对名字拼写",
-      "args": { "id": "a b'c" },
-      "want": "已投递 a b'c · 此名未在总线登记\n无进程读它的收件箱 · 核对名字拼写"
+      "key": "events.unseen.lostBody",
+      "zh": "{machine} 的会话运行状态不明 · 自动重试中\n连上后自动接上 · 连接状态见设置",
+      "args": { "machine": "a b'c" },
+      "want": "a b'c 的会话运行状态不明 · 自动重试中\n连上后自动接上 · 连接状态见设置"
     },
     {
       "key": "sessionOpen.attached.body",
@@ -58,10 +58,10 @@
     },
     {
       "_": "值以全角标点收尾 ⇒ 接缝不管；后一个值是数字、模板已写了空格 ⇒ 照留（不叠第二个）。",
-      "key": "beCcBus.deliver.tooLong",
-      "zh": "{reason} · 消息 {n} 字节",
-      "args": { "reason": "消息太长：", "n": "70000" },
-      "want": "消息太长： · 消息 70000 字节"
+      "key": "beFilesCommit.chunk.notRegular",
+      "zh": "{path} · 块 {seq} 不是普通文件 · 未保存",
+      "args": { "path": "消息太长：", "seq": "70000" },
+      "want": "消息太长： · 块 70000 不是普通文件 · 未保存"
     },
     {
       "_": "两个值之间只隔空格的那一段不动（值是汉字也不并）；模板里汉字与汉字值之间那个空格照接缝规则去掉。",

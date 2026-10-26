@@ -39,6 +39,8 @@ pub enum Refused {
     Elsewhere,
     /// 终端已经没了，按记下的号恢复这条会话没成（`session-say` 才回它；原话记日志）。
     NotResumed,
+    /// 要求「只在闲着时送」，而它此刻不闲（一轮在跑 · 后台在跑 · 判不出 · 不活）：不插进那一轮中间（`session-say` 才回它）。
+    NotIdle,
 }
 
 /// `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 那一句；画面变了带新指纹）。
