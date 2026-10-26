@@ -80,7 +80,7 @@ describe("ST1 点设置有反馈", () => {
   it("本模块不 import 设置面板（主窗的模块图里不该有它）", () => {
     const src = readFileSync("src/frontend/ui/open-settings.ts", "utf8");
     const imports = [...src.matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]).sort();
-    // + 取文口（失败 toast 那句进了文案表）· 失败 toast（复制详情由它取）—— 都不是设置面板。
-    expect(imports).toEqual(["./copy-table", "./ipc/commands", "./kit/toast"]);
+    // + 取文口（失败 toast 那句进了文案表）· 失败 toast（复制详情由它取）· 那一个解码（目的地可能是一段 JSON 文本）—— 都不是设置面板。
+    expect(imports).toEqual(["./copy-table", "./ipc/commands", "./ipc/decode", "./kit/toast"]);
   });
 });

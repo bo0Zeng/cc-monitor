@@ -196,7 +196,10 @@ describe("〔C4a〕webview 通道客户端", () => {
   it("★ 成员不解释载荷：`chan.ts` 生产段零 `JSON.parse` / `JSON.stringify`（正控：调用方那一侧命中）", () => {
     const code = (rel: string): string => stripComments(readFileSync(resolve(REPO_ROOT, rel), "utf8"), "ts");
     const jsonUses = (c: string): number => (c.match(/\bJSON\.(?:parse|stringify)\s*\(/g) ?? []).length;
-    expect(jsonUses(code("src/frontend/ui/ipc/chan-caller.ts")), "正控：调用方那一侧恰好两处（`jsonBody` 的 stringify · `readJson` 的 parse）").toBe(2);
+    expect(
+      jsonUses(code("src/frontend/ui/ipc/chan-caller.ts")) + jsonUses(code("src/frontend/ui/ipc/decode.ts")),
+      "正控：调用方那一侧恰好两处（`chan-caller.ts::jsonBody` 的 stringify · `decode.ts::decodeJson` 的 parse）",
+    ).toBe(2);
     expect(jsonUses(code("src/comms/inward/chan.ts")), "通道成员自己解释了载荷 ——：载荷是不透明字节").toBe(0);
   });
 });
