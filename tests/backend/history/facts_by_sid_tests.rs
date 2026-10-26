@@ -40,10 +40,17 @@ fn by_sid_finds_the_record_and_hands_back_its_path() {
     let sid = "0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab";
     let p = record(&home, sid);
     let by_sid = ask(&home, serde_json::json!({ "sid": sid })).unwrap();
-    assert_eq!(by_sid["path"], serde_json::json!(p.to_string_lossy()), "回包带找到的那份记录：{by_sid}");
+    assert_eq!(
+        by_sid["path"],
+        serde_json::json!(p.to_string_lossy()),
+        "回包带找到的那份记录：{by_sid}"
+    );
     assert_eq!(by_sid["projectDir"], serde_json::json!("/w/proj"));
     let mut by_path = ask(&home, serde_json::json!({ "path": p.to_string_lossy() })).unwrap();
-    assert!(by_path.get("path").is_none(), "按路径问的不带 path（就是交来的那一份）：{by_path}");
+    assert!(
+        by_path.get("path").is_none(),
+        "按路径问的不带 path（就是交来的那一份）：{by_path}"
+    );
     by_path["path"] = by_sid["path"].clone();
     assert_eq!(by_sid, by_path, "两种问法答的是同一份事实");
     let _ = std::fs::remove_dir_all(&home);
@@ -53,9 +60,15 @@ fn by_sid_finds_the_record_and_hands_back_its_path() {
 fn an_unknown_sid_is_no_such_session_with_the_machine_sentence() {
     let home = scratch("missing");
     record(&home, "0b1c2d3e-aaaa-4bbb-8ccc-1234567890ab");
-    match ask(&home, serde_json::json!({ "sid": "ffffffff-0000-4000-8000-000000000000" })) {
+    match ask(
+        &home,
+        serde_json::json!({ "sid": "ffffffff-0000-4000-8000-000000000000" }),
+    ) {
         Err(HistoryFactsErr::NoSuchSession(said)) => {
-            assert_eq!(said, copy_core::copy_text("beSessionCommands.session.noRecord", &[]));
+            assert_eq!(
+                said,
+                copy_core::copy_text("beSessionCommands.session.noRecord", &[])
+            );
         }
         other => panic!("不认得的 sid 该是 no_such_session：{other:?}"),
     }
@@ -64,7 +77,13 @@ fn an_unknown_sid_is_no_such_session_with_the_machine_sentence() {
 
 #[test]
 fn path_and_sid_are_one_or_the_other() {
-    assert!(req(serde_json::json!({ "path": "/p/a.jsonl", "sid": "s1" })).is_err(), "两样都交 ⇒ 不认");
+    assert!(
+        req(serde_json::json!({ "path": "/p/a.jsonl", "sid": "s1" })).is_err(),
+        "两样都交 ⇒ 不认"
+    );
     assert!(req(serde_json::json!({})).is_err(), "都不交 ⇒ 不认");
-    assert!(req(serde_json::json!({ "sid": "s1", "prior": {} })).is_err(), "多一格 ⇒ 不认");
+    assert!(
+        req(serde_json::json!({ "sid": "s1", "prior": {} })).is_err(),
+        "多一格 ⇒ 不认"
+    );
 }

@@ -36,7 +36,8 @@ class ChatOpenByIdTest {
             assertTrue("认一条会话不整份问清单", link.calls("history-list").isEmpty())
             assertEquals(mapOf("sid" to "s1"), link.calls("history-facts").first())
             assertEquals("/p/s1.jsonl", link.calls("history-tail").single()!!["path"])
-            assertEquals(listOf("u1", "a1#0"), s.state.value.units.map { it.key })
+            val units = s.state.value.units
+            assertEquals(listOf("u1", "a1#0"), units.map { it.key })
             assertEquals("/h/proj", s.state.value.cwd)
         }
 

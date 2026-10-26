@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1906,
+  "ceiling": 1905,
   "groups": [
     {
       "kind": "首登",
@@ -279,7 +279,7 @@
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ssh/HostConnect.kt", "key", 5],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatChips.kt", "key", 5],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatSession.kt", "branch", 2],
-        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatSession.kt", "key", 5],
+        ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatSession.kt", "key", 4],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/LiveCardView.kt", "key", 1],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsDesk.kt", "key", 2],
         ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/needs/NeedsViews.kt", "key", 5],
