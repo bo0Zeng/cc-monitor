@@ -83,6 +83,9 @@ fun ChatRoute(
     isNew: Boolean = false,
     /** 新建会话从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`）。 */
     draftCwd: String? = null,
+    /** 从搜内容的一处命中打开：命中那一行的字节起点（缺 ⇒ 读最后一屏）· 落在哪次工具调用的卡里（见 [ChatSession.jump]）。 */
+    at: Long? = null,
+    tool: String? = null,
     /** 顶栏「⋯」→ 轮换：这条会话（sid）的轮换屏。 */
     onOpenRotation: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
@@ -97,7 +100,7 @@ fun ChatRoute(
     val scope = rememberCoroutineScope()
     val host = rememberChatHost(hostId) ?: return
     val product = rememberProductName(hostId)
-    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd), host.machine) else existingChat(hostId, sessionId, host.machine)
+    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd), host.machine) else existingChat(hostId, sessionId, host.machine, at, tool)
     val vm: ChatViewModel =
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
@@ -183,14 +186,19 @@ data class ChatOpen(
     val key: String,
     val target: ChatTarget,
     val machine: String,
+    /** 从一处命中打开（[ChatSession.jump]）；缺 ⇒ 读最后一屏。 */
+    val at: Long? = null,
+    val tool: String? = null,
 )
 
-/** 读一条已有的会话（从列表点进来）。 */
+/** 读一条已有的会话（从列表点进来；从搜内容的一处命中点进来 ⇒ 带 [at] · [tool]）。 */
 fun existingChat(
     hostId: String,
     sid: String,
     machine: String,
-): ChatOpen = ChatOpen(hostId, chatKey(hostId, sid), ChatTarget.Existing(sid), machine)
+    at: Long? = null,
+    tool: String? = null,
+): ChatOpen = ChatOpen(hostId, chatKey(hostId, sid), ChatTarget.Existing(sid), machine, at, tool)
 
 /**
  * 一条会话的 [ChatSession]（应用级，同一个 key ⇒ 同一条）。[linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上），
@@ -205,7 +213,7 @@ fun ChatController.sessionOf(
 ): ChatSession =
     sessionFor(key = open.key, hostId = open.hostId) { scope ->
         ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope, cache = cacheOf(open.hostId))
-    }
+    }.also { s -> open.at?.let { s.jump(it, open.tool) } }
 
 /** 这台在手机上的名字；还没读到 ⇒ `null`。 */
 private data class ChatHost(
