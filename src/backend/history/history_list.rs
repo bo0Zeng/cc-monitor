@@ -499,6 +499,35 @@ struct Finished {
     hidden: Option<cmd_wire::session::Hidden>,
 }
 
+/// 一行 ⇒ 组员那一行的样子与复活那几格（与清单这一行同一处判，`history/groups.rs`）。
+pub(crate) fn member_facts(
+    raw: RawRow,
+    ann: Option<&Table>,
+) -> (
+    crate::wire::SessionFace,
+    crate::history::groups::MemberFacts,
+) {
+    let f = finish_row(raw, ann);
+    // 记录文件的路径照清单那一格原样交（解构取，同 [`row_of`]）。
+    let RawRow {
+        jsonl_path: record,
+        project_path,
+        last_account,
+        is_bg,
+        updated_at,
+        ..
+    } = f.raw;
+    let facts = crate::history::groups::MemberFacts {
+        title: Words(f.label),
+        cwd: (!project_path.is_empty()).then_some(project_path),
+        record: (!record.is_empty()).then_some(record),
+        account: last_account,
+        bg: is_bg,
+        at: Some(updated_at),
+    };
+    (f.face, facts)
+}
+
 /// 并上这台的注解（那一台的行也并这台的：注解只住本机），判 `face` · `label` · `untitled`。
 fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
     let meta = ann

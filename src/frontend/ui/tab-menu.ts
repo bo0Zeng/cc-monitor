@@ -12,7 +12,7 @@ import type { Tab } from "./tab-model";
 import { canResume, closesFromMenu, hasTerminal, isLive } from "./face-can";
 import type { SessionFace } from "./generated/SessionFace";
 import { copyText } from "./copy-table";
-import type { TabCollection } from "./tab-collections";
+import type { TabGroup } from "./tab-bar-prefs";
 import { defaultPick, pickAsk, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openNewSession } from "./new-session";
 import { openSession } from "./session-open";
@@ -71,7 +71,7 @@ export function tidyDividers(items: MenuItem[]): MenuItem[] {
  * 多选（`many`）⇒ 每项带能做的个数（今天批量菜单的写法）。新建不问名字：建「分组 N」、组头名字框立刻打开（同拖着建组）。
  */
 export function groupSubmenu(o: {
-  collections: readonly TabCollection[];
+  collections: readonly TabGroup[];
   /** 这一批里能挪进组 `gid` 的个数（不在它里面的）。 */
   movable(gid: string): number;
   /** 这一批里在组里的个数（能移出的）。 */
@@ -117,14 +117,14 @@ export interface TabMenuHost {
   isAttachable(sid: string): boolean;
   /** 这个实例拉过集合没有（撕离出来的 viewer 窗口从不拉 ⇒ 不给集合入口）。 */
   collectionsLoaded(): boolean;
-  collections(): TabCollection[];
+  collections(): TabGroup[];
   /** 这个 tab 在哪个组（读 `Tab.group`）。下面三个动作改完就重画、给可撤的提示（与拖放同一口）。 */
-  groupOf(sid: string): TabCollection | null;
+  groupAt(sid: string): TabGroup | null;
   joinGroup(sids: readonly string[], gid: string): void;
   /** 建「分组 N」把这几个放进去、名字框立刻打开；组数到上界 ⇒ 说一句、什么都不做。 */
   foundGroup(sids: readonly string[]): void;
   leaveGroup(sids: readonly string[]): void;
-  /** 同上一条理由：没 `loadPinned` 过就不给固定入口。 */
+  /** 同上一条理由：没读到过组的账就不给固定入口。 */
   pinnedLoaded(): boolean;
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */

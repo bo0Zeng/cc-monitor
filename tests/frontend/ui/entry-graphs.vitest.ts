@@ -80,7 +80,7 @@ const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
   { pat: "src/frontend/ui/cards/index.ts", what: "卡片系" },
   { pat: "src/frontend/ui/tabs.ts", what: "tab 管理" },
   { pat: "src/frontend/ui/tab-bar-state.ts", what: "tab 管理（tab 栏状态）" },
-  { pat: "src/frontend/ui/tab-collections.ts", what: "tab 管理（标签页集合）" },
+  { pat: "src/frontend/ui/group-book.ts", what: "tab 管理（组的账）" },
   // `tabs.ts` 拆成 13 份之后，「设置窗里没有 tab 管理」要对每一份都成立 ——
   //   只钉 `tabs.ts` 一个名字，某一份被设置窗间接带进来时这里看不见。正控照旧（每一份都得在主窗 / viewer 的闭包里命中）。
   { pat: "src/frontend/ui/tab-model.ts", what: "tab 管理（tab 的形状与标题）" },

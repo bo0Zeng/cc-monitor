@@ -238,9 +238,6 @@
     "tests/frontend/ui/settings/ui-copy-discipline.vitest.ts": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/frontend/ui/tab-bar-state.vitest.ts": [
-      { "text": "昨天", "use": "输入" }
-    ],
     "tests/frontend/ui/kit/detail-in-view.vitest.ts": [
       { "text": "读取画面失败", "use": "输入" }
     ],
@@ -282,8 +279,7 @@
     ],
     "tests/shots/fake/machine.ts": [
       { "text": "日志", "use": "回显" },
-      { "text": "本机", "use": "输入" },
-      { "text": "私钥登录失败", "use": "输入" }
+      { "text": "本机", "use": "输入" }
     ],
     "tests/test-support/session-viewer-rig.ts": [
       { "text": "加载失败", "use": "词义" }

@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.SessionCommandList
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.SessionPermission
@@ -44,6 +45,23 @@ internal class ChatChips(
                 else -> Switched.failed(r.problem(machine, SessionModel.COMMAND)?.text)
             }.orUnsure(copyText("session.model.unsure"))
         }
+
+    /** ［+］面板打开：问那台这条会话能用的命令与 Skill（每开一次问一次：项目里的命令文件可能刚改过）。 */
+    fun loadCommands() {
+        val s = sid() ?: return
+        state.value = state.value.copy(commands = CommandsView.Loading)
+        scope.launch {
+            val r = link.call(SessionCommandList.COMMAND, SessionCommandList.args(s), ChatReads.READ_MS)
+            val view =
+                when (r) {
+                    is Reply.Ok ->
+                        SessionCommandList.of(r.data)?.let { CommandsView.Ready(it) }
+                            ?: CommandsView.Failed(unreadableReply(machine, SessionCommandList.COMMAND, r.data.toString()).text)
+                    else -> CommandsView.Failed(r.problem(machine, SessionCommandList.COMMAND)?.text.orEmpty())
+                }
+            state.value = state.value.copy(commands = view)
+        }
+    }
 
     /** 切权限档（`session-permission`）：同 [switchModel]，读回的字是那一档写给人看的字。 */
     fun switchPermission(pick: AgentPick) =

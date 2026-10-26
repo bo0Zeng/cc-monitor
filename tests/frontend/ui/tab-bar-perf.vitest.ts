@@ -28,7 +28,7 @@ import { TabStreamView, type TabStreamHost } from "../../../src/frontend/ui/tab-
 import { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import type { TabCollection } from "../../../src/frontend/ui/tab-collections";
+import type { TabGroup } from "../../../src/frontend/ui/tab-bar-prefs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
@@ -79,7 +79,7 @@ interface Rig {
   store: TabStore;
   bar: HTMLElement;
   view: TabBarView;
-  prefs: { collections: TabCollection[] };
+  prefs: { collections: TabGroup[] };
   host: TabBarViewHost;
   /** 自上次取数以来 tab 栏子树收到的 mutation 记录。 */
   take: () => MutationRecord[];
@@ -105,7 +105,7 @@ function rig(n: number, grouped = 0): Rig {
   // 组表只有 `{id, name}`；前 `grouped` 个 tab 自己带组 id。
   for (const sid of store.orderedIds.slice(0, grouped)) store.tabs.get(sid)!.group = "c1";
   const prefs = {
-    collections: grouped > 0 ? [{ id: "c1", name: "组一" }] : [],
+    collections: grouped > 0 ? [{ id: "c1", name: "组一", home: null, counts: [] }] : [],
     dissolveGroup: vi.fn().mockResolvedValue(undefined),
     renameGroup: vi.fn().mockResolvedValue(undefined),
   };
@@ -290,7 +290,7 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
   });
   it("组与散的混排：组在它第一个组员那一格（两个组，第二个是后建的、组员在前面那些之后）", () => {
     const r = make(6, 2);
-    r.prefs.collections.push({ id: "c2", name: "组二" });
+    r.prefs.collections.push({ id: "c2", name: "组二", home: null, counts: [] });
     r.store.tabs.get("s2")!.group = "c2";
     r.view.refresh();
     // 栏顶一排 · 需手动 · 离线条 · 列表四块恒在；组与散 tab 都在列表里。
@@ -318,7 +318,7 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
         collections: [],
         collectionsLoaded: false,
         persistOrder: vi.fn().mockResolvedValue(undefined),
-        snapshot: () => ({ order: [], groups: [], groupOf: new Map() }),
+        snapshot: () => ({ order: [], groups: [], groupAt: new Map() }),
         offerUndo: vi.fn(),
       } as unknown as TabBarPrefs,
       r.bar,

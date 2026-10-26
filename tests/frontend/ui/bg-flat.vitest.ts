@@ -15,7 +15,7 @@
  *   （注释天然不在 AST 里），针 = 字符串字面量 `"bg"` / `"interactive"` / 含 `tab-bg` 的串 ·
  *   标识符 `isBg…` · `bgName`（`import` 语句里的不算）。命中按 `(文件, 所在的顶层声明 / 类方法)` 归并，
  *   **与 `REGISTERED` 两向相等**。tab 栏通用代码（落位 `tab-store` · 拖拽 `tab-bar-drag` · 落点算术
- *   `tab-drop` · 渲染 `tab-bar-view` · 集合 `tab-collections`）在表里**一行都没有** ⇒ 长出来就红。
+ *   `tab-drop` · 渲染 `tab-bar-view` · 分组 `tab-bar-prefs`）在表里**一行都没有** ⇒ 长出来就红。
  *   `bgName` 算针是因为 `if (tab.bgName)` 同样是按 bg 分叉、却不带字面量；于是只搬运它的几处也得登记。
  *
  * **B2 · CSS**：`src/**` 下全部 `.css`（现派生）剥 `/* … *\/` 注释后，类选择器 `.tab-bg` 零处。
@@ -44,7 +44,6 @@ const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [
   ],
   ["src/frontend/ui/tabs.ts", "TabManager.ensureTab", "同 sid 两份身份（bg-spare 谎报父 sid）⇒ 交互恒压过后台的升格；建 tab 时带上任务名"],
   ["src/frontend/ui/tabs.ts", "TabManager.computeTitle", "搬运：把任务名交给 `computeTitleFor`"],
-  ["src/frontend/ui/tab-bar-prefs.ts", "TabBarPrefs.pinRecordFor", "搬运：固定条落盘带上任务名，复活时标题不丢"],
 ];
 
 /** 人群：`src/` 顶层的 `tabs.ts` ＋ `tab-*.ts`（遍历借 `production-sources.ts` 那一个家）。 */
@@ -124,7 +123,7 @@ describe("tab 代码里按 bg 分叉只住登记的那几处", () => {
       "src/frontend/ui/tab-bar-drag.ts",
       "src/frontend/ui/tab-bar-view.ts",
       "src/frontend/ui/tab-drop.ts",
-      "src/frontend/ui/tab-collections.ts",
+      "src/frontend/ui/tab-bar-prefs.ts",
     ]) {
       expect(files, `${f} 不在人群里 —— 改名 / 搬家了就改本条，别让它悄悄离开扫描面`).toContain(f);
     }

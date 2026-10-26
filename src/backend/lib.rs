@@ -210,6 +210,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--groups-here",
     "--groups-read",
     "--groups-write",
+    // agent 自问（`session-self`：调用进程往上找这台的会话 · 它在哪几组）自动派生的 CLI 面（`ccm -- --session-self`）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--session-self",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。

@@ -45,6 +45,7 @@ import { HistoryView } from "./views/history";
 import { PlanView } from "./views/plan";
 import { PlanNeedsBook } from "./plan-needs";
 import { NeedsBook } from "./needs-book";
+import { GroupBook } from "./group-book";
 import { openLoginDrawer } from "./login-drawer";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
@@ -249,11 +250,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   const planNeeds = new PlanNeedsBook();
   // 「需手动」的账：各台 `sessions-needs` 整份、本机合好（入口 · 浮层 · Ctrl J · 窗口标题都读它）。
   const needsBook = new NeedsBook();
+  // 组的账：本机后端问到各台的组并成一份（标签页栏的分组与固定照它画）。
+  const groupBook = new GroupBook();
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     terminalPage.machineUp(origin);
     void chores.refreshAll();
     void needsBook.refresh(origin);
+    void groupBook.refreshAll([origin]);
     if (isLocalOrigin(origin)) void start.refresh();
   });
   // 窗口标题的 N 同侧栏入口（后端合好的总数）。
@@ -345,16 +349,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
-  // 启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
-  // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
-  void tabs.loadCollections();
-  // 顺序也要拉回来。排在集合之后：两者都只改内存 + 重画，互不依赖，
-  // 但集合决定分组容器、顺序决定容器内次序 —— 先有容器再排，少一次无谓重画。
-  //
-  // 固定表排在顺序之前、串着跑：次序不承重（顺序是一份留着的意图，tab 陆续到达时反复应用），只省一次重画；
+  // 分组与固定是后端的数据：接上组的账（`group-book.ts`），读回来就照它画；这扇窗自己的看法（收着的组 · 「已隐藏」那一行）住 `config.json`。
+  tabs.attachGroups(groupBook);
+  // 顺序也要拉回来。排在这扇窗的看法之后：两者都只改内存 + 重画，互不依赖，只省一次重画；
   //   顺序能不能活过重启由 `tabs.vitest.ts`「顺序落盘：读回来那一半」按真实启动时序盯着。
-  // `finally` 不是 `then`：`loadPinned` 失败也得让顺序照常回来。
-  void tabs.loadPinned().finally(() => void tabs.loadOrder());
+  // `finally` 不是 `then`：看法读失败也得让顺序照常回来。
+  void tabs.loadCollections().finally(() => void tabs.loadOrder());
 
   // 状态栏「当前账号」chip：有当前会话 ⇒ 画会话那台写好的那一份；没有 ⇒ 本机的默认号（未启用多账号安静降级）。点击弹选单切默认账号。
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
@@ -801,8 +801,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
     tabs.setMachines(now);
     for (const o of dropped) void needsBook.drop(o);
+    for (const o of dropped) void groupBook.drop(o);
     // 需手动：每台问一次（之后那台推 `changed {needs | plan | manual}` · 条上会话进出需手动再问它）；计划那一侧同。
     if (added.length > 0) void needsBook.refreshAll(added);
+    if (added.length > 0) void groupBook.refreshAll(added);
     for (const o of added) void planNeeds.refresh(o);
     // 起来那一批的账号在 `bindEvents` 返回后一起补刷（见下）；之后新来的那台当场补。
     if (machinesSettled) for (const o of added) onAccountsChanged(o);
@@ -910,6 +912,10 @@ window.addEventListener("DOMContentLoaded", async () => {
           // 那台的会话清单动了 ⇒ 历史页开着就再问那一台。
           historyView.onListMoved(origin);
           break;
+        case "groups":
+          // 那台的组那一半动了（家在那台的组 · 那台会话进出组 · 固定）⇒ 组的账重问（连着来的合成一问）。
+          groupBook.poke(origin);
+          break;
         case "session_hidden":
           // 会话隐藏那一格变了（单个点的 · 规则改了）：帧里带着那一格 ⇒ 当场换上、挪进挪出；没带 ⇒ 等那台重宣告（重连时整份再来）。
           for (const [sid, h] of hiddenPushed(change)) tabs.setHidden(sid, h);
@@ -943,7 +949,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         liveCards: [origin],
         // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
         //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求 · 会话清单。配置文件那一种只设置窗订。
-        changed: (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden", "history_list"] as const).map((topic) => ({ origin, topic })),
+        changed: (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden", "history_list", "groups"] as const).map((topic) => ({ origin, topic })),
       }),
       moved: onMachinesMoved,
     },

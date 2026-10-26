@@ -55,13 +55,14 @@ export function liveFace(activity: WireSessionActivity | null, tmux?: boolean): 
  * 测「还没收到脸」的那几条也不经它。
  */
 export function announced<T extends TabManager>(tm: T): T {
-  const { store, prefs } = tm as unknown as { store: TabStore; prefs: { loadPinned(): Promise<void> } };
+  type Revive = (p: unknown) => void;
+  const { store, prefs } = tm as unknown as { store: TabStore; prefs: { revivePinned: Revive } };
   let restoring = false;
-  const load = prefs.loadPinned.bind(prefs);
-  prefs.loadPinned = async () => {
+  const revive = prefs.revivePinned.bind(prefs);
+  prefs.revivePinned = (p) => {
     restoring = true;
     try {
-      await load();
+      revive(p);
     } finally {
       restoring = false;
     }
