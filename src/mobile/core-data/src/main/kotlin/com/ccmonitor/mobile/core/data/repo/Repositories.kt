@@ -29,10 +29,6 @@ class HostRepository(
     /** 批量导入 ssh config 主机。 */
     suspend fun saveAll(hosts: List<Host>) = dao.upsertAll(hosts)
 
-    suspend fun delete(host: Host) = dao.delete(host)
-
-    suspend fun deleteById(id: String) = dao.deleteById(id)
-
     /** 把明文密码加密后写入 host.passwordEnc（Base64）；plain 空或 null 则清空（不用密码认证）。返回新 host，由调用方 save。 */
     fun withPassword(
         host: Host,

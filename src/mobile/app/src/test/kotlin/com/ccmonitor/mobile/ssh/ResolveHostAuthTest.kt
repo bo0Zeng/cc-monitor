@@ -79,10 +79,6 @@ private class HAFakeHostDao : HostDao {
     override suspend fun upsert(host: Host) = Unit
 
     override suspend fun upsertAll(hosts: List<Host>) = Unit
-
-    override suspend fun delete(host: Host) = Unit
-
-    override suspend fun deleteById(id: String) = Unit
 }
 
 private class HAFakeIdentityDao(
