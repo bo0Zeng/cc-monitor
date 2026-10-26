@@ -262,6 +262,19 @@ where
 }
 
 /// 处理一行。**任何失败都只回一条错误应答，绝不 panic、绝不结束读循环。**
+/// 请求信封里 `machine` 那一格（问的是哪台；缺 · `null` · 空串 ＝ 问本后端自己）。
+fn machine_of(raw: &[u8]) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Hop {
+        #[serde(default)]
+        machine: Option<String>,
+    }
+    serde_json::from_slice::<Hop>(raw)
+        .ok()
+        .and_then(|h| h.machine)
+        .filter(|m| !m.trim().is_empty())
+}
+
 async fn handle_line(
     raw: &[u8],
     replies: &mpsc::Sender<Frame>,
@@ -285,6 +298,20 @@ async fn handle_line(
     };
     // 发起方期限从收到这一行起算：减余量换成截止时刻，这条命令里装总期限的各处都收紧到它。
     req.until = caps::until_of(req.within_ms);
+    // 信封带 `machine` ⇒ 这一问是问那台的：经那台的常驻流转过去（`control/feeds.rs::forward`），出口声明原样交那台、由它裁；
+    //   本后端不认这条命令也不拦（认不认 · 形状对不对是连那台的客户端判）。撤单照本连接的 `id` 撤这一趟（转过去那一问随之撤）。
+    if let Some(machine) = machine_of(raw) {
+        spawn_handler(
+            req,
+            replies.clone(),
+            running.clone(),
+            move |r| crate::control::feeds::forward(machine, r),
+            true,
+            views::Plan::default(),
+        )
+        .await;
+        return;
+    }
     // 出口的声明：开跑之前就解、就拒（认不出的格不静默放过）；成功的应答在回之前照它裁（`views.rs`，帧面与 CLI 面同一处）。
     let plan = match views::plan_of(&req) {
         Ok(p) => p,

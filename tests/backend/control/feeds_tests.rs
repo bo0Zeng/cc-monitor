@@ -7,15 +7,27 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, DuplexStream};
 
-/// 那台握手那一行（帧表照本侧编进来的那一份，`build` 是那台自报的身份）。
+/// 那台认的几条命令（转过去问的那一条在里面）。
+const COMMANDS: &[&str] = &["ping", "history-tail"];
+
+/// 那台握手那一行（命令表 · 形状指纹 · 帧表照本侧编进来的那一份，`build` 是那台自报的身份）。
 fn hello(build: &str) -> String {
     let frames: serde_json::Map<String, serde_json::Value> = cmd_wire::frame_shapes::FRAMES
         .iter()
         .map(|(k, h)| (k.to_string(), serde_json::json!(h)))
         .collect();
+    let shapes: serde_json::Map<String, serde_json::Value> = COMMANDS
+        .iter()
+        .filter_map(|c| {
+            Some((
+                c.to_string(),
+                serde_json::json!(cmd_wire::shapes::shape_of(c)?),
+            ))
+        })
+        .collect();
     serde_json::json!({
         "kind": "hello", "build_id": build, "host_arch": "x86_64",
-        "commands": ["ping"], "unavailable": [], "shapes": {}, "frames": frames,
+        "commands": COMMANDS, "unavailable": [], "shapes": shapes, "frames": frames,
     })
     .to_string()
 }
@@ -101,10 +113,18 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
         "relation": deploy_contract::build_relation(&build, mine),
     });
     let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
-    // 之后照答（问活）：连接一直留着。
+    // 之后照答：问活答「活着」；别的命令把收到的那一问原样装进回包（`args.fail` ⇒ 照那台的口吻拒）。连接一直留着。
     while let Ok(Some(l)) = lines.next_line().await {
         let asked: serde_json::Value = serde_json::from_str(&l).unwrap();
-        let reply = serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true});
+        let reply = if asked["cmd"] == "ping" {
+            serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true})
+        } else if asked["args"]["fail"] == true {
+            serde_json::json!({"kind": "reply", "id": asked["id"], "ok": false,
+                "code": "no_such_file", "message": "那台说：没有这个文件", "detail": "那台的原话"})
+        } else {
+            serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true,
+                "data": {"cmd": asked["cmd"], "args": asked["args"], "view": asked["view"]}})
+        };
         let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
     }
 }
@@ -209,4 +229,77 @@ async fn a_stopped_machine_stays_stopped_until_it_is_woken() {
     resume_in(machine, &[machine.to_string()], &ssh);
     assert!(running(machine), "起 ⇒ 又有那一条");
     align_in(&[], &ssh);
+}
+
+/// 一问请求（信封照帧面那一形，`within_ms` 给足）。
+fn asked(cmd: &str, args: serde_json::Value, view: serde_json::Value) -> crate::wire::Request {
+    let line = serde_json::json!({"id": "a1", "cmd": cmd, "args": args, "view": view, "within_ms": 30_000});
+    let mut req: crate::wire::Request = serde_json::from_value(line).unwrap();
+    req.until =
+        crate::platform::child::Until::after(crate::platform::child::Deadline::millis(30_000));
+    req
+}
+
+/// ★ ② 先红的那一条：信封带 `machine` 的一问经那台的常驻流转过去 —— 命令 · 入参 · 出口声明原样到那台，那台的回包原样回来；
+/// 那台拒了 ⇒ 码 · 那一句 · 原话原样交回（不压成一个）。
+#[tokio::test]
+async fn a_call_for_a_machine_goes_through_its_resident_stream() {
+    let _one = one_at_a_time().await;
+    let machine = "feeds-forward";
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    align_in(&[machine.to_string()], &ssh);
+    until("那台的成品是 up", || state_of(machine) == "up").await;
+
+    let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
+    let got = forward(
+        machine.to_string(),
+        asked(
+            "history-tail",
+            serde_json::json!({"path": "/p/s.jsonl", "n": 2}),
+            view.clone(),
+        ),
+    )
+    .await
+    .expect("转过去该成")
+    .expect("那台回了体");
+    assert_eq!(got["cmd"], "history-tail");
+    assert_eq!(got["args"]["path"], "/p/s.jsonl");
+    assert_eq!(got["view"], view, "出口声明原样带到那台");
+
+    let fail = forward(
+        machine.to_string(),
+        asked(
+            "history-tail",
+            serde_json::json!({"fail": true}),
+            serde_json::Value::Null,
+        ),
+    )
+    .await
+    .expect_err("那台拒了");
+    assert_eq!(fail.code, "no_such_file");
+    assert_eq!(fail.message, "那台说：没有这个文件");
+    assert_eq!(fail.raw.as_deref(), Some("那台的原话"));
+    align_in(&[], &ssh);
+}
+
+/// 没有那一台的常驻流（机器表里没有 · 停着）⇒ 不发，说「那一跳断开」，码是协议里那一个。
+#[tokio::test]
+async fn a_call_for_a_machine_without_a_stream_is_not_sent() {
+    let _one = one_at_a_time().await;
+    let fail = forward(
+        "feeds-nowhere".to_string(),
+        asked(
+            "history-tail",
+            serde_json::json!({}),
+            serde_json::Value::Null,
+        ),
+    )
+    .await
+    .expect_err("没有那一条就不发");
+    assert_eq!(fail.code, UNREACHABLE);
 }

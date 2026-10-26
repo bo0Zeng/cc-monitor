@@ -384,6 +384,71 @@ pub(crate) async fn stop_with(
     })
 }
 
+/// 那一跳断开（那台没有在跑的一条 · 等到期限还没接上 · 接着的时候断了）：与问那台的别处同一个码。
+pub(crate) const UNREACHABLE: &str = "unreachable";
+
+/// 发起方没带期限时，转过去那一问等多久（帧面的调用方都带 `within_ms`；这只是兜底）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "不是本后端的定时器：交给连常驻那一层（客户端那一侧）当这一问的期限；帧面的调用方都带自己的期限"
+)]
+const FORWARD_WITHOUT_DEADLINE: Duration = Duration::from_secs(60);
+
+/// **问那台的一问经它的常驻流转过去**（请求信封带 `machine` 的那一形，分派在 `stream/inbound`）：命令 · 入参 · 出口声明原样交那台，
+/// 那台的回包原样回来；那台拒了 ⇒ 码 · 那一句 · 原话 · 按码定形的 `data` 原样交回。能不能发（那台认不认 · 形状对不对得上）
+/// 由这一端连那台的客户端判（`InboundClient::call`），判下来的那几种照码说。期限是发起方那一份（`within_ms`）。
+pub(crate) async fn forward(
+    machine: String,
+    req: crate::wire::Request,
+) -> crate::wire::spec::Outcome {
+    use crate::wire::spec::Fail;
+    use resident_client::client::CallError;
+    let left = req.until.map_or(FORWARD_WITHOUT_DEADLINE, |u| {
+        Duration::from_millis(u.left_ms())
+    });
+    let deadline = tokio::time::Instant::now() + left;
+    let feed = lock(table()).get(&machine).cloned();
+    let unreachable = || {
+        Fail::new(
+            UNREACHABLE,
+            copy_core::copy_text("front.body.offline", &[("machine", &machine)]),
+        )
+    };
+    let Some(feed) = feed else {
+        return Err(unreachable());
+    };
+    let Some(client) = feed.client_by(deadline).await else {
+        return Err(unreachable());
+    };
+    let got = if req.view.is_null() {
+        client.call_until(&req.cmd, req.args, deadline).await
+    } else {
+        client
+            .call_until_viewed(&req.cmd, req.args, &req.view, deadline)
+            .await
+    };
+    got.map_err(|e| match e {
+        CallError::Remote {
+            code,
+            message,
+            detail,
+            data,
+        } => Fail {
+            code,
+            message,
+            data: data.and_then(|d| serde_json::from_str(&d).ok()),
+            raw: (!detail.is_empty()).then_some(detail),
+        },
+        CallError::Disconnected => unreachable(),
+        CallError::Unsupported { .. } => Fail::new("unknown_command", e.to_string()),
+        CallError::Unavailable { ref code, .. } => Fail::new(code, e.to_string()),
+        CallError::Differs { ref said, .. } => Fail::new("differs", said.clone()),
+        CallError::Timeout { .. } => Fail::new("timeout", e.to_string()),
+        CallError::TooManyPending => Fail::new("busy", e.to_string()),
+        CallError::Cancelled => Fail::new("cancelled", e.to_string()),
+    })
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/control/feeds_tests.rs"]
 mod tests;

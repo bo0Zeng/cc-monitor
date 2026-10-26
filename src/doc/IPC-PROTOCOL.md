@@ -56,7 +56,7 @@
 ## 4. 入方向：请求 · 应答 · 取消
 
 ```text
-→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai","view":{…}}   一行一个；args 缺 ＝ null；within_ms · tz · view 可缺
+→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai","view":{…},"machine":"<那台>"}   一行一个；args 缺 ＝ null；within_ms · tz · view · machine 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
 ← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
@@ -65,6 +65,8 @@
 
 - **`id`** 由客户端发号、后端只回显（不解析、不校验）。monitor 的发法是 `<连接 nonce>-<单调序号>`，重连不撞号。同一个 `id` 的命令还在跑 ⇒ `duplicate_id`。
 - **`within_ms`**：发起方愿意等多久。后端从收到这一行起减 2 秒余量换成截止时刻，阻塞档命令里装总期限的各处都收紧到它（到点回 `child_timed_out`，见 §CLI 面「期限」那一条）。不是正整数 ⇒ 当没带。
+- **`machine`**：这一问是问哪台的（机器表里那台的名字）。缺 · `null` · 空串 ＝ 问这个后端自己；给了 ⇒ 这个后端不自己答，经它持有的那台的常驻流原样转过去
+  （命令 · 入参 · `view` 交那台，那台的回包 · 码 · 原话 · `data` 原样回来，`control/feeds.rs::forward`）；那台没有在跑的一条 · 期限内没接上 ⇒ `unreachable`。撤单照本连接的 `id` 撤，转过去那一问随之撤。
 - **`view`**：出口的声明 —— 要哪几格、哪几格不要（缺 ＝ 全量）。词表今天两个：`cells: {<成品>: [<路径>…]}` 只要这几格（连同通往它们的那几层）·
   `omit: {<成品>: [<路径>…]}` 这几格不要；同一件成品两个都给 ⇒ 先挑后去。成品名与路径照格目录（金样 `tests/__fixtures__/cells-catalog.golden.json`）：`a.b` 嵌套 · `a[]` 列表每项 ·
   `a.*` 以 id 为键的表每项 · `a[k=v]` 列表里按判别格挑的那一种 · `a{k=v}` 非列表的那一种（根上写 `{k=v}`）；**不写挑法 ＝ 每一种都算**
@@ -171,7 +173,7 @@
 
 - 帧：`hello` `build_id` `host_arch` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
-  `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
+  `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）`machine`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
   `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_state`（`sid` 与 `face` 那几格）· `session_removed`（`sid` `cause`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
