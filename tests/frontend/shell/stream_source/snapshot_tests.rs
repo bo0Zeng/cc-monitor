@@ -128,10 +128,9 @@ fn subscribing_and_the_ready_point_never_wait_for_the_inflight_level_lock() {
     );
 }
 
-/// 一个真 `InboundClient` 接一根内存双工管子、登记在只有本用例用的 origin 名下；对端（后端）由用例扮演。
-fn peer_for(
-    origin: &str,
-) -> (
+/// 一个真 `InboundClient` 接一根内存双工管子、登记在 `<local>` 名下（本机后端那条通道；调用方先拿 `local_origin_test_lock`）；
+/// 对端（本机后端）由用例扮演。问别的台也是这一条：信封带那台的名字。
+fn local_peer() -> (
     Arc<crate::inbound_client::InboundClient>,
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
@@ -142,7 +141,7 @@ fn peer_for(
     ]))
     .expect("是 Hello 帧");
     let client = crate::inbound_client::park(mine).into_client(hello);
-    crate::inbound_client::register(origin, client.clone());
+    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
     (client, tokio::io::BufReader::new(theirs))
 }
 
@@ -180,7 +179,8 @@ async fn one_snapshot(
     Option<serde_json::Value>,
     Result<u64, String>,
 ) {
-    let (client, mut peer) = peer_for(origin);
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let (client, mut peer) = local_peer();
     let q = SnapshotQueue::new();
     let replay = Arc::new(EventReplay::new());
     let item = SnapshotItem {
@@ -200,6 +200,10 @@ async fn one_snapshot(
     let first = next_ask(&mut peer, std::time::Duration::from_secs(5))
         .await
         .expect("一问都没发");
+    assert_eq!(
+        first["machine"], origin,
+        "快照问那台没经本机后端转（信封里没带那台的名字）：{first}"
+    );
     client.route_reply(
         first["id"].as_str().expect("id"),
         true,
@@ -211,11 +215,11 @@ async fn one_snapshot(
     let extra = next_ask(&mut peer, std::time::Duration::from_millis(300)).await;
     if extra.is_some() {
         run.abort();
-        crate::inbound_client::unregister(origin, &client);
+        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         return (first, extra, Err("多问了一趟".into()));
     }
     let out = run.await.expect("快照那一趟崩了");
-    crate::inbound_client::unregister(origin, &client);
+    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
     (first, extra, out)
 }
 
