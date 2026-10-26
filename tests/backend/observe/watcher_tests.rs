@@ -4969,3 +4969,23 @@ fn heard_within_truth_table() {
         "最后动静在此刻之后（钟往回拨）⇒ 不算冻住"
     );
 }
+
+/// 挂着待答请求、pidfile 说在跑（挡着终端的那种框不改 pidfile 的状态）⇒ 交出去的点是需手动，不是在跑。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_with_a_pending_ask_is_announced_as_needing_you_even_if_its_pidfile_says_busy() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let second = std::time::Duration::from_secs(1);
+    let (dir, pidfile, mut state) = frozen_fixture("asked", "hb-asked", "busy", second);
+    state.asked.insert("hb-asked".to_string());
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let added = rx.try_recv().expect("宣告那一帧");
+    assert_eq!(
+        face_of(&added).map(|f| f.dot),
+        Some(crate::wire::SessionDot::NeedsYou),
+        "有请求挂着 ⇒ 需手动：{added:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

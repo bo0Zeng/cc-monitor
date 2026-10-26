@@ -1711,6 +1711,8 @@ struct ReaderState {
     reading: HashSet<String>,
     /// 这台的账号库目录：宣告时判会话跑在哪个号下读它（夹具换成自己的）。
     accts_dir: PathBuf,
+    /// 此刻有待答请求挂着的会话（常驻进程那一份登记表经 [`WatcherPoke::asked`] 交来；夹具直接写）。
+    asked: std::collections::BTreeSet<String>,
 }
 
 impl ReaderState {
@@ -1737,26 +1739,23 @@ impl ReaderState {
         crate::wire::SessionFace::of(crate::wire::Life::live(activity, container)).under(account)
     }
 
-    /// 这条会话此刻交出去的那一态（#43）：说在跑、可说它在跑的那几个进程都冻住了（[`judge_beats`]）⇒ 不给 ——
-    /// 脸照「状态不明」画，不画在跑那颗点。别的态照原样。
+    /// 这条会话此刻交出去的那一态，判法同活会话表（[`crate::history::live_table::doing_of`]）：有待答请求挂着 ⇒ 等人；
+    /// 说在跑、可说它在跑的那几个进程都冻住了（[`judge_beats`]，#43）⇒ 不给 —— 脸照「状态不明」画，不画在跑那颗点。别的态照原样。
     fn heard(
         &self,
         sid: &str,
         activity: Option<crate::agents::SessionActivity>,
     ) -> Option<crate::agents::SessionActivity> {
-        if !wants_beat(activity) {
-            return activity;
-        }
         let busy = || {
             self.sessions
                 .values()
                 .filter(|e| e.sid == sid && wants_beat(e.activity))
         };
-        if busy().next().is_some() && busy().all(|e| e.frozen) {
-            None
-        } else {
-            activity
-        }
+        let frozen = wants_beat(activity) && busy().next().is_some() && busy().all(|e| e.frozen);
+        crate::history::live_table::doing_of(
+            [crate::history::live_table::heard(activity, frozen)],
+            self.asked.contains(sid),
+        )
     }
 
     /// 最早那条该有心跳、还没冻住的会话到时限的时刻（已过了的不算：那几条有在跑的子运行撑着，子运行自己的期限会叫醒）。
@@ -1988,6 +1987,7 @@ impl ReaderState {
             added: HashMap::new(),
             reading: HashSet::new(),
             accts_dir: crate::observe::accounts_query::default_accts_dir(),
+            asked: std::collections::BTreeSet::new(),
         }
     }
 }

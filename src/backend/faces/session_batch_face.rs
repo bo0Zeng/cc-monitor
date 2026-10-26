@@ -3,7 +3,7 @@
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
 //! tmux 名单 = 终端名单那一趟（挂着 sid 的窗格各一行）· 记录在不在 = `history-record` 那一问 · 杀 = `kill`（按 sid 认窗格）·
 //! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `control::ccm::terminal_name_mint_with` · 起会话 = 这台后端自己当 ccm 跑那一行 ·
-//! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（`observe::accounts_query::session_writers`）。
+//! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（活会话表 `history::live_table::LiveTable::writers`）。
 
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
 use crate::faces::launch_account_face::{pretrust_with, Files};
@@ -59,9 +59,7 @@ pub(crate) fn with_deps_as<T>(
             crate::common::session_snapshot::global(),
         )
     };
-    let writers = |sid: &str| {
-        crate::observe::accounts_query::session_writers(&crate::history::listing::agent_home(), sid)
-    };
+    let writers = |sid: &str| crate::history::live_table::now(&crate::history::listing::agent_home()).writers(sid);
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
     let open_shell =
         |name: &str, cwd: Option<&str>| crate::control::launch::open_shell(name, cwd, client);

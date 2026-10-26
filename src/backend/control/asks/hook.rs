@@ -130,7 +130,7 @@ fn watch_terminal(
             if tx.is_none() {
                 return;
             }
-            let states = statuses(&read_dir, local.proc_of, &sid);
+            let states = crate::history::live_table::LiveTable::scan_dir(&read_dir).states(&sid);
             if closed_now(&states, started, &mut seen_waiting) {
                 if let Some(tx) = tx.take() {
                     let _ = tx.send(());
@@ -142,24 +142,6 @@ fn watch_terminal(
     // 挂上之后先判一次此刻的样子（之前的那几次变动没赶上事件）。
     w.kick();
     Some((w, rx))
-}
-
-/// 这条会话各个进程此刻的（状态, 状态更新于）：每份状态文件经那一家的读法（`proc_of`）翻成一行再看。
-fn statuses(
-    dir: &std::path::Path,
-    proc_of: fn(&Value) -> crate::agents::ProcFact,
-    sid: &str,
-) -> Vec<(Option<SessionActivity>, Option<u64>)> {
-    let Ok(rd) = crate::platform::fs::Ro::read_dir(dir) else {
-        return Vec::new();
-    };
-    rd.flatten()
-        .filter_map(|e| crate::platform::fs::Ro::read(e.path()).ok())
-        .filter_map(|b| serde_json::from_slice::<Value>(&b).ok())
-        .map(|v| proc_of(&v))
-        .filter(|f| f.sid.as_deref() == Some(sid))
-        .map(|f| (f.activity, f.status_since_ms))
-        .collect()
 }
 
 /// 判关了没有（纯函数）：有一个进程在「在等」⇒ 没关（记下见过）；都不在「在等」且（见过「在等」或状态更新晚于 `started`）⇒ 关了。

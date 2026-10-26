@@ -33,7 +33,7 @@
 //!   （否则就退化成「任意环境变量读」原语）；判据数着本文件生产段里读环境的调用点，多一处 ⇒ 红。
 
 use crate::common::cells::Words;
-use crate::history::live::{alive, pidfiles};
+use crate::history::live_table::LiveTable;
 use crate::platform::fs::Ro;
 use crate::wire::SessionFaceExt as _;
 use acct_core::{
@@ -131,45 +131,30 @@ fn manifest_or_why(accts_dir: &Path) -> Result<Manifest, String> {
     }
 }
 
-fn json_str(v: Option<&str>) -> serde_json::Value {
-    match v {
-        Some(s) => serde_json::Value::String(s.to_string()),
-        None => serde_json::Value::Null,
-    }
-}
-
 // ---------------------------------------------------------------- /proc
 
-// `/proc/<pid>/stat` 的 starttime 只有一份：`platform::proc::proc_starttime`。
-use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
+use crate::platform::proc::{proc_env_var, EnvRead};
 
-/// 该 pidfile 记录的进程**当前是否仍是同一个进程**（防 PID 复用 → 误归属账号）。
-/// 严于 watcher 的判活：这里的结果直接喂给"按会话切账号"，**错标签比缺标签危害大**，
-/// 所以要求 pidfile 的 `procStart` 与当前 `/proc/<pid>` 的 starttime **精确相等**才认。
-/// 缺 `procStart`（老 pidfile）或读不到 starttime（进程已死）→ 不认（宁缺毋错）。
-fn session_process_identity_ok(pid: u32, pidfile: &crate::agents::ProcFact) -> bool {
-    match (pidfile.proc_start, proc_starttime(pid)) {
-        (Some(recorded), Some(current)) => recorded == current,
-        _ => false,
-    }
-}
-
-/// 一条会话在 [`session_accounts`] 里的全部字段（每条一行）。
-struct SessionRow {
-    pid: u32,
-    sid: Option<String>,
-    cwd: Option<String>,
-    config_dir: Option<String>,
-    account: Option<String>,
-    alive: bool,
-    /// 读 `CLAUDE_CONFIG_DIR` 的那一次，`/proc/<pid>/environ` 这一刻取不到（读失败 / 读回 0 字节）。
-    /// 与 `config_dir: None`（读到了、这个键没设）是两件事 ⇒ 本格为真时不归属账号、也不算裸起。
-    /// 不进出参：`configDir:null` + `account:null` + `bare:false` 已经表达「不知道」。
-    cfg_env_unreadable: bool,
+/// 一条会话进程跑在哪个号下（[`session_accounts`] 一个进程一行）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SessionAccount {
+    pub(crate) pid: u32,
+    #[serde(rename = "sessionId")]
+    pub(crate) sid: Option<String>,
+    pub(crate) cwd: Option<String>,
+    /// 进程环境里的配置目录（规范过的写法）；没设 · 不知道 ⇒ `None`。
+    pub(crate) config_dir: Option<String>,
+    pub(crate) account: Option<String>,
+    /// 判活过了启动时刻对拍（活会话表 `start_checked`：PID 会被复用，错标签比缺标签危害大）。
+    pub(crate) alive: bool,
+    /// 进程活着（身份已确认）、环境读得到、且没设配置目录 —— 就是账号 0（`account` 给出名字）。
+    /// 环境这一刻取不到（读失败 / 读回 0 字节）⇒ 假：不归属、也不算裸起。
+    pub(crate) bare: bool,
     /// 这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
     /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
     /// 用途：机器页「停」本机后端之前数一数有几条会话会断。
-    via_relay: Option<bool>,
+    pub(crate) via_relay: Option<bool>,
 }
 
 // ---------------------------------------------------------------- 命令
@@ -567,7 +552,7 @@ impl McpBook {
 /// 本进程那一本（常驻后端里跨请求留着；一次性 CLI 进程里每次都是空的，等于从头读）。
 static MCP_BOOK: std::sync::Mutex<Option<McpBook>> = std::sync::Mutex::new(None);
 
-/// 这台此刻活着的交互会话（`homes` 各号的家里的 pidfile；判活同 [`live_session_ids`]，后台任务不算）里，
+/// 这台此刻活着的交互会话（`homes` 各号的家那一张活会话表，后台任务不算）里，
 /// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
 /// 每条会话只读 MCP 那一格、只读新长出来的那一截（[`McpBook`]）；标题取历史清单的缓存（`history::listing::session_title_of`）。
 pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
@@ -578,11 +563,9 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let mut seen: Vec<PathBuf> = Vec::new();
     let mut out: Vec<LiveMcpFailed> = Vec::new();
     for home in homes {
-        for (pid, v) in pidfiles(home) {
-            if v.background || !alive(pid, &v) {
-                continue;
-            }
-            let Some(sid) = crate::history::live::sid_of(&v) else {
+        let table = crate::history::live_table::now(home);
+        for row in table.interactive() {
+            let Some(sid) = row.sid() else {
                 continue;
             };
             let Ok(path) = super::query::locate::session_record(home, sid) else {
@@ -621,31 +604,9 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     out
 }
 
-/// 这台此刻活着的交互会话的工作目录（判活同 [`live_session_ids`]；后台任务不算），去重、排好序。计划读面从这里找工作区。
+/// 过渡：计划读面那两份（`faces/plan_face.rs` · `footprint/chores/gather.rs`，在别的权力范围手里）还问这个名字 —— 转问活会话表。
 pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
-    let mut v: Vec<String> = pidfiles(agent_home)
-        .into_iter()
-        .filter(|(_, v)| !v.background)
-        .filter(|(pid, v)| alive(*pid, v))
-        .filter_map(|(_, v)| v.cwd.filter(|c| !c.is_empty()))
-        .collect();
-    v.sort();
-    v.dedup();
-    v
-}
-
-/// 此刻持着 `sid` 的活交互进程 pid（同一批 pidfile、同 [`live_session_ids`] 的判活；后台任务不算），升序。
-/// 不止一个 ⇒ 同一条会话有几个进程在同时写。
-pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
-    let mut pids: Vec<u32> = pidfiles(agent_home)
-        .into_iter()
-        .filter(|(_, v)| v.sid.as_deref() == Some(sid))
-        .filter(|(_, v)| !v.background)
-        .filter(|(pid, v)| alive(*pid, v))
-        .map(|(pid, _)| pid)
-        .collect();
-    pids.sort_unstable();
-    pids
+    crate::history::live_table::now(agent_home).cwds()
 }
 
 /// **这条会话此刻谁持着它**（冷读那几处判活只问这一处）：`record` 是这条会话的记录（已过围栏），
@@ -656,7 +617,7 @@ pub(crate) fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u3
 }
 
 /// [`session_holders`] 按判活方式那一半（判据直接喂方式）：
-/// - pidfile ⇒ 这台 pidfile 里持着这个 sid（记录文件名）的活交互进程（[`session_writers`]）；
+/// - pidfile ⇒ 活会话表里持着这个 sid（记录文件名）的活交互进程（`LiveTable::writers`）；
 /// - 开着写 ⇒ 此刻开着这份记录写的进程（`platform::writers`；这个平台认不出写者 ⇒ 判不了）；
 /// - 判不了 ⇒ `None`。
 ///
@@ -668,7 +629,9 @@ pub(crate) fn session_holders_by(
 ) -> Option<Vec<u32>> {
     use crate::agents::LiveBy;
     match live {
-        LiveBy::Pidfiles => Some(session_writers(agent_home, record.file_stem()?.to_str()?)),
+        LiveBy::Pidfiles => Some(
+            crate::history::live_table::now(agent_home).writers(record.file_stem()?.to_str()?),
+        ),
         LiveBy::HeldOpen => {
             let want = crate::platform::writers::absolute(record);
             let found = crate::platform::writers::writers_of(&|p| p == want)?;
@@ -683,49 +646,20 @@ pub(crate) fn session_holders_by(
     }
 }
 
-/// 那台 pidfile 说这条会话**此刻在等人**（适配层翻成 [`crate::agents::SessionActivity::NeedsYou`]）：等的是什么框（适配层翻好的 [`crate::agents::WaitOn`]）· 从何时起等（`statusUpdatedAt`，epoch ms）。
-/// 判活同 [`session_writers`]；不在等 / 没有活进程持着它 ⇒ `None`。几个进程同时持着、有一个在等 ⇒ 取它（等得最早的那个）。
-/// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `recognize::facts::needs_of`。
+/// 过渡：`faces/history_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表（`LiveTable::wait_of`）。
 pub(crate) fn session_wait(
     agent_home: &Path,
     sid: &str,
 ) -> Option<super::recognize::facts::PidWait> {
-    pidfiles(agent_home)
-        .into_iter()
-        .filter(|(_, v)| v.sid.as_deref() == Some(sid))
-        .filter(|(_, v)| v.activity == Some(crate::agents::SessionActivity::NeedsYou))
-        .filter(|(_, v)| !v.background)
-        .filter(|(pid, v)| alive(*pid, v))
-        .map(|(_, v)| super::recognize::facts::PidWait {
-            waiting_for: v.wait,
-            since_ms: v.status_since_ms,
-            read_at_ms: read_at_ms(),
-        })
-        .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
+    crate::history::live_table::now(agent_home).wait_of(sid)
 }
 
-/// 此刻（epoch ms，这台的钟）：读 pidfile 那一刻，「已等多久」拿它减同一份 pidfile 里的起点。
-fn read_at_ms() -> u64 {
-    crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-}
-
-/// 那台 pidfile 说这条会话**一轮停了、后台命令还在跑**（适配层翻成 [`crate::agents::SessionActivity::BackgroundWork`]）⇒
-/// `Some(那个进程何时起的，epoch ms；没写 ⇒ None)`；不是这一态 / 没有活进程持着它 ⇒ `None`。判活同 [`session_writers`]；
-/// 几个进程同时持着 ⇒ 取起得最早的那个（它留下的后台命令最多）。
+/// 过渡：同上（`LiveTable::background_since`）。
 pub(crate) fn session_background(agent_home: &Path, sid: &str) -> Option<Option<u64>> {
-    pidfiles(agent_home)
-        .into_iter()
-        .filter(|(_, v)| v.sid.as_deref() == Some(sid))
-        .filter(|(_, v)| v.activity == Some(crate::agents::SessionActivity::BackgroundWork))
-        .filter(|(_, v)| !v.background)
-        .filter(|(pid, v)| alive(*pid, v))
-        .map(|(_, v)| v.started_ms)
-        .min_by_key(|b| b.unwrap_or(u64::MAX))
+    crate::history::live_table::now(agent_home).background_since(sid)
 }
 
-/// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（pidfile，适配层翻好的）· 在等你时等的是什么。
+/// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（活会话表）· 在等你时等的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Doing {
     /// 说不清 ⇒ `None`（主窗口那颗点照「在跑」画）。
@@ -734,66 +668,58 @@ pub(crate) struct Doing {
     pub(crate) needs: Option<super::recognize::facts::NeedsKind>,
 }
 
-/// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等人 ＞ 在跑 ＞ 后台命令在跑 ＞ 空闲 ＞ 说不清。
-/// 在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
+/// 这台此刻活着的每个会话在干什么（活会话表 `LiveTable::doing`）；在等你 ⇒ 等的是什么同 [`waiting_needs`]（只留种类）。
 pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
-    crate::history::live::live_activity(agent_home)
+    let table = crate::history::live_table::now(agent_home);
+    table
+        .doing()
         .into_iter()
         .map(|(sid, activity)| {
             let needs = (activity == Some(crate::agents::SessionActivity::NeedsYou))
-                .then(|| waiting_needs(agent_home, &sid).map(|n| n.kind))
+                .then(|| waiting_needs(agent_home, &table, &sid).map(|n| n.kind))
                 .flatten();
             (sid, Doing { activity, needs })
         })
         .collect()
 }
 
-/// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
+/// **这台上需手动的会话**：活会话表说在等人的每一个（那台说在等 ∪ 有请求挂着，`LiveTable::needs`），带它在等什么（[`waiting_needs`]，不另判），
 /// 先答的在前（`needs.rank` 小的先，[`super::recognize::facts::needs_rank`]）。
-/// `asked` ＝ 此刻有待答请求挂着的会话（常驻进程那一份登记表，顶层壳交进来）；`dress` ＝ 给一条 `needs` 配上它挂着的请求（同上）。
-/// `hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
+/// `dress` ＝ 给一条 `needs` 配上它挂着的请求（顶层壳交进来）。`hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
+/// `_asked` 过渡：调用方（`faces/history_face.rs`，在别的权力范围手里）还交这一格；挂着的请求表里已有。
 pub(crate) fn live_needs(
     agent_home: &Path,
-    asked: &[String],
+    _asked: &[String],
     dress: &dyn Fn(
         Option<super::recognize::facts::Needs>,
         &str,
     ) -> Option<super::recognize::facts::Needs>,
     hidden: &dyn Fn(&str, bool) -> Option<cmd_wire::session::Hidden>,
 ) -> Vec<NeedsRow> {
-    let live = crate::history::live::live_activity(agent_home);
-    let bg = live_background(agent_home);
-    // 那台说在等的 ∪ 有请求挂着的（挡着终端的那种 pidfile 不说在等，照样是要人答的）；后者只收此刻活着的会话。
-    let mut sids: Vec<String> = live
-        .iter()
-        .filter(|(_, a)| **a == Some(crate::agents::SessionActivity::NeedsYou))
-        .map(|(sid, _)| sid.clone())
-        .collect();
-    for sid in asked {
-        if live.contains_key(sid) && !sids.contains(sid) {
-            sids.push(sid.clone());
-        }
-    }
+    let table = crate::history::live_table::now(agent_home);
+    let bg = table.background();
     let annotations = match crate::history::history_annotations::load() {
         crate::history::history_annotations::Loaded::Read(t) => t,
         _ => Default::default(),
     };
-    let mut rows = sids
+    let mut rows = table
+        .needs()
         .into_iter()
         .filter_map(|sid| {
-            let activity = live.get(&sid).copied().flatten();
-            let waiting = activity == Some(crate::agents::SessionActivity::NeedsYou);
             Some(NeedsRow {
                 label: crate::common::cells::Words(crate::history::session_hidden::title_here(
                     &sid,
                     &annotations,
                 )),
                 face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                    activity,
+                    activity: Some(crate::agents::SessionActivity::NeedsYou),
                     tmux: None,
                 }),
+                // 那台说在等 ⇒ 配上它在等什么；只挂着请求（挡着终端的那种 pidfile 不说在等）⇒ 交 `dress` 配请求。
                 needs: dress(
-                    waiting.then(|| waiting_needs(agent_home, &sid)).flatten(),
+                    table
+                        .wait_of(&sid)
+                        .and_then(|_| waiting_needs(agent_home, &table, &sid)),
                     &sid,
                 )?,
                 hidden: hidden(&sid, bg.contains(&sid)),
@@ -811,27 +737,23 @@ pub(crate) fn live_needs(
     rows
 }
 
-/// 这条会话此刻在不在等人：那台说在等（同 [`live_needs`] 那一判）或有挂着的待答请求（`asked`，只算此刻活着的）。
-pub(crate) fn waiting_now(agent_home: &Path, sid: &str, asked: &[String]) -> bool {
-    match crate::history::live::live_activity(agent_home).get(sid) {
-        Some(Some(crate::agents::SessionActivity::NeedsYou)) => true,
-        Some(_) => asked.iter().any(|a| a == sid),
-        None => false,
-    }
+/// 过渡：`faces/plan_return_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表（`LiveTable::waiting`）。
+pub(crate) fn waiting_now(agent_home: &Path, sid: &str, _asked: &[String]) -> bool {
+    crate::history::live_table::now(agent_home).waiting(sid)
 }
 
-/// 这台此刻活着的分身会话（pidfile 那一家说是后台的，`ProcFact::background`）。
+/// 过渡：`faces/history_face.rs` 还问这个名字 —— 转问活会话表（`LiveTable::background`）。
 pub(crate) fn live_background(agent_home: &Path) -> std::collections::BTreeSet<String> {
-    pidfiles(agent_home)
-        .into_iter()
-        .filter(|(pid, v)| v.background && alive(*pid, v))
-        .filter_map(|(_, v)| crate::history::live::sid_of(&v).map(str::to_string))
-        .collect()
+    crate::history::live_table::now(agent_home).background()
 }
 
 /// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::recognize::facts::needs_of`] 判（同 `history-facts.needs`）；
 /// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的（那台说在等 ⇒ 恒有一份）。
-fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts::Needs> {
+fn waiting_needs(
+    agent_home: &Path,
+    table: &LiveTable,
+    sid: &str,
+) -> Option<super::recognize::facts::Needs> {
     let record = super::query::locate::session_record(agent_home, sid).ok();
     let pending = record
         .as_ref()
@@ -844,28 +766,23 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts
     let kind = record
         .as_deref()
         .and_then(crate::agents::record_kind_of)
-        .or_else(|| {
-            pidfiles(agent_home)
-                .into_iter()
-                .find(|(_, f)| f.sid.as_deref() == Some(sid))
-                .map(|(_, f)| f.kind)
-        })
+        .or_else(|| table.kind_of(sid))
         .unwrap_or_default();
-    let wait = session_wait(agent_home, sid).unwrap_or(super::recognize::facts::PidWait {
-        waiting_for: None,
-        since_ms: None,
-        read_at_ms: 0,
-    });
+    let wait = table
+        .wait_of(sid)
+        .unwrap_or(super::recognize::facts::PidWait {
+            waiting_for: None,
+            since_ms: None,
+            read_at_ms: 0,
+        });
     super::recognize::facts::needs_of(kind, &pending, Some(&wait))
 }
 
-/// 这条会话跑在哪个号的家目录下：它的 pidfile 在、进程身份对得上 ⇒ 读进程环境里的配置目录（没设 ⇒ 默认家目录，注册表 `agents::home_at`）。
+/// 这条会话跑在哪个号的家目录下：活会话表里持着它、启动时刻核过的那个进程 ⇒ 读进程环境里的配置目录（没设 ⇒ 默认家目录，注册表 `agents::home_at`）。
 /// 找不到 · 进程不在了 · 环境读不到 ⇒ `None`（不猜）。
-pub(crate) fn session_home(agent_home: &Path, sid: &str) -> Option<PathBuf> {
+pub(crate) fn session_home(table: &LiveTable, sid: &str) -> Option<PathBuf> {
     let face = crate::agents::account_library_face()?;
-    let (pid, _) = pidfiles(agent_home)
-        .into_iter()
-        .find(|(pid, v)| v.sid.as_deref() == Some(sid) && session_process_identity_ok(*pid, v))?;
+    let pid = table.checked_pid(sid)?;
     let owner = owner_of(pid, face.session_env.config_dir, &[]);
     if owner.env_unreadable {
         return None;
@@ -875,6 +792,7 @@ pub(crate) fn session_home(agent_home: &Path, sid: &str) -> Option<PathBuf> {
         false,
     ))
 }
+
 
 /// 家目录 `home` 下的 `<rel>` 跟这台账号库里别的号共用同一份（[`shared_with_other_accounts_in`]）。
 pub(crate) fn shared_with_other_accounts(home: &Path, rel: &str) -> bool {
@@ -959,96 +877,74 @@ pub(crate) fn default_accts_dir() -> PathBuf {
     resolve_accts_dir()
 }
 
-/// 正在跑的会话各属哪个号：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
-pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
+/// 正在跑的会话各属哪个号：活会话表（`history::live_table`）每个进程一行。
+pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<SessionAccount> {
     // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。
     let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
         return Vec::new();
     };
     let by_dir = dirs_of(accts_dir);
-
-    let mut out: Vec<SessionRow> = Vec::new();
-    for (pid, v) in pidfiles(agent_home) {
-        let sid = v.sid.as_deref();
-        let cwd = v.cwd.as_deref();
-        // 判活必须过 procStart 身份对拍：PID 会被复用，只按 /proc/<pid> 存在性判活会把已死会话误贴成「活着 + 别人的账号」。
-        // 身份不符 → 当作该会话已死，不读 environ、不归属。
-        let alive = session_process_identity_ok(pid, &v);
-        // 进程已死时一个字节都不读 ⇒ 谈不上「取不到」，那一格照旧是「没读」。
-        let owner = if alive {
-            owner_of(pid, env_keys.config_dir, &by_dir)
-        } else {
-            Owner::default()
-        };
-        // 第二个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
-        let via_relay = if alive {
-            match proc_env_var(pid, env_keys.base_url) {
-                // 环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
-                EnvRead::Value(v) if relay_route_core::split_keyed_base_url(&v).is_some() => {
-                    let settings_win = (env_keys.settings_may_set_base_url)(
-                        owner.config_dir.as_deref().map(Path::new),
-                        agent_home,
-                        cwd.map(Path::new),
-                    );
-                    (!settings_win).then_some(true)
-                }
-                EnvRead::Value(_) => Some(false),
-                EnvRead::Unset => Some(false),
-                EnvRead::Unreadable => None,
-            }
-        } else {
-            None
-        };
-        out.push(SessionRow {
-            pid,
-            sid: sid.map(str::to_string),
-            cwd: cwd.map(str::to_string),
-            config_dir: owner.config_dir,
-            account: owner.account,
-            alive,
-            cfg_env_unreadable: owner.env_unreadable,
-            via_relay,
-        });
-    }
-    out.into_iter()
+    let table = crate::history::live_table::now(agent_home);
+    table
+        .rows()
+        .iter()
         .map(|r| {
-            serde_json::json!({
-                "pid": r.pid,
-                "sessionId": json_str(r.sid.as_deref()),
-                "cwd": json_str(r.cwd.as_deref()),
-                "configDir": json_str(r.config_dir.as_deref()),
-                "account": json_str(r.account.as_deref()),
-                // `bare` = 进程活着（身份已确认）、环境读得到、且没设 `CLAUDE_CONFIG_DIR` —— 就是账号 0（上面的 `account` 会给出名字）。
-                // 下游用它区分「账号 0」与「设了 configDir 的账号」；它只答账号这一维。
-                "bare": r.alive && !r.cfg_env_unreadable && r.config_dir.is_none(),
-                "alive": r.alive,
-                // 走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
-                // ⚠ 老后端不出这个键，下游读成 `null`（additive）。
-                "viaRelay": r.via_relay,
-            })
-            .to_string()
+            let pid = r.pid;
+            let cwd = r.fact.cwd.as_deref();
+            // 判活必须过启动时刻对拍（表里那一格）：PID 会被复用，只按存在性判活会把已死会话误贴成「活着 + 别人的账号」。
+            // 身份不符 → 当作该会话已死，不读 environ、不归属。
+            let alive = r.start_checked;
+            // 进程已死时一个字节都不读 ⇒ 谈不上「取不到」，那一格照旧是「没读」。
+            let owner = if alive {
+                owner_of(pid, env_keys.config_dir, &by_dir)
+            } else {
+                Owner::default()
+            };
+            // 第二个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
+            let via_relay = if alive {
+                match proc_env_var(pid, env_keys.base_url) {
+                    // 环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
+                    EnvRead::Value(v) if relay_route_core::split_keyed_base_url(&v).is_some() => {
+                        let settings_win = (env_keys.settings_may_set_base_url)(
+                            owner.config_dir.as_deref().map(Path::new),
+                            agent_home,
+                            cwd.map(Path::new),
+                        );
+                        (!settings_win).then_some(true)
+                    }
+                    EnvRead::Value(_) => Some(false),
+                    EnvRead::Unset => Some(false),
+                    EnvRead::Unreadable => None,
+                }
+            } else {
+                None
+            };
+            SessionAccount {
+                pid,
+                sid: r.fact.sid.clone().filter(|s| !s.is_empty()),
+                cwd: r.fact.cwd.clone().filter(|s| !s.is_empty()),
+                bare: alive && !owner.env_unreadable && owner.config_dir.is_none(),
+                config_dir: owner.config_dir,
+                account: owner.account,
+                alive,
+                via_relay,
+            }
         })
         .collect()
 }
 
 /// `machine-interrupts` 的成品：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么。
-/// `lines` 是这台活会话那几行（[`session_accounts`]）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
+/// `rows` 是这台活会话那几行（[`session_accounts`]）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
 /// 活着的都算 `liveStreams`（停的那几秒 cc-monitor 里这几个不更新）。`forwards` 是这台后端账上通往 `machine` 的转发（没给 `machine` ⇒ 0）。
-/// 读不懂的行跳过。**纯函数**。
-pub(crate) fn machine_product(lines: &[String], forwards: u32) -> Interrupts {
+/// **纯函数**。
+pub(crate) fn machine_product(rows: &[SessionAccount], forwards: u32) -> Interrupts {
     let (mut relayed, mut maybe, mut live) = (0u32, 0u32, 0u32);
-    for l in lines {
-        let Ok(row) = serde_json::from_str::<serde_json::Value>(l) else {
-            continue;
-        };
-        if row["alive"] != serde_json::Value::Bool(true) {
-            continue;
-        }
+    for r in rows.iter().filter(|r| r.alive) {
         live += 1;
-        match row.get("viaRelay") {
-            Some(serde_json::Value::Bool(true)) => relayed += 1,
-            Some(serde_json::Value::Bool(false)) => {}
-            _ => maybe += 1,
+        match r.via_relay {
+            Some(true) => relayed += 1,
+            Some(false) => {}
+            None => maybe += 1,
         }
     }
     Interrupts {
@@ -1077,16 +973,16 @@ pub(crate) struct Interrupts {
 
 /// 「现在重启 cc-monitor」之前那一问（`machine-interrupts` 带 `appExit`）：这台后端随 cc-monitor 退出一起停（`kill` ＝ 它自己那份退出行为）
 /// ⇒ 这台的活会话照 [`machine_product`] 数、账上全部转发（`all_forwards`）都断；留着 ⇒ 什么都不断。**纯函数**。
-pub(crate) fn app_exit_product(kill: bool, lines: &[String], all_forwards: u32) -> Interrupts {
+pub(crate) fn app_exit_product(kill: bool, rows: &[SessionAccount], all_forwards: u32) -> Interrupts {
     if kill {
-        machine_product(lines, all_forwards)
+        machine_product(rows, all_forwards)
     } else {
         machine_product(&[], 0)
     }
 }
 
-/// 帧面那几问要的「哪个会话在用哪个号」（[`session_accounts`]，只跟着家走）。
-pub(crate) fn session_lines_for_frame(agent_home: &Path) -> Vec<String> {
+/// 帧面那几问要的「哪个会话在用哪个号」（[`session_accounts`]，账号库取这台的那一份）。
+pub(crate) fn session_accounts_here(agent_home: &Path) -> Vec<SessionAccount> {
     session_accounts(agent_home, &resolve_accts_dir())
 }
 

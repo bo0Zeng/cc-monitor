@@ -308,7 +308,7 @@ pub(crate) fn interrupts_at(
     req: &MachineInterruptsReq,
 ) -> crate::observe::accounts_query::Interrupts {
     use crate::observe::accounts_query;
-    let lines = accounts_query::session_lines_for_frame(home);
+    let lines = accounts_query::session_accounts_here(home);
     if req.app_exit == Some(true) {
         let kill = crate::control::exit_policy::read_now().kill_on_exit();
         return accounts_query::app_exit_product(
