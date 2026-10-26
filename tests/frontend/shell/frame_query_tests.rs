@@ -594,7 +594,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
     // 注解两条（「上次用哪个号起」那一条并进 `session-account`）：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
-    //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
+    //   （`update_history_metadata` 与列上次账号那一条）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
     (
         "history-annotate",
         "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::annotate` 按类型收）",
