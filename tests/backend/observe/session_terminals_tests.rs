@@ -290,19 +290,15 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
         answer_at(
             &home,
             &SidReq {
-                sid: "s-nope".into()
+                sid: "s-nope".parse().unwrap()
             }
         )
         .unwrap_err()
         .0,
         "no_such_session"
     );
-    assert_eq!(
-        answer_at(&home, &SidReq { sid: "-x".into() })
-            .unwrap_err()
-            .0,
-        "bad_args"
-    );
+    // 形状不对的 sid 解入参那一下就解不开（`cmd_wire::Sid`）。
+    assert!(serde_json::from_value::<SidReq>(serde_json::json!({"sid": "-x"})).is_err());
     assert_eq!(
         serde_json::to_value(product(&Shown::Detached)).expect("json"),
         serde_json::json!({ "terminals": [], "why": "detached" })

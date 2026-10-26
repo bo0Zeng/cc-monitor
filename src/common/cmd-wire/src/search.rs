@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionHits {
     /// 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub session_id: String,
     pub project_path: String,
     pub project_name: String,

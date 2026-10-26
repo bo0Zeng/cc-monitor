@@ -917,7 +917,9 @@ fn no_token_lands_in_the_books_or_the_answer() {
 /// ★ 测试档不许出网：对那一家真令牌端点续一次令牌 ⇒ 出网那一道当场 panic（不连、不解析名字），续期拿不到任何回包。
 #[test]
 fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
-    let face = crate::agents::login_of("claude-code").expect("登记了");
+    let face = crate::agents::route_named("claude-code")
+        .and_then(crate::agents::login_of)
+        .expect("登记了");
     let ep =
         crate::accounts::oauth::TokenEndpoint::of(&face, std::time::Duration::from_millis(2_000))
             .expect("真端点");

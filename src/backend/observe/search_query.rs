@@ -846,7 +846,7 @@ fn session_row(
             false,
         ),
         face: crate::wire::SessionFace::of(crate::wire::Life::Ended),
-        agent,
+        agent: agent.into(),
         session_id,
         project_path,
         project_name,

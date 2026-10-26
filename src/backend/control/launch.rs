@@ -83,7 +83,7 @@ pub(crate) struct LaunchReq {
     pub(crate) cwd: Option<String>,
     /// 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
     #[cfg_attr(test, serde(default))]
-    pub(crate) ccm_sid: Option<String>,
+    pub(crate) ccm_sid: Option<cmd_wire::Sid>,
     /// 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
     #[cfg_attr(test, serde(default))]
     pub(crate) agent: Option<String>,
@@ -107,7 +107,7 @@ pub(crate) struct LaunchRequest {
     pub(crate) cwd: Option<String>,
     /// `create-or-attach`：这个会话将要挂的 sid（写成意图键 `@ccm_sid_expect`）；
     /// `send-into`：键入挂着它的那个窗格（不是会话的当前窗格），身份按那个窗格判。
-    pub(crate) ccm_sid: Option<String>,
+    pub(crate) ccm_sid: Option<cmd_wire::Sid>,
     /// 哪个 AI（`claude` / `codex`）。落成 tmux 的 `@ccm_agent` 标记。
     ///
     /// ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**它是为「ccm 的 `--tmux` 真的改走这条路」补的**：
@@ -219,23 +219,9 @@ pub(crate) fn parse_request(req: LaunchReq) -> Result<LaunchRequest, CmdErr> {
         check_field("cwd", c)?;
     }
 
-    if let Some(s) = &ccm_sid {
-        check_field("ccm_sid", s)?;
-        // 它会被写进 tmux 会话级 option，收紧到确定安全的字符集。⚠ 本命令自己写的是**意图**键 `@ccm_sid_expect`
-        //（见 `run` 里那段头注）；这个值要经 `identity_tag` 过检提升之后才进 `@ccm_sid`，
-        // 而那一侧有它自己的 `sid_is_safe` —— **两道各自成立，不许因为「上游已经查过」而拆掉任一道**。
-        if !s
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(CmdErr::from((
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "`ccm_sid` must match [A-Za-z0-9_-]: {s:?}"
-                )),
-            )));
-        }
-    }
+    // `ccm_sid` 会被写进 tmux 窗格 option：它的类型就是会话 id（`cmd_wire::Sid`），值域外的造不出来。⚠ 本命令自己写的是
+    // **意图**键 `@ccm_sid_expect`（见 `run` 里那段头注）；这个值要经 `identity_tag` 过检提升之后才进 `@ccm_sid`，
+    // 而那一侧照样只收 `Sid` —— **两道各自成立，不许因为「上游已经查过」而拆掉任一道**。
 
     // `@ccm_agent` 标记的值：给了就得是注册表里由我们起的一家（写空 ⇒ 默认那一家；认不出 ⇒ 拒、列出认得的几家），
     // 标上的是解析好的 kind。没给 ⇒ 不标（这一发起的是什么由载荷说了算，不替它猜）。

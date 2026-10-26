@@ -6,7 +6,7 @@ src/backend/control/capture_pane.rs:132	同上，只是解析走到了 target-se
 src/backend/control/capture_pane.rs:136	另一种措辞，一并收 —— 多认一种不会把别的失败误判成它（默认档是 `capture_failed`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/identity_tag.rs:420	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；经 Outcome::failure_note 只进后端 tracing 日志
 src/backend/control/identity_tag.rs:142	打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒）	保留	[不对外] #[must_use] 的编译器提示，只给写代码的人看
-src/backend/control/identity_tag.rs:184	sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写	保留	[不对外] Outcome::failure_note 的原因半句，只进后端 tracing 日志
+src/backend/control/identity_tag.rs:73	sid 的形状不对（不是会话 id：字母或数字开头，只含字母、数字、`-`，长度 1–64），不往 tmux 里写	保留	[不对外] Outcome::failure_note 的原因半句，只进后端 tracing 日志
 src/backend/control/identity_tag.rs:192	会话身份标没打上（pid {pid} · sid {sid}）：{why} —— 之后对这个会话的 kill / 送键会被身份门拒（wrong_owner）	保留	[不对外] S2：watcher 里 tracing::warn! 打出去的那一行，只进后端日志
 src/backend/control/identity_tag.rs:416	tmux set-option 退出码 {}：{}	保留	[不对外] Outcome::Failed 的载荷（带 tmux 原话），经 failure_note 只进后端 tracing 日志
 src/backend/control/launch.rs:432	agent 标没打上，这个会话在列表里认不出是哪个 agent	保留	[不对外] S5：次要动作没做成时那一行 tracing::warn! 的后果半句，只进后端日志

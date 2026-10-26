@@ -52,6 +52,7 @@ pub mod rotation;
 pub mod search;
 pub mod session;
 pub mod shapes;
+pub mod sid;
 pub mod sync;
 pub mod tasks;
 pub mod transfer;
@@ -59,6 +60,7 @@ pub mod watch;
 
 pub use agent::AgentKind;
 pub use machine::{Machine, Route, LOCAL};
+pub use sid::Sid;
 
 /// 两端形状指纹对不上的那条 op 当「这台做不到」时用的码（客户端事前就拒、一个字节不发；给人看的那一句 `peerVersion.said.differs`）。
 pub const SHAPE_DIFFERS: &str = "backend_differs";

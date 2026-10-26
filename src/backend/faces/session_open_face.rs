@@ -443,7 +443,7 @@ pub(crate) fn facts(
             Some(ForkFacts {
                 agent: crate::agents::record_kind_of(&source)
                     .unwrap_or_default()
-                    .to_string(),
+                    .into(),
                 launch: super::fork_face::launch_of(&home, &source, sid),
                 turn: turn.as_ref().map(|t| t.0),
                 start_text: turn.and_then(|t| crate::common::time::iso_hm(&t.1, tz)),

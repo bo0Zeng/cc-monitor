@@ -91,6 +91,18 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
     }))
     .unwrap_err();
     assert_eq!(e.code, "bad_args");
+    // `ccm_sid` 是会话 id（`cmd_wire::Sid`，全仓一个值域）：`_` · `-` 开头 · 超长都不收。
+    for bad in [
+        "a_b",
+        "-x",
+        &"a".repeat(shell_quote_core::SESSION_ID_MAX + 1),
+    ] {
+        let e = parse_request(&serde_json::json!({
+            "mode":"create-or-attach","name":"n","payload":"p","ccm_sid":bad
+        }))
+        .unwrap_err();
+        assert_eq!(e.code, "bad_args", "{bad:?}");
+    }
 }
 
 /// ★`agent` / `width` / `height` 的形状校验。

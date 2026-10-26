@@ -94,7 +94,7 @@ fn missed_in_tmux_says_the_last_words_and_hands_the_terminal() {
     let got = block(run(
         ask(
             ArriveBy::Sid {
-                sid: "0b1c2d3e-0000-4000-8000-000000000001".into(),
+                sid: "0b1c2d3e-0000-4000-8000-000000000001".parse().unwrap(),
             },
             Some("w-1"),
         ),
@@ -199,16 +199,10 @@ fn missed_in_a_window_points_at_the_window_and_reads_nothing() {
 #[test]
 fn a_bad_ask_is_refused_before_waiting() {
     let h = fake(Some("x"), there);
-    assert!(block(run(
-        ask(
-            ArriveBy::Sid {
-                sid: "not a sid".into()
-            },
-            None
-        ),
-        1_000,
-        &h
-    ))
+    // sid 形状不对：解入参那一下就解不开（`cmd_wire::Sid`），到不了等。
+    assert!(serde_json::from_value::<ArriveBy>(
+        serde_json::json!({"kind": "sid", "sid": "not a sid"})
+    )
     .is_err());
     assert!(block(run(
         ask(ArriveBy::Cwd { cwd: String::new() }, None),

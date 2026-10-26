@@ -575,8 +575,12 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
         "perPct": {"five_hour": {"tokens": 25_000, "at": now + 120}}
     }))
     .unwrap();
-    let slot = crate::agents::window_slot_of(agent).unwrap();
-    let key = crate::agents::window_key_of(agent).unwrap();
+    let slot = crate::agents::route_named(agent)
+        .and_then(crate::agents::window_slot_of)
+        .unwrap();
+    let key = crate::agents::route_named(agent)
+        .and_then(crate::agents::window_key_of)
+        .unwrap();
     let facts = |kind| show::Facts {
         kind,
         login: show::LoginState::Ok,

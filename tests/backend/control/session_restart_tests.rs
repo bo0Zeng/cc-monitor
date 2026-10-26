@@ -245,7 +245,9 @@ impl Host for Host_ {
     async fn arrival(&self, sid: &str, since: u64, _ms: u64) -> bool {
         let (tx, mut rx) = tokio::sync::oneshot::channel();
         self.0.book.lock().unwrap().expect(
-            cmd_wire::session::ArriveBy::Sid { sid: sid.into() },
+            cmd_wire::session::ArriveBy::Sid {
+                sid: sid.parse().unwrap(),
+            },
             since,
             Arc::new(Mutex::new(Some(tx))),
         );
@@ -492,4 +494,45 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
         "另有进程在写，还起了新的：{:?}",
         rig.calls()
     );
+}
+
+/// 入参里指会话的那一格一律是会话 id（`cmd_wire::Sid`）：形状解入参那一下就判（`bad_args`），处理器里不再各判一遍。
+/// 哪一格还是串就编不过。
+#[test]
+fn every_request_sid_cell_is_a_session_id() {
+    fn sid(_: &cmd_wire::Sid) {}
+    let _ = |r: &RestartReq,
+             m: &crate::faces::session_mode_face::SessionPermissionReq,
+             c: &crate::faces::session_commands_face::SessionCommandsReq,
+             s: &crate::faces::session_say_face::SessionSayReq,
+             o: &crate::faces::session_model_face::SessionModelReq,
+             t: &crate::observe::session_terminals::SidReq,
+             b: &crate::control::session_batch::SidsReq,
+             a: &cmd_wire::session::ArriveBy,
+             open: &crate::control::session_open::Open| {
+        sid(&r.sid);
+        sid(&m.sid);
+        sid(&c.sid);
+        sid(&s.sid);
+        sid(&o.sid);
+        sid(&t.sid);
+        b.sids.iter().for_each(sid);
+        if let cmd_wire::session::ArriveBy::Sid { sid: x } = a {
+            sid(x);
+        }
+        if let crate::control::session_open::Open::Resume { sid: x } = open {
+            sid(x);
+        }
+    };
+}
+
+#[test]
+fn an_off_shape_sid_is_bad_args_at_decode() {
+    let mut a = serde_json::json!({
+        "sid": "a_b", "cwd": "/w", "account": "a", "compact_first": false,
+        "compact_within_ms": 1, "arrive_within_ms": 1, "local": true, "agent": "claude"
+    });
+    assert!(serde_json::from_value::<RestartReq>(a.clone()).is_err());
+    a["sid"] = serde_json::json!("0473c3a0-1111-2222-3333-444455556666");
+    assert!(serde_json::from_value::<RestartReq>(a).is_ok());
 }
