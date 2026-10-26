@@ -153,21 +153,6 @@
   width: 70px;
 }
 
-.settings-btn {
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  padding: 6px 14px;
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-mono);
-}
-
-.settings-btn:hover {
-  background: var(--overlay-hover);
-}
-
 .settings-hint {
   font-size: var(--font-size-small);
   color: var(--text-2);
