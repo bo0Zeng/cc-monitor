@@ -1,9 +1,9 @@
 /**
- * **一格的详情**：计划页右栏选了格之后的样子。
+ * **一个节点的详情**：计划页右栏选了节点之后的样子。
  *
- * 从上到下：在哪（标题串）→ 头（状态 · 标题 · 类 · 状态徽标 · 原因）→ 位置（接手 · 阶段 ·［切到会话］）→ 条（不做了）→
- * 要做成什么样（md；话里提到的格照 pb 给的位置换成标题链接）→ 里面 → 连着的 · 连着它的（按这一类的人话分组）→
- * 管的文件 → 收下 → agent 站在这一格看到的（折着，展开才问）→ 跟 agent 说时用的编号。
+ * 从上到下：在哪（标题串）→ 头（状态 · 标题 · 类 · 状态那一行 · 原因）→ 位置（负责人 · 阶段 ·［切到会话］· 没人接着 ⇒ 交接说明）→
+ * 要做成什么样（md；话里提到的节点照 pb 给的位置换成标题链接）→ 里面 → 连着的 · 连着它的（按这一类的人话分组）→
+ * 管的文件 → 状态（值 · 依据它的 · 还没执行的 sets）→ agent 站在这个节点看到的（折着，展开才问）→ 跟 agent 说时用的编号。
  *
  * 凡出现一格，一律写成「编号 标题」（后端拼好的 `labels`）。只排版：成品都是后端给的。
  */
@@ -16,7 +16,7 @@ import { saidOf } from "../kit/detail";
 import { writeClipboard } from "../clipboard";
 import { renderMarkdown } from "../render";
 import type { Origin } from "../ipc/origin";
-import { fetchCellView, PLAN_EDGE_KINDS, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
+import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
 import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans, statusLook } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
@@ -40,7 +40,7 @@ const REF_SPLIT = new RegExp(`${REF_OPEN}(\\d+)${REF_CLOSE}`);
 const FOLD_LINES = 14;
 
 export class CellDetail {
-  /** 问过的 agent 视角：`片 \u0000 格 \u0000 rev` ⇒ 那一段 / 没有。同一格再开不重问（rev 变了才重问）。 */
+  /** 问过的 agent 视角：`仓库 \u0000 节点 \u0000 rev` ⇒ 那一段 / 没有。同一格再开不重问（rev 变了才重问）。 */
   private views = new Map<string, { text: string } | { none: string }>();
   /** 展开着 agent 视角的那一格。 */
   private viewOpen: string | null = null;
@@ -55,8 +55,8 @@ export class CellDetail {
     box.append(this.crumb(slice, cell), this.head(slice, cell));
     const pos = this.position(slice, cell);
     if (pos) box.appendChild(pos);
-    const bar = this.droppedBar(slice, cell);
-    if (bar) box.appendChild(bar);
+    const hand = this.handoff(slice, cell);
+    if (hand) box.appendChild(hand);
     if (cell.body) box.appendChild(this.design(slice, cell));
     if (cell.children.length > 0) box.appendChild(this.inside(slice, cell));
     const edges = this.edges(slice, cell);
@@ -64,7 +64,7 @@ export class CellDetail {
     const rings = this.rings(slice, cell);
     if (rings) box.appendChild(rings);
     if (cell.files.length > 0) box.appendChild(this.files(slice, cell));
-    box.appendChild(this.signs(slice, cell));
+    box.appendChild(this.state(slice, cell));
     box.appendChild(this.agentView(slice, cell, rev));
     box.appendChild(this.idLine(cell));
     return box;
@@ -104,19 +104,27 @@ export class CellDetail {
     const badge = document.createElement("span");
     badge.className = s.cdBadge;
     badge.dataset.look = look;
-    badge.textContent = cell.status ?? "";
+    badge.textContent = cell.stateText ?? "";
     h.appendChild(badge);
-    if (look === "open" && cell.why) h.appendChild(span(cell.why, s.cdWhy));
+    if (cell.whyShort) h.appendChild(span(cell.whyShort.text, s.cdWhy));
     if (cell.covers.includes("project")) h.appendChild(span(copyText("plan.cell.coversAll"), s.cdWhy));
-    if (look !== "dropped") {
-      const gap = document.createElement("span");
-      gap.className = s.cdGap;
-      h.append(gap, button({ label: look === "done" ? copyText("plan.review.return") : copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => this.host.returnCell(slice, cell) }));
-    }
+    const gap = document.createElement("span");
+    gap.className = s.cdGap;
+    h.append(gap, button({ label: look === "done" ? copyText("plan.review.return") : copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => this.host.returnCell(slice, cell) }));
     return h;
   }
 
-  /** 位置行：块根格 ⇒ 那一块的接手 ＋ 阶段；别的格 ⇒ 在长它的。都带［切到会话］。 */
+  /**
+   * 划出的根节点没人接着 ⇒ pb 给的交接说明（不带认领码；句末 pb 写了认领码找谁要）＋［复制］；给不了 ⇒ pb 说的为什么。
+   * 本页不替人敲 `pb reissue`。
+   */
+  private handoff(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
+    const b = blockRoots(slice).get(cell.id) ?? null;
+    if (!b || b.owner) return null;
+    return handoffBox(b);
+  }
+
+  /** 位置行：划出的根节点 ⇒ 那个权力范围的负责人 ＋ 阶段；别的节点 ⇒ 负责它的。都带［切到会话］。 */
   private position(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
     const b = blockRoots(slice).get(cell.id) ?? null;
     const who = b?.owner ?? cell.owner;
@@ -130,17 +138,6 @@ export class CellDetail {
     const sid = who?.sid ?? null;
     if (sid) row.appendChild(link(copyText("plan.cell.toSession"), () => this.host.switchTo(sid)));
     return row;
-  }
-
-  private droppedBar(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
-    if (statusLook(cell) !== "dropped") return null;
-    const by = cell.pointedBy.replaces[0];
-    const bar = document.createElement("div");
-    bar.className = s.cdBar;
-    if (by) {
-      bar.appendChild(span([copyText("plan.bar.droppedBare"), copyText("plan.bar.dropped", { title: labelOf(slice, by) })].join(copyText("kit.text.sep"))));
-    } else bar.appendChild(span(copyText("plan.bar.droppedBare")));
-    return bar;
   }
 
   // ── 要做成什么样 · 里面 · 边 ──
@@ -194,7 +191,7 @@ export class CellDetail {
     }
   }
 
-  /** 一段话（标题 / 签收理由）照位置换链接。 */
+  /** 一段话（标题）照位置换链接。 */
   refText(slice: PlanSlice, text: string, refs: readonly PlanRef[]): Node[] {
     return refSpans(text, refs).flatMap((p) => (typeof p === "string" ? [document.createTextNode(p)] : this.refLinks(slice, p)));
   }
@@ -225,7 +222,7 @@ export class CellDetail {
     return sec;
   }
 
-  /** 一行：状态图标 · 标题（链接）· 类的词 · 没做完时原因。 */
+  /** 一行：状态图标 · 标题（链接）· 类的词 · 没签收时原因短词。 */
   private cellLine(slice: PlanSlice, c: PlanCell): HTMLElement {
     const row = document.createElement("div");
     row.className = s.cdLine;
@@ -237,7 +234,7 @@ export class CellDetail {
     st.appendChild(icon(STATUS_ICON[look], "compact"));
     row.append(st, link(labelOf(slice, c.id), () => this.host.select(c.id)));
     if (c.kind) row.appendChild(span(c.kind, s.cdKw));
-    if (look === "open" && c.why) row.appendChild(span(c.why, s.cdMuted));
+    if (c.whyShort) row.appendChild(span(c.whyShort.text, s.cdMuted));
     return row;
   }
 
@@ -292,7 +289,7 @@ export class CellDetail {
     return sec;
   }
 
-  // ── 文件 · 收下 · agent 看到的 · 编号 ──
+  // ── 文件 · 状态 · agent 看到的 · 编号 ──
 
   private files(slice: PlanSlice, cell: PlanCell): HTMLElement {
     const sec = section(copyText("plan.cell.files"));
@@ -311,7 +308,7 @@ export class CellDetail {
       p.className = s.cdMono;
       p.append(icon("file", "compact"), document.createTextNode(f.path));
       const st = tr.insertCell();
-      const b = span(f.state ?? "", s.cdFileState);
+      const b = span(f.stateCode ? copyText(FILE_STATE[f.stateCode]) : copyText("plan.page.none"), s.cdFileState);
       b.dataset.state = f.stateCode === "ok" ? "ok" : f.stateCode === "empty" ? "warn" : "bad";
       st.appendChild(b);
       tr.insertCell().textContent = f.note ?? "";
@@ -327,51 +324,41 @@ export class CellDetail {
   }
 
   /**
-   * 收下：记下的每一笔（新的在上；值算做完的那几笔标「作数」；值 · 凭照 pb 给的写，凭是来处那一格「编号 标题」）＋
-   * 指着它、还没执行的 sets（虚线：来处 · 值 · 为什么没执行）。凭据类的格不收（不算活）。
+   * 状态：记着的值与笔数（后端写好的那一行，同 `pb render`）· 依据它的（「编号 标题」链接）·
+   * 指着它、还没执行的 sets（虚线：来处 · 值（去一笔写 `-值`）· pb 说的为什么）。什么都没记 ⇒ 一句为什么没有。
    */
-  private signs(slice: PlanSlice, cell: PlanCell): HTMLElement {
-    const n = cell.signs.length;
-    const sec = section(copyText("plan.cell.signs"), n > 1 ? copyText("plan.sign.count", { n }) : undefined);
+  private state(slice: PlanSlice, cell: PlanCell): HTMLElement {
+    const sec = section(copyText("plan.cell.state"));
+    if (cell.stateText) sec.appendChild(span(cell.stateText, s.cdStateText));
+    if (cell.evidencedBy.length > 0) {
+      const row = document.createElement("div");
+      row.className = s.cdSetHead;
+      row.appendChild(span(copyText("plan.state.evidencedBy"), s.cdMuted));
+      cell.evidencedBy.forEach((id, i) => {
+        if (i > 0) row.appendChild(document.createTextNode(copyText("plan.page.listSep")));
+        row.appendChild(link(labelOf(slice, id), () => this.host.select(id)));
+      });
+      sec.appendChild(row);
+    }
     const pending = slice.pendingSets.filter((p) => p.target === cell.id);
     for (const p of pending) {
       const row = document.createElement("div");
-      row.className = s.cdSign;
+      row.className = s.cdSet;
       row.dataset.pending = "true";
       const h = document.createElement("div");
-      h.className = s.cdSignHead;
-      h.appendChild(span(copyText("plan.sign.pending"), s.cdCounts));
+      h.className = s.cdSetHead;
+      h.appendChild(span(copyText("plan.state.pending"), s.cdCounts));
       const src = p.source;
       if (src) h.appendChild(link(labelOf(slice, src), () => this.host.select(src)));
-      if (p.value) h.appendChild(span(p.value));
+      if (p.value) h.appendChild(span(p.op === "remove" ? copyText("plan.state.removeValue", { value: p.value }) : p.value));
       row.appendChild(h);
-      if (p.whyNot) row.appendChild(span(p.whyNot, s.cdSignWhy));
+      if (p.blockedReason) row.appendChild(span(p.blockedReason, s.cdSetWhy));
       sec.appendChild(row);
     }
-    if (n === 0) {
-      if (pending.length > 0 || cell.evidence) return sec;
-      const line = cell.children.length > 0 ? copyText("plan.sign.inner") : (cell.why ?? copyText("plan.sign.none"));
+    if (!cell.stateText && pending.length === 0) {
+      const line = cell.whyCode?.kind === "inside" ? copyText("plan.state.inner") : copyText("plan.state.none");
       sec.appendChild(span(line, s.cdMuted));
-      return sec;
     }
-    [...cell.signs].reverse().forEach((g, i) => {
-      const row = document.createElement("div");
-      row.className = s.cdSign;
-      if (i > 0) row.dataset.old = "true";
-      const h = document.createElement("div");
-      h.className = s.cdSignHead;
-      if (g.done) h.appendChild(span(copyText("plan.sign.counts"), s.cdCounts));
-      if (g.value) h.appendChild(span(g.value));
-      h.appendChild(span(g.atText ?? ""));
-      if (g.by) h.appendChild(this.host.who(g.by, true));
-      const via = g.via;
-      if (via) h.appendChild(link(copyText("plan.sign.via", { cell: labelOf(slice, via) }), () => this.host.select(via)));
-      const r = document.createElement("div");
-      r.className = s.cdSignWhy;
-      r.append(...this.refText(slice, g.reason ?? "", g.refs));
-      row.append(h, r);
-      sec.appendChild(row);
-    });
     return sec;
   }
 
@@ -440,6 +427,39 @@ export class CellDetail {
     row.append(span(copyText("plan.cell.idLine")), id, copy);
     return row;
   }
+}
+
+/** 文件核对的码 ⇒ 那一格写的字（pb 的 present · missing · empty · invalid）。 */
+const FILE_STATE = { ok: "plan.fileState.ok", missing: "plan.fileState.missing", empty: "plan.fileState.empty", broken: "plan.fileState.broken" } as const;
+
+/**
+ * 交接说明那一块（划出的根节点没人接着 · 新登记的仓库还没人认领 project）：pb 给的那一句原样（码的位置写着 `<认领码>`，
+ * 句末 pb 写了码找谁要）＋［复制］；给不了 ⇒ pb 说的为什么。复制的是那一句本身，交给另开的会话、认领码找上一级要。
+ */
+export function handoffBox(b: Pick<PlanBlock, "handoff" | "handoffError">): HTMLElement {
+  const box = document.createElement("div");
+  box.className = `${s.cdHandoff} plan-handoff`;
+  box.appendChild(span(copyText("plan.handoff.title"), s.cdSecHead));
+  const said = b.handoff;
+  if (said === null) {
+    box.appendChild(span(copyText("plan.handoff.none", { reason: b.handoffError ?? "" }), s.cdMuted));
+    return box;
+  }
+  const row = document.createElement("div");
+  row.className = s.cdHandoffRow;
+  row.appendChild(span(said, s.cdMono));
+  row.appendChild(
+    button({
+      label: copyText("plan.handoff.copy"),
+      kind: "icon",
+      icon: "copy",
+      size: "compact",
+      hint: copyText("plan.handoff.copy"),
+      onClick: () => void writeClipboard(said).then(() => toast(copyText("plan.handoff.copied"), "", { level: "success" }), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" })),
+    }),
+  );
+  box.appendChild(row);
+  return box;
 }
 
 /** 出边组名：with / to 用这一类的词（「它实现」「它指向」）；after / replaces 是固定的说法。 */

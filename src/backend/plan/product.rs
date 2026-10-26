@@ -59,7 +59,7 @@ pub(crate) fn file_code(s: Option<&str>) -> Option<PlanFileState> {
     }
 }
 
-/// 状态那一行字：值照给的先后，笔数大于一写在值后面，` · ` 隔开（同 `pb render`）；一个值都没有 ⇒ `None`。
+/// 状态那一行字：值照给的先后，笔数大于一写在值后面，用文案表的分隔（同 `pb render`）；一个值都没有 ⇒ `None`。
 pub(crate) fn state_text(state: &[PlanState]) -> Option<String> {
     (!state.is_empty()).then(|| {
         state
@@ -72,7 +72,7 @@ pub(crate) fn state_text(state: &[PlanState]) -> Option<String> {
                 }
             })
             .collect::<Vec<_>>()
-            .join(" · ")
+            .join(&copy_text("kit.text.sep", &[]))
     })
 }
 

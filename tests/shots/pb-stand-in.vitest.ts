@@ -1,6 +1,6 @@
 /**
  * 截图台架边界上的 pb 替身（`disk/plan.ts`）：真后端照常找 pb 插件、起 `python3 <入口> <动词>`，碰到的是它。
- * 它只把工作区里那一份 dump 原样吐出来、照几条命令改那一份，演 pb 的几种退出码；成品（数 · 排 · 短词 · 时刻字）全由真后端算。
+ * 它只把工作区里那一份 dump（pb 0.5 · 形状 6）原样吐出来、照几条命令改那一份，演 pb 的几种退出码；成品（数 · 排 · 短词）全由真后端算。
  *
  * 买不到：真 pb 读 `图.md` 那一段不在这里；dump 的形状对不对由真后端读它（截图台架）判。
  */
@@ -10,22 +10,33 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { blankDisk } from "./disk";
-import { PB_ENTRY, putPb, putWorkspace, type PbStandIn } from "./disk/plan";
+import { dumpNodes, PB_ENTRY, putPb, putWorkspace, type PbStandIn } from "./disk/plan";
 
 const dirs: string[] = [];
 afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-const DOC = { pb: "0.3.8", shape: 4, workspace: "/w", repo: "alpha", auto: false, slices: [{ name: "alpha", domain: "软件", docs_only: true, path: "repos/alpha", cells: [] }, { name: "beta", domain: "研究", cells: [] }] };
+const DOC = {
+  pb: "0.5.2",
+  shape: 6,
+  workspace: "/w",
+  current_repo: "alpha",
+  auto_continue: false,
+  domains: [],
+  repos: [
+    { name: "alpha", domain: "软件", plan_only: true, path: "repos/alpha", nodes: [] },
+    { name: "beta", domain: "研究", plan_only: false, path: "beta", nodes: [] },
+  ],
+};
 
 /** 照 `putPb` · `putWorkspace` 落一个家目录，回它与工作区根。 */
-function home(cfg: PbStandIn = {}, ws = "work/alpha"): { root: string; ws: string } {
+function homeWith(doc: unknown, cfg: PbStandIn = {}, ws = "work/alpha"): { root: string; ws: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "shots-pb-"));
   dirs.push(root);
   const d = blankDisk();
   putPb(d, cfg);
-  putWorkspace(d, ws, DOC);
+  putWorkspace(d, ws, doc);
   for (const [rel, text] of Object.entries(d.files)) {
     mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     writeFileSync(path.join(root, rel), text);
@@ -33,6 +44,7 @@ function home(cfg: PbStandIn = {}, ws = "work/alpha"): { root: string; ws: strin
   mkdirSync(path.join(root, ws, "sub"), { recursive: true });
   return { root, ws: path.join(root, ws) };
 }
+const home = (cfg: PbStandIn = {}): { root: string; ws: string } => homeWith(DOC, cfg);
 
 function pb(root: string, cwd: string, ...args: string[]): { rc: number | null; out: string; err: string } {
   const r = spawnSync("python3", [path.join(root, PB_ENTRY), ...args], { cwd, encoding: "utf8", env: { PATH: "/usr/bin:/bin" } });
@@ -69,45 +81,45 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
     expect(pb(root, ws, "dump").rc).toBe(4);
   });
 
-  it("头一次之后那一片读不成：第二次起那一片只剩名字 · 领域 · 原因", () => {
-    const { root, ws } = home({ brokenAfterFirst: { slice: "alpha", said: "图.md 第 3 行：元行缺 id" } });
+  it("头一次之后那个仓库读不成：第二次起它只剩名字 · 领域 · 位置 · 原因", () => {
+    const { root, ws } = home({ brokenAfterFirst: { repo: "alpha", said: "图.md 第 3 行：元数据缺 id" } });
     expect(dumped(root, ws)).toEqual(DOC);
-    const again = dumped(root, ws) as { slices: unknown[] };
-    expect(again.slices).toEqual([{ name: "alpha", domain: "软件", error: "图.md 第 3 行：元行缺 id" }, DOC.slices[1]]);
+    const again = dumped(root, ws) as { repos: unknown[] };
+    expect(again.repos).toEqual([{ name: "alpha", domain: "软件", path: "repos/alpha", plan_only: true, error: "图.md 第 3 行：元数据缺 id" }, DOC.repos[1]]);
   });
 
-  it("continue / pause 改 auto；repo 换此刻那一片；take 接过此刻那一片、说一句", () => {
+  it("continue / pause 改 auto_continue；repo 换当前仓库；adopt 接过当前仓库、说一句", () => {
     const { root, ws } = home();
     expect(pb(root, ws, "continue").rc).toBe(0);
-    expect(dumped(root, ws).auto).toBe(true);
+    expect(dumped(root, ws).auto_continue).toBe(true);
     pb(root, ws, "pause");
-    expect(dumped(root, ws).auto).toBe(false);
-    const t = pb(root, ws, "take");
+    expect(dumped(root, ws).auto_continue).toBe(false);
+    const t = pb(root, ws, "adopt");
     expect(t.rc).toBe(0);
     expect(t.out.split("\n")[0]).toContain("repos/alpha");
-    expect((dumped(root, ws).slices as { docs_only?: boolean }[])[0].docs_only).toBe(false);
+    expect((dumped(root, ws).repos as { plan_only?: boolean }[])[0].plan_only).toBe(false);
     pb(root, ws, "repo", "beta");
-    expect(dumped(root, ws).repo).toBe("beta");
+    expect(dumped(root, ws).current_repo).toBe("beta");
   });
 
-  it("view 说写了哪一页", () => {
+  it("render 说写了哪一页", () => {
     const { root, ws } = home();
-    const v = pb(root, ws, "view");
+    const v = pb(root, ws, "render");
     expect(v.rc).toBe(0);
     expect(v.out).toMatch(/^写了 \/tmp\/\S+\.html\n/);
   });
 
-  it("给了拒的那几条：退 2、stderr 是 pb 那一句；别的照常", () => {
-    const { root, ws } = home({ refuse: { continue: "这个工作区还没有顶块" } });
-    const r = pb(root, ws, "continue");
-    expect([r.rc, r.err]).toEqual([2, "这个工作区还没有顶块\n"]);
-    expect(dumped(root, ws).auto).toBe(false);
-    expect(pb(root, ws, "pause").rc).toBe(0);
+  it("0.5 没有的动词（take · view · record）退 4", () => {
+    const { root, ws } = home();
+    for (const v of ["take", "view", "record", "nope"]) expect(pb(root, ws, v).rc, v).toBe(4);
   });
 
-  it("认不得的动词退 4", () => {
-    const { root, ws } = home();
-    expect(pb(root, ws, "nope").rc).toBe(4);
+  it("给了拒的那几条：退 2、stderr 是 pb 那一句；别的照常", () => {
+    const { root, ws } = home({ refuse: { continue: "这个工作区还没有人认领 project" } });
+    const r = pb(root, ws, "continue");
+    expect([r.rc, r.err]).toEqual([2, "这个工作区还没有人认领 project\n"]);
+    expect(dumped(root, ws).auto_continue).toBe(false);
+    expect(pb(root, ws, "pause").rc).toBe(0);
   });
 
   it("工作区里 dump 那一份就是 putWorkspace 写的（相对家目录）", () => {
@@ -116,39 +128,32 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
   });
 });
 
-// pb 0.3.8：整份 dump 不带 agent 视角，点到一格再 `dump --cell` 取；记原话 `record --slice <片> …`。
-describe.skipIf(process.platform === "win32")("pb 替身 · 0.3.8 那几样", () => {
-  const VIEWED = { ...DOC, slices: [{ ...DOC.slices[0], cells: [{ id: "A1", title: "甲", agent_view: "── A1 甲" }] }, DOC.slices[1]] };
-  function homeWith(doc: unknown): { root: string; ws: string } {
-    const root = mkdtempSync(path.join(os.tmpdir(), "shots-pb-"));
-    dirs.push(root);
-    const d = blankDisk();
-    putPb(d);
-    putWorkspace(d, "work/alpha", doc);
-    for (const [rel, text] of Object.entries(d.files)) {
-      mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
-      writeFileSync(path.join(root, rel), text);
-    }
-    return { root, ws: path.join(root, "work/alpha") };
-  }
+// pb 0.5：整份 dump 不带 agent 视角，点到一个节点再 `dump --node <仓库> <编号>` 取。
+describe.skipIf(process.platform === "win32")("pb 替身 · dump --node", () => {
+  const nodes = dumpNodes([{ id: "A1", title: "甲", kind: "能力", view: "── A1 甲" }], "架构", "lead");
+  const VIEWED = { ...DOC, repos: [{ ...DOC.repos[0], nodes }, DOC.repos[1]] };
 
-  it("dump 摘掉每格的 agent_view；dump --cell 回那一格的那一段，图上没有 ⇒ 带 error", () => {
+  it("dump 摘掉每个节点的 agent_view；dump --node 回那一个的那一段，图上没有 ⇒ 带 error", () => {
     const { root, ws } = homeWith(VIEWED);
-    const all = dumped(root, ws) as { slices: { cells?: Record<string, unknown>[] }[] };
-    expect(all.slices[0].cells?.[0]).toEqual({ id: "A1", title: "甲" });
-    const one = JSON.parse(pb(root, ws, "dump", "--cell", "alpha", "A1", ws).out) as Record<string, unknown>;
-    expect([one.shape, one.slice, one.id, one.agent_view]).toEqual([4, "alpha", "A1", "── A1 甲"]);
-    const gone = JSON.parse(pb(root, ws, "dump", "--cell", "alpha", "Z9", ws).out) as Record<string, unknown>;
+    const all = dumped(root, ws) as { repos: { nodes?: Record<string, unknown>[] }[] };
+    expect(all.repos[0].nodes?.[0].agent_view).toBeUndefined();
+    expect(all.repos[0].nodes?.[0].id).toBe("A1");
+    const one = JSON.parse(pb(root, ws, "dump", "--node", "alpha", "A1", ws).out) as Record<string, unknown>;
+    expect([one.shape, one.repo, one.id, one.agent_view]).toEqual([6, "alpha", "A1", "── A1 甲"]);
+    const gone = JSON.parse(pb(root, ws, "dump", "--node", "alpha", "Z9", ws).out) as Record<string, unknown>;
     expect(gone.agent_view).toBeUndefined();
     expect(gone.error).toBeTruthy();
   });
 
-  it("record --slice 记进那一片的 records（号往上加），此刻那一片不动", () => {
-    const { root, ws } = homeWith(VIEWED);
-    const r = pb(root, ws, "record", "--slice", "beta", "读写分两半", "「分开做」", "先读后写");
-    expect(r.rc).toBe(0);
-    const after = dumped(root, ws) as { repo: string; slices: { records?: Record<string, unknown>[] }[] };
-    expect(after.repo).toBe("alpha");
-    expect(after.slices[1].records).toEqual([{ n: 1, summary: "读写分两半", at: expect.any(String), by: "人", quotes: ["「分开做」", "「先读后写」"] }]);
+  it("dumpNodes 照 6 的键写一个节点：状态一值一项带笔数 · 文件带 file_check · 归谁三样", () => {
+    const [n] = dumpNodes(
+      [{ id: "A1", title: "甲", kind: "模块", state: [["已签收", 2]], files: [{ path: "a.txt", check: "empty", note: "0 字" }], sets: [{ target: "A2", value: "已签收" }] }],
+      "架构",
+      "lead",
+    );
+    expect(n.state).toEqual([{ value: "已签收", count: 2 }]);
+    expect(n.files).toEqual([{ path: "a.txt", file_check: "empty", note: "0 字", chars: null, bytes: null }]);
+    expect([n.children_in, n.assignee, n.signer, n.graph]).toEqual(["project", "lead", "lead", "架构"]);
+    expect((n.edges as { sets: unknown[] }).sets).toEqual([{ op: "add", target: "A2", value: "已签收" }]);
   });
 });

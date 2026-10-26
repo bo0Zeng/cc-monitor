@@ -1,4 +1,4 @@
-//! `changed {plan}`：只认计划仓与工作区 `.env`；摘要变了才推，没变不推。
+//! `changed {plan}`：只认计划仓（连 pb 0.5 的工作区配置 `.planned-build/.env`）与声明过的文件；摘要变了才推，没变不推。
 
 use super::*;
 use crate::plan::fixture::{dump_at, made_with, scratch, who};
@@ -9,7 +9,7 @@ fn product(ws: &Path, path: &str) -> crate::plan::wire::PlanRead {
 }
 
 #[test]
-fn only_the_plan_repo_the_workspace_env_and_declared_files_concern_us() {
+fn only_the_plan_repo_and_declared_files_concern_us() {
     let ws = Path::new("/w");
     let none = Spots::default();
     assert!(concerns(
@@ -17,7 +17,11 @@ fn only_the_plan_repo_the_workspace_env_and_declared_files_concern_us() {
         &none,
         Path::new("/w/.planned-build/alpha/图.md")
     ));
-    assert!(concerns(ws, &none, Path::new("/w/.env")));
+    assert!(concerns(ws, &none, Path::new("/w/.planned-build/.env")));
+    assert!(
+        !concerns(ws, &none, Path::new("/w/.env")),
+        "pb 0.5 的工作区配置在计划仓里，工作区根上那一份不认"
+    );
     assert!(!concerns(ws, &none, Path::new("/w/alpha/src/main.rs")));
     assert!(!concerns(ws, &none, Path::new("/w/alpha/.env")));
     // 仓库登记在 repos/alpha：声明过的文件 · 通往它的目录（整个挪走 / 删掉）算数；仓库里别的（编译产物）不算。
@@ -151,7 +155,7 @@ fn a_change_pushes_only_when_the_rev_moves() {
         );
         std::thread::yield_now();
     }
-    std::fs::write(d.join(".env"), "{}").unwrap();
+    std::fs::write(d.join(".planned-build/.env"), "{}").unwrap();
     let t1 = std::time::Instant::now();
     let got = loop {
         match rx.try_recv() {

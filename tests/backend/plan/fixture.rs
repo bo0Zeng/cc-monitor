@@ -577,13 +577,17 @@ while True:
     tools.join("entry.py")
 }
 
-/// 造一个工作区：`.planned-build/alpha/` ＋ 工作区根上的 `.env` ＋ 一份 `dump.json` 与 `node.json`（假 pb 吐它们）。
+/// 造一个工作区：`.planned-build/alpha/` ＋ 工作区配置 `.planned-build/.env` ＋ 一份 `dump.json` 与 `node.json`（假 pb 吐它们）。
 /// 仓库目录照 dump 里头一个仓库的 `path`（没有 ⇒ 仓库名）。
 pub(crate) fn workspace(root: &Path, doc: &Value) -> PathBuf {
     let repo = doc["repos"][0]["path"].as_str().unwrap_or("alpha");
     std::fs::create_dir_all(root.join(".planned-build/alpha")).unwrap();
     std::fs::create_dir_all(root.join(repo).join("src")).unwrap();
-    std::fs::write(root.join(".env"), r#"{"current_repo": "alpha"}"#).unwrap();
+    std::fs::write(
+        root.join(".planned-build/.env"),
+        r#"{"current_repo": "alpha"}"#,
+    )
+    .unwrap();
     std::fs::write(root.join("dump.json"), doc.to_string()).unwrap();
     let ws = doc["workspace"].as_str().unwrap_or(WS);
     std::fs::write(root.join("node.json"), node_view(ws).to_string()).unwrap();

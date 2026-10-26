@@ -168,7 +168,6 @@
     display: flex;
   }
 
-
   .pvSep {
     flex: none;
     width: 1px;
@@ -327,12 +326,12 @@
     color: var(--text-2);
   }
 
-  .pvSt[data-look="dropped"] {
-    color: var(--text-faint);
+  .pvSt[data-look="undecided"] {
+    color: var(--warn);
   }
 
-  .pvSt[data-look="evidence"] {
-    color: var(--text-2);
+  .pvSt[data-look="none"] {
+    color: var(--text-faint);
   }
 
   .pvKbar {
@@ -351,11 +350,6 @@
 
   .pvRow[data-look="done"] .pvTt {
     color: var(--text-2);
-  }
-
-  .pvRow[data-look="dropped"] .pvTt {
-    color: var(--text-faint);
-    text-decoration: line-through;
   }
 
   .pvKw {
@@ -410,7 +404,6 @@
   .pvOwnerMt {
     color: var(--text-2);
   }
-
 
   .pvLegend {
     display: flex;
@@ -514,7 +507,6 @@
     font-size: var(--font-size-small);
   }
 
-
   .pvSec {
     margin-top: 18px;
   }
@@ -609,7 +601,6 @@
     margin-top: 1px;
     color: var(--text-2);
   }
-
 
   @container plan (max-width: 1099px) {
     .pvBody {

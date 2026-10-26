@@ -1,15 +1,16 @@
 /**
- * 计划页的排版模型（纯函数，零 DOM）：把 `plan-read` 的一片排成大纲的行、概览的几张表。
+ * 计划页的排版模型（纯函数，零 DOM）：把 `plan-read` 的一个仓库排成大纲的行、概览的几张表。
  *
- * 只排版：状态、原因、接手是谁、几格做完、签收先后都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」。
+ * 只排版：状态、原因、负责人是谁、几格签收了都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」。
  */
-import type { PlanBlock, PlanCell, PlanRef, PlanSign, PlanSlice } from "../plan-reads";
+import type { PlanBlock, PlanCell, PlanRef, PlanSlice } from "../plan-reads";
 
-/** 四种状态画哪一种（图标 · 颜色）：照后端给的码；凭据类的格不算活、不画做完没有；认不出的状态当没做完画（字照出）。 */
-export type StatusLook = "done" | "open" | "dropped" | "evidence";
+/** 状态画哪一种（图标 · 颜色）：照后端给的码；待定还没人定另画一种；类不许记收的值（测试 · 规矩 · 验收记录 …）⇒ 不算活，画淡的。 */
+export type StatusLook = "done" | "open" | "undecided" | "none";
 
-export function statusLook(c: Pick<PlanCell, "statusCode">): StatusLook {
-  return c.statusCode ?? "open";
+export function statusLook(c: Pick<PlanCell, "statusCode" | "undecided">): StatusLook {
+  if (c.undecided) return "undecided";
+  return c.statusCode ?? "none";
 }
 
 /** 一格写成「编号 标题」：后端拼好的那一份（`labels`）；表里没有 ⇒ 只写编号。界面不自己拼。 */
@@ -44,9 +45,9 @@ export interface OutlineRow {
   hasKids: boolean;
   /** 折着。 */
   folded: boolean;
-  /** 是某一块的根格 ⇒ 那一块（行尾挂接手 ＋ 阶段）。 */
+  /** 是某个划出的权力范围的根节点 ⇒ 那个权力范围（行尾挂负责人 ＋ 阶段）。 */
   block: PlanBlock | null;
-  /** 有 agent 站在这一格（某一块的 `at` 是它）。 */
+  /** 有 agent 站在这一格（某个权力范围的 `at` 是它）。 */
   standing: boolean;
 }
 
@@ -55,7 +56,7 @@ export function cellIndex(slice: PlanSlice): Map<string, PlanCell> {
   return new Map(slice.cells.map((c) => [c.id, c]));
 }
 
-/** 格 ⇒ 以它为根的那一块（`blocks[].cells` 列的是块根）。顶块 `project` 不挂在格上。 */
+/** 格 ⇒ 以它为根节点的那个权力范围（`blocks[].cells` 列的是根节点）。`project` 不挂在格上。 */
 export function blockRoots(slice: PlanSlice): Map<string, PlanBlock> {
   const m = new Map<string, PlanBlock>();
   for (const b of slice.blocks) {
@@ -65,7 +66,7 @@ export function blockRoots(slice: PlanSlice): Map<string, PlanBlock> {
   return m;
 }
 
-/** 顶块（pb 里 id 叫 `project` 的那一块）。 */
+/** 最上面那个权力范围（pb 里叫 `project`）。 */
 export function topBlock(slice: PlanSlice): PlanBlock | null {
   return slice.blocks.find((b) => b.id === "project") ?? null;
 }
@@ -78,8 +79,6 @@ function matches(c: PlanCell, q: string): boolean {
 
 export interface OutlineOpts {
   filter: PlanFilter;
-  /** 不做了的藏起。 */
-  hideDropped: boolean;
   /** 折着的格（编号）。 */
   folded: ReadonlySet<string>;
   /** 按标题找（编号也能搜到）。 */
@@ -98,8 +97,8 @@ export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {
   const standing = new Set(slice.blocks.map((b) => b.at).filter((x): x is string => x !== null));
   const narrowing = opts.filter !== "all" || opts.query !== "";
   const keep = (c: PlanCell): boolean => {
-    if (opts.hideDropped && statusLook(c) === "dropped") return false;
-    if (opts.filter === "open" && statusLook(c) !== "open") return false;
+    // 「没签收的」：算活没签收的 ＋ 待定还没人定的。
+    if (opts.filter === "open" && statusLook(c) !== "open" && statusLook(c) !== "undecided") return false;
     if (opts.filter === "needs" && !opts.needsCells.has(c.id)) return false;
     return matches(c, opts.query);
   };
@@ -110,10 +109,6 @@ export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {
     if (hit !== undefined) return hit;
     const c = byId.get(id);
     if (!c) return false;
-    if (opts.hideDropped && statusLook(c) === "dropped") {
-      memo.set(id, false);
-      return false;
-    }
     const v = keep(c) || c.children.some(wanted);
     memo.set(id, v);
     return v;
@@ -122,7 +117,7 @@ export function outlineRows(slice: PlanSlice, opts: OutlineOpts): OutlineRow[] {
   const walk = (id: string, depth: number): void => {
     const c = byId.get(id);
     if (!c) return;
-    if (narrowing ? !wanted(id) : opts.hideDropped && statusLook(c) === "dropped") return;
+    if (narrowing && !wanted(id)) return;
     const kids = c.children.filter((k) => byId.has(k));
     const folded = !narrowing && opts.folded.has(id);
     out.push({ cell: c, depth, hasKids: kids.length > 0, folded, block: roots.get(id) ?? null, standing: standing.has(id) });
@@ -147,28 +142,6 @@ export function ancestry(slice: PlanSlice, id: string): PlanCell[] {
   return out;
 }
 
-export interface SignItem {
-  cell: PlanCell;
-  sign: PlanSign;
-}
-
-/** 全片的签收，照核心排好的先后（新的在上）。给了 `query` ⇒ 只留那一格标题（或编号）对得上的。 */
-export function recentSigns(slice: PlanSlice, query = ""): SignItem[] {
-  const byId = cellIndex(slice);
-  const out: SignItem[] = [];
-  for (const at of slice.recentSigns) {
-    const cell = byId.get(at.cell);
-    const sign = cell?.signs[at.i];
-    if (cell && sign && matches(cell, query)) out.push({ cell, sign });
-  }
-  return out;
-}
-
-/** 一格最后一条签收（作数的那条）。 */
-export function lastSign(cell: PlanCell): PlanSign | null {
-  return cell.signs.length > 0 ? cell.signs[cell.signs.length - 1] : null;
-}
-
 /** 类在领域表里的先后（颜色按它取，七色循环）；不在表里 ⇒ `null`（画淡色）。 */
 export function kindSlot(slice: PlanSlice, kind: string | null): number | null {
   if (kind === null) return null;
@@ -184,7 +157,7 @@ export function shortId(id: string): string {
   return id.length <= 12 ? id : `${id.slice(0, 6)}…${id.slice(-4)}`;
 }
 
-/** 新开的一片还没有图：读好了（不是读不成那两种）、一格都没有（pb 只记了名字与领域，顶块等某个会话 claim 才建）。 */
+/** 新登记的仓库还没有图：读好了（不是读不成那两种）、一个节点都没有（pb repo 建了 project，等某个会话认领它画图）。 */
 export function isFresh(slice: Pick<PlanSlice, "bare" | "error" | "cells">): boolean {
   return !slice.bare && !slice.error && slice.cells.length === 0;
 }

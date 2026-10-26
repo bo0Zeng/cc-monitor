@@ -115,7 +115,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, Vec<u8>
         "repos/alpha",
         "repos/alpha/src",
     ];
-    let files = [".env", "dump.json", "node.json"];
+    let files = [".planned-build/.env", "dump.json", "node.json"];
     let mut out: Vec<_> = dirs
         .iter()
         .map(|d| {
@@ -133,7 +133,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, Vec<u8>
     out
 }
 
-/// 真起假 pb 读一次：工作区（计划仓 ＋ `.env` ＋ 仓库）跑前跑后逐字节不变、目录一项没多没少。
+/// 真起假 pb 读一次：工作区（计划仓连工作区配置 ＋ 仓库）跑前跑后逐字节不变、目录一项没多没少。
 #[test]
 fn reading_a_workspace_writes_nothing_in_it() {
     let d = scratch("book-readonly");
