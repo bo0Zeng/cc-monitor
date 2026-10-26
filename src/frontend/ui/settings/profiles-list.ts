@@ -649,7 +649,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
           pendingRemove.delete(name);
           render();
         },
-        () => void commit([{ op: "remove", name }]).finally(() => pendingRemove.delete(name)),
+        () => void send([{ op: "remove", name }]).finally(() => pendingRemove.delete(name)),
       );
       return;
     }
@@ -709,7 +709,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
           : copyText("profilesPage.remove.goReparentRoot")
         : copyText("profilesPage.remove.goCascade", { n: String(r.kids.length + 1) }),
       "settings-btn settings-btn-primary",
-      () => void commit([{ op: "remove", name: r.name, children: r.pick }]).then((said) => said === null && cancelRemove()),
+      () => void send([{ op: "remove", name: r.name, children: r.pick }]).then((said) => said === null && cancelRemove()),
     );
     acts.append(go, button(copyText("profilesPage.remove.cancel"), "settings-btn", () => cancelRemove()));
     box.appendChild(acts);
@@ -727,7 +727,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   // ── 写 ──
 
   /** 存一批改动（带读回时的指纹），经统一写口：成了 ⇒ 重读、回 `null`；没成 ⇒ 状态行说那一句、回那一结局（别处改过的已重读）。 */
-  const commit = async (changes: ProfileOp[]): Promise<{ stale: boolean; said: string } | null> => {
+  const send = async (changes: ProfileOp[]): Promise<{ stale: boolean; said: string } | null> => {
     const end = await write(() => writeProfiles(opts.origin(), changes, book?.fingerprint ?? null), { reread });
     if (end.ok) {
       if (end.value.reload) toast(copyText("profilesPage.save.done"), end.value.reload, { level: "info" });
@@ -738,11 +738,11 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   };
 
   const init = async (seed: boolean): Promise<void> => {
-    await commit([{ op: "init", seed }]);
+    await send([{ op: "init", seed }]);
   };
 
   const ackMigrated = async (): Promise<void> => {
-    await commit([{ op: "ackMigrated" }]);
+    await send([{ op: "ackMigrated" }]);
   };
 
   const onOpenFile = async (): Promise<void> => {
@@ -1055,7 +1055,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const onSave = async (): Promise<void> => {
     const st = form;
     if (!st) return;
-    const end = await commit([{ op: "set", was: st.was, form: st.form }]);
+    const end = await send([{ op: "set", was: st.was, form: st.form }]);
     if (end === null) {
       form = null;
       impact = null;
