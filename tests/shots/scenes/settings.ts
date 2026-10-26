@@ -601,6 +601,18 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf("[data-role=profile-form]"));
     await sleep(300);
   }, profilesWorld("stale"), 860),
+  settings("profiles-11-typing-push", "设置 · 别名 · 11 打字中遇推送", "开着 teamcct 的表单、名字打了一半（没交）：别处改了配置文件、后端推来一次变动 ⇒ 清单重读重画，名字那一格的字与焦点还在", async (ctx) => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="teamcct"] .cfg-link'));
+    await sleep(600);
+    const name = document.querySelector<HTMLInputElement>(pf("[data-role=profile-form] [data-role=name]"))!;
+    name.focus();
+    name.value = "teamcct-打了一半";
+    await ctx.backend.writeFile("devbox", PROFILES_FILE, `${staleBook()}\n# 别处补的一行\n`);
+    await sleep(1200);
+    top(pf("[data-role=profile-form]"));
+    await sleep(300);
+  }, profilesWorld("stale"), 860),
   settings("profiles-09-function", "设置 · 别名 · 09 与系统命令同名的那一条", "点 cc：合并表下多一段「cc · 终端函数」：和 /usr/bin/cc 同名 · 写在哪", async () => {
     await profilesPage();
     await click(pf('.prof-trow[data-name="cc"]'));
