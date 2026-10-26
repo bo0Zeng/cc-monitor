@@ -18,4 +18,12 @@ autoAnswer?: AutoAnswer,
 /**
  * 终端没了时换的模型 / 权限档，下次恢复照它起（只由那两条换的命令写）；缺 ＝ 没记。
  */
-resumeWith?: ResumeWith, updatedAt: number, };
+resumeWith?: ResumeWith, 
+/**
+ * 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+ */
+groups?: Array<string>, 
+/**
+ * 固定（跟着组一起跨端）；缺 ＝ 没固定。
+ */
+pinned?: boolean, updatedAt: number, };

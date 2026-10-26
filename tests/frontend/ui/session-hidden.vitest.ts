@@ -145,7 +145,7 @@ describe("推帧主题「会话隐藏」：那一格到了就挪", () => {
 
   it("★ 收到那一帧 ⇒ 当场挪出标签栏、进「已隐藏」；再来一帧 `null` ⇒ 挪回", () => {
     const r = bar([tab("a"), tab("b")]);
-    const prefs = { ...r.prefs, setPinnedMany: vi.fn(), forgetTab: vi.fn(async () => {}), joinGroup: vi.fn(async () => {}), persistOrder: vi.fn(async () => {}) };
+    const prefs = { ...r.prefs, setPinnedMany: vi.fn(), adoptGroup: vi.fn(), persistOrder: vi.fn(async () => {}) };
     const hider = new TabHide(r.store, prefs as unknown as TabBarPrefs, { setHide: vi.fn(), undoToast: vi.fn(), failed: vi.fn(), refreshTabBar: () => r.view.refresh(), close: vi.fn() });
     const push = (hidden: SessionHidden | null): void => {
       for (const [sid, h] of hiddenPushed({ cells: [{ key: "b", rev: null, body: { hidden } }], all: false })) hider.land(sid, h);
@@ -183,7 +183,7 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
     expect(rowSids(r, false).sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行汇总那颗需手动的点", async () => {
+  it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行不汇总（不是一组，没有后端数好的计数）", async () => {
     const r = bar([tab("a"), tab("b", { hidden: BG, ...waiting, needs: approve() })]);
     // 那台的整份里照样有它（隐藏不影响需手动：后端那一侧列它，`sessions-needs` 判据管）。
     const needs = fakeNeedsBook({ [LOCAL_ORIGIN]: listOf([sessionItem("b", approve())]) });
@@ -195,7 +195,7 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
     await r.view.nextNeeds();
     expect(r.host.answerAt).toHaveBeenCalledWith("b");
-    expect(hiddenRow(r.el)!.querySelector(".tab-group-chip[data-dot='needs-you']")?.textContent).toBe(copyText("tabBar.group.sumNeeds", { n: 1 }));
+    expect(hiddenRow(r.el)!.querySelector(".tab-group-chip"), "界面不自己数").toBeNull();
   });
 
   it("点组头收 / 展（记进 `tabBar.hiddenOpen`）；收着时数字键走不到里面的，展开了走得到；里面那一行不起拖", () => {
@@ -230,8 +230,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     const prefs = {
       collections: [{ id: "g", name: "组" }],
       setPinnedMany: vi.fn((sids: string[], on: boolean) => sids.forEach((s) => ((store.tabs.get(s) as Tab).pinned = on))),
-      forgetTab: vi.fn(async (t: Tab) => void (t.group = null)),
-      joinGroup: vi.fn(async (sid: string, gid: string) => void ((store.tabs.get(sid) as Tab).group = gid)),
+      adoptGroup: vi.fn(),
       persistOrder: vi.fn(async () => {}),
     };
     const toasts: { title: string; undo: () => void; settle: () => void }[] = [];
@@ -275,7 +274,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     expect(r.toasts[0].title).toBe(copyText("tabBar.hide.doneMany", { n: 2 }));
   });
 
-  it("★ 推帧说隐藏了 ⇒ 摘固定、出组；撤销期里推帧说不隐藏了 ⇒ 原位 · 原分组 · 原固定放回", () => {
+  it("★ 推帧说隐藏了 ⇒ 摘固定、不画在组里（组员关系不动）；撤销期里推帧说不隐藏了 ⇒ 原位 · 原分组 · 原固定放回", () => {
     const r = rig([tab("a"), tab("b", { pinned: true, group: "g" }), tab("c")]);
     r.h.hide(["b"]);
     expect(r.h.land("b", SELF)).toBe(true);
@@ -317,7 +316,7 @@ describe("菜单：右键两项 · 批量两项", () => {
       isAttachable: () => true,
       collectionsLoaded: () => true,
       collections: () => [],
-      groupOf: () => null,
+      groupAt: () => null,
       joinGroup: vi.fn(),
       foundGroup: vi.fn(),
       leaveGroup: vi.fn(),
@@ -357,7 +356,7 @@ describe("菜单：右键两项 · 批量两项", () => {
 
   it("批量：「隐藏（n）」「取消隐藏（n）」各数各的，交宿主", async () => {
     const tabs = [tab("a"), tab("b"), tab("c", { hidden: SELF })];
-    const host = { tab: (s: string) => tabs.find((t) => t.sessionId === s), collectionsLoaded: () => false, collections: () => [], pinnedLoaded: () => false, setPinned: vi.fn(), joinGroup: vi.fn(), foundGroup: vi.fn(), leaveGroup: vi.fn(), closeTabs: vi.fn(), hide: vi.fn(), unhide: vi.fn() } satisfies TabBatchHost;
+    const host = { tab: (s: string) => tabs.find((t) => t.sessionId === s), collectionsLoaded: () => false, collections: () => [], pinnedLoaded: () => false, setPinnedMany: vi.fn(), joinGroup: vi.fn(), foundGroup: vi.fn(), leaveGroup: vi.fn(), closeTabs: vi.fn(), hide: vi.fn(), unhide: vi.fn() } satisfies TabBatchHost;
     openBatchMenu(new MouseEvent("contextmenu"), ["a", "b", "c"], host, { stop: vi.fn(), start: vi.fn(), confirm: vi.fn() } as never);
     expect(labels()).toEqual(expect.arrayContaining([copyText("tabBatch.menu.hide", { n: 2 }), copyText("tabBatch.menu.unhide", { n: 1 })]));
     press(copyText("tabBatch.menu.hide", { n: 2 }));

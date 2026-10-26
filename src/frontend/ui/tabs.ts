@@ -52,6 +52,9 @@ import { setAutoAnswer, setHide } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
 import type { NeedsBook } from "./needs-book";
+import type { GroupBook } from "./group-book";
+import { migrateTabGroups, oldTabGroups } from "./tab-groups-migrate";
+import { loadConfig, patchConfig, removeAt } from "./config";
 import type { ManualItem } from "./login-reads";
 import { TabRouter } from "./tab-router";
 import { applyFacts } from "./tab-session-facts";
@@ -214,13 +217,15 @@ export class TabManager {
     this.hider.land(sid, hidden);
   }
 
-  /** 从 `config.json` 拉一次集合并重画（宿主启动时调一次）。 */
+  /** 拉一次这扇窗自己的看法（收着的组 · 「已隐藏」那一行）并重画（宿主启动时调一次）。 */
   loadCollections(): Promise<void> {
     return this.prefs.loadCollections().then(() => this.settleUnarrivedOnce());
   }
-  /** 启动时把固定的 tab 复活出来。 */
-  loadPinned(): Promise<void> {
-    return this.prefs.loadPinned();
+  /** 接上组的账（主窗口）：组与固定照它画、改的动作交给它；旧的分组三格等各台标签到齐迁一次。 */
+  attachGroups(book: GroupBook): void {
+    this.groupBook = book;
+    this.prefs.attachBook(book);
+    this.settleUnarrivedOnce();
   }
   /** 启动时把落盘的顺序拉回来。 */
   loadOrder(): Promise<void> {
@@ -381,8 +386,8 @@ export class TabManager {
       accountPanelWired: () => this.onOpenAccountPanel !== null,
       collectionsLoaded: () => this.prefs.collectionsLoaded,
       collections: () => this.prefs.collections,
-      // 组员关系是 tab 自己的属性：菜单那三个动作改完内存（落盘偏好那一份同时写盘）就重画。
-      groupOf: (sid) => this.prefs.groupOf(sid),
+      // 菜单那三个动作先改内存（交给组的账那一份随后写到各台）就重画。
+      groupAt: (sid) => this.prefs.groupAt(sid),
       joinGroup: (sids, gid) => this.dragger.joinNow(sids, gid),
       foundGroup: (sids) => this.dragger.foundNow(sids),
       leaveGroup: (sids) => this.dragger.leaveNow(sids),
@@ -439,7 +444,7 @@ export class TabManager {
     collectionsLoaded: () => this.prefs.collectionsLoaded,
     collections: () => this.prefs.collections,
     pinnedLoaded: () => this.prefs.pinnedLoaded,
-    setPinned: (sids, on) => this.prefs.setPinnedMany(sids, on),
+    setPinnedMany: (sids, on) => void this.prefs.setPinnedMany(sids, on),
     joinGroup: (sids, gid) => this.dragger.joinNow(sids, gid),
     foundGroup: (sids) => this.dragger.foundNow(sids),
     leaveGroup: (sids) => this.dragger.leaveNow(sids),
@@ -678,7 +683,6 @@ export class TabManager {
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
         if (sessionId === this.store.activeId) this.publishActive();
-        if (tab.pinned) void this.prefs.persistPinned(); // 盘上那份同拍改写：等不到宣告的已结束会话下次起来也是对的
       }
       // 同一 sid 可能有多份 pidfile（备用进程复用父会话的 sid 写 kind=bg），宣告到达顺序不定：
       // interactive 恒压过 bg —— 后到的 interactive 在此升格纠正标题，反向绝不降格。升格不动位置。
@@ -737,7 +741,7 @@ export class TabManager {
       origin,
       // 脸早于建 Tab 到 ⇒ 落实；没有 ⇒ 画说不清，等那台的帧。
       face: this.store.pendingFace.get(sessionId) ?? null,
-      // 不自动固定；盘上固定过的由 `loadPinned` 在复活时置回 true。
+      // 不自动固定；账上固定过的照组的账置回 true（`TabBarPrefs.adoptGroup`）。
       pinned: false,
       // 组员关系是 tab 自己的属性；盘上有它的组 id ⇒ 下面 `adoptGroup` 归位。
       group: null,
@@ -1042,6 +1046,8 @@ export class TabManager {
   /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */
   private allListed = false;
   private unarrivedSettled = false;
+  /** 组的账（主窗口接上；撕离出来的查看窗没有）。 */
+  private groupBook: GroupBook | null = null;
   /** 这个窗口订了会话流的那几台（[`setMachines`]）；空 ⇒ 只等壳那一刻（查看窗等不订整台的）。 */
   private machines: Origin[] = [];
 
@@ -1061,14 +1067,32 @@ export class TabManager {
     return this.allListed;
   }
 
-  /** 各台都报完了活会话清单 ⇒ 盘上记着、却一个都没回来的组员不会再来了：收掉，空了的组随之消失（只做一次）。 */
+  /**
+   * 各台都报完了活会话清单 ⇒ 旧的分组三格迁一次（`tab-groups-migrate.ts`：组员照此刻标签在哪台写；只做一次）。
+   * 5.0.3 之后第一版带它，再下一版连同迁移一起删。
+   */
   private settleUnarrivedOnce(): void {
-    if (this.unarrivedSettled || !this.allListed || !this.prefs.collectionsLoaded) return;
+    if (this.unarrivedSettled || !this.allListed || this.groupBook === null) return;
     // 壳那一刻是在最后报完的那一台的流上到的；别的台那条流上它自己的宣告（组员的 tab）可能还在路上 ⇒ 每台都在自己那条流上报完了才认。
     if (!this.machines.every((o) => this.store.seenOrigins.has(o))) return;
     this.unarrivedSettled = true;
-    void this.prefs.forgetUnarrived();
-    this.refreshTabBar();
+    void this.migrateOldGroups(this.groupBook);
+  }
+
+  private async migrateOldGroups(book: GroupBook): Promise<void> {
+    try {
+      const old = oldTabGroups(await loadConfig());
+      const here = new Map([...this.store.tabs.values()].map((t) => [t.sessionId, t.origin]));
+      const got = await migrateTabGroups(old, here, {
+        make: (name) => book.make(name),
+        annotate: (origin, sid, patch) => book.member(origin, sid, patch),
+        dropOld: () => patchConfig([removeAt(["tabCollections"]), removeAt(["tabBar", "groupOf"]), removeAt(["tabBar", "pinned"])]),
+      });
+      if (got.collapsed.length > 0) await this.prefs.collapseMigrated(got.collapsed);
+      if (got.lost.length > 0) console.info(`[分组迁移] 认不出在哪台、没迁的 ${got.lost.length} 条：`, got.lost);
+    } catch (e) {
+      console.warn("[分组迁移] 没迁成（下次起来再迁）：", e);
+    }
   }
 
   /**
@@ -1325,7 +1349,6 @@ export class TabManager {
       this.store.tabs.set(sid, tab);
       this.store.orderedIds.splice(Math.min(index, this.store.orderedIds.length), 0, sid);
       if (tab.group !== null && !this.prefs.collections.some((c) => c.id === tab.group)) tab.group = null;
-      if (tab.pinned) void this.prefs.persistPinned(); // 期间别处落过一次固定表就没有它了
       first ??= sid;
     }
     if (first !== null && refocus) this.switchTo(first);
@@ -1384,16 +1407,10 @@ export class TabManager {
     this.live.dropTab(sessionId); // 先撤活卡（它的 DOM 随流容器一起走）
     this.view.disposeTab(tab);
     this.store.tasksBySid.delete(sessionId);
-    // 关掉 ＝ 取消固定：× 是明确说要丢，不摘的话下次开 app 它又回来了。只有真被固定过才写盘。
-    if (tab.pinned) {
-      tab.pinned = false;
-      this.prefs.pinnedRecords.delete(sessionId);
-      void this.prefs.persistPinned();
-    }
+    // 关掉 ＝ 取消固定 ＋ 出组：× 是明确说要丢（「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」）；组里谁都不剩 ⇒ 组也没。
+    // 会话自己结束（进程退出）不走这里，它照旧算组员。必须在 `store.tabs.delete` 之后：「组里还剩谁」不数它。
+    this.prefs.forgetClosed(tab);
     this.prefs.clearPinHint(sessionId);
-    // 关掉 ＝ 组关系随它一起没（摘 `tabBar.groupOf.<sid>`；最后一个 ⇒ 组也没）。
-    // 必须在 `store.tabs.delete` 之后：「组里还剩谁」只数真在栏里的。
-    void this.prefs.forgetTab(tab);
 
     // 盘上顺序里的那一格只在这里摘（还没到的那些落盘时并回去，`TabStore.mergedOrder`）。
     this.store.savedOrder = this.store.savedOrder.filter((s) => s !== sessionId);

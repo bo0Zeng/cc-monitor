@@ -2401,7 +2401,7 @@ data class BusEnvelopeReq(
 
 @Suppress("UNCHECKED_CAST")
 data class BusInbox(
-    val messages: List<BusEnvelope>,
+    val messages: List<BusInboxItem>,
     val skipped: Long,
     val truncated: Boolean,
 ) : Ordered {
@@ -2410,12 +2410,49 @@ data class BusInbox(
     companion object {
         val ADAPTER: JsonAdapter<BusInbox> = obj(
             listOf(
-            Field("messages", { arr(BusEnvelope.ADAPTER) }, optional = false, nullable = false),
+            Field("messages", { arr(BusInboxItem.ADAPTER) }, optional = false, nullable = false),
             Field("skipped", { Lng }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             ),
-            { a -> BusInbox(a[0] as List<BusEnvelope>, a[1] as Long, a[2] as Boolean) },
+            { a -> BusInbox(a[0] as List<BusInboxItem>, a[1] as Long, a[2] as Boolean) },
             { v -> arrayOf(v.messages, v.skipped, v.truncated) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusInboxItem(
+    val actSaid: String,
+    val id: String,
+    val ts: String,
+    val from: String,
+    val to: String,
+    val tier: Long,
+    val act: BusAct,
+    val title: String,
+    val re: String?,
+    val refs: List<String>,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusInboxItem> = obj(
+            listOf(
+            Field("act_said", { Str }, optional = false, nullable = false),
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("ts", { Str }, optional = false, nullable = false),
+            Field("from", { Str }, optional = false, nullable = false),
+            Field("to", { Str }, optional = false, nullable = false),
+            Field("tier", { Lng }, optional = false, nullable = false),
+            Field("act", { BusAct.ADAPTER }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("re", { opt(Str) }, optional = false, nullable = true),
+            Field("refs", { arr(Str) }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BusInboxItem(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as String, a[5] as Long, a[6] as BusAct, a[7] as String, a[8] as String?, a[9] as List<String>, a[10] as String) },
+            { v -> arrayOf(v.actSaid, v.id, v.ts, v.from, v.to, v.tier, v.act, v.title, v.re, v.refs, v.text) },
         )
     }
 }
@@ -3158,6 +3195,9 @@ sealed interface Changed {
     data object HistoryList : Changed {
         override val topic: String get() = "history_list"
     }
+    data object Groups : Changed {
+        override val topic: String get() = "groups"
+    }
 
     companion object {
         val ADAPTER: JsonAdapter<Changed> =
@@ -3284,6 +3324,13 @@ sealed interface Changed {
                         ),
                         { Changed.HistoryList },
                         { arrayOf("history_list") },
+                    )),
+                Variant("groups", Changed.Groups::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("groups") }, optional = false, nullable = false),
+                        ),
+                        { Changed.Groups },
+                        { arrayOf("groups") },
                     )),
                 ),
             )
@@ -4562,6 +4609,8 @@ data class Entry(
     val hide: Hide? = null,
     val autoAnswer: AutoAnswer? = null,
     val resumeWith: ResumeWith? = null,
+    val groups: List<String>? = null,
+    val pinned: Boolean? = null,
     val updatedAt: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -4574,10 +4623,12 @@ data class Entry(
             Field("hide", { opt(Hide.ADAPTER) }, optional = true, nullable = true),
             Field("autoAnswer", { opt(AutoAnswer.ADAPTER) }, optional = true, nullable = true),
             Field("resumeWith", { opt(ResumeWith.ADAPTER) }, optional = true, nullable = true),
+            Field("groups", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("pinned", { opt(Bool) }, optional = true, nullable = true),
             Field("updatedAt", { Lng }, optional = false, nullable = false),
             ),
-            { a -> Entry(a[0] as Boolean, a[1] as String?, a[2] as Hide?, a[3] as AutoAnswer?, a[4] as ResumeWith?, a[5] as Long) },
-            { v -> arrayOf(v.starred, v.customTitle, v.hide, v.autoAnswer, v.resumeWith, v.updatedAt) },
+            { a -> Entry(a[0] as Boolean, a[1] as String?, a[2] as Hide?, a[3] as AutoAnswer?, a[4] as ResumeWith?, a[5] as List<String>?, a[6] as Boolean?, a[7] as Long) },
+            { v -> arrayOf(v.starred, v.customTitle, v.hide, v.autoAnswer, v.resumeWith, v.groups, v.pinned, v.updatedAt) },
         )
     }
 }
@@ -6994,6 +7045,343 @@ enum class GrepStopped(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class GroupCount(
+    val dot: SessionDot,
+    val n: Long,
+    val word: String,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupCount> = obj(
+            listOf(
+            Field("dot", { SessionDot.ADAPTER }, optional = false, nullable = false),
+            Field("n", { Lng }, optional = false, nullable = false),
+            Field("word", { Str }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> GroupCount(a[0] as SessionDot, a[1] as Long, a[2] as String, a[3] as String) },
+            { v -> arrayOf(v.dot, v.n, v.word, v.text) },
+        )
+    }
+}
+
+sealed interface GroupKnown {
+    /** 判别格（`is`）那个词。 */
+    val `is`: String
+
+    data object Now : GroupKnown {
+        override val `is`: String get() = "now"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Before(
+        val at: String,
+    ) : GroupKnown, Ordered {
+        override val `is`: String get() = "before"
+        override var wireOrder: IntArray? = null
+    }
+    data object Unknown : GroupKnown {
+        override val `is`: String get() = "unknown"
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupKnown> =
+            tagged<GroupKnown>(
+                "is",
+                listOf(
+                Variant("now", GroupKnown.Now::class.java, obj(
+                        listOf(
+                        Field("is", { tag("now") }, optional = false, nullable = false),
+                        ),
+                        { GroupKnown.Now },
+                        { arrayOf("now") },
+                    )),
+                Variant("before", GroupKnown.Before::class.java, obj(
+                        listOf(
+                        Field("is", { tag("before") }, optional = false, nullable = false),
+                        Field("at", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupKnown.Before(a[1] as String) },
+                        { v -> arrayOf("before", v.at) },
+                    )),
+                Variant("unknown", GroupKnown.Unknown::class.java, obj(
+                        listOf(
+                        Field("is", { tag("unknown") }, optional = false, nullable = false),
+                        ),
+                        { GroupKnown.Unknown },
+                        { arrayOf("unknown") },
+                    )),
+                ),
+            )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class GroupMember(
+    val origin: String,
+    val sid: String,
+    val pinned: Boolean,
+    val face: SessionFace,
+    val facts: MemberFacts,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupMember> = obj(
+            listOf(
+            Field("origin", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("pinned", { Bool }, optional = false, nullable = false),
+            Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
+            Field("facts", { MemberFacts.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> GroupMember(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as SessionFace, a[4] as MemberFacts) },
+            { v -> arrayOf(v.origin, v.sid, v.pinned, v.face, v.facts) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class GroupRead(
+    val id: String,
+    val name: String?,
+    val title: String,
+    val home: String?,
+    val made: Long?,
+    val known: GroupKnown,
+    val members: List<GroupMember>,
+    val counts: List<GroupCount>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupRead> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("name", { opt(Str) }, optional = false, nullable = true),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("home", { opt(Str) }, optional = false, nullable = true),
+            Field("made", { opt(Lng) }, optional = false, nullable = true),
+            Field("known", { GroupKnown.ADAPTER }, optional = false, nullable = false),
+            Field("members", { arr(GroupMember.ADAPTER) }, optional = false, nullable = false),
+            Field("counts", { arr(GroupCount.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> GroupRead(a[0] as String, a[1] as String?, a[2] as String, a[3] as String?, a[4] as Long?, a[5] as GroupKnown, a[6] as List<GroupMember>, a[7] as List<GroupCount>) },
+            { v -> arrayOf(v.id, v.name, v.title, v.home, v.made, v.known, v.members, v.counts) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class GroupsHere(
+    val groups: List<HereGroup>,
+    val members: List<HereMember>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupsHere> = obj(
+            listOf(
+            Field("groups", { arr(HereGroup.ADAPTER) }, optional = false, nullable = false),
+            Field("members", { arr(HereMember.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> GroupsHere(a[0] as List<HereGroup>, a[1] as List<HereMember>) },
+            { v -> arrayOf(v.groups, v.members) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class GroupsMachine(
+    val origin: String,
+    val read: HistoryMachineRead,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupsMachine> = obj(
+            listOf(
+            Field("origin", { Str }, optional = false, nullable = false),
+            Field("read", { HistoryMachineRead.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> GroupsMachine(a[0] as String, a[1] as HistoryMachineRead) },
+            { v -> arrayOf(v.origin, v.read) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class GroupsRead(
+    val groups: List<GroupRead>,
+    val pinned: List<GroupMember>,
+    val machines: List<GroupsMachine>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupsRead> = obj(
+            listOf(
+            Field("groups", { arr(GroupRead.ADAPTER) }, optional = false, nullable = false),
+            Field("pinned", { arr(GroupMember.ADAPTER) }, optional = false, nullable = false),
+            Field("machines", { arr(GroupsMachine.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> GroupsRead(a[0] as List<GroupRead>, a[1] as List<GroupMember>, a[2] as List<GroupsMachine>) },
+            { v -> arrayOf(v.groups, v.pinned, v.machines) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class GroupsReadReq(
+    val machines: List<String>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupsReadReq> = obj(
+            listOf(
+            Field("machines", { arr(Str) }, optional = false, nullable = false),
+            ),
+            { a -> GroupsReadReq(a[0] as List<String>) },
+            { v -> arrayOf(v.machines) },
+        )
+    }
+}
+
+sealed interface GroupsWriteReq {
+    /** 判别格（`op`）那个词。 */
+    val op: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Make(
+        val name: String,
+    ) : GroupsWriteReq, Ordered {
+        override val op: String get() = "make"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Rename(
+        val id: String,
+        val name: String,
+    ) : GroupsWriteReq, Ordered {
+        override val op: String get() = "rename"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Dissolve(
+        val id: String,
+    ) : GroupsWriteReq, Ordered {
+        override val op: String get() = "dissolve"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupsWriteReq> =
+            tagged<GroupsWriteReq>(
+                "op",
+                listOf(
+                Variant("make", GroupsWriteReq.Make::class.java, obj(
+                        listOf(
+                        Field("op", { tag("make") }, optional = false, nullable = false),
+                        Field("name", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupsWriteReq.Make(a[1] as String) },
+                        { v -> arrayOf("make", v.name) },
+                    )),
+                Variant("rename", GroupsWriteReq.Rename::class.java, obj(
+                        listOf(
+                        Field("op", { tag("rename") }, optional = false, nullable = false),
+                        Field("id", { Str }, optional = false, nullable = false),
+                        Field("name", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupsWriteReq.Rename(a[1] as String, a[2] as String) },
+                        { v -> arrayOf("rename", v.id, v.name) },
+                    )),
+                Variant("dissolve", GroupsWriteReq.Dissolve::class.java, obj(
+                        listOf(
+                        Field("op", { tag("dissolve") }, optional = false, nullable = false),
+                        Field("id", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupsWriteReq.Dissolve(a[1] as String) },
+                        { v -> arrayOf("dissolve", v.id) },
+                    )),
+                ),
+            )
+    }
+}
+
+sealed interface GroupsWritten {
+    /** 判别格（`is`）那个词。 */
+    val `is`: String
+
+    val id: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Made(
+        override val id: String,
+        val name: String,
+        val made: Long,
+    ) : GroupsWritten, Ordered {
+        override val `is`: String get() = "made"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Renamed(
+        override val id: String,
+        val name: String,
+        val made: Long,
+    ) : GroupsWritten, Ordered {
+        override val `is`: String get() = "renamed"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Dissolved(
+        override val id: String,
+    ) : GroupsWritten, Ordered {
+        override val `is`: String get() = "dissolved"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<GroupsWritten> =
+            tagged<GroupsWritten>(
+                "is",
+                listOf(
+                Variant("made", GroupsWritten.Made::class.java, obj(
+                        listOf(
+                        Field("is", { tag("made") }, optional = false, nullable = false),
+                        Field("id", { Str }, optional = false, nullable = false),
+                        Field("name", { Str }, optional = false, nullable = false),
+                        Field("made", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupsWritten.Made(a[1] as String, a[2] as String, a[3] as Long) },
+                        { v -> arrayOf("made", v.id, v.name, v.made) },
+                    )),
+                Variant("renamed", GroupsWritten.Renamed::class.java, obj(
+                        listOf(
+                        Field("is", { tag("renamed") }, optional = false, nullable = false),
+                        Field("id", { Str }, optional = false, nullable = false),
+                        Field("name", { Str }, optional = false, nullable = false),
+                        Field("made", { Lng }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupsWritten.Renamed(a[1] as String, a[2] as String, a[3] as Long) },
+                        { v -> arrayOf("renamed", v.id, v.name, v.made) },
+                    )),
+                Variant("dissolved", GroupsWritten.Dissolved::class.java, obj(
+                        listOf(
+                        Field("is", { tag("dissolved") }, optional = false, nullable = false),
+                        Field("id", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> GroupsWritten.Dissolved(a[1] as String) },
+                        { v -> arrayOf("dissolved", v.id) },
+                    )),
+                ),
+            )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class HealthFace(
     val state: HealthState,
     val summary: String,
@@ -7046,6 +7434,52 @@ data class Held(
             ),
             { a -> Held(a[0] as String, a[1] as Long, a[2] as Long, a[3] as String) },
             { v -> arrayOf(v.path, v.next, v.nextByte, v.mark) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class HereGroup(
+    val id: String,
+    val name: String,
+    val made: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HereGroup> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("made", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> HereGroup(a[0] as String, a[1] as String, a[2] as Long) },
+            { v -> arrayOf(v.id, v.name, v.made) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class HereMember(
+    val sid: String,
+    val groups: List<String>,
+    val pinned: Boolean,
+    val face: SessionFace,
+    val facts: MemberFacts,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HereMember> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("groups", { arr(Str) }, optional = false, nullable = false),
+            Field("pinned", { Bool }, optional = false, nullable = false),
+            Field("face", { SessionFace.ADAPTER }, optional = false, nullable = false),
+            Field("facts", { MemberFacts.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> HereMember(a[0] as String, a[1] as List<String>, a[2] as Boolean, a[3] as SessionFace, a[4] as MemberFacts) },
+            { v -> arrayOf(v.sid, v.groups, v.pinned, v.face, v.facts) },
         )
     }
 }
@@ -10486,6 +10920,17 @@ enum class LoginState(val wire: String) {
     }
 }
 
+enum class Looked(val wire: String) {
+    EVERY("every"),
+    THIS_MACHINE("this_machine"),
+    NOTHING("nothing"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<Looked> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class LsEntry(
     val path: WirePath,
@@ -11582,6 +12027,33 @@ data class McpTrouble(
             ),
             { a -> McpTrouble(a[0] as String, a[1] as McpStatus, a[2] as String?, a[3] as String?) },
             { v -> arrayOf(v.name, v.status, v.detail, v.at) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MemberFacts(
+    val title: String,
+    val cwd: String?,
+    val record: String?,
+    val account: String?,
+    val bg: Boolean,
+    val at: Long?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MemberFacts> = obj(
+            listOf(
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("cwd", { opt(Str) }, optional = false, nullable = true),
+            Field("record", { opt(Str) }, optional = false, nullable = true),
+            Field("account", { opt(Str) }, optional = false, nullable = true),
+            Field("bg", { Bool }, optional = false, nullable = false),
+            Field("at", { opt(Lng) }, optional = false, nullable = true),
+            ),
+            { a -> MemberFacts(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as Boolean, a[5] as Long?) },
+            { v -> arrayOf(v.title, v.cwd, v.record, v.account, v.bg, v.at) },
         )
     }
 }
@@ -12693,6 +13165,9 @@ data class Patch(
     val customTitle: String? = null,
     val hide: HideAsk? = null,
     val autoAnswer: AutoAnswer? = null,
+    val join: List<String>? = null,
+    val leave: List<String>? = null,
+    val pinned: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12703,9 +13178,12 @@ data class Patch(
             Field("customTitle", { opt(Str) }, optional = true, nullable = true),
             Field("hide", { opt(HideAsk.ADAPTER) }, optional = true, nullable = true),
             Field("autoAnswer", { opt(AutoAnswer.ADAPTER) }, optional = true, nullable = true),
+            Field("join", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("leave", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("pinned", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> Patch(a[0] as Boolean?, a[1] as String?, a[2] as HideAsk?, a[3] as AutoAnswer?) },
-            { v -> arrayOf(v.starred, v.customTitle, v.hide, v.autoAnswer) },
+            { a -> Patch(a[0] as Boolean?, a[1] as String?, a[2] as HideAsk?, a[3] as AutoAnswer?, a[4] as List<String>?, a[5] as List<String>?, a[6] as Boolean?) },
+            { v -> arrayOf(v.starred, v.customTitle, v.hide, v.autoAnswer, v.join, v.leave, v.pinned) },
         )
     }
 }
@@ -19482,6 +19960,27 @@ data class SessionSayReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class SessionSelf(
+    val sid: String,
+    val groups: List<GroupRead>,
+    val looked: Looked,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionSelf> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("groups", { arr(GroupRead.ADAPTER) }, optional = false, nullable = false),
+            Field("looked", { Looked.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> SessionSelf(a[0] as String, a[1] as List<GroupRead>, a[2] as Looked) },
+            { v -> arrayOf(v.sid, v.groups, v.looked) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class SessionSkill(
     val name: String,
     val text: String?,
@@ -21972,6 +22471,7 @@ enum class Topic(val wire: String) {
     SESSION_HIDDEN("session_hidden"),
     FILES_DIR("files_dir"),
     HISTORY_LIST("history_list"),
+    GROUPS("groups"),
     ;
 
     companion object {

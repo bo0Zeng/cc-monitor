@@ -26,7 +26,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
 import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
 import { goldenFace, liveFace } from "../../test-support/session-faces";
-import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBook } from "../../../src/frontend/ui/needs-book";
 import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fake";
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
@@ -102,20 +102,6 @@ describe("一个会话读成什么（session-face）：点 · 字照抄那台的
     expect(needsOf(tab("a", { face: liveFace("needs_you"), line: null, needs: approve() })), "事实还没到：不猜").toBeNull();
     expect(needsOf(tab("a", { face: liveFace("working"), line: lineFor("needs_you"), needs: approve() })), "已经答完：不留一条需手动").toBeNull();
     expect(needsOf(tab("a", { face: goldenFace("reconnectable"), line: lineFor("needs_you"), needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
-  });
-
-  it("收着的组头汇总：等你 · 在跑 · 后台各数一遍（空闲 · 已结束 · 状态不明 · Claude 已退出不算），字照抄脸上的短名", () => {
-    const members = [
-      tab("a", waiting),
-      tab("b", { face: liveFace("working") }),
-      tab("c", { face: liveFace("working") }),
-      tab("d", { face: liveFace("idle") }),
-      tab("e", { face: goldenFace("ended") }),
-      tab("f", { face: null }),
-      tab("g", { face: goldenFace("reconnectable") }),
-      tab("h", { face: liveFace("background_work") }),
-    ];
-    expect(groupSummary(members)).toEqual({ needs: 1, running: 2, background: 1, needsWord: goldenFace("live-needs-you-tmux").name, runningWord: goldenFace("live-working-plain").name, backgroundWord: goldenFace("live-background").name });
   });
 
   it("★ 状态一句：会话事实那一句与脸同一刻 ⇒ 用它（会走的那一截按此刻填、钟在走）；不同刻 ⇒ 脸上那一句；在等 ⇒ 琥珀", () => {

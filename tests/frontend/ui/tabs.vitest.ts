@@ -184,7 +184,12 @@ import tg from "../../../src/frontend/ui/tab-group.module.css";
 /** 落点：插到 `sid` 之前（落下后属于 `gid`）· 末尾（组外）。 */
 const before = (sid: string, gid: string | null = null): DropTarget => ({ kind: "insert", at: { sid, side: "before" }, gid });
 const END: DropTarget = { kind: "insert", at: null, gid: null };
-import { COLLECTION_CAP, type TabCollection } from "../../../src/frontend/ui/tab-collections";
+import type { TabGroup } from "../../../src/frontend/ui/tab-bar-prefs";
+import { GroupBook, type GroupCall } from "../../../src/frontend/ui/group-book";
+import type { GroupsRead } from "../../../src/frontend/ui/generated/GroupsRead";
+import type { GroupsWriteReq } from "../../../src/frontend/ui/generated/GroupsWriteReq";
+import type { MemberFacts } from "../../../src/frontend/ui/generated/MemberFacts";
+import type { Patch } from "../../../src/frontend/ui/generated/Patch";
 
 /**
  * 钉住钟面（`performance.now` 恒定，这一条结束还原）：要逐字比「这一问交了多少期限」（`leftMs`）的判据用。
@@ -266,7 +271,7 @@ const opens = (): unknown[][] => vi.mocked(openSession).mock.calls.map((c) => [c
  * `tabs` 里的 sid 必须已经在栏里；没列到的 tab 一律散着。
  */
 function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: string[] }[]): void {
-  home(tm).prefs.collections = groups.map(({ id, name }) => ({ id, name }));
+  home(tm).prefs.collections = groups.map(({ id, name }) => ({ id, name, home: LOCAL_ORIGIN, counts: [] }));
   for (const t of home(tm).store.tabs.values()) t.group = null;
   for (const g of groups) for (const sid of g.tabs ?? []) home(tm).store.tabs.get(sid)!.group = g.id;
 }
@@ -280,6 +285,90 @@ function groupMenuItem(label: string): HTMLElement {
 function membersOf(tm: TabManager, gid: string): string[] {
   return home(tm).store.orderedIds.filter((sid) => home(tm).store.tabs.get(sid)?.group === gid);
 }
+
+/**
+ * 组的后端替身（照 `history/groups.rs` 那几条的形状、只做判据要的）：组住家那台（建在问的那台），组员与固定是会话注解（住会话那台）；
+ * 读回来的各组照建的先后、组员带那台给的复活那几格。`calls` 记下每一问 `[哪台, 命令, 入参]`。
+ */
+function groupBackend(): {
+  book: GroupBook;
+  calls: Array<[string, string, unknown]>;
+  note: (origin: string, sid: string) => { groups: string[]; pinned: boolean; facts: MemberFacts };
+  group: (id: string, name: string, home?: string) => void;
+  connect: (tm: TabManager) => Promise<void>;
+} {
+  const groups: Array<{ id: string; name: string; home: string }> = [];
+  const notes = new Map<string, { origin: string; sid: string; groups: string[]; pinned: boolean; facts: MemberFacts }>();
+  const calls: Array<[string, string, unknown]> = [];
+  let made = 0;
+  const note = (origin: string, sid: string): { origin: string; sid: string; groups: string[]; pinned: boolean; facts: MemberFacts } => {
+    const k = `${origin}\n${sid}`;
+    let m = notes.get(k);
+    if (!m) {
+      m = { origin, sid, groups: [], pinned: false, facts: { title: `标题-${sid}`, cwd: `/w/${sid}`, record: `/p/${sid}.jsonl`, account: null, bg: false, at: null } };
+      notes.set(k, m);
+    }
+    return m;
+  };
+  const row = (m: { origin: string; sid: string; pinned: boolean; facts: MemberFacts }): GroupsRead["pinned"][number] => ({
+    origin: m.origin,
+    sid: m.sid,
+    pinned: m.pinned,
+    face: goldenFace("ended"),
+    facts: m.facts,
+  });
+  const read = (): GroupsRead => ({
+    groups: groups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      title: g.name,
+      home: g.home,
+      made: 0,
+      known: { is: "now" },
+      members: [...notes.values()].filter((m) => m.groups.includes(g.id)).map(row),
+      counts: [],
+    })),
+    pinned: [...notes.values()].filter((m) => m.pinned).map(row),
+    machines: [],
+  });
+  const call: GroupCall = async (origin, cmd, req) => {
+    calls.push([origin, cmd, req]);
+    if (cmd === "groups-read") return read() as never;
+    if (cmd === "groups-write") {
+      const r = req as GroupsWriteReq;
+      if (r.op === "make") {
+        made += 1;
+        groups.push({ id: `g${made}`, name: r.name, home: origin });
+        return { is: "made", id: `g${made}`, name: r.name, made } as never;
+      }
+      const i = groups.findIndex((g) => g.id === r.id);
+      if (r.op === "rename") groups[i].name = r.name;
+      else groups.splice(i, 1);
+      return (r.op === "rename" ? { is: "renamed", id: r.id, name: r.name, made: 0 } : { is: "dissolved", id: r.id }) as never;
+    }
+    const { sid, patch } = req as { sid: string; patch: Patch };
+    const m = note(origin, sid);
+    for (const g of patch.join ?? []) if (!m.groups.includes(g)) m.groups.push(g);
+    m.groups = m.groups.filter((g) => !(patch.leave ?? []).includes(g));
+    if (patch.pinned != null) m.pinned = patch.pinned;
+    return { entry: {}, prev: null } as never;
+  };
+  const book = new GroupBook(call, 0);
+  return {
+    book,
+    calls,
+    note,
+    group: (id, name, homeAt = LOCAL_ORIGIN) => void groups.push({ id, name, home: homeAt }),
+    connect: async (tm) => {
+      tm.attachGroups(book);
+      await book.refreshAll([LOCAL_ORIGIN]);
+    },
+  };
+}
+/** 写都是交出去不等的（先改内存再交那台）⇒ 看替身之前把那几跳跑完（推送重问也在里面）。 */
+const settleGroups = async (): Promise<void> => {
+  for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+};
 
 function makeTM(): TabManager {
   document.body.innerHTML = "";
@@ -2900,7 +2989,7 @@ describe("P7a-3 集合分组渲染", () => {
 
   it("★ P7a3-E 反面：**拉过了就必须给入口**（否则「永远不给」也能过）", async () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
-    await tm.loadCollections(); // mock 的 config 是空的 ⇒ 集合为空，但「拉过」为真
+    await groupBackend().connect(tm); // 账是空的 ⇒ 集合为空，但「读到过」为真
     flushBar();
     const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
@@ -2910,35 +2999,19 @@ describe("P7a-3 集合分组渲染", () => {
     expect(labels.join("|")).toContain(copyText("tabMenu.collection.add"));
   });
 
-  // 要求：「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
-  it("〔TL2 · E13〕右键「新建分组」集合数到上界 ⇒ 说一句、不建；差一个 ⇒ 不问名字直接建「分组 N」", async () => {
+  it("右键「新建分组」⇒ 不问名字直接建「分组 N」，这个 tab 就在里面", async () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
-    await tm.loadCollections();
-    const clickNew = async (): Promise<void> => {
-      flushBar();
-      const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
-      root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-      const btn = [...document.querySelectorAll("[role=menu] button")].find(
-        (e) => e.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.collection.new"),
-      ) as HTMLButtonElement | undefined;
-      expect(btn, "菜单里要有「新建分组」（否则本判据在空转）").toBeTruthy();
-      btn!.click();
-      document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
-      for (let i = 0; i < 5; i++) await Promise.resolve();
-    };
-    const many = (n: number): { id: string; name: string }[] =>
-      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}` }));
-    setCols(many(COLLECTION_CAP));
-    await clickNew();
+    await groupBackend().connect(tm);
+    flushBar();
+    const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    const btn = [...document.querySelectorAll("[role=menu] button")].find(
+      (e) => e.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.collection.new"),
+    ) as HTMLButtonElement | undefined;
+    expect(btn, "菜单里要有「新建分组」（否则本判据在空转）").toBeTruthy();
+    btn!.click();
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     expect(noAskDialog(), "不问名字").toBe(true);
-    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual([copyText("tabCollections.full.collectionsTitle")]);
-    expect(home(tm).store.tabs.get("a")!.group, "满了 ⇒ 不建").toBeNull();
-
-    vi.mocked(showActionFailureToast).mockClear();
-    setCols(many(COLLECTION_CAP - 1));
-    await clickNew();
-    expect(noAskDialog(), "没满也不问名字").toBe(true);
-    expect(showActionFailureToast).not.toHaveBeenCalled();
     const gid = home(tm).store.tabs.get("a")!.group;
     expect(home(tm).prefs.collections.find((c) => c.id === gid)?.name, "建了「分组 N」").toBe(copyText("tabDrop.group.defaultName", { n: 1 }));
   });
@@ -2948,7 +3021,10 @@ describe("P7a-3 集合分组渲染", () => {
   it("〔GRP1〕右键「加入集合 › 某组」⇒ 这个 tab 的 `group` 就是那一组、一句话都不说；「移出」⇒ 回到散 tab", async () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
-    await tm.loadCollections();
+    const be = groupBackend();
+    be.group("g", "白天");
+    be.note(LOCAL_ORIGIN, "b").groups = ["g"];
+    await be.connect(tm);
     const click = (sid: string, label: string): void => {
       flushBar();
       const root = home(tm).bar.tabButtons.get(sid)!.root;
@@ -2960,7 +3036,6 @@ describe("P7a-3 集合分组渲染", () => {
       btn!.click();
       document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     };
-    setCols([{ id: "g", name: "白天", tabs: ["b"] }]);
     click("a", "白天");
     expect(showActionFailureToast).not.toHaveBeenCalled();
     expect(membersOf(tm, "g"), "a 该进组、排最后（b 原本就在）").toEqual(["b", "a"]);
@@ -3013,153 +3088,111 @@ describe("P7a-3 集合分组渲染", () => {
 // ==========================================================================
 // 固定（pinned）—— 「关了 app 再打开它还在」
 //
-// `§B.1` 现打：在这之前全仓 `pinned`/`isPinned`/`pinTab` **零命中**。
 // `§B.3` 的承重：它**必须是正交的一维**，不能做成 `TabStatus` 的第三态 ——
 //   因为 `archived + pinned` 才是用户的主用例（固定住一个已经跑完的会话）。
-//
-// 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走那个已经被 mock 的
-//   `invoke`，`load_config`/`patch_config` 两条命令），所以「落盘了没有」是
-//   **读盘对拍**，不是「有没有调过某个函数」。
+// 固定是会话注解（住会话那一台，`history/groups.rs`）：这一组的后端是替身 `groupBackend`（照那几条命令的形状），
+//   「交没交到那台」是**看替身里那条会话的注解**，不是「有没有调过某个函数」。
 // ==========================================================================
-describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
+describe("步 17·B 固定：交那台 · 复活 · 正交", () => {
   let tm: TabManager;
-  let disk: Record<string, unknown>;
+  let be: ReturnType<typeof groupBackend>;
   const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
-  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 读盘前要把那条链子跑完。
-   *  两次 `Promise.resolve()` 不够：`writeSegKey` 里 load→save 是两跳 `invoke`。 */
-  const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  const pinnedOnDisk = (): unknown[] => {
-    const seg = disk.tabBar as Record<string, unknown> | undefined;
-    return (seg?.pinned as unknown[]) ?? [];
-  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
-    disk = {};
-    // 🔴 config 走 `invoke` 这一层（与仓里 `src/frontend/ui/config.ts` 的真实链路一致）：
-    //   上面的 `tab-bar-state` / `tab-collections` 因此是**真跑**的，
-    //   判据买到的是那一段的形状（只动自己那个键 · 清洗 · 上界），不是一个 spy。
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
-      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "patch_config") {
-        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
-        return Promise.resolve(undefined);
-      }
-      return Promise.resolve(undefined);
-    }));
+    vi.mocked(invoke).mockImplementation(withHistoryReads(() => Promise.resolve(undefined)));
     tm = makeTM();
+    be = groupBackend();
   });
 
-  it("🔴 量具自检：这一组的「盘」真的在读写（不过这格，下面全是空转）", async () => {
-    disk = { tabBar: { pinned: [{ sid: "写进去的", origin: LOCAL_ORIGIN, title: "T" }] } };
-    await tm.loadPinned();
-    expect(home(tm).store.tabs.has("写进去的"), "盘上的东西没被读进来 ⇒ 下面的复活判据全是空转").toBe(
-      true,
-    );
-    await tm.loadPinned(); // 幂等：再读一次不该多出东西
+  it("🔴 量具自检：替身里固定的那条真的被读进来（不过这格，下面全是空转）", async () => {
+    be.note(LOCAL_ORIGIN, "写进去的").pinned = true;
+    await be.connect(tm);
+    expect(home(tm).store.tabs.has("写进去的"), "账上的东西没被读进来 ⇒ 下面的复活判据全是空转").toBe(true);
+    await be.book.refreshAll([]); // 幂等：再读一次不该多出东西
     expect(home(tm).store.orderedIds).toEqual(["写进去的"]);
   });
 
-  it("复活：盘上一条 ⇒ 造出一个**灰着的**骨架 tab，字段逐个对拍（`§B.5`）", async () => {
-    disk = {
-      tabBar: {
-        pinned: [
-          {
-            sid: "s1",
-            jsonlPath: "/p/s1.jsonl",
-            cwd: "/home/u/proj",
-            origin: LOCAL_ORIGIN,
-            account: "work",
-            lastActiveAt: 1700000000000,
-            background: false,
-            name: null,
-            title: "存下来的标题",
-          },
-        ],
-      },
-    };
-    await tm.loadPinned();
+  it("复活：账上一条固定、没有标签 ⇒ 照那台给的那几格造出一个骨架 tab，字段逐个对拍", async () => {
+    const m = be.note(LOCAL_ORIGIN, "s1");
+    m.pinned = true;
+    m.facts = { title: "存下来的标题", cwd: "/home/u/proj", record: "/p/s1.jsonl", account: "work", bg: false, at: 1700000000000 };
+    await be.connect(tm);
     const t = tabOf("s1");
-    // 〔说不清〕没人说过它 ⇒ **说不清**；清单报完了也不替那台下结论：去向只由那台答（它随名单报上去，那台答一格已结束）。
+    // 〔说不清〕没人说过它 ⇒ **说不清**；清单报完了也不替那台下结论：去向只由那台答。
     expect(t.face, "没人说过它 ⇒ 不画点，不许说成已结束").toBeNull();
     tm.markOriginSeen(LOCAL_ORIGIN);
     expect(t.face, "清单报完了不替那台下结论").toBeNull();
     tm.onFace("s1", goldenFace("ended"));
     expect(t.face?.dot, "那台答了已结束 ⇒ 已结束").toBe("ended");
     expect(t.pinned, "复活出来的当然是固定的").toBe(true);
-    expect(t.title, "🔴 标题要用存下来的那份 —— 不等读文件（`§B.5` 逐字）").toBe("存下来的标题");
-    expect(t.parentPath, "jsonlPath 是复活的必需品，没落到 tab 上等于白存").toBe("/p/s1.jsonl");
+    expect(t.title, "🔴 标题照那台给的 —— 不等读文件").toBe("存下来的标题");
+    expect(t.parentPath, "记录路径是复活的必需品，没落到 tab 上等于白给").toBe("/p/s1.jsonl");
     expect(t.projectDir).toBe("/home/u/proj");
   });
 
-  it("🔴 盘上那条**已经活着**时：只补 `pinned`，`status` 一个字不碰", async () => {
-    // 后端 `event_replay` 可能已经先宣告了它。把一条真活着的会话按回 archived 是一句假话。
+  it("🔴 账上那条**已经活着**时：只补 `pinned`，`status` 一个字不碰", async () => {
     tm.ensureTab("s1", "/c", "/real.jsonl", LOCAL_ORIGIN);
-    disk = { tabBar: { pinned: [{ sid: "s1", origin: LOCAL_ORIGIN, title: "旧标题", jsonlPath: "/old.jsonl" }] } };
-    await tm.loadPinned();
+    be.note(LOCAL_ORIGIN, "s1").pinned = true;
+    await be.connect(tm);
     expect(tabOf("s1").face?.dot, "🔴 把活着的会话按成已结束了").toBe("running");
     expect(tabOf("s1").pinned).toBe(true);
-    expect(tabOf("s1").parentPath, "活着那条的真路径不许被盘上的旧值覆盖").toBe("/real.jsonl");
+    expect(tabOf("s1").parentPath, "活着那条的真路径不许被账上的覆盖").toBe("/real.jsonl");
   });
 
-  it("盘上存的机器标签旧了：后端宣告在另一台 ⇒ tab 改过来，盘上那条同拍改写（下次起来就是对的标签）", async () => {
-    disk = { tabBar: { pinned: [{ sid: "s1", origin: "old-host", title: "T", jsonlPath: "/p/s1.jsonl" }] } };
-    await tm.loadPinned();
-    tm.ensureTab("s1", "/home/u/proj", "", "new-host");
-    await flushDisk();
-    expect(tabOf("s1").origin).toBe("new-host");
-    expect((pinnedOnDisk() as { sid: string; origin: string }[]).map((p) => [p.sid, p.origin])).toEqual([["s1", "new-host"]]);
+  it("固定住会话那一台：固定一个远端的 tab ⇒ 那台那条注解收到 `pinned`（本机那台一条都不收）", async () => {
+    await be.connect(tm);
+    tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", "devbox");
+    tm.togglePin("s1");
+    await settleGroups();
+    expect(be.note("devbox", "s1").pinned).toBe(true);
+    expect(be.calls.filter((c) => c[1] === "history-annotate").map((c) => c[0])).toEqual(["devbox"]);
   });
 
-  it("`togglePin` ⇒ 内存翻转 ＋ **盘上真的出现/消失那一条**", async () => {
-    await tm.loadPinned(); // 先取得资格
+  it("`togglePin` ⇒ 内存翻转 ＋ **那台的注解真的翻过去**", async () => {
+    await be.connect(tm);
     tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", LOCAL_ORIGIN);
     tm.togglePin("s1");
-    await flushDisk();
+    await settleGroups();
     expect(tabOf("s1").pinned).toBe(true);
-    expect(
-      (pinnedOnDisk() as { sid: string; jsonlPath: string }[]).map((p) => [p.sid, p.jsonlPath]),
-      "落盘的记录不对（sid / jsonlPath 是复活的两个必需品）",
-    ).toEqual([["s1", "/p/s1.jsonl"]]);
-
+    expect(be.note(LOCAL_ORIGIN, "s1").pinned).toBe(true);
     tm.togglePin("s1");
-    await flushDisk();
+    await settleGroups();
     expect(tabOf("s1").pinned).toBe(false);
-    expect(pinnedOnDisk(), "取消固定之后盘上还留着 ⇒ 下次启动它又回来了").toEqual([]);
+    expect(be.note(LOCAL_ORIGIN, "s1").pinned, "取消固定之后那台还留着 ⇒ 下次启动它又回来了").toBe(false);
   });
 
-  it("🔴 没 `loadPinned` 过的实例：`togglePin` 什么都不做（防静默清空）", async () => {
-    // `persistPinned` 是**按当前 tab 重算整张表**写回去的 —— 没读过盘就写 = 清空。
-    // 撕离出来的 viewer 窗口正是这种实例（与 `collectionsLoaded` 同一条理由）。
-    disk = { tabBar: { pinned: [{ sid: "别人固定的", origin: LOCAL_ORIGIN, title: "T" }] } };
+  it("🔴 没接组的账的实例（撕离出来的查看窗）：`togglePin` 什么都不做", async () => {
     tm.ensureTab("s1", "/c", "p", LOCAL_ORIGIN);
     tm.togglePin("s1");
-    await flushDisk();
+    await settleGroups();
     expect(tabOf("s1").pinned, "没资格就不许改内存").toBe(false);
-    expect(
-      (pinnedOnDisk() as { sid: string }[]).map((p) => p.sid),
-      "🔴 用户上次固定的那条被冲掉了",
-    ).toEqual(["别人固定的"]);
+    expect(be.calls, "没接账就一条都不交").toEqual([]);
   });
 
-  it("`closeTab` 一个固定的灰 tab ⇒ 盘上那条跟着摘掉（点了 × 就不该第二天还在）", async () => {
-    await tm.loadPinned();
+  it("`closeTab` 一个固定的灰 tab ⇒ 那台那条取消固定（点了 × 就不该第二天还在）", async () => {
+    await be.connect(tm);
     tm.ensureTab("s1", "/c", "/p/s1.jsonl", LOCAL_ORIGIN);
     tm.togglePin("s1");
-    await flushDisk();
-    expect((pinnedOnDisk() as { sid: string }[]).map((p) => p.sid)).toEqual(["s1"]);
-
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "s1").pinned).toBe(true);
     tm.onFace("s1", goldenFace("ended"));
-    tm.closeTab("s1");
-    await flushDisk();
-    expect(pinnedOnDisk(), "关掉了还留在盘上 ⇒ 下次开 app 它又回来了").toEqual([]);
+    vi.useFakeTimers();
+    try {
+      tm.closeTab("s1");
+      await vi.advanceTimersByTimeAsync(10_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "s1").pinned, "关掉了还固定着 ⇒ 下次开 app 它又回来了").toBe(false);
+    expect(home(tm).store.tabs.has("s1"), "取消固定以后账重读一次，关掉的不许又复活").toBe(false);
   });
 
   it("🔴 正交：`archived` 与 `pinned` **同时成立**（`§B.3` 的主用例）", async () => {
-    await tm.loadPinned();
+    await be.connect(tm);
     tm.ensureTab("s1", "/c", "p", LOCAL_ORIGIN);
     tm.togglePin("s1"); // live 也能 pin（`§B.3b`：效果等它变灰才显现）
     expect(tabOf("s1").face?.dot).toBe("running");
@@ -3170,18 +3203,16 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
   });
 
   it("🔴 `§B.3b`：固定**不影响位置** —— `orderedIds` 一个字不许动", async () => {
-    await tm.loadPinned();
+    await be.connect(tm);
     for (const s of ["a", "b", "c"]) tm.ensureTab(s, "/c", "p", LOCAL_ORIGIN);
     const before = [...home(tm).store.orderedIds];
     tm.togglePin("b"); // 固定中间那个
-    expect(home(tm).store.orderedIds, "有人把固定的排到前面去了 —— 那是被 `§B.3b` 删掉的「固定区」").toEqual(
-      before,
-    );
+    expect(home(tm).store.orderedIds, "有人把固定的排到前面去了 —— 那是被 `§B.3b` 删掉的「固定区」").toEqual(before);
     expect(before).toEqual(["a", "b", "c"]);
   });
 
   it("📌 角标：`.tab.pinned` 跟着 `Tab.pinned` 走，且角标元素真的在（正反两控）", async () => {
-    await tm.loadPinned();
+    await be.connect(tm);
     tm.ensureTab("s1", "/c", "p", LOCAL_ORIGIN);
     const root = home(tm).bar.tabButtons.get("s1")!.root;
     expect(root.classList.contains("pinned"), "还没固定就显角标 ⇒ 这个类没在跟着值走").toBe(false);
@@ -3197,18 +3228,15 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
         .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     };
     const labels = (): string[] =>
-      [
-        ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ??
-          []),
-      ].map((b) => b.querySelector("[data-part=label]")?.textContent ?? "");
+      [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(
+        (b) => b.querySelector("[data-part=label]")?.textContent ?? "",
+      );
 
     tm.ensureTab("s1", "/c", "p", LOCAL_ORIGIN);
     rightClick("s1");
-    expect(labels(), "🔴 没 `loadPinned` 过就给入口 ⇒ 点一下清空用户的固定表").not.toContain(
-      copyText("tabMenu.pin.pin"),
-    );
+    expect(labels(), "🔴 没读到账就给入口").not.toContain(copyText("tabMenu.pin.pin"));
 
-    await tm.loadPinned();
+    await be.connect(tm);
     rightClick("s1");
     expect(labels()).toContain(copyText("tabMenu.pin.pin"));
     (
@@ -3216,46 +3244,33 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
         (b) => b.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.pin.pin"),
       ) as HTMLButtonElement
     ).click();
-    expect(tabOf("s1").pinned, "菜单项点了没反应 —— 这个仓刚因为这个撤掉过两个取色器").toBe(true);
+    expect(tabOf("s1").pinned, "菜单项点了没反应").toBe(true);
     rightClick("s1");
     expect(labels(), "已经固定了还显「固定此标签」⇒ 用户没法取消").toContain(copyText("tabMenu.pin.unpin"));
   });
 
   it("🔴 `§B.6` 第一格：复活出来的空 tab 里**有话说**，两种情形两种话（正反两控）", async () => {
-    disk = {
-      tabBar: {
-        pinned: [
-          { sid: "ok", origin: LOCAL_ORIGIN, jsonlPath: "/p/ok.jsonl", title: "有记录的" },
-          { sid: "bad", origin: LOCAL_ORIGIN, jsonlPath: "", title: "没记录的" },
-        ],
-      },
-    };
-    await tm.loadPinned();
-    const hintOf = (sid: string): HTMLElement =>
-      tabOf(sid).streamEl.querySelector(".pin-revived-hint") as HTMLElement;
+    be.note(LOCAL_ORIGIN, "ok").pinned = true;
+    const bad = be.note(LOCAL_ORIGIN, "bad");
+    bad.pinned = true;
+    bad.facts = { ...bad.facts, record: null };
+    await be.connect(tm);
+    const hintOf = (sid: string): HTMLElement => tabOf(sid).streamEl.querySelector(".pin-revived-hint") as HTMLElement;
 
     expect(hintOf("ok"), "复活的 tab 里一片空白 —— 那与坏了没有区别").toBeTruthy();
     expect(hintOf("ok").querySelector(".pin-revived-hint-btn")?.textContent).toBe(copyText("tabBarPrefs.pin.resume"));
-
-    expect(
-      hintOf("bad").querySelector("strong")?.textContent,
-      "`§B.6` 逐字：`jsonlPath` 为空的要提示「这个会话没有留下记录」",
-    ).toBe(copyText("sessionState.pinnedEmpty.head"));
-    expect(
-      hintOf("bad").querySelector(".pin-revived-hint-btn"),
-      "🔴 没有记录还给一个 Resume 按钮 ⇒ 那就是一个点了必失败的按钮",
-    ).toBeNull();
+    expect(hintOf("bad").querySelector("strong")?.textContent, "记录已不在的要提示「这个会话没有留下记录」").toBe(
+      copyText("sessionState.pinnedEmpty.head"),
+    );
+    expect(hintOf("bad").querySelector(".pin-revived-hint-btn"), "🔴 没有记录还给一个 Resume 按钮 ⇒ 点了必失败").toBeNull();
   });
 
   it("resume 真接上了（那台发来活着的脸）⇒ 那块空态提示自己走掉", async () => {
-    disk = { tabBar: { pinned: [{ sid: "s1", origin: LOCAL_ORIGIN, jsonlPath: "/p/s1.jsonl", title: "T" }] } };
-    await tm.loadPinned();
+    be.note(LOCAL_ORIGIN, "s1").pinned = true;
+    await be.connect(tm);
     expect(tabOf("s1").streamEl.querySelector(".pin-revived-hint")).toBeTruthy();
     tm.onFace("s1", liveFace("working", true));
-    expect(
-      tabOf("s1").streamEl.querySelector(".pin-revived-hint"),
-      "会话已经活了，那块「只能 resume」的话还挂在内容上面",
-    ).toBeNull();
+    expect(tabOf("s1").streamEl.querySelector(".pin-revived-hint"), "会话已经活了，那块「只能 resume」的话还挂在内容上面").toBeNull();
   });
 });
 
@@ -3308,7 +3323,7 @@ describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）"
 describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyDrop`）", () => {
   let tm: TabManager;
   const order = (): string[] => home(tm).store.orderedIds;
-  const colsOf = (): TabCollection[] => home(tm).prefs.collections;
+  const colsOf = (): TabGroup[] => home(tm).prefs.collections;
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -3393,28 +3408,19 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     expect(colsOf(), "拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
   });
 
-  // 要求：「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
-  // 原「拖进一个满了的组 ⇒ 说一句『没有加进』」一格删了：成员上界随成员名单一起作废（被测的东西不在了）。
-  it("〔TL2 · E13〕集合数到上界时拖放建组 ⇒ 说一句「没有建新集合」；差一个 ⇒ 建出来、不出声", () => {
-    const many = (n: number): TabCollection[] =>
-      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}` }));
+  it("拖放压在一个散 tab 上建组 ⇒ 建出来、恰是这两个、不出声；家那台回了新 id 再把两条写进去", async () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
-    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
-    home(tm).prefs.collections = many(COLLECTION_CAP);
+    tm.ensureTab("b", "/c2", "p", "devbox");
+    const be = groupBackend();
+    await be.connect(tm);
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
-    expect(colsOf().length).toBe(COLLECTION_CAP);
-    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual([copyText("tabCollections.full.collectionsTitle")]);
-    expect(
-      [home(tm).store.tabs.get("a")!.group, home(tm).store.tabs.get("b")!.group],
-      "没建出组 ⇒ 两个都不许挂在一个不存在的组 id 上",
-    ).toEqual([null, null]);
-
-    vi.clearAllMocks();
-    home(tm).prefs.collections = many(COLLECTION_CAP - 1);
-    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
-    expect(colsOf().length, "差一个没满 ⇒ 该建出来").toBe(COLLECTION_CAP);
-    expect(membersOf(tm, colsOf()[COLLECTION_CAP - 1].id), "建出来的组里恰是这两个").toEqual(["b", "a"]);
+    expect(colsOf().length).toBe(1);
+    expect(membersOf(tm, colsOf()[0].id), "建出来的组里恰是这两个").toEqual(["b", "a"]);
     expect(showActionFailureToast).not.toHaveBeenCalled();
+    await settleGroups();
+    expect(colsOf().map((c) => c.id), "占位的 id 换成家那台回的").toEqual(["g1"]);
+    expect(be.note(LOCAL_ORIGIN, "a").groups).toEqual(["g1"]);
+    expect(be.note("devbox", "b").groups, "组员照它那台写").toEqual(["g1"]);
   });
 
   it("没 `loadCollections` 过的实例：归属一个字不动（顺序照常）", () => {
@@ -3579,7 +3585,7 @@ describe("步 17·D ⑤ 中间一半停 400ms 才成组（假手势打真事件�
 // 这一组只量一件事：**`TabManager.loadOrder` 有没有真的把盘上那份顺序装回栏里。**
 //
 // 🔴 **为什么必须照「真实启动时序」摆**（这一组全部判据的承重）：
-//   `src/frontend/ui/main.ts` 里那一行是 `loadPinned().finally(() => loadOrder())` ——
+//   `src/frontend/ui/main.ts` 里那一行是 `loadCollections().finally(() => loadOrder())` ——
 //   `loadOrder` 跑在**会话还没到**的那一刻，tab 是随后由 `session_added` / 首行**陆续**
 //   建出来的。⇒ 把 tab 先造好再调 `loadOrder` 的判据**买不到这条性质**：
 //   它在那种摆法下是绿的，而在真实时序下整张顺序会被摘掉。
@@ -3605,11 +3611,11 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
 
   /**
    * **真实启动时序**（逐行对着 `src/frontend/ui/main.ts` 那三句摆）：
-   *   `new TabManager` → `loadPinned()` → `loadOrder()` → 会话**随后**陆续到。
+   *   `new TabManager` → `loadCollections()` → `loadOrder()` → 会话**随后**陆续到。
    * @param arriving 会话到达的次序（＝后端清单/事件流给的次序，通常不等于用户拖出来的次序）
    */
   const startupThenSessionsArrive = async (arriving: string[]): Promise<void> => {
-    await tm.loadPinned();
+    await tm.loadCollections();
     await tm.loadOrder();
     for (const sid of arriving) {
       // 每个 sid 一个自己的 cwd（原先是为了避开 bg 树状锚定；树删了之后留着无害）。
@@ -4322,16 +4328,11 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 
   it("★ 说不清：固定复活 ⇒ 说不清（字里零处「已结束」）；清单报完了照旧说不清；那台答了已结束 ⇒ 已结束；宣告了 ⇒ 活", async () => {
-    disk = {
-      tabBar: {
-        pinned: [
-          { sid: "p1", origin: "pi", title: "T1", jsonlPath: "/p/p1.jsonl" },
-          { sid: "p2", origin: LOCAL_ORIGIN, title: "T2", jsonlPath: "/p/p2.jsonl" },
-          { sid: "p3", origin: LOCAL_ORIGIN, title: "T3", jsonlPath: "/p/p3.jsonl" },
-        ],
-      },
-    };
-    await tm.loadPinned();
+    const be = groupBackend();
+    be.note("pi", "p1").pinned = true;
+    be.note(LOCAL_ORIGIN, "p2").pinned = true;
+    be.note(LOCAL_ORIGIN, "p3").pinned = true;
+    await be.connect(tm);
     for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).face, "复活出来还没人说过它 ⇒ 不画点").toBeNull();
     // 重放到了：那几条那台还没报（壳的「说不清」那一格）⇒ 落成本机后端交来的那一张。
     for (const o of [LOCAL_ORIGIN, "pi"]) tm.markOriginUnseen(o, goldenFace("unseen"));
@@ -4357,15 +4358,10 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   it("★ 说不清：那台先报完、固定后复活 ⇒ 照旧说不清（不替那台下结论）；那台先答了已结束 ⇒ 复活出来就是已结束；远端又宣告它 ⇒ 活", async () => {
     tm.markOriginSeen("pi");
     tm.onFace("q2", goldenFace("ended")); // 那台的答早于复活到（tab 还没建，暂存）
-    disk = {
-      tabBar: {
-        pinned: [
-          { sid: "q1", origin: "pi", title: "Q", jsonlPath: "/p/q1.jsonl" },
-          { sid: "q2", origin: "pi", title: "Q2", jsonlPath: "/p/q2.jsonl" },
-        ],
-      },
-    };
-    await tm.loadPinned();
+    const be = groupBackend();
+    be.note("pi", "q1").pinned = true;
+    be.note("pi", "q2").pinned = true;
+    await be.connect(tm);
     expect(tabOf("q1").face, "复活出来还没人说过它 ⇒ 不画点（不替那台下结论）").toBeNull();
     expect(tabOf("q2").face?.dot).toBe("ended");
     tm.onFace("q1", liveFace("working")); // 远端又宣告它：那一帧带着脸
@@ -4841,7 +4837,7 @@ describe.each([
 ])("同 cwd 的那一颗是%s ⇒ 落位 / 拖拽 / 集合与另一跑逐字相同", (_label, subKind) => {
   let tm: TabManager;
   const order = (): string[] => home(tm).store.orderedIds;
-  const colsOf = (): TabCollection[] => home(tm).prefs.collections;
+  const colsOf = (): TabGroup[] => home(tm).prefs.collections;
   /** `host` 与 `sub` 同 cwd；`other` 另一个项目。三颗按 `arriving` 的次序宣告。 */
   const arrive = (arriving: string[]): void => {
     for (const sid of arriving) {
@@ -4896,7 +4892,7 @@ describe.each([
     arrive(["host", "sub", "other"]);
     setGroups(tm, [{ id: "g1", name: "白天", tabs: ["host", "sub"] }]);
     home(tm).dragger.applyDrop("host", END);
-    expect(colsOf()).toEqual([{ id: "g1", name: "白天" }]);
+    expect(colsOf().map((c) => [c.id, c.name])).toEqual([["g1", "白天"]]);
     expect(membersOf(tm, "g1")).toEqual(["sub"]);
     expect(order()).toEqual(["sub", "other", "host"]);
   });
@@ -5230,34 +5226,26 @@ describe("〔FW1〕记录文件的出声", () => {
 });
 
 // ==========================================================================
-// 守原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」。
-// 四条判据：J1 盘上零处会话 id 名单形状的组员表（带正控）· J2 × 之后盘与内存零残留 ·
-// J3 最后一个成员关掉组消失 · J4 重启后只有还在栏里的 tab 带组。真 TabManager ＋ 内存假盘，读盘对拍。
+// 组是后端的数据（A1-5 · A1-8）：组本身住家那台、组员与固定是会话注解（住会话那台）；会话自己结束后仍算组员，人点 × 就出组。
+// K1 这台 config.json 不存组 · K2 点 × 出组（会话自己结束不算）· K3 谁都不剩才解散 · K4 重启照账带组。真 TabManager ＋ 组的后端替身。
 // ==========================================================================
-/** 盘上所有「装着 `sids` 里某个 sid 的数组」的路径（点分）—— J1 的扫描。 */
-function sidArrays(v: unknown, sids: ReadonlySet<string>, path = ""): string[] {
-  if (Array.isArray(v)) {
-    const here = v.some((x) => typeof x === "string" && sids.has(x)) ? [path] : [];
-    return [...here, ...v.flatMap((x, i) => sidArrays(x, sids, `${path}.${i}`))];
-  }
-  if (v && typeof v === "object") {
-    return Object.entries(v).flatMap(([k, x]) => sidArrays(x, sids, path ? `${path}.${k}` : k));
-  }
-  return [];
-}
-
-describe("组员关系是 tab 自己的属性", () => {
+describe("组是后端的数据：栏照账画 · 写到会话那台 · 点 × 出组", () => {
   let tm: TabManager;
+  let be: ReturnType<typeof groupBackend>;
   let disk: Record<string, unknown>;
-  const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  const groupOfOnDisk = (): Record<string, string> =>
-    ((disk.tabBar as Record<string, unknown> | undefined)?.groupOf ?? {}) as Record<string, string>;
   const add = (...sids: string[]): void => {
     for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
   };
-  const close = (sid: string): void => {
+  const close = async (sid: string): Promise<void> => {
     tm.onFace(sid, goldenFace("ended")); // × 只关已结束的
-    tm.closeTab(sid);
+    vi.useFakeTimers();
+    try {
+      tm.closeTab(sid);
+      await vi.advanceTimersByTimeAsync(10_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    await settleGroups();
   };
   beforeEach(() => {
     vi.clearAllMocks();
@@ -5271,119 +5259,87 @@ describe("组员关系是 tab 自己的属性", () => {
       return Promise.resolve(undefined);
     }));
     tm = makeTM();
+    be = groupBackend();
   });
 
-  it("J1 · 走遍写组的入口，盘上零处 sid 名单形状的组员表（组表每项恰 {id,name}；装 sid 的数组只有顺序表）", async () => {
-    const sids = new Set(["a", "b", "c", "d"]);
-    disk = { tabCollections: [{ id: "old", name: "旧", members: ["a", "b"] }] };
-    expect(sidArrays(disk, sids), "正控：同一把扫描认得出旧形状").toEqual(["tabCollections.0.members"]);
+  it("K1 · 走遍写组的入口：这台 `config.json` 一个组的字都不写（段里只有顺序 · 收着的组），每一下都落在那台的注解 · 家那台的组上", async () => {
+    await be.connect(tm);
     await tm.loadCollections();
     add("a", "b", "c", "d");
-    const check = async (step: string): Promise<void> => {
-      await flushDisk();
-      for (const g of disk.tabCollections as object[]) expect(Object.keys(g).sort(), step).toEqual(["id", "name"]);
-      expect(sidArrays(disk, sids).filter((p) => p !== "tabBar.order"), step).toEqual([]);
-    };
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" }); // 拖放现建
-    await check("拖放现建");
+    await settleGroups();
     const g = home(tm).store.tabs.get("a")!.group!;
+    expect(g, "家那台回了新 id").toBe("g1");
     home(tm).dragger.applyDrop("c", before("a", g)); // 拖放进组
-    await check("拖放进组");
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "c").groups).toEqual(["g1"]);
     home(tm).dragger.applyDrop("c", END); // 拖出
-    await check("拖出");
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "c").groups).toEqual([]);
     void home(tm).prefs.joinGroup("d", g);
     void home(tm).prefs.renameGroup(g, "改");
-    await check("右键加入 · 改名");
-    close("d");
-    await check("×");
-    void home(tm).prefs.leaveGroup("a");
-    void home(tm).prefs.dissolveGroup("old");
-    await check("右键移出 · 解散");
-    expect(sidArrays(disk, sids), "两向：顺序表确实被扫到了").toEqual(["tabBar.order"]);
+    void home(tm).prefs.setCollapsed([g], true);
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "d").groups).toEqual(["g1"]);
+    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "rename", id: "g1", name: "改" }]);
+    expect(Object.keys(disk).sort(), "顶层只有 tab 栏那一段").toEqual(["tabBar"]);
+    expect(Object.keys(disk.tabBar as object).sort(), "段里只有这扇窗的看法").toEqual(["collapsed", "order"]);
+    void home(tm).prefs.dissolveGroup(g);
+    await settleGroups();
+    expect(be.calls).toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g1" }]);
+    expect(["a", "b", "d"].map((s) => be.note(LOCAL_ORIGIN, s).groups), "解散 ⇒ 各组员那台摘掉那一组").toEqual([[], [], []]);
   });
 
-  it("J2 · × 之后盘与内存零残留；同 sid resume 回来是散 tab（正控：意图里的 c 到了照样进组）", async () => {
-    disk = { tabCollections: [{ id: "g", name: "白天" }], tabBar: { groupOf: { a: "g", b: "g", c: "g" } } };
-    await tm.loadCollections();
+  // 守原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」：点 × ＝ 出组（连固定一起取消）。
+  //   「会话结束后仍算组员」说的是会话自己结束（进程退出），不是人点 ×：那一形是 K4（没来的 b 照账还在组里）。
+  it("K2 · 点 × 关掉组里的 tab ＝ 出组（那台那条注解摘掉那一组）；组里谁都不剩 ⇒ 家那台解散；会话只是结束了 ⇒ 照旧是组员", async () => {
+    be.group("g", "白天");
+    be.note(LOCAL_ORIGIN, "a").groups = ["g"];
+    be.note(LOCAL_ORIGIN, "b").groups = ["g"];
     add("a", "b");
-    const hits = (): number =>
-      JSON.stringify({ t: disk.tabCollections, g: groupOfOnDisk() }).split('"a"').length - 1;
-    expect(hits(), "正控：× 之前恰一处 groupOf.a").toBe(1);
-    close("a");
-    await flushDisk();
-    expect(hits()).toBe(0);
-    expect(groupOfOnDisk()).toEqual({ b: "g", c: "g" });
-    expect(home(tm).store.tabs.has("a")).toBe(false);
-    expect(home(tm).prefs.savedGroupOf.has("a")).toBe(false);
-    expect(membersOf(tm, "g")).toEqual(["b"]);
-    add("a", "c");
-    expect(home(tm).store.tabs.get("a")!.group, "resume 回来不许回组").toBeNull();
-    expect(home(tm).store.tabs.get("c")!.group).toBe("g");
+    await be.connect(tm);
+    expect(membersOf(tm, "g")).toEqual(["a", "b"]);
+    tm.onFace("b", goldenFace("ended")); // b 自己结束了：不是人点 ×
+    await settleGroups();
+    expect(be.note(LOCAL_ORIGIN, "b").groups, "会话结束 ≠ 出组").toEqual(["g"]);
+    await close("a");
+    expect(be.note(LOCAL_ORIGIN, "a").groups, "点 × ⇒ 出组").toEqual([]);
+    expect(be.calls.some((c) => c[1] === "groups-write"), "还有 b ⇒ 组在").toBe(false);
+    await close("b");
+    expect(be.note(LOCAL_ORIGIN, "b").groups).toEqual([]);
+    expect(be.calls, "最后一个点 × ⇒ 组也没").toContainEqual([LOCAL_ORIGIN, "groups-write", { op: "dissolve", id: "g" }]);
   });
 
-  it("J3 · 组里最后一个在栏里的关掉 ⇒ 组消失（盘 · 内存 · 栏），指向它的意图一并摘；还有成员时不许消失", async () => {
-    disk = { tabCollections: [{ id: "g", name: "白天" }], tabBar: { groupOf: { a: "g", b: "g", x: "g" } } };
-    await tm.loadCollections();
-    add("a", "b");
-    const bar = document.body.firstElementChild as HTMLElement;
-    close("a");
-    await flushDisk();
-    expect(disk.tabCollections, "还有 b ⇒ 组在").toEqual([{ id: "g", name: "白天" }]);
-    expect(bar.querySelectorAll(".tab-group")).toHaveLength(1);
-    close("b");
-    await flushDisk();
-    expect(disk.tabCollections).toEqual([]);
-    expect(groupOfOnDisk(), "没到的 x 指向它的那条也摘").toEqual({});
-    expect(home(tm).prefs.collections).toEqual([]);
-    expect([...home(tm).prefs.savedGroupOf]).toEqual([]);
-    expect(bar.querySelectorAll(".tab-group")).toHaveLength(0);
-  });
-
-  it("J3b · 拖出 / 右键移出 / 挪去别组：组里在栏里的都走了 ⇒ 组消失（盘 · 内存）；还有一个 ⇒ 在", async () => {
-    disk = {
-      tabCollections: [
-        { id: "g", name: "白天" },
-        { id: "h", name: "夜里" },
-      ],
-      tabBar: { groupOf: { a: "g", b: "g", c: "h", x: "g" } },
-    };
-    await tm.loadCollections();
+  it("K3 · 拖出 / 右键移出：组里谁都不剩（账上的 ＋ 栏里的）⇒ 家那台解散；还有不在栏里的组员 ⇒ 不解散", async () => {
+    be.group("g", "白天", "devbox");
+    be.group("h", "夜里");
+    be.note(LOCAL_ORIGIN, "a").groups = ["g"];
+    be.note(LOCAL_ORIGIN, "b").groups = ["g"];
+    be.note(LOCAL_ORIGIN, "c").groups = ["h"];
+    be.note("devbox", "x").groups = ["h"]; // 不在栏里的组员
     add("a", "b", "c");
-    const ids = (): string[] => (disk.tabCollections as { id: string }[]).map((g) => g.id);
+    await be.connect(tm);
     home(tm).dragger.applyDrop("a", END); // 拖出，b 还在
-    await flushDisk();
-    expect(ids(), "还有 b ⇒ g 在").toEqual(["g", "h"]);
+    await settleGroups();
+    expect(be.calls.some((c) => c[1] === "groups-write"), "还有 b ⇒ g 不解散").toBe(false);
     void home(tm).prefs.leaveGroup("b"); // 右键移出最后一个
-    await flushDisk();
-    expect(ids()).toEqual(["h"]);
-    expect(groupOfOnDisk(), "没到的 x 指向 g 的那条也摘").toEqual({ c: "h" });
-    home(tm).dragger.applyDrop("c", { kind: "onto", sid: "a" }); // 挪去与 a 现建的新组，h 空了
-    await flushDisk();
-    expect(ids().includes("h"), "挪走最后一个 ⇒ h 消失").toBe(false);
-    expect(home(tm).prefs.collections.map((g) => g.id)).toEqual(ids());
+    await settleGroups();
+    expect(be.calls).toContainEqual(["devbox", "groups-write", { op: "dissolve", id: "g" }]);
+    void home(tm).prefs.leaveGroup("c");
+    await settleGroups();
+    expect(be.calls.some((c) => c[1] === "groups-write" && (c[2] as { id?: string }).id === "h"), "x 还在 h 里 ⇒ h 不解散").toBe(false);
   });
 
-  it.each([
-    ["固定复活先于读组表", true],
-    ["读组表先于固定复活", false],
-  ])("J4 · 重启后只有还在栏里的 tab 带组（%s）", async (_label, pinnedFirst) => {
-    disk = {
-      tabCollections: [
-        { id: "G", name: "甲" },
-        { id: "H", name: "乙" },
-      ],
-      tabBar: {
-        groupOf: { a: "G", b: "G", c: "H", p: "H" },
-        pinned: [{ sid: "p", jsonlPath: "/j/p", origin: LOCAL_ORIGIN, title: "P" }],
-      },
-    };
-    if (pinnedFirst) {
-      await tm.loadPinned();
-      await tm.loadCollections();
-    } else {
-      await tm.loadCollections();
-      await tm.loadPinned();
-    }
+  it("K4 · 重启后：在栏里的 tab 照账带组；固定了却没标签的复活出来、也带组；没来的不凭空造", async () => {
+    be.group("G", "甲");
+    be.group("H", "乙");
+    be.note(LOCAL_ORIGIN, "a").groups = ["G"];
+    be.note(LOCAL_ORIGIN, "b").groups = ["G"];
+    be.note(LOCAL_ORIGIN, "c").groups = ["H"];
+    const p = be.note(LOCAL_ORIGIN, "p");
+    p.groups = ["H"];
+    p.pinned = true;
+    await be.connect(tm);
     add("a", "c"); // b 不来
     const carried = Object.fromEntries(
       [...home(tm).store.tabs.values()].filter((t) => t.group !== null).map((t) => [t.sessionId, t.group]),
@@ -5658,6 +5614,11 @@ describe("组头", () => {
     home(tm).prefs.collectionsLoaded = true;
     for (const sid of ["x", "a", "b", "c", "y"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
+    // 组头那几颗是后端数好的（`groups-read` 的 `counts`），界面照画。
+    home(tm).prefs.collections[0].counts = [
+      { dot: "needs-you", n: 1, word: goldenFace("live-needs-you-tmux").name, text: "核心·需手动 1" },
+      { dot: "running", n: 1, word: goldenFace("live-working-plain").name, text: "核心·在跑 1" },
+    ];
     home(tm).store.tabs.get("a")!.face = liveFace("needs_you");
     home(tm).store.tabs.get("b")!.face = liveFace("working");
     home(tm).store.tabs.get("c")!.face = liveFace("idle");
@@ -5674,7 +5635,7 @@ describe("组头", () => {
     expect(collapsed()).toBe(true);
     expect(home(tm).prefs.collections[0].collapsed, "收着记在组上（落盘那一格）").toBe(true);
     expect(head().querySelector(".tab-group-sum")!.textContent).toBe(
-      copyText("tabBar.group.sumNeeds", { n: 1 }) + copyText("tabBar.group.sumRunning", { n: 1 }),
+      "核心·需手动 1" + "核心·在跑 1", // 照抄后端写好的那一句
     );
     expect(head().querySelector(".tab-group-caret")!.getAttribute("aria-expanded")).toBe("false");
     head().querySelector<HTMLElement>(".tab-group-caret")!.click();

@@ -14,7 +14,8 @@ import qs from "./tab-quota.module.css";
 import type { SessionAccountReply } from "./generated/SessionAccountReply";
 import { appStore } from "./app-store";
 import { accountAvatarEl, accountColorOf } from "./account-color";
-import type { TabCollection } from "./tab-collections";
+import type { TabGroup } from "./tab-bar-prefs";
+import type { GroupCount } from "./generated/GroupCount";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { lightOf } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
@@ -39,7 +40,7 @@ import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
-import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -864,7 +865,7 @@ export class TabBarView {
    * 悬停 / 焦点时右侧「⋯」（组的菜单；组头右键同一份）。点 ⌄ 或组头空白 ＝ 收起 / 展开。
    * **解散只去掉分组，一个 tab 都不动**（在「⋯」菜单里，撤得回）。
    */
-  private groupElFor(col: TabCollection): HTMLElement {
+  private groupElFor(col: TabGroup): HTMLElement {
     let g = this.groupEls.get(col.id);
     if (!g) {
       const gid = col.id;
@@ -906,7 +907,7 @@ export class TabBarView {
       this.groupEls.set(gid, g);
     }
     const members = [...this.store.tabs.values()].filter((t) => t.group === col.id);
-    paintHead(g, col.name, members, col.collapsed === true, this.store.activeId);
+    paintHead(g, col.name, members, col.counts, col.collapsed === true, this.store.activeId);
     return g.list;
   }
 
@@ -941,7 +942,8 @@ export class TabBarView {
       this.hiddenEls = g;
     }
     const members = ids.map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
-    paintHead(g, copyText("tabBar.hidden.row", { n: members.length }), members, !this.hiddenOpen(), this.store.activeId);
+    // 「已隐藏」不是一组：没有后端数好的组头计数 ⇒ 收着时不画汇总（需手动照常进「需手动」）。
+    paintHead(g, copyText("tabBar.hidden.row", { n: members.length }), members, [], !this.hiddenOpen(), this.store.activeId);
     return g.list;
   }
 
@@ -1358,11 +1360,15 @@ function groupShell(name: HTMLElement, tail: HTMLElement[]): GroupEls {
   return { wrap, head, list, caret, name, count, sum, mini, drawn: "" };
 }
 
-/** 组头那几格照此刻的组员现画：名字 · 组员数 · 收着 · 汇总（等你 · 在跑 · 后台任务）· 当前标签页在收着的里面。没变就不写。 */
-function paintHead(g: GroupEls, label: string, members: readonly Tab[], collapsed: boolean, activeId: string | null): void {
-  const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0, background: 0, needsWord: "", runningWord: "", backgroundWord: "" };
+/**
+ * 组头那几格：名字 · 栏里的组员数 · 收着 · 汇总（需手动 · 在跑 · 后台任务，后端 `groups-read` 数好的那几颗，字照组员那张脸）· 当前标签页在收着的里面。
+ * 汇总只在收着时画。没变就不写。
+ */
+function paintHead(g: GroupEls, label: string, members: readonly Tab[], counts: readonly GroupCount[], collapsed: boolean, activeId: string | null): void {
+  // 后端只出有的那几颗、序已排好（需手动 · 在跑 · 后台）。
+  const shown = collapsed ? counts : [];
   const current = collapsed && members.some((t) => t.sessionId === activeId);
-  const drawn = `${label}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${sum.background}\u0000${sum.needsWord}\u0000${sum.runningWord}\u0000${sum.backgroundWord}\u0000${current ? 1 : 0}`;
+  const drawn = `${label}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${shown.map((c) => `${c.dot}:${c.text}:${c.word}`).join(",")}\u0000${current ? 1 : 0}`;
   if (g.drawn === drawn) return;
   g.drawn = drawn;
   if (g.name.textContent !== label) g.name.textContent = label;
@@ -1372,20 +1378,15 @@ function paintHead(g: GroupEls, label: string, members: readonly Tab[], collapse
   g.wrap.classList.toggle("is-collapsed", collapsed);
   g.head.classList.toggle("is-current", current);
   g.wrap.classList.toggle("has-current", current);
-  const chips: HTMLElement[] = [];
-  const word = (dot: "needs-you" | "running" | "background"): string => (dot === "needs-you" ? sum.needsWord : dot === "running" ? sum.runningWord : sum.backgroundWord);
-  const chip = (dot: "needs-you" | "running" | "background", text: string): HTMLElement => {
-    const c = document.createElement("span");
-    c.className = "tab-group-chip";
-    c.dataset.dot = dot;
-    c.append(statusDot(dot, word(dot), "compact"), document.createTextNode(text));
-    return c;
-  };
-  if (sum.needs > 0) chips.push(chip("needs-you", copyText("tabBar.group.sumNeeds", { n: sum.needs })));
-  if (sum.running > 0) chips.push(chip("running", copyText("tabBar.group.sumRunning", { n: sum.running })));
-  if (sum.background > 0) chips.push(chip("background", copyText("tabBar.group.sumBackground", { n: sum.background })));
+  const chips = shown.map((c) => {
+    const el = document.createElement("span");
+    el.className = "tab-group-chip";
+    el.dataset.dot = c.dot;
+    el.append(statusDot(c.dot, c.word, "compact"), document.createTextNode(c.text));
+    return el;
+  });
   g.sum.replaceChildren(...chips);
-  // 窄栏只放得下一个点：需手动 ＞ 运行中 ＞ 后台任务运行中。
-  const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : sum.background > 0 ? "background" : null;
-  g.mini.replaceChildren(...(urgent ? [statusDot(urgent, word(urgent), "compact")] : []));
+  // 窄栏只放得下一个点：后端排好的先后（需手动 ＞ 在跑 ＞ 后台）里的第一颗。
+  const urgent = shown[0];
+  g.mini.replaceChildren(...(urgent ? [statusDot(urgent.dot, urgent.word, "compact")] : []));
 }
