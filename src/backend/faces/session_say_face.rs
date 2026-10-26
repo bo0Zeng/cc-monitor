@@ -68,9 +68,7 @@ impl crate::wire::typed::Handle for SessionSay {
             let files = needs;
 
             let home = crate::history::listing::agent_home();
-            let asked = crate::control::asks::sids();
-            let waiting =
-                |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
+            let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
             let resume =
                 |r: &SessionSayReq| resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files);
             say_with(

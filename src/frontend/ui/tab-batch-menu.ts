@@ -8,7 +8,7 @@
  * 固定 · 集合 · 关闭是 monitor 自己的界面状态，不经后端。
  */
 import type { Tab } from "./tab-model";
-import { canResume, closesQuietly, faceOf, hasTerminal, isEnded } from "./face-can";
+import { canResume, closesQuietly, hasTerminal, isEnded } from "./face-can";
 import { copyText } from "./copy-table";
 import { openMenu, type MenuItem } from "./kit/menu";
 import type { TabCollection } from "./tab-collections";
@@ -60,7 +60,7 @@ function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string | ((t:
 }
 
 /** 那一样不给做时那台写好的那一句（`can.*.why`）。 */
-const whyOf = (c: { can: string; why?: string }): string => c.why ?? "";
+const whyOf = (c: { can: string; why?: string } | undefined): string => c?.why ?? "";
 
 /** 一行里怎么称呼一个 tab：远端的机器写在括号里（那一行的原因由那台写，不带机器）。 */
 function lineTitle(t: Tab): string {
@@ -127,12 +127,12 @@ export function openBatchMenu(
       })();
     },
   });
-  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(faceOf(t)), (t) => whyOf(faceOf(t).can.term));
-  const [startable, notStartable] = split(tabs, (t) => canResume(faceOf(t)), (t) => whyOf(faceOf(t).can.resume));
+  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.face), (t) => whyOf(t.face?.can.term));
+  const [startable, notStartable] = split(tabs, (t) => canResume(t.face), (t) => whyOf(t.face?.can.resume));
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
-      const ended = tabs.filter((t) => isEnded(faceOf(t))).length;
+      const ended = tabs.filter((t) => isEnded(t.face)).length;
       const confirm = {
         title: copyText("tabBatch.stop.title", { n: stoppable.length }),
         action: copyText("tabBatch.stop.action", { n: stoppable.length }),
@@ -195,9 +195,9 @@ export function openBatchMenu(
     item(copyText("tabBatch.menu.hide", { n: hideable.length }), hideable.length, () => host.hide(hideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.hidden")),
     item(copyText("tabBatch.menu.unhide", { n: unhideable.length }), unhideable.length, () => host.unhide(unhideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.notHidden")),
   );
-  const [closable, notClosable] = split(tabs, (t) => closesQuietly(faceOf(t)), (t) => {
-    const c = faceOf(t).can.close;
-    return c.can === "no" ? c.why : faceOf(t).tip;
+  const [closable, notClosable] = split(tabs, (t) => closesQuietly(t.face), (t) => {
+    const c = t.face?.can.close;
+    return c?.can === "no" ? c.why : (t.face?.tip ?? "");
   });
   items.push(
     item(copyText("tabBatch.menu.close", { n: closable.length }), closable.length, () =>

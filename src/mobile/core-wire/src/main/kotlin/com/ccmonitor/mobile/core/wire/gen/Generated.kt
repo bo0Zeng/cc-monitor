@@ -19435,6 +19435,7 @@ sealed interface SessionStreamFrame {
 @Suppress("UNCHECKED_CAST")
 data class SessionUnseenPayload(
     val origin: String,
+    val face: SessionFace?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19442,9 +19443,10 @@ data class SessionUnseenPayload(
         val ADAPTER: JsonAdapter<SessionUnseenPayload> = obj(
             listOf(
             Field("origin", { Str }, optional = false, nullable = false),
+            Field("face", { opt(SessionFace.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> SessionUnseenPayload(a[0] as String) },
-            { v -> arrayOf(v.origin) },
+            { a -> SessionUnseenPayload(a[0] as String, a[1] as SessionFace?) },
+            { v -> arrayOf(v.origin, v.face) },
         )
     }
 }

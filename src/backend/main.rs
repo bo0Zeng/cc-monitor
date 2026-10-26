@@ -39,7 +39,11 @@ use wire::{Frame, FrameRules as _};
 const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions {
     tmux_server_up: control::tmux_hook::install_for_this_process,
     session_seen: control::launch_account::adopt_seen,
+    asks_moved: control::asks::moved_rx,
 };
+
+/// 答题 hook 判「终端那边答了」读的那一处：活会话表（hook 在 control 层，够不着 history，由这里交进去）。
+const HOOK_STATES: control::asks::hook::StatesOf = history::live_table::states_in;
 
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
@@ -100,6 +104,8 @@ async fn main() {
     topic_hook::install(topic_body::body_now);
     // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那一处写根。
     dial::host();
+    // 拨号层要的「这一端的机器表怎么读」：起来那一下装一次（之后 `link-open` · 问那台 · 传输 · 部署都按名字查它）。
+    faces::install_machines();
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
@@ -171,7 +177,7 @@ async fn main() {
             // 后端问后端：问这台常驻一条帧命令（只问常驻，不在这里起冷的顶上）。
             Some("--resident-call") => control::resident::call(&args[1..], z).await,
             // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
-            Some("--answer-hook") => control::asks::hook::run(&args).await,
+            Some("--answer-hook") => control::asks::hook::run(&args, HOOK_STATES).await,
             Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
             // 部署那一趟：暂存区里新传上去的那一份自己核字节、换进落点（`control/place_self.rs`）。
             Some("--place-self") => control::place_self::run(&own),
@@ -366,6 +372,8 @@ fn build_hello() -> Frame {
             .iter()
             .map(|(k, h)| (k.to_string(), h.to_string()))
             .collect(),
+        // 那台看不见时画的那一张：本机后端替它造（壳只取本机那一份），界面不自己拼。
+        unseen: Some(wire::unseen_face()),
     })
 }
 
@@ -1001,3 +1009,7 @@ mod claim_tests;
 #[cfg(test)]
 #[path = "../../tests/backend/writer_task_tests.rs"]
 mod writer_task_tests; // 写者的优先序：tap 灌满时内容帧一条不少、顺序不变
+
+#[cfg(test)]
+#[path = "../../tests/backend/main_startup_tests.rs"]
+mod startup_tests; // 起来那一下：机器表的读法装上了

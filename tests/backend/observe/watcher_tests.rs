@@ -1025,12 +1025,11 @@ fn fully_unterminated_single_line_is_deferred() {
 #[test]
 fn imposter_when_proc_started_after_pidfile() {
     // pidfile last written at t=1000, process started at t=2000 (> 1000+60).
-    let v = add_time_verdict(None, None, Some(2000), Some(1000), None);
+    let v = add_time_verdict(false, Some(2000), Some(1000), None);
     assert_eq!(v, AddTimeVerdict::Imposter("started-after-pidfile"));
     // Reboot case is the same shape: old mtime, post-boot start.
     let v2 = add_time_verdict(
-        None,
-        None,
+        false,
         Some(1_700_000_000),
         Some(1_600_000_000),
         Some("claude"),
@@ -1046,12 +1045,12 @@ fn imposter_when_proc_started_after_pidfile() {
 fn alive_within_tolerance() {
     // Started slightly after mtime but inside the 60s fuzz window.
     assert_eq!(
-        add_time_verdict(None, None, Some(1030), Some(1000), None),
+        add_time_verdict(false, Some(1030), Some(1000), None),
         AddTimeVerdict::Alive
     );
     // Started before mtime (the normal case: claude starts, then writes).
     assert_eq!(
-        add_time_verdict(None, None, Some(900), Some(1000), None),
+        add_time_verdict(false, Some(900), Some(1000), None),
         AddTimeVerdict::Alive
     );
 }
@@ -1059,11 +1058,11 @@ fn alive_within_tolerance() {
 #[test]
 fn imposter_by_cmdline() {
     assert_eq!(
-        add_time_verdict(None, None, None, None, Some("tmux new-session -d")),
+        add_time_verdict(false, None, None, Some("tmux new-session -d")),
         AddTimeVerdict::Imposter("cmdline")
     );
     assert_eq!(
-        add_time_verdict(None, None, Some(900), Some(1000), Some("-bash")),
+        add_time_verdict(false, Some(900), Some(1000), Some("-bash")),
         AddTimeVerdict::Imposter("cmdline"),
         "time check passing must not mask a non-claude cmdline"
     );
@@ -1071,7 +1070,7 @@ fn imposter_by_cmdline() {
     // 编辑器 · 登录 shell · sshd 会话 —— PID 被复用时最常见的那几种「明显不像」。
     for foreign in ["/usr/bin/vim", "bash -l", "sshd: u@pts/0"] {
         assert_eq!(
-            add_time_verdict(None, None, None, None, Some(foreign)),
+            add_time_verdict(false, None, None, Some(foreign)),
             AddTimeVerdict::Imposter("cmdline"),
             "{foreign}"
         );
@@ -1083,23 +1082,17 @@ fn imposter_by_bg_spare_before_exact_identity() {
     // F74b(#43)：bg-spare 优先于 exact-identity——即便 procStart 自洽（recorded==current）
     // 也判 Imposter（否则守护池停泊备用进程恒绿）。
     assert_eq!(
-        add_time_verdict(Some(555), Some(555), None, None, Some("claude bg-spare")),
+        add_time_verdict(true, None, None, Some("claude bg-spare")),
         AddTimeVerdict::Imposter("bg-spare"),
         "bg-spare 必须在 exact-identity Alive 之前拦下"
     );
     assert_eq!(
-        add_time_verdict(
-            None,
-            None,
-            None,
-            None,
-            Some("/usr/bin/claude bg-spare --foo")
-        ),
+        add_time_verdict(false, None, None, Some("/usr/bin/claude bg-spare --foo")),
         AddTimeVerdict::Imposter("bg-spare")
     );
     // 普通 claude 会话不受影响（procStart 自洽仍 Alive）。
     assert_eq!(
-        add_time_verdict(Some(555), Some(555), None, None, Some("claude --resume x")),
+        add_time_verdict(true, None, None, Some("claude --resume x")),
         AddTimeVerdict::Alive
     );
 }
@@ -1117,7 +1110,7 @@ fn claude_like_cmdlines_pass() {
         "Claude", // case-insensitive
     ] {
         assert_eq!(
-            add_time_verdict(None, None, Some(900), Some(1000), Some(cmd)),
+            add_time_verdict(false, Some(900), Some(1000), Some(cmd)),
             AddTimeVerdict::Alive,
             "{cmd}"
         );
@@ -1127,24 +1120,24 @@ fn claude_like_cmdlines_pass() {
 #[test]
 fn missing_data_degrades_to_allow() {
     assert_eq!(
-        add_time_verdict(None, None, None, None, None),
+        add_time_verdict(false, None, None, None),
         AddTimeVerdict::Alive
     );
     assert_eq!(
-        add_time_verdict(None, None, Some(2000), None, None),
+        add_time_verdict(false, Some(2000), None, None),
         AddTimeVerdict::Alive
     );
     assert_eq!(
-        add_time_verdict(None, None, None, Some(1000), None),
+        add_time_verdict(false, None, Some(1000), None),
         AddTimeVerdict::Alive
     );
     // Empty cmdline (kernel threads read as empty) is not evidence.
     assert_eq!(
-        add_time_verdict(None, None, None, None, Some("")),
+        add_time_verdict(false, None, None, Some("")),
         AddTimeVerdict::Alive
     );
     assert_eq!(
-        add_time_verdict(None, None, None, None, Some("   ")),
+        add_time_verdict(false, None, None, Some("   ")),
         AddTimeVerdict::Alive
     );
 }
@@ -2090,13 +2083,7 @@ fn procstart_identity_match_short_circuits_all_heuristics() {
     // heuristics would individually scream imposter (stale mtime, bad
     // cmdline): identity evidence is strictly stronger.
     assert_eq!(
-        add_time_verdict(
-            Some(12285972),
-            Some(12285972),
-            Some(9_999_999),
-            Some(1000),
-            Some("tmux")
-        ),
+        add_time_verdict(true, Some(9_999_999), Some(1000), Some("tmux")),
         AddTimeVerdict::Alive
     );
 }
@@ -2105,20 +2092,14 @@ fn procstart_identity_match_short_circuits_all_heuristics() {
 fn procstart_mismatch_falls_through_to_heuristics() {
     // Mismatch + stale time evidence → imposter (the tmux reuse case).
     assert_eq!(
-        add_time_verdict(Some(12285972), Some(99999999), Some(2000), Some(1000), None),
+        add_time_verdict(false, Some(2000), Some(1000), None),
         AddTimeVerdict::Imposter("started-after-pidfile")
     );
     // Mismatch alone with fresh mtime and claude-like cmdline → allow
     // (defends against CC changing the procStart format: a hard reject
     // would black out every real session).
     assert_eq!(
-        add_time_verdict(
-            Some(12285972),
-            Some(99999999),
-            Some(990),
-            Some(1000),
-            Some("claude")
-        ),
+        add_time_verdict(false, Some(990), Some(1000), Some("claude")),
         AddTimeVerdict::Alive
     );
 }
@@ -2127,12 +2108,12 @@ fn procstart_mismatch_falls_through_to_heuristics() {
 fn tolerance_exact_boundary() {
     // start == mtime + 60 → still inside tolerance (uses >, not >=).
     assert_eq!(
-        add_time_verdict(None, None, Some(1060), Some(1000), None),
+        add_time_verdict(false, Some(1060), Some(1000), None),
         AddTimeVerdict::Alive
     );
     // One second past → imposter.
     assert_eq!(
-        add_time_verdict(None, None, Some(1061), Some(1000), None),
+        add_time_verdict(false, Some(1061), Some(1000), None),
         AddTimeVerdict::Imposter("started-after-pidfile")
     );
 }
@@ -4968,4 +4949,65 @@ fn heard_within_truth_table() {
         heard_within(t0 + s, t0, w),
         "最后动静在此刻之后（钟往回拨）⇒ 不算冻住"
     );
+}
+
+/// 挂着待答请求、pidfile 说在跑（挡着终端的那种框不改 pidfile 的状态）⇒ 交出去的点是需手动，不是在跑。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_with_a_pending_ask_is_announced_as_needing_you_even_if_its_pidfile_says_busy() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let second = std::time::Duration::from_secs(1);
+    let (dir, pidfile, mut state) = frozen_fixture("asked", "hb-asked", "busy", second);
+    state.asked.insert("hb-asked".to_string());
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let added = rx.try_recv().expect("宣告那一帧");
+    assert_eq!(
+        face_of(&added).map(|f| f.dot),
+        Some(crate::wire::SessionDot::NeedsYou),
+        "有请求挂着 ⇒ 需手动：{added:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 请求挂上 · 撤掉（活会话表交来新的一份）⇒ 那一条各发一帧：挂上是需手动，撤掉回到 pidfile 说的在跑。
+#[cfg(target_os = "linux")]
+#[test]
+fn an_ask_coming_and_going_flips_the_announced_dot() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let second = std::time::Duration::from_secs(1);
+    let (dir, pidfile, mut state) = frozen_fixture("ask-flip", "hb-flip", "busy", second);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    process_session_added(&pidfile, &mut state, &mut sink);
+    while rx.try_recv().is_ok() {}
+    let dot = |rx: &mut FrameRx| {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|f| face_of(&f).map(|f| f.dot))
+            .last()
+    };
+    asked_now(
+        ["hb-flip".to_string()].into_iter().collect(),
+        &mut state,
+        &mut sink,
+    );
+    assert_eq!(
+        dot(&mut rx),
+        Some(crate::wire::SessionDot::NeedsYou),
+        "挂上 ⇒ 需手动"
+    );
+    asked_now(
+        ["hb-flip".to_string()].into_iter().collect(),
+        &mut state,
+        &mut sink,
+    );
+    assert_eq!(dot(&mut rx), None, "没变 ⇒ 不发");
+    asked_now(Default::default(), &mut state, &mut sink);
+    assert_eq!(
+        dot(&mut rx),
+        Some(crate::wire::SessionDot::Running),
+        "撤掉 ⇒ 回到在跑"
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

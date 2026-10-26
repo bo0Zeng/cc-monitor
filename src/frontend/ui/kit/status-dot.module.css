@@ -13,6 +13,11 @@
     height: var(--dot-size-compact);
   }
 
+  /* 还没收到这条会话的脸：不画（位置照占，旁边的字不挪）。 */
+  .dot[data-state="none"] {
+    visibility: hidden;
+  }
+
   .dot[data-state="up"] {
     background: var(--success);
   }

@@ -123,8 +123,8 @@ describe("灰不灰：照脸上的 can.model · can.permission · 那台握手�
     expect(chipFace(tab(), "permission", local(), "核心·没有 tmux", 3)).toEqual({ text: "核心·自动接受编辑", enabled: false, why: "核心·没有 tmux", spinning: false });
   });
 
-  it("那台看不见 / 没收到过脸 ⇒ 灰、写说不清那一句；那一家清单是空的 ⇒ 只显示字", () => {
-    expect(chipFace(tab({ face: null }), "model", local(), null, null)).toMatchObject({ enabled: false, why: copyText("sessionState.unseen.tooltip") });
+  it("一张脸都还没收到 ⇒ 灰、不替那台说理由（那台看不见时那一张由后端造、`can` 自带理由）；那一家清单是空的 ⇒ 只显示字", () => {
+    expect(chipFace(tab({ face: null }), "model", local(), null, null)).toMatchObject({ enabled: false, why: null });
     expect(chipFace(tab(), "model", local(), null, 0)).toEqual({ text: "核心·Opus 4.5", enabled: false, why: null, spinning: false });
   });
 

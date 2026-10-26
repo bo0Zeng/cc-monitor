@@ -16,6 +16,8 @@ import type { SessionRuns } from "./generated/SessionRuns";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { WatchFrom } from "./generated/WatchFrom";
 import type { SessionFace } from "./generated/SessionFace";
+/** 「说不清」那一格带来的那张脸（本机后端还没握上手 ⇒ `null`，不画点）。 */
+type UnseenFace = SessionFace | null;
 export type { JsonlLinePayload };
 
 
@@ -92,8 +94,9 @@ export interface EventHandlers {
    * 那台机器看不见了（会话流 `unseen` 格：连接断了 / F5 时那台还没报完清单）⇒ 那台上活的 · 可重连的落说不清。
    * 机器级：一格说一台。后端紧跟着把那台还活着的再宣告一次 ⇒ 真活着的翻回活。
    * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
+   * `face` ＝ 那几条落成的那一张（本机后端造好、壳转交；本机后端还没握上手 ⇒ `null`，不画点）。
    */
-  onOriginUnseen?: (origin: string) => void;
+  onOriginUnseen?: (origin: string, face: UnseenFace) => void;
   /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
   openMachineSettings?: (origin: Origin) => void;
   /**
@@ -181,7 +184,7 @@ type Queued =
   | { kind: "watch"; origin: Origin; payload: WatchFrom }
   | { kind: "listed"; origin: string; all: boolean }
   // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
-  | { kind: "unseen"; origin: string }
+  | { kind: "unseen"; origin: string; face: UnseenFace }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string };
 
@@ -467,7 +470,7 @@ export async function bindEvents(
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin, item.all);
       } else if (item.kind === "unseen") {
-        handlers.onOriginUnseen?.(item.origin);
+        handlers.onOriginUnseen?.(item.origin, item.face);
       } else if (item.kind === "file-notice") {
         handlers.onSessionFileNotice?.(item.sessionId, item.change);
       } else if (item.kind === "gap") {
@@ -628,7 +631,7 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "state" in f) {
           take({ kind: "face", sessionId: f.state.sid, face: f.state.face, name: null });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
-          take({ kind: "unseen", origin: f.unseen.origin });
+          take({ kind: "unseen", origin: f.unseen.origin, face: f.unseen.face });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
           take({ kind: "listed", origin: f.listed.origin, all: f.listed.all === true });
         } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {

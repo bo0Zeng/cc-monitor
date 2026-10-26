@@ -56,6 +56,8 @@ pub(crate) enum Life {
     Gone,
     /// 这条路上判不了活不活。
     Unclear,
+    /// 那台看不见（连接断了 · 还没报完清单）：本机后端替它造这一张，随 hello 交给壳（`Hello.unseen`）。
+    Unseen,
 }
 
 impl Life {
@@ -89,6 +91,11 @@ impl Life {
 
 fn in_tmux(c: Option<&SessionContainer>) -> Option<bool> {
     c.map(|c| matches!(c, SessionContainer::Tmux { .. }))
+}
+
+/// 那台看不见时画的那一张（[`Life::Unseen`]）：hello 带它（`main` 的 `build_hello`）。
+pub fn unseen_face() -> SessionFace {
+    SessionFace::of(Life::Unseen)
 }
 
 /// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
@@ -180,6 +187,31 @@ impl SessionFaceExt for SessionFace {
                     tip,
                     tone: Tone::Plain,
                     order: 5,
+                }
+            }
+            Life::Unseen => {
+                let tip = Words(copy_core::copy_text("sessionState.unseen.tooltip", &[]));
+                SessionFace {
+                    dot: SessionDot::Unknown,
+                    live: FaceLive::No,
+                    settled: false,
+                    name: Words(copy_core::copy_text("sessionState.unseen.name", &[])),
+                    line: tip.clone(),
+                    tone: Tone::Plain,
+                    order: 3,
+                    account: None,
+                    can: SessionCan {
+                        close: CanClose::Menu,
+                        resume: no(Words(copy_core::copy_text(
+                            "sessionState.unseen.noResume",
+                            &[],
+                        ))),
+                        term: CanTerm::No { why: tip.clone() },
+                        reattach: no(tip.clone()),
+                        model: no(tip.clone()),
+                        permission: no(tip.clone()),
+                    },
+                    tip,
                 }
             }
             Life::Unclear => {

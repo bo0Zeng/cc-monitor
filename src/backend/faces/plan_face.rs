@@ -246,7 +246,7 @@ fn files(dir: &str, tz: &crate::Tz) -> wire::PlanFiles {
 
 fn list(req: &PlanListReq, tz: &crate::Tz) -> wire::PlanList {
     let mut dirs: Vec<String> =
-        crate::observe::accounts_query::live_cwds(&crate::history::listing::agent_home());
+        crate::history::live_table::now(&crate::history::listing::agent_home()).cwds();
     dirs.extend(req.dirs.iter().flatten().cloned());
     let entry = match entry() {
         Ok(e) => e,

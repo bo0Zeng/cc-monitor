@@ -3667,8 +3667,8 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
         "剥完只剩 {} 字节 —— 本条在空转",
         prod.len()
     );
-    // 那道门本身（`attach_stream` 的前两行之一）：它没了，上面那条推理就没了前提。
-    guard_core::find_pinned(&prod, "inbound_client::witness_of(&frame)").unwrap_or_else(|e| {
+    // 那道门本身（`attach_stream` 的前两行之一，本机两条载体共用的那一处读 hello 的口 `local_backend::local_witness`）：它没了，上面那条推理就没了前提。
+    guard_core::find_pinned(&prod, "local_backend::local_witness(&frame)").unwrap_or_else(|e| {
         panic!(
             "`attach_stream` 那道 hello 门不是恰好一处（{e}）——\n\
                      ⇒ 「进得了流循环 = 一帧合法 hello 已经到手」这条推理没有前提了，\n\

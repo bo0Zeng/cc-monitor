@@ -2,7 +2,7 @@
 //! 例子与界面原先那两组（推断 · 从两份名单推源会话事实）同一组。
 
 use super::*;
-use serde_json::json;
+use serde_json::{json, Value};
 
 trait Wire {
     fn wire(&self) -> Value;
@@ -275,19 +275,6 @@ fn several_running_carriers_take_the_first() {
     );
     assert!(s.live);
     assert_eq!(s.terminal.as_deref(), Some("tmux-a-cc"));
-}
-
-#[test]
-fn a_process_list_line_reads_into_a_row() {
-    let r = process_row_of(&json!({
-        "pid": 1, "sessionId": "s1", "cwd": "/p", "configDir": "/acct/z", "account": "z",
-        "bare": false, "alive": true, "viaRelay": null,
-    }))
-    .unwrap();
-    assert_eq!(r, proc("s1", Some("/acct/z"), Some("z"), true));
-    let bare = process_row_of(&json!({"sessionId": "s1", "configDir": null, "account": "base", "bare": true, "alive": true})).unwrap();
-    assert_eq!(account_of(&bare), Some(AccountFact::Base));
-    assert!(process_row_of(&json!({"sessionId": null, "alive": true})).is_none());
 }
 
 /// 跨语言金样（界面那一侧读同一份解码）：`launch` 那一格 == 推断对同一组事实的真产出。
