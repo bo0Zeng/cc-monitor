@@ -10198,61 +10198,6 @@ data class Link(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
-data class LinkCloseReq(
-    val link: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LinkCloseReq> = obj(
-            listOf(
-            Field("link", { Str }, optional = false, nullable = false),
-            ),
-            { a -> LinkCloseReq(a[0] as String) },
-            { v -> arrayOf(v.link) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class LinkCreditReq(
-    val link: String,
-    val bytes: Long,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LinkCreditReq> = obj(
-            listOf(
-            Field("link", { Str }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
-            ),
-            { a -> LinkCreditReq(a[0] as String, a[1] as Long) },
-            { v -> arrayOf(v.link, v.bytes) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class LinkDataReq(
-    val link: String,
-    val data: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LinkDataReq> = obj(
-            listOf(
-            Field("link", { Str }, optional = false, nullable = false),
-            Field("data", { Str }, optional = false, nullable = false),
-            ),
-            { a -> LinkDataReq(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.link, v.data) },
-        )
-    }
-}
-
 sealed interface LinkLine {
     /** 判别格（`state`）那个词。 */
     val state: String
@@ -10314,27 +10259,6 @@ sealed interface LinkLine {
                     )),
                 ),
             )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class LinkOpenReq(
-    val link: String,
-    val dial: Map<String, Raw>,
-    val window: Long,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LinkOpenReq> = obj(
-            listOf(
-            Field("link", { Str }, optional = false, nullable = false),
-            Field("dial", { dict(RawJson) }, optional = false, nullable = false),
-            Field("window", { Lng }, optional = false, nullable = false),
-            ),
-            { a -> LinkOpenReq(a[0] as String, a[1] as Map<String, Raw>, a[2] as Long) },
-            { v -> arrayOf(v.link, v.dial, v.window) },
-        )
     }
 }
 

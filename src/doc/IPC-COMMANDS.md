@@ -161,24 +161,6 @@ A session file went away。
 | `why` | RereadWhy | 为什么从头重读 |
 | `lines` | number | 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它） |
 
-### `link_data`
-
-**一条链路的下行字节**。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `link` | string | 链路 id（`link-open` 时客户端给的） |
-| `data` | string | 下行字节，标准 base64（解码后 ≤ 32 KiB） |
-
-### `link_end`
-
-**一条链路不会再有字节了**；后端已经忘掉这个 `link` id。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `link` | string | 链路 id |
-| `error` | string? | 非正常收尾的原话；缺 ＝ 正常收尾 |
-
 ### `transfer`
 
 **一趟传输此刻的样子**（`transfer-start` 之后才出现）。
@@ -702,87 +684,6 @@ type WatchReply = {
  * 刚进名单的会话每份记录一格（先前就在名单里的不回）。
  */
 from: Array<WatchFrom>, };
-```
-
-码：`bad_args`
-
-#### `link-open`
-
-开一条链路。
-
-收 `args` · 连接内就地做完 · 只在流上
-
-入参 `LinkOpenReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LinkOpenReq = { 
-/**
- * 链路 id：客户端给、客户端负责唯一（1..=128 字节）。
- */
-link: string, 
-/**
- * 拨哪台 ＋ 怎么用：`{machine: "<那台的名字>", use, command?, capture?, forward?, stages?, probe?, agent_sock?}`（蛇形键）。
- * 地址 · 端口 · 钥匙 · 跳板 · 先试哪条都照这一端的机器表组（[`super::parse_named`]），线上不交。
- */
-dial: Record<string, unknown>, 
-/**
- * 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内。
- */
-window: number, };
-```
-
-码：`bad_args` · `unsupported_use` · `duplicate_link` · `too_many_links`
-
-#### `link-data`
-
-往链路里送一块上行字节。
-
-收 `args` · 连接内就地做完 · 只在流上
-
-入参 `LinkDataReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LinkDataReq = { link: string, 
-/**
- * 一块上行字节（base64，解出来至多 32 KiB）。
- */
-data: string, };
-```
-
-码：`bad_args` · `no_such_link` · `link_busy` · `link_closed`
-
-#### `link-credit`
-
-还下行信用。
-
-收 `args` · 连接内就地做完 · 只在流上
-
-入参 `LinkCreditReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LinkCreditReq = { link: string, 
-/**
- * 客户端读走了多少字节（累计信用不超过 16 MiB）。
- */
-bytes: number, };
-```
-
-码：`bad_args` · `no_such_link`
-
-#### `link-close`
-
-关一条链路。
-
-收 `args` · 连接内就地做完 · 只在流上
-
-入参 `LinkCloseReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LinkCloseReq = { 
-/**
- * 关不存在的也回 `ok`。
- */
-link: string, };
 ```
 
 码：`bad_args`

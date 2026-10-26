@@ -7,8 +7,6 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("changed", "5afbd58a"),
     ("files_batch", "b343f828"),
     ("line", "d3518cd3"),
-    ("link_data", "78319744"),
-    ("link_end", "4d744cd6"),
     ("live_card", "4320b506"),
     ("overflow", "6c57a5a8"),
     ("probe", "9b42ff05"),
