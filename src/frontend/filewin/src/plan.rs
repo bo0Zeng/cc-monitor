@@ -137,17 +137,16 @@ pub fn broken(o: &Owner) -> Option<&str> {
         .then(|| o.file_note.as_deref().unwrap_or_default())
 }
 
-/// 状态的图标（同计划页：做完了 ✓ · 没做完 ○ · 不做了 ⊘ · 凭据 ▤；认不出的码当没做完）。
+/// 状态的图标（同计划页：已签收 ✓ · 没签收 ○ · 不算活的节点 ▤）。
 pub fn status_icon(st: Option<PlanStatusCode>) -> &'static str {
     match st {
         Some(PlanStatusCode::Done) => egui_phosphor::regular::CHECK_CIRCLE,
-        Some(PlanStatusCode::Dropped) => egui_phosphor::regular::PROHIBIT,
-        Some(PlanStatusCode::Evidence) => egui_phosphor::regular::NOTE,
-        Some(PlanStatusCode::Open) | None => egui_phosphor::regular::CIRCLE,
+        Some(PlanStatusCode::Open) => egui_phosphor::regular::CIRCLE,
+        None => egui_phosphor::regular::NOTE,
     }
 }
 
-/// 状态那一道色：做完了 ⇒ `done`，其余 ⇒ `rest`（同计划页：凭据与没做完同色、靠图标分）。
+/// 状态那一道色：已签收 ⇒ `done`，其余 ⇒ `rest`（同计划页：不算活的与没签收的同色、靠图标分）。
 pub fn status_tint(
     st: Option<PlanStatusCode>,
     done: egui::Color32,
@@ -190,14 +189,11 @@ pub fn dup_text(o: &Owner) -> String {
     )
 }
 
-/// 预览头「归属」那一块的第二行：片 · 块「…」· 签 …（没有的那一段不写）。
+/// 预览头「归属」那一块的第二行：仓库 · 权力范围「…」（住最上面那一个 ⇒ 不写那一段）。
 pub fn owner_line(slice: &str, o: &Owner) -> String {
     let mut parts = vec![slice.to_string()];
     if let Some(b) = &o.block {
         parts.push(copy_text("rsFilewinPlan.owner.block", &[("block", b)]));
-    }
-    if let Some(t) = &o.sign_at_text {
-        parts.push(copy_text("rsFilewinPlan.owner.signed", &[("time", t)]));
     }
     parts.join(&copy_text("rsFilewinRows.tip.sep", &[]))
 }

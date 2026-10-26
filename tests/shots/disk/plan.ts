@@ -1,21 +1,21 @@
 /**
  * 计划那一族的盘上输入：一个装在插件缓存里的 pb 替身（真后端照常找名字是 planned-build 的插件、起 `python3 <入口> <动词>`）＋
- * 工作区里 pb 原样那一份 dump（pb 0.3.8 · 形状 4，键名照 pb：`edge_words` · `replaced_by` · `docs_only` · `pending_sets` …；每格另存一段 `agent_view`，
- * 替身的 `dump` 摘掉它、`dump --cell` 才给，同 0.3.8）。
- * 替身只吐那一份、照几条命令改那一份、演 pb 的退出码（判据 `tests/shots/pb-stand-in.vitest.ts`）；数 · 排 · 短词 · 时刻字一律是真后端算的。
+ * 工作区里 pb 原样那一份 dump（pb 0.5 · 形状 6，键名照 pb：`current_repo` · `repos[]` · `nodes[]` · `state` · `file_check` ·
+ * `scopes[].handoff` · `pending_sets` …；每个节点另存一段 `agent_view`，替身的 `dump` 摘掉它、`dump --node` 才给，同 0.5）。
+ * 替身只吐那一份、照几条命令改那一份、演 pb 的退出码（判据 `tests/shots/pb-stand-in.vitest.ts`）；数 · 排 · 短词一律是真后端算的。
  */
 import type { MachineDisk } from "./index";
 
 /** 插件根（相对家目录）：配置根 `.claude` 底下插件缓存里的一个版本。 */
-export const PB_ROOT = ".claude/plugins/cache/shots/planned-build/0.2.0";
+export const PB_ROOT = ".claude/plugins/cache/shots/planned-build/0.5.2";
 /** 入口脚本（相对家目录）。 */
 export const PB_ENTRY = `${PB_ROOT}/skills/planned-build/tools/entry.py`;
 
-/** 替身怎么演：`dumpRc` ⇒ `dump` 直接以它退（4 ＝ 没有 dump 的旧 pb）· `refuse` ⇒ 那几条命令照 pb 拒（退 2、stderr 那一句）· `brokenAfterFirst` ⇒ 头一次之后那一片读不成。 */
+/** 替身怎么演：`dumpRc` ⇒ `dump` 直接以它退（4 ＝ 没有 dump 的旧 pb）· `refuse` ⇒ 那几条命令照 pb 拒（退 2、stderr 那一句）· `brokenAfterFirst` ⇒ 头一次之后那个仓库读不成。 */
 export interface PbStandIn {
   dumpRc?: number;
   refuse?: Record<string, string>;
-  brokenAfterFirst?: { slice: string; said: string };
+  brokenAfterFirst?: { repo: string; said: string };
 }
 
 const ENTRY_PY = String.raw`import json, os, sys
@@ -41,52 +41,43 @@ def save():
     os.replace(tmp, f)
 if verb in cfg.get("refuse", {}):
     sys.stderr.write(cfg["refuse"][verb] + "\n"); sys.exit(2)
-if verb == "dump" and sys.argv[2:3] == ["--cell"] and len(sys.argv) >= 5:
-    sl, cid = sys.argv[3], sys.argv[4]
-    out = {"pb": doc.get("pb"), "shape": doc.get("shape"), "workspace": doc.get("workspace"), "slice": sl, "id": cid}
-    s = next((x for x in doc["slices"] if x["name"] == sl), None)
-    c = next((x for x in (s or {}).get("cells", []) if x["id"] == cid), None)
-    if c is not None and c.get("agent_view") is not None:
-        out["agent_view"] = c["agent_view"]
+if verb == "dump" and sys.argv[2:3] == ["--node"] and len(sys.argv) >= 5:
+    rn, nid = sys.argv[3], sys.argv[4]
+    out = {"pb": doc.get("pb"), "shape": doc.get("shape"), "workspace": doc.get("workspace"), "repo": rn, "id": nid}
+    r = next((x for x in doc["repos"] if x["name"] == rn), None)
+    n = next((x for x in (r or {}).get("nodes", []) if x["id"] == nid), None)
+    if n is not None and n.get("agent_view") is not None:
+        out["agent_view"] = n["agent_view"]
     else:
-        out["error"] = "%s 不在「%s」的图上" % (cid, sl)
+        out["error"] = "%s 不在 %s 的图上" % (nid, rn)
     sys.stdout.write(json.dumps(out, ensure_ascii=False)); sys.exit(0)
-if verb == "record" and sys.argv[2:3] == ["--slice"] and len(sys.argv) >= 6:
-    s = next((x for x in doc["slices"] if x["name"] == sys.argv[3]), None)
-    if s is None:
-        sys.stderr.write("那一片还没建\n"); sys.exit(2)
-    recs = s.setdefault("records", [])
-    n = max([r["n"] for r in recs], default=0) + 1
-    qs = [q if q.startswith("「") and q.endswith("」") else "「%s」" % q for q in sys.argv[5:]]
-    recs.append({"n": n, "summary": sys.argv[4], "at": "2026-01-01T00:00:00Z", "by": "人", "quotes": qs})
-    save(); print("记下了 原话 %d" % n); sys.exit(0)
 if verb == "dump":
-    for s in doc["slices"]:
-        for c in s.get("cells", []):
-            c.pop("agent_view", None)
-    n = os.path.join(root, "dumps.n")
-    k = int(open(n).read()) + 1 if os.path.exists(n) else 1
-    open(n, "w").write(str(k))
+    for r in doc["repos"]:
+        for n in r.get("nodes", []):
+            n.pop("agent_view", None)
+    k_file = os.path.join(root, "dumps.n")
+    k = int(open(k_file).read()) + 1 if os.path.exists(k_file) else 1
+    open(k_file, "w").write(str(k))
     b = cfg.get("brokenAfterFirst")
     if b and k > 1:
-        doc["slices"] = [{"name": s["name"], "domain": s.get("domain"), "error": b["said"]} if s["name"] == b["slice"] else s for s in doc["slices"]]
+        doc["repos"] = [{"name": r["name"], "domain": r.get("domain"), "path": r.get("path"), "plan_only": r.get("plan_only", False), "error": b["said"]} if r["name"] == b["repo"] else r for r in doc["repos"]]
     sys.stdout.write(json.dumps(doc, ensure_ascii=False)); sys.exit(0)
 if verb in ("continue", "pause"):
-    doc["auto"] = verb == "continue"; save(); sys.exit(0)
+    doc["auto_continue"] = verb == "continue"; save(); sys.exit(0)
 if verb == "repo" and len(sys.argv) > 2:
-    doc["repo"] = sys.argv[2]; save(); sys.exit(0)
-if verb == "take":
-    sl = next(s for s in doc["slices"] if s["name"] == doc["repo"])
-    sl["docs_only"] = False; save()
-    print("「%s」的仓库接过来了（%s）：从现在起照规矩守" % (sl["name"], sl.get("path", sl["name"]))); sys.exit(0)
-if verb == "view":
-    print("写了 /tmp/pb-读图-0000.html"); sys.exit(0)
+    doc["current_repo"] = sys.argv[2]; save(); sys.exit(0)
+if verb == "adopt":
+    r = next(x for x in doc["repos"] if x["name"] == doc["current_repo"])
+    r["plan_only"] = False; save()
+    print("「%s」的仓库接过来了（%s）：从现在起照规则守" % (r["name"], r.get("path", r["name"]))); sys.exit(0)
+if verb == "render":
+    print("写了 /tmp/pb-读图-0000.html"); print("用浏览器打开它（再敲一次 render 就换成此刻的图）"); sys.exit(0)
 sys.stderr.write("用法：认不得 %s\n" % verb); sys.exit(4)
 `;
 
 /** 装上 pb 替身。 */
 export function putPb(d: MachineDisk, cfg: PbStandIn = {}): void {
-  d.files[`${PB_ROOT}/.claude-plugin/plugin.json`] = JSON.stringify({ name: "planned-build", version: "0.2.0" }) + "\n";
+  d.files[`${PB_ROOT}/.claude-plugin/plugin.json`] = JSON.stringify({ name: "planned-build", version: "0.5.2" }) + "\n";
   d.files[PB_ENTRY] = ENTRY_PY;
   d.files[`${PB_ROOT}/stand-in.json`] = JSON.stringify(cfg) + "\n";
 }
@@ -94,36 +85,41 @@ export function putPb(d: MachineDisk, cfg: PbStandIn = {}): void {
 /** dump 在工作区里的那一份（相对家目录）：场景开页之后改它（`writeFile`）就是 pb 那一侧变了。 */
 export const dumpFile = (ws: string): string => `${ws}/.planned-build/dump.json`;
 
-/** 一个工作区（`ws` 相对家目录）：计划仓 `.planned-build/` ＋ 工作区根的 `.env` ＋ 替身吐的那一份 dump。 */
+/** 一个工作区（`ws` 相对家目录）：计划仓 `.planned-build/` ＋ 工作区配置 ＋ 替身吐的那一份 dump。 */
 export function putWorkspace(d: MachineDisk, ws: string, doc: unknown): void {
   d.files[dumpFile(ws)] = JSON.stringify(doc);
-  d.files[`${ws}/.env`] = JSON.stringify({ 仓库: (doc as { repo?: string }).repo ?? null }) + "\n";
+  d.files[`${ws}/.planned-build/.env`] = JSON.stringify({ current_repo: (doc as { current_repo?: string }).current_repo ?? null }) + "\n";
 }
 
-// ── dump 里的一格（pb 原样那一形）──
+// ── dump 里的一个节点（pb 原样那一形）──
 
-export interface CellIn {
+export interface NodeIn {
   id: string;
   title: string;
   kind: string;
-  status: "做完了" | "没做完" | "不做了";
-  why?: string;
+  /** 状态里记着的值（`已签收` · `decided` …），一个值一笔；`[值, 笔数]` ⇒ 那几笔。 */
+  state?: (string | [string, number])[];
   body?: string;
   children?: string[];
   edges?: Partial<Record<"to" | "with" | "after" | "replaces", string[]>>;
-  files?: { path: string; state: string; note: string | null }[];
-  signs?: { at: string; by: string; reason: string }[];
-  signer?: string;
-  owner?: string;
-  /** 写的 covers · pb 算的 covered_by · 自己写的还没执行的 sets（0.3.8）。 */
+  files?: { path: string; check: "present" | "missing" | "empty" | "invalid"; note: string }[];
+  /** 依据它的节点（凭据类写了边指着它的）。 */
+  evidencedBy?: string[];
+  /** 它的子节点在哪个权力范围里加（默认 `project`）· 那个权力范围的负责人 · 写得动它元数据的那一位。 */
+  childrenIn?: string;
+  assignee?: string | null;
+  signer?: string | null;
   covers?: string[];
   coveredBy?: string[];
-  sets?: { target: string; value: string }[];
-  /** 站在这一格时 pb 印给 agent 的那一段；`false` ⇒ 这一格没有。缺 ⇒ 照编号拼一段。 */
+  /** 自己写的、还没执行的 sets。 */
+  sets?: { target: string; value: string; op?: "add" | "remove" }[];
+  /** 住哪种图（默认 permanent 那一种；排期的节点写 `排期`）。 */
+  graph?: string;
+  /** 站在这个节点时 pb 印给 agent 的那一段；`false` ⇒ 没有。缺 ⇒ 照编号拼一段。 */
   view?: string | false;
 }
 
-/** 话里提到的编号的位置（pb 给的 `refs`：按字算的起止）。 */
+/** 话里提到的编号的位置（pb 给的 `refs`：按码点算的起止）。 */
 function refsIn(text: string, ids: ReadonlySet<string>): { start: number; end: number; ids: string[] }[] {
   const out = [];
   for (const m of text.matchAll(/[A-Z]\d+(?:-\d+)*/g)) {
@@ -134,39 +130,30 @@ function refsIn(text: string, ids: ReadonlySet<string>): { start: number; end: n
   return out;
 }
 
-const agentView = (c: CellIn): string => `── ${c.id} ${c.title}（${c.kind} · ${c.status}）\n> id: ${c.id} | kind: ${c.kind}\n\n要做成什么样：见上。\n下一步：做完了写一格验收 sets ${c.id} 收下`;
+const agentView = (n: NodeIn): string => `── ${n.id} ${n.title}（${n.kind}）\n> id: ${n.id} | kind: ${n.kind}\n\n要做成什么样：见上。\n${n.id} 底下下一个可用编号：${n.id}-1`;
 
-/** 凭据类（0.3.8 软件档：测试 · 验收）：不算活，pb 给状态「凭据」、不给原因。 */
-const EVIDENCE_KINDS: ReadonlySet<string> = new Set(["测试", "验收"]);
-
-/** 一片的格（pb 原样）：父格照 `children` 倒出来，正文与签收里的编号标出位置。 */
-export function dumpCells(cells: CellIn[]): Record<string, unknown>[] {
-  const ids = new Set(cells.map((c) => c.id));
+/** 一个仓库的节点（pb 原样）：父节点照 `children` 倒出来，标题与正文里的编号标出位置。`graph` ⇒ permanent 那一种图的名字。 */
+export function dumpNodes(nodes: NodeIn[], graph: string, lead: string | null): Record<string, unknown>[] {
+  const ids = new Set(nodes.map((n) => n.id));
   const parentOf = new Map<string, string>();
-  for (const c of cells) for (const k of c.children ?? []) parentOf.set(k, c.id);
-  return cells.map((c) => {
-    const ev = EVIDENCE_KINDS.has(c.kind);
-    return {
-      id: c.id,
-      title: c.title,
-      kind: c.kind,
-      body: c.body ?? null,
-      parent: parentOf.get(c.id) ?? null,
-      children: c.children ?? [],
-      edges: { to: [], with: [], after: [], replaces: [], ...c.edges },
-      files: c.files ?? [],
-      evidence: ev,
-      status: ev ? "凭据" : c.status,
-      why: ev ? null : (c.why ?? null),
-      signs: (c.signs ?? []).map((g) => ({ ...g, value: "收下", via: null, done: true, refs: refsIn(g.reason, ids) })),
-      counts: null,
-      sets: c.sets ?? [],
-      owner: c.owner ?? null,
-      ...(c.signer ? { signer: c.signer } : {}),
-      covers: c.covers ?? [],
-      covered_by: c.coveredBy ?? [],
-      refs: { title: [], body: refsIn(c.body ?? "", ids) },
-      ...(c.view === false ? {} : { agent_view: c.view ?? agentView(c) }),
-    };
-  });
+  for (const n of nodes) for (const k of n.children ?? []) parentOf.set(k, n.id);
+  return nodes.map((n) => ({
+    id: n.id,
+    title: n.title,
+    kind: n.kind,
+    graph: n.graph ?? graph,
+    body: n.body ?? "",
+    parent: parentOf.get(n.id) ?? null,
+    children: n.children ?? [],
+    edges: { to: [], with: [], after: [], replaces: [], ...n.edges, covers: n.covers ?? [], file: (n.files ?? []).map((f) => f.path), sets: (n.sets ?? []).map((s) => ({ op: "add", ...s })) },
+    files: (n.files ?? []).map((f) => ({ path: f.path, file_check: f.check, note: f.note, chars: null, bytes: null })),
+    state: (n.state ?? []).map((v) => (Array.isArray(v) ? { value: v[0], count: v[1] } : { value: v, count: 1 })),
+    evidenced_by: n.evidencedBy ?? [],
+    children_in: n.childrenIn ?? "project",
+    assignee: n.assignee === undefined ? lead : n.assignee,
+    signer: n.signer === undefined ? lead : n.signer,
+    covered_by: n.coveredBy ?? [],
+    refs: { title: [], body: refsIn(n.body ?? "", ids) },
+    ...(n.view === false ? {} : { agent_view: n.view ?? agentView(n) }),
+  }));
 }

@@ -1,46 +1,22 @@
-//! 以人的身份代敲 pb 的命令（`continue` · `pause` · `take` · `view` · `record`；`take` 不在此刻那一片时先 `repo <片名>`）：
-//! 起法见 [`super::pb`]（当前目录设在工作区根）；认退出码，拆 `view` 那句话里的页面路径。
-//! 这一侧自己带着 agent 的身份（在 agent 的 shell 里起的）⇒ 用户命令一律不代敲：pb 的用户命令只许人发起；
-//! `record` 记下的是「人」说的（pb 记成「人」），同样只在不带 agent 身份时代敲。
+//! 以人的身份代敲 pb 的命令（`continue` · `pause` · `adopt` · `render`；`adopt` 接的不是当前仓库时先 `repo <仓库名>`）：
+//! 起法见 [`super::pb`]（当前目录设在工作区根）；认退出码，拆 `render` 那句话里的页面路径。
+//! 这一侧自己带着 agent 的身份（在 agent 的 shell 里起的）⇒ 用户命令一律不代敲：pb 的用户命令只许人发起。
+//! 人定了事不经这里：由会话里的 agent 写原话节点（pb 0.5 没有记原话的命令）。
 //!
-//! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto`，`repo` / `take` 改工作区配置，`view` 往系统临时目录写一页，
-//! `record` 往那一片记原话的那份文件追加一条、提交计划仓）；本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
+//! 这几条写盘的是 pb 自己（`continue` / `pause` 改 `auto_continue`，`repo` / `adopt` 改工作区配置，`render` 往系统临时目录写一页）；
+//! 本族照旧一个字节都不写。拆 pb 原话只在 [`classify`] 这一处。
 
-use super::wire::{PlanCmdReply, PlanTook};
+use super::wire::{PlanAdopted, PlanCmdReply};
 use crate::plugin::invoke::Done;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use std::path::Path;
 
 /// 界面能点的那几条（pb 的命令名原样）。
-pub(crate) const VERBS: [&str; 5] = ["continue", "pause", "take", "view", "record"];
+pub(crate) const VERBS: [&str; 4] = ["continue", "pause", "adopt", "render"];
 
-/// 只许人发起的那几条（pb 的用户命令 ＋ 记成「人」说的 `record`）：代敲只在这一侧不带 agent 身份时起。
-const USER_VERBS: [&str; 5] = ["continue", "pause", "repo", "take", "record"];
-
-/// `record --slice <片> <定了什么> <原话>…` 的参数；定了什么不是一行字 · 原话一句没有 · 哪一项带 NUL ⇒ `None`（不起 pb）。
-pub(crate) fn record_args(slice: &str, summary: &str, quotes: &[String]) -> Option<Vec<String>> {
-    let summary = summary.trim();
-    let bad = |s: &str| s.contains('\0');
-    if summary.is_empty()
-        || summary.contains('\n')
-        || bad(summary)
-        || bad(slice)
-        || slice.trim().is_empty()
-        || quotes.is_empty()
-        || quotes.iter().any(|q| q.trim().is_empty() || bad(q))
-    {
-        return None;
-    }
-    let mut a = vec![
-        "record".to_string(),
-        "--slice".to_string(),
-        slice.to_string(),
-        summary.to_string(),
-    ];
-    a.extend(quotes.iter().cloned());
-    Some(a)
-}
+/// 只许人发起的那几条（pb 的用户命令）：代敲只在这一侧不带 agent 身份时起。
+const USER_VERBS: [&str; 4] = ["continue", "pause", "repo", "adopt"];
 
 /// pb 认 agent 的那个环境变量（钩子递进 agent 的 shell）。
 const AGENT_ENV: &str = "PB_ID";
@@ -50,8 +26,8 @@ const RC_REFUSED: i32 = 2;
 const RC_UNREADABLE: i32 = 3;
 const RC_USAGE: i32 = 4;
 
-/// `view` 成了时 pb 说的那一句的开头（后面跟页面路径）。
-const VIEW_WROTE: &str = "写了 ";
+/// `render` 成了时 pb 说的那一句的开头（后面跟页面路径）。
+const RENDER_WROTE: &str = "写了 ";
 
 /// 没成 ⇒ `(码, 给人看的那一句, 原话)`。
 pub(crate) type Refused = (&'static str, String, Option<String>);
@@ -101,49 +77,49 @@ pub(crate) fn answer(verb: &str, r: Result<Done, Said>) -> Result<PlanCmdReply, 
     }
 }
 
-/// 要接过仓库的那一片（成品里那一片的几格）。
-pub(crate) struct Taking<'a> {
+/// 要接过来的那个仓库（成品里那一片的几格）。
+pub(crate) struct Adopting<'a> {
     pub(crate) slice: &'a str,
     /// 仓库相对工作区根在哪。
     pub(crate) path: &'a str,
     pub(crate) docs_only: bool,
-    /// 是不是工作区配置里此刻那一片（pb 的 `take` 只接它）。
+    /// 是不是当前仓库（pb 的 `adopt` 只接它）。
     pub(crate) current: bool,
 }
 
-/// 接过一片的仓库：已经接过 ⇒ 不起 pb；不是此刻那一片 ⇒ 先 `repo <片名>`（只给名字 ＝ 切过去，路径与领域照旧）再 `take`。
-/// 回包多 `took`：接到了哪一片 · 仓库在哪 · 此刻那一片换没换。
-pub(crate) fn take_with(
-    t: &Taking,
+/// 接过一个仓库：已经接过 ⇒ 不起 pb；不是当前仓库 ⇒ 先 `repo <仓库名>`（只给名字 ＝ 切过去，路径与领域照旧）再 `adopt`。
+/// 回包多 `adopted`：接过来的是哪一个 · 仓库在哪 · 当前仓库换没换。
+pub(crate) fn adopt_with(
+    t: &Adopting,
     run: &dyn Fn(&[&str]) -> Result<PlanCmdReply, Refused>,
 ) -> Result<PlanCmdReply, Refused> {
-    let took = |switched: bool| {
-        Some(PlanTook {
+    let adopted = |switched: bool| {
+        Some(PlanAdopted {
             slice: t.slice.to_string(),
             path: t.path.to_string(),
             switched,
         })
     };
     if !t.docs_only {
-        let said = copy_text("bePlan.command.taken", &[("slice", t.slice)]);
+        let said = copy_text("bePlan.command.adopted", &[("slice", t.slice)]);
         return Ok(PlanCmdReply {
             rc: 0,
             said: Some(said),
             path: None,
-            took: took(false),
+            adopted: adopted(false),
         });
     }
     if !t.current {
         run(&["repo", t.slice])?;
     }
-    let out = run(&["take"])?;
+    let out = run(&["adopt"])?;
     Ok(PlanCmdReply {
-        took: took(!t.current),
+        adopted: adopted(!t.current),
         ..out
     })
 }
 
-/// 退出码 ＋ 两条输出 ⇒ 回包（`took` 空着）或拒（纯函数）。`said` 是 pb 的第一句（它是中文、给人读的）。
+/// 退出码 ＋ 两条输出 ⇒ 回包（`adopted` 空着）或拒（纯函数）。`said` 是 pb 的第一句（它是中文、给人读的）。
 pub(crate) fn classify(
     verb: &str,
     code: Option<i32>,
@@ -157,18 +133,18 @@ pub(crate) fn classify(
     match code {
         Some(0) => {
             let said = line(stdout);
-            let path = (verb == "view")
-                .then(|| said.as_deref().and_then(|s| s.strip_prefix(VIEW_WROTE)))
+            let path = (verb == "render")
+                .then(|| said.as_deref().and_then(|s| s.strip_prefix(RENDER_WROTE)))
                 .flatten()
                 .map(|p| p.trim().to_string());
-            if verb == "view" && path.is_none() {
+            if verb == "render" && path.is_none() {
                 return Err(("failed", copy_text("bePlan.command.noPage", &[]), said));
             }
             Ok(PlanCmdReply {
                 rc: 0,
                 said,
                 path,
-                took: None,
+                adopted: None,
             })
         }
         Some(RC_REFUSED) => {

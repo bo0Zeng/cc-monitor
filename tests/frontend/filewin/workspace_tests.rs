@@ -705,7 +705,7 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
 fn plan_reply(title: &str, status: &str) -> serde_json::Value {
     serde_json::json!({"workspace": "/srv", "slice": "alpha", "unreadable": null, "unowned": null, "unownedWhy": null, "entries": [
         {"name": "x.txt", "id": "A1", "label": format!("A1 {title}"), "title": title, "statusCode": status, "status": null, "block": null,
-         "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
+         "fileState": "ok", "fileNote": null, "dup": []}
     ]})
 }
 
@@ -1262,15 +1262,15 @@ async fn screenshot_for_the_shots_tool() {
         *be.plan_reply.lock().unwrap() = Some(
             serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
                 {"name": "main.rs", "id": "A2-1", "title": "下单入口", "statusCode": "done", "block": "下单流程",
-                 "signAtText": "09:18", "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
+                 "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
                 {"name": "Cargo.toml", "id": "A1-1", "title": "打包配置", "statusCode": "done", "block": null,
-                 "signAtText": "09-20 14:22", "fileState": "ok", "fileNote": null, "dup": []},
+                 "fileState": "ok", "fileNote": null, "dup": []},
                 {"name": "README.md", "id": "A1-2", "title": "说明文档", "statusCode": "open", "block": null,
-                 "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
+                 "fileState": "ok", "fileNote": null, "dup": []},
                 {"name": "notes.txt", "id": "A3-1", "title": "库存客户端", "statusCode": "open", "block": "下单流程",
-                 "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
-                {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": "dropped", "block": null,
-                 "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
+                 "fileState": "ok", "fileNote": null, "dup": []},
+                {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": null, "block": null,
+                 "fileState": "ok", "fileNote": null, "dup": []}
             ]}),
         );
     }

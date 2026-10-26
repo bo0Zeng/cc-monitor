@@ -1,7 +1,7 @@
 /**
- * **计划读面**（pb 工作区 · 片 · 一格）的界面口：`plan-list` · `plan-read` · `plan-cell-view` 与代敲 · 认可 · 送话那几条（计划住哪台就问哪台）。
+ * **计划读面**（pb 工作区 · 仓库 · 节点）的界面口：`plan-list` · `plan-read` · `plan-cell-view` 与代敲 · 认可 · 送话那几条（计划住哪台就问哪台）。
  *
- * 判定全在后端（`src/backend/plan/`）：状态、原因、接手对到哪个会话、边与文件倒过来的索引都是成品。
+ * 判定全在后端（`src/backend/plan/`）：状态、原因、负责人对到哪个会话、边与文件倒过来的索引都是成品。
  * 入参 · 回包按生成类型问（`callTyped`，形状由握手指纹管）；没成原样抛（那一句 ＋ 详情是出错那一端写的）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
@@ -32,7 +32,9 @@ import type { PlanRefs } from "./generated/PlanRefs";
 import type { PlanReturned } from "./generated/PlanReturned";
 import type { PlanReturnedChild } from "./generated/PlanReturnedChild";
 import type { PlanSessionBlock } from "./generated/PlanSessionBlock";
-import type { PlanSign } from "./generated/PlanSign";
+import type { PlanState } from "./generated/PlanState";
+import type { PlanPendingSet } from "./generated/PlanPendingSet";
+import type { PlanReadError } from "./generated/PlanReadError";
 import type { PlanSlice } from "./generated/PlanSlice";
 import type { PlanStale } from "./generated/PlanStale";
 import type { PlanUndecidable } from "./generated/PlanUndecidable";
@@ -69,7 +71,9 @@ export type {
   PlanReturned,
   PlanReturnedChild,
   PlanSessionBlock,
-  PlanSign,
+  PlanState,
+  PlanPendingSet,
+  PlanReadError,
   PlanSlice,
   PlanStale,
   PlanUndecidable,
@@ -81,7 +85,7 @@ export type {
 export type PlanEdgeKind = keyof PlanEdges;
 export const PLAN_EDGE_KINDS: readonly PlanEdgeKind[] = ["to", "with", "after", "replaces"];
 
-/** 这台的工作区与片（`fresh` ＝ 认过的目录也重问 pb）。 */
+/** 这台的工作区与仓库（`fresh` ＝ 认过的目录也重问 pb）。 */
 export async function fetchPlanList(origin: Origin, fresh: boolean, dirs: readonly string[] = []): Promise<PlanList> {
   const req = dirs.length > 0 ? { fresh, dirs: [...dirs] } : { fresh };
   return callTyped(origin, "plan-list", req, budgetWithin(READ_BUDGET_MS));
@@ -92,29 +96,24 @@ export async function fetchPlanRead(origin: Origin, workspace: string): Promise<
   return callTyped(origin, "plan-read", { workspace }, budgetWithin(READ_BUDGET_MS));
 }
 
-/** 一格的 agent 视角（pb 原样那一段）。 */
+/** 一个节点的 agent 视角（pb 原样那一段）。 */
 export async function fetchCellView(origin: Origin, workspace: string, slice: string, id: string): Promise<string> {
   return (await callTyped(origin, "plan-cell-view", { workspace, slice, id }, budgetWithin(READ_BUDGET_MS))).view;
 }
 
-/** 以人的身份代敲的几条（`take` 另走 [`takeRepo`]：要带片名）。 */
-export type PlanCmd = "continue" | "pause" | "view";
+/** 以人的身份代敲的几条（`adopt` 另走 [`adoptRepo`]：要带仓库名）。 */
+export type PlanCmd = "continue" | "pause" | "render";
 
 /** 代敲一条用户命令（pb 拒 ⇒ 后端回拒绝，那一句是 pb 那一句）。 */
 export async function planCommand(origin: Origin, workspace: string, cmd: PlanCmd): Promise<PlanCmdReply> {
   return callTyped(origin, "plan-command", { workspace, cmd }, budgetWithin(READ_BUDGET_MS));
 }
 
-/** 接过一片的仓库（pb 的 `take`；不是此刻那一片后端先切过去）。回包的 `took` 说接到了哪一片；没说 ⇒ 不当成了。 */
-export async function takeRepo(origin: Origin, workspace: string, slice: string): Promise<PlanCmdReply & { took: NonNullable<PlanCmdReply["took"]> }> {
-  const r = await callTyped(origin, "plan-command", { workspace, cmd: "take", slice }, budgetWithin(READ_BUDGET_MS));
-  if (r.took === null) throw new ControlError(r.said ?? "");
-  return { ...r, took: r.took };
-}
-
-/** 记原话：以人的身份代敲 `pb record --slice <片> <裁定> <原话>…`（记进看着的那一片，工作区的当前片不动）。 */
-export async function recordQuote(origin: Origin, workspace: string, slice: string, summary: string, quotes: string[]): Promise<PlanCmdReply> {
-  return callTyped(origin, "plan-command", { workspace, cmd: "record", slice, summary, quotes }, budgetWithin(READ_BUDGET_MS));
+/** 接过一个仓库（pb 的 `adopt`；不是当前仓库后端先切过去）。回包的 `adopted` 说接过来的是哪一个；没说 ⇒ 不当成了。 */
+export async function adoptRepo(origin: Origin, workspace: string, slice: string): Promise<PlanCmdReply & { adopted: NonNullable<PlanCmdReply["adopted"]> }> {
+  const r = await callTyped(origin, "plan-command", { workspace, cmd: "adopt", slice }, budgetWithin(READ_BUDGET_MS));
+  if (r.adopted === null) throw new ControlError(r.said ?? "");
+  return { ...r, adopted: r.adopted };
 }
 
 /** 认可一条 / 撤掉认可（只记在 cc-monitor，不写计划仓）。 */

@@ -10,6 +10,6 @@ export type PlanReturnReply = { line: string, to: PlanWho | null,
  */
 result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, 
 /**
- * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；接手照旧是它。
+ * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；负责人照旧是它。
  */
 resumed: boolean, };

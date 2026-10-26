@@ -1,9 +1,7 @@
 // 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `plan-cell.module.css` 渲染出的规范文本（逐字）。
 declare const classes: {
   readonly cd: string;
-  readonly cdAside: string;
   readonly cdBadge: string;
-  readonly cdBar: string;
   readonly cdCounts: string;
   readonly cdCrumb: string;
   readonly cdFileState: string;
@@ -13,6 +11,8 @@ declare const classes: {
   readonly cdGap: string;
   readonly cdGroup: string;
   readonly cdGroupHead: string;
+  readonly cdHandoff: string;
+  readonly cdHandoffRow: string;
   readonly cdHead: string;
   readonly cdId: string;
   readonly cdKind: string;
@@ -27,10 +27,11 @@ declare const classes: {
   readonly cdRef: string;
   readonly cdSec: string;
   readonly cdSecHead: string;
-  readonly cdSign: string;
-  readonly cdSignHead: string;
-  readonly cdSignWhy: string;
+  readonly cdSet: string;
+  readonly cdSetHead: string;
+  readonly cdSetWhy: string;
   readonly cdSt: string;
+  readonly cdStateLine: string;
   readonly cdTbl: string;
   readonly cdTitle: string;
   readonly cdWhy: string;

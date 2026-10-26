@@ -9,8 +9,22 @@ fn dir(v: serde_json::Value) -> Option<PlanDir> {
 }
 
 fn entry(name: &str, id: &str, status: &str) -> serde_json::Value {
-    json!({"name": name, "id": id, "label": id, "title": null, "statusCode": status, "status": null, "block": null,
-           "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []})
+    let code = if status == "none" {
+        serde_json::Value::Null
+    } else {
+        json!(status)
+    };
+    json!({"name": name, "id": id, "label": id, "title": null, "statusCode": code, "status": null, "block": null,
+           "fileState": "ok", "fileNote": null, "dup": []})
+}
+
+/// ★ pb 0.5 不给签收时刻：回包里再带 `signAtText` 就是形状对不上（线上类型拒多出来的键）。
+#[test]
+fn a_sign_time_is_no_longer_part_of_the_shape() {
+    let mut e = entry("read.txt", "A1-1", "done");
+    e["signAtText"] = json!("02:08");
+    let v = json!({"workspace": "/w", "slice": "alpha", "unreadable": null, "unowned": [], "unownedWhy": null, "entries": [e]});
+    assert!(serde_json::from_value::<PlanFiles>(v).is_err());
 }
 
 #[test]
@@ -19,15 +33,15 @@ fn a_dir_outside_every_slice_adds_nothing() {
 }
 
 #[test]
-fn entries_become_owners_by_name_with_label_status_block_sign_and_double_claims() {
+fn entries_become_owners_by_name_with_label_status_block_and_double_claims() {
     let d = dir(json!({"workspace": "/w", "slice": "alpha", "unreadable": null, "unowned": [], "unownedWhy": null, "entries": [
-        {"name": "read.txt", "id": "A1-1", "label": "A1-1 甲的读入", "title": "甲的读入", "statusCode": "done", "status": null,
-         "block": "甲功能", "signAtText": "02:08", "fileState": "ok", "fileNote": "12 字",
+        {"name": "read.txt", "id": "A1-1", "label": "A1-1 甲的读入", "title": "甲的读入", "statusCode": "done", "status": "已签收",
+         "block": "甲功能", "fileState": "ok", "fileNote": "12 字",
          "dup": [{"id": "A1-2", "label": "A1-2 甲的写出", "title": "甲的写出"}]},
         {"name": "write.txt", "id": "A1-2", "label": "A1-2", "title": null, "statusCode": "open", "status": null,
-         "block": null, "signAtText": null, "fileState": "broken", "fileNote": "不是 UTF-8", "dup": []},
-        {"name": "gone.txt", "id": "A2", "label": "A2 乙", "title": "乙", "statusCode": "dropped", "status": null,
-         "block": null, "signAtText": null, "fileState": "missing", "fileNote": null, "dup": []}
+         "block": null, "fileState": "broken", "fileNote": "不是 UTF-8", "dup": []},
+        {"name": "gone.txt", "id": "A2", "label": "A2 乙", "title": "乙", "statusCode": null, "status": null,
+         "block": null, "fileState": "missing", "fileNote": null, "dup": []}
     ]}))
     .unwrap();
     assert_eq!((d.workspace.as_str(), d.slice.as_str()), ("/w", "alpha"));
@@ -38,7 +52,14 @@ fn entries_become_owners_by_name_with_label_status_block_sign_and_double_claims(
     assert_eq!((r.id.as_str(), r.label.as_str()), ("A1-1", "A1-1 甲的读入"));
     assert_eq!(r.status_code, Some(PlanStatusCode::Done));
     assert_eq!(r.block.as_deref(), Some("甲功能"));
-    assert_eq!(r.sign_at_text.as_deref(), Some("02:08"));
+    assert_eq!(r.status.as_deref(), Some("已签收"));
+    // 预览头那一行：仓库 · 权力范围，不带签收时刻（pb 0.5 不给）。
+    assert_eq!(
+        owner_line("alpha", r)
+            .matches(&copy_text("rsFilewinRows.tip.sep", &[]))
+            .count(),
+        1
+    );
     assert_eq!(broken(r), None);
     // 也声明它的那一格照「编号 标题」写。
     assert!(dup_text(r).starts_with("A1-2 甲的写出"), "{}", dup_text(r));
@@ -50,20 +71,21 @@ fn entries_become_owners_by_name_with_label_status_block_sign_and_double_claims(
     let Claim::Owner(g) = d.claim("gone.txt") else {
         panic!("gone.txt 该有主")
     };
-    assert_eq!(g.status_code, Some(PlanStatusCode::Dropped));
+    assert_eq!(g.status_code, None);
     assert_eq!(d.claim("nobody.txt"), Claim::Unknown);
 }
 
-/// ★ 凭据格（`statusCode: evidence`）不画成「没做完」：图标与没做完的不同。
+/// ★ 类不许记收的值的节点（`statusCode: null`，如测试）不画成「没签收」：图标与没签收的不同。
 #[test]
-fn an_evidence_cell_is_not_drawn_as_open() {
+fn a_node_outside_the_work_is_not_drawn_as_open() {
     let d = dir(json!({"workspace": "/w", "slice": "alpha", "unreadable": null, "unowned": [], "unownedWhy": null,
-        "entries": [entry("proof.txt", "A1-9", "evidence"), entry("todo.txt", "A1-8", "open")]}))
+        "entries": [entry("proof.txt", "A1-9", "none"), entry("todo.txt", "A1-8", "open")]}))
     .unwrap();
     let (Claim::Owner(e), Claim::Owner(o)) = (d.claim("proof.txt"), d.claim("todo.txt")) else {
         panic!("两份都该有主")
     };
-    assert_eq!(e.status_code, Some(PlanStatusCode::Evidence));
+    assert_eq!(e.status_code, None);
+    assert_eq!(o.status_code, Some(PlanStatusCode::Open));
     assert_ne!(status_icon(e.status_code), status_icon(o.status_code));
 }
 

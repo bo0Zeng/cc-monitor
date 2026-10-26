@@ -1,20 +1,22 @@
 //! 留上一次好的：某片读不成给旧的 ＋ 原因 ＋ 时刻；整次失败给整份旧的；摘要只随输出变；不写工作区一个字节。
 
 use super::*;
-use crate::plan::fixture::{as_json, dump, dump_broken, fake_pb, scratch, who, workspace};
+use crate::plan::fixture::{
+    as_json, dump, dump_broken, dump_top_signed, fake_pb, scratch, who, workspace,
+};
 use serde_json::Value;
 
 /// 判据用的几个口（生产不用，住这里不进生产树）。
 impl Book {
-    /// [`Book::take_with`]，本子里没记过的「哪次进的那一步」就用这一次的 rev。
-    pub(crate) fn take(
+    /// [`Book::ingest_with`]，本子里没记过的「哪次进的那一步」就用这一次的 rev。
+    pub(crate) fn ingest(
         &self,
         ran: Ran,
         dir: &Path,
         who: WhoPort,
         now_ms: u64,
     ) -> Result<PlanRead, Miss> {
-        self.take_with(ran, dir, who, now_ms, &|_, _| None)
+        self.ingest_with(ran, dir, who, now_ms, &|_, _| None)
     }
 
     /// 上一次读好的那一份的摘要。
@@ -23,9 +25,9 @@ impl Book {
     }
 }
 
-/// [`Book::take`]（夹具的身份表）出的那一份，线上那一形（判据按键看）。
-fn take(b: &Book, ran: Ran, dir: &Path, now_ms: u64) -> Result<Value, Miss> {
-    b.take(ran, dir, &who, now_ms).map(|r| as_json(&r))
+/// [`Book::ingest`]（夹具的身份表）出的那一份，线上那一形（判据按键看）。
+fn ingest_json(b: &Book, ran: Ran, dir: &Path, now_ms: u64) -> Result<Value, Miss> {
+    b.ingest(ran, dir, &who, now_ms).map(|r| as_json(&r))
 }
 
 fn ran(doc: &Value) -> Ran {
@@ -40,24 +42,24 @@ fn ran(doc: &Value) -> Ran {
 fn a_slice_that_cannot_be_read_now_shows_the_last_good_one_with_reason_and_time() {
     let b = Book::default();
     let dir = Path::new("/w");
-    let first = take(&b, ran(&dump("/w")), dir, 1_000).unwrap();
+    let first = ingest_json(&b, ran(&dump("/w")), dir, 1_000).unwrap();
     assert_eq!(first["slices"][0]["stale"], Value::Null);
-    let second = take(&b, ran(&dump_broken("/w")), dir, 2_000).unwrap();
+    let second = ingest_json(&b, ran(&dump_broken("/w")), dir, 2_000).unwrap();
     let sl = &second["slices"][0];
     assert_eq!(
         sl["cells"].as_array().unwrap().len(),
-        12,
+        15,
         "给的是上一次好的那一份"
     );
-    assert_eq!(sl["stale"]["said"], "图.md 第 3 行：元行缺 id");
+    assert_eq!(sl["stale"]["said"], "图.md 第 3 行：元数据缺 id");
     assert_eq!(sl["stale"]["since"], 1_000);
 }
 
 #[test]
 fn a_slice_never_read_well_stays_an_error() {
     let b = Book::default();
-    let out = take(&b, ran(&dump_broken("/w")), Path::new("/w"), 1).unwrap();
-    assert_eq!(out["slices"][0]["error"], "图.md 第 3 行：元行缺 id");
+    let out = ingest_json(&b, ran(&dump_broken("/w")), Path::new("/w"), 1).unwrap();
+    assert_eq!(out["slices"][0]["error"], "图.md 第 3 行：元数据缺 id");
     assert_eq!(out["slices"][0]["stale"], Value::Null);
 }
 
@@ -69,24 +71,27 @@ fn a_failed_run_gives_the_whole_last_good_one_or_a_miss() {
         said: "超时".into(),
         raw: None,
     };
-    assert!(matches!(take(&b, fail(), dir, 1), Err(Miss::Failed { .. })));
-    take(&b, ran(&dump("/w")), dir, 5).unwrap();
-    let out = take(&b, fail(), dir, 9).unwrap();
+    assert!(matches!(
+        ingest_json(&b, fail(), dir, 1),
+        Err(Miss::Failed { .. })
+    ));
+    ingest_json(&b, ran(&dump("/w")), dir, 5).unwrap();
+    let out = ingest_json(&b, fail(), dir, 9).unwrap();
     assert_eq!(out["stale"]["said"], "超时");
     assert_eq!(out["stale"]["since"], 5);
-    assert_eq!(out["slices"][0]["cells"].as_array().unwrap().len(), 12);
+    assert_eq!(out["slices"][0]["cells"].as_array().unwrap().len(), 15);
 }
 
 #[test]
 fn the_rev_moves_only_with_the_output() {
     let b = Book::default();
     let dir = Path::new("/w");
-    let a = take(&b, ran(&dump("/w")), dir, 1).unwrap();
-    let again = take(&b, ran(&dump("/w")), dir, 2).unwrap();
+    let a = ingest_json(&b, ran(&dump("/w")), dir, 1).unwrap();
+    let again = ingest_json(&b, ran(&dump("/w")), dir, 2).unwrap();
     assert_eq!(a["rev"], again["rev"]);
     let mut changed = dump("/w");
-    changed["slices"][0]["cells"][1]["status"] = serde_json::json!("没做完");
-    let c = take(&b, ran(&changed), dir, 3).unwrap();
+    changed["repos"][0]["nodes"][1]["body"] = serde_json::json!("改了");
+    let c = ingest_json(&b, ran(&changed), dir, 3).unwrap();
     assert_ne!(a["rev"], c["rev"]);
     assert_eq!(b.rev("/w"), c["rev"].as_str().map(str::to_string));
 }
@@ -94,9 +99,9 @@ fn the_rev_moves_only_with_the_output() {
 #[test]
 fn dirs_are_remembered_both_ways() {
     let b = Book::default();
-    take(&b, Ran::NotWorkspace("x".into()), Path::new("/plain"), 1).unwrap_err();
+    ingest_json(&b, Ran::NotWorkspace("x".into()), Path::new("/plain"), 1).unwrap_err();
     assert_eq!(b.known_dir(Path::new("/plain")), Some(None));
-    take(&b, ran(&dump("/w")), Path::new("/w/alpha"), 1).unwrap();
+    ingest_json(&b, ran(&dump("/w")), Path::new("/w/alpha"), 1).unwrap();
     assert_eq!(b.known_dir(Path::new("/w/alpha")), Some(Some("/w".into())));
     assert_eq!(b.workspaces(), vec!["/w".to_string()]);
 }
@@ -110,7 +115,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, Vec<u8>
         "repos/alpha",
         "repos/alpha/src",
     ];
-    let files = [".env", "dump.json", "cell.json"];
+    let files = [".planned-build/.env", "dump.json", "node.json"];
     let mut out: Vec<_> = dirs
         .iter()
         .map(|d| {
@@ -128,7 +133,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, Vec<u8>
     out
 }
 
-/// 真起假 pb 读一次：工作区（计划仓 ＋ `.env` ＋ 仓库）跑前跑后逐字节不变、目录一项没多没少。
+/// 真起假 pb 读一次：工作区（计划仓连工作区配置 ＋ 仓库）跑前跑后逐字节不变、目录一项没多没少。
 #[test]
 fn reading_a_workspace_writes_nothing_in_it() {
     let d = scratch("book-readonly");
@@ -150,12 +155,12 @@ fn top_key(out: &Value) -> Option<String> {
         .map(|n| n["key"].as_str().unwrap().to_string())
 }
 
-/// 每片带 `needs`；顶块看全局那一条的键是进那一步那次的 rev：在那一步上输出再变键也不变，离开再回来换新的。
+/// 每片带 `needs`；顶层全签收那一条的键是全签收那一次的 rev：一直全签收着、输出再变键也不变，又有没签收的、再签全了换新的。
 #[test]
-fn the_top_need_keeps_the_rev_it_entered_at_until_the_top_block_leaves_the_step() {
+fn the_top_need_keeps_the_rev_it_got_signed_at_until_something_is_unsigned_again() {
     let b = Book::default();
     let dir = Path::new("/w");
-    let first = take(&b, ran(&dump("/w")), dir, 1).unwrap();
+    let first = ingest_json(&b, ran(&dump_top_signed("/w")), dir, 1).unwrap();
     let r1 = first["rev"].as_str().unwrap().to_string();
     assert_eq!(top_key(&first), Some(format!("top:{r1}")));
     assert!(first["slices"][0]["needs"]
@@ -163,26 +168,25 @@ fn the_top_need_keeps_the_rev_it_entered_at_until_the_top_block_leaves_the_step(
         .unwrap()
         .iter()
         .any(|n| n["kind"] == "red"));
-    // 还在那一步、别处变了 ⇒ 键不变。
-    let mut moved = dump("/w");
-    moved["slices"][0]["cells"][1]["status"] = serde_json::json!("没做完");
-    let second = take(&b, ran(&moved), dir, 2).unwrap();
+    // 还全签收着、别处变了 ⇒ 键不变。
+    let mut moved = dump_top_signed("/w");
+    moved["repos"][0]["nodes"][1]["body"] = serde_json::json!("改了");
+    let second = ingest_json(&b, ran(&moved), dir, 2).unwrap();
     assert_ne!(second["rev"], first["rev"]);
     assert_eq!(top_key(&second), Some(format!("top:{r1}")));
-    // 离开那一步 ⇒ 没有这一条；再回来 ⇒ 键换成回来那次的 rev。
-    let mut away = dump("/w");
-    away["slices"][0]["blocks"][0]["phase"] = serde_json::json!("定架构");
-    assert_eq!(top_key(&take(&b, ran(&away), dir, 3).unwrap()), None);
-    let back = take(&b, ran(&dump("/w")), dir, 4).unwrap();
+    // 又有没签收的 ⇒ 没有这一条；再签全了 ⇒ 键换成那一次的 rev。
+    let away = dump("/w");
+    assert_eq!(top_key(&ingest_json(&b, ran(&away), dir, 3).unwrap()), None);
+    let back = ingest_json(&b, ran(&dump_top_signed("/w")), dir, 4).unwrap();
     assert_eq!(
         top_key(&back),
         Some(format!("top:{r1}")),
         "输出与第一次一模一样 ⇒ 摘要也一样"
     );
-    let back2 = take(&b, ran(&moved), dir, 5).unwrap();
+    let back2 = ingest_json(&b, ran(&moved), dir, 5).unwrap();
     assert_eq!(top_key(&back2), Some(format!("top:{r1}")));
-    take(&b, ran(&away), dir, 6).unwrap();
-    let back3 = take(&b, ran(&moved), dir, 7).unwrap();
+    ingest_json(&b, ran(&away), dir, 6).unwrap();
+    let back3 = ingest_json(&b, ran(&moved), dir, 7).unwrap();
     let r3 = back3["rev"].as_str().unwrap().to_string();
     assert_eq!(top_key(&back3), Some(format!("top:{r3}")));
 }
@@ -193,7 +197,13 @@ fn a_fresh_book_adopts_the_entered_rev_from_a_prior_ack() {
     let b = Book::default();
     let prior = |ws: &str, slice: &str| (ws == "/w" && slice == "alpha").then(|| "r0".to_string());
     let out = b
-        .take_with(ran(&dump("/w")), Path::new("/w"), &who, 1, &prior)
+        .ingest_with(
+            ran(&dump_top_signed("/w")),
+            Path::new("/w"),
+            &who,
+            1,
+            &prior,
+        )
         .unwrap();
     assert_eq!(top_key(&as_json(&out)), Some("top:r0".into()));
 }
@@ -203,11 +213,11 @@ fn a_fresh_book_adopts_the_entered_rev_from_a_prior_ack() {
 fn a_stale_slice_keeps_its_last_needs() {
     let b = Book::default();
     let dir = Path::new("/w");
-    let first = take(&b, ran(&dump("/w")), dir, 1).unwrap();
-    let second = take(&b, ran(&dump_broken("/w")), dir, 2).unwrap();
+    let first = ingest_json(&b, ran(&dump("/w")), dir, 1).unwrap();
+    let second = ingest_json(&b, ran(&dump_broken("/w")), dir, 2).unwrap();
     assert_eq!(second["slices"][0]["needs"], first["slices"][0]["needs"]);
     // 从没读好过的那一片：空的。
     let c = Book::default();
-    let out = take(&c, ran(&dump_broken("/w")), dir, 1).unwrap();
+    let out = ingest_json(&c, ran(&dump_broken("/w")), dir, 1).unwrap();
     assert_eq!(out["slices"][0]["needs"], serde_json::json!([]));
 }

@@ -1,4 +1,4 @@
-//! `changed {plan}`：盯认过的工作区（计划仓 `.planned-build/` 整棵 ＋ 工作区根上那份 `.env` ＋ 各片仓库里声明过的文件，见 [`Spots`]），
+//! `changed {plan}`：盯认过的工作区（计划仓 `.planned-build/` 整棵，连 pb 的工作区配置 `.env` ＋ 各仓库里声明过的文件，见 [`Spots`]），
 //! 有动静就重跑一次 dump，**输出摘要或要你看的数变了**才推一帧 `{key: 工作区, rev, body: {needs}}`；界面收到再来 `plan-read`。
 //! 认可 / 撤销认可不动盘上的计划，由那条命令自己经 [`changes`] 推一帧新的数。
 //!
@@ -14,8 +14,6 @@ pub(crate) const MAX_WATCHED: usize = 32;
 
 /// 计划仓的目录名（工作区根底下）。
 pub(crate) const PLAN_DIR: &str = ".planned-build";
-/// 工作区根上 pb 记当前片与 auto 的那份文件。
-pub(crate) const WORKSPACE_ENV: &str = ".env";
 
 /// 一个工作区此刻的样子：输出摘要 · 要你看的数（不含问人那一种）。
 pub(crate) type Seen = (String, u64);
@@ -92,10 +90,9 @@ pub(crate) type Held = Arc<Mutex<Option<crate::platform::watch_file::Watching>>>
 /// 盯着的那几个：工作区 ⇒ 它的监听器（活着就一直盯）。
 static HELD: Mutex<Vec<(PathBuf, Held)>> = Mutex::new(Vec::new());
 
-/// 这个事件要不要重读：计划仓里的任何东西 · 工作区根上那份 `.env` · 各片仓库里声明过的文件与通往它们的目录（[`Spots`]）。
+/// 这个事件要不要重读：计划仓里的任何东西（连工作区配置）· 各仓库里声明过的文件与通往它们的目录（[`Spots`]）。
 pub(crate) fn concerns(ws: &Path, spots: &Spots, p: &Path) -> bool {
     p.starts_with(ws.join(PLAN_DIR))
-        || p == ws.join(WORKSPACE_ENV)
         || spots.hits.iter().any(|h| h == p)
         || spots.dirs.iter().any(|d| d == p)
 }

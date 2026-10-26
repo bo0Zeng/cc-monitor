@@ -8,44 +8,41 @@ import type { PlanNeed } from "./PlanNeed";
 import type { PlanPendingSet } from "./PlanPendingSet";
 import type { PlanPhase } from "./PlanPhase";
 import type { PlanProgress } from "./PlanProgress";
-import type { PlanRecord } from "./PlanRecord";
 import type { PlanReturned } from "./PlanReturned";
-import type { PlanSignAt } from "./PlanSignAt";
 import type { PlanStale } from "./PlanStale";
 import type { PlanUnbuilt } from "./PlanUnbuilt";
 import type { PlanUnowned } from "./PlanUnowned";
-import type { PlanUnsplit } from "./PlanUnsplit";
 
 /**
- * 一片。读不成又没读好过 ⇒ `bare`（只有头几格有字，其余是空的）。
+ * 一片（pb 的一个仓库）。读不成又没读好过 ⇒ `bare`（只有头几格有字，其余是空的）。
  */
 export type PlanSlice = { name: string, domain: string | null, 
 /**
- * 这一片的仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
+ * 仓库相对工作区根在哪（pb 给的，照用；pb 没给 ⇒ `null`）。
  */
 path: string | null, current: boolean, 
 /**
- * 只写文档：仓库还没接过来（`plan-command take` 接）。
+ * 只做计划：人还没 `pb adopt`（`plan-command adopt` 接）。
  */
 docsOnly: boolean, 
 /**
- * 这一片记下的人的原话（照号）。
- */
-records: Array<PlanRecord>, 
-/**
  * 这一刻读不成的那一句（pb 原样）。
  */
-error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, 
+error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, 
 /**
- * 没做完的格数（不是做完了、也不是不做了）。
+ * 收的值（领域表 update 规则加 · 去的那个，软件是「已签收」）；表里没有 ⇒ `null`（不出进度）。
  */
-openCells: number, 
+doneValue: string | null, top: Array<string>, 
 /**
- * 全片的签收，新的在上（读不出时刻的排后）。
+ * 顶层进度；没有收的值 ⇒ `null`。
  */
-recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, 
+progress: PlanProgress | null, 
 /**
- * 写了「块:」还没立块的。
+ * 算活、还没签收的格数。
+ */
+openCells: number, blocks: Array<PlanBlock>, 
+/**
+ * 划出了、还没建的。
  */
 unbuiltBlocks: Array<PlanUnbuilt>, 
 /**
@@ -53,15 +50,11 @@ unbuiltBlocks: Array<PlanUnbuilt>,
  */
 unowned: PlanUnowned, 
 /**
- * 没分下去的文件。
- */
-unsplit: Array<PlanUnsplit>, 
-/**
  * 还没执行的 sets（画虚线，为什么写在目标那一格上）。
  */
 pendingSets: Array<PlanPendingSet>, check: PlanCheck, 
 /**
- * 编号 ⇒「编号 标题」（活图上的格 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
+ * 编号 ⇒「编号 标题」（图上每个节点，连排期的 ＋ 归档里的；后端拼，界面凡出现编号照它写）。
  */
 labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
 /**
@@ -69,6 +62,6 @@ labels: { [key in string]: string }, cells: Array<PlanCell>, archived: Array<Pla
  */
 needCount: number, 
 /**
- * 顶块（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
+ * 最上面那个权力范围（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
  */
 returned: PlanReturned | null, };

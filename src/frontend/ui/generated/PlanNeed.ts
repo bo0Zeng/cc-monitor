@@ -9,6 +9,6 @@ export type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", blo
  */
 sid: string | null, 
 /**
- * 判据红那一条在 `check.red` 里的位置。
+ * 不通过那一条在 `check.red` 里的位置。
  */
 red?: number, acked: boolean, };

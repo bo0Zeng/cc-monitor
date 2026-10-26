@@ -1,4 +1,4 @@
-//! 文件窗口反查：一个目录落在哪一片的仓库里 · 那里每份文件归哪一格（标题 · 状态 · 哪一块 · 签收时刻）· 被两格声明 ⇒ 另一格 · 无主的那几份。
+//! 文件窗口反查：一个目录落在哪个仓库里 · 那里每份文件归哪一格（标题 · 状态 · 哪个权力范围）· 被两格声明 ⇒ 另一格 · 无主的那几份。
 
 use super::*;
 use crate::plan::fixture::{as_json, dump, dump_broken, who};
@@ -13,7 +13,7 @@ fn doc(d: Value) -> PlanRead {
     let b = crate::plan::book::Book::default();
     let raw = d.to_string().into_bytes();
     let mut v = b
-        .take(
+        .ingest(
             crate::plan::dump::Ran::Dump { doc: d, raw },
             std::path::Path::new("/w"),
             &who,
@@ -25,43 +25,51 @@ fn doc(d: Value) -> PlanRead {
     v
 }
 
-/// 夹具那一片的仓库登记在 `repos/alpha`：src/ 底下 read（A1-1）· shared（A2，派出去那一块的根格）· write（A1-2，缺）声明了，stray 没人声明。
+/// 夹具那个仓库登记在 `repos/alpha`：src/ 底下 read（A1-1，已签收）· shared（A2 划出的根节点先声明，A2-1 也声明）·
+/// third（A7，缺）· write（A1-2，空）声明了，stray 没人声明。
 #[test]
-fn files_in_a_slice_repo_carry_their_cell_block_and_sign() {
+fn files_in_a_repo_carry_their_cell_scope_and_state() {
     let v = dir_of(&doc(dump("/w")), "/w/repos/alpha/src");
     assert_eq!(v["workspace"], "/w");
     assert_eq!(v["slice"], "alpha");
     assert_eq!(v["unreadable"], Value::Null);
     let e = v["entries"].as_array().unwrap();
     let names: Vec<&str> = e.iter().map(|x| x["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["read.txt", "shared.txt", "write.txt"]);
+    assert_eq!(names, ["read.txt", "shared.txt", "third.txt", "write.txt"]);
     assert_eq!(e[0]["id"], "A1-1");
     assert_eq!(e[0]["title"], "甲的读入");
     // 「编号 标题」后端拼好（窗口照它画）。
     assert_eq!(e[0]["label"], "A1-1 甲的读入");
     assert_eq!(e[0]["statusCode"], "done");
-    assert_eq!(e[0]["block"], Value::Null, "住顶块");
+    assert_eq!(e[0]["status"], "已签收 2");
+    assert_eq!(e[0]["block"], Value::Null, "住 project");
     assert_eq!(e[0]["fileState"], "ok");
-    assert!(e[0]["signAtText"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(e[0].get("signAtText").is_none(), "pb 0.5 不给签收时刻");
     assert_eq!(e[1]["id"], "A2");
     assert_eq!(e[1]["block"], "乙功能");
-    assert_eq!(e[2]["id"], "A1-2");
+    assert_eq!(
+        e[1]["dup"],
+        json!([{"id": "A2-1", "label": "A2-1 乙的一半", "title": "乙的一半"}])
+    );
     assert_eq!(e[2]["fileState"], "missing");
-    assert_eq!(e[2]["signAtText"], Value::Null);
-    assert_eq!(e[2]["dup"], json!([]));
-    // 无主：pb 给整片的，这里只留落在这个目录里的文件名。
+    assert_eq!(e[3]["id"], "A1-2");
+    assert_eq!(e[3]["statusCode"], "open");
+    assert_eq!(e[3]["status"], Value::Null);
+    assert_eq!(e[3]["fileState"], "empty");
+    // 无主：pb 给整个仓库的，这里只留落在这个目录里的文件名。
     assert_eq!(v["unowned"], json!(["stray.txt"]));
     assert_eq!(v["unownedWhy"], Value::Null);
     let t = dir_of(&doc(dump("/w")), "/w/repos/alpha/tests");
     assert_eq!(t["unowned"], json!([]));
     assert_eq!(t["entries"][0]["id"], "A1-3");
+    assert_eq!(t["entries"][0]["statusCode"], Value::Null, "测试不算活");
+    assert_eq!(t["entries"][0]["fileState"], "broken");
 }
 
 #[test]
 fn a_file_declared_by_two_cells_names_the_other_one() {
     let mut d = dump("/w");
-    d["slices"][0]["cells"][2]["files"] =
-        json!([{"path": "src/read.txt", "state": "在", "note": "3 字"}]);
+    d["repos"][0]["nodes"][2]["files"] = json!([{"path": "src/read.txt", "file_check": "present", "note": "3 字", "chars": 3, "bytes": 3}]);
     let v = dir_of(&doc(d), "/w/repos/alpha/src");
     assert_eq!(v["entries"][0]["id"], "A1-1");
     assert_eq!(
@@ -74,7 +82,7 @@ fn a_file_declared_by_two_cells_names_the_other_one() {
 #[test]
 fn an_unreadable_repo_says_why_unowned_cannot_be_told() {
     let mut d = dump("/w");
-    d["slices"][0]["unowned"] = json!({"paths": null, "why": "仓库不是 git 仓"});
+    d["repos"][0]["unowned"] = json!({"paths": null, "error": "仓库不是 git 仓"});
     let v = dir_of(&doc(d), "/w/repos/alpha/src");
     assert_eq!(v["unowned"], Value::Null);
     assert_eq!(v["unownedWhy"], "仓库不是 git 仓");
@@ -91,9 +99,9 @@ fn the_repo_root_and_other_dirs_are_told_apart() {
             .as_array()
             .unwrap()
             .len(),
-        3
+        4
     );
-    // 工作区根 · 计划仓 · 片名那个目录（仓库不在那儿）· 名字只是前缀相同的目录 ⇒ 不在片里。
+    // 工作区根 · 计划仓 · 仓库名那个目录（仓库不在那儿）· 名字只是前缀相同的目录 ⇒ 不在仓库里。
     for dir in [
         "/w",
         "/w/.planned-build/alpha",
@@ -110,7 +118,7 @@ fn the_repo_root_and_other_dirs_are_told_apart() {
 fn an_unreadable_slice_says_so_and_lists_nothing() {
     let v = dir_of(&doc(dump_broken("/w")), "/w/repos/alpha/src");
     assert_eq!(v["slice"], "alpha");
-    assert_eq!(v["unreadable"], "图.md 第 3 行：元行缺 id");
+    assert_eq!(v["unreadable"], "图.md 第 3 行：元数据缺 id");
     assert_eq!(v["entries"], json!([]));
     assert_eq!(v["unowned"], Value::Null);
 }

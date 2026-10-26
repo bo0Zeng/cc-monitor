@@ -29,7 +29,6 @@
       { "text": "继续", "use": "输入" }
     ],
     "tests/backend/plan/book_tests.rs": [
-      { "text": "没做完", "use": "输入" },
       { "text": "超时", "use": "输入" }
     ],
     "tests/backend/control/exit_policy_tests.rs": [
@@ -39,20 +38,13 @@
       { "text": "超时", "use": "输入" }
     ],
     "tests/backend/plan/needs_tests.rs": [
-      { "text": "不做了", "use": "输入" },
       { "text": "无主", "use": "输入" }
     ],
-    "tests/backend/plan/product_tests.rs": [
-      { "text": "没做完", "use": "输入" },
-      { "text": "不做了", "use": "输入" },
-      { "text": "收下", "use": "回显" },
-      { "text": "执行", "use": "回显" }
-    ],
     "tests/backend/plan/fixture.rs": [
-      { "text": "没做完", "use": "输入" },
-      { "text": "没签", "use": "输入" },
-      { "text": "收下", "use": "输入" },
-      { "text": "执行", "use": "输入" }
+      { "text": "替换", "use": "输入" },
+      { "text": "原话", "use": "输入" },
+      { "text": "待定", "use": "输入" },
+      { "text": "没签收的", "use": "输入" }
     ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
@@ -279,18 +271,11 @@
       { "text": "恢复", "use": "输入" }
     ],
     "tests/shots/fake/plan.ts": [
-      { "text": "没做完", "use": "输入" },
-      { "text": "不做了", "use": "输入" },
-      { "text": "没签", "use": "输入" },
-      { "text": "对账", "use": "输入" },
-      { "text": "执行", "use": "输入" },
       { "text": "订阅", "use": "输入" },
-      { "text": "收下", "use": "输入" }
-    ],
-    "tests/shots/disk/plan.ts": [
-      { "text": "没做完", "use": "输入" },
-      { "text": "不做了", "use": "输入" },
-      { "text": "收下", "use": "输入" }
+      { "text": "替换", "use": "输入" },
+      { "text": "原话", "use": "输入" },
+      { "text": "待定", "use": "输入" },
+      { "text": "没签收的", "use": "输入" }
     ],
     "tests/shots/fake/history.ts": [
       { "text": "重试", "use": "输入" }

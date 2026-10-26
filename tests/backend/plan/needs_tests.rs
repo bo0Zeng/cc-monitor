@@ -1,7 +1,7 @@
-//! 要你看四种的判定：顶块走到看全局 · 判据红 · 接手的会话停了而那一块没做完 · 接手的会话在等你；键带条目版本；计数不含「问人」那一种。
+//! 要你看四种的判定：顶层全签收 · 校验不通过 · 负责人的会话停了而根节点没签收 · 负责人的会话在等你；键带条目版本；计数不含「问人」那一种。
 
 use super::*;
-use crate::plan::fixture::{as_json, dump, made_with, MAIN, STRANGER, SUB};
+use crate::plan::fixture::{as_json, dump, dump_top_signed, made_with, MAIN, STRANGER, SUB};
 use crate::plan::Whose;
 use serde_json::{json, Value};
 
@@ -34,6 +34,7 @@ fn all_working(id: &str) -> Whose {
         },
         SUB => Whose::Subagent {
             parent: MAIN.into(),
+            parent_title: "甲会话".into(),
             live,
         },
         _ => Whose::Unknown,
@@ -49,6 +50,7 @@ fn all_ended(id: &str) -> Whose {
         },
         SUB => Whose::Subagent {
             parent: MAIN.into(),
+            parent_title: "甲会话".into(),
             live: None,
         },
         _ => Whose::Unknown,
@@ -67,9 +69,10 @@ fn kinds(n: &[Value]) -> Vec<(String, String)> {
 }
 
 #[test]
-fn the_top_block_at_the_look_global_phase_is_one_need_keyed_by_the_rev_it_entered_at() {
-    let sl = slice_with(&dump("/w"), &all_working);
-    assert!(top_at_look_global(&sl));
+fn a_fully_signed_top_level_is_one_need_keyed_by_the_rev_it_got_there() {
+    let d = dump_top_signed("/w");
+    let sl = slice_with(&d, &all_working);
+    assert!(top_done(&sl));
     let n = ofs(&sl, Some("r7"));
     let top: Vec<_> = n.iter().filter(|x| x["kind"] == "top").collect();
     assert_eq!(top.len(), 1);
@@ -77,39 +80,42 @@ fn the_top_block_at_the_look_global_phase_is_one_need_keyed_by_the_rev_it_entere
     assert_eq!(top[0]["block"], "project");
     assert_eq!(top[0]["cell"], "project");
     assert_eq!(top[0]["acked"], false);
-    // 进那一步的那次 rev 没给（还不知道）⇒ 不出这一条，不拿空键凑。
+    // 那一次的 rev 没给（还不知道）⇒ 不出这一条，不拿空键凑。
     assert!(ofs(&sl, None).iter().all(|x| x["kind"] != "top"));
 }
 
+/// 顶层还有没签收的 · 没有收的值（研究）· 顶层一个算活的都没有 ⇒ 不出 `top`；阶段叫什么不看。
 #[test]
-fn a_top_block_not_at_a_look_global_phase_is_no_need() {
+fn a_top_level_not_fully_signed_is_no_need_whatever_the_phase() {
     let mut d = dump("/w");
-    d["slices"][0]["blocks"][0]["phase"] = json!("定架构");
+    d["repos"][0]["scopes"][0]["phase"] = json!("回看");
     let sl = slice_with(&d, &all_working);
-    assert!(!top_at_look_global(&sl));
+    assert!(!top_done(&sl));
     assert!(ofs(&sl, Some("r7")).iter().all(|x| x["kind"] != "top"));
-    // 看全局那个标打在别的阶段上 ⇒ 认标不认名字。
-    d["slices"][0]["phases"][0]["marks"] = json!(["看全局"]);
-    assert!(top_at_look_global(&slice_with(&d, &all_working)));
+    let beta = made_with(&dump("/w"), &all_working).slices.remove(1);
+    assert!(!top_done(&beta));
+    let mut d = dump("/w");
+    d["repos"][0]["top_level"] = json!(["A3", "A4"]);
+    assert!(!top_done(&slice_with(&d, &all_working)), "0/0 不算全签收");
 }
 
 #[test]
-fn every_red_check_is_one_need_keyed_by_rule_and_block_at_the_blocks_root_cell() {
+fn every_failure_is_one_need_keyed_by_rule_and_scope_at_the_scopes_root_cell() {
     let mut d0 = dump("/w");
-    d0["slices"][0]["check"]["red"][0]["block"] = json!("A2");
+    d0["repos"][0]["check"]["failures"][0]["scope"] = json!("A2");
     let sl = slice_with(&d0, &all_working);
     let n = ofs(&sl, None);
     let red: Vec<_> = n.iter().filter(|x| x["kind"] == "red").collect();
     assert_eq!(red.len(), 1);
-    assert_eq!(red[0]["key"], "red:悬空@A2");
+    assert_eq!(red[0]["key"], "red:边指着图上的节点@A2");
     assert_eq!(red[0]["block"], "A2");
     assert_eq!(red[0]["cell"], "A2");
     assert_eq!(red[0]["red"], 0, "指回 check.red 的第几条");
-    // 两条红：各出一条；`what` 变了键不变（认可仍作数），规则或块换了键就换。
+    // 两条：各出一条；`message` 变了键不变（认可仍作数），规则或权力范围换了键就换。
     let mut d = dump("/w");
-    d["slices"][0]["check"]["red"] = json!([
-        {"rule": "悬空", "what": "A1-2 指着 A8", "block": "A2", "fix": "x", "refs": []},
-        {"rule": "无主", "what": "src/x 没人管", "block": null, "fix": "y", "refs": []}
+    d["repos"][0]["check"]["failures"] = json!([
+        {"rule": "悬空", "message": "A1-2 指着 A8", "scope": "A2", "fix": "x", "refs": []},
+        {"rule": "无主", "message": "src/x 没人管", "scope": null, "fix": "y", "refs": []}
     ]);
     let n = ofs(&slice_with(&d, &all_working), None);
     let keys: Vec<_> = kinds(&n).into_iter().filter(|(k, _)| k == "red").collect();
@@ -126,11 +132,11 @@ fn every_red_check_is_one_need_keyed_by_rule_and_block_at_the_blocks_root_cell()
 }
 
 #[test]
-fn an_ended_owner_of_an_unfinished_block_is_a_need_and_a_subagent_counts_by_its_parent() {
+fn an_ended_owner_of_an_unsigned_scope_is_a_need_and_a_subagent_counts_by_its_parent() {
     let sl = slice_with(&dump("/w"), &all_ended);
     let n = ofs(&sl, None);
     let ended: Vec<_> = n.iter().filter(|x| x["kind"] == "ended").collect();
-    // 顶块（主会话停了、整片没做完）· 块 A2（子 agent 接手，父会话也停了）。
+    // project（主会话停了、顶层没全签收）· A2（子 agent 负责，父会话也停了）。
     assert_eq!(ended.len(), 2, "{n:?}");
     let b = ended.iter().find(|x| x["block"] == "A2").unwrap();
     assert_eq!(b["key"], format!("ended:A2@{SUB}"));
@@ -142,17 +148,11 @@ fn an_ended_owner_of_an_unfinished_block_is_a_need_and_a_subagent_counts_by_its_
 }
 
 #[test]
-fn an_ended_owner_of_a_finished_block_or_an_unknown_owner_is_no_need() {
-    let mut d = dump("/w");
-    // 块 A2 的根格（A2）做完了；整片也做完了（顶块那一条看 `done`）。
-    d["slices"][0]["cells"][7]["status"] = json!("做完了");
-    d["slices"][0]["done"] = json!(true);
+fn an_ended_owner_of_a_signed_scope_or_an_unknown_owner_is_no_need() {
+    // A2 的根节点签收了；顶层也全签收了（project 那一条看顶层进度）。
+    let d = dump_top_signed("/w");
     let n = ofs(&slice_with(&d, &all_ended), None);
     assert!(n.iter().all(|x| x["kind"] != "ended"), "{n:?}");
-    // 不做了也算收了尾。
-    d["slices"][0]["cells"][7]["status"] = json!("不做了");
-    let n = ofs(&slice_with(&d, &all_ended), None);
-    assert!(n.iter().all(|x| x["kind"] != "ended"));
     // 对不上的 id：说不清停没停 ⇒ 不出。
     let n = ofs(&slice_with(&dump("/w"), &|_: &str| Whose::Unknown), None);
     assert!(n.iter().all(|x| x["kind"] != "ended"));
@@ -166,11 +166,11 @@ fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
     let ask: Vec<_> = n.iter().filter(|x| x["kind"] == "ask").collect();
     assert_eq!(ask.len(), 2);
     let b = ask.iter().find(|x| x["block"] == "A2").unwrap();
-    assert_eq!(b["cell"], "A2-1", "块站在 A2-1");
+    assert_eq!(b["cell"], "A2-1", "A2 站在 A2-1");
     assert_eq!(b["sid"], MAIN);
     assert_eq!(b["key"], format!("ask:A2@{SUB}"));
     let p = ask.iter().find(|x| x["block"] == "project").unwrap();
-    assert_eq!(p["cell"], "project", "没站位 ⇒ 块根");
+    assert_eq!(p["cell"], "A1-2", "project 站在 A1-2");
     // 在跑 ⇒ 不问人。
     let sl = slice_with(&dump("/w"), &all_working);
     assert!(ofs(&sl, None).iter().all(|x| x["kind"] != "ask"));
@@ -178,7 +178,8 @@ fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
 
 #[test]
 fn acks_mark_needs_and_the_count_skips_acked_ones_and_asks() {
-    let mut doc = made_with(&dump("/w"), &crate::plan::fixture::who);
+    let d = dump_top_signed("/w");
+    let mut doc = made_with(&d, &crate::plan::fixture::who);
     doc.slices[0].needs = of_slice(&doc.slices[0], Some("r1"));
     // top · red · ask×2。
     assert_eq!(count(&doc), 2, "问人那两条由会话那一侧数");
@@ -205,7 +206,7 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
         at: 5,
         to: MAIN.into(),
         result: "delivered".into(),
-        children: (1..=6).map(|i| format!("A1-{i}")).collect(),
+        children: (1..=5).map(|i| format!("A1-{i}")).collect(),
         body: body_digest(cell.body.as_deref()),
     };
     let cells = &sl.cells;
@@ -215,7 +216,7 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
     assert_eq!(st["to"], as_json(&cell.owner));
     assert_eq!(st["to"]["sid"], MAIN);
     assert_eq!(st["at"], 5);
-    // 这一格此刻已经没有那一位（接手换了人）⇒ 说不出是谁。
+    // 这一格此刻已经没有那一位（负责人换了人）⇒ 说不出是谁。
     let gone = Returned {
         to: STRANGER.into(),
         ..at.clone()
@@ -229,16 +230,16 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
     assert_eq!(landing(&unsure, &t, cells).state, "unsure");
     // 底下多了一格 ⇒ 落地，带那一格的标题。
     let mut grown = t.clone();
-    grown.children.push("A1-7".into());
+    grown.children.push("A1-6".into());
     let mut more = cells.clone();
     let mut extra = cell.clone();
-    extra.id = "A1-7".into();
+    extra.id = "A1-6".into();
     extra.title = Some("甲的补丁".into());
     more.push(extra);
     let st = as_json(&landing(&at, &grown, &more));
     assert_eq!(st["state"], "landed");
     assert_eq!(st["by"], "child");
-    assert_eq!(st["child"], json!({"id": "A1-7", "title": "甲的补丁"}));
+    assert_eq!(st["child"], json!({"id": "A1-6", "title": "甲的补丁"}));
     // 少了一格不算落地（被顶掉不是「照退回加了一格」）。
     let mut shrunk = t.clone();
     shrunk.children = vec!["A1-1".into()];
@@ -251,7 +252,7 @@ fn a_return_lands_when_a_new_child_appears_or_the_body_changes() {
     assert_eq!(st.by.as_deref(), Some("body"));
 }
 
-/// 顶块 `project` 也是退回的对象：标题是片名 · 子是顶层那几格 · 在长它的是顶块接手 · 没有签它的。
+/// `project` 也是退回的对象：标题是仓库名 · 子是顶层那几格 · 负责人是 project 的负责人 · 没有签它的。
 #[test]
 fn the_top_block_is_a_target_shaped_from_the_slice() {
     let sl = slice_with(&dump("/w"), &all_working);
@@ -272,12 +273,12 @@ fn the_line_carries_only_the_facts() {
     );
 }
 
-/// 页头「判据 N 红」与「需手动」里判据红那几条口径一致：每条 `check.red` 恰一条 `red`（没认可时都算进 `needCount`）。
+/// 页头「N 条不通过」与「需手动」里那几条口径一致：每条 `check.red` 恰一条 `red`（没认可时都算进 `needCount`）。
 #[test]
 fn every_red_check_is_exactly_one_red_need() {
     let sl = slice_with(&dump("/w"), &crate::plan::fixture::who);
     let reds = sl.check.red.len();
     let got = of_slice(&sl, None);
     assert_eq!(got.iter().filter(|n| n.kind == "red").count(), reds);
-    assert!(reds > 0, "夹具里没有判据红 —— 本条空转");
+    assert!(reds > 0, "夹具里没有不通过的 —— 本条空转");
 }
