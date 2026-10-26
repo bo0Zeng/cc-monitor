@@ -167,3 +167,36 @@ fn the_line_fingerprint_does_not_cover_the_record() {
     assert_ne!(line, with_record, "正控：带记录算出来该不一样");
     assert!(crate::frame_shapes::FRAMES.contains(&("line", line.as_str())));
 }
+
+/// `changed` 的体按主题有类型：体换了形（少一格 · 多一格 · 换了型）⇒ 整帧解不开（两端契约对不上，当场报），
+/// 不是交下去由各读口各自猜。
+#[test]
+fn a_changed_body_off_its_topics_shape_does_not_decode() {
+    let ok = r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r","body":{"needs":2}}"#;
+    match decode::<Record>(ok) {
+        Ok(Frame::Changed(Changed::Plan { key, rev, body })) => assert_eq!(
+            (key.as_str(), rev.as_deref(), body.map(|b| b.needs)),
+            ("/w", Some("r"), Some(2))
+        ),
+        other => panic!("{other:?}"),
+    }
+    for bad in [
+        // 少了 `needs`
+        r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r","body":{}}"#,
+        // 换了型
+        r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r","body":{"needs":"2"}}"#,
+        // 多一格
+        r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r","body":{"needs":2,"x":1}}"#,
+        // 别的主题的体
+        r#"{"kind":"changed","topic":"session_hidden","key":"s1","body":{"needs":2}}"#,
+        r#"{"kind":"changed","topic":"tasks","key":"s1","body":{"tasks":[{"id":"1"}]}}"#,
+        r#"{"kind":"changed","topic":"login","key":"j1","body":{"state":"gone"}}"#,
+        // 不带体的主题带了体
+        r#"{"kind":"changed","topic":"accounts","body":{}}"#,
+    ] {
+        assert!(decode::<Record>(bad).is_err(), "该解不开：{bad}");
+    }
+    // 不带体（超了上限 · 断线补报）照样解得开
+    assert!(decode::<Record>(r#"{"kind":"changed","topic":"plan","key":"/w"}"#).is_ok());
+    assert!(decode::<Record>(r#"{"kind":"changed","topic":"accounts"}"#).is_ok());
+}

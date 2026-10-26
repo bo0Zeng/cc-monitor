@@ -1578,3 +1578,87 @@ async fn aligning_the_remote_streams_tells_the_window_on_the_local_machines_stre
         .collect();
     assert_eq!(frames, vec![1]);
 }
+
+/// 流那一路（文件窗口经 `chan/host.rs` 订的）与界面那一路同一张订阅表：同一格扇给两路；界面那一路的出口不收流那一路的格。
+/// 不取、推满起始窗口之后再推 ⇒ 下一次取到之前原位 `Gap`；丢掉流 ⇒ 订阅表里没有它了。
+#[tokio::test]
+async fn a_stream_subscription_shares_the_table_and_the_credit() {
+    use futures::StreamExt as _;
+    let (r, rec) = hub();
+    let o = crate::origin::Origin("stream-a".into());
+    r.origin_seen(&o, true);
+    r.subscribe("w", 1, &o, "changed/plan", None, 4);
+    let mut s = r.subscribe_stream(&o, "changed/plan", None);
+    rec.clear();
+    r.changed(&o, "plan", r#"{"key":"/w"}"#.into());
+    async fn next(s: &mut futures::stream::BoxStream<'static, WItem>) -> Option<WItem> {
+        tokio::time::timeout(std::time::Duration::from_millis(300), s.next())
+            .await
+            .ok()
+            .flatten()
+    }
+    match next(&mut s).await {
+        Some(WItem::Frame { seq: 0, body }) => assert_eq!(body.0, br#"{"key":"/w"}"#),
+        other => panic!("流那一路没收到那一格：{other:?}"),
+    }
+    let to_webview: Vec<(String, u64)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(l, id, _)| (l.clone(), *id))
+        .collect();
+    assert_eq!(
+        to_webview,
+        vec![("w".to_string(), 1)],
+        "界面那一路收到了流那一路的格"
+    );
+    // 收到一格就还一格：窗口还是满的。不取，推满窗口再多一格 ⇒ 多的那一格丢、位置照占。
+    for i in 0..STREAM_WINDOW + 1 {
+        r.changed(&o, "plan", format!(r#"{{"key":"/{i}"}}"#));
+    }
+    for want in 1..=u64::from(STREAM_WINDOW) {
+        match next(&mut s).await {
+            Some(WItem::Frame { seq, .. }) => assert_eq!(seq, want),
+            other => panic!("第 {want} 格：{other:?}"),
+        }
+    }
+    // 丢掉的那一格不交；取的时候还了 credit ⇒ 原位说丢了哪一段，再没有别的。
+    let lost = u64::from(STREAM_WINDOW) + 1;
+    assert_eq!(
+        next(&mut s).await,
+        Some(WItem::Gap {
+            from_seq: lost,
+            to_seq: Some(lost + 1)
+        }),
+        "丢过的那一段该原位说"
+    );
+    assert!(next(&mut s).await.is_none(), "丢掉的那一格不该交");
+    drop(s);
+    let left: Vec<String> = r
+        .inner
+        .lock()
+        .subs
+        .iter()
+        .map(|s| s.label.clone())
+        .collect();
+    assert_eq!(left, vec!["w".to_string()], "丢掉的流还在订阅表里");
+}
+
+/// 流那一路认不出的流名 · 带了 `from` ⇒ 原位 `Closed{Peer}`，之后流就完了。
+#[tokio::test]
+async fn a_stream_subscription_refuses_in_place() {
+    use futures::StreamExt as _;
+    let (r, _) = hub();
+    let o = crate::origin::Origin("stream-b".into());
+    for (kind, from) in [
+        ("changed/a/b", None),
+        ("changed/plan", Some(Cursor(b"1".to_vec()))),
+    ] {
+        let got: Vec<WItem> = r.subscribe_stream(&o, kind, from).collect().await;
+        assert!(
+            matches!(got.as_slice(), [WItem::Closed { by: By::Peer(_) }]),
+            "{kind}：{got:?}"
+        );
+    }
+}
