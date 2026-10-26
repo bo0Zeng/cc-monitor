@@ -511,10 +511,7 @@ fn every_unavailable_op_carries_its_sentence() {
     );
     for (origin, name) in [
         (Origin("devbox".into()), "devbox".to_string()),
-        (
-            Origin::local(),
-            copy_core::local_machine(),
-        ),
+        (Origin::local(), copy_core::local_machine()),
     ] {
         let v = offer_view(&offer, &origin);
         let got: Vec<(&str, &str)> = v

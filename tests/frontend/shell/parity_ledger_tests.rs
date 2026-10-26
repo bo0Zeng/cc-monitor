@@ -178,7 +178,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs::local_stdio_consumer` 里逐字
     //    `inbound_client::register(LOCAL_ORIGIN, client)`，`client_for("<local>")` 实测通。
     // ③ 而 **P3 刀 3 让生产段真的用它了**：`runLocalResumeIntoExistingTmux`
-    //    以 `<local>` 调 `backend_send_into` 就地 resume。
+    //    以 `<local>` 交后端就地 resume。
     //
     // ⇒ 这条不是「改个分类」，是**这条能力真的两侧都有了**。
     // 零流量复制那一行（步 23b 加的，Remote）随门禁那一格退役一起走了：
@@ -968,10 +968,9 @@ const FRAME_PLANE_ANYWHERE: &[&str] = &[
 ///
 /// 🔴 **这张表就是本笔的产出**：`K-R112` 交回时点了 **3** 行（远端抓屏 /
 /// 收掉 / 广播两条 cc-bus 命令）。派工单逐字「别只修它撞见的那三行，先量」——
-/// **现打是 5 行在说假话**，多出来的两行是 `kill_remote_tmux` 与 `tmux_send_keys`。
+/// **现打是 5 行在说假话**，多出来的两行是杀远端会话与远端送键（两个壳命令今天都已删）。
 /// ⚠ 那两行最狠的地方：**同一行的 `ASYMMETRY_REASONS` 散文早就写着它们「本机已通」**
-/// （`tmux.manage` 那条理由里逐字「② `kill_remote_tmux` ⇒ **本机已通**」「③
-/// `tmux_send_keys` ⇒ **本机已通**」，P3b 08-12 写下、`K-R56` 09-11 复核过）——
+/// （`tmux.manage` 那条理由里逐字写着这两样「⇒ **本机已通**」，P3b 08-12 写下、`K-R56` 09-11 复核过）——
 /// **散文说通了，同一行的 `Side` 栏说没通，两边打了一个月的架，没有任何东西在数它。**
 ///
 const FRAME_PLANE_VERDICTS: &[(&str, FrameVerdict, &str)] = &[
