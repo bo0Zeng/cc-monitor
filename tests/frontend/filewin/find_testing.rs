@@ -247,8 +247,8 @@ impl SynthTree {
     /// 纯路径过滤，不碰磁盘、不碰那台合成后端。
     ///
     /// 🔴 只比**根以下那一段**：根借的是本机临时目录的名字，它碰巧含 `needle` 时
-    /// 拿整条比就是全集都中（10-25 合并树那一趟 `qc.M5Kg7q` 含 `7q`，三条一起红）——
-    /// 同一份代码看临时目录名红绿。搜的本来就只是这棵树里的名字。
+    /// 拿整条比就是全集都中（如临时目录 `qc.M5Kg7q` 含 `7q`）—— 同一份代码看临时目录名红绿。
+    /// 搜的本来就只是这棵树里的名字。
     pub fn expected(&self, needle: &str) -> std::collections::BTreeSet<String> {
         let root = self.root.to_string_lossy();
         self.entries
@@ -781,7 +781,7 @@ impl FakeBackend {
                     p[p.iter().rposition(|&b| b == b'/').map_or(0, |i| i + 1)..].to_vec()
                 };
                 // 只比索引根以下那一段（同 [`SynthTree::expected`]）：根住临时目录，它的名字碰巧含搜索词
-                //   ⇒ 拿整条比就成了全集都中（10-25 那一趟 `qc.M5Kg7q` 含 `7q`）。
+                //   ⇒ 拿整条比就成了全集都中（如临时目录 `qc.M5Kg7q` 含 `7q`）。
                 let below_root = |p: &'_ [u8]| -> Vec<u8> {
                     let r = root.trim_end_matches('/').as_bytes();
                     match p.strip_prefix(r) {
