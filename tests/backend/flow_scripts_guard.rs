@@ -838,11 +838,18 @@ mod tests {
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         };
         fake("systemctl", "exit 0");
-        fake("systemd-run", "echo 'Job failed. See \"journalctl -xe\" for details.' >&2; exit 1");
+        fake(
+            "systemd-run",
+            "echo 'Job failed. See \"journalctl -xe\" for details.' >&2; exit 1",
+        );
         let out = heavy_with_path(&d, &bin, &["echo", "照跑了"]);
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(out.status.success(), "{err}");
-        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "照跑了", "{err}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "照跑了",
+            "{err}"
+        );
         assert!(err.contains("起不了 user scope"), "没说为什么不封顶：{err}");
         let _ = std::fs::remove_dir_all(&d);
     }
