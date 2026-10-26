@@ -92,7 +92,7 @@
 
 ## 6. session 探活双重校验（PID + procStart）
 
-判「同一个活进程」要 PID ＋ 启动时刻两样，住后端：`observe/watcher.rs` 宣告前比 `procStart`，`platform/pidwatch`（Linux pidfd · Windows 死亡事件）看守。读法在 `platform/`（Windows `GetProcessTimes`，Linux `/proc/<pid>/stat` 第 22 字段，从最后一个 `)` 之后数），判定两平台共用 `liveness::is_same_live_process`。`procStart` 可缺（§18），缺了只看 PID。
+判「同一个活进程」要 PID ＋ 启动时刻两样，住后端：`observe/watcher.rs` 宣告前比 `procStart`，共享包 `pidwatch-core`（Linux pidfd · Windows 死亡事件）看守（「还是不是那个进程」由调用方传进去：后端问 `platform/proc.rs::session_alive`）。读法在 `platform/`（Windows `GetProcessTimes`，Linux `/proc/<pid>/stat` 第 22 字段，从最后一个 `)` 之后数），判定两平台共用 `liveness::is_same_live_process`。`procStart` 可缺（§18），缺了只看 PID。
 
 **为什么不能松动**：Windows 的 PID 短期复用很常见，只看进程在不在会把旧条目判成活的 ⇒ 僵尸 Tab。
 

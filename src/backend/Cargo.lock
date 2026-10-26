@@ -273,6 +273,7 @@ dependencies = [
  "notify",
  "notify-debouncer-mini",
  "own-chan",
+ "pidwatch-core",
  "portable-pty",
  "relay-route-core",
  "resident-client",
@@ -1832,6 +1833,14 @@ dependencies = [
  "cmd-wire",
  "copy-core",
  "serde",
+]
+
+[[package]]
+name = "pidwatch-core"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tracing",
 ]
 
 [[package]]

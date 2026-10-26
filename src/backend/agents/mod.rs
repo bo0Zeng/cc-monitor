@@ -2304,6 +2304,8 @@ pub(crate) struct SettingsEnvFace {
     pub(crate) merge: fn(&str, &str) -> Option<String>,
     /// 地址住那份文件里哪一格（「待办」那一件的位置行）。
     pub(crate) slot: &'static str,
+    /// 项目目录 → 那个项目里自己写了上游地址、盖住用户级那一格的那份设置文件（**只读**；没有 · 读不懂 ⇒ `None`）。
+    pub(crate) covered_in: fn(&Path) -> Option<PathBuf>,
 }
 
 /// 设置文件里上游地址那一格读出来的样子。

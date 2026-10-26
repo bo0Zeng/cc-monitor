@@ -45,7 +45,6 @@ mod tests {
     /// 而不是挂一个全红的清单等人来看（全红 = 没人看 = 等于没有）。
     const CORE_FILES: &[&str] = &[
         "platform/mod.rs",
-        "platform/pidwatch/mod.rs",
         // `platform/fallback_guard.rs` 出表：它是判据，整份搬去了 `tests/backend/platform/`（不是通用层的生产文件）。
         "common/mod.rs",
         "wire/mod.rs",
@@ -302,7 +301,6 @@ mod tests {
         const EVER_DECLARED_CORE: &[&str] = &[
             // S1 立表当天
             "platform/mod.rs",
-            "platform/pidwatch/mod.rs",
             "common/mod.rs",
             "wire/mod.rs",
             "stream/inbound/mod.rs",

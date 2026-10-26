@@ -27,6 +27,7 @@ fn base() -> Facts {
         relay: vec![],
         hooks: None,
         mcp_login: vec![],
+        sshd: None,
         declined: vec![],
     }
 }
@@ -50,6 +51,7 @@ fn relay_of(
         path: path.into(),
         text: text.map(Into::into),
         url: url.map(Into::into),
+        covered: None,
     }
 }
 
@@ -383,4 +385,62 @@ fn 自己配的_mcp_要登录_可选一件_不进角标() {
     assert_eq!(badge_of(&f), 0);
     f.declined = vec!["mcp-login:m-b".into()];
     assert_eq!(chores(&f)[1]["state"], json!("declined"));
+}
+
+/// 假的那台 sshd 关了端口转发 ⇒ 多一件要做：位置是那一行，diff 删那一行加改好的一行，复制改好的那一行；进角标。
+#[test]
+fn sshd_关了转发_要做_换那一行() {
+    let mut f = base();
+    f.sshd = Some(super::sshd::ForwardingOff {
+        path: "/etc/ssh/sshd_config".into(),
+        line: 7,
+        text: "AllowTcpForwarding no".into(),
+        fix: "AllowTcpForwarding yes".into(),
+    });
+    let c = chores(&f);
+    assert_eq!(ids(&c), vec!["sshd-forwarding"]);
+    assert_eq!(c[0]["kind"], json!("must"));
+    assert_eq!(c[0]["state"], json!("todo"));
+    assert_eq!(c[0]["action"], json!("copySnippet"));
+    assert_eq!(c[0]["copy"], json!("AllowTcpForwarding yes"));
+    assert_eq!(c[0]["file"], json!("/etc/ssh/sshd_config"));
+    assert_eq!(
+        c[0]["diff"],
+        json!([
+            {"n": 7, "op": "del", "text": "AllowTcpForwarding no"},
+            {"n": null, "op": "add", "text": "AllowTcpForwarding yes"}
+        ])
+    );
+    assert_eq!(c[0]["steps"].as_array().unwrap().len(), 3);
+    assert!(c[0]["loc"]
+        .as_str()
+        .unwrap()
+        .contains("/etc/ssh/sshd_config"));
+    assert_eq!(badge_of(&f), 1);
+}
+
+/// 贴好了、但某个项目里的设置文件自己写了上游地址 ⇒ 照旧已做，说明换成「被那个项目盖住」，原因行指那份文件。
+#[test]
+fn 实时显示_已做但被项目里的设置盖住() {
+    let mut f = base();
+    f.relay = vec![claude_relay(
+        "installed",
+        "/h/.claude/settings.json",
+        Some("{}"),
+        None,
+    )];
+    let plain = chores(&f)[0].clone();
+    f.relay[0].covered = Some(Covered {
+        project: "/w/app".into(),
+        file: "/w/app/.claude/settings.local.json".into(),
+    });
+    let c = chores(&f);
+    assert_eq!(c[0]["state"], json!("done"));
+    assert_ne!(c[0]["said"], plain["said"], "被盖住要另说");
+    assert!(c[0]["said"].as_str().unwrap().contains("/w/app"));
+    assert!(c[0]["why"]
+        .as_str()
+        .unwrap()
+        .contains("/w/app/.claude/settings.local.json"));
+    assert_eq!(badge_of(&f), 0);
 }

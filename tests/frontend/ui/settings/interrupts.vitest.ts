@@ -14,9 +14,10 @@ const cases = golden.cases as Case[];
 describe("会打断什么", () => {
   it("★ 两份并排：那台的会话三格 ＋ 本机的转发；什么都不断 ⇒ 不弹", () => {
     const r = (name: string): Interrupts => cases.find((c) => c.name === name)!.reply;
-    expect(interruptRows({ ...r("什么都不断") }, "devbox", "stop")).toEqual([]);
+    const fw = { unsaved: 0, filewinRunning: 0 };
+    expect(interruptRows({ ...r("什么都不断"), ...fw }, "devbox", "stop")).toEqual([]);
     const busy = r("两个经中转 · 一个说不清 · 一个不经 · 一个已结束 · 一行坏的");
-    const rows = interruptRows({ ...busy, forwards: r("只有通往那台的转发").forwards }, "devbox", "update");
+    const rows = interruptRows({ ...busy, ...fw, forwards: r("只有通往那台的转发").forwards }, "devbox", "update");
     expect(rows[0]!.label).toBe(copyText("interrupts.row.brief"));
     expect(rows[0]!.items).toEqual([
       copyText("interrupts.item.relayed", { n: 2 }),
@@ -25,5 +26,20 @@ describe("会打断什么", () => {
       copyText("interrupts.item.forwards", { n: 2 }),
     ]);
     expect(rows[1]).toEqual({ label: copyText("interrupts.row.keep"), items: [copyText("interrupts.item.sessionsRun")] });
+  });
+});
+
+describe("会打断什么 · 文件窗口那一份", () => {
+  const none = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
+  it("★ 文件窗口里有没存的改动 ⇒ 列出来（只有它也弹）；在跑的照列；数不出 ⇒ 说数不出", () => {
+    const rows = interruptRows({ ...none, unsaved: 1, filewinRunning: 0 }, copyText("restartNow.dialog.everywhere"), "stop");
+    expect(rows[0]!.items).toEqual([copyText("interrupts.item.unsaved", { n: 1 })]);
+    expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 2 }, copyText("restartNow.dialog.everywhere"), "restart")[0]!.items).toEqual([
+      copyText("interrupts.item.filewinRunning", { n: 2 }),
+    ]);
+    expect(interruptRows({ ...none, unsaved: null, filewinRunning: null }, copyText("restartNow.dialog.everywhere"), "stop")[0]!.items).toEqual([
+      copyText("interrupts.item.filewinUnknown"),
+    ]);
+    expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 0 }, copyText("restartNow.dialog.everywhere"), "stop")).toEqual([]);
   });
 });

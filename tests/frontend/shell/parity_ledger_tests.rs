@@ -57,6 +57,8 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_log_file", "app.logs", Side::Both),
     // 设置窗「现在重启」：重起 cc-monitor 自己（不吃 origin，本机远端无从分）⇒ `Both`，归已有能力 `app.config`（「要重启才生效」那几项改的都是本机配置）。
     ("restart_app", "app.config", Side::Both),
+    // 退出 / 重启 cc-monitor 之前现读各文件窗口会打断什么：表住 monitor 进程里，不吃 origin ⇒ `Both`，同 `restart_app` 归 `app.config`。
+    ("filewin_interrupts", "app.config", Side::Both),
     // 写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，哪台的内容都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("clipboard_write", "app.window.self", Side::Both),
     // 读系统剪贴板（登录抽屉［粘贴］）：同上，剪贴板是面前这台桌面的 ⇒ `Both`。
@@ -619,7 +621,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **−2**（本机 ccm 那一格 · 装 cc-bus 前那道本机 ccm 预检，都 `Local`：前一条进了那台后端 `ccm-probe`，后一条删了）。
     // - **+1**（`kept_sessions`，`Both`，归已有能力 `comm.face-a.subscribe`：主窗口手上的 tab 随名单报给那台）。
     // - **−1**（`chan_cancel`，`Both`：主界面没有撤单，这条命令删）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 35;
+    // - **+1**（`filewin_interrupts`，`Both`，归已有能力 `app.config`：退出 / 重启之前现读各文件窗口会打断什么）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 36;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

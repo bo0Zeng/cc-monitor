@@ -52,6 +52,8 @@ pub(crate) const SETTINGS_ENV: SettingsEnvFace = SettingsEnvFace {
     read: read_config_base_url,
     merge: config_merge,
     slot: KEY,
+    // 项目级那一层不看（Codex 的项目配置这里没接）。
+    covered_in: |_| None,
 };
 
 /// 读那份配置的上限（几 KB；超了按「读不了」说，不当没写）。

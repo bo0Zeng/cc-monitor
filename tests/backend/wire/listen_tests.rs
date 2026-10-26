@@ -186,8 +186,8 @@ fn refusal_reasons_are_a_closed_set() {
 ///   **全文**的路径式引用共 **22 处**（去掉一个正则假阳性 `buf.shrink_to_fit()`），
 ///   **悬空 1 处**，就是这一处；另两份**零悬空**。
 /// - ⚠ **射程之外，如实登记**：同一把尺子扫**全 crate 69 个 `.rs` 的 `//!` 头注**
-///   ⇒ 105 处引用、**悬空 1 处**：`platform/pidwatch/linux.rs` 头注的
-///   「从 `platform/pidwatch.rs` 逐字搬来」（今天是 `platform/pidwatch/mod.rs`）。
+///   ⇒ 105 处引用、**悬空 1 处**：那时 pidwatch 的 Linux 那一份头注的
+///   「从后端那份 pidwatch 逐字搬来」（那份今天已搬出后端，住 `pidwatch-core`）。
 ///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**这里不改**。
 ///   ⇒ **本条不是全 crate 的**：它管的是新增的那三份。
 #[test]

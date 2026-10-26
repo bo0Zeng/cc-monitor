@@ -130,6 +130,8 @@ pub struct Workspace {
     close_after_save: bool,
     /// 那一问答了「仍然关闭」/ 那一问摆着时又点了一次 ×：下一次关窗请求放行。
     force_close: bool,
+    /// 上一次告诉 monitor 的「会打断什么」那两个数（[`Self::busy_to_tell`]；变了才再说）。
+    busy_told: filewin_contract::Busy,
     /// 取栏 / 标签时下标越界、退回最近那一个的次数（见 [`Self::pane_on`]）。
     slips: std::sync::atomic::AtomicU64,
     /// 已经报过警告的调用处（`文件, 行`）。
@@ -343,6 +345,7 @@ impl Workspace {
             closing_ask: false,
             close_after_save: false,
             force_close: false,
+            busy_told: Default::default(),
             slips: Default::default(),
             slip_sites: Default::default(),
             frame_log: super::frame_log::FrameLog::off(),
@@ -1181,6 +1184,47 @@ impl Workspace {
         }
     }
 
+    /// 关窗那一问（[`Self::close_ask`]）里那几样的数：没存的几份 · 还在跑的几趟。变了 ⇒ 回它、记下（下一次比的就是它）；没变 ⇒ `None`。
+    pub fn busy_to_tell(&mut self) -> Option<filewin_contract::Busy> {
+        let ask = self.close_ask();
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        let now = filewin_contract::Busy {
+            unsaved: count(ask.unsaved.len()),
+            running: count(ask.running.iter().map(|(_, rows)| rows.len()).sum()),
+        };
+        (now != self.busy_told).then(|| {
+            self.busy_told = now;
+            now
+        })
+    }
+
+    /// 那两个数变了 ⇒ 在焦点那一栏的线上告诉 monitor 一次（[`filewin_contract::FILEWIN_BUSY_OP`]，monitor 自己接）。
+    /// 没送到只进日志：管子断了，monitor 那头这扇窗的那一份也随之删了。
+    pub fn settle_busy(&mut self) {
+        let p = self.pane_on(self.focus);
+        let (Some(rt), Some(line)) = (p.rt.clone(), p.line.clone()) else {
+            return;
+        };
+        let origin = p.source.origin();
+        let Some(busy) = self.busy_to_tell() else {
+            return;
+        };
+        let args = serde_json::to_value(busy).unwrap_or_default();
+        rt.spawn(async move {
+            if let Err(why) = super::source::ask(
+                &line,
+                &origin,
+                filewin_contract::FILEWIN_BUSY_OP,
+                &args,
+                std::time::Duration::from_secs(5),
+            )
+            .await
+            {
+                tracing::warn!("filewin-busy not delivered: {why}");
+            }
+        });
+    }
+
     /// 起「那台连没连着」那条订阅（整扇窗一次，拿焦点那一栏的线）；断了又连上 ⇒ 每个标签页带着记号重问一遍
     ///（过期那一屏只换断着那阵变了的那几行；那台重启过 ⇒ 整份）、正在看的目录名单重发一次。
     pub fn settle_link(&mut self, ctx: Option<egui::Context>) {
@@ -1283,6 +1327,8 @@ impl Workspace {
         self.settle_plan(Some(ctx.clone()));
         // ── 正被浏览的目录：名单变了告诉那台；那台说哪个目录动过 ⇒ 正开着它的标签页带记号重问 ──
         self.settle_dirs(Some(ctx.clone()));
+        // ── 手上会被打断的那两个数变了 ⇒ 告诉 monitor（退出 / 重启 cc-monitor 那一问现读它）──
+        self.settle_busy();
         // ── 系统字体还在载入：只画底色与转圈（这时画字，中文全是方块）；收下的那一帧起各栏接着复核 ──
         if let Some(fonts) = &self.fonts {
             if let Some(attempt) = fonts.poll(&ctx) {

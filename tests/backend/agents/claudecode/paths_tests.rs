@@ -97,3 +97,30 @@ fn writing_the_relay_address_also_writes_the_env_that_rides_with_it() {
     }
     assert!(!super::super::UPSTREAM.relay_env.is_empty());
 }
+
+/// 项目里哪一份设置文件自己写了上游地址（会盖住用户级那一格）：两份都看、本地那一份也算；空串 · 读不懂 · 没写 ⇒ 不算（不猜）。
+#[test]
+fn a_project_settings_file_that_sets_the_base_url_covers_the_user_one() {
+    let d = tmp("covered");
+    let proj = d.join("proj");
+    let covered = SETTINGS_ENV.covered_in;
+    assert_eq!(covered(&proj), None, "一份都没写");
+    std::fs::write(
+        proj.join(".claude/settings.json"),
+        r#"{"env":{"ANTHROPIC_BASE_URL":""}}"#,
+    )
+    .unwrap();
+    assert_eq!(covered(&proj), None, "空串当没写");
+    std::fs::write(proj.join(".claude/settings.local.json"), "{ not json").unwrap();
+    assert_eq!(covered(&proj), None, "读不懂的不当盖住");
+    std::fs::write(
+        proj.join(".claude/settings.local.json"),
+        r#"{"env":{"ANTHROPIC_BASE_URL":"https://p.example"}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        covered(&proj),
+        Some(proj.join(".claude/settings.local.json"))
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
