@@ -6,8 +6,8 @@
 
 use crate::resident::{self, OnEvent};
 use chunk_core::{Ask, Sink, Watch};
-use cmd_wire::phone::{CallEnd, Moved};
 use cmd_wire::files::{Call, WirePath};
+use cmd_wire::phone::{CallEnd, Moved};
 use resident_client::client::CallError;
 use std::collections::HashMap;
 use std::fs::File;
