@@ -11,7 +11,7 @@ import type { Tab } from "./tab-model";
 import { canResume, closesQuietly, hasTerminal, isEnded } from "./face-can";
 import { copyText } from "./copy-table";
 import { openMenu, type MenuItem } from "./kit/menu";
-import type { TabCollection } from "./tab-collections";
+import type { TabGroup } from "./tab-bar-prefs";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { groupSubmenu } from "./tab-menu";
 import { recentToasts, toast, type ToastRecord } from "./kit/toast";
@@ -26,9 +26,9 @@ import type { Run } from "./generated/Run";
 export interface TabBatchHost {
   tab(sid: string): Tab | undefined;
   collectionsLoaded(): boolean;
-  collections(): TabCollection[];
+  collections(): TabGroup[];
   pinnedLoaded(): boolean;
-  setPinned(sids: readonly string[], on: boolean): void;
+  setPinnedMany(sids: readonly string[], on: boolean): void;
   /** 分组那三件（与单个右键 · 拖放同一口：做完重画、给可撤的提示；新建 ＝「分组 N」＋ 名字框立刻打开）。 */
   joinGroup(sids: readonly string[], gid: string): void;
   foundGroup(sids: readonly string[]): void;
@@ -161,10 +161,10 @@ export function openBatchMenu(
     const [unpinnable, notPinned] = split(tabs, (t) => t.pinned, copyText("tabBatch.why.notPinned"));
     items.push(
       item(copyText("tabBatch.menu.pin", { n: pinnable.length }), pinnable.length, () =>
-        local(copyText("tabBatch.action.pin"), tabs, pinnable, pinnedAlready, (s) => host.setPinned(s, true)),
+        local(copyText("tabBatch.action.pin"), tabs, pinnable, pinnedAlready, (s) => host.setPinnedMany(s, true)),
       false, pinnedAlready[0]?.why),
       item(copyText("tabBatch.menu.unpin", { n: unpinnable.length }), unpinnable.length, () =>
-        local(copyText("tabBatch.action.unpin"), tabs, unpinnable, notPinned, (s) => host.setPinned(s, false)),
+        local(copyText("tabBatch.action.unpin"), tabs, unpinnable, notPinned, (s) => host.setPinnedMany(s, false)),
       false, notPinned[0]?.why),
     );
   }

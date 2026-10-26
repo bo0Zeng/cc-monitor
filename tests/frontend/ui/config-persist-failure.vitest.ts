@@ -19,15 +19,14 @@ const boom = async (): Promise<void> => {
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn(async () => () => {}) }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
-// 分组的每一个动作把组表与几个 tab 的组 id 键装进一次 `patchConfig`（`TabBarPrefs.writeGroups`）⇒ 失败注入在写口这一层。
-//   别的几个写者在下面各自被替掉，不经这里。
+// 写这台 `config.json` 的写者各自被替掉；分组 · 固定交给组的账（各台后端），失败注入在账的替身上（`failingBook`）。
 vi.mock("../../../src/frontend/ui/config", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   patchConfig: vi.fn(() => boom()),
 }));
 vi.mock("../../../src/frontend/ui/tab-bar-state", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
-  setPinned: vi.fn(() => boom()),
+  setCollapsed: vi.fn(() => boom()),
   setTabOrder: vi.fn(() => boom()),
 }));
 vi.mock("../../../src/frontend/ui/behavior", async (orig) => ({
@@ -43,6 +42,7 @@ vi.mock("../../../src/frontend/ui/keybindings/registry", () => ({
 import { failToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
+import { GroupBook } from "../../../src/frontend/ui/group-book";
 import { KeybindingsEditor } from "../../../src/frontend/ui/keybindings/editor";
 
 const toast = vi.mocked(failToast);
@@ -53,17 +53,30 @@ function prefs(): TabBarPrefs {
   return new TabBarPrefs(store as never, host as never);
 }
 
-/** 栏里一个 tab 在组 `g` 里 —— 解散它就是一次分组写。 */
+/** 组的账的替身：写一律照 `fail.on` 失败（读回一份空账）。 */
+function failingBook(): GroupBook {
+  const empty = { groups: [], pinned: [], machines: [] };
+  return new GroupBook(async (_origin, cmd) => {
+    if (cmd === "groups-read") return empty as never;
+    await boom();
+    return (cmd === "groups-write" ? { is: "dissolved", id: "g" } : { entry: {}, prev: null }) as never;
+  }, 60_000);
+}
+
+/** 栏里一个 tab 在组 `g` 里（家在本机）—— 解散它就是一次分组写，固定它就是一次固定写。 */
 function groupedPrefs(): TabBarPrefs {
-  const store = { orderedIds: ["s"], tabs: new Map([["s", { sessionId: "s", group: "g" }]]), savedOrder: [] };
+  const store = { orderedIds: ["s"], tabs: new Map([["s", { sessionId: "s", origin: "<local>", group: "g", pinned: false }]]), savedOrder: [] };
   const p = new TabBarPrefs(store as never, { refreshTabBar: () => {} } as never);
-  p.collections = [{ id: "g", name: "n" }];
+  p.attachBook(failingBook());
+  p.collections = [{ id: "g", name: "n", home: "<local>", counts: [] }];
+  p.pinnedLoaded = true;
   return p;
 }
 
 const CASES: readonly { name: string; run: () => Promise<void>; head: string }[] = [
   { name: "分组", run: () => groupedPrefs().dissolveGroup("g"), head: copyText("tabBar.persist.collectionsFailed") },
-  { name: "固定", run: () => prefs().persistPinned(), head: copyText("tabBar.persist.pinnedFailed") },
+  { name: "固定", run: () => groupedPrefs().setPinnedMany(["s"], true), head: copyText("tabBar.persist.pinnedFailed") },
+  { name: "收起", run: () => prefs().setCollapsed(["g"], true), head: copyText("tabBar.persist.collectionsFailed") },
   { name: "顺序", run: () => prefs().persistOrder(), head: copyText("tabBar.persist.orderFailed") },
   {
     name: "快捷键",

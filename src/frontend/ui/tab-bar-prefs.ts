@@ -1,53 +1,42 @@
 /**
- * tab 栏的三份落盘偏好：集合（分组）· 固定 · 顺序。
+ * tab 栏的分组 · 固定 · 顺序。
  *
- * 三份都是用户手写的真相（不是能重算的缓存），都写 `config.json` 的 `tabCollections` / `tabBar.*`，
- * 都先改内存再落盘；集合与固定还都有一道「这个实例拉过没有」的门（撕离出来的查看窗从不拉 ⇒ 不给入口、不落盘）。
- * 盘上那一层（读 / 写 / 清洗）住 `tab-collections.ts` 与 `tab-bar-state.ts`；顺序那份意图与落位运算住 `TabStore`。
- *
- * 分组：组表只存 `{id, name}`，组员关系是 tab 自己的属性（`Tab.group`，落盘 `tabBar.groupOf.<sid>`）。
- * 改组员的动作都在这里，每个动作先改内存、再把组表与那几个 tab 的组 id 键装进一次 `patchConfig`（`writeGroups`）。
+ * 组与固定是后端的数据（`history/groups.rs`）：组本身住家那一台，组员与固定是会话注解（住会话那一台）。这里只照组的账（`group-book.ts`）
+ * 读回来的那一份画：组表 · 每个 tab 在哪一组（`Tab.group`）· 固没固定（`Tab.pinned`）· 固定了却没有标签的会话复活成灰标签。
+ * 改的动作先改内存（栏当场跟着动），再交给那一台；那台推 `changed {groups}`，账重读一次，读回来的就是真相。
+ * 一条会话可在几组，栏里一个标签只画在一处：画在读回来的那一份里排在最前、有它的那一组；挪进另一组 ＝ 出原来那组、进新的。
+ * 关掉标签不等于出组（会话结束后仍算组员）；出组走「移出分组」。
+ * 留在这台 `config.json` 的只有这扇窗自己的看法：顺序 `tabBar.order` · 收着的组 `tabBar.collapsed` · 「已隐藏」那一行收展（`tab-bar-state.ts`）。
  */
 import {
-  collectionRefusalText,
-  collectionsEdit,
-  createCollection,
-  createRefusal,
-  deleteCollection,
-  getCollections,
-  renameCollection,
-  type CollectionRefusal,
-  type TabCollection,
-} from "./tab-collections";
-import {
-  getGroupOf,
+  getCollapsed,
   getHiddenOpen,
-  getPinned,
   getTabOrder,
-  groupOfEdit,
   ORDER_CAP,
-  isDegradedPin,
+  setCollapsed as writeCollapsed,
   setHiddenOpen as writeHiddenOpen,
-  setPinned,
   setTabOrder,
-  type PinnedTab,
 } from "./tab-bar-state";
-import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
-import { isLive } from "./face-can";
 import { copyText } from "./copy-table";
-import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
+import { failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
-import type { Origin } from "./ipc/origin";
-import { appStore } from "./app-store";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import type { GroupBook } from "./group-book";
+import type { GroupCount } from "./generated/GroupCount";
+import type { MemberFacts } from "./generated/MemberFacts";
 
-/** 集合到上界、这一下没做成 ⇒ 说一句（判定 `tab-collections.ts::createRefusal`）；右键菜单与拖放都经这一处说。 */
-export function sayCollectionRefusal(r: CollectionRefusal): void {
-  const { title, body } = collectionRefusalText(r);
-  toast(title, body, { level: "info" });
+/** 栏里的一组：名字 · 家（改名 · 解散问它；不知道 ⇒ `null`）· 组头那几颗点（后端数好的）· 收着（这扇窗的看法）。 */
+export interface TabGroup {
+  id: string;
+  name: string;
+  home: Origin | null;
+  counts: GroupCount[];
+  /** 收着（组员不显示，组头汇总需手动 / 在跑）；展开 ⇒ 不写这一格。 */
+  collapsed?: true;
 }
 
-/** 落盘偏好要宿主做的三件事。 */
+/** 落盘偏好要宿主做的四件事。 */
 export interface TabBarPrefsHost {
   refreshTabBar(): void;
   /** 复活固定 tab 用（与活跃清单一到就建的骨架 tab 是同一条路）。 */
@@ -67,37 +56,42 @@ export interface TabBarPrefsHost {
 /** 撤销用的那一刻：顺序 · 组表 · 每个 tab 的组。 */
 export interface GroupSnapshot {
   order: string[];
-  groups: TabCollection[];
-  groupOf: Map<string, string | null>;
+  groups: TabGroup[];
+  groupAt: Map<string, string | null>;
+}
+
+/** 一条会话在账上的键（同一个 sid 在两台上是两条）。 */
+function keyOf(origin: Origin, sid: string): string {
+  return `${origin}\n${sid}`;
+}
+
+/** 刚建、家那台还没回新 id 的组（栏里先画着）。 */
+let pendingSeq = 0;
+function pendingId(): string {
+  pendingSeq += 1;
+  return `pending-${pendingSeq}`;
 }
 
 export class TabBarPrefs {
-  /** 标签页集合（组表），只有手动建、零自动归组。每一项只有 `{id, name}`；谁在组里看 `Tab.group`。 */
-  collections: TabCollection[] = [];
-  /**
-   * 盘上 `tabBar.groupOf` 里 tab 还没到的那些组 id（sid → 组 id）：一份意图，形同 `TabStore.savedOrder`。
-   * 不在读的那一刻按存活过滤：启动那一刻「已经没了的会话」与「还没宣告到的会话」分不开。
-   * tab 到达（[`adoptGroup`]）⇒ 组 id 挪到 `Tab.group`；组没了 ⇒ 指向它的条目连同盘上一起摘。从没到过的 tab 的条目留着。
-   */
-  savedGroupOf = new Map<string, string>();
-  /**
-   * 这个实例拉过集合没有。撕离出来的查看窗也用 `TabManager` 却从不 `loadCollections`（`collections` 恒空）：
-   * 留着「新建集合…」的话，点一下就把只含这一个的列表写回 `config.json`，用户已有的集合全没了 ⇒ 没拉过就不给入口。
-   */
+  /** 组表：照组的账读回来的那一份（先后同后端：照建的先后）。谁在组里看 `Tab.group`。 */
+  collections: TabGroup[] = [];
+  /** 读到过一份组的账没有。撕离出来的查看窗不接账 ⇒ 恒 `false` ⇒ 不给分组入口。 */
   collectionsLoaded = false;
-  /** 栏底「已隐藏」那一行展开着没有（`tabBar.hiddenOpen`，随组表一起读；缺省收着）。 */
+  /** 栏底「已隐藏」那一行展开着没有（`tabBar.hiddenOpen`；缺省收着）。 */
   hiddenOpen = false;
-  /**
-   * 这个实例拉过固定表没有。`persistPinned` 按当前 tab 重算整张表写回，没拉过就写 ⇒ 上次固定的全没了
-   * ⇒ 没拉过就不给入口（右键菜单里那两项不出现）、也不落盘。
-   */
+  /** 读到过一份组的账没有（固定那一半同一份账；没读到 ⇒ 不给固定入口）。 */
   pinnedLoaded = false;
-  /**
-   * `loadPinned` 从盘上读到的记录（sid → 条目）。不是「谁被固定了」的真相（那只在 `Tab.pinned`），只两个用途：
-   * 判降级（`jsonlPath` 为空的点进去要说人话）；沿用 `lastActiveAt`（灰了的 tab 什么时候最后活动，前端没有这个数，
-   * 不许每次落盘刷成 `Date.now()`）。
-   */
-  pinnedRecords = new Map<string, PinnedTab>();
+  /** 收着的组（`tabBar.collapsed`：这扇窗的看法，不进后端）。 */
+  private collapsed = new Set<string>();
+  /** 组的账（主窗口接上；没接 ⇒ 只画、不写）。 */
+  private book: GroupBook | null = null;
+  /** 最近一份账里：会话 ⇒ 画在哪一组 · 固定的那几条（带复活那几格）。 */
+  private placed = new Map<string, string>();
+  private pinRows = new Map<string, { origin: Origin; sid: string; facts: MemberFacts }>();
+  /** 这扇窗这一趟建的组（占位 id 与家那台回的 id）：撤销只撤掉它们，别处建的组不碰。 */
+  private founded = new Set<string>();
+  /** 这一趟里复活过的固定会话（关掉的不再复活，除非账上又有它）。 */
+  private revived = new Set<string>();
   /**
    * 复活出来的固定 tab 的空态提示（sid → 元素）。复活的 tab 里一条内容都没有（已结束的会话只能 resume），
    * 不放点东西进去，点它就是一片空白、与坏了没有区别。复活成活的（真 resume 上了）时摘掉。
@@ -109,91 +103,155 @@ export class TabBarPrefs {
     private readonly host: TabBarPrefsHost,
   ) {}
 
-  /**
-   * 从 `config.json` 拉一次组表与每个 tab 的组 id 并重画（宿主启动时调一次）。指向组表里没有的组的条目丢；
-   * 其余存成意图，并立刻对已经在栏里的 tab 补一次归位（固定复活的骨架可能先到）。
-   */
+  /** 接上组的账：每读回来一份就照它重画。 */
+  attachBook(book: GroupBook): void {
+    this.book = book;
+    book.subscribe(() => this.applyRead());
+    this.applyRead();
+  }
+
+  /** 拉一次这扇窗自己的看法（收着的组 · 「已隐藏」那一行）并重画（宿主启动时调一次）。 */
   async loadCollections(): Promise<void> {
-    const [table, groupOf, hiddenOpen] = await Promise.all([getCollections(), getGroupOf(), getHiddenOpen()]);
-    this.collections = table;
+    const [collapsed, hiddenOpen] = await Promise.all([getCollapsed(), getHiddenOpen()]);
+    this.collapsed = new Set(collapsed);
     this.hiddenOpen = hiddenOpen;
-    const ids = new Set(table.map((c) => c.id));
-    this.savedGroupOf = new Map([...groupOf].filter(([, gid]) => ids.has(gid)));
-    this.collectionsLoaded = true;
-    for (const t of this.store.tabs.values()) this.adoptGroup(t);
+    this.collections = this.collections.map((c) => this.withCollapsed(c));
     this.host.refreshTabBar();
   }
 
-  /** 一个 tab 到了（`ensureTab` 建出它 / `loadCollections` 读完）：意图里有它 ⇒ 组 id 挪到 `tab.group`（挪，不是抄）。 */
+  private withCollapsed(c: TabGroup): TabGroup {
+    const { collapsed: _was, ...rest } = c;
+    return this.collapsed.has(c.id) ? { ...rest, collapsed: true } : rest;
+  }
+
+  /** 照账上最近那一份重画：组表 · 每个 tab 的组与固定 · 固定了却没有标签的复活成灰标签。 */
+  private applyRead(): void {
+    const read = this.book?.read();
+    if (!read) return;
+    this.collections = read.groups.map((g) =>
+      this.withCollapsed({ id: g.id, name: g.name ?? "", home: g.home, counts: g.counts }),
+    );
+    this.placed = new Map();
+    for (const g of read.groups) for (const m of g.members) {
+      const k = keyOf(m.origin, m.sid);
+      if (!this.placed.has(k)) this.placed.set(k, g.id);
+    }
+    this.pinRows = new Map(read.pinned.map((p) => [keyOf(p.origin, p.sid), { origin: p.origin, sid: p.sid, facts: p.facts }]));
+    for (const t of this.store.tabs.values()) this.adoptGroup(t);
+    for (const p of this.pinRows.values()) this.revivePinned(p);
+    this.collectionsLoaded = true;
+    this.pinnedLoaded = true;
+    this.host.refreshTabBar();
+  }
+
+  /** 一个 tab 到了（`ensureTab` 建出它 / 账读回来一份）：组与固定照账上那一份。 */
   adoptGroup(tab: Tab): void {
-    const gid = this.savedGroupOf.get(tab.sessionId);
-    if (gid === undefined) return;
-    this.savedGroupOf.delete(tab.sessionId);
-    if (tab.group === null && this.collections.some((c) => c.id === gid)) tab.group = gid;
+    if (!this.collectionsLoaded && this.book?.read() == null) return;
+    const k = keyOf(tab.origin, tab.sessionId);
+    // 隐藏的不画在组里（收在栏底「已隐藏」那一行）。
+    tab.group = tab.hidden != null ? null : (this.placed.get(k) ?? null);
+    tab.pinned = this.pinRows.has(k);
+  }
+
+  /** 固定了却没有标签：照那台给的那几格造灰标签（只造一次；关掉的 ⇒ 账上已取消固定，不会再来）。 */
+  revivePinned(p: { origin: Origin; sid: string; facts: MemberFacts }): void {
+    if (this.store.tabs.has(p.sid) || this.revived.has(p.sid)) return;
+    this.revived.add(p.sid);
+    this.host.createSkeletonTab(p.sid, p.facts.cwd, p.origin, p.facts.bg, null);
+    const t = this.store.tabs.get(p.sid);
+    if (!t) return;
+    t.parentPath = p.facts.record ?? ""; // resume 与「有没有记录」都靠它
+    t.title = p.facts.title; // 骨架期就显示正确标题，不等读文件
+    t.pinned = true;
+    t.group = this.placed.get(keyOf(p.origin, p.sid)) ?? null;
+    this.mountPinHint(t);
   }
 
   /** `sid` 所在的组（`null` = 散 tab / 没这个 tab）。 */
-  groupOf(sid: string): TabCollection | null {
+  groupAt(sid: string): TabGroup | null {
     const gid = this.store.tabs.get(sid)?.group ?? null;
     return gid === null ? null : (this.collections.find((c) => c.id === gid) ?? null);
   }
 
   /**
-   * 右键「新建集合…」/ 拖放压在一个散 tab 上：建一个组、把 `sids` 放进去。组数到上界 ⇒ 回拒绝原因、什么都不做（调用方出声）；
-   * 名字空 ⇒ 什么都不做。组表 ＋ 每个 tab 的组 id 键一次写。
+   * 右键「新建集合…」/ 拖放压在一个散 tab 上：建一个组、把 `sids` 放进去，回栏里那一组此刻的 id（名字框照它开）。
+   * 栏里当场画上（本机回新 id 之前用一个占位的 id），建成了再把这几条写进去；期间改了名 ⇒ 建成后再改一次。名字空 ⇒ 什么都不做、回 `null`。
    */
-  foundGroup(sids: readonly string[], name: string, id: string): CollectionRefusal | null {
-    const full = createRefusal(this.collections);
-    if (full) return full;
-    const next = createCollection(this.collections, name, id);
-    if (next.length === this.collections.length) return null;
-    this.collections = next;
-    const edits: ConfigEdit[] = [collectionsEdit(next)];
-    const left = new Set<string | null>();
+  foundGroup(sids: readonly string[], name: string): string | null {
+    const n = name.trim();
+    if (!n) return null;
+    const temp = pendingId();
+    this.founded.add(temp);
+    this.collections = [...this.collections, { id: temp, name: n, home: null, counts: [] }];
+    const moved: Array<{ tab: Tab; from: string | null }> = [];
     for (const sid of sids) {
       const t = this.store.tabs.get(sid);
       if (!t) continue;
-      left.add(t.group);
-      t.group = id;
-      edits.push(groupOfEdit(sid, id));
+      moved.push({ tab: t, from: t.group });
+      t.group = temp;
     }
-    for (const old of left) edits.push(...this.dropIfEmpty(old));
-    void this.writeGroups(edits);
-    return null;
+    const book = this.book;
+    if (!book) return temp;
+    void book
+      .make(n)
+      .then(async (id) => {
+        const now = this.collections.find((c) => c.id === temp);
+        // 家那台回话之前已经撤销了（组从栏里没了）⇒ 刚建的那一组解散掉，谁都不写进去。
+        if (!now) return book.dissolve(LOCAL_ORIGIN, id);
+        this.founded.add(id);
+        this.collections = this.collections.map((c) => (c.id === temp ? { ...c, id, home: LOCAL_ORIGIN } : c));
+        if (this.collapsed.delete(temp)) this.collapsed.add(id);
+        for (const { tab } of moved) if (tab.group === temp) tab.group = id;
+        this.host.refreshTabBar();
+        await Promise.all(moved.map(({ tab, from }) => this.move(tab, from, id)));
+        if (now && now.name !== n) await book.rename(LOCAL_ORIGIN, id, now.name);
+      })
+      .catch((e: unknown) => this.failed(e));
+    return temp;
   }
 
   /** 此刻的分组与顺序（撤销用）：顺序 · 组表 · 栏里每个 tab 的组。 */
   snapshot(): GroupSnapshot {
-    const groupOf = new Map<string, string | null>();
-    for (const t of this.store.tabs.values()) groupOf.set(t.sessionId, t.group);
-    return { order: [...this.store.orderedIds], groups: this.collections.map((c) => ({ ...c })), groupOf };
+    const groupAt = new Map<string, string | null>();
+    for (const t of this.store.tabs.values()) groupAt.set(t.sessionId, t.group);
+    return { order: [...this.store.orderedIds], groups: this.collections.map((c) => ({ ...c })), groupAt };
   }
 
   /**
-   * 撤销（拖着建组 / 进出组 / 排序 · 右键移出 · 解散）：顺序、组、组员原样退回（组的位置由组员位置决定，跟着回去）。
-   * 期间改过的组名留着；期间新建、此刻还有组员的组留着；已不在栏里的 tab 不管；期间新到的 tab 排在后面。
+   * 撤销（拖着建组 / 进出组 / 排序 · 右键移出 · 解散）：顺序、组员原样退回；期间解散掉的组重建一份（新 id）、组员放回去；
+   * 期间新建、退回后栏里没人的组撤掉。期间改过的组名留着；已不在栏里的 tab 不管；期间新到的 tab 排在后面。
    */
   restore(snap: GroupSnapshot): void {
-    const edits: ConfigEdit[] = [];
-    for (const [sid, gid] of snap.groupOf) {
+    const now = new Set(this.collections.map((c) => c.id));
+    const remade = new Map<string, Promise<string>>();
+    for (const g of snap.groups) {
+      if (now.has(g.id) || !this.book) continue;
+      remade.set(g.id, this.book.make(g.name));
+      this.collections = [...this.collections, { ...g }];
+    }
+    for (const [sid, gid] of snap.groupAt) {
       const t = this.store.tabs.get(sid);
       if (!t || t.group === gid) continue;
+      const from = t.group;
       t.group = gid;
-      edits.push(groupOfEdit(sid, gid));
+      const id = gid === null ? null : remade.get(gid);
+      if (id === undefined || id === null) void this.move(t, from, gid);
+      else void id.then((real) => {
+        this.collections = this.collections.map((c) => (c.id === gid ? { ...c, id: real } : c));
+        if (t.group === gid) t.group = real;
+        return this.move(t, from, real);
+      }).catch((e: unknown) => this.failed(e));
     }
-    const now = new Map(this.collections.map((c) => [c.id, c]));
+    // 这扇窗期间新建、此刻栏里一个组员都不剩的组：撤掉（还没建成的只摘栏里那一格，建成那一刻自己解散）。
     const had = new Set(snap.groups.map((c) => c.id));
-    const used = new Set([...this.store.tabs.values()].map((t) => t.group));
-    const next = [...snap.groups.map((c) => now.get(c.id) ?? c), ...this.collections.filter((c) => !had.has(c.id) && used.has(c.id))];
-    if (next.length !== this.collections.length || next.some((c, i) => c !== this.collections[i])) {
-      this.collections = next;
-      edits.push(collectionsEdit(next));
+    for (const c of [...this.collections]) {
+      if (had.has(c.id) || !this.founded.has(c.id) || [...this.store.tabs.values()].some((t) => t.group === c.id)) continue;
+      void this.dropGroup(c.id);
     }
     const back = new Set(snap.order);
     const order = [...snap.order.filter((s) => this.store.tabs.has(s)), ...this.store.orderedIds.filter((s) => !back.has(s))];
     const moved = order.some((s, i) => s !== this.store.orderedIds[i]);
     this.store.orderedIds = order;
-    void this.writeGroups(edits);
     if (moved) void this.persistOrder();
     this.host.refreshTabBar();
   }
@@ -205,103 +263,102 @@ export class TabBarPrefs {
     else undoToast(title, undo, () => {});
   }
 
-  /** 右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来在别的组 ⇒ 就不在了：`group` 是单值）。 */
+  /** 右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来画在别的组 ⇒ 出那一组）。 */
   joinGroup(sid: string, gid: string): Promise<void> {
-    const t = this.store.tabs.get(sid);
-    if (!t || t.group === gid || !this.collections.some((c) => c.id === gid)) return Promise.resolve();
-    const old = t.group;
-    t.group = gid;
-    return this.writeGroups([groupOfEdit(sid, gid), ...this.dropIfEmpty(old)]);
+    return this.joinGroupMany([sid], gid);
   }
 
-  /** 批量「加入集合 › X」：每一个同 [`joinGroup`]，补丁一次写。 */
+  /** 批量「加入集合 › X」：每一个同 [`joinGroup`]。 */
   joinGroupMany(sids: readonly string[], gid: string): Promise<void> {
     if (!this.collections.some((c) => c.id === gid)) return Promise.resolve();
-    const left = new Set<string | null>();
-    const edits: ConfigEdit[] = [];
+    const work: Array<Promise<void>> = [];
     for (const sid of sids) {
       const t = this.store.tabs.get(sid);
       if (!t || t.group === gid) continue;
-      left.add(t.group);
+      const from = t.group;
       t.group = gid;
-      edits.push(groupOfEdit(sid, gid));
+      work.push(this.move(t, from, gid));
     }
-    for (const old of left) edits.push(...this.dropIfEmpty(old));
-    return this.writeGroups(edits);
+    return Promise.all(work).then(() => undefined);
   }
 
-  /** 批量「移出集合」：每一个同 [`leaveGroup`]，补丁一次写。 */
+  /** 右键「移出」/ 拖出组：`sid` 回到散 tab。 */
+  leaveGroup(sid: string): Promise<void> {
+    return this.leaveGroupMany([sid]);
+  }
+
+  /** 批量「移出集合」：每一个同 [`leaveGroup`]；组里因此谁都不剩 ⇒ 组也解散（不留空组头）。 */
   leaveGroupMany(sids: readonly string[]): Promise<void> {
-    const left = new Set<string>();
-    const edits: ConfigEdit[] = [];
+    const left = new Map<string, string[]>();
+    const work: Array<Promise<void>> = [];
     for (const sid of sids) {
       const t = this.store.tabs.get(sid);
       if (!t || t.group === null) continue;
-      left.add(t.group);
+      const from = t.group;
       t.group = null;
-      edits.push(groupOfEdit(sid, null));
+      left.set(from, [...(left.get(from) ?? []), keyOf(t.origin, sid)]);
+      work.push(this.move(t, from, null));
     }
-    for (const old of left) edits.push(...this.dropIfEmpty(old));
-    return this.writeGroups(edits);
+    for (const [gid, gone] of left) if (this.emptyAfter(gid, gone)) work.push(this.dropGroup(gid));
+    return Promise.all(work).then(() => undefined);
   }
 
-  /** 右键「移出」/ 拖出组：`sid` 回到散 tab；组里因此一个在栏里的都不剩 ⇒ 组没（与 × 同一判定）。 */
-  leaveGroup(sid: string): Promise<void> {
-    const t = this.store.tabs.get(sid);
-    if (!t || t.group === null) return Promise.resolve();
-    const old = t.group;
-    t.group = null;
-    return this.writeGroups([groupOfEdit(sid, null), ...this.dropIfEmpty(old)]);
+  /** 组 `gid` 去掉 `gone` 那几条以后还有没有组员（账上的 ＋ 栏里的）。 */
+  private emptyAfter(gid: string, gone: readonly string[]): boolean {
+    const away = new Set(gone);
+    for (const t of this.store.tabs.values()) if (t.group === gid) return false;
+    for (const g of this.book?.read()?.groups ?? []) {
+      if (g.id !== gid) continue;
+      if (g.members.some((m) => !away.has(keyOf(m.origin, m.sid)))) return false;
+    }
+    return true;
   }
 
-  /**
-   * × 那一刻：tab 的组关系随 tab 一起没。在 `closeTab` 把 tab 从 `store.tabs` 摘掉之后调（「组里还剩谁」只数真在栏里的）。
-   * 摘它那一键；它是组里最后一个在栏里的 ⇒ 组也没；本来不在组里 ⇒ 零写。
-   */
-  forgetTab(tab: Tab): Promise<void> {
-    const gid = tab.group;
-    if (gid === null) return Promise.resolve();
-    tab.group = null;
-    return this.writeGroups([groupOfEdit(tab.sessionId, null), ...this.dropIfEmpty(gid)]);
-  }
-
-  /** 各台都报完了活会话清单：意图里还没到的组员不会再来了 ⇒ 按 × 掉处理；组里一个在栏里的都不剩 ⇒ 组没（重启后不留空组头）。 */
-  forgetUnarrived(): Promise<void> {
-    if (!this.collectionsLoaded) return Promise.resolve();
-    const edits: ConfigEdit[] = [];
-    for (const sid of this.savedGroupOf.keys()) edits.push(groupOfEdit(sid, null));
-    this.savedGroupOf.clear();
-    for (const col of [...this.collections]) edits.push(...this.dropIfEmpty(col.id));
-    return this.writeGroups(edits);
-  }
-
-  /** 组头 ×：解散。只去掉分组，一个 tab 都不动（集合是视图，不是容器）。 */
+  /** 组头 ×：解散。只去掉分组，一个 tab 都不动（集合是视图，不是容器）：家那台去掉组、各组员那台摘掉那一组。 */
   dissolveGroup(gid: string): Promise<void> {
-    const edits: ConfigEdit[] = [];
-    for (const t of this.store.tabs.values()) {
-      if (t.group !== gid) continue;
-      t.group = null;
-      edits.push(groupOfEdit(t.sessionId, null));
+    const work: Array<Promise<void>> = [];
+    for (const t of this.store.tabs.values()) if (t.group === gid) t.group = null;
+    for (const g of this.book?.read()?.groups ?? []) {
+      if (g.id !== gid) continue;
+      for (const m of g.members) work.push(this.patch(m.origin, m.sid, { leave: [gid] }));
     }
-    edits.push(...this.dropGroup(gid));
-    return this.writeGroups(edits);
+    work.push(this.dropGroup(gid));
+    return Promise.all(work).then(() => undefined);
   }
 
-  /** 收起 / 展开这几个组（组表那一格 `collapsed`，落盘）。都已是那个样子 ⇒ 零写。 */
+  /** 组表去掉 `gid`、家那台解散它。 */
+  private dropGroup(gid: string): Promise<void> {
+    const g = this.collections.find((c) => c.id === gid);
+    this.collections = this.collections.filter((c) => c.id !== gid);
+    if (this.collapsed.delete(gid)) void this.persistCollapsed();
+    if (!g || g.home === null || !this.book) return Promise.resolve();
+    return this.book.dissolve(g.home, gid).catch((e: unknown) => this.failed(e));
+  }
+
+  /** 收起 / 展开这几个组（这扇窗的看法 `tabBar.collapsed`，落盘）。都已是那个样子 ⇒ 零写。 */
   setCollapsed(gids: readonly string[], on: boolean): Promise<void> {
-    const want = new Set(gids);
     let changed = false;
-    const next = this.collections.map((c) => {
-      if (!want.has(c.id) || (c.collapsed === true) === on) return c;
+    for (const gid of gids) {
+      if (this.collapsed.has(gid) === on) continue;
       changed = true;
-      return on ? { ...c, collapsed: true as const } : { id: c.id, name: c.name };
-    });
+      if (on) this.collapsed.add(gid);
+      else this.collapsed.delete(gid);
+    }
     if (!changed) return Promise.resolve();
-    this.collections = next;
-    return this.writeGroups([collectionsEdit(next)]);
+    this.collections = this.collections.map((c) => this.withCollapsed(c));
+    return this.persistCollapsed();
   }
 
-  /** 「已隐藏」那一行收 / 展：先改内存再落盘（落盘失败只记日志）。没拉过组表的实例（撕出来的查看窗）不落盘。 */
+  /** 迁移那一趟带来的收着的组（新 id）：记进这扇窗的看法。 */
+  collapseMigrated(gids: readonly string[]): Promise<void> {
+    return this.setCollapsed(gids, true);
+  }
+
+  private persistCollapsed(): Promise<void> {
+    return writeCollapsed([...this.collapsed]).catch((e: unknown) => this.failed(e));
+  }
+
+  /** 「已隐藏」那一行收 / 展：先改内存再落盘（落盘失败只记日志）。没接组的账的实例（撕出来的查看窗）不落盘。 */
   setHiddenOpen(on: boolean): Promise<void> {
     if (this.hiddenOpen === on) return Promise.resolve();
     this.hiddenOpen = on;
@@ -319,81 +376,44 @@ export class TabBarPrefs {
       void this.setHiddenOpen(true);
       return true;
     }
-    const col = this.groupOf(sid);
+    const col = this.groupAt(sid);
     if (!col?.collapsed) return false;
     void this.setCollapsed([col.id], false);
     return true;
   }
 
-  /** 组头就地改名。空名 / 与现名相同 ⇒ 零写。 */
+  /** 组头就地改名（问家那一台）。空名 / 与现名相同 ⇒ 零写。 */
   renameGroup(gid: string, name: string): Promise<void> {
-    const next = renameCollection(this.collections, gid, name);
-    const before = this.collections.find((c) => c.id === gid)?.name;
-    const after = next.find((c) => c.id === gid)?.name;
-    if (before === undefined || before === after) return Promise.resolve();
-    this.collections = next;
-    return this.writeGroups([collectionsEdit(next)]);
+    const n = name.trim();
+    const g = this.collections.find((c) => c.id === gid);
+    if (!g || !n || g.name === n) return Promise.resolve();
+    this.collections = this.collections.map((c) => (c.id === gid ? { ...c, name: n } : c));
+    if (g.home === null || !this.book) return Promise.resolve();
+    return this.book.rename(g.home, gid, n).catch((e: unknown) => this.failed(e));
   }
 
-  /** 组 `gid` 在栏里一个 tab 都不带了 ⇒ 组没（× · 拖出 · 移出 · 挪组共用）。回要落盘的补丁（内存已改）；还有成员 ⇒ 空。 */
-  private dropIfEmpty(gid: string | null): ConfigEdit[] {
-    if (gid === null) return [];
-    for (const t of this.store.tabs.values()) if (t.group === gid) return [];
-    return this.dropGroup(gid);
+  /** 一个 tab 从 `from` 挪进 `to`（`null` ＝ 散着）：会话那台一条注解（出 · 进一起交）。 */
+  private move(tab: Tab, from: string | null, to: string | null): Promise<void> {
+    const join = to === null ? undefined : [to];
+    const leave = from === null || from === to || from.startsWith("pending-") ? undefined : [from];
+    if (!join && !leave) return Promise.resolve();
+    return this.patch(tab.origin, tab.sessionId, { ...(join ? { join } : {}), ...(leave ? { leave } : {}) });
   }
 
-  /** 组表去掉 `gid`，指向它的意图一并摘 —— 回要落盘的那几条（内存已改）。 */
-  private dropGroup(gid: string): ConfigEdit[] {
-    this.collections = deleteCollection(this.collections, gid);
-    const edits: ConfigEdit[] = [collectionsEdit(this.collections)];
-    for (const [sid, g] of this.savedGroupOf) {
-      if (g !== gid) continue;
-      this.savedGroupOf.delete(sid);
-      edits.push(groupOfEdit(sid, null));
-    }
-    return edits;
+  private patch(origin: Origin, sid: string, patch: { join?: string[]; leave?: string[]; pinned?: boolean }): Promise<void> {
+    if (!this.book) return Promise.resolve();
+    const title = patch.pinned === undefined ? undefined : copyText("tabBar.persist.pinnedFailed");
+    return this.book.member(origin, sid, patch).catch((e: unknown) => this.failed(e, title));
   }
 
-  /** 分组落盘的唯一出口：这一次的全部补丁一次 `patchConfig`（不会只落一半）。内存先改；落盘失败弹 toast ＋ 记日志。 */
-  private async writeGroups(edits: readonly ConfigEdit[]): Promise<void> {
-    if (edits.length === 0) return;
-    try {
-      await patchConfig(edits);
-    } catch (e) {
-      console.warn("[tab-collections] 落盘失败:", e);
-      failToast(copyText("tabBar.persist.collectionsFailed"), e);
-    }
+  /** 分组 · 固定没交成：toast ＋ 记日志；账重读一次（栏回到真相）。 */
+  private failed(e: unknown, title: string = copyText("tabBar.persist.collectionsFailed")): void {
+    console.warn("[tab-bar] 分组 / 固定没交成：", e);
+    failToast(title, e);
+    if (this.book) void this.book.refreshAll([]);
   }
 
   // ===== 固定（pinned）=====
-
-  /**
-   * 启动时把固定的 tab 复活出来（宿主在 `loadCollections` 之后调一次；与 `loadOrder` 谁先谁后都排得回来，
-   * 复活的 tab 走 `placeInOrder` 时会再应用一次顺序意图）。逐条 `createSkeletonTab`，标 pinned、标题用存下来的那份；
-   * 状态：没人说过它 ⇒ 说不清（去向由那台答：手上的 tab 随名单报给它；活着的话事件流会改回活）。不读内容（已结束的会话只能 resume）。
-   * 已经存在的 sid 不重建：只补 `pinned = true`，状态一个字不碰（它真活着时按回已结束是假话）。
-   */
-  async loadPinned(): Promise<void> {
-    const list = await getPinned();
-    this.pinnedRecords = new Map(list.map((p) => [p.sid, p]));
-    for (const p of list) {
-      const existed = this.store.tabs.get(p.sid);
-      if (!existed) {
-        this.host.createSkeletonTab(p.sid, p.cwd, p.origin, p.background, p.name);
-        const t = this.store.tabs.get(p.sid);
-        if (!t) continue;
-        // 凭空造的 tab：那台早到的脸建 tab 时已落实；没人说过它 ⇒ 没有脸（画说不清）。
-        t.parentPath = p.jsonlPath; // resume 与「有没有记录」都靠它
-        t.title = p.title; // 骨架期就显示正确标题，不等读文件
-        t.pinned = true;
-        this.mountPinHint(t);
-      } else {
-        existed.pinned = true;
-      }
-    }
-    this.pinnedLoaded = true;
-    this.host.refreshTabBar();
-  }
 
   /** 复活出来的固定 tab 的空态：说清它是什么 ＋ 给出唯一的出口（resume）；没有留下记录的那种说「没有记录」。 */
   mountPinHint(tab: Tab): void {
@@ -430,81 +450,41 @@ export class TabBarPrefs {
     this.pinHintEls.delete(sid);
   }
 
-  /**
-   * 把一个 tab 压成一条落盘记录。`lastActiveAt`：活的 ⇒ 此刻；死了（已结束 / 可重连）⇒ 沿用盘上那份、没有就 `null`
-   * （刷成此刻会把「最后活动」写成「最后落盘」）。
-   */
-  private pinRecordFor(tab: Tab): PinnedTab {
-    const prev = this.pinnedRecords.get(tab.sessionId);
-    return {
-      sid: tab.sessionId,
-      jsonlPath: tab.parentPath,
-      cwd: tab.projectDir,
-      origin: tab.origin,
-      // 缺了 resume 会静默落到默认号：会话宣告 · 那台写好的会话的号（连上次的号）都读不到 ⇒ `null`（没记到，不是默认号）。
-      account:
-        tab.face?.account ??
-        appStore.sessionAccount.get().get(tab.sessionId)?.read.account ??
-        prev?.account ??
-        null,
-      // 按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」。
-      lastActiveAt: isLive(tab.face) ? Date.now() : prev?.lastActiveAt ?? null,
-      background: tab.background,
-      name: tab.bgName,
-      title: tab.title,
-    };
-  }
-
-  /**
-   * 把「现在哪些 tab 被固定了」整张表写回 `tabBar.pinned`（源头是 `Tab.pinned`，这里只压平）。
-   * 「没拉过就不写」那道门在 `togglePin`：这里的两个调用方都已被它或 `tab.pinned` 挡在前面，再放一道区分不出任何输入。
-   */
-  async persistPinned(): Promise<void> {
-    const next: PinnedTab[] = [];
-    for (const sid of this.store.orderedIds) {
-      const tab = this.store.tabs.get(sid);
-      if (tab?.pinned) next.push(this.pinRecordFor(tab));
-    }
-    this.pinnedRecords = new Map(next.map((p) => [p.sid, p]));
-    try {
-      await setPinned(next);
-    } catch (e) {
-      console.warn("[tab-bar] 固定落盘失败:", e);
-      failToast(copyText("tabBar.persist.pinnedFailed"), e); // 同 `persistCollections`
-    }
-  }
-
-  /** 右键菜单那一项：翻转固定，先改内存再落盘。不自动固定，这是唯一的入口。 */
+  /** 右键菜单那一项：翻转固定，先改内存再交会话那台。不自动固定，这是唯一的入口。 */
   togglePin(sid: string): void {
     const tab = this.store.tabs.get(sid);
     if (!tab || !this.pinnedLoaded) return;
-    tab.pinned = !tab.pinned;
-    this.host.refreshTabBar();
-    void this.persistPinned();
+    void this.setPinnedMany([sid], !tab.pinned);
   }
 
-  /** 批量「固定 / 取消固定」：每一个同 [`togglePin`] 翻到 `on`，落盘一次。 */
-  setPinnedMany(sids: readonly string[], on: boolean): void {
-    if (!this.pinnedLoaded) return;
-    let changed = false;
+  /** 批量「固定 / 取消固定」：每一个翻到 `on`，各交会话那台一条注解。 */
+  setPinnedMany(sids: readonly string[], on: boolean): Promise<void> {
+    if (!this.pinnedLoaded) return Promise.resolve();
+    const work: Array<Promise<void>> = [];
     for (const sid of sids) {
       const tab = this.store.tabs.get(sid);
       if (!tab || tab.pinned === on) continue;
       tab.pinned = on;
-      changed = true;
+      work.push(this.patch(tab.origin, sid, { pinned: on }));
     }
-    if (!changed) return;
-    this.host.refreshTabBar();
-    void this.persistPinned();
+    if (work.length > 0) this.host.refreshTabBar();
+    return Promise.all(work).then(() => undefined);
+  }
+
+  /** 关掉一个固定的 tab（它已不在栏里）：取消固定交那台（× 是明确说要丢，不摘的话下次开 app 它又回来了）。 */
+  unpinClosed(tab: Tab): void {
+    tab.pinned = false;
+    this.pinRows.delete(keyOf(tab.origin, tab.sessionId));
+    void this.patch(tab.origin, tab.sessionId, { pinned: false });
   }
 
   /**
-   * 这条固定记录点进去也没有东西可看：盘上那条 `jsonlPath` 为空（骨架 tab 没收到带路径的行就被固定了），
+   * 这个复活出来的固定 tab 点进去也没有东西可看：那台给的那几格里没有记录（记录已不在），
    * 且到现在也没有行回填过 `parentPath`。点它时要说人话。
    */
   private pinIsDegraded(sid: string): boolean {
-    const rec = this.pinnedRecords.get(sid);
-    if (!rec || !isDegradedPin(rec)) return false;
+    const row = [...this.pinRows.values()].find((p) => p.sid === sid);
+    if (!row || row.facts.record !== null) return false;
     return (this.store.tabs.get(sid)?.parentPath ?? "") === "";
   }
 

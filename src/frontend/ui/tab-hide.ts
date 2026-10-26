@@ -46,7 +46,7 @@ export class TabHide {
   ) {}
 
   /**
-   * 后端那一格到了（宣告 · 推帧）：换上，变了才动栏。挪进「已隐藏」⇒ 摘固定 · 出组（先记下，撤销放回）；
+   * 后端那一格到了（宣告 · 推帧）：换上，变了才动栏。挪进「已隐藏」⇒ 摘固定 · 不画在组里（先记下，撤销放回）；
    * 挪出 ⇒ 撤销期里的照原样放回，别的回到散的末尾。回「变没变」。
    */
   land(sid: string, hidden: SessionHidden | null): boolean {
@@ -56,16 +56,18 @@ export class TabHide {
     if (sameHidden(was, hidden)) return false;
     tab.hidden = hidden;
     if (was === null && hidden !== null) {
-      if (tab.pinned) this.prefs.setPinnedMany([sid], false);
-      if (tab.group !== null) void this.prefs.forgetTab(tab);
+      if (tab.pinned) void this.prefs.setPinnedMany([sid], false);
+      tab.group = null; // 隐藏的不画在组里（组员关系不动：那是那台的注解）
     } else if (was !== null && hidden === null) {
       const b = this.before.get(sid);
       this.before.delete(sid);
       const at = this.store.orderedIds.indexOf(sid);
       if (at >= 0) this.store.orderedIds.splice(at, 1);
       this.store.orderedIds.splice(b ? Math.min(b.index, this.store.orderedIds.length) : this.store.orderedIds.length, 0, sid);
-      if (b?.group != null && this.prefs.collections.some((c) => c.id === b.group)) void this.prefs.joinGroup(sid, b.group);
-      if (b?.pinned) this.prefs.setPinnedMany([sid], true);
+      // 画回原来那一组：账上有 ⇒ 照账；没接账 ⇒ 照隐藏前记下的那一格。
+      if (b?.group != null && this.prefs.collections.some((c) => c.id === b.group)) tab.group = b.group;
+      this.prefs.adoptGroup(tab);
+      if (b?.pinned) void this.prefs.setPinnedMany([sid], true);
       void this.prefs.persistOrder();
     }
     this.host.refreshTabBar();

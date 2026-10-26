@@ -60,19 +60,6 @@ vi.mock("@tauri-apps/api/core", async () => {
 });
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}), emit: vi.fn() }));
 
-const PIN = {
-  sid: "sid-p",
-  jsonlPath: "/j/p.jsonl",
-  cwd: "/w",
-  origin: "<local>",
-  account: "a1",
-  lastActiveAt: 1,
-  background: false,
-  name: null,
-  title: "固定那条",
-};
-// 组只存 `{id, name}`；组员关系是 tab 自己的属性（`tabBar.groupOf.<sid>`）。
-const COLS = [{ id: "c1", name: "组一" }];
 const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
@@ -83,8 +70,7 @@ const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 
 /** 手写期望：全部写者一起发之后，盘上**恰好**是这一份。 */
 const EXPECTED: Record<string, unknown> = {
-  tabCollections: COLS,
-  tabBar: { order: ["sid-b", "sid-a"], pinned: [PIN], groupOf: { "sid-a": "c1", "sid-b": "c1" } },
+  tabBar: { order: ["sid-b", "sid-a"], collapsed: ["g1"], hiddenOpen: true },
   ...BEHAVIOR,
   theme: { bg: "#010203" },
   keybindings: KEYS,
@@ -96,24 +82,14 @@ async function realm(): Promise<{
   main: () => Promise<unknown>[];
   settings: () => Promise<unknown>[];
 }> {
-  const cfg = await import("../../../src/frontend/ui/config");
-  const cols = await import("../../../src/frontend/ui/tab-collections");
+
   const bar = await import("../../../src/frontend/ui/tab-bar-state");
   const beh = await import("../../../src/frontend/ui/behavior");
   const theme = await import("../../../src/frontend/ui/theme");
   const kb = await import("../../../src/frontend/ui/keybindings/store");
   return {
-    // 主窗：tab 栏那几条（E1 的原形：拖放同拍发分组 ＋ 顺序）。
-    // 分组那一条的形状照 `TabBarPrefs.foundGroup`：组表 ＋ 两个 tab 的组 id 键装进**一次**补丁。
-    main: () => [
-      cfg.patchConfig([
-        cols.collectionsEdit(COLS),
-        bar.groupOfEdit("sid-a", "c1"),
-        bar.groupOfEdit("sid-b", "c1"),
-      ]),
-      bar.setTabOrder(["sid-b", "sid-a"]),
-      bar.setPinned([PIN as never]),
-    ],
+    // 主窗：tab 栏那几条（E1 的原形：拖放同拍发收起 ＋ 顺序；组与固定住后端，不在这份文件里）。
+    main: () => [bar.setTabOrder(["sid-b", "sid-a"]), bar.setCollapsed(["g1"]), bar.setHiddenOpen(true)],
     // 设置窗：其余全部
     settings: () => [
       beh.setBehavior(BEHAVIOR),
@@ -143,11 +119,9 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
     const sent = (disk.patches.flat() as Edit[]).map((e) => `${e.op} ${e.path.join(".")}`).sort();
     expect(sent).toEqual(
       [
-        "set tabCollections",
-        "set tabBar.groupOf.sid-a",
-        "set tabBar.groupOf.sid-b",
         "set tabBar.order",
-        "set tabBar.pinned",
+        "set tabBar.collapsed",
+        "set tabBar.hiddenOpen",
         ...Object.keys(BEHAVIOR).map((k) => `set ${k}`),
         "set theme",
         "set keybindings",
@@ -158,12 +132,11 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
   it("同一 realm 连发同一个键两次：盘上是后发的那次（不靠 IPC 到达顺序）", async () => {
     vi.resetModules();
     const cfg = await import("../../../src/frontend/ui/config");
-    const cols = await import("../../../src/frontend/ui/tab-collections");
-    const v1 = [{ id: "c1", name: "旧" }];
-    const v2 = [{ id: "c1", name: "新" }];
+    const v1 = ["旧"];
+    const v2 = ["新"];
     // 第一跳（v1 那次写）多让三拍才被处理 ⇒ 两次若同时在飞，v1 必然后落盘、盖掉 v2。
     disk.delays = [3];
-    await Promise.all([cfg.patchConfig([cols.collectionsEdit(v1)]), cfg.patchConfig([cols.collectionsEdit(v2)])]);
-    expect((JSON.parse(disk.text) as Record<string, unknown>).tabCollections).toEqual(v2);
+    await Promise.all([cfg.patchConfig([cfg.setAt(["tabBar", "collapsed"], v1)]), cfg.patchConfig([cfg.setAt(["tabBar", "collapsed"], v2)])]);
+    expect(((JSON.parse(disk.text) as Record<string, unknown>).tabBar as Record<string, unknown>).collapsed).toEqual(v2);
   });
 });

@@ -54,7 +54,7 @@ const ORIGINS: Record<string, string> = { "s-local": "<local>", "s-remote": "dev
 describe("旧的分组三格迁进各台", () => {
   it("M1 一组两个组员：本机建组、两台各一条 join、全成了才删那三格", async () => {
     const { io: x, sent } = io();
-    const got = await migrateTabGroups(oldTabGroups(CFG), (sid) => ORIGINS[sid] ?? null, x);
+    const got = await migrateTabGroups(oldTabGroups(CFG), new Map(Object.entries(ORIGINS)), x);
     expect(got.done).toBe(true);
     expect(sent.made).toEqual(["开发"]);
     expect(sent.patched).toEqual(
@@ -68,7 +68,7 @@ describe("旧的分组三格迁进各台", () => {
 
   it("M2 有一条没写成：三格原样留着，不说迁完", async () => {
     const { io: x, sent } = io((w) => w === "annotate:s-remote");
-    const got = await migrateTabGroups(oldTabGroups(CFG), (sid) => ORIGINS[sid] ?? null, x);
+    const got = await migrateTabGroups(oldTabGroups(CFG), new Map(Object.entries(ORIGINS)), x);
     expect(got.done).toBe(false);
     expect(sent.dropped).toBe(0);
   });
@@ -76,7 +76,7 @@ describe("旧的分组三格迁进各台", () => {
   it("M3 固定照记录里的机器写；指着没有的组、认不出机器的丢掉并交回", async () => {
     const { io: x, sent } = io();
     const cfg = { ...CFG, tabBar: { ...CFG.tabBar, groupOf: { ...CFG.tabBar.groupOf, "s-nowhere": "c1" } } };
-    const got = await migrateTabGroups(oldTabGroups(cfg), (sid) => ORIGINS[sid] ?? null, x);
+    const got = await migrateTabGroups(oldTabGroups(cfg), new Map(Object.entries(ORIGINS)), x);
     expect(sent.patched).toContainEqual({ origin: "devbox", sid: "s-pin", patch: { pinned: true } });
     expect([...got.lost].sort()).toEqual(["s-gone", "s-nowhere"]);
     expect(got.done).toBe(true);
@@ -84,10 +84,10 @@ describe("旧的分组三格迁进各台", () => {
 
   it("M4 收着的组照新 id 记成收着；盘上没有那三格 ⇒ 一条都不发", async () => {
     const { io: x } = io();
-    const got = await migrateTabGroups(oldTabGroups(CFG), (sid) => ORIGINS[sid] ?? null, x);
+    const got = await migrateTabGroups(oldTabGroups(CFG), new Map(Object.entries(ORIGINS)), x);
     expect(got.collapsed).toEqual(["g-new-1"]);
     const { io: y, sent } = io();
-    const none = await migrateTabGroups(oldTabGroups({ tabBar: { order: ["a"] } }), () => "<local>", y);
+    const none = await migrateTabGroups(oldTabGroups({ tabBar: { order: ["a"] } }), new Map([["a", "<local>"]]), y);
     expect(none).toEqual({ done: false, lost: [], collapsed: [] });
     expect(sent).toEqual({ made: [], patched: [], dropped: 0 });
   });

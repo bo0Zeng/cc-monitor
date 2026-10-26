@@ -25,9 +25,8 @@ import {
   type DropTarget,
   type RowRect,
 } from "./tab-drop";
-import { newCollectionId } from "./tab-collections";
 import type { TabStore } from "./tab-store";
-import { sayCollectionRefusal, type TabBarPrefs } from "./tab-bar-prefs";
+import type { TabBarPrefs } from "./tab-bar-prefs";
 import { copyText } from "./copy-table";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import { statusDot } from "./kit/status-dot";
@@ -506,9 +505,9 @@ export class TabBarDrag {
     const sids = typeof dragged === "string" ? [dragged] : [...dragged];
     const sid = sids[0];
     const before = this.prefs.snapshot();
-    const groupOf = (x: string): string | null => this.store.tabs.get(x)?.group ?? null;
+    const groupAt = (x: string): string | null => this.store.tabs.get(x)?.group ?? null;
     const known = new Set(this.prefs.collections.map((c) => c.id));
-    const plan = planDrop(this.store.orderedIds, groupOf, known, sids, target);
+    const plan = planDrop(this.store.orderedIds, groupAt, known, sids, target);
     if (plan.order.length !== this.store.orderedIds.length) {
       this.host.refreshTabBar(); // 防御：被拖的 sid 已不在顺序里（拖拽中 tab 没了）
       return;
@@ -522,19 +521,14 @@ export class TabBarDrag {
         this.store.tabs.get(sid)?.projectDir ?? null,
         this.prefs.collections.map((c) => c.name),
       );
-      const id = newCollectionId();
-      const why = this.prefs.foundGroup([move.with, ...sids], name, id);
-      if (why) sayCollectionRefusal(why);
-      else {
-        founded = id;
-        title = copyText("tabBar.group.founded", { name });
-      }
+      founded = this.prefs.foundGroup([move.with, ...sids], name);
+      if (founded !== null) title = copyText("tabBar.group.founded", { name });
     } else if (move.kind === "join") {
       void this.prefs.joinGroupMany(sids, move.gid);
       const col = this.prefs.collections.find((c) => c.id === move.gid);
       if (col) title = sids.length > 1 ? copyText("tabBar.group.joinedMany", { name: col.name, n: sids.length }) : copyText("tabBar.group.joined", { name: col.name });
     } else if (move.kind === "leave") {
-      const old = before.groups.find((c) => c.id === before.groupOf.get(sid));
+      const old = before.groups.find((c) => c.id === before.groupAt.get(sid));
       void this.prefs.leaveGroupMany(sids);
       if (sids.length > 1) title = copyText("tabBar.group.leftMany", { n: sids.length });
       else if (old) title = copyText("tabBar.group.left", { name: old.name });
@@ -596,12 +590,8 @@ export class TabBarDrag {
     if (!this.prefs.collectionsLoaded || sids.length === 0) return;
     const before = this.prefs.snapshot();
     const name = defaultGroupName(null, null, this.prefs.collections.map((c) => c.name));
-    const id = newCollectionId();
-    const why = this.prefs.foundGroup(sids, name, id);
-    if (why) {
-      sayCollectionRefusal(why);
-      return;
-    }
+    const id = this.prefs.foundGroup(sids, name);
+    if (id === null) return;
     this.host.refreshTabBar();
     this.prefs.offerUndo(copyText("tabBar.group.founded", { name }), before);
     this.host.renameGroupNow(id);

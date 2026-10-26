@@ -87,7 +87,7 @@ const CENSUS: readonly string[] = [
   // `backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
   "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
-  "tabCollections", // src/frontend/ui/tab-collections.ts
+  "tabCollections", // src/frontend/ui/tab-groups-migrate.ts（旧组表：迁移那一段读、迁完删）
   "sessionHead", // src/frontend/ui/session-head.ts（会话头按钮）
   "contextLimits",
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──

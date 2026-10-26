@@ -5,7 +5,7 @@
  * 固定表 `tabBar.pinned`（`{sid, origin, …}`）。如今组是后端的数据（`history/groups.rs`）：组本身住家那一台、组员与固定是会话注解。
  * 迁法：各台的标签都到齐以后（`TabManager` 那一刻），每组在本机建一份（本机就是家）、组员照标签所在那台写 `join`、固定照记录里那台写 `pinned`；
  * **每一条都写成才删那三格**，有一条没成 ⇒ 原样留着、下次起来再迁（建过的组再建一份，旧的那份没有组员、不出）。
- * 认不出机器的组员（旧 `groupOf` 只记 sid：那条会话此刻没有标签）· 指着不存在的组的条目丢掉，回给调用方记一行。
+ * 认不出机器的组员（旧组员表只记 sid：那条会话此刻没有标签、也没固定过）· 指着不存在的组的条目丢掉，回给调用方记一行。
  */
 import type { Patch } from "./generated/Patch";
 import type { Origin } from "./ipc/origin";
@@ -72,12 +72,12 @@ export interface Migrated {
 }
 
 /**
- * 迁一次。`originOf` ＝ 此刻这条会话的标签在哪台（没有标签 ⇒ `null`）。
+ * 迁一次。`origins` ＝ 此刻栏里每条会话的标签在哪台（没有标签的那条再照旧固定表里记的那台；都没有 ⇒ 认不出、丢）。
  * 写的先后：先建组，再并发写各条注解；全成了才删那三格。
  */
 export async function migrateTabGroups(
   old: OldTabGroups,
-  originOf: (sid: string) => Origin | null,
+  origins: ReadonlyMap<string, Origin>,
   io: MigrateIo,
 ): Promise<Migrated> {
   if (!old.present) return { done: false, lost: [], collapsed: [] };
@@ -86,9 +86,11 @@ export async function migrateTabGroups(
   let ok = true;
   // 只建有组员能落地的那几组：一个组员都写不上的组建了也不出（各台都答了谁也没有那一组 ⇒ 已解散）。
   const landing = new Map<string, Array<{ origin: Origin; sid: string }>>();
+  const where = new Map(old.pinned.map((p) => [p.sid, p.origin]));
+  for (const [sid, o] of origins) where.set(sid, o);
   for (const [sid, gid] of old.groupOf) {
-    const origin = originOf(sid);
-    if (!old.groups.some((g) => g.id === gid) || origin === null) {
+    const origin = where.get(sid);
+    if (!old.groups.some((g) => g.id === gid) || origin === undefined) {
       lost.push(sid);
       continue;
     }

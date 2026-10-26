@@ -43,10 +43,10 @@ export const CONFIG_KEY_OWNERS = {
   claudeDir: PREFS_MIGRATION,
   // 机器表（搬进本机后端 `machines.json`：后端换形那一段只读它，本机 `machines-read` 说 `ok` 之后由壳删）。
   remote: PREFS_MIGRATION,
-  // src/frontend/ui/tab-bar-state.ts
+  // src/frontend/ui/tab-bar-state.ts（旧的分组 · 固定那两格只剩迁移那一段读、迁完删）
   tabBar: "src/frontend/ui/tab-bar-state.ts",
-  // src/frontend/ui/tab-collections.ts
-  tabCollections: "src/frontend/ui/tab-collections.ts",
+  // 旧的组表（组如今住各台后端）：只剩迁移那一段读、迁完删。5.0.3 之后第一版带它，再下一版连同迁移一起删。
+  tabCollections: "src/frontend/ui/tab-groups-migrate.ts",
   // src/frontend/ui/session-head.ts：会话头上放哪几颗按钮（`sessionHead.buttons`，这扇界面自己的偏好；没有 ＝ 默认）。
   sessionHead: "src/frontend/ui/session-head.ts",
   // 上下文上限表。
