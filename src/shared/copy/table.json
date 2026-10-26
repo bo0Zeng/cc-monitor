@@ -2405,42 +2405,6 @@
       "zh": "停止转发失败",
       "args": []
     },
-    "portForward.onStart.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动转发失败",
-      "args": []
-    },
-    "portForward.onStart.badRemotePort": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端端口限 1–65535",
-      "args": []
-    },
-    "portForward.onStart.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动转发",
-      "args": []
-    },
-    "portForward.onStart.noHost": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端主机必填",
-      "args": []
-    },
-    "portForward.onStart.badLocalPort": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本地端口限 1–65535",
-      "args": []
-    },
-    "portForward.onStart.noRemote": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无远端机器 · 先在设置里添加",
-      "args": []
-    },
     "portForward.reload.stop": {
       "kind": "action",
       "role": "按钮",
@@ -14709,6 +14673,12 @@
       "role": "报错",
       "zh": "测试 {dur} 无结果 · 最后一步 {last}",
       "args": ["dur", "last"]
+    },
+    "beForwards.spec.origin": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无远端机器 · 先在设置里添加",
+      "args": []
     },
     "beForwards.spec.localPort": {
       "kind": "error",

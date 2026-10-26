@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1916,
+  "ceiling": 1906,
   "groups": [
     {
       "kind": "首登",
@@ -207,7 +207,7 @@
         ["src/frontend/ui/settings/panel.ts", "key", 20],
         ["src/frontend/ui/settings/pb-dir-row.ts", "branch", 2],
         ["src/frontend/ui/settings/pb-dir-row.ts", "key", 3],
-        ["src/frontend/ui/settings/port-forward.ts", "key", 12],
+        ["src/frontend/ui/settings/port-forward.ts", "key", 3],
         ["src/frontend/ui/settings/profiles-list.ts", "branch", 26],
         ["src/frontend/ui/settings/profiles-list.ts", "key", 33],
         ["src/frontend/ui/settings/remote-section.ts", "key", 19],

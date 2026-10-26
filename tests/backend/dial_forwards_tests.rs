@@ -44,8 +44,14 @@ fn table_with(origin: &str) -> remote_ask::Table {
     .unwrap()])
 }
 
-fn args(origin: &str, local: u64, host: &str, remote: u64) -> Value {
-    json!({"origin": origin, "localPort": local, "remoteHost": host, "remotePort": remote})
+/// 两个端口照界面交的那一形：用户敲进去的原文（数字也写成字）。
+fn args(
+    origin: &str,
+    local: impl std::fmt::Display,
+    host: &str,
+    remote: impl std::fmt::Display,
+) -> Value {
+    json!({"origin": origin, "localPort": local.to_string(), "remoteHost": host, "remotePort": remote.to_string()})
 }
 
 /// 丢掉它 ⇒ 记一笔（替身链路那一侧被收的证据）。
@@ -64,11 +70,22 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
     let empty = crate::dial::remote_ask::test_peers::empty();
     let ledger = Ledger::new();
     let calls = Arc::new(AtomicUsize::new(0));
-    for bad in [
-        args("dev", 0, "localhost", 5432),
-        args("dev", 15432, "", 5432),
-        args("dev", 15432, "   ", 5432),
-        args("dev", 15432, "localhost", 0),
+    let local = copy_text("beForwards.spec.localPort", &[]);
+    let host = copy_text("beForwards.spec.remoteHost", &[]);
+    let remote = copy_text("beForwards.spec.remotePort", &[]);
+    let origin = copy_text("beForwards.spec.origin", &[]);
+    for (bad, said) in [
+        (args("dev", 0, "localhost", 5432), &local),
+        (args("dev", "", "localhost", 5432), &local),
+        (args("dev", "abc", "localhost", 5432), &local),
+        (args("dev", 70000, "localhost", 5432), &local),
+        (args("dev", -1, "localhost", 5432), &local),
+        (args("dev", 15432, "", 5432), &host),
+        (args("dev", 15432, "   ", 5432), &host),
+        (args("dev", 15432, "localhost", 0), &remote),
+        (args("dev", 15432, "localhost", " "), &remote),
+        (args("dev", 15432, "localhost", 65536), &remote),
+        (args("", 15432, "localhost", 5432), &origin),
     ] {
         let c = Arc::clone(&calls);
         let err = start_with(&bad, &empty, &ledger, move |_req, _up, _down| {
@@ -81,15 +98,16 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
             err.0, "bad_spec",
             "拒了，但不是围栏拒的（{err:?}）—— 围栏在查表之后了"
         );
+        assert_eq!(&err.1, said, "{bad} 拒的那一句不对");
     }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
-    assert!(parse_spec(&args("dev", 15432, "localhost", 5432)).is_ok());
+    let ok = parse_spec(&args("dev", " 15432 ", "localhost", 5432)).unwrap();
+    assert_eq!((ok.local_port, ok.remote_port), (15432, 5432));
+    // 形状不对（端口交成数字）仍是解入参那一步拒。
     assert_eq!(
-        parse_spec(
-            &json!({"origin": "dev", "localPort": 70000, "remoteHost": "h", "remotePort": 1})
-        )
-        .unwrap_err()
-        .0,
+        parse_spec(&json!({"origin": "dev", "localPort": 1, "remoteHost": "h", "remotePort": "1"}))
+            .unwrap_err()
+            .0,
         "bad_args"
     );
 }
