@@ -12,6 +12,12 @@ fn code_of(src: &str) -> String {
         .unwrap_or_default()
 }
 
+/// 投到线上的那个码与 `data`（错误枚举 ⇒ 失败信封）。
+fn wire_of<E: crate::wire::typed::Codes>(e: E) -> (String, Option<Value>) {
+    let f = e.into_fail();
+    (f.code, f.data)
+}
+
 fn file(home: &Home, id: &str) -> String {
     std::fs::read_to_string(home.root.join(format!("strategies/{id}.rhai"))).expect("那一份")
 }
@@ -26,7 +32,7 @@ fn mine() -> Value {
 }
 
 /// ★ 改设置交意图 ⇒ 照声明改完、当场存成那份的新版（只重写头、代码逐字节不变；没变 ⇒ 不写、版本照旧）；
-/// 不合声明 ⇒ `refused` 带那一格、文件不动；行号越界 ⇒ `bad_args`；版本对不上 ⇒ `conflict` 带此刻的版本。
+/// 不合声明 ⇒ `refused` 带那一格、文件不动；行号越界 ⇒ `bad_args`；版本对不上 ⇒ `stale` 带此刻的版本。
 #[test]
 fn settings_edits_are_saved_into_the_file_as_a_new_version() {
     let home = Home::new("edit-save");
@@ -113,8 +119,14 @@ fn settings_edits_are_saved_into_the_file_as_a_new_version() {
             if_rev: "h:000000000000".into(),
         },
     ) {
-        Err(RotationSettingsErr::Conflict(_, c)) => assert_eq!(c.rev, shelf::rev_of(&saved)),
-        other => panic!("该冲突：{other:?}"),
+        Err(e) => assert_eq!(
+            wire_of(e),
+            (
+                "stale".to_string(),
+                Some(json!({"rev": shelf::rev_of(&saved)}))
+            )
+        ),
+        other => panic!("该撞上版本：{other:?}"),
     }
 }
 
@@ -213,7 +225,7 @@ fn a_new_strategy_is_the_editor_one_with_every_account() {
 }
 
 /// ★ 策略文件：加（读不懂 ⇒ `bad_strategy` 带行；文件名就是给的名字）· 复制（另起一个文件名，内容一字不改）·
-/// 改名（换文件名，指它的会话与「新会话用」跟着改；版本对不上 ⇒ `conflict`；名字占了或写法不对 ⇒ `bad_args`）·
+/// 改名（换文件名，指它的会话与「新会话用」跟着改；版本对不上 ⇒ `stale`；名字占了或写法不对 ⇒ `bad_args`）·
 /// 删（活会话在用 · 新会话用的 ⇒ `in_use`）。
 #[test]
 fn strategy_files_are_added_copied_renamed_and_deleted() {
@@ -271,7 +283,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         (copied.id.as_str(), file(&home, &copied.id)),
         ("我的 2", src.clone())
     );
-    assert!(matches!(
+    assert_eq!(
         rename_with(
             &ctx,
             &home.own(),
@@ -280,9 +292,12 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
                 name: "改了".into(),
                 if_rev: "h:x".into()
             }
-        ),
-        Err(RotationStrategyRenameErr::Conflict(..))
-    ));
+        )
+        .map_err(|e| wire_of(e).0)
+        .err()
+        .as_deref(),
+        Some("stale")
+    );
     home.saw(&ctx, S1);
     home.load(&ctx, S1, Some(&copied.id));
     ctx.setup
@@ -358,7 +373,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
 }
 
 /// ★ 设时区：只把设置块里的 `tz` 换掉（说明 · 代码逐字节不变、设置照旧）；之后不再提示「时区不明」；
-/// 版本对不上 ⇒ `conflict`；不是 IANA 名 ⇒ `bad_args`。
+/// 版本对不上 ⇒ `stale`；不是 IANA 名 ⇒ `bad_args`。
 #[test]
 fn setting_the_zone_rewrites_only_tz() {
     let home = Home::new("edit-tz");
@@ -370,14 +385,17 @@ fn setting_the_zone_rewrites_only_tz() {
         tz: tz.into(),
         if_rev,
     };
-    assert!(matches!(
+    assert_eq!(
         tz_with(
             &ctx,
             &home.own(),
             &req("Asia/Shanghai", "h:000000000000".into())
-        ),
-        Err(RotationStrategyTzErr::Conflict(..))
-    ));
+        )
+        .map_err(|e| wire_of(e).0)
+        .err()
+        .as_deref(),
+        Some("stale")
+    );
     assert!(matches!(
         tz_with(
             &ctx,

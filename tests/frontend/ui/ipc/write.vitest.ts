@@ -18,7 +18,8 @@ describe("write：三种结局", () => {
     expect(reread).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["stale", "conflict"])("别处改过（码 %s）⇒ stale · 那一句是后端说的 · 重读一次", async (code) => {
+  it("别处改过（码 stale）⇒ stale · 那一句是后端说的 · 重读一次", async () => {
+    const code = "stale";
     const reread = vi.fn(async () => {});
     const end = await write(async () => {
       throw refused(code);
