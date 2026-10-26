@@ -8,6 +8,7 @@
 
 pub(crate) mod gather;
 pub(crate) mod marks;
+pub(crate) mod sshd;
 
 use crate::common::json_patch::{self as patch, DiffLine, Plan};
 use crate::footprint::data::{Missing, UndoAt};
@@ -63,6 +64,14 @@ pub(crate) struct Relay {
     pub text: Option<String>,
     /// 要写进去的地址（插的是只许直通那一把）；生成不了 ⇒ `None`。
     pub url: Option<String>,
+    /// 这台此刻活着的会话所在的项目里，第一个自己写了上游地址、盖住这一格的（`SettingsEnvFace.covered_in`）。
+    pub covered: Option<Covered>,
+}
+
+/// 盖住用户级那一格的那个项目 · 那份设置文件。
+pub(crate) struct Covered {
+    pub project: String,
+    pub file: String,
 }
 
 impl Relay {
@@ -104,6 +113,8 @@ pub(crate) struct Facts {
     pub hooks: Option<Hooks>,
     /// 用户自己配的（全局 · 本项目 · 项目文件里的）、要登录的 MCP（`mcp-read` 那一份判定）。
     pub mcp_login: Vec<McpLogin>,
+    /// 这台 sshd 的配置关了端口转发的那一行（说不清 / 没装 sshd ⇒ `None`）。
+    pub sshd: Option<sshd::ForwardingOff>,
     /// 点过「不用了」的那几件（`marks.rs`）。
     pub declined: Vec<String>,
 }
@@ -317,6 +328,26 @@ pub(crate) fn merge_counts(machines: Vec<ChoreCounts>) -> ChoreCounts {
 /// 事实 ⇒ 各件（急的在前：要做 · 待定 · 要装 · 要装 · 可选 · 可选）。
 pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
     let mut out: Vec<Chore> = Vec::new();
+    if let Some(s) = &f.sshd {
+        let mut c = Chore::new("sshd-forwarding", ChoreKind::Must, ChoreAction::CopySnippet);
+        let line = s.line.to_string();
+        c.name = copy_text("beChore.sshd.name", &[]);
+        c.loc = copy_text("beChore.sshd.loc", &[("path", &s.path), ("line", &line)]);
+        c.said = copy_text("beChore.sshd.said", &[]);
+        c.why = copy_text("beChore.sshd.why", &[("path", &s.path), ("line", &line)]);
+        c.steps = vec![
+            copy_text("beChore.sshd.stepOpen", &[("path", &s.path)]),
+            copy_text("beChore.step.replace", &[("line", &line), ("n", "1")]),
+            copy_text("beChore.sshd.stepReload", &[]),
+        ];
+        c.diff = vec![
+            DiffLine::Del(s.line, s.text.clone()).into(),
+            DiffLine::Add(s.fix.clone()).into(),
+        ];
+        c.copy = Some(s.fix.clone());
+        c.file = Some(s.path.clone());
+        out.push(c);
+    }
     if let Some(s) = &f.stale_ccm {
         let mut c = Chore::new("stale-ccm", ChoreKind::Must, ChoreAction::CopyCommand);
         c.name = copy_text("beChore.staleCcm.name", &[]);
@@ -453,7 +484,13 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         match (r.state.as_str(), &r.url) {
             ("installed", _) => {
                 c.state = ChoreState::Done;
-                c.said = copy_text("beChore.relay.saidDone", &[]);
+                match &r.covered {
+                    Some(k) => {
+                        c.said = copy_text("beChore.relay.saidCovered", &[("project", &k.project)]);
+                        c.why = copy_text("beChore.relay.whyCovered", &[("file", &k.file)]);
+                    }
+                    None => c.said = copy_text("beChore.relay.saidDone", &[]),
+                }
             }
             (_, None) => {
                 c.state = ChoreState::Blocked;

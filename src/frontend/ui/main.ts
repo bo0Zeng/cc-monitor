@@ -106,6 +106,7 @@ import { SessionHead, terminalActsOf } from "./session-head";
 import { NeedsTitle } from "./needs-bar";
 import { AnswerBlock } from "./answer-block";
 import { answerNeeds } from "./answer-reads";
+import { installQuitGuard } from "./quit-now";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -195,6 +196,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const start = new StatusStart({ read: readStart, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();
+  // 关主窗口 ＝ 退出 cc-monitor 时先问会打断什么（与「现在重启」同一问、同一种框）。
+  installQuitGuard();
   void getCurrentWindow()
     .onFocusChanged(({ payload: focused }) => {
       if (focused) {

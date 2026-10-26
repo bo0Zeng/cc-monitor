@@ -16,7 +16,7 @@
 //!
 //! # 写口（全仓一个：[`answer_record`]，只从 `stream/inbound/` 进 —— `Own` 由分派那一层递）
 //!
-//! - `{op:"add", name, files:{path:{digest, created}}}`：装完（或装到一半停下）monitor 把**真写成了的那几个**原样交回来
+//! - `{op:"add", name, files:{path:{digest, created}}}`：装完（或装到一半停下）把**装完与来源相同的那几个**（真写成了的 ＋ 本来就相同的）原样交回来
 //!   （摘要与 `created` 是这台后端自己在 `skill-install-plan` 里答的 `ledger` 那一格）。目录由本模块按 `skills 根 / name` 自己算，
 //!   **不收调用方给的路径**。
 //! - `{op:"drop", dir, paths}`：卸掉（或已经不在）的那几个从记录里摘；一条记录剩零个文件 ⇒ 整条摘掉。
@@ -220,9 +220,6 @@ pub(crate) enum RecordReq {
         /// 给了 ⇒ 目录按那个项目里的 skill 根算。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<String>,
-        /// 缺 ⇒ 目录按 skill 根算；`home` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）。
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        at: Option<RecordAt>,
     },
     /// 卸掉 / 已经不在的摘掉：`paths` 不在记录里 ⇒ `bad_args`，一个字节不动；摘到零个 ⇒ 整条记录摘掉。
     Drop { dir: String, paths: Vec<String> },
@@ -234,13 +231,6 @@ pub(crate) enum RecordReq {
     },
     /// MCP 卸掉摘。
     McpDrop { file: String, name: String },
-}
-
-/// `add` 的 `at`（闭集，只此一个值）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum RecordAt {
-    Home,
 }
 
 /// 装记录写口的回包。
@@ -348,7 +338,6 @@ pub(crate) fn record_at(
             name,
             files,
             project,
-            at,
         } => {
             if !crate::assets::skill_install::valid_name(name) {
                 return Err(crate::wire::spec::Fail::from((
@@ -360,18 +349,9 @@ pub(crate) fn record_at(
             }
             check_files(files)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
-            // `at: "home"`：装的东西落在家目录底下、不在 skill 根下
-            //   ⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
-            //   `files` 的路径相对它。同一份账、同一个形（不另立第二份账）。
-            let dir = match (at, project) {
-                (Some(RecordAt::Home), _) => path
-                    .parent()
-                    .and_then(Path::parent)
-                    .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
-                    .display()
-                    .to_string(),
+            let dir = match project {
                 // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。
-                (None, Some(p)) => {
+                Some(p) => {
                     let p = crate::assets::mcp_edit::project_root(p)?;
                     crate::agents::asset_kind()
                         .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(&p))))
@@ -380,7 +360,7 @@ pub(crate) fn record_at(
                         .display()
                         .to_string()
                 }
-                (None, None) => {
+                None => {
                     let root = match skills_root {
                         Some(r) => r.to_path_buf(),
                         None => crate::agents::asset_kind()
