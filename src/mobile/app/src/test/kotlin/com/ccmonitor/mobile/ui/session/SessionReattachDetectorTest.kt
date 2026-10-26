@@ -32,7 +32,7 @@ class SessionReattachDetectorTest {
         override fun close() = Unit
 
         override suspend fun connect(
-            configs: List<ConnectionConfig>,
+            config: ConnectionConfig,
             onEvent: ((SshConnectEvent) -> Unit)?,
         ) = error("unused")
 

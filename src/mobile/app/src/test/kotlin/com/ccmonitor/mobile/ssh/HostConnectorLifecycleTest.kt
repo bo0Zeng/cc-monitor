@@ -6,6 +6,9 @@ import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
+import com.ccmonitor.mobile.core.wire.gen.DialPlan
+import com.ccmonitor.mobile.core.wire.gen.DialRequest
+import com.ccmonitor.mobile.core.wire.gen.DialUse
 import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
 import com.ccmonitor.mobile.core.ssh.ShellChannel
@@ -15,6 +18,7 @@ import com.ccmonitor.mobile.core.ssh.SshTransport
 import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -71,6 +75,7 @@ class HostConnectorLifecycleTest {
                 manager,
                 HostRepository(LifecycleFakeHostDao(ids.associateWith { host(it) }), PlainCryptoBox),
                 IdentityRepository(LifecycleFakeIdentityDao(mapOf("idk" to identity())), PlainCryptoBox),
+                { _, target -> DialPlan.Ready(direct(target.id)) },
             )
         return manager to connector
     }
@@ -251,7 +256,7 @@ private class LifecycleFakeTransport : SshTransport {
     override val isConnected: Boolean get() = alive && !closed
 
     override suspend fun connect(
-        configs: List<ConnectionConfig>,
+        config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)?,
     ) {
         alive = true
@@ -277,7 +282,7 @@ private class LifecycleFakeHostDao(
 ) : HostDao {
     override suspend fun get(id: String): Host? = map[id]
 
-    override fun observeAll(): Flow<List<Host>> = throw NotImplementedError()
+    override fun observeAll(): Flow<List<Host>> = flowOf(map.values.toList())
 
     override suspend fun upsert(host: Host) = throw NotImplementedError()
 
@@ -299,3 +304,7 @@ private class LifecycleFakeIdentityDao(
 
     override suspend fun delete(identity: Identity) = throw NotImplementedError()
 }
+
+/** 假核心组的那一份：直连那一台，`keyPath` 写那台的 id（生产由 `Core.dialPlan` 组）。 */
+private fun direct(id: String) =
+    DialRequest("h.example", 22, "u", id, "", emptyList(), null, DialUse.STREAM, null, null, null, false, false, null, false)
