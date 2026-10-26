@@ -1,13 +1,12 @@
-//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md §10` 的 `launch` 节（平面 ② 真建 tmux 会话的线上契约）
+//! # 要求住址：本模块头注（平面 ② 真建 tmux 会话 / 就地键入：ccm 容器路 · `session-open` · 换号重启经 [`run`] 走这里）
 //!
-//! 核原文：`launch` 节逐字「`send-into` 时不新建会话」·「`typed:true` 只有 `send-keys` 的退出码那么强」；
-//! 同节写明它刻意不做的三件（不 attach · 不过 shell · 不顺手建会话）、`created` / `typed` 结局表 —— 本族逐格判的就是那一节。
+//! 核的是：`send-into` 时不新建会话 ·「`typed` 只有 `send-keys` 的退出码那么强」·
+//! 刻意不做的三件（不 attach · 不过 shell · 不顺手建会话）、`created` / `typed` 结局表。
 //! 先过门再键入对 `INVARIANTS §34` Gate 2；精确目标形态对 `INVARIANTS §31a`。
-//! ⚠ `§42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族。
 
 use super::*;
 
-// 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步：多一格 · 缺一格 · 类型不对 ⇒ `bad_args`），再过值域那一道。
+// 判据拿 JSON 写样例（多一格 · 缺一格 · 类型不对 ⇒ `bad_args`），再过值域那一道。
 fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
     let req: LaunchReq = serde_json::from_value(args.clone()).map_err(|e| {
         CmdErr::new(
@@ -635,8 +634,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
                 !body.contains(confirm),
                 "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
-                     `launch` 登记里 `typed` 字段的说明 · 本文件 `LaunchOutcome::typed` \n\
-                     · 界面 `src/frontend/ui/tmux-control.ts::decodeTyped`（此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
+                     `LaunchOutcome::typed` 的说明与下一条判据。**一起改。**"
             );
         }
     }
@@ -649,27 +647,21 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
 /// 而消费方默认会按字面把 `typed:true` 读成确凿落地 —— 那正是报告 I-3 的起点。
 #[test]
 fn the_contract_says_how_strong_typed_actually_is() {
-    // 契约那一句住回包类型 `Launched` 的 `typed` 那一格的文档注释（协议参考与生成的 TS 由它来）。
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "launch")
-        .expect("注册表里没有 launch");
-    let shape = (spec.run.shape)();
-    let decl = shape
-        .decls
-        .iter()
-        .find(|(n, _)| n == &shape.reply)
-        .map(|(_, d)| d.clone())
-        .expect("launch 的回包类型没有声明");
-    let doc = decl
-        .split("typed:")
+    // 契约那一句住结局 `LaunchOutcome` 的 `typed` 那一格的文档注释（`session-open` · 换号重启读它判送没送到）。
+    let src = include_str!("../../../src/backend/control/launch.rs");
+    let at = src
+        .find("pub(crate) struct LaunchOutcome {")
+        .expect("找不到 `LaunchOutcome` —— 改名了就把本条一起改");
+    let rest = &src[at..];
+    let doc = rest
+        .split("pub(crate) typed: bool")
         .next()
-        .and_then(|head| head.rsplit("/**").next())
-        .expect("回包里没有 `typed` 那一格");
-    for needle in ["只有 `send-keys` 的退出码那么强", "copy-mode"] {
+        .and_then(|head| head.rsplit("pub(crate) created: bool,").next())
+        .expect("结局里没有 `typed` 那一格");
+    for needle in ["退出码为 0", "copy-mode"] {
         assert!(
             doc.contains(needle),
-            "`launch` 的 `typed` 字段说明里找不到 `{needle}` —— `typed` 的语义边界那句被删了或改写了。\n\
+            "`LaunchOutcome::typed` 的说明里找不到 `{needle}` —— `typed` 的语义边界那句被删了或改写了。\n\
                  ★ 删掉它，契约就退回「什么都没说」，而消费方默认按字面把 `typed:true` 读成载荷确凿落地。\n\
                  要改措辞可以，但多强 · 已知反例两样都得留。"
         );
@@ -712,56 +704,6 @@ fn no_doc_claims_the_payload_really_landed() {
              而那要真 tmux 才验得了 —— 登记在，留给 e2e tier2。",
         hits.join("\n")
     );
-}
-
-/// ★★**跨语言金样**：界面直接说的 `launch`（送键 · 就地 resume）请求与成品，
-/// 两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
-///
-/// 守的要求：「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 由界面经通道直接说
-/// （`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
-///
-/// 四格各自异源：`send-into` 的请求样例过**生产**解析器 [`parse_request`]、
-/// 且解出来是它自称的那个 mode · 成品 == 生产构造器 [`reply`] · 码集合 == 后端登记表 `inbound::REGISTRY` 那一块。
-/// ⚠ `REGISTRY` 那一块今天**没列 `wrong_owner`**，而 [`run`] 经 `gate::admit` 真会回它 —— 界面那张表单独接住了它；
-/// 登记表漏列这一格，本条照登记表比，不替它补。
-#[test]
-fn the_launch_request_and_product_match_the_cross_language_golden() {
-    let g: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
-            .expect("金样读不出来");
-    let l = &g["launch"];
-    let into = parse_request(&l["request"]).expect("金样的 send-into 请求样例过不了生产解析器");
-    assert_eq!(
-        into.mode,
-        Mode::SendInto,
-        "金样的 send-into 样例没被解成 send-into"
-    );
-    let r = &l["reply"];
-    assert_eq!(
-        serde_json::to_value(reply(
-            r["session"].as_str().expect("session"),
-            r["created"].as_bool().expect("created"),
-            r["typed"].as_bool().expect("typed"),
-        ))
-        .unwrap(),
-        *r,
-        "后端出的 launch 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道送到没有」"
-    );
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "launch")
-        .expect("后端登记表里没有 `launch`");
-    let mut want: Vec<&str> = spec.codes.to_vec();
-    want.sort_unstable();
-    let mut got: Vec<&str> = l["codes"]
-        .as_array()
-        .expect("金样缺 `codes`")
-        .iter()
-        .map(|v| v.as_str().expect("码不是字符串"))
-        .collect();
-    got.sort_unstable();
-    assert_eq!(got, want, "金样里的拒绝码与后端登记的不相等");
 }
 
 // ═══ tmux 的原话进错误 · 次要动作失败留一行日志 ═══════════════════

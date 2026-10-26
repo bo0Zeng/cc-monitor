@@ -157,7 +157,7 @@
 - **`@ccm_sid`**：tmux 窗格上的会话标记。一个 tmux 会话可挂几个窗格、各挂各的 sid；送字 / 抓屏 / 结束都落在挂着那个 sid 的窗格上，身份也按那个窗格判（活动窗格是谁不算数）。
 - **`@ccm_client`**：会话由谁起。用户在终端里敲的 ccm / 别名起的写 `ccm`（谁都能动）；某个前端为自己内部起的写那个前端的名字（1–32 个 `[a-z0-9-]`）。
   请求可带 `args.client` 自报是哪个前端：没声明 / 声明成 `ccm` ⇒ 这一维不拦；声明的就是自报的 ⇒ 放；声明了别的 ⇒ `wrong_owner`（别的前端起的，这里只能看）。
-  `kill` · `launch` 的 `send-into` · `sessions-*` · `terminal-input` · `session-restart` 共用这一维；它防误动，不是安全边界。
+  `kill` · `sessions-*` · `session-open`（就地键入那一形）· `terminal-input` · `session-restart` 共用这一维；它防误动，不是安全边界。
 - **破坏性动作三道门**：名字精确匹配（`=name:`，不许含 `:` / `=` / 控制字符）⇒ 名字像我们铸的（`cc-*` / `<X>-cc`）或已挂 `@ccm_sid` ⇒ 只有一个窗口（只给杀会话）。杀的是 `#{session_id}` 句柄，不是名字。
 - **抓屏不过身份门、恒可用**：`terminal-preview` 只读，谁问都给（身份门只管送字 / 结束）⇒ `terminals-list` 每行的 `can` 里只有会变的 `input` · `end`，没有 `preview` 那一格。
   `terminal-input` 只收 `terminal` | `sid` · `text` · `enter` · `key` · `seen_screen` · `client`，多送一格 ⇒ `bad_args`。

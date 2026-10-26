@@ -397,7 +397,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
         (
             "unsupported",
             Inbound::Unsupported {
-                cmd: "launch".into(),
+                cmd: "kill".into(),
                 offered: vec![],
             },
         ),

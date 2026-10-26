@@ -67,20 +67,6 @@ mkfifo "$IN"
 # 改这里 ⇒ monitor 侧 `the_e2e_ping_line_is_exactly_what_the_encoder_produces` 变红。
 INBOUND_PING_LINE='{"id":"e2e-ping-1","cmd":"ping","args":null,"within_ms":10000}'
 
-# ★ U8a-2c-1 跨轨对拍：**这一行是 monitor 的 `launch_args` + `encode_request` 的产物**
-# （由 monitor 侧 `the_e2e_send_into_line_is_exactly_what_the_encoder_produces` 逐字节钉住）。
-# 上面那条 ping 只证明「backend 认得 monitor 编的信封」；这一条证明的是
-# **monitor 真正会发的那条业务命令**（`backend_send_into` 唯一会说的 `send-into`）。
-# 值全是写死的（不插值），否则钉不住。
-#
-# ⚠ **名字必须是本工具的命名形状**（`<X>-cc`）。F03 给后端的 `send-into` 装上 §34 Gate 2
-#   之后，`e2e-si-fixed`（旧名）当场被 `wrong_owner` 拒了 —— 而**生产上根本不会出现那种名字**：
-#   `backend_send_into` 收的是 `launch-requests.ts` 产的 `<sid8>-cc`。
-#   也就是说这个夹具此前用的是一个**生产永远不会产生的值**：跨轨钉钉住了「编码形状」，
-#   钉不住「值是否真实」。改名后两侧必须 lockstep（只改一侧 ⇒ monitor 的
-#   `the_e2e_send_into_line_is_exactly_what_the_encoder_produces` 当场红，实测过）。
-INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-into","name":"e2e-si-fixed-cc","payload":"true"},"within_ms":10000}'
-
 echo "== U8a-2a 入方向真进程端到端 =="
 echo "backend: $BACKEND"
 
@@ -105,7 +91,7 @@ HELLO="$(head -1 "$OUT")"
 # F04a：新增 kill（第一条破坏性入方向命令）—— 这一行与后端命令表里的单词命令（`hello.commands` 从命令表派生）
 # 由 monitor 侧 `the_e2e_command_list_matches_the_backend_command_table` 逐项钉住，两处要一起动。
 # 新增 resync（手动对齐）。
-for c in ping cancel resolve launch kill resync; do
+for c in ping cancel resolve kill resync; do
   if printf '%s' "$HELLO" | grep -qF "\"$c\""; then ok "hello.commands 声明了 $c"; else
     bad "hello 里没有 $c：$HELLO"
   fi
@@ -181,159 +167,6 @@ for k in a b c; do
   wait_for "\"id\":\"e2e-multi-$k\"" || missing="$missing $k"
 done
 if [ -z "$missing" ]; then ok "三条并发命令各自拿到应答"; else bad "这几条没应答：$missing"; fi
-
-# ── 8b. U8a-2b：`launch` 打在**真 tmux** 上 ─────────────────────────────────────
-#
-# 这一段是 2b 的关键证据：不是喂夹具，是让真后端用真 tmux 建出一个真会话、
-# 把载荷真敲进去。tmux server 是本套件开头隔离出来的私有 socket（`TMUX_TMPDIR`），
-# **绝不碰用户真实的 server**。
-if ! command -v tmux >/dev/null 2>&1; then
-  bad "没有 tmux —— launch 段无法验证（本套件依赖真 tmux，不接受跳过）"
-else
-  # ⚠ **名字必须是本工具的命名形状**（`<X>-cc`）—— 与下面 `INBOUND_SEND_INTO_LINE` 那段是同一条理由。
-  #   F03 给后端的 `send-into` 装上了 §34 Gate 2（`gate.rs::admit`）：
-  #   `e2e-launch-<pid>`（旧名）**既不是本工具的命名形状、事实键 `@ccm_sid` 也没设** ⇒ `wrong_owner`。
-  #   ⚠ 那**不是缺陷，是这道门的正确行为**：旧夹具能过门，靠的是「建会话时顺手写了裸 `@ccm_sid`」，
-  #   而那条路 09-03（`2a58237`，`K-P2` C 第五拍）已经拆掉了（建会话只写**意图**键，见下面两格）。
-  #   ⇒ 换成**生产真会产生**的形状（`launch-requests.ts` 产的是 `<sid8>-cc`），下面那几条才走得到
-  #   它们真正要验的那条路（键入 / 幂等），而不是全部停在身份门上。
-  # ⚠ 「非本工具会话必须被 Gate 2 拒」那一档**不在本套件**：`tests/e2e/backend-gate2-acceptance.sh`
-  #   逐行跑整张判定表，外加「只设了 `@ccm_sid_expect` 仍拒」一条。这里不重复。
-  SESS="e2e-launch-$$-cc"
-  MARK="$WORK/launched.marker"
-  # 载荷：写一个 marker 文件。它比「看进程名」可靠得多 —— 能证明**这一行真的被执行了**。
-  send "{\"id\":\"e2e-launch-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"create-or-attach\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\",\"ccm_sid\":\"e2e-sid-1\"}}"
-  if wait_for '"id":"e2e-launch-1"'; then
-    R="$(grep -F '"id":"e2e-launch-1"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF '"ok":true' &&
-       printf '%s' "$R" | grep -qF '"created":true' &&
-       printf '%s' "$R" | grep -qF '"typed":true'; then
-      ok "launch create-or-attach 回 created=true typed=true"
-    else
-      bad "launch 应答不对：$R"
-    fi
-  else
-    bad "launch 没有应答"
-  fi
-  if tmux has-session -t "=$SESS:" 2>/dev/null; then ok "真 tmux 会话建出来了"; else
-    bad "tmux 里找不到会话 $SESS"
-  fi
-  # ★★ 09-03（`2a58237`，`K-P2` C 第五拍）之后，**这里是两格，不是一格** ——
-  #    「意图」与「事实」是两个 key、两个阶段，只改个名字只验得到前一半。
-  #
-  #    · 通道 A（**意图**）：`launch` 建会话那一刻写 `@ccm_sid_expect`
-  #      —— 与 `shared/ccm` 本地那条编排同一个顺序（`new-session` → `@ccm_agent` → `@ccm_sid_expect`）。
-  #    · 通道 B（**事实**）：`@ccm_sid` 只由 `control/identity_tag.rs` 在
-  #      「pidfile 出现 ＋ 过 `procStart` 冒名检查」之后才写。`launch.rs::run` 的头注逐字：
-  #      **「本处一个字都不写 `@ccm_sid`」**。
-  #
-  #    下面第二格（此刻事实键必须为空）钉的正是那道分离本身。只验意图键的话，
-  #    「哪天有人把它改回裸 `@ccm_sid`」会重新变成**静默**的 —— 那就是 F04 修掉的 `R10`：
-  #    一个「声明了 sid、而那个 claude 进程还没起（甚至永远起不来）」的空会话**当场取得事实身份**，
-  #    而事实身份是破坏性动作（`kill` → `gate::admit_destructive`）唯一认的东西。
-  # ⚠ 两处都 `2>/dev/null || true`：`show-options -v` 对**未设置**的 option 是 rc=1 + stderr
-  #   （`gate.rs` 头注登记的那条 tmux 行为），取回空串当「没设」。
-  #   ⚠ tmux 对 `@` 开头的**用户 option 不做前缀匹配**（`options_match` 见 `@` 就原样返回）
-  #     ⇒ 只设了 `@ccm_sid_expect` 时问 `@ccm_sid` 拿到的是「未设置」，不是那个值。
-  # ⚠ 第二格「必须为空」单看会是一个**免费的 PASS**（会话没了也是空串）——
-  #   兜它的是**第一格**：目标一旦不在，`@ccm_sid_expect` 那格拿不到 `e2e-sid-1`，当场红。
-  #   两格必须一起读，别把哪一格单独挪走。
-  GOT_EXPECT="$(tmux show-options -v -t "=$SESS:" @ccm_sid_expect 2>/dev/null || true)"
-  if [ "$GOT_EXPECT" = "e2e-sid-1" ]; then ok "意图键 @ccm_sid_expect 已写（$GOT_EXPECT）"; else
-    bad "@ccm_sid_expect 不对：${GOT_EXPECT:-<空>}"
-  fi
-  GOT_SID="$(tmux show-options -v -t "=$SESS:" @ccm_sid 2>/dev/null || true)"
-  if [ -z "$GOT_SID" ]; then ok "事实键 @ccm_sid 此刻仍为空（建会话不许直接授予事实身份）"; else
-    bad "**建会话就写了事实键 @ccm_sid=$GOT_SID** —— 绕过 identity_tag 那道确认，正是 F04 修掉的 R10"
-  fi
-  got_marker=0
-  wall_until '[ -f "$MARK" ]' && got_marker=1
-  if [ "$got_marker" = 1 ]; then ok "载荷真的在会话里执行了（marker 落盘）"; else
-    bad "上限内 marker 没出现 —— send-keys 没真落进交互 shell"
-  fi
-
-  # 幂等：同名再来一次 ⇒ created=false typed=false（**不重复 resume**）
-  rm -f "$MARK"
-  send "{\"id\":\"e2e-launch-2\",\"cmd\":\"launch\",\"args\":{\"mode\":\"create-or-attach\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\"}}"
-  if wait_for '"id":"e2e-launch-2"'; then
-    R="$(grep -F '"id":"e2e-launch-2"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF '"created":false' && printf '%s' "$R" | grep -qF '"typed":false'; then
-      ok "会话已存在 ⇒ 幂等短路（created=false typed=false）"
-    else
-      bad "幂等短路破了：$R"
-    fi
-  else
-    bad "第二次 launch 没有应答"
-  fi
-  # 「没重复键入」是个没发生：自己往同一个会话敲一条记号命令、等它落盘 ⇒ 在它之前进去的（要是后端敲了）已经执行过了。
-  tmux send-keys -t "=$SESS:" "touch '$MARK.settle'" Enter 2>/dev/null || true
-  wall_until '[ -f "$MARK.settle" ]' || true
-  if [ ! -f "$MARK" ]; then ok "幂等短路真的没重复键入载荷"; else
-    bad "幂等短路声称没键入，marker 却又出现了"
-  fi
-
-  # send-into：往**已存在**的会话键入 ⇒ typed=true
-  send "{\"id\":\"e2e-launch-3\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\"}}"
-  if wait_for '"id":"e2e-launch-3"'; then
-    R="$(grep -F '"id":"e2e-launch-3"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF '"ok":true' && printf '%s' "$R" | grep -qF '"typed":true'; then
-      ok "send-into 往已存在会话键入成功"
-    else
-      bad "send-into 应答不对：$R"
-    fi
-  else
-    bad "send-into 没有应答"
-  fi
-  got_marker=0
-  wall_until '[ -f "$MARK" ]' && got_marker=1
-  if [ "$got_marker" = 1 ]; then ok "send-into 的载荷真的执行了"; else bad "send-into 没真敲进去"; fi
-
-  # ★ #76 防线（形态迁移后）：send-into 一个**不存在**的会话 ⇒ 报错，**绝不新建**
-  send '{"id":"e2e-launch-4","cmd":"launch","args":{"mode":"send-into","name":"e2e-nope-never","payload":"true"}}'
-  if wait_for '"id":"e2e-launch-4"'; then
-    R="$(grep -F '"id":"e2e-launch-4"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF '"ok":false' && printf '%s' "$R" | grep -qF 'no_such_session'; then
-      ok "send-into 会话不存在 ⇒ no_such_session"
-    else
-      bad "应当回 no_such_session：$R"
-    fi
-  else
-    bad "send-into(不存在) 没有应答"
-  fi
-  if tmux has-session -t "=e2e-nope-never:" 2>/dev/null; then
-    bad "**send-into 顺手把会话建出来了** —— 那是 #76 的反向"
-  else
-    ok "send-into 没有顺手新建会话（#76 反向防线）"
-  fi
-
-  # ★ U8a-2c-1：**monitor 真正会发的那条 send-into**（逐字节由 monitor 侧钉住）打在真 tmux 上。
-  # 与上面 e2e-launch-3 的区别：那条是本脚本手写+插值的，这条是**编码器的产物**——
-  # 手写那条只证明后端认得我写的形状，证明不了 monitor 发的形状。
-  tmux new-session -d -s e2e-si-fixed-cc
-  send "$INBOUND_SEND_INTO_LINE"
-  if wait_for '"id":"e2e-si-1"'; then
-    R="$(grep -F '"id":"e2e-si-1"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF '"ok":true' && printf '%s' "$R" | grep -qF '"typed":true'; then
-      ok "monitor 编码器产的 send-into 行被真后端接受并键入"
-    else
-      bad "编码器产的 send-into 行被拒了：$R"
-    fi
-  else
-    bad "编码器产的 send-into 行没有应答"
-  fi
-
-  # attach 不归后端（平面 ③）
-  send '{"id":"e2e-launch-5","cmd":"launch","args":{"mode":"attach-only","name":"x","payload":"y"}}'
-  if wait_for '"id":"e2e-launch-5"'; then
-    R="$(grep -F '"id":"e2e-launch-5"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF 'bad_args'; then ok "attach-only 被拒（平面 ③ 不归后端）"; else
-      bad "attach-only 居然被接受了：$R"
-    fi
-  else
-    bad "attach-only 没有应答"
-  fi
-  tmux kill-session -t "=$SESS:" 2>/dev/null || true
-fi
 
 # ── 9. 关掉写端**不许**把后端弄死 ───────────────────────────────────────────
 #

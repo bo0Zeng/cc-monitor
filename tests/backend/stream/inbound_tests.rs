@@ -520,7 +520,7 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
 
 /// ★ **不可取消的命令不许回一条撒谎的 `cancelled`。**
 ///
-/// D 设计审计（视角 A · P4）：`launch` 的处理器是同步阻塞的，`abort()` 对
+/// D 设计审计（视角 A · P4）：`kill` 这类处理器是同步阻塞的，`abort()` 对
 /// `spawn_blocking` 起的活是空操作 ⇒ 旧实现下客户端收到 `Cancelled`，
 /// 而远端的 tmux 会话照样建出来、载荷照样键入。**控制面在骗调用方。**
 #[tokio::test]
@@ -531,7 +531,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
 
     // 一条「在跑、且不可取消」的命令。
     spawn_handler(
-        req("blk", "launch"),
+        req("blk", "kill"),
         tx.clone(),
         running.clone(),
         move |_r| async move {
@@ -1228,7 +1228,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         )),
         r#"{"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
-    // kill · launch：经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 没有这个会话），再拿纯构造器逐字节比换形之前那一版写出来的。
+    // kill：经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 没有这个会话），再拿纯构造器逐字节比换形之前那一版写出来的。
     assert_eq!(
         run_registered(
             "kill",
@@ -1241,19 +1241,6 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     assert_eq!(
         wire(&crate::control::kill::reply("demo-cc")),
         r##"{"killed":true,"session":"demo-cc"}"##
-    );
-    assert_eq!(
-        run_registered(
-            "launch",
-            serde_json::json!({ "mode": "send-into", "name": "nope-x", "payload": "true" })
-        )
-        .unwrap_err()
-        .code,
-        "no_such_session"
-    );
-    assert_eq!(
-        wire(&crate::control::launch::reply("demo-cc", true, false)),
-        r##"{"created":true,"session":"demo-cc","typed":false}"##
     );
     // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
     let e = run_registered(
@@ -1381,14 +1368,6 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
         ("kill", serde_json::json!({ "name": 1 })),
         (
-            "launch",
-            serde_json::json!({ "mode": "send-into", "name": "x", "payload": "y", "extra": 1 }),
-        ),
-        (
-            "launch",
-            serde_json::json!({ "mode": "send-into", "name": "x", "cwd": 5, "payload": "y" }),
-        ),
-        (
             "session-open",
             serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "extra": 1 }, "local": false }),
         ),
@@ -1471,4 +1450,16 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
         let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
         assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");
     }
+}
+
+/// 没人调的帧命令不留在登记表里：`launch`（建 tmux 会话 / 就地键入）界面 · 手机 · 壳都不发，
+/// 就地键入只经 `session-open` · 换号重启那两条活命令内部走 `launch::run`，过门的真机验收改走 `terminal-input`。
+#[test]
+fn the_dead_launch_command_is_not_registered() {
+    let names: Vec<&str> = REGISTRY.iter().map(|spec| spec.name).collect();
+    assert!(names.len() >= 4, "注册表只有 {} 条 —— 本条在空转", names.len());
+    assert!(
+        !names.contains(&"launch"),
+        "`launch` 还登记在帧命令表里：没有调用方的命令要撤"
+    );
 }

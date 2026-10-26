@@ -349,57 +349,6 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
     }
 }
 
-/// ★ U8a-2c-1：同上，但钉的是**业务命令**那一行。
-///
-#[test]
-fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
-    const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
-    let key = "INBOUND_SEND_INTO_LINE='";
-    let at = SUITE
-        .find(key)
-        .expect("e2e 脚本里找不到 INBOUND_SEND_INTO_LINE —— 抽取坏了，本断言在空转");
-    let rest = &SUITE[at + key.len()..];
-    let literal = &rest[..rest.find('\'').expect("赋值没有收尾单引号")];
-    assert!(
-        literal.len() > 40,
-        "抽到的字面量太短（{literal:?}）—— 抽取坏了"
-    );
-    let line: serde_json::Value = serde_json::from_str(literal).expect("e2e 那一行不是 JSON");
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
-            .expect("金样读不出来");
-    let keys = |v: &serde_json::Value| -> Vec<String> {
-        let mut k: Vec<String> = v
-            .as_object()
-            .expect("args 不是对象")
-            .keys()
-            .cloned()
-            .collect();
-        k.sort();
-        k
-    };
-    assert_eq!(line["cmd"], "launch", "e2e 那一行不是 `launch`");
-    assert_eq!(
-        keys(&line["args"]),
-        keys(&golden["launch"]["request"]),
-        "\ne2e 脚本喂给真后端的 send-into 行，键与界面真在发的那一份（金样）不一致 ——\n\
-             它们必须是同一份事实，否则 e2e 在验证一个界面永远不会发的形状。"
-    );
-    assert_eq!(line["args"]["mode"], "send-into");
-    assert_eq!(
-        format!("{literal}\n"),
-        encode_request(
-            line["id"].as_str().expect("id"),
-            "launch",
-            &line["args"],
-            line["within_ms"].as_u64().map(Duration::from_millis),
-            line["tz"].as_str(),
-            None
-        ),
-        "e2e 那一行的信封不是 monitor 那一跳会产出的那一行（键序 / 空白对不上）"
-    );
-}
-
 /// ★ e2e 脚本里硬编码的那几个命令名，必须等于后端命令表里的单词命令名（命令表各族的 `name`）。
 ///
 /// 那是命令面的**第五处**副本（前四处已由后端侧两条护栏钉住）。没有这条的话，
@@ -657,7 +606,7 @@ async fn a_cancelled_frame_ends_the_call_as_cancelled() {
 async fn an_undeclared_command_is_refused_without_writing_anything() {
     let (client, mut peer) = client_on_duplex(&["ping"]);
     let err = client
-        .call("launch", Value::Null, Duration::from_secs(5))
+        .call("kill", Value::Null, Duration::from_secs(5))
         .await
         .unwrap_err();
     assert!(matches!(err, CallError::Unsupported { .. }), "{err:?}");
@@ -1138,12 +1087,12 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 /// 两侧异源：左边是真 hello 行经 `stream_source::decode` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
-    // `kill` · `launch` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
+    // `kill` · `terminals-list` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
     let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
     let line = format!(
-        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"kill":"{}","launch":"{}","ping":"{}"}}}}"#,
+        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","kill","ping","terminals-list"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"kill":"{}","terminals-list":"{}","ping":"{}"}}}}"#,
         shape("kill"),
-        shape("launch"),
+        shape("terminals-list"),
         shape("ping")
     );
     let frame = crate::stream_source::decode(&line).expect("是 hello");
@@ -1170,7 +1119,7 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
 
     // ②
     for (cmd, want, cancels) in [
-        ("launch", Withdraw::NotOffered, 0usize),
+        ("terminals-list", Withdraw::NotOffered, 0usize),
         ("ping", Withdraw::Asked, 1),
     ] {
         let c = client.clone();
