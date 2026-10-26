@@ -93,11 +93,11 @@ describe("列表那一行右侧那一句：这一次没问到 ⇒ 画上次的",
     const meta = { enabled: true, unsupported: false, effectiveDefault: "work" } as never;
     const acct = (name: string, isDefault: boolean) => ({ name, isDefault }) as never;
     const down = { origin: "gpu-01", available: false, error: "x", oldBackend: false, meta: null, accounts: [], notice: null };
-    expect(accountsSummary({ ...down, last: { meta, accounts: [acct("work", true), acct("b", false)], atMs: 1 } }, "Linux")).toBe(
+    expect(accountsSummary({ ...down, last: { meta, accounts: [acct("work", true), acct("b", false)], seen: { atMs: 1, said: "s" } } }, "Linux")).toBe(
       copyText("machineList.summary.accounts", { n: 2, name: "work" }),
     );
     expect(accountsSummary({ ...down, last: null }, "Linux")).toBe("");
-    expect(accountsSummary({ ...down, last: { meta: { enabled: false, unsupported: true } as never, accounts: [], atMs: 1 } }, "Windows")).toBe(
+    expect(accountsSummary({ ...down, last: { meta: { enabled: false, unsupported: true } as never, accounts: [], seen: { atMs: 1, said: "s" } } }, "Windows")).toBe(
       copyText("machineList.summary.single", { os: "Windows" }),
     );
   });

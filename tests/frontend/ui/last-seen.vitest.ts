@@ -4,9 +4,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { calls, store, reachable } = vi.hoisted(() => ({
+const { calls, store, reachable, SEEN } = vi.hoisted(() => ({
+  /** 本机后端写好的上次读数那一格（界面照摆）。 */
+  SEEN: { atMs: 42, said: "采样于 夹具那一刻" },
   calls: [] as Array<{ origin: string; op: string; args: Record<string, unknown> }>,
-  store: new Map<string, Record<string, { atMs: number; value: unknown }>>(),
+  store: new Map<string, Record<string, { state: "kept"; seen: { atMs: number; said: string }; value: unknown }>>(),
   reachable: new Set<string>(),
 }));
 const accountsReply = { meta: { enabled: true, acctsDir: "/h/.cc-monitor/accounts", manifestPath: "/h/.cc-monitor/accounts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null, unsupported: null, nextDefault: null, effectiveDefault: null, home: "/h" }, accounts: [], notice: null };
@@ -22,7 +24,7 @@ vi.mock("../../../src/comms/inward/chan", () => ({
         return enc({ atMs: 43 });
       }
       if (op === "last-seen-write") {
-        store.set(args.origin as string, { ...(store.get(args.origin as string) ?? {}), [args.kind as string]: { atMs: 42, value: args.value } });
+        store.set(args.origin as string, { ...(store.get(args.origin as string) ?? {}), [args.kind as string]: { state: "kept", seen: SEEN, value: args.value } });
         return enc({ atMs: 42 });
       }
       if (op === "last-seen-read") {
@@ -60,11 +62,11 @@ describe("上次值交本机后端记", () => {
     expect(calls.map((c) => `${c.origin}:${c.op}:${c.args.origin}:${c.args.kind}`)).toEqual(["<local>:last-seen-write:devbox:data", "<local>:last-seen-write:devbox:data"]);
     await rememberSeen("devbox", "data", report({ a: 2 }));
     expect(calls).toHaveLength(3);
-    expect(await recallSeen("devbox", "data")).toEqual({ atMs: 42, value: { a: 2 } });
+    expect(await recallSeen("devbox", "data")).toEqual({ state: "kept", seen: SEEN, value: { a: 2 } });
     expect(await recallSeen("devbox", "accounts")).toBeNull();
   });
 
-  it("★ 账号：读成了 ⇒ 记下；那台问不到 ⇒ 照本机后端记着的那一份画上次的（带记下的时刻）—— 同一次运行里也问本机后端，界面不另记一份", async () => {
+  it("★ 账号：读成了 ⇒ 记下；那台问不到 ⇒ 照本机后端记着的那一份画上次的（带本机后端写好的上次读数那一格）—— 同一次运行里也问本机后端，界面不另记一份", async () => {
     reachable.add("devbox");
     const ok = await fetchAccounts("devbox");
     expect(ok.available).toBe(true);
@@ -74,10 +76,10 @@ describe("上次值交本机后端记", () => {
     reachable.clear();
     const off = await fetchAccounts("devbox");
     expect(off.available).toBe(false);
-    expect(off.last?.atMs).toBe(42);
+    expect(off.last?.seen).toEqual(SEEN);
     expect(off.last?.meta.enabled).toBe(true);
     // 界面这一侧不记任何东西：画上次的只凭本机后端那一份（重启也一样）。
-    expect((await fetchAccounts("devbox")).last?.atMs).toBe(42);
+    expect((await fetchAccounts("devbox")).last?.seen).toEqual(SEEN);
   });
 
   it("★ 删机器：交本机后端清掉那台（只带 origin ＋ forget）；之后问不到它；同名再加回来、同一份照样再交", async () => {
@@ -87,7 +89,7 @@ describe("上次值交本机后端记", () => {
     await forgetSeen("devbox");
     expect(calls.map((c) => [c.origin, c.op, c.args])).toEqual([["<local>", "last-seen-write", { origin: "devbox", forget: true }]]);
     expect(await recallSeen("devbox", "data")).toBeNull();
-    expect(await recallSeen("gpu-01", "data")).toEqual({ atMs: 42, value: { b: 1 } });
+    expect(await recallSeen("gpu-01", "data")).toEqual({ state: "kept", seen: SEEN, value: { b: 1 } });
     calls.length = 0;
     await rememberSeen("devbox", "data", report({ a: 1 }));
     expect(calls.map((c) => c.op), "同名那台再加回来：照样交").toEqual(["last-seen-write"]);
