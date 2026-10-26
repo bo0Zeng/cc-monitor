@@ -1259,11 +1259,10 @@ impl FakeBackend {
                     );
                 };
                 // 两形都认（同后端）：字符串 / `{"b16": …}`，存原始字节。
-                let content = serde_json::from_value::<cmd_wire::files::ChunkBytes>(
-                    args["content"].clone(),
-                )
-                .map(|c| c.bytes().to_vec())
-                .unwrap_or_default();
+                let content =
+                    serde_json::from_value::<cmd_wire::files::ChunkBytes>(args["content"].clone())
+                        .map(|c| c.bytes().to_vec())
+                        .unwrap_or_default();
                 if content.is_empty() {
                     return (false, Some("bad_args".into()), Some("空块".into()), None);
                 }

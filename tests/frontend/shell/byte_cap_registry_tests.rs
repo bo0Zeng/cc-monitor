@@ -386,6 +386,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              去抠信封的 `id`、好让 `line_too_long` 带回请求方的 id（`inbound·rs::sniff_id`）。\
              越过它什么都不丢、不截 —— `id` 不在这一段里就回空串，即改动之前的行为。",
     ),
+    (
+        "LINE_ENVELOPE_ROOM",
+        "**一段留出的余量**，不是上限：窗口判一行写装不装得下时，内容与路径以外那一圈信封宽留这么多字节\
+             （`editor::fits_one_line`）。越过它什么都不拒、不截 —— 判装不下就走分块，落在盘上是同一个结果。",
+    ),
     // ── 大文件模式（`filewin/bigfile.rs`）带进来的三个 ──
     (
         "BIG_LINE_BYTES",

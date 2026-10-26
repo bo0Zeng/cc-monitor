@@ -442,7 +442,10 @@ fn one_line_room(at: &crate::source::RemotePath) -> usize {
 fn the_one_line_check_is_conservative_for_the_worst_escaping() {
     let at = crate::source::RemotePath::plain(SAVE_PATH);
     let k = one_line_room(&at);
-    assert!(k >= SAVE_LINE_CAP / 8, "一行写只装得下 {k} 字节，保守过头了");
+    assert!(
+        k >= SAVE_LINE_CAP / 8,
+        "一行写只装得下 {k} 字节，保守过头了"
+    );
     let worst = "\u{1}".repeat(k);
     let line = serde_json::to_vec(&serde_json::json!({
         "id": "m".repeat(75),
