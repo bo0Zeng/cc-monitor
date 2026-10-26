@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.session
 
-import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
+import com.ccmonitor.mobile.core.ssh.ExecResult
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent

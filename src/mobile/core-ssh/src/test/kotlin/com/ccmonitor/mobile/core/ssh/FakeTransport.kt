@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.core.ssh
 
-import com.ccmonitor.mobile.core.remote.ExecResult
 import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.atomic.AtomicInteger
 

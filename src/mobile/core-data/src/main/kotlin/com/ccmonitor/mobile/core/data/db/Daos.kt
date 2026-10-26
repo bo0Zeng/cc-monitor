@@ -59,9 +59,6 @@ interface BookmarkDao {
 
     @Delete
     suspend fun delete(bookmark: Bookmark)
-
-    @Query("DELETE FROM bookmarks WHERE id = :id")
-    suspend fun deleteById(id: String)
 }
 
 @Dao
