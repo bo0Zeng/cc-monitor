@@ -979,7 +979,7 @@ mod tests {
         }
     }
 
-    /// 🔴 同名那一问的答只在核心里拆：手机 Kotlin 生产源里拆开一个答（`is` / `as` 到 `All` · `Each`）的只有交核心那一形（`BatchAnswer.wire`）。
+    /// 🔴 同名那一问的答只在核心里拆：手机 Kotlin 生产源里拆开一个答（`is` / `as` 到 `All` · `Each`）的只有交核心那一形（生成的编解码 `Generated.kt`）。
     #[test]
     fn kotlin_takes_a_clash_answer_apart_only_to_hand_it_over() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -1024,7 +1024,7 @@ mod tests {
         }
         assert_eq!(
             hits,
-            std::collections::BTreeSet::from(["BatchEvent.kt".to_string()]),
+            std::collections::BTreeSet::from(["Generated.kt".to_string()]),
             "只许交核心那一形拆（它也得在：正控）"
         );
     }
