@@ -121,6 +121,33 @@ pub(crate) const SLOTS: &[Slot] = &[
     },
 ];
 
+/// 表单的一格交给界面的那一形：哪一格 ＋ 标签（写好的字）。`profiles-read` 按 [`SLOTS`] 的顺序带全，界面不另存一份标签表。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileSlot"
+    )
+)]
+pub(crate) struct SlotOut {
+    id: SlotId,
+    label: String,
+}
+
+/// 表单各格的标签，按表单从上到下的顺序。
+fn slots_out() -> Vec<SlotOut> {
+    SLOTS
+        .iter()
+        .map(|s| SlotOut {
+            id: s.id,
+            label: s.label_text(),
+        })
+        .collect()
+}
+
 /// 一个 ccm 选项（或 `None` ＝ 交给 agent 的那串）归哪一格。
 fn slot_of(f: Option<&str>) -> &'static Slot {
     SLOTS
@@ -802,6 +829,8 @@ pub(crate) struct ProfilesBook {
     accounts: Vec<String>,
     /// 这台有没有 tmux（「在哪起」那一格选不选得了 tmux 看它）；探不出 ⇒ `null`。
     tmux: Option<bool>,
+    /// 表单各格的标签，按表单从上到下的顺序（表单 · 删一段时「会丢哪几项」那一句照它写格名）。
+    slots: Vec<SlotOut>,
 }
 
 /// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 版本 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
@@ -865,6 +894,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         bin_dir: door::join_under(&store.home, links::bin_rel()),
         accounts: super::account_table(&store.home),
         tmux,
+        slots: slots_out(),
         path,
         home: store.home,
     })
