@@ -602,7 +602,7 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     out
 }
 
-/// 过渡：计划读面那两份（`faces/plan_face.rs` · `footprint/chores/gather.rs`，在别的权力范围手里）还问这个名字 —— 转问活会话表。
+/// 过渡：`faces/plan_face.rs`（在别的权力范围手里）还问这个名字 —— 转问活会话表。
 pub(crate) fn live_cwds(agent_home: &Path) -> Vec<String> {
     crate::history::live_table::now(agent_home).cwds()
 }
