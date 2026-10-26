@@ -165,7 +165,7 @@ fn said(e: &crate::inbound_client::CallError) -> (String, String) {
     (code.into_inner(), text)
 }
 
-/// **开单**那一面（宿主 `call` 调）：窗口那一份按类型解（`cmd_wire::transfer::*Ask`，多一个键就拒）、补上那台远端的拨号请求，
+/// **开单**那一面（宿主 `call` 调）：窗口那一份按类型解（`cmd_wire::transfer::*Ask`，多一个键就拒）、补上那台远端的名字（怎么拨照本机后端的机器表），
 /// 按后端那一份类型（`*Req`）转给本机后端，回包按类型解、登记一个中继。回应答的 JSON。
 ///
 /// 失败回 [`Refusal`]（码 · 话 · 后端带的 `data`），宿主原样翻成「对端答不行」（与后端命令的拒绝同一个信封）。
@@ -179,14 +179,14 @@ pub async fn transfer_call(
         // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比。
         TRANSFER_UPLOAD => {
             let ask: TransferUploadAsk = ask_of(op, payload)?;
-            relay(&cfg, ask.dialed(crate::dial_host::transfer_dial(&cfg))).await
+            relay(&cfg, ask.on(cmd_wire::Machine(cfg.origin_label()))).await
         }
         // 这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
         // 下载的本机落点是原始字节（字符串或 `{"b16": …}`：有损名在 Linux 上按原始字节落名），原样转给本机后端判。
         TRANSFER_DOWNLOAD => {
             let ask: TransferDownloadAsk = ask_of(op, payload)?;
-            relay(&cfg, ask.dialed(crate::dial_host::transfer_dial(&cfg))).await
+            relay(&cfg, ask.on(cmd_wire::Machine(cfg.origin_label()))).await
         }
         other => Err(Refusal::of(
             "bad_args",
@@ -198,18 +198,16 @@ pub async fn transfer_call(
     }
 }
 
-/// **两台之间复制一组**（宿主 `call` 调）：窗口那一份按类型解、补上两台的拨号请求（源 ＝ `cfg`，落点 ＝ `to_cfg`），
+/// **两台之间复制一组**（宿主 `call` 调）：窗口那一份按类型解、补上源那台的名字（落点那台的名字窗口已经给了；怎么拨两台照本机后端的机器表），
 /// 转给本机后端；它做完整组才回 ⇒ 等的上限是窗口给的 `left`。回包按类型解（`BatchReply`）原样回。
 pub async fn copy_call(
     cfg: RemoteConfig,
-    to_cfg: RemoteConfig,
+    _to_cfg: RemoteConfig,
     payload: &serde_json::Value,
     left: Duration,
 ) -> Result<serde_json::Value, Refusal> {
     let ask: cmd_wire::transfer::TransferCopyAsk = ask_of(TRANSFER_COPY, payload)?;
-    let from = crate::dial_host::transfer_dial(&cfg);
-    let to = crate::dial_host::transfer_dial(&to_cfg);
-    let req = ask.dialed(from, to);
+    let req = ask.from(cmd_wire::Machine(cfg.origin_label()));
     let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
     let client = crate::dial_host::local_backend_accepting(TRANSFER_COPY)
         .await

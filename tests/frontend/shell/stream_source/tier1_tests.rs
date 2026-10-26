@@ -137,11 +137,10 @@ fn remote_config_defaults_and_some() {
 
 // 〔「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
 //   随那几个函数搬进后端 `ssh-dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
-//   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
+//   与 `the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses`。
 
-// 远端开终端在本机后端（`terminal-ssh`）。首选地址的两半判据：
-//   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ 后端 `dial_machine_tests::a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`
-//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`；
-//   「地址配置改过 ⇒ 上次那条失效」⇒ monitor `dial_host_tests::the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged`。
+// 远端开终端在本机后端（`terminal-ssh`，只交名字）。首选地址那一半判据都在后端：
+//   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ `dial_machine_tests::the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses`
+//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`（上次赢的那条由后端记，`dial::last_good`）。
 
 // 后端落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`，没有外来值可判。

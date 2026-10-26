@@ -126,16 +126,14 @@ async fn install(cfg: &RemoteConfig) -> Result<Installed, Said> {
     install_for(cfg, slot_rows()?).await
 }
 
-/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（怎么够到那台 · 带着哪几格 · 那台叫什么），回应答原样。
+/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（带着哪几格 · 那台叫什么；怎么够到它照本机后端的机器表），回应答原样。
 async fn ask_backend(
     cfg: &RemoteConfig,
     cmd: &'static str,
     slots: Vec<serde_json::Value>,
-    dial: &serde_json::Value,
 ) -> Result<serde_json::Value, Said> {
     use crate::backend_route::{route_call_error, Routed};
     let args = serde_json::json!({
-        "dial": dial,
         "slots": slots,
         "machine": cfg.origin_label(),
     });
@@ -156,8 +154,7 @@ async fn ask_backend(
 
 /// [`install`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽落成的文件；回环台架交它送去的那一份）。
 async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
-    let dial = crate::dial_host::transfer_dial(cfg);
-    let data = ask_backend(cfg, INSTALL_CMD, slots, &dial).await?;
+    let data = ask_backend(cfg, INSTALL_CMD, slots).await?;
     decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))
 }
 
@@ -204,8 +201,7 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said>
 
 /// [`uninstall_remote_backend`] 的本体，「带着哪几格」由调用方交（同 [`install_for`]）。
 async fn uninstall_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<String, Said> {
-    let dial = crate::dial_host::transfer_dial(cfg);
-    let data = ask_backend(cfg, UNINSTALL_CMD, slots, &dial).await?;
+    let data = ask_backend(cfg, UNINSTALL_CMD, slots).await?;
     let said = decode_uninstalled(&data).map_err(|said| Said::new(said, UNINSTALL_CMD, None))?;
     tracing::info!("远端 [{}] 卸载后端：{said}", cfg.origin_label());
     Ok(said)

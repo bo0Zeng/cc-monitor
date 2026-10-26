@@ -19,8 +19,8 @@ use super::*;
 use ssh_dial::{connect, write_ack, write_stages_then_ack};
 use std::sync::Arc;
 
-/// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的是一台机器的原样配置，
-/// 经 `machine::resolve` 组成这一形之后走的也是这一份）。
+/// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的只是那台的名字，
+/// 照这一端的机器表按名字组成这一形之后走的也是这一份）。
 fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
     serde_json::from_str(raw.trim())
 }
@@ -446,7 +446,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     );
 }
 
-/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值 · 壳 `dial_host::request(cfg, "<用法>", …)`）
+/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值 · 壳 `dial_host::request(machine, "<用法>", …)`）
 /// == 手写的这五种，两向。SFTP 只经帧命令（`deploy-*` · `transfer-*`）用，链路上没有文件那一种用法。
 /// 增删一种用法时同拍改这张表。
 #[test]

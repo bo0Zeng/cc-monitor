@@ -123,7 +123,7 @@ fn probe() -> SkillReadReq {
 /// ★ 判据 3（反向）：查不到那台 ⇒ 明说是哪台、对面一次都没被调（不猜、不回落）。
 #[tokio::test]
 async fn an_unregistered_origin_is_said_and_never_dialed() {
-    let table = Table::default();
+    let table = crate::dial::remote_ask::test_peers::empty();
     let far = Recorder::default();
     let e = ask_json::<SkillReadCmd>("nowhere", &probe(), &crate::Tz::default(), &table, &far)
         .await
@@ -178,7 +178,7 @@ async fn a_machine_in_the_table_is_asked_with_its_composed_dial_and_a_quoted_com
 /// 看的人就在这一台（终端里敲的那一趟）：转给那台的命令行里恒带 `--tz <这台的名>`；不带 ⇒ 那台按它自己的钟写。
 #[tokio::test]
 async fn a_viewer_on_this_machine_hands_its_zone_name_to_the_far_one() {
-    let table = Table::named(&["dev"]);
+    let table = crate::dial::remote_ask::test_peers::named(&["dev"]);
     let far = Recorder::default();
     let here = crate::Tz::named(crate::common::time::TZ_HERE).unwrap();
     let _ = ask_json::<SkillReadCmd>("dev", &probe(), &here, &table, &far)

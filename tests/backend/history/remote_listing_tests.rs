@@ -122,7 +122,7 @@ impl Remote for Peer {
 }
 
 fn table(machine: &str) -> Table {
-    Table::named(&[machine])
+    crate::dial::remote_ask::test_peers::named(&[machine])
 }
 
 async fn ask(

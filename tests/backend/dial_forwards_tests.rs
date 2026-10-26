@@ -61,7 +61,7 @@ impl Drop for DropMark {
 /// 非法规格 ⇒ `bad_spec`，**替身一次都没被叫到**（连可达表里有没有那台都不问 —— 用一张空表，围栏没了就会报 `unreachable`）。
 #[tokio::test]
 async fn the_spec_fence_stands_before_any_lookup_or_dial() {
-    let empty = remote_ask::Table::default();
+    let empty = crate::dial::remote_ask::test_peers::empty();
     let ledger = Ledger::new();
     let calls = Arc::new(AtomicUsize::new(0));
     for bad in [
@@ -245,7 +245,7 @@ async fn a_link_that_ends_on_its_own_reads_as_error() {
 /// 交给链路那一侧的是 `use: forward` ＋ 这条规格 ＋ 表里的那台；表里没有 ⇒ 才是 `unreachable`。
 #[tokio::test]
 async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
-    let empty = remote_ask::Table::default();
+    let empty = crate::dial::remote_ask::test_peers::empty();
     let ledger = Ledger::new();
     let a = args("dev", 15434, "localhost", 5432);
     let e = start_with(&a, &empty, &ledger, |_req, _up, _down| async {})

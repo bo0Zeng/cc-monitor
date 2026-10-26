@@ -273,7 +273,7 @@ async fn a_change_fans_out_once_to_every_other_reachable_machine() {
         .await
         .unwrap();
     fakes.seen.lock().unwrap().clear();
-    table.add(far("r1"));
+    crate::dial::remote_ask::test_peers::add(&table, far("r1"));
     // r1 加进机器表：带来新东西 ⇒ 本机变了 ⇒ r2 也要拿到 r1 那一格
     let out = answer_with(&sync_args("r1"), local.fold(), &fakes, &table)
         .await
@@ -349,7 +349,7 @@ async fn half_given_arguments_are_refused() {
         seen: Mutex::new(vec![]),
         stdins: Mutex::new(vec![]),
     };
-    let table = Table::default();
+    let table = crate::dial::remote_ask::test_peers::empty();
     for bad in [
         json!({"origin": ""}),
         json!({"origin": "o", "dial": {"machine": {"host": "x", "user": "u"}}}),
@@ -366,7 +366,7 @@ async fn half_given_arguments_are_refused() {
     assert_eq!(e.0, "unreachable");
     assert!(fakes.seen.lock().unwrap().is_empty());
     // 正控：机器表里有 ⇒ 只给 `origin` 就对那一台做一趟。
-    table.add(named("o", "x"));
+    crate::dial::remote_ask::test_peers::add(&table, named("o", "x"));
     let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect("机器表里有的也拒了");
@@ -583,7 +583,7 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
         r#"{"reach":[{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":null,"origin":"o-r","peer":"<R>","pushed":0}]}"#
     );
     // 那一趟没办成 ⇒ `error` 是那一句、`peer` 为 `null`。
-    table.add(far("gone"));
+    crate::dial::remote_ask::test_peers::add(&table, far("gone"));
     let gone = answer_with(&sync_args("gone"), local.fold(), &fakes, &table)
         .await
         .unwrap();

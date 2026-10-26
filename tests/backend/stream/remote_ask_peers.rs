@@ -31,7 +31,7 @@ impl Peers {
 
     /// 这几台进机器表（组成的拨号请求里 `host` 就是机器名，替身按它认是哪台）。
     pub(crate) fn table(names: &[&str]) -> Table {
-        Table::named(names)
+        named(names)
     }
 
     /// 命令行里交给那台的 `--within-ms` 那个数。
@@ -80,4 +80,29 @@ impl Remote for Peers {
 /// 发起方给的截止时刻：从现在起 `ms` 毫秒。
 pub(crate) fn until(ms: u64) -> Option<crate::platform::child::Until> {
     crate::platform::child::Until::after(crate::platform::child::Deadline::millis(ms))
+}
+
+/// 判据用的一台：名字 ＝ 地址 ＝ `name`，用户 `u`（组成的请求里 `host` 就是它，替身按它认是哪台）。
+pub(crate) fn host(name: &str) -> crate::dial::Host {
+    crate::dial::machine::loose(&serde_json::json!({"label": name, "host": name, "user": "u"}))
+        .expect("判据那一台")
+}
+
+/// 这几台的机器表（同 [`host`] 那一形，照给的先后）。
+pub(crate) fn named(names: &[&str]) -> Table {
+    Table::of(names.iter().map(|n| host(n)).collect())
+}
+
+/// 空的机器表。
+pub(crate) fn empty() -> Table {
+    Table::of(Vec::new())
+}
+
+/// 表尾再加一台。
+pub(crate) fn add(t: &Table, h: crate::dial::Host) {
+    t.fixed
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(Vec::new)
+        .push(h);
 }

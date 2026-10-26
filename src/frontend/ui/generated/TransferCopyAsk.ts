@@ -4,8 +4,8 @@ import type { Decide } from "./Decide";
 import type { OnExists } from "./OnExists";
 
 /**
- * 窗口说的 `transfer-copy`：源那台 ＝ 寻址的那台（窗口看着的这一台），`to` ＝ 落点那台的名字；两台的拨号请求由 monitor 补上
- * （[`TransferCopyAsk::dialed`]），其余各格原样转给本机后端（同 [`TransferCopyReq`]）。
+ * 窗口说的 `transfer-copy`：源那台 ＝ 寻址的那台（窗口看着的这一台），`to` ＝ 落点那台的名字；源那台的名字由 monitor 补上
+ * （[`TransferCopyAsk::from`]），其余各格原样转给本机后端（同 [`TransferCopyReq`]）。
  */
 export type TransferCopyAsk = { 
 /**

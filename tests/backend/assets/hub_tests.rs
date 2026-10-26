@@ -233,7 +233,7 @@ async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
 #[tokio::test]
 async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
     let (_h, dyn_h) = here(&[]);
-    let t = Table::default();
+    let t = crate::dial::remote_ask::test_peers::empty();
     let r = remote(&[]);
     let (code, said) = pv(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
         .await

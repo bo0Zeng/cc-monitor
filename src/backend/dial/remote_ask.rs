@@ -156,33 +156,6 @@ impl Table {
     }
 }
 
-#[cfg(test)]
-impl Default for Table {
-    fn default() -> Self {
-        Table::of(Vec::new())
-    }
-}
-
-#[cfg(test)]
-impl Table {
-    /// 判据用：这几台各一行（名字 ＝ 地址 ＝ 替身认台的那个词，用户 `u`）。
-    pub(crate) fn named(names: &[&str]) -> Table {
-        Table::of(names.iter().map(|n| test_host(n)).collect())
-    }
-
-    /// 判据用：表尾再加一台。
-    pub(crate) fn add(&self, host: super::Host) {
-        let mut g = self.fixed.lock().unwrap_or_else(|e| e.into_inner());
-        g.get_or_insert_with(Vec::new).push(host);
-    }
-}
-
-/// 判据用的一台：名字 ＝ 地址 ＝ `name`，用户 `u`（组成的请求里 `host` 就是它，替身按它认是哪台）。
-#[cfg(test)]
-pub(crate) fn test_host(name: &str) -> super::Host {
-    super::machine::loose(&json!({"label": name, "host": name, "user": "u"})).expect("判据那一台")
-}
-
 /// 那几台的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
