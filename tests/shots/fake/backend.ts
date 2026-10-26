@@ -27,6 +27,8 @@ export const REAL_OPS = new Set([
   "profiles-write",
   "quota-read",
   "rotation-view",
+  // 一条会话的号那一份成品（状态栏按钮 · 号徽章照它画）：真后端照台架盘上的账本 · 额度账 · 账号库答。
+  "session-account",
   "rotation-strategies",
   // 轮换那几条写（改设置的意图 · 载入一份 · 都载入新版 · 会话侧的临时动作）：真后端写台架盘上那几份文件，场景照它回的重画。
   "rotation-settings",
@@ -48,7 +50,6 @@ export const REAL_OPS = new Set([
   "history-search",
   "history-search-merge",
   "history-find",
-  "history-last-accounts",
   "exit-policy-read",
   "needs-answer",
   // 「需手动」的先后（`Ctrl+J` · 浮层开的那一下）：本机后端自己问各台（经台架那几台的常驻，`real/pool.mjs` 的 `reach`）、合一份。

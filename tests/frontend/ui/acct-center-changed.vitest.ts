@@ -1,6 +1,7 @@
 /**
- * 额度 / 会话轮换 / 策略目录的推送：额度帧带了成品 ⇒ 用同一个解码器收、直接放进 store、不再问；没带 / 解不开 / 期间可能漏了 ⇒ 照旧重问。
- * 会话轮换不带成品 ⇒ 重问那一个会话的 `rotation-view`；策略目录变了 ⇒ 那台有 tab 的会话全部重问；中转没见过的会话 ⇒ `read: null`。期望手写。
+ * 额度 / 会话轮换 / 策略目录 / 账号清单的推送：额度帧带了成品 ⇒ 用同一个解码器收、直接放进 store、不再问；没带 / 解不开 / 期间可能漏了 ⇒ 照旧重问。
+ * 会话轮换不带成品 ⇒ 重问那一个会话的 `rotation-view` 与 `session-account`；策略目录变了 ⇒ 那台有 tab 的会话 `rotation-view` 全部重问；
+ * 额度账 · 账号清单变了 ⇒ 那台有 tab 的会话 `session-account` 全部重问（用量 · 与默认号比都在那一份里）；中转没见过的会话 ⇒ `read: null`。期望手写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,8 +22,14 @@ vi.mock("../../../src/frontend/ui/rotation-view-reads", () => ({
     return sid === "gone" ? null : { start: "a", current: `cur-${sid}` };
   }),
 }));
+vi.mock("../../../src/frontend/ui/session-account-reads", () => ({
+  readSessionAccount: vi.fn(async (o: string, sid: string) => {
+    asked.push(`session-account ${o} ${sid}`);
+    return { account: `acct-${o}-${sid}` };
+  }),
+}));
 
-import { onQuotaChanged, syncSessions } from "../../../src/frontend/ui/acct-center";
+import { onAccountsChanged, onQuotaChanged, syncSessions } from "../../../src/frontend/ui/acct-center";
 import { appStore } from "../../../src/frontend/ui/app-store";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -32,18 +39,31 @@ describe("acct-center 收推送", () => {
     asked.length = 0;
   });
 
-  it("★ tab 来了 ⇒ 每个会话问一次 rotation-view，在用的号进 store；中转没见过 ⇒ read 为 null", async () => {
+  it("★ tab 来了 ⇒ 每个会话在它那台问一次 rotation-view 与 session-account，进 store；中转没见过 ⇒ read 为 null", async () => {
     syncSessions([
       { sessionId: "s1", origin: "box-a" },
       { sessionId: "gone", origin: "box-a" },
+      { sessionId: "sb", origin: "box-b" },
     ]);
     await flush();
-    expect(asked).toEqual(["quota-read", "rotation-view box-a s1", "rotation-view box-a gone"]);
+    expect(asked.sort()).toEqual(
+      [
+        "quota-read",
+        "quota-read",
+        "rotation-view box-a s1",
+        "rotation-view box-a gone",
+        "rotation-view box-b sb",
+        "session-account box-a s1",
+        "session-account box-a gone",
+        "session-account box-b sb",
+      ].sort(),
+    );
     expect(appStore.sessionRotation.get().get("s1")?.read?.current).toBe("cur-s1");
     expect(appStore.sessionRotation.get().get("gone")).toEqual({ origin: "box-a", read: null });
+    expect(appStore.sessionAccount.get().get("sb")).toEqual({ origin: "box-b", read: { account: "acct-box-b-sb" } });
   });
 
-  it("★ 会话轮换变了 ⇒ 只重问那一个；不认得的会话不问；策略目录变了 ⇒ 那台有 tab 的全部重问", async () => {
+  it("★ 会话轮换变了 ⇒ 只重问那一个；不认得的会话不问；策略目录变了 ⇒ 那台有 tab 的 rotation-view 全部重问", async () => {
     syncSessions([
       { sessionId: "s2", origin: "box-c" },
       { sessionId: "s3", origin: "box-c" },
@@ -52,10 +72,31 @@ describe("acct-center 收推送", () => {
     asked.length = 0;
     onQuotaChanged("box-c", "rotation", { cells: [{ key: "s2", rev: null, body: undefined }, { key: "zz", rev: null, body: undefined }], all: false });
     await flush();
-    expect(asked).toEqual(["rotation-view box-c s2"]);
+    expect(asked.sort()).toEqual(["rotation-view box-c s2", "session-account box-c s2"]);
     asked.length = 0;
     onQuotaChanged("box-c", "rotation_strategies", { cells: [{ key: null, rev: null, body: undefined }], all: false });
     await flush();
     expect(asked.sort()).toEqual(["rotation-view box-c s2", "rotation-view box-c s3"]);
+  });
+
+  it("★ 额度账 · 账号清单变了 ⇒ 那台有 tab 的会话 session-account 全部重问；别的台不问", async () => {
+    syncSessions([
+      { sessionId: "q1", origin: "box-d" },
+      { sessionId: "q2", origin: "box-d" },
+      { sessionId: "e1", origin: "box-e" },
+    ]);
+    await flush();
+    asked.length = 0;
+    onQuotaChanged("box-d", "quota", { cells: [{ key: null, rev: null, body: undefined }], all: true });
+    await flush();
+    expect(asked.filter((a) => a.startsWith("session-account")).sort()).toEqual(["session-account box-d q1", "session-account box-d q2"]);
+    asked.length = 0;
+    onAccountsChanged("box-e");
+    await flush();
+    expect(asked).toEqual(["session-account box-e e1"]);
+    asked.length = 0;
+    onAccountsChanged();
+    await flush();
+    expect(asked.filter((a) => a.startsWith("session-account")).length).toBeGreaterThanOrEqual(3);
   });
 });

@@ -415,14 +415,13 @@ export function withAccountReads(
 // 历史清单与注解改走通道（问本机常驻后端）之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 今天：改注解 / 上次账号表 / 删会话连带删注解 = `history-annotate` / `history-last-accounts` / `history-forget`。
+// 今天：改注解 / 删会话连带删注解 = `history-annotate` / `history-forget`（上次的号并进了 `session-account`）。
 // ⇒ 本节把这几发译回「哪一问 ＋ 旧形参」，把判据手里那份旧回包译成**本机后端的成品字节**（或通道的失败）。
 // ⚠ 请求体键名是 `src/frontend/ui/history-reads.ts` 发的那几个；旧回包里缺的格按旧消费侧的读法补齐（缺 ⇒ `null` / 缺省）。
 
 /** 历史那几问各自的名字（判据里的叫法 = 旧命令名；`history_forget` 是新的，旧世界里它是删会话那条命令的一部分）。 */
 export type HistoryRead =
   | "update_history_metadata"
-  | "list_last_accounts"
   | "history_forget"
   // 删会话改走通道（`files-delete-session`，发给那一台）；判据里仍叫旧命令名，形参是 `{origin, sessionId}`。
   | "delete_history_session";
@@ -442,8 +441,6 @@ export function historyReadOf(
         { sessionId: body.sid, patch: body.patch },
       ];
     }
-    case "history-last-accounts":
-      return ["list_last_accounts", {}];
     case "history-forget": {
       const body = chanArgsJson(a) as Record<string, unknown>;
       return ["history_forget", { sessionId: body.sid }];
@@ -495,7 +492,6 @@ export function withHistoryReads(
       const a = args as ChanCallArgs;
       const body = [
         "history-annotate",
-        "history-last-accounts",
         "history-forget",
         "files-delete-session",
       ].includes(a.op)
@@ -516,10 +512,6 @@ export function withHistoryReads(
             updatedAt: e.updatedAt ?? 0,
           },
         });
-      }
-      if (body && a.op === "history-last-accounts") {
-        const m = (await settled(answer("list_last_accounts", {}))) ?? {};
-        return chanReply({ accounts: m });
       }
       if (body && a.op === "history-forget") {
         await settled(answer("history_forget", { sessionId: body.sid }));

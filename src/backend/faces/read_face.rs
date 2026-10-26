@@ -58,7 +58,7 @@ pub fn note_backend_log(path: std::path::PathBuf) {
     let _ = BACKEND_LOG.set(path);
 }
 
-/// 那份文件的尾部 ⇒ `{path, size, text, truncated}`；没装 ⇒ `path: null`。截断时从截点后第一个换行起（不给半行）。
+/// 那份文件的尾部 ⇒ `{path, size_text, text, truncated}`；没装 ⇒ `path: null`。截断时从截点后第一个换行起（不给半行）。
 pub(crate) fn log_tail(
     path: Option<&std::path::Path>,
     max: u64,
@@ -67,7 +67,7 @@ pub(crate) fn log_tail(
     let Some(path) = path else {
         return Ok(LogTail {
             path: None,
-            size: 0,
+            size_text: None,
             text: String::new(),
             truncated: false,
         });
@@ -88,7 +88,7 @@ pub(crate) fn log_tail(
     };
     Ok(LogTail {
         path: Some(path.display().to_string()),
-        size,
+        size_text: Some(crate::common::cells::Words(copy_core::size_text(size))),
         text: String::from_utf8_lossy(body).into_owned(),
         truncated: from > 0,
     })
@@ -101,9 +101,8 @@ pub(crate) fn log_tail(
 pub(crate) struct LogTail {
     /// 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`。
     pub(crate) path: Option<String>,
-    /// 那份文件的总字节数。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) size: u64,
+    /// 那份文件的总大小，写好的字（`copy_core::size_text`）；没装 ⇒ `null`。
+    pub(crate) size_text: Option<crate::common::cells::Words>,
     /// 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行。
     pub(crate) text: String,
     /// 前面还有没回的字节。

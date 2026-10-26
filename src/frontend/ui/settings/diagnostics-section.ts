@@ -14,7 +14,6 @@ import { button, setDisabled } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { icon } from "../kit/icon";
 import { homeShort } from "../kit/path";
-import { sizeText } from "../format";
 import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { unknownConfigKeys } from "../config";
@@ -309,12 +308,12 @@ export class DiagnosticsSection {
       if (today) {
         const open = button({ label: copyText("diagnostics.files.open"), size: "compact", onClick: () => void openFile(today) });
         const dir = button({ label: copyText("diagnostics.files.openDir"), kind: "icon", icon: "folder", size: "compact", onClick: () => void openDir() });
-        this.todayRow.append(sizeOf(info.current_size_bytes), open, dir);
+        this.todayRow.append(...sizeOf(info.current_size_text), open, dir);
       }
       const latest = info.backend_stderr[0];
       if (latest) {
         const open = button({ label: copyText("diagnostics.files.open"), size: "compact", onClick: () => void openFile(latest.path) });
-        this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), homeShort(latest.path, home)), sizeOf(latest.size_bytes), open);
+        this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), homeShort(latest.path, home)), ...sizeOf(latest.size_text), open);
       } else {
         // 没有就只说没有，不摆按钮。
         this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), copyText("diagnostics.files.outputNone"), false));
@@ -358,11 +357,13 @@ async function driftOfAll(): Promise<{ origin: string; report: { faces: RecordDr
   );
 }
 
-function sizeOf(bytes: number): HTMLElement {
+/** 壳写好的大小照抄；读不到大小（`null`）⇒ 那一格不摆。 */
+function sizeOf(text: string | null): HTMLElement[] {
+  if (text === null) return [];
   const size = document.createElement("span");
   size.className = "diag-file-size";
-  size.textContent = sizeText(bytes);
-  return size;
+  size.textContent = text;
+  return [size];
 }
 
 function fileText(label: string, detail: string, path = true): HTMLElement {

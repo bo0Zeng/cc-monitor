@@ -159,7 +159,7 @@ class TerminalOps(
     suspend fun makeAlias(m: MovedLaunch): Result<String?> =
         ask(Profiles.FROM_LINE, Profiles.fromLineArgs(m.label.trim(), m.command.orEmpty(), m.workingDir, m.tmuxSession), Profiles::formOf).mapCatching { form ->
             val book = ask(Profiles.READ, emptyMap(), Profiles::of).getOrThrow()
-            ask(Profiles.WRITE, Profiles.createArgs(book.fingerprint, form), Profiles::written).getOrThrow().reload
+            ask(Profiles.WRITE, Profiles.createArgs(book.rev, form), Profiles::written).getOrThrow().reload
         }
 
     private suspend fun <T> ask(

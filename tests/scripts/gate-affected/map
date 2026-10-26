@@ -115,6 +115,7 @@ src/backend/lib.rs              mobile  手机构建读 BUILD_ID 与子命令表
 src/frontend/shell/embedded-backends/**  mobile  手机打包时带上的远端后端字节
 src/frontend/ui/generated/**    mobile  线上类型的 TS 生成物：手机单测拿它对拍 Kotlin 那一份
 tests/copy/mobile-literal-exempt.json  mobile  手机生产源码不写死界面中文那条判据（MobileLiteralsTest.kt）读的豁免表
+tests/frontend/ui/exit-debt.json  mobile  出口扫描判据的欠账名单：手机的 detekt 规则（src/mobile/detekt-rules）照它逐格核
 src/vendor/**                   backendrs,e2e  后端链的 vendored russh
 tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
 src/backend/accounts/quota/rules/**  rotation500  轮换的判与推演：一致性大样本比的就是它

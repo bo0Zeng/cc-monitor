@@ -92,8 +92,7 @@ const DEPS: Record<string, readonly string[]> = {
   // 组装根：把下面每一份接起来 ＋ re-export `Tab` 的形状（tab-model）。
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
-    "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
-    "src/frontend/ui/app-store.ts", // 账号清单那一侧改订阅 store（`appStore.accountFacts`）
+    "src/frontend/ui/app-store.ts", // 会话的号那一份（`appStore.sessionAccount`）换了 ⇒ 重画徽章；e2e 探针的「不一致」照那台写的
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
@@ -192,8 +191,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-bar-view.ts": [
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/duration-format.ts", // 机器掉线那一行「多久前」没有起点时的 0（那一个读口写，单位不写死）
-    "src/frontend/ui/accounts.ts",
-    "src/frontend/ui/app-store.ts", // 账号格照会话那台 `rotation-view` 的在用号：从 store 读
+    "src/frontend/ui/app-store.ts", // 号徽章 · 悬停那两行照会话那台写好的 `session-account`；停发那一句照 `rotation-view`：都从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
@@ -212,7 +210,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-status.ts",
     "src/frontend/ui/face-can.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
     "src/frontend/ui/terminal-front.ts",
-    "src/frontend/ui/acct-words.ts", // 悬停卡「从 work 换过来」里号的显示名
     "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
     "src/frontend/ui/tab-quota.module.css", // 停发标那一格的样式
   ],
@@ -234,6 +231,7 @@ const DEPS: Record<string, readonly string[]> = {
   // 固定复活的空态文字住文案表（说到会话状态的字一处定）。
   // 集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/frontend/ui/tab-bar-prefs.ts": [
+    "src/frontend/ui/app-store.ts", // 固定那一条记会话的号：宣告没说 ⇒ 那台写好的会话的号（连上次的号）
     "src/frontend/ui/config.ts", // 分组一次改动的全部补丁一次 `patchConfig`
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句

@@ -716,7 +716,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
 
   /** 存一批改动（带读回时的指纹），经统一写口：成了 ⇒ 重读、回 `null`；没成 ⇒ 状态行说那一句、回那一结局（别处改过的已重读）。 */
   const send = async (changes: ProfileOp[]): Promise<{ stale: boolean; said: string } | null> => {
-    const end = await write(() => writeProfiles(opts.origin(), changes, book?.fingerprint ?? null), { reread });
+    const end = await write(() => writeProfiles(opts.origin(), changes, book?.rev ?? null), { reread });
     if (end.ok) {
       if (end.value.reload) toast(copyText("profilesPage.save.done"), end.value.reload, { level: "info" });
       return null;

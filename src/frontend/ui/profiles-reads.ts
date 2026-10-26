@@ -82,6 +82,6 @@ export async function profileBases(origin: Origin, name: string): Promise<Base[]
 }
 
 /** 按条目改：结局交统一写口（`ipc/write.ts`）判 —— 盘上被别处改过是对端拒、码 `stale`（一个字节没写）。 */
-export function writeProfiles(origin: Origin, changes: ProfileOp[], fingerprint: string | null): Promise<WriteDone> {
-  return callTyped(origin, "profiles-write", { changes, fingerprint }, budgetWithin(PROFILES_BUDGET_MS));
+export function writeProfiles(origin: Origin, changes: ProfileOp[], ifRev: string | null): Promise<WriteDone> {
+  return callTyped(origin, "profiles-write", { changes, ifRev }, budgetWithin(PROFILES_BUDGET_MS));
 }
