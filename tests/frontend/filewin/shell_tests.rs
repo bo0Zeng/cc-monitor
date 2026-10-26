@@ -982,7 +982,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 
 /// 🔴 **进程 DPI 归属〔09-24 改写〕：窗口进程里没有 Tauri ⇒ winit 自己设 DPI。**
 ///
-/// 论证与四格现打读数住 `shell.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
+/// 论证与四格现打读数住 `shell/window.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
 /// 承重的是「起 `tao` = 否」那两行：
 /// - `dpi_aware=true` ⇒ `UNAWARE` → `PER_MONITOR_AWARE_V2`；
 /// - `dpi_aware=false` ⇒ **全程 `UNAWARE`**（没有别人替它设 ⇒ 高 DPI 下整窗发糊）。
@@ -993,7 +993,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 ///
 /// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
 /// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
-///    `main.rs`（窗口进程入口，本包那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
+///    `main.rs`（窗口进程入口，本包那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::window::open_detached_seeded` → `any_thread_hook`，
 ///    每个符号的「生产段里提到它的文件」集合与期望**两向相等**；且链上两份文件的生产段里
 ///    一个 `tauri` / `tao` 都没有。哪天有人在 monitor 进程里开这个窗口（集合多一个文件），
 ///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
@@ -1066,14 +1066,20 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             "any_thread_hook",
             set(&[
                 "cc-monitor-filewin/platform.rs",
-                "cc-monitor-filewin/shell.rs",
+                "cc-monitor-filewin/shell/window.rs",
             ]),
         ),
         (
             "open_detached_seeded",
-            set(&["cc-monitor-filewin/shell.rs", "cc-monitor-filewin/proc.rs"]),
+            set(&[
+                "cc-monitor-filewin/shell/window.rs",
+                "cc-monitor-filewin/proc.rs",
+            ]),
         ),
-        ("open_detached", set(&["cc-monitor-filewin/shell.rs"])),
+        (
+            "open_detached",
+            set(&["cc-monitor-filewin/shell/window.rs"]),
+        ),
         (
             "child_main",
             set(&["cc-monitor-filewin/proc.rs", "cc-monitor-filewin/lib.rs"]),
@@ -1104,7 +1110,7 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             assert!(
                 !guard_core::contains_word(window_proc_prod, word),
                 "`{rel}` 的生产段里出现了 `{word}` —— 窗口进程里有了 Tauri / tao，\n\
-                 那 `any_thread_hook` 就又回到了「一个进程两个 DPI 主人」那一格（`shell.rs` 头注四格表下半）。"
+                 那 `any_thread_hook` 就又回到了「一个进程两个 DPI 主人」那一格（`shell/window.rs` 头注四格表下半）。"
             );
         }
     }
@@ -1367,12 +1373,11 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
 /// 买的是：多选长出来那天，它自动落在「一次问完」那条路上。
 #[test]
 fn the_window_starts_a_batch_through_the_shared_three_step_function() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/filewin/src/shell.rs"));
+    let prod = shell_module_production_code();
     assert_eq!(
         prod.matches("writeops::run_writes(").count(),
         1,
-        "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
+        "`writeops::run_writes(` 在 `shell` 模块生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
     // 落点（根可以是当前目录的字节，有损名全寻址；交回应答与码）各恰好一处：`run_writes` 的 `apply` 里走
@@ -3962,4 +3967,24 @@ fn a_held_listing_lands_only_what_changed_and_the_next_ask_carries_its_held() {
     let (mine, _) = l.start_held();
     assert!(store_listed_if_current(&l, mine, Err("断了".into())));
     assert_eq!(l.start_held().1, None, "问不成之后还带着旧记号");
+}
+
+/// 整个 `shell` 模块（`shell.rs` ＋ `shell/` 底下按职责拆出去的那几份）的生产段，接成一份：
+/// 扫「窗口那一侧某件事只有一处」的判据扫的是这个模块，不是哪一份文件。
+pub(crate) fn shell_module_production_code() -> String {
+    let root = guard_core::addr::filewin_src_root();
+    let mut files = guard_core::scan_tree_excluding(&root.join("shell"), &["rs"], &[]);
+    files.push((
+        root.join("shell.rs"),
+        include_str!("../../../src/frontend/filewin/src/shell.rs").to_string(),
+    ));
+    assert!(
+        files.len() > 1,
+        "`shell/` 底下一份都没扫到 —— 本条此刻在空转"
+    );
+    files
+        .iter()
+        .map(|(_, raw)| guard_core::production_code(raw))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

@@ -2417,7 +2417,7 @@ fn frames_at(ws: &mut Workspace, screen: egui::Vec2, n: usize) -> Vec<PaintedTex
 /// 搜索框、「⋯」、当前目录、列表头那几样都还在。
 #[test]
 fn a_narrow_window_cuts_nothing_off() {
-    let [w0, h0] = crate::shell::MIN_WINDOW;
+    let [w0, h0] = crate::shell::window::MIN_WINDOW;
     for (screen, split) in [
         (egui::vec2(w0, h0), false),
         (egui::vec2(640.0, 480.0), true),
@@ -3158,7 +3158,7 @@ async fn perf_rig_worker() {
     println!("perf.list.rows={}", first.order.len());
     println!("perf.list.ms={}", t_ls.elapsed().as_millis());
     let line = wired.line.clone();
-    let h = crate::shell::open_detached_seeded(
+    let h = crate::shell::window::open_detached_seeded(
         Source::remote("devbox".into()),
         bigd.clone(),
         tokio::runtime::Handle::try_current().ok(),
