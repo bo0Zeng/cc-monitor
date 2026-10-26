@@ -34,7 +34,7 @@ import {
 } from "./tab-bar-state";
 import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
-import { faceOf, isLive } from "./face-can";
+import { isLive } from "./face-can";
 import { copyText } from "./copy-table";
 import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
@@ -447,7 +447,7 @@ export class TabBarPrefs {
         prev?.account ??
         null,
       // 按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」。
-      lastActiveAt: isLive(faceOf(tab)) ? Date.now() : prev?.lastActiveAt ?? null,
+      lastActiveAt: isLive(tab.face) ? Date.now() : prev?.lastActiveAt ?? null,
       background: tab.background,
       name: tab.bgName,
       title: tab.title,

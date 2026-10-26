@@ -124,7 +124,7 @@ class ChatCacheTest {
     private fun cell(
         i: Int,
         record: Map<String, Any?>,
-    ) = mapOf("end" to (i + 1) * 10L, "record" to record)
+    ) = mapOf("end" to (i + 1) * 10L, "hash" to i.toLong(), "record" to record)
 
     private fun ChatSession.keys() = state.value.units.map { it.key }
 

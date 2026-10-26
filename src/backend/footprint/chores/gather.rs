@@ -157,7 +157,7 @@ fn mcp_login() -> Vec<super::McpLogin> {
     };
     let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
     let cwds = crate::agents::home_of_kind(kind)
-        .map(|h| crate::observe::accounts_query::live_cwds(&h))
+        .map(|h| crate::history::live_table::now(&h).cwds())
         .unwrap_or_default();
     let dirs = std::iter::once(None).chain(cwds.iter().map(|d| Some(Path::new(d.as_str()))));
     let mut out: Vec<super::McpLogin> = Vec::new();
@@ -223,7 +223,7 @@ fn live_projects() -> Vec<String> {
     let mut v: Vec<String> = crate::agents::REGISTRY
         .iter()
         .filter_map(|a| crate::agents::home_of_kind(a.kind))
-        .flat_map(|h| crate::observe::accounts_query::live_cwds(&h))
+        .flat_map(|h| crate::history::live_table::now(&h).cwds())
         .collect();
     v.sort();
     v.dedup();

@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.cache
 
 import com.ccmonitor.mobile.core.claude.link.RawJson
+import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.SyncHead
-import com.ccmonitor.mobile.core.claude.link.wire.SyncPatch
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.rawHead
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.data.db.CachedSession
 import com.ccmonitor.mobile.core.data.db.ListHold
 import org.junit.Assert.assertEquals
@@ -52,17 +52,17 @@ class ListStoreTest {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun golden(): List<Triple<SyncHand, SyncPatch, SyncHand>> {
+    private fun golden(): List<Triple<SyncHand, RawPatch, SyncHand>> {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }.first { File(it, "tests/__fixtures__").isDirectory && File(it, "src/backend/lib.rs").isFile }
         return File(root, "tests/__fixtures__/sync-patch.golden.jsonl").readLines().filter(String::isNotBlank).map { line ->
             val c = RawJson.read(line) as Map<String, Any?>
-            Triple(hand(c["hand"]), Wire.bind<SyncPatch>(c["patch"]) ?: error("这一答装不进 SyncPatch：$line"), hand(c["want"]))
+            Triple(hand(c["hand"]), rawPatch(c["patch"]) ?: error("这一答装不进 SyncPatch：$line"), hand(c["want"]))
         }
     }
 
     @Suppress("UNCHECKED_CAST")
     private fun hand(v: Any?): SyncHand {
         val m = v as Map<String, Any?>
-        return SyncHand(m["held"] as String?, m["order"] as List<String>, m["items"] as Map<String, Any>, m["head"]?.let { Wire.bind<SyncHead>(it) })
+        return SyncHand(m["held"] as String?, m["order"] as List<String>, m["items"] as Map<String, Any>, m["head"]?.let(::rawHead))
     }
 }

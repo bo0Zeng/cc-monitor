@@ -1,12 +1,13 @@
 package com.ccmonitor.mobile.ui.files
 
-import com.ccmonitor.mobile.core.claude.link.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -47,9 +48,11 @@ class DownloadsTest {
         scope: TestScope,
     ) {
         val link = FakeCoreLink()
-        val shown = mutableListOf<BatchEvent>()
+        val shown = mutableListOf<BatchLine>()
         val downloads = Downloads(link, FileOps(link) { "box" }, scope, StandardTestDispatcher(scope.testScheduler), { "box" }, { shown += it })
         val last get() = shown.last()
+        val ended get() = last as BatchLine.Ended
+        val cut get() = last as BatchLine.Cut
 
         fun pulled() = link.transfers.map { (it.first as Transfer.Pull).path.shown }
     }
@@ -67,15 +70,14 @@ class DownloadsTest {
             assertEquals(listOf("/w/a", "/w/b", "/w/c"), rig.pulled())
             assertEquals("每项现开一份", listOf(41, 42, 43), rig.link.transfers.map { it.second })
             assertEquals(listOf("b"), folder.dropped)
-            assertEquals(BatchEvent.ENDED, rig.last.phase)
-            assertEquals("ended:done,failed,done", rig.last.said)
-            assertEquals(listOf("b：读不出 b"), rig.last.failed)
+            assertEquals("ended:done,failed,done", rig.ended.said)
+            assertEquals(listOf("b：读不出 b"), rig.ended.failed)
             val again = rig.link.downloads.size
             assertTrue(rig.downloads.again(rig.last.id))
             advanceUntilIdle()
             assertEquals("重试只拉没成的那一项", listOf("/w/a", "/w/b", "/w/c", "/w/b"), rig.pulled())
             assertTrue(rig.link.downloads.size > again)
-            assertEquals("ended:failed", rig.last.said)
+            assertEquals("ended:failed", rig.ended.said)
         }
 
     @Test
@@ -87,15 +89,14 @@ class DownloadsTest {
             rig.downloads.start(listOf(row("a"), row("b"), row("c")), folder)
             advanceUntilIdle()
             assertEquals("断了不往下拉", listOf("/w/a", "/w/b"), rig.pulled())
-            assertEquals(BatchEvent.CUT, rig.last.phase)
-            assertEquals("cut:done,cancelled,cancelled", rig.last.line)
-            assertTrue(rig.last.resume)
+            assertEquals("cut:done,cancelled,cancelled", rig.cut.line)
+            assertTrue(rig.cut.resume)
             assertEquals("断在半路的那一份不留", listOf("b"), folder.dropped)
             rig.link.transferred = { Reply.Ok(mapOf("bytes" to 1.0)) }
             assertTrue(rig.downloads.again(rig.last.id))
             advanceUntilIdle()
             assertEquals(listOf("/w/a", "/w/b", "/w/b", "/w/c"), rig.pulled())
-            assertEquals("ended:done,done", rig.last.said)
+            assertEquals("ended:done,done", rig.ended.said)
         }
 
     @Test
@@ -107,22 +108,22 @@ class DownloadsTest {
             rig.downloads.start(listOf(row("a"), row("b"), row("c")), folder)
             advanceUntilIdle()
             assertEquals(listOf("a", "c"), rig.link.downloads.first()["here"])
-            assertEquals(BatchEvent.ASKING, rig.last.phase)
+            assertTrue(rig.last is BatchLine.Asking)
             assertEquals(emptyList<Any>(), rig.link.transfers)
-            rig.link.decide = { _, _ -> mapOf("0" to "skip", "2" to "overwrite") }
-            val each = BatchAnswer.Each(mapOf("2" to "overwrite"))
+            rig.link.decide = { _, _ -> mapOf("0" to Decide.SKIP, "2" to Decide.OVERWRITE) }
+            val each = BatchAnswer.Each(mapOf("2" to Decide.OVERWRITE))
             assertTrue(rig.downloads.answer(rig.last.id, each))
             advanceUntilIdle()
             assertEquals("答交核心认（同名那几行的键）", listOf(listOf("0", "2") to each), rig.link.decisions)
             assertEquals("核心认的跳过那一项不拉、盖的那一项开盘上那一份", listOf("b" to null, "c" to "c"), folder.made)
-            assertEquals("ended:skipped,done,done", rig.last.said)
+            assertEquals("ended:skipped,done,done", rig.ended.said)
 
             val drop = Rig(this)
             drop.downloads.start(listOf(row("a")), Folder(here = listOf("a")))
             advanceUntilIdle()
             assertTrue(drop.downloads.answer(drop.last.id, null))
             advanceUntilIdle()
-            assertEquals("取消 ⇒ 卡收起、一项不拉", BatchEvent.DROPPED, drop.last.phase)
+            assertTrue("取消 ⇒ 卡收起、一项不拉", drop.last is BatchLine.Dropped)
             assertEquals(listOf(listOf("0") to null), drop.link.decisions)
             assertEquals(emptyList<Any>(), drop.link.transfers)
         }

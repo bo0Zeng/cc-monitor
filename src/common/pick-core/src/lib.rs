@@ -518,15 +518,6 @@ pub fn write_refused(cut: Option<Cut>) -> Option<String> {
     })
 }
 
-/// 手机那一项：交回的词 · 字 · 能不能点 · 灰着的为什么（手机没有悬停，点了在底部说这一句）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct Entry {
-    pub id: &'static str,
-    pub text: String,
-    pub enabled: bool,
-    pub why: Option<String>,
-}
-
 /// 手机那一项交回的词。桌面没有的那几项不在手机表里，问到了 ⇒ `None`。
 fn phone_id(i: Item) -> Option<&'static str> {
     Some(match i {
@@ -560,13 +551,8 @@ fn phone_text(i: Item, n: usize) -> String {
     }
 }
 
-/// 手机文件页选中这几项时交回的：顶栏一组 · ⋯ 一组（每项 `id · text · enabled · why`）· 单选时点一下那一行做什么。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct PhoneMenu {
-    pub bar: Vec<Entry>,
-    pub more: Vec<Entry>,
-    pub tap: Option<&'static str>,
-}
+/// 手机文件页选中这几项时交回的那一份（线上形住契约 `cmd_wire::phone`，Kotlin 读同一份生成的类）。
+pub use cmd_wire::phone::{MenuEntry, PhoneMenu};
 
 /// ★ 手机文件页选中这几项（此刻那一台 [`Here`]）⇒ [`PhoneMenu`]。
 pub fn phone_menu(picked: &[Pick], here: &Here) -> PhoneMenu {
@@ -581,7 +567,7 @@ pub fn phone_menu(picked: &[Pick], here: &Here) -> PhoneMenu {
                         Item::Act(a) => blocked(a, picked).or_else(|| refused_here(a, here)),
                         _ => None,
                     };
-                    Some(Entry {
+                    Some(MenuEntry {
                         id,
                         text: phone_text(i, picked.len()),
                         enabled: why.is_none(),

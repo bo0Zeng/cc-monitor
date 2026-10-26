@@ -21,8 +21,43 @@ use std::collections::{BTreeMap, BTreeSet};
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
         "src/common/cmd-wire/src/replies.rs",
-        "decode_reply",
-        "客户端那一侧按两端同一份类型解回包：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",
+        "mend_records",
+        "回包里记录那一格一条一条判认不认得：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "LinkLine",
+        "手机核心与 Kotlin 之间那一层的`state` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "CallEnd",
+        "手机核心与 Kotlin 之间那一层的`reply` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "DeployEnd",
+        "手机核心与 Kotlin 之间那一层的`deploy` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "BatchLine",
+        "手机核心与 Kotlin 之间那一层的`batch` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "BatchKeep",
+        "手机核心与 Kotlin 之间那一层的`batch_keep` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "KeyPair",
+        "手机核心与 Kotlin 之间那一层的现生成的一把钥匙：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
+    ),
+    (
+        "src/common/cmd-wire/src/phone.rs",
+        "BatchAnswer",
+        "手机核心与 Kotlin 之间那一层的同名那一问的答：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
     ),
     (
         "src/comms/resident-client/feed.rs",

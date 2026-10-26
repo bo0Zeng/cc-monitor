@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.claude.link.Json
-import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

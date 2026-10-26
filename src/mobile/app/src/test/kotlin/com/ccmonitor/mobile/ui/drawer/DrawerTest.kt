@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.drawer
 
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
 import com.ccmonitor.mobile.ui.chats.ChatRow

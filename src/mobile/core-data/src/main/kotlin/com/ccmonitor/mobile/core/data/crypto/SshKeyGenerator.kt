@@ -5,7 +5,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.rs.Core
-import org.json.JSONObject
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.KeyPair
 import java.security.KeyPairGenerator
 import java.security.ProviderException
 import java.security.interfaces.ECPublicKey
@@ -58,13 +59,14 @@ object SshKeyGenerator {
      * 走软件而非 Keystore：Android Keystore 对 Ed25519 的支持不可靠。
      */
     fun generateEd25519(comment: String = ""): SoftwareSshKey {
-        val got = JSONObject(Core.generateEd25519(comment) ?: error(copyText("mobIdentity.gen.failed")))
-        val public = got.getString("public")
-        val blob = Base64.getDecoder().decode(public.split(' ')[1])
+        val line = Core.generateEd25519(comment) ?: error(copyText("mobIdentity.gen.failed"))
+        // 核心交的那一份照线上类型装（`KeyPair`）；装不进 ⇒ 两端契约对不上，照生成失败说。
+        val got = Wire.read<KeyPair>(line) ?: error(copyText("mobIdentity.gen.failed"))
+        val blob = Base64.getDecoder().decode(got.public.split(' ')[1])
         return SoftwareSshKey(
-            publicKeyOpenSsh = public,
+            publicKeyOpenSsh = got.public,
             fingerprintSha256 = SshWire.fingerprintSha256(blob),
-            privateKeyOpenSshPem = got.getString("pem").toByteArray(),
+            privateKeyOpenSshPem = got.pem.toByteArray(),
         )
     }
 

@@ -13,7 +13,7 @@ import type { BackgroundWork } from "./session-reads";
 export type ActivityLightClass = "" | "idle" | "waiting";
 
 /** 点 ⇒ 灯那一档：需手动呼吸、空闲暗着，别的不叠。 */
-export function lightOf(dot: DotState): ActivityLightClass {
+export function lightOf(dot: DotState | null): ActivityLightClass {
   return dot === "needs-you" ? "waiting" : dot === "idle" ? "idle" : "";
 }
 
@@ -29,7 +29,7 @@ export interface GridSessionSnapshot {
   origin: Origin;
   /** 会话的项目目录（`Tab.projectDir`，后端给的那一格）；null = 后端没给。 */
   cwd: string | null;
-  /** 此刻画的那张脸（`face-can.ts::faceOf`，与 tab 栏同一份）：点 · 字 · 序 · 能做什么都照它。 */
+  /** 此刻画的那张脸（`Tab.face`，与 tab 栏同一份；还没收到 ⇒ `null`）：点 · 字 · 序 · 能做什么都照它。 */
   face: SessionFace;
   /** 在等人时等的是什么（核心写好的字：等批准 · 等回答 …，`needs.text`）；不在等 ⇒ null。 */
   needs: string | null;

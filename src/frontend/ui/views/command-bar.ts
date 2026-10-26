@@ -22,8 +22,9 @@ export type CommandGroup = "needs" | "current" | "open" | "window" | "account";
 
 /** 会话行要画的那几样（标签页栏同一份事实）。 */
 export interface SessionFace {
-  dot: DotState;
-  dotLabel: string;
+  /** 还没收到这条会话的脸 ⇒ `null`（`statusDot` 不画）。 */
+  dot: DotState | null;
+  dotLabel: string | null;
   /** 远端那台的名字；本机 ⇒ `null`（不画徽标）。 */
   machine: string | null;
   project: string | null;

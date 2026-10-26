@@ -20,7 +20,8 @@ export type FaceKey =
   | "live-working-plain"
   | "reading"
   | "reconnectable"
-  | "unclear";
+  | "unclear"
+  | "unseen";
 
 const GOLDEN = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/session-face.golden.json"), "utf8")) as Record<FaceKey, SessionFace>;
 

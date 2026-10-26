@@ -23,7 +23,6 @@ import {
 import { callStop, type Reply } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
-import { faceOf } from "./face-can";
 import { copyText } from "./copy-table";
 import type { KillNote } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
@@ -118,7 +117,7 @@ export class TabSessionActions {
 
   /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
   private refuseUnseen(tab: Tab): boolean {
-    if (faceOf(tab).dot !== "unknown") return false;
+    if (tab.face?.dot !== "unknown") return false;
     toast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
       level: "info",
     });

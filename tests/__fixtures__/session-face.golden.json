@@ -365,5 +365,42 @@
     "settled": false,
     "tip": "状态不明",
     "tone": "plain"
+  },
+  "unseen": {
+    "can": {
+      "close": {
+        "can": "menu"
+      },
+      "model": {
+        "can": "no",
+        "why": "状态不明 · 机器离线"
+      },
+      "permission": {
+        "can": "no",
+        "why": "状态不明 · 机器离线"
+      },
+      "reattach": {
+        "can": "no",
+        "why": "状态不明 · 机器离线"
+      },
+      "resume": {
+        "can": "no",
+        "why": "暂不恢复"
+      },
+      "term": {
+        "can": "no",
+        "why": "状态不明 · 机器离线"
+      }
+    },
+    "dot": "unknown",
+    "line": "状态不明 · 机器离线",
+    "live": {
+      "is": "no"
+    },
+    "name": "状态不明",
+    "order": 3,
+    "settled": false,
+    "tip": "状态不明 · 机器离线",
+    "tone": "plain"
   }
 }

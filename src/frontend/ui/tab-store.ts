@@ -10,7 +10,7 @@
 import type { TaskEntry } from "./tasks-panel";
 import type { SessionFace } from "./generated/SessionFace";
 import type { Tab, TabsSummary } from "./tab-model";
-import { faceOf, hasTerminal, isLive } from "./face-can";
+import { hasTerminal, isLive } from "./face-can";
 import { Slice } from "./app-store";
 import { dotOf, needsOf } from "./session-face";
 import { barRows } from "./tab-drop";
@@ -101,12 +101,12 @@ export class TabStore {
     let live = 0;
     const faces: string[] = [];
     for (const t of this.tabs.values()) {
-      if (isLive(faceOf(t))) live += 1;
+      if (isLive(t.face)) live += 1;
       // 需手动那一份：种类 ＋ 挂着的请求（答题块按它换）＋ 只能在终端里答那一句 —— 种类不变、请求挂上 / 答掉也要通知。
       const n = needsOf(t);
       // 隐藏那一格 · 血缘：会话头的「已隐藏」「由 X 启动」「子会话 N」跟着换。
       const lin = t.lineage ? `${t.lineage.startedBy?.sid ?? ""}\u0002${t.lineage.children.map((c) => `${c.sid}:${c.face.dot}:${c.hidden?.by ?? ""}`).join(",")}` : "";
-      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${faceOf(t).line}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}\u0001${t.hidden?.said ?? ""}\u0001${lin}`);
+      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${t.face?.line ?? ""}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}\u0001${t.hidden?.said ?? ""}\u0001${lin}`);
     }
     return { total: this.tabs.size, live, dead: this.tabs.size - live, faces: faces.join("\u0000") };
   }
@@ -142,7 +142,7 @@ export class TabStore {
   hiddenRow(): string[] {
     return this.orderedIds.filter((sid) => {
       const t = this.tabs.get(sid);
-      return t !== undefined && t.hidden != null && (hasTerminal(faceOf(t)) || sid === this.activeId);
+      return t !== undefined && t.hidden != null && (hasTerminal(t.face) || sid === this.activeId);
     });
   }
 

@@ -293,7 +293,8 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
             malformed("`model` is not one this agent offers"),
         ));
     };
-    if crate::observe::accounts_query::waiting_now(&home, &req.sid, &crate::control::asks::sids()) {
+    let live = crate::history::live_table::now(&home);
+    if live.waiting(&req.sid) {
         return Ok(Sent2::Done(waiting_reply()));
     }
     // 先装耳朵再送：送出之后才长出的那一条才算读回。看屏的客户端也先起：送出之后的重画才都看得见。
@@ -303,7 +304,7 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
         .confirm
         .and_then(|bx| box_watch(&req.sid, req.client.as_deref()).map(|w| (bx, w)));
     let shared = sw.saves.is_some_and(|rel| {
-        crate::observe::accounts_query::session_home(&home, &req.sid)
+        crate::observe::accounts_query::session_home(&live, &req.sid)
             .is_some_and(|h| crate::observe::accounts_query::shared_with_other_accounts(&h, rel))
     });
     let sent = crate::control::terminals_wire::say(&TerminalInputReq {

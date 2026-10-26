@@ -28,6 +28,7 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.moshi) // 按键那几格小 JSON（流式读写）
+    implementation(project(":core-wire")) // 核心现生成的那把钥匙照线上类型解（`KeyPair`）
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.tink.android)
     implementation(project(":core-rs")) // 软件 Ed25519 生成在手机嵌的 Rust 核心里

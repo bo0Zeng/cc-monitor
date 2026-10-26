@@ -9,7 +9,7 @@ description = "帧命令两端必须对上的那几样：机器名（`Machine`�
 [dependencies]
 copy-core = { path = "../copy-core" }
 serde = { version = "1", features = ["derive"] }
-# 客户端那一侧按类型解回包（`replies::decode_reply`：进来的是一份 JSON 值）。`raw_value`：判据按「原文照转」那一种解 `line` 帧
+# 回包里记录那一格一条一条判认不认得（`replies::mend_records`：进来的是一份 JSON 值）。`raw_value`：判据按「原文照转」那一种解 `line` 帧
 #   （记录那一格是 `RawValue`，同壳的快路）；开在这里而不在测试档 —— 本 crate 也进壳的构建期依赖（经 `deploy-contract`），
 #   只在测试档开会让判据构建与发布构建的特性集分叉。它只多出一个类型，不改解析行为。
 serde_json = { version = "1", features = ["raw_value"] }

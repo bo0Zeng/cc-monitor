@@ -5,6 +5,16 @@ import com.ccmonitor.mobile.core.remote.ConnectionDeadException
 import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.rs.ResidentEvents
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.CaptureOpts
+import com.ccmonitor.mobile.core.wire.gen.Captured
+import com.ccmonitor.mobile.core.wire.gen.DialAck
+import com.ccmonitor.mobile.core.wire.gen.DialRequest
+import com.ccmonitor.mobile.core.wire.gen.DialUse
+import com.ccmonitor.mobile.core.wire.gen.Endpoint
+import com.ccmonitor.mobile.core.wire.gen.JumpHop
+import com.ccmonitor.mobile.core.wire.gen.PtyOpts
+import com.ccmonitor.mobile.core.wire.gen.Stage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,7 +23,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -36,12 +45,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class RustTransport(
     /** 照这一份拨号身份再握一条（[again]）；`null` ⇒ [connect] 照配置组一份新的。 */
-    private val preset: JSONObject? = null,
+    private val preset: DialRequest? = null,
     /** [preset] 那份身份的钥匙编号（[again] 已替这一条多握了一份）。 */
     held: List<String> = emptyList(),
 ) : SshTransport {
     /** 拨号身份那一份请求（不带用法）：每条链路照它开，核心按它复用同一条连接。 */
-    @Volatile private var base: JSONObject? = preset
+    @Volatile private var base: DialRequest? = preset
 
     @Volatile private var hold: RustLink? = null
     private val children: MutableSet<RustLink> = ConcurrentHashMap.newKeySet()
@@ -63,7 +72,7 @@ class RustTransport(
             kept.forEach { Core.holdKey(it, false) }
             return null
         }
-        return RustTransport(JSONObject(b.toString()), ids)
+        return RustTransport(b, ids)
     }
 
     override fun onDrop(f: () -> Unit) {
@@ -80,14 +89,24 @@ class RustTransport(
         val first = configs.first()
         preset?.let { return@withContext holdOn(it, first, onEvent) }
         val req =
-            JSONObject()
-                .put("host", first.host)
-                .put("port", first.port)
-                .put("user", first.username)
-                .put("key_path", keyFor(first.auth))
-                .put("endpoints", JSONArray(configs.map { JSONObject().put("host", it.host).put("port", it.port) }))
-        first.jumpVia?.let { req.put("jump", hopOf(it)) }
-        base = JSONObject(req.toString())
+            DialRequest(
+                host = first.host,
+                port = first.port,
+                user = first.username,
+                keyPath = keyFor(first.auth),
+                command = "",
+                endpoints = configs.map { Endpoint(it.host, it.port) },
+                jump = first.jumpVia?.let { hopOf(it) },
+                use = DialUse.STREAM,
+                capture = null,
+                forward = null,
+                pty = null,
+                stages = false,
+                probe = false,
+                agentSock = null,
+                progress = false,
+            )
+        base = req
         holdOn(req, first, onEvent)
     }
 
@@ -98,11 +117,11 @@ class RustTransport(
      */
     @Suppress("ThrowsCount")
     private suspend fun holdOn(
-        req: JSONObject,
+        req: DialRequest,
         first: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)?,
     ) {
-        val link = RustCore.open(JSONObject(req.toString()).put("use", "hold").put("stages", onEvent != null))
+        val link = RustCore.open(req.copy(use = DialUse.HOLD, stages = onEvent != null))
         val ack =
             try {
                 link.awaitAck { onEvent?.invoke(eventOf(it, first)) }
@@ -110,7 +129,7 @@ class RustTransport(
                 link.close()
                 throw HostUnreachedException(e.message ?: copyText("reason.link.lost"), e)
             }
-        if (!ack.optBoolean("ok")) {
+        if (!ack.ok) {
             link.close()
             throw failureOf(ack, first)
         }
@@ -127,21 +146,22 @@ class RustTransport(
 
     override suspend fun execCapture(command: String): ExecResult =
         withContext(Dispatchers.IO) {
-            val link = child(JSONObject().put("use", "capture").put("command", command).put("capture", JSONObject().put("max_bytes", CAPTURE_MAX)))
+            val link = child { it.copy(use = DialUse.CAPTURE, command = command, capture = CaptureOpts(CAPTURE_MAX.toLong(), null, null)) }
             try {
                 val line = link.readLine() ?: throw IOException(copyText("reason.link.lost"))
-                val got = JSONObject(line)
+                // 收全的那一行认不出 ⇒ 两端契约对不上（不补默认、不当成功）。
+                val got = Wire.read<Captured>(line) ?: throw IOException(copyText("mobSsh.log.connectFailed"))
                 ExecResult(
-                    exitStatus = if (got.isNull("exit_status")) null else got.getInt("exit_status"),
-                    stdout = got.optString("stdout"),
-                    stderrTail = got.optString("stderr").takeLast(STDERR_TAIL),
+                    exitStatus = got.exitStatus,
+                    stdout = got.stdout,
+                    stderrTail = got.stderr.takeLast(STDERR_TAIL),
                 )
             } finally {
                 link.close()
             }
         }
 
-    override val dialRequest: String? get() = base?.toString()
+    override val dialRequest: String? get() = base?.let { Wire.line(it) }
 
     override suspend fun openShell(
         term: String,
@@ -149,8 +169,7 @@ class RustTransport(
         rows: Int,
     ): ShellChannel =
         withContext(Dispatchers.IO) {
-            val pty = JSONObject().put("term", term).put("cols", cols).put("rows", rows)
-            RustShell(child(JSONObject().put("use", "shell").put("pty", pty)))
+            RustShell(child { it.copy(use = DialUse.SHELL, pty = PtyOpts(term, cols, rows)) })
         }
 
     override fun close() {
@@ -166,18 +185,16 @@ class RustTransport(
     // ── 链路 ─────────────────────────────────────────────────────────────────────
 
     /** 照拨号身份开一条用法链路、读到 ack；ack 不成 ⇒ 抛（连接没了 ⇒ [ConnectionDeadException]）。 */
-    private suspend fun child(use: JSONObject): RustLink {
+    private suspend fun child(use: (DialRequest) -> DialRequest): RustLink {
         val b = base
         if (b == null || !isConnected) throw ConnectionDeadException(copyText("reason.link.lost"))
-        val req = JSONObject(b.toString())
-        use.keys().forEach { k -> req.put(k, use.get(k)) }
-        val link = RustCore.open(req)
+        val link = RustCore.open(use(b))
         children += link
         link.onClose { children -= link }
         val ack = link.awaitAck {}
-        if (!ack.optBoolean("ok")) {
+        if (!ack.ok) {
             link.close()
-            throw IOException(ack.optString("error"))
+            throw IOException(ack.error.orEmpty())
         }
         return link
     }
@@ -206,57 +223,63 @@ class RustTransport(
         return id
     }
 
-    private suspend fun hopOf(cfg: ConnectionConfig): JSONObject {
-        val hop =
-            JSONObject()
-                .put("host", cfg.host)
-                .put("port", cfg.port)
-                .put("user", cfg.username)
-                .put("key_path", keyFor(cfg.auth))
-                .put("label", "${cfg.host}:${cfg.port}")
-        cfg.jumpVia?.let { hop.put("jump", hopOf(it)) }
-        return hop
+    private suspend fun hopOf(cfg: ConnectionConfig): JumpHop =
+        JumpHop(cfg.host, cfg.port, cfg.username, keyFor(cfg.auth), "${cfg.host}:${cfg.port}", cfg.jumpVia?.let { hopOf(it) })
+
+    /**
+     * ack 带着库里那一把的指纹 ⇒ 钥匙对不上被拒（核心判的、指纹也是核心写的）；库读不出（含旧表没迁完）只是 `host_key` 那一句。
+     * 没够着那一台（解析 · 拨不通 · 到期限 · 跳板断了）也是核心判的（[DialAck.unreached]）。
+     */
+    private fun failureOf(
+        ack: DialAck,
+        cfg: ConnectionConfig,
+    ): Exception {
+        val said = ack.error?.ifEmpty { null } ?: copyText("mobSsh.log.connectFailed")
+        val expected = ack.expectedFingerprint
+        return when {
+            expected != null ->
+                HostKeyChangedException(
+                    host = cfg.host,
+                    port = cfg.port,
+                    keyType = ack.keyType.orEmpty(),
+                    expectedFingerprint = expected,
+                    offeredFingerprint = ack.fingerprint.orEmpty(),
+                )
+            ack.unreached -> HostUnreachedException(said)
+            else -> IOException(said)
+        }
     }
 
-    /** ack 带着库里那一把的指纹 ⇒ 钥匙对不上被拒（核心判的、指纹也是核心写的）；库读不出（含旧表没迁完）只是 `host_key` 那一句。 */
-    private fun failureOf(
-        ack: JSONObject,
-        cfg: ConnectionConfig,
-    ): Exception =
-        if (ack.has("expected_fingerprint")) {
-            HostKeyChangedException(
-                host = cfg.host,
-                port = cfg.port,
-                keyType = ack.optString("key_type"),
-                expectedFingerprint = ack.optString("expected_fingerprint"),
-                offeredFingerprint = ack.optString("fingerprint"),
-            )
-        } else if (ack.optString("reason") in UNREACHED) {
-            HostUnreachedException(ack.optString("error").ifEmpty { copyText("mobSsh.log.connectFailed") })
-        } else {
-            IOException(ack.optString("error").ifEmpty { copyText("mobSsh.log.connectFailed") })
+    /** 那一步说的是哪个地址（`host:port`）；鉴权 · 就绪那两步不带 ⇒ 空。 */
+    private fun endpointOf(stage: Stage): String =
+        when (stage) {
+            is Stage.Dialing -> stage.endpoint
+            is Stage.HostKey -> stage.endpoint
+            is Stage.Failed -> stage.endpoint
+            is Stage.Won -> stage.endpoint
+            is Stage.Auth, Stage.Established -> ""
         }
 
     private fun eventOf(
-        stage: JSONObject,
+        stage: Stage,
         cfg: ConnectionConfig,
     ): SshConnectEvent {
-        val ep = stage.optString("endpoint")
+        val ep = endpointOf(stage)
         val host = ep.substringBeforeLast(':', cfg.host)
         val port = ep.substringAfterLast(':', "").toIntOrNull() ?: cfg.port
         val (kind, message) =
-            when (stage.optString("kind")) {
-                "dialing" -> SshConnectEvent.Stage.TCP to copyText("mobSsh.log.connecting", "target" to ep)
-                "hostKey" -> SshConnectEvent.Stage.HOSTKEY to stage.optString("fingerprint")
-                "won" -> SshConnectEvent.Stage.NEGOTIATE to copyText("mobSsh.log.negotiated")
-                "auth" ->
-                    if (stage.optBoolean("ok")) {
+            when (stage) {
+                is Stage.Dialing -> SshConnectEvent.Stage.TCP to copyText("mobSsh.log.connecting", "target" to ep)
+                is Stage.HostKey -> SshConnectEvent.Stage.HOSTKEY to stage.fingerprint
+                is Stage.Won -> SshConnectEvent.Stage.NEGOTIATE to copyText("mobSsh.log.negotiated")
+                is Stage.Auth ->
+                    if (stage.ok) {
                         SshConnectEvent.Stage.AUTH to copyText("mobSsh.log.authKey")
                     } else {
-                        SshConnectEvent.Stage.ERROR to stage.optString("detail").ifEmpty { copyText("mobSsh.log.authFailed") }
+                        SshConnectEvent.Stage.ERROR to (stage.detail?.ifEmpty { null } ?: copyText("mobSsh.log.authFailed"))
                     }
-                "established" -> SshConnectEvent.Stage.ESTABLISHED to copyText("mobSsh.log.established", "target" to "${cfg.host}:${cfg.port}")
-                else -> SshConnectEvent.Stage.ERROR to stage.optString("reason")
+                Stage.Established -> SshConnectEvent.Stage.ESTABLISHED to copyText("mobSsh.log.established", "target" to "${cfg.host}:${cfg.port}")
+                is Stage.Failed -> SshConnectEvent.Stage.ERROR to stage.reason
             }
         return SshConnectEvent(host, port, kind, message)
     }
@@ -265,9 +288,6 @@ class RustTransport(
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val CAPTURE_MAX = 16 * 1024 * 1024
         const val STDERR_TAIL = 4096
-
-        /** 拨号核心 ack 里「没够着那一台」的那几个原因码（`ssh-dial` 的 `why`：解析 · 拨不通 · 一步都没动到期限 · 跳板那一台断了）。 */
-        val UNREACHED = setOf("resolve", "unreachable", "timeout", "jump")
 
         /** P-256 公钥 ⇒ 未压缩点 `04 ‖ X ‖ Y`（各 32 字节，左补零）。 */
         fun uncompressedPoint(pub: ECPublicKey): ByteArray {
@@ -317,9 +337,9 @@ internal object RustCore : Core.Sink {
 
     fun ensure() = check(ready)
 
-    fun open(req: JSONObject): RustLink {
+    fun open(req: DialRequest): RustLink {
         ensure()
-        val handle = Core.open(req.toString())
+        val handle = Core.open(Wire.line(req))
         if (handle == 0L) throw IOException(copyText("reason.link.lost"))
         return RustLink(handle, inboxOf(handle))
     }
@@ -408,13 +428,16 @@ internal class RustLink(
         }
     }
 
-    /** 读到 ack 那一行（之前的阶段行交给 [onStage]）；没等到就收工 ⇒ 抛。 */
-    suspend fun awaitAck(onStage: (JSONObject) -> Unit): JSONObject {
+    /**
+     * 读到 ack 那一行（[DialAck]；之前的阶段行 `{"stage":…}` 交给 [onStage]）；没等到就收工 ⇒ 抛。
+     * 哪一行认不出（两端契约对不上）⇒ 抛，不补默认。
+     */
+    suspend fun awaitAck(onStage: (Stage) -> Unit): DialAck {
         while (true) {
             val line = readLine() ?: throw IOException(copyText("reason.link.lost"))
-            val v = JSONObject(line)
-            val stage = v.optJSONObject("stage")
-            if (stage != null) onStage(stage) else return v
+            val stage = JSONObject(line).optJSONObject("stage")
+            if (stage == null) return Wire.read<DialAck>(line) ?: throw IOException(copyText("mobSsh.log.connectFailed"))
+            Wire.read<Stage>(stage.toString())?.let(onStage)
         }
     }
 

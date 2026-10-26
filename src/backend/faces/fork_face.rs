@@ -46,10 +46,17 @@ impl crate::wire::typed::Handle for SessionFork {
 pub(crate) fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::Launch {
     let cwd = crate::agents::project_dir_of(source);
     let processes: Vec<fork_launch::ProcessRow> =
-        crate::observe::accounts_query::session_lines_for_frame(home)
-            .iter()
-            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-            .filter_map(|v| fork_launch::process_row_of(&v))
+        crate::observe::accounts_query::session_accounts_here(home)
+            .into_iter()
+            .filter_map(|r| {
+                Some(fork_launch::ProcessRow {
+                    sid: r.sid?,
+                    alive: r.alive,
+                    config_dir: r.config_dir,
+                    account: r.account,
+                    bare: r.bare,
+                })
+            })
             .collect();
     let terminals = super::session_batch_face::tmux_rows().ok().flatten();
     fork_launch::infer(&fork_launch::source_of(

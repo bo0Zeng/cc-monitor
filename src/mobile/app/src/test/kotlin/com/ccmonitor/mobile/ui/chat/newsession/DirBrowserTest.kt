@@ -25,7 +25,7 @@ class DirBrowserTest {
             "whole" to true,
             "same" to false,
             "order" to keys,
-            "up" to keys.zip(p.map { mapOf("path" to it, "name" to it.substringAfterLast('/'), "kind" to "dir") }).toMap(),
+            "up" to keys.zip(p.map { mapOf("path" to it, "name" to it.substringAfterLast('/'), "kind" to "dir", "class" to "folder", "type_text" to "文件夹") }).toMap(),
             "head" to mapOf("total" to p.size.toDouble(), "info" to info),
         )
     }

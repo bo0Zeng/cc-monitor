@@ -4,15 +4,16 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.NeedsAnswer
 import com.ccmonitor.mobile.core.claude.link.NeedsPick
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.Needs
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoice
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.Needs
+import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoice
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
+import com.ccmonitor.mobile.core.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsList
+import com.ccmonitor.mobile.core.wire.gen.NeedsNote
+import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -299,7 +300,7 @@ class NeedsDesk(
         s: String,
         list: NeedsList,
     ) {
-        needs = list.items.firstNotNullOfOrNull { it.session?.takeIf { r -> r.sid == s } }?.needs
+        needs = list.items.firstNotNullOfOrNull { (it as? NeedsItem.Session)?.session?.takeIf { r -> r.sid == s } }?.needs
         answered = list.answered.firstOrNull { it.sid == s }?.said
         receivedAt = now()
         val ask = needs?.ask

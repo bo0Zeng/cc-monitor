@@ -44,13 +44,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
-import com.ccmonitor.mobile.core.claude.link.wire.RotNote
-import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyItem
-import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.wire.gen.RotHint
+import com.ccmonitor.mobile.core.wire.gen.RotNote
+import com.ccmonitor.mobile.core.wire.gen.RotStrategyItem
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
@@ -318,31 +318,31 @@ private fun Hint(
     board: RotationBoard,
     onOpenFile: (String) -> Unit,
 ) {
-    val k = n.hint.k
+    val h = n.hint
     val text = hintText(n, view.now)
-    NoteBox(toneOf(n.tone), Modifier.testTag("rot-hint-${k.name.lowercase()}")) {
+    NoteBox(toneOf(n.tone), Modifier.testTag("rot-hint-${h.k}")) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (n.tone == Tone.NEED) NeedsTag()
             Text(text, style = MaterialTheme.typography.bodyMedium)
         }
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            when (k) {
-                RotHintKind.STRATEGY_ERROR -> {
-                    n.hint.path?.let { p -> OutlinedButton(onClick = { onOpenFile(p) }) { Text(copyText("rot.hint.code")) } }
+            when (h) {
+                is RotHint.StrategyError -> {
+                    h.path?.let { p -> OutlinedButton(onClick = { onOpenFile(p) }) { Text(copyText("rot.hint.code")) } }
                     CopyDetailButton(text, n.detail)
                 }
-                RotHintKind.TZ_UNKNOWN -> n.hint.zone?.let { z -> OutlinedButton(onClick = { board.setTz(z) }) { Text(copyText("rot.hint.setTzTip", "zone" to z)) } }
-                RotHintKind.NEWER -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadNew")) }
-                RotHintKind.OLDER -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadAll")) }
-                RotHintKind.OLD_SCRIPTS -> OutlinedButton(onClick = board::toggleOld) { Text(copyText("rot.hint.which")) }
+                is RotHint.TzUnknown -> OutlinedButton(onClick = { board.setTz(h.zone) }) { Text(copyText("rot.hint.setTzTip", "zone" to h.zone)) }
+                RotHint.Newer -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadNew")) }
+                is RotHint.Older -> OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadAll")) }
+                is RotHint.OldScripts -> OutlinedButton(onClick = board::toggleOld) { Text(copyText("rot.hint.which")) }
                 else -> Unit
             }
         }
     }
-    if (k == RotHintKind.OLD_SCRIPTS && ui.oldOpen) {
+    if (h is RotHint.OldScripts && ui.oldOpen) {
         ModalBottomSheet(onDismissRequest = board::toggleOld) {
             SheetHead(copyText("rot.hint.which"), null)
-            n.hint.files.orEmpty().forEach { f ->
+            h.files.forEach { f ->
                 PickRow(f.name, "rot-old-${f.name}", second = f.path, mono = true, onClick = {
                     board.toggleOld()
                     onOpenFile(f.path)

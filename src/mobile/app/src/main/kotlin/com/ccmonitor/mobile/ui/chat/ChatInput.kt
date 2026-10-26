@@ -46,16 +46,16 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.SessionAct
+import com.ccmonitor.mobile.core.wire.gen.SessionCommand
+import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 
 /** 输入那一圈要的几样动作（聊天屏往会话里做的事都经 [ChatSession]）。 */
 data class ChatInputActions(

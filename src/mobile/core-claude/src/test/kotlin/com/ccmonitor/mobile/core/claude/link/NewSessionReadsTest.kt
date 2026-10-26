@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
+import com.ccmonitor.mobile.core.wire.gen.PasteKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -35,6 +35,7 @@ class NewSessionReadsTest {
                 mapOf(
                     "recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "lastMs" to 1.0, "lastText" to "昨天")),
                     "tmux" to true,
+                    "run" to "tmux",
                     "agents" to listOf(mapOf("kind" to "claude", "text" to "Claude Code", "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>())),
                     "fork" to null,
                 ),
@@ -66,12 +67,22 @@ class NewSessionReadsTest {
                 "authKind" to "subscription",
                 "badge" to mapOf("text" to if (ok) "已登录" else "需登录", "warn" to !ok, "title" to ""),
                 "login" to !ok,
+                "keyMasked" to null,
+                "baseUrl" to null,
+                "email" to "",
+                "configDir" to null,
+                "isDefault" to false,
+                "mode" to "subscription",
+                "exists" to true,
+                "loggedIn" to ok,
+                "authReady" to ok,
             )
         }
         val data =
             mapOf(
                 "accounts" to listOf(row("0", false, true, 0), row("work", true, true, 3), row("team", true, false, 1)),
-                "meta" to mapOf("effectiveDefault" to "work", "home" to "/h"),
+                "meta" to mapOf("enabled" to true, "acctsDir" to "/h/.cc", "manifestPath" to "/h/.cc/accounts.json", "count" to 3, "effectiveDefault" to "work", "home" to "/h"),
+                "notice" to null,
             )
         val a = AccountsList.of(data)!!
         assertEquals("work", a.meta.effectiveDefault)
@@ -117,9 +128,9 @@ class NewSessionReadsTest {
             FilesLs.dirsOf(
                 lsWhole(
                     listOf(
-                        mapOf("path" to "/h/work/billing", "name" to "billing", "kind" to "dir"),
-                        mapOf("path" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir"),
-                        mapOf("path" to "/h/work/notes", "name" to "notes", "kind" to "symlink", "link_dir" to true),
+                        mapOf("path" to "/h/work/billing", "name" to "billing", "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
+                        mapOf("path" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
+                        mapOf("path" to "/h/work/notes", "name" to "notes", "kind" to "symlink", "class" to "link", "type_text" to "链接", "link_dir" to true),
                     ),
                     mapOf("up" to "/h", "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 3.0, "unreadable" to 0.0),
                 ),
@@ -127,7 +138,7 @@ class NewSessionReadsTest {
         assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.dirs.map { it.path })
         assertEquals(listOf("billing", "notes"), got.dirs.map { it.name })
         assertEquals("/h", got.up)
-        assertNull(FilesLs.dirsOf(lsWhole(listOf(mapOf("kind" to "dir")), mapOf("up" to null, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 1.0))))
+        assertNull(FilesLs.dirsOf(lsWhole(listOf(mapOf("kind" to "dir", "class" to "folder", "type_text" to "文件夹")), mapOf("up" to null, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 1.0))))
     }
 
     @Test
@@ -141,9 +152,9 @@ class NewSessionReadsTest {
         assertEquals(mapOf("kind" to "account", "agent" to "claude", "account" to "team"), Login.start(Login.account("claude", "team")))
         assertEquals(mapOf("job" to "j1", "pasted" to "abc"), Login.finish("j1", "abc"))
         assertEquals(mapOf("job" to "j1"), Login.cancel("j1"))
-        val s = Login.started(mapOf("job" to "j1", "url" to "https://example.com/x", "paste" to "redirectUrl", "auto" to false))!!
+        val s = Login.started(mapOf("job" to "j1", "url" to "https://example.com/x", "paste" to "redirectUrl", "auto" to false, "opened" to false))!!
         assertEquals(PasteKind.REDIRECT_URL, s.paste)
         assertFalse(s.auto)
-        assertNull(Login.started(mapOf("job" to "j1", "url" to "u", "paste" to "other", "auto" to false)))
+        assertNull(Login.started(mapOf("job" to "j1", "url" to "u", "paste" to "other", "auto" to false, "opened" to false)))
     }
 }

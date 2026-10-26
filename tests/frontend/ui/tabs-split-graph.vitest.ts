@@ -201,6 +201,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
     "src/frontend/ui/kit/fold.ts", // 组头 ⌄（同一颗折叠号：开合转 90°）
     "src/frontend/ui/kit/menu.ts", // 组的菜单（「⋯」/ 组头右键）
+    "src/frontend/ui/kit/morph.ts", // 行与组头照新的一串摆（`place`：留着的原地不动、次序不对才挪）
     "src/frontend/ui/kit/popover.ts", // 「需手动」点开的那个浮层（开 · 关 · 数据变了原地换内容）
     "src/frontend/ui/needs-panel.ts", // 那个浮层里排什么（会话 · 计划项 · 会话外的每一项 · 断开 / 无法读取）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
@@ -264,7 +265,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/frontend/ui/kit/toast.ts",
-    "src/frontend/ui/face-can.ts", // 那台看不见的不恢复（说不清那一张）
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作
