@@ -11,7 +11,10 @@ import com.squareup.moshi.JsonWriter
 
 /** 线上原样的一段 JSON（声明里认不出的那几形）：读进来什么、写回去就是什么。 */
 @JvmInline
-value class Raw(val json: String)
+value class Raw(val json: String) {
+    /** 那一段读成 JSON 值（串 · 数 · 真假 · null · 列表 · 键值）。 */
+    val value: Any? get() = JsonReader.of(okio.Buffer().writeUtf8(json)).readJsonValue()
+}
 
 /**
  * 对象的一格：线上键 · 它的编解码（头一回用到才取：各类的编解码互相引用，不按初始化先后）·
@@ -48,9 +51,19 @@ val Str: JsonAdapter<String> = prim({ it.nextString() }, { w, v -> w.value(v) },
 val Bool: JsonAdapter<Boolean> = prim({ it.nextBoolean() }, { w, v -> w.value(v) }, "boolean")
 val Lng: JsonAdapter<Long> = prim({ it.nextLong() }, { w, v -> w.value(v) }, "integer")
 val Int32: JsonAdapter<Int> = prim({ it.nextInt() }, { w, v -> w.value(v) }, "integer")
+/** 无符号 64 位：照位存进 Long；读的时候不管它过没过 JSON 数（大于 Long 的照无符号读），写回照无符号的字。 */
+val U64: JsonAdapter<Long> =
+    prim({ it.nextString().toBigDecimal().toBigInteger().toLong() }, { w, v -> if (v >= 0) w.value(v) else w.valueSink().use { s -> s.writeUtf8(java.lang.Long.toUnsignedString(v)) } }, "integer")
 val Dbl: JsonAdapter<Double> = prim({ it.nextDouble() }, { w, v -> w.value(v) }, "number")
+/** 那一段原样（null 也是一段）。 */
 val RawJson: JsonAdapter<Raw> =
-    prim({ r -> r.nextSource().use { Raw(it.readUtf8()) } }, { w, v -> w.valueSink().use { it.writeUtf8(v.json) } }, "raw json")
+    object : JsonAdapter<Raw>() {
+        override fun fromJson(reader: JsonReader): Raw = reader.nextSource().use { Raw(it.readUtf8()) }
+
+        override fun toJson(writer: JsonWriter, value: Raw?) {
+            writer.valueSink().use { it.writeUtf8((value ?: throw mismatch("raw json must not be null")).json) }
+        }
+    }
 
 /** 照原样留着、还没装进线上类型的那一段（带键集合手上那一份逐项存盘 · 用时才各按自己的类型解）。 */
 val JsonValue: JsonAdapter<Any> =
@@ -1266,7 +1279,7 @@ data class ArriveAsk(
         val ADAPTER: JsonAdapter<ArriveAsk> = obj(
             listOf(
             Field("by", { ArriveBy.ADAPTER }, optional = false, nullable = false),
-            Field("since", { Lng }, optional = false, nullable = false),
+            Field("since", { U64 }, optional = false, nullable = false),
             Field("session", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> ArriveAsk(a[0] as ArriveBy, a[1] as Long, a[2] as String?) },
@@ -1552,8 +1565,8 @@ data class Attached(
         val ADAPTER: JsonAdapter<Attached> = obj(
             listOf(
             Field("kind", { AttachedKind.ADAPTER }, optional = false, nullable = false),
-            Field("since", { Lng }, optional = false, nullable = false),
-            Field("last_activity", { Lng }, optional = false, nullable = false),
+            Field("since", { U64 }, optional = false, nullable = false),
+            Field("last_activity", { U64 }, optional = false, nullable = false),
             ),
             { a -> Attached(a[0] as AttachedKind, a[1] as Long, a[2] as Long) },
             { v -> arrayOf(v.kind, v.since, v.lastActivity) },
@@ -1709,10 +1722,10 @@ data class BatchOutcome(
             Field("state", { ItemState.ADAPTER }, optional = false, nullable = false),
             Field("path", { opt(WirePath.ADAPTER) }, optional = true, nullable = true),
             Field("new_name", { opt(WirePath.ADAPTER) }, optional = true, nullable = true),
-            Field("bytes", { opt(Lng) }, optional = true, nullable = true),
-            Field("files", { opt(Lng) }, optional = true, nullable = true),
-            Field("dirs", { opt(Lng) }, optional = true, nullable = true),
-            Field("removed", { opt(Lng) }, optional = true, nullable = true),
+            Field("bytes", { opt(U64) }, optional = true, nullable = true),
+            Field("files", { opt(U64) }, optional = true, nullable = true),
+            Field("dirs", { opt(U64) }, optional = true, nullable = true),
+            Field("removed", { opt(U64) }, optional = true, nullable = true),
             Field("before", { opt(Int32) }, optional = true, nullable = true),
             Field("code", { opt(Str) }, optional = true, nullable = true),
             Field("reason", { opt(Str) }, optional = true, nullable = true),
@@ -2017,7 +2030,7 @@ data class BranchHeld(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("path", { opt(Str) }, optional = true, nullable = true),
-            Field("at", { opt(Lng) }, optional = true, nullable = true),
+            Field("at", { opt(U64) }, optional = true, nullable = true),
             Field("sum", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> BranchHeld(a[0] as String, a[1] as String?, a[2] as Long?, a[3] as String?) },
@@ -2062,12 +2075,12 @@ data class BrowseReply(
     companion object {
         val ADAPTER: JsonAdapter<BrowseReply> = obj(
             listOf(
-            Field("added", { Lng }, optional = false, nullable = false),
-            Field("removed", { Lng }, optional = false, nullable = false),
-            Field("rejected", { Lng }, optional = false, nullable = false),
-            Field("browse_watch_cap", { Lng }, optional = false, nullable = false),
-            Field("watching", { Lng }, optional = false, nullable = false),
-            Field("watch_failed", { Lng }, optional = false, nullable = false),
+            Field("added", { U64 }, optional = false, nullable = false),
+            Field("removed", { U64 }, optional = false, nullable = false),
+            Field("rejected", { U64 }, optional = false, nullable = false),
+            Field("browse_watch_cap", { U64 }, optional = false, nullable = false),
+            Field("watching", { U64 }, optional = false, nullable = false),
+            Field("watch_failed", { U64 }, optional = false, nullable = false),
             Field("watch_error", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> BrowseReply(a[0] as Long, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as Long, a[5] as Long, a[6] as String?) },
@@ -2775,8 +2788,8 @@ data class CatalogMachine(
             listOf(
             Field("id", { Str }, optional = false, nullable = false),
             Field("label", { Str }, optional = false, nullable = false),
-            Field("gen", { Lng }, optional = false, nullable = false),
-            Field("seenAt", { Lng }, optional = false, nullable = false),
+            Field("gen", { U64 }, optional = false, nullable = false),
+            Field("seenAt", { U64 }, optional = false, nullable = false),
             Field("assets", { arr(CatalogAsset.ADAPTER) }, optional = false, nullable = false),
             Field("projectDirs", { arr(Str) }, optional = false, nullable = false),
             Field("notes", { dict(CatalogNote.ADAPTER) }, optional = false, nullable = false),
@@ -2816,7 +2829,7 @@ data class CatalogNote(
         val ADAPTER: JsonAdapter<CatalogNote> = obj(
             listOf(
             Field("text", { Str }, optional = false, nullable = false),
-            Field("rev", { Lng }, optional = false, nullable = false),
+            Field("rev", { U64 }, optional = false, nullable = false),
             ),
             { a -> CatalogNote(a[0] as String, a[1] as Long) },
             { v -> arrayOf(v.text, v.rev) },
@@ -3538,11 +3551,11 @@ data class Conflict(
             Field("key", { Str }, optional = false, nullable = false),
             Field("name", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("kind", { FileKind.ADAPTER }, optional = false, nullable = false),
-            Field("size", { opt(Lng) }, optional = true, nullable = true),
+            Field("size", { opt(U64) }, optional = true, nullable = true),
             Field("size_text", { opt(Str) }, optional = true, nullable = true),
             Field("mtime_text", { opt(Str) }, optional = true, nullable = true),
             Field("there", { FileKind.ADAPTER }, optional = false, nullable = false),
-            Field("there_size", { opt(Lng) }, optional = true, nullable = true),
+            Field("there_size", { opt(U64) }, optional = true, nullable = true),
             Field("there_size_text", { opt(Str) }, optional = true, nullable = true),
             Field("there_mtime_text", { opt(Str) }, optional = true, nullable = true),
             Field("answers", { arr(Decide.ADAPTER) }, optional = false, nullable = false),
@@ -4712,7 +4725,7 @@ data class FactBlocked(
         val ADAPTER: JsonAdapter<FactBlocked> = obj(
             listOf(
             Field("why", { FactWhy.ADAPTER }, optional = false, nullable = false),
-            Field("until", { opt(Lng) }, optional = true, nullable = true),
+            Field("until", { opt(U64) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             ),
             { a -> FactBlocked(a[0] as FactWhy, a[1] as Long?, a[2] as String) },
@@ -4935,8 +4948,8 @@ data class FilesCommitTextReq(
             Field("root", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("rel", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("key", { Str }, optional = false, nullable = false),
-            Field("chunks", { Lng }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
+            Field("chunks", { U64 }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
             Field("expect", { Sha256Expect.ADAPTER }, optional = false, nullable = false),
             ),
             { a -> FilesCommitTextReq(a[0] as WirePath, a[1] as WirePath, a[2] as String, a[3] as Long, a[4] as Long, a[5] as Sha256Expect) },
@@ -4966,8 +4979,8 @@ data class FilesCommitUploadReq(
             Field("key", { Str }, optional = false, nullable = false),
             Field("on_exists", { opt(OnExists.ADAPTER) }, optional = true, nullable = true),
             Field("expect", { Sha256Expect.ADAPTER }, optional = false, nullable = false),
-            Field("chunks", { opt(Lng) }, optional = true, nullable = true),
-            Field("bytes", { opt(Lng) }, optional = true, nullable = true),
+            Field("chunks", { opt(U64) }, optional = true, nullable = true),
+            Field("bytes", { opt(U64) }, optional = true, nullable = true),
             Field("single", { opt(Bool) }, optional = true, nullable = true),
             ),
             { a -> FilesCommitUploadReq(a[0] as WirePath, a[1] as WirePath, a[2] as String, a[3] as OnExists?, a[4] as Sha256Expect, a[5] as Long?, a[6] as Long?, a[7] as Boolean?) },
@@ -5105,8 +5118,8 @@ data class FilesFindHit(
             Field("kind", { FileKind.ADAPTER }, optional = false, nullable = false),
             Field("class", { FileClass.ADAPTER }, optional = false, nullable = false),
             Field("location", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("size", { opt(Lng) }, optional = false, nullable = true),
-            Field("mtime_secs", { opt(Lng) }, optional = false, nullable = true),
+            Field("size", { opt(U64) }, optional = false, nullable = true),
+            Field("mtime_secs", { opt(U64) }, optional = false, nullable = true),
             Field("mtime_text", { opt(Str) }, optional = false, nullable = true),
             Field("marks", { arr(FilesFindHitMarks.ADAPTER) }, optional = false, nullable = false),
             ),
@@ -5162,7 +5175,7 @@ data class FilesPathBytesReply(
         val ADAPTER: JsonAdapter<FilesPathBytesReply> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
             ),
             { a -> FilesPathBytesReply(a[0] as WirePath, a[1] as Long) },
             { v -> arrayOf(v.path, v.bytes) },
@@ -5219,7 +5232,7 @@ data class FilesStageChunkReply(
     companion object {
         val ADAPTER: JsonAdapter<FilesStageChunkReply> = obj(
             listOf(
-            Field("bytes", { Lng }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
             ),
             { a -> FilesStageChunkReply(a[0] as Long) },
             { v -> arrayOf(v.bytes) },
@@ -5239,7 +5252,7 @@ data class FilesStageChunkReq(
         val ADAPTER: JsonAdapter<FilesStageChunkReq> = obj(
             listOf(
             Field("key", { Str }, optional = false, nullable = false),
-            Field("seq", { Lng }, optional = false, nullable = false),
+            Field("seq", { U64 }, optional = false, nullable = false),
             Field("content", { ChunkBytes.ADAPTER }, optional = false, nullable = false),
             ),
             { a -> FilesStageChunkReq(a[0] as String, a[1] as Long, a[2] as ChunkBytes) },
@@ -5262,10 +5275,10 @@ data class FilesTreeReply(
         val ADAPTER: JsonAdapter<FilesTreeReply> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
-            Field("files", { Lng }, optional = false, nullable = false),
-            Field("dirs", { Lng }, optional = false, nullable = false),
-            Field("links", { Lng }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("files", { U64 }, optional = false, nullable = false),
+            Field("dirs", { U64 }, optional = false, nullable = false),
+            Field("links", { U64 }, optional = false, nullable = false),
             ),
             { a -> FilesTreeReply(a[0] as WirePath, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as Long) },
             { v -> arrayOf(v.path, v.bytes, v.files, v.dirs, v.links) },
@@ -5308,7 +5321,7 @@ data class FilesWrittenReply(
         val ADAPTER: JsonAdapter<FilesWrittenReply> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
             Field("sha256", { Str }, optional = false, nullable = false),
             ),
             { a -> FilesWrittenReply(a[0] as WirePath, a[1] as Long, a[2] as String) },
@@ -5379,17 +5392,17 @@ data class FindReply(
             Field("start", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
             Field("sort", { FindSort.ADAPTER }, optional = false, nullable = false),
             Field("desc", { Bool }, optional = false, nullable = false),
-            Field("total_hits", { Lng }, optional = false, nullable = false),
+            Field("total_hits", { U64 }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
-            Field("scanned", { Lng }, optional = false, nullable = false),
-            Field("index_age_secs", { Lng }, optional = false, nullable = false),
+            Field("scanned", { U64 }, optional = false, nullable = false),
+            Field("index_age_secs", { U64 }, optional = false, nullable = false),
             Field("index_missing", { Bool }, optional = false, nullable = false),
             Field("stale", { Bool }, optional = false, nullable = false),
             Field("index_root", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
             Field("out_of_index", { Bool }, optional = false, nullable = false),
             Field("cover_root", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
-            Field("seq", { opt(Lng) }, optional = false, nullable = true),
-            Field("offset", { Lng }, optional = false, nullable = false),
+            Field("seq", { opt(U64) }, optional = false, nullable = true),
+            Field("offset", { U64 }, optional = false, nullable = false),
             ),
             { a -> FindReply(a[0] as List<FilesFindHit>, a[1] as WirePath?, a[2] as FindSort, a[3] as Boolean, a[4] as Long, a[5] as Boolean, a[6] as Long, a[7] as Long, a[8] as Boolean, a[9] as Boolean, a[10] as WirePath?, a[11] as Boolean, a[12] as WirePath?, a[13] as Long?, a[14] as Long) },
             { v -> arrayOf(v.hits, v.start, v.sort, v.desc, v.totalHits, v.truncated, v.scanned, v.indexAgeSecs, v.indexMissing, v.stale, v.indexRoot, v.outOfIndex, v.coverRoot, v.seq, v.offset) },
@@ -5417,10 +5430,10 @@ data class FindReq(
             Field("query", { Str }, optional = false, nullable = false),
             Field("under", { opt(WirePath.ADAPTER) }, optional = true, nullable = true),
             Field("scope", { opt(FindScope.ADAPTER) }, optional = true, nullable = true),
-            Field("seq", { opt(Lng) }, optional = true, nullable = true),
+            Field("seq", { opt(U64) }, optional = true, nullable = true),
             Field("stream", { opt(Str) }, optional = true, nullable = true),
-            Field("offset", { opt(Lng) }, optional = true, nullable = true),
-            Field("limit", { opt(Lng) }, optional = true, nullable = true),
+            Field("offset", { opt(U64) }, optional = true, nullable = true),
+            Field("limit", { opt(U64) }, optional = true, nullable = true),
             Field("sort", { opt(FindSort.ADAPTER) }, optional = true, nullable = true),
             Field("desc", { opt(Bool) }, optional = true, nullable = true),
             ),
@@ -5716,7 +5729,7 @@ data class ForkFacts(
             listOf(
             Field("agent", { Str }, optional = false, nullable = false),
             Field("launch", { ForkLaunch.ADAPTER }, optional = false, nullable = false),
-            Field("turn", { opt(Lng) }, optional = false, nullable = true),
+            Field("turn", { opt(U64) }, optional = false, nullable = true),
             Field("startText", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> ForkFacts(a[0] as String, a[1] as ForkLaunch, a[2] as Long?, a[3] as String?) },
@@ -6303,9 +6316,9 @@ data class GrepHit(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("rel", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("line", { Lng }, optional = false, nullable = false),
+            Field("line", { U64 }, optional = false, nullable = false),
             Field("text", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("matches", { Lng }, optional = false, nullable = false),
+            Field("matches", { U64 }, optional = false, nullable = false),
             Field("lines", { arr(GrepLine.ADAPTER) }, optional = false, nullable = false),
             ),
             { a -> GrepHit(a[0] as WirePath, a[1] as WirePath, a[2] as Long, a[3] as WirePath, a[4] as Long, a[5] as List<GrepLine>) },
@@ -6325,7 +6338,7 @@ data class GrepLine(
     companion object {
         val ADAPTER: JsonAdapter<GrepLine> = obj(
             listOf(
-            Field("line", { Lng }, optional = false, nullable = false),
+            Field("line", { U64 }, optional = false, nullable = false),
             Field("text", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("marks", { arr(GrepLineMarks.ADAPTER) }, optional = false, nullable = false),
             ),
@@ -6371,14 +6384,14 @@ data class GrepReply(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("hits", { arr(GrepHit.ADAPTER) }, optional = false, nullable = false),
-            Field("files", { Lng }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
-            Field("links", { Lng }, optional = false, nullable = false),
-            Field("skipped_binary", { Lng }, optional = false, nullable = false),
-            Field("skipped_large", { Lng }, optional = false, nullable = false),
-            Field("skipped_mounts", { Lng }, optional = false, nullable = false),
-            Field("unreadable", { Lng }, optional = false, nullable = false),
-            Field("limit", { Lng }, optional = false, nullable = false),
+            Field("files", { U64 }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("links", { U64 }, optional = false, nullable = false),
+            Field("skipped_binary", { U64 }, optional = false, nullable = false),
+            Field("skipped_large", { U64 }, optional = false, nullable = false),
+            Field("skipped_mounts", { U64 }, optional = false, nullable = false),
+            Field("unreadable", { U64 }, optional = false, nullable = false),
+            Field("limit", { U64 }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             Field("stopped", { opt(GrepStopped.ADAPTER) }, optional = false, nullable = true),
             ),
@@ -6403,7 +6416,7 @@ data class GrepReq(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("needle", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("ignore_ascii_case", { opt(Bool) }, optional = true, nullable = true),
-            Field("limit", { opt(Lng) }, optional = true, nullable = true),
+            Field("limit", { opt(U64) }, optional = true, nullable = true),
             ),
             { a -> GrepReq(a[0] as WirePath, a[1] as WirePath, a[2] as Boolean?, a[3] as Long?) },
             { v -> arrayOf(v.path, v.needle, v.ignoreAsciiCase, v.limit) },
@@ -6745,7 +6758,7 @@ data class HistoryGroup(
             Field("projectName", { Str }, optional = false, nullable = false),
             Field("projectPath", { Str }, optional = false, nullable = false),
             Field("projectDir", { Str }, optional = false, nullable = false),
-            Field("count", { Lng }, optional = false, nullable = false),
+            Field("count", { U64 }, optional = false, nullable = false),
             Field("hasLive", { opt(Bool) }, optional = false, nullable = true),
             Field("starred", { Bool }, optional = false, nullable = false),
             Field("lastActivity", { Lng }, optional = false, nullable = false),
@@ -6928,10 +6941,10 @@ data class HistoryLines(
     companion object {
         val ADAPTER: JsonAdapter<HistoryLines> = obj(
             listOf(
-            Field("from", { Lng }, optional = false, nullable = false),
-            Field("next", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
+            Field("next", { U64 }, optional = false, nullable = false),
             Field("eof", { Bool }, optional = false, nullable = false),
-            Field("end", { Lng }, optional = false, nullable = false),
+            Field("end", { U64 }, optional = false, nullable = false),
             Field("lines", { arr(RecordLine.ADAPTER) }, optional = false, nullable = false),
             ),
             { a -> HistoryLines(a[0] as Long, a[1] as Long, a[2] as Boolean, a[3] as Long, a[4] as List<RecordLine>) },
@@ -7242,7 +7255,7 @@ data class HistoryRead(
         val ADAPTER: JsonAdapter<HistoryRead> = obj(
             listOf(
             Field("rows", { arr(ReadRow.ADAPTER) }, optional = false, nullable = false),
-            Field("next", { Lng }, optional = false, nullable = false),
+            Field("next", { U64 }, optional = false, nullable = false),
             Field("eof", { Bool }, optional = false, nullable = false),
             ),
             { a -> HistoryRead(a[0] as List<ReadRow>, a[1] as Long, a[2] as Boolean) },
@@ -7602,15 +7615,15 @@ data class HistoryTail(
         val ADAPTER: JsonAdapter<HistoryTail> = obj(
             listOf(
             Field("how", { TailHow.ADAPTER }, optional = false, nullable = false),
-            Field("from", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
             Field("rows", { arr(ReadRow.ADAPTER) }, optional = false, nullable = false),
-            Field("next", { Lng }, optional = false, nullable = false),
+            Field("next", { U64 }, optional = false, nullable = false),
             Field("eof", { Bool }, optional = false, nullable = false),
             Field("held", { Held.ADAPTER }, optional = false, nullable = false),
-            Field("total", { Lng }, optional = false, nullable = false),
-            Field("tail_from", { Lng }, optional = false, nullable = false),
-            Field("split_at", { Lng }, optional = false, nullable = false),
-            Field("end", { Lng }, optional = false, nullable = false),
+            Field("total", { U64 }, optional = false, nullable = false),
+            Field("tail_from", { U64 }, optional = false, nullable = false),
+            Field("split_at", { U64 }, optional = false, nullable = false),
+            Field("end", { U64 }, optional = false, nullable = false),
             ),
             { a -> HistoryTail(a[0] as TailHow, a[1] as Long, a[2] as List<ReadRow>, a[3] as Long, a[4] as Boolean, a[5] as Held, a[6] as Long, a[7] as Long, a[8] as Long, a[9] as Long) },
             { v -> arrayOf(v.how, v.from, v.rows, v.next, v.eof, v.held, v.total, v.tailFrom, v.splitAt, v.end) },
@@ -7838,7 +7851,7 @@ data class Host(
             listOf(
             Field("label", { Str }, optional = false, nullable = false),
             Field("host", { Str }, optional = false, nullable = false),
-            Field("port", { Lng }, optional = false, nullable = false),
+            Field("port", { U64 }, optional = false, nullable = false),
             Field("user", { Str }, optional = false, nullable = false),
             Field("keyPath", { Str }, optional = false, nullable = false),
             Field("addresses", { arr(Str) }, optional = false, nullable = false),
@@ -8143,18 +8156,18 @@ data class IndexStatusReply(
         val ADAPTER: JsonAdapter<IndexStatusReply> = obj(
             listOf(
             Field("index_missing", { Bool }, optional = false, nullable = false),
-            Field("entries", { Lng }, optional = false, nullable = false),
-            Field("resident_bytes", { Lng }, optional = false, nullable = false),
-            Field("unreadable_dirs", { Lng }, optional = false, nullable = false),
+            Field("entries", { U64 }, optional = false, nullable = false),
+            Field("resident_bytes", { U64 }, optional = false, nullable = false),
+            Field("unreadable_dirs", { U64 }, optional = false, nullable = false),
             Field("unreadable_paths", { arr(WirePath.ADAPTER) }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
-            Field("skipped_mounts", { Lng }, optional = false, nullable = false),
-            Field("age_secs", { Lng }, optional = false, nullable = false),
-            Field("rewalk_interval_secs", { Lng }, optional = false, nullable = false),
+            Field("skipped_mounts", { U64 }, optional = false, nullable = false),
+            Field("age_secs", { U64 }, optional = false, nullable = false),
+            Field("rewalk_interval_secs", { U64 }, optional = false, nullable = false),
             Field("stale", { Bool }, optional = false, nullable = false),
-            Field("browse_watches", { Lng }, optional = false, nullable = false),
-            Field("browse_watch_cap", { Lng }, optional = false, nullable = false),
-            Field("cold_first_build_secs", { Lng }, optional = false, nullable = false),
+            Field("browse_watches", { U64 }, optional = false, nullable = false),
+            Field("browse_watch_cap", { U64 }, optional = false, nullable = false),
+            Field("cold_first_build_secs", { U64 }, optional = false, nullable = false),
             ),
             { a -> IndexStatusReply(a[0] as Boolean, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as List<WirePath>, a[5] as Boolean, a[6] as Long, a[7] as Long, a[8] as Long, a[9] as Boolean, a[10] as Long, a[11] as Long, a[12] as Long) },
             { v -> arrayOf(v.indexMissing, v.entries, v.residentBytes, v.unreadableDirs, v.unreadablePaths, v.truncated, v.skippedMounts, v.ageSecs, v.rewalkIntervalSecs, v.stale, v.browseWatches, v.browseWatchCap, v.coldFirstBuildSecs) },
@@ -8670,10 +8683,10 @@ data class Line<R>(
             listOf(
             Field("session_id", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
-            Field("seq", { Lng }, optional = false, nullable = false),
+            Field("seq", { U64 }, optional = false, nullable = false),
             Field("record", { opt(adR) }, optional = true, nullable = true),
             Field("cwd", { opt(Str) }, optional = true, nullable = true),
-            Field("byte_offset", { Lng }, optional = false, nullable = false),
+            Field("byte_offset", { U64 }, optional = false, nullable = false),
             Field("rid", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> Line<R>(a[0] as String, a[1] as String, a[2] as Long, a[3] as R?, a[4] as String?, a[5] as Long, a[6] as String?) },
@@ -9256,8 +9269,8 @@ sealed interface LiveCard {
                         listOf(
                         Field("sid", { Str }, optional = false, nullable = false),
                         Field("run", { opt(Str) }, optional = true, nullable = true),
-                        Field("card", { Lng }, optional = false, nullable = false),
-                        Field("n", { Lng }, optional = false, nullable = false),
+                        Field("card", { U64 }, optional = false, nullable = false),
+                        Field("n", { U64 }, optional = false, nullable = false),
                         Field("op", { tag("open") }, optional = false, nullable = false),
                         Field("rid", { Str }, optional = false, nullable = false),
                         Field("phase", { LivePhase.ADAPTER }, optional = false, nullable = false),
@@ -9271,10 +9284,10 @@ sealed interface LiveCard {
                         listOf(
                         Field("sid", { Str }, optional = false, nullable = false),
                         Field("run", { opt(Str) }, optional = true, nullable = true),
-                        Field("card", { Lng }, optional = false, nullable = false),
-                        Field("n", { Lng }, optional = false, nullable = false),
+                        Field("card", { U64 }, optional = false, nullable = false),
+                        Field("n", { U64 }, optional = false, nullable = false),
                         Field("op", { tag("block") }, optional = false, nullable = false),
-                        Field("i", { Lng }, optional = false, nullable = false),
+                        Field("i", { U64 }, optional = false, nullable = false),
                         Field("block", { BlockKind.ADAPTER }, optional = false, nullable = false),
                         Field("tool", { opt(Str) }, optional = true, nullable = true),
                         ),
@@ -9285,10 +9298,10 @@ sealed interface LiveCard {
                         listOf(
                         Field("sid", { Str }, optional = false, nullable = false),
                         Field("run", { opt(Str) }, optional = true, nullable = true),
-                        Field("card", { Lng }, optional = false, nullable = false),
-                        Field("n", { Lng }, optional = false, nullable = false),
+                        Field("card", { U64 }, optional = false, nullable = false),
+                        Field("n", { U64 }, optional = false, nullable = false),
                         Field("op", { tag("text") }, optional = false, nullable = false),
-                        Field("i", { Lng }, optional = false, nullable = false),
+                        Field("i", { U64 }, optional = false, nullable = false),
                         Field("s", { Str }, optional = false, nullable = false),
                         ),
                         { a -> LiveCard.Text(a[0] as String, a[1] as String?, a[2] as Long, a[3] as Long, a[5] as Long, a[6] as String) },
@@ -9298,8 +9311,8 @@ sealed interface LiveCard {
                         listOf(
                         Field("sid", { Str }, optional = false, nullable = false),
                         Field("run", { opt(Str) }, optional = true, nullable = true),
-                        Field("card", { Lng }, optional = false, nullable = false),
-                        Field("n", { Lng }, optional = false, nullable = false),
+                        Field("card", { U64 }, optional = false, nullable = false),
+                        Field("n", { U64 }, optional = false, nullable = false),
                         Field("op", { tag("awaiting") }, optional = false, nullable = false),
                         ),
                         { a -> LiveCard.Awaiting(a[0] as String, a[1] as String?, a[2] as Long, a[3] as Long) },
@@ -9309,8 +9322,8 @@ sealed interface LiveCard {
                         listOf(
                         Field("sid", { Str }, optional = false, nullable = false),
                         Field("run", { opt(Str) }, optional = true, nullable = true),
-                        Field("card", { Lng }, optional = false, nullable = false),
-                        Field("n", { Lng }, optional = false, nullable = false),
+                        Field("card", { U64 }, optional = false, nullable = false),
+                        Field("n", { U64 }, optional = false, nullable = false),
                         Field("op", { tag("close") }, optional = false, nullable = false),
                         Field("why", { LiveWhy.ADAPTER }, optional = false, nullable = false),
                         ),
@@ -9383,7 +9396,7 @@ sealed interface LiveOp {
                 Variant("block", LiveOp.Block::class.java, obj(
                         listOf(
                         Field("op", { tag("block") }, optional = false, nullable = false),
-                        Field("i", { Lng }, optional = false, nullable = false),
+                        Field("i", { U64 }, optional = false, nullable = false),
                         Field("block", { BlockKind.ADAPTER }, optional = false, nullable = false),
                         Field("tool", { opt(Str) }, optional = true, nullable = true),
                         ),
@@ -9393,7 +9406,7 @@ sealed interface LiveOp {
                 Variant("text", LiveOp.Text::class.java, obj(
                         listOf(
                         Field("op", { tag("text") }, optional = false, nullable = false),
-                        Field("i", { Lng }, optional = false, nullable = false),
+                        Field("i", { U64 }, optional = false, nullable = false),
                         Field("s", { Str }, optional = false, nullable = false),
                         ),
                         { a -> LiveOp.Text(a[1] as Long, a[2] as String) },
@@ -9790,9 +9803,9 @@ data class LsEntry(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("name", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("kind", { FileKind.ADAPTER }, optional = false, nullable = false),
-            Field("size", { opt(Lng) }, optional = true, nullable = true),
+            Field("size", { opt(U64) }, optional = true, nullable = true),
             Field("size_text", { opt(Str) }, optional = true, nullable = true),
-            Field("mtime_secs", { opt(Lng) }, optional = true, nullable = true),
+            Field("mtime_secs", { opt(U64) }, optional = true, nullable = true),
             Field("mtime_text", { opt(Str) }, optional = true, nullable = true),
             Field("mtime_full", { opt(Str) }, optional = true, nullable = true),
             Field("link_dir", { opt(Bool) }, optional = true, nullable = true),
@@ -9823,8 +9836,8 @@ data class LsHead(
             Field("up", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
             Field("crumbs", { arr(Crumb.ADAPTER) }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
-            Field("total", { Lng }, optional = false, nullable = false),
-            Field("unreadable", { Lng }, optional = false, nullable = false),
+            Field("total", { U64 }, optional = false, nullable = false),
+            Field("unreadable", { U64 }, optional = false, nullable = false),
             ),
             { a -> LsHead(a[0] as WirePath?, a[1] as List<Crumb>, a[2] as Boolean, a[3] as Long, a[4] as Long) },
             { v -> arrayOf(v.up, v.crumbs, v.truncated, v.total, v.unreadable) },
@@ -9847,7 +9860,7 @@ data class LsReq(
         val ADAPTER: JsonAdapter<LsReq> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("limit", { opt(Lng) }, optional = true, nullable = true),
+            Field("limit", { opt(U64) }, optional = true, nullable = true),
             Field("dirs_only", { opt(Bool) }, optional = true, nullable = true),
             Field("sort", { opt(LsSort.ADAPTER) }, optional = true, nullable = true),
             Field("held", { opt(Str) }, optional = true, nullable = true),
@@ -10874,7 +10887,7 @@ data class Merged(
     companion object {
         val ADAPTER: JsonAdapter<Merged> = obj(
             listOf(
-            Field("totalHits", { Lng }, optional = false, nullable = false),
+            Field("totalHits", { U64 }, optional = false, nullable = false),
             Field("sessionCount", { Lng }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             Field("sessions", { arr(MergedRow.ADAPTER) }, optional = false, nullable = false),
@@ -11040,13 +11053,13 @@ data class Needs(
             Field("tool", { opt(Str) }, optional = false, nullable = true),
             Field("call", { opt(Str) }, optional = false, nullable = true),
             Field("what", { opt(Str) }, optional = false, nullable = true),
-            Field("sinceMs", { opt(Lng) }, optional = false, nullable = true),
+            Field("sinceMs", { opt(U64) }, optional = false, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             Field("head", { Str }, optional = false, nullable = false),
             Field("headCode", { opt(Str) }, optional = false, nullable = true),
             Field("tone", { Tone.ADAPTER }, optional = false, nullable = false),
-            Field("rank", { Lng }, optional = false, nullable = false),
-            Field("waitedMs", { opt(Lng) }, optional = false, nullable = true),
+            Field("rank", { U64 }, optional = false, nullable = false),
+            Field("waitedMs", { opt(U64) }, optional = false, nullable = true),
             Field("waitedText", { opt(Str) }, optional = false, nullable = true),
             Field("ask", { opt(NeedsAsk.ADAPTER) }, optional = false, nullable = true),
             Field("manualText", { opt(Str) }, optional = false, nullable = true),
@@ -11224,7 +11237,7 @@ sealed interface NeedsItem {
                 Variant("session", NeedsItem.Session::class.java, obj(
                         listOf(
                         Field("kind", { tag("session") }, optional = false, nullable = false),
-                        Field("rank", { Lng }, optional = false, nullable = false),
+                        Field("rank", { U64 }, optional = false, nullable = false),
                         Field("session", { NeedsRow.ADAPTER }, optional = false, nullable = false),
                         ),
                         { a -> NeedsItem.Session(a[1] as Long, a[2] as NeedsRow) },
@@ -11233,7 +11246,7 @@ sealed interface NeedsItem {
                 Variant("plan", NeedsItem.Plan::class.java, obj(
                         listOf(
                         Field("kind", { tag("plan") }, optional = false, nullable = false),
-                        Field("rank", { Lng }, optional = false, nullable = false),
+                        Field("rank", { U64 }, optional = false, nullable = false),
                         Field("workspace", { Str }, optional = false, nullable = false),
                         Field("slice", { Str }, optional = false, nullable = false),
                         Field("k", { Int32 }, optional = false, nullable = false),
@@ -11244,7 +11257,7 @@ sealed interface NeedsItem {
                 Variant("manual", NeedsItem.Manual::class.java, obj(
                         listOf(
                         Field("kind", { tag("manual") }, optional = false, nullable = false),
-                        Field("rank", { Lng }, optional = false, nullable = false),
+                        Field("rank", { U64 }, optional = false, nullable = false),
                         Field("manual", { ManualItem.ADAPTER }, optional = false, nullable = false),
                         ),
                         { a -> NeedsItem.Manual(a[1] as Long, a[2] as ManualItem) },
@@ -13785,7 +13798,7 @@ data class Preview(
             Field("lines", { arr(ScreenLine.ADAPTER) }, optional = false, nullable = false),
             Field("scrollback_lines", { Lng }, optional = false, nullable = false),
             Field("capped", { Bool }, optional = false, nullable = false),
-            Field("captured_at", { Lng }, optional = false, nullable = false),
+            Field("captured_at", { U64 }, optional = false, nullable = false),
             Field("captured_at_text", { Str }, optional = false, nullable = false),
             ),
             { a -> Preview(a[0] as String, a[1] as Int, a[2] as Int, a[3] as Cursor, a[4] as List<ScreenLine>, a[5] as Long, a[6] as Boolean, a[7] as Long, a[8] as String) },
@@ -14783,7 +14796,7 @@ data class QuotaAccount(
             Field("warm", { QuotaWarm.ADAPTER }, optional = false, nullable = false),
             Field("agent", { Str }, optional = false, nullable = false),
             Field("account", { Str }, optional = false, nullable = false),
-            Field("seenAt", { Lng }, optional = false, nullable = false),
+            Field("seenAt", { U64 }, optional = false, nullable = false),
             Field("seenAtText", { Str }, optional = false, nullable = false),
             Field("seenAtRelText", { opt(Str) }, optional = true, nullable = true),
             Field("reading", { QuotaReadingShown.ADAPTER }, optional = false, nullable = false),
@@ -14830,7 +14843,7 @@ data class QuotaAccountHead(
             listOf(
             Field("agent", { Str }, optional = false, nullable = false),
             Field("account", { Str }, optional = false, nullable = false),
-            Field("seenAt", { Lng }, optional = false, nullable = false),
+            Field("seenAt", { U64 }, optional = false, nullable = false),
             Field("seenAtText", { Str }, optional = false, nullable = false),
             Field("seenAtRelText", { opt(Str) }, optional = true, nullable = true),
             Field("reading", { QuotaReadingShown.ADAPTER }, optional = false, nullable = false),
@@ -14937,7 +14950,7 @@ data class QuotaOverageShown(
             Field("status", { opt(QuotaStatus.ADAPTER) }, optional = true, nullable = true),
             Field("disabled", { opt(Str) }, optional = true, nullable = true),
             Field("inUse", { Bool }, optional = false, nullable = false),
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
             Field("resetsAtText", { opt(Str) }, optional = true, nullable = true),
             Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
             ),
@@ -14990,7 +15003,7 @@ data class QuotaRead(
             Field("reason", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             Field("path", { opt(Str) }, optional = false, nullable = true),
-            Field("now", { Lng }, optional = false, nullable = false),
+            Field("now", { U64 }, optional = false, nullable = false),
             Field("accounts", { arr(QuotaAccount.ADAPTER) }, optional = false, nullable = false),
             Field("unseen", { arr(QuotaUnseen.ADAPTER) }, optional = false, nullable = false),
             Field("candidates", { arr(QuotaCandidate.ADAPTER) }, optional = false, nullable = false),
@@ -15037,7 +15050,7 @@ data class QuotaReadingShown(
             Field("limiting", { opt(Str) }, optional = true, nullable = true),
             Field("windows", { arr(QuotaWindowRead.ADAPTER) }, optional = false, nullable = false),
             Field("overage", { opt(QuotaOverageShown.ADAPTER) }, optional = true, nullable = true),
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
             Field("resetsAtText", { opt(Str) }, optional = true, nullable = true),
             Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
             ),
@@ -15058,7 +15071,7 @@ data class QuotaResetsAt(
     companion object {
         val ADAPTER: JsonAdapter<QuotaResetsAt> = obj(
             listOf(
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
             Field("resetsAtText", { opt(Str) }, optional = true, nullable = true),
             Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
             ),
@@ -15317,7 +15330,7 @@ data class QuotaWindowRead(
             Field("name", { Str }, optional = false, nullable = false),
             Field("used", { opt(Dbl) }, optional = true, nullable = true),
             Field("warnedAt", { opt(Dbl) }, optional = true, nullable = true),
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
             Field("resetsAtText", { opt(Str) }, optional = true, nullable = true),
             Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
             ),
@@ -15339,7 +15352,7 @@ data class QuotaWindowSeen(
     companion object {
         val ADAPTER: JsonAdapter<QuotaWindowSeen> = obj(
             listOf(
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
             Field("atText", { Str }, optional = false, nullable = false),
             Field("atRelText", { opt(Str) }, optional = true, nullable = true),
             Field("from", { QuotaSource.ADAPTER }, optional = false, nullable = false),
@@ -15421,8 +15434,8 @@ data class ReadChunkReply(
         val ADAPTER: JsonAdapter<ReadChunkReply> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("offset", { Lng }, optional = false, nullable = false),
-            Field("size", { Lng }, optional = false, nullable = false),
+            Field("offset", { U64 }, optional = false, nullable = false),
+            Field("size", { U64 }, optional = false, nullable = false),
             Field("eof", { Bool }, optional = false, nullable = false),
             Field("content", { HexBytes.ADAPTER }, optional = false, nullable = false),
             ),
@@ -15444,8 +15457,8 @@ data class ReadChunkReq(
         val ADAPTER: JsonAdapter<ReadChunkReq> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("offset", { Lng }, optional = false, nullable = false),
-            Field("len", { Lng }, optional = false, nullable = false),
+            Field("offset", { U64 }, optional = false, nullable = false),
+            Field("len", { U64 }, optional = false, nullable = false),
             ),
             { a -> ReadChunkReq(a[0] as WirePath, a[1] as Long, a[2] as Long) },
             { v -> arrayOf(v.path, v.offset, v.len) },
@@ -15465,8 +15478,8 @@ data class ReadRow(
     companion object {
         val ADAPTER: JsonAdapter<ReadRow> = obj(
             listOf(
-            Field("end", { opt(Lng) }, optional = false, nullable = true),
-            Field("hash", { Lng }, optional = false, nullable = false),
+            Field("end", { opt(U64) }, optional = false, nullable = true),
+            Field("hash", { U64 }, optional = false, nullable = false),
             Field("record", { opt(LineRecord.ADAPTER) }, optional = true, nullable = true),
             Field("cwd", { opt(Str) }, optional = true, nullable = true),
             ),
@@ -15490,7 +15503,7 @@ data class ReadTextReply(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
             Field("sha256", { Str }, optional = false, nullable = false),
             ),
             { a -> ReadTextReply(a[0] as WirePath, a[1] as String, a[2] as Long, a[3] as String) },
@@ -15510,7 +15523,7 @@ data class ReadTextReq(
         val ADAPTER: JsonAdapter<ReadTextReq> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("max_bytes", { Lng }, optional = false, nullable = false),
+            Field("max_bytes", { U64 }, optional = false, nullable = false),
             ),
             { a -> ReadTextReq(a[0] as WirePath, a[1] as Long) },
             { v -> arrayOf(v.path, v.maxBytes) },
@@ -15534,12 +15547,12 @@ data class RebuildReply(
         val ADAPTER: JsonAdapter<RebuildReply> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("entries", { Lng }, optional = false, nullable = false),
-            Field("resident_bytes", { Lng }, optional = false, nullable = false),
-            Field("unreadable_dirs", { Lng }, optional = false, nullable = false),
+            Field("entries", { U64 }, optional = false, nullable = false),
+            Field("resident_bytes", { U64 }, optional = false, nullable = false),
+            Field("unreadable_dirs", { U64 }, optional = false, nullable = false),
             Field("unreadable_paths", { arr(WirePath.ADAPTER) }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
-            Field("skipped_mounts", { Lng }, optional = false, nullable = false),
+            Field("skipped_mounts", { U64 }, optional = false, nullable = false),
             ),
             { a -> RebuildReply(a[0] as WirePath, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as List<WirePath>, a[5] as Boolean, a[6] as Long) },
             { v -> arrayOf(v.path, v.entries, v.residentBytes, v.unreadableDirs, v.unreadablePaths, v.truncated, v.skippedMounts) },
@@ -15614,8 +15627,8 @@ data class RecordLine(
             listOf(
             Field("session_id", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
-            Field("seq", { Lng }, optional = false, nullable = false),
-            Field("end", { opt(Lng) }, optional = false, nullable = true),
+            Field("seq", { U64 }, optional = false, nullable = false),
+            Field("end", { opt(U64) }, optional = false, nullable = true),
             Field("cwd", { opt(Str) }, optional = false, nullable = true),
             Field("record", { LineRecord.ADAPTER }, optional = false, nullable = false),
             ),
@@ -15834,7 +15847,7 @@ data class ResumeWith(
             listOf(
             Field("model", { opt(Str) }, optional = true, nullable = true),
             Field("permissionMode", { opt(Str) }, optional = true, nullable = true),
-            Field("end", { Lng }, optional = false, nullable = false),
+            Field("end", { U64 }, optional = false, nullable = false),
             ),
             { a -> ResumeWith(a[0] as String?, a[1] as String?, a[2] as Long) },
             { v -> arrayOf(v.model, v.permissionMode, v.end) },
@@ -16105,8 +16118,8 @@ data class RotDaySeg(
     companion object {
         val ADAPTER: JsonAdapter<RotDaySeg> = obj(
             listOf(
-            Field("from", { Lng }, optional = false, nullable = false),
-            Field("to", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
+            Field("to", { U64 }, optional = false, nullable = false),
             Field("fromText", { Str }, optional = false, nullable = false),
             Field("toText", { Str }, optional = false, nullable = false),
             Field("v", { Dbl }, optional = false, nullable = false),
@@ -16370,7 +16383,7 @@ sealed interface RotHint {
                 Variant("hold", RotHint.Hold::class.java, obj(
                         listOf(
                         Field("k", { tag("hold") }, optional = false, nullable = false),
-                        Field("until", { opt(Lng) }, optional = true, nullable = true),
+                        Field("until", { opt(U64) }, optional = true, nullable = true),
                         Field("account", { opt(Str) }, optional = true, nullable = true),
                         Field("untilText", { opt(Str) }, optional = true, nullable = true),
                         ),
@@ -16468,7 +16481,7 @@ data class RotLog(
     companion object {
         val ADAPTER: JsonAdapter<RotLog> = obj(
             listOf(
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
             Field("from", { Str }, optional = false, nullable = false),
             Field("to", { Str }, optional = false, nullable = false),
             Field("cause", { RotLogCause.ADAPTER }, optional = false, nullable = false),
@@ -16543,7 +16556,7 @@ sealed interface RotLogCause {
                 Variant("hold", RotLogCause.Hold::class.java, obj(
                         listOf(
                         Field("k", { tag("hold") }, optional = false, nullable = false),
-                        Field("until", { opt(Lng) }, optional = true, nullable = true),
+                        Field("until", { opt(U64) }, optional = true, nullable = true),
                         ),
                         { a -> RotLogCause.Hold(a[1] as Long?) },
                         { v -> arrayOf("hold", v.until) },
@@ -16575,7 +16588,7 @@ data class RotLogRow(
         val ADAPTER: JsonAdapter<RotLogRow> = obj(
             listOf(
             Field("because", { Str }, optional = false, nullable = false),
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
             Field("from", { Str }, optional = false, nullable = false),
             Field("to", { Str }, optional = false, nullable = false),
             Field("cause", { RotLogCause.ADAPTER }, optional = false, nullable = false),
@@ -16661,7 +16674,7 @@ data class RotPast(
     companion object {
         val ADAPTER: JsonAdapter<RotPast> = obj(
             listOf(
-            Field("from", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
             Field("uses", { arr(RotPastUse.ADAPTER) }, optional = false, nullable = false),
             Field("lanes", { arr(RotPastLane.ADAPTER) }, optional = false, nullable = false),
             ),
@@ -16703,8 +16716,8 @@ data class RotPastSeg(
     companion object {
         val ADAPTER: JsonAdapter<RotPastSeg> = obj(
             listOf(
-            Field("from", { Lng }, optional = false, nullable = false),
-            Field("to", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
+            Field("to", { U64 }, optional = false, nullable = false),
             Field("sendable", { Bool }, optional = false, nullable = false),
             Field("reset", { Bool }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
@@ -16727,8 +16740,8 @@ data class RotPastUse(
     companion object {
         val ADAPTER: JsonAdapter<RotPastUse> = obj(
             listOf(
-            Field("from", { Lng }, optional = false, nullable = false),
-            Field("to", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
+            Field("to", { U64 }, optional = false, nullable = false),
             Field("account", { opt(Str) }, optional = true, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             ),
@@ -16950,14 +16963,14 @@ data class RotTryDecision(
         val ADAPTER: JsonAdapter<RotTryDecision> = obj(
             listOf(
             Field("pick", { opt(Str) }, optional = true, nullable = true),
-            Field("holdUntil", { opt(Lng) }, optional = true, nullable = true),
+            Field("holdUntil", { opt(U64) }, optional = true, nullable = true),
             Field("holdAccount", { opt(Str) }, optional = true, nullable = true),
             Field("order", { arr(Str) }, optional = false, nullable = false),
             Field("why", { arr(RotTryRow.ADAPTER) }, optional = false, nullable = false),
             Field("fromTemp", { Bool }, optional = false, nullable = false),
             Field("skipped", { arr(Str) }, optional = false, nullable = false),
             Field("temp", { arr(Str) }, optional = false, nullable = false),
-            Field("nextNode", { opt(Lng) }, optional = true, nullable = true),
+            Field("nextNode", { opt(U64) }, optional = true, nullable = true),
             Field("strategyError", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> RotTryDecision(a[0] as String?, a[1] as Long?, a[2] as String?, a[3] as List<String>, a[4] as List<RotTryRow>, a[5] as Boolean, a[6] as List<String>, a[7] as List<String>, a[8] as Long?, a[9] as String?) },
@@ -17015,7 +17028,7 @@ data class RotTrySwitch(
     companion object {
         val ADAPTER: JsonAdapter<RotTrySwitch> = obj(
             listOf(
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
             Field("atText", { Str }, optional = false, nullable = false),
             Field("account", { Str }, optional = false, nullable = false),
             ),
@@ -17035,7 +17048,7 @@ data class RotTryTick(
     companion object {
         val ADAPTER: JsonAdapter<RotTryTick> = obj(
             listOf(
-            Field("at", { Lng }, optional = false, nullable = false),
+            Field("at", { U64 }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             ),
             { a -> RotTryTick(a[0] as Long, a[1] as String) },
@@ -17084,8 +17097,8 @@ data class RotTryUse(
     companion object {
         val ADAPTER: JsonAdapter<RotTryUse> = obj(
             listOf(
-            Field("from", { Lng }, optional = false, nullable = false),
-            Field("to", { Lng }, optional = false, nullable = false),
+            Field("from", { U64 }, optional = false, nullable = false),
+            Field("to", { U64 }, optional = false, nullable = false),
             Field("account", { opt(Str) }, optional = true, nullable = true),
             Field("fromTemp", { Bool }, optional = false, nullable = false),
             Field("capUnknown", { Bool }, optional = false, nullable = false),
@@ -17109,7 +17122,7 @@ data class RotUnusable(
         val ADAPTER: JsonAdapter<RotUnusable> = obj(
             listOf(
             Field("why", { opt(FactWhy.ADAPTER) }, optional = true, nullable = true),
-            Field("until", { opt(Lng) }, optional = true, nullable = true),
+            Field("until", { opt(U64) }, optional = true, nullable = true),
             ),
             { a -> RotUnusable(a[0] as FactWhy?, a[1] as Long?) },
             { v -> arrayOf(v.why, v.until) },
@@ -17127,7 +17140,7 @@ data class RotationFactsReply(
     companion object {
         val ADAPTER: JsonAdapter<RotationFactsReply> = obj(
             listOf(
-            Field("now", { Lng }, optional = false, nullable = false),
+            Field("now", { U64 }, optional = false, nullable = false),
             Field("accounts", { arr(Fact.ADAPTER) }, optional = false, nullable = false),
             ),
             { a -> RotationFactsReply(a[0] as Long, a[1] as List<Fact>) },
@@ -17399,7 +17412,7 @@ data class RotationTryReply(
     companion object {
         val ADAPTER: JsonAdapter<RotationTryReply> = obj(
             listOf(
-            Field("now", { Lng }, optional = false, nullable = false),
+            Field("now", { U64 }, optional = false, nullable = false),
             Field("description", { Str }, optional = false, nullable = false),
             Field("source", { opt(Str) }, optional = true, nullable = true),
             Field("useNowRefused", { opt(Lng) }, optional = true, nullable = true),
@@ -17505,7 +17518,7 @@ data class RotationViewReply(
     companion object {
         val ADAPTER: JsonAdapter<RotationViewReply> = obj(
             listOf(
-            Field("now", { Lng }, optional = false, nullable = false),
+            Field("now", { U64 }, optional = false, nullable = false),
             Field("nowText", { Str }, optional = false, nullable = false),
             Field("title", { opt(Str) }, optional = false, nullable = true),
             Field("strategy", { opt(RotStrategyItem.ADAPTER) }, optional = false, nullable = true),
@@ -17679,10 +17692,10 @@ data class RunInfo(
             Field("state", { RunState.ADAPTER }, optional = false, nullable = false),
             Field("last", { opt(RunDid.ADAPTER) }, optional = true, nullable = true),
             Field("waiting", { opt(Str) }, optional = true, nullable = true),
-            Field("started_ms", { opt(Lng) }, optional = true, nullable = true),
+            Field("started_ms", { opt(U64) }, optional = true, nullable = true),
             Field("started_text", { opt(Str) }, optional = true, nullable = true),
-            Field("active_ms", { opt(Lng) }, optional = true, nullable = true),
-            Field("ended_ms", { opt(Lng) }, optional = true, nullable = true),
+            Field("active_ms", { opt(U64) }, optional = true, nullable = true),
+            Field("ended_ms", { opt(U64) }, optional = true, nullable = true),
             Field("why", { opt(RunWhy.ADAPTER) }, optional = true, nullable = true),
             Field("error", { opt(Str) }, optional = true, nullable = true),
             Field("calls", { opt(Int32) }, optional = true, nullable = true),
@@ -17858,8 +17871,8 @@ data class SearchHit(
             Field("matched", { Str }, optional = false, nullable = false),
             Field("after", { Str }, optional = false, nullable = false),
             Field("tool", { opt(Str) }, optional = true, nullable = true),
-            Field("offset", { Lng }, optional = false, nullable = false),
-            Field("line", { Lng }, optional = false, nullable = false),
+            Field("offset", { U64 }, optional = false, nullable = false),
+            Field("line", { U64 }, optional = false, nullable = false),
             ),
             { a -> SearchHit(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as String?, a[7] as Long, a[8] as Long) },
             { v -> arrayOf(v.uuid, v.tsMs, v.kind, v.before, v.matched, v.after, v.tool, v.offset, v.line) },
@@ -18409,7 +18422,7 @@ data class SessionFileReread(
             Field("session_id", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
             Field("why", { RereadWhy.ADAPTER }, optional = false, nullable = false),
-            Field("lines", { Lng }, optional = false, nullable = false),
+            Field("lines", { U64 }, optional = false, nullable = false),
             ),
             { a -> SessionFileReread(a[0] as String, a[1] as String, a[2] as RereadWhy, a[3] as Long) },
             { v -> arrayOf(v.sessionId, v.path, v.why, v.lines) },
@@ -18932,13 +18945,13 @@ data class SizeReply(
         val ADAPTER: JsonAdapter<SizeReply> = obj(
             listOf(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
-            Field("bytes", { Lng }, optional = false, nullable = false),
-            Field("files", { Lng }, optional = false, nullable = false),
-            Field("dirs", { Lng }, optional = false, nullable = false),
-            Field("links", { Lng }, optional = false, nullable = false),
-            Field("other", { Lng }, optional = false, nullable = false),
-            Field("skipped_mounts", { Lng }, optional = false, nullable = false),
-            Field("unreadable_dirs", { Lng }, optional = false, nullable = false),
+            Field("bytes", { U64 }, optional = false, nullable = false),
+            Field("files", { U64 }, optional = false, nullable = false),
+            Field("dirs", { U64 }, optional = false, nullable = false),
+            Field("links", { U64 }, optional = false, nullable = false),
+            Field("other", { U64 }, optional = false, nullable = false),
+            Field("skipped_mounts", { U64 }, optional = false, nullable = false),
+            Field("unreadable_dirs", { U64 }, optional = false, nullable = false),
             ),
             { a -> SizeReply(a[0] as WirePath, a[1] as Long, a[2] as Long, a[3] as Long, a[4] as Long, a[5] as Long, a[6] as Long, a[7] as Long) },
             { v -> arrayOf(v.path, v.bytes, v.files, v.dirs, v.links, v.other, v.skippedMounts, v.unreadableDirs) },
@@ -19282,7 +19295,7 @@ data class SlotShow(
             listOf(
             Field("slot", { Str }, optional = false, nullable = false),
             Field("pct", { opt(Int32) }, optional = true, nullable = true),
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
             Field("resetsAtText", { opt(Str) }, optional = true, nullable = true),
             Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
             Field("resetText", { opt(Str) }, optional = true, nullable = true),
@@ -19751,10 +19764,10 @@ data class StatReply(
             Field("path", { WirePath.ADAPTER }, optional = false, nullable = false),
             Field("up", { opt(WirePath.ADAPTER) }, optional = false, nullable = true),
             Field("kind", { FileKind.ADAPTER }, optional = false, nullable = false),
-            Field("size", { Lng }, optional = false, nullable = false),
+            Field("size", { U64 }, optional = false, nullable = false),
             Field("readonly", { Bool }, optional = false, nullable = false),
             Field("mode", { opt(Int32) }, optional = true, nullable = true),
-            Field("mtime_secs", { opt(Lng) }, optional = true, nullable = true),
+            Field("mtime_secs", { opt(U64) }, optional = true, nullable = true),
             Field("mtime_text", { opt(Str) }, optional = true, nullable = true),
             Field("mtime_full", { opt(Str) }, optional = true, nullable = true),
             Field("owner", { opt(Str) }, optional = false, nullable = true),
@@ -20020,7 +20033,7 @@ sealed interface StreamEv {
                 Variant("block", StreamEv.Block::class.java, obj(
                         listOf(
                         Field("t", { tag("block") }, optional = false, nullable = false),
-                        Field("i", { Lng }, optional = false, nullable = false),
+                        Field("i", { U64 }, optional = false, nullable = false),
                         Field("kind", { BlockKind.ADAPTER }, optional = false, nullable = false),
                         Field("tool", { opt(Str) }, optional = true, nullable = true),
                         ),
@@ -20030,7 +20043,7 @@ sealed interface StreamEv {
                 Variant("text", StreamEv.Text::class.java, obj(
                         listOf(
                         Field("t", { tag("text") }, optional = false, nullable = false),
-                        Field("i", { Lng }, optional = false, nullable = false),
+                        Field("i", { U64 }, optional = false, nullable = false),
                         Field("s", { Str }, optional = false, nullable = false),
                         ),
                         { a -> StreamEv.Text(a[1] as Long, a[2] as String) },
@@ -20276,10 +20289,10 @@ data class TailPlan(
     companion object {
         val ADAPTER: JsonAdapter<TailPlan> = obj(
             listOf(
-            Field("total", { Lng }, optional = false, nullable = false),
-            Field("tail_from", { Lng }, optional = false, nullable = false),
-            Field("split_at", { Lng }, optional = false, nullable = false),
-            Field("end", { Lng }, optional = false, nullable = false),
+            Field("total", { U64 }, optional = false, nullable = false),
+            Field("tail_from", { U64 }, optional = false, nullable = false),
+            Field("split_at", { U64 }, optional = false, nullable = false),
+            Field("end", { U64 }, optional = false, nullable = false),
             ),
             { a -> TailPlan(a[0] as Long, a[1] as Long, a[2] as Long, a[3] as Long) },
             { v -> arrayOf(v.total, v.tailFrom, v.splitAt, v.end) },
@@ -20641,7 +20654,7 @@ data class TerminalItem(
             Field("clients", { arr(Attached.ADAPTER) }, optional = false, nullable = false),
             Field("input", { TerminalItemInput.ADAPTER }, optional = false, nullable = false),
             Field("state", { TermState.ADAPTER }, optional = false, nullable = false),
-            Field("last_activity", { Lng }, optional = false, nullable = false),
+            Field("last_activity", { U64 }, optional = false, nullable = false),
             Field("can", { TerminalCan.ADAPTER }, optional = false, nullable = false),
             ),
             { a -> TerminalItem(a[0] as String, a[1] as TerminalItemHost, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as TermSession?, a[7] as StartedBy, a[8] as List<Attached>, a[9] as TerminalItemInput, a[10] as TermState, a[11] as Long, a[12] as TerminalCan) },
@@ -20720,7 +20733,7 @@ data class TerminalScreen(
         val ADAPTER: JsonAdapter<TerminalScreen> = obj(
             listOf(
             Field("ticket", { Str }, optional = false, nullable = false),
-            Field("seq", { Lng }, optional = false, nullable = false),
+            Field("seq", { U64 }, optional = false, nullable = false),
             Field("view", { Preview.ADAPTER }, optional = false, nullable = false),
             ),
             { a -> TerminalScreen(a[0] as String, a[1] as Long, a[2] as Preview) },
@@ -20855,7 +20868,7 @@ data class TextPreview(
     companion object {
         val ADAPTER: JsonAdapter<TextPreview> = obj(
             listOf(
-            Field("cap", { Lng }, optional = false, nullable = false),
+            Field("cap", { U64 }, optional = false, nullable = false),
             Field("lang", { opt(Str) }, optional = true, nullable = true),
             ),
             { a -> TextPreview(a[0] as Long, a[1] as String?) },
@@ -21761,7 +21774,7 @@ data class WatchFrom(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
-            Field("seq", { Lng }, optional = false, nullable = false),
+            Field("seq", { U64 }, optional = false, nullable = false),
             ),
             { a -> WatchFrom(a[0] as String, a[1] as String, a[2] as Long) },
             { v -> arrayOf(v.sid, v.path, v.seq) },
@@ -21844,10 +21857,10 @@ data class WinFact(
             listOf(
             Field("open", { Bool }, optional = false, nullable = false),
             Field("used", { Dbl }, optional = false, nullable = false),
-            Field("resets", { opt(Lng) }, optional = true, nullable = true),
+            Field("resets", { opt(U64) }, optional = true, nullable = true),
             Field("resetsText", { opt(Str) }, optional = true, nullable = true),
             Field("rate", { opt(Dbl) }, optional = true, nullable = true),
-            Field("tokensPerPct", { opt(Lng) }, optional = true, nullable = true),
+            Field("tokensPerPct", { opt(U64) }, optional = true, nullable = true),
             ),
             { a -> WinFact(a[0] as Boolean, a[1] as Double, a[2] as Long?, a[3] as String?, a[4] as Double?, a[5] as Long?) },
             { v -> arrayOf(v.open, v.used, v.resets, v.resetsText, v.rate, v.tokensPerPct) },
@@ -21880,14 +21893,14 @@ data class WindowShow(
             Field("name", { Str }, optional = false, nullable = false),
             Field("key", { opt(Str) }, optional = true, nullable = true),
             Field("pct", { opt(Int32) }, optional = true, nullable = true),
-            Field("resetsAt", { opt(Lng) }, optional = true, nullable = true),
+            Field("resetsAt", { opt(U64) }, optional = true, nullable = true),
             Field("resetsAtText", { opt(Str) }, optional = true, nullable = true),
             Field("resetsAtRelText", { opt(Str) }, optional = true, nullable = true),
-            Field("seenAt", { Lng }, optional = false, nullable = false),
+            Field("seenAt", { U64 }, optional = false, nullable = false),
             Field("seenAtText", { opt(Str) }, optional = true, nullable = true),
             Field("seenAtRelText", { opt(Str) }, optional = true, nullable = true),
             Field("from", { QuotaSource.ADAPTER }, optional = false, nullable = false),
-            Field("tokensPerPct", { opt(Lng) }, optional = true, nullable = true),
+            Field("tokensPerPct", { opt(U64) }, optional = true, nullable = true),
             Field("perPctText", { opt(Str) }, optional = true, nullable = true),
             Field("resetSinceSeen", { opt(Bool) }, optional = true, nullable = true),
             Field("tone", { FailOrPlainOrWarn.ADAPTER }, optional = false, nullable = false),

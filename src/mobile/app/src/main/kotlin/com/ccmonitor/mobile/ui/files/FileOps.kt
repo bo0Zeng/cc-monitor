@@ -14,7 +14,7 @@ import com.ccmonitor.mobile.core.claude.link.FilesWriteText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Transfer
-import com.ccmonitor.mobile.core.claude.link.wire.FileKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FileKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
@@ -102,7 +102,7 @@ class FileOps(
     }
 
     /** 此刻的权限位；那台没有这一说 ⇒ `null`。 */
-    suspend fun mode(path: RemotePath): Result<Long?> =
+    suspend fun mode(path: RemotePath): Result<Int?> =
         when (val r = feed.call(FilesStat.COMMAND, FilesStat.args(path))) {
             is Reply.Ok -> Result.success(FilesStat.modeOf(r.data))
             else -> Result.failure(Failed(r.problem(machine(), FilesStat.COMMAND) ?: Problem("", "")))

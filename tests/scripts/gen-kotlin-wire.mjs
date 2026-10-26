@@ -194,6 +194,11 @@ function rustFloatFields() {
           x.floats.add(g[1]);
           x.floats.add(g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
         }
+        // 无符号 64 位（摘要一类，可以大过 Long）⇒ Kotlin 的 Long 照位存、写回照无符号；记成 `u:格名`。
+        for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?u64\b/g)) {
+          x.floats.add("u:" + g[1]);
+          x.floats.add("u:" + g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+        }
         // 32 位以内的整数（Rust 那头装不下更大的）⇒ Kotlin 的 Int；记成 `i:格名`。
         for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?[ui](?:8|16|32)\b/g)) {
           x.floats.add("i:" + g[1]);
@@ -247,7 +252,7 @@ class Gen {
       case "prim":
         if (t.v === "string") return { kt: "String", ad: "Str" };
         if (t.v === "boolean") return { kt: "Boolean", ad: "Bool" };
-        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: "Double", ad: "Dbl" } : ctx.int ? { kt: "Int", ad: "Int32" } : { kt: "Long", ad: "Lng" };
+        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: "Double", ad: "Dbl" } : ctx.int ? { kt: "Int", ad: "Int32" } : ctx.u64 ? { kt: "Long", ad: "U64" } : { kt: "Long", ad: "Lng" };
         return { kt: "Raw", ad: "RawJson" };
       case "array": {
         const e = this.ty(t.of, ctx);
@@ -443,7 +448,7 @@ class Gen {
 
   fieldSpecs(fields, ctx) {
     return fields.map((f) => {
-      const x = this.ty(f.ty, { ...ctx, field: f.key, float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key) });
+      const x = this.ty(f.ty, { ...ctx, field: f.key, float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key), u64: ctx.floats?.has("u:" + f.key) });
       const nullable = x.kt.endsWith("?") || f.opt;
       const kt = f.opt && !x.kt.endsWith("?") ? x.kt + "?" : x.kt;
       const ad = f.opt && !x.kt.endsWith("?") ? `opt(${x.ad})` : x.ad;
@@ -541,7 +546,7 @@ class Gen {
     const rows = [];
     for (const f of fields) {
       const vname = pascal(f.key) || "Empty";
-      const x = this.ty(f.ty, { ...ctx, owner: name + vname, field: "value", float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key) });
+      const x = this.ty(f.ty, { ...ctx, owner: name + vname, field: "value", float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key), u64: ctx.floats?.has("u:" + f.key) });
       code.push(`    data class ${vname}${tp}(\n        val value: ${x.kt},\n    ) : ${name}${tp}`);
       rows.push(`                Ext("${esc(f.key)}", ${cast(`${name}.${vname}::class.java`, name, tp)}, { ${x.ad} }, { ${name}.${vname}${tp}(it as ${x.kt}) }, { (it as ${name}.${vname}${tp}).value }),`);
     }
@@ -632,7 +637,10 @@ import com.squareup.moshi.JsonWriter
 
 /** 线上原样的一段 JSON（声明里认不出的那几形）：读进来什么、写回去就是什么。 */
 @JvmInline
-value class Raw(val json: String)
+value class Raw(val json: String) {
+    /** 那一段读成 JSON 值（串 · 数 · 真假 · null · 列表 · 键值）。 */
+    val value: Any? get() = JsonReader.of(okio.Buffer().writeUtf8(json)).readJsonValue()
+}
 
 /**
  * 对象的一格：线上键 · 它的编解码（头一回用到才取：各类的编解码互相引用，不按初始化先后）·
@@ -669,9 +677,19 @@ val Str: JsonAdapter<String> = prim({ it.nextString() }, { w, v -> w.value(v) },
 val Bool: JsonAdapter<Boolean> = prim({ it.nextBoolean() }, { w, v -> w.value(v) }, "boolean")
 val Lng: JsonAdapter<Long> = prim({ it.nextLong() }, { w, v -> w.value(v) }, "integer")
 val Int32: JsonAdapter<Int> = prim({ it.nextInt() }, { w, v -> w.value(v) }, "integer")
+/** 无符号 64 位：照位存进 Long；读的时候不管它过没过 JSON 数（大于 Long 的照无符号读），写回照无符号的字。 */
+val U64: JsonAdapter<Long> =
+    prim({ it.nextString().toBigDecimal().toBigInteger().toLong() }, { w, v -> if (v >= 0) w.value(v) else w.valueSink().use { s -> s.writeUtf8(java.lang.Long.toUnsignedString(v)) } }, "integer")
 val Dbl: JsonAdapter<Double> = prim({ it.nextDouble() }, { w, v -> w.value(v) }, "number")
+/** 那一段原样（null 也是一段）。 */
 val RawJson: JsonAdapter<Raw> =
-    prim({ r -> r.nextSource().use { Raw(it.readUtf8()) } }, { w, v -> w.valueSink().use { it.writeUtf8(v.json) } }, "raw json")
+    object : JsonAdapter<Raw>() {
+        override fun fromJson(reader: JsonReader): Raw = reader.nextSource().use { Raw(it.readUtf8()) }
+
+        override fun toJson(writer: JsonWriter, value: Raw?) {
+            writer.valueSink().use { it.writeUtf8((value ?: throw mismatch("raw json must not be null")).json) }
+        }
+    }
 
 /** 照原样留着、还没装进线上类型的那一段（带键集合手上那一份逐项存盘 · 用时才各按自己的类型解）。 */
 val JsonValue: JsonAdapter<Any> =

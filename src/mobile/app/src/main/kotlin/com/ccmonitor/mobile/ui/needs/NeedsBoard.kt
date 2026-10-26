@@ -5,7 +5,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job

@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.AnswerReq
-import com.ccmonitor.mobile.core.claude.link.wire.AskPick
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AnswerReq
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AskPick
 
 /*
- * 答题口（`needs.ask` · `needs-answer`）：挂着的请求是 `sessions-needs` 那一份里的 `NeedsAsk`（线上类型，`wire/WireTypes.kt`）；
+ * 答题口（`needs.ask` · `needs-answer`）：挂着的请求是 `sessions-needs` 那一份里的 `NeedsAsk`（线上类型，生成的 `wire/Generated.kt`）；
  * 这里只有答那一条：入参照线上的 `AnswerReq` 出，与桌面 · 后端同一形。
  */
 

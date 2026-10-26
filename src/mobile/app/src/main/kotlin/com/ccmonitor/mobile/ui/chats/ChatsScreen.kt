@@ -47,8 +47,8 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine

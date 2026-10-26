@@ -40,9 +40,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.LinkState
-import com.ccmonitor.mobile.core.claude.link.wire.QuotaCell
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
-import com.ccmonitor.mobile.core.claude.link.wire.UsageTone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FailOrPlainOrWarn
+import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaCell
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
@@ -266,13 +266,13 @@ private fun SkeletonCard() {
 
 @Composable
 private fun usageInk(
-    tone: UsageTone,
+    tone: FailOrPlainOrWarn,
     plain: Color,
 ): Color =
     when (tone) {
-        UsageTone.FAIL -> LocalAppTokens.current.errorText
-        UsageTone.WARN -> LocalAppTokens.current.warn
-        UsageTone.PLAIN -> plain
+        FailOrPlainOrWarn.FAIL -> LocalAppTokens.current.errorText
+        FailOrPlainOrWarn.WARN -> LocalAppTokens.current.warn
+        FailOrPlainOrWarn.PLAIN -> plain
     }
 
 @Composable
@@ -286,11 +286,11 @@ private fun cellInk(
         Tone.PLAIN, Tone.NOW, Tone.BUSY -> plain
     }
 
-private fun toneOf(t: UsageTone): Tone =
+private fun toneOf(t: FailOrPlainOrWarn): Tone =
     when (t) {
-        UsageTone.FAIL -> Tone.FAIL
-        UsageTone.WARN -> Tone.WARN
-        UsageTone.PLAIN -> Tone.PLAIN
+        FailOrPlainOrWarn.FAIL -> Tone.FAIL
+        FailOrPlainOrWarn.WARN -> Tone.WARN
+        FailOrPlainOrWarn.PLAIN -> Tone.PLAIN
     }
 
 /** 给冒烟与 UI 测试认的 tag（与字解耦）。 */

@@ -1,12 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.DirChecked
-import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
-import com.ccmonitor.mobile.core.claude.link.wire.LoginStarted
-import com.ccmonitor.mobile.core.claude.link.wire.LoginTarget
-import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.AccountsList as WireAccounts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.DirChecked
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStarted
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationStrategiesReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountsList as WireAccounts
 
 /*
  * 新建会话那几屏问那台的几条（`IPC-COMMANDS.md` 各节）：手机只拼入参、解成品，默认值 · 能不能选 · 在不在都是那台的事实。
@@ -61,7 +60,7 @@ object Login {
     fun account(
         agent: String,
         account: String,
-    ): LoginStartReq = LoginStartReq(kind = LoginTarget.ACCOUNT, agent = agent, account = account, server = null, projectDir = null)
+    ): LoginStartReq = LoginStartReq.Account(agent = agent, account = account)
 
     fun finish(
         job: String,

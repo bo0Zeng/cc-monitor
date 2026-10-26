@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.CommandScope
-import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CommandScope
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ModeSwitchResult
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAct
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -65,7 +65,7 @@ class SessionsMidTest {
     @Test
     fun `history-facts：入参只有路径；chip 上的两个显示字照抄，没有就是没有`() {
         assertEquals(mapOf("path" to "/p/s.jsonl"), HistoryFacts.args("/p/s.jsonl"))
-        val f = HistoryFacts.of(mapOf("modelText" to "Opus 4.5", "permissionModeText" to null))!!
+        val f = HistoryFacts.of(Fixtures.facts("modelText" to "Opus 4.5"))!!
         assertEquals("Opus 4.5", f.modelText)
         assertNull(f.permissionModeText)
     }
@@ -77,6 +77,7 @@ class SessionsMidTest {
                 mapOf(
                     "recent" to emptyList<Any>(),
                     "tmux" to true,
+                    "run" to "tmux",
                     "agents" to
                         listOf(
                             mapOf(

@@ -53,8 +53,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsNote
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph

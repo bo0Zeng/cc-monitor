@@ -1,9 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.LiveCardFrame
-import com.ccmonitor.mobile.core.claude.link.wire.LiveOpWord
-import com.ccmonitor.mobile.core.claude.link.wire.LivePhaseWord
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LivePhase
 
 /**
  * 流上的 `live_card` 帧（`IPC-COMMANDS.md`「`live_card`」，后端 `stream/live.rs` 出的成品）：某个会话某个运行里正在说的那一次上游应答，
@@ -55,23 +54,15 @@ data class LiveFrame(
         /** 是活卡帧 ⇒ 装进声明的类（核心按 `cmd-wire` 那一份重写过）；不是 ⇒ `null`；装不进 · 那一种 `op` 该有的格缺 ⇒ `null`（调用方报一次契约对不上）。 */
         fun of(frame: Map<String, Any?>): LiveFrame? {
             if (frame.str("kind") != KIND) return null
-            val f = Wire.bind<LiveCardFrame>(frame) ?: return null
-            return decoding {
-                val op =
-                    when (f.op) {
-                        LiveOpWord.OPEN ->
-                            Op.Open(
-                                rid = f.rid.need(),
-                                awaiting = f.phase.need() == LivePhaseWord.AWAITING,
-                                clipped = f.clipped.need(),
-                                blocks = f.blocks.need().map { LiveBlock(it.kind, it.text.orEmpty(), it.tool) },
-                            )
-                        LiveOpWord.BLOCK -> Op.Block(f.i.need().toInt(), f.block.need(), f.tool)
-                        LiveOpWord.TEXT -> Op.Text(f.i.need().toInt(), f.s.need())
-                        LiveOpWord.AWAITING -> Op.Awaiting
-                        LiveOpWord.CLOSE -> Op.Close
-                    }
-                LiveFrame(f.sid, f.run, f.card, f.n, op)
+            return when (val f = Wire.bind<LiveCard>(frame) ?: return null) {
+                is LiveCard.Open -> {
+                    val blocks = f.blocks.map { LiveBlock(it.kind.wire, it.text.orEmpty(), it.tool) }
+                    LiveFrame(f.sid, f.run, f.card, f.n, Op.Open(f.rid, f.phase == LivePhase.AWAITING, f.clipped, blocks))
+                }
+                is LiveCard.Block -> LiveFrame(f.sid, f.run, f.card, f.n, Op.Block(f.i.toInt(), f.block.wire, f.tool))
+                is LiveCard.Text -> LiveFrame(f.sid, f.run, f.card, f.n, Op.Text(f.i.toInt(), f.s))
+                is LiveCard.Awaiting -> LiveFrame(f.sid, f.run, f.card, f.n, Op.Awaiting)
+                is LiveCard.Close -> LiveFrame(f.sid, f.run, f.card, f.n, Op.Close)
             }
         }
 

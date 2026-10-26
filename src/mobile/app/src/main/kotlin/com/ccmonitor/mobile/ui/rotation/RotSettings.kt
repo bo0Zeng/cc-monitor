@@ -2,12 +2,12 @@ package com.ccmonitor.mobile.ui.rotation
 
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotSegment
-import com.ccmonitor.mobile.core.claude.link.wire.RotCell
-import com.ccmonitor.mobile.core.claude.link.wire.RotFrom
-import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
-import com.ccmonitor.mobile.core.claude.link.wire.RotMark
-import com.ccmonitor.mobile.core.claude.link.wire.RotRow
-import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotCell
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFrom
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotHint
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotMark
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
 
 /*
@@ -43,7 +43,7 @@ internal fun segsShown(cell: RotCell): Boolean = !(cell.same != null && cell.fro
  * 编辑小窗底行：「改的是策略「X」 · 改一格就存成新版」接那台写的「N 个会话还在用旧版」（有 ⇒ 带［都载入新版］）或「没有会话在用」。
  */
 internal fun paneFoot(view: RotationViewReply): Pair<String, Boolean> {
-    val older = view.hints.firstOrNull { it.hint.k == RotHintKind.OLDER }
+    val older = view.hints.firstOrNull { it.hint is RotHint.Older }
     val tail =
         when {
             older != null -> listOf(older.text)

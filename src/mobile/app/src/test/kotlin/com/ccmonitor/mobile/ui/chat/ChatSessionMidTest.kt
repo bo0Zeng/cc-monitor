@@ -3,11 +3,11 @@ package com.ccmonitor.mobile.ui.chat
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Said
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.Allow
-import com.ccmonitor.mobile.core.claude.link.wire.CanWord
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Allow
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces
+import com.ccmonitor.mobile.ui.Wires
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -112,7 +112,7 @@ class ChatSessionMidTest {
             val s =
                 existing(link) { cmd, _ ->
                     when (cmd) {
-                        "history-facts" -> Reply.Ok(mapOf("modelText" to "Opus 4.5", "modelPick" to "opus", "permissionModeText" to "自动接受编辑"))
+                        "history-facts" -> Reply.Ok(Wires.facts("modelText" to "Opus 4.5", "modelPick" to "opus", "permissionModeText" to "自动接受编辑"))
                         else -> null
                     }
                 }
@@ -129,7 +129,7 @@ class ChatSessionMidTest {
             val link = FakeCoreLink()
             val s = existing(link) { _, _ -> null }
             val idle = Faces.of("live-idle")
-            link.report("s1", "/h/proj", idle.copy(can = idle.can.copy(model = Allow(CanWord.NO, "本轮结束后可换模型"))))
+            link.report("s1", "/h/proj", idle.copy(can = idle.can.copy(model = Allow.No("本轮结束后可换模型"))))
             runCurrent()
             assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
@@ -169,6 +169,7 @@ class ChatSessionMidTest {
                 mapOf(
                     "recent" to emptyList<Any>(),
                     "tmux" to true,
+                    "run" to "tmux",
                     "agents" to
                         listOf(
                             mapOf(

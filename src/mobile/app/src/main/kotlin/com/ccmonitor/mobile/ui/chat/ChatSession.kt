@@ -19,12 +19,12 @@ import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.Held
-import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
-import com.ccmonitor.mobile.core.claude.link.wire.TailHow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Held
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommands
+import com.ccmonitor.mobile.core.claude.link.wire.gen.TailHow
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -863,7 +863,7 @@ class ChatSession(
         put: (List<LineRecord>) -> Unit,
     ) {
         put(rs)
-        rs.filter { it.t == RecordKind.SAID }.mapNotNullTo(heard) { it.who?.text }
+        rs.filterIsInstance<LineRecord.Said>().mapTo(heard) { it.who.text }
     }
 
     /** 新排进来的记录里出现了同一句人话 ⇒ 那一句的本地标消失（一行只消一句）；其余的接在记录后面。 */
@@ -925,12 +925,10 @@ private suspend fun arrivalOf(
             ?: return answer.sid?.let { Arrival.Sid(it) } ?: Arrival.Missed(unreadableReply(machine, SessionOpen.COMMAND, answer.toString()).text)
     val r = link.call(SessionArrive.COMMAND, SessionArrive.args(ask), withinMs)
     val end = (r as? Reply.Ok)?.let { SessionArrive.of(it.data) }
-    end?.sid?.let { return Arrival.Sid(it) }
-    return Arrival.Missed(
-        when {
-            r !is Reply.Ok -> r.problem(machine, SessionArrive.COMMAND)?.text
-            end == null -> unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text
-            else -> end.said
-        },
-    )
+    return when {
+        end is ArriveEnd.Arrived -> Arrival.Sid(end.sid)
+        end is ArriveEnd.Missed -> Arrival.Missed(end.said)
+        r !is Reply.Ok -> Arrival.Missed(r.problem(machine, SessionArrive.COMMAND)?.text)
+        else -> Arrival.Missed(unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text)
+    }
 }

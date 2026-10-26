@@ -1,13 +1,16 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.FileKind
-import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
-import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
-import com.ccmonitor.mobile.core.claude.link.wire.LsHead
-import com.ccmonitor.mobile.core.claude.link.wire.ReadTextReply
-import com.ccmonitor.mobile.core.claude.link.wire.StatReply
-import com.ccmonitor.mobile.core.claude.link.wire.SyncPatch
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FileKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FilesPathReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Gate
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LsEntry
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LsHead
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PreviewGate
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ReadTextReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.StatReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.WirePath
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -50,11 +53,10 @@ class RemotePath(
         fun of(text: String): RemotePath = RemotePath(text.toByteArray(Charsets.UTF_8))
 
         /** 线上那一形 ⇒ 路径；认不出 ⇒ `null`。 */
-        fun of(wire: Any?): RemotePath? =
+        fun of(wire: WirePath): RemotePath? =
             when (wire) {
-                is String -> of(wire)
-                is Map<*, *> -> (wire[HEX_KEY] as? String)?.let(::unhex)?.let(::RemotePath)
-                else -> null
+                is WirePath.Text -> of(wire.value)
+                is WirePath.Obj -> unhex(wire.value.b16)?.let(::RemotePath)
             }
 
         private fun strict(b: ByteArray): String? =
@@ -175,7 +177,7 @@ object FilesLs {
 
     /** 整份那一形的回包 ⇒ 照先后的每一行（原行 ＋ 解好的那一份）＋ 头；不是整份 · 有一行解不出 ⇒ `null`。 */
     private fun whole(data: Any?): Pair<List<Pair<Any?, LsEntry>>, LsHead>? {
-        val p = Wire.bind<SyncPatch>(data)?.takeIf { it.whole && it.order != null } ?: return null
+        val p = rawPatch(data)?.takeIf { it.whole && it.order != null } ?: return null
         val head = Wire.bind<LsHead>(p.head?.info) ?: return null
         val order = p.order.orEmpty()
         val rows = order.mapNotNull { k -> p.up[k].let { raw -> Wire.bind<LsEntry>(raw)?.let { raw to it } } }
@@ -186,8 +188,18 @@ object FilesLs {
         val path = RemotePath.of(e.path) ?: return null
         val rel = RemotePath.of(e.name) ?: return null
         val g = e.gates
-        val preview = g?.preview?.let { p -> p.text?.let { Open(cap = it.cap) } ?: p.no?.let { Open(said = it) } }
-        val edit = g?.edit?.let { Open(it.cap, it.no) }
+        val preview =
+            when (val p = g?.preview) {
+                is PreviewGate.Text -> Open(cap = p.value.cap)
+                is PreviewGate.No -> Open(said = p.value)
+                is PreviewGate.Image, null -> null
+            }
+        val edit =
+            when (val x = g?.edit) {
+                is Gate.Cap -> Open(cap = x.value)
+                is Gate.No -> Open(said = x.value)
+                null -> null
+            }
         val isDir = e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true)
         return Entry(path, rel, isDir, e.size, e.sizeText, e.mtimeText, preview, edit)
     }
@@ -209,8 +221,8 @@ object FilesLs {
     /** [dirs] 那一问的回包；路径或名字读不成字（那台用 `b16` 交的）的那一行不列。形状对不上 ⇒ `null`。 */
     fun dirsOf(data: Any?): Dirs? {
         val (rows, head) = whole(data) ?: return null
-        val dirs = rows.mapNotNull { (_, e) -> (e.path as? String)?.let { p -> (e.name as? String)?.let { Dir(p, it) } } }
-        return Dirs(dirs, head.up as? String)
+        val dirs = rows.mapNotNull { (_, e) -> (e.path as? WirePath.Text)?.let { p -> (e.name as? WirePath.Text)?.let { Dir(p.value, it.value) } } }
+        return Dirs(dirs, (head.up as? WirePath.Text)?.value)
     }
 }
 
@@ -221,7 +233,7 @@ object FilesStat {
     fun args(path: RemotePath): Map<String, Any?> = mapOf("path" to path.wire)
 
     /** unix 权限位；那台没有这一说 ⇒ `null`；解不出 ⇒ `null`。 */
-    fun modeOf(data: Any?): Long? = Wire.bind<StatReply>(data)?.mode
+    fun modeOf(data: Any?): Int? = Wire.bind<StatReply>(data)?.mode
 
     /** 是什么（跟链接）· 上一级（到顶 ⇒ `null`），都是那台判的；解不出 ⇒ `null`。 */
     fun placeOf(data: Any?): Place? {

@@ -1,26 +1,28 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Allow
-import com.ccmonitor.mobile.core.claude.link.wire.Annotated
-import com.ccmonitor.mobile.core.claude.link.wire.CanWord
-import com.ccmonitor.mobile.core.claude.link.wire.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryHead
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.Merged
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
-import com.ccmonitor.mobile.core.claude.link.wire.SessionActivityWord
-import com.ccmonitor.mobile.core.claude.link.wire.SessionAddedFrame
-import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
-import com.ccmonitor.mobile.core.claude.link.wire.SessionFileRereadFrame
-import com.ccmonitor.mobile.core.claude.link.wire.SessionRemovedFrame
-import com.ccmonitor.mobile.core.claude.link.wire.SessionStateFrame
-import com.ccmonitor.mobile.core.claude.link.wire.SessionStatusFrame
+import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.SyncPatch
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Allow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Annotated
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FaceLive
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Hide
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryGroup
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryHead
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Merged
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsList
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAdded
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFileReread
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionRemoved
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionState
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionStatus
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.WireSessionActivity
+import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 
 /*
  * 核心成品的解码：只认格、不判、不写字。每一格的意思以 `IPC-COMMANDS.md` 为准；
@@ -33,8 +35,12 @@ data class Toned(
     val tone: Tone?,
 )
 
-/** 一样此刻做不了 ⇒ 那台写好的那一句；做得了 ⇒ `null`。`{can: no}` 却没带那一句 ⇒ 照「不能」、那一句空着。 */
-fun Allow.blocked(): String? = if (can == CanWord.YES) null else why.orEmpty()
+/** 一样此刻做不了 ⇒ 那台写好的那一句；做得了 ⇒ `null`。 */
+fun Allow.blocked(): String? =
+    when (this) {
+        Allow.Yes -> null
+        is Allow.No -> why
+    }
 
 /** 会话帧里那一条会话的宣告格（`session_added` 折出来、`session_status` 带来的路径换上）；此刻什么样在 [SessionTable.faces]。 */
 data class LiveSession(
@@ -65,7 +71,7 @@ data class SessionTable(
     fun generation(sid: String): Long = rereads[sid] ?: 0L
 
     /** 那台判得出那一条一轮在跑（聊天屏的停止键只认它）；判不出 · 不在 ⇒ 不算。 */
-    fun running(sid: String): Boolean = faces[sid]?.live?.activity == SessionActivityWord.WORKING
+    fun running(sid: String): Boolean = (faces[sid]?.live as? FaceLive.Yes)?.activity == WireSessionActivity.WORKING
 
     /** 喂一帧（核心按 `cmd-wire` 那一份类型重写过）；不是会话帧 ⇒ 原样返回。装不进声明的类 ⇒ [onBreak] 报、表不动。 */
     fun step(
@@ -75,27 +81,27 @@ data class SessionTable(
         val kind = frame.str("kind")
         val folded: SessionTable? =
             when (kind) {
-                "session_added" -> Wire.bind<SessionAddedFrame>(frame)?.let(::added)
-                "session_status" -> Wire.bind<SessionStatusFrame>(frame)?.let(::status)
-                "session_removed" -> Wire.bind<SessionRemovedFrame>(frame)?.let(::removed)
-                "session_state" -> Wire.bind<SessionStateFrame>(frame)?.let { copy(faces = faces + (it.sid to it.face)) }
-                "session_file_reread" -> Wire.bind<SessionFileRereadFrame>(frame)?.let { copy(rereads = rereads + (it.sid to generation(it.sid) + 1)) }
+                "session_added" -> Wire.bind<SessionAdded>(frame)?.let(::added)
+                "session_status" -> Wire.bind<SessionStatus>(frame)?.let(::status)
+                "session_removed" -> Wire.bind<SessionRemoved>(frame)?.let(::removed)
+                "session_state" -> Wire.bind<SessionState>(frame)?.let { copy(faces = faces + (it.sid to it.face)) }
+                "session_file_reread" -> Wire.bind<SessionFileReread>(frame)?.let { copy(rereads = rereads + (it.sessionId to generation(it.sessionId) + 1)) }
                 "sessions_replayed" -> return copy(replayed = true)
                 else -> return this
             }
         return folded ?: also { onBreak("$kind 装不进声明的那一份") }
     }
 
-    private fun added(f: SessionAddedFrame): SessionTable {
+    private fun added(f: SessionAdded): SessionTable {
         val s = LiveSession(sid = f.sid, path = f.path, cwd = f.cwd, name = f.name, agentKind = f.agentKind, attachable = f.attachable)
         return copy(sessions = sessions + (s.sid to s), faces = faces + (s.sid to f.face))
     }
 
-    private fun removed(f: SessionRemovedFrame): SessionTable =
+    private fun removed(f: SessionRemoved): SessionTable =
         copy(sessions = sessions - f.sid, faces = faces - f.sid, successors = if (f.by != null) successors + (f.sid to f.by) else successors)
 
     /** 状态帧：换上那一条的脸；带着 `path`（宣告以后记录才出现 · 换了一份，那台在那一行的 line 帧之前先发）⇒ 路径换成它。 */
-    private fun status(f: SessionStatusFrame): SessionTable {
+    private fun status(f: SessionStatus): SessionTable {
         val moved = f.path?.let { p -> sessions[f.sid]?.copy(path = p) }
         return copy(sessions = if (moved != null) sessions + (f.sid to moved) else sessions, faces = faces + (f.sid to f.face))
     }
@@ -106,7 +112,7 @@ object SessionsNeeds {
     const val COMMAND: String = "sessions-needs"
 
     /** 会话那几项（照那台的先后）。 */
-    fun of(data: Any?): List<NeedsRow>? = list(data)?.items?.mapNotNull { it.session }
+    fun of(data: Any?): List<NeedsRow>? = list(data)?.items?.mapNotNull { (it as? NeedsItem.Session)?.session }
 
     /** 整份（每一项 ＋ 替人答过的那几条 ＋ 会外那一截读不出的那一句）。 */
     fun list(data: Any?): NeedsList? = Wire.bind<NeedsList>(data)
@@ -121,7 +127,7 @@ object HistoryList {
     const val COMMAND: String = "history-list"
 
     /** 回包（核心按 `cmd-wire` 那一份解过）；不是那一形（`raw` 那一形手机不问）⇒ `null`。 */
-    fun patch(data: Any?): SyncPatch? = Wire.bind<SyncPatch>(data)
+    fun patch(data: Any?): RawPatch? = rawPatch(data)
 
     /** 不带记号那一问的回包（整份）⇒ 一份清单；不是整份 · 解不开 ⇒ `null`。 */
     fun of(data: Any?): HistoryListPage? = patch(data)?.takeIf { it.whole }?.let { page(SyncHand().apply(it)) }

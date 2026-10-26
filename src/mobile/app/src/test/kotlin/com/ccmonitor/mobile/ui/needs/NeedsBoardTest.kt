@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.needs
 import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -177,6 +178,6 @@ class NeedsBoardTest {
         when (l) {
             is NeedsLine.Session -> l.row.sid
             is NeedsLine.Plan -> "${l.slice}×${l.n}"
-            is NeedsLine.Manual -> "@${l.item.account}"
+            is NeedsLine.Manual -> "@${(l.item as ManualItem.AccountLogin).account}"
         }
 }

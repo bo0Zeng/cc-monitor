@@ -1,13 +1,15 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Held
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryTailReply
-import com.ccmonitor.mobile.core.claude.link.wire.Landed
-import com.ccmonitor.mobile.core.claude.link.wire.TailHow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Held
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Landed
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.gen.TailHow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryTail as HistoryTailReply
 
 /** 起会话 · 送字 · 读正文那几问：请求照协议的格，应答照金样解。 */
 class SessionsTest {
@@ -89,9 +91,9 @@ class SessionsTest {
         assertEquals(mapOf("by" to mapOf("kind" to "cwd", "cwd" to "/h/proj"), "since" to 3L, "session" to "proj-cc"), SessionArrive.args(ask))
         val bySid = SessionOpen.of(opened + ("arrival" to mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0, "session" to null)))!!.arrival!!
         assertEquals(mapOf("by" to mapOf("kind" to "sid", "sid" to "s1"), "since" to 0L), SessionArrive.args(bySid))
-        assertEquals("s9", SessionArrive.of(mapOf("kind" to "arrived", "sid" to "s9"))?.sid)
+        assertEquals(ArriveEnd.Arrived("s9"), SessionArrive.of(mapOf("kind" to "arrived", "sid" to "s9")))
         val missed = SessionArrive.of(mapOf("kind" to "missed", "said" to "未报到\n末几行", "terminal" to null))
-        assertEquals(listOf(null, "未报到\n末几行"), listOf(missed?.sid, missed?.said))
+        assertEquals("未报到\n末几行", (missed as ArriveEnd.Missed).said)
     }
 
     @Test
@@ -120,7 +122,7 @@ class SessionsTest {
             HistoryTail.args("/p/a.jsonl", 50, held),
         )
         assertEquals(
-            HistoryTailReply(end = 900, splitAt = 300, total = 9, how = TailHow.RESUME, held = held),
+            HistoryTailReply(how = TailHow.RESUME, from = 7, rows = emptyList(), next = 900, eof = true, held = held, total = 9, tailFrom = 7, splitAt = 300, end = 900),
             HistoryTail.of(
                 mapOf(
                     "end" to 900,
@@ -160,8 +162,9 @@ class SessionsTest {
     fun `line 帧：核心把解不开的那条换成的认不出那一条照常装进来（类名可空 · 没有时刻）`() {
         val card = mapOf("agent" to "", "id" to "unread:00ab", "t" to "unread", "why" to "unknownType", "type" to null, "text" to "无法识别的记录 · 无类型", "tone" to "warn", "excerpt" to "{}", "count" to 1)
         val line = RecordLine.of(mapOf("kind" to "line", "session_id" to "s", "path" to "/p", "seq" to 3L, "byte_offset" to 30L, "record" to card))!!
-        assertEquals("无法识别的记录 · 无类型", line.record!!.text)
-        assertEquals("{}", line.record!!.excerpt)
+        val unread = line.record as LineRecord.Unread
+        assertEquals("无法识别的记录 · 无类型", unread.text)
+        assertEquals("{}", unread.excerpt)
     }
 
     @Test

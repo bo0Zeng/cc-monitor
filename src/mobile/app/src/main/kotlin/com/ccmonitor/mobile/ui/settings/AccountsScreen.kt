@@ -29,7 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Login
-import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens

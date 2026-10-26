@@ -2,11 +2,11 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.LiveBlock
 import com.ccmonitor.mobile.core.claude.link.LiveCardState
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.CommandScope
-import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CommandScope
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAct
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommand
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -20,7 +20,7 @@ class ChatInputLogicTest {
         scopeText: String = "内置",
         needsArgs: String? = null,
         confirm: String? = null,
-    ) = SessionCommand(name, null, scope, scopeText, needsArgs, confirm)
+    ) = SessionCommand(name, null, scope, scopeText, needsArgs = needsArgs != null, confirm = confirm != null, needsArgsText = needsArgs, confirmText = confirm)
 
     @Test
     fun `chip：正在换写换成的那一项；读回过写读回的字；都没有写这颗是什么`() {

@@ -46,10 +46,10 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAct
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommand
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph

@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.MachineState
-import com.ccmonitor.mobile.core.claude.link.wire.MachineStateKind
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineState
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineStateKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

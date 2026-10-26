@@ -45,8 +45,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.RotTryTimeline
-import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotTryTimeline
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens

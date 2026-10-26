@@ -6,9 +6,9 @@ import com.ccmonitor.mobile.core.claude.link.HistorySearch
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.ListSort
 import com.ccmonitor.mobile.core.claude.link.SearchMerge
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
-import com.ccmonitor.mobile.core.claude.link.wire.Merged
-import com.ccmonitor.mobile.core.claude.link.wire.MergedRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryGroup
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Merged
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MergedRow
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.unreadableReply

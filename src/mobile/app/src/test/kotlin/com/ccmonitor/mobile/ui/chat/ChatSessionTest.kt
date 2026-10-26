@@ -1,13 +1,14 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces
+import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.failed
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply
@@ -257,7 +258,7 @@ class ChatSessionTest {
                 when (cmd) {
                     "history-tail" -> {
                         assertEquals(mapOf("path" to "/p/s1.jsonl", "n" to 60L), args)
-                        ok(FakeCoreLink.tail(200, 100, 2, listOf(mapOf("end" to 150, "record" to human("u1", "问")), mapOf("end" to 200, "record" to reply("a1", "答")))))
+                        ok(FakeCoreLink.tail(200, 100, 2, listOf(mapOf("end" to 150, "hash" to 0, "record" to human("u1", "问")), mapOf("end" to 200, "hash" to 0, "record" to reply("a1", "答")))))
                     }
                     else -> Reply.LinkDown
                 }
@@ -332,7 +333,7 @@ class ChatSessionTest {
     fun `来一行只排那一行：已有的单元原样留着，工具结果到了只换它配上的那一张调用卡`() =
         runTest {
             val call = mapOf("agent" to "claude", "id" to "a1", "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "text", "text" to "看看"), mapOf("type" to "tool_use", "id" to "c1", "name" to "Read", "input" to emptyMap<String, Any>())))
-            val result = mapOf("agent" to "claude", "id" to "u2", "t" to "said", "blocks" to listOf(mapOf("type" to "tool_result", "for" to "c1", "content" to listOf(mapOf("type" to "text", "text" to "ok")))))
+            val result = mapOf("agent" to "claude", "id" to "u2", "t" to "said", "who" to mapOf("speaker" to mapOf("kind" to "toolResult"), "text" to ""), "blocks" to listOf(mapOf("type" to "tool_result", "for" to "c1", "content" to listOf(mapOf("type" to "text", "text" to "ok")), "isError" to false)))
             val link = FakeCoreLink()
             val file = FakeCoreLink.File(mutableListOf(human("u0", "问"), call))
             link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
@@ -457,6 +458,7 @@ class ChatSessionTest {
                 mapOf(
                     "recent" to emptyList<Any>(),
                     "tmux" to true,
+                    "run" to "tmux",
                     "agents" to
                         listOf("codex", "claude").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                 )
@@ -488,6 +490,7 @@ class ChatSessionTest {
                             mapOf(
                                 "recent" to listOf(mapOf("cwd" to "/h/orders", "lastMs" to 1.0, "lastText" to "19:02")),
                                 "tmux" to true,
+                                "run" to "tmux",
                                 "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                             ),
                         )
@@ -496,9 +499,10 @@ class ChatSessionTest {
                             mapOf(
                                 "accounts" to
                                     listOf("work", "personal").map {
-                                        mapOf("name" to it, "label" to it, "color" to 0.0, "plate" to it.take(2), "quota" to null, "unselectable" to null, "newSession" to true, "selectable" to true, "authKind" to "subscription", "badge" to mapOf("text" to "已登录", "warn" to false), "login" to false)
+                                        Wires.accountRow("name" to it, "label" to it, "plate" to it.take(2))
                                     },
-                                "meta" to mapOf("effectiveDefault" to "work", "home" to null),
+                                "meta" to Wires.accountsMeta("effectiveDefault" to "work"),
+                                "notice" to null,
                             ),
                         )
                     "session-open" -> start

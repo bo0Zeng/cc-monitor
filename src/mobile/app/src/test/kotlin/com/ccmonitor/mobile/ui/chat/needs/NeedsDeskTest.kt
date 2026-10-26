@@ -3,9 +3,9 @@ package com.ccmonitor.mobile.ui.chat.needs
 import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsChoiceRow
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.Faces

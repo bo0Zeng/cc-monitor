@@ -35,7 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.ListSort
-import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog

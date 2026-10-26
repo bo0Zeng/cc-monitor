@@ -4,8 +4,8 @@ import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.Rotation
-import com.ccmonitor.mobile.core.claude.link.wire.RotFrom
-import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFrom
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotHint
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -68,7 +68,7 @@ class RotationBoardTest {
                 listOf("work", "team", "lab"),
                 s.view!!
                     .accounts
-                    .take(s.view.listed)
+                    .take(s.view.listed.toInt())
                     .map { it.account },
             )
             assertEquals("team", s.view.current)
@@ -331,8 +331,8 @@ class RotationBoardTest {
                 b.state.value.view!!
                     .hints
                     .single()
-            assertEquals(RotHintKind.TZ_UNKNOWN, n.hint.k)
-            b.setTz(n.hint.zone!!)
+            val tz = n.hint as RotHint.TzUnknown
+            b.setTz(tz.zone)
             assertEquals(mapOf("id" to "spread", "tz" to "America/Los_Angeles", "ifRev" to "h:spread"), link.calls(Rotation.TZ).single())
         }
 
@@ -355,7 +355,7 @@ class RotationBoardTest {
             )
             assertEquals("策略「spread」出错：第 12 行，除数为 0", hintText(err, 0))
             assertEquals("原话", err.detail)
-            assertEquals("/h/strategies/spread.rhai", err.hint.path)
+            assertEquals("/h/strategies/spread.rhai", (err.hint as RotHint.StrategyError).path)
             assertEquals(NoteTone.ERROR, toneOf(err.tone))
             assertEquals(NoteTone.WARN, toneOf(hold.tone))
             assertEquals(NoteTone.WARN, toneOf(tz.tone))

@@ -9,16 +9,17 @@ import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.claude.link.wire.Can
-import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
-import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryGroup
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFix
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
-import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Can
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CanDelete
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CanResume
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ForkedFrom
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryGroup
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
@@ -37,12 +38,52 @@ class ChatsViewTest {
         at: Long = 0,
         face: SessionFace = Faces.of("live-idle"),
         group: String = "/w",
-    ) = HistoryRow(sid, "标题 $sid", at, "09:0$sid", section, false, "w", group, group, "$group/$sid.jsonl", "claude", null, face, null, null, null, Can(CanDelete.YES))
+    ) = HistoryRow(
+        agent = "claude",
+        sessionId = sid,
+        projectPath = group,
+        projectName = "w",
+        aiTitle = null,
+        firstUserExcerpt = "",
+        title = "标题 $sid",
+        startedAt = at,
+        updatedAt = at,
+        jsonlPath = "$group/$sid.jsonl",
+        messageCountApprox = 0,
+        isBg = false,
+        starred = false,
+        customTitle = null,
+        hidden = null,
+        projectDir = group,
+        group = group,
+        label = "标题 $sid",
+        untitled = false,
+        face = face,
+        can = Can(CanResume.YES, accounts = false, fork = false, delete = CanDelete.YES),
+        agentTag = null,
+        at = at,
+        atText = "09:0$sid",
+        sectionText = section,
+        spanText = "09:0$sid",
+    )
 
     private fun group(
         key: String,
         order: Long,
-    ) = HistoryGroup(key, key.substringAfterLast('/'), key, 1, false, order, "09:00", null)
+    ) = HistoryGroup(
+        key = key,
+        agent = "claude",
+        projectName = key.substringAfterLast('/'),
+        projectPath = key,
+        projectDir = key,
+        count = 1,
+        hasLive = false,
+        starred = false,
+        lastActivity = 0,
+        atText = "09:00",
+        order = order,
+        failed = null,
+    )
 
     private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)
 

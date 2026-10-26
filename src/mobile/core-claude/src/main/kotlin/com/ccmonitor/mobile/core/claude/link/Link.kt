@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFix
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 

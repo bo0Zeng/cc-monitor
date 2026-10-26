@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
-import com.ccmonitor.mobile.core.claude.link.wire.RotNote
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotHint
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotNote
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
 
 /*
@@ -22,7 +22,7 @@ fun hintText(
     n: RotNote,
     now: Long,
 ): String {
-    val until = n.hint.until.takeIf { n.hint.k == RotHintKind.HOLD } ?: return n.text
+    val until = (n.hint as? RotHint.Hold)?.until ?: return n.text
     return DurationFormat.clock(n.text, now * MS, until * MS, now * MS)
 }
 

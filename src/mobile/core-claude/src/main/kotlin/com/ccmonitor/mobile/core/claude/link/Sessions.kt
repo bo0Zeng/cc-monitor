@@ -1,26 +1,27 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
-import com.ccmonitor.mobile.core.claude.link.wire.ArriveAsk
-import com.ccmonitor.mobile.core.claude.link.wire.ArriveEnd
-import com.ccmonitor.mobile.core.claude.link.wire.FirstSay
-import com.ccmonitor.mobile.core.claude.link.wire.Held
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
-import com.ccmonitor.mobile.core.claude.link.wire.HistoryTailReply
-import com.ccmonitor.mobile.core.claude.link.wire.Landed
-import com.ccmonitor.mobile.core.claude.link.wire.LineFrame
-import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
-import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
-import com.ccmonitor.mobile.core.claude.link.wire.OpenFacts
-import com.ccmonitor.mobile.core.claude.link.wire.Opened
-import com.ccmonitor.mobile.core.claude.link.wire.ReadRow
-import com.ccmonitor.mobile.core.claude.link.wire.SentResult
-import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
-import com.ccmonitor.mobile.core.claude.link.wire.SessionFacts
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.Sent as SentWire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveAsk
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FirstSay
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Held
+import com.ccmonitor.mobile.core.claude.link.wire.gen.JsonValue
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Landed
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Line
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ModeSwitched
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ModelSwitched
+import com.ccmonitor.mobile.core.claude.link.wire.gen.OpenFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Opened
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ReadRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SentResult
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommands
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryLines as HistoryLinesPage
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryRead as HistoryReadPage
+import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryTail as HistoryTailReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Sent as SentWire
 
 /*
  * 起会话 · 往会话里送字 · 读一条会话的正文：都是那台核心的帧命令，手机只拼入参、解成品（`IPC-COMMANDS.md` 各节）。
@@ -256,7 +257,7 @@ object TerminalInput {
     }
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带那一句 ⇒ `null`（没有可上屏的话）。 */
-    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it.result, it.why, it.said) }
+    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it.result, it.why?.wire, it.said) }
 
     /** 起会话时第一句的结局（同三格，`result` 是字：照 [SentResult] 的线上字认）。 */
     fun of(first: FirstSay): Result? = Wire.bind<SentResult>(first.result)?.let { of(it, first.why, first.said) }
@@ -325,11 +326,11 @@ object HistoryRead {
     fun decodeRows(rows: List<Any?>): List<LineRecord>? =
         rows.map { Wire.bind<ReadRow>(it) ?: return null }.mapNotNull { it.record }
 
-    /** 一行记录（流上的 `line` · `history-lines` 的一格）照 `rows[]` 那一格的形装起来：`{end, record}`，[record] 原样。 */
+    /** 一行记录（流上的 `line` · `history-lines` 的一格）照 `rows[]` 那一格的形装起来：`{end, hash, record}`，[record] 原样；流上的行不带摘要，记 0（摘要只有后端比，手机不读它）。 */
     fun row(
         end: Long?,
         record: Any?,
-    ): Map<String, Any?> = mapOf("end" to end, "record" to record)
+    ): Map<String, Any?> = mapOf("end" to end, "hash" to 0L, "record" to record)
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
@@ -379,9 +380,9 @@ data class RecordLine(
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
-            val f = Wire.bind<LineFrame>(frame) ?: return null
+            val f = Wire.bind(Line.adapter(JsonValue), frame) ?: return null
             val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
-            return RecordLine(f.sid, f.path, f.seq, f.byteOffset, record, frame["record"])
+            return RecordLine(f.sessionId, f.path, f.seq, f.byteOffset, record, frame["record"])
         }
     }
 }

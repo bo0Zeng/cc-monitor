@@ -48,10 +48,10 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.deployFix
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
-import com.ccmonitor.mobile.core.claude.link.wire.PrefsState
-import com.ccmonitor.mobile.core.claude.link.wire.TabPref
-import com.ccmonitor.mobile.core.claude.link.wire.UsageTone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AbsentOrOkOrUnreadable
+import com.ccmonitor.mobile.core.claude.link.wire.gen.FailOrPlainOrWarn
+import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
@@ -264,14 +264,14 @@ private fun DefaultAccount(ui: MachineSettingsUi) {
 @Composable
 internal fun UsageText(
     text: String,
-    tone: UsageTone,
+    tone: FailOrPlainOrWarn,
 ) {
     val tokens = LocalAppTokens.current
     val color =
         when (tone) {
-            UsageTone.FAIL -> tokens.errorText
-            UsageTone.WARN -> tokens.warn
-            UsageTone.PLAIN -> MaterialTheme.colorScheme.onSurfaceVariant
+            FailOrPlainOrWarn.FAIL -> tokens.errorText
+            FailOrPlainOrWarn.WARN -> tokens.warn
+            FailOrPlainOrWarn.PLAIN -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     Text(text, style = MaterialTheme.typography.bodySmall, color = color)
 }
@@ -308,7 +308,7 @@ private fun Prefs(
     val ui by board.state.collectAsState()
     SectionHead(copyText("mobSettings.section.prefs", "machine" to here.machine))
     val p = ui.prefs?.takeIf { readable }
-    if (p?.state == PrefsState.UNREADABLE) {
+    if (p?.state == AbsentOrOkOrUnreadable.UNREADABLE) {
         val text = listOfNotNull(copyText("machinePrefs.read.failed"), p.reason).joinToString(copyText("kit.text.sep"))
         Column(
             Modifier
@@ -330,10 +330,10 @@ private fun Prefs(
 @Composable
 private fun TabRow(
     kind: TabKind,
-    shown: TabPref?,
+    shown: Tab?,
     notSaved: String?,
     enabled: Boolean,
-    onPick: (TabPref) -> Unit,
+    onPick: (Tab) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().heightIn(min = Touch.rowDouble).alpha(if (enabled) 1f else LocalAppTokens.current.disabledAlpha), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 8.dp)) {
@@ -341,7 +341,7 @@ private fun TabRow(
             Text(MachineSettings.tabTip(kind), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             notSaved?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
-        val choices = listOf(TabPref.SHOW to copyText("settings.machine.tabShow"), TabPref.HIDE to copyText("settings.machine.tabHide"))
+        val choices = listOf(Tab.SHOW to copyText("settings.machine.tabShow"), Tab.HIDE to copyText("settings.machine.tabHide"))
         SingleChoiceSegmentedButtonRow(Modifier.testTag(SettingsTags.tab(kind))) {
             choices.forEachIndexed { i, (v, label) ->
                 SegmentedButton(

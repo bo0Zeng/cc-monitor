@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Killed
-import com.ccmonitor.mobile.core.claude.link.wire.Preview
-import com.ccmonitor.mobile.core.claude.link.wire.TerminalsListReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Killed
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Preview
+import com.ccmonitor.mobile.core.claude.link.wire.gen.TerminalsList as TerminalsListReply
 
 /*
  * 那台的终端：列 · 抓屏 · 结束。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），
@@ -37,7 +37,7 @@ object TerminalsList {
 
     fun of(data: Any?): List<Row>? =
         Wire.bind<TerminalsListReply>(data)?.terminals?.map { t ->
-            Row(t.terminal, t.name, t.title, attached = t.clients.isNotEmpty(), agent = t.session?.agent, sid = t.session?.sid)
+            Row(t.terminal, t.tmuxName, t.title, attached = t.clients.isNotEmpty(), agent = t.session?.agent, sid = t.session?.sid)
         }
 
     /** 里面跑着 [sid] 那条会话的那一行（名单上的 `session.sid`，那台认的）；没有 ⇒ `null`。 */

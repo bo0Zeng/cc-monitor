@@ -124,7 +124,7 @@ class ChatCacheTest {
     private fun cell(
         i: Int,
         record: Map<String, Any?>,
-    ) = mapOf("end" to (i + 1) * 10L, "record" to record)
+    ) = mapOf("end" to (i + 1) * 10L, "hash" to i.toLong(), "record" to record)
 
     private fun ChatSession.keys() = state.value.units.map { it.key }
 
@@ -237,7 +237,7 @@ class ChatCacheTest {
                     .getValue("s1")
                     .single()
                     .rows
-            assertEquals(mapOf("end" to 20L, "record" to r), grown[1])
+            assertEquals(mapOf("end" to 20L, "hash" to 0L, "record" to r), grown[1])
             assertEquals(Anchor("/p/s1.jsonl", 20, 2, "f1"), cache.anchors["s1"])
         }
 

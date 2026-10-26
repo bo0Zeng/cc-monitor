@@ -55,11 +55,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.RotEdit
-import com.ccmonitor.mobile.core.claude.link.wire.RotAccount
-import com.ccmonitor.mobile.core.claude.link.wire.RotMark
-import com.ccmonitor.mobile.core.claude.link.wire.RotRow
-import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
-import com.ccmonitor.mobile.core.claude.link.wire.WinFact
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotAccount
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotMark
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.WinFact
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -77,7 +77,7 @@ internal fun Cards(
     board: RotationBoard,
 ) {
     RotHeader(copyText("rot.h.cards"), copyText("rot.h.cardsHint"))
-    val listed = view.accounts.take(view.listed)
+    val listed = view.accounts.take(view.listed.toInt())
     val rows = view.board.rows
     val rects = remember { mutableStateMapOf<Int, Rect>() }
     var drag by remember { mutableStateOf<Pair<Int, Offset>?>(null) }
@@ -243,7 +243,7 @@ private fun AddSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         SheetHead(copyText("rot.card.add"), null)
-        view.accounts.drop(view.listed).forEach { f ->
+        view.accounts.drop(view.listed.toInt()).forEach { f ->
             PickRow(board.label(f.account), "rot-add-${f.account}", onClick = {
                 onDismiss()
                 board.edit(RotEdit.add(f.account))

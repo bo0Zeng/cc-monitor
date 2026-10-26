@@ -34,8 +34,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.SessionTable
-import com.ccmonitor.mobile.core.claude.link.wire.ManualItem
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ManualItem
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -197,6 +197,14 @@ private fun PlanLine(line: NeedsLine.Plan) {
     }
 }
 
+/** 没有修法时那台写的为什么。 */
+private fun whyOf(item: ManualItem): String? =
+    when (item) {
+        is ManualItem.AccountLogin -> null
+        is ManualItem.McpLogin -> item.why
+        is ManualItem.SecretFile -> item.why
+    }
+
 /** 会话外那一行的图标：MCP · 权限太宽的秘密文件 · 号。 */
 private fun manualIcon(kind: String) =
     when (kind) {
@@ -213,7 +221,7 @@ private fun ManualLine(
 ) {
     val item = line.item
     val fix = item.fix
-    val second = listOfNotNull(line.host.label.takeIf { manyHosts }, item.why.takeIf { fix == null }).joinToString(copyText("kit.text.sep"))
+    val second = listOfNotNull(line.host.label.takeIf { manyHosts }, whyOf(item).takeIf { fix == null }).joinToString(copyText("kit.text.sep"))
     val base = Modifier.fillMaxWidth()
     Row(
         (if (fix != null) base.clickable { onLogin(item) } else base).padding(horizontal = 16.dp, vertical = 10.dp),

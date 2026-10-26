@@ -11,11 +11,11 @@ import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
-import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
-import com.ccmonitor.mobile.core.claude.link.wire.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.OpenFacts
-import com.ccmonitor.mobile.core.claude.link.wire.PushOutcome
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.claude.link.wire.gen.ModeSwitchResult
+import com.ccmonitor.mobile.core.claude.link.wire.gen.OpenFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PushOutcome
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.ui.feedback.Notice

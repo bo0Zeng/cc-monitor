@@ -14,9 +14,9 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.Transfer
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
-import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
 import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -222,7 +222,7 @@ internal class FakeCoreLink :
         fun human(
             id: String,
             text: String,
-        ): Map<String, Any?> = mapOf("agent" to "claude", "id" to id, "t" to "said", "who" to mapOf("speaker" to mapOf("kind" to "human"), "text" to text))
+        ): Map<String, Any?> = mapOf("agent" to "claude", "id" to id, "t" to "said", "who" to mapOf("speaker" to mapOf("kind" to "human"), "text" to text), "blocks" to emptyList<Any>())
 
         fun reply(
             id: String,
@@ -312,7 +312,8 @@ internal class FakeCoreLink :
                     val b = minOf(args["until"] as Long, n)
                     Reply.Ok(
                         mapOf(
-                            "lines" to (a until b).map { mapOf("seq" to it, "end" to (it + 1) * W, "record" to records[it.toInt()]) },
+                            "lines" to (a until b).map { mapOf("session_id" to "s1", "path" to "/p/s1.jsonl", "seq" to it, "end" to (it + 1) * W, "cwd" to null, "record" to records[it.toInt()]) },
+                            "from" to a,
                             "next" to b,
                             "eof" to (b >= n),
                             "end" to b * W,
@@ -327,7 +328,7 @@ internal class FakeCoreLink :
         private fun rows(
             a: Long,
             b: Long,
-        ) = (a until b).map { mapOf("end" to (it + 1) * W, "record" to records[it.toInt()]) }
+        ) = (a until b).map { mapOf("end" to (it + 1) * W, "hash" to it, "record" to records[it.toInt()]) }
 
         private companion object {
             const val W = 10L

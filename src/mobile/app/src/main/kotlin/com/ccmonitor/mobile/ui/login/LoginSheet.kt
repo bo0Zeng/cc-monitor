@@ -28,9 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
-import com.ccmonitor.mobile.core.claude.link.wire.LoginTarget
-import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PasteKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
@@ -60,8 +59,9 @@ fun LoginSheet(
     Sheet(onDismiss = close) {
         SheetHead(titleOf(s.target), null)
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            s.target.server?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
-            s.target.account?.let {
+            val t = s.target
+            if (t is LoginStartReq.Mcp) Text(t.server, style = MaterialTheme.typography.bodyLarge)
+            t.account?.let {
                 AccountBadge(plate, color)
                 Text(it, style = MaterialTheme.typography.bodyLarge)
             }
@@ -76,9 +76,9 @@ fun LoginSheet(
 
 /** 抽屉标题照目标的 `kind`（号 · MCP 服务器）。 */
 internal fun titleOf(target: LoginStartReq): String =
-    when (target.kind) {
-        LoginTarget.ACCOUNT -> copyText("login.sheet.account")
-        LoginTarget.MCP -> copyText("login.sheet.mcp")
+    when (target) {
+        is LoginStartReq.Account -> copyText("login.sheet.account")
+        is LoginStartReq.Mcp -> copyText("login.sheet.mcp")
     }
 
 @Suppress("DEPRECATION")

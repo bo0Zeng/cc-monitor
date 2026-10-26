@@ -51,7 +51,7 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.deployFix
-import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host

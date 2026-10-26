@@ -9,12 +9,11 @@ import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TabKind
-import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
-import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
-import com.ccmonitor.mobile.core.claude.link.wire.PrefsReply
-import com.ccmonitor.mobile.core.claude.link.wire.QuotaReadReply
-import com.ccmonitor.mobile.core.claude.link.wire.TabPref
-import com.ccmonitor.mobile.core.claude.link.wire.Usage
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.claude.link.wire.gen.PrefsReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Usage
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
@@ -28,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaRead as QuotaReadReply
 
 /** 设置屏 · 账号一览此刻画的那几样（全是那台的回包；读到之前是空的，不画旧值）。 */
 data class MachineSettingsUi(
@@ -43,7 +43,7 @@ data class MachineSettingsUi(
     val prefs: PrefsReply? = null,
     val prefsFailed: Problem? = null,
     /** 拨了还没读回的那一格（画拨到的值）。 */
-    val pending: Map<TabKind, TabPref> = emptyMap(),
+    val pending: Map<TabKind, Tab> = emptyMap(),
     /** 没存上的那一行下面那一句。 */
     val notSaved: Map<TabKind, String> = emptyMap(),
     /** 默认那一家（模型清单 · 「跟随」那一句的主语）；还没问 ⇒ `null`。 */
@@ -52,7 +52,7 @@ data class MachineSettingsUi(
     val note: String? = null,
 ) {
     /** 那一行此刻画哪一段：拨了没读回 ⇒ 拨到的；读回了 ⇒ 那台答的；没读到 ⇒ `null`（不画选中）。 */
-    fun shown(kind: TabKind): TabPref? =
+    fun shown(kind: TabKind): Tab? =
         pending[kind] ?: prefs?.prefs?.let {
             when (kind) {
                 TabKind.CHILD -> it.childTab
@@ -67,7 +67,7 @@ data class MachineSettingsUi(
                 ?: q.unseen
                     .firstOrNull { it.account == account }
                     ?.usage
-                    ?.let { Usage(it.text, it.tone) }
+                    ?.let { Usage(it.slot, it.window, it.value, null, it.text, it.tone) }
         }
 
     /** 这个号的默认模型（那台存的原值）；没设 ⇒ `null`（跟随那一家的默认）。 */
@@ -146,7 +146,7 @@ class MachineSettings(
     /** 拨一行：先画拨到的，交那台；读回 ⇒ 照回包；没存上 ⇒ 退回读到的值、那一行下面一句。 */
     fun setTab(
         kind: TabKind,
-        value: TabPref,
+        value: Tab,
     ) {
         if (_state.value.shown(kind) == value) return
         _state.update { it.copy(pending = it.pending + (kind to value), notSaved = it.notSaved - kind) }

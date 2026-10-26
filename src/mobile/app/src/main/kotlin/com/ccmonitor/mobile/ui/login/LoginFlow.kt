@@ -3,11 +3,11 @@ package com.ccmonitor.mobile.ui.login
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.LoginAgain
-import com.ccmonitor.mobile.core.claude.link.wire.LoginAgainHow
-import com.ccmonitor.mobile.core.claude.link.wire.LoginStartReq
-import com.ccmonitor.mobile.core.claude.link.wire.LoginStarted
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginAgain
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginAgainHow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStarted
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CoroutineScope

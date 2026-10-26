@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.core.claude.link.Toned
-import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.gen.CanDelete
+import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

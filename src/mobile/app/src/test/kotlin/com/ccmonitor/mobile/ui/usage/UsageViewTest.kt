@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.usage
 
 import com.ccmonitor.mobile.core.claude.link.QuotaRead
-import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
-import com.ccmonitor.mobile.core.claude.link.wire.Badge
-import com.ccmonitor.mobile.core.claude.link.wire.QuotaReadReply
+import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Badge
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaRead as QuotaReadReply
 
 /** 用量屏「回包 ⇒ 要画的那一份」：次序 · 条 · 卡头 · 结论全照回包，手机只按号名对上账号库那一行。 */
 class UsageViewTest {
@@ -17,7 +17,28 @@ class UsageViewTest {
         name: String,
         plate: String,
         color: Int,
-    ) = AccountRow(name, name, color, plate, null, null, true, false, true, "subscription", Badge("已登录", false))
+    ) = AccountRow(
+        keyMasked = null,
+        baseUrl = null,
+        badge = Badge("已登录", false, "已登录"),
+        plate = plate,
+        quota = null,
+        unselectable = null,
+        login = false,
+        newSession = true,
+        name = name,
+        label = name,
+        email = "",
+        configDir = null,
+        isDefault = false,
+        mode = "subscription",
+        exists = true,
+        loggedIn = true,
+        authKind = "subscription",
+        authReady = true,
+        selectable = true,
+        color = color,
+    )
 
     /** 金样里出过数的那一号复制成 [names] 那几号（照给的先后），没出过数的照留。 */
     @Suppress("UNCHECKED_CAST")

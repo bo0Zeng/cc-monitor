@@ -36,7 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.FilesDeleteSession
 import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
-import com.ccmonitor.mobile.core.claude.link.wire.Hide
+import com.ccmonitor.mobile.core.claude.link.wire.gen.Hide
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarController

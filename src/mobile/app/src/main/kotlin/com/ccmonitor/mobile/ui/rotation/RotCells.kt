@@ -59,10 +59,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import com.ccmonitor.mobile.core.claude.link.RotEdit
-import com.ccmonitor.mobile.core.claude.link.wire.RotCell
-import com.ccmonitor.mobile.core.claude.link.wire.RotDaySeg
-import com.ccmonitor.mobile.core.claude.link.wire.RotFormKind
-import com.ccmonitor.mobile.core.claude.link.wire.RotFrom
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotCell
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotDaySeg
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFormKind
+import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFrom
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -94,7 +94,7 @@ internal fun CellRows(
             CellLabel(cell)
             when (cell.kind) {
                 RotFormKind.DAY_SEGMENTS -> Segments(board, cell, row, id)
-                RotFormKind.CHOICE -> ChoiceCell(cell, cell.v as? String, set)
+                RotFormKind.CHOICE -> ChoiceCell(cell, cell.v.value as? String, set)
                 else -> NumberCell(cell, set)
             }
         } else {
@@ -104,7 +104,7 @@ internal fun CellRows(
                     // 总体那几格的说明写在旁边（同桌面）；号那一行的长按看。
                     if (row == null) cell.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                if (cell.kind == RotFormKind.TOGGLE) Switch(checked = cell.v == true, onCheckedChange = { set(it) }) else NumberCell(cell, set)
+                if (cell.kind == RotFormKind.TOGGLE) Switch(checked = cell.v.value == true, onCheckedChange = { set(it) }) else NumberCell(cell, set)
             }
         }
         ui.cellFailed?.takeIf { it.cell == id }?.let { Text(it.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -150,7 +150,7 @@ private fun NumberCell(
     set: (Any?) -> Unit,
 ) {
     val num = cell.num ?: 0.0
-    val isNull = cell.nullable != null && cell.v == null
+    val isNull = cell.nullable != null && cell.v.value == null
     FlowRow(verticalArrangement = Arrangement.Center, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         cell.lead?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.align(Alignment.CenterVertically)) }
         NumberBox(num, cell.unit(), faint = isNull || cell.inherited, 96.dp, cell.label, Modifier.align(Alignment.CenterVertically)) { set(it) }
