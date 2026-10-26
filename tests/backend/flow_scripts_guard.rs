@@ -1081,7 +1081,7 @@ mod tests {
             .unwrap_or_default();
         let _ = std::fs::remove_dir_all(&d);
         assert!(
-            args.contains("-- -Z unstable-options --report-time"),
+            guard_core::find_pinned(&args, "-- -Z unstable-options --report-time").is_ok(),
             "测试程序没带 --report-time：{args}\n{said}"
         );
         assert!(

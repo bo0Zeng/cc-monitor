@@ -119,7 +119,12 @@ class RotationBoard(
         changes?.let { flow ->
             scope.launch {
                 flow.collect { c ->
-                    val mine = (c.topic == Rotation.TOPIC && (sid == null || c.key == sid)) || c.topic == Rotation.TOPIC_STRATEGIES
+                    val mine =
+                        when (c) {
+                            is Changed.Rotation -> sid == null || c.key == sid
+                            is Changed.RotationStrategies -> true
+                            else -> false
+                        }
                     if (mine) refresh()
                 }
             }

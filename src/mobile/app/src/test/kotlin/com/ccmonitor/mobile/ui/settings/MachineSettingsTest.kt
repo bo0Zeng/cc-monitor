@@ -1,12 +1,12 @@
 package com.ccmonitor.mobile.ui.settings
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
+import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.Tone
-import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
@@ -96,10 +96,10 @@ class MachineSettingsTest {
         runTest {
             val l = link()
             val (_, changes) = open(l)
-            changes.emit(Changed(Topic.QUOTA, null))
+            changes.emit(Changed.Quota())
             runCurrent()
             assertEquals(listOf(1, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
-            changes.emit(Changed(Topic.ACCOUNTS, null))
+            changes.emit(Changed.Accounts)
             runCurrent()
             assertEquals(listOf(2, 2, 1), listOf("accounts-list", "quota-read", "prefs-read").map { l.calls(it).size })
             l.epoch.value = 1
@@ -122,7 +122,7 @@ class MachineSettingsTest {
             val (m, changes) = open(link(quotaReply = { answer() }))
             val held = m.state.value.quota
             answer = { Reply.TimedOut }
-            changes.emit(Changed(Topic.QUOTA, null))
+            changes.emit(Changed.Quota())
             runCurrent()
             assertEquals(held, m.state.value.quota)
             assertEquals(
@@ -131,9 +131,26 @@ class MachineSettingsTest {
                     ?.text,
             )
             answer = { Reply.Ok(QuotaGolden.reply("订阅 · 快满")) }
-            changes.emit(Changed(Topic.QUOTA, null))
+            changes.emit(Changed.Quota())
             runCurrent()
             assertEquals(QuotaGolden.reply("订阅 · 快满")["verdict"].let { (it as Map<*, *>)["text"] }, (m.state.value.quota as Fetched.Got).value.verdict?.text)
+            assertNull(m.state.value.quotaRereadFailed)
+        }
+
+    @Test
+    fun `流上 quota 带着体：照体画、不再问那台；再读没成的那一句一起清`() =
+        runTest {
+            var answer: () -> Reply = { Reply.Ok(quota) }
+            val l = link(quotaReply = { answer() })
+            val (m, changes) = open(l)
+            answer = { Reply.TimedOut }
+            changes.emit(Changed.Quota())
+            runCurrent()
+            val pushed = QuotaRead.of(QuotaGolden.reply("订阅 · 快满"))!!
+            changes.emit(Changed.Quota(pushed))
+            runCurrent()
+            assertEquals(2, l.calls("quota-read").size)
+            assertEquals(Fetched.Got(pushed), m.state.value.quota)
             assertNull(m.state.value.quotaRereadFailed)
         }
 

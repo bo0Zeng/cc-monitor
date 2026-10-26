@@ -145,7 +145,7 @@ export const commands = {
   get_diagnostics_config: () =>
     invoke<DiagnosticsConfig>("get_diagnostics_config"),
 
-  /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写。 */
+  /** log 目录与文件清单。`current_size_text`/`size_text` 是壳写好的大小字（界面照抄）、`modified_ms` 是**毫秒时间戳**。 */
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
 
   /**
