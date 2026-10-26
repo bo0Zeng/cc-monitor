@@ -6,7 +6,9 @@ use super::*;
 /// `main` 的函数体：从 `async fn main() {` 到分流那一步（`control::ccm::route`）之前。
 fn main_head() -> &'static str {
     let src = include_str!("../../src/backend/main.rs");
-    let at = src.find("async fn main() {").expect("找不到 `main` —— 本条要跟着改");
+    let at = src
+        .find("async fn main() {")
+        .expect("找不到 `main` —— 本条要跟着改");
     let body = &src[at..];
     let end = body
         .find("control::ccm::route")

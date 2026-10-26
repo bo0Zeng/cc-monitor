@@ -6,7 +6,6 @@ pub mod history_list; // 历史页的平铺会话清单：帧面 `history-list`�
 pub(crate) mod list_node; // 会话清单变了的节点：发端（watcher）响、流的 tap 订它推 `changed {history_list}`，答清单那一刻放开
 pub mod listing; // 会话清单那一族：项目清单 · 平铺会话清单（连缓存）· 热缓存 · 叫会话什么 · 「这一行能做什么」· 分叉来源 · agent 家
 pub(crate) mod listing_scan; // 历史清单那一行的逐行扫描（累计的那几格 · 读每一行的窄探针）
-pub(crate) mod live; // 过渡：还没改读活会话表的那两份（`history_list` · `faces/history_face`，在别的权力范围手里）经它转问 `live_table`
 pub mod live_table; // 整台一张活会话表：watcher 写、整份发布；冷路判活 · 在干什么 · 在等什么 · 谁在写都问它
 pub(crate) mod remote_listing; // 远端那台的清单：那台怎么答（`history-listing`，带键集合）· 本机后端经 `--resident-call` 取来记着副本
 pub(crate) mod search_rules; // 搜索与叫会话什么的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）

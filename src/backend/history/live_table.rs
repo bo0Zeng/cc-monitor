@@ -159,11 +159,6 @@ impl LiveTable {
             .filter(move |r| r.alive && r.sid() == Some(sid))
     }
 
-    /// 此刻挂着请求的会话里还活着的那几条。
-    fn asked_live(&self, sid: &str) -> bool {
-        self.asked.contains(sid) && self.live_rows(sid).next().is_some()
-    }
-
     /// **这台此刻活着的每个会话在干什么**（[`doing_of`]；后台任务也算）。不在里面 ＝ 不活。
     pub(crate) fn doing(&self) -> BTreeMap<String, Option<SessionActivity>> {
         let mut out: BTreeMap<String, Option<SessionActivity>> = BTreeMap::new();
@@ -306,11 +301,6 @@ impl LiveTable {
             .find(|r| r.fact.sid.as_deref() == Some(sid) && r.start_checked)
             .map(|r| r.pid)
     }
-
-    /// 是不是此刻有请求挂着、活着的那一条（[`LiveTable::doing_one`] 已含它；给只关心「挂着」的那几处）。
-    pub(crate) fn asked(&self, sid: &str) -> bool {
-        self.asked_live(sid)
-    }
 }
 
 fn now_ms() -> u64 {
@@ -371,10 +361,6 @@ pub fn states_in(dir: &Path, sid: &str) -> Vec<(Option<SessionActivity>, Option<
         .collect()
 }
 
-/// 这一条此刻可重连（会话账本交来的那一份）。
-pub(crate) fn reconnectable(sid: &str) -> bool {
-    lock(&RECONNECTABLE).contains(sid)
-}
 /// 会话账本交来此刻可重连的那几条（整份换）；发布过的那份跟着换。
 pub(crate) fn set_reconnectable(now: &BTreeSet<String>) {
     let mut g = lock(&RECONNECTABLE);
