@@ -650,67 +650,6 @@ fn recipient_status(to: &str) -> (bool, Option<bool>) {
     }
 }
 
-/// 杀会话的注销结局（进 `kill` 成品的 `bus` 那一格）。杀会话不再顺手注销（名册改按会话 id 推之前，那一格恒空）。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct BusCleanup {
-    /// 注销掉了的 id。
-    pub(crate) removed: Vec<String>,
-    /// 没注销成的 `(id, 原话)`。
-    pub(crate) failed: Vec<(String, String)>,
-    /// 名册读不到（原话）⇒ 登记在上面的一个都没注销。
-    pub(crate) unread: Option<String>,
-}
-
-/// 注销结局的线上形：住 `cmd-wire::session`。
-pub(crate) use cmd_wire::session::{BusFailed, BusNote};
-
-impl BusCleanup {
-    /// 线上那一形。
-    pub(crate) fn note(&self) -> BusNote {
-        let (said, detail) = self.said();
-        BusNote {
-            removed: self.removed.clone(),
-            failed: self
-                .failed
-                .iter()
-                .map(|(id, why)| BusFailed {
-                    id: id.clone(),
-                    why: why.clone(),
-                })
-                .collect(),
-            unread: self.unread.clone(),
-            said,
-            detail,
-        }
-    }
-
-    /// 给人看的那几行（读不到名册 · 注销了谁 · 谁没注销成）＋ 复制详情（原话是下层那几句）；全空 ⇒ `(None, "")`。
-    pub(crate) fn said(&self) -> (Option<String>, String) {
-        let mut lines = Vec::new();
-        let mut raws = Vec::new();
-        if let Some(why) = &self.unread {
-            lines.push(copy_text("tmuxControl.kill.busUnread", &[]));
-            raws.push(why.clone());
-        }
-        if !self.removed.is_empty() {
-            let ids = self
-                .removed
-                .join(&copy_text("tmuxControl.kill.listSep", &[]));
-            lines.push(copy_text("tmuxControl.kill.busRemoved", &[("ids", &ids)]));
-        }
-        for (id, why) in &self.failed {
-            lines.push(copy_text("tmuxControl.kill.busFailed", &[("id", id)]));
-            raws.push(format!("{id}: {why}"));
-        }
-        let detail = if raws.is_empty() {
-            String::new()
-        } else {
-            crate::wire::detail::of(Some("kill"), "", Some(&raws.join("\n")))
-        };
-        ((!lines.is_empty()).then(|| lines.join("\n")), detail)
-    }
-}
-
 pub(crate) fn send_for_inbound(req: &BusSendReq) -> Result<BusSent, (String, String)> {
     let (to, text, from) = parse_send(req).map_err(|(c, m)| (c.to_string(), m))?;
     deliver(&to, &text, from.as_deref())?;

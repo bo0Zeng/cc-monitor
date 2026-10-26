@@ -1061,9 +1061,6 @@ fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     {
         return Err(refuse(flag::END, a));
     }
-    if !shell_quote_core::arg_text_ok(&o.bus_note) {
-        return Err(refuse(flag::BUS_NOTE, &o.bus_note));
-    }
     Ok(())
 }
 

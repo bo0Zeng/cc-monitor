@@ -1524,34 +1524,19 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
             other => panic!("{other:?}"),
         }
     };
-    // 正：带 `'` `(` 空格 `&` 的真实目录名 · 透传参数里的元字符 · 备注里的中文与标点。
+    // 正：带 `'` `(` 空格 `&` 的真实目录名 · 透传参数里的元字符。
     for args in [
         vec!["--cwd", "/home/u/Bob's notes (2019)"],
         vec!["--cwd", "/srv/a&b", "--", "--print", "a;b|c"],
-        vec![
-            "--ccm-tmux=n",
-            "--detach",
-            "--bus-register",
-            "--bus-note",
-            "给 devbox 的备注（测试）",
-        ],
     ] {
         build_of(&args, &env()).unwrap_or_else(|e| panic!("真实好值被拒了：{args:?} ⇒ {}", e.0));
     }
-    // 正：多行初始任务（`ccm … -- "第一行<换行>第二行"` 那一形）—— 透传参数与备注都放，且原样进 pane 里键入的载荷。
+    // 正：多行初始任务（`ccm … -- "第一行<换行>第二行"` 那一形）—— 透传参数放行，且原样进 pane 里键入的载荷。
     let multi = "第一行\n第二行";
     let mut with_bus = env();
     with_bus.bus_scripts = Some("/opt/cc-bus/scripts".into());
     let Plan::Container(c) = build_of(
-        &[
-            "--ccm-tmux=n",
-            "--detach",
-            "--bus-register",
-            "--bus-note",
-            multi,
-            "--",
-            multi,
-        ],
+        &["--ccm-tmux=n", "--detach", "--bus-register", "--", multi],
         &with_bus,
     )
     .unwrap_or_else(|e| panic!("多行初始任务被拒了：{}", e.0)) else {
@@ -1594,16 +1579,6 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         (vec!["--launcher", "claude\rrm"], "--launcher"),
         (vec!["--", "ok", "bad\0"], "--"),
         (vec!["--", "ok", "a\r\nb"], "--"),
-        (
-            vec![
-                "--ccm-tmux=n",
-                "--detach",
-                "--bus-register",
-                "--bus-note",
-                "a\rb",
-            ],
-            "--bus-note",
-        ),
     ] {
         let e = build_of(&args, &env())
             .err()

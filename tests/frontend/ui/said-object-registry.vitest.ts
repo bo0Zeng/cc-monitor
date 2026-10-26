@@ -17,11 +17,8 @@ const HOMES = new Set(["src/frontend/ui/terminal-reads.ts", "src/frontend/ui/cc-
 const WHERE: Record<string, string> = {
   "src/frontend/ui/terminal-page.ts::previewShot": "终端页：错误条就在页头下面，页头写着会话 · 目录 · 机器",
   "src/frontend/ui/terminal-page.ts::sendToTerminal": "终端页：送字那一行写着「送往 {会话} · {机器}」",
-  "src/frontend/ui/views/cc-bus-section.ts::readState": "设置 → cc-bus：说的是这台的名册（区块头选着这台），没有单个对象",
   "src/frontend/ui/views/cc-bus-section.ts::agentOnline": "设置 → cc-bus：结果写在那个 agent 那一行里（行首是它的 id）",
   "src/frontend/ui/views/cc-bus-section.ts::readInbox": "设置 → cc-bus：结果写在那个 agent 那一行展开的收件箱里",
-  "src/frontend/ui/views/cc-bus-section.ts::broadcast": "设置 → cc-bus：广播没有单个对象（发给这台在线的全部）",
-  "src/frontend/ui/views/cc-bus-section.ts::spawnAgent": "设置 → cc-bus：新开那一块（目录 · 账号就在上面几格）",
 };
 
 function walk(dir: string, out: string[] = []): string[] {

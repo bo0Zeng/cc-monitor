@@ -89,7 +89,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/filewin/chrome_testing.rs", // 一个目录视图连同它的框跑一帧（同 `Workspace::chrome_ui` 那一套面板）
     "tests/frontend/filewin/corpus.rs",         // 合成路径语料（采结构不采内容）
     "tests/frontend/filewin/scale.rs",          // 秤：首屏 · 滚动帧 · 内存
-    "tests/frontend/shell/ccm_cli_contract.rs", // 空壳：那条边的判据随派生脚本删了，名字还被两份判据点着
     "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
     "tests/frontend/shell/write_site_registry_writers.rs",
     // 壳的判据模块头（头注 ＋ 挂测试段那一行）：10-10 从 `src/frontend/shell/src/` 搬来，测试在各自的 `*_tests.rs` 里。

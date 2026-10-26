@@ -977,42 +977,6 @@ pub struct Killed {
     /// 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "true"))]
     pub killed: bool,
-    /// 顺手从 cc-bus 注销的结局。
-    pub bus: BusNote,
-}
-
-/// 注销结局的线上形（`kill` 回包的 `bus` · 批量停每一项的那一格）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct BusNote {
-    /// 注销掉了的 id。
-    pub removed: Vec<String>,
-    /// 没注销成的那几个（`why` 是原话）。
-    pub failed: Vec<BusFailed>,
-    /// 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
-    pub unread: Option<String>,
-    /// 给人看的那几行（没有 ⇒ `null`）。
-    pub said: Option<String>,
-    /// 复制详情（没有 ⇒ 空串）。
-    pub detail: String,
-}
-
-/// 没注销成的一个。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct BusFailed {
-    /// 那个 id。
-    pub id: String,
-    /// 原话。
-    pub why: String,
 }
 
 /// 尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。

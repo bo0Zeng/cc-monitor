@@ -154,10 +154,6 @@ mod link_mux;
 // 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
-/// 「别人怎么使唤 `ccm`」那条边的契约（仅测试构建；今天只剩空壳，见它的头注）。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/ccm_cli_contract.rs"]
-mod ccm_cli_contract;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/cross_half_edge_registry.rs"]
 mod cross_half_edge_registry; // F20：两半之间的编译期边（跨半边 include_str! 逐条登记 + ★ 一条都不许长在生产段）

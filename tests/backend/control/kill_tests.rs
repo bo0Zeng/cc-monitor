@@ -13,8 +13,8 @@ fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
     Ok(req.name)
 }
 
-fn reply(name: &str, bus: &crate::control::cc_bus::BusCleanup) -> serde_json::Value {
-    serde_json::to_value(super::reply(name, bus)).unwrap()
+fn reply(name: &str) -> serde_json::Value {
+    serde_json::to_value(super::reply(name)).unwrap()
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn the_kill_product_matches_the_cross_language_golden() {
     let k = &g["kill"];
     let name = parse_name(&k["request"]).expect("金样的请求样例过不了生产解析器");
     assert_eq!(
-        reply(&name, &crate::control::cc_bus::BusCleanup::default()),
+        reply(&name),
         k["reply"],
         "后端出的 kill 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道结束了没有」"
     );
@@ -76,41 +76,13 @@ fn the_kill_product_matches_the_cross_language_golden() {
     );
 }
 
-/// 「要说得给 `kill` 的成品加一格」：注销结局三样原样进 `bus` 那一格（期望值手写）。
+/// 杀会话的成品只说杀了哪个、杀成了：不顺手注销 cc-bus，也就没有那一格（期望值手写）。
 #[test]
-fn the_kill_reply_carries_what_the_bus_cleanup_did() {
-    let c = crate::control::cc_bus::BusCleanup {
-        removed: vec!["p_cc".into()],
-        failed: vec![("r_cc".into(), "它不在".into())],
-        unread: None,
-    };
-    let mut got = reply("demo-cc", &c);
-    // 那几行句子与复制详情由后端写好（下一条判它们）；这里只钉原样那三样。
-    let bus = got["bus"].as_object_mut().unwrap();
-    let said = bus.remove("said").unwrap();
-    let detail = bus.remove("detail").unwrap();
+fn the_kill_reply_is_only_the_session_and_that_it_ended() {
     assert_eq!(
-        got,
-        serde_json::json!({"session": "demo-cc", "killed": true,
-            "bus": {"removed": ["p_cc"], "failed": [{"id": "r_cc", "why": "它不在"}], "unread": null}})
+        reply("demo-cc"),
+        serde_json::json!({"session": "demo-cc", "killed": true})
     );
-    // 句子：注销了谁 · 谁没注销成（原话不上句子）；原话进复制详情。
-    let said = said.as_str().unwrap();
-    assert!(
-        copy_core::copy_matches_with("tmuxControl.kill.busRemoved", &[("ids", "p_cc")], said),
-        "{said}"
-    );
-    assert!(
-        copy_core::copy_matches_with("tmuxControl.kill.busFailed", &[("id", "r_cc")], said),
-        "{said}"
-    );
-    assert!(!said.contains("它不在"), "原话上了句子：{said}");
-    let detail = detail.as_str().unwrap();
-    assert!(detail.contains("r_cc: 它不在"), "{detail}");
-    // 没什么可说的 ⇒ 句子是 null、详情是空串（界面不出按钮）。
-    let quiet = reply("demo-cc", &crate::control::cc_bus::BusCleanup::default());
-    assert_eq!(quiet["bus"]["said"], serde_json::Value::Null);
-    assert_eq!(quiet["bus"]["detail"], "");
 }
 
 /// 没杀成那两形：句子只带原因词，原话（tmux 的 stderr · 起不来时的系统报错）进复制详情、不上句子。

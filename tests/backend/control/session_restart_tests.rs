@@ -127,16 +127,14 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |name: &str,
-                    sid: &str|
-         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
+        let kill = |name: &str, sid: &str| -> Result<(), crate::wire::spec::Fail> {
             note(format!("kill {name} {sid}"));
             if self.kill_err.is_none() && !matches!(self.shows, Shows::OverOld) {
                 self.book.lock().unwrap().on_frame(&removed(sid));
             }
             match self.kill_err {
                 Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
-                None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
+                None => Ok(()),
             }
         };
         let send_into =

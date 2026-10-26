@@ -6,10 +6,6 @@
 //! `admit_destructive` 回的令牌里是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
 //! 名字在窗口期内被重新绑定到别的会话也杀不到别人（同 `super::gate` 头注的 TOCTOU 分析）。
 //!
-//! # 杀会话不碰 cc-bus
-//!
-//! 杀会话不顺手注销 cc-bus 名册；成品的 `bus` 那一格恒空（名册改按会话 id 推之后整格撤）。
-//!
 //! # 错误码
 //!
 //! 命令级（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
@@ -143,19 +139,11 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
 /// 按 `sid` 认：要求此刻有窗格挂着它（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）；
 /// 那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
-pub(crate) fn run_as(
-    name: &str,
-    sid: &str,
-    requester: Option<&str>,
-) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+pub(crate) fn run_as(name: &str, sid: &str, requester: Option<&str>) -> Result<(), CmdErr> {
     run_expecting(name, Some(sid), requester)
 }
 
-fn run_expecting(
-    name: &str,
-    sid: Option<&str>,
-    requester: Option<&str>,
-) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), CmdErr> {
     let target = super::launch::exact_target(name);
     // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
     let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
@@ -173,7 +161,7 @@ pub(crate) enum Ending<'a> {
 }
 
 /// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
-pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+pub(crate) fn end(ending: Ending<'_>) -> Result<(), CmdErr> {
     let doomed = match ending {
         Ending::Doomed(d) => d,
         Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
@@ -199,15 +187,15 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdEr
         .run(KILL_TMUX_WITHIN)
         .map_err(tmux_unavailable)?;
     if out.status.success() {
-        return Ok(Default::default());
+        return Ok(());
     }
     Err(kill_refused(&out.stderr))
 }
 
 /// [`end`] 的空壳那一臂。判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell
 /// （`pane_start_command` 空）、没有客户端接着 ⇒ `kill-session`；别的形一律不动。不看窗格前台是什么：shell 刚起时
-/// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ 空的注销结局（空壳上没有登记）；不在 · 不是空壳 ⇒ `kill_failed`。
-fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+/// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ `Ok`；不在 · 不是空壳 ⇒ `kill_failed`。
+fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<(), CmdErr> {
     const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
     let there = || matches!(tmux(&["has-session", "-t", t]), Ok(r) if r.ok);
     let kill = format!("kill-session -t {t}");
@@ -215,7 +203,7 @@ fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdEr
         && matches!(tmux(&["if-shell", "-F", "-t", t, BARE, &kill]), Ok(r) if r.ok)
         && !there()
     {
-        return Ok(Default::default());
+        return Ok(());
     }
     Err(CmdErr::new(
         "kill_failed",
@@ -242,17 +230,16 @@ pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {
     let client = super::gate::requester(req.client.as_deref())?;
     // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
     let sid = super::gate::sid_shape(req.sid.as_deref())?;
-    let bus = run_expecting(&req.name, sid.as_deref(), client.as_deref())?;
-    Ok(reply(&req.name, &bus))
+    run_expecting(&req.name, sid.as_deref(), client.as_deref())?;
+    Ok(reply(&req.name))
 }
 
-/// 帧面成品 `{session, killed, bus}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍，
+/// 帧面成品 `{session, killed}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍，
 /// 界面（`src/frontend/ui/tmux-control.ts::killSession`）直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn reply(name: &str, bus: &super::cc_bus::BusCleanup) -> Killed {
+pub(crate) fn reply(name: &str) -> Killed {
     Killed {
         session: name.to_string(),
         killed: true,
-        bus: bus.note(),
     }
 }
 

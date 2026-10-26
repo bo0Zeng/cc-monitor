@@ -78,13 +78,11 @@ impl Rig {
                 None => Ok(self.rows.clone()),
             }
         };
-        let kill = |name: &str,
-                    sid: &str|
-         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
+        let kill = |name: &str, sid: &str| -> Result<(), crate::wire::spec::Fail> {
             self.calls.borrow_mut().push(format!("kill {name} {sid}"));
             match self.kill_err {
                 Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
-                None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
+                None => Ok(()),
             }
         };
         with_accounts(|accounts| {
