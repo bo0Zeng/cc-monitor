@@ -75,8 +75,8 @@ pub(crate) fn decode_installed(v: &serde_json::Value) -> Result<Installed, Strin
     })
 }
 
-/// 这一版带着的那几格落成本机文件（`~/.cc-monitor/bin/slots/<os>-<arch>`，与本机后端同一套落盘：盘上那份逐字节相等就不动）
-/// ⇒ `deploy-install` 的 `slots`。每个进程只落一次（同一版的字节不会变）。
+/// 这一版带着的那几格落成本机文件（`~/.cc-monitor/bin/slots/<os>-<arch>`，与本机后端同一套落盘：盘上那份逐字节相等就不动；
+/// 名字两侧同读：本机后端照它认哪一格，`deploy_plan::carried_slots`）⇒ `deploy-install` 的 `slots`。每个进程只落一次（同一版的字节不会变）。
 fn slot_rows() -> Result<Vec<serde_json::Value>, Said> {
     static ROWS: std::sync::OnceLock<Vec<serde_json::Value>> = std::sync::OnceLock::new();
     if let Some(r) = ROWS.get() {
@@ -110,6 +110,17 @@ fn slot_rows() -> Result<Vec<serde_json::Value>, Said> {
         }));
     }
     Ok(ROWS.get_or_init(|| rows).clone())
+}
+
+/// 起来时落一次这一版带着的那几格（本机后端那几条常驻流装后端时照这个目录现读、身份照字节自报，`deploy_plan::carried_slots`）。
+/// 没成只记一行：装那一步会照实说读不到。
+pub(crate) fn place_slots() {
+    if let Err(said) = slot_rows() {
+        tracing::warn!(
+            "这一版带着的后端字节没落成（远端装不了）：{said}: {}",
+            said.raw()
+        );
+    }
 }
 
 /// 那几格落在哪：本机后端落点旁边（`~/.cc-monitor/bin/slots`）。家目录问不到 ⇒ `None`。
@@ -156,20 +167,9 @@ async fn install_for(machine: &str, slots: Vec<serde_json::Value>) -> Result<Ins
     decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))
 }
 
-/// 连接前确保远端后端已（自动）部署到固定落点 `~/.cc-monitor/bin/ccm`（issue #29；那个文件就是后端本身）。
-///
-/// **不阻断**：调用方（stream_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
-/// 但那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志。
-/// 返回值：`Ok(build)` = 已**确认**落点上那一份自报的身份（装上了这一版 · 已是这一版 · 那台不比这一版旧时是那台的）。
-/// 调用方据此决定是否传新版才认识的流模式参数 —— `Err` 一律降级不传。
-pub async fn ensure_backend_deployed(machine: &str) -> Result<String, Said> {
-    let got = install(machine).await?;
-    tracing::info!("远端 [{machine}] 部署：{}", got.said);
-    Ok(got.build)
-}
-
 // ============================================================================
-// F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装同自动部署那一趟；卸载也整趟在后端，回那一句。
+// F08c：手动安装 / 卸载后端（设置面板两个按钮）。自动装那一趟在本机后端那几条常驻流里（接不上 · 不是这一版时，`control/feeds.rs`）；
+// 手动装同一条命令，卸载也整趟在后端，回那一句。
 // ============================================================================
 
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）：与自动部署同一趟（[`install`]），回那一句。

@@ -41,6 +41,7 @@ import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-
 import { frontView } from "./front-result";
 import { flashFrontDone, showFrontResult } from "./front-pop";
 import { machineName } from "./control-said";
+import { onMachineState } from "./machine-feed";
 import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
@@ -68,6 +69,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   const origin: Origin = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL_ORIGIN : rawOrigin;
   // 带 `run` ⇒ 这扇窗是这个会话里一个子运行自己的窗口（agent 窗口）。
   const run = q.get("run");
+  // 这扇窗也订各台的机器成品：称呼哪台都照那台成品的 `name`（`machineName`），本机远端同一条路；这台的成品一到就重画标题。
+  onMachineState((o) => {
+    if (o === origin) repaint();
+  });
   if (run) {
     await loadKeys();
     await bootstrapAgentWindow(sid, run, origin);
@@ -75,6 +80,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   await bootstrapViewer(sid, origin);
 });
+
+/** 那台的成品到了要重画的那几处（查看窗起好之后才有；agent 窗口没有要重画的）。 */
+let repaint: () => void = () => {};
 
 /** 这扇窗也认的那几条快捷键（最小化 · 全屏）＋ 出错提示。 */
 async function loadKeys(): Promise<void> {
@@ -154,6 +162,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
     acts.replaceChildren(...actionsOf(r, live === true));
   };
   paint();
+  repaint = paint;
   await viewer.load({
     jsonlPath: r.jsonlPath,
     displayTitle: r.label,

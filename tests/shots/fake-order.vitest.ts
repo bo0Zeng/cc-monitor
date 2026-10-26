@@ -19,10 +19,9 @@ function rig(): { asked: Asked[]; backend: FakeBackend } {
     (url: string, init: { body: string }) =>
       new Promise((resolve) => {
         const ok = () => resolve(new Response("{}", { status: 200 }));
-        // 起世界那一问与开页前交的每台那一轮（`machine-round`）当场答；交给无头壳的那几问由用例决定什么时候答。
+        // 起世界那一问当场答（每台那一轮随它一起交）；交给无头壳的那几问由用例决定什么时候答。
         const body = url === "/__ccm/world" ? {} : (JSON.parse(init.body) as Record<string, unknown>);
         if (url === "/__ccm/world") ok();
-        else if (body.op === "machine-round") resolve(new Response('{"ok":true,"body":"null"}', { status: 200 }));
         else asked.push({ url, body, answer: ok });
       }),
   );

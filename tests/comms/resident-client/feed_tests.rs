@@ -91,10 +91,12 @@ struct Fake {
     watches: Mutex<Vec<serde_json::Value>>,
     /// 一次性 exec 的那几条命令（看换装那一条发没发）。
     captured: Mutex<Vec<String>>,
-    /// 每一轮开拨之前那一步跑了几回（只有装得了后端的宿主替身 [`D`] 记）。
-    rounds: AtomicUsize,
-    /// 每一轮开拨之前那一步各等一个放行（有就等，没有就直接过）。
+    /// 装后端那一步跑了几回（只有装得了后端的宿主替身 [`D`] 记）。
+    installed: AtomicUsize,
+    /// 装后端那一步各等一个放行（有就等，没有就直接过）。
     holds: Mutex<VecDeque<Arc<tokio::sync::Notify>>>,
+    /// 装得了后端的宿主替身走过的那几步（`install` 与一次性 exec 的命令，按先后）。
+    steps: Mutex<Vec<String>>,
     /// 拨它 ⇒ 接着的那一条当场断（断网）。
     drop_link: tokio::sync::Notify,
     /// 那台收到的 `ping`（问活）条数。
@@ -163,8 +165,11 @@ impl Transport for T {
     }
 }
 
-/// 每一轮自己装后端的宿主替身（桌面那一形）：链路同 [`T`]；每一轮之前记一回（有放行就等它）。
+/// 自己装后端的宿主替身（本机后端那一形）：链路同 [`T`]；装那一步记一回（有放行就等它），与一次性 exec 一起按先后记进 `steps`。
 struct D(Arc<Fake>);
+
+/// 装那一步在 `steps` 里记成这个。
+const INSTALL: &str = "install";
 
 impl Transport for D {
     type Stream = tokio::io::DuplexStream;
@@ -177,13 +182,15 @@ impl Transport for D {
         Box::pin(async move { t.stream(command, progress).await })
     }
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+        self.0.steps.lock().unwrap().push(command.clone());
         let t = T(Arc::clone(&self.0));
         Box::pin(async move { t.capture(command).await })
     }
-    fn before_round(&self) -> Boxed<'_, ()> {
+    fn install(&self) -> Boxed<'_, ()> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
-            f.rounds.fetch_add(1, Ordering::SeqCst);
+            f.installed.fetch_add(1, Ordering::SeqCst);
+            f.steps.lock().unwrap().push(INSTALL.into());
             let hold = f.holds.lock().unwrap().pop_front();
             if let Some(h) = hold {
                 h.notified().await;
@@ -741,8 +748,8 @@ async fn every_new_link_carries_the_watch_list_on_its_attach_line() {
     assert_eq!(f.watches.lock().unwrap().len(), 1, "只补那一次");
 }
 
-/// 每一轮自己装后端的宿主（桌面那一形）：接上的不是这一版（回话说旧 · 认不得新一形 attach 行）⇒ `--resident-ensure --replace` 一次；
-/// 那台换了 ⇒ 再接；换上的是这一版 ⇒ 不说。每一轮开拨之前那一步先跑；接上先交 hello 与客户端，再交 `Up`；桌面从不点名「更新」（自己装）。
+/// 自己装后端的宿主（本机后端那一形）：接上的不是这一版（回话说旧 · 认不得新一形 attach 行）⇒ 先装、再 `--resident-ensure --replace` 一次；
+/// 那台换了 ⇒ 再接；换上的是这一版 ⇒ 不说。接上先交 hello 与客户端，再交 `Up`；自己装的宿主从不点名「更新」。
 #[tokio::test(start_paused = true)]
 async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
     for old in ["p9a-old", ANCIENT] {
@@ -768,7 +775,11 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
                 differs: vec![],
             }
         );
-        assert_eq!(f.rounds.load(Ordering::SeqCst), 1, "开拨之前那一步跑一回");
+        assert_eq!(
+            *f.steps.lock().unwrap(),
+            vec![INSTALL.to_string(), backend_command(ENSURE_REPLACE)],
+            "{old}：旧了 ⇒ 先把这一版装到落点、再请那台换一次"
+        );
         let seen = seen.lock().unwrap();
         let at = seen
             .iter()
@@ -816,7 +827,33 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
     assert!(f.attaches.lock().unwrap().is_empty());
 }
 
-/// 没装 · 起不了常驻：装不了后端的要人动手（上面那条）；装得了的不等人、下一轮（先部署）再试。
+/// 装那一步只在 connect 那一支里走：接上的就是这一版 ⇒ 一回都不装、一条一次性 exec 都不跑（每一轮先预检、记「上次自证过」那一套没了）；
+/// 断了再接、还是这一版 ⇒ 照样不装。
+#[tokio::test(start_paused = true)]
+async fn a_host_that_installs_does_nothing_extra_when_the_remote_is_this_build() {
+    let f = Arc::new(Fake::default());
+    {
+        let mut a = f.attaches.lock().unwrap();
+        a.push_back(Peer::Up {
+            build: MINE.into(),
+            die_now: true,
+        });
+        a.push_back(upp(MINE));
+    }
+    let (feed, _) = start_desk(&f);
+    until("断过一次又接上", || {
+        f.attach_at.lock().unwrap().len() >= 2 && up(&feed)
+    })
+    .await;
+    assert_eq!(f.installed.load(Ordering::SeqCst), 0, "这一版 ⇒ 不装");
+    assert!(
+        f.steps.lock().unwrap().is_empty(),
+        "{:?}",
+        f.steps.lock().unwrap()
+    );
+}
+
+/// 没装 · 起不了常驻：装不了后端的要人动手（上面那条）；装得了的不等人、接不上就先装再 ensure，下一轮再试。
 #[tokio::test(start_paused = true)]
 async fn a_host_that_installs_retries_a_missing_backend_by_itself() {
     let f = Arc::new(Fake::default());
@@ -829,7 +866,11 @@ async fn a_host_that_installs_retries_a_missing_backend_by_itself() {
     f.attaches.lock().unwrap().push_back(upp(MINE));
     let (feed, seen) = start_desk(&f);
     until("下一轮自己接上", || up(&feed)).await;
-    assert_eq!(f.rounds.load(Ordering::SeqCst), 2, "每一轮先部署一回");
+    assert_eq!(
+        *f.steps.lock().unwrap(),
+        vec![INSTALL.to_string(), backend_command(ENSURE)],
+        "接不上那一轮先装再 ensure；第二轮接上的就是这一版 ⇒ 不再装"
+    );
     assert!(
         seen.lock().unwrap().iter().any(|e| matches!(
             e,
@@ -927,11 +968,10 @@ async fn a_wake_while_dialing_skips_one_wait_and_is_void_once_up() {
         Arc::new(tokio::sync::Notify::new()),
         Arc::new(tokio::sync::Notify::new()),
     );
-    f.holds
-        .lock()
-        .unwrap()
-        .extend([Arc::clone(&h1), Arc::clone(&h2)]);
-    // 第一轮：没在跑、ensure 也没起来 ⇒ 没成；第二轮：接上、发完 hello 就断；第三轮：接上。
+    // 第一轮停在装那一步（h1）；第二轮停在那台收到 attach 行、回话之前（h2）。
+    f.holds.lock().unwrap().push_back(Arc::clone(&h1));
+    *f.reply_hold.lock().unwrap() = Some(Arc::clone(&h2));
+    // 第一轮：没在跑、装过、ensure 也没起来 ⇒ 没成；第二轮：接上、发完 hello 就断；第三轮：接上。
     f.ensures.lock().unwrap().push_back(Exec {
         exit_status: Some(1),
         stdout: String::new(),
@@ -947,10 +987,16 @@ async fn a_wake_while_dialing_skips_one_wait_and_is_void_once_up() {
         a.push_back(upp(MINE));
     }
     let (feed, _) = start_desk(&f);
-    until("第一轮在拨", || f.rounds.load(Ordering::SeqCst) == 1).await;
+    until("第一轮在装", || {
+        f.installed.load(Ordering::SeqCst) == 1
+    })
+    .await;
     feed.wake();
     h1.notify_one();
-    until("第二轮在拨", || f.rounds.load(Ordering::SeqCst) == 2).await;
+    until("第二轮在握手", || {
+        f.attach_lines.lock().unwrap().len() == 1
+    })
+    .await;
     feed.wake();
     h2.notify_one();
     until("第三轮接上", || {

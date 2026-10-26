@@ -56,7 +56,7 @@
 ## 4. 入方向：请求 · 应答 · 取消
 
 ```text
-→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai","view":{…}}   一行一个；args 缺 ＝ null；within_ms · tz · view 可缺
+→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai","view":{…},"machine":"<那台>"}   一行一个；args 缺 ＝ null；within_ms · tz · view · machine 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
 ← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
@@ -65,6 +65,8 @@
 
 - **`id`** 由客户端发号、后端只回显（不解析、不校验）。monitor 的发法是 `<连接 nonce>-<单调序号>`，重连不撞号。同一个 `id` 的命令还在跑 ⇒ `duplicate_id`。
 - **`within_ms`**：发起方愿意等多久。后端从收到这一行起减 2 秒余量换成截止时刻，阻塞档命令里装总期限的各处都收紧到它（到点回 `child_timed_out`，见 §CLI 面「期限」那一条）。不是正整数 ⇒ 当没带。
+- **`machine`**：这一问是问哪台的（机器表里那台的名字）。缺 · `null` · 空串 ＝ 问这个后端自己；给了 ⇒ 这个后端不自己答，经它持有的那台的常驻流原样转过去
+  （命令 · 入参 · `view` 交那台，那台的回包 · 码 · 原话 · `data` 原样回来，`control/feeds.rs::forward`）；那台没有在跑的一条 · 期限内没接上 ⇒ `unreachable`。撤单照本连接的 `id` 撤，转过去那一问随之撤。
 - **`view`**：出口的声明 —— 要哪几格、哪几格不要（缺 ＝ 全量）。词表今天两个：`cells: {<成品>: [<路径>…]}` 只要这几格（连同通往它们的那几层）·
   `omit: {<成品>: [<路径>…]}` 这几格不要；同一件成品两个都给 ⇒ 先挑后去。成品名与路径照格目录（金样 `tests/__fixtures__/cells-catalog.golden.json`）：`a.b` 嵌套 · `a[]` 列表每项 ·
   `a.*` 以 id 为键的表每项 · `a[k=v]` 列表里按判别格挑的那一种 · `a{k=v}` 非列表的那一种（根上写 `{k=v}`）；**不写挑法 ＝ 每一种都算**
@@ -171,7 +173,7 @@
 
 - 帧：`hello` `build_id` `host_arch` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
-  `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
+  `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）`machine`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
   `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_state`（`sid` 与 `face` 那几格）· `session_removed`（`sid` `cause`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
@@ -184,7 +186,7 @@
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那两条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json`。
-- 部署：第二个前端不部署后端。它连上一台走 `--resident-attach`，attach 回话说那台相对自己这一版的新旧，不是同一版就只发形状指纹对得上的命令、提示那台要更新；远端的后端由桌面端经本机后端 `deploy-install` 装。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
+- 部署：第二个前端不部署后端。它连上一台走 `--resident-attach`，attach 回话说那台相对自己这一版的新旧，不是同一版就只发形状指纹对得上的命令、提示那台要更新；远端的后端由桌面那一端的本机后端装（它那几条常驻流接不上或那台不是这一版时走 `deploy-install` 那一趟）。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
 
 ### 通用记录
 
@@ -265,7 +267,7 @@
 | `known_hosts` | 拨号核心（首见的主机钥匙鉴权过了才记）· `host-keys-forget`（忘掉一台） | 拨号核心（每次握手按这台全部地址认）· 开终端那一行（经 `ssh_config`）· `machines-read`（带出每台的指纹） | OpenSSH 格式；一台一行、主机名段写这台的全部地址。规矩只在 `ssh-dial/known_hosts.rs` |
 | `ssh_config` | 本机常驻后端（开终端那一行之前，内容不对才写） | 终端里的 `ssh -F` | 主机钥匙认 `known_hosts` 那一份，之后照读用户与系统的 ssh 配置 |
 
-设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；壳把接常驻那一轮的结论经 `machine-round` 原样交过去）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
+设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；各台的常驻流由本机常驻后端自己持有（`control/feeds.rs`），每一轮的结论它自己记，接不上或那台不是这一版时它先 `deploy-install` 再请那台换；机器页「起」·［重试］/「停」是 `machine-wake` / `machine-stop`）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 
 **Claude Code 自己写、后端只读的两份**（集成方要自己写 pidfile 时看这里）：
 

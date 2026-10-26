@@ -9,8 +9,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { diskOf } from "./world";
 import type { Convo } from "./records";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
-import { roundsOf, VERSION } from "./machine";
-import type { MachineRound } from "../../../src/frontend/ui/generated/MachineRound";
+import { roundsOf } from "./machine";
 
 const LOCAL = "<local>";
 
@@ -92,7 +91,7 @@ export const REAL_OPS = new Set([
   "plan-return",
   "plan-files",
   "plan-pb-check",
-  // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：每台那一轮的结论由台架开页前交（`machine-round`，[`roundsOf`]），
+  // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：每台那一轮的结论由台架起本机后端时交（`CCM_SHOTS_ROUNDS`，[`roundsOf`]），
   // 部署那一侧的事实在盘上（`MachineDisk.deploy`），名字旁的词 · 问题行 · 修法 · 复制详情都是本机后端算的。
   "machines-read",
   "machines-try",
@@ -163,7 +162,9 @@ export class FakeBackend {
     }
     const machines = diskOf(world);
     const reach = reachOf(world);
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, reach, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
+    // 每台接常驻那一轮的结论随世界一起交（台架起本机后端时经 `CCM_SHOTS_ROUNDS` 交给它，`real/pool.mjs`）。
+    const rounds = roundsOf(world);
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, reach, rounds, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
       // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
@@ -180,8 +181,6 @@ export class FakeBackend {
         void this.emit("chan-items", d);
       };
       await new Promise<void>((resolve) => (es.onopen = () => resolve()));
-      // 每台接常驻那一轮的结论交本机后端（同壳 `stream_source::run::send_round`），开页之前交完。
-      for (const r of roundsOf(world)) await this.call(LOCAL, "machine-round", r as unknown as Record<string, unknown>, null);
     });
     if (!opts.mainWindow) {
       for (const origin of new Set(world.sessions.map((x) => x.origin))) {
@@ -276,11 +275,6 @@ export class FakeBackend {
   /** 那个会话的替身往自己的窗格里再印一段（原样的终端输出）：真后端照常抓到、订着实时画面的照常收到新的一屏。 */
   paint(origin: string, sid: string, text: string): Promise<void> {
     return this.tell("paint", { origin, sid, text });
-  }
-
-  /** 场景在开页之后演那台又一轮的结论（经本机后端 `machine-round`，同壳交的那一条；它推 `changed {machine}`）。 */
-  async round(machine: string, round: MachineRound): Promise<void> {
-    await this.real(LOCAL, "machine-round", { machine, round, version: VERSION }, null);
   }
 
   /** 场景演那台断了：那台后端当场杀掉（壳那一侧照真的那一套作废那台的成品、各条订阅说断了）。 */

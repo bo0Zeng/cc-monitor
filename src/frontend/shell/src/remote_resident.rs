@@ -1,13 +1,14 @@
-//! **远端常驻后端，monitor 这一侧剩下的那一件**：起 · 找 · 只升不降（接上 · ensure · 换装 · 退避）是 `resident-client` 那一条循环
-//! （`resident_client::feed`，手机同一份），monitor 这一侧只给它接线（`stream_source/run.rs::DeskLink`）。这里剩：
-//! - 停：`--resident-stop`（那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
-//!   一次性回话的读法与循环读 `--resident-ensure` 同一份（`resident_client::feed::read_one_shot`）；本机那一趟同读。
+//! **远端常驻后端，monitor 这一侧剩下的那一件**：起 · 找 · 只升不降（接上 · ensure · 换装 · 退避）是本机后端那几条常驻流
+//! （`control/feeds.rs`，循环是 `resident_client::feed`，手机同一份）。这里剩：
+//! - 停：请本机后端 `machine-stop`（它先停自己那一条、再在那台跑一次 `--resident-stop`：那台自己做「请它收尾 → 宽限期内等 → 到点强杀」），
+//!   拿回 `graceful | killed | not_running`。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
 
-/// 不认这条子命令的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就收工、当「太旧」（循环那一侧同一个记号）。
-use cmd_wire::dial::OLD_BACKEND_MARKER;
+/// 本机后端那条命令（命令表 `src/backend/stream/inbound/registry/machine.rs`）与等它的上限（那台自己的宽限期 ＋ 拨号）。
+const MACHINE_STOP: &str = "machine-stop";
+const STOP_BUDGET: std::time::Duration = crate::dial_host::ONE_SHOT_DEADLINE;
 
 /// 「停」的结局 —— 后端 `--resident-stop` 那一行原样的三个词（`control/resident.rs::Stopped`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -28,7 +29,7 @@ pub struct StopAnswer {
     pub pid: Option<u32>,
 }
 
-/// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟也经它，`local_backend_host::run_resident_stop`）。
+/// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟经它，`local_backend_host::run_resident_stop`）。
 /// 没成的那几形（老后端 · 没装 · 非 unix · 那台的失败信封）照循环那一份读（`resident_client::feed::read_one_shot`）。
 /// `machine` 是那台给人看的称呼（老后端 ⇒「{machine} 后端要更新」）。
 pub(crate) fn read_stop(
@@ -42,6 +43,34 @@ pub(crate) fn read_stop(
     };
     let v = resident_client::feed::read_one_shot(&got, machine)
         .map_err(|f| crate::stream_source::said_of(&f.problem))?;
+    stop_answer_of(&v)
+}
+
+/// **停那台的常驻后端**（机器页「停」）：请本机后端停（`machine-stop`：先停它那一条，再在那台发**一次** `--resident-stop`），
+/// 等与强杀由那台自己做（同机监督者），这里只拿回结局。
+pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
+    use crate::backend_route::{route_call_error, Routed};
+    let client = crate::dial_host::local_backend_accepting(MACHINE_STOP)
+        .await
+        .map_err(|said| Said::new(said, MACHINE_STOP, None))?;
+    let args = serde_json::json!({ "machine": machine });
+    let v = client
+        .call(MACHINE_STOP, args, STOP_BUDGET)
+        .await
+        .map_err(|e| {
+            let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+                message.to_string()
+            }) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+            };
+            Said::of_call(said, MACHINE_STOP, &crate::origin::Origin::local(), &e)
+        })?
+        .unwrap_or_default();
+    stop_answer_of(&v)
+}
+
+/// `machine-stop` 的回包 `{stopped, pid}` ⇒ 结局（三个词之外的一律是错，不猜）。
+pub(crate) fn stop_answer_of(v: &serde_json::Value) -> Result<StopAnswer, Said> {
     let stopped = match v["stopped"].as_str() {
         Some("graceful") => StopWord::Graceful,
         Some("killed") => StopWord::Killed,
@@ -49,26 +78,12 @@ pub(crate) fn read_stop(
         _ => {
             return Err(Said::with_raw(
                 copy_text("rsRemoteResident.stop.unknownAnswer", &[]),
-                exec.stdout.trim(),
+                v.to_string(),
             ))
         }
     };
     let pid = v["pid"].as_u64().and_then(|p| u32::try_from(p).ok());
     Ok(StopAnswer { stopped, pid })
-}
-
-/// **停那台的常驻后端**（机器页「停」）：发**一次** `--resident-stop`，等与强杀由那台自己做（同机监督者），这里只拿回结局。
-pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
-    // 落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
-    let cmd = format!(
-        "{} {} --resident-stop",
-        crate::stream_source::BACKEND_CMD,
-        crate::local_backend::BACKEND_SEP
-    );
-    let exec =
-        crate::stream_source::connect_and_exec_capture(machine, &cmd, Some(OLD_BACKEND_MARKER))
-            .await?;
-    read_stop(&exec, machine)
 }
 
 #[cfg(test)]

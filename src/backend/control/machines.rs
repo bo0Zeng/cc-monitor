@@ -364,6 +364,10 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<()> {
 fn ring() {
     let _ = changes().send(());
     crate::control::machine_state::table_moved();
+    // 各台的常驻流照新表对齐（只在常驻进程里有；一次性进程里改表不起流）。
+    if crate::control::feeds::hosted() {
+        crate::control::feeds::align();
+    }
 }
 
 // ───────────────────────────── 三条命令 ─────────────────────────────

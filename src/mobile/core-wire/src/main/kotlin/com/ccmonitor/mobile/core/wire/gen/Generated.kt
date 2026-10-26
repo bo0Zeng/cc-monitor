@@ -10785,6 +10785,23 @@ data class MachineInterruptsReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class MachineName(
+    val machine: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineName> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            ),
+            { a -> MachineName(a[0] as String) },
+            { v -> arrayOf(v.machine) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class MachineRead(
     val machines: Map<String, MachineState>,
 ) : Ordered {
@@ -10886,27 +10903,6 @@ data class MachineRoundProblem(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class MachineRoundReq(
-    val machine: String,
-    val round: MachineRound,
-    val version: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<MachineRoundReq> = obj(
-            listOf(
-            Field("machine", { Str }, optional = false, nullable = false),
-            Field("round", { MachineRound.ADAPTER }, optional = false, nullable = false),
-            Field("version", { Str }, optional = false, nullable = false),
-            ),
-            { a -> MachineRoundReq(a[0] as String, a[1] as MachineRound, a[2] as String) },
-            { v -> arrayOf(v.machine, v.round, v.version) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class MachineRow(
     val name: String,
     val host: Host,
@@ -10994,6 +10990,25 @@ enum class MachineStateKind(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<MachineStateKind> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MachineStopped(
+    val stopped: String,
+    val pid: Long?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineStopped> = obj(
+            listOf(
+            Field("stopped", { Str }, optional = false, nullable = false),
+            Field("pid", { opt(Lng) }, optional = false, nullable = true),
+            ),
+            { a -> MachineStopped(a[0] as String, a[1] as Long?) },
+            { v -> arrayOf(v.stopped, v.pid) },
+        )
     }
 }
 
@@ -13749,6 +13764,7 @@ data class PlanRead(
     val rev: String,
     val readAt: Long,
     val readAtText: String? = null,
+    val seen: SeenAt? = null,
     val stale: PlanStale?,
     val needCount: Long,
 ) : Ordered {
@@ -13767,11 +13783,12 @@ data class PlanRead(
             Field("rev", { Str }, optional = false, nullable = false),
             Field("readAt", { Lng }, optional = false, nullable = false),
             Field("readAtText", { opt(Str) }, optional = true, nullable = true),
+            Field("seen", { opt(SeenAt.ADAPTER) }, optional = true, nullable = true),
             Field("stale", { opt(PlanStale.ADAPTER) }, optional = false, nullable = true),
             Field("needCount", { Lng }, optional = false, nullable = false),
             ),
-            { a -> PlanRead(a[0] as String?, a[1] as String, a[2] as String?, a[3] as Boolean, a[4] as List<PlanDomain>, a[5] as List<PlanSlice>, a[6] as Map<String, PlanSessionBlock>, a[7] as String, a[8] as Long, a[9] as String?, a[10] as PlanStale?, a[11] as Long) },
-            { v -> arrayOf(v.pb, v.workspace, v.repo, v.auto, v.domains, v.slices, v.bySession, v.rev, v.readAt, v.readAtText, v.stale, v.needCount) },
+            { a -> PlanRead(a[0] as String?, a[1] as String, a[2] as String?, a[3] as Boolean, a[4] as List<PlanDomain>, a[5] as List<PlanSlice>, a[6] as Map<String, PlanSessionBlock>, a[7] as String, a[8] as Long, a[9] as String?, a[10] as SeenAt?, a[11] as PlanStale?, a[12] as Long) },
+            { v -> arrayOf(v.pb, v.workspace, v.repo, v.auto, v.domains, v.slices, v.bySession, v.rev, v.readAt, v.readAtText, v.seen, v.stale, v.needCount) },
         )
     }
 }
@@ -18684,11 +18701,11 @@ sealed interface Seen<T> {
     /** 判别格（`state`）那个词。 */
     val state: String
 
-    val atMs: Long
+    val seen: SeenAt
 
     @Suppress("UNCHECKED_CAST")
     data class Kept<T>(
-        override val atMs: Long,
+        override val seen: SeenAt,
         val value: T,
     ) : Seen<T>, Ordered {
         override val state: String get() = "kept"
@@ -18696,7 +18713,7 @@ sealed interface Seen<T> {
     }
     @Suppress("UNCHECKED_CAST")
     data class Unreadable<T>(
-        override val atMs: Long,
+        override val seen: SeenAt,
     ) : Seen<T>, Ordered {
         override val state: String get() = "unreadable"
         override var wireOrder: IntArray? = null
@@ -18710,22 +18727,41 @@ sealed interface Seen<T> {
                 Variant("kept", Seen.Kept::class.java as Class<out Seen<T>>, obj(
                         listOf(
                         Field("state", { tag("kept") }, optional = false, nullable = false),
-                        Field("atMs", { Lng }, optional = false, nullable = false),
+                        Field("seen", { SeenAt.ADAPTER }, optional = false, nullable = false),
                         Field("value", { adT }, optional = false, nullable = false),
                         ),
-                        { a -> Seen.Kept<T>(a[1] as Long, a[2] as T) },
-                        { v -> arrayOf("kept", v.atMs, v.value) },
+                        { a -> Seen.Kept<T>(a[1] as SeenAt, a[2] as T) },
+                        { v -> arrayOf("kept", v.seen, v.value) },
                     )),
                 Variant("unreadable", Seen.Unreadable::class.java as Class<out Seen<T>>, obj(
                         listOf(
                         Field("state", { tag("unreadable") }, optional = false, nullable = false),
-                        Field("atMs", { Lng }, optional = false, nullable = false),
+                        Field("seen", { SeenAt.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> Seen.Unreadable<T>(a[1] as Long) },
-                        { v -> arrayOf("unreadable", v.atMs) },
+                        { a -> Seen.Unreadable<T>(a[1] as SeenAt) },
+                        { v -> arrayOf("unreadable", v.seen) },
                     )),
                 ),
             )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SeenAt(
+    val atMs: Long,
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SeenAt> = obj(
+            listOf(
+            Field("atMs", { Lng }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SeenAt(a[0] as Long, a[1] as String) },
+            { v -> arrayOf(v.atMs, v.said) },
+        )
     }
 }
 
@@ -19673,6 +19709,8 @@ enum class ShowingWhy(val wire: String) {
         val ADAPTER: JsonAdapter<ShowingWhy> = enumOf(entries) { it.wire }
     }
 }
+
+typealias Sid = String
 
 @Suppress("UNCHECKED_CAST")
 data class SidReq(

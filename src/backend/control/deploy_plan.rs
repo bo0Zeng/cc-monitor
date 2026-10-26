@@ -98,6 +98,53 @@ pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {
         .collect()
 }
 
+/// monitor 落在盘上的那几格（本机后端落点旁边的 `slots/<os>-<arch>`，monitor 起来时落）⇒ 带着的那几格（各台的常驻流装后端那一步读它）。
+/// 那一格的身份照字节自报的那一个（[`deploy_contract::identity_of_bytes`]，同装那一趟自检的读法）；名字认不出 · 字节里没有恰好一个身份 ⇒ 不算带着。
+/// 家目录问不到 · 目录不在 ⇒ 那一句（不装，照样接已有的后端）。
+pub(crate) fn carried_slots() -> Result<Vec<SlotRow>, String> {
+    let home = crate::platform::paths::home_dir().ok_or("no home directory")?;
+    carried_slots_in(&home)
+}
+
+/// [`carried_slots`] 的本体（家目录由调用方给）。
+pub(crate) fn carried_slots_in(home: &std::path::Path) -> Result<Vec<SlotRow>, String> {
+    let (landing_dir, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .ok_or("landing has no directory")?;
+    let dir = landing_dir
+        .split('/')
+        .fold(home.to_path_buf(), |p, seg| p.join(seg))
+        .join("slots");
+    let entries = Ro::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut rows = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some((os, arch)) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.split_once('-'))
+        else {
+            continue;
+        };
+        let Ok(key) = deploy_contract::key_of(os, arch) else {
+            continue;
+        };
+        let Ok(bytes) = Ro::read(&path) else {
+            continue;
+        };
+        if let RemoteIdentity::Stamp(id) = deploy_contract::identity_of_bytes(&bytes, MARKS) {
+            rows.push(SlotRow {
+                os: key.os.label().to_string(),
+                arch: key.arch.label().to_string(),
+                id,
+                path: path.display().to_string(),
+            });
+        }
+    }
+    rows.sort_by(|a, b| (&a.os, &a.arch).cmp(&(&b.os, &b.arch)));
+    Ok(rows)
+}
+
 /// `deploy-install` 的入参：monitor 带着的那几格 · 那台的名字（怎么够到它照这一端的机器表组）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

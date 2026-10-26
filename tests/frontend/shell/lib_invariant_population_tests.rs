@@ -553,7 +553,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "这台 PATH 上先找到的那个 ccm 的路径（只复制给人，不拿去跑）",
     ),
-    // stream_source/exec.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
+    // stream_source/exec.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `relay_route_core::BACKEND_LANDING_SHELL`（`backendPath` 那一格删了），
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。
 ];
 
