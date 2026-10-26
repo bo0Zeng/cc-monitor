@@ -195,7 +195,7 @@ fn in_table(pid: u32, sid: &str) -> bool {
         crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(pid)),
     )
     .is_some()
-        || crate::control::launch_account::last_of(Some(&data), sid).is_some()
+        || crate::history::launch_book::last_of(Some(&data), sid).is_some()
 }
 
 /// 这一发 hook 认不认（纯函数）：自己的环境里那个插件目录变量没带我们的目录 ⇒ 不是经环境来的（`--settings` 那一路不传给子进程），认；

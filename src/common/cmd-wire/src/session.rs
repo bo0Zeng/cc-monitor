@@ -458,7 +458,7 @@ pub struct LaunchTab {
     pub alias: Option<String>,
 }
 
-/// 一条会话不占标签页、不进历史默认清单的来由（判定只住后端 `control/session_hidden.rs`）。
+/// 一条会话不占标签页、不进历史默认清单的来由（判定只住后端 `history/session_hidden.rs`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

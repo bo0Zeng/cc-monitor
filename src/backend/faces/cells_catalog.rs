@@ -1040,8 +1040,8 @@ mod specimens {
                             activity: Some(SessionActivity::Working),
                             tmux: None,
                         }),
-                        hidden: crate::control::session_hidden::judge(
-                            &crate::control::session_hidden::Facts {
+                        hidden: crate::history::session_hidden::judge(
+                            &crate::history::session_hidden::Facts {
                                 pin: Some(crate::history::history_annotations::Hide::On),
                                 ..Default::default()
                             },
@@ -1054,8 +1054,8 @@ mod specimens {
                             activity: Some(SessionActivity::Working),
                             tmux: None,
                         }),
-                        hidden: crate::control::session_hidden::judge(
-                            &crate::control::session_hidden::Facts {
+                        hidden: crate::history::session_hidden::judge(
+                            &crate::history::session_hidden::Facts {
                                 pin: Some(crate::history::history_annotations::Hide::On),
                                 ..Default::default()
                             },
@@ -1123,7 +1123,7 @@ mod specimens {
                 ask: Some(crate::agents::asks::specimen()),
                 manual_text: Some(Words(s("m"))),
             },
-            hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+            hidden: crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
                 pin: Some(crate::history::history_annotations::Hide::On),
                 ..Default::default()
             }),
@@ -1175,7 +1175,7 @@ mod specimens {
             })
             .under(some("b")),
             name_face: named(),
-            hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+            hidden: crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
                 pin: Some(crate::history::history_annotations::Hide::On),
                 ..Default::default()
             }),

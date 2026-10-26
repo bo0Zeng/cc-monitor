@@ -9,7 +9,7 @@
 //! # 形状
 //!
 //! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "resumeWith"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
-//! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `control/session_hidden.rs`）。
+//! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `history/session_hidden.rs`）。
 //!
 //! # 升级链（一节，下一个大版本删）
 //!
@@ -268,7 +268,7 @@ pub(crate) struct Patch {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     hide: Option<HideAsk>,
-    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
     #[serde(default, rename = "autoAnswer")]
     #[cfg_attr(test, ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,

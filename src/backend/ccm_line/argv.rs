@@ -31,7 +31,7 @@ pub(crate) mod flag {
     pub(crate) const CCM_VERSION: &str = "--ccm-version";
     pub(crate) const CCM_PROBE: &str = "--ccm-probe";
     pub(crate) const CCM_SID: &str = "--ccm-sid";
-    /// `--tab <show|hide>`：新会话进不进标签页（不给 ⇒ 照这台偏好，判定住 `control/session_hidden.rs`）。claude 没有同名旗标。
+    /// `--tab <show|hide>`：新会话进不进标签页（不给 ⇒ 照这台偏好，判定住 `history/session_hidden.rs`）。claude 没有同名旗标。
     pub(crate) const TAB: &str = "--tab";
     /// `--tab-from <别名>`：`--tab` 是哪个别名写的（ccm 往 tmux 里那一趟交下去用，那一趟的命令行里已经没有别名了）。
     pub(crate) const TAB_FROM: &str = "--tab-from";

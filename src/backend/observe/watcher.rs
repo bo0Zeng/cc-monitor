@@ -3393,7 +3393,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     // 之后过不了身份门，而「为什么」原先整条链零线索。
     let (container, wrote) = tag_identity(state, pid, &sid);
     adopt_launch_note(state, pid, &sid);
-    // 隐不隐藏（启动台账要在认完便条之后读）：判定住 `control/session_hidden.rs`。
+    // 隐不隐藏（启动台账要在认完便条之后读）：判定住 `history/session_hidden.rs`。
     let hidden = state.hidden_of(
         &crate::history::session_hidden::Here::read_now(),
         &sid,

@@ -239,7 +239,7 @@ pub(crate) fn line_of(
     })
 }
 
-/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
+/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `history/session_hidden.rs`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]

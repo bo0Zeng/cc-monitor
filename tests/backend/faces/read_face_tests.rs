@@ -1608,8 +1608,8 @@ fn a_hidden_background_session_still_lists_its_needs() {
     };
     put_as("s-bg", "bg");
     put_as("s-fg", "interactive");
-    let here = crate::control::session_hidden::Here {
-        rules: crate::control::session_hidden::Rules {
+    let here = crate::history::session_hidden::Here {
+        rules: crate::history::session_hidden::Rules {
             child_tab: cmd_wire::session::Tab::Hide,
             bg_tab: cmd_wire::session::Tab::Hide,
         },

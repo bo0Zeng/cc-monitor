@@ -4,11 +4,11 @@
 //!   跟随时上次那个号选不了 ⇒ 不起、给一个显式的替代（绝不悄悄换成别的号）。
 //! - 记录：`ccm` 在最终那一跳给将要跑 agent 的那个进程留一张**便条**（`launch-pending/<pid>.json`：号 ＋ 时刻，
 //!   各写各的；起会话时给了 `--tab` 也记在这张上）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号`（与 `sid → 标签页`）记进
-//!   `launch-accounts.json`（启动台账：只有观测侧写，锁里原子写）。
+//!   `launch-accounts.json`（启动台账：只有观测侧写，锁里原子写；形状与读住 `history/launch_book.rs`）。
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
+use crate::history::launch_book::{read_book, FILE_NAME};
 use crate::platform::fs::{Own, OwnPath};
-use crate::wire::typed::codes;
 use cmd_wire::accounts::{AccountRow, AccountsList};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
@@ -201,22 +201,11 @@ pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
 
 // ───────────────────────────── 记录 ─────────────────────────────
 
-/// 记录文件名（落点住契约常量）。
-pub(crate) const FILE_NAME: &str =
-    relay_route_core::file_name_of(relay_route_core::LAUNCH_ACCOUNTS_REL);
 /// 便条目录名。
 pub(crate) const NOTES_DIR: &str =
     relay_route_core::file_name_of(relay_route_core::LAUNCH_NOTES_DIR_REL);
 
-/// `launch-accounts.json`（启动台账）：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页`。
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Book {
-    pub(crate) sessions: BTreeMap<String, String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) tabs: BTreeMap<String, LaunchTab>,
-}
-
-/// 起会话时那一格 `--tab`（线上形住 `cmd-wire`：那一台的清单每行带它）。隐藏的判定读它（`control/session_hidden.rs`）。
+/// 起会话时那一格 `--tab`（线上形住 `cmd-wire`：那一台的清单每行带它）。隐藏的判定读启动台账里记下的那一格。
 pub(crate) use cmd_wire::session::LaunchTab;
 
 /// 一张便条：起这个进程时用的号 ＋ 写下的时刻（unix 秒）。
@@ -233,31 +222,11 @@ pub(crate) struct Note {
     pub(crate) tab: Option<LaunchTab>,
 }
 
-/// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
-pub(crate) fn read_book(home: &Path) -> Result<Book, crate::common::said::Said> {
-    use crate::common::own_state::Read;
-    match BOOK.read(&home.join(FILE_NAME)) {
-        Read::Absent => Ok(Book::default()),
-        Read::Present(b) => Ok(b),
-        Read::Unreadable(why) => Err(why),
-    }
-}
-
-/// 读盘的上限（一条会话一行）。
-const MAX_BYTES: u64 = 16 << 20;
-
-/// 启动台账：状态（读不懂不覆盖）。
-const BOOK: crate::common::own_state::Doc<Book> =
-    crate::common::own_state::Doc::state(relay_route_core::LAUNCH_ACCOUNTS_REL, MAX_BYTES);
-
-/// 一个进程一张便条：状态（写的那一下不读它；读不懂的那张不作数）。
-const NOTE: crate::common::own_state::Doc<Note> =
-    crate::common::own_state::Doc::state(".cc-monitor/launch-pending/<pid>.json", MAX_BYTES);
-
-/// 这条会话上次用的号（读不出 / 没记 ⇒ `None`）。
-pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
-    read_book(home?).ok()?.sessions.get(sid).cloned()
-}
+/// 一个进程一张便条：状态（写的那一下不读它；读不懂的那张不作数）。读盘上限与启动台账同一个。
+const NOTE: crate::common::own_state::Doc<Note> = crate::common::own_state::Doc::state(
+    ".cc-monitor/launch-pending/<pid>.json",
+    crate::history::launch_book::MAX_BYTES,
+);
 
 /// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条（号说得出名字才记 · 答题插件是不是经环境交下去的 · `--tab`）。
 /// 失败只出声（不挡起会话）。落点：写句柄的数据目录那一根（`home`）底下的便条目录。
@@ -426,38 +395,6 @@ fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
         ),
         e,
     )
-}
-
-codes! {
-    /// 读「每条会话上次用哪个号起的」那份记录的码。
-    pub(crate) enum LastAccountsErr {
-        /// 这台那份起会话账号记录读不懂。
-        Unreadable = "unreadable",
-    }
-}
-
-/// 这台记着的「每条会话上次用哪个号起的」（历史清单并进每行；一条会话的号那一份成品逐条读 [`last_of`]），
-/// 家是参数（推不出家 ⇒ 空表）。读不懂 ⇒ `unreadable`。
-pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, LastAccountsErr> {
-    let book = match home {
-        Some(h) => read_book(h).map_err(|e| {
-            crate::wire::typed::of_fail(
-                crate::wire::spec::Fail::from(("unreadable", e)),
-                LastAccountsErr::Unreadable,
-            )
-        })?,
-        None => Book::default(),
-    };
-    Ok(LastAccounts {
-        accounts: book.sessions,
-    })
-}
-
-/// [`last_accounts_at`] 读出来的那一份。
-#[derive(Debug, Serialize)]
-pub(crate) struct LastAccounts {
-    /// `{sid: 账号名}`：只含真记过的那几条。
-    pub(crate) accounts: BTreeMap<String, String>,
 }
 
 #[cfg(test)]

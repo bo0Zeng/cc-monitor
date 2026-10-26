@@ -322,10 +322,10 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                         ..Default::default()
                     },
                 ),
-                hidden: crate::control::session_hidden::judge(
-                    &crate::control::session_hidden::Facts {
+                hidden: crate::history::session_hidden::judge(
+                    &crate::history::session_hidden::Facts {
                         bg: true,
-                        rules: crate::control::session_hidden::Rules {
+                        rules: crate::history::session_hidden::Rules {
                             child_tab: cmd_wire::session::Tab::Hide,
                             bg_tab: cmd_wire::session::Tab::Hide,
                         },

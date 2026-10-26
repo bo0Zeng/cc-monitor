@@ -242,7 +242,7 @@ pub(crate) const INHERIT: &[Inherit] = &[
         direct: Pass::Machine,
         tmux: Pass::Machine,
         change: Change::Flags(&[flag::TAB]),
-        judge: "crate::control::session_hidden::judge",
+        judge: "crate::history::session_hidden::judge",
     },
     Inherit {
         item: Item::OtherEnv,
