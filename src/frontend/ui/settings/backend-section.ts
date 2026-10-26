@@ -13,7 +13,7 @@ import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import type { HealthFace } from "../generated/HealthFace";
-import { isLocalOrigin, type Origin } from "../ipc/origin";
+import type { Origin } from "../ipc/origin";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -34,6 +34,7 @@ import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import type { MachineState } from "./machine-state";
+import type { LocalBackend } from "../generated/LocalBackend";
 import { sayFailure, sayWithDetail, saidOf } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
@@ -145,7 +146,7 @@ export class BackendSection {
   /** 寄居模式：四格挂在机器列表那一行上（`cellsFor`），本块自己的 `element` 只装后端清单里有、机器列表里没有的那几台。 */
   private readonly hosted: boolean;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
-  private readonly onMachine: ((origin: string, machine: MachineState) => void) | undefined;
+  private readonly onLocal: ((local: LocalBackend) => void) | undefined;
   private readonly machineOf: ((origin: string) => MachineState | null) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
@@ -162,14 +163,14 @@ export class BackendSection {
       interrupts?: (origin: Origin) => Promise<Interrupts | null>;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
-      /** 每次问完那台的状态成品（只本机那一行带）。 */
-      onMachine?: (origin: string, machine: MachineState) => void;
-      /** 那台手上最新那一份成品（远端各台由本机后端推，`backend_status` 不带）。 */
+      /** 每次问完本机后端起没起来（只本机那一行带）。 */
+      onLocal?: (local: LocalBackend) => void;
+      /** 那台手上最新那一份成品（各台含本机由本机后端推，`backend_status` 不带）。 */
       machineOf?: (origin: string) => MachineState | null;
     } = {},
   ) {
     this.onChannel = opts.onChannel;
-    this.onMachine = opts.onMachine;
+    this.onLocal = opts.onLocal;
     this.machineOf = opts.machineOf;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
@@ -285,13 +286,10 @@ export class BackendSection {
   private async machines(): Promise<Machine[]> {
     try {
       const origins = await commands.backend_machines();
-      return origins.map((origin) => ({
-        origin,
-        title: isLocalOrigin(origin) ? copyText("backend.machine.local") : origin,
-      }));
+      return origins.map((origin) => ({ origin, title: machineName(origin) }));
     } catch (e) {
       console.warn(`[P2s] 问后端要机器清单失败，只显示本机：${String(e)}`);
-      return [{ origin: LOCAL_ORIGIN, title: copyText("backend.machine.local") }];
+      return [{ origin: LOCAL_ORIGIN, title: machineName(LOCAL_ORIGIN) }];
     }
   }
 
@@ -586,14 +584,13 @@ export class BackendSection {
       const st = await commands.backend_status({ origin });
       const on = st.channel;
       const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
-      const machine = st.machine;
-      const ver = (machine ?? this.machineOf?.(origin) ?? null)?.version ?? null;
+      const ver = this.machineOf?.(origin)?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
       if (on) void this.paintDrift(origin);
       this.onChannel?.(origin, on);
-      if (machine !== null) this.onMachine?.(origin, machine);
+      if (st.local) this.onLocal?.(st.local);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {

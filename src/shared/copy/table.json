@@ -2176,10 +2176,10 @@
       "zh": "…前文已省略",
       "args": []
     },
-    "control.machine.local": {
+    "control.machine.unsure": {
       "kind": "body",
       "role": "片段",
-      "zh": "本机",
+      "zh": "机器不明",
       "args": []
     },
     "control.machine.peer": {
@@ -8069,12 +8069,6 @@
       "zh": "本机",
       "args": []
     },
-    "remote.localRow.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "本机",
-      "args": []
-    },
     "remote.refresh.failed": {
       "kind": "error",
       "role": "报错",
@@ -8614,12 +8608,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "查询中",
-      "args": []
-    },
-    "backend.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
       "args": []
     },
     "backend.paintUnregistered.unregistered": {
@@ -11642,12 +11630,6 @@
       "zh": "打开终端失败 · 程序出错",
       "args": []
     },
-    "rsLaunch.remote.noConfig": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "机器列表无 {machine}",
-      "args": ["machine"]
-    },
     "rsLaunch.posix.noTerminalWindow": {
       "kind": "body",
       "role": "说明",
@@ -12449,12 +12431,6 @@
       "role": "说明",
       "zh": "先用填的名字 · 被占用依次 -2 -3",
       "args": []
-    },
-    "rsAssetSync.reach.said": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端 · {said}",
-      "args": ["said"]
     },
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
@@ -14594,18 +14570,6 @@
       "zh": "未找到主目录（HOME 与 USERPROFILE 均未设） · 未写入",
       "args": []
     },
-    "beResolveQuery.resolve.unsafeLauncher": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动命令 {base} 含 shell 特殊字符或控制字符 · 未使用",
-      "args": ["base"]
-    },
-    "beResolveQuery.resolve.badSessionId": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话 ID 无效 · {id} · 只许字母、数字、_、- · 最长 128",
-      "args": ["id"]
-    },
     "beHistoryAnnotations.needPath.unknown": {
       "kind": "error",
       "role": "报错",
@@ -14824,12 +14788,6 @@
       "role": "报错",
       "zh": "{machine} 离线 · 上线后自动恢复",
       "args": ["machine"]
-    },
-    "beRemoteAsk.register.full": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端机器已达上限 {max}",
-      "args": ["max"]
     },
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",
@@ -20405,12 +20363,6 @@
       "zh": "无采样",
       "args": []
     },
-    "acct.machine.here": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
     "acct.text.readFail": {
       "kind": "error",
       "role": "报错",
@@ -22865,12 +22817,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "核对中",
-      "args": []
-    },
-    "addMachine.err.save": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "保存失败 · 已在别处改过 · 已刷新",
       "args": []
     },
     "addMachine.action.ssh": {
@@ -29594,12 +29540,6 @@
       "kind": "control",
       "role": "标签",
       "zh": "分组（可选）",
-      "args": []
-    },
-    "mobHostEdit.agent.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "agent 类型",
       "args": []
     },
     "mobHostEdit.switch.workspace": {

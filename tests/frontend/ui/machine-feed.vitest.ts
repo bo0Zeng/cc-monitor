@@ -1,5 +1,5 @@
 /**
- * 机器状态成品的推送照生成的类型交：本机那一帧（`machine-state`）与远端那几格（`changed/machine` 的 `body`）原样到订的人手里；
+ * 机器状态成品的推送照生成的类型交：各台（含本机）那几格（`changed/machine` 的 `body`）与本机后端起没起来那一格（`local-backend`）原样到订的人手里；
  * 订上就问一次 `machine-read`（订的那一刻那台已经接着时，壳不再交 `seen`，只等它就一台都拿不到）；帧里没带成品的那一格 ⇒ 整份重问，回包里每台各交一次。
  * 那台「连上了」那一刻：只在从别的样子变成连着时叫一次（起着 → 连着 · 断了 → 又连着），连着时再来的帧不重复叫。
  */
@@ -27,7 +27,8 @@ vi.mock("../../../src/comms/inward/chan", () => ({
     }),
   },
 }));
-vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (actual) => ({
+  ...(await actual<typeof import("../../../src/frontend/ui/ipc/chan-caller")>()),
   budgetWithin: () => ({}),
   callTyped: vi.fn((_origin: string, cmd: string) => {
     reads.push(cmd);
@@ -35,8 +36,13 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
   }),
 }));
 
-import { MACHINE_STATE_EVENT, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
+import { machineName } from "../../../src/frontend/ui/ipc/chan-caller";
+import { LOCAL_BACKEND_EVENT, onLocalBackend, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
+import type { LocalBackend } from "../../../src/frontend/ui/generated/LocalBackend";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { KEYS_NOT_NAMES } from "../../../src/frontend/ui/generated/judgment-rules.ts";
 import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
+import { SUBSCRIBE_COALESCE_MS } from "../../../src/frontend/ui/events";
 
 // 金样里的成品各取几形（哪一形不要紧：这里只核原样交到）。
 const [up, connecting, installing, , , , , needsUpdate] = (golden.cases as unknown as { machine: MachineState }[]).map((c) => c.machine);
@@ -48,6 +54,18 @@ beforeEach(() => {
   sink = null;
   reads.length = 0;
   readReply = { machines: {} };
+});
+
+// 放在最前：后面几条会喂进各台（含本机）的成品，名字记在模块里。
+describe("机器名还没到", () => {
+  it("★ 远端那台的成品还没到 ⇒ 叫它在机器表里的键（键就是名字）", () => {
+    expect(machineName("devbox-no-product")).toBe("devbox-no-product");
+  });
+
+  it("★ 键不能当名字（本机那个哨兵）、成品还没到 ⇒ 机器不明（不拿一条「本机」顶）", () => {
+    expect(KEYS_NOT_NAMES, "生成物里没有本机那个哨兵 —— 下一句在空表上恒红").toContain("<local>");
+    expect(machineName("<local>")).toBe(copyText("control.machine.unsure"));
+  });
 });
 
 describe("机器状态成品的推送", () => {
@@ -62,11 +80,15 @@ describe("机器状态成品的推送", () => {
     off();
   });
 
-  it("★ 本机那一帧原样交（形状是壳导出的类型）", () => {
-    const got: [string, MachineState][] = [];
-    onMachineState((o, m) => got.push([o, m]));
-    listeners.get(MACHINE_STATE_EVENT)!({ payload: { origin: "<local>", machine: connecting } });
-    expect(got).toEqual([["<local>", connecting]]);
+  it("★ 本机后端起没起来那一格原样交（形状是壳导出的类型），不冒充哪一台的成品", () => {
+    const got: LocalBackend[] = [];
+    const states: string[] = [];
+    onLocalBackend((l) => got.push(l));
+    onMachineState((o) => states.push(o));
+    const down: LocalBackend = { state: "down", word: "w", said: "s", fixes: [], next: null };
+    listeners.get(LOCAL_BACKEND_EVENT)!({ payload: down });
+    expect(got).toEqual([down]);
+    expect(states).toEqual([]);
   });
 
   it("★ 远端那几格：带了成品的原样交；没带的那一格 ⇒ 整份重问 machine-read、每台交一次", async () => {
@@ -90,17 +112,43 @@ describe("机器状态成品的推送", () => {
   });
 });
 
+describe("机器名照成品叫", () => {
+  it("★ 后端那一行的 name 换个字，machineName 跟着换（本机远端同一条路）", async () => {
+    readReply = { machines: { "<local>": { ...up, name: "甲字" }, devbox: { ...up, name: "乙字" } } };
+    const off = onMachineState(() => {});
+    await flush();
+    await flush();
+    expect([machineName("<local>"), machineName("devbox")]).toEqual(["甲字", "乙字"]);
+    sink!([frame(0, { key: "<local>", body: { ...up, name: "丙字" } })]);
+    await vi.waitFor(() => expect(machineName("<local>")).toBe("丙字"), { timeout: WALL_CEILING_MS });
+    off();
+  });
+});
+
 describe("onMachineUp", () => {
-  it("只在变成连着的那一刻叫，每台各算", () => {
+  it("只在变成连着的那一刻叫，每台各算", async () => {
     const got: string[] = [];
     const off = onMachineUp((o) => got.push(o));
-    const push = (origin: string, m: MachineState) => listeners.get(MACHINE_STATE_EVENT)!({ payload: { origin, machine: m } });
-    push("<local>", connecting);
-    push("<local>", up);
-    push("<local>", up);
-    push("pi", up);
-    push("<local>", needsUpdate);
-    push("<local>", up);
+    await flush();
+    await flush();
+    vi.useFakeTimers();
+    let seq = 0;
+    // 每一帧走过合批窗口再推下一帧（同一台一窗里来的几帧只交最后那一份）。
+    const push = async (origin: string, m: MachineState, want: number) => {
+      sink!([frame(seq++, { key: origin, body: m })]);
+      await vi.advanceTimersByTimeAsync(SUBSCRIBE_COALESCE_MS);
+      expect(got.length).toBe(want);
+    };
+    try {
+      await push("<local>", connecting, 0);
+      await push("<local>", up, 1);
+      await push("<local>", up, 1);
+      await push("pi", up, 2);
+      await push("<local>", needsUpdate, 2);
+      await push("<local>", up, 3);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(got).toEqual(["<local>", "pi", "<local>"]);
     off();
   });

@@ -296,7 +296,7 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
     const resume = items.filter((b) => b.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.item.resume"));
     expect(resume.length, "恢复那一项还在（置灰、第二行说为什么）").toBe(1);
     expect(resume[0].disabled).toBe(true);
-    expect(resume[0].querySelector("[data-part=why]")?.textContent).toBe(copyText("tabMenu.unseen.why", { machine: copyText("sessionFace.machine.local") }));
+    expect(resume[0].querySelector("[data-part=why]")?.textContent).toBe(copyText("tabMenu.unseen.why", { machine: copyText("control.machine.unsure") }));
     const actions = (tm as unknown as { actions: { resume(sid: string): Promise<void> } }).actions;
     await actions.resume("u");
     const said = [...document.querySelectorAll("#kit-toast-stack > *")].some((t) =>

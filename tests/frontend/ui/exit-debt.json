@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1941,
+  "ceiling": 1944,
   "groups": [
     {
       "kind": "首登",
@@ -72,7 +72,7 @@
         ["src/frontend/shell/src/lib.rs", "key", 4],
         ["src/frontend/shell/src/link_mux.rs", "key", 8],
         ["src/frontend/shell/src/local_backend.rs", "key", 9],
-        ["src/frontend/shell/src/local_backend_host.rs", "key", 26],
+        ["src/frontend/shell/src/local_backend_host.rs", "key", 29],
         ["src/frontend/shell/src/logging.rs", "key", 4],
         ["src/frontend/shell/src/platform/fs.rs", "key", 6],
         ["src/frontend/shell/src/platform/terminal.rs", "key", 2],

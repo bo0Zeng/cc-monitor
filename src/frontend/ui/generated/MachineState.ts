@@ -6,7 +6,7 @@ import type { MachineStateKind } from "./MachineStateKind";
 import type { VersionRelation } from "./VersionRelation";
 
 /**
- * 一台的状态成品（判定在后端 `deploy::machine`；本机那一行由壳照同一批键出）。界面照画：字取 `word` · `said` · `fixes[].label`。
+ * 一台的状态成品（判定在后端 `deploy::machine`，本机远端同一份）。界面照画：字取 `word` · `said` · `fixes[].label`。
  */
 export type MachineState = { 
 /**
@@ -56,8 +56,4 @@ expectedHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, 
-/**
- * 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
- */
-next: string | null, };
+detail: string | null, };

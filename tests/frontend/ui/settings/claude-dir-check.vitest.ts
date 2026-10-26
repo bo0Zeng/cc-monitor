@@ -56,6 +56,6 @@ describe("Claude 目录：存之前问后端一次，按码说", () => {
     backend(() => chanReply({ state: "maybe" }));
     const said = await claudeDirProblem("/h/y");
     expect(said).not.toBeNull();
-    expect(said).toContain(copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.local") }));
+    expect(said).toContain(copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.unsure") }));
   });
 });

@@ -123,37 +123,18 @@ function installingWorld(): World {
   return w;
 }
 
-/** 一帧状态成品（推送那一路的样子；形状同金样）。 */
-const pushed = (state: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
-  state,
-  reason: null,
-  stage: null,
-  version: null,
-  versionRelation: null,
-  os: "Linux",
-  word: "",
-  said: "",
-  fixes: [],
-  seenHostKey: null,
-  expectedHostKey: null,
-  detail: null,
-  next: null,
-  ...extra,
-});
 
-/** 起本机后端被拒（口上是上一版留下的后端）那一刻本机那一台的成品；下一步那句照壳的文案拼。 */
-const localRefused = pushed("needs_update", {
-  reason: "local",
-  version: null,
-  versionRelation: "older",
-  os: null,
-  fixes: [{ fix: "retry", label: copyText("machineState.fix.retry") }],
+/** 起本机后端被拒（口上是上一版留下的后端）那一刻壳推的本机后端那一格（`local-backend`）；字照壳的文案拼。 */
+const localRefused = {
+  state: "older",
+  word: copyText("machineState.word.needsUpdate"),
+  said: copyText("machineState.problem.needsUpdate", { machine: copyText("remote.cards.local") }),
   next: copyText("rsLocalBackendHost.start.refusedNext", {
     why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
     pid: "4242",
     sock: "/home/user/.cc-monitor/run/backend.sock",
   }),
-});
+};
 
 export const SETTINGS_SCENES: Scene[] = [
   settings("settings-ssh-import-taken", "设置 · 添加机器 · 撞名", "从 ~/.ssh/config 选：build-02 改名成 gpu-01（列表里已有），就地拦", async () => {
@@ -202,12 +183,12 @@ export const SETTINGS_SCENES: Scene[] = [
 
   settings("settings-machines-local-refused", "设置 · 机器 · 本机后端被拒", "升级后旧的本机后端还占着口：本机那一行「要更新」＋［重试］，问题行下面是壳写好的下一步（结束哪个进程 · 进程号记在哪）", async () => {
     await go("machines");
-    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await emit("local-backend", localRefused);
     await sleep(800);
   }),
   settings("settings-machine-local-refused", "设置 · 本机 · 本机后端被拒", "同上，本机那一页卡头：问题行 ＋ 下一步", async () => {
     await go("machine:<local>");
-    await emit("machine-state", { origin: "<local>", machine: localRefused });
+    await emit("local-backend", localRefused);
     await sleep(800);
   }),
   settings("settings-landing", "设置 · 打开时", "设置窗打开时落在的那一页", async () => {

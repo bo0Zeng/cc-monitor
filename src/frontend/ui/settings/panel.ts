@@ -5,7 +5,8 @@
  * `emit(SETTINGS_APPLIED_EVENT)` 让主窗口重读）；主窗口内浮层（`windowMode:false`，行为改动经 `onBehaviorChange` 同窗直连）。
  */
 
-import { onMachineState } from "../machine-feed";
+import { onLocalBackend, onMachineState } from "../machine-feed";
+import type { LocalBackend } from "../generated/LocalBackend";
 import { buildTerminalRow } from "./terminal-row";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
@@ -37,7 +38,7 @@ import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
 
 type SwitchHandle = ReturnType<typeof toggleSwitch>;
-import { machineFace, type MachineFix, type MachineState } from "./machine-state";
+import { localBackendFace, machineFace, type MachineFix, type MachineState } from "./machine-state";
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
@@ -67,7 +68,7 @@ import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
-import { ControlError } from "../control-said";
+import { ControlError, machineName } from "../control-said";
 import { focusRotation, RotationSection } from "./rot-section";
 
 /**
@@ -284,6 +285,7 @@ export class SettingsPanel {
     if (this.windowMode) this.installWindowLifecycle();
     // 那台的状态一变，壳推一帧：点 · 词 · 问题行原位换（不轮询）。
     onMachineState((origin, m) => this.paintMachine(origin, m));
+    onLocalBackend((l) => this.paintLocalBackend(l));
     // 新建的窗：壳把目的地放在初始化脚本里。
     this.goTo(parseSettingsTarget((window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__));
     // Esc 由 KeybindingDispatcher 统一调度：open 时压栈、close 时弹出，多弹层按 LIFO 关。
@@ -500,6 +502,17 @@ export class SettingsPanel {
     if (meta !== undefined && meta !== null) page.setMeta(meta);
   }
 
+  /** 照壳那一格画本机后端没起来（导航点 · 列表那一行 · 卡头）；连着 ⇒ 不动，本机那一台的成品由本机后端推来。 */
+  private paintLocalBackend(l: LocalBackend): void {
+    const face = localBackendFace(l);
+    if (!face) return;
+    this.machineOf.delete(LOCAL_ORIGIN);
+    const machine = machineName(LOCAL_ORIGIN);
+    this.remoteSection?.setLocalBackend(face);
+    this.router.setNavDot(LOCAL_MACHINE_PAGE_ID, face.dot, `${machine} · ${face.word}`);
+    this.machinePages.get(LOCAL_MACHINE_PAGE_ID)?.setMachine(face);
+  }
+
   /** 问题行上交到宿主的修法：重试（叫那条流当场重拨）· 更新（换上这一版，再重拨）。 */
   private async runFix(pageId: string, fix: MachineFix): Promise<void> {
     const origin = pageId === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(pageId);
@@ -522,7 +535,7 @@ export class SettingsPanel {
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
-    const machine = local ? copyText("remote.cards.local") : origin;
+    const machine = machineName(origin);
     this.remoteSection?.setConnected(pageId, connected);
     if (!local && this.remoteSection?.isDisabledPage(pageId)) {
       this.machinePages.get(pageId)?.setDisabled(true);
@@ -909,7 +922,7 @@ export class SettingsPanel {
         headless: true,
         hosted: true,
         onChannel: (origin, connected) => this.paintNavDot(origin, connected),
-        onMachine: (origin, machine) => this.paintMachine(origin, machine),
+        onLocal: (l) => this.paintLocalBackend(l),
         machineOf: (origin) => this.machineOf.get(origin) ?? null,
       });
       this.backendSection = backend;
@@ -1019,7 +1032,7 @@ export class SettingsPanel {
               : buildConfigPage({
                   platform: shell,
                   origin: () => LOCAL_ORIGIN,
-                  machine: () => copyText("remote.cards.local"),
+                  machine: () => machineName(LOCAL_ORIGIN),
                 });
           },
         ),

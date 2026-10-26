@@ -179,35 +179,62 @@ fn the_product_matches_the_cross_language_golden() {
     }
     let golden = serde_json::json!({
         "说明": [
-            "设置窗机器列表 / 卡头那一格的成品（远端：本机后端 `changed {machine}` 的 body 与 `machine-read`；本机：`backend_status` 的 machine）的跨语言金样。",
-            "Rust：tests/backend/control/machine_state_tests.rs 按 name 走生产函数现产（本机那一形在 tests/frontend/shell/local_backend_host_tests.rs），逐字相等。",
+            "设置窗机器列表 / 卡头那一格的成品（本机后端 `changed {machine}` 的 body 与 `machine-read`，本机远端同一份）的跨语言金样。",
+            "Rust：tests/backend/control/machine_state_tests.rs 按 name 走生产函数现产，逐字相等。",
             "TS：tests/frontend/ui/settings/machine-state.vitest.ts 读同一份，逐形严格解码、逐形画出那一句与修法。",
-            "机器名 · 版本号 · 原因码是结构夹具，不取自任何真机；version 写成占位 <ver>（本机那一形由壳把现产的号换成它再比）。",
-            "next 是壳写好的下一步那一句（只有本机起后端被拒时有），界面照原样画在问题行下面。"
+            "机器名 · 版本号 · 原因码是结构夹具，不取自任何真机；version 写成占位 <ver>。"
         ],
         "cases": out,
     });
-    let base: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/machine-state.golden.json"))
-            .unwrap_or(serde_json::Value::Null);
-    // 本机那两形由壳现产，这里原样带过去（不在后端判）。
-    let local: Vec<serde_json::Value> = base["cases"]
-        .as_array()
-        .map(|c| {
-            c.iter()
-                .filter(|c| c["name"] == "本机被拒" || c["name"] == "本机没连上")
-                .cloned()
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut golden = golden;
-    if let Some(c) = golden["cases"].as_array_mut() {
-        c.extend(local);
-    }
     let text = serde_json::to_string_pretty(&golden).unwrap() + "\n";
     crate::golden::assert_golden(
         "tests/__fixtures__/machine-state.golden.json",
         &text,
         "机器状态成品与金样对不上",
     );
+}
+
+/// 本机就是一台远端：本机后端在答 ⇒ 它自己那一行（键 `<local>`）由它出，与远端各台同一份成品，名字在这里取一次；
+/// 机器表里没有它，也照样带出。
+#[test]
+fn the_local_row_comes_from_this_backend() {
+    let got = read_in(&[("ms-local-peer".to_string(), true)]);
+    let local = got
+        .get(cmd_wire::machine::LOCAL)
+        .expect("机器状态里没有本机那一行");
+    let mut e = Entry::default();
+    fold(
+        &mut e,
+        Fact::Round {
+            round: Round::Up {
+                relation: Relation::Same,
+                differs: vec![],
+            },
+            version: Some(shipped_version()),
+        },
+    );
+    let want = product(
+        &e,
+        &copy_core::copy_text("remote.cards.local", &[]),
+        true,
+        true,
+    );
+    assert_eq!(
+        local.version,
+        Some(shipped_version()),
+        "本机那一行的版本号不是这份二进制出自的那一版"
+    );
+    assert_eq!(local, &want);
+    assert_eq!(local.state, MachineStateKind::Up);
+    assert!(got.contains_key("ms-local-peer"), "远端那台被挤掉了");
+}
+
+/// 这棵树要发的那一版：仓根 `package.json` 的 `version`（发版改的就是它）。
+fn shipped_version() -> String {
+    let v: serde_json::Value = serde_json::from_str(include_str!("../../../package.json"))
+        .expect("仓根 package.json 读不成");
+    v["version"]
+        .as_str()
+        .expect("package.json 没有 version")
+        .to_string()
 }

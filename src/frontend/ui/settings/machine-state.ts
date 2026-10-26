@@ -2,6 +2,7 @@
  * 每台机器的状态成品：排成「点 · 名字旁那个词 · 问题行一句 · 修法按钮」。
  * 哪一态、那一句、给哪几颗修法、按钮上的字都是后端定的（`deploy::machine`）；这里只按那一态挑样子（点 · 语气 · 进度条）。
  */
+import type { LocalBackend } from "../generated/LocalBackend";
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
@@ -29,7 +30,7 @@ export interface MachineFace {
   needsUpdate: boolean;
   /** 问题行那句后面跟的复制详情（壳写好的；空 ＝ 不出［复制详情］）。 */
   detail: string;
-  /** 问题行下面那一句下一步（壳写好的；空 ＝ 不出那一行）。 */
+  /** 问题行下面那一句下一步（本机后端起的时候被拒，壳写好的；空 ＝ 不出那一行）。 */
   next: string;
 }
 
@@ -59,7 +60,29 @@ export function machineFace(m: MachineState): MachineFace {
     offline: m.offline,
     needsUpdate: m.state === "needs_update",
     detail: m.detail ?? "",
-    next: m.next ?? "",
+    next: "",
+  };
+}
+
+/** 本机后端没起来那一格怎么画（壳的 `local-backend`；连着 ⇒ `null`，看本机后端那一台的成品）。字与修法照壳那一格，样子按那一样挑。 */
+export function localBackendFace(l: LocalBackend): MachineFace | null {
+  if (l.state === "up") return null;
+  const look = {
+    starting: { dot: "unknown", tone: "busy" },
+    down: { dot: "failed", tone: "error" },
+    older: { dot: "needs-you", tone: "warn" },
+    newer: { dot: "up", tone: "error" },
+  } as const;
+  return {
+    ...look[l.state],
+    word: l.word,
+    problem: l.said,
+    bar: false,
+    fixes: l.state === "starting" ? [] : l.fixes,
+    offline: l.state === "down",
+    needsUpdate: l.state === "older",
+    detail: "",
+    next: l.state === "starting" ? "" : (l.next ?? ""),
   };
 }
 

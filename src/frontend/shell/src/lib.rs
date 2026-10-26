@@ -609,16 +609,12 @@ pub fn run() {
             // 重放缓冲那几个出口（会话成品 · tap · 测试连接进度 · 终端画面）：与截图台架的无头壳（`shots_shell`）同一份接线。
             wire_replay_outlets(&replay);
 
-            // 本机那一台的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）；远端各台走本机后端的 `changed {machine}`。
+            // 本机后端起没起来一变就推一帧（`local-backend`，与 `backend_status` 的 `local` 那一格同形）；各台的状态成品走本机后端的 `changed {machine}`。
             {
                 let handle = app.handle().clone();
-                crate::local_backend_host::install_machine_out(move |machine| {
-                    let payload = ui_contract::MachineStatePayload {
-                        origin: crate::inbound_client::LOCAL_ORIGIN.to_string(),
-                        machine,
-                    };
-                    if let Err(e) = handle.emit(ui_contract::events::MACHINE_STATE, payload) {
-                        tracing::warn!("emit machine-state failed: {e}");
+                crate::local_backend_host::install_local_backend_out(move |local| {
+                    if let Err(e) = handle.emit(ui_contract::events::LOCAL_BACKEND, local) {
+                        tracing::warn!("emit local-backend failed: {e}");
                     }
                 });
             }
@@ -844,7 +840,7 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
     })
 }
 
-/// 起来时那一趟起本机后端的结局只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机那一台的状态成品，设置窗照画。
+/// 起来时那一趟起本机后端的结局只进日志：被拒（口上有东西、接不上）那一句下一步由 `local_backend_host` 交给本机后端那一格（`LocalBackend`），设置窗照画。
 fn say_local_start(out: local_backend_host::StartOutcome) {
     use local_backend_host::StartOutcome;
     match out {

@@ -1,39 +1,53 @@
 /**
- * 每台机器状态成品的推送：本机那一行是壳的 `machine-state` 事件（{@link MachineStatePayload}，与 `backend_status` 的 `machine` 同一份类型）；
- * 远端各台是本机后端的 `changed {machine, key: 那台, body: 成品}`（订上 · 又接上 · 漏了几格 · 帧里没带成品 ⇒ 整份重问 `machine-read`）。
- * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。哪一态、那一句、修法都是后端定的（`deploy::machine`）。
+ * 每台机器状态成品的推送：各台（含本机，键 `<local>`）是本机后端的 `changed {machine, key: 那台, body: 成品}`
+ * （订上 · 又接上 · 漏了几格 · 帧里没带成品 ⇒ 整份重问 `machine-read`）；哪一态、那一句、修法都是后端定的（`deploy::machine`）。
+ * 本机后端起没起来是壳自己的事实，走壳的 `local-backend` 事件（{@link LocalBackend}，与 `backend_status` 的 `local` 同一份类型），不冒充哪一台的成品。
+ * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。
  */
 import { listen } from "@tauri-apps/api/event";
 import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
-import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, noteMachineName } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
+import type { LocalBackend } from "./generated/LocalBackend";
 import type { MachineState } from "./generated/MachineState";
-import type { MachineStatePayload } from "./generated/MachineStatePayload";
 
-/** 壳那一侧的事件名（`ui_contract::events::MACHINE_STATE`）。 */
-export const MACHINE_STATE_EVENT = "machine-state";
+/** 壳那一侧的事件名（`ui_contract::events::LOCAL_BACKEND`）。 */
+export const LOCAL_BACKEND_EVENT = "local-backend";
 
 /** `machine-read` 等多久。 */
 const READ_BUDGET_MS = 5_000;
 
-/** 订一份：每来一台的一帧回调一次。回退订函数。 */
-export function onMachineState(cb: (origin: string, machine: MachineState) => void): () => void {
+/** 订本机后端起没起来：壳每推一帧回调一次。回退订函数。 */
+export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
   let off: (() => void) | null = null;
-  let unsub: (() => void) | null = null;
   let dropped = false;
   try {
-    listen<MachineStatePayload>(MACHINE_STATE_EVENT, (e) => cb(e.payload.origin, e.payload.machine)).then(
+    listen<LocalBackend>(LOCAL_BACKEND_EVENT, (e) => cb(e.payload)).then(
       (u) => {
         if (dropped) u();
         else off = u;
       },
-      (e: unknown) => console.warn("[machine-state] 订不上推送：", e),
+      (e: unknown) => console.warn("[local-backend] 订不上推送：", e),
     );
   } catch (e) {
-    // 没有事件通道（宿主不是壳）⇒ 只靠打开 / 刷新时重问。
-    console.warn("[machine-state] 订不上推送：", e);
+    // 没有事件通道（宿主不是壳）⇒ 只靠打开 / 刷新时问 `backend_status`。
+    console.warn("[local-backend] 订不上推送：", e);
   }
+  return () => {
+    dropped = true;
+    off?.();
+  };
+}
+
+/** 订一份：每来一台的一帧回调一次（先记下那台的名字，`machineName` 照它叫）。回退订函数。 */
+export function onMachineState(each: (origin: string, machine: MachineState) => void): () => void {
+  const cb = (origin: string, machine: MachineState): void => {
+    noteMachineName(origin, machine.name);
+    each(origin, machine);
+  };
+  let unsub: (() => void) | null = null;
+  let dropped = false;
   const readAll = async (): Promise<void> => {
     try {
       const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
@@ -57,11 +71,10 @@ export function onMachineState(cb: (origin: string, machine: MachineState) => vo
         // 订上之后问一次：那台早已接着时壳不再交 `seen`（只在接没接着变了时说），等它就一台都拿不到。
         void readAll();
       },
-      (e: unknown) => console.warn("[machine-state] 订不上远端各台：", e),
+      (e: unknown) => console.warn("[machine-state] 订不上各台：", e),
     );
   return () => {
     dropped = true;
-    off?.();
     unsub?.();
   };
 }

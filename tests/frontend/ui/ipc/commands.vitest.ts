@@ -795,6 +795,8 @@ function filesWithLiteral(want: string): string[] {
   for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
+    // 这一份生成物里的哨兵出自 cmd-wire 的常量（`KEYS_NOT_NAMES`，`npm run gen:types` 现生成），不是手抄的第二个家。
+    if (rel === "src/frontend/ui/generated/judgment-rules.ts") continue;
     const src = readFileSync(f, "utf8");
     // 字面量命中必含这个子串：先按子串筛，只对含它的那几份做词法扫描（负载下整树词法扫描会超时）。
     if (!src.includes(want)) continue;

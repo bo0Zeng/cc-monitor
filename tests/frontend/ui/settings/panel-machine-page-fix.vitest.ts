@@ -17,6 +17,7 @@ vi.mock("../../../../src/frontend/ui/machine-feed", () => ({
     captured.machine = cb;
     return () => {};
   },
+  onLocalBackend: () => () => {},
 }));
 
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
