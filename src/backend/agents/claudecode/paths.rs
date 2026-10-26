@@ -32,8 +32,7 @@ pub(crate) fn settings_may_set_base_url(
     let root = config_dir.unwrap_or(default_root);
     let mut files = vec![root.join("settings.json")];
     if let Some(c) = cwd {
-        files.push(c.join(HOME_DIR_NAME).join("settings.json"));
-        files.push(c.join(HOME_DIR_NAME).join("settings.local.json"));
+        files.extend(super::footprint::project_settings_files(c));
     }
     files.iter().any(|f| match Ro::read_to_string(f) {
         Err(e) => e.kind() != std::io::ErrorKind::NotFound,
@@ -52,7 +51,20 @@ pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::Set
     read: read_settings_base_url,
     merge: settings_env_merge,
     slot: "env",
+    covered_in: project_covers_base_url,
 };
+
+/// 项目里两份设置文件（[`super::footprint::project_settings_files`]）谁自己写了非空的 `env.ANTHROPIC_BASE_URL`：
+/// 本地那一份优先级高，先看它。读不了 / 读不懂不算盖住（不猜）。
+fn project_covers_base_url(project: &Path) -> Option<PathBuf> {
+    let [shared, local] = super::footprint::project_settings_files(project);
+    [local, shared].into_iter().find(|f| {
+        Ro::metadata(f).is_ok_and(|m| m.is_file() && m.len() <= SETTINGS_CAP_BYTES)
+            && Ro::read_to_string(f).is_ok_and(|t| {
+                matches!(settings_base_url(&t), super::super::SettingsBaseUrl::Set(_))
+            })
+    })
+}
 
 /// 读那份设置文件的上限（几 KB 的配置；超了按「读不了」说，不当没写）。
 const SETTINGS_CAP_BYTES: u64 = 1 << 20;

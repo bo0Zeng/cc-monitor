@@ -349,7 +349,7 @@ fn paths_in_the_source_are_fenced() {
 //
 // 守的要求：「装的时候记下写了哪些文件，卸只删这些（装完用户自己改过的先问）」；
 // 记的是这台判过的那一份的摘要 ＋ 新旧；卸：逐文件四态 · 要问的两种 · 闸整趟拒。
-// 买到：临时目录上真判 —— 装判定答的 `ledger` 恰是 `write` 那几个（两向）、摘要 == 来源原文的、`created` == 四态里的 `new` ·
+// 买到：临时目录上真判 —— 装判定答的 `ledger` 恰是 `write` ∪ `same` 那几个（两向）、摘要 == 来源原文的、`created` == 四态里的 `new` ·
 // 卸的四态逐行相等、闭集两向、`seen` 恰是能删的那几份的现有原文 · 闸（没点名 / 删不了 / 不在记录里 / 两张单子对不上）整趟拒 ·
 // 装判定 → 记 → 卸判定一趟串起来（跨模块：装时算的摘要卸时认得）。
 // 买不到：真 Windows（`symlink_metadata` / 链接那一形）· 真远端。
@@ -371,7 +371,7 @@ fn dg(t: &str) -> String {
 }
 
 #[test]
-fn the_install_plan_hands_back_what_to_record_for_exactly_what_it_will_write() {
+fn the_install_plan_hands_back_what_to_record_for_every_file_that_ends_up_as_the_source() {
     let d = temp_dir("ledger-plan");
     write(&d, "demo/diff.md", b"theirs\n");
     write(&d, "demo/same.md", b"same\n");
@@ -400,14 +400,20 @@ fn the_install_plan_hands_back_what_to_record_for_exactly_what_it_will_write() {
         .iter()
         .map(|p| p.as_str().unwrap().to_string())
         .collect();
-    assert_eq!(keys, write, "要记的恰是真要写的那几个（same 不写也不记）");
+    let same: BTreeSet<String> = ["same.md".to_string()].into();
+    assert_eq!(
+        keys,
+        write.union(&same).cloned().collect::<BTreeSet<String>>(),
+        "要记的恰是真要写的那几个 ＋ 与来源相同的那几个（装完它们都是来源那一份）"
+    );
     assert_eq!(
         v["ledger"],
         json!({
             "diff.md": {"digest": dg("mine\n"), "created": false},
             "new.md": {"digest": dg("new\n"), "created": true},
+            "same.md": {"digest": dg("same\n"), "created": false},
         }),
-        "摘要是来源那一份原文的；盖掉原有的 ⇒ created=false，新建的 ⇒ true"
+        "摘要是来源那一份原文的；装之前就在的（盖掉的 · 相同的）⇒ created=false，新建的 ⇒ true"
     );
     let _ = std::fs::remove_dir_all(&d);
 }

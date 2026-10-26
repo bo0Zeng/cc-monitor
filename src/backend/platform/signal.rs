@@ -97,7 +97,7 @@ pub(crate) fn stoppable(pid: u32) -> Result<Option<Stoppable>, Said> {
     };
     #[cfg(target_os = "linux")]
     {
-        match super::pidwatch::pidfd_open(pid) {
+        match pidwatch_core::pidfd_open(pid) {
             Ok(fd) => Ok(Some(Stoppable { fd })),
             Err(e) if e.raw_os_error() == Some(libc::ESRCH) => Ok(None),
             Err(e) => Err(failed(e.kind(), &e)),
@@ -105,7 +105,7 @@ pub(crate) fn stoppable(pid: u32) -> Result<Option<Stoppable>, Said> {
     }
     #[cfg(windows)]
     {
-        use super::win_proc::Opened;
+        use pidwatch_core::Opened;
         match super::win_proc::open_for_stop(pid) {
             Opened::Handle(h) => Ok(Some(Stoppable { h })),
             Opened::Gone(_) => Ok(None),

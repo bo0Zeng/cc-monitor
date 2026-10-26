@@ -26267,6 +26267,54 @@
       "zh": "该机中转未起过 · 起来后再查",
       "args": []
     },
+    "beChore.relay.saidCovered": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已贴 · 被 {project} 里的设置盖过",
+      "args": ["project"]
+    },
+    "beChore.relay.whyCovered": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{file} 自带上游地址 · 在该项目里起的会话写进记录才显示",
+      "args": ["file"]
+    },
+    "beChore.sshd.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "该机的 sshd 不许端口转发",
+      "args": []
+    },
+    "beChore.sshd.loc": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{path} 行 {line}",
+      "args": ["path", "line"]
+    },
+    "beChore.sshd.said": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "到该机的端口转发无法开启",
+      "args": []
+    },
+    "beChore.sshd.why": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{path} 行 {line} 关闭本地端口转发 · 从别处到该机的转发均无法开启",
+      "args": ["path", "line"]
+    },
+    "beChore.sshd.stepOpen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "以 root 打开 {path}",
+      "args": ["path"]
+    },
+    "beChore.sshd.stepReload": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "存盘 · 再重启 sshd",
+      "args": []
+    },
     "beChore.hooks.name": {
       "kind": "title",
       "role": "标题",

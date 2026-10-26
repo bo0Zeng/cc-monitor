@@ -76,7 +76,7 @@ use crate::platform::paths::{is_under, path_key};
 use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
 // 只在测试段用到的几个（生产段的调用点随函数一起搬走了）。分开写而不是给整条 `use`
 // 加 `#[cfg(test)]`：上面那四个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
-// U4a：`pidfd_open` 只在 Linux 上存在（`platform/pidwatch/linux.rs`）。
+// U4a：`pidfd_open` 只在 Linux 上存在（`pidwatch-core` 的 `linux.rs`）。
 // 少这个 cfg 会让 `cargo check --all-targets --target …windows-msvc` 红 —— 而那正是
 // §1.1 第一条解耦线的**唯一真判据**（计划自审 §0.5-3：cfg 位置扫描抓不到 pidfd）。
 use super::tmux_observe::{
@@ -85,10 +85,10 @@ use super::tmux_observe::{
 };
 #[cfg(test)]
 use crate::platform::liveness::is_same_live_process;
-#[cfg(all(test, target_os = "linux"))]
-use crate::platform::pidwatch::pidfd_open;
 #[cfg(test)]
 use crate::platform::proc::{parse_btime, parse_starttime_from_stat, session_alive};
+#[cfg(all(test, target_os = "linux"))]
+use pidwatch_core::pidfd_open;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
@@ -206,18 +206,22 @@ impl PidWatchTarget {
     }
 }
 
-/// **薄包装**：把 `platform::pidwatch::watch_pid_until_exit` 的「判死」回调
+/// **薄包装**：把 `pidwatch_core::watch_pid_until_exit` 的「判死」回调
 /// 落成本模块的域事件。U2 切分后本函数**只剩这一件事** —— 平台那半（pidfd_open /
-/// 身份复核 / poll / 起线程）在 `platform/pidwatch.rs`，它不知道 `WatchEvent` 是什么。
+/// poll / 起线程）在 `pidwatch-core`，它不知道 `WatchEvent` 是什么；身份复核问的是本 crate 的 `session_alive`。
 fn spawn_pid_watcher(
     target: PidWatchTarget,
     pid: u32,
     expected_start: Option<u64>,
     tx: std::sync::mpsc::Sender<WatchEvent>,
 ) {
-    crate::platform::pidwatch::watch_pid_until_exit(pid, expected_start, move || {
-        let _ = tx.send(target.death_event(pid));
-    });
+    pidwatch_core::watch_pid_until_exit(
+        pid,
+        || crate::platform::proc::session_alive(pid, expected_start),
+        move || {
+            let _ = tx.send(target.death_event(pid));
+        },
+    );
 }
 
 /// watcher 看见、控制面去做的那两件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `main.rs` 接上控制面那两个函数）。

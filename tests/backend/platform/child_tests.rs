@@ -637,7 +637,7 @@ fn terminal_text_keeps_only_what_is_visible() {
 }
 
 /// 一问一答那一种（管道 · 终端两种起法）放手时连整棵一起收 —— **Windows 那一侧**。
-/// Windows 那段本机不编 ⇒ 把源码当数据读（同 `pidwatch_windows_shape_tests.rs` 的处境）；行为判据是下一条，只在 Windows 上跑。
+/// Windows 那段本机不编 ⇒ 把源码当数据读（同 `tests/common/pidwatch-core/windows_shape_tests.rs` 的处境）；行为判据是下一条，只在 Windows 上跑。
 /// 钉：① 不再拿伪终端库给的那一把（它只杀直接子进程，`claude` 起的孙进程会留下）；
 /// ② 两种起法都交给 `os::Group` 里「整棵」那一种；③ Windows 的那一种是设了「关句柄即杀」的 Job。
 #[test]
