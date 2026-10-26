@@ -136,27 +136,28 @@ pub(crate) fn answer_install(
             chmod_failed.push(path.clone());
         }
     }
-    let record_failed = if written.is_empty() {
+    // 记：`ledger` 里去掉「要写却没写成」的那几个（剩下的 = 真写成了的 ＋ 本来就与来源相同的）。
+    let planned = plan.write.clone().unwrap_or_default();
+    let files: std::collections::BTreeMap<String, Recorded> = ledger
+        .iter()
+        .filter(|(p, _)| !planned.contains(p) || written.contains(p))
+        .map(|(p, f)| {
+            (
+                p.clone(),
+                Recorded {
+                    digest: f.digest.clone(),
+                    created: f.created,
+                },
+            )
+        })
+        .collect();
+    let record_failed = if files.is_empty() {
         None
     } else {
-        let files = written
-            .iter()
-            .filter_map(|p| {
-                let f = ledger.get(p)?;
-                Some((
-                    p.clone(),
-                    Recorded {
-                        digest: f.digest.clone(),
-                        created: f.created,
-                    },
-                ))
-            })
-            .collect();
         let rec = RecordReq::Add {
             name: req.name.clone(),
             files,
             project: req.project.clone(),
-            at: None,
         };
         record(&rec).err().map(|f| {
             copy_text(
