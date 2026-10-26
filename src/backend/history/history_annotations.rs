@@ -8,8 +8,10 @@
 //!
 //! # 形状
 //!
-//! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "resumeWith"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
+//! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "resumeWith"?, "groups"?, "pinned"?, "updatedAt"}}, "groups"?: {组 id: {"name", "made"}}}`；
+//! 两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
 //! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `history/session_hidden.rs`）。
+//! 条目上的 `groups`（在哪几组）· `pinned`（固定）是这条会话的组员关系；顶层 `groups` 那一节是家在这台的组（并几台的那一层住 `history/groups.rs`）。
 //!
 //! # 升级链（一节，下一个大版本删）
 //!
@@ -97,7 +99,21 @@ struct Doc {
     version: u32,
     #[serde(default)]
     entries: BTreeMap<String, Entry>,
+    /// 家在这台的组（组 id ⇒ 那一组）；组员关系不在这里，在各条会话的注解上（[`Entry::groups`]）。
+    #[serde(default)]
+    groups: Book,
 }
+
+/// 家在这台的一组（文件 `groups` 那一节的一项）：名字 ＋ 几时建的（毫秒）。认不出的键写回时原样留着。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct GroupRec {
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) made: i64,
+}
+
+/// 组 id ⇒ 那一组（家在这台的）。
+pub(crate) type Book = BTreeMap<String, GroupRec>;
 
 /// 读的结局。「推不出家」「文件不在」「读不懂」三件事分开说 —— 后两件对界面的意思完全不同：
 /// 文件不在 = 还没有任何注解（真的是 0）；读不懂 = 不知道（不许说成 0）。
@@ -209,14 +225,24 @@ fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
 
 /// 读一份（给 join 那一层）。
 pub fn load_at(path: &Path) -> Loaded {
-    match read_raw(path) {
-        Ok(None) => Loaded::Read(Table::new()),
-        Ok(Some(b)) => match parse(&b, path) {
-            Ok(d) => Loaded::Read(d.entries),
-            Err(e) => Loaded::Unreadable(e),
-        },
-        Err(e) => Loaded::Unreadable(e.into_note()),
+    match load_all_at(path) {
+        Ok((t, _)) => Loaded::Read(t),
+        Err(e) => Loaded::Unreadable(e),
     }
+}
+
+/// 读一份，注解连同家在这台的组（文件不在 ⇒ 两样都空；读不懂 ⇒ 那一句）。读这份文件只有这一处。
+pub(crate) fn load_all_at(path: &Path) -> Result<(Table, Book), String> {
+    match read_raw(path) {
+        Ok(None) => Ok((Table::new(), Book::new())),
+        Ok(Some(b)) => parse(&b, path).map(|d| (d.entries, d.groups)),
+        Err(e) => Err(e.into_note()),
+    }
+}
+
+/// [`load_all_at`]，这台那一份；推不出家 ⇒ `None`。
+pub(crate) fn load_all() -> Option<Result<(Table, Book), String>> {
+    path().map(|p| load_all_at(&p))
 }
 
 /// 读这台机器上那一份（生产入口）。
@@ -272,6 +298,18 @@ pub(crate) struct Patch {
     #[serde(default, rename = "autoAnswer")]
     #[cfg_attr(test, ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,
+    /// 进这几组（组 id；已在的不重记）。组住哪台不在这里核：组员关系只住会话这一台。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    join: Option<Vec<String>>,
+    /// 出这几组（不在的不管）。同一组既进又出 ⇒ 出。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    leave: Option<Vec<String>>,
+    /// 固定。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pinned: Option<bool>,
 }
 
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
@@ -385,6 +423,8 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
             obj.remove("hide");
             obj.remove("autoAnswer");
             obj.remove("resumeWith");
+            obj.remove("groups");
+            obj.remove("pinned");
             if let Value::Object(norm) = serde_json::to_value(e).expect("Entry 总能序列化") {
                 for (k, v) in norm {
                     obj.insert(k, v);
@@ -569,6 +609,18 @@ pub(crate) fn annotate_at(
         }
         entry.auto_answer = auto_checked(a).map_err(AnnotationErr::BadArgs)?;
     }
+    for id in patch.join.iter().flatten() {
+        let id = checked_group_id(id).map_err(AnnotationErr::BadArgs)?;
+        if !entry.groups.iter().any(|g| g == id) {
+            entry.groups.push(id.to_string());
+        }
+    }
+    if let Some(gone) = &patch.leave {
+        entry.groups.retain(|g| !gone.contains(g));
+    }
+    if let Some(p) = patch.pinned {
+        entry.pinned = p;
+    }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
@@ -641,6 +693,62 @@ pub(crate) fn keep_for_resume(
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as i64),
     )
+}
+
+/// 组 id 的形状：非空、至多 64 字节、只有字母数字与 `-` `_`；不像 ⇒ 那一句（`bad_args`）。
+pub(crate) fn checked_group_id(id: &str) -> Result<&str, String> {
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(crate::common::contract::malformed(&format!(
+            "a group id does not look like one: {id:?}"
+        )));
+    }
+    Ok(id)
+}
+
+/// 改家在这台的组（`groups-write` 的唯一写者）：在那个目录的锁里严格读一遍（读不懂 ⇒ 拒、一个字节不动），
+/// 交 `edit` 改那一本；`edit` 回 `Err` ⇒ 不写。写回只动 `groups` 那一节：留下的组在原文那一项上换 `name` · `made`（认不出的键留着），删掉的摘掉。
+pub(crate) fn edit_book_at<T>(
+    own: &Own,
+    edit: impl FnOnce(&mut Book) -> Result<T, AnnotationErr>,
+) -> Result<T, AnnotationErr> {
+    let (dir, file) = need_path(own).map_err(err)?;
+    let held = lock_for_write(own, &dir).map_err(err)?;
+    let (doc, mut raw, moved) = read_for_write(file.as_path()).map_err(err)?;
+    let mut book = doc.groups;
+    let out = edit(&mut book)?;
+    if moved {
+        keep_old(own, &dir, &file, &held)
+            .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    }
+    let root = raw.as_object_mut().expect("read_for_write 已核过是对象");
+    let mut old = match root.remove("groups") {
+        Some(Value::Object(o)) => o,
+        _ => Map::new(),
+    };
+    let mut section = Map::new();
+    for (id, g) in &book {
+        let mut obj = match old.remove(id) {
+            Some(Value::Object(o)) => o,
+            _ => Map::new(),
+        };
+        if let Value::Object(norm) = serde_json::to_value(g).expect("GroupRec 总能序列化") {
+            for (k, v) in norm {
+                obj.insert(k, v);
+            }
+        }
+        section.insert(id.clone(), Value::Object(obj));
+    }
+    if !section.is_empty() {
+        root.insert("groups".into(), Value::Object(section));
+    }
+    write_at(own, &file, &held, &raw)
+        .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    Ok(out)
 }
 
 /// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格。

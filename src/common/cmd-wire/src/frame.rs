@@ -476,6 +476,8 @@ pub enum Changed {
     FilesDir { key: String },
     /// 会话清单可能动了。
     HistoryList {},
+    /// 这台的组那一半动了。
+    Groups {},
 }
 
 /// `changed {plan}` 的体：这个工作区此刻要你看的数（没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
@@ -516,6 +518,7 @@ impl Changed {
             Changed::SessionHidden { .. } => Topic::SessionHidden,
             Changed::FilesDir { .. } => Topic::FilesDir,
             Changed::HistoryList {} => Topic::HistoryList,
+            Changed::Groups {} => Topic::Groups,
         }
     }
 
@@ -569,6 +572,7 @@ impl Changed {
             },
             Topic::FilesDir => Changed::FilesDir { key: key? },
             Topic::HistoryList => Changed::HistoryList {},
+            Topic::Groups => Changed::Groups {},
         })
     }
 
@@ -1071,6 +1075,8 @@ pub enum Topic {
     /// 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：
     /// 正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行。
     HistoryList,
+    /// 这台的组那一半动了（家在这台的组建 · 改名 · 解散，或这台会话进出组 · 固定变了）：看着组的那一屏重问本机后端 `groups-read`。
+    Groups,
 }
 
 /// [`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。

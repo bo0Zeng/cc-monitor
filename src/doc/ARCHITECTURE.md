@@ -381,6 +381,17 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 谁调谁：`core-ssh` 拨号 → `core-remote` 开长 exec 跑 `ccm -- --resident-attach` → `core-claude` 在上面说帧（与桌面连远端同一条路、同一份后端）→ `app` 排版。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；手机的界面令牌今天是它自己一套，不与桌面共用。
 
+### 3.10 组
+
+组只有一种：一群会话 ＋ 一个名字。桌面标签页、手机分组、cc-bus 的范围、agent 问自己在哪几组，读的都是 `groups-read` 这一份（`src/backend/history/groups.rs`）。
+
+| 事实 | 住哪 | 谁写 |
+|---|---|---|
+| 组本身 `{id, name, made}` | 家那一台的 `history-metadata.json` 顶层 `groups` 那一节 | 那台后端 `groups-write`（建 · 改名 · 解散只在家那台） |
+| 组员关系 · 固定 | 会话那一台的注解，条目上的 `groups` · `pinned` 两格 | 那台后端 `history-annotate`（`join` · `leave` · `pinned`） |
+
+谁调谁：出口问本机后端 `groups-read {machines}` → 本机后端经 `remote_ask::ask_each` 问各台 `groups-here`（本机同进程，别的台经 `--resident-call` 问它的常驻）→ 并好再答：名字照家那台、组员照各台、组头计数（需手动 · 在跑 · 后台）在这里数。组 id 全局不重，注解上只记 id；某台这一问没答 ⇒ 用它上一次答的那份（只在本机后端内存里）、组标「上次所知」、那台的组员画成看不见；从没答过 ⇒ 家在那台的组名字缺、组员照出。哪台的组那一半变了，那台 watcher 推 `changed {groups}`，出口照它重问。跨台只走 `ask_each` 这一条，不另开问法。
+
 ---
 
 ## 4. 数据放在哪
@@ -393,7 +404,7 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 | `ps-await/<PID>.tty` | Linux bash / zsh 接入块（本机桌面上开的 shell） | monitor `bind.rs` | 那个 shell 的进程号 · 起始时刻 · 终端设备，monitor 据它认窗口（认上 / 认不出就删） |
 | `ps-registry/<PID>.json` | monitor（Linux） | monitor（↗ 沿进程链时先查它） | 那个 shell 显示在哪个窗口（与 shell 进程同寿） |
 | `auto-launch.json` | monitor 设置 | PowerShell 接入块（`__ccm_bind`） | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
-| `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号） |
+| `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号 · 在哪几组 · 固定）＋ 家在这台的组（§3.10） |
 | `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
 
 后端自己的状态（`backend.json` · 中转根钥匙 `relay-key` · 额度账 `quota.json` · 轮换 `rotation.json` · 血缘 `lineage.json` · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，都经写句柄 `platform::fs::Own`（订阅号凭据与诊断文件各一个窄句柄）；每一项是「删了会丢」还是「可随手删」见 INVARIANTS §2.1。

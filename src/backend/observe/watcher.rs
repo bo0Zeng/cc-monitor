@@ -541,10 +541,13 @@ fn rewatch_agent_home(
     false
 }
 
-/// 这台的会话注解表（读不了 · 推不出家 ⇒ 空表：当没有改过名；历史清单那一路照旧说为什么）。
-fn annotations_table() -> crate::history::history_annotations::Table {
-    match crate::history::history_annotations::load() {
-        crate::history::history_annotations::Loaded::Read(t) => t,
+/// 这台的会话注解表 ＋ 家在这台的组（读不了 · 推不出家 ⇒ 两样都空：当没有改过名；历史清单 · `groups-read` 那一路照旧说为什么）。
+fn annotations_table() -> (
+    crate::history::history_annotations::Table,
+    crate::history::history_annotations::Book,
+) {
+    match crate::history::history_annotations::load_all() {
+        Some(Ok(both)) => both,
         _ => Default::default(),
     }
 }
@@ -1185,7 +1188,9 @@ fn watch_loop(
     state.launch = Some((reactions, own));
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
-    state.annotations = annotations_table();
+    let (table, groups_here) = annotations_table();
+    state.groups_mark = Some(crate::history::groups::mark(&table, &groups_here));
+    state.annotations = table;
     // 运行簿：整台一本，与各连接的流归位共用（流按它定归哪个运行）。
     state.set_book(book);
     // 预读交线程池（各会话并行、上限按 CPU 数；同一会话内部照顺序读）：做完经事件通道交回本线程装回（[`primed`]）。
@@ -1723,6 +1728,8 @@ struct ReaderState {
     launch: Option<(Reactions, crate::platform::fs::Own)>,
     /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
     annotations: crate::history::history_annotations::Table,
+    /// 这台的组那一半上一次是什么样（[`crate::history::groups::mark`]）：注解文件重读时变了 ⇒ 推 `changed {groups}`。`None` ＝ 还没读过（头一次只记下、不推）。
+    groups_mark: Option<u64>,
     /// 冷开扫描图（生产由 [`watch_loop`] 装上全进程那一份）：一份记录这一趟起步时它留着那张图、或盘上落过骨架 ⇒ 照它接着读；
     /// 轻读了一遍的大记录读完交给它扫一遍（落骨架，下一次起步照它）。`None`（夹具）⇒ 只轻读、不交。
     scans: Option<&'static crate::observe::record_scan::RecordScans>,
@@ -1884,12 +1891,20 @@ impl ReaderState {
         }
     }
 
-    /// 注解那份文件动了 ⇒ 换上新读的那张表，改了名的活会话各发一帧 `session_status`、隐不隐藏变了的各推一帧（[`Self::rejudge_hidden`]）。
+    /// 注解那份文件动了 ⇒ 换上新读的那张表，改了名的活会话各发一帧 `session_status`、隐不隐藏变了的各推一帧（[`Self::rejudge_hidden`]）；
+    /// 这台的组那一半（家在这台的组 · 会话进出组 · 固定）变了 ⇒ 推一帧 `changed {groups}`。
     fn reload_annotations(
         &mut self,
-        table: crate::history::history_annotations::Table,
+        (table, book): (
+            crate::history::history_annotations::Table,
+            crate::history::history_annotations::Book,
+        ),
         sink: &mut FrameSink,
     ) {
+        let mark = crate::history::groups::mark(&table, &book);
+        if self.groups_mark.replace(mark).is_some_and(|old| old != mark) {
+            sink.send(Frame::changed(Changed::Groups {}));
+        }
         self.annotations = table;
         self.rejudge_hidden(sink);
         let sids: std::collections::BTreeSet<String> =
@@ -2008,6 +2023,7 @@ impl ReaderState {
             scans: None,
             branches: HashMap::new(),
             annotations: Default::default(),
+            groups_mark: None,
             pool: None,
             priming: HashMap::new(),
             next_prime: 0,
