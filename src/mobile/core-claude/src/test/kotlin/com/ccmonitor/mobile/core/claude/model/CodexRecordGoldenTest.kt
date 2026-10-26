@@ -3,11 +3,16 @@ package com.ccmonitor.mobile.core.claude.model
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.Json
 import com.ccmonitor.mobile.core.claude.link.RecordLine
-import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.obj
 import com.ccmonitor.mobile.core.claude.link.str
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.FaceLive
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.SessionAdded
+import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionStatus
 import com.ccmonitor.mobile.core.wire.gen.Tone
+import com.ccmonitor.mobile.core.wire.gen.WireSessionActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -124,8 +129,7 @@ class CodexRecordGoldenTest {
 
     @Test
     fun `流上那一路：Codex 会话的活动跟着一轮走，一轮完了是空闲（聊天屏的停止键只认判得出的在跑）`() {
-        // 同一份金样：一轮开始 ⇒ 运行中（NOW）；一轮完了 ⇒ 空闲（PLAIN）。手机只照抄帧上那份脸的字与语气。
-        var table = SessionTable()
+        // 同一份金样：一轮开始 ⇒ 运行中（NOW）；一轮完了 ⇒ 空闲（PLAIN）。手机只照抄帧上那份脸的字与语气（折成簿在核心，这里只看每一帧带的那张脸）。
         val tones = mutableListOf<Tone?>()
         val texts = mutableListOf<String?>()
         val running = mutableListOf<Boolean>()
@@ -134,14 +138,16 @@ class CodexRecordGoldenTest {
             .filter { it.isNotBlank() }
             .mapNotNull(Json::obj)
             .forEach { f ->
-                table = table.step(f) { error("会话帧解不开：$it") }
-                val only = table.sessions.values.singleOrNull()
-                val face = only?.let { table.faces[it.sid] }
-                val tone = face?.tone
-                if (tones.lastOrNull() != tone || tones.isEmpty()) tones += tone
-                texts += face?.name
-                val r = only != null && table.running(only.sid)
-                if (only != null && running.lastOrNull() != r) running += r
+                val face: SessionFace =
+                    when (f.str("kind")) {
+                        "session_added" -> Wire.bind<SessionAdded>(f)?.face
+                        "session_status" -> Wire.bind<SessionStatus>(f)?.face
+                        else -> return@forEach
+                    } ?: error("会话帧解不开：$f")
+                if (tones.lastOrNull() != face.tone || tones.isEmpty()) tones += face.tone
+                texts += face.name
+                val r = (face.live as? FaceLive.Yes)?.activity == WireSessionActivity.WORKING
+                if (running.lastOrNull() != r) running += r
             }
         // 宣告不等记录：这一家没有进程状态文件，宣告那一帧判不出在干什么 ⇒ 核心照实写「读记录中」、语气 plain；读完记录紧跟一帧说空闲。
         assertEquals(listOf(Tone.PLAIN, Tone.NOW, Tone.PLAIN, Tone.NOW, Tone.PLAIN), tones)

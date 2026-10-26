@@ -108,7 +108,7 @@ fun RotationScreen(
                             ?.id
                             ?.let { onEditStrategy(it, account) } ?: Unit
                     }
-                    BoardBody(ui, board, sid, table.sessions.mapValues { it.value.name.orEmpty() }, onOpenFile, edit)
+                    BoardBody(ui, board, sid, table.live.mapValues { it.value.name.orEmpty() }, onOpenFile, edit)
                 }
             }
         }

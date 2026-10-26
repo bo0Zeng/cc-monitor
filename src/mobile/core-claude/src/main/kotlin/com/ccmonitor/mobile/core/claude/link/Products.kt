@@ -15,12 +15,8 @@ import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
-import com.ccmonitor.mobile.core.wire.gen.SessionAdded
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
-import com.ccmonitor.mobile.core.wire.gen.SessionFileReread
-import com.ccmonitor.mobile.core.wire.gen.SessionRemoved
-import com.ccmonitor.mobile.core.wire.gen.SessionState
-import com.ccmonitor.mobile.core.wire.gen.SessionStatus
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.core.wire.gen.WireSessionActivity
 
@@ -42,70 +38,25 @@ fun Allow.blocked(): String? =
         is Allow.No -> why
     }
 
-/** 会话帧里那一条会话的宣告格（`session_added` 折出来、`session_status` 带来的路径换上）；此刻什么样在 [SessionTable.faces]。 */
-data class LiveSession(
-    val sid: String,
-    val path: String? = null,
-    val cwd: String? = null,
-    val name: String? = null,
-    val agentKind: String? = null,
-    val attachable: Boolean? = null,
-)
-
-/**
- * 会话表：把流上的会话帧折成「此刻有哪些会话、各自怎么样」。纯函数，一帧一步。
- * 拥塞丢了帧由那台在原连接上整份重报（覆盖式折进来），这里不判、不重接。
+/*
+ * 会话簿（[SessionBook]）是嵌的 Rust 核心折好交来的整份（`resident_client::book`，桌面壳同一份折法）：活着的（[SessionBook.live]）·
+ * 走了的（[SessionBook.left]）· 顶替 · 重读几回 · 清单报完没有。这里只有几个读法，不折。
  */
-data class SessionTable(
-    val sessions: Map<String, LiveSession> = emptyMap(),
-    /** 每条会话那台给的最新一份整份脸（宣告 · 状态 · 离开活三帧都带）；摘掉了还没裁去向 ⇒ 没有。 */
-    val faces: Map<String, SessionFace> = emptyMap(),
-    /** 后端说「清单报完了」（`sessions_replayed`）。 */
-    val replayed: Boolean = false,
-    /** 被顶替的会话 ⇒ 顶替它的那一条（`session_removed.by`：清空之后同一个进程另起的那一份记录）。 */
-    val successors: Map<String, String> = emptyMap(),
-    /** 每条会话的记录被从头重读过几回（见 [generation]）。 */
-    val rereads: Map<String, Long> = emptyMap(),
-) {
-    /** 那一条的记录被从头重读过几回（`session_file_reread`）：值变了 ⇒ 读过的那一代作废、整份重来。 */
-    fun generation(sid: String): Long = rereads[sid] ?: 0L
 
-    /** 那台判得出那一条一轮在跑（聊天屏的停止键只认它）；判不出 · 不在 ⇒ 不算。 */
-    fun running(sid: String): Boolean = (faces[sid]?.live as? FaceLive.Yes)?.activity == WireSessionActivity.WORKING
+/** 还没有一帧的那一本（连上之前 · 换了一条流）。 */
+val EMPTY_BOOK: SessionBook = SessionBook(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), false)
 
-    /** 喂一帧（核心按 `cmd-wire` 那一份类型重写过）；不是会话帧 ⇒ 原样返回。装不进声明的类 ⇒ [onBreak] 报、表不动。 */
-    fun step(
-        frame: Map<String, Any?>,
-        onBreak: (String) -> Unit,
-    ): SessionTable {
-        val kind = frame["kind"]
-        val folded: SessionTable? =
-            when (kind) {
-                "session_added" -> Wire.bind<SessionAdded>(frame)?.let(::added)
-                "session_status" -> Wire.bind<SessionStatus>(frame)?.let(::status)
-                "session_removed" -> Wire.bind<SessionRemoved>(frame)?.let(::removed)
-                "session_state" -> Wire.bind<SessionState>(frame)?.let { copy(faces = faces + (it.sid to it.face)) }
-                "session_file_reread" -> Wire.bind<SessionFileReread>(frame)?.let { copy(rereads = rereads + (it.sessionId to generation(it.sessionId) + 1)) }
-                "sessions_replayed" -> return copy(replayed = true)
-                else -> return this
-            }
-        return folded ?: also { onBreak("$kind 装不进声明的那一份") }
-    }
+/** 那一条此刻的整份脸：活的 ⇒ 最新状态那一张；走了的 ⇒ 去向那一张；簿里没有 ⇒ `null`。 */
+fun SessionBook.face(sid: String): SessionFace? = live[sid]?.face ?: left[sid]?.face
 
-    private fun added(f: SessionAdded): SessionTable {
-        val s = LiveSession(sid = f.sid, path = f.path, cwd = f.cwd, name = f.name, agentKind = f.agentKind, attachable = f.attachable)
-        return copy(sessions = sessions + (s.sid to s), faces = faces + (s.sid to f.face))
-    }
+/** 簿里每一条此刻的整份脸。 */
+fun SessionBook.faces(): Map<String, SessionFace> = left.mapValues { it.value.face } + live.mapValues { it.value.face }
 
-    private fun removed(f: SessionRemoved): SessionTable =
-        copy(sessions = sessions - f.sid, faces = faces - f.sid, successors = f.by?.let { successors + (f.sid to it) } ?: successors)
+/** 那一条的记录被从头重读过几回（`session_file_reread`）：值变了 ⇒ 读过的那一代作废、整份重来。 */
+fun SessionBook.generation(sid: String): Long = rereads[sid] ?: 0L
 
-    /** 状态帧：换上那一条的脸；带着 `path`（宣告以后记录才出现 · 换了一份，那台在那一行的 line 帧之前先发）⇒ 路径换成它。 */
-    private fun status(f: SessionStatus): SessionTable {
-        val moved = f.path?.let { p -> sessions[f.sid]?.copy(path = p) }
-        return copy(sessions = if (moved != null) sessions + (f.sid to moved) else sessions, faces = faces + (f.sid to f.face))
-    }
-}
+/** 那台判得出那一条一轮在跑（聊天屏的停止键只认它）；判不出 · 不在 ⇒ 不算。 */
+fun SessionBook.running(sid: String): Boolean = (face(sid)?.live as? FaceLive.Yes)?.activity == WireSessionActivity.WORKING
 
 /** `sessions-needs`：这台需手动的整份（在等的会话 · 计划格 · 会话外的），那台排好——出口照这个先后，不另排。核心按 `cmd-wire` 那一份解过。 */
 object SessionsNeeds {

@@ -4,7 +4,7 @@ import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
-import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.MenuEntry
@@ -515,7 +515,7 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `活卡帧解出来发到 live；认不出的那一帧只报一次契约对不上、不发`() =
+    fun `核心交的活卡整份发到 live、会话簿换掉手上那一本；认不出的那一行只报一次契约对不上、不发`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val broken = mutableListOf<String>()
@@ -530,12 +530,29 @@ class ResidentFeedTest {
                     kept = Disk(),
                     onBreak = { broken += it },
                 ).also { it.ensure() }
-            val got = mutableListOf<LiveCard>()
+            val got = mutableListOf<LiveCards>()
             backgroundScope.launch { f.live.collect { got += it } }
-            core.emit("frame", """{"kind":"live_card","sid":"s1","card":4,"n":1,"op":"text","i":0,"s":"字"}""")
-            core.emit("frame", """{"kind":"live_card","sid":"s1","card":4,"n":2,"op":"grow"}""")
-            assertEquals("字", (got.single() as LiveCard.Text).s)
+            core.emit(
+                "live",
+                """{"sid":"s1","cards":[{"card":4,"rid":"m","phase":"streaming","clipped":false,"blocks":[{"kind":"text","text":"字"}]}]}""",
+            )
+            core.emit("live", """{"sid":"s1","cards":[{"card":4}]}""")
+            assertEquals(
+                "字",
+                got
+                    .single()
+                    .cards
+                    .single()
+                    .blocks
+                    .single()
+                    .text,
+            )
             assertEquals(1, broken.size)
+            core.emit("book", Fixtures.repoRoot.resolve("tests/comms/resident-client/book.golden.json").readText())
+            assertEquals(setOf("a", "d"), f.table.value.live.keys)
+            core.emit("book", """{"live":{}}""")
+            assertEquals("认不出的簿不换", setOf("a", "d"), f.table.value.live.keys)
+            assertEquals(2, broken.size)
         }
 
     private companion object {

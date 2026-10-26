@@ -9,8 +9,6 @@ import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.HistoryLines
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.HistoryTail
-import com.ccmonitor.mobile.core.claude.link.LiveBoard
-import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionArrive
@@ -18,6 +16,8 @@ import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
+import com.ccmonitor.mobile.core.claude.link.generation
+import com.ccmonitor.mobile.core.claude.link.running
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -29,6 +29,7 @@ import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.TailHow
 import com.ccmonitor.mobile.link.problem
@@ -69,8 +70,8 @@ data class ChatUiState(
     val historyError: String? = null,
     /** 已经起成、认出来的那条会话；新建会话发第一条之前是 `null`。 */
     val sid: String? = null,
-    /** 这条会话主运行此刻的活卡（那台的 `live_card` 帧照画；记录到了那台撤卡）。 */
-    val live: List<LiveCardState> = emptyList(),
+    /** 这条会话主运行此刻的活卡（核心折好的整份照画；记录到了那台撤卡）。 */
+    val live: List<LiveCardNow> = emptyList(),
     /** 模型 chip。 */
     val model: SwitchChip = SwitchChip(),
     /** 权限档 chip。 */
@@ -212,7 +213,6 @@ class ChatSession(
     private var holding: AutoCloseable? = null
 
     private var follow: Job? = null
-    private val board = LiveBoard()
     private var starting: Job? = null
 
     /** 开屏：先填上次没发的草稿；已有的那条先上缓存、再读最后一屏、跟上；新建会话什么都不问那台。 */
@@ -282,7 +282,6 @@ class ChatSession(
             landingKey = null
             landingTool = null
             body.reset(emptyList())
-            board.clear()
             _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
             publishLocked()
             follow = scope.launch { attach(by, fresh = true) }
@@ -339,7 +338,7 @@ class ChatSession(
     fun loadPicks() =
         chips.loadPicks(
             sid?.let {
-                link.table.value.sessions[it]
+                link.table.value.live[it]
                     ?.agentKind
             },
         )
@@ -557,7 +556,7 @@ class ChatSession(
         fresh: Boolean,
     ): Pair<String, FactsReply?>? {
         if (fresh) return freshPath(s) to null
-        link.table.value.sessions[s]?.let { live ->
+        link.table.value.live[s]?.let { live ->
             if (_state.value.cwd == null) live.cwd?.let { _state.value = _state.value.copy(cwd = it) }
             live.path?.let { return it to null }
         }
@@ -578,7 +577,7 @@ class ChatSession(
      * 刚起的那条的记录路径：第一句进去之前记录还没落盘，那台宣告这条会话时不带路径；记录出现时那台先推一帧带路径的状态帧
      * （在那一行的 line 帧之前）⇒ 等会话表里那一条有了路径。不设期限、不去清单里按点找：会话在，记录迟早来。
      */
-    private suspend fun freshPath(s: String): String = link.table.mapNotNull { it.sessions[s]?.path }.first()
+    private suspend fun freshPath(s: String): String = link.table.mapNotNull { it.live[s]?.path }.first()
 
     /** 接上一样；记录有变 ⇒ `true`。 */
     private suspend fun stepLocked(
@@ -762,17 +761,14 @@ class ChatSession(
     }
 
     /**
-     * 这条会话的活卡：只收它主运行的（子运行的卡不进主线，同桌面主 tab）。换了一条流 ⇒ 这条连接上的号全作废、全撤，
+     * 这条会话的活卡：只收它主运行那一处的整份（子运行的卡不进主线，同桌面主 tab）。换了一条流 ⇒ 核心交那一处空的，
      * 那台在新的那条上给名单里的会话补整卡。
      */
     private fun CoroutineScope.followLive(s: String) {
         launch {
-            link.live.collect { f ->
-                if (f.sid == s && board.apply(f)) _state.value = _state.value.copy(live = board.cardsOf(s))
+            link.live.collect { c ->
+                if (c.sid == s && c.run == null) _state.value = _state.value.copy(live = c.cards)
             }
-        }
-        launch {
-            link.epoch.drop(1).collect { if (board.clear()) _state.value = _state.value.copy(live = emptyList()) }
         }
     }
 

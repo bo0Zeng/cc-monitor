@@ -1,9 +1,10 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.SessionTable
+import com.ccmonitor.mobile.core.claude.link.faces
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.ui.chats.HostName
 
@@ -61,7 +62,7 @@ data class Overview(
  */
 fun overviewOf(
     board: Map<String, MachineNeeds>,
-    tables: Map<String, SessionTable>,
+    tables: Map<String, SessionBook>,
     hosts: List<HostName>,
     current: String,
 ): Overview {
@@ -102,12 +103,12 @@ private fun linesOf(
 /** 一台会话表里点是运行中 · 后台的那几条。 */
 private fun runningOf(
     h: HostName,
-    t: SessionTable,
+    t: SessionBook,
 ): List<RunningLine> =
-    t.faces
+    t.faces()
         .filterValues { it.dot == SessionDot.RUNNING || it.dot == SessionDot.BACKGROUND }
         .keys
         .map { sid ->
-            val s = t.sessions[sid]
+            val s = t.live[sid]
             RunningLine(h, sid, s?.name ?: s?.cwd?.substringAfterLast('/') ?: sid, s?.cwd)
         }

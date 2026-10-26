@@ -133,7 +133,7 @@ class ChatSessionMidTest {
             runCurrent()
             assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.table.value = link.table.value.copy(sessions = emptyMap(), faces = mapOf("s1" to Faces.of("ended")))
+            link.left("s1", Faces.of("ended"))
             runCurrent()
             assertNull(s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
@@ -153,7 +153,7 @@ class ChatSessionMidTest {
             assertEquals(1, s.state.value.units.size)
             file.records.clear()
             link.report("s2", "/h/proj")
-            link.table.value = link.table.value.copy(sessions = link.table.value.sessions - "s1", successors = mapOf("s1" to "s2"))
+            link.table.value = link.table.value.copy(live = link.table.value.live - "s1", successors = mapOf("s1" to "s2"))
             runCurrent()
             assertEquals("s2", s.state.value.sid)
             assertEquals("旧记录那几条不留", 0, s.state.value.units.size)
@@ -229,43 +229,33 @@ class ChatSessionMidTest {
             assertEquals(listOf("/compact", "/clear"), link.calls("session-say").map { it?.get("text") })
         }
 
-    private fun open(
-        card: Long,
-        text: String,
+    /** 核心交来的一处整份：[texts] 每一项一张卡（一块正文）。 */
+    private fun cards(
+        vararg texts: String,
         sid: String = "s1",
         run: String? = null,
-    ) = mapOf("sid" to sid, "card" to card.toDouble(), "n" to 0.0, "op" to "open", "rid" to "r$card", "phase" to "streaming", "clipped" to false, "blocks" to listOf(mapOf("kind" to "text", "text" to text))) +
-        (run?.let { mapOf("run" to it) } ?: emptyMap())
+    ) = mapOf(
+        "sid" to sid,
+        "cards" to
+            texts.mapIndexed { i, t ->
+                mapOf("card" to i.toDouble(), "rid" to "r$i", "phase" to "streaming", "clipped" to false, "blocks" to listOf(mapOf("kind" to "text", "text" to t)))
+            },
+    ) + (run?.let { mapOf("run" to it) } ?: emptyMap())
 
     @Test
-    fun `逐字流：这条会话主运行的活卡照帧长出来；别的会话 · 子运行的不画；记录到了那台撤卡`() =
+    fun `逐字流：这条会话主运行那一处的整份照画；别的会话 · 子运行的不画；那一处空了就撤`() =
         runTest {
             val link = FakeCoreLink()
             val s = existing(link) { _, _ -> null }
             runCurrent()
-            link.live(open(1, "改"))
-            link.live(open(2, "别的会话", sid = "s2"))
-            link.live(open(3, "子运行", run = "a1"))
-            link.live(mapOf("sid" to "s1", "card" to 1.0, "n" to 1.0, "op" to "text", "i" to 0.0, "s" to "好了"))
+            link.live(cards("改"))
+            link.live(cards("别的会话", sid = "s2"))
+            link.live(cards("子运行", run = "a1"))
+            link.live(cards("改好了"))
             runCurrent()
-            val cards = s.state.value.live
-            val texts = cards.map { it.blocks.single().text }
+            val texts = s.state.value.live.map { it.blocks.single().text }
             assertEquals(listOf("改好了"), texts)
-            link.live(mapOf("sid" to "s1", "card" to 1.0, "n" to 2.0, "op" to "close", "why" to "record"))
-            runCurrent()
-            assertEquals(emptyList<Any>(), s.state.value.live)
-        }
-
-    @Test
-    fun `逐字流：换了一条流 ⇒ 卡全撤，等那台在新的那条上补整卡`() =
-        runTest {
-            val link = FakeCoreLink()
-            val s = existing(link) { _, _ -> null }
-            runCurrent()
-            link.live(open(1, "一半"))
-            runCurrent()
-            assertEquals(1, s.state.value.live.size)
-            link.epoch.value = 1
+            link.live(cards())
             runCurrent()
             assertEquals(emptyList<Any>(), s.state.value.live)
         }
