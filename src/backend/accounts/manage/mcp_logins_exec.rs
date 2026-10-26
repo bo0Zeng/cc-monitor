@@ -5,7 +5,7 @@
 //!   再经凭据文件唯一的写口 [`crate::accounts::oauth::store::rewrite`]（那一家的整份写锁里重读 · 比对 · 整份原子写）：
 //!   只换那一节里那一条，文件里别的一格不动；盘上那一条已经不是计划时看到的那一条 ⇒ 不写。
 //!   锁有人持着（那个号自己正在续 / 存盘）⇒ 这一条这一趟不写、底不动：它存完盘会再来一个文件事件，下一趟再对照。
-//! - 凭据文件不在 / 读不出来的号这一趟不参与。说出去的每一句只有号名与原因，不带令牌，也不带指纹。
+//! - 凭据文件不在 / 读不出来的号这一趟不参与。说出去的每一句只有号名与原因，不带令牌，也不带版本。
 
 use super::mcp_logins::{self, Cells, Entries, LoginBase, LoginWrite, SeenLogins};
 use super::mcp_share_exec::{load_store, lock, manifest_in, put_private};
@@ -62,7 +62,7 @@ fn write_one(
                 return (None, false);
             };
             let cur = doc.get(entries.section).and_then(|s| s.get(&w.key));
-            if cur.map(|e| mcp_logins::fingerprint(e, cells)) != w.expect {
+            if cur.map(|e| mcp_logins::rev_of(e, cells)) != w.if_rev {
                 return (None, false);
             }
             let sec = doc

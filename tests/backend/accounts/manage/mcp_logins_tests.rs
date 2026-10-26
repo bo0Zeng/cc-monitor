@@ -42,12 +42,7 @@ fn seen(n: &str, now: Option<Value>) -> SeenLogins {
 fn base(pairs: &[(&str, &Value)]) -> LoginBase {
     pairs
         .iter()
-        .map(|(n, e)| {
-            (
-                dir(n),
-                BTreeMap::from([(K.to_string(), fingerprint(e, &C))]),
-            )
-        })
+        .map(|(n, e)| (dir(n), BTreeMap::from([(K.to_string(), rev_of(e, &C))])))
         .collect()
 }
 
@@ -70,11 +65,11 @@ fn a_login_in_one_account_is_written_into_the_others() {
             Some(&a),
             "{n} 拿到的不是 a 那一条（整条照抄，客户端 id 一起）"
         );
-        assert_eq!(w.expect, None, "{n} 那时没有这一条");
+        assert_eq!(w.if_rev, None, "{n} 那时没有这一条");
     }
     assert!(write_to(&p, "a").is_none(), "a 自己不用写");
     for n in ["a", "b", "c"] {
-        assert_eq!(p.base[&dir(n)][K], fingerprint(&a, &C), "{n} 的底没记上");
+        assert_eq!(p.base[&dir(n)][K], rev_of(&a, &C), "{n} 的底没记上");
     }
 }
 
@@ -91,8 +86,8 @@ fn a_renewal_in_one_account_reaches_the_others() {
     let w = write_to(&p, "b").expect("b 没拿到新令牌");
     assert_eq!(w.to.as_ref(), Some(&new));
     assert_eq!(
-        w.expect,
-        Some(fingerprint(&old, &C)),
+        w.if_rev,
+        Some(rev_of(&old, &C)),
         "写前比对要的是计划时 b 那一条"
     );
     assert!(write_to(&p, "a").is_none());
@@ -233,13 +228,10 @@ fn equal_expiry_prefers_the_one_that_changed_since_the_base() {
 }
 
 #[test]
-fn the_fingerprint_hides_the_tokens() {
+fn the_rev_hides_the_tokens() {
     let e = entry("at-secret-1", "rt-secret-1", 2_000);
-    let fp = fingerprint(&e, &C);
-    assert_eq!(fp.len(), 16);
-    assert!(!fp.contains("secret") && !fp.contains("at-") && !fp.contains("rt-"));
-    assert_ne!(
-        fp,
-        fingerprint(&entry("at-secret-1", "rt-secret-2", 2_000), &C)
-    );
+    let rev = rev_of(&e, &C);
+    assert_eq!(rev.len(), 16);
+    assert!(!rev.contains("secret") && !rev.contains("at-") && !rev.contains("rt-"));
+    assert_ne!(rev, rev_of(&entry("at-secret-1", "rt-secret-2", 2_000), &C));
 }

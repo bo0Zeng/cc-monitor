@@ -13,7 +13,7 @@
 //!   别的号那一条与它不同（没有 · 失效 · 旧的）⇒ 写成它。失效的那一条永远不往外传。
 //! - 一条能用的都没有 ⇒ 不动。
 //!
-//! 写的时候只换那一节里那一条，带上「写前比对」要的指纹（计划时看到的那一条）；落不下的那个号，底换回原来的。
+//! 写的时候只换那一节里那一条，带上「写前比对」要的版本（计划时看到的那一条）；落不下的那个号，底换回原来的。
 
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 一节登录（键 → 那一条原样）。
 pub(crate) type Entries = Map<String, Value>;
 
-/// 底：配置目录 → （键 → 上次同步之后那一条的指纹）。
+/// 底：配置目录 → （键 → 上次同步之后那一条的版本）。
 pub(crate) type LoginBase = BTreeMap<String, BTreeMap<String, String>>;
 
 /// 一条登录里通用层要读的那几格的名字（那一家的格式住适配层）。
@@ -41,13 +41,13 @@ pub(crate) struct SeenLogins {
 }
 
 /// 要落的一下：把 `dir` 那个号的 `key` 那一条换成 `to`（`None` = 删掉这一条）。
-/// `expect` = 计划时看到的那一条的指纹（`None` = 那时没有这一条）：落盘前盘上已经不是它 ⇒ 不写。
+/// `if_rev` = 计划时看到的那一条的版本（`None` = 那时没有这一条）：落盘前盘上已经不是它 ⇒ 不写。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LoginWrite {
     pub dir: String,
     pub key: String,
     pub to: Option<Value>,
-    pub expect: Option<String>,
+    pub if_rev: Option<String>,
 }
 
 /// 一趟对照的结果。
@@ -73,9 +73,9 @@ fn expires(e: &Value, c: &Cells) -> u64 {
     e.get(c.expires_ms).and_then(Value::as_u64).unwrap_or(0)
 }
 
-/// 一条的指纹：只取令牌那三格（访问 · 刷新 · 过期时刻），算一段 16 位十六进制的摘要（与装记录比定义同一个摘要函数）。
+/// 一条的版本：只取令牌那三格（访问 · 刷新 · 过期时刻），算一段 16 位十六进制的摘要（与装记录比定义同一个摘要函数）。
 /// 只用来认「变没变」；底里存它，不存令牌。
-pub(crate) fn fingerprint(e: &Value, c: &Cells) -> String {
+pub(crate) fn rev_of(e: &Value, c: &Cells) -> String {
     crate::common::digest::fnv_digest(&format!(
         "{}\0{}\0{}",
         text(e, c.access).unwrap_or(""),
@@ -111,7 +111,7 @@ pub(crate) fn plan(base: &LoginBase, seen: &[SeenLogins], c: &Cells) -> LoginPla
             match n.get(k) {
                 None => removed |= b.is_some(),
                 Some(e) if live(e, c) => {
-                    cands.push((e, &s.dir, b != Some(&fingerprint(e, c))));
+                    cands.push((e, &s.dir, b != Some(&rev_of(e, c))));
                 }
                 Some(_) => {}
             }
@@ -134,29 +134,29 @@ pub(crate) fn plan(base: &LoginBase, seen: &[SeenLogins], c: &Cells) -> LoginPla
         };
         for (s, n) in &readable {
             let cur = n.get(k);
-            let cur_fp = cur.map(|e| fingerprint(e, c));
+            let cur_rev = cur.map(|e| rev_of(e, c));
             let landed: Option<String> = match target {
                 // 没有能用的：不动，底照此刻记。
-                None => cur_fp.clone(),
+                None => cur_rev.clone(),
                 Some(None) => {
                     if cur.is_some() {
                         writes.push(LoginWrite {
                             dir: s.dir.clone(),
                             key: k.to_string(),
                             to: None,
-                            expect: cur_fp.clone(),
+                            if_rev: cur_rev.clone(),
                         });
                     }
                     None
                 }
                 Some(Some(w)) => {
-                    let want = fingerprint(w, c);
-                    if cur_fp.as_deref() != Some(want.as_str()) {
+                    let want = rev_of(w, c);
+                    if cur_rev.as_deref() != Some(want.as_str()) {
                         writes.push(LoginWrite {
                             dir: s.dir.clone(),
                             key: k.to_string(),
                             to: Some(w.clone()),
-                            expect: cur_fp.clone(),
+                            if_rev: cur_rev.clone(),
                         });
                     }
                     Some(want)
