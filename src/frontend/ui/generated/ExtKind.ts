@@ -3,4 +3,4 @@
 /**
  * 条目种类。
  */
-export type ExtKind = "skill" | "mcp";
+export type ExtKind = "skill" | "mcp" | "plugin";

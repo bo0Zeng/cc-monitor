@@ -3,4 +3,4 @@
 /**
  * 一格的态（闭集）。
  */
-export type ExtState = "same" | "differs" | "missing" | "project";
+export type ExtState = "same" | "differs" | "missing" | "project" | "off";
