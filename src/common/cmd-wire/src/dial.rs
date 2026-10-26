@@ -87,6 +87,7 @@ pub struct DialAck {
     pub error: Option<String>,
     /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话）。成功 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub detail: Option<String>,
     /// 实际观察到的 host key 指纹（展示用；失败时也尽量带上）。
     #[serde(default)]
@@ -102,9 +103,11 @@ pub struct DialAck {
     pub reason: Option<Why>,
     /// 目标那一台握手时给的 host key 类型。没握到那一步 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub key_type: Option<String>,
     /// 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串）。没因钥匙被拒 ⇒ 不出这一格。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub expected_fingerprint: Option<String>,
     /// 协议版本（[`ACK_V`]；v1 代理没有这一格 ⇒ 0）。
     #[serde(default)]
@@ -119,7 +122,10 @@ pub struct DialAck {
 
 /// 没够着那一台的那几个原因码（拨号的 [`Why`]）。
 pub fn unreached(why: Option<Why>) -> bool {
-    matches!(why, Some(Why::Resolve | Why::Unreachable | Why::Timeout | Why::Jump))
+    matches!(
+        why,
+        Some(Why::Resolve | Why::Unreachable | Why::Timeout | Why::Jump)
+    )
 }
 
 impl DialAck {

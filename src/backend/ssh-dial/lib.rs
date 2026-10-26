@@ -105,7 +105,6 @@ pub use cmd_wire::dial::{
     Stage, StageLine, Use, ACK_V, USES,
 };
 
-
 /// 没开成：那一句 ＋ 下层原话（进 `detail`，按宿主的 [`env::Facts`] 写成复制详情）＋ 看到的指纹。
 pub fn fail(error: Said, fingerprint: Option<String>) -> DialFail {
     DialFail {

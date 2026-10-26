@@ -13,7 +13,7 @@ error: string | null,
 /**
  * `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话）。成功 ⇒ 不出这一格。
  */
-detail?: string | null, 
+detail?: string, 
 /**
  * 实际观察到的 host key 指纹（展示用；失败时也尽量带上）。
  */
@@ -33,11 +33,11 @@ reason: DialWhy | null,
 /**
  * 目标那一台握手时给的 host key 类型。没握到那一步 ⇒ 不出这一格。
  */
-key_type?: string | null, 
+key_type?: string, 
 /**
  * 「钥匙变了」时库里同类型那一把的指纹（没有 ⇒ 空串）。没因钥匙被拒 ⇒ 不出这一格。
  */
-expected_fingerprint?: string | null, 
+expected_fingerprint?: string, 
 /**
  * 协议版本（[`ACK_V`]；v1 代理没有这一格 ⇒ 0）。
  */

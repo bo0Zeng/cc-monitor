@@ -36,23 +36,8 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     ),
     (
         "src/common/cmd-wire/src/phone.rs",
-        "Moved",
-        "手机核心与 Kotlin 之间那一层的`moved` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
-    ),
-    (
-        "src/common/cmd-wire/src/phone.rs",
-        "DeployAct",
-        "手机核心与 Kotlin 之间那一层的`deploy` 那一件做的是哪一样：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
-    ),
-    (
-        "src/common/cmd-wire/src/phone.rs",
         "DeployEnd",
         "手机核心与 Kotlin 之间那一层的`deploy` 那一件：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
-    ),
-    (
-        "src/common/cmd-wire/src/phone.rs",
-        "ClashRow",
-        "手机核心与 Kotlin 之间那一层的同名那一问的一行：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust`，不在扫描面里）与从它生成的 Kotlin 类",
     ),
     (
         "src/common/cmd-wire/src/phone.rs",

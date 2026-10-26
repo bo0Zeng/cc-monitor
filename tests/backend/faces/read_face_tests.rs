@@ -2188,8 +2188,7 @@ fn phone_decodes_back(cmd: &str, bytes: &str) {
     match cmd_wire::replies::typed_text(cmd, v) {
         // 记录一条一条地解（解不开的那一条成认不出那一条、整份不失败）⇒ 逐字节相同才说明每一条都按完整记录解开了。
         Some(Ok(back)) => assert_eq!(
-            back,
-            bytes,
+            back, bytes,
             "{cmd}：重写出来不是原样（有一条没按完整记录解开）"
         ),
         other => panic!("{cmd}：手机解不开后端写的那一份：{other:?}"),

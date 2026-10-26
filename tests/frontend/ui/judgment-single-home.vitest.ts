@@ -834,6 +834,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     COMMANDS: NONE,
     mend_records: NONE,
     reply_names: NONE,
+    // 判据用的照类型解再写回（手机生成的类写回要与它逐字节同）；TS 侧没有孪生。
+    typed_text: NONE,
+    // 拨号那一侧：竞速顺序（没给就只有 host:port）· 「没够着那一台」那几个原因码（ack 带着它，手机照说、不自己判）。界面不拨号，TS 侧没有孪生。
+    race_order: NONE,
+    unreached: NONE,
     // 通用记录的两处纯形状（`record`）：「谁说的」那一格的线上词（`Speaker::kind`，骨架索引也存它）· 没有正文的那一形（`UserText::of`）。
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
     kind: NONE,
@@ -998,6 +1003,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
   "filewin-contract": {
     BIN_ENV: NONE,
+    // 「这扇窗手上有什么会被打断」那一条的名字（窗口说给 monitor、monitor 自己接）；TS 侧没有孪生。
+    FILEWIN_BUSY_OP: NONE,
     // 就绪那一行打头的记号与认它的那一判（窗口进程在 stderr 上说那一行）；TS 侧零孪生。
     READY_MARK: NONE,
     is_ready_line: NONE,
@@ -1074,6 +1081,14 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     peer: NONE,
     accept: NONE,
     connect: NONE,
+  },
+  // 等一个进程退出的平台原语（Linux pidfd · Windows 句柄 · 别处轮询）：后端 · monitor 同一份，不判业务；TS 侧没有孪生。
+  "pidwatch-core": {
+    pidfd_open: NONE,
+    watch_pid_until_exit: NONE,
+    PROCESS_QUERY_LIMITED_INFORMATION: NONE,
+    SYNCHRONIZE: NONE,
+    open: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
@@ -1242,7 +1257,7 @@ const CARGO_TOMLS_TOP = [
   "src/backend/Cargo.toml",
 ];
 /** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core 各一）。 */
-const GUARD_CORE_DEP_LINES = 5;
+const GUARD_CORE_DEP_LINES = 6;
 
 const CRATES_ROOT = "src/common";
 

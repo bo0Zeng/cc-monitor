@@ -148,10 +148,7 @@ mod tests {
     #[test]
     fn every_listed_command_has_a_type_and_others_have_none() {
         for cmd in COMMANDS {
-            assert!(
-                round_trip(cmd, serde_json::Value::Null).is_some(),
-                "{cmd}"
-            );
+            assert!(round_trip(cmd, serde_json::Value::Null).is_some(), "{cmd}");
         }
         assert!(round_trip("history-facts", serde_json::json!({})).is_none());
     }
