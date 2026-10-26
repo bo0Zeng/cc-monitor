@@ -31,7 +31,6 @@ vi.mock("../../../src/frontend/ui/session-reads", () => ({
   },
 }));
 vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: async () => ({ available: true, accounts: [] }) }));
-vi.mock("../../../src/frontend/ui/history-reads", () => ({ lastAccounts: async () => ({}) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";

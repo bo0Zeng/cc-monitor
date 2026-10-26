@@ -88,7 +88,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // （接上骨架之后，丢掉的正文按偏移要得回来）。两者都只动 monitor 本机的缓冲、按 sid 找 ⇒ `Both`，
     // 归已有能力，能力数与不对称数都不动。
     // `update_history_metadata`（`history.metadata`）· `list_last_accounts`（`accounts.last-used`）两行退役：
-    //   注解的读写者换成本机常驻后端（帧命令 `history-annotate` / `history-last-accounts`，界面经通道问 `<local>`）。
+    //   注解的读写者换成本机常驻后端（帧命令 `history-annotate`，界面经通道问 `<local>`；上次的号并进 `session-account`）。
     // `search_history`（`search.history`，Both）退役：本机远端的全文搜索都经通道说 `history-search`
     //   （界面 `src/frontend/ui/views/history-search.ts`），不再是 Tauri 命令 ⇒ 能力数 −1（它是这项能力唯一的命令；原本对称 ⇒ 不对称数不动）。
     // ⚠ **P3b 复核（08-12）：这条能力两侧都登记着，但实现是 Win32 专属。**

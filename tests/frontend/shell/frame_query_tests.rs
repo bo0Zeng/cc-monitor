@@ -273,7 +273,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("machines-try", "帧命令：机器表那一道过不过（判准只在本机后端），添加机器框 · 机器卡边打边问"),
     ("machines-set", "帧命令：改机器表（按键认那一台），设置页存"),
     ("host-keys-forget", "帧命令：忘掉一台记下的主机指纹（拨号核心那份库住本机后端），机器卡［忘记…］· 比对框里信那一枚"),
-    ("rotation-view", "typed 帧命令：一个会话此刻的轮换（开会话的号 · 在用的号 · 这一判 · 推演，都由后端跑策略）；标签页与状态栏的账号格只排版"),
+    ("rotation-view", "typed 帧命令：一个会话此刻的轮换（开会话的号 · 在用的号 · 这一判 · 推演，都由后端跑策略）；会话面板只排版"),
+    ("session-account", "typed 帧命令：一条会话的号那一份成品（用哪个号 · 从哪个号换来 · 用量 · 悬停卡 · 与默认号比 · 徽章，都由会话那台判好写好）；状态栏按钮 · 号徽章只照画"),
     ("rotation-strategies", "typed 帧命令：那台的策略目录（标题 ＝ 文件名 · 说明 · 谁在用 · 新会话用哪份），下拉只排版"),
     ("rotation-settings", "typed 帧命令：设置页改一格、当场存成那份的新版（照策略的声明校验 · 版本冲突由后端判）"),
     ("rotation-use", "typed 帧命令：会话载入一份策略此刻的版本 · 不轮换"),
@@ -592,7 +593,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "accounts-verify",
         "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
-    // 注解三条：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
+    // 注解两条（「上次用哪个号起」那一条并进 `session-account`）：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
     //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
     (
         "history-annotate",
@@ -605,10 +606,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-forget",
         "删会话之后连带删那一条注解（界面删成功之后交；从前是 monitor 删完顺手清）",
-    ),
-    (
-        "history-last-accounts",
-        "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
     ),
     // `creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (
