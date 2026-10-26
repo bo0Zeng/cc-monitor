@@ -9,7 +9,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { copyText } from "./copy-table";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
-import { hostKey, readRemoteConfig } from "./remote-config";
+import { remoteNames } from "./remote-config";
 import { askAppExitInterrupts, interruptRows, type Interrupts } from "./settings/interrupts";
 
 export interface QuitDeps {
@@ -25,7 +25,7 @@ const NOT_HOLDING = new Set(["main", "settings"]);
 
 async function enabledRemotes(): Promise<string[]> {
   try {
-    return (await readRemoteConfig()).hosts.filter((h) => h.connect).map(hostKey).filter((h) => h.trim() !== "");
+    return await remoteNames();
   } catch {
     return [];
   }
