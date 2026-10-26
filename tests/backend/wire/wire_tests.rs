@@ -428,13 +428,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         ],
         both(Frame::Cancelled(crate::wire::Cancelled { id: s("q1") })),
         [
-            Frame::changed(
-                Topic::Plan,
-                Some(s("/w")),
-                Some(s("r1")),
-                Some(serde_json::json!({"needs": 2})),
-            ),
-            Frame::changed(Topic::Accounts, None, None, None),
+            Frame::changed(crate::wire::Changed::Plan {
+                key: s("/w"),
+                rev: Some(s("r1")),
+                body: Some(cmd_wire::frame::PlanNeeds { needs: 2 }),
+            }),
+            Frame::changed(crate::wire::Changed::Accounts {}),
         ],
         both(Frame::SessionsReplayed(crate::wire::SessionsReplayed {})),
         both(Frame::SessionFileGone(crate::wire::SessionFileGone {
@@ -733,24 +732,26 @@ fn link_frames_have_exactly_these_bytes() {
             "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
         ),
         (
-            Frame::changed(Topic::Accounts, None, None, None),
+            Frame::changed(crate::wire::Changed::Accounts {}),
             "{\"kind\":\"changed\",\"topic\":\"accounts\"}\n",
         ),
         (
-            Frame::changed(Topic::RotationStrategies, None, None, None),
+            Frame::changed(crate::wire::Changed::RotationStrategies { body: None }),
             "{\"kind\":\"changed\",\"topic\":\"rotation_strategies\"}\n",
         ),
         (
-            Frame::changed(Topic::Tasks, Some("s1".into()), None, None),
+            Frame::changed(crate::wire::Changed::Tasks {
+                key: "s1".into(),
+                body: None,
+            }),
             "{\"kind\":\"changed\",\"topic\":\"tasks\",\"key\":\"s1\"}\n",
         ),
         (
-            Frame::changed(
-                Topic::Plan,
-                Some("/w".into()),
-                Some("0123abcd".into()),
-                Some(serde_json::json!({"needs": 2})),
-            ),
+            Frame::changed(crate::wire::Changed::Plan {
+                key: "/w".into(),
+                rev: Some("0123abcd".into()),
+                body: Some(cmd_wire::frame::PlanNeeds { needs: 2 }),
+            }),
             "{\"kind\":\"changed\",\"topic\":\"plan\",\"key\":\"/w\",\"rev\":\"0123abcd\",\"body\":{\"needs\":2}}\n",
         ),
     ];
@@ -1637,21 +1638,27 @@ fn session_frames_carry_the_state_written_and_toned() {
     }
 }
 
-/// `changed` 的小成品超了主题表那一格的上限 ⇒ 不带（客户端重问）；主题不带小成品的给了也不带。
+/// `changed` 的小成品超了主题表那一格的上限 ⇒ 不带（客户端重问）；没超 ⇒ 照带。
 #[test]
 fn a_changed_body_over_its_cap_is_left_off() {
-    let cap = Topic::Plan.spec().body_cap;
-    let big = serde_json::json!({ "needs": 1, "pad": "x".repeat(cap) });
-    match Frame::changed(Topic::Plan, Some("/w".into()), None, Some(big)) {
-        Frame::Changed(crate::wire::Changed { body, .. }) => {
+    let cap = Topic::SessionHidden.spec().body_cap;
+    let hidden = |said: String| crate::wire::Changed::SessionHidden {
+        key: "s1".into(),
+        body: Some(cmd_wire::frame::HiddenNow {
+            hidden: Some(cmd_wire::session::Hidden {
+                by: cmd_wire::session::HiddenBy::Own,
+                said,
+            }),
+        }),
+    };
+    match Frame::changed(hidden("x".repeat(cap))) {
+        Frame::Changed(crate::wire::Changed::SessionHidden { body, .. }) => {
             assert_eq!(body, None, "超了上限还带着")
         }
         other => panic!("{other:?}"),
     }
-    match Frame::changed(Topic::Accounts, None, None, Some(serde_json::json!({}))) {
-        Frame::Changed(crate::wire::Changed { body, .. }) => {
-            assert_eq!(body, None, "不带小成品的主题带上了")
-        }
+    match Frame::changed(hidden("x".into())) {
+        Frame::Changed(c) => assert_eq!(c, hidden("x".into()), "没超上限却去掉了"),
         other => panic!("{other:?}"),
     }
 }
@@ -1660,7 +1667,9 @@ fn a_changed_body_over_its_cap_is_left_off() {
 #[test]
 fn changed_loss_follows_the_topic_table() {
     for t in Topic::ALL {
-        let f = Frame::changed(t, None, None, None);
+        let f = Frame::changed(
+            crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂"),
+        );
         assert_eq!(f.loss_is_recoverable(), t.spec().lossy, "{t:?}");
     }
 }

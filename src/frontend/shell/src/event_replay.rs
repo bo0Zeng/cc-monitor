@@ -90,23 +90,72 @@ pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 /// 流名不叫命令名（命令是那台后端的 `terminal-follow`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const TERMINAL_SCREEN_KIND: &str = "terminal-screen";
 
-/// 那台推来的一格「某样东西变了」（[`EventReplay::changed`] 收到的那一份，原样）。
-#[derive(Debug, Clone)]
-pub struct Changed {
-    pub origin: crate::origin::Origin,
-    pub topic: String,
-    /// `{key?, rev?, body?}` 的文本，原样。
-    pub cell: String,
+/// 流那一路（[`EventReplay::subscribe_stream`]）的订阅在订阅表里用的标签：不是任何一个 webview 的标签（那些不带 NUL）。
+const STREAM_LABEL: &str = "\0stream";
+
+/// 流那一路一开始给多少格 credit；流每交出一格 `Frame` 还一格（跟不上 ⇒ 照核心那一套丢、原位 `Gap`）。
+const STREAM_WINDOW: u32 = 64;
+
+/// 进程里那一份（[`install`] 装；文件窗口那一侧的流经 [`host`] 拿）。
+static HOST: std::sync::OnceLock<Arc<EventReplay>> = std::sync::OnceLock::new();
+
+/// 装进程里那一份（先装的那一份算数），交回算数的那一份。
+pub fn install(replay: Arc<EventReplay>) -> Arc<EventReplay> {
+    Arc::clone(HOST.get_or_init(|| replay))
 }
 
-/// 旁听口：界面那几条订阅之外，文件窗口那一侧也要「X 变了」（整个进程一个；没人听 ⇒ 丢）。
-/// 跟不上的那一份 ⇒ 落后几格（收的那一侧当「丢了几格」）。
-static CHANGED_TAP: std::sync::LazyLock<tokio::sync::broadcast::Sender<Changed>> =
-    std::sync::LazyLock::new(|| tokio::sync::broadcast::channel(64).0);
+/// 进程里那一份；还没装 ⇒ `None`。
+pub fn host() -> Option<Arc<EventReplay>> {
+    HOST.get().cloned()
+}
 
-/// 订一份旁听：从此刻起每一格「X 变了」（哪台 · 哪个主题都在，收的那一侧自己挑）。
-pub fn changed_tap() -> tokio::sync::broadcast::Receiver<Changed> {
-    CHANGED_TAP.subscribe()
+/// 订阅表的出口：webview 那一个（[`EventReplay::attach_sink`] 装）＋ 流那一路每条一个通道（[`EventReplay::subscribe_stream`]），按标签分。
+/// 核心只认这一个出口，不分是哪一路。
+#[derive(Default)]
+struct Outlet {
+    webview: Mutex<Option<Arc<dyn ItemSink>>>,
+    streams: Mutex<HashMap<u64, tokio::sync::mpsc::UnboundedSender<Item>>>,
+}
+
+impl Outlet {
+    fn has_webview(&self) -> bool {
+        self.webview.lock().is_some()
+    }
+}
+
+impl ItemSink for Outlet {
+    fn deliver(&self, label: &str, sub: u64, items: Vec<Item>) {
+        if label == STREAM_LABEL {
+            let tx = self.streams.lock().get(&sub).cloned();
+            if let Some(tx) = tx {
+                for item in items {
+                    // 收的那一头没了 ⇒ 那条流已经被丢掉、订阅随之摘掉（[`StreamHeld`]），余下的不用再送。
+                    if tx.send(item).is_err() {
+                        break;
+                    }
+                }
+            }
+            return;
+        }
+        let webview = self.webview.lock().clone();
+        if let Some(w) = webview {
+            w.deliver(label, sub, items);
+        }
+    }
+}
+
+/// 一条流那一路的订阅还在：丢掉它 ⇒ 摘掉订阅表里那一条与它的通道。
+struct StreamHeld {
+    replay: Arc<EventReplay>,
+    id: u64,
+}
+
+impl Drop for StreamHeld {
+    fn drop(&mut self) {
+        self.replay.stop(STREAM_LABEL, self.id);
+        let outlet = Arc::clone(&self.replay.inner.lock().sink);
+        outlet.streams.lock().remove(&self.id);
+    }
 }
 
 pub struct EventReplay {
@@ -118,6 +167,8 @@ pub struct EventReplay {
     /// 「在看哪几个会话」可能变了（主窗口报了一份 · 会话订阅来了 / 走了）：每变一次 +1，
     /// `stream_watch` 据它醒、重算每台的名单（[`EventReplay::watched`]）。
     watch_tick: tokio::sync::watch::Sender<u64>,
+    /// 流那一路的订阅编号（自增；与 webview 的编号不在一个标签下，撞不了）。
+    stream_ids: std::sync::atomic::AtomicU64,
 }
 
 struct Inner {
@@ -143,8 +194,8 @@ struct Inner {
     ready_labels: HashSet<String>,
     /// 每台机器的内容流此刻接没接着（`Unseen` / `Seen` 的来源）。没有的 = 没接着。
     seen: HashMap<String, bool>,
-    /// 出口（`lib.rs` 起步时装；没装之前一格都不交）。
-    sink: Option<Arc<dyn ItemSink>>,
+    /// 出口：webview 那一个（`lib.rs` 起步时装；没装之前界面那一路不登记）＋ 流那一路的通道（[`Outlet`]）。
+    sink: Arc<Outlet>,
     /// 终端画面流（`terminal-screen/<票>`）撤掉时替界面退订的那一口（`lib.rs` 起步时装：向那台发退订）。
     screen_dropped: Option<ScreenDropped>,
     /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。从起来就在、初值是空的（还没报过 ＝ 一个都不看）。
@@ -535,7 +586,7 @@ impl EventReplay {
                 generation: 0,
                 ready_labels: HashSet::new(),
                 seen: HashMap::new(),
-                sink: None,
+                sink: Arc::default(),
                 screen_dropped: None,
                 main_watch: BTreeSet::new(),
                 main_kept: BTreeSet::new(),
@@ -544,13 +595,14 @@ impl EventReplay {
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
+            stream_ids: std::sync::atomic::AtomicU64::new(0),
             book: crate::session_book::book(),
         }
     }
 
     /// 装出口（`lib.rs` 起步时一次）。
     pub fn attach_sink(&self, sink: Arc<dyn ItemSink>) {
-        self.inner.lock().sink = Some(sink);
+        *self.inner.lock().sink.webview.lock() = Some(sink);
     }
 
     /// 装「终端画面流撤掉了」那一口（`lib.rs` 起步时一次）。〔「退订挂在订阅上」〕后端那张票的寿命跟着这条流走：
@@ -629,9 +681,7 @@ impl EventReplay {
                 );
                 self.tell_kept(&mut inner);
             }
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
             for sub in inner.subs.iter_mut().filter(|s| s.live) {
                 if sub.origin != notice.origin
@@ -656,9 +706,7 @@ impl EventReplay {
     pub fn on_lost_somewhere(&self, origin: &str) {
         let (sink, plans) = {
             let inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let plans: Vec<(String, u64, Vec<Item>)> = inner
                 .subs
                 .iter()
@@ -687,9 +735,7 @@ impl EventReplay {
             let mut inner = self.inner.lock();
             hold(&mut inner, self.book, &payloads);
             self.tell_kept(&mut inner);
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let mut plans: Vec<(String, u64, Vec<Vec<Item>>)> = Vec::new();
             for sub in inner.subs.iter_mut().filter(|s| s.live) {
                 let mine: Vec<JsonlLinePayload> =
@@ -741,9 +787,7 @@ impl EventReplay {
         let (sink, jobs) = {
             let mut inner = self.inner.lock();
             inner.priority_sid = priority_sid.map(str::to_string);
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let Inner {
                 tails,
                 subs,
@@ -896,10 +940,58 @@ impl EventReplay {
         from: Option<Cursor>,
         want: u32,
     ) {
-        let sink = self.inner.lock().sink.clone();
-        let Some(sink) = sink else {
+        if !self.inner.lock().sink.has_webview() {
             return;
+        }
+        self.open(label, id, origin, kind, from, want);
+    }
+
+    /// 订一条流、交出一条 [`BoxStream`]（文件窗口那一侧经 `chan/host.rs` 用）：与 [`Self::subscribe`] 同一份 `parse_kind`、
+    /// 同一张订阅表、同一套 credit / `Gap` / 看得见与否，只是格进这条流自己的通道。起始窗口 [`STREAM_WINDOW`] 格，流每交出一格 `Frame` 还一格；
+    /// 不等就绪点（没有 webview 要等）。丢掉这条流 ⇒ 订阅随之摘掉。认不出的流名 ⇒ 原位 `Closed{Peer(no-such-stream)}`；`from` 给了 ⇒ `Closed{Peer(bad_args)}`（同界面那一路）。
+    pub fn subscribe_stream(
+        self: &Arc<Self>,
+        origin: &crate::origin::Origin,
+        kind: &str,
+        from: Option<Cursor>,
+    ) -> futures::stream::BoxStream<'static, Item> {
+        use futures::StreamExt as _;
+        let id = 1 + self
+            .stream_ids
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let outlet = Arc::clone(&self.inner.lock().sink);
+        outlet.streams.lock().insert(id, tx);
+        let held = StreamHeld {
+            replay: Arc::clone(self),
+            id,
         };
+        self.open(STREAM_LABEL, id, origin, kind, from, STREAM_WINDOW);
+        futures::stream::unfold((rx, held, false), |(mut rx, held, ended)| async move {
+            if ended {
+                return None;
+            }
+            let item = rx.recv().await?;
+            if matches!(item, Item::Frame { .. }) {
+                held.replay.want(STREAM_LABEL, held.id, 1);
+            }
+            let ended = matches!(item, Item::Closed { .. });
+            Some((item, (rx, held, ended)))
+        })
+        .boxed()
+    }
+
+    /// 两路共用的那一份：认流名、登记进订阅表、交第一格（看不见 ⇒ `Unseen`）与要重放的留存。
+    fn open(
+        self: &Arc<Self>,
+        label: &str,
+        id: u64,
+        origin: &crate::origin::Origin,
+        kind: &str,
+        from: Option<Cursor>,
+        want: u32,
+    ) {
+        let sink = Arc::clone(&self.inner.lock().sink);
         let origin = origin.as_wire_str();
         if origin.trim().is_empty() {
             // 空白名：调用方没说哪台（同 `chan_call` 那道闸）⇒ 用法错，不当成「一台永远看不见的机器」。
@@ -935,9 +1027,11 @@ impl EventReplay {
             inner.generation += 1;
             let generation = inner.generation;
             let seen = inner.seen.get(origin).copied().unwrap_or(false);
-            // tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）；`changed/<主题>` 同理。
-            let immediate =
-                kind != SubKind::Lines || only.is_some() || inner.ready_labels.contains(label);
+            // tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）；`changed/<主题>` 同理；流那一路没有 webview 要等。
+            let immediate = kind != SubKind::Lines
+                || only.is_some()
+                || label == STREAM_LABEL
+                || inner.ready_labels.contains(label);
             let sub = Sub {
                 label: label.to_string(),
                 id,
@@ -1013,9 +1107,7 @@ impl EventReplay {
             .collect();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
             for sub in inner
                 .subs
@@ -1047,9 +1139,7 @@ impl EventReplay {
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             inner.snapshot_level = count;
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let plans: Vec<(String, u64, Vec<Item>)> = inner
                 .subs
                 .iter_mut()
@@ -1076,9 +1166,7 @@ impl EventReplay {
         let origin = payload.origin.as_wire_str().to_string();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let body = Body(serde_json::to_vec(&payload).unwrap_or_default());
             let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
             for sub in inner
@@ -1102,7 +1190,7 @@ impl EventReplay {
     pub fn want(&self, label: &str, id: u64, more: u32) {
         let (sink, gap) = {
             let mut inner = self.inner.lock();
-            let sink = inner.sink.clone();
+            let sink = Arc::clone(&inner.sink);
             let gap = inner
                 .subs
                 .iter_mut()
@@ -1121,7 +1209,7 @@ impl EventReplay {
             (sink, gap)
         };
         self.credit_changed.notify_waiters();
-        if let (Some(sink), Some(gap)) = (sink, gap) {
+        if let Some(gap) = gap {
             sink.deliver(label, id, vec![gap]);
         }
     }
@@ -1140,7 +1228,7 @@ impl EventReplay {
         let (sink, told) = {
             let mut inner = self.inner.lock();
             inner.seen.insert(origin.to_string(), seen);
-            let sink = inner.sink.clone();
+            let sink = Arc::clone(&inner.sink);
             let told: Vec<(String, u64)> = inner
                 .subs
                 .iter_mut()
@@ -1152,23 +1240,15 @@ impl EventReplay {
                 .collect();
             (sink, told)
         };
-        if let Some(sink) = sink {
-            for (label, id) in told {
-                sink.deliver(&label, id, vec![seen_item(seen, false)]);
-            }
+        for (label, id) in told {
+            sink.deliver(&label, id, vec![seen_item(seen, false)]);
         }
     }
 
     /// 那台机器的后端说「某样东西变了」（`changed` 帧；本机远端两条流同一个口）⇒ 订了那台 `changed/<topic>` 的每条订阅收一格 `cell`
     /// （`{key?, rev?, body?}` 的文本，原样不解释；有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
-    /// 同一格另交一份给 [`changed_tap`]（文件窗口那一侧订的 `changed/<topic>` 从那里取，`chan/host.rs`）。
+    /// 界面那一路与文件窗口那一路（[`Self::subscribe_stream`]）在同一张订阅表里，一次扇出。
     pub fn changed(&self, origin: &crate::origin::Origin, topic: &str, cell: String) {
-        let seen = Changed {
-            origin: origin.clone(),
-            topic: topic.to_string(),
-            cell: cell.clone(),
-        };
-        let _ = CHANGED_TAP.send(seen);
         self.fan_out(
             SubKind::Changed,
             origin,
@@ -1211,9 +1291,7 @@ impl EventReplay {
         let origin = origin.as_wire_str();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
+            let sink = Arc::clone(&inner.sink);
             let plans: Vec<(String, u64, Vec<Item>)> = inner
                 .subs
                 .iter_mut()

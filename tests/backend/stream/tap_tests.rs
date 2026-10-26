@@ -80,17 +80,12 @@ fn a_plan_change_becomes_one_changed_frame() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::Changed(crate::wire::Changed {
-                topic: Topic::Plan,
-                key,
-                rev,
-                body,
-            })) => assert_eq!(
-                (key.as_deref(), rev.as_deref(), body),
+            Some(Frame::Changed(crate::wire::Changed::Plan { key, rev, body })) => assert_eq!(
+                (key.as_str(), rev.as_deref(), body),
                 (
-                    Some("/w"),
+                    "/w",
                     Some("r2"),
-                    Some(serde_json::json!({"needs": 3}))
+                    Some(cmd_wire::frame::PlanNeeds { needs: 3 })
                 )
             ),
             other => panic!("{other:?}"),
@@ -119,12 +114,9 @@ fn a_moved_directory_becomes_one_changed_frame() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::Changed(crate::wire::Changed {
-                topic: Topic::FilesDir,
-                key,
-                rev,
-                body,
-            })) => assert_eq!((key.as_deref(), rev, body), (Some("/w/src"), None, None)),
+            Some(Frame::Changed(crate::wire::Changed::FilesDir { key })) => {
+                assert_eq!(key, "/w/src")
+            }
             other => panic!("{other:?}"),
         }
         assert!(
@@ -154,12 +146,7 @@ fn list_moves_become_one_changed_frame() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::Changed(crate::wire::Changed {
-                topic: Topic::HistoryList,
-                key,
-                rev,
-                body,
-            })) => assert_eq!((key, rev, body), (None, None, None)),
+            Some(Frame::Changed(crate::wire::Changed::HistoryList {})) => {}
             other => panic!("{other:?}"),
         }
         assert!(
@@ -204,8 +191,8 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
             emit(&tx, source, sid);
             for _ in 0..n {
                 match tokio::time::timeout(guard_core::wall::CEILING, t.next()).await {
-                    Ok(Some(Frame::Changed(crate::wire::Changed { topic, key, .. }))) => {
-                        got.push((source, topic, key))
+                    Ok(Some(Frame::Changed(c))) => {
+                        got.push((source, c.topic(), c.key().map(str::to_string)))
                     }
                     other => panic!("{source:?} 该推一帧：{other:?}"),
                 }
@@ -235,19 +222,22 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
     });
 }
 
-/// 帧里带不带小成品照主题表：轮换那一帧（`rotation`）不带（客户端照 `{target: {sid}}` 重问 `rotation-view`），
-/// 即便这条连接的 `bodies` 现算得出东西也不带。
+/// 现算得出小成品的主题（额度账）换成这条连接的 `bodies` 交的那一臂，时区照这条连接看的那一台；
+/// 现算不出的（轮换那一帧：客户端照 `{target: {sid}}` 重问 `rotation-view`）照旧是发端造的那一臂。
 #[test]
-fn a_rotation_change_carries_the_body_the_table_asks_for() {
+fn a_computed_topic_carries_the_arm_the_hook_gives() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("rt");
     rt.block_on(async {
         let mut t = attach_rx(std::sync::Arc::new(TapHub::default()));
-        // 小成品按这条连接看的那一台的时区现算（同客户端带 `tz` 重问）。
-        fn fake(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde_json::Value> {
-            Some(serde_json::json!({ "topic": topic.name(), "key": key, "tz": tz.iana_name() }))
+        // 只认额度账；时区写进一个看得见的格里（换成那条连接的时区 ⇒ 这一格跟着变）。
+        fn fake(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<crate::wire::Changed> {
+            (topic == Topic::Quota && key.is_none()).then(|| crate::wire::Changed::Tasks {
+                key: tz.iana_name(),
+                body: None,
+            })
         }
         t.bodies = fake;
         t.tz = crate::Tz::named("Asia/Shanghai").unwrap();
@@ -255,21 +245,28 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
         t.nodes = Some(tx.subscribe());
         crate::accounts::quota::nodes::emit(
             &tx,
-            crate::accounts::quota::nodes::Source::Book,
+            crate::accounts::quota::nodes::Source::Refused,
             Some("s1"),
         );
-        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
-            .await
-            .expect("该推一帧");
-        match f {
-            Some(Frame::Changed(crate::wire::Changed {
-                topic: Topic::Rotation,
-                key,
-                body,
-                ..
-            })) => assert_eq!((key.as_deref(), body), (Some("s1"), None)),
-            other => panic!("{other:?}"),
+        let mut got = Vec::new();
+        for _ in 0..2 {
+            match tokio::time::timeout(guard_core::wall::CEILING, t.next()).await {
+                Ok(Some(Frame::Changed(c))) => got.push(c),
+                other => panic!("该推一帧：{other:?}"),
+            }
         }
+        assert_eq!(
+            got,
+            vec![
+                crate::wire::Changed::Tasks {
+                    key: "Asia/Shanghai".to_string(),
+                    body: None
+                },
+                crate::wire::Changed::Rotation {
+                    key: "s1".to_string()
+                },
+            ]
+        );
     });
 }
 

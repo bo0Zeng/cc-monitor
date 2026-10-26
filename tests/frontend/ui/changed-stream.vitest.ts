@@ -44,6 +44,30 @@ describe("changed 流", () => {
     expect(pushedProducts({ cells: [], all: true }, "quota").all).toBe(true);
   });
 
+  it("每个带体的主题都经这一处读：机器状态 · 会话隐藏 · 计划交那一臂的体，没带的进 ask", () => {
+    const hidden = { hidden: null };
+    const h = pushedProducts({ cells: [{ key: "s1", rev: null, body: hidden }, { key: "s2", rev: null, body: undefined }], all: false }, "session_hidden");
+    expect([...h.got]).toEqual([["s1", hidden]]);
+    expect(h.ask).toEqual(["s2"]);
+    const m = pushedProducts({ cells: [{ key: "box", rev: null, body: undefined }], all: false }, "machine");
+    expect([...m.got]).toEqual([]);
+    expect(m.ask).toEqual(["box"]);
+    const p = pushedProducts({ cells: [{ key: "/w", rev: "r", body: { needs: 4 } }], all: false }, "plan");
+    expect(p.got.get("/w")?.needs).toBe(4);
+  });
+
+  it("生成的 Changed 按主题分臂：主题表里带体的那几个主题、那一臂恰好有 body（从 Rust 主题表抠，异源）", () => {
+    const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/Changed.ts"), "utf8");
+    const rs = readFileSync(resolve(REPO_ROOT, "src/backend/wire/topic.rs"), "utf8");
+    const rows = [...rs.matchAll(/name: "([a-z_]+)",[\s\S]*?body: (true|false),/g)].map((m) => [m[1], m[2] === "true"] as const);
+    expect(rows.length).toBe(15);
+    for (const [name, body] of rows) {
+      const arm = new RegExp(`\\{ "topic": "${name}",([^}]*)\\}`).exec(gen);
+      expect(arm, name).not.toBeNull();
+      expect(arm?.[1].includes("body?:"), name).toBe(body);
+    }
+  });
+
   it("流名 changed/<topic>；主题名就是后端生成的那一份（从 Rust 主题表抠，异源）", () => {
     expect(changedStream("rotation_strategies")).toBe("changed/rotation_strategies");
     const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/Topic.ts"), "utf8");

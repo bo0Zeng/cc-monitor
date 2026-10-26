@@ -62,19 +62,8 @@ pub(crate) struct LoginStarted {
     pub(crate) opened: bool,
 }
 
-/// 登录失败之后还能怎么办（`login-start` · `login-finish` 失败的 `data.again`）：由后端照码定，界面照它画，不按码去猜。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum LoginAgainHow {
-    /// 作业还在，接着粘（粘的框留着）。
-    Paste,
-    /// 作业没了，从头再起一趟（`login-start`）。
-    Restart,
-    /// 没路：再来一趟也是同样的结果（没有这个号 · 这一家不在 app 里登 …）。
-    None,
-}
+/// 登录失败之后还能怎么办（线上形住 cmd-wire：登录推送的体也带它）。
+pub(crate) use cmd_wire::quota::LoginAgainHow;
 
 /// 登录失败的 `data`：还能怎么办。每个码一个定值，写在码表那一行上（`bad_args` 不带：入参形状不对，不是一条能走的路）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -253,24 +242,16 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
         .is_some_and(|r| r.entries.iter().any(|e| e.name == server))
 }
 
-/// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(tag = "state", rename_all = "camelCase")]
-pub(crate) enum SignInState {
-    /// 登成了。
-    Done,
-    /// 登不成：那一句（原话进 `detail`）· 还能怎么办（作业自己收了 ⇒ 恒 `restart`）。
-    Failed {
-        said: String,
-        detail: Option<String>,
-        again: LoginAgainHow,
-    },
+/// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`；线上形住 cmd-wire）。
+pub(crate) use cmd_wire::quota::SignInState;
+
+/// 作业收了 ⇒ 那一份小成品（扩展特征：孤儿规则不许在 cmd-wire 的类型上加固有方法）。
+pub(crate) trait SignInStateExt {
+    fn of(e: &SignInEnd) -> SignInState;
 }
 
-impl SignInState {
-    pub(crate) fn of(e: &SignInEnd) -> SignInState {
+impl SignInStateExt for SignInState {
+    fn of(e: &SignInEnd) -> SignInState {
         match e {
             SignInEnd::Done => SignInState::Done,
             SignInEnd::Failed(s) => SignInState::Failed {

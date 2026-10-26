@@ -24,10 +24,10 @@ fn a_body_has_a_cap_and_only_then() {
     }
 }
 
-/// 生产段里每个 `Topic::X` 出现在哪几份文件（只数发端那两份与本表）。
+/// 生产段里每个主题的发端在哪几份文件（造那一臂 `Changed::X {` · 或照主题现算 `Topic::X,`；只数发端那几份）。
 fn emitters(topic: &str) -> Vec<String> {
     let root = guard_core::addr::backend_src_root();
-    let needle = format!("Topic::{topic},");
+    let needles = [format!("Changed::{topic} {{"), format!("Topic::{topic},")];
     let mut out = Vec::new();
     for rel in [
         "stream/tap.rs",
@@ -35,7 +35,8 @@ fn emitters(topic: &str) -> Vec<String> {
         "stream/inbound/mod.rs",
     ] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读源码");
-        if guard_core::production_code(&src).contains(&needle) {
+        let code = guard_core::production_code(&src);
+        if needles.iter().any(|n| code.contains(n.as_str())) {
             out.push(rel.to_string());
         }
     }
@@ -64,17 +65,24 @@ fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
     }
 }
 
-/// 生产段造 `changed` 帧只经 `Frame::changed`（上限在那一处判）：别处写 `Changed {` 结构字面量 ⇒ 红。
+/// 生产段把一臂装进 `changed` 帧只经 `Frame::changed`（上限在那一处判）：别处写 `Frame::Changed(<那一臂>)` 造帧 ⇒ 红
+/// （`Frame::Changed(c) =>` · `if let Frame::Changed(c) =` 那种拆帧的不算）。
 #[test]
 fn changed_frames_are_built_in_one_place() {
     let root = guard_core::addr::backend_src_root();
-    let needle = format!("{} {{", "Changed");
+    let needle = format!("Frame::{}(", "Changed");
     let literal = |code: &str| {
-        code.match_indices(&needle).any(|(at, _)| {
-            !code[..at]
-                .chars()
-                .next_back()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        code.lines().any(|line| {
+            line.match_indices(&needle).any(|(at, _)| {
+                let after = &line[at..];
+                let close = after.find(')').map_or("", |i| &after[i + 1..]);
+                let pattern = close.trim_start().starts_with("=>")
+                    || close.trim_start().starts_with('=')
+                    || close.trim_start().starts_with('|')
+                    || line[..at].contains("let ")
+                    || line[..at].contains("matches!");
+                !pattern
+            })
         })
     };
     let mut hits = Vec::new();
@@ -139,14 +147,48 @@ fn every_reask_is_a_registered_command() {
     }
 }
 
-/// 现算小成品的那几样 ⇒ 表里写着带 `body`（反过来不必：计划的 `body` 由发端给）。
+/// 枚举的每一臂 ＝ 表里那一行：臂的 `topic` 就是那个主题；臂里有 `key` / `rev` / `body` 那几格恰好是表里写带的那几格（类型那一侧照生成的 TS 声明数）。
 #[test]
-fn a_computed_body_is_a_declared_body() {
+fn each_arm_has_the_cells_the_table_says() {
+    let decl = <crate::wire::Changed as ts_rs::TS>::decl(&ts_rs::Config::default());
     for t in Topic::ALL {
         let s = t.spec();
-        if s.ask != Ask::None {
-            assert!(s.body, "{t:?} 现算小成品，表里却写不带 body");
+        let arm = crate::wire::Changed::bare(t, Some("k".into())).expect("每个主题都有那一臂");
+        assert_eq!(arm.topic(), t, "{t:?} 那一臂说的是别的主题");
+        let head = format!("{{ \"topic\": \"{}\",", s.name);
+        let at = decl
+            .find(&head)
+            .unwrap_or_else(|| panic!("{t:?} 在 Changed 里没有那一臂：{decl}"));
+        let cells = &decl[at + head.len()..];
+        let cells = &cells[..cells.find('}').expect("那一臂没收尾")];
+        for (cell, want) in [("key", s.key), ("rev", s.rev), ("body", s.body)] {
+            let has = cells.contains(&format!(" {cell}:")) || cells.contains(&format!(" {cell}?:"));
+            assert_eq!(has, want, "{t:?} 那一臂带不带 `{cell}` 与表对不上：{cells}");
         }
+    }
+}
+
+/// 现算小成品的那几样 ⇒ 表里写着带 `body`；跑的就是表里「重问」那一条命令。
+#[test]
+fn a_computed_body_is_a_declared_body() {
+    use crate::wire::typed::Command as _;
+    for t in Topic::ALL {
+        if crate::stream::topic_body::body_now(t, Some("x"), &crate::Tz::default()).is_some() {
+            assert!(t.spec().body, "{t:?} 现算小成品，表里却写不带 body");
+        }
+    }
+    for (t, cmd) in [
+        (
+            Topic::Quota,
+            crate::faces::rotation_face::QuotaReadCmd::NAME,
+        ),
+        (
+            Topic::RotationStrategies,
+            crate::faces::rotation_view_face::RotationStrategies::NAME,
+        ),
+        (Topic::Tasks, crate::faces::feature_face::TasksListCmd::NAME),
+    ] {
+        assert_eq!(t.spec().reask, cmd, "{t:?} 现算跑的不是表里重问那一条");
     }
 }
 
@@ -158,16 +200,19 @@ fn a_computed_body_is_the_reask_reply() {
         crate::stream::topic_body::body_now(Topic::RotationStrategies, None, &crate::Tz::default()),
         {
             use crate::wire::typed::Handle;
-            crate::wire::spec::finish(crate::faces::rotation_view_face::RotationStrategies::run(
-                Default::default(),
-                crate::wire::typed::Cx {
-                    tz: crate::Tz::default(),
-                    until: None,
-                    needs: (),
-                },
-            ))
-            .ok()
-            .and_then(|r| serde_json::to_value(r).ok())
+            Some(crate::wire::Changed::RotationStrategies {
+                body: crate::wire::spec::finish(
+                    crate::faces::rotation_view_face::RotationStrategies::run(
+                        Default::default(),
+                        crate::wire::typed::Cx {
+                            tz: crate::Tz::default(),
+                            until: None,
+                            needs: (),
+                        },
+                    ),
+                )
+                .ok(),
+            })
         },
         "策略目录的小成品不是 rotation-strategies 的应答"
     );
@@ -179,18 +224,20 @@ fn a_computed_body_is_the_reask_reply() {
         ),
         {
             use crate::wire::typed::Handle as _;
-            crate::wire::spec::finish(crate::faces::feature_face::TasksListCmd::run(
-                crate::faces::feature_face::TasksListReq {
-                    sid: "no-such-sid".to_string(),
-                },
-                crate::wire::typed::Cx {
-                    tz: crate::Tz::default(),
-                    until: None,
-                    needs: (),
-                },
-            ))
-            .ok()
-            .and_then(|t| serde_json::to_value(t).ok())
+            Some(crate::wire::Changed::Tasks {
+                key: "no-such-sid".to_string(),
+                body: crate::wire::spec::finish(crate::faces::feature_face::TasksListCmd::run(
+                    crate::faces::feature_face::TasksListReq {
+                        sid: "no-such-sid".to_string(),
+                    },
+                    crate::wire::typed::Cx {
+                        tz: crate::Tz::default(),
+                        until: None,
+                        needs: (),
+                    },
+                ))
+                .ok(),
+            })
         },
         "任务清单的小成品不是 tasks-list 的应答"
     );
