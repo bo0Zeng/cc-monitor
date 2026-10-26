@@ -35,6 +35,7 @@ fn live(activity: crate::agents::SessionActivity) -> impl Fn(&str) -> Whose {
             },
             SUB => Whose::Subagent {
                 parent: MAIN.into(),
+                parent_title: "主会话".into(),
                 live: l,
             },
             _ => Whose::Unknown,

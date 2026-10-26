@@ -65,6 +65,11 @@ fn who_port() -> impl Fn(&str) -> Whose {
             needs: d.needs,
         })
     };
+    // 子 agent 的负责人写成「{父会话} 的 agent」：父会话叫什么与标签页同一条规则（改过的名 ＞ 记录里的标题）。
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
     let memo = std::sync::Mutex::new(BTreeMap::<String, Whose>::new());
     move |id: &str| {
         if let Some(w) = memo.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
@@ -85,7 +90,12 @@ fn who_port() -> impl Fn(&str) -> Whose {
             .and_then(|r| crate::agents::child_parent_sid(r, id))
         {
             let l = live(&parent);
-            Whose::Subagent { parent, live: l }
+            let parent_title = crate::history::session_hidden::title_here(&parent, &annotations);
+            Whose::Subagent {
+                parent,
+                parent_title,
+                live: l,
+            }
         } else {
             Whose::Unknown
         };

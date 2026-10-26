@@ -76,8 +76,12 @@ pub(crate) enum Whose {
         /// 此刻活着就有：在跑 · 等你 · 闲着（说不清 ⇒ 活着但 `None`）。
         live: Option<Live>,
     },
-    /// 是一个子 agent 的 id：挂在 `parent` 那个会话底下。
-    Subagent { parent: String, live: Option<Live> },
+    /// 是一个子 agent 的 id：挂在 `parent` 那个会话底下；`parent_title` ＝ 那个会话叫什么（与标签页同一条规则，后端写好）。
+    Subagent {
+        parent: String,
+        parent_title: String,
+        live: Option<Live>,
+    },
     /// 对不上这台的任何会话记录。
     Unknown,
 }

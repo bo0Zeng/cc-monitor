@@ -181,16 +181,30 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
             None => crate::wire::Life::Ended,
         })
     };
-    let (kind, sid, needs, face) = match who(id) {
-        Whose::Session { sid, live } => ("session", Some(sid), needs_of(&live), face_of(&live)),
-        Whose::Subagent { parent, live } => {
-            ("subagent", Some(parent), needs_of(&live), face_of(&live))
+    let (kind, sid, needs, face, label) = match who(id) {
+        Whose::Session { sid, live } => {
+            ("session", Some(sid), needs_of(&live), face_of(&live), None)
+        }
+        Whose::Subagent {
+            parent,
+            parent_title,
+            live,
+        } => {
+            let label = copy_text("plan.who.sub", &[("session", &parent_title)]);
+            (
+                "subagent",
+                Some(parent),
+                needs_of(&live),
+                face_of(&live),
+                Some(label),
+            )
         }
         Whose::Unknown => (
             "unknown",
             None,
             None,
             crate::wire::SessionFace::of(crate::wire::Life::Unclear),
+            None,
         ),
     };
     Some(PlanWho {
@@ -199,6 +213,7 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
         sid,
         needs,
         face,
+        label,
     })
 }
 

@@ -25,6 +25,8 @@ pub(crate) struct PlanWho {
     pub needs: Option<String>,
     /// 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
     pub face: crate::wire::SessionFace,
+    /// 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+    pub label: Option<String>,
 }
 
 /// 一个节点管的一份文件（pb 的 `file_check`）。

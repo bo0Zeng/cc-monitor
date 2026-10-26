@@ -16,4 +16,8 @@ needs: string | null,
 /**
  * 此刻那条会话的整份脸（认不出 ⇒ 状态不明）。
  */
-face: SessionFace, };
+face: SessionFace, 
+/**
+ * 写好的那一个名字：子 agent ⇒「{父会话} 的 agent」；会话本身 · 认不出 ⇒ `null`（界面写标签页的名字 · 认不出那一形）。
+ */
+label: string | null, };

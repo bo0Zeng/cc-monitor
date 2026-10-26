@@ -1020,7 +1020,7 @@ export class PlanView {
   // ───────────────────────── 会话标签 ─────────────────────────
 
   /**
-   * 负责人 / signer：会话 ⇒ 那个标签页的点 ＋ 标题 ＋ 机器；子 agent ⇒ 挂在父会话那个标签页上；
+   * 负责人 / signer：会话 ⇒ 那个标签页的点 ＋ 标题 ＋ 机器；子 agent ⇒ 挂在父会话那个标签页上、写后端给的「{父会话} 的 agent」；
    * 认不出 ⇒ 虚线框「认不出 · 前后几位」，点了复制完整 id。
    */
   whoChip(w: PlanWho): HTMLElement {
@@ -1043,7 +1043,8 @@ export class PlanView {
     const face = tab ? faceOf(tab) : w.face;
     b.appendChild(statusDot(face.dot, face.name, "compact"));
     const name = tab ? titleParts(tab).title : shortId(w.sid);
-    txt.textContent = name;
+    // 子 agent ⇒ 后端写好的「{父会话} 的 agent」照画；会话本身 ⇒ 标签页的名字。
+    txt.textContent = w.label ?? name;
     b.appendChild(txt);
     if (tab) {
       const mt = document.createElement("span");

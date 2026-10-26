@@ -34,6 +34,7 @@ fn all_working(id: &str) -> Whose {
         },
         SUB => Whose::Subagent {
             parent: MAIN.into(),
+            parent_title: "主会话".into(),
             live,
         },
         _ => Whose::Unknown,
@@ -49,6 +50,7 @@ fn all_ended(id: &str) -> Whose {
         },
         SUB => Whose::Subagent {
             parent: MAIN.into(),
+            parent_title: "主会话".into(),
             live: None,
         },
         _ => Whose::Unknown,
