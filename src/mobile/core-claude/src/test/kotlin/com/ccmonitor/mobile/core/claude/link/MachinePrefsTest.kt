@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AbsentOrOkOrUnreadable
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.AbsentOrOkOrUnreadable
+import com.ccmonitor.mobile.core.wire.gen.Tab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

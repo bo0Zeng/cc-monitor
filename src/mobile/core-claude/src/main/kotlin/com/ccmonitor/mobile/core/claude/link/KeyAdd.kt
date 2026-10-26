@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.KeyAdded
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PushOutcome
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.KeyAdded
+import com.ccmonitor.mobile.core.wire.gen.PushOutcome
 
 /** `authorized-keys-add`：把一行 OpenSSH 公钥并进那台这个用户的 `authorized_keys`（怎么写 · 权限 · 去重都在那台）。 */
 object KeyAdd {

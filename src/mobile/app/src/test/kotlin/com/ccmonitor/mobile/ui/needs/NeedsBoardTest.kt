@@ -2,10 +2,10 @@ package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ManualItem
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.ManualItem
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.needs.NeedsDesk

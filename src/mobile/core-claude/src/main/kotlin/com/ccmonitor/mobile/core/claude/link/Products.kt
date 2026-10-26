@@ -2,27 +2,27 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.RawPatch
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Allow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Annotated
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FaceLive
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryGroup
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryHead
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Merged
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsItem
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsList
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAdded
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFileReread
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionRemoved
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionState
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionStatus
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
-import com.ccmonitor.mobile.core.claude.link.wire.gen.WireSessionActivity
 import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Allow
+import com.ccmonitor.mobile.core.wire.gen.Annotated
+import com.ccmonitor.mobile.core.wire.gen.FaceLive
+import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
+import com.ccmonitor.mobile.core.wire.gen.HistoryHead
+import com.ccmonitor.mobile.core.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.wire.gen.Merged
+import com.ccmonitor.mobile.core.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsList
+import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionAdded
+import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.SessionFileReread
+import com.ccmonitor.mobile.core.wire.gen.SessionRemoved
+import com.ccmonitor.mobile.core.wire.gen.SessionState
+import com.ccmonitor.mobile.core.wire.gen.SessionStatus
+import com.ccmonitor.mobile.core.wire.gen.Tone
+import com.ccmonitor.mobile.core.wire.gen.WireSessionActivity
 
 /*
  * 核心成品的解码：只认格、不判、不写字。每一格的意思以 `IPC-COMMANDS.md` 为准；
@@ -98,7 +98,7 @@ data class SessionTable(
     }
 
     private fun removed(f: SessionRemoved): SessionTable =
-        copy(sessions = sessions - f.sid, faces = faces - f.sid, successors = if (f.by != null) successors + (f.sid to f.by) else successors)
+        copy(sessions = sessions - f.sid, faces = faces - f.sid, successors = f.by?.let { successors + (f.sid to it) } ?: successors)
 
     /** 状态帧：换上那一条的脸；带着 `path`（宣告以后记录才出现 · 换了一份，那台在那一行的 line 帧之前先发）⇒ 路径换成它。 */
     private fun status(f: SessionStatus): SessionTable {

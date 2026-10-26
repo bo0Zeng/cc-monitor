@@ -1,16 +1,16 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FileKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FilesPathReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Gate
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LsEntry
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LsHead
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PreviewGate
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ReadTextReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.StatReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.WirePath
 import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.FileKind
+import com.ccmonitor.mobile.core.wire.gen.FilesPathReply
+import com.ccmonitor.mobile.core.wire.gen.Gate
+import com.ccmonitor.mobile.core.wire.gen.LsEntry
+import com.ccmonitor.mobile.core.wire.gen.LsHead
+import com.ccmonitor.mobile.core.wire.gen.PreviewGate
+import com.ccmonitor.mobile.core.wire.gen.ReadTextReply
+import com.ccmonitor.mobile.core.wire.gen.StatReply
+import com.ccmonitor.mobile.core.wire.gen.WirePath
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction

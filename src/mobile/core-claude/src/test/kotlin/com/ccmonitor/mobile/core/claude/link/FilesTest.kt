@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FileKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.WirePath
-import com.ccmonitor.mobile.core.claude.link.wire.gen.WirePathObjValue
+import com.ccmonitor.mobile.core.wire.gen.FileKind
+import com.ccmonitor.mobile.core.wire.gen.WirePath
+import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

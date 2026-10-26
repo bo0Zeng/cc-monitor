@@ -24,13 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.Decide
 
 /**
  * 同名那一问（底部抽屉，问一次；上传 · 复制到 · 下载同一张）：标题 · 那一句（有的话）· 每项名字与那一行的说明（核心写好）。

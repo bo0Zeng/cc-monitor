@@ -1,15 +1,15 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FaceLive
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Hidden
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HiddenBy
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.FaceLive
+import com.ccmonitor.mobile.core.wire.gen.Hidden
+import com.ccmonitor.mobile.core.wire.gen.HiddenBy
+import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

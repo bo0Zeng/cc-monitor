@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotHint
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotNote
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
+import com.ccmonitor.mobile.core.wire.gen.RotHint
+import com.ccmonitor.mobile.core.wire.gen.RotNote
+import com.ccmonitor.mobile.core.wire.gen.Tone
 
 /*
  * 轮换屏上的字：全是那台写好的；这里只填会走的钟（停发那一句的「还有多久」，同桌面 `rot-words.ts`）。

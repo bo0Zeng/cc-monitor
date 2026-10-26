@@ -23,9 +23,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
 
 /** 环线宽（同桌面 1.5px）。 */
 private val RING = 1.5.dp

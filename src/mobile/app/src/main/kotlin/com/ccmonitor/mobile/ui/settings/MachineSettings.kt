@@ -8,14 +8,14 @@ import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.TabKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PrefsReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Usage
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.PrefsReply
+import com.ccmonitor.mobile.core.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.Topic
+import com.ccmonitor.mobile.core.wire.gen.Usage
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaRead as QuotaReadReply
+import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
 /** 设置屏 · 账号一览此刻画的那几样（全是那台的回包；读到之前是空的，不画旧值）。 */
 data class MachineSettingsUi(

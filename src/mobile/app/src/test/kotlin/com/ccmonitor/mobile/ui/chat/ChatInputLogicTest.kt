@@ -2,12 +2,12 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.LiveBlock
 import com.ccmonitor.mobile.core.claude.link.LiveCardState
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.gen.CommandScope
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAct
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommand
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.CommandScope
+import com.ccmonitor.mobile.core.wire.gen.SessionAct
+import com.ccmonitor.mobile.core.wire.gen.SessionCommand
+import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

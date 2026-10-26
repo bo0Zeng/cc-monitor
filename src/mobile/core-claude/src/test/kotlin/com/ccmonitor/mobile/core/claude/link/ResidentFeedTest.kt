@@ -1,14 +1,14 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFix
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MenuEntry
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.MenuEntry
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow

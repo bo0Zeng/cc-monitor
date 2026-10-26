@@ -2,13 +2,13 @@ package com.ccmonitor.mobile.ui.chat.needs
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsChoiceRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.needs.NeedsBoard

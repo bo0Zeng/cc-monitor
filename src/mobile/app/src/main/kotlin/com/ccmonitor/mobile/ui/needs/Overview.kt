@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.SessionTable
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ManualItem
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsItem
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.ManualItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsItem
+import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.ui.chats.HostName
 
 /** 总览「需手动」组的一行（照那台给的先后）。 */

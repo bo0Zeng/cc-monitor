@@ -2,13 +2,13 @@ package com.ccmonitor.mobile.ui.rotation
 
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotSegment
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotCell
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFrom
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotHint
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotMark
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.RotCell
+import com.ccmonitor.mobile.core.wire.gen.RotFrom
+import com.ccmonitor.mobile.core.wire.gen.RotHint
+import com.ccmonitor.mobile.core.wire.gen.RotMark
+import com.ccmonitor.mobile.core.wire.gen.RotRow
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
 
 /*
  * 轮换屏上画什么、交什么（桌面 `rot-board.ts` 同一处）：格 · 记号 · 底行全照那台的回包，这里只挑出来排；

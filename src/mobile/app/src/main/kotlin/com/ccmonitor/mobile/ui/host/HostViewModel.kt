@@ -8,8 +8,8 @@ import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.SessionState
 import com.ccmonitor.mobile.core.ssh.SessionStatus
-import com.ccmonitor.mobile.core.ssh.SshConfigHost
 import com.ccmonitor.mobile.core.ssh.SshConfigParser
+import com.ccmonitor.mobile.core.wire.gen.ConfigHost
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ui.common.MachineDot
 import kotlinx.coroutines.Dispatchers
@@ -88,7 +88,7 @@ const val SSH_CONFIG_HOST_ID_PREFIX = "cfg-"
  * 钥匙按 `IdentityFile` 的 basename 精确匹配已导入的那几把（手机读不到文件内容，只能按名字认）。
  */
 fun hostsFromSshConfig(
-    parsed: List<SshConfigHost>,
+    parsed: List<ConfigHost>,
     known: List<Identity>,
 ): List<Host> =
     parsed.map { p ->

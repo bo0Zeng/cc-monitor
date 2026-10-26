@@ -1,15 +1,15 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveEnd
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Held
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Landed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.gen.TailHow
+import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.Held
+import com.ccmonitor.mobile.core.wire.gen.Landed
+import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.TailHow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryTail as HistoryTailReply
+import com.ccmonitor.mobile.core.wire.gen.HistoryTail as HistoryTailReply
 
 /** 起会话 · 送字 · 读正文那几问：请求照协议的格，应答照金样解。 */
 class SessionsTest {

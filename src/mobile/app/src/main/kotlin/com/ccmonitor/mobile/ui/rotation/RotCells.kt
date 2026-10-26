@@ -59,15 +59,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import com.ccmonitor.mobile.core.claude.link.RotEdit
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotCell
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotDaySeg
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFormKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotFrom
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.core.wire.gen.RotCell
+import com.ccmonitor.mobile.core.wire.gen.RotDaySeg
+import com.ccmonitor.mobile.core.wire.gen.RotFormKind
+import com.ccmonitor.mobile.core.wire.gen.RotFrom
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 

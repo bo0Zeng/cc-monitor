@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveAsk
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveBy
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Held
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStartReq
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
+import com.ccmonitor.mobile.core.wire.gen.ArriveBy
+import com.ccmonitor.mobile.core.wire.gen.Held
+import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.wire.gen.Tab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

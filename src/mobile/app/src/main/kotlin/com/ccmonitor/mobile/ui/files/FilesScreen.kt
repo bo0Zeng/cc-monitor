@@ -60,8 +60,6 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.BookmarkShelf
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MenuEntry
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -76,6 +74,8 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowseScreen
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser

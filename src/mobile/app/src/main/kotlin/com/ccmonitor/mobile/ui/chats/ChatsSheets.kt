@@ -35,7 +35,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.ListSort
-import com.ccmonitor.mobile.core.claude.link.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.dialog.DangerConfirmDialog
@@ -44,6 +43,7 @@ import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
 import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.core.wire.gen.CanDelete
 
 /**
  * 漏斗拉起的筛选（同桌面历史页「筛选」）：看法 · 机器（每台一勾，断着的写「离线」）· 时间 · 排序 · 显示已隐藏。

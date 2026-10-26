@@ -2,10 +2,10 @@ package com.ccmonitor.mobile.ui.files
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesLs
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.link.Problem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

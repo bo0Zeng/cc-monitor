@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.core.claude.model
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Block
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Raw
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Speaker
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ToolCard
+import com.ccmonitor.mobile.core.wire.gen.Block
+import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.Raw
+import com.ccmonitor.mobile.core.wire.gen.Speaker
+import com.ccmonitor.mobile.core.wire.gen.ToolCard
 import com.squareup.moshi.JsonReader
 import okio.Buffer
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PatchHunk as WirePatchHunk
+import com.ccmonitor.mobile.core.wire.gen.PatchHunk as WirePatchHunk
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按记录 · 说话人 · 块是哪一形排，

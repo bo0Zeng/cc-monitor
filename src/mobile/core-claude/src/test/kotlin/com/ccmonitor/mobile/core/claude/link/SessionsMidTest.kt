@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentPick
-import com.ccmonitor.mobile.core.claude.link.wire.gen.CommandScope
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ModeSwitchResult
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionAct
+import com.ccmonitor.mobile.core.wire.gen.AgentPick
+import com.ccmonitor.mobile.core.wire.gen.CommandScope
+import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
+import com.ccmonitor.mobile.core.wire.gen.SessionAct
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

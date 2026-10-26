@@ -3,10 +3,10 @@ package com.ccmonitor.mobile.ui.settings
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.TabKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FailOrPlainOrWarn
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.FailOrPlainOrWarn
+import com.ccmonitor.mobile.core.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink

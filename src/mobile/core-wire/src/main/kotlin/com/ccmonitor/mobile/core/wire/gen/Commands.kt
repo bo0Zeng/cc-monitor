@@ -1,7 +1,7 @@
 // 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 `npm run gen:types`。
 @file:Suppress("ktlint", "detekt:all")
 
-package com.ccmonitor.mobile.core.claude.link.wire.gen
+package com.ccmonitor.mobile.core.wire.gen
 
 import com.squareup.moshi.JsonAdapter
 

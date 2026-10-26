@@ -8,13 +8,13 @@ import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.over
 import com.ccmonitor.mobile.core.claude.link.retry
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.Notice
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ssh.HostConnector

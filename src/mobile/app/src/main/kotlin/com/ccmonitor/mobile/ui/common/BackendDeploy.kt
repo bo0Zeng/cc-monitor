@@ -14,8 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Busy
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.link.HostBackends
 import org.koin.compose.koinInject
 

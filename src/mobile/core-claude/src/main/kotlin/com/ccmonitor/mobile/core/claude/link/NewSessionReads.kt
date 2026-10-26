@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.DirChecked
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStartReq
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LoginStarted
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationStrategiesReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountsList as WireAccounts
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.DirChecked
+import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.wire.gen.LoginStarted
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategiesReply
+import com.ccmonitor.mobile.core.wire.gen.AccountsList as WireAccounts
 
 /*
  * 新建会话那几屏问那台的几条（`IPC-COMMANDS.md` 各节）：手机只拼入参、解成品，默认值 · 能不能选 · 在不在都是那台的事实。

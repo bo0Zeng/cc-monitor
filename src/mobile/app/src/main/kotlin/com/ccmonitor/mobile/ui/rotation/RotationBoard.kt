@@ -5,11 +5,11 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Changed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotPlate
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationStrategiesReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.RotPlate
+import com.ccmonitor.mobile.core.wire.gen.RotationStrategiesReply
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply

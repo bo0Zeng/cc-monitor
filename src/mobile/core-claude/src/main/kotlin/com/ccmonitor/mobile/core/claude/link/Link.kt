@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchAnswer
-import com.ccmonitor.mobile.core.claude.link.wire.gen.BatchLine
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ClashRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Decide
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFix
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 

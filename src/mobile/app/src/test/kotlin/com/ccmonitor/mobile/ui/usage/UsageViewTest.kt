@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.usage
 
 import com.ccmonitor.mobile.core.claude.link.QuotaRead
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Badge
+import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.Badge
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaRead as QuotaReadReply
+import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
 /** 用量屏「回包 ⇒ 要画的那一份」：次序 · 条 · 卡头 · 结论全照回包，手机只按号名对上账号库那一行。 */
 class UsageViewTest {

@@ -1,27 +1,27 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AgentFacts
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveAsk
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ArriveEnd
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FirstSay
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Held
-import com.ccmonitor.mobile.core.claude.link.wire.gen.JsonValue
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Landed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Line
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ModeSwitched
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ModelSwitched
-import com.ccmonitor.mobile.core.claude.link.wire.gen.OpenFacts
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Opened
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ReadRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SentResult
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionCommands
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFacts
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryLines as HistoryLinesPage
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryRead as HistoryReadPage
-import com.ccmonitor.mobile.core.claude.link.wire.gen.HistoryTail as HistoryTailReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Sent as SentWire
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
+import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.FirstSay
+import com.ccmonitor.mobile.core.wire.gen.Held
+import com.ccmonitor.mobile.core.wire.gen.JsonValue
+import com.ccmonitor.mobile.core.wire.gen.Landed
+import com.ccmonitor.mobile.core.wire.gen.Line
+import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
+import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
+import com.ccmonitor.mobile.core.wire.gen.OpenFacts
+import com.ccmonitor.mobile.core.wire.gen.Opened
+import com.ccmonitor.mobile.core.wire.gen.ReadRow
+import com.ccmonitor.mobile.core.wire.gen.SentResult
+import com.ccmonitor.mobile.core.wire.gen.SessionCommands
+import com.ccmonitor.mobile.core.wire.gen.SessionFacts
+import com.ccmonitor.mobile.core.wire.gen.HistoryLines as HistoryLinesPage
+import com.ccmonitor.mobile.core.wire.gen.HistoryRead as HistoryReadPage
+import com.ccmonitor.mobile.core.wire.gen.HistoryTail as HistoryTailReply
+import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
 
 /*
  * 起会话 · 往会话里送字 · 读一条会话的正文：都是那台核心的帧命令，手机只拼入参、解成品（`IPC-COMMANDS.md` 各节）。
@@ -388,4 +388,4 @@ data class RecordLine(
 }
 
 /** `stream-watch` 应答里的一格（核心报名单、交回来）：这个会话刚进名单，这条流从第 `seq` 行起发它；`[已有, seq)` 由看的那一方补。 */
-typealias WatchFrom = com.ccmonitor.mobile.core.claude.link.wire.gen.WatchFrom
+typealias WatchFrom = com.ccmonitor.mobile.core.wire.gen.WatchFrom

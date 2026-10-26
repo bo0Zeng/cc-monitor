@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ProfilesBook
-import com.ccmonitor.mobile.core.claude.link.wire.gen.ProfilesWriteDone
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.ProfilesBook
+import com.ccmonitor.mobile.core.wire.gen.ProfilesWriteDone
 
 /**
  * 那台的别名（配置文件里的各段）：读 · 新建一段，与桌面别名页同两条命令。手机只交意图；

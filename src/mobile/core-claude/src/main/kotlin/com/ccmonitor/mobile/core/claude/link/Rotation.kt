@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotStrategyId
-import com.ccmonitor.mobile.core.claude.link.wire.gen.RotationViewReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Topic
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.RotStrategyId
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
+import com.ccmonitor.mobile.core.wire.gen.Topic
 
 /*
  * 轮换（第五版）那几条命令（`IPC-COMMANDS.md` 各节，桌面 `rot-mount.ts` 同一套）：手机只拼入参、解成品。

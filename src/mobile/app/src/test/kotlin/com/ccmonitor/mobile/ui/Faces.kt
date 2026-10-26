@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.squareup.moshi.Moshi
 import java.io.File
 

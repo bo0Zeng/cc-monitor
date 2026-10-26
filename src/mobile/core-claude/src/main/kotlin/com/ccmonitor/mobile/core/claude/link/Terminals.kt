@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Killed
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Preview
-import com.ccmonitor.mobile.core.claude.link.wire.gen.TerminalsList as TerminalsListReply
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Killed
+import com.ccmonitor.mobile.core.wire.gen.Preview
+import com.ccmonitor.mobile.core.wire.gen.TerminalsList as TerminalsListReply
 
 /*
  * 那台的终端：列 · 抓屏 · 结束。都是那台核心的帧命令（`IPC-COMMANDS.md` 各节），

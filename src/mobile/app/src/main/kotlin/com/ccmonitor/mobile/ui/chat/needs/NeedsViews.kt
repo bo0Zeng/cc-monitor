@@ -53,8 +53,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsNote
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -63,6 +61,8 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.NeedsNote
+import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import kotlinx.coroutines.delay
 

@@ -19,13 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MenuEntry
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.MenuEntry
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 
 /**
  * 选择模式的顶栏：✕ · 已选 {n} · 顶栏那一组 ·［⋯］里那一组。项与灰不灰全照核心那一份（[PhoneMenu]）；灰着的照样点得了，

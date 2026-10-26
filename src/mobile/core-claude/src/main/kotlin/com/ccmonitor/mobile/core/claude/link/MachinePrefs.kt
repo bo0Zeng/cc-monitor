@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.PrefsReply
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaRead as QuotaReadReply
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.PrefsReply
+import com.ccmonitor.mobile.core.wire.gen.Tab
+import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
 /*
  * 设置屏问那台的几条（`IPC-COMMANDS.md` 各节，桌面「这台上的 cc-monitor」读写同一份）：手机只拼入参、解成品。

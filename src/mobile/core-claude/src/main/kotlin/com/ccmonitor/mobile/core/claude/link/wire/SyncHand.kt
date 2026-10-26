@@ -1,8 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link.wire
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.JsonValue
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SyncHead
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SyncPatch
+import com.ccmonitor.mobile.core.wire.gen.JsonValue
+import com.ccmonitor.mobile.core.wire.gen.SyncHead
+import com.ccmonitor.mobile.core.wire.gen.SyncPatch
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonDataException
 

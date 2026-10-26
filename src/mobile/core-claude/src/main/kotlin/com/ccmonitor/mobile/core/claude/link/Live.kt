@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LiveCard
-import com.ccmonitor.mobile.core.claude.link.wire.gen.LivePhase
+import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.LivePhase
 
 /** 活卡里的一块：[kind] 是那台的块种（`text` · `thinking` · `tool` · `other`）；[text] 只有文字块有；[tool] 只有工具块有。 */
 data class LiveBlock(

@@ -1,6 +1,6 @@
-package com.ccmonitor.mobile.core.claude.link.wire
+package com.ccmonitor.mobile.core.wire
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Commands
+import com.ccmonitor.mobile.core.wire.gen.Commands
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter

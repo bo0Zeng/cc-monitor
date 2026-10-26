@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.wire.Wire
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Bookmarks as BookmarkList
+import com.ccmonitor.mobile.core.wire.gen.Bookmarks as BookmarkList
 
 /*
  * 书签归那台后端（`bookmarks-read` · `bookmarks-edit`，本体在后端 `control/bookmarks.rs`）：手机只按那台问、照回包画，

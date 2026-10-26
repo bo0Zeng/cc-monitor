@@ -3,7 +3,7 @@
 //
 //   读：src/frontend/ui/generated/*.ts（ts-rs 从 Rust 类型导出的那一份）· TypedCommands.ts（命令 ⇒ 入参 · 回包）·
 //       Rust 源里写成 f32 / f64 的格（TS 只有一种 `number`，整数与小数写回时字节不同 ⇒ 照 Rust 定）。
-//   写：src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/wire/Generated.kt（类型 ＋ 各自的编解码）·
+//   写：src/mobile/core-wire/src/main/kotlin/com/ccmonitor/mobile/core/wire/gen/Generated.kt（类型 ＋ 各自的编解码）·
 //       同目录 Commands.kt（命令表：命令名 ⇒ 回包怎么解）。
 //   用法：node tests/scripts/gen-kotlin-wire.mjs            重生成上面两份
 //         node tests/scripts/gen-kotlin-wire.mjs --samples  印每条命令回包的结构夹具（`tests/__fixtures__/wire-replies.golden.json` 的 `sample` 格从它来）
@@ -18,8 +18,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const GEN = join(ROOT, "src/frontend/ui/generated");
-const OUT_DIR = join(ROOT, "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/wire");
-const PKG = "com.ccmonitor.mobile.core.claude.link.wire.gen";
+const OUT_DIR = join(ROOT, "src/mobile/core-wire/src/main/kotlin/com/ccmonitor/mobile/core/wire/gen");
+const PKG = "com.ccmonitor.mobile.core.wire.gen";
 
 // ───────────────────────────── 读 TS 声明 ─────────────────────────────
 

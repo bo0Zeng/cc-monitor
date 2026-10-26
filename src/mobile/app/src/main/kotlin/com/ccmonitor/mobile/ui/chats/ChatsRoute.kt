@@ -36,7 +36,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.FilesDeleteSession
 import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Hide
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarController
@@ -45,6 +44,7 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.conversationsHolder

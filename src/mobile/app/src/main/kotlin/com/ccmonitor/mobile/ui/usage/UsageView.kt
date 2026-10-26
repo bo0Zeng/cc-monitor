@@ -1,13 +1,13 @@
 package com.ccmonitor.mobile.ui.usage
 
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AccountRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaCell
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaReadState
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaVerdict
-import com.ccmonitor.mobile.core.claude.link.wire.gen.SlotShow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Usage
-import com.ccmonitor.mobile.core.claude.link.wire.gen.QuotaRead as QuotaReadReply
+import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.QuotaCell
+import com.ccmonitor.mobile.core.wire.gen.QuotaKind
+import com.ccmonitor.mobile.core.wire.gen.QuotaReadState
+import com.ccmonitor.mobile.core.wire.gen.QuotaVerdict
+import com.ccmonitor.mobile.core.wire.gen.SlotShow
+import com.ccmonitor.mobile.core.wire.gen.Usage
+import com.ccmonitor.mobile.core.wire.gen.QuotaRead as QuotaReadReply
 
 /**
  * 用量屏要画的那一份：结论两行（[verdict]）或那台那一句（[text]，没记过账 · 一个号都没有 · 读不出）· 每号一张卡（照回包先后）。

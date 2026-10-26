@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AnsweredRow
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AskKind
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsAsk
-import com.ccmonitor.mobile.core.claude.link.wire.gen.NeedsNote
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.AnsweredRow
+import com.ccmonitor.mobile.core.wire.gen.AskKind
+import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
+import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

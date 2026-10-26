@@ -48,10 +48,6 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.deployFix
-import com.ccmonitor.mobile.core.claude.link.wire.gen.AbsentOrOkOrUnreadable
-import com.ccmonitor.mobile.core.claude.link.wire.gen.FailOrPlainOrWarn
-import com.ccmonitor.mobile.core.claude.link.wire.gen.MachineFixButton
-import com.ccmonitor.mobile.core.claude.link.wire.gen.Tab
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
@@ -61,6 +57,10 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.core.wire.gen.AbsentOrOkOrUnreadable
+import com.ccmonitor.mobile.core.wire.gen.FailOrPlainOrWarn
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
