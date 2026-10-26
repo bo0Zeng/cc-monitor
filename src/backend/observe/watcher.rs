@@ -85,10 +85,10 @@ use super::tmux_observe::{
 };
 #[cfg(test)]
 use crate::platform::liveness::is_same_live_process;
-#[cfg(all(test, target_os = "linux"))]
-use pidwatch_core::pidfd_open;
 #[cfg(test)]
 use crate::platform::proc::{parse_btime, parse_starttime_from_stat, session_alive};
+#[cfg(all(test, target_os = "linux"))]
+use pidwatch_core::pidfd_open;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;

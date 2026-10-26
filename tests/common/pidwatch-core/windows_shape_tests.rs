@@ -83,7 +83,10 @@ fn the_windows_watch_has_the_same_three_deaths_and_the_same_non_death_as_linux()
         ("linux.rs", order(&linux, "pidfd_open(pid)")),
         (
             "win32.rs",
-            order(&win32, "open(pid, PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE)"),
+            order(
+                &win32,
+                "open(pid, PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE)",
+            ),
         ),
     ] {
         assert!(

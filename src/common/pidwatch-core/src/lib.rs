@@ -34,7 +34,9 @@ pub use fallback::watch_pid_until_exit;
 #[cfg(target_os = "linux")]
 pub use linux::{pidfd_open, watch_pid_until_exit};
 #[cfg(windows)]
-pub use win32::{open, watch_pid_until_exit, Opened, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE};
+pub use win32::watch_pid_until_exit;
+#[cfg(windows)]
+pub use win32::{open, Opened, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE};
 
 /// 非 Linux 那份空壳的两条承诺，只能靠源码级守卫钉：`fallback.rs` 在本机根本不编译，行为判据结构上不可能存在。
 #[cfg(test)]

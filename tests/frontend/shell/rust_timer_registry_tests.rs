@@ -451,7 +451,7 @@ fn the_windows_pidwatch_has_landed_so_f12_is_unblocked() {
         })
     };
     let router = guard_core::production_code(&read("src/common/pidwatch-core/src/lib.rs"));
-    guard_core::pin_line(&router, "pub use win32::{open, watch_pid_until_exit, Opened, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE};").unwrap_or_else(|e| {
+    guard_core::pin_line(&router, "pub use win32::watch_pid_until_exit;").unwrap_or_else(|e| {
         panic!(
             "{e}\n⇒ Windows 那一格不再路由到 `pidwatch-core` 的 `win32.rs` —— U4b 退回去了（或者搬了家）。\n\
              F12 若已按「Windows 有死亡事件」删掉 `session_map.rs` 的 2s 心跳，那条心跳治的 bug 会回来：\n\

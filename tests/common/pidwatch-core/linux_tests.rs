@@ -22,8 +22,8 @@ fn the_watch_fires_when_the_process_exits() {
     );
     child.kill().unwrap();
     child.wait().unwrap();
-    rx.recv_timeout(Duration::from_secs(1))
-        .expect("进程退了 1 秒，看守还没报");
+    rx.recv_timeout(guard_core::wall::CEILING)
+        .expect("进程退了，看守一直没报");
 }
 
 /// 判死 ①：开不出来（进程已不在）⇒ 立刻报死，不静默丢。

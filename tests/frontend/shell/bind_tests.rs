@@ -1110,7 +1110,7 @@ fn the_pick_probe_command_line_parses() {
 }
 
 /// ★ 登记着的那个 shell 一退，这一条当场就没了：内核在进程退出那一刻叫醒，不是隔一阵扫一遍。
-/// 登记从盘上读回来（monitor 起来那一刻的那条路）；替身是一个 `sleep` 子进程，杀掉它之后至多等 1 秒（远短于任何扫描间隔）。
+/// 登记从盘上读回来（monitor 起来那一刻的那条路）；替身是一个 `sleep` 子进程，杀掉它之后等条件（上限只是兜底的那个数）；没有扫描间隔可等 —— 周期唤醒由 `rust_timer_registry` 那张表管着。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_registration_goes_away_the_moment_its_shell_exits() {
@@ -1133,8 +1133,10 @@ fn a_registration_goes_away_the_moment_its_shell_exits() {
 
     child.kill().unwrap();
     child.wait().unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(1);
-    while bind.lookup_hwnd_for_ps(pid).is_some() && std::time::Instant::now() < deadline {
+    for _ in guard_core::wall::rounds() {
+        if bind.lookup_hwnd_for_ps(pid).is_none() && !file.exists() {
+            break;
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
     let gone = bind.lookup_hwnd_for_ps(pid).is_none();
@@ -1143,7 +1145,7 @@ fn a_registration_goes_away_the_moment_its_shell_exits() {
     assert!(gone, "shell 退了 1 秒，登记还在内存里");
     assert!(file_gone, "shell 退了 1 秒，登记还在盘上");
 }
-
+/// 登记读回来时那个 shell 已经不在（或进程号被别人复用了）⇒ 读回来那一刻就扔，`spawn` 一回来就已经没了（不等任何一圈）。
 /// 登记读回来时那个 shell 已经不在（或进程号被别人复用了）⇒ 一读回来就扔，不留到下一次。
 #[cfg(target_os = "linux")]
 #[test]
@@ -1159,10 +1161,6 @@ fn a_registration_whose_shell_is_already_gone_is_dropped_on_load() {
     std::fs::write(&file, serde_json::to_string(&e).unwrap()).unwrap();
 
     let bind = BindRegistry::spawn(dir.clone());
-    let deadline = std::time::Instant::now() + Duration::from_secs(1);
-    while bind.lookup_hwnd_for_ps(me).is_some() && std::time::Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
     let gone = bind.lookup_hwnd_for_ps(me).is_none() && !file.exists();
     let _ = std::fs::remove_dir_all(&dir);
     assert!(gone, "起始时刻对不上的那条留下来了");

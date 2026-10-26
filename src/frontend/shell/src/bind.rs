@@ -149,7 +149,8 @@ fn forget(this: &BindRegistry, pid: u32, recorded: &str) {
         }
         w.remove(&pid);
     }
-    let _ = std::fs::remove_file(this.registry_dir().join(format!("{pid}.json")));
+    let p = this.registry_dir().join(format!("{pid}.json"));
+    let _ = std::fs::remove_file(&p);
     tracing::info!("bind: shell {pid} 退了，删掉它的窗口登记");
 }
 
