@@ -332,10 +332,10 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
 /// ★★**跨语言金样**：界面直接收的 cc-bus 那几份成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
 ///
 /// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线 · 发消息两件由界面经通道直接说
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线由界面经通道直接说（界面不发信）
 /// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
-/// 各格异源：请求样例过**生产**解析器（`parse_send`）·
+/// 各格异源：
 /// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `roster_agents`（挂身份空间）现算）·
 /// 码集合 == `inbound::REGISTRY` 那一块。
 #[test]

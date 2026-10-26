@@ -97,7 +97,7 @@ pub fn account_name_ok(s: &str) -> bool {
 }
 
 /// cc-bus agent id（发消息的收件人 · 发信人 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`。没有上界。
-/// monitor 读收件箱 · 后端 `bus-send` / `bus-inbox` 在把 id 交给 `cc-send` / `cc-log` 之前先判。
+/// monitor 读收件箱 · 后端 `bus-inbox` 在把 id 交给 `cc-log` 之前先判。
 /// 关键是拒前导 `-`：`--help` 在盘上真出现过（`~/.cc-bus/inbox/--help.jsonl`），拼进 `cc-send` 就被当成一个 flag。
 pub fn bus_id_ok(s: &str) -> bool {
     !s.is_empty()
