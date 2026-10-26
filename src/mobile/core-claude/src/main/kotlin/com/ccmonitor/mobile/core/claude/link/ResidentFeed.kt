@@ -360,12 +360,7 @@ class ResidentFeed(
     ) {
         when (kind) {
             "state" -> Wire.read<LinkLine>(body)?.let(::onState) ?: broke(kind, body)
-            "frame" -> onFrameLine(body)
-            // 核心折好的整份：会话簿换掉手上那一本；活卡是那一处此刻整份的卡。
-            "book" -> Wire.read<SessionBook>(body)?.let { tableFlow.value = it } ?: broke(kind, body)
-            "live" -> Wire.read<LiveCards>(body)?.let(liveFlow::tryEmit) ?: broke(kind, body)
-            // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
-            "unread" -> broke("frame", body)
+            "frame", "unread", "book", "live" -> onStream(kind, body)
             "watch_from" -> onWatchFrom(body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
@@ -400,6 +395,20 @@ class ResidentFeed(
         // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。
         val now = stateFlow.value
         if (deployFlow.value is Deploying.Done && (now is LinkState.Down || (now as? LinkState.Up)?.notice != null)) deployFlow.value = null
+    }
+
+    /** 流上来的那几样：别的帧 · 核心解不开的一帧 · 核心折好的整份（会话簿换掉手上那一本；活卡是那一处此刻整份的卡）。 */
+    private suspend fun onStream(
+        kind: String,
+        body: String,
+    ) {
+        when (kind) {
+            "frame" -> onFrameLine(body)
+            // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
+            "unread" -> broke("frame", body)
+            "book" -> Wire.read<SessionBook>(body)?.let { tableFlow.value = it } ?: broke(kind, body)
+            else -> Wire.read<LiveCards>(body)?.let(liveFlow::tryEmit) ?: broke(kind, body)
+        }
     }
 
     private suspend fun onFrameLine(body: String) {
