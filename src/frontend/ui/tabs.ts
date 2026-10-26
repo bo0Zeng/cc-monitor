@@ -33,7 +33,7 @@ import {
 } from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
-import { closesFromMenu, closesQuietly, faceOf, hasTerminal, inTmux, isEnded, isLive } from "./face-can";
+import { closesFromMenu, closesQuietly, hasTerminal, inTmux, isEnded, isLive } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -580,13 +580,16 @@ export class TabManager {
   snapshotSessions(): GridSessionSnapshot[] {
     const out: GridSessionSnapshot[] = [];
     for (const tab of this.store.tabs.values()) {
+      // 一张脸都还没收到（恢复的标签页、重放还没到）⇒ 监控板先不列它：格子画的就是那张脸，界面不替它拼一张。
+      if (tab.face === null) continue;
+      const face = tab.face;
       const runs = this.live.board.of(tab.sessionId);
       out.push({
         sessionId: tab.sessionId,
         title: tab.title,
         origin: tab.origin,
         cwd: tab.projectDir,
-        face: faceOf(tab), // 与 tab 栏同一张脸
+        face, // 与 tab 栏同一张脸
         needs: needsOf(tab)?.text ?? null,
         runningAgents: runs.filter((r) => r.state === "running").length,
         totalAgents: runs.length,
@@ -845,7 +848,7 @@ export class TabManager {
    */
   private emitTabStateProbe(tab: Tab): void {
     if (!import.meta.env.DEV) return;
-    e2eLog(`[e2e] tab-state sid=${tab.sessionId.slice(0, 8)} dot=${faceOf(tab).dot} origin=${isLocalOrigin(tab.origin) ? "local" : tab.origin}`);
+    e2eLog(`[e2e] tab-state sid=${tab.sessionId.slice(0, 8)} dot=${tab.face?.dot ?? "none"} origin=${isLocalOrigin(tab.origin) ? "local" : tab.origin}`);
   }
 
   /**
@@ -962,7 +965,7 @@ export class TabManager {
   /** 这个会话此刻在 tab 栏里是活的吗（历史浏览器删会话前问一句用）。没有这个 tab ⇒ `false`。 */
   isSessionLive(sessionId: string): boolean {
     const tab = this.store.tabs.get(sessionId);
-    return tab !== undefined && isLive(faceOf(tab));
+    return tab !== undefined && isLive(tab.face);
   }
 
   /** 这个会话此刻「需手动」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
@@ -1085,15 +1088,16 @@ export class TabManager {
 
   /**
    * 这台机器**看不见了**（会话流 `unseen` 格：到它的连接断了 / F5 时它还没报完清单）。机器级：一格说一台。
-   * 那台上不是定局（`face.settled` 为假）的脸收掉 ⇒ 画说不清；已结束 · 记录已不在照旧。之后那台重连、重发的帧把脸带回来。
+   * 那台上不是定局（`face.settled` 为假）的、一张脸都还没收到的，换成 `face`（本机后端造的那一张，随这一格来；本机后端还没握上手 ⇒ `null`，不画点）；
+   * 已结束 · 记录已不在照旧。之后那台重连、重发的帧把脸带回来。
    */
-  markOriginUnseen(origin: Origin): void {
+  markOriginUnseen(origin: Origin, face: SessionFace | null): void {
     this.store.seenOrigins.delete(origin);
     this.bar.markOriginDown(origin, true);
     let changed = false;
     for (const tab of this.store.tabs.values()) {
-      if (tab.origin !== origin || tab.face === null || tab.face.settled) continue;
-      tab.face = null;
+      if (tab.origin !== origin || tab.face?.settled === true || tab.face === face) continue;
+      tab.face = face;
       changed = true;
       this.emitTabStateProbe(tab);
     }
@@ -1160,7 +1164,7 @@ export class TabManager {
   /** 会话头 · 钉条 · 命令面板的 ↗ 与行尾那颗同一条路（结果锚在会话头的 ↗）。 */
   frontFor(sid: string): void {
     const tab = this.store.tabs.get(sid);
-    if (!tab || !hasTerminal(faceOf(tab)) || !terminalFrontAvailable()) return;
+    if (!tab || !hasTerminal(tab.face) || !terminalFrontAvailable()) return;
     void this.frontFrom(sid, "head");
   }
 
@@ -1288,7 +1292,7 @@ export class TabManager {
     const sid = this.store.activeId;
     if (!sid) return;
     const current = this.store.tabs.get(sid);
-    if (!current || !closesQuietly(faceOf(current))) return;
+    if (!current || !closesQuietly(current.face)) return;
     const headline = current.pinned
       ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(current) })
       : copyText("tabBar.close.done", { title: fullTitle(current) });
@@ -1299,7 +1303,7 @@ export class TabManager {
   private closeEndedIn(gid: string): void {
     const sids = this.bar.visibleOrder().filter((sid) => {
       const t = this.store.tabs.get(sid);
-      return t !== undefined && t.group === gid && closesQuietly(faceOf(t));
+      return t !== undefined && t.group === gid && closesQuietly(t.face);
     });
     if (sids.length === 0) return;
     this.closeUndoable(sids, copyText("tabBar.close.doneMany", { n: sids.length }), false);
@@ -1357,7 +1361,7 @@ export class TabManager {
   private detachTab(sessionId: string): Tab | null {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
-    if (!closesFromMenu(faceOf(tab))) return null;
+    if (!closesFromMenu(tab.face)) return null;
 
     const wasActive = this.store.activeId === sessionId;
     const idx = this.store.orderedIds.indexOf(sessionId);
@@ -1476,7 +1480,7 @@ export class TabManager {
     if (!this.store.activeId) return;
     const tab = this.store.tabs.get(this.store.activeId);
     // 还有终端可去（活着，或可重连：登录 shell 的 ssh 窗还在）才拉。
-    if (!tab || !hasTerminal(faceOf(tab))) return;
+    if (!tab || !hasTerminal(tab.face)) return;
     void this.frontFrom(this.store.activeId, "head");
   }
 
@@ -1509,7 +1513,7 @@ export class TabManager {
     if (r === undefined) return;
     const anchor = this.frontAnchor(sid, from);
     const now = this.store.tabs.get(sid);
-    const view = frontView(r, machineName(origin), now ? inTmux(faceOf(now)) : false);
+    const view = frontView(r, machineName(origin), now ? inTmux(now.face) : false);
     if (view === null) {
       closeFrontResult(sid);
       flashFrontDone(anchor);

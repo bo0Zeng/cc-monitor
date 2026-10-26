@@ -1216,6 +1216,7 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
     use crate::ui_contract::{self as b, SessionStreamFrame as F};
     let unseen = F::Unseen(b::SessionUnseenPayload {
         origin: crate::origin::Origin::local(),
+        face: None,
     });
     let listed = F::Listed(b::OriginSessionsListedPayload {
         origin: crate::origin::Origin::local(),

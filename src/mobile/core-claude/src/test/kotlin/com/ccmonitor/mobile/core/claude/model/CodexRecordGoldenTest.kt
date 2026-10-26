@@ -6,8 +6,8 @@ import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.obj
 import com.ccmonitor.mobile.core.claude.link.str
-import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -115,9 +115,9 @@ class CodexRecordGoldenTest {
         val records = lines.mapNotNull { it.record }
         assertTrue("金样里得有带记录的 line 帧", records.isNotEmpty())
         assertEquals(setOf("codex"), records.map { it.agent }.toSet())
-        assertEquals(listOf("again", "more"), records.map { it.who?.text })
+        assertEquals(listOf("again", "more"), records.map { (it as LineRecord.Said).who.text })
         assertEquals(
-            records.map { RenderUnit.UserText(it.id, it.who?.text.orEmpty(), it.id) },
+            records.map { RenderUnit.UserText(it.id, (it as LineRecord.Said).who.text, it.id) },
             RecordUnits.of(records),
         )
     }

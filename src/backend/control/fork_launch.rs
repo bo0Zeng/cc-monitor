@@ -7,7 +7,6 @@
 //! 句子不在这里：只回码，由各前端照码说。事实由入口（`faces/fork_face.rs`）收齐交进来。
 
 use super::session_batch::{carriers, Standing, TmuxEntry};
-use serde_json::Value;
 
 /// 起分叉会话要的三格的线上形：住 `cmd-wire::session`（号那一格在线上是「名字 · 账号 0 ⇒ `null`」）。
 pub(crate) use cmd_wire::session::{
@@ -85,7 +84,7 @@ pub(crate) fn infer(s: &Source) -> Launch {
     }
 }
 
-/// 进程名单里的一行（`session_accounts` 那一行里推断要的几格）。
+/// 进程名单里的一行（账号归属那一行里推断要的几格；入口 `faces/fork_face.rs` 从结构体照搬，不经 JSON）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessRow {
     pub(crate) sid: String,
@@ -94,18 +93,6 @@ pub(crate) struct ProcessRow {
     pub(crate) account: Option<String>,
     /// 活着、环境读得到、没设配置目录 ＝ 账号 0。
     pub(crate) bare: bool,
-}
-
-/// `session_accounts` 的一行 ⇒ [`ProcessRow`]（缺 sid 的不要）。
-pub(crate) fn process_row_of(v: &Value) -> Option<ProcessRow> {
-    let s = |k: &str| v.get(k).and_then(Value::as_str).filter(|x| !x.is_empty());
-    Some(ProcessRow {
-        sid: s("sessionId")?.to_string(),
-        alive: v.get("alive").and_then(Value::as_bool) == Some(true),
-        config_dir: s("configDir").map(str::to_string),
-        account: s("account").map(str::to_string),
-        bare: v.get("bare").and_then(Value::as_bool) == Some(true),
-    })
 }
 
 /// 那个进程用的号：没设配置目录（且环境读得到）⇒ 账号 0；设了且账号库认得那个目录 ⇒ 那个号；别的 ⇒ 说不出。

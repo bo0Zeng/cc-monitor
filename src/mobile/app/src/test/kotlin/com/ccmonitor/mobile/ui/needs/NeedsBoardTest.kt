@@ -1,9 +1,11 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.ManualItem
+import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.chat.needs.NeedsDesk
@@ -134,16 +136,16 @@ class NeedsBoardTest {
             val a = Machine(listOf(session("a1")))
             val b = Machine(listOf())
             val board = boardOf("a" to a, "b" to b)
-            for (topic in listOf("needs", "plan", "manual")) {
+            for (topic in listOf(Topic.NEEDS, Topic.PLAN, Topic.MANUAL)) {
                 a.pushes.emit(Changed(topic, null))
                 settle()
             }
-            a.pushes.emit(Changed("tasks", null))
+            a.pushes.emit(Changed(Topic.TASKS, null))
             settle()
             assertEquals(4, a.asked("sessions-needs"))
             assertEquals(1, b.asked("sessions-needs"))
             b.unreadable = "账号库无法解析"
-            b.pushes.emit(Changed("manual", null))
+            b.pushes.emit(Changed(Topic.MANUAL, null))
             settle()
             val ov = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
             assertTrue(ov.uncertain)
@@ -177,6 +179,6 @@ class NeedsBoardTest {
         when (l) {
             is NeedsLine.Session -> l.row.sid
             is NeedsLine.Plan -> "${l.slice}×${l.n}"
-            is NeedsLine.Manual -> "@${l.item.account}"
+            is NeedsLine.Manual -> "@${(l.item as ManualItem.AccountLogin).account}"
         }
 }

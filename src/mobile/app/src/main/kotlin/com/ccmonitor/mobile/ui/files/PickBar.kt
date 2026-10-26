@@ -19,23 +19,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
-import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.MenuEntry
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 
 /**
- * 选择模式的顶栏：✕ · 已选 {n} · 顶栏那一组 ·［⋯］里那一组。项与灰不灰全照核心那一份（[PickMenu]）；灰着的照样点得了，
+ * 选择模式的顶栏：✕ · 已选 {n} · 顶栏那一组 ·［⋯］里那一组。项与灰不灰全照核心那一份（[PhoneMenu]）；灰着的照样点得了，
  * 点了交 [onPick]、由屏上在底部说那一句为什么（手机没有悬停）。
  */
 @Composable
 internal fun PickBar(
     n: Int,
-    menu: PickMenu,
+    menu: PhoneMenu,
     onClose: () -> Unit,
-    onPick: (PickMenu.Entry) -> Unit,
+    onPick: (MenuEntry) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     var more by remember { mutableStateOf(false) }
@@ -68,5 +69,5 @@ internal fun PickBar(
 
 /** 灰着的那一项淡下去（仍点得了：点了说为什么）。 */
 @Composable
-private fun ink(e: PickMenu.Entry): Color =
+private fun ink(e: MenuEntry): Color =
     MaterialTheme.colorScheme.onSurface.let { if (e.enabled) it else it.copy(alpha = LocalAppTokens.current.disabledAlpha) }

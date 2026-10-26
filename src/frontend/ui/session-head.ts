@@ -19,7 +19,7 @@
  */
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
-import { canResume, faceOf, hasTerminal, machineOf } from "./face-can";
+import { canResume, hasTerminal, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { copyText } from "./copy-table";
@@ -82,7 +82,7 @@ export interface SessionHeadHost {
  * 在终端里打开（远端、Claude 已退出）。
  */
 export function terminalActsOf(tab: Tab): { front: boolean; attach: boolean } {
-  return { front: terminalFrontAvailable() && hasTerminal(faceOf(tab)), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
+  return { front: terminalFrontAvailable() && hasTerminal(tab.face), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
 }
 
 type Chorded = Parameters<typeof dispatcher.effectiveChord>[0];
@@ -300,7 +300,7 @@ export class SessionHead {
         return b;
       }
       case "terminal":
-        return hasTerminal(faceOf(tab)) ? plain(copyText("sessionHead.act.terminal"), "panel.toggle-terminal", () => this.host.viewTerminal()) : null;
+        return hasTerminal(tab.face) ? plain(copyText("sessionHead.act.terminal"), "panel.toggle-terminal", () => this.host.viewTerminal()) : null;
       case "find":
         return plain(copyText("sessionHead.act.find"), "session.find", () => this.host.find());
       case "display": {
@@ -341,8 +341,8 @@ export class SessionHead {
     const acts = terminalActsOf(tab);
     const front = acts.front;
     // 看它的终端：会话还有终端可去才出（已结束的没有）。
-    const term = hasTerminal(faceOf(tab));
-    const extra = canResume(faceOf(tab)) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
+    const term = hasTerminal(tab.face);
+    const extra = canResume(tab.face) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
     const mark = this.host.planMark(tab);
     const kin = this.kinKey(tab);
     const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, kin].join("\u0000");

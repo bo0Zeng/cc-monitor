@@ -36,7 +36,7 @@ pub fn host_relay(tap: std::sync::Arc<dyn crate::relay::TapPort>, own: Own) -> S
             &[],
             |x| lib.by_route(x).is_some_and(|a| !a.is_api_key()),
         );
-        let live = crate::history::live::live_here();
+        let live = crate::history::live_table::live_here();
         uses::migrate_here(
             &up,
             &uses::UpgradeEnv {
@@ -102,7 +102,7 @@ impl Ctx {
                 quota,
                 home,
                 books(),
-                Arc::new(crate::history::live::live_here),
+                Arc::new(crate::history::live_table::live_here),
                 None,
             ),
             rows: Box::new(move |agent, a| {

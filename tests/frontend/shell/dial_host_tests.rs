@@ -30,7 +30,7 @@ fn the_request_hands_over_only_the_name() {
             "后端 parse_named 不读 `{k}` —— 两端契约漂了"
         );
     }
-    let backend = include_str!("../../../src/backend/ssh-dial/lib.rs");
+    let backend = include_str!("../../../src/common/cmd-wire/src/dial.rs");
     let body = &backend[backend
         .find("pub struct DialRequest {")
         .expect("后端没有 DialRequest 了")..];

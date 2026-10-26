@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.FileKind
+import com.ccmonitor.mobile.core.wire.gen.FileKind
+import com.ccmonitor.mobile.core.wire.gen.WirePath
+import com.ccmonitor.mobile.core.wire.gen.WirePathObjValue
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -15,10 +17,9 @@ class FilesTest {
         assertEquals("/home/a", RemotePath.of("/home/a").wire)
         val raw = RemotePath(bad)
         assertEquals(mapOf("b16" to "2f78ff"), raw.wire)
-        assertArrayEquals(bad, RemotePath.of(mapOf("b16" to "2f78ff"))!!.bytes)
-        assertEquals(raw, RemotePath.of(raw.wire))
-        assertNull("认不出的形 ⇒ null", RemotePath.of(42))
-        assertNull("单数位的十六进制 ⇒ null", RemotePath.of(mapOf("b16" to "2f7")))
+        assertArrayEquals(bad, RemotePath.of(WirePath.Obj(WirePathObjValue("2f78ff")))!!.bytes)
+        assertEquals(raw, RemotePath.of(WirePath.ADAPTER.fromJsonValue(raw.wire)!!))
+        assertNull("单数位的十六进制 ⇒ null", RemotePath.of(WirePath.Obj(WirePathObjValue("2f7"))))
     }
 
     @Test
@@ -26,10 +27,10 @@ class FilesTest {
         val reply =
             lsWhole(
                 listOf(
-                    mapOf("path" to "/w/src", "name" to "src", "kind" to "dir"),
-                    mapOf("path" to "/w/ln", "name" to "ln", "kind" to "symlink", "link_dir" to true, "link_to" to "dir"),
-                    mapOf("path" to "/w/a.txt", "name" to "a.txt", "kind" to "file", "size" to 12.0, "mtime_text" to "10-14 09:00"),
-                    mapOf("path" to mapOf("b16" to "2f772fff"), "name" to mapOf("b16" to "ff"), "kind" to "file", "size" to 1.0),
+                    mapOf("path" to "/w/src", "name" to "src", "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
+                    mapOf("path" to "/w/ln", "name" to "ln", "kind" to "symlink", "class" to "link", "type_text" to "链接", "link_dir" to true, "link_to" to "dir"),
+                    mapOf("path" to "/w/a.txt", "name" to "a.txt", "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 12.0, "mtime_text" to "10-14 09:00"),
+                    mapOf("path" to mapOf("b16" to "2f772fff"), "name" to mapOf("b16" to "ff"), "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 1.0),
                 ),
                 mapOf(
                     "up" to "/",
@@ -61,9 +62,9 @@ class FilesTest {
         val from = RemotePath(byteArrayOf('x'.code.toByte(), 0xff.toByte()))
         assertEquals(mapOf("root" to "/w", "from" to mapOf("b16" to "78ff"), "to" to "ok", "single" to true), FilesRename.args(dir, from, "ok"))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
-        assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
-        assertEquals(FilesStat.Place(FileKind.DIR, RemotePath.of("/w")), FilesStat.placeOf(mapOf("path" to "/w/d", "up" to "/w", "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
-        assertEquals(FilesStat.Place(FileKind.DIR, null), FilesStat.placeOf(mapOf("path" to "/", "up" to null, "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
+        assertEquals(420, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "class" to "text", "type_text" to "文本", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
+        assertEquals(FilesStat.Place(FileKind.DIR, RemotePath.of("/w")), FilesStat.placeOf(mapOf("path" to "/w/d", "up" to "/w", "kind" to "dir", "class" to "folder", "type_text" to "文件夹", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
+        assertEquals(FilesStat.Place(FileKind.DIR, null), FilesStat.placeOf(mapOf("path" to "/", "up" to null, "kind" to "dir", "class" to "folder", "type_text" to "文件夹", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
     }
 
     @Test
@@ -71,7 +72,7 @@ class FilesTest {
         fun gated(
             name: String,
             gates: Map<String, Any?>,
-        ) = mapOf("path" to "/w/$name", "name" to name, "kind" to "file", "gates" to gates)
+        ) = mapOf("path" to "/w/$name", "name" to name, "kind" to "file", "class" to "text", "type_text" to "文本", "gates" to gates)
         val got =
             FilesLs.of(
                 lsWhole(
@@ -79,9 +80,9 @@ class FilesTest {
                         gated("a.rs", mapOf("preview" to mapOf("text" to mapOf("cap" to 65_536.0, "lang" to "rs")), "edit" to mapOf("cap" to 8_388_608.0))),
                         gated("big.log", mapOf("preview" to mapOf("no" to "太大"), "edit" to mapOf("no" to "超编辑上限"))),
                         gated("p.png", mapOf("preview" to mapOf("image" to 4_194_304.0), "view" to mapOf("cap" to 1.0), "edit" to mapOf("cap" to 8_388_608.0))),
-                        mapOf("path" to "/w/d", "name" to "d", "kind" to "dir"),
+                        mapOf("path" to "/w/d", "name" to "d", "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
                     ),
-                    mapOf("up" to null, "truncated" to false, "total" to 4.0, "crumbs" to emptyList<Any>()),
+                    mapOf("up" to null, "truncated" to false, "total" to 4.0, "crumbs" to emptyList<Any>(), "unreadable" to 0.0),
                 ),
             )!!
         val e = got.entries

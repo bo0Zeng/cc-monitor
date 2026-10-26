@@ -40,7 +40,18 @@ class ChatsBoardTest {
         "hidden" to null,
         "forkedFromSessionId" to null,
         "forkedFrom" to null,
-        "can" to mapOf("delete" to "yes"),
+        "can" to mapOf("resume" to "yes", "accounts" to false, "fork" to false, "delete" to "yes"),
+        "aiTitle" to null,
+        "firstUserExcerpt" to "",
+        "title" to sid,
+        "startedAt" to at,
+        "updatedAt" to at,
+        "messageCountApprox" to 0,
+        "isBg" to false,
+        "customTitle" to null,
+        "projectDir" to "/w",
+        "untitled" to false,
+        "spanText" to "09:00",
     )
 
     private class Host(
@@ -173,9 +184,40 @@ class ChatsBoardTest {
 
     /** 核心合好的那一行（替身）。 */
     private fun mergedOf(vararg rows: Pair<String, String>) =
-        """{"totalHits":${rows.size},"sessionCount":${rows.size},"truncated":false,"unreadable":4,"skipped":["Codex"],"down":[],"sessions":[""" +
-            rows.joinToString(",") { (origin, sid) -> """{"origin":"$origin","atText":"09:00","sessionId":"$sid","title":"$sid","hits":[],"moreHits":1}""" } +
-            "]}"
+        RawJson.write(
+            mapOf(
+                "totalHits" to rows.size,
+                "sessionCount" to rows.size,
+                "truncated" to false,
+                "unreadable" to 4,
+                "skipped" to listOf("Codex"),
+                "down" to emptyList<Any>(),
+                "sessions" to
+                    rows.map { (origin, sid) ->
+                        mapOf(
+                            "origin" to origin,
+                            "atText" to "09:00",
+                            "spanText" to "09:00",
+                            "label" to sid,
+                            "starred" to false,
+                            "hidden" to null,
+                            "agent" to "claude",
+                            "sessionId" to sid,
+                            "projectPath" to "/w",
+                            "projectName" to "w",
+                            "jsonlPath" to "/w/$sid.jsonl",
+                            "title" to sid,
+                            "updatedAt" to 1,
+                            "hits" to emptyList<Any>(),
+                            "moreHits" to 1,
+                            "hitsTruncated" to false,
+                            "isBg" to false,
+                            "can" to mapOf("resume" to "yes", "accounts" to false, "fork" to false, "delete" to "yes"),
+                            "face" to Faces.raw["ended"],
+                        )
+                    },
+            ),
+        )
 
     @Test
     fun `搜内容：各台回包原样交核心合（每台写它的 hostId，整数照整数写），不交哪一台当信差；合好的行按 origin 对回哪台`() =

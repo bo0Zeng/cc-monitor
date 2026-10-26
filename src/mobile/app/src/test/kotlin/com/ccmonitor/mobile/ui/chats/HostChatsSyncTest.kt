@@ -42,7 +42,18 @@ class HostChatsSyncTest {
         "hidden" to null,
         "forkedFromSessionId" to null,
         "forkedFrom" to null,
-        "can" to mapOf("delete" to "yes"),
+        "can" to mapOf("resume" to "yes", "accounts" to false, "fork" to false, "delete" to "yes"),
+        "aiTitle" to null,
+        "firstUserExcerpt" to "",
+        "title" to label,
+        "startedAt" to 1L,
+        "updatedAt" to 1L,
+        "messageCountApprox" to 0,
+        "isBg" to false,
+        "customTitle" to null,
+        "projectDir" to "/w",
+        "untitled" to false,
+        "spanText" to "09:00",
     )
 
     private val head = mapOf("total" to 2L, "info" to mapOf("groups" to emptyList<Any>(), "notice" to null))

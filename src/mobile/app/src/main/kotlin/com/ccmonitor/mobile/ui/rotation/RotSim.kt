@@ -45,11 +45,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.RotTryTimeline
-import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.RotTryTimeline
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 
 /** 时间轴的左右端（秒）：左 ＝ 过去那一截的开头（会话才有；没有 ⇒ 此刻），右 ＝ 此刻往后推几小时。 */

@@ -1,9 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.ChangedFrame
-import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyId
-import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.RotStrategyId
+import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
+import com.ccmonitor.mobile.core.wire.gen.Topic
 
 /*
  * 轮换（第五版）那几条命令（`IPC-COMMANDS.md` 各节，桌面 `rot-mount.ts` 同一套）：手机只拼入参、解成品。
@@ -44,8 +44,8 @@ object Rotation {
     const val TZ = "rotation-strategy-tz"
 
     /** 推送主题：这个会话的轮换（`key` ＝ sid）· 这台的策略目录。 */
-    const val TOPIC = "rotation"
-    const val TOPIC_STRATEGIES = "rotation_strategies"
+    val TOPIC = Topic.ROTATION
+    val TOPIC_STRATEGIES = Topic.ROTATION_STRATEGIES
 
     fun view(
         where: RotWhere,
@@ -187,15 +187,3 @@ data class RotSegment(
     val to: String,
     val v: Double,
 )
-
-/** 流上一帧 `changed`：哪一样变了（`topic`）· 哪一个（`key`）。 */
-data class Changed(
-    val topic: String,
-    val key: String?,
-) {
-    companion object {
-        const val KIND = "changed"
-
-        fun of(frame: Map<String, Any?>): Changed? = if (frame.str("kind") == KIND) Wire.bind<ChangedFrame>(frame)?.let { Changed(it.topic, it.key) } else null
-    }
-}

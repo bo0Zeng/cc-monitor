@@ -22053,12 +22053,6 @@
       "zh": "空闲 · 完成 {ago} 前",
       "args": ["ago"]
     },
-    "sessionFace.state.unseen": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "状态不明 · {machine} 离线",
-      "args": ["machine"]
-    },
     "sessionHead.edit.open": {
       "kind": "action",
       "role": "菜单项",

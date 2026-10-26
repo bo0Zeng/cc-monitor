@@ -287,7 +287,7 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
   it("右键菜单里恢复置灰并说为什么；直接调恢复也不起，说一句", async () => {
     const tm = makeTabs(["u"]);
     const st = inside(tm).store;
-    (st.tabs.get("u") as Tab).face = null;
+    (st.tabs.get("u") as Tab).face = goldenFace("unseen");
     (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu.open(
       new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }),
       "u",

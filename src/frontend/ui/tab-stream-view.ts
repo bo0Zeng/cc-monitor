@@ -46,7 +46,7 @@ import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
-import { faceOf, hasTerminal } from "./face-can";
+import { hasTerminal } from "./face-can";
 import type { TabStore } from "./tab-store";
 import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { noteColdFilled, noteHistoryArrived, noteHistoryFed } from "./startup-perf";
@@ -629,7 +629,7 @@ export class TabStreamView {
       .filter(
         ([sid, t]) =>
           sid !== this.store.activeId &&
-          hasTerminal(faceOf(t)) &&
+          hasTerminal(t.face) &&
           t.window.pendingCount > 0 &&
           (t.window.floorSeq === null || !this.contentReachesBottom(t)),
       )

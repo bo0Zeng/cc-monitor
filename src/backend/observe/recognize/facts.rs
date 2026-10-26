@@ -22,7 +22,7 @@
 //! | `touchedFiles` | 代理那侧的工具调用里写类工具的路径（一拍的 `Call.edits`，写类工具表是那一家的），去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
 //! | `usage` | 代理那侧一拍的用量里新输入 · 读缓存 · 写缓存之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
 //! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
-//! | `writers` | 这台 pidfile 里此刻持着这条会话的活进程（`observe::accounts_query::session_writers`）；每次现查，不在逐行扫描里 |
+//! | `writers` | 这台 pidfile 里此刻持着这条会话的活进程（活会话表 `history::live_table::LiveTable::writers`）；每次现查，不在逐行扫描里 |
 //! | `pending` | 代理那侧的工具调用，等到用户那侧同 id 的工具结果才摘；人又发了一句（用户那侧没有工具结果）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
 //! | `lastSay` | 文件序最后一段代理那侧正文的头一个非空行，至多 [`SAY_CHARS`] 字 |
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
@@ -610,15 +610,8 @@ pub(crate) struct LastSay {
     pub(crate) at_ms: Option<i64>,
 }
 
-/// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PidWait {
-    /// 在等什么框（适配层翻好的 [`crate::agents::WaitOn`]）；没说 / 说不清 ⇒ `None`。
-    pub(crate) waiting_for: Option<crate::agents::WaitOn>,
-    pub(crate) since_ms: Option<u64>,
-    /// 读那份 pidfile 的时刻（epoch ms，**同一台的钟**）：「已等多久」＝ 它减 `since_ms`。
-    pub(crate) read_at_ms: u64,
-}
+/// 那台 pidfile 说「在等」（活会话表那一格，`history::live_table::LiveTable::wait_of`）。
+pub(crate) use crate::history::live_table::PidWait;
 
 /// **「需手动」的唯一判定**：那台说在等什么框 ＋ 记录里最早一个还没结果的调用。
 /// - 批准框（或没说是哪种框）：那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；

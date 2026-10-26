@@ -1,7 +1,13 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFix
-import com.ccmonitor.mobile.core.claude.link.wire.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.ClashRow
+import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.LiveCard
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -71,7 +77,7 @@ interface CoreLink {
     val lines: SharedFlow<RecordLine>
 
     /** 流上的活卡帧（只有名单里的会话）。可丢：丢了一帧那张卡接不上、先不画，等那台下一张整卡。 */
-    val live: SharedFlow<LiveFrame>
+    val live: SharedFlow<LiveCard>
 
     /**
      * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
@@ -101,14 +107,14 @@ interface CoreLink {
         moved: (Long, Long) -> Unit,
     ): Reply
 
-    /** 一组一条命令走到哪（全部编号的都在这一条流上；按 [BatchEvent.id] 认自己那一组）。 */
-    val batches: SharedFlow<BatchEvent>
+    /** 一组一条命令走到哪（全部编号的都在这一条流上；按 [BatchLine.id] 认自己那一组）。 */
+    val batches: SharedFlow<BatchLine>
 
     /**
-     * 落过盘、这一趟开起来接回来的那几组（[BatchEvent.kept]）各自最后那一格：屏后开也照画。
+     * 落过盘、这一趟开起来接回来的那几组（[BatchLine.kept]）各自最后那一格：屏后开也照画。
      * 收场的那一格只交一次（交过 · 收场时 [batches] 上有人在看 ⇒ 不再交）。
      */
-    fun resumed(): List<BatchEvent>
+    fun resumed(): List<BatchLine>
 
     /**
      * 起一组（全过程与字在核心里，桌面同一份）：[want] 是要做什么 —— `delete {root, items [{rel, name, dir}]}` ·
@@ -126,23 +132,23 @@ interface CoreLink {
     /** 撤那一组（「停」）。 */
     fun batchStop(id: Long)
 
-    /** 文件页选中这几项（[FilesLs.Entry.row]，那台交来的原行）此刻能做什么（核心照此刻那一台判：断着 · 那台做不到的命令）。 */
-    fun picks(rows: List<Any?>): PickMenu
+    /** 文件页选中这几项（[FilesLs.Entry.row]，那台交来的原行）此刻能做什么（核心照此刻那一台判：断着 · 那台做不到的命令）；核心那一行认不出 ⇒ `null`。 */
+    fun picks(rows: List<Any?>): PhoneMenu?
 
     /** 一问一答撞了同名（码 `exists` 的 `data`）⇒ 抽屉那几行（说明由核心写，一组那一问同一份）；认不出 ⇒ 空。 */
-    fun clashes(data: Any?): List<BatchEvent.Clash>
+    fun clashes(data: Any?): List<ClashRow>
 
     /** 手机这一侧问的同名（下载 · 上传）那一答 ⇒ [keys] 那几行每个键怎么做（`overwrite` · `skip` · `keep_both`，核心认：逐项没点的照跳过）；取消 ⇒ `null`。 */
     fun decided(
         keys: List<String>,
         answer: BatchAnswer?,
-    ): Map<String, String>?
+    ): Map<String, Decide>?
 
     /**
-     * 下载一组那几格（逐项拉在手机这一圈里走，字在核心）：`{id, machine, names, phase, …}` ⇒ 一格（[BatchEvent]）；读不动 ⇒ `null`。
+     * 下载一组那几格（逐项拉在手机这一圈里走，字在核心）：`{id, machine, names, phase, …}` ⇒ 一格（[BatchLine]）；读不动 ⇒ `null`。
      * `phase`：`asking`（`here` 本机文件夹里已有的名字）· `running`（`done` · `part` · `current`）· `cut` · `ended`（`outcomes` 逐项结局）。
      */
-    fun downloadEvent(want: Map<String, Any?>): BatchEvent?
+    fun downloadEvent(want: Map<String, Any?>): BatchLine?
 
     /** 断开这一条（有的话）、马上整份重来：停在要人动手那一步的（没装 · 起不来）也重拨。 */
     fun reconnect()

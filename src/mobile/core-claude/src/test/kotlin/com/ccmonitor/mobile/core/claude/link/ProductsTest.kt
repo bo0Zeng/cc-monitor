@@ -1,13 +1,15 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Hidden
-import com.ccmonitor.mobile.core.claude.link.wire.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
-import com.ccmonitor.mobile.core.claude.link.wire.SessionDot
-import com.ccmonitor.mobile.core.claude.link.wire.SessionFace
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
-import com.ccmonitor.mobile.core.claude.link.wire.Tone
-import com.ccmonitor.mobile.core.claude.link.wire.Wire
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.FaceLive
+import com.ccmonitor.mobile.core.wire.gen.Hidden
+import com.ccmonitor.mobile.core.wire.gen.HiddenBy
+import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.NeedsRow
+import com.ccmonitor.mobile.core.wire.gen.SessionDot
+import com.ccmonitor.mobile.core.wire.gen.SessionFace
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -35,7 +37,9 @@ class ProductsTest {
         assertNull(
             t2.faces
                 .getValue("s1")
-                .live.activity,
+                .live
+                .let { it as? FaceLive.Yes }
+                ?.activity,
         )
         assertFalse("判不出不算在跑", t2.running("s1"))
         assertTrue(breaks.toString(), breaks.isEmpty())
@@ -195,9 +199,9 @@ class ProductsTest {
 
     @Test
     fun `history-list：行上隐藏那一格照收（后端写好的那一句）`() {
-        val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "at" to 0, "atText" to "", "sectionText" to "", "starred" to false, "projectName" to "", "projectPath" to "", "group" to "g", "can" to mapOf("delete" to "yes"), "jsonlPath" to "", "agent" to "claude", "face" to Fixtures.face("ended"), "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
+        val rows = listOf(Fixtures.historyRow("hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
         assertEquals(
-            Hidden("由 a 启动 · 子会话默认隐藏"),
+            Hidden(HiddenBy.CHILD, "由 a 启动 · 子会话默认隐藏"),
             HistoryList
                 .of(whole(rows))
                 ?.rows
@@ -218,8 +222,8 @@ class ProductsTest {
         assertEquals(mapOf("sid" to "s1", "patch" to mapOf("hide" to "on")), HistoryAnnotate.hide("s1", Hide.ON))
         assertEquals(mapOf("sid" to "s1", "patch" to mapOf("hide" to "off")), HistoryAnnotate.hide("s1", Hide.OFF))
         assertEquals(mapOf("sid" to "s1", "patch" to mapOf("hide" to "rule")), HistoryAnnotate.hide("s1", null))
-        assertEquals(Hide.OFF, HistoryAnnotate.of(mapOf("entry" to mapOf("starred" to false), "prev" to "off"))?.prev)
-        val none = HistoryAnnotate.of(mapOf("entry" to mapOf("starred" to false), "prev" to null))
+        assertEquals(Hide.OFF, HistoryAnnotate.of(mapOf("entry" to mapOf("starred" to false, "customTitle" to null, "updatedAt" to 0), "prev" to "off"))?.prev)
+        val none = HistoryAnnotate.of(mapOf("entry" to mapOf("starred" to false, "customTitle" to null, "updatedAt" to 0), "prev" to null))
         assertNotNull(none)
         assertNull(none!!.prev)
         assertNull("认不出的字 ⇒ 解不出", HistoryAnnotate.of(mapOf("entry" to emptyMap<String, Any>(), "prev" to "maybe")))

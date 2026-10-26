@@ -57,10 +57,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.BookmarkShelf
 import com.ccmonitor.mobile.core.claude.link.FilesLs
-import com.ccmonitor.mobile.core.claude.link.PickMenu
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
@@ -76,6 +74,8 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.core.wire.gen.BatchLine
+import com.ccmonitor.mobile.core.wire.gen.MenuEntry
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowseScreen
 import com.ccmonitor.mobile.ui.chat.newsession.DirBrowser
@@ -196,7 +196,7 @@ fun FilesScreen(
             }
             val group by vm.batch.collectAsState()
             group?.let { e ->
-                if (e.phase == BatchEvent.ASKING) ConflictSheet(e.title, null, e.conflicts, e.go) { vm.answerBatch(e.id, it) }
+                if (e is BatchLine.Asking) ConflictSheet(e.title, null, e.conflicts, e.go) { vm.answerBatch(e.id, it) }
                 BatchCard(
                     e,
                     onStop = { vm.stopBatch(e.id) },
@@ -396,7 +396,7 @@ private fun EntryList(
 
 /** 顶栏 · ⋯ 里点了一项：灰着的 ⇒ 底部说那一句为什么；否则照它做（选中的那几项）。 */
 private fun picked(
-    item: PickMenu.Entry,
+    item: MenuEntry,
     vm: FilesViewModel,
     actions: EntryActions,
     onDialog: (FilesDialog) -> Unit,

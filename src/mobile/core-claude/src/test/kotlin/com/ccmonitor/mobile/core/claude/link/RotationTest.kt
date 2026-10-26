@@ -6,13 +6,6 @@ import org.junit.Test
 
 class RotationTest {
     @Test
-    fun `changed 帧：topic · key 照线上读；别的帧不是它`() {
-        assertEquals(Changed("rotation", "s1"), Changed.of(mapOf("kind" to "changed", "topic" to "rotation", "key" to "s1")))
-        assertEquals(Changed("rotation_strategies", null), Changed.of(mapOf("kind" to "changed", "topic" to "rotation_strategies")))
-        assertNull(Changed.of(mapOf("kind" to "session_status", "topic" to "rotation")))
-    }
-
-    @Test
     fun `rotation-view：不轮换（strategy · decision · timeline 为 null）照样解得开；缺必有的 lineup ⇒ 解不出`() {
         val none =
             mapOf(

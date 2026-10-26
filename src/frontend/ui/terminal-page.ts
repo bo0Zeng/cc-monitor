@@ -19,7 +19,7 @@ import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
-import { canResume, faceOf, hasTerminal, inTmux, isLive, machineOf } from "./face-can";
+import { canResume, hasTerminal, inTmux, isLive, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
@@ -568,9 +568,9 @@ export class TerminalPage {
     if (this.phase === "none" && w.kind === "tab") {
       const tab = w.tab;
       const sid = tab.sessionId;
-      const ended = canResume(faceOf(tab)); // 已结束（能恢复的那一态）
+      const ended = canResume(tab.face); // 已结束（能恢复的那一态）
       // 活着、不在 tmux 里（那台判的 `can.term`）：照实说，不当成别人起的。
-      const outside = isLive(faceOf(tab)) && !inTmux(faceOf(tab));
+      const outside = isLive(tab.face) && !inTmux(tab.face);
       this.body.replaceChildren(
         ended
           ? emptyState({ icon: "terminal", text: copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }), hint: copyText("terminal.empty.endedHint") })
@@ -615,7 +615,7 @@ export class TerminalPage {
     this.liveTag.textContent = this.live.at === "on" ? copyText("terminal.head.live") : copyText("terminal.head.joining");
     this.snapTag.hidden = this.live.at !== "snapOnly";
     if (this.live.at === "snapOnly") this.snapTag.title = this.live.said;
-    this.frontBtn.style.display = tab && terminalFrontAvailable() && hasTerminal(faceOf(tab)) ? "" : "none";
+    this.frontBtn.style.display = tab && terminalFrontAvailable() && hasTerminal(tab.face) ? "" : "none";
 
     const bars: HTMLElement[] = [];
     if (row.programExited) {

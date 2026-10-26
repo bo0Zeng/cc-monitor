@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.chat.newsession
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -33,6 +34,7 @@ class NewSessionPickerTest {
     ) = mapOf(
         "recent" to recent.mapIndexed { i, c -> mapOf("cwd" to c, "lastMs" to i.toDouble(), "lastText" to "19:0$i") },
         "tmux" to true,
+        "run" to "tmux",
         "agents" to agents,
         "fork" to null,
     )
@@ -41,24 +43,22 @@ class NewSessionPickerTest {
         name: String,
         selectable: Boolean = true,
         color: Int = 0,
-    ) = mapOf(
+    ) = Wires.accountRow(
         "name" to name,
         "label" to name,
-        "newSession" to true,
         "selectable" to selectable,
-        "color" to color.toDouble(),
+        "color" to color,
         "plate" to name.take(2),
         "quota" to if (selectable) "5h ${name.length}%" else null,
         "unselectable" to if (selectable) null else "需登录",
-        "authKind" to "subscription",
-        "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable),
+        "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable, "title" to ""),
         "login" to !selectable,
     )
 
     private fun accounts(
         names: List<Map<String, Any?>> = listOf(acct("work"), acct("personal", color = 2), acct("team", selectable = false, color = 1)),
         default: String = "work",
-    ) = mapOf("accounts" to names, "meta" to mapOf("enabled" to true, "effectiveDefault" to default, "home" to "/h"), "notice" to null)
+    ) = mapOf("accounts" to names, "meta" to Wires.accountsMeta("effectiveDefault" to default, "home" to "/h"), "notice" to null)
 
     private val strategies =
         mapOf(

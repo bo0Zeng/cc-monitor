@@ -113,6 +113,8 @@ use walkdir::WalkDir;
 enum WatchEvent {
     /// 这台问过一条会话的记录在不在（[`record_seen`]）。
     RecordSeen { sid: String, present: bool },
+    /// 此刻挂着待答请求的那几条（[`hear_asks`]）。
+    Asked(std::collections::BTreeSet<String>),
     /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
     Notify(DebounceEventResult),
     /// **P3：tmux server 的 pidfd 醒了** —— 那个 server 进程实例已退出 ⇒ 等价于零会话。
@@ -232,6 +234,8 @@ pub struct Reactions {
     pub tmux_server_up: fn(),
     /// pidfile 出现 / 改写：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt_seen`；写句柄是起 watcher 时交进来的那一份）。
     pub session_seen: fn(&crate::platform::fs::Own, u32, &str),
+    /// 订「挂着的待答请求变了」那一声（`control::asks::moved_rx`）：每响一声，照活会话表此刻挂着请求的那几条改会话的点。
+    pub asks_moved: fn() -> tokio::sync::broadcast::Receiver<String>,
 }
 
 /// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
@@ -1000,6 +1004,7 @@ pub fn spawn(
     let poke = WatcherPoke(events_tx.clone());
     // 登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
     let me = live_enter(events_tx.clone());
+    hear_asks(reactions.asks_moved, events_tx.clone());
     let b = book.clone();
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
@@ -1153,6 +1158,7 @@ fn watch_loop(
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
     let mut state = ReaderState::new(projects.clone());
+    state.asked = crate::history::live_table::asked_sids();
     // 别的那几家（记录不住记录树、判活认写者）：一并跟上。
     for f in crate::agents::followed(&agent_home) {
         state.follow(&f);
@@ -1317,6 +1323,8 @@ fn watch_loop(
         }
         // 主运行的心跳同一个期限（#43）：说在跑、久未动静 ⇒ 状态不明。
         judge_beats(&mut state, &mut sink, now);
+        // 进程状态文件 · 冻住那几样变过 ⇒ 整份重造活会话表、发布（冷路都读它）。
+        publish_table(&agent_home, &mut state);
         let due = [state.book.next_due(), state.beat_due(now)]
             .into_iter()
             .flatten()
@@ -1433,6 +1441,7 @@ fn watch_loop(
                         // process_jsonl skips sids not in active_sids.
                         process_jsonl(p, &mut state, &mut sink);
                     } else if is_session_json(p) {
+                        state.table_dirty = true;
                         // notify coalesces to "something happened to this path";
                         // decide add vs remove by current existence on disk.
                         //
@@ -1499,6 +1508,7 @@ fn watch_loop(
                     key.display(),
                     state.sessions.get(&key).map(|e| e.pid)
                 );
+                state.table_dirty = true;
                 if state.sessions.get(&key).map(|e| e.pid) == Some(pid) {
                     if let Some(e) = state.sessions.remove(&key) {
                         // pidfd 醒了 = 那个进程实例真的退了。
@@ -1598,6 +1608,7 @@ fn watch_loop(
             WatchEvent::Leave(id) => sink.leave(id),
             WatchEvent::Arrive { by, since, tell } => sink.arrivals.expect(by, since, tell),
             WatchEvent::RecordSeen { sid, present } => sink.record_seen(&sid, present),
+            WatchEvent::Asked(now) => asked_now(now, &mut state, &mut sink),
             WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
@@ -1624,6 +1635,7 @@ fn watch_loop(
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
                     crate::accounts::sign_in::ring_manual();
                 }
+                state.table_dirty = true;
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
                 let _ = done.send(got);
@@ -1711,6 +1723,10 @@ struct ReaderState {
     reading: HashSet<String>,
     /// 这台的账号库目录：宣告时判会话跑在哪个号下读它（夹具换成自己的）。
     accts_dir: PathBuf,
+    /// 此刻有待答请求挂着的会话（活会话表每换一次经 [`WatchEvent::Asked`] 交来；夹具直接写）。
+    asked: std::collections::BTreeSet<String>,
+    /// 进程状态文件 · 冻住那几样变过、活会话表还没重造（[`publish_table`]）。
+    table_dirty: bool,
 }
 
 impl ReaderState {
@@ -1737,26 +1753,23 @@ impl ReaderState {
         crate::wire::SessionFace::of(crate::wire::Life::live(activity, container)).under(account)
     }
 
-    /// 这条会话此刻交出去的那一态（#43）：说在跑、可说它在跑的那几个进程都冻住了（[`judge_beats`]）⇒ 不给 ——
-    /// 脸照「状态不明」画，不画在跑那颗点。别的态照原样。
+    /// 这条会话此刻交出去的那一态，判法同活会话表（[`crate::history::live_table::doing_of`]）：有待答请求挂着 ⇒ 等人；
+    /// 说在跑、可说它在跑的那几个进程都冻住了（[`judge_beats`]，#43）⇒ 不给 —— 脸照「状态不明」画，不画在跑那颗点。别的态照原样。
     fn heard(
         &self,
         sid: &str,
         activity: Option<crate::agents::SessionActivity>,
     ) -> Option<crate::agents::SessionActivity> {
-        if !wants_beat(activity) {
-            return activity;
-        }
         let busy = || {
             self.sessions
                 .values()
                 .filter(|e| e.sid == sid && wants_beat(e.activity))
         };
-        if busy().next().is_some() && busy().all(|e| e.frozen) {
-            None
-        } else {
-            activity
-        }
+        let frozen = wants_beat(activity) && busy().next().is_some() && busy().all(|e| e.frozen);
+        crate::history::live_table::doing_of(
+            [crate::history::live_table::heard(activity, frozen)],
+            self.asked.contains(sid),
+        )
     }
 
     /// 最早那条该有心跳、还没冻住的会话到时限的时刻（已过了的不算：那几条有在跑的子运行撑着，子运行自己的期限会叫醒）。
@@ -1988,6 +2001,8 @@ impl ReaderState {
             added: HashMap::new(),
             reading: HashSet::new(),
             accts_dir: crate::observe::accounts_query::default_accts_dir(),
+            asked: std::collections::BTreeSet::new(),
+            table_dirty: true,
         }
     }
 }
@@ -3454,8 +3469,66 @@ fn judge_beats(state: &mut ReaderState, sink: &mut FrameSink, now: std::time::Sy
             flipped.insert(e.sid.clone());
         }
     }
+    if !flipped.is_empty() {
+        state.table_dirty = true;
+    }
     for sid in &flipped {
         send_heard(state, sink, sid);
+    }
+}
+
+/// 待答登记表此刻挂着请求的会话（活会话表换上的那一份）：挂上 · 撤掉了的那几条各发一帧（脸照 [`ReaderState::heard`]）。
+fn asked_now(
+    now: std::collections::BTreeSet<String>,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    let moved: Vec<String> = now.symmetric_difference(&state.asked).cloned().collect();
+    state.asked = now;
+    for sid in &moved {
+        send_heard(state, sink, sid);
+    }
+}
+
+/// 活会话表变过 ⇒ 用表的构造函数现扫这台那一家的 pidfile、盖上冻住的那几个进程，整份发布。
+fn publish_table(agent_home: &Path, state: &mut ReaderState) {
+    if !std::mem::take(&mut state.table_dirty) {
+        return;
+    }
+    let frozen: std::collections::BTreeSet<u32> = state
+        .sessions
+        .values()
+        .filter(|e| e.frozen)
+        .map(|e| e.pid)
+        .collect();
+    let mut table = crate::history::live_table::LiveTable::scan(agent_home);
+    table.freeze(&frozen);
+    crate::history::live_table::publish(table);
+}
+
+/// 挂着的待答请求每变一次（`asks_moved` 那一声；漏听了几声也照样）⇒ 把此刻挂着请求的那几条交给 watcher（[`WatchEvent::Asked`]）。
+/// 那一声的发端没了 · watcher 已退 ⇒ 这条线程跟着收。
+fn hear_asks(
+    asks_moved: fn() -> tokio::sync::broadcast::Receiver<String>,
+    tx: std::sync::mpsc::Sender<WatchEvent>,
+) {
+    let mut rx = asks_moved();
+    let spawned = std::thread::Builder::new()
+        .name("asks-moved".into())
+        .spawn(move || loop {
+            use tokio::sync::broadcast::error::RecvError;
+            if matches!(rx.blocking_recv(), Err(RecvError::Closed)) {
+                break;
+            }
+            if tx
+                .send(WatchEvent::Asked(crate::history::live_table::asked_sids()))
+                .is_err()
+            {
+                break;
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("起不了听待答请求的线程（挂着请求的会话不改点）：{e}");
     }
 }
 
@@ -3472,6 +3545,7 @@ fn heard_from(
         thawed |= std::mem::take(&mut e.frozen);
     }
     if thawed {
+        state.table_dirty = true;
         send_heard(state, sink, sid);
     }
 }
@@ -4547,8 +4621,8 @@ const ADD_TIME_TOLERANCE_SECS: u64 = 60;
 
 /// Pure decision core (unit-tested on every platform):
 ///
-/// - **identity evidence（primary）**: the pidfile's `procStart` field equals
-///   the current occupant's `/proc/<pid>/stat` starttime ticks → the occupant
+/// - **identity evidence（primary）**: `start_checked` — the pidfile's `procStart` equals
+///   the current occupant's starttime ticks (活会话表那一处读法 `history::live_table::start_matches`) → the occupant
 ///   IS the author (PID + starttime is exact process identity, the same pair
 ///   #34 relies on) — Alive, no further checks, immune to every wall-clock
 ///   concern (NTP steps, NFS mtime, btime drift). A **mismatch** is NOT
@@ -4568,26 +4642,23 @@ const ADD_TIME_TOLERANCE_SECS: u64 = 60;
 /// - Missing data (absent procStart, unreadable stat/mtime/cmdline) skips that
 ///   check — degrade to allow, mirroring the local procStart-absent fallback.
 fn add_time_verdict(
-    recorded_start_ticks: Option<u64>,
-    current_starttime_ticks: Option<u64>,
+    start_checked: bool,
     proc_start_epoch: Option<u64>,
     file_mtime_epoch: Option<u64>,
     cmdline: Option<&str>,
 ) -> AddTimeVerdict {
     // F74b(#43「父会话恒绿」总闸)：bg-spare = 守护池停泊的备用进程（cmdline 含 "bg-spare"）。
     // 它是真 claude 进程、会写合规 pidfile、procStart 自洽——**必须在 exact-identity 之前拦**，
-    // 否则下面的 `recorded == current` 会把它判 Alive 而恒绿。语义上它不是一个运行中的会话。
+    // 否则下面的启动时刻对拍（`start_checked`）会把它判 Alive 而恒绿。语义上它不是一个运行中的会话。
     if let Some(cmd) = cmdline {
         if cmd.to_lowercase().contains("bg-spare") {
             return AddTimeVerdict::Imposter("bg-spare");
         }
     }
-    if let (Some(recorded), Some(current)) = (recorded_start_ticks, current_starttime_ticks) {
-        if recorded == current {
-            return AddTimeVerdict::Alive; // exact identity: author confirmed
-        }
-        // mismatch: fall through to the heuristics (see doc comment)
+    if start_checked {
+        return AddTimeVerdict::Alive; // exact identity: author confirmed
     }
+    // mismatch / unrecorded: fall through to the heuristics (see doc comment)
     if let (Some(start), Some(mtime)) = (proc_start_epoch, file_mtime_epoch) {
         if start > mtime + ADD_TIME_TOLERANCE_SECS {
             return AddTimeVerdict::Imposter("started-after-pidfile");
@@ -4614,8 +4685,7 @@ fn add_time_check(
 ) -> Result<Option<u64>, &'static str> {
     let current_ticks = proc_starttime(pid);
     match add_time_verdict(
-        recorded,
-        current_ticks,
+        crate::history::live_table::start_matches(pid, recorded),
         start_epoch_from_ticks(current_ticks),
         file_mtime_epoch(path),
         proc_cmdline(pid).as_deref(),
@@ -4743,7 +4813,7 @@ impl FrameSink {
         };
         let (raw, observation) = observation_parts(obs);
         let out = l.on_tmux(&raw, observation);
-        crate::history::live::set_reconnectable(l.reconnectable());
+        crate::history::live_table::set_reconnectable(l.reconnectable());
         let released = out.iter().any(|f| matches!(f, Frame::SessionsReplayed(_)));
         for f in out {
             self.fan(f);
@@ -4806,7 +4876,7 @@ impl FrameSink {
         let (pass, extra) = match self.ledger.as_mut() {
             Some(l) => {
                 let got = l.on_frame(&frame);
-                crate::history::live::set_reconnectable(l.reconnectable());
+                crate::history::live_table::set_reconnectable(l.reconnectable());
                 got
             }
             None => (true, Vec::new()),

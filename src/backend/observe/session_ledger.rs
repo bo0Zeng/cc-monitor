@@ -266,7 +266,7 @@ impl SessionLedger {
         }
     }
 
-    /// 此刻可重连的那几条（历史清单那一行照它分出 `reconnectable`，[`crate::history::live::set_reconnectable`]）。
+    /// 此刻可重连的那几条（历史清单那一行照它分出 `reconnectable`，[`crate::history::live_table::set_reconnectable`]）。
     pub(crate) fn reconnectable(&self) -> &BTreeSet<String> {
         &self.reconnectable
     }

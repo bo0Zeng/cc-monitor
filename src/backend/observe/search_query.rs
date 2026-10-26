@@ -100,7 +100,7 @@ pub(crate) fn search_counting(
     let fence = Fence::at(&root)?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    let live = crate::history::live::live_activity(agent_home);
+    let live = crate::history::live_table::now(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
@@ -566,7 +566,7 @@ impl SearchIndex {
         fence: &Fence,
         q: &str,
         opts: &SearchOpts,
-        live: &std::collections::BTreeMap<String, Option<crate::agents::SessionActivity>>,
+        live: &crate::history::live_table::LiveTable,
         push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
     ) -> Result<usize, String> {
         let files = session_files(fence);
@@ -629,7 +629,7 @@ impl SearchIndex {
                 }
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
-                    let life = crate::history::live::life_of(&live, &session.session_id);
+                    let life = live.life_of(&session.session_id);
                     session.face =
                         crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(life)));
                     session.is_bg = bg;
