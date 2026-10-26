@@ -401,10 +401,7 @@ export class TabBarView {
     if (JSON.stringify(this.needsFacts()) === this.needsDrawn) return;
     const old = this.needsContent;
     const at = Number(old?.dataset.at ?? 0);
-    const focused = old !== null && old.contains(document.activeElement);
-    const next = this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0);
-    swapPopoverContent(this.needsEl, next);
-    if (focused) next.focus();
+    swapPopoverContent(this.needsEl, this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0));
   }
 
   private reread(): void {
