@@ -989,16 +989,32 @@ fn a_rename_across_devices_copies_the_tree_then_removes_the_source() {
     let root = base.join("cfg");
     let rels = plant_tree(&root);
     std::os::unix::fs::symlink("one.md", root.join("t/ln")).expect("铺链接");
-    std::fs::set_permissions(root.join("t/a/two.md"), std::fs::Permissions::from_mode(0o640))
-        .expect("设权限位");
+    std::fs::set_permissions(
+        root.join("t/a/two.md"),
+        std::fs::Permissions::from_mode(0o640),
+    )
+    .expect("设权限位");
     let got = move_across(&root, "t", "u").expect("🔴 跨盘挪目录没挪成");
     assert_eq!(got, root.join("u"));
-    assert_eq!(still_there(&root, &rels), Vec::<String>::new(), "🔴 源没删干净");
-    assert!(std::fs::symlink_metadata(root.join("t/ln")).is_err(), "源里的链接还在");
-    assert_eq!(std::fs::read(root.join("u/a/b/three.md")).expect("读"), b"3");
+    assert_eq!(
+        still_there(&root, &rels),
+        Vec::<String>::new(),
+        "🔴 源没删干净"
+    );
+    assert!(
+        std::fs::symlink_metadata(root.join("t/ln")).is_err(),
+        "源里的链接还在"
+    );
+    assert_eq!(
+        std::fs::read(root.join("u/a/b/three.md")).expect("读"),
+        b"3"
+    );
     assert_eq!(std::fs::read(root.join("u/one.md")).expect("读"), b"1");
     assert!(root.join("u/empty").is_dir());
-    let mode = std::fs::metadata(root.join("u/a/two.md")).expect("看").permissions().mode();
+    let mode = std::fs::metadata(root.join("u/a/two.md"))
+        .expect("看")
+        .permissions()
+        .mode();
     assert_eq!(mode & 0o777, 0o640, "权限位没跟过去");
     assert_eq!(
         std::fs::read_link(root.join("u/ln")).expect("🔴 链接没照原样过去"),
@@ -1020,12 +1036,25 @@ fn a_rename_across_devices_moves_a_file_and_a_link_itself_and_never_overwrites()
 
     move_across(&root, "a.md", "c.md").expect("🔴 跨盘挪文件没挪成");
     assert_eq!(std::fs::read(root.join("c.md")).expect("读"), b"A");
-    assert!(std::fs::symlink_metadata(root.join("a.md")).is_err(), "🔴 源没删");
+    assert!(
+        std::fs::symlink_metadata(root.join("a.md")).is_err(),
+        "🔴 源没删"
+    );
 
     move_across(&root, "l", "l2").expect("🔴 跨盘挪链接没挪成");
-    assert_eq!(std::fs::read_link(root.join("l2")).expect("落成链接"), Path::new("b.md"));
-    assert!(std::fs::symlink_metadata(root.join("l")).is_err(), "源链接还在");
-    assert_eq!(std::fs::read(root.join("b.md")).expect("b"), b"B", "跟着链接动了它指的那份");
+    assert_eq!(
+        std::fs::read_link(root.join("l2")).expect("落成链接"),
+        Path::new("b.md")
+    );
+    assert!(
+        std::fs::symlink_metadata(root.join("l")).is_err(),
+        "源链接还在"
+    );
+    assert_eq!(
+        std::fs::read(root.join("b.md")).expect("b"),
+        b"B",
+        "跟着链接动了它指的那份"
+    );
 
     let err = move_across(&root, "c.md", "b.md").expect_err("🔴 跨盘那一支顶掉了既有文件");
     assert_eq!(err.code(), "exists", "{err:?}");
