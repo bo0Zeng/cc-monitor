@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1944,
+  "ceiling": 1943,
   "groups": [
     {
       "kind": "首登",
@@ -151,7 +151,7 @@
         ["src/frontend/ui/paste-block.ts", "key", 6],
         ["src/frontend/ui/record-file-notice.ts", "branch", 3],
         ["src/frontend/ui/record-reads.ts", "key", 1],
-        ["src/frontend/ui/remote-health.ts", "branch", 4],
+        ["src/frontend/ui/remote-health.ts", "branch", 3],
         ["src/frontend/ui/remote-health.ts", "key", 1],
         ["src/frontend/ui/resume-menu.ts", "branch", 4],
         ["src/frontend/ui/resume-menu.ts", "key", 4],

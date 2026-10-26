@@ -184,7 +184,7 @@
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那两条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json`。
-- 部署：第二个前端不部署后端。它连上一台走 `--resident-attach`，attach 回话说那台相对自己这一版的新旧，不是同一版就只发形状指纹对得上的命令、提示那台要更新；远端的后端由桌面端经本机后端 `deploy-install` 装。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
+- 部署：第二个前端不部署后端。它连上一台走 `--resident-attach`，attach 回话说那台相对自己这一版的新旧，不是同一版就只发形状指纹对得上的命令、提示那台要更新；远端的后端由桌面那一端的本机后端装（它那几条常驻流接不上或那台不是这一版时走 `deploy-install` 那一趟）。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
 
 ### 通用记录
 
@@ -265,7 +265,7 @@
 | `known_hosts` | 拨号核心（首见的主机钥匙鉴权过了才记）· `host-keys-forget`（忘掉一台） | 拨号核心（每次握手按这台全部地址认）· 开终端那一行（经 `ssh_config`）· `machines-read`（带出每台的指纹） | OpenSSH 格式；一台一行、主机名段写这台的全部地址。规矩只在 `ssh-dial/known_hosts.rs` |
 | `ssh_config` | 本机常驻后端（开终端那一行之前，内容不对才写） | 终端里的 `ssh -F` | 主机钥匙认 `known_hosts` 那一份，之后照读用户与系统的 ssh 配置 |
 
-设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；壳把接常驻那一轮的结论经 `machine-round` 原样交过去）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
+设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：各台（含本机，键 `<local>`）判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；各台的常驻流由本机常驻后端自己持有（`control/feeds.rs`），每一轮的结论它自己记，接不上或那台不是这一版时它先 `deploy-install` 再请那台换；机器页「起」·［重试］/「停」是 `machine-wake` / `machine-stop`）。本机后端没起来时没有成品，壳只说它起没起来（`local-backend` 事件 · `backend_status` 的 `local`：`up` · `starting` · `down` · `older` · `newer`）；成品形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 
 **Claude Code 自己写、后端只读的两份**（集成方要自己写 pidfile 时看这里）：
 

@@ -229,6 +229,8 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
             .await
             .map_err(Said::crashed)??);
         }
+        // 那台的常驻流（装 · 版本门 · 状态成品）住本机后端：先叫醒它（停过的不再停着、断着的马上再接）。
+        wake_backend_feed(&origin).await;
         let mut g = remotes()
             .lock()
             .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
@@ -253,6 +255,20 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
     }
     .await;
     r.map_err(|s| s.named("backend_start"))
+}
+
+/// 叫醒本机后端手上那台的常驻流（`machine-wake`）。没交上只记一行：壳这一条照样重起，那台的状态成品等本机后端下一轮。
+async fn wake_backend_feed(origin: &str) {
+    const MACHINE_WAKE: &str = "machine-wake";
+    const WAKE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+    let Some(client) = crate::inbound_client::client_for(LOCAL_ORIGIN) else {
+        tracing::warn!("[machine] 叫醒 {origin} 那一条：本机后端不在");
+        return;
+    };
+    let args = serde_json::json!({ "machine": origin });
+    if let Err(e) = client.call(MACHINE_WAKE, args, WAKE_BUDGET).await {
+        tracing::warn!("[machine] 叫醒 {origin} 那一条没成：{e:?}");
+    }
 }
 
 /// 停这台机的 backend。本机远端同一条：在那台机器上跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），
@@ -288,7 +304,7 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
     r.map_err(|s| s.named("backend_stop"))
 }
 
-/// 停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
+/// 停那台的常驻后端（本机后端 `machine-stop`：先停它那一条常驻流，再在那台跑 `--resident-stop`）。只由 [`backend_stop`] 在分过本机之后调。
 async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, Said> {
     if !crate::machine_table::has(origin) {
         return Err(Said::of(

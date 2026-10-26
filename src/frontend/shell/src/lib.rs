@@ -631,6 +631,13 @@ pub fn run() {
             if !done.started.is_empty() {
                 tracing::info!("remote data source(s) started: {:?}", done.started);
             }
+            // 这一版带着的后端字节 ＋ 清单先落盘：本机后端那几条常驻流装远端时现读（`deploy::place_slots`）。放在起本机后端之前、在自己的线程上（不挡第一屏）。
+            if let Err(e) = std::thread::Builder::new()
+                .name("place-slots".into())
+                .spawn(deploy::place_slots)
+            {
+                tracing::warn!("place-slots 线程起不来（远端装不了）：{e}");
+            }
             // 本机后端在自己的线程上起：第一屏不等它；起着 / 接上 / 起不来走那台的机器状态（`machine-state`），与远端同一条。
             //   放在远端那几条流的上下文就位之后：接上那一刻要问本机的机器表、起远端流。
             local_backend_host::start_at_launch(say_local_start);

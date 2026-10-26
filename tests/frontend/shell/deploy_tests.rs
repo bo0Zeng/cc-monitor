@@ -286,7 +286,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
 //
 // 要求：「部署决策（该不该换 · 换成什么 · 身份判定）与那一趟装都在后端；monitor 只交字节文件的路径、收进度」。
 
-/// 🔴 两条部署路（自动 · 按钮）各**恰好一次**请本机常驻后端装（`install(`），本文件生产段里**零处**再做判定或碰那台
+/// 🔴 按钮那条部署路**恰好一次**请本机常驻后端装（`install(`；自动装在本机后端那几条常驻流里，壳这一侧没有），本文件生产段里**零处**再做判定或碰那台
 /// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 放字节 · 删残件），也零处碰旁挂标记。带正控。
 #[test]
 fn the_deploy_paths_only_hand_facts_to_the_backend() {
@@ -318,10 +318,7 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
         Vec::<&str>::new(),
         "deploy.rs 又自己判起了部署 / 自己放起了字节 —— 那一趟住本机常驻后端（`deploy-install`）"
     );
-    for sig in [
-        "pub async fn ensure_backend_deployed(",
-        "pub async fn deploy_remote_backend(",
-    ] {
+    for sig in ["pub async fn deploy_remote_backend("] {
         let code = dp1_body(&prod, sig);
         guard_core::find_pinned(&code, "install(")
             .unwrap_or_else(|e| panic!("{sig}：不是恰好一处请后端装（{e}）"));
@@ -633,8 +630,8 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
 
 // ═══ 自动部署不再静默 ═══════════════════════════════════════════════════
 //
-// 要求：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」·
-// 「**返回类型上不许有『成功』这一支**：拒绝要与『部署成功』在类型上分得开，界面才显示得出来」。
+// 自动装那一趟住本机后端那几条常驻流（`control/feeds.rs`）：每一步与收尾记进那台的机器状态成品（`deploy_plan::answer_install`），
+// 界面照成品画 —— 壳这一侧没有自动装、也就没有要发的那一句（`remote-health` 的 `deploy` 那一格随之删了）。
 
 /// 切出生产段里一个函数的体（到列 0 的 `}` 为止）。
 fn dp1_body(prod: &str, sig: &str) -> String {
@@ -643,75 +640,6 @@ fn dp1_body(prod: &str, sig: &str) -> String {
     let rest = &prod[at..];
     let end = rest.find("\n}\n").unwrap_or(rest.len());
     rest[..end].to_string()
-}
-
-/// 本条要逮的两种「静默」写法：`Ok(None)`（没部署也算成功）与 `debug!`（只留一行没人看的日志）。
-fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
-    let mut out = Vec::new();
-    if body.contains("Ok(None)") {
-        out.push("Ok(None)");
-    }
-    if body.contains("tracing::debug!") || body.contains(" debug!(") {
-        out.push("debug!");
-    }
-    out
-}
-
-/// D1：`ensure_backend_deployed` 的返回类型是 `Result<String, Said>`（没有「没部署也算成功」那一支），
-/// 体内零 `Ok(None)` · 零 `debug!`；后端的失败原样往上交（`?`）。
-#[test]
-fn the_auto_deploy_never_refuses_silently() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
-    let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
-    let sig = body.lines().next().unwrap_or_default();
-    assert!(
-        sig.contains("-> Result<String, Said>"),
-        "返回类型变了：{sig} —— `Option` 回来就是「没部署也算成功」那一支回来了"
-    );
-    assert_eq!(
-        dp1_silent_forms(&body),
-        Vec::<&str>::new(),
-        "体内又有了静默的拒绝：\n{body}"
-    );
-    guard_core::find_pinned(&body, "install(machine).await?")
-        .unwrap_or_else(|e| panic!("后端的失败没有原样往上交（{e}）：\n{body}"));
-    // 正控：两种静默写法都认得出来。
-    assert_eq!(
-        dp1_silent_forms("x => return Ok(None),\n tracing::debug!(\"跳过\");"),
-        vec!["Ok(None)", "debug!"]
-    );
-}
-
-/// D2：调用方拿到 `Err` ⇒ 经远端健康通道恰发一条 `kind = "deploy"`（不阻断，照旧接着试连已有后端）。
-#[test]
-fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
-    let prod = guard_core::addr::stream_source_production();
-    let at = guard_core::find_pinned(
-        &prod,
-        "crate::deploy::ensure_backend_deployed(machine).await",
-    )
-    .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
-    let rest = &prod[at..];
-    let err_at = rest.find("Err(said) =>").expect("找不到 Err 那一支");
-    let arm = &rest[err_at..];
-    let arm = &arm[..arm.find("\n        }\n").unwrap_or(arm.len())];
-    guard_core::find_pinned(arm, "kind: \"deploy\"")
-        .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
-    guard_core::find_pinned(arm, "health(payload)")
-        .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
-    assert!(
-        arm.contains("message: said.said"),
-        "发出去的不是那句话本身：\n{arm}"
-    );
-    assert!(
-        arm.contains("detail: said.detail"),
-        "发出去的没带复制详情：\n{arm}"
-    );
-    assert!(
-        arm.contains("None"),
-        "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"
-    );
 }
 
 /// 🔴 **A1：别名块的真相不住 `deploy.rs`**（

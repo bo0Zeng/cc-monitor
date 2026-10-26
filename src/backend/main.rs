@@ -277,6 +277,8 @@ async fn main() {
         control::host_key_migration::migrate_here(&own);
         // 历史注解的「隐藏」换成三态（升级链那一节）：常驻那一位起来时整份换一次、原文留 `.v1`。
         cc_monitor_backend::history::history_annotations::migrate_here(&own);
+        // 各台的常驻流归常驻这一位（机器表里要连的那几台各起一条，`control/feeds.rs`）。
+        control::feeds::start();
     }
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。

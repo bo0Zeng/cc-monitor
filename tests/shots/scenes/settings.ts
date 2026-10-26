@@ -174,11 +174,14 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
     await go("machines");
   }, installingWorld),
-  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时又来两轮结论、本机后端推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 比这一版旧 —— 那两行原位换", async (ctx) => {
+  settings("settings-machines-pushed", "设置 · 机器 · 正在连 · 旧了", "本机后端那几条常驻流交来的两态：devbox 正在连（启动 cc-monitor）、gpu-01 比这一版旧", async () => {
     await go("machines");
-    await ctx.backend.round("devbox", { state: "connecting" });
-    await ctx.backend.round("gpu-01", { state: "up", relation: "older", differs: [] });
     await sleep(800);
+  }, () => {
+    const w = defaultWorld();
+    w.connectingMachines = ["devbox"];
+    w.staleMachines = ["gpu-01"];
+    return w;
   }),
 
   settings("settings-machines-local-refused", "设置 · 机器 · 本机后端被拒", "升级后旧的本机后端还占着口：本机那一行「要更新」＋［重试］，问题行下面是壳写好的下一步（结束哪个进程 · 进程号记在哪）", async () => {

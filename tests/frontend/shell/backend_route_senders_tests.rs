@@ -114,9 +114,12 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 一台的常驻流（`resident-client/feed.rs`）：问活只记一行日志、没有第二条路；
     //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
     ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
-    // 每条远端循环那一轮的结论交本机后端（`stream_source/run.rs::send_round`，`machine-round`）：没交上只记一行日志 ——
-    //   本机通道接上那一刻会整份重交，没有第二条路，成败也不交给任何人。
-    ("run.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 机器页「起」·［重试］叫醒本机后端手上那台的常驻流（`backend_control.rs::wake_backend_feed`，`machine-wake`）：没叫醒只记一行日志 ——
+    //   壳这一条照样重起，那台的状态成品等本机后端下一轮；没有第二条路，成败也不交给任何人。
+    ("backend_control.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // ★ 机器页「停」：请**本机**后端 `machine-stop`（先停它那一条、再在那台跑 `--resident-stop`），经 `remote_resident.rs::stop` 这一口；
+    //   没有第二条路可回落（停那台只经本机后端那条 SSH），失败经共用分流器翻成人话。形状与 `deploy.rs` 那一行同。
+    ("remote_resident.rs", Verdict::UsesRouter),
     // 诊断信息问远端各台的状态（`diagnostics_report.rs::remote_machines`，`machine-read`）：问不到只记一行日志、那几台照「说不出」写。
     (
         "diagnostics_report.rs",

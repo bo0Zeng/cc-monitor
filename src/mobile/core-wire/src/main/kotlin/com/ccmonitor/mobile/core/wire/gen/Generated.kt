@@ -10785,6 +10785,23 @@ data class MachineInterruptsReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class MachineName(
+    val machine: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineName> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            ),
+            { a -> MachineName(a[0] as String) },
+            { v -> arrayOf(v.machine) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class MachineRead(
     val machines: Map<String, MachineState>,
 ) : Ordered {
@@ -10886,27 +10903,6 @@ data class MachineRoundProblem(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class MachineRoundReq(
-    val machine: String,
-    val round: MachineRound,
-    val version: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<MachineRoundReq> = obj(
-            listOf(
-            Field("machine", { Str }, optional = false, nullable = false),
-            Field("round", { MachineRound.ADAPTER }, optional = false, nullable = false),
-            Field("version", { Str }, optional = false, nullable = false),
-            ),
-            { a -> MachineRoundReq(a[0] as String, a[1] as MachineRound, a[2] as String) },
-            { v -> arrayOf(v.machine, v.round, v.version) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class MachineRow(
     val name: String,
     val host: Host,
@@ -10994,6 +10990,25 @@ enum class MachineStateKind(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<MachineStateKind> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MachineStopped(
+    val stopped: String,
+    val pid: Long?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineStopped> = obj(
+            listOf(
+            Field("stopped", { Str }, optional = false, nullable = false),
+            Field("pid", { opt(Lng) }, optional = false, nullable = true),
+            ),
+            { a -> MachineStopped(a[0] as String, a[1] as Long?) },
+            { v -> arrayOf(v.stopped, v.pid) },
+        )
     }
 }
 

@@ -1,7 +1,7 @@
-//! 每台机器的状态（桌面这一端）：按名字一张表。写点三处是本机后端自己的（部署每一步 · 部署收了 · 机器表改了），
-//! 第四处是壳原样交来的接常驻那一轮（`machine-round`）。判定在 `deploy::machine`；每变一次推 `changed {machine, key: 名字, body: 成品}`。
+//! 每台机器的状态（桌面这一端）：按名字一张表。写点四处都是本机后端自己的：部署每一步 · 部署收了 · 机器表改了 ·
+//! 那台的常驻流这一轮怎么了（`control/feeds.rs`，循环交的那一态原样）。判定在 `deploy::machine`；每变一次推 `changed {machine, key: 名字, body: 成品}`。
 //! 本机（键 `<local>`）也是其中一台：这个后端在答就是连着、与手上同一份字节，那一行由这里出（[`local_row`]）。
-//! 后端重启表就空：壳在本机通道接上那一刻把每台最新那一轮重交一遍。
+//! 后端重启表就空：各台的常驻流随后端一起重起，各自重报。
 
 use cmd_wire::machine::{MachineState, Round};
 use deploy::machine::{fold, product, Entry, Fact};
@@ -16,6 +16,8 @@ fn table() -> std::sync::MutexGuard<'static, BTreeMap<String, Entry>> {
     let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
     #[cfg(feature = "shots")]
     shots_deploy::seed(&mut t);
+    #[cfg(feature = "shots")]
+    shots_rounds::seed(&mut t);
     t
 }
 
@@ -122,56 +124,6 @@ fn local_row() -> MachineState {
     product(&e, &copy_core::local_machine(), true, true)
 }
 
-/// `machine-round` 的入参：那台 · 接常驻那一段的一轮结论（通信层交出的那一态原样）· 本侧的产品版本号。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct MachineRoundReq {
-    pub(crate) machine: String,
-    pub(crate) round: Round,
-    pub(crate) version: String,
-}
-
-crate::wire::typed::codes! {
-    /// `machine-round` 的码：`machine` 是空串。
-    pub(crate) enum MachineRoundErr {}
-}
-
-/// `machine-round`：壳交来接常驻那一轮的结论，回那台此刻的成品。
-pub(crate) struct MachineRoundCmd;
-
-impl crate::wire::typed::Command for MachineRoundCmd {
-    const NAME: &'static str = "machine-round";
-    type Req = MachineRoundReq;
-    type Reply = MachineState;
-    type Err = MachineRoundErr;
-}
-
-impl crate::wire::typed::Handle for MachineRoundCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: MachineRoundReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<MachineState, MachineRoundErr>> + Send + 'static
-    {
-        async move {
-            if req.machine.trim().is_empty() {
-                return Err(MachineRoundErr::BadArgs(
-                    crate::common::contract::malformed("missing `machine` (non-empty string)"),
-                ));
-            }
-            Ok(note(
-                &req.machine,
-                Fact::Round {
-                    round: req.round,
-                    version: Some(req.version),
-                },
-            ))
-        }
-    }
-}
-
 /// `machine-read` 的回包：机器表里每台 → 成品。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -263,6 +215,43 @@ mod shots_deploy {
                     }),
                 );
             }
+        }
+    }
+}
+
+/// 截图台架那几台这一轮怎么了：台架的远端各台不由本后端自己那几条常驻流接（带 `shots` 特性编的后端不起它们，`control/feeds.rs::start`），
+/// 每台那一轮的结论由台架起进程时交（环境变量 `CCM_SHOTS_ROUNDS`：`{"<名字>": <Round>}`，同常驻流交的那一形），
+/// 表头一回被取时收下（版本号照常驻流那一处：这份二进制的）。默认构建里这一段不编进去。
+#[cfg(feature = "shots")]
+mod shots_rounds {
+    use super::{fold, Entry, Fact, Round};
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static DONE: AtomicBool = AtomicBool::new(false);
+
+    pub(super) fn seed(t: &mut BTreeMap<String, Entry>) {
+        if DONE.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let Ok(raw) = std::env::var("CCM_SHOTS_ROUNDS") else {
+            return;
+        };
+        let given: BTreeMap<String, Round> = match serde_json::from_str(&raw) {
+            Ok(g) => g,
+            Err(e) => {
+                tracing::error!("CCM_SHOTS_ROUNDS 认不出：{e}");
+                return;
+            }
+        };
+        for (machine, round) in given {
+            fold(
+                t.entry(machine).or_default(),
+                Fact::Round {
+                    round,
+                    version: Some(env!("CC_MONITOR_VERSION").to_string()),
+                },
+            );
         }
     }
 }
