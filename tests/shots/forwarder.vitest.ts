@@ -1,10 +1,12 @@
 /**
- * 截图台架那个按口转发的假 ssh（`real/pool.mjs::forwarderSh`，本机沙箱里 sshd 的登录壳）与它写进本机后端机器表的那一台（`reachHost`）。
+ * 截图台架那个按口转发的假 ssh（`real/pool.mjs::forwarderSh`，本机沙箱里 sshd 的登录壳）与它交本机后端的那张机器表（`reachTable`）。
  *
  * - 按连进来的口认台：第 k 台 ⇒ 那台常驻的套接字目录（`CCM_DATA_DIR`），产品单引号过的那几格原样切回来、stdin 那一行原样交过去。
  * - 只转问常驻那一形：别的命令 · 不认的口一律拒（台架那几台之外谁也够不着）。
  * - 场景演「那一跳断开」的那几条（`refuse`）：一个字不回、退 255，别的命令照转。
- * - 登记的拨号拨的就是转发认的那个口。
+ * - 机器表照场景整张交（`fake/world.ts` 写的那份）：问不到的那台（从没见过 · 会话流被关）照样在表里、停用开关原样带过去；
+ *   问得到的那几台拨的口就是假 ssh 听的口，口取自场景表那一行（A10-17：从前只交问得到的那几台、口现编 ⇒ 从没见过的那台掉出设置页列表）。
+ * - 场景 `~/.ssh/config` 里 devbox 与表里那台同址（后端据地址 · 用户 · 口标「已在列表」；不同址 ⇒ 导入框里 devbox 可勾可改名，撞名判错）。
  *
  * 买不到：sshd 本身与沙箱里那一跳（`--resident-call` 连常驻）不在这里起；台架里每台问没问到由截图那一趟的问题表判（`fake/backend.ts::judgeAsked`）。
  */
@@ -13,14 +15,18 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { defaultWorld, diskOf, LOCAL, REMOTES } from "./fake/world";
+import { reachOf } from "./fake/backend";
 
 const POOL = "./real/pool.mjs";
 type Peer = { port: number; k: number; refuse?: string[] };
-const { forwarderSh, reachHost, PEER_PORT_BASE } = (await import(POOL)) as {
+type Row = { label: string; host: string; port: number; user: string; keyPath: string; connect: boolean };
+const { forwarderSh, reachTable } = (await import(POOL)) as {
   forwarderSh: (peers: Peer[], backend?: string) => string;
-  reachHost: (origin: string, k: number) => { label: string; host: string; port: number };
-  PEER_PORT_BASE: number;
+  reachTable: (table: string | undefined, reach: [string, { refuse: string[] }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
 };
+/** 转发那几格用的口（任意，只要转发表里写的是它）。 */
+const PEER_PORT_BASE = 2201;
 
 /** 产品那一形的命令行（`remote_ask::command_line`：落点 ＋ 逐格单引号）。 */
 const sq = (a: string): string => "'" + a.split("'").join("'\\''") + "'";
@@ -84,9 +90,56 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     expect([injected.status, injected.stdout]).toEqual([127, ""]);
   });
 
-  it("写进机器表的那一台拨的就是转发认的那个口", () => {
-    const r = reachHost("gpu-01", 1);
-    expect(r.label).toBe("gpu-01");
-    expect([r.host, r.port]).toEqual(["127.0.0.1", PEER_PORT_BASE + 1]);
+});
+
+describe("交本机后端的机器表", () => {
+  /** 一个世界交本机后端的那张表与假 ssh 听的那几个口（同 `pool.mjs` 起世界那一段）。 */
+  const tableOf = (w: ReturnType<typeof defaultWorld>) => {
+    const files = diskOf(w)[LOCAL].files;
+    return { files, ...reachTable(files[".cc-monitor/machines.json"], Object.entries(reachOf(w))) };
+  };
+
+  it("从没见过的那台照样在表里、停用开关原样带过去；问得到的那几台拨的就是假 ssh 听的口", () => {
+    const w = defaultWorld();
+    w.unseenMachines = ["gpu-01"];
+    for (const h of (w.config.remote as { hosts: Row[] }).hosts) if (h.label === "gpu-01") h.connect = false;
+    const { hosts, peers } = tableOf(w);
+    expect(hosts.map((h) => h.label)).toEqual(REMOTES);
+    expect(hosts.find((h) => h.label === "gpu-01")?.connect).toBe(false);
+    expect(peers.map((p) => p.origin)).toEqual(["devbox", "win-laptop"]);
+    for (const p of peers) {
+      const row = hosts.find((h) => h.label === p.origin);
+      expect([row?.host, row?.port]).toEqual(["127.0.0.1", p.port]);
+    }
+    expect(new Set(hosts.map((h) => h.port)).size).toBe(hosts.length);
+  });
+
+  it("场景 ~/.ssh/config 里 devbox 与表里那台同址（地址 · 用户 · 口）", () => {
+    const { files, hosts } = tableOf(defaultWorld());
+    const block = files[".ssh/config"].split(/^Host /m).find((b) => b.split("\n")[0].trim() === "devbox") ?? "";
+    const opt = (k: string): string | undefined => block.match(new RegExp(`^\\s+${k}\\s+(\\S+)`, "m"))?.[1];
+    const row = hosts.find((h) => h.label === "devbox");
+    expect([opt("HostName"), opt("User"), Number(opt("Port") ?? 22)]).toEqual([row?.host, row?.user, row?.port]);
+  });
+
+  it("每个场景的世界：表照场景整张交、问得到的那几台各有自己的口", async () => {
+    const { SCENES } = await import("./scenes");
+    const bad: string[] = [];
+    for (const s of SCENES) {
+      const w = s.world();
+      try {
+        const { hosts, peers } = tableOf(w);
+        const labels = ((w.config.remote as { hosts?: Row[] } | undefined)?.hosts ?? []).map((h) => h.label);
+        if (hosts.map((h) => h.label).join() !== labels.join()) bad.push(`${s.id}：表里 ${hosts.map((h) => h.label).join()}，场景写的 ${labels.join()}`);
+        if (new Set(peers.map((p) => p.port)).size !== peers.length) bad.push(`${s.id}：两台问得到的同一个口`);
+      } catch (e) {
+        bad.push(`${s.id}：${(e as Error).message}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("问得到的那台在场景表里没有那一行 ⇒ 拒（不现编一台）", () => {
+    expect(() => reachTable(JSON.stringify({ version: 1, hosts: [] }), [["devbox", { refuse: [] }]])).toThrow(/devbox/);
   });
 });
