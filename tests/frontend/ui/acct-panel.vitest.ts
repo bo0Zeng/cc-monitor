@@ -62,7 +62,7 @@ describe("账号面板", () => {
 
   it("★ 那份账那台读不出 ⇒ 头下照抄后端写好的那一句（text），面板不自己补一句", () => {
     appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
-    const unreadable = { state: "unreadable" as const, reason: "原因一句", detail: "详情", path: null, now: 1, accounts: [], unseen: [], candidates: [], text: "后端那一句", fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null };
+    const unreadable = { state: "unreadable" as const, reason: "原因一句", detail: "D-detail", path: null, now: 1, accounts: [], unseen: [], candidates: [], text: "后端那一句", fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null };
     appStore.quota.set(new Map([["<local>", unreadable]]));
     openAccountPanel("s1", "<local>", host);
     expect(panel().textContent).toContain("后端那一句");
