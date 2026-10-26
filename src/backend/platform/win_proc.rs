@@ -1,6 +1,6 @@
-//! Windows 上「一个 pid 还在不在 · 它哪一刻起的 · 等它死」的 Win32 读法 —— 唯一住址。
+//! Windows 上「一个 pid 还在不在 · 它哪一刻起的 · 停它」的 Win32 读法 —— 唯一住址（开进程句柄与等它退出住 `pidwatch-core`，这里从那里开）。
 //!
-//! `proc.rs` 的判活三件与 `pidwatch` 的看守在 Windows 上的读法住这里；判定规则一条都不在这里
+//! `proc.rs` 的判活三件在 Windows 上的读法住这里；判定规则一条都不在这里
 //! （「exists / captured / current 三者怎么组合成存活」只住 `liveness.rs`）。
 //! 用 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` ＋ `GetExitCodeProcess == STILL_ACTIVE` ＋ `GetProcessTimes`，与 Linux 那一臂同契约：
 //! ① 「拒绝访问」算存在：`pid_alive` 的契约是存在性（Linux 的 `/proc/<pid>` 对别的用户的进程照样存在），不是「我能不能碰它」；
@@ -10,11 +10,12 @@
 //! `HANDLE` = 指针宽度（与 `std::os::windows::io::RawHandle` 同形）、`BOOL` = `i32`、`DWORD` = `u32`。
 //!
 //! 买不到：这份文件只在 Windows 编译时存在，门禁买到的是 `winchk-backend` 的「编得过」；`OpenProcess` 的错误码、`WaitForSingleObject`
-//! 在进程退出那一刻醒，都没有真机读数。能在 Linux 上验的只有纯函数那一半（`proc.rs::unix_secs_from_filetime`）与看守和 Linux 臂的逐形对拍。
+//! 在进程退出那一刻醒，都没有真机读数。能在 Linux 上验的只有纯函数那一半（`proc.rs::unix_secs_from_filetime`）。
 
 #![cfg(windows)]
 
-use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+use pidwatch_core::{open, Opened, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE};
+use std::os::windows::io::{AsRawHandle, OwnedHandle, RawHandle};
 
 /// Win32 `FILETIME`：两段 32 位拼成的 100ns 计数（自 1601-01-01 UTC）。
 #[repr(C)]
@@ -26,7 +27,6 @@ struct FileTime {
 
 #[link(name = "kernel32")]
 extern "system" {
-    fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> RawHandle;
     fn GetExitCodeProcess(process: RawHandle, exit_code: *mut u32) -> i32;
     fn GetProcessTimes(
         process: RawHandle,
@@ -41,16 +41,8 @@ extern "system" {
     fn SetThreadPriority(thread: RawHandle, priority: i32) -> i32;
 }
 
-/// 只读查询（退出码 · 时间）。跨完整性级别也开得出来 —— monitor 侧用的正是这一个。
-const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x0000_1000;
-/// 允许 `WaitForSingleObject` 等这个句柄。
-const SYNCHRONIZE: u32 = 0x0010_0000;
 /// `GetExitCodeProcess` 对还在跑的进程回的那个值。
 const STILL_ACTIVE: u32 = 259;
-/// `ERROR_ACCESS_DENIED`：进程**在**，只是我们没权限开它。
-const ERROR_ACCESS_DENIED: i32 = 5;
-/// `WaitForSingleObject` 的「一直等」—— 不是节拍，是「只等内核那一个事件」（同 Linux 臂 `poll` 的 `-1`）。
-const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
 /// `WaitForSingleObject` 的「那个对象被触发了」（进程句柄 = 进程已退出）。
 const WAIT_OBJECT_0: u32 = 0;
 /// `WaitForSingleObject` 的「期限到了，对象没被触发」。
@@ -58,50 +50,9 @@ const WAIT_TIMEOUT: u32 = 0x0000_0102;
 /// 允许 `TerminateProcess`。
 const PROCESS_TERMINATE: u32 = 0x0000_0001;
 
-/// 开一个进程句柄的三种结局 —— **三种，不压成 `Option`**：
-/// 「没权限」与「不在了」在判活里方向相反（前者是存在，后者是死），压成一个 `None` 就是
-/// 「一个值装了两件事」（`platform/tmux.rs::TmuxPlatform` 头注那条病）。
-pub(crate) enum Opened {
-    /// 开到了。句柄归调用方，`Drop` 时关（`OwnedHandle`）。
-    Handle(OwnedHandle),
-    /// 进程在，但本进程没权限开它。
-    Denied,
-    /// 开不出来、也不是权限问题 ⇒ 当它不在（pid 不存在时 Win32 回 `ERROR_INVALID_PARAMETER`）。
-    Gone(std::io::Error),
-}
-
-fn open(pid: u32, access: u32) -> Opened {
-    if pid == 0 {
-        // pid 0 是「System Idle Process」，不是任何会话的进程；Win32 对它回参数错。
-        return Opened::Gone(std::io::Error::from(std::io::ErrorKind::InvalidInput));
-    }
-    // SAFETY：`OpenProcess` 只按值收三个整数，不解引用任何指针；失败回空指针、错误码在线程的
-    // last-error 上（紧接着读，中间不调别的 Win32）。成功时回的是一个**我们独占**的新句柄，
-    // 交给 `OwnedHandle` 接管（唯一持有者，`Drop` 时 `CloseHandle`）。
-    let raw = unsafe { OpenProcess(access, 0, pid) };
-    if raw.is_null() {
-        let e = std::io::Error::last_os_error();
-        return if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) {
-            Opened::Denied
-        } else {
-            Opened::Gone(e)
-        };
-    }
-    // SAFETY：见上 —— 非空即是刚分配、无人持有的合法进程句柄。
-    Opened::Handle(unsafe { OwnedHandle::from_raw_handle(raw) })
-}
-
 /// 只读查询用的句柄（`pid_alive` / `proc_starttime`）。
 pub(crate) fn open_for_query(pid: u32) -> Opened {
     open(pid, PROCESS_QUERY_LIMITED_INFORMATION)
-}
-
-/// 看守用的句柄（多一个 `SYNCHRONIZE`）。
-///
-/// ★ 握着它的这段时间里，**这个 pid 不会被系统复用**（进程对象被我们的句柄钉着）——
-/// 与 Linux 臂 `pidfd` 「绑的是进程实例本身」是同一个性质。
-pub(crate) fn open_for_wait(pid: u32) -> Opened {
-    open(pid, PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE)
 }
 
 /// 这个进程**此刻**还在跑吗。`None` = 这一刻问不出来（交给调用方按「读不到不判死」处置）。
@@ -133,19 +84,6 @@ pub(crate) fn creation_filetime(h: &OwnedHandle) -> Option<u64> {
         )
     };
     (ok != 0).then(|| (u64::from(creation.high) << 32) | u64::from(creation.low))
-}
-
-/// **阻塞到这个进程退出**。`Ok` = 它退出了；`Err` = 等这件事本身出错了（调用方**不许**当它死了）。
-///
-/// 零节拍：一直等内核那一个事件，不带任何超时（同 Linux 臂 `poll(pidfd, POLLIN, -1)`）。
-pub(crate) fn wait_for_exit(h: &OwnedHandle) -> Result<(), std::io::Error> {
-    // SAFETY：句柄有效（同上），且带 `SYNCHRONIZE`（由 `open_for_wait` 开出来的）。
-    let r = unsafe { WaitForSingleObject(h.as_raw_handle(), WAIT_FOREVER) };
-    if r == WAIT_OBJECT_0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
 }
 
 /// 开一个「停得了」的句柄：查询 ＋ 等 ＋ 强杀（`platform/signal.rs::stoppable` 的 Windows 臂）。
