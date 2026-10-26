@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultWorld, diskOf, LOCAL, REMOTES } from "./fake/world";
 import { reachOf } from "./fake/backend";
 import { HOST_KEYS } from "./fake/machine";
+import { UNTIL_CEILING } from "../test-support/wall-ceiling";
 
 const POOL = "./real/pool.mjs";
 type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install" };
@@ -170,7 +171,7 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     const sock = path.join(dir, "do.sock");
     const srv = spawn(doer, ["serve", sock, backend], { stdio: "ignore" });
     try {
-      await vi.waitFor(() => expect(existsSync(sock)).toBe(true), { timeout: 5000 });
+      await vi.waitFor(() => expect(existsSync(sock)).toBe(true), UNTIL_CEILING);
       const ask = (...a: string[]) => spawnSync(doer, ["ask", sock, ...a], { encoding: "utf8" });
       const r = ask("--resident-ensure", "--replace");
       expect([r.status, r.stdout, r.stderr]).toEqual([3, "ran -- --resident-ensure --replace\n", "said -- --resident-ensure --replace\n"]);
