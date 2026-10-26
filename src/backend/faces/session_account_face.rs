@@ -21,6 +21,7 @@ pub(crate) struct SessionAccountReq {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum SessionAccountWhen {
     Now,
     Last,
@@ -31,6 +32,7 @@ pub(crate) enum SessionAccountWhen {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionAccountBadge {
     /// 画成「上次的」（幽灵头像）：不是此刻在跑的那个号。
     pub(crate) ghost: bool,
