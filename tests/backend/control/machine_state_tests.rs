@@ -211,3 +211,28 @@ fn the_product_matches_the_cross_language_golden() {
         "机器状态成品与金样对不上",
     );
 }
+
+/// 本机就是一台远端：本机后端在答 ⇒ 它自己那一行（键 `<local>`）由它出，与远端各台同一份成品，名字在这里取一次；
+/// 机器表里没有它，也照样带出。
+#[test]
+fn the_local_row_comes_from_this_backend() {
+    let got = read_in(&[("ms-local-peer".to_string(), true)]);
+    let local = got
+        .get(cmd_wire::machine::LOCAL)
+        .expect("机器状态里没有本机那一行");
+    let mut e = Entry::default();
+    fold(
+        &mut e,
+        Fact::Round {
+            round: Round::Up {
+                relation: Relation::Same,
+                differs: vec![],
+            },
+            version: None,
+        },
+    );
+    let want = product(&e, &copy_core::copy_text("remote.cards.local", &[]), true, true);
+    assert_eq!(local, &want);
+    assert_eq!(local.state, MachineStateKind::Up);
+    assert!(got.contains_key("ms-local-peer"), "远端那台被挤掉了");
+}
