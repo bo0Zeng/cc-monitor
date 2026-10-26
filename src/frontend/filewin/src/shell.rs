@@ -2125,29 +2125,37 @@ impl FileWindow {
         let Some(mut p) = self.copy_prompt.clone() else {
             return;
         };
-        let (mut go, mut cancel) = (false, false);
-        let (_, esc) = modal(ui.ctx(), "filewin-copy-as", |ui| {
-            ui.heading(copy_text(
-                "rsFilewinShell.copyUi.heading",
-                &[("name", &p.src_name.to_string())],
-            ));
-            go |= prompt_field(ui, &mut p.new_name);
-            self.prompt_error_ui(ui);
-            ui.label(&copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
-            ui.horizontal(|ui| {
-                if ui.button(super::copy::COPY_LABEL.as_str()).clicked() {
-                    go = true;
-                }
-                if ui
-                    .button(&copy_text("rsFilewinShell.copyUi.cancel", &[]))
-                    .clicked()
-                {
-                    cancel = true;
-                }
-            });
-        });
+        let mut go = false;
+        let title = copy_text(
+            "rsFilewinShell.copyUi.heading",
+            &[("name", &p.src_name.to_string())],
+        );
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-copy-as",
+            &title,
+            |ui| {
+                go |= super::kit::dialog_field(ui, &mut p.new_name);
+                self.prompt_error_ui(ui);
+                ui.label(copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
+            },
+            &[
+                (
+                    copy_text("rsFilewinShell.copyUi.cancel", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    super::copy::COPY_LABEL.to_string(),
+                    super::kit::Btn::Primary,
+                ),
+            ],
+            1,
+            0,
+        );
+        go |= hit == Some(1);
+        let cancel = hit == Some(0);
         self.copy_prompt = Some(p);
-        if cancel || esc {
+        if cancel {
             self.cancel_copy();
         } else if go {
             let ctx = ui.ctx().clone();
@@ -5464,41 +5472,6 @@ pub(crate) fn fit_label(ui: &mut egui::Ui, text: String, reserve: f32) {
         ui.add(egui::Label::new(text.as_str()).truncate())
             .on_hover_text(text);
     });
-}
-
-/// 模态框离窗口边留多少。
-const MODAL_EDGE: f32 = 8.0;
-
-/// 摆一个模态框，外加两件每个框都要的事：框不比窗口宽（窄窗口里不被裁掉）；
-/// Esc ＝ 取消（只认最上面那个框；下拉开着时 Esc 先收下拉）。回 `(框里画的结果, 按了 Esc)`。
-pub(crate) fn modal<R>(
-    ctx: &egui::Context,
-    id: &str,
-    add: impl FnOnce(&mut egui::Ui) -> R,
-) -> (R, bool) {
-    let chrome = egui::Frame::popup(&ctx.global_style())
-        .total_margin()
-        .sum()
-        .x;
-    let room = (ctx.content_rect().width() - chrome - 2.0 * MODAL_EDGE).max(0.0);
-    let r = egui::Modal::new(egui::Id::new(id)).show(ctx, |ui| {
-        ui.set_max_width(room);
-        add(ui)
-    });
-    let esc = r.is_top_modal
-        && !r.any_popup_open
-        && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
-    (r.inner, esc)
-}
-
-/// 框里那个单行输入框：框刚摆出来（没有谁拿着焦点）就把焦点给它；回 ＝ 在它里面按了回车。
-pub(crate) fn prompt_field(ui: &mut egui::Ui, text: &mut String) -> bool {
-    let r = ui.text_edit_singleline(text);
-    let entered = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    if !entered && ui.memory(|m| m.focused().is_none()) {
-        r.request_focus();
-    }
-    entered
 }
 
 /// 查找框的 egui id（Ctrl+F 把焦点给它）。

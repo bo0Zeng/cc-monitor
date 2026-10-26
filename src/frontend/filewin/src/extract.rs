@@ -189,23 +189,32 @@ impl ExtractBoard {
     /// 画撞名那一问（模态）。「正在解」与结局是「进度」表里的一行（`super::progress`，那一句从 [`outcome_text`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
         let asking = self.asking.lock().unwrap().as_ref().map(|(s, _)| s.clone());
-        if let Some(said) = asking {
-            let (mut fresh, mut skip) = (false, false);
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-extract-taken", |ui| {
+        let Some(said) = asking else {
+            return;
+        };
+        // Esc / 点压暗的底 ＝「不解了」（第 0 颗）。
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-extract-taken",
+            EXTRACT_LABEL.as_str(),
+            |ui| {
                 ui.label(copy_text("rsFilewinExtract.ask.taken", &[("said", &said)]));
-                ui.horizontal(|ui| {
-                    fresh = ui
-                        .button(copy_text("rsFilewinExtract.ask.fresh", &[]))
-                        .clicked();
-                    skip = ui
-                        .button(copy_text("rsFilewinExtract.ask.skip", &[]))
-                        .clicked();
-                });
-            });
-            skip |= esc;
-            if fresh || skip {
-                self.settle(fresh);
-            }
+            },
+            &[
+                (
+                    copy_text("rsFilewinExtract.ask.skip", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text("rsFilewinExtract.ask.fresh", &[]),
+                    super::kit::Btn::Primary,
+                ),
+            ],
+            1,
+            0,
+        );
+        if let Some(i) = hit {
+            self.settle(i == 1);
         }
     }
 }
