@@ -798,7 +798,8 @@ fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
         payload: c.payload.clone(),
         agent: Some(c.agent.clone()),
         cwd: some(&c.cwd),
-        ccm_sid: some(&c.ccm_sid),
+        // `--ccm-sid` 在读命令行那一下已按会话 id 的值域判过（`ccm_line::argv`）：空 ⇒ 没给。
+        ccm_sid: c.ccm_sid.parse().ok(),
         width: c.size.as_ref().map(|(w, _)| w.clone()),
         height: c.size.as_ref().map(|(_, h)| h.clone()),
         // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。

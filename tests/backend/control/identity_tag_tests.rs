@@ -87,25 +87,39 @@ fn an_in_process_tag_without_a_fake_tmux_blows_up() {
     );
 }
 
+/// 打上去的 sid 是会话 id（`cmd_wire::Sid`，全仓一个值域）：真 sid（UUID，带 `-`）照打。
 #[test]
 fn a_real_session_id_is_accepted() {
-    assert!(sid_is_safe("9d66c46d-bf88-4f99-877e-455555555555"));
-    assert!(sid_is_safe("a_b-1"));
+    let _iso = door::isolate();
+    assert_ne!(
+        tag(std::process::id(), "9d66c46d-bf88-4f99-877e-455555555555"),
+        Outcome::RejectedSid
+    );
 }
 
-/// fail closed：能破坏 tmux 格式串 / 命令语义的都不许过。
-///
-/// ⚠ **`-t` 这种「像旗标」的值刻意不在这张表里** —— 它由 `[A-Za-z0-9_-]` 放行，
-/// 而那是对的：`set-option -t <handle> @ccm_sid <值>` 里的值在非选项参数之后，
-/// tmux 不会把它再当选项解析；且我们 argv 直传、不过 shell。
-/// 写在这里是因为「看起来危险就该禁」是个很容易顺手加进来的错判 —— 真 sid（UUID）
-/// 本来就带 `-`，收窄到禁 `-` 会把正常会话全挡掉。
+/// fail closed：会话 id 值域外的一律不打 —— 能破坏 tmux 格式串 / 命令语义的，连同 `_`（值域里没有）、`-` 开头与超长。
 #[test]
-fn a_sid_that_could_break_the_format_string_is_rejected() {
-    for bad in ["", "a b", "#{session_name}", "a;b", "$(id)", "a\nb", "a'b"] {
-        assert!(!sid_is_safe(bad), "{bad:?} 不该被放行");
+fn a_sid_outside_the_session_id_domain_is_rejected() {
+    let _iso = door::isolate();
+    let long = "x".repeat(shell_quote_core::SESSION_ID_MAX + 1);
+    for bad in [
+        "",
+        "a b",
+        "#{session_name}",
+        "a;b",
+        "$(id)",
+        "a\nb",
+        "a'b",
+        "a_b-1",
+        "-t",
+        long.as_str(),
+    ] {
+        assert_eq!(
+            tag(std::process::id(), bad),
+            Outcome::RejectedSid,
+            "{bad:?} 不该被放行"
+        );
     }
-    assert!(!sid_is_safe(&"x".repeat(129)), "超长 sid 不该被放行");
 }
 
 /// ★ 空 pane 目标必须挡住 —— 实测 `-t ''` 会静默解析成「某个会话」。

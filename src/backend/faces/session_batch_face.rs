@@ -41,7 +41,12 @@ pub(crate) fn with_deps_as<T>(
             name: name.to_string(),
             payload: line.to_string(),
             cwd: None,
-            ccm_sid: Some(sid.to_string()),
+            ccm_sid: Some(sid.parse::<cmd_wire::Sid>().map_err(|e| {
+                crate::control::launch::CmdErr::from((
+                    "bad_args",
+                    crate::common::contract::malformed(&e.to_string()),
+                ))
+            })?),
             agent: None,
             width: None,
             height: None,

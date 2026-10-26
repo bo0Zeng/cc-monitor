@@ -82,7 +82,7 @@ fn list_sessions_from(snap: &SessionSnapshot) -> Result<Vec<(String, String)>, C
         .collect())
 }
 
-/// 探测格式串。三个字段用 TAB 分隔：`session_id` 恒是 `$<数字>`，`@ccm_sid` 的字符集收在 `[A-Za-z0-9_-]`
+/// 探测格式串。三个字段用 TAB 分隔：`session_id` 恒是 `$<数字>`，`@ccm_sid` 是会话 id（`cmd_wire::Sid`，字符集 `[A-Za-z0-9-]`）
 /// （`launch::parse_request`），`session_windows` 对存在的会话恒为正整数。
 ///
 /// `#{session_windows}`（Gate 3 用）放在同一次探测里：多一次 `display-message` 就多一个 TOCTOU 窗口。
@@ -247,27 +247,6 @@ pub(crate) fn requester(client: Option<&str>) -> Result<Option<String>, CmdErr> 
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`client` must be 1-32 chars of [a-z0-9-]: {c:?}"
-            )),
-        )),
-    }
-}
-
-/// 请求里指的会话（`sid`，要的是挂着它的那个窗格；typed 入参已按类型解好）：没给 ⇒ `None`；
-/// 给了就得是 `@ccm_sid` 的形状（1–128 个 `[A-Za-z0-9_-]`）。
-pub(crate) fn sid_shape(sid: Option<&str>) -> Result<Option<String>, CmdErr> {
-    match sid {
-        None => Ok(None),
-        Some(s)
-            if (1..=128).contains(&s.len())
-                && s.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') =>
-        {
-            Ok(Some(s.to_string()))
-        }
-        Some(other) => Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "`sid` must be 1-128 chars of [A-Za-z0-9_-]: {other:?}"
             )),
         )),
     }

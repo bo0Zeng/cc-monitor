@@ -49,5 +49,8 @@ fn every_wire_agent_cell_is_an_agent_kind() {
 fn an_agent_kind_goes_on_the_wire_as_the_bare_string() {
     let t: TermSession = serde_json::from_str(r#"{"sid":"s1","agent":"codex"}"#).unwrap();
     assert_eq!(t.agent, Some(AgentKind::new("codex")));
-    assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"sid":"s1","agent":"codex"}"#);
+    assert_eq!(
+        serde_json::to_string(&t).unwrap(),
+        r#"{"sid":"s1","agent":"codex"}"#
+    );
 }

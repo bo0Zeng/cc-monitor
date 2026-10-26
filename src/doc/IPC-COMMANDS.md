@@ -11340,9 +11340,9 @@ name: string,
  */
 client?: string, 
 /**
- * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（1–128 个 `[A-Za-z0-9_-]`）。
+ * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（会话 id 的形状由 `Sid` 解码就判）。
  */
-sid?: string, };
+sid?: Sid, };
 type Killed = { 
 /**
  * 杀掉的 tmux 会话名。
@@ -11352,6 +11352,7 @@ session: string,
  * 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
  */
 killed: true, };
+type Sid = string;
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`

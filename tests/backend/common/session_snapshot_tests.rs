@@ -184,3 +184,12 @@ fn a_tab_starved_line_is_dropped_instead_of_becoming_a_session() {
     assert_eq!(taken.running("sid-a"), Some("w-cc"));
     assert_eq!(taken.running("sid-b"), Some("w-cc"));
 }
+
+/// 窗格上挂的值只认会话 id（`cmd_wire::Sid`，全仓一个值域）：没展开的 `#{…}` 字面量 · `_` · `-` 开头都不当 sid。
+#[test]
+fn only_session_ids_count_as_pane_sids() {
+    assert_eq!(
+        pane_sids("sid-a", "#{@ccm_sid} a_b -x sid-b "),
+        vec!["sid-a".to_string(), "sid-b".to_string()]
+    );
+}
