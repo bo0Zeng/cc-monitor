@@ -122,8 +122,9 @@ function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaRead
   if (quota === null) {
     const retry = button({ label: copyText("acct.now.retry"), kind: "ghost", size: "compact", onClick: () => void refreshQuota(o.origin) });
     out.push(banner("error", copyText("acct.now.readFail"), [retry]));
-  } else if (quota.state === "unreadable") {
-    out.push(banner("warn", quota.text ?? quota.reason ?? copyText("acct.now.readFail"), [], quota.detail ?? ""));
+  } else if (quota.state === "unreadable" && quota.text !== null) {
+    // 那一句后端写好（`quota_rows::head_text`：读不出恒有），面板照抄。
+    out.push(banner("warn", quota.text, [], quota.detail ?? ""));
   }
   return out;
 }

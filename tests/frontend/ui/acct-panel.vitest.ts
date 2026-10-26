@@ -59,6 +59,19 @@ describe("账号面板", () => {
     expect(btn(copyText("acct.now.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
   });
+
+  it("★ 那份账那台读不出 ⇒ 头下照抄后端写好的那一句（text），面板不自己补一句", () => {
+    appStore.sessionRotation.set(new Map([["s1", { origin: "<local>", read: view }]]));
+    const unreadable = { state: "unreadable" as const, reason: "原因一句", detail: "详情", path: null, now: 1, accounts: [], unseen: [], candidates: [], text: "后端那一句", fiveHour: null, names: { accounts: {}, slots: {} }, verdict: null };
+    appStore.quota.set(new Map([["<local>", unreadable]]));
+    openAccountPanel("s1", "<local>", host);
+    expect(panel().textContent).toContain("后端那一句");
+    expect(panel().textContent).not.toContain("原因一句");
+    // 成品里没有那一句（违约）⇒ 不拿 reason 或自己的「读取失败」顶上。
+    appStore.quota.set(new Map([["<local>", { ...unreadable, text: null }]]));
+    expect(panel().textContent).not.toContain("原因一句");
+    expect(panel().textContent).not.toContain(copyText("acct.now.readFail"));
+  });
 });
 
 /**
