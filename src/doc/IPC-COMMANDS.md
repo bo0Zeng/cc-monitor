@@ -443,7 +443,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
-- `groups` —— 这台的组那一半动了（家在这台的组建 · 改名 · 解散，或这台会话进出组 · 固定变了）：看着组的那一屏重问本机后端 `groups-read`
+- `groups` —— 这台的组那一片动了（这台有组员的组改名 · 解散，或这台会话进出组 · 固定变了）：看着组的那一屏重问本机后端 `groups-read`
 
 #### `RereadWhy`
 
@@ -4160,7 +4160,7 @@ autoAnswer?: AutoAnswer,
  */
 resumeWith?: ResumeWith, 
 /**
- * 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+ * 这条会话在哪几组（组 id；那一组的名字等抄在这一台注解文件 `groups` 那一节，每台只记自己有组员的那几组）。一条会话可在几组；空 ＝ 不在组里。
  */
 groups?: Array<string>, 
 /**
@@ -4186,14 +4186,6 @@ hide?: HideAsk | null,
  * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
  */
 autoAnswer?: AutoAnswer | null, 
-/**
- * 进这几组（组 id；已在的不重记）。组住哪台不在这里核：组员关系只住会话这一台。
- */
-join?: Array<string> | null, 
-/**
- * 出这几组（不在的不管）。同一组既进又出 ⇒ 出。
- */
-leave?: Array<string> | null, 
 /**
  * 固定。
  */
@@ -4228,7 +4220,7 @@ removed: boolean, };
 
 #### `groups-here`
 
-这台的组那一半：家在这台的组 ＋ 带组或固定的会话。
+这台的组那一半：这台有组员的那几片 ＋ 带组或固定的会话。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --groups-here`
 
@@ -4240,7 +4232,7 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
-type HereGroup = { id: string, name: string, made: number, };
+type HereGroup = { id: string, name: string, made: number, named: number, };
 type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
 type MemberFacts = { 
 /**
@@ -4353,7 +4345,7 @@ type GroupKnown = { "is": "now" } | { "is": "before", at: string, } | { "is": "u
 type GroupMember = { origin: string, sid: string, pinned: boolean, face: SessionFace, facts: MemberFacts, };
 type GroupRead = { id: string, 
 /**
- * 名字（家那台没答过 ⇒ 缺）。
+ * 名字：各片里 `named` 最新的那一份（哪一片都没有记录 ⇒ 缺）。
  */
 name: string | null, 
 /**
@@ -4361,9 +4353,13 @@ name: string | null,
  */
 title: string, 
 /**
- * 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
+ * 各片里最早的那个建组时刻（没有记录 ⇒ 缺）。
  */
-home: string | null, made: number | null, known: GroupKnown, 
+made: number | null, 
+/**
+ * 取到的那个名字几时起的（没有记录 ⇒ 缺）：进组时同名字一起抄进组员那一台。
+ */
+named: number | null, known: GroupKnown, 
 /**
  * 组员：照问的台序、再照 sid。
  */
@@ -4474,16 +4470,17 @@ type Words = string;
 
 #### `groups-write`
 
-建 · 改名 · 解散家在这台的组。
+建组 · 进出组 · 改名与解散扇出给各片。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --groups-write`
+收 `args` · 可撤 · CLI：`ccm -- --groups-write`
 
 入参 `GroupsWriteReq` · 回包 `GroupsWritten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type GroupsWriteReq = { "op": "make", name: string, } | { "op": "rename", id: string, name: string, } | { "op": "dissolve", id: string, };
-type GroupsWritten = { "is": "made" } & HereGroup | { "is": "renamed" } & HereGroup | { "is": "dissolved", id: string, };
-type HereGroup = { id: string, name: string, made: number, };
+type GroupMissed = { origin: string, why: string, };
+type GroupsWriteReq = { "op": "make", name: string, } | { "op": "move", sid: string, join?: HereGroup | null, leave?: string | null, } | { "op": "rename", id: string, name: string, machines: Array<string>, } | { "op": "dissolve", id: string, machines: Array<string>, };
+type GroupsWritten = { "is": "made" } & HereGroup | { "is": "moved", sid: string, groups: Array<string>, } | { "is": "sent", id: string, missed: Array<GroupMissed>, };
+type HereGroup = { id: string, name: string, made: number, named: number, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
@@ -4510,7 +4507,7 @@ type GroupKnown = { "is": "now" } | { "is": "before", at: string, } | { "is": "u
 type GroupMember = { origin: string, sid: string, pinned: boolean, face: SessionFace, facts: MemberFacts, };
 type GroupRead = { id: string, 
 /**
- * 名字（家那台没答过 ⇒ 缺）。
+ * 名字：各片里 `named` 最新的那一份（哪一片都没有记录 ⇒ 缺）。
  */
 name: string | null, 
 /**
@@ -4518,9 +4515,13 @@ name: string | null,
  */
 title: string, 
 /**
- * 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
+ * 各片里最早的那个建组时刻（没有记录 ⇒ 缺）。
  */
-home: string | null, made: number | null, known: GroupKnown, 
+made: number | null, 
+/**
+ * 取到的那个名字几时起的（没有记录 ⇒ 缺）：进组时同名字一起抄进组员那一台。
+ */
+named: number | null, known: GroupKnown, 
 /**
  * 组员：照问的台序、再照 sid。
  */
@@ -5089,7 +5090,7 @@ autoAnswer?: AutoAnswer,
  */
 resumeWith?: ResumeWith, 
 /**
- * 这条会话在哪几组（组 id；组本身住它家那一台的注解文件 `groups` 那一节）。一条会话可在几组；空 ＝ 不在组里。
+ * 这条会话在哪几组（组 id；那一组的名字等抄在这一台注解文件 `groups` 那一节，每台只记自己有组员的那几组）。一条会话可在几组；空 ＝ 不在组里。
  */
 groups?: Array<string>, 
 /**
@@ -14576,9 +14577,9 @@ type Words = string;
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
-| `--groups-here` | ＝ 帧命令 `groups-here`：这台的组那一半：家在这台的组 ＋ 带组或固定的会话 |
+| `--groups-here` | ＝ 帧命令 `groups-here`：这台的组那一半：这台有组员的那几片 ＋ 带组或固定的会话 |
 | `--groups-read` | ＝ 帧命令 `groups-read`：问到各台的组那一半、并成一份 |
-| `--groups-write` | ＝ 帧命令 `groups-write`：建 · 改名 · 解散家在这台的组 |
+| `--groups-write` | ＝ 帧命令 `groups-write`：建组 · 进出组 · 改名与解散扇出给各片 |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |
 | `--history-branch` | ＝ 帧命令 `history-branch`：主线外清单 |
 | `--history-browse` | ＝ 帧命令 `history-browse`：历史页那一列（几台并成一列） |

@@ -215,7 +215,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
     "src/frontend/ui/tab-quota.module.css", // 停发标那一格的样式
   ],
-  // ④ 拖拽：落点算术；建组交给分组那一份（组的 id 由家那台起）。
+  // ④ 拖拽：落点算术；建组交给分组那一份（组的 id 由本机起）。
   // 「松开 → 独立窗口」进了文案表 ⇒ 取文口。
   "src/frontend/ui/tab-bar-drag.ts": [
     "src/frontend/ui/copy-table.ts",
@@ -229,7 +229,6 @@ const DEPS: Record<string, readonly string[]> = {
   // 固定复活的空态文字住文案表（说到会话状态的字一处定）。
   "src/frontend/ui/tab-bar-prefs.ts": [
     "src/frontend/ui/copy-table.ts",
-    "src/frontend/ui/ipc/origin.ts", // 刚建的组家在本机（`LOCAL_ORIGIN`）
     "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序没交成出声（INVARIANTS §12）
     "src/frontend/ui/tab-bar-state.ts",
   ],

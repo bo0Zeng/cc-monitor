@@ -50,7 +50,7 @@
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | 主题 · 字体 · 快捷键 · 诊断开关 —— 全是用户手填 |
-| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` · `edit_book_at` | 按 sid 的星标 · 改名 · 隐藏 · 在哪几组 · 固定；顶层 `groups` 那一节是家在这台的组 |
+| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` · `edit_slice_at` | 按 sid 的星标 · 改名 · 隐藏 · 在哪几组 · 固定；顶层 `groups` 那一节是这台那一片：只记这台有组员的组（名字带 `named` 时刻），最后一位出组那一组就删 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |

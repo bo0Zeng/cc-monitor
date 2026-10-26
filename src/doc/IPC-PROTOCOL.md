@@ -152,7 +152,7 @@
 `session_hidden`：这台某个活会话隐不隐藏变了（注解 · 这台偏好 `childTab` / `bgTab` · 会话血缘动了之后重判的），`key` 是会话 id，`body` 是 `{hidden}`（那一格 `{by, said}`，不隐藏 ⇒ `null`；判定只住后端一处，`session_added` · `history-list` 每行 · `sessions-needs` 每行带的是同一格），收到就换、不重读整份清单；万一没收到，重问 `history-list {sid}` 那一行。
 `files_dir`：这台某个正被浏览的目录（名单由 `files-browse` 交）里有了动静，`key` 是那个目录（UTF-8 ⇒ 路径本身；不是 ⇒ `\0` ＋ 十六进制小写）；正开着那个目录的那一屏带着手上的记号（`held`）重问 `files-ls`，回包只带变了的那几行。
 `history_list`：这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则）；同一个会话在这台答下一份清单之前只说一次（记录每长一行不是每行一帧），连着几下没取走也只一帧。正看着清单的那一屏带着手上的记号（`held`）重问 `history-list`，回包只带变了的那几行；看的是远端那台的，本机后端带 `fresh` 先去同步副本。
-`groups`：这台的组那一半动了（家在这台的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
+`groups`：这台的组那一半动了（这台那几片的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_state`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。

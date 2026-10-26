@@ -1,17 +1,21 @@
 //! **组**：一群会话 ＋ 一个名字。桌面标签页 · 手机分组 · cc-bus 范围 · agent 自问读的都是这一份。
 //!
-//! ```text
-//! 组本身 {id, name, made}   住家那一台：注解文件 `history-metadata.json` 的 `groups` 那一节（history_annotations::GroupRec）
-//! 组员关系 · 固定           住会话那一台：那条会话注解上的 `groups` · `pinned` 两格（一条会话可在几组）
+//! 组是跨机器的集合（ARCHITECTURE「存储层」③）：没有哪一台是它的主人，跟着组员走，每台只存自己有组员的那一片。
 //!
-//! groups-here（每台）   ⇒ 家在这台的组 ＋ 这台带组或固定的会话（各带此刻活不活，问 live_table）
-//! groups-read {machines}（本机后端）⇒ remote_ask::ask_each 问各台 groups-here、并成一份：
-//!     名字照家那台 · 组员照各台 · 组头计数与字在这里数一次；某台没答 ⇒ 照它上一次答的那份、标上次所知（那台的组员画成看不见）；
-//!     从没答过 ⇒ 那台读不到、家在那台的组名字不知道（组照出、组员不漏）；各台都答了却谁也没有那一组 ⇒ 已解散、不出
-//! groups-write（家那一台）⇒ 建 · 改名 · 解散；挪成员 · 固定走 history-annotate（成员那一台）
+//! ```text
+//! 组那一片 {id, name, made, named}  住每一台有组员的那台：注解文件 `history-metadata.json` 的 `groups` 那一节（history_annotations::GroupRec），
+//!                                   名字带「几时起的」（named）抄进每一片
+//! 组员关系 · 固定                   住会话那一台：那条会话注解上的 `groups` · `pinned` 两格（一条会话可在几组）
+//!
+//! groups-here（每台）   ⇒ 这台那一片 ＋ 这台带组或固定的会话（各带此刻活不活，问 live_table）
+//! groups-read {machines}（发问那台）⇒ remote_ask::ask_each 问各台 groups-here、在这里合一次（[`merge`]）：
+//!     名字取 named 最新的那一片 · 组员照各台 · 组头计数与字在这里数一次；某台没答 ⇒ 照它上一次答的那份、标上次所知（那台的组员画成看不见）；
+//!     从没答过 ⇒ 那台读不到；哪一片都没有那一组的记录、只有组员指着它 ⇒ 名字不知道（组照出、组员不漏）
+//! groups-write ⇒ make 只起 id；move 只写组员那一台（进组抄记录 · 最后一位出组删记录）；
+//!     rename · dissolve 由收到的那台发给各片（ask_each），没送到的那几台照实列进回包（下次连上补发这一步还没做）
 //! ```
 //!
-//! - 组 id 全局不重（建的那一台随机起），所以注解上只记 id，不记家在哪台（机器名是相对问的那一端的，记了也对不上）。
+//! - 组 id 全局不重（起它的那一台随机起），所以注解上只记 id，不记别的台（机器名是相对问的那一端的，记了也对不上）。
 //! - 上次所知那一份只在本进程内存里（缓存，按机器名），本机后端重启后第一问之前没有。
 //! - 等多久只归发起方（请求信封 `within_ms`）；问到别的台而它缺 ⇒ `bad_args`。
 
@@ -24,7 +28,7 @@ use cmd_wire::listing::RowLife;
 use cmd_wire::Machine;
 use serde::{Deserialize, Serialize};
 
-use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Table};
+use super::history_annotations::{self as notes, AnnotationErr, Book, GroupRec, Named, Table};
 use super::history_browse::Read;
 use crate::dial::remote_ask::{Remote, Said};
 use crate::wire::typed::{codes, Command};
@@ -32,7 +36,7 @@ use crate::wire::SessionFaceExt as _;
 
 // ───────────────────────── 这台那一半：groups-here ─────────────────────────
 
-/// 家在这台的一组。
+/// 这一片里的一组：id · 名字 · 几时建的 · 这个名字几时起的（毫秒）。进组时整份抄进组员那一台。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -41,6 +45,8 @@ pub(crate) struct HereGroup {
     pub(crate) name: String,
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) made: i64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) named: i64,
 }
 
 /// 复活一个标签要的那几格（重启后那条会话没有活进程，照它造灰标签）：这台照自己那份清单那一行给。
@@ -76,7 +82,7 @@ pub(crate) struct HereMember {
     pub(crate) facts: MemberFacts,
 }
 
-/// `groups-here` 的回包：这台那一半。
+/// `groups-here` 的回包：这台那一片。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -95,8 +101,9 @@ pub(crate) fn here_of(table: &Table, book: &Book, seen: impl Fn(&str) -> Seen) -
             .iter()
             .map(|(id, g)| HereGroup {
                 id: id.clone(),
-                name: g.name.clone(),
+                name: g.name.name.clone(),
                 made: g.made,
+                named: g.name.named,
             })
             .collect(),
         members: table
@@ -232,14 +239,14 @@ pub(crate) struct GroupsReadReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "is", rename_all = "snake_case")]
 pub(crate) enum GroupKnown {
-    /// 家那台这一问答了。
+    /// 名字取自这一问答了的那一片。
     Now,
-    /// 家那台这一问没答：名字是上一次答的（`at` ＝ 那一份几时读到的，写好的字）。
+    /// 名字取自那台上一次答的那一片（那台这一问没答；`at` ＝ 那一份几时读到的，写好的字）。
     Before {
         #[cfg_attr(test, ts(type = "string"))]
         at: Words,
     },
-    /// 哪台是家不知道（有台没答过）：名字缺。
+    /// 哪一片都没有这一组的记录（只有组员指着它）：名字缺。
     Unknown,
 }
 
@@ -276,16 +283,17 @@ pub(crate) struct GroupCount {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct GroupRead {
     pub(crate) id: String,
-    /// 名字（家那台没答过 ⇒ 缺）。
+    /// 名字：各片里 `named` 最新的那一份（哪一片都没有记录 ⇒ 缺）。
     pub(crate) name: Option<String>,
     /// 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
     #[cfg_attr(test, ts(type = "string"))]
     pub(crate) title: Words,
-    /// 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
-    #[cfg_attr(test, ts(as = "Option<String>"))]
-    pub(crate) home: Option<Machine>,
+    /// 各片里最早的那个建组时刻（没有记录 ⇒ 缺）。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) made: Option<i64>,
+    /// 取到的那个名字几时起的（没有记录 ⇒ 缺）：进组时同名字一起抄进组员那一台。
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) named: Option<i64>,
     pub(crate) known: GroupKnown,
     /// 组员：照问的台序、再照 sid。
     pub(crate) members: Vec<GroupMember>,
@@ -400,8 +408,8 @@ pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead,
     .map_err(|e| format!("{e:?}"))
 }
 
-/// 一台这一问拿到的那一半：这一问答的 · 上一次答的 · 没有。
-enum Half {
+/// 一台这一问拿到的那一片：这一问答的 · 上一次答的（带那一份几时读到的，写好的字）· 没有。
+pub(crate) enum Half {
     Now(GroupsHere),
     Before(GroupsHere, Words),
     None,
@@ -462,24 +470,33 @@ pub(crate) async fn read_with(
     Ok(merge(&halves, heads))
 }
 
-/// 并：组记录照找到它的那台（这一问答的优先），组员照各台；判定 · 计数只在这里。
-fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead {
-    let someone_silent = halves.iter().any(|(_, h)| matches!(h, Half::None));
-    // 组 id ⇒ (家, 那一组, 名字从哪来)
-    let mut records: BTreeMap<&str, (&Machine, &HereGroup, GroupKnown)> = BTreeMap::new();
-    for (origin, half) in halves {
+/// 合：各台那一片（照问的先后）＋ 这一问各台的结局 ⇒ 并好的一份。判定 · 计数只在这里；纯函数（不碰盘、不问网），
+/// 手机核心照 A1-8-4 挪走时整个搬过去，本机后端与手机核心调同一份。
+/// - 名字：各片里同一组 `named` 最新的那份；同一刻 ⇒ 这一问答了的那片优先，再照问的先后。`made` 取最早的。
+/// - 哪一片都没有那一组的记录、只有组员指着它 ⇒ 照出，名字缺。
+pub(crate) fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead {
+    // 组 id ⇒ (取到名字的那一份, 名字从哪来, 各片里最早的建组时刻)
+    let mut records: BTreeMap<&str, (&HereGroup, GroupKnown, i64)> = BTreeMap::new();
+    for (_, half) in halves {
         let (here, known) = match half {
             Half::Now(h) => (h, GroupKnown::Now),
             Half::Before(h, at) => (h, GroupKnown::Before { at: at.clone() }),
             Half::None => continue,
         };
         for g in &here.groups {
-            let better = match records.get(g.id.as_str()) {
-                None => true,
-                Some((_, _, k)) => *k != GroupKnown::Now && known == GroupKnown::Now,
-            };
-            if better {
-                records.insert(g.id.as_str(), (origin, g, known.clone()));
+            let fresh = known == GroupKnown::Now;
+            match records.get_mut(g.id.as_str()) {
+                None => {
+                    records.insert(g.id.as_str(), (g, known.clone(), g.made));
+                }
+                Some((best, k, made)) => {
+                    *made = (*made).min(g.made);
+                    let best_fresh = *k == GroupKnown::Now;
+                    if (g.named, fresh) > (best.named, best_fresh) {
+                        *best = g;
+                        *k = known.clone();
+                    }
+                }
             }
         }
     }
@@ -514,26 +531,24 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
         }
     }
     let mut ids: Vec<&str> = records.keys().copied().collect();
-    if someone_silent {
-        ids.extend(
-            members
-                .keys()
-                .copied()
-                .filter(|id| !records.contains_key(id)),
-        );
-    }
+    ids.extend(
+        members
+            .keys()
+            .copied()
+            .filter(|id| !records.contains_key(id)),
+    );
     let mut groups: Vec<GroupRead> = ids
         .into_iter()
         .map(|id| {
             let rows = members.remove(id).unwrap_or_default();
             let counts = counts_of(&rows);
             match records.get(id) {
-                Some((home, g, known)) => GroupRead {
+                Some((g, known, made)) => GroupRead {
                     id: id.to_string(),
                     name: Some(g.name.clone()),
                     title: Words(g.name.clone()),
-                    home: Some((*home).clone()),
-                    made: Some(g.made),
+                    made: Some(*made),
+                    named: Some(g.named),
                     known: known.clone(),
                     members: rows,
                     counts,
@@ -542,8 +557,8 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
                     id: id.to_string(),
                     name: None,
                     title: Words(copy_core::copy_text("beGroups.name.unknown", &[])),
-                    home: None,
                     made: None,
+                    named: None,
                     known: GroupKnown::Unknown,
                     members: rows,
                     counts,
@@ -590,31 +605,72 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
     .collect()
 }
 
-// ───────────────────────── 家那一台：groups-write ─────────────────────────
+// ───────────────────────── 写：groups-write ─────────────────────────
 
 /// 组名至多几个字。
 pub(crate) const NAME_MAX: usize = 80;
 
-/// `groups-write` 的入参：建 · 改名 · 解散（只改家在这台的）。
-#[derive(Debug, Clone, Deserialize)]
+/// `groups-write` 的入参。
+/// - `make`：起一个新组的 id 与时刻，不写盘（一个组员都没有的组不住任何一台）；回的那一份随第一位组员的 `move` 抄进它那一台。
+/// - `move`：这台一条会话出 `leave` 那一组、进 `join` 那一组（带整份记录抄进这一片；这一片已有 ⇒ 名字照 `named` 新的那份）；
+///   出组后这一片没人在那一组 ⇒ 那一组的记录也删。只写收到它的那一台：问组员所在那台。
+/// - `rename` · `dissolve`：收到的那台发给 `machines` 里的每一片（本机逐字 `"<local>"`；转给别的台时只写那台自己），
+///   没有那一组的片什么都不做；解散在那一片摘掉每条会话身上的那一组。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum GroupsWriteReq {
-    Make { name: String },
-    Rename { id: String, name: String },
-    Dissolve { id: String },
+    Make {
+        name: String,
+    },
+    Move {
+        sid: String,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional = nullable))]
+        join: Option<HereGroup>,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional = nullable))]
+        leave: Option<String>,
+    },
+    Rename {
+        id: String,
+        name: String,
+        #[cfg_attr(test, ts(as = "Vec<String>"))]
+        machines: Vec<Machine>,
+    },
+    Dissolve {
+        id: String,
+        #[cfg_attr(test, ts(as = "Vec<String>"))]
+        machines: Vec<Machine>,
+    },
 }
 
-/// `groups-write` 的回包：建了 · 改了的那一组，或解散了哪一组。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 一台没送到：哪台 · 为什么（那台这一问说的那一句）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupMissed {
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: Machine,
+    pub(crate) why: String,
+}
+
+/// `groups-write` 的回包：起好的那一组 · 那条会话此刻在哪几组 · 发给各片的结局（没送到的那几台，照问的先后）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "is", rename_all = "snake_case")]
 pub(crate) enum GroupsWritten {
     Made(HereGroup),
-    Renamed(HereGroup),
-    Dissolved { id: String },
+    Moved {
+        sid: String,
+        groups: Vec<String>,
+    },
+    Sent {
+        id: String,
+        missed: Vec<GroupMissed>,
+    },
 }
 
 codes! {
@@ -646,13 +702,6 @@ fn checked_name(name: &str) -> Result<String, AnnotationErr> {
     Ok(n.to_string())
 }
 
-/// 家不在这台的组：改名 · 解散问它家那一台（`groups-read` 交了 `home`）。
-fn not_here(id: &str) -> AnnotationErr {
-    AnnotationErr::BadArgs(crate::common::contract::malformed(&format!(
-        "group {id:?} does not live on this machine: ask its home"
-    )))
-}
-
 /// 新组的 id：进程随机种子 ＋ 进程内计数 ＋ 此刻，不可猜、不重。
 fn new_id(now: i64) -> String {
     use std::hash::{BuildHasher, Hasher};
@@ -665,48 +714,212 @@ fn new_id(now: i64) -> String {
     format!("g{:016x}", h.finish())
 }
 
-/// [`GroupsWriteCmd`] 的本体：「现在」由调用方给。
+fn group_id(id: &str) -> Result<String, AnnotationErr> {
+    notes::checked_group_id(id)
+        .map(str::to_string)
+        .map_err(AnnotationErr::BadArgs)
+}
+
+/// 这一片里一条会话出 `leave`、进 `join`（见 [`GroupsWriteReq::Move`]）。
+fn move_here(
+    table: &mut Table,
+    book: &mut Book,
+    sid: &str,
+    join: Option<HereGroup>,
+    leave: Option<String>,
+) -> Result<GroupsWritten, AnnotationErr> {
+    let sid = notes::checked_sid(sid)?.to_string();
+    let join = join
+        .map(|g| {
+            Ok::<_, AnnotationErr>(HereGroup {
+                id: group_id(&g.id)?,
+                name: checked_name(&g.name)?,
+                ..g
+            })
+        })
+        .transpose()?;
+    let leave = leave.as_deref().map(group_id).transpose()?;
+    let had = table.contains_key(&sid);
+    let entry = table.entry(sid.clone()).or_default();
+    if let Some(id) = &leave {
+        entry.groups.retain(|g| g != id);
+    }
+    if let Some(g) = &join {
+        if !entry.groups.contains(&g.id) {
+            entry.groups.push(g.id.clone());
+        }
+    }
+    let groups = entry.groups.clone();
+    if !had && *entry == cmd_wire::listing::Entry::default() {
+        table.remove(&sid);
+    }
+    if let Some(g) = join {
+        match book.get_mut(&g.id) {
+            None => {
+                book.insert(
+                    g.id,
+                    GroupRec {
+                        name: Named {
+                            name: g.name,
+                            named: g.named,
+                        },
+                        made: g.made,
+                    },
+                );
+            }
+            Some(r) => {
+                r.made = r.made.min(g.made);
+                if g.named > r.name.named {
+                    r.name = Named {
+                        name: g.name,
+                        named: g.named,
+                    };
+                }
+            }
+        }
+    }
+    if let Some(id) = leave {
+        if !table.values().any(|e| e.groups.contains(&id)) {
+            book.remove(&id);
+        }
+    }
+    Ok(GroupsWritten::Moved { sid, groups })
+}
+
+/// 这一片改名：有那一组 ⇒ 换名字、`named` 记成此刻（不早于这一片原来那份，这一片里新改的总算最新）；没有 ⇒ 不动。
+fn rename_here(book: &mut Book, id: &str, name: &str, now: i64) {
+    if let Some(r) = book.get_mut(id) {
+        r.name = Named {
+            name: name.to_string(),
+            named: now.max(r.name.named + 1),
+        };
+    }
+}
+
+/// 这一片解散：那一组的记录删掉、每条会话身上的那一组摘掉（会话一条不动）。
+fn dissolve_here(table: &mut Table, book: &mut Book, id: &str) {
+    book.remove(id);
+    for e in table.values_mut() {
+        e.groups.retain(|g| g != id);
+    }
+}
+
+/// 只写这一台的那几样（`make` · `move` · 这一片的 `rename` · `dissolve`）：「现在」由调用方给。
 pub(crate) fn write_at(
     own: &crate::platform::fs::Own,
     req: GroupsWriteReq,
     now: i64,
 ) -> Result<GroupsWritten, GroupsWriteErr> {
-    notes::edit_book_at(own, |book| match req {
+    match req {
         GroupsWriteReq::Make { name } => {
-            let name = checked_name(&name)?;
-            let id = new_id(now);
-            book.insert(
-                id.clone(),
-                GroupRec {
-                    name: name.clone(),
-                    made: now,
-                },
-            );
+            let name = checked_name(&name).map_err(write_err)?;
             Ok(GroupsWritten::Made(HereGroup {
-                id,
+                id: new_id(now),
                 name,
                 made: now,
+                named: now,
             }))
         }
-        GroupsWriteReq::Rename { id, name } => {
-            let name = checked_name(&name)?;
-            let g = book.get_mut(&id).ok_or_else(|| not_here(&id))?;
-            g.name.clone_from(&name);
-            Ok(GroupsWritten::Renamed(HereGroup {
-                id,
-                name,
-                made: g.made,
-            }))
+        GroupsWriteReq::Move { sid, join, leave } => {
+            notes::edit_slice_at(own, now, |table, book| {
+                move_here(table, book, &sid, join, leave)
+            })
+            .map_err(write_err)
         }
-        GroupsWriteReq::Dissolve { id } => {
-            book.remove(&id).ok_or_else(|| not_here(&id))?;
-            Ok(GroupsWritten::Dissolved { id })
+        GroupsWriteReq::Rename { id, name, .. } => {
+            let id = group_id(&id).map_err(write_err)?;
+            let name = checked_name(&name).map_err(write_err)?;
+            notes::edit_slice_at(own, now, |_, book| {
+                rename_here(book, &id, &name, now);
+                Ok(GroupsWritten::Sent {
+                    id: id.clone(),
+                    missed: vec![],
+                })
+            })
+            .map_err(write_err)
         }
-    })
-    .map_err(write_err)
+        GroupsWriteReq::Dissolve { id, .. } => {
+            let id = group_id(&id).map_err(write_err)?;
+            notes::edit_slice_at(own, now, |table, book| {
+                dissolve_here(table, book, &id);
+                Ok(GroupsWritten::Sent {
+                    id: id.clone(),
+                    missed: vec![],
+                })
+            })
+            .map_err(write_err)
+        }
+    }
 }
 
-/// `groups-write`：建 · 改名 · 解散家在这台的组。
+/// `rename` · `dissolve` 发给各片（本机那一片怎么写 · 可达表 · 对面由调用方给）：先核 id 与名字，再 `ask_each`；
+/// 转给别的台的那一问 `machines` 只写那台自己。没送到的那几台照问的先后列进回包。
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn send_with(
+    req: GroupsWriteReq,
+    local: impl FnOnce(GroupsWriteReq) -> Result<GroupsWritten, GroupsWriteErr> + Send,
+    tz: &crate::common::time::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn Remote,
+) -> Result<GroupsWritten, GroupsWriteErr> {
+    let here = vec![Machine(cmd_wire::LOCAL.into())];
+    let (machines, id, fwd) = match req {
+        GroupsWriteReq::Rename { id, name, machines } => {
+            let id = group_id(&id).map_err(write_err)?;
+            let name = checked_name(&name).map_err(write_err)?;
+            let fwd = GroupsWriteReq::Rename {
+                id: id.clone(),
+                name,
+                machines: here,
+            };
+            (machines, id, fwd)
+        }
+        GroupsWriteReq::Dissolve { id, machines } => {
+            let id = group_id(&id).map_err(write_err)?;
+            let fwd = GroupsWriteReq::Dissolve {
+                id: id.clone(),
+                machines: here,
+            };
+            (machines, id, fwd)
+        }
+        other => return local(other),
+    };
+    let mine = fwd.clone();
+    let local = async move {
+        local(mine).map_err(|e| {
+            use crate::wire::typed::Codes as _;
+            let f = e.into_fail();
+            Said {
+                code: Some(f.code),
+                message: f.message,
+            }
+        })
+    };
+    let got = crate::dial::remote_ask::ask_each::<GroupsWriteCmd, _>(
+        &machines, &fwd, local, tz, until, table, remote,
+    )
+    .await
+    .map_err(GroupsWriteErr::BadArgs)?;
+    // 那台答了却说它自己那一片没写成（转过去的那一问只写它自己）⇒ 也算没送到。
+    let missed = got
+        .into_iter()
+        .filter_map(|(origin, r)| match r {
+            Err(s) => Some(GroupMissed {
+                origin,
+                why: s.message,
+            }),
+            Ok(GroupsWritten::Sent { missed, .. }) => missed
+                .into_iter()
+                .next()
+                .map(|m| GroupMissed { origin, why: m.why }),
+            Ok(_) => None,
+        })
+        .collect();
+    Ok(GroupsWritten::Sent { id, missed })
+}
+
+/// `groups-write`：起组 · 进出组（只写这一台）· 改名 · 解散（发给各片）。
 pub(crate) struct GroupsWriteCmd;
 
 impl Command for GroupsWriteCmd {
@@ -723,8 +936,18 @@ impl crate::wire::typed::Handle for GroupsWriteCmd {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<GroupsWritten, GroupsWriteErr>> + Send + 'static
     {
-        let (_cx, own) = cx.split();
-        async move { write_at(&own, req, crate::common::time::now_ms()) }
+        let (cx, own) = cx.split();
+        async move {
+            send_with(
+                req,
+                |r| write_at(&own, r, crate::common::time::now_ms()),
+                &cx.tz,
+                cx.until,
+                &crate::dial::remote_ask::REACH,
+                &crate::dial::remote_ask::DialRemote,
+            )
+            .await
+        }
     }
 }
 
