@@ -138,9 +138,10 @@ route_deliver() {
 }
 
 # 经后端往那条会话说一句(敲门的那一句):先看一眼那一屏拿指纹,再带着它说 ——
-#   后端那一道照它的规矩判:窗格真是那条会话 · 那台说它在等人(批准 · 回答)就不送 · 画面在这两下之间变了(人正在打字)就不送。
+#   后端那一道照它的规矩判:窗格真是那条会话 · 只在它闲着时送(`idle_only`:一轮在跑 · 在等人 · 判不出都不送,不插进那一轮中间)·
+#   画面在这两下之间变了(人正在打字)就不送。
 #   看不到那一屏 / 没送 ⇒ rc=1(调用方照只入收件箱办;回合结束时 Stop 钩子照样喂回,不丢)。终端没了不恢复(带了指纹就不恢复)。
-# 找不到后端 ⇒ rc=1 并说清。cc-bus 只认后端的两条命令,不认它的数据布局。
+# 找不到后端 ⇒ rc=1 并说清。cc-bus 只认后端的公开命令,不认它的数据布局。
 ccbus_say() {   # <会话编号> <那一句>
   local sid="$1" text="$2" ccm screen out res
   ccm=$(ccbus_ccm_bin) || { route_log "NUDGE noccm sid=$sid —— 找不到后端(~/.cc-monitor/bin/ccm),只入收件箱"; return 1; }
@@ -149,7 +150,7 @@ ccbus_say() {   # <会话编号> <那一句>
   if [ -z "$screen" ]; then
     route_log "NUDGE noscreen sid=$sid —— 看不到那一屏,只入收件箱"; return 1
   fi
-  out=$(jq -cn --arg s "$sid" --arg t "$text" --arg v "$screen" '{sid:$s, text:$t, seen_screen:$v}' \
+  out=$(jq -cn --arg s "$sid" --arg t "$text" --arg v "$screen" '{sid:$s, text:$t, seen_screen:$v, idle_only:true}' \
     | "$ccm" -- --session-say --within-ms 10000 2>/dev/null)
   res=$(printf '%s' "$out" | jq -r '(.data // .).result // empty' 2>/dev/null)
   case "$res" in delivered|unsure) return 0 ;; esac
@@ -158,31 +159,17 @@ ccbus_say() {   # <会话编号> <那一句>
 }
 
 # 敲门(去抖):同一收件人 DEBOUNCE 秒内只敲一次;经后端往它的会话说一句(`ccbus_say`),不往窗格里打字。
-# 会话编号从哪来:登记那一格(agents.tsv 第 5 列)→ 没有 ⇒ OS 适配面从登记的窗格读一次身份标记(`os_pane_identity`,
-#   核登记时记下的窗格根进程 pid:对不上就是名字被别人占了,不认)。读不到 ⇒ 不敲,只入收件箱。
+# 收件人就是会话 id(信封由后端核过),敲的就是那一条会话。
 route_nudge() {
   local to="$1" from="$2"
-  local nf="$BUS/state/nudge-$to" now last target   # 独立行:$to 已赋值后再拼路径
+  local nf="$BUS/state/nudge-$to" now last   # 独立行:$to 已赋值后再拼路径
   now=$(date +%s)
   mkdir -p "$BUS/state"
   (
     flock 8
     last=$(cat "$nf" 2>/dev/null || echo 0); [[ "$last" =~ ^[0-9]+$ ]] || last=0
     if [ $(( now - last )) -ge "${CCBUS_NUDGE_DEBOUNCE:-2}" ]; then
-      target=$(awk -F'\t' -v id="$to" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
-      want_pid=$(awk -F'\t' -v id="$to" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
-      sid=$(awk -F'\t' -v id="$to" '$1==id{s=$5} END{print s}' "$BUS/agents.tsv" 2>/dev/null || true)
-      if [ -z "$sid" ] && [ -n "$target" ]; then
-        sid=$(os_pane_identity "$target" "$want_pid"); prc=$?
-        if [ "$prc" = 3 ]; then
-          route_log "NUDGE stale $to target=$target 登记时 pid=$want_pid 现在是别的窗格 —— 不敲,免得敲到别人"
-          sid=""
-        fi
-      fi
-      case "$sid" in *[!A-Za-z0-9_-]*) sid="" ;; esac
-      if [ -z "$sid" ]; then
-        route_log "NUDGE nosid $to —— 未识别会话 · 只入收件箱"
-      elif ccbus_say "$sid" "$(ccbus_knock_text "$from")"; then
+      if ccbus_say "$to" "$(ccbus_knock_text "$from")"; then
         echo "$now" > "$nf"
       fi
     else
@@ -191,14 +178,14 @@ route_nudge() {
   ) 8>>"$nf.lock"
 }
 
-# 管线入口。返回码:0=已投递;10=被阀门拦截/坏信封(不投递);1=投递出错。
+# 管线入口:收的是后端 `bus-envelope` 盖好的规范信封(信封的规矩只在后端那一处,这里一格都不再判)。
+# 返回码:0=已投递;10=被阀门拦截(不投递);1=投递出错。
+# 两档:tier 1 ⇒ 投完敲门(对方闲着才送);tier 2 ⇒ 只进收件箱,不敲 —— 都由 Stop 钩子在轮末喂回。
 route_process() {
-  local line="$1" from to
-  from=$(printf '%s' "$line" | jq -r '.from // "?"' 2>/dev/null || echo "?")
-  to=$(printf '%s' "$line" | jq -r '.to // "?"' 2>/dev/null || echo "?")
-  # 路径穿越纵深防御:to/from 都会拼进文件路径
-  case "$to"   in *[!A-Za-z0-9_-]*|'') route_log "DROP badname to=$to"; return 10;; esac
-  case "$from" in *[!A-Za-z0-9_-]*|'') route_log "DROP badname from=$from"; return 10;; esac
+  local line="$1" from to tier
+  from=$(printf '%s' "$line" | jq -r '.from' 2>/dev/null)
+  to=$(printf '%s' "$line" | jq -r '.to' 2>/dev/null)
+  tier=$(printf '%s' "$line" | jq -r '.tier' 2>/dev/null)
   # 这两道门是【只读】的;限流的计数仅在 deliver 成功后(见下)才提交。
   route_policy_check "$from" "$to" || return 10
   route_rate_check   "$from" "$to" || return 10
@@ -217,11 +204,59 @@ route_process() {
   esac
   route_deliver "$to" "$line" || { route_log "ERROR deliver $from->$to"; return 1; }
   route_rate_commit "$from" "$to"
-  if [ "$nudge_on" = yes ]; then
+  if [ "$tier" != 1 ]; then
+    route_log "NUDGE tier2 $to —— 二档只进收件箱"
+  elif [ "$nudge_on" = yes ]; then
     route_nudge "$to" "$from" || true
   else
     route_log "NUDGE off $to"
   fi
   route_log "DELIVER $from->$to"
   return 0
+}
+
+# 旧收件箱迁一次(A13-2):旧版按名字存收件箱、信封没有 tier / act / title,自动接回复记在 state/lastread-*。
+# 标记 state/envelope-2 在 ⇒ 什么都不做(盘上只有一种读法)。不在 ⇒ 锁里做一次:
+#   ① 旧的整份(收件箱 · 已读位置 · lastread · 敲门去抖)挪进 legacy/<时刻>/ 存档,不再读;
+#   ② 还没读的那几条照登记那一格(agents.tsv 第 5 列)把名字换成会话 id,补成二档 inform 的新信封,
+#      **过后端那一处校验**再写进新收件箱;换不出会话 id · 后端拒(正文超长之类)· 找不到后端 ⇒ 只留在存档里,bus.log 记一行。
+# 被 cc-send · cc-recv · Stop 钩子调(谁先跑谁迁)。迁不成也不挡调用方。
+ccbus_migrate_once() {
+  local mark="$BUS/state/envelope-2"
+  [ -e "$mark" ] && return 0
+  mkdir -p "$BUS/state" "$BUS/inbox" "$BUS/log" || return 0
+  (
+    store_lock_exclusive 7 || exit 0
+    [ -e "$mark" ] && exit 0
+    old="$BUS/legacy/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$old/inbox" "$old/state" || exit 0
+    for f in "$BUS"/inbox/*.jsonl; do [ -e "$f" ] && mv "$f" "$old/inbox/"; done
+    rm -f "$BUS"/inbox/*.lock
+    for f in "$BUS"/state/*.pos "$BUS"/state/lastread-* "$BUS"/state/nudge-*; do [ -e "$f" ] && mv "$f" "$old/state/"; done
+    ccm=$(ccbus_ccm_bin 2>/dev/null) || ccm=""
+    for f in "$old"/inbox/*.jsonl; do
+      [ -e "$f" ] || continue
+      name=$(basename "$f" .jsonl)
+      pos=$(cat "$old/state/$name.pos" 2>/dev/null || echo 0); [[ "$pos" =~ ^[0-9]+$ ]] || pos=0
+      to_sid=$(awk -F'\t' -v id="$name" '$1==id{s=$5} END{print s}' "$BUS/agents.tsv" 2>/dev/null || true)
+      tail -n "+$((pos+1))" "$f" | while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        from_name=$(printf '%s' "$line" | jq -r '.from // empty' 2>/dev/null) || from_name=""
+        from_sid=$(awk -F'\t' -v id="$from_name" '$1==id{s=$5} END{print s}' "$BUS/agents.tsv" 2>/dev/null || true)
+        req=$(printf '%s' "$line" | jq -c --arg f "$from_sid" --arg t "$to_sid" \
+          '{from:$f, to:$t, tier:2, act:"inform", text:(.text // ""),
+            title:(((.text // "") | split("\n")[0] | .[0:70]) as $h | if $h == "" then "legacy" else $h end)}' 2>/dev/null) || req=""
+        env=""
+        if [ -n "$req" ] && [ -n "$ccm" ]; then
+          env=$(printf '%s' "$req" | "$ccm" -- --bus-envelope --within-ms 10000 2>/dev/null | jq -c '(.data // .)' 2>/dev/null) || env=""
+        fi
+        if [ -n "$env" ] && route_deliver "$(printf '%s' "$env" | jq -r .to)" "$env"; then
+          route_log "MIGRATE kept $name from=$from_name"
+        else
+          route_log "MIGRATE archived-only $name from=$from_name —— 换不出会话 id · 后端拒 · 或找不到后端,原样留在 $old"
+        fi
+      done
+    done
+    touch "$mark"
+  ) 7>>"$BUS/state/migrate.lock"
 }

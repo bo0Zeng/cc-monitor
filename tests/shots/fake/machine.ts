@@ -3,7 +3,6 @@
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { MachineRound } from "../../../src/frontend/ui/generated/MachineRound";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
@@ -236,33 +235,6 @@ export const HOST_KEYS: Record<string, { key: string; fingerprint: string }> = {
 
 /** 合成答法里本机那一行的产品版本号。 */
 export const VERSION = "4.1.1";
-
-/**
- * 每台接常驻那一轮的结论（本机后端那几条常驻流交机器状态的那一形，只有事实；成品由本机后端算）：台架的后端不起常驻流，
- * 这一份经环境变量 `CCM_SHOTS_ROUNDS` 交给本机后端（`real/pool.mjs`，后端 `machine_state::shots_rounds`）。
- * 看不见的那台 ＝ 密钥被拒 · 指纹变了的那台 ＝ 出示了另一枚 · 旧了的那台 ＝ 比这一版旧 · 正在接的那台 ＝ 连接中。正在装的那几台没有这一轮（部署那一侧的事实在盘上，`world.ts::diskOf`）。
- */
-export function roundsOf(w: World): Record<string, MachineRound> {
-  const round = (m: string): MachineRound | null => {
-    if (w.installingMachines?.includes(m)) return null;
-    if (w.connectingMachines?.includes(m)) return { state: "connecting" };
-    if (w.hostKeyChanged?.includes(m))
-      return { state: "down", blocker: null, problem: { text: "主机指纹与记下的不一样", detail: "", why: "host_key", seen_key: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8", expected_key: HOST_KEYS[m]?.fingerprint ?? "" } };
-    if (w.unseenMachines.includes(m))
-      return {
-        state: "down",
-        blocker: null,
-        problem: { text: "私钥登录失败", detail: "时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n原话：Authentication failed (publickey)", why: "auth", seen_key: null, expected_key: null },
-      };
-    return { state: "up", relation: w.staleMachines.includes(m) ? "older" : "same", differs: [] };
-  };
-  return Object.fromEntries(
-    w.machines.slice(1).flatMap((machine) => {
-      const r = round(machine);
-      return r ? [[machine, r] as const] : [];
-    }),
-  );
-}
 
 export function machineCommands(): Record<string, CommandHandler> {
   return {

@@ -21,12 +21,12 @@
  *   （带 `procStart`，判活照真的那一套）；替身 · tmux · 后端同在一个沙箱里（见 `start`）。替身先把 `screen` 那一屏印进自己的窗格，
  *   `windows` 个终端窗口是同一台 tmux 里嵌套的客户端（真后端的终端名单 · 抓屏 · 实时画面照真的那样读）。
  *
- *   世界里的 `reach`（`/__ccm/world` 的那一格，本机后端问得到的那几台远端：`{<origin>: {refuse: [<命令>…]}}`）：跨台合并那几条由本机后端自己扇出（`--resident-call`），
- *   台架照产品那一形让它问得到 —— 每台远端在它的沙箱里另起一个常驻（同一个家 · 同一台私有 tmux；起好了才起 stdio 那一个）；
- *   本机沙箱里起一个只听回环的 sshd（一台远端一个口），登录壳是按口转发的假 ssh（[`forwarderSh`]：只认台架那几台、只转 `--resident-call`，
- *   `refuse` 里的命令照「那一跳断开」拒），口取自场景那张机器表（[`reachTable`]）；都握上手之后把那张表整张写进本机后端（`machines.json`，它按名字现读、照表去问），
- *   问得到的那几台只换上台架那把私钥，问不到的照原样留着。
- *   合并只在本机后端那一处，台架不再写一份。
+ *   世界里的 `reach`（`/__ccm/world` 的那一格，本机后端够得到的那几台远端：`{<origin>: {refuse: [<命令>…], fake?}}`）：各台的常驻流 · 跨台合并那几条都由本机后端自己去
+ *   （`--resident-attach` · `--resident-call`），台架照产品那一形让它够得到 —— 每台远端在它的沙箱里另起一个常驻（同一个家 · 同一台私有 tmux；起好了才起 stdio 那一个）；
+ *   本机沙箱里起一个只听回环的 sshd（一台远端一个口），登录壳是按口转发的假 ssh（[`forwarderSh`]：只认台架那几台、只转连常驻的那几形，
+ *   `refuse` 里的命令照「那一跳断开」拒，`fake` 那一样在这一跳上真长成那样），口取自场景那张机器表（[`reachTable`]）；那张表起本机后端之前整张写进它的家（`machines.json`），
+ *   问得到的那几台只换上台架那把私钥，问不到的照原样留着（那个口没人听）。本机那一台的后端就是它的常驻，交给无头壳的是接它那一条（`--resident-attach`）。
+ *   机器状态 · 合并只在本机后端那一处，台架不交结论、不再写一份。
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
@@ -143,23 +143,75 @@ const SSH_DIR = "/tmp/shots-ssh";
 const PEERS = "/tmp/shots-peers";
 const BACKEND_IN_BOX = "/tmp/ccm-shots/cc-monitor-backend";
 
+/** 正在装的那台 SFTP 那一头（沙箱里的路径，[`SLOW_SFTP_PY`]）：照常答，第一回开文件写就再也不往下交（装的那一步拖住）。 */
+const SLOW_SFTP_IN_BOX = "/home/user/.shots-setup/slow-sftp";
+
 /**
- * 本机沙箱里 sshd 的登录壳（`ForceCommand`）：按连进来的那个口认是哪一台（`peers`：`[{port, k, refuse}]`），
- * 只转产品问常驻的那一形（`"$HOME"/.cc-monitor/bin/ccm -- '--resident-call' …`）—— 换成那台常驻的套接字目录（`CCM_DATA_DIR`）跑同一个后端的
- * `--resident-call`（`backend` ＝ 沙箱里那份后端；判据换成替身）；那台 `refuse` 里的命令（stdin 那一行的 `cmd`）⇒ 一个字不回、退 255（同 ssh 那一跳断开）。别的口 · 别的形一律拒。
+ * 正在装的那台的 SFTP：真 `sftp-server`（在那台自己的一个空目录里，落点上什么都没有 ⇒ 部署计划照真的那样判「放上这一版」），
+ * 前面挡一层：请求照包原样交，见到第一个带写标志的「开文件」（`SSH_FXP_OPEN` · `SSH_FXF_WRITE`）就不再往下交 —— 放字节那一步一直在做。
  */
-export function forwarderSh(peers, backend = BACKEND_IN_BOX) {
+const SLOW_SFTP_PY = `#!/usr/bin/python3
+import os, subprocess, sys, time
+os.makedirs(sys.argv[1], exist_ok=True)
+os.chdir(sys.argv[1])
+srv = subprocess.Popen(["/usr/lib/openssh/sftp-server"], stdin=subprocess.PIPE)
+buf = b""
+while True:
+    got = os.read(0, 65536)
+    if not got:
+        break
+    buf += got
+    while len(buf) >= 5 and len(buf) >= 4 + int.from_bytes(buf[:4], "big"):
+        n = 4 + int.from_bytes(buf[:4], "big")
+        pkt, buf = buf[:n], buf[n:]
+        if pkt[4] == 3:
+            name = int.from_bytes(pkt[9:13], "big")
+            if int.from_bytes(pkt[13 + name:17 + name], "big") & 2:
+                while True:
+                    time.sleep(3600)
+        srv.stdin.write(pkt)
+        srv.stdin.flush()
+srv.stdin.close()
+srv.wait()
+`;
+
+/**
+ * 本机沙箱里 sshd 的登录壳（`ForceCommand`）：按连进来的那个口认是哪一台（`peers`：`[{port, k, refuse, fake?}]`），只转产品连常驻的那几形：
+ * - 问常驻（`"$HOME"/.cc-monitor/bin/ccm -- '--resident-call' …`）—— 换成那台常驻的套接字目录（`CCM_DATA_DIR`）跑同一个后端的
+ *   `--resident-call`（`backend` ＝ 沙箱里那份后端；判据换成替身）；那台 `refuse` 里的命令（stdin 那一行的 `cmd`）⇒ 一个字不回、退 255（同 ssh 那一跳断开）。
+ * - 接常驻 · 确保常驻（`… -- --resident-attach` · `--resident-ensure [--replace]`，本机后端那条常驻流）：同样换成那台的目录原样交。
+ * 那台在场景里是哪一样（`fake`）就在这一跳上真长成那样：`older` ⇒ attach 回话里的新旧换成 `older`（那台比这一版旧）；
+ * `hang` ⇒ 接常驻那一跳拖住不回（正在连）；`install` ⇒ 回话说旧了、问系统（`uname -s -m`）照实答、SFTP 交 [`SLOW_SFTP_PY`]（正在装）。
+ * 别的口 · 别的形一律拒。
+ */
+export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFTP_IN_BOX) {
   const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
   const lines = ["#!/bin/sh", "set -- $SSH_CONNECTION", 'case "$4" in'];
   for (const p of peers) {
     if (!Number.isInteger(p.port) || !Number.isInteger(p.k)) throw new Error(`转发表里的口 / 序号不是整数：${JSON.stringify(p)}`);
     for (const c of p.refuse ?? []) if (!/^[a-z-]+$/.test(c)) throw new Error(`refuse 里的命令形状不对：${c}`);
-    lines.push(`  ${p.port}) k=${p.k}; refuse=${q((p.refuse ?? []).join(" "))} ;;`);
+    if (p.fake !== undefined && !["older", "hang", "install"].includes(p.fake)) throw new Error(`fake 不是台架演得了的那几样：${p.fake}`);
+    lines.push(`  ${p.port}) k=${p.k}; refuse=${q((p.refuse ?? []).join(" "))}; fake=${p.fake ?? ""} ;;`);
   }
   lines.push(`  *) echo "shots: 口 $4 不是台架里的哪一台" >&2; exit 255 ;;`, "esac");
+  const land = `"$HOME"/.cc-monitor/bin/ccm -- `;
+  const peer = `CCM_DATA_DIR=${PEERS}/$k`;
   lines.push(
-    `pre=${q(`"$HOME"/.cc-monitor/bin/ccm -- '--resident-call' `)}`,
-    'case "$SSH_ORIGINAL_COMMAND" in "$pre"*) ;; *) echo "shots: 只转问常驻的那一形：$SSH_ORIGINAL_COMMAND" >&2; exit 127 ;; esac',
+    'case "$SSH_ORIGINAL_COMMAND" in',
+    `  ${q(`${land}--resident-attach`)})`,
+    `    case "$fake" in`,
+    `      hang) exec sleep 3600 ;;`,
+    `      older|install) ${peer} ${backend} -- --resident-attach | sed -u '1,2s/^{"attach":"ok","relation":"same"}$/{"attach":"ok","relation":"older"}/'; exit ;;`,
+    `      *) ${peer} exec ${backend} -- --resident-attach ;;`,
+    "    esac ;;",
+    `  ${q(`${land}--resident-ensure`)}) ${peer} exec ${backend} -- --resident-ensure ;;`,
+    // 旧了的那台：落点上就是它在跑的那一份旧的，换装没有更新的可换 ⇒ 只确保在跑（台架那份字节是这一版，交 `--replace` 会把那台的常驻换成本机沙箱里的一个）。
+    `  ${q(`${land}--resident-ensure --replace`)}) case "$fake" in older|install) ${peer} exec ${backend} -- --resident-ensure ;; *) ${peer} exec ${backend} -- --resident-ensure --replace ;; esac ;;`,
+    `  'uname -s -m') [ "$fake" = install ] && exec uname -s -m ;;`,
+    `  shots-sftp) [ "$fake" = install ] && exec ${slowSftp} /tmp/shots-install/$k ;;`,
+    "esac",
+    `pre=${q(`${land}'--resident-call' `)}`,
+    'case "$SSH_ORIGINAL_COMMAND" in "$pre"*) ;; *) echo "shots: 只转连常驻的那几形：$SSH_ORIGINAL_COMMAND" >&2; exit 127 ;; esac',
     "IFS= read -r line || exit 255",
     `for c in $refuse; do case "$line" in *'"cmd":"'"$c"'"'*) exit 255 ;; esac; done`,
     // 剩下那几格是产品逐格单引号过的（`shell_quote_core::posix_quote`），交 shell 重新切开。
@@ -185,6 +237,8 @@ function sshdConfig(peers, forwarder) {
     "StrictModes no",
     "PermitUserEnvironment no",
     `ForceCommand ${forwarder}`,
+    // SFTP 也经登录壳（它见到的原命令就是这个名字）：只有正在装的那台接它。
+    "Subsystem sftp shots-sftp",
     "LogLevel VERBOSE",
     "",
   ].join("\n");
@@ -216,7 +270,7 @@ export function reachTable(table, reach) {
     const row = hosts.find((h) => h.label === origin);
     if (!row) throw new Error(`问得到的 ${origin} 在场景那张机器表里没有那一行`);
     if (row.host !== "127.0.0.1" || !Number.isInteger(row.port)) throw new Error(`${origin} 在场景表里不是回环上的一个口：${row.host}:${row.port}`);
-    return { origin, k, port: row.port, refuse: r.refuse ?? [] };
+    return { origin, k, port: row.port, refuse: r.refuse ?? [], ...(r.fake ? { fake: r.fake } : {}) };
   });
   return { hosts: hosts.map((h) => (peers.some((p) => p.origin === h.label) ? { ...h, keyPath: `${SSH_DIR}/client` } : h)), peers };
 }
@@ -359,30 +413,43 @@ export function backendPool({ repo, sandbox }) {
     }
     // 看的那一台的时区（同壳 attach 行带的 `tz`）：推来的钟面（记录的时刻字 · 子运行的起始字）按它写。
     const backend = `${BACKEND_IN_BOX} -- --stream --tz ${SHOTS_TZ}`;
-    if (m.resident) {
-      // 这台的常驻（本机后端经 `--resident-call` 问到的就是它）：同一个家、同一台私有 tmux（钩子按槽位各占一格），日志另一份。
-      // 问得到了才往下起 stdio 那一个：常驻起来那一下补的号色 · 接的共用目录在 stdio 那一个读盘之前就落定，截到的不随先后变。
-      sh.push(
-        `CCM_RESIDENT=1 CCM_BACKEND_STDERR_LOG=${H}/.shots-run/resident.log ${backend} </dev/null >/dev/null 2>&1 &`,
-        "n=0",
-        `until printf '%s\\n' '{"cmd":"prefs-read","args":{}}' | ${BACKEND_IN_BOX} -- --resident-call --stdin-line --within-ms 5000 >/dev/null 2>&1; do n=$((n+1)); [ $n -lt 1500 ] || { echo "这台的常驻 30 秒还问不到" >&2; exit 1; }; sleep 0.02; done`,
-      );
-    }
+    /** 问这一台（`data` ＝ 那台常驻的目录，缺 ⇒ 这台自己的）的常驻问到了没有：30 秒上限。 */
+    const askable = (data) =>
+      `n=0; until printf '%s\\n' '{"cmd":"prefs-read","args":{}}' | ${data ? `CCM_DATA_DIR=${data} ` : ""}${BACKEND_IN_BOX} -- --resident-call --stdin-line --within-ms 5000 >/dev/null 2>&1; do n=$((n+1)); [ $n -lt 1500 ] || { echo "常驻${data ?? ""} 30 秒还问不到" >&2; exit 1; }; sleep 0.02; done`;
     if (m.peers?.length) {
-      // 本机问远端那一跳的另一头：只听回环的 sshd（`--unshare-net`：这个沙箱自己的回环），它自己转进后台。
+      // 本机接远端那一跳的另一头：只听回环的 sshd（`--unshare-net`：这个沙箱自己的回环），它自己转进后台。
       const fwd = `${H}/.shots-setup/forward.sh`;
       writeFileSync(path.join(setup, "forward.sh"), forwarderSh(m.peers), { mode: 0o755 });
+      writeFileSync(path.join(setup, "slow-sftp"), SLOW_SFTP_PY, { mode: 0o755 });
       writeFileSync(path.join(setup, "sshd_config"), sshdConfig(m.peers, fwd));
       sh.push(`/usr/sbin/sshd -f ${H}/.shots-setup/sshd_config -E ${H}/.shots-run/sshd.log`);
+      // 远端各台的常驻都问得到了才起本机常驻（它一起来就去接各台；先到的那一下照真的那样会去 ensure，在本机沙箱里起错一个）。
+      for (const p of m.peers) sh.push(askable(`${PEERS}/${p.k}`));
+      // 正在装的那台：本机 monitor 带着这一版的后端字节（`~/.cc-monitor/bin/slots/<系统>-<架构>`，后端装的时候现读），就是沙箱里那一份。
+      if (m.peers.some((p) => p.fake === "install")) {
+        mkdirSync(path.join(home, ".cc-monitor", "bin", "slots"), { recursive: true });
+        sh.push(`ln -sf ${BACKEND_IN_BOX} ${H}/.cc-monitor/bin/slots/linux-x86_64`);
+      }
     }
+    if (m.resident) {
+      // 这台的常驻：同一个家、同一台私有 tmux（钩子按槽位各占一格），日志另一份。远端各台的常驻由本机后端经 `--resident-call` 问、经 `--resident-attach` 接；
+      // 本机那一台的常驻就是本机后端（各台的常驻流归它，`control/feeds.rs`）。
+      // 问得到了才往下起 stdio 那一头：常驻起来那一下补的号色 · 接的共用目录在读盘之前就落定，截到的不随先后变。
+      sh.push(`CCM_RESIDENT=1 CCM_BACKEND_STDERR_LOG=${H}/.shots-run/resident.log ${backend} </dev/null >/dev/null 2>&1 &`, askable());
+    }
+    // 交给无头壳的那一条：远端各台照旧是 stdio 载体的流模式；本机那一台接它的常驻（产品本机那一形：常驻先给 hello，attach 行进、
+    // 回话那一行收掉，往后就是流 —— 壳那条读循环见到的是 hello 打头的流）。
+    const stream = m.local
+      ? `{ printf '%s\\n' ${q(JSON.stringify({ attach: true, tz: SHOTS_TZ }))}; exec cat; } | ${BACKEND_IN_BOX} -- --resident-attach | { IFS= read -r h && printf '%s\\n' "$h" && IFS= read -r _ && exec cat; }`
+      : backend;
     const held = m.primeHeld ?? [];
-    if (held.length === 0) sh.push(`exec ${backend}`);
+    if (held.length === 0) sh.push(m.local ? stream : `exec ${stream}`);
     else {
       // 预读演成一直没读完：这几个会话宣告之后的格不往壳那一跳交（后端预读没完成时压着的就是这几种，另加「读完了」那一帧本身）。
       for (const sid of held) if (!/^[0-9a-f-]+$/.test(sid)) throw new Error(`primeHeld 里的 sid 形状不对：${sid}`);
       const kinds = "session_primed|session_status|line|session_runs|session_branch";
       const pat = `"kind":"(${kinds})","(sid|session_id)":"(${held.join("|")})"`;
-      sh.push(`${backend} | grep --line-buffered -v -E ${q(pat)}`);
+      sh.push(`${stream} | grep --line-buffered -v -E ${q(pat)}`);
     }
     writeFileSync(path.join(setup, "run.sh"), sh.join("\n") + "\n");
     // tmux 在边界上的替身（`tmuxShim`）：放在沙箱 PATH 最前，后端照常敲 `tmux` 先碰到它；没给 ⇒ 那一格目录是空的。
@@ -398,8 +465,6 @@ export function backendPool({ repo, sandbox }) {
       CCM_BACKEND_STDERR_LOG: `${H}/.shots-run/stderr.log`,
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
-      ...(m.deploy ? { CCM_SHOTS_DEPLOY: JSON.stringify(m.deploy) } : {}),
-      ...(m.rounds ? { CCM_SHOTS_ROUNDS: JSON.stringify(m.rounds) } : {}),
     };
     const passwd = path.join(dir, "passwd");
     writeFileSync(passwd, `root:x:0:0:root:/root:/bin/sh\nuser:x:${process.getuid()}:${process.getgid()}:user:${H}:/bin/sh\n`);
@@ -577,10 +642,17 @@ export function backendPool({ repo, sandbox }) {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
       const m = {
         ...m0,
-        resident: peers.some((p) => p.origin === origin),
-        ...(origin === LOCAL && peers.length > 0 ? { peers, sshKeys: sshKeys(sandbox) } : {}),
-        // 远端各台这一轮怎么了（页里 `machine.ts::roundsOf` 算的）交本机后端（台架的后端不起常驻流，`machine_state::shots_rounds`）。
-        ...(origin === LOCAL && body.rounds ? { rounds: body.rounds } : {}),
+        // 本机那一台的常驻就是本机后端（各台的常驻流归它）；远端问得到的那几台也各起一个。
+        local: origin === LOCAL,
+        resident: origin === LOCAL || peers.some((p) => p.origin === origin),
+        ...(origin === LOCAL && peers.length > 0
+          ? {
+              peers,
+              sshKeys: sshKeys(sandbox),
+              // 问得到的那几台换上台架那把私钥（本机后端一起来就照这张表去接各台）；整张照场景写：问不到的那几台照原样在表里（设置页列表照它画）。
+              files: { ...m0.files, ".cc-monitor/machines.json": JSON.stringify({ version: 1, hosts: table.hosts }, null, 2) + "\n" },
+            }
+          : {}),
       };
       const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
       w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
@@ -592,13 +664,6 @@ export function backendPool({ repo, sandbox }) {
     w.sh = sh;
     sh.send({ t: "machines", machines: list });
     await sh.up(list.map((m) => m.origin));
-    // 都握上手之后，问得到的那几台换上台架那把私钥（`~/.cc-monitor/machines.json`，本机后端按名字现读）：之后跨台合并那几问它自己照表去问。
-    // 整张照场景写回：问不到的那几台照原样在表里（设置页列表照它画）。
-    if (peers.length > 0) {
-      const at = path.join(w.homes.get(LOCAL), ".cc-monitor", "machines.json");
-      mkdirSync(path.dirname(at), { recursive: true });
-      writeFileSync(at, JSON.stringify({ version: 1, hosts: table.hosts }, null, 2) + "\n");
-    }
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
 

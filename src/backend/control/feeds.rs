@@ -107,11 +107,7 @@ pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>) {
 static HOSTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 常驻那一位起来时调一次：之后持有各台的常驻流，机器表一改就对齐。
-/// 带 `shots` 特性编的后端（截图台架）不起：那几台的状态由台架交（`machine_state::shots_rounds`），截图照它定格。
 pub fn start() {
-    if cfg!(feature = "shots") {
-        return;
-    }
     HOSTED.store(true, std::sync::atomic::Ordering::SeqCst);
     align();
 }

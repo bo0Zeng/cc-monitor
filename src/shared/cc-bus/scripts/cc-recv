@@ -3,6 +3,9 @@
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+# shellcheck source=cc-bus-lib.sh
+. "$SELFDIR/cc-bus-lib.sh"
+ccbus_migrate_once || true                # 旧收件箱迁一次(迁过就是一次 stat)
 if [ -n "${1:-}" ]; then id="$1"; else id=$("$SELFDIR/cc-whoami"); fi   # 无参则自动认领身份
 case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-recv: 非法/空 id '$id'" >&2; exit 2;; esac
 inbox="$BUS/inbox/$id.jsonl"
@@ -17,9 +20,9 @@ posf="$BUS/state/$id.pos"
   [ "$pos" -le "$total" ] || pos=0           # inbox 被外部清空/截短而 pos 仍高 → 归零,别永远收不到
   if [ "$total" -gt "$pos" ]; then
     new=$(sed -n "$((pos+1)),\$p" "$inbox")
-    # 显示:fromjson? 跳过非法 JSON 坏行(防毒丸卡死),// 默认容忍 v1 缺字段行
+    # 显示:fromjson? 跳过非法 JSON 坏行(防毒丸卡死)。给 agent 读的那一段只印线上码(act · tier),不放显示用的词。
     printf '%s\n' "$new" \
-      | jq -Rr 'fromjson? // empty | "【cc-bus 来自 \(.from // "?") @ \(.ts // "?") (\(.id // "-"))】\n\(.text // "")\n(回复用: cc-send \(.from // "?") \"…\")\n"'
+      | jq -Rr 'fromjson? // empty | "[cc-bus] id=\(.id // "-") from=\(.from // "?") ts=\(.ts // "?") tier=\(.tier // "?") act=\(.act // "?")\(if .re then " re=\(.re)" else "" end)\ntitle: \(.title // "")\(if ((.refs // []) | length) > 0 then "\nrefs: \(.refs | join(" "))" else "" end)\n\(.text // "")\n(reply: cc-send \(.from // "?") --act answer --re \(.id // "-") --title \"…\")\n"'
     # ★★ **读不懂的行照跳，但要说一句**〔08-13 实测〕
     #
     # 上面那个 `fromjson? // empty` 会静默丢掉解析不了的行（防毒丸卡死,那是对的),
@@ -35,19 +38,6 @@ posf="$BUS/state/$id.pos"
       printf '⚠ 跳过 %s 条读不懂的消息（收件箱 %s 的第 %s..%s 行，它们不会再出现）\n' \
         "$(( _seen - _ok ))" "$inbox" "$((pos+1))" "$total"
     fi
-    # 逐条记录 lastread-<self>__<from>=id\thops\ttrace(供 F03 因果链);坏行/非法 from 跳过
-    printf '%s\n' "$new" | while IFS= read -r line; do
-      [ -n "$line" ] || continue
-      obj=$(printf '%s' "$line" | jq -Rc 'fromjson? // empty')
-      [ -n "$obj" ] || continue              # 非法 JSON 行跳过
-      f=$(printf '%s' "$obj" | jq -r '.from // "?"')
-      case "$f" in *[!A-Za-z0-9_-]*|'') continue;; esac   # 非法发件人不写路径
-      mid=$(printf '%s' "$obj" | jq -r '.id // "-"')
-      hp=$(printf '%s' "$obj" | jq -r '.hops // 0')
-      tr=$(printf '%s' "$obj" | jq -r '.trace // .from // "?"')
-      lrf="$BUS/state/lastread-${id}__${f}"    # 原子写(tmp+mv),避免 cc-send 读侧无锁读到半截
-      printf '%s\t%s\t%s\n' "$mid" "$hp" "$tr" > "$lrf.tmp.$$" && mv "$lrf.tmp.$$" "$lrf"
-    done
     echo "$total" > "$posf"
   fi
 ) 9>>"$inbox.lock"

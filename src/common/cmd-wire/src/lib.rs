@@ -31,6 +31,7 @@ pub mod agent;
 pub mod attach;
 pub mod batch;
 pub mod bookmarks;
+pub mod bus;
 pub mod cells;
 pub mod dial;
 pub mod files;

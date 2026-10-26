@@ -46,8 +46,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/asks.rs",
         include_str!("../../src/backend/agents/asks.rs"),
     ),
-    // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
-    // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
+    // P4f：`control/cc_bus.rs` 里有 `"--` 打头的字面量（转调 `cc-list --tsv` 的旗标）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
     (
         "control/cc_bus.rs",
@@ -180,7 +179,7 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         "control/cc_bus.rs",
         "src/shared/cc-bus/scripts/cc-list",
         &["--tsv"],
-        "`bus-list` / `bus-send` 转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
+        "`bus-list` 转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
     ),
     (
         "control/cc_bus.rs",

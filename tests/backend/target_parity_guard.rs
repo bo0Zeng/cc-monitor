@@ -681,7 +681,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),
     ("bus-list", "`control/cc_bus.rs::agents_via_cc_list` 经 `gate::list_sessions().ok()` 挂「还活着吗」那一栏 —— 问不到回 `live: null`（「不假装知道」），命令本身照做；它的能力是转调 cc-bus，不是 tmux"),
-    ("bus-send", "同 `bus-list`（投递转调 `cc-send`；tmux 只用来挂 `live`）"),
+    ("bus-envelope", "只因与 `bus-list` 同住 `control/cc_bus_wire.rs`（引用图按文件算，因此连带）；核信封本身是纯函数（`control/cc_bus_envelope.rs`），不碰 tmux"),
     (
         "ccm-probe",
         "同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\

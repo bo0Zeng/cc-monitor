@@ -17,13 +17,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultWorld, diskOf, LOCAL, REMOTES } from "./fake/world";
 import { reachOf } from "./fake/backend";
+import { HOST_KEYS } from "./fake/machine";
 
 const POOL = "./real/pool.mjs";
-type Peer = { port: number; k: number; refuse?: string[] };
+type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install" };
 type Row = { label: string; host: string; port: number; user: string; keyPath: string; connect: boolean };
 const { forwarderSh, reachTable } = (await import(POOL)) as {
-  forwarderSh: (peers: Peer[], backend?: string) => string;
-  reachTable: (table: string | undefined, reach: [string, { refuse: string[] }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
+  forwarderSh: (peers: Peer[], backend?: string, slowSftp?: string) => string;
+  reachTable: (table: string | undefined, reach: [string, { refuse: string[]; fake?: Peer["fake"] }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
 };
 /** 转发那几格用的口（任意，只要转发表里写的是它）。 */
 const PEER_PORT_BASE = 2201;
@@ -79,6 +80,79 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     const down = run(peers, PEER_PORT_BASE + 1, line, ask("sessions-needs"));
     expect([down.status, down.stdout]).toEqual([255, ""]);
     expect(run(peers, PEER_PORT_BASE, line, ask("sessions-needs")).stdout).toContain("dir=/tmp/shots-peers/0");
+  });
+
+  /** 常驻那几问的产品写法（`resident_client::feed::backend_command`：落点 ＋ 一个常量词，不加引号）。 */
+  const word = (w: string): string => `"$HOME"/.cc-monitor/bin/ccm -- ${w}`;
+  /** 接常驻那一跳的替身：同常驻那一形，先 hello、再 attach 回话（同一版），再把 stdin 原样回过去。 */
+  const attaching = `#!/bin/sh\necho "dir=$CCM_DATA_DIR $*" >&2\necho '{"hello":{"relation":"same"}}'\necho '{"attach":"ok","relation":"same"}'\ncat\n`;
+  const runWith = (peers: Peer[], port: number, command: string, stdin: string, backendSh: string, timeout?: number) => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "shots-forwarder-"));
+    try {
+      const backend = path.join(dir, "backend");
+      writeFileSync(backend, backendSh);
+      chmodSync(backend, 0o755);
+      const slow = path.join(dir, "slow-sftp");
+      writeFileSync(slow, '#!/bin/sh\necho "slow-sftp $*"\n');
+      chmodSync(slow, 0o755);
+      const fwd = path.join(dir, "forward.sh");
+      writeFileSync(fwd, forwarderSh(peers, backend, slow));
+      chmodSync(fwd, 0o755);
+      return spawnSync(fwd, [], {
+        input: stdin,
+        encoding: "utf8",
+        timeout,
+        env: { PATH: "/usr/bin:/bin", HOME: "/home/user", SSH_CONNECTION: `127.0.0.1 40000 127.0.0.1 ${port}`, SSH_ORIGINAL_COMMAND: command },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const fakes: Peer[] = [
+    { port: PEER_PORT_BASE, k: 0 },
+    { port: PEER_PORT_BASE + 1, k: 1, fake: "older" },
+    { port: PEER_PORT_BASE + 2, k: 2, fake: "hang" },
+    { port: PEER_PORT_BASE + 3, k: 3, fake: "install" },
+  ];
+
+  it("接常驻（本机后端那条常驻流）：按口换成那台常驻的目录，回话 · 流原样交", () => {
+    const r = runWith(fakes, PEER_PORT_BASE, word("--resident-attach"), '{"attach":true}\n', attaching);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("dir=/tmp/shots-peers/0 -- --resident-attach");
+    expect(r.stdout.split("\n")).toEqual(['{"hello":{"relation":"same"}}', '{"attach":"ok","relation":"same"}', '{"attach":true}', ""]);
+  });
+
+  it("旧了的那台：attach 回话里的新旧换成 older，后面的流一个字不动", () => {
+    const r = runWith(fakes, PEER_PORT_BASE + 1, word("--resident-attach"), '{"relation":"same"}\n', attaching);
+    expect(r.stdout.split("\n")).toEqual(['{"hello":{"relation":"same"}}', '{"attach":"ok","relation":"older"}', '{"relation":"same"}', ""]);
+  });
+
+  it("正在连的那台：接常驻那一跳拖住不回", () => {
+    const r = runWith(fakes, PEER_PORT_BASE + 2, word("--resident-attach"), "", attaching, 600);
+    expect(r.error?.message ?? "").toMatch(/ETIMEDOUT/);
+    expect(r.stdout).toBe("");
+  });
+
+  it("确保常驻（换不换由那台自己判）：原样交那台的后端；旧了的那台落点上也只有它在跑的那一份 ⇒ 换装那一问只确保在跑", () => {
+    const echo = '#!/bin/sh\necho "dir=$CCM_DATA_DIR $*"\n';
+    for (const w of ["--resident-ensure", "--resident-ensure --replace"]) {
+      const r = runWith(fakes, PEER_PORT_BASE, word(w), "", echo);
+      expect([r.status, r.stdout.trim()]).toEqual([0, `dir=/tmp/shots-peers/0 -- ${w}`]);
+    }
+    for (const port of [PEER_PORT_BASE + 1, PEER_PORT_BASE + 3]) {
+      const r = runWith(fakes, port, word("--resident-ensure --replace"), "", echo);
+      expect([r.status, r.stdout.trim()]).toEqual([0, `dir=/tmp/shots-peers/${port - PEER_PORT_BASE} -- --resident-ensure`]);
+    }
+  });
+
+  it("正在装的那台：回话说旧了、问系统照实答、SFTP 交那份慢的；别台不认这两样", () => {
+    const att = runWith(fakes, PEER_PORT_BASE + 3, word("--resident-attach"), "", attaching);
+    expect(att.stdout.split("\n")[1]).toBe('{"attach":"ok","relation":"older"}');
+    const uname = runWith(fakes, PEER_PORT_BASE + 3, "uname -s -m", "", attaching);
+    expect([uname.status, uname.stdout.trim()]).toEqual([0, spawnSync("uname", ["-s", "-m"], { encoding: "utf8" }).stdout.trim()]);
+    const sftp = runWith(fakes, PEER_PORT_BASE + 3, "shots-sftp", "", attaching);
+    expect([sftp.status, sftp.stdout.trim()]).toEqual([0, "slow-sftp /tmp/shots-install/3"]);
+    for (const c of ["uname -s -m", "shots-sftp"]) expect(runWith(fakes, PEER_PORT_BASE, c, "", attaching).status).toBe(127);
   });
 
   it("不认的口 · 不是问常驻那一形 ⇒ 拒，不交后端", () => {
@@ -137,6 +211,21 @@ describe("交本机后端的机器表", () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+
+  it("旧了 · 正在连 · 正在装的那几台交假 ssh 演哪一样；指纹变了的那台本机库里记的是另一把钥", () => {
+    const w = defaultWorld();
+    w.staleMachines = ["devbox"];
+    w.connectingMachines = ["gpu-01"];
+    w.installingMachines = ["win-laptop"];
+    expect(Object.fromEntries(Object.entries(reachOf(w)).map(([m, r]) => [m, r.fake]))).toEqual({ devbox: "older", "gpu-01": "hang", "win-laptop": "install" });
+    expect(tableOf(w).peers.map((p) => p.fake)).toEqual(["older", "hang", "install"]);
+    const k = defaultWorld();
+    k.hostKeyChanged = ["gpu-01"];
+    const { files, hosts } = tableOf(k);
+    const row = hosts.find((h) => h.label === "gpu-01");
+    expect(files[".cc-monitor/known_hosts"].split("\n")).toContain(`[${row?.host}]:${row?.port} ${HOST_KEYS["gpu-01"].key}`);
+    expect(tableOf(defaultWorld()).files[".cc-monitor/known_hosts"]).not.toMatch(/^\[/m);
   });
 
   it("问得到的那台在场景表里没有那一行 ⇒ 拒（不现编一台）", () => {

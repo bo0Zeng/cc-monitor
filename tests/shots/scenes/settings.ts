@@ -26,6 +26,14 @@ async function go(...ids: string[]): Promise<void> {
   await sleep(600);
 }
 
+/**
+ * 等这一页上那几台的状态字都到了（本机后端那几条常驻流真去接各台，接到哪一样要一会儿；按那几个字等，不按钟点猜）。
+ * `keys` 是 `machineState.word.*` 的末段（`installing` · `needsUpdate` · `connecting` · `hostKey` …）。
+ */
+async function says(...keys: string[]): Promise<void> {
+  for (const k of keys) await byText(".settings-page:not([hidden])", copyText(`machineState.word.${k}` as Parameters<typeof copyText>[0]));
+}
+
 const page = (id: string, title: string, desc: string, ...route: string[]): Scene =>
   settings(id, title, desc, async () => go(...route));
 
@@ -129,6 +137,8 @@ const localRefused = {
   state: "older",
   word: copyText("machineState.word.needsUpdate"),
   said: copyText("machineState.problem.needsUpdate", { machine: copyText("remote.cards.local") }),
+  // 壳起不来那几样只有［重试］（`local_backend_host::local_backend`）。
+  fixes: [{ fix: "retry", label: copyText("machineState.fix.retry") }],
   next: copyText("rsLocalBackendHost.start.refusedNext", {
     why: copyText("rsLocalBackendHost.hello.buildMismatch", { theirs: "p7a-4.1.0", ours: "p8c-4.1.1" }),
     pid: "4242",
@@ -165,6 +175,7 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings("settings-machines-hostkey", "设置 · 机器 · 主机指纹变了", "gpu-01 出示的指纹与记下的不一样：问题行［比对指纹…］", async () => {
     await go("machines");
+    await says("hostKey");
   }, hostKeyWorld),
   settings("settings-hostkey-compare", "设置 · 比对主机指纹", "点［比对指纹…］：记下的 · 现在的 · 记于何时，默认焦点「不连接」", async () => {
     await go("machines");
@@ -173,10 +184,11 @@ export const SETTINGS_SCENES: Scene[] = [
   }, hostKeyWorld),
   settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
     await go("machines");
+    await says("installing");
   }, installingWorld),
   settings("settings-machines-pushed", "设置 · 机器 · 正在连 · 旧了", "本机后端那几条常驻流交来的两态：devbox 正在连（启动 cc-monitor）、gpu-01 比这一版旧", async () => {
     await go("machines");
-    await sleep(800);
+    await says("connecting", "needsUpdate");
   }, () => {
     const w = defaultWorld();
     w.connectingMachines = ["devbox"];
@@ -484,6 +496,7 @@ export const SETTINGS_SCENES: Scene[] = [
   }, disabledWorld),
   settings("settings-machines-trouble", "设置 · 机器 · 一台断开", "gpu-01 断开：机器列表里那一行的样子", async () => {
     await go("machines");
+    await says("needsUpdate");
   }, troubleWorld),
   settings("settings-machine-trouble", "设置 · 断开的那台", "gpu-01 那一页（断开）", async () => {
     await go("machine:gpu-01");
