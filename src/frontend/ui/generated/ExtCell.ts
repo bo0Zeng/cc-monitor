@@ -12,6 +12,10 @@ export type ExtCell = {
  */
 state: ExtState, 
 /**
+ * 那个点那一句（悬停 · 抽屉里那台那一行；后端写好）。
+ */
+said: string, 
+/**
  * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
  */
 places: Array<ExtPlace>, bring: ExtBring | null, 
