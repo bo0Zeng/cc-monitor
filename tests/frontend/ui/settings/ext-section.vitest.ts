@@ -55,6 +55,7 @@ const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
   machines,
   problems: [],
   legend: LEGEND,
+  knownTitle: "〈认得〉",
   rows: [
     row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("machineList.summary.count", { n: "1" }) }], new: true }),
     row("mcp", "fs", [cell("same", [place(user, "same", false, copyText("agentWindow.status.plain"))], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
@@ -348,7 +349,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
 
   it("各台结局逐台说：一台没成（如看过之后变了）不挡别台；做完重问那张卡（没成的那台拿到新卡，再点就是重试它）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
-    const lst = { machines: m3, problems: [], legend: LEGEND, rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
+    const lst = { machines: m3, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
     const s = await page([lst], (a) =>
       chanReply({
         machines: a.to.map((t) =>
@@ -437,7 +438,7 @@ describe("备注 · cc-bus 那一行", () => {
     const table = s.element.querySelector(".ext-table") as HTMLElement;
     const order = [...table.children].map((e) => (e.classList.contains("ext-drawer-section") ? "组头" : ((e as HTMLElement).dataset.key ?? null))).filter((k) => k !== null);
     expect(order).toEqual(["组头", "plugin/planned-build", "skill/demo", "mcp/fs", "skill/code-picture"]);
-    expect(table.querySelector(".ext-drawer-section")?.textContent).toBe(copyText("extPage.table.known"));
+    expect(table.querySelector(".ext-drawer-section")?.textContent).toBe("〈认得〉");
     const name = table.querySelector('[data-key="plugin/planned-build"] .ext-name') as HTMLElement;
     expect(name.textContent).toBe("planned-build 〈发布处〉");
     // 没有备注 ⇒ 不带备注记号。
@@ -529,7 +530,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     mcpAnswers = {};
   });
   const both = cell("same", [place(user, "same")]);
-  const mcpList = () => ({ machines, problems: [], legend: LEGEND, rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
+  const mcpList = () => ({ machines, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
   const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
   const fixArgs = { kind: "mcp" as const, agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
   const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), fix: [{ account: "acct-a", fix: { command: "login-start", args: fixArgs } }] };
@@ -694,7 +695,7 @@ describe("一次装到几台：要填的值只填一次", () => {
   it("★ 后端并好的那一格只出一次、说哪台已有这个值；填一次 ⇒ 交上去的就是它（每台只拿它那张卡要的几格由后端分）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
     const mcpMissing = cell("missing", [place(user, "missing")], bring());
-    const lst = { machines: m3, problems: [], legend: LEGEND, rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
+    const lst = { machines: m3, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
     let applied: ManyArgs | null = null;
     const s = await page(
       [lst],

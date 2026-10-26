@@ -196,8 +196,11 @@ pub struct ExtList {
     pub machines: Vec<ExtMachine>,
     pub rows: Vec<ExtRow>,
     pub problems: Vec<String>,
-    /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+    /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有一台装着插件时列）。
     pub legend: Vec<ExtLegend>,
+    /// 表顶「认得」那一组的组头（带 `known` 的那几行排在最前，界面在它们前面放这一句）。
+    #[serde(rename = "knownTitle", default)]
+    pub known_title: String,
 }
 
 /// 图例里一项。
@@ -719,7 +722,8 @@ struct Known {
 const KNOWN: &[Known] = &[
     Known {
         kind: ExtKind::Plugin,
-        name: crate::plan::locate::PLUGIN_NAME,
+        // 与 `plan::locate::PLUGIN_NAME` 同一个名字（不从那里引：assets → plan 会让顶层模块成环）。
+        name: "planned-build",
         origin: Origin::Release,
         note: None,
         hooks: false,
@@ -850,6 +854,7 @@ pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
         rows,
         problems: Vec::new(),
         legend,
+        known_title: copy_text("beExt.list.known", &[]),
     }
 }
 

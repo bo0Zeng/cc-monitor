@@ -177,7 +177,7 @@ export class ExtSection {
   /** 这一份表里各行建好的那一行（按 `list.rows` 里那一项认）：筛选只挑行往表里放，不重建；换了一份表才清。 */
   private readonly rowEls = new Map<ExtRow, HTMLElement>();
   /** 表顶「cc-monitor 认得」那一组的组头（建一次，按身份留在原地）。 */
-  private readonly knownHead = el("div", "ext-drawer-section", copyText("extPage.table.known"));
+  private knownHead: HTMLElement | null = null;
   private query = "";
   private kind: KindFilter = "all";
   private openKey: string | null = null;
@@ -356,7 +356,10 @@ export class ExtSection {
     for (const m of list.machines) if (!m.reachable) items.push(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: machineName(m) })));
     items.push(head);
     // 认得的那几样后端排在最前：它们前面一条组头（哪几样算认得照后端那一格 `known`，这里不认名字）。
-    if (rows.some((r) => r.known !== null)) items.push(this.knownHead);
+    if (rows.some((r) => r.known !== null)) {
+      if (this.knownHead?.textContent !== list.knownTitle) this.knownHead = el("div", "ext-drawer-section", list.knownTitle);
+      items.push(this.knownHead);
+    }
     for (const r of rows) {
       let line = this.rowEls.get(r);
       if (!line) {
@@ -403,7 +406,7 @@ export class ExtSection {
       name.appendChild(mark);
     }
     // 认得的那几样：名字后面一句从哪来（cc-monitor 自带 · 发布处；后端写好）。
-    if (r.known !== null) name.appendChild(el("span", "ext-kind", ` ${r.known.from}`));
+    if (r.known !== null) name.append(" ", el("span", "ext-kind", r.known.from));
     line.appendChild(name);
     line.appendChild(el("span", "ext-kind", r.kindSaid));
     line.appendChild(el("span", "ext-about one-line", r.about ?? ""));
@@ -463,7 +466,8 @@ export class ExtSection {
     if (!r || !list) return;
     const head = el("div", "ext-drawer-head");
     head.appendChild(el("strong", "", r.name));
-    head.appendChild(el("span", "ext-kind", r.known === null ? r.kindSaid : `${r.kindSaid}${copyText("extPage.list.sep")}${r.known.from}`));
+    head.appendChild(el("span", "ext-kind", r.kindSaid));
+    if (r.known !== null) head.appendChild(el("span", "ext-kind", r.known.from));
     head.appendChild(
       button({ label: copyText("extPage.drawer.close"), onClick: () => {
         this.openKey = null;

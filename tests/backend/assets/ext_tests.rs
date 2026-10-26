@@ -1740,6 +1740,8 @@ fn a_known_extension_is_recommended_where_missing_and_shows_its_version_where_in
             (ExtKind::Skill, "a-skill".into(), None),
         ]
     );
+    // 组头那一句也由后端写（界面只在带 known 的那几行前面放它）。
+    assert_eq!(list.known_title, copy_text("beExt.list.known", &[]));
     let recommended = copy_text("beExt.state.recommended", &[]);
     assert!(list.rows[..3]
         .iter()
