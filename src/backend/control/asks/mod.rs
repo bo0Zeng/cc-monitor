@@ -16,6 +16,8 @@ pub mod hook;
 use crate::agents::asks::{product_of, Ask, NoteNeed};
 use crate::agents::{AskIn, PlanMode, Verdict};
 use crate::common::cells::Words;
+/// 挂上 · 撤掉 · 答掉都报这一声（`history::needs_changed`）。
+use crate::history::needs_changed::moved;
 pub(crate) use cmd_wire::needs::{
     AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer,
 };
@@ -109,27 +111,12 @@ impl Book {
 
 fn book() -> std::sync::MutexGuard<'static, Book> {
     static BOOK: std::sync::OnceLock<Mutex<Book>> = std::sync::OnceLock::new();
-    BOOK.get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// 某条会话挂着的请求变了（挂上 · 撤掉 · 答掉）⇒ 那个会话 id（流的 tap 订它推 `changed {needs, key: sid}`）。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
-    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
-        std::sync::OnceLock::new();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
-}
-
-/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 推 `changed {needs, key: sid}`
-/// （流的 tap 订它；`main` 也订它，把此刻挂着请求的那几条交给 watcher 改那几条会话的点）。
-pub(crate) fn moved(sid: &str) {
-    let _ = changes().send(sid.to_string());
-}
-
-/// 订「挂着的请求变了」那一声（`main` 交给 watcher：它照此刻挂着请求的那几条改会话的点）。
-pub fn moved_rx() -> tokio::sync::broadcast::Receiver<String> {
-    changes().subscribe()
+    BOOK.get_or_init(|| {
+        crate::history::needs_changed::answer_asked(sids);
+        Mutex::default()
+    })
+    .lock()
+    .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn now_ms() -> u64 {
@@ -231,47 +218,18 @@ fn open_id(
     (id, rx)
 }
 
-/// 「没人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
-pub(crate) const AUTO_MAX_MIN: u32 = 30;
-
 /// 替人答的那一句的缺省（交给那一家的话）。
 pub(crate) fn auto_say() -> String {
     copy_text("beAsk.auto.say", &[])
 }
 
-/// 那一句至多几个字。
-const AUTO_SAY_MAX: usize = 500;
-
 /// 这台挂上的这一条要不要、多久后替人答 —— **唯一的判定**：只有提问那一种；批准工具 · 批计划永远不（安全闸）。
+/// 那一格的值域在注解那一侧（`history::history_annotations::auto_checked`）。
 pub(crate) fn auto_of(a: &AskIn, setting: Option<&AutoAnswer>) -> Option<AutoAnswer> {
     if a.kind != crate::agents::AskKind::Question {
         return None;
     }
     setting.filter(|s| s.after_min > 0).cloned()
-}
-
-/// 注解里那一格怎么算数（`history-annotate` 写之前过这一道）：`afterMin` 0 ⇒ 关（`None`）· 1..=[`AUTO_MAX_MIN`]；
-/// 那一句去掉首尾空白，空 ⇒ 用缺省，过长拒。
-pub(crate) fn auto_checked(a: AutoAnswer) -> Result<Option<AutoAnswer>, String> {
-    if a.after_min == 0 {
-        return Ok(None);
-    }
-    if a.after_min > AUTO_MAX_MIN {
-        return Err(crate::common::contract::malformed(&format!(
-            "`autoAnswer.afterMin` must be 0..={AUTO_MAX_MIN}: {}",
-            a.after_min
-        )));
-    }
-    let say = a.say.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    if say.is_some_and(|s| s.chars().count() > AUTO_SAY_MAX) {
-        return Err(crate::common::contract::malformed(&format!(
-            "`autoAnswer.say` is longer than {AUTO_SAY_MAX} characters"
-        )));
-    }
-    Ok(Some(AutoAnswer {
-        after_min: a.after_min,
-        say: say.map(str::to_string),
-    }))
 }
 
 /// 等满了：还挂着 ⇒ 每一题答成「其他」＋ 那一句（没读出题的那一种 ⇒ 不回答、附那一句），收场、留记录 ⇒ 那一家要的那一份；

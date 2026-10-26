@@ -665,7 +665,7 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 
 /// **这台上需手动的会话**：活会话表说在等人的每一个（那台说在等 ∪ 有请求挂着，`LiveTable::needs`），带它在等什么（[`waiting_needs`]，不另判），
 /// 先答的在前（`needs.rank` 小的先，[`super::recognize::facts::needs_rank`]）。
-/// `dress` ＝ 给一条 `needs` 配上它挂着的请求（顶层壳交进来）。`hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
+/// `dress` ＝ 给一条 `needs` 配上它挂着的请求（顶层壳交进来）。`hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `history/session_hidden.rs` 判）。
 pub(crate) fn live_needs(
     agent_home: &Path,
     dress: &dyn Fn(

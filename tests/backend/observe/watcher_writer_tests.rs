@@ -45,6 +45,7 @@ fn rig(tag: &str) -> Rig {
         .join(format!("rollout-2026-10-10T00-00-00-{SID}.jsonl"));
     std::fs::write(&record, record_lines("t1")).unwrap();
     let mut state = ReaderState::new(dir.join("projects"));
+    state.tag = crate::control::identity_tag::tag_seen; // 金样里带打标回的容器（落假 tmux）
     let kind = crate::agents::codex::AGENT_KIND;
     state.follow(&crate::agents::Followed {
         kind,

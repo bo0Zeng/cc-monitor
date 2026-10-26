@@ -110,7 +110,7 @@ fn the_two_tab_rules_default_child_hidden_bg_shown_and_patch_one_at_a_time() {
     use cmd_wire::session::Tab;
     let d = Prefs::default();
     assert_eq!((d.child_tab, d.bg_tab), (Tab::Hide, Tab::Show));
-    let old: OnDisk =
+    let old: crate::common::machine_prefs::OnDisk =
         serde_json::from_value(serde_json::json!({"version": 1, "resumeInTmux": true})).unwrap();
     assert_eq!(
         (old.prefs.child_tab, old.prefs.bg_tab),

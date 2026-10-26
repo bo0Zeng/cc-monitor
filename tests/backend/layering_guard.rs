@@ -2,22 +2,15 @@
 //!
 //! # 它守的是什么
 //!
-//! `observe/`（读）与 `control/`（改变世界）之间**只许一个方向**：
-//! `observe → control`，且**接口面必须显式列举、条数被钉住**；反向一条都不许。
+//! `observe/`（读）与 `control/`（改变世界）**互不引用**。时机在观测侧、做的那一半在控制面的
+//! （装 tmux hook · 认起会话便条 · 打身份标）watcher 只报一声，由 `main.rs` 接上控制面的函数（`observe::watcher::Reactions`）。
 //!
 //! 这条性质没有护栏的话会以最不起眼的方式退化：某天 `fork_write` 需要读一份账号信息，
 //! 顺手 `use crate::observe::accounts_query::...` —— 编译通过、测试全绿，而两层从此互相咬死。
 //! U3 摸底时**真的就有这么一条**（`fork_write` → `accounts_query::read_regular_capped`），
 //! 处置不是开例外，是把那个函数搬进 `common/`（它本来就不是 observe 的域逻辑）。
 //!
-//! # 为什么正向要**钉条数**而不是「随便跨」
-//!
-//! 允许跨层的边今天是下面那张表里的符号，由 `watcher` 发起、有具体说得清的理由（表头注写着）：
-//! `control::identity_tag::tag`（`U-NP④`：`(pid, sid)` 只在 pidfile 事件那一刻同时在手，让 control 自己去发现只能靠轮询，
-//! 而消灭轮询正是那件事的全部目的；它的回值 watcher 要用）。
-//! 只是时机在观测侧、回值不用的（装 tmux hook · 认起会话便条）不走这条边：watcher 只报一声，由 `main.rs` 接上控制面（`observe::watcher::Reactions`）。
-//! **「有正当例外」与「这条线随便穿」是两回事**，中间隔着的就是这个计数。
-//! 多一个就红，逼下一个人把他的理由也写出来。
+//! 全后端顶层模块之间另有两条：定了方向的那几对只许单向（`ONE_WAY`）· 不成环（`the_top_modules_form_no_ring`）。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
@@ -26,18 +19,6 @@
 #[cfg(test)]
 mod tests {
     use guard_core::production_code;
-
-    /// 允许的 `observe → control` 跨层引用，逐条列举。
-    ///
-    /// **加一条之前先回答**：为什么这件事非得由观测侧发起？能不能反过来由 control 主动做？
-    /// 只是**时机**在观测侧（「tmux server 起来了」「这个 pidfile 出现了」）的，不进这张表：
-    /// watcher 只报一声，做的那一半由起 watcher 的 `main.rs` 接上控制面的函数（`observe::watcher::Reactions`）——
-    /// 装 tmux hook（`tmux_hook::install_for_this_process`）与认起会话便条（`launch_account::adopt_seen`）10-13 就是这么挪出去的。
-    ///
-    /// `identity_tag::tag`（`U-NP④`，08-14）还在表里：触发时机是「某个 pidfile 出现/原地换了 sid」，而它的**回值**
-    /// （这条会话住在什么容器里）随 `session_added` 报出去 —— watcher 要那个答案，不只是报一声。
-    /// 目的是把 `shared/ccm` 那条每秒轮询消掉；反过来做只是把轮询从 ccm 搬到后端。
-    const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &["crate::control::identity_tag::tag"];
 
     /// ★★ `KY5`：**谁能碰新立的 `plugin/` 层，逐条登记**（`(哪一层, 符号, 为什么)`）。
     ///
@@ -271,8 +252,7 @@ mod tests {
     ///   `accounts_query.rs`（16.5KB）**整个掉出采集面，地板照样绿**，反向判据静默失效。
     ///   而同一个仓的 `no_timer_guard` 早就论证过这一点并给了正解，我没沿用。
     /// - **`control/` 侧太紧**：实测 4 文件 / 11_863 字节，余量只有 **1.19 倍**。
-    ///   而账本 S14 写明 `resolve_query` 要在 U6/U8 被吸收进计划面 —— 它一走 control 只剩
-    ///   6_522 字节，断言当场红，报的却是「**采集坏了，下面的断言是空转**」：
+    ///   `resolve_query` 已撤 —— 按字节的地板碰上这种撤法，断言当场红，报的却是「**采集坏了，下面的断言是空转**」：
     ///   **一条指向完全错误方向的诊断**，正是在 `matches_registered` 那里批评过的形状。
     ///
     /// ⇒ 改成**数量相等**：独立走一遍目录树数 `.rs`，与采集到的条数比。
@@ -321,20 +301,23 @@ mod tests {
         }
     }
 
-    /// ★ **反向零容忍**：`control/` 不许引用 `crate::observe`。
+    /// ★ **零容忍**：`control/` 与 `observe/` 互不引用。
     #[test]
-    fn control_layer_must_not_reference_observe() {
-        let files = layer_sources("control");
-        assert_collection_is_complete("control", &files);
+    fn control_and_observe_do_not_reference_each_other() {
         let mut bad: Vec<String> = Vec::new();
-        for (name, code) in &files {
-            for sym in refs_to_layer(code, "observe") {
-                bad.push(format!("{name} → {sym}"));
+        for (layer, other) in [("control", "observe"), ("observe", "control")] {
+            let files = layer_sources(layer);
+            assert_collection_is_complete(layer, &files);
+            for (name, code) in &files {
+                for sym in refs_to_layer(code, other) {
+                    bad.push(format!("{name} → {sym}"));
+                }
             }
         }
         assert!(
             bad.is_empty(),
-            "control/ 引用了 observe（§1.1-2 反向不许）：\n  {}\n\
+            "control/ 与 observe/ 之间有引用（§1.1-2 互不引用）：\n  {}\n\
+             时机在观测侧、做的那一半在控制面的，watcher 只报一声，由 `main.rs` 接上（`observe::watcher::Reactions`）。\n\
              **先别急着加例外** —— U3 摸底时那条反向边（fork_write → accounts_query::read_regular_capped）\
              的正解是「那个函数根本不属于 observe」，搬进 common/ 之后边就没了。\n\
              先问：被引用的那个东西，是不是也只是个放错地方的通用工具？",
@@ -422,50 +405,6 @@ mod tests {
         );
     }
 
-    /// ★ **正向要显式列举且条数钉死**：`observe/` 只许用登记过的那几个 control 符号。
-    #[test]
-    fn observe_to_control_interface_is_exactly_the_registered_set() {
-        let files = layer_sources("observe");
-        assert_collection_is_complete("observe", &files);
-        let mut found: Vec<String> = Vec::new();
-        for (_, code) in &files {
-            for sym in refs_to_layer(code, "control") {
-                if !found.contains(&sym) {
-                    found.push(sym);
-                }
-            }
-        }
-        found.sort();
-        let mut want: Vec<String> = ALLOWED_OBSERVE_TO_CONTROL
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        want.sort();
-        // S1（Phase D 审计）：**登记项必须钉到函数级**。
-        //
-        // 审计的变异 M5 显示：`use crate::control::tmux_hook;`（模块级）会被记成一个新条目
-        // `crate::control::tmux_hook`。下一个人「修红」最省事的办法就是把它加进表里 ——
-        // 从此 `tmux_hook` 的**任意函数**都能被 observe 调，而计数仍是「2 条」、护栏再无信号。
-        // ⇒ 直接禁掉模块级登记：`crate::<layer>::` 之后必须有 ≥2 段。
-        for e in ALLOWED_OBSERVE_TO_CONTROL {
-            let tail = e
-                .strip_prefix("crate::control::")
-                .unwrap_or_else(|| panic!("登记项必须以 `crate::control::` 开头：{e}"));
-            assert!(
-                tail.contains("::"),
-                "登记项 `{e}` 只钉到**模块级** —— 那等于把整个模块的接口面都放开，\
-                 而计数看不出区别。必须钉到函数：`crate::control::<模块>::<函数>`。"
-            );
-        }
-        assert_eq!(
-            found, want,
-            "observe → control 的接口面与登记表对不上。\n\
-             **多出来的**：加进 `ALLOWED_OBSERVE_TO_CONTROL` 之前先回答「为什么这件事非得由观测侧发起、\
-             control 能不能自己做」——那张表的头注写着只是时机在观测侧的该怎么接（`observe::watcher::Reactions`）。\n\
-             **少了的**：说明那条跨层调用没了，清理登记（别留着，登记表腐烂比没有登记更糟）。"
-        );
-    }
-
     /// ★★ `KY5` 正题之一：**`plugin/` 不许反过来引用 `control/` 或 `observe/`**。
     ///
     /// 通用调用口一旦认识控制面或观测面，它就不再是「谁都能用的口」——
@@ -495,8 +434,7 @@ mod tests {
 
     /// ★★ `KY5` 正题之二：**进 `plugin/` 的边逐条登记、条数钉死**。
     ///
-    /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
-    /// 是**让每一条边被人看见一次**。
+    /// 不是禁绝（调用口本来就是给人用的），是**让每一条边被人看见一次**。
     ///
     /// 扫描面加了 **`accounts/`**：当时账号域经本口起外部脚本 `cc-acct-iso`
     /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
@@ -1483,17 +1421,73 @@ mod tests {
                 ));
             }
         }
-        for (a, b) in m.keys().filter(|(a, b)| a < b) {
-            if let (Some(x), Some(y)) = (count(a, b), count(b, a)) {
-                bad.push(format!(
-                    "互相引用：{a} → {b} {} 处 · {b} → {a} {} 处 —— 挑一个方向，把反方向那几处搬走（再加一行到 `ONE_WAY` 把方向钉住）",
-                    x.0, y.0
-                ));
-            }
-        }
         assert!(
             bad.is_empty(),
             "后端模块之间的方向不对：\n  {}",
+            bad.join("\n  ")
+        );
+    }
+
+    /// 引用图上的环：互相走得到的顶层模块各成一组，只留多于一个的那几组（组内按名排，组按名排）。两个模块互相引用是两元的环，也在里面。
+    fn rings(m: &std::collections::BTreeMap<(String, String), (usize, usize)>) -> Vec<Vec<String>> {
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut out_of: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+        for (a, b) in m.keys() {
+            out_of.entry(a).or_default().insert(b);
+            out_of.entry(b).or_default();
+        }
+        let reach_of = |from: &str| -> BTreeSet<&str> {
+            let mut seen = BTreeSet::new();
+            let mut stack = vec![from];
+            while let Some(n) = stack.pop() {
+                for &t in &out_of[n] {
+                    if seen.insert(t) {
+                        stack.push(t);
+                    }
+                }
+            }
+            seen
+        };
+        let reach: BTreeMap<&str, BTreeSet<&str>> =
+            out_of.keys().map(|&n| (n, reach_of(n))).collect();
+        let mut groups: BTreeSet<Vec<String>> = BTreeSet::new();
+        for (&a, from_a) in &reach {
+            let mut g: Vec<String> = from_a
+                .iter()
+                .filter(|&&b| reach[b].contains(a))
+                .map(|b| b.to_string())
+                .collect();
+            if !g.iter().any(|x| x == a) {
+                g.push(a.to_string());
+            }
+            g.sort();
+            if g.len() > 1 {
+                groups.insert(g);
+            }
+        }
+        groups.into_iter().collect()
+    }
+
+    /// ★ **顶层模块之间不成环**：两两单向还不够 —— a → b → c → a 每一对都只有一个方向，却绕回了自己。
+    /// 环上的模块谁也离不开谁，拆不成各自的 crate。
+    #[test]
+    fn the_top_modules_form_no_ring() {
+        let m = reference_matrix();
+        let bad: Vec<String> = rings(&m)
+            .iter()
+            .map(|g| {
+                let edges: Vec<String> = m
+                    .iter()
+                    .filter(|((a, b), _)| g.contains(a) && g.contains(b))
+                    .map(|((a, b), (n, files))| format!("{a} → {b} {n} 处 / {files} 份"))
+                    .collect();
+                format!("{{{}}}：{}", g.join(", "), edges.join(" · "))
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "后端顶层模块成环（环上每一对都可能只有一个方向）：\n  {}\n  \
+             拆法：在环上挑一条边，被引的那一头要的「读」挪到下面一层，「写」留在原处；挑定了方向再加一行到 `ONE_WAY` 钉住",
             bad.join("\n  ")
         );
     }
@@ -1566,6 +1560,20 @@ mod tests {
             "fake"
         ));
         assert!(!declared_test_only("pub(crate) mod fake;\n", "fake"));
+        // 认环：三个首尾相接 ⇒ 一个三元环（挂在环外、只往里引的那一个不算）；断一条 ⇒ 没有；两个互相引用 ⇒ 两元环。
+        let graph = |edges: &[(&str, &str)]| {
+            edges
+                .iter()
+                .map(|(a, b)| ((a.to_string(), b.to_string()), (1usize, 1usize)))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        let three = [("a", "b"), ("b", "c"), ("c", "a"), ("d", "a")];
+        assert_eq!(rings(&graph(&three)), vec![vec!["a", "b", "c"]]);
+        assert!(rings(&graph(&three[1..])).is_empty());
+        assert_eq!(
+            rings(&graph(&[("a", "b"), ("b", "a"), ("c", "d")])),
+            vec![vec!["a", "b"]]
+        );
         // 根上转出：`crate::REPLY_PAGE_BYTES` 记到它住的那个模块头上（此刻 lib.rs 里就有这一行）。
         let via = root_reexports(&top_modules());
         assert_eq!(

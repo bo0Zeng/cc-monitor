@@ -699,7 +699,7 @@ pub(crate) fn needs_at(
     };
     needs_with(
         home,
-        &crate::control::session_hidden::Here::read_now(),
+        &crate::history::session_hidden::Here::read_now(),
         &annotations,
         plan,
         manual,
@@ -709,7 +709,7 @@ pub(crate) fn needs_at(
 /// [`needs_at`]；隐藏要的这台那几样 · 注解由调用方给（判据喂夹具）。
 pub(crate) fn needs_with(
     home: &Path,
-    here: &crate::control::session_hidden::Here,
+    here: &crate::history::session_hidden::Here,
     annotations: &crate::history::history_annotations::Table,
     plan: &[(String, String, u32)],
     manual: Result<Vec<cmd_wire::needs::ManualItem>, String>,
@@ -1215,7 +1215,7 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
            + 'static {
         async move {
             // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
-            let limits = crate::control::machine_prefs::read_now().prefs().limits();
+            let limits = crate::common::machine_prefs::read_now().prefs().limits();
             facts_at(&home(), req, &limits)
         }
     }
@@ -1311,7 +1311,7 @@ pub(crate) fn facts_at(
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
     );
     // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
-    let (parent, children) = kin_of(home, sid, &crate::control::session_hidden::Here::read_now());
+    let (parent, children) = kin_of(home, sid, &crate::history::session_hidden::Here::read_now());
     facts.started_by = parent;
     facts.children = children;
     match over_cap(&facts) {
@@ -1343,7 +1343,7 @@ pub(crate) fn dress_kept(
 pub(crate) fn kin_of(
     home: &Path,
     sid: &str,
-    here: &crate::control::session_hidden::Here,
+    here: &crate::history::session_hidden::Here,
 ) -> (
     Option<crate::observe::recognize::facts::Kin>,
     Vec<crate::observe::recognize::facts::Kin>,

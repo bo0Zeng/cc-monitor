@@ -239,7 +239,7 @@ pub(crate) fn line_of(
     })
 }
 
-/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
+/// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 此刻的整份脸 · 隐不隐藏（判定住 `history/session_hidden.rs`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -1023,7 +1023,7 @@ pub(crate) enum LimitFrom {
 pub(crate) const CONTEXT_STANDARD: u64 = 200_000;
 pub(crate) const CONTEXT_EXTENDED: u64 = 1_000_000;
 
-/// 设置里的上限表：模型名子串（小写）→ 上限。住这台的偏好（`control/machine_prefs.rs` 的 `contextLimits`），`history-facts` 现读。
+/// 设置里的上限表：模型名子串（小写）→ 上限。住这台的偏好（`common/machine_prefs.rs` 的 `contextLimits`），`history-facts` 现读。
 pub(crate) type ContextLimits = Vec<(String, u64)>;
 
 /// **上下文上限的唯一判定**：中转看见过这个会话的请求（`relay`）⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k；

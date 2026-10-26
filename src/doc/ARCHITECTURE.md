@@ -162,7 +162,7 @@ subscribe(origin, kind)    → 流
 - 只喂控制决策的只读查询也归 `control/`（例：`control/gate.rs` 探 `@ccm_sid`，它不产观测帧）。
 - 只有产出观测帧的读才归 `observe/`。
 
-方向单向：`control/` 引用 `observe/` 零容忍；`observe/` 引用 `control/` 许有，但逐条登记、条数钉死（`tests/backend/layering_guard.rs` 的 `ALLOWED_OBSERVE_TO_CONTROL`，每条写着为什么非得由观测侧发起）。按读写分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，而它唯一的调用方在 `control/`，平白造出一条反向边。
+两层互不引用：`control/` 与 `observe/` 谁都不引用谁（`tests/backend/layering_guard.rs` 判；观测侧要用控制侧的东西，由 `main.rs` 经 `Reactions` 交进来，如打标的 `tag`）。按读写分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，而它唯一的调用方在 `control/`，平白造出一条反向边。
 
 ### 2.4 monitor：宿主 ＋ 通信层
 

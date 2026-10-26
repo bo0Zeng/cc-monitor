@@ -2875,6 +2875,7 @@ exit 1
     let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(root.join("projects"));
+    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
     let first: Vec<bool> = files
         .iter()
         .map(|f| process_session_added(f, &mut state, &mut sink))
@@ -3024,6 +3025,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
+    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
     initial_session_scan(&sessions, &mut state, &mut sink);
     let mut frames = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -3557,6 +3559,7 @@ fn an_externally_changed_identity_tag_is_put_back() {
     let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
+    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
     let pidfile = sessions.join(format!("{}.json", kid.id()));
     process_session_added(&pidfile, &mut state, &mut sink);
     let read = || std::fs::read_to_string(&label).unwrap_or_default();
@@ -3603,6 +3606,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"));
+    state.tag = crate::control::identity_tag::tag_seen; // 这几条要真打标（落假 tmux）
     for k in [&a, &b, &c] {
         process_session_added(
             &sessions.join(format!("{}.json", k.id())),

@@ -26,7 +26,7 @@
 //! # 方向（`layering_guard` 里有对应的判据）
 //!
 //! - `plugin → control` · `plugin → observe`：一条都不许（通用调用口一旦认识它们，就成了 control 的私有助手）。
-//! - `control → plugin`：逐条登记 + 条数钉死（形状照 `ALLOWED_OBSERVE_TO_CONTROL`），让每一条边都被人看见一次。
+//! - `control → plugin`：逐条登记（`tests/backend/layering_guard.rs` 的 `ALLOWED_INTO_PLUGIN`），让每一条边都被人看见一次。
 //!
 //! # 边界
 //!

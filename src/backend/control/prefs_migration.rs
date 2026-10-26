@@ -16,8 +16,8 @@
 //! （空 ⇒ 通用页那一格）· `resumeInTmux`（各台同一格）· `contextLimits`（各台同一张）· `accounts.byMachine.<origin>.modelByAccount`
 //! （本机是 `<local>`）。启动命令只记给默认那一家（今天界面就只对它用这一格）。坏值那一条丢掉、不拖垮整份（写口那几条规矩同 `prefs-set`）。
 
-use super::machine_prefs::{self, write as write_prefs, Prefs, PREFS_ROWS_MAX};
 use super::machines;
+use crate::common::machine_prefs::{self, write as write_prefs, Prefs, PREFS_ROWS_MAX};
 use crate::common::own_state::Doc;
 use crate::platform::Own;
 use serde_json::Value;

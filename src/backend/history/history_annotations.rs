@@ -9,7 +9,7 @@
 //! # 形状
 //!
 //! `{"version": 1, "entries": {sid: {"starred", "customTitle", "hide"?, "autoAnswer"?, "resumeWith"?, "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
-//! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `control/session_hidden.rs`）。
+//! `hide` 是单个那一格（`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则，判定住 `history/session_hidden.rs`）。
 //!
 //! # 升级链（一节，下一个大版本删）
 //!
@@ -124,6 +124,38 @@ pub(crate) fn auto_answer_at(path: &Path, sid: &str) -> Option<cmd_wire::needs::
     }
 }
 
+/// 「没人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
+pub(crate) const AUTO_MAX_MIN: u32 = 30;
+
+/// 替人答的那一句至多几个字。
+const AUTO_SAY_MAX: usize = 500;
+
+/// 那一格怎么算数（`history-annotate` 写之前过这一道）：`afterMin` 0 ⇒ 关（`None`）· 1..=[`AUTO_MAX_MIN`]；
+/// 那一句去掉首尾空白，空 ⇒ 用缺省，过长拒。
+pub(crate) fn auto_checked(
+    a: cmd_wire::needs::AutoAnswer,
+) -> Result<Option<cmd_wire::needs::AutoAnswer>, String> {
+    if a.after_min == 0 {
+        return Ok(None);
+    }
+    if a.after_min > AUTO_MAX_MIN {
+        return Err(crate::common::contract::malformed(&format!(
+            "`autoAnswer.afterMin` must be 0..={AUTO_MAX_MIN}: {}",
+            a.after_min
+        )));
+    }
+    let say = a.say.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if say.is_some_and(|s| s.chars().count() > AUTO_SAY_MAX) {
+        return Err(crate::common::contract::malformed(&format!(
+            "`autoAnswer.say` is longer than {AUTO_SAY_MAX} characters"
+        )));
+    }
+    Ok(Some(cmd_wire::needs::AutoAnswer {
+        after_min: a.after_min,
+        say: say.map(str::to_string),
+    }))
+}
+
 /// 这条会话「下次恢复用」那一格（现读这台那一份；读不到 ⇒ 没记）。还算不算数由读的那一方照记录长度判（`session_open_face::kept_for_resume`）。
 pub(crate) fn resume_with_of(sid: &str) -> Option<ResumeWith> {
     path().and_then(|p| resume_with_at(&p, sid))
@@ -236,7 +268,7 @@ pub(crate) struct Patch {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     hide: Option<HideAsk>,
-    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+    /// 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
     #[serde(default, rename = "autoAnswer")]
     #[cfg_attr(test, ts(optional = nullable))]
     auto_answer: Option<cmd_wire::needs::AutoAnswer>,
@@ -535,8 +567,7 @@ pub(crate) fn annotate_at(
         if a.say.is_none() {
             a.say = entry.auto_answer.as_ref().and_then(|p| p.say.clone());
         }
-        entry.auto_answer =
-            crate::control::asks::auto_checked(a).map_err(AnnotationErr::BadArgs)?;
+        entry.auto_answer = auto_checked(a).map_err(AnnotationErr::BadArgs)?;
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
@@ -544,7 +575,7 @@ pub(crate) fn annotate_at(
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
     if auto_changed {
-        crate::control::asks::moved(sid);
+        super::needs_changed::moved(sid);
     }
     Ok(Annotated { entry, prev })
 }

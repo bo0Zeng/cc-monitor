@@ -56,7 +56,7 @@ fn write_all(own: &Own, home: &Path) {
     }))
     .expect("host");
     crate::control::machines::write(own, &[host]).expect("machines");
-    crate::control::machine_prefs::write(own, &Default::default()).expect("prefs");
+    crate::common::machine_prefs::write(own, &Default::default()).expect("prefs");
     crate::control::launch_account::leave_note(own, 4242, Some("work"), true, None, 1_700_000_000)
         .expect("note");
     crate::accounts::quota::setup::shelf::write_file(own, "even", "// rotation\nfn pick() {}\n")
