@@ -12,7 +12,7 @@ fn check_json(v: serde_json::Value) -> Result<Checked, &'static str> {
 }
 
 fn ok_req() -> serde_json::Value {
-    json!({"from": A, "to": B, "act": "告知", "title": "合并树已更新", "text": "看 w8/mg73"})
+    json!({"from": A, "to": B, "act": "inform", "title": "合并树已更新", "text": "看 w8/mg73"})
 }
 
 fn with(k: &str, v: serde_json::Value) -> serde_json::Value {
@@ -32,7 +32,7 @@ fn code_of(v: serde_json::Value) -> &'static str {
 fn a_well_formed_envelope_passes_and_tier_defaults_to_two() {
     let c = check_json(ok_req()).expect("合格的信封要过");
     assert_eq!(c.tier, 2, "tier 缺省 2");
-    assert_eq!(c.act, "告知");
+    assert_eq!(c.act, cmd_wire::bus::BusAct::Inform);
     assert!(c.refs.is_empty());
     assert_eq!(c.re, None);
 }
@@ -61,17 +61,19 @@ fn tier_is_one_or_two() {
 }
 
 #[test]
-fn act_is_one_of_the_six_words() {
-    for a in ["问", "请", "告知"] {
+fn act_is_one_of_the_six_codes() {
+    for a in ["ask", "request", "inform"] {
         assert_eq!(code_of(with("act", json!(a))), "ok", "{a}");
     }
-    for a in ["答", "交回", "更正"] {
+    for a in ["answer", "handback", "correct"] {
         let mut r = with("act", json!(a));
         r["re"] = json!("m18f2b3c4d5e6abcd");
         assert_eq!(code_of(r), "ok", "{a} 带 re");
     }
-    assert_eq!(code_of(with("act", json!("通知"))), "bad_act");
-    assert_eq!(code_of(with("act", json!(""))), "bad_act");
+    // 是类型：写错的码 · 显示用的词 · 空串在解入参那一下就拒。
+    assert_eq!(code_of(with("act", json!("notify"))), "bad_args");
+    assert_eq!(code_of(with("act", json!("Ask"))), "bad_args");
+    assert_eq!(code_of(with("act", json!(""))), "bad_args");
     let mut no_act = ok_req();
     no_act.as_object_mut().unwrap().remove("act");
     assert_eq!(code_of(no_act), "bad_args", "act 必填");
@@ -92,13 +94,13 @@ fn title_is_required_one_line_at_most_eighty_chars() {
 
 #[test]
 fn answer_handback_and_correction_must_carry_re() {
-    for a in ["答", "交回", "更正"] {
+    for a in ["answer", "handback", "correct"] {
         assert_eq!(code_of(with("act", json!(a))), "need_re", "{a} 不带 re");
     }
-    let mut r = with("act", json!("答"));
+    let mut r = with("act", json!("answer"));
     r["re"] = json!("not an id");
     assert_eq!(code_of(r), "bad_re", "re 要是消息 id 的形状");
-    let mut r = with("act", json!("问"));
+    let mut r = with("act", json!("ask"));
     r["re"] = json!("m18f2b3c4d5e6abcd");
     assert_eq!(code_of(r), "ok", "问也可以接在一条后面");
 }
@@ -149,8 +151,7 @@ fn every_refusal_code_is_in_the_command_code_table() {
     use crate::wire::typed::Codes;
     let table = crate::control::cc_bus_wire::BusEnvelopeErr::ALL;
     for c in [
-        "bad_from", "bad_to", "bad_tier", "bad_act", "bad_title", "need_re", "bad_re", "bad_ref",
-        "too_long",
+        "bad_from", "bad_to", "bad_tier", "bad_title", "need_re", "bad_re", "bad_ref", "too_long",
     ] {
         assert!(table.contains(&c), "{c} 不在 bus-envelope 的码表里");
     }

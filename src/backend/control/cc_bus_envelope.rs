@@ -4,7 +4,8 @@
 //! 各格的规矩：
 //! - `from` / `to`：只许会话 id（值域是 [`cmd_wire::Sid`] 那一份，不另写）。
 //! - `tier`：1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。缺 ⇒ 2。
-//! - `act`：问 · 答 · 请 · 告知 · 交回 · 更正（[`ACTS`]）；答 · 交回 · 更正必带 `re`（[`NEEDS_RE`]）。
+//! - `act`：六个码（[`cmd_wire::bus::BusAct`]，显示为 问 · 答 · 请 · 告知 · 交回 · 更正）；是类型，写错的码在解入参那一下就拒。
+//!   答 · 交回 · 更正必带 `re`（`BusAct::needs_re`）。
 //! - `title`：必填、一行、不超过 [`TITLE_MAX_CHARS`] 字。
 //! - `re`：消息 id 的形状（[`msg_id_ok`]，就是 [`seal`] 盖出来的那一形）。
 //! - `refs`：只核前缀形状（路径 · `pb:<片>/<格号>` · `msg:<id>` · `commit:<hash>` · URL）；cc-bus 不认得 pb，不查那一格在不在。
@@ -15,10 +16,6 @@ use super::cc_bus_wire::{BusEnvelope, BusEnvelopeReq};
 /// 拒的那一对：码 ＋ 原话（哪一格、什么值；给人看的那一句由码表 `envelope_said` 出）。
 pub(crate) type Refusal = (&'static str, String);
 
-/// 六个词。
-pub(crate) const ACTS: &[&str] = &["问", "答", "请", "告知", "交回", "更正"];
-/// 必带 `re` 的那三个。
-pub(crate) const NEEDS_RE: &[&str] = &["答", "交回", "更正"];
 /// 标题的上界（按字算）。
 pub(crate) const TITLE_MAX_CHARS: usize = 80;
 /// 正文的上界（按字节算）。
@@ -32,7 +29,7 @@ pub(crate) struct Checked {
     pub(crate) from: String,
     pub(crate) to: String,
     pub(crate) tier: u8,
-    pub(crate) act: String,
+    pub(crate) act: cmd_wire::bus::BusAct,
     pub(crate) title: String,
     pub(crate) re: Option<String>,
     pub(crate) refs: Vec<String>,
@@ -87,12 +84,6 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Refusal> {
     if !(1..=2).contains(&tier) {
         return Err(("bad_tier", format!("`tier` must be 1 or 2, got {tier}")));
     }
-    if !ACTS.contains(&req.act.as_str()) {
-        return Err((
-            "bad_act",
-            format!("`act` must be one of {ACTS:?}, got {:?}", req.act),
-        ));
-    }
     let title = req.title.trim();
     let chars = title.chars().count();
     if title.is_empty() || title.contains(['\n', '\r']) || chars > TITLE_MAX_CHARS {
@@ -103,8 +94,11 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Refusal> {
     }
     let re = req.re.as_deref().map(str::trim).filter(|s| !s.is_empty());
     match re {
-        None if NEEDS_RE.contains(&req.act.as_str()) => {
-            return Err(("need_re", format!("`act` {:?} needs `re` (the message id it answers)", req.act)));
+        None if req.act.needs_re() => {
+            return Err((
+                "need_re",
+                format!("`act` {:?} needs `re` (the message id it follows)", req.act),
+            ));
         }
         Some(r) if !msg_id_ok(r) => {
             return Err(("bad_re", format!("`re` is not a message id: {r:?}")));
@@ -129,7 +123,7 @@ pub(crate) fn check(req: &BusEnvelopeReq) -> Result<Checked, Refusal> {
         from: req.from.clone(),
         to: req.to.clone(),
         tier,
-        act: req.act.clone(),
+        act: req.act,
         title: title.to_string(),
         re: re.map(str::to_string),
         refs,

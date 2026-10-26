@@ -41,7 +41,6 @@ pub(crate) fn envelope_said(code: &str) -> String {
         "bad_from" => copy_text("beCcBus.envelope.badFrom", &[]),
         "bad_to" => copy_text("beCcBus.envelope.badTo", &[]),
         "bad_tier" => copy_text("beCcBus.envelope.badTier", &[]),
-        "bad_act" => copy_text("beCcBus.envelope.badAct", &[]),
         "bad_title" => copy_text("beCcBus.envelope.badTitle", &[]),
         "need_re" => copy_text("beCcBus.envelope.needRe", &[]),
         "bad_re" => copy_text("beCcBus.envelope.badRe", &[]),
@@ -92,8 +91,8 @@ pub(crate) struct BusEnvelope {
     pub(crate) to: String,
     /// 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。
     pub(crate) tier: u8,
-    /// 问 · 答 · 请 · 告知 · 交回 · 更正。
-    pub(crate) act: String,
+    /// 这一封是做什么的（线上码）。
+    pub(crate) act: cmd_wire::bus::BusAct,
     /// 标题（一行）。
     pub(crate) title: String,
     /// 接在哪一条后面（消息 id），没有 ⇒ `null`。
@@ -145,8 +144,8 @@ pub(crate) struct BusEnvelopeReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable, type = "number"))]
     pub(crate) tier: Option<u8>,
-    /// 问 · 答 · 请 · 告知 · 交回 · 更正。
-    pub(crate) act: String,
+    /// 这一封是做什么的（线上码；写错的码在解入参那一下就拒）。
+    pub(crate) act: cmd_wire::bus::BusAct,
     /// 一行，不超过 80 字。
     pub(crate) title: String,
     /// 接在哪一条后面（消息 id）；答 · 交回 · 更正必带。
@@ -183,12 +182,11 @@ typed::codes! {
 }
 
 typed::codes! {
-    /// `bus-envelope` 的码：每条校验一个码（次序即校验次序）。
+    /// `bus-envelope` 的码：每条校验一个码（次序即校验次序）。`act` 是类型，写错在解入参时就是 `bad_args`。
     pub(crate) enum BusEnvelopeErr {
         BadFrom = "bad_from",
         BadTo = "bad_to",
         BadTier = "bad_tier",
-        BadAct = "bad_act",
         BadTitle = "bad_title",
         NeedRe = "need_re",
         BadRe = "bad_re",
