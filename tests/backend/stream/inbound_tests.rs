@@ -1457,7 +1457,11 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
 #[test]
 fn the_dead_launch_command_is_not_registered() {
     let names: Vec<&str> = REGISTRY.iter().map(|spec| spec.name).collect();
-    assert!(names.len() >= 4, "注册表只有 {} 条 —— 本条在空转", names.len());
+    assert!(
+        names.len() >= 4,
+        "注册表只有 {} 条 —— 本条在空转",
+        names.len()
+    );
     assert!(
         !names.contains(&"launch"),
         "`launch` 还登记在帧命令表里：没有调用方的命令要撤"
