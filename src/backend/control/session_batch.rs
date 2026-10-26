@@ -1,7 +1,7 @@
 //! **一批会话一次问**：「这个 sid 由哪个 tmux 会话在跑」· 停。tab 栏的单个菜单与批量菜单都走这里（单个 = 一个 sid 的一批）。
 //!
 //! 「这个 sid 此刻在这台 tmux 里是什么样」只在 [`standing`] 判一次，停 / 菜单就绪 / 起会话（`session-open`）共用：
-//! 停 = 同 `kill`（三道门、杀句柄、顺手注销 cc-bus）。一个不成不挡下一个。
+//! 停 = 同 `kill`（三道门、杀句柄）。一个不成不挡下一个。
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
@@ -40,10 +40,9 @@ pub(crate) struct Deps<'a> {
     pub(crate) list: &'a dyn Fn() -> Result<Option<Vec<TmuxEntry>>, CmdErr>,
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
-    /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
+    /// `(会话名, sid)` ⇒ 杀。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) kill:
-        &'a dyn Fn(&str, &str) -> Result<super::cc_bus::BusNote, crate::wire::spec::Fail>,
+    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<(), crate::wire::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::wire::spec::Fail>,
@@ -117,7 +116,6 @@ pub(crate) struct Answer {
     pub(crate) detail: String,
     /// 落在哪个 tmux 会话上（停 · 起在 tmux 里 · 本机开终端那一形）。
     pub(crate) session: Option<String>,
-    pub(crate) bus: Option<super::cc_bus::BusNote>,
 }
 
 /// `sessions-stop` 的应答：逐个结果，与入参同序。
@@ -147,8 +145,6 @@ pub(crate) struct Outcome {
     pub(crate) copy_detail: String,
     /// 落在哪个 tmux 会话上。
     pub(crate) session: Option<String>,
-    /// 停做成了那一个：同 `kill` 应答的 `bus`。
-    pub(crate) bus: Option<super::cc_bus::BusNote>,
 }
 
 /// `sessions-where` 的应答：逐个结果，与入参同序。
@@ -209,7 +205,6 @@ impl Answer {
             why: code.map(str::to_string),
             detail,
             session: None,
-            bus: None,
         }
     }
     fn skipped(sid: &str, code: &str, detail: String) -> Self {
@@ -242,7 +237,6 @@ impl Answer {
             said,
             copy_detail,
             session: self.session,
-            bus: self.bus,
         }
     }
 }
@@ -400,9 +394,8 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
         }
     };
     match (deps.kill)(&name, sid) {
-        Ok(bus) => Answer {
+        Ok(()) => Answer {
             session: Some(name),
-            bus: Some(bus),
             ..Answer::done(sid)
         },
         Err(f) => {

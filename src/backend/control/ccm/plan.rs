@@ -91,7 +91,7 @@ fn user_base_url(env: &Env) -> Option<&str> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 继承表：新会话从调用方（终端 · 某条会话的 shell · cc-spawn）拿什么
+// 继承表：新会话从调用方（终端 · 某条会话的 shell · 脚本）拿什么
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 继承表的一格是哪一项。
@@ -461,8 +461,7 @@ impl Env {
 ///
 /// 🔴 **`is_file()` 不够**〔`K-R48` 第二拍 09-11 实测逮到〕：旧 bash 实现这三处判的全是
 /// `-x`，而首版原生实现写的是 `is_file()` ——「脚本在、但没有执行位」于是被读成「它能用」，
-/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。`tests/e2e/cc-spawn-uplift.sh` 的
-/// 「台账脚本不可执行 ⇒ 明说『不进 spawn 台账』」那两格钉的正是它。
+/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。
 fn is_exec(p: &std::path::Path) -> bool {
     #[cfg(unix)]
     {
@@ -638,7 +637,7 @@ pub(crate) struct Container {
     // 三条取名路的态度**仍然不一样，别合并**（判据见
     // `only_two_of_the_three_naming_paths_step_aside_on_a_collision`）：
     // - 显式 `--tmux=<名>` ⇒ **不退让**（调用方说的就是要这个名；撞了走 `C14` 响亮失败）；
-    // - `--tmux-base=<基名>` ⇒ **退让**（`C15` 给 cc-spawn 的那条路，它随后要读回真名字）；
+    // - `--tmux-base=<基名>` ⇒ **退让**（`C15`：调用方随后要读回真名字）；
     // - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
     /// `--bus-register` 要的登记；找不到 cc-bus 脚本就是 `None`（并出一句声）。
     pub(crate) bus: Option<BusRegister>,
@@ -647,8 +646,6 @@ pub(crate) struct Container {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BusRegister {
     pub(crate) scripts_dir: String,
-    pub(crate) note: String,
-    pub(crate) has_spawned_record: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1064,9 +1061,6 @@ fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     {
         return Err(refuse(flag::END, a));
     }
-    if !shell_quote_core::arg_text_ok(&o.bus_note) {
-        return Err(refuse(flag::BUS_NOTE, &o.bus_note));
-    }
     Ok(())
 }
 
@@ -1320,41 +1314,18 @@ pub(crate) fn build_among(
 
         // 🔴 **要了登记而登记不成，必须出声**〔`K-R48` 第二拍 09-11 补回〕。
         //
-        // 旧 bash 实现这两处各有一句 stderr：找不到 cc-bus 脚本目录 ⇒「**没有登记**」；
-        // 找得到目录但 `cc-spawned-record` 不可执行 ⇒「**不进 spawn 台账**」。
-        // 首版原生实现把这两句**整个丢了** —— `--bus-register` 于是变成一个
-        // 「要了、没做、也不说」的旗标，而那正是本工作区反复消灭的那类静默降级。
-        // 〔`tests/e2e/cc-spawn-uplift.sh` 的「且没有一声不吭」「明说『不进 spawn 台账』」两组钉着它。〕
+        // 找不到 cc-bus 脚本目录 ⇒ stderr 说「**没有登记**」：首版原生实现把这句丢过 ——
+        // `--bus-register` 于是变成一个「要了、没做、也不说」的旗标，而那正是本工作区反复消灭的那类静默降级。
+        // 起会话只登记（`cc-register`），不记派生台账：「谁起的谁」读血缘。
         let bus = if o.bus_register {
             match env.bus_scripts.as_ref() {
                 None => {
                     eprintln!("{}", copy_text("bePlan.bus.noScripts", &[]));
                     None
                 }
-                Some(d) => {
-                    let has_spawned_record =
-                        is_exec(&std::path::Path::new(d).join("cc-spawned-record"));
-                    if !has_spawned_record {
-                        eprintln!(
-                            "{}",
-                            copy_text(
-                                "bePlan.bus.noSpawnRecord",
-                                &[(
-                                    "path",
-                                    &std::path::Path::new(d)
-                                        .join("cc-spawned-record")
-                                        .display()
-                                        .to_string()
-                                )]
-                            )
-                        );
-                    }
-                    Some(BusRegister {
-                        scripts_dir: d.clone(),
-                        note: o.bus_note.clone(),
-                        has_spawned_record,
-                    })
-                }
+                Some(d) => Some(BusRegister {
+                    scripts_dir: d.clone(),
+                }),
             }
         } else {
             None
@@ -1984,9 +1955,9 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // ★★ **先自检，再谈接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
     //
     // 从前 ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
-    // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而 cc-spawn 照报成功、
+    // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而调用方照报成功、
     // 还登记上了总线（**假成功**）。登记就发生在本段下面 ⇒ 确认必须排在它前面、住在 ccm 里；
-    // 放进 cc-spawn 只能「先登记、再撤回」。
+    // 放进调用方只能「先登记、再撤回」。
     //
     // 确认的形状：**用 pane 里那一跳的同一个入口、同一串参数、同一段 export 前缀，加 `--ccm-print` 真跑一次**
     //（[`Container::self_check`]，与载荷出自 `build` 里同一个 `inner`）。等的是**一个进程退出**，
@@ -2030,17 +2001,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
             sq(&format!("{}/cc-register", b.scripts_dir)),
             sq(&c.name)
         ));
-        if b.has_spawned_record {
-            seq.push_str(&format!(
-                "; {} {} {} {} >/dev/null; }} || true",
-                sq(&format!("{}/cc-spawned-record", b.scripts_dir)),
-                sq(&c.name),
-                sq(&c.cwd),
-                sq(&b.note)
-            ));
-        } else {
-            seq.push_str("; } || true");
-        }
+        seq.push_str("; } || true");
     }
     seq
 }
