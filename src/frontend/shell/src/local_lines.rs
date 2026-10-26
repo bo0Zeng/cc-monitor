@@ -1,5 +1,5 @@
-//! **本机会话内容的入口通道** —— 本机那条流上的内容帧从两条读循环送到
-//! [`crate::stream_source::consume_local`]（再进与远端同一个 `LineIntake`）。
+//! **会话内容的入口通道** —— 本机那条流上的帧（连同本机后端转来的各台那几条流上的事）从两条读循环送到
+//! [`crate::stream_source::consume`]（按那台分到同一个 `LineIntake`）。
 //!
 //! # 为什么要它
 //!
@@ -32,7 +32,7 @@ use crate::stream_source::{LocalItem, Ordered};
 
 /// 通道容量（件数，一件 = 一帧）。
 ///
-/// 量级：`stream_source` 远端那条「读帧任务 → 主循环」的通道是 1024 行，同一种东西、同一个消费者形状 ⇒ 取同一个数。
+/// 量级：重连循环交事那条队列（`resident_client::feed`）也是 1024 件，同一种东西、同一个消费者形状 ⇒ 取同一个数。
 /// 满了是**背压**（送的一方等），不是丢。
 pub(crate) const LOCAL_LINES_CAPACITY: usize = 1024;
 
@@ -47,8 +47,7 @@ pub(crate) fn install(app: tauri::AppHandle, replay: Arc<EventReplay>) {
     }
     // 本机两条载体解不出来的帧也进健康信息（同一个出口）。
     crate::stream_source::install_local_health(crate::remote_health_out(app.clone()));
-    tauri::async_runtime::spawn(crate::stream_source::consume_local(
-        crate::origin::LOCAL.to_string(),
+    tauri::async_runtime::spawn(crate::stream_source::consume(
         rx,
         replay,
         crate::remote_health_out(app),
@@ -88,7 +87,7 @@ async fn send(item: LocalItem) {
 /// **stdio 载体（裸线程）往哪送**：读循环（`local_backend::local_stdio_consumer`）交回的东西只经它出去。
 ///
 /// - [`StdioOut::Local`]：本机那一个消费者（[`install`] 造的通道）—— 产品只有这一形。
-/// - [`StdioOut::Own`]：调用方自己那条通道（截图台架的无头壳每台机器一条，各进一个 `consume_local`；`shots_shell`）。
+/// - [`StdioOut::Own`]：调用方自己那条通道（截图台架的无头壳没有窗口把手、不经 [`install`]，自己起那一个 `consume`；`shots_shell`）。
 ///
 /// 送法都是 `blocking_send`（裸线程，见头注「两种送法」）；背压照旧（满了就等）。
 pub(crate) enum StdioOut {

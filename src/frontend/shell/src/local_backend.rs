@@ -1389,7 +1389,7 @@ pub(crate) fn local_witness(
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
-/// 10a：`client_for("<local>")` 今天的生产消费者**只有读**（`backend_status` 问「通道在不在」）。
+/// 10a：`inbound_client::local_client()` 今天的生产消费者**只有读**（`backend_status` 问「通道在不在」）。
 /// **一条入方向命令都还没有人从本机发出去** —— 那是 P3 刀 2/3 的活。
 /// 「通道在」与「控制面走通了」是两件事，别把前者当成后者的证据。
 ///
@@ -1402,12 +1402,12 @@ pub(crate) fn local_witness(
 /// # 它做的事只有一点胶水
 ///
 /// 按行读 stdout → `UnreadNotes::take`（帧门 ＋ 按类型解）→ **首帧是 hello** 就 `park_owned_writer(stdin).into_client(见证)`
-/// + `register(LOCAL_ORIGIN, …)`；其余帧丢弃；读到 EOF 返回 ——
+/// + `register(…)`；其余帧丢弃；读到 EOF 返回 ——
 /// **返回就等于流结束，也就是 `supervise` 的判死信号**（与缺省那支 `io::copy → sink` 同一个事件）。
 ///
 /// # 复用边界（为什么不用远端那一条）
 ///
-/// 远端那一条（重连循环 `resident_client::feed` ＋ 收事那一头 `stream_source::consume_remote`）管 ensure / 换装 / 退避 /
+/// 各台那一条（重连循环 `resident_client::feed`，住本机后端 `control/feeds.rs`）管 ensure / 换装 / 退避 /
 /// 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
 /// `stream_source::decode` · `local_witness`（`inbound_client::witness_of` ＋ 记下看不见那张脸）· `stream_source::route` ·
@@ -1515,7 +1515,6 @@ pub(crate) fn local_stdio_consumer(
         };
         let Some(witness) = witness else {
             if let Some(f) = crate::stream_source::route(
-                crate::stream_source::Via::Local,
                 &route.origin,
                 registered.as_deref(),
                 frame,
@@ -1533,7 +1532,7 @@ pub(crate) fn local_stdio_consumer(
             .take()
             .expect("上面刚判过 is_some")
             .into_client(witness);
-        crate::inbound_client::register(route.origin.as_wire_str(), client.clone());
+        crate::inbound_client::register(client.clone());
         // stdio 载体没有 attach 行 ⇒ 接上即在它上面报名单（名单台那一处）。
         crate::stream_watch::desk(&route.origin).up(&client, None);
         registered = Some(client);
@@ -1564,7 +1563,7 @@ pub(crate) fn local_stdio_consumer(
     };
     // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
     if let Some(mine) = registered {
-        crate::inbound_client::unregister(route.origin.as_wire_str(), &mine);
+        crate::inbound_client::unregister(&mine);
     }
     ConsumerReport {
         exit: if early {

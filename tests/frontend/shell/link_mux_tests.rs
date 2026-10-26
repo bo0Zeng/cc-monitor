@@ -53,7 +53,6 @@ fn rig() -> Rig {
         while let Ok(Some(l)) = lines.next_line().await {
             if let Ok(f) = crate::stream_source::decode(&l) {
                 crate::stream_source::route(
-                    crate::stream_source::Via::Local,
                     &crate::origin::Origin::local(),
                     Some(&c2),
                     f,

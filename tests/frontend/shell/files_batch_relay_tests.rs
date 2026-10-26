@@ -43,7 +43,6 @@ async fn a_frame_on_the_local_stream_reaches_the_watcher_with_its_bytes() {
     )
     .expect("认得这一帧");
     crate::stream_source::route(
-        crate::stream_source::Via::Local,
         &crate::origin::Origin::local(),
         None,
         f,

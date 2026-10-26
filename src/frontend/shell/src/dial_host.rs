@@ -79,9 +79,8 @@ async fn local_channel() -> Result<Arc<InboundClient>, String> {
 /// 同上，但问的是**哪一条命令**：本机后端那条流在、且认 `cmd` ⇒ 回它的客户端。
 /// 不在 ⇒ 报「本机后端不在」；不认 ⇒ 报「本机后端太旧」。传输台的中继（`sftp_pool.rs`）也从这里拿。
 pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClient>, String> {
-    let local = inbound_client::LOCAL_ORIGIN;
     for attempt in 0..LOCAL_WAIT_TRIES {
-        if let Some(c) = inbound_client::client_for(local) {
+        if let Some(c) = inbound_client::local_client() {
             if !c.accepts(cmd) {
                 return Err(copy_core::backend_old(&copy_core::local_machine()));
             }

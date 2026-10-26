@@ -386,7 +386,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
 // 🔴 **它治的是一种不报错的失败**：一条吃 `Origin` 的命令自己手写
 // `if origin.is_local() { 本机 } else { 远端 }` —— 编译得过、测试多半也绿，
 // 而一个**空白名**会掉进 `else` 那一臂，拿着一个空的机器名去连远端，
-// 报出来的话与真实原因毫无关系（`local_origin_registry` 整篇治的正是这一形）。
+// 报出来的话与真实原因毫无关系。
 //
 // ⚠ **判法是两向集合相等，不是「有几处」**：
 //   左边 = 签名里吃 `origin: crate::origin::Origin` 的 `#[tauri::command]`；

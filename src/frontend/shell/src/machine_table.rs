@@ -1,21 +1,19 @@
 //! **机器表的最近一份**：机器表住本机后端（`~/.cc-monitor/machines.json`，后端 `control/machines.rs`），本壳不读盘，
-//! 只记本机后端 `machines-read` 最近答的那一份，远端那几条流照它起、停（[`crate::reconcile_remote_streams`]）。
+//! 只记本机后端 `machines-read` 最近答的那一份（各台的常驻流由本机后端自己照它起停，`control/feeds.rs`）。
 //!
 //! - 什么时候问：本机入方向通道登记上那一刻问一次（[`refresh`]，两条载体各调一次），之后本机流每来一帧 `changed {machines}`
-//!   （后端每次写完响一下）再问一次。问完当场对齐远端流 ⇒ 设置页存完不必另叫「对齐」。
-//! - 本机后端连上之前表是空的 ⇒ 远端流不起（本机先起，今天也是这个顺序）。
+//!   （后端每次写完响一下）再问一次。问完当场记账（会话成品账按新表算「各台都报完」）、告诉主窗口。
+//! - 本机后端连上之前表是空的。
 //! - 读不懂 ⇒ 当空表（一台都不连），上屏一句（`machines-unreadable`）；问不到 ⇒ 留着上一份。
 
 use serde_json::Value;
 use std::sync::Mutex;
 
-/// 最近一答里的一台：本壳只拿三样 —— 名字（后端算好的）· 连不连 · 换没换（那一台原样那一行的字节，只拿来比，不解析）。
+/// 最近一答里的一台：本壳只拿两样 —— 名字（后端算好的）· 连不连。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Row {
     pub(crate) name: String,
     pub(crate) connect: bool,
-    /// 那一台原样那一行（JSON 串）：变了 ⇒ 那台的流重起。
-    pub(crate) key: String,
 }
 
 impl Row {
@@ -29,7 +27,6 @@ impl Row {
         Some(Row {
             name: name.to_string(),
             connect: host.get("connect").and_then(Value::as_bool) != Some(false),
-            key: host.to_string(),
         })
     }
 }
@@ -67,7 +64,19 @@ pub(crate) fn hosts_of(reply: &Value) -> (Vec<Row>, Option<(String, String)>) {
     }
 }
 
-/// 后台问本机后端一次、记下、对齐远端流（不挡调用方）。
+/// 机器表里要连的那几台（机器页那几行：本机不在里面）。
+pub(crate) fn connected_names() -> Vec<String> {
+    let mut names: Vec<String> = rows_now()
+        .into_iter()
+        .filter(|r| r.connect)
+        .map(|r| r.name)
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// 后台问本机后端一次、记下、记账并告诉主窗口（不挡调用方）。
 pub(crate) fn refresh() {
     tauri::async_runtime::spawn(async {
         let deadline = crate::frame_query::Deadline::within(std::time::Duration::from_secs(10));
@@ -82,7 +91,7 @@ pub(crate) fn refresh() {
         let reply = match reply {
             Ok(r) => r,
             Err(e) => {
-                tracing::info!("没问到本机的机器表，远端流照上一份：{e}");
+                tracing::info!("没问到本机的机器表，照上一份：{e}");
                 return;
             }
         };
@@ -92,24 +101,19 @@ pub(crate) fn refresh() {
             crate::ui_error::tell(crate::ui_error::UiError::MachinesUnreadable { path, why });
         }
         *LATEST.lock().unwrap_or_else(|p| p.into_inner()) = hosts;
-        let done = tauri::async_runtime::spawn_blocking(crate::reconcile_remote_streams).await;
-        match done {
-            Ok(d) if !d.started.is_empty() || !d.stopped.is_empty() => {
-                tracing::info!(
-                    "照机器表对齐了远端流：起 {:?} 停 {:?}",
-                    d.started,
-                    d.stopped
-                )
-            }
-            Ok(_) => {}
-            Err(e) => tracing::warn!("照机器表对齐远端流没跑完：{e}"),
+        // 机器表换了 ⇒ 会话成品账按新表重算「各台都报完」（同 `backend_machines` 那一份：本机恒第一，远端按名字排）。
+        let mut table = vec![crate::inbound_client::LOCAL_ORIGIN.to_string()];
+        table.extend(connected_names());
+        crate::session_book::machines_changed(table);
+        if let Some(replay) = crate::main_replay() {
+            tell_followed(&replay);
         }
         crate::prefs_migration::after_machines_read(&reply);
     });
 }
 
-/// 壳照机器表对齐完远端流之后在本机 `changed/machines` 上说一声：主窗口据它重问 `backend_machines`、补订新来的 · 退订没了的。
-/// 本机后端自己那一帧 `changed {machines}` 不往界面转（它说的是表写完了，那一刻远端流还没对齐，界面这时重问拿到的是旧的）。
+/// 壳记下新的机器表之后在本机 `changed/machines` 上说一声：主窗口据它重问 `backend_machines`、补订新来的 · 退订没了的。
+/// 本机后端自己那一帧 `changed {machines}` 不往界面转（它说的是表写完了，那一刻壳还没记下新的，界面这时重问拿到的是旧的）。
 pub(crate) fn tell_followed(replay: &crate::event_replay::EventReplay) {
     let topic = serde_json::to_value(cmd_wire::frame::Topic::Machines)
         .ok()

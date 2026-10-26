@@ -1,6 +1,6 @@
 // hello 解冻写半边并登记 · 应答路由回等待者 · 「重新连接」只叫醒那一台：随重连循环住 `resident-client`
-//   （`feed.rs`：握手换出客户端、应答经 `route` 交回；`feed_tests.rs` 的问答与叫醒那几条）；登记在桌面收事那一头
-//   （`stream_source/run.rs::on_attached`），`reconnect_cells_tests.rs` 走真的那一串。
+//   （`feed.rs`：握手换出客户端、应答经 `route` 交回；`feed_tests.rs` 的问答与叫醒那几条）；那台的常驻流归本机后端（`control/feeds.rs`），
+//   壳收的那一头读它转来的那一串（`relayed_intake_tests.rs` · `reconnect_cells_tests.rs`）。
 
 // 控制通道往返探测那两条（真发 ping 并等应答 · 对旧后端一个字节不发）随测试连接搬进后端：
 //   `tests/backend/dial_probe_tests.rs`（`a_hello_that_answers_ping_is_all_green` · `an_old_backend_without_commands_says_too_old`）。
@@ -40,7 +40,7 @@ fn a_link_frame_from_a_remote_is_said_and_dropped() {
         .iter()
         .map(|l| {
             let f = super::decode(l).unwrap();
-            super::route(super::Via::Remote, &origin, None, f).is_some()
+            super::route(&origin, None, f).is_some()
         })
         .collect::<Vec<_>>()
     });
@@ -67,14 +67,13 @@ async fn an_overflow_on_the_local_stream_is_said() {
         Ok(())
     });
     let (tx, rx) = tokio::sync::mpsc::channel(4);
-    let consumer = tokio::spawn(super::consume_local(
-        crate::origin::LOCAL.to_string(),
+    let consumer = tokio::spawn(super::consume(
         rx,
         std::sync::Arc::new(crate::event_replay::EventReplay::new()),
         health,
     ));
     let f = super::decode(r#"{"kind":"overflow","said":"那台写的一句"}"#).unwrap();
-    let item = super::route(super::Via::Local, &crate::origin::Origin::local(), None, f)
+    let item = super::route(&crate::origin::Origin::local(), None, f)
         .expect("overflow 是有序的那几种");
     tx.send(super::LocalItem::Frame(item)).await.unwrap();
     drop(tx);
@@ -93,32 +92,3 @@ async fn an_overflow_on_the_local_stream_is_said() {
     );
 }
 
-/// 链路没开成交给循环的那一份：后端给的原因码 · 那台出示的指纹与库里记下的那一枚随那一句走（断开时机器状态按它定那一态与修法）；
-/// 读应答这一跳坏了 ⇒ 三格空。
-#[test]
-fn a_refused_link_hands_its_reason_and_seen_key_to_the_loop() {
-    let refused = crate::dial_host::Unopened {
-        said: crate::dial_host::refused_said("指纹变了".into(), Some("命令：dial")),
-        why: Some(cmd_wire::machine::Why::HostKey),
-        seen_key: Some("SHA256:seen".into()),
-        expected_key: Some("SHA256:kept".into()),
-    };
-    let p = super::problem_of(refused);
-    assert_eq!(
-        (p.text.as_str(), p.detail.as_str()),
-        ("指纹变了", "命令：dial")
-    );
-    assert_eq!(
-        (p.why, p.seen_key.as_deref(), p.expected_key.as_deref()),
-        (
-            Some(cmd_wire::machine::Why::HostKey),
-            Some("SHA256:seen"),
-            Some("SHA256:kept")
-        )
-    );
-    let broken = super::problem_of(crate::detail::Said::written("读不动".to_string()).into());
-    assert_eq!(
-        (broken.why, broken.seen_key, broken.expected_key),
-        (None, None, None)
-    );
-}

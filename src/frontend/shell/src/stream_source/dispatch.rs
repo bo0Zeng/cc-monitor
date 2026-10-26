@@ -1,9 +1,9 @@
-//! **一帧落到哪**：本机 · 远端两条流同一处分派，分两层（两层是线程决定的，不是两份实现）：
+//! **一帧落到哪**：本机那条流与本机后端转来的各台那几条同一处分派，分两层（两层是线程决定的，不是两份实现）：
 //! - [`route`]：读的那一头就地交、从不阻塞的那几种（应答 · 链路 · 传输 · 测试连接 · 一组进度 · 活卡 · 终端画面）；
 //!   有序的那几种回 [`Ordered`]。
 //! - [`apply`]：有序的那几种交会话账（`session_book`）与内容收口（[`LineIntake`]），同一条流上的先后原样保留。
 //!
-//! 远端 `consume_remote` 依次调两层；本机两条读循环调 [`route`]、经 `local_lines` 送 [`Ordered`]，`consume_local` 调 [`apply`]。
+//! 本机两条读循环调 [`route`]、经 `local_lines` 送 [`Ordered`]；收的那一头（`consume`）把别台转来的那一行解开、再调 [`route`]，两路都调 [`apply`]。
 
 use super::*;
 use crate::event_replay::EventReplay;
@@ -11,18 +11,11 @@ use crate::session_book::In as BookIn;
 use cmd_wire::frame as wire;
 use std::sync::Arc;
 
-/// 这一帧从哪条流来：链路 · 传输 · 测试连接只开在本机后端那条流上。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Via {
-    /// 本机后端那条流（stdio · 常驻两条载体；截图台架的无头壳每台机器一条，同形）。
-    Local,
-    /// 远端那台的常驻流。
-    Remote,
-}
-
 /// 有序的那几种：交会话账与内容收口，先后就是意义。
 #[derive(Debug)]
 pub(crate) enum Ordered {
+    /// 本机后端转来的别台那条流上的一件（收的那一头按那台分到那一份收口）。
+    Relayed(wire::Relayed),
     Line(wire::Line<crate::ui_contract::RecordBody>),
     SessionAdded(wire::SessionAdded),
     SessionPrimed(wire::SessionPrimed),
@@ -39,19 +32,20 @@ pub(crate) enum Ordered {
 }
 
 /// 第一层：就地交的那几种交掉（回 `None`），有序的那几种回 `Some`。`client` ＝ 这条连接的客户端（应答按 `id` 交回请求方）。
-/// 只开在本机那条流上的那几种从远端来 ⇒ 照实说、丢；hello 只在接上那一刻来，流中间再来 ⇒ 照实说、丢。
+/// 只开在本机那条流上的那几种（链路 · 传输 · 测试连接 · 转来的别台）从别台来 ⇒ 照实说、丢；hello 只在接上那一刻来，流中间再来 ⇒ 照实说、丢。
 pub(crate) fn route(
-    via: Via,
     origin: &crate::origin::Origin,
     client: Option<&crate::inbound_client::InboundClient>,
     frame: Frame,
 ) -> Option<Ordered> {
     let at = origin.as_wire_str();
-    let local = via == Via::Local;
+    let local = *origin == crate::origin::Origin::local();
     match frame {
         Frame::Hello(_) => tracing::warn!("[{at}] 流中间来了 hello，丢掉"),
-        // 本机后端转来的别台那条流：壳这一侧还是各台自己那条在收（下一步改读这一条），这里先不读。
-        Frame::Relayed(r) => tracing::debug!("[{at}] 别台 {} 转来的一件，这一版不读", r.machine()),
+        Frame::Relayed(r) if local => return Some(Ordered::Relayed(r)),
+        Frame::Relayed(r) => {
+            tracing::warn!("[{at}] 别台那条流上又套着一件转来的（{}），丢掉", r.machine())
+        }
         f @ (Frame::Reply(_) | Frame::Cancelled(_)) => match client {
             Some(c) => {
                 resident_client::client::deliver_answer(c, f);
@@ -129,6 +123,11 @@ pub(crate) async fn apply(
         intake.flush().await;
     }
     match item {
+        // 转来的那一件由收的那一头按那台分走，不进某一台的收口。
+        Ordered::Relayed(r) => tracing::warn!(
+            "[{at}] 转来的一件（{}）落到了某一台的收口里，丢掉",
+            r.machine()
+        ),
         Ordered::Line(l) => {
             intake
                 .line(JsonlLine {

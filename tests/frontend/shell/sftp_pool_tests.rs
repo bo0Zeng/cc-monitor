@@ -9,7 +9,7 @@
 //! ⚠ 本机那条流是进程内全局登记 ⇒ 本文件的用例一律先拿 `local_origin_test_lock`。
 
 use super::*;
-use crate::inbound_client::{park, register, unregister, LOCAL_ORIGIN};
+use crate::inbound_client::{park, register, unregister};
 use futures::stream::StreamExt;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -26,7 +26,7 @@ pub(crate) struct Rig {
 
 impl Drop for Rig {
     fn drop(&mut self) {
-        unregister(LOCAL_ORIGIN, &self.client);
+        unregister(&self.client);
     }
 }
 
@@ -37,14 +37,13 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
     let hello = crate::frame_fixtures::our_hello(commands);
     let witness = crate::inbound_client::witness_of(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
-    register(LOCAL_ORIGIN, Arc::clone(&client));
+    register(Arc::clone(&client));
     let c2 = Arc::clone(&client);
     tokio::spawn(async move {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
             if let Ok(f) = crate::stream_source::decode(&l) {
                 crate::stream_source::route(
-                    crate::stream_source::Via::Local,
                     &crate::origin::Origin::local(),
                     Some(&c2),
                     f,
@@ -351,7 +350,7 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     let _g = crate::inbound_client::local_origin_test_lock();
-    assert!(crate::inbound_client::client_for(LOCAL_ORIGIN).is_none());
+    assert!(crate::inbound_client::local_client().is_none());
     let Refusal {
         code, message: e, ..
     } = transfer_call(
