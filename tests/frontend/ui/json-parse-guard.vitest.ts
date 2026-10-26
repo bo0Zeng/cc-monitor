@@ -25,8 +25,10 @@ describe("界面一个解码", () => {
   });
 
   it("`JSON.parse(` 只住 ipc/decode.ts 与 local-storage.ts", () => {
-    // open-settings.ts 这一格还没改：它改走 decodeJson 要同时改 `open-settings.vitest.ts` 那张 import 名单，那份测试还没进这一块，补进来就删这一格。
-    expect(holders(/\bJSON\.parse\(/)).toEqual([`${UI}/ipc/decode.ts`, `${UI}/local-storage.ts`, `${UI}/open-settings.ts`]);
+    // 还没改的两格，各差一份测试进这一块，补进来就改走 decodeJson、删这一格：
+    //   ipc/chan-caller.ts —— `tests/comms/inward/chan.vitest.ts` 的正控按它数 parse 那一处；
+    //   open-settings.ts —— `tests/frontend/ui/open-settings.vitest.ts` 钉着它的 import 名单。
+    expect(holders(/\bJSON\.parse\(/)).toEqual([`${UI}/ipc/chan-caller.ts`, `${UI}/ipc/decode.ts`, `${UI}/local-storage.ts`, `${UI}/open-settings.ts`]);
   });
 });
 
