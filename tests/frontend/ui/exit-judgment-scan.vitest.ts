@@ -26,7 +26,7 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { RULE_IDS, SAMPLE_TABLE, TS_SAMPLES, scanTs, type CopyTable } from "./exit-rules.ts";
 
 /** 换成两句那一趟收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。 */
-const CEILING_AT_MOST = 3113;
+const CEILING_AT_MOST = 1973;
 
 type Lang = "ts" | "rs" | "kt";
 

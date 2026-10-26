@@ -22,7 +22,7 @@ import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
 /**
  * 出口扫描判据的两句，Kotlin 那一半（同 `tests/frontend/ui/exit-rules.ts`）：
- * - `key`：取的文案键（`copyText("…", …)`）只许骨架那几档（文案表 `kind` 的 title · control · action · aria），且那一条不带插值；
+ * - `key`：取的文案键（`copyText("…", …)`）只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body；error 是结局、由后端交成品），且那一条不带插值；
  *   键不是字面量、表里没有这把键，也算一处。
  * - `branch`：条件读了线上值的分支里不许取文。「读了线上值」＝ 条件拿一个值去比字面的码（`x == "dup"` · `x in CODES` ·
  *   `CODES.contains(x)`，`CODES` 是本文件里一组字面码的 `setOf` / `listOf` / `arrayOf`），或 `when (x)` 的臂里有字面码（那个 `when` 的每一臂都算）。
@@ -32,7 +32,7 @@ import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
  * 买不到：比的码不是字面量就认不出；枚举常量只认 `类型.全大写` 这一形；先 `if (…) return` 再在后面取文的认不出。
  */
 object ExitScan {
-    val SKELETON_KINDS = setOf("title", "control", "action", "aria")
+    val SKELETON_KINDS = setOf("title", "control", "action", "aria", "body")
 
     data class Entry(
         val kind: String,

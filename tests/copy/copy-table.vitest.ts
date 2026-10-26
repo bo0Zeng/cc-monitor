@@ -194,14 +194,18 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   // Rust 读口的调用点（射程与读法住 `rust-refs.ts`：常驻后端 · 两个前端 · 子 crate；取文实现本身是定义，不进人群）。
   const { files: rsFiles, refs: rsRefs, problems: rsProblems } = rustRefsOfTree();
   // 手机端 Kotlin 读口的调用点（射程与读法住 `kotlin-refs.ts`：`src/mobile/*/src/main/**.kt`）。
-  const { files: ktFiles, refs: ktRefs, problems: ktProblems } = kotlinRefsOfTree();
-  const refs = [...all.flatMap((x) => x.refs), ...rsRefs, ...ktRefs];
-  const problems = [...all.flatMap((x) => x.problems), ...rsProblems, ...ktProblems];
+  //   `src/mobile/detekt-rules` 是手机的开发工具（detekt 规则，只在 detekt 跑时装进去），不是产品代码：它的 `copyText` 是被查的名字，不是取文。
+  const KT_TOOL = "src/mobile/detekt-rules/";
+  const { files: ktAll, refs: ktRefs, problems: ktProblems } = kotlinRefsOfTree();
+  const ktFiles = ktAll.filter((f) => !f.file.startsWith(KT_TOOL));
+  const refs = [...all.flatMap((x) => x.refs), ...rsRefs, ...ktRefs.filter((r) => !r.file.startsWith(KT_TOOL))];
+  const problems = [...all.flatMap((x) => x.problems), ...rsProblems, ...ktProblems.filter((p) => !p.startsWith(KT_TOOL))];
 
   it("正控（Kotlin）：扫到了手机端生产源码、Kotlin 取文口自己，也读到了 Kotlin 调用点", () => {
     nonEmpty(ktFiles);
     expect(ktFiles.map((f) => f.file)).toContain(KT_HOME);
     expect(ktFiles.some((f) => f.file.includes("/src/test/")), "测试源混进了生产人群").toBe(false);
+    expect(ktAll.some((f) => f.file.startsWith(KT_TOOL)), `${KT_TOOL} 一份都不在人群里了 —— 这一刀排除空着，删掉它`).toBe(true);
     nonEmpty(ktRefs);
   });
 

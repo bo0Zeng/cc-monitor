@@ -1,6 +1,6 @@
 //! **出口零判定零格式化**的扫描判据，Rust 那一半（壳 · 文件窗口）：与 `tests/frontend/ui/exit-rules.ts` 同样的两句——
-//! - `key`：出口取的文案键（`copy_text("…", …)`）只许骨架那几档（文案表 `kind` 的 title · control · action · aria），
-//!   且那一条不带插值（没登 `args`）；键不是字面量、表里没有这把键，也算一处。
+//! - `key`：出口取的文案键（`copy_text("…", …)`）只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body；
+//!   error 是结局、由后端交成品），且那一条不带插值（没登 `args`）；键不是字面量、表里没有这把键，也算一处。
 //! - `branch`：条件读了线上值的分支里不许取文。「读了线上值」＝ 条件拿一个值去比字面的码：`x == "dup"` 一类的比较、
 //!   `matches!(x, "a" | …)`、`CODES.contains(…)`（`CODES` 是本文件里一组字面码的 `const` / `static`），
 //!   或者 `match` 的臂里有字面码（那个 `match` 的每一臂都算）。管到的是 `if` / `else` 的块与 `match` 的臂；进到 `fn` 里就不算，
@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-const SKELETON: &[&str] = &["title", "control", "action", "aria"];
+const SKELETON: &[&str] = &["title", "control", "action", "aria", "body"];
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 struct Hits {
@@ -373,7 +373,7 @@ fn copy_table() -> serde_json::Map<String, Value> {
 }
 
 fn sample_table() -> serde_json::Map<String, Value> {
-    serde_json::from_str(r#"{"s.k.x":{"kind":"action"},"b.k.x":{"kind":"error"},"a.k.x":{"kind":"title","args":["n"]}}"#).unwrap()
+    serde_json::from_str(r#"{"s.k.x":{"kind":"action"},"p.k.x":{"kind":"body"},"b.k.x":{"kind":"error"},"a.k.x":{"kind":"title","args":["n"]}}"#).unwrap()
 }
 
 #[test]
@@ -482,6 +482,10 @@ fn the_two_rules_hit_exactly_their_samples() {
             Hits { key: 0, branch: 2 },
         ),
         // 阴性：骨架字照摆；条件不比码；match 没有字面码的臂；分支里再定义的函数不算；字符字面量 · 原样字符串不乱了分词。
+        (
+            r#"fn f() { let t = copy_text("p.k.x", &[]); }"#,
+            Hits { key: 0, branch: 0 },
+        ),
         (
             r#"fn f() { let t = copy_text("s.k.x", &[]); }"#,
             Hits { key: 0, branch: 0 },

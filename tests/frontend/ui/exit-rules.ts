@@ -3,7 +3,8 @@
  *
  * 「出口零判定零格式化」（`src/doc/ARCHITECTURE.md` §2.9）：出口只取自己骨架上的字，描述数据与状态的字由核心写。
  * 按意思判成两句，三门语言各照自己的语法判同样的两句：
- * - `key`：出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria），且那一条不带插值（没登 `args`）。
+ * - `key`：出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body），且那一条不带插值（没登 `args`）。
+ *   不带插值的 body（空态 · 提示）是界面固定的字，不随数据变；error 是结局，由后端交成品，不算骨架。
  *   键不是字面量、表里没有这把键，也算一处。
  * - `branch`：条件读了线上值的分支里不许取文。「读了线上值」＝ 条件拿一个值去比字面的码：`x.code === "dup"` 一类的比较、
  *   `case "dup":`（连同那个 `switch` 的 `default:`）、`CODES.has(x)` / `CODES.includes(x)`（`CODES` 是本文件里一组字面码）。
@@ -22,7 +23,7 @@ export const RULE_IDS = ["key", "branch"] as const;
 export type RuleId = (typeof RULE_IDS)[number];
 
 /** 骨架那几档：出口自己的字只许是这几档。 */
-export const SKELETON_KINDS: ReadonlySet<string> = new Set(["title", "control", "action", "aria"]);
+export const SKELETON_KINDS: ReadonlySet<string> = new Set(["title", "control", "action", "aria", "body"]);
 
 /** 文案表里判这两句要用的那两格。 */
 export interface CopyEntry {
@@ -154,10 +155,11 @@ export function scanTs(code: string, table: CopyTable, file = "x.ts"): Record<Ru
   return got;
 }
 
-/** 对照样例用的表：`s.k.x` 是骨架那几档、不带插值；`b.k.x` 是正文；`a.k.x` 带插值。 */
+/** 对照样例用的表：`s.k.x` · `p.k.x` 是骨架那几档、不带插值；`b.k.x` 是报错；`a.k.x` 带插值。 */
 export const SAMPLE_TABLE: CopyTable = {
   "s.k.x": { kind: "action" },
-  "b.k.x": { kind: "body" },
+  "p.k.x": { kind: "body" },
+  "b.k.x": { kind: "error" },
   "a.k.x": { kind: "title", args: ["n"] },
 };
 
@@ -177,6 +179,7 @@ export const TS_SAMPLES: { code: string; want: Record<RuleId, number> }[] = [
   { code: 'const t = rows.some((r) => r.kind === "x") ? copyText("s.k.x") : null;', want: { key: 0, branch: 1 } },
   // 阴性：骨架字照摆；条件不比码；分支里再定义的具名函数不算；比码的那一侧在条件里不算；两侧都是字面量不算。
   { code: 'el.textContent = copyText("s.k.x");', want: { key: 0, branch: 0 } },
+  { code: 'empty.textContent = copyText("p.k.x");', want: { key: 0, branch: 0 } },
   { code: 'const t = open ? copyText("s.k.x") : copyText("s.k.x");', want: { key: 0, branch: 0 } },
   { code: 'if (x.code === "dup") { function g() { return copyText("s.k.x"); } }', want: { key: 0, branch: 0 } },
   { code: 'if (copyText("s.k.x") === "y") go();', want: { key: 0, branch: 0 } },

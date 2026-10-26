@@ -13,7 +13,8 @@ class ExitScanTest {
     private val table =
         mapOf(
             "s.k.x" to ExitScan.Entry("action", 0),
-            "b.k.x" to ExitScan.Entry("body", 0),
+            "p.k.x" to ExitScan.Entry("body", 0),
+            "b.k.x" to ExitScan.Entry("error", 0),
             "a.k.x" to ExitScan.Entry("title", 1),
         )
 
@@ -38,6 +39,7 @@ class ExitScanTest {
             """fun f() = copyText("no.such.key")""" to ExitScan.Hits(1, 0),
             // 阴性：骨架字照摆；条件不比码；when 没有字面码的臂；分支里再定义的具名函数不算；条件里取文不算。
             """fun f() = copyText("s.k.x")""" to ExitScan.Hits(0, 0),
+            """fun f() = copyText("p.k.x")""" to ExitScan.Hits(0, 0),
             """fun f(open: Boolean) = if (open) copyText("s.k.x") else DeliveryState.FAILED""" to ExitScan.Hits(0, 0),
             """fun f(k: K) = when (k) { K.A -> copyText("s.k.x"); else -> DeliveryState.FAILED }""" to ExitScan.Hits(0, 0),
             """fun f(e: E) { if (e.code == "dup") { fun g() = copyText("s.k.x") } }""" to ExitScan.Hits(0, 0),
@@ -55,7 +57,7 @@ class ExitScanTest {
     private fun lintInRepo(debtN: Int?): List<String> {
         val repo = Files.createTempDirectory("exit-scan")
         Files.createDirectories(repo.resolve(Ledger.TABLE).parent)
-        Files.writeString(repo.resolve(Ledger.TABLE), """{"entries":{"b.k.x":{"kind":"body","role":"说明","zh":"字","args":[]}}}""")
+        Files.writeString(repo.resolve(Ledger.TABLE), """{"entries":{"b.k.x":{"kind":"error","role":"报错","zh":"字","args":[]}}}""")
         Files.createDirectories(repo.resolve(Ledger.DEBT).parent)
         val cells = debtN?.let { """["m/src/main/A.kt","key",$it]""" } ?: ""
         Files.writeString(repo.resolve(Ledger.DEBT), """{"roots":[],"ceiling":0,"groups":[{"kind":"首登","why":"x","cells":[$cells]}]}""")

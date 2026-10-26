@@ -234,7 +234,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 「这一格是值还是写好的字」由它的 Rust 类型说，不按格名猜：`blocks[].text` 是原文（值），`cost.text` 是核心写的字。界面自己的骨架字（按钮、菜单、标题、空状态）留在界面、也从文案表取；凡是描述数据或状态的字都由核心写。
 
-**出口扫描判据**：`tests/frontend/ui/exit-judgment-scan.vitest.ts` 按写法指纹（`tests/frontend/ui/exit-rules.ts`：按码取字 · 按状态排序 · 拼百分比 · 写时长单位 · 换算时刻 · 换算大小）扫桌面界面、壳与手机 Kotlin 的生产代码；今天的存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，逐格恒等、只许删不许加（每格写明凭什么留）。
+**出口扫描判据**：按意思判两句——出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body）且不带插值；拿一个值去比字面的码的分支里不许取文。扫的树照上表「输出适配层」那一行：界面 TS（`tests/frontend/ui/exit-rules.ts`，typescript 语法树）、壳与文件窗口的 Rust（`tests/frontend/filewin/exit_scan_tests.rs`）、手机 Kotlin（`src/mobile/detekt-rules` 的 detekt 规则）。今天的存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，三门语言共用，逐格恒等、只许删不许加。
 
 **会走的钟**：核心写的时刻字是发出那一刻的字。手机与 CLI 要它跟着走就按节拍重问（出口零格式化）；桌面秒级走的那几处（过程行 `{dur}` · 「已等」）只留一个时长读口（TS `duration-format.ts::fmtDur`，与 Rust `copy_core::short_duration` 对同一份金样 `short-duration.golden.json`）。
 
