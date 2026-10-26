@@ -21,13 +21,20 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
     },
   },
 }));
+const { filewin } = vi.hoisted(() => ({ filewin: { now: { windows: 1, unsaved: 1, running: 2 } as Record<string, number> | null } }));
+vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
+  commands: {
+    filewin_interrupts: () => (filewin.now ? Promise.resolve(filewin.now) : Promise.reject(new Error("壳没答"))),
+  },
+}));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: (t: string) => toasts.push(t) }));
 
 import { askAppExitInterrupts } from "../../../../src/frontend/ui/settings/interrupts";
 import { restartNow, restartNowButton } from "../../../../src/frontend/ui/settings/restart-now";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-const zero = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
+const machineZero = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
+const zero = { ...machineZero, unsaved: 0, filewinRunning: 0 };
 
 beforeEach(() => {
   calls.length = 0;
@@ -37,16 +44,20 @@ beforeEach(() => {
 
 describe("现在重启 · 会打断什么", () => {
   it("★ 问本机与各台都带 appExit；加起来；远端问不到 ＝ 本来就没连着、不算；本机问不到 ⇒ 说数不出", async () => {
-    answers.set("<local>", { ...zero, liveStreams: 1, forwards: 2 });
-    answers.set("devbox", { ...zero, relayedSessions: 2, liveStreams: 3 });
+    answers.set("<local>", { ...machineZero, liveStreams: 1, forwards: 2 });
+    answers.set("devbox", { ...machineZero, relayedSessions: 2, liveStreams: 3 });
     const got = await askAppExitInterrupts(["devbox", "gpu"]);
     expect(calls.every((c) => c.op === "machine-interrupts" && c.args.appExit === true)).toBe(true);
     expect(calls.map((c) => c.origin).sort()).toEqual(["<local>", "devbox", "gpu"]);
-    expect(got).toEqual({ relayedSessions: 2, relayedMaybe: 0, liveStreams: 4, forwards: 2 });
+    expect(got).toEqual({ relayedSessions: 2, relayedMaybe: 0, liveStreams: 4, forwards: 2, unsaved: 1, filewinRunning: 2 });
     answers.delete("<local>");
     const blind = await askAppExitInterrupts([]);
     expect(blind.relayedSessions).toBeNull();
     expect(blind.forwards).toBeNull();
+    filewin.now = null;
+    const noShell = await askAppExitInterrupts([]);
+    expect(noShell.unsaved).toBeNull();
+    filewin.now = { windows: 1, unsaved: 1, running: 2 };
   });
 
   it("★ 什么都不断 ⇒ 不弹框，toast 一句、直接重启", async () => {

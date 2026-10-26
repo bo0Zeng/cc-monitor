@@ -142,6 +142,18 @@ pub const FILES_BATCH_KIND_PREFIX: &str = "files-batch/";
 /// **monitor 自己接**：叫醒那台的连接循环，不等退避睡满。回 `{}`；连没连上看 [`LINK_KIND`] 那条流。
 pub const LINK_RETRY_OP: &str = "link-retry";
 
+/// 「这扇窗手上有什么会被打断」：窗口在通道上 `call` 这一条（寻址 ＝ 它那台，参数 [`Busy`]），**monitor 自己接**、按窗口记下
+/// （管子断了那一份就删）；退出 / 重启 cc-monitor 那一问现读加起来的数。窗口只在数变了时说（与它关窗那一问同一份 `close_ask`）。回 `{}`。
+pub const FILEWIN_BUSY_OP: &str = "filewin-busy";
+
+/// [`FILEWIN_BUSY_OP`] 的参数：没存的编辑页几份 · 「进度」表里还在跑的几趟。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Busy {
+    pub unsaved: u32,
+    pub running: u32,
+}
+
 /// 「在计划里看」（计划反查）：窗口在通道上 `call` 这一条（寻址 ＝ 那台），**monitor 自己接**：
 /// 把主窗口拉到前面、切到计划页、选中那一格（片按机器区分：寻址就是那台）。参数 `{workspace, slice, id}`（[`plan_open_args`]）。
 pub const PLAN_OPEN_OP: &str = "plan-open";
