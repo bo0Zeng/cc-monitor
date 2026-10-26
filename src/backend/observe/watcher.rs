@@ -1682,8 +1682,6 @@ struct ReaderState {
     active_sids: HashSet<String>,
     /// 这条流跟的那几家（[`Root`]）：家目录记录树那一家在 [`ReaderState::new`] 里就有；别的由 [`ReaderState::follow`] 加。
     roots: Vec<Root>,
-    /// pidfile 那一路宣告的会话是哪一家的（家目录记录树那一家；没有 ⇒ 空串）。
-    pidfile_kind: &'static str,
     /// 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本，[`ReaderState::set_book`]；夹具用自带的一本）。各家的子运行跟踪共用它。
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     /// 每份活会话记录的链索引（主线外清单从它出；键同 `offsets`）。只记链上几个短串，不留正文。
@@ -1882,10 +1880,9 @@ impl ReaderState {
 
     fn new(projects: PathBuf) -> Self {
         let mut st = Self::bare();
-        // 家目录记录树那一家（判活认 pidfile）：根就是 `projects`。
-        if let Some(kind) = crate::agents::record_tree_kind() {
+        // 家目录记录树那一家（判活认 pidfile）：根就是 `projects`，哪一家照这棵树问（`agents::record_kind_of`）。
+        if let Some(kind) = crate::agents::record_kind_of(&projects) {
             if let Some(face) = crate::agents::record_face(kind) {
-                st.pidfile_kind = kind;
                 st.add_root(kind, projects, face, false);
             }
         }
@@ -1975,7 +1972,6 @@ impl ReaderState {
             pid_watched: HashSet::new(),
             active_sids: HashSet::new(),
             roots: Vec::new(),
-            pidfile_kind: "",
             book: std::sync::Arc::default(),
             launch: None,
             scans: None,
@@ -3156,7 +3152,11 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     let Some(bytes) = Ro::read(path).ok() else {
         return false;
     };
-    let Some(sid) = parse_session_id(&bytes) else {
+    // Batch9-F27：一次解析（适配层翻成一行 `ProcFact`；status diff 与后面的宣告帧共用）
+    let Some(fact) = crate::agents::proc_fact(&bytes) else {
+        return false;
+    };
+    let Some(sid) = fact.sid.clone() else {
         return false;
     };
     // Only ACTIVE if the process is actually alive (mirrors local STILL_ACTIVE).
@@ -3165,25 +3165,21 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         return false;
     }
     // 工作目录是这台家里不出会话的那个目录 ⇒ 不成 tab —— 判据与历史页同一处。
-    if pidfile_cwd(&bytes).is_some_and(|c| crate::history::listing::hidden_cwd(&c)) {
+    if fact
+        .cwd
+        .as_deref()
+        .is_some_and(crate::history::listing::hidden_cwd)
+    {
         return false;
     }
-    // 后台会话（适配层判，`agents::pidfile_background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
-    let background = is_background(&bytes);
-    // Batch9-F27：帧元信息一次解析（status diff 与后面的宣告帧共用）
-    let meta: Option<serde_json::Value> = serde_json::from_slice(&bytes).ok();
-    let meta_str = |k: &str| {
-        meta.as_ref()
-            .and_then(|v| v.get(k))
-            .and_then(|x| x.as_str())
-            .map(str::to_string)
-    };
+    // 后台会话（适配层判，`ProcFact::background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
+    let background = fact.background;
     // Idempotent: a debounced modify of an already-tracked session re-announces
-    // nothing —— Batch9-F27：但 status/waitingFor 变了要发 session_status 帧
+    // nothing —— Batch9-F27：但「在干什么 / 在等什么」变了要发 session_status 帧
     // （远端红绿灯的唯一数据源；CC 仅在状态转换时重写 pidfile，天然稀疏）。
     if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
-        let new_status = meta_str("status");
-        let new_waiting = meta_str("waitingFor");
+        let new_status = fact.status_word.clone();
+        let new_waiting = fact.waiting_word.clone();
         let entry = state.sessions.get_mut(&key).expect("just checked");
         // 状态文件重写过（修改时刻往后挪了）⇒ 听见它了（重扫读到同一份不算）。
         let rewrote = Ro::metadata(path)
@@ -3203,7 +3199,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         if status_changed {
             entry.status = new_status.clone();
             entry.waiting_for = new_waiting.clone();
-            let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
+            let activity = fact.activity;
             entry.activity = activity;
             let name_face = crate::history::search_rules::name_face(&entry.facts);
             let face = state.live_face(&sid, activity);
@@ -3254,36 +3250,32 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // allow (same philosophy as the local procStart-absent fallback).
     // #34: the poll baseline. Reuse the very ticks the verdict just examined —
     // no second /proc read, so no verdict-to-baseline TOCTOU window.
-    let start = match add_time_check(pid, &bytes, path) {
+    let start = match add_time_check(pid, fact.proc_start, path) {
         Ok(ticks) => ticks,
         Err(reason) => {
             tracing::warn!(
-                "stale sessions json ignored ({reason}): {} pid {pid} is not the claude that wrote it",
+                "stale sessions json ignored ({reason}): {} pid {pid} is not the process that wrote it",
                 path.display()
             );
             return false;
         }
     };
-    let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
     announce(
         key,
         Announce {
             pid,
             start,
             sid,
-            kind: state.pidfile_kind,
+            kind: fact.kind,
             background,
-            // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
-            //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
-            attachable: meta
-                .as_ref()
-                .and_then(|v| v.get("attachable"))
-                .and_then(|x| x.as_bool()),
-            cwd: meta_str("cwd"),
-            name: meta_str("name"),
-            status: meta_str("status"),
-            waiting_for: meta_str("waitingFor"),
-            activity,
+            // E73：pidfile 的 `attachable`。**只认真正的布尔**（适配层翻好的）—— 缺席 = true = 照旧，
+            // 宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
+            attachable: fact.attachable,
+            cwd: fact.cwd,
+            name: fact.name,
+            status: fact.status_word,
+            waiting_for: fact.waiting_word,
+            activity: fact.activity,
         },
         state,
         sink,
@@ -3864,7 +3856,10 @@ fn reconcile_sessions(
                 continue;
             }
             if let Some(want) = only {
-                let sid = Ro::read(p).ok().and_then(|b| parse_session_id(&b));
+                let sid = Ro::read(p)
+                    .ok()
+                    .and_then(|b| crate::agents::proc_fact(&b))
+                    .and_then(|f| f.sid);
                 if sid.as_deref() != Some(want) {
                     continue;
                 }
@@ -4569,7 +4564,7 @@ const ADD_TIME_TOLERANCE_SECS: u64 = 60;
 /// - Missing data (absent procStart, unreadable stat/mtime/cmdline) skips that
 ///   check — degrade to allow, mirroring the local procStart-absent fallback.
 fn add_time_verdict(
-    pidfile_procstart_ticks: Option<u64>,
+    recorded_start_ticks: Option<u64>,
     current_starttime_ticks: Option<u64>,
     proc_start_epoch: Option<u64>,
     file_mtime_epoch: Option<u64>,
@@ -4583,7 +4578,7 @@ fn add_time_verdict(
             return AddTimeVerdict::Imposter("bg-spare");
         }
     }
-    if let (Some(recorded), Some(current)) = (pidfile_procstart_ticks, current_starttime_ticks) {
+    if let (Some(recorded), Some(current)) = (recorded_start_ticks, current_starttime_ticks) {
         if recorded == current {
             return AddTimeVerdict::Alive; // exact identity: author confirmed
         }
@@ -4607,10 +4602,15 @@ fn add_time_verdict(
 
 /// add-time 冒名判定的那一趟 /proc 读：活着且是写它的那个 claude ⇒ `Ok(当前 starttime ticks)`（调用方拿它当 #34 基线），
 /// 否则 `Err(原因)`。起步初扫 / 对齐（`process_session_added`）与一次性扫描（[`running_sessions`]）同这一条。
-fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'static str> {
+/// `recorded` ＝ 那份 pidfile 说的启动时刻（[`crate::agents::ProcFact::proc_start`]）。
+fn add_time_check(
+    pid: u32,
+    recorded: Option<u64>,
+    path: &Path,
+) -> Result<Option<u64>, &'static str> {
     let current_ticks = proc_starttime(pid);
     match add_time_verdict(
-        parse_procstart_ticks(bytes),
+        recorded,
         current_ticks,
         start_epoch_from_ticks(current_ticks),
         file_mtime_epoch(path),
@@ -4626,21 +4626,6 @@ pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
     crate::agents::pidfile_dir(agent_home)
 }
 
-/// pidfile 里那一家写下的工作目录（`cwd`）。
-fn pidfile_cwd(bytes: &[u8]) -> Option<String> {
-    serde_json::from_slice::<serde_json::Value>(bytes)
-        .ok()?
-        .get("cwd")?
-        .as_str()
-        .map(str::to_string)
-}
-
-/// 这份 pidfile 说的是后台会话（适配层判）；读不成 JSON ⇒ 不是。
-fn is_background(bytes: &[u8]) -> bool {
-    serde_json::from_slice::<serde_json::Value>(bytes)
-        .is_ok_and(|v| crate::agents::pidfile_background(&v))
-}
-
 /// **一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
 /// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
 pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
@@ -4654,24 +4639,12 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
         .filter(|p| is_session_json(p))
         .filter_map(|p| {
             let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
-            let bytes = Ro::read(&p).ok()?;
-            let sid = parse_session_id(&bytes)?;
-            (pid_alive(pid) && !is_background(&bytes) && add_time_check(pid, &bytes, &p).is_ok())
+            let fact = crate::agents::proc_fact(&Ro::read(&p).ok()?)?;
+            let sid = fact.sid?;
+            (pid_alive(pid) && !fact.background && add_time_check(pid, fact.proc_start, &p).is_ok())
                 .then_some((sid, pid))
         })
         .collect()
-}
-
-/// Parse the pidfile's `procStart` field as starttime ticks. CC writes it as a
-/// decimal string on Linux（audit-verified verbatim /proc starttime ticks）；
-/// accept a bare number too. Anything else → None（fallback heuristics apply）.
-fn parse_procstart_ticks(bytes: &[u8]) -> Option<u64> {
-    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    let field = v.get("procStart")?;
-    if let Some(s) = field.as_str() {
-        return s.trim().parse::<u64>().ok();
-    }
-    field.as_u64()
 }
 
 /// The pidfile's mtime as epoch seconds (None on any error → check skipped).
@@ -4681,12 +4654,6 @@ fn file_mtime_epoch(path: &Path) -> Option<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
-}
-
-/// Pure parse of the `sessionId` field out of a sessions JSON blob.
-fn parse_session_id(bytes: &[u8]) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    v.get("sessionId")?.as_str().map(str::to_string)
 }
 
 /// 这台 watcher 的发帧口：**整台一份**的那几样（会话账本 · 预读还没交回的会话）＋ **每条连接一份**的投影（[`Sub`]）。
