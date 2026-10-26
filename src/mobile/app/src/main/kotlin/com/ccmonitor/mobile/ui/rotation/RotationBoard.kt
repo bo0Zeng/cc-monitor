@@ -94,7 +94,7 @@ data class RotationUi(
 /**
  * 轮换屏的接线（桌面 `rot-mount.ts` 同一套）：读 `rotation-strategies` · `rotation-view` → 画 → 手势翻成命令 → 照回包再读。
  * 会话（[RotWhere.Session]）照它载入的副本，只做这个会话的临时动作；设置页（新会话用的那份）改一格当场存成那份的新版。
- * 判 · 排 · 算时刻 · 写句子全是那台的：这里只拼入参、照码分流（`conflict` 重读 · `unusable` 写那一句）。
+ * 判 · 排 · 算时刻 · 写句子全是那台的：这里只拼入参、照码分流（`stale` 重读 · `unusable` 写那一句）。
  */
 class RotationBoard(
     private val link: CoreLink,
@@ -155,7 +155,7 @@ class RotationBoard(
     }
 
     /**
-     * 发一条写：成了 ⇒ 再读；`conflict`（别处改过）⇒ 不报、再读（提示由那台出）；别的 ⇒ [onFail]（缺省：底部一句「做什么失败 · 那台的话」）。
+     * 发一条写：成了 ⇒ 再读；`stale`（别处改过）⇒ 不报、再读（提示由那台出）；别的 ⇒ [onFail]（缺省：底部一句「做什么失败 · 那台的话」）。
      * 回「成没成」。
      */
     private suspend fun write(
@@ -169,7 +169,7 @@ class RotationBoard(
             refresh()
             return true
         }
-        if ((r as? Reply.Failed)?.failure?.code == CONFLICT) {
+        if ((r as? Reply.Failed)?.failure?.code == STALE) {
             refresh()
             return false
         }
@@ -411,7 +411,7 @@ class RotationBoard(
     private companion object {
         const val READ_MS = 15_000L
         const val WRITE_MS = 15_000L
-        const val CONFLICT = "conflict"
+        const val STALE = "stale"
         const val UNUSABLE = "unusable"
     }
 }
