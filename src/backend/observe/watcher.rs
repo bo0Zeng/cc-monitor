@@ -543,7 +543,7 @@ fn rewatch_agent_home(
     false
 }
 
-/// 这台的会话注解表 ＋ 家在这台的组（读不了 · 推不出家 ⇒ 两样都空：当没有改过名；历史清单 · `groups-read` 那一路照旧说为什么）。
+/// 这台的会话注解表 ＋ 这台有组员的那几片组（读不了 ⇒ 两样都空：当没有改过名；历史清单 · `groups-read` 那一路照旧说为什么）。
 fn annotations_table() -> (
     crate::history::history_annotations::Table,
     crate::history::history_annotations::Book,
@@ -1903,7 +1903,7 @@ impl ReaderState {
     }
 
     /// 注解那份文件动了 ⇒ 换上新读的那张表，改了名的活会话各发一帧 `session_status`、隐不隐藏变了的各推一帧（[`Self::rejudge_hidden`]）；
-    /// 这台的组那一半（家在这台的组 · 会话进出组 · 固定）变了 ⇒ 推一帧 `changed {groups}`。
+    /// 这台的组那一半（这台那几片的组 · 会话进出组 · 固定）变了 ⇒ 推一帧 `changed {groups}`。
     fn reload_annotations(
         &mut self,
         (table, book): (
