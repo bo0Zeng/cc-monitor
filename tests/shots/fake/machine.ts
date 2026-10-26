@@ -4,6 +4,7 @@
  */
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
+import type { BackendStatus } from "../../../src/frontend/ui/generated/BackendStatus";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
 
@@ -233,20 +234,17 @@ export const HOST_KEYS: Record<string, { key: string; fingerprint: string }> = {
   "win-laptop": { key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxc", fingerprint: "SHA256:yj4Kqj4VGoZpFeQmmY0rmphvdZDJOAFJ1pYW3ezkwPc" },
 };
 
-/** 合成答法里本机那一行的产品版本号。 */
-export const VERSION = "4.1.1";
-
 export function machineCommands(): Record<string, CommandHandler> {
   return {
     list_remote_mcp_origins: (_a, w) => w.machines.slice(1).filter((m) => !w.unseenMachines.includes(m)),
-    backend_status: (a, w) => ({
+    // 形状照壳那一口（`BackendStatus`）：本机后端起没起来是壳的事实（`local`）；各台（含本机）的状态成品与名字都在本机后端（`machine-read` · `changed {machine}`），这一口不带。
+    backend_status: (a, w): BackendStatus => ({
+      origin: String(a.origin),
+      local: a.origin === "<local>" ? { state: "up" } : null,
       channel: !w.unseenMachines.includes(String(a.origin)),
       pid: pidOf(String(a.origin), w),
-      // 本机那一行壳出（连着）；远端各台走本机后端的 `machine-read` · `changed {machine}`。
-      machine:
-        a.origin === "<local>"
-          ? { state: "up", reason: null, stage: null, os: "Linux", version: VERSION, versionRelation: "same", word: "", said: "", fixes: [], seenHostKey: null, detail: null }
-          : null,
+      attempts: a.origin === "<local>" ? 1 : null,
+      detached: a.origin === "<local>" ? false : null,
       health: {
         state: "clean",
         summary: copyText("rsBackendPolicy.health.clean"),

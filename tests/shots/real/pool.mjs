@@ -175,16 +175,60 @@ srv.stdin.close()
 srv.wait()
 `;
 
+/** 远端各台沙箱里的跑腿（[`DOER_PY`]）：脚本的位置（每台沙箱同一处）· 它听的套接字（在那台常驻的套接字目录里，本机沙箱挂成 `<PEERS>/<k>/run`）。 */
+const DOER_IN_BOX = "/home/user/.shots-setup/shots-do";
+const DOER_SOCK = "shots-do.sock";
+
+/**
+ * 远端那台的跑腿：确保常驻那一问要在那台自己的沙箱里跑（ensure 认在听的那一位要它的 pid，跨进程命名空间认不出），
+ * 本机沙箱里的假 ssh 只够得着那台的套接字目录 ⇒ 那台起一个只认这一问的口。
+ * - `serve <套接字> <后端>`（那台沙箱里）：一条连接一问，一行 JSON 参数（只许 `--resident-ensure [--replace]`），照那台自己的环境跑后端，回 `{rc, out, err}`。
+ * - `ask <套接字> <参数…>`（假 ssh 里）：问一次，stdout · stderr · 退出码照那台回的交给 ssh 那一跳。
+ */
+export const DOER_PY = `#!/usr/bin/python3
+import json, os, socket, subprocess, sys
+if sys.argv[1] == "serve":
+    path, backend = sys.argv[2], sys.argv[3]
+    if os.path.exists(path):
+        os.unlink(path)
+    s = socket.socket(socket.AF_UNIX)
+    s.bind(path)
+    s.listen(8)
+    while True:
+        c, _ = s.accept()
+        with c, c.makefile("rwb") as f:
+            args = json.loads(f.readline() or "[]")
+            if args not in (["--resident-ensure"], ["--resident-ensure", "--replace"]):
+                r = {"rc": 127, "out": "", "err": "shots-do: 只跑确保常驻\\n"}
+            else:
+                p = subprocess.run([backend, "--", *args], stdin=subprocess.DEVNULL, capture_output=True, text=True)
+                r = {"rc": p.returncode, "out": p.stdout, "err": p.stderr}
+            print(json.dumps({"args": args, **r}, ensure_ascii=False), file=sys.stderr, flush=True)
+            f.write((json.dumps(r) + "\\n").encode())
+            f.flush()
+else:
+    c = socket.socket(socket.AF_UNIX)
+    c.connect(sys.argv[2])
+    f = c.makefile("rwb")
+    f.write((json.dumps(sys.argv[3:]) + "\\n").encode())
+    f.flush()
+    r = json.loads(f.readline())
+    sys.stdout.write(r["out"])
+    sys.stderr.write(r["err"])
+    sys.exit(r["rc"])
+`;
+
 /**
  * 本机沙箱里 sshd 的登录壳（`ForceCommand`）：按连进来的那个口认是哪一台（`peers`：`[{port, k, refuse, fake?}]`），只转产品连常驻的那几形：
  * - 问常驻（`"$HOME"/.cc-monitor/bin/ccm -- '--resident-call' …`）—— 换成那台常驻的套接字目录（`CCM_DATA_DIR`）跑同一个后端的
  *   `--resident-call`（`backend` ＝ 沙箱里那份后端；判据换成替身）；那台 `refuse` 里的命令（stdin 那一行的 `cmd`）⇒ 一个字不回、退 255（同 ssh 那一跳断开）。
- * - 接常驻 · 确保常驻（`… -- --resident-attach` · `--resident-ensure [--replace]`，本机后端那条常驻流）：同样换成那台的目录原样交。
+ * - 接常驻（`… -- --resident-attach`，本机后端那条常驻流）：同样换成那台的目录原样交。
+ * - 确保常驻（`--resident-ensure [--replace]`）：交那台沙箱里的跑腿口（[`DOER_PY`]），在那台自己那里跑。
  * 那台在场景里是哪一样（`fake`）就在这一跳上真长成那样：`older` ⇒ attach 回话里的新旧换成 `older`（那台比这一版旧）；
  * `hang` ⇒ 接常驻那一跳拖住不回（正在连）；`install` ⇒ 回话说旧了、问系统（`uname -s -m`）照实答、SFTP 交 [`SLOW_SFTP_PY`]（正在装）。
  * 别的口 · 别的形一律拒。
  */
-export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFTP_IN_BOX) {
+export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFTP_IN_BOX, doer = DOER_IN_BOX) {
   const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
   const lines = ["#!/bin/sh", "set -- $SSH_CONNECTION", 'case "$4" in'];
   for (const p of peers) {
@@ -204,9 +248,10 @@ export function forwarderSh(peers, backend = BACKEND_IN_BOX, slowSftp = SLOW_SFT
     `      older|install) ${peer} ${backend} -- --resident-attach | sed -u '1,2s/^{"attach":"ok","relation":"same"}$/{"attach":"ok","relation":"older"}/'; exit ;;`,
     `      *) ${peer} exec ${backend} -- --resident-attach ;;`,
     "    esac ;;",
-    `  ${q(`${land}--resident-ensure`)}) ${peer} exec ${backend} -- --resident-ensure ;;`,
-    // 旧了的那台：落点上就是它在跑的那一份旧的，换装没有更新的可换 ⇒ 只确保在跑（台架那份字节是这一版，交 `--replace` 会把那台的常驻换成本机沙箱里的一个）。
-    `  ${q(`${land}--resident-ensure --replace`)}) case "$fake" in older|install) ${peer} exec ${backend} -- --resident-ensure ;; *) ${peer} exec ${backend} -- --resident-ensure --replace ;; esac ;;`,
+    // 确保常驻要认在听的那一位（`SO_PEERCRED` 的 pid，跨进程命名空间是 0）⇒ 在那台自己的沙箱里跑：交它那个跑腿口（[`DOER_PY`]），换不换由那台照真的判
+    // （旧了的那台在跑的与落点上的是同一份字节 ⇒ `--replace` 回没换，本机这一端照接、记那台旧）。
+    `  ${q(`${land}--resident-ensure`)}) exec ${doer} ask ${PEERS}/$k/run/${DOER_SOCK} --resident-ensure ;;`,
+    `  ${q(`${land}--resident-ensure --replace`)}) exec ${doer} ask ${PEERS}/$k/run/${DOER_SOCK} --resident-ensure --replace ;;`,
     `  'uname -s -m') [ "$fake" = install ] && exec uname -s -m ;;`,
     `  shots-sftp) [ "$fake" = install ] && exec ${slowSftp} /tmp/shots-install/$k ;;`,
     "esac",
@@ -421,10 +466,15 @@ export function backendPool({ repo, sandbox }) {
       const fwd = `${H}/.shots-setup/forward.sh`;
       writeFileSync(path.join(setup, "forward.sh"), forwarderSh(m.peers), { mode: 0o755 });
       writeFileSync(path.join(setup, "slow-sftp"), SLOW_SFTP_PY, { mode: 0o755 });
+      // 假 ssh 问远端那几台的跑腿口用同一份（`ask` 那一形）。
+      writeFileSync(path.join(setup, "shots-do"), DOER_PY, { mode: 0o755 });
       writeFileSync(path.join(setup, "sshd_config"), sshdConfig(m.peers, fwd));
       sh.push(`/usr/sbin/sshd -f ${H}/.shots-setup/sshd_config -E ${H}/.shots-run/sshd.log`);
-      // 远端各台的常驻都问得到了才起本机常驻（它一起来就去接各台；先到的那一下照真的那样会去 ensure，在本机沙箱里起错一个）。
-      for (const p of m.peers) sh.push(askable(`${PEERS}/${p.k}`));
+      // 远端各台的常驻与跑腿口都在了才起本机常驻（它一起来就去接各台；先到的那一下照真的那样会去 ensure）。
+      for (const p of m.peers) {
+        sh.push(askable(`${PEERS}/${p.k}`));
+        sh.push(`n=0; until [ -S ${PEERS}/${p.k}/run/${DOER_SOCK} ]; do n=$((n+1)); [ $n -lt 1500 ] || { echo "第 ${p.k} 台的跑腿口 30 秒还没起" >&2; exit 1; }; sleep 0.02; done`);
+      }
       // 正在装的那台：本机 monitor 带着这一版的后端字节（`~/.cc-monitor/bin/slots/<系统>-<架构>`，后端装的时候现读），就是沙箱里那一份。
       if (m.peers.some((p) => p.fake === "install")) {
         mkdirSync(path.join(home, ".cc-monitor", "bin", "slots"), { recursive: true });
@@ -436,6 +486,11 @@ export function backendPool({ repo, sandbox }) {
       // 本机那一台的常驻就是本机后端（各台的常驻流归它，`control/feeds.rs`）。
       // 问得到了才往下起 stdio 那一头：常驻起来那一下补的号色 · 接的共用目录在读盘之前就落定，截到的不随先后变。
       sh.push(`CCM_RESIDENT=1 CCM_BACKEND_STDERR_LOG=${H}/.shots-run/resident.log ${backend} </dev/null >/dev/null 2>&1 &`, askable());
+      // 远端那几台：确保常驻那一问在这里跑（[`DOER_PY`]），口开在常驻的套接字目录里（本机沙箱挂得着的只有它）。
+      if (!m.local) {
+        writeFileSync(path.join(setup, "shots-do"), DOER_PY, { mode: 0o755 });
+        sh.push(`${DOER_IN_BOX} serve ${H}/.cc-monitor/run/${DOER_SOCK} ${BACKEND_IN_BOX} </dev/null >>${H}/.shots-run/doer.log 2>&1 &`);
+      }
     }
     // 交给无头壳的那一条：远端各台照旧是 stdio 载体的流模式；本机那一台接它的常驻（产品本机那一形：常驻先给 hello，attach 行进、
     // 回话那一行收掉，往后就是流 —— 壳那条读循环见到的是 hello 打头的流）。
@@ -676,9 +731,9 @@ export function backendPool({ repo, sandbox }) {
       const stem = path.join(dir, `${scene.replace(/[^A-Za-z0-9_.-]/g, "_")}${mine.length > 1 ? `.${i}` : ""}`);
       writeFileSync(`${stem}.log`, w.lines.join("\n") + "\n");
       // 各台后端自己的诊断日志（一台一份，按台名）。
-      // 另有常驻那一份（`resident.log`）与本机 sshd 那一份（`sshd.log`）：有就一并落。
+      // 另有常驻那一份（`resident.log`）· 本机 sshd 那一份（`sshd.log`）· 远端跑腿口那一份（`doer.log`）：有就一并落。
       const backends = [...w.homes.keys()].flatMap((origin, m) =>
-        ["stderr", "resident", "sshd"].flatMap((name) => {
+        ["stderr", "resident", "sshd", "doer"].flatMap((name) => {
           const log = path.join(w.dir, `m${m}`, "run", `${name}.log`);
           if (!existsSync(log)) return [];
           const to = `${stem}.${origin.replace(/[^A-Za-z0-9_.-]/g, "_")}.${name}.log`;

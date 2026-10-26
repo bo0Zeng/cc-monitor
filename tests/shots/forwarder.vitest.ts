@@ -10,8 +10,8 @@
  *
  * 买不到：sshd 本身与沙箱里那一跳（`--resident-call` 连常驻）不在这里起；台架里每台问没问到由截图那一趟的问题表判（`fake/backend.ts::judgeAsked`）。
  */
-import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -22,8 +22,9 @@ import { HOST_KEYS } from "./fake/machine";
 const POOL = "./real/pool.mjs";
 type Peer = { port: number; k: number; refuse?: string[]; fake?: "older" | "hang" | "install" };
 type Row = { label: string; host: string; port: number; user: string; keyPath: string; connect: boolean };
-const { forwarderSh, reachTable } = (await import(POOL)) as {
-  forwarderSh: (peers: Peer[], backend?: string, slowSftp?: string) => string;
+const { forwarderSh, reachTable, DOER_PY } = (await import(POOL)) as {
+  DOER_PY: string;
+  forwarderSh: (peers: Peer[], backend?: string, slowSftp?: string, doer?: string) => string;
   reachTable: (table: string | undefined, reach: [string, { refuse: string[]; fake?: Peer["fake"] }][]) => { hosts: Row[]; peers: (Peer & { origin: string })[] };
 };
 /** 转发那几格用的口（任意，只要转发表里写的是它）。 */
@@ -95,8 +96,11 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
       const slow = path.join(dir, "slow-sftp");
       writeFileSync(slow, '#!/bin/sh\necho "slow-sftp $*"\n');
       chmodSync(slow, 0o755);
+      const doer = path.join(dir, "doer");
+      writeFileSync(doer, '#!/bin/sh\necho "doer $*"\n');
+      chmodSync(doer, 0o755);
       const fwd = path.join(dir, "forward.sh");
-      writeFileSync(fwd, forwarderSh(peers, backend, slow));
+      writeFileSync(fwd, forwarderSh(peers, backend, slow, doer));
       chmodSync(fwd, 0o755);
       return spawnSync(fwd, [], {
         input: stdin,
@@ -133,15 +137,15 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     expect(r.stdout).toBe("");
   });
 
-  it("确保常驻（换不换由那台自己判）：原样交那台的后端；旧了的那台落点上也只有它在跑的那一份 ⇒ 换装那一问只确保在跑", () => {
+  it("确保常驻（换不换由那台自己判）：在那台自己的沙箱里跑（经它那个跑腿口），两形原样交、不换词", () => {
+    // ensure 要认在听的那一位（`SO_PEERCRED` 的 pid），跨进程命名空间认不出 ⇒ 必须在那台自己的沙箱里跑
+    // （从前在本机沙箱里跑：回「连接在听的后端失败 · 路径不存在」，本机后端丢了那条流、按退避一轮轮重来）。
     const echo = '#!/bin/sh\necho "dir=$CCM_DATA_DIR $*"\n';
-    for (const w of ["--resident-ensure", "--resident-ensure --replace"]) {
-      const r = runWith(fakes, PEER_PORT_BASE, word(w), "", echo);
-      expect([r.status, r.stdout.trim()]).toEqual([0, `dir=/tmp/shots-peers/0 -- ${w}`]);
-    }
-    for (const port of [PEER_PORT_BASE + 1, PEER_PORT_BASE + 3]) {
-      const r = runWith(fakes, port, word("--resident-ensure --replace"), "", echo);
-      expect([r.status, r.stdout.trim()]).toEqual([0, `dir=/tmp/shots-peers/${port - PEER_PORT_BASE} -- --resident-ensure`]);
+    for (const port of [PEER_PORT_BASE, PEER_PORT_BASE + 1, PEER_PORT_BASE + 3]) {
+      for (const w of ["--resident-ensure", "--resident-ensure --replace"]) {
+        const r = runWith(fakes, port, word(w), "", echo);
+        expect([r.status, r.stdout.trim()]).toEqual([0, `doer ask /tmp/shots-peers/${port - PEER_PORT_BASE}/run/shots-do.sock ${w}`]);
+      }
     }
   });
 
@@ -153,6 +157,29 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     const sftp = runWith(fakes, PEER_PORT_BASE + 3, "shots-sftp", "", attaching);
     expect([sftp.status, sftp.stdout.trim()]).toEqual([0, "slow-sftp /tmp/shots-install/3"]);
     for (const c of ["uname -s -m", "shots-sftp"]) expect(runWith(fakes, PEER_PORT_BASE, c, "", attaching).status).toBe(127);
+  });
+
+  it("那台的跑腿口：照那台自己的后端跑确保常驻，stdout · stderr · 退出码原样回；别的参数不跑", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "shots-doer-"));
+    const doer = path.join(dir, "shots-do");
+    writeFileSync(doer, DOER_PY);
+    chmodSync(doer, 0o755);
+    const backend = path.join(dir, "backend");
+    writeFileSync(backend, '#!/bin/sh\necho "ran $*"\necho "said $*" >&2\nexit 3\n');
+    chmodSync(backend, 0o755);
+    const sock = path.join(dir, "do.sock");
+    const srv = spawn(doer, ["serve", sock, backend], { stdio: "ignore" });
+    try {
+      for (let i = 0; i < 250 && !existsSync(sock); i++) await new Promise((r) => setTimeout(r, 20));
+      const ask = (...a: string[]) => spawnSync(doer, ["ask", sock, ...a], { encoding: "utf8" });
+      const r = ask("--resident-ensure", "--replace");
+      expect([r.status, r.stdout, r.stderr]).toEqual([3, "ran -- --resident-ensure --replace\n", "said -- --resident-ensure --replace\n"]);
+      const no = ask("--resident-stop");
+      expect([no.status, no.stdout]).toEqual([127, ""]);
+    } finally {
+      srv.kill();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("不认的口 · 不是问常驻那一形 ⇒ 拒，不交后端", () => {
