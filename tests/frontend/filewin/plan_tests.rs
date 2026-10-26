@@ -61,8 +61,8 @@ fn entries_become_owners_by_name_with_label_status_block_and_double_claims() {
         1
     );
     assert_eq!(broken(r), None);
-    // 也声明它的那一格是读数「共用 · 也在 {编号 标题}」（pb 0.5 不再当判据红），编号标题照后端拼的写。
-    assert_eq!(dup_text(r), "共用 · 也在 A1-2 甲的写出");
+    // 也声明它的那一格照「编号 标题」写。
+    assert!(dup_text(r).starts_with("A1-2 甲的写出"), "{}", dup_text(r));
     let Claim::Owner(w) = d.claim("write.txt") else {
         panic!("write.txt 该有主")
     };

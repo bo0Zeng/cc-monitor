@@ -27754,8 +27754,8 @@
     },
     "rsFilewinPlan.cell.dup": {
       "kind": "body",
-      "role": "片段",
-      "zh": "共用 · 也在 {title}",
+      "role": "悬停",
+      "zh": "{title} 也声明此文件",
       "args": ["title"]
     },
     "rsFilewinPlan.cell.listSep": {
