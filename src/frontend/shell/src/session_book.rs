@@ -49,6 +49,10 @@ pub enum In {
     LinkLost {
         origin: String,
     },
+    /// 本机后端握上手时 hello 带来的那一张「那台看不见」的脸（`Hello.unseen`）：此后每一格「说不清」都带上它。
+    UnseenFace {
+        face: Option<cmd_wire::frame::SessionFace>,
+    },
     /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个。
     Runs {
         origin: String,
@@ -92,6 +96,8 @@ pub enum Out {
     Unseen {
         origin: String,
         sids: Vec<String>,
+        /// 那几条落成的那一张：本机后端交来的那一份（还没交 ⇒ `None`，界面不画点）。
+        face: Option<cmd_wire::frame::SessionFace>,
     },
     /// 一个会话的运行表（原样转）。
     Runs {
@@ -138,6 +144,8 @@ pub struct Book {
     branch: HashMap<String, BTreeMap<String, BranchCopy>>,
     /// 订了会话流的那几台（机器表：本机 ＋ 注册着的远端）；`None` = 还不知道 ⇒ 不立「各台都报完」。
     machines: Option<Vec<String>>,
+    /// 本机后端交来的那一张「那台看不见」的脸（[`In::UnseenFace`]）。
+    unseen: Option<cmd_wire::frame::SessionFace>,
 }
 
 impl Book {
@@ -224,6 +232,10 @@ impl Book {
                 let all = self.all_listed();
                 vec![Out::Listed { origin, all }]
             }
+            In::UnseenFace { face } => {
+                self.unseen = face;
+                Vec::new()
+            }
             In::LinkLost { origin } => {
                 let Some(b) = self.origins.remove(&origin) else {
                     return Vec::new();
@@ -239,7 +251,11 @@ impl Book {
                 if sids.is_empty() {
                     return Vec::new();
                 }
-                vec![Out::Unseen { origin, sids }]
+                vec![Out::Unseen {
+                    origin,
+                    sids,
+                    face: self.unseen.clone(),
+                }]
             }
         }
     }
@@ -431,8 +447,9 @@ impl Out {
                 origin: crate::origin::Origin(origin.clone()),
                 all: *all,
             }),
-            Out::Unseen { origin, .. } => F::Unseen(b::SessionUnseenPayload {
+            Out::Unseen { origin, face, .. } => F::Unseen(b::SessionUnseenPayload {
                 origin: crate::origin::Origin(origin.clone()),
+                face: face.clone(),
             }),
             Out::Runs { runs, .. } => F::Runs(runs.clone()),
             Out::Branch { sid, off, .. } => F::Branch(b::SessionBranchPayload {
@@ -450,6 +467,7 @@ impl Book {
         let mut v = vec![Out::Unseen {
             origin: origin.to_string(),
             sids,
+            face: self.unseen.clone(),
         }];
         if let Some(b) = self.origins.get(origin) {
             for (sid, p) in &b.sessions {

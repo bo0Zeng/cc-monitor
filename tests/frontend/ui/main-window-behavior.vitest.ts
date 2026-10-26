@@ -364,7 +364,7 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
   it("说不清的 tab 挂 `.unseen` 不挂 `.ended`；中键与 W 不关它，菜单里能关并说它会回来", () => {
     const tm = makeTabs(["u", "e"], "pi");
     const st = inside(tm).store;
-    (st.tabs.get("u") as Tab).face = null;
+    (st.tabs.get("u") as Tab).face = goldenFace("unseen");
     (st.tabs.get("e") as Tab).face = goldenFace("ended");
     tm.switchTo("e");
     tm.switchTo("u");

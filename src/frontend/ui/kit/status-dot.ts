@@ -15,7 +15,8 @@ export type DotState = SessionDot | "failed";
 /** 机器的点：`up` 已连接 · `failed` 离线 · `needs-you` 要你处理 · `exited` 已停用 · `unknown` 连接中 / 状态不明。 */
 export type MachineDotState = "up" | "failed" | "needs-you" | "exited" | "unknown";
 
-export function statusDot(state: DotState | MachineDotState, label: string, size: "regular" | "compact" = "regular"): HTMLSpanElement {
+/** 一颗点；`state` 为 `null` ⇒ 不画（还没收到这条会话的脸：占住位置、看不见、读屏也跳过）。「没有点」只在这里判。 */
+export function statusDot(state: DotState | MachineDotState | null, label: string | null, size: "regular" | "compact" = "regular"): HTMLSpanElement {
   const d = document.createElement("span");
   d.className = s.dot;
   d.setAttribute("role", "img");
@@ -24,10 +25,25 @@ export function statusDot(state: DotState | MachineDotState, label: string, size
   return d;
 }
 
-export function setDot(d: HTMLElement, state: DotState | MachineDotState, label: string): void {
-  d.dataset.state = state;
-  d.setAttribute("aria-label", label);
-  d.title = label;
+export function setDot(d: HTMLElement, state: DotState | MachineDotState | null, label: string | null): void {
+  paintDot(d, state, label);
+  d.title = state === null ? "" : (label ?? "");
+}
+
+/**
+ * 只换点的样子与读屏名（不碰悬停提示：标签页栏那颗点的悬停由悬停卡说）。`state` 为 `null` ⇒ 不画、读屏跳过。
+ * 只写真变了的那几格（一个状态变了 ⇒ 恰好样子与读屏名两笔）。
+ */
+export function paintDot(d: HTMLElement, state: DotState | MachineDotState | null, label: string | null): void {
+  const want = state ?? "none";
+  if (d.dataset.state !== want) d.dataset.state = want;
+  if (state === null) {
+    if (!d.hasAttribute("aria-hidden")) d.setAttribute("aria-hidden", "true");
+    if (d.hasAttribute("aria-label")) d.removeAttribute("aria-label");
+    return;
+  }
+  if (d.hasAttribute("aria-hidden")) d.removeAttribute("aria-hidden");
+  if (d.getAttribute("aria-label") !== (label ?? "")) d.setAttribute("aria-label", label ?? "");
 }
 
 /** 这一段动画是不是运行中那颗点的呼吸（样式里只有它会动）。 */

@@ -287,8 +287,7 @@ fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<Mode
         ));
     };
     offered(&perm, &req.mode)?;
-    let waiting =
-        crate::observe::accounts_query::waiting_now(&home, &req.sid, &crate::control::asks::sids());
+    let waiting = crate::history::live_table::now(&home).waiting(&req.sid);
     let mut io = Live {
         sid: &req.sid,
         client: req.client.clone(),

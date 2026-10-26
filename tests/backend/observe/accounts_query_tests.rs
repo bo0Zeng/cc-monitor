@@ -1,5 +1,6 @@
 use super::*;
 use crate::agents::claudecode::accounts as cc_accounts;
+use crate::platform::proc::proc_starttime;
 use std::fs;
 
 fn tmpdir(tag: &str) -> PathBuf {
@@ -418,11 +419,14 @@ fn session_accounts_rejects_pid_reuse() {
     let _ = fs::remove_dir_all(&root);
 }
 
-fn sid_map(lines: &[String]) -> std::collections::HashMap<String, serde_json::Value> {
+fn sid_map(rows: &[SessionAccount]) -> std::collections::HashMap<String, serde_json::Value> {
     let mut m = std::collections::HashMap::new();
-    for l in lines {
-        let v: serde_json::Value = serde_json::from_str(l).unwrap();
-        m.insert(v["sessionId"].as_str().unwrap().to_string(), v);
+    for r in rows {
+        let v = serde_json::json!({
+            "pid": r.pid, "sessionId": r.sid, "cwd": r.cwd, "configDir": r.config_dir,
+            "account": r.account, "alive": r.alive, "bare": r.bare, "viaRelay": r.via_relay,
+        });
+        m.insert(r.sid.clone().unwrap(), v);
     }
     m
 }
@@ -1076,7 +1080,7 @@ fn production_text() -> String {
     guard_core::assert_no_test_code("accounts_query.rs", &prod);
     assert!(
         prod.contains("fn session_accounts(agent_home: &Path")
-            && prod.contains("struct SessionRow {")
+            && prod.contains("struct SessionAccount {")
             && prod.len() > 8_000,
         "剥过头 / 锚点挪了（实得 {} 字节）—— 用它的那几条会零命中地绿",
         prod.len()
@@ -1806,7 +1810,7 @@ fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_lea
         assert_eq!(by[*sid]["viaRelay"], *want, "{sid}：{:?}", by[*sid]);
     }
     assert_eq!(by["sid-dead"]["viaRelay"], serde_json::Value::Null);
-    let all = lines.join("\n");
+    let all = format!("{lines:?}");
     assert!(
         !all.contains(&key) && !all.contains("api.example.invalid"),
         "上游地址（带钥匙）进了出参：{all}"
@@ -1825,11 +1829,12 @@ fn the_machine_product_matches_the_cross_language_golden() {
     let cases = golden["cases"].as_array().expect("金样没有 cases");
     assert_eq!(cases.len(), 3, "金样的形数变了 —— 两侧一起改");
     for c in cases {
-        let lines: Vec<String> = c["lines"]
+        let lines: Vec<SessionAccount> = c["lines"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|l| l.as_str().unwrap().to_string())
+            // 金样里那行「不是 JSON」：结构体那一侧没有读不懂的行，读不懂的不进名单。
+            .filter_map(|l| row_of(l.as_str().unwrap()))
             .collect();
         let forwards = c["forwards"].as_u64().unwrap() as u32;
         assert_eq!(
@@ -1863,8 +1868,8 @@ fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
 #[test]
 fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
     let lines = vec![
-        r#"{"alive":true,"viaRelay":true}"#.to_string(),
-        r#"{"alive":true,"viaRelay":false}"#.to_string(),
+        row_of(r#"{"alive":true,"viaRelay":true}"#).unwrap(),
+        row_of(r#"{"alive":true,"viaRelay":false}"#).unwrap(),
     ];
     let zero =
         serde_json::json!({"relayedSessions":0,"relayedMaybe":0,"liveStreams":0,"forwards":0});
@@ -2443,4 +2448,19 @@ fn whether_the_settings_are_shared_is_judged_for_the_session_s_own_account() {
     assert_eq!(said(&c, &accts), own, "c 自己一份，却说成了「各号」");
     assert_eq!(said(&a, &root.join("none")), own, "没有账号库也算共用了");
     let _ = fs::remove_dir_all(&root);
+}
+
+/// 金样那一形（一行账号归属的 JSON）⇒ 结构体：`machine_product` 只看活着与走不走中转两格。
+fn row_of(line: &str) -> Option<SessionAccount> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    Some(SessionAccount {
+        pid: 0,
+        sid: v["sessionId"].as_str().map(str::to_string),
+        cwd: None,
+        config_dir: None,
+        account: None,
+        alive: v["alive"] == serde_json::Value::Bool(true),
+        bare: false,
+        via_relay: v["viaRelay"].as_bool(),
+    })
 }

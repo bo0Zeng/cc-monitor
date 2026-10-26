@@ -86,7 +86,7 @@ describe("批量菜单", () => {
   });
 
   it("说不清（那台暂时看不见）的不算可起、也不说「已经结束了」：理由说看不见", async () => {
-    tabs = [tab("a", false), tab("u", false, { face: null })];
+    tabs = [tab("a", false), tab("u", false, { face: goldenFace("unseen") })];
     run.start.mockResolvedValue([{ sid: "a", outcome: "done", why: "" }]);
     open();
     await press(copyText("tabBatch.menu.startTmux", { n: 1 }));

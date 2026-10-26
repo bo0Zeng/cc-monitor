@@ -265,6 +265,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
                 shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
                 frames: [(s("line"), s("0000abcd"))].into_iter().collect(),
+                unseen: None,
             }),
             Frame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
@@ -274,6 +275,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_env: Default::default(),
                 shapes: Default::default(),
                 frames: Default::default(),
+                unseen: None,
             }),
         ],
         [
@@ -1299,6 +1301,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             host_env,
             shapes: Default::default(),
             frames: Default::default(),
+            unseen: None,
         }))
         .unwrap()
     };
@@ -1384,6 +1387,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             host_env: Default::default(),
             shapes: Default::default(),
             frames: Default::default(),
+            unseen: None,
         }),
         Frame::Line(crate::wire::Line {
             session_id: "s".into(),
@@ -1810,6 +1814,7 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
         ("ended", Life::Ended),
         ("gone", Life::Gone),
         ("unclear", Life::Unclear),
+        ("unseen", Life::Unseen),
     ];
     let produced: serde_json::Map<String, Value> = lives
         .into_iter()
@@ -1989,5 +1994,81 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
             fate(crate::wire::SessionFate::Ended)
         ),
         (Some(4), Some(5))
+    );
+}
+
+/// 那台看不见时画的那一张（本机后端替它造，随 hello 交给壳）：点「说不清」、不说在跑、不是定局；
+/// 只在右键菜单里关，不给恢复（也许还在跑，再起一份就是同一会话两个进程），别的都不给；字里不写机器名。
+#[test]
+fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
+    use cmd_wire::frame::{Allow, CanClose, CanTerm, FaceLive, SessionDot};
+    let f = crate::wire::SessionFace::of(Life::Unseen);
+    assert_eq!(f.dot, SessionDot::Unknown);
+    assert_eq!(f.live, FaceLive::No);
+    assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");
+    assert_eq!(f.can.close, CanClose::Menu);
+    assert!(matches!(f.can.resume, Allow::No { .. }));
+    assert!(matches!(f.can.term, CanTerm::No { .. }));
+    for a in [&f.can.reattach, &f.can.model, &f.can.permission] {
+        assert!(matches!(a, Allow::No { .. }), "{a:?}");
+    }
+    assert_eq!(
+        f.line.0,
+        copy_core::copy_text("sessionState.unseen.tooltip", &[]),
+        "字里不写机器名（哪台由界面在别处写）"
+    );
+}
+
+/// 界面那一侧不造脸：`src/frontend` 的 ts 生产源里没有一个函数交出一张 `SessionFace`（`…): SessionFace {` / `=>`），
+/// 也没有一份写着 `settled:` 的字面量（整份脸才有那一格）。那台看不见时那一张也由后端造（[`crate::wire::unseen_face`]）。
+/// 正控：同一把尺量得到一段造脸的写法（原先界面自己拼的那一张就是这个形）。
+#[test]
+fn the_interface_never_builds_a_face_of_its_own() {
+    // 运行时拼，免得命中本条自己（同上一条）。
+    let face = ["Session", "Face"].concat();
+    let ret = format!("): {face}");
+    let settled = ["sett", "led:"].concat();
+    let built = |code: &str| -> Vec<String> {
+        guard_core::strip_comment_lines(code)
+            .lines()
+            .filter(|l| {
+                l.find(&ret).is_some_and(|i| {
+                    let rest = l[i + ret.len()..].trim_start();
+                    rest.starts_with('{') || rest.starts_with("=>")
+                }) || guard_core::contains_word(l, &settled)
+            })
+            .map(|l| l.trim().to_string())
+            .collect()
+    };
+    let specimen = format!(
+        "// {settled} 注释里不算\nexport function madeHere(machine: string): {face} {{\n  return {{ {settled} false }};\n}}"
+    );
+    assert_eq!(
+        built(&specimen),
+        vec![
+            format!("export function madeHere(machine: string): {face} {{"),
+            format!("return {{ {settled} false }};")
+        ],
+        "正控：这把尺量得到界面自己造脸的那一形（注释里的不算）"
+    );
+    let repo = guard_core::addr::repo_root();
+    let mut found = Vec::new();
+    for (path, raw) in guard_core::scan_tree!(&repo.join("src/frontend"), &["ts"]) {
+        if path.components().any(|c| c.as_os_str() == "generated") {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(&repo)
+            .unwrap_or(&path)
+            .display()
+            .to_string();
+        for l in built(&raw) {
+            found.push(format!("{rel}: {l}"));
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "界面自己造了脸（脸只由后端造，看不见那一张也是）：\n  {}",
+        found.join("\n  ")
     );
 }

@@ -333,7 +333,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     let no_accts = root.join("no-such-accts");
     assert_eq!(
         crate::observe::accounts_query::session_accounts(&root, &no_accts),
-        Vec::<String>::new(),
+        Vec::new(),
         "会话归属的反应变了"
     );
 

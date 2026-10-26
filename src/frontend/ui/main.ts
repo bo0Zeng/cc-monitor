@@ -859,7 +859,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       recordFile.onSessionFileNotice(sessionId, change);
     },
     // 那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。机器级一格。
-    onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
+    onOriginUnseen: (origin, face) => tabs.markOriginUnseen(origin, face),
     // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
     openMachineSettings: (origin) => void openSettingsWindow(undefined, dest.machineOf(origin)),
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。

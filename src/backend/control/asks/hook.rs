@@ -18,8 +18,12 @@ const STDIN_CAP: u64 = 1_048_576;
 /// 这一问的请求 id（一条连接只问这一次）。
 const REQ_ID: &str = "answer-hook";
 
+/// 这条会话各个活进程此刻的（那一态, 这一态从何时起）：读那一家的 pidfile 目录（`main` 交进来：活会话表那一处，`history::live_table::states_in`）。
+pub type StatesOf = fn(&std::path::Path, &str) -> Vec<(Option<SessionActivity>, Option<u64>)>;
+
 /// 入口（`args[0]` ＝ 子命令本身，`args[1]` ＝ 那一家的 kind）。恒退 0：hook 的退出码那一家不当决定看，空手退就是「不答」。
-pub async fn run(args: &[String]) -> i32 {
+/// `states` 判「终端那边答了」用（[`StatesOf`]）。
+pub async fn run(args: &[String], states: StatesOf) -> i32 {
     let Some(agent) = args.get(1) else { return 0 };
     let Some(face) = crate::agents::ask_face(agent) else {
         return 0;
@@ -58,7 +62,7 @@ pub async fn run(args: &[String]) -> i32 {
         }
     }
     let closed = (!asked.blocks_terminal)
-        .then(|| watch_terminal(agent, &asked.sid))
+        .then(|| watch_terminal(agent, &asked.sid, states))
         .flatten();
     if let Some(out) = ask_resident(agent, &hook, closed).await {
         let mut stdout = tokio::io::stdout();
@@ -110,6 +114,7 @@ async fn ask_resident(
 fn watch_terminal(
     agent: &str,
     sid: &str,
+    states: StatesOf,
 ) -> Option<(
     crate::platform::watch_file::Watching,
     tokio::sync::oneshot::Receiver<()>,
@@ -130,8 +135,8 @@ fn watch_terminal(
             if tx.is_none() {
                 return;
             }
-            let states = statuses(&read_dir, local.proc_of, &sid);
-            if closed_now(&states, started, &mut seen_waiting) {
+            let now = states(&read_dir, &sid);
+            if closed_now(&now, started, &mut seen_waiting) {
                 if let Some(tx) = tx.take() {
                     let _ = tx.send(());
                 }
@@ -142,24 +147,6 @@ fn watch_terminal(
     // 挂上之后先判一次此刻的样子（之前的那几次变动没赶上事件）。
     w.kick();
     Some((w, rx))
-}
-
-/// 这条会话各个进程此刻的（状态, 状态更新于）：每份状态文件经那一家的读法（`proc_of`）翻成一行再看。
-fn statuses(
-    dir: &std::path::Path,
-    proc_of: fn(&Value) -> crate::agents::ProcFact,
-    sid: &str,
-) -> Vec<(Option<SessionActivity>, Option<u64>)> {
-    let Ok(rd) = crate::platform::fs::Ro::read_dir(dir) else {
-        return Vec::new();
-    };
-    rd.flatten()
-        .filter_map(|e| crate::platform::fs::Ro::read(e.path()).ok())
-        .filter_map(|b| serde_json::from_slice::<Value>(&b).ok())
-        .map(|v| proc_of(&v))
-        .filter(|f| f.sid.as_deref() == Some(sid))
-        .map(|f| (f.activity, f.status_since_ms))
-        .collect()
 }
 
 /// 判关了没有（纯函数）：有一个进程在「在等」⇒ 没关（记下见过）；都不在「在等」且（见过「在等」或状态更新晚于 `started`）⇒ 关了。

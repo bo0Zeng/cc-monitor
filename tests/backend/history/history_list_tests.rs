@@ -40,7 +40,7 @@ fn listing_from(
         Vec<crate::agents::SynthSession>,
         fn(&std::path::Path) -> String,
     )],
-    live: &LiveSet,
+    live: &crate::history::live_table::LiveTable,
     last: &Value,
 ) -> Value {
     serde_json::to_value(super::listing_from(tree, synth, live, last)).unwrap()
@@ -259,14 +259,7 @@ fn listing() -> Value {
         }],
         no_excerpt as fn(&std::path::Path) -> String,
     )];
-    let live = LiveSet(
-        [(
-            S1.to_string(),
-            Some(crate::agents::SessionActivity::Working),
-        )]
-        .into_iter()
-        .collect(),
-    );
+    let live = live_table(&[(S1, Some(crate::agents::SessionActivity::Working))], &[]);
     listing_from(tree, &synth, &live, &json!({ S1: "work", S3: "home" }))
 }
 
@@ -671,7 +664,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
     let tree = crate::history::listing::sessions_by_dir(&home)
         .expect("读得了")
         .expect("记录树在");
-    let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
+    let live = live_table(&[(S4, None)], &[]);
     let v = listing_from(tree, &[], &live, &json!({}));
     let _ = std::fs::remove_dir_all(&home);
     let agent = crate::agents::claudecode::AGENT_KIND;
@@ -724,7 +717,7 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     let locked = home.join("projects").join("-w-locked");
     std::fs::create_dir_all(&locked).unwrap();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
-    let live = LiveSet([(S4.to_string(), None)].into_iter().collect());
+    let live = live_table(&[(S4, None)], &[]);
     let listing = |only: Option<&str>| {
         let tree = tree_for(&home, only).expect("读得了").expect("记录树在");
         listing_from(tree, &[], &live, &json!({ S1: "work" }))
@@ -954,17 +947,10 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     let sid = "9e9e9e9e-0000-4000-8000-000000000001";
     let other = "9e9e9e9e-0000-4000-8000-000000000002";
     let v = |s: &str| json!({"sessionId": s, "cwd": "/w/a", "jsonlPath": "/x.jsonl"});
-    let none = LiveSet(Default::default());
-    crate::history::live::set_reconnectable(&[sid.to_string()].into_iter().collect());
+    let none = live_table(&[], &[sid]);
     let r = session_row(&v(sid), "-w-a", &none).unwrap();
     let o = session_row(&v(other), "-w-a", &none).unwrap();
-    let live = session_row(
-        &v(sid),
-        "-w-a",
-        &LiveSet([(sid.to_string(), None)].into_iter().collect()),
-    )
-    .unwrap();
-    crate::history::live::set_reconnectable(&Default::default());
+    let live = session_row(&v(sid), "-w-a", &live_table(&[(sid, None)], &[sid])).unwrap();
     assert_eq!(
         [&r, &o, &live].map(|x| x.life),
         [
@@ -1114,4 +1100,31 @@ fn answering_the_listing_lets_a_session_ring_again() {
         rx.has_changed().unwrap(),
         "答过清单之后同一个会话再变 ⇒ 再响"
     );
+}
+
+/// 夹具的活会话表：几条活会话各在干什么（一条一个进程）＋ 可重连的那几条。
+fn live_table(
+    live: &[(&str, Option<crate::agents::SessionActivity>)],
+    reconnectable: &[&str],
+) -> crate::history::live_table::LiveTable {
+    use crate::history::live_table::{LiveRow, LiveTable};
+    LiveTable {
+        rows: live
+            .iter()
+            .zip(1u32..)
+            .map(|((sid, activity), pid)| LiveRow {
+                pid,
+                fact: crate::agents::ProcFact {
+                    sid: Some((*sid).to_string()),
+                    activity: *activity,
+                    ..Default::default()
+                },
+                alive: true,
+                start_checked: true,
+                frozen: false,
+            })
+            .collect(),
+        reconnectable: reconnectable.iter().map(|s| (*s).to_string()).collect(),
+        ..Default::default()
+    }
 }

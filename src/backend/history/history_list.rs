@@ -49,9 +49,6 @@ static NARROW: std::sync::LazyLock<Views> = std::sync::LazyLock::new(|| Views::n
 
 // ───────────────────────── 这台自己的清单（`history-listing` 答的就是它）─────────────────────────
 
-/// 这台此刻活着的会话（pidfile 源头）。
-pub(crate) struct LiveSet(pub(crate) BTreeMap<String, Option<crate::agents::SessionActivity>>);
-
 /// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
 pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
     match loaded {
@@ -88,7 +85,11 @@ fn last_segment(p: &str) -> Option<&str> {
 
 /// 记录树里的一行（会话清单那一形）＋ 判活 ⇒ 清单的一行（注解格先按没有填，并注解在 [`answer_from`]）。
 /// 没有 `sessionId` ⇒ `None`。
-fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
+fn session_row(
+    v: &Value,
+    project_dir: &str,
+    live: &crate::history::live_table::LiveTable,
+) -> Option<RawRow> {
     let r =
         <crate::history::listing_scan::SessionRow as serde::Deserialize>::deserialize(v).ok()?;
     if r.session_id.is_empty() {
@@ -117,7 +118,7 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         started_at: r.started_at_ms,
         updated_at: r.updated_at_ms,
         jsonl_path: r.record_path.clone(),
-        life: Some(crate::history::live::life_of(&live.0, sid)),
+        life: Some(live.life_of(sid)),
         message_count_approx: r.message_count_approx,
         is_bg: r.is_bg,
         starred: false,
@@ -199,7 +200,7 @@ fn machine_listing_for(
     // 读之前放开清单的节点：此后再变的会话再响一次（这一份里没赶上的由下一帧叫回来重问）。
     node.asked();
     let home = crate::history::listing::agent_home();
-    let live = LiveSet(crate::history::live::live_activity(&home));
+    let live = crate::history::live_table::now(&home);
     let tree = tree_for(&home, only).map_err(|e| ("failed", e))?;
     let synth: Vec<(
         &'static str,
@@ -277,7 +278,7 @@ pub(crate) fn listing_from(
         Vec<crate::agents::SynthSession>,
         fn(&std::path::Path) -> String,
     )],
-    live: &LiveSet,
+    live: &crate::history::live_table::LiveTable,
     last: &Value,
 ) -> Listing {
     let mut rows = Vec::new();

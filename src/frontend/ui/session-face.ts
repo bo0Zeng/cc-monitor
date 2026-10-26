@@ -2,7 +2,7 @@
  * **一个会话在主窗口上读成什么**：状态点 · 状态一句 · 需手动 · 悬停卡那一句 · 标题拆成几段。
  * 标签页行、悬停卡、会话头、「需手动」那几处都从这里取，不各拼一份。
  *
- * 只排版：点 · 短名 · 状态一句是那台后端判好的整份脸（`Tab.face`，经 `face-can.ts::faceOf` 读）；会走的那一句与需手动的种类在
+ * 只排版：点 · 短名 · 状态一句是那台后端判好的整份脸（`Tab.face`；还没收到 ⇒ 不画点）；会走的那一句与需手动的种类在
  * 会话事实里（`Tab.line` · `Tab.needs`），只在它写的那一态（`line.for`）与脸上那一态相同时用 —— 两份是同一刻的；对不上就用脸上那一句。
  */
 import type { DotState } from "./kit/status-dot";
@@ -10,13 +10,12 @@ import type { BackgroundWork, Needs } from "./session-reads";
 import type { FactsLine } from "./generated/FactsLine";
 import type { Tab } from "./tab-model";
 import { projectNameFromCwd } from "./tab-model";
-import { faceOf } from "./face-can";
 import { clockNow, spanNow } from "./duration-format";
 
 /** 会话事实里那一句此刻作数：写它时那一态与脸上那一态相同。不作数 ⇒ `null`。 */
 function lineOf(tab: Tab): FactsLine | null {
-  const f = faceOf(tab);
-  return f.live.is === "yes" && tab.line !== null && tab.line.for === f.live.activity ? tab.line : null;
+  const f = tab.face;
+  return f !== null && f.live.is === "yes" && tab.line !== null && tab.line.for === f.live.activity ? tab.line : null;
 }
 
 /** 此刻在等人 ⇒ 等的是什么（会话事实那一份，与脸同一刻才认）；不在等 ⇒ `null`。 */
@@ -24,14 +23,14 @@ export function needsOf(tab: Tab): Needs | null {
   return lineOf(tab)?.for === "needs_you" ? tab.needs : null;
 }
 
-/** 状态点的名字（读屏名 / 悬停名）：脸上的短名。 */
-export function stateWord(tab: Tab): string {
-  return faceOf(tab).name;
+/** 状态点的名字（读屏名 / 悬停名）：脸上的短名；还没收到脸 ⇒ `null`（不画点，也没有名字）。 */
+export function stateWord(tab: Tab): string | null {
+  return tab.face?.name ?? null;
 }
 
-/** 状态点（那台判好的那一颗）。 */
-export function dotOf(tab: Tab): DotState {
-  return faceOf(tab).dot;
+/** 状态点（那台判好的那一颗）；还没收到脸 ⇒ `null`（不画）。 */
+export function dotOf(tab: Tab): DotState | null {
+  return tab.face?.dot ?? null;
 }
 
 /** 后台任务运行中那一句此刻的字：有会走的那一句 ⇒ 时长那一截按此刻填（那一个读口，与核心对同一份金样）；否则照抄核心写好的那一句。 */
@@ -49,9 +48,9 @@ export function sinceText(atMs: number | null, now: number): string | null {
  * `needs` ＝ 这一句是不是「需手动」（琥珀）。
  */
 export function stateLine(tab: Tab, now: number): { text: string; needs: boolean } {
-  const f = faceOf(tab);
+  const f = tab.face;
   const l = lineOf(tab);
-  return { text: l ? (l.clock ? clockNow(l.clock, now) : l.text) : f.line, needs: f.dot === "needs-you" };
+  return { text: l ? (l.clock ? clockNow(l.clock, now) : l.text) : (f?.line ?? ""), needs: f?.dot === "needs-you" };
 }
 
 /** 悬停卡里那一句 peek（会话事实写的：在等 ⇒ 等的那一句 · 在跑 ⇒ 那一步 · 空闲 / 后台 ⇒ 最后一句）；不作数 / 没有 ⇒ `null`（不出这一行）。 */
@@ -94,13 +93,13 @@ export function groupSummary(members: readonly Tab[]): { needs: number; running:
     const d = dotOf(t);
     if (d === "needs-you") {
       needs++;
-      needsWord ||= stateWord(t);
+      needsWord ||= stateWord(t) ?? "";
     } else if (d === "running") {
       running++;
-      runningWord ||= stateWord(t);
+      runningWord ||= stateWord(t) ?? "";
     } else if (d === "background") {
       background++;
-      backgroundWord ||= stateWord(t);
+      backgroundWord ||= stateWord(t) ?? "";
     }
   }
   return { needs, running, background, needsWord, runningWord, backgroundWord };
