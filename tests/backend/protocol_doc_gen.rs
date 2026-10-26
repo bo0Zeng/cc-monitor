@@ -924,10 +924,6 @@ fn oneshot_types(out: &mut String) {
     out.push_str("## 6. 几条命令的出入参类型\n\n");
     for (rel, what) in [
         (
-            "control/resolve_query.rs",
-            "`resolve`（入参 `ResumeSpec`，出参 `CommandPlan`）",
-        ),
-        (
             "control/fork_write.rs",
             "`session-fork` 的出参（应答另多 `launch` 一格）",
         ),

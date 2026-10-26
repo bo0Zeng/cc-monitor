@@ -2,7 +2,7 @@
 //!
 //! # 这一层归哪、不做什么
 //!
-//! U8a 把「起会话」拆成三个平面：① 计划面（`resolve_query`，已在这儿）·
+//! U8a 把「起会话」拆成三个平面：① 计划面（今天是那台后端渲的一行 `ccm …`，`control/launch_render/`）·
 //! ② 远端执行面（**本模块**）· ③ 本机开窗面（结构上只能是 monitor —— backend 在远端，
 //! 开不了你面前的窗）。所以本模块**不 attach**，一次都不。
 //!
@@ -29,8 +29,6 @@
 //!
 //! 本模块的形状错误刻意叫 **`bad_args` 而不是 `bad_request`** —— 后者是协议级那一层的，
 //! 一词两义会让客户端分不出「我发的 JSON 坏了」与「我发的参数不合适」。
-//! （`resolve` 那条今天仍回命令级 `bad_request`：它与手机端的一次性契约冻结在
-//! 2026-07-18，两条路复用同一个纯函数，改它会破坏那份契约。**如实登记，不顺手改。**）
 //!
 //! 所以这里只回答一个问题：**这组参数能不能构成一次有意义的 tmux 调用**。
 //! 不能就回一条结构化错误（可诊断、fail-fast），而不是把畸形串塞给 tmux 让它以奇怪的方式失败。
@@ -58,10 +56,9 @@ use copy_core::copy_text;
 const MAX_FIELD_BYTES: usize = 8 * 1024;
 
 /// 起会话的模式。**没有 `attach-only`** —— attach 是平面 ③。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+#[cfg_attr(test, serde(rename_all = "kebab-case"))]
 pub(crate) enum Mode {
     /// 幂等：会话不在就建 + 键入载荷；已在就**什么都不做**（不重复 resume）。
     CreateOrAttach,
@@ -69,11 +66,11 @@ pub(crate) enum Mode {
     SendInto,
 }
 
-/// `launch` 的入参（线上那一形；`deny_unknown_fields`：多送一格 ⇒ `bad_args`）。值域由 [`parse_request`] 判。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
+/// 起会话 / 就地键入的入参：ccm 容器路 · `session-open` · 换号重启在后端里拼好交进来（不上线）。值域由 [`parse_request`] 判。
+/// 判据拿 JSON 写样例，所以只在测试档从 JSON 解（多一格 ⇒ 解不出）。
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+#[cfg_attr(test, serde(deny_unknown_fields))]
 pub(crate) struct LaunchReq {
     /// `create-or-attach`（建或接）· `send-into`（往已在的会话里键入）。
     pub(crate) mode: Mode,
@@ -82,28 +79,22 @@ pub(crate) struct LaunchReq {
     /// 要键入的那一行（`create-or-attach` 放行换行 · 制表）。
     pub(crate) payload: String,
     /// 可选，仅 create-or-attach。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(test, serde(default))]
     pub(crate) cwd: Option<String>,
     /// 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(test, serde(default))]
     pub(crate) ccm_sid: Option<String>,
     /// 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(test, serde(default))]
     pub(crate) agent: Option<String>,
     /// 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(test, serde(default))]
     pub(crate) width: Option<String>,
     /// 同 `width`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(test, serde(default))]
     pub(crate) height: Option<String>,
     /// 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(test, serde(default))]
     pub(crate) client: Option<String>,
 }
 
@@ -858,72 +849,6 @@ pub(crate) fn press_key(
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<Ran, CmdErr> {
     tmux(&["send-keys", "-t", at.handle(), key])
-}
-
-/// 入方向命令的入口：`args` → 结局 JSON。
-/// `launch` 的回包。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Launched {
-    /// 落在哪个会话上。
-    pub(crate) session: String,
-    /// 这一次新建了会话。
-    pub(crate) created: bool,
-    /// `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（送之前同一串命令里先退出窗格模式（copy-mode 等），键不会被模式吃掉；程序起没起来它不知道）。
-    pub(crate) typed: bool,
-}
-
-/// 帧面成品 `{session, created, typed}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍。
-pub(crate) fn reply(session: &str, created: bool, typed: bool) -> Launched {
-    Launched {
-        session: session.to_string(),
-        created,
-        typed,
-    }
-}
-
-crate::wire::typed::codes! {
-    /// `launch` 的码：形状 · 过门（send-into）· 建 / 键入那几发 tmux。
-    pub(crate) enum LaunchErr {
-        /// tmux 起不来。
-        NoTmux = "no_tmux",
-        /// send-into：没有这个会话（绝不新建）。
-        NoSuchSession = "no_such_session",
-        /// send-into：身份门不过。
-        WrongOwner = "wrong_owner",
-        /// 建会话那一发失败。
-        CreateFailed = "create_failed",
-        /// 会话在，启动命令没送进去：`send-keys` 退非零，或那一发过了期限（送没送到不知道）。
-        TypedUnconfirmed = "typed_unconfirmed",
-        /// 那一发 `tmux` 过了期限。
-        ChildTimedOut = "child_timed_out",
-    }
-}
-
-/// `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）。阻塞档（起 tmux）。
-pub(crate) struct Launch;
-
-impl crate::wire::typed::Command for Launch {
-    const NAME: &'static str = "launch";
-    type Req = LaunchReq;
-    type Reply = Launched;
-    type Err = LaunchErr;
-}
-
-impl crate::wire::typed::Handle for Launch {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: LaunchReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Launched, LaunchErr>> + Send + 'static {
-        async move {
-            let of = |f| crate::wire::typed::of_fail(f, LaunchErr::CreateFailed);
-            let req = parse_request(req).map_err(of)?;
-            let out = run(&req).map_err(|e| of(e.fail))?;
-            Ok(reply(&req.name, out.created, out.typed))
-        }
-    }
 }
 
 #[cfg(test)]

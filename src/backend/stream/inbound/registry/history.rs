@@ -111,8 +111,4 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     crate::wire::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
-    // U6b-3：第一条**真业务命令**：按 `ResumeSpec` 推恢复命令（本体 `control/resolve_query.rs`）。CLI 面照派生规则有 `--resolve`。
-    crate::wire::typed::asynchronous::<crate::control::resolve_query::ResolveCmd>(
-        "按 `ResumeSpec` 推出恢复命令 `CommandPlan`",
-    ),
 ];

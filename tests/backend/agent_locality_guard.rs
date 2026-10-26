@@ -5,7 +5,7 @@
 //! `S2` 开工前实测：Codex 的知识在三处，而**三处长得完全不一样**：
 //! `observe/codex.rs` 是抽取器、`observe/usage_query.rs` 里是
 //! `aggregate(<home>).and_then(|()| aggregate_codex())`、
-//! `control/resolve_query.rs` 里是 `spec.agent_kind.trim() == "codex"`。
+//! `control/resolve_query.rs`（10-26 随帧命令 `resolve` 删了）里是 `spec.agent_kind.trim() == "codex"`。
 //! grep 出其中任意一处，**都找不到另外两处**。
 //!
 //! ⇒ 「接第三个 agent 要改哪几处」这份清单，今天只住在人的脑子里。
@@ -212,7 +212,7 @@ mod tests {
     /// 那张的作用域是「已宣称通用的文件（`CORE_FILES`）里的 agent **字面量**」，
     /// 本张的作用域是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
     /// 两者恰好在 `wire.rs` 重叠一行 —— 那是同一个事实被两个不同问题各问了一次，
-    /// 不是重复登记。★ 真正的证据在这里：`control/resolve_query.rs` 那条
+    /// 不是重复登记。★ 真正的证据在这里：`control/resolve_query.rs`（已删）那条
     /// **`S4` 当时没看见**（它不在 `CORE_FILES` 里，`S1` 的判据扫不到它），
     /// 是本判据把它逼出来的 —— 两张表的作用域确实不一样。
     ///
@@ -245,8 +245,7 @@ mod tests {
         ("判活 cmdline", "LocalFace.cmdline_may_be_agent"),
         ("解析本机 home", "Adapter.home · LocalFace.home_at"),
         ("resume 默认命令", "LaunchFace.default_launcher"),
-        ("resume 命令形", "LaunchFace.resume_command"),
-        ("resume 会话名前缀", "LaunchFace.session_name_prefix"),
+        ("resume 命令形", "LaunchFace.resume_token"),
     ];
 
     /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。

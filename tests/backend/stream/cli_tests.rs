@@ -89,7 +89,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     (
         "cancel",
         "它取消的是**同一条连接上在飞的另一条命令**。一次性 exec 是「1 请求 1 响应 1 退出、\
-         无 request-id」（`resolve_query` 头注逐字）⇒ 本进程里没有第二条命令可取消，\
+         无 request-id」⇒ 本进程里没有第二条命令可取消，\
          给它开 CLI 口只会回一条永远找不到目标的应答。要停一条 CLI 命令：杀那个进程。",
     ),
     // 一次性进程「1 请求 1 响应 1 退出」—— 开出来的链路在应答回去的那一刻就随进程一起没了。
@@ -305,12 +305,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
 fn the_cli_entry_never_names_a_concrete_handler() {
     let raw = include_str!("../../../src/backend/stream/cli.rs");
     let prod = guard_core::production_code(raw);
-    for banned in [
-        "control::launch::",
-        "control::kill::",
-        "control::resolve_query::",
-        "Command::new(",
-    ] {
+    for banned in ["control::launch::", "control::kill::", "Command::new("] {
         assert!(
             !prod.contains(banned),
             "CLI 入口的生产段出现了 {banned:?} —— 那是绕开 `REGISTRY` 自己接了一条实现。\n\
@@ -1233,25 +1228,4 @@ fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
         detail.contains("stdin") && detail.contains(crate::wire::cli_words::ARGS_B64_FLAG),
         "详情没说入参从哪给：{detail}"
     );
-}
-
-/// ★ `--resolve` 走派生臂之后，信封与别的命令同一形：入参形状不对 ⇒ 命令级 `bad_args`（不再借协议级的 `bad_request`），
-/// stderr 那一行带 `detail`（`{code, message, detail}`，同别的 CLI 失败）；成品照旧是那一份 `CommandPlan`。
-#[test]
-fn resolve_answers_in_the_same_envelope_as_every_other_command() {
-    let (rc, out, err) = run_cli(
-        &strs(&["--resolve"]),
-        std::io::Cursor::new(br#"{"sessionId": 5}"#.to_vec()),
-    );
-    assert_eq!((rc, out.as_str()), (2, ""), "坏入参该被拒：{err}");
-    let v: serde_json::Value = serde_json::from_str(err.trim()).expect("stderr 不是一行 JSON");
-    assert_eq!(v["code"], "bad_args", "{err}");
-    assert!(v["detail"].is_string(), "失败信封缺 detail：{err}");
-    let (rc, out, err) = run_cli(
-        &strs(&["--resolve"]),
-        std::io::Cursor::new(br#"{"sessionId":"s1"}"#.to_vec()),
-    );
-    assert_eq!(rc, 0, "{err}");
-    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
-    assert_eq!(v["command"], "claude --resume s1");
 }

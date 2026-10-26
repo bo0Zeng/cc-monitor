@@ -132,7 +132,7 @@ mod tests {
     /// ⚠本表与 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS` **在 `wire.rs` 这一行
     /// 重叠，但不是重复登记，别合并**：本表的作用域是「**已宣称通用的文件**（[`CORE_FILES`]）里的
     /// agent **字面量**」，那张是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
-    /// 证据是：那张表逼出了 `control/resolve_query.rs::ResumeSpec.claude_dir`（同样是冻结的
+    /// 证据是：那张表逼出了 `control/resolve_query.rs`（已删）里 `ResumeSpec` 的 `claude_dir`（同样是冻结的
     /// 线上字段名），而**本表看不见它** —— 那个文件不在 `CORE_FILES` 里。
     /// ⇒ 两个不同的问题各问了一次同一个事实，删掉任一张都会漏掉另一张管的那一半。
     const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[];
