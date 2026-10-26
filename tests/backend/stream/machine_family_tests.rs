@@ -17,20 +17,31 @@ fn known_hosts_posix() -> String {
     )
 }
 
-/// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `command` 那一格）：带跳板 · 上次赢的那条 · 钥匙。
+/// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `command` 那一格）：只交名字；跳板 · 上次赢的那条 · 钥匙都照这一端的机器表。
 #[test]
 fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
-    let args = json!({
-        "machine": { "host": "192.0.2.5", "user": "dev", "port": 2222, "keyPath": "/k/id", "label": "box",
-                     "addresses": ["192.0.2.6:2200"], "jump": "hop", "resumeCommand": "", "connect": true },
-
-        "jump": { "host": "hop.example", "user": "j", "port": 22, "label": "hop" },
-        "prefer": { "host": "192.0.2.6", "port": 2200 },
-        "command": "claude --resume abc",
-    });
+    let hosts: Vec<crate::dial::Host> = [
+        json!({ "host": "192.0.2.5", "user": "dev", "port": 2222, "keyPath": "/k/id", "label": "box-term",
+                "addresses": ["192.0.2.6:2200"], "jump": "hop", "connect": true }),
+        json!({ "host": "hop.example", "user": "j", "port": 22, "label": "hop" }),
+    ]
+    .iter()
+    .map(|v| crate::dial::machine::loose(v).unwrap())
+    .collect();
+    // 上次赢的那条（后端自己记的，开链路那一趟读 ack 记下）。
+    crate::dial::last_good::record(
+        &hosts,
+        "box-term",
+        &crate::dial::Endpoint {
+            host: "192.0.2.6".into(),
+            port: 2200,
+        },
+    );
+    let args = json!({ "machine": "box-term", "command": "claude --resume abc" });
     let req = crate::wire::typed::take(&args).unwrap();
     let got = crate::dial::terminal::answer_in(
         &req,
+        &hosts,
         false,
         &crate::platform::ssh_client::SshClient::At("/usr/bin/ssh".into()),
     )
@@ -43,32 +54,6 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")
         )
-    );
-}
-
-/// `remote-reach`（壳在每台远端握手那一刻登记）：回 `{origin, reach}`，可达表每行 `{origin, machine}`。
-#[test]
-fn the_reach_table_the_shell_reads_keeps_its_wire_bytes() {
-    let table = crate::dial::remote_ask::Table::default();
-    let dial = json!({ "machine": { "host": "h", "user": "u", "label": "m1" }, "jump": null,
-                       "prefer": null, "use": "capture", "agent_sock": null });
-    let got = crate::dial::remote_ask::answer_reach_with(
-        &crate::wire::typed::take(&json!({ "origin": "m1", "dial": dial })).unwrap(),
-        &table,
-    )
-    .unwrap();
-    assert_eq!(
-        wire_of(&got),
-        r#"{"origin":"m1","reach":[{"machine":null,"origin":"m1"}]}"#
-    );
-    let got = crate::dial::remote_ask::answer_reach_with(
-        &crate::wire::typed::take(&json!({ "origin": "m0", "dial": dial })).unwrap(),
-        &table,
-    )
-    .unwrap();
-    assert_eq!(
-        wire_of(&got),
-        r#"{"origin":"m0","reach":[{"machine":null,"origin":"m0"},{"machine":null,"origin":"m1"}]}"#
     );
 }
 
@@ -107,14 +92,21 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
     for (cmd, args) in [
         (
             "terminal-ssh",
-            json!({ "machine": m, "command": "x", "extra": 1 }),
+            json!({ "machine": "dev", "command": "x", "extra": 1 }),
         ),
-        ("terminal-ssh", json!({ "machine": m, "command": 7 })),
+        ("terminal-ssh", json!({ "machine": "dev", "command": 7 })),
+        // 出口只交机器名：整台配置 · 线上自带「上次赢的那条」⇒ 拒。
+        ("terminal-ssh", json!({ "machine": m, "command": "x" })),
         (
             "terminal-ssh",
-            json!({ "machine": m, "command": "x", "prefer": { "host": "h", "port": 22, "x": 1 } }),
+            json!({ "machine": "dev", "command": "x", "prefer": { "host": "h", "port": 22 } }),
+        ),
+        (
+            "assets-sync",
+            json!({ "origin": "dev", "dial": { "machine": m } }),
         ),
         ("pubkey-push", json!({ "machine": m, "extra": 1 })),
+        ("pubkey-push", json!({ "machine": m, "jump": m })),
         ("pubkey-push", json!({ "machine": m, "pubKeyPath": 3 })),
         (
             "authorized-keys-add",
@@ -128,16 +120,12 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             "forward-start",
             json!({ "origin": "dev", "localPort": 70000, "remoteHost": "h", "remotePort": 2 }),
         ),
+        (
+            "forward-start",
+            json!({ "origin": "dev", "localPort": 1, "remoteHost": "h", "remotePort": 2, "machine": m }),
+        ),
         ("forward-stop", json!({ "id": "fwd-1", "extra": 1 })),
         ("forward-list", json!({ "extra": 1 })),
-        (
-            "remote-reach",
-            json!({ "origin": "dev", "dial": { "machine": m }, "extra": 1 }),
-        ),
-        (
-            "remote-reach",
-            json!({ "origin": "dev", "dial": { "machine": m, "backendPath": "/x" } }),
-        ),
         ("ssh-config-import", json!({ "known": [], "extra": 1 })),
         (
             "ssh-config-import",
@@ -191,10 +179,10 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             "`{cmd}` 入参 {args} 该回 bad_args：{got:?}"
         );
     }
-    // 那台的配置那一格多带的键照收：入参解得出、走到组请求那一步（跳板查无 ⇒ `bad_jump`，不是 `bad_args`）。
+    // 还没存的那一台（推公钥测的那一台）多带的键照收：入参解得出、走到组请求那一步（跳板照表查无 ⇒ `bad_jump`，不是 `bad_args`）。
     let got = run_any(
-        "terminal-ssh",
-        json!({ "machine": { "host": "h", "user": "u", "jump": "hop", "resumeCommand": "x" }, "command": "x" }),
+        "pubkey-push",
+        json!({ "machine": { "host": "h", "user": "u", "jump": "hop", "resumeCommand": "x" } }),
     );
     assert_eq!(got.err().map(|f| f.code), Some("bad_jump".to_string()));
 }

@@ -367,42 +367,6 @@ pub fn dial_request(
     })
 }
 
-/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, jump?, prefer?: {host, port}, use?, …}`（`machine` · `jump` 经 [`loose`] 读，
-/// 两台成一张表、拨 `machine` 那一台），其余格（`command` · `capture` · `forward` · `stages` · `probe` · `agent_sock`）原样进请求。
-/// `use` 缺席 ⇒ `stream`。
-pub fn resolve(v: &Value) -> Result<crate::DialRequest, Err> {
-    let bad = |d: &str| ("bad_args", crate::malformed(d));
-    let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
-    let machine = loose(obj.get("machine").ok_or_else(|| bad("missing `machine`"))?)?;
-    let mut table = vec![machine];
-    match obj.get("jump") {
-        None | Some(Value::Null) => {}
-        Some(j) => table.push(loose(j)?),
-    }
-    let prefer = match obj.get("prefer") {
-        None | Some(Value::Null) => None,
-        Some(p) => Some(Endpoint {
-            host: p
-                .get("host")
-                .and_then(Value::as_str)
-                .ok_or_else(|| bad("`prefer` without `host`"))?
-                .to_string(),
-            port: p
-                .get("port")
-                .and_then(Value::as_u64)
-                .and_then(|n| u16::try_from(n).ok())
-                .ok_or_else(|| bad("`prefer` without a port number"))?,
-        }),
-    };
-    let use_ = obj.get("use").and_then(Value::as_str).unwrap_or("stream");
-    let mut extra = obj.clone();
-    for k in ["machine", "jump", "prefer", "use"] {
-        extra.remove(k);
-    }
-    let name = table[0].name().to_string();
-    dial_request(&table, &name, prefer.as_ref(), use_, Value::Object(extra))
-}
-
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_machine_tests.rs"]
 mod tests;

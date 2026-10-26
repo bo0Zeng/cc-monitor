@@ -151,96 +151,240 @@ impl ssh_dial::env::Facts for BackendFacts {
     }
 }
 
-/// 解析 `link-open` 的 `dial` 字段；抽出来让判据不开真链路就验得了「蛇形键读得动」。
-/// 线上交来的那份拨号（一台机器原样的配置）⇒ 拨号请求 —— 组法只在 [`machine::resolve`]。
-pub(crate) fn parse_request_value(
-    v: &serde_json::Value,
-) -> Result<DialRequest, (&'static str, String)> {
-    machine::resolve(v)
-}
-
 type CmdErr = (&'static str, String);
 
-/// 上次赢的那条地址（monitor 记的）：仍在这台的地址里 ⇒ 排首。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Prefer {
-    pub(crate) host: String,
-    pub(crate) port: u16,
+// ───────────── 这一端的机器表：拨号层只读，读法由 faces 装 ─────────────
+
+/// 这一端的机器表怎么读（`control::machines` 那一份）：起来那一下装一次（拨号层不认控制面，`layering_guard` 的 dial ↛ control）。
+static MACHINES: std::sync::OnceLock<fn() -> Vec<Host>> = std::sync::OnceLock::new();
+
+/// 装上「这一端的机器表怎么读」。装过再装 ⇒ 不换（一个进程一张表）。
+pub fn install_machines(read: fn() -> Vec<Host>) {
+    let _ = MACHINES.set(read);
 }
 
-impl Prefer {
-    fn endpoint(&self) -> Endpoint {
-        Endpoint {
-            host: self.host.clone(),
-            port: self.port,
+/// 这一端的机器表此刻那一张（现读；没装 ⇒ 空表）。
+pub(crate) fn machines_now() -> Vec<Host> {
+    MACHINES.get().map_or_else(Vec::new, |read| read())
+}
+
+/// 「上次连上的那条地址」：按名字记竞速胜者，连同记下那一刻这台的地址（配置改过就失效）。进程内软状态，丢了只是少一次排首。
+/// 记的那一处是开链路那一趟读到的 ack（[`link`]）；读的是组请求那一处（[`request_named`]）。
+pub(crate) mod last_good {
+    use super::{Endpoint, Host};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    type Won = HashMap<String, (Vec<Endpoint>, Endpoint)>;
+
+    static WON: Mutex<Option<Won>> = Mutex::new(None);
+
+    fn lock() -> std::sync::MutexGuard<'static, Option<Won>> {
+        WON.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 表里叫 `name` 的那一台上次赢的那条（它的地址自那以后没变才算）。
+    pub(crate) fn of(hosts: &[Host], name: &str) -> Option<Endpoint> {
+        let h = hosts.iter().find(|h| h.name() == name)?;
+        let g = lock();
+        let (seen, won) = g.as_ref()?.get(name)?;
+        (seen == &h.endpoints()).then(|| won.clone())
+    }
+
+    /// 记下 `name` 那一台这一趟赢的那条（表里没有这一台 ⇒ 不记）。
+    pub(crate) fn record(hosts: &[Host], name: &str, won: &Endpoint) {
+        let Some(h) = hosts.iter().find(|h| h.name() == name) else {
+            return;
+        };
+        lock()
+            .get_or_insert_with(HashMap::new)
+            .insert(name.to_string(), (h.endpoints(), won.clone()));
+    }
+}
+
+/// 那几台此刻有没有一条拨通了的长流（monitor 连那台后端的那条 `use: stream` 链路，ack 说 `ok` 之后到链路收掉）：
+/// 「那台后端此刻在」只按它判（推公钥先问那台后端还是走一次 exec，`assets/pubkey.rs`）。记的那一处是 [`link`]。
+pub(crate) mod streams {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static UP: Mutex<Option<HashMap<String, usize>>> = Mutex::new(None);
+
+    fn lock() -> std::sync::MutexGuard<'static, Option<HashMap<String, usize>>> {
+        UP.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 那一台此刻有没有拨通了的长流。
+    pub(crate) fn up(name: &str) -> bool {
+        lock()
+            .as_ref()
+            .and_then(|m| m.get(name))
+            .is_some_and(|n| *n > 0)
+    }
+
+    /// 一条拨通了的长流：活着算一条，被丢就减掉。
+    pub(crate) struct Held(String);
+
+    /// 记一条拨通了的长流。
+    pub(crate) fn hold(name: &str) -> Held {
+        *lock()
+            .get_or_insert_with(HashMap::new)
+            .entry(name.to_string())
+            .or_insert(0) += 1;
+        Held(name.to_string())
+    }
+
+    impl Drop for Held {
+        fn drop(&mut self) {
+            let mut g = lock();
+            if let Some(m) = g.as_mut() {
+                if let Some(n) = m.get_mut(&self.0) {
+                    *n = n.saturating_sub(1);
+                    if *n == 0 {
+                        m.remove(&self.0);
+                    }
+                }
+            }
         }
     }
 }
 
-/// 帧命令入参里交来的那一台 ＋ 它的跳板（线上那一形，经 [`machine::loose`] 读）⇒ 两台成一张表，拨 `machine` 那一台。
-/// 组法 · 判准 · 跳板一路只在 [`machine::request`]。
-pub(crate) fn dial_of(
-    machine: &Host,
-    jump: Option<&Host>,
-    prefer: Option<&Prefer>,
+/// 界面进程最近交来的 ssh-agent 套接字（`link-open` 的 `agent_sock`）：本后端自己去拨的那几趟（问那台 · 传输 · 部署）也用它 ——
+/// 常驻后端活得比界面长、起它的那个环境里不一定有 agent。没交过 ⇒ 用本进程自己的。
+pub(crate) mod agent_sock {
+    use std::sync::Mutex;
+
+    static SEEN: Mutex<Option<String>> = Mutex::new(None);
+
+    pub(crate) fn remember(sock: &str) {
+        if !sock.is_empty() {
+            *SEEN.lock().unwrap_or_else(|e| e.into_inner()) = Some(sock.to_string());
+        }
+    }
+
+    pub(crate) fn seen() -> Option<String> {
+        SEEN.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+/// 表里叫 `name` 的那一台 ⇒ 一份组好的拨号请求（蛇形键）：组法 · 判准 · 跳板一路只在 [`machine::request`]，上次赢的那条排首；
+/// `extra` 没给 `agent_sock` ⇒ 补上界面最近交来的那一个（[`agent_sock`]）。
+pub(crate) fn request_named(
+    hosts: &[Host],
+    name: &str,
+    use_: &str,
+    extra: serde_json::Value,
+) -> Result<serde_json::Value, CmdErr> {
+    let mut v = machine::request(
+        hosts,
+        name,
+        last_good::of(hosts, name).as_ref(),
+        use_,
+        extra,
+    )?;
+    if v.get("agent_sock").is_none_or(serde_json::Value::is_null) {
+        if let Some(sock) = agent_sock::seen() {
+            v["agent_sock"] = serde_json::json!(sock);
+        }
+    }
+    Ok(v)
+}
+
+/// 同 [`request_named`]，读成拨号请求。
+pub(crate) fn dial_named(
+    hosts: &[Host],
+    name: &str,
     use_: &str,
     extra: serde_json::Value,
 ) -> Result<DialRequest, CmdErr> {
-    let table: Vec<Host> = std::iter::once(machine).chain(jump).cloned().collect();
-    let prefer = prefer.map(Prefer::endpoint);
-    machine::dial_request(&table, machine.name(), prefer.as_ref(), use_, extra)
+    read_request(&request_named(hosts, name, use_, extra)?)
 }
 
-/// 线上那一份拨号（`{machine, jump, prefer}`）：存进可达表 · 交给还收原样拨号的那几处（它们经 [`machine::resolve`] 读）。
-/// 先组一遍，坏了当场拒。
-pub(crate) fn wire_dial(
-    machine: &Host,
-    jump: Option<&Host>,
-    prefer: Option<&Prefer>,
+/// 同 [`request_named`]，两样都交：组好的那一份（问那台 · 存着再用）与读成的拨号请求（开会话用）。
+pub(crate) fn named_both(
+    hosts: &[Host],
+    name: &str,
+    use_: &str,
+    extra: serde_json::Value,
+) -> Result<(serde_json::Value, DialRequest), CmdErr> {
+    let v = request_named(hosts, name, use_, extra)?;
+    let req = read_request(&v)?;
+    Ok((v, req))
+}
+
+/// 传输那一趟的拨号（[`sftp::Dial`]）：按名字照表组（同 [`named_both`]）。
+pub(crate) fn sftp_named(
+    hosts: &[Host],
+    name: &str,
+) -> Result<(serde_json::Value, sftp::Dial), String> {
+    let (v, req) =
+        named_both(hosts, name, "capture", serde_json::json!({})).map_err(|(_, said)| said)?;
+    Ok((v, sftp::Dial::of(req)))
+}
+
+/// 一份组好的拨号请求（[`request_named`] 那一形）⇒ 拨号请求。
+pub(crate) fn read_request(v: &serde_json::Value) -> Result<DialRequest, CmdErr> {
+    <DialRequest as serde::Deserialize>::deserialize(v).map_err(|e| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!("dial request unreadable: {e}")),
+        )
+    })
+}
+
+/// 还没存进表的那一台（测试连接 · 推公钥测的那一台）⇒ 组好的拨号请求：它顶替表里同名的那一台（没有就加上），跳板照表按名字找。
+pub(crate) fn request_draft(
+    hosts: &[Host],
+    draft: &Host,
+    use_: &str,
+    extra: serde_json::Value,
 ) -> Result<serde_json::Value, CmdErr> {
-    dial_of(machine, jump, prefer, "stream", serde_json::json!({}))?;
-    Ok(serde_json::json!({
-        "machine": machine,
-        "jump": jump,
-        "prefer": prefer,
-    }))
+    let mut table: Vec<Host> = hosts
+        .iter()
+        .filter(|h| h.name() != draft.name())
+        .cloned()
+        .collect();
+    table.push(draft.clone());
+    request_named(&table, draft.name(), use_, extra)
 }
 
-/// 一份拨号（线上形）：拨哪台那几格 ＋ 用法 ＋ 界面进程此刻的 ssh-agent 套接字。可达表存它（`remote-reach` · `assets-sync`），给那台装后端拿它去拨那台（`deploy-install`）。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct MachineDial {
-    #[serde(deserialize_with = "machine::loose_field")]
-    pub(crate) machine: Host,
-    #[serde(default, deserialize_with = "machine::loose_opt")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<Host>,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) prefer: Option<Prefer>,
-    /// 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
-    #[serde(default, rename = "use")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) use_: Option<String>,
-    /// ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) agent_sock: Option<String>,
-}
-
-impl MachineDial {
-    /// 交给还收原样拨号的那几处的那一份（之后经 [`machine::resolve`] 读；先在这里组一遍，坏了当场拒）。
-    pub(crate) fn stored(&self) -> Result<serde_json::Value, CmdErr> {
-        let mut v = wire_dial(&self.machine, self.jump.as_ref(), self.prefer.as_ref())?;
-        v["use"] = serde_json::json!(self.use_);
-        v["agent_sock"] = serde_json::json!(self.agent_sock);
-        Ok(v)
+/// `link-open` 的 `dial` 那一格：`{machine: "<那台的名字>", use?, …}`，其余格（`command` · `capture` · `forward` · `stages` · `probe` ·
+/// `progress` · `agent_sock`）原样进请求；`use` 缺席 ⇒ `stream`。怎么拨（地址 · 端口 · 钥匙 · 跳板 · 先试哪条）只由这一端的机器表定：
+/// `machine` 不是名字（整台配置）· 线上自带 `jump` / `prefer` ⇒ `bad_args`。回那台的名字与拨号请求。
+pub(crate) fn parse_named(
+    v: &serde_json::Value,
+    hosts: &[Host],
+) -> Result<(String, DialRequest), CmdErr> {
+    let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
+    let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
+    let name = match obj.get("machine") {
+        Some(serde_json::Value::String(n)) if !n.is_empty() => n.clone(),
+        Some(serde_json::Value::String(_)) | None => {
+            return Err(bad("`machine` (the machine's name) is missing"))
+        }
+        Some(_) => return Err(bad("`machine` is the machine's name, not its settings")),
+    };
+    for k in ["jump", "prefer"] {
+        if obj.contains_key(k) {
+            return Err(bad(&format!(
+                "`{k}` is not taken: the machine table says how to dial"
+            )));
+        }
     }
+    let use_ = match obj.get("use") {
+        None | Some(serde_json::Value::Null) => "stream".to_string(),
+        Some(serde_json::Value::String(u)) => u.clone(),
+        Some(_) => return Err(bad("`use` is not a string")),
+    };
+    if let Some(sock) = obj.get("agent_sock").and_then(serde_json::Value::as_str) {
+        agent_sock::remember(sock);
+    }
+    let mut extra = obj.clone();
+    for k in ["machine", "use"] {
+        extra.remove(k);
+    }
+    let req = dial_named(hosts, &name, &use_, serde_json::Value::Object(extra))?;
+    Ok((name, req))
 }
 
 #[cfg(test)]

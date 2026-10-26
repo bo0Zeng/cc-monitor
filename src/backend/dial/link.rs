@@ -80,10 +80,15 @@ impl Entry {
 
 type Links = Arc<Mutex<HashMap<String, Entry>>>;
 
+/// 这一端的机器表怎么读（生产 = [`super::machines_now`]；判据给一张固定的）。
+type Machines = Arc<dyn Fn() -> Vec<super::Host> + Send + Sync>;
+
 /// 一条流连接的链路表。
 pub struct Table {
     links: Links,
     replies: mpsc::Sender<Frame>,
+    /// `link-open` 只交那台的名字：怎么拨照这张表组（[`super::parse_named`]）。
+    machines: Machines,
 }
 
 impl Drop for Table {
@@ -119,7 +124,8 @@ fn link_ok(link: &str) -> Result<(), String> {
 pub(crate) struct LinkOpenReq {
     /// 链路 id：客户端给、客户端负责唯一（1..=128 字节）。
     pub(crate) link: String,
-    /// 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）。
+    /// 拨哪台 ＋ 怎么用：`{machine: "<那台的名字>", use, command?, capture?, forward?, stages?, probe?, agent_sock?}`（蛇形键）。
+    /// 地址 · 端口 · 钥匙 · 跳板 · 先试哪条都照这一端的机器表组（[`super::parse_named`]），线上不交。
     #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
     pub(crate) dial: serde_json::Value,
     /// 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内。
@@ -236,9 +242,15 @@ impl crate::wire::typed::Command for LinkClose {
 
 impl Table {
     pub fn new(replies: mpsc::Sender<Frame>) -> Self {
+        Self::with_machines(replies, Arc::new(super::machines_now))
+    }
+
+    /// 同 [`Self::new`]，机器表由调用方给（判据用）。
+    pub(crate) fn with_machines(replies: mpsc::Sender<Frame>, machines: Machines) -> Self {
         Table {
             links: Arc::new(Mutex::new(HashMap::new())),
             replies,
+            machines,
         }
     }
 
@@ -261,7 +273,8 @@ impl Table {
                 crate::common::contract::malformed("use `subsystem` is not served here"),
             ));
         }
-        let req = super::parse_request_value(&r.dial)
+        let hosts = (self.machines)();
+        let (name, req) = super::parse_named(&r.dial, &hosts)
             .map_err(crate::wire::typed::of_pair(LinkOpenErr::BadArgs))?;
         let window = r.window;
         if !(LINK_CHUNK_BYTES as u64..=MAX_WINDOW).contains(&window) {
@@ -272,9 +285,24 @@ impl Table {
             )));
         }
         let link = r.link;
-        self.install(link.clone(), window, move |up_r, mut down_w| async move {
+        self.install(link.clone(), window, move |up_r, down_w| async move {
             let stages = super::StageSink::new(req.stages);
+            // 这一趟赢的那条记成那台的 last-good（下一趟组请求时排首）：从 ack 那一行读，字节原样往下走。
+            // 长流拨通了 ⇒ 记「那台后端此刻在」，直到这条链路收掉（[`super::streams`]）。
+            let held: Arc<Mutex<Option<super::streams::Held>>> = Arc::new(Mutex::new(None));
+            let stream = req.use_ == super::Use::Stream;
+            let mark = Arc::clone(&held);
+            let mut down_w = AckSniff::new(down_w, move |ack: super::DialAck| {
+                if let Some(won) = &ack.winner {
+                    super::last_good::record(&hosts, &name, won);
+                }
+                if ack.ok && stream {
+                    *mark.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(super::streams::hold(&name));
+                }
+            });
             super::uses::run(&req, &stages, up_r, &mut down_w).await;
+            drop(held);
         })?;
         tracing::info!(
             "dial: 开链路 {link}（窗口 {window} 字节；这条连接上此刻 {} 条）",
@@ -495,6 +523,79 @@ async fn pump_up(
         if replies.send(frame).await.is_err() {
             return;
         }
+    }
+}
+
+/// ack 之前那几行（阶段行 ＋ ack）最多攒这么多；超了就不再找（字节照样往下走）。
+const ACK_HEAD_MAX: usize = 64 * 1024;
+
+/// 下行写端：字节原样往下写，顺手从开头那几行里认出 ack（[`super::DialAck`]，阶段行没有 `ok`、读不成它）交给 `on_ack` 一次。
+struct AckSniff<W> {
+    inner: W,
+    head: Vec<u8>,
+    on_ack: Option<Box<dyn FnOnce(super::DialAck) + Send>>,
+}
+
+impl<W> AckSniff<W> {
+    fn new(inner: W, on_ack: impl FnOnce(super::DialAck) + Send + 'static) -> Self {
+        AckSniff {
+            inner,
+            head: Vec::new(),
+            on_ack: Some(Box::new(on_ack)),
+        }
+    }
+
+    /// 写出去的那几个字节过一遍：凑成整行就试着读成 ack。
+    fn saw(&mut self, bytes: &[u8]) {
+        if self.on_ack.is_none() {
+            return;
+        }
+        self.head.extend_from_slice(bytes);
+        while let Some(i) = self.head.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = self.head.drain(..=i).collect();
+            if let Ok(ack) = serde_json::from_slice::<super::DialAck>(&line) {
+                if let Some(f) = self.on_ack.take() {
+                    f(ack);
+                }
+                self.head = Vec::new();
+                return;
+            }
+        }
+        if self.head.len() > ACK_HEAD_MAX {
+            self.on_ack = None;
+            self.head = Vec::new();
+        }
+    }
+}
+
+impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for AckSniff<W> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let this = &mut *self;
+        match std::pin::Pin::new(&mut this.inner).poll_write(cx, buf) {
+            std::task::Poll::Ready(Ok(n)) => {
+                this.saw(&buf[..n]);
+                std::task::Poll::Ready(Ok(n))
+            }
+            other => other,
+        }
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
 

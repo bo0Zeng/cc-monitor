@@ -280,7 +280,7 @@ fn stage_line(st: &ssh_dial::Stage, segs: Segs) -> ProbeCell {
     }
 }
 
-/// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存）· 已保存的那一份 · 跳板那一台。
+/// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存；它的跳板照这一端的机器表按名字找）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -291,10 +291,6 @@ pub(crate) struct ProbeReq {
     /// 那台的配置。
     #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
     pub(crate) machine: super::Host,
-    /// 跳板那一台的配置（可缺）。
-    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<super::Host>,
 }
 
 crate::wire::typed::codes! {
@@ -518,8 +514,11 @@ async fn run(
     cells: &Cells<'_>,
 ) -> Result<ProbeCell, (&'static str, String)> {
     let name = req.machine.name().to_string();
-    let request =
-        |use_: &str, extra| super::dial_of(&req.machine, req.jump.as_ref(), None, use_, extra);
+    let hosts = super::machines_now();
+    let request = |use_: &str, extra| {
+        super::request_draft(&hosts, &req.machine, use_, extra)
+            .and_then(|v| super::read_request(&v))
+    };
     // 探完即丢 ⇒ 每一条都是短命探活（不进连接池：表单那份可能还没保存）。
     let stream = request("stream", json!({ "stages": true, "probe": true }))?;
     let capture = request(

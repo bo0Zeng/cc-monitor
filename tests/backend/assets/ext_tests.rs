@@ -26,7 +26,7 @@ use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
 use crate::assets::mcp_sync::{Facts, There};
-use crate::dial::remote_ask::{register, Remote, Said, Table};
+use crate::dial::remote_ask::{Remote, Said, Table};
 use crate::wire::typed::Here;
 use std::future::Future;
 use std::pin::Pin;
@@ -546,16 +546,10 @@ fn two_with(tag: &str, prep: impl FnOnce(&mut M)) -> (PathBuf, Two) {
     let mut b = machine(&base, "b");
     prep(&mut b);
     let b = Arc::new(b);
-    let reach: Table = Mutex::new(BTreeMap::new());
-    register(
-        &reach,
-        &cmd_wire::Machine("laptop".into()),
-        &serde_json::from_value(
-            json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
-        )
-        .unwrap(),
+    let reach = Table::of(vec![crate::dial::machine::loose(
+        &json!({"label": "laptop", "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
     )
-    .unwrap();
+    .unwrap()]);
     let here: Arc<dyn Here> = Arc::new(HereM(a.clone()));
     let remote = RemoteM(b.clone(), Mutex::new(Vec::new()));
     (
@@ -575,10 +569,7 @@ impl Two {
     fn list(&self) -> ExtList {
         let cb = self.b.refresh(None);
         let ca = self.a.refresh(Some(cb.machines.clone()));
-        crate::dial::remote_ask::lock(&self.reach)
-            .get_mut("laptop")
-            .unwrap()
-            .peer = Some(cb.self_id.clone());
+        self.reach.set_peer("laptop", &cb.self_id);
         table(&ca, &reach_of(&self.reach))
     }
     fn cell(&self, list: &ExtList, name: &str, at: usize) -> ExtCell {
@@ -1388,10 +1379,7 @@ async fn the_many_hub_pair_keeps_its_wire_bytes() {
     std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
     let cb = t.b.refresh(None);
     let ca = t.a.refresh(Some(cb.machines.clone()));
-    crate::dial::remote_ask::lock(&t.reach)
-        .get_mut("laptop")
-        .unwrap()
-        .peer = Some(cb.self_id.clone());
+    t.reach.set_peer("laptop", &cb.self_id);
     let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
     let b = base.display().to_string();
     let wire = |v: Value| v.to_string().replace(&*b, "<BASE>");
@@ -1444,10 +1432,7 @@ async fn a_machine_without_a_token_is_told_to_look_again() {
     std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
     let cb = t.b.refresh(None);
     let ca = t.a.refresh(Some(cb.machines.clone()));
-    crate::dial::remote_ask::lock(&t.reach)
-        .get_mut("laptop")
-        .unwrap()
-        .peer = Some(cb.self_id.clone());
+    t.reach.set_peer("laptop", &cb.self_id);
     let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
     use crate::assets::hub_wire::HubApplyReq;
     use crate::wire::typed::take;
@@ -1510,10 +1495,7 @@ async fn a_done_that_does_not_parse_says_that_backend_differs() {
     std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
     let cb = t.b.refresh(None);
     let ca = t.a.refresh(Some(cb.machines.clone()));
-    crate::dial::remote_ask::lock(&t.reach)
-        .get_mut("laptop")
-        .unwrap()
-        .peer = Some(cb.self_id.clone());
+    t.reach.set_peer("laptop", &cb.self_id);
     let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
     use crate::assets::hub_wire::{HubApplyReq, HubReq};
     use crate::wire::typed::take;

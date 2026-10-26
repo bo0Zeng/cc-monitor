@@ -1,6 +1,6 @@
 //! 传输台开单那两条（`transfer-upload` · `transfer-download`）的线上类型。
 //!
-//! 入参是两层：文件窗口经通道说给 monitor 的那一份（`*Ask`），monitor 补上那台远端的拨号请求（`dial`）
+//! 入参是两层：文件窗口经通道说给 monitor 的那一份（`*Ask`），monitor 补上那台远端的名字（`machine`；怎么拨由本机后端照它的机器表组）
 //! 再转给本机常驻后端的那一份（`*Req`）。两层各是一个类型，多一个键都拒；回包两层同一份。
 //! 起跑 · 撤（`transfer-start` / `-stop`）不经窗口（订阅即起跑、停订即撤），不在这里。
 
@@ -79,7 +79,7 @@ pub struct TransferDownloadAsk {
     pub decide: Option<std::collections::BTreeMap<String, crate::batch::Decide>>,
 }
 
-/// monitor 转给本机后端的 `transfer-upload`：窗口那一份 ＋ 那台远端的拨号请求。
+/// monitor 转给本机后端的 `transfer-upload`：窗口那一份 ＋ 那台远端的名字（怎么拨照本机后端的机器表组）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -88,9 +88,8 @@ pub struct TransferDownloadAsk {
 )]
 #[serde(deny_unknown_fields)]
 pub struct TransferUploadReq {
-    /// 拨号请求（同 `link-open` 的 `dial`）：后端拨号核心读它。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "Record<string, unknown>"))]
-    pub dial: serde_json::Value,
+    /// 那台远端的名字。
+    pub machine: crate::Machine,
     pub items: Vec<UploadItem>,
     pub remote_dir: WirePath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -113,8 +112,8 @@ pub struct TransferUploadReq {
 )]
 #[serde(deny_unknown_fields)]
 pub struct TransferDownloadReq {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "Record<string, unknown>"))]
-    pub dial: serde_json::Value,
+    /// 那台远端的名字。
+    pub machine: crate::Machine,
     pub items: Vec<DownloadItem>,
     pub local_dir: WirePath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -205,12 +204,10 @@ pub struct TransferOpened {
 )]
 #[serde(deny_unknown_fields)]
 pub struct TransferCopyReq {
-    /// 源那台的拨号请求。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "Record<string, unknown>"))]
-    pub from: serde_json::Value,
-    /// 落点那台的拨号请求。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "Record<string, unknown>"))]
-    pub to: serde_json::Value,
+    /// 源那台的名字。
+    pub from: crate::Machine,
+    /// 落点那台的名字。
+    pub to: crate::Machine,
     pub items: Vec<CopyFrom>,
     /// 落点那台上的目录（绝对路径）。
     pub to_dir: String,
@@ -225,8 +222,8 @@ pub struct TransferCopyReq {
     pub ticket: Option<String>,
 }
 
-/// 窗口说的 `transfer-copy`：源那台 ＝ 寻址的那台（窗口看着的这一台），`to` ＝ 落点那台的名字；两台的拨号请求由 monitor 补上
-/// （[`TransferCopyAsk::dialed`]），其余各格原样转给本机后端（同 [`TransferCopyReq`]）。
+/// 窗口说的 `transfer-copy`：源那台 ＝ 寻址的那台（窗口看着的这一台），`to` ＝ 落点那台的名字；源那台的名字由 monitor 补上
+/// （[`TransferCopyAsk::from`]），其余各格原样转给本机后端（同 [`TransferCopyReq`]）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -251,11 +248,11 @@ pub struct TransferCopyAsk {
 }
 
 impl TransferCopyAsk {
-    /// 补上两台的拨号请求 ⇒ 转给本机后端的那一份。
-    pub fn dialed(self, from: serde_json::Value, to: serde_json::Value) -> TransferCopyReq {
+    /// 补上源那台的名字 ⇒ 转给本机后端的那一份（怎么拨两台由本机后端照机器表组）。
+    pub fn from(self, from: crate::Machine) -> TransferCopyReq {
         TransferCopyReq {
             from,
-            to,
+            to: crate::Machine(self.to),
             items: self.items,
             to_dir: self.to_dir,
             on_exists: self.on_exists,
@@ -283,10 +280,10 @@ pub struct CopyFrom {
 }
 
 impl TransferUploadAsk {
-    /// 补上拨号请求（monitor 转给本机后端的那一份）。
-    pub fn dialed(self, dial: serde_json::Value) -> TransferUploadReq {
+    /// 补上那台的名字（monitor 转给本机后端的那一份）。
+    pub fn on(self, machine: crate::Machine) -> TransferUploadReq {
         TransferUploadReq {
-            dial,
+            machine,
             items: self.items,
             remote_dir: self.remote_dir,
             home: self.home,
@@ -297,10 +294,10 @@ impl TransferUploadAsk {
 }
 
 impl TransferDownloadAsk {
-    /// 补上拨号请求（同 [`TransferUploadAsk::dialed`]）。
-    pub fn dialed(self, dial: serde_json::Value) -> TransferDownloadReq {
+    /// 补上那台的名字（同 [`TransferUploadAsk::on`]）。
+    pub fn on(self, machine: crate::Machine) -> TransferDownloadReq {
         TransferDownloadReq {
-            dial,
+            machine,
             items: self.items,
             local_dir: self.local_dir,
             on_exists: self.on_exists,

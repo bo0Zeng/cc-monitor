@@ -1,8 +1,8 @@
 //! 判据用的「那几台」（替身）：跨台合并那几条（`remote_ask::ask_each`）照它问别的台的常驻。
 //! 机器名 ⇒ 那台常驻答回来的那一行（缺 ⇒ 常驻不在）；记下每一问的命令行与 stdin 那一行。
 
-use super::{insert, Remote, Said, Table};
-use serde_json::{json, Value};
+use super::{Remote, Said, Table};
+use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
@@ -29,13 +29,9 @@ impl Peers {
         self.asked.lock().unwrap().clone()
     }
 
-    /// 这几台登进可达表（拨号里只记机器名，替身按它认是哪台）。
+    /// 这几台进机器表（组成的拨号请求里 `host` 就是机器名，替身按它认是哪台）。
     pub(crate) fn table(names: &[&str]) -> Table {
-        let t = Table::default();
-        for n in names {
-            insert(&t, n, json!({ "host": n })).unwrap();
-        }
-        t
+        Table::named(names)
     }
 
     /// 命令行里交给那台的 `--within-ms` 那个数。

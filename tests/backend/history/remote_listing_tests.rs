@@ -122,9 +122,7 @@ impl Remote for Peer {
 }
 
 fn table(machine: &str) -> Table {
-    let t = Table::default();
-    crate::dial::remote_ask::insert(&t, machine, json!({"host": "h"})).unwrap();
-    t
+    Table::named(&[machine])
 }
 
 async fn ask(

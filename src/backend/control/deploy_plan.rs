@@ -98,15 +98,14 @@ pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {
         .collect()
 }
 
-/// `deploy-install` 的入参：怎么够到那台 · monitor 带着的那几格 · 对人说话时那台叫什么。
+/// `deploy-install` 的入参：monitor 带着的那几格 · 那台的名字（怎么够到它照这一端的机器表组）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DeployInstallReq {
-    pub(crate) dial: crate::dial::MachineDial,
     pub(crate) slots: Vec<SlotRow>,
-    /// 那台的名字（非空；状态成品按它记）。
+    /// 那台的名字（非空；机器表按它查 · 状态成品按它记）。
     pub(crate) machine: String,
 }
 
@@ -211,10 +210,12 @@ impl crate::wire::typed::Handle for DeployInstall {
 }
 
 /// 真拨那台的对面（装 · 卸同一个）：拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上；一次性命令走全后端那一处
-/// （`remote_ask::capture_full`，池里那条连接上多开一个 exec）。`dial` 不成形 ⇒ 那一句（`bad_args`）。
+/// （`remote_ask::capture_full`，池里那条连接上多开一个 exec）。机器表里没有那台 · 组不成请求 ⇒ 那一句（`bad_args`）。
 fn facing_of(req: &DeployInstallReq) -> Result<DialFacing, String> {
-    let dial = req.dial.stored().map_err(|(_, said)| said)?;
-    let to = crate::dial::machine::resolve(&dial).map_err(|(_, said)| said)?;
+    let hosts = crate::control::machines::here();
+    let (dial, to) =
+        crate::dial::named_both(&hosts, req.machine.trim(), "capture", serde_json::json!({}))
+            .map_err(|(_, said)| said)?;
     crate::dial::host();
     let exec: deploy::Exec = Box::new(move |command| {
         let dial = dial.clone();

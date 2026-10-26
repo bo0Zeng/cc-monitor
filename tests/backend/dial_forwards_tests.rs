@@ -38,14 +38,10 @@ fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, (&'static str, Stri
 }
 
 fn table_with(origin: &str) -> remote_ask::Table {
-    let t: remote_ask::Table = Mutex::new(BTreeMap::new());
-    remote_ask::register(
-        &t,
-        &cmd_wire::Machine(origin.into()),
-        &serde_json::from_value(json!({"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"})).unwrap(),
+    remote_ask::Table::of(vec![crate::dial::machine::loose(
+        &json!({"label": origin, "host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}),
     )
-    .unwrap();
-    t
+    .unwrap()])
 }
 
 fn args(origin: &str, local: u64, host: &str, remote: u64) -> Value {
@@ -65,7 +61,7 @@ impl Drop for DropMark {
 /// 非法规格 ⇒ `bad_spec`，**替身一次都没被叫到**（连可达表里有没有那台都不问 —— 用一张空表，围栏没了就会报 `unreachable`）。
 #[tokio::test]
 async fn the_spec_fence_stands_before_any_lookup_or_dial() {
-    let empty: remote_ask::Table = Mutex::new(BTreeMap::new());
+    let empty = remote_ask::Table::default();
     let ledger = Ledger::new();
     let calls = Arc::new(AtomicUsize::new(0));
     for bad in [
@@ -120,7 +116,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
 
     let req = forward_request(
-        &json!({"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}),
+        &table_with("dev").dial("dev").unwrap(),
         &parse_spec(&args("dev", 15432, "db.internal", 5432)).unwrap(),
     )
     .unwrap();
@@ -245,17 +241,24 @@ async fn a_link_that_ends_on_its_own_reads_as_error() {
     assert_eq!(list_with(&ledger)["forwards"][0]["state"], json!("error"));
 }
 
-/// 〔流没起的远端不许拒〕可达表里没有那台、界面一并交来了它的配置 ⇒ 按配置自己组请求去拨（`ssh-dial/machine.rs`），
-/// 交给链路那一侧的是 `use: forward` ＋ 这条规格 ＋ 配置里的那台；配置也没交 ⇒ 才是 `unreachable`。
+/// 〔流没起的远端不许拒〕只交名字：怎么拨照这一端的机器表组（`ssh-dial/machine.rs`），流起没起来都一样；
+/// 交给链路那一侧的是 `use: forward` ＋ 这条规格 ＋ 表里的那台；表里没有 ⇒ 才是 `unreachable`。
 #[tokio::test]
-async fn a_machine_that_never_streamed_is_dialled_from_its_config() {
-    let empty: remote_ask::Table = Mutex::new(BTreeMap::new());
+async fn a_machine_that_never_streamed_is_dialled_from_the_table() {
+    let empty = remote_ask::Table::default();
     let ledger = Ledger::new();
+    let a = args("dev", 15434, "localhost", 5432);
+    let e = start_with(&a, &empty, &ledger, |_req, _up, _down| async {})
+        .await
+        .expect_err("表里没有那台也拨了");
+    assert_eq!(e.0, "unreachable");
+    let table = remote_ask::Table::of(vec![crate::dial::machine::loose(
+        &json!({"host": "198.51.100.9", "label": "dev", "port": 2201, "user": "u"}),
+    )
+    .unwrap()]);
     let seen = Arc::new(Mutex::new(None::<(String, u16, crate::dial::Use)>));
     let s = Arc::clone(&seen);
-    let mut a = args("dev", 15434, "localhost", 5432);
-    a["machine"] = json!({"host": "198.51.100.9", "label": "dev", "port": 2201, "user": "u"});
-    start_with(&a, &empty, &ledger, move |req, _up, mut down| {
+    start_with(&a, &table, &ledger, move |req, _up, mut down| {
         *s.lock().unwrap() = Some((req.host.clone(), req.port, req.use_));
         async move {
             let _ = down

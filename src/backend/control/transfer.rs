@@ -795,6 +795,19 @@ pub struct Desk {
     replies: mpsc::Sender<Frame>,
     /// 下载落点那一下写用的文件管理写句柄（帧面分派那一层造好交来的；起跑时带一份进那趟任务）。
     face: Face,
+    /// 这一端的机器表怎么读（生产 = [`super::machines::here`]；判据给一张固定的）：入参只交那台的名字。
+    machines: Machines,
+}
+
+/// 这一端的机器表怎么读。
+pub(crate) type Machines = Arc<dyn Fn() -> Vec<crate::dial::Host> + Send + Sync>;
+
+/// 那台的名字 ⇒ 照机器表组好的拨号请求（线上形，问那台后端用）＋ 开 sftp 用的那一份。表里没有 · 组不成 ⇒ 那一句。
+pub(crate) fn dial_by_name(
+    hosts: &[crate::dial::Host],
+    machine: &cmd_wire::Machine,
+) -> Result<(serde_json::Value, Dial), String> {
+    crate::dial::sftp_named(hosts, machine.as_wire_str())
 }
 
 impl Drop for Desk {
@@ -819,10 +832,20 @@ fn next_id() -> String {
 
 impl Desk {
     pub fn new(replies: mpsc::Sender<Frame>, face: Face) -> Self {
+        Self::with_machines(replies, face, Arc::new(super::machines::here))
+    }
+
+    /// 同 [`Self::new`]，机器表由调用方给（判据用）。
+    pub(crate) fn with_machines(
+        replies: mpsc::Sender<Frame>,
+        face: Face,
+        machines: Machines,
+    ) -> Self {
         Desk {
             tickets: Arc::new(Mutex::new(HashMap::new())),
             replies,
             face,
+            machines,
         }
     }
 
@@ -864,7 +887,8 @@ impl Desk {
         req: TransferDownloadReq,
         tz: &crate::Tz,
     ) -> Result<TransferOpened, DownloadErr> {
-        let dial = Dial::parse(&req.dial).map_err(DownloadErr::BadArgs)?;
+        let (_, dial) =
+            dial_by_name(&(self.machines)(), &req.machine).map_err(DownloadErr::BadArgs)?;
         if req.local_dir.bytes().is_empty() {
             return Err(DownloadErr::BadArgs(crate::common::contract::malformed(
                 "missing `local_dir` (a string or {\"b16\": …})",
@@ -1078,7 +1102,7 @@ pub(crate) trait Landing: Send + Sync {
     fn look<'a>(&'a self, path: &'a [u8]) -> super::transfer_copy::Fut<'a, Option<Seen>>;
 }
 
-/// 生产那一份：经那台的拨号请求问它后端的 `files-stat`（路径按字节，目录名不是 UTF-8 也问得到）。
+/// 生产那一份：经照机器表组好的那台的拨号请求问它后端的 `files-stat`（路径按字节，目录名不是 UTF-8 也问得到）。
 struct Dialed {
     dial: serde_json::Value,
     tz: crate::Tz,
@@ -1271,8 +1295,8 @@ pub(crate) async fn upload_with(
     land: &dyn Landing,
     req: TransferUploadReq,
     tz: &crate::Tz,
+    dial: Dial,
 ) -> Result<TransferOpened, UploadErr> {
-    let dial = Dial::parse(&req.dial).map_err(UploadErr::BadArgs)?;
     if req.remote_dir.bytes().is_empty() {
         return Err(UploadErr::BadArgs(crate::common::contract::malformed(
             "missing `remote_dir` (a string or {\"b16\": …})",
@@ -1313,12 +1337,15 @@ impl Desk {
     /// `transfer-upload` 那一发（帧面硬臂；探同名要等远端那台 ⇒ 交出一个异步处理器）：入参按类型收 → 探 → 照答开单 → 回包。
     pub(crate) fn upload_wire_for(&self) -> crate::wire::spec::DataHandler {
         let tickets = Arc::clone(&self.tickets);
+        let machines = Arc::clone(&self.machines);
         typed::answer_async::<TransferUpload, _, _>(move |req, cx| async move {
+            let (wire, dial) =
+                dial_by_name(&machines(), &req.machine).map_err(UploadErr::BadArgs)?;
             let land = Dialed {
-                dial: req.dial.clone(),
+                dial: wire,
                 tz: cx.tz.clone(),
             };
-            upload_with(&tickets, &land, req, &cx.tz).await
+            upload_with(&tickets, &land, req, &cx.tz, dial).await
         })
     }
 }

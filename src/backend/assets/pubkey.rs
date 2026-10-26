@@ -1,10 +1,10 @@
-//! 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`（组请求照 `ssh-dial/machine.rs::resolve`，
+//! 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`（那一台的配置照机器表组请求，跳板按名字查表，
 //! 与 `remote-probe` 同形），写 `authorized_keys` 经那台（后端不在就经 SSH exec 那一次、只写这一件）；「monitor 零 SSH」。
 //!
 //! # 两条帧命令，两台各一条
 //!
-//! - **`pubkey-push {machine, jump?, pubKeyPath?}`**（本机常驻后端答）：读本机那份 `.pub`（显式给的 · 否则私钥同名 `.pub`）→
-//!   [`sanitize_public_key`] → 那台此刻在可达表里（它的长连接握过手，`remote-reach`）⇒ 问**那台后端** `authorized-keys-add {key}`；
+//! - **`pubkey-push {machine, pubKeyPath?}`**（本机常驻后端答）：读本机那份 `.pub`（显式给的 · 否则私钥同名 `.pub`）→
+//!   [`sanitize_public_key`] → 那台后端此刻在（monitor 连它的那条长流拨通着，`dial::streams`）⇒ 问**那台后端** `authorized-keys-add {key}`；
 //!   不在（密钥登录建立之前 · 后端还没装）⇒ 沿池里那条 SSH **一次** exec（[`posix::add_line_once`]，只写这一件）。
 //!   ⚠ 按**此刻的状态**分支，不是「后端失败了再退回 shell」（`D11`）。
 //! - **`authorized-keys-add {key}`**（被写那台答）：[`plan_authorized_keys`] 算 → 经这台自己的文件管理面写（[`door::edit`]，CAS ＋ 建父目录）
@@ -248,7 +248,9 @@ pub(crate) fn pub_key_path(
 
 /// 推给那台的两条路（生产 = [`Wire`]；判据用替身数「问了哪一条」）。
 pub(crate) trait Reach: Send + Sync {
-    /// 那台此刻在可达表里吗（它的长连接握过手）。
+    /// 这一端的机器表（跳板照它按名字找）。
+    fn hosts(&self) -> Vec<crate::dial::Host>;
+    /// 那台后端此刻在吗（monitor 连它的那条长流拨通着，[`crate::dial::streams`]）。
     fn backend_up(&self, machine: &str) -> bool;
     /// 问那台后端 `authorized-keys-add {key}`，回它的结局。
     fn ask_add<'a>(
@@ -264,12 +266,16 @@ pub(crate) trait Reach: Send + Sync {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>;
 }
 
-/// 生产那两条路：可达表 ＋ `remote_ask`（问那台后端）· `remote_ask::capture_full`（一次 exec）。
+/// 生产那两条路：机器表 ＋ `remote_ask`（问那台后端）· `remote_ask::capture_full`（一次 exec）。
 pub(crate) struct Wire;
 
 impl Reach for Wire {
+    fn hosts(&self) -> Vec<crate::dial::Host> {
+        crate::dial::remote_ask::REACH.hosts()
+    }
+
     fn backend_up(&self, machine: &str) -> bool {
-        crate::dial::remote_ask::lock(&crate::dial::remote_ask::REACH).contains_key(machine)
+        crate::dial::streams::up(machine)
     }
 
     fn ask_add<'a>(
@@ -318,7 +324,7 @@ impl Reach for Wire {
     }
 }
 
-/// `pubkey-push` 的入参：拨哪台那几格（同 `remote-probe`）＋ 本机那份 `.pub` 的路径。
+/// `pubkey-push` 的入参：那一台的配置（同 `remote-probe`：测的是可能还没存的那一台，跳板照机器表按名字找）＋ 本机那份 `.pub` 的路径。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -327,10 +333,6 @@ pub(crate) struct PubkeyPushReq {
     /// 那台的配置（设置页表单里那台，可能还没保存）。
     #[serde(deserialize_with = "ssh_dial::machine::loose_field")]
     pub(crate) machine: crate::dial::Host,
-    /// 跳板那一台。
-    #[serde(default, deserialize_with = "ssh_dial::machine::loose_opt")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<crate::dial::Host>,
     /// 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -401,7 +403,8 @@ pub(crate) async fn answer_push(
     read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
 ) -> Result<PubkeyPushed, (&'static str, String)> {
     let machine = &req.machine;
-    let dial = crate::dial::wire_dial(machine, req.jump.as_ref(), None)?;
+    let dial =
+        crate::dial::request_draft(&reach.hosts(), machine, "capture", serde_json::json!({}))?;
     let path =
         pub_key_path(req.pub_key_path.as_deref(), machine.key()).map_err(|e| ("refused", e))?;
     let key = match sanitize_public_key(&read_pub(&path)?) {

@@ -134,7 +134,7 @@ impl Remote for FakeRemotes {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
-            let host = dial["machine"]["host"].as_str().unwrap().to_string();
+            let host = dial["host"].as_str().unwrap().to_string();
             self.seen
                 .lock()
                 .unwrap()
@@ -162,12 +162,23 @@ impl Remote for FakeRemotes {
     }
 }
 
-fn dial(host: &str) -> Value {
-    json!({ "machine": { "host": host, "port": 22, "user": "u" } })
+/// 机器表里的一台：名字 `o-<地址>`（组成的拨号请求里 `host` 是地址，替身按它找那台）。
+fn far(host: &str) -> crate::dial::Host {
+    named(&format!("o-{host}"), host)
+}
+
+fn named(name: &str, host: &str) -> crate::dial::Host {
+    crate::dial::machine::loose(&json!({ "label": name, "host": host, "port": 22, "user": "u" }))
+        .unwrap()
+}
+
+/// 这几台的机器表（照给的先后）。
+fn table_of(hosts: &[&str]) -> Table {
+    Table::of(hosts.iter().map(|h| far(h)).collect())
 }
 
 fn sync_args(host: &str) -> Value {
-    json!({ "origin": format!("o-{host}"), "dial": dial(host) })
+    json!({ "origin": format!("o-{host}") })
 }
 
 #[tokio::test]
@@ -194,7 +205,7 @@ async fn one_sync_pulls_merges_and_pushes_exactly_what_the_other_side_lacks() {
         seen: Mutex::new(vec![]),
         stdins: Mutex::new(vec![]),
     };
-    let table = Table::default();
+    let table = table_of(&["r"]);
     let out = answer_with(&sync_args("r"), local.fold(), &fakes, &table)
         .await
         .expect("一趟");
@@ -257,12 +268,13 @@ async fn a_change_fans_out_once_to_every_other_reachable_machine() {
         seen: Mutex::new(vec![]),
         stdins: Mutex::new(vec![]),
     };
-    let table = Table::default();
+    let table = table_of(&["r2"]);
     answer_with(&sync_args("r2"), local.fold(), &fakes, &table)
         .await
         .unwrap();
     fakes.seen.lock().unwrap().clear();
-    // r1 连上：带来新东西 ⇒ 本机变了 ⇒ r2 也要拿到 r1 那一格
+    table.add(far("r1"));
+    // r1 加进机器表：带来新东西 ⇒ 本机变了 ⇒ r2 也要拿到 r1 那一格
     let out = answer_with(&sync_args("r1"), local.fold(), &fakes, &table)
         .await
         .unwrap();
@@ -318,7 +330,7 @@ async fn a_failing_remote_is_said_and_nothing_is_pushed_to_it() {
         seen: Mutex::new(vec![]),
         stdins: Mutex::new(vec![]),
     };
-    let table = Table::default();
+    let table = table_of(&["gone"]);
     let out = answer_with(&sync_args("gone"), local.fold(), &fakes, &table)
         .await
         .unwrap();
@@ -338,24 +350,26 @@ async fn half_given_arguments_are_refused() {
         stdins: Mutex::new(vec![]),
     };
     let table = Table::default();
-    for bad in [json!({"origin": ""}), json!({"dial": dial("x")})] {
+    for bad in [
+        json!({"origin": ""}),
+        json!({"origin": "o", "dial": {"machine": {"host": "x", "user": "u"}}}),
+    ] {
         let e = answer_with(&bad, local.fold(), &fakes, &table)
             .await
             .expect_err("收下了");
         assert_eq!(e.0, "bad_args", "{bad}");
     }
-    // 只给 `origin`（界面直问）而可达表里没有那一台 ⇒ 明说够不到，一次都不拨。
+    // 点名的那一台不在机器表里 ⇒ 明说够不到，一次都不拨。
     let e = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
-        .expect_err("可达表里没有也收了");
+        .expect_err("机器表里没有也收了");
     assert_eq!(e.0, "unreachable");
     assert!(fakes.seen.lock().unwrap().is_empty());
-    // 正控：握手那一刻登记过（`remote-reach`）⇒ 只给 `origin` 就对那一台做一趟。
-    let d_x: crate::dial::MachineDial = serde_json::from_value(dial("x")).unwrap();
-    crate::dial::remote_ask::register(&table, &cmd_wire::Machine("o".into()), &d_x).unwrap();
+    // 正控：机器表里有 ⇒ 只给 `origin` 就对那一台做一趟。
+    table.add(named("o", "x"));
     let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
-        .expect("登记过的也拒了");
+        .expect("机器表里有的也拒了");
     // 跨语言金样（「成品的两侧对拍」）：形状 == `assets-sync.golden.json`（id 与那一句错换成占位）；界面读同一份。
     let g: Value =
         serde_json::from_str(include_str!("../../__fixtures__/assets-sync.golden.json")).unwrap();
@@ -529,7 +543,7 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
         seen: Mutex::new(vec![]),
         stdins: Mutex::new(vec![]),
     };
-    let table = Table::default();
+    let table = table_of(&["r"]);
     let out = answer_with(&sync_args("r"), local.fold(), &fakes, &table)
         .await
         .expect("一趟");
@@ -560,7 +574,7 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
         norm(stdins[1].as_deref().unwrap()),
         "{\"catalog\":{\"machines\":[{\"assets\":[{\"digest\":\"d-a\",\"kind\":\"skill\",\"name\":\"a\",\"summary\":{}}],\"gen\":1,\"id\":\"<L>\",\"label\":\"local\",\"notes\":{},\"projectDirs\":[],\"seenAt\":<T>,\"sharedMcp\":false}]}}\n"
     );
-    // 只给 `origin`、可达表里有 ⇒ 同一形；什么都没给 ⇒ 每台各一行。
+    // 只给 `origin`、机器表里有 ⇒ 同一形；什么都没给 ⇒ 每台各一行。
     let all = answer_with(&json!({}), local.fold(), &fakes, &table)
         .await
         .unwrap();
@@ -569,12 +583,13 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
         r#"{"reach":[{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":null,"origin":"o-r","peer":"<R>","pushed":0}]}"#
     );
     // 那一趟没办成 ⇒ `error` 是那一句、`peer` 为 `null`。
+    table.add(far("gone"));
     let gone = answer_with(&sync_args("gone"), local.fold(), &fakes, &table)
         .await
         .unwrap();
     assert_eq!(
         norm(&wire(&serde_json::to_value(&gone).unwrap())),
-        r#"{"reach":[{"machine":null,"origin":"o-gone"},{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":"没这台","origin":"o-gone","peer":null,"pushed":0}]}"#
+        r#"{"reach":[{"machine":"<R>","origin":"o-r"},{"machine":null,"origin":"o-gone"}],"self":"<L>","synced":[{"changed":false,"error":"没这台","origin":"o-gone","peer":null,"pushed":0}]}"#
     );
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -592,7 +607,7 @@ async fn an_extra_key_is_bad_args_on_the_frame_path() {
     let before = crate::dial::remote_ask::reach_rows(&REACH).len();
     for args in [
         json!({ "bogus": 1 }),
-        json!({ "origin": "o-extra", "dial": dial("x"), "bogus": 1 }),
+        json!({ "origin": "o-extra", "dial": {"machine": {"host": "x"}}, "bogus": 1 }),
     ] {
         let Some(Prepared::Async(run)) =
             invoke(spec.run, &crate::stream::inbound::hands(Some(&own)))

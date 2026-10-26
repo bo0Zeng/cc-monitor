@@ -202,11 +202,7 @@ async fn take_parked(req: &DialRequest) -> Option<Session> {
 pub struct Dial(DialRequest);
 
 impl Dial {
-    pub fn parse(v: &serde_json::Value) -> Result<Dial, String> {
-        crate::machine::resolve(v).map(Dial).map_err(|(_, m)| m)
-    }
-
-    /// 一份组好的拨号请求（手机交来的那一形 · 后端已经 `resolve` 过的）。
+    /// 一份组好的拨号请求（手机交来的那一形 · 后端照它的机器表按名字组好的）。
     pub fn of(req: DialRequest) -> Dial {
         Dial(req)
     }

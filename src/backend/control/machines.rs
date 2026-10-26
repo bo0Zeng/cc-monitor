@@ -74,6 +74,13 @@ pub(crate) fn path_in(home: &Path) -> PathBuf {
     home.join(DOC.rel)
 }
 
+/// 这一端此刻照用的那一张（现读；家目录说不出 · 没有 · 读不懂 ⇒ 空表）。拨号层经它按名字组请求（`dial::install_machines`）。
+pub fn here() -> Vec<Host> {
+    crate::platform::paths::home_dir()
+        .map(|h| read_at(&path_in(&h)).hosts())
+        .unwrap_or_default()
+}
+
 fn not_ours(path: &Path, why: String) -> Said {
     Said::with_raw(
         copy_text(

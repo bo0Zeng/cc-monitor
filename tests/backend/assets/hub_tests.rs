@@ -2,7 +2,7 @@
 //! skill 与 MCP 同一对命令（`ext-hub-preview` / `ext-hub-apply`），看过之后任一头变了 ⇒ `stale`、一个字节不写。
 use super::*;
 use crate::assets::ext::ExtSlot;
-use crate::dial::remote_ask::{register, Remote, Table};
+use crate::dial::remote_ask::{Remote, Table};
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -88,17 +88,10 @@ fn here(answers: &[(&'static str, Value)]) -> (Arc<FakeHere>, Arc<dyn Here>) {
 }
 
 fn table_with(origin: &str) -> Table {
-    let t: Table = Mutex::new(BTreeMap::new());
-    register(
-        &t,
-        &cmd_wire::Machine(origin.into()),
-        &serde_json::from_value(
-            json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
-        )
-        .unwrap(),
+    Table::of(vec![crate::dial::machine::loose(
+        &json!({"label": origin, "host": "h", "port": 22, "user": "u", "keyPath": "/k"}),
     )
-    .unwrap();
-    t
+    .unwrap()])
 }
 
 fn remote(outs: &[Value]) -> FakeRemote {
@@ -240,7 +233,7 @@ async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
 #[tokio::test]
 async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
     let (_h, dyn_h) = here(&[]);
-    let t: Table = Mutex::new(BTreeMap::new());
+    let t = Table::default();
     let r = remote(&[]);
     let (code, said) = pv(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
         .await

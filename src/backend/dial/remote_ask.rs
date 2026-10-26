@@ -6,8 +6,7 @@
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
 //!
 //! ```text
-//!  monitor（宿主，只交事实） ── remote-reach {origin, dial} ──▶ 可达表（内存）
-//!  调用方 ── ask_json(machine, cmd, args, 表, 对面) ──▶ 查表 ──▶ DialRemote.run_coded(dial, "<落点> -- '--<cmd>' '--stdin-line'", stdin = args 一行)
+//!  调用方 ── ask_json(machine, cmd, args, 那几台, 对面) ──▶ 这一端的机器表按名字组请求 ──▶ DialRemote.run_coded(dial, "<落点> -- '--<cmd>' '--stdin-line'", stdin = args 一行)
 //!                                          └─ ssh_dial::uses::capture（池里那条 SSH，多一个 exec 通道，不是新连接）
 //! ```
 //!
@@ -17,12 +16,11 @@
 //! **那个进程**的 pid）—— 一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
 //! 老后端不认子命令会进流模式、第一行是 hello ⇒ capture 带 `abort_marker`，见到就收工、报「太旧」。
 //!
-//! # 可达表（内存）
+//! # 那几台（[`Table`]）
 //!
-//! `origin → {拨号请求, 对面的资产目录 id}`（后端路径恒是固定落点，不登记）：只在本进程里，后端重启就空（下次那台连上再填）。
-//! 拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11` 同 `dial_host::request`）。
-//! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
-//! （顺手登记）都调它。
+//! 怎么够到一台只看这一端的机器表（`~/.cc-monitor/machines.json`，读法由 faces 装进拨号层，[`super::machines_now`]）：
+//! 按名字组请求（[`super::request_named`]），线上没有谁交拨号。拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11`）。
+//! 另记一样：对面的资产目录 id（按名字，只在本进程里，后端重启就空；`assets-sync` 拉过那台才有）。
 
 use cmd_wire::dial::OLD_BACKEND_MARKER;
 use copy_core::copy_text;
@@ -36,9 +34,6 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 
 /// 拉回来那一份（远端 stdout）的上限。目录文件本身 16 MiB 封顶（`asset_catalog::CATALOG_MAX_BYTES`），这里取同一个数。
 pub const PULL_MAX_BYTES: usize = 16 * 1024 * 1024;
-
-/// 可达表的条数上限（有界资源；一个人配不出这么多台远端）。
-pub const MAX_REACH: usize = 256;
 
 /// 那台不认这条命令 / 子命令：与帧协议里同一个码。
 const UNKNOWN_COMMAND: &str = "unknown_command";
@@ -79,61 +74,116 @@ pub struct Said {
     pub message: String,
 }
 
-/// 可达表的一行。
-#[derive(Clone, Debug, PartialEq)]
-pub struct Reach {
-    pub(crate) dial: Value,
-    pub(crate) peer: Option<String>,
+/// 那几台：怎么够到一台照这一端的机器表（按名字组请求）＋ 对面的资产目录 id（按名字记，只在本进程里，后端重启就空）。
+/// 生产只有一张（[`REACH`]，现读机器表）；判据各给一张固定的（[`Table::of`]）。
+pub struct Table {
+    /// `None` ⇒ 现读这一端的机器表（[`super::machines_now`]）。
+    fixed: Mutex<Option<Vec<super::Host>>>,
+    /// 名字 → 对面的资产目录 id（`assets-sync` 拉过那台才有）。
+    peers: Mutex<BTreeMap<String, String>>,
 }
 
-/// 可达表（本进程一张）。
-pub type Table = Mutex<BTreeMap<String, Reach>>;
+/// 本进程那一张（现读这一端的机器表）。
+pub(crate) static REACH: Table = Table {
+    fixed: Mutex::new(None),
+    peers: Mutex::new(BTreeMap::new()),
+};
 
-pub(crate) static REACH: Table = Mutex::new(BTreeMap::new());
-
-pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reach>> {
-    t.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// 可达表**唯一的写口**：那台的名字 ＋ 怎么够到它（那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）
-/// （名字是 monitor 交来的，本后端只当不透明的键用）。同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
-/// `remote-reach`（按类型收）与 `assets-sync`（[`register`]）都经它。
-pub(crate) fn insert(
-    table: &Table,
-    origin: &str,
-    dial: Value,
-) -> Result<String, (&'static str, String)> {
-    if origin.is_empty() {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("`origin` is empty").into(),
-        ));
+impl Table {
+    /// 一张固定的（判据用：机器表由调用方给）。
+    pub(crate) fn of(hosts: Vec<super::Host>) -> Self {
+        Table {
+            fixed: Mutex::new(Some(hosts)),
+            peers: Mutex::new(BTreeMap::new()),
+        }
     }
-    let mut t = lock(table);
-    if !t.contains_key(origin) && t.len() >= MAX_REACH {
-        return Err((
-            "bad_args",
-            copy_text(
-                "beRemoteAsk.register.full",
-                &[("max", &MAX_REACH.to_string())],
-            ),
-        ));
+
+    /// 此刻的机器表。
+    pub(crate) fn hosts(&self) -> Vec<super::Host> {
+        match &*self.fixed.lock().unwrap_or_else(|e| e.into_inner()) {
+            Some(h) => h.clone(),
+            None => super::machines_now(),
+        }
     }
-    let peer = t.get(origin).and_then(|r| r.peer.clone());
-    t.insert(origin.to_string(), Reach { dial, peer });
-    Ok(origin.to_string())
+
+    /// 机器表里有没有叫这个名字的那一台。
+    pub(crate) fn has(&self, machine: &str) -> bool {
+        self.hosts().iter().any(|h| h.name() == machine)
+    }
+
+    /// 机器表里「连这台」的那几台的名字（照表里的先后）：「每一台都做一趟」（`assets-sync`）· 可达那一列说的就是它们。
+    pub(crate) fn connected(&self) -> Vec<String> {
+        self.hosts()
+            .iter()
+            .filter(|h| h.connect)
+            .map(|h| h.name().to_string())
+            .collect()
+    }
+
+    /// 那台够不够得到：表里有 ⇒ 一份组好的拨号请求（用法 `capture`，[`DialRemote`] 拿去改成那一趟要的）；
+    /// 没有这一台 ⇒ 码 `unreachable`；表里那几格组不成请求（跳板成环 · 找不到 · 缺地址）⇒ 那一码那一句。
+    pub(crate) fn dial(&self, machine: &str) -> Result<Value, Said> {
+        let hosts = self.hosts();
+        if !hosts.iter().any(|h| h.name() == machine) {
+            return Err(Said {
+                code: Some("unreachable".to_string()),
+                message: unreachable_message(machine),
+            });
+        }
+        super::request_named(&hosts, machine, "capture", json!({})).map_err(|(code, message)| {
+            Said {
+                code: Some(code.to_string()),
+                message,
+            }
+        })
+    }
+
+    /// 对面的资产目录 id（没拉过 ⇒ `None`）。
+    pub(crate) fn peer(&self, machine: &str) -> Option<String> {
+        self.peers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(machine)
+            .cloned()
+    }
+
+    /// 记下对面的资产目录 id。
+    pub(crate) fn set_peer(&self, machine: &str, id: &str) {
+        self.peers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(machine.to_string(), id.to_string());
+    }
 }
 
-/// 登记一台：那台的名字 ＋ 怎么够到它（`remote-reach` 与 `assets-sync` 那一份入参，按同一个类型收）⇒ [`insert`]。
-pub(crate) fn register(
-    table: &Table,
-    origin: &cmd_wire::Machine,
-    dial: &super::MachineDial,
-) -> Result<String, (&'static str, String)> {
-    insert(table, origin.as_wire_str(), dial.stored()?)
+#[cfg(test)]
+impl Default for Table {
+    fn default() -> Self {
+        Table::of(Vec::new())
+    }
 }
 
-/// 可达表的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
+#[cfg(test)]
+impl Table {
+    /// 判据用：这几台各一行（名字 ＝ 地址 ＝ 替身认台的那个词，用户 `u`）。
+    pub(crate) fn named(names: &[&str]) -> Table {
+        Table::of(names.iter().map(|n| test_host(n)).collect())
+    }
+
+    /// 判据用：表尾再加一台。
+    pub(crate) fn add(&self, host: super::Host) {
+        let mut g = self.fixed.lock().unwrap_or_else(|e| e.into_inner());
+        g.get_or_insert_with(Vec::new).push(host);
+    }
+}
+
+/// 判据用的一台：名字 ＝ 地址 ＝ `name`，用户 `u`（组成的请求里 `host` 就是它，替身按它认是哪台）。
+#[cfg(test)]
+pub(crate) fn test_host(name: &str) -> super::Host {
+    super::machine::loose(&json!({"label": name, "host": name, "user": "u"})).expect("判据那一台")
+}
+
+/// 那几台的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -144,48 +194,16 @@ pub(crate) struct ReachRow {
     pub(crate) machine: Option<String>,
 }
 
-/// 可达表现状：`[{origin, machine}]`。
+/// 「连这台」的那几台此刻：`[{origin, machine}]`。
 pub(crate) fn reach_rows(table: &Table) -> Vec<ReachRow> {
-    lock(table)
-        .iter()
-        .map(|(o, r)| ReachRow {
-            origin: cmd_wire::Machine(o.clone()),
-            machine: r.peer.clone(),
+    table
+        .connected()
+        .into_iter()
+        .map(|o| ReachRow {
+            machine: table.peer(&o),
+            origin: cmd_wire::Machine(o),
         })
         .collect()
-}
-
-/// `remote-reach` 的入参：那台的名字 ＋ 怎么够到它。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ReachReq {
-    /// 那台的名字（monitor 的 origin 名）。
-    pub(crate) origin: cmd_wire::Machine,
-    /// 那台的拨号（只有路径，没有私钥本体）。
-    pub(crate) dial: super::MachineDial,
-}
-
-/// `remote-reach` 的应答：登记的那台 ＋ 登记之后的可达表。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Reached {
-    pub(crate) origin: cmd_wire::Machine,
-    pub(crate) reach: Vec<ReachRow>,
-}
-
-/// `remote-reach` 的本体（可达表由调用方给）：只登记、不做别的（monitor 在每台远端流握手那一刻交；老远端也登记）。
-pub(crate) fn answer_reach_with(
-    req: &ReachReq,
-    table: &Table,
-) -> Result<Reached, (&'static str, String)> {
-    let o = register(table, &req.origin, &req.dial)?;
-    Ok(Reached {
-        origin: cmd_wire::Machine(o),
-        reach: reach_rows(table),
-    })
 }
 
 /// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv 每一格都过 POSIX 单引号。
@@ -223,11 +241,8 @@ where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
 {
-    let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
-        code: Some("unreachable".to_string()),
-        message: unreachable_message(machine),
-    })?;
-    ask_via(&r.dial, machine, C::NAME, req, tz, remote).await
+    let dial = table.dial(machine)?;
+    ask_via(&dial, machine, C::NAME, req, tz, remote).await
 }
 
 /// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）；
@@ -302,10 +317,7 @@ where
     C::Req: serde::Serialize,
     C::Reply: serde::de::DeserializeOwned,
 {
-    let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
-        code: Some("unreachable".to_string()),
-        message: unreachable_message(machine),
-    })?;
+    let dial = table.dial(machine)?;
     let call = crate::wire::listen::ResidentCall {
         cmd: C::NAME.to_string(),
         args: serde_json::to_value(req).map_err(|e| Said {
@@ -328,7 +340,7 @@ where
         zone.as_str(),
     ];
     let command = command_line(&argv);
-    let asked = exchange(&r.dial, machine, &command, format!("{line}\n"), remote);
+    let asked = exchange(&dial, machine, &command, format!("{line}\n"), remote);
     let v = match crate::platform::child::bounded(total, asked).await {
         Ok(got) => got,
         Err(after) => Err(Said {
@@ -488,13 +500,14 @@ pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
     Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
 }
 
-/// 可达表里那份拨号请求 ⇒「capture 这一条命令」的拨号请求（照类型组；纯，抽出来是为了判据 —— 载荷真进了 `capture.stdin`，不靠真 sshd 也验得动）。
+/// 一份组好的拨号请求（[`Table::dial`] · [`crate::dial::request_named`] 那一形）⇒「capture 这一条命令」的拨号请求
+/// （照类型组；纯，抽出来是为了判据 —— 载荷真进了 `capture.stdin`，不靠真 sshd 也验得动）。
 pub(crate) fn for_capture(
     dial: &Value,
     command: String,
     stdin: Option<String>,
 ) -> Result<crate::dial::DialRequest, String> {
-    let mut req = crate::dial::parse_request_value(dial).map_err(|(_, m)| m)?;
+    let mut req = crate::dial::read_request(dial).map_err(|(_, m)| m)?;
     req.use_ = crate::dial::Use::Capture;
     req.command = command;
     req.capture = Some(crate::dial::CaptureOpts {

@@ -559,8 +559,27 @@ fn a_download_onto_a_session_file_is_let_through() {
 
 // ═══ 票表与帧 ══════════════════════════════════════════════════════════════════════════
 
-fn dial() -> serde_json::Value {
-    serde_json::json!({"machine": {"host":"h","port":22,"user":"u"}})
+/// 判据那一端的机器表：`h`（随便一台，开单不拨）· `dead`（本机端口 1，拨一定断）。
+fn hosts() -> Vec<crate::dial::Host> {
+    [
+        serde_json::json!({"label": "h", "host": "h", "port": 22, "user": "u"}),
+        serde_json::json!({"label": "dead", "host": "127.0.0.1", "port": 1, "user": "u", "keyPath": "/nonexistent"}),
+    ]
+    .iter()
+    .map(|v| crate::dial::machine::loose(v).unwrap())
+    .collect()
+}
+
+/// 一张照 [`hosts`] 的传输台。
+fn desk_on(tx: mpsc::Sender<Frame>) -> Desk {
+    Desk::with_machines(tx, crate::platform::fs::Face::issue(), Arc::new(hosts))
+}
+
+/// `h` 那一台照表组好的传输拨号。
+fn test_dial() -> Dial {
+    dial_by_name(&hosts(), &cmd_wire::Machine("h".into()))
+        .unwrap()
+        .1
 }
 
 fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
@@ -671,7 +690,9 @@ impl Desk {
         tz: &crate::Tz,
     ) -> Frame {
         typed::answer::<TransferUpload>(id, args, |req| {
-            ready(upload_with(&self.tickets, land, req, tz))
+            let (_, dial) =
+                dial_by_name(&(self.machines)(), &req.machine).map_err(UploadErr::BadArgs)?;
+            ready(upload_with(&self.tickets, land, req, tz, dial))
         })
     }
 
@@ -688,13 +709,13 @@ impl Desk {
 #[tokio::test]
 async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let (tx, _rx) = mpsc::channel(64);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let tmp = Tmp::dir("desk");
     let local = tmp.file("g.bin", b"hello");
     let (ok, _, data) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r1",
-        &serde_json::json!({"dial": dial(), "local_path": local}),
+        &serde_json::json!({"machine": "h", "local_path": local}),
     ));
     assert!(ok);
     let data = data.unwrap();
@@ -706,7 +727,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let (ok, code, _) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r2",
-        &serde_json::json!({"dial": dial(), "local_path": local}),
+        &serde_json::json!({"machine": "h", "local_path": local}),
     ));
     assert_eq!((ok, code.as_deref()), (false, Some("busy")));
     // 缺字段 / 不是文件。
@@ -719,19 +740,19 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let (_, code, _) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r4",
-        &serde_json::json!({"dial": dial(), "local_path": tmp.0.to_string_lossy()}),
+        &serde_json::json!({"machine": "h", "local_path": tmp.0.to_string_lossy()}),
     ));
     // 不是普通文件：一组里那一项没开成（`refused`），不是整条入参不对。
     assert_eq!(code.as_deref(), Some("refused"));
     // 下载落点过不了路径解析（父目录不在）⇒ refused。从前这里的语料是一份会话文件，今天那一形放行。
-    let a = serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("nope/abc-1.jsonl").to_string_lossy()});
+    let a = serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.0.join("nope/abc-1.jsonl").to_string_lossy()});
     let (_, code, _) = reply_of(&desk.ask1(TRANSFER_DOWNLOAD, "r5", &a));
     assert_eq!(code.as_deref(), Some("refused"));
     // 另一向：一个规整的本机落点 ⇒ 开得出单（〔SR1b 死值验〕只判「踩线 ⇒ refused」的话，
     //   围栏换成「一律拒」本条照绿 —— 那一刀当场没砍中，补这一向）。另起一张台，不动上面那张的册数。
     let (tx2, _rx2) = mpsc::channel(8);
-    let desk2 = Desk::new(tx2, crate::platform::fs::Face::issue());
-    let a = serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("dl.bin").to_string_lossy()});
+    let desk2 = desk_on(tx2);
+    let a = serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.0.join("dl.bin").to_string_lossy()});
     let (ok, code, data) = reply_of(&desk2.ask1(TRANSFER_DOWNLOAD, "r5b", &a));
     assert!(ok, "规整的下载落点开不出单：{code:?}");
     assert!(data.unwrap()["id"]
@@ -771,7 +792,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
         reply_of(&desk.ask1(
             TRANSFER_UPLOAD,
             "r9",
-            &serde_json::json!({"dial": dial(), "local_path": local})
+            &serde_json::json!({"machine": "h", "local_path": local})
         ))
         .0
     );
@@ -782,15 +803,14 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
 #[tokio::test]
 async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk() {
     let (tx, mut rx) = mpsc::channel(64);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let tmp = Tmp::dir("start");
     let local = tmp.file("h.bin", b"x");
     // 端口 1：本机上一定断开（拒绝连接，立刻失败，不等期限）。
-    let d = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u","keyPath":"/nonexistent"}});
     let (_, _, data) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r1",
-        &serde_json::json!({"dial": d, "local_path": local}),
+        &serde_json::json!({"machine": "dead", "local_path": local}),
     ));
     let tid = data.unwrap()["id"].as_str().unwrap().to_string();
     assert!(
@@ -866,13 +886,13 @@ async fn cancel_wakes_a_waiter_whichever_side_comes_first() {
 #[test]
 fn dropping_the_desk_cancels_every_ticket() {
     let (tx, _rx) = mpsc::channel(4);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let tmp = Tmp::dir("drop");
     let local = tmp.file("i.bin", b"x");
     reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r1",
-        &serde_json::json!({"dial": dial(), "local_path": local}),
+        &serde_json::json!({"machine": "h", "local_path": local}),
     ));
     let cancels: Vec<Arc<Cancel>> = lock(&desk.tickets)
         .values()
@@ -1150,7 +1170,7 @@ fn pinned(f: &Frame, tmp: &Tmp) -> String {
 #[tokio::test]
 async fn the_two_openers_answer_with_the_same_bytes() {
     let (tx, _rx) = mpsc::channel(64);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let tmp = Tmp::dir("pin");
     let local = tmp.file("g.bin", b"hello");
     let other = tmp.file("h.bin", b"world");
@@ -1160,58 +1180,58 @@ async fn the_two_openers_answer_with_the_same_bytes() {
     let mut got = vec![
         up(
             "u1",
-            serde_json::json!({"dial": dial(), "local_path": local}),
+            serde_json::json!({"machine": "h", "local_path": local}),
         ),
         up(
             "u2",
-            serde_json::json!({"dial": dial(), "local_path": other, "home": "/h"}),
+            serde_json::json!({"machine": "h", "local_path": other, "home": "/h"}),
         ),
         up(
             "u3",
-            serde_json::json!({"dial": dial(), "local_path": local}),
+            serde_json::json!({"machine": "h", "local_path": local}),
         ),
         up("u4", serde_json::json!({"local_path": local})),
         up(
             "u5",
-            serde_json::json!({"dial": dial(), "local_path": tmp.0.to_string_lossy()}),
+            serde_json::json!({"machine": "h", "local_path": tmp.0.to_string_lossy()}),
         ),
         up(
             "u6",
-            serde_json::json!({"dial": dial(), "local_path": gone}),
+            serde_json::json!({"machine": "h", "local_path": gone}),
         ),
         up(
             "u7",
-            serde_json::json!({"dial": dial(), "local_path": local, "via": "x"}),
+            serde_json::json!({"machine": "h", "local_path": local, "via": "x"}),
         ),
         down(
             "d1",
-            serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.path("dl.bin").to_string_lossy()}),
+            serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.path("dl.bin").to_string_lossy()}),
         ),
         down(
             "d2",
-            serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": {"b16": hex_of(&tmp.path("d\u{ff}.bin"))}}),
+            serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": {"b16": hex_of(&tmp.path("d\u{ff}.bin"))}}),
         ),
         down(
             "d3",
-            serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.path("nope/a.bin").to_string_lossy()}),
+            serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.path("nope/a.bin").to_string_lossy()}),
         ),
         down(
             "d4",
-            serde_json::json!({"dial": dial(), "local_path": tmp.path("dl.bin").to_string_lossy()}),
+            serde_json::json!({"machine": "h", "local_path": tmp.path("dl.bin").to_string_lossy()}),
         ),
     ];
     // 满册：另一张台开满 64 张，第 65 张。
     let (tx2, _rx2) = mpsc::channel(8);
-    let full = Desk::new(tx2, crate::platform::fs::Face::issue());
+    let full = desk_on(tx2);
     for i in 0..MAX_TICKETS_PER_CONNECTION {
-        let a = serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.path(&format!("f{i}")).to_string_lossy()});
+        let a = serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.path(&format!("f{i}")).to_string_lossy()});
         assert!(reply_of(&full.ask1(TRANSFER_DOWNLOAD, "f", &a)).0);
     }
     got.push(pinned(
         &full.ask1(
             TRANSFER_DOWNLOAD,
             "d5",
-            &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.path("over").to_string_lossy()}),
+            &serde_json::json!({"machine": "h", "remote_path": "/x", "local_path": tmp.path("over").to_string_lossy()}),
         ),
         &tmp,
     ));
@@ -1219,10 +1239,10 @@ async fn the_two_openers_answer_with_the_same_bytes() {
         r#"{"kind":"reply","id":"u1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","staged":"<key>","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"u2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","staged":"<key>","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"u3","ok":true,"data":{"items":[{"code":"busy","detail":"同一文件正在上传到该机 · 传完再来","key":"0","reason":"被占用","state":"failed"}]}}"#,
-        r#"{"kind":"reply","id":"u4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：missing field `dial`"}"#,
+        r#"{"kind":"reply","id":"u4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：missing field `machine`"}"#,
         r#"{"kind":"reply","id":"u5","ok":true,"data":{"items":[{"code":"refused","detail":"<tmp> 不是普通文件 · 不可传","key":"0","reason":"被拒","state":"failed"}]}}"#,
         r#"{"kind":"reply","id":"u6","ok":true,"data":{"items":[{"code":"io_failed","detail":"读取失败 · 本机 <tmp>/gone.bin · 路径不存在\nNo such file or directory (os error 2)","key":"0","reason":"路径不存在","state":"failed"}]}}"#,
-        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `dial`, `items`, `remote_dir`, `home`, `on_exists`, `decide`"}"#,
+        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `machine`, `items`, `remote_dir`, `home`, `on_exists`, `decide`"}"#,
         r#"{"kind":"reply","id":"d1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dl.bin","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"d2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dÿ.bin","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"d3","ok":true,"data":{"items":[{"code":"refused","detail":"解析 <tmp>/nope 失败 · 路径不存在","key":"0","reason":"被拒","state":"failed"}]}}"#,
@@ -1246,13 +1266,13 @@ fn hex_of(p: &Path) -> String {
 #[tokio::test]
 async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request() {
     let (tx, _rx) = mpsc::channel(64);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let tmp = Tmp::dir("dl-group");
     tmp.file("a.txt", b"old");
     tmp.file("a (2).txt", b"old2");
     let dir = tmp.0.to_string_lossy().into_owned();
     let ask = |on: &str| {
-        serde_json::json!({"dial": dial(), "local_dir": dir, "on_exists": on,
+        serde_json::json!({"machine": "h", "local_dir": dir, "on_exists": on,
             "items": [{"remote_path": "/r/a.txt"}, {"remote_path": "/r/b.txt"}]})
     };
     let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g1", &ask("ask"), &crate::Tz::default());
@@ -1281,7 +1301,7 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
 #[tokio::test]
 async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() {
     let (tx, _rx) = mpsc::channel(64);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let here = Tmp::dir("up-here");
     let there = Tmp::dir("up-there");
     let a = here.file("a.txt", b"new!");
@@ -1298,7 +1318,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
     let tz = crate::Tz::named("Asia/Tokyo").unwrap();
     let dir = there.0.to_string_lossy().into_owned();
     let ask = |decide: serde_json::Value| {
-        let mut v = serde_json::json!({"dial": dial(), "remote_dir": dir,
+        let mut v = serde_json::json!({"machine": "h", "remote_dir": dir,
             "items": [{"local_path": a}, {"local_path": b}]});
         if !decide.is_null() {
             v["decide"] = decide;
@@ -1319,6 +1339,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
         &Here,
         serde_json::from_value(ask(serde_json::Value::Null)).unwrap(),
         &tz,
+        test_dial(),
     )) else {
         panic!("同名清单不在：{detail:?}")
     };
@@ -1361,7 +1382,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
     );
     assert_eq!(desk.len(), 1, "跳过的不开单");
     let (tx2, _rx2) = mpsc::channel(64);
-    let fresh = Desk::new(tx2, crate::platform::fs::Face::issue());
+    let fresh = desk_on(tx2);
     let f = fresh.upload_frame(
         "u3",
         &ask(serde_json::json!({"0": "overwrite"})),
@@ -1372,7 +1393,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
     assert_eq!(item(&f, 0)["overwrite"], true, "答了覆盖 ⇒ 提交时盖");
     assert_eq!(item(&f, 0).get("new_name"), None);
     let (tx3, _rx3) = mpsc::channel(64);
-    let fresh = Desk::new(tx3, crate::platform::fs::Face::issue());
+    let fresh = desk_on(tx3);
     let f = fresh.upload_frame(
         "u4",
         &ask(serde_json::json!({"0": "keep_both"})),
@@ -1388,13 +1409,13 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
 #[tokio::test]
 async fn an_upload_onto_a_remote_dir_never_merges() {
     let (tx, _rx) = mpsc::channel(64);
-    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let desk = desk_on(tx);
     let here = Tmp::dir("up-dir-here");
     let there = Tmp::dir("up-dir-there");
     let a = here.file("a", b"x");
     std::fs::create_dir_all(there.path("a")).unwrap();
     let req = |decide: Option<serde_json::Value>| {
-        let mut v = serde_json::json!({"dial": dial(), "remote_dir": there.0.to_string_lossy(),
+        let mut v = serde_json::json!({"machine": "h", "remote_dir": there.0.to_string_lossy(),
             "items": [{"local_path": a}]});
         if let Some(d) = decide {
             v["decide"] = d;
@@ -1406,6 +1427,7 @@ async fn an_upload_onto_a_remote_dir_never_merges() {
         &Here,
         req(None),
         &crate::Tz::default(),
+        test_dial(),
     )) else {
         panic!("目录同名也要问")
     };
@@ -1422,6 +1444,7 @@ async fn an_upload_onto_a_remote_dir_never_merges() {
         &Here,
         req(Some(serde_json::json!({"0": "overwrite"}))),
         &crate::Tz::default(),
+        test_dial(),
     ))
     .unwrap();
     assert_eq!(got.items[0].state, OpenState::Skipped);

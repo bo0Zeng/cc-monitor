@@ -407,16 +407,18 @@ async fn ask_to<C: cwf::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss> {
 }
 
 impl Wired {
-    /// 连上两台、问落点那台后端的家目录（与它的 SFTP 起始目录比）、备好本机暂存区。
+    /// 按名字连上两台、问落点那台后端的家目录（与它的 SFTP 起始目录比）、备好本机暂存区。
     pub(crate) async fn open(
         face: crate::platform::fs::Face,
-        from: &serde_json::Value,
-        to: &serde_json::Value,
+        from: &cmd_wire::Machine,
+        to: &cmd_wire::Machine,
         tz: crate::Tz,
     ) -> Result<Wired, CopyErr> {
-        use crate::dial::sftp::{open_for_transfer, Dial};
-        let fd = Dial::parse(from).map_err(CopyErr::BadArgs)?;
-        let td = Dial::parse(to).map_err(CopyErr::BadArgs)?;
+        use crate::dial::sftp::open_for_transfer;
+        // 两台都只按名字：怎么拨照这一端的机器表组（表里没有 · 组不成 ⇒ `bad_args`）。
+        let hosts = super::machines::here();
+        let (_, fd) = super::transfer::dial_by_name(&hosts, from).map_err(CopyErr::BadArgs)?;
+        let (to_dial, td) = super::transfer::dial_by_name(&hosts, to).map_err(CopyErr::BadArgs)?;
         let unreach =
             |s: Said| CopyErr::Unreachable(crate::common::contract::joined(s.said, s.raw));
         let from_s = open_for_transfer(&fd).await.map_err(unreach)?;
@@ -424,7 +426,7 @@ impl Wired {
         let home = crate::platform::paths::home_dir()
             .ok_or_else(|| CopyErr::Unreachable(copy_text("beTransferCopy.local.noHome", &[])))?;
         let remote = Box::new(crate::dial::remote_ask::DialRemote);
-        Wired::over(face, from_s, to_s, to.clone(), tz, &home, remote).await
+        Wired::over(face, from_s, to_s, to_dial, tz, &home, remote).await
     }
 
     /// 两条会话已开：备好本机暂存区（`home` 底下）、问落点那台后端的家目录（与它的 SFTP 起始目录比）。
