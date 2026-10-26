@@ -32,9 +32,12 @@ fn render_judgment_rules() -> String {
     s.push_str("/** 见 [`AUTH_KINDS`]。 */\n");
     s.push_str("export type AuthKind = (typeof AUTH_KINDS)[number];\n");
     // 机器键里不能当名字给人看的那几个（`machineName` 成品还没到时照它说）。
-    let keys = serde_json::to_string(&cmd_wire::machine::KEYS_NOT_NAMES).expect("字符串序列化不会失败");
+    let keys =
+        serde_json::to_string(&cmd_wire::machine::KEYS_NOT_NAMES).expect("字符串序列化不会失败");
     s.push_str("\n/** 机器键里不能当名字给人看的那几个 —— 契约常量住 `cmd_wire::machine::KEYS_NOT_NAMES`。 */\n");
-    s.push_str(&format!("export const KEYS_NOT_NAMES: readonly string[] = {keys};\n"));
+    s.push_str(&format!(
+        "export const KEYS_NOT_NAMES: readonly string[] = {keys};\n"
+    ));
     s
 }
 /// 生成 `src/frontend/ui/generated/judgment-rules.ts`。

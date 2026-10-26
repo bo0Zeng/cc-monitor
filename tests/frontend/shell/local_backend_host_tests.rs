@@ -2672,8 +2672,14 @@ fn a_foreign_build_on_the_port_reads_by_its_order() {
         super::note_local_foreign(None);
         got
     };
-    assert!(matches!(at(Some("p7a-old"), Some("p8c-mine")), L::Older { .. }));
-    assert!(matches!(at(Some("p9a-new"), Some("p8c-mine")), L::Newer { .. }));
+    assert!(matches!(
+        at(Some("p7a-old"), Some("p8c-mine")),
+        L::Older { .. }
+    ));
+    assert!(matches!(
+        at(Some("p9a-new"), Some("p8c-mine")),
+        L::Newer { .. }
+    ));
     assert!(matches!(at(Some("odd"), Some("p8c-mine")), L::Down { .. }));
     assert!(matches!(at(Some("p7a-old"), None), L::Down { .. }));
 }

@@ -85,7 +85,7 @@ describe("机器状态成品的推送", () => {
     const states: string[] = [];
     onLocalBackend((l) => got.push(l));
     onMachineState((o) => states.push(o));
-    const down: LocalBackend = { state: "down", word: "w", said: "s", next: null };
+    const down: LocalBackend = { state: "down", word: "w", said: "s", fixes: [], next: null };
     listeners.get(LOCAL_BACKEND_EVENT)!({ payload: down });
     expect(got).toEqual([down]);
     expect(states).toEqual([]);

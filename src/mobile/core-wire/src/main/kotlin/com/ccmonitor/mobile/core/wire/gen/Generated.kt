@@ -10038,7 +10038,7 @@ sealed interface LocalBackend {
 @Suppress("UNCHECKED_CAST")
 data class LogFileEntry(
     val path: String,
-    val sizeText: String?,
+    val sizeBytes: Long,
     val modifiedMs: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
