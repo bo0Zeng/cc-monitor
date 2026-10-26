@@ -125,7 +125,7 @@ pub struct Asset {
     pub summary: Value,
     /// 装了、关着（只有插件有这一态；缺 ＝ 开着）。
     #[serde(default, skip_serializing_if = "is_false")]
-    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub off: bool,
 }
 

@@ -353,15 +353,38 @@ struct Install {
     version: Option<String>,
 }
 
-/// 读一份 JSON：不在 ⇒ `None`（不是问题）；在却读不出 ⇒ 说出来、`None`。
-fn read_json_said(file: &Path, cap: u64, problems: &mut Vec<String>) -> Option<serde_json::Value> {
-    match Ro::metadata(file) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        _ => {}
+/// 找插件时读的几种 JSON（各自的读取上限）。
+#[derive(Clone, Copy)]
+enum PluginJson {
+    /// 安装记录。
+    Record,
+    /// 一份设置（只为取 `enabledPlugins`）· 插件根里的 `hooks/hooks.json`（只为数事件名）。
+    Settings,
+    /// 插件清单。
+    Manifest,
+    /// 插件根里的 `.mcp.json`（只为数 server 名）。
+    Mcp,
+}
+
+/// 读一份 JSON：不在 ⇒ `None`（不是问题）；在却读不出 ⇒ 记日志 ＋ 说出来、`None`（那一份当没有）。
+fn read_json_said(
+    file: &Path,
+    what: PluginJson,
+    problems: &mut Vec<String>,
+) -> Option<serde_json::Value> {
+    let cap = match what {
+        PluginJson::Record => PLUGIN_RECORD_MAX_BYTES,
+        PluginJson::Settings => SETTINGS_MAX_BYTES,
+        PluginJson::Manifest => PLUGIN_MANIFEST_MAX_BYTES,
+        PluginJson::Mcp => MAX_PROJECT_MCP_BYTES,
+    };
+    if matches!(Ro::metadata(file), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return None;
     }
     match Ro::read_json_capped(file, cap) {
         Ok(v) => Some(v),
         Err(e) => {
+            tracing::warn!("[plugins] {} 读不出来，当没有：{}", file.display(), e.said);
             problems.push(
                 e.wrap(|why| {
                     copy_text(
@@ -378,7 +401,7 @@ fn read_json_said(file: &Path, cap: u64, problems: &mut Vec<String>) -> Option<s
 
 /// 一份设置里的 `enabledPlugins`（`<名>@<市场>` → 开 / 关）；没有这一格 ⇒ 空。
 fn enabled_in(file: &Path, problems: &mut Vec<String>) -> Vec<(String, bool)> {
-    read_json_said(file, SETTINGS_MAX_BYTES, problems)
+    read_json_said(file, PluginJson::Settings, problems)
         .and_then(|v| v.get(ENABLED_KEY).and_then(|e| e.as_object()).cloned())
         .map(|m| {
             m.into_iter()
@@ -434,17 +457,20 @@ fn keys_of(v: Option<&serde_json::Value>) -> Vec<String> {
 
 /// 插件根里带了什么：skills（带 `SKILL.md` 的子目录）· commands / agents（`.md`）· hooks（事件名）· MCP（server 名）。
 /// 清单里内联写的 hooks / mcpServers 一并算。
-fn parts_of(root: &Path, manifest: Option<&serde_json::Value>) -> crate::agents::PluginParts {
+fn parts_of(
+    root: &Path,
+    manifest: Option<&serde_json::Value>,
+    problems: &mut Vec<String>,
+) -> crate::agents::PluginParts {
     let skills = names_in(&root.join(SKILLS_DIR), None, true)
         .into_iter()
         .filter(|n| root.join(SKILLS_DIR).join(n).join(SKILL_DOC).is_file())
         .collect();
-    let mut sink = Vec::new();
     let hooks_file = PLUGIN_HOOKS
         .iter()
         .fold(root.to_path_buf(), |p, s| p.join(s));
     let mut hooks = keys_of(
-        read_json_said(&hooks_file, SETTINGS_MAX_BYTES, &mut sink)
+        read_json_said(&hooks_file, PluginJson::Settings, problems)
             .as_ref()
             .and_then(|v| v.get("hooks")),
     );
@@ -452,13 +478,9 @@ fn parts_of(root: &Path, manifest: Option<&serde_json::Value>) -> crate::agents:
     hooks.sort();
     hooks.dedup();
     let mut mcp = keys_of(
-        read_json_said(
-            &root.join(PROJECT_MCP_FILE),
-            MAX_PROJECT_MCP_BYTES,
-            &mut sink,
-        )
-        .as_ref()
-        .and_then(|v| v.get(SERVERS_KEY)),
+        read_json_said(&root.join(PROJECT_MCP_FILE), PluginJson::Mcp, problems)
+            .as_ref()
+            .and_then(|v| v.get(SERVERS_KEY)),
     );
     mcp.extend(keys_of(manifest.and_then(|m| m.get(SERVERS_KEY))));
     mcp.sort();
@@ -478,7 +500,7 @@ fn installs_at(config_root: &Path, problems: &mut Vec<String>) -> Vec<Install> {
     let record = PLUGIN_RECORD
         .iter()
         .fold(config_root.to_path_buf(), |p, s| p.join(s));
-    if let Some(v) = read_json_said(&record, PLUGIN_RECORD_MAX_BYTES, problems) {
+    if let Some(v) = read_json_said(&record, PluginJson::Record, problems) {
         match v.get("plugins").and_then(|p| p.as_object()) {
             Some(plugins) if v.get("version").and_then(|x| x.as_u64()) == Some(PLUGIN_RECORD_V) => {
                 for (id, entries) in plugins {
@@ -542,7 +564,7 @@ fn manifest_at(root: &Path, problems: &mut Vec<String>) -> Option<serde_json::Va
     let m = PLUGIN_MANIFEST
         .iter()
         .fold(root.to_path_buf(), |p, s| p.join(s));
-    read_json_said(&m, PLUGIN_MANIFEST_MAX_BYTES, problems)
+    read_json_said(&m, PluginJson::Manifest, problems)
 }
 
 /// 插件：两处读盘（[`installs_at`]），开不开照六处 `enabledPlugins` 合并 ——
@@ -597,7 +619,7 @@ pub(crate) fn scan_plugins_at(
             .and_then(|m| m.get("defaultEnabled"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let parts = parts_of(&i.root, manifest.as_ref());
+        let parts = parts_of(&i.root, manifest.as_ref(), &mut problems);
         let decide = |layers: Option<&[std::collections::BTreeMap<String, bool>; 2]>| {
             if let Some(b) = managed.get(&id) {
                 return (*b, PluginFrom::Managed);

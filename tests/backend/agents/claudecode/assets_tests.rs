@@ -316,7 +316,7 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
     let d = temp_dir("plugin-scan");
     let cfg = d.join(".claude");
     let proj = d.join("proj");
-    let proj2 = d.join("proj2");
+    let proj_b = d.join("proj_b");
     // 市场插件：用户级装着，组成齐全。
     let gh = cfg.join("plugins/cache/mkt/github/1.4.0");
     put(
@@ -338,7 +338,7 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
         ".mcp.json",
         r#"{"mcpServers":{"github":{"type":"http"}}}"#,
     );
-    // 装在 proj2 里的那一个。
+    // 装在 proj_b 里的那一个。
     let fmt = cfg.join("plugins/cache/team/formatter/0.1.0");
     put(
         &fmt,
@@ -350,7 +350,7 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
         "plugins": {
             "github@mkt": [{ "scope": "user", "installPath": gh.display().to_string(), "version": "1.4.0" }],
             "formatter@team": [{ "scope": "project", "installPath": fmt.display().to_string(),
-                                 "projectPath": proj2.display().to_string() }],
+                                 "projectPath": proj_b.display().to_string() }],
         }
     });
     put(&cfg, "plugins/installed_plugins.json", &record.to_string());
@@ -398,7 +398,7 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
         r#"{"enabledPlugins":{"formatter@team":true}}"#,
     );
 
-    let projects = vec![proj.display().to_string(), proj2.display().to_string()];
+    let projects = vec![proj.display().to_string(), proj_b.display().to_string()];
     let mut out = Sightings::default();
     scan_plugins_at(&cfg, &[policy], &projects, &mut out);
     scan_skills_at(&cfg.join(SKILLS_DIR), None, &mut out);
@@ -458,7 +458,7 @@ fn plugins_are_read_from_the_install_record_and_the_skills_dir_with_six_settings
             PluginFrom::Local,
         ),
         seen(
-            Some(&proj2),
+            Some(&proj_b),
             "formatter",
             "team",
             &fmt,
