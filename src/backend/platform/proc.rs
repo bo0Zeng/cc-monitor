@@ -166,6 +166,26 @@ pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
     }
 }
 
+/// 这个进程的父进程号（读不到 · 这个平台不知道 ⇒ `None`）。agent 自问（`history/session_self.rs`）往上找会话用。
+///
+/// Linux：`/proc/<pid>/stat` 第 4 栏（名字里的括号照 [`super::linux_tables::parse_stat`] 那一处跳过）。Windows：进程快照里那一格（`win_tables::parent_of`）。
+pub(crate) fn parent_of(pid: u32) -> Option<u32> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = Ro::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        super::linux_tables::parse_stat(&stat).map(|s| s.ppid)
+    }
+    #[cfg(windows)]
+    {
+        super::win_tables::parent_of(pid)
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
 /// 这个进程**此刻**有没有控制终端（`/proc/<pid>/stat` 第 7 栏 `tty_nr` 非零）。`None` = 读不到 / 这个平台不知道。
 ///
 /// 会话首领退出、终端被挂断时内核把整组进程的控制终端清掉 ⇒ 这一格从此是 0。

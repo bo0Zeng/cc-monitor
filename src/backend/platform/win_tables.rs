@@ -199,6 +199,16 @@ fn processes() -> Result<Vec<serde_json::Value>, String> {
     Ok(out)
 }
 
+/// 这个进程的父进程号（现拍一次进程快照；拍不成 · 没有这个进程 ⇒ `None`）。agent 自问往上找会话用（`platform::proc::parent_of`）。
+pub(crate) fn parent_of(pid: u32) -> Option<u32> {
+    processes()
+        .ok()?
+        .iter()
+        .find(|p| p["pid"].as_u64() == Some(u64::from(pid)))
+        .and_then(|p| p["ppid"].as_u64())
+        .and_then(|p| u32::try_from(p).ok())
+}
+
 /// 现问一次连接表与进程表 ⇒ 那一行 JSON；哪一张没问成 ⇒ `Err(原话)`。
 pub(crate) fn connection_and_process_tables() -> Result<String, String> {
     let tcp = established()?;

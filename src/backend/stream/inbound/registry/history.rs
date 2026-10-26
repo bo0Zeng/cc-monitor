@@ -25,6 +25,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::history::groups::GroupsWriteCmd>(
         "建 · 改名 · 解散家在这台的组",
     ),
+    // agent 自问（`history/session_self.rs`）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
+    crate::wire::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(
+        "我是哪条会话 · 在哪几组 · 组员有谁",
+    ),
     // ── 只读查询面上线 —— 层 1 ＋ ──────────
     //
     // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），

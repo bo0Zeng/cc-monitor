@@ -375,6 +375,32 @@ impl crate::wire::typed::Handle for GroupsReadCmd {
     }
 }
 
+/// 只问这台的 `groups-read`（一次性进程里问不到别的台时用：agent 自问那一条的退路）。
+pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead, String> {
+    let local = async {
+        tokio::task::spawn_blocking(here_now)
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r)
+            .map_err(|message| Said {
+                code: None,
+                message,
+            })
+    };
+    read_with(
+        &[Machine(cmd_wire::LOCAL.into())],
+        local,
+        &tz,
+        None,
+        &crate::dial::remote_ask::REACH,
+        &crate::dial::remote_ask::DialRemote,
+        &KEPT,
+        crate::common::time::now_ms(),
+    )
+    .await
+    .map_err(|e| format!("{e:?}"))
+}
+
 /// 一台这一问拿到的那一半：这一问答的 · 上一次答的 · 没有。
 enum Half {
     Now(GroupsHere),
