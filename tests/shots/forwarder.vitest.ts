@@ -14,7 +14,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultWorld, diskOf, LOCAL, REMOTES } from "./fake/world";
 import { reachOf } from "./fake/backend";
 import { HOST_KEYS } from "./fake/machine";
@@ -170,7 +170,7 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     const sock = path.join(dir, "do.sock");
     const srv = spawn(doer, ["serve", sock, backend], { stdio: "ignore" });
     try {
-      for (let i = 0; i < 250 && !existsSync(sock); i++) await new Promise((r) => setTimeout(r, 20));
+      await vi.waitFor(() => expect(existsSync(sock)).toBe(true), { timeout: 5000 });
       const ask = (...a: string[]) => spawnSync(doer, ["ask", sock, ...a], { encoding: "utf8" });
       const r = ask("--resident-ensure", "--replace");
       expect([r.status, r.stdout, r.stderr]).toEqual([3, "ran -- --resident-ensure --replace\n", "said -- --resident-ensure --replace\n"]);
