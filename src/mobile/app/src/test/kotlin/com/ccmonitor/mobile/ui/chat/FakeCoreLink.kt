@@ -274,6 +274,8 @@ internal class FakeCoreLink :
     class File(
         val records: MutableList<Map<String, Any?>> = mutableListOf(),
         var id: String = "f1",
+        /** `history-read` 一页至多几行。 */
+        var pageLines: Long = Long.MAX_VALUE / W,
     ) {
         fun answer(
             cmd: String,
@@ -316,9 +318,11 @@ internal class FakeCoreLink :
                     )
                 }
                 "history-read" -> {
+                    // 右端缺 · 过了文件尾 ⇒ 到文件尾；一页至多 [pageLines] 行（同那台按字节分页）。
                     val a = (args!!["offset"] as Long) / W
-                    val b = (args["until"] as Long) / W
-                    Reply.Ok(mapOf("rows" to rows(a, b), "next" to b * W, "eof" to true))
+                    val limit = minOf((args["until"] as? Long)?.div(W) ?: n, n)
+                    val b = minOf(limit, a + pageLines)
+                    Reply.Ok(mapOf("rows" to rows(a, b), "next" to b * W, "eof" to (b >= limit)))
                 }
                 "history-lines" -> {
                     val a = args!!["from"] as Long

@@ -490,6 +490,17 @@ private fun NavGraphBuilder.chatRoutes(
                     nullable = true
                     defaultValue = null
                 },
+                // 从搜内容的一处命中打开：那一行的字节起点（Long 型的参数不许缺，所以按字串交）· 落在哪张工具卡里。
+                navArgument(Screen.Chat.ARG_AT) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(Screen.Chat.ARG_TOOL) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
             ),
     ) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
@@ -506,6 +517,8 @@ private fun NavGraphBuilder.chatRoutes(
             sessionId = sid,
             isNew = isNew,
             draftCwd = entry.arguments?.getString(Screen.Chat.ARG_CWD),
+            at = entry.arguments?.getString(Screen.Chat.ARG_AT)?.toLong(),
+            tool = entry.arguments?.getString(Screen.Chat.ARG_TOOL),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
             onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },

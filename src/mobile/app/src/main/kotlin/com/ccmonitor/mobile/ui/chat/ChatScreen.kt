@@ -99,8 +99,19 @@ fun ChatTranscript(
     val liveLength = state.live.sumOf { c -> c.blocks.sumOf { it.text.length } + 1 }
     val total = state.units.size + state.live.size
     val viewport by remember { derivedStateOf { listState.layoutInfo.viewportSize.height } }
+
+    // 从一处命中打开：落点那张卡出来了 ⇒ 滚到它、不跟到底（人滚到底才又跟）；落点出来之前也不跟到底。
+    var landed by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.landing) {
+        val key = state.landing ?: return@LaunchedEffect
+        val i = state.units.indexOfFirst { it.key == key }
+        if (i < 0) return@LaunchedEffect
+        following = false
+        landed = key
+        listState.scrollToItem(i)
+    }
     LaunchedEffect(lastUnit?.key, lastUnit?.searchableText()?.length, liveLength, viewport) {
-        if (following && total > 0) listState.scrollToItem(total - 1, Int.MAX_VALUE)
+        if (following && total > 0 && (state.landing == null || landed != null)) listState.scrollToItem(total - 1, Int.MAX_VALUE)
     }
 
     Column(modifier.fillMaxWidth()) {
@@ -110,6 +121,8 @@ fun ChatTranscript(
             units = state.units,
             modifier = Modifier.weight(1f).testTag(ChatTestTags.PANE),
             listState = listState,
+            // 落点那张卡：描边，折着的展开。
+            matchedKeys = setOfNotNull(state.landing),
             // 不传的话「复制代码」按钮照样渲染但点了没反应。
             onCopyCode = { clipboard.setText(AnnotatedString(it)) },
             onRetrySend = onRetrySend,

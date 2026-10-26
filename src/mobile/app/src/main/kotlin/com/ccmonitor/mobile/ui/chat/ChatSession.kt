@@ -87,6 +87,8 @@ data class ChatUiState(
     val cwd: String? = null,
     /** 上次没发的草稿（本地存的）：输入框还空着时填进去；没有 ⇒ `null`。 */
     val draft: String? = null,
+    /** 从一处命中打开的落点（那张卡的 key：滚到它、折着就展开）；不是从命中打开的 · 那张卡还没读到 ⇒ `null`。 */
+    val landing: String? = null,
 )
 
 /**
@@ -152,6 +154,7 @@ sealed interface ChatTarget {
  *   新起的会话记录要等第一句进去才落盘 ⇒ 读正文之前先等那台推来它的记录路径（[freshPath]）。
  * - 送字 / 停：`terminal-input`（字 · `esc`）；送没送到是那台判的（`delivered` · `unsure` · `refused`）。
  * - 正文：`history-tail` ＋ `history-read` 读最后一屏，之后跟流上这条会话的 `line` 帧；往上翻再读上一段。记录 ⇒ 渲染单元见 [RecordUnits]。
+ *   从搜内容的一处命中打开（[jump]）⇒ 先读命中那一页，再往下读到尾、尾段就从命中那一行起，之后同上。
  * - 在屏上（[visible]）才进这台的 `stream-watch` 名单；进名单 · 断线重接之后，`[已有, seq)` 那一段按行号用 `history-lines` 补上
  *   （`from[]` 给的 seq，或来了一行比已有的新、中间缺着），缺得多就整份重读最后一屏；重叠处按行号去重。
  * 手机这边只记「送出去、记录里还没出现」的那几句；记录里出现了同一句人话 ⇒ 那一句的标消失。
@@ -237,6 +240,36 @@ class ChatSession(
     private var draftAsked = false
     private var succeeding = false
 
+    /** 下一次挂上从哪一处读起（[jump] 交的命中那一行的字节起点）；`null` ⇒ 读最后一屏。 */
+    @Volatile private var jumpAt: Long? = null
+
+    /** 落点：命中那一页的第一张卡（[landingKey]）；落在一次工具调用的卡里 ⇒ 那张工具卡（[landingTool]，往上翻读到它那一行才有）。 */
+    private var landingKey: String? = null
+    private var landingTool: String? = null
+
+    /**
+     * 从搜内容的一处命中打开：[offset] 是命中那条记录那一行的字节起点，[tool] 是它落在哪次工具调用的卡里（缺 ⇒ 它自己那张卡）。
+     * 还没挂上 ⇒ 挂上时从那里读；已经挂着 ⇒ 撤掉重挂一次，从那里读（见 [jumpLocked]）。
+     */
+    fun jump(
+        offset: Long,
+        tool: String?,
+    ) {
+        val s = sid ?: return
+        jumpAt = offset
+        landingTool = tool
+        landingKey = null
+        val old = follow ?: return
+        old.cancel()
+        attached = false
+        syncHold()
+        follow =
+            scope.launch {
+                old.join()
+                attach(s)
+            }
+    }
+
     /**
      * 这条会话被顶替了（清空之后同一个进程另起一份记录，那台在 `session_removed.by` 里说是哪一条）⇒ 跟过去：换 sid、从新记录读起；
      * 旧的那条照旧在会话列表里（已结束）。
@@ -254,6 +287,8 @@ class ChatSession(
             tailLines = PAGE_LINES
             anchorOffset = null
             anchorPath = null
+            landingKey = null
+            landingTool = null
             body.reset(emptyList())
             board.clear()
             _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
@@ -544,8 +579,9 @@ class ChatSession(
         }
         subscribed.await()
         fromSubscribed.await()
-        // 先上缓存（离线也看得到上次那几条），再跟那台对齐；刚起的那条没有可上的。
-        if (!fresh) lock.withLock { restoreLocked(s) }
+        val at = jumpAt.also { jumpAt = null }
+        // 先上缓存（离线也看得到上次那几条），再跟那台对齐；刚起的那条没有可上的。从一处命中打开 ⇒ 缓存里那一屏不上（只挂回待发）。
+        if (!fresh) lock.withLock { if (at == null) restoreLocked(s) else restorePendingLocked(s) }
         cache.viewed(s)
         launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
         launch {
@@ -564,7 +600,7 @@ class ChatSession(
         path = p
         launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
-        var loaded = lock.withLock { reloadLocked(p) }
+        var loaded = lock.withLock { if (at == null) reloadLocked(p) else jumpLocked(p, at) }
 
         suspend fun take(e: Event) =
             lock.withLock {
@@ -706,6 +742,50 @@ class ChatSession(
             publishLocked()
         }
         return ok
+    }
+
+    /**
+     * 从一处命中读起：第一问 `history-read {at}` 读命中那一页、先上屏（落点是它的第一张卡）；再往下读到尾，交读到的行数问 `history-tail` 拿续点。
+     * 尾段起点正好是 [at]、终点正好是读到的那里 ⇒ 读过的就是尾段，照它记续点、换缓存；对不上（这当中记录变了）⇒ 照那几行读尾段（[reloadLocked]）。
+     * 之后往上翻、跟流、断线重接都照旧：尾段就是从命中那一行起的那几行（[tailLines]）。没读成 ⇒ `false`（那一句已上屏）。
+     */
+    private suspend fun jumpLocked(
+        p: String,
+        at: Long,
+    ): Boolean {
+        val s = sid ?: return false
+        val data = ask(HistoryRead.COMMAND, HistoryRead.args(p, at, Long.MAX_VALUE)) ?: return false
+        val first = cut(data, Long.MAX_VALUE) ?: return false.also { readFailed(unreadableReply(machine, HistoryRead.COMMAND, data.toString()).text) }
+        head = at
+        take(first.records) { body.reset(it) }
+        landingKey = body.units().firstOrNull()?.key
+        publishLocked()
+        val below =
+            if (first.eof) {
+                emptyList()
+            } else {
+                val read = readRange(p, first.next, Long.MAX_VALUE) ?: return false
+                take(read.records) { body.append(it) }
+                read.pages
+            }
+        val pages = listOf(RawPage(at, first.next, first.rows)) + below
+        // 读到的可计行（残尾那一行没有 `end`，不算）。
+        tailLines = pages.sumOf { page -> page.rows.count { (it as? Map<*, *>)?.get("end") != null } }
+        val reply = ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines)) ?: return false
+        val t = HistoryTail.of(reply) ?: return false.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, reply.toString()).text) }
+        if (t.splitAt != at || t.end != pages.last().end) {
+            anchorOffset = null
+            return reloadLocked(p)
+        }
+        val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
+        cache.replace(s, pages, anchor)
+        nextSeq = anchor.seq
+        anchorOffset = anchor.offset
+        anchorPath = anchor.path
+        anchorMark = anchor.mark
+        _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
+        publishLocked()
+        return true
     }
 
     /**
@@ -873,7 +953,9 @@ class ChatSession(
             scope.launch { cache.forget(seen.map { it.localId }) }
         }
         val local = outgoing.map { RenderUnit.UserText(it.localId, it.text, null, it.delivery, it.deliveryText) }
-        _state.value = _state.value.copy(units = body.units() + local)
+        val units = body.units()
+        val landing = landingTool?.let { t -> units.firstOrNull { it is RenderUnit.ToolCall && it.toolUseId == t }?.key } ?: landingKey
+        _state.value = _state.value.copy(units = units + local, landing = landing)
     }
 
     companion object {
