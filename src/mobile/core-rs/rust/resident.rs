@@ -13,7 +13,7 @@ use deploy::machine::{fold, product, Entry, Fact};
 use cmd_wire::frame::Frame;
 use resident_client::book::SessionBook;
 use resident_client::client::CallError;
-use resident_client::live::{LiveBoard, LiveCards};
+use resident_client::live::{Board, LiveCards};
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
 };
@@ -180,7 +180,7 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
 #[derive(Default)]
 pub struct Folds {
     book: SessionBook,
-    board: LiveBoard,
+    board: Board,
 }
 
 impl Folds {

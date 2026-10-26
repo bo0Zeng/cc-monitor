@@ -44,7 +44,7 @@ fn card(sid: &str, no: u64, rid: &str, text: &[&str], run: Option<&str>) -> Vec<
     out
 }
 
-fn texts(b: &LiveBoard, sid: &str, run: Option<&str>) -> Vec<Vec<Option<String>>> {
+fn texts(b: &Board, sid: &str, run: Option<&str>) -> Vec<Vec<Option<String>>> {
     b.cards_of(sid, run)
         .cards
         .iter()
@@ -54,7 +54,7 @@ fn texts(b: &LiveBoard, sid: &str, run: Option<&str>) -> Vec<Vec<Option<String>>
 
 #[test]
 fn one_card_grows_block_by_block_and_ends_awaiting_the_record() {
-    let mut b = LiveBoard::default();
+    let mut b = Board::default();
     let fs = card("s1", 7, "m1", &["你", "好"], None);
     for x in &fs[..3] {
         assert_eq!(b.apply(x), Some(("s1".into(), None)));
@@ -75,7 +75,7 @@ fn one_card_grows_block_by_block_and_ends_awaiting_the_record() {
 
 #[test]
 fn an_open_replaces_the_whole_card_and_a_close_takes_it_away() {
-    let mut b = LiveBoard::default();
+    let mut b = Board::default();
     for x in card("s1", 7, "m1", &["a"], None) {
         b.apply(&x);
     }
@@ -92,7 +92,7 @@ fn an_open_replaces_the_whole_card_and_a_close_takes_it_away() {
 
 #[test]
 fn a_frame_that_does_not_follow_hides_the_card_until_the_next_whole_one() {
-    let mut b = LiveBoard::default();
+    let mut b = Board::default();
     let fs = card("s1", 7, "m1", &["a", "b", "c"], None);
     b.apply(&fs[0]);
     assert!(b.apply(&fs[2]).is_some(), "跳过了 n = 1 ⇒ 那张撤下");
@@ -105,7 +105,7 @@ fn a_frame_that_does_not_follow_hides_the_card_until_the_next_whole_one() {
 
 #[test]
 fn a_sub_run_card_lives_under_its_run_and_cards_keep_their_arrival_order() {
-    let mut b = LiveBoard::default();
+    let mut b = Board::default();
     for x in &card("s1", 3, "r", &["子"], Some("a1"))[..2] {
         assert_eq!(b.apply(x), Some(("s1".into(), Some("a1".into()))));
     }
@@ -123,7 +123,7 @@ fn a_sub_run_card_lives_under_its_run_and_cards_keep_their_arrival_order() {
 
 #[test]
 fn dropping_a_session_or_clearing_says_which_places_changed() {
-    let mut b = LiveBoard::default();
+    let mut b = Board::default();
     b.apply(&card("s1", 1, "m", &[], None)[0]);
     b.apply(&card("s1", 2, "m", &[], Some("a1"))[0]);
     b.apply(&card("s2", 3, "m", &[], None)[0]);
@@ -137,7 +137,7 @@ fn dropping_a_session_or_clearing_says_which_places_changed() {
 
 #[test]
 fn a_wild_block_number_is_taken_as_not_following() {
-    let mut b = LiveBoard::default();
+    let mut b = Board::default();
     b.apply(&card("s1", 1, "m", &[], None)[0]);
     b.apply(&f(serde_json::json!({"sid":"s1","card":1,"n":1,"op":"block","i":1u64 << 40,"block":"text"})));
     assert!(b.is_empty());

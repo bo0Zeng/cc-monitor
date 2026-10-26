@@ -63,12 +63,12 @@ struct Card {
 
 /// 一台的活卡板（见模块头注）。
 #[derive(Debug, Default)]
-pub struct LiveBoard {
+pub struct Board {
     cards: BTreeMap<u64, Card>,
     born: u64,
 }
 
-impl LiveBoard {
+impl Board {
     /// **一帧一步**（全仓唯一的折法）。变了 ⇒ 哪个会话哪个运行（照 [`Self::cards_of`] 交那一份整份）；没变 ⇒ `None`。
     pub fn apply(&mut self, f: &LiveCard) -> Option<Where> {
         let at = (f.sid.clone(), f.run.clone());

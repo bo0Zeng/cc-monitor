@@ -207,7 +207,7 @@ struct Inner {
     /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
     kept_moved: bool,
     /// 每台的活卡板（端核心那一份折法，键 = origin 线上串）：界面收的是折好的整份。那台看不见了 ⇒ 清空。
-    live: HashMap<String, resident_client::live::LiveBoard>,
+    live: HashMap<String, resident_client::live::Board>,
 }
 
 /// 替界面向那台退订终端画面的那条帧命令（后端 `control/terminal_follow.rs::UNFOLLOW`）。
