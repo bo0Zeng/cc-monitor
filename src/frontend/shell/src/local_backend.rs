@@ -1389,7 +1389,7 @@ pub(crate) fn local_witness(
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
-/// 10a：`inbound_client::local_client()` 今天的生产消费者**只有读**（`backend_status` 问「通道在不在」）。
+/// 10a：`inbound_client::local_client()` 的生产消费者**只有读**（`backend_status` 问「通道在不在」）。
 /// **一条入方向命令都还没有人从本机发出去** —— 那是 P3 刀 2/3 的活。
 /// 「通道在」与「控制面走通了」是两件事，别把前者当成后者的证据。
 ///

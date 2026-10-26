@@ -131,10 +131,8 @@ mod spawn_managed;
 mod sftp_pool;
 // 远端自部署：照本机常驻后端出的计划往那台放字节（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）。
 mod deploy;
-// SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
-// `remote.enabled = true` 时，stream_source::run 作为**附加**数据源与本机那条流
-// 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。本机会话内容也经本模块的
-// `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
+// 会话流只读本机后端那一条：各台的常驻流归本机后端，那台流上的事由它原样转来（`relayed`），
+// 本模块按那台分到同一个收口（`LineIntake` / `consume` → flush_lines → batch_to_payloads → on_line_batch_awaited）；
 // 远端行带 origin=host 标签。
 // 问自己放下去的那份后端一次（帧命令的 CLI 面）：本机后端自举那一问。
 mod backend_once;

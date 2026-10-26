@@ -1255,7 +1255,7 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
 /// 「那台连没连着」那条流的一格 ⇒ 窗口画成什么：monitor 说连着 · 在重连 · 一轮没连上照说；
 /// 第 0 跳（窗口自己和 monitor 之间那对管子）断了 ⇒ 不是「重新连接中」（没有谁在重连），是和 monitor 断了。期望手写。
 #[test]
-fn the_link_stream_tells_a_gone_monitor_apart_from_a_reconnecting_machine() {
+fn a_gone_monitor_is_told_apart_from_a_reconnecting_machine() {
     use comms_inward::chan::wire::{HopFault, HopId, Item};
     let unseen = |idx: u8, tag: &'static str, why: HopFault| Item::Unseen {
         at: HopId { idx, tag },
