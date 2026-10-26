@@ -42,6 +42,9 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
     asks_moved: control::asks::moved_rx,
 };
 
+/// 答题 hook 判「终端那边答了」读的那一处：活会话表（hook 在 control 层，够不着 history，由这里交进去）。
+const HOOK_STATES: control::asks::hook::StatesOf = history::live_table::states_in;
+
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
 
@@ -172,9 +175,7 @@ async fn main() {
             // 后端问后端：问这台常驻一条帧命令（只问常驻，不在这里起冷的顶上）。
             Some("--resident-call") => control::resident::call(&args[1..], z).await,
             // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
-            Some("--answer-hook") => {
-                control::asks::hook::run(&args, history::live_table::states_in).await
-            }
+            Some("--answer-hook") => control::asks::hook::run(&args, HOOK_STATES).await,
             Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
             // 部署那一趟：暂存区里新传上去的那一份自己核字节、换进落点（`control/place_self.rs`）。
             Some("--place-self") => control::place_self::run(&own),
