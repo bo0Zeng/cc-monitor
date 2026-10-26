@@ -244,3 +244,35 @@ fn answer_without_a_slice_never_asks_pb() {
     assert_eq!((out.workspace, out.slice), (None, None));
     assert_eq!(out.refs, vec![Vec::new(), Vec::new()], "一段对一段");
 }
+
+/// 真起一次（假 pb 插件）：`dump --refs <片> <工作区>`、正文从标准输入进去，回的那一份原样交回。
+#[test]
+fn run_refs_feeds_the_text_on_stdin_and_hands_back_pbs_answer() {
+    let d = fixture::scratch("refs-run");
+    let entry = fixture::fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
+    let ws = fixture::workspace(&d.join("ws"), &fixture::dump("/synthetic"));
+    let reply = pb_reply(json!([{"start": 2, "end": 4, "ids": ["A1"]}]));
+    std::fs::write(ws.join("refs.json"), reply.to_string()).unwrap();
+    let text = format!("看 A1{SEAM}😀 第二段");
+    let got = crate::plan::dump::run_refs(&entry, &ws, "alpha", &text);
+    assert_eq!(got, Some(reply));
+    let ws_s = ws.to_string_lossy().to_string();
+    assert_eq!(
+        fixture::runs(&d.join("pb")),
+        vec![vec![
+            "dump".to_string(),
+            "--refs".into(),
+            "alpha".into(),
+            ws_s
+        ]]
+    );
+    assert_eq!(
+        std::fs::read_to_string(d.join("pb/stdin.txt")).unwrap(),
+        text,
+        "正文从标准输入进去（UTF-8 原样）"
+    );
+    // pb 起不来 · 退出码不是 0 ⇒ 没有答案（那一批回空）。
+    let bad = fixture::fake_pb(&d.join("pb-bad"), crate::plan::locate::PLUGIN_NAME, Some(1));
+    assert_eq!(crate::plan::dump::run_refs(&bad, &ws, "alpha", &text), None);
+    let _ = std::fs::remove_dir_all(&d);
+}
