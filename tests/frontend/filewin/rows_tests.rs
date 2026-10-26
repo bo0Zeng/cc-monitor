@@ -116,8 +116,9 @@ fn a_non_virtual_scroll_area_materializes_every_single_row() {
     let ctx = egui::Context::default();
     let _ = render_headless(&ctx, &rows(64), screen(), 0.0);
 
-    // 10 万行走不虚拟的那条路，量到 83.6 ms/帧 —— 这里只数行数，不计时。
-    let n = 100_000;
+    // 不虚拟的那条路逐行都画，墙钟随 n 线性涨（10 万行量到 83.6 ms/帧，整条二十多秒）—— 这里只数行数，不计时。
+    // 两万行就够：一屏只画几十行，两万行比它多两个数量级以上，对照组照样分得出两条路；再多只多花时间、不多证一样。
+    let n = 20_000;
     let ctrl = render_headless_nonvirtual(&ctx, &rows(n), screen());
     assert_eq!(
         ctrl.rows_materialized, n,
@@ -126,10 +127,10 @@ fn a_non_virtual_scroll_area_materializes_every_single_row() {
 
     let virt = render_headless(&ctx, &rows(n), screen(), 0.0);
     assert_eq!(virt.total_rows, ctrl.total_rows);
-    // 两条路在**同一个 n** 上的差距：至少三个数量级。
+    // 两条路在**同一个 n** 上的差距：至少 200 倍 —— 虚拟那条路画到 100 行以上就红，门槛与原先 10 万行 · 1000 倍同一处。
     assert!(
-        ctrl.rows_materialized >= virt.rows_materialized * 1_000,
-        "虚拟 {} 行 vs 不虚拟 {} 行 —— 差距不到 1000 倍，尺子可疑",
+        ctrl.rows_materialized >= virt.rows_materialized * 200,
+        "虚拟 {} 行 vs 不虚拟 {} 行 —— 差距不到 200 倍，尺子可疑",
         virt.rows_materialized,
         ctrl.rows_materialized
     );
