@@ -1085,7 +1085,8 @@ export class TabManager {
       const here = new Map([...this.store.tabs.values()].map((t) => [t.sessionId, t.origin]));
       const got = await migrateTabGroups(old, here, {
         make: (name) => book.make(name),
-        annotate: (origin, sid, patch) => book.member(origin, sid, patch),
+        join: (origin, sid, group) => book.move(origin, sid, group, null),
+        pin: (origin, sid) => book.pin(origin, sid, true),
         dropOld: () => patchConfig([removeAt(["tabCollections"]), removeAt(["tabBar", "groupOf"]), removeAt(["tabBar", "pinned"])]),
       });
       if (got.collapsed.length > 0) await this.prefs.collapseMigrated(got.collapsed);

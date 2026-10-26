@@ -13,17 +13,17 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>(
         "删一条历史注解",
     ),
-    // **组**（`history/groups.rs`）：组本身住家那一台的注解文件 `groups` 那一节，组员与固定是会话注解的两格（挪成员走 `history-annotate`）。
+    // **组**（`history/groups.rs`）：组跟着组员走，每台注解文件的 `groups` 那一节只记这台有组员的那一片（名字带起名时刻，A95-3）；固定是会话注解的一格。
     //   这台那一半读一份小文件 ＋ 活会话表 ⇒ 阻塞档；几台并成一份由这台自己扇出（本机同进程、别的台经 `--resident-call` 问它的常驻）⇒ 异步档；
-    //   建 · 改名 · 解散只改家在这台的 ⇒ 阻塞档（同注解那两条）。
+    //   写：进出组只写组员那台，改名 · 解散由这台扇出给各片 ⇒ 异步档（扇出要 tokio 的反应堆）。
     crate::wire::typed::blocking::<crate::history::groups::GroupsHereCmd>(
-        "这台的组那一半：家在这台的组 ＋ 带组或固定的会话",
+        "这台的组那一半：这台有组员的那几片 ＋ 带组或固定的会话",
     ),
     crate::wire::typed::asynchronous::<crate::history::groups::GroupsReadCmd>(
         "问到各台的组那一半、并成一份",
     ),
-    crate::wire::typed::blocking::<crate::history::groups::GroupsWriteCmd>(
-        "建 · 改名 · 解散家在这台的组",
+    crate::wire::typed::asynchronous::<crate::history::groups::GroupsWriteCmd>(
+        "建组 · 进出组 · 改名与解散扇出给各片",
     ),
     // agent 自问（`history/session_self.rs`）：调用进程往上找这台的哪一条会话，组转给常驻问到各台 ⇒ 异步档；一次性 CLI 面 `--session-self`。
     crate::wire::typed::asynchronous::<crate::history::session_self::SessionSelfCmd>(

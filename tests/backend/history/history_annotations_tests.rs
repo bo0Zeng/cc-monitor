@@ -273,55 +273,43 @@ fn patch_semantics_match_what_the_monitor_did() {
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 
-/// 组员关系与固定（`join` · `leave` · `pinned`）：进的不重记 · 出的摘掉 · 同一组既进又出 ⇒ 出 · 别的格不动；
-/// 都摘光了盘上那两格也没了；组 id 形状不对 ⇒ 拒、文件不动；家在这台的组那一节写注解时原样留着。
+/// 固定是会话上的一格（`pinned`）：翻过去 · 翻回来，别的格不动，摘光了盘上那一格也没了；组那一节写注解时原样留着。
+/// 进出组不走这里（`groups-write move`，组员关系与那一片的组记录同一把锁里一起改）：patch 带 `join` · `leave` ⇒ 拒、文件不动。
 #[test]
-fn group_membership_and_pin_are_two_cells_on_the_session() {
+fn pin_is_a_cell_on_the_session_and_membership_is_not_patched_here() {
     let p = temp_copy("groups");
     let sid = "0000aaaa-0000-4000-8000-000000000001";
     let mut raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    raw["groups"] = json!({"g1": {"name": "开发", "made": 1}});
+    raw["groups"] = json!({"g1": {"name": "开发", "made": 1, "named": 1}});
     std::fs::write(&p, serde_json::to_vec(&raw).unwrap()).unwrap();
     let e = answer_annotate_at(
         &own_of(&p),
-        &json!({"sid": sid, "patch": {"join": ["g1", "g2", "g1"], "pinned": true}}),
+        &json!({"sid": sid, "patch": {"pinned": true}}),
         7,
     )
     .unwrap();
-    assert_eq!(e["entry"]["groups"], json!(["g1", "g2"]));
     assert_eq!(e["entry"]["pinned"], true);
     assert_eq!(e["entry"]["customTitle"], "占位标题一", "别的格不动");
-    let e = answer_annotate_at(
-        &own_of(&p),
-        &json!({"sid": sid, "patch": {"join": ["g3"], "leave": ["g2", "g3"]}}),
-        8,
-    )
-    .unwrap();
-    assert_eq!(e["entry"]["groups"], json!(["g1"]), "既进又出 ⇒ 出");
     answer_annotate_at(
         &own_of(&p),
-        &json!({"sid": sid, "patch": {"leave": ["g1"], "pinned": false}}),
+        &json!({"sid": sid, "patch": {"pinned": false}}),
         9,
     )
     .unwrap();
     let disk: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    assert!(disk["entries"][sid].get("groups").is_none(), "{disk}");
     assert!(disk["entries"][sid].get("pinned").is_none(), "{disk}");
     assert_eq!(disk["groups"]["g1"]["name"], "开发", "组那一节原样");
     let before = std::fs::read(&p).unwrap();
-    assert_eq!(
-        answer_annotate_at(
-            &own_of(&p),
-            &json!({"sid": sid, "patch": {"join": ["g 1"]}}),
-            10
-        )
-        .unwrap_err()
-        .code,
-        "bad_args"
-    );
+    for patch in [json!({"join": ["g1"]}), json!({"leave": ["g1"]})] {
+        assert_eq!(
+            answer_annotate_at(&own_of(&p), &json!({"sid": sid, "patch": patch}), 10)
+                .unwrap_err()
+                .code,
+            "bad_args",
+            "{patch}"
+        );
+    }
     assert_eq!(std::fs::read(&p).unwrap(), before);
-    let (_, book) = load_all_at(&p).unwrap();
-    assert_eq!(book["g1"].name, "开发");
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 

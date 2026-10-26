@@ -105,7 +105,7 @@ function rig(n: number, grouped = 0): Rig {
   // 组表只有 `{id, name}`；前 `grouped` 个 tab 自己带组 id。
   for (const sid of store.orderedIds.slice(0, grouped)) store.tabs.get(sid)!.group = "c1";
   const prefs = {
-    collections: grouped > 0 ? [{ id: "c1", name: "组一", home: null, counts: [] }] : [],
+    collections: grouped > 0 ? [{ id: "c1", name: "组一", counts: [] }] : [],
     dissolveGroup: vi.fn().mockResolvedValue(undefined),
     renameGroup: vi.fn().mockResolvedValue(undefined),
   };
@@ -290,7 +290,7 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
   });
   it("组与散的混排：组在它第一个组员那一格（两个组，第二个是后建的、组员在前面那些之后）", () => {
     const r = make(6, 2);
-    r.prefs.collections.push({ id: "c2", name: "组二", home: null, counts: [] });
+    r.prefs.collections.push({ id: "c2", name: "组二", counts: [] });
     r.store.tabs.get("s2")!.group = "c2";
     r.view.refresh();
     // 栏顶一排 · 需手动 · 离线条 · 列表四块恒在；组与散 tab 都在列表里。

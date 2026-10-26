@@ -151,7 +151,7 @@ fn annotations_moving_ring_the_list_node() {
     assert!(list_rang(&mut list), "隐藏规则动了 ⇒ 响");
 }
 
-/// ★ 注解文件重读时这台的组那一半变了（会话进出组 · 固定 · 家在这台的组建 · 改名 · 解散）⇒ 推一帧 `changed {groups}`；
+/// ★ 注解文件重读时这台的组那一半变了（会话进出组 · 固定 · 这台那几片的组建 · 改名 · 解散）⇒ 推一帧 `changed {groups}`；
 /// 头一次只记下；只改了名 · 星标（组那一半没变）⇒ 不推。
 #[test]
 fn the_groups_half_moving_pushes_changed_groups_once() {
@@ -195,7 +195,7 @@ fn the_groups_half_moving_pushes_changed_groups_once() {
         },
     );
     state.reload_annotations((one(&["g1"], true), book.clone()), &mut sink);
-    assert_eq!(groups_pushed(&mut rx), 1, "家在这台的组建了");
+    assert_eq!(groups_pushed(&mut rx), 1, "这台那一片的组建了");
     state.reload_annotations((one(&["g1"], true), book), &mut sink);
     assert_eq!(groups_pushed(&mut rx), 0, "没变不推");
 }
