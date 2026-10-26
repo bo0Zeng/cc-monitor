@@ -265,16 +265,17 @@ export class MachineCard {
     legend.appendChild(this.nameSpan);
 
     // 删除按钮（legend 右侧）
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className =
-      "settings-btn remote-machine-remove";
-    removeBtn.textContent = copyText("machineCard.build.delete");
-    removeBtn.title = copyText("machineCard.build.deleteHint");
-    removeBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation(); // 别让删除点击冒泡到 legend 触发折叠
-      this.hooks.onRemove(this);
+    const removeBtn = button({
+      label: copyText("machineCard.build.delete"),
+      kind: "danger-text",
+      size: "compact",
+      hint: copyText("machineCard.build.deleteHint"),
+      onClick: (ev) => {
+        ev.stopPropagation(); // 别让删除点击冒泡到 legend 触发折叠
+        this.hooks.onRemove(this);
+      },
     });
+    removeBtn.classList.add("remote-machine-remove");
     legend.appendChild(removeBtn);
 
     // 点 legend 折叠/展开（删除按钮已 stopPropagation；再防御性排除一次）。
