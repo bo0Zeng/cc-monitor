@@ -12,6 +12,7 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
+import com.ccmonitor.mobile.ui.Wires
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -164,6 +165,19 @@ class ChatCacheTest {
             assertTrue("第一页随 history-tail 来", link.calls("history-read").isEmpty())
             assertEquals(listOf("u1", "a1#0", "u2"), s.keys())
             assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f1"), cache.anchors["s1"])
+        }
+
+    @Test
+    fun `照续点里的路径接上、目录还不知道 ⇒ 目录取读 chip 那一趟事实里的 projectDir，不整份问 history-list`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u1", "你好"), reply("a1", "在")))
+            link.answer = { cmd, args -> if (cmd == "history-facts") Reply.Ok(Wires.facts("projectDir" to "/h/proj")) else file.answer(cmd, args) ?: Reply.LinkDown }
+            val s = open(link, MemCache().apply { seed(human("u1", "你好"), reply("a1", "在")) })
+            runCurrent()
+            assertTrue(link.calls("history-list").isEmpty())
+            assertEquals("按续点里的路径问", listOf(mapOf("path" to "/p/s1.jsonl")), link.calls("history-facts"))
+            assertEquals("/h/proj", s.state.value.cwd)
         }
 
     @Test
