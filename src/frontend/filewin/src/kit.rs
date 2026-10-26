@@ -1209,6 +1209,16 @@ pub fn dialog(
     hit
 }
 
+/// 对话框里那个单行输入框：框刚摆出来（没有谁拿着焦点）就把焦点给它；回 ＝ 在它里面按了回车。
+pub fn dialog_field(ui: &mut Ui, text: &mut String) -> bool {
+    let r = ui.text_edit_singleline(text);
+    let entered = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+    if !entered && ui.memory(|m| m.focused().is_none()) {
+        r.request_focus();
+    }
+    entered
+}
+
 /// 对话框里那一块清单的一行（图标 ＋ 名字 ｜ 右端一格次级字）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListRow {

@@ -443,8 +443,7 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
         lanes()
     );
     // 窗口那一侧**只经这一个落点**拿那个数，不自己再写一份。
-    let shell =
-        guard_core::production_code(include_str!("../../../src/frontend/filewin/src/shell.rs"));
+    let shell = crate::shell::tests::shell_module_production_code();
     assert_eq!(
         shell.matches("transfer::lanes()").count(),
         1,
