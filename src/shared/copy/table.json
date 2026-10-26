@@ -26270,21 +26270,20 @@
     "beChore.relay.saidCovered": {
       "kind": "body",
       "role": "说明",
-      "zh": "贴了，但被 {project} 里的设置盖住了",
+      "zh": "已贴 · 被 {project} 里的设置盖过",
       "args": ["project"]
     },
     "beChore.relay.whyCovered": {
       "kind": "body",
       "role": "说明",
-      "zh": "{file} 自己写了上游地址 · 在该项目里起的会话写进记录才显示",
+      "zh": "{file} 自带上游地址 · 在该项目里起的会话写进记录才显示",
       "args": ["file"]
     },
     "beChore.sshd.name": {
       "kind": "title",
       "role": "标题",
       "zh": "该机的 sshd 不许端口转发",
-      "args": [],
-      "limited": ["sshd"]
+      "args": []
     },
     "beChore.sshd.loc": {
       "kind": "body",
@@ -26295,13 +26294,13 @@
     "beChore.sshd.said": {
       "kind": "body",
       "role": "说明",
-      "zh": "到该机的端口转发开不起来",
+      "zh": "到该机的端口转发无法开启",
       "args": []
     },
     "beChore.sshd.why": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 行 {line} 关掉了本地端口转发 · 从别处到该机的转发均开不起",
+      "zh": "{path} 行 {line} 关闭本地端口转发 · 从别处到该机的转发均无法开启",
       "args": ["path", "line"]
     },
     "beChore.sshd.stepOpen": {
@@ -26313,9 +26312,8 @@
     "beChore.sshd.stepReload": {
       "kind": "body",
       "role": "片段",
-      "zh": "存盘 · 重载 sshd 后生效",
-      "args": [],
-      "limited": ["sshd"]
+      "zh": "存盘 · 再重启 sshd",
+      "args": []
     },
     "beChore.hooks.name": {
       "kind": "title",

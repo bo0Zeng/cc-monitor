@@ -123,27 +123,25 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::
     }
 }
 
-/// 这台 sshd 的主配置住哪（Windows 的 OpenSSH 服务端住 `%ProgramData%\ssh\`）。
+/// 这台 sshd 的主配置住哪。
+#[cfg(unix)]
 fn sshd_config_path() -> Option<std::path::PathBuf> {
-    if cfg!(windows) {
-        std::env::var_os("ProgramData")
-            .map(|d| std::path::PathBuf::from(d).join("ssh").join("sshd_config"))
-    } else {
-        Some(std::path::PathBuf::from("/etc/ssh/sshd_config"))
-    }
+    Some(std::path::PathBuf::from("/etc/ssh/sshd_config"))
+}
+
+/// Windows 的 OpenSSH 服务端这里不看（说不清 ⇒ 不出那一件）。
+#[cfg(not(unix))]
+fn sshd_config_path() -> Option<std::path::PathBuf> {
+    None
 }
 
 /// 读真文件、列真目录走 [`super::sshd::forwarding_off`]（主配置不在 = 没装 sshd ⇒ `None`）。
-/// 读不到的（不少发行版这份只许 root 读）不出声：每次出足迹都会走到，说不清就不报。
+/// 读不到的（不少发行版这份只许 root 读）留一行日志、不报这一件（[`read_small`]）。
 pub(crate) fn sshd_at(main: &Path) -> Option<super::sshd::ForwardingOff> {
     if !main.exists() {
         return None;
     }
-    let read = |p: &Path| {
-        crate::platform::fs::Ro::read_regular_capped(p, READ_CAP)
-            .ok()
-            .and_then(|b| String::from_utf8(b).ok())
-    };
+    let read = |p: &Path| read_small(p);
     let list = |dir: &Path| match crate::platform::fs::Ro::read_dir(dir) {
         Ok(it) => Some(it.filter_map(|e| Some(e.ok()?.path())).collect()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
