@@ -72,6 +72,6 @@ export function putProfileAccounts(d: MachineDisk): void {
 export function putProfiles(d: MachineDisk, look: ProfilesLook): void {
   if (look === "empty") return;
   d.files[PROFILES_FILE] = look === "syntax" ? BOOK(false).replace("[pcc]", "[pcc") : BOOK(look === "broken");
-  if (look === "edited") d.files[".cc-monitor/profiles-written.json"] = JSON.stringify({ fingerprint: "0-0000000000000000" }) + "\n";
+  if (look === "edited") d.files[".cc-monitor/profiles-written.json"] = JSON.stringify({ rev: "0-0000000000000000" }) + "\n";
   if (look === "migrated") d.files[".cc-monitor/profiles-migrated.json"] = JSON.stringify({ count: 11, path: `${HOME}/.cc-monitor/profiles.toml`, skipped: [] }) + "\n";
 }

@@ -15039,7 +15039,7 @@ data class ProfilesBook(
     val home: String,
     val path: String,
     val exists: Boolean,
-    val fingerprint: String?,
+    val rev: String?,
     val editedAt: String?,
     val fileProblem: ProfileProblem?,
     val profiles: List<ProfileRow>,
@@ -15059,7 +15059,7 @@ data class ProfilesBook(
             Field("home", { Str }, optional = false, nullable = false),
             Field("path", { Str }, optional = false, nullable = false),
             Field("exists", { Bool }, optional = false, nullable = false),
-            Field("fingerprint", { opt(Str) }, optional = false, nullable = true),
+            Field("rev", { opt(Str) }, optional = false, nullable = true),
             Field("editedAt", { opt(Str) }, optional = false, nullable = true),
             Field("fileProblem", { opt(ProfileProblem.ADAPTER) }, optional = false, nullable = true),
             Field("profiles", { arr(ProfileRow.ADAPTER) }, optional = false, nullable = false),
@@ -15072,7 +15072,7 @@ data class ProfilesBook(
             Field("tmux", { opt(Bool) }, optional = false, nullable = true),
             ),
             { a -> ProfilesBook(a[0] as String, a[1] as String, a[2] as Boolean, a[3] as String?, a[4] as String?, a[5] as ProfileProblem?, a[6] as List<ProfileRow>, a[7] as List<ProfileRow>, a[8] as String, a[9] as String, a[10] as ProfilesMigrated?, a[11] as String, a[12] as List<String>, a[13] as Boolean?) },
-            { v -> arrayOf(v.home, v.path, v.exists, v.fingerprint, v.editedAt, v.fileProblem, v.profiles, v.seed, v.seedHint, v.seedCreate, v.migrated, v.binDir, v.accounts, v.tmux) },
+            { v -> arrayOf(v.home, v.path, v.exists, v.rev, v.editedAt, v.fileProblem, v.profiles, v.seed, v.seedHint, v.seedCreate, v.migrated, v.binDir, v.accounts, v.tmux) },
         )
     }
 }
@@ -15179,7 +15179,7 @@ data class ProfilesResolveReq(
 @Suppress("UNCHECKED_CAST")
 data class ProfilesWriteDone(
     val wrote: Boolean,
-    val fingerprint: String?,
+    val rev: String?,
     val reload: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -15188,11 +15188,11 @@ data class ProfilesWriteDone(
         val ADAPTER: JsonAdapter<ProfilesWriteDone> = obj(
             listOf(
             Field("wrote", { Bool }, optional = false, nullable = false),
-            Field("fingerprint", { opt(Str) }, optional = false, nullable = true),
+            Field("rev", { opt(Str) }, optional = false, nullable = true),
             Field("reload", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> ProfilesWriteDone(a[0] as Boolean, a[1] as String?, a[2] as String?) },
-            { v -> arrayOf(v.wrote, v.fingerprint, v.reload) },
+            { v -> arrayOf(v.wrote, v.rev, v.reload) },
         )
     }
 }
@@ -15200,7 +15200,7 @@ data class ProfilesWriteDone(
 @Suppress("UNCHECKED_CAST")
 data class ProfilesWriteReq(
     val changes: List<ProfileOp>,
-    val fingerprint: String?,
+    val ifRev: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15208,10 +15208,10 @@ data class ProfilesWriteReq(
         val ADAPTER: JsonAdapter<ProfilesWriteReq> = obj(
             listOf(
             Field("changes", { arr(ProfileOp.ADAPTER) }, optional = false, nullable = false),
-            Field("fingerprint", { opt(Str) }, optional = false, nullable = true),
+            Field("ifRev", { opt(Str) }, optional = false, nullable = true),
             ),
             { a -> ProfilesWriteReq(a[0] as List<ProfileOp>, a[1] as String?) },
-            { v -> arrayOf(v.changes, v.fingerprint) },
+            { v -> arrayOf(v.changes, v.ifRev) },
         )
     }
 }
@@ -16638,23 +16638,6 @@ data class RotChoice(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class RotConflict(
-    val rev: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<RotConflict> = obj(
-            listOf(
-            Field("rev", { Str }, optional = false, nullable = false),
-            ),
-            { a -> RotConflict(a[0] as String) },
-            { v -> arrayOf(v.rev) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class RotDaySeg(
     val from: Long,
     val to: Long,
@@ -17384,6 +17367,23 @@ data class RotSeg(
             ),
             { a -> RotSeg(a[0] as String, a[1] as String, a[2] as Long) },
             { v -> arrayOf(v.from, v.to, v.v) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RotStale(
+    val rev: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RotStale> = obj(
+            listOf(
+            Field("rev", { Str }, optional = false, nullable = false),
+            ),
+            { a -> RotStale(a[0] as String) },
+            { v -> arrayOf(v.rev) },
         )
     }
 }

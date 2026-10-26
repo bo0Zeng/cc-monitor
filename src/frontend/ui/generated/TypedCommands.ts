@@ -269,10 +269,10 @@ import type { ResumeSpec } from "./ResumeSpec";
 import type { ResyncReq } from "./ResyncReq";
 import type { Resynced } from "./Resynced";
 import type { RotBadStrategy } from "./RotBadStrategy";
-import type { RotConflict } from "./RotConflict";
 import type { RotDone } from "./RotDone";
 import type { RotInUse } from "./RotInUse";
 import type { RotRefused } from "./RotRefused";
+import type { RotStale } from "./RotStale";
 import type { RotStrategyId } from "./RotStrategyId";
 import type { RotStrategyRev } from "./RotStrategyRev";
 import type { RotUnusable } from "./RotUnusable";
@@ -501,13 +501,13 @@ export interface TypedCommands {
   "rotation-facts": { req: RotationFactsReq; reply: RotationFactsReply; code: "bad_args" };
   "rotation-for-new": { req: RotationForNewReq; reply: RotDone; code: "bad_args" | "no_strategy" | "io_failed" };
   "rotation-reload": { req: RotationReloadReq; reply: RotDone; code: "bad_args" | "no_strategy" | "io_failed" };
-  "rotation-settings": { req: RotationSettingsReq; reply: RotStrategyRev; code: "bad_args" | "no_strategy" | "refused" | "conflict" | "io_failed" };
+  "rotation-settings": { req: RotationSettingsReq; reply: RotStrategyRev; code: "bad_args" | "no_strategy" | "refused" | "stale" | "io_failed" };
   "rotation-strategies": { req: RotationStrategiesReq; reply: RotationStrategiesReply; code: "bad_args" };
   "rotation-strategy-add": { req: RotationStrategyAddReq; reply: RotStrategyId; code: "bad_args" | "bad_strategy" | "io_failed" };
   "rotation-strategy-copy": { req: RotationStrategyCopyReq; reply: RotStrategyId; code: "bad_args" | "no_strategy" | "io_failed" };
   "rotation-strategy-delete": { req: RotationStrategyDeleteReq; reply: RotDone; code: "bad_args" | "no_strategy" | "in_use" | "io_failed" };
-  "rotation-strategy-rename": { req: RotationStrategyRenameReq; reply: RotStrategyId; code: "bad_args" | "no_strategy" | "conflict" | "io_failed" };
-  "rotation-strategy-tz": { req: RotationStrategyTzReq; reply: RotStrategyRev; code: "bad_args" | "no_strategy" | "conflict" | "io_failed" };
+  "rotation-strategy-rename": { req: RotationStrategyRenameReq; reply: RotStrategyId; code: "bad_args" | "no_strategy" | "stale" | "io_failed" };
+  "rotation-strategy-tz": { req: RotationStrategyTzReq; reply: RotStrategyRev; code: "bad_args" | "no_strategy" | "stale" | "io_failed" };
   "rotation-temp": { req: RotationTempReq; reply: RotationTempReply; code: "bad_args" | "no_session" | "not_listed" | "unusable" | "io_failed" };
   "rotation-try": { req: RotationTryReq; reply: RotationTryReply; code: "bad_args" | "bad_strategy" };
   "rotation-use": { req: RotationUseReq; reply: RotDone; code: "bad_args" | "no_session" | "no_strategy" | "io_failed" };
@@ -556,11 +556,11 @@ export interface RefusalData {
   "login-finish": { "bad_paste": LoginAgain; "refused": LoginAgain; "no_job": LoginAgain; "child_timed_out": LoginAgain };
   "login-start": { "not_found": LoginAgain; "unsupported": LoginAgain; "failed": LoginAgain };
   "machines-set": { "element_gone": Gone; "bad_machine": MachineFault };
-  "rotation-settings": { "refused": RotRefused; "conflict": RotConflict };
+  "rotation-settings": { "refused": RotRefused; "stale": RotStale };
   "rotation-strategy-add": { "bad_strategy": RotBadStrategy };
   "rotation-strategy-delete": { "in_use": RotInUse };
-  "rotation-strategy-rename": { "conflict": RotConflict };
-  "rotation-strategy-tz": { "conflict": RotConflict };
+  "rotation-strategy-rename": { "stale": RotStale };
+  "rotation-strategy-tz": { "stale": RotStale };
   "rotation-temp": { "unusable": RotUnusable };
   "rotation-use-now": { "unusable": RotUnusable };
   "session-open": { "bad_args": OpenRefusal; "unknown_agent": OpenRefusal; "bad_command": OpenRefusal; "no_dir": OpenRefusal; "account_unavailable": OpenRefusal; "place_unavailable": OpenRefusal; "bad_tmux_name": OpenRefusal; "tmux_taken": OpenRefusal; "record_gone": OpenRefusal; "already_live": OpenRefusal; "not_in_tmux": OpenRefusal; "wrong_owner": OpenRefusal; "unobservable": OpenRefusal; "fork_failed": OpenRefusal; "refused": OpenRefusal; "start_failed": OpenRefusal; "child_timed_out": OpenRefusal; "launch_pending": OpenRefusal; "no_strategy": OpenRefusal };
@@ -569,11 +569,4 @@ export interface RefusalData {
   "transfer-copy": { "exists": Conflicts };
   "transfer-download": { "exists": Conflicts };
   "transfer-upload": { "exists": Conflicts };
-}
-
-/** `changed` 帧里现算小成品的主题 ⇒ 那一份的类型（＝ 重问那条命令的回包，形状随那条命令的指纹核过）。 */
-export interface TopicProducts {
-  "quota": TypedCommands["quota-read"]["reply"];
-  "rotation_strategies": TypedCommands["rotation-strategies"]["reply"];
-  "tasks": TypedCommands["tasks-list"]["reply"];
 }

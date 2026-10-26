@@ -125,7 +125,7 @@ pub(crate) fn settings_with(
         .map_err(|r| RotationSettingsErr::Refused(refused_said(), r))?;
     if req.if_rev != sh.rev {
         return Err(RotationSettingsErr::Stale(
-            copy_text("beRotation.edit.conflict", &[]),
+            copy_text("beRotation.edit.stale", &[]),
             RotStale {
                 rev: sh.rev.clone(),
             },
@@ -543,7 +543,7 @@ pub(crate) fn rename_with(
         find(ctx, &req.id).ok_or_else(|| RotationStrategyRenameErr::NoStrategy(gone(&req.id)))?;
     if req.if_rev != sh.rev {
         return Err(RotationStrategyRenameErr::Stale(
-            copy_text("beRotation.edit.conflict", &[]),
+            copy_text("beRotation.edit.stale", &[]),
             RotStale {
                 rev: sh.rev.clone(),
             },
@@ -638,7 +638,7 @@ pub(crate) fn tz_with(
     }
     if req.if_rev != sh.rev {
         return Err(RotationStrategyTzErr::Stale(
-            copy_text("beRotation.edit.conflict", &[]),
+            copy_text("beRotation.edit.stale", &[]),
             RotStale {
                 rev: sh.rev.clone(),
             },
