@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1973,
+  "ceiling": 1947,
   "groups": [
     {
       "kind": "首登",
@@ -114,8 +114,8 @@
         ["src/frontend/ui/cards/speaker-bar.ts", "key", 7],
         ["src/frontend/ui/cards/subagent.ts", "branch", 1],
         ["src/frontend/ui/cards/subagent.ts", "key", 3],
-        ["src/frontend/ui/cc-bus-control.ts", "branch", 3],
-        ["src/frontend/ui/cc-bus-control.ts", "key", 17],
+        ["src/frontend/ui/cc-bus-control.ts", "branch", 1],
+        ["src/frontend/ui/cc-bus-control.ts", "key", 6],
         ["src/frontend/ui/cc-bus-hooks-reads.ts", "branch", 5],
         ["src/frontend/ui/cc-bus-hooks-reads.ts", "key", 3],
         ["src/frontend/ui/control-said.ts", "key", 2],
@@ -256,7 +256,7 @@
         ["src/frontend/ui/usage-hud.ts", "key", 6],
         ["src/frontend/ui/viewer-window-text.ts", "key", 5],
         ["src/frontend/ui/views/agent-window.ts", "key", 3],
-        ["src/frontend/ui/views/cc-bus-section.ts", "key", 20],
+        ["src/frontend/ui/views/cc-bus-section.ts", "key", 7],
         ["src/frontend/ui/views/command-bar.ts", "branch", 7],
         ["src/frontend/ui/views/command-bar.ts", "key", 1],
         ["src/frontend/ui/views/grid-monitor.ts", "key", 10],
