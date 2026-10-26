@@ -631,3 +631,28 @@ async fn a_reply_with_an_extra_key_still_parses() {
         .expect("多一格就拒了");
     assert_eq!(card["tokens"]["source"], "t");
 }
+
+/// ★ 插件这一版只读：看卡 · 装两条都拒（`refused`，说为什么），一跳也不往外问。
+#[tokio::test]
+async fn the_hub_refuses_a_plugin_without_asking_anyone() {
+    let (h, dyn_h) = here(&[]);
+    let t = table_with("devbox");
+    let r = remote(&[]);
+    let args = json!({ "kind": "plugin", "name": "github", "from": "devbox", "to": null,
+                       "tokens": { "source": "t", "target": null },
+                       "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
+    let want = (
+        "refused".to_string(),
+        copy_text("beExt.note.pluginReadOnly", &[]),
+    );
+    assert_eq!(
+        pv(&dyn_h, &args, &t, &r).await.expect_err("插件给看卡了"),
+        want
+    );
+    assert_eq!(
+        ap(&dyn_h, &args, &t, &r).await.expect_err("插件给装了"),
+        want
+    );
+    assert!(r.calls.lock().unwrap().is_empty(), "问了来源那台");
+    assert!(h.asked.lock().unwrap().is_empty(), "问了这台");
+}

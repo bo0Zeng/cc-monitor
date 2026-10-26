@@ -24,7 +24,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
+use super::asset_catalog::{self, Asset, Catalog, ExtKind};
 use super::skill_ledger::{Record, RecordReq};
 use crate::common::door::{self, Door, Refused};
 
@@ -40,16 +40,6 @@ pub enum ExtLoc {
     Project { dir: String },
 }
 
-/// 条目种类。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum ExtKind {
-    Skill,
-    Mcp,
-}
-
 /// 一格的态（闭集）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -62,8 +52,10 @@ pub enum ExtState {
     Differs,
     /// 哪儿都没有。
     Missing,
-    /// 用户级没有，只在项目里有。
+    /// 用户级没有（或关着），只在项目里有 / 开着。
     Project,
+    /// 装了、关着（只有插件有这一态）。
+    Off,
 }
 
 /// 装到一台时两头各在哪一级。
@@ -107,12 +99,18 @@ pub struct ExtPlace {
     pub at: ExtLoc,
     /// 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
     pub state: ExtState,
+    /// 这一处那一句（后端写好）。
+    pub said: String,
     /// skill：那一处的目录（「在文件窗口里打开」用）。
     pub dir: Option<String>,
     /// 这一处有「卸载」。
     pub uninstall: bool,
     /// 有它、却没有「卸载」时为什么。
     pub note: Option<String>,
+    /// 这一处自己的一句（插件：版本 · 开着 / 关着 · 出处）；别的种类没有。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub line: Option<String>,
 }
 
 /// 表里一台机器（一列）。
@@ -138,6 +136,8 @@ pub struct ExtMachine {
 pub struct ExtCell {
     /// 表上那个点。
     pub state: ExtState,
+    /// 那个点那一句（悬停 · 抽屉里那台那一行；后端写好）。
+    pub said: String,
     /// 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
     pub places: Vec<ExtPlace>,
     pub bring: Option<ExtBring>,
@@ -170,6 +170,9 @@ pub struct ExtBuiltin {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ExtRow {
     pub kind: ExtKind,
+    /// 种类那一格的字（后端写好）。
+    #[serde(rename = "kindSaid")]
+    pub kind_said: String,
     pub name: String,
     pub about: Option<String>,
     pub detail: Vec<ExtDetail>,
@@ -188,6 +191,69 @@ pub struct ExtList {
     pub machines: Vec<ExtMachine>,
     pub rows: Vec<ExtRow>,
     pub problems: Vec<String>,
+    /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+    pub legend: Vec<ExtLegend>,
+}
+
+/// 图例里一项。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ExtLegend {
+    pub state: ExtState,
+    pub said: String,
+}
+
+/// 一个点 / 一处那一句：「只在项目里」带上那几个项目。
+fn state_said(state: ExtState, places: &[ExtPlace]) -> String {
+    match state {
+        ExtState::Same => copy_text("beExt.state.same", &[]),
+        ExtState::Differs => copy_text("beExt.state.differs", &[]),
+        ExtState::Missing => copy_text("beExt.state.missing", &[]),
+        ExtState::Off => copy_text("beExt.state.off", &[]),
+        ExtState::Project => {
+            let dirs: Vec<&str> = places.iter().filter_map(|p| p.at.project()).collect();
+            copy_text(
+                "beExt.state.project",
+                &[("dirs", &dirs.join(&copy_text("beExt.list.sep", &[])))],
+            )
+        }
+    }
+}
+
+/// 种类那一格的字。
+fn kind_said(kind: ExtKind) -> String {
+    match kind {
+        ExtKind::Skill => copy_text("beExt.kind.skill", &[]),
+        ExtKind::Mcp => copy_text("beExt.kind.mcp", &[]),
+        ExtKind::Plugin => copy_text("beExt.kind.plugin", &[]),
+    }
+}
+
+/// 表下图例：四态，有插件行再加「关着」。
+fn legend_of(rows: &[ExtRow]) -> Vec<ExtLegend> {
+    let mut states = vec![
+        ExtState::Same,
+        ExtState::Differs,
+        ExtState::Missing,
+        ExtState::Project,
+    ];
+    if rows.iter().any(|r| r.kind == ExtKind::Plugin) {
+        states.push(ExtState::Off);
+    }
+    states
+        .into_iter()
+        .map(|state| ExtLegend {
+            state,
+            said: match state {
+                ExtState::Same => copy_text("beExt.legend.same", &[]),
+                ExtState::Differs => copy_text("beExt.legend.differs", &[]),
+                ExtState::Project => copy_text("beExt.legend.project", &[]),
+                ExtState::Off => copy_text("beExt.legend.off", &[]),
+                ExtState::Missing => copy_text("beExt.state.missing", &[]),
+            },
+        })
+        .collect()
 }
 
 /// 确认卡上一格待填（或沿用目标机已有的值）的值。
@@ -340,19 +406,11 @@ impl ExtLoc {
 }
 
 impl ExtKind {
-    /// 目录里那一格的写法（`asset_catalog::KINDS`）。
-    pub(crate) fn wire(self) -> &'static str {
-        match self {
-            ExtKind::Skill => KIND_SKILL,
-            ExtKind::Mcp => KIND_MCP,
-        }
-    }
-
     pub(crate) fn from_arg(args: &Value) -> Result<ExtKind, crate::wire::spec::Fail> {
         serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
             crate::wire::spec::Fail::new(
                 "bad_args",
-                crate::common::contract::malformed("`kind` must be skill or mcp"),
+                crate::common::contract::malformed("`kind` must be skill, mcp or plugin"),
             )
         })
     }
@@ -427,7 +485,7 @@ fn pick_project(m: &ExtMachine, like: Option<&str>) -> Option<String> {
 
 fn about_of(a: &Asset) -> Option<String> {
     let s = &a.summary;
-    if a.kind == KIND_SKILL {
+    if matches!(a.kind, ExtKind::Skill | ExtKind::Plugin) {
         return s
             .get("description")
             .and_then(Value::as_str)
@@ -449,10 +507,86 @@ fn about_of(a: &Asset) -> Option<String> {
     s.get("url").and_then(Value::as_str).map(str::to_string)
 }
 
+/// 插件组成那几样（`summary.parts` 的键），按抽屉里的次序。
+const PLUGIN_PARTS: &[&str] = &["skills", "commands", "agents", "hooks", "mcp"];
+
+/// 组成那一样在抽屉里的标签。
+fn part_label(key: &str) -> String {
+    match key {
+        "skills" => copy_text("beExt.part.skills", &[]),
+        "commands" => copy_text("beExt.part.commands", &[]),
+        "agents" => copy_text("beExt.part.agents", &[]),
+        "hooks" => copy_text("beExt.part.hooks", &[]),
+        _ => copy_text("beExt.part.mcp", &[]),
+    }
+}
+
+/// 插件：市场 · 版本 · 组成（每样一行：几个 ＋ 名字）。
+fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
+    let line = |label: String, value: String| ExtDetail { label, value };
+    let mut out = Vec::new();
+    if let Some(m) = s.get("market").and_then(Value::as_str) {
+        out.push(line(copy_text("beExt.detail.market", &[]), m.to_string()));
+    }
+    if let Some(v) = s.get("version").and_then(Value::as_str) {
+        out.push(line(copy_text("beExt.detail.version", &[]), v.to_string()));
+    }
+    for key in PLUGIN_PARTS {
+        let names: Vec<&str> = s["parts"][*key]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if names.is_empty() {
+            continue;
+        }
+        out.push(line(
+            part_label(key),
+            copy_text(
+                "beExt.detail.partValue",
+                &[
+                    ("n", &names.len().to_string()),
+                    ("names", &names.join(&copy_text("beExt.list.sep", &[]))),
+                ],
+            ),
+        ));
+    }
+    out
+}
+
+/// 插件那一处自己的一句：版本 · 开着 / 关着 · 出处（`summary.from` 的码在这里成字）。不是插件 ⇒ `None`。
+fn plugin_line(a: &Asset) -> Option<String> {
+    if a.kind != ExtKind::Plugin {
+        return None;
+    }
+    let s = &a.summary;
+    let on = if a.off {
+        copy_text("beExt.plugin.off", &[])
+    } else {
+        copy_text("beExt.plugin.on", &[])
+    };
+    let from = match s.get("from").and_then(Value::as_str) {
+        Some("managed") => copy_text("beExt.plugin.fromManaged", &[]),
+        Some("local") => copy_text("beExt.plugin.fromLocal", &[]),
+        Some("project") => copy_text("beExt.plugin.fromProject", &[]),
+        Some("user") => copy_text("beExt.plugin.fromUser", &[]),
+        _ => copy_text("beExt.plugin.fromManifest", &[]),
+    };
+    Some(match s.get("version").and_then(Value::as_str) {
+        Some(v) => copy_text(
+            "beExt.plugin.line",
+            &[("version", v), ("on", &on), ("from", &from)],
+        ),
+        None => copy_text(
+            "beExt.plugin.lineNoVersion",
+            &[("on", &on), ("from", &from)],
+        ),
+    })
+}
+
 fn detail_of(a: &Asset) -> Vec<ExtDetail> {
     let s = &a.summary;
     let line = |label: String, value: String| ExtDetail { label, value };
-    if a.kind == KIND_SKILL {
+    if a.kind == ExtKind::Skill {
         let n = |k: &str| s.get(k).and_then(Value::as_u64).unwrap_or(0).to_string();
         let mut out = vec![line(
             copy_text("beExt.detail.files", &[]),
@@ -468,6 +602,9 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
             ));
         }
         return out;
+    }
+    if a.kind == ExtKind::Plugin {
+        return plugin_detail(s);
     }
     // MCP：目录里那一份本来就不带密钥值（`asset_catalog::mcp_summary`），字段名是用户自己写在配置里的那几个。
     let mut out = Vec::new();
@@ -497,12 +634,25 @@ fn detail_of(a: &Asset) -> Vec<ExtDetail> {
 /// 这一级能不能往里写 / 从里删。用户级 MCP：那台有账号库（`shared` = 各账号共用一份）⇒ 写进共用的那一份、同步到所有号；
 /// 没有 ⇒ 它住 agent 自己的热状态文件（agent 自己一直在重写）⇒ 只读。
 pub(crate) fn writable(kind: ExtKind, at: &ExtLoc, shared: bool) -> Result<(), String> {
+    if let Some(why) = read_only(kind) {
+        return Err(why);
+    }
     match (kind, at) {
         (ExtKind::Mcp, ExtLoc::User) if !shared => {
             Err(copy_text("beExt.note.userMcpReadOnly", &[]))
         }
         _ => Ok(()),
     }
+}
+
+/// 整种只读（哪一级都不经 cc-monitor 写）⇒ 为什么。插件这一版只读。
+pub(crate) fn read_only(kind: ExtKind) -> Option<String> {
+    (kind == ExtKind::Plugin).then(|| copy_text("beExt.note.pluginReadOnly", &[]))
+}
+
+/// 整种只读的那一种进了写的那几条命令（卸载 · 装）⇒ 拒。
+pub(crate) fn read_only_refused(kind: ExtKind) -> crate::wire::spec::Fail {
+    crate::wire::spec::Fail::new("refused", read_only(kind).unwrap_or_default())
 }
 
 /// 这一处的 MCP 配置文件在这台上的（根, 相对段）：项目 = `<项目>/.mcp.json`；用户级 = 各账号共用的那一份（没有账号库 ⇒ 拒）。
@@ -585,28 +735,30 @@ pub(crate) fn same_place(
 /// 各台目录 ＋ 可达表（`origin` → 那台目录的 id）⇒ 条目 × 机器一张表。**判定只在这里。**
 pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
     let cols = columns(cat, reach);
-    let mut by_key: BTreeMap<(String, String), Vec<Vec<&Asset>>> = BTreeMap::new();
+    let mut by_key: BTreeMap<(ExtKind, String), Vec<Vec<&Asset>>> = BTreeMap::new();
     for (k, n, _, _) in BUILTIN {
         by_key
-            .entry((k.wire().to_string(), n.to_string()))
+            .entry((*k, n.to_string()))
             .or_insert_with(|| vec![Vec::new(); cols.len()]);
     }
     for (i, c) in cols.iter().enumerate() {
         for a in &cat.machines[c.id].assets {
             by_key
-                .entry((a.kind.clone(), a.name.clone()))
+                .entry((a.kind, a.name.clone()))
                 .or_insert_with(|| vec![Vec::new(); cols.len()])[i]
                 .push(a);
         }
     }
-    let rows = by_key
+    let rows: Vec<ExtRow> = by_key
         .into_iter()
-        .map(|((kind, name), per)| row(cat, &cols, &kind, &name, &per))
+        .map(|((kind, name), per)| row(cat, &cols, kind, &name, &per))
         .collect();
+    let legend = legend_of(&rows);
     ExtList {
         machines: cols.into_iter().map(|c| c.m).collect(),
         rows,
         problems: Vec::new(),
+        legend,
     }
 }
 
@@ -616,12 +768,7 @@ enum Source<'c, 'a> {
     Machine(&'c Column<'a>, &'a Asset),
 }
 
-fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
-    let kind = if kind_s == KIND_MCP {
-        ExtKind::Mcp
-    } else {
-        ExtKind::Skill
-    };
+fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
     let builtin = BUILTIN.iter().find(|(k, n, _, _)| *k == kind && *n == name);
     let user: Vec<Option<&Asset>> = per
         .iter()
@@ -653,7 +800,7 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
         _ => None,
     }
     .or_else(|| per.iter().flatten().next().copied());
-    let first_seen = cat.known.get(&asset_catalog::entry_key(kind_s, name));
+    let first_seen = cat.known.get(&asset_catalog::entry_key(kind, name));
     let new = cat.visits.prev > 0 && first_seen.is_some_and(|t| *t > cat.visits.prev);
     let cells = cols
         .iter()
@@ -673,6 +820,7 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
         .collect();
     ExtRow {
         kind,
+        kind_said: kind_said(kind),
         name: name.to_string(),
         about: shown.and_then(about_of),
         detail: shown.map(detail_of).unwrap_or_default(),
@@ -681,7 +829,7 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
             note: note(),
             hooks: *hooks,
         }),
-        note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind_s, name)),
+        note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind, name)),
         cells,
     }
 }
@@ -698,16 +846,20 @@ fn cell(
     source: Option<&Source>,
 ) -> ExtCell {
     let is_this = |a: &Asset, d: Option<&str>| {
-        if Some(a.digest.as_str()) == d {
+        if a.off {
+            ExtState::Off
+        } else if Some(a.digest.as_str()) == d {
             ExtState::Same
         } else {
             ExtState::Differs
         }
     };
+    // 用户级开着 ⇒ 与「这一版」比；否则项目里有开着的 ⇒ 只在项目里；否则装着却都关着 ⇒ 关着；都没有 ⇒ 没装。
     let state = match user {
-        Some(a) => is_this(a, canon),
-        None if !mine.is_empty() => ExtState::Project,
-        None => ExtState::Missing,
+        Some(a) if !a.off => is_this(a, canon),
+        _ if mine.iter().any(|a| a.project.is_some() && !a.off) => ExtState::Project,
+        _ if !mine.is_empty() => ExtState::Off,
+        _ => ExtState::Missing,
     };
     let live = c.m.reachable;
     let mut places = vec![place(
@@ -736,6 +888,9 @@ fn cell(
     }
     let (bring, note) = if !live {
         (None, Some(copy_text("kit.offline.later", &[])))
+    } else if let Some(why) = read_only(kind) {
+        // 整种只读（插件）：没有「装到…」，说为什么。
+        (None, Some(why))
     } else {
         match source {
             None => (None, Some(copy_text("beExt.note.noSource", &[]))),
@@ -743,6 +898,7 @@ fn cell(
         }
     };
     ExtCell {
+        said: state_said(state, &places),
         state,
         places,
         bring,
@@ -761,19 +917,22 @@ fn place(
 ) -> ExtPlace {
     let dir = match kind {
         ExtKind::Mcp => None,
-        ExtKind::Skill => held.and_then(|a| a.dir.clone()),
+        ExtKind::Skill | ExtKind::Plugin => held.and_then(|a| a.dir.clone()),
     };
     let (uninstall, note) = match (held, writable(kind, &at, shared)) {
         (None, _) => (false, None),
         (Some(_), Ok(())) => (live, None),
-        (Some(_), Err(why)) => (false, Some(why)),
+        // 整种只读的那一句已在那一格上说过（[`cell`]），每处不再重复。
+        (Some(_), Err(why)) => (false, read_only(kind).is_none().then_some(why)),
     };
     ExtPlace {
         at,
+        said: state_said(state, &[]),
         state,
         dir,
         uninstall,
         note,
+        line: held.and_then(plugin_line),
     }
 }
 
@@ -930,7 +1089,7 @@ pub(crate) fn answer_note(
             ),
         )));
     }
-    let key = asset_catalog::entry_key(req.kind.wire(), &req.name);
+    let key = asset_catalog::entry_key(req.kind, &req.name);
     let cat = write(&key, &req.text)?;
     Ok(ExtNote {
         note: asset_catalog::note_of(&cat, &key),
@@ -996,7 +1155,7 @@ pub(crate) fn token_of(v: &Value) -> String {
 }
 
 /// 备份落点：`<家>/.cc-monitor/backups/<毫秒>-<种类>-<名字>`（名字里别的字符换成 `_`）。回（家下相对段, 绝对路径）。
-fn backup_slot(home: &Path, kind: &str, name: &str, now_ms: u128) -> (String, String) {
+fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u128) -> (String, String) {
     let safe: String = name
         .chars()
         .map(|c| {
@@ -1008,8 +1167,9 @@ fn backup_slot(home: &Path, kind: &str, name: &str, now_ms: u128) -> (String, St
         })
         .collect();
     let rel = format!(
-        "{}/{now_ms}-{kind}-{safe}",
-        relay_route_core::EXT_BACKUPS_DIR_REL
+        "{}/{now_ms}-{}-{safe}",
+        relay_route_core::EXT_BACKUPS_DIR_REL,
+        kind.as_str()
     );
     let abs = door::join_under(&home.display().to_string(), &rel);
     (rel, abs)
@@ -1202,7 +1362,7 @@ pub(crate) fn answer_uninstall_preview(
                     }
                 }
                 SkillPlan::Foreign { digest, files } => {
-                    let (_, abs) = backup_slot(&home, KIND_SKILL, name, 0);
+                    let (_, abs) = backup_slot(&home, ExtKind::Skill, name, 0);
                     let at_dir = Path::new(&abs)
                         .parent()
                         .map(|p| p.display().to_string())
@@ -1233,6 +1393,7 @@ pub(crate) fn answer_uninstall_preview(
                 token: crate::common::digest::fnv_digest(&m.text),
             }
         }
+        ExtKind::Plugin => return Err(read_only_refused(kind)),
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
             let intact = m.recorded.as_deref() == Some(&super::skill_ledger::mcp_digest(&m.def));
@@ -1240,7 +1401,7 @@ pub(crate) fn answer_uninstall_preview(
                 (Some(_), true) => (copy_text("beExt.uninstall.mcpOwned", &[]), None),
                 (Some(_), false) => (copy_text("beExt.uninstall.mcpModified", &[]), None),
                 (None, _) => {
-                    let (_, abs) = backup_slot(&home, KIND_MCP, name, 0);
+                    let (_, abs) = backup_slot(&home, ExtKind::Mcp, name, 0);
                     let at_dir = Path::new(&abs)
                         .parent()
                         .map(|p| p.display().to_string())
@@ -1336,7 +1497,7 @@ pub(crate) fn answer_uninstall_apply(
                                 ),
                             )
                         })?;
-                    let (rel, abs) = backup_slot(&home, KIND_SKILL, name, now_ms());
+                    let (rel, abs) = backup_slot(&home, ExtKind::Skill, name, now_ms());
                     ensure_backups_dir(d, &home_s)?;
                     door::rename(d, &home_s, &from, &rel).map_err(|e| {
                         (
@@ -1364,6 +1525,7 @@ pub(crate) fn answer_uninstall_apply(
                 note: (!view.notes.is_empty()).then(|| view.notes.join(" ")),
             }
         }
+        ExtKind::Plugin => return Err(read_only_refused(kind)),
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
             if crate::common::digest::fnv_digest(&m.text) != token {
@@ -1371,7 +1533,7 @@ pub(crate) fn answer_uninstall_apply(
             }
             let mut note = None;
             if m.recorded.is_none() {
-                let (rel, abs) = backup_slot(&home, KIND_MCP, name, now_ms());
+                let (rel, abs) = backup_slot(&home, ExtKind::Mcp, name, now_ms());
                 let home_s = home.display().to_string();
                 door::put(
                     d,

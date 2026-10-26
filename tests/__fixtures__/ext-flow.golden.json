@@ -28,6 +28,24 @@
     "path": "<BASE>/b/.claude/skills/demo"
   },
   "list": {
+    "legend": [
+      {
+        "said": "已装",
+        "state": "same"
+      },
+      {
+        "said": "已装 · 内容不同",
+        "state": "differs"
+      },
+      {
+        "said": "未装",
+        "state": "missing"
+      },
+      {
+        "said": "仅项目内",
+        "state": "project"
+      }
+    ],
     "machines": [
       {
         "here": true,
@@ -95,10 +113,12 @@
                 },
                 "dir": null,
                 "note": null,
+                "said": "未装",
                 "state": "missing",
                 "uninstall": false
               }
             ],
+            "said": "未装",
             "state": "missing"
           },
           {
@@ -139,15 +159,18 @@
                 },
                 "dir": null,
                 "note": null,
+                "said": "未装",
                 "state": "missing",
                 "uninstall": false
               }
             ],
+            "said": "未装",
             "state": "missing"
           }
         ],
         "detail": [],
         "kind": "skill",
+        "kindSaid": "Skill",
         "name": "cc-bus",
         "new": false,
         "note": null
@@ -195,10 +218,12 @@
                 },
                 "dir": "<BASE>/a/.claude/skills/demo",
                 "note": null,
+                "said": "已装",
                 "state": "same",
                 "uninstall": true
               }
             ],
+            "said": "已装",
             "state": "same"
           },
           {
@@ -239,10 +264,12 @@
                 },
                 "dir": null,
                 "note": null,
+                "said": "未装",
                 "state": "missing",
                 "uninstall": false
               }
             ],
+            "said": "未装",
             "state": "missing"
           }
         ],
@@ -253,6 +280,7 @@
           }
         ],
         "kind": "skill",
+        "kindSaid": "Skill",
         "name": "demo",
         "new": false,
         "note": null

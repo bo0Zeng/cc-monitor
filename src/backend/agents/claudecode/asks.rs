@@ -70,7 +70,7 @@ const POLICY_DIR: Option<&str> = Some("C:\\Program Files\\ClaudeCode");
 const POLICY_DIR: Option<&str> = None;
 
 /// 这台的 managed 策略文件（`managed-settings.d/` 里的各份一起读）。
-fn policy_files() -> Vec<std::path::PathBuf> {
+pub(crate) fn policy_files() -> Vec<std::path::PathBuf> {
     let Some(base) = POLICY_DIR.map(std::path::Path::new) else {
         return Vec::new();
     };
