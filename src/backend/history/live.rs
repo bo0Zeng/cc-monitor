@@ -1,35 +1,27 @@
-//! **这台此刻活着的会话**（原住 `observe/accounts_query.rs`，10-13 挪来）：读 pidfile 目录（[`pidfiles`]，有上限、跳过要说清）＋ 判活
-//! （[`live_session_ids`]：存在性 ＋ 有 `procStart` 时对拍启动时刻）。历史清单的「在跑」· 全文搜索 · 账号归属 · 轮换数「另 N 会话也在用」都问它。
+//! **这台此刻活着的会话**（原住 `observe/accounts_query.rs`，10-13 挪来）：读 pidfile 目录（[`pidfiles`]，有上限、跳过要说清；每份经适配层翻成
+//! 一行 [`ProcFact`]）＋ 判活（[`live_session_ids`]：存在性 ＋ 有启动时刻时对拍）。历史清单的「在跑」· 全文搜索 · 账号归属 · 轮换数「另 N 会话也在用」都问它。
 
+use crate::agents::ProcFact;
 use crate::platform::fs::Ro;
 use std::path::Path;
 
-/// 单个 `sessions/<PID>.json` 读取上限（正常几百字节）。
+/// 单份进程状态文件读取上限（正常几百字节）。
 const MAX_SESSION_FILE_BYTES: u64 = 1024 * 1024;
-/// `sessions/*.json` 扫描上限，防病态目录拖垮一次性查询。
+/// pidfile 目录扫描上限，防病态目录拖垮一次性查询。
 const MAX_SESSION_FILES: usize = 500;
 
-/// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
-pub(crate) fn parse_procstart_ticks(v: &serde_json::Value) -> Option<u64> {
-    let field = v.get("procStart")?;
-    if let Some(s) = field.as_str() {
-        return s.trim().parse::<u64>().ok();
-    }
-    field.as_u64()
-}
-
-/// pidfile 目录里每一份读得出来的 `(pid, 内容)`（上限、跳过要说清）。抽出来让「这台机器上哪几个会话活着」（[`live_session_ids`]）
-/// 与账号归属读同一批 pidfile；pidfile 目录问注册表里后端盯着的那一家（与判活同一处 `agents::pidfile_dir`）。
-pub(crate) fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
+/// pidfile 目录里每一份读得出来的 `(pid, 它说的事实)`（上限、跳过要说清）。抽出来让「这台机器上哪几个会话活着」（[`live_session_ids`]）
+/// 与账号归属读同一批 pidfile；pidfile 目录问注册表里后端盯着的那一家（与判活同一处 `agents::pidfile_dir`），一份怎么读也问它（`agents::proc_fact`）。
+pub(crate) fn pidfiles(agent_home: &Path) -> Vec<(u32, ProcFact)> {
     let mut out = Vec::new();
     let dir = crate::agents::pidfile_dir(agent_home);
     let Ok(rd) = Ro::read_dir(&dir) else {
-        return Vec::new(); // 没有 sessions/ → 零行（exit 0）
+        return Vec::new(); // 没有 pidfile 目录 → 零行（exit 0）
     };
     let mut seen = 0usize;
     for ent in rd.flatten() {
         if seen >= MAX_SESSION_FILES {
-            tracing::warn!("sessions/ 条目超过 {MAX_SESSION_FILES}，其余跳过");
+            tracing::warn!("pidfile 目录条目超过 {MAX_SESSION_FILES}，其余跳过");
             break;
         }
         let path = ent.path();
@@ -55,13 +47,22 @@ pub(crate) fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
                 continue;
             }
         };
-        let v: serde_json::Value = match serde_json::from_slice(&bytes) {
-            Ok(v) => v,
-            Err(_) => continue,
+        let Some(fact) = crate::agents::proc_fact(&bytes) else {
+            continue;
         };
-        out.push((pid, v));
+        out.push((pid, fact));
     }
     out
+}
+
+/// 这一份的进程此刻还是写它的那一个（`platform::proc::session_alive`：存在性 ＋ 有启动时刻时对拍）。
+pub(crate) fn alive(pid: u32, f: &ProcFact) -> bool {
+    crate::platform::proc::session_alive(pid, f.proc_start)
+}
+
+/// 这一份说的会话 id（空串当没有）。
+pub(crate) fn sid_of(f: &ProcFact) -> Option<&str> {
+    f.sid.as_deref().filter(|s| !s.is_empty())
 }
 
 /// 这台此刻活着的会话（[`live_session_ids`]，家取这台那一家的家）：轮换数「另 N 会话也在用」· 判「会话走了」都问它。
@@ -75,13 +76,8 @@ pub(crate) fn live_here() -> std::collections::BTreeSet<String> {
 pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<String> {
     pidfiles(agent_home)
         .into_iter()
-        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
-        .filter_map(|(_, v)| {
-            v.get("sessionId")
-                .and_then(|x| x.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        })
+        .filter(|(pid, f)| alive(*pid, f))
+        .filter_map(|(_, f)| sid_of(&f).map(str::to_string))
         .collect()
 }
 
@@ -98,18 +94,14 @@ pub(crate) fn live_activity(
         None => 0,
     };
     let mut out: std::collections::BTreeMap<String, Option<A>> = std::collections::BTreeMap::new();
-    for (pid, v) in pidfiles(agent_home) {
-        if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
+    for (pid, f) in pidfiles(agent_home) {
+        if !alive(pid, &f) {
             continue;
         }
-        let Some(sid) = v
-            .get("sessionId")
-            .and_then(|x| x.as_str())
-            .filter(|s| !s.is_empty())
-        else {
+        let Some(sid) = sid_of(&f) else {
             continue;
         };
-        let activity = crate::agents::pidfile_activity(&v);
+        let activity = f.activity;
         let cell = out.entry(sid.to_string()).or_default();
         if rank(activity) > rank(*cell) {
             *cell = activity;

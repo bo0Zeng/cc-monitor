@@ -270,10 +270,12 @@ async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
     })?;
     let flag = crate::wire::cli_words::cli_flag(cmd);
     let zone = tz.iana_name();
-    let mut argv = vec![flag.as_str(), crate::wire::cli_words::STDIN_LINE_FLAG];
-    if let Some(z) = zone.as_deref() {
-        argv.extend([crate::wire::cli_words::TZ_FLAG, z]);
-    }
+    let argv = [
+        flag.as_str(),
+        crate::wire::cli_words::STDIN_LINE_FLAG,
+        crate::wire::cli_words::TZ_FLAG,
+        zone.as_str(),
+    ];
     let v = exchange(
         dial,
         machine,
@@ -317,15 +319,14 @@ where
     })?;
     let ms = total.as_ms().to_string();
     let zone = tz.iana_name();
-    let mut argv = vec![
+    let argv = [
         crate::wire::cli_words::RESIDENT_CALL_FLAG,
         crate::wire::cli_words::STDIN_LINE_FLAG,
         crate::wire::cli_words::WITHIN_MS_FLAG,
         ms.as_str(),
+        crate::wire::cli_words::TZ_FLAG,
+        zone.as_str(),
     ];
-    if let Some(z) = zone.as_deref() {
-        argv.extend([crate::wire::cli_words::TZ_FLAG, z]);
-    }
     let command = command_line(&argv);
     let asked = exchange(&r.dial, machine, &command, format!("{line}\n"), remote);
     let v = match crate::platform::child::bounded(total, asked).await {

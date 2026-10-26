@@ -288,7 +288,7 @@ static LOADED: std::sync::Once = std::sync::Once::new();
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
 /// 盘上那一份的格式：形状变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
-const STORE_VERSION: u32 = 1;
+const STORE_VERSION: u32 = 2;
 
 /// 读盘上那一份的上限。
 const STORE_MAX_READ: u64 = 256 << 20;
@@ -429,6 +429,7 @@ impl ListingEntry {
             row: serde_json::Value::Null,
             last_bytes: 0,
         };
+        let kind = crate::agents::record_kind_of(p).unwrap_or_default();
         let mut end = 0u64;
         if let Ok(file) = Ro::open(p) {
             let mut r = std::io::BufReader::new(file);
@@ -440,10 +441,10 @@ impl ListingEntry {
                     Ok(n) => end += n as u64,
                 }
                 if line.ends_with(b"\n") {
-                    e.done.absorb_bytes(&line);
+                    e.done.absorb_bytes(kind, &line);
                     e.read.took(&line);
                 } else {
-                    e.tail.absorb_bytes(&line);
+                    e.tail.absorb_bytes(kind, &line);
                 }
             }
         }
@@ -460,12 +461,13 @@ impl ListingEntry {
         mtime: Option<std::time::SystemTime>,
         new: &mut Blocks<R>,
     ) -> bool {
+        let kind = crate::agents::record_kind_of(p).unwrap_or_default();
         let base = self.read.consumed();
         loop {
             match new.next() {
                 Ok(Some(whole)) => {
                     for line in whole.split_inclusive(|&b| b == b'\n') {
-                        self.done.absorb_bytes(line);
+                        self.done.absorb_bytes(kind, line);
                     }
                     self.read.took(&whole);
                 }
@@ -475,7 +477,7 @@ impl ListingEntry {
         }
         self.read.saw((mtime, base + new.read()));
         self.tail = SessionScan::default();
-        self.tail.absorb_bytes(&new.rest());
+        self.tail.absorb_bytes(kind, &new.rest());
         self.last_bytes = new.read();
         self.row = self.done.joined(&self.tail).row(p);
         true
@@ -525,12 +527,15 @@ pub(crate) fn label_facts_among(
             project_dir: crate::agents::project_dir_among(registry, p),
         };
     }
-    let row = analyze_session_cached(p);
+    let row = <super::listing_scan::SessionRow as serde::Deserialize>::deserialize(
+        &analyze_session_cached(p),
+    )
+    .unwrap_or_default();
     super::search_rules::LabelFacts {
         custom: None,
-        title: row["aiTitle"].as_str().map(str::to_string),
-        first: row["firstUserExcerpt"].as_str().unwrap_or("").to_string(),
-        project_dir: row["cwd"].as_str().map(str::to_string),
+        title: row.ai_title,
+        first: row.first_user_excerpt,
+        project_dir: row.cwd,
     }
 }
 

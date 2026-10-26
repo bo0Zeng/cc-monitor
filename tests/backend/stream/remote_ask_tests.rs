@@ -192,6 +192,25 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
     );
 }
 
+/// 看的人就在这一台（终端里敲的那一趟）：转给那台的命令行里恒带 `--tz <这台的名>`；不带 ⇒ 那台按它自己的钟写。
+#[tokio::test]
+async fn a_viewer_on_this_machine_hands_its_zone_name_to_the_far_one() {
+    let table = Table::default();
+    answer_reach_with(&reach_args("dev", "192.0.2.2"), &table).unwrap();
+    let far = Recorder::default();
+    let here = crate::Tz::named(crate::common::time::TZ_HERE).unwrap();
+    let _ = ask_json::<SkillReadCmd>("dev", &probe(), &here, &table, &far)
+        .await
+        .expect_err("替身答的不是 JSON");
+    let calls = far.calls.lock().unwrap().clone();
+    let zone = crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".to_string());
+    assert!(
+        calls[0].1.ends_with(&format!(" '--tz' '{zone}'")),
+        "{}",
+        calls[0].1
+    );
+}
+
 /// ★ 判据 2：`remote-reach` 与 `assets-sync` 登记的是同一张表、同一个写口 —— 两条路登记同一台之后表逐格相等；
 /// 再登记一次换掉拨号请求、对面的 id 留着。
 #[test]
