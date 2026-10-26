@@ -193,3 +193,55 @@ export function ringsOf(slice: Pick<PlanSlice, "cells">): Map<string, Ring[]> {
   }
   return out;
 }
+
+/** 圈槽里的一道：哪条规矩 · 色位 · 第几列 · 这一段在这一行起 / 收（带钩）· 选中了规矩时亮还是淡。 */
+export interface RingMark extends Ring {
+  col: number;
+  start: boolean;
+  end: boolean;
+  look: "hi" | "dim" | null;
+}
+
+/** 大纲一行的圈槽：几道 ＋ 选中的那条规矩圈住它 ⇒ 铺它的色位（否则 `null`）。 */
+export interface RingRow {
+  marks: RingMark[];
+  tint: number | null;
+}
+
+/**
+ * 圈槽照此刻看得见的行摆（`rows` 是大纲那几行的编号，过滤 / 折起的不在里面，不占位）：看得见的规矩一条固定一列（照图上先后），
+ * 一段连着的行第一行带上钩、末一行带下钩。折起的格：底下被圈住的也算在它这一行（「圈那个框」）。
+ * `focus` 是选中的那一格：它是画圈的规矩 ⇒ 它那几道亮、别的淡，圈住的行铺它的色位。
+ */
+export function ringLanes(slice: Pick<PlanSlice, "cells">, rows: readonly string[], folded: ReadonlySet<string>, focus: string | null): RingRow[] {
+  const per = ringsOf(slice);
+  const byId = new Map(slice.cells.map((c) => [c.id, c]));
+  const under = (id: string, seen: Set<string>): void => {
+    for (const k of byId.get(id)?.children ?? []) {
+      for (const g of per.get(k) ?? []) seen.add(g.rule);
+      under(k, seen);
+    }
+  };
+  const order = ringRules(slice);
+  const sets = rows.map((id) => {
+    const seen = new Set((per.get(id) ?? []).map((g) => g.rule));
+    if (folded.has(id)) under(id, seen);
+    return seen;
+  });
+  const shown = order.filter((g) => sets.some((s) => s.has(g.rule)));
+  const lit = order.find((g) => g.rule === focus) ?? null;
+  return sets.map((s, i) => ({
+    marks: shown
+      .map((g, col) => ({ g, col }))
+      .filter(({ g }) => s.has(g.rule))
+      .map(({ g, col }) => ({
+        rule: g.rule,
+        slot: g.slot,
+        col,
+        start: !(sets[i - 1]?.has(g.rule) ?? false),
+        end: !(sets[i + 1]?.has(g.rule) ?? false),
+        look: lit === null ? null : g.rule === lit.rule ? "hi" : "dim",
+      })),
+    tint: lit !== null && s.has(lit.rule) ? lit.slot : null,
+  }));
+}

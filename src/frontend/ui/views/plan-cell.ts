@@ -7,7 +7,7 @@
  *
  * 凡出现一格，一律写成「编号 标题」（后端拼好的 `labels`）。只排版：成品都是后端给的。
  */
-import { button } from "../kit/button";
+import { button, setDisabled } from "../kit/button";
 import { icon } from "../kit/icon";
 import { foldCaret } from "../kit/fold";
 import { toast, failToast } from "../kit/toast";
@@ -16,6 +16,7 @@ import { saidOf } from "../kit/detail";
 import { writeClipboard } from "../clipboard";
 import { renderMarkdown } from "../render";
 import type { Origin } from "../ipc/origin";
+import type { NewSessionSpec } from "../new-session";
 import { fetchCellView, PLAN_EDGE_KINDS, type PlanBlock, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
 import { ancestry, blockRoots, cellIndex, kindSlot, labelOf, refSpans, statusLook } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
@@ -29,6 +30,8 @@ export interface CellDetailHost {
   switchTo(sid: string): void;
   /** 头右那一颗：做完了 ⇒［退回…］；没做完 ⇒［说给负责的…］（同一个框）。 */
   returnCell(slice: PlanSlice, cell: PlanCell): void;
+  /** ［另开会话接手…］：开全产品那一个新建会话框（`takeoverSpec`）。 */
+  takeover(b: PlanBlock): void;
 }
 
 /** 正文里占位的两头（私用区的两个字，渲 md 时原样过）。 */
@@ -115,13 +118,15 @@ export class CellDetail {
   }
 
   /**
-   * 划出的根节点没人接着 ⇒ pb 给的交接说明（不带认领码；句末 pb 写了认领码找谁要）＋［复制］；给不了 ⇒ pb 说的为什么。
-   * 本页不替人敲 `pb reissue`。
+   * 划出的根节点给接手（后端那一格 `takeover`：`open` · `no_line`）⇒ pb 给的交接说明（不带认领码；句末 pb 写了认领码找谁要）＋
+   * ［复制］＋［另开会话接手…］；给不了 ⇒ pb 说的为什么。本页不替人敲 `pb reissue`。
    */
   private handoff(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
     const b = blockRoots(slice).get(cell.id) ?? null;
-    if (!b || b.owner) return null;
-    return handoffBox(b);
+    if (!b || (b.takeover !== "open" && b.takeover !== "no_line")) return null;
+    const box = handoffBox(b);
+    if (b.takeover === "open") box.appendChild(takeoverCell(b, () => this.host.takeover(b)));
+    return box;
   }
 
   /** 位置行：划出的根节点 ⇒ 那个权力范围的负责人 ＋ 阶段；别的节点 ⇒ 负责它的。都带［切到会话］。 */
@@ -457,6 +462,29 @@ export function handoffBox(b: Pick<PlanBlock, "handoff" | "handoffError">): HTML
   );
   box.appendChild(row);
   return box;
+}
+
+/**
+ * 「另开会话接手」那一格（概览权力范围那一行末 · 节点详情交接说明底下）：照后端那一格画，界面不看负责人自己判。
+ * `open` ⇒［另开会话接手…］；`no_line` ⇒ pb 说的为什么；还没建（`"unbuilt"`，那一列本身就是这一判）⇒ 灰着的按钮说为什么；
+ * 其余（负责人在跑 · 说不清 · 要并回）⇒ 空。
+ */
+export function takeoverCell(b: Pick<PlanBlock, "takeover" | "handoffError"> | "unbuilt", open: () => void): HTMLElement {
+  const box = document.createElement("span");
+  box.className = "plan-takeover";
+  const btn = (): HTMLButtonElement => button({ label: copyText("plan.takeover.open"), icon: "plus", size: "compact", onClick: () => open() });
+  if (b === "unbuilt") {
+    const x = btn();
+    setDisabled(x, copyText("plan.takeover.unbuilt"));
+    box.appendChild(x);
+  } else if (b.takeover === "open") box.appendChild(btn());
+  else if (b.takeover === "no_line") box.appendChild(span(copyText("plan.handoff.none", { reason: b.handoffError ?? "" }), s.cdMuted));
+  return box;
+}
+
+/** 接手那一下开的框：机器锁那台，目录是工作区根。 */
+export function takeoverSpec(origin: Origin, workspace: string): NewSessionSpec {
+  return { origin, lockMachine: true, cwd: workspace };
 }
 
 /** 出边组名：with / to 用这一类的词（「它实现」「它指向」）；after / replaces 是固定的说法。 */
