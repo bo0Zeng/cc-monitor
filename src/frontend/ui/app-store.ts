@@ -66,6 +66,12 @@ export interface SessionRotationEntry {
   read: RotationViewReply | null;
 }
 
+/** 一问失败时出错那一层写好的那一句（`said`）与复制详情（`detail`，没有 ⇒ 空串）。 */
+export interface QuotaFailed {
+  said: string;
+  detail: string;
+}
+
 /** 窗口级的几格（每个窗口一份 —— 各窗口本来就是各自的 JS 环境）。 */
 export const appStore = {
   /** 设置窗「当前在看哪台机器」（本机 = `LOCAL_ORIGIN`）。 */
@@ -74,8 +80,10 @@ export const appStore = {
   accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
   /** 每个会话的号（按 sid；还没问回来 ⇒ 不在里面）。 */
   sessionAccount: new Slice<ReadonlyMap<string, SessionAccountEntry>>(new Map()),
-  /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果）。 */
+  /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果，为什么在 `quotaFailed`；还没问回来 ⇒ 不在里面）。 */
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
+  /** `quota-read` 整问失败的那几台：出错那一层写好的那一句与复制详情（`acct-center.ts` 与 `quota` 那一格一起换；问成了 ⇒ 摘掉）。 */
+  quotaFailed: new Slice<ReadonlyMap<Origin, QuotaFailed>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
 };
@@ -84,5 +92,13 @@ export const appStore = {
 export function putIn<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K, value: V): void {
   const next = new Map(slice.get());
   next.set(key, value);
+  slice.set(next);
+}
+
+/** 从一张按键的表里摘掉一格（本来就没有 ⇒ 不换、不叫订阅者）。 */
+export function dropFrom<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K): void {
+  if (!slice.get().has(key)) return;
+  const next = new Map(slice.get());
+  next.delete(key);
   slice.set(next);
 }

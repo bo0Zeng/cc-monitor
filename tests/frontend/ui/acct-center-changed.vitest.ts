@@ -29,8 +29,9 @@ vi.mock("../../../src/frontend/ui/session-account-reads", () => ({
   }),
 }));
 
-import { onAccountsChanged, onQuotaChanged, syncSessions } from "../../../src/frontend/ui/acct-center";
+import { onAccountsChanged, onQuotaChanged, refreshQuota, syncSessions } from "../../../src/frontend/ui/acct-center";
 import { appStore } from "../../../src/frontend/ui/app-store";
+import { readQuota } from "../../../src/frontend/ui/quota-reads";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -98,5 +99,15 @@ describe("acct-center 收推送", () => {
     onAccountsChanged();
     await flush();
     expect(asked.filter((a) => a.startsWith("session-account")).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("★ quota-read 整问失败 ⇒ 那一格记下出错那一层写好的那一句与复制详情；再问成了 ⇒ 换成成品", async () => {
+    const e = Object.assign(new Error("连接层那一句"), { detail: "D-detail" });
+    vi.mocked(readQuota).mockRejectedValueOnce(e);
+    await refreshQuota("box-f");
+    expect(appStore.quota.get().get("box-f")).toBeNull();
+    expect(appStore.quotaFailed.get().get("box-f")).toEqual({ said: "连接层那一句", detail: "D-detail" });
+    await refreshQuota("box-f");
+    expect(appStore.quotaFailed.get().has("box-f")).toBe(false);
   });
 });

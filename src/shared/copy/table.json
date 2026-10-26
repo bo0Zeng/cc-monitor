@@ -20611,12 +20611,6 @@
       "zh": "接入…",
       "args": []
     },
-    "acct.now.readFail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取失败 · 用量记录 · 原因不明",
-      "args": []
-    },
     "acct.now.retry": {
       "kind": "action",
       "role": "按钮",

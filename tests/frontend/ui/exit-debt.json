@@ -87,7 +87,7 @@
         ["src/frontend/ui/account-chip.ts", "key", 4],
         ["src/frontend/ui/account-commands.ts", "key", 2],
         ["src/frontend/ui/accounts.ts", "key", 2],
-        ["src/frontend/ui/acct-panel.ts", "key", 2],
+        ["src/frontend/ui/acct-panel.ts", "key", 1],
         ["src/frontend/ui/acct-session.ts", "key", 1],
         ["src/frontend/ui/agent-profile.ts", "key", 1],
         ["src/frontend/ui/agent-window-text.ts", "branch", 15],

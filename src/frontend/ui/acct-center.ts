@@ -8,8 +8,10 @@
  *   又接上了 / 丢了格 ⇒ 那台全部重问。零定时器。
  * - 判定全在后端；这里不判「能不能换 / 该不该换 / 是哪个号 / 跟默认号一不一样」。
  */
-import { appStore, putIn } from "./app-store";
+import { appStore, dropFrom, putIn } from "./app-store";
+import type { QuotaRead } from "./acct-words";
 import type { Origin } from "./ipc/origin";
+import { detailOf, saidOf } from "./kit/detail";
 import { readQuota, tookQuota } from "./quota-reads";
 import { readSessionView } from "./rotation-view-reads";
 import { readSessionAccount } from "./session-account-reads";
@@ -18,11 +20,19 @@ import { pushedProducts, type Changed } from "./changed-stream";
 /** 每台此刻有 tab 的会话。 */
 const known = new Map<Origin, Set<string>>();
 
+/** 那台的额度账收到一份成品（问回来的 · 推来的）：失败那一句摘掉，再换账。 */
+function tookRead(origin: Origin, read: QuotaRead): void {
+  dropFrom(appStore.quotaFailed, origin);
+  putIn(appStore.quota, origin, read);
+}
+
+/** 问一次那台的额度账。整问失败 ⇒ 记下出错那一层写好的那一句与复制详情（界面照它说，不自己补一句），账那一格成 `null`。 */
 export async function refreshQuota(origin: Origin): Promise<void> {
   try {
-    putIn(appStore.quota, origin, await readQuota(origin));
+    tookRead(origin, await readQuota(origin));
   } catch (e) {
     console.warn(`[acct] quota-read [${origin}] 失败：`, e);
+    putIn(appStore.quotaFailed, origin, { said: saidOf(e), detail: detailOf(e) });
     putIn(appStore.quota, origin, null);
   }
 }
@@ -90,7 +100,7 @@ export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "ro
   if (topic === "quota") {
     const p = pushedProducts(change, "quota");
     const q = p.got.get(null);
-    if (q !== undefined) putIn(appStore.quota, origin, tookQuota(q));
+    if (q !== undefined) tookRead(origin, tookQuota(q));
     if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);
     reaskAccounts(origin);
     return;

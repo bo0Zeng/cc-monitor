@@ -105,23 +105,29 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
 
 function render(o: Open, host: AcctPanelHost): void {
   const entry = appStore.sessionRotation.get().get(o.sid);
-  const quota = appStore.quota.get().get(o.origin) ?? null;
+  const quota = appStore.quota.get().get(o.origin);
   const head = stub(o, entry, quota, host);
   // 中转没见过这个会话 ⇒ 轮换那几块没得画（头下那一条说清楚了）。
   o.body.replaceChildren(...head, ...(entry !== undefined && entry.read === null ? [] : [o.rot.root]), footer(o, host));
 }
 
-/** 头下那一条：中转没见过这个会话 · 额度账读不出。 */
-function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaRead | null, host: AcctPanelHost): HTMLElement[] {
+/**
+ * 头下那一条：中转没见过这个会话 · 额度账还没问回来（读取中）· 整问失败（出错那一层写好的那一句 ＋ 重试）·
+ * 那台读不出（后端写好的那一句）。`quota` 不在表里 ＝ 还没问回来。
+ */
+function stub(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaRead | null | undefined, host: AcctPanelHost): HTMLElement[] {
   const out: HTMLElement[] = [];
   if (entry !== undefined && entry.read === null) {
     const connect = button({ label: copyText("acct.now.connect"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) });
     out.push(banner("warn", copyText("acct.now.noRelay"), [connect]));
     return out;
   }
-  if (quota === null) {
+  if (quota === undefined) {
+    out.push(banner("info", copyText("kit.state.reading")));
+  } else if (quota === null) {
+    const failed = appStore.quotaFailed.get().get(o.origin);
     const retry = button({ label: copyText("acct.now.retry"), kind: "ghost", size: "compact", onClick: () => void refreshQuota(o.origin) });
-    out.push(banner("error", copyText("acct.now.readFail"), [retry]));
+    if (failed !== undefined) out.push(banner("error", failed.said, [retry], failed.detail));
   } else if (quota.state === "unreadable" && quota.text !== null) {
     // 那一句后端写好（`quota_rows::head_text`：读不出恒有），面板照抄。
     out.push(banner("warn", quota.text, [], quota.detail ?? ""));
