@@ -251,7 +251,7 @@ fn stream_source_never_writes_to_a_stream_itself() {
     //   已记过四次。**量具要用被测者那一套**，这是第五次。
     const ALLOWED_IO_IMPORTS: &[&str] = &[
         // 一条都不放：流循环那份（`run.rs`）要的 `BufReader` 随读流整个搬进了 `resident-client`（`feed.rs` · `attach.rs`）；
-        // 读行那份（原 `exec.rs` 的 `AsyncBufReadExt`）在 `line.rs`；`AsyncReadExt` 随读 ack 那一段进了 `ssh_link.rs`。
+        // 读行那份（原 `exec.rs` 的 `AsyncBufReadExt`）在 `line.rs`；`AsyncReadExt` 随读 ack 那一段搬出去、后来随链路整族删了。
     ];
     let io_imports_of = |src: &str| -> Vec<String> {
         src.lines()

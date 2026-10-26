@@ -447,7 +447,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     );
 }
 
-/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值 · 壳 `dial_host::request(machine, "<用法>", …)`）
+/// 生产源里点名的拨号用法（后端 `Use::X` · 各端请求里写的 `"use"` 值；界面进程零拨号、不点名）
 /// == 手写的这五种，两向。SFTP 只经帧命令（`deploy-*` · `transfer-*`）用，链路上没有文件那一种用法。
 /// 增删一种用法时同拍改这张表。
 #[test]
@@ -459,9 +459,6 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
         let w = &s[..end];
         (!w.is_empty() && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
             .then(|| w.to_string())
-    }
-    fn ident(b: u8) -> bool {
-        b.is_ascii_alphanumeric() || b == b'_'
     }
     let src = guard_core::addr::repo_src_root();
     let mut files: Vec<(String, String)> = Vec::new();
@@ -486,7 +483,7 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
     }
     let mut named: BTreeSet<String> = BTreeSet::new();
     let mut seen_by: BTreeSet<&str> = BTreeSet::new();
-    for (rel, text) in &files {
+    for (_, text) in &files {
         let mut at = 0;
         while let Some(i) = text[at..].find("Use::") {
             let i = at + i + "Use::".len();
@@ -512,33 +509,11 @@ fn the_dial_uses_named_in_production_are_exactly_these() {
             }
             at = i;
         }
-        if rel.starts_with("src/frontend/shell/") {
-            let mut at = 0;
-            while let Some(i) = text[at..].find("request(") {
-                let start = at + i;
-                at = start + "request(".len();
-                if start > 0 && ident(text.as_bytes()[start - 1]) && !text[..start].ends_with("::")
-                {
-                    continue;
-                }
-                let rest = text[at..].trim_start();
-                let n = rest.bytes().take_while(|&b| ident(b) || b == b'&').count();
-                if n == 0 {
-                    continue;
-                }
-                if let Some(r) = rest[n..].trim_start().strip_prefix(',') {
-                    if let Some(word) = quoted_after(r) {
-                        named.insert(word);
-                        seen_by.insert("request(");
-                    }
-                }
-            }
-        }
     }
-    // 正控：三种写法各至少命中一处（量具没塌）。
+    // 正控：两种写法各至少命中一处（量具没塌）。
     assert_eq!(
         seen_by,
-        BTreeSet::from(["Use::", "\"use\"", "request("]),
+        BTreeSet::from(["Use::", "\"use\""]),
         "有一种写法一处都没扫到 —— 扫描面塌了，下面的相等会在缩水的人群上成立"
     );
     let want: BTreeSet<String> = ["stream", "capture", "forward", "shell", "hold"]

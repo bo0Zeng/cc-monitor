@@ -3,7 +3,7 @@ name = "comms-inward"
 version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
-description = "通信层面 A（前端 ↔ 后端）：通道的线上词汇 · 帧 · 客户端 · 路由器 · 拨号 · 交接件的形状 · 问后端的分流 · SSH 链路读应答。monitor（宿主那一侧）与文件窗口进程（外部前端）链同一份。"
+description = "通信层面 A（前端 ↔ 后端）：通道的线上词汇 · 帧 · 客户端 · 路由器 · 拨号 · 交接件的形状 · 问后端的分流。monitor（宿主那一侧）与文件窗口进程（外部前端）链同一份。"
 
 [lib]
 path = "lib.rs"

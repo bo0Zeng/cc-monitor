@@ -11,7 +11,7 @@
 //!
 //! 连接池的记账判据（`ssh-dial/pool.rs`）—— 拿一个假连接喂池，**不起 SSH**。
 //!
-//! 真 SSH 上「同身份只握一次手」那一维由 `tests/evidence/SR1a-link-loopback.py`（真回环 sshd）读数给；
+//! 真 SSH 上「同身份只握一次手」那一维由 `tests/evidence/NT1-net-loopback.py`（真回环 sshd，数鉴权次数）读数给；
 //! 这里钉的是池自己的四件事：同身份复用 · 换身份另拨 · 最后一个用它的走了就收掉 · 关了的不复用。
 
 use super::*;

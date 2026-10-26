@@ -165,7 +165,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "tests/frontend/shell/remote_resident_tests.rs",
         "src/backend/control/resident.rs",
         "〔替 HX1 那一行〕**两个期限的先后**：那台停一次的最长时间（`resident::STOP_GRACE_MS ＋ KILL_WAIT_MS`，一次性子命令 `--resident-stop` 里）\
-         与 monitor 等那一趟的期限（`dial_host::ONE_SHOT_DEADLINE`）。monitor 等得比它短 ⇒ 那台其实停成了、界面却说超时，**不会报错**；\
+         与 monitor 等那一趟的期限（`remote_resident::STOP_BUDGET`）。monitor 等得比它短 ⇒ 那台其实停成了、界面却说超时，**不会报错**；\
          只有同时读两侧才验得了（现抠后端生产段那两个字面量，各恰好一处）。宽限期与排空上限的先后在后端一侧同 crate 钉（`resident_tests`）。",
     ),
     (
@@ -200,24 +200,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   大纲清单与会话内查找的**线上词**、monitor 造的 **argv** 两侧同形）。monitor 那一侧的读者（核头尾、造 argv）
     //   随两条命令改走通道一起删了 ⇒ 四条边没有读者了。两侧同形的牙换到了**帧面成品**上：
     //   跨语言金样（`tests/__fixtures__/session-reads.golden.json`，后端写、TS 解码器读）—— 那不是编译期边。
-    (
-        "monitor→backend",
-        "tests/frontend/shell/dial_host_tests.rs",
-        "src/backend/dial/mod.rs",
-        "★〔出口只交机器名〕**交过去的那两格两侧同形** —— \
-         `dial_host::tests::the_request_hands_over_only_the_name`。写侧是 monitor 的 `dial_host::request`（`machine` · `use`），\
-         读侧是后端 `dial/mod.rs::parse_named`（照这一端的机器表组拨号请求，只在那里）。失效方向：写错一格名 ⇒ \
-         后端拒（`machine` 缺 ⇒ `bad_args`）或读成缺省（`use` 缺 ⇒ 长流），两侧各自的判据全绿。",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/link_mux_tests.rs",
-        "src/backend/dial/link.rs",
-        "★〔SR1a 09-24 新增〕**monitor 的上行步长 == 后端一块的上限、窗口落在后端肯收的区间里** —— \
-         `link_mux::tests::the_chunk_cap_is_the_same_number_on_both_sides`。两侧各写一个数（`LINK_STEP` / \
-         `LINK_CHUNK_BYTES`，两棵依赖树，共享常量要一条新依赖）；失效方向：monitor 的块比后端的大 ⇒ \
-         后端对每一块回 `bad_args`、上行整条断；窗口越出区间 ⇒ 后端拒开每一条链路。",
-    ),
+    // 链路那两条边（monitor 的拨号宿主 → `dial/mod.rs` 请求键同形 · monitor 的链路多路复用 → `dial/link.rs` 步长与窗口）摘了：
+    //   界面不再经本机后端开链路，monitor 那一侧的写者随之删了。
     (
         "monitor→backend",
         "tests/frontend/filewin/transfer_tests.rs",

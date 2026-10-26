@@ -102,7 +102,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/dial_home_registry.rs",
     "tests/frontend/shell/doc_claim_registry.rs",
     "tests/frontend/shell/e2e_gate_registry.rs",
-    "tests/frontend/shell/exec_site_registry.rs",
     "tests/frontend/shell/fixture_guard.rs",
     "tests/frontend/shell/local_read_surface_registry.rs",
     "tests/frontend/shell/lockfile_conflict_guard.rs",
@@ -310,11 +309,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/shell/local_lines_tests.rs",
         "a_real_backend_feeds_local_lines_through_the_production_read_loop",
         Trigger::Filter { by: "tests/evidence/CF1-local-lines.py", needle: "a_real_backend_feeds_local_lines_through_the_production_read_loop" },
-    ),
-    (
-        "tests/frontend/shell/dial_host_tests.rs",
-        "loopback_roundtrip_through_the_resident_backend",
-        Trigger::Filter { by: "tests/evidence/SR1a-link-loopback.py", needle: "loopback_roundtrip_through_the_resident_backend" },
     ),
     (
         "tests/frontend/filewin/bigfile_tests.rs",

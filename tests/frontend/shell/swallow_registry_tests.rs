@@ -264,9 +264,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
     // 单实例回调那三行收进 `platform::window::raise_main`（与点通知共用，失败各留一行日志），这里不再有。
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_core::backend_old(&copy_core::local_machine()))));", Why::PeerGone, ""),
-    ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", Why::PeerGone, ""),
-    ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(error));", Why::PeerGone, ""),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(crate::ui_error::EVENT, p);", Why::Diag, "把一条要让用户知道的出错推给界面；推不上它照样进了日志文件"),
     // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", Why::Reap, "Windows 句柄 / 内存释放"),

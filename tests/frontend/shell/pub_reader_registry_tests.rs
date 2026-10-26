@@ -20,11 +20,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
-        "src/frontend/shell/src/stream_source/exec.rs",
-        "connect_and_exec_capture",
-        "各台的常驻流搬进本机后端之后壳里没有读者：它是拨号代理那一族（`dial_host`）的一次性 exec，随那一族（link-* 隧道）一起删",
-    ),
-    (
         "src/common/cmd-wire/src/replies.rs",
         "mend_records",
         "回包里记录那一格一条一条判认不认得：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",

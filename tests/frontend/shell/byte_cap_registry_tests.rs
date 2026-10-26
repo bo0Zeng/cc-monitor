@@ -263,13 +263,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何东西的大小。",
     ),
     (
-        "LINK_STEP",
-        "**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
-             `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
-             与后端那一块的上限（`dial/link·rs` 的 `LINK_CHUNK_BYTES`，本表 `CAPS` 里「拒收+回错」那一行）同一个数，\
-             跨 crate 对拍住 `link_mux_tests::the_chunk_cap_is_the_same_number_on_both_sides`。",
-    ),
-    (
         "PIPE_BUFFER",
         "**缓冲**不是体量：后端一条链路内部那两根内存管子（`tokio::io::duplex`）各自的缓冲。\
              写满了写方**等**（背压），不丢、不截 —— 它不限任何总量，只决定一次能攒多少没被读走。",
@@ -590,12 +583,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
              ⚠ 对端是**同机任何进程**，不是我们自己的子进程",
         "拒收+回错",
     ),
-    (
-        "src/frontend/shell/src/stream_source/exec.rs",
-        "EXEC_CAPTURE_MAX_BYTES",
-        "一次 exec 的 stdout/stderr 各自收集量",
-        "截断+说清",
-    ),
     // ──：**本机后端的 stderr 接进滚动日志**那一格 ───────
     //
     // 那一行先前是 `Stdio::null()`（后端整层 91 处诊断的唯一出口被无条件丢弃）。
@@ -789,7 +776,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "入方向单行",
         "拒收+回错",
     ),
-    // 链路（本机常驻后端替界面持有并复用 SSH 连接，`dial/link.rs` · `link_mux.rs`）。
+    // 链路（本机常驻后端那一半，`dial/link.rs`）。
     (
         "src/backend/dial/link.rs",
         "LINK_CHUNK_BYTES",
@@ -814,14 +801,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "PUB_READ_MAX",
         "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
         "拒收+回错",
-    ),
-    (
-        "src/frontend/shell/src/link_mux.rs",
-        "LINK_WINDOW_BYTES",
-        "一条链路「后端发过来、还没还信用」的下行字节（对端守约时它就是界上的在途量）。\
-         超了 = 对端不守约 ⇒ **那条链路整条丢掉**，读端拿到一句带链路 id 的错（调用方据它按断线处置、\
-         用户看得见那条远端连接断了），同时 `warn!` 一行 —— 不涨内存，而且出声",
-        "丢弃+带身份报告",
     ),
     // `files-read-text` 一趟最多肯交多少 —— **后端的天花板，不是编辑上限**
     //   （编辑上限是调用方的，每趟经 `max_bytes` 送过来）。推算：JSON 转义最坏 ×6 ⇒ 48 MiB，

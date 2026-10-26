@@ -55,11 +55,10 @@ pub(crate) fn route(
             }
             None => tracing::warn!("[{at}] 还没握手就来了应答，丢掉"),
         },
-        Frame::LinkData(d) if local => match crate::link_mux::b64_decode(&d.data) {
-            Ok(bytes) => crate::link_mux::deliver_data(&d.link, bytes),
-            Err(e) => tracing::warn!("[{at}] 链路 {} 的下行块不是 base64，丢掉：{e}", d.link),
-        },
-        Frame::LinkEnd(e) if local => crate::link_mux::deliver_end(&e.link, e.error),
+        // 界面不再开链路（问别台经 `call_at`）⇒ 链路帧没有收的人。
+        Frame::LinkData(_) | Frame::LinkEnd(_) if local => {
+            tracing::warn!("[{at}] 来了链路帧，界面没开过链路，丢掉")
+        }
         // 传输台住本机后端：进度 / 终局交中继（从不阻塞）。
         Frame::Transfer(t) if local => crate::sftp_pool::deliver(t),
         // 测试连接在本机常驻后端里跑：那一格原样交中继（界面严格收）。

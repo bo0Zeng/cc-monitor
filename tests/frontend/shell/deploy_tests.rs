@@ -304,7 +304,6 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
             "identity_decision(",
             "identity_of_bytes(",
             "build_relation(",
-            "connect_and_exec_capture(",
             "fs.put(",
             "fs.mkdirs(",
             "fs.remove(",
@@ -342,8 +341,8 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
         .unwrap_or_else(|e| panic!("问本机后端那一口不是恰好一处（{e}）"));
     // 正控：每一种写法都认得出来。
     assert_eq!(
-        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( connect_and_exec_capture( fs.put( fs.mkdirs( fs.remove(").len(),
-        14
+        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( identity_of_bytes( build_relation( fs.put( fs.mkdirs( fs.remove(").len(),
+        13
     );
 }
 

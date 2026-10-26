@@ -820,9 +820,7 @@ fn attach_stream(
         client.note_read_end();
         // 告诉本机内容消费者这条流结束了。
         crate::local_lines::stream_ended().await;
-        // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
-        crate::link_mux::fail_owned_by(&client, &copy_text("reason.local.linkLost", &[]));
-        // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
+        // 流没了 ⇒ 经它开的传输一律带原因收场（后端的票表随那条流一起撤了；不让看的人干等到超时）。
         crate::sftp_pool::fail_owned_by(&client, &copy_text("reason.local.linkLost", &[]));
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(&client);

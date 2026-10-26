@@ -501,9 +501,9 @@ monitor 生产段每一处会让线程自己醒来的构件都登记在 `rust_ti
 
 ## 44. **monitor 侧**起进程的面也要逐条登记 —— 而它**不是**「防写盘」
 
-monitor 生产段每一处起进程的地方都登记在 `write_site_registry::spawn_sites`，经拨号链路跑 shell 的每一处登记在 `exec_site_registry`（写明为什么它不是那台后端的具名命令）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
+monitor 生产段每一处起进程的地方都登记在 `write_site_registry::spawn_sites`；远端那一侧界面进程一处都不跑（零拨号：问别台一律经本机后端）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
 
-**谁在守**：`write_site_registry_spawn_sites.rs::every_local_spawn_is_declared` · `exec_site_registry_tests.rs::every_remaining_dial_shell_says_why_it_is_not_a_backend_command`。
+**谁在守**：`write_site_registry_spawn_sites.rs::every_local_spawn_is_declared` · `dial_move_judge.rs::the_monitor_dials_nothing`。
 
 ---
 

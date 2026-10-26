@@ -4319,7 +4319,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             .collect();
         // 住址 `dial/mod.rs` → `ssh-dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
         //   住 `uses.rs`。处数仍是**一份文件**；它里面多了 `capture` 那一臂（同一条 exec，收全输出）——
-        //   那一臂此前在界面进程里（`stream_source::connect_and_exec_capture`），是搬家，不是新长的能力。
+        //   那一臂此前在界面进程里（界面那份收全 exec 的原语，已删），是搬家，不是新长的能力。
         assert_eq!(
             sites,
             vec!["ssh-dial/uses.rs"],

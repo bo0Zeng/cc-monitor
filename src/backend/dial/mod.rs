@@ -6,7 +6,7 @@
 //! 开 channel 之后的几种用法（[`Use`]）住拨号核心那个 crate（`ssh-dial/`，手机同一份）；本目录是后端这一侧：
 //! 装上本后端的那一套（[`host`]：钥匙文件 · cc-monitor 那份 known_hosts · 本机 agent · 详情事实 · 部署那一处写根）、
 //! 帧面链路（[`link`]）· 端口转发的账 · 测试连接 · 问远端后端 · 开终端那一串 · `ssh -G`。
-//! 界面那一侧没有 `russh` 拨号、也没有回落：常驻后端不在 ⇒ monitor 报（`dial_host.rs`）。
+//! 界面那一侧没有 `russh` 拨号、也没有回落：常驻后端不在 ⇒ monitor 报（`inbound_client::local_backend_accepting`）。
 //!
 //! SFTP 也在拨号核心（`ssh_dial::sftp`）：在池里那条连接上开 sftp 子系统；本后端装的规矩是远端写只许暂存区一处（`~/.cc-monitor/staging/`）。
 //! 界面拿不到原始 SFTP 字节（`use:"subsystem"` 回 `unsupported_use`）：装 · 卸走帧命令 `deploy-install` · `deploy-uninstall`，

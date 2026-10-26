@@ -10,7 +10,7 @@
 //!
 //! 大部分格子拿 `Table::install`（生产 `open` 也走它）喂一个**不拨号**的 `serve`（回声 / 造字节 / 永远挂着），
 //! 钉的是链路自己的记账：顺序 · 流控 · 收尾 · 上限。最后几格走真的 `open`（真 russh，拨一个没人听的回环口），
-//! 钉「链路上的字节 == C2 拨号代理 stdout 的形状」。真 sshd 上的读数见 `tests/evidence/SR1a-link-loopback.py`。
+//! 钉「链路上的字节 == C2 拨号代理 stdout 的形状」。真 sshd 上的读数见 `tests/evidence/NT1-net-loopback.py`。
 
 use super::*;
 use crate::wire::{b64_decode, Frame};

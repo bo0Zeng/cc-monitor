@@ -1417,8 +1417,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     // 列远端 tmux 会话那一行（monitor 问那台后端 `tmux-list`）摘了：界面经通道直问（`src/frontend/ui/tmux-reads.ts`），期限在那边造。
 ];
 
-/// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。
-/// 形状照 `dial_host_tests::lives_long_sites`（同一种「按所在函数 × 处数」的登记表）。
+/// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算；「按所在函数 × 处数」的登记表）。
 fn deadline_makers(file: &str, prod: &str) -> Vec<(String, String)> {
     let code = guard_core::strip_comment_lines(prod);
     let mut out = Vec::new();

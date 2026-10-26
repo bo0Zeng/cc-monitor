@@ -3,7 +3,7 @@
 /// # 「谁能读」这一侧此前只有半张表
 ///
 /// 本会话把「谁能**写**」（`write_site_registry`）、「谁能**执行**」
-/// （`exec_site_registry` / 本机起进程 / 构建期执行面）都钉成了默认拒绝，
+/// （界面进程零拨号 `dial_move_judge` / 本机起进程 / 构建期执行面）都钉成了默认拒绝，
 /// 而**读**那一侧只有两块：backend 的 `readonly_guard`（整个 crate 不许写），
 /// 与 monitor 的 `local_read_surface_registry` —— 而后者的人群是**五个手写针**，
 /// 全部对着 **claude 目录**（`claude_dir` / `CLAUDE_CONFIG_DIR` / `.claude` …）。

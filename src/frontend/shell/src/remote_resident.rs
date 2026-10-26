@@ -6,9 +6,11 @@
 use crate::copy_table::copy_text;
 use crate::detail::Said;
 
-/// 本机后端那条命令（命令表 `src/backend/stream/inbound/registry/machine.rs`）与等它的上限（那台自己的宽限期 ＋ 拨号）。
+/// 本机后端那条命令（命令表 `src/backend/stream/inbound/registry/machine.rs`）。
 const MACHINE_STOP: &str = "machine-stop";
-const STOP_BUDGET: std::time::Duration = crate::dial_host::ONE_SHOT_DEADLINE;
+/// 等它的上限：那台自己的宽限期 ＋ 强杀后再等的那一段 ＋ 拨号都得在这里头
+/// （`remote_resident_tests::the_stop_budget_outlasts_the_remote_stop` 现抠后端两个毫秒字面量比）。
+const STOP_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// 「停」的结局 —— 后端 `--resident-stop` 那一行原样的三个词（`control/resident.rs::Stopped`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -50,7 +52,7 @@ pub(crate) fn read_stop(
 /// 等与强杀由那台自己做（同机监督者），这里只拿回结局。
 pub(crate) async fn stop(machine: &str) -> Result<StopAnswer, Said> {
     use crate::backend_route::{route_call_error, Routed};
-    let client = crate::dial_host::local_backend_accepting(MACHINE_STOP)
+    let client = crate::inbound_client::local_backend_accepting(MACHINE_STOP)
         .await
         .map_err(|said| Said::new(said, MACHINE_STOP, None))?;
     let args = serde_json::json!({ "machine": machine });
