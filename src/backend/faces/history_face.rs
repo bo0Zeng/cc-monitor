@@ -1215,7 +1215,7 @@ impl crate::wire::typed::Handle for HistoryFactsCmd {
            + 'static {
         async move {
             // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
-            let limits = crate::control::machine_prefs::read_now().prefs().limits();
+            let limits = crate::common::machine_prefs::read_now().prefs().limits();
             facts_at(&home(), req, &limits)
         }
     }

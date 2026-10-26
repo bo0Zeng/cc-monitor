@@ -57,7 +57,7 @@ struct Rig {
     /// 列名单那一发失败的码（`None` ⇒ 照 `rows` 答）。
     list_err: Option<&'static str>,
     /// 这台的偏好。
-    prefs: crate::control::machine_prefs::Prefs,
+    prefs: crate::common::machine_prefs::Prefs,
 }
 
 impl Rig {

@@ -7,7 +7,7 @@ use cmd_wire::session::Hidden;
 /// 隐藏的规则那一侧住的两份文件（这台偏好 · 会话血缘）：动了就该重判（观测侧挂耳朵）。说不出位置的那一份不在里面。
 pub(crate) fn rule_files() -> Vec<std::path::PathBuf> {
     [
-        crate::control::machine_prefs::path_now(),
+        crate::common::machine_prefs::path_now(),
         crate::platform::paths::data_home().map(|d| d.join(crate::lineage::FILE_NAME)),
     ]
     .into_iter()

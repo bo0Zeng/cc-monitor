@@ -63,7 +63,7 @@ pub(crate) struct Deps<'a> {
     /// `(会话名, 工作目录)` ⇒ 开一个空 shell 的 tmux 会话（不在才建）；回「这一趟建的」。失败带 tmux 原话。
     pub(crate) open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::wire::spec::Fail>,
     /// 这台的偏好（启动命令 · 模型表；一趟读一次 `prefs.json`）。
-    pub(crate) prefs: &'a crate::control::machine_prefs::Prefs,
+    pub(crate) prefs: &'a crate::common::machine_prefs::Prefs,
 }
 
 /// 起之前那一下：用的是账号库里的号 ⇒ 工作目录标成那个号信任过（[`Deps::pretrust`]）。账号 0 / 不表态 ⇒ 不写

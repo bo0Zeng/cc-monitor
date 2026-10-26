@@ -82,7 +82,7 @@ impl Here {
     pub(crate) fn read_now() -> Here {
         Here::read_in(
             crate::platform::paths::data_home().as_deref(),
-            crate::control::machine_prefs::read_now().prefs().rules(),
+            crate::common::machine_prefs::read_now().prefs().rules(),
         )
     }
 

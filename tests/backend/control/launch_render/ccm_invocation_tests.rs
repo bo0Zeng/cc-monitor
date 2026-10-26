@@ -406,7 +406,7 @@ const ALL_CAPS: &[&str] = &[
 /// 起什么（那一家的启动命令照缺省的偏好）；各格只改要改的那几样。
 fn launch(agent: &str, act: super::super::Act) -> super::super::Launch {
     let (launcher, default_launcher) =
-        super::super::Launch::launchers(agent, &crate::control::machine_prefs::Prefs::default());
+        super::super::Launch::launchers(agent, &crate::common::machine_prefs::Prefs::default());
     super::super::Launch {
         agent: agent.into(),
         act,

@@ -276,7 +276,7 @@ struct Batch {
 }
 
 impl Batch {
-    fn of(agent: &str, prefs: &crate::control::machine_prefs::Prefs) -> Batch {
+    fn of(agent: &str, prefs: &crate::common::machine_prefs::Prefs) -> Batch {
         let (launcher, default_launcher) = Launch::launchers(agent, prefs);
         Batch {
             agent: agent.to_string(),

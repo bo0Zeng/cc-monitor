@@ -206,7 +206,7 @@ fn the_new_session_facts_wire_names_its_cells() {
 /// ★ **P3** 每家的 `permissionDefault`：这台偏好里设了、且还在那一家清单里 ⇒ 那一项；没设 · 清单里没了 · 那一家没有权限档 ⇒ `null`。
 #[test]
 fn the_permission_default_follows_the_preference_while_the_agent_still_offers_it() {
-    let prefs = |kind: &str, mode: &str| crate::control::machine_prefs::Prefs {
+    let prefs = |kind: &str, mode: &str| crate::common::machine_prefs::Prefs {
         permission_modes: [(kind.to_string(), mode.to_string())].into_iter().collect(),
         ..Default::default()
     };

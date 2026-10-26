@@ -201,7 +201,7 @@ impl Rig {
             pretrust: &pretrust,
             open_shell: &|_, _| unreachable!("不开空 shell"),
             // 这台的偏好：号 work 默认用 opus（远端那一行带上它）。
-            prefs: &crate::control::machine_prefs::Prefs {
+            prefs: &crate::common::machine_prefs::Prefs {
                 models: [("work".to_string(), "opus".to_string())]
                     .into_iter()
                     .collect(),

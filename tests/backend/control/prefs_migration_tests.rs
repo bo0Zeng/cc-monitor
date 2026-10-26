@@ -75,10 +75,10 @@ fn the_resident_migrates_an_old_config_once_and_leaves_config_json_alone() {
     let text = serde_json::to_string_pretty(&old_shape()).unwrap();
     write_config(&home, &text);
     assert_eq!(migrate_in(&own), Migrated::Done);
-    let local = crate::control::machine_prefs::read_at(&home.join(relay_route_core::PREFS_REL));
+    let local = crate::common::machine_prefs::read_at(&home.join(relay_route_core::PREFS_REL));
     assert_eq!(
         local,
-        crate::control::machine_prefs::Loaded::Present(plan(&old_shape()).local)
+        crate::common::machine_prefs::Loaded::Present(plan(&old_shape()).local)
     );
     assert!(
         !home.join(relay_route_core::PREFS_HANDOFF_REL).exists(),
@@ -94,7 +94,7 @@ fn the_resident_migrates_an_old_config_once_and_leaves_config_json_alone() {
     assert_eq!(migrate_in(&own), Migrated::AlreadyThere);
     assert_eq!(
         local,
-        crate::control::machine_prefs::read_at(&home.join(relay_route_core::PREFS_REL))
+        crate::common::machine_prefs::read_at(&home.join(relay_route_core::PREFS_REL))
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -107,8 +107,8 @@ fn a_new_config_still_marks_the_move_done() {
     write_config(&home, "{\"theme\": {}}");
     assert_eq!(migrate_in(&own), Migrated::Done);
     assert_eq!(
-        crate::control::machine_prefs::read_at(&home.join(relay_route_core::PREFS_REL)),
-        crate::control::machine_prefs::Loaded::Present(Prefs::default())
+        crate::common::machine_prefs::read_at(&home.join(relay_route_core::PREFS_REL)),
+        crate::common::machine_prefs::Loaded::Present(Prefs::default())
     );
     assert!(!home.join(relay_route_core::PREFS_HANDOFF_REL).exists());
     let _ = std::fs::remove_dir_all(&home);

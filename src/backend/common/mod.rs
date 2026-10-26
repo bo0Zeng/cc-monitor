@@ -28,6 +28,9 @@ pub(crate) mod fence;
 /// 一份 JSON 原文里就地设一格 / 往数组加一项，别的字节不动（＋ 行号 ＋ diff）。① 足迹（「待办」要贴的改法）与适配层（settings 里就地补中转地址那一格）都用 ·
 /// ② 纯文本 ＋ `serde_json` · ③ 只认「JSON 原文 ＋ 一条键路径」，不认那是谁的设置。
 pub(crate) mod json_patch;
+/// 这台偏好那份文件（`prefs.json`）的形状、值域与读。① control（起会话 · `prefs-read` / `prefs-set`）与 history（隐藏的判定读那两格）都读 ·
+/// ② 读经 `common::own_state` · ③ 只认那份文件长什么样、读不读得懂，写与「拿它做什么」在各自那一层。
+pub(crate) mod machine_prefs;
 /// 只听回环的那一个地址。① stream（常驻监听口）· relay（中转的宿主）· control（本机探口）都绑 / 连它 · ② `std::net` 的常量 · ③ 只认「回环」。
 pub mod net;
 /// 后端自家目录的几个名字与权限位（只是常量；建目录经 `platform::fs::Own::ensure_dir`）。① 原生那一块与文件管理那一块（暂存区）都认这几个名字 ·
