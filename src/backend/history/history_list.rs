@@ -210,17 +210,15 @@ fn machine_listing_for(
         .into_iter()
         .map(|(k, f)| (k, (f.sessions)(), f.excerpt))
         .collect();
-    let last = crate::control::launch_account::last_accounts_at(
-        crate::platform::paths::data_home().as_deref(),
-    )
-    .ok()
-    .and_then(|l| serde_json::to_value(l.accounts).ok())
-    .unwrap_or(Value::Null);
+    let last = super::launch_book::last_accounts_at(crate::platform::paths::data_home().as_deref())
+        .ok()
+        .and_then(|l| serde_json::to_value(l.accounts).ok())
+        .unwrap_or(Value::Null);
     let mut listing = listing_from(tree.unwrap_or_default(), &synth, &live, &last);
     with_own_annotations(&mut listing, &crate::history::history_annotations::load());
     with_own_rules(
         &mut listing,
-        &crate::control::session_hidden::Here::read_now(),
+        &crate::history::session_hidden::Here::read_now(),
     );
     Ok(listing)
 }
@@ -261,8 +259,8 @@ pub(crate) fn tree_for(
 }
 
 /// **这台隐藏要的那几样并进它自己那份清单**（同注解）：每行起会话时的 `--tab` · 主会话，整份带这台偏好那两格。
-/// 单个那一格就是注解（[`with_own_annotations`]）；判定在 [`answer_from`]（`control/session_hidden.rs`）。
-pub(crate) fn with_own_rules(listing: &mut Listing, here: &crate::control::session_hidden::Here) {
+/// 单个那一格就是注解（[`with_own_annotations`]）；判定在 [`answer_from`]（`history/session_hidden.rs`）。
+pub(crate) fn with_own_rules(listing: &mut Listing, here: &crate::history::session_hidden::Here) {
     for r in &mut listing.rows {
         r.launch_tab = here.ledger.tabs.get(&r.session_id).cloned();
         r.parent = here.parent_of(&r.session_id).map(str::to_string);
@@ -627,7 +625,7 @@ pub(crate) fn answer_from(
                 .cloned()
                 .unwrap_or_else(|| p.chars().take(8).collect())
         });
-        f.hidden = crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+        f.hidden = crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
             pin: f.pin,
             launch: f.raw.launch_tab.as_ref(),
             bg: f.raw.is_bg,
@@ -878,7 +876,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         is_bg: false,
         starred: true,
         custom_title: Some(s("c")),
-        hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+        hidden: crate::history::session_hidden::judge(&crate::history::session_hidden::Facts {
             pin: Some(crate::history::history_annotations::Hide::On),
             ..Default::default()
         }),

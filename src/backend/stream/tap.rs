@@ -258,7 +258,7 @@ pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
     }
     rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
-    rx.needs = Some(crate::control::asks::changes().subscribe());
+    rx.needs = Some(crate::history::needs_changed::changes().subscribe());
     rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
     rx.machines = Some(crate::control::machines::changes().subscribe());
     rx.machine = Some(crate::control::machine_state::changes().subscribe());

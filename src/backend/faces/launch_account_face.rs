@@ -2,7 +2,7 @@
 //! （`control → observe` 是反向边）。`session-open` · 换号重启 · 会话里切号都用这一份；这里不碰 tmux。
 
 use crate::common::door::Door;
-use crate::control::launch_account::{self as la, Facts};
+use crate::control::launch_account::Facts;
 use cmd_wire::accounts::AccountsList;
 
 /// 起会话那几条要的文件管理面（起之前预标信任经它写）：生产那一份由命令表交（`stream/inbound` 的 `LocalFiles`）。
@@ -56,7 +56,7 @@ pub fn list_at(home: &str, agent: &str) -> AccountsList {
 
 /// 某条会话上次用的号（这台家里那份记录）。
 pub(crate) fn last_of(sid: &str) -> Option<String> {
-    la::last_of(crate::platform::paths::data_home().as_deref(), sid)
+    crate::history::launch_book::last_of(crate::platform::paths::data_home().as_deref(), sid)
 }
 
 /// 交 `f` 一份生产事实（`agent` ＝ 请求说的那一家；认不出 ⇒ 当没有账号这一维）。

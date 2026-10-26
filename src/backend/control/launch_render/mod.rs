@@ -66,7 +66,7 @@ impl Launch {
     /// 〔继承表〕启动命令那一格（照这台，不随主会话）。
     pub(crate) fn launchers(
         agent: &str,
-        prefs: &crate::control::machine_prefs::Prefs,
+        prefs: &crate::common::machine_prefs::Prefs,
     ) -> (String, String) {
         let default = crate::agents::launch_face_among(crate::agents::REGISTRY, agent)
             .map_or("", |f| f.default_launcher)

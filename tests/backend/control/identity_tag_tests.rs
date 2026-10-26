@@ -324,18 +324,18 @@ fn w5vis_s2_set_sid_carries_what_tmux_said() {
     }
 }
 
-/// 接线：唯一调用点先经 `failure_note` 再取 `container`（不再是一条链 `tag(..).container()`）；
+/// 接线：唯一调用点（`tag_seen`，watcher 经 `Reactions::tag` 调它）先经 `failure_note` 再取 `container`（不再是一条链 `tag(..).container()`）；
 /// `Outcome` 带 `#[must_use]`。两处都是**剥注释后的生产文本**，各带一个正控（合成语料里的旧形必须被认出）。
 #[test]
 fn w5vis_s2_the_only_caller_says_the_failure_and_the_outcome_is_must_use() {
     fn caller_says_it(prod: &str) -> Result<(), String> {
-        let n = prod.matches("identity_tag::tag(").count();
+        let n = prod.matches("= tag(").count();
         if n != 1 {
             return Err(format!(
-                "`identity_tag::tag(` 在 watcher 生产段里 {n} 处（要恰好 1）"
+                "`= tag(` 在 identity_tag 生产段里 {n} 处（要恰好 1）"
             ));
         }
-        let at = prod.find("identity_tag::tag(").unwrap();
+        let at = prod.find("= tag(").unwrap();
         let rest = &prod[at..];
         let stmt_end = rest.find(';').ok_or("找不到那条语句的结尾")?;
         if rest[..stmt_end].contains(".container()") {
@@ -373,15 +373,13 @@ fn w5vis_s2_the_only_caller_says_the_failure_and_the_outcome_is_must_use() {
         }
         Ok(())
     }
-    let watcher =
-        guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let tag_src =
         guard_core::production_code(include_str!("../../../src/backend/control/identity_tag.rs"));
-    caller_says_it(&watcher).unwrap_or_else(|e| panic!("{e}"));
+    caller_says_it(&tag_src).unwrap_or_else(|e| panic!("{e}"));
     must_use_on_outcome(&tag_src).unwrap_or_else(|e| panic!("{e}"));
     // 正控：S2 之前的原形必须被认出（量具没瞎）。
     let old_caller = format!(
-        "let container = crate::control::identity_tag::tag(pid, &sid).container();\n{}\n",
+        "let container = tag(pid, &sid).container();\n{}\n",
         "sink.send(x);"
     );
     assert!(

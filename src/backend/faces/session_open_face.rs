@@ -254,7 +254,7 @@ pub(crate) use cmd_wire::session::{AgentFacts, AgentPick, ForkFacts, OpenFacts, 
 /// 一家的起会话事实（名字 · 可选的模型与权限档）；`kind` 认不出 ⇒ 名字照 kind、两张表空。
 pub(crate) fn agent_facts(
     kind: &'static str,
-    prefs: &crate::control::machine_prefs::Prefs,
+    prefs: &crate::common::machine_prefs::Prefs,
 ) -> AgentFacts {
     let face = crate::agents::pick_kind(Some(kind)).ok().map(|(_, f)| f);
     let picks = |cs: &[crate::agents::Choice]| {
@@ -464,7 +464,7 @@ pub(crate) fn facts(
         tmux,
         run,
         agents: {
-            let prefs = crate::control::machine_prefs::read_now().prefs();
+            let prefs = crate::common::machine_prefs::read_now().prefs();
             launchable_here(&launcher_found)
                 .into_iter()
                 .map(|k| agent_facts(k, &prefs))

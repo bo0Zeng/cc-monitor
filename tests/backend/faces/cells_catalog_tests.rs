@@ -344,7 +344,7 @@ fn corpus(name: &str) -> Vec<Value> {
             .unwrap();
             // 金样那份会话没有血缘（`parent` 是 null、`children` 空）⇒ 同上，用真判定现造一份：
             // 主会话起它时写了 `--tab hide`、它起的子会话照偏好隐藏（两格都带隐藏那一格）。
-            let mut here = crate::control::session_hidden::Here::default();
+            let mut here = crate::history::session_hidden::Here::default();
             for (kid, parent) in [("s-golden", "s-main"), ("s-kid", "s-golden")] {
                 here.lineage.parents.insert(
                     kid.into(),
@@ -445,10 +445,10 @@ fn corpus(name: &str) -> Vec<Value> {
                     }),
                     needs: needs.clone(),
                     // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。
-                    hidden: crate::control::session_hidden::judge(
-                        &crate::control::session_hidden::Facts {
+                    hidden: crate::history::session_hidden::judge(
+                        &crate::history::session_hidden::Facts {
                             bg: true,
-                            rules: crate::control::session_hidden::Rules {
+                            rules: crate::history::session_hidden::Rules {
                                 child_tab: cmd_wire::session::Tab::Hide,
                                 bg_tab: cmd_wire::session::Tab::Hide,
                             },

@@ -4165,7 +4165,7 @@ customTitle?: string | null,
  */
 hide?: HideAsk | null, 
 /**
- * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+ * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `history_annotations::auto_checked` 判。
  */
 autoAnswer?: AutoAnswer | null, };
 type ResumeWith = { model?: string, permissionMode?: string, end: number, };
@@ -4292,7 +4292,7 @@ held?: SyncHeld,
 range?: SyncRange, };
 type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
- * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
+ * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
 /**
@@ -4517,7 +4517,7 @@ total: number, read: HistoryMachineRead, };
 type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
 type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
- * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
+ * 隐藏那一格（判定只住后端 `history/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
 hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
 /**
@@ -8484,49 +8484,6 @@ sid: string, };
 
 码：`bad_args` · `failed` · `too_large`
 
-#### `resolve`
-
-按 `ResumeSpec` 推出恢复命令 `CommandPlan`。
-
-收 `args` · 可撤 · CLI：`ccm -- --resolve`
-
-入参 `ResumeSpec` · 回包 `CommandPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type Capabilities = { supportsSendKeys: boolean, supportsCapture: boolean, supportsMultiClient: boolean, supportsMultiWindow: boolean, };
-type CommandPlan = { 
-/**
- * **唯一可信的一项**。
- */
-command: string, 
-/**
- * "PtyInject"（resume 走 pty send-keys 注入 §5④）| "ExecOnce"（未来）。MVP 恒 PtyInject。
- */
-mode: string, 
-/**
- * **典型档，不是探测结果**（见结构体头注）。
- */
-capabilities: Capabilities, 
-/**
- * **纯从 sid 派生，不是探测结果**（见结构体头注）——
- * 拿它去 attach 一个「并不存在」的 tmux 会话是现实风险。要判断会话是否真的存在，
- * 问 `terminals-list`（那是真 `tmux list-panes`）。
- */
-sessionName?: string, launchLabel?: string, substitutedFrom?: string, };
-type ResumeSpec = { sessionId: string, 
-/**
- * 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器。
- */
-launchCandidates?: Array<string | null>, 
-/**
- * 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`）。
- * 注册表里的一家 = 那一家；缺 / `""` = 默认那一家；别的名字 ⇒ `bad_args`。
- */
-agentKind?: string, };
-```
-
-码：`bad_args` · `invalid_session_id` · `unsafe_launch_candidate`
-
 ### 4.5 资产
 
 #### `footprint-report`
@@ -11965,70 +11922,6 @@ account: LaunchedAccount | null, };
 
 失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable` · `ambiguous` ⇒ `RestartRefused` · `already_live` ⇒ `RestartRefused` · `stop_failed` ⇒ `RestartRefused` · `start_failed` ⇒ `RestartRefused`
 
-#### `launch`
-
-建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --launch` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
-
-入参 `LaunchReq` · 回包 `Launched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LaunchReq = { 
-/**
- * `create-or-attach`（建或接）· `send-into`（往已在的会话里键入）。
- */
-mode: Mode, 
-/**
- * tmux 会话名。
- */
-name: string, 
-/**
- * 要键入的那一行（`create-or-attach` 放行换行 · 制表）。
- */
-payload: string, 
-/**
- * 可选，仅 create-or-attach。
- */
-cwd?: string, 
-/**
- * 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
- */
-ccm_sid?: string, 
-/**
- * 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
- */
-agent?: string, 
-/**
- * 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给。
- */
-width?: string, 
-/**
- * 同 `width`。
- */
-height?: string, 
-/**
- * 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）。
- */
-client?: string, };
-type Launched = { 
-/**
- * 落在哪个会话上。
- */
-session: string, 
-/**
- * 这一次新建了会话。
- */
-created: boolean, 
-/**
- * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（送之前同一串命令里先退出窗格模式（copy-mode 等），键不会被模式吃掉；程序起没起来它不知道）。
- */
-typed: boolean, };
-type Mode = "create-or-attach" | "send-into";
-```
-
-码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
-
 ### 4.9 机器
 
 #### `ccm-print`
@@ -14140,7 +14033,6 @@ type Words = string;
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
-| `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
 | `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
 | `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
@@ -14178,7 +14070,6 @@ type Words = string;
 | `--resident-call` `[--stdin-line] --within-ms <毫秒> [--tz <IANA 名>]` | 问这台的常驻后端一条帧命令（stdin 一行 `{cmd, args}`）：连套接字、握手（在看名单交空的）、发请求、等那一条应答，stdout 一行回包、退出 0；常驻答了失败 ⇒ stderr 一行它那一份失败信封、退出 2；没人在听 ⇒ `resident_absent`（不起冷进程顶上）；`--within-ms` 必给（等多久归发起方，缺 ⇒ `bad_args`），到期限没回 ⇒ `timed_out` |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
-| `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
 | `--rotation-for-new` | ＝ 帧命令 `rotation-for-new`：新会话用哪份策略 |
 | `--rotation-reload` | ＝ 帧命令 `rotation-reload`：在用旧版的会话都载入新版 |
@@ -14220,42 +14111,6 @@ type Words = string;
 | `--unplace-self` | 卸载那一趟：暂存区里传上去的这一份删掉落点 `~/.cc-monitor/bin/ccm`（不认身份）、再删自己；回 `{removed: true\|false}`；不在暂存区 ⇒ `outside_staging` |
 
 ## 6. 几条命令的出入参类型
-
-### `resolve`（入参 `ResumeSpec`，出参 `CommandPlan`）
-
-#### `ResumeSpec`
-
-入参（camelCase 对齐手机端 `ResumeSpec`）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sessionId` | string |  |
-| `launchCandidates` | [string]? | 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器 |
-| `agentKind` | string? | 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`） |
-
-#### `Capabilities`
-
-出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，camelCase 免映射）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `supportsSendKeys` | bool |  |
-| `supportsCapture` | bool |  |
-| `supportsMultiClient` | bool |  |
-| `supportsMultiWindow` | bool |  |
-
-#### `CommandPlan`
-
-出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilities）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `command` | string | **唯一可信的一项** |
-| `mode` | string | "PtyInject"（resume 走 pty send-keys 注入 §5④）\| "ExecOnce"（未来） |
-| `capabilities` | Capabilities | **典型档，不是探测结果**（见结构体头注） |
-| `sessionName` | string? | **纯从 sid 派生，不是探测结果**（见结构体头注）——拿它去 attach 一个「并不存在」的 tmux 会话是现实风险 |
-| `launchLabel` | string? |  |
-| `substitutedFrom` | string? |  |
 
 ### `session-fork` 的出参（应答另多 `launch` 一格）
 

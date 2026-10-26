@@ -136,7 +136,7 @@ impl LiveTable {
         LiveTable {
             home: PathBuf::new(),
             rows,
-            asked: asked_sids(),
+            asked: super::needs_changed::asked_sids(),
             reconnectable: lock(&RECONNECTABLE).clone(),
         }
     }
@@ -333,7 +333,7 @@ pub(crate) fn now(agent_home: &Path) -> Arc<LiveTable> {
     let Some(t) = published else {
         return Arc::new(LiveTable::scan(agent_home));
     };
-    let asked = asked_sids();
+    let asked = super::needs_changed::asked_sids();
     if t.asked == asked {
         return t;
     }
@@ -345,11 +345,6 @@ pub(crate) fn now(agent_home: &Path) -> Arc<LiveTable> {
 /// 这台此刻活着的会话（家取这台那一家的家）：轮换数「另 N 会话也在用」· 判「会话走了」都问它。
 pub(crate) fn live_here() -> BTreeSet<String> {
     now(&super::listing::agent_home()).sids()
-}
-
-/// 此刻挂着请求的会话（常驻进程那一份待答登记表，`control::asks`；一次性子命令里恒空）。
-pub(crate) fn asked_sids() -> BTreeSet<String> {
-    crate::control::asks::sids().into_iter().collect()
 }
 
 /// 点名的 pidfile 目录里持着这条会话的每个活进程此刻的（那一态, 这一态从何时起）：答题 hook 判「终端那边答了」用

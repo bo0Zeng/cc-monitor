@@ -157,13 +157,12 @@ fn here_reads_pin_ledger_and_lineage_for_one_session() {
         },
     );
     let title = |sid: &str| format!("<{sid}>");
-    let hidden_of = |here: &Here,
-                     t: &crate::history::history_annotations::Table,
-                     sid: &str,
-                     bg,
-                     title: &dyn Fn(&str) -> String| {
-        crate::history::session_hidden::hidden_here(here, t, sid, bg, title)
-    };
+    let hidden_of =
+        |here: &Here,
+         t: &crate::history::history_annotations::Table,
+         sid: &str,
+         bg,
+         title: &dyn Fn(&str) -> String| { hidden_here(here, t, sid, bg, title) };
     assert_eq!(
         hidden_of(&here, &annotations, "s-pin", false, &title).map(|h| h.by),
         Some(HiddenBy::Own)
@@ -190,7 +189,7 @@ fn here_reads_pin_ledger_and_lineage_for_one_session() {
 #[test]
 fn the_three_carriers_get_the_cell_from_this_one_function() {
     let root = guard_core::addr::backend_src_root();
-    let here = root.join("control/session_hidden.rs");
+    let here = root.join("history/session_hidden.rs");
     let mut builders = Vec::new();
     for (path, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let code = guard_core::addr::production_side_of(&path, &text);
@@ -207,7 +206,7 @@ fn the_three_carriers_get_the_cell_from_this_one_function() {
     }
     assert!(
         builders.is_empty(),
-        "这几处自己拼了隐藏那一格（判定只住 control/session_hidden.rs）：{builders:?}"
+        "这几处自己拼了隐藏那一格（判定只住 history/session_hidden.rs）：{builders:?}"
     );
     for (file, why) in [
         ("observe/watcher.rs", "会话宣告那一帧"),
@@ -218,7 +217,7 @@ fn the_three_carriers_get_the_cell_from_this_one_function() {
         let code = guard_core::production_code(&text);
         assert!(
             code.contains("session_hidden::"),
-            "{why}（{file}）没经 control/session_hidden.rs 判隐藏"
+            "{why}（{file}）没经 history/session_hidden.rs 判隐藏"
         );
     }
 }

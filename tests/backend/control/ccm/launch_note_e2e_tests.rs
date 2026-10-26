@@ -81,7 +81,8 @@ fn launch_in_child(root: &Path, account: &str) -> (u32, String) {
 
 #[test]
 fn launching_through_ccm_with_an_account_records_it_for_that_session() {
-    use crate::control::launch_account::{adopt, last_of, NOTES_DIR};
+    use crate::control::launch_account::{adopt, NOTES_DIR};
+    use crate::history::launch_book::last_of;
     let root = sandbox("named");
     let data = root.join("home/.cc-monitor");
     let (pid, _) = launch_in_child(&root, "{\"kind\":\"named\",\"name\":\"x\"}");

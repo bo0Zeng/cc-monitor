@@ -1,6 +1,7 @@
 //! `control/launch_account.rs`：起会话挑号的规则表（逐条行为）＋ 那份记录（临时目录上真写真读、并发写不丢）。
 
 use super::*;
+use crate::history::launch_book::last_of;
 use crate::observe::accounts_query::test_support::{list, row as ok, row_with as acct, unreadable};
 use crate::observe::accounts_query::{AccountRow, ScannedAccount};
 use std::path::PathBuf;

@@ -173,7 +173,7 @@ impl TopicExt for Topic {
                 body_cap: 8192,
                 reask: "machine-read",
             },
-            // 走 watcher 的出方向（不可丢：标签页挪进挪出靠它）；`body` 由发端给（判定在 `control/session_hidden.rs`）。
+            // 走 watcher 的出方向（不可丢：标签页挪进挪出靠它）；`body` 由发端给（判定在 `history/session_hidden.rs`）。
             Topic::SessionHidden => TopicSpec {
                 name: "session_hidden",
                 lossy: false,

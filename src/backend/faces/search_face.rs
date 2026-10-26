@@ -99,7 +99,7 @@ async fn search_here(
             crate::history::history_annotations::Loaded::Read(t) => t,
             _ => Default::default(),
         };
-        let here = crate::control::session_hidden::Here::read_now();
+        let here = crate::history::session_hidden::Here::read_now();
         let mark = |row: &cmd_wire::search::SessionHits| Marks {
             label: annotations
                 .get(&row.session_id)

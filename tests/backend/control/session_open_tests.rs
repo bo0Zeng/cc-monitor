@@ -30,7 +30,7 @@ struct Rig {
     no_entry: bool,
     fork_err: bool,
     rotation_err: bool,
-    prefs: crate::control::machine_prefs::Prefs,
+    prefs: crate::common::machine_prefs::Prefs,
     /// 恢复那一条记录里的目录与模型。
     cwd: String,
     model: Option<String>,
