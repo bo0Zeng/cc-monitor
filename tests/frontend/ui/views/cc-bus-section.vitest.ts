@@ -18,8 +18,8 @@ import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../
 
 const ROSTER = {
   agents: [
-    { id: "proj_cc", target: "proj_cc:0.0", unread: 2, live: false, ccm_sid: null },
-    { id: "KVM_cc", target: "KVM_cc:0.0", unread: 0, live: true, ccm_sid: "sid-1" },
+    { id: "proj_cc", title: "占位标题甲", unread: 2, live: false },
+    { id: "KVM_cc", title: "占位标题乙", unread: 0, live: true },
   ],
 };
 
@@ -168,10 +168,12 @@ describe("如实呈现", () => {
     expect([...sel.options].map((o) => o.value)).toEqual(["<local>"]);
   });
 
-  it("每一行带上它登记的地址", async () => {
+  it("每一行摆后端给的标题，会话 id 另一格照摆", async () => {
     const s = await readOnce();
     const metas = [...s.element.querySelectorAll(".cc-bus-meta")].map((e) => e.textContent);
-    expect(metas).toEqual(["proj_cc:0.0", "KVM_cc:0.0"]);
+    expect(metas).toEqual(["proj_cc", "KVM_cc"]);
+    const titles = [...s.element.querySelectorAll(".cc-bus-id")].map((e) => e.textContent);
+    expect(titles).toEqual(["占位标题甲", "占位标题乙"]);
   });
 });
 

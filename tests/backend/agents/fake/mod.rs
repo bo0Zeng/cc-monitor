@@ -122,8 +122,8 @@ pub(crate) const DEFAULT_COMMAND: &str = "fakeagent";
 /// 能力 11：resume 那个字面量 —— **子命令形，且动词与 Codex 也不同**。
 pub(crate) const RESUME_TOKEN: &str = "revive";
 
-/// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile · 不要 cc-bus 身份」，
-/// Codex 是「要 cc-bus 身份，其余都没有」；这一家是「要 cc-bus 身份 · 有身份面 · 判不了活」。
+/// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile」，
+/// Codex 是「两样都没有」；这一家是「有身份面 · 判不了活」。
 /// 通用层若在哪一格上按名字认人，喂这一家就会答错（`fake_tests.rs` 的 ccm 规划那几条）。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
@@ -140,7 +140,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
-    needs_bus_id: true,
     has_identity: true,
     models: None,
     model_default: None,

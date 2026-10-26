@@ -25,11 +25,10 @@ pub(crate) fn mixed_to_split(old: &[String]) -> Vec<String> {
         flag::CCM_SID,
         flag::END,
     ];
-    const BARE: [&str; 9] = [
+    const BARE: [&str; 8] = [
         flag::TMUX,
         flag::DETACH,
         flag::BASE,
-        flag::BUS_REGISTER,
         flag::CCM_PRINT,
         flag::CCM_HELP,
         flag::CCM_VERSION,
@@ -199,13 +198,13 @@ fn the_combination_rules_all_fail_loudly() {
         .starts_with(copy_core::copy_static!("beArgv.validate.sizeNeedsTmux")));
     assert!(err(&["--ccm-tmux=a", "--tmux-base", "b"])
         .starts_with(copy_core::copy_static!("beArgv.validate.nameAndBase")));
-    assert!(
-        err(&["--ccm-tmux", "--bus-register"]).starts_with(copy_core::copy_static!(
-            "beArgv.validate.registerNeedsDetach"
-        ))
-    );
-    // `--bus-note` 删了（起会话不记派生台账，没有备注可记）：ccm 不认它，原样交给 agent。
+    // `--bus-note` · `--bus-register` 删了（起会话不记派生台账；会话 id 由 cc-monitor 认，cc-bus 不用登记）：
+    // ccm 不认它们，原样交给 agent。
     assert_eq!(ok(&["--bus-note", "x"]).passthru, v(&["--bus-note", "x"]));
+    assert_eq!(
+        ok(&["--ccm-tmux", "--detach", "--bus-register"]).passthru,
+        v(&["--bus-register"])
+    );
     // 这几形不报「未知选项 / 多余的位置参数」，原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
     assert_eq!(
@@ -263,7 +262,6 @@ fn every_default_lives_only_in_the_defaults_block() {
     assert_eq!(o.use_base, Defaults::USE_BASE);
     assert_eq!(o.detach, Defaults::DETACH);
     assert_eq!(o.print, Defaults::PRINT);
-    assert_eq!(o.bus_register, Defaults::BUS_REGISTER);
     assert!(o.passthru.is_empty() && o.attach_name.is_empty());
     // 反向：把默认值本身换掉，上面那一族必须跟着动 —— 否则它们是自说自话。
     assert_ne!(

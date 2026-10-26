@@ -189,7 +189,6 @@ fn tmux_print_sites() -> BTreeMap<(String, String, Carry), usize> {
 /// 读出来的字段只可能是 ASCII（pid · 窗口数 · `%N` 形 pane id）⇒ 改写成 `_` 也不改一个字节，今天无害；
 /// 读的是**会话名 / 地址**（用户起的会话名可以是中文）⇒ 非 UTF-8 客户端下会被改写成 `_`，**是真违反，待裁**
 /// （改它们是后端载荷字节 / 随部署脚本字节的变更，另做）。
-/// 那几处（`BUS_ID_RECIPE` · `cc-register` 登记地址）加了旗、翻成 `Flag`（`cc-whoami` 随 A13-3 改问 ccm，不再调 tmux）；
 /// 今天 `Carry::None` 只剩读 ASCII 的那几处。
 const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/common/session_snapshot.rs", "list-sessions", Carry::Flag, 1, "argv；`session_snapshot_tests.rs` 钉旗在子命令前"),
@@ -197,10 +196,6 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/observe/tmux_observe.rs", "ls", Carry::Env, 1, "`sh -c` 一段脚本（期限归起子进程原语），env 一行盖住；`watcher_tests.rs` 钉 env"),
     ("src/backend/observe/tmux_observe.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
     // monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
-    ("src/backend/control/ccm/plan.rs", "list-panes", Carry::Flag, 1, "只读 `#{pane_id}`（`%N`，ASCII）；渲给客户端的命令串一律带旗（`common/tmux_utf8.rs`，判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`）"),
-    ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
-    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::Flag, 1, "读 `#{session_name}:…` 当登记地址（会话名可以非 ASCII）⇒ 旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
-    ("src/shared/cc-bus/scripts/cc-register", "display-message", Carry::None, 1, "无害：`#{pane_pid}`（数字）"),
     ("src/backend/control/gate.rs", "list-panes", Carry::Flag, 1, "argv；按 sid 找窗格：读这个会话各窗格的句柄 · 根进程 pid · `@ccm_sid`（ASCII，照表仍带旗）"),
     ("src/backend/control/terminals.rs", "list-panes", Carry::Flag, 1, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
     ("src/backend/control/terminals.rs", "list-clients", Carry::Flag, 1, "argv；读会话 ID 与两个时刻（ASCII，照表仍带旗）"),

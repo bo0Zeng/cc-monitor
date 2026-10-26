@@ -43,7 +43,6 @@ pub(crate) enum SlotId {
     Launcher,
     TmuxSize,
     Detach,
-    BusRegister,
     Tab,
 }
 
@@ -110,11 +109,6 @@ pub(crate) const SLOTS: &[Slot] = &[
         flags: &[flag::DETACH],
     },
     Slot {
-        id: SlotId::BusRegister,
-        label: || copy_text("beProfile.slot.busRegister", &[]),
-        flags: &[flag::BUS_REGISTER],
-    },
-    Slot {
         id: SlotId::Tab,
         label: || copy_text("beProfile.slot.tab", &[]),
         flags: &[flag::TAB],
@@ -170,7 +164,7 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
         Some(flag::TMUX_BASE) => copy_text("beProfile.val.tmuxBase", &[("name", &v(0))]),
         Some(flag::CWD_IF) => copy_text("beProfile.val.cwdIf", &[("at", &v(0)), ("to", &v(1))]),
         Some(flag::CWD) => copy_text("beProfile.val.cwd", &[("dir", &v(0))]),
-        Some(flag::DETACH | flag::BUS_REGISTER) => copy_text("beProfile.val.on", &[]),
+        Some(flag::DETACH) => copy_text("beProfile.val.on", &[]),
         Some(flag::TAB) => match vals.first().and_then(|v| argv::tab_of(v)) {
             Some(cmd_wire::session::Tab::Hide) => copy_text("beProfile.val.tabHide", &[]),
             _ => copy_text("beProfile.val.tabShow", &[]),
@@ -280,8 +274,6 @@ pub(crate) struct ProfileForm {
     pub tmux_size: Option<String>,
     #[serde(default)]
     pub detach: bool,
-    #[serde(default)]
-    pub bus_register: bool,
     /// 标签页：显示 / 隐藏（`null` ＝ 继承）。
     #[serde(default)]
     pub tab: Option<cmd_wire::session::Tab>,
@@ -332,9 +324,6 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
     pair(flag::TMUX_SIZE, s(&f.tmux_size), &mut ccm);
     if f.detach {
         ccm.push(flag::DETACH.to_string());
-    }
-    if f.bus_register {
-        ccm.push(flag::BUS_REGISTER.to_string());
     }
     if let Some(t) = f.tab {
         ccm.extend([flag::TAB.to_string(), argv::tab_word(t).to_string()]);
@@ -459,7 +448,6 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
             flag::LAUNCHER => f.launcher = Some(one()),
             flag::TMUX_SIZE => f.tmux_size = Some(one()),
             flag::DETACH => f.detach = true,
-            flag::BUS_REGISTER => f.bus_register = true,
             flag::TAB => f.tab = argv::tab_of(&one()),
             _ => {}
         }
@@ -492,7 +480,7 @@ fn phrase_of(f: Option<&'static str>, vals: &[String], child: bool) -> String {
             copy_text("beProfile.said.plus", &[("val", &val)])
         }
         Some(flag::BASE | flag::TMUX | flag::TMUX_BASE | flag::CWD_IF | flag::CWD) => val,
-        Some(flag::DETACH | flag::BUS_REGISTER) => slot.label_text(),
+        Some(flag::DETACH) => slot.label_text(),
         _ => copy_text(
             "beProfile.said.slot",
             &[("label", &slot.label_text()), ("val", &val)],

@@ -24,9 +24,9 @@ description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消
   窗格真是那条会话才送 · 不闲不送 · 两下之间画面变了(人正在打字)不送。**不往窗格里打字。**
 
 ## 你的身份(自动,无需手动设)
-**身份就是你的会话 id**,只问 cc-monitor:`cc-whoami` 调 `ccm -- --session-self`(后端按调用进程往上找是哪条会话,Claude · Codex 一样)。没装 cc-monitor ⇒ 认不出身份,cc-bus 不工作。SessionStart 钩子会自动 `cc-register` 把你登记进总线。
+**身份就是你的会话 id**,只问 cc-monitor:`cc-whoami` 调 `ccm -- --session-self`(后端按调用进程往上找是哪条会话,Claude · Codex 一样)。没装 cc-monitor ⇒ 认不出身份,cc-bus 不工作。不用登记:有收件箱就在名单上。
 - 查自己是谁:`cc-whoami`。
-- **找对方**:`cc-list` 列出登记过的会话 id + pane。收件人一律写会话 id。
+- **找对方**:`cc-list` 列出各收件箱的会话 id · 在不在 · 待读 · 标题(名字与在不在问 cc-monitor)。收件人一律写会话 id。
 
 ## 收信(被动)
 看到用户轮出现 **`🔔 cc-bus: ...运行 cc-recv ...`**,或 Stop 钩子把消息喂进来:
@@ -97,9 +97,9 @@ echo "$长正文" | cc-send <sid> --act inform --title "日志摘要" -         
 - `--act` 六个码:`ask`(问:要答复)· `answer`(答)· `request`(请:要对方做事)· `inform`(告知:FYI 免动)· `handback`(交回:做完了)· `correct`(更正前面那一条)。
   `answer` · `handback` · `correct` **必带 `--re <消息 id>`**(接在哪一条后面);别的也可以带。
 - `--ref` 可多次:路径 · `pb:<片>/<格号>` · `msg:<消息 id>` · `commit:<hash>` · `http(s)://…`;只核前缀形状,不查指的东西在不在。
-- 给程序读的只读形(cc-monitor 后端调它们,不读 `~/.cc-bus/` 的文件):`cc-list --tsv`(带登记时间与坏行数)· `cc-log <id> [-n N]`(看收件箱尾巴,不推已读位置)。
+- 给程序读的只读形(cc-monitor 后端调它们,不读 `~/.cc-bus/` 的文件):`cc-list --tsv`(每个收件箱一行:会话 id · 待读,末行坏名字数)· `cc-log <id> [-n N]`(看收件箱尾巴,不推已读位置)。
 - 消息一定落 inbox;对方空闲→敲门即处理,在忙→其 Stop 钩子兜底。
-- 要一个新的协作会话:用 cc-monitor 开会话;它起来时 SessionStart 钩子自动 `cc-register`,之后 `cc-send` 过去。
+- 要一个新的协作会话:用 cc-monitor 开会话,拿到它的会话 id 就 `cc-send` 过去。
 
 ## 通信纪律(防传错 / 防编造)
 给别的 agent 发消息、答问,和对用户一样要对内容负责。**注意:别人来问你,多半是问"你够得着、他够不着"的东西(你的上下文/文件/状态)**——所以"查"= 核你自己手上的实况,别凭印象答。
@@ -123,7 +123,7 @@ echo "$长正文" | cc-send <sid> --act inform --title "日志摘要" -         
 ```bash
 bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 ```
-它软链 8 个命令到 `~/.local/bin`、建 `~/.cc-bus/`、放示例配置,并**打印剩下需你手动做的激活步骤**(合并 hooks 进 `~/.claude/settings.json`、用 cc-monitor 开会话、可选开策略)。**刻意不改你的全局 settings.json、不 systemctl。** 停用:删 settings.json 的 hooks 段 + 删软链。
+它软链 7 个命令到 `~/.local/bin`、建 `~/.cc-bus/`、放示例配置,并**打印剩下需你手动做的激活步骤**(合并 hooks 进 `~/.claude/settings.json`、用 cc-monitor 开会话、可选开策略)。**刻意不改你的全局 settings.json、不 systemctl。** 停用:删 settings.json 的 hooks 段 + 删软链。
 
 ## 礼仪(防乒乓)
 - 回复带**结论**,别只说"收到"。**只在有实质进展或被问时回**;任务完成即停,收尾带 `#done`。
@@ -133,7 +133,7 @@ bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 敲门那一句 = 对方会话的**用户级输入**(auto 权限基本不弹确认);正文不进敲门,要对方 `cc-recv` 自己读。**只在你信任的 pane 间用**,别把 `cc-send` 接不可信来源。
 
 ## 命令一览
-`cc-whoami`(查身份:会话 id) · `cc-send`(单播:`--act` `--title` `--tier` `--re` `--ref`) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-log`(只读看收件箱尾巴) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`/`cc-bus-agent-codex.sh`(三个适配面,被 source) · `cc-bus-install.sh`(安装)。
+`cc-whoami`(查身份:会话 id) · `cc-send`(单播:`--act` `--title` `--tier` `--re` `--ref`) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-list`(看在线/积压) · `cc-log`(只读看收件箱尾巴) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`/`cc-bus-agent-codex.sh`(两个适配面,被 source) · `cc-bus-install.sh`(安装)。
 
 ## 排障
 - 敲门没反应:`tail ~/.cc-bus/log/bus.log` 看 `NUDGE tier2`(二档本来不敲)/ `NUDGE noscreen`(看不到那一屏)/ `NUDGE refused why=not_idle`(对方不闲,轮末 Stop 钩子喂回)/ `NUDGE refused`(别的原因:画面变了 · 终端没了)/ `NUDGE noccm`(找不到后端);对方在忙靠 Stop 钩子;`cc-list` 看积压。

@@ -380,7 +380,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
 /// 起会话那几格：**通用层只看能力、不看名字**。
 ///
 /// 用户逐字：「思考怎么解耦, 不要硬适配claude code」「如果是其他agent呢, 比如codex」。
-/// 喂一张含本假 agent 的注册表（它的组合与两家都不同：要 cc-bus 身份 · 有身份面 · 不留 pidfile），
+/// 喂一张含本假 agent 的注册表（它的组合与两家都不同：有身份面 · 不留 pidfile），
 /// 每一家都过同一条 ccm 规划与 resume 解析，每一格的产出都必须等于**那一家**声明的那一格。
 /// 通用层若在哪一格上按名字认人，本假 agent 那一行就会答错。
 #[test]
@@ -413,7 +413,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
     for a in &reg {
         let face = a.launch.expect("这张注册表里每一家都带起会话事实");
         seen.push(a.kind);
-        // 直路：启动器 · 嵌套标记 · cc-bus 身份 · 身份面。
+        // 直路：启动器 · 嵌套标记 · 身份面。
         let Ok(Plan::Direct(d)) = plan::build_among(&reg, &opts(a.kind, &[]), &env, &t, None)
         else {
             panic!("{} 该是直路", a.kind)
@@ -428,11 +428,6 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             d.nested,
             crate::control::ccm::plan::nested_of(face.nested_env),
             "{} 的嵌套标记",
-            a.kind
-        );
-        assert_eq!(
-            d.bus_id_recipe, face.needs_bus_id,
-            "{} 的 cc-bus 身份",
             a.kind
         );
         assert_eq!(d.has_identity, face.has_identity, "{} 的身份面", a.kind);
@@ -515,8 +510,8 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             .iter()
             .find(|a| a.kind == AGENT_KIND)
             .expect("在注册表里");
-        (f.needs_bus_id, f.has_identity, a.live)
-            != (LAUNCH.needs_bus_id, LAUNCH.has_identity, fake.live)
+        (f.has_identity, f.is_default, a.live)
+            != (LAUNCH.has_identity, LAUNCH.is_default, fake.live)
     };
     assert!(
         differs("claude") && differs("codex"),

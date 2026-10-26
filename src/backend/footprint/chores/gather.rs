@@ -289,7 +289,7 @@ fn hooks() -> Option<Hooks> {
         .unwrap_or_default();
     Some(Hooks {
         ccbus: snippet.is_some(),
-        installed: r.diagnosis.session_start.is_working() && r.diagnosis.stop.is_working(),
+        installed: r.diagnosis.stop.is_working(),
         text: read_small(Path::new(&r.source)),
         path: r.source,
         items,

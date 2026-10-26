@@ -73,7 +73,7 @@ fn printed(args: &[&str]) -> String {
 /// 「--agent codex」「-- 透传」与 `ccm-contract-parity` B 组的顺序那几条〕
 ///
 /// 这一条钉的是**一条起会话命令长什么样**：段的顺序就是契约
-/// （CCM_ENV → CC_BUS_ID → 账号目录 → 清嵌套 → cd → exec）。
+/// （CCM_ENV → 账号目录 → 清嵌套 → cd → exec）。
 /// `--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（从前 resume 由 ccm 拼、`--model` 变成 export `ANTHROPIC_MODEL`）。
 #[test]
 fn the_shape_of_one_launch_command_line() {
@@ -95,13 +95,10 @@ fn the_shape_of_one_launch_command_line() {
         printed(&["--cwd", "/p", "--model", "opus"]),
         format!("{nested}; cd '/p' && exec claude --model opus")
     );
-    // codex：换启动器 + **不清** claude 的嵌套标记（只清各家的会话号变量，同起子进程原语）+ cc-bus 身份配方
+    // codex：换启动器 + **不清** claude 的嵌套标记（只清各家的会话号变量，同起子进程原语）
     assert_eq!(
         printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
-        format!(
-            "{} unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon",
-            *super::super::BUS_ID_RECIPE
-        )
+        "unset CLAUDE_CODE_SESSION_ID; cd '/p' && exec codex --no-daemon"
     );
     // 透传参数含特殊字符 ⇒ 正确 quote
     assert_eq!(
@@ -115,11 +112,13 @@ fn the_shape_of_one_launch_command_line() {
     );
 }
 
-/// 〔搬自 `ccm-contract-parity`「claude 不得被注入 CC_BUS_ID」〕
+/// 起会话不替 cc-bus 交身份：cc-bus 问 cc-monitor 的 `session-self`（按进程认），哪一家都一样。
 #[test]
-fn only_codex_gets_the_bus_id_recipe() {
-    assert!(!printed(&["--cwd", "/p"]).contains("CC_BUS_ID"));
-    assert!(printed(&["--cwd", "/p", "--ccm-agent", "codex"]).contains("CC_BUS_ID"));
+fn no_agent_gets_a_bus_identity_at_launch() {
+    for agent in ["claude", "codex"] {
+        let line = printed(&["--cwd", "/p", "--ccm-agent", agent]);
+        assert!(!line.contains("CC_BUS_ID") && !line.contains("display-message"), "{agent}: {line}");
+    }
 }
 
 /// 〔搬自 `ccm-cli` 账号那一族：显式 / 继承 / 默认号 / --base 四条路〕
@@ -567,89 +566,6 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
     );
 }
 
-/// 🔴 **`--bus-register` 要了登记而登记不成，必须出声；而「脚本在」不等于「跑得起来」。**
-///
-/// # 这一条是 `K-R48` 第二拍补的，补的是**三处一起丢掉的东西**
-///
-/// 把当年那份派生 e2e 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
-/// 24 条里 22 条是同一族，逐条追下去是首版原生实现丢了三样旧 bash 实现有的东西：
-///   ① `discover_bus_scripts` 的**第三档 `PATH`** —— docstring 写着、实现里没有。
-///      旧 `ccm` 住 `shared/`（部署形态 `~/.claude/skills/ccm`），**兄弟目录**正好是
-///      `cc-bus/scripts` ⇒ 第二档几乎总命中；今天后端住 `~/.cc-monitor/bin/`，
-///      **旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**。
-///   ② 三处判「这个脚本能不能用」写成 `is_file()`，而旧 bash 判的是 `-x`
-///      ⇒「在、但没有执行位」被读成「它能用」，拼进 seq 执行时静默失败（整段是 `|| true`）。
-///   ③ 找不到 cc-bus ⇒「**没有登记**」那句 stderr 整个没了。`--bus-register` 于是成了一个
-///      「**要了、没做、也不说**」的旗标 —— 那正是本工作区反复消灭的那类静默降级。
-///
-/// # 它买不到什么
-///
-/// **那句 stderr 只钉「生产段里有这一句」，没钉「真跑时它真的印出来了」** ——
-/// 后者要捕获进程的 stderr，而 `build()` 是纯函数、`eprintln!` 直接写 fd 2。
-/// 行为那一半当年住一份 e2e（已随派生一起删）。
-#[test]
-fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
-    // ① `is_exec`：**行为**判据 —— 造两个真文件，一个有执行位一个没有。
-    let d = tempdir();
-    let ok = std::path::Path::new(&d).join("cc-register");
-    let bad = std::path::Path::new(&d).join("cc-no-exec-bit");
-    std::fs::write(&ok, "#!/bin/sh\n").expect("写夹具");
-    std::fs::write(&bad, "#!/bin/sh\n").expect("写夹具");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&ok, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).expect("chmod");
-        assert!(is_exec(&ok), "有执行位的判成不可执行");
-        assert!(
-            !is_exec(&bad),
-            "**在、但没有执行位**被判成「它能用」—— 那正是首版 `is_file()` 的病：\n\
-                 拼进 seq 之后执行时静默失败（整段是 `|| true`），而调用方以为登记好了"
-        );
-    }
-    assert!(
-        !is_exec(&std::path::Path::new(&d).join("根本不存在")),
-        "不存在的文件被判成可执行"
-    );
-    assert!(!is_exec(std::path::Path::new(&d)), "目录被判成可执行文件");
-    let _ = std::fs::remove_dir_all(&d);
-
-    // ② 查找次序**三档都在**：`PATH` 那一档是补回来的，别再删。
-    let me =
-        guard_core::production_code(include_str!("../../../../src/backend/control/ccm/plan.rs"));
-    for anchor in [
-        "std::env::var(\"CC_BUS_SCRIPTS\")",
-        "join(\"cc-bus\").join(\"scripts\")",
-        "crate::platform::shell::find_session_command(",
-    ] {
-        assert!(
-            me.contains(anchor),
-            "`discover_bus_scripts` 少了一档：{anchor}\n\
-                 三档是 `CC_BUS_SCRIPTS` → 本程序目录旁的 `cc-bus/scripts` → `PATH`。\n\
-                 ⚠ 第二档在真实部署里**恒不命中**（后端住 `~/.cc-monitor/bin/`，旁边没有 `cc-bus/`）\n\
-                 ⇒ 删掉 `PATH` 那一档 = `--bus-register` 在生产上永远登记不成。"
-        );
-    }
-
-    // ③ 那句诊断在生产段里（**这一格只钉形状**，见头注）。它进了文案表：生产段认 key，表里那句认话。
-    let table: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../src/shared/copy/table.json")).expect("表");
-    assert!(
-        table["entries"]["bePlan.bus.noScripts"]["zh"].is_string(),
-        "表里没有 bePlan.bus.noScripts"
-    );
-    // 反向锚点：那句必须在 `build()` 的容器分支里 —— 搬到别处等于「说是说了，但那条路上说不到」。
-    let bus_block = me
-        .split("let bus = if o.bus_register {")
-        .nth(1)
-        .expect("找不到 `--bus-register` 那一段 —— 抽取器坏了，本条会零命中地绿");
-    let head = &bus_block[..bus_block.len().min(1200)];
-    assert!(
-        head.contains("\"bePlan.bus.noScripts\""),
-        "`--bus-register` 登记不成时那句不见了，或不在那一段里 —— 旗标于是变成「要了、没做、也不说」"
-    );
-}
-
 /// 〔搬自 `ccm-print-parity`「含空格 cwd 正确带引号」与 `ccm-cli` 的 quote 那族〕
 #[test]
 fn every_value_that_reaches_a_shell_is_quoted() {
@@ -832,57 +748,6 @@ fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
     // 真跑那一侧读的就是这几个字段（`run::exec_direct`），逐个在这里点名。
     assert_eq!(d.cwd, "/p");
     assert_eq!(d.argv, vec!["claude", "--model", "opus"]);
-}
-
-/// ★★ **`inside_tmux` 是真跑那一侧独用的一格，[`render`] 一个字不看。**
-///
-/// `INVARIANTS §33a` 铁律 2 逐字：`--print` 必须是**纯的** —— 不查实时 tmux 状态、
-/// 输出对宿主环境**逐字节稳定**；值不知道就**打印配方**。
-/// 🔴 那一条自己就有过反面教材（`§33a` 记着）：第一版让 `--print` 直接查 tmux 把值烘进去，
-/// 于是同一条命令在开发者的 tmux 里与 CI 上吐得不一样，而当时的「修法」是给判据加
-/// `env -u TMUX` —— **那是为实现让路去改判据**。
-/// ⇒ 本条就是那条反面教材的防线：谁把 `inside_tmux` 接进 [`render`]，同一条计划立刻
-/// 在 tmux 内外吐出两种输出，本条当场红。
-#[test]
-fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
-    let outside = Env {
-        tmux: None,
-        ..env()
-    };
-    let inside = Env {
-        tmux: Some("/faux/socket,1,0".into()),
-        ..env()
-    };
-    let args = &["--ccm-agent", "codex", "--cwd", "/p"];
-    let po = plan_of(args, &outside, &no_library);
-    let pi = plan_of(args, &inside, &no_library);
-
-    // 反空真①：两份计划**真的不同** —— 否则下面那条相等是恒真。
-    assert_ne!(
-        po, pi,
-        "`$TMUX` 变了而计划一个字节没变 —— `inside_tmux` 没接上，本条在空转"
-    );
-    let (Plan::Direct(dout), Plan::Direct(din)) = (&po, &pi) else {
-        panic!("该是两条直路")
-    };
-    assert!(!dout.inside_tmux && din.inside_tmux, "夹具没把那一格拨动");
-    // 反空真②：这一趟真带着那段配方 —— 否则「渲染不变」是因为压根没有可变的东西。
-    assert!(
-        dout.bus_id_recipe && din.bus_id_recipe,
-        "codex 该带 cc-bus 配方"
-    );
-
-    // 正题：渲染**逐字节相等**。
-    assert_eq!(
-        render(&po),
-        render(&pi),
-        "`--print` 随 `$TMUX` 变了 —— 平价预言机不再是纯的（`§33a` 铁律 2）"
-    );
-    // 而且两边都**说出了**那段配方（`§33a` 铁律 1：exec 路会设的 env，print 必须说）。
-    assert!(
-        render(&po).contains(super::super::BUS_ID_RECIPE.as_str()),
-        "`--print` 没说出 cc-bus 那段配方 —— 那正是 `§33a` 开张时抓到的第一例"
-    );
 }
 
 // ── 夹具 ────────────────────────────────────────────────────────────
@@ -1093,13 +958,11 @@ fn a_named_account_that_is_not_logged_in_is_refused_like_the_ui_refuses_it() {
 /// 同一串参数，只在 `--` 之前多一个 `--print`（放到 `--` 后面就成了透传给 agent 的参数，
 /// 那一趟会**真起一个会话**而不是自检 —— 实测时就这么踩过一次）。
 ///
-/// 另钉**顺序**：收尾里自检排在兜底轮询 / 接进去 / 登记**之前**（登记在它后面，才谈得上「不登记」）。
 #[test]
-fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registering() {
+fn the_self_check_is_the_payload_itself_plus_print() {
     let mut e = env();
     e.self_argv = vec!["/opt/cc-monitor-backend".into()];
     e.inherited_base_url = Some("https://relay.example/v1".into());
-    e.bus_scripts = Some("/opt/bus".into());
     for (args, has_passthru) in [
         (
             &["--ccm-tmux=n1", "--cwd", "/p", "--", "task", "--x"][..],
@@ -1108,7 +971,7 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
         (&["--ccm-tmux=n1", "--cwd", "/p"][..], false),
     ] {
         // 旗标排在最前（排到 `--` 后面就成了透传参数）。
-        let mut a = vec!["--bus-register", "--detach"];
+        let mut a = vec!["--detach"];
         a.extend_from_slice(args);
         let p = plan_of(&a, &e, &no_library);
         let Plan::Container(c) = &p else {
@@ -1126,14 +989,7 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
             c.self_check
         );
         let tail = render_container_tail(c);
-        let at = |needle: &str| {
-            tail.find(needle)
-                .unwrap_or_else(|| panic!("收尾里没有 {needle}：{tail}"))
-        };
-        assert!(
-            at(&c.self_check) < at("cc-register"),
-            "自检排在登记后面了 ⇒ 起不来的也照登记：{tail}"
-        );
+        assert!(tail.contains(&c.self_check), "收尾里没有自检：{tail}");
         assert!(
             tail.contains("exit 4"),
             "自检不过没有 exit 4（起不来）：{tail}"
@@ -1156,122 +1012,7 @@ fn the_direct_print_does_not_change_with_ccm_sid() {
     );
 }
 
-// ── Windows 本机那一格：`is_exec` · 家目录 · 路径分隔符 ──────────────
-//
-// 要求：「**本机 Windows**（x86_64） | ✅ **承诺**」；
-// 「「怎么读到这个事实」   → platform      （各平台读法不同）」—— 「这个文件跑得起来吗」在 Windows 上的读法是 `PATHEXT`；
-// 读数要求：「`plan.rs::is_exec` 的 `#[cfg(not(unix))]` 分支是 `p.is_file()` ⇒ 在 Windows 上
-// **「可执行」退化成「存在」**」与「那句错误话术里的路径是 `C:\…\fakehome/.claude-alt/accounts.json` ——
-// **反斜杠与正斜杠混着**」（WN1 件 G）。
-// 异源：期望是手写的判定表（Windows `cmd.exe` 的 `PATHEXT` 语义），不从被测函数里抠。
-// ⚠ 买不到：`#[cfg(not(unix))]` 那一臂在本机不编译 —— 它「真的调了判定函数」由下面源码锚点钉，
-//    「在 Windows 上真这么判」要真机（虚拟机读数）。
-
-#[test]
-fn on_windows_runnable_means_a_file_whose_extension_is_in_pathext() {
-    use std::path::Path;
-    let cells: &[(bool, &str, Option<&str>, bool, &str)] = &[
-        (
-            true,
-            "C:/x/cc-register",
-            None,
-            false,
-            "没有扩展名的文件在 Windows 上跑不起来",
-        ),
-        (
-            true,
-            "C:/x/cc-register",
-            Some(".COM;.EXE;.BAT;.CMD;.PS1"),
-            false,
-            "PATHEXT 再长，无扩展名照样不行",
-        ),
-        (
-            true,
-            "C:/x/cc-register.cmd",
-            None,
-            true,
-            "PATHEXT 缺席 ⇒ 用 cmd.exe 的默认那一份",
-        ),
-        (
-            true,
-            "C:/x/cc-register.CMD",
-            Some(".com;.exe;.bat;.cmd"),
-            true,
-            "大小写不敏感",
-        ),
-        (
-            true,
-            "C:/x/cc-register.ps1",
-            None,
-            false,
-            "默认 PATHEXT 里没有 .PS1",
-        ),
-        (
-            true,
-            "C:/x/cc-register.ps1",
-            Some(".COM;.EXE;.PS1"),
-            true,
-            "用户加了 .PS1 就认",
-        ),
-        (true, "C:/x/tool.exe", Some(""), true, "空 PATHEXT 当缺席"),
-        (
-            true,
-            "C:/x/notes.txt",
-            Some(".COM;.EXE;.BAT;.CMD"),
-            false,
-            "扩展名不在表里",
-        ),
-        (
-            false,
-            "C:/x/tool.exe",
-            None,
-            false,
-            "不是文件（目录 / 不存在）就不是可执行",
-        ),
-    ];
-    for (is_file, p, pathext, want, why) in cells {
-        assert_eq!(
-            runnable_on_windows(*is_file, Path::new(p), *pathext),
-            *want,
-            "{p}（is_file={is_file}, PATHEXT={pathext:?}）：{why}"
-        );
-    }
-}
-
-/// 非 unix 那一臂**真的调了**上面那个判定、而且没退回 `is_file()` 一字了事。
-/// 两向：那一臂里判定函数恰好 1 处；`is_exec` 函数体里裸 `p.is_file()` 零处（正控：unix 臂的 `m.is_file()` 在）。
-#[test]
-fn the_non_unix_arm_of_is_exec_delegates_to_the_pathext_rule() {
-    let me =
-        guard_core::production_code(include_str!("../../../../src/backend/control/ccm/plan.rs"));
-    let body = me
-        .split("fn is_exec(p: &std::path::Path) -> bool {")
-        .nth(1)
-        .and_then(|b| b.split("\n}\n").next())
-        .expect("找不到 `is_exec` 的函数体 —— 抽取器坏了，下面几条会零命中地绿");
-    assert!(
-        body.contains("m.is_file() && Ro::mode(&m).is_some_and(|mode| mode & 0o111 != 0)"),
-        "正控：unix 臂那一句不在了 —— 抽取器切错了地方"
-    );
-    let arm = body
-        .split("#[cfg(not(unix))]")
-        .nth(1)
-        .expect("`is_exec` 没有非 unix 那一臂了");
-    assert_eq!(
-        arm.matches("runnable_on_windows(").count(),
-        1,
-        "非 unix 那一臂要恰好调一次 `runnable_on_windows`：\n{arm}"
-    );
-    assert_eq!(
-        arm.matches("p.is_file()").count(),
-        1,
-        "非 unix 那一臂里 `p.is_file()` 只许作为判定函数的第一个参数出现一次（退回裸 `is_file()` ⇒ 「可执行」又退化成「存在」）"
-    );
-    assert!(
-        arm.contains("runnable_on_windows(p.is_file(),"),
-        "`p.is_file()` 要喂进判定函数，不许单独当结论：\n{arm}"
-    );
-}
+// ── Windows 本机那一格：家目录 · 路径分隔符 ──────────────
 
 #[test]
 fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment() {
@@ -1533,12 +1274,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     }
     // 正：多行初始任务（`ccm … -- "第一行<换行>第二行"` 那一形）—— 透传参数放行，且原样进 pane 里键入的载荷。
     let multi = "第一行\n第二行";
-    let mut with_bus = env();
-    with_bus.bus_scripts = Some("/opt/cc-bus/scripts".into());
-    let Plan::Container(c) = build_of(
-        &["--ccm-tmux=n", "--detach", "--bus-register", "--", multi],
-        &with_bus,
-    )
+    let Plan::Container(c) = build_of(&["--ccm-tmux=n", "--detach", "--", multi], &env())
     .unwrap_or_else(|e| panic!("多行初始任务被拒了：{}", e.0)) else {
         panic!("该是容器路")
     };
@@ -2121,20 +1857,19 @@ fn codex_runs_without_the_shared_daemon_and_without_an_account() {
         ..env()
     };
     let line = |a: &[&str]| render(&plan_of(a, &e, &t));
-    let bus = &*super::super::BUS_ID_RECIPE;
     // 会话号变量照样清（同起子进程原语，`nested_of`）：codex 没有嵌套标记，这一句只有它们。
     let sid = crate::platform::shell::posix::unset(&crate::agents::self_sid_envs());
     assert_eq!(
         line(&["resume", "s1", "--ccm-agent", "codex", "--cwd", "/p"]),
-        format!("{bus} {sid}cd '/p' && exec codex --no-daemon resume s1")
+        format!("{sid}cd '/p' && exec codex --no-daemon resume s1")
     );
     assert_eq!(
         line(&["--cwd", "/p", "--ccm-agent", "codex", "--base"]),
-        format!("{bus} {sid}cd '/p' && exec codex --no-daemon")
+        format!("{sid}cd '/p' && exec codex --no-daemon")
     );
     assert_eq!(
         line(&["--no-daemon", "--cwd", "/p", "--ccm-agent", "codex"]),
-        format!("{bus} {sid}cd '/p' && exec codex --no-daemon")
+        format!("{sid}cd '/p' && exec codex --no-daemon")
     );
 }
 
@@ -2527,16 +2262,12 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         bad.extend(b.into_iter().map(|h| format!("{what}: {h}")));
     };
 
-    // ① ccm 每一形：接回 · resume 接上在跑的 · 建容器接进去 / 不接 · 带 cc-bus 登记 · codex 的总线身份配方。
+    // ① ccm 每一形：接回 · resume 接上在跑的 · 建容器接进去 / 不接。
     let t = no_library;
     let container = |args: &[&str]| match plan_of(args, &env(), &t) {
         Plan::Container(c) => c,
         other => panic!("该是容器路：{args:?} ⇒ {other:?}"),
     };
-    let mut bus = container(&["--ccm-tmux=n1", "--cwd", "/p", "--detach"]);
-    bus.bus = Some(BusRegister {
-        scripts_dir: "/s".into(),
-    });
     let plans = [
         ("--attach", plan_of(&["--attach", "cc-p1"], &env(), &t)),
         (
@@ -2555,13 +2286,11 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
             "建容器不接",
             Plan::Container(container(&["--ccm-tmux=n1", "--cwd", "/p", "--detach"])),
         ),
-        ("带 cc-bus 登记", Plan::Container(bus)),
     ];
     for (what, p) in &plans {
         check(&format!("ccm {what}"), &render(p));
         check(&format!("ccm {what}（短形）"), &render_short(p, "/home/pi"));
     }
-    check("codex 的总线身份配方", &super::super::BUS_ID_RECIPE);
 
     // ② 源码：渲给客户端那几行住的地方（`control/ccm/` · `control/launch_render/` 两个目录 ＋ 接进去那一处 `common/tmux_utf8.rs`），
     //   生产段里每一处 `tmux <子命令>` 也用同一把尺子量（手写一条不带旗的，不等有样本渲到它就红）。
@@ -2593,7 +2322,7 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         "源码那一面只扫到 {files} 份 —— 目录挪了，本条会空转着绿"
     );
     assert!(
-        source_tmux >= 10,
+        source_tmux >= 8,
         "源码那一面只量到 {source_tmux} 处 tmux —— 剥法或量具坏了，本条会空转着绿"
     );
     assert!(

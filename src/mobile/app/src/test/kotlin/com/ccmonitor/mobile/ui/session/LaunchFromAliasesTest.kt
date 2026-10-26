@@ -55,7 +55,7 @@ class LaunchFromAliasesTest {
         "functionWhy" to null,
         "functionLine" to null,
         "said" to name,
-        "form" to mapOf("name" to name, "from" to null, "account" to null, "tmux" to null, "cwdIf" to null, "cwd" to null, "agent" to null, "args" to null, "launcher" to null, "tmuxSize" to null, "detach" to false, "busRegister" to false, "tab" to null),
+        "form" to mapOf("name" to name, "from" to null, "account" to null, "tmux" to null, "cwdIf" to null, "cwd" to null, "agent" to null, "args" to null, "launcher" to null, "tmuxSize" to null, "detach" to false, "tab" to null),
         "accountShape" to null,
         "start" to "'/h/.cc-monitor/bin/ccm' @$name",
     )

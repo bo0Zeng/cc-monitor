@@ -265,7 +265,7 @@ fn every_flag_we_accept_has_a_usage_line() {
     //
     // 〔变异台自查逮到，同一族的又一形〕`contains` 那一版**是空转的**：
     // 把 `--detach` 自己那一行整行删掉，判据**照样绿** ——
-    // 因为 `--bus-register` 那一行的括注里逐字写着「（需要 `--detach`）」。
+    // 因为别的旗标那一行的括注里逐字写着「（要带 `--detach`）」一类的话。
     // 匹配单位（全文）比事实（它有没有自己的条目）**大**了一格，
     // 于是「顺带被别人提到一句」被读成了「说明了它」。
     let has_own_line = |flag: &str| {
@@ -374,7 +374,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
         face("codex").nested_env.is_empty(),
         "codex 不清 claude 的嵌套标记"
     );
-    assert!(face("codex").needs_bus_id && !face("claude").needs_bus_id);
     assert!(face("claude").has_identity && !face("codex").has_identity);
 }
 
@@ -395,7 +394,6 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
         self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
         inner_head: vec!["/usr/local/bin/ccm".into()],
-        bus: None,
     };
     let req = crate::control::launch::parse_request(launch_args(&c)).expect("该过得了门");
     assert_eq!(req.name, "n1");
@@ -484,92 +482,21 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
     }
 }
 
-/// ★★ **`P19` 的承重前提：那段配方整段裹在 `$TMUX` 的守卫里。**
+/// ★★ **`P19`：还非得要 POSIX shell 的只剩 `CCM_ENV` 那一件。**
 ///
-/// [`needs_shell`] 敢在「不在 tmux 里」时跳过 `sh -c`，靠的**只有**这一条事实 ——
-/// 守卫为假 ⇒ 那段串在 `exec` 之前一个字都不做 ⇒ 省掉的是一个空转的中间进程。
-/// 🔴 谁把配方改成「无条件先做点什么」（哪怕只是 `export CC_BUS_ID=`），
-/// 那条等价当场不成立，而 [`needs_shell`] 会**静默地少做一件事** ——
-/// 本条就是为了让那一刻响，而不是让它安静。
-#[test]
-fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() {
-    let r: &str = &BUS_ID_RECIPE;
-    assert!(
-        r.starts_with("if [ -n \"${TMUX:-}\" ]; then "),
-        "配方不再以 `$TMUX` 守卫开头 ⇒ `needs_shell` 跳过 shell 的那条等价不成立了：{r:?}"
-    );
-    assert!(
-        r.ends_with("fi;"),
-        "配方守卫之后还跟着别的东西 ⇒ 那部分在跳过 shell 时会被悄悄丢掉：{r:?}"
-    );
-    // 恰好一对 `if … fi` ⇒ 守卫**罩住全身**，中途没有再关一次再做别的事。
-    assert_eq!(
-        r.matches("fi;").count(),
-        1,
-        "配方里有不止一处 `fi;` —— 守卫在半路关过，后面那段是无条件的：{r:?}"
-    );
-    assert_eq!(
-        r.matches("if ").count(),
-        1,
-        "配方里有不止一个 `if` —— 重新数一遍哪一段是无条件的：{r:?}"
-    );
-    // 反向自检：这几针不是靠「配方恰好是个空串」空转的。
-    assert!(
-        r.len() > 80 && r.contains("CC_BUS_ID"),
-        "配方短得不像话或者不再设 `CC_BUS_ID` —— 本条在空转：{r:?}"
-    );
-}
-
-/// ★★ **`P19` 正题：还非得要 POSIX shell 的只剩三件，codex 的配方不是其中之一。**
-///
-/// 🔴 **上一版的条件是 `!ccm_env.is_empty() || bus_id_recipe || resolved.is_some()`**
-/// —— `bus_id_recipe` 单独成闸，而 `needs_bus_id("codex")` 恒真 ⇒ **每一趟**
-/// `--agent codex` 都要一个 `sh`。真机现打（Win11）：
-/// `--agent codex --launcher hostname` → `EXIT=4 program not found`，
-/// 同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`。
+/// 直路上 codex 与 claude 在 tmux 内外都不要 shell（起会话不替 cc-bus 交身份，没有那段配方）；
+/// `CCM_ENV` 是一段任意 shell，只有 shell 解释得了。
 ///
 /// ⚠ **本条买不到的那一维**：它判的是「这一趟要不要请 shell 进来」这个**判定**，
 /// **不是**「在真 Windows 上真的起来了」。后者要真 Windows。
 #[test]
-fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
-    // ── 🔴 P19 买的就是这一格：codex + 不在 tmux（Windows 上 `$TMUX` 恒空）────
-    let codex_bare = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);
-    // 反空真自检：`None` 必须是**因为守卫为假**得来的，不许是因为配方那一格自己没了。
-    assert!(
-        codex_bare.bus_id_recipe,
-        "codex 这一趟连 `bus_id_recipe` 都是假的 —— 下面那条 `None` 会因为错的理由绿"
-    );
-    assert!(!codex_bare.inside_tmux, "夹具没把 `$TMUX` 置空，本格白测");
-    assert_eq!(
-        needs_shell(&codex_bare),
-        None,
-        "codex 不在 tmux 里还要请一个 `sh` 进来 —— 那正是 Windows 上那句 `program not found`"
-    );
-
-    // ── 在 tmux 里：配方真有事可做 ⇒ 照旧经 shell，且**说得出为什么** ─────────
-    let codex_in_tmux = direct_of(
-        &["--ccm-agent", "codex", "--cwd", "/p"],
-        Some("/faux/socket,1,0"),
-    );
-    assert!(codex_in_tmux.inside_tmux, "夹具没把 `$TMUX` 置上，本格白测");
-    assert_eq!(
-        needs_shell(&codex_in_tmux),
-        Some(WHY_SHELL_BUS_ID.as_str()),
-        "在 tmux 里那段配方要现问一次 tmux ⇒ 这一趟**必须**经 shell（`INVARIANTS §33a` 那条实测例）"
-    );
-
-    // ── claude 两态都不要 shell（它压根没有那段配方）──────────────────────
-    for tmux in [None, Some("/faux/socket,1,0")] {
-        let d = direct_of(&["--ccm-agent", "claude", "--cwd", "/p"], tmux);
-        assert!(!d.bus_id_recipe, "claude 不该有 cc-bus 配方");
-        assert_eq!(
-            needs_shell(&d),
-            None,
-            "claude 这一趟不该要 shell（tmux={tmux:?}）"
-        );
+fn only_ccm_env_still_needs_a_posix_shell_on_the_direct_path() {
+    for agent in ["codex", "claude"] {
+        for tmux in [None, Some("/faux/socket,1,0")] {
+            let d = direct_of(&["--ccm-agent", agent, "--cwd", "/p"], tmux);
+            assert_eq!(needs_shell(&d), None, "{agent} 这一趟不该要 shell（tmux={tmux:?}）");
+        }
     }
-
-    // ── 另一件**是真的要 shell**，这里没假装它不要（删了 `resolve` 那一件）──
     let mut with_env = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);
     with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
     assert_eq!(
@@ -594,7 +521,6 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 
     let reasons: &[(&str, &str)] = &[
         ("WHY_SHELL_CCM_ENV", WHY_SHELL_CCM_ENV.as_str()),
-        ("WHY_SHELL_BUS_ID", WHY_SHELL_BUS_ID.as_str()),
         ("WHY_SHELL_ATTACH", WHY_SHELL_ATTACH.as_str()),
         (
             "WHY_SHELL_CONTAINER_TAIL",
@@ -687,7 +613,6 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
                 .unwrap_or_default()
                 .to_string(),
             self_argv: vec!["ccm".into()],
-            bus_scripts: plan::discover_bus_scripts(),
             ..Default::default()
         };
         // 账号清单成品照这台机器的真值（预览要的就是这一点：「这台机器上敲这条别名」）—— 与真跑同一个入口交的那一份。
@@ -775,7 +700,7 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
 //
 // 第 2 层「能力清单从实现派生」（`lib.rs` 头注那张表逐字「**能力清单从实现派生，
 // `CAPABILITIES` 由它们汇总而来，不许手写**」）；读数要求：「`ccm.exe --ccm-probe`
-// 在 Windows 上自报 `tmux, attach, detach, tmux-size, tmux-base, bus-register` 等能力 —— 这些在 Windows 上都做不到」。
+// 在 Windows 上自报 `tmux, attach, detach, tmux-size, tmux-base` 等能力 —— 这些在 Windows 上都做不到」。
 // 异源：Windows 那一格的期望是**手写的两张名单**（做得到 / 做不到），不从 `CCM_TMUX_CARRIED` 或
 // `ccm_launcher_with` 里抠 —— 否则两侧同源、恒真。
 // ⚠ 买不到：`TMUX_PLATFORM` 在本机是 `AskThePath`，Windows 那一档由入参模拟；真 `ccm.exe` 吐什么要真机
@@ -803,7 +728,6 @@ fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
         "detach",
         "tmux-size",
         "tmux-base",
-        "bus-register",
         "ccm-sid",
         "base-url-across-tmux",
     ];
@@ -864,118 +788,6 @@ fn the_real_probe_asks_this_binarys_own_platform() {
             "/x/ccm",
             crate::platform::tmux::TmuxPlatform::AskThePath
         ))
-    );
-}
-
-/// 〔`INVARIANTS §49`〕**codex 的 cc-bus 身份配方读会话名时，那个 tmux 客户端是 UTF-8 客户端。**
-///
-/// 要求住址：`INVARIANTS §49`「本仓每一处按格式串读 tmux 打印通道的调用点，起的 tmux 客户端都必须是 UTF-8 客户端」（`BUS_ID_RECIPE` 读 `#S` 是五处真违反之一）。
-///
-/// 真跑：隔离 socket（显式 `-S` ＋ `-f /dev/null`，不碰默认 socket）起一个**中文名**会话，pane 里整条命令跑在
-/// `LC_ALL=C` 下（tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`）。生产那一段配方原样执行，
-/// `CC_BUS_ID` 必须逐字节就是会话名。
-///
-/// ⚠ **台架为什么要一个 shim 把 tmux 客户端那一侧的 `TMUX` 摘掉**〔SH1 09-26 现打，tmux 3.6〕：
-/// `TMUX` 已设的客户端，tmux **一律按 UTF-8 打**，不看 locale（`env -i LC_ALL=C TMUX=/x,1,0 tmux … display-message -p` 读出原样中文；
-/// 摘掉 `TMUX` 就是 `_`）。而这段配方整段裹在 `[ -n "${TMUX:-}" ]` 里 ⇒ 生产上它恒在 `TMUX` 已设时跑 ⇒
-/// **在 3.6 上它今天其实没被改写**，TL2 记的「真违反」是**潜伏**的：靠的是一条手册里没写的启发式（`K-R12` 的实验室当年
-/// 在 tmux 外面量，没碰到这一格）。旗保证的是**不靠它**。⇒ 台架必须把那条启发式关掉，否则下面的反向正控立不住、
-/// 那条相等是空真（本条第一版就是这么红在反向正控上的）。
-/// ★ 反向正控：同一个 pane、同一个 locale、同一个 shim，**不带旗**的 `display-message -p "#S"` 必须被改写。
-#[test]
-fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
-    let dir = std::env::temp_dir().join(format!("ccm-sh1-u8-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("shim")).expect("建台架目录");
-    let sock = dir.join("sock");
-    let real = std::process::Command::new("sh")
-        .args(["-c", "command -v tmux"])
-        .output()
-        .expect("sh 不可执行");
-    let real = String::from_utf8_lossy(&real.stdout).trim().to_string();
-    assert!(
-        !real.is_empty(),
-        "找不到 tmux —— 本测试要求环境有 tmux（刻意不静默跳过）"
-    );
-    let shim = dir.join("shim").join("tmux");
-    std::fs::write(
-        &shim,
-        format!(
-            "#!/bin/sh\nunset TMUX\nexec '{real}' -S '{}' \"$@\"\n",
-            sock.display()
-        ),
-    )
-    .expect("写 shim");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod shim");
-    }
-    let name = "u8甲乙";
-    let script = format!(
-        "{recipe} printf '%s' \"$CC_BUS_ID\" > '{d}/id'; \
-         printf '%s' \"$(tmux display-message -p '#S')\" > '{d}/raw'; touch '{d}/done'; exec sleep 30",
-        recipe = BUS_ID_RECIPE.as_str(),
-        d = dir.display()
-    );
-    let path = format!(
-        "{}:{}",
-        dir.join("shim").display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let tmux = |args: &[&str]| {
-        std::process::Command::new(&real)
-            .arg("-S")
-            .arg(&sock)
-            .args(args)
-            .output()
-            .expect("tmux 不可执行")
-    };
-    let path_kv = format!("PATH={path}");
-    let out = tmux(&[
-        "-f",
-        "/dev/null",
-        "new-session",
-        "-d",
-        "-s",
-        name,
-        "env",
-        "LC_ALL=C",
-        "LANG=C",
-        "LC_CTYPE=C",
-        &path_kv,
-        "sh",
-        "-c",
-        &script,
-    ]);
-    assert!(
-        out.status.success(),
-        "隔离 socket 上建会话失败：{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    // 夹具侧的有界等待（pane 里那条命令由另一个进程跑完）；等不到就失败，不静默跳过。
-    for _ in guard_core::wall::rounds() {
-        if dir.join("done").exists() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let id = std::fs::read(dir.join("id"));
-    let raw = std::fs::read(dir.join("raw"));
-    let _ = tmux(&["kill-server"]);
-    let _ = std::fs::remove_dir_all(&dir);
-    let id = id.expect("配方那一趟没跑完（`id` 没写出来）");
-    let raw = raw.expect("反向正控那一趟没跑完（`raw` 没写出来）");
-    assert!(
-        !raw.is_empty() && raw != name.as_bytes(),
-        "反向正控没立住：不带旗的 `display-message` 在这个台架上也读得出中文（或什么都没读到：{raw:?}）—— \
-         台架不是非 UTF-8 客户端，下面那条相等是空真"
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&id),
-        name,
-        "配方在非 UTF-8 客户端下读出的会话名被改写了 —— `BUS_ID_RECIPE` 的 `display-message` 没带 UTF-8 旗（`INVARIANTS §49`）"
     );
 }
 

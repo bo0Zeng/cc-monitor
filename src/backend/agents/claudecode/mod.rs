@@ -201,8 +201,6 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
-    // 不经 env 交 cc-bus 身份：它自己读得到 tmux，交了反而盖掉 `@cc_id` 的细分。
-    needs_bus_id: false,
     has_identity: true,
     models: Some(resume::MODEL_ALIASES),
     model_default: Some(resume::MODEL_DEFAULT),

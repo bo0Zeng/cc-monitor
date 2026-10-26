@@ -3,7 +3,7 @@
 // 三条约束决定了这个形状：
 //  ① 不轮询：状态在跑着 cc-bus 的那台机器的 `~/.cc-bus/`（本机也读，后端同一条命令串、只是不包进 ssh），
 //     只在用户点「读取」时按需问一次。本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务。
-//  ② 登记 ≠ 在线：`agents.tsv` 只证明登记过；判在线是第二次往返，放在点某一行的「检查」上，不全量查。
+//  ② 有收件箱 ≠ 在线：名单的行是收件箱；判在线是第二次往返，放在点某一行的「检查」上，不全量查。
 //  ③ 脏数据不能把面板搞崩：后端解析器跳过坏行并计数，这里如实显示「N 条无法解析」。
 import { setCurrentMachine, subscribeMachine } from "../machine-context";
 import { remoteNames } from "../remote-config";
@@ -141,19 +141,20 @@ export class CcBusSection {
     morph(this.listBox, st.agents.map((a) => this.buildRow(a)));
   }
 
-  private buildRow(a: { id: string; target: string }): HTMLElement {
+  private buildRow(a: { id: string; title: string }): HTMLElement {
     const row = document.createElement("div");
     row.className = "cc-bus-row";
     row.dataset.busAgent = a.id; // 靠 dataset 认身份，不靠 textContent
 
+    // 叫它什么由后端给（有记录 ⇒ 会话标题；没有 ⇒ 就是会话 id），这里照摆；会话 id 另一格照摆。
     const idEl = document.createElement("span");
     idEl.className = "cc-bus-id";
-    idEl.textContent = a.id;
+    idEl.textContent = a.title;
     row.appendChild(idEl);
 
     const meta = document.createElement("span");
     meta.className = "cc-bus-meta";
-    meta.textContent = a.target;
+    meta.textContent = a.id;
     row.appendChild(meta);
 
     // 在线状态默认「未知」：名单证明不了在线，全量查是 N 次往返；想知道哪一个就点哪一个。

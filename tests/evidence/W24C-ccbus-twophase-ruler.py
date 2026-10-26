@@ -114,7 +114,6 @@ LOCK_FAMILIES = {
     '$inbox.lock': "A 收件箱(route_deliver · cc-recv · cc-peek · cc-commit)",
     '$f.lock': "B 限流窗口",
     '$nf.lock': "D 敲门去抖",
-    '$BUS/agents.tsv.lock': "E 名册与台账",
     '$BUS/state/migrate.lock': "F 旧收件箱迁一次(只在升级后第一次跑时拿,迁完是一次 stat)",
 }
 

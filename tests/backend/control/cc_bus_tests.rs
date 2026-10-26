@@ -19,10 +19,9 @@ fn parse_inbox(v: &serde_json::Value) -> Result<(String, u64), (String, String)>
 fn agent(v: &serde_json::Value) -> BusAgent {
     BusAgent {
         id: v["id"].as_str().unwrap_or_default().to_string(),
-        target: v["target"].as_str().unwrap_or_default().to_string(),
+        title: v["title"].as_str().unwrap_or_default().to_string(),
         unread: v["unread"].as_i64().unwrap_or_default(),
         live: v["live"].as_bool(),
-        ccm_sid: v["ccm_sid"].as_str().map(str::to_string),
     }
 }
 fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, String)> {
@@ -55,8 +54,8 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
     (
         "cc-list",
         "只读",
-        "cc-bus 的**名册与已读位置是它自己的私有格式**（`agents.tsv` ＋ `inbox/*.jsonl` \
-             ＋ `state/*.pos`，`cc-list` 现打就是在做这个 join）。收进后端 = 把那份格式\
+        "cc-bus 的**收件箱与已读位置是它自己的私有格式**（`inbox/*.jsonl` \
+             ＋ `state/*.pos`，`cc-list` 现打就是在数这两样）。收进后端 = 把那份格式\
              再实现一遍 ⇒ 一处改、一处漏，而且错得静悄悄。「后面我可能要改ccbus」\
              ⇒ 今天焊进来的每一个字段，都是他改那天的一笔返工。",
         "cc-bus 那份文件格式**稳下来**，或者 cc-bus 本身被收成后端的一部分（那时它就不是\
@@ -211,16 +210,57 @@ fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
             "{what}：老 cc-bus 那一句没说清下一步：{e:?}"
         );
     }
-    let half = parse_roster_tsv("#cc-list-tsv\t1\nalpha_cc\ta:0.0\tts\t1\t0\n")
+    let half = parse_roster_tsv("#cc-list-tsv\t2\nalpha_cc\t0\n")
         .expect_err("缺末行的名册必须回错");
     assert!(
         copy_core::copy_matches("beCcBus.read.truncated", &half.1),
         "{half:?}"
     );
+    // 上一版的名册（带登记地址那一形）也是「cc-bus 比后端旧」，不按新的两格硬解。
+    let v1 = parse_roster_tsv("#cc-list-tsv\t1\nalpha_cc\ta:0.0\tts\t1\t0\n#skipped\t0\n")
+        .expect_err("上一版的名册必须明说");
+    assert!(copy_core::copy_matches("beCcBus.read.tooOld", &v1.1), "{v1:?}");
     // 正控：首尾齐的空名单是「真的一个都没有」，不是错。
     assert_eq!(
-        parse_roster_tsv("#cc-list-tsv\t1\n#skipped\t0\n").unwrap(),
+        parse_roster_tsv("#cc-list-tsv\t2\n#skipped\t0\n").unwrap(),
         (Vec::new(), 0)
+    );
+}
+
+/// 名单的行只有收件箱那两格（会话 id · 待读）；行形状不对、id 过不了本侧判定的都算坏行，不丢好行。
+#[test]
+fn the_roster_rows_are_inbox_id_and_unread_only() {
+    let (rows, skipped) = parse_roster_tsv(
+        "#cc-list-tsv\t2\nsid-a\t3\n--help\t1\nsid-b\tx\nsid-c\t1\textra\nsid-d\t0\n#skipped\t1\n",
+    )
+    .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            RosterRow { id: "sid-a".into(), unread: 3 },
+            RosterRow { id: "sid-d".into(), unread: 0 },
+        ]
+    );
+    assert_eq!(skipped, 4, "cc-bus 报的 1 行 ＋ 本侧拒的 3 行");
+}
+
+/// 叫它什么 · 在不在只问后端那一处（判官由调用方交进来）；判不了 ⇒ `live` 是 null、标题照实就是会话 id。
+#[test]
+fn title_and_liveness_come_from_the_judge_and_unknown_stays_unknown() {
+    let rows = vec![
+        RosterRow { id: "s1".into(), unread: 1 },
+        RosterRow { id: "s2".into(), unread: 0 },
+    ];
+    let got = roster_agents(&rows, &|sid| match sid {
+        "s1" => Seen { title: Some("标题".into()), live: Some(false) },
+        _ => Seen { title: None, live: None },
+    });
+    assert_eq!(
+        got,
+        vec![
+            BusAgent { id: "s1".into(), title: "标题".into(), unread: 1, live: Some(false) },
+            BusAgent { id: "s2".into(), title: "s2".into(), unread: 0, live: None },
+        ]
     );
 }
 
@@ -374,18 +414,20 @@ fn the_bus_products_match_the_cross_language_golden() {
             "金样里 `{op}` 的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
         );
     }
-    // bus-list：名单由输入样例现算。
-    let sessions: Vec<(String, String)> = g["input"]["sessions"]
+    // bus-list：名单由输入样例现算（判官照样例里那几条会话答，样例里没有的 ⇒ 判不了）。
+    let sessions = g["input"]["sessions"]
         .as_array()
         .expect("输入样例缺 `sessions`")
-        .iter()
-        .map(|p| {
-            (
-                p[0].as_str().expect("会话名").to_string(),
-                p[1].as_str().expect("@ccm_sid").to_string(),
-            )
-        })
-        .collect();
+        .clone();
+    let judge = |sid: &str| -> Seen {
+        sessions
+            .iter()
+            .find(|s| s["sid"] == sid)
+            .map_or(Seen { title: None, live: None }, |s| Seen {
+                title: s["title"].as_str().map(str::to_string),
+                live: s["live"].as_bool(),
+            })
+    };
     let agents: Vec<Value> = roster_agents(
         &parse_roster_tsv(
             g["input"]["ccListTsv"]
@@ -394,7 +436,7 @@ fn the_bus_products_match_the_cross_language_golden() {
         )
         .expect("名册样例读得动")
         .0,
-        Some(&sessions),
+        &judge,
     )
     .into_iter()
     .map(val)

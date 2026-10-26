@@ -1,17 +1,13 @@
 {
   "supported": true,
   "diagnosis": {
-    "session_start": {
-      "kind": "installed-at-path",
-      "command": "\"$HOME/.local/bin/cc-register\" >/dev/null 2>&1 || true",
-      "path": "$HOME/.local/bin/cc-register"
-    },
     "stop": {
-      "kind": "unknown",
-      "command": "sh -c cc-bus-stop-hook"
+      "kind": "installed-at-path",
+      "command": "\"$HOME/.local/bin/cc-bus-stop-hook\"",
+      "path": "$HOME/.local/bin/cc-bus-stop-hook"
     },
     "note": ""
   },
-  "snippet": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-register\\\" >/dev/null 2>&1 || true\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook\\\"\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+  "snippet": "{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook\\\"\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ]\n  }\n}",
   "source": "/HOME/.claude/settings.json"
 }

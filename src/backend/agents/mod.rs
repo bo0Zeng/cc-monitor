@@ -312,11 +312,6 @@ pub(crate) struct LaunchFace {
     /// 不说是哪一家时就起这一家（`ccm` 不给 `--agent` · 载荷内核）。
     /// 注册表里恰一家为真（`agents_tests.rs` 钉着）。
     pub(crate) is_default: bool,
-    /// 这一家自己够不着 tmux socket ⇒ 起它时要把 cc-bus 身份（tmux 会话名）经 `CC_BUS_ID` 交进去。
-    ///
-    /// ⚠ 它答的是「**要不要**」，不是「**能不能**」：值恒来自 tmux 的会话名（`control::ccm::BUS_ID_RECIPE`），
-    /// 没有 tmux 就没有这个值 —— 那是载体没了，不是这一家做不到。要不要请一个 `sh` 进来另由 `ccm` 的 `needs_shell` 判。
-    pub(crate) needs_bus_id: bool,
     /// 这一家的会话有身份面（`@ccm_sid` 回填）。
     pub(crate) has_identity: bool,
     /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
