@@ -578,7 +578,7 @@ async fn real_window_rig_for_the_frame_log() {
             event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([1280.0, 800.0])
-                .with_min_inner_size(crate::shell::MIN_WINDOW)
+                .with_min_inner_size(crate::shell::window::MIN_WINDOW)
                 .with_title("filewin-rig"),
             ..Default::default()
         };

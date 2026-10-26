@@ -99,6 +99,24 @@ object Core {
     /** 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（`alias` · `host_name` · `port` · `user` · `identity_file`）。 */
     external fun parseSshConfig(text: String): String
 
+    /**
+     * 这一端的机器表（[table]：一台一个拨号核心的 `Host`，JSON 数组）里叫 [name] 的那一台 ⇒ 组拨号的结局（`DialPlan`）：
+     * 跳板一路照表找（多跳）；成环 · 找不到 · 那一台不成立 ⇒ 拒那一句，不回落直连。每一跳的 `key_path` 是那一行交进来的原值。
+     */
+    external fun dialPlan(
+        table: String,
+        name: String,
+    ): String
+
+    /** 机器表 ⇒ 一台一行（`MachineRow`：拨号核心算的名字 ＋ 那一台原样）；读不懂 ⇒ `[]`。 */
+    external fun machines(table: String): String
+
+    /** 编辑页那张表（连正在编的那一台，第 [at] 行）⇒ 判得怎样 ＋ 那一台展开的拨号地址（`MachineCheck`；判法与桌面同一处）。 */
+    external fun machineCheck(
+        table: String,
+        at: Int,
+    ): String
+
     /** 文件页选中这几项（`files-ls` 的原行，JSON 数组）· 此刻那一台（[residentOpen] 的编号）⇒ `{bar, more, tap}`。 */
     external fun pickMenu(
         handle: Long,

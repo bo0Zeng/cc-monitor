@@ -28,10 +28,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionTest {
-    private fun TestScope.draft(
-        link: FakeCoreLink,
-        agent: String? = "claude",
-    ) = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj", agent = agent), "box", backgroundScope)
+    private fun TestScope.draft(link: FakeCoreLink) = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj"), "box", backgroundScope)
 
     private fun TestScope.existing(link: FakeCoreLink) = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
 
@@ -61,7 +58,7 @@ class ChatSessionTest {
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
             }
-            val s = draft(link)
+            val s = draft(link).also { it.picker!!.pickAgent("claude") } // 那台没答 facts：点了哪一家就起哪一家
             s.send("你好")
             runCurrent()
             assertEquals(
@@ -195,7 +192,7 @@ class ChatSessionTest {
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
             }
-            val s = draft(link, agent = "codex")
+            val s = draft(link).also { it.picker!!.pickAgent("codex") }
             s.send("看一下")
             runCurrent()
             val opened = link.calls("session-open").single().what()
@@ -452,7 +449,7 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `起哪一家问那台：没存 ⇒ 那台列的第一家；存的那台认不出（旧值）⇒ 也是第一家；认得 ⇒ 存的那一家`() =
+    fun `起哪一家问那台：没点 ⇒ 那台列的第一家；点了 ⇒ 点的那一家（手机不存这台缺省哪一家）`() =
         runTest {
             val facts =
                 mapOf(
@@ -462,7 +459,7 @@ class ChatSessionTest {
                     "agents" to
                         listOf("codex", "claude").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                 )
-            for ((stored, want) in listOf(null to "codex", "ClaudeCode" to "codex", "claude" to "claude")) {
+            for ((picked, want) in listOf(null to "codex", "claude" to "claude")) {
                 val link = FakeCoreLink()
                 link.answer = { cmd, _ ->
                     when (cmd) {
@@ -471,10 +468,13 @@ class ChatSessionTest {
                         else -> Reply.LinkDown
                     }
                 }
-                draft(link, agent = stored).send("你好")
+                val s = draft(link)
+                runCurrent()
+                picked?.let { s.picker!!.pickAgent(it) }
+                s.send("你好")
                 runCurrent()
                 val opened = link.calls("session-open").single().what()
-                assertEquals("存的是 $stored", want, opened?.get("agent"))
+                assertEquals("点的是 $picked", want, opened?.get("agent"))
             }
         }
 
@@ -509,9 +509,11 @@ class ChatSessionTest {
                     else -> Reply.LinkDown
                 }
             }
-            val s = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = null, agent = "codex"), "box", backgroundScope)
+            val s = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = null), "box", backgroundScope)
             runCurrent()
             assertTrue(s.state.value.drafting)
+            s.picker!!.pickAgent("codex")
+            runCurrent()
             s.picker!!.pickAccount("personal")
             s.send("你好")
             runCurrent()

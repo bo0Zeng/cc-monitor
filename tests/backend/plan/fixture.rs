@@ -537,7 +537,8 @@ pub(crate) fn scratch(tag: &str) -> PathBuf {
 
 /// 在 `root` 底下造一个假 pb 插件：清单名字是 pb，入口脚本
 /// ① 把自己的 argv · 当前目录 · 环境里有没有 `PB_ID` 记进 `<root>/ran.json`（最近那一次），argv 另追加一行进 `<root>/runs.log`（每一次）；
-/// ② 当前目录（往上找）有 `.planned-build/` ⇒ `dump --node` 印 `<那个目录>/node.json`、别的印 `<那个目录>/dump.json`，退 0；没有 ⇒ stderr 一句、退 3。
+/// ② 当前目录（往上找）有 `.planned-build/` ⇒ `dump --node` 印 `<那个目录>/node.json`；`dump --refs` 把标准输入记进 `<root>/stdin.txt`、
+/// 印 `<那个目录>/refs.json`；别的印 `<那个目录>/dump.json`；退 0。没有 ⇒ stderr 一句、退 3。
 /// 它认的 `--` 旗标就是真 pb 那边后端会发的那几个（`protocol_doc_guard` 的子进程旗标对拍读这份）。
 /// `rc` 给了就不管上面，直接以它退出（造「没有 dump」「别的失败」）。
 pub(crate) fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
@@ -563,7 +564,10 @@ if forced is not None:
 d = os.getcwd()
 while True:
     if os.path.isdir(os.path.join(d, ".planned-build")):
-        f = "node.json" if sys.argv[1:3] == ["dump", "--node"] else "dump.json"
+        how = sys.argv[1:3]
+        if how == ["dump", "--refs"]:
+            open({stdin:?}, "w", encoding="utf-8").write(sys.stdin.buffer.read().decode("utf-8"))
+        f = "node.json" if how == ["dump", "--node"] else "refs.json" if how == ["dump", "--refs"] else "dump.json"
         sys.stdout.write(open(os.path.join(d, f)).read()); sys.exit(0)
     up = os.path.dirname(d)
     if up == d:
@@ -572,6 +576,7 @@ while True:
 "#,
             ran = ran.to_string_lossy(),
             runs = root.join("runs.log").to_string_lossy(),
+            stdin = root.join("stdin.txt").to_string_lossy(),
         ),
     )
     .unwrap();

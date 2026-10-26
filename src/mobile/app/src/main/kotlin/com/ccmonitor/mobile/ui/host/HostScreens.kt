@@ -48,13 +48,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
-import com.ccmonitor.mobile.core.data.db.parseAddressLine
+import com.ccmonitor.mobile.core.data.db.machineNames
+import com.ccmonitor.mobile.core.data.db.machineTable
+import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
@@ -67,7 +66,8 @@ import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
-import com.ccmonitor.mobile.core.wire.gen.AgentFacts
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.MachineCheck
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.BusyLine
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -316,7 +316,7 @@ private fun HostRow(
             Column(Modifier.weight(1f)) {
                 Text(host.label, style = MaterialTheme.typography.titleSmall)
                 // 主地址；有额外地址时标出数量；连接失败 ⇒ 后面跟一句红字
-                val extraCount = host.extraAddresses?.lineSequence()?.count { it.isNotBlank() } ?: 0
+                val extraCount = host.addresses.size
                 Row {
                     Text(
                         "${host.username}@${host.host}:${host.port}" + if (extraCount > 0) "  +$extraCount" else "",
@@ -385,14 +385,12 @@ fun HostEditorScreen(
     var authRef by remember { mutableStateOf<String?>(null) }
     var authIsPassword by remember { mutableStateOf(false) } // 认证方式：钥匙 / 密码
     var password by remember { mutableStateOf("") } // 明文密码，保存时加密
-    var extraAddresses by remember { mutableStateOf("") }
+    var addressText by remember { mutableStateOf("") }
     var workingDir by remember { mutableStateOf("") }
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-open-facts` 给的）；没选 ⇒ null。
-    var agentKind by remember { mutableStateOf<String?>(null) }
-    var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
+    var jump by remember { mutableStateOf("") } // 经跳板机（表里另一台的名字；空 = 直连）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
     var load by remember { mutableStateOf(if (hostId == null) HostEditLoad.Loaded else HostEditLoad.Loading) }
 
@@ -411,13 +409,12 @@ fun HostEditorScreen(
                 authRef = h.authRef
                 authIsPassword = h.passwordEnc != null
                 if (h.passwordEnc != null) password = vm.hostPassword(h) ?: "" // 回显解密后的密码
-                extraAddresses = h.extraAddresses ?: ""
+                addressText = h.addresses.joinToString("\n")
                 workingDir = h.defaultWorkingDir ?: ""
                 useTmux = h.sessionManager == "tmux"
                 autoReconnect = h.autoReconnect
                 group = h.groupId ?: ""
-                agentKind = h.agentKind
-                proxyJumpHostId = h.proxyJumpHostId
+                jump = h.jump
                 load = HostEditLoad.Loaded
             }
         }
@@ -437,12 +434,24 @@ fun HostEditorScreen(
         return
     }
 
-    val previewPort = port.toIntOrNull() ?: 22
-    val previewEps =
-        buildList {
-            if (host.isNotBlank()) add(Endpoint(host.trim(), previewPort))
-            extraAddresses.lineSequence().forEach { line -> parseAddressLine(line, previewPort)?.let(::add) }
-        }.distinctBy { "${it.host}:${it.port}" }
+    // 正在编的这一台（存的时候新建的那一台才换上新 id）；连同表里别的几台交核心判（判法与桌面同一处）· 展开地址。
+    val draft =
+        (existing ?: Host(id = "", label = "", host = "", username = "")).copy(
+            label = label.ifBlank { host },
+            host = host.trim(),
+            port = port.toIntOrNull() ?: 22,
+            username = user.trim(),
+            authRef = if (authIsPassword) null else authRef, // 密码认证与 authRef 互斥
+            addresses = addressText.lines().map { it.trim() }.filter { it.isNotEmpty() },
+            defaultWorkingDir = workingDir.trim().ifBlank { null },
+            sessionManager = if (useTmux) "tmux" else null,
+            autoReconnect = autoReconnect,
+            groupId = group.trim().ifBlank { null },
+            jump = jump,
+        )
+    val others = allHosts.filter { it.id != existing?.id }
+    val check = remember(others, draft) { machineCheck(others + draft) }
+    val previewEps = check.endpoints
 
     Column(
         Modifier
@@ -461,14 +470,14 @@ fun HostEditorScreen(
 
         // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
         OutlinedTextField(
-            extraAddresses,
-            { extraAddresses = it },
+            addressText,
+            { addressText = it },
             label = { Text(copyText("machineForm.field.addresses")) },
             placeholder = { Text("192.0.2.20\nwan.example.com:2222") },
             minLines = 2,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (extraAddresses.isNotBlank()) {
+        if (addressText.isNotBlank()) {
             Text(
                 copyText("mobHostEdit.field.extraPreview", "n" to previewEps.size, "addresses" to previewEps.joinToString(", ") { "${it.host}:${it.port}" }),
                 style = monoSmall,
@@ -485,15 +494,6 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // 起会话用哪一家：列那台能起的几家（`session-open-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
-        val agents = rememberAgentsOf(hostId)
-        if (agents.isNotEmpty()) {
-            Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                val picked = SessionOpenFacts.pick(agents, agentKind)?.kind
-                agents.forEach { a -> ChoiceRow(a.text, a.kind == picked) { agentKind = a.kind } }
-            }
-        }
         // 开关即 useTmux；文案不说「连接」「tmux」。
         SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
@@ -525,10 +525,14 @@ fun HostEditorScreen(
         }
 
         ProxyJumpPicker(
-            candidates = allHosts.filter { it.id != existing?.id },
-            selected = proxyJumpHostId,
-            onSelect = { proxyJumpHostId = it },
+            candidates = others,
+            selected = jump,
+            onSelect = { jump = it },
         )
+
+        // 机器表那一道没过（重名 · 端口 · `-` 打头 …）：说那一句、不许存。地址 · 用户还空着时只灰着存按钮，不先报错。
+        val fault = check.fault?.takeIf { host.isNotBlank() && user.isNotBlank() }
+        fault?.let { ErrorLine(it.said) }
 
         // 那台的 cc-monitor：装 / 更新 / 核对版本（只对已保存的主机给：要它的连接）。
         existing?.let { BackendRow(it.id) }
@@ -537,45 +541,35 @@ fun HostEditorScreen(
             SecondaryButton(onClick = onDone) { Text(copyText("kit.dialog.cancel")) }
             Button(
                 onClick = {
-                    val base = existing ?: Host(id = "host-" + UUID.randomUUID(), label = "", host = "", port = 22, username = "")
-                    val chosen =
-                        base.copy(
-                            label = label.ifBlank { host },
-                            host = host.trim(),
-                            port = port.toIntOrNull() ?: 22,
-                            username = user.trim(),
-                            authRef = if (authIsPassword) null else authRef, // 密码认证与 authRef 互斥
-                            extraAddresses = extraAddresses.trim().ifBlank { null },
-                            defaultWorkingDir = workingDir.trim().ifBlank { null },
-                            sessionManager = if (useTmux) "tmux" else null,
-                            autoReconnect = autoReconnect,
-                            groupId = group.trim().ifBlank { null },
-                            proxyJumpHostId = proxyJumpHostId,
-                            agentKind = agentKind,
-                        )
+                    val chosen = if (existing == null) draft.copy(id = "host-" + UUID.randomUUID()) else draft
                     // 密码模式加密进 passwordEnc；钥匙模式清空 passwordEnc（encryptPassword(_, null) 统一处理）。
                     val saving = vm.saveHost(vm.encryptPassword(chosen, if (authIsPassword) password else null))
                     val added = onAdded?.takeIf { existing == null }
                     if (added == null) onDone() else saveScope.launch { saving.join().also { added(chosen) } }
                 },
-                // 密码模式必须填密码；钥匙模式只走基本校验。
-                enabled = host.isNotBlank() && user.isNotBlank() && (!authIsPassword || password.isNotBlank()),
+                // 密码模式必须填密码；钥匙模式只走基本校验；机器表那一道没过不许存。
+                enabled = host.isNotBlank() && user.isNotBlank() && (!authIsPassword || password.isNotBlank()) && fault == null,
             ) { Text(copyText("mobHostEdit.page.save")) }
         }
     }
 }
 
-/** 选一台已存主机作跳板机（ssh -J），或「无（直连）」。 */
+/** 编辑页那张表（正在编的那一台排最后）交核心判：毛病（判法 · 说法与桌面 `machines-try` 同一处）＋ 那一台展开的地址。 */
+private fun machineCheck(table: List<Host>): MachineCheck =
+    Wire.read<MachineCheck>(Core.machineCheck(table.machineTable(), table.lastIndex)) ?: error("wire contract mismatch: machine check")
+
+/** 选一台已存主机作跳板机（ssh -J；存的是它的名字，名字是核心算的），或「无（直连）」。 */
 @Composable
 private fun ProxyJumpPicker(
     candidates: List<Host>,
-    selected: String?,
-    onSelect: (String?) -> Unit,
+    selected: String,
+    onSelect: (String) -> Unit,
 ) {
+    val names = remember(candidates) { machineNames(candidates) }
     Text(copyText("machineForm.field.jump"), style = MaterialTheme.typography.labelMedium)
-    ChoiceRow(copyText("mobHostEdit.jump.none"), selected == null, Modifier.fillMaxWidth()) { onSelect(null) }
-    candidates.forEach { j ->
-        ChoiceRow("${j.label} (${j.host})", selected == j.id, Modifier.fillMaxWidth()) { onSelect(j.id) }
+    ChoiceRow(copyText("mobHostEdit.jump.none"), selected.isEmpty(), Modifier.fillMaxWidth()) { onSelect("") }
+    candidates.zip(names).forEach { (j, name) ->
+        ChoiceRow("$name (${j.host})", selected == name, Modifier.fillMaxWidth()) { onSelect(name) }
     }
 }
 
@@ -647,18 +641,3 @@ private fun BackendRow(hostId: String) {
         null -> Unit
     }
 }
-
-/** 那台能起的几家（`session-open-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
-@Composable
-private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
-    val backends = koinInject<HostBackends>()
-    val got by androidx.compose.runtime.produceState(emptyList<AgentFacts>(), hostId) {
-        if (hostId == null) return@produceState
-        val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap(), AGENTS_MS)
-        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data)?.agents }.orEmpty()
-    }
-    return got
-}
-
-/** 主机设置里问那台有哪几家，最多等这么久（问不到就不列）。 */
-private const val AGENTS_MS = 8_000L

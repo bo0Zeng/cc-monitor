@@ -167,22 +167,19 @@ impl FileWindow {
         self.props.as_ref()
     }
 
-    /// 画「属性」框（开着才画）。点「关闭」或框外那个 × 就收。
+    /// 画「属性」框（开着才画；同一种对话框 `kit::dialog`）。点「关闭」· Esc · 点压暗的底就收。
     pub(super) fn props_ui(&mut self, ui: &mut egui::Ui) {
         let Some(p) = &self.props else {
             return;
         };
         let title = copy_text("rsFilewinProps.box.title", &[("name", &p.row.name)]);
         let lines = p.lines();
-        let mut open = true;
-        let mut close = false;
-        egui::Window::new(title)
-            .id(egui::Id::new("filewin-props"))
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ui.ctx(), |ui| {
+        // 只有一颗「关闭」；Esc / 点压暗的底同它。
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-props",
+            &title,
+            |ui| {
                 let p = super::theme::palette(ui.ctx());
                 egui::Grid::new("filewin-props-grid")
                     .num_columns(2)
@@ -194,15 +191,15 @@ impl FileWindow {
                             ui.end_row();
                         }
                     });
-                ui.add_space(8.0);
-                if ui
-                    .button(copy_text("rsFilewinProps.box.close", &[]))
-                    .clicked()
-                {
-                    close = true;
-                }
-            });
-        if close || !open {
+            },
+            &[(
+                copy_text("rsFilewinProps.box.close", &[]),
+                super::kit::Btn::Primary,
+            )],
+            0,
+            0,
+        );
+        if hit.is_some() {
             self.props = None;
         }
     }

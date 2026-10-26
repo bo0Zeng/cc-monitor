@@ -5,7 +5,7 @@
 //! - 谁写：只有本模块的 [`answer_set_in`]（帧面 `machines-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）。
 //!   补丁全按键认元素（[`MachineEdit`]），锁内现读现判 ⇒ 设置页改一格、另一扇窗口同写都不会互相盖掉。
 //! - 一台的那一形（[`Host`]）、名字、判准、组拨号请求都住拨号核心（`ssh_dial::machine`），手机核心链同一份；
-//!   这里只把判准没过的那一处说成界面那一句（[`check_table`]）。`machines-try` 与写口同一份。
+//!   判准没过的那一处说成界面那一句也在那里（[`table_fault`]，手机编辑页同读）。`machines-try` 与写口同一份。
 //! - 主机钥匙不在这张表里：在拨号核心那份库（`dial/known_hosts.rs`）。
 //! - 读不懂：照空表办，`machines-read` 照实报 `unreadable`；`machines-set` 拒（不拿空的盖掉原文）。
 //! - 每次写完响一下（[`changes`]），流连接推 `changed {machines}`，monitor 照它重问、对齐远端那几条流。
@@ -33,7 +33,7 @@ pub(crate) const DOC: crate::common::own_state::Doc<OnDisk> =
 pub(crate) const HOSTS_MAX: usize = 256;
 
 /// 一台（盘上那一形，也是线上那一形）：住拨号核心。
-pub(crate) use ssh_dial::machine::{Host, MachineFaultCode};
+pub(crate) use ssh_dial::machine::{table_fault, Host, MachineFault, MachineFaultCode, MachineRow};
 
 /// 盘上整份。
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -145,57 +145,6 @@ pub(crate) fn write(own: &Own, hosts: &[Host]) -> Result<(), Said> {
     Ok(())
 }
 
-// ───────────────────────────── 判准 ─────────────────────────────
-
-/// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MachineFault {
-    /// `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名 ·
-    /// `leading_dash` 地址 / 用户以 `-` 打头（开终端时会被 ssh 当成选项）。
-    pub(crate) code: MachineFaultCode,
-    /// 出问题的那台的名字（`label` 非空取它、否则 `host`）。
-    pub(crate) name: String,
-    /// 那一格下面的那一句（添加机器框 · 机器卡同读）。
-    pub(crate) said: String,
-}
-
-impl MachineFault {
-    /// 一处错（那一格下面的那一句照码写）。
-    pub(crate) fn new(code: MachineFaultCode, name: String) -> Self {
-        let said = match code {
-            MachineFaultCode::NoHost => copy_text("addMachine.err.host", &[]),
-            MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
-            MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
-            MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
-            MachineFaultCode::LeadingDash => copy_text("addMachine.err.dash", &[]),
-        };
-        Self { code, name, said }
-    }
-
-    /// 写口拒绝时的那一句（带那台的名字与「未保存」）。
-    pub(crate) fn refused_said(&self) -> String {
-        let name = self.name.as_str();
-        match self.code {
-            MachineFaultCode::NoHost => copy_text("rsConfig.machine.noHost", &[("name", name)]),
-            MachineFaultCode::NoUser => copy_text("rsConfig.machine.noUser", &[("name", name)]),
-            MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", name)]),
-            MachineFaultCode::NameTaken => {
-                copy_text("rsConfig.machine.nameTaken", &[("name", name)])
-            }
-            MachineFaultCode::LeadingDash => copy_text("rsConfig.machine.dash", &[("name", name)]),
-        }
-    }
-}
-
-/// 机器表成不成立（判准在 `ssh_dial::machine::check_table`）：不成立 ⇒ 第一处，说成界面那一句；成立 ⇒ `None`。**纯函数**。
-pub(crate) fn check_table(hosts: &[Host]) -> Option<MachineFault> {
-    ssh_dial::machine::check_table(hosts)
-        .map(|(code, h)| MachineFault::new(code, h.name().to_string()))
-}
-
 // ───────────────────────────── 补丁 ─────────────────────────────
 
 /// 认一台的一条：那一台里 `fields` 按序取**第一个非空字符串**，它 == `equals`
@@ -244,7 +193,7 @@ impl MachineEdit {
         }
     }
 
-    /// 动了认人的那几格（加一台 · 改名称 / 地址 / 端口 / 用户 / 备用地址）⇒ 改完的整张表要过 [`check_table`]。
+    /// 动了认人的那几格（加一台 · 改名称 / 地址 / 端口 / 用户 / 备用地址）⇒ 改完的整张表要过 [`table_fault`]。
     fn moves_identity(&self) -> bool {
         match self {
             MachineEdit::InsertIn { .. } => true,
@@ -397,7 +346,7 @@ pub(crate) fn patched(base: &[Host], edits: &[MachineEdit]) -> Result<Patched, M
         })
         .collect::<Result<Vec<Host>, _>>()?;
     if changed && edits.iter().any(MachineEdit::moves_identity) {
-        if let Some(f) = check_table(&hosts) {
+        if let Some(f) = table_fault(&hosts) {
             return Err(MachinesSetErr::BadMachine(f.refused_said(), f));
         }
     }
@@ -418,34 +367,6 @@ fn ring() {
 }
 
 // ───────────────────────────── 三条命令 ─────────────────────────────
-
-/// 机器表里的一行（线上形）：后端算好的名字 ＋ 那一台原样（盘上那一形）。
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct MachineRow {
-    /// 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
-    pub(crate) name: String,
-    /// 那一台原样。
-    pub(crate) host: Host,
-}
-
-impl MachineRow {
-    fn of(host: Host) -> Self {
-        MachineRow {
-            name: host.name().to_string(),
-            host,
-        }
-    }
-}
-
-/// 一行读起来就是那一台（名字 · 连不连 · 各格）。
-impl std::ops::Deref for MachineRow {
-    type Target = Host;
-    fn deref(&self) -> &Host {
-        &self.host
-    }
-}
 
 /// `machines-read` / `machines-set` 读回的那一份：状态 ＋ 照用的那一张（读不懂 ⇒ 空表）。
 #[derive(Debug, Clone, serde::Serialize)]
