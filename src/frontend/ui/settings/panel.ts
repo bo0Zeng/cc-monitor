@@ -67,7 +67,7 @@ import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
-import { ControlError } from "../control-said";
+import { ControlError, machineName } from "../control-said";
 import { focusRotation, RotationSection } from "./rot-section";
 
 /**
@@ -522,7 +522,7 @@ export class SettingsPanel {
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
-    const machine = local ? copyText("remote.cards.local") : origin;
+    const machine = machineName(origin);
     this.remoteSection?.setConnected(pageId, connected);
     if (!local && this.remoteSection?.isDisabledPage(pageId)) {
       this.machinePages.get(pageId)?.setDisabled(true);
@@ -1019,7 +1019,7 @@ export class SettingsPanel {
               : buildConfigPage({
                   platform: shell,
                   origin: () => LOCAL_ORIGIN,
-                  machine: () => copyText("remote.cards.local"),
+                  machine: () => machineName(LOCAL_ORIGIN),
                 });
           },
         ),
