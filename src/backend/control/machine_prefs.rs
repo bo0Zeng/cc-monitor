@@ -1,11 +1,9 @@
-//! **这台的偏好**的写与帧面那两条命令（`prefs-read` · `prefs-set`）。那份文件的形状、值域与读住 `common/machine_prefs.rs`。
+//! **这台的偏好**帧面那两条命令（`prefs-read` · `prefs-set`）与起会话要的那几样。那份文件的形状、值域、读与整份写住 `common/machine_prefs.rs`。
 //!
-//! - 谁写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）；前端从不碰这个文件。
+//! - 谁决定写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）；前端从不碰这个文件。
 //! - 读不懂：不写回，`prefs-set` 也拒（不拿空的盖掉原文）。
 
-use crate::common::machine_prefs::{
-    check, path_in, read_at, read_now, Loaded, OnDisk, Prefs, FILE_NAME, VERSION,
-};
+use crate::common::machine_prefs::{check, path_in, read_at, read_now, write, Loaded, Prefs};
 use crate::common::said::Said;
 use crate::platform::Own;
 use copy_core::copy_text;
@@ -52,33 +50,6 @@ pub(crate) fn agent_home_envs(homes: BTreeMap<String, PathBuf>) -> Vec<(&'static
             Some((env?, d))
         })
         .collect()
-}
-
-/// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁）。
-pub(crate) fn write(own: &Own, p: &Prefs) -> Result<(), Said> {
-    let dir = own.home_dir()?;
-    own.ensure_dir(&dir).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "reason.fs.writeFailed",
-                &[
-                    ("path", &dir.as_path().display().to_string()),
-                    ("why", &copy_core::io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
-    })?;
-    let held = own.lock(&dir)?;
-    let path = dir.join(FILE_NAME)?;
-    let body = crate::common::own_state::json_body(
-        path.as_path(),
-        &OnDisk {
-            version: VERSION,
-            prefs: p.clone(),
-        },
-    )?;
-    own.write(&path, &held, &body)
 }
 
 /// 那份文件的状态：没设过 · 读得懂 · 读不懂（两端同一个名，住契约）。

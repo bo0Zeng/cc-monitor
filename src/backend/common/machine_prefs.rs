@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::PREFS_REL);
 
 /// 盘上那一版。
-pub(crate) const VERSION: u32 = 1;
+const VERSION: u32 = 1;
 
 /// 读盘的上限：几张小表。
 const MAX_BYTES: u64 = 256 * 1024;
@@ -221,6 +221,33 @@ pub(crate) fn check(p: &Prefs) -> Result<(), String> {
         return Err(format!("`pbDir` is not an absolute path: {d:?}"));
     }
     Ok(())
+}
+
+/// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁）。什么时候写由调用方定（`prefs-set` · 换形那一次）。
+pub(crate) fn write(own: &crate::platform::Own, p: &Prefs) -> Result<(), Said> {
+    let dir = own.home_dir()?;
+    own.ensure_dir(&dir).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "reason.fs.writeFailed",
+                &[
+                    ("path", &dir.as_path().display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })?;
+    let held = own.lock(&dir)?;
+    let path = dir.join(FILE_NAME)?;
+    let body = crate::common::own_state::json_body(
+        path.as_path(),
+        &OnDisk {
+            version: VERSION,
+            prefs: p.clone(),
+        },
+    )?;
+    own.write(&path, &held, &body)
 }
 
 /// 数据目录 · pb 路径那两格的值域：非空、绝对路径。
