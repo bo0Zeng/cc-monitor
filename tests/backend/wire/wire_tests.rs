@@ -2041,12 +2041,12 @@ fn the_interface_never_builds_a_face_of_its_own() {
             .collect()
     };
     let specimen = format!(
-        "// {settled} 注释里不算\nexport function unseenFace(machine: string): {face} {{\n  return {{ {settled} false }};\n}}"
+        "// {settled} 注释里不算\nexport function madeHere(machine: string): {face} {{\n  return {{ {settled} false }};\n}}"
     );
     assert_eq!(
         built(&specimen),
         vec![
-            format!("export function unseenFace(machine: string): {face} {{"),
+            format!("export function madeHere(machine: string): {face} {{"),
             format!("return {{ {settled} false }};")
         ],
         "正控：这把尺量得到界面自己造脸的那一形（注释里的不算）"
