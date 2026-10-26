@@ -13,7 +13,9 @@ import androidx.compose.runtime.setValue
  * 打了一半、没交的留着 —— 推送来一次不冲掉。交成了，读回来的就是打的那个，之后又跟着读到的走。
  */
 @Stable
-class Held(shown: String) {
+class Held(
+    shown: String,
+) {
     private var base = shown
 
     /** 框里此刻的字。 */
