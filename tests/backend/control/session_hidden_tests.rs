@@ -194,7 +194,14 @@ fn the_three_carriers_get_the_cell_from_this_one_function() {
     let mut builders = Vec::new();
     for (path, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let code = guard_core::addr::production_side_of(&path, &text);
-        if path != here && code.contains("Hidden {") {
+        // 按词界认：`SessionHidden {`（推送那一臂）· `HiddenNow {` 不是拼隐藏那一格。
+        let builds = code.match_indices("Hidden {").any(|(at, _)| {
+            !code[..at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        });
+        if path != here && builds {
             builders.push(path.display().to_string());
         }
     }

@@ -4,10 +4,10 @@
  * 那台一变就来一帧，界面不轮询；设置窗与主窗口都从这里订。哪一态、那一句、修法都是后端定的（`deploy::machine`）。
  */
 import { listen } from "@tauri-apps/api/event";
+import { pushedProducts } from "./changed-stream";
 import { subscribeTopics } from "./events";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
-import type { MachineRead } from "./generated/MachineRead";
 import type { MachineState } from "./generated/MachineState";
 import type { MachineStatePayload } from "./generated/MachineStatePayload";
 
@@ -45,11 +45,10 @@ export function onMachineState(cb: (origin: string, machine: MachineState) => vo
   subscribeTopics([LOCAL_ORIGIN], ["machine"], (_o, changes) => {
     const c = changes.get("machine");
     if (dropped || !c) return;
-    const { cells, all } = c;
-    const keyed = cells.flatMap((c) => (c.key !== null && c.key !== "" ? [{ key: c.key, body: c.body }] : []));
-    if (all || keyed.some((c) => c.body === undefined)) void readAll();
+    const { got, ask, all } = pushedProducts(c, "machine");
+    if (all || ask.length > 0) void readAll();
     // 帧里那一份就是 `machine-read` 回包里那一台。
-    for (const c of keyed) if (c.body !== undefined) cb(c.key, c.body as MachineRead["machines"][string]);
+    for (const [key, m] of got) if (key !== null && key !== "") cb(key, m);
   })
     .then(
       (stop) => {

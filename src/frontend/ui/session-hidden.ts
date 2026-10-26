@@ -11,7 +11,7 @@
  *
  * 交命令的那一半住 `session-hidden-cmds.ts`（这里零 IPC，`tab-session-facts.ts` 等纯模块也读）。
  */
-import type { Changed } from "./changed-stream";
+import { pushedProducts, type Changed } from "./changed-stream";
 import type { Hidden } from "./generated/Hidden";
 import type { Hide } from "./generated/Hide";
 import type { HideAsk } from "./generated/HideAsk";
@@ -31,10 +31,7 @@ export function sameHidden(a: SessionHidden | null, b: SessionHidden | null): bo
 /** 推帧主题「会话隐藏」（`changed/session_hidden`）一批 ⇒ 会话 ⇒ 那一格（`body {hidden}`；`null` ＝ 不隐藏了）。没 `key` · 没 `body` 的那一格不收（等那台重宣告）。 */
 export function hiddenPushed(c: Changed): Map<string, SessionHidden | null> {
   const got = new Map<string, SessionHidden | null>();
-  for (const cell of c.cells) {
-    if (cell.key === null || cell.body === undefined || cell.body === null) continue;
-    got.set(cell.key, (cell.body as { hidden: SessionHidden | null }).hidden);
-  }
+  for (const [sid, body] of pushedProducts(c, "session_hidden").got) if (sid !== null) got.set(sid, body.hidden);
   return got;
 }
 
