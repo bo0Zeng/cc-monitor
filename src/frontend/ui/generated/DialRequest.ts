@@ -21,7 +21,7 @@ key_path: string | null,
  */
 command: string, 
 /**
- * 竞速的地址顺序（`machine.rs::resolve` 按 `prefer` 排好）。空 = 只有 `host:port`。
+ * 竞速的地址顺序（组请求的那一侧按 `prefer` 排好）。空 = 只有 `host:port`。
  */
 endpoints: Array<Endpoint>, 
 /**
