@@ -231,8 +231,17 @@ fn the_local_row_comes_from_this_backend() {
             version: Some(shipped_version()),
         },
     );
-    let want = product(&e, &copy_core::copy_text("remote.cards.local", &[]), true, true);
-    assert_eq!(local.version, Some(shipped_version()), "本机那一行的版本号不是这份二进制出自的那一版");
+    let want = product(
+        &e,
+        &copy_core::copy_text("remote.cards.local", &[]),
+        true,
+        true,
+    );
+    assert_eq!(
+        local.version,
+        Some(shipped_version()),
+        "本机那一行的版本号不是这份二进制出自的那一版"
+    );
     assert_eq!(local, &want);
     assert_eq!(local.state, MachineStateKind::Up);
     assert!(got.contains_key("ms-local-peer"), "远端那台被挤掉了");
@@ -242,5 +251,8 @@ fn the_local_row_comes_from_this_backend() {
 fn shipped_version() -> String {
     let v: serde_json::Value = serde_json::from_str(include_str!("../../../package.json"))
         .expect("仓根 package.json 读不成");
-    v["version"].as_str().expect("package.json 没有 version").to_string()
+    v["version"]
+        .as_str()
+        .expect("package.json 没有 version")
+        .to_string()
 }
