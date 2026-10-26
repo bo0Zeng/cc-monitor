@@ -12,6 +12,7 @@ fn req(sid: &str, text: &str) -> SessionSayReq {
         text: text.into(),
         client: Some("phone".into()),
         seen_screen: None,
+        idle_only: None,
     }
 }
 
@@ -75,6 +76,32 @@ fn a_session_that_waits_for_someone_gets_nothing_typed_into_it() {
         Some(copy_core::copy_text("beTerminal.no.waiting", &[]).as_str())
     );
     assert!(sent.borrow().is_empty(), "在等人时送了字");
+}
+
+/// ★ 「只在闲着时送」（cc-bus 一档敲门用）：闲着 ⇒ 放行；一轮在跑 · 后台在跑 · 判不出 · 不活 ⇒ 不送、回 `not_idle`；
+/// 在等人那一档留给 `say_with` 说 `waiting`（话更准）。不要求闲着 ⇒ 这一道一律放行（聊天屏 ➤ 照旧能在一轮中间排一句）。
+#[test]
+fn idle_only_refuses_unless_the_session_is_idle() {
+    use crate::agents::SessionActivity as A;
+    let mut r = req(SID, "🔔");
+    r.idle_only = Some(true);
+    let case = |d: Option<Option<A>>| idle_gate(&r, &move |_: &str| d).map(|s| s.why);
+    assert_eq!(case(Some(Some(A::Idle))), None, "闲着 ⇒ 放行");
+    assert_eq!(case(Some(Some(A::NeedsYou))), None, "等人那一档交给 say_with");
+    for d in [Some(Some(A::Working)), Some(Some(A::BackgroundWork)), Some(None), None] {
+        assert_eq!(case(d), Some(Some(Refused::NotIdle)), "{d:?}");
+    }
+    let refused = idle_gate(&r, &|_: &str| Some(Some(A::Working))).unwrap();
+    assert_eq!(refused.result, SentResult::Refused);
+    assert_eq!(
+        refused.said.as_deref(),
+        Some(copy_core::copy_text("beTerminal.no.notIdle", &[]).as_str())
+    );
+    let plain = req(SID, "继续");
+    assert!(
+        idle_gate(&plain, &|_: &str| Some(Some(A::Working))).is_none(),
+        "没要求闲着 ⇒ 不拦"
+    );
 }
 
 /// ★ 不在等 ⇒ 按 sid 送这一句、补回车，自报的前端照交（过同一道身份门）；送的结局原样回。

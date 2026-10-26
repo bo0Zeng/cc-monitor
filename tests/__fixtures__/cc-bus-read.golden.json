@@ -1,7 +1,7 @@
 {
   "说明": [
     "驾驶舱读收件箱（bus-inbox）的跨语言金样：后端测试产出 == 金样 · TS 解码器（src/frontend/ui/cc-bus-control.ts）读同一份。",
-    "输入只采结构（占位 id / 占位句），不采真会话；reply 是手写期望。"
+    "输入只采结构（占位 id / 占位句），不采真会话；reply 是手写期望。收件箱一行就是一封规范信封，不是的（坏 JSON · 少格）算坏行。"
   ],
   "inbox": {
     "request": {
@@ -11,20 +11,32 @@
     "badRequest": {
       "id": "--help"
     },
-    "log": "#cc-log\t1\n{\"from\":\"peer_cc\",\"ts\":\"t1\",\"text\":\"占位一\",\"class\":\"\"}\nnot json\n{\"id\":\"x\"}\n{\"from\":\"peer_cc\",\"text\":\"占位二\"}\n",
+    "log": "#cc-log\t1\n{\"id\":\"m19a1b2c3d4e0001\",\"ts\":\"2026-10-26T08:00:00Z\",\"from\":\"peer-a\",\"to\":\"alpha-b\",\"tier\":2,\"act\":\"告知\",\"title\":\"占位标题一\",\"re\":null,\"refs\":[],\"text\":\"占位一\"}\nnot json\n{\"id\":\"x\"}\n{\"id\":\"m19a1b2c3d4e0002\",\"ts\":\"2026-10-26T08:00:01Z\",\"from\":\"peer-a\",\"to\":\"alpha-b\",\"tier\":1,\"act\":\"答\",\"title\":\"占位标题二\",\"re\":\"m19a1b2c3d4e0001\",\"refs\":[\"pb:A1/A1-2\"],\"text\":\"\"}\n",
     "reply": {
       "messages": [
         {
-          "from": "peer_cc",
-          "ts": "t1",
-          "text": "占位一",
-          "class": ""
+          "id": "m19a1b2c3d4e0001",
+          "ts": "2026-10-26T08:00:00Z",
+          "from": "peer-a",
+          "to": "alpha-b",
+          "tier": 2,
+          "act": "告知",
+          "title": "占位标题一",
+          "re": null,
+          "refs": [],
+          "text": "占位一"
         },
         {
-          "from": "peer_cc",
-          "ts": "",
-          "text": "占位二",
-          "class": ""
+          "id": "m19a1b2c3d4e0002",
+          "ts": "2026-10-26T08:00:01Z",
+          "from": "peer-a",
+          "to": "alpha-b",
+          "tier": 1,
+          "act": "答",
+          "title": "占位标题二",
+          "re": "m19a1b2c3d4e0001",
+          "refs": ["pb:A1/A1-2"],
+          "text": ""
         }
       ],
       "skipped": 2,

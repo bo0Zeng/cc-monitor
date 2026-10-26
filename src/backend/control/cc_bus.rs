@@ -1,4 +1,6 @@
-//! `P4f`：cc-bus 的**基础命令** —— `bus-list`（谁在线 + 各自待读数）与 `bus-send`（发一条）。
+//! `P4f`：cc-bus 的**读命令** —— `bus-list`（谁在线 + 各自待读数）与 `bus-inbox`（只读看收件箱尾巴）。
+//! 发信不经这里：`cc-send` 先问 `bus-envelope`（[`super::cc_bus_envelope`]，唯一一处校验），再自己走管线投递；
+//! 界面不发信（人要说话就在会话里说）。
 //!
 //! 〔用 08-13〕逐字：「**也是后端先把基础命令做了, 其他具体的细节先按原本的就行,
 //! 后面我可能要改ccbus**」。三条判断都是从这句话推出来的，读数在账本 `P4f §3`。
@@ -43,15 +45,14 @@
 //!
 //! 起进程那一处已经搬去 [`crate::plugin::invoke`]（登记也跟着搬了，`readonly_guard::ALLOWED`
 //! 里那一行的文件名同轮改掉 —— 键是 `(文件, 程序名)`，不改会当场红）。
-//! 本模块经那一处转调的外部命令**今天是三条**，逐条说清写面：
+//! 本模块经那一处转调的外部命令**今天是两条**，都只读：
 //! · `cc-list` **只读**；
-//! · `cc-send` 会写收件人的收件箱；
 //! · `cc-log` **只读**（共享锁，不推已读位置）。
 //!
 //! ⚠ **别照这段散文数** —— 「今天转调哪几条」的唯一住址是
 //! [`tests::TRANSCALLS`]（从生产段现算之后与它对拍）。这一段只讲写面。
 //!
-//! 三条都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别
+//! 起的进程都不写；万一将来有写的，也是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别
 //!（同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**不写用户既有数据）。
 //!
 //! `readonly_guard::g6_reach` 那一格钉「只读铁律的豁免理由覆盖了哪几条」，与本文件的 [`tests::TRANSCALLS`]
@@ -65,14 +66,10 @@ use crate::plugin::invoke::Done;
 use crate::plugin::invoke::NotRun;
 use crate::plugin::invoke::TIMED_OUT_CODE;
 
-use super::cc_bus_wire::{
-    BusAgent, BusInbox, BusInboxReq, BusList, BusMessage, BusSendReq, BusSent,
-};
+use super::cc_bus_wire::{BusAgent, BusEnvelope, BusInbox, BusInboxReq, BusList};
 
 /// `bus-list` 整条命令总期限的上限（`cc-list` ＋ 列 tmux 会话）。
 pub(crate) const BUS_LIST_CAP: Deadline = Deadline::secs(13);
-/// `bus-send` 整条命令总期限的上限（`cc-send` ＋ 问收件人在不在：`cc-list` ＋ 列 tmux 会话）。
-pub(crate) const BUS_SEND_CAP: Deadline = Deadline::secs(28);
 
 /// 找不到时那句话的**尾巴** —— 这是 cc-bus 自己的话，通用层不该认识它。
 static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
@@ -139,9 +136,9 @@ fn timeout_secs() -> u64 {
 ///
 /// # ★★ 期限住在**子进程**里，不在后端里〔08-13 实测事故 + 铁律冲突〕
 ///
-/// 病先说清楚：`Command::output()` **无限等**。实测把 `cc-send` 换成 `sleep 300` 的桩，
-/// `--bus-send` 25 秒都没回来（25 是我从外面掐的，backend 自己没有任何期限）。
-/// 这不是假想 —— `cc-send` 的投递走 `flock`，**锁被别人占住就一直等**；
+/// 病先说清楚：`Command::output()` **无限等**。实测把被调的 cc-bus 命令换成 `sleep 300` 的桩，
+/// 那条帧命令 25 秒都没回来（25 是我从外面掐的，backend 自己没有任何期限）。
+/// 这不是假想 —— cc-bus 读收件箱也走 `flock`，**锁被别人占住就一直等**；
 /// 而这两条命令是阻塞档，一条卡住就占死一个 tokio worker，且 `cancel` 对 `spawn_blocking`
 /// 是**空操作**（`inbound` 那条判据逐字：「`cancel` 会对它撒谎」）。
 ///
@@ -155,16 +152,6 @@ fn timeout_secs() -> u64 {
 ///
 /// ⚠ 找不到 `timeout(1)` 就**如实降级**：裸跑、没有期限。
 /// 那种机器上这条路会退回「可能卡住」，判据与文档都照实写（不假装有保障）。
-fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
-    run_as(name, args, None)
-}
-
-/// 同 [`run`]，但可以指定**以谁的身份**跑（`CC_BUS_ID`）。
-///
-/// # 为什么是环境变量而不是给 cc-send 加参数
-///
-/// `cc-whoami` 的优先级第一条逐字就是 `$CC_BUS_ID`（可选覆盖）——**这是 cc-bus 现成的契约**。
-/// 「细节先按原本的就行」⇒ 不动 cc-bus 本体。
 ///
 /// # ★★ 这一族环境键从此**由本模块显式交办**，不再靠继承
 ///
@@ -173,7 +160,7 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 /// （常驻监听口的地址与令牌）顺着环境漏进插件」这条没人设计过的回程。
 ///
 /// ⚠ **代价落在这里**：本插件族此前是靠**继承**拿到自己的配置的
-/// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`），
+/// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · `CC_BUS_ID`），
 /// 而本模块**一个都没显式交办过**。现打读数：只加 `env_clear()` 那一刀之后
 /// `tests/e2e/backend-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
 /// 其中最重的一格是 `[15]`：`CC_BUS_HOME` 一没，被调的那条命令就照着**另一个家里的空名册**
@@ -192,35 +179,24 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 /// ⚠ 诚实边界：前缀式交办把**本进程环境里**带这两个前缀的键**全部**交给子进程 ——
 /// 它守的是「不再多给」（宿主的秘密不在这个命名空间里），**不是**「按需最小授权」。
 /// 真要收到按键最小化，那是给这一族插件立一份「它认哪几个键」的清单，另一件。
-fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr> {
+fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
     let bin = find(name)?;
     let secs = timeout_secs();
     let owned: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| k.starts_with("CC_BUS_") || k.starts_with("CCBUS_"))
         .collect();
-    let mut env: Vec<(&str, &str)> = owned
+    let env: Vec<(&str, &str)> = owned
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    // `CC_BUS_ID` 是 cc-bus 自己的契约 ⇒ 由本模块拼，通用口只负责把 env 传下去。
-    // 显式指定身份时它**压过**上面顺下来的那一份（`retain` 那一句就是这个意思，
-    // 少了它 `invoke::run` 会看到同一个键两次，而「后一个赢」是它的实现细节、不是契约）。
-    if let Some(id) = as_id {
-        env.retain(|(k, _)| *k != "CC_BUS_ID");
-        env.push(("CC_BUS_ID", id));
-    }
+    // 转调的只剩读命令（id ＋ 行数），argv 撑不爆；万一撑爆也照「起不来」说。
     crate::plugin::invoke::run(&bin, args, secs, &env, None).map_err(|e| match e {
-        // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
-        //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出
-        //   「我的消息太长」（自己能修：发短点）和「cc-bus 坏了」（自己修不了）；
-        //   ② 那句话**归错了因**：cc-send 好好的，是这条消息塞不进 argv。
-        //   实测 200KB 正文必炸、120KB 能过 —— 内核的单参数上限 `MAX_ARG_STRLEN` = 128 KiB
-        //  （`P4b §7g-8b` 量过：131000 OK / 131072 E2BIG）。
-        // ⚠ **那句「不是 cc-bus 坏了」留在本模块**：通用口不知道被调的是谁，
-        //   由它来说这句话只能说成「不是那个程序坏了」，而 e2e 逐字核的是前者。
         NotRun::ArgListTooLong => (
-            "too_long",
-            copy_text("beCcBus.notRun.tooLong", &[]).to_string(),
+            "failed",
+            copy_text(
+                "beCcBus.run.failed",
+                &[("name", name), ("status", "E2BIG"), ("detail", "")],
+            ),
         ),
         // 这条失败形没有原话位：系统原话记一行日志，句子只带原因词。
         NotRun::Failed(s) => ("failed", crate::common::said::IntoNote::into_note(s)),
@@ -320,10 +296,7 @@ pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (S
     Ok((out, skipped))
 }
 
-/// `cc-send` 的退出码 → **语义码** —— 纯函数。
-///
-/// `P4f-Y5`：如实转达，**不在后端侧再写一份收件人白名单**。
-/// 收件人合法性归 cc-bus 自己（它已有，rc=2）；这边再写一份的话两处规则会漂。
+/// 读命令（`cc-list --tsv` · `cc-log`）的退出码 → **语义码** —— 纯函数。`name` 是那条命令，进那一句。
 ///
 /// # ★ 这张表**刻意住在这里**，不许上收到 `plugin/`（`E6`）
 ///
@@ -331,42 +304,38 @@ pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (S
 /// 「撞名该重试」—— **语义互斥**。抬进通用调用口就等于让宿主替所有插件解释退出码。
 ///
 /// ⚠ 这句话此前**只是散文**：D1（08-26）实测把本函数原样抬进 `plugin/invoke.rs`、
-/// 只擦掉 `cc-send` 这个名字 ⇒ `436 passed; 0 failed`，**一条不红**。
+/// 只擦掉插件的名字 ⇒ `436 passed; 0 failed`，**一条不红**。
 /// 现在钉着它的是 `plugin::layer_guard` 里形状那一族两条判据
 ///（`the_generic_port_does_not_translate_exit_codes` /
 /// `the_only_exit_code_constants_here_are_the_registered_generic_ones`）——
 /// 它们认的是**形状**、不认插件的名字，所以第二个插件的码表抬上去也会红。
 /// 各自认不出什么，写在它们自己的头注里。
-pub(crate) fn classify_send(
+pub(crate) fn classify_exit(
+    name: &str,
     code: Option<i32>,
     detail: &str,
     waited: u64,
 ) -> Result<(), (String, String)> {
     match code {
         Some(0) => Ok(()),
-        // cc-send 自己的白名单校验（`仅 [A-Za-z0-9_-]`）
+        // 读命令自己的入参校验（id · 行数）
         Some(2) => Err((
             "bad_args".to_string(),
-            copy_text("beCcBus.send.refused", &[("detail", &detail.to_string())]),
-        )),
-        // 路由层拦截（ACL / 限流），bus.log 里有 REJECT/THROTTLE 一行
-        Some(3) => Err((
-            "rejected".to_string(),
-            copy_text("beCcBus.send.rejected", &[("detail", &detail.to_string())]),
-        )),
-        Some(TIMED_OUT_CODE) => Err(timed_out_err(waited)),
-        Some(c) => Err((
-            "failed".to_string(),
             copy_text(
-                "beCcBus.send.failed",
-                &[("status", &c.to_string()), ("detail", &detail.to_string())],
+                "beCcBus.run.refused",
+                &[("name", &name.to_string()), ("detail", &detail.to_string())],
             ),
         )),
-        None => Err((
+        Some(TIMED_OUT_CODE) => Err(timed_out_err(waited)),
+        c => Err((
             "failed".to_string(),
             copy_text(
-                "beCcBus.send.interrupted",
-                &[("detail", &detail.to_string())],
+                "beCcBus.run.failed",
+                &[
+                    ("name", &name.to_string()),
+                    ("status", &format!("{c:?}")),
+                    ("detail", &detail.to_string()),
+                ],
             ),
         )),
     }
@@ -384,41 +353,6 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
         return Ok(());
     }
     Err(("bad_id", said(&format!("{v:?}"))))
-}
-
-/// 形状校验：这组参数能不能构成一次有意义的调用。
-///
-/// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
-/// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
-pub(crate) fn parse_send(req: &BusSendReq) -> Result<(String, String, Option<String>), CmdErr> {
-    if req.to.trim().is_empty() {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("`to` is empty"),
-        ));
-    }
-    refuse_bad_bus_id(&req.to, |v| {
-        copy_core::copy_text("beCcBus.parse.badRecipient", &[("id", v)])
-    })?;
-    // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在后端的处境里解不出身份 ⇒ `unknown`）。
-    //   给了就以那个身份发 —— 收信人才知道是谁，回复才有地方去。
-    //   ⚠ 合法性仍归 cc-bus（`cc-whoami` 自己会消毒成 `[A-Za-z0-9_-]`），这里只判形状。
-    let from = given_sender(req.from.as_deref())?;
-    Ok((req.to.clone(), req.text.clone(), from))
-}
-
-/// `from`（以谁的身份发）：可选；给了就在交给 `cc-send`（作 `CC_BUS_ID`）**之前**先过同一个形状判定（[`refuse_bad_bus_id`]）。
-///
-/// 〔`INVARIANTS §47`「交给对端之前本侧先判」〕先前 `from` 原样交给 `cc-send`、一格都不判 ——
-/// 它与收件人是同一种值（agent id），同样是交给对端去寻址的。
-fn given_sender(from: Option<&str>) -> Result<Option<String>, CmdErr> {
-    let from = from.map(str::trim).filter(|s| !s.is_empty());
-    if let Some(f) = from {
-        refuse_bad_bus_id(f, |v| {
-            copy_core::copy_text("beCcBus.parse.badSender", &[("id", v)])
-        })?;
-    }
-    Ok(from.map(|s| s.to_string()))
 }
 
 /// 从总线地址（`proj_cc:0.0`）里取**会话名**那一段 —— 纯函数。
@@ -496,30 +430,11 @@ fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
     if out.timed_out() {
         return Err(timed_out_err(waited_secs(&out)));
     }
-    match out.code {
-        Some(0) => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
-        Some(2) => Err((
-            "bad_args".to_string(),
-            copy_text(
-                "beCcBus.run.refused",
-                &[("name", &name.to_string()), ("detail", &out.diagnosis())],
-            ),
-        )),
-        c => Err((
-            "failed".to_string(),
-            copy_text(
-                "beCcBus.run.failed",
-                &[
-                    ("name", &name.to_string()),
-                    ("status", &format!("{c:?}")),
-                    ("detail", &out.diagnosis()),
-                ],
-            ),
-        )),
-    }
+    classify_exit(name, out.code, &out.diagnosis(), waited_secs(&out))?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// 名册（机器可读形）：`bus-list` 与 `bus-send` 问收件人在不在读它。
+/// 名册（机器可读形）：`bus-list` 读它。
 pub(crate) fn roster() -> Result<(Vec<RosterRow>, usize), (String, String)> {
     parse_roster_tsv(&read_via("cc-list", &["--tsv"])?)
 }
@@ -608,98 +523,17 @@ pub(crate) fn inbox_reply(text: &str) -> Result<BusInbox, (String, String)> {
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-            skipped += 1;
-            continue;
-        };
-        let get = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-        let (from, text) = (get("from"), get("text"));
-        // from 与 text 全空 = 这行不是一条消息（可能是别的工具写进来的）。
-        if from.is_empty() && text.is_empty() {
-            skipped += 1;
-            continue;
+        // 一行就是一封规范信封（`bus-envelope` 盖的那一份）；不是的（坏 JSON · 别的工具写的 · 少格）算坏行。
+        match serde_json::from_str::<BusEnvelope>(line) {
+            Ok(m) => messages.push(m),
+            Err(_) => skipped += 1,
         }
-        messages.push(BusMessage {
-            from,
-            ts: get("ts"),
-            text,
-            class: get("class"),
-        });
     }
     Ok(BusInbox {
         messages,
         skipped,
         truncated,
     })
-}
-
-/// 收件人**有没有人会读** —— `(在名单里吗, 会话活着吗)`。
-///
-/// `live` 与 `bus-list` 同一套三态：`true` / `false` / `null`（问不到身份空间，或不在名单里）。
-/// ⚠ 任何一步失败都**不影响投递**：这是投完之后的"顺带说一句"，不是前置条件。
-fn recipient_status(to: &str) -> (bool, Option<bool>) {
-    let Ok((roster, _)) = roster() else {
-        return (false, None);
-    };
-    match roster.iter().find(|r| r.id == to) {
-        None => (false, None),
-        Some(row) => (
-            true,
-            liveness(&row.target, super::gate::list_sessions().ok().as_deref()).0,
-        ),
-    }
-}
-
-pub(crate) fn send_for_inbound(req: &BusSendReq) -> Result<BusSent, (String, String)> {
-    let (to, text, from) = parse_send(req).map_err(|(c, m)| (c.to_string(), m))?;
-    deliver(&to, &text, from.as_deref())?;
-    // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
-    //
-    // 病：今天两种「没人会读」都只回 `sent:true` —— ① 收件人**压根没登记**
-    //（cc-send 会在 stderr 警告，但那句话到不了后端的调用方）；
-    // ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
-    // ⇒ 投递照旧（先发后到是正当用法），但**说清楚**：`registered` + 三态 `live`。
-    let (registered, live) = recipient_status(&to);
-    Ok(send_reply(&to, registered, live, from.as_deref()))
-}
-
-/// 投一条（转调 `cc-send`）—— 起 `cc-send` 的只有这一处。
-fn deliver(to: &str, text: &str, from: Option<&str>) -> Result<(), (String, String)> {
-    // `--` 显式结束旗标：收件人万一以 `--` 开头也当收件人，不会被 cc-send 当成选项。
-    let out = run_as("cc-send", &["--", to, text], from).map_err(|(c, m)| {
-        // 只有这条路带得动大载荷 ⇒ 把**实测长度**补进去（诊断里给数，别让人自己去量）。
-        if c == "too_long" {
-            return (
-                c.to_string(),
-                copy_text(
-                    "beCcBus.deliver.tooLong",
-                    &[("reason", &m), ("n", &text.len().to_string())],
-                ),
-            );
-        }
-        (c.to_string(), m)
-    })?;
-    let detail = out.diagnosis();
-    classify_send(out.code, &detail, waited_secs(&out))
-}
-
-/// `bus-send` 的成品 —— 从 [`send_for_inbound`] 里原样抽出来（逻辑不动），理由同 [`list_reply`]。
-pub(crate) fn send_reply(
-    to: &str,
-    registered: bool,
-    live: Option<bool>,
-    from: Option<&str>,
-) -> BusSent {
-    BusSent {
-        to: to.to_string(),
-        sent: true,
-        registered,
-        live,
-        // 回显**以谁的身份发的**：不给 `from` 时是 `null`，那时收信人看到的是
-        // cc-whoami 在后端处境里解出来的东西（实测：`unknown`）——
-        // 回显出来，调用方才看得见这件事，而不是等收信人来问「谁发的」。
-        from: from.map(str::to_string),
-    }
 }
 
 #[cfg(test)]
