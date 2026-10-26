@@ -260,7 +260,6 @@ export class DataSection {
     const pathRow = document.createElement("div");
     pathRow.className = "settings-data-item-path";
     pathRow.textContent = info.path;
-    pathRow.title = info.path;
     li.appendChild(pathRow);
 
     return li;

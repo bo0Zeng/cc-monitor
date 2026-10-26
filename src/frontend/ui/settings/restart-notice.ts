@@ -7,7 +7,7 @@
  * 这条状态属于这一次启动：记在设置窗网页的 `sessionStorage` 里（设置窗关了只是藏起来，关窗再开 / 网页重载条都还在；
  * monitor 真重启 ＝ 新的设置窗网页，条就消了）。不放 `localStorage`：否则重启之后条还挂着。
  */
-import { LS_KEYS } from "../local-storage";
+import { LS_KEYS, parseStored } from "../local-storage";
 import { copyText } from "../copy-table";
 import { restartNowButton } from "./restart-now";
 
@@ -24,13 +24,9 @@ function loadPersisted(): string[] {
   } catch (e) {
     console.warn("[restart-notice] 读不到会话存储：", e);
   }
-  if (!raw) return [];
-  try {
-    const p = JSON.parse(raw) as unknown;
-    return Array.isArray(p) ? p.filter((r): r is string => typeof r === "string") : [];
-  } catch {
-    return []; // 坏数据当没有——这条只是提示，不值得为它报错
-  }
+  // 坏数据当没有——这条只是提示，不值得为它报错
+  const p = parseStored(raw);
+  return Array.isArray(p) ? p.filter((r): r is string => typeof r === "string") : [];
 }
 
 function persist(): void {

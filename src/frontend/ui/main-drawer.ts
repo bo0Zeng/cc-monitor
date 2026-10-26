@@ -6,7 +6,7 @@
  * - 开没开、开哪页、多高记在本机（下次启动照上次）。
  */
 import { Dock } from "./kit/dock";
-import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { LS_KEYS, parseStored, safeGet, safeSet } from "./local-storage";
 import { copyText } from "./copy-table";
 import type { TasksPanel } from "./tasks-panel";
 import type { AgentsPanel } from "./agents-panel";
@@ -28,16 +28,11 @@ interface Saved {
 /** 盘上那一格 ⇒ 开哪页、多高（读不懂的格回到缺省：收着 · 240）。 */
 export function readSaved(raw: string | null): Saved {
   const out: Saved = { page: null, height: DRAWER_DEFAULT_H };
-  if (raw === null) return out;
-  try {
-    const v = JSON.parse(raw) as unknown;
-    if (v && typeof v === "object") {
-      const o = v as Record<string, unknown>;
-      if (typeof o.page === "string" && (PAGES as readonly string[]).includes(o.page)) out.page = o.page as DrawerPage;
-      if (typeof o.height === "number" && Number.isFinite(o.height) && o.height >= DRAWER_MIN_H) out.height = Math.round(o.height);
-    }
-  } catch {
-    /* 读不懂 ⇒ 缺省 */
+  const v = parseStored(raw);
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.page === "string" && (PAGES as readonly string[]).includes(o.page)) out.page = o.page as DrawerPage;
+    if (typeof o.height === "number" && Number.isFinite(o.height) && o.height >= DRAWER_MIN_H) out.height = Math.round(o.height);
   }
   return out;
 }

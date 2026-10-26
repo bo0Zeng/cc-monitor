@@ -12,6 +12,7 @@
 import { chan, type Item } from "../../comms/inward/chan";
 import type { Host } from "./generated/Host";
 import { budgetWithin, callTyped, ReplyUnreadable } from "./ipc/chan-caller";
+import { decodeJson } from "./ipc/decode";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ProbeCell } from "./generated/ProbeCell";
 import { saidOf } from "./kit/detail";
@@ -53,7 +54,7 @@ export async function probeMachine(
       if (it.t === "frame") {
         let cell: ProbeCell;
         try {
-          cell = JSON.parse(it.body) as ProbeCell;
+          cell = decodeJson(it.body) as ProbeCell;
         } catch (e) {
           broken = new ReplyUnreadable(LOCAL_ORIGIN, e instanceof Error ? e.message : String(e));
           arrived();
