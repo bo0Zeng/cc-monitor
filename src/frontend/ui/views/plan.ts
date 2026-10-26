@@ -52,7 +52,7 @@ import {
   type PlanFilter,
   type RingRow,
 } from "./plan-model";
-import { CellDetail, handoffBox, takeoverCell, takeoverSpec } from "./plan-cell";
+import { CellDetail, handoffBox, takeoverCell, takeoverSpec, unbuiltTakeoverCell } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
@@ -436,7 +436,7 @@ export class PlanView {
     return out;
   }
 
-  /** ［另开会话接手…］：全产品那一个新建会话框，机器锁这一片那台、目录锁在工作区根、第一句是那一块的交接说明。 */
+  /** ［新会话接手…］：全产品那一个新建会话框，机器锁这一片那台、目录锁在工作区根、第一句是那一块的交接说明。 */
   private takeover(b: PlanBlock): void {
     const cur = this.current;
     if (cur) void openNewSession(takeoverSpec(cur.origin, cur.workspace, b));
@@ -991,7 +991,7 @@ export class PlanView {
     if (doc?.readAtText) box.appendChild(text(copyText("plan.overview.readAt", { time: doc.readAtText }), s.pvMeta));
 
     // 块
-    // 末一格「另开会话接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
+    // 末一格「接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
     const blocks = slice.blocks.filter((b) => b.id !== "project");
     const unbuilt = slice.unbuiltBlocks;
     if (blocks.length + unbuilt.length > 0) {
@@ -1013,7 +1013,7 @@ export class PlanView {
       }
       for (const u of unbuilt) {
         const root = byId.get(u.cells[0] ?? "");
-        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), stop(takeoverCell("unbuilt", () => {}))]);
+        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), stop(unbuiltTakeoverCell())]);
         if (root) clickRow(tr, () => this.select(root.id));
       }
       sec.appendChild(tbl.el);

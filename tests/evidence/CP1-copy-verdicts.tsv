@@ -137,7 +137,8 @@ src/backend/accounts/oauth/store.rs:65	里面那把	保留	[不对外] 续期锁
 src/backend/accounts/oauth/store.rs:78	旁边那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
 src/backend/plan/command.rs:30	写了 	保留	[不对外] pb render 成了时那一句的开头（协议值，不是界面文案）：只拿来拆出页面路径
 src/backend/plan/product.rs:33	待定	保留	[不对外] pb 领域表里待定那一类的类名（三张表都登的协议值，不是界面文案）：只拿来认待定还没人定
-src/frontend/filewin/src/fonts.rs:414	—也切划因声明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查 plan.rs 那几句新进的字）
+src/frontend/filewin/src/fonts.rs:414	—也切划因明	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查 plan.rs 那几句新进的字）〔反查「共用」改成灰色读数：−`声`〕
+src/frontend/filewin/src/fonts.rs:427	共	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（反查「共用 · 也在 …」进来的字）
 src/frontend/filewin/src/fonts.rs:424	力围范	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件窗口反查改写 pb 0.5 的叫法「节点」「权力范围」新进的字）
 src/frontend/filewin/src/fonts.rs:393	像寸尺张素	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（图片查看页那几句新进的字）
 src/frontend/filewin/src/fonts.rs:410	运	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（通道那一句「本机后端未运行 · 未执行」进来的字）

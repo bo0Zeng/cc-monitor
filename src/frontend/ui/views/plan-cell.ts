@@ -30,7 +30,7 @@ export interface CellDetailHost {
   switchTo(sid: string): void;
   /** 头右那一颗：做完了 ⇒［退回…］；没做完 ⇒［说给负责的…］（同一个框）。 */
   returnCell(slice: PlanSlice, cell: PlanCell): void;
-  /** ［另开会话接手…］：开全产品那一个新建会话框（`takeoverSpec`）。 */
+  /** ［新会话接手…］：开全产品那一个新建会话框（`takeoverSpec`）。 */
   takeover(b: PlanBlock): void;
 }
 
@@ -119,7 +119,7 @@ export class CellDetail {
 
   /**
    * 划出的根节点给接手（后端那一格 `takeover`：`open` · `no_line`）⇒ pb 给的交接说明（不带认领码；句末 pb 写了认领码找谁要）＋
-   * ［复制］＋［另开会话接手…］；给不了 ⇒ pb 说的为什么。本页不替人敲 `pb reissue`。
+   * ［复制］＋［新会话接手…］；给不了 ⇒ pb 说的为什么。本页不替人敲 `pb reissue`。
    */
   private handoff(slice: PlanSlice, cell: PlanCell): HTMLElement | null {
     const b = blockRoots(slice).get(cell.id) ?? null;
@@ -444,7 +444,7 @@ export function handoffBox(b: Pick<PlanBlock, "handoff" | "handoffError">): HTML
   box.appendChild(span(copyText("plan.handoff.title"), s.cdSecHead));
   const said = b.handoff;
   if (said === null) {
-    box.appendChild(span(copyText("plan.handoff.none", { reason: b.handoffError ?? "" }), s.cdMuted));
+    box.appendChild(handoffNone(b));
     return box;
   }
   const row = document.createElement("div");
@@ -464,21 +464,33 @@ export function handoffBox(b: Pick<PlanBlock, "handoff" | "handoffError">): HTML
   return box;
 }
 
+/** 交接说明给不了：pb 说的为什么（交接说明那一块与概览那一格同一句）。 */
+function handoffNone(b: Pick<PlanBlock, "handoffError">): HTMLElement {
+  return span(copyText("plan.handoff.none", { reason: b.handoffError ?? "" }), s.cdMuted);
+}
+
+/** ［新会话接手…］那颗按钮。 */
+function takeoverButton(open: () => void): HTMLButtonElement {
+  return button({ label: copyText("plan.takeover.open"), icon: "plus", size: "compact", onClick: () => open() });
+}
+
 /**
- * 「另开会话接手」那一格（概览权力范围那一行末 · 节点详情交接说明底下）：照后端那一格画，界面不看负责人自己判。
- * `open` ⇒［另开会话接手…］；`no_line` ⇒ pb 说的为什么；还没建（`"unbuilt"`，那一列本身就是这一判）⇒ 灰着的按钮说为什么；
- * 其余（负责人在跑 · 说不清 · 要并回）⇒ 空。
+ * 「接手」那一格（概览权力范围那一行末 · 节点详情交接说明底下）：照后端那一格画，界面不看负责人自己判。
+ * `open` ⇒［新会话接手…］；`no_line` ⇒ pb 说的为什么；其余（负责人在跑 · 说不清 · 要并回）⇒ 空。
  */
-export function takeoverCell(b: Pick<PlanBlock, "takeover" | "handoffError"> | "unbuilt", open: () => void): HTMLElement {
+export function takeoverCell(b: Pick<PlanBlock, "takeover" | "handoffError">, open: () => void): HTMLElement {
   const box = document.createElement("span");
-  box.className = "plan-takeover";
-  const btn = (): HTMLButtonElement => button({ label: copyText("plan.takeover.open"), icon: "plus", size: "compact", onClick: () => open() });
-  if (b === "unbuilt") {
-    const x = btn();
-    setDisabled(x, copyText("plan.takeover.unbuilt"));
-    box.appendChild(x);
-  } else if (b.takeover === "open") box.appendChild(btn());
-  else if (b.takeover === "no_line") box.appendChild(span(copyText("plan.handoff.none", { reason: b.handoffError ?? "" }), s.cdMuted));
+  if (b.takeover === "open") box.appendChild(takeoverButton(open));
+  else if (b.takeover === "no_line") box.appendChild(handoffNone(b));
+  return box;
+}
+
+/** 还没建的权力范围（`unbuiltBlocks` 那一列本身就是这一判）：灰着的按钮，悬停说为什么。 */
+export function unbuiltTakeoverCell(): HTMLElement {
+  const box = document.createElement("span");
+  const x = takeoverButton(() => {});
+  setDisabled(x, copyText("plan.takeover.unbuilt"));
+  box.appendChild(x);
   return box;
 }
 

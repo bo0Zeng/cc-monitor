@@ -27683,13 +27683,13 @@
     "plan.takeover.open": {
       "kind": "action",
       "role": "按钮",
-      "zh": "另开会话接手…",
+      "zh": "新会话接手…",
       "args": []
     },
     "plan.takeover.unbuilt": {
       "kind": "body",
       "role": "悬停",
-      "zh": "还没建 · 下一趟 update 建好才能接手",
+      "zh": "未建 · 下一趟 update 建好后可接手",
       "args": []
     },
     "plan.check.unparsed": {
