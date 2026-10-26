@@ -23,7 +23,7 @@ class LaunchFromAliasesTest {
             "home" to "/h",
             "path" to "/h/.cc-monitor/profiles.toml",
             "exists" to true,
-            "fingerprint" to "fp1",
+            "rev" to "fp1",
             "editedAt" to null,
             "fileProblem" to null,
             "profiles" to
@@ -63,7 +63,7 @@ class LaunchFromAliasesTest {
     private val folded = mapOf("name" to "cc", "args" to "--resume x")
 
     private fun link(
-        write: Reply = Reply.Ok(mapOf("wrote" to true, "fingerprint" to "fp2", "reload" to null)),
+        write: Reply = Reply.Ok(mapOf("wrote" to true, "rev" to "fp2", "reload" to null)),
         fromLine: Reply = Reply.Ok(folded),
     ) = FakeCoreLink().apply {
         answer = { cmd, _ ->
@@ -87,7 +87,7 @@ class LaunchFromAliasesTest {
         }
 
     @Test
-    fun makingTheAliasAsksThatMachineToFoldTheLineThenWritesItsFormWithTheFingerprintJustRead() =
+    fun makingTheAliasAsksThatMachineToFoldTheLineThenWritesItsFormWithTheRevJustRead() =
         runTest {
             val l = link()
             val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "cc", "~/w", "dev", "claude --resume x"))
@@ -98,7 +98,7 @@ class LaunchFromAliasesTest {
                 l.calls(Profiles.FROM_LINE),
             )
             assertEquals(
-                listOf(mapOf("changes" to listOf(mapOf("op" to "set", "was" to null, "form" to folded)), "fingerprint" to "fp1")),
+                listOf(mapOf("changes" to listOf(mapOf("op" to "set", "was" to null, "form" to folded)), "ifRev" to "fp1")),
                 l.calls(Profiles.WRITE),
             )
         }

@@ -782,8 +782,8 @@ pub(crate) struct ProfilesBook {
     path: String,
     /// 配置文件在不在。
     exists: bool,
-    /// 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write`。
-    fingerprint: Option<String>,
+    /// 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
+    rev: Option<String>,
     /// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好）；没改过 ⇒ `null`。
     edited_at: Option<String>,
     /// TOML 本身写坏 ⇒ 那一处（这时 `profiles` 为空、不能按条目改）；否则 `null`。
@@ -804,7 +804,7 @@ pub(crate) struct ProfilesBook {
     tmux: Option<bool>,
 }
 
-/// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
+/// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 版本 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
 /// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。有没有 tmux 由宿主探好交进来（`faces::profiles_face`；判据喂定值）。
 pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Answer<ProfilesBook> {
     let store = super::load(d).map_err(refused)?;
@@ -854,7 +854,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
     };
     Ok(ProfilesBook {
         exists: store.text.is_some(),
-        fingerprint: super::fingerprint_of(store.text.as_deref()),
+        rev: super::rev_of(store.text.as_deref()),
         edited_at: edited_at(d, &store, &path, tz),
         file_problem,
         profiles,
@@ -1476,24 +1476,24 @@ pub(crate) fn answer_bases(d: &dyn Door, req: &ProfilesBasesReq) -> Answer<Profi
     Ok(ProfilesBases { bases })
 }
 
-/// `profiles-write` 的入参：依次做的改动 ＋ 读回时的指纹（必给，字符串或 `null`；盘上此刻不是那一份 ⇒ `stale`）。
+/// `profiles-write` 的入参：依次做的改动 ＋ 读回时的版本 `ifRev`（必给，字符串或 `null`；盘上此刻不是那一份 ⇒ `stale`）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ProfilesWriteReq {
     pub(crate) changes: Vec<Op>,
     #[serde(deserialize_with = "Option::deserialize")]
-    pub(crate) fingerprint: Option<String>,
+    pub(crate) if_rev: Option<String>,
 }
 
-/// `profiles-write` 的应答：配置文件 / 终端函数文件 / 链接动没动 · 写完那一份的指纹 · 终端函数那份真改了 ⇒ 「已开的终端要重读」那一句。
+/// `profiles-write` 的应答：配置文件 / 终端函数文件 / 链接动没动 · 写完那一份的版本 · 终端函数那份真改了 ⇒ 「已开的终端要重读」那一句。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct ProfilesWriteDone {
     wrote: bool,
-    fingerprint: Option<String>,
+    rev: Option<String>,
     reload: Option<String>,
 }
 
@@ -1501,7 +1501,7 @@ pub(crate) struct ProfilesWriteDone {
 /// 改完多出坏处（原来就坏的不算）⇒ `refused`，一个字节不写。
 pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWriteDone> {
     let ops = &req.changes;
-    let fp = req.fingerprint.as_deref();
+    let if_rev = req.if_rev.as_deref();
     let store = super::load(d).map_err(refused)?;
     let path = profile::path_in(&store.home);
     if ops.iter().any(|o| matches!(o, Op::AckMigrated {})) {
@@ -1519,11 +1519,11 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
     if !touches_file {
         return Ok(ProfilesWriteDone {
             wrote: false,
-            fingerprint: super::fingerprint_of(store.text.as_deref()),
+            rev: super::rev_of(store.text.as_deref()),
             reload: None,
         });
     }
-    if super::fingerprint_of(store.text.as_deref()).as_deref() != fp {
+    if super::rev_of(store.text.as_deref()).as_deref() != if_rev {
         return Err((
             "stale",
             copy_text(
@@ -1572,7 +1572,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
     let shell_file = super::alias_file_in(&store.home, here_shell());
     Ok(ProfilesWriteDone {
         wrote: wrote || out.links_changed || !out.rewrote.is_empty(),
-        fingerprint: super::fingerprint_of(Some(&text)),
+        rev: super::rev_of(Some(&text)),
         reload: out
             .rewrote
             .contains(&shell_file)

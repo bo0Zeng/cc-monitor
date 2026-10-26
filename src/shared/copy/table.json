@@ -29886,7 +29886,7 @@
       "zh": "无法识别时区「{tz}」",
       "args": ["tz"]
     },
-    "beRotation.edit.conflict": {
+    "beRotation.edit.stale": {
       "kind": "error",
       "role": "报错",
       "zh": "这份策略在别处已改过",

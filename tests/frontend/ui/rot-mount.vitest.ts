@@ -192,13 +192,13 @@ describe("设置窗：加时段那一行（草稿）", () => {
     expect(fresh(m.root)).toEqual([]);
   });
 
-  it("★ 交出去撞上 conflict ⇒ 草稿与已打的字留着、照后端那一句说（不静默丢）", async () => {
+  it("★ 交出去撞上 stale ⇒ 草稿与已打的字留着、照后端那一句说（不静默丢）", async () => {
     const m = await started();
-    refuse.set("rotation-settings", "conflict");
+    refuse.set("rotation-settings", "stale");
     fill(m.root);
     await settle();
     expect(fresh(m.root).map((x) => x.value)).toEqual(["20:00", "23:00", "0"]);
-    expect(document.body.textContent).toContain("那台说：conflict");
+    expect(document.body.textContent).toContain("那台说：stale");
   });
 });
 
@@ -279,11 +279,11 @@ describe("提示里的按钮", () => {
     expect(opened).toEqual([{ origin: "<local>", at: { revealFile: "/夹具/strategies/按权重轮换.rhai" } }]);
   });
 
-  it("★ 写撞上 conflict ⇒ 不自己造提示（照后端那一句出失败 toast，见草稿那组），重读此刻的", async () => {
+  it("★ 写撞上 stale ⇒ 不自己造提示（照后端那一句出失败 toast，见草稿那组），重读此刻的", async () => {
     const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
     await m.refresh();
     calls.length = 0;
-    refuse.set("rotation-settings", "conflict");
+    refuse.set("rotation-settings", "stale");
     editClose(m.root, "30");
     await settle();
     expect(calls.map((c) => c.name)).toEqual(["rotation-settings", "rotation-view"]);

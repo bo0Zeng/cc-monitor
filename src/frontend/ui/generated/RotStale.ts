@@ -3,4 +3,4 @@
 /**
  * 别处改过：此刻的版本。
  */
-export type RotConflict = { rev: string, };
+export type RotStale = { rev: string, };
