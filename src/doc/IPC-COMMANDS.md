@@ -9927,11 +9927,6 @@ type ExtBring = { from: string | null,
  * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
  */
 fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
-type ExtBuiltin = { note: string, 
-/**
- * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
- */
-hooks: boolean, };
 type ExtCell = { 
 /**
  * 表上那个点。
@@ -9951,12 +9946,29 @@ places: Array<ExtPlace>, bring: ExtBring | null,
 note: string | null, };
 type ExtDetail = { label: string, value: string, };
 type ExtKind = "skill" | "mcp" | "plugin";
+type ExtKnown = { 
+/**
+ * 名字底下那一句：从哪来（cc-monitor 自带 · 发布处）。
+ */
+from: string, 
+/**
+ * 内置备注（有才有）。
+ */
+note: string | null, 
+/**
+ * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+ */
+hooks: boolean, };
 type ExtLegend = { state: ExtState, said: string, };
 type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, 
 /**
- * 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+ * 表下图例：列哪几态 ＋ 各一句（「关着」只在有一台装着插件时列）。
  */
-legend: Array<ExtLegend>, };
+legend: Array<ExtLegend>, 
+/**
+ * 表顶「认得」那一组的组头（带 `known` 的那几行排在最前，界面在它们前面放这一句）。
+ */
+knownTitle: string, };
 type ExtListReq = { 
 /**
  * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
@@ -10009,7 +10021,11 @@ type ExtRow = { kind: ExtKind,
 /**
  * 种类那一格的字（后端写好）。
  */
-kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, 
+/**
+ * cc-monitor 认得的那几样才有（表顶一组，排在最前）。
+ */
+known: ExtKnown | null, 
 /**
  * 用户写的备注（随目录在后端之间同步）。
  */
@@ -10035,11 +10051,6 @@ type ExtBring = { from: string | null,
  * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
  */
 fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
-type ExtBuiltin = { note: string, 
-/**
- * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
- */
-hooks: boolean, };
 type ExtCell = { 
 /**
  * 表上那个点。
@@ -10059,12 +10070,29 @@ places: Array<ExtPlace>, bring: ExtBring | null,
 note: string | null, };
 type ExtDetail = { label: string, value: string, };
 type ExtKind = "skill" | "mcp" | "plugin";
+type ExtKnown = { 
+/**
+ * 名字底下那一句：从哪来（cc-monitor 自带 · 发布处）。
+ */
+from: string, 
+/**
+ * 内置备注（有才有）。
+ */
+note: string | null, 
+/**
+ * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+ */
+hooks: boolean, };
 type ExtLegend = { state: ExtState, said: string, };
 type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, 
 /**
- * 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+ * 表下图例：列哪几态 ＋ 各一句（「关着」只在有一台装着插件时列）。
  */
-legend: Array<ExtLegend>, };
+legend: Array<ExtLegend>, 
+/**
+ * 表顶「认得」那一组的组头（带 `known` 的那几行排在最前，界面在它们前面放这一句）。
+ */
+knownTitle: string, };
 type ExtListReq = { 
 /**
  * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
@@ -10117,7 +10145,11 @@ type ExtRow = { kind: ExtKind,
 /**
  * 种类那一格的字（后端写好）。
  */
-kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, 
+/**
+ * cc-monitor 认得的那几样才有（表顶一组，排在最前）。
+ */
+known: ExtKnown | null, 
 /**
  * 用户写的备注（随目录在后端之间同步）。
  */

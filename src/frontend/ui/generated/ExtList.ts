@@ -8,6 +8,10 @@ import type { ExtRow } from "./ExtRow";
  */
 export type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, 
 /**
- * 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+ * 表下图例：列哪几态 ＋ 各一句（「关着」只在有一台装着插件时列）。
  */
-legend: Array<ExtLegend>, };
+legend: Array<ExtLegend>, 
+/**
+ * 表顶「认得」那一组的组头（带 `known` 的那几行排在最前，界面在它们前面放这一句）。
+ */
+knownTitle: string, };

@@ -4724,25 +4724,6 @@ data class ExtBring(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class ExtBuiltin(
-    val note: String,
-    val hooks: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<ExtBuiltin> = obj(
-            listOf(
-            Field("note", { Str }, optional = false, nullable = false),
-            Field("hooks", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> ExtBuiltin(a[0] as String, a[1] as Boolean) },
-            { v -> arrayOf(v.note, v.hooks) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class ExtCard(
     val kind: ExtKind,
     val name: String,
@@ -4854,6 +4835,27 @@ enum class ExtKind(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class ExtKnown(
+    val from: String,
+    val note: String?,
+    val hooks: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<ExtKnown> = obj(
+            listOf(
+            Field("from", { Str }, optional = false, nullable = false),
+            Field("note", { opt(Str) }, optional = false, nullable = true),
+            Field("hooks", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> ExtKnown(a[0] as String, a[1] as String?, a[2] as Boolean) },
+            { v -> arrayOf(v.from, v.note, v.hooks) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class ExtLegend(
     val state: ExtState,
     val said: String,
@@ -4878,6 +4880,7 @@ data class ExtList(
     val rows: List<ExtRow>,
     val problems: List<String>,
     val legend: List<ExtLegend>,
+    val knownTitle: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -4888,9 +4891,10 @@ data class ExtList(
             Field("rows", { arr(ExtRow.ADAPTER) }, optional = false, nullable = false),
             Field("problems", { arr(Str) }, optional = false, nullable = false),
             Field("legend", { arr(ExtLegend.ADAPTER) }, optional = false, nullable = false),
+            Field("knownTitle", { Str }, optional = false, nullable = false),
             ),
-            { a -> ExtList(a[0] as List<ExtMachine>, a[1] as List<ExtRow>, a[2] as List<String>, a[3] as List<ExtLegend>) },
-            { v -> arrayOf(v.machines, v.rows, v.problems, v.legend) },
+            { a -> ExtList(a[0] as List<ExtMachine>, a[1] as List<ExtRow>, a[2] as List<String>, a[3] as List<ExtLegend>, a[4] as String) },
+            { v -> arrayOf(v.machines, v.rows, v.problems, v.legend, v.knownTitle) },
         )
     }
 }
@@ -5052,7 +5056,7 @@ data class ExtRow(
     val about: String?,
     val detail: List<ExtDetail>,
     val new: Boolean,
-    val builtin: ExtBuiltin?,
+    val known: ExtKnown?,
     val note: String?,
     val cells: List<ExtCell>,
 ) : Ordered {
@@ -5067,12 +5071,12 @@ data class ExtRow(
             Field("about", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { arr(ExtDetail.ADAPTER) }, optional = false, nullable = false),
             Field("new", { Bool }, optional = false, nullable = false),
-            Field("builtin", { opt(ExtBuiltin.ADAPTER) }, optional = false, nullable = true),
+            Field("known", { opt(ExtKnown.ADAPTER) }, optional = false, nullable = true),
             Field("note", { opt(Str) }, optional = false, nullable = true),
             Field("cells", { arr(ExtCell.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> ExtRow(a[0] as ExtKind, a[1] as String, a[2] as String, a[3] as String?, a[4] as List<ExtDetail>, a[5] as Boolean, a[6] as ExtBuiltin?, a[7] as String?, a[8] as List<ExtCell>) },
-            { v -> arrayOf(v.kind, v.kindSaid, v.name, v.about, v.detail, v.new, v.builtin, v.note, v.cells) },
+            { a -> ExtRow(a[0] as ExtKind, a[1] as String, a[2] as String, a[3] as String?, a[4] as List<ExtDetail>, a[5] as Boolean, a[6] as ExtKnown?, a[7] as String?, a[8] as List<ExtCell>) },
+            { v -> arrayOf(v.kind, v.kindSaid, v.name, v.about, v.detail, v.new, v.known, v.note, v.cells) },
         )
     }
 }
