@@ -63,7 +63,7 @@ describe("请求：问对那台、说对那条、参数原样", () => {
       ["devbox", "profiles-resolve", { name: "cc", edit: null, at: null }],
       ["devbox", "profiles-impact", { changes }],
       ["devbox", "profiles-bases", { name: "cc" }],
-      ["devbox", "profiles-write", { changes, fingerprint: "fp" }],
+      ["devbox", "profiles-write", { changes, ifRev: "fp" }],
     ]);
   });
 });

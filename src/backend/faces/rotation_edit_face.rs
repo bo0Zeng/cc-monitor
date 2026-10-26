@@ -8,7 +8,7 @@ use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotBadStrategy, RotConflict, RotDone, RotInUse, RotStrategyId, RotStrategyRev,
+    RotBadStrategy, RotDone, RotInUse, RotStale, RotStrategyId, RotStrategyRev,
 };
 use copy_core::copy_text;
 pub(crate) use form::RotEdit;
@@ -62,7 +62,7 @@ fn fresh_name(ctx: &Ctx, name: &str) -> Result<String, String> {
 
 // ── rotation-settings ─────────────────────────────────────────────────────────────────────
 
-/// `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `conflict`）。
+/// `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `stale`）。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -78,7 +78,7 @@ crate::wire::typed::codes! {
     pub(crate) enum RotationSettingsErr {
         NoStrategy = "no_strategy",
         Refused = "refused" => RotRefused,
-        Conflict = "conflict" => RotConflict,
+        Stale = "stale" => RotStale,
         IoFailed = "io_failed",
     }
 }
@@ -124,9 +124,9 @@ pub(crate) fn settings_with(
     checked(sh.file.as_ref().ok(), &settings)
         .map_err(|r| RotationSettingsErr::Refused(refused_said(), r))?;
     if req.if_rev != sh.rev {
-        return Err(RotationSettingsErr::Conflict(
-            copy_text("beRotation.edit.conflict", &[]),
-            RotConflict {
+        return Err(RotationSettingsErr::Stale(
+            copy_text("beRotation.edit.stale", &[]),
+            RotStale {
                 rev: sh.rev.clone(),
             },
         ));
@@ -502,7 +502,7 @@ crate::wire::typed::codes! {
     /// `rotation-strategy-rename` 自己的码。
     pub(crate) enum RotationStrategyRenameErr {
         NoStrategy = "no_strategy",
-        Conflict = "conflict" => RotConflict,
+        Stale = "stale" => RotStale,
         IoFailed = "io_failed",
     }
 }
@@ -542,9 +542,9 @@ pub(crate) fn rename_with(
     let sh =
         find(ctx, &req.id).ok_or_else(|| RotationStrategyRenameErr::NoStrategy(gone(&req.id)))?;
     if req.if_rev != sh.rev {
-        return Err(RotationStrategyRenameErr::Conflict(
-            copy_text("beRotation.edit.conflict", &[]),
-            RotConflict {
+        return Err(RotationStrategyRenameErr::Stale(
+            copy_text("beRotation.edit.stale", &[]),
+            RotStale {
                 rev: sh.rev.clone(),
             },
         ));
@@ -590,7 +590,7 @@ crate::wire::typed::codes! {
     /// `rotation-strategy-tz` 自己的码。
     pub(crate) enum RotationStrategyTzErr {
         NoStrategy = "no_strategy",
-        Conflict = "conflict" => RotConflict,
+        Stale = "stale" => RotStale,
         IoFailed = "io_failed",
     }
 }
@@ -637,9 +637,9 @@ pub(crate) fn tz_with(
         )));
     }
     if req.if_rev != sh.rev {
-        return Err(RotationStrategyTzErr::Conflict(
-            copy_text("beRotation.edit.conflict", &[]),
-            RotConflict {
+        return Err(RotationStrategyTzErr::Stale(
+            copy_text("beRotation.edit.stale", &[]),
+            RotStale {
                 rev: sh.rev.clone(),
             },
         ));

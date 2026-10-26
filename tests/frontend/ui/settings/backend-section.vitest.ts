@@ -694,7 +694,8 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
 describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是它回的那份", () => {
   it("★ 点远端那一行的「日志」⇒ 问那一台的 backend-log，头一行是路径与大小，正文原样；再点收起", async () => {
     logAnswers = {
-      甲机: { path: "/h/.cc-monitor/logs/backend/stderr.log", size: 2048, text: "WARN 打标失败\n", truncated: true },
+      // 大小是那台后端写好的字：界面照抄，不自己换算（台架故意给一个不是换算得出来的字）。
+      甲机: { path: "/h/.cc-monitor/logs/backend/stderr.log", size_text: "台架写的大小", text: "WARN 打标失败\n", truncated: true },
     };
     const s = new BackendSection({ headless: true });
     await flush();
@@ -708,7 +709,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     const box = row.querySelector<HTMLElement>("[data-backend-log]")!;
     expect(box.dataset.backendLog).toBe("甲机");
     expect(box.querySelector(".settings-hint")?.textContent).toBe(
-      `${copyText("backend.log.head", { path: "/h/.cc-monitor/logs/backend/stderr.log", size: "2.0 KB" })} ${copyText("backend.log.truncated")}`,
+      `${copyText("backend.log.head", { path: "/h/.cc-monitor/logs/backend/stderr.log", size: "台架写的大小" })} ${copyText("backend.log.truncated")}`,
     );
     expect(box.querySelector("pre")?.textContent).toBe("WARN 打标失败\n");
     btn.click();
@@ -717,7 +718,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
   });
 
   it("没落文件（path: null）⇒ 只一句说清；问不到 ⇒ 说取不回、带原因", async () => {
-    logAnswers = { "<local>": { path: null, size: 0, text: "", truncated: false } };
+    logAnswers = { "<local>": { path: null, size_text: null, text: "", truncated: false } };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();

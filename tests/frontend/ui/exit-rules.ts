@@ -1,182 +1,187 @@
 /**
- * 出口扫描判据的规则表（`exit-judgment-scan.vitest.ts` 用；单列一份是为了让判据与它的阳性对照读同一张表）。
+ * 出口扫描判据的两句（`exit-judgment-scan.vitest.ts` 用；单列一份是为了让判据与它的对照样例读同一份判法）。
  *
- * 「出口零判定零格式化」（`src/doc/ARCHITECTURE.md` §2.9）：界面与壳只排版，判定与描述数据的字都由核心写。
- * 这里每条规则是那件事的一种**写法指纹**：自己按状态码取字、自己拼百分比、自己写时长单位、自己换算时刻、自己按状态排档、自己换算大小。
- * 指纹抓的是写法，不是语义：换个写法重写一遍抓不到（与 `judgment-single-home.vitest.ts` 同一类边界）；
- * 抓到的也不全是违例（界面自己的骨架词表也会撞上 `case "x": return copyText(`）——欠账名单里每条写明是哪一种。
+ * 「出口零判定零格式化」（`src/doc/ARCHITECTURE.md` §2.9）：出口只取自己骨架上的字，描述数据与状态的字由核心写。
+ * 按意思判成两句，三门语言各照自己的语法判同样的两句：
+ * - `key`：出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body），且那一条不带插值（没登 `args`）。
+ *   不带插值的 body（空态 · 提示）是界面固定的字，不随数据变；error 是结局，由后端交成品，不算骨架。
+ *   键不是字面量、表里没有这把键，也算一处。
+ * - `branch`：条件读了线上值的分支里不许取文。「读了线上值」＝ 条件拿一个值去比字面的码：`x.code === "dup"` 一类的比较、
+ *   `case "dup":`（连同那个 `switch` 的 `default:`）、`CODES.has(x)` / `CODES.includes(x)`（`CODES` 是本文件里一组字面码）。
+ *   管到的分支：`if` 的两头 · 三元的两头 · `&&` / `||` / `??` 的右侧 · `case` / `default` 底下；进到里面再定义的具名函数 · 方法 · 类就不算，
+ *   箭头函数跟着外面的分支算（按码挂上去的回调取的字，也是按码挑的字）。
+ * TS 这一半在这里（typescript 的语法树）；Kotlin 那一半是 `src/mobile/detekt-rules` 里的 detekt 规则，
+ * 壳与文件窗口的 Rust 那一半是 `tests/frontend/filewin/exit_scan_tests.rs`。
+ *
+ * 买不到：比的码不是字面量（从别处拿来的常量、枚举）就认不出是在按码判；先 `if (…) return` 再在后面取文，后面那一句不在分支里，也认不出；
+ * 不经文案表、直接写在代码里的字归文案表那几条判据管，不在这里。
  */
+import ts from "typescript";
 
-/** 一条规则：在**剥过注释**的生产代码里数命中次数。 */
-export interface ExitRule {
-  id: string;
-  /** 抓的是什么写法（一句）。 */
-  what: string;
-  re: RegExp;
-  /** 阳性对照：每一段都必须恰好命中一次（探测器坏了 ⇒ 先红）。 */
-  hits: string[];
-  /** 阴性对照：每一段都必须零命中（规则不许宽到把这些也算进来）。 */
-  misses: string[];
+/** 两句的名字（欠账名单的 `rule` 只许这两个）。 */
+export const RULE_IDS = ["key", "branch"] as const;
+export type RuleId = (typeof RULE_IDS)[number];
+
+/** 骨架那几档：出口自己的字只许是这几档。 */
+export const SKELETON_KINDS: ReadonlySet<string> = new Set(["title", "control", "action", "aria", "body"]);
+
+/** 文案表里判这两句要用的那两格。 */
+export interface CopyEntry {
+  kind: string;
+  args?: string[];
 }
 
-/** 界面（TS）那几条。 */
-export const TS_RULES: ExitRule[] = [
-  {
-    id: "codeWord",
-    what: "按后端码（code · state · kind · status · activity · slot …）三元 / if 取字：`x.code === \"dup\" ? copyText(…)`",
-    re: /(?:\.|\b)(?:code|state|kind|status|activity|doing|slot|liveness|mode|why|layer|tone)\s*===\s*"[^"\n]*"\s*\)?\s*(?:\?|return|&&)\s*copyText\(/g,
-    hits: ['e.code === "dup" ? copyText("a.b.c")', 'if (slot === "5h") return copyText("a.b.c")', 'q.state === "refused" && copyText("a.b.c")'],
-    misses: ['e.cell === "name" ? copyText("a.b.c")', 'x.code === "dup" ? 1 : 2'],
-  },
-  {
-    id: "caseWord",
-    what: "按码 `switch` 取字：`case \"rejected\": return copyText(…)`（含 `return { text: copyText(…) }`）",
-    re: /case\s+"[^"\n]+":\s*return\s+(?:\{[^}\n]*?)?copyText\(/g,
-    hits: ['case "rejected":\n      return copyText("a.b.c");', 'case "x": return { text: copyText("a.b.c"), needs: false };'],
-    misses: ['case "x":\n      break;', 'case "x": return e.said;'],
-  },
-  {
-    id: "caseRank",
-    what: "按状态排档的表：`case \"needs_you\": return 0;`",
-    re: /case\s+"[^"\n]+":\s*return\s+-?\d+\s*;/g,
-    hits: ['case "needs_you":\n        return 0;'],
-    misses: ['case "x":\n        return a - b;'],
-  },
-  {
-    id: "pct",
-    what: "自己拼百分比：模板里 `${n}%` · `+ \"%\"`",
-    re: /\$\{[^}\n]*\}%|\+\s*"%"/g,
-    hits: ["`${p}%`", 'n + "%"'],
-    misses: ['copyText("a.b.c", { pct: p })', "`100%`"],
-  },
-  {
-    id: "durUnit",
-    what: "自己写时长单位：模板里插值后紧跟 `s` / `m` / `h` / `d` / `ms`",
-    re: /\}(?:ms|s|m|h|d)(?=`|\$\{)/g,
-    hits: ["`${s}s`", "`${m}m${x}`"],
-    misses: ["`${a}.${b}`", "`${n} rows`"],
-  },
-  {
-    id: "clock",
-    what: "自己换算时刻：`Date.parse(` · `toLocale…(` · `toTimeString(` · `toDateString(` · `getHours(` · `new Date(`",
-    re: /Date\.parse\(|\.toLocale\w*\(|\.toTimeString\(|\.toDateString\(|\.getHours\(|new Date\(/g,
-    hits: ["Date.parse(at)", "d.toLocaleTimeString()", "new Date(ms)"],
-    misses: ["Date.now()", "parse(at)"],
-  },
-  {
-    id: "toFixed",
-    what: "自己取小数位（时长 / 大小 / 比例的格式化）：`.toFixed(`",
-    re: /\.toFixed\(/g,
-    hits: ["(ms / 1000).toFixed(1)"],
-    misses: ["fixed(1)"],
-  },
-  {
-    id: "size",
-    what: "自己换算大小：`/ 1024`",
-    re: /\/\s*1024\b/g,
-    hits: ["n / 1024", "x/1024"],
-    misses: ["n / 10240", "1024"],
-  },
-  {
-    id: "hitsCut",
-    what: "自己截搜内容的命中（每个会话摆几处、还有几处由后端给）：`.hits.slice(`",
-    re: /\.hits\.slice\(/g,
-    hits: ["sh.hits.slice(0, N)"],
-    misses: ["for (const hit of sh.hits)", "lines.slice(0, N)"],
-  },
-];
+export type CopyTable = Readonly<Record<string, CopyEntry>>;
 
-/** 壳（Rust）那几条：壳自己操作的失败句是宿主本职（不在这里）；描述数据的数字格式化在这里。 */
-export const RS_RULES: ExitRule[] = [
-  {
-    id: "pct",
-    what: "自己拼百分比：`format!(\"{…}%\")`",
-    re: /format!\(\s*"[^"\n]*\}%/g,
-    hits: ['format!("{}%", p)', 'format!("{p:.0}%")'],
-    misses: ['format!("{}", p)'],
-  },
-  {
-    id: "durUnit",
-    what: "自己写时长单位：`format!(\"{…}s\")` 一类",
-    re: /format!\(\s*"[^"\n]*\}(?:ms|s|m|h|d)\b/g,
-    hits: ['format!("{}s", n)', 'format!("{m}m{s}s")'],
-    misses: ['format!("{} sessions", n)'],
-  },
-  {
-    id: "size",
-    what: "自己换算大小：`/ 1024`",
-    re: /\/\s*1024(?:\.0)?\b/g,
-    hits: ["n / 1024", "x / 1024.0"],
-    misses: ["n / 10240"],
-  },
-];
+/** 这把键出口取得了：表里有、骨架那几档、不带插值。 */
+export function skeletonKey(key: string | null, table: CopyTable): boolean {
+  if (key === null) return false;
+  const e = table[key];
+  return e !== undefined && SKELETON_KINDS.has(e.kind) && (e.args ?? []).length === 0;
+}
 
-/**
- * 手机端（Kotlin，`src/mobile`）那几条：同一件事的 Kotlin 写法（`when` 分支 · 字符串模板 · `java.time` / `SimpleDateFormat`）。
- * 手机还有一大批硬写的中文，按码直接取汉字的 `when` 分支同按码取字一类，也在这里抓。
- */
-export const KT_RULES: ExitRule[] = [
-  {
-    id: "codeWord",
-    what: "按后端码比较后取字：`x.code == \"dup\") copyText(…)` · `… == \"dup\" -> copyText(…)`",
-    re: /(?:\.|\b)(?:code|state|kind|status|activity|slot|mode|why|tone|outcome|result)\s*==\s*"[^"\n]*"\s*\)?\s*(?:->|&&|\?:)?\s*copyText\(/g,
-    hits: ['if (e.code == "dup") copyText("a.b.c")', 'r.state == "refused" -> copyText("a.b.c")'],
-    misses: ['e.cell == "name") copyText("a.b.c")', 'x.code == "dup") 1 else 2'],
-  },
-  {
-    id: "caseWord",
-    what: "按码 `when` 取字：`\"rejected\" -> copyText(…)` · `\"rejected\" -> \"已拒绝\"`（直接写汉字）",
-    re: /"[^"\n]+"\s*->\s*(?:copyText\(|"[^"\n]*[一-鿿])/g,
-    hits: ['"rejected" -> copyText("a.b.c")', '"escape" -> "转义序列"'],
-    misses: ['"x" -> 0', '"x" -> e.said', '"x" -> "abc"'],
-  },
-  {
-    id: "caseRank",
-    what: "按状态排档的 `when`：`\"needs_you\" -> 0`",
-    re: /"[^"\n]+"\s*->\s*-?\d+\s*(?=\n|\})/g,
-    hits: ['"needs_you" -> 0\n'],
-    misses: ['"x" -> a - b\n', '"x" -> 0.5\n'],
-  },
-  {
-    id: "pct",
-    what: "自己拼百分比：模板里 `${n}%` · `$n%` · `+ \"%\"`",
-    re: /\$\{[^}\n]*\}%|\$[A-Za-z_]\w*%|\+\s*"%"/g,
-    hits: ['"${p}%"', '"$p%"', 'n + "%"'],
-    misses: ['copyText("a.b.c", "pct" to p)', '"100%"'],
-  },
-  {
-    id: "durUnit",
-    what: "自己写时长单位：模板插值后紧跟 `s` / `m` / `h` / `d` / `ms` / 秒 / 分钟 / 小时 / 天",
-    re: /\}\s?(?:ms|s|m|h|d|秒|分钟|小时|天)(?=["$）)\s,])|\$[A-Za-z_]\w*\s?(?:秒|分钟|小时|天)/g,
-    hits: ['"${s}s"', '"（${n / 1000} 秒）"', '"$n分钟前"'],
-    misses: ['"${a}.${b}"', '"${n} rows"', '"${id}data"'],
-  },
-  {
-    id: "clock",
-    what: "自己换算时刻：`SimpleDateFormat(` · `DateTimeFormatter.` · `Date(` · `LocalDateTime.` · `ZonedDateTime.` · `Instant.ofEpoch…(`",
-    re: /SimpleDateFormat\(|DateTimeFormatter\.|\bDate\(|LocalDateTime\.|ZonedDateTime\.|Instant\.ofEpoch\w*\(/g,
-    hits: ['SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)', "java.util.Date(ms)", "Instant.ofEpochMilli(ms)"],
-    misses: ["System.currentTimeMillis()", "ZoneId.systemDefault().id"],
-  },
-  {
-    id: "fixed",
-    what: "自己取小数位：`\"%.1f\"` 一类的格式串",
-    re: /"%[-\d.]*f"/g,
-    hits: ['"%.1f".format(x)'],
-    misses: ['"%02X".format(b)'],
-  },
-  {
-    id: "size",
-    what: "自己换算大小：`/ 1024`",
-    re: /\/\s*1024(?:\.0|L)?\b/g,
-    hits: ["n / 1024", "x / 1024.0"],
-    misses: ["n / 10240", "1024"],
-  },
-  {
-    id: "hitsCut",
-    what: "自己截搜内容的命中（每个会话摆几处、还有几处由后端给）：`.hits.take(`",
-    re: /\.hits\.take\(/g,
-    hits: ["r.hits.take(N)"],
-    misses: ["r.hits.forEach { }", "lines.take(N)"],
-  },
+const EQ = new Set([
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ts.SyntaxKind.EqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsToken,
+]);
+
+function isStr(n: ts.Node): boolean {
+  return ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n);
+}
+
+function unwrap(n: ts.Expression): ts.Expression {
+  let e = n;
+  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e)) e = e.expression;
+  return e;
+}
+
+/** 一组字面码：`["a", "b"]` 或 `new Set([...])`。 */
+function isCodeList(n: ts.Expression): boolean {
+  const e = unwrap(n);
+  if (ts.isArrayLiteralExpression(e)) return e.elements.length > 0 && e.elements.every(isStr);
+  if (ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "Set") {
+    const a = e.arguments?.[0];
+    return a !== undefined && isCodeList(a);
+  }
+  return false;
+}
+
+/** 往外不再找分支的边界：具名的函数 · 方法 · 类（箭头函数与函数表达式跟着外面的分支算，同 Kotlin 的 lambda）。 */
+function isFunctionLike(n: ts.Node): boolean {
+  return (
+    ts.isFunctionDeclaration(n) ||
+    ts.isMethodDeclaration(n) ||
+    ts.isConstructorDeclaration(n) ||
+    ts.isGetAccessorDeclaration(n) ||
+    ts.isSetAccessorDeclaration(n) ||
+    ts.isClassLike(n)
+  );
+}
+
+/** 本文件里绑着一组字面码的名字。 */
+function codeLists(sf: ts.SourceFile): Set<string> {
+  const out = new Set<string>();
+  const walk = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && isCodeList(n.initializer)) out.add(n.name.text);
+    ts.forEachChild(n, walk);
+  };
+  walk(sf);
+  return out;
+}
+
+/** 条件里拿一个值去比字面的码（不进里面再定义的函数）。 */
+function readsCode(cond: ts.Node, lists: Set<string>): boolean {
+  let found = false;
+  const walk = (n: ts.Node): void => {
+    if (found || isFunctionLike(n)) return;
+    if (ts.isBinaryExpression(n) && EQ.has(n.operatorToken.kind) && isStr(unwrap(n.left)) !== isStr(unwrap(n.right))) found = true;
+    else if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      ["has", "includes"].includes(n.expression.name.text) &&
+      n.arguments.length === 1 &&
+      !isStr(n.arguments[0]!)
+    ) {
+      const recv = unwrap(n.expression.expression);
+      if ((ts.isIdentifier(recv) && lists.has(recv.text)) || isCodeList(recv)) found = true;
+    }
+    if (!found) ts.forEachChild(n, walk);
+  };
+  walk(cond);
+  return found;
+}
+
+function caseOnCode(c: ts.CaseClause, lists: Set<string>): boolean {
+  return isStr(unwrap(c.expression)) || readsCode(c.expression, lists);
+}
+
+/** `child` 是不是 `parent` 那个按码判的分支底下（`child` 是 `parent` 的直接子节点）。 */
+function branchOnCode(parent: ts.Node, child: ts.Node, lists: Set<string>): boolean {
+  if (ts.isIfStatement(parent)) return child !== parent.expression && readsCode(parent.expression, lists);
+  if (ts.isConditionalExpression(parent)) return child !== parent.condition && readsCode(parent.condition, lists);
+  if (ts.isBinaryExpression(parent)) {
+    const op = parent.operatorToken.kind;
+    const logical = op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken;
+    return logical && child === parent.right && readsCode(parent.left, lists);
+  }
+  if (ts.isCaseClause(parent)) return child !== parent.expression && caseOnCode(parent, lists);
+  if (ts.isDefaultClause(parent)) return parent.parent.clauses.some((c) => ts.isCaseClause(c) && caseOnCode(c, lists));
+  return false;
+}
+
+/** 一份 TS 生产代码里两句各命中几处。 */
+export function scanTs(code: string, table: CopyTable, file = "x.ts"): Record<RuleId, number> {
+  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const lists = codeLists(sf);
+  const got: Record<RuleId, number> = { key: 0, branch: 0 };
+  const visit = (n: ts.Node): void => {
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "copyText") {
+      const a = n.arguments[0];
+      const key = a !== undefined && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) ? a.text : null;
+      if (!skeletonKey(key, table)) got.key++;
+      let child: ts.Node = n;
+      for (let p = n.parent; p && !ts.isSourceFile(p) && !isFunctionLike(child); child = p, p = p.parent) {
+        if (branchOnCode(p, child, lists)) {
+          got.branch++;
+          break;
+        }
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return got;
+}
+
+/** 对照样例用的表：`s.k.x` · `p.k.x` 是骨架那几档、不带插值；`b.k.x` 是报错；`a.k.x` 带插值。 */
+export const SAMPLE_TABLE: CopyTable = {
+  "s.k.x": { kind: "action" },
+  "p.k.x": { kind: "body" },
+  "b.k.x": { kind: "error" },
+  "a.k.x": { kind: "title", args: ["n"] },
+};
+
+/** 对照样例：每一段两句各命中几处（探测器坏了 ⇒ 先红）。第一段是照写法正则扫时漏掉的那一形（`case` 里套一层再取文）。 */
+export const TS_SAMPLES: { code: string; want: Record<RuleId, number> }[] = [
+  { code: 'function f(x: X) { switch (x.code) { case "x": return v(copyText("s.k.x")); } }', want: { key: 0, branch: 1 } },
+  { code: 'function f(x: X) { switch (x.code) { case "x": return 1; default: return copyText("s.k.x"); } }', want: { key: 0, branch: 1 } },
+  { code: 'const RETRYABLE = new Set(["screen_changed", "ambiguous"]);\nconst t = RETRYABLE.has(x.why) ? copyText("s.k.x") : null;', want: { key: 0, branch: 1 } },
+  { code: 'const t = x.code === "dup" ? copyText("s.k.x") : copyText("s.k.x");', want: { key: 0, branch: 2 } },
+  { code: 'if (q.state === "refused") el.textContent = copyText("s.k.x");', want: { key: 0, branch: 1 } },
+  { code: 'const t = x.state === "on" && copyText("s.k.x");', want: { key: 0, branch: 1 } },
+  { code: 'el.textContent = copyText("b.k.x");', want: { key: 1, branch: 0 } },
+  { code: 'el.textContent = copyText("a.k.x", { n });', want: { key: 1, branch: 0 } },
+  { code: "el.textContent = copyText(k);", want: { key: 1, branch: 0 } },
+  { code: 'el.textContent = copyText("no.such.key");', want: { key: 1, branch: 0 } },
+  { code: 'if (x.code === "dup") btn.onclick = () => say(copyText("s.k.x"));', want: { key: 0, branch: 1 } },
+  { code: 'const t = rows.some((r) => r.kind === "x") ? copyText("s.k.x") : null;', want: { key: 0, branch: 1 } },
+  // 阴性：骨架字照摆；条件不比码；分支里再定义的具名函数不算；比码的那一侧在条件里不算；两侧都是字面量不算。
+  { code: 'el.textContent = copyText("s.k.x");', want: { key: 0, branch: 0 } },
+  { code: 'empty.textContent = copyText("p.k.x");', want: { key: 0, branch: 0 } },
+  { code: 'const t = open ? copyText("s.k.x") : copyText("s.k.x");', want: { key: 0, branch: 0 } },
+  { code: 'if (x.code === "dup") { function g() { return copyText("s.k.x"); } }', want: { key: 0, branch: 0 } },
+  { code: 'if (copyText("s.k.x") === "y") go();', want: { key: 0, branch: 0 } },
+  { code: 'const t = "a" === "b" ? copyText("s.k.x") : null;', want: { key: 0, branch: 0 } },
 ];

@@ -20,9 +20,9 @@ path: string,
  */
 exists: boolean, 
 /**
- * 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write`。
+ * 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
  */
-fingerprint: string | null, 
+rev: string | null, 
 /**
  * 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好）；没改过 ⇒ `null`。
  */

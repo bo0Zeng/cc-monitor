@@ -39,7 +39,7 @@ fn probe_file_returns_exists_and_size_when_present() {
     fs::write(&p, "hello").unwrap();
     let info = probe_file(p.clone(), "x.json", "test", DataClass::Truth);
     assert!(info.exists);
-    assert_eq!(info.size_bytes, Some(5));
+    assert_eq!(info.size_text, Some(copy_core::size_text(5)));
     assert_eq!(info.kind, "file");
 }
 
@@ -53,7 +53,7 @@ fn probe_file_returns_not_exists_when_absent() {
         DataClass::Cache,
     );
     assert!(!info.exists);
-    assert!(info.size_bytes.is_none());
+    assert!(info.size_text.is_none());
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn probe_dir_never_returns_size() {
     fs::write(d.path().join("a"), "abc").unwrap();
     let info = probe_dir(d.path().to_path_buf(), "x/", "test", DataClass::Cache);
     assert!(info.exists);
-    assert!(info.size_bytes.is_none());
+    assert!(info.size_text.is_none());
     assert_eq!(info.kind, "dir");
 }
 

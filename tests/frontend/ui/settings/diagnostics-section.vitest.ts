@@ -17,9 +17,9 @@ const { setDiag, getDiag, logInfo, opened, report } = vi.hoisted(() => ({
     value: {
       dir: "/d/logs",
       current_file: "/d/logs/monitor.2026-09-25.log",
-      current_size_bytes: 10,
+      current_size_text: "台架写的今天那份" as string | null,
       all_files: [] as unknown[],
-      backend_stderr: [] as { path: string; size_bytes: number; modified_ms: number }[],
+      backend_stderr: [] as { path: string; size_text: string | null; modified_ms: number }[],
     },
   },
   opened: vi.fn(),
@@ -151,11 +151,14 @@ describe("文件：本机 cc-monitor 输出", () => {
 
   it("★ 有那份文件：显示路径（~ 缩写）与大小，［打开］打开的恰是它（新在前的第一份）", async () => {
     logInfo.value.backend_stderr = [
-      { path: "/d/logs/backend/stderr.log", size_bytes: 2048, modified_ms: 2 },
-      { path: "/d/logs/backend/stderr.old.log", size_bytes: 9, modified_ms: 1 },
+      { path: "/d/logs/backend/stderr.log", size_text: "台架写的新那份", modified_ms: 2 },
+      { path: "/d/logs/backend/stderr.old.log", size_text: "台架写的旧那份", modified_ms: 1 },
     ];
     const sec = await loaded();
     expect(row(sec.element).textContent).toContain("~/logs/backend/stderr.log");
+    // 大小是壳写好的字，界面照抄。
+    expect(row(sec.element).querySelector(".diag-file-size")?.textContent).toBe("台架写的新那份");
+    expect(sec.element.querySelector("[data-role=today-log] .diag-file-size")?.textContent).toBe("台架写的今天那份");
     expect(row(sec.element).textContent).not.toContain("stderr.old.log");
     row(sec.element).querySelector("button")!.click();
     await settle();

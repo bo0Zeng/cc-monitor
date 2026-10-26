@@ -415,10 +415,8 @@ fn write_diagnostics_to_config(
 pub struct LogFileInfo {
     pub dir: String,
     pub current_file: Option<String>,
-    // **C03 大整数策略**：量纲是**字节数**——`Number.MAX_SAFE_INTEGER` = 2^53-1 B ≈ **8 PB**。
-    // 单个 log 文件不可能接近它（rolling 按天切）⇒ f64 精度足够。同 `SftpEntry.size` 那条论证。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub current_size_bytes: u64,
+    /// 当前那份的大小，写好的字（`copy_core::size_text`，界面照抄）；没有当前文件 · 读不到大小 ⇒ `null`。
+    pub current_size_text: Option<String>,
     pub all_files: Vec<LogFileEntry>,
     /// 本机后端（脱离那条载体）的 stderr 诊断文件（当前 ＋ 旧的一份，在的才列；新在前）。
     pub backend_stderr: Vec<LogFileEntry>,
@@ -429,11 +427,9 @@ pub struct LogFileInfo {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct LogFileEntry {
     pub path: String,
-    // 同上：字节数量纲，8 PB。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub size_bytes: u64,
-    // **另一个量纲**：**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
-    // 刻意与上面那条分开写：把两个量纲的上限论证混成一条，是 C03 明确禁止的做法。
+    /// 大小，写好的字（`copy_core::size_text`，界面照抄）；读不到大小 ⇒ `null`。
+    pub size_text: Option<String>,
+    // 量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年** ⇒ f64 精度足够（C03 大整数策略）。
     #[cfg_attr(test, ts(type = "number"))]
     pub modified_ms: i64,
 }
@@ -451,7 +447,7 @@ pub(crate) fn list_log_entries(dir: &Path, ext: Option<&str>) -> Vec<LogFileEntr
                 continue;
             }
             let meta = e.metadata().ok();
-            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let size_text = meta.as_ref().map(|m| copy_core::size_text(m.len()));
             let mtime = meta
                 .and_then(|m| m.modified().ok())
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -459,7 +455,7 @@ pub(crate) fn list_log_entries(dir: &Path, ext: Option<&str>) -> Vec<LogFileEntr
                 .unwrap_or(0);
             entries.push(LogFileEntry {
                 path: p.to_string_lossy().into_owned(),
-                size_bytes: size,
+                size_text,
                 modified_ms: mtime,
             });
         }
@@ -472,7 +468,7 @@ impl LoggingState {
     pub fn log_file_info(&self) -> LogFileInfo {
         let entries = list_log_entries(&self.log_dir, Some(LOG_FILE_SUFFIX));
         let current_file = entries.first().map(|e| e.path.clone());
-        let current_size_bytes = entries.first().map(|e| e.size_bytes).unwrap_or(0);
+        let current_size_text = entries.first().and_then(|e| e.size_text.clone());
         // 后端那一份：路径与起后端时交出去的是同一个函数算的（它的父目录）。
         let backend_dir = backend_stderr_log_path(&self.monitor_data_dir)
             .parent()
@@ -480,7 +476,7 @@ impl LoggingState {
         LogFileInfo {
             dir: self.log_dir.to_string_lossy().into_owned(),
             current_file,
-            current_size_bytes,
+            current_size_text,
             all_files: entries,
             backend_stderr: backend_dir
                 .map(|d| list_log_entries(&d, None))

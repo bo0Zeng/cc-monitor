@@ -62,6 +62,7 @@ import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.rememberHeld
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.RotCell
@@ -175,13 +176,13 @@ internal fun NumberBox(
     modifier: Modifier = Modifier,
     onSet: (Double) -> Unit,
 ) {
-    var text by remember(value) { mutableStateOf(numText(value)) }
-    InputBox(text, { text = it }, faint, width, label, KeyboardType.Number, unit, modifier) {
-        text
+    val held = rememberHeld(numText(value))
+    InputBox(held.text, { held.text = it }, faint, width, label, KeyboardType.Number, unit, modifier) {
+        held.text
             .trim()
             .toDoubleOrNull()
             ?.takeIf { it != value }
-            ?.let(onSet) ?: run { text = numText(value) }
+            ?.let(onSet) ?: held.reset()
     }
 }
 
@@ -331,18 +332,18 @@ private fun SegLine(
     onDel: () -> Unit,
     row: Int?,
 ) {
-    var from by remember(g) { mutableStateOf(g?.fromText.orEmpty()) }
-    var to by remember(g) { mutableStateOf(g?.toText.orEmpty()) }
-    var v by remember(g) { mutableStateOf(g?.let { numText(it.v) }.orEmpty()) }
+    val from = rememberHeld(g?.fromText.orEmpty())
+    val to = rememberHeld(g?.toText.orEmpty())
+    val v = rememberHeld(g?.let { numText(it.v) }.orEmpty())
     val was = g?.let { segEdit(cell, row, at, it.fromText, it.toText, numText(it.v)) }
     // 三格都有字、又跟读到的那段不一样才交（只是挪了焦点不交；钟点认不认得由那台说）。
-    val commit: () -> Unit = { segEdit(cell, row, at, from, to, v)?.takeIf { it != was }?.let(onEdit) }
+    val commit: () -> Unit = { segEdit(cell, row, at, from.text, to.text, v.text)?.takeIf { it != was }?.let(onEdit) }
     val hint = copyText("rot.seg.placeholder")
     Row(Modifier.fillMaxWidth().testTag("rot-seg-${at ?: "new"}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        InputBox(from, { from = it }, false, 72.dp, copyText("rot.seg.from"), KeyboardType.Number, null, placeholder = hint, commit = commit)
+        InputBox(from.text, { from.text = it }, false, 72.dp, copyText("rot.seg.from"), KeyboardType.Number, null, placeholder = hint, commit = commit)
         Text(copyText("rot.seg.dash"))
-        InputBox(to, { to = it }, false, 72.dp, copyText("rot.seg.to"), KeyboardType.Number, null, placeholder = hint, commit = commit)
-        InputBox(v, { v = it }, false, 80.dp, copyText("rot.seg.v"), KeyboardType.Number, copyText("rot.unit.percent"), commit = commit)
+        InputBox(to.text, { to.text = it }, false, 72.dp, copyText("rot.seg.to"), KeyboardType.Number, null, placeholder = hint, commit = commit)
+        InputBox(v.text, { v.text = it }, false, 80.dp, copyText("rot.seg.v"), KeyboardType.Number, copyText("rot.unit.percent"), commit = commit)
         Box(Modifier.weight(1f))
         IconButton(onClick = onDel, modifier = Modifier.semantics { contentDescription = copyText("rot.seg.del") }) {
             PhIcon(Ph.X, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)

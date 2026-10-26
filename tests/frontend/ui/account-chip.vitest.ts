@@ -1,6 +1,5 @@
-// A3 account-chip 纯函数测试（选主远端 / chip 文本）。
+// account-chip：chip 文本 · 本会话那一形照会话那台写好的那一份 · 没有会话看本机的默认号。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Host } from "../../../src/frontend/ui/generated/Host";
 
 const readRemoteConfigMock = vi.fn();
 const fetchAccountsMock = vi.fn();
@@ -12,11 +11,8 @@ vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast:
 // 好断言「chip 不该再发任何用量请求」。
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
-import {
-  pickPrimaryOrigin,
-  chipLabel,
-  AccountChip,
-} from "../../../src/frontend/ui/account-chip";
+import { chipLabel, AccountChip } from "../../../src/frontend/ui/account-chip";
+import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
 import type { AccountsState, Account } from "../../../src/frontend/ui/accounts";
 // 读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
 import * as readsMod from "../../../src/frontend/ui/account-reads";
@@ -47,19 +43,6 @@ beforeEach(() => {
   document.querySelectorAll('[role="menu"]').forEach((n) => n.remove());
 });
 
-function host(p: Partial<Host>): Host {
-  return {
-    label: "",
-    host: "h",
-    port: 22,
-    user: "u",
-    keyPath: "",
-    addresses: [],
-    jump: "",
-    connect: true,
-    ...p,
-  };
-}
 function acct(p: Partial<Account>): Account {
   return {
     name: "z",
@@ -79,7 +62,7 @@ function acct(p: Partial<Account>): Account {
 /** `def` ＝ 那台写好的默认号（`meta.effectiveDefault`，夹具照成品给）。 */
 function state(p: Partial<AccountsState>, def: string | null = null): AccountsState {
   return {
-    origin: "devbox",
+    origin: LOCAL_ORIGIN,
     available: true,
     oldBackend: false,
     error: null,
@@ -99,19 +82,80 @@ function state(p: Partial<AccountsState>, def: string | null = null): AccountsSt
   };
 }
 
-describe("pickPrimaryOrigin", () => {
-  // 🔴 `K-R59`：这一组此前有两条断「跳过 daemonless 的主机」/「全 daemonless → null」。
-  //    定框 `K35` 把那一档删了 ⇒ **今天一台都不跳**，两条一起下岗。
-  // 名字只认后端读回的那一格（`label` 空 ⇒ `host` 那条规则在后端 `Host::name`，这里不再算）。
-  it("取第一台", () => {
-    expect(pickPrimaryOrigin([{ name: "a", host: host({ label: "a" }) }, { name: "b", host: host({ label: "b" }) }])).toBe("a");
+/** 会话那台写好的那一份（`session-account`）。 */
+function reply(p: Partial<SessionAccountReply>): SessionAccountReply {
+  return {
+    account: "bob",
+    name: "Bob",
+    when: "now",
+    from: null,
+    accountLine: "账号 bob",
+    fromLine: null,
+    usage: null,
+    stale: false,
+    hover: [["Bob"]],
+    sampled: null,
+    differs: false,
+    badge: null,
+    queryable: true,
+    ...p,
+  };
+}
+
+describe("本会话那一形照会话那台写好的那一份（`session-account`）", () => {
+  beforeEach(() => {
+    appStore.sessionAccount.set(new Map());
+    appStore.accounts.set(new Map());
   });
-  // 「没有一台有身份的远端」就是本机（上一版回 `null`、调用方再把 `null` 读成本机）。
-  it("名字空 → 本机（那台远端没有身份）", () => {
-    expect(pickPrimaryOrigin([{ name: "", host: host({ label: "", host: "" }) }])).toBe(LOCAL_ORIGIN);
+
+  it("★ 当前 tab 是远端 b 的会话 ⇒ chip 画 b 那台说的号 · 换来的那个 ⇄ · 用量那几格；不问第一台远端", () => {
+    appStore.sessionAccount.set(
+      new Map([
+        [
+          "s1",
+          {
+            origin: "b",
+            read: reply({
+              from: "amy",
+              usage: { slot: "5h", window: "5h", value: "63%", reset: "↻19:00", text: "5h 63% ↻19:00", tone: "warn" },
+              stale: true,
+            }),
+          },
+        ],
+      ]),
+    );
+    const chip = new AccountChip({ openSettings: () => {} });
+    chip.setActive({ sid: "s1", origin: "b" });
+    const el = chip.element;
+    expect(el.dataset.mode).toBe("session");
+    expect(el.style.display).toBe("");
+    expect(el.textContent).toContain("Bob");
+    expect(el.textContent).toContain("5h");
+    expect(el.textContent).toContain("63%");
+    expect(el.textContent).toContain("↻19:00");
+    expect(el.dataset.shade).toBe("warn");
+    expect(el.dataset.stale).toBe("true");
+    expect(el.querySelector("[class*=acctChipSwap]"), "换过号 ⇒ 名字前一个 ⇄").not.toBeNull();
+    expect(readRemoteConfigMock, "chip 不再替人挑「第一台远端」").not.toHaveBeenCalled();
   });
-  it("空列表 → 本机", () => {
-    expect(pickPrimaryOrigin([])).toBe(LOCAL_ORIGIN);
+
+  it("★ b 那台的那一份换了 ⇒ 同一拍重画；别的会话的那一份不动它", () => {
+    const chip = new AccountChip({ openSettings: () => {} });
+    chip.setActive({ sid: "s1", origin: "b" });
+    putIn(appStore.sessionAccount, "s2", { origin: "c", read: reply({ name: "Carol" }) });
+    expect(chip.element.textContent).not.toContain("Carol");
+    putIn(appStore.sessionAccount, "s1", { origin: "b", read: reply({ name: "Dave", from: null }) });
+    expect(chip.element.textContent).toContain("Dave");
+    expect(chip.element.querySelector("[class*=acctChipSwap]")).toBeNull();
+  });
+
+  it("★ 没有会话 ⇒ 看本机那台的默认号", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ origin: LOCAL_ORIGIN, accounts: [acct({ name: "wei", isDefault: true })] }, "wei"));
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    expect(fetchAccountsMock).toHaveBeenCalledWith(LOCAL_ORIGIN);
+    expect(chip.element.dataset.mode).toBe("default");
+    expect(chip.element.textContent).toContain("wei");
   });
 });
 
@@ -152,7 +196,6 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
   });
 
   it("下拉列出账号 + 点非当前项 → 问那台 `accounts-set-default` 切这台的默认号（DoD 正路）", async () => {
-    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: host({ label: "devbox" }) }] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"),
     );
@@ -167,7 +210,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     amy.click();
     // selectDefault 链：accountsSetDefault → invalidateCache → refresh(含两次 async 数据源) → onDefaultChanged。
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(setDef).toHaveBeenCalledWith("devbox", "amy"); // 点非当前项 → 这台（devbox）切到 amy
+    expect(setDef).toHaveBeenCalledWith(LOCAL_ORIGIN, "amy"); // 没有会话 ⇒ 点非当前项 → 本机切到 amy
     expect(changed).toBe(1); // 切完回调 onDefaultChanged（让 main.ts 重算会话归属）
   });
 });
@@ -182,7 +225,6 @@ describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
     await new Promise((r) => setTimeout(r, 0));
   };
   async function mounted(): Promise<AccountChip> {
-    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: host({ label: "devbox" }) }] });
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     const chip = new AccountChip({ openSettings: () => {} });
     document.body.appendChild(chip.element);
@@ -230,7 +272,6 @@ describe("account-ux U8 chip 头像休眠", () => {
     chip.element.querySelector<HTMLElement>(".status-account-icon")!;
 
   async function mountWith(st: AccountsState): Promise<AccountChip> {
-    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: host({ label: "devbox" }) }] });
     fetchAccountsMock.mockResolvedValue(st);
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
@@ -249,7 +290,7 @@ describe("account-ux U8 chip 头像休眠", () => {
     const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     expect(chip.element.textContent).toContain("wei");
     const fetches = fetchAccountsMock.mock.calls.length;
-    putIn(appStore.accounts, "devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
+    putIn(appStore.accounts, LOCAL_ORIGIN, state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
     expect(chip.element.textContent).toContain("amy");
     expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });
@@ -277,7 +318,6 @@ describe("account-ux U8 chip 头像休眠", () => {
 // 这里换成一条**翻面**的判据：chip 今天不许再发任何用量请求、也不许再长出那个按钮。
 describe("：chip 上的用量面已退役（翻面判据）", () => {
   it("展开菜单不发任何 invoke，且没有「刷新用量」这个动作", async () => {
-    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: host({ label: "devbox" }) }] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"),
     );
@@ -300,7 +340,6 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
 describe("chip 菜单的账号徽章：照抄核心写好的那一枚（DOM 层）", () => {
   async function menuRows(accounts: Account[], defaultName: string): Promise<HTMLButtonElement[]> {
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
-    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ name: "devbox", host: host({ label: "devbox" }) }] });
     fetchAccountsMock.mockResolvedValue(state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }));
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
@@ -327,7 +366,6 @@ describe("chip 菜单的账号徽章：照抄核心写好的那一枚（DOM 层�
 // ---------------------------------------------------------------------------
 describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => {
   it("★ 没有远端 + 本机也没有 manifest ⇒ chip 隐藏（不许冒出一句远端口吻的假话）", async () => {
-    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // 本机没启用多账号：`available:true` 但 `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled。
     fetchAccountsMock.mockResolvedValue({
       origin: "<local>",
@@ -358,7 +396,6 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
 
   it("★ 本机那一档不渲染「刷新用量」那个静默死按钮", async () => {
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
-    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }, "acct-a"),
     );
@@ -397,7 +434,6 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
   /** 起一个「没有远端」的 chip，本机账号由 `fetchAccounts(<local>)` 给。 */
   async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
-    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }),
     );
@@ -444,21 +480,8 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     expect(bar).not.toContain("acct-gone");
   });
 
-  it("★ 远端那一档照旧（放宽只加了本机那一半，没有改远端那一半）", async () => {
-    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
-    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ name: "hostA", host: host({ host: "hostA" }) }] });
-    fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z", isDefault: true, configDir: "/h/.claude-alt/z" })] }, "z"),
-    );
-    const chip = new AccountChip({ openSettings: () => {} });
-    await chip.refresh();
-    expect(pickableInCommandBar(chip)).toEqual(["z"]);
-    expect(await pickableInMenu(chip)).toEqual(["z"]);
-  });
-
   it("★ `D2 阻-7` 不许被这一格顺手放宽：本机也没有 manifest ⇒ 两边都空", async () => {
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
-    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled ⇒ `refresh` 把 state 清回 null 并隐藏。
     fetchAccountsMock.mockResolvedValue({
       ...state({ accounts: []}),

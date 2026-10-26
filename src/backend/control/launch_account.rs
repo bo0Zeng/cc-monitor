@@ -429,36 +429,15 @@ fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
 }
 
 codes! {
-    /// `history-last-accounts` 的码。
+    /// 读「每条会话上次用哪个号起的」那份记录的码。
     pub(crate) enum LastAccountsErr {
         /// 这台那份起会话账号记录读不懂。
         Unreadable = "unreadable",
     }
 }
 
-/// `history-last-accounts`：这台记着的「每条会话上次用哪个号起的」。
-pub(crate) struct HistoryLastAccountsCmd;
-
-impl crate::wire::typed::Command for HistoryLastAccountsCmd {
-    const NAME: &'static str = "history-last-accounts";
-    const TAKES_INPUT: bool = false;
-    type Req = crate::wire::typed::NoArgs;
-    type Reply = LastAccounts;
-    type Err = LastAccountsErr;
-}
-
-impl crate::wire::typed::Handle for HistoryLastAccountsCmd {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        _req: crate::wire::typed::NoArgs,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<LastAccounts, LastAccountsErr>> + Send + 'static
-    {
-        async move { last_accounts_at(crate::platform::paths::data_home().as_deref()) }
-    }
-}
-
-/// [`HistoryLastAccountsCmd`] 的本体，家是参数（推不出家 ⇒ 空表）。读不懂 ⇒ `unreadable`。
+/// 这台记着的「每条会话上次用哪个号起的」（历史清单并进每行；一条会话的号那一份成品逐条读 [`last_of`]），
+/// 家是参数（推不出家 ⇒ 空表）。读不懂 ⇒ `unreadable`。
 pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, LastAccountsErr> {
     let book = match home {
         Some(h) => read_book(h).map_err(|e| {
@@ -474,10 +453,8 @@ pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, Last
     })
 }
 
-/// `history-last-accounts` 的回包。
+/// [`last_accounts_at`] 读出来的那一份。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct LastAccounts {
     /// `{sid: 账号名}`：只含真记过的那几条。
     pub(crate) accounts: BTreeMap<String, String>,
