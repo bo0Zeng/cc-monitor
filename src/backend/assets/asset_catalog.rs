@@ -33,10 +33,38 @@ pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ASS
 /// 文件格式版本。读到别的版本 ⇒ 不认、**不覆盖**（多半是更新的后端写的）。
 pub const FORMAT_V: u64 = 1;
 
-/// 条目种类闭集（线上 `kind`）。
-pub const KINDS: &[&str] = &[KIND_SKILL, KIND_MCP];
-pub const KIND_SKILL: &str = "skill";
-pub const KIND_MCP: &str = "mcp";
+/// 条目种类。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum ExtKind {
+    Skill,
+    Mcp,
+}
+
+impl ExtKind {
+    /// 线上写法（与 serde 那一格同名）：条目键 · 备份槽名 · 摘要前缀要它。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExtKind::Skill => "skill",
+            ExtKind::Mcp => "mcp",
+        }
+    }
+}
+
+/// 照线上写法排（目录 · 表的行序跟着它）。
+impl Ord for ExtKind {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl PartialOrd for ExtKind {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 /// 「这台对那一条」的三态闭集（线上 `rows[].state`）。
 #[cfg(test)]
@@ -78,7 +106,7 @@ pub const MCP_KEYS_ONLY_FIELDS: &[&str] = &["env", "headers"];
     )
 )]
 pub struct Asset {
-    pub kind: String,
+    pub kind: ExtKind,
     pub name: String,
     /// 那台上的项目目录（项目级）；`None` = 用户级。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -170,8 +198,8 @@ pub struct Scanned {
 }
 
 /// 一个条目的键（种类 ＋ 名字）：「新见到」按它记，扩展页一行也按它分。
-pub fn entry_key(kind: &str, name: &str) -> String {
-    format!("{kind}/{name}")
+pub fn entry_key(kind: ExtKind, name: &str) -> String {
+    format!("{}/{name}", kind.as_str())
 }
 
 // ───────────────────────── 摘要（纯） ─────────────────────────
@@ -199,9 +227,10 @@ pub fn canonical(v: &Value) -> String {
 /// 一条 MCP 定义 → 目录条目。`digest` 按**整条原文**（含密钥值）的规范写法算；`summary` 去掉密钥值。
 pub fn mcp_asset(project: Option<&str>, name: &str, def: &Value, file: Option<&Path>) -> Asset {
     let mut f = crate::common::digest::Fnv::default();
-    f.part(KIND_MCP.as_bytes()).part(canonical(def).as_bytes());
+    f.part(ExtKind::Mcp.as_str().as_bytes())
+        .part(canonical(def).as_bytes());
     Asset {
-        kind: KIND_MCP.to_string(),
+        kind: ExtKind::Mcp,
         name: name.to_string(),
         project: project.map(str::to_string),
         dir: file.map(|p| p.display().to_string()),
@@ -248,7 +277,7 @@ pub fn skill_asset(
     description: Option<&str>,
 ) -> Asset {
     let mut f = crate::common::digest::Fnv::default();
-    f.part(KIND_SKILL.as_bytes());
+    f.part(ExtKind::Skill.as_str().as_bytes());
     let (mut files, mut bytes) = (0usize, 0u64);
     let mut binary = false;
     // 摘要没能按全部内容算的那几处（降级要说清是哪一个，不是只给一个布尔）。
@@ -332,7 +361,7 @@ pub fn skill_asset(
         }
     }
     Asset {
-        kind: KIND_SKILL.to_string(),
+        kind: ExtKind::Skill,
         name: name.to_string(),
         project: project.map(str::to_string),
         dir: Some(dir.display().to_string()),
@@ -531,7 +560,7 @@ pub fn note_known(cat: &mut Catalog, now: u64) -> bool {
     let keys: Vec<String> = cat
         .machines
         .values()
-        .flat_map(|s| s.assets.iter().map(|a| entry_key(&a.kind, &a.name)))
+        .flat_map(|s| s.assets.iter().map(|a| entry_key(a.kind, &a.name)))
         .collect();
     let mut noted = false;
     for k in keys {
@@ -578,7 +607,7 @@ pub struct CatalogFrom {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct CatalogRow {
-    pub kind: String,
+    pub kind: ExtKind,
     pub name: String,
     pub state: &'static str,
     pub from: Vec<CatalogFrom>,
@@ -591,14 +620,14 @@ pub fn rows(cat: &Catalog) -> Vec<CatalogRow> {
         .get(&cat.self_id)
         .map(|s| s.assets.iter().collect())
         .unwrap_or_default();
-    let mut by_key: BTreeMap<(String, String), Vec<CatalogFrom>> = BTreeMap::new();
+    let mut by_key: BTreeMap<(ExtKind, String), Vec<CatalogFrom>> = BTreeMap::new();
     for (id, snap) in &cat.machines {
         if *id == cat.self_id {
             continue;
         }
         for a in &snap.assets {
             by_key
-                .entry((a.kind.clone(), a.name.clone()))
+                .entry((a.kind, a.name.clone()))
                 .or_default()
                 .push(CatalogFrom {
                     machine: id.clone(),
@@ -735,7 +764,7 @@ pub fn wire(
     }
 }
 
-/// 收进来的各台 ⇒ 快照（解码器管形状；这里只判解码器判不了的两样：id 空 / 太长 · 种类不在闭集 ⇒ `bad_args`，不猜）。
+/// 收进来的各台 ⇒ 快照（解码器管形状；种类不在闭集也是解码器拒；这里只判解码器判不了的：id 空 / 太长 ⇒ `bad_args`，不猜）。
 pub fn machines_of(incoming: Vec<CatalogMachine>) -> Result<BTreeMap<String, Snapshot>, String> {
     let mut out = BTreeMap::new();
     for m in incoming {
@@ -743,12 +772,6 @@ pub fn machines_of(incoming: Vec<CatalogMachine>) -> Result<BTreeMap<String, Sna
             return Err(crate::common::contract::malformed(
                 "a machine `id` is missing, empty or too long",
             ));
-        }
-        if let Some(a) = m.assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
-            return Err(crate::common::contract::malformed(&format!(
-                "asset kind `{}` is not one of {KINDS:?}",
-                a.kind
-            )));
         }
         out.insert(
             m.id,

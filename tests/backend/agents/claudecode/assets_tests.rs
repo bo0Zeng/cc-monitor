@@ -182,18 +182,19 @@ fn the_catalog_sees_one_of_each_kind_at_each_level() {
     );
     let (assets, problems) = crate::assets::asset_catalog::assets_from(&[seen]);
     assert!(problems.is_empty(), "{problems:?}");
-    let got: std::collections::BTreeSet<(String, String, bool)> = assets
+    use crate::assets::asset_catalog::ExtKind;
+    let got: std::collections::BTreeSet<(ExtKind, String, bool)> = assets
         .iter()
-        .map(|a| (a.kind.clone(), a.name.clone(), a.project.is_some()))
+        .map(|a| (a.kind, a.name.clone(), a.project.is_some()))
         .collect();
-    let want: std::collections::BTreeSet<(String, String, bool)> = [
-        ("skill", "su", false),
-        ("skill", "sp", true),
-        ("mcp", "mu", false),
-        ("mcp", "mp", true),
+    let want: std::collections::BTreeSet<(ExtKind, String, bool)> = [
+        (ExtKind::Skill, "su", false),
+        (ExtKind::Skill, "sp", true),
+        (ExtKind::Mcp, "mu", false),
+        (ExtKind::Mcp, "mp", true),
     ]
     .iter()
-    .map(|(k, n, p)| (k.to_string(), n.to_string(), *p))
+    .map(|(k, n, p)| (*k, n.to_string(), *p))
     .collect();
     assert_eq!(got, want);
     let _ = std::fs::remove_dir_all(&d);

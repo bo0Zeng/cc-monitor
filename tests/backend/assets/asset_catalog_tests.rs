@@ -52,7 +52,7 @@ fn snap(gen: u64, names: &[&str]) -> Snapshot {
         assets: names
             .iter()
             .map(|n| Asset {
-                kind: KIND_SKILL.into(),
+                kind: ExtKind::Skill,
                 name: (*n).into(),
                 project: None,
                 dir: None,
@@ -161,10 +161,28 @@ fn refresh_bumps_the_generation_only_when_the_scan_really_changed() {
     assert_eq!(c.machines["me"].gen, 3);
 }
 
+/// 种类只有一个值域：键 · 备份槽用的写法就是线上那一格（serde），排序也照它。
+#[test]
+fn a_kind_is_spelled_and_ordered_as_on_the_wire() {
+    let all = [ExtKind::Skill, ExtKind::Mcp];
+    for k in all {
+        assert_eq!(serde_json::to_value(k).unwrap(), json!(k.as_str()));
+        let back: ExtKind = serde_json::from_value(json!(k.as_str())).unwrap();
+        assert_eq!(back, k);
+    }
+    let mut sorted = all.to_vec();
+    sorted.sort();
+    let spelled: Vec<&str> = sorted.iter().map(|k| k.as_str()).collect();
+    let mut by_wire = spelled.clone();
+    by_wire.sort_unstable();
+    assert_eq!(spelled, by_wire);
+    assert_eq!(entry_key(ExtKind::Mcp, "fs"), "mcp/fs");
+}
+
 #[test]
 fn rows_judge_missing_differs_same_per_kind_and_name() {
-    let asset = |kind: &str, name: &str, d: &str, project: Option<&str>| Asset {
-        kind: kind.into(),
+    let asset = |kind: ExtKind, name: &str, d: &str, project: Option<&str>| Asset {
+        kind,
         name: name.into(),
         project: project.map(str::to_string),
         dir: None,
@@ -176,11 +194,11 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
         gen: 1,
         seen_at: 0,
         assets: vec![
-            asset(KIND_SKILL, "same-skill", "d1", None),
-            asset(KIND_SKILL, "diff-skill", "d2", None),
-            asset(KIND_MCP, "fs", "m-other", Some("/p/a")),
-            asset(KIND_MCP, "fs", "m1", Some("/p/b")), // 两个项目里有同名的，一个相同 ⇒ same
-            asset(KIND_MCP, "only-here", "m9", Some("/p/a")),
+            asset(ExtKind::Skill, "same-skill", "d1", None),
+            asset(ExtKind::Skill, "diff-skill", "d2", None),
+            asset(ExtKind::Mcp, "fs", "m-other", Some("/p/a")),
+            asset(ExtKind::Mcp, "fs", "m1", Some("/p/b")), // 两个项目里有同名的，一个相同 ⇒ same
+            asset(ExtKind::Mcp, "only-here", "m9", Some("/p/a")),
         ],
         project_dirs: vec![],
         notes: Default::default(),
@@ -191,33 +209,33 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
         gen: 1,
         seen_at: 0,
         assets: vec![
-            asset(KIND_SKILL, "same-skill", "d1", None),
-            asset(KIND_SKILL, "diff-skill", "dX", None),
-            asset(KIND_SKILL, "new-skill", "d3", None),
-            asset(KIND_MCP, "fs", "m1", Some("/home/r/x")),
-            asset(KIND_MCP, "gh", "m2", Some("/home/r/x")),
+            asset(ExtKind::Skill, "same-skill", "d1", None),
+            asset(ExtKind::Skill, "diff-skill", "dX", None),
+            asset(ExtKind::Skill, "new-skill", "d3", None),
+            asset(ExtKind::Mcp, "fs", "m1", Some("/home/r/x")),
+            asset(ExtKind::Mcp, "gh", "m2", Some("/home/r/x")),
             // 同名不同种：不许跟 skill 那一行混
-            asset(KIND_MCP, "same-skill", "zz", Some("/home/r/x")),
+            asset(ExtKind::Mcp, "same-skill", "zz", Some("/home/r/x")),
         ],
         project_dirs: vec![],
         notes: Default::default(),
         shared_mcp: false,
     };
     let c = cat_with("me", &[("me", me), ("r", there)]);
-    let got: Vec<(String, String, String)> = rows(&c)
+    let got: Vec<(ExtKind, String, String)> = rows(&c)
         .iter()
-        .map(|r| (r.kind.clone(), r.name.clone(), r.state.to_string()))
+        .map(|r| (r.kind, r.name.clone(), r.state.to_string()))
         .collect();
-    let want: Vec<(String, String, String)> = [
-        (KIND_MCP, "fs", HERE_SAME),
-        (KIND_MCP, "gh", HERE_MISSING),
-        (KIND_MCP, "same-skill", HERE_MISSING),
-        (KIND_SKILL, "diff-skill", HERE_DIFFERS),
-        (KIND_SKILL, "new-skill", HERE_MISSING),
-        (KIND_SKILL, "same-skill", HERE_SAME),
+    let want: Vec<(ExtKind, String, String)> = [
+        (ExtKind::Mcp, "fs", HERE_SAME),
+        (ExtKind::Mcp, "gh", HERE_MISSING),
+        (ExtKind::Mcp, "same-skill", HERE_MISSING),
+        (ExtKind::Skill, "diff-skill", HERE_DIFFERS),
+        (ExtKind::Skill, "new-skill", HERE_MISSING),
+        (ExtKind::Skill, "same-skill", HERE_SAME),
     ]
     .iter()
-    .map(|(k, n, s)| (k.to_string(), n.to_string(), s.to_string()))
+    .map(|(k, n, s)| (*k, n.to_string(), s.to_string()))
     .collect();
     assert_eq!(
         got, want,
@@ -429,7 +447,7 @@ fn a_malformed_incoming_catalog_is_refused_not_guessed() {
         ("seenAt", Value::Null),
         ("id", json!("")),
         ("label", json!(3)),
-        ("kind", json!("plugin")),
+        ("kind", json!("bogus")),
     ] {
         let mut w = good.clone();
         match path {

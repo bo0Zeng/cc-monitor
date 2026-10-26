@@ -165,7 +165,11 @@ pub(crate) fn embedded_digest() -> String {
     let mut files: Vec<&(&str, &[u8])> = FILES.iter().collect();
     files.sort_by(|a, b| a.0.split('/').cmp(b.0.split('/')));
     let mut f = crate::common::digest::Fnv::default();
-    f.part(crate::assets::asset_catalog::KIND_SKILL.as_bytes());
+    f.part(
+        crate::assets::asset_catalog::ExtKind::Skill
+            .as_str()
+            .as_bytes(),
+    );
     for (rel, bytes) in files {
         f.part(rel.as_bytes()).part(bytes);
     }

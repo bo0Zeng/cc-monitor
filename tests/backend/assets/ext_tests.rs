@@ -69,9 +69,9 @@ fn temp(tag: &str) -> PathBuf {
 
 // ───────────────────────── 表的判定（纯） ─────────────────────────
 
-fn asset(kind: &str, name: &str, digest: &str, project: Option<&str>) -> Asset {
+fn asset(kind: ExtKind, name: &str, digest: &str, project: Option<&str>) -> Asset {
     Asset {
-        kind: kind.into(),
+        kind,
         name: name.into(),
         project: project.map(str::to_string),
         dir: Some(format!("/d/{name}")),
@@ -148,10 +148,10 @@ fn the_table_judges_every_cell_place_and_target() {
         snap(
             "me@h",
             vec![
-                asset(KIND_SKILL, "s-major", "d1", None),
-                asset(KIND_SKILL, "s-tie", "dA", None),
-                asset(KIND_MCP, "m-user", "m1", None),
-                asset(KIND_MCP, "m-proj", "m2", Some("/h/p")),
+                asset(ExtKind::Skill, "s-major", "d1", None),
+                asset(ExtKind::Skill, "s-tie", "dA", None),
+                asset(ExtKind::Mcp, "m-user", "m1", None),
+                asset(ExtKind::Mcp, "m-proj", "m2", Some("/h/p")),
             ],
             &["/h/p", "/shared"],
         ),
@@ -161,9 +161,9 @@ fn the_table_judges_every_cell_place_and_target() {
         snap(
             "u@r1",
             vec![
-                asset(KIND_SKILL, "s-major", "d1", None),
-                asset(KIND_SKILL, "s-tie", "dB", None),
-                asset(KIND_SKILL, "s-proj", "d9", Some("/shared")),
+                asset(ExtKind::Skill, "s-major", "d1", None),
+                asset(ExtKind::Skill, "s-tie", "dB", None),
+                asset(ExtKind::Skill, "s-proj", "d9", Some("/shared")),
             ],
             &[],
         ),
@@ -172,7 +172,7 @@ fn the_table_judges_every_cell_place_and_target() {
         "r2".into(),
         snap(
             "u@r2",
-            vec![asset(KIND_SKILL, "s-major", "d2", None)],
+            vec![asset(ExtKind::Skill, "s-major", "d2", None)],
             &["/x"],
         ),
     );
@@ -314,8 +314,8 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
         snap(
             "me@h",
             vec![
-                asset(KIND_SKILL, "code-picture", "d1", None),
-                asset(KIND_MCP, "code-picture", "m1", Some("/h/p")),
+                asset(ExtKind::Skill, "code-picture", "d1", None),
+                asset(ExtKind::Mcp, "code-picture", "m1", Some("/h/p")),
             ],
             &["/h/p"],
         ),
@@ -1034,7 +1034,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
 #[test]
 fn a_note_travels_with_the_catalog_to_the_other_backend() {
     let (base, t) = two("note");
-    let key = asset_catalog::entry_key(KIND_SKILL, "cc-bus");
+    let key = asset_catalog::entry_key(ExtKind::Skill, "cc-bus");
     let (ca, changed) = asset_catalog::update_noting(
         &own_at(&t.a.cat),
         t.a.scan(),

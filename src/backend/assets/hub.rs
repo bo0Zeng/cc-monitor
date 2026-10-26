@@ -33,9 +33,10 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+use super::asset_catalog::ExtKind;
 use super::ext::{
-    builtin_refused, is_builtin, same_place, token_of, ExtBring, ExtCard, ExtDone, ExtKind,
-    ExtList, ExtLoc, ExtTarget, ExtTokens,
+    builtin_refused, is_builtin, same_place, token_of, ExtBring, ExtCard, ExtDone, ExtList, ExtLoc,
+    ExtTarget, ExtTokens,
 };
 use super::hub_wire::{
     CcBusInstallCmd, CcBusState, CcBusStateCmd, Fill, HubApplied, HubApplyReq, HubMachineCard,

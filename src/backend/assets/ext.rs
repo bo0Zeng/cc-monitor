@@ -24,7 +24,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
+use super::asset_catalog::{self, Asset, Catalog, ExtKind};
 use super::skill_ledger::{Record, RecordReq};
 use crate::common::door::{self, Door, Refused};
 
@@ -38,16 +38,6 @@ use crate::common::door::{self, Door, Refused};
 pub enum ExtLoc {
     User,
     Project { dir: String },
-}
-
-/// 条目种类。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum ExtKind {
-    Skill,
-    Mcp,
 }
 
 /// 一格的态（闭集）。
@@ -340,14 +330,6 @@ impl ExtLoc {
 }
 
 impl ExtKind {
-    /// 目录里那一格的写法（`asset_catalog::KINDS`）。
-    pub(crate) fn wire(self) -> &'static str {
-        match self {
-            ExtKind::Skill => KIND_SKILL,
-            ExtKind::Mcp => KIND_MCP,
-        }
-    }
-
     pub(crate) fn from_arg(args: &Value) -> Result<ExtKind, crate::wire::spec::Fail> {
         serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
             crate::wire::spec::Fail::new(
@@ -427,7 +409,7 @@ fn pick_project(m: &ExtMachine, like: Option<&str>) -> Option<String> {
 
 fn about_of(a: &Asset) -> Option<String> {
     let s = &a.summary;
-    if a.kind == KIND_SKILL {
+    if a.kind == ExtKind::Skill {
         return s
             .get("description")
             .and_then(Value::as_str)
@@ -452,7 +434,7 @@ fn about_of(a: &Asset) -> Option<String> {
 fn detail_of(a: &Asset) -> Vec<ExtDetail> {
     let s = &a.summary;
     let line = |label: String, value: String| ExtDetail { label, value };
-    if a.kind == KIND_SKILL {
+    if a.kind == ExtKind::Skill {
         let n = |k: &str| s.get(k).and_then(Value::as_u64).unwrap_or(0).to_string();
         let mut out = vec![line(
             copy_text("beExt.detail.files", &[]),
@@ -585,23 +567,23 @@ pub(crate) fn same_place(
 /// 各台目录 ＋ 可达表（`origin` → 那台目录的 id）⇒ 条目 × 机器一张表。**判定只在这里。**
 pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
     let cols = columns(cat, reach);
-    let mut by_key: BTreeMap<(String, String), Vec<Vec<&Asset>>> = BTreeMap::new();
+    let mut by_key: BTreeMap<(ExtKind, String), Vec<Vec<&Asset>>> = BTreeMap::new();
     for (k, n, _, _) in BUILTIN {
         by_key
-            .entry((k.wire().to_string(), n.to_string()))
+            .entry((*k, n.to_string()))
             .or_insert_with(|| vec![Vec::new(); cols.len()]);
     }
     for (i, c) in cols.iter().enumerate() {
         for a in &cat.machines[c.id].assets {
             by_key
-                .entry((a.kind.clone(), a.name.clone()))
+                .entry((a.kind, a.name.clone()))
                 .or_insert_with(|| vec![Vec::new(); cols.len()])[i]
                 .push(a);
         }
     }
     let rows = by_key
         .into_iter()
-        .map(|((kind, name), per)| row(cat, &cols, &kind, &name, &per))
+        .map(|((kind, name), per)| row(cat, &cols, kind, &name, &per))
         .collect();
     ExtList {
         machines: cols.into_iter().map(|c| c.m).collect(),
@@ -616,12 +598,7 @@ enum Source<'c, 'a> {
     Machine(&'c Column<'a>, &'a Asset),
 }
 
-fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
-    let kind = if kind_s == KIND_MCP {
-        ExtKind::Mcp
-    } else {
-        ExtKind::Skill
-    };
+fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&Asset>]) -> ExtRow {
     let builtin = BUILTIN.iter().find(|(k, n, _, _)| *k == kind && *n == name);
     let user: Vec<Option<&Asset>> = per
         .iter()
@@ -653,7 +630,7 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
         _ => None,
     }
     .or_else(|| per.iter().flatten().next().copied());
-    let first_seen = cat.known.get(&asset_catalog::entry_key(kind_s, name));
+    let first_seen = cat.known.get(&asset_catalog::entry_key(kind, name));
     let new = cat.visits.prev > 0 && first_seen.is_some_and(|t| *t > cat.visits.prev);
     let cells = cols
         .iter()
@@ -681,7 +658,7 @@ fn row(cat: &Catalog, cols: &[Column], kind_s: &str, name: &str, per: &[Vec<&Ass
             note: note(),
             hooks: *hooks,
         }),
-        note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind_s, name)),
+        note: asset_catalog::note_of(cat, &asset_catalog::entry_key(kind, name)),
         cells,
     }
 }
@@ -930,7 +907,7 @@ pub(crate) fn answer_note(
             ),
         )));
     }
-    let key = asset_catalog::entry_key(req.kind.wire(), &req.name);
+    let key = asset_catalog::entry_key(req.kind, &req.name);
     let cat = write(&key, &req.text)?;
     Ok(ExtNote {
         note: asset_catalog::note_of(&cat, &key),
@@ -996,7 +973,7 @@ pub(crate) fn token_of(v: &Value) -> String {
 }
 
 /// 备份落点：`<家>/.cc-monitor/backups/<毫秒>-<种类>-<名字>`（名字里别的字符换成 `_`）。回（家下相对段, 绝对路径）。
-fn backup_slot(home: &Path, kind: &str, name: &str, now_ms: u128) -> (String, String) {
+fn backup_slot(home: &Path, kind: ExtKind, name: &str, now_ms: u128) -> (String, String) {
     let safe: String = name
         .chars()
         .map(|c| {
@@ -1008,8 +985,9 @@ fn backup_slot(home: &Path, kind: &str, name: &str, now_ms: u128) -> (String, St
         })
         .collect();
     let rel = format!(
-        "{}/{now_ms}-{kind}-{safe}",
-        relay_route_core::EXT_BACKUPS_DIR_REL
+        "{}/{now_ms}-{}-{safe}",
+        relay_route_core::EXT_BACKUPS_DIR_REL,
+        kind.as_str()
     );
     let abs = door::join_under(&home.display().to_string(), &rel);
     (rel, abs)
@@ -1202,7 +1180,7 @@ pub(crate) fn answer_uninstall_preview(
                     }
                 }
                 SkillPlan::Foreign { digest, files } => {
-                    let (_, abs) = backup_slot(&home, KIND_SKILL, name, 0);
+                    let (_, abs) = backup_slot(&home, ExtKind::Skill, name, 0);
                     let at_dir = Path::new(&abs)
                         .parent()
                         .map(|p| p.display().to_string())
@@ -1240,7 +1218,7 @@ pub(crate) fn answer_uninstall_preview(
                 (Some(_), true) => (copy_text("beExt.uninstall.mcpOwned", &[]), None),
                 (Some(_), false) => (copy_text("beExt.uninstall.mcpModified", &[]), None),
                 (None, _) => {
-                    let (_, abs) = backup_slot(&home, KIND_MCP, name, 0);
+                    let (_, abs) = backup_slot(&home, ExtKind::Mcp, name, 0);
                     let at_dir = Path::new(&abs)
                         .parent()
                         .map(|p| p.display().to_string())
@@ -1336,7 +1314,7 @@ pub(crate) fn answer_uninstall_apply(
                                 ),
                             )
                         })?;
-                    let (rel, abs) = backup_slot(&home, KIND_SKILL, name, now_ms());
+                    let (rel, abs) = backup_slot(&home, ExtKind::Skill, name, now_ms());
                     ensure_backups_dir(d, &home_s)?;
                     door::rename(d, &home_s, &from, &rel).map_err(|e| {
                         (
@@ -1371,7 +1349,7 @@ pub(crate) fn answer_uninstall_apply(
             }
             let mut note = None;
             if m.recorded.is_none() {
-                let (rel, abs) = backup_slot(&home, KIND_MCP, name, now_ms());
+                let (rel, abs) = backup_slot(&home, ExtKind::Mcp, name, now_ms());
                 let home_s = home.display().to_string();
                 door::put(
                     d,
