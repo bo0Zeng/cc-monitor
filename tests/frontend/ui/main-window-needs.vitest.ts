@@ -88,13 +88,13 @@ beforeEach(() => {
 });
 
 describe("一个会话读成什么（session-face）：点 · 字照抄那台的脸，会话事实那一句与脸同一刻才用", () => {
-  it("★ 点 · 短名 ＝ 脸上那两格；还没收到 / 那台看不见 ⇒ 说不清那一张（带机器名）", () => {
+  it("★ 点 · 短名 ＝ 脸上那两格；一张都还没收到 ⇒ 没有点 · 没有名字 · 没有那一句（界面不替那台拼一张）", () => {
     for (const k of ["live-working-plain", "live-idle", "reconnectable", "ended", "gone"] as const) {
       const f = goldenFace(k);
       expect([dotOf(tab("a", { face: f })), stateWord(tab("a", { face: f }))], k).toEqual([f.dot, f.name]);
     }
     const u = tab("u", { face: null, origin: "gpu-01" as never });
-    expect([dotOf(u), stateWord(u), stateLine(u, NOW).text]).toEqual(["unknown", copyText("sessionState.unseen.name"), copyText("sessionFace.state.unseen", { machine: "gpu-01" })]);
+    expect([dotOf(u), stateWord(u), stateLine(u, NOW).text]).toEqual([null, null, ""]);
   });
 
   it("★ 需手动：脸说在等、会话事实那一句也是在等那一刻 ⇒ 认事实里那一份；对不上（事实还没到 · 已经答完 · 进程不在）⇒ 不算", () => {

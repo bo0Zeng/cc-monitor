@@ -35,7 +35,6 @@ import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { titleParts } from "../session-face";
-import { faceOf } from "../face-can";
 import { ackNeed, adoptRepo, fetchPlanList, fetchPlanRead, planCommand, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
@@ -1040,8 +1039,8 @@ export class PlanView {
       return b;
     }
     const tab = this.tabOf(w.sid);
-    const face = tab ? faceOf(tab) : w.face;
-    b.appendChild(statusDot(face.dot, face.name, "compact"));
+    const face = tab ? tab.face : w.face;
+    b.appendChild(statusDot(face?.dot ?? null, face?.name ?? null, "compact"));
     const name = tab ? titleParts(tab).title : shortId(w.sid);
     // 子 agent ⇒ 后端写好的「{父会话} 的 agent」照画；会话本身 ⇒ 标签页的名字。
     txt.textContent = w.label ?? name;

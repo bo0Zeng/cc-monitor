@@ -16,6 +16,8 @@ import type { SessionRuns } from "./generated/SessionRuns";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { WatchFrom } from "./generated/WatchFrom";
 import type { SessionFace } from "./generated/SessionFace";
+/** 「说不清」那一格带来的那张脸（本机后端还没握上手 ⇒ `null`，不画点）。 */
+type UnseenFace = SessionFace | null;
 export type { JsonlLinePayload };
 
 
@@ -94,7 +96,7 @@ export interface EventHandlers {
    * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    * `face` ＝ 那几条落成的那一张（本机后端造好、壳转交；本机后端还没握上手 ⇒ `null`，不画点）。
    */
-  onOriginUnseen?: (origin: string, face: SessionFace | null) => void;
+  onOriginUnseen?: (origin: string, face: UnseenFace) => void;
   /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
   openMachineSettings?: (origin: Origin) => void;
   /**
@@ -182,7 +184,7 @@ type Queued =
   | { kind: "watch"; origin: Origin; payload: WatchFrom }
   | { kind: "listed"; origin: string; all: boolean }
   // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
-  | { kind: "unseen"; origin: string; face: SessionFace | null }
+  | { kind: "unseen"; origin: string; face: UnseenFace }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string };
 

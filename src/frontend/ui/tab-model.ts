@@ -64,7 +64,7 @@ export interface Tab {
   origin: Origin;
   /**
    * 此刻的整份脸（那台后端判好的点 · 字 · 序 · 能做什么，会话三帧带来；同一 sid 后到的覆盖先到的）。
-   * `null` ＝ 还没收到 · 那台看不见了 ⇒ 画 `face-can.ts::unseenFace`（经 `faceOf` 读）。
+   * `null` ＝ 一张都还没收到（恢复的标签页、重放还没到）⇒ 不画点；那台看不见时那一张也是后端造的（随「说不清」那一格来）。
    */
   face: SessionFace | null;
   /**

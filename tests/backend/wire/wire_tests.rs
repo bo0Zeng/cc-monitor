@@ -1814,6 +1814,7 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
         ("ended", Life::Ended),
         ("gone", Life::Gone),
         ("unclear", Life::Unclear),
+        ("unseen", Life::Unseen),
     ];
     let produced: serde_json::Map<String, Value> = lives
         .into_iter()
@@ -2015,5 +2016,49 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
         f.line.0,
         copy_core::copy_text("sessionState.unseen.tooltip", &[]),
         "字里不写机器名（哪台由界面在别处写）"
+    );
+}
+
+/// 界面那一侧不造脸：`src/frontend` 的 ts 生产源里没有一个函数交出一张 `SessionFace`（`…): SessionFace {` / `=>`），
+/// 也没有一份写着 `settled:` 的字面量（整份脸才有那一格）。那台看不见时那一张也由后端造（[`crate::wire::unseen_face`]）。
+/// 正控：同一把尺量得到一段造脸的写法（原先界面自己拼的那一张就是这个形）。
+#[test]
+fn the_interface_never_builds_a_face_of_its_own() {
+    let built = |code: &str| -> Vec<String> {
+        let ret = format!("): {}", "SessionFace");
+        code.lines()
+            .filter(|l| !l.trim_start().starts_with("//") && !l.trim_start().starts_with('*'))
+            .filter(|l| {
+                l.find(&ret).is_some_and(|i| {
+                    let rest = l[i + ret.len()..].trim_start();
+                    rest.starts_with('{') || rest.starts_with("=>")
+                }) || l.contains(&format!("{}:", "settled"))
+            })
+            .map(|l| l.trim().to_string())
+            .collect()
+    };
+    assert_eq!(
+        built("export function unseenFace(machine: string): SessionFace {\n  return { settled: false };\n}"),
+        vec![
+            "export function unseenFace(machine: string): SessionFace {".to_string(),
+            "return { settled: false };".to_string()
+        ],
+        "正控：这把尺量得到界面自己造脸的那一形"
+    );
+    let repo = guard_core::addr::repo_root();
+    let mut found = Vec::new();
+    for (path, raw) in guard_core::scan_tree!(&repo.join("src/frontend"), &["ts"]) {
+        let rel = path.strip_prefix(&repo).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        if rel.contains("/generated/") {
+            continue;
+        }
+        for l in built(&raw) {
+            found.push(format!("{rel}: {l}"));
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "界面自己造了脸（脸只由后端造，看不见那一张也是）：\n  {}",
+        found.join("\n  ")
     );
 }
