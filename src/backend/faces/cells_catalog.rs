@@ -783,7 +783,7 @@ mod specimens {
 
     fn rec(body: Body) -> Record {
         Record {
-            agent: s("agent"),
+            agent: s("agent").into(),
             id: s("r"),
             at: some("2026-10-09T00:00:00Z"),
             time_text: Some(Words(s("08:00"))),
@@ -947,7 +947,7 @@ mod specimens {
                     model_text: Some(Words(s("m"))),
                     model_pick: some("m"),
                     project_dir: some("/w"),
-                    agent: some("agent"),
+                    agent: Some("agent".into()),
                     writers: vec![1],
                     pending: vec![PendingCall {
                         id: s("c"),

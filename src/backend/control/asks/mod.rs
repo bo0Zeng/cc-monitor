@@ -43,7 +43,7 @@ pub(crate) struct AskReply {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AskReq {
-    pub(crate) agent: String,
+    pub(crate) agent: crate::agents::AgentKind,
     #[cfg_attr(test, ts(type = "unknown"))]
     pub(crate) hook: Value,
 }

@@ -86,7 +86,7 @@ pub(crate) struct SessionFacts {
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub(crate) project_dir: Option<String>,
     /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
-    pub(crate) agent: Option<String>,
+    pub(crate) agent: Option<crate::agents::AgentKind>,
     /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
     /// 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
     pub(crate) writers: Vec<u32>,

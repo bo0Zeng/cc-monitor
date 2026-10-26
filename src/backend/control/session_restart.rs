@@ -72,7 +72,7 @@ pub(crate) struct Req {
     arrive_within_ms: u64,
     local: bool,
     /// 哪一家（启动命令 · 模型表由它 ＋ 这台的偏好现拼）。
-    agent: String,
+    agent: crate::agents::AgentKind,
     /// 发起方的截止时刻（分派那一层给；CLI 面没有）。
     until: Option<Until>,
 }
@@ -113,7 +113,7 @@ pub(crate) struct RestartReq {
     /// 这台是不是界面所在那台（同 `session-open`）。
     pub(crate) local: bool,
     /// 哪一家（线上的 kind）。启动命令 · 模型表这台自己读。
-    pub(crate) agent: String,
+    pub(crate) agent: crate::agents::AgentKind,
     /// 自报的前端，同 `kill`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]

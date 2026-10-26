@@ -10,7 +10,7 @@ use std::future::Future;
 
 struct Prod {
     client: Option<String>,
-    agent: String,
+    agent: crate::agents::AgentKind,
     files: crate::faces::launch_account_face::Files,
 }
 

@@ -553,7 +553,7 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
     };
     let at = super::parse::envelope_ts(v).map(String::from);
     Some(Record {
-        agent: AGENT.to_string(),
+        agent: AGENT.into(),
         id: payload
             .get("id")
             .and_then(Value::as_str)

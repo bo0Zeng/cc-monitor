@@ -23,3 +23,39 @@ impl AgentKind {
         &self.0
     }
 }
+
+/// 按 kind 查的那几处（收 `&str`）照用；按路由名查的收 `RouteId`（后端 `agents`），kind 交不进去。
+impl std::ops::Deref for AgentKind {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for AgentKind {
+    fn from(kind: &str) -> Self {
+        AgentKind(kind.to_string())
+    }
+}
+
+impl From<String> for AgentKind {
+    fn from(kind: String) -> Self {
+        AgentKind(kind)
+    }
+}
+
+impl PartialEq<str> for AgentKind {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for AgentKind {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/common/cmd-wire/agent_tests.rs"]
+mod tests;

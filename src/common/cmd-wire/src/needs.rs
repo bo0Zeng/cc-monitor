@@ -76,7 +76,7 @@ pub struct ManualFix {
 pub enum ManualItem {
     /// 一个订阅号还没登录（`fix` ＝ 在 app 里登：`login-start`）。
     AccountLogin {
-        agent: String,
+        agent: crate::AgentKind,
         account: String,
         said: String,
         fix: ManualFix,
@@ -118,11 +118,11 @@ pub enum ManualItem {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum LoginStartReq {
     /// 一个号：哪一家（`accounts-list` 的 `agent`）· 账号库里的哪个号（账号 0 是 `0`）。
-    Account { agent: String, account: String },
+    Account { agent: crate::AgentKind, account: String },
     /// 一个号里的一个 MCP 服务器：哪一家 · 哪个号（没设账号 ⇒ `null`：那一家的默认配置目录）· 服务器名（`mcp-read` 里那一条）·
     /// 那一条配置所属的项目目录（项目级 · 本地级要它；用户级 ⇒ `null`）。
     Mcp {
-        agent: String,
+        agent: crate::AgentKind,
         account: Option<String>,
         server: String,
         project_dir: Option<String>,
