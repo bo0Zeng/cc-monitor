@@ -987,7 +987,17 @@ mod tests {
                     && p.to_string_lossy().contains("/src/main/")
                 {
                     let text = std::fs::read_to_string(&p).unwrap_or_default();
-                    if marks.iter().any(|m| text.contains(m)) {
+                    // 记号后面得是个断点（`is All` 不算 `is Allow.No`）。
+                    let whole = |m: &str| {
+                        text.match_indices(m).any(|(i, _)| {
+                            m.ends_with('.')
+                                || !text[i + m.len()..]
+                                    .chars()
+                                    .next()
+                                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                        })
+                    };
+                    if marks.iter().any(|m| whole(m)) {
                         hits.insert(p.file_name().unwrap().to_string_lossy().into_owned());
                     }
                 }
