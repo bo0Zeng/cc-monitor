@@ -7706,8 +7706,8 @@
     "dataPage.placed.stale": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 离线 · 采样 {ago} 前",
-      "args": ["machine", "ago"]
+      "zh": "{machine} 离线 · {seen}",
+      "args": ["machine", "seen"]
     },
     "dataPage.placed.retry": {
       "kind": "action",
@@ -23833,8 +23833,8 @@
     "acctPage.offline.bar": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 离线 · 采样 {ago} 前 · 只读",
-      "args": ["machine", "ago"]
+      "zh": "{machine} 离线 · {seen} · 只读",
+      "args": ["machine", "seen"]
     },
     "acctPage.offline.noLast": {
       "kind": "error",
@@ -25891,6 +25891,12 @@
       "zh": "保存上次值失败 · 无主目录",
       "args": []
     },
+    "beLastSeen.said.sampled": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "采样于 {time}",
+      "args": ["time"]
+    },
     "beExt.many.noRow": {
       "kind": "error",
       "role": "报错",
@@ -27068,8 +27074,8 @@
     "plan.strip.offline": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 离线 · 下面是 {time} 读到的",
-      "args": ["machine", "time"]
+      "zh": "{machine} 离线 · 下面是{seen}的读数",
+      "args": ["machine", "seen"]
     },
     "plan.strip.reconnect": {
       "kind": "action",

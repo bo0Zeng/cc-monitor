@@ -77,25 +77,43 @@ pub(crate) struct LastSeenWriteReq {
     pub(crate) forget: Option<bool>,
 }
 
+/// 上次读数那一格：记下的时刻 ＋ 后端按看的那一台的时区写好的那一句（「采样于 12:03」）。
+/// 离线时画上次读数的那几处（账号页 · 「文件与数据」页 · 计划条）照摆，不自己算时长、不自己写时刻。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct SeenAt {
+    /// 记下的时刻（毫秒）。
+    #[serde(rename = "atMs")]
+    #[cfg_attr(test, ts(rename = "atMs", type = "number"))]
+    pub(crate) at_ms: u64,
+    /// 「采样于 12:03」（`beLastSeen.said.sampled`，时刻经 [`crate::common::time::fmt_at`]）。
+    pub(crate) said: crate::common::cells::Words,
+}
+
+impl SeenAt {
+    /// `at_ms` 那一刻按这把钟写成那一句。
+    pub(crate) fn at(at_ms: u64, clock: &crate::common::time::TextClock) -> SeenAt {
+        let time = clock.text(at_ms / 1000);
+        SeenAt {
+            at_ms,
+            said: crate::common::cells::Words(copy_text(
+                "beLastSeen.said.sampled",
+                &[("time", &time.0)],
+            )),
+        }
+    }
+}
+
 /// 记下的一份，按那条命令的回包类型核过：对得上 ⇒ 原样（已是类型）；
-/// 存档不是此刻这一版（形状指纹不同 · 旧版存的没带指纹 · 解不回回包类型）⇒ 照实说读不懂，原样不交出去。
+/// 存档不是此刻这一版（形状指纹不同 · 旧版存的没带指纹 · 解不回回包类型）⇒ 照实说读不懂，原样不交出去。两样都带上次读数那一格。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub(crate) enum Seen<T> {
-    Kept {
-        /// 记下的时刻（毫秒）。
-        #[serde(rename = "atMs")]
-        #[cfg_attr(test, ts(rename = "atMs", type = "number"))]
-        at_ms: u64,
-        value: T,
-    },
-    Unreadable {
-        #[serde(rename = "atMs")]
-        #[cfg_attr(test, ts(rename = "atMs", type = "number"))]
-        at_ms: u64,
-    },
+    Kept { seen: SeenAt, value: T },
+    Unreadable { seen: SeenAt },
 }
 
 /// `last-seen-read` 的回包：没记过的那一样 ⇒ `null`。
@@ -165,13 +183,17 @@ fn load(path: &Path) -> Map<String, Value> {
 }
 
 /// `{origin}` ⇒ `{accounts: … | null, data: … | null}`（盘上那一项没有时刻 ⇒ 照没记过）。
-pub(crate) fn read_at(path: &Path, req: &LastSeenReadReq) -> Answer<LastSeen> {
+pub(crate) fn read_at(
+    path: &Path,
+    req: &LastSeenReadReq,
+    clock: &crate::common::time::TextClock,
+) -> Answer<LastSeen> {
     let origin = origin_arg(&req.origin)?;
     let all = load(path);
     let mine = all.get(origin);
     Ok(LastSeen {
-        accounts: seen_of(mine, SeenKind::Accounts),
-        data: seen_of(mine, SeenKind::Data),
+        accounts: seen_of(mine, SeenKind::Accounts, clock),
+        data: seen_of(mine, SeenKind::Data, clock),
     })
 }
 
@@ -179,9 +201,10 @@ pub(crate) fn read_at(path: &Path, req: &LastSeenReadReq) -> Answer<LastSeen> {
 fn seen_of<T: DeserializeOwned + Serialize>(
     mine: Option<&Value>,
     kind: SeenKind,
+    clock: &crate::common::time::TextClock,
 ) -> Option<Seen<T>> {
     let e = mine?.get(kind.key())?;
-    let at_ms = e.get("atMs")?.as_u64()?;
+    let seen = SeenAt::at(e.get("atMs")?.as_u64()?, clock);
     let this_version =
         e.get("shape").and_then(Value::as_str) == cmd_wire::shapes::shape_of(kind.cmd());
     Some(
@@ -190,8 +213,8 @@ fn seen_of<T: DeserializeOwned + Serialize>(
             .filter(|_| this_version)
             .and_then(strict::<T>)
         {
-            Some(value) => Seen::Kept { at_ms, value },
-            None => Seen::Unreadable { at_ms },
+            Some(value) => Seen::Kept { seen, value },
+            None => Seen::Unreadable { seen },
         },
     )
 }
@@ -337,10 +360,14 @@ fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// `last-seen-read`：帧面入口（只读）。
-pub(crate) fn answer_read(req: &LastSeenReadReq) -> Answer<LastSeen> {
+/// `last-seen-read`：帧面入口（只读）；那一句按看的那一台的时区（请求信封的 `tz`）写。
+pub(crate) fn answer_read(req: &LastSeenReadReq, tz: &crate::Tz) -> Answer<LastSeen> {
     let path = store_path().ok_or(("io_failed", copy_text("beLastSeen.store.noHome", &[])))?;
-    read_at(&path, req)
+    read_at(
+        &path,
+        req,
+        &crate::common::time::TextClock::new(now_ms() / 1000, tz),
+    )
 }
 
 /// `last-seen-write`：帧面入口（**写口**，只从 `stream/inbound/` 进）。

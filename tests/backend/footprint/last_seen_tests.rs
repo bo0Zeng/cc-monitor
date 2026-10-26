@@ -9,7 +9,74 @@ fn read_at(
     a: &serde_json::Value,
 ) -> Result<serde_json::Value, crate::wire::spec::Fail> {
     let req = crate::wire::typed::take(a)?;
-    super::read_at(p, &req).map(|x| serde_json::to_value(x).unwrap())
+    super::read_at(p, &req, &utc()).map(|x| serde_json::to_value(x).unwrap())
+}
+
+/// 判据那把钟：此刻 1970-01-01 00:10 UTC（判据记的时刻都在 00:00 那一分钟里，时刻字只写钟面）。
+fn utc() -> crate::common::time::TextClock {
+    crate::common::time::TextClock::new(600, &crate::Tz::named("UTC").unwrap())
+}
+
+/// 记得的那一样：上次读数那一格（时刻 ＋ 写好的那一句）＋ 原样。
+fn kept(at_ms: u64, v: &serde_json::Value) -> serde_json::Value {
+    json!({"state": "kept", "seen": seen(at_ms, "00:00"), "value": v})
+}
+
+/// 上次读数那一格：时刻 ＋ 那一把键按钟面写出来的那一句。
+fn seen(at_ms: u64, time: &str) -> serde_json::Value {
+    json!({"atMs": at_ms, "said": copy_core::copy_text("beLastSeen.said.sampled", &[("time", time)])})
+}
+
+/// 上次读数那一格由后端写好：「采样于 HH:MM」按看的那一台的时区写，记得的 · 读不懂的都带它。
+#[test]
+fn 上次读数那一格_按看的那一台的时区写好() {
+    let d = Dir::new("said");
+    // 2026-01-01 02:03 UTC；看的那一台在上海 ⇒ 10:03。
+    let at_ms = 1_767_232_980_000_u64;
+    write_at(
+        &d.own(),
+        &json!({"origin": "devbox", "kind": "data", "value": report()}),
+        at_ms,
+    )
+    .unwrap();
+    let req = crate::wire::typed::take(&json!({"origin": "devbox"})).unwrap();
+    let at = |tz: &str| {
+        let clock =
+            crate::common::time::TextClock::new(at_ms / 1000 + 60, &crate::Tz::named(tz).unwrap());
+        serde_json::to_value(super::read_at(&d.file(), &req, &clock).unwrap()).unwrap()["data"]
+            ["seen"]
+            .clone()
+    };
+    assert_eq!(at("UTC"), seen(at_ms, "02:03"));
+    assert_eq!(at("Asia/Shanghai"), seen(at_ms, "10:03"));
+    // 读不懂的那一样（旧版存的没带形状指纹）也说是什么时候的。
+    std::fs::write(
+        d.file(),
+        json!({"devbox": {"data": {"atMs": at_ms, "value": report()}}}).to_string(),
+    )
+    .unwrap();
+    assert_eq!(at("UTC"), seen(at_ms, "02:03"));
+}
+
+/// 计划那一份的成品顶上也带这一格，与 `readAtText` 同一把钟写。
+#[test]
+fn 计划成品也带上次读数那一格() {
+    let at_ms = 1_767_232_980_000_u64;
+    let mut v = crate::plan::product::make(
+        &json!({}),
+        &|_: &str| crate::plan::Whose::Unknown,
+        "r".into(),
+        at_ms,
+    );
+    crate::plan::product::with_time_texts(
+        &mut v,
+        1_767_233_000_000,
+        &crate::Tz::named("Asia/Shanghai").unwrap(),
+    );
+    assert_eq!(
+        serde_json::to_value(&v).unwrap()["seen"],
+        seen(at_ms, "10:03")
+    );
 }
 fn write_at(
     own: &crate::platform::fs::Own,
@@ -77,10 +144,7 @@ fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     )
     .unwrap();
     let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
-    assert_eq!(
-        got,
-        json!({"accounts": {"state": "kept", "atMs": 1000, "value": v}, "data": null})
-    );
+    assert_eq!(got, json!({"accounts": kept(1000, &v), "data": null}));
     let other = read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap();
     assert_eq!(other, json!({"accounts": null, "data": null}));
 }
@@ -106,7 +170,7 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
     .unwrap();
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
-        json!({"state": "kept", "atMs": 5, "value": accounts_list()})
+        json!(kept(5, &accounts_list()))
     );
 }
 
@@ -178,7 +242,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     );
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap(),
-        json!({"accounts": null, "data": {"state": "kept", "atMs": 10, "value": report()}})
+        json!({"accounts": null, "data": kept(10, &report())})
     );
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
     assert!(raw.get("devbox").is_none(), "盘上还留着那台：{raw}");
@@ -191,7 +255,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     );
     assert_eq!(mixed.unwrap_err().code, "bad_args");
     assert_eq!(
-        read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap()["data"]["atMs"],
+        read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap()["data"]["seen"]["atMs"],
         10
     );
 }
@@ -258,7 +322,7 @@ fn 每一样按回包类型收_形状不对的不收() {
     }
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["data"],
-        json!({"state": "kept", "atMs": 7, "value": report()})
+        json!(kept(7, &report()))
     );
 }
 
@@ -325,19 +389,13 @@ fn 同一份再交_内容不变_时刻是新的() {
     assert_eq!(put(&acc, "accounts", 20), json!({"atMs": 20}));
     assert_eq!(put(&report(), "data", 21), json!({"atMs": 21}));
     let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
-    assert_eq!(
-        got["accounts"],
-        json!({"state": "kept", "atMs": 20, "value": acc})
-    );
-    assert_eq!(
-        got["data"],
-        json!({"state": "kept", "atMs": 21, "value": report()})
-    );
+    assert_eq!(got["accounts"], json!(kept(20, &acc)));
+    assert_eq!(got["data"], json!(kept(21, &report())));
     let mut changed = accounts_list();
     changed["accounts"][0]["label"] = json!("renamed");
     assert_eq!(put(&changed, "accounts", 30), json!({"atMs": 30}));
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
-        json!({"state": "kept", "atMs": 30, "value": changed})
+        json!(kept(30, &changed))
     );
 }

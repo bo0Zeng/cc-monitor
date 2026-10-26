@@ -283,6 +283,7 @@ pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> Plan
         rev,
         read_at,
         read_at_text: None,
+        seen: None,
         stale: None,
         need_count: 0,
     }
@@ -742,6 +743,13 @@ pub(crate) fn with_time_texts(v: &mut PlanRead, now_ms: i64, tz: &crate::Tz) {
         |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), now_ms.div_euclid(1000), tz);
     let ms = |n: u64| i64::try_from(n).unwrap_or(i64::MAX);
     v.read_at_text = Some(text(ms(v.read_at)));
+    v.seen = Some(crate::footprint::last_seen::SeenAt::at(
+        v.read_at,
+        &crate::common::time::TextClock::new(
+            u64::try_from(now_ms.div_euclid(1000)).unwrap_or(0),
+            tz,
+        ),
+    ));
     if let Some(st) = &mut v.stale {
         st.since_text = Some(text(ms(st.since)));
     }

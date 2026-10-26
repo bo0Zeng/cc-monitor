@@ -95,11 +95,12 @@ impl crate::wire::typed::Handle for LastSeenReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: last_seen::LastSeenReadReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<last_seen::LastSeen, LastSeenReadErr>> + Send + 'static
     {
         async move {
-            last_seen::answer_read(&req).map_err(|f| typed::of_fail(f, LastSeenReadErr::IoFailed))
+            last_seen::answer_read(&req, &cx.tz)
+                .map_err(|f| typed::of_fail(f, LastSeenReadErr::IoFailed))
         }
     }
 }
