@@ -1,7 +1,7 @@
 //! 远端一台的那条流，monitor 这一侧。**重连循环不在这里**：断线重连 · 握手 · ensure · 版本门（旧了换装）· 退避都是
 //! `resident-client` 那一条（[`Feed`]，手机同一份；全仓只这一处，`one_loop_guard`）。这里只接宿主那几根线：
-//! - 链路（[`DeskLink`]）：本机常驻后端给的那条（`dial_host`）· 每一轮之前的部署预检 · 装得了后端（那台旧了换装）；
-//! - 循环交出来的事落到哪（[`consume_remote`]）：登记表 · 机器状态 · 会话账本 · 会话流 · 攒批 · 旁路快照。
+//! - 链路（[`DeskLink`]）：本机常驻后端给的那条（`dial_host`）。这一条不装后端：装 · 版本门 · 那台的状态成品都归本机后端自己那条（`control/feeds.rs`）；
+//! - 循环交出来的事落到哪（[`consume_remote`]）：登记表 · 会话账本 · 会话流 · 攒批 · 旁路快照。
 
 use super::*;
 use crate::event_replay::EventReplay;
@@ -36,11 +36,10 @@ fn problem_of(u: crate::dial_host::Unopened) -> Problem {
     Problem::new(u.said.said, u.said.detail).because(u.why, (u.seen_key, u.expected_key))
 }
 
-/// 远端那台的链路：本机常驻后端开的（`dial_host`）。monitor 装得了后端 ⇒ 每一轮先部署预检、版本门问本机常驻后端。
+/// 远端那台的链路：本机常驻后端开的（`dial_host`）。不装后端（那台旧了照接，换装由本机后端那一条做）。
 pub(crate) struct DeskLink {
     /// 那台的名字（怎么拨照本机后端的机器表）。
     machine: String,
-    health: HealthOut,
 }
 
 impl Transport for DeskLink {
@@ -81,14 +80,6 @@ impl Transport for DeskLink {
             })
         })
     }
-
-    fn before_round(&self) -> Boxed<'_, ()> {
-        Box::pin(preflight(&self.machine, &self.health))
-    }
-
-    fn installs(&self) -> bool {
-        true
-    }
 }
 
 /// 开那条链路花了多久（SSH 登录 ＋ exec 小中继）：冷启动最贵的三段之一，埋 `[perf]`。
@@ -99,19 +90,15 @@ fn perf_dialed(host_label: &str, t_exec: std::time::Instant) {
     );
 }
 
-/// 每台一条的循环在壳这一侧被用到的那几样：叫醒 · 此刻那一态 · 握手时那台报的构建。
+/// 每台一条的循环在壳这一侧被用到的那几样：叫醒 · 握手时那台报的构建。
 pub(crate) trait Looped: Send + Sync {
     fn wake(&self);
-    fn state(&self) -> State;
     fn theirs(&self) -> Option<String>;
 }
 
 impl<T: Transport> Looped for Feed<T> {
     fn wake(&self) {
         Feed::wake(self);
-    }
-    fn state(&self) -> State {
-        Feed::state(self)
     }
     fn theirs(&self) -> Option<String> {
         Feed::theirs(self)
@@ -134,58 +121,6 @@ pub(crate) fn wake(origin: &str) {
         .and_then(Weak::upgrade);
     if let Some(f) = feed {
         f.wake();
-    }
-}
-
-/// 接常驻那一轮的结论交本机后端（`machine-round`，原样的事实；那台的状态成品在后端定）。按交的先后一件一件送；
-/// 本机通道不在 ⇒ 不送（通道接上那一刻 [`rehand_rounds`] 把每台手上最新那一轮重交）。
-fn hand_round(origin: &str, s: &State) {
-    static TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<(String, State)>> =
-        std::sync::OnceLock::new();
-    let tx = TX.get_or_init(|| {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, State)>();
-        tauri::async_runtime::spawn(async move {
-            while let Some((origin, s)) = rx.recv().await {
-                send_round(&origin, &s).await;
-            }
-        });
-        tx
-    });
-    if tx.send((origin.to_string(), s.clone())).is_err() {
-        tracing::warn!("[machine] 交那台这一轮结论的那条队列没了（{origin}）");
-    }
-}
-
-/// 送一件（[`hand_round`] 那条队列的消费者）。
-async fn send_round(origin: &str, s: &State) {
-    let Some(client) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN)
-    else {
-        return;
-    };
-    let args = serde_json::json!({
-        "machine": origin,
-        "round": s.round(),
-        "version": crate::PRODUCT_VERSION,
-    });
-    if let Err(e) = client.call(MACHINE_ROUND, args, MACHINE_ROUND_BUDGET).await {
-        tracing::warn!("[machine] 交 {origin} 这一轮结论没成：{e:?}");
-    }
-}
-
-/// 帧命令名与时限。
-const MACHINE_ROUND: &str = "machine-round";
-const MACHINE_ROUND_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
-
-/// 本机通道接上了（本机后端可能刚重启、表是空的）⇒ 每台手上最新那一轮重交一遍。
-pub(crate) fn rehand_rounds() {
-    let now: Vec<(String, State)> = feeds()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .filter_map(|(o, f)| f.upgrade().map(|f| (o.clone(), f.state())))
-        .collect();
-    for (origin, s) in now {
-        hand_round(&origin, &s);
     }
 }
 
@@ -239,7 +174,6 @@ pub async fn run(machine: String, replay: Arc<EventReplay>, health: HealthOut) {
     let (tx, rx) = tokio::sync::mpsc::channel(EVENT_QUEUE);
     let link = Arc::new(DeskLink {
         machine: machine.clone(),
-        health: health.clone(),
     });
     let feed = Feed::start(
         feed_config(&origin),
@@ -253,49 +187,6 @@ pub async fn run(machine: String, replay: Arc<EventReplay>, health: HealthOut) {
         .insert(origin, Arc::downgrade(&(feed.clone() as Arc<dyn Looped>)));
     let _closing = Closing(feed);
     consume_remote(machine, rx, replay, health).await;
-}
-
-/// 每一轮开拨之前：部署预检（这台自证过就是期望 build 则跳过）。部署失败不阻断（手动部署的后端照样能连），但那句话要到界面上。
-async fn preflight(machine: &str, health: &HealthOut) {
-    let host_label = machine.to_string();
-    // 冷启动最贵的三段（用户点开应用到看见远端会话之间唯一的那条链）埋 `[perf]`：不改任何行为，只让下一次讨论有数可依。
-    let t_connect_start = std::time::Instant::now();
-    // 连接前确保远端后端已部署到固定落点（`~/.cc-monitor/bin/ccm`）；这一版没带字节 ⇒ `byte_table::choose` 回「这一版没带」→ 优雅 no-op。
-    // 上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接（`VERIFIED_BUILD` 头注：记的是 hello 自证，不是预检结论）。
-    // 跳过时 `confirmed_build` 记「我这一版」（只进 `[perf]` 那一行日志）。
-    // 「我这一版」只有一个值：手上那份内嵌字节自报的 id；没带字节 ⇒ `None` ⇒ 不跳、不乐观。
-    let mine = crate::byte_table::my_backend_id();
-    let verified = verified_build_of(&host_label);
-    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), mine);
-    let confirmed_build = if skip_preflight {
-        mine.map(str::to_string)
-    } else {
-        match crate::deploy::ensure_backend_deployed(machine).await {
-            Ok(c) => Some(c),
-            Err(said) => {
-                tracing::warn!(
-                    "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {said}: {}",
-                    said.raw()
-                );
-                let payload = crate::ui_contract::RemoteHealthPayload {
-                    origin: host_label.clone(),
-                    kind: "deploy".to_string(),
-                    message: said.said,
-                    detail: said.detail,
-                };
-                if let Err(e) = health(payload) {
-                    tracing::warn!("stream_source remote-health (deploy) emit failed: {e}");
-                }
-                None
-            }
-        }
-    };
-    tracing::info!(
-        "[perf] stream_source [{host_label}] 部署预检 {}ms（ensure_backend_deployed；\
-         confirmed_build={:?}；skip={skip_preflight}）",
-        t_connect_start.elapsed().as_millis(),
-        confirmed_build.as_deref()
-    );
 }
 
 /// 一条连接上 monitor 这边的那几样（接上时开、断了就丢）：攒批 ＋ 静默窗 ＋ 旁路快照（[`LineIntake`]，本机那条流用的是同一个）· 认不出的帧记账。
@@ -336,10 +227,6 @@ pub(crate) async fn consume_remote(
             }
             return;
         };
-        // 每一轮的结论原样交本机后端（那台的状态成品在那里定）。
-        if let Event::State(s) = &ev {
-            hand_round(&host_label, s);
-        }
         match ev {
             Event::Attached { hello, client } => attached = Some((hello, client)),
             Event::State(State::Up { .. }) => {
@@ -479,8 +366,6 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
         said.raw()
     );
     crate::inbound_client::note_round_failed(host_label);
-    // 没接上 ⇒ 抹掉自证记忆：否则一台后端被删 / 被换旧的机器会每一轮都跳预检、每一轮都失败。代价是多一次预检（`VERIFIED_BUILD` 头注）。
-    forget_verified_build(host_label);
     if unsupported {
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.to_string(),
@@ -510,7 +395,7 @@ struct HelloSeen {
     commands: Vec<String>,
 }
 
-/// hello 那一臂：打日志、记账、自证记忆。
+/// hello 那一臂：打日志、记账。
 fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     let Round {
         replay,
@@ -531,59 +416,7 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
         "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自这一轮连接开始）",
         t_connect_start.elapsed().as_millis()
     );
-    // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。
-    // build_id 不是「我这一版」（或手上没带字节、无从比）⇒ **抹掉**（这台机器上装的不是当前 build，
-    // 下一轮必须照跑预检去部署），不是「留着上次的」。
-    if crate::byte_table::my_backend_id() == Some(build_id.as_str()) {
-        record_verified_build(&host_label, &build_id);
-    } else {
-        forget_verified_build(&host_label);
-    }
 }
-
-/// 冷启动预检的自证记忆：远端已经是当前 build 时，每次重连都付的那两条预检连接（`byte_table::probe_key` 的 `uname -s -m` 一次性 exec ·
-/// 读远端 `.build_id` 的那一趟）可以跳过。记的是 hello 自报的 build_id（「这台机器上一次真的跑起来的后端就是当前期望的那个」），不是预检算出来的结论。
-/// 跳的条件只有一个：记忆里那台机器的 build_id 恰好等于「我这一版」（`byte_table::my_backend_id`）；其余一律照跑。
-/// 记忆过期（远端二进制被删 / 换旧）⇒ 这一轮 exec 失败，失败路径清掉记忆 ⇒ 下一轮重新预检并部署。代价是多一次重连。
-static VERIFIED_BUILD: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
-
-/// 纯函数：这一轮能不能跳过那两条预检连接。`verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）；`mine` = 「我这一版」（`None` = 手上没带后端字节）。
-/// 逐字相等，不是包含（前缀相等会把 `abc123` 与 `abc123-dirty` 混为一谈）；`mine` 是 `None` ⇒ 恒不跳。
-fn preflight_can_be_skipped(verified: Option<&str>, mine: Option<&str>) -> bool {
-    matches!((verified, mine), (Some(v), Some(m)) if v == m)
-}
-
-/// 读这台机器的自证记录。
-fn verified_build_of(origin: &str) -> Option<String> {
-    VERIFIED_BUILD.lock().ok()?.as_ref()?.get(origin).cloned()
-}
-
-/// 记下「这台机器上一次真的跑起来的后端是 `build_id`」。
-///
-/// ⚠ **只许在收到 hello 的那一处调**（backend 自报）。别处调就把「自证」变回了「猜」。
-fn record_verified_build(origin: &str, build_id: &str) {
-    if let Ok(mut g) = VERIFIED_BUILD.lock() {
-        g.get_or_insert_with(HashMap::new)
-            .insert(origin.to_string(), build_id.to_string());
-    }
-}
-
-/// 抹掉这台机器的自证记录（连接没起来 / backend 换了身份）。
-fn forget_verified_build(origin: &str) {
-    if let Ok(mut g) = VERIFIED_BUILD.lock() {
-        if let Some(m) = g.as_mut() {
-            m.remove(origin);
-        }
-    }
-}
-
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/coldstart_preflight_guard.rs"]
-mod coldstart_preflight_guard;
-
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/coldstart_perf_guard.rs"]
-mod coldstart_perf_guard;
 
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/stream_flag_gate_tests.rs"]
@@ -598,11 +431,6 @@ mod seam_tests;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/write_half_guard.rs"]
 mod write_half_guard;
-
-/// 本机通道接上 ⇒ 每台最新那一轮原样重交本机后端。
-#[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/stream_source/machine_round_tests.rs"]
-mod machine_round_tests;
 
 /// 断线 → 重连 → 续上之后，订了这台的那几条订阅各收几格（数格、不看墙钟）。
 #[cfg(test)]

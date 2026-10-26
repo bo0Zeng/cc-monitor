@@ -21,11 +21,7 @@ interface HostDao {
     @Upsert
     suspend fun upsertAll(hosts: List<Host>)
 
-    @Delete
-    suspend fun delete(host: Host)
-
-    @Query("DELETE FROM hosts WHERE id = :id")
-    suspend fun deleteById(id: String)
+    // 删一台不在这里：它在这一端每张表里的行同一个事务删（HostRemovalDao）。
 }
 
 @Dao

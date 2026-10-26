@@ -29,6 +29,7 @@ pub mod ccm;
 pub mod cli_args;
 pub mod deploy_plan;
 pub mod exit_policy;
+pub mod feeds; // 各台的常驻流（机器表里要连的那几台各一条；那一态直接进机器状态 · 装后端在 connect 那一支）
 pub mod files_commit;
 pub(crate) mod machine_prefs;
 pub use machine_prefs::apply_agent_homes;

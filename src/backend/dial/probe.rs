@@ -350,7 +350,13 @@ pub(crate) trait Dial: Send + Sync + 'static {
 
 /// 生产那一侧：拨号核心开一条（`ssh_dial::uses::open`），每过一步把攒下的阶段交出去、报一步进展；
 /// 开成之后那条通道接在一对内存管子上对拷（`Opened::pump`，两头的读写端收了它就收）。收全 = `ssh_dial::uses::capture`。
-struct Real;
+/// 各台的常驻流（`feeds.rs`）开链路也用它（[`real`]）。
+pub(crate) struct Real;
+
+/// 生产那一侧的拨号（[`Real`]）。
+pub(crate) fn real() -> Real {
+    Real
+}
 
 impl Dial for Real {
     fn open(
@@ -458,7 +464,7 @@ impl Transport for ProbeLink {
 }
 
 /// 拨号核心没开成的那一份 ⇒ 那一句（空 ⇒ 链路断了那一句）＋ 复制详情 ＋ 原因码与指纹（同手机那一侧）。
-fn problem_of(f: ssh_dial::DialFail) -> Problem {
+pub(crate) fn problem_of(f: ssh_dial::DialFail) -> Problem {
     Problem::new(
         if f.error.is_empty() {
             copy_text("reason.link.lost", &[])

@@ -33,13 +33,11 @@ fn enclosing_fn(lines: &[&str], at: usize) -> String {
 // 要求「9 处 shell 能换后端具名命令的逐处换，换不了的写理由并登记」。
 //
 // 人群 = monitor 生产段里 `connect_and_exec_capture(` 的调用点（「文件::外层函数」，原语自己的定义不算），**两向相等**。
-// 今天只剩起停那台的常驻后端本身：这一跳发生在那台的后端**还不存在 / 正要停**的时候，问不了它。
+// 今天只剩壳自己那条循环起 / 找那台的常驻后端（这一跳发生在那台的后端**还不存在**的时候，问不了它）；停那台已经整趟在本机后端（`machine-stop`）。
 
 const STILL_SHELL: &[(&str, &str, &str)] = &[
     ("run.rs", "capture",
      "起 / 找 / 换那台的**常驻后端本身**（`--resident-ensure [--replace]`，重连循环经 `DeskLink::capture` 发）—— 接上它之前没有后端可问"),
-    ("remote_resident.rs", "stop",
-     "停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
 ];
 
 fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {

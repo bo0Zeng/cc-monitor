@@ -151,8 +151,10 @@ fun HostListScreen(
                                 onFiles = { onFiles(host.id) },
                                 onEdit = { onEdit(host.id) },
                                 onDelete = {
-                                    vm.deleteHost(host)
-                                    snackbar.showUndo(copyText("machineList.remove.done", "machine" to host.label)) { vm.restoreHost(host) }
+                                    val gone = vm.deleteHost(host)
+                                    snackbar.showUndo(copyText("machineList.remove.done", "machine" to host.label)) {
+                                        gone.await()?.let { vm.restoreHost(it) }
+                                    }
                                 },
                             )
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

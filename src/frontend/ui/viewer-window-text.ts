@@ -2,6 +2,7 @@
  * 独立查看窗的两句字：状态栏那一行与系统标题（只排版，在不在跑 · 订没订着流由查看器给）。
  */
 import { copyText } from "./copy-table";
+import { machineName } from "./ipc/chan-caller";
 import type { HistoryRow } from "./history-list-reads";
 import type { ViewerStatus } from "./views/session-viewer";
 
@@ -12,13 +13,13 @@ export function windowStatus(s: ViewerStatus): string {
   return copyText("viewerWindow.status.plain", { n: s.n });
 }
 
-/** 系统标题：`{会话标题} · {状态} · {项目}`，远端再加 `· {机器}`。 */
+/** 系统标题：`{会话标题} · {状态} · {项目}`，远端再加 `· {机器}`（那台怎么称呼照成品，`machineName`）。 */
 export function windowTitle(r: HistoryRow, live: boolean | null): string {
   const title = r.label;
   const state =
     live === null ? copyText("sessionState.unseen.name") : live ? copyText("history.row.live") : copyText("sessionState.ended.name");
   return r.origin
-    ? copyText("viewerWindow.title.remote", { title, state, project: r.projectName, machine: r.origin })
+    ? copyText("viewerWindow.title.remote", { title, state, project: r.projectName, machine: machineName(r.origin) })
     : copyText("viewerWindow.title.local", { title, state, project: r.projectName });
 }
 

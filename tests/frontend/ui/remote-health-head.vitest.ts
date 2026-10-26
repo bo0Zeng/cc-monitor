@@ -15,6 +15,12 @@ describe("远端健康提示：拥塞那一条的标题", () => {
   });
 });
 
+describe("远端健康提示：自动装没成不走这里", () => {
+  it("装那一趟住本机后端那几条常驻流、记进那台的机器状态成品 ⇒ 这里没有 `deploy` 那一格（来了也只是通用标题）", () => {
+    expect(headlineFor("deploy", "devbox")).toBe(copyText("remoteHealth.head.notice"));
+  });
+});
+
 describe("远端健康提示：壳带了复制详情就出［复制详情］", () => {
   it("文件窗口开了又退：那一句上屏、退出状态与错误输出在详情里；没带详情的那条不出按钮", async () => {
     const { listen } = await import("@tauri-apps/api/event");

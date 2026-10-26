@@ -1,4 +1,4 @@
-//! 远端各台的状态表：壳交来的那一轮 → 推出去的那一份就是 `deploy::machine::product` 出的成品；机器表关了「连接这台」⇒ 推一份停用；
+//! 远端各台的状态表：那台常驻流的那一轮（`control/feeds.rs` 记的）→ 推出去的那一份就是 `deploy::machine::product` 出的成品；机器表关了「连接这台」⇒ 推一份停用；
 //! 成品形状与跨语言金样逐格相等（界面那一侧读同一份）。
 
 use super::*;
@@ -19,34 +19,26 @@ fn next_of(
     }
 }
 
-#[tokio::test]
-async fn a_round_handed_in_is_pushed_as_the_product() {
-    use crate::wire::typed::Handle as _;
+#[test]
+fn a_round_noted_is_pushed_as_the_product() {
     let mut rx = changes().subscribe();
-    let req = MachineRoundReq {
-        machine: "ms-round".into(),
-        round: Round::Down {
-            problem: RoundProblem {
-                text: "拨号没成".into(),
-                detail: String::new(),
-                why: Some(Why::Auth),
-                seen_key: None,
-                expected_key: None,
+    let got = note_in(
+        &[("ms-round".to_string(), true)],
+        "ms-round",
+        Fact::Round {
+            round: Round::Down {
+                problem: RoundProblem {
+                    text: "拨号没成".into(),
+                    detail: String::new(),
+                    why: Some(Why::Auth),
+                    seen_key: None,
+                    expected_key: None,
+                },
+                blocker: None,
             },
-            blocker: None,
+            version: Some("9.9.9".into()),
         },
-        version: "9.9.9".into(),
-    };
-    let got = MachineRoundCmd::run(
-        req,
-        crate::wire::typed::Cx {
-            tz: Default::default(),
-            until: None,
-            needs: (),
-        },
-    )
-    .await
-    .expect("交那一轮没成");
+    );
     let mut e = Entry::default();
     fold(
         &mut e,

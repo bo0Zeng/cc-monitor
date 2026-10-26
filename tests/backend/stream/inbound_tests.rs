@@ -177,6 +177,24 @@ async fn ping_replies_ok() {
     assert_eq!(out, vec![r#"{"kind":"reply","id":"x","ok":true}"#]);
 }
 
+/// ★ ② 信封带 `machine` ⇒ 这一问不是问本后端的：转给那台的常驻流（`control/feeds.rs::forward`），本后端不自己答。
+/// 那台没有在跑的一条 ⇒ 不发、回「那一跳断开」（同一个 `id`），不是本后端自己的 `pong`。
+#[tokio::test]
+async fn a_request_naming_a_machine_is_forwarded_not_answered_here() {
+    let out = one_line(
+        "{\"id\":\"f1\",\"cmd\":\"ping\",\"machine\":\"inbound-nowhere\",\"within_ms\":2000}\n",
+    )
+    .await;
+    assert_eq!(out.len(), 1, "{out:?}");
+    let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert_eq!(v["id"], "f1");
+    assert_eq!(v["ok"], false, "本后端自己答了：{v}");
+    assert_eq!(v["code"], crate::control::feeds::UNREACHABLE, "{v}");
+    // 不带 `machine` 的照旧本后端自己答。
+    let here = one_line("{\"id\":\"f2\",\"cmd\":\"ping\",\"machine\":null}\n").await;
+    assert_eq!(here, vec![r#"{"kind":"reply","id":"f2","ok":true}"#]);
+}
+
 /// ★ `id` 是**不透明**的：backend 不解析、不规范化、只回显。
 #[tokio::test]
 async fn id_is_echoed_back_byte_for_byte() {

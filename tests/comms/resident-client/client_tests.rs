@@ -34,6 +34,46 @@ async fn the_viewer_tz_rides_on_every_request() {
     assert_eq!(call.await.unwrap().unwrap(), None);
 }
 
+/// ② 问那台的一问经本机后端转：信封多一格 `machine`，`view` 照带；这一端连的是本机后端，
+/// 那台认不认这条 · 形状对不对由本机后端连那台的客户端判 ⇒ 这里不拿本机后端的命令表拦（它不认的照发）。
+#[tokio::test(start_paused = true)]
+async fn a_call_for_another_machine_names_it_in_the_envelope_and_is_not_gated_here() {
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(mine).into_client(hello());
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let c = client.clone();
+    let view = serde_json::json!({"omit": {"record": ["blocks"]}});
+    let v2 = view.clone();
+    let call = tokio::spawn(async move {
+        c.call_at(
+            "devbox",
+            "history-tail",
+            serde_json::json!({"path": "/p"}),
+            Some(&v2),
+            tokio::time::Instant::now() + Duration::from_secs(5),
+        )
+        .await
+    });
+    let mut line = String::new();
+    peer.read_line(&mut line).await.unwrap();
+    let v: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(v["machine"], "devbox");
+    assert_eq!(v["cmd"], "history-tail", "本机后端的命令表里没有它也照发");
+    assert_eq!(v["view"], view);
+    let data = serde_json::json!({"rows": []});
+    assert!(client.route_reply(
+        v["id"].as_str().unwrap(),
+        true,
+        None,
+        None,
+        None,
+        Some(data.clone())
+    ));
+    assert_eq!(call.await.unwrap().unwrap(), Some(data));
+    // 不带那一台的照旧不出这一格。
+    assert!(!encode_request("i", "ping", &Value::Null, None, None, None).contains("machine"));
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_timed_out_call_sends_one_cancel() {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);

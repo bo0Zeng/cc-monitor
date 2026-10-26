@@ -399,6 +399,7 @@ export function backendPool({ repo, sandbox }) {
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
       ...(m.deploy ? { CCM_SHOTS_DEPLOY: JSON.stringify(m.deploy) } : {}),
+      ...(m.rounds ? { CCM_SHOTS_ROUNDS: JSON.stringify(m.rounds) } : {}),
     };
     const passwd = path.join(dir, "passwd");
     writeFileSync(passwd, `root:x:0:0:root:/root:/bin/sh\nuser:x:${process.getuid()}:${process.getgid()}:user:${H}:/bin/sh\n`);
@@ -574,7 +575,13 @@ export function backendPool({ repo, sandbox }) {
     });
     const list = Object.entries(machines).map(([origin, m0], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
-      const m = { ...m0, resident: peers.some((p) => p.origin === origin), ...(origin === LOCAL && peers.length > 0 ? { peers, sshKeys: sshKeys(sandbox) } : {}) };
+      const m = {
+        ...m0,
+        resident: peers.some((p) => p.origin === origin),
+        ...(origin === LOCAL && peers.length > 0 ? { peers, sshKeys: sshKeys(sandbox) } : {}),
+        // 远端各台这一轮怎么了（页里 `machine.ts::roundsOf` 算的）交本机后端（台架的后端不起常驻流，`machine_state::shots_rounds`）。
+        ...(origin === LOCAL && body.rounds ? { rounds: body.rounds } : {}),
+      };
       const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
       w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);

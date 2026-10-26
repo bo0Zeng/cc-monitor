@@ -34,9 +34,6 @@ export function headlineFor(kind: string, origin: string): string {
       return machineLabel(origin);
     case "snapshot":
       return copyText("remoteHealth.head.historyFailed");
-    // 连接前那一步自动部署没成（那台机器不要这份后端 / 这一版没带 / 装不上），正文是那句原因。
-    case "deploy":
-      return copyText("remoteHealth.head.notDeployed");
     // 文件窗口开出来之后又不体面地退了（`filewin/entry.rs::FILEWIN_EXIT_KIND`），正文带退出码。
     case "filewin-exit":
       return copyText("remoteHealth.head.fileWindowGone");
