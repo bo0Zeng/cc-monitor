@@ -20,35 +20,9 @@
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cc-bus-adapt.sh"
 ccbus_adapt_load || return 13
 
-
-# ── 注入与敲门的两句 ─────────────────────────────────────────────────────
-# T1 是 Stop 钩子喂回给 agent 的那段开场白,T2 是敲门时往对方会话说的那一句。
-# 🔴 敲门那一句里不许有正文:它是对方的输入,正文进去就成了指令。⇒ T2 只填发信人(过了白名单)。
-CCBUS_INJECT_T1='你收到新的 cc-bus 消息,请先处理完再结束本轮:\n{body}'
+# ── 敲门那一句 ───────────────────────────────────────────────────────────
+# 🔴 敲门那一句是对方的输入,正文进去就成了指令 ⇒ 只填发信人(过了白名单)。正文只经 Stop 钩子喂回。
 ccbus_knock_text() { printf '🔔 cc-bus: 你有来自 %s 的新消息,运行 cc-recv 读取并按内容处理' "$1"; }
-
-# Stop 钩子那一批该怎么喂(钩子仍按「挑一行 → 查那一行 → 渲染」三步调;每条都拦停、都用 T1)。
-# 入参:cc-peek `--kinds-file` 写出的那一行(`kind:from kind:from …`)。出:`msg\t<第一条的 from>\t<条数>`。
-kinds_pick_block() {
-  local meta ent first="?" n=0
-  meta=$(cat "$1" 2>/dev/null || true)
-  for ent in $meta; do
-    n=$((n+1)); [ "$n" -eq 1 ] && first="${ent#*:}"
-  done
-  printf '%s\t%s\t%s' msg "$first" "$n"
-}
-kinds_lookup_or_msg() { KIND_NAME=msg; KIND_T1="$CCBUS_INJECT_T1"; }
-
-# T1 渲染到 <out>。正文走 `--rawfile`,**不走 argv**(160KB 那件事故)。
-# `\n` 只在**模板**里展开成换行;`{body}` 最后填 ⇒ 正文里碰巧有 `{from}` 也不会被替换。
-kinds_render_inject() {   # <模板> <out> <正文文件> <from> <to> <kind> <count>
-  jq -jn --arg t "$1" --rawfile body "$3" --arg from "$4" --arg to "$5" \
-         --arg count "$7" --arg ts "$(store_now)" \
-    '$t | gsub("\\\\n"; "\n")
-        | split("{from}") | join($from) | split("{to}") | join($to)
-        | split("{ts}") | join($ts) | split("{count}") | join($count)
-        | split("{body}") | join($body)' > "$2"
-}
 
 # 两阶段读口的锚(cc-peek 发、cc-commit 校验,**两边必须是同一份实现**,否则永远比不中)。
 # 取第 <行号> 行现算 cksum,形如 `<校验和>-<字节数>`,零新依赖。
