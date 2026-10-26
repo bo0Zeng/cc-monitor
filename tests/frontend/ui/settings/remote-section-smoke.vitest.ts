@@ -24,7 +24,10 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { MachineCard } from "../../../../src/frontend/ui/settings/machine-card";
-import { HOST_DEFAULTS } from "../../../../src/frontend/ui/remote-config";
+import type { Host } from "../../../../src/frontend/ui/generated/Host";
+
+/** 表单里一台的缺省样子（同界面「添加机器」那一张空卡）。 */
+const HOST_DEFAULTS: Host = { label: "", host: "", port: 22, user: "", keyPath: "", addresses: [], jump: "", connect: true };
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 beforeEach(() => {

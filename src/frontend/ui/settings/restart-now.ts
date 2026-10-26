@@ -7,7 +7,7 @@ import { copyText } from "../copy-table";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { button } from "../kit/button";
-import { hostKey, readRemoteConfig } from "../remote-config";
+import { readRemoteConfig } from "../remote-config";
 import { askAppExitInterrupts, interruptRows, type Interrupts } from "./interrupts";
 
 export interface RestartDeps {
@@ -19,7 +19,7 @@ export interface RestartDeps {
 
 async function enabledRemotes(): Promise<string[]> {
   try {
-    return (await readRemoteConfig()).hosts.filter((h) => h.connect).map(hostKey).filter((h) => h.trim() !== "");
+    return (await readRemoteConfig()).hosts.filter((r) => r.host.connect).map((r) => r.name);
   } catch {
     return [];
   }

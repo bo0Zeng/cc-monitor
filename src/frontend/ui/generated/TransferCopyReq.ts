@@ -2,6 +2,7 @@
 import type { CopyFrom } from "./CopyFrom";
 import type { Decide } from "./Decide";
 import type { OnExists } from "./OnExists";
+import type { Origin } from "./Origin";
 
 /**
  * `transfer-copy`：一组远端路径从这一台复制到另一台的一个目录（经本机中转：A → 本机暂存 → B 暂存 → B 提交）。
@@ -10,13 +11,13 @@ import type { OnExists } from "./OnExists";
  */
 export type TransferCopyReq = { 
 /**
- * 源那台的拨号请求。
+ * 源那台的名字。
  */
-from: Record<string, unknown>, 
+from: Origin, 
 /**
- * 落点那台的拨号请求。
+ * 落点那台的名字。
  */
-to: Record<string, unknown>, items: Array<CopyFrom>, 
+to: Origin, items: Array<CopyFrom>, 
 /**
  * 落点那台上的目录（绝对路径）。
  */

@@ -2,7 +2,7 @@
 import type { Host } from "./Host";
 
 /**
- * `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存）· 已保存的那一份 · 跳板那一台。
+ * `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存；它的跳板照这一端的机器表按名字找）。
  */
 export type ProbeReq = { 
 /**
@@ -12,8 +12,4 @@ ticket: string,
 /**
  * 那台的配置。
  */
-machine: Host, 
-/**
- * 跳板那一台的配置（可缺）。
- */
-jump?: Host | null, };
+machine: Host, };

@@ -8,7 +8,7 @@
 //! ② 并：本机 `assets-catalog-merge {catalog: 远端那份}`   （经门递进来的写口；同一台取 gen 大的整份）
 //! ③ 推：远端缺的 / 比远端新的那几台快照（不含远端自己那格）
 //! capture `<远端后端> --assets-catalog-merge --stdin-line`，载荷一行写进它的 stdin ──▶ 远端并进它自己的文件（一台一个写者）
-//! ④ 本机目录因这一趟变了 ⇒ 对可达表里其余各台各做一趟 ①–③（只一层，不递归）
+//! ④ 本机目录因这一趟变了 ⇒ 对机器表里「连这台」的其余各台各做一趟 ①–③（只一层，不递归）
 //! ```
 //!
 //! # capture ＋「只读一行 stdin」，不是长流
@@ -23,8 +23,8 @@
 //! # 事件，不是定时（`no_timer_guard`）
 //!
 //! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial}`；界面看机器页前交一次 `assets-sync {}`
-//! （对可达表里每一台各一趟）。一趟的期限归调用方。
-//! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
+//! （对机器表里「连这台」的每一台各一趟）。一趟的期限归调用方。
+//! 「问远端」那一跳（`DialRemote`）与「那几台」（[`Table`]）住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
 use crate::assets::asset_catalog::{CatalogIn, CatalogMachine, CatalogMergeReq, CatalogReply};
 use crate::common::said::IntoNote as _;
@@ -34,8 +34,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
-// 问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
-use crate::dial::remote_ask::{lock, Reach, ReachRow, Remote, Table, REACH};
+// 问远端那一跳与「那几台」住 `remote_ask`；这里只取用。
+use crate::dial::remote_ask::{ReachRow, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
@@ -49,21 +49,17 @@ pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
 pub type Fold = std::sync::Arc<dyn Fn(CatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
 
-/// `assets-sync` 的入参：都缺 ⇒ 对可达表里每一台各一趟；只给 `origin` ⇒ 那一台（可达表里要有）；
-/// `origin` ＋ `dial` ⇒ 先登记（同 `remote-reach` 那一份）再对它做一趟。只给 `dial` ⇒ `bad_args`。
+/// `assets-sync` 的入参：缺 ⇒ 对机器表里「连这台」的每一台各一趟；给 `origin` ⇒ 先对那一台（机器表里要有）。
+/// 怎么够到那台只看这一端的机器表：线上不交拨号（带 `dial` ⇒ `bad_args`）。
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AssetsSyncReq {
-    /// 那台的名字（monitor 的 origin 名）。
+    /// 那台的名字。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub(crate) origin: Option<cmd_wire::Machine>,
-    /// 那台的拨号（只有路径，没有私钥本体）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) dial: Option<crate::dial::MachineDial>,
 }
 
 /// 一趟对一台的结局（`synced[]` 的一行）。
@@ -71,7 +67,7 @@ pub(crate) struct AssetsSyncReq {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct AssetsSyncRow {
-    /// 可达表的键（monitor 交来的 origin 串）。
+    /// 那台的名字。
     pub(crate) origin: cmd_wire::Machine,
     /// 那台目录的 `self`（没拉成 ⇒ `null`）。
     pub(crate) peer: Option<String>,
@@ -93,7 +89,7 @@ pub(crate) struct AssetsSynced {
     #[cfg_attr(test, ts(rename = "self"))]
     pub(crate) self_id: String,
     pub(crate) synced: Vec<AssetsSyncRow>,
-    /// 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
+    /// 「连这台」的那几台 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
     pub(crate) reach: Vec<ReachRow>,
 }
 
@@ -203,18 +199,18 @@ async fn fold_blocking(fold: &Fold, req: CatalogMergeReq) -> Result<CatalogReply
         .map_err(fold_failed)
 }
 
-/// 对一台做一趟 ①–③。`key` 是可达表的键（monitor 交来的 origin 串，本后端只当不透明的键用）。
+/// 对一台做一趟 ①–③。`key` 是那台的名字，`dial` 是照机器表组好的拨号请求。
 /// 回（本机目录因此变了没有, 结局那一行）。
 async fn sync_one(
     key: &str,
-    r: &Reach,
+    dial: &Value,
     fold: &Fold,
     remote: &dyn Remote,
     table: &Table,
 ) -> (bool, AssetsSyncRow) {
     let mut errors = Vec::new();
     // ① 拉
-    let theirs: Value = match remote.run(&r.dial, pull_command(), None).await {
+    let theirs: Value = match remote.run(dial, pull_command(), None).await {
         Ok(out) => match serde_json::from_str(out.trim()) {
             Ok(v) => v,
             Err(e) => {
@@ -240,8 +236,8 @@ async fn sync_one(
         .get("self")
         .and_then(Value::as_str)
         .map(str::to_string);
-    if let Some(row) = lock(table).get_mut(key) {
-        row.peer = peer.clone();
+    if let Some(id) = &peer {
+        table.set_peer(key, id);
     }
     // ② 并（对面那一份按并的入参收：形状不对 ⇒ 那一句同写口拒的那一形）
     let req: CatalogMergeReq = match crate::wire::typed::take(&json!({ "catalog": theirs })) {
@@ -267,7 +263,7 @@ async fn sync_one(
         let n = chunk.len();
         let payload = json!({ "catalog": { "machines": chunk } }).to_string();
         match remote
-            .run(&r.dial, push_command(), Some(push_stdin(&payload)))
+            .run(dial, push_command(), Some(push_stdin(&payload)))
             .await
         {
             Ok(_) => pushed += n,
@@ -280,8 +276,21 @@ async fn sync_one(
     )
 }
 
-/// `assets-sync`：给了 `origin`（＋ `dial`）⇒ 记进可达表、对它做一趟，本机因此变了再对其余各台各一趟；
-/// 什么都没给 ⇒ 对可达表里每一台各一趟。开头先让本机现扫一次：本机自己那份变了也算「目录变了」（扇出到每一台）。
+/// 按名字对一台做一趟：怎么够到它照机器表组（组不成 ⇒ 那一行就是那一句）。
+async fn sync_named(
+    key: &str,
+    fold: &Fold,
+    remote: &dyn Remote,
+    table: &Table,
+) -> (bool, AssetsSyncRow) {
+    match table.dial(key) {
+        Ok(dial) => sync_one(key, &dial, fold, remote, table).await,
+        Err(e) => (false, outcome(key, None, false, 0, &[e.message])),
+    }
+}
+
+/// `assets-sync`：给了 `origin` ⇒ 对它做一趟，本机因此变了再对其余各台各一趟；
+/// 什么都没给 ⇒ 对机器表里「连这台」的每一台各一趟。开头先让本机现扫一次：本机自己那份变了也算「目录变了」（扇出到每一台）。
 /// 回 `{self, synced, reach}`（`self` = 本机目录的 id，界面据它把目录里本机那一格对回 `<local>`）。
 pub(crate) async fn answer(
     req: &AssetsSyncReq,
@@ -291,7 +300,7 @@ pub(crate) async fn answer(
     answer_with(req, fold, remote, &REACH).await
 }
 
-/// [`answer`] 的可喂夹具那一半：可达表由调用方给（判据各用各的表，不共享进程里那一张）。
+/// [`answer`] 的可喂夹具那一半：那几台由调用方给（判据各用各的表，不共享进程里那一张）。
 pub(crate) async fn answer_with(
     req: &AssetsSyncReq,
     fold: Fold,
@@ -299,39 +308,25 @@ pub(crate) async fn answer_with(
     table: &Table,
 ) -> Result<AssetsSynced, (&'static str, String)> {
     let origin = req.origin.as_ref().map(cmd_wire::Machine::as_wire_str);
-    let mut first: Option<String> = None;
-    if let (Some(o), None) = (origin.filter(|o| !o.is_empty()), &req.dial) {
-        // 界面经通道直问（只给 `origin`）：怎么够到那台由握手那一刻的 `remote-reach` 登记过 —— 查不到就明说，不猜。
-        if !lock(table).contains_key(o) {
+    if origin == Some("") {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`origin` is empty (the machine name)"),
+        ));
+    }
+    // 点名的那一台：机器表里要有（怎么够到它只看这一端的机器表）—— 没有就明说，不猜。
+    if let Some(o) = origin {
+        if !table.has(o) {
             return Err((
                 "unreachable",
                 crate::dial::remote_ask::unreachable_message(o),
             ));
         }
-        first = Some(o.to_string());
-    } else if let Some(o) = &req.origin {
-        // 登记走 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
-        let dial = req.dial.as_ref().ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(
-                    "`origin` given without `dial` (a dial request)",
-                ),
-            )
-        })?;
-        first = Some(crate::dial::remote_ask::register(table, o, dial)?);
-    } else if req.dial.is_some() {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("`dial` given without `origin`").into(),
-        ));
     }
-    let rows: Vec<(String, Reach)> = lock(table)
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    let first = origin.map(str::to_string);
+    let rows: Vec<String> = table.connected();
     // 这一趟先让本机现扫一次（并一份空的进来 = 只刷新自己那一格）：拿到本机目录的 id，
-    // 并且本机自己那份变了（刚装了 / 删了一个 skill）就算「目录变了」—— 下面对可达表里每一台都做一趟。
+    // 并且本机自己那份变了（刚装了 / 删了一个 skill）就算「目录变了」—— 下面对「连这台」的每一台都做一趟。
     let nothing = CatalogMergeReq {
         catalog: CatalogIn { machines: vec![] },
     };
@@ -342,22 +337,17 @@ pub(crate) async fn answer_with(
     let mut synced = Vec::new();
     match &first {
         Some(o) => {
-            let r = rows
-                .iter()
-                .find(|(k, _)| k == o)
-                .map(|(_, r)| r.clone())
-                .expect("刚插进去的那一行");
-            let (changed, row) = sync_one(o, &r, &fold, remote, table).await;
+            let (changed, row) = sync_named(o, &fold, remote, table).await;
             synced.push(row);
             if changed || own_changed {
-                for (other, r) in rows.iter().filter(|(k, _)| k != o) {
-                    synced.push(sync_one(other, r, &fold, remote, table).await.1);
+                for other in rows.iter().filter(|k| *k != o) {
+                    synced.push(sync_named(other, &fold, remote, table).await.1);
                 }
             }
         }
         None => {
-            for (o, r) in &rows {
-                synced.push(sync_one(o, r, &fold, remote, table).await.1);
+            for o in &rows {
+                synced.push(sync_named(o, &fold, remote, table).await.1);
             }
         }
     }

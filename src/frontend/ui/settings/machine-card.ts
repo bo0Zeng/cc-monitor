@@ -7,11 +7,11 @@
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
 import { open } from "@tauri-apps/plugin-dialog";
+import type { Host } from "../generated/Host";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
-import { forgetHostKeys, hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
-import { parseAddressLines } from "../remote-config";
+import { forgetHostKeys, parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
 import { uninstallBackend, updateBackend } from "../backend-deploy";
@@ -121,7 +121,7 @@ export interface MachineCardHooks {
   /** 这张卡的状态 / 名字变了，宿主该刷新列表那一行。 */
   onStatusChanged?: (card: MachineCard) => void;
   /** 列表里别的机器已经叫这个名字了没有（名字是机器的键，重名就存不进、也改不了删不了）。 */
-  tryCells?: (card: MachineCard, next: RemoteHostConfig) => Promise<MachineFault | null>;
+  tryCells?: (card: MachineCard, next: Host) => Promise<MachineFault | null>;
 }
 // 没有「后端路径」那一格：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身）。
 /** 是否显示［忘记…］：当且仅当库里记着这台的主机指纹。 */
@@ -186,13 +186,13 @@ export class MachineCard {
   private collapsed = false;
 
   /**
-   * 这张卡对应的记录在盘上当前的 origin；`null` = 还没落过盘（新增的卡）。
-   * 机器的定位键是 origin（`label || host`），而它可以被用户编辑 ⇒ 局部合并要靠它认出盘上那一条，否则改个名就成了「新增 ＋ 孤儿」。
+   * 这张卡对应的记录在盘上当前的名字（后端读回的那一格）；`null` = 还没落过盘（新增的卡）。
+   * 机器的定位键是名字，而它可以被用户编辑 ⇒ 局部合并要靠它认出盘上那一条，否则改个名就成了「新增 ＋ 孤儿」。
    */
   persistedKey: string | null;
 
   constructor(
-    initial: RemoteHostConfig,
+    initial: Host,
     private hooks: MachineCardHooks,
     collapsed = false,
     persistedKey: string | null = null,
@@ -213,8 +213,8 @@ export class MachineCard {
     this.syncResetFpVisibility();
   }
 
-  /** 读出本卡片的 RemoteHostConfig（trim）。名字 / 地址 / 端口取最后一次被接受的值（不合法的那一格不交）。 */
-  collect(): RemoteHostConfig {
+  /** 读出本卡片的 Host（trim）。名字 / 地址 / 端口取最后一次被接受的值（不合法的那一格不交）。 */
+  collect(): Host {
     return {
       label: this.accepted.label,
       host: this.accepted.host,
@@ -311,7 +311,7 @@ export class MachineCard {
 
     // 认人的那几格（名字 · 地址 · 端口）改了先问后端那一道（与写口同一份规则）：不过 ⇒ 就地说、不存。
     let asking = 0;
-    const tryCells = async (next: RemoteHostConfig): Promise<MachineFault | null> => {
+    const tryCells = async (next: Host): Promise<MachineFault | null> => {
       try {
         return (await this.hooks.tryCells?.(this, next)) ?? null;
       } catch {
@@ -478,7 +478,7 @@ export class MachineCard {
     body = this.terminalPart;
 
     // ── 别名与配置文件 ──与本机同一个组件：清单在这台读、在这台写，别名块装 / 卸 / 预览、共用 MCP、扩展都在里面。
-    const origin = (): string => this.persistedKey ?? hostKey(this.collect());
+    const origin = (): string => this.savedName();
     body.appendChild(
       buildConfigPage({
         machine: () => this.displayName(),
@@ -552,7 +552,7 @@ export class MachineCard {
     this.legend.setAttribute("aria-expanded", next ? "false" : "true");
   }
 
-  private syncInputs(cfg: RemoteHostConfig): void {
+  private syncInputs(cfg: Host): void {
     this.labelInput.value = cfg.label;
     this.hostInput.value = cfg.host;
     this.portInput.value = cfg.port ? String(cfg.port) : "";
@@ -586,7 +586,7 @@ export class MachineCard {
     }
     let said: string;
     try {
-      await forgetHostKeys(this.persistedKey ?? hostKey(this.collect()));
+      await forgetHostKeys(this.savedName());
       this.setHostKeys([]);
       said = copyText("machineCard.resetFingerprint.done");
     } catch (e) {
@@ -638,6 +638,11 @@ export class MachineCard {
     );
   }
 
+  /** 这台在本机后端机器表里的名字（后端读回的那一格）；还没存过 ⇒ 空串（后端那边没有它，要问它的那几样都问不到）。 */
+  savedName(): string {
+    return this.persistedKey ?? "";
+  }
+
   /** 进入「独占一页」形态：去掉折叠（一页只有它）与删除按钮（删除入口在列表行上，那里才看得见删的是哪一台）。 */
   setPageMode(): void {
     this.setCollapsed(false);
@@ -649,8 +654,7 @@ export class MachineCard {
 
   /** 问题行［更新］：把这一版换上去（先问会打断什么，部署住 `backend-deploy.ts`，与主窗口 ↗ 浮层同一处）。 */
   async update(): Promise<void> {
-    const cfg = this.collect();
-    await updateBackend(cfg, this.persistedKey ?? hostKey(cfg), this.displayName());
+    await updateBackend(this.savedName(), this.displayName());
   }
 
   /** 问题行［推送公钥…］。 */
@@ -675,7 +679,7 @@ export class MachineCard {
       this.renderTestResult(null, copyText("machineCard.build.filesNeedHost"));
       return;
     }
-    void openFileWindow(cfg);
+    void openFileWindow({ name: this.savedName(), host: cfg });
   }
 
   /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`→ 渲染结果。 */
@@ -695,7 +699,7 @@ export class MachineCard {
     this.testResult.appendChild(segs.el);
     try {
       // 表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
-      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (c) => segs.paint(c.segs, c.said));
+      const res = await probeMachine(cfg, (c) => segs.paint(c.segs, c.said));
       segs.paint(res.segs, res.end?.backendHello ?? "");
       this.renderTestResult(res, null, segs.el);
     } catch (e) {
@@ -761,7 +765,7 @@ export class MachineCard {
     }
     await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
       // 表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
-      const r = await pushPublicKey(cfg, (await readRemoteConfig()).hosts, pubKeyPath);
+      const r = await pushPublicKey(cfg, pubKeyPath);
       return r.outcome === "added"
         ? copyText("machineCard.pushKey.added", { path: r.pubPath })
         : copyText("machineCard.pushKey.already", { path: r.pubPath });
@@ -809,7 +813,7 @@ export class MachineCard {
       this.showResultText(copyText("machineCard.uninstall.needFields"), "comp");
       return;
     }
-    const rows = interruptRows(await askInterrupts(this.persistedKey ?? hostKey(cfg)), this.displayName(), "uninstall");
+    const rows = interruptRows(await askInterrupts(this.savedName()), this.displayName(), "uninstall");
     if (
       !(await confirmDialog({
         title: copyText("machineCard.uninstall.title", { host: cfg.host }),
@@ -821,7 +825,7 @@ export class MachineCard {
     ) {
       return;
     }
-    await this.runRemoteAction(this.backendUninstallButton, copyText("machineCard.uninstall.running"), () => uninstallBackend(cfg), "comp");
+    await this.runRemoteAction(this.backendUninstallButton, copyText("machineCard.uninstall.running"), () => uninstallBackend(this.savedName()), "comp");
   }
 
   /**
@@ -913,7 +917,7 @@ export class MachineCard {
   /** 不再问一遍地忘掉（比对框里已经确认过）。 */
   private async forgetNow(): Promise<void> {
     try {
-      await forgetHostKeys(this.persistedKey ?? hostKey(this.collect()));
+      await forgetHostKeys(this.savedName());
       this.setHostKeys([]);
     } catch (e) {
       console.warn("忘掉主机指纹没成", e);

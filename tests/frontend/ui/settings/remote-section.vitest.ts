@@ -1,6 +1,7 @@
 // F43：［忘记…］显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
 // 「库里记着这台的指纹才显示」这条判定,防未来误改成没记也显示(忘掉无意义)。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { Host } from "../../../../src/frontend/ui/generated/Host";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
@@ -70,7 +71,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 // 测试连接改问本机后端（`remote-probe.ts` 经通道）⇒ 替身同一本账：记帧命令名、按名回结局那一格；
 //   `remote-probe:cells` 设了 ⇒ 结局之前先逐格交 `onCell`。收进度流本身由 `tests/frontend/ui/remote-probe.vitest.ts` 钉。
 vi.mock("../../../../src/frontend/ui/remote-probe", () => ({
-  probeMachine: (_m: unknown, _s: unknown, onCell: (c: unknown) => void) => {
+  probeMachine: (_m: unknown, onCell: (c: unknown) => void) => {
     ipcCalls.push("remote-probe");
     for (const c of (ipcReplies.get("remote-probe:cells") as unknown[] | undefined) ?? []) onCell(c);
     const reply = ipcReplies.get("remote-probe");
@@ -109,7 +110,7 @@ import {
   readRemoteConfig,
   sftpEligibleHosts,
 } from "../../../../src/frontend/ui/remote-config";
-import type { RemoteHostConfig, RemoteConfig } from "../../../../src/frontend/ui/remote-config";
+import type { RemoteConfig } from "../../../../src/frontend/ui/remote-config";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 // `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
 // 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
@@ -179,7 +180,7 @@ describe("F45 parseAddressLines", () => {
 });
 
 describe("F54 findHostByOrigin", () => {
-  const mkHost = (label: string, host: string): RemoteHostConfig => ({
+  const mkHost = (label: string, host: string): Host => ({
     label,
     host,
     port: 22,
@@ -189,12 +190,16 @@ describe("F54 findHostByOrigin", () => {
     jump: "",
     connect: true,
       });
-  const hosts = [mkHost("devbox", "192.0.2.2"), mkHost("", "pi.local")];
+  // 那几行照后端读回的形状（名字是后端算好的那一格）。
+  const hosts = [
+    { name: "devbox", host: mkHost("devbox", "192.0.2.2") },
+    { name: "pi.local", host: mkHost("", "pi.local") },
+  ];
   it("命中 label", () => {
-    expect(findHostByOrigin(hosts, "devbox")?.host).toBe("192.0.2.2");
+    expect(findHostByOrigin(hosts, "devbox")?.host.host).toBe("192.0.2.2");
   });
   it("label 空 → 回退 host 匹配", () => {
-    expect(findHostByOrigin(hosts, "pi.local")?.host).toBe("pi.local");
+    expect(findHostByOrigin(hosts, "pi.local")?.host.host).toBe("pi.local");
   });
   it("找不到 / 空列表 → null", () => {
     expect(findHostByOrigin(hosts, "nope")).toBeNull();
@@ -203,7 +208,7 @@ describe("F54 findHostByOrigin", () => {
 });
 
 describe("F56 jump write→read 往返（D-B1 回归）", () => {
-  const host = (jump: string): RemoteHostConfig => ({
+  const host = (jump: string): Host => ({
     label: "devbox",
     host: "192.0.2.2",
     port: 22,
@@ -227,7 +232,7 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     // 读回:loadConfig 返回刚写的 → readRemoteConfig → coerceHost 保留 jump
     vi.mocked(loadConfig).mockResolvedValue(saved);
     const back = await readRemoteConfig();
-    expect(back.hosts[0].jump).toBe("bastion");
+    expect(back.hosts[0].host.jump).toBe("bastion");
   });
 
   it("空 jump 往返 → 空串（直连）", async () => {
@@ -239,23 +244,12 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     await patchRemoteConfig({ upsert: [{ key: null, value: host("") }] });
     vi.mocked(loadConfig).mockResolvedValue(saved);
     const back = await readRemoteConfig();
-    expect(back.hosts[0].jump).toBe("");
-  });
-});
-
-describe("机器表不再带恢复命令（住各台后端 `prefs.json`；盘上旧的那一格只由迁移那一段读、壳删）", () => {
-  it("★ 盘上还有旧的 resumeCommand ⇒ 读进来的那一台没有这一格", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, hosts: [{ label: "devbox", host: "1.1.1.1", resumeCommand: "ccm resume --tmux" }] },
-    });
-    const back = await readRemoteConfig();
-    expect(Object.keys(back.hosts[0]!)).not.toContain("resumeCommand");
-    expect(back.hosts[0]!.label, "空真自检：那一台读进来了").toBe("devbox");
+    expect(back.hosts[0].host.jump).toBe("");
   });
 });
 
 describe("F83 sftpEligibleHosts", () => {
-  const mk = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
+  const mk = (over: Partial<Host>): Host => ({
     label: "",
     host: "",
     port: 22,
@@ -266,7 +260,7 @@ describe("F83 sftpEligibleHosts", () => {
     connect: true,
     ...over,
   });
-  const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({ hosts });
+  const cfg = (hosts: Host[]): RemoteConfig => ({ hosts: hosts.map((h) => ({ name: h.label || h.host, host: h })) });
 
   it("空 hosts → []", () => {
     expect(sftpEligibleHosts(cfg([]))).toEqual([]);
@@ -277,7 +271,7 @@ describe("F83 sftpEligibleHosts", () => {
       mk({ host: "192.0.2.3", user: "" }), // 缺 user → 排
       mk({ host: "", user: "u" }), // 缺 host → 排
     ];
-    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.host)).toEqual(["192.0.2.2"]);
+    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.host.host)).toEqual(["192.0.2.2"]);
   });
   it("纯空白 host/user → 排除（trim）", () => {
     const hosts = [mk({ host: "  ", user: "u" }), mk({ host: "h", user: "  " })];
@@ -285,11 +279,11 @@ describe("F83 sftpEligibleHosts", () => {
   });
   it("多台全填 → 全留（保序）", () => {
     const hosts = [mk({ label: "a", host: "h1", user: "u" }), mk({ label: "b", host: "h2", user: "u" })];
-    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.label)).toEqual(["a", "b"]);
+    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.name)).toEqual(["a", "b"]);
   });
   it("不看 enabled（禁用远端也能纯浏览文件）", () => {
     const hosts = [mk({ host: "h", user: "u" })];
-    expect(sftpEligibleHosts({ hosts })).toHaveLength(1);
+    expect(sftpEligibleHosts(cfg(hosts))).toHaveLength(1);
   });
 });
 
@@ -301,7 +295,7 @@ describe("F83 sftpEligibleHosts", () => {
 // 这条接线只有十几行，但它正是 S2 拆页后唯一挡在「静默删机器」前面的东西。
 // ---------------------------------------------------------------------------
 describe("S1 RemoteSection：保存走局部合并", () => {
-  const mkH = (label: string, host: string): RemoteHostConfig => ({
+  const mkH = (label: string, host: string): Host => ({
     label,
     host,
     port: 22,
@@ -347,7 +341,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   /** 起一个 section 并等它 refresh 完（构造函数里是 `void this.refresh()`）。 */
   async function mount(
-    hosts: RemoteHostConfig[],
+    hosts: Host[],
     pages?: ReturnType<typeof fakePages>["host"],
   ): Promise<RemoteSection> {
     vi.mocked(loadConfig).mockResolvedValue({
@@ -360,10 +354,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     return sec;
   }
 
-  function writtenHosts(): RemoteHostConfig[] {
+  function writtenHosts(): Host[] {
     const calls = vi.mocked(saveConfig).mock.calls;
     const last = calls[calls.length - 1]![0] as Record<string, unknown>;
-    return (last.remote as RemoteConfig).hosts;
+    return (last.remote as { hosts: Host[] }).hosts;
   }
 
   beforeEach(() => vi.resetAllMocks());
@@ -432,7 +426,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 〔FIX〕加载之后别处改了一格、再在页上改另一格 ⇒ 盘上那一格不被整台盖掉", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
     // 加载之后，别处往盘上改了 a 的钥匙路径。
-    const disk = (await vi.mocked(loadConfig)()) as unknown as { remote: RemoteConfig };
+    const disk = (await vi.mocked(loadConfig)()) as unknown as { remote: { hosts: Host[] } };
     disk.remote.hosts[0]!.keyPath = "/k/disk";
     vi.mocked(loadConfig).mockResolvedValue(disk as unknown as Awaited<ReturnType<typeof loadConfig>>);
     const first = sec.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
@@ -860,8 +854,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   // ── 机器表的几条写盘缺陷：回填漏一格、重名、空白卡、端口越界、卸载失败照记成功 ──
   const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  const diskHosts = async (): Promise<RemoteHostConfig[]> =>
-    ((await vi.mocked(loadConfig)()) as unknown as { remote: RemoteConfig }).remote.hosts;
+  const diskHosts = async (): Promise<Host[]> =>
+    ((await vi.mocked(loadConfig)()) as unknown as { remote: { hosts: Host[] } }).remote.hosts;
   const field = (page: HTMLElement, placeholder: string): HTMLInputElement =>
     [...page.querySelectorAll<HTMLInputElement>("input")].find((i) => i.placeholder === placeholder)!;
   const pageOf = (p: ReturnType<typeof fakePages>, id: string): HTMLElement => p.added.find((a) => a.id === id)!.element;

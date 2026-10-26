@@ -9,6 +9,7 @@
  * 纯函数、不碰文件系统，故不需要 mock `config.ts`。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Host } from "../../../src/frontend/ui/generated/Host";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
@@ -19,15 +20,9 @@ import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
 const saveConfig = fakeCfg.saved;
 import { srcDirOf } from "../../test-support/repo-root";
-import {
-  hostKey,
-  patchRemoteConfig,
-  remoteConfigOf,
-  type RemoteConfig,
-  type RemoteHostConfig,
-} from "../../../src/frontend/ui/remote-config";
+import { patchRemoteConfig, remoteConfigOf } from "../../../src/frontend/ui/remote-config";
 
-function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
+function mk(over: Partial<Host> = {}): Host {
   return {
     label: "",
     host: "h",
@@ -46,27 +41,18 @@ const B = mk({ label: "beta", host: "192.0.2.2", user: "ub", jump: "gw2" });
 const C = mk({ label: "", host: "192.0.2.3", user: "uc" }); // label 空 ⇒ key = host
 
 
-describe("hostKey", () => {
-  it("label 非空取 label，否则取 host（与 findHostByOrigin 同口径）", () => {
-    expect(hostKey(A)).toBe("alpha");
-    expect(hostKey(C)).toBe("192.0.2.3");
-    // 纯空白 label 不算数（否则 key 会是一串空格，和后端 origin 对不上）
-    expect(hostKey(mk({ label: "   ", host: "x" }))).toBe("x");
-  });
-});
-
 // 设置页增删机器也按键认元素：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
 //   假盘与 Rust 写口跑同一份金样（`config-patch-fake.vitest.ts`）⇒ 这里看到的盘上终态就是 Rust 会落的那份。
 describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整段写 remote", () => {
   beforeEach(() => vi.resetAllMocks());
   const pinnedB = { ...B, keyPath: "/k/disk" }; // 加载之后别处刚改的
-  const disk = (hosts: RemoteHostConfig[]) =>
+  const disk = (hosts: Host[]) =>
     vi.mocked(loadConfig).mockResolvedValue({
       theme: "dark",
       remote: { enabled: true, hosts },
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
   const lastEdits = () => vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
-  const lastHosts = () => (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: RemoteConfig }).remote.hosts;
+  const lastHosts = () => (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: { hosts: Host[] } }).remote.hosts;
 
   it("★ 增一台 ⇒ 恰好一条 insertin 追加到末尾（字段全带）；别的机器连别处刚改的那一格都不动", async () => {
     disk([A, pinnedB, C]);
@@ -164,7 +150,7 @@ describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", (
     });
     const edits = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string; field?: string }[];
     expect(edits.map((e) => (e.op === "setin" ? e.field : e.op))).toEqual(["label", "user"]);
-    const hosts = (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: RemoteConfig }).remote.hosts;
+    const hosts = (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: { hosts: Host[] } }).remote.hosts;
     expect(hosts[0]).toEqual({ ...pinned, user: "new", label: "alpha2" });
     expect(hosts.slice(1)).toEqual([B, C]);
     // 空 label 的那台改 host：先把 label 写成表单值（origin 与整台写那一形相同），host 排最后。

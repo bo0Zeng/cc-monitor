@@ -1,12 +1,12 @@
 //! Batch14-F41：终端拉起。〔「待迁」最后一行〕monitor 这里**只开终端**。
 //!
-//! 三块：
+//! 两块：
 //! 1. [`open_local`](crate::platform::terminal::open_local) —— 通用「新终端窗口跑一条命令」：Windows 是 PowerShell 窗口
 //!    （wt.exe Plan A → CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`），POSIX 是挑到的终端里 `bash -lic`。本地与远端共用此单一入口。
 //! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端的成品 —— 远端那一行
 //!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由本机后端起会话那一问交回。
-//! 3. [`terminal_dial`] —— 给那一问交机器事实（`{machine, saved, jump, prefer}`：monitor 自己的机器表 ＋ 上次赢的那条，
-//!    `dial_host::machine_facts`）。
+//!
+//! 远端那一问只交那台的名字（界面直接问本机后端 `terminal-ssh`），monitor 不交机器事实。
 //!
 //! ## 引号与注入
 //! - **远端命令**：渲染侧（后端载荷渲染器 / `terminal-ssh`）判 —— 控制字符 · 长度 · 双引号（PowerShell 5.1 向 native 程序传参对内嵌
@@ -107,27 +107,6 @@ pub async fn terminal_choices() -> crate::platform::terminal::TerminalChoices {
     tokio::task::spawn_blocking(crate::platform::terminal::terminal_choices)
         .await
         .unwrap_or_else(|_| crate::platform::terminal::terminal_choices())
-}
-
-/// 开终端那一问（本机后端 `terminal-ssh`）要的**机器事实**：`{machine, saved, jump, prefer}`
-/// —— monitor 自己的机器表 ＋ 上次赢的那条（[`crate::dial_host::machine_facts`]，与拨号请求同一份）。只读 monitor 自己的状态。
-#[tauri::command]
-pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, Said> {
-    let r: Result<serde_json::Value, Said> = async move {
-        // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
-        if origin == crate::inbound_client::LOCAL_ORIGIN {
-            return Err(Said::of("reason.code.bug", &[]));
-        }
-        let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-            Said::of(
-                "rsLaunch.remote.noConfig",
-                &[("machine", &format!("{:?}", origin))],
-            )
-        })?;
-        Ok(crate::dial_host::machine_facts(&cfg))
-    }
-    .await;
-    r.map_err(|s| s.named("terminal_dial"))
 }
 
 /// **在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。

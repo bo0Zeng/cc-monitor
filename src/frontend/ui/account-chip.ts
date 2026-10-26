@@ -3,11 +3,12 @@
 // 账号是按机器的：chip 绑第一台已配置的远端（`pickPrimaryOrigin`），一台都没有就是本机。
 // 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
 import { accountLabel } from "./acct-words";
+import type { MachineRow } from "./generated/MachineRow";
 import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
 import { accountAvatarEl } from "./account-color";
-import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
+import { readRemoteConfig } from "./remote-config";
 import { failToast } from "./kit/toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
@@ -22,9 +23,8 @@ import s from "./acct.module.css";
 // ------------------------------------------------------------ 纯函数（可测）
 
 /** 选 chip 绑定的那台机器：第一台已配置远端；一台都没有 ⇒ 本机（`LOCAL_ORIGIN`）。 */
-export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): Origin {
-  const h = hosts.find((x) => x.label || x.host);
-  return h ? h.label || h.host : LOCAL_ORIGIN;
+export function pickPrimaryOrigin(rows: MachineRow[]): Origin {
+  return rows.find((r) => r.name !== "")?.name ?? LOCAL_ORIGIN;
 }
 
 
@@ -192,7 +192,7 @@ export class AccountChip {
   async refresh(): Promise<void> {
     try {
       const cfg = await readRemoteConfig();
-      this.origin = cfg.hosts.some((h) => h.connect) ? pickPrimaryOrigin(cfg.hosts.filter((h) => h.connect)) : LOCAL_ORIGIN;
+      this.origin = pickPrimaryOrigin(cfg.hosts.filter((r) => r.host.connect));
     } catch {
       this.origin = LOCAL_ORIGIN;
     }

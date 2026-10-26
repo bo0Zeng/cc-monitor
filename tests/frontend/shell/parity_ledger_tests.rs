@@ -131,7 +131,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_local_terminal", "session.launch", Side::Local),
     // U4b 那一行（resume 之前问记录还在不在，`Both`）退役：界面经通道直接问后端 `history-record`
     //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`）。能力 `history.read-session` 还有别的命令 ⇒ 能力数与不对称数都不动。
-    ("terminal_dial", "session.launch", Side::Remote),
+    // 开终端那一问要的机器事实（`terminal_dial`，`Remote`）退役：界面直接交名字给本机后端 `terminal-ssh`。
     ("open_terminal_window", "terminal.window", Side::Both),
     // 设置页「终端」那一行的事实（开窗用哪个终端）：开窗本机远端同一条 ⇒ 同一能力，`Both`。
     ("terminal_choices", "terminal.window", Side::Both),
@@ -235,6 +235,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
 
 /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
+    ("session.launch", Asym::NaturallyAsymmetric, "远端那一侧不是一条 Tauri 命令：界面只交那台的名字、经通道直问本机后端 `terminal-ssh` 渲那一行（`terminal_dial` 退役，A10-2-2），开窗走同一条 `open_terminal_window`；本机这一侧要带起始目录，才有 `open_local_terminal`。"),
     // `acct-iso.deploy` 那一行摘了：那条 Remote 命令退役，这项能力不再有 Tauri 命令可记账。
     // `tmux.local-census` · `tmux.manage` 两行随那两条命令出表删：tmux 这一族（列 · 抓屏 · 杀 · 送键）今天全是帧命令、本机远端同一条路，
     //   不再有 Tauri 命令可记账（`tmux.manage` 那一行三次订正的来历，看 git 历史）。
@@ -759,10 +760,9 @@ enum FrameVerdict {
 /// ⚠ 先前括号里写着「`scan_tree!` 还会再摘一次」——
 /// **那一刀在这一处不生效**（自摘恒空转），别把它算成一道保险。
 const REMOTE_ONLY_MARKS: &[&str] = &[
-    "load_remote_config_by_label(",
+    "machine_table::has(",
     "stream_source::",
     "refuse_local_write(",
-    "RemoteConfig",
     "sftp_pool::",
 ];
 
@@ -949,10 +949,11 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 /// 每格的数是**跑出来的**：改了某条命令的 `Side` 或体之后，先让 `hist == want` 那一比印出现打的直方图，照它写，
 /// 不按增减去算（算出来恰好相等不是判据）。
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-    (Derived::RemoteOnly, 3),
+    // A10-2-2 重签：壳里一台远端只剩名字（`RemoteConfig` 那一摊删了），装 · 卸先查 `machine_table::has`（`deploy.rs::remote_in_table`）；`terminal_dial` 退役。
+    (Derived::RemoteOnly, 1),
     (Derived::FramePlane, 0),
     (Derived::Mixed, 1), // `deploy_remote_backend`：两支都走，不是失败退回
-    (Derived::Unclassified, 2),
+    (Derived::Unclassified, 3),
 ];
 
 /// 派生器在**整张** `LEDGER` 上认出的 `FramePlane` 命令数（不分 `Side`）—— 候选集（`Remote` 那一栏里的
@@ -1038,8 +1039,9 @@ fn the_remote_side_column_is_signed_off() {
     // 🔴 **地板 20 → 17。** `~/.ssh/config` 导入那三条 `Side::Remote` 搬进后端帧命令，人群真少了 3 个。
     // 🔴 **地板 17 → 14。** 端口转发三条 `Side::Remote` 退役（转发账进本机常驻后端，界面经通道直问），人群真少了 3 个，现打 14。
     // 🔴 **地板 → 11。** 主线 17 ＋ MIG-1 −6。
+    // 🔴 **地板 6 → 5。** 开终端交机器事实那条 `Side::Remote`（`terminal_dial`）退役（A10-2-2：界面只交名字，经通道直问 `terminal-ssh`），人群真少了 1 个。
     assert!(
-        remote_rows.len() >= 6,
+        remote_rows.len() >= 5,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );

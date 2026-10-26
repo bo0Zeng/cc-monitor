@@ -381,10 +381,10 @@ fn the_deploy_paths_only_hand_facts_to_the_backend() {
         }
     }
     let body = dp1_body(&prod, "async fn install_for(");
-    guard_core::find_pinned(&body, "ask_backend(cfg, INSTALL_CMD, slots, &dial)")
+    guard_core::find_pinned(&body, "ask_backend(machine, INSTALL_CMD, slots)")
         .unwrap_or_else(|e| panic!("装那一口不是恰好一处问本机后端（{e}）"));
     let body = dp1_body(&prod, "async fn uninstall_for(");
-    guard_core::find_pinned(&body, "ask_backend(cfg, UNINSTALL_CMD, slots, &dial)")
+    guard_core::find_pinned(&body, "ask_backend(machine, UNINSTALL_CMD, slots)")
         .unwrap_or_else(|e| panic!("卸那一口不是恰好一处问本机后端（{e}）"));
     let body = dp1_body(&prod, "async fn ask_backend(");
     guard_core::find_pinned(&body, ".call(cmd, args, INSTALL_BUDGET)")
@@ -498,6 +498,17 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let s = |k: &str| v[k].as_str().unwrap().to_string();
     let home = s("home");
     let rhome = s("rhome");
+    // 那一台写进被测后端自己的机器表（它按名字现读；界面这一侧只交名字）。
+    std::fs::create_dir_all(format!("{home}/.cc-monitor")).unwrap();
+    std::fs::write(
+        format!("{home}/.cc-monitor/machines.json"),
+        serde_json::json!({"version": 1, "hosts": [{
+            "label": "sr1b-loopback", "host": s("host"), "port": v["port"], "user": s("user"),
+            "keyPath": s("key_path"), "addresses": [], "jump": "", "connect": true,
+        }]})
+        .to_string(),
+    )
+    .unwrap();
     let mut child = std::process::Command::new(s("backend"))
         .args(crate::local_backend::LOCAL_STREAM_ARGS) // 生产起本机流后端那一份起参（零参数是「起会话」）
         .env("HOME", &home)
@@ -529,15 +540,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // 落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
     //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
     let backend_path = format!("{rhome}/{}", relay_route_core::BACKEND_LANDING_REL);
-    let cfg = crate::stream_source::RemoteConfig {
-        host: s("host"),
-        label: "sr1b-loopback".into(),
-        port: v["port"].as_u64().unwrap() as u16,
-        user: s("user"),
-        key_path: Some(s("key_path")),
-        addresses: vec![],
-        jump: None,
-    };
+    let cfg = "sr1b-loopback".to_string();
     // ① 装那一趟整趟在本机常驻后端（`deploy-install`）：这一版「带着」的那一格就是台架那台的键、字节是被测的那份后端本身
     //   （它得真跑得起 `--place-self`），身份读它自己的戳。
     let me = std::fs::read(s("backend")).expect("读不到被测后端");
@@ -559,7 +562,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let unstamped = copy_core::copy_text(
         "rsSftp.identity.unstamped",
         &[
-            ("machine", cfg.label.as_str()),
+            ("machine", cfg.as_str()),
             (
                 "path",
                 format!("~/{}", relay_route_core::BACKEND_LANDING_REL).as_str(),
@@ -613,7 +616,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
-    let origin = crate::origin::Origin(cfg.origin_label());
+    let origin = crate::origin::Origin(cfg.clone());
     let up = s("up");
     let r = crate::sftp_pool::transfer_call(
         cfg.clone(),
@@ -717,7 +720,7 @@ fn the_auto_deploy_never_refuses_silently() {
         Vec::<&str>::new(),
         "体内又有了静默的拒绝：\n{body}"
     );
-    guard_core::find_pinned(&body, "install(cfg).await?")
+    guard_core::find_pinned(&body, "install(machine).await?")
         .unwrap_or_else(|e| panic!("后端的失败没有原样往上交（{e}）：\n{body}"));
     // 正控：两种静默写法都认得出来。
     assert_eq!(
@@ -730,8 +733,11 @@ fn the_auto_deploy_never_refuses_silently() {
 #[test]
 fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     let prod = guard_core::addr::stream_source_production();
-    let at = guard_core::find_pinned(&prod, "crate::deploy::ensure_backend_deployed(cfg).await")
-        .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
+    let at = guard_core::find_pinned(
+        &prod,
+        "crate::deploy::ensure_backend_deployed(machine).await",
+    )
+    .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
     let rest = &prod[at..];
     let err_at = rest.find("Err(said) =>").expect("找不到 Err 那一支");
     let arm = &rest[err_at..];

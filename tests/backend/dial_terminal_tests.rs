@@ -3,7 +3,7 @@
 //!
 //! 期望原样搬自 monitor `tests/frontend/shell/launch_tests.rs` 钉 ssh 外壳的那六条（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 ·
 //! 单引号过两层）＋「拒双引号只拦 PowerShell 那条送法」的远端那一半 ＋「同一个载荷只多两层包装」的远端那一半 —— 被测对象搬了家、期望一个字没改；
-//! 新多两格：地址取竞速顺序第一条（`prefer`）· 跳板经 `machine::resolve`（查无 / 环 ⇒ `bad_jump`）。
+//! 新多两格：地址取竞速顺序第一条（上次赢的那条）· 跳板照这一端的机器表找（查无 / 环 ⇒ `bad_jump`）。
 
 use super::*;
 use serde_json::json;
@@ -13,11 +13,28 @@ fn answer(args: &Value) -> Result<Value, CmdErr> {
     answer_at(args, true, &found())
 }
 
-/// 线上那一份入参经 typed 那一处收（同分派），再按给定方言渲；回包写成线上那一份。
+/// 判据照旧按「一台 ＋ 它的跳板 ＋ 上次赢的那条」写：前两样进这一端的机器表、上次赢的那条记进后端自己那一份
+/// （[`crate::dial::last_good`]），线上只交那台的名字 —— 再经 typed 那一处收（同分派），按给定方言渲；回包写成线上那一份。
 fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
+    let mut wire = args.clone();
+    let mut hosts = Vec::new();
+    if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
+        let h = crate::dial::machine::loose(m)?;
+        wire["machine"] = json!(h.name());
+        hosts.push(h);
+    }
+    let obj = wire.as_object_mut().expect("入参是对象");
+    if let Some(j) = obj.remove("jump").filter(|j| !j.is_null()) {
+        hosts.push(crate::dial::machine::loose(&j)?);
+    }
+    if let Some(p) = obj.remove("prefer") {
+        let won: crate::dial::Endpoint = serde_json::from_value(p).expect("上次赢的那条");
+        let name = hosts[0].name().to_string();
+        crate::dial::last_good::record(&hosts, &name, &won);
+    }
     let req: TerminalSshReq =
-        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
-    answer_in(&req, powershell, ssh).map(|r| serde_json::to_value(r).unwrap())
+        crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
+    answer_in(&req, &hosts, powershell, ssh).map(|r| serde_json::to_value(r).unwrap())
 }
 
 /// 这台找到的 ssh 客户端（Windows 系统可选功能装的那一处）。
@@ -111,7 +128,7 @@ fn single_quotes_in_the_payload_survive_both_layers() {
 
 #[test]
 fn the_address_is_the_first_in_race_order_so_the_last_winner_is_used() {
-    let m = json!({ "host": "lan.example", "user": "u", "port": 22, "label": "m", "addresses": ["192.0.2.9:2200"] });
+    let m = json!({ "host": "lan.example", "user": "u", "port": 22, "label": "m-race", "addresses": ["192.0.2.9:2200"] });
     let plain = answer(&json!({ "machine": m, "command": "x" })).unwrap();
     assert!(plain["command"].as_str().unwrap().starts_with(&format!(
         "{}-t -p 22{} u@lan.example -- ",

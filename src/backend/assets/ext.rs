@@ -937,11 +937,15 @@ pub(crate) fn answer_note(
     })
 }
 
-/// 可达表的一份快照：`(origin, 那台目录的 id)`。
+/// 「连这台」的那几台此刻：`(名字, 那台目录的 id)`。
 pub(crate) fn reach_of(table: &crate::dial::remote_ask::Table) -> Vec<(String, Option<String>)> {
-    crate::dial::remote_ask::lock(table)
-        .iter()
-        .map(|(o, r)| (o.clone(), r.peer.clone()))
+    table
+        .connected()
+        .into_iter()
+        .map(|o| {
+            let peer = table.peer(&o);
+            (o, peer)
+        })
         .collect()
 }
 

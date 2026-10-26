@@ -149,7 +149,7 @@ export class AccountsSection {
     if (this.subscribed) return;
     this.subscribed = true;
     // 机器表读不到：只订本机。
-    const origins: Origin[] = [LOCAL_ORIGIN, ...(await readRemoteConfig()).hosts.map((h) => h.label)];
+    const origins: Origin[] = [LOCAL_ORIGIN, ...(await readRemoteConfig()).hosts.map((r) => r.name)];
     const pushed = (): void => {
       if (this.pushTimer !== null) clearTimeout(this.pushTimer);
       // 调度：合批 —— 后端推来的账号 / 额度变更：300ms 内几帧合成一次重读

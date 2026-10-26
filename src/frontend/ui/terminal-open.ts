@@ -2,8 +2,8 @@
  * 在用户面前这台机器上开一个终端，跑 `command` —— 全仓开终端只有这一个家；命令都是后端出的成品，monitor 只开窗。
  * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`；要起始目录的走
  *   {@link openLocalTerminal} → `open_local_terminal`）；
- * - 远端：① monitor 交那台的机器事实（`terminal_dial`）→ ② 本机后端 `terminal-ssh` 渲出这台终端方言的那一行
- *   （Windows 上 PowerShell `& '<ssh 全路径>' -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行；本机没装 ssh 客户端 / 判不了 ⇒ 后端不出那一行、说一句）→ ③ monitor 开窗。
+ * - 远端：① 本机后端 `terminal-ssh` 只收那台的名字，照它的机器表渲出这台终端方言的那一行
+ *   （Windows 上 PowerShell `& '<ssh 全路径>' -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行；本机没装 ssh 客户端 / 判不了 ⇒ 后端不出那一行、说一句）→ ② monitor 开窗。
  *
  * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端时壳回 `"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；
  * 调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
@@ -96,7 +96,6 @@ export async function openTerminal(
     await openWindow(command);
     return;
   }
-  // 那台的机器事实由壳交（`dial_host::machine_facts`：`{machine, saved, jump, prefer}`，同 `TerminalSshReq` 那几格）。
-  const facts = (await commands.terminal_dial({ origin })) as Omit<TerminalSshReq, "command" | "cwd">;
-  await openWindow(await lineOf({ ...facts, command }));
+  // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表。
+  await openWindow(await lineOf({ machine: origin, command }));
 }

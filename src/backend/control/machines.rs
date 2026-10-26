@@ -74,6 +74,13 @@ pub(crate) fn path_in(home: &Path) -> PathBuf {
     home.join(DOC.rel)
 }
 
+/// 这一端此刻照用的那一张（现读；家目录说不出 · 没有 · 读不懂 ⇒ 空表）。拨号层经它按名字组请求（`dial::install_machines`）。
+pub fn here() -> Vec<Host> {
+    crate::platform::paths::home_dir()
+        .map(|h| read_at(&path_in(&h)).hosts())
+        .unwrap_or_default()
+}
+
 fn not_ours(path: &Path, why: String) -> Said {
     Said::with_raw(
         copy_text(
@@ -412,6 +419,34 @@ fn ring() {
 
 // ───────────────────────────── 三条命令 ─────────────────────────────
 
+/// 机器表里的一行（线上形）：后端算好的名字 ＋ 那一台原样（盘上那一形）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct MachineRow {
+    /// 那台的名字（寻址用的那一个：`label`，空 ⇒ `host`，都去掉首尾空白）。
+    pub(crate) name: String,
+    /// 那一台原样。
+    pub(crate) host: Host,
+}
+
+impl MachineRow {
+    fn of(host: Host) -> Self {
+        MachineRow {
+            name: host.name().to_string(),
+            host,
+        }
+    }
+}
+
+/// 一行读起来就是那一台（名字 · 连不连 · 各格）。
+impl std::ops::Deref for MachineRow {
+    type Target = Host;
+    fn deref(&self) -> &Host {
+        &self.host
+    }
+}
+
 /// `machines-read` / `machines-set` 读回的那一份：状态 ＋ 照用的那一张（读不懂 ⇒ 空表）。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -426,8 +461,8 @@ pub(crate) struct MachinesReply {
     pub(crate) detail: Option<String>,
     /// 那份文件的路径（家目录说不出 ⇒ `null`）。
     pub(crate) path: Option<String>,
-    /// 照用的那一张。
-    pub(crate) hosts: Vec<Host>,
+    /// 照用的那一张：一台一行，带后端算好的名字（`{name, host}`；名字的算法只在拨号核心 `Host::name`，界面 · 壳都不再算）。
+    pub(crate) hosts: Vec<MachineRow>,
     /// 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
     pub(crate) host_keys: std::collections::BTreeMap<String, Vec<String>>,
 }
@@ -464,7 +499,7 @@ fn reply(l: &Loaded, path: Option<&Path>, home: Option<&Path>) -> MachinesReply 
         host_keys: home
             .map(|h| host_keys_of(h, &l.hosts()))
             .unwrap_or_default(),
-        hosts: l.hosts(),
+        hosts: l.hosts().into_iter().map(MachineRow::of).collect(),
     }
 }
 

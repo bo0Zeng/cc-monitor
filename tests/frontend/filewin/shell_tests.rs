@@ -2,7 +2,7 @@ use super::*;
 use crate::source::parent_dir;
 use crate::source::Row;
 
-/// 合成那台远端的名字（窗口只拿名字，不再拿整份 `RemoteConfig`；名字怎么从配置来是 monitor 那一侧的事，判据在 `entry_tests`）。
+/// 合成那台远端的名字（窗口只拿名字；名字由本机后端的机器表算，判据在后端 `machines_tests`）。
 fn synth_cfg(label: &str) -> String {
     String::from(label)
 }
@@ -41,8 +41,8 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
 #[test]
 fn a_remote_source_is_titled_by_its_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
-    // 「`label` 为空时回退到 `host`」那一半是 `RemoteConfig::origin_label` 的契约，随名字在 monitor 那一侧算搬去了
-    //   `entry_tests::the_seed_names_the_machine_by_its_origin_label`。
+    // 「`label` 为空时回退到 `host`」那一半是拨号核心 `Host::name` 的契约：
+    //   后端 `machines_tests::every_row_carries_the_name_the_backend_computed` 钉。
 }
 
 // ════════════════════════════════════════════════════════════════════════

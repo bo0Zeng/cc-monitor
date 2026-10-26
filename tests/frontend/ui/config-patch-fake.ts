@@ -189,11 +189,17 @@ function onTable(edits: readonly MachineEditLike[]): Edit[] {
  * `machines-read` 那一答（纯函数）：机器表摆在一份假 `config.json` 的 `remote.hosts` 里。没有 `remote` ⇒ `absent`；
  * 不是数组 ⇒ `unreadable`。自己桩 `chan.call` 的测试照它答 `machines-read`（表照旧摆在它们那块盘上）。
  */
+/** 后端读回的一行（`{name, host}`）：名字照后端 `Host::name` 那条算（`label` 去首尾空白，空 ⇒ `host` 去首尾空白；规则本身的判据在后端）。 */
+function rowOf(h: Record<string, unknown>): { name: string; host: Record<string, unknown> } {
+  const t = (k: string) => String(h[k] ?? "").trim();
+  return { name: t("label") || t("host"), host: h };
+}
+
 export function machinesReadOf(cfg: unknown): { state: string; reason: string | null; detail: null; path: null; hosts: unknown[]; hostKeys: Record<string, string[]> } {
   const remote = (cfg as { remote?: { hosts?: unknown } } | null)?.remote;
   if (remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [], hostKeys: {} };
   return Array.isArray(remote.hosts)
-    ? { state: "ok", reason: null, detail: null, path: null, hosts: remote.hosts as unknown[], hostKeys: {} }
+    ? { state: "ok", reason: null, detail: null, path: null, hosts: (remote.hosts as Record<string, unknown>[]).map(rowOf), hostKeys: {} }
     : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [], hostKeys: {} };
 }
 

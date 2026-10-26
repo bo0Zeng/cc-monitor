@@ -6,7 +6,7 @@ import type { Origin } from "./Origin";
  */
 export type AssetsSyncRow = { 
 /**
- * 可达表的键（monitor 交来的 origin 串）。
+ * 那台的名字。
  */
 origin: Origin, 
 /**

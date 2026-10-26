@@ -77,11 +77,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Window,
         "开窗用哪个终端（设置里那一格 · 本机探到的终端）：窗口开在 monitor 面前这台，挑终端是开窗那一侧的事",
     ),
-    (
-        "terminal_dial",
-        Own::Config,
-        "交开终端那一问要的机器事实（monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）；组请求与渲染在本机后端",
-    ),
     ("load_config", Own::Config, "本机 monitor 配置"),
     ("patch_config", Own::Config, "本机 monitor 配置"),
     (

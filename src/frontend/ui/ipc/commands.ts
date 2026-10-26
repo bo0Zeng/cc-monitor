@@ -141,11 +141,6 @@ export const commands = {
    *  `TerminalChoices` 是生成物 ⇒ **桶③**。 */
   terminal_choices: () => invoke<TerminalChoices>("terminal_choices"),
 
-  /** 开终端那一问要的机器事实 `{machine, saved, jump, prefer}`（monitor 的机器表 ＋ 上次赢的那条）。
-   *  **桶②**：TS 不读它的字段，原样转交本机后端 `terminal-ssh`（组请求与渲染都在那里）。 */
-  terminal_dial: (args: { origin: string }) =>
-    invoke<unknown>("terminal_dial", args),
-
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   get_diagnostics_config: () =>
     invoke<DiagnosticsConfig>("get_diagnostics_config"),
@@ -169,7 +164,7 @@ export const commands = {
   filewin_interrupts: () => invoke<FilewinTotals>("filewin_interrupts"),
 
   /** 部署远端后端（连同 `ccm` 入口，一次）。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
-  deploy_remote_backend: (args: { cfg: unknown }) =>
+  deploy_remote_backend: (args: { origin: string }) =>
     invoke<string>("deploy_remote_backend", args),
 
   /**
@@ -226,7 +221,8 @@ export const commands = {
    * ⚠ 它**不**保证「窗口出现在屏幕上」：那要一个图形会话，命令这一侧看不到。
    */
   open_file_window: (args: {
-    cfg: unknown;
+    /** 那台的名字（怎么连照本机后端的机器表）。 */
+    origin: string;
     path: string;
     /**
      * 优先级：`path`（非空）> `revealFile` > 远端 home。
@@ -246,7 +242,7 @@ export const commands = {
     invoke<void>("open_settings_window", { target }),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  uninstall_remote_backend: (args: { cfg: unknown }) =>
+  uninstall_remote_backend: (args: { origin: string }) =>
     invoke<string>("uninstall_remote_backend", args),
 
   /** 用系统默认程序打开 monitor 的 log **目录**。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */

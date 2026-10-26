@@ -10,6 +10,7 @@
  * - 实时：鼠标在列表上或焦点在列表里时不重排，移开再排；选中的那一行按会话认，不因上面插行而移动。
  */
 import { button, setBusy, setDisabled } from "../kit/button";
+import { remoteNames } from "../remote-config";
 import { morph } from "../kit/morph";
 import { splitButton } from "../kit/split-button";
 import { icon } from "../kit/icon";
@@ -168,7 +169,7 @@ export class HistoryView {
     dispatcher.pushOverlay(this.layer);
     // 开页即给焦点（不等远端）。
     this.searchInput.focus();
-    this.machines = ["", ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
+    this.machines = ["", ...(await remoteNames().catch(() => [] as string[]))];
     // 开页：先答手上的，远端那几台各自同步一次（后端记着副本、不按时间过期，开页与「刷新」才再问那台）。
     this.restart();
     this.refresh(this.remotes());

@@ -1,5 +1,3 @@
-use crate::stream_source::RemoteConfig;
-
 /// ★★ **本机 `~/.ssh` 的读面：恰好一处，且只读 `config`**〔audit-0805 08-08，Phase G 第 85 件〕。
 ///
 /// # 「谁能读」这一侧此前只有半张表
@@ -96,52 +94,15 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     );
 }
 
-/// RemoteConfig 反序列化：camelCase key + 空串可选字段归 None + port 默认 22 + 忽略 enabled。
-#[test]
-fn remote_config_deserializes_frontend_shape() {
-    // 前端 collect() 的形状：所有字段都在，可选字段可能是空串，外加 enabled。
-    let json = r#"{
-            "enabled": true,
-            "host": "pi.local",
-            "port": 2200,
-            "user": "pi",
-            "keyPath": "",
-            "backendPath": "/home/pi/cc-monitor-backend",
-            "hostKeyFingerprint": ""
-        }"#;
-    let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
-    assert_eq!(cfg.host, "pi.local");
-    assert_eq!(cfg.port, 2200);
-    assert_eq!(cfg.user, "pi");
-    assert_eq!(cfg.key_path, None, "空串 keyPath → None");
-    // 盘上旧的 `backendPath` · `hostKeyFingerprint` 不读、不报错（那两格删了）。
-}
-
-/// RemoteConfig：缺 port 时默认 22，非空可选字段保留为 Some。
-#[test]
-fn remote_config_defaults_and_some() {
-    let json = r#"{
-            "host": "h",
-            "user": "u",
-            "keyPath": "C:\\k",
-            "backendPath": "d",
-            "hostKeyFingerprint": "SHA256:abc"
-        }"#;
-    let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
-    assert_eq!(cfg.port, 22, "缺 port → 默认 22");
-    assert_eq!(cfg.key_path.as_deref(), Some("C:\\k"));
-}
-
 // 退避那几条（hello-then-die 不许把退避按在下界 · 翻倍封顶）随退避本体住 `resident-client`：`tests/comms/resident-client/backoff_tests.rs`；
 //   「非 unix 远端不按退避空转」住同一条循环的判据 `feed_tests.rs::a_remote_that_is_not_unix_waits_for_a_hand`。
 
 // 〔「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
 //   随那几个函数搬进后端 `ssh-dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
-//   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
+//   与 `the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses`。
 
-// 远端开终端在本机后端（`terminal-ssh`）。首选地址的两半判据：
-//   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ 后端 `dial_machine_tests::a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`
-//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`；
-//   「地址配置改过 ⇒ 上次那条失效」⇒ monitor `dial_host_tests::the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged`。
+// 远端开终端在本机后端（`terminal-ssh`，只交名字）。首选地址那一半判据都在后端：
+//   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ `dial_machine_tests::the_preferred_winner_goes_first_while_it_is_still_one_of_the_addresses`
+//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`（上次赢的那条由后端记，`dial::last_good`）。
 
 // 后端落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`，没有外来值可判。

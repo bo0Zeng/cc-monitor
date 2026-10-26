@@ -2,7 +2,7 @@
 //!
 //! # 这一族错误出现过五次
 //!
-//! `load_remote_config_by_label(&origin)` 对 `<local>` 拿不到东西，于是报
+//! 查机器表（今天是 `machine_table::has(&origin)`，从前是按名字取整份远端配置）对 `<local>` 拿不到东西，于是报
 //! **「未找到远端配置: `<local>`」** —— 一句与真实原因毫无关系的话。真实原因从来不是
 //! 「配置没找到」，而是「这条路是远端专属的，本机根本不该走到这里」。
 //!
@@ -11,7 +11,7 @@
 //!
 //! # 本护栏钉什么
 //!
-//! 每一处 `load_remote_config_by_label(` 调用，**要么**它所在的函数在调用之前就分了本机，
+//! 每一处 `machine_table::has(` 调用，**要么**它所在的函数在调用之前就分了本机，
 //! **要么**它在 [`REMOTE_ONLY`] 里逐条登记「为什么 `<local>` 够不到这里」。
 //!
 //! ## 为什么是**位置**比较，不是「函数里提过 `LOCAL_ORIGIN`」
@@ -47,21 +47,13 @@
 //! 核对过程住。
 
 #[cfg(test)]
-const CALL: &str = "load_remote_config_by_label(";
+const CALL: &str = "machine_table::has(";
 
 /// 本机**结构性够不到**的调用点，逐条登记：(文件, 函数, 为什么 `<local>` 到不了这里)。
 ///
 /// ⚠ 登记的是「够不到」，不是「还没做」。**「以后再说」不是理由** —— 那种先去加本机分支。
 #[cfg(test)]
 const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
-    "dial_host.rs",
-    // 查配置从 `request` 挪进了它拆出来的 `machine_facts`（开终端那一问要同一份机器事实、不开链路）；
-    //   另一个调用方 `launch.rs::terminal_dial` 在调它之前已经把 `<local>` 分走。
-    "machine_facts",
-    "它查的是**跳板那一台**（`cfg.jump` 那个标签），而入参 `cfg` 已经是一台远端的配置 —— \
-     本机没有「经跳板连本机」这一形（本机那条路不拨 SSH），`<local>` 结构上走不到这里：\
-     调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。",
-), (
     "backend_control.rs",
     "stop_remote_resident",
     "只被 `backend_stop` 调，且在它 `is_local(&origin)` 那一支已经把本机分走之后（本机停的是本机常驻后端，\

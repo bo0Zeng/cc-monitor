@@ -253,16 +253,6 @@ pub fn loose_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Host, D::Er
     loose(&v).map_err(|(_, m)| serde::de::Error::custom(m))
 }
 
-/// 同 [`loose_field`]，可缺 / `null` 的那一格。
-pub fn loose_opt<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Host>, D::Error> {
-    match <Value as serde::Deserialize>::deserialize(d)? {
-        Value::Null => Ok(None),
-        v => loose(&v)
-            .map(Some)
-            .map_err(|(_, m)| serde::de::Error::custom(m)),
-    }
-}
-
 /// 拨不了这一台（没地址 · 没用户 · 端口不在 1–65535）⇒ `bad_args`（调用方是我们自己：契约错）。
 /// 以 `-` 打头那一条不在这里拒：russh 拨号不经命令行；写表那一处照 [`Host::fault`] 拒，开终端那一行另按它的裸词白名单拒、说清是哪一格。
 fn usable(h: &Host) -> Result<&Host, Err> {
@@ -348,59 +338,6 @@ pub fn request(
         obj.extend(more);
     }
     Ok(req)
-}
-
-/// 同 [`request`]，组好之后读成拨号请求。
-pub fn dial_request(
-    table: &[Host],
-    name: &str,
-    prefer: Option<&Endpoint>,
-    use_: &str,
-    extra: Value,
-) -> Result<crate::DialRequest, Err> {
-    let req = request(table, name, prefer, use_, extra)?;
-    <crate::DialRequest as serde::Deserialize>::deserialize(&req).map_err(|e| {
-        (
-            "bad_args",
-            crate::malformed(&format!("dial request unreadable: {e}")),
-        )
-    })
-}
-
-/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, jump?, prefer?: {host, port}, use?, …}`（`machine` · `jump` 经 [`loose`] 读，
-/// 两台成一张表、拨 `machine` 那一台），其余格（`command` · `capture` · `forward` · `stages` · `probe` · `agent_sock`）原样进请求。
-/// `use` 缺席 ⇒ `stream`。
-pub fn resolve(v: &Value) -> Result<crate::DialRequest, Err> {
-    let bad = |d: &str| ("bad_args", crate::malformed(d));
-    let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
-    let machine = loose(obj.get("machine").ok_or_else(|| bad("missing `machine`"))?)?;
-    let mut table = vec![machine];
-    match obj.get("jump") {
-        None | Some(Value::Null) => {}
-        Some(j) => table.push(loose(j)?),
-    }
-    let prefer = match obj.get("prefer") {
-        None | Some(Value::Null) => None,
-        Some(p) => Some(Endpoint {
-            host: p
-                .get("host")
-                .and_then(Value::as_str)
-                .ok_or_else(|| bad("`prefer` without `host`"))?
-                .to_string(),
-            port: p
-                .get("port")
-                .and_then(Value::as_u64)
-                .and_then(|n| u16::try_from(n).ok())
-                .ok_or_else(|| bad("`prefer` without a port number"))?,
-        }),
-    };
-    let use_ = obj.get("use").and_then(Value::as_str).unwrap_or("stream");
-    let mut extra = obj.clone();
-    for k in ["machine", "jump", "prefer", "use"] {
-        extra.remove(k);
-    }
-    let name = table[0].name().to_string();
-    dial_request(&table, &name, prefer.as_ref(), use_, Value::Object(extra))
 }
 
 #[cfg(test)]

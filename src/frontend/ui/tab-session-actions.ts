@@ -191,7 +191,7 @@ export class TabSessionActions {
     // 远端路径本机 openPath 打不开 ⇒ 用那台的配置开文件窗口进该目录；找不到那台的配置才回退成提示。
     if (isRemoteOrigin(tab.origin)) {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
-      if (host && host.host.trim() !== "" && host.user.trim() !== "") {
+      if (host && host.host.host.trim() !== "" && host.host.user.trim() !== "") {
         void openFileWindow(host, { dir: tab.projectDir });
         return;
       }

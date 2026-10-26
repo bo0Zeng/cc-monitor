@@ -6,18 +6,6 @@
 
 use super::*;
 
-fn synth_cfg() -> RemoteConfig {
-    RemoteConfig {
-        host: "example.invalid".into(), // RFC 2606 保留 ⇒ DNS 解不出来
-        label: "synthetic-origin".into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
-}
-
 // 「通道口没起来 ⇒ 一个窗口进程都不起」那一条删了：通道不再是 monitor 起来时绑的一个口，而是每个窗口进程自己的 stdin / stdout
 //   （父子管道，`chan::host::serve_window`），没有「没起来」这一形。
 
@@ -293,13 +281,4 @@ fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
     // 阴性对照：一条**正常**的文件路径不会走这一支
     //（少了这一半，上面那一比可以靠「什么都报错」全绿）。
     assert!(plan_target("", Some("/a/b.txt")).is_ok());
-}
-
-/// 开窗种子里那台的名字 ＝ `RemoteConfig::origin_label`（`label` 为空时回退到 `host`）：窗口只拿名字，「名字怎么从配置来」是开窗入口这一侧的事。
-#[test]
-fn the_seed_names_the_machine_by_its_origin_label() {
-    assert_eq!(synth_cfg().origin_label(), "synthetic-origin");
-    let mut anon = synth_cfg();
-    anon.label.clear();
-    assert_eq!(anon.origin_label(), "example.invalid");
 }

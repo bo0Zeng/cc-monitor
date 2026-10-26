@@ -36,7 +36,7 @@ use super::*;
 /// 本仓对「偶发红会被人学会重跑绕过」记过一笔，所以这里直接串起来。
 static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// 一台合成远端的名字（种子里只剩名字：窗口不再拿整份 `RemoteConfig`）—— 带中文与连字符，同 `cwd` 那一格的理由。
+/// 一台合成远端的名字（种子里只剩名字：窗口不再拿整份远端配置）—— 带中文与连字符，同 `cwd` 那一格的理由。
 fn synthetic_cfg() -> String {
     "台架-远端".to_string()
 }

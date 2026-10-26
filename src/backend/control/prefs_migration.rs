@@ -5,13 +5,10 @@
 //!
 //! 1. **谁换**：本机常驻后端（拿到常驻门牌的那一个进程，[`migrate_here`] 只在那里调）；一次性进程一律不换、不交。
 //! 2. **本机那一份**：`prefs.json` 不在 ⇒ 在 `config.json` 所在目录那把跨进程锁里**只读** `config.json`（与 monitor 同一种锁），
-//!    本机那几格写成 `prefs.json`，远端每台那几格写进「待交」（`prefs-handoff.json`）。`config.json` 一个字节不动 ——
+//!    本机那几格写成 `prefs.json`。`config.json` 一个字节不动 ——
 //!    删那几个键是 monitor 的事（它是 `config.json` 唯一的写者），它读到本机 `prefs-read` 说 `ok` 才删、原文另存 `config.json.pre-7`。
-//!    `config.json` 读不懂 / 不在 ⇒ 一个字节不写（读不懂的不当空的搬）。
-//! 3. **远端那几份**：monitor 每台远端流握手时交 `remote-reach`，常驻那一位顺手 [`hand_over`]：那台 `prefs-read` 说 `absent`
-//!    ⇒ 交一次 `prefs-set`（那一台整份），交成了删掉那一条；那台已经有（读得懂 · 读不懂都算）⇒ 不盖、也删掉；问不到 ⇒ 留着，下次连上再交，不出声。
-//!
-//! 4. **机器表**（`config.json` 的 `remote` ⇒ 本机 `machines.json`，[`super::machines`]）：同一位、同一把锁里只读，`machines.json` 不在才换；
+//!    `config.json` 读不懂 / 不在 ⇒ 一个字节不写（读不懂的不当空的搬）。远端每台那几格不搬（不为旧配置留兼容：在那台设置里重设）。
+//! 3. **机器表**（`config.json` 的 `remote` ⇒ 本机 `machines.json`，[`super::machines`]）：同一位、同一把锁里只读，`machines.json` 不在才换；
 //!    每台残留的 `resumeCommand` 等旧格不带过去；`remote` 在而认不出（没有 `hosts` 数组）⇒ 不写、留原样。monitor 读到本机 `machines-read`
 //!    说 `ok` 才删 `remote`。各家旧的那一格数据目录（键名问注册表 `old_home_pref_of`）并进本机那一份 `prefs.json` 的 `agentHomes`。
 //!
@@ -22,7 +19,6 @@
 use super::machine_prefs::{self, write as write_prefs, Prefs, PREFS_ROWS_MAX};
 use super::machines;
 use crate::common::own_state::Doc;
-use crate::dial::remote_ask::{ask_json, Remote, Table};
 use crate::platform::Own;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -34,23 +30,16 @@ pub(crate) const CONFIG_NAME: &str = "config.json";
 /// 本机在 `accounts.byMachine` 里的键（界面的 `LOCAL_ORIGIN`）。
 const LOCAL_ORIGIN: &str = "<local>";
 
-/// 「待交」那一版。
-const HANDOFF_VERSION: u32 = 1;
-
 /// 读盘的上限（同 `prefs.json`：几张小表；机器表封顶 256 台）。
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
-
-/// 「待交」：状态（读不懂 ⇒ 不再交、也不写回）。
-const HANDOFF: Doc<Handoff> = Doc::state(relay_route_core::PREFS_HANDOFF_REL, MAX_BYTES);
 
 /// monitor 那份设置文件（只读，换形的来源）：状态（读不懂 ⇒ 不搬）。
 const CONFIG: Doc<Value> = Doc::state(".cc-monitor/config.json", MAX_BYTES);
 
-/// 拆出来的那几份：本机一份 · 远端每台一份（按 origin）。
+/// 拆出来的那一份：本机的。
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct Plan {
     pub(crate) local: Prefs,
-    pub(crate) remote: BTreeMap<String, Prefs>,
 }
 
 fn text<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -110,25 +99,7 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
     );
     // 数据目录只说本机（设置页那一格从来只管这一台）。
     local.agent_homes = old_homes(cfg);
-    let mut remote = BTreeMap::new();
-    let hosts = cfg.pointer("/remote/hosts").and_then(Value::as_array);
-    for h in hosts.into_iter().flatten() {
-        let origin = match text(h, "label") {
-            "" => text(h, "host"),
-            l => l,
-        };
-        if origin.is_empty() || remote.len() >= PREFS_ROWS_MAX {
-            continue;
-        }
-        let p = one(
-            &cmd_wire::Machine(origin.to_string()),
-            text(h, "resumeCommand"),
-        );
-        if p != Prefs::default() {
-            remote.insert(origin.to_string(), p);
-        }
-    }
-    Plan { local, remote }
+    Plan { local }
 }
 
 /// 起来那一次的结局（判据按它说；生产只记一行日志）。
@@ -140,59 +111,10 @@ pub(crate) enum Migrated {
     NoConfig,
     /// `config.json` 读不懂：一个字节不写（那一句）。
     Unreadable(String),
-    /// 写成了本机那一份，`pending` 台远端待交。
-    Done { pending: usize },
+    /// 写成了本机那一份。
+    Done,
     /// 写没成（那一句）：下次起来再试。
     WriteFailed(String),
-}
-
-/// 「待交」盘上那一形。
-#[derive(serde::Serialize, serde::Deserialize, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Handoff {
-    version: u32,
-    machines: BTreeMap<String, Prefs>,
-}
-
-fn handoff_path(own: &Own) -> Option<std::path::PathBuf> {
-    own.at_home(HANDOFF.rel)
-        .ok()
-        .map(|p| p.as_path().to_path_buf())
-}
-
-/// 还待交的那几台（读不懂 / 不在 ⇒ 空：读不懂的那一份不再交，也不写回）。
-pub(crate) fn read_pending(own: &Own) -> BTreeMap<String, Prefs> {
-    use crate::common::own_state::Read;
-    match handoff_path(own).map(|p| HANDOFF.read(&p)) {
-        Some(Read::Present(h)) if h.version == HANDOFF_VERSION => h.machines,
-        _ => BTreeMap::new(),
-    }
-}
-
-/// 整份写「待交」；一台都不剩 ⇒ 删掉那份文件。
-fn write_pending(own: &Own, machines: BTreeMap<String, Prefs>) -> Result<(), String> {
-    let dir = own.home_dir().map_err(|e| e.said)?;
-    let held = own
-        .lock(&dir)
-        .map_err(|e| crate::common::said::Said::from(e).said)?;
-    let path = dir
-        .join(relay_route_core::file_name_of(HANDOFF.rel))
-        .map_err(|e| e.said)?;
-    if machines.is_empty() {
-        return match own.delete_file(&path) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
-            _ => Ok(()),
-        };
-    }
-    let body = crate::common::own_state::json_body(
-        path.as_path(),
-        &Handoff {
-            version: HANDOFF_VERSION,
-            machines,
-        },
-    )
-    .map_err(|e| e.said)?;
-    own.write(&path, &held, &body).map_err(|e| e.said)
 }
 
 /// 换形那一次的本体（句柄是参数）。
@@ -225,13 +147,9 @@ pub(crate) fn migrate_in(own: &Own) -> Migrated {
         Read::Present(_) => return Migrated::Unreadable(format!("{CONFIG_NAME} is not an object")),
     };
     let p = plan(&cfg);
-    let pending = p.remote.len();
-    // 先记待交、再写本机那一份：`prefs.json` 在 ＝ 换过了（中途断了 ⇒ 下次起来整趟重来，同一份结果）。
-    if let Err(why) = write_pending(own, p.remote) {
-        return Migrated::WriteFailed(why);
-    }
+    // `prefs.json` 在 ＝ 换过了（中途断了 ⇒ 下次起来整趟重来，同一份结果）。
     match write_prefs(own, &p.local) {
-        Ok(()) => Migrated::Done { pending },
+        Ok(()) => Migrated::Done,
         Err(e) => Migrated::WriteFailed(e.said),
     }
 }
@@ -367,20 +285,18 @@ pub(crate) fn agent_homes_before_move(own: &Own) -> BTreeMap<String, std::path::
     }
 }
 
-/// 常驻那一位的写句柄（[`migrate_here`] 填）：填了 ＝ 这个进程是常驻那一位，`remote-reach` 之后才交。
-static RESIDENT_OWN: OnceLock<Own> = OnceLock::new();
+/// 换过一次了（[`migrate_here`] 填）：一个进程只换一次。
+static RAN: OnceLock<()> = OnceLock::new();
 
-/// 本机常驻后端起来时调一次（只在拿到常驻门牌的那个进程里）：换形 ＋ 记下「之后连上的那几台由我交」。
+/// 本机常驻后端起来时调一次（只在拿到常驻门牌的那个进程里）。
 pub fn migrate_here(own: &Own) {
-    if RESIDENT_OWN.set(own.clone()).is_err() {
+    if RAN.set(()).is_err() {
         tracing::warn!("换形那一段被叫了第二次（只该在常驻那一位起来时叫一次）：这一次不换");
         return;
     }
     match migrate_in(own) {
         Migrated::AlreadyThere | Migrated::NoConfig => {}
-        Migrated::Done { pending } => {
-            tracing::info!("这台的偏好从 config.json 搬进了 prefs.json（远端待交 {pending} 台）")
-        }
+        Migrated::Done => tracing::info!("这台的偏好从 config.json 搬进了 prefs.json"),
         Migrated::Unreadable(why) => tracing::warn!("config.json 读不懂，这台的偏好没搬：{why}"),
         Migrated::WriteFailed(why) => tracing::warn!("这台的偏好没搬成，下次起来再试：{why}"),
     }
@@ -392,84 +308,6 @@ pub fn migrate_here(own: &Own) {
         MachinesMoved::Unreadable(why) => tracing::warn!("config.json 的机器表认不出，没搬：{why}"),
         MachinesMoved::WriteFailed(why) => tracing::warn!("机器表没搬成，下次起来再试：{why}"),
     }
-}
-
-/// 交给一台的结局。
-#[derive(Debug, PartialEq)]
-pub(crate) enum HandedOver {
-    /// 待交里没有这一台：一句都不问。
-    Nothing,
-    /// 那台还没有偏好 ⇒ 交过去了。
-    Given,
-    /// 那台已经有（读得懂 · 读不懂）⇒ 没盖。
-    AlreadyThere,
-    /// 问不到 / 交没成 ⇒ 留着，下次连上再交（那一句）。
-    Kept(String),
-}
-
-/// 交给 `machine` 那一台（经可达表问它后端：先 `prefs-read`，没设过 ⇒ 整份 `prefs-set`）。
-pub(crate) async fn hand_over(
-    own: &Own,
-    machine: &cmd_wire::Machine,
-    tz: &crate::Tz,
-    table: &Table,
-    remote: &dyn Remote,
-) -> HandedOver {
-    use machine_prefs::{FileState, PrefsRead, PrefsSetCmd};
-    let origin = machine.as_wire_str();
-    let mut pending = read_pending(own);
-    let Some(share) = pending.get(origin).cloned() else {
-        return HandedOver::Nothing;
-    };
-    let read = ask_json::<PrefsRead>(origin, &Default::default(), tz, table, remote).await;
-    let got = match read.map(|r| r.state) {
-        Err(e) => return HandedOver::Kept(e.message),
-        Ok(FileState::Absent) => {
-            let set = machine_prefs::PrefsSet::from(&share);
-            match ask_json::<PrefsSetCmd>(origin, &set, tz, table, remote).await {
-                Ok(_) => HandedOver::Given,
-                Err(e) => return HandedOver::Kept(e.message),
-            }
-        }
-        Ok(FileState::Ok | FileState::Unreadable) => HandedOver::AlreadyThere,
-    };
-    pending.remove(origin);
-    if let Err(why) = write_pending(own, pending) {
-        tracing::warn!("待交那一份没改成（{origin} 下次连上会再问一次）：{why}");
-    }
-    got
-}
-
-/// `remote-reach` 登记完那一台之后调：常驻那一位、待交里有它 ⇒ 后台交一次（不挡那一答）。
-pub(crate) fn after_reach(machine: &cmd_wire::Machine, tz: crate::Tz) {
-    let Some(own) = RESIDENT_OWN.get().cloned() else {
-        return;
-    };
-    if !read_pending(&own).contains_key(machine.as_wire_str()) {
-        return;
-    }
-    let machine = machine.clone();
-    tokio::spawn(async move {
-        let remote = crate::dial::remote_ask::DialRemote;
-        let got = hand_over(
-            &own,
-            &machine,
-            &tz,
-            &crate::dial::remote_ask::REACH,
-            &remote,
-        )
-        .await;
-        match got {
-            HandedOver::Given => {
-                tracing::info!("从旧设置搬来的偏好交给了 {}", machine.as_wire_str())
-            }
-            HandedOver::Kept(why) => tracing::info!(
-                "偏好还没交给 {}，下次连上再交：{why}",
-                machine.as_wire_str()
-            ),
-            HandedOver::Nothing | HandedOver::AlreadyThere => {}
-        }
-    });
 }
 
 #[cfg(test)]

@@ -36,7 +36,7 @@ export async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
   // ≥2 台：选主机菜单（全产品那一个弹出菜单）。
   openMenu(
     { el: anchor, align: "end" },
-    hosts.map((h) => ({ label: h.label || h.host, onClick: () => void openFileWindow(h) })),
+    hosts.map((h) => ({ label: h.name, onClick: () => void openFileWindow(h) })),
     { label: copyText("main.sftp.pickHost") },
   );
 }

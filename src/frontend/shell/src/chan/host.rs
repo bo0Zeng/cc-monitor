@@ -417,7 +417,7 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
             copy_text("rsChanHost.transfer.localNone", &[]),
         ));
     }
-    let Some(cfg) = crate::load_remote_config_by_label(origin.as_wire_str()) else {
+    if !crate::machine_table::has(origin.as_wire_str()) {
         return Err(refused(
             "no_such_origin",
             copy_text(
@@ -425,14 +425,14 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
                 &[("machine", &(origin.as_wire_str()).to_string())],
             ),
         ));
-    };
-    match crate::sftp_pool::transfer_call(cfg, &op.0, &args).await {
+    }
+    match crate::sftp_pool::transfer_call(origin.as_wire_str().to_string(), &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
 }
 
-/// 两台之间复制一组：源 ＝ 寻址的那台，落点 ＝ 载荷里 `to` 那台；两台的配置都按名字取（本机不是一台能拨的远端 ⇒ 说真实原因）。
+/// 两台之间复制一组：源 ＝ 寻址的那台，落点 ＝ 载荷里 `to` 那台；两台都要在机器表里（本机不是一台能拨的远端 ⇒ 说真实原因）。
 /// 本机后端做完整组才回 ⇒ 等的上限是窗口给的 `left`。
 async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
     let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
@@ -443,7 +443,6 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let mut cfgs = Vec::with_capacity(2);
     for machine in [origin.as_wire_str().to_string(), to] {
         if machine == inbound_client::LOCAL_ORIGIN {
             return Err(refused(
@@ -451,25 +450,22 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
                 copy_text("rsChanHost.transfer.localNone", &[]),
             ));
         }
-        let Some(cfg) = crate::load_remote_config_by_label(&machine) else {
+        if !crate::machine_table::has(&machine) {
             return Err(refused(
                 "no_such_origin",
                 copy_text("rsChanHost.transfer.noConfig", &[("machine", &machine)]),
             ));
-        };
-        cfgs.push(cfg);
+        }
     }
-    let to_cfg = cfgs.pop().expect("两台");
-    let from_cfg = cfgs.pop().expect("两台");
-    match crate::sftp_pool::copy_call(from_cfg, to_cfg, &args, left).await {
+    match crate::sftp_pool::copy_call(origin.as_wire_str().to_string(), &args, left).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
 }
 
-/// **文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里补那台的机器事实
-/// （monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）、问本机后端 `terminal-ssh` 渲那一行、交 `open_terminal_window` 开窗 ——
-/// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal_dial` → `terminal-ssh` → `open_terminal_window`）。
+/// **文件窗口「在此打开终端」**：窗口只交意图（寻址 ＝ 那台 · 参数 `{cwd}`），这里只补那台的名字、
+/// 问本机后端 `terminal-ssh` 渲那一行（怎么拨照它的机器表）、交 `open_terminal_window` 开窗 ——
+/// 与主界面开终端同一条路（`src/frontend/ui/terminal-open.ts`：`terminal-ssh` → `open_terminal_window`）。
 /// 窗口不拼命令、不认识 monitor 的配置；成败作为这一次 `call` 的应答回去，那句话照旧画在窗口上。
 async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
     let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
@@ -485,7 +481,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             copy_text("rsChanHost.terminal.localNone", &[]),
         ));
     }
-    let Some(cfg) = crate::load_remote_config_by_label(origin.as_wire_str()) else {
+    if !crate::machine_table::has(origin.as_wire_str()) {
         return Err(refused(
             "no_such_origin",
             copy_text(
@@ -493,9 +489,8 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
                 &[("machine", &(origin.as_wire_str()).to_string())],
             ),
         ));
-    };
-    let mut ask = crate::dial_host::machine_facts(&cfg);
-    ask["cwd"] = cwd.clone();
+    }
+    let ask = serde_json::json!({ "machine": origin.as_wire_str(), "cwd": cwd.clone() });
     let Some(local) = inbound_client::client_for(inbound_client::LOCAL_ORIGIN) else {
         return Err(backend_route::layer_no_channel(HOP));
     };

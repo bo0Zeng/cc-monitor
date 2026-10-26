@@ -14,8 +14,6 @@
 use crate::copy_table::copy_text;
 use crate::detail::Said;
 
-use crate::stream_source::RemoteConfig;
-
 /// 本机常驻后端那两条命令的名字（命令表 `src/backend/stream/inbound/registry/machine.rs` 里那两行）。
 pub(crate) const INSTALL_CMD: &str = "deploy-install";
 pub(crate) const UNINSTALL_CMD: &str = "deploy-uninstall";
@@ -122,22 +120,20 @@ fn slots_dir() -> Option<std::path::PathBuf> {
 }
 
 /// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。
-async fn install(cfg: &RemoteConfig) -> Result<Installed, Said> {
-    install_for(cfg, slot_rows()?).await
+async fn install(machine: &str) -> Result<Installed, Said> {
+    install_for(machine, slot_rows()?).await
 }
 
-/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（怎么够到那台 · 带着哪几格 · 那台叫什么），回应答原样。
+/// 问本机常驻后端一条装 / 卸的命令：入参只有事实（带着哪几格 · 那台叫什么；怎么够到它照本机后端的机器表），回应答原样。
 async fn ask_backend(
-    cfg: &RemoteConfig,
+    machine: &str,
     cmd: &'static str,
     slots: Vec<serde_json::Value>,
-    dial: &serde_json::Value,
 ) -> Result<serde_json::Value, Said> {
     use crate::backend_route::{route_call_error, Routed};
     let args = serde_json::json!({
-        "dial": dial,
         "slots": slots,
-        "machine": cfg.origin_label(),
+        "machine": machine,
     });
     let client = crate::dial_host::local_backend_accepting(cmd)
         .await
@@ -155,9 +151,8 @@ async fn ask_backend(
 }
 
 /// [`install`] 的本体，「带着哪几格」由调用方交（生产 = 这一版的槽落成的文件；回环台架交它送去的那一份）。
-async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
-    let dial = crate::dial_host::transfer_dial(cfg);
-    let data = ask_backend(cfg, INSTALL_CMD, slots, &dial).await?;
+async fn install_for(machine: &str, slots: Vec<serde_json::Value>) -> Result<Installed, Said> {
+    let data = ask_backend(machine, INSTALL_CMD, slots).await?;
     decode_installed(&data).map_err(|said| Said::new(said, INSTALL_CMD, None))
 }
 
@@ -167,9 +162,9 @@ async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Resul
 /// 但那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志。
 /// 返回值：`Ok(build)` = 已**确认**落点上那一份自报的身份（装上了这一版 · 已是这一版 · 那台不比这一版旧时是那台的）。
 /// 调用方据此决定是否传新版才认识的流模式参数 —— `Err` 一律降级不传。
-pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Said> {
-    let got = install(cfg).await?;
-    tracing::info!("远端 [{}] 部署：{}", cfg.origin_label(), got.said);
+pub async fn ensure_backend_deployed(machine: &str) -> Result<String, Said> {
+    let got = install(machine).await?;
+    tracing::info!("远端 [{machine}] 部署：{}", got.said);
     Ok(got.build)
 }
 
@@ -180,34 +175,51 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Said>
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）：与自动部署同一趟（[`install`]），回那一句。
 /// 那台不比这一版旧 ⇒ 手动点也不降级：那一句后面接出路（先卸载再部署 = 明确授权覆盖）。
 #[tauri::command]
-pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
-    install(&cfg)
-        .await
-        .map(|got| match got.did {
-            Did::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
-            Did::Skip | Did::Deploy => got.said,
-        })
-        .map_err(|s| s.named("deploy_remote_backend"))
+pub async fn deploy_remote_backend(origin: String) -> Result<String, Said> {
+    let r = async {
+        remote_in_table(&origin)?;
+        install(&origin).await
+    }
+    .await;
+    r.map(|got| match got.did {
+        Did::Keep => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &got.said)]),
+        Did::Skip | Did::Deploy => got.said,
+    })
+    .map_err(|s| s.named("deploy_remote_backend"))
+}
+
+/// 装 · 卸只对机器表里的一台远端：本机不经这两条命令（本机那一份由宿主起来时自己放），表里没有那台 ⇒ 说是哪台、不去问后端。
+fn remote_in_table(origin: &str) -> Result<(), Said> {
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        return Err(Said::of("reason.code.bug", &[]));
+    }
+    if !crate::machine_table::has(origin) {
+        return Err(Said::of(
+            "rsBackendControl.handle.missing",
+            &[("origin", &origin.to_string())],
+        ));
+    }
+    Ok(())
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：请本机常驻后端删那台落点那一份（它就是 `ccm`，卸后端就是卸 `ccm`），回后端写的那一句。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
-pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
+pub async fn uninstall_remote_backend(origin: String) -> Result<String, Said> {
     let r = async {
+        remote_in_table(&origin)?;
         let slots = slot_rows()?;
-        uninstall_for(&cfg, slots).await
+        uninstall_for(&origin, slots).await
     }
     .await;
     r.map_err(|s| s.named("uninstall_remote_backend"))
 }
 
 /// [`uninstall_remote_backend`] 的本体，「带着哪几格」由调用方交（同 [`install_for`]）。
-async fn uninstall_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Result<String, Said> {
-    let dial = crate::dial_host::transfer_dial(cfg);
-    let data = ask_backend(cfg, UNINSTALL_CMD, slots, &dial).await?;
+async fn uninstall_for(machine: &str, slots: Vec<serde_json::Value>) -> Result<String, Said> {
+    let data = ask_backend(machine, UNINSTALL_CMD, slots).await?;
     let said = decode_uninstalled(&data).map_err(|said| Said::new(said, UNINSTALL_CMD, None))?;
-    tracing::info!("远端 [{}] 卸载后端：{said}", cfg.origin_label());
+    tracing::info!("远端 [{machine}] 卸载后端：{said}");
     Ok(said)
 }
 

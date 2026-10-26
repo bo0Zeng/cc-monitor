@@ -309,12 +309,13 @@ struct DropSignal(#[allow(dead_code)] mpsc::Sender<()>);
 #[tokio::test]
 async fn open_refuses_what_it_should_with_a_code() {
     let (tx, _rx) = mpsc::channel::<Frame>(16);
-    let table = Table::new(tx);
+    // 机器表里那一台（只交名字，怎么拨照表）。
+    let table = Table::with_machines(tx, Arc::new(|| vec![dead_host(1)]));
     let code = |f: Frame| match f {
         Frame::Reply(crate::wire::Reply { code, .. }) => code.unwrap_or_default(),
         _ => String::new(),
     };
-    let dial = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u"}});
+    let dial = serde_json::json!({"machine": "dead"});
     assert_eq!(code(table.open("a", &serde_json::json!({}))), "bad_args");
     assert_eq!(
         code(table.open("a", &serde_json::json!({"link": ""}))),
@@ -414,13 +415,13 @@ async fn a_real_dial_to_a_dead_port_answers_one_failed_ack_on_the_link() {
         l.local_addr().unwrap().port()
     };
     let (tx, mut rx) = mpsc::channel::<Frame>(64);
-    let table = Table::new(tx);
+    let table = Table::with_machines(tx, Arc::new(move || vec![dead_host(port)]));
     let r = table.open(
         "o",
         &serde_json::json!({
             "link": "D",
             "window": 1 << 20,
-            "dial": {"machine": {"host":"127.0.0.1","port":port,"user":"u"},
+            "dial": {"machine": "dead",
                      "use":"capture","command":"true",
                      "capture":{"max_bytes":16}}
         }),
@@ -456,4 +457,12 @@ async fn a_real_dial_to_a_dead_port_answers_one_failed_ack_on_the_link() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert_eq!(table.len(), 0);
+}
+
+/// 机器表里那一台：本机回环上的 `port`（没人听 ⇒ 拨一定断），名字 `dead`。
+fn dead_host(port: u16) -> super::super::Host {
+    super::super::machine::loose(
+        &serde_json::json!({"label": "dead", "host": "127.0.0.1", "port": port, "user": "u"}),
+    )
+    .unwrap()
 }

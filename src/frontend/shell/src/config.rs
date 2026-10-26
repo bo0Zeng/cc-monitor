@@ -306,19 +306,16 @@ fn default_config() -> Value {
     serde_json::json!({})
 }
 
-/// F87b③ 起：**已配置且启用**的远端 origin（canonical `origin_label()`）。今天它是通用的「列远端配置标签」（历史清单 · 搜索 ·
+/// F87b③ 起：**已配置且启用**的远端 origin（本机后端机器表里算好的名字，`machine_table`）。今天它是通用的「列远端配置标签」（历史清单 · 搜索 ·
 /// cc-bus 两块 · MCP 推 / 拉面板都用它）：读的是 monitor 自己的配置 —— 从 `mcp.rs` 挪来（MCP 读写进了那台后端，`mcp.rs` 删了）。
 #[tauri::command]
 pub async fn list_remote_mcp_origins() -> Result<Vec<String>, Said> {
     let r: Result<Vec<String>, Said> = async move {
-        Ok(tokio::task::spawn_blocking(|| {
-            crate::load_remote_configs()
-                .iter()
-                .map(|c| c.origin_label())
-                .collect()
-        })
-        .await
-        .map_err(Said::crashed)?)
+        Ok(crate::machine_table::rows_now()
+            .into_iter()
+            .filter(|r| r.connect)
+            .map(|r| r.name)
+            .collect())
     }
     .await;
     r.map_err(|s| s.named("list_remote_mcp_origins"))

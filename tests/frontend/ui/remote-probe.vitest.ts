@@ -1,10 +1,11 @@
 /**
  * 「测试连接：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求、拨一次」——
- * 界面那一侧：交过去的是表单那一台 ＋ 已保存的同名那一份 ＋ 跳板那一台（问 `<local>` 的 `remote-probe`）。
+ * 界面那一侧：交过去的只是表单那一台（跳板照本机后端的机器表按名字找；问 `<local>` 的 `remote-probe`）。
  * 〔「进度不许倒退」〕进度边拨边推：先订 `probe-progress/<票>` 再问；每一格（后端写好的那一句 ＋ 四段）边收边交 `onCell`；
  * 结局是进度流的最后一格（可以晚于应答到）。停在哪一步、等多久算没结果由后端判（结局那一格说）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Host } from "../../../src/frontend/ui/generated/Host";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -36,12 +37,11 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
 
 import { ChanError } from "../../../src/comms/inward/chan";
 import { probeMachine, PROBE_PROGRESS_KIND } from "../../../src/frontend/ui/remote-probe";
-import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { ProbeCell } from "../../../src/frontend/ui/generated/ProbeCell";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
+const host = (over: Partial<Host>): Host => ({
   label: "devbox",
   host: "192.0.2.2",
   port: 22,
@@ -86,8 +86,7 @@ describe("请求与进度", () => {
       return Promise.resolve(new TextEncoder().encode("null"));
     };
     const form = host({ host: "192.0.2.3", jump: "bastion" });
-    const saved = [host({ label: "other" }), host({ label: "bastion", host: "b.example" }), host({ keyPath: "/k/old" })];
-    const r = await probeMachine(form, saved, (c) => drawn.push(c));
+    const r = await probeMachine(form, (c) => drawn.push(c));
     expect(fake.order).toEqual(["subscribe", "call"]);
     const sub = fake.subs[0]!;
     expect(sub.origin).toBe(LOCAL_ORIGIN);
@@ -96,7 +95,7 @@ describe("请求与进度", () => {
     expect(body).toEqual({
       origin: LOCAL_ORIGIN,
       op: "remote-probe",
-      args: { ticket, machine: form, jump: saved[1] },
+      args: { ticket, machine: form },
     });
     expect(r).toEqual(ok);
     expect(sub.stopped, "结局到了就撤订").toBe(true);
@@ -107,7 +106,7 @@ describe("请求与进度", () => {
       setTimeout(() => push(ok), 0);
       return Promise.resolve(new TextEncoder().encode("null"));
     };
-    await expect(probeMachine(host({}), [], () => {})).resolves.toEqual(ok);
+    await expect(probeMachine(host({}), () => {})).resolves.toEqual(ok);
   });
 
   it("通道没成（本机后端不在 · 到点没回）⇒ 抛那一句人话", async () => {
@@ -115,7 +114,7 @@ describe("请求与进度", () => {
       push(dialing);
       return Promise.reject(overrun());
     };
-    const err = await probeMachine(host({}), [], () => {}).catch((e: unknown) => e);
+    const err = await probeMachine(host({}), () => {}).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
     expect(fake.subs[0]!.stopped).toBe(true);
   });
@@ -125,7 +124,7 @@ describe("请求与进度", () => {
       fake.subs[0]!.sink([{ t: "gap", fromSeq: 0, toSeq: 1 }]);
       return Promise.resolve(new TextEncoder().encode("null"));
     };
-    await expect(probeMachine(host({}), [], () => {})).rejects.toThrow();
+    await expect(probeMachine(host({}), () => {})).rejects.toThrow();
   });
 
   it("进度流名与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串", () => {

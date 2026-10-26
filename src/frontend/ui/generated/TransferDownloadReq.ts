@@ -2,9 +2,14 @@
 import type { Decide } from "./Decide";
 import type { DownloadItem } from "./DownloadItem";
 import type { OnExists } from "./OnExists";
+import type { Origin } from "./Origin";
 import type { WirePath } from "./WirePath";
 
 /**
  * monitor 转给本机后端的 `transfer-download`。
  */
-export type TransferDownloadReq = { dial: Record<string, unknown>, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+export type TransferDownloadReq = { 
+/**
+ * 那台远端的名字。
+ */
+machine: Origin, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };

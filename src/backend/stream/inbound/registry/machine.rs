@@ -79,7 +79,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::faces::read_face::DriftReportCmd>("这台后端的漂移账"),
     // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
     //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
-    //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`stream::cli::STREAM_ONLY`）。
+    //   停 / 列 = 纯内存（一把锁），不进阻塞档。三条都只在流面上有意义（`stream::cli::STREAM_ONLY`）。
     crate::wire::typed::asynchronous::<crate::dial::forwards::ForwardStart>("起一条本地端口转发"),
     // 〔「后端持有全部 SSH」〕测试连接：
     //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
@@ -87,12 +87,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::dial::probe::RemoteProbe>("测试连接"),
     crate::wire::typed::asynchronous::<crate::dial::forwards::ForwardStop>("停一条转发"),
     crate::wire::typed::asynchronous::<crate::dial::forwards::ForwardList>("列转发"),
-    // **可达表登记**：monitor（宿主，只交事实）在每台远端流握手成功那一刻交「怎么够到那台」
-    //   （拨号请求 ＋ 那台后端的路径），本机后端记进内存可达表（`remote_ask`，后端重启就空）。**只登记，不拨号**：
-    //   之后「本机后端问远端后端」的两路（资产目录同步 · 历史跨机 join）都查这张表。老远端也登记（历史问它的是老子命令）。
-    crate::wire::typed::asynchronous::<crate::faces::remote_reach_face::RemoteReach>(
-        "本机后端的可达表登记",
-    ),
     crate::wire::typed::blocking::<crate::faces::read_face::BackendLog>(
         "这台后端的 stderr 诊断文件尾部",
     ),

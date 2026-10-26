@@ -1,5 +1,5 @@
 /**
- * 截图台架那个按口转发的假 ssh（`real/pool.mjs::forwarderSh`，本机沙箱里 sshd 的登录壳）与它交本机后端登记的那一份（`reachArgs`）。
+ * 截图台架那个按口转发的假 ssh（`real/pool.mjs::forwarderSh`，本机沙箱里 sshd 的登录壳）与它写进本机后端机器表的那一台（`reachHost`）。
  *
  * - 按连进来的口认台：第 k 台 ⇒ 那台常驻的套接字目录（`CCM_DATA_DIR`），产品单引号过的那几格原样切回来、stdin 那一行原样交过去。
  * - 只转问常驻那一形：别的命令 · 不认的口一律拒（台架那几台之外谁也够不着）。
@@ -16,9 +16,9 @@ import { describe, expect, it } from "vitest";
 
 const POOL = "./real/pool.mjs";
 type Peer = { port: number; k: number; refuse?: string[] };
-const { forwarderSh, reachArgs, PEER_PORT_BASE } = (await import(POOL)) as {
+const { forwarderSh, reachHost, PEER_PORT_BASE } = (await import(POOL)) as {
   forwarderSh: (peers: Peer[], backend?: string) => string;
-  reachArgs: (origin: string, k: number) => { origin: string; dial: { machine: { host: string; port: number } } };
+  reachHost: (origin: string, k: number) => { label: string; host: string; port: number };
   PEER_PORT_BASE: number;
 };
 
@@ -84,9 +84,9 @@ describe.skipIf(process.platform === "win32")("按口转发的假 ssh", () => {
     expect([injected.status, injected.stdout]).toEqual([127, ""]);
   });
 
-  it("登记的拨号拨的就是转发认的那个口", () => {
-    const r = reachArgs("gpu-01", 1);
-    expect(r.origin).toBe("gpu-01");
-    expect([r.dial.machine.host, r.dial.machine.port]).toEqual(["127.0.0.1", PEER_PORT_BASE + 1]);
+  it("写进机器表的那一台拨的就是转发认的那个口", () => {
+    const r = reachHost("gpu-01", 1);
+    expect(r.label).toBe("gpu-01");
+    expect([r.host, r.port]).toEqual(["127.0.0.1", PEER_PORT_BASE + 1]);
   });
 });
