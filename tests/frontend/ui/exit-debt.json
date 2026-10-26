@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 3112,
+  "ceiling": 3113,
   "groups": [
     {
       "kind": "首登",
@@ -36,11 +36,19 @@
         ["src/frontend/filewin/src/platform.rs", "key", 1],
         ["src/frontend/filewin/src/preview.rs", "key", 12],
         ["src/frontend/filewin/src/proc.rs", "key", 2],
-        ["src/frontend/filewin/src/progress.rs", "key", 31],
+        ["src/frontend/filewin/src/progress.rs", "key", 32],
         ["src/frontend/filewin/src/props.rs", "key", 13],
         ["src/frontend/filewin/src/rows.rs", "key", 4],
         ["src/frontend/filewin/src/select.rs", "key", 12],
-        ["src/frontend/filewin/src/shell.rs", "key", 86],
+        ["src/frontend/filewin/src/shell.rs", "key", 12],
+        ["src/frontend/filewin/src/shell/cross.rs", "key", 9],
+        ["src/frontend/filewin/src/shell/edit.rs", "key", 28],
+        ["src/frontend/filewin/src/shell/frame.rs", "key", 8],
+        ["src/frontend/filewin/src/shell/keys.rs", "key", 5],
+        ["src/frontend/filewin/src/shell/search.rs", "key", 4],
+        ["src/frontend/filewin/src/shell/trips.rs", "key", 12],
+        ["src/frontend/filewin/src/shell/window.rs", "key", 2],
+        ["src/frontend/filewin/src/shell/writes.rs", "key", 5],
         ["src/frontend/filewin/src/size.rs", "key", 6],
         ["src/frontend/filewin/src/source.rs", "key", 15],
         ["src/frontend/filewin/src/transfer.rs", "key", 4],
@@ -359,7 +367,7 @@
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/crypto/SshKeyGenerator.kt", "key", 2],
         ["src/mobile/core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/LegacyButtons.kt", "branch", 9],
         ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/HostKeyChangedException.kt", "key", 1],
-        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 19],
+        ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/RustTransport.kt", "key", 20],
         ["src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt", "key", 3]
       ]
     }
