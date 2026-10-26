@@ -266,6 +266,9 @@ pub enum BatchEdge {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionUnseenPayload {
     pub origin: crate::origin::Origin,
+    /// 那几条落成的那一张脸：本机后端造好、随它的 hello 交来的那一份（界面照它画，不自己拼）；本机后端还没握上手 ⇒ `null`（不画点）。
+    #[cfg_attr(test, ts(type = "import(\"./SessionFace\").SessionFace | null"))]
+    pub face: Option<cmd_wire::frame::SessionFace>,
 }
 
 /// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：后端 `live` 帧的帧体原样（核心拼好的活卡，见后端 `wire::LiveCard`）＋ 哪台机器。

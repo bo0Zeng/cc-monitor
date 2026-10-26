@@ -265,6 +265,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
                 shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
                 frames: [(s("line"), s("0000abcd"))].into_iter().collect(),
+                unseen: None,
             }),
             Frame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
@@ -274,6 +275,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_env: Default::default(),
                 shapes: Default::default(),
                 frames: Default::default(),
+                unseen: None,
             }),
         ],
         [
@@ -1299,6 +1301,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             host_env,
             shapes: Default::default(),
             frames: Default::default(),
+            unseen: None,
         }))
         .unwrap()
     };
@@ -1384,6 +1387,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             host_env: Default::default(),
             shapes: Default::default(),
             frames: Default::default(),
+            unseen: None,
         }),
         Frame::Line(crate::wire::Line {
             session_id: "s".into(),
@@ -1989,5 +1993,27 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
             fate(crate::wire::SessionFate::Ended)
         ),
         (Some(4), Some(5))
+    );
+}
+
+/// 那台看不见时画的那一张（本机后端替它造，随 hello 交给壳）：点「说不清」、不说在跑、不是定局；
+/// 只在右键菜单里关，不给恢复（也许还在跑，再起一份就是同一会话两个进程），别的都不给；字里不写机器名。
+#[test]
+fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
+    use cmd_wire::frame::{Allow, CanClose, CanTerm, FaceLive, SessionDot};
+    let f = crate::wire::SessionFace::of(Life::Unseen);
+    assert_eq!(f.dot, SessionDot::Unknown);
+    assert_eq!(f.live, FaceLive::No);
+    assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");
+    assert_eq!(f.can.close, CanClose::Menu);
+    assert!(matches!(f.can.resume, Allow::No { .. }));
+    assert!(matches!(f.can.term, CanTerm::No { .. }));
+    for a in [&f.can.reattach, &f.can.model, &f.can.permission] {
+        assert!(matches!(a, Allow::No { .. }), "{a:?}");
+    }
+    assert_eq!(
+        f.line.0,
+        copy_core::copy_text("sessionState.unseen.tooltip", &[]),
+        "字里不写机器名（哪台由界面在别处写）"
     );
 }

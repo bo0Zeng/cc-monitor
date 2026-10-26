@@ -1373,6 +1373,20 @@ impl StdioRoute {
     }
 }
 
+/// **读本机后端 hello 的那一处**：是 hello ⇒ 见证（`inbound_client::witness_of`），顺手记下它带来的「那台看不见」那张脸
+/// （`session_book` 那一本记下：壳只取本机后端这一份，每发一格「说不清」都带上它）。本机两条载体（stdio · 常驻套接字）都经它。
+pub(crate) fn local_witness(
+    frame: &crate::stream_source::Frame,
+) -> Option<crate::inbound_client::BackendHello> {
+    let witness = crate::inbound_client::witness_of(frame)?;
+    if let cmd_wire::frame::Frame::Hello(h) = frame {
+        crate::session_book::feed(crate::session_book::In::UnseenFace {
+            face: h.unseen.clone(),
+        });
+    }
+    Some(witness)
+}
+
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
 /// 10a：`client_for("<local>")` 今天的生产消费者**只有读**（`backend_status` 问「通道在不在」）。
@@ -1495,7 +1509,7 @@ pub(crate) fn local_stdio_consumer(
         };
         // 还没登记时先看它是不是 hello；别的（或已经登记过了）⇒ 分派第一层，有序的那几种送进本机内容通道（裸线程 ⇒ `_blocking` 那一形）。
         let witness = if parked.is_some() {
-            crate::inbound_client::witness_of(&frame)
+            local_witness(&frame)
         } else {
             None
         };

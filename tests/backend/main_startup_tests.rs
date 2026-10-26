@@ -1,5 +1,7 @@
 //! `main.rs` 起来那一下：拨号层要的「这一端的机器表怎么读」装上了（不装 ⇒ 生产上 `link-open` · 问那台 · 传输 · 部署按名字查不到机器）。
-//! 装的那一处在 `main` 打头、分流之前（`ccm` 那一趟 · 一次性子命令 · 常驻都走得到）。
+//! 装的那一处在 `main` 打头、分流之前（`ccm` 那一趟 · 一次性子命令 · 常驻都走得到）；hello 那一帧带的几样也钉在这里。
+
+use super::*;
 
 /// `main` 的函数体：从 `async fn main() {` 到分流那一步（`control::ccm::route`）之前。
 fn main_head() -> &'static str {
@@ -26,4 +28,13 @@ fn the_machine_table_is_installed_before_anything_is_dispatched() {
         vec!["faces::install_machines();"],
         "`main` 分流之前恰好装一次机器表（`faces::install_machines`）"
     );
+}
+
+/// hello 带着「那台看不见」那一张脸（壳取本机后端这一份，界面不自己拼）。
+#[test]
+fn the_hello_carries_the_unseen_face() {
+    let Frame::Hello(h) = super::build_hello() else {
+        panic!("build_hello 不是 hello");
+    };
+    assert_eq!(h.unseen, Some(wire::unseen_face()));
 }

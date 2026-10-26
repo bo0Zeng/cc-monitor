@@ -59,7 +59,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
             Out::Listed { origin, all } => {
                 format!("listed {origin}{}", if *all { " all" } else { "" })
             }
-            Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
+            Out::Unseen { origin, sids, .. } => format!("unseen {origin} {sids:?}"),
             Out::Runs { runs, .. } => format!("runs {}", runs.sid),
             Out::Branch { sid, .. } => format!("branch {sid}"),
         })
@@ -116,7 +116,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }
-                Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
+                Out::Unseen { origin, sids, .. } => format!("unseen {origin} {sids:?}"),
                 Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {}/{sid}", origin.as_wire_str()),
@@ -153,7 +153,10 @@ fn unseen_is_one_machine_level_cell() {
         .iter()
         .map(|o| serde_json::to_string(&o.frame()).unwrap())
         .collect();
-    assert_eq!(frames, vec![r#"{"unseen":{"origin":"pi"}}"#.to_string()]);
+    assert_eq!(
+        frames,
+        vec![r#"{"unseen":{"origin":"pi","face":null}}"#.to_string()]
+    );
 }
 
 /// ★ 活会话一格 `added`，就是那台的 `session_added`：骨架那几格 · 此刻的灯与名字 · 容器 · 隐藏那一格一起带（不再拆成三格、不重拼）。期望值手写。
@@ -424,4 +427,34 @@ fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_
             sum: Some("s4".into()),
         }]
     );
+}
+
+/// 「说不清」那一格带的脸是本机后端 hello 交来的那一张（壳只转交，不自己拼）；本机后端还没握上手 ⇒ `null`（界面不画点）。
+#[test]
+fn the_unseen_cell_carries_the_face_the_local_backend_handed_over() {
+    let faces = |outs: Vec<Out>| -> Vec<Option<cmd_wire::frame::SessionFace>> {
+        outs.iter()
+            .filter_map(|o| match o.frame() {
+                crate::ui_contract::SessionStreamFrame::Unseen(p) => Some(p.face),
+                _ => None,
+            })
+            .collect()
+    };
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    let lost = b.step(In::LinkLost {
+        origin: "pi".into(),
+    });
+    assert_eq!(faces(lost), vec![None], "本机后端还没握上手 ⇒ 不画点");
+    let face = crate::frame_fixtures::session_state("a", "ended", "T").face;
+    assert!(b
+        .step(In::UnseenFace {
+            face: Some(face.clone())
+        })
+        .is_empty());
+    b.step(live("pi", "a"));
+    let lost = b.step(In::LinkLost {
+        origin: "pi".into(),
+    });
+    assert_eq!(faces(lost), vec![Some(face)], "照本机后端交来的那一张");
 }
