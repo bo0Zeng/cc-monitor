@@ -21,6 +21,7 @@
 | `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
 | `shapes` | {string: string}? | typed 命令的形状指纹 `{命令: 8 位十六进制}`（`crate::shapes::SHAPES`） |
 | `frames` | {string: string}? | 每种帧（`hello` 除外）的形状指纹 `{kind: 8 位十六进制}`（`crate::frame_shapes::FRAMES`） |
+| `unseen` | SessionFace? | 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造（`SessionFace::of(Life::Unseen)`），壳只取本机后端那一份，每发一格「说不清」都带上它 |
 
 ### `line`
 
@@ -129,14 +130,9 @@ A session file went away。
 
 ### `changed`
 
-**这台的某样东西变了，客户端重读那一份**（主题 `Topic`）。
+**这台的某样东西变了，客户端重读那一份**：按主题（`Topic`，线上 `topic`）分臂，每臂只有那个主题带的那几格。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `topic` | Topic | 哪一样变了 |
-| `key` | string? | 哪一个（会话 id · 工作区根）；主题不带 ⇒ 缺 |
-| `rev` | string? | 变成了哪一版；主题不带 ⇒ 缺 |
-| `body` | JSON? | 那一样的小成品；主题不带或超了上限 ⇒ 缺（客户端重问） |
+（无字段）
 
 ### `sessions_replayed`
 
@@ -278,6 +274,22 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`） |
+
+#### `PlanNeeds`
+
+`changed {plan}` 的体：这个工作区此刻要你看的数（没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `needs` | number |  |
+
+#### `HiddenNow`
+
+`changed {session_hidden}` 的体：那个会话隐藏那一格此刻的样子（不隐藏 ⇒ `null`）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `hidden` | Hidden? |  |
 
 #### `SessionActivity`
 
@@ -2437,6 +2449,102 @@ tokensPerPct?: number, };
 
 码：`bad_args`
 
+#### `session-account`
+
+一条会话的号。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-account`
+
+入参 `SessionAccountReq` · 回包 `SessionAccountReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type SessionAccountReply = { 
+/**
+ * 号名（头像按它取色；`_` ＝ 没指定号）；不知道 ⇒ `null`。
+ */
+account: string | null, 
+/**
+ * 按钮上的名字（号名表里的叫法；不知道 ⇒ 那一句「未实时显示」）。
+ */
+name: string, 
+/**
+ * 生成的类型里就地写开（不另出一份文件）。
+ */
+when: "now" | "last" | "unknown", 
+/**
+ * 轮换换过号 ⇒ 开会话的那个号（按钮前那个 ⇄ · 悬停卡末行）；没换过 ⇒ `null`。
+ */
+from: string | null, 
+/**
+ * 标签页悬停卡那一行「账号 X」；号不知道 ⇒ `null`。
+ */
+accountLine: string | null, 
+/**
+ * 标签页悬停卡那一行「从 X 换过来」；没换过 ⇒ `null`。
+ */
+fromLine: string | null, 
+/**
+ * 用量那几格（额度账里在用那个号那一条）；没走中转 · 账上没有 ⇒ `null`（只画名字）。
+ */
+usage: Usage | null, 
+/**
+ * 那一条最后一次看到距今超过 30 分钟。
+ */
+stale: boolean, 
+/**
+ * 悬停卡的行，一格一个字。
+ */
+hover: Array<Array<string>>, 
+/**
+ * 悬停卡里采样那一格在第几行：出口在那一行后面接上问的是哪台（那台叫什么是出口那一侧的事）；没有 ⇒ `null`。
+ */
+sampled: number | null, 
+/**
+ * 这个号与那台的默认号都确知、而且不一样。
+ */
+differs: boolean, badge: { 
+/**
+ * 画成「上次的」（幽灵头像）：不是此刻在跑的那个号。
+ */
+ghost: boolean, 
+/**
+ * 悬停那一句。
+ */
+title: string, } | null, 
+/**
+ * 那台的号查得了（账号库启用了）。
+ */
+queryable: boolean, };
+type SessionAccountReq = { sid: string, };
+type Usage = { 
+/**
+ * 画的是哪个语义位（卡着的那个；回包没说 ⇒ `5h`）；按量号 ⇒ 缺。
+ */
+slot?: string, 
+/**
+ * 那个语义位的字（`5h`）；按量号 ⇒ 缺。
+ */
+window?: string, 
+/**
+ * 用量那一格（`63%` · `✕` · `超额` · `—` · `被拒` · `按量`）。
+ */
+value: string, 
+/**
+ * 被拒时几点重置（`↻19:00`，出口那一下按钟写，`QuotaShow::stamp`）；没有 ⇒ 缺。
+ */
+reset?: string, 
+/**
+ * 连成一句（`5h 63%` · `5h ✕ ↻19:00` · `按量`）：下拉项右侧 · 切换那颗按钮。
+ */
+text: string, 
+/**
+ * 语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
+```
+
+码：`bad_args`
+
 #### `rotation-try`
 
 试跑一份策略。
@@ -2843,17 +2951,17 @@ type Words = string;
 
 ```ts
 type RotBadCell = { cell: string, code: string, };
-type RotConflict = { rev: string, };
 type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "seg": { key: string, row?: number, window: string, at?: number, seg?: RotSeg, } } | { "same": { key: string, row?: number, window: string, same: boolean, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotSeg = { from: string, to: string, v: number, };
+type RotStale = { rev: string, };
 type RotStrategyRev = { rev: string, };
 type RotationSettingsReq = { strategy: string, edit: RotEdit, ifRev: string, };
 ```
 
-码：`bad_args` · `no_strategy` · `refused` · `conflict` · `io_failed`
+码：`bad_args` · `no_strategy` · `refused` · `stale` · `io_failed`
 
-失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
+失败带 `data` 的码：`refused` ⇒ `RotRefused` · `stale` ⇒ `RotStale`
 
 #### `rotation-use`
 
@@ -2997,14 +3105,14 @@ type RotationStrategyCopyReq = { id: string, name: string, };
 入参 `RotationStrategyRenameReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type RotConflict = { rev: string, };
+type RotStale = { rev: string, };
 type RotStrategyId = { id: string, };
 type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
 ```
 
-码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
+码：`bad_args` · `no_strategy` · `stale` · `io_failed`
 
-失败带 `data` 的码：`conflict` ⇒ `RotConflict`
+失败带 `data` 的码：`stale` ⇒ `RotStale`
 
 #### `rotation-strategy-delete`
 
@@ -3033,14 +3141,14 @@ type RotationStrategyDeleteReq = { id: string, };
 入参 `RotationStrategyTzReq` · 回包 `RotStrategyRev`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type RotConflict = { rev: string, };
+type RotStale = { rev: string, };
 type RotStrategyRev = { rev: string, };
 type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
 ```
 
-码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
+码：`bad_args` · `no_strategy` · `stale` · `io_failed`
 
-失败带 `data` 的码：`conflict` ⇒ `RotConflict`
+失败带 `data` 的码：`stale` ⇒ `RotStale`
 
 #### `apikey-key-set`
 
@@ -4087,25 +4195,6 @@ removed: boolean, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
-
-#### `history-last-accounts`
-
-sid → 上次用哪个号起。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-last-accounts`
-
-入参 `NoArgs` · 回包 `LastAccounts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type LastAccounts = { 
-/**
- * `{sid: 账号名}`：只含真记过的那几条。
- */
-accounts: { [key in string]: string }, };
-type NoArgs = Record<symbol, never>;
-```
-
-码：`bad_args` · `unreadable`
 
 #### `history-list`
 
@@ -8572,10 +8661,11 @@ what: string,
  */
 path: string, dir: boolean, class: OwnClass, exists: boolean, 
 /**
- * 文件的字节数；目录 / 不在 ⇒ `null`。
+ * 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
  */
-size: number | null, };
+size_text: Words | null, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed`
@@ -8816,9 +8906,9 @@ what: string,
  */
 path: string, dir: boolean, class: OwnClass, exists: boolean, 
 /**
- * 文件的字节数；目录 / 不在 ⇒ `null`。
+ * 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
  */
-size: number | null, };
+size_text: Words | null, };
 type Seen<T> = { "state": "kept", 
 /**
  * 记下的时刻（毫秒）。
@@ -8985,10 +9075,11 @@ what: string,
  */
 path: string, dir: boolean, class: OwnClass, exists: boolean, 
 /**
- * 文件的字节数；目录 / 不在 ⇒ `null`。
+ * 文件的大小，写好的字（`copy_core::size_text`）；目录 / 不在 ⇒ `null`。
  */
-size: number | null, };
+size_text: Words | null, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
+type Words = string;
 ```
 
 码：`bad_args`
@@ -10018,7 +10109,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10047,7 +10138,7 @@ accountShape: ProfileAccountShape | null,
  * 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
  */
 start: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
@@ -10064,9 +10155,9 @@ path: string,
  */
 exists: boolean, 
 /**
- * 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write`。
+ * 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
  */
-fingerprint: string | null, 
+rev: string | null, 
 /**
  * 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好）；没改过 ⇒ `null`。
  */
@@ -10132,7 +10223,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10159,7 +10250,7 @@ lineError: string | null,
  * 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`。
  */
 problem: string | null, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesResolveReq = { 
@@ -10191,7 +10282,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10229,14 +10320,14 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
 tab: Tab | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesImpact = { affected: Array<ProfileAffected>, };
@@ -10278,7 +10369,7 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, 
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
@@ -10286,8 +10377,8 @@ tab: Tab | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
-type ProfilesWriteDone = { wrote: boolean, fingerprint: string | null, reload: string | null, };
-type ProfilesWriteReq = { changes: Array<ProfileOp>, fingerprint: string | null, };
+type ProfilesWriteDone = { wrote: boolean, rev: string | null, reload: string | null, };
+type ProfilesWriteReq = { changes: Array<ProfileOp>, ifRev: string | null, };
 type Tab = "show" | "hide";
 ```
 
@@ -10376,69 +10467,6 @@ type NoArgs = Record<symbol, never>;
 
 码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
-#### `bus-broadcast`
-
-给总线上在线的成员群发一条。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-broadcast`
-
-入参 `BusBroadcastReq` · 回包 `BusBroadcast`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type BusBroadcast = { sent: number, skipped_offline: number, 
-/**
- * 问不到身份空间（全是 `null`），退回发给所有登记的。
- */
-liveness_unknown: boolean, failed: Array<BusUndelivered>, };
-type BusBroadcastReq = { 
-/**
- * 正文（非空）。
- */
-text: string, 
-/**
- * 以谁的身份发，也用来「不发给自己」（可缺）。
- */
-from?: string | null, };
-type BusUndelivered = { id: string, 
-/**
- * `bus-send` 那一套码。
- */
-error: string, 
-/**
- * 原话。
- */
-detail: string, };
-```
-
-码：`bad_args` · `not_installed` · `child_timed_out` · `failed` · `bad_id`
-
-#### `bus-kill`
-
-收掉一个总线成员。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-kill`
-
-入参 `BusKillReq` · 回包 `BusKilled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type BusKillReq = { 
-/**
- * 总线身份。
- */
-id: string, };
-type BusKilled = { id: string, 
-/**
- * 会话真的被杀了。
- */
-killed: boolean, 
-/**
- * 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动。
- */
-stale_only: boolean, };
-```
-
-码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
-
 #### `bus-send`
 
 发一条消息。
@@ -10477,120 +10505,6 @@ from: string | null, };
 ```
 
 码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `child_timed_out` · `too_long` · `failed`
-
-#### `bus-spawn`
-
-派生一个协作 agent。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-spawn`
-
-入参 `BusSpawnReq` · 回包 `BusSpawnedNow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type ArriveAsk = { 
-/**
- * 认它用的那一格。
- */
-by: ArriveBy, 
-/**
- * 起之前这台报到的序号：只认这之后报到的。
- */
-since: number, 
-/**
- * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
- */
-session: string | null, };
-type ArriveBy = { "kind": "sid", sid: string, } | { "kind": "cwd", cwd: string, };
-type BusSpawnReq = { 
-/**
- * 哪一家（缺 / 空 ⇒ 默认那一家）。
- */
-tool?: string | null, 
-/**
- * 工作目录（非空）。
- */
-dir: string, 
-/**
- * 交给新会话的任务（可缺）。
- */
-task?: string | null, 
-/**
- * 用哪个号起。
- */
-account?: string | null, 
-/**
- * 显式不注入账号。
- */
-base?: boolean | null, };
-type BusSpawnedNow = { 
-/**
- * 恒 `true`。
- */
-spawned: boolean, 
-/**
- * 新会话的总线身份；从回显里认不出 ⇒ `null`（起了，只是名字没认出来，**不是**没起来）。
- */
-id: string | null, 
-/**
- * `cc-spawn` 的原始回显，给人看。
- */
-said: string, 
-/**
- * 等它报到那一问（`session-arrive` 的入参，原样交回）。
- */
-arrival: ArriveAsk, };
-```
-
-码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
-
-#### `bus-state`
-
-总线名单 ＋ spawn 台账一次回全。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-state`
-
-入参 `NoArgs` · 回包 `BusState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type BusRosterRow = { id: string, 
-/**
- * 登记的 pane 地址。
- */
-target: string, 
-/**
- * 登记时间，cc-bus 原样。
- */
-registered_at: string, unread: number, 
-/**
- * 三态，同 [`BusAgent::live`]。
- */
-live: boolean | null, ccm_sid: string | null, };
-type BusSpawned = { id: string, 
-/**
- * 派生时的目录。
- */
-dir: string, 
-/**
- * 派生时间。
- */
-spawned_at: string, 
-/**
- * 余下全部，含 TAB。
- */
-task: string, 
-/**
- * 三态：`true` / `false` / `null` = 核不了。
- */
-live: boolean | null, };
-type BusState = { agents: Array<BusRosterRow>, spawned: Array<BusSpawned>, 
-/**
- * 两张表里读不懂的行数。
- */
-skipped: number, };
-type NoArgs = Record<symbol, never>;
-```
-
-码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-inbox`
 
@@ -11441,36 +11355,6 @@ ticket: string, };
 入参 `KillReq` · 回包 `Killed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type BusFailed = { 
-/**
- * 那个 id。
- */
-id: string, 
-/**
- * 原话。
- */
-why: string, };
-type BusNote = { 
-/**
- * 注销掉了的 id。
- */
-removed: Array<string>, 
-/**
- * 没注销成的那几个（`why` 是原话）。
- */
-failed: Array<BusFailed>, 
-/**
- * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
- */
-unread: string | null, 
-/**
- * 给人看的那几行（没有 ⇒ `null`）。
- */
-said: string | null, 
-/**
- * 复制详情（没有 ⇒ 空串）。
- */
-detail: string, };
 type KillReq = { 
 /**
  * 要杀的 tmux 会话名。
@@ -11492,11 +11376,7 @@ session: string,
 /**
  * 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
  */
-killed: true, 
-/**
- * 顺手从 cc-bus 注销的结局。
- */
-bus: BusNote, };
+killed: true, };
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
@@ -11511,36 +11391,6 @@ bus: BusNote, };
 
 ```ts
 type Batched = { results: Array<Outcome>, };
-type BusFailed = { 
-/**
- * 那个 id。
- */
-id: string, 
-/**
- * 原话。
- */
-why: string, };
-type BusNote = { 
-/**
- * 注销掉了的 id。
- */
-removed: Array<string>, 
-/**
- * 没注销成的那几个（`why` 是原话）。
- */
-failed: Array<BusFailed>, 
-/**
- * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
- */
-unread: string | null, 
-/**
- * 给人看的那几行（没有 ⇒ `null`）。
- */
-said: string | null, 
-/**
- * 复制详情（没有 ⇒ 空串）。
- */
-detail: string, };
 type Outcome = { 
 /**
  * 会话 id（与入参同序）。
@@ -11565,11 +11415,7 @@ copyDetail: string,
 /**
  * 落在哪个 tmux 会话上。
  */
-session: string | null, 
-/**
- * 停做成了那一个：同 `kill` 应答的 `bus`。
- */
-bus: BusNote | null, };
+session: string | null, };
 type SidsReq = { 
 /**
  * 那几个会话（1–64 个，不重复）。
@@ -13348,9 +13194,9 @@ type LogTail = {
  */
 path: string | null, 
 /**
- * 那份文件的总字节数。
+ * 那份文件的总大小，写好的字（`copy_core::size_text`）；没装 ⇒ `null`。
  */
-size: number, 
+size_text: Words | null, 
 /**
  * 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行。
  */
@@ -13359,6 +13205,7 @@ text: string,
  * 前面还有没回的字节。
  */
 truncated: boolean, };
+type Words = string;
 ```
 
 码：`bad_args` · `failed`
@@ -13519,7 +13366,11 @@ handoff: string | null,
 /**
  * 为什么给不了；给了 ⇒ `null`。
  */
-handoffError: string | null, };
+handoffError: string | null, 
+/**
+ * 「另开会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
+ */
+takeover: PlanTakeover, };
 type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
  * 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
@@ -13737,6 +13588,7 @@ needCount: number,
 returned: PlanReturned | null, };
 type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
 type PlanState = { value: string, count: number, };
+type PlanTakeover = "open" | "no_line" | "running" | "unsure" | "merging";
 type PlanUnbuilt = { id: string | null, cells: Array<string>, };
 type PlanUndecidable = { rule: string | null, why: string | null, };
 type PlanUnowned = { paths: Array<string> | null, why: string | null, };
@@ -13977,6 +13829,22 @@ dir: string, };
 
 码：`bad_args`
 
+#### `plan-refs`
+
+会话消息里提到的格：照会话接手的那块（否则工作目录所在的那片）认片，几段正文一次交 pb 的 `dump --refs`，回每段的几处（UTF-16 下标 ＋ 跟在编号后面的标题）；认不出片 · pb 不在 ⇒ 每段空。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-refs`
+
+入参 `PlanRefsReq` · 回包 `PlanMsgRefs`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanMsgRef = { start: number, end: number, ids: Array<string>, label: string, };
+type PlanMsgRefs = { workspace: string | null, slice: string | null, refs: Array<Array<PlanMsgRef>>, };
+type PlanRefsReq = { sid: string, texts: Array<string>, };
+```
+
+码：`bad_args`
+
 #### `plan-ack`
 
 认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数。
@@ -14207,13 +14075,9 @@ type Words = string;
 | `--backend-log` | ＝ 帧命令 `backend-log`：这台后端的 stderr 诊断文件尾部 |
 | `--bookmarks-edit` | ＝ 帧命令 `bookmarks-edit`：切换 · 删 · 加几条书签，回改完的整份 |
 | `--bookmarks-read` | ＝ 帧命令 `bookmarks-read`：这台的书签 |
-| `--bus-broadcast` | ＝ 帧命令 `bus-broadcast`：给总线上在线的成员群发一条 |
 | `--bus-inbox` | ＝ 帧命令 `bus-inbox`：只读看一个 agent 收件箱的尾巴 |
-| `--bus-kill` | ＝ 帧命令 `bus-kill`：收掉一个总线成员 |
 | `--bus-list` | ＝ 帧命令 `bus-list`：谁在线 + 各自待读多少 |
 | `--bus-send` | ＝ 帧命令 `bus-send`：发一条消息 |
-| `--bus-spawn` | ＝ 帧命令 `bus-spawn`：派生一个协作 agent |
-| `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
@@ -14259,7 +14123,6 @@ type Words = string;
 | `--history-find` | ＝ 帧命令 `history-find`：会话内查找 |
 | `--history-forget` | ＝ 帧命令 `history-forget`：删一条历史注解 |
 | `--history-index` | ＝ 帧命令 `history-index`：会话骨架索引 |
-| `--history-last-accounts` | ＝ 帧命令 `history-last-accounts`：sid → 上次用哪个号起 |
 | `--history-lines` | ＝ 帧命令 `history-lines`：按行号取回一段 |
 | `--history-list` | ＝ 帧命令 `history-list`：历史页的平铺会话清单 |
 | `--history-listing` | ＝ 帧命令 `history-listing`：这台的清单（按记号只给变了的） |
@@ -14296,6 +14159,7 @@ type Words = string;
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-pb-check` | ＝ 帧命令 `plan-pb-check`：一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问 |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view） |
+| `--plan-refs` | ＝ 帧命令 `plan-refs`：会话消息里提到的格：照会话接手的那块（否则工作目录所在的那片）认片，几段正文一次交 pb 的 `dump --refs`，回每段的几处（UTF-16 下标 ＋ 跟在编号后面的标题）；认不出片 · pb 不在 ⇒ 每段空 |
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回 |
 | `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
@@ -14330,6 +14194,7 @@ type Words = string;
 | `--rotation-use` | ＝ 帧命令 `rotation-use`：会话载入一份策略 |
 | `--rotation-use-now` | ＝ 帧命令 `rotation-use-now`：现在用这个号 |
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
+| `--session-account` | ＝ 帧命令 `session-account`：一条会话的号 |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-model` | ＝ 帧命令 `session-model`：换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起） |
