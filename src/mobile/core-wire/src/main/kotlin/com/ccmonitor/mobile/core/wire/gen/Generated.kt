@@ -8854,23 +8854,6 @@ enum class Landed(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
-data class LastAccounts(
-    val accounts: Map<String, String>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LastAccounts> = obj(
-            listOf(
-            Field("accounts", { dict(Str) }, optional = false, nullable = false),
-            ),
-            { a -> LastAccounts(a[0] as Map<String, String>) },
-            { v -> arrayOf(v.accounts) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class LastSay(
     val text: String,
     val at: String?,
@@ -18621,6 +18604,94 @@ enum class SentResult(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<SentResult> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionAccountReply(
+    val account: String?,
+    val name: String,
+    val `when`: SessionAccountReplyWhen,
+    val from: String?,
+    val accountLine: String?,
+    val fromLine: String?,
+    val usage: Usage?,
+    val stale: Boolean,
+    val hover: List<List<String>>,
+    val sampled: Long?,
+    val differs: Boolean,
+    val badge: SessionAccountReplyBadge?,
+    val queryable: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionAccountReply> = obj(
+            listOf(
+            Field("account", { opt(Str) }, optional = false, nullable = true),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("when", { SessionAccountReplyWhen.ADAPTER }, optional = false, nullable = false),
+            Field("from", { opt(Str) }, optional = false, nullable = true),
+            Field("accountLine", { opt(Str) }, optional = false, nullable = true),
+            Field("fromLine", { opt(Str) }, optional = false, nullable = true),
+            Field("usage", { opt(Usage.ADAPTER) }, optional = false, nullable = true),
+            Field("stale", { Bool }, optional = false, nullable = false),
+            Field("hover", { arr(arr(Str)) }, optional = false, nullable = false),
+            Field("sampled", { opt(Lng) }, optional = false, nullable = true),
+            Field("differs", { Bool }, optional = false, nullable = false),
+            Field("badge", { opt(SessionAccountReplyBadge.ADAPTER) }, optional = false, nullable = true),
+            Field("queryable", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> SessionAccountReply(a[0] as String?, a[1] as String, a[2] as SessionAccountReplyWhen, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Usage?, a[7] as Boolean, a[8] as List<List<String>>, a[9] as Long?, a[10] as Boolean, a[11] as SessionAccountReplyBadge?, a[12] as Boolean) },
+            { v -> arrayOf(v.account, v.name, v.`when`, v.from, v.accountLine, v.fromLine, v.usage, v.stale, v.hover, v.sampled, v.differs, v.badge, v.queryable) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionAccountReplyBadge(
+    val ghost: Boolean,
+    val title: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionAccountReplyBadge> = obj(
+            listOf(
+            Field("ghost", { Bool }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionAccountReplyBadge(a[0] as Boolean, a[1] as String) },
+            { v -> arrayOf(v.ghost, v.title) },
+        )
+    }
+}
+
+enum class SessionAccountReplyWhen(val wire: String) {
+    NOW("now"),
+    LAST("last"),
+    UNKNOWN("unknown"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionAccountReplyWhen> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionAccountReq(
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionAccountReq> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionAccountReq(a[0] as String) },
+            { v -> arrayOf(v.sid) },
+        )
     }
 }
 

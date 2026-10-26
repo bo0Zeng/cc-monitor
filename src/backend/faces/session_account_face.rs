@@ -4,9 +4,11 @@
 //! 没走中转的会话也答得出（所以不并进 `rotation-view`）。
 
 use crate::wire::typed::Command;
-use cmd_wire::quota::{QuotaRead, Usage};
+/// 回包住 `cmd-wire`（两侧同一份类型）。
+pub(crate) use cmd_wire::accounts::{SessionAccountBadge, SessionAccountReply, SessionAccountWhen};
+use cmd_wire::quota::QuotaRead;
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// `session-account` 的入参。
 #[derive(Debug, Deserialize)]
@@ -15,65 +17,6 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionAccountReq {
     pub(crate) sid: String,
-}
-
-/// 这个号是此刻在跑的 · 上次用的 · 不知道。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum SessionAccountWhen {
-    Now,
-    Last,
-    Unknown,
-}
-
-/// 标签页上那颗号徽章（只在这个会话的号与那台默认号不一样、那台的号查得了时出）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionAccountBadge {
-    /// 画成「上次的」（幽灵头像）：不是此刻在跑的那个号。
-    pub(crate) ghost: bool,
-    /// 悬停那一句。
-    pub(crate) title: String,
-}
-
-/// `session-account` 的回包：一条会话的号，写好的。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionAccountReply {
-    /// 号名（头像按它取色；`_` ＝ 没指定号）；不知道 ⇒ `null`。
-    pub(crate) account: Option<String>,
-    /// 按钮上的名字（号名表里的叫法；不知道 ⇒ 那一句「未实时显示」）。
-    pub(crate) name: String,
-    /// 生成的类型里就地写开（不另出一份文件）。
-    #[cfg_attr(test, ts(inline))]
-    pub(crate) when: SessionAccountWhen,
-    /// 轮换换过号 ⇒ 开会话的那个号（按钮前那个 ⇄ · 悬停卡末行）；没换过 ⇒ `null`。
-    pub(crate) from: Option<String>,
-    /// 标签页悬停卡那一行「账号 X」；号不知道 ⇒ `null`。
-    pub(crate) account_line: Option<String>,
-    /// 标签页悬停卡那一行「从 X 换过来」；没换过 ⇒ `null`。
-    pub(crate) from_line: Option<String>,
-    /// 用量那几格（额度账里在用那个号那一条）；没走中转 · 账上没有 ⇒ `null`（只画名字）。
-    pub(crate) usage: Option<Usage>,
-    /// 那一条最后一次看到距今超过 30 分钟。
-    pub(crate) stale: bool,
-    /// 悬停卡的行，一格一个字。
-    pub(crate) hover: Vec<Vec<String>>,
-    /// 悬停卡里采样那一格在第几行：出口在那一行后面接上问的是哪台（那台叫什么是出口那一侧的事）；没有 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) sampled: Option<usize>,
-    /// 这个号与那台的默认号都确知、而且不一样。
-    pub(crate) differs: bool,
-    #[cfg_attr(test, ts(inline))]
-    pub(crate) badge: Option<SessionAccountBadge>,
-    /// 那台的号查得了（账号库启用了）。
-    pub(crate) queryable: bool,
 }
 
 crate::wire::typed::codes! {

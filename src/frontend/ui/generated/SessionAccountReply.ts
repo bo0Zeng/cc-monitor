@@ -2,7 +2,7 @@
 import type { Usage } from "./Usage";
 
 /**
- * `session-account` 的回包：一条会话的号，写好的。
+ * `session-account` 的回包：一条会话的号，会话那台判好、写好的（后端 `faces/session_account_face.rs` 拼）。
  */
 export type SessionAccountReply = { 
 /**
