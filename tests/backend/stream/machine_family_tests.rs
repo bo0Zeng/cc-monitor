@@ -160,9 +160,8 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
         ("profiles-impact", json!({ "changes": [], "extra": 1 })),
         ("profiles-impact", json!({ "changes": [{ "op": "drop" }] })),
         ("profiles-bases", json!({ "name": "cc", "extra": 1 })),
-        // 指纹必给（字符串或 `null`）：缺了不当 `null`。
+        // 版本 `ifRev` 必给（字符串或 `null`）：缺了不当 `null`。
         ("profiles-write", json!({ "changes": [] })),
-        ("profiles-write", json!({ "changes": [], "fingerprint": 3 })),
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(
@@ -171,6 +170,15 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             "`{cmd}` 入参 {args} 该回 bad_args：{got:?}"
         );
     }
+    // 版本给错了类型 ⇒ `bad_args`，拒的原因是那一格的类型（不是「多了个不认识的键」：键名对得上才测得到类型）。
+    let got = run_any("profiles-write", json!({ "changes": [], "ifRev": 3 }));
+    let f = got.err().expect("版本给成数该拒");
+    assert_eq!(f.code, "bad_args");
+    assert!(
+        f.raw.as_deref() == Some("`ifRev`: expected a string"),
+        "该拒在版本的类型上：{:?}",
+        f.raw
+    );
     // 还没存的那一台（推公钥测的那一台）多带的键照收：入参解得出、走到组请求那一步（跳板照表查无 ⇒ `bad_jump`，不是 `bad_args`）。
     let got = run_any(
         "pubkey-push",
