@@ -31,7 +31,7 @@ fn the_seed_is_exactly_the_first_line_and_the_channel_follows_on_the_same_pipes(
     // ④ 行序：在 stdin / stdout 上起通道排在开窗之前。
     let at_dial = guard_core::find_pinned(&prod, "line_over_stdio(req.frame)")
         .expect("child_main 里没有在 stdin / stdout 上起通道那一下");
-    let at_open = guard_core::find_pinned(&prod, "super::shell::open_detached_seeded(")
+    let at_open = guard_core::find_pinned(&prod, "super::shell::window::open_detached_seeded(")
         .expect("child_main 里没有开窗那一下");
     assert!(at_dial < at_open, "开窗排在起通道之前");
     // ⑤种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，

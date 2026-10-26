@@ -22,10 +22,10 @@ import androidx.room.TypeConverters
         Draft::class,
         PendingBatch::class,
     ],
-    version = 23,
+    version = 24,
     exportSchema = true,
 )
-@TypeConverters(KeyConverters::class)
+@TypeConverters(KeyConverters::class, HostConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun hostDao(): HostDao
 

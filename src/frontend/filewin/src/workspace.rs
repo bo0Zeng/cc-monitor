@@ -1426,7 +1426,7 @@ impl Workspace {
         });
         super::kit::focus_ring(&ctx, self.kb_nav);
         // ── 窗口标题跟着焦点那一栏当前的标签页 ──
-        let title = super::shell::window_title(
+        let title = super::shell::window::window_title(
             &Self::tab_title(self.pane_on(f)),
             &self.pane_on(f).source.label(),
         );

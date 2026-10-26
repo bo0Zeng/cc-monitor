@@ -96,8 +96,8 @@ fun ChatRoute(
     KeepAliveWhileLinked(link)
     val scope = rememberCoroutineScope()
     val host = rememberChatHost(hostId) ?: return
-    val product = rememberProductName(hostId, host.agent)
-    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
+    val product = rememberProductName(hostId)
+    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd), host.machine) else existingChat(hostId, sessionId, host.machine)
     val vm: ChatViewModel =
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
@@ -207,11 +207,9 @@ fun ChatController.sessionOf(
         ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope, cache = cacheOf(open.hostId))
     }
 
-/** 这台在手机上的名字 ＋ 存的那一家；还没读到 ⇒ `null`。 */
+/** 这台在手机上的名字；还没读到 ⇒ `null`。 */
 private data class ChatHost(
     val machine: String,
-    /** 这台存的那一家（线上 kind；没选 ⇒ `null`）：新建会话起哪一家由那台按它认。 */
-    val agent: String?,
 )
 
 @Composable
@@ -219,25 +217,18 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
         val h = runCatching { hosts.get(hostId) }.getOrNull()
-        value =
-            ChatHost(
-                machine = h?.label ?: hostId,
-                agent = h?.agentKind,
-            )
+        value = ChatHost(machine = h?.label ?: hostId)
     }
     return got
 }
 
-/** 顶栏的名字：这台那一家写给人看的名字（那台 `session-open-facts` 给的）；还没问到 ⇒ 空。 */
+/** 顶栏的名字：这台缺省那一家写给人看的名字（那台 `session-open-facts` 给的，缺省照那台）；还没问到 ⇒ 空。 */
 @Composable
-private fun rememberProductName(
-    hostId: String,
-    stored: String?,
-): String {
+private fun rememberProductName(hostId: String): String {
     val backends = koinInject<HostBackends>()
-    val got by produceState("", hostId, stored) {
+    val got by produceState("", hostId) {
         val r = backends.of(hostId).call(SessionOpenFacts.COMMAND, emptyMap())
-        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) }?.let { SessionOpenFacts.pick(it.agents, stored)?.text }.orEmpty()
+        value = (r as? Reply.Ok)?.let { SessionOpenFacts.of(it.data) }?.let { SessionOpenFacts.pick(it.agents, null)?.text }.orEmpty()
     }
     return got
 }

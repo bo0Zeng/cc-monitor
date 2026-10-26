@@ -224,8 +224,9 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     (
         "plan/dump.rs",
         "tests/backend/plan/fixture.rs",
-        &["--node"],
-        "`pb dump --node <仓库> <编号> <工作区>`：点到一格才取 agent 站在那个节点时 pb 印的那一段（`plan/dump.rs::run_node`）。\
+        &["--node", "--refs"],
+        "`pb dump --node <仓库> <编号> <工作区>`：点到一格才取 agent 站在那个节点时 pb 印的那一段（`plan/dump.rs::run_node`）；\
+         `pb dump --refs <仓库> <工作区>`：会话消息里提到哪几个节点，正文从标准输入给（`plan/dump.rs::run_refs`）。\
          是 pb 的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
     ),
 ];

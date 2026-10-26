@@ -8,6 +8,7 @@
 
 import { renderMessage, buildStepsCard, type LineRecord, type RenderContext } from "./cards";
 import { observeForEnhance } from "./render";
+import { askRefs } from "./plan-refs";
 import { applyIntrinsicSize } from "./height-estimate";
 import { saidByHuman } from "./speaker";
 import { isRetryBar, mergeRetry } from "./cards/api-error";
@@ -248,6 +249,8 @@ export function renderContentRecord(
         kind: "card",
       });
       if (sink.enhanceRoot) observeForEnhance(result.element, sink.enhanceRoot);
+      // 回复正文里提到的格：一帧攒一批问一次后端（没记原文的卡什么都不做）。
+      askRefs(result.element, ctx.origin, payload.session_id);
       const tMount = probe ? performance.now() : 0;
 
       // 真用户输入触发回调（让 TabManager 自动切 Tab）。一轮中途插的话也是 said：用户刚插了话，多半正等着看回应。

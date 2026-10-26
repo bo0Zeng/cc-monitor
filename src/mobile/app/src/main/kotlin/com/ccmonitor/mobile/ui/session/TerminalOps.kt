@@ -26,13 +26,12 @@ import java.util.UUID
 /**
  * 终端屏里要那台核心做的几件（列 · 结束 · 进终端那一行 · 建会话 · 后台起 · 送字 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
  * 找哪个窗格、怎么附着、怎么建、shell 方言全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
- * [machine] 是这台在手机上的名字（走不通时那一句里用）；[stored] 是这台存的那一家（线上 kind，主机设置里选的；没选 ⇒ `null`）。
+ * [machine] 是这台在手机上的名字（走不通时那一句里用）。
  * 哪几家、叫什么、能换哪些模型都问那台（`session-open-facts`），手机一家都不认识。
  */
 class TerminalOps(
     private val feed: CoreLink,
     private val machine: suspend () -> String,
-    private val stored: suspend () -> String? = { null },
 ) {
     /** 这台的终端名单。 */
     suspend fun list(): Result<List<TerminalsList.Row>> = ask(TerminalsList.COMMAND, TerminalsList.args(), TerminalsList::of)
@@ -66,9 +65,9 @@ class TerminalOps(
     /** 这台能起的几家。 */
     suspend fun agents(): Result<List<AgentFacts>> = facts().map { it.agents }
 
-    /** 这台起会话用哪一家：存的那一家 · 那台列的第一家（线上 kind）。问不到 ⇒ 失败（那一句）。 */
+    /** 这台起会话用哪一家：那台列的第一家（线上 kind；缺省照那台）。问不到 ⇒ 失败（那一句）。 */
     private suspend fun agent(): Result<String> =
-        agents().mapCatching { SessionOpenFacts.pick(it, stored())?.kind ?: throw Problem(copyText("peerVersion.said.unreadable", "machine" to machine())) }
+        agents().mapCatching { SessionOpenFacts.pick(it, null)?.kind ?: throw Problem(copyText("peerVersion.said.unreadable", "machine" to machine())) }
 
     /** 在名叫 [name] 的会话里后台起这台那一家（不进入）。失败 ⇒ 那一句。 */
     suspend fun startAgent(name: String): String? =

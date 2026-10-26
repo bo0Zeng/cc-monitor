@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 单个 id（会话或连接）的全部连接状态，由 [lock] 统一守护。
  *
  * 并发规矩：
- * - [connection] / [configs] / [reached] 有无锁的跨线程读，所以是 `@Volatile`。
+ * - [connection] / [config] / [reached] 有无锁的跨线程读，所以是 `@Volatile`。
  * - [connecting] / [generation] / [holders] 只在 [lock] 内访问，不要加无锁读点。
  * - [following] 用 [AtomicBoolean] 的 `compareAndSet(false, true)` 做原子去重。
  * - 本对象永不从状态表移除：[lock]、[connectLock]、[generation] 须跨 disconnect 稳定，disconnect 只清字段。
@@ -29,9 +29,9 @@ internal class HostConnectionState(
     /** 在飞连接。只在 [lock] 内访问。 */
     var connecting: SshTransport? = null
 
-    /** 多地址配置；null 表示没有。有无锁读。 */
+    /** 上一次照它连的那一份配置；null 表示没有。有无锁读。 */
     @Volatile
-    var configs: List<ConnectionConfig>? = null
+    var config: ConnectionConfig? = null
 
     /** 代号。只在 [lock] 内访问；只有 disconnect 自增它，用来作废在飞 connect。 */
     var generation: Int = 0

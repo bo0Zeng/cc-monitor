@@ -431,6 +431,43 @@ val MIGRATION_22_23 =
         }
     }
 
+// 机器表换成拨号核心那一形（同桌面那张表）：跳板从「另一台的 id」换成「另一台的名字」（名字由核心算，[machineNames]）·
+// 备用地址那一格改名 `addresses`（一行一条，原样）·「起哪一家」那一格删（缺省照那台的，要别的在起会话框里选）。
+// 照 7→8 重建（老 SQLite 没有 DROP COLUMN）。跳板指着的那一台已经不在 ⇒ 名字照抄那个 id：拨号时核心照「跳板找不到」拒，
+// 不悄悄变直连。别的表一字不动。
+val MIGRATION_23_24 =
+    object : Migration(23, 24) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val rows =
+                db.query("SELECT id, label, host, proxyJumpHostId FROM `hosts`").use { c ->
+                    generateSequence {
+                        if (c.moveToNext()) listOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3)) else null
+                    }.toList()
+                }
+            val names =
+                rows.map { it[0] }.zip(machineNames(rows.map { Host(id = it[0], label = it[1], host = it[2], username = "") })).toMap()
+            db.execSQL(
+                "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                    "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `addresses` TEXT NOT NULL, " +
+                    "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
+                    "`sessionManager` TEXT, `autoReconnect` INTEGER NOT NULL, `jump` TEXT NOT NULL, `passwordEnc` TEXT, " +
+                    "PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "INSERT INTO `hosts_new` (id,label,host,port,username,authRef,addresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,jump,passwordEnc) " +
+                    "SELECT id,label,host,port,username,authRef,COALESCE(extraAddresses,''),groupId,sortOrder," +
+                    "lastConnected,defaultWorkingDir,sessionManager,autoReconnect,'',passwordEnc FROM `hosts`",
+            )
+            for (r in rows) {
+                val via = r[3]?.takeIf { it.isNotBlank() } ?: continue
+                db.execSQL("UPDATE `hosts_new` SET jump = ? WHERE id = ?", arrayOf(names[via] ?: via, r[0]))
+            }
+            db.execSQL("DROP TABLE `hosts`")
+            db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
+        }
+    }
+
 /** 整条迁移链。21→22 要那把主钥重加密文 ⇒ 链从依赖注入拿 [CryptoBox]（与仓库读写同一个）。 */
 fun allMigrations(crypto: CryptoBox): Array<Migration> =
     arrayOf(
@@ -456,4 +493,5 @@ fun allMigrations(crypto: CryptoBox): Array<Migration> =
         MIGRATION_20_21,
         Migration21To22(crypto),
         MIGRATION_22_23,
+        MIGRATION_23_24,
     )

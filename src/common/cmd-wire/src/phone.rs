@@ -296,3 +296,31 @@ pub enum BatchAnswer {
     All(Decide),
     Each(std::collections::BTreeMap<String, Decide>),
 }
+
+/// `Core.dialPlan` 的结局：照手机那张机器表、按名字组拨号（跳板一路照表找，多跳；组法是拨号核心那一份）。
+/// 成了 ⇒ 组好的那一份请求（每一跳的 `key_path` 是那一行交进来的原值：手机写那台的编号，Kotlin 照它解认证、换成钥匙编号）；
+/// 拒了（成环 · 跳板找不到 · 那一台不成立 · 表读不懂）⇒ 那一句。不回落直连。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DialPlan {
+    Ready { request: crate::dial::DialRequest },
+    Refused { said: String },
+}
+
+/// `Core.machineCheck` 的回值：手机编辑页上那张表（连正在编的那一台）判得怎样 ＋ 那一台展开的拨号地址（预览）。
+/// 毛病的判法 · 说法与桌面 `machines-try` 同一处（`ssh_dial::machine::table_fault`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct MachineCheck {
+    pub fault: Option<crate::machine::MachineFault>,
+    pub endpoints: Vec<crate::dial::Endpoint>,
+}

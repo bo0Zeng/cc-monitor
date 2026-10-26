@@ -138,7 +138,7 @@ fn without_opengl_2_the_window_still_draws_its_first_frame() {
         })
         .collect();
     let rows = crate::find::testing::shown_of(&rows);
-    let h = crate::shell::open_detached_seeded(
+    let h = crate::shell::window::open_detached_seeded(
         crate::source::Source::remote("render-judge".into()),
         "/srv/render".into(),
         None,

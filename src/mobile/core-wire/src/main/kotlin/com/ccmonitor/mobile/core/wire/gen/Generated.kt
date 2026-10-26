@@ -4100,6 +4100,51 @@ data class DialAck(
     }
 }
 
+sealed interface DialPlan {
+    /** 判别格（`kind`）那个词。 */
+    val kind: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Ready(
+        val request: DialRequest,
+    ) : DialPlan, Ordered {
+        override val kind: String get() = "ready"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Refused(
+        val said: String,
+    ) : DialPlan, Ordered {
+        override val kind: String get() = "refused"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<DialPlan> =
+            tagged<DialPlan>(
+                "kind",
+                listOf(
+                Variant("ready", DialPlan.Ready::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("ready") }, optional = false, nullable = false),
+                        Field("request", { DialRequest.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> DialPlan.Ready(a[1] as DialRequest) },
+                        { v -> arrayOf("ready", v.request) },
+                    )),
+                Variant("refused", DialPlan.Refused::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("refused") }, optional = false, nullable = false),
+                        Field("said", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> DialPlan.Refused(a[1] as String) },
+                        { v -> arrayOf("refused", v.said) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class DialRequest(
     val host: String,
@@ -10357,6 +10402,25 @@ enum class MachineBlocker(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<MachineBlocker> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class MachineCheck(
+    val fault: MachineFault?,
+    val endpoints: List<Endpoint>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineCheck> = obj(
+            listOf(
+            Field("fault", { opt(MachineFault.ADAPTER) }, optional = false, nullable = true),
+            Field("endpoints", { arr(Endpoint.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> MachineCheck(a[0] as MachineFault?, a[1] as List<Endpoint>) },
+            { v -> arrayOf(v.fault, v.endpoints) },
+        )
     }
 }
 

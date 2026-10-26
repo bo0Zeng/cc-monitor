@@ -399,7 +399,10 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 36 → 37，多的是 `batch.rs`（一组一条命令那一层：冲突框 · 逐项选 · 进度那一行 · 断开那一句）。
         // 37 → 38，多的是通信层的 `chan/said.rs`（通道没成时窗口上那一句，全产品一份）。
         // 38 → 36，少的是 `corpus.rs` · `scale.rs`（只在测试档编的语料与秤，住 `tests/`，一个字都不画）。
-        36,
+        // 36 → 37，多的是 `trip.rs`（一趟：各看板共用的那一格与落地时那一个结局；一个字都不画，按文件数进人群，同 `theme.rs`）。
+        // 37 → 46，多的是 `shell/` 底下按职责拆出去的九份（cross · edit · frame · keys · listing · search · trips · window · writes）：
+        //   都是从 `shell.rs` 原样搬过去的，字形一个没多。
+        46,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \

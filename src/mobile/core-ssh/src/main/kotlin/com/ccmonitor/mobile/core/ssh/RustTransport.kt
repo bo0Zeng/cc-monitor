@@ -11,7 +11,6 @@ import com.ccmonitor.mobile.core.wire.gen.Captured
 import com.ccmonitor.mobile.core.wire.gen.DialAck
 import com.ccmonitor.mobile.core.wire.gen.DialRequest
 import com.ccmonitor.mobile.core.wire.gen.DialUse
-import com.ccmonitor.mobile.core.wire.gen.Endpoint
 import com.ccmonitor.mobile.core.wire.gen.JumpHop
 import com.ccmonitor.mobile.core.wire.gen.PtyOpts
 import com.ccmonitor.mobile.core.wire.gen.Stage
@@ -82,32 +81,15 @@ class RustTransport(
     }
 
     override suspend fun connect(
-        configs: List<ConnectionConfig>,
+        config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)?,
     ) = withContext(Dispatchers.IO) {
-        require(configs.isNotEmpty()) { "no address to connect" }
-        val first = configs.first()
-        preset?.let { return@withContext holdOn(it, first, onEvent) }
-        val req =
-            DialRequest(
-                host = first.host,
-                port = first.port,
-                user = first.username,
-                keyPath = keyFor(first.auth),
-                command = "",
-                endpoints = configs.map { Endpoint(it.host, it.port) },
-                jump = first.jumpVia?.let { hopOf(it) },
-                use = DialUse.STREAM,
-                capture = null,
-                forward = null,
-                pty = null,
-                stages = false,
-                probe = false,
-                agentSock = null,
-                progress = false,
-            )
+        preset?.let { return@withContext holdOn(it, config, onEvent) }
+        // 核心组好的那一份，只把每一跳写的那台编号换成交进核心的钥匙编号。
+        val plan = config.request
+        val req = plan.copy(keyPath = keyOf(plan.keyPath, config), jump = plan.jump?.let { hopOf(it, config) })
         base = req
-        holdOn(req, first, onEvent)
+        holdOn(req, config, onEvent)
     }
 
     /**
@@ -223,8 +205,16 @@ class RustTransport(
         return id
     }
 
-    private suspend fun hopOf(cfg: ConnectionConfig): JumpHop =
-        JumpHop(cfg.host, cfg.port, cfg.username, keyFor(cfg.auth), "${cfg.host}:${cfg.port}", cfg.jumpVia?.let { hopOf(it) })
+    /** 那一跳写的那台编号 ⇒ 交进核心的钥匙编号（[ConnectionConfig.auths] 里没有那一台 ⇒ 不拨，不当成走 agent）。 */
+    private fun keyOf(
+        which: String?,
+        cfg: ConnectionConfig,
+    ): String = keyFor(cfg.auths[which] ?: error(copyText("mobConnect.host.noAuth")))
+
+    private fun hopOf(
+        hop: JumpHop,
+        cfg: ConnectionConfig,
+    ): JumpHop = hop.copy(keyPath = keyOf(hop.keyPath, cfg), jump = hop.jump?.let { hopOf(it, cfg) })
 
     /**
      * ack 带着库里那一把的指纹 ⇒ 钥匙对不上被拒（核心判的、指纹也是核心写的）；库读不出（含旧表没迁完）只是 `host_key` 那一句。

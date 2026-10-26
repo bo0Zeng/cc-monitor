@@ -1017,11 +1017,11 @@ fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
 }
 
 /// 🔴 **那台送来的文件时间窗口不换算**：生产代码里叫本机钟的 [`mtime_text`] 的地方 == 下面这张登记表（逐文件计数，两向）。
-/// 登记的三处都是**这台窗口自己记下的时刻**：断线于（`chrome.rs`）· 一件传输收尾于（`progress.rs`）· 保存于（`shell.rs`）。
+/// 登记的三处都是**这台窗口自己记下的时刻**：断线于（`chrome.rs`）· 一件传输收尾于（`progress.rs`）· 保存于（`shell/edit.rs`：编辑页）。
 /// 列表 · 搜索结果 · 属性 · 预览 · 同名冲突框两头的时刻照抄后端写好的字，谁把它们改回 `mtime_text(…)`，这里多出一处就红。
 #[test]
 fn only_this_machines_own_moments_go_through_the_local_clock() {
-    const REGISTERED: &[(&str, usize)] = &[("chrome.rs", 1), ("progress.rs", 1), ("shell.rs", 1)];
+    const REGISTERED: &[(&str, usize)] = &[("chrome.rs", 1), ("edit.rs", 1), ("progress.rs", 1)];
     let mut got: Vec<(String, usize)> =
         guard_core::scan_tree_excluding(&guard_core::addr::filewin_src_root(), &["rs"], &[])
             .into_iter()
