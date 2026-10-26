@@ -469,7 +469,7 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
 /// B3：`LINES`（表 A 里有产线的格子）== `release.yml` 真编得出字节的那几格（**异源**：读发版流水线）。
 ///
 /// 读法：`Cross-compile backend for both musl targets` 那一步调 `re-embed.sh --build-only` ⇒ 它 `REEMBED_TARGETS` 里每个 `<arch>-unknown-linux-musl` ⇒ (Linux, arch)；
-/// `runs-on: windows-latest` 那个 job 里名为 `Stage native backend for self-extract` 的步 ⇒ (Windows, x86_64)。
+/// `runs-on: windows-latest` 那个 job 里调 `re-embed.sh --stage-native`（本机后端 ＋ 文件窗口，编完铺进内嵌落点）的步 ⇒ (Windows, x86_64)。
 #[test]
 fn lines_are_exactly_what_the_release_pipeline_builds() {
     let yml = read(".github/workflows/release.yml");
@@ -510,7 +510,7 @@ fn lines_are_exactly_what_the_release_pipeline_builds() {
                     built.insert(key_of("Linux", arch).expect(&triple));
                 }
             }
-            if windows && name == "Stage native backend for self-extract" {
+            if windows && step.contains("run: bash tests/scripts/re-embed.sh --stage-native") {
                 built.insert(k(Os::Windows, Arch::X86_64));
             }
         }

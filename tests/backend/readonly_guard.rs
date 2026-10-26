@@ -2738,6 +2738,13 @@ mod g6_dependency_signoff {
             "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
         ),
         (
+            "pidwatch-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "等一个进程退出（Linux `pidfd_open` ＋ 不带期限的 `poll` · Windows 开进程句柄 ＋ 一直等）；仓内 crate、只依赖 tracing 与 libc。\
+             现打 0 处写面：不开文件、不碰盘",
+        ),
+        (
             "own-chan",
             DEPS,
             MEASURED_CLEAN,

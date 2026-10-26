@@ -32,7 +32,7 @@
 //!
 //! # ★ 它一上岗就抓到**两个**真节拍器，而且我摸底时都数漏了
 //!
-//! 1. `bind.rs::run_heartbeat` = `loop { sleep(10s); cleanup_dead(); }` —— 无限、周期、无上限。
+//! 1. `bind.rs` 每 10s 扫一遍死 shell 的窗口登记 —— 无限、周期、无上限。〔已退役：换成内核的进程退出事件（`pidwatch-core`）。〕
 //! 2. ★★ `stream_source/` 的 **daemonless 数据轮询**（`BACKENDLESS_POLL_INTERVAL = 2s`）——
 //!    **它与定框 C7（没有 daemonless）和 C8（不许轮询）直接冲突**，而且是本工作区的正题。
 //!    〔`K-R59` 09-11：**这一条已经退役** —— 定框 `K35` 把那一档整个取消。本段记的是

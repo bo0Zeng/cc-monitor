@@ -133,11 +133,10 @@ fn a_sha256_expect_is_exactly_one_lowercase_digest() {
 }
 
 #[test]
-fn a_staged_chunk_goes_out_in_the_shape_the_sender_chose() {
-    let hex = ChunkBytes::Hex(b"a\0".to_vec());
-    assert_eq!(serde_json::to_string(&hex).unwrap(), r#"{"b16":"6100"}"#);
-    let text = ChunkBytes::Text("a\u{0}".to_string());
-    assert_eq!(serde_json::to_string(&text).unwrap(), r#""a\u0000""#);
+fn a_staged_chunk_always_goes_out_as_b16_and_comes_in_either_shape() {
+    // 是 UTF-8 也发 b16（一个控制字符转义成六个，字符串形一块多长就算不准了）。
+    let chunk = ChunkBytes(b"a\0".to_vec());
+    assert_eq!(serde_json::to_string(&chunk).unwrap(), r#"{"b16":"6100"}"#);
     for s in [r#"{"b16":"6100"}"#, r#""a\u0000""#] {
         let back: ChunkBytes = serde_json::from_str(s).unwrap();
         assert_eq!(back.bytes(), b"a\0", "{s}");

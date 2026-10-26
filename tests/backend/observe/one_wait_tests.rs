@@ -38,7 +38,7 @@ fn rt() -> tokio::runtime::Runtime {
 
 /// 夹具是记录树那一家的记录。
 fn tree() -> &'static str {
-    crate::agents::record_tree_kind().unwrap()
+    crate::agents::claudecode::AGENT_KIND
 }
 
 /// 夹具那一条确实是适配层认的压缩摘要（否则下面几条的「等到」是空的）。

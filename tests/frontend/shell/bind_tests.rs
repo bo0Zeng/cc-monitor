@@ -1108,3 +1108,60 @@ fn the_pick_probe_command_line_parses() {
         assert_eq!(pick_request(&bad), None, "{bad:?}");
     }
 }
+
+/// ★ 登记着的那个 shell 一退，这一条当场就没了：内核在进程退出那一刻叫醒，不是隔一阵扫一遍。
+/// 登记从盘上读回来（monitor 起来那一刻的那条路）；替身是一个 `sleep` 子进程，杀掉它之后等条件（上限只是兜底的那个数）；没有扫描间隔可等 —— 周期唤醒由 `rust_timer_registry` 那张表管着。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_registration_goes_away_the_moment_its_shell_exits() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("起 sleep 替身");
+    let pid = child.id();
+    let start = crate::platform::pid::start_stamp(pid).expect("替身的起始时刻");
+    let dir = std::env::temp_dir().join(format!("bind-exit-{}-{pid}", std::process::id()));
+    let reg = dir.join("ps-registry");
+    std::fs::create_dir_all(&reg).unwrap();
+    let mut e = entry(pid, 0x42, 1);
+    e.ps_proc_start = start.to_string();
+    let file = reg.join(format!("{pid}.json"));
+    std::fs::write(&file, serde_json::to_string(&e).unwrap()).unwrap();
+
+    let bind = BindRegistry::spawn(dir.clone());
+    assert!(bind.lookup_hwnd_for_ps(pid).is_some(), "活着的那条读回来了");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
+    for _ in guard_core::wall::rounds() {
+        if bind.lookup_hwnd_for_ps(pid).is_none() && !file.exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let gone = bind.lookup_hwnd_for_ps(pid).is_none();
+    let file_gone = !file.exists();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(gone, "shell 退了 1 秒，登记还在内存里");
+    assert!(file_gone, "shell 退了 1 秒，登记还在盘上");
+}
+/// 登记读回来时那个 shell 已经不在（或进程号被别人复用了）⇒ 读回来那一刻就扔，`spawn` 一回来就已经没了（不等任何一圈）。
+/// 登记读回来时那个 shell 已经不在（或进程号被别人复用了）⇒ 一读回来就扔，不留到下一次。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_registration_whose_shell_is_already_gone_is_dropped_on_load() {
+    let dir = std::env::temp_dir().join(format!("bind-gone-{}", std::process::id()));
+    let reg = dir.join("ps-registry");
+    std::fs::create_dir_all(&reg).unwrap();
+    // 自己这个进程号，但起始时刻对不上 = 进程号被复用了。
+    let me = std::process::id();
+    let mut e = entry(me, 0x43, 1);
+    e.ps_proc_start = "1".to_string();
+    let file = reg.join(format!("{me}.json"));
+    std::fs::write(&file, serde_json::to_string(&e).unwrap()).unwrap();
+
+    let bind = BindRegistry::spawn(dir.clone());
+    let gone = bind.lookup_hwnd_for_ps(me).is_none() && !file.exists();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(gone, "起始时刻对不上的那条留下来了");
+}

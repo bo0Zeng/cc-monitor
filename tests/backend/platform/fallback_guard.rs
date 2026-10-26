@@ -189,11 +189,9 @@ mod tests {
     /// - **M7**：`#[cfg(not(target_os = "linux"))] pub(crate) const ASSUME_ALIVE: bool = true;`
     ///   —— cfg 字符串逐字命中，但常量行上没有 `{`，于是抓到的是**后面某个不相干函数的体**，
     ///   那行 `true` 从不进入检查面。**全绿。**
-    /// - **更要紧的一条**：`pidwatch/mod.rs` 的 `#[cfg(not(target_os = "linux"))] mod fallback;`
-    ///   同样无花括号 ⇒ 返回 `None` ⇒ **`pidwatch/fallback.rs` 一行都没被扫过**。
-    ///   而 U4a 自己把 pidwatch 的 fallback 从「函数内 cfg 块」改成「整文件按 cfg 选」，
-    ///   然后写了一个只理解前一种形状的护栏。今后有人把那个文件改成立刻调 `on_dead()`
-    ///   （它自己头注表里标为「最坏」的选项），没有任何门禁会响。
+    /// - **更要紧的一条**：`#[cfg(not(target_os = "linux"))] mod fallback;` 这种整文件按 cfg 选的 item 声明
+    ///   同样无花括号 ⇒ 返回 `None` ⇒ 被选进来的那份文件一行都没被扫过（那时 `pidwatch` 还住后端，它的空壳就是这样漏掉的；
+    ///   它今天住 `pidwatch-core`，由那个包自己的 `fallback_shape_tests.rs` 钉）。
     ///
     /// ⇒ 现在：先看 cfg 之后**先遇到 `{` 还是先遇到 `;`**。先 `;` ⇒ 是 item 声明，取到 `;` 为止。
     pub(super) fn block_after(code: &str, start: usize) -> Option<&str> {
@@ -307,7 +305,7 @@ mod tests {
     #[test]
     fn fallback_branches_must_not_fabricate_success() {
         let files = platform_sources();
-        // 采集面自检：`platform/` 至少 5 个文件（proc/paths/signal/liveness/pidwatch/mod）。
+        // 采集面自检：`platform/` 至少 5 个文件（proc/paths/signal/liveness/mod）。
         assert!(
             files.len() >= 5,
             "platform/ 只扫到 {} 个文件 —— 采集坏了，下面的断言是空转",
