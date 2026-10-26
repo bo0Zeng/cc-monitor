@@ -13,7 +13,7 @@ import { emitPerfSummary, noteFirstBatch } from "./startup-perf";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
 import type { SessionStatus } from "./generated/SessionStatus";
-import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
+import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayload";
 import type { SessionRuns } from "./generated/SessionRuns";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { WatchFrom } from "./generated/WatchFrom";
@@ -79,10 +79,10 @@ export interface EventHandlers {
    */
   onOriginSessionsListed?: (origin: string, all: boolean) => void;
   /**
-   * 活卡的一帧（后端拼好的成品）：会话流 `session-live-card`（通道 `subscribe`）里的一格。
+   * 活卡：会话流 `session-live-card`（通道 `subscribe`）里的一格 = 那台某会话某运行此刻整份的卡（壳照端核心的活卡板折好）。
    * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（记录那一轮到了，后端发撤卡）。
    */
-  onLiveCard?: (e: SessionLiveCardPayload) => void;
+  onLiveCard?: (e: SessionLiveCardsPayload) => void;
   /**
    * 那台机器的活卡流看不见了（订阅里的 `Unseen`：那条流断了）⇒ 那台上还开着的卡不会再有下文，全撤。
    */
@@ -683,15 +683,15 @@ export async function bindEvents(
 
 
 
-  // `session-live-card`：一格 = 活卡的一帧（`SessionLiveCardPayload`），当场交活卡、当场还 credit；
-  //   `Gap` 不补（那张卡的 `n` 接不上，先不画）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的卡不会再有下文）。
+  // `session-live-card`：一格 = 那一处整份的活卡（`SessionLiveCardsPayload`），当场交活卡、当场还 credit；
+  //   `Gap` 不补（下一格就是那一处的整份）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的卡不会再有下文）。
   const onLiveCardItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     let used = 0;
     for (const it of items) {
       if (it.t === "frame") {
         used += 1;
-        const p = tryDecodeJson<SessionLiveCardPayload>(it.body);
-        if (p !== null && typeof p === "object" && typeof p.card?.sid === "string") {
+        const p = tryDecodeJson<SessionLiveCardsPayload>(it.body);
+        if (p !== null && typeof p === "object" && typeof p.live?.sid === "string" && Array.isArray(p.live.cards)) {
           handlers.onLiveCard?.(p);
         } else {
           console.warn("[events] 活卡流里一格读不懂，跳过：", it.body.slice(0, 200));

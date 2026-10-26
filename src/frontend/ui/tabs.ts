@@ -44,7 +44,7 @@ import { TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
-import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
+import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayload";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabHide } from "./tab-hide";
 import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
@@ -112,7 +112,7 @@ export class TabManager {
       agentsPanel.host = {
         open: (sid, run) => void this.openRunWindow(sid, { run }),
         isOpen: (sid, run) => this.runWindows.has(`${sid}\u0000${run}`),
-        liveOf: (sid, run) => this.live.cards.liveBlockOf(sid, run),
+        liveOf: (sid, run) => this.live.liveBlockOf(sid, run),
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
@@ -869,9 +869,9 @@ export class TabManager {
     if (isEnded(face) && !(was !== null && isEnded(was))) this.hider.reap();
   }
 
-  /** `session-live-card`：活卡的一帧（`events.ts` 直派）。 */
-  onLiveCard(p: SessionLiveCardPayload): void {
-    this.live.onCard(p);
+  /** `session-live-card`：那一处整份的活卡（`events.ts` 直派）。 */
+  onLiveCard(p: SessionLiveCardsPayload): void {
+    this.live.onCards(p);
   }
 
   /** 开着窗口的那几个子运行（`sid\0run`；agent 窗口开 / 关时自己报，`window-events.ts`）。 */
