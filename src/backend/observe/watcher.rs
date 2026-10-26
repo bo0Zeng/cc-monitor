@@ -1902,7 +1902,11 @@ impl ReaderState {
         sink: &mut FrameSink,
     ) {
         let mark = crate::history::groups::mark(&table, &book);
-        if self.groups_mark.replace(mark).is_some_and(|old| old != mark) {
+        if self
+            .groups_mark
+            .replace(mark)
+            .is_some_and(|old| old != mark)
+        {
             sink.send(Frame::changed(Changed::Groups {}));
         }
         self.annotations = table;

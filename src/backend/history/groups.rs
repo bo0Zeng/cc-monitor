@@ -333,10 +333,7 @@ pub(crate) async fn read_with(
                         let at = crate::common::time::history_at_text(*at_ms, now_ms, tz);
                         (
                             Half::Before(h.clone(), at.clone()),
-                            Read::Stale {
-                                why: s.message,
-                                at,
-                            },
+                            Read::Stale { why: s.message, at },
                         )
                     }
                     None => (Half::None, Read::Failed { why: s.message }),
@@ -403,7 +400,12 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
     }
     let mut ids: Vec<&str> = records.keys().copied().collect();
     if someone_silent {
-        ids.extend(members.keys().copied().filter(|id| !records.contains_key(id)));
+        ids.extend(
+            members
+                .keys()
+                .copied()
+                .filter(|id| !records.contains_key(id)),
+        );
     }
     let mut groups: Vec<GroupRead> = ids
         .into_iter()
@@ -444,18 +446,22 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
 
 /// 组头那几颗点：需手动 · 在跑 · 后台各几条，名字照第一条那张脸上的字。
 fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
-    [SessionDot::NeedsYou, SessionDot::Running, SessionDot::Background]
-        .into_iter()
-        .filter_map(|dot| {
-            let mut hit = rows.iter().filter(|r| r.face.dot == dot);
-            let first = hit.next()?;
-            Some(GroupCount {
-                dot,
-                n: u32::try_from(1 + hit.count()).unwrap_or(u32::MAX),
-                word: first.face.name.clone(),
-            })
+    [
+        SessionDot::NeedsYou,
+        SessionDot::Running,
+        SessionDot::Background,
+    ]
+    .into_iter()
+    .filter_map(|dot| {
+        let mut hit = rows.iter().filter(|r| r.face.dot == dot);
+        let first = hit.next()?;
+        Some(GroupCount {
+            dot,
+            n: u32::try_from(1 + hit.count()).unwrap_or(u32::MAX),
+            word: first.face.name.clone(),
         })
-        .collect()
+    })
+    .collect()
 }
 
 // ───────────────────────── 家那一台：groups-write ─────────────────────────
@@ -543,8 +549,18 @@ pub(crate) fn write_at(
         GroupsWriteReq::Make { name } => {
             let name = checked_name(&name)?;
             let id = new_id(now);
-            book.insert(id.clone(), GroupRec { name: name.clone(), made: now });
-            Ok(GroupsWritten::Made(HereGroup { id, name, made: now }))
+            book.insert(
+                id.clone(),
+                GroupRec {
+                    name: name.clone(),
+                    made: now,
+                },
+            );
+            Ok(GroupsWritten::Made(HereGroup {
+                id,
+                name,
+                made: now,
+            }))
         }
         GroupsWriteReq::Rename { id, name } => {
             let name = checked_name(&name)?;

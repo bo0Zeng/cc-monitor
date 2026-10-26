@@ -139,9 +139,17 @@ async fn g2_members_on_a_stale_machine_are_drawn_unseen_not_running() {
     let _ = read(&Peers::new(&[("devbox", b)]), &kept, 1_000).await;
     let got = read(&Peers::new(&[]), &kept, 2_000).await;
     let g = &got.groups[0];
-    let sb = g.members.iter().find(|x| x.sid == "s-b").expect("那台的组员不漏");
+    let sb = g
+        .members
+        .iter()
+        .find(|x| x.sid == "s-b")
+        .expect("那台的组员不漏");
     assert_eq!(sb.face.dot, cmd_wire::frame::SessionDot::Unknown);
-    assert_eq!(g.counts.iter().map(|c| c.n).sum::<u32>(), 1, "只数本机在跑那一条");
+    assert_eq!(
+        g.counts.iter().map(|c| c.n).sum::<u32>(),
+        1,
+        "只数本机在跑那一条"
+    );
     assert!(got.pinned.iter().any(|x| x.sid == "s-b"), "固定的跟着出");
 }
 
@@ -248,7 +256,10 @@ fn own_at(d: &Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_data_at(d)
 }
 
-fn write(own: &crate::platform::fs::Own, op: GroupsWriteReq) -> Result<GroupsWritten, GroupsWriteErr> {
+fn write(
+    own: &crate::platform::fs::Own,
+    op: GroupsWriteReq,
+) -> Result<GroupsWritten, GroupsWriteErr> {
     write_at(own, op, 5)
 }
 
@@ -262,7 +273,14 @@ fn book_at(d: &Path) -> Book {
 fn g7_make_rename_dissolve_happen_at_home_and_nowhere_else() {
     let d = temp_dir("write");
     let own = own_at(&d);
-    let made = match write(&own, GroupsWriteReq::Make { name: "  开发 ".into() }).unwrap() {
+    let made = match write(
+        &own,
+        GroupsWriteReq::Make {
+            name: "  开发 ".into(),
+        },
+    )
+    .unwrap()
+    {
         GroupsWritten::Made(g) => g,
         other => panic!("{other:?}"),
     };
@@ -297,8 +315,18 @@ fn g7_make_rename_dissolve_happen_at_home_and_nowhere_else() {
             "不是这台的组 · 名字不对 ⇒ 拒"
         );
     }
-    assert_eq!(std::fs::read(d.join("history-metadata.json")).unwrap(), before, "拒了就不动");
-    write(&own, GroupsWriteReq::Dissolve { id: made.id.clone() }).unwrap();
+    assert_eq!(
+        std::fs::read(d.join("history-metadata.json")).unwrap(),
+        before,
+        "拒了就不动"
+    );
+    write(
+        &own,
+        GroupsWriteReq::Dissolve {
+            id: made.id.clone(),
+        },
+    )
+    .unwrap();
     assert!(book_at(&d).is_empty());
 }
 
