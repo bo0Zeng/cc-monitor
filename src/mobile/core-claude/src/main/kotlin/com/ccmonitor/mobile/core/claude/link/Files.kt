@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.FileClass
 import com.ccmonitor.mobile.core.wire.gen.FileKind
 import com.ccmonitor.mobile.core.wire.gen.FilesPathReply
 import com.ccmonitor.mobile.core.wire.gen.Gate
@@ -200,8 +201,8 @@ object FilesLs {
                 is Gate.No -> Open(said = x.value)
                 null -> null
             }
-        val isDir = e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true)
-        return Entry(path, rel, isDir, e.size, e.sizeText, e.mtimeText, preview, edit)
+        // 点不点得进去：那台画成文件夹的那几行（目录 · 指向目录的链接，`files/class.rs::class_of_entry`）。
+        return Entry(path, rel, e.`class` == FileClass.FOLDER, e.size, e.sizeText, e.mtimeText, preview, edit)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
