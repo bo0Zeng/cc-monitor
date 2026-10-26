@@ -660,10 +660,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     status: "generated",
     defs: [],
     gone: ["KEYS_NOT_NAMES"],
-    needles: [
-      { text: 'copyText("control.machine.local")', count: 0 },
-      { text: 'copyText("acct.machine.here")', count: 0 },
-    ],
+    needles: [],
     gen: {
       file: "src/frontend/ui/generated/judgment-rules.ts",
       exports: ["KEYS_NOT_NAMES"],
