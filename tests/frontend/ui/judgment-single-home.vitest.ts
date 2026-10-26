@@ -303,8 +303,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J12: {
     what: "cc-bus agent id 形状",
     // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
-    //   后端 `bus-send` / `bus-inbox` 入口
-    //   在交给 `cc-send` / `cc-log` 之前判（拒码 `bad_id`）。界面那一份（发 / 查在线）删了；
+    //   后端 `bus-inbox` 入口
+    //   在交给 `cc-log` 之前判（拒码 `bad_id`）。界面那一份（发 / 查在线）删了，界面也不发信了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
     homes: ["shell-quote-core::bus_id_ok"],
     status: "zero",
@@ -891,6 +891,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
+    // cc-bus 信封里哪几种动作必须带 `re`（`BusAct::needs_re`）：后端信封校验那一处调它；界面只显示、不发信，TS 侧没有孪生。
+    needs_re: NONE,
     // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
     descending: NONE,
     // 带键集合手上那份照答换（`sync::Hand::apply`）：Rust 消费方与手机 `SyncHand` 照同一份金样；界面问本机后端拿整份、不换，TS 侧没有孪生。

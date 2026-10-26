@@ -10442,44 +10442,93 @@ type NoArgs = Record<symbol, never>;
 
 码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
-#### `bus-send`
+#### `bus-envelope`
 
-发一条消息。
+核一封信、盖上 id 与时间。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-send`
+收 `args` · 可撤 · CLI：`ccm -- --bus-envelope`
 
-入参 `BusSendReq` · 回包 `BusSent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `BusEnvelopeReq` · 回包 `BusEnvelope`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type BusSendReq = { 
+type BusAct = "ask" | "answer" | "request" | "inform" | "handback" | "correct";
+type BusEnvelope = { 
 /**
- * 收件人身份。
+ * 消息 id（`re` · `msg:` 引的就是它）。
  */
-to: string, text: string, 
+id: string, 
 /**
- * 以谁的身份发（可缺；空白当没给）。
+ * 时间（UTC，`YYYY-MM-DDTHH:MM:SSZ`）。
  */
-from?: string | null, };
-type BusSent = { to: string, 
+ts: string, 
 /**
- * 投出去了（恒 `true`）。
+ * 发件人（会话 id）。
  */
-sent: boolean, 
+from: string, 
 /**
- * 在总线名单里吗。
+ * 收件人（会话 id）。
  */
-registered: boolean, 
+to: string, 
 /**
- * 那个会话今天活着吗，与 `bus-list` 同一套三态。
+ * 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。
  */
-live: boolean | null, 
+tier: number, 
 /**
- * 实际以谁的身份发的（没给 ⇒ `null`）。
+ * 这一封是做什么的（线上码）。
  */
-from: string | null, };
+act: BusAct, 
+/**
+ * 标题（一行）。
+ */
+title: string, 
+/**
+ * 接在哪一条后面（消息 id），没有 ⇒ `null`。
+ */
+re: string | null, 
+/**
+ * 引用（路径 · `pb:` · `msg:` · `commit:` · URL）。
+ */
+refs: Array<string>, 
+/**
+ * 正文。
+ */
+text: string, };
+type BusEnvelopeReq = { 
+/**
+ * 发件人：会话 id。
+ */
+from: string, 
+/**
+ * 收件人：会话 id。
+ */
+to: string, 
+/**
+ * 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。缺 ⇒ 2。
+ */
+tier?: number, 
+/**
+ * 这一封是做什么的（线上码；写错的码在解入参那一下就拒）。
+ */
+act: BusAct, 
+/**
+ * 一行，不超过 80 字。
+ */
+title: string, 
+/**
+ * 接在哪一条后面（消息 id）；答 · 交回 · 更正必带。
+ */
+re?: string | null, 
+/**
+ * 引用，只核前缀形状。缺 ⇒ 没有引用。
+ */
+refs?: Array<string> | null, 
+/**
+ * 正文，不超过 1200 字节（长的写成文件，给路径）。缺 ⇒ 只有标题。
+ */
+text?: string | null, };
 ```
 
-码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `child_timed_out` · `too_long` · `failed`
+码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long`
 
 #### `bus-inbox`
 
@@ -10490,9 +10539,51 @@ from: string | null, };
 入参 `BusInboxReq` · 回包 `BusInbox`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type BusInbox = { messages: Array<BusMessage>, 
+type BusAct = "ask" | "answer" | "request" | "inform" | "handback" | "correct";
+type BusEnvelope = { 
 /**
- * 读不懂的行数。
+ * 消息 id（`re` · `msg:` 引的就是它）。
+ */
+id: string, 
+/**
+ * 时间（UTC，`YYYY-MM-DDTHH:MM:SSZ`）。
+ */
+ts: string, 
+/**
+ * 发件人（会话 id）。
+ */
+from: string, 
+/**
+ * 收件人（会话 id）。
+ */
+to: string, 
+/**
+ * 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。
+ */
+tier: number, 
+/**
+ * 这一封是做什么的（线上码）。
+ */
+act: BusAct, 
+/**
+ * 标题（一行）。
+ */
+title: string, 
+/**
+ * 接在哪一条后面（消息 id），没有 ⇒ `null`。
+ */
+re: string | null, 
+/**
+ * 引用（路径 · `pb:` · `msg:` · `commit:` · URL）。
+ */
+refs: Array<string>, 
+/**
+ * 正文。
+ */
+text: string, };
+type BusInbox = { messages: Array<BusEnvelope>, 
+/**
+ * 读不懂的行数（不是规范信封的也算）。
  */
 skipped: number, 
 /**
@@ -10508,23 +10599,6 @@ id: string,
  * 1..=2000，缺 ⇒ 200。
  */
 lines?: number, };
-type BusMessage = { 
-/**
- * 发件人。
- */
-from: string, 
-/**
- * 时间。
- */
-ts: string, 
-/**
- * 正文。
- */
-text: string, 
-/**
- * 消息类别（cc-bus 原样）。
- */
-class: string, };
 ```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
@@ -10954,7 +11028,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
 type Sent = { 
 /**
  * 结局。
@@ -11137,7 +11211,7 @@ why?: Refused,
  * 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
 type SessionModelReq = { 
 /**
  * 会话 id。
@@ -11187,7 +11261,7 @@ why?: Refused,
  * `unsure` · `refused` 时给人看的那一句。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
 type SessionPermissionReq = { 
 /**
  * 会话 id。
@@ -11215,7 +11289,7 @@ type Sid = string;
 入参 `SessionSayReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
 type Sent = { 
 /**
  * 结局。
@@ -11255,7 +11329,11 @@ client?: string,
  * 送之前看到的那一屏的指纹（`terminal-preview` 的 `screen`）：画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`（同 `terminal-input`）。
  * 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
  */
-seen_screen?: string, };
+seen_screen?: string, 
+/**
+ * `true` ⇒ 只在这条会话闲着（等下一句输入）时送；一轮在跑 · 后台在跑 · 判不出 ⇒ 不送、回 `refused` ＋ `not_idle`。缺 ⇒ 不要求。
+ */
+idle_only?: boolean, };
 type Sid = string;
 ```
 
@@ -13958,9 +14036,9 @@ type Words = string;
 | `--backend-log` | ＝ 帧命令 `backend-log`：这台后端的 stderr 诊断文件尾部 |
 | `--bookmarks-edit` | ＝ 帧命令 `bookmarks-edit`：切换 · 删 · 加几条书签，回改完的整份 |
 | `--bookmarks-read` | ＝ 帧命令 `bookmarks-read`：这台的书签 |
+| `--bus-envelope` | ＝ 帧命令 `bus-envelope`：核一封信、盖上 id 与时间 |
 | `--bus-inbox` | ＝ 帧命令 `bus-inbox`：只读看一个 agent 收件箱的尾巴 |
 | `--bus-list` | ＝ 帧命令 `bus-list`：谁在线 + 各自待读多少 |
-| `--bus-send` | ＝ 帧命令 `bus-send`：发一条消息 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |

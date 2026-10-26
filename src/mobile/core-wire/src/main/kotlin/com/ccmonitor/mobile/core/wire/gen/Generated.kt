@@ -2294,6 +2294,20 @@ data class BrowseReq(
     }
 }
 
+enum class BusAct(val wire: String) {
+    ASK("ask"),
+    ANSWER("answer"),
+    REQUEST("request"),
+    INFORM("inform"),
+    HANDBACK("handback"),
+    CORRECT("correct"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusAct> = enumOf(entries) { it.wire }
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class BusAgent(
     val id: String,
@@ -2320,8 +2334,74 @@ data class BusAgent(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class BusEnvelope(
+    val id: String,
+    val ts: String,
+    val from: String,
+    val to: String,
+    val tier: Long,
+    val act: BusAct,
+    val title: String,
+    val re: String?,
+    val refs: List<String>,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusEnvelope> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("ts", { Str }, optional = false, nullable = false),
+            Field("from", { Str }, optional = false, nullable = false),
+            Field("to", { Str }, optional = false, nullable = false),
+            Field("tier", { Lng }, optional = false, nullable = false),
+            Field("act", { BusAct.ADAPTER }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("re", { opt(Str) }, optional = false, nullable = true),
+            Field("refs", { arr(Str) }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BusEnvelope(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Long, a[5] as BusAct, a[6] as String, a[7] as String?, a[8] as List<String>, a[9] as String) },
+            { v -> arrayOf(v.id, v.ts, v.from, v.to, v.tier, v.act, v.title, v.re, v.refs, v.text) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusEnvelopeReq(
+    val from: String,
+    val to: String,
+    val tier: Long? = null,
+    val act: BusAct,
+    val title: String,
+    val re: String? = null,
+    val refs: List<String>? = null,
+    val text: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusEnvelopeReq> = obj(
+            listOf(
+            Field("from", { Str }, optional = false, nullable = false),
+            Field("to", { Str }, optional = false, nullable = false),
+            Field("tier", { opt(Lng) }, optional = true, nullable = true),
+            Field("act", { BusAct.ADAPTER }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("re", { opt(Str) }, optional = true, nullable = true),
+            Field("refs", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("text", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> BusEnvelopeReq(a[0] as String, a[1] as String, a[2] as Long?, a[3] as BusAct, a[4] as String, a[5] as String?, a[6] as List<String>?, a[7] as String?) },
+            { v -> arrayOf(v.from, v.to, v.tier, v.act, v.title, v.re, v.refs, v.text) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class BusInbox(
-    val messages: List<BusMessage>,
+    val messages: List<BusEnvelope>,
     val skipped: Long,
     val truncated: Boolean,
 ) : Ordered {
@@ -2330,11 +2410,11 @@ data class BusInbox(
     companion object {
         val ADAPTER: JsonAdapter<BusInbox> = obj(
             listOf(
-            Field("messages", { arr(BusMessage.ADAPTER) }, optional = false, nullable = false),
+            Field("messages", { arr(BusEnvelope.ADAPTER) }, optional = false, nullable = false),
             Field("skipped", { Lng }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             ),
-            { a -> BusInbox(a[0] as List<BusMessage>, a[1] as Long, a[2] as Boolean) },
+            { a -> BusInbox(a[0] as List<BusEnvelope>, a[1] as Long, a[2] as Boolean) },
             { v -> arrayOf(v.messages, v.skipped, v.truncated) },
         )
     }
@@ -2372,75 +2452,6 @@ data class BusList(
             ),
             { a -> BusList(a[0] as List<BusAgent>) },
             { v -> arrayOf(v.agents) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusMessage(
-    val from: String,
-    val ts: String,
-    val text: String,
-    val `class`: String,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusMessage> = obj(
-            listOf(
-            Field("from", { Str }, optional = false, nullable = false),
-            Field("ts", { Str }, optional = false, nullable = false),
-            Field("text", { Str }, optional = false, nullable = false),
-            Field("class", { Str }, optional = false, nullable = false),
-            ),
-            { a -> BusMessage(a[0] as String, a[1] as String, a[2] as String, a[3] as String) },
-            { v -> arrayOf(v.from, v.ts, v.text, v.`class`) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusSendReq(
-    val to: String,
-    val text: String,
-    val from: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusSendReq> = obj(
-            listOf(
-            Field("to", { Str }, optional = false, nullable = false),
-            Field("text", { Str }, optional = false, nullable = false),
-            Field("from", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> BusSendReq(a[0] as String, a[1] as String, a[2] as String?) },
-            { v -> arrayOf(v.to, v.text, v.from) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class BusSent(
-    val to: String,
-    val sent: Boolean,
-    val registered: Boolean,
-    val live: Boolean?,
-    val from: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<BusSent> = obj(
-            listOf(
-            Field("to", { Str }, optional = false, nullable = false),
-            Field("sent", { Bool }, optional = false, nullable = false),
-            Field("registered", { Bool }, optional = false, nullable = false),
-            Field("live", { opt(Bool) }, optional = false, nullable = true),
-            Field("from", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> BusSent(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as Boolean?, a[4] as String?) },
-            { v -> arrayOf(v.to, v.sent, v.registered, v.live, v.from) },
         )
     }
 }
@@ -16442,6 +16453,7 @@ enum class Refused(val wire: String) {
     WAITING("waiting"),
     ELSEWHERE("elsewhere"),
     NOT_RESUMED("not_resumed"),
+    NOT_IDLE("not_idle"),
     ;
 
     companion object {
@@ -19450,6 +19462,7 @@ data class SessionSayReq(
     val text: String,
     val client: String? = null,
     val seenScreen: String? = null,
+    val idleOnly: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19460,9 +19473,10 @@ data class SessionSayReq(
             Field("text", { Str }, optional = false, nullable = false),
             Field("client", { opt(Str) }, optional = true, nullable = true),
             Field("seen_screen", { opt(Str) }, optional = true, nullable = true),
+            Field("idle_only", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> SessionSayReq(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?) },
-            { v -> arrayOf(v.sid, v.text, v.client, v.seenScreen) },
+            { a -> SessionSayReq(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean?) },
+            { v -> arrayOf(v.sid, v.text, v.client, v.seenScreen, v.idleOnly) },
         )
     }
 }
