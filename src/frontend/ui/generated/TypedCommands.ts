@@ -306,6 +306,7 @@ import type { SessionModelReq } from "./SessionModelReq";
 import type { SessionOpenReq } from "./SessionOpenReq";
 import type { SessionPermissionReq } from "./SessionPermissionReq";
 import type { SessionSayReq } from "./SessionSayReq";
+import type { SessionSelf } from "./SessionSelf";
 import type { Showing } from "./Showing";
 import type { SidReq } from "./SidReq";
 import type { SidsReq } from "./SidsReq";
@@ -527,6 +528,7 @@ export interface TypedCommands {
   "session-permission": { req: SessionPermissionReq; reply: ModeSwitched; code: "bad_args" | "unsupported" | "launch_only" | "not_known" | "ambiguous" | "no_tmux" | "tmux_too_old" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
   "session-restart": { req: RestartReq; reply: Restarted; code: "bad_args" | "unobservable" | "account_unavailable" | "not_in_terminal" | "ambiguous" | "already_live" | "stop_failed" | "start_failed" | "child_timed_out" };
   "session-say": { req: SessionSayReq; reply: Sent; code: "bad_args" | "no_tmux" | "no_such_session" | "unobservable" | "child_timed_out" };
+  "session-self": { req: NoArgs; reply: SessionSelf; code: "bad_args" | "not_in_session" };
   "session-terminals": { req: SidReq; reply: Showing; code: "bad_args" | "no_such_session" | "failed" | "child_timed_out" };
   "sessions-needs": { req: NoArgs; reply: NeedsList; code: "bad_args" };
   "sessions-needs-merge": { req: NeedsMergeReq; reply: NeedsMerged; code: "bad_args" };

@@ -44,6 +44,15 @@ pub(crate) fn first_session(chain: &[u32], rows: &[LiveRow]) -> Option<String> {
     })
 }
 
+/// 从 `start` 往上（真读父进程号）找 `agent_home` 那张活会话表里的会话。
+pub(crate) fn who_at(agent_home: &std::path::Path, start: u32) -> Option<String> {
+    let chain = chain_from(start, crate::platform::proc::parent_of);
+    first_session(
+        &chain,
+        super::live_table::LiveTable::scan(agent_home).rows(),
+    )
+}
+
 /// 只留有这台这一条（`sid`）的那几组。
 pub(crate) fn mine(read: GroupsRead, sid: &str) -> Vec<GroupRead> {
     read.groups
@@ -164,13 +173,12 @@ impl crate::wire::typed::Handle for SessionSelfCmd {
     ) -> impl std::future::Future<Output = Result<SessionSelf, SessionSelfErr>> + Send + 'static
     {
         async move {
-            let chain = chain_from(std::process::id(), crate::platform::proc::parent_of);
-            let live = super::live_table::now(&super::listing::agent_home());
-            let sid = first_session(&chain, live.rows()).ok_or_else(|| {
-                SessionSelfErr::NotInSession(crate::common::contract::malformed(
-                    "no process above this one is a session on this machine",
-                ))
-            })?;
+            let sid =
+                who_at(&super::listing::agent_home(), std::process::id()).ok_or_else(|| {
+                    SessionSelfErr::NotInSession(crate::common::contract::malformed(
+                        "no process above this one is a session on this machine",
+                    ))
+                })?;
             let tz = cx.tz.clone();
             Ok(answer(sid, via_resident(tz.clone()), super::groups::read_here(tz)).await)
         }

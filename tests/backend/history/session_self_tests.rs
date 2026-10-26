@@ -144,3 +144,30 @@ async fn s6_resident_answered_means_every_machine_else_this_machine_only() {
     );
     assert!(none.groups.is_empty());
 }
+
+/// ★ 真走一遍：这台的 pidfile 目录里有一份写着本进程的会话 ⇒ 从本进程往上（真读父进程号）认出它；没有 ⇒ 不在会话里。
+#[cfg(unix)]
+#[test]
+fn s7_the_real_chain_from_this_process_finds_the_session_whose_pidfile_names_an_ancestor() {
+    let home = std::env::temp_dir().join(format!("ccm-session-self-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let sessions = crate::agents::pidfile_dir(&home);
+    std::fs::create_dir_all(&sessions).unwrap();
+    let parent = crate::platform::proc::parent_of(std::process::id()).expect("读得出父进程号");
+    assert_eq!(
+        who_at(&home, std::process::id()),
+        None,
+        "没有 pidfile ⇒ 不在会话里"
+    );
+    std::fs::write(
+        sessions.join(format!("{parent}.json")),
+        r#"{"sessionId":"s-live","cwd":"/w"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        who_at(&home, std::process::id()).as_deref(),
+        Some("s-live"),
+        "父进程那一份就是这条会话"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
