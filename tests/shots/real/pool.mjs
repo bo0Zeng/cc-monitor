@@ -24,7 +24,8 @@
  *   世界里的 `reach`（`/__ccm/world` 的那一格，本机后端问得到的那几台远端：`{<origin>: {refuse: [<命令>…]}}`）：跨台合并那几条由本机后端自己扇出（`--resident-call`），
  *   台架照产品那一形让它问得到 —— 每台远端在它的沙箱里另起一个常驻（同一个家 · 同一台私有 tmux；起好了才起 stdio 那一个）；
  *   本机沙箱里起一个只听回环的 sshd（一台远端一个口），登录壳是按口转发的假 ssh（[`forwarderSh`]：只认台架那几台、只转 `--resident-call`，
- *   `refuse` 里的命令照「那一跳断开」拒）；都握上手之后把每台写进本机后端的机器表（`machines.json`，它按名字现读、照表去问）。
+ *   `refuse` 里的命令照「那一跳断开」拒），口取自场景那张机器表（[`reachTable`]）；都握上手之后把那张表整张写进本机后端（`machines.json`，它按名字现读、照表去问），
+ *   问得到的那几台只换上台架那把私钥，问不到的照原样留着。
  *   合并只在本机后端那一处，台架不再写一份。
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
@@ -136,8 +137,6 @@ export function tmuxShim(shim, sock) {
 /** 本机那一台的名字（同 `fake/world.ts::LOCAL`）。 */
 const LOCAL = "<local>";
 
-/** 本机沙箱里那个 sshd 给第 k 台远端（`reach` 里的先后，0 起）听的口：`PEER_PORT_BASE + k`（沙箱自己的网络命名空间，不碰宿主的口）。 */
-export const PEER_PORT_BASE = 2201;
 
 /** 沙箱里够那几样的位置：sshd 的钥匙（只读挂进本机沙箱）· 第 k 台远端那个常驻的套接字目录（挂成 `<PEERS>/<k>/run`，即 `CCM_DATA_DIR=<PEERS>/<k>` 的 `run/`）。 */
 const SSH_DIR = "/tmp/shots-ssh";
@@ -206,9 +205,20 @@ function sshKeys(sandbox) {
   return dir;
 }
 
-/** 本机后端机器表里的那一台（`machines.json` 的一行）：拨本机沙箱里那个 sshd 给这台听的口。 */
-export function reachHost(origin, k) {
-  return { label: origin, host: "127.0.0.1", port: PEER_PORT_BASE + k, user: "user", keyPath: `${SSH_DIR}/client`, addresses: [], jump: "", connect: true };
+/**
+ * 交本机后端的那张机器表与假 ssh 听的那几个口。场景那张表（本机盘上的 `.cc-monitor/machines.json`，`fake/world.ts` 写）是地址的来处：
+ * 问得到的那几台（`reach`：`[[台名, {refuse}]…]`）各是表里那一行，口取自那一行（得是回环上的一个口），只把私钥换成台架那一把；
+ * 问不到的那几台（从没见过 · 会话流被关）照原样留在表里 —— 那个口没人听，一拨就被拒。回 `{hosts, peers: [{origin, k, port, refuse}]}`。
+ */
+export function reachTable(table, reach) {
+  const hosts = table === undefined ? [] : JSON.parse(table).hosts;
+  const peers = reach.map(([origin, r], k) => {
+    const row = hosts.find((h) => h.label === origin);
+    if (!row) throw new Error(`问得到的 ${origin} 在场景那张机器表里没有那一行`);
+    if (row.host !== "127.0.0.1" || !Number.isInteger(row.port)) throw new Error(`${origin} 在场景表里不是回环上的一个口：${row.host}:${row.port}`);
+    return { origin, k, port: row.port, refuse: r.refuse ?? [] };
+  });
+  return { hosts: hosts.map((h) => (peers.some((p) => p.origin === h.label) ? { ...h, keyPath: `${SSH_DIR}/client` } : h)), peers };
 }
 
 /** 台架那一份后端的构建目录（带特性 `shots`）。 */
@@ -554,10 +564,13 @@ export function backendPool({ repo, sandbox }) {
     // 本机后端问得到的那几台（`reach`）：各起一个常驻；本机那一台起 sshd、挂上它们的套接字目录（先建好，0700 同常驻自己建的那一形）。
     const order = Object.keys(machines);
     const reach = Object.entries(body.reach ?? {}).filter(([o]) => o !== LOCAL && o in machines);
-    const peers = reach.map(([origin, r], k) => {
-      const run = path.join(dir, `m${order.indexOf(origin)}`, "home", ".cc-monitor", "run");
+    if (reach.length > 0 && !(LOCAL in machines)) throw new Error("世界里有 reach 却没有本机那一台");
+    // 场景那张机器表是地址的来处：假 ssh 照表里那几台的口听（[`reachTable`]）。
+    const table = reachTable(machines[LOCAL]?.files?.[".cc-monitor/machines.json"], reach);
+    const peers = table.peers.map((p) => {
+      const run = path.join(dir, `m${order.indexOf(p.origin)}`, "home", ".cc-monitor", "run");
       mkdirSync(run, { recursive: true, mode: 0o700 });
-      return { origin, k, port: PEER_PORT_BASE + k, refuse: r.refuse ?? [], run };
+      return { ...p, run };
     });
     const list = Object.entries(machines).map(([origin, m0], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
@@ -572,12 +585,12 @@ export function backendPool({ repo, sandbox }) {
     w.sh = sh;
     sh.send({ t: "machines", machines: list });
     await sh.up(list.map((m) => m.origin));
-    // 那几台写进本机后端的机器表（`~/.cc-monitor/machines.json`，它按名字现读）：之后跨台合并那几问它自己照表去问。
-    if (peers.length > 0 && !(LOCAL in machines)) throw new Error("世界里有 reach 却没有本机那一台");
+    // 都握上手之后，问得到的那几台换上台架那把私钥（`~/.cc-monitor/machines.json`，本机后端按名字现读）：之后跨台合并那几问它自己照表去问。
+    // 整张照场景写回：问不到的那几台照原样在表里（设置页列表照它画）。
     if (peers.length > 0) {
       const at = path.join(w.homes.get(LOCAL), ".cc-monitor", "machines.json");
       mkdirSync(path.dirname(at), { recursive: true });
-      writeFileSync(at, JSON.stringify({ version: 1, hosts: peers.map((p) => reachHost(p.origin, p.k)) }));
+      writeFileSync(at, JSON.stringify({ version: 1, hosts: table.hosts }, null, 2) + "\n");
     }
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
