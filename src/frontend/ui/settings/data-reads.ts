@@ -9,6 +9,7 @@ import type { ChoresMerged } from "../generated/ChoresMerged";
 import type { ChoresMarkReq } from "../generated/ChoresMarkReq";
 import type { DataReport } from "../generated/DataReport";
 import type { FootprintClient } from "../generated/FootprintClient";
+import type { SeenAt } from "../generated/SeenAt";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { recallSeen, rememberSeen } from "../last-seen";
@@ -51,15 +52,18 @@ export async function readDataReport(origin: Origin): Promise<DataReport> {
   return report;
 }
 
-/** 那台上次读成的那一份（本机后端记着的，跨重启还在；后端按回包类型核过）；没有 / 存档不是这一版 ⇒ `null`。 */
-export async function recallDataReport(origin: Origin): Promise<{ report: DataReport; atMs: number } | null> {
+/**
+ * 那台上次读成的那一份（本机后端记着的，跨重启还在；后端按回包类型核过）＋ 上次读数那一格（本机后端写好的「采样于 …」）；
+ * 没有 / 存档不是这一版 ⇒ `null`。
+ */
+export async function recallDataReport(origin: Origin): Promise<{ report: DataReport; seen: SeenAt } | null> {
   const seen = await recallSeen(origin, "data");
   if (seen === null) return null;
   if (seen.state === "unreadable") {
     console.warn(`[data] ${origin} 记下的上次值不是这一版，读不懂`);
     return null;
   }
-  return { report: seen.value, atMs: seen.atMs };
+  return { report: seen.value, seen: seen.seen };
 }
 
 /**

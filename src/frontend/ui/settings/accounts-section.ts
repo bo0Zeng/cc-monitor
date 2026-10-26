@@ -7,7 +7,6 @@
  * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
  * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`changed {accounts}` · `changed {quota}`），这一页自己重读。
  */
-import { spanNow } from "../duration-format";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "../machine-context";
 import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
@@ -225,7 +224,7 @@ export class AccountsSection {
       const last = s.last ?? null;
       const retry = button({ label: copyText("acctPage.offline.retry"), size: "compact", onClick: () => void this.reload() });
       const text = last
-        ? copyText("acctPage.offline.bar", { machine, ago: spanNow(last.atMs, Date.now()) })
+        ? copyText("acctPage.offline.bar", { machine, seen: last.seen.said })
         : copyText("acctPage.offline.noLast", { machine, why: s.error ?? "" });
       out.push(banner("warn", text, [retry]));
       if (last && last.accounts.length > 0) {

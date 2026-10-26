@@ -24,7 +24,6 @@ import { readRemoteConfig } from "../remote-config";
 import { markChore, readChores, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
-import { spanNow } from "../duration-format";
 import { choreRow } from "./chore-row";
 import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
@@ -50,7 +49,7 @@ export interface DataPageHost {
 }
 
 /** 一台这一趟的结果：读到 · 读不到（那一句 ＋ 本机后端记着的上次那一份，没有 ⇒ `null`）。 */
-type Reading = { ok: true; report: DataReport } | { ok: false; why: string; last: { report: DataReport; atMs: number } | null };
+type Reading = { ok: true; report: DataReport } | { ok: false; why: string; last: Awaited<ReturnType<typeof recallDataReport>> };
 
 interface Machine {
   origin: Origin;
@@ -430,7 +429,7 @@ export class DataPage {
     const name = this.machines.find((m) => m.origin === this.picked)?.name ?? this.picked;
     this.offlineBar.hidden = !(r && !r.ok);
     if (r && !r.ok) {
-      const said = r.last ? copyText("dataPage.placed.stale", { machine: name, ago: spanNow(r.last.atMs, Date.now()) }) : copyText("dataPage.placed.offline", { machine: name });
+      const said = r.last ? copyText("dataPage.placed.stale", { machine: name, seen: r.last.seen.said }) : copyText("dataPage.placed.offline", { machine: name });
       this.offlineBar.replaceChildren(
         banner("warn", said, [button({ label: copyText("dataPage.placed.retry"), size: "compact", onClick: () => void this.refresh() })]),
       );

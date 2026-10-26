@@ -525,6 +525,10 @@ pub(crate) struct PlanRead {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub read_at_text: Option<String>,
+    /// 上次读数那一格（与 `readAtText` 同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub seen: Option<crate::footprint::last_seen::SeenAt>,
     pub stale: Option<PlanStale>,
     pub need_count: u32,
 }
