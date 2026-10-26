@@ -1593,6 +1593,42 @@ fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
         .iter()
         .find(|r| r.kind == ExtKind::Plugin)
         .expect("插件那一行");
+    // 字都由后端写：种类那一格 · 每个点与每一处那一句（「只在项目里」带上项目）· 图例有插件行才多「关着」。
+    let n = |k: &str| copy_text(k, &[]);
+    assert_eq!(row.kind_said, n("beExt.kind.plugin"));
+    assert_eq!(row.cells[5].said, n("beExt.state.off"));
+    assert_eq!(row.cells[4].places[0].said, n("beExt.state.off"));
+    assert_eq!(
+        row.cells[4].said,
+        copy_text("beExt.state.project", &[("dirs", "/w")])
+    );
+    let legend: Vec<(ExtState, String)> = list
+        .legend
+        .iter()
+        .map(|g| (g.state, g.said.clone()))
+        .collect();
+    assert_eq!(
+        legend,
+        vec![
+            (ExtState::Same, n("beExt.legend.same")),
+            (ExtState::Differs, n("beExt.legend.differs")),
+            (ExtState::Missing, n("beExt.state.missing")),
+            (ExtState::Project, n("beExt.legend.project")),
+            (ExtState::Off, n("beExt.legend.off")),
+        ]
+    );
+    let mut no_plugin = asset_catalog::fresh("h".into());
+    no_plugin.machines.insert(
+        "h".into(),
+        snap("me@h", vec![asset(ExtKind::Skill, "s", "d", None)], &[]),
+    );
+    assert!(
+        !table(&no_plugin, &[])
+            .legend
+            .iter()
+            .any(|g| g.state == ExtState::Off),
+        "没有插件行也列了「关着」"
+    );
     let got: Vec<String> = row.cells.iter().map(brief).collect();
     let note = format!("note:{ro}");
     assert_eq!(

@@ -372,15 +372,15 @@ fn read_json_said(
     what: PluginJson,
     problems: &mut Vec<String>,
 ) -> Option<serde_json::Value> {
+    if matches!(Ro::metadata(file), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return None;
+    }
     let cap = match what {
         PluginJson::Record => PLUGIN_RECORD_MAX_BYTES,
         PluginJson::Settings => SETTINGS_MAX_BYTES,
         PluginJson::Manifest => PLUGIN_MANIFEST_MAX_BYTES,
         PluginJson::Mcp => MAX_PROJECT_MCP_BYTES,
     };
-    if matches!(Ro::metadata(file), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
-        return None;
-    }
     match Ro::read_json_capped(file, cap) {
         Ok(v) => Some(v),
         Err(e) => {

@@ -97,24 +97,6 @@ function markTip(e: McpEntry): string | null {
   return null;
 }
 
-/** 一格 / 一处给人看的那句话（悬停 · 抽屉里那一行）。 */
-export function stateText(state: ExtCell["state"], places: readonly ExtPlace[]): string {
-  switch (state) {
-    case "same":
-      return copyText("extPage.state.same");
-    case "differs":
-      return copyText("extPage.state.differs");
-    case "missing":
-      return copyText("extPage.state.missing");
-    case "project":
-      return copyText("extPage.state.project", {
-        dirs: places.flatMap((p) => (p.at.level === "project" ? [p.at.dir] : [])).join(copyText("extPage.list.sep")),
-      });
-    case "off":
-      return copyText("extPage.state.off");
-  }
-}
-
 /** 一处叫什么：全局 · 某个项目。 */
 export function locText(at: ExtLoc): string {
   return at.level === "user" ? copyText("extPage.loc.user") : copyText("extPage.loc.project", { dir: at.dir });
@@ -123,33 +105,6 @@ export function locText(at: ExtLoc): string {
 /** 两处是不是同一处（卡上那一项选中没有）。 */
 function sameLoc(a: ExtLoc, b: ExtLoc): boolean {
   return a.level === "user" ? b.level === "user" : b.level === "project" && a.dir === b.dir;
-}
-
-/** 表下图例那一行的字（不带「在哪个项目」）。 */
-function legendText(state: ExtCell["state"]): string {
-  switch (state) {
-    case "same":
-      return copyText("extPage.legend.same");
-    case "differs":
-      return copyText("extPage.legend.differs");
-    case "missing":
-      return copyText("extPage.state.missing");
-    case "project":
-      return copyText("extPage.legend.project");
-    case "off":
-      return copyText("extPage.legend.off");
-  }
-}
-
-function kindText(r: ExtRow): string {
-  switch (r.kind) {
-    case "skill":
-      return copyText("extPage.kind.skill");
-    case "mcp":
-      return copyText("extPage.kind.mcp");
-    case "plugin":
-      return copyText("extPage.kind.plugin");
-  }
 }
 
 function machineName(m: ExtMachine): string {
@@ -407,11 +362,10 @@ export class ExtSection {
       items.push(line);
     }
     const legend = el("div", "ext-legend");
-    // 「关着」只有插件有：有插件行才列它。
-    const states = rows.some((r) => r.kind === "plugin") ? (["same", "differs", "missing", "project", "off"] as const) : (["same", "differs", "missing", "project"] as const);
-    for (const st of states) {
+    // 列哪几态、各说什么都是后端那一份（「关着」只在有插件行时列）。
+    for (const g of list.legend) {
       const item = el("span", "ext-legend-item");
-      item.append(dotOf(st), el("span", "", legendText(st)));
+      item.append(dotOf(g.state), el("span", "", g.said));
       legend.appendChild(item);
     }
     if (rows.some((r) => r.kind === "mcp")) {
@@ -445,7 +399,7 @@ export class ExtSection {
       name.appendChild(mark);
     }
     line.appendChild(name);
-    line.appendChild(el("span", "ext-kind", kindText(r)));
+    line.appendChild(el("span", "ext-kind", r.kindSaid));
     line.appendChild(el("span", "ext-about one-line", r.about ?? ""));
     const dots = el("span", "ext-dots");
     r.cells.forEach((c, i) => {
@@ -456,8 +410,8 @@ export class ExtSection {
       const tip = e ? markTip(e) : null;
       d.title =
         tip === null
-          ? copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) })
-          : copyText("extPage.dot.titleMark", { machine: machineName(m), state: stateText(c.state, c.places), mark: tip });
+          ? copyText("extPage.dot.title", { machine: machineName(m), state: c.said })
+          : copyText("extPage.dot.titleMark", { machine: machineName(m), state: c.said, mark: tip });
       dots.appendChild(d);
     });
     line.appendChild(dots);
@@ -503,7 +457,7 @@ export class ExtSection {
     if (!r || !list) return;
     const head = el("div", "ext-drawer-head");
     head.appendChild(el("strong", "", r.name));
-    head.appendChild(el("span", "ext-kind", kindText(r)));
+    head.appendChild(el("span", "ext-kind", r.kindSaid));
     head.appendChild(
       button({ label: copyText("extPage.drawer.close"), onClick: () => {
         this.openKey = null;
@@ -641,7 +595,7 @@ export class ExtSection {
     top.appendChild(pick);
     top.appendChild(el("span", "ext-machine-name", machineName(m)));
     top.appendChild(dotOf(c.state));
-    const said = c.state === "differs" && bring && m.reachable ? copyText("extPage.install.differsPick", { state: stateText(c.state, c.places) }) : stateText(c.state, c.places);
+    const said = c.state === "differs" && bring && m.reachable ? copyText("extPage.install.differsPick", { state: c.said }) : c.said;
     top.appendChild(el("span", "ext-machine-state", m.reachable ? said : copyText("extPage.install.offline", { state: said })));
     // 只有全局那一处 ⇒ 不另起一行，「卸载…」直接跟在这一台后面；装在几个项目里的才逐处列。
     const only = c.places.length === 1 && c.places[0].at.level === "user" ? c.places[0] : null;
@@ -711,7 +665,7 @@ export class ExtSection {
   private placeRow(r: ExtRow, m: ExtMachine, p: ExtPlace, slot: Slot, uninstallAbove = false): HTMLElement {
     const row = el("div", "ext-place");
     row.appendChild(el("span", "ext-place-at", locText(p.at)));
-    row.appendChild(el("span", "ext-machine-state", stateText(p.state, [])));
+    row.appendChild(el("span", "ext-machine-state", p.said));
     if (p.line !== undefined) row.appendChild(el("span", "ext-place-line", p.line));
     if (p.uninstall && !uninstallAbove) {
       const b = button({ label: copyText("extPage.button.uninstall"), onClick: () => void this.openRemove(r, m, p.at) });

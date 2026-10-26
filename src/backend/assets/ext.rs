@@ -99,6 +99,8 @@ pub struct ExtPlace {
     pub at: ExtLoc,
     /// 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
     pub state: ExtState,
+    /// 这一处那一句（后端写好）。
+    pub said: String,
     /// skill：那一处的目录（「在文件窗口里打开」用）。
     pub dir: Option<String>,
     /// 这一处有「卸载」。
@@ -134,6 +136,8 @@ pub struct ExtMachine {
 pub struct ExtCell {
     /// 表上那个点。
     pub state: ExtState,
+    /// 那个点那一句（悬停 · 抽屉里那台那一行；后端写好）。
+    pub said: String,
     /// 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
     pub places: Vec<ExtPlace>,
     pub bring: Option<ExtBring>,
@@ -166,6 +170,9 @@ pub struct ExtBuiltin {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ExtRow {
     pub kind: ExtKind,
+    /// 种类那一格的字（后端写好）。
+    #[serde(rename = "kindSaid")]
+    pub kind_said: String,
     pub name: String,
     pub about: Option<String>,
     pub detail: Vec<ExtDetail>,
@@ -184,6 +191,69 @@ pub struct ExtList {
     pub machines: Vec<ExtMachine>,
     pub rows: Vec<ExtRow>,
     pub problems: Vec<String>,
+    /// 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+    pub legend: Vec<ExtLegend>,
+}
+
+/// 图例里一项。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ExtLegend {
+    pub state: ExtState,
+    pub said: String,
+}
+
+/// 一个点 / 一处那一句：「只在项目里」带上那几个项目。
+fn state_said(state: ExtState, places: &[ExtPlace]) -> String {
+    match state {
+        ExtState::Same => copy_text("beExt.state.same", &[]),
+        ExtState::Differs => copy_text("beExt.state.differs", &[]),
+        ExtState::Missing => copy_text("beExt.state.missing", &[]),
+        ExtState::Off => copy_text("beExt.state.off", &[]),
+        ExtState::Project => {
+            let dirs: Vec<&str> = places.iter().filter_map(|p| p.at.project()).collect();
+            copy_text(
+                "beExt.state.project",
+                &[("dirs", &dirs.join(&copy_text("beExt.list.sep", &[])))],
+            )
+        }
+    }
+}
+
+/// 种类那一格的字。
+fn kind_said(kind: ExtKind) -> String {
+    match kind {
+        ExtKind::Skill => copy_text("beExt.kind.skill", &[]),
+        ExtKind::Mcp => copy_text("beExt.kind.mcp", &[]),
+        ExtKind::Plugin => copy_text("beExt.kind.plugin", &[]),
+    }
+}
+
+/// 表下图例：四态，有插件行再加「关着」。
+fn legend_of(rows: &[ExtRow]) -> Vec<ExtLegend> {
+    let mut states = vec![
+        ExtState::Same,
+        ExtState::Differs,
+        ExtState::Missing,
+        ExtState::Project,
+    ];
+    if rows.iter().any(|r| r.kind == ExtKind::Plugin) {
+        states.push(ExtState::Off);
+    }
+    states
+        .into_iter()
+        .map(|state| ExtLegend {
+            state,
+            said: match state {
+                ExtState::Same => copy_text("beExt.legend.same", &[]),
+                ExtState::Differs => copy_text("beExt.legend.differs", &[]),
+                ExtState::Project => copy_text("beExt.legend.project", &[]),
+                ExtState::Off => copy_text("beExt.legend.off", &[]),
+                ExtState::Missing => copy_text("beExt.state.missing", &[]),
+            },
+        })
+        .collect()
 }
 
 /// 确认卡上一格待填（或沿用目标机已有的值）的值。
@@ -470,10 +540,7 @@ fn plugin_detail(s: &Value) -> Vec<ExtDetail> {
                 "beExt.detail.partValue",
                 &[
                     ("n", &names.len().to_string()),
-                    (
-                        "names",
-                        &names.join(&copy_text("beExt.detail.partSep", &[])),
-                    ),
+                    ("names", &names.join(&copy_text("beExt.list.sep", &[]))),
                 ],
             ),
         ));
@@ -677,14 +744,16 @@ pub fn table(cat: &Catalog, reach: &[(String, Option<String>)]) -> ExtList {
                 .push(a);
         }
     }
-    let rows = by_key
+    let rows: Vec<ExtRow> = by_key
         .into_iter()
         .map(|((kind, name), per)| row(cat, &cols, kind, &name, &per))
         .collect();
+    let legend = legend_of(&rows);
     ExtList {
         machines: cols.into_iter().map(|c| c.m).collect(),
         rows,
         problems: Vec::new(),
+        legend,
     }
 }
 
@@ -746,6 +815,7 @@ fn row(cat: &Catalog, cols: &[Column], kind: ExtKind, name: &str, per: &[Vec<&As
         .collect();
     ExtRow {
         kind,
+        kind_said: kind_said(kind),
         name: name.to_string(),
         about: shown.and_then(about_of),
         detail: shown.map(detail_of).unwrap_or_default(),
@@ -823,6 +893,7 @@ fn cell(
         }
     };
     ExtCell {
+        said: state_said(state, &places),
         state,
         places,
         bring,
@@ -851,6 +922,7 @@ fn place(
     };
     ExtPlace {
         at,
+        said: state_said(state, &[]),
         state,
         dir,
         uninstall,
