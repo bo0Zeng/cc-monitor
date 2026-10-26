@@ -27,12 +27,22 @@ fn a_known_session_gets_its_title_and_a_judged_liveness_an_unknown_one_stays_unk
     )
     .unwrap();
     let got = seen_at(&home, sid);
-    assert_eq!(got.live, Some(false), "有记录、没有进程持着它 ⇒ 判得出：不在");
+    assert_eq!(
+        got.live,
+        Some(false),
+        "有记录、没有进程持着它 ⇒ 判得出：不在"
+    );
     let title = got.title.expect("有记录 ⇒ 有标题");
-    assert!(!title.is_empty() && title != sid, "标题该是会话自己的：{title}");
+    assert!(
+        !title.is_empty() && title != sid,
+        "标题该是会话自己的：{title}"
+    );
     assert_eq!(
         seen_at(&home, "b5000000-0000-4000-8000-0000000000ff"),
-        Seen { title: None, live: None },
+        Seen {
+            title: None,
+            live: None
+        },
         "这台没有它的记录 ⇒ 两格都判不了（不是「不在」）"
     );
     let _ = std::fs::remove_dir_all(&home);

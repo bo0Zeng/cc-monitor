@@ -59,10 +59,16 @@ fn same_name_elsewhere_but_present_counts_as_installed() {
 // ===== program_of：只做够用的事，看不懂就说不知道 =====
 #[test]
 fn program_of_handles_real_shapes() {
-    assert_eq!(program_of("cc-bus-stop-hook").unwrap().0, "cc-bus-stop-hook");
+    assert_eq!(
+        program_of("cc-bus-stop-hook").unwrap().0,
+        "cc-bus-stop-hook"
+    );
     assert_eq!(
         program_of("\"$HOME/.local/bin/cc-bus-stop-hook\" >/dev/null 2>&1 || true").unwrap(),
-        ("cc-bus-stop-hook".into(), "$HOME/.local/bin/cc-bus-stop-hook".into())
+        (
+            "cc-bus-stop-hook".into(),
+            "$HOME/.local/bin/cc-bus-stop-hook".into()
+        )
     );
     // 前导环境赋值要剥掉
     assert_eq!(
@@ -104,10 +110,7 @@ fn working_entry_wins_over_path_missing() {
           {"hooks":[{"type":"command","command":"/gone/cc-bus-stop-hook"}]},
           {"hooks":[{"type":"command","command":"cc-bus-stop-hook"}]}]}}"#;
     let d = diagnose(Some(raw), &never);
-    assert!(matches!(
-        d.stop,
-        HookState::InstalledViaPath { .. }
-    ));
+    assert!(matches!(d.stop, HookState::InstalledViaPath { .. }));
 }
 
 // ===== 脏输入逐层容忍，不抛、不让坏条目吃掉整份诊断 =====
@@ -162,7 +165,9 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     let text = snippet(&skills, Some(&home)).expect("装着就该给");
     let v: serde_json::Value = serde_json::from_str(&text).expect("要加的内容必须是合法 JSON");
     assert_eq!(
-        v["hooks"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()),
+        v["hooks"]
+            .as_object()
+            .map(|o| o.keys().cloned().collect::<Vec<_>>()),
         Some(vec!["Stop".to_string()]),
         "要加的只有 Stop 那一条（会话 id 由 cc-monitor 认，起来时不用登记）"
     );

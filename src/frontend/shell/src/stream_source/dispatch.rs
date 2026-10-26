@@ -1,5 +1,5 @@
 //! **一帧落到哪**：本机那条流与本机后端转来的各台那几条同一处分派，分两层（两层是线程决定的，不是两份实现）：
-//! - [`route`]：读的那一头就地交、从不阻塞的那几种（应答 · 链路 · 传输 · 测试连接 · 一组进度 · 活卡 · 终端画面）；
+//! - [`route`]：读的那一头就地交、从不阻塞的那几种（应答 · 传输 · 测试连接 · 一组进度 · 活卡 · 终端画面；测试连接 · 活卡 · 终端画面直接交会话流句柄）；
 //!   有序的那几种回 [`Ordered`]。
 //! - [`apply`]：有序的那几种交会话账（`session_book`）与内容收口（[`LineIntake`]），同一条流上的先后原样保留。
 //!
@@ -57,8 +57,8 @@ pub(crate) fn route(
         },
         // 传输台住本机后端：进度 / 终局交中继（从不阻塞）。
         Frame::Transfer(t) if local => crate::sftp_pool::deliver(t),
-        // 测试连接在本机常驻后端里跑：那一格原样交中继（界面严格收）。
-        Frame::Probe(p) if local => crate::probe_relay::deliver(&p.ticket, p.cell.to_string()),
+        // 测试连接在本机常驻后端里跑：那一格原样交会话流句柄（`probe-progress/<票>`，界面严格收）。
+        Frame::Probe(p) if local => to_replay(|r| r.on_probe(&p.ticket, p.cell.to_string())),
         Frame::Transfer(_) | Frame::Probe(_) => {
             tracing::warn!("[{at}] 远端后端发来了只开在本机后端上的帧（传输 / 测试连接），丢掉")
         }
@@ -67,16 +67,14 @@ pub(crate) fn route(
             let ticket = b.ticket.clone();
             crate::files_batch_relay::deliver(&ticket, body_without(&b, "ticket"))
         }
-        // 活卡（后端拼好的成品）原样转前端（不进内容通道）。
-        Frame::LiveCard(l) => crate::live_card::deliver(at, l),
-        // 终端实时预览：一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅。
+        // 活卡（后端拼好的成品）原样交会话流句柄（`session-live-card`；不进内容通道）。
+        Frame::LiveCard(l) => to_replay(|r| r.on_live_card(origin, l)),
+        // 终端实时预览：一屏 / 收尾 ⇒ 交会话流句柄，订了这台 `terminal-screen/<票>` 的那条订阅收。
         Frame::TerminalScreen(s) => {
-            let ticket = s.ticket.clone();
-            crate::terminal_screen_relay::deliver(origin, &ticket, body_without(&s, "ticket"))
+            to_replay(|r| r.on_terminal_screen(origin, &s.ticket, body_without(&s, "ticket")))
         }
         Frame::TerminalFollowEnd(e) => {
-            let ticket = e.ticket.clone();
-            crate::terminal_screen_relay::deliver(origin, &ticket, body_without(&e, "ticket"))
+            to_replay(|r| r.on_terminal_screen(origin, &e.ticket, body_without(&e, "ticket")))
         }
         Frame::Line(l) => return Some(Ordered::Line(l)),
         Frame::SessionAdded(f) => return Some(Ordered::SessionAdded(f)),
@@ -93,6 +91,13 @@ pub(crate) fn route(
         Frame::SessionBranch(f) => return Some(Ordered::SessionBranch(f)),
     }
     None
+}
+
+/// 就地交的那几种（活卡 · 测试连接 · 终端画面）交进程里那一份会话流句柄；还没装 ⇒ 界面也还没在订，丢。
+fn to_replay(f: impl FnOnce(&EventReplay)) {
+    if let Some(r) = crate::event_replay::host() {
+        f(&r);
+    }
 }
 
 /// 帧体去掉一格（票）的文本：转交给订了那张票的订阅（格体由界面严格收）。
@@ -239,3 +244,7 @@ fn on_overflow(origin: &crate::origin::Origin, health: &HealthOut, o: &wire::Ove
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/frame_dispatch_shape.rs"]
 mod frame_dispatch_shape;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/dispatch_handoff_tests.rs"]
+mod dispatch_handoff_tests;

@@ -494,7 +494,11 @@ fn only_ccm_env_still_needs_a_posix_shell_on_the_direct_path() {
     for agent in ["codex", "claude"] {
         for tmux in [None, Some("/faux/socket,1,0")] {
             let d = direct_of(&["--ccm-agent", agent, "--cwd", "/p"], tmux);
-            assert_eq!(needs_shell(&d), None, "{agent} 这一趟不该要 shell（tmux={tmux:?}）");
+            assert_eq!(
+                needs_shell(&d),
+                None,
+                "{agent} 这一趟不该要 shell（tmux={tmux:?}）"
+            );
         }
     }
     let mut with_env = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);

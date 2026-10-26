@@ -117,7 +117,10 @@ fn the_shape_of_one_launch_command_line() {
 fn no_agent_gets_a_bus_identity_at_launch() {
     for agent in ["claude", "codex"] {
         let line = printed(&["--cwd", "/p", "--ccm-agent", agent]);
-        assert!(!line.contains("CC_BUS_ID") && !line.contains("display-message"), "{agent}: {line}");
+        assert!(
+            !line.contains("CC_BUS_ID") && !line.contains("display-message"),
+            "{agent}: {line}"
+        );
     }
 }
 
@@ -1275,7 +1278,8 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     // 正：多行初始任务（`ccm … -- "第一行<换行>第二行"` 那一形）—— 透传参数放行，且原样进 pane 里键入的载荷。
     let multi = "第一行\n第二行";
     let Plan::Container(c) = build_of(&["--ccm-tmux=n", "--detach", "--", multi], &env())
-    .unwrap_or_else(|e| panic!("多行初始任务被拒了：{}", e.0)) else {
+        .unwrap_or_else(|e| panic!("多行初始任务被拒了：{}", e.0))
+    else {
         panic!("该是容器路")
     };
     assert!(

@@ -783,7 +783,7 @@ const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[(
     "terminal-unfollow",
     1,
     "〔退订挂在订阅上〕界面那条 `terminal-screen/<票>` 撤掉（撤单 · 被重订 · 页面重载 · 窗口没了）时，\
-     壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
+     会话流句柄替界面向那台退订（`event_replay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
 )];
 
 /// 后端 `stream/inbound/` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。

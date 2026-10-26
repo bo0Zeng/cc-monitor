@@ -196,8 +196,6 @@ struct Inner {
     seen: HashMap<String, bool>,
     /// 出口：webview 那一个（`lib.rs` 起步时装；没装之前界面那一路不登记）＋ 流那一路的通道（[`Outlet`]）。
     sink: Arc<Outlet>,
-    /// 终端画面流（`terminal-screen/<票>`）撤掉时替界面退订的那一口（`lib.rs` 起步时装：向那台发退订）。
-    screen_dropped: Option<ScreenDropped>,
     /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。从起来就在、初值是空的（还没报过 ＝ 一个都不看）。
     main_watch: BTreeSet<TailKey>,
     /// 主窗口报的「手上的 tab」（`(origin 线上串, sid)`，整份换）：随名单报给那台，那台不在说的它答已结束。
@@ -210,8 +208,39 @@ struct Inner {
     kept_moved: bool,
 }
 
-/// 终端画面流撤掉了：`(哪台, 票)`。
-type ScreenDropped = Arc<dyn Fn(&crate::origin::Origin, &str) + Send + Sync>;
+/// 替界面向那台退订终端画面的那条帧命令（后端 `control/terminal_follow.rs::UNFOLLOW`）。
+const UNFOLLOW: &str = "terminal-unfollow";
+
+/// 退订那一问的期限（就地做完的记账；远端多一趟往返）。
+const UNFOLLOW_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// 向那台退订那张票，不等结局：那台没连着 ⇒ 连接走时后端整张票表本来就收了；
+/// 那张票早已停了 / 退订先于订阅到了 ⇒ 后端都回 `ok`（退订先到的那张票，之后的订阅那一问不起）。
+fn unfollow(origin: &crate::origin::Origin, ticket: String) {
+    // 那台认不认这一条看它此刻那条连接的能力事实（本机 · 本机后端转来的那台 hello 同一问）。
+    if !crate::inbound_client::offer_of(origin.as_wire_str()).is_some_and(|o| o.admits(UNFOLLOW)) {
+        return;
+    }
+    let Some(client) = crate::inbound_client::local_client() else {
+        return;
+    };
+    let local = origin.is_local();
+    let origin = origin.as_wire_str().to_string();
+    tauri::async_runtime::spawn(async move {
+        let args = serde_json::json!({ "ticket": ticket });
+        let got = if local {
+            client.call(UNFOLLOW, args, UNFOLLOW_BUDGET).await
+        } else {
+            let deadline = tokio::time::Instant::now() + UNFOLLOW_BUDGET;
+            client
+                .call_at(&origin, UNFOLLOW, args, None, deadline)
+                .await
+        };
+        if let Err(e) = got {
+            tracing::debug!("替界面退订 [{origin}] 的终端画面票 {ticket} 没成（{e}）—— 连接走时那台整张票表会收");
+        }
+    });
+}
 
 /// 一条订阅。
 struct Sub {
@@ -587,7 +616,6 @@ impl EventReplay {
                 ready_labels: HashSet::new(),
                 seen: HashMap::new(),
                 sink: Arc::default(),
-                screen_dropped: None,
                 main_watch: BTreeSet::new(),
                 main_kept: BTreeSet::new(),
                 snapshot_level: 0,
@@ -605,34 +633,17 @@ impl EventReplay {
         *self.inner.lock().sink.webview.lock() = Some(sink);
     }
 
-    /// 装「终端画面流撤掉了」那一口（`lib.rs` 起步时一次）。〔「退订挂在订阅上」〕后端那张票的寿命跟着这条流走：
-    /// 界面撤单 · 同一编号被重订 · 页面重载 / 窗口没了（[`EventReplay::drop_webview`]）都替界面向那台退订一次 ——
-    /// 界面那一侧不发退订，重载时也没人能发。本文件只交 `(哪台, 票)`，不知道退订是哪条命令。
-    pub fn on_screen_dropped(
-        &self,
-        f: impl Fn(&crate::origin::Origin, &str) + Send + Sync + 'static,
-    ) {
-        self.inner.lock().screen_dropped = Some(Arc::new(f));
-    }
-
-    /// 撤下来的那几条订阅里的终端画面流 ⇒ 替界面退订（锁外调）。
+    /// 撤下来的那几条订阅里的终端画面流 ⇒ 替界面向那台退订（锁外调）。〔「退订挂在订阅上」〕后端那张票的寿命跟着这条流走：
+    /// 界面撤单 · 同一编号被重订 · 页面重载 / 窗口没了（[`EventReplay::drop_webview`]）都替界面退订一次 ——
+    /// 界面那一侧不发退订，重载时也没人能发。
     fn unfollow_dropped(&self, gone: Vec<Sub>) {
         if gone.iter().any(|s| s.kind == SubKind::Lines) {
             self.watch_moved();
         }
-        let gone: Vec<(String, String)> = gone
-            .into_iter()
-            .filter(|s| s.kind == SubKind::Screen)
-            .filter_map(|s| s.only.map(|t| (s.origin, t)))
-            .collect();
-        if gone.is_empty() {
-            return;
-        }
-        let Some(f) = self.inner.lock().screen_dropped.clone() else {
-            return;
-        };
-        for (origin, ticket) in gone {
-            f(&crate::origin::Origin(origin), &ticket);
+        for s in gone.into_iter().filter(|s| s.kind == SubKind::Screen) {
+            if let Some(ticket) = s.only {
+                unfollow(&crate::origin::Origin(s.origin), ticket);
+            }
         }
     }
 
@@ -1159,11 +1170,21 @@ impl EventReplay {
         }
     }
 
-    /// 活卡的一帧（`live_card::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
-    /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
+    /// 那台后端发来的一帧活卡（核心拼好的成品；分派第一层 `stream_source::route` 直接交来，本机远端同一处）：**不进留存**，
+    /// 帧体原样、带上哪台，交给订了那台机器 `session-live-card` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
     /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：活卡可丢，攒着只会让它更晚。
-    pub fn on_live_card(&self, payload: crate::ui_contract::SessionLiveCardPayload) {
-        let origin = payload.origin.as_wire_str().to_string();
+    /// **不认识活卡**：对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
+    pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
+        let payload = crate::ui_contract::SessionLiveCardPayload {
+            origin: origin.clone(),
+            card: crate::ui_contract::RecordBody::from_json(
+                serde_json::to_string(&card).unwrap_or_default(),
+            )
+            .unwrap_or_else(|| {
+                crate::ui_contract::RecordBody::from_json("{}".to_string()).expect("{} is JSON")
+            }),
+        };
+        let origin = origin.as_wire_str().to_string();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             let sink = Arc::clone(&inner.sink);
@@ -1257,7 +1278,7 @@ impl EventReplay {
         );
     }
 
-    /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
+    /// 本机后端里那一趟测试连接推来一格（分派第一层 `stream_source::route` 直接交来）：**不进留存**，
     /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `changed/<主题>` 同一套；界面给的窗口远大于一趟的格数）。
     pub fn on_probe(&self, ticket: &str, cell: String) {
         self.fan_out(
@@ -1268,7 +1289,7 @@ impl EventReplay {
         );
     }
 
-    /// 那台后端推来终端订阅的一格（`terminal_screen_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
+    /// 那台后端推来终端订阅的一格（分派第一层 `stream_source::route` 直接交来，本机远端同一处）：**不进留存**，
     /// 交给订了那台 `terminal-screen/<那张票>` 的订阅（credit 与 `Gap` 与 `probe-progress` 同一套；后端一帧在途等回执，格数本来就少）。
     pub fn on_terminal_screen(&self, origin: &crate::origin::Origin, ticket: &str, cell: String) {
         self.fan_out(

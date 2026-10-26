@@ -150,10 +150,10 @@ describe("退订", () => {
     expect(r.stops).toEqual([]);
   });
 
-  it("★ 界面这一侧不再有退订命令（只住壳：`terminal_screen_relay.rs`）", () => {
+  it("★ 界面这一侧不再有退订命令（只住壳的会话流句柄：`event_replay.rs`）", () => {
     const ts = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/terminal-follow.ts"), "utf8");
     expect(ts).not.toContain('"terminal-unfollow"');
-    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/terminal_screen_relay.rs"), "utf8");
+    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
     expect(rs).toContain('const UNFOLLOW: &str = "terminal-unfollow";');
   });
 });

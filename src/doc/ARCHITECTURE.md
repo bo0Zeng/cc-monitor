@@ -343,7 +343,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 会话打标 `@ccm_sid` | `control/identity_tag.rs`（INVARIANTS §30） |
 | 终端名单 | `control/terminals.rs`（`terminals-list`） |
 | 往会话里送字 · 送键 | `terminal-input`（桌面终端管理页 · 手机聊天屏都走它） |
-| 看画面 · 跟随 | `control/capture_pane.rs` · `control/terminal_follow.rs`，帧 `terminal_screen`，壳 `terminal_screen_relay.rs` 转交 |
+| 看画面 · 跟随 | `control/capture_pane.rs` · `control/terminal_follow.rs`，帧 `terminal_screen`，壳的分派直接交会话流句柄（`event_replay.rs`，撤流时它替界面退订） |
 | tmux 观测 | `observe/tmux_observe.rs` · `control/tmux_hook.rs`（事件，不轮询） |
 
 ### 3.6 文案表
