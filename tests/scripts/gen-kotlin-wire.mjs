@@ -12,7 +12,7 @@
 // `T | null` ⇒ 可空（写回照样写出 null）· `k?:` ⇒ 可缺（写回时缺）· Array ⇒ List · 键集合 ⇒ Map · 认不出的形 ⇒ Raw（原样那一段 JSON）。
 // 编解码是生成的（Moshi 的 JsonReader / JsonWriter，不经反射、不经 codegen）：写回与 Rust 逐字节同。
 
-import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -467,7 +467,6 @@ class Gen {
     const rows = [];
     for (const v of variants) {
       code.push(this.variantClass(name, tp, v.vname, v.specs));
-      const cls = `${name}.${v.vname}${tp}`;
       const ad = this.objBody(`${name}.${v.vname}`, v.all, tp).adapter;
       rows.push(`                Variant("${esc(v.tag)}", ${cast(`${name}.${v.vname}::class.java`, name, tp)}, ${ad.replace(/\n/g, "\n            ")}),`);
     }
@@ -583,10 +582,10 @@ class Field(val key: String, ad: () -> JsonAdapter<*>, val optional: Boolean, va
 }
 
 /** 两端契约对不上（缺格 · 型不对 · 认不出的词）：说出是哪一格。 */
-fun mismatch(what: String): JsonDataException = JsonDataException("两端契约对不上：" + what)
+fun mismatch(what: String): JsonDataException = JsonDataException("wire contract mismatch: " + what)
 
 private fun JsonReader.notNull(what: String) {
-    if (peek() == JsonReader.Token.NULL) throw mismatch(what + " 不该是 null（" + path + "）")
+    if (peek() == JsonReader.Token.NULL) throw mismatch(what + " must not be null (at " + path + ")")
 }
 
 private inline fun <T> prim(
@@ -601,16 +600,16 @@ private inline fun <T> prim(
         }
 
         override fun toJson(writer: JsonWriter, value: T?) {
-            write(writer, value ?: throw mismatch(what + " 不该是 null"))
+            write(writer, value ?: throw mismatch(what + " must not be null"))
         }
     }
 
-val Str: JsonAdapter<String> = prim({ it.nextString() }, { w, v -> w.value(v) }, "字串")
-val Bool: JsonAdapter<Boolean> = prim({ it.nextBoolean() }, { w, v -> w.value(v) }, "真假")
-val Lng: JsonAdapter<Long> = prim({ it.nextLong() }, { w, v -> w.value(v) }, "整数")
-val Dbl: JsonAdapter<Double> = prim({ it.nextDouble() }, { w, v -> w.value(v) }, "小数")
+val Str: JsonAdapter<String> = prim({ it.nextString() }, { w, v -> w.value(v) }, "string")
+val Bool: JsonAdapter<Boolean> = prim({ it.nextBoolean() }, { w, v -> w.value(v) }, "boolean")
+val Lng: JsonAdapter<Long> = prim({ it.nextLong() }, { w, v -> w.value(v) }, "integer")
+val Dbl: JsonAdapter<Double> = prim({ it.nextDouble() }, { w, v -> w.value(v) }, "number")
 val RawJson: JsonAdapter<Raw> =
-    prim({ r -> r.nextSource().use { Raw(it.readUtf8()) } }, { w, v -> w.valueSink().use { it.writeUtf8(v.json) } }, "那一段")
+    prim({ r -> r.nextSource().use { Raw(it.readUtf8()) } }, { w, v -> w.valueSink().use { it.writeUtf8(v.json) } }, "raw json")
 
 fun <T> opt(ad: JsonAdapter<T>): JsonAdapter<T?> =
     object : JsonAdapter<T?>() {
@@ -640,7 +639,7 @@ fun <T> arr(ad: JsonAdapter<T>): JsonAdapter<List<T>> =
         w.beginArray()
         v.forEach { ad.toJson(w, it) }
         w.endArray()
-    }, "数组")
+    }, "array")
 
 @Suppress("UNCHECKED_CAST")
 fun <T> dict(ad: JsonAdapter<T>): JsonAdapter<Map<String, T>> =
@@ -657,13 +656,13 @@ fun <T> dict(ad: JsonAdapter<T>): JsonAdapter<Map<String, T>> =
             ad.toJson(w, x)
         }
         w.endObject()
-    }, "键集合")
+    }, "map")
 
 fun <E : Enum<E>> enumOf(all: List<E>, wire: (E) -> String): JsonAdapter<E> =
     prim({ r ->
         val s = r.nextString()
-        all.firstOrNull { wire(it) == s } ?: throw mismatch("认不出的词 \"" + s + "\"（" + r.path + "）")
-    }, { w, v -> w.value(wire(v)) }, "词")
+        all.firstOrNull { wire(it) == s } ?: throw mismatch("unknown word \"" + s + "\" (at " + r.path + ")")
+    }, { w, v -> w.value(wire(v)) }, "enum word")
 
 /**
  * 读进来的那一份记着各格到的先后，写回照它（ts-rs 导出时把 serde flatten 进来的格挪到了最后，声明里的先后不是 Rust 写的先后）；
@@ -682,7 +681,7 @@ class ObjAd<T>(
     private val index = fields.withIndex().associate { (i, f) -> f.key to i }
 
     override fun fromJson(reader: JsonReader): T {
-        reader.notNull("对象")
+        reader.notNull("object")
         val a = arrayOfNulls<Any?>(fields.size)
         val seen = BooleanArray(fields.size)
         val order = ArrayList<Int>(fields.size)
@@ -699,7 +698,7 @@ class ObjAd<T>(
         }
         reader.endObject()
         fields.forEachIndexed { i, f ->
-            if (!seen[i] && !f.nullable) throw mismatch("缺格 \"" + f.key + "\"（" + reader.path + "）")
+            if (!seen[i] && !f.nullable) throw mismatch("missing field \"" + f.key + "\" (at " + reader.path + ")")
         }
         val built = build(a)
         (built as? Ordered)?.wireOrder = order.toIntArray()
@@ -708,7 +707,7 @@ class ObjAd<T>(
 
     override fun toJson(writer: JsonWriter, value: T?) {
         writer.beginObject()
-        writeFields(writer, value ?: throw mismatch("对象不该是 null"))
+        writeFields(writer, value ?: throw mismatch("object must not be null"))
         writer.endObject()
     }
 
@@ -732,9 +731,9 @@ fun <T> obj(fields: List<Field>, build: (Array<Any?>) -> T, get: (T) -> Array<An
 fun tag(word: String): JsonAdapter<String> =
     prim({ r ->
         val s = r.nextString()
-        if (s != word) throw mismatch("判别格该是 \"" + word + "\"，来的是 \"" + s + "\"（" + r.path + "）")
+        if (s != word) throw mismatch("tag should be \"" + word + "\", got \"" + s + "\" (at " + r.path + ")")
         s
-    }, { w, _ -> w.value(word) }, "判别格")
+    }, { w, _ -> w.value(word) }, "tag")
 
 /** 带判别格的并集的一形：判别格的那个词 · 它的类 · 其余各格。 */
 class Variant<T : Any>(val tag: String, val cls: Class<out T>, val ad: ObjAd<out T>)
@@ -743,7 +742,7 @@ class Variant<T : Any>(val tag: String, val cls: Class<out T>, val ad: ObjAd<out
 fun <T : Any> tagged(disc: String, variants: List<Variant<T>>): JsonAdapter<T> =
     object : JsonAdapter<T>() {
         override fun fromJson(reader: JsonReader): T {
-            reader.notNull("并集")
+            reader.notNull("union")
             val tag =
                 reader.peekJson().use { p ->
                     p.beginObject()
@@ -756,14 +755,14 @@ fun <T : Any> tagged(disc: String, variants: List<Variant<T>>): JsonAdapter<T> =
                         p.skipValue()
                     }
                     t
-                } ?: throw mismatch("缺判别格 \"" + disc + "\"（" + reader.path + "）")
-            val v = variants.firstOrNull { it.tag == tag } ?: throw mismatch("认不出的一形 \"" + tag + "\"（" + reader.path + "）")
+                } ?: throw mismatch("missing tag \"" + disc + "\" (at " + reader.path + ")")
+            val v = variants.firstOrNull { it.tag == tag } ?: throw mismatch("unknown variant \"" + tag + "\" (at " + reader.path + ")")
             return v.ad.fromJson(reader) as T
         }
 
         @Suppress("UNCHECKED_CAST")
         override fun toJson(writer: JsonWriter, value: T?) {
-            val x = value ?: throw mismatch("并集不该是 null")
+            val x = value ?: throw mismatch("union must not be null")
             val v = variants.first { it.cls.isInstance(x) }
             (v.ad as ObjAd<T>).toJson(writer, x)
         }
@@ -777,10 +776,10 @@ class Ext<T : Any>(val key: String, val cls: Class<out T>, ad: () -> JsonAdapter
 fun <T : Any> external(variants: List<Ext<T>>): JsonAdapter<T> =
     object : JsonAdapter<T>() {
         override fun fromJson(reader: JsonReader): T {
-            reader.notNull("并集")
+            reader.notNull("union")
             reader.beginObject()
             val key = reader.nextName()
-            val v = variants.firstOrNull { it.key == key } ?: throw mismatch("认不出的一形 \"" + key + "\"（" + reader.path + "）")
+            val v = variants.firstOrNull { it.key == key } ?: throw mismatch("unknown variant \"" + key + "\" (at " + reader.path + ")")
             val x = v.wrap(v.ad.fromJson(reader))
             reader.endObject()
             return x
@@ -788,7 +787,7 @@ fun <T : Any> external(variants: List<Ext<T>>): JsonAdapter<T> =
 
         @Suppress("UNCHECKED_CAST")
         override fun toJson(writer: JsonWriter, value: T?) {
-            val x = value ?: throw mismatch("并集不该是 null")
+            val x = value ?: throw mismatch("union must not be null")
             val v = variants.first { it.cls.isInstance(x) }
             writer.beginObject()
             writer.name(v.key)
@@ -806,13 +805,13 @@ fun <T : Any> byToken(variants: List<Tok<T>>): JsonAdapter<T> =
     object : JsonAdapter<T>() {
         override fun fromJson(reader: JsonReader): T {
             val tok = reader.peek()
-            val v = variants.firstOrNull { it.token == tok } ?: throw mismatch("这一格不该是 " + tok + "（" + reader.path + "）")
+            val v = variants.firstOrNull { it.token == tok } ?: throw mismatch("unexpected " + tok + " (at " + reader.path + ")")
             return v.wrap(v.ad.fromJson(reader))
         }
 
         @Suppress("UNCHECKED_CAST")
         override fun toJson(writer: JsonWriter, value: T?) {
-            val x = value ?: throw mismatch("并集不该是 null")
+            val x = value ?: throw mismatch("union must not be null")
             val v = variants.first { it.cls.isInstance(x) }
             (v.ad as JsonAdapter<Any?>).toJson(writer, v.unwrap(x))
         }
@@ -834,7 +833,7 @@ fun <T> tuple(lazyAds: List<() -> JsonAdapter<*>>, build: (Array<Any?>) -> T, ge
         @Suppress("UNCHECKED_CAST")
         ads.forEachIndexed { i, ad -> (ad as JsonAdapter<Any?>).toJson(w, a[i]) }
         w.endArray()
-    }, "元组")
+    }, "tuple")
 `;
 
 
@@ -857,7 +856,7 @@ function main() {
     const x = g.ty(cmds.get(c).reply, { owner: pascal(c) + "Reply" });
     table.push(`        "${c}" to ${x.ad},`);
   }
-  const byClass = [...g.out.keys()].filter((k) => /\n    (?:val ADAPTER|companion object \{\n        val ADAPTER)/.test(g.out.get(k)) || /^data object /m.test(g.out.get(k))).sort();
+  const byClass = [...g.out.keys()].filter((k) => /\n {4}(?:val ADAPTER|companion object \{\n {8}val ADAPTER)/.test(g.out.get(k)) || /^data object /m.test(g.out.get(k))).sort();
   const header = `// 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 \`npm run gen:types\`。\n@file:Suppress("ktlint", "detekt:all")\n\npackage ${PKG}\n\nimport com.squareup.moshi.JsonAdapter\n`;
   const types = [...g.out.keys()].sort().map((k) => g.out.get(k)).join("\n");
   writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);

@@ -6,7 +6,8 @@
 #   生成物目录一律叫 `generated`（判据 ts_export_guard 钉着登记的落点都叫这个名字），这里按名字找，不另列目录。
 set -u
 root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "generated-drift: 不在 git 仓里 —— 判不了"; exit 2; }
-node "$root/tests/scripts/gen-kotlin-wire.mjs" >/dev/null || { echo "generated-drift: 手机线上类型生成不了 —— 判不了"; exit 2; }
+gen="$root/tests/scripts/gen-kotlin-wire.mjs"
+if [ -f "$gen" ]; then node "$gen" >/dev/null 2>&1 || { echo "generated-drift: 手机线上类型生成不了 —— 判不了"; exit 2; }; fi
 kt=src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/wire
 out=$(git -C "$root" -c core.quotepath=false status --porcelain --untracked-files=all -- ':(glob)**/generated/**' "$kt/Generated.kt" "$kt/Commands.kt") \
   || { echo "generated-drift: git status 失败 —— 判不了"; exit 2; }

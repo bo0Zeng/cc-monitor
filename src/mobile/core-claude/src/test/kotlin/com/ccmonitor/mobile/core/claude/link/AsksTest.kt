@@ -152,7 +152,8 @@ class AsksTest {
         assertTrue("一份源都没找到 —— 本条在空转", sources.size > 20)
         val decl = Regex("""\bclass (${FAMILY.joinToString("|")})\b""")
         val where = sources.flatMap { f -> decl.findAll(f.readText()).map { it.groupValues[1] to f.name }.toList() }
-        val outside = where.filter { it.second != "WireTypes.kt" }
+        // 线上类型那一份：手抄的 `WireTypes.kt` 与生成的 `Generated.kt`（换过去之前两份并存）。
+        val outside = where.filter { it.second != "WireTypes.kt" && it.second != "Generated.kt" }
         assertTrue("线上类型之外又声明了：$outside", outside.isEmpty())
         assertEquals("每个都在线上类型里", FAMILY.toSet(), where.map { it.first }.toSet())
         val asks = sources.single { it.name == "Asks.kt" }.readText()

@@ -34,7 +34,10 @@ fn every_phone_reply_has_a_golden_line_written_by_its_type() {
             serde_json::json!({ "sample": sample, "rust": rust }),
         );
     }
-    let extra: Vec<&String> = cases.keys().filter(|k| !COMMANDS.contains(&k.as_str())).collect();
+    let extra: Vec<&String> = cases
+        .keys()
+        .filter(|k| !COMMANDS.contains(&k.as_str()))
+        .collect();
     assert!(extra.is_empty(), "金样里有表外的命令：{extra:?}");
     let want = serde_json::json!({
         "说明": [
