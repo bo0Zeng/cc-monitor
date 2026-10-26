@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-bus-adapt-windows.sh —— ② OS 适配 ＋ ③ 存储适配的 **Windows 那一侧**(设计)。
+# cc-bus-adapt-windows.sh —— ② 存储适配的 **Windows 那一侧**(设计)。
 #
 # ## 这一侧今天做到哪(如实写,别读宽)
 #
@@ -11,12 +11,6 @@
 #    「若那一侧没有,`bus-peek` 在 Windows 上要退化成排他锁,**语义自陈那一层就丢了**」。
 #    ⇒ 丢的只有"自陈"(读锁 ＝ 这一跳不写 这条**表达**);互斥与正确性一条没丢 ——
 #      排他比共享**更严**,peek 仍然不写任何东西(零写面由判据现打,不靠锁的种类保证)。
-# ❌ **读窗格身份没做**:Windows 上没有 tmux,ConPTY 那条路本轮**一行都没写**。
-#    ⇒ `os_pane_identity` **显式返回 13(办不到)**:读不到会话 ⇒ 不敲门、只入收件箱,不假装投递。
-# 这里原先引的同族是 `cc_bus_deploy.rs` 那句「本机没有可查的 ccm —— 这一格没做预检」;
-#    那一格今天**真探了**(问 cc-monitor 装的那份 ccm 的 build 与能力,`windows_ccm_precheck`),
-#    而**本文件这一格仍然没做** —— 两件事从此不再同族,别照旧读。纪律照旧:
-#    没做就写"没做",别让调用方以为敲过门了。
 # ⚠ **没有真 Windows 机器现打**:本文件的全部证据来自「在 Linux 上按这一侧的实现跑一遍」。
 #    `flock` 在 MSYS2 里有(util-linux 包)、Git-Bash 默认**没有** —— 那一格**判不了**,
 #    所以缺 `flock` 时也走 13,而不是回落到一个"看起来在锁、其实没锁"的假锁。
@@ -33,7 +27,7 @@
 
 _win_have_flock() { command -v flock >/dev/null 2>&1; }
 
-# ── ③ 存储 ─────────────────────────────────────────────────────────────────
+# ── 存储 ───────────────────────────────────────────────────────────────────
 # `shared_lock=no` 是这一侧与 POSIX 的**唯一一处能力差**,判据按这一位对拍两侧。
 store_caps() { printf 'os=windows lock=flock-or-none shared_lock=no atomic_append=append-under-lock timestamp=date-iso path=pwd-fallback\n'; }
 
@@ -61,15 +55,4 @@ store_path_real() {
   local d b
   d=$(dirname "$1"); b=$(basename "$1")
   printf '%s/%s\n' "$(cd "$d" 2>/dev/null && pwd)" "$b"
-}
-
-# ── ② OS ───────────────────────────────────────────────────────────────────
-# `identity=none`:这一侧**读不出窗格是哪条会话**。能力自陈成 none,敲门那一步读不到会话 ⇒ 只入收件箱,
-# 而不是等到投递那一刻才发现 tmux 不存在。
-os_caps() { printf 'os=windows identity=none fingerprint=none\n'; }
-
-os_pane_identity() {
-  printf 'cc-bus-adapt(windows): 读窗格身份这一格没做(ConPTY 那条路本轮一行都没写)\n' >&2
-  ccbus_adapt_log "NOIMPL windows os_pane_identity target=$1"
-  return 13
 }

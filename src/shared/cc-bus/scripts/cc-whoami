@@ -1,26 +1,19 @@
 #!/usr/bin/env bash
 # cc-whoami  打印本 agent 在总线上的身份：**会话 id**（信封的 from / to 只许会话 id；形状由后端 `bus-envelope` 那一处核）。
-# 优先级:$CC_BUS_ID(可选覆盖) → agent 词典报的「我是哪个会话」(`agent_self_sid`) → 窗格上 cc-monitor 打的身份标记(@ccm_sid)。
-# 取不到 ⇒ 报错退出（cc-send 照交空串，后端拒成 bad_from）。
-# ⚠ 过渡：「我是哪条会话」改问 ccm 的公开命令是 A13-3 的事；那时后两条整个换掉。
+# 「我是哪条会话」只问 cc-monitor 的公开命令 `ccm -- --session-self`（后端按调用进程往上找，Claude · Codex 同一条）。
+# 找不到 ccm ⇒ 说没装、退 1；ccm 说不在会话里 ⇒ 照它那一句、退 1（cc-send 照交空串，后端拒成 bad_from）。
 set -uo pipefail
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+# shellcheck source=cc-bus-adapt.sh
+. "$SELFDIR/cc-bus-adapt.sh"
 
-id="${CC_BUS_ID:-}"
-if [ -z "$id" ]; then
-  # shellcheck source=cc-bus-adapt.sh
-  . "$SELFDIR/cc-bus-adapt.sh"
-  if ccbus_adapt_load 2>/dev/null; then id=$(agent_self_sid); fi
-fi
-if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
-  # 〔INVARIANTS §49〕读窗格上的东西用 UTF-8 客户端(`-u`,排在子命令之前)。
-  id=$(tmux -u display-message -p -t "$TMUX_PANE" '#{@ccm_sid}' 2>/dev/null || true)
-fi
-
-if [ -n "$id" ]; then printf '%s\n' "$id"; exit 0; fi
-# 仍解析不出 → 先记录本子进程实际看到什么(给 Codex 沙箱情形免费诊断)再报错退出。
-{ printf '%s cc-whoami UNRESOLVED tmux=[%s] pane=[%s] cc_bus_id=[%s]\n' \
-    "$(date -Iseconds 2>/dev/null)" "${TMUX:+set}" "${TMUX_PANE:+set}" "${CC_BUS_ID:+set}" \
-    >> "${CC_BUS_HOME:-$HOME/.cc-bus}/whoami-debug.log"; } 2>/dev/null || true
-echo "cc-whoami: no session id (not in a cc-monitor session and CC_BUS_ID unset)" >&2
+ccm=$(ccbus_ccm_bin) || { echo "cc-whoami: no cc-monitor backend (~/.cc-monitor/bin/ccm) — cannot tell which session this is" >&2; exit 1; }
+errf=$(mktemp) || exit 1
+trap 'rm -f "$errf"' EXIT
+out=$("$ccm" -- --session-self --within-ms 10000 </dev/null 2>"$errf")
+rc=$?
+id=$(printf '%s' "$out" | jq -r '(.data // .).sid // empty' 2>/dev/null)
+if [ "$rc" -eq 0 ] && [ -n "$id" ]; then printf '%s\n' "$id"; exit 0; fi
+said=$(jq -r '.message // empty' < "$errf" 2>/dev/null)
+echo "cc-whoami: ${said:-cc-monitor did not say which session this is}" >&2
 exit 1

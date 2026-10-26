@@ -27,6 +27,3 @@ agent_caps() { printf 'agent=claude can_block=yes can_nudge=yes can_readback=yes
 # 🔴 **走 `--rawfile` 不走 argv**:40 条 ×4KB 累计 160KB 时 `--arg` 会撞 `MAX_ARG_STRLEN`
 #   (128 KiB)⇒ 钩子 rc=126、stdout 空。那条实测事故是两阶段读口的立案理由。
 agent_block_reason() { jq -cn --rawfile r "$1" '{decision:"block", reason:$r}'; }
-
-# 自己是哪条会话:claude 导给它起的每个子进程的那个变量(钩子里跑的 cc-register 用它登记会话编号)。没有 ⇒ 空串。
-agent_self_sid() { printf '%s' "${CLAUDE_CODE_SESSION_ID:-}"; }

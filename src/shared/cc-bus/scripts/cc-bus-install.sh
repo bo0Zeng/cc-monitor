@@ -29,7 +29,7 @@ for s in cc-whoami cc-register cc-send cc-recv cc-peek cc-commit cc-list cc-bus-
   fi
   ln -sf "$SRC/$s" "$dst"
 done
-# 三个适配面与路由库都是**被 source 的**,不进 PATH(各脚本用 readlink -f 定位真身目录再 source)
+# 两个适配面与路由库都是**被 source 的**,不进 PATH(各脚本用 readlink -f 定位真身目录再 source)
 for s in cc-bus-lib.sh cc-bus-adapt.sh cc-bus-adapt-posix.sh cc-bus-adapt-windows.sh cc-bus-agent-claude.sh; do
   chmod +x "$SRC/$s"
 done
@@ -54,8 +54,8 @@ cat <<EOF
    }
    校验:jq . ~/.claude/settings.json
 
-2) 【启动 CC】:直接在 tmux pane 里普通启动 \`claude\` 即可——身份自动 = tmux 会话名(如 shengwu_cc),
-   无需 CC_BUS_ID。想给同一会话里多个 CC 细分,给各自 pane 打标签:  tmux set -p @cc_id <名字>
+2) 【启动 CC】:用 cc-monitor 开会话 —— 身份 = 会话 id,由 cc-monitor 认(cc-whoami 问 \`ccm -- --session-self\`)。
+   没装 cc-monitor ⇒ 认不出身份、敲不了门,cc-bus 不工作。
    (查自己是谁:cc-whoami;看谁在线:cc-list)
 
 3) 【可选:开路由策略】cp $BUSHOME/config.example $BUSHOME/config,按需开限流/ACL(见文件注释)。
@@ -75,7 +75,7 @@ C1) 【收信钩子 · Codex】同样两个钩子(SessionStart→cc-register、S
     Codex 对未信任的非管理命令钩子会跳过不跑——或对你已自行审核过来源的无人值守自动化,用
     --dangerously-bypass-hook-trust 启动 Codex(别无脑开 bypass)。
 
-C2) 【启动 Codex】直接在 tmux pane 里普通启动 \`codex\` 即可——身份 = tmux 会话名,和 CC 完全一样。
+C2) 【启动 Codex】用 cc-monitor 开会话 —— 身份 = 会话 id,和 CC 完全一样。
     Codex 还需要:宽松的 approval_policy + 能写 ~/.cc-bus/ 的沙箱(否则注入的 cc-* 命令会卡在审批弹窗),
     且 shell env 要保留 PATH/tmux/\$TMUX。见 Codex 运行配置示例(examples/codex-config.toml)。
     注:Codex 在【第一个回合】才触发 SessionStart,而非 TUI 一打开就触发——所以手动启动、空闲着的 Codex 会在它的

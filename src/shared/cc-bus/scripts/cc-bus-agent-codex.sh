@@ -13,6 +13,3 @@ agent_caps() { printf 'agent=codex can_block=yes can_nudge=yes can_readback=yes\
 
 # 回合末钩子的回包:从 `<文件>` 读正文(走 `--rawfile`,不走 argv —— 大批消息会撞单个参数的上限)。
 agent_block_reason() { jq -cn --rawfile r "$1" '{decision:"block", reason:$r}'; }
-
-# Codex 不往它起的子进程导「我是哪个会话」⇒ 登记时说不出,投递时读窗格上的身份标记。
-agent_self_sid() { printf ''; }

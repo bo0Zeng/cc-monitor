@@ -38,7 +38,7 @@ BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # shellcheck source=cc-bus-adapt.sh
 . "$SELFDIR/cc-bus-adapt.sh"
-ccbus_adapt_load || exit 13        # 三个 trait 装不齐就不干活(fail-closed,不退化成裸 flock)
+ccbus_adapt_load || exit 13        # 两个 trait 装不齐就不干活(fail-closed,不退化成裸 flock)
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 
