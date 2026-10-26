@@ -81,6 +81,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    `terminal-preview` 删了。
     //    🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表（起 tmux 控制模式客户端，声明了 `no_tmux`）。
     //    🔴 **5 → 6**：计划退回 `plan-return` 进表（送字走 `terminal-input` 的本体、要起 tmux，声明了 `no_tmux`）。
+    //    🔴 **−1**：没人调的 `launch` 撤了。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
@@ -92,7 +93,6 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
             "session-say",
             "terminal-follow",
             "kill",
-            "launch",
             "plan-return"
         ],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
@@ -188,7 +188,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
 /// # 上一拍在这一格上明确没买到，而它恰好是动机平台
 ///
 /// 上一版 `tmux_in` 首行 `if !cfg!(unix) { return None; }` ⇒ Windows 上恒「判不出来」
-/// ⇒ `unavailable_from(None)` 不列 ⇒ **表恒空** ⇒「没有 tmux 却宣称我认 `kill`/`launch`」
+/// ⇒ `unavailable_from(None)` 不列 ⇒ **表恒空** ⇒「没有 tmux 却宣称我认 `kill`」
 /// 在 Windows 上一格没治。病灶是**一个值装了两件事**：探针不工作（真）＋答案未知（假）。
 ///
 /// # 🔴 这个读数是怎么取的，以及它**证不到什么**（本机没有 Windows）
@@ -228,6 +228,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
     // 🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表。
     // 🔴 **5 → 6**：计划退回 `plan-return` 进表。
+    // 🔴 **−1**：没人调的 `launch` 撤了。
     assert_eq!(
         names,
         vec![
@@ -238,7 +239,6 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
             "session-say".to_string(),
             "terminal-follow".to_string(),
             "kill".to_string(),
-            "launch".to_string(),
             "plan-return".to_string()
         ],
         "🔴 **Windows 上这张表又空了** —— 这一格就是这里的正题。\n\

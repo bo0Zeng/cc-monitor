@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1947,
+  "ceiling": 1941,
   "groups": [
     {
       "kind": "首登",
@@ -86,11 +86,10 @@
         ["src/frontend/ui/account-chip.ts", "branch", 10],
         ["src/frontend/ui/account-chip.ts", "key", 4],
         ["src/frontend/ui/account-commands.ts", "key", 2],
-        ["src/frontend/ui/accounts.ts", "key", 4],
+        ["src/frontend/ui/accounts.ts", "key", 2],
         ["src/frontend/ui/acct-panel.ts", "branch", 1],
         ["src/frontend/ui/acct-panel.ts", "key", 3],
         ["src/frontend/ui/acct-session.ts", "key", 1],
-        ["src/frontend/ui/acct-view.ts", "key", 1],
         ["src/frontend/ui/agent-profile.ts", "key", 1],
         ["src/frontend/ui/agent-window-text.ts", "branch", 15],
         ["src/frontend/ui/agent-window-text.ts", "key", 11],
@@ -226,7 +225,7 @@
         ["src/frontend/ui/tab-bar-drag.ts", "branch", 8],
         ["src/frontend/ui/tab-bar-drag.ts", "key", 11],
         ["src/frontend/ui/tab-bar-prefs.ts", "key", 3],
-        ["src/frontend/ui/tab-bar-view.ts", "key", 17],
+        ["src/frontend/ui/tab-bar-view.ts", "key", 14],
         ["src/frontend/ui/tab-batch-menu.ts", "branch", 4],
         ["src/frontend/ui/tab-batch-menu.ts", "key", 19],
         ["src/frontend/ui/tab-batch-run.ts", "branch", 1],

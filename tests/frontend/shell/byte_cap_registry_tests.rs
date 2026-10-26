@@ -771,7 +771,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/control/cli_args.rs",
         "MAX_CLI_STDIN",
-        "一次性 CLI 子命令（派生的那些与 `--resolve`）的 stdin args JSON",
+        "一次性 CLI 子命令（帧命令派生的那些）的 stdin args JSON",
         "拒收+回错",
     ),
     (

@@ -17,8 +17,7 @@
 //! | 判活 cmdline | 含 `claude` / `node` | 含 `fakeagent` | `LocalFace.cmdline_may_be_agent` |
 //! | 解析本机 home | `$CLAUDE_CONFIG_DIR` 否则 `$HOME/.claude`（**恒有值**） | `$CCM_FAKE_AGENT_HOME`，**没有默认** | `Adapter.home` · `LocalFace.home_at` |
 //! | resume 默认命令 | `claude` | `fakeagent` | `LaunchFace.default_launcher` |
-//! | resume 命令形 | `<base> --resume <sid>`（flag） | `<base> revive <sid>`（子命令） | `LaunchFace.resume_command` |
-//! | resume 会话名前缀 | `cc` | `fk` | `LaunchFace.session_name_prefix` |
+//! | resume 命令形 | `--resume`（flag） | `revive`（子命令） | `LaunchFace.resume_token` |
 //!
 //! 不同形是要紧的：照抄 Claude 的布局的话，通用层拿 Claude 的知识去解释它的 home 恰好也能读出东西，
 //! 「走通」就证明不了通用层容得下第二种布局。
@@ -26,7 +25,7 @@
 //! # 走全流程
 //!
 //! [`walk`] 把假 agent 推过五段，每一段都经通用层：发现（注册表那一行的 home）·
-//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve`）。
+//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（注册表里这一家的起会话事实，经 `agents::pick_kind_among`）。
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
 use crate::platform::fs::Ro;
@@ -117,19 +116,11 @@ pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty() || lower.contains("fakeagent")
 }
 
-/// 能力 10：无 `launchCandidate` 时的默认命令基底。
+/// 能力 10：默认启动器。
 pub(crate) const DEFAULT_COMMAND: &str = "fakeagent";
 
-/// resume 那个字面量：子命令形，动词与 Codex 也不同。
+/// 能力 11：resume 那个字面量 —— **子命令形，且动词与 Codex 也不同**。
 pub(crate) const RESUME_TOKEN: &str = "revive";
-
-/// 能力 11：resume 命令 —— **子命令形，且动词与 Codex 也不同**。
-pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
-    format!("{base} {RESUME_TOKEN} {session_id}")
-}
-
-/// 能力 12：resume 会话名前缀（Claude `cc` / Codex `cx`）。
-pub(crate) const SESSION_NAME_PREFIX: &str = "fk";
 
 /// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile · 不要 cc-bus 身份」，
 /// Codex 是「要 cc-bus 身份，其余都没有」；这一家是「要 cc-bus 身份 · 有身份面 · 判不了活」。
@@ -149,8 +140,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
-    resume_command,
-    session_name_prefix: SESSION_NAME_PREFIX,
     needs_bus_id: true,
     has_identity: true,
     models: None,
@@ -178,7 +167,6 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "解析本机 home",
     "resume 默认命令",
     "resume 命令形",
-    "resume 会话名前缀",
 ];
 
 /// 假 agent 交出来的一整套能力。每一项都是 `Option`：反向夹具要能「把某一种能力删掉」，而删掉之后流程必须在一个说得出话的地方停下来；
@@ -194,8 +182,7 @@ pub(crate) struct FakeCaps {
     pub(crate) cmdline_may_be_agent: Option<fn(&str) -> bool>,
     pub(crate) home: Option<fn() -> Option<PathBuf>>,
     pub(crate) default_command: Option<&'static str>,
-    pub(crate) resume_command: Option<fn(&str, &str) -> String>,
-    pub(crate) session_name_prefix: Option<&'static str>,
+    pub(crate) resume_token: Option<&'static str>,
 }
 
 impl FakeCaps {
@@ -211,8 +198,7 @@ impl FakeCaps {
             self.cmdline_may_be_agent.is_some(),
             self.home.is_some(),
             self.default_command.is_some(),
-            self.resume_command.is_some(),
-            self.session_name_prefix.is_some(),
+            self.resume_token.is_some(),
         ]
         .iter()
         .filter(|b| **b)
@@ -231,8 +217,7 @@ impl FakeCaps {
             cmdline_may_be_agent: Some(cmdline_may_be_agent),
             home: Some(home),
             default_command: Some(DEFAULT_COMMAND),
-            resume_command: Some(resume_command),
-            session_name_prefix: Some(SESSION_NAME_PREFIX),
+            resume_token: Some(RESUME_TOKEN),
         }
     }
 
@@ -255,8 +240,7 @@ impl FakeCaps {
             "判活 cmdline" => c.cmdline_may_be_agent = None,
             "解析本机 home" => c.home = None,
             "resume 默认命令" => c.default_command = None,
-            "resume 命令形" => c.resume_command = None,
-            "resume 会话名前缀" => c.session_name_prefix = None,
+            "resume 命令形" => c.resume_token = None,
             other => unreachable!("`{other}` 在 CAPABILITIES 里却没有对应字段 —— 两处漂开了"),
         }
         c
@@ -641,20 +625,17 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[3]);
 
-    // ── ⑤ resume：默认命令 + 命令形 + 会话名前缀 —— **真的走通用层**（resume 规格 → 注册表里这一家那一格）。
+    // ── ⑤ resume：默认命令 + 命令形 —— **真的走通用层**（按 kind 在注册表里认那一家，读它那一格起会话事实；
+    //    `ccm` 起 resume 那一行就是照这一格拼的，见 `fake_tests.rs` 的 ccm 规划那几条）。
     let base = caps.default_command.ok_or(Stop::MissingCapability {
         stage: STAGES[4],
         capability: "resume 默认命令",
     })?;
-    let cmd = caps.resume_command.ok_or(Stop::MissingCapability {
+    let token = caps.resume_token.ok_or(Stop::MissingCapability {
         stage: STAGES[4],
         capability: "resume 命令形",
     })?;
-    let prefix = caps.session_name_prefix.ok_or(Stop::MissingCapability {
-        stage: STAGES[4],
-        capability: "resume 会话名前缀",
-    })?;
-    if base.trim().is_empty() || prefix.trim().is_empty() || !cmd(base, sid).contains(sid) {
+    if base.trim().is_empty() || token.trim().is_empty() {
         return Err(Stop::MissingCapability {
             stage: STAGES[4],
             capability: "resume 命令形",
@@ -663,31 +644,21 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     let registry = [crate::agents::Adapter {
         launch: Some(crate::agents::LaunchFace {
             default_launcher: base,
-            resume_command: cmd,
-            session_name_prefix: prefix,
+            resume_token: token,
             ..LAUNCH
         }),
         ..bare_row(home_fn)
     }];
-    let spec = crate::control::resolve_query::ResumeSpec {
-        session_id: sid.to_string(),
-        launch_candidates: Vec::new(),
-        agent_kind: AGENT_KIND.to_string(),
-    };
-    let plan = crate::control::resolve_query::resolve(&registry, &spec)
-        .ok()
-        .and_then(|p| serde_json::to_value(p).ok())
-        .ok_or_else(|| Stop::MissingCapability {
+    let (_, face) = crate::agents::pick_kind_among(&registry, Some(AGENT_KIND)).map_err(|_| {
+        Stop::MissingCapability {
             stage: STAGES[4],
             capability: "resume 命令形",
-        })?;
-    let head: String = sid.chars().take(8).collect();
-    if plan["command"] != serde_json::json!(cmd(base, sid))
-        || plan["sessionName"] != serde_json::json!(format!("{prefix}-{head}"))
-    {
+        }
+    })?;
+    if face.default_launcher != base || face.resume_token != token {
         return Err(Stop::MissingCapability {
             stage: STAGES[4],
-            capability: "resume 会话名前缀",
+            capability: "resume 命令形",
         });
     }
     done.push(STAGES[4]);

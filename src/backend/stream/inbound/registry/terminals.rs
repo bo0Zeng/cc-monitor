@@ -79,7 +79,4 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
     //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
     crate::wire::typed::asynchronous::<crate::faces::session_restart_face::SessionRestart>("换号重启"),
-    crate::wire::typed::blocking::<crate::control::launch::Launch>(
-        "建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）",
-    ),
 ];
