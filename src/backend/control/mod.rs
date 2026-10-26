@@ -23,7 +23,7 @@ pub mod asks;
 pub(crate) mod bookmarks; // 这台的书签（`~/.cc-monitor/bookmarks.json`）：读 · 锁里读—改—写，文件窗口与手机按机器名问
 pub mod capture_pane;
 pub(crate) mod cc_bus;
-pub(crate) mod cc_bus_wire; // cc-bus 那七条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
+pub(crate) mod cc_bus_wire; // cc-bus 那三条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
 pub mod cli_args;
 pub mod deploy_plan;

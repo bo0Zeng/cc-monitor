@@ -30,35 +30,12 @@ pub(crate) const NAME: &str = "cc-bus";
 const FILES: &[(&str, &[u8])] = &[
     ("SKILL.md", include_bytes!("../../shared/cc-bus/SKILL.md")),
     (
-        "examples/cc-busd.service",
-        include_bytes!("../../shared/cc-bus/examples/cc-busd.service"),
-    ),
-    // 保活是 cc-bus 的调用方，所以住 `examples/`、不进 `scripts/`（那里的命令面条数有判据钉着）。
-    (
-        "examples/cc-keepalive",
-        include_bytes!("../../shared/cc-bus/examples/cc-keepalive"),
-    ),
-    (
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),
-    ),
-    // 带注释的默认 kinds 表随包落盘，落在 `<claude_dir>/skills/cc-bus/examples/`，不是 `~/.cc-bus/kinds.tsv`：只读第 7 条例外只放行 `skills/cc-bus` 这一个落点。
-    // 脚本按「`~/.cc-bus/kinds.tsv` → 随包这一份 → 内置 msg」的顺序找 ⇒ 随包这份就是生效的默认；用户要改时复制到 `~/.cc-bus/` 再改。
-    (
-        "examples/kinds.tsv",
-        include_bytes!("../../shared/cc-bus/examples/kinds.tsv"),
     ),
     (
         "examples/policy.tsv",
         include_bytes!("../../shared/cc-bus/examples/policy.tsv"),
-    ),
-    (
-        "scripts/cc-agents",
-        include_bytes!("../../shared/cc-bus/scripts/cc-agents"),
-    ),
-    (
-        "scripts/cc-broadcast",
-        include_bytes!("../../shared/cc-bus/scripts/cc-broadcast"),
     ),
     (
         "scripts/cc-bus-adapt.sh",
@@ -101,14 +78,6 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-stop-hook"),
     ),
     (
-        "scripts/cc-busd",
-        include_bytes!("../../shared/cc-bus/scripts/cc-busd"),
-    ),
-    (
-        "scripts/cc-kill",
-        include_bytes!("../../shared/cc-bus/scripts/cc-kill"),
-    ),
-    (
         "scripts/cc-list",
         include_bytes!("../../shared/cc-bus/scripts/cc-list"),
     ),
@@ -128,14 +97,6 @@ const FILES: &[(&str, &[u8])] = &[
     (
         "scripts/cc-send",
         include_bytes!("../../shared/cc-bus/scripts/cc-send"),
-    ),
-    (
-        "scripts/cc-spawned-record",
-        include_bytes!("../../shared/cc-bus/scripts/cc-spawned-record"),
-    ),
-    (
-        "scripts/cc-spawn",
-        include_bytes!("../../shared/cc-bus/scripts/cc-spawn"),
     ),
     (
         "scripts/cc-whoami",

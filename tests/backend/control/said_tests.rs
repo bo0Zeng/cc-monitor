@@ -47,24 +47,6 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
             codes(&bus, "bus-send"),
             Some("agent-a"),
         ),
-        (
-            "bus-kill",
-            Box::new(|c| cc_bus_wire::kill_said("agent-a", c)),
-            codes(&bus, "bus-kill"),
-            None,
-        ),
-        (
-            "bus-spawn",
-            Box::new(cc_bus_wire::spawn_said),
-            codes(&bus, "bus-spawn"),
-            None,
-        ),
-        (
-            "bus-broadcast",
-            Box::new(cc_bus_wire::broadcast_said),
-            codes(&bus, "bus-broadcast"),
-            None,
-        ),
     ];
     for (cmd, table, codes, object) in cases {
         assert!(!codes.is_empty(), "{cmd}：金样里一个码都没有");

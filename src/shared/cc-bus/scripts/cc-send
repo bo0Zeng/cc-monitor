@@ -1,131 +1,57 @@
 #!/usr/bin/env bash
-# cc-send [--new|--broadcast] [--kind <k>] <to> <消息...>
-#   组信封 v2 → 原子入队 → cc-busd 处理(不在则就地 source 库跑管线兜底)
-#   `--kind`:这条怎么注入(拦停 / 敲门 / 过哪些阀门 / 两个模板),查 kinds.tsv;缺省 msg = 老行为。
-#   不认识的 kind / 那一行不合法 ⇒ **当场 rc=2**(发信方还在,这时说最便宜;入队之后再发现就只能落回 msg)。
+# cc-send [--new] <to> <消息...>
+#   组信封 → 就地跑路由管线写进收件人的收件箱(投递只这一条路)。
+#   退出码:0 已投递 · 2 参数非法 · 3 被路由层拦下(见 bus.log) · 1 投递出错。
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)   # 解析 symlink,确保能找到同目录的 lib
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 
-new_chain=0; msg_class="direct"; kind="msg"
+new_chain=0
 while true; do
   case "${1:-}" in
-    --new)       new_chain=1; shift;;                    # 强制新因果链(新话题)
-    --broadcast) msg_class="broadcast"; new_chain=1; shift;;  # 广播:标记 class + 不接因果链
-    --kind)      [ $# -ge 2 ] || { echo "cc-send: --kind 后面要跟一个 kind 名" >&2; exit 2; }
-                 kind="$2"; shift 2;;
-    --)          shift; break;;                          # 显式结束旗标(其后即使是 --xx 也当收件人)
+    --new) new_chain=1; shift;;                          # 强制新话题(不接在上一条后面)
+    --)    shift; break;;                                # 显式结束旗标(其后即使是 --xx 也当收件人)
     *) break;;
   esac
 done
-to="${1:?用法: cc-send [--new|--broadcast] [--kind <k>] <to> <消息...>}"; shift
+to="${1:?用法: cc-send [--new] <to> <消息...>}"; shift
 # 收件人 id 会拼进文件路径,白名单校验防路径穿越
 case "$to" in *[!A-Za-z0-9_-]*|'') echo "cc-send: 非法收件人 '$to'(仅 [A-Za-z0-9_-])" >&2; exit 2;; esac
 text="$*"
 from=$("$SELFDIR/cc-whoami" 2>/dev/null || echo unknown)   # 身份自动从 tmux 认领
-mkdir -p "$BUS/inbox" "$BUS/state" "$BUS/log" "$BUS/queue"
+mkdir -p "$BUS/inbox" "$BUS/state" "$BUS/log"
 route_load_config
-if ! kinds_lookup "$kind"; then
-  echo "cc-send: $KIND_WHY —— 没发" >&2
-  exit 2
-fi
 
 # ★★ **收件人根本不存在时要说一句**〔08-13 实测〕
 #
-# 病:`to` 只过了字符白名单,没人问过「这个名字有人认领吗」。于是把 `planner` 打成 `planer`:
-#   $ cc-send planer "把结论发给 planner"
-#   已投递(兜底:cc-busd 未运行)-> planer          ← rc=0,bus.log 还记了 DELIVER
+# 病:`to` 只过了字符白名单,没人问过「这个名字有人认领吗」。于是把 `planner` 打成 `planer`,
 # 消息**真的写进了** `inbox/planer.jsonl` —— 而那个收件箱**没有任何进程会读**
 #(`cc-list` 只列 agents.tsv,里面没有它;敲门也因为查不到 pane 而静默跳过)。
-# ⇒ 发信方被告知成功,收信方压根不存在,两侧都不会再提这件事。与滞留队列同一族。
 #
 # ⚠ **不拦截、只说话**:「先发后到」是正当用法(对方待会儿才 cc-register,届时 cc-recv
 #   读得到)。所以这里既不改退出码也不改投递,只在 stderr 上问一句名字是不是打错了。
 if ! awk -F'\t' -v id="$to" '$1==id{f=1} END{exit !f}' "$BUS/agents.tsv" 2>/dev/null; then
   echo "cc-send: ⚠ '$to' 不在已登记名单里(cc-list 看不到它)——消息照发,但**今天没有进程会读它的收件箱**;名字打错了吗?" >&2
-elif [ "$(ccbus_cap agent_caps can_peer)" = yes ]; then
-  # 发方与收方都是够得着同机同家的那一家(词典的 can_peer):提一句原生通道,消息照投(不拒、不替它改道)。
-  echo "cc-send: 同机 Claude 之间可用 SendMessage" >&2
 fi
 
 ts=$(date -Iseconds)
 id="${from}-$(date +%s%N)-${RANDOM}"
-# 因果链自动接续:若 from 最近读过 to 的消息(lastread 存在且 id≠-),本条视为回复
-irt=""; trace="$from"; hops=0
+# 回复自动接上:from 最近读过 to 的消息(lastread 第一格是那条的 id,≠ -)⇒ 本条记成它的回复
+irt=""
 lr="$BUS/state/lastread-${from}__${to}"
 if [ "$new_chain" = 0 ] && [ -f "$lr" ]; then
-  IFS=$'\t' read -r p_id p_hops p_trace < "$lr" 2>/dev/null || true
-  if [ -n "${p_id:-}" ] && [ "$p_id" != "-" ]; then
-    irt="$p_id"
-    if [[ "${p_hops:-}" =~ ^[0-9]+$ ]]; then hops=$((p_hops+1)); else hops=1; fi
-    trace="${p_trace:+$p_trace,}$from"   # p_trace 损坏为空时用单元素,不产生 from,from
-  fi
+  IFS=$'\t' read -r p_id _ < "$lr" 2>/dev/null || true
+  if [ -n "${p_id:-}" ] && [ "$p_id" != "-" ]; then irt="$p_id"; fi
 fi
 env=$(jq -cn --arg id "$id" --arg from "$from" --arg to "$to" --arg ts "$ts" \
-   --arg text "$text" --arg class "$msg_class" --arg irt "$irt" \
-   --arg trace "$trace" --argjson hops "$hops" --arg kind "$kind" \
-   '{id:$id,from:$from,to:$to,ts:$ts,text:$text,class:$class,kind:$kind,in_reply_to:(if $irt=="" then null else $irt end),trace:$trace,hops:$hops,prio:0}')
+   --arg text "$text" --arg irt "$irt" \
+   '{id:$id,from:$from,to:$to,ts:$ts,text:$text,in_reply_to:(if $irt=="" then null else $irt end)}')
 
-# 原子入队。文件名用纳秒,给 F04 按序消费留更细的时间分辨率
-seq="$$-$RANDOM"
-qf="$BUS/queue/$(date +%s%N)-$seq.json"
-tmpq="$BUS/queue/.tmp.$seq"
-printf '%s\n' "$env" > "$tmpq"
-mv "$tmpq" "$qf"
-
-if backend_running; then
-  echo "已入队(cc-busd 处理)-> $to"
-else
-  # ★★ **先把队列里滞留的旧消息带走**〔08-13 实测事故〕
-  #
-  # 病:backend 在跑时 cc-send 只入队(打印「已入队」——当时是真话)。若后端在取走它之前
-  # 死掉/关机(POLL 默认 0.5s,这个窗口天天存在),那条消息就**永远躺在队列里**:
-  # 此后 cc-send 判定后端不在、走兜底,而兜底**只处理自己刚入队的那一条**,从不回头看队列。
-  #
-  # 实测(A 正常投递 → backend 卡住时发 B → backend 被杀 → 再发 C、D):
-  #   收件箱 3 条 [A C D]，队列里永远躺着 1 条 [B]
-  # 发信方看到的是「已入队」、收信方 cc-recv 读到 3 条 —— **两侧都不知道少了一条**。
-  # ⚠ 与 cc-register 那条同族:失败/中断被吞掉,而后面没有人负责补。
-  #
-  # ⇒ 兜底的语义本来就是「没人管家时我顺手管一下」,那就管全:**先补投滞留的,再发自己的**
-  #  (文件名是纳秒时间戳且定长,glob 的字典序就是入队序)。
-  # ⚠ 不引入任何新机制:认领仍是原子 `mv` 到点前缀名 —— backend 不扫点前缀、两个 cc-send
-  #   同时兜底也只有一个 mv 得到 ⇒ 不双投。被路由层拦下(rc=10)与后端恢复后扫队列
-  #   的行为**逐字一致**,不在这条路径上另立语义。
-  # ⚠ 有上界:一次最多带走 CCBUS_DRAIN_MAX 条,免得堆积几百条时把一次 cc-send 拖死。
-  _drained=0; _dropped=0; _stale_fail=0; _budget="${CCBUS_DRAIN_MAX:-20}"
-  for sf in "$BUS/queue"/*.json; do
-    [ -e "$sf" ] || continue          # glob 没命中时字面量
-    [ "$sf" = "$qf" ] && continue     # 自己那条走下面的正路(它排在最后)
-    [ "$_budget" -gt 0 ] || { _stale_fail=$((_stale_fail+1)); continue; }
-    sproc="$BUS/queue/.proc.$$.${sf##*/}"
-    mv "$sf" "$sproc" 2>/dev/null || continue   # 没抢到:别人认领了,不是我的事
-    _budget=$((_budget-1))
-    set +e; route_process "$(cat "$sproc" 2>/dev/null)"; src=$?; set -e
-    case "$src" in
-      0)  rm -f "$sproc"; _drained=$((_drained+1));;
-      10) rm -f "$sproc"; _dropped=$((_dropped+1));;
-      *)  mv "$sproc" "$sf" 2>/dev/null || true; _stale_fail=$((_stale_fail+1));;
-    esac
-  done
-  if [ "$((_drained+_dropped+_stale_fail))" -gt 0 ]; then
-    # 说到 stderr:补投是**顺手**做的,不该混进 cc-send 自己那条的成败回显。
-    echo "cc-send: 队列里有滞留消息(cc-busd 曾入队但没取走)——补投 $_drained 条,被路由层拦下 $_dropped 条,仍失败/超预算 $_stale_fail 条" >&2
-  fi
-
-  # 兜底:认领文件用【点前缀】(躲开后端顶层队列扫描,防双投),原子改名占用后就地跑管线
-  proc="$BUS/queue/.proc.$$.${qf##*/}"
-  if mv "$qf" "$proc" 2>/dev/null; then
-    set +e; route_process "$(cat "$proc")"; rc=$?; set -e
-    case "$rc" in
-      0)  rm -f "$proc"; echo "已投递(兜底:cc-busd 未运行)-> $to";;
-      10) rm -f "$proc"; echo "被路由层拦截(见 bus.log)-> $to" >&2; exit 3;;
-      *)  mv "$proc" "$qf" 2>/dev/null || true
-          echo "cc-send: 处理失败,已退回队列(可重试)-> $to" >&2; exit 1;;
-    esac
-  else
-    echo "已入队(被 cc-busd 抢先认领)-> $to"
-  fi
-fi
+set +e; route_process "$env"; rc=$?; set -e
+case "$rc" in
+  0)  echo "已投递 -> $to";;
+  10) echo "被路由层拦截(见 bus.log)-> $to" >&2; exit 3;;
+  *)  echo "cc-send: 投递失败(没写进收件箱,可重发)-> $to" >&2; exit 1;;
+esac

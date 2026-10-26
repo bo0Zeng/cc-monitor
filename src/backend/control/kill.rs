@@ -6,10 +6,9 @@
 //! `admit_destructive` 回的令牌里是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
 //! 名字在窗口期内被重新绑定到别的会话也杀不到别人（同 `super::gate` 头注的 TOCTOU 分析）。
 //!
-//! # 杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
+//! # 杀会话不碰 cc-bus
 //!
-//! 杀之前读下全部 pane 的根进程 pid，杀成之后按 `agents.tsv` 第 4 列那个 pid 认人、逐个 `cc-kill`（`cc_bus::unregister_panes`）；
-//! 那一步失败不改杀会话的结局；注销的结局进成品的 `bus` 那一格（注销了谁 · 谁没注销成 · 名册读不到），界面说一句。
+//! 杀会话不顺手注销 cc-bus 名册；成品的 `bus` 那一格恒空（名册改按会话 id 推之后整格撤）。
 //!
 //! # 错误码
 //!
@@ -22,7 +21,7 @@ use copy_core::copy_text;
 /// `kill-session` / `kill-pane` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
-/// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀 · 顺手注销 cc-bus 共用）。
+/// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀共用）。
 pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
@@ -160,7 +159,7 @@ fn run_expecting(
     let target = super::launch::exact_target(name);
     // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
     let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
-    end(Ending::Doomed(name, doomed))
+    end(Ending::Doomed(doomed))
 }
 
 /// 一发 tmux（`launch::run_with` 那一口的形状）。
@@ -168,16 +167,15 @@ type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, CmdErr> + 'a;
 
 /// 结束会话的两种令牌：门放行的（`kill`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
 pub(crate) enum Ending<'a> {
-    /// `name`：说给人听的会话名（杀成之后按它认 cc-bus 名册）。
-    Doomed(&'a str, super::gate::Doomed),
+    Doomed(super::gate::Doomed),
     /// 只在仍是空壳时收；`tmux` 同 `launch::run_with` 那一口（判据交隔离 socket 上的）。
     Bare(super::launch::JustMade, &'a Tmux<'a>),
 }
 
 /// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
 pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
-    let (name, doomed) = match ending {
-        Ending::Doomed(n, d) => (n, d),
+    let doomed = match ending {
+        Ending::Doomed(d) => d,
         Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
     };
     let (handle, only) = match doomed.at() {
@@ -196,15 +194,12 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdEr
             }
         }
     }
-    // 杀之前记下要走的那几个 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
-    let panes = pane_pids(handle, only);
     let out = Child::new("tmux")
         .args(&argv)
         .run(KILL_TMUX_WITHIN)
         .map_err(tmux_unavailable)?;
     if out.status.success() {
-        let bus = super::cc_bus::unregister_panes(name, &panes);
-        return Ok(bus);
+        return Ok(Default::default());
     }
     Err(kill_refused(&out.stderr))
 }
@@ -241,14 +236,6 @@ pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
         .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
-/// 要走的那几个 pane 的根进程 pid（`only` ＝ 只结束这几个窗格；`None` ＝ 整个会话）。问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
-fn pane_pids(handle: &str, only: Option<&[String]>) -> Vec<u32> {
-    super::gate::panes_on(None, handle)
-        .into_iter()
-        .filter(|p| only.is_none_or(|ps| ps.contains(&p.pane)))
-        .map(|p| p.pid)
-        .collect()
-}
 
 /// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名 · sid 形状 ⇒ 过门 ⇒ 杀 ⇒ 成品。
 pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {

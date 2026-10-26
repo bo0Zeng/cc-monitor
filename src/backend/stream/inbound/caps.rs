@@ -21,9 +21,7 @@ pub(crate) const CAPS: &[(&str, Deadline)] = &[
     ("ssh-config-import", crate::dial::ssh_config::SSH_IMPORT_CAP),
     ("quota-probe", crate::faces::quota_probe_face::PROBE_CAP),
     ("bus-list", cc_bus::BUS_LIST_CAP),
-    ("bus-state", cc_bus::BUS_STATE_CAP),
     ("bus-send", cc_bus::BUS_SEND_CAP),
-    ("bus-broadcast", cc_bus::BUS_BROADCAST_CAP),
     ("aliases-read", crate::assets::aliases::ALIASES_READ_CAP),
     (
         "powershell-policy-set",

@@ -37,32 +37,6 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
     }
 }
 
-/// 顺序钉：读 pane pid 在**杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
-/// 过门在前由类型挡：结束那一下只收门发的令牌（`gate::Doomed`）。
-#[test]
-fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
-    let at = |needle: &str| {
-        assert_eq!(
-            src.matches(needle).count(),
-            1,
-            "`{needle}` 在生产段里不是恰好一处"
-        );
-        src.find(needle).unwrap()
-    };
-    let panes = at("let panes = pane_pids(handle, only);");
-    let kill = at(".args(&argv)");
-    let ok = at("if out.status.success() {");
-    let unregister = at("let bus = super::cc_bus::unregister_panes(name, &panes);");
-    assert!(panes < kill, "pane pid 要在杀之前读");
-    assert!(ok < unregister, "顺手注销只能在杀成那一支里");
-    let after_ok = &src[ok..];
-    assert!(
-        after_ok.find("unregister_panes").unwrap() < after_ok.find("return Ok(bus)").unwrap(),
-        "顺手注销要在杀成那一支返回之前"
-    );
-}
-
 /// ★★**跨语言金样**：界面直接收的 `kill` 成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
 /// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住

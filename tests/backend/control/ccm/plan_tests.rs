@@ -571,7 +571,7 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
 ///
 /// # 这一条是 `K-R48` 第二拍补的，补的是**三处一起丢掉的东西**
 ///
-/// 把 `tests/e2e/cc-spawn-uplift.sh` 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
+/// 把当年那份派生 e2e 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
 /// 24 条里 22 条是同一族，逐条追下去是首版原生实现丢了三样旧 bash 实现有的东西：
 ///   ① `discover_bus_scripts` 的**第三档 `PATH`** —— docstring 写着、实现里没有。
 ///      旧 `ccm` 住 `shared/`（部署形态 `~/.claude/skills/ccm`），**兄弟目录**正好是
@@ -579,21 +579,20 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
 ///      **旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**。
 ///   ② 三处判「这个脚本能不能用」写成 `is_file()`，而旧 bash 判的是 `-x`
 ///      ⇒「在、但没有执行位」被读成「它能用」，拼进 seq 执行时静默失败（整段是 `|| true`）。
-///   ③ 两句 stderr 整个没了：找不到 cc-bus ⇒「**没有登记**」；`cc-spawned-record`
-///      不可执行 ⇒「**不进 spawn 台账**」。`--bus-register` 于是成了一个
+///   ③ 找不到 cc-bus ⇒「**没有登记**」那句 stderr 整个没了。`--bus-register` 于是成了一个
 ///      「**要了、没做、也不说**」的旗标 —— 那正是本工作区反复消灭的那类静默降级。
 ///
 /// # 它买不到什么
 ///
-/// **那两句 stderr 只钉「生产段里有这一句」，没钉「真跑时它真的印出来了」** ——
+/// **那句 stderr 只钉「生产段里有这一句」，没钉「真跑时它真的印出来了」** ——
 /// 后者要捕获进程的 stderr，而 `build()` 是纯函数、`eprintln!` 直接写 fd 2。
-/// 行为那一半住 `tests/e2e/cc-spawn-uplift.sh`（**而那套不在出货门禁里**，如实登记）。
+/// 行为那一半当年住一份 e2e（已随派生一起删）。
 #[test]
 fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     // ① `is_exec`：**行为**判据 —— 造两个真文件，一个有执行位一个没有。
     let d = tempdir();
     let ok = std::path::Path::new(&d).join("cc-register");
-    let bad = std::path::Path::new(&d).join("cc-spawned-record");
+    let bad = std::path::Path::new(&d).join("cc-no-exec-bit");
     std::fs::write(&ok, "#!/bin/sh\n").expect("写夹具");
     std::fs::write(&bad, "#!/bin/sh\n").expect("写夹具");
     #[cfg(unix)]
@@ -632,38 +631,22 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
         );
     }
 
-    // ③ 两句诊断在生产段里（**这一格只钉形状，行为归 e2e**，见头注）。
-    // 两句进了文案表：生产段认 key，表里那句认话。
+    // ③ 那句诊断在生产段里（**这一格只钉形状**，见头注）。它进了文案表：生产段认 key，表里那句认话。
     let table: serde_json::Value =
         serde_json::from_str(include_str!("../../../../src/shared/copy/table.json")).expect("表");
-    // 「派生台账」换成人话之后，`noSpawnRecord` 那句不再按原文认；它说没说出来由 e2e
-    //   `cc-spawn-uplift.sh` [18] 按文案键整行比。这里只钉它在表里、带 `{path}`。
-    assert_eq!(
-        table["entries"]["bePlan.bus.noSpawnRecord"]["args"],
-        serde_json::json!(["path"]),
-        "表里没有 bePlan.bus.noSpawnRecord，或它不再点名是哪个文件"
-    );
     assert!(
         table["entries"]["bePlan.bus.noScripts"]["zh"].is_string(),
         "表里没有 bePlan.bus.noScripts"
     );
-    for say in ["\"bePlan.bus.noScripts\"", "\"bePlan.bus.noSpawnRecord\""] {
-        assert!(
-            me.contains(say),
-            "`--bus-register` 登记不成时那句「{say}」不见了 —— \n\
-                 旗标于是变成「要了、没做、也不说」。整段是 `|| true`，**不会有别的东西替它出声**。"
-        );
-    }
-    // 反向锚点：那两句必须在**同一个函数**里（`build()` 的容器分支），
-    // 搬到别处等于「说是说了，但那条路上说不到」。
+    // 反向锚点：那句必须在 `build()` 的容器分支里 —— 搬到别处等于「说是说了，但那条路上说不到」。
     let bus_block = me
         .split("let bus = if o.bus_register {")
         .nth(1)
         .expect("找不到 `--bus-register` 那一段 —— 抽取器坏了，本条会零命中地绿");
     let head = &bus_block[..bus_block.len().min(1200)];
     assert!(
-        head.contains("\"bePlan.bus.noScripts\"") && head.contains("\"bePlan.bus.noSpawnRecord\""),
-        "那两句不在 `--bus-register` 那一段里了 —— 它们要在**决定登记不成的那一刻**说出来"
+        head.contains("\"bePlan.bus.noScripts\""),
+        "`--bus-register` 登记不成时那句不见了，或不在那一段里 —— 旗标于是变成「要了、没做、也不说」"
     );
 }
 
@@ -1555,7 +1538,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     ] {
         build_of(&args, &env()).unwrap_or_else(|e| panic!("真实好值被拒了：{args:?} ⇒ {}", e.0));
     }
-    // 正：多行初始任务（`cc-spawn <目录> "第一行<换行>第二行"` 交过来的那一形）—— 透传参数与备注都放，且原样进 pane 里键入的载荷。
+    // 正：多行初始任务（`ccm … -- "第一行<换行>第二行"` 那一形）—— 透传参数与备注都放，且原样进 pane 里键入的载荷。
     let multi = "第一行\n第二行";
     let mut with_bus = env();
     with_bus.bus_scripts = Some("/opt/cc-bus/scripts".into());
@@ -1579,7 +1562,6 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         "多行任务没原样进载荷：{}",
         c.payload
     );
-    assert_eq!(c.bus.as_ref().map(|b| b.note.as_str()), Some(multi));
     // 相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
     let e0 = env();
     for (rel, want) in [
@@ -2579,8 +2561,6 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
     let mut bus = container(&["--ccm-tmux=n1", "--cwd", "/p", "--detach"]);
     bus.bus = Some(BusRegister {
         scripts_dir: "/s".into(),
-        note: "n".into(),
-        has_spawned_record: true,
     });
     let plans = [
         ("--attach", plan_of(&["--attach", "cc-p1"], &env(), &t)),

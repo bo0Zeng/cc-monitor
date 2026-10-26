@@ -33,7 +33,7 @@ CCBUS_TRAIT_OS_FNS="os_caps os_pane_identity"
 CCBUS_TRAIT_AGENT_FNS="agent_caps agent_block_reason agent_self_sid"
 
 # ── 能力降级链:§3.2b 那张表的**唯一的家** ───────────────────────────────────
-# kinds.tsv 里配的每一项行为,在 agent 不支持时都必须有一个**明确的去处** ——
+# 投递要的每一项行为,在 agent 不支持时都必须有一个**明确的去处** ——
 # 没有去处的组合 = 配置错误,部署时就该报,不该等到投递时静默丢。
 #   拦停 block ⇒ 降成敲门 nudge(至少让它知道有消息)
 #   敲门 nudge ⇒ 降成只入收件箱 inbox(等它自己来读)
@@ -46,7 +46,7 @@ CCBUS_DEGRADE_SINK="reject"
 
 ccbus_adapt_dir() { (cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); }
 
-# 找这台的后端(就是 `ccm`):敲门(往会话说一句)与 cc-spawn(起会话)都经它。唯一一处查找次序:
+# 找这台的后端(就是 `ccm`):敲门(往会话说一句)经它。唯一一处查找次序:
 #   `$CCM_BIN`(显式) → 部署落点 `~/.cc-monitor/bin/ccm` → PATH 上的 `cc-monitor-backend` → PATH 上的 `ccm`。
 # 🔴 刻意不认 `$CCM_BACKEND_BIN`:那是 monitor 给终端窗口导的「正在跑的那份常驻后端」,不是给 CLI 找入口用的。
 # ⚠ 必须 `-f` 而不能只 `-x`:`[ -x <目录> ]` 为真(装个名叫 `ccm` 的 skill 目录就会劫持解析)。
@@ -135,7 +135,7 @@ ccbus_cap() {
 ccbus_degrade() {
   # ⚠ `cur` 必须**独立一行**赋值:`local want="$1" cur="$want"` 里的 `$want` 是在**整条 local
   #   生效之前**展开的 ⇒ 取到的是空串(或调用方同名的那个变量 —— bash 是动态作用域),
-  #   于是本函数对任何输入都回 reject。〔kinds 接线时现打逮到:本函数此前**零调用点**,
+  #   于是本函数对任何输入都回 reject。〔降级链接线时现打逮到:本函数此前**零调用点**,
   #   那条 bug 从写下起就没人跑到过 —— 判据不在执行链上就等于不存在。〕
   local want="$1" cur cap nxt guard=0
   cur="$want"

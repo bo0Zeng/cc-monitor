@@ -1,4 +1,4 @@
-//! **等起好的会话报到**（帧命令 `session-arrive`）：`session-open` · `bus-spawn` 回包里的 `arrival` 那一格原样交回来，这台等那一条报到。
+//! **等起好的会话报到**（帧命令 `session-arrive`）：`session-open` 回包里的 `arrival` 那一格原样交回来，这台等那一条报到。
 //! 等多久 ＝ 请求信封的期限（减余量）。报到了 ⇒ 那个 sid；没见到 ⇒ 那一句（起在 tmux 里的抓那一屏末几行当原话）＋ 那个终端还在就给句柄。
 //! 认「是不是它」住观测层（`observe::arrivals`，认的是界面也收的那一帧 `session_added`），抓屏住 `terminals`，都由入口经 [`Host`] 交进来。
 

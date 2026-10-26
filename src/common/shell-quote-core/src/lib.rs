@@ -22,7 +22,7 @@ pub fn free_text_ok(s: &str) -> bool {
 }
 
 /// 〔`INVARIANTS §47` ②〕**交给 agent 的参数 · 登记备注**这一种自由文本可以跨行：
-/// 多行初始任务是真实能力（`cc-spawn <目录> "$(cat 任务.md)"`；后端 `control/launch.rs::check_typed_payload` 为它放行 `\n`）。
+/// 多行初始任务是真实能力（`ccm … "$(cat 任务.md)"`；后端 `control/launch.rs::check_typed_payload` 为它放行 `\n`）。
 /// LF 在单引号里 quote 挡得住 —— 键进交互 shell 是续行、值原样，`sh -c` 里本来就原样；拒它就是「拒过头」。
 /// 只拒 NUL（截断参数）与 CR（键进终端就是回车键，值里变成 LF，原样不了）。
 pub const ARG_TEXT_REFUSED: [char; 2] = ['\0', '\r'];
@@ -97,8 +97,8 @@ pub fn account_name_ok(s: &str) -> bool {
         && cs.all(|c| c.is_ascii_alphanumeric() || ACCOUNT_NAME_EXTRA.contains(c))
 }
 
-/// cc-bus agent id（发消息的收件人 · 收掉的那个 · 派生时的账号名 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`。没有上界。
-/// monitor 读收件箱 · 后端 `bus-send` / `bus-kill` / `bus-spawn` 在把 id 交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判。
+/// cc-bus agent id（发消息的收件人 · 发信人 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`。没有上界。
+/// monitor 读收件箱 · 后端 `bus-send` / `bus-inbox` 在把 id 交给 `cc-send` / `cc-log` 之前先判。
 /// 关键是拒前导 `-`：`--help` 在盘上真出现过（`~/.cc-bus/inbox/--help.jsonl`），拼进 `cc-send` 就被当成一个 flag。
 pub fn bus_id_ok(s: &str) -> bool {
     !s.is_empty()
