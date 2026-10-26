@@ -529,6 +529,15 @@ pub(crate) fn pick_route(kind: Option<&AgentKind>) -> Result<RouteId, String> {
     pick_kind(kind.map(AgentKind::as_str)).map(|(_, f)| RouteId(f.adapter_id))
 }
 
+/// 账 · 表 · 路由键里存着的路由名 ⇒ [`RouteId`]（这一换只在这一处）。注册表里没有这个路由名（别家旧条目 · kind 的串）⇒ `None`。
+pub(crate) fn route_named(route_id: &str) -> Option<RouteId> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .map(|u| RouteId(u.route_id))
+}
+
 /// 账 · 表里记的路由名 ⇒ 线上的 kind（回包里的 `agent` 都写它）；注册表里没有这个路由名 ⇒ 照原样（账上留着的别家旧条目）。
 pub(crate) fn kind_of_route(route_id: &str) -> AgentKind {
     AgentKind::new(
@@ -2015,20 +2024,20 @@ pub(crate) struct UsageFace {
 }
 
 /// 路由第 1 段 → 那一家的「报用量」那一形。
-pub(crate) fn usage_of(route_id: &str) -> Option<UsageFace> {
+pub(crate) fn usage_of(route: RouteId) -> Option<UsageFace> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
+        .find(|u| u.route_id == route.0)
         .and_then(|u| u.usage)
 }
 
 /// 路由第 1 段 → 那一家的「用满」回包（见 [`DefaultUpstream::limit_reply`]）。
-pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
+pub(crate) fn limit_reply_of(route: RouteId) -> Option<LimitReplyOf> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
+        .find(|u| u.route_id == route.0)
         .and_then(|u| u.limit_reply)
 }
 
@@ -2184,29 +2193,29 @@ pub(crate) enum IdentityCell {
 }
 
 /// 路由第 1 段 → 那一家的额度窗口语义位读法。
-pub(crate) fn window_slot_of(route_id: &str) -> Option<fn(&str) -> Option<&'static str>> {
+pub(crate) fn window_slot_of(route: RouteId) -> Option<fn(&str) -> Option<&'static str>> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
+        .find(|u| u.route_id == route.0)
         .and_then(|u| u.window_slot)
 }
 
 /// 路由第 1 段 → 那一家的额度窗口键读法。
-pub(crate) fn window_key_of(route_id: &str) -> Option<fn(&str) -> Option<String>> {
+pub(crate) fn window_key_of(route: RouteId) -> Option<fn(&str) -> Option<String>> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
+        .find(|u| u.route_id == route.0)
         .and_then(|u| u.window_key)
 }
 
 /// 路由第 1 段 → 那一家的订阅号登录格式。
-pub(crate) fn login_of(route_id: &str) -> Option<LoginFace> {
+pub(crate) fn login_of(route: RouteId) -> Option<LoginFace> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
+        .find(|u| u.route_id == route.0)
         .and_then(|u| u.login)
 }
 
@@ -2223,11 +2232,11 @@ pub(crate) fn spent_of(kind: &AgentKind) -> Option<fn(&str) -> Option<Spent>> {
 }
 
 /// 路由第 1 段 → 那一家的额度读法。
-pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {
+pub(crate) fn quota_read_of(route: RouteId) -> Option<QuotaRead> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
+        .find(|u| u.route_id == route.0)
         .and_then(|u| u.quota)
 }
 

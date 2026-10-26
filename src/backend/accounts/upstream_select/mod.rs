@@ -570,7 +570,9 @@ impl Destinations for Accounts {
         let Some(h) = &self.hop else {
             return;
         };
-        let Some(read) = crate::agents::quota_read_of(&key.seg1) else {
+        let Some(read) =
+            crate::agents::route_named(&key.seg1).and_then(crate::agents::quota_read_of)
+        else {
             return;
         };
         let now = (self.clock)();
@@ -598,7 +600,8 @@ impl Destinations for Accounts {
         if let Some(line) = auth_refusal_line(seen.tag, seen.status) {
             tracing::warn!("{line}");
         }
-        let Some(read) = crate::agents::quota_read_of(agent) else {
+        let Some(read) = crate::agents::route_named(agent).and_then(crate::agents::quota_read_of)
+        else {
             return;
         };
         let now = (self.clock)();

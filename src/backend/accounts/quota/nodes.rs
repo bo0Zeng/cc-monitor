@@ -95,7 +95,8 @@ fn logins_arm(
     library: AccountDirs,
 ) -> Result<(), String> {
     let (manifest_dir, dirs) = logins_dirs(&home, &library);
-    let login_name = crate::agents::login_of(crate::agents::credentials_file_agent())
+    let login_name = crate::agents::route_named(crate::agents::credentials_file_agent())
+        .and_then(crate::agents::login_of)
         .map(|f| f.creds_file.to_string());
     let mut watched: Vec<(std::path::PathBuf, bool)> = vec![(manifest_dir.clone(), false)];
     watched.extend(dirs.into_iter().filter(|d| d.is_dir()).map(|d| (d, false)));

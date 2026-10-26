@@ -129,7 +129,9 @@ fn body_of(uuid: &str, echo: bool) -> Vec<u8> {
 }
 
 fn identity_in(body: &[u8]) -> Option<String> {
-    crate::agents::login_of(AGENT).and_then(|f| (f.identity_of_body)(body))
+    crate::agents::route_named(AGENT)
+        .and_then(crate::agents::login_of)
+        .and_then(|f| (f.identity_of_body)(body))
 }
 
 fn prep(

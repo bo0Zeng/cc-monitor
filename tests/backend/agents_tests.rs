@@ -834,3 +834,26 @@ fn backend_wire_agent_cells_are_agent_kinds() {
         kind(&a.agent);
     };
 }
+
+/// 账 · 表 · 路由键里存着的路由名只在 [`route_named`] 这一处换成 [`RouteId`]：认路由名、不认 kind、不认注册表里没有的。
+/// 按路由名查的那几个只收 `RouteId` ⇒ kind 的串交不进去（交进去编不过）。
+#[test]
+fn a_stored_route_name_becomes_a_route_id_in_one_place() {
+    let route = crate::agents::claudecode::UPSTREAM.route_id;
+    let id = route_named(route).expect("注册表里那一家的路由名认得");
+    assert_eq!(id.id(), route);
+    assert_eq!(
+        Ok(id),
+        pick_route(Some(&AgentKind::new(crate::agents::claudecode::AGENT_KIND)))
+    );
+    assert_eq!(
+        route_named(crate::agents::claudecode::AGENT_KIND),
+        None,
+        "kind 不当路由名认"
+    );
+    assert_eq!(route_named("gone-agent"), None);
+    assert!(usage_of(id).is_some());
+    assert!(login_of(id).is_some());
+    assert!(quota_read_of(id).is_some());
+    assert!(window_slot_of(id).is_some() && window_key_of(id).is_some());
+}

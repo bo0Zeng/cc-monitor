@@ -88,7 +88,7 @@ pub(crate) enum Unready {
 
 /// 一家的窗口名 → 语义位。
 pub(super) fn slot_fn(agent: &str) -> impl Fn(&str) -> Option<&'static str> {
-    let f = crate::agents::window_slot_of(agent);
+    let f = crate::agents::route_named(agent).and_then(crate::agents::window_slot_of);
     move |w: &str| f.and_then(|f| f(w))
 }
 
@@ -196,7 +196,7 @@ impl Hop {
     /// （账号 0 ⇒ `0`）；一个都没对上 · 对上不止一个 · 请求体里没有这一格 · 没建账号库 ⇒ `None`（照旧记 `_`，不猜）。
     /// 每一发都比一次（身份按文件戳缓存）：会话里 `/login` 换了号，下一发就认成新号。
     pub(crate) fn recognize(&self, agent: &str, body: &[u8]) -> Option<String> {
-        let face = crate::agents::login_of(agent)?;
+        let face = crate::agents::route_named(agent).and_then(crate::agents::login_of)?;
         let uuid = (face.identity_of_body)(body)?;
         let lib = self.library();
         let mut hit = lib
@@ -238,7 +238,9 @@ impl Hop {
         account: &str,
         now: u64,
     ) -> Result<(SecretKey, String), Unready> {
-        let face = crate::agents::login_of(agent).ok_or(Unready::NeedsLogin)?;
+        let face = crate::agents::route_named(agent)
+            .and_then(crate::agents::login_of)
+            .ok_or(Unready::NeedsLogin)?;
         let (dir, base) = self
             .dir_of(&face, lib, account)
             .ok_or(Unready::NeedsLogin)?;
@@ -288,7 +290,9 @@ impl Hop {
         account: &str,
     ) -> Result<Go, Unready> {
         let rewrite = |who: &str| -> Result<Option<Vec<u8>>, Unready> {
-            let face = crate::agents::login_of(a.agent).ok_or(Unready::UnsureBody)?;
+            let face = crate::agents::route_named(a.agent)
+                .and_then(crate::agents::login_of)
+                .ok_or(Unready::UnsureBody)?;
             match (face.rewrite_identity)(a.body, who) {
                 IdentityCell::Absent => Ok(None),
                 IdentityCell::Rewritten(b) => Ok(Some(b)),
@@ -318,7 +322,9 @@ impl Hop {
         lib: &AccountBook,
         account: &str,
     ) -> Result<String, Unready> {
-        let face = crate::agents::login_of(agent).ok_or(Unready::NeedsLogin)?;
+        let face = crate::agents::route_named(agent)
+            .and_then(crate::agents::login_of)
+            .ok_or(Unready::NeedsLogin)?;
         let (dir, base) = self
             .dir_of(&face, lib, account)
             .ok_or(Unready::NeedsLogin)?;
@@ -340,7 +346,7 @@ impl Hop {
         account: &str,
         now: u64,
     ) -> Option<oauth::missed::Unrenewed> {
-        let face = crate::agents::login_of(agent)?;
+        let face = crate::agents::route_named(agent).and_then(crate::agents::login_of)?;
         let (dir, _) = self.dir_of(&face, lib, account)?;
         oauth::missed::missed(&dir, &face, now)
     }

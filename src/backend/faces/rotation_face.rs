@@ -166,8 +166,8 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
     let seen = &base.accounts;
     let lib = ctx.hop.library();
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
-        let slot = crate::agents::window_slot_of(agent);
-        let key = crate::agents::window_key_of(agent);
+        let slot = crate::agents::route_named(agent).and_then(crate::agents::window_slot_of);
+        let key = crate::agents::route_named(agent).and_then(crate::agents::window_key_of);
         let slot = |w: &str| slot.and_then(|f| f(w));
         let key = |w: &str| key.and_then(|f| f(w));
         let mut sh = show::show(
