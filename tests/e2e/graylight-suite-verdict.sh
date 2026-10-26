@@ -59,16 +59,19 @@ mkdir -p "$T/www"
 HTTP_PID=$!
 wall_until "curl -s -o /dev/null --max-time 1 http://127.0.0.1:$PORT"
 
-# 跑一种情况。$1 = 名字 · $2 = 后端 stderr 里写什么 · $3 = 假 app 怎么演（none | full | no-gray）。
+# 跑一种情况。$1 = 名字 · $2 = 远端那份后端 stderr 里写什么 · $3 = 假 app 怎么演（none | full | no-gray）。
+# 后端 stderr 照台架交两份（本机常驻 · 远端常驻，冒号隔开）：本机那份恒是干净的几行，$2 写进远端那份。
 # 套件的退出码落进 $RC，输出落进 $OUT。
 run_case() {
-  local name="$1" err_text="$2" app="$3" claude_dir log errf sock
+  local name="$1" err_text="$2" app="$3" claude_dir log errf errl sock
   claude_dir="/tmp/e2e-glverdict-claude-$$-$name"
   log="$T/$name.monitor.log"
-  errf="$T/$name.backend.err"
+  errl="$T/$name.local-backend.err"
+  errf="$T/$name.remote-backend.err"
   sock="$(e2e_run_name "e2eGlv$name")"
   rm -rf -- "$claude_dir"; mkdir -p "$claude_dir"
   printf '%s INFO monitor: backend hello build_id=fake host_arch=x86_64\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > "$log"
+  printf '2026-10-26T00:00:00.000000Z  INFO cc_monitor_backend: resident listening\n' > "$errl"
   printf '%s' "$err_text" > "$errf"
 
   # 按身份认得出的后端：exe 名对、环境里带本趟的 fixture 目录。
@@ -86,7 +89,7 @@ run_case() {
 
   set +e
   OUT="$(env -u TMUX -u TMUX_PANE HOME="$HOME" PATH="$SUITE_PATH" \
-    E2E_LOG="$log" CCM_E2E_CLAUDE_DIR="$claude_dir" CCM_E2E_TMUX_SOCK="$sock" E2E_BACKEND_ERR="$errf" \
+    E2E_LOG="$log" CCM_E2E_CLAUDE_DIR="$claude_dir" CCM_E2E_TMUX_SOCK="$sock" E2E_BACKEND_ERR="$errl:$errf" \
     E2E_TMUX_SETTLE=0 E2E_TAB_WAIT=4 E2E_GRAY_WAIT=4 E2E_ARCH_WAIT=4 \
     timeout "$WALL_CEILING_S" bash "$FAKE_REPO/tests/e2e/graylight-suite.sh" 2>&1)"
   RC=$?
@@ -159,6 +162,25 @@ run_case nogray "" no-gray
 { [ "$RC" = 1 ] && printf '%s\n' "$OUT" | grep -q '^  FAIL ' && ! printf '%s\n' "$OUT" | grep -q 'ABORT'; } \
   && ok "台架成立、灰灯没到 ⇒ FAIL（exit 1），不是 ABORT" \
   || bad "不写可重连：退出码 $RC，要 1 ＋ FAIL 行 ＋ 没有 ABORT"
+
+echo "-- ⑤ 台架的远端后端包装器：叫一次只起一趟后端 --"
+# 照 tier2-rig setup 的布法：wrapper 拷进落点、旁边 backend-path · tmux-sock；后端换成一个记次数、印一行回答的替身。
+W="$T/landing"; mkdir -p "$W"
+cp "$E2E_DIR/backend-wrapper.sh" "$W/ccm"; chmod +x "$W/ccm"
+cat > "$W/fake-backend" <<F
+#!/bin/sh
+echo "\$*" >> "$W/calls"
+case "\$*" in *--stream*) echo '{"kind":"hello"}' ;; *) echo '{"pid":1,"replaced":false}' ;; esac
+F
+chmod +x "$W/fake-backend"
+printf '%s' "$W/fake-backend" > "$W/backend-path"
+e2e_run_name e2eGlvWrap > "$W/tmux-sock"
+WOUT="$(env -i PATH=/usr/bin:/bin HOME="$T/home" CCM_E2E_CLAUDE_DIR="/tmp/e2e-glverdict-claude-$$-wrap" \
+  CCM_E2E_FRAME_TAP="$T/wrap.tap" sh "$W/ccm" -- --resident-ensure)"
+WCALLS="$(grep -c -- '--resident-ensure' "$W/calls" || true)"
+{ [ "$WCALLS" = 1 ] && [ "$(printf '%s\n' "$WOUT" | grep -c .)" = 1 ]; } \
+  && ok "wrapper 叫一次 ⇒ 后端只跑一趟、stdout 一行" \
+  || bad "wrapper 叫一次：后端跑了 ${WCALLS} 趟，stdout $(printf '%s\n' "$WOUT" | grep -c .) 行（要 1 · 1）"
 
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ]

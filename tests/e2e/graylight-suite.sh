@@ -97,16 +97,21 @@ ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 hook → 重探 �
 _abort() { echo "  ABORT $1"; echo "        —— 台架不成立，本跑测不到任何东西。**这不是 FAIL**。"; exit 2; }
 
 # 戊：后端的文件监视挂得上（挡 ⑦：inotify 额度满 · 起不来）。挂不上 ⇒ 它听不见 fixture 目录，会话不出现、claude 死了也不知道
-#   ⇒ 下面两条主断言失败起来与 #60 一模一样。后端只在 stderr 上说这件事（tracing），台架把它抄进一份文件
-#   （`tier2-rig.sh run` 交 `$RIG/frames.tap.err`，wrapper 往里追加）⇒ 开跑前看一次，报任何一条 FAIL 之前再看一次。
+#   ⇒ 下面两条主断言失败起来与 #60 一模一样。后端只在 stderr 上说这件事（tracing），常驻后端的 stderr 落在它家里的诊断文件
+#   （`~/.cc-monitor/logs/backend/stderr.log`）⇒ 台架把两头那几份的路径交进来（`E2E_BACKEND_ERR`，冒号隔开，`tier2-rig.sh run` 交），
+#   开跑前看一次，报任何一条 FAIL 之前再看一次。
 #   认的是 notify / 后端自己的那几句原话：`OS file watch limit reached`（额度满）· `debouncer init failed` ·
 #   `inotify_init1 失败` · `Too many open files`（实例数满）。
-BACKEND_ERR="${E2E_BACKEND_ERR:-}"
-{ [ -n "$BACKEND_ERR" ] && [ -f "$BACKEND_ERR" ]; } \
-  || _abort "没交后端的 stderr（E2E_BACKEND_ERR=${BACKEND_ERR:-<空>}；台架里是 frames.tap.err）—— 判不了后端的文件监视挂没挂上"
+BACKEND_ERRS=()
+IFS=: read -r -a BACKEND_ERRS <<< "${E2E_BACKEND_ERR:-}"
+[ "${#BACKEND_ERRS[@]}" -gt 0 ] \
+  || _abort "没交后端的 stderr（E2E_BACKEND_ERR 是空的；台架里是两头常驻后端的诊断文件）—— 判不了后端的文件监视挂没挂上"
+for _f in "${BACKEND_ERRS[@]}"; do
+  [ -f "$_f" ] || _abort "后端的 stderr 不在：$_f —— 判不了后端的文件监视挂没挂上"
+done
 _watch_gate() {
   local hit
-  hit="$(grep -E 'OS file watch limit reached|debouncer init failed|inotify_init1 失败|Too many open files' "$BACKEND_ERR" | tail -1 || true)"
+  hit="$(grep -hE 'OS file watch limit reached|debouncer init failed|inotify_init1 失败|Too many open files' "${BACKEND_ERRS[@]}" | tail -1 || true)"
   [ -z "$hit" ] || _abort "后端的文件监视挂不上（inotify 额度满 / 起不来）：$hit"
 }
 _watch_gate
