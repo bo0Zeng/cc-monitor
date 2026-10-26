@@ -2722,29 +2722,6 @@ data class CancelReq(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class Capabilities(
-    val supportsSendKeys: Boolean,
-    val supportsCapture: Boolean,
-    val supportsMultiClient: Boolean,
-    val supportsMultiWindow: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<Capabilities> = obj(
-            listOf(
-            Field("supportsSendKeys", { Bool }, optional = false, nullable = false),
-            Field("supportsCapture", { Bool }, optional = false, nullable = false),
-            Field("supportsMultiClient", { Bool }, optional = false, nullable = false),
-            Field("supportsMultiWindow", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> Capabilities(a[0] as Boolean, a[1] as Boolean, a[2] as Boolean, a[3] as Boolean) },
-            { v -> arrayOf(v.supportsSendKeys, v.supportsCapture, v.supportsMultiClient, v.supportsMultiWindow) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class CaptureOpts(
     val maxBytes: Long,
     val abortMarker: String?,
@@ -3075,26 +3052,230 @@ data class CcmPrintReq(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
-data class Changed(
-    val topic: Topic,
-    val key: String? = null,
-    val rev: String? = null,
-    val body: Raw? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
+sealed interface Changed {
+    /** 判别格（`topic`）那个词。 */
+    val topic: String
+
+    data object Accounts : Changed {
+        override val topic: String get() = "accounts"
+    }
+    data object Profiles : Changed {
+        override val topic: String get() = "profiles"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Quota(
+        val body: QuotaRead? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "quota"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Rotation(
+        val key: String,
+    ) : Changed, Ordered {
+        override val topic: String get() = "rotation"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class RotationStrategies(
+        val body: RotationStrategiesReply? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "rotation_strategies"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Plan(
+        val key: String,
+        val rev: String? = null,
+        val body: PlanNeeds? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "plan"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Tasks(
+        val key: String,
+        val body: TasksList? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "tasks"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Needs(
+        val key: String,
+    ) : Changed, Ordered {
+        override val topic: String get() = "needs"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Login(
+        val key: String,
+        val body: SignInState? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "login"
+        override var wireOrder: IntArray? = null
+    }
+    data object Manual : Changed {
+        override val topic: String get() = "manual"
+    }
+    data object Machines : Changed {
+        override val topic: String get() = "machines"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Machine(
+        val key: String,
+        val body: MachineState? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "machine"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class SessionHidden(
+        val key: String,
+        val body: HiddenNow? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "session_hidden"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class FilesDir(
+        val key: String,
+    ) : Changed, Ordered {
+        override val topic: String get() = "files_dir"
+        override var wireOrder: IntArray? = null
+    }
+    data object HistoryList : Changed {
+        override val topic: String get() = "history_list"
+    }
 
     companion object {
-        val ADAPTER: JsonAdapter<Changed> = obj(
-            listOf(
-            Field("topic", { Topic.ADAPTER }, optional = false, nullable = false),
-            Field("key", { opt(Str) }, optional = true, nullable = true),
-            Field("rev", { opt(Str) }, optional = true, nullable = true),
-            Field("body", { opt(RawJson) }, optional = true, nullable = true),
-            ),
-            { a -> Changed(a[0] as Topic, a[1] as String?, a[2] as String?, a[3] as Raw?) },
-            { v -> arrayOf(v.topic, v.key, v.rev, v.body) },
-        )
+        val ADAPTER: JsonAdapter<Changed> =
+            tagged<Changed>(
+                "topic",
+                listOf(
+                Variant("accounts", Changed.Accounts::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("accounts") }, optional = false, nullable = false),
+                        ),
+                        { Changed.Accounts },
+                        { arrayOf("accounts") },
+                    )),
+                Variant("profiles", Changed.Profiles::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("profiles") }, optional = false, nullable = false),
+                        ),
+                        { Changed.Profiles },
+                        { arrayOf("profiles") },
+                    )),
+                Variant("quota", Changed.Quota::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("quota") }, optional = false, nullable = false),
+                        Field("body", { opt(QuotaRead.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Quota(a[1] as QuotaRead?) },
+                        { v -> arrayOf("quota", v.body) },
+                    )),
+                Variant("rotation", Changed.Rotation::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("rotation") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Changed.Rotation(a[1] as String) },
+                        { v -> arrayOf("rotation", v.key) },
+                    )),
+                Variant("rotation_strategies", Changed.RotationStrategies::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("rotation_strategies") }, optional = false, nullable = false),
+                        Field("body", { opt(RotationStrategiesReply.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.RotationStrategies(a[1] as RotationStrategiesReply?) },
+                        { v -> arrayOf("rotation_strategies", v.body) },
+                    )),
+                Variant("plan", Changed.Plan::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("plan") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("rev", { opt(Str) }, optional = true, nullable = true),
+                        Field("body", { opt(PlanNeeds.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Plan(a[1] as String, a[2] as String?, a[3] as PlanNeeds?) },
+                        { v -> arrayOf("plan", v.key, v.rev, v.body) },
+                    )),
+                Variant("tasks", Changed.Tasks::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("tasks") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("body", { opt(TasksList.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Tasks(a[1] as String, a[2] as TasksList?) },
+                        { v -> arrayOf("tasks", v.key, v.body) },
+                    )),
+                Variant("needs", Changed.Needs::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("needs") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Changed.Needs(a[1] as String) },
+                        { v -> arrayOf("needs", v.key) },
+                    )),
+                Variant("login", Changed.Login::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("login") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("body", { opt(SignInState.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Login(a[1] as String, a[2] as SignInState?) },
+                        { v -> arrayOf("login", v.key, v.body) },
+                    )),
+                Variant("manual", Changed.Manual::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("manual") }, optional = false, nullable = false),
+                        ),
+                        { Changed.Manual },
+                        { arrayOf("manual") },
+                    )),
+                Variant("machines", Changed.Machines::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("machines") }, optional = false, nullable = false),
+                        ),
+                        { Changed.Machines },
+                        { arrayOf("machines") },
+                    )),
+                Variant("machine", Changed.Machine::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("machine") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("body", { opt(MachineState.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.Machine(a[1] as String, a[2] as MachineState?) },
+                        { v -> arrayOf("machine", v.key, v.body) },
+                    )),
+                Variant("session_hidden", Changed.SessionHidden::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("session_hidden") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("body", { opt(HiddenNow.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.SessionHidden(a[1] as String, a[2] as HiddenNow?) },
+                        { v -> arrayOf("session_hidden", v.key, v.body) },
+                    )),
+                Variant("files_dir", Changed.FilesDir::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("files_dir") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> Changed.FilesDir(a[1] as String) },
+                        { v -> arrayOf("files_dir", v.key) },
+                    )),
+                Variant("history_list", Changed.HistoryList::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("history_list") }, optional = false, nullable = false),
+                        ),
+                        { Changed.HistoryList },
+                        { arrayOf("history_list") },
+                    )),
+                ),
+            )
     }
 }
 
@@ -3514,33 +3695,6 @@ data class ClashRow(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
-data class CommandPlan(
-    val command: String,
-    val mode: String,
-    val capabilities: Capabilities,
-    val sessionName: String? = null,
-    val launchLabel: String? = null,
-    val substitutedFrom: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<CommandPlan> = obj(
-            listOf(
-            Field("command", { Str }, optional = false, nullable = false),
-            Field("mode", { Str }, optional = false, nullable = false),
-            Field("capabilities", { Capabilities.ADAPTER }, optional = false, nullable = false),
-            Field("sessionName", { opt(Str) }, optional = true, nullable = true),
-            Field("launchLabel", { opt(Str) }, optional = true, nullable = true),
-            Field("substitutedFrom", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> CommandPlan(a[0] as String, a[1] as String, a[2] as Capabilities, a[3] as String?, a[4] as String?, a[5] as String?) },
-            { v -> arrayOf(v.command, v.mode, v.capabilities, v.sessionName, v.launchLabel, v.substitutedFrom) },
-        )
-    }
-}
-
 enum class CommandScope(val wire: String) {
     BUILTIN("builtin"),
     PROJECT("project"),
@@ -3831,7 +3985,7 @@ data class DataPathInfo(
     val kind: String,
     val description: String,
     val exists: Boolean,
-    val sizeBytes: Long? = null,
+    val sizeText: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -3844,10 +3998,10 @@ data class DataPathInfo(
             Field("kind", { Str }, optional = false, nullable = false),
             Field("description", { Str }, optional = false, nullable = false),
             Field("exists", { Bool }, optional = false, nullable = false),
-            Field("sizeBytes", { opt(Lng) }, optional = true, nullable = true),
+            Field("sizeText", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> DataPathInfo(a[0] as String, a[1] as DataClass, a[2] as String, a[3] as String, a[4] as String, a[5] as Boolean, a[6] as Long?) },
-            { v -> arrayOf(v.label, v.`class`, v.path, v.kind, v.description, v.exists, v.sizeBytes) },
+            { a -> DataPathInfo(a[0] as String, a[1] as DataClass, a[2] as String, a[3] as String, a[4] as String, a[5] as Boolean, a[6] as String?) },
+            { v -> arrayOf(v.label, v.`class`, v.path, v.kind, v.description, v.exists, v.sizeText) },
         )
     }
 }
@@ -6934,6 +7088,23 @@ enum class HiddenBy(val wire: String) {
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class HiddenNow(
+    val hidden: Hidden?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<HiddenNow> = obj(
+            listOf(
+            Field("hidden", { opt(Hidden.ADAPTER) }, optional = false, nullable = true),
+            ),
+            { a -> HiddenNow(a[0] as Hidden?) },
+            { v -> arrayOf(v.hidden) },
+        )
+    }
+}
+
 enum class Hide(val wire: String) {
     ON("on"),
     OFF("off"),
@@ -8951,39 +9122,6 @@ data class LastSeenWritten(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class LaunchReq(
-    val mode: Mode,
-    val name: String,
-    val payload: String,
-    val cwd: String? = null,
-    val ccmSid: String? = null,
-    val agent: String? = null,
-    val width: String? = null,
-    val height: String? = null,
-    val client: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<LaunchReq> = obj(
-            listOf(
-            Field("mode", { Mode.ADAPTER }, optional = false, nullable = false),
-            Field("name", { Str }, optional = false, nullable = false),
-            Field("payload", { Str }, optional = false, nullable = false),
-            Field("cwd", { opt(Str) }, optional = true, nullable = true),
-            Field("ccm_sid", { opt(Str) }, optional = true, nullable = true),
-            Field("agent", { opt(Str) }, optional = true, nullable = true),
-            Field("width", { opt(Str) }, optional = true, nullable = true),
-            Field("height", { opt(Str) }, optional = true, nullable = true),
-            Field("client", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> LaunchReq(a[0] as Mode, a[1] as String, a[2] as String, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?) },
-            { v -> arrayOf(v.mode, v.name, v.payload, v.cwd, v.ccmSid, v.agent, v.width, v.height, v.client) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class LaunchTab(
     val tab: Tab,
     val alias: String? = null,
@@ -8998,27 +9136,6 @@ data class LaunchTab(
             ),
             { a -> LaunchTab(a[0] as Tab, a[1] as String?) },
             { v -> arrayOf(v.tab, v.alias) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class Launched(
-    val session: String,
-    val created: Boolean,
-    val typed: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<Launched> = obj(
-            listOf(
-            Field("session", { Str }, optional = false, nullable = false),
-            Field("created", { Bool }, optional = false, nullable = false),
-            Field("typed", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> Launched(a[0] as String, a[1] as Boolean, a[2] as Boolean) },
-            { v -> arrayOf(v.session, v.created, v.typed) },
         )
     }
 }
@@ -10038,7 +10155,7 @@ sealed interface LocalBackend {
 @Suppress("UNCHECKED_CAST")
 data class LogFileEntry(
     val path: String,
-    val sizeBytes: Long,
+    val sizeText: String?,
     val modifiedMs: Long,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -10047,11 +10164,11 @@ data class LogFileEntry(
         val ADAPTER: JsonAdapter<LogFileEntry> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
-            Field("size_bytes", { Lng }, optional = false, nullable = false),
+            Field("size_text", { opt(Str) }, optional = false, nullable = true),
             Field("modified_ms", { Lng }, optional = false, nullable = false),
             ),
-            { a -> LogFileEntry(a[0] as String, a[1] as Long, a[2] as Long) },
-            { v -> arrayOf(v.path, v.sizeBytes, v.modifiedMs) },
+            { a -> LogFileEntry(a[0] as String, a[1] as String?, a[2] as Long) },
+            { v -> arrayOf(v.path, v.sizeText, v.modifiedMs) },
         )
     }
 }
@@ -10060,7 +10177,7 @@ data class LogFileEntry(
 data class LogFileInfo(
     val dir: String,
     val currentFile: String?,
-    val currentSizeBytes: Long,
+    val currentSizeText: String?,
     val allFiles: List<LogFileEntry>,
     val backendStderr: List<LogFileEntry>,
 ) : Ordered {
@@ -10071,12 +10188,12 @@ data class LogFileInfo(
             listOf(
             Field("dir", { Str }, optional = false, nullable = false),
             Field("current_file", { opt(Str) }, optional = false, nullable = true),
-            Field("current_size_bytes", { Lng }, optional = false, nullable = false),
+            Field("current_size_text", { opt(Str) }, optional = false, nullable = true),
             Field("all_files", { arr(LogFileEntry.ADAPTER) }, optional = false, nullable = false),
             Field("backend_stderr", { arr(LogFileEntry.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> LogFileInfo(a[0] as String, a[1] as String?, a[2] as Long, a[3] as List<LogFileEntry>, a[4] as List<LogFileEntry>) },
-            { v -> arrayOf(v.dir, v.currentFile, v.currentSizeBytes, v.allFiles, v.backendStderr) },
+            { a -> LogFileInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as List<LogFileEntry>, a[4] as List<LogFileEntry>) },
+            { v -> arrayOf(v.dir, v.currentFile, v.currentSizeText, v.allFiles, v.backendStderr) },
         )
     }
 }
@@ -10084,7 +10201,7 @@ data class LogFileInfo(
 @Suppress("UNCHECKED_CAST")
 data class LogTail(
     val path: String?,
-    val size: Long,
+    val sizeText: String?,
     val text: String,
     val truncated: Boolean,
 ) : Ordered {
@@ -10094,12 +10211,12 @@ data class LogTail(
         val ADAPTER: JsonAdapter<LogTail> = obj(
             listOf(
             Field("path", { opt(Str) }, optional = false, nullable = true),
-            Field("size", { Lng }, optional = false, nullable = false),
+            Field("size_text", { opt(Str) }, optional = false, nullable = true),
             Field("text", { Str }, optional = false, nullable = false),
             Field("truncated", { Bool }, optional = false, nullable = false),
             ),
-            { a -> LogTail(a[0] as String?, a[1] as Long, a[2] as String, a[3] as Boolean) },
-            { v -> arrayOf(v.path, v.size, v.text, v.truncated) },
+            { a -> LogTail(a[0] as String?, a[1] as String?, a[2] as String, a[3] as Boolean) },
+            { v -> arrayOf(v.path, v.sizeText, v.text, v.truncated) },
         )
     }
 }
@@ -11550,16 +11667,6 @@ data class MergedRow(
     }
 }
 
-enum class Mode(val wire: String) {
-    CREATE_OR_ATTACH("create-or-attach"),
-    SEND_INTO("send-into"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<Mode> = enumOf(entries) { it.wire }
-    }
-}
-
 enum class ModeSwitchResult(val wire: String) {
     DONE("done"),
     UNSURE("unsure"),
@@ -11710,7 +11817,7 @@ data class NeedsAsk(
             Field("detail", { Str }, optional = false, nullable = false),
             Field("choices", { arr(NeedsChoice.ADAPTER) }, optional = false, nullable = false),
             Field("questions", { arr(NeedsQuestion.ADAPTER) }, optional = false, nullable = false),
-            Field("sinceMs", { Lng }, optional = false, nullable = false),
+            Field("sinceMs", { U64 }, optional = false, nullable = false),
             ),
             { a -> NeedsAsk(a[0] as String, a[1] as AskKind, a[2] as String, a[3] as NeedsAskRun?, a[4] as String?, a[5] as String, a[6] as List<NeedsChoice>, a[7] as List<NeedsQuestion>, a[8] as Long) },
             { v -> arrayOf(v.id, v.kind, v.tool, v.run, v.what, v.detail, v.choices, v.questions, v.sinceMs) },
@@ -12496,7 +12603,7 @@ data class OwnItem(
     val dir: Boolean,
     val `class`: OwnClass,
     val exists: Boolean,
-    val size: Long?,
+    val sizeText: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12509,10 +12616,10 @@ data class OwnItem(
             Field("dir", { Bool }, optional = false, nullable = false),
             Field("class", { OwnClass.ADAPTER }, optional = false, nullable = false),
             Field("exists", { Bool }, optional = false, nullable = false),
-            Field("size", { opt(Lng) }, optional = false, nullable = true),
+            Field("size_text", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> OwnItem(a[0] as String, a[1] as String, a[2] as String, a[3] as Boolean, a[4] as OwnClass, a[5] as Boolean, a[6] as Long?) },
-            { v -> arrayOf(v.id, v.what, v.path, v.dir, v.`class`, v.exists, v.size) },
+            { a -> OwnItem(a[0] as String, a[1] as String, a[2] as String, a[3] as Boolean, a[4] as OwnClass, a[5] as Boolean, a[6] as String?) },
+            { v -> arrayOf(v.id, v.what, v.path, v.dir, v.`class`, v.exists, v.sizeText) },
         )
     }
 }
@@ -12802,6 +12909,7 @@ data class PlanBlock(
     val listed: Boolean,
     val handoff: String?,
     val handoffError: String?,
+    val takeover: PlanTakeover,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12818,9 +12926,10 @@ data class PlanBlock(
             Field("listed", { Bool }, optional = false, nullable = false),
             Field("handoff", { opt(Str) }, optional = false, nullable = true),
             Field("handoffError", { opt(Str) }, optional = false, nullable = true),
+            Field("takeover", { PlanTakeover.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?) },
-            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError) },
+            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?, a[10] as PlanTakeover) },
+            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError, v.takeover) },
         )
     }
 }
@@ -13467,6 +13576,23 @@ enum class PlanNeedKind(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class PlanNeeds(
+    val needs: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanNeeds> = obj(
+            listOf(
+            Field("needs", { U64 }, optional = false, nullable = false),
+            ),
+            { a -> PlanNeeds(a[0] as Long) },
+            { v -> arrayOf(v.needs) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class PlanPb(
     val state: PlanPbState,
     val said: String?,
@@ -14089,6 +14215,19 @@ data class PlanState(
             { a -> PlanState(a[0] as String, a[1] as Long) },
             { v -> arrayOf(v.value, v.count) },
         )
+    }
+}
+
+enum class PlanTakeover(val wire: String) {
+    OPEN("open"),
+    NO_LINE("no_line"),
+    RUNNING("running"),
+    UNSURE("unsure"),
+    MERGING("merging"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanTakeover> = enumOf(entries) { it.wire }
     }
 }
 
@@ -16428,27 +16567,6 @@ enum class ResultKind(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<ResultKind> = enumOf(entries) { it.wire }
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class ResumeSpec(
-    val sessionId: String,
-    val launchCandidates: List<String?>? = null,
-    val agentKind: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<ResumeSpec> = obj(
-            listOf(
-            Field("sessionId", { Str }, optional = false, nullable = false),
-            Field("launchCandidates", { opt(arr(opt(Str))) }, optional = true, nullable = true),
-            Field("agentKind", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> ResumeSpec(a[0] as String, a[1] as List<String?>?, a[2] as String?) },
-            { v -> arrayOf(v.sessionId, v.launchCandidates, v.agentKind) },
-        )
     }
 }
 

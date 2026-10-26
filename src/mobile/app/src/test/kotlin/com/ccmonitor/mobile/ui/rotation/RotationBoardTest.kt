@@ -406,10 +406,11 @@ class RotationBoardTest {
             val changes = MutableSharedFlow<Changed>(extraBufferCapacity = 8)
             val (link, _) = board(changes = changes)
             val n = link.calls(Rotation.VIEW).size
-            changes.emit(Changed(Rotation.TOPIC, "s2"))
+            changes.emit(Changed.Rotation("s2"))
+            changes.emit(Changed.Quota())
             assertEquals(n, link.calls(Rotation.VIEW).size)
-            changes.emit(Changed(Rotation.TOPIC, "s1"))
-            changes.emit(Changed(Rotation.TOPIC_STRATEGIES, null))
+            changes.emit(Changed.Rotation("s1"))
+            changes.emit(Changed.RotationStrategies())
             assertEquals(n + 2, link.calls(Rotation.VIEW).size)
         }
 

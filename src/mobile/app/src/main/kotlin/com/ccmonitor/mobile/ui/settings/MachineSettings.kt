@@ -14,7 +14,6 @@ import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.PrefsReply
 import com.ccmonitor.mobile.core.wire.gen.Tab
-import com.ccmonitor.mobile.core.wire.gen.Topic
 import com.ccmonitor.mobile.core.wire.gen.Usage
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
@@ -76,7 +75,7 @@ data class MachineSettingsUi(
 }
 
 /**
- * 设置屏与账号一览读写那台的那几份：进来各读一次 `accounts-list` · `quota-read` · `prefs-read`；流上 `quota` 变了重读用量、
+ * 设置屏与账号一览读写那台的那几份：进来各读一次 `accounts-list` · `quota-read` · `prefs-read`；流上 `quota` 变了换上它带的那份（没带 ⇒ 重读用量）、
  * `accounts` 变了重读账号；换了一条流（离线回来）整份重读。偏好拨了马上 `prefs-set`、照回包画；没存上退回读到的值、那一行下面说一句。
  * 判（默认号 · 能不能设为默认 · 用量的字与语气 · 偏好的值）全在那台，这里只按号名对上两份回包。
  */
@@ -94,9 +93,9 @@ class MachineSettings(
         scope.launch { link.epoch.drop(1).collect { load() } }
         scope.launch {
             changes.collect { c ->
-                when (c.topic) {
-                    Topic.ACCOUNTS -> loadAccounts()
-                    Topic.QUOTA -> loadQuota()
+                when (c) {
+                    is Changed.Accounts -> loadAccounts()
+                    is Changed.Quota -> c.body?.let(::gotQuota) ?: loadQuota()
                     else -> Unit
                 }
             }
@@ -124,15 +123,21 @@ class MachineSettings(
     /** 读成了 ⇒ 换成新的那份；读不成 ⇒ 手上有一份就照留（顶上说一句），没有才记成读不成。 */
     private suspend fun loadQuota() {
         val r = link.call(QuotaRead.COMMAND, null, READ_MS)
-        val q = (r as? Reply.Ok)?.let { QuotaRead.of(it.data) }
+        val q = (r as? Reply.Ok)?.let { QuotaRead.of(it.data) } ?: return failQuota(r)
+        gotQuota(q)
+    }
+
+    /** 那台的一份额度账（读回的，或推来的 `changed {quota}` 带的体）：整份换上。 */
+    private fun gotQuota(q: QuotaReadReply) = _state.update { it.copy(quota = Fetched.Got(q), quotaRereadFailed = null) }
+
+    private fun failQuota(r: Reply) =
         _state.update {
-            when {
-                q != null -> it.copy(quota = Fetched.Got(q), quotaRereadFailed = null)
-                it.quota is Fetched.Got -> it.copy(quotaRereadFailed = failed(r, QuotaRead.COMMAND))
-                else -> it.copy(quota = Fetched.Failed(failed(r, QuotaRead.COMMAND)))
+            if (it.quota is Fetched.Got) {
+                it.copy(quotaRereadFailed = failed(r, QuotaRead.COMMAND))
+            } else {
+                it.copy(quota = Fetched.Failed(failed(r, QuotaRead.COMMAND)))
             }
         }
-    }
 
     /** 用量屏［重试］。 */
     fun reloadQuota() {

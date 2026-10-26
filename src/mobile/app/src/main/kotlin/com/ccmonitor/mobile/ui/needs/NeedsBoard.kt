@@ -6,7 +6,6 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
-import com.ccmonitor.mobile.core.wire.gen.Topic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -93,7 +92,7 @@ class NeedsBoard(
             }
             launch {
                 merge(
-                    src.pushes.filter { it.topic in TOPICS }.map { },
+                    src.pushes.filter { it.wholeMayChange() }.map { },
                     src.link.table
                         .map { t -> t.faces.mapValues { it.value.dot } }
                         .distinctUntilChanged()
@@ -129,6 +128,6 @@ class NeedsBoard(
         private const val READ_MS = 15_000L
 
         /** 那台这几样变了 ⇒ 整份可能变了。 */
-        private val TOPICS = setOf(Topic.NEEDS, Topic.PLAN, Topic.MANUAL)
+        private fun Changed.wholeMayChange(): Boolean = this is Changed.Needs || this is Changed.Plan || this is Changed.Manual
     }
 }
