@@ -58,7 +58,7 @@ fn arm_tokens(block: &str) -> Vec<&str> {
 ///
 /// [`every_listed_subcommand_is_actually_dispatched`] 靠
 /// [`crate::protocol_doc_guard::dispatched_subcommands`] 抽 **臂上的 token**
-/// （`"--resolve"` 这个字面量）。变异 A2 把
+/// （`"--resolve"` 这个字面量；那条子命令 10-26 随帧命令 `resolve` 撤了，下面是当时的事故原样）。变异 A2 把
 /// `Some("--resolve") => control::resolve_query::run(…)` 换成 `Some("--resolve") => 2,`
 /// —— **token 还在，那条判据全绿**，而 `--resolve` 已经彻底不工作了。
 /// ⇒ 名字里的 **"actually dispatched"** 它没验；它验的是「有一条臂」。
@@ -442,7 +442,6 @@ fn kept_oneshot_subcommands_are_still_dispatched() {
         "--rotation-view",
         "--rotation-use-now",
         "--history-branch",
-        "--resolve",
     ] {
         assert!(SUBCOMMANDS.contains(&f), "`{f}` 不在 SUBCOMMANDS 里了");
         assert!(
@@ -450,13 +449,4 @@ fn kept_oneshot_subcommands_are_still_dispatched() {
             "`{f}` 没有落点"
         );
     }
-}
-
-/// ★ `--resolve` 不再有手写臂：它照派生规则走 CLI 面（信封与别的命令同一形）。
-#[test]
-fn resolve_rides_the_derived_arm_only() {
-    let src = guard_core::production_code(include_str!("../../src/backend/main.rs"));
-    let literal = arm_tokens(dispatch_block(&src));
-    assert!(!literal.contains(&"--resolve"), "`--resolve` 的手写臂还在");
-    assert!(crate::stream::cli::spec_for("--resolve").is_some());
 }

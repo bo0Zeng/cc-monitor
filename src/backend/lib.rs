@@ -437,7 +437,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--hooks-diag",
     "--kill",
-    "--launch",
+    // `--launch`（帧面 `launch` 派生的 CLI 面）随那条没人调的帧命令撤了。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ping",
     // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
@@ -452,8 +452,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-call",
     "--resident-ensure",
     "--resident-stop",
-    // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。
-    "--resolve",
+    // `--resolve`（帧面 `resolve` 派生的 CLI 面）随那条没人调的帧命令撤了。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // `--resync` 摘了（`stream::cli::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 起新会话框那两问 ＋ tab 栏多选的批量停 / 问样子（`inbound::REGISTRY` 的 `session-open-*` / `sessions-*`）
     //   自动派生的 CLI 面：四条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——

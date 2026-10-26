@@ -1059,7 +1059,7 @@ fn minting_derives_here_and_steps_aside_on_this_machines_snapshot() {
 
 /// 一段生产代码里「直接起 agent 的命令」的痕迹（名字从注册表取，不写死）：
 /// ① 串字面量以某一家的默认启动器打头（`"claude"` · `"claude …"`）；② 串字面量里带「启动器 ＋ 这一家的 resume 词」
-/// （`claude --resume` · `codex resume`）；③ 调这一家的 resume 命令形（`.resume_command)(`，拼出来的就是 `<启动器> <resume 词> <sid>`）。
+/// （`claude --resume` · `codex resume`）。
 fn direct_agent_launch_hits(code: &str, launchers: &[&str], resume_tokens: &[&str]) -> Vec<String> {
     let mut hits = Vec::new();
     for lit in string_literals(code) {
@@ -1078,10 +1078,6 @@ fn direct_agent_launch_hits(code: &str, launchers: &[&str], resume_tokens: &[&st
             }
         }
     }
-    hits.extend(
-        code.matches(".resume_command)(")
-            .map(|_| "调了这一家的 resume 命令形".to_string()),
-    );
     hits
 }
 
@@ -1143,8 +1139,7 @@ fn string_literals(code: &str) -> Vec<String> {
 /// ★★ **后端生产段里，除 `ccm` 自己（`control/ccm/`，最终 exec 那一处）与 agent 注册表（`agents/`，起会话事实声明的地方）之外，
 /// 零处渲染出直接起 agent 的命令**。名字从注册表取（每一家的默认启动器 ＋ resume 词）。
 ///
-/// 两向相等：命中 == 登记的那一处（`control/resolve_query.rs`：命令 `resolve` 的成品，
-/// 它的 `command` 今天仍是 `<启动器> --resume <sid>`，改成 `ccm …` 是一次线上形状变更 —— 待定，不在这里悄悄改）。
+/// 命中为空（从前唯一登记的例外 `control/resolve_query.rs` 随帧命令 `resolve` 删了）。
 /// 正控：同一个针在注册表那一侧量得到默认启动器的字面量；一段现造的语料里该中的中、`ccm …` 不中。
 #[test]
 fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
@@ -1162,13 +1157,13 @@ fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
     // 正控 ①：现造的语料。
     let corpus = format!(
         "let a = \"{l} --resume x\"; let b = \"{l}\"; let c = \"ccm --resume x -- --base\"; \
-         let d = '\"'; let e = r#\"{l} {r} s\"#; let f = (face.resume_command)(&base, sid);",
+         let d = '\"'; let e = r#\"{l} {r} s\"#;",
         l = launchers[0],
         r = tokens[0]
     );
     assert_eq!(
         direct_agent_launch_hits(&corpus, &launchers, &tokens).len(),
-        4,
+        3,
         "针在现造语料上失准"
     );
 
@@ -1202,7 +1197,7 @@ fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
     );
     assert_eq!(
         outside,
-        ["control/resolve_query.rs：调了这一家的 resume 命令形"],
+        Vec::<String>::new(),
         "ccm 以外又有地方渲出了直接起 agent 的命令 —— 起会话只交一行 `ccm …`，环境 / 中转地址 / 身份由那台的 ccm 做"
     );
 }

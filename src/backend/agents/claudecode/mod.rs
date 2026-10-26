@@ -70,7 +70,7 @@ pub(crate) mod text;
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///
 /// ⚠ **是 `claude` 不是 `claudecode`** —— 模块名与 wire 值域是两件事，别顺手对齐：
-/// 值域由既有契约定死（`ResumeSpec.agentKind` 逐字「缺/`""`/`"claude"`=claude」·
+/// 值域由既有契约定死（缺/`""`/`"claude"`=claude ·
 /// `session_added.agent_kind` 对 Claude **省略** ⇒ 缺 = claude），改它 = 改跨仓契约。
 ///
 /// 它住在**适配层**而不是通用层，是为了让 `agents::REGISTRY` 那张注册表里
@@ -201,8 +201,6 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
-    resume_command: resume::resume_command,
-    session_name_prefix: resume::SESSION_NAME_PREFIX,
     // 不经 env 交 cc-bus 身份：它自己读得到 tmux，交了反而盖掉 `@cc_id` 的细分。
     needs_bus_id: false,
     has_identity: true,

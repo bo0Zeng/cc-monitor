@@ -924,10 +924,10 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
 
     // P2-Y1：登记了还得是**能用的** —— backend 声明的入方向命令要在。
     assert!(
-        client.accepts("launch") && client.accepts("kill"),
-        "通道登记了，但后端没声明接受 launch/kill ⇒ P3 接过来也发不出去"
+        client.accepts("kill") && client.accepts("terminal-input"),
+        "通道登记了，但后端没声明接受 kill/terminal-input ⇒ P3 接过来也发不出去"
     );
-    println!("E2E-OK P2 本机入方向通道登记上了，而且声明接受 launch/kill");
+    println!("E2E-OK P2 本机入方向通道登记上了，而且声明接受 kill/terminal-input");
 
     // P2-Y3：关写端**不许**把后端带走（C8 裁定「默认不 kill、backend 继续跑」）。
     // 单独观测，不顺带看一眼 —— 件里 §0d 把这条从「推断」改成了实测，就是这个意思。

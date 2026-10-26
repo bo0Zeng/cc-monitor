@@ -4,7 +4,9 @@
 # 与两条 Rust 轨道的分工：
 #   - 后端 `control/gate_rules.rs` 的单测断言「判定函数怎么答」；
 #   - 后端 `control/gate.rs` 的测试断言「对这张表答得一样」（monitor 那一轨随 monitor 侧的门删了）；
-#   - **本脚本断言「真后端收到 `launch{send-into}` 之后，在真 tmux 上到底干了什么」。**
+#   - **本脚本断言「真后端收到往一个终端里送字（`terminal-input`）之后，在真 tmux 上到底干了什么」。**
+#     送字与 `session-open` · 换号重启就地键入（`launch::run` 的 send-into 那一臂）过的是同一道门 `gate::admit_with`；
+#     后两条要一份真记录、键进去的是起 claude 的那一行（台架里不许起真 claude），所以真机这一轨借 `terminal-input` 走那道门。
 # 门禁只锁判定不锁行为是 R1 的教训（三门禁全绿仍放行过一个让 send-keys 完全失效的改动）。
 #
 # ★ **跨轨钉**：用例不是手搓的，**逐行来自那张唯一的判定表**
@@ -123,6 +125,21 @@ exec 3>"$IN"   # 持住写端，否则第一个写者退出即 EOF，入方向�
 wait_for() { local _p="$1"; wall_until 'grep -qF -- "$_p" "$OUT"'; }
 send()     { printf '%s\n' "$1" >&3; }
 reply_of() { grep -F "\"id\":\"$1\"" "$OUT" | head -1; }
+# 名单里叫这个名字的那个终端的句柄（`terminals-list` 发的、送字时交回；句柄不透明，脚本不拼）。找不到 ⇒ 空串。
+# ⚠ 它总在 `$(…)` 里跑（子 shell）：计数器加不回父 shell ⇒ 请求 id 用一个每次都不同的随机串，不靠计数。
+handle_of() { # <tmux 会话名>
+  local rid="e2e-tl-$RANDOM$RANDOM$RANDOM"
+  send "{\"id\":\"$rid\",\"cmd\":\"terminals-list\",\"args\":{}}"
+  wait_for "\"id\":\"$rid\"" || return 0
+  reply_of "$rid" | NAME="$1" python3 -I -c 'import json, os, sys
+r = json.loads(sys.stdin.readline())
+print(next((t["terminal"] for t in (r.get("data") or {}).get("terminals", []) if t.get("tmux_name") == os.environ["NAME"]), ""))'
+}
+# 往那个终端送一行字（`terminal-input`，带回车）：<请求 id> <句柄> <字> [client]。
+send_text() {
+  local extra=""; [ -n "${4:-}" ] && extra=",\"client\":\"$4\""
+  send "{\"id\":\"$1\",\"cmd\":\"terminal-input\",\"args\":{\"terminal\":\"$2\",\"text\":\"$3\"$extra}}"
+}
 # tmux 那台换新：叫停之后等它真的退了（新会话不许连到正在退出的那一台上）。
 fresh_tmux() {
   "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true
@@ -158,15 +175,6 @@ n=0
 while IFS=$'\t' read -r id name sid expect; do
   case "$id" in ''|\#*) continue ;; esac
   n=$((n+1))
-
-  # `:` 是 tmux 目标语法的分隔符：`parse_request` 在门**之前**就 bad_args（`kill::admit_existing_name`）。
-  # `=` **不再**在这里：DUP3 §5 ⑦（`adf3fe38`）把送键的 Gate 1 并进已有会话名那一份，
-  #   `=` 按设计放行（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ `=cc-a` 走到 Gate 2、按「不是本工具的会话」拒成
-  #   `wrong_owner`。这里原来照旧期望 `bad_args` ⇒ 本格从那天起本机恒红，是判据过时、不是行为回归。
-  # ⚠ 这一档**不 skip、照样验** —— 「更早的一道门也把它挡住了」是要真的量出来的，
-  #    写进 skip 消息里就成了一句没人验证的断言（本仓记过这类账）。
-  EARLY_SHAPE=no
-  case "$name" in *:*) EARLY_SHAPE=yes ;; esac
 
   fresh_tmux
   # `--` 让 `-cc` 这种以短横开头的名字不被 tmux 的 getopt 当成选项。
@@ -209,8 +217,10 @@ while IFS=$'\t' read -r id name sid expect; do
 
   marker="CCMGATE_${id}"
   rid="e2e-gate2-$n"
-  # payload 里不含引号/反斜杠 ⇒ 直接拼进 JSON 是安全的（case_id 的字符集由夹具自检管）。
-  send "{\"id\":\"$rid\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"$name\",\"payload\":\"printf %s $marker\"}}"
+  h="$(handle_of "$name")"
+  [ -n "$h" ] || { bad "$id：名单里没有「$name」那个终端"; continue; }
+  # 字里不含引号/反斜杠 ⇒ 直接拼进 JSON 是安全的（case_id 的字符集由夹具自检管）。
+  send_text "$rid" "$h" "printf %s $marker"
   wait_for "\"id\":\"$rid\"" || { bad "$id：5s 内没等到应答"; continue; }
   R="$(reply_of "$rid")"
   settle "=$name:"
@@ -218,35 +228,33 @@ while IFS=$'\t' read -r id name sid expect; do
   LANDED=miss; printf '%s' "$PANE" | grep -q "$marker" && LANDED=hit
 
   if [ "$expect" = "rejected" ]; then
-    # 拒绝这一档要同时满足两件事：应答说 false，**且 pane 真的没被污染**。
-    # 只看应答会漏掉「回了错但载荷已经打出去了」那种最坏形态。
-    WANT_CODE=wrong_owner
-    [ "$EARLY_SHAPE" = yes ] && WANT_CODE=bad_args   # 形状层那道更早的门（实测，不是断言）
-    if printf '%s' "$R" | grep -qF '"ok":false' && printf '%s' "$R" | grep -qF "$WANT_CODE"; then
-      if [ "$LANDED" = miss ]; then ok "$id（$name / sid=$sid）→ 拒绝（$WANT_CODE），pane 未被污染"
-      else bad "$id：回了 $WANT_CODE，**但载荷已经打进去了** —— 门在动作之后，等于没有"; fi
+    # 拒绝这一档要同时满足两件事：应答说没送（不归我们管），**且 pane 真的没被污染**。
+    # 只看应答会漏掉「回了拒绝但字已经打出去了」那种最坏形态。
+    if printf '%s' "$R" | grep -qF '"result":"refused"' && printf '%s' "$R" | grep -qF '"why":"not_managed"'; then
+      if [ "$LANDED" = miss ]; then ok "$id（$name / sid=$sid）→ 拒绝（not_managed），pane 未被污染"
+      else bad "$id：回了 not_managed，**但字已经打进去了** —— 门在动作之后，等于没有"; fi
     else
-      bad "$id：期望 $WANT_CODE，实得 $R"
+      bad "$id：期望 not_managed，实得 $R"
     fi
   else
-    if printf '%s' "$R" | grep -qF '"ok":true'; then
-      if [ "$LANDED" = hit ]; then ok "$id（$name / sid=$sid）→ 放行，载荷送达"
-      else bad "$id：回了 ok 但 pane 里找不到载荷 —— typed 谎报了"; fi
+    if printf '%s' "$R" | grep -qF '"result":"delivered"'; then
+      if [ "$LANDED" = hit ]; then ok "$id（$name / sid=$sid）→ 放行，字送达"
+      else bad "$id：回了 delivered 但 pane 里找不到那行字 —— 送达谎报了"; fi
     else
       bad "$id：期望放行（$expect），实得 $R"
     fi
   fi
 done < "$GOLDEN"
 
-# ── 场景 N+1：目标不存在 ⇒ 仍是 no_such_session，新门不许把这一档吞掉 ──────────
+# ── 场景 N+1：目标不存在 ⇒ 名单里没有它（not_known），门不许把这一档说成别的 ──────────
 fresh_tmux
-send '{"id":"e2e-gate2-nos","cmd":"launch","args":{"mode":"send-into","name":"cc-nope","payload":"true"}}'
+send_text e2e-gate2-nos "tmux-999999" "true"
 if wait_for '"id":"e2e-gate2-nos"'; then
   R="$(reply_of e2e-gate2-nos)"
-  if printf '%s' "$R" | grep -qF 'no_such_session'; then
-    ok "目标不存在 → 仍报 no_such_session（Gate 2 没吞掉这一档）"
+  if printf '%s' "$R" | grep -qF '"why":"not_known"'; then
+    ok "目标不存在 → not_known（门没吞掉这一档）"
   else
-    bad "目标不存在的应答不对（期望 no_such_session）：$R"
+    bad "目标不存在的应答不对（期望 not_known）：$R"
   fi
 else bad "目标不存在场景 5s 内无应答"; fi
 
@@ -257,12 +265,12 @@ fresh_tmux
 "$TMUX_BIN" new-session -d -s expectonly
 ready '=expectonly:'
 "$TMUX_BIN" set-option -t '=expectonly:' @ccm_sid_expect deadbeef >/dev/null 2>&1 || true
-send '{"id":"e2e-gate2-exp","cmd":"launch","args":{"mode":"send-into","name":"expectonly","payload":"printf %s CCMGATE_EXPECT"}}'
+send_text e2e-gate2-exp "$(handle_of expectonly)" "printf %s CCMGATE_EXPECT"
 if wait_for '"id":"e2e-gate2-exp"'; then
   R="$(reply_of e2e-gate2-exp)"
   settle '=expectonly:'
   P="$($TMUX_BIN capture-pane -p -t '=expectonly:' 2>/dev/null || true)"
-  if printf '%s' "$R" | grep -qF 'wrong_owner' && ! printf '%s' "$P" | grep -q CCMGATE_EXPECT; then
+  if printf '%s' "$R" | grep -qF '"why":"not_managed"' && ! printf '%s' "$P" | grep -q CCMGATE_EXPECT; then
     ok "只设了 @ccm_sid_expect → 仍拒绝（意图不是事实）"
   else
     bad "@ccm_sid_expect 被当成了 @ccm_sid —— 这道门被放宽了：$R"
@@ -330,7 +338,7 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
   if [ "$cmd" = kill ]; then
     send "{\"id\":\"$rid\",\"cmd\":\"kill\",\"args\":{\"name\":\"$name\"$extra}}"
   else
-    send "{\"id\":\"$rid\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"$name\",\"payload\":\"printf %s $marker\"$extra}}"
+    send_text "$rid" "$(handle_of "$name")" "printf %s $marker" "$who"
   fi
   wait_for "\"id\":\"$rid\"" || { bad "$what：5s 内无应答"; return; }
   local R; R="$(reply_of "$rid")"
@@ -341,7 +349,7 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
   [ "$alive" = yes ] && "$TMUX_BIN" capture-pane -p -t "=$name:" 2>/dev/null | grep -q "$marker" && landed=yes
   if [ "$want" = OK ]; then
     if [ "$cmd" = kill ] && printf '%s' "$R" | grep -qF '"killed":true' && [ "$alive" = no ]; then ok "$what → 杀掉了"
-    elif [ "$cmd" = send ] && printf '%s' "$R" | grep -qF '"ok":true' && [ "$landed" = yes ]; then ok "$what → 送进去了"
+    elif [ "$cmd" = send ] && printf '%s' "$R" | grep -qF '"result":"delivered"' && [ "$landed" = yes ]; then ok "$what → 送进去了"
     else bad "$what：期望放行，实得 $R（alive=$alive landed=$landed）"; fi
   else
     if printf '%s' "$R" | grep -qF "$want" && [ "$alive" = yes ] && [ "$landed" = no ]; then ok "$what → 拒绝（$want），会话还在、没被打字"
@@ -349,7 +357,7 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
   fi
 }
 cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "phonepipe-a" mobile yes kill "" wrong_owner 1
-cl "别的前端的会话，自报 desktop ⇒ 送不进字" "phonepipe-b" mobile yes send desktop wrong_owner 2
+cl "别的前端的会话，自报 desktop ⇒ 送不进字" "phonepipe-b" mobile yes send desktop '"why":"not_yours"' 2
 cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "phonepipe-c" mobile no send mobile OK 3
 cl "自己起的会话，自报对上 ⇒ 结束得了" "phonepipe-d" mobile no kill mobile OK 4
 cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no kill mobile OK 5
@@ -394,7 +402,7 @@ if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! "$TMUX_BIN" has-session -
 else bad "按挂着 sid 的窗格判身份：实得 $R"; fi
 
 # ── 按 sid 送字 · 抓屏 · 结束（单条命令带 sid）：落在挂着它的那个窗格，身份按那个窗格判 ──
-# `launch send-into` 带 `ccm_sid` · `terminal-preview` 带 `sid` · `kill` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
+# `terminal-input` 带 `sid` · `terminal-preview` 带 `sid` · `kill` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
 echo
 echo "-- 按 sid 送字 · 抓屏 · 结束（单条命令）--"
 SE=eeeeeeee-0000-4000-8000-00000000000e
@@ -411,20 +419,15 @@ PF="$("$TMUX_BIN" split-window -t '=box2:' -P -F '#{pane_id}')"
 ready "$PE" "$PF"
 "$TMUX_BIN" set-option -p -t "$PE" @ccm_sid "$SE" >/dev/null 2>&1
 "$TMUX_BIN" select-pane -t "$PF" >/dev/null 2>&1
-R="$(ask "{\"id\":\"e2e-sid-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"box2\",\"payload\":\"printf %s SIDMARK_E\",\"ccm_sid\":\"$SE\"}}" e2e-sid-1)"
+R="$(ask "{\"id\":\"e2e-sid-1\",\"cmd\":\"terminal-input\",\"args\":{\"sid\":\"$SE\",\"text\":\"printf %s SIDMARK_E\"}}" e2e-sid-1)"
 wall_until 'pane_shows "$PE" SIDMARK_E' || true; settle "$PF"
-if printf '%s' "$R" | grep -qF '"ok":true' && pane_shows "$PE" SIDMARK_E && ! pane_shows "$PF" SIDMARK_E; then
+if printf '%s' "$R" | grep -qF '"result":"delivered"' && pane_shows "$PE" SIDMARK_E && ! pane_shows "$PF" SIDMARK_E; then
   ok "送字带 sid（名字不像我们铸的、sid 只挂在非活动窗格上）→ 身份按那个窗格判，字落在它上面、活动窗格没收到"
 else bad "按 sid 送字：实得 $R（E 收到=$(pane_shows "$PE" SIDMARK_E && echo 是 || echo 否) 活动窗格收到=$(pane_shows "$PF" SIDMARK_E && echo 是 || echo 否)）"; fi
-R="$(ask '{"id":"e2e-sid-2","cmd":"launch","args":{"mode":"send-into","name":"box2","payload":"printf %s SIDMARK_X"}}' e2e-sid-2)"
+R="$(ask '{"id":"e2e-sid-3","cmd":"terminal-input","args":{"sid":"not-here-0000","text":"printf %s SIDMARK_Y"}}' e2e-sid-3)"
 settle "$PE"; settle "$PF"
-if printf '%s' "$R" | grep -qF wrong_owner && ! pane_shows "$PE" SIDMARK_X && ! pane_shows "$PF" SIDMARK_X; then
-  ok "同一个会话不带 sid → 按活动窗格判（没挂标签）⇒ 拒绝，谁都没被打字（对照）"
-else bad "不带 sid 的对照：实得 $R"; fi
-R="$(ask '{"id":"e2e-sid-3","cmd":"launch","args":{"mode":"send-into","name":"box2","payload":"printf %s SIDMARK_Y","ccm_sid":"not-here-0000"}}' e2e-sid-3)"
-settle "$PE"; settle "$PF"
-if printf '%s' "$R" | grep -qF wrong_owner && ! pane_shows "$PE" SIDMARK_Y && ! pane_shows "$PF" SIDMARK_Y; then
-  ok "送字带的 sid 哪个窗格都不挂 → wrong_owner，谁都没被打字"
+if printf '%s' "$R" | grep -qF '"why":"not_known"' && ! pane_shows "$PE" SIDMARK_Y && ! pane_shows "$PF" SIDMARK_Y; then
+  ok "送字带的 sid 哪个窗格都不挂 → not_known，谁都没被打字"
 else bad "带一个没人挂的 sid 送字：实得 $R"; fi
 "$TMUX_BIN" send-keys -t "$PF" 'printf %s SIDMARK_F' Enter >/dev/null 2>&1
 wall_until 'pane_shows "$PF" SIDMARK_F' || true
