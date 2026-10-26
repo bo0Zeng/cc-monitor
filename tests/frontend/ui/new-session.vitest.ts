@@ -558,11 +558,13 @@ describe("锁住的目录 · 第一句", () => {
     expect("prompt" in whatOf(newRequests()[0])).toBe(false);
   });
 
-  it("切到终端窗口 ⇒ 「第一句」那一格收起、请求里不带它（第一句只跟 tmux）", async () => {
+  it("切到终端窗口 ⇒ 「第一句」那一格灰着（字留着）、请求里不带它（第一句只跟 tmux）", async () => {
     void openNewSession({ origin: "devbox", prompt: "开口那句" });
     await flush();
+    expect(prompt().disabled).toBe(false);
     dialog().querySelector<HTMLInputElement>('input[value="window"]')!.click();
-    expect(rowOf(prompt()).hidden).toBe(true);
+    expect(prompt().disabled).toBe(true);
+    expect(prompt().value).toBe("开口那句");
     createBtn().click();
     await flush();
     expect("prompt" in whatOf(newRequests()[0])).toBe(false);

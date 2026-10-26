@@ -235,14 +235,14 @@ function cwdField(cwd: string, locked: boolean): { cwdInput: HTMLInputElement; r
   cwdInput.readOnly = locked;
   cwdInput.setAttribute("aria-label", copyText("newSession.label.cwd"));
   const recentBtn = el("button");
-  recentBtn.hidden = locked;
   recentBtn.type = "button";
   recentBtn.className = s.nsRecent;
   recentBtn.setAttribute("aria-label", copyText("newSession.recent.label"));
   recentBtn.append(el("span", "", copyText("newSession.recent.label")), icon("caretDown", "compact"));
   const cwdWrap = el("div");
   cwdWrap.className = s.nsBox;
-  cwdWrap.append(cwdInput, recentBtn);
+  cwdWrap.append(cwdInput);
+  if (!locked) cwdWrap.append(recentBtn);
   return { cwdInput, recentBtn, cwdRow: row(copyText("newSession.label.cwd"), cwdWrap, false) };
 }
 
@@ -435,7 +435,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const windowRadio = placeRadio(places, "window");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
 
-  // 第一句（只跟 tmux：放在终端窗口里起的那一形不收）
+  // 第一句（只跟 tmux：选了终端窗口 ⇒ 那一格灰着、不交，字留着，切回 tmux 照样交）
   const promptInput = el("textarea");
   promptInput.className = s.nsInput;
   promptInput.rows = 3;
@@ -495,7 +495,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     tmuxRadio.label.hidden = !hasTmux;
     windowRadio.note.textContent = windowNote(origin, hasTmux);
     tmuxRow.root.hidden = place() !== "tmux";
-    promptRow.root.hidden = place() !== "tmux";
+    promptInput.disabled = place() !== "tmux";
   };
 
   const paintAgent = (): void => {
