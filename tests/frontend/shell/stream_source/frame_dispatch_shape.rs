@@ -78,13 +78,13 @@ fn the_two_dispatch_layers_cover_every_frame_kind_without_a_catch_all() {
     );
 }
 
-/// 交活卡的地方恰好一处：分派第一层那一臂（本机远端同一处，origin 是这条流的）。
+/// 交活卡的地方恰好一处：分派第一层那一臂直接交会话流句柄（本机远端同一处，origin 是这条流的）。
 #[test]
 fn live_cards_are_handed_over_in_one_place_with_the_stream_origin() {
     let prod = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/stream_source/dispatch.rs"
     ));
-    guard_core::find_pinned(body_of(&prod, "route"), "crate::live_card::deliver(at, l)")
+    guard_core::find_pinned(body_of(&prod, "route"), "r.on_live_card(origin, l)")
         .unwrap_or_else(|e| panic!("活卡那一臂不是恰好一处、或 origin 不是这条流的：{e}"));
     let mut n = 0;
     for (_, raw) in guard_core::scan_tree!(
@@ -92,7 +92,7 @@ fn live_cards_are_handed_over_in_one_place_with_the_stream_origin() {
         &["rs"]
     ) {
         n += guard_core::production_code(&raw)
-            .matches("live_card::deliver(")
+            .matches(".on_live_card(")
             .count();
     }
     assert_eq!(n, 1, "交活卡的地方不是恰好一处");

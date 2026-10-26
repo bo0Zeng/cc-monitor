@@ -858,14 +858,11 @@ async fn the_changed_accounts_stream_carries_only_reachability_and_account_notic
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
-fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionLiveCardPayload {
-    crate::ui_contract::SessionLiveCardPayload {
-        origin: crate::origin::Origin(origin.to_string()),
-        card: crate::ui_contract::RecordBody::from_json(format!(
-            "{{\"sid\":\"sid-t\",\"card\":0,\"n\":{n},\"op\":\"text\",\"i\":0,\"s\":\"x\"}}"
-        ))
-        .unwrap(),
-    }
+fn tap(n: u64) -> cmd_wire::live::LiveCard {
+    serde_json::from_str(&format!(
+        "{{\"sid\":\"sid-t\",\"card\":0,\"n\":{n},\"op\":\"text\",\"i\":0,\"s\":\"x\"}}"
+    ))
+    .unwrap()
 }
 
 fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
@@ -890,9 +887,9 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
     r.subscribe("w", 7, &local(), "session-live-card", None, 2);
     rec.clear();
     for n in 0..3 {
-        r.on_live_card(tap("<local>", n));
+        r.on_live_card(&local(), tap(n));
     }
-    r.on_live_card(tap("pi", 9)); // 别的机器
+    r.on_live_card(&crate::origin::Origin("pi".into()), tap(9)); // 别的机器
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 0, 0), ("tap", 1, 1)]
@@ -904,7 +901,7 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
         vec![("gap", 2, 3)]
     );
     rec.clear();
-    r.on_live_card(tap("<local>", 3));
+    r.on_live_card(&local(), tap(3));
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 3, 3)]
@@ -922,7 +919,7 @@ async fn tap_and_lines_never_cross_into_each_others_subscriptions() {
     r.ready_point(None).await;
     rec.clear();
     r.on_line_batch_awaited(lines("s", 0..2)).await;
-    r.on_live_card(tap("<local>", 0));
+    r.on_live_card(&local(), tap(0));
     let got = rec.0.lock().unwrap().clone();
     let to = |sub: u64| -> Vec<(&'static str, u64, u64)> {
         got.iter()
@@ -1326,53 +1323,102 @@ async fn the_terminal_screen_stream_carries_the_cell_to_that_origins_ticket_only
     );
 }
 
-/// 终端画面流撤掉 ⇒ 壳替界面向那台退订那张票（界面 `stop` · 同一编号被重订 · 页面重载 / 窗口没了整窗清掉都算）；
-/// 别的流撤掉不退订；只退一次。期望手写。
+/// 本机后端那条连接换成一根内存双工管子（登记在 `<local>` 名下，认 `commands`；调用方先拿 `local_origin_test_lock`），
+/// 对端由用例扮演：读壳写出去的请求行。
+fn local_peer(commands: &[&str]) -> tokio::io::BufReader<tokio::io::DuplexStream> {
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let hello = crate::inbound_client::witness_of(&crate::frame_fixtures::our_hello(commands))
+        .expect("是 Hello 帧");
+    crate::inbound_client::register(crate::inbound_client::park(mine).into_client(hello));
+    tokio::io::BufReader::new(theirs)
+}
+
+/// 对端在 `within` 里收到的请求，一条一个 `(cmd, ticket, machine)`（`machine` 空 ＝ 问本机自己），排好序。
+async fn requests_within(
+    peer: &mut tokio::io::BufReader<tokio::io::DuplexStream>,
+    within: std::time::Duration,
+) -> Vec<(String, String, String)> {
+    use tokio::io::AsyncBufReadExt as _;
+    let mut out = Vec::new();
+    loop {
+        let mut line = String::new();
+        match tokio::time::timeout(within, peer.read_line(&mut line)).await {
+            Ok(Ok(n)) if n > 0 => {
+                let v: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+                let s = |x: &serde_json::Value| x.as_str().unwrap_or_default().to_string();
+                out.push((s(&v["cmd"]), s(&v["args"]["ticket"]), s(&v["machine"])));
+            }
+            _ => break,
+        }
+    }
+    out.sort();
+    out
+}
+
+/// 终端画面流撤掉 ⇒ 句柄替界面向那台发一次 `terminal-unfollow {ticket}`（本机问本机自己；别台经本机那条连接、信封带 `machine`）——
+/// 界面 `stop` · 同一编号被重订 · 页面重载 / 窗口没了整窗清掉都算；别的流撤掉不退订；只退一次。期望手写。
 #[tokio::test]
 async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_origin() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let mut peer = local_peer(&["terminal-unfollow"]);
+    let box_a = crate::origin::Origin("unfollow-box-a".into());
+    let crate::stream_source::Frame::Hello(h) =
+        crate::frame_fixtures::our_hello(&["terminal-unfollow"])
+    else {
+        unreachable!()
+    };
+    crate::inbound_client::reached(box_a.as_wire_str(), &h);
     let (r, _rec) = hub();
-    let dropped: Arc<std::sync::Mutex<Vec<(String, String)>>> = Default::default();
-    let d = Arc::clone(&dropped);
-    r.on_screen_dropped(move |origin, ticket| {
-        d.lock()
-            .unwrap()
-            .push((origin.as_wire_str().to_string(), ticket.to_string()));
-    });
     let local = crate::origin::Origin::local();
-    let box_a = crate::origin::Origin("box-a".into());
-    let take = || std::mem::take(&mut *dropped.lock().unwrap());
+    let quiet = std::time::Duration::from_millis(300);
+    let unfollow = |ticket: &str, machine: &str| {
+        (
+            "terminal-unfollow".to_string(),
+            ticket.to_string(),
+            machine.to_string(),
+        )
+    };
     // ① 界面撤单。
     r.subscribe("w", 1, &box_a, "terminal-screen/t-1", None, 2);
     r.subscribe("w", 2, &box_a, "changed/accounts", None, 2);
     r.stop("w", 1);
     r.stop("w", 2);
     r.stop("w", 1);
-    assert_eq!(take(), vec![("box-a".to_string(), "t-1".to_string())]);
+    assert_eq!(
+        requests_within(&mut peer, quiet).await,
+        vec![unfollow("t-1", "unfollow-box-a")]
+    );
     // ② 同一个 (webview, 编号) 被重订（页面重载后编号从头来）。
     r.subscribe("w", 3, &local, "terminal-screen/t-2", None, 2);
     r.subscribe("w", 3, &local, "session-lines", None, 2);
     assert_eq!(
-        take(),
-        vec![(local.as_wire_str().to_string(), "t-2".to_string())]
+        requests_within(&mut peer, quiet).await,
+        vec![unfollow("t-2", "")]
     );
     // ③ 页面重载 / 窗口没了：那个 webview 的订阅整份清掉，别的 webview 不动。
     r.subscribe("w", 4, &box_a, "terminal-screen/t-3", None, 2);
     r.subscribe("w", 5, &box_a, "terminal-screen/t-4", None, 2);
     r.subscribe("v", 1, &box_a, "terminal-screen/t-5", None, 2);
     r.drop_webview("w");
-    let mut got = take();
-    got.sort();
     assert_eq!(
-        got,
+        requests_within(&mut peer, quiet).await,
         vec![
-            ("box-a".to_string(), "t-3".to_string()),
-            ("box-a".to_string(), "t-4".to_string())
+            unfollow("t-3", "unfollow-box-a"),
+            unfollow("t-4", "unfollow-box-a")
         ]
     );
     r.drop_webview("w");
-    assert_eq!(take(), vec![], "清过的不再退");
+    assert_eq!(
+        requests_within(&mut peer, quiet).await,
+        vec![],
+        "清过的不再退"
+    );
     r.stop("v", 1);
-    assert_eq!(take(), vec![("box-a".to_string(), "t-5".to_string())]);
+    assert_eq!(
+        requests_within(&mut peer, quiet).await,
+        vec![unfollow("t-5", "unfollow-box-a")]
+    );
+    crate::inbound_client::gone(box_a.as_wire_str());
 }
 
 // ==== 「在看哪几个会话」（`stream-watch`）====
