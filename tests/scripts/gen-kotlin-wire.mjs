@@ -141,13 +141,13 @@ function loadDecls() {
   const decls = new Map();
   for (const f of readdirSync(GEN).filter((f) => f.endsWith(".ts"))) {
     const text = stripComments(readFileSync(join(GEN, f), "utf8"));
-    const m = text.match(/export type (\w+)(?:<([^>=]*)>)?\s*=\s*([\s\S]*?);\s*$/);
+    const m = text.match(/export type (\w+)(?:<([^>]*)>)?\s*=\s*([\s\S]*?);\s*$/);
     if (!m) continue;
     const [, name, params, body] = m;
     try {
       const p = new Parser(tokenize(body));
       const ty = p.type();
-      decls.set(name, { name, params: params ? params.split(",").map((s) => s.trim()) : [], ty });
+      decls.set(name, { name, params: params ? params.split(",").map((s) => s.split("=")[0].trim()) : [], defaults: params ? params.split(",").map((s) => s.split("=")[1]?.trim()) : [], ty });
     } catch (e) {
       decls.set(name, { name, params: [], ty: { k: "raw" }, bad: String(e) });
     }
@@ -193,6 +193,11 @@ function rustFloatFields() {
         for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?f(?:32|64)\b/g)) {
           x.floats.add(g[1]);
           x.floats.add(g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+        }
+        // 32 位以内的整数（Rust 那头装不下更大的）⇒ Kotlin 的 Int；记成 `i:格名`。
+        for (const g of m[2].matchAll(/(?:pub )?(\w+): (?:Option<)?(?:Vec<)?[ui](?:8|16|32)\b/g)) {
+          x.floats.add("i:" + g[1]);
+          x.floats.add("i:" + g[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
         }
         for (const g of m[2].matchAll(/#\[serde\(flatten\)\][\s\S]*?pub \w+: (?:[\w:]+::)?(\w+)/g)) x.flat.push(g[1]);
         own.set(m[1], x);
@@ -242,7 +247,7 @@ class Gen {
       case "prim":
         if (t.v === "string") return { kt: "String", ad: "Str" };
         if (t.v === "boolean") return { kt: "Boolean", ad: "Bool" };
-        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: "Double", ad: "Dbl" } : { kt: "Long", ad: "Lng" };
+        if (t.v === "number" || t.v === "bigint") return ctx.float ? { kt: "Double", ad: "Dbl" } : ctx.int ? { kt: "Int", ad: "Int32" } : { kt: "Long", ad: "Lng" };
         return { kt: "Raw", ad: "RawJson" };
       case "array": {
         const e = this.ty(t.of, ctx);
@@ -280,8 +285,50 @@ class Gen {
     }
   }
 
+  /** 一组字面量 ⇒ 有名字的那一个枚举（导出里恰好一个类型就是这一组词，Rust 那头 `ts(type = …)` 内联出来的同一组）。 */
+  namedWords(alts) {
+    if (!this.wordSets) {
+      this.wordSets = new Map();
+      for (const d of this.decls.values()) {
+        const as = d.ty.k === "union" ? d.ty.alts : [d.ty];
+        if (d.params.length || !as.every((a) => a.k === "lit")) continue;
+        const key = as.map((a) => a.v).sort().join("\u0000");
+        this.wordSets.set(key, this.wordSets.has(key) ? null : d.name);
+      }
+    }
+    if (!alts.every((a) => a.k === "lit")) return null;
+    return this.wordSets.get(alts.map((a) => a.v).sort().join("\u0000")) ?? null;
+  }
+
+  /** 每一组内联的字面量（不是自己导出的那一种）在全部声明里出现几回。 */
+  inlineCounts() {
+    if (this.counts) return this.counts;
+    this.counts = new Map();
+    const walk = (t, top) => {
+      if (!t || typeof t !== "object") return;
+      if (t.k === "union" && !top && t.alts.every((a) => a.k === "lit")) {
+        const key = t.alts.map((a) => a.v).sort().join("\u0000");
+        this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
+      }
+      if (t.k === "lit" && !top) {
+        this.counts.set(t.v, (this.counts.get(t.v) ?? 0) + 1);
+      }
+      for (const v of Object.values(t)) {
+        if (Array.isArray(v)) v.forEach((x) => walk(x, false));
+        else if (v && typeof v === "object") walk(v, false);
+      }
+    };
+    for (const d of this.decls.values()) walk(d.ty, true);
+    return this.counts;
+  }
+
   anon(t, ctx) {
-    const name = ctx.owner + pascal(ctx.field ?? "Item");
+    const named = t.k === "union" ? this.namedWords(t.alts) : null;
+    if (named) return this.ty({ k: "ref", name: named, args: [] }, ctx);
+    // 内联的同一组词出现在不止一格 ⇒ 只出一个枚举，名字就是那几个词（照字序，与哪一格先出无关）。
+    const sorted = t.k === "union" && t.alts.every((a) => a.k === "lit") ? t.alts.map((a) => a.v).sort() : null;
+    const shared = sorted && sorted.length > 1 && this.inlineCounts().get(sorted.join("\u0000")) > 1;
+    const name = shared ? sorted.map((w) => pascal(w) || "Empty").join("Or") : ctx.owner + pascal(ctx.field ?? "Item");
     this.emitDecl(name, [], t, { ...ctx, owner: name });
     if (this.rawNames.has(name)) return { kt: "Raw", ad: "RawJson" };
     return { kt: name, ad: `${name}.ADAPTER` };
@@ -396,7 +443,7 @@ class Gen {
 
   fieldSpecs(fields, ctx) {
     return fields.map((f) => {
-      const x = this.ty(f.ty, { ...ctx, field: f.key, float: ctx.floats?.has(f.key) });
+      const x = this.ty(f.ty, { ...ctx, field: f.key, float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key) });
       const nullable = x.kt.endsWith("?") || f.opt;
       const kt = f.opt && !x.kt.endsWith("?") ? x.kt + "?" : x.kt;
       const ad = f.opt && !x.kt.endsWith("?") ? `opt(${x.ad})` : x.ad;
@@ -443,14 +490,16 @@ class Gen {
     return { tp, open };
   }
 
-  variantClass(name, tp, vname, specs) {
+  variantClass(name, tp, vname, specs, common = new Set(), tag = null) {
+    // 判别格那个词（`tag` = [判别格的属性名, 词]）：读得到，不进构造。
+    const tagLine = tag ? `        override val ${tag[0]}: String get() = "${esc(tag[1])}"\n` : "";
     if (!specs.length) {
       return tp
-        ? `    class ${vname}${tp} : ${name}${tp} {\n        override fun equals(other: Any?): Boolean = other is ${vname}<*>\n\n        override fun hashCode(): Int = ${JSON.stringify(vname)}.hashCode()\n    }`
-        : `    data object ${vname} : ${name}`;
+        ? `    class ${vname}${tp} : ${name}${tp} {\n${tagLine}\n        override fun equals(other: Any?): Boolean = other is ${vname}<*>\n\n        override fun hashCode(): Int = ${JSON.stringify(vname)}.hashCode()\n    }`
+        : tag ? `    data object ${vname} : ${name} {\n${tagLine}    }` : `    data object ${vname} : ${name}`;
     }
-    const ctor = specs.map((s) => `        val ${s.prop}: ${s.kt}${s.opt ? " = null" : ""},`).join("\n");
-    return `    @Suppress("UNCHECKED_CAST")\n    data class ${vname}${tp}(\n${ctor}\n    ) : ${name}${tp}, Ordered {\n        override var wireOrder: IntArray? = null\n    }`;
+    const ctor = specs.map((s) => `        ${common.has(s.prop) ? "override " : ""}val ${s.prop}: ${s.kt}${s.opt ? " = null" : ""},`).join("\n");
+    return `    @Suppress("UNCHECKED_CAST")\n    data class ${vname}${tp}(\n${ctor}\n    ) : ${name}${tp}, Ordered {\n${tagLine}        override var wireOrder: IntArray? = null\n    }`;
   }
 
   sealedCode(name, params, disc, objs, ctx) {
@@ -463,10 +512,22 @@ class Gen {
       const all = [...specs.slice(0, at), { key: disc, tag }, ...specs.slice(at)];
       return { tag, vname, specs, all };
     });
-    const code = [`sealed interface ${name}${tp} {`];
+    // 每一形都有、型也一样（可空与否可以不同）的格（通用记录的 `id` · `agent` …）：一族上直接读得到；有一形可空 ⇒ 一族上可空。
+    const base = (kt) => kt.replace(/\?$/, "");
+    const shared = variants.every((v) => v.specs.length)
+      ? variants[0].specs
+          .filter((s) => variants.every((v) => v.specs.some((x) => x.prop === s.prop && base(x.kt) === base(s.kt))))
+          .map((s) => {
+            const any = variants.some((v) => v.specs.find((x) => x.prop === s.prop).kt.endsWith("?"));
+            return { ...s, kt: any ? base(s.kt) + "?" : s.kt };
+          })
+      : [];
+    const common = new Set(shared.map((s) => s.prop));
+    const dp = prop(disc);
+    const code = [`sealed interface ${name}${tp} {`, `    /** 判别格（\`${esc(disc)}\`）那个词。 */\n    val ${dp}: String\n`, ...shared.map((s) => `    val ${s.prop}: ${s.kt}\n`)];
     const rows = [];
     for (const v of variants) {
-      code.push(this.variantClass(name, tp, v.vname, v.specs));
+      code.push(this.variantClass(name, tp, v.vname, v.specs, common, [dp, v.tag]));
       const ad = this.objBody(`${name}.${v.vname}`, v.all, tp).adapter;
       rows.push(`                Variant("${esc(v.tag)}", ${cast(`${name}.${v.vname}::class.java`, name, tp)}, ${ad.replace(/\n/g, "\n            ")}),`);
     }
@@ -480,7 +541,7 @@ class Gen {
     const rows = [];
     for (const f of fields) {
       const vname = pascal(f.key) || "Empty";
-      const x = this.ty(f.ty, { ...ctx, owner: name + vname, field: "value", float: ctx.floats?.has(f.key) });
+      const x = this.ty(f.ty, { ...ctx, owner: name + vname, field: "value", float: ctx.floats?.has(f.key), int: ctx.floats?.has("i:" + f.key) });
       code.push(`    data class ${vname}${tp}(\n        val value: ${x.kt},\n    ) : ${name}${tp}`);
       rows.push(`                Ext("${esc(f.key)}", ${cast(`${name}.${vname}::class.java`, name, tp)}, { ${x.ad} }, { ${name}.${vname}${tp}(it as ${x.kt}) }, { (it as ${name}.${vname}${tp}).value }),`);
     }
@@ -607,9 +668,14 @@ private inline fun <T> prim(
 val Str: JsonAdapter<String> = prim({ it.nextString() }, { w, v -> w.value(v) }, "string")
 val Bool: JsonAdapter<Boolean> = prim({ it.nextBoolean() }, { w, v -> w.value(v) }, "boolean")
 val Lng: JsonAdapter<Long> = prim({ it.nextLong() }, { w, v -> w.value(v) }, "integer")
+val Int32: JsonAdapter<Int> = prim({ it.nextInt() }, { w, v -> w.value(v) }, "integer")
 val Dbl: JsonAdapter<Double> = prim({ it.nextDouble() }, { w, v -> w.value(v) }, "number")
 val RawJson: JsonAdapter<Raw> =
     prim({ r -> r.nextSource().use { Raw(it.readUtf8()) } }, { w, v -> w.valueSink().use { it.writeUtf8(v.json) } }, "raw json")
+
+/** 照原样留着、还没装进线上类型的那一段（带键集合手上那一份逐项存盘 · 用时才各按自己的类型解）。 */
+val JsonValue: JsonAdapter<Any> =
+    prim({ r -> r.readJsonValue() ?: throw mismatch("value must not be null (at " + r.path + ")") }, { w, v -> w.jsonValue(v) }, "value")
 
 fun <T> opt(ad: JsonAdapter<T>): JsonAdapter<T?> =
     object : JsonAdapter<T?>() {
