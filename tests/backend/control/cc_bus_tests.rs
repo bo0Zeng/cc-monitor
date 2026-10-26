@@ -210,8 +210,8 @@ fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
             "{what}：老 cc-bus 那一句没说清下一步：{e:?}"
         );
     }
-    let half = parse_roster_tsv("#cc-list-tsv\t2\nalpha_cc\t0\n")
-        .expect_err("缺末行的名册必须回错");
+    let half =
+        parse_roster_tsv("#cc-list-tsv\t2\nalpha_cc\t0\n").expect_err("缺末行的名册必须回错");
     assert!(
         copy_core::copy_matches("beCcBus.read.truncated", &half.1),
         "{half:?}"
@@ -219,7 +219,10 @@ fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
     // 上一版的名册（带登记地址那一形）也是「cc-bus 比后端旧」，不按新的两格硬解。
     let v1 = parse_roster_tsv("#cc-list-tsv\t1\nalpha_cc\ta:0.0\tts\t1\t0\n#skipped\t0\n")
         .expect_err("上一版的名册必须明说");
-    assert!(copy_core::copy_matches("beCcBus.read.tooOld", &v1.1), "{v1:?}");
+    assert!(
+        copy_core::copy_matches("beCcBus.read.tooOld", &v1.1),
+        "{v1:?}"
+    );
     // 正控：首尾齐的空名单是「真的一个都没有」，不是错。
     assert_eq!(
         parse_roster_tsv("#cc-list-tsv\t2\n#skipped\t0\n").unwrap(),
@@ -237,8 +240,14 @@ fn the_roster_rows_are_inbox_id_and_unread_only() {
     assert_eq!(
         rows,
         vec![
-            RosterRow { id: "sid-a".into(), unread: 3 },
-            RosterRow { id: "sid-d".into(), unread: 0 },
+            RosterRow {
+                id: "sid-a".into(),
+                unread: 3
+            },
+            RosterRow {
+                id: "sid-d".into(),
+                unread: 0
+            },
         ]
     );
     assert_eq!(skipped, 4, "cc-bus 报的 1 行 ＋ 本侧拒的 3 行");
@@ -248,18 +257,40 @@ fn the_roster_rows_are_inbox_id_and_unread_only() {
 #[test]
 fn title_and_liveness_come_from_the_judge_and_unknown_stays_unknown() {
     let rows = vec![
-        RosterRow { id: "s1".into(), unread: 1 },
-        RosterRow { id: "s2".into(), unread: 0 },
+        RosterRow {
+            id: "s1".into(),
+            unread: 1,
+        },
+        RosterRow {
+            id: "s2".into(),
+            unread: 0,
+        },
     ];
     let got = roster_agents(&rows, &|sid| match sid {
-        "s1" => Seen { title: Some("标题".into()), live: Some(false) },
-        _ => Seen { title: None, live: None },
+        "s1" => Seen {
+            title: Some("标题".into()),
+            live: Some(false),
+        },
+        _ => Seen {
+            title: None,
+            live: None,
+        },
     });
     assert_eq!(
         got,
         vec![
-            BusAgent { id: "s1".into(), title: "标题".into(), unread: 1, live: Some(false) },
-            BusAgent { id: "s2".into(), title: "s2".into(), unread: 0, live: None },
+            BusAgent {
+                id: "s1".into(),
+                title: "标题".into(),
+                unread: 1,
+                live: Some(false)
+            },
+            BusAgent {
+                id: "s2".into(),
+                title: "s2".into(),
+                unread: 0,
+                live: None
+            },
         ]
     );
 }
@@ -420,13 +451,16 @@ fn the_bus_products_match_the_cross_language_golden() {
         .expect("输入样例缺 `sessions`")
         .clone();
     let judge = |sid: &str| -> Seen {
-        sessions
-            .iter()
-            .find(|s| s["sid"] == sid)
-            .map_or(Seen { title: None, live: None }, |s| Seen {
+        sessions.iter().find(|s| s["sid"] == sid).map_or(
+            Seen {
+                title: None,
+                live: None,
+            },
+            |s| Seen {
                 title: s["title"].as_str().map(str::to_string),
                 live: s["live"].as_bool(),
-            })
+            },
+        )
     };
     let agents: Vec<Value> = roster_agents(
         &parse_roster_tsv(

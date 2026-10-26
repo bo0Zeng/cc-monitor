@@ -57,7 +57,6 @@ impl Probed {
     }
 }
 
-
 /// 探测格式串。三个字段用 TAB 分隔：`session_id` 恒是 `$<数字>`，`@ccm_sid` 是会话 id（`cmd_wire::Sid`，字符集 `[A-Za-z0-9-]`）
 /// （`launch::parse_request`），`session_windows` 对存在的会话恒为正整数。
 ///

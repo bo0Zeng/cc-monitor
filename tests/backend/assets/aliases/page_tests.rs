@@ -479,16 +479,7 @@ fn init_writes_the_seed_or_an_empty_file() {
 #[test]
 fn read_carries_the_form_slot_labels_in_form_order() {
     let want: Vec<Value> = [
-        "account",
-        "tmux",
-        "cwdIf",
-        "cwd",
-        "agent",
-        "args",
-        "launcher",
-        "tmuxSize",
-        "detach",
-        "tab",
+        "account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "tab",
     ]
     .iter()
     .map(|id| json!({"id": id, "label": copy_text(&format!("beProfile.slot.{id}"), &[])}))
