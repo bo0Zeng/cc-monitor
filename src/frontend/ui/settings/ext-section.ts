@@ -392,7 +392,6 @@ export class ExtSection {
     const cols = el("span", "ext-dots");
     for (const m of list.machines) {
       const c = el("span", m.reachable ? "ext-col one-line" : "ext-col one-line is-offline", machineName(m));
-      c.title = machineName(m);
       cols.appendChild(c);
     }
     head.appendChild(cols);
