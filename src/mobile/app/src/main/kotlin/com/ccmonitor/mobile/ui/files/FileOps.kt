@@ -105,7 +105,7 @@ class FileOps(
     suspend fun mode(path: RemotePath): Result<Int?> =
         when (val r = feed.call(FilesStat.COMMAND, FilesStat.args(path))) {
             is Reply.Ok -> Result.success(FilesStat.modeOf(r.data))
-            else -> Result.failure(Failed(r.problem(machine(), FilesStat.COMMAND) ?: Problem("", "")))
+            else -> Result.failure(Failed(r.problem(machine(), FilesStat.COMMAND, feed.offline.value) ?: Problem("", "")))
         }
 
     /** 改当前目录里这几项的权限位（八进制串）：同 [delete]。 */
@@ -172,7 +172,7 @@ class FileOps(
         if (clash != null && rows.isNotEmpty()) return Result.success(Upload.Clash(name, staged, clash.message, rows))
         return when (r) {
             is Reply.Ok -> Result.success(Upload.Done)
-            else -> Result.failure(Failed(r.problem(machine(), FilesCommitUpload.COMMAND) ?: Problem("", "")))
+            else -> Result.failure(Failed(r.problem(machine(), FilesCommitUpload.COMMAND, feed.offline.value) ?: Problem("", "")))
         }
     }
 
@@ -225,7 +225,7 @@ class FileOps(
         val m = machine()
         return when (r) {
             is Reply.Ok -> decode(r.data)?.let { Result.success(it) } ?: Result.failure(Failed(unreadableReply(m, command, r.data.toString())))
-            else -> Result.failure(Failed(r.problem(m, command) ?: Problem("", ""), cut = r is Reply.LinkDown || r is Reply.TimedOut || r is Reply.Cancelled))
+            else -> Result.failure(Failed(r.problem(m, command, feed.offline.value) ?: Problem("", ""), cut = r is Reply.LinkDown || r is Reply.TimedOut || r is Reply.Cancelled))
         }
     }
 

@@ -40,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -419,14 +418,14 @@ private fun picked(
     }
 }
 
-/** 那台断着：列表顶一条淡色虚线框（选中照留，能做的那几件由核心灰掉）。 */
+/** 那台断着：列表顶一条淡色虚线框（选中照留，能做的那几件由核心灰掉）；字照那台成品写的离线那一句（成品还没到 ⇒ 状态不明）。 */
 @Composable
 private fun OfflineBand(vm: FilesViewModel) {
     val tokens = LocalAppTokens.current
-    val machine by produceState("") { value = vm.machine() }
+    val offline by vm.offline.collectAsState()
     val line = tokens.borderStrong
     Text(
-        copyText("front.body.offline", "machine" to machine),
+        offline ?: copyText("sessionState.unseen.name"),
         style = monoSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier =

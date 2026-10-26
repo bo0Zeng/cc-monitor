@@ -30,7 +30,7 @@ internal class ChatReads(
     ): Any? =
         when (val r = link.call(cmd, args, READ_MS)) {
             is Reply.Ok -> r.data
-            else -> null.also { failed(r.problem(machine, cmd)?.text) }
+            else -> null.also { failed(r.problem(machine, cmd, link.offline.value)?.text) }
         }
 
     /** 回包照 [of] 解；解不出 ⇒ 「读不懂那台的回包」那一句、`null`。 */

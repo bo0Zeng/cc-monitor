@@ -289,7 +289,7 @@ class NeedsDesk(
                     reask()
                 }
                 else -> {
-                    val p = r.problem(machine, NeedsAnswer.COMMAND) ?: unreadableReply(machine, NeedsAnswer.COMMAND, r.toString())
+                    val p = r.problem(machine, NeedsAnswer.COMMAND, link.offline.value) ?: unreadableReply(machine, NeedsAnswer.COMMAND, r.toString())
                     update { ui -> ui.copy(sheet = ui.sheet?.copy(sending = null, failed = p)) }
                 }
             }

@@ -80,6 +80,7 @@ fun UsageScreen(
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val ui by board.state.collectAsState()
     val link by feed.state.collectAsState()
+    val offline by feed.offline.collectAsState()
     var open by rememberSaveable(stateSaver = STRING_SET_SAVER) { mutableStateOf(emptySet<String>()) }
     Column(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
@@ -98,7 +99,8 @@ fun UsageScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (link is LinkState.Down) {
-                DashedBar(copyText("front.body.offline", "machine" to here.machine), copyText("newSession.machine.reconnect"), feed::reconnect, Modifier.testTag(UsageTags.DOWN))
+                // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
+                DashedBar(offline ?: copyText("sessionState.unseen.name"), copyText("newSession.machine.reconnect"), feed::reconnect, Modifier.testTag(UsageTags.DOWN))
             } else {
                 ui.quotaRereadFailed?.let { DashedBar(it.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN)) }
             }

@@ -44,7 +44,7 @@ internal class ChatChips(
                     SessionModel.of(r.data)?.let { Switched(it.result, it.model, it.said) }
                         ?: Switched.failed(unreadableReply(machine, SessionModel.COMMAND, r.data.toString()).text)
                 r == Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
-                else -> Switched.failed(r.problem(machine, SessionModel.COMMAND)?.text)
+                else -> Switched.failed(r.problem(machine, SessionModel.COMMAND, link.offline.value)?.text)
             }.orUnsure(copyText("session.model.unsure"))
         }
 
@@ -59,7 +59,7 @@ internal class ChatChips(
                     is Reply.Ok ->
                         SessionCommandList.of(r.data)?.let { CommandsView.Ready(it) }
                             ?: CommandsView.Failed(unreadableReply(machine, SessionCommandList.COMMAND, r.data.toString()).text)
-                    else -> CommandsView.Failed(r.problem(machine, SessionCommandList.COMMAND)?.text.orEmpty())
+                    else -> CommandsView.Failed(r.problem(machine, SessionCommandList.COMMAND, link.offline.value)?.text.orEmpty())
                 }
             state.value = state.value.copy(commands = view)
         }
@@ -74,7 +74,7 @@ internal class ChatChips(
                     SessionPermission.of(r.data)?.let { Switched(it.result, it.modeText, it.said) }
                         ?: Switched.failed(unreadableReply(machine, SessionPermission.COMMAND, r.data.toString()).text)
                 r == Reply.TimedOut -> Switched.failed(copyText("session.permission.unsure"))
-                else -> Switched.failed(r.problem(machine, SessionPermission.COMMAND)?.text)
+                else -> Switched.failed(r.problem(machine, SessionPermission.COMMAND, link.offline.value)?.text)
             }.orUnsure(copyText("session.permission.unsure"))
         }
 
@@ -121,22 +121,22 @@ internal class ChatChips(
                     is Reply.Ok ->
                         SessionOpenFacts.of(r.data)?.let { all -> SessionOpenFacts.pick(all.agents, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty(), it?.modelDefault, it?.modelNote) } }
                             ?: Picks(error = unreadableReply(machine, SessionOpenFacts.COMMAND, r.data.toString()).text)
-                    else -> Picks(error = r.problem(machine, SessionOpenFacts.COMMAND)?.text.orEmpty())
+                    else -> Picks(error = r.problem(machine, SessionOpenFacts.COMMAND, link.offline.value)?.text.orEmpty())
                 }
             state.value = state.value.copy(picks = picks)
         }
     }
 
     /**
-     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写离线那一句。
-     * 流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。
+     * 两颗 chip 此刻能不能换：照那台给的这条会话的脸（`can.model` · `can.permission`）；那台离线 ⇒ 两颗都灰、写那台成品的离线那一句
+     * （成品还没到 ⇒ 状态不明：未知不当离线）。流上还没有它的脸 ⇒ 不灰（由两条命令自己照实回）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
-            combine(link.state, link.table) { st, t -> st to t }.collect { (st, t) ->
+            combine(link.state, link.table, link.offline) { st, t, off -> Triple(st, t, off) }.collect { (st, t, off) ->
                 val (model, permission) =
                     if (st is LinkState.Down) {
-                        copyText("newSession.machine.offline", "machine" to machine).let { it to it }
+                        (off ?: copyText("sessionState.unseen.name")).let { it to it }
                     } else {
                         val can = t.face(s)?.can
                         can?.model?.blocked() to can?.permission?.blocked()

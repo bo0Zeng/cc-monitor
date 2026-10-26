@@ -26,6 +26,7 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: (...a: unknown[]) 
 import { bindEvents } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 
 async function bind(): Promise<void> {
   await bindEvents({ onLine: vi.fn(), onSessionFace: vi.fn() } as never, {
@@ -79,8 +80,25 @@ describe("〔W5-UI〕会话流关了要出声", () => {
 describe("一台机器的会话流一直看不见 ⇒ 说出来", () => {
   const unseen = (why: string): unknown => ({ t: "unseen", at: { idx: 1, tag: "open" }, why });
   const said = (): unknown[] => toast.mock.calls.map((c) => [c[0], c[1]]);
-  beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
+  // 两台的成品（名字 · 离线那一句都是后端写的）。
+  const local = copyText("control.machine.unsure");
+  const devboxOff = "成品写的 devbox 离线那一句";
+  const localOff = "成品写的本机离线那一句";
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    noteMachine("<local>", { name: local, offlineSaid: localOff });
+    noteMachine("devbox", { name: "devbox", offlineSaid: devboxOff });
+  });
   afterEach(() => vi.useRealTimers());
+
+  it("那台成品还没到 ⇒ 不说离线（未知不当离线），只说那台无应答", async () => {
+    await bindEvents({ onLine: vi.fn(), onSessionFace: vi.fn() } as never, {
+      streams: [{ origin: "box-no-product", kind: "session-lines" }],
+    });
+    streamFake.subscriptions[0].sink([unseen("Unreachable")]);
+    vi.advanceTimersByTime(20_000);
+    expect(said()).toEqual([[copyText("events.unseen.overrunTitle", { machine: "box-no-product" }), copyText("events.unseen.neverBody", { machine: "box-no-product" })]]);
+  });
 
   it("一开始就看不见、20 秒还没看见 ⇒ 恰一条「还没连上那台」，带「打开设置」", async () => {
     const help = vi.fn();
@@ -91,7 +109,7 @@ describe("一台机器的会话流一直看不见 ⇒ 说出来", () => {
     vi.advanceTimersByTime(19_999);
     expect(toast).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(said()).toEqual([[copyText("events.unseen.neverTitle", { machine: "devbox" }), copyText("events.unseen.neverBody", { machine: "devbox" })]]);
+    expect(said()).toEqual([[devboxOff, copyText("events.unseen.neverBody", { machine: "devbox" })]]);
     const opts = toast.mock.calls[0][2] as { action?: { label: string; run: () => void } };
     expect(opts.action?.label).toBe(copyText("main.cmd.openSettings"));
     opts.action?.run();
@@ -112,14 +130,13 @@ describe("一台机器的会话流一直看不见 ⇒ 说出来", () => {
     streamFake.subscriptions[0].sink([{ t: "seen", from: null }]);
     streamFake.subscriptions[0].sink([unseen("Dropped")]);
     vi.advanceTimersByTime(20_000);
-    const local = copyText("control.machine.unsure");
-    expect(said()).toEqual([[copyText("events.unseen.droppedTitle", { machine: local }), copyText("events.unseen.lostBody", { machine: local })]]);
+    expect(said()).toEqual([[localOff, copyText("events.unseen.lostBody", { machine: local })]]);
   });
 
   it("订的时候那台已经看得见（流里没先来「看不见」）、读着读着断了 ⇒ 说连接断了，不说还没连上", async () => {
     await bind();
     streamFake.subscriptions[1].sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
     vi.advanceTimersByTime(20_000);
-    expect(said()).toEqual([[copyText("events.unseen.droppedTitle", { machine: "devbox" }), copyText("events.unseen.lostBody", { machine: "devbox" })]]);
+    expect(said()).toEqual([[devboxOff, copyText("events.unseen.lostBody", { machine: "devbox" })]]);
   });
 });

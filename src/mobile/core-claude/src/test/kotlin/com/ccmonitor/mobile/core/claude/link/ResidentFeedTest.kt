@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -264,11 +265,13 @@ class ResidentFeedTest {
                     "正在装" to Busy("安装 cc-monitor → box", bar = true),
                     "正在更新" to Busy("更新 box · cc-monitor", bar = true),
                 )
+            assertNull("成品还没到 ⇒ 没有离线那一句（未知不当离线）", f.offline.value)
             for (c in cases) {
                 val name = c.str("name").need()
                 val line = c.obj("line").need()
                 val m = line.obj("machine").need()
                 core.emit("state", Json.args(line))
+                assertEquals("$name：离线那一句照成品", m.str("offlineSaid").need(), f.offline.value)
                 val said = Said(m.str("said").need(), m.str("detail").orEmpty())
                 val fixes = m.objs("fixes").need().map { MachineFixButton(fixOf(it.str("fix").need()), it.str("label").need()) }
                 val want =

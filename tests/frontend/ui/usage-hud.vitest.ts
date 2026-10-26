@@ -62,7 +62,7 @@ describe("状态栏「上下文」chip", () => {
     hud.host = { openSettings: () => {}, retry: () => retried++ };
     document.body.appendChild(hud.summaryElement);
     hud.setActive(usage({ contextTone: "warn" }));
-    hud.setUnavailable(copyText("events.unseen.unreachableTitle", { machine: "devbox" }));
+    hud.setUnavailable("devbox 无应答");
     expect([text(hud), intent(hud)]).toEqual([copyText("usageHud.chip.none"), "neutral"]);
     hud.summaryElement.click();
     expect(panel()?.textContent).toContain(copyText("usageHud.panel.unavailable"));

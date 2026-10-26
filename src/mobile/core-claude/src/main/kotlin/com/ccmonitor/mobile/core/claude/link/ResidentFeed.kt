@@ -159,6 +159,8 @@ class ResidentFeed(
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
     override val state: StateFlow<LinkState> = stateFlow.asStateFlow()
+    private val offlineFlow = MutableStateFlow<String?>(null)
+    override val offline: StateFlow<String?> = offlineFlow.asStateFlow()
 
     private val sshFlow = MutableStateFlow(false)
 
@@ -375,6 +377,7 @@ class ResidentFeed(
     /** `state` 那一行：通没通（[LinkLine] 那几支）＋ 那台的状态成品（部署走到哪一步也在它里面）。 */
     private fun onState(line: LinkLine) {
         val machine = line.machine
+        offlineFlow.value = machine.offlineSaid
         val said = Said(machine.said, machine.detail.orEmpty())
         val busy =
             when (machine.state) {

@@ -74,6 +74,7 @@ fun RotationScreen(
     val board = remember(hostId, sid, focus) { RotationBoard(feed, sid, machine, scope, feed.changed, focus) }
     val ui by board.state.collectAsState()
     val linkState by feed.state.collectAsState()
+    val offline by feed.offline.collectAsState()
     val table by feed.table.collectAsState()
     // 会话那一形顶栏第二行：那台写好的会话名（`rotation-view` 的 `title`）。
     val title = ui.view?.title.orEmpty()
@@ -98,7 +99,8 @@ fun RotationScreen(
         ) {
             val down = linkState as? LinkState.Down
             when {
-                down != null -> DownBox(copyText("front.body.offline", "machine" to machine))
+                // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
+                down != null -> DownBox(offline ?: copyText("sessionState.unseen.name"))
                 !ui.loaded -> Skeleton()
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }

@@ -371,8 +371,9 @@ private fun ConnectedScaffold(
     // 「用哪个启动」那一排：这台的别名，按过一个就收起。
     val aliases by vm.aliases.collectAsState()
     val aliasPicked by vm.aliasPicked.collectAsState()
+    val offline by vm.offline.collectAsState()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        if (dropped) DroppedBanner(status, onReconnect)
+        if (dropped) DroppedBanner(status, offline, onReconnect)
         if (!aliasPicked) LaunchAliasRow(aliases, vm::startAlias)
         Box(Modifier.fillMaxWidth().weight(1f)) {
             ConnectedTerminal(s, vm, onShowTmux, onPushKey, onCaptured, onShowTabs)
@@ -380,10 +381,11 @@ private fun ConnectedScaffold(
     }
 }
 
-/** 掉线条幅与重连按钮。 */
+/** 掉线条幅与重连按钮。[offline] 是那台成品写的离线那一句（成品还没到 ⇒ 状态不明：未知不当离线）。 */
 @Composable
 private fun DroppedBanner(
     status: SessionStatus?,
+    offline: String?,
     onReconnect: () -> Unit,
 ) {
     // 错误条：`--card` 底（errorContainer）＋ 左 3 dp `--error` 条，字用正文色。
@@ -393,7 +395,7 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped", "machine" to LocalKeysEnv.current.hostLabel),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else offline ?: copyText("sessionState.unseen.name"),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
         SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }

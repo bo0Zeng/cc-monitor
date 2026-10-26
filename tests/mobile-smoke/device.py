@@ -769,7 +769,7 @@ def item7():
             raise Red("断着网冷启动，落地那一屏没说读不到那台（没断成，或落地不在新建会话）")
         landed = back_by_itself("落地那一屏的新建会话信息", lambda: ui.find(failed) is None and ui.find(t("chat.input.placeholder")) is not None)
         # ② 断着网时进会话列表：列表照本地缓存画、每行写那台离线；网回来那台的行自己不再写离线（重新读到了那台）。
-        offline = t("newSession.machine.offline", machine="devbox")
+        offline = t("link.machine.offline", machine="devbox")
         cold_offline()
         smoke.drawer(t("mobDrawer.item.sessions"))
         if not wait(offline, WITHIN):

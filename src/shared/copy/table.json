@@ -4423,12 +4423,6 @@
       "zh": "{machine} 无应答",
       "args": ["machine"]
     },
-    "front.body.offline": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "front.body.refused": {
       "kind": "body",
       "role": "说明",
@@ -12467,12 +12461,6 @@
       "zh": "离线",
       "args": []
     },
-    "newSession.machine.offline": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "newSession.machine.reconnect": {
       "kind": "action",
       "role": "按钮",
@@ -15152,12 +15140,6 @@
       "zh": "{machine} 会话停止自动更新 · 重启 cc-monitor 可重新接上",
       "args": ["machine"]
     },
-    "events.unseen.neverTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "events.unseen.neverBody": {
       "kind": "body",
       "role": "说明",
@@ -15165,22 +15147,10 @@
       "args": ["machine"],
       "limited": ["连接"]
     },
-    "events.unseen.droppedTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "events.unseen.overrunTitle": {
       "kind": "error",
       "role": "报错",
       "zh": "{machine} 无应答",
-      "args": ["machine"]
-    },
-    "events.unseen.unreachableTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
       "args": ["machine"]
     },
     "events.unseen.lostBody": {
@@ -28263,12 +28233,6 @@
       "zh": "重新连接中…",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobSession.bar.dropped": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
     },
     "mobTerm.model.sendFailed": {
       "kind": "body",

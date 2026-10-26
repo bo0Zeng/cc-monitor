@@ -139,7 +139,7 @@ class ChatSessionMidTest {
             assertNull(s.state.value.permission.blocked)
             link.state.value = LinkState.Down(Said("", ""))
             runCurrent()
-            val off = copyText("newSession.machine.offline", "machine" to "box")
+            val off = FakeCoreLink.OFFLINE
             assertEquals(off to off, s.state.value.model.blocked to s.state.value.permission.blocked)
         }
 

@@ -89,6 +89,9 @@ class ChatsViewTest {
 
     private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)
 
+    /** 那台成品写的离线那一句（照它比，不取字）。 */
+    private val offLine = "成品写的 m 离线那一句"
+
     private val list = Fetched.Got(page(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")).copy(truncated = true))
 
     private fun snap(
@@ -100,7 +103,8 @@ class ChatsViewTest {
         ask: ListAsk = ListAsk(),
         id: String = "h1",
         machine: String = "m",
-    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask)
+        offline: String? = offLine,
+    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask, offline)
 
     private fun live(
         sid: String,
@@ -225,7 +229,9 @@ class ChatsViewTest {
         val stale = live("1", "live-working-plain")
         val by = hostPart(snap(LinkState.Down(Said("m 离线", "boom")), stale, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
         assertEquals(SessionDot.UNKNOWN, by.getValue("1").dot)
-        assertEquals(Toned(copyText("newSession.machine.offline", "machine" to "m"), Tone.PLAIN), by.getValue("1").status)
+        assertEquals("字照那台成品写的离线那一句", Toned(offLine, Tone.PLAIN), by.getValue("1").status)
+        val unknown = hostPart(snap(LinkState.Down(Said("m 离线", "boom")), stale, Fetched.Loading, cached, offline = null)).rows.first { it.sessionId == "1" }
+        assertEquals("成品还没到 ⇒ 不说离线，说状态不明", Toned(copyText("sessionState.unseen.name"), Tone.PLAIN), unknown.status)
         assertEquals(SessionDot.ENDED, by.getValue("2").dot)
         assertEquals("已结束", by.getValue("2").status.text)
         assertEquals(SessionDot.GONE, by.getValue("3").dot)

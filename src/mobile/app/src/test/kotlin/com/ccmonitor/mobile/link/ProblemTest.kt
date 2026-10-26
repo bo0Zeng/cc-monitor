@@ -13,10 +13,16 @@ import org.junit.Test
 class ProblemTest {
     @Test
     fun `应答缺格：读取那台后端回复失败 · 内容无法解析；详情带命令名与原文`() {
-        val p = Reply.Unreadable("""{"kind":"reply","ok":true}""").problem("box", "history-list")!!
+        val p = Reply.Unreadable("""{"kind":"reply","ok":true}""").problem("box", "history-list", null)!!
         assertEquals(copyText("peerVersion.said.unreadable", "machine" to "box"), p.text)
         assertTrue(p.detail, p.detail.contains("history-list"))
         assertTrue(p.detail, p.detail.contains(""""ok":true"""))
+    }
+
+    @Test
+    fun `断着：照那台成品写的离线那一句；成品还没到 ⇒ 状态不明，不说离线`() {
+        assertEquals("成品写的 box 离线那一句", Reply.LinkDown.problem("box", "history-list", "成品写的 box 离线那一句")!!.text)
+        assertEquals(copyText("sessionState.unseen.name"), Reply.LinkDown.problem("box", "history-list", null)!!.text)
     }
 
     @Test

@@ -216,7 +216,7 @@ class NewSessionPicker(
         scope.launch {
             val r = link.call(AccountsSetDefault.COMMAND, AccountsSetDefault.args(name), WRITE_MS)
             if (r !is Reply.Ok) {
-                val why = r.problem(machine, AccountsSetDefault.COMMAND)?.text
+                val why = r.problem(machine, AccountsSetDefault.COMMAND, link.offline.value)?.text
                 _state.update { it.copy(note = listOfNotNull(copyText("acctPage.default.failed", "name" to name), why).joinToString(copyText("kit.text.sep"))) }
                 return@launch
             }
@@ -240,7 +240,7 @@ class NewSessionPicker(
     private fun failed(
         r: Reply,
         command: String,
-    ): String = (r.problem(machine, command) ?: unreadableReply(machine, command, r.toString())).text
+    ): String = (r.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, r.toString())).text
 
     companion object {
         /** 那台一条记录都没有时起在家目录（那台按它的家目录读）。 */
