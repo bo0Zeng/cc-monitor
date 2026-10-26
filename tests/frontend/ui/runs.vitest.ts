@@ -193,6 +193,19 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     run("w6", "running", "扫目录", "t1"),
   ];
 
+  it("★ 重画不丢焦点（kit place）：焦点在一行上，运行表换了一份 ⇒ 还是那个节点、焦点还在它上", () => {
+    const { tm, panel } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    tm.onSessionRuns({ sid: SID, runs: SIX, ended: [] });
+    const row = panel.pageElement.querySelector<HTMLElement>('.agent-row[data-run="w6"]')!;
+    row.tabIndex = 0;
+    row.focus();
+    tm.onSessionRuns({ sid: SID, runs: [run("w7", "running", "新的一个", "t2"), ...SIX], ended: [] });
+    expect(panel.pageElement.querySelector('.agent-row[data-run="w6"]')).toBe(row);
+    expect(document.activeElement).toBe(row);
+  });
+
   it("★ 主 tab 的消息流里零子运行行；面板：在跑的一组、最近结束的一组、状态不明的收进「更早的」；①–⑤ 一个都不是在跑", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));

@@ -1,7 +1,7 @@
 /**
  * 设置窗「别名与配置文件」五问（`profiles-*`）走通道、按类型问：后端现算对拍过的同一份金样（`profiles.golden.json`）原样交到调用方
  * （回包形状由握手时的形状指纹管，这里不逐格判）；请求问对那台、说对那条、参数原样；
- * 写那一口那台说 `stale` ⇒ 抛 ProfilesStale（界面据此重读、表单留着）。
+ * 写那一口那台说 `stale` ⇒ 原样交到统一写口，那里判成「别处改过」（界面据此重读、表单留着）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -13,7 +13,6 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   profileBases,
   profileImpact,
-  ProfilesStale,
   readProfiles,
   resolveProfile,
   writeProfiles,
@@ -21,6 +20,7 @@ import {
 } from "../../../src/frontend/ui/profiles-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
+import { write } from "../../../src/frontend/ui/ipc/write";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const G = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/profiles.golden.json"), "utf8")) as Record<string, Record<string, unknown>>;
@@ -69,11 +69,10 @@ describe("请求：问对那台、说对那条、参数原样", () => {
 });
 
 describe("写那一口的拒绝", () => {
-  it("那台说 stale ⇒ ProfilesStale；别的拒绝是普通的错", async () => {
+  it("那台说 stale ⇒ 写口判成别处改过（那一句是那台说的）；别的拒绝不是", async () => {
     invokeMock.mockRejectedValueOnce(refusedReply("stale", "被别处改过"));
-    await expect(writeProfiles("devbox", [], "fp")).rejects.toBeInstanceOf(ProfilesStale);
+    expect(await write(() => writeProfiles("devbox", [], "fp"))).toMatchObject({ ok: false, stale: true, said: "被别处改过" });
     invokeMock.mockRejectedValueOnce(refusedReply("refused", "多出坏处"));
-    const e = await writeProfiles("devbox", [], "fp").catch((x: unknown) => x);
-    expect(e).not.toBeInstanceOf(ProfilesStale);
+    expect(await write(() => writeProfiles("devbox", [], "fp"))).toMatchObject({ ok: false, stale: false, said: "多出坏处" });
   });
 });

@@ -324,3 +324,17 @@ describe("登记", () => {
     expect(CONFIG_KEY_OWNERS.sessionHead).toBe("src/frontend/ui/session-head.ts");
   });
 });
+
+describe("会话头按钮编辑浮层：重画不丢焦点（kit morph）", () => {
+  it("★ 焦点在某一行，那一排变了重画 ⇒ 焦点还在同一个按钮那一行", async () => {
+    const { HeadEditor } = await import("../../../src/frontend/ui/session-head-edit");
+    let cur = [...DEFAULT_HEAD_BUTTONS];
+    const ed = new HeadEditor({ buttons: () => cur, set: (n: typeof cur) => void (cur = n), reset: () => {} } as never);
+    document.body.replaceChildren(ed.el);
+    const id = cur[1];
+    ed.el.querySelector<HTMLElement>(`[data-row="${id}"]`)!.focus();
+    cur = [cur[1], cur[0], ...cur.slice(2)];
+    ed.update();
+    expect((document.activeElement as HTMLElement).dataset.row).toBe(id);
+  });
+});

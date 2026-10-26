@@ -95,6 +95,7 @@ const WALKERS: Record<string, string> = {
   "tests/shots/page-env.vitest.ts": "只扫 `tests/shots/` 下的 `.mjs` 脚本（起浏览器的那几份），自己是 `.vitest.ts`",
   "tests/frontend/ui/reduced-motion.vitest.ts": "只扫 `src/frontend/ui/` 下的 `.css`，自己是 `.vitest.ts`、住 `tests/`",
   "tests/frontend/ui/single-line-css.vitest.ts": "只扫 `src/` 下的 `.css` 与产品 `.ts`，自己住 `tests/`",
+  "tests/frontend/ui/morph-only.vitest.ts": "只扫 `src/frontend/` 下的产品 `.ts`，自己住 `tests/`",
   "tests/shots/browser-env.vitest.ts": "只扫 `tests/shots/` 下的 `.mjs` 脚本（起浏览器的那几份），自己是 `.vitest.ts`",
   "tests/shots/real-keys.vitest.ts": "只扫 `tests/shots/scenes/` 下的场景源码，自己住 `tests/shots/`",
 };

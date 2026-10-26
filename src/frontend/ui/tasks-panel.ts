@@ -23,6 +23,7 @@ import { chip } from "./kit/chip";
 import { attachTooltip } from "./kit/tooltip";
 import { icon, type IconName } from "./kit/icon";
 import { emptyState } from "./kit/empty";
+import { place } from "./kit/morph";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Task } from "./generated/Task";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -143,7 +144,8 @@ export class TasksPanel {
     const body = total > 0 ? this.list : this.empty;
     if (this.pageElement.firstChild !== body) this.pageElement.replaceChildren(body);
     if (total === 0) {
-      this.place([]);
+      place(this.list, []);
+      this.rows.clear();
       this.onLabel?.(this.label);
       return;
     }
@@ -172,21 +174,8 @@ export class TasksPanel {
     const parts = copyText("statusBar.tasks.hint", { done: completed, active: inProgress, open: pending + other });
     this.hint = chord ? `${parts} · ${KeybindingDispatcher.prettyChord(chord)}` : parts;
     this.onLabel?.(this.label);
-    this.place(this.tasks.map((t) => this.row(t)));
-  }
-
-  /** 列表换成 `items` 这一串：留着的行原地不动（只在次序不对时挪），没了的摘掉。 */
-  private place(items: HTMLLIElement[]): void {
-    let cur: ChildNode | null = this.list.firstChild;
-    for (const n of items) {
-      if (n === cur) cur = cur.nextSibling;
-      else this.list.insertBefore(n, cur);
-    }
-    while (cur) {
-      const next: ChildNode | null = cur.nextSibling;
-      cur.remove();
-      cur = next;
-    }
+    const items = this.tasks.map((t) => this.row(t));
+    place(this.list, items);
     const keep = new Set(items);
     for (const [id, el] of this.rows) if (!keep.has(el)) this.rows.delete(id);
   }

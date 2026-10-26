@@ -6,7 +6,7 @@
 import { accountLabel } from "./acct-words";
 import { board, draftKey, type BoardActs, type BoardState } from "./rot-board";
 import { copyText } from "./copy-table";
-import { callTyped } from "./ipc/chan-caller";
+import { callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { openOnMachine } from "./file-window";
@@ -14,7 +14,9 @@ import { openSettingsWindow } from "./open-settings";
 import { button } from "./kit/button";
 import { askText, confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { failToast } from "./kit/toast";
-import { readStrategies, readView, refusedCode, rotBudget } from "./rot-reads";
+import { readStrategies, readView, rotBudget } from "./rot-reads";
+import { write } from "./ipc/write";
+import { morph } from "./kit/morph";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import { saidOf } from "./kit/detail";
@@ -117,18 +119,8 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       machine: spec.machine,
     });
     b.prepend(...top);
-    // 焦点在草稿的某一格（正打着字）⇒ 重画后聚回同一格、光标放末尾。
-    const was = document.activeElement;
-    const at =
-      was instanceof HTMLInputElement && root.contains(was) ? { row: was.closest<HTMLElement>("[data-rot-draft]")?.dataset.rotDraft, part: was.dataset.part } : null;
-    root.replaceChildren(b);
-    if (at?.row === undefined || at.part === undefined) return;
-    const back = [...root.querySelectorAll<HTMLElement>("[data-rot-draft]")]
-      .find((r) => r.dataset.rotDraft === at.row)
-      ?.querySelector<HTMLInputElement>(`input[data-part="${at.part}"]`);
-    if (!back) return;
-    back.focus();
-    if (back.type === "text") back.setSelectionRange(back.value.length, back.value.length);
+    // 正打着字的那一格（焦点所在 · 改过没交）留着：kit morph。
+    morph(root, [b]);
   };
 
   const refresh = async (): Promise<void> => {
@@ -152,23 +144,11 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     paint();
   };
 
-  /** 发一条写；不成 ⇒ 一条失败 toast（字是后端那一句）；撞上 `conflict`（别处改过）⇒ 同样照后端那一句说，再重读此刻的
-   *  （手上没交的草稿留着，照新版再交）。成了 ⇒ `ok`（重读之前）⇒ 重读。 */
-  const write = async (
-    what: string,
-    run: () => Promise<unknown>,
-    ok?: () => void,
-  ): Promise<boolean> => {
-    try {
-      await run();
-    } catch (e) {
-      failToast(what, e);
-      if (refusedCode(e)?.code === "conflict") await refresh();
-      return false;
-    }
-    ok?.();
-    await refresh();
-    return true;
+  /** 发一条写，结局归统一写口（`ipc/write.ts`）；不成 ⇒ 一条失败 toast（字是后端那一句）。 */
+  const send = async (what: string, run: () => Promise<unknown>, clear?: () => void): Promise<boolean> => {
+    const end = await write(run, { reread: refresh, clear });
+    if (!end.ok) failToast(what, end.error);
+    return end.ok;
   };
 
   /** 设置窗换去看 `id` 那一份（缺 ⇒ 新会话用的）。 */
@@ -182,16 +162,16 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     // 会话：这个会话用它。设置窗：看它；「不轮换」⇒ 新会话不轮换。
     pick: (id) => {
       if (sid !== null)
-        return void write(copyText("rot.fail.use"), () => callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()));
+        return void send(copyText("rot.fail.use"), () => callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()));
       if (id !== null) return show(id);
       shown = undefined;
-      void write(copyText("rot.fail.forNew"), () => callTyped(origin, "rotation-for-new", { strategy: null }, rotBudget()));
+      void send(copyText("rot.fail.forNew"), () => callTyped(origin, "rotation-for-new", { strategy: null }, rotBudget()));
     },
     copy: (id) =>
       void (async () => {
         const name = await ask(copyText("rot.ask.copyTitle", { name: id }), "");
         if (name)
-          await write(copyText("rot.fail.copy"), () =>
+          await send(copyText("rot.fail.copy"), () =>
             callTyped(origin, "rotation-strategy-copy", { id, name }, rotBudget()),
           );
       })(),
@@ -202,12 +182,12 @@ export function mountRotation(spec: RotMountSpec): RotMount {
           id,
         );
         if (name && name !== id)
-          await write(copyText("rot.fail.rename"), () =>
+          await send(copyText("rot.fail.rename"), () =>
             callTyped(origin, "rotation-strategy-rename", { id, name, ifRev }, rotBudget()),
           );
       })(),
     forNew: (id) =>
-      void write(copyText("rot.fail.forNew"), () =>
+      void send(copyText("rot.fail.forNew"), () =>
         callTyped(origin, "rotation-for-new", { strategy: id }, rotBudget()),
       ),
     remove: (id) =>
@@ -219,7 +199,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
           body: copyText("rot.ask.deleteBody"),
         });
         if (ok)
-          await write(copyText("rot.fail.delete"), () =>
+          await send(copyText("rot.fail.delete"), () =>
             callTyped(origin, "rotation-strategy-delete", { id }, rotBudget()),
           );
       })(),
@@ -241,7 +221,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         if (!f) return;
         const name = await ask(copyText("rot.ask.addTitle"), f.name);
         if (name)
-          await write(copyText("rot.fail.add"), () =>
+          await send(copyText("rot.fail.add"), () =>
             callTyped(origin, "rotation-strategy-add", { source: f.text, name }, rotBudget()),
           );
       })(),
@@ -252,7 +232,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       const seg = "seg" in edit && edit.seg.at === undefined && edit.seg.seg !== undefined ? edit.seg : null;
       const account = seg?.row === undefined ? null : (view?.board.rows[seg.row]?.account ?? null);
       const done = seg ? () => void delete state.drafts?.[draftKey(account, seg.key, seg.window)] : undefined;
-      void write(
+      void send(
         copyText("rot.fail.settings"),
         () => callTyped(origin, "rotation-settings", { strategy: st.id, edit, ifRev: st.rev }, rotBudget()),
         done,
@@ -275,7 +255,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       const id = view?.strategy?.id;
       const ifRev = view?.strategy?.rev;
       if (id === undefined || ifRev === undefined) return;
-      void write(copyText("rot.fail.tz"), () =>
+      void send(copyText("rot.fail.tz"), () =>
         callTyped(origin, "rotation-strategy-tz", { id, tz: zone, ifRev }, rotBudget()),
       );
     },
@@ -284,8 +264,8 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       const id = view?.strategy?.id;
       if (id === undefined) return;
       void (sid !== null
-        ? write(copyText("rot.fail.reload"), () => callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()))
-        : write(copyText("rot.fail.reload"), () => callTyped(origin, "rotation-reload", { strategy: id }, rotBudget())));
+        ? send(copyText("rot.fail.reload"), () => callTyped(origin, "rotation-use", { sid, strategy: id }, rotBudget()))
+        : send(copyText("rot.fail.reload"), () => callTyped(origin, "rotation-reload", { strategy: id }, rotBudget())));
     },
     toggleOld: () => {
       state.oldOpen = !state.oldOpen;
@@ -296,21 +276,12 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     // 换到 `account`（「立即用」· 顺序里拖到第一格）：那台说它事实上发不出去（unusable）⇒ 不换，原因写在顺序上方。
     const switchTo = (account: string, fail: string, run: () => Promise<unknown>): void =>
       void (async () => {
-        try {
-          await run();
-          state.refused = null;
-        } catch (e) {
-          if (refusedCode(e)?.code !== "unusable") return void failToast(fail, e);
-          const why =
-            view?.accounts.find((f) => f.account === account)?.blocked?.text ??
-            saidOf(e);
-          state.refused = {
-            account,
-            text: copyText("rot.acct.refused", {
-              account: accountLabel(account),
-              why,
-            }),
-          };
+        const end = await write(run);
+        if (end.ok) state.refused = null;
+        else if (refusalIn(end.error)?.code !== "unusable") return void failToast(fail, end.error);
+        else {
+          const why = view?.accounts.find((f) => f.account === account)?.blocked?.text ?? end.said;
+          state.refused = { account, text: copyText("rot.acct.refused", { account: accountLabel(account), why }) };
         }
         await refresh();
       })();
@@ -319,7 +290,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     acts.temp = (op) => {
       const run = () => callTyped(origin, "rotation-temp", { sid, op }, rotBudget());
       if (typeof op === "object" && "move" in op) return switchTo(op.move.account, copyText("rot.fail.temp"), run);
-      void write(copyText("rot.fail.temp"), run);
+      void send(copyText("rot.fail.temp"), run);
     };
     // 编辑策略：开设置窗那台的「轮换」栏、看这个会话用的那份（给了号 ⇒ 开它的编辑小窗；策略只在那里改）。
     acts.editStrategy = (account) => {

@@ -13,6 +13,7 @@ import { backgroundLine } from "../session-face";
 import { isEnded, isLive } from "../face-can";
 import { copyText } from "../copy-table";
 import { setDot, statusDot } from "../kit/status-dot";
+import { place } from "../kit/morph";
 
 /** grid 数据源（TabManager 的只读子集——便于测试注入桩）。 */
 export interface GridSource {
@@ -294,11 +295,6 @@ export class GridMonitorView {
       : null;
     if (this.selectedId && !selected) this.selectedId = null;
 
-    // 焦点在某一格上时，这一次重排之后要让它还在同一会话那一格上：被 `insertBefore` 挪了位置的那一格会丢焦点（浏览器的 focus fixup），丢了就按 sid 找回来。
-    const active = document.activeElement;
-    const focusedSid =
-      active instanceof HTMLElement && this.bodyEl.contains(active) ? active.dataset.sid : undefined;
-
     // 先摘：这一次快照里没有了的格子、没有了的机器分组。
     const alive = new Set(sessions.map((s) => s.sessionId));
     for (const [sid, refs] of this.cells) {
@@ -328,32 +324,23 @@ export class GridMonitorView {
     }
     if (this.emptyEl?.parentNode === this.bodyEl) this.emptyEl.remove();
 
-    // 再摆：组按 `groupSessionsByOrigin` 的顺序、格子按 `sortSessionsInGroup` 的顺序，
-    // 「游标 ＋ 不在位才 `insertBefore`」（与 tab 栏同一个形状）⇒ 顺序没变的一拍零搬动。
-    let groupCursor: ChildNode | null = null;
+    // 再摆：组按 `groupSessionsByOrigin` 的顺序、格子按 `sortSessionsInGroup` 的顺序；按身份原地摆（kit `place`：
+    // 顺序没变的一拍零搬动，挪过的那一格丢了焦点还回去，不把格子滚回视口）。
+    const groupEls: HTMLElement[] = [];
     for (const group of groups) {
       const g = this.groupFor(group.origin);
       const titleText = `${group.label}（${group.sessions.length}）`;
       if (g.title.textContent !== titleText) g.title.textContent = titleText;
-      const groupAt: ChildNode | null = groupCursor ? groupCursor.nextSibling : this.bodyEl.firstChild;
-      if (g.el !== groupAt) this.bodyEl.insertBefore(g.el, groupAt);
-      groupCursor = g.el;
-
-      let cellCursor: ChildNode | null = null;
+      groupEls.push(g.el);
+      const cells: HTMLElement[] = [];
       for (const s of sortSessionsInGroup(group.sessions)) {
         const refs = this.cellFor(s.sessionId);
         this.updateCell(refs, s);
-        const cellAt: ChildNode | null = cellCursor ? cellCursor.nextSibling : g.grid.firstChild;
-        if (refs.cell !== cellAt) g.grid.insertBefore(refs.cell, cellAt);
-        cellCursor = refs.cell;
+        cells.push(refs.cell);
       }
+      place(g.grid, cells);
     }
-
-    // 恢复键盘焦点到这一次重排之前那一格（还在、且真丢了时）。preventScroll：维护性重聚焦不把格子滚回视口（否则滚动浏览时每秒被弹回）。
-    if (focusedSid) {
-      const refs = this.cells.get(focusedSid);
-      if (refs && document.activeElement !== refs.cell) refs.cell.focus({ preventScroll: true });
-    }
+    place(this.bodyEl, groupEls);
 
     this.renderPeek(selected); // 1Hz 也刷 peek（选中会话内容随之更新）
   }
