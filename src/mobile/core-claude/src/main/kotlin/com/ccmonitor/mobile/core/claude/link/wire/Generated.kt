@@ -468,7 +468,7 @@ sealed interface Answer {
 }
 
 enum class AnswerResult(val wire: String) {
-    Answered("answered"),
+    ANSWERED("answered"),
     ;
 
     companion object {
@@ -513,12 +513,12 @@ data class AnsweredRow(
 }
 
 enum class ApiReason(val wire: String) {
-    Overloaded("overloaded"),
-    Quota("quota"),
-    Network("network"),
-    Auth("auth"),
-    Context("context"),
-    Unknown("unknown"),
+    OVERLOADED("overloaded"),
+    QUOTA("quota"),
+    NETWORK("network"),
+    AUTH("auth"),
+    CONTEXT("context"),
+    UNKNOWN("unknown"),
     ;
 
     companion object {
@@ -588,9 +588,9 @@ sealed interface ArriveBy {
 }
 
 enum class AskKind(val wire: String) {
-    Approve("approve"),
-    Answer("answer"),
-    Plan("plan"),
+    APPROVE("approve"),
+    ANSWER("answer"),
+    PLAN("plan"),
     ;
 
     companion object {
@@ -662,7 +662,7 @@ data class Attached(
 }
 
 enum class AttachedKind(val wire: String) {
-    TerminalWindow("terminal-window"),
+    TERMINAL_WINDOW("terminal-window"),
     ;
 
     companion object {
@@ -966,9 +966,9 @@ sealed interface CanClose {
 }
 
 enum class CanDelete(val wire: String) {
-    Yes("yes"),
-    Live("live"),
-    Unsure("unsure"),
+    YES("yes"),
+    LIVE("live"),
+    UNSURE("unsure"),
     ;
 
     companion object {
@@ -977,9 +977,9 @@ enum class CanDelete(val wire: String) {
 }
 
 enum class CanResume(val wire: String) {
-    Yes("yes"),
-    Switch("switch"),
-    Bg("bg"),
+    YES("yes"),
+    SWITCH("switch"),
+    BG("bg"),
     ;
 
     companion object {
@@ -1047,9 +1047,9 @@ data class ChildRunTag(
 }
 
 enum class CommandScope(val wire: String) {
-    Builtin("builtin"),
-    Project("project"),
-    User("user"),
+    BUILTIN("builtin"),
+    PROJECT("project"),
+    USER("user"),
     ;
 
     companion object {
@@ -1184,11 +1184,11 @@ data class FactBlocked(
 }
 
 enum class FactWhy(val wire: String) {
-    Refused("refused"),
-    Overage("overage"),
-    Used("used"),
-    Login("login"),
-    Key("key"),
+    REFUSED("refused"),
+    OVERAGE("overage"),
+    USED("used"),
+    LOGIN("login"),
+    KEY("key"),
     ;
 
     companion object {
@@ -1197,14 +1197,14 @@ enum class FactWhy(val wire: String) {
 }
 
 enum class FileClass(val wire: String) {
-    Folder("folder"),
-    Text("text"),
-    Code("code"),
-    Image("image"),
-    Archive("archive"),
-    Pdf("pdf"),
-    Link("link"),
-    Other("other"),
+    FOLDER("folder"),
+    TEXT("text"),
+    CODE("code"),
+    IMAGE("image"),
+    ARCHIVE("archive"),
+    PDF("pdf"),
+    LINK("link"),
+    OTHER("other"),
     ;
 
     companion object {
@@ -1213,10 +1213,10 @@ enum class FileClass(val wire: String) {
 }
 
 enum class FileKind(val wire: String) {
-    Dir("dir"),
-    File("file"),
-    Symlink("symlink"),
-    Other("other"),
+    DIR("dir"),
+    FILE("file"),
+    SYMLINK("symlink"),
+    OTHER("other"),
     ;
 
     companion object {
@@ -1440,9 +1440,9 @@ sealed interface ForkTerminal {
 }
 
 enum class ForkWhence(val wire: String) {
-    Record("record"),
-    Process("process"),
-    TerminalList("terminal_list"),
+    RECORD("record"),
+    PROCESS("process"),
+    TERMINAL_LIST("terminal_list"),
     ;
 
     companion object {
@@ -1451,9 +1451,9 @@ enum class ForkWhence(val wire: String) {
 }
 
 enum class ForkWhy(val wire: String) {
-    Exited("exited"),
-    NoCwd("no_cwd"),
-    LiveNoAccount("live_no_account"),
+    EXITED("exited"),
+    NO_CWD("no_cwd"),
+    LIVE_NO_ACCOUNT("live_no_account"),
     ;
 
     companion object {
@@ -1578,11 +1578,11 @@ data class Hidden(
 }
 
 enum class HiddenBy(val wire: String) {
-    Self("self"),
-    Alias("alias"),
-    Launch("launch"),
-    Child("child"),
-    Bg("bg"),
+    SELF("self"),
+    ALIAS("alias"),
+    LAUNCH("launch"),
+    CHILD("child"),
+    BG("bg"),
     ;
 
     companion object {
@@ -1832,11 +1832,11 @@ data class HistoryTail(
 }
 
 enum class ItemState(val wire: String) {
-    Done("done"),
-    Skipped("skipped"),
-    Exists("exists"),
-    Failed("failed"),
-    Cancelled("cancelled"),
+    DONE("done"),
+    SKIPPED("skipped"),
+    EXISTS("exists"),
+    FAILED("failed"),
+    CANCELLED("cancelled"),
     ;
 
     companion object {
@@ -1866,11 +1866,11 @@ data class Killed(
 }
 
 enum class Landed(val wire: String) {
-    Started("started"),
-    InPlace("in_place"),
-    Running("running"),
-    Idle("idle"),
-    Window("window"),
+    STARTED("started"),
+    IN_PLACE("in_place"),
+    RUNNING("running"),
+    IDLE("idle"),
+    WINDOW("window"),
     ;
 
     companion object {
@@ -2066,7 +2066,7 @@ sealed interface LineRecord {
 }
 
 enum class LineRecordUnreadTone(val wire: String) {
-    Warn("warn"),
+    WARN("warn"),
     ;
 
     companion object {
@@ -2075,9 +2075,9 @@ enum class LineRecordUnreadTone(val wire: String) {
 }
 
 enum class LinkTo(val wire: String) {
-    Dir("dir"),
-    File("file"),
-    Missing("missing"),
+    DIR("dir"),
+    FILE("file"),
+    MISSING("missing"),
     ;
 
     companion object {
@@ -2171,9 +2171,9 @@ sealed interface LoginStartReq {
 }
 
 enum class LoginState(val wire: String) {
-    Ok("ok"),
-    NeedsLogin("needsLogin"),
-    NeedsKey("needsKey"),
+    OK("ok"),
+    NEEDS_LOGIN("needsLogin"),
+    NEEDS_KEY("needsKey"),
     ;
 
     companion object {
@@ -2341,9 +2341,9 @@ sealed interface ManualItem {
 }
 
 enum class ModeSwitchResult(val wire: String) {
-    Done("done"),
-    Unsure("unsure"),
-    Refused("refused"),
+    DONE("done"),
+    UNSURE("unsure"),
+    REFUSED("refused"),
     ;
 
     companion object {
@@ -2522,9 +2522,9 @@ data class NeedsChoice(
 }
 
 enum class NeedsChoiceRow(val wire: String) {
-    Main("main"),
-    Hold("hold"),
-    Release("release"),
+    MAIN("main"),
+    HOLD("hold"),
+    RELEASE("release"),
     ;
 
     companion object {
@@ -2597,14 +2597,14 @@ sealed interface NeedsItem {
 }
 
 enum class NeedsKind(val wire: String) {
-    Approve("approve"),
-    Answer("answer"),
-    Plan("plan"),
-    Network("network"),
-    Worker("worker"),
-    Goal("goal"),
-    Choose("choose"),
-    Unknown("unknown"),
+    APPROVE("approve"),
+    ANSWER("answer"),
+    PLAN("plan"),
+    NETWORK("network"),
+    WORKER("worker"),
+    GOAL("goal"),
+    CHOOSE("choose"),
+    UNKNOWN("unknown"),
     ;
 
     companion object {
@@ -2634,9 +2634,9 @@ data class NeedsList(
 }
 
 enum class NeedsNote(val wire: String) {
-    None("none"),
-    Optional("optional"),
-    Required("required"),
+    NONE("none"),
+    OPTIONAL("optional"),
+    REQUIRED("required"),
     ;
 
     companion object {
@@ -3000,8 +3000,8 @@ data class QuotaCell(
 }
 
 enum class QuotaKind(val wire: String) {
-    Sub("sub"),
-    Api("api"),
+    SUB("sub"),
+    API("api"),
     ;
 
     companion object {
@@ -3095,9 +3095,9 @@ data class QuotaRead(
 }
 
 enum class QuotaReadState(val wire: String) {
-    Present("present"),
-    Absent("absent"),
-    Unreadable("unreadable"),
+    PRESENT("present"),
+    ABSENT("absent"),
+    UNREADABLE("unreadable"),
     ;
 
     companion object {
@@ -3137,8 +3137,8 @@ data class QuotaReadingShown(
 }
 
 enum class QuotaSource(val wire: String) {
-    Headers("headers"),
-    Usage("usage"),
+    HEADERS("headers"),
+    USAGE("usage"),
     ;
 
     companion object {
@@ -3147,12 +3147,12 @@ enum class QuotaSource(val wire: String) {
 }
 
 enum class QuotaState(val wire: String) {
-    Ok("ok"),
-    Near("near"),
-    Refused("refused"),
-    OverageInUse("overageInUse"),
-    Unseen("unseen"),
-    ResetSinceSeen("resetSinceSeen"),
+    OK("ok"),
+    NEAR("near"),
+    REFUSED("refused"),
+    OVERAGE_IN_USE("overageInUse"),
+    UNSEEN("unseen"),
+    RESET_SINCE_SEEN("resetSinceSeen"),
     ;
 
     companion object {
@@ -3161,9 +3161,9 @@ enum class QuotaState(val wire: String) {
 }
 
 enum class QuotaStatus(val wire: String) {
-    Allowed("allowed"),
-    Warning("warning"),
-    Rejected("rejected"),
+    ALLOWED("allowed"),
+    WARNING("warning"),
+    REJECTED("rejected"),
     ;
 
     companion object {
@@ -3230,9 +3230,9 @@ data class QuotaUnseenUsage(
 }
 
 enum class QuotaUnseenUsageTone(val wire: String) {
-    Plain("plain"),
-    Fail("fail"),
-    Warn("warn"),
+    PLAIN("plain"),
+    FAIL("fail"),
+    WARN("warn"),
     ;
 
     companion object {
@@ -3262,9 +3262,9 @@ data class QuotaVerdict(
 }
 
 enum class QuotaVerdictTone(val wire: String) {
-    Plain("plain"),
-    Fail("fail"),
-    Warn("warn"),
+    PLAIN("plain"),
+    FAIL("fail"),
+    WARN("warn"),
     ;
 
     companion object {
@@ -3298,8 +3298,8 @@ data class QuotaWarm(
 }
 
 enum class QuotaWarmAct(val wire: String) {
-    Send("send"),
-    Wait("wait"),
+    SEND("send"),
+    WAIT("wait"),
     ;
 
     companion object {
@@ -3477,16 +3477,16 @@ data class RecordLine(
 }
 
 enum class Refused(val wire: String) {
-    NotYours("not_yours"),
-    NotManaged("not_managed"),
-    OtherWindows("other_windows"),
-    NotKnown("not_known"),
-    Ambiguous("ambiguous"),
-    Ended("ended"),
-    ScreenChanged("screen_changed"),
-    Waiting("waiting"),
-    Elsewhere("elsewhere"),
-    NotResumed("not_resumed"),
+    NOT_YOURS("not_yours"),
+    NOT_MANAGED("not_managed"),
+    OTHER_WINDOWS("other_windows"),
+    NOT_KNOWN("not_known"),
+    AMBIGUOUS("ambiguous"),
+    ENDED("ended"),
+    SCREEN_CHANGED("screen_changed"),
+    WAITING("waiting"),
+    ELSEWHERE("elsewhere"),
+    NOT_RESUMED("not_resumed"),
     ;
 
     companion object {
@@ -3514,8 +3514,8 @@ data class ReplyError(
 }
 
 enum class ResultKind(val wire: String) {
-    Launched("launched"),
-    Handback("handback"),
+    LAUNCHED("launched"),
+    HANDBACK("handback"),
     ;
 
     companion object {
@@ -3677,11 +3677,11 @@ data object RotDone {
 }
 
 enum class RotFormKind(val wire: String) {
-    Percent("percent"),
-    Minutes("minutes"),
-    Toggle("toggle"),
-    Choice("choice"),
-    DaySegments("daySegments"),
+    PERCENT("percent"),
+    MINUTES("minutes"),
+    TOGGLE("toggle"),
+    CHOICE("choice"),
+    DAY_SEGMENTS("daySegments"),
     ;
 
     companion object {
@@ -3690,10 +3690,10 @@ enum class RotFormKind(val wire: String) {
 }
 
 enum class RotFrom(val wire: String) {
-    Own("own"),
-    All("all"),
-    Default("default"),
-    Same("same"),
+    OWN("own"),
+    ALL("all"),
+    DEFAULT("default"),
+    SAME("same"),
     ;
 
     companion object {
@@ -4502,8 +4502,8 @@ data class RotationViewReply(
 }
 
 enum class Run(val wire: String) {
-    Tmux("tmux"),
-    Direct("direct"),
+    TMUX("tmux"),
+    DIRECT("direct"),
     ;
 
     companion object {
@@ -4642,9 +4642,9 @@ data class Sent(
 }
 
 enum class SentResult(val wire: String) {
-    Delivered("delivered"),
-    Unsure("unsure"),
-    Refused("refused"),
+    DELIVERED("delivered"),
+    UNSURE("unsure"),
+    REFUSED("refused"),
     ;
 
     companion object {
@@ -4755,14 +4755,14 @@ data class SessionCommands(
 }
 
 enum class SessionDot(val wire: String) {
-    Running("running"),
-    NeedsYou("needs-you"),
-    Background("background"),
-    Idle("idle"),
-    Exited("exited"),
-    Ended("ended"),
-    Gone("gone"),
-    Unknown("unknown"),
+    RUNNING("running"),
+    NEEDS_YOU("needs-you"),
+    BACKGROUND("background"),
+    IDLE("idle"),
+    EXITED("exited"),
+    ENDED("ended"),
+    GONE("gone"),
+    UNKNOWN("unknown"),
     ;
 
     companion object {
@@ -4862,9 +4862,9 @@ data class SlotShow(
 }
 
 enum class SlotShowTone(val wire: String) {
-    Plain("plain"),
-    Fail("fail"),
-    Warn("warn"),
+    PLAIN("plain"),
+    FAIL("fail"),
+    WARN("warn"),
     ;
 
     companion object {
@@ -5333,11 +5333,11 @@ data class SyncPatch<H, T>(
 }
 
 enum class TailHow(val wire: String) {
-    Tail("tail"),
-    Resume("resume"),
-    Handoff("handoff"),
-    Truncated("truncated"),
-    Rewritten("rewritten"),
+    TAIL("tail"),
+    RESUME("resume"),
+    HANDOFF("handoff"),
+    TRUNCATED("truncated"),
+    REWRITTEN("rewritten"),
     ;
 
     companion object {
@@ -5365,9 +5365,9 @@ data class TermSession(
 }
 
 enum class TermState(val wire: String) {
-    Running("running"),
-    Idle("idle"),
-    ProgramExited("program_exited"),
+    RUNNING("running"),
+    IDLE("idle"),
+    PROGRAM_EXITED("program_exited"),
     ;
 
     companion object {
@@ -5433,9 +5433,9 @@ data class TerminalCanEndObjValue(
 }
 
 enum class TerminalCanEndObjValueNo(val wire: String) {
-    NotYours("not_yours"),
-    NotManaged("not_managed"),
-    OtherWindows("other_windows"),
+    NOT_YOURS("not_yours"),
+    NOT_MANAGED("not_managed"),
+    OTHER_WINDOWS("other_windows"),
     ;
 
     companion object {
@@ -5482,8 +5482,8 @@ data class TerminalCanInputObjValue(
 }
 
 enum class TerminalCanInputObjValueNo(val wire: String) {
-    NotYours("not_yours"),
-    NotManaged("not_managed"),
+    NOT_YOURS("not_yours"),
+    NOT_MANAGED("not_managed"),
     ;
 
     companion object {
@@ -5533,7 +5533,7 @@ data class TerminalItem(
 }
 
 enum class TerminalItemHost(val wire: String) {
-    Tmux("tmux"),
+    TMUX("tmux"),
     ;
 
     companion object {
@@ -5542,7 +5542,7 @@ enum class TerminalItemHost(val wire: String) {
 }
 
 enum class TerminalItemInput(val wire: String) {
-    Shared("shared"),
+    SHARED("shared"),
     ;
 
     companion object {
@@ -5608,8 +5608,8 @@ data class TextPreview(
 }
 
 enum class TitleBy(val wire: String) {
-    Agent("agent"),
-    User("user"),
+    AGENT("agent"),
+    USER("user"),
     ;
 
     companion object {
@@ -5618,12 +5618,12 @@ enum class TitleBy(val wire: String) {
 }
 
 enum class Tone(val wire: String) {
-    Plain("plain"),
-    Fail("fail"),
-    Now("now"),
-    Need("need"),
-    Warn("warn"),
-    Busy("busy"),
+    PLAIN("plain"),
+    FAIL("fail"),
+    NOW("now"),
+    NEED("need"),
+    WARN("warn"),
+    BUSY("busy"),
     ;
 
     companion object {
@@ -5632,11 +5632,11 @@ enum class Tone(val wire: String) {
 }
 
 enum class ToolCard(val wire: String) {
-    Agent("agent"),
-    Interactive("interactive"),
-    Diff("diff"),
-    Md("md"),
-    Command("command"),
+    AGENT("agent"),
+    INTERACTIVE("interactive"),
+    DIFF("diff"),
+    MD("md"),
+    COMMAND("command"),
     ;
 
     companion object {
@@ -5678,8 +5678,8 @@ data class ToolStep(
 }
 
 enum class UnreadWhy(val wire: String) {
-    UnknownType("unknownType"),
-    ParseFailed("parseFailed"),
+    UNKNOWN_TYPE("unknownType"),
+    PARSE_FAILED("parseFailed"),
     ;
 
     companion object {
@@ -5715,9 +5715,9 @@ data class Usage(
 }
 
 enum class UsageTone(val wire: String) {
-    Plain("plain"),
-    Fail("fail"),
-    Warn("warn"),
+    PLAIN("plain"),
+    FAIL("fail"),
+    WARN("warn"),
     ;
 
     companion object {
@@ -5817,9 +5817,9 @@ data class WindowShow(
 }
 
 enum class WindowShowTone(val wire: String) {
-    Plain("plain"),
-    Fail("fail"),
-    Warn("warn"),
+    PLAIN("plain"),
+    FAIL("fail"),
+    WARN("warn"),
     ;
 
     companion object {
@@ -5864,10 +5864,10 @@ data class WirePathObjValue(
 }
 
 enum class WireSessionActivity(val wire: String) {
-    Working("working"),
-    NeedsYou("needs_you"),
-    Idle("idle"),
-    BackgroundWork("background_work"),
+    WORKING("working"),
+    NEEDS_YOU("needs_you"),
+    IDLE("idle"),
+    BACKGROUND_WORK("background_work"),
     ;
 
     companion object {

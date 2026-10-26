@@ -220,6 +220,8 @@ function rustFloatFields() {
 // ───────────────────────────── 出 Kotlin ─────────────────────────────
 
 const pascal = (s) => s.replace(/(^|[_\-\s.])([a-zA-Z0-9])/g, (_, __, c) => c.toUpperCase()).replace(/[^A-Za-z0-9]/g, "");
+/** 枚举常量名：线上那个词照大写下划线（`not_yours` · `hostKey` ⇒ `NOT_YOURS` · `HOST_KEY`）。 */
+const upper = (s) => (s.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "").toUpperCase() || "EMPTY").replace(/^([0-9])/, "N$1");
 const camel = (s) => { const p = pascal(s); return p.charAt(0).toLowerCase() + p.slice(1); };
 const KW = new Set(["class", "object", "fun", "val", "var", "in", "is", "as", "when", "if", "else", "for", "while", "do", "return", "null", "true", "false", "this", "super", "typealias", "interface", "package", "import", "try", "catch", "throw", "break", "continue", "type"]);
 const prop = (key) => { const c = camel(key) || "x"; const n = /^[0-9]/.test(c) ? "n" + c : c; return KW.has(n) ? "`" + n + "`" : n; };
@@ -383,7 +385,7 @@ class Gen {
   }
 
   enumCode(name, vals) {
-    const consts = vals.map((v) => `    ${(pascal(v) || "Empty").replace(/^([0-9])/, "N$1")}("${esc(v)}"),`).join("\n");
+    const consts = vals.map((v) => `    ${upper(v)}("${esc(v)}"),`).join("\n");
     return `enum class ${name}(val wire: String) {\n${consts}\n    ;\n\n    companion object {\n        val ADAPTER: JsonAdapter<${name}> = enumOf(entries) { it.wire }\n    }\n}\n`;
   }
 
@@ -848,12 +850,13 @@ function main() {
     const x = g.ty(cmds.get(c).reply, { owner: pascal(c) + "Reply" });
     table.push(`        "${c}" to ${x.ad},`);
   }
+  const byClass = [...g.out.keys()].filter((k) => /\n    (?:val ADAPTER|companion object \{\n        val ADAPTER)/.test(g.out.get(k)) || /^data object /m.test(g.out.get(k))).sort();
   const header = `// 生成的文件（tests/scripts/gen-kotlin-wire.mjs 读 ts-rs 导出的声明出的）。不要手改：改 Rust 那一份类型，再跑 \`npm run gen:types\`。\n@file:Suppress("ktlint", "detekt:all")\n\npackage ${PKG}\n\nimport com.squareup.moshi.JsonAdapter\n`;
   const types = [...g.out.keys()].sort().map((k) => g.out.get(k)).join("\n");
   writeFileSync(join(OUT_DIR, "Generated.kt"), `${header}\n${PREAMBLE}\n${types}`);
   writeFileSync(
     join(OUT_DIR, "Commands.kt"),
-    `${header}\n/** 手机按类型读回包的那几条命令 ⇒ 回包怎么解（\`cmd-wire/src/replies.rs\` 那张表 · 类型照 TypedCommands）。 */\nobject Commands {\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.join("\n")}\n    )\n}\n`,
+    `${header}\n/** 手机按类型读回包的那几条命令 ⇒ 回包怎么解（\`cmd-wire/src/replies.rs\` 那张表 · 类型照 TypedCommands）。 */\nobject Commands {\n    val REPLIES: Map<String, JsonAdapter<*>> = mapOf(\n${table.join("\n")}\n    )\n\n    /** 每个不带类型参数的类型 ⇒ 它的编解码（按类取，不经反射）。 */\n    val BY_CLASS: Map<Class<*>, JsonAdapter<*>> by lazy {\n        mapOf(\n${byClass.map((k) => `            ${k}::class.java to ${k}.ADAPTER,`).join("\n")}\n        )\n    }\n}\n`,
   );
   if (g.raw.length) process.stderr.write("原样（认不出的形）：\n  " + g.raw.join("\n  ") + "\n");
 }
