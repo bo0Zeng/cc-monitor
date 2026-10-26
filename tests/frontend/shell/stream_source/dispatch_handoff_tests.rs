@@ -39,7 +39,10 @@ async fn a_live_card_frame_goes_straight_into_that_machines_live_card_stream() {
     let box_a = crate::origin::Origin("handoff-live-a".into());
     let mut s = r.subscribe_stream(&box_a, "session-live-card", None);
     let line = r#"{"kind":"live_card","sid":"s1","card":7,"n":2,"op":"close","why":"record"}"#;
-    assert!(route(&box_a, None, frame(line)).is_none(), "活卡不是有序的那几种");
+    assert!(
+        route(&box_a, None, frame(line)).is_none(),
+        "活卡不是有序的那几种"
+    );
     let got = next_frame(&mut s).await.expect("活卡没进那台的活卡流");
     assert_eq!(got["origin"], "handoff-live-a");
     assert_eq!(
@@ -67,8 +70,7 @@ async fn a_terminal_follow_end_goes_straight_into_that_machines_screen_stream_wi
     let r = replay();
     let box_b = crate::origin::Origin("handoff-screen-b".into());
     let mut s = r.subscribe_stream(&box_b, "terminal-screen/handoff-t1", None);
-    let line =
-        r#"{"kind":"terminal_follow_end","ticket":"handoff-t1","why":"gone","said":"那台写的一句"}"#;
+    let line = r#"{"kind":"terminal_follow_end","ticket":"handoff-t1","why":"gone","said":"那台写的一句"}"#;
     assert!(route(&box_b, None, frame(line)).is_none());
     assert_eq!(
         next_frame(&mut s).await,
