@@ -5,7 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../../src/frontend/ui/plan-reads", () => ({ fetchMsgRefs: vi.fn() }));
-vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()) }));
+vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), listen: vi.fn(() => Promise.resolve(() => {})) }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 
 import { emit } from "@tauri-apps/api/event";
 import { fetchMsgRefs } from "../../../src/frontend/ui/plan-reads";
@@ -13,6 +14,7 @@ import { askRefs, noteProse, __refsSettledForTests } from "../../../src/frontend
 import { renderMarkdown } from "../../../src/frontend/ui/render";
 import { PLAN_OPEN_EVENT } from "../../../src/frontend/ui/window-events";
 import type { PlanMsgRefs } from "../../../src/frontend/ui/generated/PlanMsgRefs";
+import { renderMessage, type LineRecord, type RenderContext } from "../../../src/frontend/ui/cards";
 
 const fetchMock = fetchMsgRefs as unknown as ReturnType<typeof vi.fn>;
 const emitMock = emit as unknown as ReturnType<typeof vi.fn>;
@@ -131,5 +133,75 @@ describe("plan-refs 回来的处照排", () => {
     askRefs(d, "devbox", "sid-1");
     await __refsSettledForTests();
     expect(d.innerHTML).toBe(before);
+  });
+});
+
+// 人说的话（用户气泡）：同一个口子 —— 与回复正文同一批送，回来的照同一种排法；气泡照原文排（不过 markdown），折起的粘贴块不送。
+describe("用户气泡里的编号", () => {
+  const ctx = (): RenderContext => ({
+    parentPath: "/p/s.jsonl",
+    origin: "devbox",
+    toolUseNames: new Map(),
+    toolUseElements: new Map(),
+    pendingToolResults: new Map(),
+  });
+  const said = (text: string, pasted: object[] = []): HTMLElement => {
+    const rec = { agent: "claude", t: "said", id: "u", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted } };
+    const r = renderMessage(rec as never as LineRecord, ctx());
+    if (r.kind !== "card") throw new Error(r.kind);
+    return r.element;
+  };
+  const span = (text: string, open: string, body: string, close: string, lines: number) => {
+    const start = text.indexOf(open);
+    const bodyStart = start + open.length;
+    return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, lines };
+  };
+
+  it("气泡与回复同一批问一次；编号原样跟标题，星号照原文不变粗，点了开计划页", async () => {
+    const text = "看 *A1-1* 再说\n第二行";
+    const reply = "回 A1。";
+    fetchMock.mockResolvedValueOnce({
+      workspace: "/w",
+      slice: "alpha",
+      refs: [[{ ...at(text, "A1-1"), ids: ["A1-1"], label: "甲的读入" }], [{ ...at(reply, "A1"), ids: ["A1"], label: "甲功能" }]],
+    } satisfies PlanMsgRefs);
+    const u = said(text);
+    const a = card(reply);
+    askRefs(u, "devbox", "sid-1");
+    askRefs(a, "devbox", "sid-1");
+    await __refsSettledForTests();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][2]).toEqual([text, reply]);
+    const body = u.querySelector(".card-body")!;
+    expect(body.querySelector("em, strong")).toBeNull();
+    expect(body.querySelectorAll("br").length).toBe(1);
+    expect(body.textContent).toBe("看 *A1-1甲的读入* 再说第二行");
+    body.querySelector("button")!.click();
+    expect(emitMock).toHaveBeenCalledWith(PLAN_OPEN_EVENT, { origin: "devbox", workspace: "/w", slice: "alpha", id: "A1-1" });
+    expect(words(a)).toBe("回 A1甲功能。");
+  });
+
+  it("带粘贴块：露在外面的几段送，折起的那一块不送", async () => {
+    const long = Array.from({ length: 13 }, (_, i) => `A9-${i}`).join("\n");
+    const short = "见 A2";
+    const text = `先 A1：<P1>${long}</P1>再<P2>${short}</P2>完`;
+    const u = said(text, [span(text, "<P1>", long, "</P1>", 13), span(text, "<P2>", short, "</P2>", 1)]);
+    fetchMock.mockImplementationOnce(async (_o: string, _s: string, texts: string[]) => ({
+      workspace: "/w",
+      slice: "alpha",
+      refs: texts.map((t) => {
+        const i = t.search(/A[12]\b/);
+        return i < 0 ? [] : [{ start: i, end: i + 2, ids: [t.slice(i, i + 2)], label: `标${t.slice(i, i + 2)}` }];
+      }),
+    }));
+    askRefs(u, "devbox", "sid-1");
+    await __refsSettledForTests();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sent = fetchMock.mock.calls[0][2] as string[];
+    expect(sent.some((t) => t.includes("A9-"))).toBe(false);
+    expect(sent.join("|")).toContain("先 A1：");
+    expect(sent.join("|")).toContain(short);
+    expect([...u.querySelectorAll(".card-body button")].map((b) => b.textContent)).toEqual(["标A1", "标A2"]);
+    expect(u.querySelector(".paste-fold button")).toBeNull();
   });
 });
