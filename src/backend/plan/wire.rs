@@ -298,6 +298,26 @@ pub(crate) struct PlanBlock {
     pub handoff: Option<String>,
     /// 为什么给不了；给了 ⇒ `null`。
     pub handoff_error: Option<String>,
+    /// 「另开会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
+    pub takeover: PlanTakeover,
+}
+
+/// 一个建了的权力范围此刻给不给「另开会话接手」。还没划出（`unbuiltBlocks`）⇒ 灰：那一列本身就是这一判，不另带一格。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) enum PlanTakeover {
+    /// 出：划出那一项在、没有负责人或负责人那条会话已停；开口那句是 `handoff`。
+    Open,
+    /// 该出、交接说明拿不到：写 `handoffError`。
+    NoLine,
+    /// 不出：负责人那条会话活着。
+    Running,
+    /// 不出：负责人对不上这台的任何会话，说不清停没停（换掉负责人撤不回，判不了就不给）。
+    Unsure,
+    /// 不出：划出那一项删了，下一趟 update 并回。
+    Merging,
 }
 
 /// 四种画线的边在这一类里各叫什么（pb 领域表的 `edge_labels`）。
