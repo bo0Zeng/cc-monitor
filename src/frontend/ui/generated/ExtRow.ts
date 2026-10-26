@@ -7,7 +7,11 @@ import type { ExtKind } from "./ExtKind";
 /**
  * 表里一行（一个条目）。`cells` 与 [`ExtList::machines`] 同序。
  */
-export type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+export type ExtRow = { kind: ExtKind, 
+/**
+ * 种类那一格的字（后端写好）。
+ */
+kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
 /**
  * 用户写的备注（随目录在后端之间同步）。
  */

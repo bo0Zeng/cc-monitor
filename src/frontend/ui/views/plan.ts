@@ -45,14 +45,14 @@ import {
   labelOf,
   outlineRows,
   shortId,
+  ringLanes,
   ringRules,
-  ringsOf,
   statusLook,
   topBlock,
   type PlanFilter,
-  type Ring,
+  type RingRow,
 } from "./plan-model";
-import { CellDetail, handoffBox } from "./plan-cell";
+import { CellDetail, handoffBox, takeoverCell, takeoverSpec } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
@@ -143,6 +143,7 @@ export class PlanView {
       workspace: () => this.current?.workspace ?? "",
       switchTo: (sid) => this.goSession(sid),
       returnCell: (slice, cell) => openReturn(this.review, slice, cellTarget(slice, cell)),
+      takeover: () => this.takeover(),
     });
     this.review = {
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,
@@ -433,6 +434,12 @@ export class PlanView {
     const r = returnedBar(this.review, cell ? (cell.returned ?? null) : (slice.returned ?? null));
     if (r) out.push(r);
     return out;
+  }
+
+  /** ［另开会话接手…］：全产品那一个新建会话框，机器锁这一片那台、目录是工作区根。 */
+  private takeover(): void {
+    const cur = this.current;
+    if (cur) void openNewSession(takeoverSpec(cur.origin, cur.workspace));
   }
 
   private goSession(sid: string): void {
@@ -829,12 +836,17 @@ export class PlanView {
       query: this.query,
       needsCells: new Set((slice.needs ?? []).map((n) => n.cell).filter((x): x is string => x !== null)),
     });
-    const rings = ringsOf(slice);
-    for (const r of rows) box.appendChild(this.row(slice, r, rings.get(r.cell.id) ?? []));
+    const lanes = ringLanes(
+      slice,
+      rows.map((r) => r.cell.id),
+      new Set(rows.filter((r) => r.folded).map((r) => r.cell.id)),
+      this.selected,
+    );
+    rows.forEach((r, i) => box.appendChild(this.row(slice, r, lanes[i])));
     return box;
   }
 
-  private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number], rings: readonly Ring[]): HTMLElement {
+  private row(slice: PlanSlice, r: ReturnType<typeof outlineRows>[number], rings: RingRow): HTMLElement {
     const c = r.cell;
     const look = statusLook(c);
     const el = document.createElement("div");
@@ -847,18 +859,27 @@ export class PlanView {
     if (r.hasKids) el.setAttribute("aria-expanded", String(!r.folded));
     el.style.paddingLeft = `${16 + r.depth * 18}px`;
     setKindColor(el, kindSlot(slice, c.kind));
-    // covers 画圈：最左一条槽，圈住它的每条规矩一道（同一条规矩同一色，几道并排），停在上面说是哪一条。
-    if (rings.length > 0) {
+    // covers 画圈：最左一条槽，一条规矩固定一列（同一条规矩同一色），一段起头带上钩、末行带下钩，停在上面说是哪一条；
+    // 选中了画圈的规矩 ⇒ 它那几道亮、别的淡，圈住的行铺它的色。
+    if (rings.marks.length > 0) {
       const slot = document.createElement("span");
       slot.className = s.pvRings;
-      for (const g of rings) {
+      for (const g of rings.marks) {
         const b = document.createElement("span");
         b.className = s.pvRing;
         setKindColor(b, g.slot);
+        b.style.setProperty("--col", String(g.col));
+        if (g.start) b.dataset.start = "true";
+        if (g.end) b.dataset.end = "true";
+        if (g.look) b.dataset.look = g.look;
         b.title = labelOf(slice, g.rule);
         slot.appendChild(b);
       }
       el.appendChild(slot);
+    }
+    if (rings.tint !== null) {
+      el.dataset.ringed = "true";
+      el.style.setProperty("--rc", `var(--plan-kind-${rings.tint})`);
     }
     const chev = document.createElement("span");
     chev.className = s.pvChev;
@@ -970,20 +991,29 @@ export class PlanView {
     if (doc?.readAtText) box.appendChild(text(copyText("plan.overview.readAt", { time: doc.readAtText }), s.pvMeta));
 
     // 块
+    // 末一格「另开会话接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
     const blocks = slice.blocks.filter((b) => b.id !== "project");
-    if (blocks.length > 0) {
-      const sec = section(copyText("plan.overview.blocks"), String(blocks.length));
-      const tbl = table([copyText("plan.blocks.block"), copyText("plan.blocks.owner"), copyText("plan.blocks.phase"), copyText("plan.blocks.at"), copyText("plan.blocks.inside")], [4]);
+    const unbuilt = slice.unbuiltBlocks;
+    if (blocks.length + unbuilt.length > 0) {
+      const sec = section(copyText("plan.overview.blocks"), String(blocks.length + unbuilt.length));
+      const tbl = table([copyText("plan.blocks.block"), copyText("plan.blocks.owner"), copyText("plan.blocks.phase"), copyText("plan.blocks.at"), copyText("plan.blocks.inside"), ""], [4, 5]);
+      const none = (): HTMLElement => text(copyText("plan.page.none"));
       for (const b of blocks) {
         const root = byId.get(b.cells[0] ?? "");
         const at = b.at ? byId.get(b.at) : null;
         const tr = tbl.row([
           text(labelOf(slice, root?.id ?? b.id)),
-          b.owner ? this.whoChip(b.owner) : text(copyText("plan.page.none")),
-          b.phase ? phaseBadge(b.phase) : text(copyText("plan.page.none")),
+          b.owner ? this.whoChip(b.owner) : none(),
+          b.phase ? phaseBadge(b.phase) : none(),
           text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
           text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
+          stop(takeoverCell(b, () => this.takeover())),
         ]);
+        if (root) clickRow(tr, () => this.select(root.id));
+      }
+      for (const u of unbuilt) {
+        const root = byId.get(u.cells[0] ?? "");
+        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), stop(takeoverCell("unbuilt", () => {}))]);
         if (root) clickRow(tr, () => this.select(root.id));
       }
       sec.appendChild(tbl.el);
@@ -1120,6 +1150,12 @@ function table(heads: string[], right: number[]): { el: HTMLTableElement; row(ce
       return tr;
     },
   };
+}
+
+/** 行里那颗按钮的点击不连带选中那一行。 */
+function stop(el: HTMLElement): HTMLElement {
+  el.addEventListener("click", (ev) => ev.stopPropagation());
+  return el;
 }
 
 function clickRow(tr: HTMLTableRowElement, go: () => void): void {

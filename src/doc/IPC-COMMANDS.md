@@ -9521,7 +9521,7 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 入参 `NoArgs` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type CatalogAsset = { kind: string, name: string, 
+type CatalogAsset = { kind: ExtKind, name: string, 
 /**
  * 那台上的项目目录（项目级）；`None` = 用户级。
  */
@@ -9531,9 +9531,13 @@ project?: string,
  */
 dir?: string, digest: string, 
 /**
- * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+ * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义；插件：市场 · 版本 · 说明 · 组成 · 开关出处）。
  */
-summary: unknown, };
+summary: unknown, 
+/**
+ * 装了、关着（只有插件有这一态；缺 ＝ 开着）。
+ */
+off?: boolean, };
 type CatalogFrom = { 
 /**
  * 那台目录的 id。
@@ -9562,7 +9566,8 @@ changed: boolean,
  * 目录文件在这台上的路径。
  */
 path: string | null, };
-type CatalogRow = { kind: string, name: string, state: string, from: Array<CatalogFrom>, };
+type CatalogRow = { kind: ExtKind, name: string, state: string, from: Array<CatalogFrom>, };
+type ExtKind = "skill" | "mcp" | "plugin";
 type NoArgs = Record<symbol, never>;
 ```
 
@@ -9577,7 +9582,7 @@ type NoArgs = Record<symbol, never>;
 入参 `CatalogMergeReq` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type CatalogAsset = { kind: string, name: string, 
+type CatalogAsset = { kind: ExtKind, name: string, 
 /**
  * 那台上的项目目录（项目级）；`None` = 用户级。
  */
@@ -9587,9 +9592,13 @@ project?: string,
  */
 dir?: string, digest: string, 
 /**
- * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+ * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义；插件：市场 · 版本 · 说明 · 组成 · 开关出处）。
  */
-summary: unknown, };
+summary: unknown, 
+/**
+ * 装了、关着（只有插件有这一态；缺 ＝ 开着）。
+ */
+off?: boolean, };
 type CatalogFrom = { 
 /**
  * 那台目录的 id。
@@ -9620,7 +9629,8 @@ changed: boolean,
  * 目录文件在这台上的路径。
  */
 path: string | null, };
-type CatalogRow = { kind: string, name: string, state: string, from: Array<CatalogFrom>, };
+type CatalogRow = { kind: ExtKind, name: string, state: string, from: Array<CatalogFrom>, };
+type ExtKind = "skill" | "mcp" | "plugin";
 ```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
@@ -9930,7 +9940,7 @@ stop: string | null,
  * MCP：装上之后那一条（待填的值是 `null`）。
  */
 config: string | null, slots: Array<ExtSlot>, tokens: ExtTokens, };
-type ExtKind = "skill" | "mcp";
+type ExtKind = "skill" | "mcp" | "plugin";
 type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
 type ExtSlot = { 
 /**
@@ -9981,7 +9991,7 @@ changed: Array<string>,
  * 做成了，但有一件要知道的（执行位没改成 · 没记下来 · 空目录没收掉 …）。
  */
 note: string | null, };
-type ExtKind = "skill" | "mcp";
+type ExtKind = "skill" | "mcp" | "plugin";
 type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
 type ExtTokens = { source: string, target: string | null, };
 type HubApplied = { machines: Array<HubMachineDone>, };
@@ -10016,6 +10026,10 @@ type ExtCell = {
  */
 state: ExtState, 
 /**
+ * 那个点那一句（悬停 · 抽屉里那台那一行；后端写好）。
+ */
+said: string, 
+/**
  * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
  */
 places: Array<ExtPlace>, bring: ExtBring | null, 
@@ -10024,8 +10038,13 @@ places: Array<ExtPlace>, bring: ExtBring | null,
  */
 note: string | null, };
 type ExtDetail = { label: string, value: string, };
-type ExtKind = "skill" | "mcp";
-type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, };
+type ExtKind = "skill" | "mcp" | "plugin";
+type ExtLegend = { state: ExtState, said: string, };
+type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, 
+/**
+ * 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+ */
+legend: Array<ExtLegend>, };
 type ExtListReq = { 
 /**
  * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
@@ -10055,6 +10074,10 @@ type ExtPlace = { at: ExtLoc,
  */
 state: ExtState, 
 /**
+ * 这一处那一句（后端写好）。
+ */
+said: string, 
+/**
  * skill：那一处的目录（「在文件窗口里打开」用）。
  */
 dir: string | null, 
@@ -10065,14 +10088,22 @@ uninstall: boolean,
 /**
  * 有它、却没有「卸载」时为什么。
  */
-note: string | null, };
-type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+note: string | null, 
+/**
+ * 这一处自己的一句（插件：版本 · 开着 / 关着 · 出处）；别的种类没有。
+ */
+line?: string, };
+type ExtRow = { kind: ExtKind, 
+/**
+ * 种类那一格的字（后端写好）。
+ */
+kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
 /**
  * 用户写的备注（随目录在后端之间同步）。
  */
 note: string | null, cells: Array<ExtCell>, };
 type ExtScope = { from: ExtLoc, to: ExtLoc, };
-type ExtState = "same" | "differs" | "missing" | "project";
+type ExtState = "same" | "differs" | "missing" | "project" | "off";
 type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
 ```
 
@@ -10103,6 +10134,10 @@ type ExtCell = {
  */
 state: ExtState, 
 /**
+ * 那个点那一句（悬停 · 抽屉里那台那一行；后端写好）。
+ */
+said: string, 
+/**
  * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
  */
 places: Array<ExtPlace>, bring: ExtBring | null, 
@@ -10111,8 +10146,13 @@ places: Array<ExtPlace>, bring: ExtBring | null,
  */
 note: string | null, };
 type ExtDetail = { label: string, value: string, };
-type ExtKind = "skill" | "mcp";
-type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, };
+type ExtKind = "skill" | "mcp" | "plugin";
+type ExtLegend = { state: ExtState, said: string, };
+type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, 
+/**
+ * 表下图例：列哪几态 ＋ 各一句（「关着」只在有插件行时列）。
+ */
+legend: Array<ExtLegend>, };
 type ExtListReq = { 
 /**
  * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
@@ -10142,6 +10182,10 @@ type ExtPlace = { at: ExtLoc,
  */
 state: ExtState, 
 /**
+ * 这一处那一句（后端写好）。
+ */
+said: string, 
+/**
  * skill：那一处的目录（「在文件窗口里打开」用）。
  */
 dir: string | null, 
@@ -10152,14 +10196,22 @@ uninstall: boolean,
 /**
  * 有它、却没有「卸载」时为什么。
  */
-note: string | null, };
-type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+note: string | null, 
+/**
+ * 这一处自己的一句（插件：版本 · 开着 / 关着 · 出处）；别的种类没有。
+ */
+line?: string, };
+type ExtRow = { kind: ExtKind, 
+/**
+ * 种类那一格的字（后端写好）。
+ */
+kindSaid: string, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
 /**
  * 用户写的备注（随目录在后端之间同步）。
  */
 note: string | null, cells: Array<ExtCell>, };
 type ExtScope = { from: ExtLoc, to: ExtLoc, };
-type ExtState = "same" | "differs" | "missing" | "project";
+type ExtState = "same" | "differs" | "missing" | "project" | "off";
 type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
 ```
 
@@ -10174,7 +10226,7 @@ type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
 入参 `ExtNoteReq` · 回包 `ExtNote`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type ExtKind = "skill" | "mcp";
+type ExtKind = "skill" | "mcp" | "plugin";
 type ExtNote = { note: string | null, };
 type ExtNoteReq = { kind: ExtKind, name: string, 
 /**
@@ -10194,7 +10246,7 @@ text: string, };
 入参 `ExtUninstallReq` · 回包 `ExtUninstallCard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type ExtKind = "skill" | "mcp";
+type ExtKind = "skill" | "mcp" | "plugin";
 type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
 type ExtUninstallCard = { kind: ExtKind, name: string, path: string, 
 /**
@@ -10240,7 +10292,7 @@ changed: Array<string>,
  * 做成了，但有一件要知道的（执行位没改成 · 没记下来 · 空目录没收掉 …）。
  */
 note: string | null, };
-type ExtKind = "skill" | "mcp";
+type ExtKind = "skill" | "mcp" | "plugin";
 type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
 type ExtUninstallApplyReq = { kind: ExtKind, name: string, at: ExtLoc, token: string, };
 ```

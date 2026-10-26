@@ -478,7 +478,8 @@ private fun NavGraphBuilder.chatRoutes(
         val hostId = entry.arguments?.getString("hostId").orEmpty()
         ChatsRoute(
             hostId = hostId,
-            onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
+            onOpen = chatsOpen(nav::navigate),
+            onOpenAt = chatsOpenAt(nav::navigate),
             onNewInDir = { host, cwd -> nav.navigate(Screen.Chat.of(host, newConversationId(), isNew = true, cwd = cwd)) },
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onEditHost = { hid -> nav.navigate("host/$hid/edit") },
@@ -623,6 +624,13 @@ internal fun freshLanding(
     hostId: String,
     newConversationId: () -> String,
 ): String = Screen.Chat.of(hostId, newConversationId(), isNew = true)
+
+/** 会话屏点一条会话 · 搜内容的块头：落在最新处。 */
+internal fun chatsOpen(navigate: (String) -> Unit): (String, String) -> Unit = { host, sid -> navigate(Screen.Chat.of(host, sid)) }
+
+/** 会话屏点搜内容的一处命中：落到那一处（`at` · `tool` 照交进来的）。 */
+internal fun chatsOpenAt(navigate: (String) -> Unit): (String, String, Long, String?) -> Unit =
+    { host, sid, at, tool -> navigate(Screen.Chat.of(host, sid, at = at, tool = tool)) }
 
 /** 挂在一条返回栈记录上：那一条出栈时（且只在那时）[onCleared] 跑 [action]。 */
 private class OnLeftBackStack(

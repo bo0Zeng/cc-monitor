@@ -1014,7 +1014,19 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/agents/claudecode/assets.rs",
         "PLUGIN_MANIFEST_MAX_BYTES",
-        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
+        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（取名字 · 版本 · 说明 · 默认开不开）—— 读不出来：找插件根那一步那个目录不算插件；列插件那一步记日志、记进 `problems`，那几格当没有",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "PLUGIN_RECORD_MAX_BYTES",
+        "找插件时读配置根下的安装记录 `plugins/installed_plugins.json` —— 读不出 / 格式不认得 ⇒ 记日志、记进 `problems`，记录里的插件不列",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "SETTINGS_MAX_BYTES",
+        "读插件开关时读一份设置（托管 · 远端下发 · 用户 · 项目两份，只为取 `enabledPlugins`）与插件根里的 `hooks/hooks.json`（只为数事件名）—— 读不出那一份 ⇒ 记日志、记进 `problems`，当没写",
         "跳过+说清",
     ),
     (

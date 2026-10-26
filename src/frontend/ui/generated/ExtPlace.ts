@@ -11,6 +11,10 @@ export type ExtPlace = { at: ExtLoc,
  */
 state: ExtState, 
 /**
+ * 这一处那一句（后端写好）。
+ */
+said: string, 
+/**
  * skill：那一处的目录（「在文件窗口里打开」用）。
  */
 dir: string | null, 
@@ -21,4 +25,8 @@ uninstall: boolean,
 /**
  * 有它、却没有「卸载」时为什么。
  */
-note: string | null, };
+note: string | null, 
+/**
+ * 这一处自己的一句（插件：版本 · 开着 / 关着 · 出处）；别的种类没有。
+ */
+line?: string, };

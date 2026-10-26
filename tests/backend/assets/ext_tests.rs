@@ -69,14 +69,15 @@ fn temp(tag: &str) -> PathBuf {
 
 // ───────────────────────── 表的判定（纯） ─────────────────────────
 
-fn asset(kind: &str, name: &str, digest: &str, project: Option<&str>) -> Asset {
+fn asset(kind: ExtKind, name: &str, digest: &str, project: Option<&str>) -> Asset {
     Asset {
-        kind: kind.into(),
+        kind,
         name: name.into(),
         project: project.map(str::to_string),
         dir: Some(format!("/d/{name}")),
         digest: digest.into(),
         summary: json!({ "description": format!("about {name}") }),
+        off: false,
     }
 }
 
@@ -148,10 +149,10 @@ fn the_table_judges_every_cell_place_and_target() {
         snap(
             "me@h",
             vec![
-                asset(KIND_SKILL, "s-major", "d1", None),
-                asset(KIND_SKILL, "s-tie", "dA", None),
-                asset(KIND_MCP, "m-user", "m1", None),
-                asset(KIND_MCP, "m-proj", "m2", Some("/h/p")),
+                asset(ExtKind::Skill, "s-major", "d1", None),
+                asset(ExtKind::Skill, "s-tie", "dA", None),
+                asset(ExtKind::Mcp, "m-user", "m1", None),
+                asset(ExtKind::Mcp, "m-proj", "m2", Some("/h/p")),
             ],
             &["/h/p", "/shared"],
         ),
@@ -161,9 +162,9 @@ fn the_table_judges_every_cell_place_and_target() {
         snap(
             "u@r1",
             vec![
-                asset(KIND_SKILL, "s-major", "d1", None),
-                asset(KIND_SKILL, "s-tie", "dB", None),
-                asset(KIND_SKILL, "s-proj", "d9", Some("/shared")),
+                asset(ExtKind::Skill, "s-major", "d1", None),
+                asset(ExtKind::Skill, "s-tie", "dB", None),
+                asset(ExtKind::Skill, "s-proj", "d9", Some("/shared")),
             ],
             &[],
         ),
@@ -172,7 +173,7 @@ fn the_table_judges_every_cell_place_and_target() {
         "r2".into(),
         snap(
             "u@r2",
-            vec![asset(KIND_SKILL, "s-major", "d2", None)],
+            vec![asset(ExtKind::Skill, "s-major", "d2", None)],
             &["/x"],
         ),
     );
@@ -314,8 +315,8 @@ fn a_skill_and_an_mcp_with_the_same_name_are_listed_as_two_rows() {
         snap(
             "me@h",
             vec![
-                asset(KIND_SKILL, "code-picture", "d1", None),
-                asset(KIND_MCP, "code-picture", "m1", Some("/h/p")),
+                asset(ExtKind::Skill, "code-picture", "d1", None),
+                asset(ExtKind::Mcp, "code-picture", "m1", Some("/h/p")),
             ],
             &["/h/p"],
         ),
@@ -1034,7 +1035,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
 #[test]
 fn a_note_travels_with_the_catalog_to_the_other_backend() {
     let (base, t) = two("note");
-    let key = asset_catalog::entry_key(KIND_SKILL, "cc-bus");
+    let key = asset_catalog::entry_key(ExtKind::Skill, "cc-bus");
     let (ca, changed) = asset_catalog::update_noting(
         &own_at(&t.a.cat),
         t.a.scan(),
@@ -1136,6 +1137,8 @@ fn no_production_code_writes_the_agent_settings_file() {
         "src/backend/agents/claudecode/accounts.rs",
         // 本机 managed 策略文件 `managed-settings.json`（只读：起会话前看它许不许加载会话插件）。
         "src/backend/agents/claudecode/asks.rs",
+        // 读插件开关：远端下发的那份 `remote-settings.json` 与各级设置里的 `enabledPlugins`（只读）。
+        "src/backend/agents/claudecode/assets.rs",
         "src/backend/agents/claudecode/footprint.rs",
         "src/backend/agents/claudecode/paths.rs",
     ];
@@ -1549,4 +1552,137 @@ fn ext_loc_judged_bad_args_omits_sentinel_value_from_rejection() {
         rejection.contains("place"),
         "拒绝体应包含字段名：{rejection}"
     );
+}
+
+/// ★ 插件一格：用户级开着 ⇒ 与「这一版」比（`same` / `differs`）· 用户级关着、项目里开着 ⇒ `project` · 装着却都关着 ⇒ `off` · 没有 ⇒ `missing`。
+/// 插件只读：哪一格都没有「装到…」也没有「卸载」，说同一句为什么；每处带自己那一句（版本 · 开关 · 出处）。卸载那条命令收到插件 ⇒ 拒。
+#[test]
+fn a_plugin_cell_says_on_off_or_project_and_offers_no_install() {
+    let ro = copy_text("beExt.note.pluginReadOnly", &[]);
+    let plugin = |digest: &str, project: Option<&str>, off: bool| Asset {
+        off,
+        summary: json!({ "market": "mkt", "version": "1.0", "from": "user",
+                         "parts": { "skills": ["triage"], "commands": [], "agents": [], "hooks": ["Stop"], "mcp": [] } }),
+        ..asset(ExtKind::Plugin, "github", digest, project)
+    };
+    let mut cat = asset_catalog::fresh("h".into());
+    let reach: Vec<(String, Option<String>)> = ["a", "b", "c", "d", "e"]
+        .iter()
+        .map(|k| (k.to_string(), Some(k.to_string())))
+        .collect();
+    cat.machines.insert("h".into(), snap("me@h", vec![], &[]));
+    cat.machines
+        .insert("a".into(), snap("a", vec![plugin("p1", None, false)], &[]));
+    cat.machines
+        .insert("b".into(), snap("b", vec![plugin("p1", None, false)], &[]));
+    cat.machines
+        .insert("c".into(), snap("c", vec![plugin("p2", None, false)], &[]));
+    cat.machines.insert(
+        "d".into(),
+        snap(
+            "d",
+            vec![plugin("p1", None, true), plugin("p1", Some("/w"), false)],
+            &["/w"],
+        ),
+    );
+    cat.machines
+        .insert("e".into(), snap("e", vec![plugin("p1", None, true)], &[]));
+    let list = table(&cat, &reach);
+    let row = list
+        .rows
+        .iter()
+        .find(|r| r.kind == ExtKind::Plugin)
+        .expect("插件那一行");
+    // 字都由后端写：种类那一格 · 每个点与每一处那一句（「只在项目里」带上项目）· 图例有插件行才多「关着」。
+    let n = |k: &str| copy_text(k, &[]);
+    assert_eq!(row.kind_said, n("beExt.kind.plugin"));
+    assert_eq!(row.cells[5].said, n("beExt.state.off"));
+    assert_eq!(row.cells[4].places[0].said, n("beExt.state.off"));
+    assert_eq!(
+        row.cells[4].said,
+        copy_text("beExt.state.project", &[("dirs", "/w")])
+    );
+    let legend: Vec<(ExtState, String)> = list
+        .legend
+        .iter()
+        .map(|g| (g.state, g.said.clone()))
+        .collect();
+    assert_eq!(
+        legend,
+        vec![
+            (ExtState::Same, n("beExt.legend.same")),
+            (ExtState::Differs, n("beExt.legend.differs")),
+            (ExtState::Missing, n("beExt.state.missing")),
+            (ExtState::Project, n("beExt.legend.project")),
+            (ExtState::Off, n("beExt.legend.off")),
+        ]
+    );
+    let mut no_plugin = asset_catalog::fresh("h".into());
+    no_plugin.machines.insert(
+        "h".into(),
+        snap("me@h", vec![asset(ExtKind::Skill, "s", "d", None)], &[]),
+    );
+    assert!(
+        !table(&no_plugin, &[])
+            .legend
+            .iter()
+            .any(|g| g.state == ExtState::Off),
+        "没有插件行也列了「关着」"
+    );
+    let got: Vec<String> = row.cells.iter().map(brief).collect();
+    let note = format!("note:{ro}");
+    assert_eq!(
+        got,
+        vec![
+            format!("missing:user=missing {note}"),
+            format!("same:user=same {note}"),
+            format!("same:user=same {note}"),
+            format!("differs:user=differs {note}"),
+            format!("project:user=off,/w=same {note}"),
+            format!("off:user=off {note}"),
+        ]
+    );
+    assert!(row.cells.iter().all(|c| c.bring.is_none()));
+    let line = row.cells[1].places[0].line.clone().expect("那一处的那一句");
+    assert_eq!(
+        line,
+        copy_text(
+            "beExt.plugin.line",
+            &[
+                ("version", "1.0"),
+                ("on", &copy_text("beExt.plugin.on", &[])),
+                ("from", &copy_text("beExt.plugin.fromUser", &[])),
+            ],
+        )
+    );
+    let labels: Vec<String> = row.detail.iter().map(|d| d.label.clone()).collect();
+    assert_eq!(
+        labels,
+        [
+            "beExt.detail.market",
+            "beExt.detail.version",
+            "beExt.part.skills",
+            "beExt.part.hooks"
+        ]
+        .iter()
+        .map(|k| copy_text(k, &[]))
+        .collect::<Vec<_>>()
+    );
+    // 卸载那条命令收到插件 ⇒ 拒。
+    let d = temp("plugin-uninstall");
+    let env = Env {
+        home: Some(d.clone()),
+        skills: None,
+        user_mcp: None,
+        ledger: None,
+    };
+    let door = HomeDoor(d.clone());
+    let crate::wire::spec::Fail { code, message, .. } = answer_uninstall_preview(
+        &door,
+        &env,
+        &json!({ "kind": "plugin", "name": "github", "at": { "level": "user" } }),
+    )
+    .expect_err("插件给卸了");
+    assert_eq!((code.as_str(), message), ("refused", ro));
+    let _ = std::fs::remove_dir_all(&d);
 }
