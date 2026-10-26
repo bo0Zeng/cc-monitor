@@ -70,6 +70,7 @@ import org.koin.core.parameter.parametersOf
 fun ChatsRoute(
     hostId: String,
     onOpen: (hostId: String, sessionId: String) -> Unit,
+    onOpenAt: (hostId: String, sessionId: String, at: Long, tool: String?) -> Unit,
     onNewInDir: (hostId: String, cwd: String) -> Unit,
     onDrawerAction: (DrawerAction) -> Unit,
     onEditHost: (hostId: String) -> Unit,
@@ -108,6 +109,7 @@ fun ChatsRoute(
     val act =
         ChatsActions(
             open = onOpen,
+            openAt = onOpenAt,
             menu = { menuFor = it },
             retry = { b -> retry(board, links, attempts, b) },
             deploy = { id -> board.chats(id)?.deploy?.invoke() },
