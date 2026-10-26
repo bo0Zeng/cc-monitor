@@ -142,7 +142,6 @@ dependencies {
     implementation(project(":core-terminal"))
     implementation(project(":core-claude"))
     implementation(project(":core-wire")) // 屏上直接读线上类型（回包 · 事件 · 菜单的生成类）
-    implementation(project(":core-remote"))
     implementation(project(":core-copy"))
     implementation(project(":core-rs"))
 

@@ -29,9 +29,6 @@ android {
 dependencies {
     implementation(project(":core-copy")) // 上屏句子从文案表取（取文口住 core-copy）
     implementation(project(":core-data"))
-    // 用 api：RemoteCommandChannel 出现在公开 API（`SshConnectionManager.commandChannel()` 的返回类型）里，
-    // 依赖 :core-ssh 的模块不另外声明 :core-remote 也要编得过。
-    api(project(":core-remote"))
     // 连接走手机嵌的 Rust 核心（拨号核心 ssh-dial 的 FFI 外壳）：[RustTransport]。
     implementation(project(":core-rs"))
     // 核心交上来的拨号 ack · 阶段 · ssh_config 那几行照线上类型解（生成的类住 core-wire，拨号请求也照它写）。
