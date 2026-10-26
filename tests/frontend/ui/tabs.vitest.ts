@@ -321,6 +321,7 @@ function groupBackend(): {
     groups: groups.map((g) => ({
       id: g.id,
       name: g.name,
+      title: g.name,
       home: g.home,
       made: 0,
       known: { is: "now" },
@@ -5609,8 +5610,8 @@ describe("组头", () => {
     setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
     // 组头那几颗是后端数好的（`groups-read` 的 `counts`），界面照画。
     home(tm).prefs.collections[0].counts = [
-      { dot: "needs-you", n: 1, word: goldenFace("live-needs-you-tmux").name },
-      { dot: "running", n: 1, word: goldenFace("live-working-plain").name },
+      { dot: "needs-you", n: 1, word: goldenFace("live-needs-you-tmux").name, text: "核心·需手动 1" },
+      { dot: "running", n: 1, word: goldenFace("live-working-plain").name, text: "核心·在跑 1" },
     ];
     home(tm).store.tabs.get("a")!.face = liveFace("needs_you");
     home(tm).store.tabs.get("b")!.face = liveFace("working");
@@ -5628,7 +5629,7 @@ describe("组头", () => {
     expect(collapsed()).toBe(true);
     expect(home(tm).prefs.collections[0].collapsed, "收着记在组上（落盘那一格）").toBe(true);
     expect(head().querySelector(".tab-group-sum")!.textContent).toBe(
-      copyText("tabBar.group.sumNeeds", { n: 1 }) + copyText("tabBar.group.sumRunning", { n: 1 }),
+      "核心·需手动 1" + "核心·在跑 1", // 照抄后端写好的那一句
     );
     expect(head().querySelector(".tab-group-caret")!.getAttribute("aria-expanded")).toBe("false");
     head().querySelector<HTMLElement>(".tab-group-caret")!.click();

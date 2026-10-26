@@ -78,7 +78,7 @@ export class GroupBook {
   /** 建一组（本机是家），回新组的 id。 */
   async make(name: string): Promise<string> {
     const r = await this.call(LOCAL_ORIGIN, "groups-write", { op: "make", name });
-    if (r.is !== "made") throw new Error(`groups-write make 回了 ${r.is}`);
+    if (r.is !== "made") throw new Error(`groups-write make replied ${r.is}`);
     this.poke(LOCAL_ORIGIN);
     return r.id;
   }

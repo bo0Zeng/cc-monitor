@@ -2,9 +2,9 @@
 //!
 //! | # | 判据 |
 //! |---|---|
-//! | G1 | ★ 组员住会话那一台、组名住家那一台：本机 `groups-read` 把两半并成一组（名字 · 家 · 组员 · 组头计数） |
+//! | G1 | ★ 组员住会话那一台、组名住家那一台：本机 `groups-read` 把两半并成一组（名字 · 家 · 组员 · 组头计数与那一句） |
 //! | G2 | 家那台这一问没答、之前答过 ⇒ 组照旧出、标「上次所知」，那台的组员画成看不见（不冒充在跑） |
-//! | G3 | 家那台从没答过 ⇒ 那台标读不到、组照出（名字不知道），组员不漏 |
+//! | G3 | 家那台从没答过 ⇒ 那台标读不到、组照出（名字不知道、叫它的那一句照实说不知道），组员不漏 |
 //! | G4 | 各台都答了、哪台都没有那一组 ⇒ 已解散，不出 |
 //! | G5 | 问到别的台却没带期限 ⇒ `bad_args` |
 //! | G6 | 这台那一半：家在这台的组 ＋ 带组或固定的会话（各带此刻活不活） |
@@ -119,6 +119,12 @@ async fn g1_members_on_one_machine_and_the_name_at_home_merge_into_one_group() {
     assert_eq!(g.counts[0].dot, cmd_wire::frame::SessionDot::Running);
     assert_eq!(g.counts[0].n, 1);
     assert_eq!(g.counts[0].word, g.members[0].face.name, "字照组员那张脸");
+    assert_eq!(
+        g.counts[0].text.0,
+        copy_core::copy_text("beGroups.count.running", &[("n", "1")]),
+        "组头那一句写好了（出口照摆）"
+    );
+    assert_eq!(g.title.0, "开发", "叫什么：有名字 ⇒ 名字");
     assert!(matches!(
         machine(&got, "devbox"),
         super::super::history_browse::Read::Ok { .. }
@@ -184,6 +190,11 @@ async fn g3_a_home_never_heard_from_leaves_the_group_nameless_but_listed() {
     let g = &got.groups[0];
     assert_eq!(g.id, "g1");
     assert_eq!(g.name, None);
+    assert_eq!(
+        g.title.0,
+        copy_core::copy_text("beGroups.name.unknown", &[]),
+        "名字不知道 ⇒ 照实说不知道，不出空串"
+    );
     assert_eq!(g.home, None);
     assert_eq!(g.known, GroupKnown::Unknown);
     assert_eq!(g.members[0].sid, "s-a");

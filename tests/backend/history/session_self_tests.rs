@@ -83,6 +83,7 @@ fn group(id: &str, members: Vec<GroupMember>) -> GroupRead {
     GroupRead {
         id: id.into(),
         name: Some(id.into()),
+        title: id.into(),
         home: None,
         made: None,
         known: GroupKnown::Now,

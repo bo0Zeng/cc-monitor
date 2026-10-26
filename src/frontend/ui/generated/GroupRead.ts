@@ -12,6 +12,10 @@ export type GroupRead = { id: string,
  */
 name: string | null, 
 /**
+ * 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
+ */
+title: string, 
+/**
  * 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
  */
 home: string | null, made: number | null, known: GroupKnown, 

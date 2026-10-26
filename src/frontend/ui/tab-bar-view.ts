@@ -26,7 +26,7 @@ import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
 import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindings/registry";
 import rs from "./tab-group-rename.module.css";
-import { copyText, type CopyKey } from "./copy-table";
+import { copyText } from "./copy-table";
 import { place } from "./kit/morph";
 import { icon } from "./kit/icon";
 import { paintDot, statusDot } from "./kit/status-dot";
@@ -1360,13 +1360,6 @@ function groupShell(name: HTMLElement, tail: HTMLElement[]): GroupEls {
   return { wrap, head, list, caret, name, count, sum, mini, drawn: "" };
 }
 
-/** 组头那几颗的字（后端只出这三种点）。欠账：那一句该由后端随计数写好（文案表此刻在别的路手里）。 */
-const SUM_KEY: Partial<Record<GroupCount["dot"], CopyKey>> = {
-  "needs-you": "tabBar.group.sumNeeds",
-  running: "tabBar.group.sumRunning",
-  background: "tabBar.group.sumBackground",
-};
-
 /**
  * 组头那几格：名字 · 栏里的组员数 · 收着 · 汇总（需手动 · 在跑 · 后台任务，后端 `groups-read` 数好的那几颗，字照组员那张脸）· 当前标签页在收着的里面。
  * 汇总只在收着时画。没变就不写。
@@ -1375,7 +1368,7 @@ function paintHead(g: GroupEls, label: string, members: readonly Tab[], counts: 
   // 后端只出有的那几颗、序已排好（需手动 · 在跑 · 后台）。
   const shown = collapsed ? counts : [];
   const current = collapsed && members.some((t) => t.sessionId === activeId);
-  const drawn = `${label}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${shown.map((c) => `${c.dot}:${c.n}:${c.word}`).join(",")}\u0000${current ? 1 : 0}`;
+  const drawn = `${label}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${shown.map((c) => `${c.dot}:${c.text}:${c.word}`).join(",")}\u0000${current ? 1 : 0}`;
   if (g.drawn === drawn) return;
   g.drawn = drawn;
   if (g.name.textContent !== label) g.name.textContent = label;
@@ -1385,14 +1378,12 @@ function paintHead(g: GroupEls, label: string, members: readonly Tab[], counts: 
   g.wrap.classList.toggle("is-collapsed", collapsed);
   g.head.classList.toggle("is-current", current);
   g.wrap.classList.toggle("has-current", current);
-  const chips = shown.flatMap((c) => {
-    const key = SUM_KEY[c.dot];
-    if (key === undefined) return [];
+  const chips = shown.map((c) => {
     const el = document.createElement("span");
     el.className = "tab-group-chip";
     el.dataset.dot = c.dot;
-    el.append(statusDot(c.dot, c.word, "compact"), document.createTextNode(copyText(key, { n: c.n })));
-    return [el];
+    el.append(statusDot(c.dot, c.word, "compact"), document.createTextNode(c.text));
+    return el;
   });
   g.sum.replaceChildren(...chips);
   // 窄栏只放得下一个点：后端排好的先后（需手动 ＞ 在跑 ＞ 后台）里的第一颗。

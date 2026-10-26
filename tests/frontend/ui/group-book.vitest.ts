@@ -12,7 +12,7 @@ import { GroupBook, type GroupCall } from "../../../src/frontend/ui/group-book";
 import type { GroupsRead } from "../../../src/frontend/ui/generated/GroupsRead";
 
 const READ: GroupsRead = {
-  groups: [{ id: "g1", name: "开发", home: "devbox", made: 1, known: { is: "now" } as never, members: [], counts: [] }],
+  groups: [{ id: "g1", name: "开发", title: "开发", home: "devbox", made: 1, known: { is: "now" } as never, members: [], counts: [] }],
   pinned: [],
   machines: [],
 };

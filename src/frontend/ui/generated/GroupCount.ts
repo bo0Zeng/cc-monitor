@@ -4,4 +4,8 @@ import type { SessionDot } from "./SessionDot";
 /**
  * 组头那一颗点：几条 ＋ 那颗点的名字（照组员那张脸上的字）。只出有的那几样，序：需手动 · 在跑 · 后台。
  */
-export type GroupCount = { dot: SessionDot, n: number, word: string, };
+export type GroupCount = { dot: SessionDot, n: number, word: string, 
+/**
+ * 组头那一句（「需手动 2」那样，出口照摆）。
+ */
+text: string, };

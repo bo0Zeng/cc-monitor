@@ -129,7 +129,7 @@ export class TabBarPrefs {
     const read = this.book?.read();
     if (!read) return;
     this.collections = read.groups.map((g) =>
-      this.withCollapsed({ id: g.id, name: g.name ?? "", home: g.home, counts: g.counts }),
+      this.withCollapsed({ id: g.id, name: g.title, home: g.home, counts: g.counts }),
     );
     this.placed = new Map();
     for (const g of read.groups) for (const m of g.members) {

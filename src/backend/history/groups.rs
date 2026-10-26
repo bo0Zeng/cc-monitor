@@ -272,6 +272,9 @@ pub(crate) struct GroupCount {
     pub(crate) n: u32,
     #[cfg_attr(test, ts(type = "string"))]
     pub(crate) word: Words,
+    /// 组头那一句（「需手动 2」那样，出口照摆）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) text: Words,
 }
 
 /// 并好的一组。
@@ -282,6 +285,9 @@ pub(crate) struct GroupRead {
     pub(crate) id: String,
     /// 名字（家那台没答过 ⇒ 缺）。
     pub(crate) name: Option<String>,
+    /// 叫它什么（出口照摆）：有名字 ⇒ 名字；没有 ⇒ 照实说不知道。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) title: Words,
     /// 家那台（不知道 ⇒ 缺）：改名 · 解散问它。
     #[cfg_attr(test, ts(as = "Option<String>"))]
     pub(crate) home: Option<Machine>,
@@ -532,6 +538,7 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
                 Some((home, g, known)) => GroupRead {
                     id: id.to_string(),
                     name: Some(g.name.clone()),
+                    title: Words(g.name.clone()),
                     home: Some((*home).clone()),
                     made: Some(g.made),
                     known: known.clone(),
@@ -541,6 +548,7 @@ fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) -> GroupsRead
                 None => GroupRead {
                     id: id.to_string(),
                     name: None,
+                    title: Words(copy_core::copy_text("beGroups.name.unknown", &[])),
                     home: None,
                     made: None,
                     known: GroupKnown::Unknown,
@@ -571,10 +579,19 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
     .filter_map(|dot| {
         let mut hit = rows.iter().filter(|r| r.face.dot == dot);
         let first = hit.next()?;
+        let n = u32::try_from(1 + hit.count()).unwrap_or(u32::MAX);
+        let n_text = n.to_string();
+        let n_text = n_text.as_str();
+        let text = match dot {
+            SessionDot::NeedsYou => copy_core::copy_text("beGroups.count.needs", &[("n", n_text)]),
+            SessionDot::Running => copy_core::copy_text("beGroups.count.running", &[("n", n_text)]),
+            _ => copy_core::copy_text("beGroups.count.background", &[("n", n_text)]),
+        };
         Some(GroupCount {
             dot,
-            n: u32::try_from(1 + hit.count()).unwrap_or(u32::MAX),
+            n,
             word: first.face.name.clone(),
+            text: Words(text),
         })
     })
     .collect()
