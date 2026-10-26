@@ -585,6 +585,8 @@ impl FrameRules for Frame {
             // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
             Frame::TerminalScreen(_) => false,
             Frame::TerminalFollowEnd(_) => false,
+            // 别台那条流上的事：丢一行那台那条连接就对不上了 —— 发帧那一层记下（`FrameSink`），下一帧之前补那台一格 `gap`。
+            Frame::Relayed(_) => false,
         }
     }
 
@@ -613,7 +615,8 @@ impl FrameRules for Frame {
             | Frame::Probe(_)
             | Frame::FilesBatch(_)
             | Frame::TerminalScreen(_)
-            | Frame::TerminalFollowEnd(_) => None,
+            | Frame::TerminalFollowEnd(_)
+            | Frame::Relayed(_) => None,
         }
     }
 

@@ -6,10 +6,14 @@
 //!   （`control/deploy_plan.rs::answer_install`，每一步记进机器状态），再 `--resident-ensure [--replace]`。
 //!   带着哪几格后端字节是 monitor 落在盘上的那一份清单（[`deploy_contract::SLOTS_MANIFEST`]）。
 //! - 机器表一改（`machines::ring`）就对齐（[`align`]）：新来的起、没了的收；机器页「停」那一台停着（[`hold`]），「起」/［重试］叫醒（[`resume`]）。
-//! - 版本号：与这一版同一份字节的那几台填这份二进制的版本号，别的空着（hello 带版本号那一格到 ③ 换形时补）。
+//! - 版本号：那台 hello 自报的那一格（`version`；没带 ⇒ 空）。
+//! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `main.rs` 接上）：
+//!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
 //!
-//! 这一步壳自己那条循环还在（收帧 · 问那台，不装）；在看名单不在这条上（名单台空着：这条连接那台不往上发会话）。
+//! 在看名单不在这条上（名单台空着：这条连接那台不往上发会话）。
 
+use crate::wire::Frame;
+use cmd_wire::frame::Relayed;
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -40,6 +44,16 @@ pub(crate) trait Ssh: Send + Sync + 'static {
     /// 把这一版的后端放到那台的落点（成没成记进机器状态，不阻断这一轮）。
     fn install(&self, machine: &str) -> Boxed<'_, ()>;
 }
+
+/// 那台流上的事转到哪（生产 ＝ 每一份 watcher 的出方向，`main.rs` 起常驻时交进来，[`start`]；判据收下来看）。
+pub type Relay = Arc<dyn Fn(Frame) + Send + Sync>;
+
+/// 生产那一份转出口（[`start`] 交进来的；还没起 ⇒ 不转）。
+fn relay_out() -> Relay {
+    RELAY.get().cloned().unwrap_or_else(|| Arc::new(|_| {}))
+}
+
+static RELAY: std::sync::OnceLock<Relay> = std::sync::OnceLock::new();
 
 /// 一台的链路：名字 ＋ 下面那条 SSH。本机后端自己装后端（`installs`）。
 struct Link {
@@ -85,7 +99,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// 照 `wanted`（要连的那几台的名字）对齐：没了的 · 停着的收掉，新来的起；其余不碰（在跑的不断）。
-pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>) {
+pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay) {
     let held = lock(stopped()).clone();
     let mut t = lock(table());
     t.retain(|name, f| {
@@ -99,15 +113,18 @@ pub(crate) fn align_in(wanted: &[String], ssh: &Arc<dyn Ssh>) {
         if held.contains(name) || t.contains_key(name) {
             continue;
         }
-        t.insert(name.clone(), start_one(name, ssh));
+        t.insert(name.clone(), start_one(name, ssh, relay));
     }
 }
 
 /// 这个进程是常驻那一位、各台的常驻流由它持有（[`start`] 之后）。
 static HOSTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 常驻那一位起来时调一次：之后持有各台的常驻流，机器表一改就对齐。
-pub fn start() {
+/// 常驻那一位起来时调一次：之后持有各台的常驻流，机器表一改就对齐；那台流上的事交 `relay`（[`Relay`]）。
+pub fn start(relay: Relay) {
+    if RELAY.set(relay).is_err() {
+        tracing::warn!("[feeds] start 被调了第二次：转出口照第一次那一份");
+    }
     HOSTED.store(true, std::sync::atomic::Ordering::SeqCst);
     align();
 }
@@ -120,7 +137,7 @@ pub(crate) fn hosted() -> bool {
 /// 照这一端的机器表此刻那一张对齐（常驻起来时一次 · 机器表每改一次）。
 pub(crate) fn align() {
     let pool: Arc<dyn Ssh> = Arc::new(Pool);
-    align_in(&wanted_now(), &pool);
+    align_in(&wanted_now(), &pool, &relay_out());
 }
 
 /// 机器表里要连的那几台。
@@ -148,23 +165,35 @@ pub(crate) fn hold(machine: &str) {
 /// 「起」/［重试］（[`resume_in`] 的生产那一份）。
 pub(crate) fn resume(machine: &str) {
     let pool: Arc<dyn Ssh> = Arc::new(Pool);
-    resume_in(machine, &wanted_now(), &pool);
+    resume_in(machine, &wanted_now(), &pool, &relay_out());
 }
 
 /// 不再停着；在跑 ⇒ 叫醒（断着时不等退避马上再接）；不在跑而机器表要连 ⇒ 起。
-pub(crate) fn resume_in(machine: &str, wanted: &[String], ssh: &Arc<dyn Ssh>) {
+pub(crate) fn resume_in(machine: &str, wanted: &[String], ssh: &Arc<dyn Ssh>, relay: &Relay) {
     lock(stopped()).remove(machine);
     let running = lock(table()).get(machine).cloned();
     match running {
         Some(f) => f.wake(),
-        None => align_in(wanted, ssh),
+        None => align_in(wanted, ssh, relay),
     }
 }
 
-/// 起一台的那一条：循环交的那一态原样进机器状态；接着的时候记「那台后端此刻在」（[`crate::dial::streams`]）。
-fn start_one(machine: &str, ssh: &Arc<dyn Ssh>) -> Arc<Feed<Link>> {
+/// 一台那条流上此刻的那几样（循环交事那一口记）。
+#[derive(Default)]
+struct Seen {
+    /// 接着的时候记「那台后端此刻在」（[`crate::dial::streams`]）。
+    up: Option<crate::dial::streams::Held>,
+    /// 这一条连接的 hello 转出去了、还没断（断了要转一帧 `ended`）。
+    attached: bool,
+    /// 那台 hello 自报的版本号（最近一次接上的那一份）。
+    version: Option<String>,
+}
+
+/// 起一台的那一条：循环交的那一态原样进机器状态；那台流上的事原样转出去（[`Relay`]）。
+fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>> {
     let name = machine.to_string();
-    let up: Mutex<Option<crate::dial::streams::Held>> = Mutex::new(None);
+    let seen: Mutex<Seen> = Mutex::new(Seen::default());
+    let relay = Arc::clone(relay);
     Feed::start(
         Config {
             machine: name.clone(),
@@ -178,18 +207,42 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>) -> Arc<Feed<Link>> {
         })),
         Desk::new(|_| Vec::new(), |_| {}),
         feed::sink(move |e| {
-            let Event::State(s) = e else {
-                return;
-            };
-            *lock(&up) =
-                matches!(s, feed::State::Up { .. }).then(|| crate::dial::streams::hold(&name));
-            crate::control::machine_state::note(
-                &name,
-                deploy::machine::Fact::Round {
-                    round: s.round(),
-                    version: Some(env!("CC_MONITOR_VERSION").to_string()),
-                },
-            );
+            let machine = name.clone();
+            match e {
+                Event::Attached { hello, .. } => {
+                    let mut s = lock(&seen);
+                    s.version = serde_json::from_str::<cmd_wire::frame::Hello>(&hello)
+                        .ok()
+                        .and_then(|h| h.version);
+                    s.attached = true;
+                    relay(Frame::Relayed(Relayed::Line {
+                        machine,
+                        line: hello,
+                    }));
+                }
+                Event::Frame(line) => relay(Frame::Relayed(Relayed::Line { machine, line })),
+                Event::Gap => relay(Frame::Relayed(Relayed::Gap { machine })),
+                Event::State(st) => {
+                    let up = matches!(st, feed::State::Up { .. });
+                    let (version, ended) = {
+                        let mut s = lock(&seen);
+                        s.up = up.then(|| crate::dial::streams::hold(&name));
+                        let ended = !up && std::mem::take(&mut s.attached);
+                        (s.version.clone(), ended)
+                    };
+                    if ended {
+                        relay(Frame::Relayed(Relayed::Ended { machine }));
+                    }
+                    crate::control::machine_state::note(
+                        &name,
+                        deploy::machine::Fact::Round {
+                            round: st.round(),
+                            version,
+                        },
+                    );
+                }
+                Event::Ssh(_) => {}
+            }
         }),
     )
 }

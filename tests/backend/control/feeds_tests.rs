@@ -26,16 +26,33 @@ fn hello(build: &str) -> String {
         })
         .collect();
     serde_json::json!({
-        "kind": "hello", "build_id": build, "host_arch": "x86_64",
+        "kind": "hello", "build_id": build, "host_arch": "x86_64", "version": THEIR_VERSION,
         "commands": COMMANDS, "unavailable": [], "shapes": shapes, "frames": frames,
     })
     .to_string()
+}
+
+/// 那台 hello 自报的版本号（与这一份不同：机器页那台的版本号得是它）。
+const THEIR_VERSION: &str = "0.0.1-their";
+
+/// 转出去的那几帧都记在这里（判据读）。
+fn caught() -> (Relay, Arc<Mutex<Vec<Frame>>>) {
+    let got = Arc::new(Mutex::new(Vec::new()));
+    let g = Arc::clone(&got);
+    (Arc::new(move |f| g.lock().unwrap().push(f)), got)
+}
+
+/// 转出去的不看。
+fn quiet() -> Relay {
+    Arc::new(|_| {})
 }
 
 /// 开成之后那台怎么回 attach。
 enum Peer {
     /// 回 hello、照 attach 行带的那一版比新旧。
     Serve(String),
+    /// 同 `Serve`，接上之后发这几行就断开。
+    Talk(String, Vec<String>),
     /// 小中继说常驻还没绑上口。
     Absent,
 }
@@ -91,14 +108,15 @@ impl Ssh for Fake {
 
 async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
     let mut lines = tokio::io::BufReader::new(up).lines();
-    let build = match peer {
+    let (build, talk) = match peer {
         Peer::Absent => {
             let _ = down
                 .write_all(b"{\"attach\":\"refused\",\"reason\":\"absent\"}\n")
                 .await;
             return;
         }
-        Peer::Serve(b) => b,
+        Peer::Serve(b) => (b, None),
+        Peer::Talk(b, lines) => (b, Some(lines)),
     };
     let _ = down
         .write_all(format!("{}\n", hello(&build)).as_bytes())
@@ -113,6 +131,12 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
         "relation": deploy_contract::build_relation(&build, mine),
     });
     let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    if let Some(talk) = talk {
+        for l in talk {
+            let _ = down.write_all(format!("{l}\n").as_bytes()).await;
+        }
+        return;
+    }
     // 之后照答：问活答「活着」；别的命令把收到的那一问原样装进回包（`args.fail` ⇒ 照那台的口吻拒）。连接一直留着。
     while let Ok(Some(l)) = lines.next_line().await {
         let asked: serde_json::Value = serde_json::from_str(&l).unwrap();
@@ -166,7 +190,7 @@ async fn the_backend_attaches_a_machine_itself_and_its_product_is_up() {
         .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
     let mut changes = machine_state::changes().subscribe();
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh);
+    align_in(&[machine.to_string()], &ssh, &quiet());
     until("那台的成品是 up", || state_of(machine) == "up").await;
     let mut pushed = false;
     while let Ok((m, p)) = changes.try_recv() {
@@ -177,7 +201,7 @@ async fn the_backend_attaches_a_machine_itself_and_its_product_is_up() {
     assert!(pushed, "接上那一刻要推一帧 `changed {{machine}}`");
     assert_eq!(fake.installs.load(Ordering::SeqCst), 0, "这一版 ⇒ 不装");
     assert_eq!(*fake.words.lock().unwrap(), vec!["attach".to_string()]);
-    align_in(&[], &ssh);
+    align_in(&[], &ssh, &quiet());
     assert!(!running(machine), "表里没了 ⇒ 那一条收掉");
 }
 
@@ -193,7 +217,7 @@ async fn a_machine_without_a_resident_is_installed_then_ensured_then_attached() 
         o.push_back(Peer::Serve(crate::BUILD_ID.to_string()));
     }
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh);
+    align_in(&[machine.to_string()], &ssh, &quiet());
     until("那台的成品是 up", || state_of(machine) == "up").await;
     let words = fake.words.lock().unwrap().clone();
     assert_eq!(
@@ -202,7 +226,7 @@ async fn a_machine_without_a_resident_is_installed_then_ensured_then_attached() 
         "{words:?}"
     );
     assert!(words[2].ends_with("-- --resident-ensure"), "{words:?}");
-    align_in(&[], &ssh);
+    align_in(&[], &ssh, &quiet());
 }
 
 /// 机器页「停」：那一条停下、不再自己接（不然转眼又 ensure 起来）；「起」/［重试］叫醒它。
@@ -216,19 +240,19 @@ async fn a_stopped_machine_stays_stopped_until_it_is_woken() {
         .unwrap()
         .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh);
+    align_in(&[machine.to_string()], &ssh, &quiet());
     until("先接上", || state_of(machine) == "up").await;
     hold(machine);
     assert!(!running(machine), "停了 ⇒ 那一条收掉");
-    align_in(&[machine.to_string()], &ssh);
+    align_in(&[machine.to_string()], &ssh, &quiet());
     assert!(!running(machine), "停着的那一台对齐机器表时也不起");
     fake.opens
         .lock()
         .unwrap()
         .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
-    resume_in(machine, &[machine.to_string()], &ssh);
+    resume_in(machine, &[machine.to_string()], &ssh, &quiet());
     assert!(running(machine), "起 ⇒ 又有那一条");
-    align_in(&[], &ssh);
+    align_in(&[], &ssh, &quiet());
 }
 
 /// 一问请求（信封照帧面那一形，`within_ms` 给足）。
@@ -252,7 +276,7 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
         .unwrap()
         .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
     let ssh: Arc<dyn Ssh> = fake.clone();
-    align_in(&[machine.to_string()], &ssh);
+    align_in(&[machine.to_string()], &ssh, &quiet());
     until("那台的成品是 up", || state_of(machine) == "up").await;
 
     let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
@@ -284,7 +308,7 @@ async fn a_call_for_a_machine_goes_through_its_resident_stream() {
     assert_eq!(fail.code, "no_such_file");
     assert_eq!(fail.message, "那台说：没有这个文件");
     assert_eq!(fail.raw.as_deref(), Some("那台的原话"));
-    align_in(&[], &ssh);
+    align_in(&[], &ssh, &quiet());
 }
 
 /// 没有那一台的常驻流（机器表里没有 · 停着）⇒ 不发，说「那一跳断开」，码是协议里那一个。
@@ -302,4 +326,73 @@ async fn a_call_for_a_machine_without_a_stream_is_not_sent() {
     .await
     .expect_err("没有那一条就不发");
     assert_eq!(fail.code, UNREACHABLE);
+}
+
+/// ★ ④a 先红的那一条：那台那条常驻流上的事原样转给连着本机后端的壳 —— 先它的 hello（一行），再流上的帧（一行一帧），
+/// 断了一帧 `ended`；机器页那台的版本号是它 hello 里自报的那一格（不是这一份的）。
+#[tokio::test]
+async fn a_machines_stream_is_relayed_as_is_and_its_version_comes_from_its_hello() {
+    use cmd_wire::frame::Relayed;
+    let machine = "feeds-relay";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    let said = r#"{"kind":"sessions_replayed"}"#.to_string();
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Talk(crate::BUILD_ID.to_string(), vec![said.clone()]));
+    let mut changes = machine_state::changes().subscribe();
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    align_in(&[machine.to_string()], &ssh, &relay);
+    let ended = |g: &[Frame]| {
+        g.iter()
+            .any(|f| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine))
+    };
+    until("那台这一条断了 ⇒ 转一帧 ended", || {
+        ended(&got.lock().unwrap())
+    })
+    .await;
+    align_in(&[], &ssh, &quiet());
+    let seen: Vec<Relayed> = got
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|f| match f {
+            Frame::Relayed(r) => r.clone(),
+            other => panic!("只转 relayed：{other:?}"),
+        })
+        .collect();
+    let first_end = seen
+        .iter()
+        .position(|r| matches!(r, Relayed::Ended { .. }))
+        .unwrap();
+    assert_eq!(
+        seen[..=first_end],
+        [
+            Relayed::Line {
+                machine: machine.into(),
+                line: hello(crate::BUILD_ID),
+            },
+            Relayed::Line {
+                machine: machine.into(),
+                line: said,
+            },
+            Relayed::Ended {
+                machine: machine.into(),
+            },
+        ],
+        "{seen:?}"
+    );
+    let mut up_version = None;
+    while let Ok((m, p)) = changes.try_recv() {
+        if m == machine && p.state == cmd_wire::machine::MachineStateKind::Up {
+            up_version = Some(p.version);
+        }
+    }
+    assert_eq!(
+        up_version,
+        Some(Some(THEIR_VERSION.to_string())),
+        "接上那一刻那台的版本号是它 hello 里那一格"
+    );
 }

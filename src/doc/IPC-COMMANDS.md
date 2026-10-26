@@ -16,6 +16,7 @@
 |---|---|---|
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`）；换不换后端按它判 |
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
+| `version` | string? | 这份后端出自的那一版（仓根 `package.json` 的 `version`）；机器页那台的版本号就是它 |
 | `commands` | [string]? | 这台后端接受的入方向命令；空 ⇒ 它不读命令 |
 | `unavailable` | [Unavailable]? | 接得下、但这台做不到的命令与原因（见 `Unavailable`）；空 ＝ 没有「做不到」的把握 |
 | `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
@@ -264,6 +265,12 @@ A session file went away。
 | `ticket` | string | 订阅票 |
 | `why` | FollowEnd | 为什么停了（给程序认） |
 | `said` | string | 给人看的那一句（后端写好，界面原样上屏） |
+
+### `relayed`
+
+**本机后端转来的别台那条常驻流上的事**（各台的常驻流归本机后端，`control/feeds.rs`；壳只读本机这一条）。
+
+（无字段）
 
 ## 2. 信封与帧里用到的类型
 

@@ -277,8 +277,9 @@ async fn main() {
         control::host_key_migration::migrate_here(&own);
         // 历史注解的「隐藏」换成三态（升级链那一节）：常驻那一位起来时整份换一次、原文留 `.v1`。
         cc_monitor_backend::history::history_annotations::migrate_here(&own);
-        // 各台的常驻流归常驻这一位（机器表里要连的那几台各起一条，`control/feeds.rs`）。
-        control::feeds::start();
+        // 各台的常驻流归常驻这一位（机器表里要连的那几台各起一条，`control/feeds.rs`）；那台流上的事交每一份 watcher，
+        //   投给连着这一位的每条流连接（控制面与观测面互不引用，由这里接上）。
+        control::feeds::start(std::sync::Arc::new(observe::watcher::relay));
     }
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
@@ -353,6 +354,8 @@ fn build_hello() -> Frame {
     Frame::Hello(wire::Hello {
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
+        // 这份二进制出自的那一版：连它的那一端（本机后端那条常驻流）照它写机器页那台的版本号。
+        version: Some(env!("CC_MONITOR_VERSION").to_string()),
         commands: inbound::command_names()
             .into_iter()
             .map(str::to_string)

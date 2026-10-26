@@ -813,6 +813,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
     topic: NONE,
     cap_body: NONE,
+    // 本机后端转来的别台那一件说的是哪一台（`Relayed::machine`）：后端补欠的那一格、壳按台分收口时读；界面不碰这一帧，TS 侧没有孪生。
+    machine: NONE,
     // 写口拒绝时那一句（带那台的名字与「未保存」）：后端写成品，界面只画；TS 侧没有孪生。
     refused_said: NONE,
     // 书签的目录归一（`bookmarks.rs`）：后端存之前归一、文件窗口拿它比；界面不碰书签，TS 侧没有孪生。
