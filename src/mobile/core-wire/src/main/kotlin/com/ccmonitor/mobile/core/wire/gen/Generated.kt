@@ -10479,6 +10479,52 @@ sealed interface LiveCard {
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+data class LiveCardNow(
+    val card: Long,
+    val rid: String,
+    val phase: LivePhase,
+    val clipped: Boolean,
+    val blocks: List<LiveBlock>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LiveCardNow> = obj(
+            listOf(
+            Field("card", { Lng }, optional = false, nullable = false),
+            Field("rid", { Str }, optional = false, nullable = false),
+            Field("phase", { LivePhase.ADAPTER }, optional = false, nullable = false),
+            Field("clipped", { Bool }, optional = false, nullable = false),
+            Field("blocks", { arr(LiveBlock.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> LiveCardNow(a[0] as Long, a[1] as String, a[2] as LivePhase, a[3] as Boolean, a[4] as List<LiveBlock>) },
+            { v -> arrayOf(v.card, v.rid, v.phase, v.clipped, v.blocks) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class LiveCards(
+    val sid: String,
+    val run: String? = null,
+    val cards: List<LiveCardNow>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<LiveCards> = obj(
+            listOf(
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("run", { opt(Str) }, optional = true, nullable = true),
+            Field("cards", { arr(LiveCardNow.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> LiveCards(a[0] as String, a[1] as String?, a[2] as List<LiveCardNow>) },
+            { v -> arrayOf(v.sid, v.run, v.cards) },
+        )
+    }
+}
+
 sealed interface LiveOp {
     /** 判别格（`op`）那个词。 */
     val op: String
@@ -19603,6 +19649,33 @@ data class SessionAdded(
             ),
             { a -> SessionAdded(a[0] as String, a[1] as String, a[2] as Boolean?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as SessionFace, a[9] as Hidden?, a[10] as WireSessionContainer?, a[11] as Int, a[12] as String, a[13] as String?) },
             { v -> arrayOf(v.sid, v.agentKind, v.background, v.attachable, v.cwd, v.projectDir, v.name, v.path, v.face, v.hidden, v.container, v.pid, v.label, v.labelProject) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionBook(
+    val live: Map<String, SessionAdded>,
+    val left: Map<String, SessionState>,
+    val runs: Map<String, SessionRuns>,
+    val successors: Map<String, String>,
+    val rereads: Map<String, Long>,
+    val listed: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionBook> = obj(
+            listOf(
+            Field("live", { dict(SessionAdded.ADAPTER) }, optional = false, nullable = false),
+            Field("left", { dict(SessionState.ADAPTER) }, optional = false, nullable = false),
+            Field("runs", { dict(SessionRuns.ADAPTER) }, optional = false, nullable = false),
+            Field("successors", { dict(Str) }, optional = false, nullable = false),
+            Field("rereads", { dict(Lng) }, optional = false, nullable = false),
+            Field("listed", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> SessionBook(a[0] as Map<String, SessionAdded>, a[1] as Map<String, SessionState>, a[2] as Map<String, SessionRuns>, a[3] as Map<String, String>, a[4] as Map<String, Long>, a[5] as Boolean) },
+            { v -> arrayOf(v.live, v.left, v.runs, v.successors, v.rereads, v.listed) },
         )
     }
 }
