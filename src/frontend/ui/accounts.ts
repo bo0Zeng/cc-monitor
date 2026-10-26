@@ -7,6 +7,7 @@ import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import type { AccountRow } from "./generated/AccountRow";
 import type { ListMeta } from "./generated/ListMeta";
+import type { SeenAt } from "./generated/SeenAt";
 import type { AuthKind } from "./generated/judgment-rules";
 
 // ---- 账号的形状：后端 `accounts-list` 的成品（生成类型，`observe/accounts_query.rs::list_product` 出）----
@@ -33,10 +34,10 @@ export interface AccountsState {
   /** 能用但有缺时的人话说明（`available` 仍是 true）；null = 无缺。不出这一句，列表里少一行用户看不出来。 */
   notice: string | null;
   /**
-   * 这一次没问到（`available:false`）时，本机后端记着的那台上次答成的那一份 ＋ 答成的时刻（本机那台不记）：
-   * 只给「画上次的 ＋ 采样 n 前」用，不当作此刻的事实（起会话、换默认一律不读它）。没有 ⇒ `null`。
+   * 这一次没问到（`available:false`）时，本机后端记着的那台上次答成的那一份 ＋ 上次读数那一格（本机后端写好的「采样于 …」；本机那台不记）：
+   * 只给「画上次的」用，不当作此刻的事实（起会话、换默认一律不读它）。没有 ⇒ `null`。
    */
-  last?: { meta: AccountsMeta; accounts: Account[]; atMs: number } | null;
+  last?: { meta: AccountsMeta; accounts: Account[]; seen: SeenAt } | null;
 }
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */

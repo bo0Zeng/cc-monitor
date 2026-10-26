@@ -3,6 +3,7 @@ import type { PlanDomain } from "./PlanDomain";
 import type { PlanSessionBlock } from "./PlanSessionBlock";
 import type { PlanSlice } from "./PlanSlice";
 import type { PlanStale } from "./PlanStale";
+import type { SeenAt } from "./SeenAt";
 
 /**
  * `plan-read` 的回包：一个工作区的成品。
@@ -23,4 +24,8 @@ domains: Array<PlanDomain>, slices: Array<PlanSlice>, bySession: { [key in strin
 /**
  * 这一份输出的摘要：变了才算计划变了。
  */
-rev: string, readAt: number, readAtText?: string, stale: PlanStale | null, needCount: number, };
+rev: string, readAt: number, readAtText?: string, 
+/**
+ * 上次读数那一格（与 `readAtText` 同一把钟写）：那台离线时计划条照它说这一份是什么时候读到的。
+ */
+seen?: SeenAt, stale: PlanStale | null, needCount: number, };

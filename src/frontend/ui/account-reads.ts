@@ -54,7 +54,7 @@ async function recallLast(origin: Origin): Promise<AccountsState["last"]> {
     console.warn(`[accounts] ${origin} 记下的上次值不是这一版，读不懂`);
     return null;
   }
-  return { meta: seen.value.meta, accounts: seen.value.accounts, atMs: seen.atMs };
+  return { meta: seen.value.meta, accounts: seen.value.accounts, seen: seen.seen };
 }
 
 /**

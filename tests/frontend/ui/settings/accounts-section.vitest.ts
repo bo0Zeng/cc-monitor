@@ -367,10 +367,11 @@ describe("各态", () => {
     expect(fetchAccounts).not.toHaveBeenCalled();
   });
 
-  it("这一次没问到、有上次的 ⇒ 警告条「离线 · 采样 n 前 · 只读」＋［重试］，画上次的表、只读", async () => {
-    fetchAccounts.mockResolvedValue(state({ available: false, error: "超时", last: { meta: META, accounts: [acct({ name: "work", isDefault: true })], atMs: Date.now() - 3 * 60_000 } }));
+  it("这一次没问到、有上次的 ⇒ 警告条照后端写好的上次读数那一句「离线 · 采样于 … · 只读」＋［重试］，画上次的表、只读", async () => {
+    const seen = { atMs: 1, said: "采样于 夹具那一刻" };
+    fetchAccounts.mockResolvedValue(state({ available: false, error: "超时", last: { meta: META, accounts: [acct({ name: "work", isDefault: true })], seen } }));
     const el = await mount();
-    expect(el.textContent).toContain(copyText("acctPage.offline.bar", { machine: "devbox", ago: "3m" }));
+    expect(el.textContent).toContain(copyText("acctPage.offline.bar", { machine: "devbox", seen: seen.said }));
     expect(buttonNamed(el, copyText("acctPage.offline.retry"))).toBeDefined();
     expect(el.querySelector(".acct-table")!.getAttribute("data-readonly")).toBe("true");
     expect(rowOf(el, "work")).not.toBeNull();
