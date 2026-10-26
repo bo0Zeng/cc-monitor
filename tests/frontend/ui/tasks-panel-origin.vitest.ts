@@ -150,3 +150,19 @@ describe("RM1b：远端现问，本机不问", () => {
     expect(p.summaryElement.textContent).toContain("/2");
   });
 });
+
+describe("重画不丢焦点（kit place）", () => {
+  it("★ 焦点在某一行上，推来的新快照换了次序 ⇒ 还是那个节点、焦点还在它上", async () => {
+    getSessionTasks.mockResolvedValue([]);
+    await fetchSessionTasks("lf", LOCAL_ORIGIN);
+    const p = new TasksPanel();
+    document.body.replaceChildren(p.pageElement);
+    p.setSession("lf", [task("1"), task("2"), task("3")]);
+    const row = p.pageElement.querySelector<HTMLElement>('[data-task-id="2"]')!;
+    row.tabIndex = 0;
+    row.focus();
+    p.setSession("lf", [task("3"), task("1"), task("2", "completed")]);
+    expect(p.pageElement.querySelector('[data-task-id="2"]')).toBe(row);
+    expect(document.activeElement).toBe(row);
+  });
+});

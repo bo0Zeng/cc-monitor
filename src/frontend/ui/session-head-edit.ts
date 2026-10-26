@@ -11,6 +11,7 @@
 import { copyText } from "./copy-table";
 import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
+import { morph } from "./kit/morph";
 import { dropHeadButton, headEditRows, nudgeHeadButton, toggleHeadButton, type HeadButtonId } from "./session-head-buttons";
 import s from "./session-head.module.css";
 
@@ -71,7 +72,6 @@ export class HeadEditor {
 
   /** 照此刻那一排重画清单；焦点在哪一行就还在那一行（挪过之后也跟着它）。 */
   update(): void {
-    const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-row]")?.dataset.row;
     const rows = headEditRows(this.host.buttons());
     const els: HTMLElement[] = [];
     let wasOn = true;
@@ -81,10 +81,9 @@ export class HeadEditor {
       els.push(this.row(r.id, r.on));
     }
     els.push(this.divider(), this.moreRow(), this.line);
-    this.list.replaceChildren(...els);
+    morph(this.list, els);
     const first = this.list.querySelector<HTMLElement>("[data-row]");
     if (first) first.tabIndex = 0;
-    if (focused) this.rowEl(focused)?.focus();
   }
 
   /** 焦点进第一行（浮层开着时）。 */
@@ -108,6 +107,7 @@ export class HeadEditor {
     const r = document.createElement("div");
     r.className = s.shEditRow;
     r.dataset.row = id;
+    r.dataset.key = id;
     r.tabIndex = -1;
     r.setAttribute("role", "listitem");
     const grip = document.createElement("span");
@@ -138,6 +138,7 @@ export class HeadEditor {
     const r = document.createElement("div");
     r.className = `${s.shEditRow} ${s.shEditFixed}`;
     r.dataset.row = "more";
+    r.dataset.key = "more";
     r.tabIndex = -1;
     r.setAttribute("role", "listitem");
     const grip = document.createElement("span");

@@ -7,6 +7,7 @@
  */
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { placeBeside } from "./place";
+import { morph } from "./morph";
 import { hideTooltips } from "./tooltip";
 import s from "./popover.module.css";
 
@@ -65,11 +66,11 @@ export function openPopover(anchor: HTMLElement, content: HTMLElement, opts: { l
   return true;
 }
 
-/** 这个触发物上开着面板 ⇒ 原地换掉里面的内容（不关不重开、位置不动），回 `true`；没开着 ⇒ `false`。 */
+/** 这个触发物上开着面板 ⇒ 原地换掉里面的内容（不关不重开、位置不动；焦点原在面板里 ⇒ 留在新内容里，kit morph），回 `true`；没开着 ⇒ `false`。 */
 export function swapPopoverContent(anchor: HTMLElement, content: HTMLElement): boolean {
   const o = current;
   if (!o || o.anchor !== anchor) return false;
-  o.root.replaceChildren(content);
+  morph(o.root, [content], { fallback: content });
   return true;
 }
 

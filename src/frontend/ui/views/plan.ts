@@ -13,6 +13,7 @@
 import { openPath } from "@tauri-apps/plugin-opener";
 import { button, setDisabled } from "../kit/button";
 import { banner } from "../kit/banner";
+import { morph } from "../kit/morph";
 import { icon } from "../kit/icon";
 import { foldCaret } from "../kit/fold";
 import { emptyState } from "../kit/empty";
@@ -741,7 +742,7 @@ export class PlanView {
     const whole = this.wholeState();
     if (whole) {
       this.bodyEl.className = s.pvWhole;
-      this.bodyEl.replaceChildren(whole);
+      morph(this.bodyEl, [whole]);
       return;
     }
     this.bodyEl.className = s.pvBody;
@@ -754,19 +755,19 @@ export class PlanView {
     pane.className = `${s.pvPane} plan-pane`;
     if (!slice) {
       tree.appendChild(skeletonRows(8));
-      this.bodyEl.replaceChildren(tree, pane);
+      morph(this.bodyEl, [tree, pane]);
       return;
     }
     if (slice.bare) {
       pane.appendChild(emptyState({ icon: "warning", text: copyText("plan.strip.sliceUnreadable", { reason: slice.error ?? "" }) }));
-      this.bodyEl.replaceChildren(tree, pane);
+      morph(this.bodyEl, [tree, pane]);
       return;
     }
     // 新开的一片还没有图：整页一屏（没有大纲可画）。
     if (isFresh(slice)) {
       const ref = this.current!;
       this.bodyEl.className = s.pvWhole;
-      this.bodyEl.replaceChildren(freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd })));
+      morph(this.bodyEl, [freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd }))]);
       return;
     }
     tree.append(this.outline(slice), this.legend(slice));
@@ -775,7 +776,7 @@ export class PlanView {
     if (cell) pane.append(...this.reviewBars(slice, cell), this.detail.render(slice, cell, this.currentDoc()?.rev ?? ""));
     else if (this.signsOpen) pane.appendChild(this.signsFlow(slice));
     else pane.append(...this.reviewBars(slice, cell), this.overview(slice));
-    this.bodyEl.replaceChildren(tree, pane);
+    morph(this.bodyEl, [tree, pane]);
   }
 
   /** 整页一句的几种：首次加载 · pb 没装 / 太旧 · 没有计划。`null` ＝ 有片可画。 */
@@ -1105,6 +1106,7 @@ export class PlanView {
     const q = document.createElement("input");
     q.type = "search";
     q.dataset.find = "signs";
+    q.dataset.key = "signs-find"; // 推来一次重画：正打着的筛选字 · 焦点由 kit morph 搬过去
     q.placeholder = copyText("plan.page.search");
     q.setAttribute("aria-label", copyText("plan.page.search"));
     q.value = this.signsQuery;

@@ -7,12 +7,12 @@
  * | 一段合下来的合并表与「等于」那一行（可按未存的表单、假设在某个目录敲） | `profiles-resolve` | [`Resolved`] |
  * | 这几处改动会连带哪几段（改前改后） | `profiles-impact` | [`Affected`]`[]` |
  * | 「基于」下拉能选的几段 | `profiles-bases` | [`Base`]`[]` |
- * | 按条目改配置文件（带读回时的指纹；盘上被别处改过 ⇒ [`ProfilesStale`]） | `profiles-write` | [`WriteDone`] |
+ * | 按条目改配置文件（带读回时的指纹；盘上被别处改过 ⇒ 对端拒、码 `stale`） | `profiles-write` | [`WriteDone`] |
  *
  * 合并 · 校验 · 标签 · 值怎么说全在那台后端。入参 · 回包都是后端类型生成的（`generated/`），
  * 回包形状由握手时的形状指纹管，这里不逐格判。
  */
-import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { ProfileForm as ProfileFormWire } from "./generated/ProfileForm";
 import type { ProfileSlotId } from "./generated/ProfileSlotId";
@@ -41,9 +41,6 @@ export type Affected = ProfileAffected;
 export type Base = ProfileBase;
 export type ProfileOp = ProfileOpWire;
 export type WriteDone = ProfilesWriteDone;
-
-/** 存的那一刻盘上那份不是读回时那一份（被别处改过）⇒ 一个字节没写；界面重读、表单留着。 */
-export class ProfilesStale extends Error {}
 
 /** 五问的期限：读一份小文件、合并几层、写一份（秒级）。给 30 秒。 */
 const PROFILES_BUDGET_MS = 30_000;
@@ -84,14 +81,7 @@ export async function profileBases(origin: Origin, name: string): Promise<Base[]
   }
 }
 
-/** 按条目改：盘上被别处改过 ⇒ [`ProfilesStale`]（一个字节没写）。 */
-export async function writeProfiles(origin: Origin, changes: ProfileOp[], fingerprint: string | null): Promise<WriteDone> {
-  try {
-    return await callTyped(origin, "profiles-write", { changes, fingerprint }, budgetWithin(PROFILES_BUDGET_MS));
-  } catch (e) {
-    if (refusalIn(e)?.code === "stale") {
-      throw new ProfilesStale(saidOf(e));
-    }
-    throw said(e);
-  }
+/** 按条目改：结局交统一写口（`ipc/write.ts`）判 —— 盘上被别处改过是对端拒、码 `stale`（一个字节没写）。 */
+export function writeProfiles(origin: Origin, changes: ProfileOp[], fingerprint: string | null): Promise<WriteDone> {
+  return callTyped(origin, "profiles-write", { changes, fingerprint }, budgetWithin(PROFILES_BUDGET_MS));
 }

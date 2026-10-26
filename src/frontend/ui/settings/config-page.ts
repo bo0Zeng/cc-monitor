@@ -14,6 +14,7 @@ import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { button } from "../kit/button";
 import { confirmDialog } from "../kit/dialog";
 import { failToast } from "../kit/toast";
+import { write } from "../ipc/write";
 
 import { accountsMcpPick, accountsMcpRead, accountsMcpRemove, accountsMcpSync, type AccountMcpView } from "../account-ops";
 import { extList, type ExtList } from "../ext-reads";
@@ -84,7 +85,7 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
             : ch.gone
               ? copyText("cfgPage.mcp.useGone")
               : copyText("cfgPage.mcp.useShared");
-        acts.appendChild(button({ label, size: "compact", onClick: () => void act(() => accountsMcpPick(origin(), c.name, ch.from), () => copyText("cfgPage.mcp.pickFailed")) }));
+        acts.appendChild(button({ label, size: "compact", onClick: () => void send(() => accountsMcpPick(origin(), c.name, ch.from), () => copyText("cfgPage.mcp.pickFailed")) }));
       }
       box.appendChild(acts);
       body.appendChild(box);
@@ -111,19 +112,19 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
     const foot = document.createElement("div");
     foot.className = "cfg-foot-row";
     foot.appendChild(
-      link(v.sync ? copyText("cfgPage.mcp.stop") : copyText("cfgPage.mcp.resume"), () => void act(() => accountsMcpSync(origin(), !v.sync), () => copyText("cfgPage.mcp.syncFailed"))),
+      link(v.sync ? copyText("cfgPage.mcp.stop") : copyText("cfgPage.mcp.resume"), () => void send(() => accountsMcpSync(origin(), !v.sync), () => copyText("cfgPage.mcp.syncFailed"))),
     );
     foot.appendChild(line("cfg-hint", v.sync ? copyText("cfgPage.mcp.stopHint") : copyText("cfgPage.mcp.resumeHint")));
     foot.dataset.role = "mcp-sync";
     body.appendChild(foot);
   };
 
-  const act = async (op: () => Promise<AccountMcpView>, failed: () => string): Promise<void> => {
-    try {
-      paint(await op());
-    } catch (e) {
-      failToast(failed(), e, { level: "error" });
-    }
+  /** 一笔写经统一写口：回包就是新的那一份 ⇒ 照它画（不必再读）；不成 ⇒ 失败 toast（那一句是后端写的），别处改过的再读一次。 */
+  const send = async (op: () => Promise<AccountMcpView>, failed: () => string): Promise<void> => {
+    const end = await write(op);
+    if (end.ok) return paint(end.value);
+    failToast(failed(), end.error, { level: "error" });
+    if (end.stale) load();
   };
 
   const remove = async (name: string): Promise<void> => {
@@ -133,7 +134,7 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
       danger: true,
       body: copyText("cfgPage.mcp.removeBody", { name, machine: machine() }),
     });
-    if (ok) await act(() => accountsMcpRemove(origin(), name), () => copyText("cfgPage.mcp.removeFailed"));
+    if (ok) await send(() => accountsMcpRemove(origin(), name), () => copyText("cfgPage.mcp.removeFailed"));
   };
 
   const load = (): void => {

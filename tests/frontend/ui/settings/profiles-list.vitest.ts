@@ -80,8 +80,8 @@ describe("buildProfilesList", () => {
         return () => undefined;
       },
     }));
-    vi.doMock("../../../../src/comms/inward/chan", () => ({
-      ChanError: class ChanError extends Error {},
+    vi.doMock("../../../../src/comms/inward/chan", async (orig) => ({
+      ChanError: (await orig<typeof import("../../../../src/comms/inward/chan")>()).ChanError,
       chan: { subscribe: () => Promise.resolve({ want: () => undefined, stop: () => undefined }), call: () => Promise.reject(new Error("不该直接问")) },
     }));
     vi.doMock("../../../../src/frontend/ui/profiles-reads", async (orig) => {
@@ -100,11 +100,14 @@ describe("buildProfilesList", () => {
             problem: null,
           }),
         profileImpact: () => Promise.resolve([{ name: "teamcct", changes: [{ slot: "tmux", label: "在哪起", before: "A", after: "B" }], problem: null }]),
-        writeProfiles: (_o: string, changes: ProfileOp[], fingerprint: string | null) => {
+        writeProfiles: async (_o: string, changes: ProfileOp[], fingerprint: string | null) => {
           writes.push({ changes, fingerprint });
           if (staleOnce) {
             staleOnce = false;
-            return Promise.reject(new real.ProfilesStale("被别处改过"));
+            // 那台拒了、码 stale（与线上同形：通道里的拒绝体）。
+            const { ChanError } = await import("../../../../src/comms/inward/chan");
+            const body = new TextEncoder().encode(JSON.stringify({ code: "stale", message: "被别处改过" }));
+            throw new ChanError({ layer: "peer", why: "refused", body }, "被别处改过");
           }
           return Promise.resolve({ wrote: true, fingerprint: "fp-2", reload: null });
         },
@@ -192,10 +195,27 @@ describe("buildProfilesList", () => {
     await flush();
     el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
     await flush();
+    await flush();
     const top = el.querySelector<HTMLElement>('[data-role="form-top"]')!;
     expect(top.textContent).toContain(copyText("profilesPage.form.stale"));
     expect(top.textContent).toContain(copyText("profilesPage.form.reread"));
     expect(el.querySelector('[data-role="profile-form"]')).not.toBeNull();
+  });
+
+  it("★ 打了一半的字遇到一次重读（存时撞上别处改过 ⇒ 重读重画），字还在、焦点还在", async () => {
+    staleOnce = true;
+    const { el } = await mount();
+    [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="workcc"] .cfg-link')][0].click();
+    await flush();
+    const name = el.querySelector<HTMLInputElement>('[data-role="profile-form"] input[data-role="name"]')!;
+    name.focus();
+    name.value = "半截";
+    el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
+    await flush();
+    await flush();
+    const after = el.querySelector<HTMLInputElement>('[data-role="profile-form"] input[data-role="name"]')!;
+    expect(after.value).toBe("半截");
+    expect(document.activeElement).toBe(after);
   });
 
   it("删一条被别人基于的：三个选择、默认推荐改成基于它的父；点执行交 remove + reparent", async () => {
