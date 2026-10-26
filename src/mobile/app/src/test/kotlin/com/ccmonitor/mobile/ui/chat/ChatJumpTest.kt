@@ -81,7 +81,8 @@ class ChatJumpTest {
             s.jump(1000, "c1")
             s.open()
             runCurrent()
-            val card = s.state.value.units.filterIsInstance<RenderUnit.ToolCall>().single { it.toolUseId == "c1" }
+            val units = s.state.value.units
+            val card = units.filterIsInstance<RenderUnit.ToolCall>().single { it.toolUseId == "c1" }
             assertEquals(card.key, s.state.value.landing)
         }
 

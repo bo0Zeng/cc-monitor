@@ -110,8 +110,9 @@ fun ChatTranscript(
         landed = key
         listState.scrollToItem(i)
     }
+    val settled = state.landing == null || landed != null
     LaunchedEffect(lastUnit?.key, lastUnit?.searchableText()?.length, liveLength, viewport) {
-        if (following && total > 0 && (state.landing == null || landed != null)) listState.scrollToItem(total - 1, Int.MAX_VALUE)
+        if (following && total > 0 && settled) listState.scrollToItem(total - 1, Int.MAX_VALUE)
     }
 
     Column(modifier.fillMaxWidth()) {

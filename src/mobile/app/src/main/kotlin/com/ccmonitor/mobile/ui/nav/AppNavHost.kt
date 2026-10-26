@@ -459,6 +459,14 @@ private fun RotationRoute(
     )
 }
 
+/** 可缺的一个字串查询参数（缺 ⇒ `null`）。 */
+private fun optionalString(name: String) =
+    navArgument(name) {
+        type = NavType.StringType
+        nullable = true
+        defaultValue = null
+    }
+
 /** 对话总览与单个对话两条路由。 */
 private fun NavGraphBuilder.chatRoutes(
     nav: NavHostController,
@@ -485,23 +493,9 @@ private fun NavGraphBuilder.chatRoutes(
                     type = NavType.BoolType
                     defaultValue = false
                 },
-                navArgument(Screen.Chat.ARG_CWD) {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
+            ) +
                 // 从搜内容的一处命中打开：那一行的字节起点（Long 型的参数不许缺，所以按字串交）· 落在哪张工具卡里。
-                navArgument(Screen.Chat.ARG_AT) {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument(Screen.Chat.ARG_TOOL) {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-            ),
+                listOf(Screen.Chat.ARG_CWD, Screen.Chat.ARG_AT, Screen.Chat.ARG_TOOL).map(::optionalString),
     ) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
         val sid = entry.arguments?.getString("sid").orEmpty()

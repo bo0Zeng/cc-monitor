@@ -14,7 +14,6 @@ import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionArrive
-import com.ccmonitor.mobile.core.claude.link.SessionCommandList
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
@@ -183,6 +182,9 @@ class ChatSession(
     val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, scope) }
     private val body = RecordUnits()
 
+    /** 读正文的那几问；没成的那一句照 [readFailed] 上屏。 */
+    private val reads = ChatReads(link, machine) { readFailed(it) }
+
     /** 上次上屏以后新排进来的那几条里人说的话（只拿它们消本地那几句的标）。 */
     private val heard = mutableListOf<String>()
     private val outgoing = mutableListOf<Outgoing>()
@@ -211,17 +213,6 @@ class ChatSession(
     private var follow: Job? = null
     private val board = LiveBoard()
     private var starting: Job? = null
-
-    private class Outgoing(
-        val localId: String,
-        val text: String,
-        var delivery: DeliveryState?,
-        var deliveryText: String?,
-        var attempts: Int = 1,
-    ) {
-        /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
-        var handed = false
-    }
 
     /** 开屏：先填上次没发的草稿；已有的那条先上缓存、再读最后一屏、跟上；新建会话什么都不问那台。 */
     fun open() {
@@ -352,22 +343,8 @@ class ChatSession(
             },
         )
 
-    /** ［+］面板打开：问那台这条会话能用的命令与 Skill（每开一次问一次：项目里的命令文件可能刚改过）。 */
-    fun loadCommands() {
-        val s = sid ?: return
-        _state.value = _state.value.copy(commands = CommandsView.Loading)
-        scope.launch {
-            val r = link.call(SessionCommandList.COMMAND, SessionCommandList.args(s), READ_MS)
-            val view =
-                when (r) {
-                    is Reply.Ok ->
-                        SessionCommandList.of(r.data)?.let { CommandsView.Ready(it) }
-                            ?: CommandsView.Failed(unreadableReply(machine, SessionCommandList.COMMAND, r.data.toString()).text)
-                    else -> CommandsView.Failed(r.problem(machine, SessionCommandList.COMMAND)?.text.orEmpty())
-                }
-            _state.value = _state.value.copy(commands = view)
-        }
-    }
+    /** ［+］面板打开（见 [ChatChips.loadCommands]）。 */
+    fun loadCommands() = chips.loadCommands()
 
     /** ［+］面板里的一次性动作（压缩上下文 · 清空会话）：经 `session-say` 说那一句，结果回消息流；没送到 ⇒ chip 上方那一句。 */
     fun say(text: String) {
@@ -393,11 +370,8 @@ class ChatSession(
         scope.launch {
             val want = tailLines + PAGE_LINES
             val got =
-                ask(HistoryTail.COMMAND, HistoryTail.args(p, want))?.let { data ->
-                    when (val t = HistoryTail.of(data)) {
-                        null -> null.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, data.toString()).text) }
-                        else -> readRange(p, t.splitAt, head, data)?.let { t to it }
-                    }
+                reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, want))?.let { data ->
+                    reads.parsed(HistoryTail.COMMAND, data, HistoryTail::of)?.let { t -> reads.range(p, t.splitAt, head, data)?.let { t to it } }
                 }
             lock.withLock {
                 if (got == null) {
@@ -451,26 +425,12 @@ class ChatSession(
     private fun outcomeOf(r: Reply): Pair<DeliveryState?, String?> =
         when (r) {
             is Reply.Ok ->
-                SessionSay.of(r.data)?.let(::outcomeOf)
+                SessionSay.of(r.data)?.let { outcomeOf(it, machine) }
                     ?: failed(unreadableReply(machine, SessionSay.COMMAND, r.data.toString()).text)
             // 期限到了：发出去了、不知道送没送到 ⇒ 不重发。
-            Reply.TimedOut -> unsure()
+            Reply.TimedOut -> unsure(machine)
             else -> failed(r.problem(machine, SessionSay.COMMAND)?.text)
         }
-
-    /** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。 */
-    private fun outcomeOf(res: TerminalInput.Result): Pair<DeliveryState?, String?> =
-        when (res) {
-            TerminalInput.Result.Delivered -> null to null
-            TerminalInput.Result.Unsure -> unsure()
-            is TerminalInput.Result.Refused ->
-                (if (res.why in RETRYABLE) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
-                    copyText("terminal.input.failed", "why" to res.said)
-        }
-
-    private fun unsure() = DeliveryState.UNSURE to copyText("terminal.input.unsure", "machine" to machine)
-
-    private fun failed(why: String?) = DeliveryState.FAILED to copyText("terminal.input.failed", "why" to why.orEmpty())
 
     private fun mark(
         o: Outgoing,
@@ -482,15 +442,6 @@ class ChatSession(
         publish()
         scope.launch { cache.settle(o.localId, outcomeOf(delivery), o.attempts) }
     }
-
-    /** 气泡下的标 ⇒ 落盘的那四种结局之一（照 `session-say` 的回包）。 */
-    private fun outcomeOf(d: DeliveryState?): String =
-        when (d) {
-            null -> PendingOutcome.DELIVERED
-            DeliveryState.SENDING -> PendingOutcome.PENDING
-            DeliveryState.UNSURE -> PendingOutcome.UNSURE
-            DeliveryState.FAILED, DeliveryState.FAILED_PERMANENT -> PendingOutcome.REFUSED
-        }
 
     private fun fail(
         o: Outgoing,
@@ -531,7 +482,7 @@ class ChatSession(
             }
         answer.prompt?.let { said ->
             first.handed = true
-            val (delivery, text) = outcomeOf(said)
+            val (delivery, text) = outcomeOf(said, machine)
             mark(first, delivery, text)
         }
         sid = arrived
@@ -544,23 +495,6 @@ class ChatSession(
     /** 会话那一层没成：那一句上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */
     private fun failSession(text: String?) {
         _state.value = _state.value.copy(failedWhy = text, drafting = draft != null && sid == null)
-    }
-
-    /** 一条会话流上来的两样：一行 · 进名单那一格（从第几行起上流）。 */
-    private sealed interface Event {
-        data class Line(
-            val line: RecordLine,
-        ) : Event
-
-        data class From(
-            val seq: Long,
-        ) : Event
-
-        /** 换了一条流（`CoreLink.epoch` 变了）：断开那段的行没收到。 */
-        data object Reconnected : Event
-
-        /** 那份记录被那台从头重读了（会话表里那一条换了一代）：读过的那一代作废。 */
-        data object Reread : Event
     }
 
     /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [pathOf]）。 */
@@ -581,7 +515,7 @@ class ChatSession(
         fromSubscribed.await()
         val at = jumpAt.also { jumpAt = null }
         // 先上缓存（离线也看得到上次那几条），再跟那台对齐；刚起的那条没有可上的。从一处命中打开 ⇒ 缓存里那一屏不上（只挂回待发）。
-        if (!fresh) lock.withLock { if (at == null) restoreLocked(s) else restorePendingLocked(s) }
+        if (!fresh) lock.withLock { restoreLocked(s, at) }
         cache.viewed(s)
         launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
         launch {
@@ -600,7 +534,7 @@ class ChatSession(
         path = p
         launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
-        var loaded = lock.withLock { if (at == null) reloadLocked(p) else jumpLocked(p, at) }
+        var loaded = lock.withLock { loadLocked(p, at) }
 
         suspend fun take(e: Event) =
             lock.withLock {
@@ -659,11 +593,14 @@ class ChatSession(
 
     /**
      * 上次读到的（缓存里的页原样，交给与线上同一个解码器）先上屏 ＋ 续点；上次没送完的那几句照它们的结局挂回去。
-     * 有一页解不出 ⇒ 当没有缓存（照那台重读）。
+     * 有一页解不出 ⇒ 当没有缓存（照那台重读）。从一处命中打开（[at]）⇒ 缓存里那一屏不上，只挂回待发。
      */
-    private suspend fun restoreLocked(s: String) {
+    private suspend fun restoreLocked(
+        s: String,
+        at: Long?,
+    ) {
         restorePendingLocked(s)
-        val cached = cache.load(s) ?: return publishLocked()
+        val cached = cache.load(s)?.takeIf { at == null } ?: return publishLocked()
         val got = cached.pages.map { HistoryRead.decodeRows(it.rows) ?: return publishLocked() }.flatten()
         take(got) { body.reset(it) }
         head = cached.pages.first().start
@@ -686,7 +623,7 @@ class ChatSession(
                 when (p.outcome) {
                     PendingOutcome.DELIVERED -> null to null
                     PendingOutcome.REFUSED -> failed(null)
-                    else -> unsure()
+                    else -> unsure(machine)
                 }
             outgoing += Outgoing(p.id, p.text, d, text, p.attempts)
         }
@@ -714,34 +651,43 @@ class ChatSession(
     private suspend fun reloadLocked(p: String): Boolean {
         val s = sid ?: return false
         val held = anchorOffset?.takeIf { !body.isEmpty() }?.let { o -> anchorPath?.let { Held(it, nextSeq, o, anchorMark) } }
-        val data = ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines, held)) ?: return false
-        val t = HistoryTail.of(data) ?: return false.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, data.toString()).text) }
+        val data = reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines, held)) ?: return false
+        val t = reads.parsed(HistoryTail.COMMAND, data, HistoryTail::of) ?: return false
         val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
         val ok =
             when {
                 t.how == TailHow.RESUME && held != null ->
-                    readRange(p, held.nextByte, t.end, data)?.also { read ->
+                    reads.range(p, held.nextByte, t.end, data)?.also { read ->
                         take(read.records) { body.append(it) }
                         cache.append(s, read.pages.flatMap { it.rows }, anchor)
                     } != null
                 // 缺得多那一形那台没读那一截：最后一屏这里自己读。
                 else ->
-                    readRange(p, t.splitAt, t.end, data.takeIf { t.how != TailHow.HANDOFF })?.also { read ->
+                    reads.range(p, t.splitAt, t.end, data.takeIf { t.how != TailHow.HANDOFF })?.also { read ->
                         head = t.splitAt
                         take(read.records) { body.reset(it) }
                         // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
                         cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, anchor)
                     } != null
             }
-        if (ok) {
-            nextSeq = anchor.seq
-            anchorOffset = anchor.offset
-            anchorPath = anchor.path
-            anchorMark = anchor.mark
-            _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
-            publishLocked()
-        }
+        if (ok) heldLocked(anchor)
         return ok
+    }
+
+    /** 挂上那一下读正文：从一处命中打开 ⇒ 从那里读（[jumpLocked]），否则读最后一屏。 */
+    private suspend fun loadLocked(
+        p: String,
+        at: Long?,
+    ): Boolean = if (at == null) reloadLocked(p) else jumpLocked(p, at)
+
+    /** 读成了一段、拿到那台给的续点：记下、上屏。 */
+    private fun heldLocked(anchor: Anchor) {
+        nextSeq = anchor.seq
+        anchorOffset = anchor.offset
+        anchorPath = anchor.path
+        anchorMark = anchor.mark
+        _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
+        publishLocked()
     }
 
     /**
@@ -753,38 +699,29 @@ class ChatSession(
         p: String,
         at: Long,
     ): Boolean {
-        val s = sid ?: return false
-        val data = ask(HistoryRead.COMMAND, HistoryRead.args(p, at, Long.MAX_VALUE)) ?: return false
-        val first = cut(data, Long.MAX_VALUE) ?: return false.also { readFailed(unreadableReply(machine, HistoryRead.COMMAND, data.toString()).text) }
-        head = at
-        take(first.records) { body.reset(it) }
-        landingKey = body.units().firstOrNull()?.key
-        publishLocked()
-        val below =
-            if (first.eof) {
-                emptyList()
-            } else {
-                val read = readRange(p, first.next, Long.MAX_VALUE) ?: return false
-                take(read.records) { body.append(it) }
-                read.pages
-            }
-        val pages = listOf(RawPage(at, first.next, first.rows)) + below
+        var first = true
+        val read =
+            reads.range(p, at, Long.MAX_VALUE) { rs ->
+                if (first) {
+                    head = at
+                    take(rs) { body.reset(it) }
+                    landingKey = body.units().firstOrNull()?.key
+                    publishLocked()
+                    first = false
+                } else {
+                    take(rs) { body.append(it) }
+                }
+            } ?: return false
         // 读到的可计行（残尾那一行没有 `end`，不算）。
-        tailLines = pages.sumOf { page -> page.rows.count { (it as? Map<*, *>)?.get("end") != null } }
-        val reply = ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines)) ?: return false
-        val t = HistoryTail.of(reply) ?: return false.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, reply.toString()).text) }
-        if (t.splitAt != at || t.end != pages.last().end) {
+        tailLines = read.pages.sumOf { page -> page.rows.count { (it as? Map<*, *>)?.get("end") != null } }
+        val t = reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines))?.let { reads.parsed(HistoryTail.COMMAND, it, HistoryTail::of) } ?: return false
+        if (t.splitAt != at || t.end != read.pages.lastOrNull()?.end) {
             anchorOffset = null
             return reloadLocked(p)
         }
         val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
-        cache.replace(s, pages, anchor)
-        nextSeq = anchor.seq
-        anchorOffset = anchor.offset
-        anchorPath = anchor.path
-        anchorMark = anchor.mark
-        _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
-        publishLocked()
+        sid?.let { cache.replace(it, read.pages, anchor) }
+        heldLocked(anchor)
         return true
     }
 
@@ -868,65 +805,6 @@ class ChatSession(
         }
     }
 
-    /** 读到的一段：记录 ＋ 每一问的 `rows[]` 原样（一问一页，缓存存它）。 */
-    private class Read(
-        val records: List<LineRecord>,
-        val pages: List<RawPage>,
-    )
-
-    /** 问一次；没成 ⇒ 那一句上屏、`null`。 */
-    private suspend fun ask(
-        cmd: String,
-        args: Map<String, Any?>,
-    ): Any? =
-        when (val r = link.call(cmd, args, READ_MS)) {
-            is Reply.Ok -> r.data
-            else -> null.also { readFailed(r.problem(machine, cmd)?.text) }
-        }
-
-    /** 一页回包里 [until] 之前的那几行：记录 ＋ `rows[]` 原样（缓存存它）；形状不对 ⇒ `null`。 */
-    private class Cut(
-        val records: List<LineRecord>,
-        val rows: List<Any?>,
-        val next: Long,
-        val eof: Boolean,
-    )
-
-    private fun cut(
-        data: Any?,
-        until: Long,
-    ): Cut? {
-        val page = HistoryRead.of(data) ?: return null
-        val rows = HistoryRead.rawRows(data)?.filter { ((it as? Map<*, *>)?.get("end") as? Number)?.toLong()?.let { e -> e <= until } ?: true } ?: return null
-        return HistoryRead.decodeRows(rows)?.let { Cut(it, rows, page.next, page.eof) }
-    }
-
-    /**
-     * 读 `[from, until)` 里的记录，一页不够就接着读。[first] 是已经拿到的第一页（`history-tail` 随回包带来的，从 [from] 起）；
-     * 那一页越过 [until] 的几行不要（往上翻时第一页是整个尾段的）。
-     */
-    private suspend fun readRange(
-        p: String,
-        from: Long,
-        until: Long,
-        first: Any? = null,
-    ): Read? {
-        val out = mutableListOf<LineRecord>()
-        val pages = mutableListOf<RawPage>()
-        var at = from
-        var given = first
-        while (at < until) {
-            val data = given ?: ask(HistoryRead.COMMAND, HistoryRead.args(p, at, until)) ?: return null
-            given = null
-            val page = cut(data, until) ?: return null.also { readFailed(unreadableReply(machine, HistoryRead.COMMAND, data.toString()).text) }
-            out += page.records
-            pages += RawPage(at, minOf(page.next, until), page.rows)
-            if (page.eof || page.next <= at) break
-            at = page.next
-        }
-        return Read(out, pages)
-    }
-
     private fun readFailed(text: String?) {
         if (body.isEmpty()) failSession(text) else _state.value = _state.value.copy(historyError = text)
     }
@@ -972,12 +850,67 @@ class ChatSession(
         private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L
 
-        private const val READ_MS = 15_000L
-
-        /** 改得了的拒因（画面变了 · 一时认不出）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */
-        private val RETRYABLE = setOf("screen_changed", "ambiguous", "not_known")
+        private const val READ_MS = ChatReads.READ_MS
     }
 }
+
+/** 送出去、记录里还没出现的那一句。 */
+private class Outgoing(
+    val localId: String,
+    val text: String,
+    var delivery: DeliveryState?,
+    var deliveryText: String?,
+    var attempts: Int = 1,
+) {
+    /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
+    var handed = false
+}
+
+/** 一条会话流上来的两样：一行 · 进名单那一格（从第几行起上流）。 */
+private sealed interface Event {
+    data class Line(
+        val line: RecordLine,
+    ) : Event
+
+    data class From(
+        val seq: Long,
+    ) : Event
+
+    /** 换了一条流（`CoreLink.epoch` 变了）：断开那段的行没收到。 */
+    data object Reconnected : Event
+
+    /** 那份记录被那台从头重读了（会话表里那一条换了一代）：读过的那一代作废。 */
+    data object Reread : Event
+}
+
+/** 改得了的拒因（画面变了 · 一时认不出）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */
+private val RETRYABLE = setOf("screen_changed", "ambiguous", "not_known")
+
+/** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。 */
+private fun outcomeOf(
+    res: TerminalInput.Result,
+    machine: String,
+): Pair<DeliveryState?, String?> =
+    when (res) {
+        TerminalInput.Result.Delivered -> null to null
+        TerminalInput.Result.Unsure -> unsure(machine)
+        is TerminalInput.Result.Refused ->
+            (if (res.why in RETRYABLE) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
+                copyText("terminal.input.failed", "why" to res.said)
+    }
+
+private fun unsure(machine: String) = DeliveryState.UNSURE to copyText("terminal.input.unsure", "machine" to machine)
+
+private fun failed(why: String?) = DeliveryState.FAILED to copyText("terminal.input.failed", "why" to why.orEmpty())
+
+/** 气泡下的标 ⇒ 落盘的那四种结局之一（照 `session-say` 的回包）。 */
+private fun outcomeOf(d: DeliveryState?): String =
+    when (d) {
+        null -> PendingOutcome.DELIVERED
+        DeliveryState.SENDING -> PendingOutcome.PENDING
+        DeliveryState.UNSURE -> PendingOutcome.UNSURE
+        DeliveryState.FAILED, DeliveryState.FAILED_PERMANENT -> PendingOutcome.REFUSED
+    }
 
 /** 新起的那一条报到没有：报到了 ⇒ 它的 sid；没报到 ⇒ 上屏那一句。 */
 private sealed interface Arrival {
