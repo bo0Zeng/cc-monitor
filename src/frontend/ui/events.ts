@@ -799,28 +799,64 @@ function feedChanged(hold: StreamHold, items: Item[], on: (change: Changed) => v
   if (all || cells.length > 0) on({ cells, all });
 }
 
+/** {@link subscribeTopics} 的合批窗口：同一台第一批到了之后这么久里再来的（别的主题 · 下一批）合成一次交。 */
+export const SUBSCRIBE_COALESCE_MS = 300;
+
+/** 同一个主题先后两份 ⇒ 一份：同一个 `key` 留后一格，`all` 有一份是就是。 */
+function mergeChanged(a: Changed, b: Changed): Changed {
+  const byKey = new Map(a.cells.map((c) => [c.key, c] as const));
+  for (const c of b.cells) {
+    byKey.delete(c.key);
+    byKey.set(c.key, c);
+  }
+  return { cells: [...byKey.values()], all: a.all || b.all };
+}
+
 /**
  * **订这几台的这几个主题**（「那台某样东西变了」）：主窗口之外的那几页（设置各栏 · 登录抽屉 · 机器状态）只调这一个。
- * 每台每个主题一条 `changed/<topic>`，一批交一次 `on(origin, topic, change)`（`change.all` ⇒ 那台这一样整份重问）。
- * 「只看在看的那台」由调用方在 `on` 里按 `origin` 挑。返回时 monitor 那一侧已登记好；回的函数退掉这几条。
+ * 每台每个主题一条 `changed/<topic>`；同一台在 {@link SUBSCRIBE_COALESCE_MS} 里来的几批（几个主题 · 几批）合成一次
+ * `on(origin, changes)`（主题 ⇒ 那一份；`all` ⇒ 那台这一样整份重问），各页不再各合各的。credit 每批当场还。
+ * 「只看在看的那台」由调用方在 `on` 里按 `origin` 挑。返回时 monitor 那一侧已登记好；回的函数退掉这几条、丢掉没交的那一窗。
  */
 export async function subscribeTopics(
   origins: readonly Origin[],
   topics: readonly Topic[],
-  on: (origin: Origin, topic: Topic, change: Changed) => void,
+  on: (origin: Origin, changes: ReadonlyMap<Topic, Changed>) => void,
 ): Promise<() => void> {
+  const pending = new Map<Origin, Map<Topic, Changed>>();
+  const timers = new Map<Origin, ReturnType<typeof setTimeout>>();
+  let stopped = false;
+  const flush = (origin: Origin): void => {
+    timers.delete(origin);
+    const changes = pending.get(origin);
+    pending.delete(origin);
+    if (!stopped && changes) on(origin, changes);
+  };
+  const take = (origin: Origin, topic: Topic, change: Changed): void => {
+    if (stopped) return;
+    let mine = pending.get(origin);
+    if (!mine) pending.set(origin, (mine = new Map()));
+    const had = mine.get(topic);
+    mine.set(topic, had ? mergeChanged(had, change) : change);
+    // 调度：合批 —— 那台第一批到了起一个窗口，到点交一次（同一台连着来几帧只交一次）
+    if (!timers.has(origin)) timers.set(origin, setTimeout(() => flush(origin), SUBSCRIBE_COALESCE_MS));
+  };
   const subs = await Promise.all(
     origins.flatMap((origin) =>
       topics.map(async (topic) => {
         const hold: StreamHold = { sub: null, owed: 0 };
         hold.sub = await openStream(origin, changedStream(topic), CHANGED_WINDOW, (items) =>
-          feedChanged(hold, items, (change) => on(origin, topic, change)),
+          feedChanged(hold, items, (change) => take(origin, topic, change)),
         );
         return hold.sub;
       }),
     ),
   );
   return () => {
+    stopped = true;
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear();
+    pending.clear();
     for (const s of subs) s.stop();
   };
 }

@@ -42,8 +42,10 @@ export function onMachineState(cb: (origin: string, machine: MachineState) => vo
       console.warn("[machine-state] 问不到远端各台：", e);
     }
   };
-  subscribeTopics([LOCAL_ORIGIN], ["machine"], (_o, _topic, { cells, all }) => {
-    if (dropped) return;
+  subscribeTopics([LOCAL_ORIGIN], ["machine"], (_o, changes) => {
+    const c = changes.get("machine");
+    if (dropped || !c) return;
+    const { cells, all } = c;
     const keyed = cells.flatMap((c) => (c.key !== null && c.key !== "" ? [{ key: c.key, body: c.body }] : []));
     if (all || keyed.some((c) => c.body === undefined)) void readAll();
     // 帧里那一份就是 `machine-read` 回包里那一台。

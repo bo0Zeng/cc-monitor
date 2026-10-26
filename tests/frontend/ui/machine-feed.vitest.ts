@@ -36,7 +36,6 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({
 }));
 
 import { MACHINE_STATE_EVENT, onMachineState, onMachineUp } from "../../../src/frontend/ui/machine-feed";
-
 // 金样里的成品各取几形（哪一形不要紧：这里只核原样交到）。
 const [up, connecting, installing, , , , , needsUpdate] = (golden.cases as unknown as { machine: MachineState }[]).map((c) => c.machine);
 const frame = (seq: number, body: unknown) => ({ t: "frame", seq, body: JSON.stringify(body) });
@@ -74,12 +73,13 @@ describe("机器状态成品的推送", () => {
     await flush();
     // 订上那一问（回包空）不算在下面。
     reads.length = 0;
+    // 推来的那一批过了 `subscribeTopics` 的合批窗口才交 ⇒ 等它到。
     sink!([frame(0, { key: "box", body: needsUpdate })]);
-    expect(got).toEqual([["box", needsUpdate]]);
+    await vi.waitFor(() => expect(got).toEqual([["box", needsUpdate]]));
     expect(reads, "带了成品不重问").toEqual([]);
     readReply = { machines: { box: up, lab: installing } };
     sink!([frame(1, { key: "lab" })]);
-    await flush();
+    await vi.waitFor(() => expect(got).toHaveLength(3));
     expect(reads).toEqual(["machine-read"]);
     expect(got.slice(1)).toEqual([
       ["box", up],
