@@ -67,6 +67,7 @@ import type { BackendStatus } from "../generated/BackendStatus";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
+import type { FilewinTotals } from "../generated/FilewinTotals";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
 
@@ -163,6 +164,9 @@ export const commands = {
 
   /** 设置窗「现在重启」：重起 cc-monitor 自己（会打断什么由调用方先问后端）。 */
   restart_app: () => invoke<void>("restart_app"),
+
+  /** 退出 / 重启 cc-monitor 之前：各文件窗口手上没存的 · 在跑的加起来（壳现读它那张表）。 */
+  filewin_interrupts: () => invoke<FilewinTotals>("filewin_interrupts"),
 
   /** 部署远端后端（连同 `ccm` 入口，一次）。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   deploy_remote_backend: (args: { cfg: unknown }) =>

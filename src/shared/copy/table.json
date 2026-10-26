@@ -6995,6 +6995,18 @@
       "zh": "重启失败",
       "args": []
     },
+    "quitNow.dialog.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "退出 cc-monitor",
+      "args": []
+    },
+    "quitNow.dialog.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "仍然退出",
+      "args": []
+    },
     "openSettings.openSettingsWindow.failed": {
       "kind": "error",
       "role": "报错",
@@ -23831,6 +23843,24 @@
       "kind": "body",
       "role": "片段",
       "zh": "会话照跑",
+      "args": []
+    },
+    "interrupts.item.unsaved": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件窗口里没存的改动 ×{n}",
+      "args": ["n"]
+    },
+    "interrupts.item.filewinRunning": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件窗口里在跑的传输 · 删除 · 解压 ×{n}",
+      "args": ["n"]
+    },
+    "interrupts.item.filewinUnknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件窗口 · 数量不明",
       "args": []
     },
     "interrupts.update.title": {

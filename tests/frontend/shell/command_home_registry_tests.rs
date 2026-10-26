@@ -139,6 +139,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Lifecycle,
         "设置窗「现在重启」：重起 cc-monitor 自己（走退出臂，本机后端照它自己那份退出行为去留）",
     ),
+    (
+        "filewin_interrupts",
+        Own::Window,
+        "退出 / 重启 cc-monitor 之前现读各文件窗口说的「会打断什么」（那几扇窗是 monitor 起的子进程，表住 monitor 进程里）",
+    ),
     ("open_log_dir", Own::Log, "日志"),
     (
         "list_remote_mcp_origins",
@@ -230,6 +235,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         "plan-open",
         Own::Window,
         "文件窗口「在计划里看」只交意图 `{workspace, slice, id}`：monitor 把主窗口拉到前面、发事件给它开计划页选中那一格（主窗口住 monitor）",
+    ),
+    (
+        "filewin-busy",
+        Own::Window,
+        "文件窗口说它手上会被打断的数（没存的 · 在跑的）：那扇窗是 monitor 起的子进程、退出 / 重启 cc-monitor 才断它，表就住窗口那条通道的宿主（`chan/host.rs::busy`）",
     ),
 ];
 

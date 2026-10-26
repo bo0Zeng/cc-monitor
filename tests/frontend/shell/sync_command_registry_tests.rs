@@ -55,6 +55,10 @@ const NEEDLES: &[&str] = &[
 /// 新加一条同步命令 ⇒ 要么写 `async`（`§10` 默认），要么在这里写一句为什么它不等外面（不起进程 · 不连口 · 不睡 · 不等锁）。
 const SYNC_ALLOWED: &[(&str, &str)] = &[
     (
+        "chan/host.rs::filewin_interrupts",
+        "只读 monitor 进程里那张小表（一把锁、几行加法）就回，不起进程、不连口、不等外面",
+    ),
+    (
         "app_restart.rs::restart_app",
         "只往事件循环递一个「退出后重起」的请求（`request_restart`）就回，不起子进程、不等外面",
     ),
