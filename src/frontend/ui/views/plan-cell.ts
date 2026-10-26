@@ -482,9 +482,11 @@ export function takeoverCell(b: Pick<PlanBlock, "takeover" | "handoffError"> | "
   return box;
 }
 
-/** 接手那一下开的框：机器锁那台，目录是工作区根。 */
-export function takeoverSpec(origin: Origin, workspace: string): NewSessionSpec {
-  return { origin, lockMachine: true, cwd: workspace };
+/** 接手那一下开的框：机器锁那台，目录锁在工作区根，第一句预填 pb 给的交接说明（拿不到 ⇒ 不预填）。 */
+export function takeoverSpec(origin: Origin, workspace: string, b: Pick<PlanBlock, "handoff">): NewSessionSpec {
+  const spec: NewSessionSpec = { origin, lockMachine: true, cwd: workspace, lockCwd: true };
+  if (b.handoff !== null) spec.prompt = b.handoff;
+  return spec;
 }
 
 /** 出边组名：with / to 用这一类的词（「它实现」「它指向」）；after / replaces 是固定的说法。 */

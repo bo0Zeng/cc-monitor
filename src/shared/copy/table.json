@@ -12522,6 +12522,12 @@
       "zh": "启动命令",
       "args": []
     },
+    "newSession.label.prompt": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "第一句话",
+      "args": []
+    },
     "newSession.recent.label": {
       "kind": "control",
       "role": "标签",
@@ -27718,8 +27724,8 @@
     },
     "rsFilewinPlan.cell.dup": {
       "kind": "body",
-      "role": "悬停",
-      "zh": "{title} 也声明此文件",
+      "role": "片段",
+      "zh": "共用 · 也在 {title}",
       "args": ["title"]
     },
     "rsFilewinPlan.cell.listSep": {

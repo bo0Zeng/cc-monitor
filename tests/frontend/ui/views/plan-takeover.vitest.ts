@@ -44,8 +44,12 @@ describe("权力范围那一行：另开会话接手", () => {
     expect(opened).toBe(1);
   });
 
-  it("开框交出的：那台 · 机器锁住 · 目录是工作区根", () => {
-    expect(takeoverSpec("gpu-box", "/work/ledger")).toEqual({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger" });
+  it("开框交出的：那台 · 机器锁住 · 目录锁在工作区根 · 开口那句是交接说明", () => {
+    expect(takeoverSpec("gpu-box", "/work/ledger", block())).toEqual({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true, prompt: HANDOFF });
+  });
+
+  it("交接说明拿不到（handoff 为 null）⇒ 不预填开口那句", () => {
+    expect(takeoverSpec("gpu-box", "/work/ledger", block({ handoff: null }))).toEqual({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true });
   });
 
   it("该出、交接说明拿不到（no_line）⇒ 不给按钮，写 pb 说的为什么", () => {
