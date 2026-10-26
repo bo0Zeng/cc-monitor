@@ -559,10 +559,7 @@ export class ExtSection {
       line.appendChild(el("div", "settings-hint ext-hook-unsupported", copyText("extPage.hooks.unsupported")));
       return;
     }
-    for (const [label, st] of [
-      [copyText("extPage.hooks.sessionStart"), rep.diagnosis.session_start],
-      [copyText("extPage.hooks.stop"), rep.diagnosis.stop],
-    ] as const) {
+    for (const [label, st] of [[copyText("extPage.hooks.stop"), rep.diagnosis.stop]] as const) {
       const d = describeState(st);
       const s = el("div", TONE_CLASS[d.tone], copyText("extPage.hooks.stateLine", { hook: label, state: d.text }));
       s.dataset.kind = st.kind;

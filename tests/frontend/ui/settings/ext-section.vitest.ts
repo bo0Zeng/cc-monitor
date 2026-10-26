@@ -68,7 +68,7 @@ const card = { kind: "skill", name: "demo", path: "/g/.claude/skills/demo", writ
 const synced = { self: "h", synced: [], reach: [{ origin: "laptop", machine: "g" }] };
 const diag = (snippet: string | null, supported = true) => ({
   supported,
-  diagnosis: { session_start: { kind: "not-installed" }, stop: { kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" }, note: "" },
+  diagnosis: { stop: { kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook" }, note: "" },
   snippet,
   source: "/h/.claude/settings.json",
 });
@@ -486,10 +486,10 @@ describe("备注 · cc-bus 那一行", () => {
     ]);
     const lines = [...s.element.querySelectorAll(".ext-hooks .ext-hook")];
     expect(lines.map((l) => [...l.querySelectorAll(".ext-hook-state")].map((x) => (x as HTMLElement).dataset.kind))).toEqual([
-      ["not-installed", "installed-at-path"],
-      ["not-installed", "installed-at-path"],
+      ["installed-at-path"],
+      ["installed-at-path"],
     ]);
-    expect(lines[0].querySelector(".ext-hook-state")?.className).toBe("ext-hook-state is-bad");
+    expect(lines[0].querySelector(".ext-hook-state")?.className).toBe("ext-hook-state is-ok");
     expect((lines[0].querySelector(".paste-block-out") as HTMLTextAreaElement).value).toBe(snippet);
     expect(lines[0].querySelector(".paste-block-target")?.textContent).toContain("/h/.claude/settings.json");
     expect(lines[1].querySelector(".paste-block-out")).toBeNull();

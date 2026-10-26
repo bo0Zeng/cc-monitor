@@ -786,10 +786,16 @@ fn newest<'a>(held: &[Option<&'a Asset>]) -> Option<&'a str> {
         .map(|(_, d)| d)
 }
 
-/// 自带的只装全局（枢纽收到的落点先过这一道；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
+/// 自带的 · 自己发版的插件只装全局（枢纽收到的落点先过这一道；用户级 MCP 能不能写由被写那台自己判，见 [`shared_mcp_file`]）。
 pub(crate) fn builtin_refused(kind: ExtKind, name: &str, at: &ExtLoc) -> Option<String> {
-    (is_builtin(kind, name) && *at != ExtLoc::User)
-        .then(|| copy_text("beExt.target.builtinUserOnly", &[]))
+    if *at == ExtLoc::User {
+        return None;
+    }
+    if is_builtin(kind, name) {
+        return Some(copy_text("beExt.target.builtinUserOnly", &[]));
+    }
+    (kind == ExtKind::Plugin && is_release(kind, name))
+        .then(|| copy_text("beExt.target.pluginUserOnly", &[]))
 }
 
 /// 装到这一处行不行（表上「装到哪」的选项）：不能写的那一级 · 自带的只装全局。行 ⇒ `None`。
@@ -800,8 +806,8 @@ pub(crate) fn target_refused(
     shared: bool,
 ) -> Option<String> {
     // 自己发版的插件装进那台的用户级 skills 目录（各号共用那一份），不经插件那条只读的路。
-    if kind == ExtKind::Plugin && is_release(kind, name) && *at == ExtLoc::User {
-        return None;
+    if kind == ExtKind::Plugin && is_release(kind, name) {
+        return builtin_refused(kind, name, at);
     }
     writable(kind, at, shared)
         .err()

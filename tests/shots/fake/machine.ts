@@ -32,7 +32,7 @@ function extList(w: World): unknown {
   const bring = { from: null, fromName: "本机", scope: { from: { level: "user" }, to: { level: "user" } }, targets: [{ at: { level: "user" }, note: null, ok: true }] };
   rows.push({
     about: "读写 GitHub 上的仓库与 issue",
-    builtin: null,
+    known: null,
     cells: [
       { bring: null, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "same", uninstall: true }], state: "same" },
       { bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "differs", uninstall: true }], state: "differs" },

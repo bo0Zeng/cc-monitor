@@ -28,6 +28,7 @@
     "path": "<BASE>/b/.claude/skills/demo"
   },
   "list": {
+    "knownTitle": "cc-monitor 认得",
     "legend": [
       {
         "said": "已装",
@@ -70,10 +71,110 @@
     "rows": [
       {
         "about": null,
-        "builtin": {
-          "hooks": true,
-          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作\n装上后要在该机 ~/.claude/settings.json 加两条钩子才自动收信 · cc-monitor 不代改\n下面每台一行 · 钩子装没装与要加的内容"
+        "cells": [
+          {
+            "bring": null,
+            "note": "来源机器均离线",
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "said": "未装",
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
+            "said": "推荐 · 未装",
+            "state": "missing"
+          },
+          {
+            "bring": null,
+            "note": "来源机器均离线",
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "said": "未装",
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
+            "said": "推荐 · 未装",
+            "state": "missing"
+          }
+        ],
+        "detail": [],
+        "kind": "plugin",
+        "kindSaid": "插件",
+        "known": {
+          "from": "发布处 · 取各台里最新的一版",
+          "hooks": false,
+          "note": null
         },
+        "name": "planned-build",
+        "new": false,
+        "note": null
+      },
+      {
+        "about": null,
+        "cells": [
+          {
+            "bring": null,
+            "note": "来源机器均离线",
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "said": "未装",
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
+            "said": "推荐 · 未装",
+            "state": "missing"
+          },
+          {
+            "bring": null,
+            "note": "来源机器均离线",
+            "places": [
+              {
+                "at": {
+                  "level": "user"
+                },
+                "dir": null,
+                "note": null,
+                "said": "未装",
+                "state": "missing",
+                "uninstall": false
+              }
+            ],
+            "said": "推荐 · 未装",
+            "state": "missing"
+          }
+        ],
+        "detail": [],
+        "kind": "skill",
+        "kindSaid": "Skill",
+        "known": {
+          "from": "发布处 · 取各台里最新的一版",
+          "hooks": false,
+          "note": null
+        },
+        "name": "code-picture",
+        "new": false,
+        "note": null
+      },
+      {
+        "about": null,
         "cells": [
           {
             "bring": {
@@ -118,7 +219,7 @@
                 "uninstall": false
               }
             ],
-            "said": "未装",
+            "said": "推荐 · 未装",
             "state": "missing"
           },
           {
@@ -164,20 +265,24 @@
                 "uninstall": false
               }
             ],
-            "said": "未装",
+            "said": "推荐 · 未装",
             "state": "missing"
           }
         ],
         "detail": [],
         "kind": "skill",
         "kindSaid": "Skill",
+        "known": {
+          "from": "cc-monitor 自带",
+          "hooks": true,
+          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作\n装上后要在该机 ~/.claude/settings.json 加两条钩子才自动收信 · cc-monitor 不代改\n下面每台一行 · 钩子装没装与要加的内容"
+        },
         "name": "cc-bus",
         "new": false,
         "note": null
       },
       {
         "about": "d",
-        "builtin": null,
         "cells": [
           {
             "bring": {
@@ -281,6 +386,7 @@
         ],
         "kind": "skill",
         "kindSaid": "Skill",
+        "known": null,
         "name": "demo",
         "new": false,
         "note": null

@@ -47,16 +47,18 @@ describe("金样：后端出的成品，TS 读得懂", () => {
       ["laptop", false],
     ]);
     expect(list.rows.map((r) => [r.name, r.cells.map((c) => c.state)])).toEqual([
+      ["planned-build", ["missing", "missing"]],
+      ["code-picture", ["missing", "missing"]],
       ["cc-bus", ["missing", "missing"]],
       ["demo", ["same", "missing"]],
     ]);
-    expect(list.rows.map((r) => r.builtin?.hooks ?? null)).toEqual([true, null]);
-    const there = list.rows[1].cells[1];
+    expect(list.rows.map((r) => r.known?.hooks ?? null)).toEqual([false, false, true, null]);
+    const there = list.rows[3].cells[1];
     expect(there.bring?.targets.map((t) => [t.at.level, t.ok])).toEqual([
       ["user", true],
       ["project", true],
     ]);
-    expect(list.rows[1].cells[0].places.map((p) => [p.at.level, p.state, p.uninstall])).toEqual([["user", "same", true]]);
+    expect(list.rows[3].cells[0].places.map((p) => [p.at.level, p.state, p.uninstall])).toEqual([["user", "same", true]]);
     expect((EXT.done as ExtDone).changed).toEqual(["SKILL.md"]);
     expect((EXT.uninstallCard as ExtUninstallCard).recorded).toBe(true);
     expect((EXT.uninstallDone as ExtDone).changed).toEqual(["SKILL.md"]);

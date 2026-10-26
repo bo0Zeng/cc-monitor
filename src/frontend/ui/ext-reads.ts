@@ -16,7 +16,7 @@ import type { Budget } from "../../comms/inward/chan";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { ExtBring } from "./generated/ExtBring";
-import type { ExtBuiltin } from "./generated/ExtBuiltin";
+import type { ExtKnown } from "./generated/ExtKnown";
 import type { ExtCard } from "./generated/ExtCard";
 import type { ExtCell } from "./generated/ExtCell";
 import type { ExtDone } from "./generated/ExtDone";
@@ -36,7 +36,7 @@ import type { McpReadReply } from "./generated/McpReadReply";
 import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
 
-export type { ExtBring, ExtBuiltin, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
+export type { ExtBring, ExtKnown, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
 
 /** 读一趟：表在本机后端，远端慢时同步那一趟另走（`assets-sync-reads.ts`）。 */
 const LIST_BUDGET_MS = 30_000;
