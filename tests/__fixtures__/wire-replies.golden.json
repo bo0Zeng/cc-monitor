@@ -696,7 +696,7 @@
       }
     },
     "kill": {
-      "rust": "{\"session\":\"session-x\",\"killed\":true,\"bus\":{\"removed\":[\"removed-x\"],\"failed\":[{\"id\":\"id-x\",\"why\":\"why-x\"}],\"unread\":\"unread-x\",\"said\":\"said-x\",\"detail\":\"detail-x\"}}",
+      "rust": "{\"session\":\"session-x\",\"killed\":true}",
       "sample": {
         "bus": {
           "detail": "detail-x",

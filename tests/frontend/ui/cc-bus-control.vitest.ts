@@ -4,17 +4,17 @@
  * 守的要求：「正路是**把解释挪进后端、直接出成品**：后端帧命令的应答就是界面要的那个形状，
  * 前端经 `chan.call` 直接问、按形状收（不解释），monitor 那一份解释与发送点一起删」·「成品的两侧对拍：界面按形状严格收
  * （多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」；
- * 另守 `INVARIANTS` 那条「调用方不能靠对端校验」（空正文 / 坏派生形状一个字节都不发，好的发得出去 —— 正反各一格；
+ * 另守 `INVARIANTS` 那条「调用方不能靠对端校验」（空正文一个字节都不发，好的发得出去 —— 正反各一格；
  * id 的形状今天由后端在交给 cc-bus 之前判，界面只把 `bad_id` 说成人话）
- * 与「失败要显式、归因要准确」（问不到 ≠ 不在线；发到几个 · 跳过几个 · 失败几个分开说）。
+ * 与「失败要显式、归因要准确」（问不到 ≠ 不在线）。
  *
  * | 性质 | 判据 |
  * |---|---|
- * | 五条的请求体 == 金样那一份；解码器读得懂后端真出的成品（后端那侧 `cc_bus_tests::the_bus_products_match_the_cross_language_golden` 对拍同一份，异源：Rust 构造器造、TS 解） | 「金样」 |
+ * | 两条的请求体 == 金样那一份；解码器读得懂后端真出的成品（后端那侧 `cc_bus_tests::the_bus_products_match_the_cross_language_golden` 对拍同一份，异源：Rust 构造器造、TS 解） | 「金样」 |
  * | 界面不判 id：金样 `ids` 里坏的也原样交给后端；后端回 `bad_id` ⇒ 各动作一句、带后端原话（规则只有一份，后端那侧 `bus_ids_are_judged_here_before_they_reach_cc_bus` 读同一份 `ids`） | 「id」 |
- * | 空正文 / 坏派生形状（tool · 目录）就地拒，一个字节都不发；好的发得出去 | 「发出去之前」 |
+ * | 空正文就地拒，一个字节都不发；好的发得出去 | 「发出去之前」 |
  * | 查在线只回确定的答案，问不到一律抛（结构上造不出灭灯） | 「查在线」 |
- * | 回值几态逐态一句、两两不同；破坏性的形状不认识 ⇒「不知道动没动」 | 「发消息」「收掉」「派生」「广播」 |
+ * | 回值几态逐态一句、两两不同 | 「发消息」 |
  * | 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码不上屏（只说原话，码在诊断里） | 「拒绝码」 |
  * | 本机与远端同一条路，通道不在时两句话不同 | 「本机」 |
  *
@@ -30,22 +30,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import {
   agentOnline,
-  broadcast,
-  checkSpawnShape,
-  killAgent,
   MONITOR_BUS_ID,
-  saidOfBroadcast,
   saidOfDelivery,
-  saidOfKill,
-  saidOfSpawn,
   sendMessage,
-  spawnAgent,
 } from "../../../src/frontend/ui/cc-bus-control";
-import { ControlError } from "../../../src/frontend/ui/control-said";
 import { detailOf as errDetail, writtenSaid } from "../../../src/frontend/ui/kit/detail";
 import type { BusSent } from "../../../src/frontend/ui/generated/BusSent";
-import type { BusSpawnedNow } from "../../../src/frontend/ui/generated/BusSpawnedNow";
-import type { BusBroadcast } from "../../../src/frontend/ui/generated/BusBroadcast";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
@@ -65,9 +55,6 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/cc
 >;
 const LIST = golden["bus-list"] as GoldenOp;
 const SEND = golden["bus-send"] as GoldenOp;
-const KILL = golden["bus-kill"] as GoldenOp;
-const SPAWN = golden["bus-spawn"] as GoldenOp & { requestAccount: Record<string, unknown> };
-const BCAST = golden["bus-broadcast"] as GoldenOp;
 const IDS = golden.ids as { ok: string[]; bad: string[] };
 
 // ⚠ 花括号不能省：`mockReset()` 返回 mock 本身，箭头函数直接返回它 ⇒ vitest 把它当成清理钩子在用例结束时再调一次。
@@ -116,17 +103,6 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
   throw new Error("本该失败却成功了");
 }
 
-/** 同步版。 */
-function thrownBy(act: () => unknown): string {
-  try {
-    act();
-  } catch (e) {
-    expect(e).toBeInstanceOf(ControlError);
-    return (e as Error).message;
-  }
-  throw new Error("本该抛却没抛");
-}
-
 describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出的成品", () => {
   it("★★ 查在线（bus-list）", async () => {
     answer({ ok: LIST.reply });
@@ -142,71 +118,27 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     expect(SEND.request.from).toBe(MONITOR_BUS_ID);
   });
 
-  it("★★ 收掉（bus-kill）", async () => {
-    answer({ ok: KILL.reply });
-    await expect(killAgent("devbox", String(KILL.request.id))).resolves.toMatch(copyPattern("ccBus.kill.killed", { id: "alpha_cc" }));
-    expect(sentCalls()).toEqual([["devbox", "bus-kill", KILL.request]]);
-  });
-
-  it("★★ 派生（bus-spawn）：没选账号 ⇒ 显式 `base:true`；选了 ⇒ `account`，两样不同时出现", async () => {
-    answer({ ok: SPAWN.reply });
-    await expect(spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t" })).resolves.toMatch(copyPattern("ccBus.spawn.done", { id: "proj_cc" }));
-    await spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t", account: "" });
-    await spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t", account: "z" });
-    const spawned = sentCalls().filter((c) => c[1] === "bus-spawn");
-    expect(spawned).toEqual([
-      ["devbox", "bus-spawn", SPAWN.request],
-      ["devbox", "bus-spawn", SPAWN.request],
-      ["devbox", "bus-spawn", SPAWN.requestAccount],
-    ]);
-    // 起了之后问那台等它报到：回包里那一问原样交回（认法 · 没见到那一句都是那台的）。
-    expect(sentCalls().filter((c) => c[1] === "session-arrive").map((c) => c[2])).toEqual([SPAWN.reply.arrival, SPAWN.reply.arrival, SPAWN.reply.arrival]);
-  });
-
-  it("★★ 广播（bus-broadcast）", async () => {
-    answer({ ok: BCAST.reply });
-    await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(copyText("ccBus.broadcast.doneFailed", { sent: "1", skipped: "1", failed: "1", who: "x_cc（child_timed_out）" }));
-    expect(sentCalls()).toEqual([["devbox", "bus-broadcast", BCAST.request]]);
-  });
 });
 
 describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）", () => {
-  it("★★ 金样 `ids` 里坏的 id 也原样交给后端（查在线 · 发消息 · 收掉）；后端回 `bad_id` ⇒ 照它写好的那一句说", async () => {
+  it("★★ 金样 `ids` 里坏的 id 也原样交给后端；后端回 `bad_id` ⇒ 照它写好的那一句说", async () => {
     nonEmpty(IDS.ok);
     nonEmpty(IDS.bad);
     const bad = IDS.bad.find((id) => id === "--help")!;
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
-    const send = await saidOf(() => sendMessage("devbox", bad, "hi"));
-    const kill = await saidOf(() => killAgent("devbox", bad));
-    for (const s of [send, kill]) expect(s, "那台写好的那一句没原样上屏").toBe("BACKEND-SAYS");
-    expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-send", "bus-kill"]);
-    const [sent, killed] = sentCalls().map((c) => c[2] as Record<string, unknown>);
-    expect([sent.to, killed.id], "交给后端的不是原样那个 id").toEqual([bad, bad]);
+    expect(await saidOf(() => sendMessage("devbox", bad, "hi")), "那台写好的那一句没原样上屏").toBe("BACKEND-SAYS");
+    expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-send"]);
+    expect((sentCalls()[0][2] as Record<string, unknown>).to, "交给后端的不是原样那个 id").toBe(bad);
   });
 });
 
 describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
-  it("★ 空正文就地拒（发消息 · 广播），一个字节都不发", async () => {
+  it("★ 空正文就地拒，一个字节都不发", async () => {
     answer({ ok: SEND.reply });
     expect(await saidOf(() => sendMessage("devbox", "alpha_cc", "  \n"))).toMatch(copyText("ccBus.send.empty"));
-    expect(await saidOf(() => broadcast("devbox", ""))).toMatch(copyText("ccBus.broadcast.empty"));
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it("★★ 派生的形状先核：目录非空；**不判 tool**（空 ⇒ 默认那一家、认不认归后端注册表）；账号名交后端判（`bad_id` 说成人话）", async () => {
-    answer({ ok: SPAWN.reply });
-    expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(copyText("ccBus.spawn.needDir"));
-    expect(invokeMock, "坏形状也发出去了").not.toHaveBeenCalled();
-    // 空的 / 没见过的 tool 照样交给后端 —— 本侧不维护第二份名单（后端认不出会拒，那一句走 `bad_args`）。
-    expect(() => checkSpawnShape({ tool: "", dir: "/w", task: "" })).not.toThrow();
-    expect(() => checkSpawnShape({ tool: "some-future-agent", dir: "/w", task: "" })).not.toThrow();
-    await spawnAgent("devbox", { tool: "some-future-agent", dir: "/w", task: "", account: "z" });
-    expect(sentCalls().filter((c) => c[1] === "bus-spawn").length).toBe(1);
-    // 坏账号名原样交给后端（界面不判），后端回 `bad_id` ⇒ 照它写好的那一句说。
-    answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
-    const said = await saidOf(() => spawnAgent("devbox", { tool: "claude", dir: "/w", task: "", account: "--help" }));
-    expect(said).toBe("BACKEND-SAYS");
-  });
 });
 
 describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
@@ -243,41 +175,6 @@ describe("〔C4e〕回值几态逐态一句", () => {
     expect(said[3]).toMatch(copyPattern("ccBus.send.unknownLive"));
   });
 
-  it("★★ 收掉：真收了 / 只摘了登记 / 两样都没发生 三句不同", () => {
-    const said = [
-      saidOfKill("a_cc", { id: "a_cc", killed: true, stale_only: false }),
-      saidOfKill("a_cc", { id: "a_cc", killed: false, stale_only: true }),
-      saidOfKill("a_cc", { id: "a_cc", killed: false, stale_only: false }),
-    ];
-    expect(new Set(said).size, JSON.stringify(said)).toBe(3);
-    expect(said[1]).toMatch(copyPattern("ccBus.kill.staleOnly"));
-  });
-
-  it("★★ 派生：认不出名字 ≠ 没起来（明说别重试）", () => {
-    const reply = SPAWN.reply as unknown as BusSpawnedNow;
-    const done = saidOfSpawn(reply);
-    const noName = saidOfSpawn({ ...reply, id: null });
-    expect(done).toMatch(copyPattern("ccBus.spawn.done", { id: "proj_cc" }));
-    expect(noName).toMatch(copyPattern("ccBus.spawn.noName"));
-    expect(noName).toMatch(copyPattern("ccBus.spawn.noName"));
-    expect(noName).not.toMatch(/失败|没有派生/);
-  });
-
-  it("★★ 广播：发到几个 · 跳过几个 · 失败几个分开说；问不到谁在线时明说全发了 —— 四形两两不同", () => {
-    const base: BusBroadcast = { sent: 3, skipped_offline: 2, liveness_unknown: false, failed: [] };
-    const one = [{ id: "x_cc", error: "child_timed_out", detail: "d" }];
-    const said = [
-      saidOfBroadcast(base),
-      saidOfBroadcast({ ...base, failed: one }),
-      saidOfBroadcast({ ...base, skipped_offline: 0, liveness_unknown: true }),
-      saidOfBroadcast({ ...base, skipped_offline: 0, liveness_unknown: true, failed: one }),
-    ];
-    expect(new Set(said).size, JSON.stringify(said)).toBe(4);
-    expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));
-    expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（child_timed_out）" }));
-    expect(said[2]).toMatch(copyPattern("ccBus.broadcast.doneUnknown"));
-    expect(said[3]).toMatch(copyPattern("ccBus.broadcast.doneUnknownFailed", { failed: 1, who: "x_cc（child_timed_out）" }));
-  });
 });
 
 describe("〔C4e〕失败怎么说", () => {
@@ -285,9 +182,6 @@ describe("〔C4e〕失败怎么说", () => {
     const drives: [string, GoldenOp, () => Promise<unknown>][] = [
       ["bus-list", LIST, () => agentOnline("devbox", "alpha_cc")],
       ["bus-send", SEND, () => sendMessage("devbox", "alpha_cc", "hi")],
-      ["bus-kill", KILL, () => killAgent("devbox", "alpha_cc")],
-      ["bus-spawn", SPAWN, () => spawnAgent("devbox", { tool: "claude", dir: "/w", task: "" })],
-      ["bus-broadcast", BCAST, () => broadcast("devbox", "hi")],
     ];
     for (const [op, g, act] of drives) {
       nonEmpty(g.codes);
@@ -300,11 +194,10 @@ describe("〔C4e〕失败怎么说", () => {
     }
   });
 
-
   it("★ 本机照样经通道问；通道不在时原样取 monitor 写的那一句（本机远端怎么称呼由它说）", async () => {
-    answer({ ok: KILL.reply });
-    await killAgent(LOCAL_ORIGIN, "alpha_cc");
-    expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-kill", KILL.request]]);
+    answer({ ok: SEND.reply });
+    await sendMessage(LOCAL_ORIGIN, "alpha_cc", "hi");
+    expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-send", SEND.request]]);
     answer({ fail: { ...NO_CHANNEL, said: "M-kr-remote-label" } });
     expect(await saidOf(() => sendMessage("kr-remote-label", "alpha_cc", "hi"))).toBe("M-kr-remote-label");
   });

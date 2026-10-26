@@ -190,9 +190,9 @@ fn the_embedded_digest_is_what_the_catalog_sees_after_an_install() {
 /// ★★ **内嵌清单不许漏掉仓里的脚本**。
 ///
 /// `FILES` 是手写的 `include_bytes!` 清单，而 `src/shared/cc-bus/scripts/` 是源头。
-/// 08-13 往那个目录**新建过一个脚本**（`cc-spawned-record`）—— 漏进清单的后果是：
+/// 08-13 往那个目录**新建过一个脚本**，漏进了清单 —— 后果是：
 /// 编译照过、测试照绿，而**装出去的 cc-bus 少一个文件**，
-/// 在用户机器上表现成「新版 cc-spawn 调一个不存在的命令」。
+/// 在用户机器上表现成「新版脚本调一个不存在的命令」。
 ///
 /// ⚠ 只钉 `scripts/`：`examples/` 与 `SKILL.md` 是另一族（那边多一个示例文件
 /// 不影响能不能跑），要钉得单独论证。**判据的人群等于它真正证明的那件事。**
@@ -288,7 +288,7 @@ fn a_symlinked_skills_dir_is_refused() {
 }
 
 /// ★ 要写的那几个要精确，且「清单外的文件」**故意不算**：我们自己的备份（`cc-bus.bak-<秒>`）就是清单外的，
-/// 算了它们那一格就永远说「要写」。代价：清单哪天删掉一个脚本，盘上那份会一直留着而这里说「不用写」（今天清单只增不减）。
+/// 算了它们那一格就永远说「要写」。清单删掉的脚本不会留在落点上：新版内容总有一处不同 ⇒ 装时整个目录先改名留作备份再写。
 #[test]
 fn the_writes_are_precise_and_ignore_extra_files() {
     let d = tmpdir("ps2-counts");
@@ -297,13 +297,13 @@ fn the_writes_are_precise_and_ignore_extra_files() {
     let dest = d.0.join("skills/cc-bus");
     assert_eq!(writes(&skills), Vec::<String>::new());
     std::fs::write(dest.join("SKILL.md"), b"tampered").unwrap();
-    std::fs::write(dest.join("scripts/cc-spawn"), b"tampered").unwrap();
-    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-spawn"]);
+    std::fs::write(dest.join("scripts/cc-peek"), b"tampered").unwrap();
+    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-peek"]);
     install(&d.0).unwrap();
     std::fs::write(dest.join("scripts/cc-legacy-thing"), b"old script").unwrap();
     assert_eq!(writes(&skills), Vec::<String>::new(), "清单外的文件不算");
-    std::fs::remove_file(dest.join("scripts/cc-kill")).unwrap();
-    assert_eq!(writes(&skills), vec!["scripts/cc-kill"]);
+    std::fs::remove_file(dest.join("scripts/cc-recv")).unwrap();
+    assert_eq!(writes(&skills), vec!["scripts/cc-recv"]);
 }
 
 /// ★ 落点被一个**普通文件**占着（用户手滑 / 旧版留下的残骸）〔08-13 复核〕。
@@ -377,16 +377,14 @@ fn an_unwritable_skills_dir_fails_loudly() {
 
 /// ★ 装完就能跑：`scripts/` 下的必须可执行。
 ///
-/// 〔保活 09-24〕`examples/cc-keepalive` 同理 —— 它是给 cron 直接调的，
-/// 装出去不可执行，那条 cron 行就会在用户机器上每十分钟静默失败一次。
-/// ⚠ 反面也钉：不带 shebang 的示例（`kinds.tsv`）**不许**被顺手标成可执行。
+/// ⚠ 反面也钉：不带 shebang 的示例（`examples/policy.tsv`）**不许**被顺手标成可执行。
 #[cfg(unix)]
 #[test]
 fn deployed_scripts_are_executable() {
     use std::os::unix::fs::PermissionsExt;
     let t = tmpdir("exec");
     install(&t.0).expect("部署");
-    for rel in ["scripts/cc-send", "examples/cc-keepalive"] {
+    for rel in ["scripts/cc-send", "scripts/cc-bus-stop-hook"] {
         let p = t.0.join("skills/cc-bus").join(rel);
         let mode = std::fs::metadata(&p).unwrap().permissions().mode();
         assert!(
@@ -394,10 +392,64 @@ fn deployed_scripts_are_executable() {
             "{rel} 装完不可执行等于没装（mode={mode:o}）"
         );
     }
-    let kinds = t.0.join("skills/cc-bus/examples/kinds.tsv");
-    let mode = std::fs::metadata(&kinds).unwrap().permissions().mode();
+    let policy = t.0.join("skills/cc-bus/examples/policy.tsv");
+    let mode = std::fs::metadata(&policy).unwrap().permissions().mode();
     assert!(
         mode & 0o111 == 0,
-        "kinds.tsv 不是脚本，却被标成了可执行（mode={mode:o}）"
+        "policy.tsv 不是脚本，却被标成了可执行（mode={mode:o}）"
     );
+}
+
+/// 命令面只剩收发这几条（A13-1 减法：起停会话 · 保活 · 守护进程 · 广播都删了）。
+/// 装出去的 `scripts/`（去掉被 source 的 `.sh`）· 安装脚本链进 PATH 的那一串 · 装出去的 `examples/` 都照这一份。
+const COMMANDS: &[&str] = &[
+    "cc-bus-stop-hook",
+    "cc-commit",
+    "cc-list",
+    "cc-log",
+    "cc-peek",
+    "cc-recv",
+    "cc-register",
+    "cc-send",
+    "cc-whoami",
+];
+
+#[test]
+fn the_install_manifest_carries_only_the_send_and_receive_commands() {
+    let mut scripts: Vec<&str> = FILES
+        .iter()
+        .filter_map(|(rel, _)| rel.strip_prefix("scripts/"))
+        .filter(|s| !s.ends_with(".sh"))
+        .collect();
+    scripts.sort_unstable();
+    assert_eq!(scripts, COMMANDS, "装出去的命令不是收发那几条");
+    let mut examples: Vec<&str> = FILES
+        .iter()
+        .filter_map(|(rel, _)| rel.strip_prefix("examples/"))
+        .collect();
+    examples.sort_unstable();
+    assert_eq!(
+        examples,
+        ["config", "policy.tsv"],
+        "装出去的示例多了删掉的那几样"
+    );
+    let install = include_str!("../../../src/shared/cc-bus/scripts/cc-bus-install.sh");
+    let line = install
+        .lines()
+        .find(|l| l.starts_with("for s in cc-"))
+        .expect("安装脚本里找不到链进 PATH 的那一串");
+    let mut linked: Vec<&str> = line
+        .trim_start_matches("for s in ")
+        .split(';')
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .collect();
+    linked.sort_unstable();
+    let want: Vec<&str> = COMMANDS
+        .iter()
+        .copied()
+        .filter(|c| *c != "cc-log")
+        .collect();
+    assert_eq!(linked, want, "安装脚本链进 PATH 的不是收发那几条");
 }

@@ -71,7 +71,6 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
         flag::AGENT,
         flag::LAUNCHER,
         flag::BUS_REGISTER,
-        flag::BUS_NOTE,
         flag::ATTACH,
         flag::CCM_PRINT,
         flag::CCM_HELP,
