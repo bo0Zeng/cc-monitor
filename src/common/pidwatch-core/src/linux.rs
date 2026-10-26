@@ -5,7 +5,7 @@
 
 /// `pidfd_open(2)`：绑的是进程实例本身而不是 pid 数字 ⇒ PID 复用在机制上不存在。
 /// 需 Linux 5.3+。失败最常见的是 `ESRCH` —— 目标在 open 之前就没了。
-pub(crate) fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
+pub fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
     // SAFETY：`SYS_pidfd_open` 只读地为目标进程创建一个 fd，不解引用任何指针。
     // 返回值 <0 时按 errno 处理、不构造 OwnedFd；>=0 时它是一个我们独占的新 fd，
@@ -21,12 +21,13 @@ pub(crate) fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
 /// 给一个进程挂 pidfd 看守，进程终止时调 `on_dead`。**零轮询**——线程阻塞在无超时
 /// `poll(2)` 上，由**内核**在目标进程终止时唤醒。
 ///
-/// `expected_start` 是加表时抓到的 procStart 基线，用于挡「读 pidfile → `pidfd_open`」
-/// 之间发生的 PID 复用。
+/// `still_same` 在 pidfd 开到之后调一次：答「不是那个进程了」⇒ 当死（挡「记下进程号 → `pidfd_open`」之间的 PID 复用，
+/// 顺带覆盖「pidfd 开成功但进程在这一瞬已退出」）。
 ///
-/// `on_dead` 在上面头注列的三条路径上各调用一次；`poll` 真错误那条**不调**。
-pub(crate) fn watch_pid_until_exit<F>(pid: u32, expected_start: Option<u64>, on_dead: F)
+/// `on_dead` 在 `lib.rs` 头注列的三条路径上各调用一次；`poll` 真错误那条**不调**。
+pub fn watch_pid_until_exit<S, F>(pid: u32, still_same: S, on_dead: F)
 where
+    S: FnOnce() -> bool,
     F: FnOnce() + Send + 'static,
 {
     let fd = match pidfd_open(pid) {
@@ -37,10 +38,8 @@ where
             return;
         }
     };
-    // 判据 2：open 之后复核身份（挡 pidfile 读取 → pidfd_open 之间的 PID 复用）。
-    // 用既有的 `session_alive`（存在性 + 同实例），语义正是这里要的；顺带覆盖
-    // "pidfd 开成功但进程在这一瞬已退出"。
-    if !crate::platform::proc::session_alive(pid, expected_start) {
+    // 判据 2：open 之后复核身份（挡记下进程号 → pidfd_open 之间的 PID 复用）。
+    if !still_same() {
         tracing::warn!("pidfd 开到的 pid {pid} 与基线不符（PID 复用）⇒ 当死");
         on_dead();
         return;
@@ -81,5 +80,5 @@ where
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/platform/pidwatch/linux_tests.rs"]
+#[path = "../../../../tests/common/pidwatch-core/linux_tests.rs"]
 mod tests;

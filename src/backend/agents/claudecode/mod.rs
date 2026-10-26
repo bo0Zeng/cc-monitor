@@ -59,6 +59,8 @@ pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
 pub(crate) mod schema;
+// 一行记录里通用层要的会话级那几格 · 正文的形状（清单 · 全文搜索 · 骨架索引共用这一份读法）。
+pub(crate) mod session_line;
 pub(crate) mod sign_in;
 pub(crate) mod steps;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
@@ -240,9 +242,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     pidfile_dir: paths::sessions_root,
     cmdline_may_be_agent: liveness::cmdline_may_be_agent,
     tasks_dir: Some(paths::tasks_root),
-    background_of: pidfile::background_of,
-    activity_of: pidfile::activity_of,
-    wait_of: pidfile::wait_of,
+    proc_of: pidfile::proc_of,
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace {
@@ -261,7 +261,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         root: paths::projects_root,
         file_name: records::session_file_name,
     }),
-    // 此刻在干什么由进程状态文件说（`LocalFace.activity_of`），记录不说。
+    // 此刻在干什么由进程状态文件说（`LocalFace.proc_of`），记录不说。
     activity: None,
     class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),
@@ -273,6 +273,9 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         tool: text::extract_tool_text,
         user: text::user_text_of_record,
         lands: record_of::lands_of,
+        line: session_line::line_of,
+        line_of: session_line::line_of_value,
+        shape: session_line::shape_of,
     }),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,

@@ -10,7 +10,6 @@
 //! - [`proc`]：`/proc` 与进程身份（`pid_alive` / `proc_starttime` / `session_alive` / 两个 `/proc` 格式解析器 …）
 //! - [`liveness`]：判活的纯判定表（`is_same_live_process`）—— 跨平台共用的那一半
 //! - [`paths`]：`path_key`（NTFS 大小写折叠）＋ `temp_root` / `current_uid` 等路径语义
-//! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
 //! - [`signal`]：`send_sigusr1`
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 拨号代理没配私钥路径时用
 //! - [`ssh_client`]：这台的 ssh 客户端在哪（只查文件：Windows 先 System32\OpenSSH 再 PATH，别处 PATH）—— 开远端终端那一行用它的全路径
@@ -46,7 +45,6 @@ pub(crate) mod liveness;
 pub(crate) mod local_tz;
 pub(crate) mod lock;
 pub(crate) mod paths;
-pub(crate) mod pidwatch;
 pub(crate) mod proc;
 pub(crate) mod shell;
 pub(crate) mod signal;

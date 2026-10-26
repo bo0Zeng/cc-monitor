@@ -240,7 +240,7 @@ impl Host for Host_ {
     }
     async fn watch_compact(&self, _sid: &str) -> Result<Ears, String> {
         crate::observe::one_wait::record_line(&self.0.record, |v| {
-            crate::agents::is_compact_summary(crate::agents::record_tree_kind().unwrap(), v)
+            crate::agents::is_compact_summary(crate::agents::claudecode::AGENT_KIND, v)
         })
         .map(Ears)
     }

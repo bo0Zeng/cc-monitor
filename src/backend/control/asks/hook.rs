@@ -130,7 +130,7 @@ fn watch_terminal(
             if tx.is_none() {
                 return;
             }
-            let states = statuses(&read_dir, &sid);
+            let states = statuses(&read_dir, local.proc_of, &sid);
             if closed_now(&states, started, &mut seen_waiting) {
                 if let Some(tx) = tx.take() {
                     let _ = tx.send(());
@@ -144,21 +144,21 @@ fn watch_terminal(
     Some((w, rx))
 }
 
-/// 这条会话各个进程此刻的（状态, 状态更新于）。
-fn statuses(dir: &std::path::Path, sid: &str) -> Vec<(Option<SessionActivity>, Option<u64>)> {
+/// 这条会话各个进程此刻的（状态, 状态更新于）：每份状态文件经那一家的读法（`proc_of`）翻成一行再看。
+fn statuses(
+    dir: &std::path::Path,
+    proc_of: fn(&Value) -> crate::agents::ProcFact,
+    sid: &str,
+) -> Vec<(Option<SessionActivity>, Option<u64>)> {
     let Ok(rd) = crate::platform::fs::Ro::read_dir(dir) else {
         return Vec::new();
     };
     rd.flatten()
         .filter_map(|e| crate::platform::fs::Ro::read(e.path()).ok())
         .filter_map(|b| serde_json::from_slice::<Value>(&b).ok())
-        .filter(|v| v.get("sessionId").and_then(Value::as_str) == Some(sid))
-        .map(|v| {
-            (
-                crate::agents::pidfile_activity(&v),
-                v.get("statusUpdatedAt").and_then(Value::as_u64),
-            )
-        })
+        .map(|v| proc_of(&v))
+        .filter(|f| f.sid.as_deref() == Some(sid))
+        .map(|f| (f.activity, f.status_since_ms))
         .collect()
 }
 

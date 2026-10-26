@@ -2,6 +2,22 @@
 //! （判据自带清单，不遍历被测常量 —— 遍历被测常量自己是恒真的）。
 
 use super::*;
+use crate::control::launch_account::{LaunchedAccount, Settled};
+
+/// 判好的号（夹具：渲染器只借用它，这里给一份活到进程结束的）。
+fn picked(name: &str) -> &'static Settled {
+    Box::leak(Box::new(Settled::Account(LaunchedAccount {
+        name: name.into(),
+        config_dir: format!("/h/.cc/{name}"),
+        model: None,
+    })))
+}
+fn base() -> &'static Settled {
+    Box::leak(Box::new(Settled::Base))
+}
+fn inherit() -> &'static Settled {
+    Box::leak(Box::new(Settled::Unsaid))
+}
 
 fn base_spec() -> CliSpec<'static> {
     CliSpec {
@@ -9,7 +25,7 @@ fn base_spec() -> CliSpec<'static> {
         action: Action::New,
         container: Container::None,
         cwd: None,
-        account: CliAccount::Base,
+        account: base(),
         ccm_sid: None,
         model: None,
         launcher: "claude",
@@ -175,23 +191,20 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
 /// 账号维度恒表态：`--base` · `--account <名>` · 继承（不吐）。
 #[test]
 fn the_account_dimension_has_its_five_shapes() {
-    let with = |a: CliAccount<'static>| {
+    let with = |a: &'static Settled| {
         let mut s = base_spec();
         s.account = a;
         render(&s)
     };
     assert_eq!(
-        with(CliAccount::Base).unwrap(),
+        with(base()).unwrap(),
         "ccm -- new --ccm-agent claude --base"
     );
     assert_eq!(
-        with(CliAccount::Named { name: "z" }).unwrap(),
+        with(picked("z")).unwrap(),
         "ccm -- new --ccm-agent claude --account z"
     );
-    assert_eq!(
-        with(CliAccount::Inherit).unwrap(),
-        "ccm -- new --ccm-agent claude"
-    );
+    assert_eq!(with(inherit()).unwrap(), "ccm -- new --ccm-agent claude");
 }
 
 /// 全触发：每一段按维度表的顺序出现、两半各归各位（逐字节手写）。
@@ -202,7 +215,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         action: Action::Resume { sid: "s1" },
         container: Container::Tmux { name: "cc-s1" },
         cwd: Some("/w d"),
-        account: CliAccount::Named { name: "z" },
+        account: picked("z"),
         ccm_sid: Some("s1"),
         model: Some("opus"),
         launcher: "ccr code",
@@ -247,7 +260,7 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
         ),
         (
             CliSpec {
-                account: CliAccount::Named { name: "a b" },
+                account: picked("a b"),
                 ..base_spec()
             },
             "IdentifierRefused { slot: Account",
@@ -346,7 +359,7 @@ fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
     let mut s = base_spec();
     s.agent = "codex";
     s.action = Action::Resume { sid: "s1" };
-    for named in [CliAccount::Named { name: "z" }] {
+    for named in [picked("z")] {
         s.account = named;
         let r = render(&s);
         assert_eq!(
@@ -363,10 +376,10 @@ fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
             )
         );
     }
-    s.account = CliAccount::Inherit;
+    s.account = inherit();
     assert_eq!(render(&s).unwrap(), "ccm resume s1 -- --ccm-agent codex");
     s.agent = "claude";
-    s.account = CliAccount::Named { name: "z" };
+    s.account = picked("z");
     assert_eq!(
         render(&s).unwrap(),
         "ccm --resume s1 -- --ccm-agent claude --account z"

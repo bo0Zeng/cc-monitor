@@ -22,6 +22,7 @@
 
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
+use crate::history::listing_scan::SessionScan;
 use crate::history::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use crate::platform::fs::Ro;
 use crate::wire::SessionFaceExt as _;
@@ -208,6 +209,8 @@ struct FileEntry {
     read: Tailed,
     done: Facts,
     tail: Facts,
+    /// 这份记录是哪一家的（`agents::record_kind_of`，跟着这份文件走）：会话级那几格 · 文本怎么抽照它问。
+    kind: &'static str,
     /// 读不动（不是合法 UTF-8）：坏在完整行里 ⇒ 下次变了就整份重读；坏在残尾里 ⇒ 追加读会重看它。
     bad: Option<(BadAt, String)>,
     /// 记录里抽没抽工具文本。
@@ -224,16 +227,11 @@ enum BadAt {
     Tail,
 }
 
-/// 一段完整行 / 残尾里抽出的会话事实：会话级三格（cwd 取第一个非空 · 标题取最后一个 · 首条 user 摘要取第一个）＋ 可搜的记录。
+/// 一段完整行 / 残尾里抽出的会话事实：会话级那几格（与历史清单同一个扫描器 [`SessionScan`]：cwd 取第一个非空 · 标题取最后一个 ·
+/// 首条人说的话取第一个 · 后台标记 · 分叉来源）＋ 可搜的记录。
 #[derive(Default)]
 struct Facts {
-    cwd: Option<String>,
-    /// 有一条记录带 `sessionKind:"bg"`（后台分身会话；与历史清单同一个信号）。
-    bg: bool,
-    title: Option<String>,
-    excerpt: String,
-    /// 分叉来的：父会话 id（第一条带 `forkedFrom` 的记录，同历史清单那一格）。
-    forked: Option<String>,
+    session: SessionScan,
     records: Vec<Rec>,
     /// 这一段里算一行的行数（[`super::lines::counts`]；后一段的行号从前一段的这个数接着数）。
     lines: u64,
@@ -262,7 +260,7 @@ impl Rec {
 impl Facts {
     /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。`base` ＝ 这段文本在记录文件里的起点（字节），
     /// `first` ＝ 它第一行的行号。
-    fn absorb(&mut self, text: &str, tools: bool, base: u64, first: u64) {
+    fn absorb(&mut self, kind: &str, text: &str, tools: bool, base: u64, first: u64) {
         let mut at = base;
         for raw in text.split_inclusive('\n') {
             let start = at;
@@ -276,41 +274,12 @@ impl Facts {
             let Some(v) = super::lines::parse(text.as_bytes()) else {
                 continue;
             };
-            if v.get("sessionKind").and_then(Value::as_str) == Some("bg") {
-                self.bg = true;
-            }
-            if self.cwd.is_none() {
-                if let Some(c) = v.get("cwd").and_then(Value::as_str) {
-                    if !c.is_empty() {
-                        self.cwd = Some(c.to_string());
-                    }
-                }
-            }
+            self.session.absorb_value(kind, &v);
             match v.get("type").and_then(Value::as_str).unwrap_or("") {
-                "ai-title" => {
-                    if let Some(t) = v.get("aiTitle").and_then(Value::as_str) {
-                        self.title = Some(t.to_string());
-                    }
-                }
-                "custom-title" => {
-                    if let Some(t) = v.get("customTitle").and_then(Value::as_str) {
-                        self.title = Some(t.to_string());
-                    }
-                }
                 "user" | "assistant" => {
-                    if self.forked.is_none() {
-                        self.forked = crate::agents::fork_origin_of(
-                            crate::agents::record_tree_kind().unwrap_or_default(),
-                            &v,
-                        )
-                        .map(|(p, _)| p);
-                    }
-                    let opens_turn = super::recognize::user_inputs::user_input_of(
-                        crate::agents::record_tree_kind().unwrap_or_default(),
-                        &v,
-                    )
-                    .is_some();
-                    let Some(rt) = record_text(&v, tools).or_else(|| {
+                    let opens_turn =
+                        super::recognize::user_inputs::user_input_of(kind, &v).is_some();
+                    let Some(rt) = record_text(kind, &v, tools).or_else(|| {
                         opens_turn.then(|| RecordText {
                             is_assistant: false,
                             report: false,
@@ -321,13 +290,6 @@ impl Facts {
                     }) else {
                         continue;
                     };
-                    if !rt.is_assistant
-                        && !rt.report
-                        && self.excerpt.is_empty()
-                        && !rt.main.is_empty()
-                    {
-                        self.excerpt = search_rules::truncate_excerpt(&rt.main, 120);
-                    }
                     // 〔perfC〕既没有正文也没有工具文本、又不开一轮的（不搜工具时的工具调用 / 工具结果）永远命中不了、
                     //   也不进轮次 ⇒ 不进常驻索引（搜与会话内查找的答案不变，常驻字节省下来留给更多会话）。
                     if rt.main.is_empty() && rt.tool.is_empty() && !opens_turn {
@@ -359,8 +321,8 @@ impl Facts {
 
     /// `(正文层, 整格)` 的常驻字节：正文层 ＝ 放掉工具层（[`Facts::drop_tools`]）之后还剩的那些。
     fn weights(&self) -> (usize, usize) {
-        let text = |o: &Option<String>| o.as_ref().map_or(0, String::len);
-        let head = text(&self.cwd) + text(&self.title) + self.excerpt.len();
+        let s = &self.session;
+        let head = s.cwd().map_or(0, str::len) + s.title().map_or(0, str::len) + s.excerpt().len();
         let (mut plain, mut all) = (head, head);
         for r in &self.records {
             let rec = std::mem::size_of::<Rec>() + r.rt.main.len() + r.uuid.len();
@@ -398,41 +360,31 @@ impl Facts {
             .collect();
         *self = Facts {
             lines: self.lines,
-            cwd: self.cwd.clone(),
-            bg: self.bg,
-            title: self.title.clone(),
-            excerpt: self.excerpt.clone(),
-            forked: self.forked.clone(),
+            session: self.session.clone(),
             records,
         };
     }
 
     /// 把**后面**那一段并进来：按段序合并与整份顺扫相等。
     fn extend(&mut self, later: Facts) {
-        self.bg |= later.bg;
-        if self.cwd.is_none() {
-            self.cwd = later.cwd;
-        }
-        if later.title.is_some() {
-            self.title = later.title;
-        }
-        if self.excerpt.is_empty() {
-            self.excerpt = later.excerpt;
-        }
-        if self.forked.is_none() {
-            self.forked = later.forked;
-        }
+        self.session = self.session.joined(&later.session);
         self.records.extend(later.records);
         self.lines += later.lines;
     }
 }
 
 impl FileEntry {
-    fn empty(tools: bool) -> Self {
+    /// 整份的会话级那几格（完整行那一段接上残尾那一段）。
+    fn session(&self) -> SessionScan {
+        self.done.session.joined(&self.tail.session)
+    }
+
+    fn empty(kind: &'static str, tools: bool) -> Self {
         Self {
             read: Tailed::default(),
             done: Facts::default(),
             tail: Facts::default(),
+            kind,
             bad: None,
             tools,
             weight: 0,
@@ -457,12 +409,18 @@ impl FileEntry {
                 match std::str::from_utf8(&whole) {
                     Ok(s) => {
                         let mut seg = Facts::default();
-                        seg.absorb(s, self.tools, self.read.consumed(), self.done.lines);
+                        seg.absorb(
+                            self.kind,
+                            s,
+                            self.tools,
+                            self.read.consumed(),
+                            self.done.lines,
+                        );
                         self.done.extend(seg);
                         self.read.took(&whole);
                     }
                     Err(e) => {
-                        *self = Self::empty(self.tools);
+                        *self = Self::empty(self.kind, self.tools);
                         self.bad = Some((BadAt::Done, utf8_why(&e, at)));
                     }
                 }
@@ -473,9 +431,13 @@ impl FileEntry {
         self.read.saw((mtime, base + blocks.read()));
         if self.bad.is_none() {
             match std::str::from_utf8(&rest) {
-                Ok(s) => self
-                    .tail
-                    .absorb(s, self.tools, self.read.consumed(), self.done.lines),
+                Ok(s) => self.tail.absorb(
+                    self.kind,
+                    s,
+                    self.tools,
+                    self.read.consumed(),
+                    self.done.lines,
+                ),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
@@ -653,7 +615,7 @@ impl SearchIndex {
                     (Some(e), None) => session_hits_in(&path, e, q, opts, &mut budget, updated_at),
                     _ => None,
                 };
-                let bg = entry.as_ref().is_some_and(|e| e.done.bg || e.tail.bg);
+                let bg = entry.as_ref().is_some_and(|e| e.session().bg());
                 if let (Some(e), Some(sid)) = (&entry, path.file_stem().and_then(|s| s.to_str())) {
                     labels.insert(sid.to_string(), label_of(e));
                 }
@@ -725,7 +687,8 @@ fn bring_up(
         (Step::Appended(_), None) | (Step::Whole, _) => {
             let mut blocks = Blocks::open(path)?;
             last.full += 1;
-            let mut e = FileEntry::empty(tools);
+            let kind = crate::agents::record_kind_of(path).unwrap_or_default();
+            let mut e = FileEntry::empty(kind, tools);
             let got = e.take(seen.0, &mut blocks);
             last.bytes += blocks.read();
             got.map(|()| e)
@@ -848,12 +811,8 @@ fn session_title_row(
     updated_at: i64,
 ) -> Option<SessionHits> {
     let session_id = path.file_stem()?.to_str()?.to_string();
-    let title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
-    let excerpt = if entry.done.excerpt.is_empty() {
-        &entry.tail.excerpt
-    } else {
-        &entry.done.excerpt
-    };
+    let s = entry.session();
+    let (title, excerpt) = (s.title(), s.excerpt());
     let found = title.is_some_and(|t| t.to_lowercase().contains(q_lc))
         || excerpt.to_lowercase().contains(q_lc);
     found.then(|| session_row(path, entry, session_id, updated_at, 0, Vec::new(), false))
@@ -869,22 +828,16 @@ fn session_row(
     hits: Vec<SearchHit>,
     session_starved: bool,
 ) -> SessionHits {
-    let project_path = entry
-        .done
-        .cwd
-        .clone()
-        .or_else(|| entry.tail.cwd.clone())
-        .unwrap_or_default();
+    let s = entry.session();
+    let project_path = s.cwd().unwrap_or_default().to_string();
     let project_name = Path::new(&project_path)
         .file_name()
         .and_then(|s| s.to_str())
         .map(str::to_string)
         .unwrap_or_else(|| project_path.clone());
     let title = label_of(entry);
-    // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
-    let agent = crate::agents::record_tree_kind()
-        .unwrap_or_default()
-        .to_string();
+    // 哪一家跟着这份记录走（索引格建起来时照它落在哪棵树下认的）。
+    let agent = entry.kind.to_string();
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
         can: crate::history::listing::can_of(
@@ -905,26 +858,17 @@ fn session_row(
         hits_truncated: session_starved,
         is_bg: false,
         forked_from: None,
-        parent: entry
-            .done
-            .forked
-            .clone()
-            .or_else(|| entry.tail.forked.clone()),
+        parent: s.forked_from().map(str::to_string),
     }
 }
 
 /// 一个会话的显示标题（标题 / 首条 user 摘要 / sid 前 8 位之一）。全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
 fn label_of(entry: &FileEntry) -> String {
-    let ai_title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
-    let first_user_excerpt = if entry.done.excerpt.is_empty() {
-        &entry.tail.excerpt
-    } else {
-        &entry.done.excerpt
-    };
+    let s = entry.session();
     search_rules::session_label(&search_rules::LabelFacts {
         custom: None,
-        title: ai_title.cloned(),
-        first: first_user_excerpt.clone(),
+        title: s.title().map(str::to_string),
+        first: s.excerpt().to_string(),
         project_dir: None,
     })
     .0
@@ -947,15 +891,13 @@ pub(crate) struct RecordText {
 ///
 /// 🔴 **全局搜索（`history-search`）与会话内查找（`history-find`）的口径只有这一个住址**；
 /// 抽取 / 「谁说的」住适配层（经注册表 `agents::main_text` · `tool_text` · `human_speech`），截断住 `search_rules`（原 `search-core`）。
-pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> {
+pub(crate) fn record_text(kind: &str, v: &Value, include_tools: bool) -> Option<RecordText> {
     let is_assistant = match v.get("type").and_then(Value::as_str) {
         Some("assistant") => true,
         Some("user") => false,
         _ => return None,
     };
     let content_v = v.get("message").and_then(|m| m.get("content"));
-    // 搜的是记录树那一家的记录。
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
     // 查找 · 搜索的单位就是流里画的那几张卡：流里不画的不搜，收在某次调用那一块里的记下那次调用。
     let lands_in = match crate::agents::lands_of(kind, v) {
         crate::agents::Lands::Nowhere => return None,
@@ -1165,6 +1107,7 @@ pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> Find
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub(crate) fn scan_session_find<R: std::io::BufRead>(
+    kind: &str,
     r: R,
     query: &str,
     include_tools: bool,
@@ -1192,11 +1135,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         if matches!(
             v.get("type").and_then(Value::as_str),
             Some("user" | "assistant")
-        ) && super::recognize::user_inputs::user_input_of(
-            crate::agents::record_tree_kind().unwrap_or_default(),
-            &v,
-        )
-        .is_some()
+        ) && super::recognize::user_inputs::user_input_of(kind, &v).is_some()
         {
             turn += 1;
         }
@@ -1207,7 +1146,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         else {
             continue;
         };
-        let Some(rt) = record_text(&v, include_tools) else {
+        let Some(rt) = record_text(kind, &v, include_tools) else {
             continue;
         };
         if !scope.is_none_or(|s| in_scope(s, &rt)) {

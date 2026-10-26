@@ -33,14 +33,17 @@ max=${HEAVY_MEM_MAX:-14G}
 high=${HEAVY_MEM_HIGH:-12G}
 dir=${GATE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate}/heavy-slots
 mkdir -p "$dir"
+no_scope="这台没有 systemd-run --user（CI / Windows / 没有 user session）"
 if command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 \
-   && systemctl --user show-environment >/dev/null 2>&1; then
+   && systemctl --user show-environment >/dev/null 2>&1 \
+   && { systemd-run --user --scope --quiet -- true >/dev/null 2>&1 \
+        || { no_scope="起不了 user scope（这个进程在 user 管理器挪不动的 cgroup 里，如登录会话的 session-*.scope）"; false; }; }; then
   slice=ccheavy.slice
   systemctl --user set-property --runtime "$slice" CPUWeight=20 >/dev/null 2>&1 \
     || echo "heavy: 设不了 $slice 的 CPU 权重 ⇒ 照跑，CPU 不让" >&2
   scope=(systemd-run --user --scope --quiet --slice="$slice" -p MemoryHigh="$high" -p MemoryMax="$max" --)
 else
-  echo "heavy: 这台没有 systemd-run --user（CI / Windows / 没有 user session）⇒ 不封顶内存，直接跑" >&2
+  echo "heavy: ${no_scope} ⇒ 不封顶内存，直接跑" >&2
   scope=()
 fi
 # 让着人：nice / ionice 有就加，没有说一声（Windows 的 Git Bash 两样都没有）。

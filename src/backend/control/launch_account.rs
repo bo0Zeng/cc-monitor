@@ -15,27 +15,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// 调用方要的号（账号 0 不用判，在 [`settle`] 那一步就定了）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Asked {
-    /// 用户刚点名的那个号。
-    Named(String),
-    /// 跟随：这条会话上次用的号 → 这台的默认号 → 账号 0。
-    Follow,
-}
-
 // 判定直接读 `accounts-list` 的成品（同一份扫描，不另读清单、不另转一张表）：能不能用是成品写好的 `selectable`
-//（`acct_core::account_selectable`），默认号是 `meta.effectiveDefault`（`acct_core::effective_default`），这里都不另判。
-// `meta.enabled = false` ⇒ 清单读不出来（说不清默认号是谁）。
+//（`acct_core::account_selectable`，已含「写了号目录」），默认号是 `meta.effectiveDefault`（`acct_core::effective_default`），这里都不另判。
+// `meta.enabled = false` ⇒ 清单读不出来（说不清默认号是谁）。界面起会话 · 换号重启 · `ccm --account` / 裸 `ccm` 都只经 [`pick`]。
 
-/// 这一行的号目录（空串不算）。
-fn dir_of(a: &AccountRow) -> Option<&str> {
-    a.scanned.config_dir.as_deref().filter(|d| !d.is_empty())
-}
-
-/// 能拿来起会话：成品说选得了、且写了号目录（账号 0 恒不在此列）。
+/// 能拿来起会话：成品说选得了（账号 0 恒不在此列）。
 fn usable(a: &AccountRow) -> bool {
-    !a.scanned.name.is_empty() && a.scanned.selectable && dir_of(a).is_some()
+    !a.scanned.name.is_empty() && a.scanned.selectable
 }
 
 fn usable_named<'a>(list: &'a AccountsList, name: &str) -> Option<&'a AccountRow> {
@@ -57,17 +43,6 @@ fn alternative_to(list: &AccountsList, requested: &str) -> Option<String> {
         .map(|a| a.scanned.name.clone())
 }
 
-/// 判定的结局。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Picked {
-    /// 用这个号（名字 ＋ 账号目录）。
-    Account { name: String, config_dir: String },
-    /// 不指定号：用户点名的账号 0，或跟随时没有上次的号、默认号也用不了。
-    Base,
-    /// 要的号选不了 ⇒ 不起。
-    Unavailable(AccountUnavailable),
-}
-
 /// 选不了的那一形（线上 `account_unavailable` 的 `data`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,33 +61,38 @@ pub struct AccountUnavailable {
 
 /// **起会话用哪个号 —— 唯一的判定。**
 ///
-/// `last` ＝ 这条会话上次用的号（[`last_of`]）。`pinned_now` ＝ 会话此刻钉着的号（额度轮换用，今天恒空、不参与判定）。
+/// `last` ＝ 这条会话上次用的号（[`last_of`]；只有跟随看它）。跟随却什么都没选上（没有上次的号、默认号也用不了）⇒ [`Settled::Unsaid`]；
+/// 点名的 · 上次的号选不了 ⇒ `Err`（不起，给一个显式的替代）。判出来的号不带模型（模型由调用方照号补，[`settle`]）。
 pub(crate) fn pick(
-    asked: &Asked,
+    asked: &AccountAsk,
     list: &AccountsList,
     last: Option<&str>,
-    pinned_now: Option<&str>,
-) -> Picked {
-    let _ = pinned_now;
-    let refuse = |requested: &str, pinned: bool| {
-        Picked::Unavailable(AccountUnavailable {
-            requested: requested.to_string(),
-            pinned,
-            list_known: list.meta.enabled,
-            alternative: alternative_to(list, requested),
+) -> Result<Settled, AccountUnavailable> {
+    let refuse = |requested: &str, pinned: bool| AccountUnavailable {
+        requested: requested.to_string(),
+        pinned,
+        list_known: list.meta.enabled,
+        alternative: alternative_to(list, requested),
+    };
+    let take = |a: &AccountRow| {
+        Settled::Account(LaunchedAccount {
+            name: a.scanned.name.clone(),
+            config_dir: a.scanned.config_dir.clone().unwrap_or_default(),
+            model: None,
         })
     };
-    let take = |a: &AccountRow| Picked::Account {
-        name: a.scanned.name.clone(),
-        config_dir: dir_of(a).unwrap_or_default().to_string(),
-    };
     match asked {
-        Asked::Named(n) => usable_named(list, n).map_or_else(|| refuse(n, false), take),
-        Asked::Follow => match last {
-            Some(p) => usable_named(list, p).map_or_else(|| refuse(p, true), take),
-            None => default_one(list)
+        AccountAsk::Base => Ok(Settled::Base),
+        AccountAsk::Named { name } => usable_named(list, name)
+            .map(take)
+            .ok_or_else(|| refuse(name, false)),
+        AccountAsk::Follow => match last {
+            Some(p) => usable_named(list, p)
+                .map(take)
+                .ok_or_else(|| refuse(p, true)),
+            None => Ok(default_one(list)
                 .filter(|a| usable(a))
-                .map_or(Picked::Base, take),
+                .map_or(Settled::Unsaid, take)),
         },
     }
 }
@@ -165,26 +145,22 @@ pub(crate) fn settle(
     models: &BTreeMap<String, String>,
     facts: &Facts,
 ) -> Result<Settled, AccountUnavailable> {
-    let asked = match asked {
+    match asked {
         AccountAsk::Base => return Ok(Settled::Base),
         AccountAsk::Follow if !facts.has_accounts => return Ok(Settled::Unsaid),
-        AccountAsk::Follow => Asked::Follow,
-        AccountAsk::Named { name } => Asked::Named(name.clone()),
-    };
-    let last = match (&asked, sid) {
-        (Asked::Follow, Some(sid)) => (facts.last)(sid),
+        _ => {}
+    }
+    let last = match (asked, sid) {
+        (AccountAsk::Follow, Some(sid)) => (facts.last)(sid),
         _ => None,
     };
-    match pick(&asked, &(facts.library)(), last.as_deref(), None) {
-        Picked::Account { name, config_dir } => Ok(Settled::Account(LaunchedAccount {
-            model: models.get(&name).filter(|m| !m.is_empty()).cloned(),
-            name,
-            config_dir,
-        })),
-        Picked::Base if asked == Asked::Follow => Ok(Settled::Unsaid),
-        Picked::Base => Ok(Settled::Base),
-        Picked::Unavailable(u) => Err(u),
-    }
+    Ok(match pick(asked, &(facts.library)(), last.as_deref())? {
+        Settled::Account(mut a) => {
+            a.model = models.get(&a.name).filter(|m| !m.is_empty()).cloned();
+            Settled::Account(a)
+        }
+        other => other,
+    })
 }
 
 /// 判据用：号照请求原样当已判好（判定本身由 `launch_account_tests.rs` 钉；渲染那几族只看映射）。点名的号的目录取 `/h/.cc/<名>`。

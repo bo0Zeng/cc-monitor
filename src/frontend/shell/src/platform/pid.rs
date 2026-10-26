@@ -231,47 +231,6 @@ pub fn ancestors(_pid: u32) -> Vec<(u32, String)> {
     Vec::new()
 }
 
-/// 这个 pid 还在跑没有（`GetExitCodeProcess == STILL_ACTIVE`）。别处恒 `false`（`bind.rs` 心跳那一格的诚实边界照旧）。
-#[cfg(windows)]
-pub fn is_alive(pid: u32) -> bool {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    const STILL_ACTIVE: u32 = 259;
-    if pid == 0 {
-        return false;
-    }
-    unsafe {
-        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-            Ok(h) if !h.is_invalid() => h,
-            _ => return false,
-        };
-        let mut code: u32 = 0;
-        let alive = GetExitCodeProcess(handle, &mut code).is_ok() && code == STILL_ACTIVE;
-        let _ = CloseHandle(handle);
-        alive
-    }
-}
-
-/// Linux：`/proc/<pid>` 还在、不是僵尸。
-#[cfg(target_os = "linux")]
-pub fn is_alive(pid: u32) -> bool {
-    pid != 0
-        && std::fs::read_to_string(format!("/proc/{pid}/stat"))
-            .ok()
-            .and_then(|l| {
-                l.rfind(')')
-                    .map(|i| l[i + 1..].trim_start().starts_with('Z'))
-            })
-            .is_some_and(|zombie| !zombie)
-}
-
-#[cfg(not(any(windows, target_os = "linux")))]
-pub fn is_alive(_pid: u32) -> bool {
-    false
-}
-
 #[cfg(all(test, target_os = "linux"))]
 #[path = "../../../../../tests/frontend/shell/platform/pid_linux_tests.rs"]
 mod tests;

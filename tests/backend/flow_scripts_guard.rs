@@ -796,9 +796,11 @@ mod tests {
             lowered_nice(),
             "{calls}"
         );
+        // 头一次是探「起不起得了 scope」（`-- true`），起重活的是最后那一次。
         let run = calls
             .lines()
-            .find(|l| l.starts_with("systemd-run "))
+            .filter(|l| l.starts_with("systemd-run "))
+            .last()
             .unwrap_or_else(|| panic!("没经 systemd-run：{calls}"));
         for want in [
             "--user",
@@ -814,6 +816,41 @@ mod tests {
                 .starts_with("systemctl --user set-property --runtime ccheavy.slice CPUWeight=")),
             "切片的 CPU 权重没设：{calls}"
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 这个进程在 user 管理器挪不动的 cgroup 里（登录会话的 session scope）：起 scope 当场失败 ⇒ 不进 scope、照跑那条命令、说一声，
+    /// 不随 scope 一起无声退出。
+    #[test]
+    fn heavy_runs_without_a_scope_when_the_user_manager_cannot_start_one() {
+        let d = scratch("heavy-noscope");
+        let bin = tool_bin(
+            &d,
+            &[
+                "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "false",
+                "nice", "ionice",
+            ],
+        );
+        let fake = |name: &str, body: &str| {
+            let p = bin.join(name);
+            std::fs::write(&p, format!("#!/bin/bash\n{body}\n")).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        fake("systemctl", "exit 0");
+        fake(
+            "systemd-run",
+            "echo 'Job failed. See \"journalctl -xe\" for details.' >&2; exit 1",
+        );
+        let out = heavy_with_path(&d, &bin, &["echo", "照跑了"]);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{err}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "照跑了",
+            "{err}"
+        );
+        assert!(err.contains("起不了 user scope"), "没说为什么不封顶：{err}");
         let _ = std::fs::remove_dir_all(&d);
     }
 

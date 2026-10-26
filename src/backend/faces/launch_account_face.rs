@@ -39,6 +39,21 @@ pub(crate) fn list_of(agent: &str) -> AccountsList {
     )
 }
 
+/// [`list_of`]，账号库照家目录 `home` 那一份（`ccm` 的计划按它自己的家算：别名预览可以是另一个家）——
+/// 交给 ccm 的计划那一边当「读这台账号清单成品」（`AccountsScan`；控制面不读观测层，由入口交）。
+pub fn list_at(home: &str, agent: &str) -> AccountsList {
+    let home = std::path::Path::new(home);
+    crate::observe::accounts_query::list_product_with(
+        &crate::platform::paths::home_join(home, relay_route_core::ACCOUNTS_DIR_REL),
+        Some(home),
+        &crate::accounts::upstream_select::file_face::machine_rows(),
+        &crate::accounts::upstream_select::file_face::machine_key_facts(),
+        agent,
+        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+        crate::relay::our_relay_listening(relay_route_core::PORT),
+    )
+}
+
 /// 某条会话上次用的号（这台家里那份记录）。
 pub(crate) fn last_of(sid: &str) -> Option<String> {
     la::last_of(crate::platform::paths::data_home().as_deref(), sid)

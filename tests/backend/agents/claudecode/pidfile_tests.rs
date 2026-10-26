@@ -85,6 +85,45 @@ fn only_the_adapter_spells_the_pidfile_kind_word() {
     );
 }
 
+/// ★ 一份进程状态文件只在这里翻成一行：通用层判活 · 宣告 · 账号归属 · 「在等什么」要的每一格都在这一行里（造出来的最小一份）。
+/// 串格不是串 ⇒ 没有；启动时刻收十进制串也收裸数字；`attachable` 只认真布尔。
+#[test]
+fn one_pidfile_becomes_one_fact_row() {
+    let f = proc_of(&json!({
+        "pid": 4242, "sessionId": "s-1", "cwd": "/w/p", "name": "job",
+        "procStart": "12285972", "kind": "bg", "status": "waiting", "waitingFor": "input needed",
+        "attachable": false, "statusUpdatedAt": 1_700_000_000_123u64, "startedAt": 1_700_000_000_000u64
+    }));
+    assert_eq!(
+        f,
+        ProcFact {
+            kind: crate::agents::claudecode::AGENT_KIND,
+            sid: Some("s-1".into()),
+            cwd: Some("/w/p".into()),
+            name: Some("job".into()),
+            proc_start: Some(12_285_972),
+            background: true,
+            activity: Some(SessionActivity::NeedsYou),
+            status_word: Some("waiting".into()),
+            wait: Some(WaitOn::Input),
+            waiting_word: Some("input needed".into()),
+            attachable: Some(false),
+            status_since_ms: Some(1_700_000_000_123),
+            started_ms: Some(1_700_000_000_000),
+        }
+    );
+    assert_eq!(
+        proc_of(&json!({"procStart": 12285972})).proc_start,
+        Some(12_285_972)
+    );
+    let odd = proc_of(&json!({"sessionId": 5, "attachable": "false", "procStart": "x"}));
+    assert_eq!(
+        (odd.sid, odd.attachable, odd.proc_start),
+        (None, None, None)
+    );
+    assert!(!odd.background, "不写 kind ⇒ 交互");
+}
+
 /// ★ 「在等什么」：那一家 pidfile 的 `waitingFor` 全部六个词逐个翻成与哪一家无关的那一维；没写 ⇒ 说不清；认不出 ⇒ 说不清并记漂移账。
 /// 六个词是那一家自己的全集（它把前四个归「权限」类、`input needed` 归「提问」类、`dialog open` 不归类）。
 #[test]

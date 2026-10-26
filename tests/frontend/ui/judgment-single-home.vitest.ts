@@ -716,7 +716,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     by_route: NONE,
     by_name: NONE,
     named: NONE,
-    default_account: NONE,
     with_bare_first: NONE,
   },
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。

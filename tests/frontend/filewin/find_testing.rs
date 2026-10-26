@@ -416,8 +416,8 @@ pub struct FakeBackend {
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
     pub log: WireLog,
-    /// 送进来的块（`(key, seq)` → 内容），`files-commit-text` 按块号读回拼起来。
-    chunks: std::collections::BTreeMap<(String, u64), String>,
+    /// 送进来的块（`(key, seq)` → 原始字节），`files-commit-text` 按块号读回拼起来。
+    chunks: std::collections::BTreeMap<(String, u64), Vec<u8>>,
     /// 最近一次提交成功拼出来的那一份（`(root/rel, 全文)`）—— 判据拿它与原文比。
     pub committed: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
     /// 第几块（块号）起按「盘满」那一档拒（演「送到一半断了」）。
@@ -1258,7 +1258,11 @@ impl FakeBackend {
                         None,
                     );
                 };
-                let content = args["content"].as_str().unwrap_or("").to_string();
+                // 两形都认（同后端）：字符串 / `{"b16": …}`，存原始字节。
+                let content =
+                    serde_json::from_value::<cmd_wire::files::ChunkBytes>(args["content"].clone())
+                        .map(|c| c.bytes().to_vec())
+                        .unwrap_or_default();
                 if content.is_empty() {
                     return (false, Some("bad_args".into()), Some("空块".into()), None);
                 }
@@ -1288,16 +1292,18 @@ impl FakeBackend {
                         None,
                     );
                 };
-                let mut whole = String::new();
+                let mut joined = Vec::new();
                 let mut missing = false;
                 for seq in 0..chunks {
                     match self.chunks.get(&(key.clone(), seq)) {
-                        Some(c) => whole.push_str(c),
+                        Some(c) => joined.extend_from_slice(c),
                         None => missing = true,
                     }
                 }
                 self.chunks.retain(|(k, _), _| k != &key);
-                if missing || whole.len() as u64 != bytes {
+                let n = joined.len() as u64;
+                let whole = String::from_utf8(joined).unwrap_or_default();
+                if missing || n != bytes || whole.len() as u64 != bytes {
                     return (
                         false,
                         Some("io_failed".into()),
