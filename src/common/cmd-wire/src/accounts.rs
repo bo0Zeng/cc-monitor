@@ -438,3 +438,64 @@ pub struct Badge {
     pub warn: bool,
     pub title: crate::cells::Words,
 }
+
+// ── session-account 的回包 ────────────────────────────────────────────────────────────────
+
+/// 这个号是此刻在跑的 · 上次用的 · 不知道。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum SessionAccountWhen {
+    Now,
+    Last,
+    Unknown,
+}
+
+/// 标签页上那颗号徽章（只在这个会话的号与那台默认号不一样、那台的号查得了时出）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionAccountBadge {
+    /// 画成「上次的」（幽灵头像）：不是此刻在跑的那个号。
+    pub ghost: bool,
+    /// 悬停那一句。
+    pub title: String,
+}
+
+/// `session-account` 的回包：一条会话的号，会话那台判好、写好的（后端 `faces/session_account_face.rs` 拼）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct SessionAccountReply {
+    /// 号名（头像按它取色；`_` ＝ 没指定号）；不知道 ⇒ `null`。
+    pub account: Option<String>,
+    /// 按钮上的名字（号名表里的叫法；不知道 ⇒ 那一句「未实时显示」）。
+    pub name: String,
+    /// 生成的类型里就地写开（不另出一份文件）。
+    #[cfg_attr(any(test, feature = "ts"), ts(inline))]
+    pub when: SessionAccountWhen,
+    /// 轮换换过号 ⇒ 开会话的那个号（按钮前那个 ⇄ · 悬停卡末行）；没换过 ⇒ `null`。
+    pub from: Option<String>,
+    /// 标签页悬停卡那一行「账号 X」；号不知道 ⇒ `null`。
+    pub account_line: Option<String>,
+    /// 标签页悬停卡那一行「从 X 换过来」；没换过 ⇒ `null`。
+    pub from_line: Option<String>,
+    /// 用量那几格（额度账里在用那个号那一条）；没走中转 · 账上没有 ⇒ `null`（只画名字）。
+    pub usage: Option<crate::quota::Usage>,
+    /// 那一条最后一次看到距今超过 30 分钟。
+    pub stale: bool,
+    /// 悬停卡的行，一格一个字。
+    pub hover: Vec<Vec<String>>,
+    /// 悬停卡里采样那一格在第几行：出口在那一行后面接上问的是哪台（那台叫什么是出口那一侧的事）；没有 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub sampled: Option<usize>,
+    /// 这个号与那台的默认号都确知、而且不一样。
+    pub differs: bool,
+    #[cfg_attr(any(test, feature = "ts"), ts(inline))]
+    pub badge: Option<SessionAccountBadge>,
+    /// 那台的号查得了（账号库启用了）。
+    pub queryable: bool,
+}

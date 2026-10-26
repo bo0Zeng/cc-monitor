@@ -1,31 +1,26 @@
 // 状态栏「当前账号」：全局默认账号的常驻显示 ＋ 一键切换入口；有当前会话时画本会话那个号。
 //
-// 账号是按机器的：chip 绑第一台已配置的远端（`pickPrimaryOrigin`），一台都没有就是本机。
+// 有当前会话 ⇒ 照会话那台写好的那一份（`session-account`，`appStore.sessionAccount`）画，这里不判、不比、不合；
+// 没有会话 ⇒ 本机的默认号。
 // 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
 import { accountLabel } from "./acct-words";
-import type { MachineRow } from "./generated/MachineRow";
 import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
 import { accountAvatarEl } from "./account-color";
-import { readRemoteConfig } from "./remote-config";
 import { failToast } from "./kit/toast";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
 import { attachTooltip } from "./kit/tooltip";
 import { icon } from "./kit/icon";
 import { acctAvatar, hoverTable } from "./acct-dom";
-import { sessionChip, sessionHoverRows, type ChipModel } from "./acct-view";
+import { machineLabel } from "./acct-view";
+import type { SessionAccountReply } from "./generated/SessionAccountReply";
 import s from "./acct.module.css";
 
 // ------------------------------------------------------------ 纯函数（可测）
-
-/** 选 chip 绑定的那台机器：第一台已配置远端；一台都没有 ⇒ 本机（`LOCAL_ORIGIN`）。 */
-export function pickPrimaryOrigin(rows: MachineRow[]): Origin {
-  return rows.find((r) => r.name !== "")?.name ?? LOCAL_ORIGIN;
-}
 
 
 /** chip 文本（不含图标）。纯函数，据 UI 状态 + 当前默认账号算。 */
@@ -66,19 +61,17 @@ export class AccountChip {
   /** 本会话那一形：`[⇄] [头像] 名 窗口 用量 [↻重置]`（无会话时藏着）。 */
   private sessionEl: HTMLElement;
   /** 此刻的当前会话（`null` ＝ 没有 tab ⇒ 按钮退成「默认 work」）。 */
-  private active: { sid: string; origin: Origin; account: string | null } | null = null;
-  private chipModel: ChipModel | null = null;
-  /** chip 绑的那台机器（`refresh` 之前没意义 —— 那时 `state` 也是 `null`）。 */
-  private origin: Origin = LOCAL_ORIGIN;
-  /** 这一次渲染的是本机账号吗（没有远端时回落）。 */
-  private local = false;
+  private active: { sid: string; origin: Origin } | null = null;
+  private chipModel: SessionAccountReply | null = null;
+  /** 没有会话时 chip 看的那台：本机。 */
+  private readonly origin: Origin = LOCAL_ORIGIN;
   /** `refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
   private bound = false;
   /** 读 store 里 chip 绑的那一台（`account-reads.ts` 每取回一次写进去），不自己存一份。本机那一档 not-ready ⇒ `null`（整个隐藏）。 */
   private get state(): AccountsState | null {
     if (!this.bound) return null;
     const st = appStore.accounts.get().get(this.origin) ?? null;
-    if (this.local && (!st || deriveUi(st).kind !== "ready")) return null;
+    if (!st || deriveUi(st).kind !== "ready") return null;
     return st;
   }
 
@@ -114,47 +107,45 @@ export class AccountChip {
     appStore.accounts.subscribe(() => {
       if (this.bound) this.paint();
     });
-    // 本会话那一形：额度账 · 会话轮换格任何一样变了 ⇒ 原地换数。
-    const repaint = (): void => {
+    // 本会话那一形：会话那台的那一份换了 ⇒ 原地换数。
+    appStore.sessionAccount.subscribe(() => {
       if (this.active) this.paint();
-    };
-    appStore.quota.subscribe(repaint);
-    appStore.sessionRotation.subscribe(repaint);
+    });
   }
 
   /** 当前会话换了（`tabs.active`）：有 ⇒ 按钮画本会话那个号；没有 ⇒ 退成「默认 work」。 */
-  setActive(a: { sid: string; origin: Origin; account: string | null } | null): void {
-    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin && this.active?.account === a?.account) return;
+  setActive(a: { sid: string; origin: Origin } | null): void {
+    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin) return;
     this.active = a;
     this.paint();
   }
 
 
   /** 本会话那一形这一刻的样子（没有当前会话 / 一样都不知道 ⇒ `null`）。 */
-  private sessionModel(): ChipModel | null {
+  private sessionModel(): SessionAccountReply | null {
     const a = this.active;
     if (!a) return null;
-    const entry = appStore.sessionRotation.get().get(a.sid);
-    return sessionChip(entry, a.account, appStore.quota.get().get(a.origin) ?? null);
+    const entry = appStore.sessionAccount.get().get(a.sid);
+    return entry && entry.origin === a.origin ? entry.read : null;
   }
 
   private hoverCard(): HTMLElement | null {
     const a = this.active;
-    if (!a || !this.chipModel) return null;
-    const entry = appStore.sessionRotation.get().get(a.sid);
-    const rows = sessionHoverRows(entry, a.account, appStore.quota.get().get(a.origin) ?? null);
-    if (!rows) return null;
-    const tone = this.chipModel.tone;
+    const m = this.chipModel;
+    if (!a || !m) return null;
+    // 采样那一格后面接上是哪台采的（问的是哪台、那台叫什么是这一侧的事）。
+    const rows = m.hover.map((r, i) => (i === m.sampled ? [...r, machineLabel(a.origin)] : [...r]));
+    const tone = m.usage?.tone ?? "plain";
     const tones: Record<number, "refused" | "warn"> = {};
     if (tone !== "plain") tones[1] = tone === "fail" ? "refused" : "warn";
-    return hoverTable(this.chipModel.account, rows, tones);
+    return hoverTable(m.account, rows, tones);
   }
 
   /** 画本会话那一形（`m` 由 [`sessionModel`] 算）。 */
-  private paintSession(m: ChipModel): void {
+  private paintSession(m: SessionAccountReply): void {
     const el = this.sessionEl;
     el.replaceChildren();
-    if (m.swapped) {
+    if (m.from !== null) {
       const sw = document.createElement("span");
       sw.className = s.acctChipSwap;
       sw.appendChild(icon("swap", "compact"));
@@ -165,39 +156,32 @@ export class AccountChip {
     name.className = s.acctChipName;
     name.textContent = m.name;
     el.appendChild(name);
-    if (m.window !== null) {
+    const u = m.usage;
+    if (u?.window !== undefined) {
       const w = document.createElement("span");
       w.className = s.acctChipWindow;
-      w.textContent = m.window;
+      w.textContent = u.window;
       el.appendChild(w);
     }
-    if (m.value !== null) {
+    if (u) {
       const v = document.createElement("span");
       v.className = s.acctChipValue;
-      v.textContent = m.value;
+      v.textContent = u.value;
       el.appendChild(v);
     }
-    if (m.reset !== null) {
+    if (u?.reset !== undefined) {
       const r = document.createElement("span");
       r.className = s.acctChipReset;
-      r.textContent = m.reset;
+      r.textContent = u.reset;
       el.appendChild(r);
     }
-    this.element.dataset.shade = m.tone;
+    this.element.dataset.shade = u?.tone ?? "plain";
     this.element.dataset.stale = String(m.stale);
     this.element.setAttribute("aria-label", copyText("acct.chip.aria", { name: m.name }));
   }
 
-  /** 问那台、刷新 chip（初始 / 设置变更 / 推来变了 / 手动）。 */
+  /** 问本机、刷新 chip（初始 / 推来变了 / 手动）。 */
   async refresh(): Promise<void> {
-    try {
-      const cfg = await readRemoteConfig();
-      this.origin = pickPrimaryOrigin(cfg.hosts.filter((r) => r.host.connect));
-    } catch {
-      this.origin = LOCAL_ORIGIN;
-    }
-    // 没有远端不等于没有账号 ⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
-    this.local = isLocalOrigin(this.origin);
     // 问回来的那一份进 store（`account-reads.ts` 问回时写），`state` 读 store。
     await fetchAccounts(this.origin);
     this.bound = true;

@@ -171,9 +171,9 @@ export function machineOps(): Record<string, OpHandler> {
                 counts: choreCounts([]),
                 rank: 2,
                 own: [
-                  { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
-                  { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 920 },
-                  { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
+                  { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size_text: null },
+                  { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size_text: "920 B" },
+                  { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size_text: null },
                 ],
               },
             }
@@ -193,15 +193,15 @@ export function machineOps(): Record<string, OpHandler> {
         counts: choreCounts(todo),
         rank: ((n) => (n.badge > 0 ? 0 : n.open > 0 ? 1 : 2))(choreCounts(todo)),
         own: [
-          { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
-          { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
-          { id: "policy", what: "台架编的一句 · policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size: null },
-          { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 1840 },
-          { id: "aliasesPosix", what: "台架编的一句 · aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size: 512 },
-          { id: "chores", what: "台架编的一句 · chores", path: "~/.cc-monitor/chores.json", dir: false, class: "truth", exists: true, size: 96 },
-          { id: "quota", what: "台架编的一句 · quota", path: "~/.cc-monitor/quota.json", dir: false, class: "truth", exists: true, size: 3172 },
-          { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
-          { id: "knownHosts", what: "台架编的一句 · knownHosts", path: "~/.cc-monitor/known_hosts", dir: false, class: "cache", exists: true, size: 802 },
+          { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size_text: null },
+          { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size_text: "64 B" },
+          { id: "policy", what: "台架编的一句 · policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size_text: null },
+          { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size_text: "1.8 KB" },
+          { id: "aliasesPosix", what: "台架编的一句 · aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size_text: "512 B" },
+          { id: "chores", what: "台架编的一句 · chores", path: "~/.cc-monitor/chores.json", dir: false, class: "truth", exists: true, size_text: "96 B" },
+          { id: "quota", what: "台架编的一句 · quota", path: "~/.cc-monitor/quota.json", dir: false, class: "truth", exists: true, size_text: "3.1 KB" },
+          { id: "accounts", what: "台架编的一句 · accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size_text: null },
+          { id: "knownHosts", what: "台架编的一句 · knownHosts", path: "~/.cc-monitor/known_hosts", dir: false, class: "cache", exists: true, size_text: "802 B" },
         ],
       };
     },
@@ -282,8 +282,8 @@ export function machineCommands(): Record<string, CommandHandler> {
     get_data_paths: () => ({
       monitorDataDir: `${HOME}/.cc-monitor`,
       entries: [
-        { label: "配置", class: "truth", path: `${HOME}/.cc-monitor/config.json`, kind: "file", description: "界面的偏好与机器列表", exists: true, sizeBytes: 4120 },
-        { label: "日志", class: "cache", path: `${HOME}/.cc-monitor/logs`, kind: "dir", description: "运行日志（按天滚动）", exists: true, sizeBytes: 3_400_000 },
+        { label: "配置", class: "truth", path: `${HOME}/.cc-monitor/config.json`, kind: "file", description: "界面的偏好与机器列表", exists: true, sizeText: "4.0 KB" },
+        { label: "日志", class: "cache", path: `${HOME}/.cc-monitor/logs`, kind: "dir", description: "运行日志（按天滚动）", exists: true },
       ],
       webviewUserDataDir: null,
     }),
@@ -292,10 +292,10 @@ export function machineCommands(): Record<string, CommandHandler> {
     get_log_file_info: () => ({
       dir: `${HOME}/.cc-monitor/logs`,
       current_file: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`,
-      current_size_bytes: 482_113,
+      current_size_text: "470.8 KB",
       all_files: [
-        { path: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`, size_bytes: 482_113, modified_ms: Date.parse("2026-10-01T11:58:00Z") },
-        { path: `${HOME}/.cc-monitor/logs/monitor.2026-09-30.log`, size_bytes: 1_204_551, modified_ms: Date.parse("2026-09-30T23:59:00Z") },
+        { path: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`, size_text: "470.8 KB", modified_ms: Date.parse("2026-10-01T11:58:00Z") },
+        { path: `${HOME}/.cc-monitor/logs/monitor.2026-09-30.log`, size_text: "1.1 MB", modified_ms: Date.parse("2026-09-30T23:59:00Z") },
       ],
       backend_stderr: [],
     }),

@@ -65,14 +65,6 @@ export class TabStore {
    * 单独一张表：它是「某个 sid 的一条会话级元信息」。
    */
   readonly notAttachableSids = new Set<string>();
-  /** 账号名 → 邮箱（徽章悬停用）。 */
-  accountEmailByName = new Map<string, string>();
-  /** sid → lastAccount（history-metadata）：宣告没说号时徽章的兜底来源。 */
-  accountLastByS = new Map<string, string>();
-  /** 账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
-  accountReadyOrigins = new Set<string>();
-  /** origin → 当前账号名：会话账号 == 它 → 不挂徽章。只放选得了的账号（`selectable`）（main.ts 过滤）：拿不可选的号说「你不一致」是假信息。 */
-  currentByOrigin = new Map<string, string>();
   activeId: string | null = null;
   /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */
   inBatch = false;

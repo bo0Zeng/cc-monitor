@@ -3,7 +3,7 @@
  *
  * 设计原文：「`origin` · 当前机器 · 账号快照 · tab 集合 —— 收进一处，订阅制。**只有一份 pub-sub。**」
  * ⇒ 「谁变了、谁要知道」只经 [`Slice`]：`TabStore` 的 tab 集合 / 当前 tab 那两格、设置窗的当前机器、
- * 账号快照（每台一份 · 徽章那份）都是它的实例；别处不再各养一份 listeners。
+ * 账号快照（每台一份）· 每个会话的号都是它的实例；别处不再各养一份 listeners。
  *
  * 语义两条（与原先 `machine-context.ts` 同）：**同值不通知**（每次通知都可能是一次往返，同值广播 = 变相轮询）；
  * 一个订阅者抛异常不挡其余订阅者。零 DOM、零 IPC。
@@ -12,6 +12,7 @@ import type { AccountsState } from "./accounts";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { QuotaRead } from "./acct-words";
 import type { RotationViewReply } from "./generated/RotationViewReply";
+import type { SessionAccountReply } from "./generated/SessionAccountReply";
 
 /** 一格状态：取值 · 置值（同值不通知）· 订阅（回退订函数；订阅那一刻不回放当前值）。 */
 export class Slice<T> {
@@ -53,12 +54,10 @@ export class Slice<T> {
   }
 }
 
-/** 账号徽章要的清单那一侧（`account-facts.ts` 并好、整份换）。 */
-export interface AccountFacts {
-  emailByName: Map<string, string>;
-  lastByS: Map<string, string>;
-  readyOrigins: Set<string>;
-  currentByOrigin: Map<string, string>;
+/** 一个会话的号：会话那台写好的那一份（`session-account`；状态栏按钮 · 号徽章照它画）。 */
+export interface SessionAccountEntry {
+  origin: Origin;
+  read: SessionAccountReply;
 }
 
 /** 一个会话在它那台的轮换（`rotation-view` 那一份；中转没见过这个会话 ⇒ `read: null`）。 */
@@ -73,8 +72,8 @@ export const appStore = {
   machine: new Slice<Origin>(LOCAL_ORIGIN),
   /** 每台机器最近一次问回来的账号清单（`account-reads.ts` 每问一次换一份）：只给同步画的那几处（头像号色 · 号牌字 · chip）读，要用清单的地方现问。 */
   accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
-  /** 账号徽章要的清单那一侧（`null` = 还没问过）。 */
-  accountFacts: new Slice<AccountFacts | null>(null),
+  /** 每个会话的号（按 sid；还没问回来 ⇒ 不在里面）。 */
+  sessionAccount: new Slice<ReadonlyMap<string, SessionAccountEntry>>(new Map()),
   /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果）。 */
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */

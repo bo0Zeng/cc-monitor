@@ -25,3 +25,11 @@ coroutines:
   # 低层 SSH / IO 直接用 Dispatchers.IO，刻意不做 dispatcher 注入。
   InjectDispatcher:
     active: false
+# 本仓自己的规则（`detekt-rules`）：出口扫描判据的 Kotlin 那一半，命中数照欠账名单 tests/frontend/ui/exit-debt.json。
+# 只认名单、不进 baseline（baseline 里出现这两条 ⇒ exit-judgment-scan.vitest.ts 红）。
+exit:
+  active: true
+  ExitCopyKey:
+    active: true
+  ExitCopyBranch:
+    active: true

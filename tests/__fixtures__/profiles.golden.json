@@ -107,7 +107,6 @@
     "editedAt": null,
     "exists": true,
     "fileProblem": null,
-    "fingerprint": "262-7fa1ba83a62d7966",
     "home": "<HOME>",
     "migrated": null,
     "path": "<HOME>/.cc-monitor/profiles.toml",
@@ -331,6 +330,7 @@
         "usable": true
       }
     ],
+    "rev": "262-7fa1ba83a62d7966",
     "seed": [],
     "seedCreate": "",
     "seedHint": "",
@@ -382,8 +382,8 @@
     ]
   },
   "writeReply": {
-    "fingerprint": "264-1093cf62d3b20d25",
     "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
+    "rev": "264-1093cf62d3b20d25",
     "wrote": true
   },
   "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <LINE> 是机器上会变的几格。"

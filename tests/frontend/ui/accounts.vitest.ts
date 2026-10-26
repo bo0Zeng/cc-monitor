@@ -14,10 +14,9 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
-import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account } from "../../../src/frontend/ui/accounts";
+import { deriveUi, defaultAccount, accountColorsActive, selectableAccounts, type AccountsState, type Account } from "../../../src/frontend/ui/accounts";
 import { accountsAgentProfile, fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { chosenAccount } from "../../../src/frontend/ui/launch-account";
 import {
@@ -28,7 +27,6 @@ import {
   withHistoryReads,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
-import { copyPattern } from "../../test-support/copy-pattern";
 import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -142,30 +140,6 @@ describe("默认号 · 能选的号照那台写好的格（跨三处金样）", 
   });
 });
 
-describe("currentAccountForBadge（account-ux U6：current 不可选就不能拿去判「不一致」）", () => {
-  it("当前账号可选 → 返回它", () => {
-    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] }, "b");
-    expect(currentAccountForBadge(s)?.name).toBe("b");
-  });
-  // 下面三条 = DoD 明列的「current 不可选不对齐」。不过滤的话：账号徽章
-  // （F09 后唯一消费者）会指着一个系统自己永远不会 follow 过去的账号说"你不一致"。
-  it("当前账号未登录 → null（对齐必失败，不能拿它判「不一致」）", () => {
-    const s = state({ accounts: [acct({ name: "b", isDefault: true, loggedIn: false, authReady: false, selectable: false })] }, "b");
-    expect(defaultAccount(s)?.name).toBe("b"); // 默认号照样给
-    expect(currentAccountForBadge(s)).toBeNull(); // 但对齐面必须拒
-  });
-  it("当前账号是 in-place（逃生口，不支持按会话切号）→ null", () => {
-    const s = state({ accounts: [acct({ name: "b", isDefault: true, mode: "in-place", selectable: false })] }, "b");
-    expect(currentAccountForBadge(s)).toBeNull();
-  });
-  it("当前账号目录缺失 → null", () => {
-    const s = state({ accounts: [acct({ name: "b", isDefault: true, exists: false, selectable: false })] }, "b");
-    expect(currentAccountForBadge(s)).toBeNull();
-  });
-  it("零账号 → null", () => {
-    expect(currentAccountForBadge(state({ accounts: [] }))).toBeNull();
-  });
-});
 
 describe("accountColorsActive（account-ux U8：单账号/降级时账号色系统休眠）", () => {
   const sel = (name: string): Account => acct({ name });
@@ -197,61 +171,6 @@ describe("accountColorsActive（account-ux U8：单账号/降级时账号色系�
 });
 
 
-describe("detectAccountMismatch（account-ux U1）", () => {
-  it("两者都确知且不同 → true", () => {
-    expect(detectAccountMismatch("b", "z")).toBe(true);
-  });
-  it("相同 → false", () => {
-    expect(detectAccountMismatch("z", "z")).toBe(false);
-  });
-  it("live 未知 → false（不误报）", () => {
-    expect(detectAccountMismatch(null, "z")).toBe(false);
-  });
-  it("无当前账号 → false", () => {
-    expect(detectAccountMismatch("b", null)).toBe(false);
-  });
-  it("都 null → false", () => {
-    expect(detectAccountMismatch(null, null)).toBe(false);
-  });
-});
-
-describe("sessionBadge source 字段（account-ux U1/U5）", () => {
-  const emailBy = new Map([["z", "z@example.test"]]);
-  it("宣告说了号 ＋ 活着 → source:'live' + account 全名", () => {
-    const b = sessionBadge("s1", "devbox", "z", true, emailBy);
-    expect(b?.source).toBe("live");
-    expect(b?.account).toBe("z");
-  });
-  it("lastAccount 兜底 → source:'last'", () => {
-    const b = sessionBadge("s1", "devbox", null, true, emailBy, new Map([["s1", "b"]]));
-    expect(b?.source).toBe("last");
-    expect(b?.account).toBe("b");
-  });
-  it("未知 → source:'unknown' + account:null", () => {
-    const b = sessionBadge("s1", "devbox", null, true, emailBy);
-    expect(b?.source).toBe("unknown");
-    expect(b?.account).toBeNull();
-  });
-});
-
-describe("sessionBadge（§3 优先级）", () => {
-  const emailBy = new Map([["z", "z@example.test"]]);
-  it("本地会话（origin null）→ 无徽章", () => {
-    expect(sessionBadge("s1", LOCAL_ORIGIN, "z", true, emailBy)).toBeNull();
-  });
-  it("宣告说了号 → 已知徽章，悬停带邮箱", () => {
-    const b = sessionBadge("s1", "devbox", "z", true, emailBy);
-    expect(b?.known).toBe(true);
-    expect(b?.account).toBe("z");
-    expect(b?.tooltip).toContain("z@example.test");
-    expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
-  });
-  it("宣告没说（判不了）→ — 不猜", () => {
-    const b = sessionBadge("s1", "devbox", null, true, emailBy);
-    expect(b?.known).toBe(false);
-    expect(b?.account).toBeNull();
-  });
-});
 
 describe("fetchAccounts：要用时问后端，界面不存一份", () => {
   // backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
@@ -305,52 +224,8 @@ describe("fetchAccounts：要用时问后端，界面不存一份", () => {
   });
 });
 
-describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
-  const emailBy = new Map([
-    ["z", "z@example.test"],
-    ["b", "b@example.org"],
-  ]);
-  it("活着、宣告说了号 → 用源①，忽略 lastAccount", () => {
-    const b = sessionBadge("s1", "devbox", "z", true, emailBy, new Map([["s1", "b"]]));
-    expect(b?.account).toBe("z");
-    expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
-  });
-  it("宣告没说但有 lastAccount → 用源②，标注上次 + 带邮箱", () => {
-    const b = sessionBadge("s1", "devbox", null, true, emailBy, new Map([["s1", "b"]]));
-    expect(b?.known).toBe(true);
-    expect(b?.account).toBe("b");
-    expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.last"));
-    expect(b?.tooltip).toContain("b@example.org");
-  });
-  it("结束了 → 宣告说过的号标「上次」（它就是这条会话最后跑的号），不当此刻", () => {
-    const b = sessionBadge("s1", "devbox", "z", false, emailBy, new Map([["s1", "b"]]));
-    expect(b?.source).toBe("last");
-    expect(b?.account).toBe("z");
-    expect(b?.tooltip).toContain(copyText("resumeMenu.account.last"));
-  });
-  it("都无 → —（含不传 lastAccountByS 也安全）", () => {
-    expect(sessionBadge("s1", "devbox", null, false, emailBy, new Map())?.account).toBeNull();
-    expect(sessionBadge("s1", "devbox", null, false, emailBy)?.account).toBeNull();
-  });
-  it("本地会话（origin null）源②也不显", () => {
-    expect(sessionBadge("s1", LOCAL_ORIGIN, null, false, emailBy, new Map([["s1", "b"]]))).toBeNull();
-  });
-});
 
 // F05：resolveAccount 纯函数——withAccount 内部决策逻辑的可独立测试版本。
-
-describe("shouldShowAccountBadge（A4/§7 徽章门控）", () => {
-  it("本地会话（origin null）→ 不显", () => {
-    expect(shouldShowAccountBadge(LOCAL_ORIGIN, new Set(["devbox"]))).toBe(false);
-  });
-  it("ready 远端 → 显", () => {
-    expect(shouldShowAccountBadge("devbox", new Set(["devbox"]))).toBe(true);
-  });
-  it("非 ready 远端（未迁移/旧）→ 不显（避免满屏 —）", () => {
-    expect(shouldShowAccountBadge("devbox", new Set())).toBe(false);
-    expect(shouldShowAccountBadge("box2", new Set(["devbox"]))).toBe(false);
-  });
-});
 
 
 
@@ -423,13 +298,9 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
     expect(selectableAccounts(st).map((a) => a.name)).toEqual(["api"]);
   });
 
-  it("★ KAY2 级联③：能当当前号 / 上徽章（跟随选中它由那台后端判，见后端判号那一族）", () => {
+  it("★ KAY2 级联③：能当默认号（跟随选中它 · 与会话的号比都由那台后端判）", () => {
     const st = state({ accounts: [apiKey()] }, "api");
     expect(defaultAccount(st)?.name).toBe("api");
-    expect(currentAccountForBadge(st)?.name).toBe("api");
-    // 阴性对照同一格：订阅号缺凭据时落空。
-    const bad = state({ accounts: [subNoCred()] }, "sub");
-    expect(currentAccountForBadge(bad)).toBeNull();
   });
 
   it("★ KAY2 级联④：它算进「可选账号 ≥ 2」⇒ 账号色不再休眠", () => {

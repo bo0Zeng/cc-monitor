@@ -10,9 +10,8 @@
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
  */
 import { holdOf } from "./rot-words";
-import { accountLabel } from "./acct-words";
 import qs from "./tab-quota.module.css";
-import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
+import type { SessionAccountReply } from "./generated/SessionAccountReply";
 import { appStore } from "./app-store";
 import { accountAvatarEl, accountColorOf } from "./account-color";
 import type { TabCollection } from "./tab-collections";
@@ -1095,8 +1094,8 @@ export class TabBarView {
   }
 
   /**
-   * 账号头像：只在这个会话用的号与那台的默认号不同时出（全都出 ⇒ 每行一块、信息为零）；
-   * 默认号不知道 ⇒ 不出（说不出「不同」）。悬停卡里永远写账号。头像悬停说「账号 {name}」。
+   * 账号头像：照会话那台写好的那一份（`session-account` 的 `badge`）：那台判了与默认号不同、号查得了才出；
+   * 幽灵 ＝ 上次的号。悬停那一句也是那台写好的。这里不比、不判。
    */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
     const hide = (): void => {
@@ -1106,30 +1105,24 @@ export class TabBarView {
       refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
     };
-    const account = this.accountOf(sid, tab);
-    if (account === null) return hide();
-    const current = this.store.currentByOrigin.get(tab.origin) ?? null;
-    if (!detectAccountMismatch(account.name, current)) return hide();
-    const drawn = `${account.name}\u0000${account.ghost ? 1 : 0}\u0000${accountColorOf(account.name, tab.origin) ?? ""}`;
+    const read = this.accountOf(sid, tab);
+    const badge = read?.badge ?? null;
+    if (read === null || badge === null || read.account === null) return hide();
+    const name = read.account;
+    const drawn = `${name}\u0000${badge.ghost ? 1 : 0}\u0000${accountColorOf(name, tab.origin) ?? ""}\u0000${badge.title}`;
     if (refs.acctDrawn === drawn) return;
     refs.acctDrawn = drawn;
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
-    refs.acctBadge.appendChild(accountAvatarEl(account.name, { size: 14, ghost: account.ghost, origin: tab.origin }));
-    refs.acctBadge.title = copyText("tabBar.hover.account", { name: account.name });
+    refs.acctBadge.appendChild(accountAvatarEl(name, { size: 14, ghost: badge.ghost, origin: tab.origin }));
+    refs.acctBadge.title = badge.title;
     refs.acctBadge.style.display = "";
   }
 
-  /** 这个会话用的号（`ghost` ＝ 上次用的、不是此刻在跑的）；不知道 ⇒ `null`。走中转的会话照那台 `rotation-view` 的在用号（轮换换过号也对）。 */
-  private accountOf(sid: string, tab: Tab): { name: string; ghost: boolean } | null {
-    if (!shouldShowAccountBadge(tab.origin, this.store.accountReadyOrigins)) return null;
-    const cur = appStore.sessionRotation.get().get(sid)?.read?.current;
-    if (cur) return { name: cur, ghost: false };
-    const face = tab.face;
-    if (face === null) return null;
-    const b = sessionBadge(sid, tab.origin, face.account ?? null, isLive(face), this.store.accountEmailByName, this.store.accountLastByS);
-    if (!b || !b.account) return null;
-    return { name: b.account, ghost: b.source === "last" };
+  /** 这个会话的号：它那台写好的那一份（还没问回来 ⇒ `null`）。 */
+  private accountOf(sid: string, tab: Tab): SessionAccountReply | null {
+    const e = appStore.sessionAccount.get().get(sid);
+    return e !== undefined && e.origin === tab.origin ? e.read : null;
   }
 
   private createTabButton(sid: string): TabButtonRefs {
@@ -1229,11 +1222,11 @@ export class TabBarView {
     if (peek) card.appendChild(line("tab-hover-peek", peek));
     // 隐藏的：后端那一句（为什么不占标签页）。
     if (tab.hidden) card.appendChild(line("tab-hover-row", tab.hidden.said));
+    // 号 · 轮换换过号那一句（从哪个号换过来）都是会话那台写好的；停发那一句照那台的轮换。
     const acct = this.accountOf(sid, tab);
-    if (acct) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.account", { name: acct.name })));
-    // 轮换换过号：从哪个号换过来（开会话的号）· 停发那一句。
+    if (acct?.accountLine) card.appendChild(line("tab-hover-row", acct.accountLine));
+    if (acct?.fromLine) card.appendChild(line("tab-hover-row", acct.fromLine));
     const rot = appStore.sessionRotation.get().get(sid)?.read;
-    if (rot && rot.current !== rot.start) card.appendChild(line("tab-hover-row", copyText("rot.hover.from", { account: accountLabel(rot.start) })));
     const held = holdOf(rot);
     if (held !== null) card.appendChild(line("tab-hover-row", held));
     if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));

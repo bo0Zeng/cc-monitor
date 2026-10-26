@@ -30,6 +30,27 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { TabCollection } from "../../../src/frontend/ui/tab-collections";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { appStore, putIn } from "../../../src/frontend/ui/app-store";
+import type { SessionAccountReply } from "../../../src/frontend/ui/generated/SessionAccountReply";
+
+/** 那台写好的会话的号：与它的默认号不同、上次的号 ⇒ 幽灵徽章。 */
+function lastAccount(account: string): SessionAccountReply {
+  return {
+    account,
+    name: account,
+    when: "last",
+    from: null,
+    accountLine: `账号 ${account}`,
+    fromLine: null,
+    usage: null,
+    stale: false,
+    hover: [[account]],
+    sampled: null,
+    differs: true,
+    badge: { ghost: true, title: `账号 ${account}` },
+    queryable: true,
+  };
+}
 import { goldenFace, liveFace } from "../../test-support/session-faces";
 
 /** tab 栏视图只读 `Tab` 的这几格；其余字段它不碰（`tab-bar-view.ts::updateTabButton` / `updateAccountBadge`）。 */
@@ -71,15 +92,14 @@ interface Rig {
  */
 function rig(n: number, grouped = 0): Rig {
   const store = new TabStore();
-  store.accountReadyOrigins.add("pi");
-  // 账号头像只在「这个会话的号 ≠ 那台的默认号」时出：那台默认号是 dave ⇒ 远端那一半都与它不同。
-  store.currentByOrigin.set("pi", "dave");
+  // 账号头像只在那台说「这个会话的号 ≠ 它的默认号」时出：远端那一半那台都这么说。
+  appStore.sessionAccount.set(new Map());
   for (let i = 0; i < n; i++) {
     const sid = `s${i}`;
     const remote = i % 2 === 1;
     store.tabs.set(sid, fakeTab(sid, { origin: remote ? "pi" : LOCAL_ORIGIN }));
     store.orderedIds.push(sid);
-    if (remote) store.accountLastByS.set(sid, i % 4 === 1 ? "alice" : "bob");
+    if (remote) putIn(appStore.sessionAccount, sid, { origin: "pi", read: lastAccount(i % 4 === 1 ? "alice" : "bob") });
   }
   store.activeId = "s0";
   // 组表只有 `{id, name}`；前 `grouped` 个 tab 自己带组 id。
@@ -214,7 +234,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
     r.take();
     r.view.refreshAccountBadges();
     expect(r.take().length, "账号没变：一条都不写").toBe(0);
-    r.store.accountLastByS.set("s3", "carol");
+    putIn(appStore.sessionAccount, "s3", { origin: "pi", read: lastAccount("carol") });
     r.view.refreshAccountBadges();
     const owners = new Set(r.take().map((x) => ownerSid(r, x)));
     expect([...owners]).toEqual(["s3"]);

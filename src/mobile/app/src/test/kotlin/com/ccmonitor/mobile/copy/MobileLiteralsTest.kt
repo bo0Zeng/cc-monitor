@@ -171,6 +171,7 @@ class MobileLiteralsTest {
                 "内部" to "内部诊断 · 断言 · 协议错的说明，只进日志 · 异常栈 · 复制详情的原话栏，不当句子上屏（登记时写清去向）",
             )
 
-        val SKIPPED_DIRS = setOf("build", ".git", ".gradle", ".idea", "libs", ".codepicture", "generated")
+        // `detekt-rules`：手机的开发工具（本仓的 detekt 规则，只在 detekt 跑时装进去），不是产品代码，它的字不上屏。
+        val SKIPPED_DIRS = setOf("build", ".git", ".gradle", ".idea", "libs", ".codepicture", "generated", "detekt-rules")
     }
 }

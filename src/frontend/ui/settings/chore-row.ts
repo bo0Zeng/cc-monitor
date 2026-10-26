@@ -4,6 +4,7 @@
  * 一句「存盘后这里自己认出」＋［再查一遍］。
  * 每一格都照那台后端的成品画（类 · 态 · 字 · 行号 · diff · 要复制的原文），界面只多记一个「已复制」。
  */
+import { el } from "../kit/el";
 import { button } from "../kit/button";
 import { foldCaret } from "../kit/fold";
 import { tag } from "../kit/badge";
@@ -37,13 +38,6 @@ function tone(c: Chore): string {
   if (c.state === "expired" || c.kind === "must") return "bad";
   if (c.kind === "decide" || c.kind === "install") return "warn";
   return "muted";
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tagName: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tagName);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
 }
 
 function stateTag(c: Chore, copied: boolean): HTMLElement {

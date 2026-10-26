@@ -30,10 +30,8 @@ description: string,
  */
 exists: boolean, 
 /**
- * 文件大小（bytes）；目录返 None（不递归算大小，避免大目录卡 IPC）。两个 `ts` 属性都是承重的：
- * 1. `optional`：本字段带 `skip_serializing_if`，`None` 时字段在 JSON 里整个缺席，TS 侧收到 `undefined`；ts-rs 只在 `maybe_omitted && has_default` 时兜底，
- *    本字段没有 `#[serde(default)]` ⇒ 显式 `ts(optional)` 必需（`ts(optional = nullable, type = "number")` 产出的也是 `sizeBytes?: number`：type override 吃掉 nullable）。
- * 2. `type = "number"`：ts-rs 默认把 `u64` 映射成 `bigint`，而 Tauri 的命令 IPC 走 JSON（`impl<T: Serialize> IpcResponse for T` 走 `serde_json::to_string`），
- *    `JSON.parse` 永不产出 BigInt。收窄成 `number` 安全：只用于展示文件大小，f64 的安全整数上限 2^53-1 ≈ 8 PB。类型不许与运行时不一致。
+ * 文件大小，写好的字（`copy_core::size_text`，界面照抄）；目录返 None（不递归算大小，避免大目录卡 IPC）。
+ * `optional`：本字段带 `skip_serializing_if`，`None` 时字段在 JSON 里整个缺席，TS 侧收到 `undefined`；
+ * 本字段没有 `#[serde(default)]` ⇒ 显式 `ts(optional)` 必需。
  */
-sizeBytes?: number, };
+sizeText?: string, };

@@ -3,7 +3,7 @@
 // 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
 // 别处：经通道读 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName } from "./ipc/chan-caller";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import type { AccountRow } from "./generated/AccountRow";
 import type { ListMeta } from "./generated/ListMeta";
@@ -105,87 +105,3 @@ export function selectableAccounts(state: AccountsState): Account[] {
 export function accountColorsActive(state: AccountsState): boolean {
   return state.available && selectableAccounts(state).length >= 2;
 }
-
-/**
- * 真正可用的当前账号：默认号再看它选不选得了（那台写好的 `selectable`）。
- * 拿未过滤的值判「不一致」，徽章会指着一个永远不会被跟过去的号说「你不一致」。消费者：`tabs.ts::updateAccountBadge`。
- */
-export function currentAccountForBadge(state: AccountsState): Account | null {
-  const cur = defaultAccount(state);
-  return cur?.selectable ? cur : null;
-}
-
-/** 活会话账号是否与当前账号不一致（纯函数）：两者都确知且不同才 true；任一未知 ⇒ false（不误报）。 */
-export function detectAccountMismatch(
-  liveAccount: string | null,
-  current: string | null,
-): boolean {
-  return liveAccount !== null && current !== null && liveAccount !== current;
-}
-
-
-/**
- * 会话 sid → 徽章信息（三源优先级）：
- *   源① 会话宣告说的号（那台后端读会话进程环境判的）、会话还活着 ——「此刻」；
- *   源② 结束了的：宣告说过的号，没有就看 lastAccount（history-metadata：上次用本工具带账号起该会话时记的），标"上次"；
- *   源③ 都无 → `—`、不猜。
- * 本地会话（`LOCAL_ORIGIN`）不产徽章。
- */
-export interface SessionBadge {
-  known: boolean; // 是否确知账号
-  tooltip: string;
-  /** 徽章数据来源：'live' = 实时探测（实心头像）/ 'last' = 上次记录（幽灵头像）/ 'unknown' = 不猜。 */
-  source: "live" | "last" | "unknown";
-  /** 确知时的账号名（text 是缩写，这里是全名，供不一致比对 / 悬停）；未知为 null。 */
-  account: string | null;
-}
-export function sessionBadge(
-  sid: string,
-  origin: Origin,
-  said: string | null,
-  live: boolean,
-  emailByName: Map<string, string>,
-  lastAccountByS?: Map<string, string>,
-): SessionBadge | null {
-  if (isLocalOrigin(origin)) return null; // 本机会话不出账号徽章
-  if (live && said) {
-    const email = emailByName.get(said) ?? "";
-    return {
-      known: true,
-      tooltip: copyText("accounts.sessionBadge.live", { account: said, email: email ? ` · ${email}` : "" }),
-      source: "live",
-      account: said,
-    };
-  }
-  // 标"上次"避免误当成此刻在跑的号。
-  const last = said ?? lastAccountByS?.get(sid);
-  if (last) {
-    const email = emailByName.get(last) ?? "";
-    return {
-      known: true,
-      tooltip: copyText("accounts.sessionBadge.last", { last, email: email ? ` · ${email}` : "" }),
-      source: "last",
-      account: last,
-    };
-  }
-  // 源③：都没有 → 未知，不猜。
-  return {
-    known: false,
-    tooltip: copyText("accounts.sessionBadge.noneHint"),
-    source: "unknown",
-    account: null,
-  };
-}
-
-/**
- * 某会话该不该显账号徽章：只有账号可查询的远端才显（available 的 origin，main.ts 收进 readyOrigins）。
- * 本机会话与不可查询的远端不显 —— 满屏 `—` 是噪音，不可用就安静隐藏。
- */
-export function shouldShowAccountBadge(
-  origin: Origin,
-  readyOrigins: Set<string>,
-): boolean {
-  if (isLocalOrigin(origin)) return false; // 本机会话不出账号徽章
-  return readyOrigins.has(origin);
-}
-

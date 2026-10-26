@@ -2,6 +2,6 @@
 import type { RotEdit } from "./RotEdit";
 
 /**
- * `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `conflict`）。
+ * `rotation-settings` 的入参：哪一份 · 改什么 · 改之前读到的版本（对不上 ⇒ `stale`）。
  */
 export type RotationSettingsReq = { strategy: string, edit: RotEdit, ifRev: string, };

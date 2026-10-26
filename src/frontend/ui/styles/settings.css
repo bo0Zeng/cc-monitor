@@ -1055,17 +1055,6 @@ body.settings-window-mode .settings-panel {
   border-color: var(--border-strong);
 }
 
-.settings-btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--text-on-strong);
-}
-
-.settings-btn-primary:hover {
-  filter: brightness(1.1);
-  background: var(--accent);
-}
-
 .settings-row-end {
   justify-content: flex-end;
   gap: 8px;
@@ -1197,14 +1186,6 @@ body.settings-window-mode .settings-panel {
 
 .remote-machine.is-collapsed .remote-machine-body {
   display: none;
-}
-
-.remote-machine-remove {
-  font-size: var(--font-size-small);
-  padding: 1px 8px;
-  /* 〔WIN3 §2〕窄窗里 legend 挤它 ⇒「删除」竖排成两行：不换行、不被压缩。 */
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 /* === Keybindings Editor (issue #5) ===
@@ -1767,15 +1748,6 @@ body.settings-window-mode .settings-panel {
     gap: 6px;
     align-items: center;
     margin-top: 6px;
-  }
-  .ext-mcp-acts > .settings-btn {
-    flex: none;
-    white-space: nowrap;
-  }
-  /* 几个号都要登 ⇒ 每颗［登录…］前面那个号的号牌。 */
-  .ext-mcp-acts > .settings-btn > .acct-avatar {
-    margin-right: 4px;
-    vertical-align: -2px;
   }
   .ext-mcp-raw {
     margin: 6px 0 0;

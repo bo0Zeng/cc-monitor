@@ -19,6 +19,8 @@
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
 import { copyText } from "../copy-table";
+import { button } from "../kit/button";
+import { el } from "../kit/el";
 import { icon, type IconName } from "../kit/icon";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { syncAssets } from "../assets-sync-reads";
@@ -159,20 +161,6 @@ export function passes(r: ExtRow, query: string, kind: KindFilter): boolean {
   return q === "" || r.name.toLowerCase().includes(q) || (r.about ?? "").toLowerCase().includes(q);
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-function button(text: string, onClick: () => void, primary = false): HTMLButtonElement {
-  const b = el("button", primary ? "settings-btn settings-btn-primary" : "settings-btn", text);
-  b.type = "button";
-  b.addEventListener("click", onClick);
-  return b;
-}
-
 /** 出错那一句说的是哪个动作。 */
 type ExtVerb = "install" | "uninstall";
 
@@ -255,11 +243,11 @@ export class ExtSection {
       ["mcp", copyText("extPage.filter.mcp")],
     ];
     for (const [k, label] of kinds) {
-      const b = button(label, () => {
+      const b = button({ label, onClick: () => {
         this.kind = k;
         for (const c of filter.children) c.classList.toggle("is-active", c === b);
         this.renderTable();
-      });
+      } });
       b.classList.toggle("is-active", k === "all");
       filter.appendChild(b);
     }
@@ -502,10 +490,10 @@ export class ExtSection {
     head.appendChild(el("strong", "", r.name));
     head.appendChild(el("span", "ext-kind", kindText(r)));
     head.appendChild(
-      button(copyText("extPage.drawer.close"), () => {
+      button({ label: copyText("extPage.drawer.close"), onClick: () => {
         this.openKey = null;
         this.renderDrawer();
-      }),
+      } }),
     );
     this.drawer.appendChild(head);
     this.drawer.appendChild(this.notesOf(r));
@@ -535,20 +523,20 @@ export class ExtSection {
         this.noteDraft = input.value;
       });
       box.appendChild(input);
-      const save = button(copyText("extPage.note.save"), () => void this.saveNote(r), true);
-      const cancel = button(copyText("extPage.card.cancel"), () => {
+      const save = button({ label: copyText("extPage.note.save"), kind: "primary", onClick: () => void this.saveNote(r) });
+      const cancel = button({ label: copyText("extPage.card.cancel"), onClick: () => {
         this.noteDraft = null;
         this.noteError = null;
         this.renderDrawer();
-      });
+      } });
       box.appendChild(el("div", "ext-card-buttons")).append(save, cancel);
     } else {
       if (r.note !== null) box.appendChild(el("p", "ext-note-user", r.note));
       box.appendChild(
-        button(r.note === null ? copyText("extPage.note.write") : copyText("extPage.note.edit"), () => {
+        button({ label: r.note === null ? copyText("extPage.note.write") : copyText("extPage.note.edit"), onClick: () => {
           this.noteDraft = r.note ?? "";
           this.renderDrawer();
-        }),
+        } }),
       );
     }
     if (this.noteError !== null) box.appendChild(el("div", "ext-error", this.noteError));
@@ -643,7 +631,7 @@ export class ExtSection {
     // 只有全局那一处 ⇒ 不另起一行，「卸载…」直接跟在这一台后面；装在几个项目里的才逐处列。
     const only = c.places.length === 1 && c.places[0].at.level === "user" ? c.places[0] : null;
     if (only?.uninstall) {
-      const b = button(copyText("extPage.button.uninstall"), () => void this.openRemove(r, m, only.at));
+      const b = button({ label: copyText("extPage.button.uninstall"), onClick: () => void this.openRemove(r, m, only.at) });
       b.disabled = slot.busy === true || slot.card !== undefined || !m.reachable;
       top.appendChild(b);
     }
@@ -660,7 +648,7 @@ export class ExtSection {
     if (slot.error) {
       const err = el("div", "ext-error", slot.error.text);
       const again = slot.error.again;
-      if (slot.error.stale && again) err.appendChild(button(copyText("extPage.card.again"), again));
+      if (slot.error.stale && again) err.appendChild(button({ label: copyText("extPage.card.again"), onClick: again }));
       line.appendChild(err);
     }
     if (slot.card) line.appendChild(this.cardOf(r, m, key, slot));
@@ -683,7 +671,7 @@ export class ExtSection {
           acts.appendChild(el("span", "settings-hint", it.why ?? ""));
           continue;
         }
-        const go = button(copyText("newSession.account.login"), () => void openLoginDrawer({ origin, target: fix.args, onDone: () => this.loadNow() }));
+        const go = button({ label: copyText("newSession.account.login"), onClick: () => void openLoginDrawer({ origin, target: fix.args, onDone: () => this.loadNow() }) });
         go.dataset.action = "mcp-login";
         if (items.length > 1 && it.account !== null) go.prepend(accountAvatarEl(it.account, { size: 14, origin }));
         acts.appendChild(go);
@@ -710,25 +698,25 @@ export class ExtSection {
     row.appendChild(el("span", "ext-place-at", locText(p.at)));
     row.appendChild(el("span", "ext-machine-state", stateText(p.state, [])));
     if (p.uninstall && !uninstallAbove) {
-      const b = button(copyText("extPage.button.uninstall"), () => void this.openRemove(r, m, p.at));
+      const b = button({ label: copyText("extPage.button.uninstall"), onClick: () => void this.openRemove(r, m, p.at) });
       b.disabled = slot.busy === true || slot.card !== undefined || !m.reachable;
       row.appendChild(b);
     }
     if (r.kind === "skill" && p.dir !== null && isLocalOrigin(originOf(m))) {
       const dir = p.dir;
-      const b = button(copyText("extPage.button.reveal"), () => void revealInFolder(dir));
+      const b = button({ label: copyText("extPage.button.reveal"), onClick: () => void revealInFolder(dir) });
       b.dataset.reveal = "";
       row.appendChild(b);
     } else if (r.kind === "skill" && p.dir !== null && m.key !== null) {
       const dir = p.dir;
       const host = m.key;
       row.appendChild(
-        button(copyText("extPage.button.openFiles"), () => {
+        button({ label: copyText("extPage.button.openFiles"), onClick: () => {
           void resolveRemoteConfigByOrigin(host).then((cfg) => {
             if (cfg) void openFileWindow(cfg, { dir });
             else this.setSlot(machineKey(m), { error: { text: copyText("extPage.error.noHostConfig", { machine: machineName(m) }), stale: false } });
           });
-        }),
+        } }),
       );
     }
     if (p.note) row.appendChild(el("span", "settings-hint", p.note));
@@ -755,7 +743,7 @@ export class ExtSection {
   private cardOf(r: ExtRow, m: ExtMachine, key: string, slot: Slot): HTMLElement {
     const box = el("div", "ext-card");
     const c = slot.card;
-    const cancel = button(copyText("extPage.card.cancel"), () => this.setSlot(key, {}));
+    const cancel = button({ label: copyText("extPage.card.cancel"), onClick: () => this.setSlot(key, {}) });
     if (!c) return box;
     if (c.kind === "remove") {
       const card = c.card;
@@ -768,15 +756,11 @@ export class ExtSection {
       const files = el("ul", "ext-card-files");
       for (const f of card.files) files.appendChild(el("li", "", f));
       box.appendChild(files);
-      const ok = button(
-        copyText("extPage.card.confirmRemove"),
-        () =>
+      const ok = button({ label: copyText("extPage.card.confirmRemove"), kind: "primary", onClick: () =>
           void this.run(r, key, m, "uninstall", async () => {
             const done = await extUninstallApply(originOf(m), card, c.at);
             return done.note ?? copyText("extPage.done.removed", { n: String(done.changed.length) });
-          }),
-        true,
-      );
+          }) });
       ok.disabled = slot.busy === true;
       box.appendChild(el("div", "ext-card-buttons")).append(ok, cancel);
       return box;
@@ -891,7 +875,7 @@ export class ExtSection {
       box.appendChild(line);
     }
     const ready = card?.machines.filter((m) => m.card && !m.card.stop && !m.card.unchanged) ?? [];
-    const ok = button(copyText("extPage.install.confirm", { n: ready.length }), () => void this.installAll(r), true);
+    const ok = button({ label: copyText("extPage.install.confirm", { n: ready.length }), kind: "primary", onClick: () => void this.installAll(r) });
     ok.dataset.action = "install-many";
     ok.disabled = inst.busy || inst.loading || ready.length === 0 || card?.place === null;
     box.appendChild(el("div", "ext-card-buttons")).append(ok);

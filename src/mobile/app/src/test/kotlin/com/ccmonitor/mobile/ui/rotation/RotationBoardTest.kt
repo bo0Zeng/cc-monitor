@@ -132,7 +132,7 @@ class RotationBoardTest {
         }
 
     @Test
-    fun `改格没成 ⇒ 那一格底下一句「改动保存失败 · 那台的话」；conflict ⇒ 不报、再读`() =
+    fun `改格没成 ⇒ 那一格底下一句「改动保存失败 · 那台的话」；stale ⇒ 不报、再读`() =
         runTest {
             var code = "refused"
             val (link, b) = board(sid = null, more = { cmd, _ -> if (cmd == Rotation.SETTINGS) RotFixture.failed(code, "延迟应在 0–300 分钟之间") else null })
@@ -140,7 +140,7 @@ class RotationBoardTest {
             val f = b.state.value.cellFailed!!
             assertEquals("wait@1", f.cell)
             assertEquals(copyText("rot.fail.settings") + copyText("kit.text.sep") + "延迟应在 0–300 分钟之间", f.text)
-            code = "conflict"
+            code = "stale"
             val before = link.calls(Rotation.VIEW).size
             b.edit(RotEdit.set("smart", null, true), "smart@all")
             assertEquals(before + 1, link.calls(Rotation.VIEW).size)

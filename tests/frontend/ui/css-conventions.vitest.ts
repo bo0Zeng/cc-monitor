@@ -288,6 +288,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "「tmux 会话名」那一行 `tmuxRow.root`（`s.nsRow`）—— 放在终端窗口时收起",
   "src/frontend/ui/settings/ext-section.ts::this.drawer":
     "`this.drawer` —— 构造时收起",
+  "src/frontend/ui/settings/machine-aliases.ts::allowBtn":
+    "执行策略那一行的［允许］—— kit 按钮（类名在 `kit/button.ts` 里挂哈希类）；`kit/button.module.css` 里 `.btnButton[hidden] { display: none }` 管着它（判据在 `kit/components.vitest.ts`）",
   "src/frontend/ui/settings/resume-select.ts::this.custom":
     "恢复命令下拉旁「自定义…」那一格 —— 类名 `settings-input settings-input-mono` 在构造器里挂，那两类不写 display",
   "src/frontend/ui/settings/machine-launch-rows.ts::permRow":

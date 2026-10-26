@@ -3,6 +3,9 @@
  * 样子（颜色 · 尺寸）由 CSS Modules 按这些态上，截图那一页（`tests/shots` 的组件总览）看。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "../../../test-support/repo-root.ts";
 import { button, setBusy, setDisabled, buttonRow } from "../../../../src/frontend/ui/kit/button";
 import { field } from "../../../../src/frontend/ui/kit/field";
 import { toggleSwitch, checkbox } from "../../../../src/frontend/ui/kit/switch";
@@ -52,6 +55,15 @@ describe("按钮", () => {
     expect(run).not.toHaveBeenCalled();
     setBusy(b, null);
     expect([b.dataset.busy, b.textContent]).toEqual([undefined, "保存"]);
+  });
+
+  it("hidden 的按钮不显示：按钮自己写了 display，样式表里就得有一条 [hidden] 把它收掉", () => {
+    // jsdom 不按 CSS Modules 的层算样式（`getComputedStyle` 量不出来），这里读样式表本身：
+    // 按钮那一条写了 display ⇒ 作者样式盖过浏览器自带的 `[hidden] { display: none }`，hidden 就失效。
+    const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/kit/button.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = (sel: RegExp): string => css.match(new RegExp(`${sel.source}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(/\.btnButton/), "按钮那一条没写 display（那这一格就不必有）").toMatch(/display\s*:/);
+    expect(rule(/\.btnButton\[hidden\]/)).toMatch(/display\s*:\s*none/);
   });
 
   it("按钮行：按给的先后摆（取消在左、确认在右）", () => {

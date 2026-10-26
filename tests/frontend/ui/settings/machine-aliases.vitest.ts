@@ -80,7 +80,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
             home: "/h",
             path: "/h/.cc-monitor/profiles.toml",
             exists: true,
-            fingerprint: "fp",
+            rev: "fp",
             modified: 1,
             fileProblem: null,
             profiles: [],

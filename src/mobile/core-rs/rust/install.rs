@@ -11,8 +11,8 @@
 
 use std::sync::{Arc, Mutex, OnceLock};
 
-use copy_core::copy_text;
 use cmd_wire::phone::{DeployAct, DeployEnd};
+use copy_core::copy_text;
 use deploy_contract::DeployAction;
 
 use crate::resident::{self, OnEvent};
@@ -179,7 +179,10 @@ mod tests {
     #[test]
     fn the_outcome_names_what_was_done() {
         let d = v(&done_json(&plan(DeployAction::Deploy("该机无后端".into()))));
-        assert_eq!((d["end"].as_str(), d["act"].as_str()), (Some("done"), Some("deploy")));
+        assert_eq!(
+            (d["end"].as_str(), d["act"].as_str()),
+            (Some("done"), Some("deploy"))
+        );
         assert!(
             copy_core::copy_matches("rsSftp.deploy.done", d["text"].as_str().unwrap()),
             "{d}"
@@ -200,7 +203,10 @@ mod tests {
             (Some("keep"), Some("那台更新"))
         );
         let f = v(&failed_json("refused", "box 不装", Some("uname: x")));
-        assert_eq!((f["end"].as_str(), f["code"].as_str()), (Some("failed"), Some("refused")));
+        assert_eq!(
+            (f["end"].as_str(), f["code"].as_str()),
+            (Some("failed"), Some("refused"))
+        );
         assert!(f["detail"].as_str().unwrap().contains("uname: x"), "{f}");
     }
 

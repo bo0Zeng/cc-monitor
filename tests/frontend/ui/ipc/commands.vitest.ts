@@ -554,7 +554,7 @@ describe("：origin 去 null 化（入方向）", () => {
  *
  * 1. 违例集合 == [`PENDING`]（两向）—— 待办表今天为空（生成物那一处已改 `string`）；
  * 2. 识别器阳性对照五形 ＋ 阴性对照三形（`originalType` 不算、值不算、干净类型不算）；
- * 3. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `pickPrimaryOrigin` 的返回（`account-chip.ts`）
+ * 3. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `isLocalOrigin` 的返回（`ipc/origin.ts`）
  *    必须在人群里 —— 证明扫的是真树。
  *
  * # 买不到（写死，别读宽）
@@ -650,7 +650,7 @@ function originDecls(rel: string, src: string): Decl[] {
       const name = nameOf(node.name);
       if (name && isOriginName(name)) push(name, node.type);
     }
-    // 函数 / 方法的返回类型：函数名**以 origin 收尾**（`pickPrimaryOrigin`）才是「回一个 origin」；
+    // 函数 / 方法的返回类型：函数名**以 origin 收尾**（`isLocalOrigin`）才是「回一个 origin」；
     // `findHostByOrigin` / `resolveRemoteConfigByOrigin` 是「按 origin 找别的东西」，回的不是 origin。
     if (
       (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) &&
@@ -722,8 +722,8 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
     const tab = all.find((d) => d.key === "src/frontend/ui/tab-model.ts::Tab.origin");
     expect(tab, "`Tab.origin` 不在人群里 —— 识别器没扫到真树").toBeDefined();
     expect(tab?.nullable).toBe(false);
-    const cur = all.find((d) => d.key === "src/frontend/ui/account-chip.ts::<top>.pickPrimaryOrigin()");
-    expect(cur, "`pickPrimaryOrigin()` 的返回类型不在人群里 —— 返回类型那一支在空转").toBeDefined();
+    const cur = all.find((d) => d.key === "src/frontend/ui/ipc/origin.ts::<top>.isLocalOrigin()");
+    expect(cur, "`isLocalOrigin()` 的返回类型不在人群里 —— 返回类型那一支在空转").toBeDefined();
     expect(cur?.nullable).toBe(false);
   });
 
@@ -739,7 +739,7 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
       "interface A { origin: string | null }",
       "function f(origin: string | null): void {}",
       "class C { private wantedOrigin: string | null = null; }",
-      "export function pickPrimaryOrigin(): string | null { return null; }",
+      "export function pickRemoteOrigin(): string | null { return null; }",
       "const origins = new Set<string | null>();",
     ];
     for (const src of bad) {

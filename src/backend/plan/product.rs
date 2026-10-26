@@ -17,8 +17,8 @@ use super::wire::{
     PlanArchived, PlanBlock, PlanCell, PlanCheck, PlanDomain, PlanEdgeWords, PlanEdges, PlanFile,
     PlanFileState, PlanKids, PlanKind, PlanListSlice, PlanListWorkspace, PlanPendingSet, PlanPhase,
     PlanProgress, PlanRead, PlanReadError, PlanRed, PlanRef, PlanRefs, PlanSessionBlock,
-    PlanSetsTo, PlanSlice, PlanState, PlanStatusCode, PlanUnbuilt, PlanUndecidable, PlanUnowned,
-    PlanWho, PlanWhyCode, PlanWhyShort,
+    PlanSetsTo, PlanSlice, PlanState, PlanStatusCode, PlanTakeover, PlanUnbuilt, PlanUndecidable,
+    PlanUnowned, PlanWho, PlanWhyCode, PlanWhyShort,
 };
 use super::{Live, WhoPort, Whose};
 use crate::wire::SessionFaceExt as _;
@@ -625,7 +625,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 .and_then(|r| find(r))
                 .map(|root| kids_of(&root.children))
                 .filter(|k| k.of > 0);
-            PlanBlock {
+            let mut block = PlanBlock {
                 id: s(b, "id").unwrap_or_default(),
                 cells,
                 inside,
@@ -636,7 +636,10 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 listed: flag(b, "listed"),
                 handoff: s(b, "handoff"),
                 handoff_error: s(b, "handoff_error"),
-            }
+                takeover: PlanTakeover::Unsure,
+            };
+            block.takeover = super::needs::takeover(&block);
+            block
         })
         .collect();
     out.open_cells = n32(out
