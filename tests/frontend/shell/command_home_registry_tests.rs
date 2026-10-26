@@ -6,8 +6,8 @@
 //! 三条判据：
 //! 1. 「monitor 自己的事」== `lib.rs` 的 `generate_handler!`（两向）。
 //! 2. 「monitor 自己的事」里不许碰后端的那几类（窗口 / 开终端 / 拉前 / 配置 / 日志 / 重放缓冲），
-//!    实现传递可达 `client_for` / `BackendDoor` ⇒ 红（判定该进后端）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
-//! 3. 可达性量得出：真树上 `chan_call`（经 `chan::host` 跨文件到 `client_for`）必须被量到、`load_config` 必须量不到；
+//!    实现传递可达 `local_client` / `BackendDoor` ⇒ 红（判定该进后端）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
+//! 3. 可达性量得出：真树上 `chan_call`（经 `chan::host` 跨文件到 `local_client`）必须被量到、`load_config` 必须量不到；
 //!    合成夹具上「`use` 进来的函数 → 别的文件 → 类型的方法 → `BackendDoor`」必须量到。
 //!
 //! 可达性是**静态近似**：函数级，边按「同文件自由函数 · `use` 进来的名字 · `模块::函数` · `类型::方法` · 提到同文件 /
@@ -681,12 +681,12 @@ impl Graph {
         out
     }
 
-    /// 每个函数：可达 `client_for` / `BackendDoor` 的那条链（函数名，由近及远）。
+    /// 每个函数：可达 `local_client` / `BackendDoor` 的那条链（函数名，由近及远）。
     fn reach(&self) -> BTreeMap<usize, Vec<String>> {
         let sink = |f: &Func| {
             f.toks
                 .iter()
-                .any(|t| matches!(t, Tok::Id(s) if s == "client_for" || s == "BackendDoor"))
+                .any(|t| matches!(t, Tok::Id(s) if s == "local_client" || s == "BackendDoor"))
         };
         let edges: Vec<BTreeSet<usize>> = self.funcs.iter().map(|f| self.edges(f)).collect();
         let mut chain: BTreeMap<usize, Vec<String>> = BTreeMap::new();
@@ -782,7 +782,7 @@ fn a_monitor_own_command_of_a_local_kind_does_not_reach_a_backend() {
         .collect();
     assert!(
         wrong.is_empty(),
-        "这几条记成 monitor 自己的事，实现却经 `client_for` / `BackendDoor` 碰到后端 ⇒ 判定该进后端：\n{}",
+        "这几条记成 monitor 自己的事，实现却经 `local_client` / `BackendDoor` 碰到后端 ⇒ 判定该进后端：\n{}",
         wrong.join("\n")
     );
 }
@@ -792,7 +792,7 @@ fn the_reach_meter_sees_a_real_backend_path_and_not_a_config_read() {
     let files = monitor_tree();
     let reg = registered(&files["lib.rs"], &files);
     let touching = Graph::build(&files).touching(&reg);
-    // 正控：`chan_call` 经 `chan::host` 跨文件到 `client_for`（通信层本分，永久在「monitor 自己的事」）。
+    // 正控：`chan_call` 经 `chan::host` 跨文件到 `local_client`（通信层本分，永久在「monitor 自己的事」）。
     assert!(
         touching.contains_key("chan_call"),
         "量不到 `chan_call` ⇒ 可达性量瞎了：{touching:?}"
@@ -810,7 +810,7 @@ fn the_reach_meter_follows_uses_modules_and_type_methods() {
     let mut files = BTreeMap::new();
     files.insert(
         "lib.rs".to_string(),
-        "use crate::a::helper;\nfn cmd_hit() { let s = \"client_for\"; helper(); }\nfn cmd_miss() { other(); }\nfn other() {}\n"
+        "use crate::a::helper;\nfn cmd_hit() { let s = \"local_client\"; helper(); }\nfn cmd_miss() { other(); }\nfn other() {}\n"
             .to_string(),
     );
     files.insert(
@@ -829,7 +829,7 @@ fn the_reach_meter_follows_uses_modules_and_type_methods() {
         .collect();
     assert!(
         Graph::build(&files).touching(&cmds).is_empty(),
-        "字符串里的 `client_for` 被当成调用了"
+        "字符串里的 `local_client` 被当成调用了"
     );
     files.insert(
         "a.rs".to_string(),

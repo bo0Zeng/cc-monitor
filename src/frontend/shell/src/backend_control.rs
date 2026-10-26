@@ -22,10 +22,10 @@ fn check_origin(origin: &str) -> Result<(), Said> {
 /// 开关面该列哪几台机 —— 由本机后端的机器表说了算（壳记的最近一答里要连的那几台），前端只负责画。
 /// 本机（`<local>`）永远在第一行 —— 它只是不走 ssh 的那一台。
 #[tauri::command]
-pub fn backend_machines() -> Result<Vec<String>, Said> {
+pub fn backend_machines() -> Vec<String> {
     let mut out = vec![LOCAL_ORIGIN.to_string()];
     out.extend(crate::machine_table::connected_names());
-    Ok(out)
+    out
 }
 
 /// [`backend_status`] 的回包。

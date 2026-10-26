@@ -197,6 +197,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
     // 入方向客户端的本体搬进 `resident-client`（monitor 与手机同一份）：关写半边那一行跟着搬。
     ("src/comms/resident-client/client.rs", "let _ = w.shutdown().await;", Why::DeadLink, ""),
+    // 名单台交「报上去了」那一趟的 `from[]` 给等的那几位：等的那一头走了（那一问到期 · 连接没了）就没人要它。
+    ("src/comms/resident-client/watch.rs", "let _ = w.send(Vec::new());", Why::PeerGone, ""),
+    ("src/comms/resident-client/watch.rs", "let _ = w.send(from.clone());", Why::PeerGone, ""),
     // 一台的常驻流（手机那一侧的循环）睡退避时一起等「SSH 换了一条」：等到了就重接，结果本身没有信息量（发端没了 ⇒ 也该醒）。
     ("src/comms/resident-client/feed.rs", "let _ = ssh.changed().await;", Why::Signal, ""),
     ("src/comms/resident-client/feed.rs", "let _ = kicks.changed().await;", Why::Signal, ""),

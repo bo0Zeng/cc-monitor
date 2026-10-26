@@ -755,12 +755,13 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "machines-read",
         1,
         "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
-         照它起停远端流、读不懂上屏 —— 壳自己的起流对齐，答案不给界面（界面那一问经通道直问本机后端）",
+         记账、读不懂上屏 —— 壳自己的账，答案不给界面（界面那一问经通道直问本机后端）",
     ),
     (
         "machine-read",
-        1,
-        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面",
+        2,
+        "诊断信息（`diagnostics_report.rs::remote_machines`）：远端各台此刻的状态与原因码写进那段文本 —— 壳自己写诊断，答案不给界面；\
+         文件窗口（`filewin/source.rs::machine_now`）：那台通不通先问一次此刻的成品，之后照 `changed/machine` 换（窗口自己的断线条）",
     ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
