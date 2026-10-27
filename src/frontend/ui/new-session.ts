@@ -726,7 +726,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       { el: recentBtn, align: "end" },
       recent.length === 0
         ? [{ label: copyText("newSession.recent.none"), enabled: false }]
-        : recent.map((r) => ({ label: r.cwd, checked: r.cwd === cwdInput.value.trim(), onClick: () => use(r.cwd) })),
+        : recent.map((r) => ({ label: r.shown, checked: r.cwd === cwdInput.value.trim(), onClick: () => use(r.cwd) })),
       { label: copyText("newSession.recent.label"), onClose: () => cwdInput.focus() },
     );
   });

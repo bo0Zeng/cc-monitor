@@ -369,8 +369,6 @@ pub struct ListMeta {
     pub next_default: Option<String>,
     /// 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
     pub effective_default: Option<String>,
-    /// 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
-    pub home: Option<String>,
 }
 
 /// 扫清单得出的一个号（`AccountRow` 里除了并表那几格的部分）。
@@ -409,6 +407,8 @@ pub struct AccountRow {
     #[serde(flatten)]
     #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
     pub scanned: ScannedAccount,
+    /// `configDir` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）；账号 0 ⇒ `null`。
+    pub config_dir_shown: Option<String>,
     /// API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
     pub key_masked: Option<String>,
     /// 同上，那一行的端点。

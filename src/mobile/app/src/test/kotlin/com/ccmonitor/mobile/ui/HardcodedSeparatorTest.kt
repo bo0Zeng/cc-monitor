@@ -15,14 +15,6 @@ import java.io.File
 class HardcodedSeparatorTest {
     private val banned = listOf("·", "tmux:")
 
-    /**
-     * 允许的例外：`文件名 to 理由`。每一条都是还没收进文案表的那一处，表空出来就删掉这一条、改读键。
-     */
-    private val allowed =
-        mapOf(
-            "SessionTabsSheet.kt" to "同名 tab 的编号「{label} ·{n}」还没有文案键（table.json 此刻在别的权力范围手里）",
-        )
-
     private fun mainDir(module: String): File {
         val rel = "$module/src/main/kotlin/com/ccmonitor/mobile"
         // 单测的工作目录是模块目录（`app/`）；从仓根跑时路径已经对了。
@@ -40,7 +32,6 @@ class HardcodedSeparatorTest {
                     .literalsOf(f.readText())
                     .asSequence()
                     .filter { lit -> banned.any { lit.body.contains(it) } }
-                    .filter { lit -> !(f.name in allowed && lit.body.contains(" ·$")) }
                     .map { "${f.name}:${it.line}  \"${it.body}\"" }
             }.toList()
     }

@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.session.SessionTabManager.OpenSession
 import com.ccmonitor.mobile.ui.session.SessionTabManager.TabTarget
 import org.junit.Assert.assertEquals
@@ -38,11 +39,12 @@ class SessionTabsSheetTest {
         assertEquals("devbox", tabBaseLabel(sess(TabTarget.Files), "devbox"))
     }
 
-    // 编号规则：首个不编号，第 2/3 次出现补 ·2/·3；不同名互不影响；顺序保持。
+    // 编号规则：首个不编号，第 2/3 次出现补编号（文案键 mobTabs.row.numbered）；不同名互不影响；顺序保持。
     @Test
     fun numberDuplicatesAppendsOrdinalFromSecondOccurrence() {
+        val n = { l: String, i: Int -> copyText("mobTabs.row.numbered", "label" to l, "n" to i) }
         assertEquals(
-            listOf("devbox", "nas", "devbox ·2", "devbox ·3", "nas ·2"),
+            listOf("devbox", "nas", n("devbox", 2), n("devbox", 3), n("nas", 2)),
             numberDuplicates(listOf("devbox", "nas", "devbox", "devbox", "nas")),
         )
     }

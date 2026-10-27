@@ -60,7 +60,7 @@ class MachineSettingsTest {
         FakeCoreLink().also { l ->
             l.answer = { cmd, args ->
                 when (cmd) {
-                    "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(acct("work"), acct("lab", selectable = false)), "meta" to Wires.accountsMeta("effectiveDefault" to "work", "home" to "/h"), "notice" to null))
+                    "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(acct("work"), acct("lab", selectable = false)), "meta" to Wires.accountsMeta("effectiveDefault" to "work"), "notice" to null))
                     "quota-read" -> quotaReply()
                     "prefs-read" -> Reply.Ok(prefs())
                     "prefs-set" -> set(args)

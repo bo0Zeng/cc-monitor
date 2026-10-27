@@ -39,7 +39,6 @@ import { buildProfilesList, type ProfileClash } from "./profiles-list";
 import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
-import { homeShort } from "../kit/path";
 import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
 import { sayFailure, sayWithDetail } from "../kit/detail";
@@ -282,9 +281,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 头部那一行（清单读回之后由它给：`N 条 · 规则住 … · 改了下次起会话就生效`）。 */
   let headText = "";
   let cands: StartupFile[] = [];
-  let home: string | null = null;
-  /** 路径写成家目录打头的短形（家目录由那台后端给）。 */
-  const short = (p: string): string => homeShort(p, home);
   let loadedOnce = false;
   /** 接上装进哪一份（人在「换一份文件」里选的；没选 ⇒ 已接上的那份，再没有 ⇒ 第一份候选）。 */
   let chosen: string | null = null;
@@ -313,7 +309,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     acts.append(go, button({ label: copyText("machineAliases.form.cancel"), onClick: quiet(() => togglePanel("uninstall")) }));
     return [
       el("div", "cfg-sub", shell === "powershell" ? copyText("machineAliases.access.uninstallSubWindow") : copyText("machineAliases.access.uninstallSub")),
-      el("div", "cfg-panel-title", copyText("machineAliases.access.uninstallWhat", { path: short(t.path) })),
+      el("div", "cfg-panel-title", copyText("machineAliases.access.uninstallWhat", { path: t.shown })),
       code,
       acts,
     ];
@@ -332,7 +328,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     code.dataset.role = "block-text";
     code.textContent = copyText("machineAliases.aliasPreview.asking");
     if (panelOpen === "preview") {
-      panel.append(el("div", "cfg-panel-title", t.block.present ? copyText("machineAliases.access.previewOn", { path: short(t.path) }) : copyText("machineAliases.access.previewOff", { path: short(t.path) })), code);
+      panel.append(el("div", "cfg-panel-title", t.block.present ? copyText("machineAliases.access.previewOn", { path: t.shown }) : copyText("machineAliases.access.previewOff", { path: t.shown })), code);
     } else {
       panel.append(...uninstallPanel(t, code));
     }
@@ -346,7 +342,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 已接上的每一份一行：现状 ＋ 看加了什么 · 卸载。 */
   const renderOnRows = (on: StartupFile[]): void => {
     for (const c of on) {
-      const p = short(c.path);
+      const p = c.shown;
       accessRows.appendChild(
         accessLine(
           c.policy?.loads === false ? "warn" : "ok",
@@ -368,7 +364,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const renderOffRow = (on: StartupFile[], t: StartupFile | undefined): void => {
     const connect = t
       ? button({
-          label: copyText("machineAliases.access.connectTo", { path: short(t.path) }),
+          label: copyText("machineAliases.access.connectTo", { path: t.shown }),
           kind: "primary",
           hint: shell === "powershell" ? copyText("machineAliases.powershell.blockInstallTitle") : copyText("machineAliases.posix.blockInstallTitle"),
           onClick: quiet(() => void runRc("install", t.path)),
@@ -376,12 +372,12 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       : null;
     connect?.classList.add("ccm-access-connect");
     accessRows.appendChild(
-      accessLine("off", on.length ? copyText("machineAliases.access.otherFile", { path: short(t!.path) }) : shell === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off"), ...(connect ? [connect] : [])),
+      accessLine("off", on.length ? copyText("machineAliases.access.otherFile", { path: t!.shown }) : shell === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off"), ...(connect ? [connect] : [])),
     );
     if (!t) return;
     const hint = el("div", "cfg-hint cfg-access-hint");
     hint.append(
-      el("span", "", copyText("machineAliases.access.willAdd", { path: short(t.path), n: t.blockLines })),
+      el("span", "", copyText("machineAliases.access.willAdd", { path: t.shown, n: t.blockLines })),
       linkBtn(copyText("machineAliases.access.peek"), () => togglePanel("preview")),
       linkBtn(copyText("machineAliases.access.choose"), () => togglePanel("choose")),
       linkBtn(copyText("machineAliases.access.selfPaste"), () => void onSelfPaste()),
@@ -415,7 +411,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 块外与清单同名的那几条：交给清单那一块画（三个选择）。 */
   const renderClash = (): void => {
     const hits = new Map<string, ProfileClash>();
-    for (const c of cands) for (const f of c.block.conflictingFunctions) if (!hits.has(f.name)) hits.set(f.name, { name: f.name, path: c.path, line: f.line, wins: f.wins });
+    for (const c of cands) for (const f of c.block.conflictingFunctions) if (!hits.has(f.name)) hits.set(f.name, { name: f.name, path: c.path, shown: c.shown, line: f.line, wins: f.wins });
     profiles.setClashes([...hits.values()]);
   };
 
@@ -423,7 +419,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const renderWrites = (): void => {
     const t = cands.find((c) => c.block.present) ?? target();
     writes.hidden = !t;
-    if (t) writes.textContent = copyText("machineAliases.writes.line", { path: short(t.path), n: t.blockLines });
+    if (t) writes.textContent = copyText("machineAliases.writes.line", { path: t.shown, n: t.blockLines });
   };
 
   /** 收着时那一行：清单给的那一句（条数 · 规则住哪 · 下次起会话生效）＋ 同名提示；点的颜色与主动作看接入那一格。 */
@@ -438,7 +434,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       row.setAction(null);
     } else {
       dot = "off";
-      row.setAction(t ? button({ label: copyText("machineAliases.status.connect", { path: short(t.path) }), kind: "primary", onClick: quiet(() => row.setOpen(true)) }) : null);
+      row.setAction(t ? button({ label: copyText("machineAliases.status.connect", { path: t.shown }), kind: "primary", onClick: quiet(() => row.setOpen(true)) }) : null);
     }
     row.setStatus(names.length ? "warn" : dot, headText + tail);
   };
@@ -463,7 +459,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const readBack = async (): Promise<void> => {
     try {
       const got = await readAliases(opts.origin(), shell, otherRc);
-      home = got.home;
       cands = got.rcCandidates;
     } catch (e) {
       sayFailure(accessWarn, copyText("machineAliases.readBack.failed"), e);

@@ -107,9 +107,9 @@
     "editedAt": null,
     "exists": true,
     "fileProblem": null,
-    "home": "<HOME>",
     "migrated": null,
     "path": "<HOME>/.cc-monitor/profiles.toml",
+    "pathShown": "~/.cc-monitor/profiles.toml",
     "profiles": [
       {
         "accountShape": null,

@@ -33,7 +33,7 @@ class NewSessionReadsTest {
         val facts =
             SessionOpenFacts.of(
                 mapOf(
-                    "recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "lastMs" to 1.0, "lastText" to "昨天")),
+                    "recent" to listOf(mapOf("cwd" to "/h/a", "shown" to "~/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "shown" to "~/b", "lastMs" to 1.0, "lastText" to "昨天")),
                     "tmux" to true,
                     "run" to "tmux",
                     "agents" to listOf(mapOf("kind" to "claude", "text" to "Claude Code", "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>())),
@@ -41,19 +41,22 @@ class NewSessionReadsTest {
                 ),
             )!!
         assertEquals(listOf("/h/a" to "19:02", "/h/b" to "昨天"), facts.recent.map { it.cwd to it.lastText })
+        assertEquals("显示形照那台写好的", listOf("~/a", "~/b"), facts.recent.map { it.shown })
         assertNull("最近一格缺 lastText ⇒ 解不出", SessionOpenFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
     }
 
     @Test
-    fun `session-open-dir：只交目录；在不在照回包`() {
+    fun `session-open-dir：只交目录；在不在 · 显示形照回包`() {
         assertEquals(mapOf("cwd" to "~/x"), SessionOpenDir.args("~/x"))
-        assertEquals(false, SessionOpenDir.of(mapOf("exists" to false, "tmuxName" to null)))
-        assertEquals(true, SessionOpenDir.of(mapOf("exists" to true, "tmuxName" to "x-cc")))
+        assertEquals(false, SessionOpenDir.of(mapOf("exists" to false, "shown" to "/x", "tmuxName" to null))?.exists)
+        val here = SessionOpenDir.of(mapOf("exists" to true, "shown" to "~/a", "tmuxName" to "x-cc"))
+        assertEquals(true, here?.exists)
+        assertEquals("那台家目录 /home/x、目录 /home/x/a ⇒ 照抄它写的 ~/a", "~/a", here?.shown)
         assertNull(SessionOpenDir.of(mapOf("tmuxName" to null)))
     }
 
     @Test
-    fun `accounts-list：照类型解，列不列只照那台的 newSession；号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认 · 家目录照 meta；缺格 ⇒ 解不出`() {
+    fun `accounts-list：照类型解，列不列只照那台的 newSession；号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认照 meta；缺格 ⇒ 解不出`() {
         val row = { name: String, listed: Boolean, ok: Boolean, color: Int ->
             mapOf(
                 "name" to name,
@@ -71,6 +74,7 @@ class NewSessionReadsTest {
                 "baseUrl" to null,
                 "email" to "",
                 "configDir" to null,
+                "configDirShown" to null,
                 "isDefault" to false,
                 "mode" to "subscription",
                 "exists" to true,
@@ -81,12 +85,11 @@ class NewSessionReadsTest {
         val data =
             mapOf(
                 "accounts" to listOf(row("0", false, true, 0), row("work", true, true, 3), row("team", true, false, 1)),
-                "meta" to mapOf("enabled" to true, "acctsDir" to "/h/.cc", "manifestPath" to "/h/.cc/accounts.json", "count" to 3, "effectiveDefault" to "work", "home" to "/h"),
+                "meta" to mapOf("enabled" to true, "acctsDir" to "/h/.cc", "manifestPath" to "/h/.cc/accounts.json", "count" to 3, "effectiveDefault" to "work"),
                 "notice" to null,
             )
         val a = AccountsList.of(data)!!
         assertEquals("work", a.meta.effectiveDefault)
-        assertEquals("/h", a.meta.home)
         assertEquals("那台说不进选号表的不列（有目录、隔离也不列；界面不另判，同桌面新建会话框）", listOf("work", "team"), a.accounts.map { it.name })
         assertEquals(listOf(3, 1), a.accounts.map { it.color })
         assertEquals(listOf("夹work", "夹team"), a.accounts.map { it.plate })
@@ -128,15 +131,17 @@ class NewSessionReadsTest {
             FilesLs.dirsOf(
                 lsWhole(
                     listOf(
-                        mapOf("path" to "/h/work/billing", "name" to "billing", "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
-                        mapOf("path" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
-                        mapOf("path" to "/h/work/notes", "name" to "notes", "kind" to "symlink", "class" to "link", "type_text" to "链接", "link_dir" to true),
+                        mapOf("path" to "/h/work/billing", "shown" to "~/work/billing", "name" to "billing", "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
+                        mapOf("path" to mapOf("b16" to "ff"), "shown" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir", "class" to "folder", "type_text" to "文件夹"),
+                        mapOf("path" to "/h/work/notes", "shown" to "~/work/notes", "name" to "notes", "kind" to "symlink", "class" to "link", "type_text" to "链接", "link_dir" to true),
                     ),
-                    mapOf("up" to "/h", "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 3.0, "unreadable" to 0.0),
+                    mapOf("shown" to "~/work", "up" to "/h", "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 3.0, "unreadable" to 0.0),
                 ),
             )!!
         assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.dirs.map { it.path })
         assertEquals(listOf("billing", "notes"), got.dirs.map { it.name })
+        assertEquals("显示形照那台写好的（手机不拿家目录缩）", listOf("~/work/billing", "~/work/notes"), got.dirs.map { it.shown })
+        assertEquals("~/work", got.shown)
         assertEquals("/h", got.up)
         assertNull(FilesLs.dirsOf(lsWhole(listOf(mapOf("kind" to "dir", "class" to "folder", "type_text" to "文件夹")), mapOf("up" to null, "crumbs" to emptyList<Any>(), "truncated" to false, "total" to 1.0))))
     }

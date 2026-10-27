@@ -916,6 +916,9 @@ impl FakeBackend {
                                 path: cmd_wire::files::WirePath::from(
                                     remote_form(&r.path).as_str(),
                                 ),
+                                shown: cmd_wire::files::WirePath::from(
+                                    remote_form(&r.path).as_str(),
+                                ),
                                 name: cmd_wire::files::WirePath::from(r.name.as_str()),
                                 kind: if r.is_dir {
                                     cmd_wire::files::FileKind::Dir
@@ -943,6 +946,7 @@ impl FakeBackend {
                                 serde_json::to_value(ls_whole(
                                     entries,
                                     cmd_wire::files::LsHead {
+                                        shown: cmd_wire::files::WirePath::default(),
                                         up: None,
                                         crumbs: Vec::new(),
                                         truncated: false,
@@ -1924,6 +1928,7 @@ pub fn reply_of_rows(
         .iter()
         .map(|r| cmd_wire::files::LsEntry {
             path: cmd_wire::files::WirePath::from(r.path.as_str()),
+            shown: cmd_wire::files::WirePath::from(r.path.as_str()),
             name: cmd_wire::files::WirePath::from(r.name.as_str()),
             kind: if r.is_dir {
                 cmd_wire::files::FileKind::Dir
@@ -1948,6 +1953,7 @@ pub fn reply_of_rows(
 /// 什么都没截、都读得出的那一个头（`total` ＝ 几行）。
 pub fn plain_head(n: usize) -> cmd_wire::files::LsHead {
     cmd_wire::files::LsHead {
+        shown: cmd_wire::files::WirePath::default(),
         up: None,
         crumbs: Vec::new(),
         truncated: false,

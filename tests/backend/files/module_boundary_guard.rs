@@ -319,6 +319,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "这台后端的家目录只在平台层答（`HOME` → `USERPROFILE`）：`files-home` 与暂存区都拼在它底下",
     ),
     (
+        "platform::paths::home_short_bytes",
+        Kind::Platform,
+        "`files-ls` 头与每一行的显示形（家目录那一截写成 `~`，字节不解码）：缩写只住平台层这一处",
+    ),
+    (
         "platform::paths::name_problem",
         Kind::Platform,
         "新建 / 建目录 / 改名的目标名在这台能不能用（Windows 与别处两套规则）：平台的事实",

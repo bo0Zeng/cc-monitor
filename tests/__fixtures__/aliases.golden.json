@@ -5,7 +5,6 @@
   ],
   "rc": "# mine\nzcc() { claude; }\n",
   "readReply": {
-    "home": "<HOME>",
     "otherRc": null,
     "rcCandidates": [
       {
@@ -17,6 +16,7 @@
         "exists": true,
         "path": "<HOME>/.bashrc",
         "policy": null,
+        "shown": "~/.bashrc",
         "sourced": false,
         "unreadable": null
       }

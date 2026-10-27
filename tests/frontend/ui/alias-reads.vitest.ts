@@ -33,7 +33,7 @@ describe("金样：后端出的成品，原样交到调用方", () => {
   it("aliases-read：启动文件候选", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(G.readReply));
     const l = await readAliases("<local>", "posix", null);
-    expect(l.home).toBe("<HOME>");
+    expect(l.rcCandidates.map((c) => c.shown)).toEqual(["~/.bashrc"]);
     expect(l.rcCandidates.map((c) => c.block.present)).toEqual([false]);
   });
 });

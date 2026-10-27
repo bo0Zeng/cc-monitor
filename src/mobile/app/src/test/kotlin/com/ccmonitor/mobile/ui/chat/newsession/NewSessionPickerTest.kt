@@ -23,6 +23,9 @@ import org.junit.Test
 class NewSessionPickerTest {
     private fun ok(data: Any?) = Reply.Ok(data)
 
+    /** 那台写的显示形（替身写成手机推不出的样子：手机只照抄、不拿家目录自己缩）。 */
+    private fun shown(p: String) = p.replaceFirst(Regex("^/h/"), "家/")
+
     private fun agent(
         kind: String,
         text: String,
@@ -32,7 +35,7 @@ class NewSessionPickerTest {
         recent: List<String> = listOf("/h/work/orders", "/h/work/billing"),
         agents: List<Map<String, Any?>> = listOf(agent("claude", "Claude Code"), agent("codex", "Codex")),
     ) = mapOf(
-        "recent" to recent.mapIndexed { i, c -> mapOf("cwd" to c, "lastMs" to i.toDouble(), "lastText" to "19:0$i") },
+        "recent" to recent.mapIndexed { i, c -> mapOf("cwd" to c, "shown" to shown(c), "lastMs" to i.toDouble(), "lastText" to "19:0$i") },
         "tmux" to true,
         "run" to "tmux",
         "agents" to agents,
@@ -58,7 +61,7 @@ class NewSessionPickerTest {
     private fun accounts(
         names: List<Map<String, Any?>> = listOf(acct("work"), acct("personal", color = 2), acct("team", selectable = false, color = 1)),
         default: String = "work",
-    ) = mapOf("accounts" to names, "meta" to Wires.accountsMeta("effectiveDefault" to default, "home" to "/h"), "notice" to null)
+    ) = mapOf("accounts" to names, "meta" to Wires.accountsMeta("effectiveDefault" to default), "notice" to null)
 
     private val strategies =
         mapOf(
@@ -81,7 +84,7 @@ class NewSessionPickerTest {
                 "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
                 "rotation-strategies" -> ok(strategies)
-                "session-open-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
+                "session-open-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "shown" to shown(args?.get("cwd") as String), "tmuxName" to null))
                 "accounts-set-default" -> ok(mapOf("applied" to true))
                 else -> Reply.LinkDown
             }
@@ -102,14 +105,27 @@ class NewSessionPickerTest {
             assertEquals("work", s.account)
             assertEquals("claude", s.agent)
             assertEquals(listOf("/h/work/orders", "/h/work/billing"), s.recent.map { it.cwd })
-            assertEquals("家目录照那台的 files-home（账号库没开也有）", "/h/me", s.home)
+            assertEquals("最近的目录照抄那台写的显示形", listOf("家/work/orders", "家/work/billing"), s.recent.map { it.shown })
+            assertEquals("目录 chip 照抄那台写的显示形", "家/work/orders", s.cwdShown)
         }
 
     @Test
-    fun `默认目录：从一条会话里点新建 ⇒ 那条的目录；那台一条记录都没有 ⇒ 家目录`() =
+    fun `路径的显示形全照那台写的：不为缩 ~ 去问家目录`() =
         runTest {
-            assertEquals("/h/x", picker(link(), from = "/h/x").state.value.cwd)
-            assertEquals("~", picker(link(f = facts(recent = emptyList()))).state.value.cwd)
+            val l = link()
+            picker(l, from = "/h/x")
+            assertEquals(emptyList<Any?>(), l.calls("files-home"))
+        }
+
+    @Test
+    fun `默认目录：从一条会话里点新建 ⇒ 那条的目录（显示形问那台）；那台一条记录都没有 ⇒ 家目录`() =
+        runTest {
+            val from = picker(link(), from = "/h/x").state.value
+            assertEquals("/h/x", from.cwd)
+            assertEquals("家/x", from.cwdShown)
+            val none = picker(link(f = facts(recent = emptyList()))).state.value
+            assertEquals("~", none.cwd)
+            assertEquals("~", none.cwdShown)
         }
 
     @Test
@@ -216,8 +232,10 @@ class NewSessionPickerTest {
             p.pickRecent("/h/work/orders")
             runCurrent()
             assertEquals("/h/work/orders", p.state.value.cwd)
-            p.pickDir("/h/work/billing")
+            assertEquals("家/work/orders", p.state.value.cwdShown)
+            p.pickDir(Picked("/h/work/billing", "家/work/billing"))
             assertEquals("/h/work/billing", p.chosen().cwd)
+            assertEquals("浏览屏选的照抄那一行的显示形", "家/work/billing", p.state.value.cwdShown)
         }
 
     @Test

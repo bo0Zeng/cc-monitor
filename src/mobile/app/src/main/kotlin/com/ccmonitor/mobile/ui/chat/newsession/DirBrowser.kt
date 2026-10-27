@@ -14,9 +14,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 浏览屏此刻：在哪一层 · 这一层的文件夹 · 长按选中的那个 · 在读 · 读不出那一句。 */
+/** 选上的那个目录：路径 ＋ 屏上那一串（那台按它的家目录写好的 `~/…`，照抄）。 */
+data class Picked(
+    val path: String,
+    val shown: String,
+)
+
+/** 浏览屏此刻：在哪一层（＋ 那台写好的那一串；读不出那一层 ⇒ `null`）· 这一层的文件夹 · 长按选中的那个 · 在读 · 读不出那一句。 */
 data class BrowseUi(
     val path: String? = null,
+    val shown: String? = null,
     val dirs: List<FilesLs.Dir> = emptyList(),
     /** 上一级（那台给的）；到顶 ⇒ `null`。 */
     val up: String? = null,
@@ -52,7 +59,15 @@ class DirBrowser(
     /** 长按：选中它；再长按同一个 ⇒ 不选。 */
     fun select(path: String) = _state.update { it.copy(selected = if (it.selected == path) null else path) }
 
-    fun picked(): String? = _state.value.let { it.selected ?: it.path }
+    fun picked(): Picked? =
+        _state.value.let { s ->
+            val sel = s.selected?.let { p -> s.dirs.firstOrNull { it.path == p } }
+            when {
+                sel != null -> Picked(sel.path, sel.shown)
+                s.path != null && s.shown != null -> Picked(s.path, s.shown)
+                else -> null
+            }
+        }
 
     private suspend fun home(): String? {
         val r = link.call(FilesHome.COMMAND, emptyMap(), READ_MS)
@@ -68,10 +83,10 @@ class DirBrowser(
                 val r = link.call(FilesLs.COMMAND, FilesLs.dirs(path), READ_MS)
                 val got = (r as? Reply.Ok)?.let { FilesLs.dirsOf(it.data) }
                 if (got == null) {
-                    _state.update { it.copy(path = path) }
+                    _state.update { it.copy(path = path, shown = null) }
                     fail(r, FilesLs.COMMAND)
                 } else {
-                    _state.value = BrowseUi(path = path, dirs = got.dirs, up = got.up)
+                    _state.value = BrowseUi(path = path, shown = got.shown, dirs = got.dirs, up = got.up)
                 }
             }
     }

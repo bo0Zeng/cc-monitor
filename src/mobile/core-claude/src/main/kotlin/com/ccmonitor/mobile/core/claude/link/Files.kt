@@ -211,19 +211,27 @@ object FilesLs {
     data class Dir(
         val path: String,
         val name: String,
+        /** 屏上那一串（那台按它的家目录写好的 `~/…`，照抄）。 */
+        val shown: String,
     )
 
-    /** [dirs] 那一问的一层：那台排好的文件夹 ＋ 上一级（到顶 ⇒ `null`）。 */
+    /** [dirs] 那一问的一层：那台排好的文件夹 ＋ 上一级（到顶 ⇒ `null`）＋ 这一层屏上那一串（那台写好的）。 */
     data class Dirs(
         val dirs: List<Dir>,
         val up: String?,
+        val shown: String,
     )
 
     /** [dirs] 那一问的回包；路径或名字读不成字（那台用 `b16` 交的）的那一行不列。形状对不上 ⇒ `null`。 */
     fun dirsOf(data: Any?): Dirs? {
         val (rows, head) = whole(data) ?: return null
-        val dirs = rows.mapNotNull { (_, e) -> (e.path as? WirePath.Text)?.let { p -> (e.name as? WirePath.Text)?.let { Dir(p.value, it.value) } } }
-        return Dirs(dirs, (head.up as? WirePath.Text)?.value)
+        val dirs =
+            rows.mapNotNull { (_, e) ->
+                val p = (e.path as? WirePath.Text)?.value ?: return@mapNotNull null
+                val n = (e.name as? WirePath.Text)?.value ?: return@mapNotNull null
+                Dir(p, n, RemotePath.of(e.shown)?.shown ?: return@mapNotNull null)
+            }
+        return Dirs(dirs, (head.up as? WirePath.Text)?.value, RemotePath.of(head.shown)?.shown ?: return null)
     }
 }
 

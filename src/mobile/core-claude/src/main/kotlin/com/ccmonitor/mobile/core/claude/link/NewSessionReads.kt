@@ -17,8 +17,8 @@ object SessionOpenDir {
 
     fun args(cwd: String): Map<String, Any?> = mapOf("cwd" to cwd)
 
-    /** 在不在；形状对不上 ⇒ `null`。 */
-    fun of(data: Any?): Boolean? = Wire.bind<DirChecked>(data)?.exists
+    /** 在不在 ＋ 屏上那一串（那台按它的家目录写好的 `~/…`）；形状对不上 ⇒ `null`。 */
+    fun of(data: Any?): DirChecked? = Wire.bind<DirChecked>(data)
 }
 
 /**

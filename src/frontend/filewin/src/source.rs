@@ -126,9 +126,9 @@ impl Listed {
         }
     }
 
-    /// 点得进去：目录，或指向目录的链接。
+    /// 点得进去：那台画成文件夹的那几行（目录 · 指向目录的链接，后端 `files/class.rs::class_of_entry` 判；同手机 `Files.kt::entryOf`）。
     pub fn opens_as_dir(&self) -> bool {
-        self.row.is_dir || self.link_dir
+        self.class == cmd_wire::files::FileClass::Folder
     }
 
     /// 这一行交给「能做什么」那一套（`pick-core`）的那几格。
@@ -206,7 +206,7 @@ impl Source {
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
     /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
     pub fn origin(&self) -> Origin {
-        Origin(self.0.clone())
+        Origin::named(self.0.clone())
     }
 }
 
@@ -561,7 +561,8 @@ pub const CMD_LS: &str = "files-ls";
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
 /// | `mtime_text`（可能缺） | `mtime_text` | 后端按那台本地钟写好的短写法，原样；缺 ⇒ `None` |
 /// | `mtime_full`（可能缺） | `mtime_full` | 后端按那台本地钟写好的完整写法，原样；缺 ⇒ `None` |
-/// | `class` | `class` | 原样（画哪种图标） |
+/// | `class` | `class` | 原样（画哪种图标 · 点不点得进去：[`Listed::opens_as_dir`]） |
+/// | `shown`（头与每一行） | —— | 窗口不读（给手机选目录那一屏的显示形） |
 /// | `type_text` | `type_text` | 原样（「类型」那一列） |
 /// | `gates`（目录缺） | `gates` | 原样（预览 · 看图 · 编辑许不许、许多少） |
 /// | `order` · `up` | 那一屏有几行 | 照回包换进手上那一份（[`Shown`]），由 [`screen_of`] 照先后摊开 |
@@ -773,7 +774,7 @@ pub(crate) fn failed_here(said: String, origin: &Origin, cmd: &str, raw: Option<
         said,
         detail: Detail::new()
             .item(Label::At, now_stamp())
-            .item(Label::Machine, &origin.0)
+            .item(Label::Machine, origin.to_string())
             .maybe(Label::Local, local_line_for(origin))
             .item(Label::Command, cmd)
             .maybe(Label::Raw, raw)
@@ -791,7 +792,7 @@ pub(crate) fn set_local_line(line: &str) {
 
 /// 看 `origin` 那台时窗口自己写的详情要不要带「本机」那一行：远端 ⇒ 带（值是种子交来的）；本机 ⇒ 不带（出错的就是本机）。
 fn local_line_for(origin: &Origin) -> Option<String> {
-    (origin.0 != super::cross_copy::LOCAL_ORIGIN)
+    (!origin.is_local())
         .then(|| LOCAL_LINE.get().cloned())
         .flatten()
         .filter(|l| !l.trim().is_empty())
@@ -809,7 +810,7 @@ fn now_stamp() -> String {
 /// 别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写时刻 · 机器（没发出去标「未连上」）· 本机 · 命令 · 断在 · 码
 /// （取法住通信层 `HopFacts`，排法住 `copy_core::detail::channel`，与 monitor 壳同一份）。
 pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
-    let origin = at.0.as_str();
+    let origin = &at.to_string();
     use comms_inward::chan::wire::{CallError, PeerFault};
     // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`comms_inward::chan::said::said`]）。
     let mut raw_body: Option<String> = None;
@@ -1104,7 +1105,7 @@ pub fn machine_seen(origin: &Origin, item: &comms_inward::chan::wire::Item) -> O
     match item {
         Item::Frame { body, .. } if !origin.is_local() => {
             let v: serde_json::Value = serde_json::from_slice(&body.0).ok()?;
-            if v.get("key").and_then(serde_json::Value::as_str) != Some(origin.as_wire_str()) {
+            if v.get("key").and_then(serde_json::Value::as_str) != origin.host_name() {
                 return None;
             }
             let state = serde_json::from_value(v.get("body")?.get("state")?.clone()).ok()?;
@@ -1126,10 +1127,7 @@ async fn machine_now(line: &Line, origin: &Origin) -> Option<LinkSeen> {
     )
     .await
     .ok()?;
-    let state = got
-        .get("machines")?
-        .get(origin.as_wire_str())?
-        .get("state")?;
+    let state = got.get("machines")?.get(origin.to_string())?.get("state")?;
     Some(seen_of_state(serde_json::from_value(state.clone()).ok()?))
 }
 
@@ -1469,7 +1467,7 @@ pub async fn kick_link(line: &Line, origin: &Origin) {
         line,
         &Origin::local(),
         "machine-wake",
-        &serde_json::json!({ "machine": origin.as_wire_str() }),
+        &serde_json::json!({ "machine": origin }),
         std::time::Duration::from_secs(5),
     )
     .await

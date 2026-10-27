@@ -40,6 +40,7 @@ internal object Wires {
             "label" to "",
             "email" to "",
             "configDir" to null,
+            "configDirShown" to null,
             "isDefault" to false,
             "mode" to "subscription",
             "exists" to true,
@@ -63,7 +64,6 @@ internal object Wires {
             "unsupported" to null,
             "nextDefault" to null,
             "effectiveDefault" to null,
-            "home" to null,
         ) + set
 
     /** `history-facts` 的回包。 */

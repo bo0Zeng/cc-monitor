@@ -775,6 +775,9 @@ pub(crate) struct Migrated {
     pub(crate) count: usize,
     /// 配置文件的路径。
     pub(crate) path: String,
+    /// `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份是空串、读的时候盖掉。
+    #[serde(default)]
+    pub(crate) shown: String,
     /// 没能转的那几行（原样）。
     pub(crate) skipped: Vec<String>,
 }
@@ -782,7 +785,14 @@ pub(crate) struct Migrated {
 /// 一次性迁移的说明（在 ⇒ 页首说一次）。
 fn migrated_note(d: &dyn Door, home: &str) -> Option<Migrated> {
     let p = door::peek(d, home, relay_route_core::PROFILES_MIGRATED_REL).ok()?;
-    serde_json::from_str(&p.text?).ok()
+    let mut m: Migrated = serde_json::from_str(&p.text?).ok()?;
+    m.shown = shown_in(&m.path, home);
+    Some(m)
+}
+
+/// 这台家目录底下的路径 ⇒ 显示形（[`crate::platform::paths::home_short`]）。
+fn shown_in(path: &str, home: &str) -> String {
+    crate::platform::paths::home_short(path, Some(std::path::Path::new(home)))
 }
 
 /// `profiles-read` 的应答：配置文件整份。
@@ -791,10 +801,10 @@ fn migrated_note(d: &dyn Door, home: &str) -> Option<Migrated> {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProfilesBook {
-    /// 这台的家目录（界面拿它把路径写成 `~/…`）。
-    home: String,
     /// 配置文件的路径。
     path: String,
+    /// `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
+    path_shown: String,
     /// 配置文件在不在。
     exists: bool,
     /// 盘上那份的版本（不在 ⇒ `null`），存的时候当 `ifRev` 交回 `profiles-write`。
@@ -883,8 +893,8 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         accounts: super::account_table(&store.home),
         tmux,
         slots: slots_out(),
+        path_shown: shown_in(&path, &store.home),
         path,
-        home: store.home,
     })
 }
 
