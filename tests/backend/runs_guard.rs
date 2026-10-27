@@ -1549,7 +1549,7 @@ fn extra_cells_scenario(shape: &Shape) {
     let mut f = crate::wire::Frame::SessionRuns(crate::wire::SessionRuns {
         sid: "s".into(),
         runs: vec![info_of(&book, "g6")],
-        ended: Vec::new(),
+        ..Default::default()
     });
     f.stamp(&sh);
     let crate::wire::Frame::SessionRuns(crate::wire::SessionRuns { runs, .. }) = f else {
@@ -1557,7 +1557,10 @@ fn extra_cells_scenario(shape: &Shape) {
     };
     assert_eq!(
         runs[0].started_text,
-        at(135).map(|ms| crate::common::time::ms_hm(ms as i64, &sh)),
+        at(135).map(|ms| copy_core::copy_text(
+            "agentWindow.facts.started",
+            &[("time", &crate::common::time::ms_hm(ms as i64, &sh))]
+        )),
         "[{}] 开始那一刻的钟面跟着开始取早的那个（推出去那一下按看的那一台的时区写，界面照抄）",
         shape.name
     );
@@ -1691,4 +1694,288 @@ fn the_run_table_carries_its_own_words() {
     ] {
         assert_eq!(status_text(st), Words(copy_text(key, &[])), "{st:?}");
     }
+}
+
+/// 写好的一截：会走的钟（`{dur}` 空位 ＋ 起点）或整句。
+#[cfg(test)]
+fn line(key: &str, args: &[(&str, &str)], from: Option<u64>) -> cmd_wire::frame::RunLine {
+    cmd_wire::frame::RunLine {
+        text: crate::common::cells::Words(copy_core::copy_text(key, args)),
+        from,
+    }
+}
+
+/// ★ 运行表的每一项带写好的事实 · 说明 · 结束线：随时钟变的那几截是会走的钟（`{dur}` ＋ 起点），不变的整句写好；出口不拼。
+#[test]
+fn the_run_table_writes_facts_explain_and_end() {
+    use crate::common::cells::Words;
+    use crate::observe::runs::testing::seed;
+    use crate::wire::{RunInfo, RunWhy};
+    use cmd_wire::frame::{RunEndLine, RunExplain};
+    use copy_core::copy_text;
+    let book = RunBook::default();
+    let sid = "s-said";
+    // 在跑、在等 Bash、派出过一个、后台派出。
+    seed(
+        &book,
+        sid,
+        RunInfo {
+            run: "a".into(),
+            waiting: Some("Bash".into()),
+            started_ms: Some(1_000),
+            active_ms: Some(5_000),
+            calls: 3,
+            background: true,
+            ..RunInfo::default()
+        },
+    );
+    // 它派出的那一个：失败收场，跑了 6 分钟。
+    seed(
+        &book,
+        sid,
+        RunInfo {
+            run: "b".into(),
+            parent: Some("a".into()),
+            state: RunState::Failed,
+            started_ms: Some(0),
+            ended_ms: Some(360_000),
+            active_ms: Some(360_000),
+            why: Some(RunWhy::Reported),
+            error: Some("boom".into()),
+            ..RunInfo::default()
+        },
+    );
+    // 状态不明：会话退了 · 记录久未再写。
+    seed(
+        &book,
+        sid,
+        RunInfo {
+            run: "c".into(),
+            state: RunState::Unknown,
+            why: Some(RunWhy::Orphaned),
+            active_ms: Some(7_000),
+            ..RunInfo::default()
+        },
+    );
+    seed(
+        &book,
+        sid,
+        RunInfo {
+            run: "d".into(),
+            state: RunState::Unknown,
+            why: Some(RunWhy::Quiet),
+            active_ms: Some(8_000),
+            ..RunInfo::default()
+        },
+    );
+    let Frame::SessionRuns(s) = book.frame_at(sid, SystemTime::now()) else {
+        panic!("运行表那一帧")
+    };
+    let [a, b, c, d] = &s.runs[..] else {
+        panic!("四项：{:?}", s.runs)
+    };
+    let dur = &[("dur", "{dur}")];
+    assert_eq!(
+        a.facts,
+        vec![
+            line("agentWindow.facts.running", dur, Some(1_000)),
+            line("agentWindow.facts.active", dur, Some(5_000)),
+            line("agentWindow.facts.calls", &[("n", "3")], None),
+            line("agentWindow.facts.kids", &[("n", "1")], None),
+            line("agentWindow.facts.background", &[], None),
+        ]
+    );
+    assert_eq!(
+        a.explain,
+        Some(RunExplain {
+            lead: None,
+            line: line(
+                "agentWindow.why.waiting",
+                &[("tool", "Bash"), ("dur", "{dur}")],
+                Some(5_000)
+            ),
+            note: Some(Words(copy_text("agentWindow.why.waitingNote", &[]))),
+            refresh: false,
+        })
+    );
+    assert_eq!(a.end, None, "在跑 ⇒ 没有结束线");
+    let took = copy_core::short_duration(360_000);
+    assert_eq!(
+        b.facts,
+        vec![line("agentWindow.facts.took", &[("dur", &took)], None)]
+    );
+    assert_eq!(
+        b.explain,
+        Some(RunExplain {
+            line: line("agentWindow.why.failed", &[], None),
+            ..RunExplain::default()
+        })
+    );
+    assert_eq!(
+        b.end,
+        Some(RunEndLine {
+            head: Words(copy_text("runs.state.failed", &[])),
+            sub: line("agentWindow.end.failed", &[], None),
+        })
+    );
+    let unknown = Some(Words(copy_text("runs.state.unknown", &[])));
+    assert_eq!(
+        c.explain,
+        Some(RunExplain {
+            lead: unknown.clone(),
+            line: line("agentWindow.why.orphaned", &[], None),
+            note: None,
+            refresh: true,
+        })
+    );
+    assert_eq!(
+        c.end.as_ref().map(|e| &e.sub),
+        Some(&line("agentWindow.end.orphaned", &[], None))
+    );
+    assert_eq!(
+        d.explain,
+        Some(RunExplain {
+            lead: unknown,
+            line: line("agentWindow.why.quiet", dur, Some(8_000)),
+            note: None,
+            refresh: true,
+        })
+    );
+    assert_eq!(
+        d.end.as_ref().map(|e| &e.sub),
+        Some(&line("agentWindow.end.quiet", dur, Some(8_000)))
+    );
+    for (st, key) in [
+        (RunState::Done, "agentWindow.end.done"),
+        (RunState::Stopped, "agentWindow.end.stopped"),
+    ] {
+        let book = RunBook::default();
+        seed(
+            &book,
+            "s1",
+            RunInfo {
+                run: "x".into(),
+                state: st,
+                ..RunInfo::default()
+            },
+        );
+        let Frame::SessionRuns(s) = book.frame_at("s1", SystemTime::now()) else {
+            panic!()
+        };
+        assert_eq!(
+            s.runs[0].end.as_ref().map(|e| &e.sub),
+            Some(&line(key, &[], None)),
+            "{st:?}"
+        );
+    }
+}
+
+/// ★ 那一帧带列表的三组（在跑的全列 · 最近结束的至多几个 · 其余连状态不明的，最近动过的在前）与 agent 那一枚的字。
+#[test]
+fn the_run_frame_carries_its_groups_and_summary() {
+    use crate::common::cells::Words;
+    use crate::observe::runs::{testing::seed, RECENT_ENDED};
+    use crate::wire::RunInfo;
+    use copy_core::copy_text;
+    let book = RunBook::default();
+    let sid = "s-groups";
+    let Frame::SessionRuns(empty) = book.frame_at(sid, SystemTime::now()) else {
+        panic!()
+    };
+    assert_eq!(empty.summary, None, "空表 ⇒ 不上线");
+    // 先动过的先记：u0（状态不明）· e0..e(N) 收场 · r0 在跑。
+    let ids: Vec<String> = std::iter::once("u0".to_string())
+        .chain((0..=RECENT_ENDED).map(|i| format!("e{i}")))
+        .chain(std::iter::once("r0".to_string()))
+        .collect();
+    for id in &ids {
+        let state = match id.as_bytes()[0] {
+            b'u' => RunState::Unknown,
+            b'e' => RunState::Done,
+            _ => RunState::Running,
+        };
+        seed(
+            &book,
+            sid,
+            RunInfo {
+                run: id.clone(),
+                state,
+                ..RunInfo::default()
+            },
+        );
+    }
+    let Frame::SessionRuns(s) = book.frame_at(sid, SystemTime::now()) else {
+        panic!()
+    };
+    let ended: Vec<String> = (0..=RECENT_ENDED).rev().map(|i| format!("e{i}")).collect();
+    assert_eq!(s.groups.running, vec!["r0".to_string()]);
+    assert_eq!(s.groups.recent, ended[..RECENT_ENDED].to_vec());
+    assert_eq!(
+        s.groups.older,
+        vec![ended[RECENT_ENDED].clone(), "u0".to_string()]
+    );
+    let n = ids.len().to_string();
+    assert_eq!(
+        s.summary,
+        Some(Words(copy_text(
+            "agentsPanel.render.summary",
+            &[("n", &n), ("running", "1")]
+        )))
+    );
+    let done = RunBook::default();
+    seed(
+        &done,
+        sid,
+        RunInfo {
+            run: "x".into(),
+            state: RunState::Done,
+            ..RunInfo::default()
+        },
+    );
+    let Frame::SessionRuns(s) = done.frame_at(sid, SystemTime::now()) else {
+        panic!()
+    };
+    assert_eq!(
+        s.summary,
+        Some(Words(copy_text(
+            "agentsPanel.render.summaryDone",
+            &[("n", "1")]
+        )))
+    );
+}
+
+/// ★ 子 agent 挂着的待答请求配到运行表那一项（同会话事实那一形）；请求撤了 ⇒ 那一项不再带，变了才算变。
+#[test]
+fn a_run_carries_the_ask_it_is_waiting_on() {
+    use crate::observe::runs::testing::seed_running;
+    let book = RunBook::default();
+    let sid = "s-needs";
+    seed_running(&book, sid, "a", None);
+    seed_running(&book, sid, "b", None);
+    let ask = crate::agents::asks::specimen();
+    assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("a"));
+    assert!(book.dress_needs(sid, vec![ask.clone()]), "挂上 ⇒ 变了");
+    assert!(!book.dress_needs(sid, vec![ask.clone()]), "同一份 ⇒ 没变");
+    let Frame::SessionRuns(s) = book.frame_at(sid, SystemTime::now()) else {
+        panic!()
+    };
+    let n = s.runs[0].needs.as_ref().expect("a 带 needs");
+    assert_eq!(n.ask.as_ref().map(|a| a.id.as_str()), Some(ask.id.as_str()));
+    assert_eq!(
+        n.head,
+        crate::observe::recognize::facts::needs_head(
+            cmd_wire::needs::NeedsKind::Answer,
+            Some(&ask.tool)
+        )
+    );
+    assert_eq!(s.runs[1].needs, None, "b 没挂");
+    assert!(book.dress_needs(sid, Vec::new()), "撤了 ⇒ 变了");
+    let Frame::SessionRuns(s) = book.frame_at(sid, SystemTime::now()) else {
+        panic!()
+    };
+    assert_eq!(s.runs[0].needs, None);
+    assert!(
+        !book.dress_needs("no-such", vec![ask]),
+        "没有运行表的会话 ⇒ 不记"
+    );
 }

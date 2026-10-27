@@ -22,20 +22,33 @@ pub(crate) fn moved_rx() -> tokio::sync::broadcast::Receiver<String> {
     changes().subscribe()
 }
 
-/// 登记表交进来的读法：此刻挂着请求的会话 id。
-static ASKED: OnceLock<fn() -> Vec<String>> = OnceLock::new();
+/// 登记表交进来的两个读法：此刻挂着请求的会话 id · 某条会话此刻挂着的请求（挂上的先后）。
+struct Reads {
+    sids: fn() -> Vec<String>,
+    pending: fn(&str) -> Vec<cmd_wire::needs::Ask>,
+}
+
+static ASKED: OnceLock<Reads> = OnceLock::new();
 
 /// 待答登记表开张那一刻交它的读法（只认头一回）。
-pub(crate) fn answer_asked(read: fn() -> Vec<String>) {
-    ASKED.get_or_init(|| read);
+pub(crate) fn answer_asked(
+    sids: fn() -> Vec<String>,
+    pending: fn(&str) -> Vec<cmd_wire::needs::Ask>,
+) {
+    ASKED.get_or_init(|| Reads { sids, pending });
 }
 
 /// 此刻挂着请求的会话。
 pub(crate) fn asked_sids() -> BTreeSet<String> {
     ASKED
         .get()
-        .map(|read| read())
+        .map(|r| (r.sids)())
         .unwrap_or_default()
         .into_iter()
         .collect()
+}
+
+/// 这条会话此刻挂着的请求（挂上的先后；watcher 照它给运行表那几项配 needs）。登记表没开张 ⇒ 空。
+pub(crate) fn pending_of(sid: &str) -> Vec<cmd_wire::needs::Ask> {
+    ASKED.get().map(|r| (r.pending)(sid)).unwrap_or_default()
 }

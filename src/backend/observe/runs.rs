@@ -10,6 +10,7 @@ use crate::common::cells::Words;
 use crate::platform::fs::Ro;
 use crate::platform::paths::path_key;
 use crate::wire::{Frame, RunDid, RunEnded, RunInfo, RunState, RunWhy};
+use cmd_wire::frame::{RunEndLine, RunExplain, RunGroups, RunLine};
 use copy_core::copy_text;
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
@@ -35,6 +36,8 @@ pub(crate) const RIDS_KEEP: usize = 512;
 pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
 /// 失败收场的报错原话至多留几个字（运行表一变就整份重发）。
 pub(crate) const ERROR_CHARS: usize = 2000;
+/// 列表里「最近结束」那一组至多几个（在跑的不限：同一时刻在跑的本来就有限）。
+pub(crate) const RECENT_ENDED: usize = 5;
 
 /// 自 1970 起的毫秒（线上那三个时刻）。
 fn ms(t: SystemTime) -> Option<u64> {
@@ -108,6 +111,8 @@ struct Sess {
     /// 对账键 ⇒ 哪个运行（`None` ＝ 主运行）。
     rids: HashMap<String, Option<String>>,
     rid_order: VecDeque<String>,
+    /// 子运行 id ⇒ 它挂着的最早那一条待答请求（待答登记表交来的，[`RunBook::dress_needs`]）。
+    asks: HashMap<String, crate::agents::asks::Ask>,
 }
 
 impl Sess {
@@ -387,11 +392,24 @@ impl Sess {
         changed
     }
 
-    /// 运行表（最早动过的在前）。
-    fn table(&self) -> Vec<RunInfo> {
+    /// 运行表（最早动过的在前），每一项写好字、配上它挂着的待答请求（已等多久照 `now` 算）。
+    fn table(&self, now: SystemTime) -> Vec<RunInfo> {
         let mut v: Vec<&Run> = self.runs.iter().collect();
         v.sort_by_key(|r| r.seen);
-        v.into_iter().map(|r| dressed(r.info.clone())).collect()
+        let now_ms = ms(now).unwrap_or(0);
+        v.iter()
+            .map(|r| {
+                let kids = v
+                    .iter()
+                    .filter(|k| k.info.parent.as_deref() == Some(r.info.run.as_str()))
+                    .count();
+                let mut i = dressed(r.info.clone(), kids);
+                i.needs = self.asks.get(&r.info.run).and_then(|a| {
+                    crate::observe::recognize::facts::dress_ask_with(None, Some(a.clone()), now_ms)
+                });
+                i
+            })
+            .collect()
     }
 
     /// 被挤出表的已收场运行里对上了派出调用的那些（先挤出的在前）。
@@ -536,14 +554,45 @@ impl RunBook {
         let (runs, ended) = self.with(|m| match m.get_mut(sid) {
             Some(s) => {
                 s.settle(now);
-                (s.table(), s.ended())
+                (s.table(now), s.ended())
             }
             None => (Vec::new(), Vec::new()),
         });
+        let groups = groups_of(&runs);
+        let summary = summary_of(&runs);
         Frame::SessionRuns(crate::wire::SessionRuns {
             sid: sid.to_string(),
             runs,
             ended,
+            groups,
+            summary,
+        })
+    }
+
+    /// 这个会话此刻挂着的待答请求（挂上的先后）⇒ 配到发它的那个运行上（一个运行只配最早那一条；主会话的不配）。
+    /// 没有运行表的会话不记。回：配的变没变。
+    pub(crate) fn dress_needs(&self, sid: &str, asks: Vec<crate::agents::asks::Ask>) -> bool {
+        let mut by_run: HashMap<String, crate::agents::asks::Ask> = HashMap::new();
+        for a in asks {
+            if let Some(run) = a.run.as_ref().map(|r| r.id.clone()) {
+                by_run.entry(run).or_insert(a);
+            }
+        }
+        self.with(|m| match m.get_mut(sid) {
+            Some(s) if s.asks != by_run => {
+                s.asks = by_run;
+                true
+            }
+            _ => false,
+        })
+    }
+
+    /// 有运行表的会话（watcher 听到需手动变了，照它们逐个配 needs）。
+    pub(crate) fn sids(&self) -> Vec<String> {
+        self.with(|m| {
+            let mut v: Vec<String> = m.keys().cloned().collect();
+            v.sort();
+            v
         })
     }
 
@@ -566,7 +615,8 @@ impl RunBook {
 
     /// 这个会话的运行表（最早动过的在前）。
     pub(crate) fn runs(&self, sid: &str) -> Vec<RunInfo> {
-        self.with(|m| m.get(sid).map(Sess::table).unwrap_or_default())
+        let now = crate::common::time::now();
+        self.with(|m| m.get(sid).map(|s| s.table(now)).unwrap_or_default())
     }
 
     /// 会话退休了（派出它们的那一方没了）：还算在跑的再也等不到收场信号 ⇒ 状态不明。回：运行表变没变。
@@ -861,8 +911,174 @@ pub(crate) fn status_text(s: RunState) -> Words {
     })
 }
 
-/// 出帧那一下给一项写好字：状态 · 名字（没有 ⇒ 通称）· 最近一件事。簿里记的是事实，字只在这里写。
-fn dressed(mut i: RunInfo) -> RunInfo {
+/// 会走的钟那一截的空位（出口照此刻 − `from` 用共用的时长格式填）。
+const DUR_SLOT: &str = "{dur}";
+
+/// 写好的一截：整句。
+fn said(text: String) -> RunLine {
+    RunLine {
+        text: Words(text),
+        from: None,
+    }
+}
+
+/// 会走的钟那一截 `{dur}` 填什么：有起点 ⇒ 空位（出口按此刻填）；没有 ⇒ 按 0 写好。
+fn dur_of(from: Option<u64>) -> String {
+    match from {
+        Some(_) => DUR_SLOT.to_string(),
+        None => copy_core::short_duration(0),
+    }
+}
+
+/// 写好的一截：从 `from` 起算的会走的钟（`text` 里带 [`dur_of`] 填的那一格）。
+fn ticking(text: String, from: Option<u64>) -> RunLine {
+    RunLine {
+        text: Words(text),
+        from,
+    }
+}
+
+/// 事实那一行（「几点起」在 `started_text`，推出去那一下按流的时区写）：已跑 / 用时 · 最近 · 工具 ×n · agent ×n · 后台派出。
+fn facts_of(i: &RunInfo, kids: usize) -> Vec<RunLine> {
+    let mut out = Vec::new();
+    let live = matches!(i.state, RunState::Running | RunState::Unknown);
+    if i.state == RunState::Running && i.started_ms.is_some() {
+        let dur = dur_of(i.started_ms);
+        out.push(ticking(
+            copy_text("agentWindow.facts.running", &[("dur", &dur)]),
+            i.started_ms,
+        ));
+    }
+    if !live {
+        if let (Some(a), Some(b)) = (i.started_ms, i.ended_ms) {
+            let took = copy_core::short_duration(b.saturating_sub(a));
+            out.push(said(copy_text("agentWindow.facts.took", &[("dur", &took)])));
+        }
+    }
+    if live && i.active_ms.is_some() {
+        let dur = dur_of(i.active_ms);
+        out.push(ticking(
+            copy_text("agentWindow.facts.active", &[("dur", &dur)]),
+            i.active_ms,
+        ));
+    }
+    if i.calls > 0 {
+        let n = i.calls.to_string();
+        out.push(said(copy_text("agentWindow.facts.calls", &[("n", &n)])));
+    }
+    if kids > 0 {
+        let n = kids.to_string();
+        out.push(said(copy_text("agentWindow.facts.kids", &[("n", &n)])));
+    }
+    if i.background {
+        out.push(said(copy_text("agentWindow.facts.background", &[])));
+    }
+    out
+}
+
+/// 说明那一块：在跑且没在等 ⇒ 不上线。
+fn explain_of(i: &RunInfo) -> Option<RunExplain> {
+    let plain = |line: RunLine| RunExplain {
+        line,
+        ..RunExplain::default()
+    };
+    let dur = dur_of(i.active_ms);
+    Some(match i.state {
+        RunState::Running => {
+            let tool = i.waiting.as_deref()?;
+            RunExplain {
+                line: ticking(
+                    copy_text("agentWindow.why.waiting", &[("tool", tool), ("dur", &dur)]),
+                    i.active_ms,
+                ),
+                note: Some(Words(copy_text("agentWindow.why.waitingNote", &[]))),
+                ..RunExplain::default()
+            }
+        }
+        RunState::Done => plain(said(copy_text("agentWindow.why.done", &[]))),
+        RunState::Failed => plain(said(copy_text("agentWindow.why.failed", &[]))),
+        RunState::Stopped => plain(said(copy_text("agentWindow.why.stopped", &[]))),
+        RunState::Unknown => RunExplain {
+            lead: Some(status_text(i.state)),
+            line: if i.why == Some(RunWhy::Orphaned) {
+                said(copy_text("agentWindow.why.orphaned", &[]))
+            } else {
+                ticking(
+                    copy_text("agentWindow.why.quiet", &[("dur", &dur)]),
+                    i.active_ms,
+                )
+            },
+            note: None,
+            refresh: true,
+        },
+    })
+}
+
+/// 尾巴上的结束线：在跑 ⇒ 不上线。
+fn end_of(i: &RunInfo) -> Option<RunEndLine> {
+    let sub = match i.state {
+        RunState::Running => return None,
+        RunState::Done => said(copy_text("agentWindow.end.done", &[])),
+        RunState::Failed => said(copy_text("agentWindow.end.failed", &[])),
+        RunState::Stopped => said(copy_text("agentWindow.end.stopped", &[])),
+        RunState::Unknown if i.why == Some(RunWhy::Orphaned) => {
+            said(copy_text("agentWindow.end.orphaned", &[]))
+        }
+        RunState::Unknown => {
+            let dur = dur_of(i.active_ms);
+            ticking(
+                copy_text("agentWindow.end.quiet", &[("dur", &dur)]),
+                i.active_ms,
+            )
+        }
+    };
+    Some(RunEndLine {
+        head: status_text(i.state),
+        sub,
+    })
+}
+
+/// 列表的三组（运行表最早动过的在前 ⇒ 每组最近动过的在前）：在跑的全列 · 最近结束的 [`RECENT_ENDED`] 个 · 其余连状态不明的。
+fn groups_of(runs: &[RunInfo]) -> RunGroups {
+    let mut g = RunGroups::default();
+    for r in runs.iter().rev() {
+        let id = r.run.clone();
+        match r.state {
+            RunState::Running => g.running.push(id),
+            RunState::Done | RunState::Failed | RunState::Stopped
+                if g.recent.len() < RECENT_ENDED =>
+            {
+                g.recent.push(id)
+            }
+            _ => g.older.push(id),
+        }
+    }
+    g
+}
+
+/// 这条会话的 agent 那一枚的字：有在跑的 ⇒ 「agent n · m 在跑」，没有 ⇒ 「agent n」；表是空的 ⇒ 不上线。
+fn summary_of(runs: &[RunInfo]) -> Option<Words> {
+    if runs.is_empty() {
+        return None;
+    }
+    let n = runs.len().to_string();
+    let running = runs.iter().filter(|r| r.state == RunState::Running).count();
+    Some(Words(if running > 0 {
+        copy_text(
+            "agentsPanel.render.summary",
+            &[("n", &n), ("running", &running.to_string())],
+        )
+    } else {
+        copy_text("agentsPanel.render.summaryDone", &[("n", &n)])
+    }))
+}
+
+/// 出帧那一下给一项写好字：状态 · 名字（没有 ⇒ 通称）· 最近一件事 · 事实 · 说明 · 结束线（`kids`：它派出的、还在表里的几个）。
+/// 簿里记的是事实，字只在这里写。
+fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
+    i.facts = facts_of(&i, kids);
+    i.explain = explain_of(&i);
+    i.end = end_of(&i);
     i.status_text = status_text(i.state);
     i.label_text = Words(
         i.label

@@ -5,7 +5,7 @@
  * 数据是那台后端的运行表（`session_runs`，`runs.ts::RunBoard`）：标签 · 状态 · 最近一件事 · 派出它的那次工具调用。
  * **状态只读后端给的那一份**，面板不自己判（「有结果 ⇒ 完成」「会话不忙 ⇒ 中止」这类判断一条都没有）。
  *
- * 列哪些（有上界）：在跑的全列 ＋ 最近结束的 `RECENT_ENDED` 个；其余（含状态不明的）收进「更早的」，点开才列（`runs.ts::panelGroups`）。
+ * 列哪些（有上界）照后端写好的三组（`groups`：在跑的全列 · 最近结束的几个 · 其余含状态不明的收进「更早的」，点开才列）；chip 的字照抄 `summary`。
  * 每行：图标 · [类别] · 标签 ·（「窗口已开」）· 状态 · 最近：…；点一行 ⇒ 开这个子运行自己的窗口（已开着 ⇒ 拉到前面，宿主管）。
  *
  * 行样式 .agent-* 自有。
@@ -18,7 +18,7 @@ import { emptyState } from "./kit/empty";
 import { place } from "./kit/morph";
 import { tag } from "./kit/badge";
 import type { RunInfo } from "./generated/RunInfo";
-import { panelGroups, runLabel, runLastText, runStateMark, runStateText, type LiveBlockView } from "./runs";
+import { NO_RUNS, runLabel, runLastText, runStateMark, runStateText, type LiveBlockView, type RunTable } from "./runs";
 
 /** 宿主给面板的口：开某个子运行的窗口 · 它的窗口开着没有 · 它此刻在生成的那一块。 */
 export interface AgentsPanelHost {
@@ -44,7 +44,7 @@ export class AgentsPanel {
   private list: HTMLUListElement;
   private empty: HTMLElement;
 
-  private runs: RunInfo[] = [];
+  private table: RunTable = NO_RUNS;
   private activeSid: string | null = null;
   /** 「更早的」那一组展开着没有（换会话就收起）。 */
   private olderOpen = false;
@@ -72,7 +72,7 @@ export class AgentsPanel {
 
   /** 页签上的字（有 agent ⇒ 与 chip 同字；没有 ⇒ 页名）。 */
   get label(): string {
-    return this.runs.length > 0 && this.activeSid !== null ? (this.summaryText.textContent ?? "") : copyText("agentsPanel.page.title");
+    return this.table.summary !== undefined && this.activeSid !== null ? this.table.summary : copyText("agentsPanel.page.title");
   }
 
   /** 抽屉开到 / 离开这一页（宿主调）：chip 的「开着」跟着变。 */
@@ -81,11 +81,11 @@ export class AgentsPanel {
   }
 
   /** 当前会话与它的运行表（切 tab / 运行表到了时调）。 */
-  setSession(sid: string | null, runs: RunInfo[]): void {
+  setSession(sid: string | null, table: RunTable): void {
     const switched = sid !== this.activeSid;
     if (switched) this.olderOpen = false;
     this.activeSid = sid;
-    this.runs = runs;
+    this.table = table;
     // 同一个会话的运行表又来一帧：样子没变就不动（换了会话才整份重画）。
     this.render(switched);
   }
@@ -106,7 +106,7 @@ export class AgentsPanel {
   }
 
   private render(force: boolean): void {
-    const none = this.runs.length === 0 || this.activeSid === null;
+    const none = this.table.runs.length === 0 || this.activeSid === null;
     if (none) {
       this.summaryElement.style.display = "none";
       if (this.pageElement.firstChild !== this.empty) this.pageElement.replaceChildren(this.empty);
@@ -116,10 +116,13 @@ export class AgentsPanel {
       this.onLabel?.(this.label);
       return;
     }
-    const g = panelGroups(this.runs);
+    const byId = new Map(this.table.runs.map((r) => [r.run, r]));
+    const pick = (ids: string[]): RunInfo[] => ids.flatMap((id) => byId.get(id) ?? []);
+    const g = { running: pick(this.table.groups.running), recent: pick(this.table.groups.recent), older: pick(this.table.groups.older) };
     const shown = [...g.running, ...g.recent, ...(this.olderOpen ? g.older : [])];
     const sid = this.activeSid;
     const sig = JSON.stringify([
+      this.table.summary,
       this.olderOpen,
       shown.map((r) => (sid !== null && this.host?.isOpen(sid, r.run)) === true),
       g.older.length,
@@ -130,9 +133,7 @@ export class AgentsPanel {
 
     this.summaryElement.style.display = "";
     if (this.pageElement.firstChild !== this.list) this.pageElement.replaceChildren(this.list);
-    const running = g.running.length;
-    this.summaryText.textContent =
-      running > 0 ? copyText("agentsPanel.render.summary", { n: this.runs.length, running }) : copyText("agentsPanel.render.summaryDone", { n: this.runs.length });
+    this.summaryText.textContent = this.table.summary ?? "";
     this.onLabel?.(this.label);
 
     const items: HTMLElement[] = [];

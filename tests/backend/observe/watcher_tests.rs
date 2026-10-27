@@ -133,8 +133,7 @@ fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
     assert!(list_rang(&mut list), "答过清单之后同一个会话再变 ⇒ 再响");
     sink.send(Frame::SessionRuns(crate::wire::SessionRuns {
         sid: "c".into(),
-        runs: Vec::new(),
-        ended: Vec::new(),
+        ..Default::default()
     }));
     assert!(!list_rang(&mut list), "运行表与清单无关");
 }
@@ -5059,4 +5058,32 @@ fn an_ask_coming_and_going_flips_the_announced_dot() {
         "撤掉 ⇒ 回到在跑"
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ★ 子 agent 挂上待答请求 ⇒ 那个会话的运行表那一项配上 needs、发一帧；没变不发；撤了再发一帧（不带了）。
+#[test]
+fn an_ask_from_a_sub_agent_dresses_its_run_and_sends_the_table() {
+    let mut state = ReaderState::new(std::env::temp_dir().join("ccm-runs-needs-unused"));
+    crate::observe::runs::testing::seed_running(&state.book, "s-n", "a", None);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    let ask = crate::agents::asks::specimen();
+    let hung = |sid: &str| {
+        if sid == "s-n" {
+            vec![ask.clone()]
+        } else {
+            Vec::new()
+        }
+    };
+    let needs = |rx: &mut FrameRx| match rx.try_recv() {
+        Ok(Frame::SessionRuns(s)) => Some(s.runs[0].needs.is_some()),
+        Ok(other) => panic!("别的帧：{other:?}"),
+        Err(_) => None,
+    };
+    dress_run_needs(&mut state, &mut sink, &hung);
+    assert_eq!(needs(&mut rx), Some(true), "挂上 ⇒ 发一帧、那一项带 needs");
+    dress_run_needs(&mut state, &mut sink, &hung);
+    assert_eq!(needs(&mut rx), None, "没变 ⇒ 不发");
+    dress_run_needs(&mut state, &mut sink, &|_: &str| Vec::new());
+    assert_eq!(needs(&mut rx), Some(false), "撤了 ⇒ 再发一帧、不带了");
 }

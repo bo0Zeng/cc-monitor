@@ -28,9 +28,8 @@ import { icon } from "../kit/icon";
 import { tag } from "../kit/badge";
 import { MessageStream } from "../stream";
 import { RunTimeline } from "../run-timeline";
-import { runLabel, runStateMark, runStateText } from "../runs";
+import { agentWindowTitle, chainOf, kidsOf, runLabel, runLineNow, runStateMark, runStateText } from "../runs";
 import type { RunInfo } from "../generated/RunInfo";
-import { agentWindowTitle, chainOf, endOf, factsOf, kidsOf, whyOf } from "../agent-window-text";
 import { openAgentWindow } from "../agent-window-open";
 import {
   AGENT_WINDOW_EVENT,
@@ -307,13 +306,14 @@ export class AgentWindow {
     mark.classList.add(s.awMark);
     facts.appendChild(mark);
     const line = document.createElement("span");
-    line.textContent = factsOf(r, kids.length, now).join(copyText("kit.text.sep"));
+    const said = [...(r.started_text === undefined ? [] : [r.started_text]), ...(r.facts ?? []).map((l) => runLineNow(l, now))];
+    line.textContent = said.join(copyText("kit.text.sep"));
     facts.appendChild(line);
     this.head.replaceChildren(title, facts);
 
     // 说明
-    const w = whyOf(r, now);
-    if (w === null) {
+    const w = r.explain;
+    if (w === undefined) {
       this.why.replaceChildren();
       this.why.className = "";
     } else {
@@ -327,7 +327,7 @@ export class AgentWindow {
         top.appendChild(b);
       }
       const t = document.createElement("span");
-      t.textContent = w.text;
+      t.textContent = runLineNow(w.line, now);
       top.appendChild(t);
       if (w.note) {
         const n = document.createElement("span");
@@ -341,10 +341,10 @@ export class AgentWindow {
         top.appendChild(b);
       }
       this.why.replaceChildren(top);
-      if (w.error) {
+      if (r.error !== undefined) {
         const pre = document.createElement("pre");
         pre.className = s.awWhyError;
-        pre.textContent = w.error;
+        pre.textContent = r.error;
         this.why.appendChild(pre);
       }
     }
@@ -379,8 +379,8 @@ export class AgentWindow {
     }
 
     // 结束线
-    const e = endOf(r, now);
-    if (e === null || !this.info) {
+    const e = r.end;
+    if (e === undefined || !this.info) {
       this.end.remove();
     } else {
       if (this.wrap.isConnected) this.wrap.after(this.end);
@@ -393,7 +393,7 @@ export class AgentWindow {
       head.appendChild(headText);
       const sub = document.createElement("div");
       sub.className = s.awEndSub;
-      sub.textContent = e.sub;
+      sub.textContent = runLineNow(e.sub, now);
       this.end.replaceChildren(head, sub);
     }
 
