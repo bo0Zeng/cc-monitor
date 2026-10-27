@@ -556,3 +556,34 @@ fn a_session_outside_tmux_leaves_in_exactly_one_frame_that_says_ended() {
     };
     assert_eq!(s.face.life, WireLife::Ended { by: None });
 }
+
+#[test]
+fn a_session_in_a_hosted_terminal_leaves_in_exactly_one_frame_that_says_ended() {
+    // 托管的 Claude 一退终端就跟着收（10-05）⇒ 没有「可重连」：离开当场一帧已结束，不等 tmux 观测，之后的观测也不再报它。
+    let mut l = SessionLedger::new();
+    let Ev::F(Frame::SessionAdded(mut a)) = added("a") else {
+        unreachable!()
+    };
+    a.container = Some(crate::wire::SessionContainer::Managed {
+        terminal: Some("h-1".into()),
+    });
+    l.on_frame(&Frame::SessionAdded(a));
+    let Ev::F(gone) = removed("a", Cause::Gone) else {
+        unreachable!()
+    };
+    let (pass, extra) = l.on_frame(&gone);
+    let mut out: Vec<Frame> = extra;
+    if pass {
+        out.insert(0, gone);
+    }
+    assert_eq!(out.len(), 1, "离开「活」只该一帧：{out:?}");
+    let Frame::SessionLeft(s) = &out[0] else {
+        panic!("那一帧该是离开那一帧：{:?}", out[0])
+    };
+    assert_eq!(s.face.life, WireLife::Ended { by: None });
+    assert!(l
+        .on_tmux("", Some("zero_sessions"))
+        .iter()
+        .all(|f| !matches!(f, Frame::SessionLeft(_))));
+    assert!(!l.reconnectable().contains("a"));
+}
