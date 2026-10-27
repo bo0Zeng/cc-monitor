@@ -523,6 +523,7 @@ object Commands {
             MachineHit::class.java to MachineHit.ADAPTER,
             MachineInterruptsReply::class.java to MachineInterruptsReply.ADAPTER,
             MachineInterruptsReq::class.java to MachineInterruptsReq.ADAPTER,
+            MachineLink::class.java to MachineLink.ADAPTER,
             MachineMenu::class.java to MachineMenu.ADAPTER,
             MachineMenuReq::class.java to MachineMenuReq.ADAPTER,
             MachineName::class.java to MachineName.ADAPTER,

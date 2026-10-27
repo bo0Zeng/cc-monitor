@@ -127,6 +127,34 @@ sealed class Screen(
         const val ARG_RUN = "run"
     }
 
+    /** 计划 · 片：这台的 pb 工作区与片（聊天屏 ⋯ → 计划进；[sid] 是从哪条会话进来的，带到大纲认此会话接手的块）。 */
+    data object Plan : Screen("plan/{hostId}?sid={sid}") {
+        fun of(
+            hostId: String,
+            sid: String?,
+        ): String = "plan/$hostId" + query("sid" to sid)
+    }
+
+    /** 计划 · 大纲：一个工作区里的一片。 */
+    data object PlanSlice : Screen("plan-slice/{hostId}?ws={ws}&slice={slice}&sid={sid}") {
+        fun of(
+            hostId: String,
+            ws: String,
+            slice: String,
+            sid: String?,
+        ): String = "plan-slice/$hostId" + query("ws" to ws, "slice" to slice, "sid" to sid)
+    }
+
+    /** 计划 · 一格详情（点子格再推一屏）。 */
+    data object PlanCell : Screen("plan-cell/{hostId}?ws={ws}&slice={slice}&id={id}") {
+        fun of(
+            hostId: String,
+            ws: String,
+            slice: String,
+            id: String,
+        ): String = "plan-cell/$hostId" + query("ws" to ws, "slice" to slice, "id" to id)
+    }
+
     /** 设置 → 机器与账号 → 轮换：当前服务器（上次那台）新会话用的那份。 */
     data object RotationHere : Screen("settings/rotation")
 
@@ -136,3 +164,11 @@ sealed class Screen(
     /** 设置 → 账号卡 · 账号一览号的抽屉 → 用量：当前那台每个号的额度。 */
     data object Usage : Screen("settings/usage")
 }
+
+/** 查询串：值是 `null` 的不写；值照 URL 编码（路径里的 `/` · 中文片名来回不丢）。 */
+private fun query(vararg kv: Pair<String, String?>): String =
+    kv
+        .filter { it.second != null }
+        .joinToString("&", prefix = "?") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8").replace("+", "%20") }
+        .takeIf { it != "?" }
+        .orEmpty()
