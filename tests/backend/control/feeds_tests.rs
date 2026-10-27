@@ -179,7 +179,7 @@ async fn until(what: &str, mut f: impl FnMut() -> bool) {
 }
 
 fn state_of(machine: &str) -> String {
-    let all = machine_state::read_in(&[(machine.to_string(), true)]);
+    let all = machine_state::read_in(&[(machine.to_string(), true)], &Default::default());
     serde_json::to_value(&all[machine]).unwrap()["state"]
         .as_str()
         .unwrap_or_default()
@@ -588,7 +588,8 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         "{seen:#?}"
     );
     assert_eq!(unclear.life, crate::wire::WireLife::Unclear);
-    let product = &machine_state::read_in(&[(machine.to_string(), true)])[machine];
+    let product =
+        &machine_state::read_in(&[(machine.to_string(), true)], &Default::default())[machine];
     assert_eq!(
         product.unclear,
         Some(2),

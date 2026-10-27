@@ -601,6 +601,7 @@ pub(crate) fn annotate_at(
     }
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     let prev = entry.hide;
+    let prev_title = entry.custom_title.clone();
     if let Some(s) = patch.starred {
         entry.starred = s;
     }
@@ -632,7 +633,11 @@ pub(crate) fn annotate_at(
     if auto_changed {
         super::needs_changed::moved(sid);
     }
-    Ok(Annotated { entry, prev })
+    Ok(Annotated {
+        entry,
+        prev,
+        prev_title,
+    })
 }
 
 /// 「下次恢复用」那一格的唯一写者（`session-model` · `session-permission` 在终端没了时调）：同一个 `end` 上先后记的并成一份，
@@ -763,7 +768,7 @@ pub(crate) fn edit_slice_at<T>(
     Ok(out)
 }
 
-/// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格。
+/// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格 · 改之前改过的名。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -771,6 +776,8 @@ pub(crate) struct Annotated {
     pub(crate) entry: Entry,
     /// 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
     pub(crate) prev: Option<Hide>,
+    /// 改之前改过的名（没有 ⇒ `null`）：撤销改名照它交回去（`null` ⇒ 交空串，回到原标题）—— 标签页上只有定好的名，不知道这一格。
+    pub(crate) prev_title: Option<String>,
 }
 
 /// `history-forget` 的回包。
