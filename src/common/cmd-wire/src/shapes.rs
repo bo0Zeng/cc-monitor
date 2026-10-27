@@ -198,6 +198,8 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-preview", "631ce4ab"),
     ("terminal-ssh", "305392b1"),
     ("terminal-unfollow", "7ffb2c4f"),
+    ("terminals-board", "82f737ba"),
+    ("terminals-board-here", "cd2a5ba3"),
     ("terminals-list", "5b8ef772"),
     ("transfer-copy", "81f684d9"),
     ("transfer-download", "c504e0e5"),
@@ -362,6 +364,7 @@ pub const UNCANCELLABLE: &[&str] = &[
     "terminal-input",
     "terminal-preview",
     "terminal-ssh",
+    "terminals-board-here",
     "terminals-list",
     "transfer-copy",
 ];

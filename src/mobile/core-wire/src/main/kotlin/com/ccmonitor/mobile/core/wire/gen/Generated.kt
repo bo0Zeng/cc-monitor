@@ -2138,6 +2138,223 @@ data class BlockText(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class BoardDown(
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardDown> = obj(
+            listOf(
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BoardDown(a[0] as String) },
+            { v -> arrayOf(v.said) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardFilter(
+    val tag: BoardTag,
+    val label: String,
+    val count: Int,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardFilter> = obj(
+            listOf(
+            Field("tag", { BoardTag.ADAPTER }, optional = false, nullable = false),
+            Field("label", { Str }, optional = false, nullable = false),
+            Field("count", { Int32 }, optional = false, nullable = false),
+            ),
+            { a -> BoardFilter(a[0] as BoardTag, a[1] as String, a[2] as Int) },
+            { v -> arrayOf(v.tag, v.label, v.count) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardGroup(
+    val machine: String,
+    val name: String,
+    val sub: String,
+    val down: BoardDown? = null,
+    val complete: Boolean,
+    val rows: List<BoardRow>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardGroup> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
+            Field("sub", { Str }, optional = false, nullable = false),
+            Field("down", { opt(BoardDown.ADAPTER) }, optional = true, nullable = true),
+            Field("complete", { Bool }, optional = false, nullable = false),
+            Field("rows", { arr(BoardRow.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> BoardGroup(a[0] as String, a[1] as String, a[2] as String, a[3] as BoardDown?, a[4] as Boolean, a[5] as List<BoardRow>) },
+            { v -> arrayOf(v.machine, v.name, v.sub, v.down, v.complete, v.rows) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardHere(
+    val rows: List<BoardRow>,
+    val complete: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardHere> = obj(
+            listOf(
+            Field("rows", { arr(BoardRow.ADAPTER) }, optional = false, nullable = false),
+            Field("complete", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> BoardHere(a[0] as List<BoardRow>, a[1] as Boolean) },
+            { v -> arrayOf(v.rows, v.complete) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardHereReq(
+    val client: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardHereReq> = obj(
+            listOf(
+            Field("client", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> BoardHereReq(a[0] as String?) },
+            { v -> arrayOf(v.client) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardReq(
+    val machines: List<String>,
+    val client: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardReq> = obj(
+            listOf(
+            Field("machines", { arr(Str) }, optional = false, nullable = false),
+            Field("client", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> BoardReq(a[0] as List<String>, a[1] as String?) },
+            { v -> arrayOf(v.machines, v.client) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardRow(
+    val key: String,
+    val terminal: String,
+    val tmuxName: String,
+    val sid: String? = null,
+    val dot: SessionDot,
+    val dotName: String,
+    val title: String,
+    val windowTitle: String,
+    val mono: Boolean,
+    val badge: String? = null,
+    val meta: String,
+    val chips: List<String>,
+    val atText: String,
+    val tags: List<BoardTag>,
+    val find: String,
+    val canEnd: BoardRowCanEnd,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardRow> = obj(
+            listOf(
+            Field("key", { Str }, optional = false, nullable = false),
+            Field("terminal", { Str }, optional = false, nullable = false),
+            Field("tmux_name", { Str }, optional = false, nullable = false),
+            Field("sid", { opt(Str) }, optional = true, nullable = true),
+            Field("dot", { SessionDot.ADAPTER }, optional = false, nullable = false),
+            Field("dot_name", { Str }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("window_title", { Str }, optional = false, nullable = false),
+            Field("mono", { Bool }, optional = false, nullable = false),
+            Field("badge", { opt(Str) }, optional = true, nullable = true),
+            Field("meta", { Str }, optional = false, nullable = false),
+            Field("chips", { arr(Str) }, optional = false, nullable = false),
+            Field("at_text", { Str }, optional = false, nullable = false),
+            Field("tags", { arr(BoardTag.ADAPTER) }, optional = false, nullable = false),
+            Field("find", { Str }, optional = false, nullable = false),
+            Field("can_end", { BoardRowCanEnd.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> BoardRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String?, a[4] as SessionDot, a[5] as String, a[6] as String, a[7] as String, a[8] as Boolean, a[9] as String?, a[10] as String, a[11] as List<String>, a[12] as String, a[13] as List<BoardTag>, a[14] as String, a[15] as BoardRowCanEnd) },
+            { v -> arrayOf(v.key, v.terminal, v.tmuxName, v.sid, v.dot, v.dotName, v.title, v.windowTitle, v.mono, v.badge, v.meta, v.chips, v.atText, v.tags, v.find, v.canEnd) },
+        )
+    }
+}
+
+sealed interface BoardRowCanEnd {
+    data class Flag(
+        val value: Boolean,
+    ) : BoardRowCanEnd
+    data class Obj(
+        val value: BoardRowCanEndObjValue,
+    ) : BoardRowCanEnd
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardRowCanEnd> =
+            byToken<BoardRowCanEnd>(
+                listOf(
+                Tok(JsonReader.Token.BOOLEAN, BoardRowCanEnd.Flag::class.java, { Bool }, { BoardRowCanEnd.Flag(it as Boolean) }, { (it as BoardRowCanEnd.Flag).value }),
+                Tok(JsonReader.Token.BEGIN_OBJECT, BoardRowCanEnd.Obj::class.java, { BoardRowCanEndObjValue.ADAPTER }, { BoardRowCanEnd.Obj(it as BoardRowCanEndObjValue) }, { (it as BoardRowCanEnd.Obj).value }),
+                ),
+            )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BoardRowCanEndObjValue(
+    val no: Refused,
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardRowCanEndObjValue> = obj(
+            listOf(
+            Field("no", { Refused.ADAPTER }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BoardRowCanEndObjValue(a[0] as Refused, a[1] as String) },
+            { v -> arrayOf(v.no, v.said) },
+        )
+    }
+}
+
+enum class BoardTag(val wire: String) {
+    ALL("all"),
+    SESSION("session"),
+    BARE("bare"),
+    BACKGROUND("background"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<BoardTag> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Bookmarks(
     val dirs: List<String>,
 ) : Ordered {
@@ -22340,7 +22557,7 @@ sealed interface TerminalCanEnd {
 
 @Suppress("UNCHECKED_CAST")
 data class TerminalCanEndObjValue(
-    val no: TerminalCanEndObjValueNo,
+    val no: Refused,
     val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -22348,23 +22565,12 @@ data class TerminalCanEndObjValue(
     companion object {
         val ADAPTER: JsonAdapter<TerminalCanEndObjValue> = obj(
             listOf(
-            Field("no", { TerminalCanEndObjValueNo.ADAPTER }, optional = false, nullable = false),
+            Field("no", { Refused.ADAPTER }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> TerminalCanEndObjValue(a[0] as TerminalCanEndObjValueNo, a[1] as String) },
+            { a -> TerminalCanEndObjValue(a[0] as Refused, a[1] as String) },
             { v -> arrayOf(v.no, v.said) },
         )
-    }
-}
-
-enum class TerminalCanEndObjValueNo(val wire: String) {
-    NOT_YOURS("not_yours"),
-    NOT_MANAGED("not_managed"),
-    OTHER_WINDOWS("other_windows"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<TerminalCanEndObjValueNo> = enumOf(entries) { it.wire }
     }
 }
 
@@ -22645,6 +22851,25 @@ data class TerminalSshReqCwdObjValue(
             ),
             { a -> TerminalSshReqCwdObjValue(a[0] as String) },
             { v -> arrayOf(v.b16) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalsBoard(
+    val filters: List<BoardFilter>,
+    val groups: List<BoardGroup>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalsBoard> = obj(
+            listOf(
+            Field("filters", { arr(BoardFilter.ADAPTER) }, optional = false, nullable = false),
+            Field("groups", { arr(BoardGroup.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> TerminalsBoard(a[0] as List<BoardFilter>, a[1] as List<BoardGroup>) },
+            { v -> arrayOf(v.filters, v.groups) },
         )
     }
 }

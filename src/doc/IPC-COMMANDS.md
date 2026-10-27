@@ -11378,6 +11378,180 @@ client?: string, };
 
 码：`bad_args` · `unobservable` · `child_timed_out`
 
+#### `terminals-board-here`
+
+这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminals-board-here`
+
+入参 `BoardHereReq` · 回包 `BoardHere`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BoardHere = { rows: Array<BoardRow>, 
+/**
+ * `false` ＝ 名单里有读不懂的行。
+ */
+complete: boolean, };
+type BoardHereReq = { 
+/**
+ * 自报的前端（决定每行的 `can_end`）。
+ */
+client?: string, };
+type BoardRow = { 
+/**
+ * 这一行在整张名单里的键（不透明、跨几次问稳定）：出口按它认行。
+ */
+key: string, 
+/**
+ * 终端句柄（`terminals-list` 那一格；抓屏 · 订画面 · 送字时交回）。
+ */
+terminal: string, 
+/**
+ * tmux 会话名（结束没会话的那一行时交 `kill`）。
+ */
+tmux_name: string, 
+/**
+ * 里面跑着的会话。
+ */
+sid?: string, dot: SessionDot, 
+/**
+ * 点的名字（读屏 · 悬停）。
+ */
+dot_name: Words, title: Words, 
+/**
+ * 单独终端窗口的系统标题（标题 · 终端 · 那台）：各台合成那一步写（那台叫什么合成时才知道），这台那一份是空的。
+ */
+window_title: Words, 
+/**
+ * 标题照命令原文、等宽画（没有会话的终端）。
+ */
+mono: boolean, 
+/**
+ * 标题旁的徽标（在等人 ⇒ 那一态的短名）。
+ */
+badge?: Words, 
+/**
+ * 第二行（号或「没有会话」· 目录）。
+ */
+meta: Words, 
+/**
+ * 第二行尾的小签（后台 · 终端窗口 ×n · 已退出）。
+ */
+chips: Array<Words>, 
+/**
+ * 行尾那一格（现在 · 1m · 2h）。
+ */
+at_text: Words, 
+/**
+ * 它算进哪几格筛选（不含 `all`）。
+ */
+tags: Array<BoardTag>, 
+/**
+ * 找的时候比对的那一串（标题 · 目录 · tmux 会话名，已小写）。
+ */
+find: string, 
+/**
+ * 能不能结束。
+ */
+can_end: true | { no: "not_yours" | "not_managed" | "other_windows", said: string }, };
+type BoardTag = "all" | "session" | "bare" | "background";
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type Words = string;
+```
+
+码：`bad_args` · `unobservable` · `child_timed_out`
+
+#### `terminals-board`
+
+「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数）。
+
+收 `args` · 可撤 · CLI：`ccm -- --terminals-board`
+
+入参 `BoardReq` · 回包 `TerminalsBoard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BoardDown = { said: Words, };
+type BoardFilter = { tag: BoardTag, label: Words, count: number, };
+type BoardGroup = { machine: Origin, name: Words, 
+/**
+ * 组头那一句（n 个终端 · m 个后台）。
+ */
+sub: Words, 
+/**
+ * 这台没答 ⇒ 那一句；`rows` 是上次答的那份（点一律 unknown）。
+ */
+down?: BoardDown, 
+/**
+ * `false` ＝ 那台名单里有读不懂的行。
+ */
+complete: boolean, rows: Array<BoardRow>, };
+type BoardReq = { machines: Array<Origin>, client?: string, };
+type BoardRow = { 
+/**
+ * 这一行在整张名单里的键（不透明、跨几次问稳定）：出口按它认行。
+ */
+key: string, 
+/**
+ * 终端句柄（`terminals-list` 那一格；抓屏 · 订画面 · 送字时交回）。
+ */
+terminal: string, 
+/**
+ * tmux 会话名（结束没会话的那一行时交 `kill`）。
+ */
+tmux_name: string, 
+/**
+ * 里面跑着的会话。
+ */
+sid?: string, dot: SessionDot, 
+/**
+ * 点的名字（读屏 · 悬停）。
+ */
+dot_name: Words, title: Words, 
+/**
+ * 单独终端窗口的系统标题（标题 · 终端 · 那台）：各台合成那一步写（那台叫什么合成时才知道），这台那一份是空的。
+ */
+window_title: Words, 
+/**
+ * 标题照命令原文、等宽画（没有会话的终端）。
+ */
+mono: boolean, 
+/**
+ * 标题旁的徽标（在等人 ⇒ 那一态的短名）。
+ */
+badge?: Words, 
+/**
+ * 第二行（号或「没有会话」· 目录）。
+ */
+meta: Words, 
+/**
+ * 第二行尾的小签（后台 · 终端窗口 ×n · 已退出）。
+ */
+chips: Array<Words>, 
+/**
+ * 行尾那一格（现在 · 1m · 2h）。
+ */
+at_text: Words, 
+/**
+ * 它算进哪几格筛选（不含 `all`）。
+ */
+tags: Array<BoardTag>, 
+/**
+ * 找的时候比对的那一串（标题 · 目录 · tmux 会话名，已小写）。
+ */
+find: string, 
+/**
+ * 能不能结束。
+ */
+can_end: true | { no: "not_yours" | "not_managed" | "other_windows", said: string }, };
+type BoardTag = "all" | "session" | "bare" | "background";
+type Origin = string;
+type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
+type TerminalsBoard = { filters: Array<BoardFilter>, groups: Array<BoardGroup>, };
+type Words = string;
+```
+
+码：`bad_args`
+
 #### `terminal-preview`
 
 抓一个终端的一屏（只抓一次，轮询归调用方）。
