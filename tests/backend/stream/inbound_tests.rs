@@ -1187,7 +1187,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             .unwrap()
         )
         .unwrap(),
-        r#"{"result":"refused","said":"终端已不在","why":"not_known"}"#
+        r#"{"acts":["retry","relist"],"result":"refused","said":"终端已不在","why":"not_known"}"#
     );
     use crate::control::terminals as t;
     use crate::control::terminals_wire::SentResult;
@@ -1238,7 +1238,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     assert_eq!(
         wire(&t::input_reply(SentResult::Unsure, None, None)),
-        r##"{"result":"unsure"}"##
+        r##"{"acts":["recapture"],"result":"unsure"}"##
     );
     assert_eq!(
         wire(&t::input_reply(
@@ -1246,7 +1246,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             Some(t::Refused::ScreenChanged),
             Some("0000000000000000")
         )),
-        r#"{"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
+        r#"{"acts":["retry","recapture"],"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
     // kill：经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 没有这个会话），再拿纯构造器逐字节比换形之前那一版写出来的。
     assert_eq!(

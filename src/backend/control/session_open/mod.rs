@@ -14,7 +14,7 @@ use super::session_batch::{
 };
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
-pub use cmd_wire::session::{ArriveAsk, ArriveBy, FirstSay, Landed, Opened, Run};
+pub use cmd_wire::session::{ArriveAsk, ArriveBy, Landed, Opened, Run};
 pub(crate) use new::{
     dir_answer, DirChecked, ForkFrom, ForkWrite, OpenDirErr, OpenDirReq, PreRotation,
 };
@@ -1081,10 +1081,12 @@ fn start_new(
         cwd: Some(cwd),
         account: launched(&account),
         // 第一句起的时候已经交给那一家了 ⇒ 交到了。
-        prompt: prompt.map(|_| FirstSay {
-            result: "delivered".into(),
-            why: None,
-            said: None,
+        prompt: prompt.map(|_| {
+            crate::control::terminals::input_reply(
+                crate::control::terminals_wire::SentResult::Delivered,
+                None,
+                None,
+            )
         }),
         ..out
     })
