@@ -375,6 +375,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // `bookmarks-read`：这台的书签，无入参、有输出字段 `dirs`（同族 `bookmarks-edit` 要输入，不在表里）。
         "bookmarks-read",
         "drift-report", // 这台后端的漂移账（纯读、不收输入）
+        "drift-merge",  // 本机与各台的漂移账（纯读、不收输入；别的台由本机后端问到）
         "exit-policy-read",
         "prefs-read",    // 这台的偏好（纯读、不收输入）
         "machines-read", // 本机的机器表（纯读、不收输入）

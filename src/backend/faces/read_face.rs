@@ -182,6 +182,117 @@ impl crate::wire::typed::Handle for DriftReportCmd {
     }
 }
 
+/// `drift-merge` 的一台：那台的漂移账（`drift-report` 的回包原样）；问不到 ⇒ `null`。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct DriftOn {
+    /// 那台的键（本机 `<local>`，别的台是机器表里的名字）。
+    pub(crate) origin: String,
+    pub(crate) report: Option<crate::agents::drift::DriftReport>,
+}
+
+/// `drift-merge` 的回包：本机在前，其余照机器表的顺序。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct DriftMerge {
+    pub(crate) machines: Vec<DriftOn>,
+}
+
+crate::wire::typed::codes! {
+    /// `drift-merge` 没有别的码。
+    pub(crate) enum DriftMergeErr {}
+}
+
+/// `drift-merge`：本机与机器表里每台的漂移账（诊断信息要的那一份）。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问
+/// `drift-report`（`control/feeds.rs::call`），同时问、并好再答（[`drift_hub`]）。只读；读机器表进阻塞池。
+pub(crate) struct DriftMergeCmd;
+
+impl crate::wire::typed::Command for DriftMergeCmd {
+    const NAME: &'static str = "drift-merge";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::wire::typed::NoArgs;
+    type Reply = DriftMerge;
+    type Err = DriftMergeErr;
+}
+
+impl crate::wire::typed::Handle for DriftMergeCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: crate::wire::typed::NoArgs,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<DriftMerge, DriftMergeErr>> + Send + 'static {
+        let until = cx.until;
+        async move {
+            let names = tokio::task::spawn_blocking(|| {
+                crate::control::machines::answer_read_in(
+                    crate::platform::paths::home_dir().as_deref(),
+                )
+                .hosts
+                .iter()
+                .map(|h| h.name().to_string())
+                .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap_or_default();
+            let there = move |m: String| async move {
+                crate::control::feeds::call::<DriftReportCmd>(
+                    &m,
+                    &crate::wire::typed::NoArgs {},
+                    until,
+                )
+                .await
+                .map_err(|f| tracing::warn!("drift-merge [{m}]: {}", f.message))
+                .ok()
+            };
+            Ok(drift_hub(names, crate::agents::drift_report(), there).await)
+        }
+    }
+}
+
+/// [`DriftMergeCmd`] 并好再答的那一层（这台那一份 · 怎么问到那台由调用方给，判据喂假的）：本机在前，
+/// `names`（机器表的顺序）里每台各问一次、同时问；表里写着本机 · 写了两遍的只算一次；问不到 ⇒ 那一行 `null`。
+pub(crate) async fn drift_hub<T, TF>(
+    names: Vec<String>,
+    mine: crate::agents::drift::DriftReport,
+    there: T,
+) -> DriftMerge
+where
+    T: Fn(String) -> TF,
+    TF: std::future::Future<Output = Option<crate::agents::drift::DriftReport>> + Send + 'static,
+{
+    let mut order: Vec<String> = Vec::new();
+    for n in names {
+        if !cmd_wire::Machine::named(&n).is_remote() || order.contains(&n) {
+            continue;
+        }
+        order.push(n);
+    }
+    let mut asks = tokio::task::JoinSet::new();
+    for (i, n) in order.iter().enumerate() {
+        let ask = there(n.clone());
+        asks.spawn(async move { (i, ask.await) });
+    }
+    let mut got: Vec<Option<crate::agents::drift::DriftReport>> = vec![None; order.len()];
+    while let Some(done) = asks.join_next().await {
+        if let Ok((i, r)) = done {
+            got[i] = r;
+        }
+    }
+    let mut machines = vec![DriftOn {
+        origin: cmd_wire::machine::LOCAL.to_string(),
+        report: Some(mine),
+    }];
+    machines.extend(
+        order
+            .into_iter()
+            .zip(got)
+            .map(|(origin, report)| DriftOn { origin, report }),
+    );
+    DriftMerge { machines }
+}
+
 crate::wire::typed::codes! {
     /// `accounts-list` 的码：整份超过一帧装得下的。
     pub(crate) enum AccountsListErr {
@@ -499,6 +610,10 @@ pub(crate) mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/interrupts_hub_tests.rs"]
 mod interrupts_hub_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/drift_merge_tests.rs"]
+mod drift_merge_tests;
 
 /// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `recognize::facts::dress_ask_with`）；
 /// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。

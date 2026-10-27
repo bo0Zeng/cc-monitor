@@ -37,6 +37,8 @@ const BORN_ON_FRAME: &[&str] = &[
     // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
     "history-page",
     "drift-report",
+    // 本机与各台的漂移账（本机后端经各台的常驻流问到、并好再答；界面经通道直接问，monitor 这一侧从不发它）。
+    "drift-merge",
     // 问到各台搜一遍、合一份（本机后端自己扇出 · 合并排序；界面经通道直接问，monitor 这一侧从不发它）。
     "history-search-merge",
     // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
@@ -258,8 +260,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("plan-ack", "新帧命令：认可一条需手动（只记在 cc-monitor，键带条目版本，后端判）；计划页那一条只排版"),
     ("plan-unack", "新帧命令：撤掉认可（toast［撤销］那一下）；计划页只排版"),
     ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
-    // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
-    ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
     ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · adopt · render · repo（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］· 新计划框［新建］只排版"),
     ("plan-new", "新帧命令：新计划框问的那一份（pb dump --domains · 落在哪 · 撞没撞上已有的一片 · 那一行 pb repo 都在后端）；新计划框只排版"),
     ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
@@ -501,6 +501,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "sessions-needs-merge",
         "`BORN_ON_FRAME` 那一条：本机后端问到各台的需手动整份、合成一份 ＋ 总数（`recognize::facts::merge_needs`，照各项的 `rank`）；\
          前端 `needs-book.ts` 问本机后端（入口 · 浮层 · `Ctrl+J` · 窗口标题走它），monitor 这一侧零发送点",
+    ),
+    (
+        "drift-merge",
+        "`BORN_ON_FRAME` 那一条：本机后端问到各台的漂移账（`read_face.rs::drift_hub`，经各台常驻流问 `drift-report`）、本机在前照机器表排；\
+         前端 `src/frontend/ui/record-reads.ts::readDriftOfAll` 只问本机后端、原样交壳 `diagnostics_report`，monitor 这一侧零发送点",
     ),
     (
         "machine-interrupts",
