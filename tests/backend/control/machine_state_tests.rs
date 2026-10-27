@@ -238,7 +238,7 @@ fn shipped_version() -> String {
 #[test]
 fn the_product_carries_the_links_to_that_machine() {
     let link = cmd_wire::machine::MachineLink {
-        endpoint: "10.0.0.2:22".into(),
+        endpoint: "box.test:22".into(),
         jump: false,
         compressed: true,
         bytes_in: 4096,
@@ -274,7 +274,10 @@ fn the_product_carries_the_links_to_that_machine() {
     let read = read_in(&hosts, &links);
     assert_eq!(read["ms-linked"].links, vec![link]);
     assert!(read["ms-unlinked"].links.is_empty(), "没连接的那台不该带");
-    assert!(read[cmd_wire::machine::LOCAL].links.is_empty(), "本机不经 SSH");
+    assert!(
+        read[cmd_wire::machine::LOCAL].links.is_empty(),
+        "本机不经 SSH"
+    );
     let wire = serde_json::to_value(&read["ms-unlinked"]).expect("成品写不出");
     assert!(wire.get("links").is_none(), "没连接 ⇒ 线上省略那一格");
 }
@@ -299,5 +302,9 @@ async fn a_pool_move_repushes_and_the_follower_ends_with_the_pool() {
     drop(tx);
     let ended = tokio::time::timeout(guard_core::wall::CEILING, run).await;
     assert!(ended.is_ok(), "池没了，跟的那一路还在等");
-    assert_eq!(PUSHED.load(std::sync::atomic::Ordering::SeqCst), 1, "动一笔只推一遍");
+    assert_eq!(
+        PUSHED.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "动一笔只推一遍"
+    );
 }

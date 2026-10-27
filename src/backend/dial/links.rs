@@ -52,14 +52,11 @@ pub(crate) fn rows(f: &LinkFacts) -> Vec<MachineLink> {
 }
 
 fn item(w: &ssh_dial::pool::Wire, jump: bool) -> MachineLink {
-    let packing = copy_core::copy_text(
-        if w.compressed {
-            "beLinks.compressed"
-        } else {
-            "beLinks.plain"
-        },
-        &[],
-    );
+    let packing = if w.compressed {
+        copy_core::copy_text("beLinks.compressed", &[])
+    } else {
+        copy_core::copy_text("beLinks.plain", &[])
+    };
     let line = copy_core::copy_text(
         "beLinks.line",
         &[

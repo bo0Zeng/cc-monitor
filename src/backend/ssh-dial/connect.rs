@@ -1134,56 +1134,55 @@ pub async fn establish(
     // 目标那一台的全部地址：库里按它们认这台、记也写它们（经跳板时也一样，同一台机器）。
     let addrs = req.race_order();
     let target_trust = Trust::of(&addrs).map_err(|e| unreadable(stages, e))?;
-    let (mut session, observed, winner, jumps, heard, compressed, jump_wires) = if req
-        .jump
-        .is_none()
-    {
-        // `apply = true` ⇒ 竞速交回的那一格就是落在这条上的答案。
-        let (s, o, w, c, h) = race(req.probe, true, target_trust, addrs.clone(), stages).await?;
-        (s, o, w, Vec::new(), h, c, Vec::new())
-    } else {
-        let (tunnel, compress_inner, jumps, jump_wires) = through_hops(req, stages).await?;
-        let observed: Seen = Arc::default();
-        let ep_label = copy_text(
-            "beConnect.jump.target",
-            &[("host", &req.host), ("port", &req.port.to_string())],
-        );
-        // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
-        let heard = Arc::new(crate::pool::Heard::new());
-        let checker = Checker {
-            trust: target_trust.clone(),
-            observed: Arc::clone(&observed),
-            stages: stages.clone(),
-            endpoint: ep_label,
-            heard: Arc::clone(&heard),
-        };
-        let session = client::connect_stream(
-            config_for(req.probe, compress_inner, &target_trust),
-            Hearing::new(tunnel, Arc::clone(&heard)).telling(stages),
-            checker,
-        )
-        .await
-        .map_err(|e| {
-            stages.note_why(crate::why_of_stage(stage_of_russh(&e)));
-            (
-                Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
-                fingerprint_in(&observed),
+    let (mut session, observed, winner, jumps, heard, compressed, jump_wires) =
+        if req.jump.is_none() {
+            // `apply = true` ⇒ 竞速交回的那一格就是落在这条上的答案。
+            let (s, o, w, c, h) =
+                race(req.probe, true, target_trust, addrs.clone(), stages).await?;
+            (s, o, w, Vec::new(), h, c, Vec::new())
+        } else {
+            let (tunnel, compress_inner, jumps, jump_wires) = through_hops(req, stages).await?;
+            let observed: Seen = Arc::default();
+            let ep_label = copy_text(
+                "beConnect.jump.target",
+                &[("host", &req.host), ("port", &req.port.to_string())],
+            );
+            // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
+            let heard = Arc::new(crate::pool::Heard::new());
+            let checker = Checker {
+                trust: target_trust.clone(),
+                observed: Arc::clone(&observed),
+                stages: stages.clone(),
+                endpoint: ep_label,
+                heard: Arc::clone(&heard),
+            };
+            let session = client::connect_stream(
+                config_for(req.probe, compress_inner, &target_trust),
+                Hearing::new(tunnel, Arc::clone(&heard)).telling(stages),
+                checker,
             )
-        })?;
-        let winner = Endpoint {
-            host: req.host.clone(),
-            port: req.port,
+            .await
+            .map_err(|e| {
+                stages.note_why(crate::why_of_stage(stage_of_russh(&e)));
+                (
+                    Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
+                    fingerprint_in(&observed),
+                )
+            })?;
+            let winner = Endpoint {
+                host: req.host.clone(),
+                port: req.port,
+            };
+            (
+                session,
+                observed,
+                winner,
+                jumps,
+                heard,
+                compress_inner,
+                jump_wires,
+            )
         };
-        (
-            session,
-            observed,
-            winner,
-            jumps,
-            heard,
-            compress_inner,
-            jump_wires,
-        )
-    };
     let fingerprint = fingerprint_in(&observed);
     if let Err(e) = authenticate(
         &mut session,

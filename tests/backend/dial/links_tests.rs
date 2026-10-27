@@ -19,8 +19,8 @@ fn wire(endpoint: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> Wire
 
 /// 那台的身份：与池放置那一刻同一个算法（组请求 → identity）。
 fn key_of(hosts: &[Host], name: &str) -> String {
-    let req = crate::dial::dial_named(hosts, name, "capture", serde_json::json!({}))
-        .expect("组请求");
+    let req =
+        crate::dial::dial_named(hosts, name, "capture", serde_json::json!({})).expect("组请求");
     ssh_dial::pool::identity(&req)
 }
 
@@ -50,10 +50,14 @@ fn line(endpoint: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> Stri
 #[test]
 fn pool_links_land_on_the_machine_whose_identity_they_carry() {
     let hosts = vec![
-        host(serde_json::json!({"label": "box", "host": "10.0.0.2", "user": "u", "addresses": ["10.0.0.2", "box.lan:2222"]})),
-        host(serde_json::json!({"label": "edge", "host": "10.0.0.9", "user": "u"})),
-        host(serde_json::json!({"label": "deep", "host": "10.0.0.3", "user": "u", "jump": "edge"})),
-        host(serde_json::json!({"label": "idle", "host": "10.0.0.4", "user": "u"})),
+        host(
+            serde_json::json!({"label": "box", "host": "box.test", "user": "u", "addresses": ["box.test", "box.lan:2222"]}),
+        ),
+        host(serde_json::json!({"label": "edge", "host": "edge.test", "user": "u"})),
+        host(
+            serde_json::json!({"label": "deep", "host": "deep.test", "user": "u", "jump": "edge"}),
+        ),
+        host(serde_json::json!({"label": "idle", "host": "idle.test", "user": "u"})),
     ];
     let snap = vec![
         (
@@ -64,7 +68,7 @@ fn pool_links_land_on_the_machine_whose_identity_they_carry() {
                     jumps: vec![],
                 },
                 LinkFacts {
-                    link: wire("10.0.0.2:22", false, 10, 20),
+                    link: wire("box.test:22", false, 10, 20),
                     jumps: vec![],
                 },
             ],
@@ -72,14 +76,14 @@ fn pool_links_land_on_the_machine_whose_identity_they_carry() {
         (
             key_of(&hosts, "deep"),
             vec![LinkFacts {
-                link: wire("10.0.0.3:22", true, 3000, 100),
-                jumps: vec![wire("10.0.0.9:22", false, 5000, 900)],
+                link: wire("deep.test:22", true, 3000, 100),
+                jumps: vec![wire("edge.test:22", false, 5000, 900)],
             }],
         ),
         (
             "[\"someone-else\"]".to_string(),
             vec![LinkFacts {
-                link: wire("10.9.9.9:22", false, 1, 1),
+                link: wire("other.test:22", false, 1, 1),
                 jumps: vec![],
             }],
         ),
@@ -105,14 +109,14 @@ fn pool_links_land_on_the_machine_whose_identity_they_carry() {
             "box".to_string(),
             vec![
                 row("box.lan:2222", false, true, 2048, 512),
-                row("10.0.0.2:22", false, false, 10, 20),
+                row("box.test:22", false, false, 10, 20),
             ],
         ),
         (
             "deep".to_string(),
             vec![
-                row("10.0.0.3:22", false, true, 3000, 100),
-                row("10.0.0.9:22", true, false, 5000, 900),
+                row("deep.test:22", false, true, 3000, 100),
+                row("edge.test:22", true, false, 5000, 900),
             ],
         ),
     ]

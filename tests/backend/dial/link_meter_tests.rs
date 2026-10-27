@@ -252,7 +252,10 @@ async fn a_link_reports_the_wire_bytes_both_ways() {
         "进的字节 {} 装不下 exec 回的 {REPLY_LEN}",
         wire.bytes_in
     );
-    assert!(wire.bytes_out > 0, "握手 ＋ 鉴权 ＋ exec 都发过字节，出不该是 0");
+    assert!(
+        wire.bytes_out > 0,
+        "握手 ＋ 鉴权 ＋ exec 都发过字节，出不该是 0"
+    );
 }
 
 /// ★ 压没压：回环那一跳判准答「不压」⇒ 这条连接报不压；地址是胜出的那一条。直连没有跳板那几项。

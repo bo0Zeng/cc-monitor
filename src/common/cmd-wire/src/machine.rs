@@ -383,7 +383,10 @@ pub struct MachineState {
     /// 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
     /// 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<MachineLink>>"))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<Vec<MachineLink>>")
+    )]
     pub links: Vec<MachineLink>,
 }
 

@@ -214,7 +214,6 @@ pub struct LinkFacts {
 }
 
 impl Heard {
-
     /// 等这条连接没了（已经没了 ⇒ 当场回）。
     pub async fn gone(&self) {
         let mut rx = self.gone.subscribe();
