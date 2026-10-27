@@ -125,7 +125,7 @@ mod spawn_managed;
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
 // 就该删掉整个模块，而不是让它当装饰。
-mod sftp_pool;
+mod transfer_relay;
 // 远端自部署：照本机常驻后端出的计划往那台放字节（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）。
 mod deploy;
 // 会话流只读本机后端那一条：各台的常驻流归本机后端，那台流上的事由它原样转来（`relayed`），

@@ -10,6 +10,6 @@ fn the_transfer_names_the_window_says_are_the_ones_the_monitor_relays() {
     // 开单两条的名字不再两边各写一份：窗口发的、monitor 认的都是 `cmd_wire::transfer` 那两个入参类型挂的名字。
     assert_eq!(
         cc_monitor_filewin::transfer::KIND_PREFIX,
-        crate::sftp_pool::TRANSFER_KIND_PREFIX
+        crate::transfer_relay::TRANSFER_KIND_PREFIX
     );
 }

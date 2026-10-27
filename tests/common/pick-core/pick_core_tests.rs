@@ -299,7 +299,7 @@ fn the_facts_come_from_the_ls_row() {
         let e: cmd_wire::files::LsEntry = serde_json::from_value(v).unwrap();
         PickIn::of_ls(&e)
     };
-    let base = |name: serde_json::Value, kind: &str, class: &str| serde_json::json!({ "path": "/x", "name": name, "kind": kind, "class": class, "type_text": "" });
+    let base = |name: serde_json::Value, kind: &str, class: &str| serde_json::json!({ "path": "/x", "shown": "/x", "name": name, "kind": kind, "class": class, "type_text": "" });
     let mut dl = base("dl".into(), "symlink", "folder");
     dl["link_dir"] = true.into();
     dl["link_to"] = "dir".into();
