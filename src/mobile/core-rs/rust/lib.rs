@@ -27,6 +27,7 @@ use ssh_dial::Said;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
+pub mod attach;
 pub mod batch;
 mod copy;
 mod host_keys;
@@ -885,6 +886,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_downloadEvent<'l>(
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &want).unwrap_or_default();
         env.new_string(download_event_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `Core.attachFace(want)`：聊天输入框上方那一排附件的字（[`attach::face_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_attachFace<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    want: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &want).unwrap_or_default();
+        env.new_string(attach::face_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })

@@ -33,10 +33,10 @@ export interface GridSessionSnapshot {
   face: SessionFace;
   /** 在等人时等的是什么（核心写好的字：等批准 · 等回答 …，`needs.text`）；不在等 ⇒ null。 */
   needs: string | null;
-  /** 本会话仍在跑的 subagent 数。 */
+  /** 本会话仍在跑的 subagent 数（后端那一组「在跑」的个数）。 */
   runningAgents: number;
-  /** 本会话 subagent 总数（含已结束）。 */
-  totalAgents: number;
+  /** 本会话 agent 那一枚后端写好的字（总数后端照实数，`SessionRuns.summary`）；没有子 agent ⇒ null。 */
+  agents: string | null;
   /** 上下文那一格（核心写好的字 · 语气 · 百分比；百分比为 null ＝ 上限判不出）；还没有用量 ⇒ null。 */
   context: { text: string; tone: string; percent: number | null } | null;
   /** 未读消息数（非活跃 tab 累积）。 */
