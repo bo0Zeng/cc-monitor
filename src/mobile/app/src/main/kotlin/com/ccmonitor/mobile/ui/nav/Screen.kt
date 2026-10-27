@@ -108,6 +108,25 @@ sealed class Screen(
         const val ARG_ACCOUNT = "account"
     }
 
+    /** agent 列表：一条会话（[sid]）派出的子 agent（聊天屏 ⋯ → agent 进）。 */
+    data object Agents : Screen("agents/{hostId}/{sid}") {
+        fun of(
+            hostId: String,
+            sid: String,
+        ): String = "agents/$hostId/$sid"
+    }
+
+    /** agent 屏：那条会话里的一个子运行（[run] 是运行表里那一格）；栈里同一个运行只出现一次（`AgentStack`）。 */
+    data object Agent : Screen("agent/{hostId}/{sid}/{run}") {
+        fun of(
+            hostId: String,
+            sid: String,
+            run: String,
+        ): String = "agent/$hostId/$sid/" + URLEncoder.encode(run, "UTF-8").replace("+", "%20")
+
+        const val ARG_RUN = "run"
+    }
+
     /** 设置 → 机器与账号 → 轮换：当前服务器（上次那台）新会话用的那份。 */
     data object RotationHere : Screen("settings/rotation")
 

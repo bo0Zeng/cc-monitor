@@ -178,6 +178,24 @@ impl Own {
         std::fs::remove_file(&path.0)
     }
 
+    /// 收掉一个自家目录：里面那一层的文件（套接字 · 事实文件 · 旁名）删掉，再删目录本身；不往下钻（里面有子目录 ⇒ 删目录那一下照实报错）。
+    /// `held` 必须是这个目录自己的锁（托管终端收尾时攥着的那一把），不是 ⇒ 拒、一个字节不动。
+    pub(crate) fn clear_dir(&self, dir: &OwnPath, held: &OwnLock) -> std::io::Result<()> {
+        if held.dir != dir.0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "lock is not this directory's",
+            ));
+        }
+        for e in Ro::read_dir(&dir.0)? {
+            let e = e?;
+            if e.file_type().is_ok_and(|t| !t.is_dir()) {
+                std::fs::remove_file(e.path())?;
+            }
+        }
+        std::fs::remove_dir(&dir.0)
+    }
+
     /// 把暂存区里的一份（`~/.cc-monitor/staging/<name>`，`name` 只许一段名字）原子换进后端落点（`~/.cc-monitor/bin/ccm`）：
     /// 落点那层目录不在就建（0700），再 `rename(2)` 盖掉旧的（同在 `~/.cc-monitor` 下 ⇒ 同一块盘，落点在换的全程都在）。
     /// Windows 远端不承诺 ⇒ `Unsupported`。
