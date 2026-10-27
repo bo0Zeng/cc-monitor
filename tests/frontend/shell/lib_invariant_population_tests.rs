@@ -191,14 +191,14 @@ fn tmux_print_sites() -> BTreeMap<(String, String, Carry), usize> {
 /// （改它们是后端载荷字节 / 随部署脚本字节的变更，另做）。
 /// 今天盘上一处 `Carry::None` 都没有（新长一处就进两向相等那一条红）。
 const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
-    ("src/backend/common/session_snapshot.rs", "list-sessions", Carry::Flag, 1, "argv；`session_snapshot_tests.rs` 钉旗在子命令前"),
+    ("src/backend/host/tmux.rs", "list-sessions", Carry::Flag, 1, "argv；会话快照的探测器，`session_snapshot_tests.rs` 钉旗在子命令前"),
     ("src/backend/control/gate.rs", "display-message", Carry::Flag, 1, "argv；`gate_tests.rs` 钉旗在子命令前"),
-    ("src/backend/observe/tmux_observe.rs", "ls", Carry::Env, 1, "`sh -c` 一段脚本（期限归起子进程原语），env 一行盖住；`watcher_tests.rs` 钉 env"),
-    ("src/backend/observe/tmux_observe.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
+    ("src/backend/host/tmux.rs", "ls", Carry::Env, 1, "观测那一跳 `sh -c` 一段脚本（期限归起子进程原语），env 一行盖住（`via_shell`）；`tmux_observe_tests.rs` 钉 env"),
+    ("src/backend/host/tmux.rs", "display-message", Carry::Env, 1, "观测那一跳 `sh -c`，同上"),
     // monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
     ("src/backend/control/gate.rs", "list-panes", Carry::Flag, 1, "argv；按 sid 找窗格：读这个会话各窗格的句柄 · 根进程 pid · `@ccm_sid`（ASCII，照表仍带旗）"),
-    ("src/backend/control/terminals.rs", "list-panes", Carry::Flag, 1, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
-    ("src/backend/control/terminals.rs", "list-clients", Carry::Flag, 1, "argv；读会话 ID 与两个时刻（ASCII，照表仍带旗）"),
+    ("src/backend/host/tmux.rs", "list-panes", Carry::Flag, 1, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
+    ("src/backend/host/tmux.rs", "list-clients", Carry::Flag, 1, "argv；读会话 ID 与两个时刻（ASCII，照表仍带旗）"),
     ("src/backend/control/terminals.rs", "display-message", Carry::Flag, 2, "argv；预览问尺寸与光标 · 实时预览订上之前问 tmux 版本（数字与 ASCII，照表仍带旗）"),
 ];
 

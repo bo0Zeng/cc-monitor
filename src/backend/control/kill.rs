@@ -11,7 +11,7 @@
 //! 命令级（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::Deadline;
 use copy_core::copy_text;
 
 /// `kill-session` / `kill-pane` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
@@ -182,7 +182,7 @@ pub(crate) fn end(ending: Ending<'_>) -> Result<(), CmdErr> {
             }
         }
     }
-    let out = Child::new("tmux")
+    let out = crate::host::tmux::child(None)
         .args(&argv)
         .run(KILL_TMUX_WITHIN)
         .map_err(tmux_unavailable)?;

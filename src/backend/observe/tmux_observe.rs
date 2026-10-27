@@ -68,7 +68,7 @@ pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 // ② [`query_tmux_server`] 那条脚本在测试里有一份**逐字复制**
 //    （`tests::tmux_server_query_yields_nothing_without_a_server`）⇒ 动脚本串会让两份漂开，
 //    而挂 env 一个字节都不用动它。
-use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
+use crate::common::tmux_utf8::tab_underflow;
 use crate::platform::child::Deadline;
 
 // ---------- P1（zero-poll-liveness）：tmux 观测的取值（原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
@@ -133,13 +133,8 @@ pub(super) enum TmuxObservation {
 /// 探测永不返回 ⇒ 标志永远为真 ⇒ 此后一次探测都不会再发起、不出声。
 /// ⇒ 两发探测都经起子进程原语带期限跑（[`TMUX_PROBE_WITHIN`]，到点杀整组），超时落 `Unobservable`。
 fn tmux_probe_script() -> String {
-    // `command -v` 分支与 `exec` 的写法住 `platform::shell::posix`（产出逐字节不变）。
-    use crate::platform::shell::posix;
-    posix::if_command(
-        "tmux",
-        &posix::exec(&[format!("tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null")]),
-        &format!("exit {TMUX_PROBE_NO_TMUX_RC}"),
-    )
+    // 脚本与起法住宿主口 tmux 那一形（起 tmux 只在那一份文件里）。
+    crate::host::tmux::ls_script(TMUX_LS_FMT, TMUX_PROBE_NO_TMUX_RC)
 }
 
 /// 两发探测（`tmux ls` · `display-message`）各自的期限。`tmux ls` 在健康机器上是毫秒级；
@@ -202,15 +197,11 @@ fn run_tmux_ls() -> TmuxObservation {
     // 🔴 `K-R55`（09-11）：起 shell 这一跳住适配层（`K33` 裁定二）。
     //    先前这里是裸 `Command::new("sh")` —— `K-R52` 的 A2「真漏」堆头一条。
     //    非 unix 上 `None` ⇒ 与搬之前逐字同一个落点（那时是 `output()` 返 `Err`）。
-    let Some(cmd) = crate::platform::shell::posix_shell(&tmux_probe_script()) else {
+    let Some(ran) = crate::host::tmux::via_shell(&tmux_probe_script(), TMUX_PROBE_WITHIN) else {
         tracing::warn!("本平台没有 POSIX shell ⇒ tmux ls 这一跳没有实现，整趟观测判为无效");
         return TmuxObservation::Unobservable;
     };
-    match cmd
-        // K-R12：挂 env 不改脚本串。家在 `common::tmux_utf8`。
-        .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
-        .run(TMUX_PROBE_WITHIN)
-    {
+    match ran {
         Ok(out) => classify_tmux_probe(out.status.code(), &String::from_utf8_lossy(&out.stdout)),
         Err(e) => {
             tracing::warn!("tmux ls 本地执行失败: {e}");
@@ -238,26 +229,14 @@ pub(super) struct TmuxProbe {
 ///
 /// 与 `run_tmux_ls` 同一套 `sh -c` + `command -v` 门控；rc≠0（没有 server）⇒ 全 None。
 fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
-    // 一行两列（TAB 分隔），避免两次 subprocess。
-    // 写法住 `platform::shell::posix`（产出逐字节不变）。
-    let script = crate::platform::shell::posix::if_command(
-        "tmux",
-        &crate::platform::shell::posix::exec(&[
-            "tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null",
-        ]),
-        "exit 97",
-    );
-    // 🔴 `K-R55`（09-11）：同上，起 shell 这一跳住适配层。
-    let Some(cmd) = crate::platform::shell::posix_shell(&script) else {
+    // 一行两列（TAB 分隔），避免两次 subprocess。脚本与起法住宿主口 tmux 那一形（挂 UTF-8 那个 env 也在那里）。
+    let Some(ran) =
+        crate::host::tmux::via_shell(&crate::host::tmux::server_script(), TMUX_PROBE_WITHIN)
+    else {
         tracing::warn!("本平台没有 POSIX shell ⇒ 问不出 tmux server 的 pid 与 socket 路径");
         return (None, None);
     };
-    let out = match cmd
-        // K-R12：挂 env 而不是往 `script` 里插旗 —— 那条脚本在测试里有一份**逐字复制**
-        // （`tests::tmux_server_query_yields_nothing_without_a_server`），改串会让两份漂开。
-        .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
-        .run(TMUX_PROBE_WITHIN)
-    {
+    let out = match ran {
         Ok(o) => o,
         Err(e) => {
             tracing::warn!("tmux display-message 执行失败: {e}");
@@ -407,7 +386,7 @@ pub(super) fn diff_closed(
     prev: &mut Option<std::collections::BTreeSet<String>>,
     obs: &TmuxObservation,
 ) -> Vec<String> {
-    diff_closed_into(prev, obs, crate::common::session_snapshot::global())
+    diff_closed_into(prev, obs, crate::host::snapshot())
 }
 
 /// [`diff_closed`] 的本体，**快照由调用方给**。

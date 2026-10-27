@@ -988,6 +988,8 @@ pub struct NameFace {
 #[serde(rename_all = "snake_case")]
 pub enum TerminalHost {
     Tmux,
+    /// cc-monitor 自己持伪终端的终端（后端 `host/managed.rs` 报的行）。
+    Managed,
 }
 
 impl TerminalHost {
@@ -995,6 +997,7 @@ impl TerminalHost {
     pub const fn as_wire(self) -> &'static str {
         match self {
             TerminalHost::Tmux => "tmux",
+            TerminalHost::Managed => "managed",
         }
     }
 }

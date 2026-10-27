@@ -58,10 +58,7 @@ pub(crate) fn with_deps_as<T>(
     };
     let run_ccm = |argv: &[String]| crate::control::session_open::run_self_as_ccm(argv);
     let mint = |base: batch::NameBase| {
-        crate::control::ccm::terminal_name_mint_with(
-            base,
-            crate::common::session_snapshot::global(),
-        )
+        crate::control::ccm::terminal_name_mint_with(base, crate::host::snapshot())
     };
     let writers = |sid: &str| {
         crate::history::live_table::now(&crate::history::listing::agent_home()).writers(sid)
