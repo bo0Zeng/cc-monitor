@@ -634,3 +634,15 @@ fn the_product_carries_its_name_and_whether_it_is_offline() {
         assert_eq!(p.offline, offline, "{name}");
     }
 }
+
+/// 「这台 N 条状态不明」照最近那一件事实（本机后端那台的会话簿数的）；没有 ⇒ 省略；换一轮连接不清它（那台重报的帧把它降下来）。
+#[test]
+fn the_unclear_count_rides_the_product_as_told() {
+    assert_eq!(of(vec![Fact::Unclear(3)], true).unclear, Some(3));
+    assert_eq!(of(vec![Fact::Unclear(3), Fact::Unclear(0)], true).unclear, None);
+    assert_eq!(
+        of(vec![Fact::Unclear(2), up(Relation::Same, &[])], true).unclear,
+        Some(2)
+    );
+    assert_eq!(of(vec![], true).unclear, None);
+}

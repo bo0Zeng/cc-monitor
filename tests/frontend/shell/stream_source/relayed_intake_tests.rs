@@ -1,7 +1,8 @@
 //! **本机那条流上转来的别台**（`relayed`）：收的那一头按那台分到它自己那一份收口。
 //!
 //! 喂本机通道一串 `relayed`（那台的 hello · 一个活会话 · 一行 · 丢了一行 · 断了），订了那台的订阅依次收
-//! `Seen` · 行 · `Gap` · `Unseen`，会话账在断了那一刻把那台的成品作废（`LinkLost`）；本机那条流断了 ⇒ 经它转来的各台一并作废。
+//! `Seen` · 行 · `Gap` · `Unseen`；那台各条的说不清是本机后端在 `ended` 之前转来的 `session_left`，壳一条都不合成；
+//! 本机那条流断了 ⇒ 经它转来的各台的收口一并收，会话账照留（没有谁说说不清，这一侧也不说）。
 //! 只数格、不看墙钟（等条件封顶 `guard_core::wall::CEILING`）。
 
 use super::*;
@@ -122,7 +123,7 @@ fn live_at(machine: &str, sid: &str) -> bool {
         .is_live(&crate::origin::Origin::named(machine), sid)
 }
 
-/// 那台这一条连接：hello ⇒ `Seen`；行 ⇒ 那台的订阅收到；丢了一行 ⇒ `Gap`；断了 ⇒ `Unseen`、那台成品作废。
+/// 那台这一条连接：hello ⇒ `Seen`；行 ⇒ 那台的订阅收到；丢了一行 ⇒ `Gap`；断了 ⇒ `Unseen`；那台的会话照本机后端那一帧说不清落账。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
     // 本机那一格是进程内全局的：那台接上时名单台经它报（别的用例在那一格上登记的替身会收到）。
@@ -141,6 +142,14 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
     }))
     .await
     .unwrap();
+    // 本机后端在断的那一刻先转那台各条的说不清（`control/feeds.rs`）。
+    let unclear = {
+        let f: Frame = cmd_wire::frame::Frame::SessionLeft(crate::frame_fixtures::session_left(
+            SID, "unclear", "T",
+        ));
+        serde_json::to_string(&f).unwrap()
+    };
+    tx.send(from_box(unclear)).await.unwrap();
     tx.send(relay(Relayed::Ended {
         machine: BOX.into(),
     }))
@@ -156,7 +165,21 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
         ["unseen", "seen", "line 0", "gap", "unseen"],
         "订阅起来时那台还没接上 → hello ⇒ 看得见 → 那一行 → 丢了一行 → 断了：{seen:?}"
     );
-    assert!(!live(SID), "那台断了，它的成品还当活的留着");
+    assert!(!live(SID), "本机后端说了说不清，账里还当活的留着");
+    assert_eq!(
+        crate::session_book::book()
+            .read()
+            .replay(&[(SID.to_string(), BOX.to_string())])
+            .after
+            .iter()
+            .filter_map(|o| match o {
+                crate::session_book::Out::Left { left, .. } => Some(left.face.life.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        vec![cmd_wire::frame::Life::Unclear],
+        "F5 照本机后端那一帧再说说不清"
+    );
     // 断了之后再来的一行（没有新的 hello）不进收口。
     tx.send(from_box(line(1))).await.unwrap();
     drop(tx);
@@ -170,7 +193,7 @@ async fn a_relayed_connection_opens_feeds_and_ends_that_machines_intake() {
     );
 }
 
-/// 本机那条流断了 ⇒ 经它转来的那台一并收：订阅收 `Unseen`、那台成品作废。
+/// 本机那条流断了 ⇒ 经它转来的那台一并收：订阅收 `Unseen`；会话账一条都不在这一侧改（本机后端没了，没有谁说说不清）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_local_stream_ending_ends_every_relayed_machine() {
     let _g = crate::inbound_client::local_origin_test_lock();
@@ -194,8 +217,8 @@ async fn the_local_stream_ending_ends_every_relayed_machine() {
     })
     .await;
     assert!(
-        !live_at(BOX2, OTHER),
-        "本机那条流断了，经它转来的那台的成品还当活的留着"
+        live_at(BOX2, OTHER),
+        "本机那条流断了，壳自己把那台的会话改了（说不清只由本机后端说）"
     );
     drop(tx);
     tokio::time::timeout(guard_core::wall::CEILING, consumer)

@@ -376,6 +376,10 @@ pub struct MachineState {
     pub expected_host_key: Option<String>,
     /// 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
     pub detail: Option<String>,
+    /// 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub unclear: Option<u32>,
 }
 
 /// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。

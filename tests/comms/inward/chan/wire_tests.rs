@@ -253,7 +253,6 @@ fn an_offer_takes_the_hello_as_typed_and_names_the_frame_kinds_that_differ() {
         host_env: Default::default(),
         shapes: [("a".to_string(), "h1".to_string())].into(),
         frames,
-        unseen: None,
     };
     let mut o = Offer::of(&hello);
     assert_eq!(o.frames_differ(), ["line", "session_status"]);

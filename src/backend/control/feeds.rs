@@ -201,6 +201,32 @@ struct Seen {
     /// 那台说过的会话（端核心的会话簿，只折 `session_*` 那几种）：随这一台的 feed 活着，换连接不丢 ——
     /// 断的那一刻照它说哪几条说不清（[`unclear_now`]），重连之后那台重报的帧把它们一条条换掉。
     book: SessionBook,
+    /// 上一回记进机器状态的「这台几条状态不明」。
+    counted: u32,
+}
+
+impl Seen {
+    /// 簿里此刻几条说不清；与上一回记的不同 ⇒ 交回新数（调用方记进机器状态）。
+    fn recount(&mut self) -> Option<u32> {
+        let n = self
+            .book
+            .left
+            .values()
+            .filter(|s| s.face.life == cmd_wire::frame::Life::Unclear)
+            .count();
+        let n = u32::try_from(n).unwrap_or(u32::MAX);
+        (n != self.counted).then(|| {
+            self.counted = n;
+            n
+        })
+    }
+}
+
+/// 「这台几条状态不明」变了 ⇒ 记进机器状态（推 `changed {machine}`）。
+fn note_unclear(machine: &str, n: Option<u32>) {
+    if let Some(n) = n {
+        crate::control::machine_state::note(machine, deploy::machine::Fact::Unclear(n));
+    }
 }
 
 /// 流上这一行是会话帧 ⇒ 折进那台的簿（别的帧不解）。
@@ -274,13 +300,18 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                     }));
                 }
                 Event::Frame(line) => {
-                    fold_line(&mut lock(&seen).book, &line);
+                    let n = {
+                        let mut s = lock(&seen);
+                        fold_line(&mut s.book, &line);
+                        s.recount()
+                    };
+                    note_unclear(&name, n);
                     relay(Frame::Relayed(Relayed::Line { machine, line }));
                 }
                 Event::Gap => relay(Frame::Relayed(Relayed::Gap { machine })),
                 Event::State(st) => {
                     let up = matches!(st, feed::State::Up { .. });
-                    let (version, ended, unclear) = {
+                    let (version, ended, unclear, n) = {
                         let mut s = lock(&seen);
                         s.up = up.then(|| crate::dial::streams::hold(&name));
                         let ended = !up && std::mem::take(&mut s.attached);
@@ -289,7 +320,8 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         } else {
                             Vec::new()
                         };
-                        (s.version.clone(), ended, unclear)
+                        let n = s.recount();
+                        (s.version.clone(), ended, unclear, n)
                     };
                     if ended {
                         lock(hellos()).remove(&machine);
@@ -302,6 +334,7 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         }
                         relay(Frame::Relayed(Relayed::Ended { machine }));
                     }
+                    note_unclear(&name, n);
                     crate::control::machine_state::note(
                         &name,
                         deploy::machine::Fact::Round {

@@ -586,4 +586,10 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
         "{seen:#?}"
     );
     assert_eq!(unclear.life, crate::wire::WireLife::Unclear);
+    let product = &machine_state::read_in(&[(machine.to_string(), true)])[machine];
+    assert_eq!(
+        product.unclear,
+        Some(2),
+        "「这台 N 条状态不明」是本机后端数的（机器状态那一格），界面不数"
+    );
 }

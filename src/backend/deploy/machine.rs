@@ -25,6 +25,8 @@ pub struct Entry {
     problem: Option<RoundProblem>,
     /// 这一轮断在那台本身的哪一处。
     blocker: Option<Blocker>,
+    /// 这台几条会话状态不明（[`Fact::Unclear`]）。
+    unclear: u32,
 }
 
 /// 一件事实。
@@ -39,6 +41,8 @@ pub enum Fact {
     Step(Step),
     /// 部署那一趟收了（成没成都算）；问到了那台的系统就带上。
     Deployed { os: Option<String> },
+    /// 这台此刻几条会话状态不明（本机后端那台的会话簿数的：断的那一刻说过说不清、还没重报的）。
+    Unclear(u32),
 }
 
 /// 收一件事实。
@@ -82,6 +86,7 @@ pub fn fold(e: &mut Entry, fact: Fact) {
             let (state, stage) = s.kind();
             busy(e, state, stage);
         }
+        Fact::Unclear(n) => e.unclear = n,
         Fact::Deployed { os } => {
             if os.is_some() {
                 e.os = os;
@@ -153,6 +158,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             .filter(|_| state == K::HostKeyChanged)
             .and_then(|p| p.expected_key.clone()),
         detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
+        unclear: (e.unclear > 0).then_some(e.unclear),
     }
 }
 

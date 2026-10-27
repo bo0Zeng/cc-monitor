@@ -267,7 +267,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
                 shapes: [(s("ping"), s("0000abcd"))].into_iter().collect(),
                 frames: [(s("line"), s("0000abcd"))].into_iter().collect(),
-                unseen: None,
             }),
             Frame::Hello(crate::wire::Hello {
                 build_id: s("b1"),
@@ -278,7 +277,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 host_env: Default::default(),
                 shapes: Default::default(),
                 frames: Default::default(),
-                unseen: None,
             }),
         ],
         [
@@ -1201,7 +1199,6 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             host_env,
             shapes: Default::default(),
             frames: Default::default(),
-            unseen: None,
         }))
         .unwrap()
     };
@@ -1288,7 +1285,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             host_env: Default::default(),
             shapes: Default::default(),
             frames: Default::default(),
-            unseen: None,
         }),
         Frame::Line(crate::wire::Line {
             session_id: "s".into(),
@@ -1908,7 +1904,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
     );
 }
 
-/// 那台看不见时画的那一张（本机后端替它造，随 hello 交给壳）：点「说不清」、不说在跑、不是定局；
+/// 那台看不见时画的那一张（断线那一刻本机后端给那台每条活的 · 可重连的发它）：点「说不清」、不说在跑、不是定局；
 /// 只在右键菜单里关，不给恢复（也许还在跑，再起一份就是同一会话两个进程），别的都不给；字里不写机器名。
 #[test]
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
@@ -1936,7 +1932,7 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
 }
 
 /// 界面那一侧不造脸：`src/frontend` 的 ts 生产源里没有一个函数交出一张 `SessionFace`（`…): SessionFace {` / `=>`），
-/// 也没有一份写着 `settled:` 的字面量（整份脸才有那一格）。那台看不见时那一张也由后端造（[`crate::wire::unseen_face`]）。
+/// 也没有一份写着 `settled:` 的字面量（整份脸才有那一格）。那台看不见时那一张也由后端造（`SessionFace::of(Life::Unseen)`，断线那一刻本机后端发）。
 /// 正控：同一把尺量得到一段造脸的写法（原先界面自己拼的那一张就是这个形）。
 #[test]
 fn the_interface_never_builds_a_face_of_its_own() {

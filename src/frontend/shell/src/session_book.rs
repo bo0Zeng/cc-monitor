@@ -6,8 +6,8 @@
 //! ② 按原样转给前端（出口由 `lib.rs` 装：[`Out`] ⇒ 事件 ＋ 拉前那几样副作用）；
 //! ③ 留一份最新成品，给 F5 / 开窗的重放用（[`Book::replay`]，就绪点在会话流里原位交）。
 //!
-//! 唯一一件 monitor 自己知道、后端不知道的事是**到那台的连接断了**（[`In::LinkLost`]）：那台的成品随之作废（整份摘掉），
-//! 当时还活的 / 可重连的交出去说「说不清」（不许显示成已结束）。重连之后那台的新连接自己重报一遍。
+//! 连接断了那一刻也不在这一侧说：本机后端给那台活的 / 可重连的每一条发一帧 `session_left`（说不清），原样经 [`In::Told`] 进来；
+//! 这一侧只在那条连接收了时把那一本「清单报完了」作废（[`In::Closed`]），下一条连接自己再报。
 //!
 //! 裁决一条都不在这一侧。**每台那一本就是端核心的会话簿**（[`SessionBook`]，手机核心同一份）：会话帧原样交进来（[`In::Told`]），
 //! 折法只调 [`SessionBook::fold`]，这一侧不另写一份。
@@ -28,12 +28,8 @@ pub enum In {
         origin: String,
         frame: crate::stream_source::Frame,
     },
-    /// 到那台的连接断了。
-    LinkLost { origin: String },
-    /// 本机后端握上手时 hello 带来的那一张「那台看不见」的脸（`Hello.unseen`）：此后每一格「说不清」都带上它。
-    UnseenFace {
-        face: Option<cmd_wire::frame::SessionFace>,
-    },
+    /// 到那台的这一条连接收了：那一本「清单报完了」作废（下一条连接自己再报）；会话一条都不动 —— 说不清由本机后端发。
+    Closed { origin: String },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
     /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
     Branch {
@@ -66,14 +62,6 @@ pub enum Out {
     Listed {
         origin: String,
         all: bool,
-    },
-    /// 那台看不见了（**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
-    /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
-    Unseen {
-        origin: String,
-        sids: Vec<String>,
-        /// 那几条落成的那一张：本机后端交来的那一份（还没交 ⇒ `None`，界面不画点）。
-        face: Option<cmd_wire::frame::SessionFace>,
     },
     /// 一个会话的运行表（原样转）。
     Runs {
@@ -113,8 +101,6 @@ pub struct Book {
     branch: HashMap<crate::origin::Origin, BTreeMap<String, BranchCopy>>,
     /// 订了会话流的那几台（机器表：本机 ＋ 注册着的远端）；`None` = 还不知道 ⇒ 不立「各台都报完」。
     machines: Option<Vec<String>>,
-    /// 本机后端交来的那一张「那台看不见」的脸（[`In::UnseenFace`]）。
-    unseen: Option<cmd_wire::frame::SessionFace>,
 }
 
 impl Book {
@@ -160,27 +146,11 @@ impl Book {
                     off: held.off.clone(),
                 }]
             }
-            In::UnseenFace { face } => {
-                self.unseen = face;
-                Vec::new()
-            }
-            In::LinkLost { origin } => {
-                let Some(b) = self.origins.remove(&origin) else {
-                    return Vec::new();
-                };
-                let sids: Vec<String> = b
-                    .seats()
-                    .filter(|(_, p)| !matches!(p, Seat::Left(s) if !reconnectable(s)))
-                    .map(|(s, _)| s.clone())
-                    .collect();
-                if sids.is_empty() {
-                    return Vec::new();
+            In::Closed { origin } => {
+                if let Some(b) = self.origins.get_mut(&origin) {
+                    b.listed = false;
                 }
-                vec![Out::Unseen {
-                    origin,
-                    sids,
-                    face: self.unseen.clone(),
-                }]
+                Vec::new()
             }
         }
     }
@@ -195,11 +165,14 @@ impl Book {
             }],
             Frame::SessionStatus(status) => vec![Out::Status { origin, status }],
             Frame::SessionLeft(left) => {
-                if let Some(m) = self
-                    .branch
-                    .get_mut(&crate::origin::Origin::named(origin.clone()))
-                {
-                    m.remove(&left.sid);
+                // 说不清（断线那一刻本机后端说的）不是走了：手上那份主线外清单留着，重接之后交回、那台只补缺的那一截。
+                if left.face.life != Life::Unclear {
+                    if let Some(m) = self
+                        .branch
+                        .get_mut(&crate::origin::Origin::named(origin.clone()))
+                    {
+                        m.remove(&left.sid);
+                    }
                 }
                 vec![Out::Left { origin, left }]
             }
@@ -296,7 +269,7 @@ impl Book {
     /// **F5 重放计划**（纯）：`kept` = 手上留着的 `(sid, 它所在的那台)`（留存里有行的 · 主窗口的 tab）。
     ///
     /// - `before`：活会话重宣告（骨架 ＋ 初始灯 ＋ 容器，本机远端同一形）；
-    /// - `after`：全部可重连的 · 手上留着却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说，那台答）·
+    /// - `after`：全部可重连的 · 手上留着却不活的（说过已结束 / 说不清 ⇒ 照那一帧；没说过 ⇒ 不说，那台答）·
     ///   报完了清单的那几台再说一次「报完了」（排在最后：前端处理它时活着的已经翻回活）。
     pub fn replay(&self, kept: &[(String, String)]) -> Replay {
         let mut r = Replay::default();
@@ -335,30 +308,17 @@ impl Book {
                 }
             }
         }
-        let mut unseen: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        let mut settled = Vec::new();
         for (sid, origin) in kept {
-            let b = self.origins.get(origin);
-            match b.and_then(|b| b.seat(sid)) {
-                Some(Seat::Live(_)) => {}
-                Some(Seat::Left(s)) if reconnectable(s) => {}
-                Some(Seat::Left(s)) => settled.push(Out::Left {
-                    origin: origin.clone(),
-                    left: s.clone(),
-                }),
-                // 那台报完了清单、这条没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
-                None if b.is_some_and(|b| b.listed) => {}
-                None => unseen.entry(origin.clone()).or_default().push(sid.clone()),
+            // 走了的（已结束 · 说不清 …）照那一帧再说一次；没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
+            if let Some(Seat::Left(s)) = self.origins.get(origin).and_then(|b| b.seat(sid)) {
+                if !reconnectable(s) {
+                    r.after.push(Out::Left {
+                        origin: origin.clone(),
+                        left: s.clone(),
+                    });
+                }
             }
         }
-        // 机器级「说不清」排在终局最前：它把那台上活的 / 可重连的一并落说不清（前端按机器落），
-        //   紧跟着把那台说过的活会话再宣告一次 ⇒ 真活着的翻回活；可重连的就在下面、照常落回可重连。
-        let mut front = Vec::new();
-        for (origin, sids) in unseen {
-            front.extend(self.unseen_block(&origin, sids));
-        }
-        r.after.splice(0..0, front);
-        r.after.extend(settled);
         let all = self.all_listed();
         for o in origins {
             if self.origins[o].listed {
@@ -380,7 +340,6 @@ impl Out {
             | Out::Status { origin, .. }
             | Out::Left { origin, .. }
             | Out::Listed { origin, .. }
-            | Out::Unseen { origin, .. }
             | Out::Runs { origin, .. } => origin.clone(),
             Out::Branch { origin, .. } => origin.to_string(),
         }
@@ -397,45 +356,12 @@ impl Out {
                 origin: crate::origin::Origin::named(origin.clone()),
                 all: *all,
             }),
-            Out::Unseen { origin, face, .. } => F::Unseen(b::SessionUnseenPayload {
-                origin: crate::origin::Origin::named(origin.clone()),
-                face: face.clone(),
-            }),
             Out::Runs { runs, .. } => F::Runs(runs.clone()),
             Out::Branch { sid, off, .. } => F::Branch(b::SessionBranchPayload {
                 sid: sid.clone(),
                 off: off.clone(),
             }),
         }
-    }
-}
-
-impl Book {
-    /// 连接还在、却说不清某几条（那台还没报完清单）时的那一段：机器级 `unseen` ＋ 那台说过的活会话 / 可重连的再说一次
-    /// （前端按机器落说不清会把它们一并落下，紧跟着翻回来）。
-    fn unseen_block(&self, origin: &str, sids: Vec<String>) -> Vec<Out> {
-        let mut v = vec![Out::Unseen {
-            origin: origin.to_string(),
-            sids,
-            face: self.unseen.clone(),
-        }];
-        if let Some(b) = self.origins.get(origin) {
-            for (sid, p) in b.seats() {
-                match p {
-                    Seat::Live(m) => v.push(Out::Live {
-                        origin: origin.to_string(),
-                        sid: sid.clone(),
-                        meta: m.clone(),
-                    }),
-                    Seat::Left(s) if reconnectable(s) => v.push(Out::Left {
-                        origin: origin.to_string(),
-                        left: s.clone(),
-                    }),
-                    Seat::Left(_) => {}
-                }
-            }
-        }
-        v
     }
 }
 

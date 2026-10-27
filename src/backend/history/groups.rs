@@ -515,7 +515,7 @@ pub(crate) fn merge(halves: &[(Machine, Half)], machines: Vec<GroupsMachine>) ->
             let face = if seen {
                 m.face.clone()
             } else {
-                crate::wire::unseen_face()
+                <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(crate::wire::Life::Unseen)
             };
             let row = GroupMember {
                 origin: origin.clone(),

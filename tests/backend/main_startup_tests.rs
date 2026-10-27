@@ -32,11 +32,3 @@ fn the_machine_table_is_installed_before_anything_is_dispatched() {
     );
 }
 
-/// hello 带着「那台看不见」那一张脸（壳取本机后端这一份，界面不自己拼）。
-#[test]
-fn the_hello_carries_the_unseen_face() {
-    let Frame::Hello(h) = super::build_hello() else {
-        panic!("build_hello 不是 hello");
-    };
-    assert_eq!(h.unseen, Some(wire::unseen_face()));
-}

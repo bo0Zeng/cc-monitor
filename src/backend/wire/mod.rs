@@ -58,7 +58,7 @@ pub(crate) enum Life {
     Gone,
     /// 这条路上判不了活不活。
     Unclear,
-    /// 那台看不见（连接断了 · 还没报完清单）：本机后端替它造这一张，随 hello 交给壳（`Hello.unseen`）。
+    /// 那台看不见（到它的连接断了）：本机后端在断的那一刻给那台活的 · 可重连的每一条发 `session_left` 带这一张（`control/feeds.rs`）。
     Unseen,
 }
 
@@ -93,11 +93,6 @@ impl Life {
 
 fn in_tmux(c: Option<&SessionContainer>) -> Option<bool> {
     c.map(|c| matches!(c, SessionContainer::Tmux { .. }))
-}
-
-/// 那台看不见时画的那一张（[`Life::Unseen`]）：hello 带它（`main` 的 `build_hello`）。
-pub fn unseen_face() -> SessionFace {
-    SessionFace::of(Life::Unseen)
 }
 
 /// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
