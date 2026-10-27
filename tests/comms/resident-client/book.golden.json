@@ -8,7 +8,7 @@
     "c": {"sid":"c","face":{"dot":"ended","life":{"is":"ended","by":"d"},"settled":true,"name":"已结束","tip":"已结束 · 可恢复","line":"已结束 · 可恢复","tone":"plain","order":5,"can":{"close":{"can":"quiet"},"resume":{"can":"yes"},"term":{"can":"no","why":"会话已结束"},"reattach":{"can":"no","why":"会话已结束"},"model":{"can":"yes"},"permission":{"can":"yes"},"stop":{"can":"no","why":"会话已结束"}}}}
   },
   "runs": {
-    "a": {"sid":"a","runs":[],"ended":[]}
+    "a": {"sid":"a","runs":[],"ended":[],"groups":{"running":[],"recent":[],"older":[]}}
   },
   "successors": {
     "c": "d"
