@@ -853,6 +853,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "egress"
+version = "0.1.0"
+dependencies = [
+ "test-home",
+ "upstream-url-core",
+]
+
+[[package]]
 name = "elliptic-curve"
 version = "0.14.0-rc.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"

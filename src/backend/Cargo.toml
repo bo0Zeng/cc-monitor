@@ -379,7 +379,7 @@ strip = true
 # 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "ssh-dial", "deploy", "../mobile/core-rs/rust"]
+members = [".", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # ── 测试档（dev 与继承它的 test）里给沙箱的策略引擎开优化：轮换一致性的推演（s22 · s26 · s36）跑在 Rhai 上，
