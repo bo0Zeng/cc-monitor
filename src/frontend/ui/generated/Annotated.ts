@@ -3,10 +3,14 @@ import type { Entry } from "./Entry";
 import type { Hide } from "./Hide";
 
 /**
- * `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格。
+ * `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格 · 改之前改过的名。
  */
 export type Annotated = { entry: Entry, 
 /**
  * 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
  */
-prev: Hide | null, };
+prev: Hide | null, 
+/**
+ * 改之前改过的名（没有 ⇒ `null`）：撤销改名照它交回去（`null` ⇒ 交空串，回到原标题）—— 标签页上只有定好的名，不知道这一格。
+ */
+prev_title: string | null, };

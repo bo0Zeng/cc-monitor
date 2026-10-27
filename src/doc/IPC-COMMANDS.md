@@ -1549,7 +1549,16 @@ type WirePath = string | { b16: string };
 ```ts
 type AttachItem = { name: string, bytes: number, dir?: boolean, };
 type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
-type AttachVerdict = { ok: boolean, why?: AttachRefused, said?: string, };
+type AttachVerdict = { ok: boolean, 
+/**
+ * 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+ */
+class: FileClass, 
+/**
+ * 那一种的词（那台写好，同文件管理「类型」那一列的词）：chip 上的类别字。
+ */
+class_text: string, why?: AttachRefused, said?: string, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type SessionAttachmentCheckReply = { items: Array<AttachVerdict>, };
 type SessionAttachmentCheckReq = { sid: Sid, items: Array<AttachItem>, };
 type Sid = string;
@@ -4119,7 +4128,11 @@ type Annotated = { entry: Entry,
 /**
  * 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
  */
-prev: Hide | null, };
+prev: Hide | null, 
+/**
+ * 改之前改过的名（没有 ⇒ `null`）：撤销改名照它交回去（`null` ⇒ 交空串，回到原标题）—— 标签页上只有定好的名，不知道这一格。
+ */
+prev_title: string | null, };
 type AutoAnswer = { 
 /**
  * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
@@ -5633,6 +5646,14 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
+ * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ */
+class: FileClass, 
+/**
+ * 那一种的词（那台写好）：chip 上的类别字。
+ */
+classText: string, 
+/**
  * 那一份此刻多大；不在了 ⇒ 缺。
  */
 bytes?: number, 
@@ -5658,6 +5679,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryRun = { 
 /**
  * 读的是哪个子运行。
@@ -6030,6 +6052,14 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
+ * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ */
+class: FileClass, 
+/**
+ * 那一种的词（那台写好）：chip 上的类别字。
+ */
+classText: string, 
+/**
  * 那一份此刻多大；不在了 ⇒ 缺。
  */
 bytes?: number, 
@@ -6055,6 +6085,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryLines = { 
 /**
  * 第一行的行号。
@@ -6396,6 +6427,14 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
+ * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ */
+class: FileClass, 
+/**
+ * 那一种的词（那台写好）：chip 上的类别字。
+ */
+classText: string, 
+/**
  * 那一份此刻多大；不在了 ⇒ 缺。
  */
 bytes?: number, 
@@ -6421,6 +6460,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryRead = { 
 /**
  * 这一页里每个可计行一条（空白 / 纯 BOM 行不占）。
@@ -6746,6 +6786,14 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
+ * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ */
+class: FileClass, 
+/**
+ * 那一种的词（那台写好）：chip 上的类别字。
+ */
+classText: string, 
+/**
  * 那一份此刻多大；不在了 ⇒ 缺。
  */
 bytes?: number, 
@@ -6771,6 +6819,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryPage = { 
 /**
  * 只装进界面的记录行（第 k 个可计行 ＝ `seq + k`）。
@@ -8583,6 +8632,14 @@ type Attachment = { name: string,
  */
 rel: string, 
 /**
+ * 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+ */
+class: FileClass, 
+/**
+ * 那一种的词（那台写好）：chip 上的类别字。
+ */
+classText: string, 
+/**
  * 那一份此刻多大；不在了 ⇒ 缺。
  */
 bytes?: number, 
@@ -8608,6 +8665,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type Held = { 
 /**
  * 那份记录的路径（换了路径 ⇒ 续不上）。
@@ -11439,6 +11497,10 @@ from: string,
  */
 to: string, 
 /**
+ * 收件会话在哪台（机器表里的名字）。缺 ⇒ 本机；别台 ⇒ 经跨台那一跳交给那台收（`dial::remote_ask::hop`）。
+ */
+machine?: Origin, 
+/**
  * 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。缺 ⇒ 2。
  */
 tier?: number, 
@@ -11463,9 +11525,10 @@ refs?: Array<string> | null,
  */
 text?: string | null, };
 type BusSent = { envelope: BusEnvelope, knock: boolean, };
+type Origin = string;
 ```
 
-码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long` · `not_same_group` · `no_roster` · `duplicate` · `throttled` · `io_failed`
+码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long` · `not_same_group` · `no_roster` · `duplicate` · `throttled` · `io_failed` · `offline`
 
 #### `bus-inbox`
 
@@ -13545,6 +13608,31 @@ removed: boolean, said: string, };
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineLink = { 
+/**
+ * 连的是哪（`主机:口`；跳板那一项是那台跳板）。
+ */
+endpoint: string, 
+/**
+ * 是不是经过的那台跳板那一条（只运隧道，不压）。
+ */
+jump: boolean, 
+/**
+ * 这一条上的字节压没压。
+ */
+compressed: boolean, 
+/**
+ * 线上收到的字节（加密 · 压缩之后）。
+ */
+bytesIn: number, 
+/**
+ * 线上发出的字节。
+ */
+bytesOut: number, 
+/**
+ * 写好的那一句（地址 · 压没压 · 进出字节）。
+ */
+said: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, };
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
@@ -13603,7 +13691,12 @@ detail: string | null,
 /**
  * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
  */
-unclear?: number, };
+unclear?: number, 
+/**
+ * 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
+ * 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
+ */
+links?: Array<MachineLink>, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type NoArgs = Record<symbol, never>;
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
@@ -13650,6 +13743,31 @@ type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "pa
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineFrom = "local" | "table" | "ssh_config";
+type MachineLink = { 
+/**
+ * 连的是哪（`主机:口`；跳板那一项是那台跳板）。
+ */
+endpoint: string, 
+/**
+ * 是不是经过的那台跳板那一条（只运隧道，不压）。
+ */
+jump: boolean, 
+/**
+ * 这一条上的字节压没压。
+ */
+compressed: boolean, 
+/**
+ * 线上收到的字节（加密 · 压缩之后）。
+ */
+bytesIn: number, 
+/**
+ * 线上发出的字节。
+ */
+bytesOut: number, 
+/**
+ * 写好的那一句（地址 · 压没压 · 进出字节）。
+ */
+said: string, };
 type MachineMenu = { from: MachineFrom, 
 /**
  * 那台的机器状态成品（同设置 › 机器卡那一份）；只在 ssh 配置里的那一种没有。
@@ -13713,7 +13831,12 @@ detail: string | null,
 /**
  * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
  */
-unclear?: number, };
+unclear?: number, 
+/**
+ * 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
+ * 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
+ */
+links?: Array<MachineLink>, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
 type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
