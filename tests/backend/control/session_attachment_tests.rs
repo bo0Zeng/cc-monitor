@@ -196,6 +196,33 @@ fn the_check_answers_each_item_in_order_against_the_message_limits() {
     assert_eq!(got, want);
 }
 
+/// 每一份的答都带它是哪一种（照名字判；目录 ⇒ 文件夹）：chip 开传前就画得出类别字，收不收都带。
+#[test]
+fn each_verdict_carries_the_class_of_its_name() {
+    use cmd_wire::files::FileClass as C;
+    let (_home, cwd) = rig("check-class");
+    let items = [("shot.png", false), ("login.css", false), ("assets", true)].map(|(name, dir)| {
+        AttachItem {
+            name: name.into(),
+            bytes: 1,
+            dir,
+        }
+    });
+    let got: Vec<C> = check(&cwd, &items).into_iter().map(|v| v.class).collect();
+    assert_eq!(got, vec![C::Image, C::Code, C::Folder]);
+    let gone: Vec<C> = check(&cwd.join("nope"), &items[..1])
+        .into_iter()
+        .map(|v| v.class)
+        .collect();
+    assert_eq!(gone, vec![C::Image]);
+    // 类别字也由这台写好（同文件管理那一列的词），界面照摆。
+    let words: Vec<String> = check(&cwd, &items[1..2])
+        .into_iter()
+        .map(|v| v.class_text)
+        .collect();
+    assert_eq!(words, vec![copy_text("beFilesKind.label.code", &[])]);
+}
+
 /// 工作目录不在 ⇒ 逐份 `no_session`；只读 ⇒ `not_writable`，落的那一下也拒、不回落别处。
 #[cfg(unix)]
 #[test]

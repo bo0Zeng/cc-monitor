@@ -74,9 +74,12 @@ pub fn refused(why: AttachRefused) -> WriteFail {
     WriteFail::from((code_of(why), said_of(why)))
 }
 
-fn verdict(why: Option<AttachRefused>) -> AttachVerdict {
+fn verdict(it: &AttachItem, why: Option<AttachRefused>) -> AttachVerdict {
+    let class = cmd_wire::file_class::class_of_name(it.name.as_bytes(), it.dir);
     AttachVerdict {
         ok: why.is_none(),
+        class,
+        class_text: cmd_wire::file_class::label(class),
         why,
         said: why.map(said_of),
     }
@@ -111,7 +114,7 @@ fn cwd_state(cwd: &Path) -> Option<AttachRefused> {
 /// 先判这一份自己（目录 · 单份上限），再判它放进这一条之后（份数 · 合计 · 附件目录还装不装得下）；不收的那一份不占这一条的份数与总量。
 pub fn check(cwd: &Path, items: &[AttachItem]) -> Vec<AttachVerdict> {
     if let Some(why) = cwd_state(cwd) {
-        return items.iter().map(|_| verdict(Some(why))).collect();
+        return items.iter().map(|it| verdict(it, Some(why))).collect();
     }
     let used = dir_usage(cwd);
     let (mut count, mut sum) = (0usize, 0u64);
@@ -135,7 +138,7 @@ pub fn check(cwd: &Path, items: &[AttachItem]) -> Vec<AttachVerdict> {
                 count += 1;
                 sum += it.bytes;
             }
-            verdict(why)
+            verdict(it, why)
         })
         .collect()
 }
@@ -298,7 +301,7 @@ pub fn commit(
         path: crate::files::raw::to_path_buf(landed.path.bytes())
             .display()
             .to_string(),
-        class: crate::files::class::class_of_name(name.as_bytes(), false),
+        class: cmd_wire::file_class::class_of_name(name.as_bytes(), false),
         bytes: landed.bytes,
         sha256: cmd_wire::files::Sha256Hex(sha),
         id,

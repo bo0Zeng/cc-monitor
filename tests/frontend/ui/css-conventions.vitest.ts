@@ -252,6 +252,10 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/answer-block.ts::this.el":
     "答题块本体 `this.el`（`s.abBlock`）—— 它写了 display:flex，CSS 里另有 `.abBlock[hidden]` 收住",
+  "src/frontend/ui/attach-row.ts::overlay":
+    "拖进来时的目标框（`s.attachDrop`）—— 它写了 display:flex，CSS 里另有 `.attachDrop[hidden]` 收住",
+  "src/frontend/ui/attach-row.ts::this.row":
+    "输入行上方那一排附件（`s.attachRow`）—— 它写了 display:flex，CSS 里另有 `.attachRow[hidden]` 收住",
   "src/frontend/ui/find-strip.ts::row.state":
     "命中行下那一句 `row.state`（`s.fsState`）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
   "src/frontend/ui/find-strip.ts::state":

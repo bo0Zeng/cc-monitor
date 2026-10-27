@@ -1,6 +1,7 @@
 /* 底部抽屉「终端」页：页头 · 头下条 · 画面 · 输入区。 */
 @layer components {
   .term {
+    position: relative;
     height: 100%;
   }
 

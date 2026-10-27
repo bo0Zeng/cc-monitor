@@ -444,6 +444,27 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "set-launch",
         "typed：后端照补足逐条走 `session-open` 起、起之前写好组注解，回 `SetLaunched`（连起完那一句）；前端 `set-reads.ts::launchSet` 按类型问，monitor 这一侧零发送点",
     ),
+    // 聊天附件（终端面板输入行那一排）：判收不收 · 落点 · 上限 · 清理都在会话那台后端，字节逐块进那台暂存区；本机远端同一条路。
+    (
+        "session-attachment-check",
+        "typed：开传前那一问，后端逐份答收不收 ＋ 类别与类别字（`control/files_commit/session_attachment.rs::check`）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "files-stage-chunk",
+        "typed：附件的字节逐块进会话那台的暂存区（同存盘分块那一条）；前端 `attach-draft.ts::channelIo` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "session-attachment-commit",
+        "typed：暂存件落进会话工作目录下的附件目录、回编号（核摘要 · 判上限在后端）；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "session-attachment-drop",
+        "typed：草稿上 ✕ 掉那一份，后端删掉那个附件目录；前端 `attach-draft.ts` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "session-say",
+        "typed：带附件说一句，按编号找到那几份、照那一家的写法拼进去都在后端（`faces/session_say_face.rs`）；前端 `terminal-page.ts::CHANNEL_ATTACH` 按类型问，monitor 这一侧零发送点",
+    ),
     // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
     (
         "session-model",
@@ -751,6 +772,12 @@ const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[
 /// 从此 == 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
 /// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
 const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
+    (
+        "files-stage-chunk",
+        1,
+        "文件窗口存盘与非标准起始目录上传那两条分块路（`filewin/src/editor.rs::CMD_STAGE_CHUNK`，经 `chunk_core::stage` 逐块送）：\
+         与界面聊天附件那一路各问各的，块形同一份",
+    ),
     (
         "exit-policy-read",
         1,
