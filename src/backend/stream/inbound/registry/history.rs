@@ -138,11 +138,11 @@ fn resident_wait_ms() -> u64 {
 
 /// 这一端问各台的那一张（这台 ＋ 机器表里的每一台）。
 fn machines_here() -> Vec<cmd_wire::Machine> {
-    std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
+    std::iter::once(cmd_wire::Machine::named(cmd_wire::LOCAL))
         .chain(
             crate::control::machines::here()
                 .iter()
-                .map(|h| cmd_wire::Machine(h.name().to_string())),
+                .map(|h| cmd_wire::Machine::named(h.name().to_string())),
         )
         .collect()
 }
