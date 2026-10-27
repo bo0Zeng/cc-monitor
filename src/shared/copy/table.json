@@ -20453,7 +20453,7 @@
     "rsDataPaths.backend.sessionQueue": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话输入队 · 还没送进会话的几句 · 一条会话一份",
+      "zh": "会话输入队 · 待送进会话的几句 · 一条会话一份",
       "args": []
     },
     "rsDataPaths.backend.ccBus": {
