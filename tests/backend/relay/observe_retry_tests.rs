@@ -76,7 +76,7 @@ pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
         Arc::new(accounts),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(Mute)),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
@@ -237,7 +237,7 @@ fn relay_over(d: Arc<dyn comms_outward::Destinations>) -> SocketAddr {
         d,
         super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(Mute)),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));

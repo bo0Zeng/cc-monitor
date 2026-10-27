@@ -61,6 +61,8 @@ pub(super) mod tests {
         "policy.rs",
         // 换号：这个会话这一发走哪个号的料（令牌与身份 · 改写后的请求体）；账号库由宿主读好交进来。
         "rotate.rs",
+        // 每条会话一份的上游描述（`ccm` 起会话时留 · 中转开上游那一口按来处读）。
+        "session_upstream.rs",
         "table.rs",
         // 第五版那一判：叫策略、缓存到下一个节点（只在节点上判）。
         "turn.rs",
@@ -159,6 +161,8 @@ pub(super) mod tests {
         "Destinations",
         // `ccm` 在最终 exec 那一处问「这一发注入哪个口」：交了 `CCM_RELAY_PORT` 就是那个口（与常驻后端起中转读的同一个变量名）。
         "ENV_PORT",
+        // 来处 ⇒ 那条会话的出网描述那只手的形状：`host_relay` 把读 `session_upstream` 的那一只递进 `host`。
+        "EgressOf",
         "Mode",
         "Ready",
         "RouteKey",
