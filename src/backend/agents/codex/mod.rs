@@ -11,6 +11,8 @@
 //! 发现出来的东西不上线：`main.rs` 的 `homes: Vec::new()` 那一行留着（填 `homes` 是一次跨仓契约变更，是一次纯发布决策）。
 //! 不要从「这里有个模块」推断「Codex 支持完整」。
 
+// 一条记录答成一拍（轮次 · 会话事实 · 大纲只吃它）。
+pub(crate) mod beat;
 // 历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话。
 pub(crate) mod history;
 pub(crate) mod parse;
@@ -54,7 +56,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     project_dir: Some(history::project_dir),
     mcp_said: None,
     quiet_unread: None,
-    beats: None,
+    beats: Some(beat::BEATS),
     fork: None,
 };
 
