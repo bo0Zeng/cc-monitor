@@ -329,6 +329,7 @@
     "seed": [],
     "seedCreate": "",
     "seedHint": "",
+    "sets": [],
     "slots": [
       {
         "id": "account",

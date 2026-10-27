@@ -336,3 +336,228 @@ fn a_profile_reads_back_as_its_own_layer_in_command_line_words() {
     let cc = b.find("cc").unwrap();
     assert_eq!(cc.ccm_words(), v(&["--cwd-if", "~", "~/projects/notes"]));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 一组会话：`[set."名"]`（A3-2-1）
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SETS: &str = r#"# 手写的注释
+[dev]
+ccm-tmux = true
+
+[look]
+account = "b"
+
+[set."工具链开发"]
+row = [
+  { cwd = "~/work/cc-monitor", alias = "dev", n = 2 },
+  { cwd = "~/work/pb", alias = "dev", n = 1, tab-group = "pb" },
+  { cwd = "~/work/cc-bus", alias = "look", n = 1 },
+]
+
+[set."周报"]
+row = [{ cwd = "/srv/notes", alias = "dev", n = 1 }]
+"#;
+
+fn set_problems(text: &str, name: &str) -> Vec<String> {
+    let b = parse_book(text);
+    let s = b
+        .find_set(name)
+        .unwrap_or_else(|| panic!("组「{name}」应当读得出来"));
+    s.problems.iter().map(|p| p.message.clone()).collect()
+}
+
+#[test]
+fn sets_read_back_with_their_rows_and_lines_and_are_not_profiles() {
+    let b = parse_book(SETS);
+    assert!(b.problems.is_empty(), "{:?}", b.problems);
+    assert!(b.find("set").is_none(), "set 那一节不是一段别名");
+    assert_eq!(
+        b.profiles
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["dev", "look"]
+    );
+    assert_eq!(
+        b.sets.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        vec!["工具链开发", "周报"]
+    );
+    let s = b.find_set("工具链开发").unwrap();
+    assert!(s.problems.is_empty(), "{:?}", s.problems);
+    assert_eq!(s.line, 8);
+    let rows: Vec<(&str, &str, u8, Option<&str>, usize)> = s
+        .rows
+        .iter()
+        .map(|r| {
+            (
+                r.cwd.as_str(),
+                r.alias.as_str(),
+                r.n,
+                r.tab_group.as_deref(),
+                r.line,
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("~/work/cc-monitor", "dev", 2, None, 10),
+            ("~/work/pb", "dev", 1, Some("pb"), 11),
+            ("~/work/cc-bus", "look", 1, None, 12),
+        ]
+    );
+}
+
+#[test]
+fn set_is_reserved_and_cannot_name_an_alias() {
+    assert!(name_ok("set").is_err());
+    let e = apply_changes(
+        Some(""),
+        &[Change::Set(ProfileEdit {
+            name: "set".into(),
+            from: None,
+            agent: Vec::new(),
+            ccm: Vec::new(),
+        })],
+    );
+    assert!(e.is_err(), "set 不能写成一段别名");
+}
+
+#[test]
+fn a_broken_set_reports_its_line_and_blocks_neither_other_sets_nor_aliases() {
+    let text = SETS.replace(
+        r#"{ cwd = "~/work/pb", alias = "dev", n = 1, tab-group = "pb" }"#,
+        r#"{ cwd = "~/work/pb", alias = "dev", n = 0 }"#,
+    );
+    let b = parse_book(&text);
+    assert!(
+        b.problems.is_empty(),
+        "组写错不算别名写错：{:?}",
+        b.problems
+    );
+    assert!(resolve(&b, "dev", &[]).is_ok());
+    let s = b.find_set("工具链开发").unwrap();
+    assert_eq!(s.problems.len(), 1, "{:?}", s.problems);
+    assert_eq!(s.problems[0].line, Some(11));
+    assert!(b.find_set("周报").unwrap().problems.is_empty());
+}
+
+#[test]
+fn each_row_rule_is_checked() {
+    let one = |row: &str| {
+        let t = format!("[set.\"g\"]\nrow = [{row}]\n");
+        set_problems(&t, "g")
+    };
+    let ok = r#"{ cwd = "~/a", alias = "dev", n = 1 }"#;
+    assert!(one(ok).is_empty(), "{:?}", one(ok));
+    // 个数 1–9。
+    assert_eq!(one(r#"{ cwd = "~/a", alias = "dev", n = 10 }"#).len(), 1);
+    // 目录要钉住。
+    assert_eq!(one(r#"{ cwd = "work/a", alias = "dev", n = 1 }"#).len(), 1);
+    // 别名要是能当命令名的名字。
+    assert_eq!(one(r#"{ cwd = "~/a", alias = "a b", n = 1 }"#).len(), 1);
+    // 不认的键。
+    assert_eq!(
+        one(r#"{ cwd = "~/a", alias = "dev", n = 1, size = 3 }"#).len(),
+        1
+    );
+    // 缺一格。
+    assert_eq!(one(r#"{ cwd = "~/a", n = 1 }"#).len(), 1);
+    // 组名不能是空的。
+    assert_eq!(
+        one(r#"{ cwd = "~/a", alias = "dev", n = 1, tab-group = " " }"#).len(),
+        1
+    );
+    // 同一目录 ＋ 同一别名只许一行。
+    assert_eq!(
+        one(r#"{ cwd = "~/a", alias = "dev", n = 1 }, { cwd = "~/a", alias = "dev", n = 2 }"#)
+            .len(),
+        1
+    );
+    // 同一别名不同目录可以。
+    assert!(
+        one(r#"{ cwd = "~/a", alias = "dev", n = 1 }, { cwd = "~/b", alias = "dev", n = 2 }"#)
+            .is_empty()
+    );
+    // 每组合计 ≤ 12。
+    assert_eq!(
+        one(r#"{ cwd = "~/a", alias = "dev", n = 9 }, { cwd = "~/b", alias = "dev", n = 4 }"#)
+            .len(),
+        1
+    );
+    // 一行都没有。
+    assert_eq!(one("").len(), 1);
+}
+
+#[test]
+fn writing_a_set_keeps_the_other_bytes_and_reads_back_the_same() {
+    let edit = SetEdit {
+        name: "新组".into(),
+        rows: vec![
+            RowEdit {
+                cwd: "~/work/ledger".into(),
+                alias: "dev".into(),
+                n: 3,
+                tab_group: None,
+            },
+            RowEdit {
+                cwd: "~/work/ledger".into(),
+                alias: "look".into(),
+                n: 1,
+                tab_group: Some("看图".into()),
+            },
+        ],
+    };
+    let out = apply_changes(Some(SETS), &[Change::SetSet(edit.clone())]).unwrap();
+    assert!(out.starts_with(SETS), "原有的一个字节不动：\n{out}");
+    assert!(
+        problems_after(&out).is_empty(),
+        "{:?}",
+        problems_after(&out)
+    );
+    let b = parse_book(&out);
+    let s = b.find_set("新组").unwrap();
+    assert!(s.problems.is_empty(), "{:?}", s.problems);
+    assert_eq!(edit_of_set(s), edit);
+    assert!(
+        !out.contains("[set]"),
+        "set 那一节不另起一个空段头：\n{out}"
+    );
+}
+
+#[test]
+fn rewriting_and_removing_a_set_touches_only_that_set() {
+    let b = parse_book(SETS);
+    let mut e = edit_of_set(b.find_set("工具链开发").unwrap());
+    e.rows[0].n = 3;
+    let out = apply_changes(Some(SETS), &[Change::SetSet(e)]).unwrap();
+    let b2 = parse_book(&out);
+    assert_eq!(b2.find_set("工具链开发").unwrap().rows[0].n, 3);
+    assert!(out.starts_with("# 手写的注释\n[dev]"), "{out}");
+    assert!(
+        out.contains("[set.\"周报\"]\nrow = [{ cwd = \"/srv/notes\", alias = \"dev\", n = 1 }]"),
+        "别的组一个字节不动：\n{out}"
+    );
+
+    let gone = apply_changes(Some(SETS), &[Change::RemoveSet("工具链开发".into())]).unwrap();
+    let b3 = parse_book(&gone);
+    assert!(b3.find_set("工具链开发").is_none());
+    assert!(b3.find_set("周报").is_some());
+    assert_eq!(b3.profiles.len(), 2);
+}
+
+#[test]
+fn a_broken_set_is_refused_on_write() {
+    let e = SetEdit {
+        name: "g".into(),
+        rows: vec![RowEdit {
+            cwd: "~/a".into(),
+            alias: "dev".into(),
+            n: 0,
+            tab_group: None,
+        }],
+    };
+    let out = apply_changes(Some(SETS), &[Change::SetSet(e)]).unwrap();
+    assert_eq!(problems_after(&out).len(), 1, "{:?}", problems_after(&out));
+}

@@ -25341,6 +25341,78 @@
       "zh": "{key} 要写进某一段 [名字] 里，顶层只放段",
       "args": ["key"]
     },
+    "beProfile.name.reserved": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "「{name}」留给一组会话 [set.\"组名\"]，不能当配置名",
+      "args": ["name"]
+    },
+    "beProfile.set.shape": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "一组写成一段 [set.\"组名\"] · 段里只写 row",
+      "args": []
+    },
+    "beProfile.set.name": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "组名不能为空",
+      "args": []
+    },
+    "beProfile.set.rowShape": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "row 写成一行一张表 · { cwd = \"目录\", alias = \"别名\", n = 个数 }",
+      "args": []
+    },
+    "beProfile.set.rowKey": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{key} 不是一行里的键 · 只认 cwd · alias · n · tab-group",
+      "args": ["key"]
+    },
+    "beProfile.set.rowMissing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这一行缺 {key}",
+      "args": ["key"]
+    },
+    "beProfile.set.count": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "n 写 1–{max} 的整数",
+      "args": ["max"]
+    },
+    "beProfile.set.tabGroup": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "tab-group 要写非空的组名",
+      "args": []
+    },
+    "beProfile.set.dup": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{cwd} · {alias} 与第 {line} 行重复 · 同一目录同一别名只写一行",
+      "args": ["cwd", "alias", "line"]
+    },
+    "beProfile.set.total": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "一组合计最多 {max} 个会话 · 此刻 {n}",
+      "args": ["max", "n"]
+    },
+    "beProfile.set.taken": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已有一组叫「{name}」",
+      "args": ["name"]
+    },
+    "beProfile.set.empty": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "一组至少写一行",
+      "args": []
+    },
     "beProfile.at.line": {
       "kind": "error",
       "role": "原因格",
