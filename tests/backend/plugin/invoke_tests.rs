@@ -27,56 +27,11 @@ fn the_plugin_gets_its_argv_verbatim_and_a_whitelisted_env() {
     }
 }
 
-/// 「被信号打断」与「退出码是几」是**两件事**，骨架必须分得开。
+/// 取第一行非空内容：前面的空白行跳过；全是空白就是空串。
 #[test]
-fn a_signal_death_is_not_an_exit_code() {
-    let killed = Done {
-        code: None,
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        waited_secs: None,
-    };
-    assert!(!killed.timed_out(), "码是 None 不该被算成超时");
-    let expired = Done {
-        code: Some(TIMED_OUT_CODE),
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        waited_secs: None,
-    };
-    assert!(expired.timed_out());
-    let ok = Done {
-        code: Some(0),
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        waited_secs: None,
-    };
-    assert!(!ok.timed_out());
-}
-
-/// 诊断取法：**stderr 优先**，空了才退回 stdout；两条都空就是空串。
-#[test]
-fn the_diagnosis_prefers_stderr_and_falls_back_to_stdout() {
-    let d = Done {
-        code: Some(1),
-        stdout: b"out-1\nout-2\n".to_vec(),
-        stderr: b"\n  \nerr-1\nerr-2\n".to_vec(),
-        waited_secs: None,
-    };
-    assert_eq!(d.diagnosis(), "err-1", "stderr 里的第一行非空内容没被取到");
-    let d2 = Done {
-        code: Some(1),
-        stdout: b"out-1\n".to_vec(),
-        stderr: b"   \n".to_vec(),
-        waited_secs: None,
-    };
-    assert_eq!(d2.diagnosis(), "out-1", "stderr 全空白时没退回 stdout");
-    let d3 = Done {
-        code: Some(1),
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        waited_secs: None,
-    };
-    assert_eq!(d3.diagnosis(), "");
+fn the_first_line_skips_blank_lines() {
+    assert_eq!(first_line(b"\n  \nerr-1\nerr-2\n"), "err-1");
+    assert_eq!(first_line(b"   \n"), "");
 }
 
 /// 非 UTF-8 的输出不许让取诊断这一步炸掉。
@@ -89,7 +44,7 @@ fn invalid_utf8_output_still_yields_a_line() {
 #[test]
 fn a_program_that_is_not_there_is_said_with_a_reason_word() {
     let gone = std::env::temp_dir().join(format!("ccm-invoke-gone-{}", std::process::id()));
-    let Err(NotRun::Failed(s)) = run(&gone, &[], 5, &[], None) else {
+    let Err(NotRun::Failed(s)) = run_fed(&gone, &[], 5, &[], None, None) else {
         panic!("不存在的程序起来了");
     };
     assert_eq!(
@@ -114,8 +69,8 @@ fn a_program_that_is_not_there_is_said_with_a_reason_word() {
 fn the_child_runs_in_the_given_dir() {
     let d = std::env::temp_dir().join(format!("ccm-invoke-dir-{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
-    let out =
-        run(Path::new("pwd"), &["-P"], 5, &[], Some(&d)).unwrap_or_else(|_| panic!("起不来 pwd"));
+    let out = run_fed(Path::new("pwd"), &["-P"], 5, &[], Some(&d), None)
+        .unwrap_or_else(|_| panic!("起不来 pwd"));
     assert_eq!(
         std::path::PathBuf::from(first_line(&out.stdout)),
         std::fs::canonicalize(&d).unwrap()

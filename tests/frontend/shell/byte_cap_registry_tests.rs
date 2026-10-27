@@ -701,15 +701,29 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/control/cc_bus.rs",
         "INBOX_CAP",
-        "`bus-inbox` 交回的收件箱尾巴（`cc-bus log` 的回显）",
+        "`bus-inbox` 交回的收件箱尾巴（回显）",
         // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
     ),
-    // 一封 cc-bus 信的正文：信封只放短话和引用，长的写成文件、给路径。超了：`bus-envelope` 拒成 `too_long`，那一句叫写成文件。
+    // cc-bus 的收件箱住后端（A13-8）：一份收件箱 · 状态文件的读上限。超了当读不出来：读面照实回错，写面不覆盖
+    //   （同输入队 · 会话血缘那几份 `Doc::state`，一档）。
+    (
+        "src/backend/control/cc_bus/store.rs",
+        "INBOX_CAP",
+        "一条会话的 cc-bus 收件箱 `~/.cc-monitor/cc-bus/<sid>.jsonl`（一封一行，只往后加）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/cc_bus/store.rs",
+        "STATE_CAP",
+        "cc-bus 的状态文件 `~/.cc-monitor/cc-bus/state.json`（各会话已读位置 ＋ 发信规矩的账）",
+        "拒收+回错",
+    ),
+    // 一封 cc-bus 信的正文：信封只放短话和引用，长的写成文件、给路径。超了：`bus-send` 拒成 `too_long`，那一句叫写成文件。
     (
         "src/backend/control/cc_bus_envelope.rs",
         "TEXT_MAX_BYTES",
-        "一封 cc-bus 信的正文（`bus-envelope` 核信封那一处）",
+        "一封 cc-bus 信的正文（`bus-send` 核信封那一处）",
         "拒收+回错",
     ),
     // 这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。

@@ -710,10 +710,9 @@ run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PAS
 run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表 ↔ 门禁格两向集合相等 ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印）。⚠ 反空真锚是 P1 那两向相等。⚠ 它不编任何东西：判的是门禁盖到了哪些平台，不判那些平台上真跑得起来' \
          python3 tests/evidence/K-G4-platform-ledger.py
 
-# ── `ccbus-twophase`：cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧 ──
-# 推进已读位置是有副作用的那一跳，错一次就是「消息被消费掉却没人看见」。判据本体与射程住
-# `tests/evidence/W24C-ccbus-twophase-ruler.py`；Windows 那侧靠 `CCBUS_ADAPT_OS=windows` 在 Linux 上跑实现，不买真 Windows。
-run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：静态 7 条 —— `cc-bus peek` 零写面（写形集合 == 登记的两处豁免，且正控要在 `cc-bus commit` 上扫出写）· `.pos` 写点全仓集合相等 · 锁族不增 · 通用层零脚印（带正控）· 与 `cc-bus recv` 的渲染逐字节对拍 · `cc-bus recv` 的 sha256 恒等 · 手册页那几句；真跑 14 条 —— 令牌/CAS/anchor/分段/并发/截短自愈/Stop 钩子两条路/Windows 那一侧四条；kinds 静态 2 条（敲门模板零正文 ＋ 正控）· 真跑 3 条；保活 1 条 —— 共 27）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」** —— 某一格悄悄没跑与它过了，在输出上一模一样。⚠ 它**不判**在真 Windows 上跑得起来（无真机）、不判性能、不判并发的公平性' \
+# ── `ccbus-twophase`：cc-bus 入口那一侧 —— 每个动词只把一句交给后端 ──
+# 收件箱 · 已读位置 · 发信的规矩都住后端（两阶段读的行为由后端单测钉）；判据本体与射程住 `tests/evidence/W24C-ccbus-twophase-ruler.py`。
+run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：脚本零数据面 · 零锁零规矩（各带正控）· 各动词只问后端它自己那一条（与登记两向相等）· 脚本问的动词 == 后端的 bus-* · recv 是 peek 接 commit · 手册页那几句 —— 共 6）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」**。⚠ 它不判后端那一侧（Rust 单测与 e2e 的事）' \
          python3 tests/evidence/W24C-ccbus-twophase-ruler.py
 
 # ── `fmt`：`src/frontend/shell` workspace 的排版 ──

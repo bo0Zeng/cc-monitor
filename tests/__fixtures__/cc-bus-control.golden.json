@@ -4,14 +4,18 @@
     "后端侧（tests/backend/control/cc_bus_tests.rs::the_bus_products_match_the_cross_language_golden）：成品 == 生产构造器（bus-list 由同一份输入样例现算）· 码集合 == inbound::REGISTRY 那一块。",
     "界面侧（tests/frontend/ui/cc-bus-control.vitest.ts）：请求体 == 这里那一份 · 解码器读同一份成品 · 同一份码集合逐码说出一句各不相同的话。",
     "内容是结构占位（会话 id 与标题都是占位），不含真会话正文。",
-    "input.sessions：后端那一处对每条会话判的「叫它什么 · 此刻有没有谁持着它」（没记录 ⇒ 两格都是 null）；名单的行只来自 cc-bus list --tsv（收件箱）。","ids：规则只有一份（shell_quote_core::bus_id_ok）—— 后端 bus-inbox 入口（tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus）与 monitor 读收件箱（tests/frontend/shell/cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples）各读这一份；界面不再判 id，只把 bad_id 说成人话。"
+    "input.sessions：后端那一处对每条会话判的「叫它什么 · 此刻有没有谁持着它」（没记录 ⇒ 两格都是 null）；名单的行就是这台的收件箱（input.inboxes：会话 id · 待读）。","ids：规则只有一份（shell_quote_core::bus_id_ok）—— 后端 bus-inbox 入口（tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus）与 monitor 读收件箱（tests/frontend/shell/cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples）各读这一份；界面不再判 id，只把 bad_id 说成人话。"
   ],
   "ids": {
     "ok": ["alpha_cc", "proj_cc-2", "a", "A_1", "cc-monitor"],
     "bad": ["", "--help", "-x", "a b", "a;rm", "a$x", "a:b", "a.b", "a/b", "é"]
   },
   "input": {
-    "ccListTsv": "#cc-list-tsv\t2\naaaaaaaa-0000-4000-8000-000000000001\t2\nbbbbbbbb-0000-4000-8000-000000000002\t0\ncccccccc-0000-4000-8000-000000000003\t1\n#skipped\t0\n",
+    "inboxes": [
+      { "id": "aaaaaaaa-0000-4000-8000-000000000001", "unread": 2 },
+      { "id": "bbbbbbbb-0000-4000-8000-000000000002", "unread": 0 },
+      { "id": "cccccccc-0000-4000-8000-000000000003", "unread": 1 }
+    ],
     "sessions": [
       { "sid": "aaaaaaaa-0000-4000-8000-000000000001", "title": "占位标题一", "live": true },
       { "sid": "bbbbbbbb-0000-4000-8000-000000000002", "title": "占位标题二", "live": false }
@@ -26,6 +30,6 @@
         { "id": "cccccccc-0000-4000-8000-000000000003", "title": "cccccccc-0000-4000-8000-000000000003", "unread": 1, "live": null }
       ]
     },
-    "codes": ["bad_args", "not_installed", "child_timed_out", "failed"]
+    "codes": ["bad_args", "failed"]
   }
 }

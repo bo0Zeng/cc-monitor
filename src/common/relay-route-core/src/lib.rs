@@ -149,6 +149,12 @@ pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
 pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
 
+/// 〔同上〕**会话输入队**（后端 `history/session_queue.rs` 写）：一条会话一份 `<sid>.json`，还没送进会话的那几句与序号。
+pub const SESSION_QUEUE_DIR_REL: &str = ".cc-monitor/session-queue";
+
+/// 〔同上〕**cc-bus 的收件箱与状态**（后端 `control/cc_bus/store.rs` 写）：一条会话一份收件箱 `<sid>.jsonl` ＋ 一份 `state.json`（已读位置 · 发信规矩的账）。
+pub const CC_BUS_DIR_REL: &str = ".cc-monitor/cc-bus";
+
 /// 〔同上〕**主机钥匙**（后端拨号侧写，OpenSSH 格式）：拨号认它、鉴权过了的首见钥匙记进它；开终端那一行经 [`SSH_CONFIG_REL`] 交给 `ssh`。
 pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
 
@@ -464,6 +470,8 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("rotationUses", ROTATION_USES_REL, false, true),
     ("lineage", LINEAGE_REL, false, true),
     ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
+    ("sessionQueue", SESSION_QUEUE_DIR_REL, true, true),
+    ("ccBus", CC_BUS_DIR_REL, true, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
     ("answerPlugin", ANSWER_PLUGIN_DIR_REL, true, false),
     ("knownHosts", KNOWN_HOSTS_REL, false, true),

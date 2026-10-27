@@ -17,8 +17,8 @@ enum Semantics {
 
 /// 轴二（`C21` 三档 → **几个二进制**）。⚠ **提案，未获批**。
 ///
-/// ⚠ `BuiltIn` 与 `LocalBackend` 今天**没有候选落在它们上面** —— 那本身是一条读数
-/// （`C21` 那三档里，今天有真实实例的只有 `Plugin`），不是死代码。删掉它等于让「三档」在类型上悄悄变成两档，
+/// ⚠ `LocalBackend` 与 `Plugin` 今天**没有候选落在它们上面** —— 那本身是一条读数
+/// （`C21` 那三档里，今天有真实实例的只有 `BuiltIn`：cc-bus 的收件箱进了后端，A13-8），不是死代码。删掉它等于让「三档」在类型上悄悄变成两档，
 /// 而下一个人再想把某个候选归到「内建」时，会发现这个选项根本不存在。
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
@@ -58,13 +58,11 @@ const REGISTERED: &[Candidate] = &[
     Candidate {
         id: "cc-bus",
         home: "src/shared/cc-bus/scripts",
-        semantics: Semantics::CarrierIsAPlugin,
-        shape: Shape::Plugin,
-        today: "一族 shell 脚本；backend 只经命令面转调它，且那唯一一处起进程口\
-                    自 08-26 起住在**通用调用口** `plugin/invoke.rs` 里，转调壳自己零处",
-        gap:
-            "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
-                  今天那处口不再是 cc-bus 专用的，壳只是它的第一个消费者",
+        semantics: Semantics::BuiltIn,
+        shape: Shape::BuiltIn,
+        today: "收件箱 · 已读位置 · 发信的规矩都住后端（A13-8，`control/cc_bus/`）；\
+                    这一族脚本只剩薄入口，每个动词只把一句交给后端的 `bus-*`，后端不再经插件口起它",
+        gap: "无差 —— 它不再是插件：数据与规矩都在后端，脚本只是 agent 够得着的那一层壳",
     },
     Candidate {
         id: "ccm",
@@ -255,22 +253,6 @@ fn launch_face_fields() -> Vec<String> {
     out
 }
 
-/// cc-bus **专有**的数据布局针（与后端的 `cc_bus_boundary_guard` 同一组）。
-///
-/// ⚠ 运行时拼：写成字面量的话，本文件就成了下一个扫描型判据的假语料
-/// （判据的针不只会读到自己，还会喂给别人）。
-/// ⚠ 只留 cc-bus **专有**的名字：那条判据第一版把 `.jsonl` 列进来，
-/// 误伤了读 Claude 转录的两个文件 —— 判据一旦误伤，它的诊断文案就成了假话。
-fn bus_data_needles() -> Vec<String> {
-    vec![
-        format!("agents{}tsv", "."),
-        format!("spawned{}tsv", "."),
-        format!("{}cc-bus", "."),
-        format!("cc-bus{}inbox", "/"),
-        format!("lastread{}", "-"),
-    ]
-}
-
 // ───────────────────────────── 判据 ─────────────────────────────
 
 /// `EF01-Y1`：登记表就是 `E4` 点名、今天还在仓里的那两个候选，**一个不多一个不少**，且住址不烂。
@@ -336,32 +318,20 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
     );
 }
 
-/// `EF01-Y3`：`cc-bus` 今天**只经命令面**被够到 —— 脚本族条数 · `bus-*` 命令条数 ·
-/// 起进程口**恰好一处**且住在通用调用口里（转调壳里**零处**）· 边界判据还在且针没缩。
-///
-/// ⚠ 第 ③ 段的主语 08-26 换过位置（见模块头注那一节）：换的是**守在哪个文件**，
-/// 不是「恰好一处」这个性质本身 —— 它今天由**两条一起**守（一处 + 零处）。
+/// `EF01-Y3`：`cc-bus` 今天**住后端** —— `bus-*` 命令在后端命令表里 · 通用调用口的起进程口**恰好一处** ·
+/// cc-bus 那一块**零处**起进程、也不经插件口（收件箱进了后端，A13-8）。
 #[test]
-fn cc_bus_is_reached_only_through_its_command_surface_today() {
+fn cc_bus_lives_in_the_backend_and_never_goes_through_the_plugin_port() {
     // ② backend 命令表里的 `bus-*`。
     let names = backend_command_names();
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
-    // 正控：转调 cc-bus 的命令今天确实抠得到（`bus-list` 是最早留下来的那一条）。
+    // 正控：`bus-*` 今天确实抠得到（`bus-list` 是最早留下来的那一条）。
     assert!(
         bus.iter().any(|n| *n == "bus-list"),
-        "后端命令表里抠不到 `bus-list` —— 抽取器坏了（或那条命令改了名），下面那条零命中会恒绿：{bus:?}"
-    );
-    // ★ **刻意没有 `bus-recv`**：`cc-bus recv` 有副作用（推进已读位置），backend 代读等于把消息从人那里偷走
-    //   （理由全文在 `src/backend/control/cc_bus.rs` 的模块头注 ①）。
-    assert!(
-        !bus.iter().any(|n| *n == "bus-recv"),
-        "后端长出了 `bus-recv`：`cc-bus recv` 推进已读位置，backend 代读 = 把消息从人那里偷走。今天的 `bus-*`：{bus:?}"
+        "后端命令表里抠不到 `bus-list` —— 抽取器坏了（或那条命令改了名），下面那几条零命中会恒绿：{bus:?}"
     );
 
-    // ③ 起进程口**恰好一处**，且那一处住在**通用调用口**里 —— `E5`/`EL1` 那条
-    //    「两条命令共用这一处口」。⚠ 08-26 `K-W1A` 把这处口从转调壳搬到了通用层，
-    //    所以这一格由**两条一起**守：口那边恰好一处 · 壳这边零处。少哪一条都会漏掉
-    //    一种真实的坏形状（多起一处 / 壳里又长回一处 = 绕开通用口）。
+    // ③ 起进程口**恰好一处**，且那一处住在**通用调用口**里；cc-bus 那一块零处、也不引插件口。
     let port = rust_production("src/backend/plugin/invoke.rs");
     guard_core::find_pinned(&port, "Child::new(").unwrap_or_else(|e| {
         panic!(
@@ -373,32 +343,22 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
                  期限仍由起子进程原语执行（调用方给秒数）。"
         )
     });
-    let shell = rust_production("src/backend/control/cc_bus.rs");
-    assert_eq!(
-        occurrences(&shell, "Child::new("),
-        0,
-        "cc-bus 转调壳里又长回了起进程口（{} 处）——那等于**绕开通用调用口**。\n\
-             ⇒ 08-26 之前这处口就住在这个壳里，`K-W1A` 把它抽进了 `plugin/invoke.rs`；\
-             壳今天的身份只是那处口的**第一个消费者**。壳里再起进程 = 通用口白抽了，\
-             而且下一个插件会照着壳的样子再起一处。\
-             真有非走不可的理由，先去 `E5`/`EU3` 把账改了，再回来改这一条。",
-        occurrences(&shell, "Child::new(")
-    );
-
-    // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。
-    let boundary = guard_core::strip_comment_lines(&must_read(
-        // 纯测试文件搬去 `tests/backend/`。
-        "tests/backend/cc_bus_boundary_guard.rs",
-    ));
-    let needles = segment_after(&boundary, "let needles = [", "];");
-    assert_eq!(
-        occurrences(&needles, "format!("),
-        bus_data_needles().len(),
-        "`cc_bus_boundary_guard` 的**专有针**数量与本表登记的对不上。\n\
-             ⇒ 本表说 cc-bus 那格「零文件格式耦合」，而那句话完全压在那条判据上。\
-             `E6` 说的是**每加一个插件加它自己那组专有针**（针只增不减，且不许用一根通用针盖住所有插件）\
-             —— 所以这个数变大是好事，但要有人当场看见。"
-    );
+    for f in [
+        "src/backend/control/cc_bus.rs",
+        "src/backend/control/cc_bus/store.rs",
+        "src/backend/control/cc_bus/rules.rs",
+    ] {
+        let code = rust_production(f);
+        for needle in ["Child::new(", "plugin::invoke"] {
+            assert_eq!(
+                occurrences(&code, needle),
+                0,
+                "`{f}` 里出现了 `{needle}`（{} 处）—— cc-bus 的收件箱与规矩住后端，不再起进程、不经插件口（A13-8）。\n\
+                 ⇒ 真要转调一个外部程序，先把 cc-bus 在 `E4` 那张表里的两轴重答，再回来改这一条。",
+                occurrences(&code, needle)
+            );
+        }
+    }
 }
 
 /// `EF01-Y6`：`ccm` 今天是**一套骨架 + 一张 per-agent 适配表**（`E4b`），
