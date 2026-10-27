@@ -521,3 +521,48 @@ fn adjacent_unread_lines_fold_into_one() {
     assert_eq!(runs.len(), 4);
     assert_eq!(runs[0]["record"]["count"], 3);
 }
+
+/// 从尾巴往前读一页（`history-run` 的 `tail` / `before`）：切在行头、整行交出；起点 `from` 拿去当下一次的 `before`，
+/// 一页一页往前拼起来 == 整份；残尾（没写完的最后一行）不交；一行比一页还长 ⇒ 往前续读到它的行头，过 `line_cap` 就拒。
+#[test]
+fn read_back_pages_from_the_tail_cut_at_line_starts() {
+    let home = std::env::temp_dir().join(format!("body-back-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let lines: Vec<String> = (0..40)
+        .map(|i| format!("{{\"n\":{i},\"pad\":\"{}\"}}\n", "x".repeat(i % 7 * 5)))
+        .collect();
+    let whole: String = lines.concat();
+    let p = dir.join("s.jsonl");
+    std::fs::write(&p, format!("{whole}{{\"torn\":")).unwrap();
+    let path = p.to_string_lossy().into_owned();
+    let last = read_back(&home, &path, None, 120, 1 << 20).unwrap();
+    assert_eq!(last.end, whole.len() as u64, "残尾不交");
+    assert!(last.from > 0 && last.bytes.len() <= 120);
+    assert!(whole[..last.from as usize].ends_with('\n'), "切在行头");
+    let mut got = Vec::new();
+    let mut before = None;
+    loop {
+        let pg = read_back(&home, &path, before, 120, 1 << 20).unwrap();
+        got.insert(0, String::from_utf8(pg.bytes).unwrap());
+        if pg.from == 0 {
+            break;
+        }
+        before = Some(pg.from);
+    }
+    assert_eq!(got.concat(), whole, "往前一页页拼起来就是整份");
+    // 一行比一页长：往前续读到它的行头。
+    let long = format!("{{\"a\":1}}\n{{\"big\":\"{}\"}}\n", "y".repeat(500));
+    std::fs::write(&p, &long).unwrap();
+    let pg = read_back(&home, &path, None, 64, 1 << 20).unwrap();
+    assert_eq!(pg.from, 8);
+    assert_eq!(pg.end, long.len() as u64);
+    assert!(!pg.more, "末行写完了 ⇒ 后面没有了");
+    assert!(last.more, "有残尾 ⇒ end 之后还有字节");
+    assert_eq!(
+        read_back(&home, &path, None, 64, 100).unwrap_err().0,
+        "oversized_line"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

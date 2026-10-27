@@ -100,6 +100,9 @@ pub(crate) struct Fold {
     pub(crate) until_line: Option<u64>,
     /// 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
     pub(crate) phase: Phase,
+    /// 这一段里第一处失败落在哪（「跳到第一处失败」照它走，界面不自己找）；这一段没有失败 ⇒ 没有。
+    #[serde(rename = "firstFail")]
+    pub(crate) first_fail: Option<FailAt>,
     /// 这一段第一条 / 最后一条记录的时刻（右端那一截按它写，不出帧）。
     #[serde(skip)]
     start: String,
@@ -108,6 +111,20 @@ pub(crate) struct Fold {
     /// `start` 的钟面（[`TurnRow::stamp`] 写；还在跑时「HH:MM 起」用）。
     #[serde(skip)]
     start_text: String,
+}
+
+/// 一处失败落在哪一张卡上：工具结果出错 ⇒ 那次调用画成的那一块（`tool` ＝ 调用 id，`uuid` · `line` ＝ 发出调用的那一条）；
+/// 收场通知说失败 ⇒ 那条通知自己（`tool` 没有）。
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "FoldFail"))]
+pub(crate) struct FailAt {
+    pub(crate) uuid: String,
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) tool: Option<String>,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
 }
 
 /// 一轮 / 一段此刻的样子。
@@ -168,6 +185,10 @@ struct Item {
     peers: u32,
     fails: u32,
     compacts: u32,
+    /// 这一条发出的工具调用 id（后面的结果出错时，失败落回发出它的这一条）。
+    calls: Vec<String>,
+    /// 这一条里第一处失败落在哪。
+    fail: Option<FailAt>,
     /// 收场通知（task-id · 失败了没有），收尾时按 `agent_runs` 分后台任务与子 agent。
     notices: Vec<(Option<String>, bool)>,
 }
@@ -183,10 +204,14 @@ struct Tally {
     peers: u32,
     fails: u32,
     compacts: u32,
+    first_fail: Option<FailAt>,
 }
 
 impl Tally {
     fn add(&mut self, it: &Item, agent_runs: &[String]) {
+        if self.first_fail.is_none() {
+            self.first_fail = it.fail.clone();
+        }
         self.tools += it.tools;
         self.thinking += it.thinking;
         self.agents += it.agents;
@@ -339,6 +364,7 @@ impl Open {
                         until: until.map(|(u, _)| u.to_string()),
                         until_line: until.map(|(_, l)| l),
                         phase: Phase::Idle,
+                        first_fail: tally.first_fail,
                         start,
                         end,
                         start_text: String::new(),
@@ -520,6 +546,25 @@ fn clip(s: &str, max: usize) -> String {
     }
 }
 
+/// 一个出错的工具结果落在哪：这一轮里发出那次调用的那一条（找不到 ⇒ 结果这一条自己，仍带调用 id）；两样都没有 uuid ⇒ 没有。
+fn fail_of_call(items: &[Item], of: Option<&str>, uuid: Option<&str>, line: u64) -> Option<FailAt> {
+    let caller = of.and_then(|id| {
+        items
+            .iter()
+            .rev()
+            .find(|it| it.calls.iter().any(|c| c == id))
+    });
+    let (uuid, line) = match caller {
+        Some(c) => (c.uuid.clone(), c.line),
+        None => (uuid.map(str::to_string), line),
+    };
+    Some(FailAt {
+        uuid: uuid?,
+        tool: of.map(str::to_string),
+        line,
+    })
+}
+
 /// 一条主线记录（`kind` 那一家的，`beat` 是它的一拍）喂进开着的那一轮。
 fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat, line: u64) {
     let ts = beat.at.as_deref().unwrap_or("");
@@ -547,6 +592,7 @@ fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat, line: u64) {
             for a in &beat.acts {
                 match a {
                     Act::Call { id, name, what, .. } => {
+                        it.calls.push(id.to_string());
                         if spawned.contains(&id.as_ref()) {
                             it.agents += 1;
                             t.agent_calls.push(id.to_string());
@@ -612,6 +658,9 @@ fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat, line: u64) {
                     }
                     if *failed {
                         it.fails += 1;
+                        if it.fail.is_none() {
+                            it.fail = fail_of_call(&t.items, of.as_deref(), uuid, line);
+                        }
                     }
                 }
             }
@@ -620,9 +669,17 @@ fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat, line: u64) {
                 match &said.speaker {
                     Speaker::TaskNotification {
                         task_id, status, ..
-                    } => it
-                        .notices
-                        .push((task_id.clone(), status.as_deref() == Some("failed"))),
+                    } => {
+                        let failed = status.as_deref() == Some("failed");
+                        if failed && it.fail.is_none() {
+                            it.fail = it.uuid.clone().map(|uuid| FailAt {
+                                uuid,
+                                tool: None,
+                                line,
+                            });
+                        }
+                        it.notices.push((task_id.clone(), failed));
+                    }
                     Speaker::AgentMessage {
                         handback: true,
                         from,

@@ -260,6 +260,7 @@
           {
             "after": "t-1",
             "afterLine": 0,
+            "firstFail": null,
             "parts": [
               {
                 "text": "过程",
@@ -282,6 +283,11 @@
           {
             "after": "t-3",
             "afterLine": 2,
+            "firstFail": {
+              "line": 3,
+              "tool": "u-1",
+              "uuid": "t-4"
+            },
             "parts": [
               {
                 "text": "过程",
@@ -334,6 +340,7 @@
           {
             "after": "t-9",
             "afterLine": 8,
+            "firstFail": null,
             "parts": [
               {
                 "text": "过程",

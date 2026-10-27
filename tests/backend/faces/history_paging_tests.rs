@@ -183,6 +183,7 @@ fn every_paged_reply_fits_the_cap_and_the_pages_add_up_to_the_whole() {
             path: path.clone(),
             from: None,
             limit: None,
+            ..Default::default()
         },
         &tz,
         usize::MAX,
@@ -197,6 +198,7 @@ fn every_paged_reply_fits_the_cap_and_the_pages_add_up_to_the_whole() {
                     path: path.clone(),
                     from: at,
                     limit: None,
+                    ..Default::default()
                 },
                 &tz,
                 CAP,
@@ -325,6 +327,7 @@ fn pages_from_the_middle_after_the_record_grew_still_add_up() {
             path: path.clone(),
             from: Some(mid),
             limit: Some(3),
+            ..Default::default()
         },
         &tz,
         usize::MAX,
@@ -361,6 +364,7 @@ fn a_page_from_the_middle_is_the_same_whether_the_scan_map_is_held_or_not() {
                 path: path.to_string(),
                 from,
                 limit: None,
+                ..Default::default()
             },
             &tz,
             usize::MAX,
@@ -447,6 +451,7 @@ fn an_item_bigger_than_the_cap_goes_alone_on_its_page() {
                 path: path.clone(),
                 from: at,
                 limit: None,
+                ..Default::default()
             },
             &tz,
             cap,
@@ -460,4 +465,47 @@ fn an_item_bigger_than_the_cap_goes_alone_on_its_page() {
         }
     }
     assert_eq!(n, 6);
+}
+
+/// `cover` 落在一轮中间 ⇒ 回包从包着它的那一轮起（不是下一轮）；`to` ⇒ 只出开头在它之前的轮，截在那里 ⇒ 没有下一页、`end` ＝ `to`。
+#[test]
+fn cover_starts_at_the_turn_holding_it_and_to_stops_before_it() {
+    let home = scratch("cover");
+    let path = fixture(&home, "s-cover", 12, 20);
+    let tz = crate::Tz::default();
+    let ask = |req: HistoryTurnsReq| turns_page(&home, req, &tz, usize::MAX).unwrap();
+    let whole = ask(HistoryTurnsReq {
+        path: path.clone(),
+        ..Default::default()
+    });
+    let main: Vec<_> = whole.turns.iter().collect();
+    assert!(main.len() >= 8, "夹具要够几轮：{}", main.len());
+    let k = 4;
+    let mid = main[k].at + 5;
+    assert!(mid < main[k + 1].at, "落点要在第 k 轮里面");
+    let r = ask(HistoryTurnsReq {
+        path: path.clone(),
+        cover: Some(mid),
+        ..Default::default()
+    });
+    assert_eq!(r.turns[0].at, main[k].at, "cover 落在一轮中间 ⇒ 从那一轮起");
+    assert_eq!(r.from, main[k].at, "from 写的是真正的起点");
+    let to = main[k + 2].at;
+    let r = ask(HistoryTurnsReq {
+        path: path.clone(),
+        cover: Some(mid),
+        to: Some(to),
+        ..Default::default()
+    });
+    let ats: Vec<u64> = r.turns.iter().map(|t| t.at).collect();
+    assert_eq!(ats, vec![main[k].at, main[k + 1].at], "to 之前开头的那几轮");
+    assert_eq!((r.next, r.end), (None, to));
+    // cover 与 from 都给 ⇒ 以 cover 为准。
+    let r = ask(HistoryTurnsReq {
+        path,
+        from: Some(0),
+        cover: Some(mid),
+        ..Default::default()
+    });
+    assert_eq!(r.turns[0].at, main[k].at);
 }
