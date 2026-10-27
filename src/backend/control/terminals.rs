@@ -1,8 +1,8 @@
 //! 终端管理 L1 的三条命令：`terminals-list`（名单）· `terminal-preview`（抓一屏）· `terminal-input`（送字 / 送键）。
 //!
 //! 两个前端共用，**形状与宿主无关**：目标用名单里的不透明句柄（`terminal`）或会话 ID（`sid`）指，
-//! 回话不带任何 tmux 目标串。这一版宿主只有 tmux：挂着 `@ccm_sid` 的窗格各是一个终端（一个 tmux 会话里几个 claude 就几个）；
-//! 一个都没挂的 tmux 会话是一个终端（看它当前窗口的当前窗格）。托管终端做出来之后换实现、不换形状。
+//! 回话不带任何 tmux 目标串。名单经宿主口（`host::list`，tmux 与托管两种宿主合一份，每行带 `host`）。tmux 那一形：挂着 `@ccm_sid` 的窗格各是一个终端（一个 tmux 会话里几个 claude 就几个）；
+//! 一个都没挂的 tmux 会话是一个终端（看它当前窗口的当前窗格）。抓屏与送字这一版只认 tmux 那一形的行。
 //!
 //! # 纪律
 //!
@@ -20,11 +20,13 @@ use super::terminals_wire::{
 };
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Barred, Who};
-use crate::platform::child::{Child, ChildFail, Deadline};
+pub(crate) use crate::host::tmux::{
+    handle_of, parse_clients, parse_rows, rows_here, tmux_here, On,
+};
+use crate::host::tmux::{rows_found_on, rows_on};
+pub(crate) use crate::host::TermRow;
+use crate::platform::child::Deadline;
 use copy_core::copy_text;
-
-/// 列名单 · 问尺寸那几发只读 tmux 的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
-const READ_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// `terminals-list` 整条命令总期限的上限（窗格 · 客户端两发）。
 pub(crate) const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
@@ -34,25 +36,11 @@ pub(crate) const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（抓屏那一处的 tmux stderr 进复制详情）。
 pub(crate) type CmdErr = crate::wire::spec::Fail;
 
-/// 句柄前缀（不透明：前端不拼、不解析；后端只按名单对）。
-const HANDLE_PREFIX: &str = "tmux-";
-
 /// `scrollback` 的上限（行）。超了截到这里，回话里 `capped: true`。
 pub(crate) const MAX_SCROLLBACK: u32 = 2000;
 
 /// 目标那一格的长度上限（字节）：名单里的句柄 / sid 都远小于它，只防一个巨串。
 const MAX_TARGET_BYTES: usize = 256;
-
-/// 名单那一趟问 tmux 的格式（逐窗格）：会话 ID · 窗格 ID · 是不是当前窗格 · 是不是当前窗口 · 名 · 窗口数 · 最后活动 ·
-/// `@ccm_sid`（窗格上的，没有就是会话那一级的）· `@ccm_agent` · `@ccm_client` · 前台程序 · 工作目录 · 窗格标题
-/// （后两格是自由文本，排在最后）。
-const PANES_FMT: &str = "#{session_id}\t#{pane_id}\t#{pane_active}\t#{window_active}\t#{session_name}\t#{session_windows}\t#{session_activity}\t#{@ccm_sid}\t#{@ccm_agent}\t#{@ccm_client}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}";
-const PANES_FIELDS: usize = 13;
-
-/// 连着各会话的 tmux 客户端：会话 ID · 接上的时刻 · 最后活动。
-/// 控制模式客户端（终端实时预览那个只读、不改尺寸的订阅者，`terminal_follow.rs`）整行留空 ⇒ 解析时丢掉：它不是终端窗口。
-const CLIENTS_FMT: &str =
-    "#{?client_control_mode,,#{session_id}\t#{client_created}\t#{client_activity}}";
 
 /// 送键那张有限键表：线上的名字 → tmux 的键名。不收任意转义串。
 pub(crate) const KEYS: &[(&str, &str)] = &[
@@ -70,210 +58,6 @@ pub(crate) const KEYS: &[(&str, &str)] = &[
     ("page-up", "PPage"),
     ("page-down", "NPage"),
 ];
-
-/// 问哪台 tmux：生产恒是默认 socket（`socket: None`）；判据在隔离 socket 上起真 tmux。
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct On<'a> {
-    pub(crate) socket: Option<&'a str>,
-}
-
-impl On<'_> {
-    /// 本模块唯一起进程的那一处（名单 · 身份门的探测 · 送字送键都经它造的命令）。
-    fn cmd(&self) -> Child {
-        let c = Child::new("tmux");
-        match self.socket {
-            Some(s) => c.args(["-S", s]),
-            None => c,
-        }
-    }
-
-    fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
-        self.cmd().args(args).run(READ_TMUX_WITHIN)
-    }
-}
-
-/// 名单里的一行（一个挂着 sid 的窗格，或一个一个都没挂的 tmux 会话）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TermRow {
-    pub(crate) id: String,
-    /// 挂着 `sid` 的那个窗格（`%N`）；`None` ⇒ 这个 tmux 会话一个 sid 都没挂，看它当前的窗格。
-    pub(crate) pane: Option<String>,
-    /// 同一个 tmux 会话里还有别的窗格挂着别的 sid（结束这一个只关它的窗格，不关整个会话）。
-    pub(crate) shared: bool,
-    pub(crate) name: String,
-    pub(crate) windows: u32,
-    pub(crate) activity: u64,
-    pub(crate) sid: String,
-    pub(crate) agent: String,
-    pub(crate) client: String,
-    pub(crate) program: String,
-    pub(crate) cwd: String,
-    pub(crate) title: String,
-}
-
-impl TermRow {
-    pub(crate) fn handle(&self) -> String {
-        handle_of(&self.id, self.pane.as_deref())
-    }
-
-    /// 对它下手用的 tmux 句柄：挂着 sid 的窗格，或那个会话（看它当前的窗格）。
-    fn target(&self) -> &str {
-        self.pane.as_deref().unwrap_or(&self.id)
-    }
-}
-
-/// 终端句柄：tmux 会话 ID（`$N`）＋ 挂着 sid 的窗格（`%M`；没有 ⇒ 只指会话）。名单发的、容器那一格报的都由它算（一个家）。
-pub(crate) fn handle_of(session_id: &str, pane: Option<&str>) -> String {
-    let id = session_id.trim_start_matches('$');
-    match pane {
-        Some(p) => format!("{HANDLE_PREFIX}{id}-{}", p.trim_start_matches('%')),
-        None => format!("{HANDLE_PREFIX}{id}"),
-    }
-}
-
-/// `list-panes -a` 的一行。
-struct PaneLine<'a> {
-    id: &'a str,
-    pane: &'a str,
-    current: bool,
-    f: Vec<&'a str>,
-    windows: u32,
-    activity: u64,
-}
-
-/// `list-panes -a` 的原文 ⇒ 行（纯函数）。回 `(行, 有没有读不懂的行)`。
-///
-/// 每个 tmux 会话：挂着 sid 的窗格各一行（同一个 sid 挂在几个窗格上 ⇒ 当前窗格那个，否则第一个）；一个都没挂 ⇒ 当前窗格那一行代表整个会话。
-pub(crate) fn parse_rows(text: &str) -> (Vec<TermRow>, bool) {
-    let mut odd = false;
-    let mut panes: Vec<PaneLine> = Vec::new();
-    for line in text.lines().filter(|l| !l.is_empty()) {
-        let f: Vec<&str> = line.splitn(PANES_FIELDS, '\t').collect();
-        let windows = f.get(5).and_then(|w| w.parse().ok());
-        let activity = f.get(6).and_then(|a| a.parse().ok());
-        match (
-            f.len() == PANES_FIELDS && f[0].starts_with('$') && f[1].starts_with('%'),
-            windows,
-            activity,
-        ) {
-            (true, Some(windows), Some(activity)) => panes.push(PaneLine {
-                id: f[0],
-                pane: f[1],
-                current: f[2] == "1" && f[3] == "1",
-                windows,
-                activity,
-                f,
-            }),
-            _ => odd = true,
-        }
-    }
-    let row = |l: &PaneLine, pane: Option<String>, shared: bool| TermRow {
-        id: l.id.into(),
-        pane,
-        shared,
-        name: l.f[4].into(),
-        windows: l.windows,
-        activity: l.activity,
-        sid: l.f[7].into(),
-        agent: l.f[8].into(),
-        client: l.f[9].into(),
-        program: l.f[10].into(),
-        cwd: l.f[11].into(),
-        title: l.f[12].into(),
-    };
-    let mut rows = Vec::new();
-    let mut seen: Vec<&str> = Vec::new();
-    for l in &panes {
-        if seen.contains(&l.id) {
-            continue;
-        }
-        seen.push(l.id);
-        let mine: Vec<&PaneLine> = panes.iter().filter(|q| q.id == l.id).collect();
-        let mut tagged: Vec<&PaneLine> = Vec::new();
-        for q in mine.iter().filter(|q| !q.f[7].is_empty()) {
-            match tagged.iter().position(|t| t.f[7] == q.f[7]) {
-                Some(k) if q.current => tagged[k] = q,
-                Some(_) => {}
-                None => tagged.push(q),
-            }
-        }
-        if tagged.is_empty() {
-            let cur = mine.iter().find(|q| q.current).unwrap_or(&mine[0]);
-            rows.push(row(cur, None, false));
-        } else {
-            let shared = tagged.len() > 1;
-            rows.extend(tagged.iter().map(|q| row(q, Some(q.pane.into()), shared)));
-        }
-    }
-    rows.sort_by(|a, b| a.name.cmp(&b.name));
-    (rows, odd)
-}
-
-/// 名单 ＋ 各会话的客户端 `[(会话 ID, 接上时刻, 最后活动)]` ＋ 报全了没有。
-type Listed = (Vec<TermRow>, Vec<(String, u64, u64)>, bool);
-
-/// 这台的名单（读两次 tmux：窗格 · 客户端）。没装 tmux / 没起 server ⇒ 空名单（不是错）。
-fn rows_on(on: On<'_>) -> Result<Listed, CmdErr> {
-    Ok(rows_found_on(on)?.unwrap_or((vec![], vec![], true)))
-}
-
-/// 同 [`rows_on`]，但没装 tmux ⇒ `None`（与「装了、没起 server」分开）。
-fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, CmdErr> {
-    let out = match on.read(&[UTF8_CLIENT_FLAG, "list-panes", "-F", PANES_FMT, "-a"]) {
-        Ok(o) => o,
-        Err(ChildFail::NotFound(_)) => return Ok(None),
-        Err(e) => return Err(super::capture_pane::tmux_unavailable(e)),
-    };
-    if !out.status.success() {
-        let said = String::from_utf8_lossy(&out.stderr).to_ascii_lowercase();
-        let no_server = super::capture_pane::NO_SERVER_NEEDLES
-            .iter()
-            .any(|(n, _)| said.contains(n));
-        if no_server {
-            return Ok(Some((vec![], vec![], true)));
-        }
-        return Err(CmdErr::new(
-            "unobservable",
-            crate::common::contract::malformed("tmux list-panes failed"),
-        )
-        .with_raw(Some(&String::from_utf8_lossy(&out.stderr))));
-    }
-    let (rows, odd) = parse_rows(&String::from_utf8_lossy(&out.stdout));
-    let clients = match on.read(&[UTF8_CLIENT_FLAG, "list-clients", "-F", CLIENTS_FMT]) {
-        Ok(o) if o.status.success() => parse_clients(&String::from_utf8_lossy(&o.stdout)),
-        _ => vec![],
-    };
-    Ok(Some((rows, clients, !odd)))
-}
-
-/// 这台有没有 tmux（查不动 ⇒ `None`）：「文件与数据」那一份 · 别名页表单 · 起新会话框同一个判法（[`rows_here`]；原住 `footprint/mod.rs`）。
-pub(crate) fn tmux_here() -> Option<bool> {
-    match rows_here() {
-        Ok(Some(_)) => Some(true),
-        Ok(None) => Some(false),
-        Err(_) => None,
-    }
-}
-
-/// 这台此刻的名单（生产：默认 socket）；没装 tmux ⇒ `None`。批量停 / 起按 sid 认窗格用它。
-pub(crate) fn rows_here() -> Result<Option<Vec<TermRow>>, CmdErr> {
-    Ok(rows_found_on(On::default())?.map(|(rows, _, _)| rows))
-}
-
-/// `list-clients` 的原文 ⇒ `[(会话 ID, 接上时刻, 最后活动)]`（纯函数；读不懂的行丢掉）。
-pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
-    text.lines()
-        .filter_map(|l| {
-            let f: Vec<&str> = l.split('\t').collect();
-            match f.as_slice() {
-                [id, since, last] => {
-                    Some((id.to_string(), since.parse().ok()?, last.parse().ok()?))
-                }
-                _ => None,
-            }
-        })
-        .collect()
-}
 
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
 pub(crate) use cmd_wire::session::Refused;
@@ -348,7 +132,7 @@ pub(crate) fn terminal_json(
     let nonempty = |s: &str| (!s.is_empty()).then(|| s.to_string());
     TerminalItem {
         terminal: row.handle(),
-        host: crate::wire::TerminalHost::Tmux.as_wire().to_string(),
+        host: row.host.as_wire().to_string(),
         tmux_name: row.name.clone(),
         title,
         program: row.program.clone(),
@@ -397,7 +181,7 @@ pub(crate) fn list_reply(
 /// `terminals-list` 的本体。`client`（自报的前端）决定每一行的 `mine` 与 `can`。
 pub(crate) fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, CmdErr> {
     let requester = gate::requester(req.client.as_deref())?;
-    let (rows, clients, complete) = rows_on(on)?;
+    let (rows, clients, complete) = crate::host::list(on)?;
     Ok(list_reply(&rows, &clients, complete, requester.as_deref()))
 }
 
@@ -957,7 +741,13 @@ fn admit_on(
     // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人），挂着 sid 的窗格由门按 sid 找、身份按它判。
     // 送到哪：那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。令牌只有门发得出。
     let sid = row.pane.as_ref().map(|_| row.sid.as_str());
-    let at = match gate::admit_with(&|| on.cmd(), &row.name, &row.id, sid, requester.as_deref())? {
+    let at = match gate::admit_with(
+        &|| crate::host::tmux::child(on.socket),
+        &row.name,
+        &row.id,
+        sid,
+        requester.as_deref(),
+    )? {
         Ok(at) => at,
         Err(Barred::Gone) => return Ok(Err(Refused::Ended)),
         Err(Barred::OtherSid) => return Ok(Err(Refused::NotKnown)),
@@ -1009,7 +799,7 @@ fn send_on(
             ));
         }
     }
-    let tmux = |a: &[&str]| super::launch::ran(on.cmd(), a);
+    let tmux = |a: &[&str]| super::launch::ran(crate::host::tmux::child(on.socket), a);
     let sent = match &input {
         Input::Text { text, enter } => super::launch::type_literal(
             &at,
@@ -1025,7 +815,7 @@ fn send_on(
         return Ok(input_reply(SentResult::Delivered, None, None));
     }
     // tmux 回了非零：会话还在 ⇒ 不知道送没送到（不重发）；不在了 ⇒ 已经没了。
-    match gate::probe_with(on.cmd(), at.handle())? {
+    match gate::probe_with(crate::host::tmux::child(on.socket), at.handle())? {
         Some(_) => Ok(input_reply(SentResult::Unsure, None, None)),
         None => Ok(refused(Refused::Ended)),
     }

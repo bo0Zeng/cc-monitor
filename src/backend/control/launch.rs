@@ -10,7 +10,7 @@
 //!
 //! 今天 monitor 那条路是「渲染一整条 shell 串 → `ssh -t "bash -lic '<串>'"`」，于是
 //! 引号 / 转义 / 注入是一整类必须一直防的问题。本模块用
-//! `Child::new("tmux").args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
+//! `host::tmux::child(None).args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
 //! 不是「被挡住了」。这是搬进后端最实在的收益之一。
 //!
 //! # ★ 这里的校验是**形状校验**，不是安全边界
@@ -389,10 +389,10 @@ const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
 fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
-    ran(Child::new("tmux"), args)
+    ran(crate::host::tmux::child(None), args)
 }
 
-/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Child::new("tmux")`；判据换一个假 tmux 的绝对路径，
+/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `host::tmux::child(None)`；判据换一个假 tmux 的绝对路径，
 /// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
 pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
     match cmd.args(args).run(LAUNCH_TMUX_WITHIN) {
