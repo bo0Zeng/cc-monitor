@@ -40,13 +40,10 @@ impl UpstreamDesc {
 /// 子目录名（便条目录底下）。
 const SUB: &str = "upstream";
 
-/// 一份描述的读盘上限（几个变量）。
-const DESC_MAX_BYTES: u64 = 64 << 10;
-
-/// 一条会话一份：状态（读不懂的那份不作数）。
+/// 一条会话一份：状态（读不懂的那份不作数）。读盘上限与起会话便条同一个。
 const DESC: crate::common::own_state::Doc<UpstreamDesc> = crate::common::own_state::Doc::state(
     ".cc-monitor/launch-pending/upstream/<origin>.json",
-    DESC_MAX_BYTES,
+    crate::history::launch_book::MAX_BYTES,
 );
 
 /// 便条目录名（落点的上一层）。
@@ -83,7 +80,10 @@ pub(crate) fn leave(
                     .and_then(|n| n.to_str())
                     .and_then(|n| dir.join(n).ok()),
             ) {
-                let _ = own.delete_file(&f);
+                // 清不掉只记一行：下一次写的时候再清，不挡这一份落盘。
+                if let Err(e) = own.delete_file(&f) {
+                    tracing::warn!("上游描述清不掉（{}）：{e}", f.as_path().display());
+                }
             }
         }
     }
