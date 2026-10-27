@@ -57,7 +57,11 @@ fn seventy_ended_runs_count_as_seventy() {
     spawn(&book, 70, Some(RunEnd::Done));
     let (listed, summary) = frame(&book);
     assert_eq!(listed, RUNS_KEEP, "运行表照旧只列上限那么多");
-    assert_eq!(summary, done_text(70), "总数照实数：70 个收场的，不是表长 {RUNS_KEEP}");
+    assert_eq!(
+        summary,
+        done_text(70),
+        "总数照实数：70 个收场的，不是表长 {RUNS_KEEP}"
+    );
 }
 
 #[test]

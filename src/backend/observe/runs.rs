@@ -1083,16 +1083,16 @@ fn summary_of(runs: &[RunInfo], total: Total) -> Option<Words> {
     }
     let n = total.n.to_string();
     let running = runs.iter().filter(|r| r.state == RunState::Running).count();
-    let key = match (running > 0, total.at_least) {
-        (true, false) => "agentsPanel.render.summary",
-        (true, true) => "agentsPanel.render.summaryAtLeast",
-        (false, false) => "agentsPanel.render.summaryDone",
-        (false, true) => "agentsPanel.render.summaryDoneAtLeast",
-    };
-    Some(Words(copy_text(
-        key,
-        &[("n", &n), ("running", &running.to_string())],
-    )))
+    let r = running.to_string();
+    Some(Words(match (running > 0, total.at_least) {
+        (true, false) => copy_text("agentsPanel.render.summary", &[("n", &n), ("running", &r)]),
+        (true, true) => copy_text(
+            "agentsPanel.render.summaryAtLeast",
+            &[("n", &n), ("running", &r)],
+        ),
+        (false, false) => copy_text("agentsPanel.render.summaryDone", &[("n", &n)]),
+        (false, true) => copy_text("agentsPanel.render.summaryDoneAtLeast", &[("n", &n)]),
+    }))
 }
 
 /// 出帧那一下给一项写好字：状态 · 名字（没有 ⇒ 通称）· 最近一件事 · 事实 · 说明 · 结束线（`kids`：它派出的、还在表里的几个）。
