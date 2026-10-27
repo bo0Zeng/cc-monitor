@@ -44,4 +44,8 @@ type_text: string,
 /**
  * 读得起来的那几道门；目录（含指向目录的链接）缺。
  */
-gates?: Gates, };
+gates?: Gates, 
+/**
+ * `path` 的显示形（那台按自己的家目录写好的 `~/…`，原始字节同 `path`），两端照抄。
+ */
+shown: WirePath, };

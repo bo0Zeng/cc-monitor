@@ -11,7 +11,7 @@ import type { RunInfo } from "./generated/RunInfo";
 /** 系统标题：`{标签} · {状态} · {会话}`，远端再加 `· {机器}`（标题里不放符号）。 */
 export function agentWindowTitle(r: RunInfo, session: string, machine: string | null): string {
   const label = runLabel(r);
-  const state = runStateText(r.state);
+  const state = runStateText(r);
   return machine ? copyText("agentWindow.title.remote", { label, state, session, machine }) : copyText("agentWindow.title.local", { label, state, session });
 }
 
@@ -63,7 +63,7 @@ export function whyOf(r: RunInfo, now: number): WhyView | null {
       return { lead: null, text: copyText("agentWindow.why.stopped"), note: null, error: null, refresh: false };
     case "unknown":
       return {
-        lead: runStateText("unknown"),
+        lead: runStateText(r),
         text: r.why === "orphaned" ? copyText("agentWindow.why.orphaned") : copyText("agentWindow.why.quiet", { dur }),
         note: null,
         error: null,
@@ -75,7 +75,7 @@ export function whyOf(r: RunInfo, now: number): WhyView | null {
 /** 尾巴上的结束线（在跑 ⇒ `null`）：状态字（图标由界面在前面画）＋ 一句。 */
 export function endOf(r: RunInfo, now: number): { head: string; sub: string } | null {
   if (r.state === "running") return null;
-  const head = runStateText(r.state);
+  const head = runStateText(r);
   const dur = since(r.active_ms, now) ?? fmtDur(0);
   const sub =
     r.state === "done"

@@ -471,11 +471,16 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
-        json!({ "exists": true, "tmuxName": "cwd:/h/srv" })
+        json!({ "exists": true, "shown": "~/srv", "tmuxName": "cwd:/h/srv" })
+    );
+    // 显示形由这台按自己的家目录写（两端照抄，不自己缩）。
+    assert_eq!(
+        run(&some, json!({ "cwd": "/h/srv" })).unwrap()["shown"],
+        "~/srv"
     );
     assert_eq!(
         run(&none, json!({ "cwd": "/x" })).unwrap(),
-        json!({ "exists": false, "tmuxName": null })
+        json!({ "exists": false, "shown": "/x", "tmuxName": null })
     );
     assert_eq!(
         run(&some, json!({ "cwd": "/h/srv", "forkOf": SRC })).unwrap()["tmuxName"],

@@ -220,14 +220,14 @@ const UNFOLLOW_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
 /// 那张票早已停了 / 退订先于订阅到了 ⇒ 后端都回 `ok`（退订先到的那张票，之后的订阅那一问不起）。
 fn unfollow(origin: &crate::origin::Origin, ticket: String) {
     // 那台认不认这一条看它此刻那条连接的能力事实（本机 · 本机后端转来的那台 hello 同一问）。
-    if !crate::inbound_client::offer_of(origin.as_wire_str()).is_some_and(|o| o.admits(UNFOLLOW)) {
+    if !crate::inbound_client::offer_of(origin).is_some_and(|o| o.admits(UNFOLLOW)) {
         return;
     }
     let Some(client) = crate::inbound_client::local_client() else {
         return;
     };
     let local = origin.is_local();
-    let origin = origin.as_wire_str().to_string();
+    let origin = origin.to_string();
     tauri::async_runtime::spawn(async move {
         let args = serde_json::json!({ "ticket": ticket });
         let got = if local {
@@ -645,7 +645,7 @@ impl EventReplay {
         }
         for s in gone.into_iter().filter(|s| s.kind == SubKind::Screen) {
             if let Some(ticket) = s.only {
-                unfollow(&crate::origin::Origin(s.origin), ticket);
+                unfollow(&crate::origin::Origin::named(s.origin), ticket);
             }
         }
     }
@@ -1006,7 +1006,8 @@ impl EventReplay {
         want: u32,
     ) {
         let sink = Arc::clone(&self.inner.lock().sink);
-        let origin = origin.as_wire_str();
+        let origin_s = origin.to_string();
+        let origin = origin_s.as_str();
         if origin.trim().is_empty() {
             // 空白名：调用方没说哪台（同 `chan_call` 那道闸）⇒ 用法错，不当成「一台永远看不见的机器」。
             let item = Item::Closed {
@@ -1179,7 +1180,7 @@ impl EventReplay {
     /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：每一格都是那一处的整份，丢了一格下一格就补齐。
     /// 对账 · 缺口 · 覆盖都在后端（`stream/live.rs`），界面只照画。
     pub fn on_live_card(&self, origin: &crate::origin::Origin, card: cmd_wire::live::LiveCard) {
-        let at = origin.as_wire_str().to_string();
+        let at = origin.to_string();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             let board = inner.live.entry(at.clone()).or_default();
@@ -1249,7 +1250,8 @@ impl EventReplay {
     /// 那台机器的内容流接上了 / 断了（`stream_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
     /// 原位收一格 `Seen` / `Unseen`（状态没变就不重复说）。
     pub fn origin_seen(&self, origin: &crate::origin::Origin, seen: bool) {
-        let origin = origin.as_wire_str();
+        let origin_s = origin.to_string();
+        let origin = origin_s.as_str();
         let (sink, told) = {
             let mut inner = self.inner.lock();
             inner.seen.insert(origin.to_string(), seen);
@@ -1317,7 +1319,8 @@ impl EventReplay {
         only: Option<&str>,
         body: Body,
     ) {
-        let origin = origin.as_wire_str();
+        let origin_s = origin.to_string();
+        let origin = origin_s.as_str();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             let sink = Arc::clone(&inner.sink);
@@ -1373,7 +1376,8 @@ impl EventReplay {
     /// 那台那条流该报的「在看」名单：主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话。
     /// 主窗口还没报过 ⇒ 只有查看窗那几条（冷起不全发全拉：界面第一次报的那个 tab 照「刚进名单」补）。
     pub fn watched(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
-        let origin = origin.as_wire_str();
+        let origin_s = origin.to_string();
+        let origin = origin_s.as_str();
         let inner = self.inner.lock();
         let mut out: BTreeSet<String> = inner
             .main_watch
@@ -1394,7 +1398,7 @@ impl EventReplay {
     /// 那台手上留着的会话：留存里那台有行的那几条 ∪ 主窗口那台上的 tab（随名单报给那台，那台不在说的它答已结束）。
     pub fn kept(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
         let inner = self.inner.lock();
-        kept_of(&inner.tails, &inner.main_kept, origin.as_wire_str())
+        kept_of(&inner.tails, &inner.main_kept, &origin.to_string())
     }
 
     /// 留存里有行的那几条变了 ⇒ 名单那一侧重报（与「在看」同一个收端）。
@@ -1423,7 +1427,8 @@ impl EventReplay {
         origin: &crate::origin::Origin,
         from: Vec<cmd_wire::watch::WatchFrom>,
     ) {
-        let origin = origin.as_wire_str();
+        let origin_s = origin.to_string();
+        let origin = origin_s.as_str();
         {
             let mut inner = self.inner.lock();
             for w in &from {
@@ -1649,7 +1654,7 @@ fn evict_over_cap(inner: &mut Inner, book: &parking_lot::RwLock<crate::session_b
         .iter()
         .filter(|(_, t)| t.touched != inner.tick)
         .map(|(k, t)| {
-            let live = book.is_live(&crate::origin::Origin(k.0.clone()), &k.1);
+            let live = book.is_live(&crate::origin::Origin::named(k.0.clone()), &k.1);
             (live, t.touched, k.clone())
         })
         .collect();

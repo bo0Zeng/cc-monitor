@@ -114,7 +114,6 @@ function rig(n: number, grouped = 0): Rig {
     closeEndedIn: vi.fn(),
     openTabCwd: vi.fn().mockResolvedValue(undefined),
     bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
-    bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
     answerAt: vi.fn(),
@@ -461,7 +460,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
         sub(r, "s0", "tab-focus").click();
         expect(r.host.bringTerminalToFront).toHaveBeenCalledWith("s0");
         sub(r, "s1", "tab-focus").click();
-        expect(r.host.bringRemoteTerminalToFront).toHaveBeenCalledWith("s1");
+        expect(r.host.bringTerminalToFront).toHaveBeenCalledWith("s1");
         sub(r, "s2", "tab-close").click();
         expect(r.host.closeTab).toHaveBeenCalledWith("s2");
         expect(r.host.switchTo).not.toHaveBeenCalled();
@@ -479,7 +478,6 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       r.store.tabs.get("s0")!.face = goldenFace("ended");
       sub(r, "s0", "tab-focus").click();
       expect(r.host.bringTerminalToFront).not.toHaveBeenCalled();
-      expect(r.host.bringRemoteTerminalToFront).not.toHaveBeenCalled();
     });
 
     it("左键按下按钮 ⇒ 起拖（带上 sid 与按钮根）；按在子按钮上 ⇒ 不起拖、不冒到 document", () => {

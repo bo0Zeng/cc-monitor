@@ -267,7 +267,7 @@ pub(crate) fn demand_tmux_shim(why: &str) -> String {
 ///
 /// # 沙箱：`HOME` 与 `CLAUDE_CONFIG_DIR` 都要设
 ///
-/// backend 的 `resolve_agent_home()`〔`S4b` 前叫 `resolve_claude_dir()`〕是
+/// backend 的 `resolve_agent_home()` 是
 /// `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底。
 /// 只设 `HOME` 那版跑起来一切正常，隔离却是假的（P2 那条实测栽过一次，见它的头注）。
 ///
@@ -1617,7 +1617,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    复审造了**两形**，**两形新红都是 0**，而**两形都在「形状」这一层、都是本仓的代码**：
 ///    ① `format!("/usr/bin:{shim}:{}", PATH)` —— 写法上 shim **就排第二**；
 ///    ② 同一张 `envs` 里**再追加一条** `("PATH", …)` —— `supervise_with_stdio` 是
-///       `for (k, v) in &envs { cmd.env(k, v); }`（`local_backend.rs:336`-`337`），**后写的赢**。
+///       `for (k, v) in &envs { cmd.env(k, v); }`（`local_backend.rs::supervise_with_stdio`），**后写的赢**。
 ///    ⇒ 把缺口推给「操作系统的性质」是**把自己的射程写宽了一格**：
 ///    那两形本仓的判据**本来就看得见**，只是当时没看。
 ///    **两形 09-01 都买回来了**（㈡ 收紧到「插值在串首」· 新增 ㈢「`PATH` 恰好写一次」，
@@ -2126,12 +2126,12 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //   `guard_core::strip_comment_lines`（`guard-core/src/lib.rs::strip_comment_lines`）。
     //
     //   **为什么换**（两条，各自独立成立）：
-    //   ① **仓规**：`structural_scan.rs:425` 那条
-    //      `every_comment_stripping_transformer_is_registered`，头注逐字
+    //   ① **仓规**：`structural_scan.rs::every_comment_stripping_transformer_is_registered`
+    //      那条，头注逐字
     //      「剥注释只许有一个权威实现」「想再加一个 ⇒ 先问『共享原语为什么不够』，
     //      答得出来才加进下面这张表」。上面那份私有副本**没问、也没登记**。
     //      ⚠ 它当时没红**不等于它同意**：那条判据的采集面是 `fn … -> String` / `-> Vec<`
-    //      （`structural_scan.rs:508`-`:526`），**看不见闭包** —— 那是它自己的盲点。
+    //      **看不见闭包** —— 那是它自己的盲点。
     //      〔那条判据这里一个字没动。〕
     //   ② **换过去关掉一形真的假阳**：在一个完全合法的落点上方加**一行式**块注释
     //      （`/* 历史写法留档：demand_tmux_shim("旧") */`）⇒ 旧剥法剥不掉它，
@@ -2228,7 +2228,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     // 复审第二刀：**原来那一行一个字没动**，只在同一张 `envs` 里**再追加一条**
     // `("PATH".to_string(), std::env::var("PATH").unwrap_or_default())`。
     // `local_backend::supervise_with_stdio` 是 `for (k, v) in &envs { cmd.env(k, v); }`
-    // （`local_backend.rs:336`-`337`）⇒ **后写的赢** ⇒ backend 拿到的 `PATH` 里
+    // （`local_backend.rs::supervise_with_stdio`）⇒ **后写的赢** ⇒ backend 拿到的 `PATH` 里
     // **一点 shim 都没有**，而 ㈡ 照样说合规（它看见第一条合规的行就够了）。
     // 复审实测**新红 0**。⇒ 光判「有没有一行写对」不够，还要判「**有没有第二行把它盖掉**」。
     //
@@ -3289,7 +3289,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
 ///
 /// # 断言必须落在**进程表**上，不是落在我们自己的事件上
 ///
-/// `launch.rs:196-198` 头注逐字：「`process_group` **不改变父子关系** ⇒ 不 `wait` 就留僵尸」。
+/// `spawn_managed.rs::Lifetime` 的 `Detached` 那一格逐字：「`process_group` **不改变父子关系** ⇒ 不 `wait` 就留僵尸」。
 /// 若断言落在「消费者收到了 EOF」上，僵尸照样在 —— 那条断言会绿着放过整个缺陷。
 /// ⇒ 这里读 `/proc/<pid>/stat` 的**状态字**：既不许是 `Z`，最后也不许还在。
 #[test]

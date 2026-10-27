@@ -1225,20 +1225,13 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
     let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
-    let mut cli_meta = meta(&cli);
-    // 扫描那一份与成品同一个类型：家目录那一格扫描不填（`null`），成品才填。
-    assert_eq!(
-        cli_meta.as_object_mut().unwrap().remove("home"),
-        Some(serde_json::Value::Null)
-    );
-    // 成品比扫描多出的只有帧面那几格（家目录 · 每号 key 掩码与端点 · 徽章），其余逐格同一份扫描。
+    let cli_meta = meta(&cli);
+    // 成品比扫描多出的只有帧面那几格（每号目录的显示形 · key 掩码与端点 · 徽章），其余逐格同一份扫描。
     let mut product = product;
-    assert_eq!(
-        product["meta"].as_object_mut().unwrap().remove("home"),
-        Some(serde_json::Value::Null)
-    );
     for a in product["accounts"].as_array_mut().unwrap() {
         let o = a.as_object_mut().unwrap();
+        // 家目录说不出 ⇒ 显示形就是原样那一格。
+        assert_eq!(o.remove("configDirShown").as_ref(), o.get("configDir"));
         assert_eq!(o.remove("keyMasked"), Some(serde_json::Value::Null));
         assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
         assert!(o.remove("badge").is_some(), "帧面每个号带徽章");
@@ -1404,10 +1397,42 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
         row("a")["keyMasked"].is_null() && row("a")["baseUrl"].is_null(),
         "订阅号不带"
     );
-    assert_eq!(
-        v["meta"]["home"],
-        root.join("home").to_string_lossy().as_ref()
+    // 号目录的显示形由这台按自己的家目录写（家 ＝ `root/home`，号目录不在它下面 ⇒ 原样）；只为缩写带的 `meta.home` 不再出。
+    assert_eq!(row("b")["configDirShown"], row("b")["configDir"]);
+    assert!(
+        v["meta"].get("home").is_none(),
+        "meta 里还有 home：{}",
+        v["meta"]
     );
+    let under = list_product_with(
+        &accts,
+        Some(&root),
+        &[],
+        &[],
+        "claude-code",
+        "claude-code",
+        false,
+    );
+    let b = under["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "b")
+        .cloned()
+        .unwrap();
+    assert_eq!(b["configDirShown"], "~/accts/acct-b");
+    let zero = under["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["configDir"].is_null())
+        .cloned();
+    if let Some(z) = zero {
+        assert!(
+            z["configDirShown"].is_null(),
+            "账号 0 没有号目录 ⇒ 显示形也是 null"
+        );
+    }
     // 表里没有它那一行 ⇒ 两格 null（照样是 api-key 号）。
     let none = list_product_with(
         &accts,

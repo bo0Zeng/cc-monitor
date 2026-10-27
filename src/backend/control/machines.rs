@@ -650,7 +650,7 @@ pub(crate) fn answer_forget_in(
     };
     let host = hosts
         .iter()
-        .find(|h| h.name() == req.machine.as_wire_str())
+        .find(|h| req.machine.host_name() == Some(h.name()))
         .ok_or_else(|| {
             HostKeysForgetErr::ElementGone(copy_text("rsConfig.write.elementGone", &[]))
         })?;

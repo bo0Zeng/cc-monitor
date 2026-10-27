@@ -1,4 +1,4 @@
-//! 「此刻显示这个会话的终端」那一形：那台 `session-terminals` 答出来、界面原样交本机 `terminal-processes` 去对的同一份。
+//! 「此刻显示这个会话的终端」那一形：那台 `session-terminals` 答出来、本机后端（`session-window`）问回来拿去对连接表的同一份。
 //! 两头各住一层（observe 读出来 · dial 拿去对连接表），线上形只此一处。
 
 /// `SSH_CONNECTION` 四元组（那台机器看到的：对面地址 · 对面端口 · 本机地址 · 本机端口）。

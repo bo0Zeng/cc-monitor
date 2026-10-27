@@ -2,6 +2,7 @@
 import type { RunDid } from "./RunDid";
 import type { RunState } from "./RunState";
 import type { RunWhy } from "./RunWhy";
+import type { Words } from "./Words";
 
 /**
  * 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。三个时刻是自 1970 起的毫秒（记录自己写着的时刻；记录里没写 ⇒ 读到它的时刻）。
@@ -14,7 +15,19 @@ tool?: string,
 /**
  * 派出它的那个子运行；主运行派的（或还没对上派出它的那次调用）⇒ 不上线。
  */
-parent?: string, state: RunState, last?: RunDid, 
+parent?: string, state: RunState, 
+/**
+ * 状态写好的字（在跑 · 完成 · 失败 · 已中止 · 状态不明）：出口照抄，不按 `state` 挑字。出帧那一下写（`observe::runs`）。
+ */
+status_text: Words, 
+/**
+ * 名字写好的字：`label`，没有 ⇒ 通称（「agent」）。
+ */
+label_text: Words, last?: RunDid, 
+/**
+ * `last` 写好的字（写回复中 · 思考中 · 调用 X）；没有 `last` ⇒ 不上线。
+ */
+last_text?: Words, 
 /**
  * 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑）。
  */

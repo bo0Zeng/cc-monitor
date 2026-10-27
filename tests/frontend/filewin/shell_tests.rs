@@ -84,6 +84,11 @@ fn a_symlink_to_a_directory_walks_in_on_activate_and_enter() {
         let link = |name: &str, to_dir: bool| crate::source::Listed {
             link: true,
             link_dir: to_dir,
+            class: if to_dir {
+                cmd_wire::files::FileClass::Folder
+            } else {
+                cmd_wire::files::FileClass::Other
+            },
             ..crate::source::Listed::plain(file_row(name))
         };
         FileWindow::seeded(
@@ -2689,7 +2694,7 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
         FakeBackend::new(&["files-stat"], Declared::default()),
     )
     .await;
-    let origin = comms_inward::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let paths: Vec<String> = vec![a, b, format!("{dir}/gone.bin")];
     let got = crate::writeops::probe_modes(&wired.line, &origin, &paths).await;
     assert_eq!(got, vec![Some(0o640), Some(0o600), None]);

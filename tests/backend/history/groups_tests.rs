@@ -23,7 +23,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 fn m(name: &str) -> Machine {
-    Machine(name.into())
+    Machine::named(name)
 }
 
 fn face(life: RowLife) -> cmd_wire::frame::SessionFace {
@@ -104,7 +104,7 @@ async fn read_at(
 fn machine<'a>(r: &'a GroupsRead, name: &str) -> &'a super::super::history_browse::Read {
     &r.machines
         .iter()
-        .find(|x| x.origin.0 == name)
+        .find(|x| x.origin.to_string() == name)
         .unwrap_or_else(|| panic!("{name} 那一格"))
         .read
 }
@@ -147,7 +147,7 @@ async fn g1_a_sees_the_group_through_the_one_slice_it_can_reach() {
     assert_eq!(g.known, GroupKnown::Now);
     let sids: Vec<&str> = g.members.iter().map(|x| x.sid.as_str()).collect();
     assert_eq!(sids, ["c"], "E 不在 A 的表里 ⇒ e 不出，也不经别台转问");
-    assert_eq!(g.members[0].origin.0, "C");
+    assert_eq!(g.members[0].origin.to_string(), "C");
     assert_eq!(g.counts.len(), 1, "只数有的那一样");
     assert_eq!(g.counts[0].dot, cmd_wire::frame::SessionDot::Running);
     assert_eq!(
@@ -520,7 +520,7 @@ async fn g9_member_rows_carry_what_resurrecting_a_tab_needs() {
         .find(|x| x.sid == "s-b")
         .expect("固定那一行");
     assert_eq!(pin.facts, facts("s-b"));
-    assert_eq!(pin.origin.0, "devbox");
+    assert_eq!(pin.origin.to_string(), "devbox");
 }
 
 fn raw_row(sid: &str, life: Option<RowLife>) -> cmd_wire::listing::RawRow {
@@ -608,7 +608,7 @@ async fn g11_rename_goes_to_every_slice_and_says_which_were_missed() {
     match got {
         GroupsWritten::Sent { id, missed } => {
             assert_eq!(id, "g1");
-            let who: Vec<&str> = missed.iter().map(|x| x.origin.0.as_str()).collect();
+            let who: Vec<String> = missed.iter().map(|x| x.origin.to_string()).collect();
             assert_eq!(who, ["laptop"], "没答的那台照实列出：{missed:?}");
             assert!(!missed[0].why.is_empty(), "带为什么");
         }

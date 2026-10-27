@@ -8,7 +8,6 @@
  */
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { RunInfo } from "../generated/RunInfo";
-import type { RunState } from "../generated/RunState";
 import type { ResultKind } from "../generated/ResultKind";
 import { runLastText, runStateMark, runStateText } from "../runs";
 import { copyText } from "../copy-table";
@@ -76,10 +75,11 @@ export function buildAgentCard(toolId: string, toolName: string, runTag: ChildRu
   return card;
 }
 
-/** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态；有整格时再写用时与「最近：…」）。 */
-export function markRunCard(card: HTMLElement, run: string, state: RunState, info?: RunInfo): void {
+/** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态与写好的状态字；有整格时再写用时与「最近：…」）。 */
+export function markRunCard(card: HTMLElement, r: Pick<RunInfo, "run" | "state" | "status_text">, info?: RunInfo): void {
   const st = cardState.get(card);
   if (!st) return;
+  const { run, state } = r;
   st.run = run;
   card.dataset.runState = state;
   st.icon.dataset.state = state;
@@ -88,7 +88,7 @@ export function markRunCard(card: HTMLElement, run: string, state: RunState, inf
     info && state !== "running" && state !== "unknown" && info.started_ms !== undefined && info.ended_ms !== undefined
       ? copyText("agentWindow.facts.took", { dur: spanNow(info.started_ms, info.ended_ms) })
       : null;
-  st.state.textContent = took ? [runStateText(state), took].join(copyText("kit.text.sep")) : runStateText(state);
+  st.state.textContent = took ? [runStateText(r), took].join(copyText("kit.text.sep")) : runStateText(r);
   const last = info && state === "running" ? runLastText(info, null) : null;
   if (last === null) st.sub.remove();
   else {

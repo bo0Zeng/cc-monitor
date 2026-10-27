@@ -214,10 +214,10 @@ private fun TmuxSessionRow(
             Text(s.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             // 显示那台写好的标题（免得盲杀正在干活的会话）、附着态。
             Text(
-                buildString {
-                    if (s.title.isNotBlank()) append(copyText("mobTmux.row.running", "command" to s.title))
-                    if (s.attached) append(copyText("mobTmux.row.attached"))
-                }.removePrefix(copyText("kit.text.sep")),
+                listOfNotNull(
+                    s.title.takeIf { it.isNotBlank() }?.let { copyText("mobTmux.row.running", "command" to it) },
+                    copyText("mobTmux.row.attached").takeIf { s.attached },
+                ).joinToString(copyText("kit.text.sep")),
                 style = monoSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

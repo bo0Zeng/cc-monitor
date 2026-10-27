@@ -206,7 +206,7 @@ fn every_machine_means_the_ones_the_table_connects_to() {
     t.set_peer("b", "p");
     let rows: Vec<(String, Option<String>)> = reach_rows(&t)
         .into_iter()
-        .map(|r| (r.origin.as_wire_str().to_string(), r.machine))
+        .map(|r| (r.origin.to_string(), r.machine))
         .collect();
     assert_eq!(
         rows,

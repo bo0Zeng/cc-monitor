@@ -13,6 +13,10 @@ count: number,
  */
 path: string, 
 /**
+ * `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份是空串、读的时候盖掉。
+ */
+shown: string, 
+/**
  * 没能转的那几行（原样）。
  */
 skipped: Array<string>, };

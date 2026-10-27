@@ -175,7 +175,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_t
     );
     assert!(req["args"].get("dial").is_none(), "还在交拨号请求");
 
-    let origin = crate::origin::Origin("中继·上传".to_string());
+    let origin = crate::origin::Origin::named("中继·上传".to_string());
     let s = watch_ticket(&origin, "xfer-1").expect("订阅");
     let start = rig.next("transfer-start").await;
     assert_eq!(start["args"]["id"], "xfer-1");
@@ -216,7 +216,7 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
     )
     .await
     .expect("开单");
-    let origin = crate::origin::Origin("中继·撤".to_string());
+    let origin = crate::origin::Origin::named("中继·撤".to_string());
     let mut s = watch_ticket(&origin, "xfer-1").expect("订阅");
     rig.next("transfer-start").await;
     rig.frame(r#"{"kind":"transfer","id":"xfer-1","got":1,"total":9}"#);
@@ -232,7 +232,7 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_stale_watch_dropping_late_leaves_a_newer_ticket_with_the_same_id_alone() {
     let _g = crate::inbound_client::local_origin_test_lock();
-    let origin = crate::origin::Origin("中继·重号".to_string());
+    let origin = crate::origin::Origin::named("中继·重号".to_string());
     let mut old_rig = rig(&ALL);
     transfer_call(
         cfg("中继·重号"),
@@ -278,7 +278,7 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
     )
     .await
     .expect("开单");
-    let origin = crate::origin::Origin("中继·断".to_string());
+    let origin = crate::origin::Origin::named("中继·断".to_string());
     let s = watch_ticket(&origin, "xfer-1").expect("订阅");
     rig.next("transfer-start").await;
     fail_owned_by(&rig.client, "本机后端的流断了（判据）");
@@ -303,8 +303,8 @@ async fn bad_subscriptions_say_why_in_place() {
     )
     .await
     .expect("开单");
-    let mine = crate::origin::Origin("中继·坏".to_string());
-    let other = crate::origin::Origin("别的机器".to_string());
+    let mine = crate::origin::Origin::named("中继·坏".to_string());
+    let other = crate::origin::Origin::named("别的机器".to_string());
     assert_eq!(
         watch_ticket(&mine, "xfer-404").err().map(|(c, _)| c),
         Some("no-such-transfer")

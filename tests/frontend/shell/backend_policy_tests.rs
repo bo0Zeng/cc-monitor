@@ -73,7 +73,7 @@ fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
 /// 界面那两问（问 / 写）改走通道之后，这里只剩退出臂那一问（monitor 自己的事）。
 #[test]
 fn without_a_channel_nothing_is_made_up() {
-    let o = Origin("这台机从来没连上过-b2".into());
+    let o = Origin::named("这台机从来没连上过-b2");
     let r = tauri::async_runtime::block_on(exit_policy_call(
         &o,
         "exit-policy-read",

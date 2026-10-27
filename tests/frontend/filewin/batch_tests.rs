@@ -349,7 +349,7 @@ async fn pressing_stop_on_a_tree_delete_reaches_the_backend_with_its_ticket_and_
         }),
         1 << 20,
     );
-    let origin = comms_inward::chan::wire::Origin("判据机器·撤一组".into());
+    let origin = comms_inward::chan::wire::Origin::named("判据机器·撤一组");
     let board = BatchBoard::new(Plan {
         verb: Verb::Delete,
         cmd: "files-delete",

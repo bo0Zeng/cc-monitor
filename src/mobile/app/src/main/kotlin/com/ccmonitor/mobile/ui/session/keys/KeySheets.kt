@@ -358,13 +358,13 @@ internal fun DurationSheet(
                     onValueChange = { s -> text = s.filter { it.isDigit() }.take(MS_DIGITS) },
                     isError = !ok,
                     singleLine = true,
-                    suffix = { Text(MS) },
+                    suffix = { Text(copyText("mobKeys.dur.unit")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (!ok) NoteLine(copyText("mobKeys.dur.range", "min" to range.first, "max" to range.last), warn = false)
             } else if (single) {
-                HintLine("$following $MS")
+                HintLine(copyText("mobKeys.dur.value", "ms" to following))
             } else {
                 HintLine(copyText("mobKeys.dur.sysNow", "ms" to system))
             }
@@ -376,7 +376,6 @@ internal fun DurationSheet(
     }
 }
 
-private const val MS = "ms"
 private const val MS_DIGITS = 5
 
 /** 升级那一次没转过来的那几颗：键帽 · 当初填的原文（照写）· 哪里没转过来；［关闭］只关抽屉。 */

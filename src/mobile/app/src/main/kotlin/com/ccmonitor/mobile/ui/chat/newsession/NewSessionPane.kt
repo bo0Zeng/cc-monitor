@@ -11,9 +11,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Login
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
@@ -70,7 +70,7 @@ fun NewSessionPane(
         null -> Unit
     }
     if (browsing) {
-        DirBrowseScreen(browser, machine, ui.home, onPick = {
+        DirBrowseScreen(browser, machine, onPick = {
             picker.pickDir(it)
             browsing = false
         }, onDismiss = { browsing = false })
@@ -99,9 +99,9 @@ private fun rememberMachines(): List<MachineRow> {
 }
 
 /** 通着 ⇒ 真；断着 ⇒ 假；在接 · 还没接过 ⇒ 说不出（不画点）。 */
-internal fun upOf(s: LinkState): Boolean? =
+internal fun upOf(s: LinkLine?): Boolean? =
     when (s) {
-        is LinkState.Up -> true
-        is LinkState.Down -> false
-        LinkState.Connecting -> null
+        is LinkLine.Up -> true
+        is LinkLine.Down -> false
+        is LinkLine.Connecting, null -> null
     }

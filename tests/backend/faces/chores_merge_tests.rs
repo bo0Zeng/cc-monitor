@@ -22,7 +22,7 @@ async fn the_local_backend_asks_each_machine_its_data_report_and_adds_the_counts
     let t = Peers::table(&["devbox", "pi"]);
     let machines: Vec<cmd_wire::Machine> = [cmd_wire::LOCAL, "devbox", "pi"]
         .iter()
-        .map(|m| cmd_wire::Machine((*m).into()))
+        .map(|m| cmd_wire::Machine::named(*m))
         .collect();
     let got = chores_merge_with(
         &machines,

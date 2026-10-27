@@ -174,7 +174,7 @@ BASE_EXTRA=()
 #   而它的夹具要害逐字是「**backend 与 manifest 必须答不同的目录**」——
 #   同一个进程之下两者**是同一件事**，这个夹具造不出来了。
 #   ⚠ 「值真的跟着账号表走」这一半**没丢**：backend 侧 `control::ccm` 的
-#   `the_account_table_has_exactly_one_source` 钉着「账号表只有一处源头」。
+#   `plan_tests.rs::the_account_is_judged_from_the_listing_product` 钉着「账号那一格只有一处判」。
 
 echo
 echo "===== A′ 组：print↔exec 的 **argv** 一致（A 组只比 env，且六格全是 new）====="

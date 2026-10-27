@@ -31,8 +31,4 @@ nextDefault: string | null,
 /**
  * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
  */
-effectiveDefault: string | null, 
-/**
- * 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
- */
-home: string | null, };
+effectiveDefault: string | null, };

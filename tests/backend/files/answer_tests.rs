@@ -1374,6 +1374,36 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `files-ls` 头与每一行带这台按自己的家目录写好的显示形（`~/…`）；家目录外的照原样。两端照抄，不自己缩。
+#[cfg(unix)]
+#[test]
+fn ls_carries_the_shown_form_written_against_this_machines_home() {
+    let home = crate::platform::paths::home_dir().expect("测试档的家是沙箱");
+    let rel = format!("ccm-ls-shown-{}", std::process::id());
+    let d = home.join(&rel);
+    std::fs::remove_dir_all(&d).ok();
+    std::fs::create_dir_all(d.join("a")).unwrap();
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&d) }),
+        &Default::default(),
+    )
+    .expect("ls 不该失败");
+    assert_eq!(v["head"]["info"]["shown"], format!("~/{rel}"), "{v}");
+    assert_eq!(ls_rows(&v)[0]["shown"], format!("~/{rel}/a"));
+    std::fs::remove_dir_all(&d).ok();
+    let out = f7a_dir("ls-shown");
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&out) }),
+        &Default::default(),
+    )
+    .expect("ls 不该失败");
+    if !out.starts_with(&home) {
+        assert_eq!(v["head"]["info"]["shown"], out.to_str().unwrap());
+    }
+}
+
 /// `files-ls` 的顺序由后端排：目录（含指向目录的链接）在前，再按那一列（名称小写 A 在前 · 大小大的在前 · 时间新的在前，
 /// `reverse` 只反那一列），截断在排好之后；每行带末段名，回包带上一级与根到这一级的每一段（按这台的分隔符切）。
 #[cfg(unix)]

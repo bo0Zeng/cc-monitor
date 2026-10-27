@@ -433,7 +433,7 @@ describe("消息流里的派出卡：点卡头 ⇒ 交宿主开那个子运行�
     document.addEventListener(REVEAL_RUN_EVENT, (e) => got.push((e as CustomEvent).detail));
     const head = card.querySelector("button")!;
     head.click();
-    markRunCard(card, "r", "running");
+    markRunCard(card, { run: "r", state: "running", status_text: "核心·在跑" });
     head.click();
     expect(got).toEqual([
       { run: undefined, tool: "tool1" },

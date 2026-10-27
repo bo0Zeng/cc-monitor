@@ -9,13 +9,13 @@ import type { ProfilesMigrated } from "./ProfilesMigrated";
  */
 export type ProfilesBook = { 
 /**
- * 这台的家目录（界面拿它把路径写成 `~/…`）。
- */
-home: string, 
-/**
  * 配置文件的路径。
  */
 path: string, 
+/**
+ * `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
+ */
+pathShown: string, 
 /**
  * 配置文件在不在。
  */

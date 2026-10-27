@@ -15,7 +15,7 @@
   "files-stat": [{"path":{"b16":"2fff"}}],
   "files-write-text": [{"root":"/w","rel":{"b16":"2fff"},"content":"x","expect":{"sha256":"abababababababababababababababababababababababababababababababab"}}],
   "history-annotate": [{"sid":"s","patch":{"hide":"on"}},{"sid":"s","patch":{"hide":"off"}},{"sid":"s","patch":{"hide":"rule"}},{"sid":"s","patch":{"starred":true}},{"sid":"s","patch":{"customTitle":"t"}},{"sid":"s","patch":{"customTitle":""}}],
-  "history-facts": [{"path":"/p/s.jsonl"}],
+  "history-facts": [{"path":"/p/s.jsonl"},{"sid":"0a1b2c3d-0000-4000-8000-000000000001"}],
   "history-lines": [{"path":"/p/s.jsonl","from":0,"until":10}],
   "history-list": [null,{"query":"q","within_days":7,"sort":"created","hidden":true},{"sort":"activity"},{"held":"e.1.2"}],
   "history-read": [{"path":"/p/s.jsonl","offset":0,"until":10}],

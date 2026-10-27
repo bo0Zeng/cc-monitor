@@ -1467,7 +1467,7 @@ pub(crate) fn local_stdio_consumer(
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
     // 解不出来的帧每种说一次（日志 ＋ 本机的健康信息）。
     let mut unread =
-        crate::stream_source::UnreadNotes::new(route.origin.as_wire_str(), route.place.clone());
+        crate::stream_source::UnreadNotes::new(route.origin.to_string(), route.place.clone());
     loop {
         let line =
             match read_capped_line_sync(&mut rd, crate::stream_source::BACKEND_FRAME_LINE_CAP) {
@@ -1539,7 +1539,7 @@ pub(crate) fn local_stdio_consumer(
         crate::machine_table::refresh();
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
-            route.origin.as_wire_str()
+            route.origin
         );
     }
 

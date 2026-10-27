@@ -248,12 +248,14 @@ fn ls_now(
     let total = picked.len() as u64;
     picked.sort_by_cached_key(|p| ls_order(p, sort));
     picked.truncate(limit);
+    let home = crate::platform::paths::home_dir();
     let entries = picked
         .into_iter()
-        .map(|p| ls_row(p, tz))
+        .map(|p| ls_row(p, tz, home.as_deref()))
         .map(|e| (e.name.key(), e))
         .collect::<Vec<_>>();
     let head = wire::LsHead {
+        shown: shown_of(&dir, home.as_deref()),
         truncated: total > entries.len() as u64,
         up: dir.parent().map(|u| wire_path(raw::path_bytes(u))),
         crumbs: crumbs_of(&dir),
@@ -312,8 +314,20 @@ fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
     (!p.dir_like, col, lower, name)
 }
 
+/// 一个路径的显示形：家目录那一截写成 `~`，字节一路不解码（[`crate::platform::paths::home_short_bytes`]）。
+fn shown_of(p: &std::path::Path, home: Option<&std::path::Path>) -> WirePath {
+    WirePath(crate::platform::paths::home_short_bytes(
+        raw::path_bytes(p),
+        home,
+    ))
+}
+
 /// 排好、进了这一屏的一项 ⇒ 线上那一行（钟面字只给进了屏的写）。
-fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
+fn ls_row(
+    p: Picked,
+    tz: &crate::common::time::Tz,
+    home: Option<&std::path::Path>,
+) -> wire::LsEntry {
     let kind = p.kind;
     let md = Ro::metadata(&p.path).ok();
     let name = p.path.file_name().map(raw_name).unwrap_or_default();
@@ -321,6 +335,7 @@ fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
     let link_dir = link && md.as_ref().is_some_and(|m| m.is_dir());
     let is_dir = kind == FileKind::Dir;
     let mut row = wire::LsEntry {
+        shown: shown_of(&p.path, home),
         path: wire_path(raw::path_bytes(&p.path)),
         class: class::class_of_entry(&name, is_dir, link, link_dir),
         type_text: class::type_text(&name, is_dir, link, link_dir, link && md.is_none()),

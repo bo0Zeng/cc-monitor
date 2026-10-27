@@ -32,7 +32,7 @@ describe("卡上的时刻照抄后端写好的钟面", () => {
   });
 
   it("agent 窗口「几点开始」＝ started_text", () => {
-    const r: RunInfo = { run: "r1", state: "done", started_ms: Date.parse(AT), started_text: "17:48", ended_ms: Date.parse(AT) + 60_000 };
+    const r: RunInfo = { run: "r1", state: "done", status_text: "核心·完成", label_text: "核心·agent", started_ms: Date.parse(AT), started_text: "17:48", ended_ms: Date.parse(AT) + 60_000 };
     expect(factsOf(r, 0, Date.parse(AT) + 120_000)[0]).toBe(copyText("agentWindow.facts.started", { time: "17:48" }));
   });
 });

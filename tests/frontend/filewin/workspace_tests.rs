@@ -225,7 +225,7 @@ async fn a_new_tab_and_the_right_side_inherit_the_line_and_the_shelf() {
     first.shelf = Some(crate::bookmarks::Shelf::open(
         None,
         None,
-        &crate::source::Origin("fw34-ws-inherit".into()),
+        &crate::source::Origin::named("fw34-ws-inherit"),
     ));
     let mut ws = Workspace::new(first);
     assert!(ws.open_tab(0));
@@ -390,7 +390,7 @@ fn a_gone_monitor_is_said_as_such_not_as_reconnecting() {
     let mut ws = Workspace::new(pane("/srv", &["a.txt"]));
     let machine = ws.pane_on(0).source.label();
     let screen = egui::vec2(1280.0, 800.0);
-    ws.link.set(LinkSeen::Severed);
+    ws.gate.set(LinkSeen::Severed);
     let painted = frames_at(&mut ws, screen, 3);
     let said = copy_text("rsFilewinChrome.link.severed", &[]);
     assert!(
@@ -428,7 +428,7 @@ fn a_gone_monitor_greys_save_and_the_close_ask_offers_no_save_all() {
     let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
     open_text(ws.pane_on_mut(1), "x\n");
     *ws.pane_on_mut(1).editing_text_mut().unwrap() = "x2\n".into();
-    ws.link.set(LinkSeen::Severed);
+    ws.gate.set(LinkSeen::Severed);
     let mut painted = Vec::new();
     for _ in 0..3 {
         painted = d.frame(&mut ws, Vec::new());
@@ -492,12 +492,12 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
     let machine = ws.pane_on(0).source.label();
     let screen = egui::vec2(1280.0, 800.0);
     // 连着（流说了 Up）⇒ 没有条。
-    ws.link.set(LinkSeen::Up);
+    ws.gate.set(LinkSeen::Up);
     let painted = frames_at(&mut ws, screen, 3);
     let retry = copy_text("rsFilewinChrome.link.retry", &[]);
     assert!(!painted.iter().any(|(t, _)| *t == retry), "连着却有断线条");
     // 刚断：在重连。
-    ws.link.set(LinkSeen::Reconnecting);
+    ws.gate.set(LinkSeen::Reconnecting);
     let painted = frames_at(&mut ws, screen, 3);
     let said = copy_text(
         "rsFilewinChrome.link.reconnecting",
@@ -512,7 +512,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
         "在重连时就给了「重新连接」"
     );
     // 一轮没连上：离线 · 采样那一刻 ＋［重新连接］。
-    ws.link.set(LinkSeen::Down);
+    ws.gate.set(LinkSeen::Down);
     let painted = frames_at(&mut ws, screen, 3);
     let said = copy_text(
         "rsFilewinChrome.link.offline",
@@ -558,7 +558,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
         "下载要那台机器，离线时却没挡"
     );
     // 又连上：条没了，标签页重列一遍。
-    ws.link.set(LinkSeen::Up);
+    ws.gate.set(LinkSeen::Up);
     let painted = frames_at(&mut ws, screen, 3);
     assert!(
         !painted.iter().any(|(t, _)| *t == retry),
@@ -1472,8 +1472,8 @@ async fn screenshot_for_the_shots_tool() {
             machine: "devbox".into(),
         });
         cross.set_route(
-            crate::source::Origin("devbox".into()),
-            crate::source::Origin("<local>".into()),
+            crate::source::Origin::named("devbox"),
+            crate::source::Origin::named("<local>"),
         );
         w.progress.add(
             Trip::Batch {
@@ -1542,8 +1542,8 @@ async fn screenshot_for_the_shots_tool() {
             machine: "devbox".into(),
         });
         cross.set_route(
-            crate::source::Origin("devbox".into()),
-            crate::source::Origin("<local>".into()),
+            crate::source::Origin::named("devbox"),
+            crate::source::Origin::named("<local>"),
         );
         w.progress.add(
             Trip::Batch {
@@ -1636,7 +1636,7 @@ async fn screenshot_for_the_shots_tool() {
     }
     // 断线 · 过期：那条流说「离线」；摆着的那一屏是 13:40 列到的。
     if scene == "stale" {
-        w.link.set(crate::source::LinkSeen::Down);
+        w.gate.set(crate::source::LinkSeen::Down);
         let at = chrono_like_today_at(13, 40);
         w.listing
             .landed
@@ -2831,7 +2831,7 @@ fn offline_greys_exactly_what_needs_the_machine() {
     for (c, _) in all {
         assert_eq!(ws.pane_on(0).offline_cmd(c), None, "连着时 {c:?} 却灰了");
     }
-    ws.link.set(crate::source::LinkSeen::Down);
+    ws.gate.set(crate::source::LinkSeen::Down);
     let pane = ws.pane_on(0);
     for (c, greyed) in all {
         assert_eq!(

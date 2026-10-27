@@ -1,7 +1,7 @@
 {
   "cases": {
     "accounts-list": {
-      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\",\"home\":\"home-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"keyMasked\":\"keyMasked-x\",\"baseUrl\":\"baseUrl-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
+      "rust": "{\"meta\":{\"enabled\":true,\"acctsDir\":\"acctsDir-x\",\"manifestPath\":\"manifestPath-x\",\"updatedAt\":\"updatedAt-x\",\"sharedStore\":\"sharedStore-x\",\"count\":7,\"error\":\"error-x\",\"unsupported\":\"unsupported-x\",\"nextDefault\":\"nextDefault-x\",\"effectiveDefault\":\"effectiveDefault-x\"},\"accounts\":[{\"name\":\"name-x\",\"label\":\"label-x\",\"email\":\"email-x\",\"configDir\":\"configDir-x\",\"isDefault\":true,\"mode\":\"mode-x\",\"exists\":true,\"loggedIn\":true,\"authKind\":\"authKind-x\",\"authReady\":true,\"selectable\":true,\"color\":7,\"configDirShown\":\"configDirShown-x\",\"keyMasked\":\"keyMasked-x\",\"baseUrl\":\"baseUrl-x\",\"badge\":{\"text\":\"text-x\",\"warn\":true,\"title\":\"title-x\"},\"plate\":\"plate-x\",\"quota\":\"quota-x\",\"unselectable\":\"unselectable-x\",\"login\":true,\"newSession\":true}],\"notice\":\"notice-x\"}",
       "sample": {
         "accounts": [
           {
@@ -15,6 +15,7 @@
             "baseUrl": "baseUrl-x",
             "color": 7,
             "configDir": "configDir-x",
+            "configDirShown": "configDirShown-x",
             "email": "email-x",
             "exists": true,
             "isDefault": true,
@@ -37,7 +38,6 @@
           "effectiveDefault": "effectiveDefault-x",
           "enabled": true,
           "error": "error-x",
-          "home": "home-x",
           "manifestPath": "manifestPath-x",
           "nextDefault": "nextDefault-x",
           "sharedStore": "sharedStore-x",
@@ -128,7 +128,7 @@
       }
     },
     "files-ls": {
-      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"path\":\"path-x\",\"name\":\"name-x\",\"kind\":\"dir\",\"size\":7,\"size_text\":\"size_text-x\",\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"link_dir\":true,\"link_to\":\"dir\",\"class\":\"folder\",\"type_text\":\"type_text-x\",\"gates\":{\"preview\":{\"text\":{\"cap\":7,\"lang\":\"lang-x\"}},\"view\":{\"cap\":7},\"edit\":{\"cap\":7}}}},\"head\":{\"total\":7,\"info\":{\"up\":\"up-x\",\"crumbs\":[{\"name\":\"name-x\",\"path\":\"path-x\"}],\"truncated\":true,\"total\":7,\"unreadable\":7}}}",
+      "rust": "{\"held\":\"held-x\",\"whole\":true,\"same\":true,\"order\":[\"order-x\"],\"up\":{\"k\":{\"path\":\"path-x\",\"name\":\"name-x\",\"kind\":\"dir\",\"size\":7,\"size_text\":\"size_text-x\",\"mtime_secs\":7,\"mtime_text\":\"mtime_text-x\",\"mtime_full\":\"mtime_full-x\",\"link_dir\":true,\"link_to\":\"dir\",\"class\":\"folder\",\"type_text\":\"type_text-x\",\"gates\":{\"preview\":{\"text\":{\"cap\":7,\"lang\":\"lang-x\"}},\"view\":{\"cap\":7},\"edit\":{\"cap\":7}},\"shown\":\"shown-x\"}},\"head\":{\"total\":7,\"info\":{\"shown\":\"shown-x\",\"up\":\"up-x\",\"crumbs\":[{\"name\":\"name-x\",\"path\":\"path-x\"}],\"truncated\":true,\"total\":7,\"unreadable\":7}}}",
       "sample": {
         "head": {
           "info": {
@@ -138,6 +138,7 @@
                 "path": "path-x"
               }
             ],
+            "shown": "shown-x",
             "total": 7,
             "truncated": true,
             "unreadable": 7,
@@ -175,6 +176,7 @@
             "mtime_text": "mtime_text-x",
             "name": "name-x",
             "path": "path-x",
+            "shown": "shown-x",
             "size": 7,
             "size_text": "size_text-x",
             "type_text": "type_text-x"
@@ -1442,7 +1444,7 @@
       }
     },
     "session-open-facts": {
-      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"tmux\":true,\"run\":\"tmux\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"permissionDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"}}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
+      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"tmux\":true,\"run\":\"tmux\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"permissionDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"}}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
       "sample": {
         "agents": [
           {
@@ -1500,7 +1502,8 @@
           {
             "cwd": "cwd-x",
             "lastMs": 7,
-            "lastText": "lastText-x"
+            "lastText": "lastText-x",
+            "shown": "shown-x"
           }
         ],
         "run": "tmux",

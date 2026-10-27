@@ -15,6 +15,10 @@ export type AliasStartupFile = {
  */
 path: string, 
 /**
+ * `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
+ */
+shown: string, 
+/**
  * 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
  */
 sourced: boolean, 

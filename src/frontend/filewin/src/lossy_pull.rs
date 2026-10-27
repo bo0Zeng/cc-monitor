@@ -92,7 +92,7 @@ pub async fn pull_by_bytes(
     use cmd_wire::files as w;
     let (root, rel) =
         split_local(&local).ok_or_else(|| copy_text("rsFilewinLossyPull.local.badDest", &[]))?;
-    let here = comms_inward::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
+    let here = super::source::Origin::local();
     let there = super::chunk_upload::Over { line, origin };
     let mut sink = Restage {
         stager: chunk_core::Stager::new(chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes())),

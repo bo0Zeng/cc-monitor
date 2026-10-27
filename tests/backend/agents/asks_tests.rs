@@ -109,7 +109,14 @@ fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {
         .filter(|c| c.tone == Tone::Warn)
         .map(|c| c.id.as_str())
         .collect();
-    assert_eq!(warns, ["deny", "deny-note", "deny-stop"]);
+    assert_eq!(warns, ["deny", "deny-note"]);
+    let fails: Vec<_> = p
+        .choices
+        .iter()
+        .filter(|c| c.tone == Tone::Fail)
+        .map(|c| c.id.as_str())
+        .collect();
+    assert_eq!(fails, ["deny-stop"], "拒绝并停下标红：出口照语气，不认 id");
     assert_eq!(
         (p.id.as_str(), p.since_ms, p.run.clone()),
         ("ask-9", 42, None)
