@@ -105,6 +105,8 @@ struct Sess {
     /// 被挤出 `runs` 的已收场运行（`gone_order` 先进先出）。一个运行只在两处之一。
     gone: HashMap<String, Gone>,
     gone_order: VecDeque<String>,
+    /// 有运行没留下就被忘了（在跑的被挤出 `runs` · `gone` 超了 [`ENDED_KEEP`]）⇒ 总数只能说「至少」。
+    lost: bool,
     /// 父侧工具调用 id ⇒ 那次派出：调用先到、子运行是哪个后到。
     labels: HashMap<String, Spawn>,
     label_order: VecDeque<String>,
@@ -140,8 +142,9 @@ impl Sess {
             };
             let victim = oldest(false).or_else(|| oldest(true)).unwrap_or(0);
             let v = self.runs.remove(victim);
-            if let Some(closed) = v.closed {
-                self.bury(v.info, closed);
+            match v.closed {
+                Some(closed) => self.bury(v.info, closed),
+                None => self.lost = true,
             }
         }
         let (info, closed) = match back {
@@ -174,6 +177,7 @@ impl Sess {
             while self.gone_order.len() > ENDED_KEEP {
                 if let Some(old) = self.gone_order.pop_front() {
                     self.gone.remove(&old);
+                    self.lost = true;
                 }
             }
         }
@@ -412,6 +416,14 @@ impl Sess {
             .collect()
     }
 
+    /// 这条会话派过几个子运行：表里的 ＋ 被挤出的已收场的；漏过 ⇒ 第二格为真，这个数只是下界（此刻仍记着的都各不相同）。
+    fn total(&self) -> Total {
+        Total {
+            n: self.runs.len() + self.gone.len(),
+            at_least: self.lost,
+        }
+    }
+
     /// 被挤出表的已收场运行里对上了派出调用的那些（先挤出的在前）。
     fn ended(&self) -> Vec<RunEnded> {
         self.gone_order
@@ -551,15 +563,15 @@ impl RunBook {
 
     /// 这个会话的运行表那一帧（出帧前先按 `now` 判一次久未动静）。
     pub(crate) fn frame_at(&self, sid: &str, now: SystemTime) -> Frame {
-        let (runs, ended) = self.with(|m| match m.get_mut(sid) {
+        let (runs, ended, total) = self.with(|m| match m.get_mut(sid) {
             Some(s) => {
                 s.settle(now);
-                (s.table(now), s.ended())
+                (s.table(now), s.ended(), s.total())
             }
-            None => (Vec::new(), Vec::new()),
+            None => (Vec::new(), Vec::new(), Total::default()),
         });
         let groups = groups_of(&runs);
-        let summary = summary_of(&runs);
+        let summary = summary_of(&runs, total);
         Frame::SessionRuns(crate::wire::SessionRuns {
             sid: sid.to_string(),
             runs,
@@ -1056,20 +1068,30 @@ fn groups_of(runs: &[RunInfo]) -> RunGroups {
     g
 }
 
-/// 这条会话的 agent 那一枚的字：有在跑的 ⇒ 「agent n · m 在跑」，没有 ⇒ 「agent n」；表是空的 ⇒ 不上线。
-fn summary_of(runs: &[RunInfo]) -> Option<Words> {
+/// 一条会话派过几个子运行（[`Sess::total`]）：`at_least` ⇒ 漏过，`n` 只是下界。
+#[derive(Default, Clone, Copy)]
+struct Total {
+    n: usize,
+    at_least: bool,
+}
+
+/// 这条会话的 agent 那一枚的字：有在跑的 ⇒ 「agent n · m 在跑」，没有 ⇒ 「agent n」；漏过 ⇒ 「agent 至少 n …」；表是空的 ⇒ 不上线。
+/// n 是照实数的总数（[`Total`]），不是运行表的长度（表只列 [`RUNS_KEEP`] 个）。
+fn summary_of(runs: &[RunInfo], total: Total) -> Option<Words> {
     if runs.is_empty() {
         return None;
     }
-    let n = runs.len().to_string();
+    let n = total.n.to_string();
     let running = runs.iter().filter(|r| r.state == RunState::Running).count();
-    Some(Words(if running > 0 {
-        copy_text(
-            "agentsPanel.render.summary",
-            &[("n", &n), ("running", &running.to_string())],
-        )
-    } else {
-        copy_text("agentsPanel.render.summaryDone", &[("n", &n)])
+    let r = running.to_string();
+    Some(Words(match (running > 0, total.at_least) {
+        (true, false) => copy_text("agentsPanel.render.summary", &[("n", &n), ("running", &r)]),
+        (true, true) => copy_text(
+            "agentsPanel.render.summaryAtLeast",
+            &[("n", &n), ("running", &r)],
+        ),
+        (false, false) => copy_text("agentsPanel.render.summaryDone", &[("n", &n)]),
+        (false, true) => copy_text("agentsPanel.render.summaryDoneAtLeast", &[("n", &n)]),
     }))
 }
 
@@ -1100,3 +1122,8 @@ fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/runs_testing.rs"]
 pub(crate) mod testing;
+
+/// 子运行的个数照实说（A2-11）。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/runs_total_tests.rs"]
+mod total_tests;
