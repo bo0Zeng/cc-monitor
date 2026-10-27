@@ -176,7 +176,7 @@ export class TabManager {
       markNewRunCard: (sid, tool, card) => {
         const r = this.live.board.of(sid).find((x) => x.tool === tool);
         if (!r) return;
-        markRunCard(card, r.run, r.state, r);
+        markRunCard(card, r, r);
         markRunWindow(card, this.runWindows.has(`${sid}\u0000${r.run}`));
       },
     });
@@ -889,13 +889,13 @@ export class TabManager {
       if (r.tool === undefined) continue;
       const card = tab.runCards.get(r.tool);
       if (!card) continue;
-      markRunCard(card, r.run, r.state, r);
+      markRunCard(card, r, r);
       markRunWindow(card, this.runWindows.has(`${tab.sessionId}\u0000${r.run}`));
     }
     for (const e of p.ended) {
       const card = tab.runCards.get(e.tool);
       if (!card) continue;
-      markRunCard(card, e.run, e.state);
+      markRunCard(card, e);
       markRunWindow(card, this.runWindows.has(`${tab.sessionId}\u0000${e.run}`));
     }
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);

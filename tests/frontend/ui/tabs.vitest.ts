@@ -169,6 +169,7 @@ import {
   withHistoryReads,
   withSessionReads,
   recordReadCalls,
+  refusedReply,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -1983,10 +1984,10 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     tm.onSessionRuns({
       sid: "s1",
       runs: [
-        { run: "1", label: "done1", state: "done" },
-        { run: "2", label: "run1", state: "running" },
-        { run: "3", label: "stop1", state: "stopped" },
-        { run: "4", label: "run2", state: "running" },
+        { run: "1", label: "done1", label_text: "done1", state: "done", status_text: "核心·完成" },
+        { run: "2", label: "run1", label_text: "run1", state: "running", status_text: "核心·在跑" },
+        { run: "3", label: "stop1", label_text: "stop1", state: "stopped", status_text: "核心·已中止" },
+        { run: "4", label: "run2", label_text: "run2", state: "running", status_text: "核心·在跑" },
       ],
       ended: [],
     });
@@ -2072,27 +2073,24 @@ describe("account-ux U5 tab 徽章：照会话那台写好的那一份（`sessio
 });
 
 /**
- * ★★ ↗ 远端那一格：点那一刻按顺序问三方，**前端不解析、不猜，tmux 不在前提链上**。
- * ① 问会话所在那台 `session-terminals`；② 那台回话里的 `terminals` **原样**交本机后端 `terminal-processes`；
- * ③ 本机后端的 `chain` **原样**交壳拉前。每一方的结局都落成一个结局族，画成锚在 ↗ 下面的浮层（不出 toast）；
- * 切过去了什么都不出、↗ 换成对勾。
+ * ★★ ↗：点那一刻问本机后端一次（`session-window`：会话在这台电脑上的哪儿 —— 窗口标签 · 进程链，或一条原因），
+ * 答话**原样**交壳一次（`bring_terminal_to_front`：先按标签、再沿链，找窗口、拉前）；本机会话与远端会话同一条路、同一个形。
+ * 前端不解析、不排先后，tmux 不在前提链上。结局画成锚在 ↗ 下面的浮层（不出 toast）；切过去了什么都不出、↗ 换成对勾。
  */
-describe("：↗ 远端那一格按顺序问三方", () => {
+describe("：↗ 问本机后端一次、交壳一次", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
-  const TERMINALS = [
-    { ssh: { clientAddr: "192.0.2.5", clientPort: 62414, serverAddr: "192.0.2.9", serverPort: 22 }, activity: 9 },
-  ];
   const CHAIN = [{ pid: 700, name: "ssh.exe", start: 4000 }];
-  /** 那台 / 本机各回什么；壳那一跳回什么结局。 */
-  /** `front` 答交进程链那一问；`label` 答交 `terminals` 那一问（按窗口标签找，缺 ⇒ 没对上 `null`）。 */
-  function answer(shown: unknown, found: unknown, front: () => Promise<unknown>, label: () => Promise<unknown> = () => Promise.resolve(null)): void {
+  const PLACED = { labels: [], chain: CHAIN };
+  /** 本机后端答什么（`reject` ⇒ 那一问失败）；壳那一跳回什么结局（缺 ⇒ 没对上 `null`）。 */
+  function answer(placed: unknown, front: () => Promise<unknown> = () => Promise.resolve(null), reject = false): void {
     mockInvoke.mockImplementation((cmd: string, args: unknown) => {
-      if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply(shown));
-      if (isChanCall(cmd, args, "terminal-processes")) return Promise.resolve(chanReply(found));
-      if (cmd === "bring_remote_terminal_to_front") return "terminals" in (args as object) ? label() : front();
+      if (isChanCall(cmd, args, "session-window")) return reject ? Promise.reject(placed) : Promise.resolve(chanReply(placed));
+      if (cmd === "bring_terminal_to_front") return front();
       return Promise.resolve([]);
     });
   }
+  const asks = (): [string, unknown][] => (mockInvoke.mock.calls as [string, unknown][]).filter(([c, a]) => isChanCall(c, a, "session-window"));
+  const shellCalls = (): unknown[] => (mockInvoke.mock.calls as [string, unknown][]).filter(([c]) => c === "bring_terminal_to_front").map(([, a]) => a);
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockReset();
@@ -2113,27 +2111,34 @@ describe("：↗ 远端那一格按顺序问三方", () => {
   const popText = (): string => pop()?.textContent ?? "";
   const popButtons = (): string[] => [...(pop()?.querySelectorAll("button") ?? [])].map((b) => b.textContent ?? "").filter((t) => t !== "");
 
-  it("★★ 两跳都是原样交：那台的 `terminals` ⇒ 本机后端，本机后端的 `chain` ⇒ 壳；分不清 ⇒ 浮层照实说拉不了、带候选个数（不切不闪），一次 tmux 都不问", async () => {
-    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", count: 2, why: "console-unreachable" }));
+  it("★★ 本机会话与远端会话：各问本机后端一次（带那台的键）、答话原样交壳一次；别的问一概不发", async () => {
+    const tm = makeTM();
+    tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
+    tm.createSkeletonTab("r1", "/p", "devbox", false, null);
+    for (const [sid, machine] of [
+      ["l1", LOCAL_ORIGIN],
+      ["r1", "devbox"],
+    ] as const) {
+      mockInvoke.mockReset();
+      const placed = { labels: ["600-639150434950992340"], chain: CHAIN };
+      answer(placed, () => Promise.resolve({ kind: "switched" }));
+      await clickFront(tm, sid);
+      expect(
+        asks().map(([, a]) => [(a as { origin: string }).origin, chanArgsJson(a as never)]),
+        sid,
+      ).toEqual([[LOCAL_ORIGIN, { machine, sid }]]);
+      expect(shellCalls(), sid).toEqual([placed]);
+      const others = (mockInvoke.mock.calls as [string, unknown][]).filter(([c, a]) => !(isChanCall(c, a, "session-window") || c === "bring_terminal_to_front"));
+      expect(others.map(([c]) => c), `${sid}：↗ 只该有那一问、那一条壳命令`).toEqual([]);
+      expect(pop(), `${sid}：切过去了，不出浮层`).toBeNull();
+    }
+  });
+
+  it("★★ 分不清 ⇒ 浮层照实说拉不了、带候选个数（不切不闪），不出 toast", async () => {
+    answer(PLACED, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", count: 2, why: "console-unreachable" }));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     await clickFront(tm, "r1");
-    const calls = mockInvoke.mock.calls as [string, unknown][];
-    const asked = calls.filter(([c, a]) => isChanCall(c, a, "session-terminals"));
-    expect(asked.map(([, a]) => [(a as { origin: string }).origin, chanArgsJson(a as never)])).toEqual([
-      ["devbox", { sid: "r1" }],
-    ]);
-    const local = calls.filter(([c, a]) => isChanCall(c, a, "terminal-processes"));
-    expect(local.map(([, a]) => chanArgsJson(a as never))).toEqual([{ terminals: TERMINALS }]);
-    // 先把那台的 `terminals` 原样交 monitor 按窗口标签找（没对上），再交本机后端的 `chain`。
-    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([
-      { terminals: TERMINALS },
-      { chain: CHAIN },
-    ]);
-    expect(
-      calls.filter(([c, a]) => c === "list_remote_tmux" || c === "list_local_tmux" || isChanCall(c, a, "terminals-list")),
-      "↗ 又去查了 tmux —— tmux 回到了 ↗ 的前提链上",
-    ).toEqual([]);
     expect(showActionFailureToast, "结局画在浮层上，不出 toast").not.toHaveBeenCalled();
     expect(pop()?.dataset.shade).toBe("amber");
     expect(popText()).toContain(copyText("front.title.unsure"));
@@ -2143,26 +2148,24 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(popButtons(), "分不清：不给闪窗口那一颗").toEqual([]);
   });
 
-  it("★ 每一方的原因各落成一族（标题 · 正文 · 按钮 · 色）；本机后端说了原因就不去找窗口；同一个会话再来一次原地换内容", async () => {
-    const cases: [unknown, unknown, string, string, string[], string][] = [
-      [{ terminals: [], why: "detached" }, null, copyText("front.title.noTerminal"), copyText("front.body.detached"), [copyText("front.act.openInTerminal")], "grey"],
-      [{ terminals: [], why: "no-terminal" }, null, copyText("front.title.noTerminal"), copyText("front.body.background"), [], "grey"],
-      [{ terminals: [], why: "unreadable" }, null, copyText("front.title.unsure"), copyText("front.body.unreadable", { machine: "devbox" }), [copyText("detail.act.copy")], "grey"],
-      [{ terminals: TERMINALS }, { chain: [], why: "not-ssh" }, copyText("front.title.elsewhere"), copyText("front.body.notSsh", { machine: "devbox" }), [], "grey"],
-      [{ terminals: TERMINALS }, { chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
-      [{ terminals: TERMINALS }, { chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
-      [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
+  it("★ 后端说了原因（没有标签可找）⇒ 不找窗口、照原因摆；同一个会话再来一次原地换内容", async () => {
+    const cases: [unknown, string, string, string[], string][] = [
+      [{ labels: [], chain: [], why: "detached" }, copyText("front.title.noTerminal"), copyText("front.body.detached"), [copyText("front.act.openInTerminal")], "grey"],
+      [{ labels: [], chain: [], why: "no-terminal" }, copyText("front.title.noTerminal"), copyText("front.body.background"), [], "grey"],
+      [{ labels: [], chain: [], why: "unreadable" }, copyText("front.title.unsure"), copyText("front.body.unreadable", { machine: "devbox" }), [copyText("detail.act.copy")], "grey"],
+      [{ labels: [], chain: [], why: "not-ssh" }, copyText("front.title.elsewhere"), copyText("front.body.notSsh", { machine: "devbox" }), [], "grey"],
+      [{ labels: [], chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
+      [{ labels: [], chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
+      [{ labels: [], chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     let first: Element | null = null;
-    for (const [shown, found, title, body, buttons, tone] of cases) {
+    for (const [placed, title, body, buttons, tone] of cases) {
       mockInvoke.mockReset();
-      answer(shown, found, () => Promise.resolve({ kind: "switched" }));
+      answer(placed, () => Promise.resolve({ kind: "switched" }));
       await clickFront(tm, "r1");
-      const calls = mockInvoke.mock.calls as [string, unknown][];
-      expect(calls.some(([c, a]) => c === "bring_remote_terminal_to_front" && "chain" in (a as object)), `${title}：说了原因还去找了窗口`).toBe(false);
-      expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes")), `${title}：本机后端问没问`).toBe(found !== null);
+      expect(shellCalls(), `${title}：说了原因还去找了窗口`).toEqual([]);
       expect(document.querySelectorAll("[data-role=front-result]").length, `${title}：同一个会话不另弹`).toBe(1);
       first ??= pop()!.closest("[role=dialog]");
       expect(pop()!.closest("[role=dialog]"), `${title}：原地换内容（同一个浮层，不关了重开）`).toBe(first);
@@ -2174,29 +2177,32 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
-  it("★ 按窗口标签对上了（monitor 回那一次的结局）⇒ 不再问本机后端、不另交进程链；切过去了 ↗ 换对勾", async () => {
-    const LABELED = [{ ...TERMINALS[0], window: "600-639150434950992340" }];
-    answer({ terminals: LABELED }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }), () => Promise.resolve({ kind: "switched" }));
+  it("★ 有标签、链没对上（带原因）⇒ 照样交壳按标签找：对上 ⇒ 切过去；没对上（壳回 null）⇒ 摆后端那条原因", async () => {
+    const placed = { labels: ["600-639150434950992340"], chain: [], why: "mismatch" };
     const tm = makeTM();
     tm.createSkeletonTab("r3", "/p", "devbox", false, null);
+    answer(placed, () => Promise.resolve({ kind: "switched" }));
     await clickFront(tm, "r3");
-    const calls = mockInvoke.mock.calls as [string, unknown][];
-    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: LABELED }]);
-    expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes"))).toBe(false);
+    expect(shellCalls(), "只交标签与链").toEqual([{ labels: placed.labels, chain: placed.chain }]);
     expect(pop(), "切过去了：不出浮层").toBeNull();
+    mockInvoke.mockReset();
+    answer(placed);
+    await clickFront(tm, "r3");
+    expect(popText()).toContain(copyText("front.body.mismatch"));
   });
 
-  it("★ 按窗口标签没对上（monitor 回 null）⇒ 接着问本机后端、交进程链", async () => {
-    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }));
+  it("★ 会话已不在运行（后端码 no_such_session）⇒「会话已不在运行」，不找窗口", async () => {
     const tm = makeTM();
-    tm.createSkeletonTab("r4", "/p", "devbox", false, null);
-    await clickFront(tm, "r4");
-    const calls = mockInvoke.mock.calls as [string, unknown][];
-    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: TERMINALS }, { chain: CHAIN }]);
+    tm.ensureTab("l7", "/w", "p", LOCAL_ORIGIN);
+    answer(refusedReply("no_such_session", "no running session"), undefined, true);
+    await clickFront(tm, "l7");
+    expect(shellCalls()).toEqual([]);
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.unbound"));
+    expect(popText()).toContain(copyText("front.body.notLive"));
   });
 
   it("★ Wayland 桌面上切不了（壳回 desktop-wont-switch）⇒ 照实说 ＋［在 cc-monitor 里打开］；点了收起浮层、交 main 开这个会话的终端页", async () => {
-    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "desktop-wont-switch", desktop: "GNOME" }));
+    answer(PLACED, () => Promise.resolve({ kind: "desktop-wont-switch", desktop: "GNOME" }));
     const tm = makeTM();
     const opened: string[] = [];
     tm.onOpenHere = (sid) => opened.push(sid);
@@ -2211,45 +2217,17 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(pop(), "点了就收起").toBeNull();
   });
 
-  it("★ 本机会话：壳按缓存答「没登记」⇒ 再问本机后端谁在显示它、按窗口标签找（Linux 上会话在 tmux 里、终端由 bash / zsh 接入块登记）：对上 ⇒ 切过去；没对上 ⇒ 照旧「没登记」", async () => {
-    const LABELED = [{ ssh: null, activity: 9, window: "4242-987654" }];
-    const local = (label: () => Promise<unknown>): void => {
-      mockInvoke.mockImplementation((cmd: string, args: unknown) => {
-        if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply({ terminals: LABELED }));
-        if (cmd === "bring_terminal_to_front") return Promise.resolve({ kind: "unbound", why: "unregistered" });
-        if (cmd === "bring_remote_terminal_to_front") return label();
-        return Promise.resolve([]);
-      });
-    };
-    local(() => Promise.resolve({ kind: "switched" }));
-    const tm = makeTM();
-    tm.ensureTab("l7", "/w", "p", LOCAL_ORIGIN);
-    await clickFront(tm, "l7");
-    const calls = mockInvoke.mock.calls as [string, unknown][];
-    expect(calls.filter(([c, a]) => isChanCall(c, a, "session-terminals")).map(([, a]) => [(a as { origin: string }).origin, chanArgsJson(a as never)])).toEqual([
-      [LOCAL_ORIGIN, { sid: "l7" }],
-    ]);
-    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: LABELED }]);
-    expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes")), "本机会话不按连接对").toBe(false);
-    expect(pop(), "切过去了：不出浮层").toBeNull();
-
-    mockInvoke.mockReset();
-    local(() => Promise.resolve(null));
-    await clickFront(tm, "l7");
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.unbound"));
-  });
-
   it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
-    answer({ terminals: [], why: "no-terminal" }, null, () => Promise.resolve({ kind: "switched" }));
+    answer({ labels: [], chain: [], why: "no-terminal" });
     const tm = makeTM();
     tm.createSkeletonTab("r2", "/p", "devbox", false, null, false);
     expect(tm.isAttachable("r2"), "量具自检：这个会话确实被宣告成不可 attach").toBe(false);
     await clickFront(tm, "r2");
     expect(pop(), "量具自检：先有一个结局浮层").not.toBeNull();
     mockInvoke.mockReset();
-    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }));
+    answer(PLACED, () => Promise.resolve({ kind: "switched" }));
     await clickFront(tm, "r2");
-    expect(mockInvoke.mock.calls.map((c) => c[0]), "`attachable:false` 不在前端短路 ↗").toContain("bring_remote_terminal_to_front");
+    expect(mockInvoke.mock.calls.map((c) => c[0]), "`attachable:false` 不在前端短路 ↗").toContain("bring_terminal_to_front");
     expect(pop(), "切过去了 ⇒ 浮层收起").toBeNull();
     expect(showActionFailureToast, "成功了还弹了 toast").not.toHaveBeenCalled();
     expect(frontBtn(tm, "r2")!.querySelector("svg")?.getAttribute("data-icon"), "↗ 换成对勾").toBe("check");
@@ -2261,7 +2239,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     vi.useFakeTimers();
     try {
       let done: (v: unknown) => void = () => {};
-      mockInvoke.mockImplementation((cmd: string) => (cmd === "bring_terminal_to_front" ? new Promise((r) => (done = r)) : Promise.resolve([])));
+      answer(PLACED, () => new Promise((r) => (done = r)));
       const tm = makeTM();
       tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
       const btn = frontBtn(tm, "l1")!;
@@ -2272,7 +2250,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       expect(busy(), "300ms 之内不出（防闪）").toBeNull();
       await vi.advanceTimersByTimeAsync(1);
       expect(busy()?.textContent).toBe(copyText("front.pending.label"));
-      expect(mockInvoke.mock.calls.filter((c) => c[0] === "bring_terminal_to_front").length, "在飞时再点不重发").toBe(1);
+      expect(shellCalls().length, "在飞时再点不重发").toBe(1);
       done({ kind: "switched" });
       await vi.advanceTimersByTimeAsync(399);
       expect(busy(), "出了就至少停 400ms（防闪），刚回来不收").not.toBeNull();
@@ -2283,25 +2261,29 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     }
   });
 
-  it("★ 通道那一跳：那台旧 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；连不上 ⇒「离线」＋［重新连接］", async () => {
+  it("★ 问不到：那台旧 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；断开 ⇒ 照摆那一句 ＋［重新连接］（本机通道那一跳与本机后端问那台都一样）", async () => {
     const tm = makeTM();
     tm.createSkeletonTab("r3", "/p", "devbox", false, null);
     // 壳交回来的失败形状（`wire::WireErr` 的线上形状，`chan.ts::decodeFail` 收）。
     // 断开那一句是壳随失败交回的（`said`），浮层照摆。
-    const dropped = "壳写的 devbox 断开那一句";
+    const dropped = "壳写的本机后端断开那一句";
     const hop = (why: "Overrun" | "Unreachable") => ({ err: { Hop: { idx: 0, tag: "wait", reach: "Sent", why } }, body: [], said: why === "Unreachable" ? dropped : "" });
     const cases: [unknown, string, string, string[]][] = [
       [UNSUPPORTED, copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
+      [refusedReply("backend_old", "devbox 后端太旧"), copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
       [hop("Overrun"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
+      [refusedReply("timed_out", "devbox 没在期限内答"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
       [hop("Unreachable"), copyText("front.title.failed"), dropped, [copyText("front.act.reconnect")]],
+      [refusedReply("unreached", "连接层写的 devbox 断开那一句"), copyText("front.title.failed"), "连接层写的 devbox 断开那一句", [copyText("front.act.reconnect")]],
     ];
     for (const [err, title, body, buttons] of cases) {
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((cmd: string, args: unknown) => (isChanCall(cmd, args, "session-terminals") ? Promise.reject(err) : Promise.resolve([])));
+      answer(err, undefined, true);
       await clickFront(tm, "r3");
       expect(pop()!.firstElementChild!.textContent, title).toBe(title);
       expect(popText(), title).toContain(body);
       expect(popButtons(), title).toEqual(buttons);
+      expect(shellCalls(), `${title}：没问到还去找了窗口`).toEqual([]);
     }
   });
 
@@ -2315,7 +2297,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     });
     const clickUpdate = async (): Promise<void> => {
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((cmd: string, args: unknown) => (isChanCall(cmd, args, "session-terminals") ? Promise.reject(UNSUPPORTED) : Promise.resolve([])));
+      mockInvoke.mockImplementation((cmd: string, args: unknown) => (isChanCall(cmd, args, "session-window") ? Promise.reject(UNSUPPORTED) : Promise.resolve([])));
       await clickFront(tm, "r5");
       const btn = [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"));
       expect(btn, "量具自检：浮层上有［更新］").toBeDefined();
@@ -2340,7 +2322,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     vi.mocked(updateBackendOf).mockResolvedValue("已部署 Y");
     mockInvoke.mockReset();
     mockInvoke.mockImplementation((cmd: string, args: unknown) =>
-      isChanCall(cmd, args, "session-terminals") ? Promise.reject(UNSUPPORTED) : cmd === "backend_start" ? Promise.reject(new Error("拨不通")) : Promise.resolve([]),
+      isChanCall(cmd, args, "session-window") ? Promise.reject(UNSUPPORTED) : cmd === "backend_start" ? Promise.reject(new Error("拨不通")) : Promise.resolve([]),
     );
     await clickFront(tm, "r5");
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"))!.click();
@@ -2415,9 +2397,9 @@ describe("agent 来话的事件条：标签按运行表查（流视图把运行�
     const tm = makeTM();
     tm.ensureTab("l3", "/w", "p", LOCAL_ORIGIN);
     tm.switchTo("l3");
-    tm.onSessionRuns({ sid: "l3", runs: [{ run: "a7", label: "审面板交互" }], ended: [] } as never);
+    tm.onSessionRuns({ sid: "l3", runs: [{ run: "a7", label: "审面板交互", label_text: "核心·审面板交互" }], ended: [] } as never);
     const label = (tm as unknown as { view: { host: { runLabelOf(sid: string, run: string): string | undefined } } }).view.host.runLabelOf;
-    expect(label("l3", "a7")).toBe("审面板交互");
+    expect(label("l3", "a7")).toBe("核心·审面板交互");
     expect(label("l3", "zz"), "表里没有 ⇒ 不给，用来话自带的").toBeUndefined();
   });
 });
@@ -2475,7 +2457,7 @@ describe("LF1：↗ 只在 Windows · Linux 上出现", () => {
     const sent = (mockInvoke.mock.calls as [string, unknown][])
       .filter(
         ([c, a]) =>
-          c === "bring_remote_terminal_to_front" || c === "bring_terminal_to_front" || isChanCall(c, a, "session-terminals"),
+          c === "bring_terminal_to_front" || isChanCall(c, a, "session-window"),
       )
       .map(([c]) => c);
     expect(sent, "macos 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
@@ -2495,7 +2477,7 @@ describe("LF1：↗ 只在 Windows · Linux 上出现", () => {
       tm.switchTo("r1");
       tm.bringActiveTerminalToFront();
       for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-      expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-terminals")), os).toBe(true);
+      expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-window")), os).toBe(true);
     }
   });
 });

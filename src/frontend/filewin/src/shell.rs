@@ -236,8 +236,8 @@ pub struct FileWindow {
     loading_since: Option<f64>,
     /// 窗口底部那张「进度」表（一扇窗一份，所有标签页共用；`Workspace` 交下来）。逻辑住 [`super::progress`]。
     pub progress: super::progress::Progress,
-    /// 那台此刻连没连着（一扇窗一份，`Workspace` 交下来；`link` 那条流写进来）。断着 ⇒ 列表留着上次的内容、写类按钮灰。
-    pub link: super::chrome::LinkState,
+    /// 此刻能不能写：那台连没连着（一扇窗一份，`Workspace` 交下来）。断着 ⇒ 列表留着上次的内容、写类按钮灰。
+    pub gate: super::chrome::WriteGate,
     /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执。
     pub(super) receipt: Option<String>,
     /// 同 [`Self::receipt`] 那一句的［复制详情］整段（写操作没做成、带详情时才有；与那一句同一拍交走）。
@@ -391,7 +391,7 @@ impl FileWindow {
     /// 这一件此刻做不到 ⇒ 为什么（这台不支持 · 离线 · 只读；菜单 · 命令栏悬停 · 键盘按了的回话同一句）：判法在 `pick-core`，手机同一份。
     pub fn refused_here(&self, a: Action) -> Option<String> {
         let here = pick_core::Here {
-            offline: self.link.cut(),
+            offline: self.gate.cut(),
             unavailable: self
                 .offer
                 .lock()
@@ -412,7 +412,7 @@ impl FileWindow {
             Cmd::Act(a) => return self.refused_here(a),
             Cmd::Mkdir | Cmd::NewFile | Cmd::Upload | Cmd::Term | Cmd::Across => true,
         };
-        needs_machine.then(|| self.link.write_refused()).flatten()
+        needs_machine.then(|| self.gate.write_refused()).flatten()
     }
 
     /// 带着**已经列好的那一屏**建窗 —— [`super::entry::open_file_window`] 走这条。
@@ -486,7 +486,7 @@ impl FileWindow {
             want_home: false,
             loading_since: None,
             progress: Default::default(),
-            link: Default::default(),
+            gate: Default::default(),
             receipt: None,
             receipt_copy: None,
             receipt_undo: None,
@@ -528,7 +528,7 @@ impl FileWindow {
     pub fn reload(&self) {
         // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「断开」）：列表进过期态、照常摆着，
         //   连上之后窗口那一级让每个标签页带着记号重问一遍（`Workspace::settle_link`）。
-        if self.link.offline() && !self.listing.rows.lock().unwrap().is_empty() {
+        if self.gate.offline() && !self.listing.rows.lock().unwrap().is_empty() {
             return;
         }
         let l = self.listing.clone();
@@ -683,7 +683,7 @@ impl FileWindow {
     /// 和那台断着、手上摆着上一屏 ⇒ 不换（列不了，表头不许指着一列、行却是另一种序）。
     pub fn set_sort(&mut self, sort: Sort) -> bool {
         if self.sort == sort
-            || (self.link.offline() && !self.listing.rows.lock().unwrap().is_empty())
+            || (self.gate.offline() && !self.listing.rows.lock().unwrap().is_empty())
         {
             return false;
         }

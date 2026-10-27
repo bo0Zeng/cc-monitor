@@ -217,11 +217,12 @@ async fn id_is_echoed_back_byte_for_byte() {
             serde_json::to_string(id).unwrap()
         );
         let out = one_line(&line).await;
-        let want = format!("\"id\":{}", serde_json::to_string(id).unwrap());
-        assert!(
-            out.iter().any(|l| l.contains(&want)),
-            "id {id:?} 没被逐字回显：{out:?}"
-        );
+        assert_eq!(out.len(), 1, "一问该恰好一条应答：{out:?}");
+        // 线上那一截逐字节等于发的那一截（不是解析再比：规范化过的写法也会解析成同一个串）。
+        let want = format!("\"id\":{},", serde_json::to_string(id).unwrap());
+        assert!(out[0].contains(&want), "id {id:?} 没被逐字回显：{out:?}");
+        let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(v["id"], *id, "{v}");
     }
 }
 
@@ -1004,7 +1005,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     drop(client);
     h.await.unwrap();
 
-    // hook 那一头走了 ⇒ 撤掉，之后再答回 closed_elsewhere。
+    // hook 那一头走了 ⇒ 撤掉，之后再答是「别处已答」那一种结局。
     let (mut client, server) = tokio::io::duplex(1 << 16);
     let (tx, _rx) = chan();
     let h = spawn(
@@ -1029,9 +1030,9 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
             )
             .unwrap()
         )
-        .unwrap_err()
-        .0,
-        "closed_elsewhere"
+        .expect("撤掉之后再答是一种结局，不是错")
+        .result,
+        cmd_wire::needs::AnswerResult::Gone
     );
 }
 

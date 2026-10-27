@@ -102,7 +102,6 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
     closeEndedIn: vi.fn(),
     openTabCwd: vi.fn().mockResolvedValue(undefined),
     bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
-    bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
     answerAt: vi.fn(),

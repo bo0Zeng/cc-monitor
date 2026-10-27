@@ -194,7 +194,8 @@ pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {
             choices.push(c(
                 "deny-stop",
                 copy_text("beAsk.choice.denyStop", &[]),
-                Tone::Warn,
+                // 停下整轮：出口标红照这一格（不认 id）。
+                Tone::Fail,
                 NoteNeed::None,
             ));
         }

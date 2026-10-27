@@ -284,20 +284,19 @@ fn a_registration_that_fails_its_check_is_not_used() {
     assert!(!registration_holds(&e, Some(639150434950992340), |_| false));
 }
 
-/// ★ 本机会话点那一刻现走 claude 往上的进程链（同远端那一条规则）：claude 不是 shell 的直接子进程（中间隔着 ccm）⇒
-/// 往上走到认得出窗口的那一级；整条链都认不出 ⇒ 认不出窗口，原因照读到的说：Linux 上是没登记（界面再按窗口标签找一次：
-/// 会话在 tmux 里）；Windows 上是链上没有控制台也没有窗口（后台起的）。
+/// ★ 本机会话与远端会话同一条规则：本机后端交来的链（本机会话从 tmux 客户端 · 它自己起）沿链认窗口；
+/// claude 不是 shell 的直接子进程（中间隔着 ccm）⇒ 往上走到认得出窗口的那一级；整条链都没有窗口 ⇒ 真在后台（不另分本机那一种）。
 #[test]
-fn a_local_claude_is_found_up_its_chain_at_click_time() {
+fn a_local_session_is_found_up_the_same_chain_rule() {
     let chain: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
-        { "pid": 900, "name": "claude.exe" },
-        { "pid": 810, "name": "ccm.exe" },
-        { "pid": 600, "name": "powershell.exe" },
-        { "pid": 500, "name": "WindowsTerminal.exe" },
+        { "pid": 900, "name": "claude.exe", "start": 9 },
+        { "pid": 810, "name": "ccm.exe", "start": 8 },
+        { "pid": 600, "name": "powershell.exe", "start": 6 },
+        { "pid": 500, "name": "WindowsTerminal.exe", "start": 5 },
     ]))
     .unwrap();
     assert_eq!(
-        pick_local_window(
+        pick_chain_window(
             &chain,
             known_at(900, 0x33, 500),
             wins(&[(500, &[0x22, 0x33])]),
@@ -306,36 +305,52 @@ fn a_local_claude_is_found_up_its_chain_at_click_time() {
         ),
         Ok(by_console(found(0x33, 500, 777), 900))
     );
-    let tmux: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
-        { "pid": 900, "name": "claude" },
-        { "pid": 300, "name": "tmux: server" },
-        { "pid": 1, "name": "systemd" },
-    ]))
-    .unwrap();
     assert_eq!(
-        pick_local_window(
-            &tmux,
-            every(Look::Unregistered),
-            wins(&[]),
-            |_| 0,
-            not_elevated
-        ),
-        Err(FrontOutcome::Unbound {
-            why: UnboundWhy::Unregistered
-        })
-    );
-    assert_eq!(
-        pick_local_window(
+        pick_chain_window(
             &chain,
             every(Look::NoConsole),
             wins(&[]),
             |_| 0,
             not_elevated
         ),
-        Err(FrontOutcome::Unbound {
-            why: UnboundWhy::NoConsole
+        Err(FrontOutcome::NoWindow {
+            program: "claude.exe".into()
         })
     );
+}
+
+/// ★ 一条命令的先后：先按窗口标签找（对上 ⇒ 那一次的结局，不再沿链）；没对上 ⇒ 沿链；链也空 ⇒ `None`（界面摆后端那条原因）。
+/// 这台切不了（Wayland · 不支持）⇒ 有东西可找时照实说，什么都没得找时也是 `None`。
+#[test]
+fn one_command_tries_the_labels_then_the_chain() {
+    let labels = vec!["600-639150434950992340".to_string()];
+    let chain = ssh_chain();
+    let hit = |_: &[String]| Some(FrontOutcome::Switched);
+    let miss = |_: &[String]| None;
+    let walked = |c: &[ChainLink]| FrontOutcome::NoWindow {
+        program: c[0].name.clone(),
+    };
+    let not_walked = |_: &[ChainLink]| -> FrontOutcome { panic!("按标签对上了还去沿链") };
+    assert_eq!(
+        front_by(&labels, &chain, None, hit, not_walked),
+        Some(FrontOutcome::Switched)
+    );
+    assert_eq!(
+        front_by(&labels, &chain, None, miss, walked),
+        Some(FrontOutcome::NoWindow {
+            program: "ssh.exe".into()
+        })
+    );
+    assert_eq!(front_by(&labels, &[], None, miss, walked), None);
+    assert_eq!(front_by(&[], &[], None, hit, walked), None);
+    let wayland = FrontOutcome::DesktopWontSwitch {
+        desktop: "GNOME".into(),
+    };
+    assert_eq!(
+        front_by(&labels, &chain, Some(wayland.clone()), hit, walked),
+        Some(wayland.clone())
+    );
+    assert_eq!(front_by(&[], &[], Some(wayland), hit, walked), None);
 }
 
 /// ★ 「切过去了」要核过前台：系统答应了、此刻前台也确实是它 ⇒ 切过去了；答应了前台却是别的窗口（真机见过）/ 读不到 ⇒
@@ -352,7 +367,7 @@ fn switched_means_the_window_really_is_in_front() {
 }
 
 /// ★ 那台回显的窗口标签（`<进程号>-<起始时刻>`）⇒ 那个进程显示在哪个窗口：标签里的起始时刻要与此刻那个进程的对得上（进程号被复用不认）；
-/// 几个终端按交来的顺序，第一个对上的就是它；没有标签 / 形状不对 / 认不出 ⇒ 没有（接着按连接对）。
+/// 几个标签按交来的顺序，第一个对上的就是它；形状不对 / 认不出 ⇒ 没有（接着沿链）。
 #[test]
 fn a_window_label_names_the_shell_window_only_when_its_start_time_matches() {
     let start = |pid: u32| match pid {
@@ -360,31 +375,26 @@ fn a_window_label_names_the_shell_window_only_when_its_start_time_matches() {
         601 => Some(5),
         _ => None,
     };
-    let ts =
-        |v: serde_json::Value| -> Vec<serde_json::Value> { serde_json::from_value(v).unwrap() };
+    let ls = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
     let hit = labeled_window(
-        &ts(serde_json::json!([
-            { "ssh": null },
-            { "ssh": null, "window": "601-639150434950992340" },
-            { "ssh": null, "window": "600-639150434950992340" },
-        ])),
+        &ls(&["601-639150434950992340", "600-639150434950992340"]),
         start,
         |p| (p == 600 || p == 601).then(|| found(0x33, 500, 777)),
     );
     assert_eq!(hit, Some(found(0x33, 500, 777)));
     for bad in [
-        serde_json::json!([{ "ssh": null, "window": "600-639150434950992341" }]),
-        serde_json::json!([{ "ssh": null, "window": "602-639150434950992340" }]),
-        serde_json::json!([{ "ssh": null, "window": "600" }]),
-        serde_json::json!([{ "ssh": null, "window": 600 }]),
-        serde_json::json!([{ "ssh": null }]),
+        "600-639150434950992341",
+        "602-639150434950992340",
+        "600",
+        "x-639150434950992340",
     ] {
         assert_eq!(
-            labeled_window(&ts(bad.clone()), start, |_| Some(found(1, 1, 1))),
+            labeled_window(&ls(&[bad]), start, |_| Some(found(1, 1, 1))),
             None,
             "{bad}"
         );
     }
+    assert_eq!(labeled_window(&[], start, |_| Some(found(1, 1, 1))), None);
 }
 
 /// ★ 「这个进程显示在哪个窗口」在控制台那一侧的规则（读法是参数）：控制台窗口有属主（Windows Terminal 那种伪控制台窗口，

@@ -229,7 +229,7 @@ export class AgentsPanel {
       t.dataset.role = "window-open";
       spans.push(t);
     }
-    span("agent-state", runStateText(r.state));
+    span("agent-state", runStateText(r));
     const last = this.lastOf(r);
     if (last !== null) span("agent-last one-line", copyText("agentsPanel.row.last", { last }));
     row.replaceChildren(...spans);

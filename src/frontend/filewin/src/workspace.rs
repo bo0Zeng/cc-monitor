@@ -110,8 +110,8 @@ pub struct Workspace {
     title: Option<String>,
     /// 窗口底部那张「进度」表（每个标签页拿的是同一份；关掉标签页不带走它上面的那几趟）。
     pub progress: super::progress::Progress,
-    /// 那台此刻连没连着（每个标签页拿同一份）。
-    pub link: super::chrome::LinkState,
+    /// 此刻能不能写：那台连没连着（每个标签页拿同一份）。
+    pub gate: super::chrome::WriteGate,
     /// 那台的计划变过几次（`changed/plan` 那条流）；变了 ⇒ 每个标签页重问一次归属。
     pub plan_watch: super::plan::PlanWatch,
     /// 那台哪几个正被浏览的目录动过（`changed/files_dir` 那条流）；动过 ⇒ 正开着那个目录的标签页带记号重问。
@@ -120,7 +120,7 @@ pub struct Workspace {
     browsed: Vec<super::source::RemotePath>,
     /// 解好的图（每个标签页 · 预览 · 「看一眼」拿同一份，[`super::picture`]）。
     pub pictures: super::picture::Pictures,
-    /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
+    /// 上一次照着「又连上了」重列过的次数（与 `gate.ups()` 比）。
     link_ups: u64,
     /// 上一次照着重问过的那个次数。
     plan_ticks: u64,
@@ -307,7 +307,7 @@ impl Workspace {
     pub fn new(mut first: FileWindow) -> Self {
         first.in_workspace = true;
         let progress = first.progress.clone();
-        let link = first.link.clone();
+        let gate = first.gate.clone();
         let pictures = first.pictures.clone();
         let mut w = Self {
             sides: vec![Side {
@@ -335,7 +335,7 @@ impl Workspace {
             toasted: None,
             title: None,
             progress,
-            link,
+            gate,
             pictures,
             link_ups: 0,
             plan_watch: Default::default(),
@@ -494,7 +494,7 @@ impl Workspace {
         p.machines = like.machines.clone();
         p.font = like.font.clone();
         p.progress = like.progress.clone();
-        p.link = like.link.clone();
+        p.gate = like.gate.clone();
         p.pictures = like.pictures.clone();
         p.in_workspace = true;
         p.reload();
@@ -522,7 +522,7 @@ impl Workspace {
             return false;
         }
         pane.progress = self.progress.clone();
-        pane.link = self.link.clone();
+        pane.gate = self.gate.clone();
         pane.pictures = self.pictures.clone();
         pane.in_workspace = true;
         let id = self.mint_id();
@@ -541,7 +541,7 @@ impl Workspace {
             return false;
         }
         pane.progress = self.progress.clone();
-        pane.link = self.link.clone();
+        pane.gate = self.gate.clone();
         pane.pictures = self.pictures.clone();
         pane.in_workspace = true;
         let id = self.mint_id();
@@ -707,7 +707,7 @@ impl Workspace {
         p.machines = like.machines.clone();
         p.font = like.font.clone();
         p.progress = like.progress.clone();
-        p.link = like.link.clone();
+        p.gate = like.gate.clone();
         p.pictures = like.pictures.clone();
         p.in_workspace = true;
         p.edit_tab = true;
@@ -962,8 +962,8 @@ impl Workspace {
             copy_text("rsFilewinWorkspace.closeAsk.cancel", &[]),
             super::kit::Btn::Plain,
         )];
-        // 存不成（断着，[`super::chrome::LinkState::write_refused`]）⇒ 不给「全部保存后关闭」；没存的照样列出来、「仍然关闭」照给。
-        let save_all = !ask.unsaved.is_empty() && self.link.write_refused().is_none();
+        // 存不成（断着，[`super::chrome::WriteGate::write_refused`]）⇒ 不给「全部保存后关闭」；没存的照样列出来、「仍然关闭」照给。
+        let save_all = !ask.unsaved.is_empty() && self.gate.write_refused().is_none();
         if save_all {
             buttons.push((
                 copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[]),
@@ -1231,9 +1231,9 @@ impl Workspace {
         let f = self.focus;
         let p = self.pane_on(f);
         if let (Some(rt), Some(line)) = (p.rt.clone(), p.line.clone()) {
-            self.link.watch(&rt, line, p.source.origin(), ctx);
+            self.gate.watch(&rt, line, p.source.origin(), ctx);
         }
-        let ups = self.link.ups();
+        let ups = self.gate.ups();
         if ups != self.link_ups {
             self.link_ups = ups;
             self.browsed.clear();

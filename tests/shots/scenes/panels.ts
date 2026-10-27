@@ -656,11 +656,11 @@ async function clickHeadFront(): Promise<void> {
   await click("[data-role=head-front]");
 }
 
-/** devbox 那一问回「那台旧」（`Unsupported`）；部署那一下答什么由 `deploy` 定。 */
+/** 本机后端问 devbox 那一问回「那台旧」（码 `backend_old`）；部署那一下答什么由 `deploy` 定。 */
 function tooOld(deploy: () => unknown): (w: World) => void {
   return (w) => {
-    w.ops["session-terminals"] = () => {
-      throw { err: "Unsupported", body: [] };
+    w.ops["session-window"] = () => {
+      throw { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "backend_old", message: "devbox 后端比这一版旧" }))), said: "devbox 后端比这一版旧" };
     };
     w.commands.deploy_remote_backend = deploy;
     // 换上了就重拨那条流（主窗口 `reconnect`）。
@@ -699,6 +699,7 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
+    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }] });
     w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "gnome-terminal-server", count: 3, why: "unregistered" });
   }), hostOs: "linux" },
   { ...frontScene("panel-front-wayland", "↗ · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
@@ -707,6 +708,7 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
+    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }] });
     w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
   }), hostOs: "linux" },
   { ...frontScene("panel-front-wayland-open-here", "↗ · ［在 cc-monitor 里打开］", "上一张点了［在 cc-monitor 里打开］⇒ 浮层收起，底部抽屉开到这个会话的「终端」页", async () => {
@@ -716,18 +718,9 @@ export const FRONT_SCENES: Scene[] = [
     await click(await byText("[data-role=front-result] button", "在 cc-monitor 里打开"));
     await sleep(800);
   }, (w) => {
+    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }] });
     w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
   }), hostOs: "linux" },
-  frontScene("panel-front-unbound", "↗ · 本机终端没登记", "进程链上哪一级都认不出窗口（Linux：shell 开在接上终端之前）：浮层给［接上终端］（直达设置那一节）", async () => {
-    await mainReady(ALL_TABS);
-    await clickHeadFront();
-    await waitFor("[data-role=front-result]");
-    await sleep(400);
-  }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "unbound", why: "unregistered" });
-    // 按窗口标签那一问也落空：本机后端说这个会话没有终端显示着。
-    w.ops["session-terminals"] = () => ({ terminals: [], why: "no-terminal" });
-  }),
   frontScene("panel-front-remote-detached", "↗ · 远端 tmux 里没有终端连着", "devbox 那台说：tmux 会话在、没有终端连着 ⇒ 无终端窗口 ＋［在终端里打开］（灰）", async () => {
     await mainReady(ALL_TABS);
     await openTab(3);
@@ -736,7 +729,7 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
-    w.ops["session-terminals"] = () => ({ terminals: [], why: "detached" });
+    w.ops["session-window"] = () => ({ labels: [], chain: [], why: "detached" });
   }),
   frontScene("panel-front-remote-offline", "↗ · 断开那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
     await mainReady(ALL_TABS);
@@ -746,8 +739,8 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
-    w.ops["session-terminals"] = () => {
-      throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+    w.ops["session-window"] = () => {
+      throw { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "unreached", message: "devbox 离线" }))), said: "devbox 离线" };
     };
   }),
   frontScene("panel-front-update", "↗ · 那台后端旧", "devbox 那台后端不认这一问 ⇒「devbox 要更新」＋［更新］（就地做，不开设置）", async () => {
@@ -791,6 +784,7 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-busy]");
     await sleep(300);
   }, (w) => {
+    w.ops["session-window"] = () => ({ labels: [], chain: [{ pid: 4242, name: "bash", start: 1 }] });
     w.commands.bring_terminal_to_front = () => new Promise(() => {});
   }),
 ];

@@ -1,7 +1,7 @@
 /**
  * 答一条挂着的待答请求（`src/frontend/ui/answer-reads.ts` → 帧命令 `needs-answer`）：说对的命令、对的请求体，结局按码分三种。
  * - 交到了 ⇒ answered；
- * - `already_answered` · `closed_elsewhere`（别处先答了 / 撤了）⇒ gone，带核心那一句（块淡出、toast 照它）；
+ * - 回包 `result: "gone"`（别处先答了 / 撤了）⇒ gone，带核心那一句（块淡出、toast 照它）；
  * - 别的拒绝 · 连接那一跳没成 ⇒ failed，带那一句与复制详情（块照旧可答）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -43,13 +43,9 @@ describe("needs-answer", () => {
     ]);
   });
 
-  it("★ 别处先答了 / 撤了 ⇒ gone，带那台写好的那一句", async () => {
-    for (const code of ["already_answered", "closed_elsewhere"]) {
-      reply = async () => {
-        throw refused(code, `核心·${code}`);
-      };
-      expect(await answerNeeds("devbox", "s1", { ask: "a", choice: "allow" })).toEqual({ kind: "gone", said: `核心·${code}` });
-    }
+  it("★ 别处先答了 / 撤了是回包的一种结局（`gone`）⇒ gone，带那台写好的那一句，不认码", async () => {
+    reply = async () => enc({ result: "gone", said: "核心·已在终端答过或已关闭" });
+    expect(await answerNeeds("devbox", "s1", { ask: "a", choice: "allow" })).toEqual({ kind: "gone", said: "核心·已在终端答过或已关闭" });
   });
 
   it("★ 别的拒绝 · 够不着 ⇒ failed（那一句 ＋ 复制详情），不当成答了", async () => {

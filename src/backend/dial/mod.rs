@@ -38,7 +38,7 @@ pub(crate) mod probe; // 测试连接（`remote-probe`）
 pub mod remote_ask;
 pub(crate) mod ssh_config;
 pub(crate) mod terminal; // 开终端那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷）在这里渲
-pub(crate) mod terminal_processes; // ↗ 那一问：那台报来的终端连接是这台电脑上哪个进程开的、它往上的进程链
+pub(crate) mod terminal_processes; // ↗ 那一问的本机那一半：终端连接是这台电脑上哪个进程开的、它往上的进程链
 
 /// 开出 channel 之后的几种用法：拨号核心那一份，进门前先装上本后端的那一套（[`host`]）。
 pub(crate) mod uses {

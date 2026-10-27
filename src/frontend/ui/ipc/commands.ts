@@ -60,6 +60,7 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 //（判据：`commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节）。
 import type { Origin } from "../generated/Origin";
 import type { FrontOutcome } from "../generated/FrontOutcome";
+import type { SessionWindow } from "../generated/SessionWindow";
 import type { TabSession } from "../generated/TabSession";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -265,14 +266,9 @@ export const commands = {
     run?: string;
   }) => invoke<void>("open_session_in_new_window", args),
 
-  /** 本机会话拉前（Windows 按 sid→HWND 缓存）；回结局族。**桶①**。 */
-  bring_terminal_to_front: (args: { sessionId: string }) =>
-    invoke<FrontOutcome>("bring_terminal_to_front", args),
-
-  /** 远端会话拉前，两问：交那台回的 `terminals` ⇒ 按窗口标签找（对不上回 `null`）；交本机后端的进程链 ⇒ 沿链找窗口。回结局族。**桶①**。 */
-  bring_remote_terminal_to_front: (
-    args: { terminals: unknown[] } | { chain: unknown[] },
-  ) => invoke<FrontOutcome | null>("bring_remote_terminal_to_front", args),
+  /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链原样交来，先按标签、再沿链；回结局族（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
+  bring_terminal_to_front: (args: Pick<SessionWindow, "labels" | "chain">) =>
+    invoke<FrontOutcome | null>("bring_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) =>
