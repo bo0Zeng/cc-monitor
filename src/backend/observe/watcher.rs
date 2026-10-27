@@ -3408,6 +3408,8 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     let facts = known.unwrap_or_else(|| crate::history::search_rules::LabelFacts {
         project_dir: project_dir.clone(),
         custom: state.custom_title(&sid),
+        // 头一份是后台的 ⇒ 叫它 pidfile 名（排在改过的名之后，[`crate::history::search_rules::session_label`]）。
+        bg_name: a.name.clone().filter(|_| a.background),
         ..Default::default()
     });
     let name_face = crate::history::search_rules::name_face(&facts);
@@ -3431,6 +3433,10 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     };
     entry.frozen = frozen_at(&entry, &state.book, now);
     state.sessions.insert(key, entry);
+    // 同一 sid 来了人坐着的那一份 ⇒ 不再是后台（交互压过后台，反向不降）：pidfile 名去掉，名字变了推一帧。
+    if !a.background {
+        state.renamed(&sid, |f| f.bg_name.take().is_some(), sink);
+    }
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
     let announced = !state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
@@ -4517,6 +4523,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
             |e| {
                 f.project_dir = f.project_dir.take().or_else(|| e.project_dir.clone());
                 f.custom = custom.clone();
+                f.bg_name = e.bg_name.clone();
                 let changed = *e != f;
                 *e = f.clone();
                 changed

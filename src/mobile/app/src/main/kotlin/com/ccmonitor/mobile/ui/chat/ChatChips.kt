@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
@@ -32,6 +33,19 @@ internal class ChatChips(
     private val state: MutableStateFlow<ChatUiState>,
     private val sid: () -> String?,
 ) {
+    /**
+     * 改这条会话的标题：交这台 `history-annotate {customTitle}`（名字住那台的注解，历史清单「改标题」同一格；留空 ＝ 回到那台算的标题）。
+     * 名字不在这里改：等会话簿那一格换。没交成 ⇒ chip 上方那一句。
+     */
+    fun rename(title: String) {
+        val s = sid() ?: return
+        state.value = state.value.copy(note = null)
+        scope.launch {
+            val r = link.call(HistoryAnnotate.COMMAND, HistoryAnnotate.rename(s, title), SWITCH_MS)
+            if (r !is Reply.Ok) state.value = state.value.copy(note = r.problem(machine, HistoryAnnotate.COMMAND, link.offline.value)?.text)
+        }
+    }
+
     /**
      * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` 才换字；没读回（`unsure` · 超时）· 被拒 ⇒ 回原字 ＋ chip 上方那一句。
      * 已经在换（模型或权限档）⇒ 不再起一趟。

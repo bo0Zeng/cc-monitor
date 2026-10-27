@@ -109,6 +109,7 @@ fn session_label_picks_in_order() {
             title: title.map(str::to_string),
             first: first.to_string(),
             project_dir: Some("/w/p".into()),
+            ..Default::default()
         })
     };
     let named = |s: &str| (s.to_string(), true);
@@ -117,6 +118,24 @@ fn session_label_picks_in_order() {
     assert_eq!(f(Some(" "), Some("AI"), "首句"), named("AI"));
     assert_eq!(f(None, Some("  "), "首句"), named("首句"));
     assert_eq!(f(None, None, " "), untitled);
+}
+
+/// 后台会话的 pidfile 名排在改过的名之后、标题之前（monitor 里改的名压得过它）；空白的当没有。
+#[test]
+fn a_background_name_sits_between_the_rename_and_the_title() {
+    let f = |custom: Option<&str>, bg: Option<&str>| {
+        session_label(&LabelFacts {
+            custom: custom.map(str::to_string),
+            bg_name: bg.map(str::to_string),
+            title: Some("AI".into()),
+            first: "首句".into(),
+            project_dir: None,
+        })
+        .0
+    };
+    assert_eq!(f(None, Some("夜间任务")), "夜间任务");
+    assert_eq!(f(Some("修登录"), Some("夜间任务")), "修登录");
+    assert_eq!(f(None, Some(" ")), "AI");
 }
 
 /// 读到的一条记录改不改叫这条会话什么：agent 起的标题收；人在 agent 里改的名（`TitleBy::User`，Claude `/rename`）不收 ——

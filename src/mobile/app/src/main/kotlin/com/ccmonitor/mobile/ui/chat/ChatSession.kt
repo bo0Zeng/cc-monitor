@@ -90,6 +90,8 @@ data class ChatUiState(
     val drafting: Boolean = false,
     /** 这条会话的工作目录（在它里面点「新建会话」⇒ 新的那张用它）；还不知道 ⇒ `null`。 */
     val cwd: String? = null,
+    /** 叫这条会话什么（那台定的：会话簿那一格，状态帧来了就换）；簿里还没有它 ⇒ `null`。 */
+    val label: String? = null,
     /** 上次没发的草稿（本地存的）：输入框还空着时填进去；没有 ⇒ `null`。 */
     val draft: String? = null,
     /** 从一处命中打开的落点（那张卡的 key：滚到它、折着就展开）；不是从命中打开的 · 那张卡还没读到 ⇒ `null`。 */
@@ -385,6 +387,8 @@ class ChatSession(
             if (delivery != null) _state.value = _state.value.copy(note = said)
         }
     }
+
+    fun rename(title: String) = chips.rename(title)
 
     /** ■：往那条会话送 Esc；中断那一条看记录。 */
     fun stop() {
@@ -820,7 +824,9 @@ class ChatSession(
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
                 val running = t.canStop(s)
-                if (running != _state.value.running) _state.value = _state.value.copy(running = running)
+                // 叫它什么照会话簿那一格（那台定的）；簿里没有 ⇒ 留着上一个。
+                val label = t.live[s]?.label ?: _state.value.label
+                if (running != _state.value.running || label != _state.value.label) _state.value = _state.value.copy(running = running, label = label)
             }
         }
     }

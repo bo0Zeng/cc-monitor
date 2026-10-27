@@ -32,6 +32,8 @@ class ChatViewModel(
 
     fun stop() = session.stop()
 
+    fun rename(title: String) = session.rename(title)
+
     /** 点一行过程（开 ⇄ 合）· 「跳到第一处失败」。 */
     fun toggle(after: String) = session.toggle(after)
 

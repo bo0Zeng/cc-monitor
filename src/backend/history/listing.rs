@@ -525,6 +525,7 @@ pub(crate) fn label_facts_among(
     if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
         return super::search_rules::LabelFacts {
             custom: None,
+            bg_name: None,
             title: None,
             first: excerpt(p),
             project_dir: crate::agents::project_dir_among(registry, p),
@@ -536,6 +537,7 @@ pub(crate) fn label_facts_among(
     .unwrap_or_default();
     super::search_rules::LabelFacts {
         custom: None,
+        bg_name: None,
         title: row.ai_title,
         first: row.first_user_excerpt,
         project_dir: row.cwd,
