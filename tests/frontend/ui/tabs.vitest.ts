@@ -169,7 +169,6 @@ import {
   withHistoryReads,
   withSessionReads,
   recordReadCalls,
-  refusedReply,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
@@ -2073,14 +2072,18 @@ describe("account-ux U5 tab 徽章：照会话那台写好的那一份（`sessio
 });
 
 /**
- * ★★ ↗：点那一刻问本机后端一次（`session-window`：会话在这台电脑上的哪儿 —— 窗口标签 · 进程链，或一条原因），
+ * ★★ ↗：点那一刻问本机后端一次（`session-window`：会话在这台电脑上的哪儿 —— 窗口标签 · 进程链 · tmux 那一格，或写好的那一张），
  * 答话**原样**交壳一次（`bring_terminal_to_front`：先按标签、再沿链，找窗口、拉前）；本机会话与远端会话同一条路、同一个形。
- * 前端不解析、不排先后，tmux 不在前提链上。结局画成锚在 ↗ 下面的浮层（不出 toast）；切过去了什么都不出、↗ 换成对勾。
+ * 前端不解析、不排先后、不按结局挑字：壳 · 后端交来的那一张照摆（句子逐种判在后端 `front_face_tests.rs`）。
+ * 结局画成锚在 ↗ 下面的浮层（不出 toast）；切过去了什么都不出、↗ 换成对勾。
  */
 describe("：↗ 问本机后端一次、交壳一次", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   const CHAIN = [{ pid: 700, name: "ssh.exe", start: 4000 }];
-  const PLACED = { labels: [], chain: CHAIN };
+  const PLACED = { labels: [], chain: CHAIN, tmux: false };
+  /** 一张写好的浮层（字是夹具里的占位，判的是照摆）。 */
+  const face = (title: string, body: string, tone: "plain" | "warn" | "fail", acts: unknown[] = [], hint?: string) => ({ title, body, tone, acts, ...(hint ? { hint } : {}) });
+  const said = (f: ReturnType<typeof face>) => ({ kind: "said", ...f });
   /** 本机后端答什么（`reject` ⇒ 那一问失败）；壳那一跳回什么结局（缺 ⇒ 没对上 `null`）。 */
   function answer(placed: unknown, front: () => Promise<unknown> = () => Promise.resolve(null), reject = false): void {
     mockInvoke.mockImplementation((cmd: string, args: unknown) => {
@@ -2120,7 +2123,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
       ["r1", "devbox"],
     ] as const) {
       mockInvoke.mockReset();
-      const placed = { labels: ["600-639150434950992340"], chain: CHAIN };
+      const placed = { labels: ["600-639150434950992340"], chain: CHAIN, tmux: sid === "r1" };
       answer(placed, () => Promise.resolve({ kind: "switched" }));
       await clickFront(tm, sid);
       expect(
@@ -2134,29 +2137,26 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     }
   });
 
-  it("★★ 分不清 ⇒ 浮层照实说拉不了、带候选个数（不切不闪），不出 toast", async () => {
-    answer(PLACED, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", count: 2, why: "console-unreachable" }));
+  it("★★ 壳交来的那一张照摆（分不清：照实说拉不了、带灰字办法，不切不闪），不出 toast", async () => {
+    answer(PLACED, () => Promise.resolve(said(face("壳写的标题", "壳写的正文", "warn", [], "壳写的灰字"))));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     await clickFront(tm, "r1");
     expect(showActionFailureToast, "结局画在浮层上，不出 toast").not.toHaveBeenCalled();
     expect(pop()?.dataset.shade).toBe("amber");
-    expect(popText()).toContain(copyText("front.title.unsure"));
-    expect(popText()).toContain(copyText("front.body.severalConsole", { program: "WindowsTerminal.exe", n: 2 }));
-    expect(popText()).toContain(copyText("front.hint.severalConsole"));
+    expect(pop()!.firstElementChild!.textContent).toBe("壳写的标题");
+    expect(popText()).toContain("壳写的正文");
+    expect(popText()).toContain("壳写的灰字");
     expect(pop()!.closest("[role=dialog]")?.getAttribute("aria-label")).toBe(copyText("front.pop.aria"));
-    expect(popButtons(), "分不清：不给闪窗口那一颗").toEqual([]);
+    expect(popButtons(), "那一张没带按钮 ⇒ 不出").toEqual([]);
   });
 
-  it("★ 后端说了原因（没有标签可找）⇒ 不找窗口、照原因摆；同一个会话再来一次原地换内容", async () => {
+  it("★ 后端交来那一张（没有标签可找）⇒ 不找窗口、照摆；同一个会话再来一次原地换内容", async () => {
     const cases: [unknown, string, string, string[], string][] = [
-      [{ labels: [], chain: [], why: "detached" }, copyText("front.title.noTerminal"), copyText("front.body.detached"), [copyText("front.act.openInTerminal")], "grey"],
-      [{ labels: [], chain: [], why: "no-terminal" }, copyText("front.title.noTerminal"), copyText("front.body.background"), [], "grey"],
-      [{ labels: [], chain: [], why: "unreadable" }, copyText("front.title.unsure"), copyText("front.body.unreadable", { machine: "devbox" }), [copyText("detail.act.copy")], "grey"],
-      [{ labels: [], chain: [], why: "not-ssh" }, copyText("front.title.elsewhere"), copyText("front.body.notSsh", { machine: "devbox" }), [], "grey"],
-      [{ labels: [], chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
-      [{ labels: [], chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
-      [{ labels: [], chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
+      [{ labels: [], chain: [], tmux: true, face: face("甲", "甲正文", "plain", [{ kind: "open-in-terminal" }]) }, "甲", "甲正文", [copyText("front.act.openInTerminal")], "grey"],
+      [{ labels: [], chain: [], tmux: false, face: face("乙", "乙正文", "plain") }, "乙", "乙正文", [], "grey"],
+      [{ labels: [], chain: [], tmux: false, face: face("丙", "", "fail", [{ kind: "retry" }, { kind: "copy", detail: "d" }]) }, "丙", "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
+      [{ labels: [], chain: [], tmux: false, face: face("丁", "丁正文", "warn", [{ kind: "update" }]) }, "丁", "丁正文", [copyText("front.act.update")], "amber"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
@@ -2177,39 +2177,38 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
-  it("★ 有标签、链没对上（带原因）⇒ 照样交壳按标签找：对上 ⇒ 切过去；没对上（壳回 null）⇒ 摆后端那条原因", async () => {
-    const placed = { labels: ["600-639150434950992340"], chain: [], why: "mismatch" };
+  it("★ 有标签、链没对上（带那一张）⇒ 照样交壳按标签找：对上 ⇒ 切过去；没对上（壳回 null）⇒ 摆后端那一张", async () => {
+    const placed = { labels: ["600-639150434950992340"], chain: [], tmux: false, face: face("后端写的标题", "后端写的正文", "plain") };
     const tm = makeTM();
     tm.createSkeletonTab("r3", "/p", "devbox", false, null);
     answer(placed, () => Promise.resolve({ kind: "switched" }));
     await clickFront(tm, "r3");
-    expect(shellCalls(), "只交标签与链").toEqual([{ labels: placed.labels, chain: placed.chain }]);
+    expect(shellCalls(), "只交标签 · 链 · tmux 那一格").toEqual([{ labels: placed.labels, chain: placed.chain, tmux: false }]);
     expect(pop(), "切过去了：不出浮层").toBeNull();
     mockInvoke.mockReset();
     answer(placed);
     await clickFront(tm, "r3");
-    expect(popText()).toContain(copyText("front.body.mismatch"));
+    expect(popText()).toContain("后端写的正文");
   });
 
-  it("★ 会话已不在运行（后端码 no_such_session）⇒「会话已不在运行」，不找窗口", async () => {
+  it("★ 链空又没带那一张 ⇒ 认不出（［复制详情］带细节），不找窗口", async () => {
     const tm = makeTM();
     tm.ensureTab("l7", "/w", "p", LOCAL_ORIGIN);
-    answer(refusedReply("no_such_session", "no running session"), undefined, true);
+    answer({ labels: [], chain: [], tmux: false });
     await clickFront(tm, "l7");
     expect(shellCalls()).toEqual([]);
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.unbound"));
-    expect(popText()).toContain(copyText("front.body.notLive"));
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.badShape"));
+    expect(popButtons()).toEqual([copyText("detail.act.copy")]);
   });
 
-  it("★ Wayland 桌面上切不了（壳回 desktop-wont-switch）⇒ 照实说 ＋［在 cc-monitor 里打开］；点了收起浮层、交 main 开这个会话的终端页", async () => {
-    answer(PLACED, () => Promise.resolve({ kind: "desktop-wont-switch", desktop: "GNOME" }));
+  it("★ 壳那一张带［在 cc-monitor 里打开］（Wayland 桌面上切不了）⇒ 点了收起浮层、交 main 开这个会话的终端页", async () => {
+    answer(PLACED, () => Promise.resolve(said(face("切不了", "Wayland", "plain", [{ kind: "open-here" }]))));
     const tm = makeTM();
     const opened: string[] = [];
     tm.onOpenHere = (sid) => opened.push(sid);
     tm.createSkeletonTab("r5", "/p", "devbox", false, null);
     await clickFront(tm, "r5");
-    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.desktopWontSwitch"));
-    expect(popText()).toContain(copyText("front.body.desktopWontSwitch", { desktop: "GNOME" }));
+    expect(pop()!.firstElementChild!.textContent).toBe("切不了");
     expect(popButtons()).toEqual([copyText("front.act.openHere")]);
     [...pop()!.closest("[role=dialog]")!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.openHere"))!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -2218,7 +2217,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
   });
 
   it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
-    answer({ labels: [], chain: [], why: "no-terminal" });
+    answer({ labels: [], chain: [], tmux: false, face: face("没终端", "后台", "plain") });
     const tm = makeTM();
     tm.createSkeletonTab("r2", "/p", "devbox", false, null, false);
     expect(tm.isAttachable("r2"), "量具自检：这个会话确实被宣告成不可 attach").toBe(false);
@@ -2261,7 +2260,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     }
   });
 
-  it("★ 问不到：那台旧 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；断开 ⇒ 照摆那一句 ＋［重新连接］（本机通道那一跳与本机后端问那台都一样）", async () => {
+  it("★ 本机这一跳问不到：本机后端不认 ⇒「要更新」＋［更新］；期限到 ⇒「无应答」＋［重试］；断开 ⇒ 照摆那一句 ＋［重新连接］（问那台没问成是后端那一张）", async () => {
     const tm = makeTM();
     tm.createSkeletonTab("r3", "/p", "devbox", false, null);
     // 壳交回来的失败形状（`wire::WireErr` 的线上形状，`chan.ts::decodeFail` 收）。
@@ -2270,11 +2269,8 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
     const hop = (why: "Overrun" | "Unreachable") => ({ err: { Hop: { idx: 0, tag: "wait", reach: "Sent", why } }, body: [], said: why === "Unreachable" ? dropped : "" });
     const cases: [unknown, string, string, string[]][] = [
       [UNSUPPORTED, copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
-      [refusedReply("backend_old", "devbox 后端太旧"), copyText("front.title.update", { machine: "devbox" }), copyText("front.body.update"), [copyText("front.act.update")]],
       [hop("Overrun"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
-      [refusedReply("timed_out", "devbox 没在期限内答"), copyText("front.title.failed"), copyText("front.body.timeout", { machine: "devbox" }), [copyText("front.act.retry")]],
       [hop("Unreachable"), copyText("front.title.failed"), dropped, [copyText("front.act.reconnect")]],
-      [refusedReply("unreached", "连接层写的 devbox 断开那一句"), copyText("front.title.failed"), "连接层写的 devbox 断开那一句", [copyText("front.act.reconnect")]],
     ];
     for (const [err, title, body, buttons] of cases) {
       mockInvoke.mockReset();

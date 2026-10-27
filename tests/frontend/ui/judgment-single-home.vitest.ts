@@ -810,6 +810,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "cmd-wire": {
     LOCAL: "J36",
     KEYS_NOT_NAMES: "J39",
+    // ↗ 浮层那一张（`front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
+    told: NONE,
+    face: NONE,
     // 推送 `changed` 那一臂的主题名与体上限（`Changed::topic` · `Changed::cap_body`）：后端发前判、壳按主题分订阅；界面不判主题、不判上限，TS 侧没有孪生。
     topic: NONE,
     cap_body: NONE,

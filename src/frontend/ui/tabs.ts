@@ -32,7 +32,7 @@ import {
 } from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionFace } from "./generated/SessionFace";
-import { closesFromMenu, closesQuietly, hasTerminal, inTmux, isEnded, isLive } from "./face-can";
+import { closesFromMenu, closesQuietly, hasTerminal, isEnded, isLive } from "./face-can";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -1517,8 +1517,7 @@ export class TabManager {
     });
     if (r === undefined) return;
     const anchor = this.frontAnchor(sid, from);
-    const now = this.store.tabs.get(sid);
-    const view = frontView(r, machineName(origin), now ? inTmux(now.face) : false);
+    const view = frontView(r, machineName(origin));
     if (view === null) {
       closeFrontResult(sid);
       flashFrontDone(anchor);
