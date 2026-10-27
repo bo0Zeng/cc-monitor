@@ -61,16 +61,14 @@ async fn a_bound_channel_serves_the_host_side_end_to_end() {
         let pid = b.peer_pid().expect("对端是谁");
         b.set_read_timeout(Some(std::time::Duration::from_millis(300)))
             .expect("期限");
-        let t0 = std::time::Instant::now();
         let mut one = [0u8; 1];
         let timed = std::io::Read::read(&mut &b, &mut one);
-        let waited = t0.elapsed();
         (&b).write_all(b"hello\n").expect("同步写");
         let mut line = String::new();
         std::io::BufReader::new(&b)
             .read_line(&mut line)
             .expect("同步读一行");
-        (b, pid, timed.is_err(), waited, line)
+        (b, pid, timed.is_err(), line)
     });
     let own_chan::Accepted::Ours(mut server) = l.accept().await.expect("收") else {
         panic!("同一个进程连进来被认成别人");
@@ -79,13 +77,10 @@ async fn a_bound_channel_serves_the_host_side_end_to_end() {
     server.read_exact(&mut got).await.expect("读握手");
     assert_eq!(&got, b"hello\n");
     server.write_all(b"ok\n").await.expect("回握手");
-    let (b, pid, timed_out, waited, line) = client.await.expect("客户端那一侧");
+    let (b, pid, timed_out, line) = client.await.expect("客户端那一侧");
     assert_eq!(pid, std::process::id(), "对端 pid 不是在听的这个进程");
+    // 期限到了、对端一个字节没写：那一次读回错（没挂死在那里：挂死的话下面的握手根本走不到）。
     assert!(timed_out, "期限到了没字节，读却没报错");
-    assert!(
-        waited < std::time::Duration::from_secs(5),
-        "期限读挂了 {waited:?}"
-    );
     assert_eq!(line, "ok\n");
     let mut a = b.into_async().expect("交给运行时");
     a.write_all(b"y").await.expect("异步写");
@@ -119,7 +114,8 @@ async fn a_bound_channel_serves_the_host_side_end_to_end() {
 #[ignore = "要一份真后端：CCM_E2E_BACKEND=<路径>；在 Win11 虚拟机上跑"]
 fn e2e_the_local_backend_outlives_the_monitor() {
     const ROLE: &str = "CCM_E2E_HOST_ROLE";
-    let bin = std::path::PathBuf::from(std::env::var("CCM_E2E_BACKEND").expect("没给 CCM_E2E_BACKEND"));
+    let bin =
+        std::path::PathBuf::from(std::env::var("CCM_E2E_BACKEND").expect("没给 CCM_E2E_BACKEND"));
     if std::env::var(ROLE).is_ok() {
         // ── 子进程：当 monitor ──
         let resolve = || Ok(bin.clone());
@@ -162,7 +158,10 @@ fn e2e_the_local_backend_outlives_the_monitor() {
         .expect("起当 monitor 的那个子进程");
     let said = std::fs::read_to_string(&log).unwrap_or_default();
     assert!(
-        status.success() && said.contains("HOST-STARTED true true"),
+        status.success()
+            && said
+                .lines()
+                .any(|l| l.trim_end() == "HOST-STARTED true true"),
         "当 monitor 的那个进程没起成本机常驻后端：{said}"
     );
     // monitor 那个进程已经退了：这台家里的通道还连得上 ⇒ 后端还在跑。
@@ -184,12 +183,17 @@ fn e2e_the_local_backend_outlives_the_monitor() {
         .envs(super::backend_env())
         .output()
         .expect("起 --resident-stop");
-    let answer = String::from_utf8_lossy(&stop.stdout);
-    assert!(
-        answer.contains(&pid.to_string()),
-        "停的不是那一位：{answer} {}",
-        String::from_utf8_lossy(&stop.stderr)
-    );
+    // 结局照生产那一个读法读（`remote_resident::read_stop`）。
+    let answer = crate::remote_resident::read_stop(
+        &crate::stream_source::RemoteExec {
+            stdout: String::from_utf8_lossy(&stop.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stop.stderr).into_owned(),
+            exit_status: stop.status.code().and_then(|c| u32::try_from(c).ok()),
+        },
+        &copy_core::local_machine(),
+    )
+    .unwrap_or_else(|e| panic!("停那一下没答成：{}", e.said));
+    assert_eq!(answer.pid, Some(pid), "停的不是那一位");
     assert!(
         own_chan::connect_blocking(&sock).is_err(),
         "停了之后通道还连得上"

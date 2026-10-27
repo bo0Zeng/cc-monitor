@@ -348,13 +348,8 @@ mod win {
             name: *const u16,
         ) -> Raw;
         fn ReadFile(h: Raw, buf: *mut u8, len: u32, read: *mut u32, ov: *mut Overlapped) -> i32;
-        fn WriteFile(
-            h: Raw,
-            buf: *const u8,
-            len: u32,
-            wrote: *mut u32,
-            ov: *mut Overlapped,
-        ) -> i32;
+        fn WriteFile(h: Raw, buf: *const u8, len: u32, wrote: *mut u32, ov: *mut Overlapped)
+            -> i32;
         fn GetOverlappedResult(h: Raw, ov: *mut Overlapped, n: *mut u32, wait: i32) -> i32;
         fn WaitForSingleObject(h: Raw, ms: u32) -> u32;
         fn CancelIoEx(h: Raw, ov: *mut Overlapped) -> i32;
@@ -595,8 +590,9 @@ mod win {
             use std::os::windows::io::AsRawHandle as _;
             let mut pid: u32 = 0;
             // SAFETY：句柄属于活着的 `server`；`pid` 在本栈上。
-            let ok = unsafe { GetNamedPipeClientProcessId(server.as_raw_handle() as Raw, &mut pid) }
-                != 0;
+            let ok =
+                unsafe { GetNamedPipeClientProcessId(server.as_raw_handle() as Raw, &mut pid) }
+                    != 0;
             let ours = ok && same_user(pid);
             Ok((Stream::Server(server), ours))
         }
@@ -707,7 +703,11 @@ mod win {
         }
 
         /// 一次重叠读 / 写，至多等 `ms`；到点 ⇒ 撤掉那一次、回 `TimedOut`。对端关了 ⇒ 读回 0（同 EOF）。
-        fn io_once(&self, ms: u32, f: impl FnOnce(Raw, *mut Overlapped) -> i32) -> io::Result<usize> {
+        fn io_once(
+            &self,
+            ms: u32,
+            f: impl FnOnce(Raw, *mut Overlapped) -> i32,
+        ) -> io::Result<usize> {
             // SAFETY：手动复位、初始未发；下面关掉。
             let ev = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
             if ev == 0 {

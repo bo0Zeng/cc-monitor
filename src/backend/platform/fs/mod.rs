@@ -195,18 +195,15 @@ mod imp {
     /// 建一条符号链接 `link → target`（目标文本不解，只把 `/` 换成 `\`：系统按原样存，存进去的 `/` 跟不过去）。`dir` ⇒ 目录那一种。
     /// 先带「开发者模式下不要特权」那一旗；老系统不认那一旗（`ERROR_INVALID_PARAMETER`）⇒ 不带再来一次。
     pub(super) fn symlink(target: &Path, link: &Path, dir: bool) -> std::io::Result<()> {
-        use std::os::windows::ffi::OsStrExt as _;
         let l = win_path_core::win32_path(link)?;
-        let t: Vec<u16> = target
-            .as_os_str()
-            .encode_wide()
-            .map(|c| {
-                if c == u16::from(b'/') {
-                    u16::from(b'\\')
-                } else {
-                    c
-                }
-            })
+        // 目标是链接里存的那段文字，不是这里要开的路径 ⇒ 不加长路径前缀（加了就存成另一段文字）。
+        // 不是合法 Unicode 的目标 ⇒ 不建（不替换成别的字再存进去）。
+        let Some(text) = target.to_str() else {
+            return Err(std::io::ErrorKind::InvalidInput.into());
+        };
+        let t: Vec<u16> = text
+            .replace('/', "\\")
+            .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
         let kind = if dir { SYMBOLIC_LINK_FLAG_DIRECTORY } else { 0 };
