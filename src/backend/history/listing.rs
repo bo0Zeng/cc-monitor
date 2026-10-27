@@ -298,6 +298,8 @@ pub fn install(own: &Own) {
     if STORE.set(own.clone()).is_err() {
         tracing::debug!("listing cache home already installed; keeping the first one");
     }
+    // 远端那几台的清单副本落在同一个数据目录底下（`remote_listing`）。
+    super::remote_listing::install(own);
 }
 
 /// 盘上一份：版本 ＋ 每份记录读到哪了、累计的那几格、成品行。
