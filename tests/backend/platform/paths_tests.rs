@@ -118,29 +118,3 @@ fn a_path_under_the_home_uses_the_homes_own_separator() {
         std::path::PathBuf::from("/home/user/.cc-monitor/accounts")
     );
 }
-
-use super::home_short;
-
-/// 路径的显示形：家目录那一截写成 `~`（那台按自己的家目录写，两端照抄）；两种分隔符都认；不在家下面 · 家说不出 ⇒ 原样。期望手写。
-#[test]
-fn a_path_under_the_home_is_shown_with_a_tilde() {
-    let x = Some(std::path::Path::new("/home/x"));
-    assert_eq!(home_short("/home/x/a", x), "~/a");
-    assert_eq!(home_short("/home/x", x), "~");
-    assert_eq!(
-        home_short("/home/x/a", Some(std::path::Path::new("/home/x/"))),
-        "~/a"
-    );
-    assert_eq!(home_short("/home/xy/a", x), "/home/xy/a");
-    assert_eq!(home_short("/etc/a", x), "/etc/a");
-    assert_eq!(home_short("~/a", x), "~/a");
-    assert_eq!(home_short("/home/x/a", None), "/home/x/a");
-    assert_eq!(home_short("/x", Some(std::path::Path::new("/"))), "/x");
-    assert_eq!(
-        home_short(
-            r"C:\Users\u\.cc-monitor",
-            Some(std::path::Path::new(r"C:\Users\u"))
-        ),
-        r"~\.cc-monitor"
-    );
-}

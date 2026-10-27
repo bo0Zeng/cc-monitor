@@ -242,32 +242,8 @@ pub(crate) fn expand_tilde_from(p: &str, home: Option<&Path>) -> String {
     }
 }
 
-/// 🔴 **路径的显示形（唯一一处）**：`home` 那一截写成 `~`（`/home/u/a` ⇒ `~/a`，`/home/u` ⇒ `~`；`/` 与 `\` 都认作分隔）。
-/// 回包里带路径的那几格各配一格它写好的字，桌面与手机照抄、不自己缩。家说不出 · 不在它下面 ⇒ 原样。
-pub(crate) fn home_short(p: &str, home: Option<&Path>) -> String {
-    let short = home_short_bytes(p.as_bytes(), home);
-    // 字节一路不拆多字节字：换掉的只是一段 UTF-8 前缀 ⇒ 结果仍是 UTF-8。
-    String::from_utf8(short).unwrap_or_else(|_| p.to_string())
-}
-
-/// 同 [`home_short`]，按原始字节（文件那一族的路径不解码，非 UTF-8 的名字照样无损）。
-pub(crate) fn home_short_bytes(p: &[u8], home: Option<&Path>) -> Vec<u8> {
-    let Some(home) = home else {
-        return p.to_vec();
-    };
-    let mut h = home.as_os_str().as_encoded_bytes();
-    while let [rest @ .., b'/' | b'\\'] = h {
-        h = rest;
-    }
-    if h.is_empty() {
-        return p.to_vec();
-    }
-    match p.strip_prefix(h) {
-        Some([]) => b"~".to_vec(),
-        Some(rest @ [b'/' | b'\\', ..]) => [b"~".as_slice(), rest].concat(),
-        _ => p.to_vec(),
-    }
-}
+/// 路径的显示形（`home` 那一截写成 `~`）：实现住 `copy_core::path`（后端与壳同一份），这里转出给后端各处调。
+pub(crate) use copy_core::{home_short, home_short_bytes};
 
 /// 同 [`expand_tilde_from`]，家目录取这台的（[`home_dir`]）。
 pub(crate) fn expand_tilde(p: &str) -> String {
