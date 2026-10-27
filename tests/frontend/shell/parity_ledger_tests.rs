@@ -30,6 +30,11 @@ const LEDGER: &[(&str, &str, Side)] = &[
         "app.window.session",
         Side::Both,
     ),
+    (
+        "open_terminal_in_new_window",
+        "app.window.session",
+        Side::Both,
+    ),
     // K-H2a：apikey 表那把第三方 API key。读那条**只回掩码**（`KS6`），写那条是「界面」这个第二写者（`KS10`）。
     // 两条都收 `origin` ⇒ `Both`：本机读写 monitor 自己那一份，远端交那台机器的后端
     // （`apikey-key-set`）。`creds.apikey` 那条平价欠账（「把 key 送到远端的路」）结清。
@@ -481,6 +486,11 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
              命令体不做远端假设。",
     ),
     (
+        "open_terminal_in_new_window",
+        "开单独终端窗口：`origin` 只随 URL 交给那扇窗（它自己问那台抓屏 · 订画面要寻址键），\
+             本机 `<local>` 与远端同一个处置；命令体不做远端假设。",
+    ),
+    (
         "open_session_in_new_window",
         "开独立窗口：`origin` 只随 URL 交给那个窗口（它自己订 `session-lines/<sid>` 要寻址键），\
              本机 `<local>` 与远端同一个处置；命令体不做远端假设。",
@@ -614,7 +624,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`kept_sessions`，`Both`，归已有能力 `comm.face-a.subscribe`：主窗口手上的 tab 随名单报给那台）。
     // - **−1**（`chan_cancel`，`Both`：主界面没有撤单，这条命令删）。
     // - **+1**（`filewin_interrupts`，`Both`，归已有能力 `app.config`：退出 / 重启之前现读各文件窗口会打断什么）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 36;
+    // - **+1**（`open_terminal_in_new_window`，`Both`，归已有能力 `app.window.session`：「终端」视图开单独终端窗口）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 37;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

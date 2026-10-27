@@ -1,0 +1,34 @@
+// 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `terminals-view.module.css` 渲染出的规范文本（逐字）。
+declare const classes: {
+  readonly tvActs: string;
+  readonly tvAt: string;
+  readonly tvBadge: string;
+  readonly tvBar: string;
+  readonly tvCount: string;
+  readonly tvDown: string;
+  readonly tvFace: string;
+  readonly tvFilter: string;
+  readonly tvFilters: string;
+  readonly tvFind: string;
+  readonly tvGroupHead: string;
+  readonly tvGroupName: string;
+  readonly tvGroupSub: string;
+  readonly tvLeft: string;
+  readonly tvList: string;
+  readonly tvMain: string;
+  readonly tvMeta: string;
+  readonly tvNoMatch: string;
+  readonly tvPartial: string;
+  readonly tvPick: string;
+  readonly tvPill: string;
+  readonly tvRight: string;
+  readonly tvRow: string;
+  readonly tvRowTitle: string;
+  readonly tvRowTop: string;
+  readonly tvSelectBar: string;
+  readonly tvSelectCount: string;
+  readonly tvSpacer: string;
+  readonly tvTitle: string;
+  readonly tvView: string;
+};
+export default classes;
