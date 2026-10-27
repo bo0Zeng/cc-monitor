@@ -65,9 +65,15 @@ where
 {
     let machine = req.machine();
     if machine.is_local() {
-        return tokio::task::spawn_blocking(here)
-            .await
-            .unwrap_or_else(|e| Err(Fail::new("io_failed", e.to_string())));
+        return tokio::task::spawn_blocking(here).await.unwrap_or_else(|e| {
+            Err(Fail::from((
+                "io_failed",
+                crate::common::said::Said::with_raw(
+                    copy_core::copy_text("reason.code.bug", &[]),
+                    e,
+                ),
+            )))
+        });
     }
     let Some(host) = machine.host_name().map(str::to_string) else {
         return Err(Fail::new(
