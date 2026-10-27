@@ -109,6 +109,7 @@ const ENTRIES: readonly string[] = [
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：多台时选单里点一台
   // 住址随会话动作从 `src/frontend/ui/tabs.ts` 搬到 `src/frontend/ui/tab-session-actions.ts`（openTabCwd 逐字随行）。
   `src/frontend/ui/tab-session-actions.ts · ${copyText("gridMonitor.fact.dir")}`, // 远端会话「打开工作目录」（老面板 initialDir，F78）
+  `src/frontend/ui/machine-commands.ts · ${copyText("gridMonitor.fact.dir")}`, // 命令面板打中一台 ›「文件」：落在那台主目录（`dir` 空）
 ];
 
 describe("F7b 入口人群", () => {

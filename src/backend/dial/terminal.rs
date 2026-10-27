@@ -120,12 +120,16 @@ fn literal(powershell: bool, s: &str) -> String {
 }
 
 /// 一份拨号请求 ＋ 命令 ⇒ 这台电脑终端里跑的那一行（`powershell` ＝ 本机终端是不是 PowerShell，见模块头注；`ssh` ＝ ssh 客户端全路径）。
+/// `run` ＝ `--` 后面跟不跟请求里那串命令（不跟 ⇒ 那台自己的登录 shell，那串不验也不渲）。
 pub(crate) fn render(
     req: &super::DialRequest,
     powershell: bool,
     ssh: &str,
+    run: bool,
 ) -> Result<String, CmdErr> {
-    check_command(&req.command, powershell)?;
+    if run {
+        check_command(&req.command, powershell)?;
+    }
     if !user_ok(&req.user) {
         return Err(refused(copy_text(
             "beTerminal.refuse.user",
@@ -160,16 +164,20 @@ pub(crate) fn render(
     } else {
         jump_arg(&chain)?
     };
-    let wrapped = format!("bash -lic {}", shell_quote_core::posix_quote(&req.command));
+    let tail = if run {
+        let wrapped = format!("bash -lic {}", shell_quote_core::posix_quote(&req.command));
+        format!(" -- {}", literal(powershell, &wrapped))
+    } else {
+        String::new()
+    };
     let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell);
     Ok(format!(
-        "{call}{ssh} -t{jump} -p {port}{key}{known} {user}@{host} -- {cmd}",
+        "{call}{ssh} -t{jump} -p {port}{key}{known} {user}@{host}{tail}",
         call = if powershell { "& " } else { "" },
         ssh = literal(powershell, ssh),
         port = first.port,
         user = req.user,
         host = first.host,
-        cmd = literal(powershell, &wrapped),
     ))
 }
 
@@ -215,7 +223,7 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
 }
 
 /// `terminal-ssh` 的入参：哪一台（名字；怎么拨照这一端的机器表组）＋ 要在那台跑什么。
-/// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**恰好给一个**。
+/// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**至多给一个**；都不给 ⇒ 那台的登录 shell（命令面板「打开终端」）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -261,9 +269,10 @@ impl crate::wire::typed::Handle for TerminalSsh {
     ) -> impl std::future::Future<Output = Result<SshCommand, TerminalSshErr>> + Send + 'static
     {
         async move {
-            answer_in(
+            answer_with(
                 &req,
                 &super::machines_now(),
+                &super::ssh_config::list_aliases(),
                 crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
                 &crate::platform::ssh_client::locate(),
             )
@@ -272,21 +281,35 @@ impl crate::wire::typed::Handle for TerminalSsh {
     }
 }
 
-/// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）。
+/// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）；`~/.ssh/config` 的别名按没有算。
 pub(crate) fn answer_in(
     req: &TerminalSshReq,
     hosts: &[Host],
     powershell: bool,
     ssh: &SshClient,
 ) -> Result<SshCommand, CmdErr> {
+    answer_with(req, hosts, &[], powershell, ssh)
+}
+
+/// 同 [`answer_in`]，另给这台 `~/.ssh/config` 里非通配的别名。`command` · `cwd` 都不给 ⇒ 登录 shell 那一形：
+/// 本机 ⇒ 本机方言的登录 shell（不走 ssh）；机器表里那台 ⇒ `ssh -t …` 外壳、`--` 后面不跟命令；
+/// 机器表里没有、别名里恰好有（过别名白名单）⇒ `ssh -t[ -F …] <别名>`，照用户的 ssh 配置连。
+pub(crate) fn answer_with(
+    req: &TerminalSshReq,
+    hosts: &[Host],
+    aliases: &[String],
+    powershell: bool,
+    ssh: &SshClient,
+) -> Result<SshCommand, CmdErr> {
     let command = match (&req.command, &req.cwd) {
         (Some(c), None) => c.clone(),
         (None, Some(cwd)) => command_for_cwd(cwd)?,
-        _ => {
+        (None, None) => return login_shell(req, hosts, aliases, powershell, ssh),
+        (Some(_), Some(_)) => {
             return Err((
                 "bad_args",
                 crate::common::contract::malformed(
-                    "exactly one of `command` (a string) or `cwd` (a path)",
+                    "at most one of `command` (a string) or `cwd` (a path)",
                 ),
             ))
         }
@@ -297,26 +320,83 @@ pub(crate) fn answer_in(
         "stream",
         serde_json::json!({ "command": command }),
     )?;
-    let ssh = match ssh {
-        SshClient::At(p) => p,
+    Ok(SshCommand {
+        command: render(&dial, powershell, ssh_path(ssh, powershell)?, true)?,
+    })
+}
+
+/// 登录 shell 那一形（见 [`answer_with`]）。
+fn login_shell(
+    req: &TerminalSshReq,
+    hosts: &[Host],
+    aliases: &[String],
+    powershell: bool,
+    ssh: &SshClient,
+) -> Result<SshCommand, CmdErr> {
+    if req.machine.is_local() {
+        return Ok(SshCommand {
+            command: local_login_shell(powershell)?,
+        });
+    }
+    let name = req.machine.to_string();
+    if !hosts.iter().any(|h| h.name() == name)
+        && aliases.iter().any(|a| *a == name)
+        && super::ssh_config::is_safe_alias(&name)
+        && !name.starts_with('-')
+    {
+        let ssh = ssh_path(ssh, powershell)?;
+        let known = config_arg(super::known_hosts::terminal_config().as_deref(), powershell);
+        return Ok(SshCommand {
+            command: format!(
+                "{call}{ssh} -t{known} {name}",
+                call = if powershell { "& " } else { "" },
+                ssh = literal(powershell, ssh),
+            ),
+        });
+    }
+    // 机器表里那台：同一组白名单与跳板，只是 `--` 后面不跟命令（载荷那一格不渲，填个占位）。
+    let dial = super::dial_named(
+        hosts,
+        &name,
+        "stream",
+        serde_json::json!({ "command": ":" }),
+    )?;
+    Ok(SshCommand {
+        command: render(&dial, powershell, ssh_path(ssh, powershell)?, false)?,
+    })
+}
+
+/// 本机那一台的登录 shell（不走 ssh）：POSIX `exec ${SHELL:-bash} -l`；PowerShell 窗口本身就是 shell ⇒ 只回家目录。
+/// 说不出家目录 ⇒ 判不了，不猜一个。
+pub(crate) fn local_login_shell(powershell: bool) -> Result<String, CmdErr> {
+    if !powershell {
+        return Ok(posix::cd_then_login_shell(None));
+    }
+    let Some(home) = crate::platform::paths::home_dir() else {
+        return Err(("unobservable", copy_text("beTerminal.login.noHome", &[])));
+    };
+    let line =
+        crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));
+    Ok(line.trim_end().trim_end_matches(';').to_string())
+}
+
+/// 这台找到的 ssh 客户端全路径；没装 / 判不了 ⇒ 那一句（不说没装）。
+pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, CmdErr> {
+    match ssh {
+        SshClient::At(p) => Ok(p),
         SshClient::Missing => {
             let said = if powershell {
                 copy_text("beTerminal.ssh.missingWindows", &[])
             } else {
                 copy_text("beTerminal.ssh.missingPosix", &[])
             };
-            return Err(("no_ssh_client", said));
+            Err(("no_ssh_client", said))
         }
-        SshClient::Unknown(why) => {
-            return Err((
-                "unobservable",
-                copy_text("beTerminal.ssh.unknown", &[("why", why)]),
-            ));
-        }
-    };
-    Ok(SshCommand {
-        command: render(&dial, powershell, ssh)?,
-    })
+        SshClient::Unknown(why) => Err((
+            "unobservable",
+            copy_text("beTerminal.ssh.unknown", &[("why", why)]),
+        )),
+    }
 }
 
 /// `terminal-ssh` 的应答：那一整行命令。
