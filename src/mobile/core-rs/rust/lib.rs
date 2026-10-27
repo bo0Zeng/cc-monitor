@@ -32,6 +32,7 @@ pub mod batch;
 mod copy;
 mod host_keys;
 pub mod install;
+pub mod plan;
 pub mod resident;
 pub mod transfer;
 
@@ -901,6 +902,21 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_attachFace<'l>(
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &want).unwrap_or_default();
         env.new_string(attach::face_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// `PlanFace.face(want)`：手机计划三屏那一屏的字（[`plan::face_json`]）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_claude_link_PlanFace_face<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    want: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &want).unwrap_or_default();
+        env.new_string(plan::face_json(&text))
             .map(|s| s.into_raw())
             .unwrap_or(std::ptr::null_mut())
     })

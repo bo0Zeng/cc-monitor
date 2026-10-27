@@ -47,6 +47,9 @@ import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
 import com.ccmonitor.mobile.ui.needs.OverviewScreen
+import com.ccmonitor.mobile.ui.plan.PlanCellScreen
+import com.ccmonitor.mobile.ui.plan.PlanOutlineScreen
+import com.ccmonitor.mobile.ui.plan.PlanSlicesScreen
 import com.ccmonitor.mobile.ui.rotation.RotFocus
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
@@ -130,6 +133,7 @@ private fun AppNavGraph(
         }
         rotationRoutes(nav, tabManager)
         agentRoutes(nav)
+        planRoutes(nav)
         sessionRoute(nav, tabManager)
         composable(Screen.Identities.route) { IdentityScreen(onBack = { nav.popBackStack() }) }
         composable(Screen.Keys.route) { KeysEditorScreen(onBack = { nav.popBackStack() }) }
@@ -439,6 +443,30 @@ private fun NavGraphBuilder.agentRoutes(nav: NavHostController) {
         val sid = entry.arguments?.getString("sid").orEmpty()
         val run = entry.arguments?.getString(Screen.Agent.ARG_RUN).orEmpty()
         AgentScreen(hostId, sid, run, onBack = { nav.popBackStack() }, onOpen = { nav.openAgent(hostId, sid, it.run) })
+    }
+}
+
+/** 计划三屏：片 → 大纲 → 一格详情（一格里点子格再压一层；返回一层退一层）。 */
+private fun NavGraphBuilder.planRoutes(nav: NavHostController) {
+    composable(Screen.Plan.route, arguments = listOf(optionalString("sid"))) { entry ->
+        val hostId = entry.arguments?.getString("hostId").orEmpty()
+        val sid = entry.arguments?.getString("sid")
+        PlanSlicesScreen(hostId, onBack = { nav.popBackStack() }, onOpen = { ws, slice -> nav.navigate(Screen.PlanSlice.of(hostId, ws, slice, sid)) })
+    }
+    composable(Screen.PlanSlice.route, arguments = listOf(optionalString("ws"), optionalString("slice"), optionalString("sid"))) { entry ->
+        val a = entry.arguments
+        val hostId = a?.getString("hostId").orEmpty()
+        val ws = a?.getString("ws").orEmpty()
+        val slice = a?.getString("slice").orEmpty()
+        PlanOutlineScreen(hostId, ws, slice, a?.getString("sid"), onBack = { nav.popBackStack() }, onOpenCell = { nav.navigate(Screen.PlanCell.of(hostId, ws, slice, it)) })
+    }
+    composable(Screen.PlanCell.route, arguments = listOf(optionalString("ws"), optionalString("slice"), optionalString("id"))) { entry ->
+        val a = entry.arguments
+        val hostId = a?.getString("hostId").orEmpty()
+        val ws = a?.getString("ws").orEmpty()
+        val slice = a?.getString("slice").orEmpty()
+        val id = a?.getString("id").orEmpty()
+        PlanCellScreen(hostId, ws, slice, id, onBack = { nav.popBackStack() }, onOpenCell = { nav.navigate(Screen.PlanCell.of(hostId, ws, slice, it)) })
     }
 }
 
