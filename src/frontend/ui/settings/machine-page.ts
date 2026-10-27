@@ -13,7 +13,7 @@ import { statusDot, setDot } from "../kit/status-dot";
 import { copyText } from "../copy-table";
 import { SettingsRouter } from "./router";
 import { hostOs, type HostOs } from "./host-os";
-import { paintProblem, type MachineFace, type MachineFix } from "./machine-state";
+import { paintLinks, paintProblem, type MachineFace, type MachineFix } from "./machine-state";
 import { CONFIG_SHOWN_EVENT } from "./events";
 
 const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
@@ -142,6 +142,12 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   problem.hidden = true;
   head.appendChild(problem);
 
+  // 每跳读数：到这台的每一条连接一行（成品写好的那一句；经跳板时跳板那一条另起一行）。
+  const links = document.createElement("div");
+  links.className = "machine-links";
+  links.hidden = true;
+  head.appendChild(links);
+
   if (connFold) head.appendChild(connFold.el);
 
   const ccBody = document.createElement("div");
@@ -226,6 +232,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
       setDot(dot, f.dot, f.word || copyText("settingsNav.dot.up", { machine: name }));
       word.textContent = f.word;
       paintProblem(problem, f, (fix) => (fix === "conn_settings" && connFold ? connFold.open() : spec.onFix?.(fix)));
+      paintLinks(links, f);
     },
     setCcSummary(text) {
       setFoldSummary(ccFold, text);

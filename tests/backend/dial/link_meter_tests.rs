@@ -332,3 +332,92 @@ async fn a_jumped_link_reports_its_jump_hop_too() {
         f.link.bytes_in
     );
 }
+
+/// 假 HTTP 代理：每条连接读完 `CONNECT` 那一问，回 200，把隧道接到回环上 `to` 那个口（判据的假对端；不出网）。
+/// 收到的每一问的目的地交出来（`主机:口`）。
+fn proxy_to(to: u16) -> (u16, std::sync::mpsc::Receiver<String>) {
+    use std::io::{Read, Write};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("绑回环口");
+    let port = l.local_addr().expect("口").port();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        while let Ok((mut s, _)) = l.accept() {
+            let mut head = Vec::new();
+            let mut b = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") {
+                if s.read(&mut b).unwrap_or(0) == 0 {
+                    break;
+                }
+                head.push(b[0]);
+            }
+            let head = String::from_utf8_lossy(&head).into_owned();
+            let asked = head.split(' ').nth(1).unwrap_or_default().to_string();
+            let _ = tx.send(asked);
+            let Ok(mut far) = std::net::TcpStream::connect(("127.0.0.1", to)) else {
+                continue;
+            };
+            let _ = s.write_all(b"HTTP/1.1 200 Connection established\r\n\r\n");
+            let (mut s2, mut far2) = (s.try_clone().expect("复制"), far.try_clone().expect("复制"));
+            std::thread::spawn(move || {
+                let _ = std::io::copy(&mut s2, &mut far2);
+                let _ = far2.shutdown(std::net::Shutdown::Write);
+            });
+            std::thread::spawn(move || {
+                let _ = std::io::copy(&mut far, &mut s);
+                let _ = s.shutdown(std::net::Shutdown::Write);
+            });
+        }
+    });
+    (port, rx)
+}
+
+fn via(proxy: u16) -> egress::Egress {
+    egress::Egress::via(&format!("http://127.0.0.1:{proxy}"), "")
+}
+
+/// ★ 经没经代理：出网口经代理开的那一跳，连接报经代理；直连回环那一条不报。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_link_dialed_through_a_proxy_says_so() {
+    let (port, _) = peer().await;
+    let direct = link(port).await;
+    assert!(!direct.facts().link.via_proxy, "直连回环那一条报了经代理");
+
+    let (proxy, asks) = proxy_to(port);
+    let mut v = serde_json::to_value(request(port)).expect("请求写不出");
+    v["host"] = "devbox.test".into();
+    v["port"] = 22.into();
+    let req: DialRequest = serde_json::from_value(v).expect("拨号请求读不动");
+    let l = crate::connect::establish_via(&req, &StageSink::new(false), &via(proxy))
+        .await
+        .map_err(|(e, _)| e.said)
+        .expect("经假代理没连上");
+    assert_eq!(asks.recv().expect("代理收到一问"), "devbox.test:22");
+    let f = l.facts();
+    assert!(f.link.via_proxy, "经代理开的那一跳，连接没报经代理");
+    assert_eq!(f.link.endpoint, "devbox.test:22");
+}
+
+/// ★ 经跳板：最外那台跳板的 TCP 经代理 ⇒ 跳板那一项报经代理；目标那条在跳板里头开（direct-tcpip），不报。
+#[tokio::test(flavor = "multi_thread")]
+async fn through_a_proxy_the_outer_jump_says_so_and_the_target_does_not() {
+    let (jump_port, _) = peer().await;
+    let (target_port, _) = peer().await;
+    let (proxy, asks) = proxy_to(jump_port);
+    let mut v = serde_json::to_value(request(target_port)).expect("请求写不出");
+    v["jump"] = serde_json::json!({
+        "host": "jumpbox.test",
+        "port": 22,
+        "user": "u",
+        "key_path": KEY_ID,
+    });
+    let req: DialRequest = serde_json::from_value(v).expect("拨号请求读不动");
+    let l = crate::connect::establish_via(&req, &StageSink::new(false), &via(proxy))
+        .await
+        .map_err(|(e, _)| e.said)
+        .expect("经代理 ＋ 跳板没连上");
+    assert_eq!(asks.recv().expect("代理收到一问"), "jumpbox.test:22");
+    let f = l.facts();
+    assert_eq!(f.jumps.len(), 1, "一台跳板一项");
+    assert!(f.jumps[0].via_proxy, "最外那台跳板经代理开，没报");
+    assert!(!f.link.via_proxy, "目标那条在跳板里头开，不该报经代理");
+}

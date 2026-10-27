@@ -200,6 +200,8 @@ pub struct Wire {
     pub endpoint: String,
     /// 这一条上的字节压没压（协商时交出去的偏好序：判准 ＋ 闸都答压才压）。
     pub compressed: bool,
+    /// 这一条的 TCP 经没经代理（出网口开它那一刻说的，`egress::Opened::via_proxy`；在跳板里头开的那几条恒不经）。
+    pub via_proxy: bool,
     /// 线上收到的字节。
     pub bytes_in: u64,
     /// 线上发出的字节。
@@ -211,6 +213,68 @@ pub struct Wire {
 pub struct LinkFacts {
     pub link: Wire,
     pub jumps: Vec<Wire>,
+}
+
+impl LinkFacts {
+    /// 写成机器状态成品里的那几项（`MachineState.links`）：它自己在前，经过的跳板跟在后面（外在先）。
+    /// 后端（`dial/links.rs`）与手机（`mobcore::resident`）同这一处。
+    pub fn rows(&self) -> Vec<cmd_wire::machine::MachineLink> {
+        std::iter::once(row(&self.link, false))
+            .chain(self.jumps.iter().map(|w| row(w, true)))
+            .collect()
+    }
+}
+
+/// 一条的读数 ⇒ 成品那一项（那一句照文案表写好：地址〔· 经代理〕· 压没压 · 收 · 发）。
+fn row(w: &Wire, jump: bool) -> cmd_wire::machine::MachineLink {
+    use copy_core::{copy_text, size_text};
+    let packing = copy_text(
+        if w.compressed {
+            "beLinks.pack.compressed"
+        } else {
+            "beLinks.pack.plain"
+        },
+        &[],
+    );
+    let place = if w.via_proxy {
+        copy_text("beLinks.route.proxy", &[("endpoint", &w.endpoint)])
+    } else {
+        w.endpoint.clone()
+    };
+    let line = copy_text(
+        "beLinks.row.line",
+        &[
+            ("endpoint", &place),
+            ("packing", &packing),
+            ("in", &size_text(w.bytes_in)),
+            ("out", &size_text(w.bytes_out)),
+        ],
+    );
+    cmd_wire::machine::MachineLink {
+        endpoint: w.endpoint.clone(),
+        jump,
+        compressed: w.compressed,
+        via_proxy: w.via_proxy,
+        bytes_in: w.bytes_in,
+        bytes_out: w.bytes_out,
+        said: if jump {
+            copy_text("beLinks.row.jumpLine", &[("line", &line)])
+        } else {
+            line
+        },
+    }
+}
+
+/// 一份快照里 `req` 那个身份那一族的每一项（**纯函数**；身份照 [`identity`]，对不上 ⇒ 空）。
+pub fn rows_of(
+    snap: &[(String, Vec<LinkFacts>)],
+    req: &DialRequest,
+) -> Vec<cmd_wire::machine::MachineLink> {
+    let key = identity(req);
+    snap.iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, links)| links.iter().flat_map(LinkFacts::rows).collect())
+        .unwrap_or_default()
 }
 
 impl Heard {
