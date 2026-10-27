@@ -658,7 +658,9 @@ impl FrameRules for Frame {
             Frame::SessionRuns(SessionRuns { runs, .. }) => {
                 for r in runs {
                     r.started_text = r.started_ms.map(|ms| {
-                        crate::common::time::ms_hm(i64::try_from(ms).unwrap_or(i64::MAX), tz)
+                        let hm =
+                            crate::common::time::ms_hm(i64::try_from(ms).unwrap_or(i64::MAX), tz);
+                        copy_core::copy_text("agentWindow.facts.started", &[("time", &hm)])
                     });
                 }
             }

@@ -112,7 +112,7 @@ impl Book {
 fn book() -> std::sync::MutexGuard<'static, Book> {
     static BOOK: std::sync::OnceLock<Mutex<Book>> = std::sync::OnceLock::new();
     BOOK.get_or_init(|| {
-        crate::history::needs_changed::answer_asked(sids);
+        crate::history::needs_changed::answer_asked(sids, pending);
         Mutex::default()
     })
     .lock()

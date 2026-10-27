@@ -673,7 +673,7 @@ pub struct Probe {
 }
 
 /// 一个会话的运行表（主运行之外的那几个子运行）。表变了就整份发一次；`ended`：被挤出运行表的已收场子运行。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionRuns {
@@ -683,6 +683,76 @@ pub struct SessionRuns {
     pub runs: Vec<RunInfo>,
     /// 被挤出表的已收场子运行。
     pub ended: Vec<RunEnded>,
+    /// 列表的三组（各是 `runs` 里的运行 id，最近动过的在前）：出口照这三组排，不按 `state` 分。
+    #[serde(default)]
+    pub groups: RunGroups,
+    /// 这条会话的 agent 那一枚写好的字（「agent n · m 在跑」·「agent n」）；表是空的 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub summary: Option<Words>,
+}
+
+/// 运行表分成的三组（[`SessionRuns::groups`]）：在跑的全列 · 最近结束的至多几个 · 其余（连状态不明的）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RunGroups {
+    pub running: Vec<String>,
+    pub recent: Vec<String>,
+    pub older: Vec<String>,
+}
+
+/// 写好的一截字。随时钟变的那一截是会走的钟：`text` 里的 `{dur}` 是空位，出口照（此刻 − `from`）用共用的时长格式填；
+/// 没有 `from` ⇒ 整句写好了，照抄。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RunLine {
+    pub text: Words,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub from: Option<u64>,
+}
+
+/// 说明那一块（[`RunInfo::explain`]）：为什么是这个样子。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RunExplain {
+    /// 打头那一格（状态不明那一种单独写状态字）；别的 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub lead: Option<Words>,
+    pub line: RunLine,
+    /// 小一号的补一句。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub note: Option<Words>,
+    /// 带［刷新］（状态不明）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub refresh: bool,
+}
+
+/// 尾巴上的结束线（[`RunInfo::end`]）：状态字（图标由出口照 `state` 画）＋ 一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct RunEndLine {
+    pub head: Words,
+    pub sub: RunLine,
 }
 
 /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`。
@@ -1154,7 +1224,7 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub started_ms: Option<u64>,
-    /// `started_ms` 在看的那一台钟上的钟面 `HH:MM`（推出去那一下按这条流的时区写，[`Frame::stamp`]；界面照抄、不换算）。
+    /// 「几点起」那一句（`started_ms` 在看的那一台钟上的钟面，推出去那一下按这条流的时区写，[`Frame::stamp`]；界面照抄、不换算）：事实那一行的头一截。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub started_text: Option<String>,
@@ -1182,6 +1252,21 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub background: bool,
+    /// 事实那一行的各截（已跑 · 用时 · 最近 · 工具 ×n · agent ×n · 后台派出；「几点起」在 `started_text`）。
+    #[serde(default)]
+    pub facts: Vec<RunLine>,
+    /// 说明（在跑且没在等 ⇒ 不上线）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub explain: Option<RunExplain>,
+    /// 结束线（在跑 ⇒ 不上线）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub end: Option<RunEndLine>,
+    /// 它挂着的待答请求（同会话事实的 `needs` 那一形，最早挂上的那一条）；没有 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub needs: Option<crate::needs::Needs>,
 }
 
 /// 子运行的五态。收场的三态以派出那一方说的为准（子记录自己写出终局也算，先到先算）。

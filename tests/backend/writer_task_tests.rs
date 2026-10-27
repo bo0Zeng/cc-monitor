@@ -105,7 +105,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
                 started_text: text.map(str::to_string),
                 ..Default::default()
             }],
-            ended: Vec::new(),
+            ..Default::default()
         })
     };
     let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
@@ -118,8 +118,9 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
     writer_task(&mut out, rx, reply_rx, Fed(tap_rx), sh, None).await;
     drop(reply_tx);
     let text = String::from_utf8(out).unwrap();
+    let started = copy_core::copy_text("agentWindow.facts.started", &[("time", "04:30")]);
     assert!(
-        text.contains(r#""started_text":"04:30""#),
+        text.contains(&format!(r#""started_text":"{started}""#)),
         "推出去的那一帧没按流的时区写钟面：{text}"
     );
 }

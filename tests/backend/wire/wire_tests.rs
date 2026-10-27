@@ -251,7 +251,9 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
         SessionContainer, TransferEnd, Unavailable,
     };
+    use cmd_wire::frame::{RunEndLine, RunExplain, RunLine};
     let s = |v: &str| v.to_string();
+    let w = |v: &str| crate::common::cells::Words(v.to_string());
     let both = |f: Frame| [f.clone(), f];
     vec![
         [
@@ -520,13 +522,44 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     last_text: Some(crate::common::cells::Words(s("调用 Bash"))),
                     waiting: Some(s("Bash")),
                     started_ms: Some(1_000),
-                    started_text: Some(s("00:00")),
+                    started_text: Some(s("00:00 起")),
                     active_ms: Some(2_000),
                     ended_ms: Some(3_000),
                     why: Some(RunWhy::Reported),
                     error: Some(s("boom")),
                     calls: 7,
                     background: true,
+                    facts: vec![
+                        RunLine {
+                            text: w("用时 {dur}"),
+                            from: Some(1_000),
+                        },
+                        RunLine {
+                            text: w("工具 ×7"),
+                            from: None,
+                        },
+                    ],
+                    explain: Some(RunExplain {
+                        lead: Some(w("核心·不明")),
+                        line: RunLine {
+                            text: w("失败"),
+                            from: None,
+                        },
+                        note: Some(w("补一句")),
+                        refresh: true,
+                    }),
+                    end: Some(RunEndLine {
+                        head: w("核心·失败"),
+                        sub: RunLine {
+                            text: w("记录 {dur} 无更新"),
+                            from: Some(2_000),
+                        },
+                    }),
+                    needs: crate::observe::recognize::facts::dress_ask_with(
+                        None,
+                        Some(crate::agents::asks::specimen()),
+                        1,
+                    ),
                 }],
                 ended: vec![RunEnded {
                     run: s("a0"),
@@ -534,6 +567,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     state: RunState::Failed,
                     status_text: crate::common::cells::Words(s("核心·失败")),
                 }],
+                groups: cmd_wire::frame::RunGroups {
+                    running: vec![],
+                    recent: vec![s("a1")],
+                    older: vec![s("a2")],
+                },
+                summary: Some(w("agent 1")),
             }),
             Frame::SessionRuns(crate::wire::SessionRuns {
                 sid: s("s1"),
@@ -542,6 +581,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     ..RunInfo::default()
                 }],
                 ended: vec![],
+                groups: cmd_wire::frame::RunGroups::default(),
+                summary: None,
             }),
         ],
         [
@@ -905,10 +946,16 @@ fn session_runs_frames_have_exactly_these_bytes() {
             state: RunState::Failed,
             status_text: crate::common::cells::Words("核心·失败".into()),
         }],
+        groups: cmd_wire::frame::RunGroups {
+            running: vec!["a1".into()],
+            recent: vec!["a2".into()],
+            older: vec!["a3".into()],
+        },
+        summary: Some(crate::common::cells::Words("核心·agent 3".into())),
     });
     assert_eq!(
         to_line(&f).unwrap(),
-        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"status_text\":\"核心·在跑\",\"label_text\":\"scan\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"last_text\":\"调用 Bash\",\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"calls\":3,\"background\":true},{\"run\":\"a2\",\"state\":\"failed\",\"status_text\":\"\",\"label_text\":\"\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"status_text\":\"\",\"label_text\":\"\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\",\"status_text\":\"核心·失败\"}]}\n"
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"status_text\":\"核心·在跑\",\"label_text\":\"scan\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"last_text\":\"调用 Bash\",\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"calls\":3,\"background\":true,\"facts\":[]},{\"run\":\"a2\",\"state\":\"failed\",\"status_text\":\"\",\"label_text\":\"\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\",\"facts\":[]},{\"run\":\"a3\",\"state\":\"unknown\",\"status_text\":\"\",\"label_text\":\"\",\"why\":\"quiet\",\"facts\":[]}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\",\"status_text\":\"核心·失败\"}],\"groups\":{\"running\":[\"a1\"],\"recent\":[\"a2\"],\"older\":[\"a3\"]},\"summary\":\"核心·agent 3\"}\n"
     );
     assert!(
         !f.loss_is_recoverable(),
