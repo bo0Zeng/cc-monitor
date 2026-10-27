@@ -1116,6 +1116,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     peer: NONE,
     accept: NONE,
     connect: NONE,
+    // 落点是不是一个文件（Unix 套接字 ⇒ 是；Windows 命名管道 ⇒ 不是）· 管道忙时等多久 · 对端 / 服务端进程号 · 阻塞读写：同一份平台原语。
+    BOUND_AS_FILE: NONE,
+    BUSY_WAIT_MS: NONE,
+    peer_pid: NONE,
+    server_pid: NONE,
+    read: NONE,
+    write: NONE,
   },
   // 等一个进程退出的平台原语（Linux pidfd · Windows 句柄 · 别处轮询）：后端 · monitor 同一份，不判业务；TS 侧没有孪生。
   "pidwatch-core": {
