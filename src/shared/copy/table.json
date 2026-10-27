@@ -16912,6 +16912,120 @@
       "zh": "附件已不在",
       "args": []
     },
+    "attach.chip.queued": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "排队",
+      "args": []
+    },
+    "attach.chip.sending": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "传输中 · {done} / {total}",
+      "args": ["done", "total"]
+    },
+    "attach.chip.offline": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "排队 · {machine} 离线",
+      "args": ["machine"]
+    },
+    "attach.chip.done": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已完成",
+      "args": []
+    },
+    "attach.chip.failed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "失败 · {why}",
+      "args": ["why"]
+    },
+    "attach.chip.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重试",
+      "args": []
+    },
+    "attach.chip.remove": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移除 {name}",
+      "args": ["name"]
+    },
+    "attach.chip.removeHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "移除附件；已传完的在会话所在机器上一并删除",
+      "args": []
+    },
+    "attach.add.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "添加附件",
+      "args": []
+    },
+    "attach.add.hint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "选文件附上（可多选）；也可拖到面板上或在输入框里粘贴",
+      "args": []
+    },
+    "attach.drop.title": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "放进「{title}」 · {machine}",
+      "args": ["title", "machine"]
+    },
+    "attach.drop.sub": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "附件 {n} · 传到会话工作目录",
+      "args": ["n"]
+    },
+    "attach.class.folder": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录",
+      "args": []
+    },
+    "attach.class.text": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文本",
+      "args": []
+    },
+    "attach.class.code": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "代码",
+      "args": []
+    },
+    "attach.class.archive": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "压缩包",
+      "args": []
+    },
+    "attach.class.pdf": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "PDF",
+      "args": []
+    },
+    "attach.class.image": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "图片",
+      "args": []
+    },
+    "attach.class.other": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件",
+      "args": []
+    },
     "beAttach.no.isDir": {
       "kind": "body",
       "role": "片段",

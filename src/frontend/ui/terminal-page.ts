@@ -14,6 +14,9 @@
  * - 输入框：回车送字并补回车 · Shift+回车换行 · Ctrl+回车只送字；组字时回车归输入法；Esc 只把焦点还给消息流（不清字、不收抽屉）。
  *   没送的字按会话各记一份，切回来还在。
  * - 页头右边「切到终端」只在 ↗ 真能用时出（同会话头那一道）。
+ * - 附件（`attach-row.ts` · `attach-draft.ts`）：输入框上方一排 chip，［＋］· 拖到面板上 · 粘贴进同一排；按会话各记一份草稿。
+ *   带附件那一句经 `session-say {sid, text, attachments}` 送（不带照旧 `terminal-input`）；附件没传完 / 有失败 ⇒［送出］灰、悬停说为什么。
+ *   送到 / 不知道 ⇒ 字与 chip 一起清；被拒 ⇒ 原样留着；那台说有几份已不在 ⇒ 那几颗变失败、可重传。那台连上 ⇒ 断着的接着传。
  */
 import { countText } from "./format";
 import type { Tab } from "./tab-model";
@@ -24,7 +27,12 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
-import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
+import { listTerminals, previewShot, sendToTerminal, sentOf, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
+import { AttachDraft, channelIo, type AttachIo } from "./attach-draft";
+import { AttachRow } from "./attach-row";
+import { settleTyped } from "./control-said";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import type { SessionSayReq } from "./generated/SessionSayReq";
 import type { Origin } from "./ipc/origin";
 import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -49,6 +57,25 @@ export const CHANNEL_READS: TerminalReads = {
   shot: (origin, terminal) => previewShot(origin, { terminal }),
   send: sendToTerminal,
   follow: (origin, terminal, events) => startFollow(origin, terminal, events),
+};
+
+/** 带附件那一路要的两口（缺省走通道；测试换成假的）。 */
+export interface AttachReads {
+  /** 带附件说一句（`session-say`）：结局 ＋ 那台说已不在的那几个附件编号。 */
+  say(origin: Origin, req: SessionSayReq): Promise<{ sent: TerminalSent; gone: string[] }>;
+  /** 那台的附件那几口（判收不收 · 逐块传 · 提交 · 撤）。 */
+  io(origin: Origin): AttachIo;
+}
+
+/** 带附件说一句的期限（同送字送键）。 */
+const SAY_BUDGET_MS = 20_000;
+
+export const CHANNEL_ATTACH: AttachReads = {
+  say: async (origin, req) => {
+    const v = await settleTyped(origin, "session-say", callTyped(origin, "session-say", req, budgetWithin(SAY_BUDGET_MS)));
+    return { sent: sentOf(v), gone: v.gone ?? [] };
+  },
+  io: channelIo,
 };
 
 /** 实时那一格：没订 · 正在接 · 实时中 · 停了（那一句 ＋ 是不是那台断开）· 那台只能快照（那一句）。 */
@@ -129,6 +156,9 @@ export class TerminalPage {
   private sending = false;
   /** 没送的字，按会话各记一份。 */
   private readonly drafts = new Map<string, string>();
+  /** 没送的附件，按会话各记一份（键 ＝ 那台 ＋ 会话 ID）。 */
+  private readonly attachDrafts = new Map<string, AttachDraft>();
+  private readonly attach: AttachRow;
   /** 每一次名单 / 抓屏的代次：慢的那次回来不许盖掉后发的那次、不许落到切走之后的会话上。 */
   private seq = 0;
   private timers: ReturnType<typeof setTimeout>[] = [];
@@ -171,6 +201,7 @@ export class TerminalPage {
   constructor(
     private readonly host: TerminalPageHost,
     private readonly reads: TerminalReads = CHANNEL_READS,
+    private readonly attachReads: AttachReads = CHANNEL_ATTACH,
   ) {
     this.el = el("div");
     this.el.className = s.term;
@@ -238,8 +269,20 @@ export class TerminalPage {
     this.box.setAttribute("aria-labelledby", this.to.id);
     this.box.addEventListener("keydown", (ev) => this.onBoxKey(ev));
     this.box.addEventListener("input", () => this.onBoxInput());
+    this.box.addEventListener("paste", (ev) => {
+      if (this.attach.paste(ev.clipboardData)) ev.preventDefault();
+    });
     this.sendBtn = button({ label: copyText("terminal.input.send"), size: "compact", onClick: () => this.sendBox(true) });
-    boxRow.append(this.box, this.sendBtn);
+    this.attach = new AttachRow({
+      draft: () => this.attachDraft(),
+      target: () => {
+        const w = this.host.active();
+        return { title: w ? labelOf(w) : "", machine: w ? machineWord(w) : "" };
+      },
+      machine: () => (this.origin === undefined ? "" : machineName(this.origin)),
+      blocked: () => this.inputNo(),
+    });
+    boxRow.append(this.attach.plus, this.box, this.sendBtn);
     const keys = el("div");
     keys.className = s.termKeys;
     const keysLabel = el("span", "", copyText("terminal.input.keys"));
@@ -252,10 +295,11 @@ export class TerminalPage {
     }
     this.noteEl = el("div");
     this.noteEl.className = s.termNote;
-    this.inputArea.append(toRow, boxRow, keys, this.noteEl);
+    this.inputArea.append(toRow, this.attach.row, boxRow, keys, this.noteEl);
     this.body = el("div");
     this.body.className = s.termBody;
     this.el.append(this.body);
+    this.attach.dropOn(this.el);
     this.paint();
   }
 
@@ -304,6 +348,7 @@ export class TerminalPage {
 
   /** 一台机器连上了（宿主转来机器状态推送里的「已连上」）：实时正停在「这台断开」⇒ 重找终端、重新订上（输入框随之恢复）；别的情形不动。 */
   machineUp(origin: string): void {
+    for (const [k, d] of this.attachDrafts) if (k.startsWith(`${origin}\u0000`)) d.resume();
     if (!this.visible || this.origin !== origin || this.live.at !== "stopped" || !this.live.offline) return;
     this.live = { at: "off" };
     void this.refresh();
@@ -506,9 +551,79 @@ export class TerminalPage {
     return false;
   }
 
-  /** 送框里那段字（`enter` ＝ 之后补一个回车）。送到了才清框。 */
+  /** 此刻那条会话的附件草稿（没有 ⇒ 现建）；认不出会话（占位 · 名单里没挂会话）⇒ `null`。 */
+  private attachDraft(): AttachDraft | null {
+    const w = this.host.active();
+    const sid = this.row?.sid ?? (w?.kind === "tab" ? w.tab.sessionId : null);
+    if (!w || this.origin === undefined || sid === null || this.phase !== "ready") return null;
+    const key = `${this.origin}\u0000${sid}`;
+    let d = this.attachDrafts.get(key);
+    if (d === undefined) {
+      const mine = d = new AttachDraft(sid, this.attachReads.io(this.origin), () => {
+        if (this.attachDraft() === mine) this.paint();
+      });
+      this.attachDrafts.set(key, d);
+    }
+    return d;
+  }
+
+  /** 输入此刻送不了的那一句（名单里后端那一格 · 实时停在那台断开）；送得了 ⇒ `null`。 */
+  private inputNo(): string | null {
+    const row = this.row;
+    if (row === null) return copyText("terminal.state.loading");
+    return row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
+  }
+
+  /** 带附件说一句（`session-say`）：送到 / 不知道 ⇒ 字与 chip 一起清；被拒 ⇒ 原样留着，那台说已不在的那几颗变失败。 */
+  private async say(draft: AttachDraft, text: string): Promise<void> {
+    const origin = this.origin;
+    if (origin === undefined || this.sending) return;
+    const sid = this.sid;
+    this.sending = true;
+    this.paint();
+    let got: { sent: TerminalSent; gone: string[] } | null = null;
+    let failed: string | null = null;
+    let detail = "";
+    try {
+      got = await this.attachReads.say(origin, { sid: draft.sid, text, attachments: draft.ids(), ...(this.shot ? { seen_screen: this.shot.screen } : {}) });
+    } catch (e) {
+      failed = saidOf(e);
+      detail = detailOf(e);
+    }
+    if (sid !== this.sid) return;
+    this.sending = false;
+    if (failed !== null || got === null) {
+      this.showNote({ text: failed ?? copyText("reason.code.refused"), tone: "error", detail });
+      return;
+    }
+    const sent = got.sent;
+    if (sent.result !== "refused") {
+      if (this.box.value === text) {
+        this.box.value = "";
+        if (this.sid !== null) this.drafts.delete(this.sid);
+        this.onBoxInput();
+      }
+      draft.clear();
+      if (sent.result === "delivered") {
+        this.showNote({ text: copyText("terminal.input.delivered"), tone: "ok" });
+        if (!this.isLive) this.schedule();
+      } else this.showNote({ text: copyText("terminal.input.unsure", { machine: machineName(origin) }), tone: "error" });
+      return;
+    }
+    if (got.gone.length > 0) draft.markGone(got.gone);
+    this.showNote({ text: copyText("terminal.input.failed", { why: sent.said }), tone: "error" });
+    if (sent.acts.includes("recapture")) void this.recapture();
+    if (sent.acts.includes("relist")) void this.refresh();
+  }
+
+  /** 送框里那段字（`enter` ＝ 之后补一个回车）。送到了才清框。草稿里有附件 ⇒ 传完了才送、经 `session-say` 带上。 */
   private sendBox(enter: boolean): void {
     const text = this.box.value;
+    const draft = this.attachDraft();
+    if (draft !== null && draft.chips().length > 0) {
+      if (draft.blocker() === null) void this.say(draft, text);
+      return;
+    }
     if (text === "") return;
     void this.send({ text, enter }).then((ok) => {
       if (ok && this.box.value === text) {
@@ -624,12 +739,14 @@ export class TerminalPage {
 
     this.to.textContent = copyText("terminal.input.to", { title: labelOf(w), machine: machineWord(w) });
     this.owner.textContent = row.clients > 0 && row.input === "shared" ? copyText("terminal.input.shared", { n: row.clients }) : row.clients === 0 ? copyText("terminal.input.nobody") : "";
-    const no = row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
+    const no = this.inputNo();
     this.box.disabled = no !== null || this.sending;
     this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("chat.input.placeholder");
     // 占位只写短的那句；快捷键说明挂悬停（送不了时键不起作用，不挂）。
     this.box.title = no !== null ? "" : copyText("terminal.input.keysHint");
-    setDisabled(this.sendBtn, no);
+    // 附件没传完 / 有失败 ⇒ 送出灰着、悬停说为什么（字照样能打）。
+    setDisabled(this.sendBtn, no ?? this.attachDraft()?.blocker() ?? null);
+    this.attach.paint();
     setBusy(this.sendBtn, this.sending ? copyText("terminal.input.send") : null);
     for (const b of this.keyBtns) setDisabled(b, no);
     this.noteEl.replaceChildren();

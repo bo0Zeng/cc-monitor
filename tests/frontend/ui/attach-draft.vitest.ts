@@ -23,7 +23,7 @@ const OFFLINE = new Error("offline");
 function rig(over: Partial<AttachIo> = {}) {
   let keys = 0;
   const io = {
-    check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map((it) => ({ ok: !it.dir, class: it.dir ? "folder" : it.name.endsWith(".png") ? "image" : "code", ...(it.dir ? { why: "is_dir" as const, said: "不收目录" } : {}) }))),
+    check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map((it) => ({ ok: !it.dir, class: it.dir ? "folder" : it.name.endsWith(".png") ? "image" : "code", ...(it.dir ? { why: "is_dir" as const, said: "refused-dir" } : {}) }))),
     stage: vi.fn(async (_key: string, _seq: number, _bytes: Uint8Array) => {}),
     commit: vi.fn(async (req: SessionAttachmentCommitReq) => ({ id: `1027-1200-${req.key.slice(0, 4)}`, name: req.name, path: `/w/.ccm-attach/x/${req.name}`, rel: `.ccm-attach/x/${req.name}`, bytes: req.bytes, sha256: req.expect.sha256, class: "code" as const })),
     drop: vi.fn(async (_sid: string, _id: string) => {}),
@@ -31,8 +31,8 @@ function rig(over: Partial<AttachIo> = {}) {
     read: vi.fn(async (_b: Blob, start: number, end: number) => new Uint8Array(end - start)),
     newKey: vi.fn(() => `${String(++keys).padStart(4, "0")}${"0".repeat(28)}`),
     offline: vi.fn((e: unknown) => e === OFFLINE),
-    ...over,
   };
+  Object.assign(io, over);
   const changed = vi.fn();
   const draft = new AttachDraft("s-1", io as AttachIo, changed);
   return { draft, io, changed };
@@ -64,7 +64,7 @@ describe("桌面附件草稿", () => {
     ]);
     await flush();
     const [dir, png] = draft.chips();
-    expect(dir.at).toEqual({ at: "failed", said: "不收目录", retry: false, detail: "" });
+    expect(dir.at).toEqual({ at: "failed", said: "refused-dir", retry: false, detail: "" });
     expect(dir.class).toBe("folder");
     expect(png.at.at).toBe("done");
     expect(io.stage).toHaveBeenCalledTimes(1);
@@ -112,7 +112,7 @@ describe("桌面附件草稿", () => {
       commit: vi.fn(async (req: SessionAttachmentCommitReq) => {
         if (fail) {
           fail = false;
-          throw new Error("磁盘满");
+          throw new Error("disk-full");
         }
         return { id: "1027-1200-beef", name: req.name, path: "/p", rel: "r", bytes: req.bytes, sha256: req.expect.sha256, class: "text" as const };
       }),
@@ -120,7 +120,7 @@ describe("桌面附件草稿", () => {
     draft.add([{ name: "x.txt", blob: blob(4) }]);
     await flush();
     const c = draft.chips()[0];
-    expect(c.at).toMatchObject({ at: "failed", said: "磁盘满", retry: true });
+    expect(c.at).toMatchObject({ at: "failed", said: "disk-full", retry: true });
     draft.retry(c.n);
     await flush();
     expect(draft.ids()).toEqual(["1027-1200-beef"]);
