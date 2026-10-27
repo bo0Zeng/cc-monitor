@@ -1,6 +1,7 @@
 /**
  * **运行表**（界面这一半）：一个会话 ＝ 主运行 ＋ 子运行。成品由那台后端给（`session_runs` ⇒ 会话流里的 `runs` 格）：
- * 标签 · 状态 · 最近一件事 · 派出它的那次工具调用。这里只排版，不认任何一家的目录、字段、工具名，**也不判状态**（只读后端那一份）。
+ * 标签 · 状态 · 最近一件事 · 派出它的那次工具调用，连同这几样写好的字（`status_text` · `label_text` · `last_text`）。
+ * 这里只排版，不认任何一家的目录、字段、工具名，**也不判状态、不按状态挑字**（只读后端那一份）。
  *
  * - 子运行不进主 tab 的消息流：派出它的那张工具卡标状态（`cards/subagent.ts::markRunCard`），列表住 agent 面板（`agents-panel.ts`）。
  * - 面板列哪些（[`panelGroups`]）：在跑的全列 ＋ 最近结束的 [`RECENT_ENDED`] 个；其余（含状态不明的）收进「更早的」。
@@ -70,19 +71,9 @@ export class RunBoard {
   }
 }
 
-export function runStateText(state: RunState): string {
-  switch (state) {
-    case "running":
-      return copyText("runs.state.running");
-    case "done":
-      return copyText("runs.state.done");
-    case "failed":
-      return copyText("runs.state.failed");
-    case "stopped":
-      return copyText("runs.state.stopped");
-    case "unknown":
-      return copyText("runs.state.unknown");
-  }
+/** 状态字：运行表那一项（或被挤出的那一项）后端写好的，照抄。 */
+export function runStateText(r: Pick<RunInfo, "status_text">): string {
+  return r.status_text;
 }
 
 const RUN_ICON: Record<Exclude<RunState, "running">, IconName> = { done: "check", failed: "failed", stopped: "stop", unknown: "question" };
@@ -93,7 +84,7 @@ const RUN_ICON: Record<Exclude<RunState, "running">, IconName> = { done: "check"
  */
 export function runStateMark(state: RunState): Element {
   if (state === "running") {
-    const d = statusDot("running", runStateText("running"), "compact");
+    const d = statusDot("running", null, "compact");
     d.setAttribute("aria-hidden", "true");
     d.removeAttribute("title");
     return d;
@@ -101,20 +92,17 @@ export function runStateMark(state: RunState): Element {
   return icon(RUN_ICON[state], "compact");
 }
 
+/** 名字：后端写好的（没名字的那一份通称也是它写）。 */
 export function runLabel(r: RunInfo): string {
-  return r.label && r.label.length > 0 ? r.label : copyText("runs.label.unnamed");
+  return r.label_text;
 }
 
-/** 「最近：…」那一截：在生成的那一块优先，其次记录给的最近一件事；都没有 ⇒ `null`。 */
+/** 「最近：…」那一截：在生成的那一块优先（流上的活卡，界面自己的态），其次记录给的最近一件事（后端写好）；都没有 ⇒ `null`。 */
 export function runLastText(r: RunInfo, live: LiveBlockView | null): string | null {
   if (live) {
     if (live.kind === "tool") return copyText("liveCard.block.toolUse", { tool: live.tool ?? "?" });
     if (live.kind === "thinking") return copyText("runs.last.think");
     if (live.kind === "text") return copyText("runs.last.say");
   }
-  const last = r.last;
-  if (!last) return null;
-  if (last.t === "tool") return copyText("runs.last.tool", { tool: last.name });
-  if (last.t === "think") return copyText("runs.last.think");
-  return copyText("runs.last.say");
+  return r.last_text ?? null;
 }

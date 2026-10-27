@@ -1150,6 +1150,9 @@ pub struct RunEnded {
     pub run: String,
     pub tool: String,
     pub state: RunState,
+    /// 终态写好的字（同 [`RunInfo::status_text`]）。
+    #[serde(default)]
+    pub status_text: Words,
 }
 
 /// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。三个时刻是自 1970 起的毫秒（记录自己写着的时刻；记录里没写 ⇒ 读到它的时刻）。
@@ -1176,9 +1179,19 @@ pub struct RunInfo {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub parent: Option<String>,
     pub state: RunState,
+    /// 状态写好的字（在跑 · 完成 · 失败 · 已中止 · 状态不明）：出口照抄，不按 `state` 挑字。出帧那一下写（`observe::runs`）。
+    #[serde(default)]
+    pub status_text: Words,
+    /// 名字写好的字：`label`，没有 ⇒ 通称（「agent」）。
+    #[serde(default)]
+    pub label_text: Words,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub last: Option<RunDid>,
+    /// `last` 写好的字（写回复中 · 思考中 · 调用 X）；没有 `last` ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub last_text: Option<Words>,
     /// 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
