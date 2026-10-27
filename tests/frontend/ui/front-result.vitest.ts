@@ -40,22 +40,14 @@ describe("↗ 结局族", () => {
       tone: "amber",
       acts: [],
     });
-    expect(several("unregistered"), "Linux：没登记 ⇒ 说没登记、指接上终端之后新开的标签页").toEqual({
+    expect(several("unregistered"), "Linux：没登记 ⇒ 说没登记、指接上终端之后新开的标签页，给［接上终端］").toEqual({
       title: copyText("front.title.unsure"),
       body: copyText("front.body.severalUnregistered", { program: "WindowsTerminal.exe", n: 3 }),
       hint: copyText("front.hint.unregistered"),
       tone: "amber",
-      acts: [],
-    });
-    expect(shape({ kind: "unbound", why: "unregistered" }), "Linux：没登记 ⇒ 给［接上终端］").toEqual({
-      title: copyText("front.title.unbound"),
-      body: copyText("front.body.unregistered"),
-      hint: copyText("front.hint.unregistered"),
-      tone: "amber",
       acts: [copyText("front.act.connect")],
     });
-    expect(shape({ kind: "unbound", why: "not-live" }), "会话已不在运行：不指登记").toEqual({ title: copyText("front.title.unbound"), body: copyText("front.body.notLive"), hint: null, tone: "grey", acts: [] });
-    expect(shape({ kind: "unbound", why: "no-console" }), "Windows：链上没有控制台也没有窗口 ⇒ 后台").toEqual({ title: copyText("front.title.noTerminal"), body: copyText("front.body.background"), hint: null, tone: "grey", acts: [] });
+    expect(shape({ kind: "not-live" }), "会话已不在运行：不指登记").toEqual({ title: copyText("front.title.unbound"), body: copyText("front.body.notLive"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "switched-window", why: "title-ignored" }), "窗口切过去了、标签页没切成：照实说、给怎么办").toEqual({
       title: copyText("front.title.tabMissed"),
       body: copyText("front.body.tabTitleIgnored"),
@@ -96,7 +88,8 @@ describe("↗ 结局族", () => {
   it("Windows 那几句不提登记、不指新开标签页（Windows 上没有登记这回事）", () => {
     const windowsSaid = [
       ...(["console-unreachable", "elevated", "foreign"] as const).map((why) => frontView({ kind: "several", program: "WindowsTerminal.exe", count: 2, why }, "本机", false)!),
-      ...(["not-live", "no-console"] as const).map((why) => frontView({ kind: "unbound", why }, "本机", false)!),
+      frontView({ kind: "not-live" }, "本机", false)!,
+      frontView({ kind: "no-window", program: "claude.exe" }, "本机", false)!,
     ];
     for (const v of windowsSaid) {
       const text = [v.title, v.body, v.hint ?? "", ...v.acts.map(frontActLabel)].join(" ");
@@ -105,7 +98,7 @@ describe("↗ 结局族", () => {
   });
 
   it("［复制详情］复制的是那一族带来的细节原文", () => {
-    const v = frontView({ kind: "bad-shape", detail: "session-terminals: why=\"x\"" }, "gpu-01", false)!;
-    expect(v.acts).toEqual([{ kind: "copy", detail: "session-terminals: why=\"x\"" }]);
+    const v = frontView({ kind: "bad-shape", detail: "session-window: why=\"x\"" }, "gpu-01", false)!;
+    expect(v.acts).toEqual([{ kind: "copy", detail: "session-window: why=\"x\"" }]);
   });
 });

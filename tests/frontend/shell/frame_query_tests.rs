@@ -382,15 +382,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::request`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
-    // 远端 ↗ 的前两问：那台谁在显示这个会话 · 本机哪串进程开着那条连接。
+    // ↗ 那一问：会话在这台电脑上的哪儿（本机会话与远端会话同一问）。
     (
-        "session-terminals",
-        "此刻连着这个会话的终端：会话所在那台后端 `observe/session_terminals.rs` 答；前端 `src/frontend/ui/remote-terminal-front.ts` 问",
-    ),
-    (
-        "terminal-processes",
-        "那台报来的终端连接是这台电脑上哪串进程：本机后端 `dial/terminal_processes.rs` 答；前端 `src/frontend/ui/remote-terminal-front.ts` 问，\
-         monitor 那一侧只沿进程链找窗口、拉前",
+        "session-window",
+        "窗口标签 · 进程链或原因：本机后端 `faces/session_window_face.rs` 答（远端会话它自己问那台）；前端 `src/frontend/ui/tab-session-actions.ts` 问，\
+         monitor 那一侧只照答找窗口、拉前",
     ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
@@ -1212,7 +1208,7 @@ async fn next_request(
 /// 还没过 ⇒ 恰好发一行（正控：同一个对端、同一个读法认得出一行）。
 #[tokio::test]
 async fn an_expired_deadline_sends_nothing() {
-    let origin = Origin("dl1-d3-expired".into());
+    let origin = Origin::named("dl1-d3-expired");
     let _g = inbound_client::local_origin_test_lock();
     let (client, mut peer) = local_channel_for_test(&["history-tail"]);
     let gone = Deadline::within(Duration::ZERO);
@@ -1255,7 +1251,7 @@ async fn an_expired_deadline_sends_nothing() {
     assert_eq!(req["cmd"], "history-tail");
     assert_eq!(
         req["machine"],
-        origin.as_wire_str(),
+        origin.to_string(),
         "问那台没经本机后端转：{req}"
     );
     c.route_reply(
@@ -1283,7 +1279,7 @@ async fn an_expired_deadline_sends_nothing() {
 /// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
 #[tokio::test]
 async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
-    let origin = Origin("said3-refused".into());
+    let origin = Origin::named("said3-refused");
     let _g = inbound_client::local_origin_test_lock();
     let (client, mut peer) = local_channel_for_test(&["machines-read"]);
     let o = origin.clone();
@@ -1302,7 +1298,7 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
         .expect("一行都没发");
     assert_eq!(
         req["machine"],
-        origin.as_wire_str(),
+        origin.to_string(),
         "问那台没经本机后端转：{req}"
     );
     let wrote = copy_core::detail::Detail::new()
@@ -1573,7 +1569,7 @@ fn the_snapshot_rows_of_the_golden_decode_through_rows_of() {
 /// （界面 `record-reads.ts` 用同一份），放在请求信封的 `view` 那一格、不进 `args`。
 #[tokio::test]
 async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
-    let origin = Origin("proj6-folded-view".into());
+    let origin = Origin::named("proj6-folded-view");
     let _g = inbound_client::local_origin_test_lock();
     let (client, mut peer) = local_channel_for_test(&["history-read"]);
     let o = origin.clone();
@@ -1596,7 +1592,7 @@ async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
     assert_eq!(req["cmd"], "history-read");
     assert_eq!(
         req["machine"],
-        origin.as_wire_str(),
+        origin.to_string(),
         "旁路快照问那台没经本机后端转：{req}"
     );
     assert_eq!(req["view"], shared, "旁路快照没交那份声明：{req}");

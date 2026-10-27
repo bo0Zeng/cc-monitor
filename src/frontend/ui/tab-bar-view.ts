@@ -92,10 +92,8 @@ export interface TabBarViewHost {
   closeEndedIn(gid: string): void;
   /** 📂：打开工作目录。 */
   openTabCwd(sid: string): Promise<void>;
-  /** ↗：本机 tab 切到终端窗口。 */
+  /** ↗：切到这个 tab 的终端窗口（本机 · 远端同一条）。 */
   bringTerminalToFront(sid: string): Promise<void>;
-  /** ↗：远端 tab 切到终端窗口。 */
-  bringRemoteTerminalToFront(sid: string): Promise<void>;
   /** × / 中键：关（只关得掉已结束的）。 */
   closeTab(sid: string): void;
   /** 点按钮：手动切 tab。 */
@@ -472,13 +470,8 @@ export class TabBarView {
         // ↗ 拉对应终端窗口。非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
         const t = this.store.tabs.get(sid);
         if (!t || !hasTerminal(t.face)) return; // 活着，或可重连（ssh 窗还在）才拉
-        // 远端 Tab → 点那一刻现查此刻显示它的本机终端；
-        // 本地 Tab → 走原 sid_hwnd_cache 路径。
-        if (isRemoteOrigin(t.origin)) {
-          void this.host.bringRemoteTerminalToFront(sid);
-        } else {
-          void this.host.bringTerminalToFront(sid);
-        }
+        // 点那一刻现查此刻显示它的终端（本机 · 远端同一问）。
+        void this.host.bringTerminalToFront(sid);
       } else {
         this.host.closeTab(sid);
       }

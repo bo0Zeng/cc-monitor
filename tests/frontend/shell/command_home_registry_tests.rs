@@ -97,11 +97,10 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "起文件窗口进程、把它的 stdin / stdout 接进通道（窗口的 call 经通道到后端）、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列）",
     ),
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
-    ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
-        "bring_remote_terminal_to_front",
+        "bring_terminal_to_front",
         Own::Front,
-        "拉前那条远端会话对应的本机终端窗口",
+        "拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿）",
     ),
     (
         "forget_session",
