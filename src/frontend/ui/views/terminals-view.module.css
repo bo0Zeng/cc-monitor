@@ -1,0 +1,254 @@
+/* 「终端」视图：顶栏 48 · 名单 480 ｜ 终端面；行两层（标题 · 第二行）。窄窗名单收成一列点。 */
+@layer components {
+  .tvView {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-view);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .tvBar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    height: 48px;
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-2);
+  }
+
+  .tvTitle {
+    font-size: var(--font-size-title);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .tvFilters {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .tvFilter {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: var(--control-h-compact);
+    padding: 0 var(--control-pad-x-compact);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .tvFilter[aria-pressed="true"] {
+    background: var(--selected-bg);
+    color: var(--text);
+  }
+
+  .tvCount {
+    color: var(--text-faint);
+  }
+
+  .tvSpacer {
+    flex: 1;
+  }
+
+  .tvFind {
+    width: 200px;
+    height: var(--control-h-compact);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text);
+  }
+
+  .tvMain {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tvLeft {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 480px;
+    border-right: 1px solid var(--border-soft);
+  }
+
+  .tvList {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-3);
+  }
+
+  .tvGroupHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-3) var(--space-2);
+  }
+
+  .tvGroupName {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .tvGroupSub {
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+
+  .tvDown {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: 0 var(--space-2) var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius-s);
+    background: var(--bg-2);
+    font-size: var(--font-size-small);
+  }
+
+  .tvPartial,
+  .tvNoMatch {
+    padding: var(--space-2) var(--space-3);
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+
+  .tvRow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-m);
+    cursor: pointer;
+  }
+
+  .tvRow:hover {
+    background: var(--overlay-hover);
+  }
+
+  .tvRow[aria-selected="true"],
+  .tvRow[data-marked] {
+    background: var(--selected-bg);
+  }
+
+  .tvRow[data-stale] {
+    opacity: 0.6;
+  }
+
+  .tvRowTop {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .tvRowTitle {
+    min-width: 0;
+  }
+
+  .tvRowTitle[data-mono] {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+  }
+
+  .tvBadge {
+    color: var(--warn);
+    font-size: var(--font-size-small);
+  }
+
+  .tvBadge:empty {
+    display: none;
+  }
+
+  .tvAt {
+    flex: none;
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+
+  .tvMeta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding-left: calc(var(--dot-size-compact) + var(--space-3));
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .tvPill {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    font-size: var(--font-size-xs);
+  }
+
+  .tvSelectBar {
+    display: none;
+  }
+
+  .tvSelectBar[data-shown] {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--border-soft);
+    background: var(--bg-2);
+  }
+
+
+  .tvSelectCount {
+    font-size: var(--font-size-small);
+  }
+
+  .tvRight {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .tvActs {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4) 0;
+  }
+
+  .tvFace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .tvPick {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-2);
+  }
+
+  @media (width <= 900px) {
+    .tvLeft {
+      width: 320px;
+    }
+
+    .tvFind {
+      width: 140px;
+    }
+  }
+}

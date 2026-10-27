@@ -266,6 +266,13 @@ export const commands = {
     run?: string;
   }) => invoke<void>("open_session_in_new_window", args),
 
+  /**
+   * 开一扇只装终端面的窗（`viewer-term-<那台>-<句柄>`；一个终端一扇，已开着就拉前）。**桶①**。
+   * `origin` · `terminal`（名单里的句柄）· `name`（tmux 会话名）· `title` 随 URL 交给那扇窗；`windowTitle` 是系统标题。
+   */
+  open_terminal_in_new_window: (args: { origin: Origin; terminal: string; name: string; title: string; windowTitle: string }) =>
+    invoke<void>("open_terminal_in_new_window", args),
+
   /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链 · tmux 那一格原样交来，先按标签、再沿链；回切过去了或写好的那一张（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
   bring_terminal_to_front: (args: Pick<SessionWindow, "labels" | "chain" | "tmux">) =>
     invoke<FrontTold | null>("bring_terminal_to_front", args),
