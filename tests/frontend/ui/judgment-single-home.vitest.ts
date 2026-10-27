@@ -1180,6 +1180,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
     LAUNCH_ACCOUNTS_REL: NONE,
     LAUNCH_NOTES_DIR_REL: NONE,
+    // 会话输入队 · cc-bus 收件箱（后端写；数据位置页按它列）。
+    SESSION_QUEUE_DIR_REL: NONE,
+    CC_BUS_DIR_REL: NONE,
     // 答题插件目录（ccm 换了启动器起会话时写；数据位置页按它列）。
     ANSWER_PLUGIN_DIR_REL: NONE,
     // 主机钥匙（拨号核心那份库，后端写；开终端那一行经 ssh 配置认它；数据位置页按它列）。
