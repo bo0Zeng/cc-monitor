@@ -43,6 +43,8 @@ pub(crate) struct Launch {
     pub(crate) default_launcher: String,
     /// 垫在交给那一家的那一串里的参数（先定的 sid · 权限档 · 第一句）。
     pub(crate) preset_args: Vec<String>,
+    /// 经哪条别名起（`ccm @别名`）；`None` ⇒ 不经别名。
+    pub(crate) alias: Option<String>,
 }
 
 /// 起什么：新起 · resume 某条 · 接回一个已有的 tmux 会话（不起 agent）。
@@ -154,6 +156,7 @@ fn spec_with<T>(
         default_launcher: &l.default_launcher,
         args: &args,
         ccm_path,
+        alias: l.alias.as_deref(),
         detach,
     };
     f(&spec).map_err(|r| r.reason())
