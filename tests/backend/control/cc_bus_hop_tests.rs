@@ -1,4 +1,4 @@
-//! 跨台发信（A13-8-4）：收件人在别台 ⇒ 本机只核信封，经跨台那一跳（`faces/session_queue_hop.rs`）交给那台的常驻，
+//! 跨台发信（A13-8-4）：收件人在别台 ⇒ 本机只核信封，经跨台那一跳（`dial::remote_ask::hop`）交给那台的常驻，
 //! 那台照它自己的组名单判、收进它自己的收件箱；够不到 ⇒ `offline`，两边一个字节不写。
 //!
 //! 两台各一个临时家目录；对面是替身，照生产那一半（[`send_here`]）在它自己的家里现答。真 SSH 与真远端常驻买不到。
@@ -134,7 +134,8 @@ impl Remote for Owner {
 }
 
 fn letter(machine: Option<&str>, title: &str) -> BusEnvelopeReq {
-    let mut v = json!({"from": A, "to": B, "tier": 1, "act": "inform", "title": title, "text": "占位正文"});
+    let mut v =
+        json!({"from": A, "to": B, "tier": 1, "act": "inform", "title": title, "text": "占位正文"});
     if let Some(m) = machine {
         v["machine"] = json!(m);
     }
@@ -162,7 +163,10 @@ async fn send_from(
 
 #[test]
 fn the_machine_defaults_to_this_one() {
-    assert!(letter(None, "t").machine.is_local(), "缺 `machine` ⇒ 本机（cc-bus send 不带 --machine 照今天）");
+    assert!(
+        letter(None, "t").machine.is_local(),
+        "缺 `machine` ⇒ 本机（cc-bus send 不带 --machine 照今天）"
+    );
 }
 
 #[tokio::test]

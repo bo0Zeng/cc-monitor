@@ -56,6 +56,7 @@ pub(crate) fn send_said(code: &str) -> String {
         "duplicate" => copy_text("beCcBus.envelope.duplicate", &[]),
         "throttled" => copy_text("beCcBus.envelope.throttled", &[]),
         "io_failed" => copy_text("beCcBus.store.failed", &[]),
+        "offline" => copy_text("beCcBus.envelope.offline", &[]),
         _ => copy_text("beCcBus.envelope.badArgs", &[]),
     }
 }
@@ -173,7 +174,7 @@ pub(crate) struct BusEnvelopeReq {
     pub(crate) from: String,
     /// 收件人：会话 id。
     pub(crate) to: String,
-    /// 收件会话在哪台（机器表里的名字）。缺 ⇒ 本机；别台 ⇒ 经跨台那一跳交给那台收（`faces/session_queue_hop.rs`）。
+    /// 收件会话在哪台（机器表里的名字）。缺 ⇒ 本机；别台 ⇒ 经跨台那一跳交给那台收（`dial::remote_ask::hop`）。
     #[serde(default = "cmd_wire::Machine::local")]
     #[cfg_attr(test, ts(as = "Option<cmd_wire::Machine>", optional))]
     pub(crate) machine: cmd_wire::Machine,
@@ -478,7 +479,7 @@ pub(crate) fn send_here(
 
 /// `bus-send` 的本体：照 `req.machine` 分。
 /// - 本机 ⇒ 读这台的组名单（`roster`）· [`send_here`]。
-/// - 别台 ⇒ 先在这台核信封各格（坏信封不出门），再经跨台那一跳（`faces::session_queue_hop::hop`）交给那台的常驻：
+/// - 别台 ⇒ 先在这台核信封各格（坏信封不出门），再经跨台那一跳（`dial::remote_ask::hop`，会话输入队那三条也走它）交给那台的常驻：
 ///   范围照那台的名单判、收进那台的收件箱，那台答的码原样交回；够不到 ⇒ `offline`，这台一个字节不写、不攒。
 ///   交回的 `knock` 一律 `false`：这台够不到那台的屏（敲门改投那台的会话输入队见 A13-8-3）。
 pub(crate) async fn send<R, F>(
@@ -500,8 +501,13 @@ where
         return send_here(own, req, r.as_ref().map_err(String::as_str), now).map_err(refused);
     }
     cc_bus_envelope::check(req).map_err(refused)?;
-    let sent = crate::faces::session_queue_hop::hop::<BusSendCmd>(
-        req,
+    let here = BusEnvelopeReq {
+        machine: cmd_wire::Machine::local(),
+        ..req.clone()
+    };
+    let sent = crate::dial::remote_ask::hop::<BusSendCmd>(
+        &req.machine,
+        &here,
         BusSendErr::ALL,
         tz,
         until,
@@ -509,7 +515,7 @@ where
         remote,
     )
     .await
-    .map_err(|f| typed::of_fail(f, BusSendErr::BadArgs))?;
+    .map_err(|f| of(BusSendErr::BadArgs, send_said)((f.code, f.message)))?;
     Ok(BusSent {
         knock: false,
         ..sent
