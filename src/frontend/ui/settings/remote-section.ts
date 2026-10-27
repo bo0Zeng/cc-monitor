@@ -46,7 +46,8 @@ import { forgetSeen } from "../last-seen";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
 import { fetchAccounts } from "../account-reads";
-import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
+import { localBackendFace, machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
+import type { LocalBackend } from "../generated/LocalBackend";
 import { isLocalOrigin } from "../ipc/origin";
 import { machineName } from "../ipc/chan-caller";
 import type { AccountsState } from "../accounts";
@@ -197,10 +198,10 @@ export class RemoteSection {
   private countLine!: HTMLElement;
   /** 后端报来的各台事实（系统 · 版本），按后端那套名字。 */
   private readonly facts = new Map<string, MachineFacts>();
-  /** 各页最近一次照成品画出的样子（数「几台离线 · 几台要更新」用）。 */
-  private readonly faces = new Map<string, MachineFace>();
-  /** 每台最近一帧的状态成品（比对指纹要那台出示的那一枚）。 */
+  /** 每台最近一帧的状态成品（页头数「几台离线 · 几台要更新」· 比对指纹要那台出示的那一枚）。 */
   private readonly states = new Map<string, MachineState>();
+  /** 本机后端没起来时壳那一格（本机那一台的成品一到就作废）。 */
+  private localBackend: LocalBackend | null = null;
   /** 各页最近一次喂进来的连接（数「几台离线」用）。 */
   private readonly connected = new Map<string, boolean | null>();
   /** 各页最近一次喂进来的离线那一句（那台成品写的；没有 ⇒ 空串）。 */
@@ -411,6 +412,7 @@ export class RemoteSection {
   /** 宿主照后端的状态成品喂进来：那一行的点 · 词 · 问题行 ＋ 修法；页头那一句按它数。 */
   setMachine(pageId: string, m: MachineState): void {
     this.states.set(pageId, m);
+    if (pageId === LOCAL_MACHINE_PAGE_ID) this.localBackend = null;
     // 本机那一行建页时成品多半还没到（标题是「机器不明」）⇒ 成品到一份、标题照成品的 `name` 换一次（先换、点那一句才叫对名字）。
     // 远端那几行的标题是机器表里的键（编辑那台时跟着卡片改），不归这里。
     if (pageId === LOCAL_MACHINE_PAGE_ID) this.retitleLocal(m.name);
@@ -426,8 +428,12 @@ export class RemoteSection {
     this.pages?.renameMachinePage?.(LOCAL_MACHINE_PAGE_ID, name);
   }
 
-  /** 宿主照壳的「本机后端没起来」那一格喂进来（连着时不喂，看本机后端那一台的成品）：本机那一行照同一个画法。 */
-  setLocalBackend(face: MachineFace): void {
+  /** 宿主照壳的「本机后端没起来」那一格喂进来（连着 ⇒ 不动，看本机后端那一台的成品）：本机那一行照同一个画法，页头照这一格数。 */
+  setLocalBackend(l: LocalBackend): void {
+    const face = localBackendFace(l);
+    if (!face) return;
+    this.localBackend = l;
+    this.states.delete(LOCAL_MACHINE_PAGE_ID);
     this.paintFace(LOCAL_MACHINE_PAGE_ID, face, false, true);
   }
 
@@ -441,7 +447,6 @@ export class RemoteSection {
     if (word) word.textContent = face.word;
     const problem = row.querySelector<HTMLElement>(".machine-problem");
     if (problem) paintProblem(problem, face, (fix) => this.runFix(pageId, fix));
-    this.faces.set(pageId, face);
     this.connected.set(pageId, up);
     this.paintCount();
     // 连着 ⇒ 问那台；没连着 ⇒ 问一次拿「上次的」（壳记的最近一次）。连没连着一变就重问。
@@ -507,11 +512,17 @@ export class RemoteSection {
   private paintCount(): void {
     const n = this.cards.length + 1;
     const live = (id: string): boolean => this.findMachineRow(id) !== null && !this.isDisabledPage(id);
+    // 照各台手上那份成品数：本机后端没起来 ⇒ 壳那一格；有机器成品 ⇒ 它的 `offline` 与那一态；都没有 ⇒ 最近一次喂进来的连接。
+    const local = this.localBackend;
     const off = [...this.connected.entries()].filter(([id, c]) => {
-      const f = this.faces.get(id);
-      return live(id) && (f ? f.offline : c === false);
+      if (!live(id)) return false;
+      if (id === LOCAL_MACHINE_PAGE_ID && local) return local.state === "down";
+      const m = this.states.get(id);
+      return m ? m.offline : c === false;
     }).length;
-    const upd = [...this.faces.entries()].filter(([id, f]) => live(id) && f.needsUpdate).length;
+    const upd =
+      [...this.states.entries()].filter(([id, m]) => live(id) && m.state === "needs_update").length +
+      (local?.state === "older" && live(LOCAL_MACHINE_PAGE_ID) ? 1 : 0);
     const parts = [copyText("machineList.count.all", { n })];
     if (off > 0) parts.push(copyText("machineList.count.off", { a: off }));
     if (upd > 0) parts.push(copyText("machineList.count.update", { b: upd }));
