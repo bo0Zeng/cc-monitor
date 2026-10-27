@@ -107,9 +107,9 @@ fn list_sessions_rejects_symlink_escape() {
 // 要求：「本机后端 … 出成品 …（join 只一个家）」——
 // 本机会话清单从 monitor 那份（经记录解析器）换到这一行，monitor 那份有的三格这里要有，否则本机用户换读者那一刻丢 fork 树与改名后的标题。
 
-/// ★ fork 关系（首条带 `forkedFrom` 的 user / assistant）· `custom-title` 取最新 · 开始时刻取首条时间戳。
+/// ★ fork 关系（首条带 `forkedFrom` 的 user / assistant）· 标题只取 agent 起的 `ai-title`（人在 Claude 里 `/rename` 写的 `custom-title` 不算）· 开始时刻取首条时间戳。
 #[test]
-fn c4d_the_row_carries_fork_parent_custom_title_and_first_timestamp() {
+fn c4d_the_row_carries_fork_parent_agent_title_and_first_timestamp() {
     let tmp = std::env::temp_dir().join(format!("ccm-c4d-row-{}", std::process::id()));
     let dir = fixture_project(&tmp, "proj-c4d");
     let p = write_jsonl(
@@ -126,7 +126,10 @@ fn c4d_the_row_carries_fork_parent_custom_title_and_first_timestamp() {
     let v = analyze_session(&p);
     assert_eq!(v["forkedFromSessionId"], "parent-sid", "取首条那一个");
     assert_eq!(v["forkedFromMessageUuid"], "m-1");
-    assert_eq!(v["aiTitle"], "改过的名字", "custom-title 在后 ⇒ 取它");
+    assert_eq!(
+        v["aiTitle"], "旧标题",
+        "custom-title 在后也不取：改名只认 monitor 那一格"
+    );
     assert_eq!(
         v["startedAtMs"],
         crate::common::time::parse_iso8601_ms("2026-09-25T01:02:03.456Z").unwrap()

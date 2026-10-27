@@ -288,8 +288,8 @@ static LOADED: std::sync::Once = std::sync::Once::new();
 /// 内存那一份自上次落盘之后变过没有（没变不重写）。
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
-/// 盘上那一份的格式：形状变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
-const STORE_VERSION: u32 = 2;
+/// 盘上那一份的格式：形状或读法变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
+const STORE_VERSION: u32 = 3;
 
 /// 读盘上那一份的上限。
 const STORE_MAX_READ: u64 = 256 << 20;
@@ -542,13 +542,13 @@ pub(crate) fn label_facts_among(
     }
 }
 
-/// 一份会话记录的标题（同历史清单那一格，[`super::search_rules::session_label`]，不并注解）。
-pub(crate) fn session_title_of(p: &Path) -> String {
-    let sid = p
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    super::search_rules::session_label(&label_facts_of(p)).0
+/// 一份会话记录叫什么（同历史清单那一格，[`super::search_rules::session_label`]）：`custom` ＝ 这台注解里给它改的名。
+pub(crate) fn session_title_of(p: &Path, custom: Option<String>) -> String {
+    super::search_rules::session_label(&super::search_rules::LabelFacts {
+        custom,
+        ..label_facts_of(p)
+    })
+    .0
 }
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
@@ -639,7 +639,7 @@ pub(crate) fn created_ms_or_mtime(p: &Path) -> i64 {
 /// - messageCountApprox = 非空行数
 /// - firstUserExcerpt = 首条人说的话（适配层判「谁说的」，经注册表 `agents::human_speech`）的前 120 字符
 ///   （换行折成空格、超了加 `…`）
-/// - aiTitle = 最后一条标题记录（`ai-title` 的 `aiTitle` 与 CC v2.1.x 起的 `custom-title` 的 `customTitle`，取最新）
+/// - aiTitle = 最后一条 agent 起的标题记录（`ai-title` 的 `aiTitle`；人在 Claude 里 `/rename` 写的 `custom-title` 不算）
 /// - cwd = 会话的项目目录（适配层 `RecordFace.project_dir`：只读开头，与活 tab 的标题同一个函数）
 /// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
 /// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）

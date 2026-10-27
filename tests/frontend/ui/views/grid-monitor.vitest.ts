@@ -34,7 +34,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   face: liveFace("working"),
   needs: null,
   runningAgents: 0,
-  totalAgents: 0,
+  agents: null,
   context: null,
   unread: 0,
   background: false,
@@ -409,9 +409,11 @@ describe("F91 GridMonitorView", () => {
 
   it("在跑 agent 的徽标走文案表（不写死 ▶ / agent）", () => {
     document.body.replaceChildren();
-    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", runningAgents: 2, totalAgents: 3 })]));
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", runningAgents: 2, agents: "agent 448 · 2 在跑" })]));
     view.open();
     expect(document.querySelector(".badge-agents")?.textContent).toBe(copyText("gridMonitor.renderBadges.agentsLabel", { runningAgents: 2 }));
+    // 悬停那一句照抄后端写好的那一句（总数后端照实数，界面不拿运行表的长度自己拼）。
+    expect((document.querySelector(".badge-agents") as HTMLElement | null)?.title).toBe("agent 448 · 2 在跑");
     view.close();
   });
 
@@ -483,7 +485,7 @@ describe("F91 GridMonitorView interval 生命周期", () => {
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
-    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", runningAgents: 2, totalAgents: 3, face: ordered(liveFace("working"), 1) }),
+    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", runningAgents: 2, agents: "agent 3 · 2 在跑", face: ordered(liveFace("working"), 1) }),
     snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", context: { text: "85%", tone: "warn", percent: 85 }, unread: 4 }),
     snap({ sessionId: "l3", title: "本机三", face: goldenFace("ended") }),
     snap({ sessionId: "p1", title: "派一", origin: "pi", needs: "核心·等批准", face: ordered(liveFace("needs_you"), 0) }),

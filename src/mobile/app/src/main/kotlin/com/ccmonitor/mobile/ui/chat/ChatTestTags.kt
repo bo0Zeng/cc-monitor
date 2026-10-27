@@ -53,8 +53,17 @@ object ChatTestTags {
     /** 命令与 skill 选择器的触发键，catalog 为空时不渲染。 */
     const val CATALOG = "chat-catalog"
 
-    /** 加附件。 */
+    /** 输入框上方那一排附件 · 其中一张卡 · 卡角的 ✕ · 卡下那一条与它的按钮。 */
     const val ATTACH = "chat-attach"
+    const val ATTACH_CARD = "chat-attach-card"
+    const val ATTACH_REMOVE = "chat-attach-remove"
+    const val ATTACH_NOTE = "chat-attach-note"
+    const val ATTACH_ACT = "chat-attach-act"
+
+    /** ［+］面板头一排：拍照 · 图片 · 文件。 */
+    const val PLUS_CAMERA = "chat-plus-camera"
+    const val PLUS_IMAGE = "chat-plus-image"
+    const val PLUS_FILE = "chat-plus-file"
 
     /** 重新接上下行。 */
     const val REATTACH = "chat-reattach"

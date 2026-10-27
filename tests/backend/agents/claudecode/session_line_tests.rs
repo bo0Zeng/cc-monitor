@@ -30,12 +30,12 @@ fn one_line_becomes_the_session_cells() {
             .as_deref(),
         Some("甲")
     );
+    // 人在 Claude 里 `/rename` 写的那一条不是标题：改名只认 monitor 那一格。
     assert_eq!(
         line_of(r#"{"type":"custom-title","customTitle":"乙"}"#)
             .unwrap()
-            .title
-            .as_deref(),
-        Some("乙")
+            .title,
+        None
     );
     // 不是人说的 / 回话那两类：时刻与分叉来源不给。
     let meta = line_of(

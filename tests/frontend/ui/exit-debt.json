@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1849,
+  "ceiling": 1848,
   "groups": [
     {
       "kind": "首登",
@@ -236,6 +236,7 @@
         ["src/frontend/ui/tab-hide.ts", "key", 4],
         ["src/frontend/ui/tab-menu.ts", "branch", 8],
         ["src/frontend/ui/tab-menu.ts", "key", 9],
+        ["src/frontend/ui/tab-rename.ts", "key", 1],
         ["src/frontend/ui/tab-session-actions.ts", "branch", 2],
         ["src/frontend/ui/tab-session-actions.ts", "key", 12],
         ["src/frontend/ui/tab-stream-view.ts", "branch", 3],
@@ -257,11 +258,11 @@
         ["src/frontend/ui/views/agent-window.ts", "key", 3],
         ["src/frontend/ui/views/cc-bus-section.ts", "key", 5],
         ["src/frontend/ui/views/command-bar.ts", "key", 1],
-        ["src/frontend/ui/views/grid-monitor.ts", "key", 10],
+        ["src/frontend/ui/views/grid-monitor.ts", "key", 9],
         ["src/frontend/ui/views/history-rows.ts", "branch", 6],
         ["src/frontend/ui/views/history-rows.ts", "key", 4],
         ["src/frontend/ui/views/history.ts", "branch", 25],
-        ["src/frontend/ui/views/history.ts", "key", 24],
+        ["src/frontend/ui/views/history.ts", "key", 23],
         ["src/frontend/ui/views/keys-overview.ts", "branch", 6],
         ["src/frontend/ui/views/keys-overview.ts", "key", 1],
         ["src/frontend/ui/views/outline-source.ts", "key", 2],

@@ -1680,7 +1680,7 @@ fn nothing_in_the_product_still_points_at_the_old_account_library() {
 fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {
     let me = std::process::id();
     let delta = |at: &str, name: &str, err: &str| serde_json::json!({"type": "attachment", "timestamp": at, "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": name, "error": err}]}});
-    let title = |t: &str| serde_json::json!({"type": "custom-title", "customTitle": t});
+    let title = |t: &str| serde_json::json!({"type": "ai-title", "aiTitle": t, "sessionId": "s"});
     let home_with = |tag: &str, pid: u32, sid: &str, recs: &[serde_json::Value]| {
         let home = tmpdir(tag);
         fs::create_dir_all(home.join("sessions")).unwrap();
