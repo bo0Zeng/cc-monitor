@@ -260,7 +260,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
     // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
     ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
-    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · adopt · render（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · adopt · render · repo（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］· 新计划框［新建］只排版"),
+    ("plan-new", "新帧命令：新计划框问的那一份（pb dump --domains · 落在哪 · 撞没撞上已有的一片 · 那一行 pb repo 都在后端）；新计划框只排版"),
     ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
     // 登录抽屉（`src/frontend/ui/login-reads.ts`）：在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
     ("login-start", "帧命令（内建档，跟着发起它的那条连接走）：起一趟登录，回登录链接 · 粘什么 · 会不会自己登完；登录抽屉只排版"),
@@ -700,7 +701,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "needs-answer",
-        "新帧命令：答一条挂着的待答请求（`control/asks/`：第一个答案落下、其余回 already_answered）；\
+        "新帧命令：答一条挂着的待答请求（`control/asks/`：第一个答案落下、其余回别处已答 gone）；\
          前端 `src/frontend/ui/answer-reads.ts::answerNeeds` 问（答题块里点了那一项），monitor 这一侧零发送点",
     ),
     // `skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
