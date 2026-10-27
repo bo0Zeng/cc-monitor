@@ -2,6 +2,7 @@
 //!
 //! - [`bookmarks`]：书签那两条（`bookmarks-read` · `-edit`）的入参与回包 · 目录归一的唯一一份；
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
+//! - [`front`]：↗ 切到终端的结局与浮层那一张（壳 · 本机后端 `session-window` 两个写家都调它，句子只在这一处取）；
 //! - [`frame`]：后端发给客户端的帧（每种一个具名结构，记录那一格是类型参数）与一行解一帧的 [`frame::decode`]；
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
@@ -40,6 +41,7 @@ pub mod fingerprint;
 pub mod fnv;
 pub mod frame;
 pub mod frame_shapes;
+pub mod front;
 pub mod listing;
 pub mod live;
 pub mod machine;

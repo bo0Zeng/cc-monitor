@@ -26,8 +26,11 @@ pub(crate) use crate::common::seen_terminal::{SshConnection, Terminal};
 /// 查到的事实：一串终端，或一条说得出的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Shown {
-    /// 最近动静在前。
-    By(Vec<Terminal>),
+    /// 最近动静在前；`tmux`：会话在 tmux 里（这一串是连着它的 tmux 客户端）。
+    By {
+        terminals: Vec<Terminal>,
+        tmux: bool,
+    },
     /// 在 tmux 里放在后台，现在没有终端连着。
     Detached,
     /// 不在 tmux 里，进程已经没有终端。
@@ -80,6 +83,9 @@ pub(crate) struct Showing {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) why: Option<ShownWhy>,
+    /// 会话在 tmux 里（问它的那台照带给出口：窗口关了时给不给［在终端里打开］）。旧版那台不带 ⇒ 当不在。
+    #[serde(default)]
+    pub(crate) tmux: bool,
 }
 
 /// 一个终端都没有的原因。
@@ -96,29 +102,23 @@ pub(crate) enum ShownWhy {
     Unreadable,
 }
 
-impl ShownWhy {
-    /// 线上那个词（`session-window` 的 `why` 照搬）。
-    pub(crate) fn word(self) -> &'static str {
-        match self {
-            ShownWhy::Detached => "detached",
-            ShownWhy::NoTerminal => "no-terminal",
-            ShownWhy::Unreadable => "unreadable",
-        }
-    }
-}
-
 /// 事实 ⇒ 线上成品。
 pub(crate) fn product(shown: &Shown) -> Showing {
     let empty = |why| Showing {
         terminals: Vec::new(),
         why: Some(why),
+        tmux: false,
     };
     match shown {
-        Shown::By(t) => Showing {
-            terminals: t.clone(),
+        Shown::By { terminals, tmux } => Showing {
+            terminals: terminals.clone(),
             why: None,
+            tmux: *tmux,
         },
-        Shown::Detached => empty(ShownWhy::Detached),
+        Shown::Detached => Showing {
+            tmux: true,
+            ..empty(ShownWhy::Detached)
+        },
         Shown::NoTerminal => empty(ShownWhy::NoTerminal),
         Shown::Unreadable => empty(ShownWhy::Unreadable),
     }
@@ -144,13 +144,19 @@ pub(crate) fn shown_by(pid: u32) -> Result<Shown, (&'static str, String)> {
             Some(false) => Shown::NoTerminal,
             None => Shown::Unreadable,
             Some(true) => match terminal_of(pid, None) {
-                Some(t) => Shown::By(vec![t]),
+                Some(t) => Shown::By {
+                    terminals: vec![t],
+                    tmux: false,
+                },
                 None => Shown::Unreadable,
             },
         });
     };
     Ok(match tmux_clients(pid, &tmux)? {
-        Clients::By(seen) => Shown::By(seen.into_iter().map(|(_, t)| t).collect()),
+        Clients::By(seen) => Shown::By {
+            terminals: seen.into_iter().map(|(_, t)| t).collect(),
+            tmux: true,
+        },
         Clients::Detached => Shown::Detached,
         Clients::Unreadable => Shown::Unreadable,
     })
@@ -159,16 +165,21 @@ pub(crate) fn shown_by(pid: u32) -> Result<Shown, (&'static str, String)> {
 /// 本机那一问（`session-window`）要的：此刻显示这个会话的终端进程（链从它起）和它的终端，最近动静在前；或没有终端连着。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Here {
-    By(Vec<(u32, Terminal)>),
+    /// `tmux`：会话在 tmux 里（它的环境里有 `TMUX`）。
+    By {
+        seen: Vec<(u32, Terminal)>,
+        tmux: bool,
+    },
     Detached,
 }
 
 /// `pid`（本机那个 claude 进程）此刻由哪个终端进程显示：在 tmux 里 ⇒ 连着它的 tmux 客户端（一个都没有 ⇒ `Detached`）；
 /// 不在 tmux 里、或读不出 tmux 那几格（Windows 读不到别的进程的环境）⇒ 它自己（它挂在那个终端上）。
 pub(crate) fn here_by(pid: u32) -> Result<Here, (&'static str, String)> {
-    if let Ok(Some(tmux)) = env(pid, TMUX_ENV) {
-        match tmux_clients(pid, &tmux)? {
-            Clients::By(seen) => return Ok(Here::By(seen)),
+    let in_tmux = env(pid, TMUX_ENV);
+    if let Ok(Some(tmux)) = &in_tmux {
+        match tmux_clients(pid, tmux)? {
+            Clients::By(seen) => return Ok(Here::By { seen, tmux: true }),
             Clients::Detached => return Ok(Here::Detached),
             Clients::Unreadable => {}
         }
@@ -178,7 +189,10 @@ pub(crate) fn here_by(pid: u32) -> Result<Here, (&'static str, String)> {
         activity: None,
         window: None,
     });
-    Ok(Here::By(vec![(pid, own)]))
+    Ok(Here::By {
+        seen: vec![(pid, own)],
+        tmux: matches!(in_tmux, Ok(Some(_))),
+    })
 }
 
 /// 问 tmux 谁连着：每个客户端的进程号与终端（最近动静在前）· 没有 · 读不出。

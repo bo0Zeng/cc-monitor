@@ -132,9 +132,21 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     assert!(wait_until(|| clients(&sock) == 2), "客户端 B 没连上");
 
     let got = shown_by(pane_pid).unwrap();
-    let Shown::By(ts) = got else {
-        panic!("两个终端连着却答成 {got:?}");
+    let Shown::By {
+        terminals: ts,
+        tmux: true,
+    } = got
+    else {
+        panic!("两个终端连着（在 tmux 里）却答成 {got:?}");
     };
+    assert!(
+        product(&Shown::By {
+            terminals: ts.clone(),
+            tmux: true
+        })
+        .tmux,
+        "在 tmux 里那一格照带给问它的那台"
+    );
     let view: Vec<Option<SshConnection>> = ts.iter().map(|t| t.ssh.clone()).collect();
     assert_eq!(
         view,
@@ -160,8 +172,12 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     assert_eq!(windows, vec![Some("4242-133000000000000000".into()), None]);
 
     // 本机那一问（`session-window`）：同样两个终端、同样的先后，连各自那个 tmux 客户端的进程号（链从它起，不从 pane 里的进程起）。
-    let Here::By(here) = here_by(pane_pid).unwrap() else {
-        panic!("两个终端连着，本机那一问却答成没有");
+    let Here::By {
+        seen: here,
+        tmux: true,
+    } = here_by(pane_pid).unwrap()
+    else {
+        panic!("两个终端连着（在 tmux 里），本机那一问却答成没有或不在 tmux 里");
     };
     assert_eq!(here.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(), ts);
     let listed = tmux(&sock, &["list-clients", "-F", "#{client_pid}"]);
@@ -220,20 +236,27 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
     assert!(wait_until(|| exec_settled(pid, "sleep")));
     assert_eq!(
         shown_by(pid).unwrap(),
-        Shown::By(vec![Terminal {
-            ssh: Some(SshConnection {
-                client_addr: "203.0.113.20".into(),
-                client_port: 51111,
-                server_addr: "203.0.113.2".into(),
-                server_port: 22,
-            }),
-            activity: None,
-            window: Some("4242-133000000000000000".into()),
-        }])
+        Shown::By {
+            terminals: vec![Terminal {
+                ssh: Some(SshConnection {
+                    client_addr: "203.0.113.20".into(),
+                    client_port: 51111,
+                    server_addr: "203.0.113.2".into(),
+                    server_port: 22,
+                }),
+                activity: None,
+                window: Some("4242-133000000000000000".into()),
+            }],
+            tmux: false,
+        }
     );
     // 本机那一问：不在 tmux 里 ⇒ 链从它自己起。
-    let Here::By(here) = here_by(pid).unwrap() else {
-        panic!("不在 tmux 里，本机那一问却答成没有");
+    let Here::By {
+        seen: here,
+        tmux: false,
+    } = here_by(pid).unwrap()
+    else {
+        panic!("不在 tmux 里，本机那一问却答成没有或在 tmux 里");
     };
     assert_eq!(here.iter().map(|(p, _)| *p).collect::<Vec<_>>(), vec![pid]);
     assert_eq!(here[0].1.window.as_deref(), Some("4242-133000000000000000"));
@@ -254,7 +277,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
     assert!(wait_until(|| exec_settled(bpid, "sleep")));
     assert_eq!(shown_by(bpid).unwrap(), Shown::NoTerminal);
     // 本机那一问不看有没有控制终端：链从它自己起（找不到窗口那一句归壳沿链去说）。
-    let Here::By(here) = here_by(bpid).unwrap() else {
+    let Here::By { seen: here, .. } = here_by(bpid).unwrap() else {
         panic!("没有控制终端，本机那一问却答成没有终端连着");
     };
     assert_eq!(here.iter().map(|(p, _)| *p).collect::<Vec<_>>(), vec![bpid]);
@@ -326,7 +349,7 @@ fn an_unknown_or_malformed_sid_is_said_not_guessed() {
     assert!(serde_json::from_value::<SidReq>(serde_json::json!({"sid": "-x"})).is_err());
     assert_eq!(
         serde_json::to_value(product(&Shown::Detached)).expect("json"),
-        serde_json::json!({ "terminals": [], "why": "detached" })
+        serde_json::json!({ "terminals": [], "why": "detached", "tmux": true })
     );
     let _ = std::fs::remove_dir_all(&home);
 }
