@@ -919,6 +919,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     rel_duration: "J28",
     size_text: "J31",
     count_text: "J32",
+    // 路径的显示形（家那一截写成 `~`）：后端与壳把显示形写进回包，界面 · 手机照抄，TS 侧没有孪生（`kit/path.ts::homeShort` 已删）。
+    home_short: NONE,
+    home_short_bytes: NONE,
     // 短写的计数（`2.1M`）：只后端写进成品（额度「1% ≈ 多少」那一格），界面照抄，TS 侧没有孪生。
     count_short: NONE,
     local_machine: "J22",
