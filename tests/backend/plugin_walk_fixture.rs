@@ -266,14 +266,14 @@ mod tests {
         deadline_secs: u64,
         env: &[(&str, &str)],
     ) -> Result<crate::plugin::invoke::Done, crate::plugin::invoke::NotRun> {
-        let mut r = crate::plugin::invoke::run(bin, args, deadline_secs, env, None);
+        let mut r = crate::plugin::invoke::run_fed(bin, args, deadline_secs, env, None, None);
         for _ in guard_core::wall::rounds() {
             match &r {
                 Err(crate::plugin::invoke::NotRun::Failed(m))
                     if m.raw.as_deref().is_some_and(|r| r.contains("os error 26")) =>
                 {
                     std::thread::sleep(std::time::Duration::from_millis(20));
-                    r = crate::plugin::invoke::run(bin, args, deadline_secs, env, None);
+                    r = crate::plugin::invoke::run_fed(bin, args, deadline_secs, env, None, None);
                 }
                 _ => break,
             }
@@ -303,7 +303,17 @@ mod tests {
             .to_string()
     }
 
-    /// 把假插件推过三跳：①② **真调用通用层**（`plugin::discover::find` · `plugin::invoke::run` · `Done::code`/`diagnosis()`），
+    /// 一跳的诊断：**stderr 优先**，空了才退回 stdout（取法是这个假插件自己的，通用层只给 `first_line`）。
+    fn diagnosis(d: &crate::plugin::invoke::Done) -> String {
+        let e = crate::plugin::invoke::first_line(&d.stderr);
+        if e.is_empty() {
+            crate::plugin::invoke::first_line(&d.stdout)
+        } else {
+            e
+        }
+    }
+
+    /// 把假插件推过三跳：①② **真调用通用层**（`plugin::discover::find` · `plugin::invoke::run_fed` · `Done::code`），
     /// ③ 是假插件拿自己的码表自问自答 —— 码表每插件一份，按定框就不该在通用层。
     fn walk(caps: &Caps, root: &Path) -> Result<Walk, Stop> {
         let name = plugin_name();
@@ -339,14 +349,14 @@ mod tests {
             }
         })?;
         // 同一条 argv、只差那一项 env，结果必须不同 —— 少了这一句，一个恒答同一张脸的假插件也能走完。
-        if refused.code == sealed.code || refused.diagnosis().is_empty() {
+        if refused.code == sealed.code || diagnosis(&refused).is_empty() {
             return Err(Stop::Inconsistent {
                 hop: HOPS[1],
                 why: format!(
                     "同一条 argv 只差那一项 env，两趟却给了同一张脸：\
                      被拒 code={:?} diag={:?} · 成事 code={:?}",
                     refused.code,
-                    refused.diagnosis(),
+                    diagnosis(&refused),
                     sealed.code
                 ),
             });
@@ -376,7 +386,7 @@ mod tests {
             done,
             bin,
             refused_code: refused.code,
-            refused_diag: refused.diagnosis(),
+            refused_diag: diagnosis(&refused),
             refused_word,
             sealed_code: sealed.code,
             sealed_word,
@@ -904,13 +914,10 @@ mod tests {
 
         // ③ 天花板：测试段里经通用口起进程的，除本文件之外**零处**。
         //
-        //    ⚠ 已知的**非真起进程**命中逐条登记 —— 那两处是分层判据自己的合成样本
-        //    （字符串里的调用形，不起任何进程）。这张表**只许变短**。
-        const SYNTHETIC_ONLY: &[(&str, &str)] = &[(
-            "layering_guard.rs",
-            "分层扫描的两处合成违规样本（字符串字面量，不起进程）",
-        )];
-        let needle = format!("invoke::{}(", "run");
+        //    ⚠ 已知的**非真起进程**命中逐条登记。这张表**只许变短**：起进程口只剩 `run_fed` 之后，
+        //    分层判据那两处合成样本（写的是已删的 `invoke::run`）不再命中，表空了。
+        const SYNTHETIC_ONLY: &[(&str, &str)] = &[];
+        let needle = format!("invoke::{}(", "run_fed");
         assert!(
             guard_core::test_source(own).contains(needle.as_str()),
             "本文件的测试段里找不到 `{needle}` —— 抽取坏了，下面那条天花板在空转"
@@ -984,12 +991,11 @@ mod tests {
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
         let napped = run_past_busy(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("卡住那条子命令没跑起来：{}", why_not_run(e)));
-        assert!(
-            napped.timed_out(),
-            "卡住的子进程没被期限收掉：code={:?}",
-            napped.code
+        assert_eq!(
+            napped.code,
+            Some(TIMED_OUT_CODE),
+            "卡住的子进程没被期限收掉"
         );
-        assert_eq!(napped.code, Some(TIMED_OUT_CODE));
         assert_eq!(
             code_word(napped.code),
             "deadline_hit",

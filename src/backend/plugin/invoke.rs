@@ -84,23 +84,6 @@ pub(crate) struct Done {
     pub(crate) waited_secs: Option<u64>,
 }
 
-impl Done {
-    /// 子进程是过了期限被收掉的吗。
-    pub(crate) fn timed_out(&self) -> bool {
-        self.code == Some(TIMED_OUT_CODE)
-    }
-
-    /// 摘一行诊断：**stderr 优先**，空了才退回 stdout。
-    pub(crate) fn diagnosis(&self) -> String {
-        let e = first_line(&self.stderr);
-        if e.is_empty() {
-            first_line(&self.stdout)
-        } else {
-            e
-        }
-    }
-}
-
 /// 取第一行非空内容（拿来当诊断）。
 pub(crate) fn first_line(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes)
@@ -150,17 +133,7 @@ fn not_run(bin: &Path, e: ChildFail) -> NotRun {
 /// 起它、**同步**等它退出（阻塞档的调用方用：它们本来就跑在 `spawn_blocking` 的线程上）。
 /// `deadline_secs` 是给它的期限；过了 ⇒ 整组被杀、交成 [`TIMED_OUT_CODE`]（`waited_secs` 是原语说的实际等了多久）。
 /// `dir` 是它的当前目录（有的程序按当前目录认自己在哪，如 pb 往上找工作区）；不给 ⇒ 照宿主的。
-pub(crate) fn run(
-    bin: &Path,
-    args: &[&str],
-    deadline_secs: u64,
-    env: &[(&str, &str)],
-    dir: Option<&Path>,
-) -> Result<Done, NotRun> {
-    run_fed(bin, args, deadline_secs, env, dir, None)
-}
-
-/// 同 [`run`]，另把 `stdin` 那几个字节喂进它的标准输入（`None` ⇒ 空设备）：读一段话的程序用（pb 的 `dump --refs`）。
+/// `stdin` 那几个字节喂进它的标准输入（`None` ⇒ 空设备）：读一段话的程序用（pb 的 `dump --refs`）。
 pub(crate) fn run_fed(
     bin: &Path,
     args: &[&str],

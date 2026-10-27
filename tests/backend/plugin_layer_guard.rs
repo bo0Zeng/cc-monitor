@@ -553,7 +553,7 @@ pub(crate) fn classify(code: Option<i32>, detail: &str) -> Result<(), (String, S
     // ⑤ 反向：今天生产段里那几行合法写法，一根针都不许命中。
     for innocent in [
         "pub(crate) const TIMED_OUT_CODE: i32 = 124;",
-        "        self.code == Some(TIMED_OUT_CODE)",
+        "            code: Some(TIMED_OUT_CODE),",
         "        md.permissions().mode() & 0o111 != 0",
         "            code: out.status.code(),",
     ] {

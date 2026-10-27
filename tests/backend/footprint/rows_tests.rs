@@ -666,10 +666,7 @@ fn every_host_declaration_is_pinned() {
         // 钩子诊断真有本机+远端两条路径（`diagnose_local_/remote_cc_bus_hooks`）
         ("cc-bus", "~/.claude/settings.json", Either),
         ("cc-bus", "~/.local/bin/cc-*", Either),
-        // ★ P4c 订正（08-12）：原写「5 个 IPC 全走 origin+ssh，**零本机读取路径** → Remote」
-        //   —— `P4a` 把读面三条做成了本机可用（同一条串、不包 ssh），下拉也加了「本机」档
-        //   ⇒ `Either`。理由的长版住 `tool_registry.rs` 那条 `TouchedFile`。
-        ("cc-bus", "~/.cc-bus/", Either),
+        // `~/.cc-bus/` 那一行随收件箱进后端删了（A13-8：收件箱住后端自己的数据目录 `~/.cc-monitor/cc-bus/`）。
         // 账号库：哪台机器的后端建它就在哪台（本机远端同一条路）→ 两端皆可。
         ("accounts", "~/.cc-monitor/accounts/", Either),
         // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。

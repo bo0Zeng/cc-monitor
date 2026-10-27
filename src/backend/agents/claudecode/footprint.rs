@@ -122,27 +122,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusBinNote", &[]))),
                     effect: TouchEffect::ReadOnly,
                 },
-                TouchedFile {
-                    path: "~/.cc-bus/",
-                    // ★★ **P4c 订正（08-12）：这段理由整个过期了，而过期的是 `P4a` 那一刀造成的。**
-                    //
-                    // 原文（T04 审计阻塞 2）写「`cc_bus.rs` 的全部 5 个 IPC……都以 `origin` 入参走
-                    // `cfg_of` → ssh 远端 exec，**一条本机读取路径都没有**；驾驶舱的 origin 下拉
-                    // 来自 `list_remote_mcp_origins`，连"本机"这一档都没有」。
-                    //
-                    // 两句今天都不成立：`P4a`（08-12）把**读面三条**做成了本机可用
-                    // （同一条命令串，只是不包进 ssh），并给驾驶舱的下拉**加了「本机」那一档**。
-                    //
-                    // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
-                    // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
-                    // 写面（`_broadcast`/`_kill`）也一样：本机走后端，由界面经通道直接说，本机与远端同一条路；
-                    // note 里把「读」与「写」分开说。
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.ccBusStateNote", &[])
-                    })),
-                    effect: TouchEffect::IndirectWrite,
-                },
             ],
         }],
     },

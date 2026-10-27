@@ -7,16 +7,16 @@
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
 //! `moved`（分块传走到哪，`transfer.rs`）。
 
+use cmd_wire::frame::Frame;
 use cmd_wire::phone::{CallEnd, LinkLine};
 use cmd_wire::record::OrUnread;
 use deploy::machine::{fold, product, Entry, Fact};
-use cmd_wire::frame::Frame;
 use resident_client::book::SessionBook;
 use resident_client::client::CallError;
-use resident_client::live::{Board, LiveCards};
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
 };
+use resident_client::live::{Board, LiveCards};
 use resident_client::watch::Desk;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -194,7 +194,12 @@ impl Folds {
             return self
                 .board
                 .apply(c)
-                .map(|(sid, run)| ("live", live_line(&self.board.cards_of(&sid, run.as_deref()))))
+                .map(|(sid, run)| {
+                    (
+                        "live",
+                        live_line(&self.board.cards_of(&sid, run.as_deref())),
+                    )
+                })
                 .into_iter()
                 .collect();
         }
@@ -213,7 +218,12 @@ impl Folds {
             .board
             .clear()
             .into_iter()
-            .map(|(sid, run)| ("live", live_line(&self.board.cards_of(&sid, run.as_deref()))))
+            .map(|(sid, run)| {
+                (
+                    "live",
+                    live_line(&self.board.cards_of(&sid, run.as_deref())),
+                )
+            })
             .collect();
         self.book = SessionBook::default();
         out.push(("book", book_line(&self.book)));
@@ -354,7 +364,9 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
             let got = match &e {
                 Event::State(s) => {
                     let mut out = match s {
-                        State::Connecting => folds.lock().unwrap_or_else(|e| e.into_inner()).reset(),
+                        State::Connecting => {
+                            folds.lock().unwrap_or_else(|e| e.into_inner()).reset()
+                        }
                         _ => Vec::new(),
                     };
                     let mut facts = mine.lock().unwrap_or_else(|e| e.into_inner());
@@ -732,7 +744,9 @@ mod tests {
     fn the_shared_frames_fold_into_the_same_book_the_desktop_gets() {
         let mut folds = Folds::default();
         let mut last = None;
-        for line in include_str!("../../../../tests/comms/resident-client/book-frames.jsonl").lines() {
+        for line in
+            include_str!("../../../../tests/comms/resident-client/book-frames.jsonl").lines()
+        {
             for (kind, body) in folds.frame(line) {
                 assert_eq!(kind, "book", "会话帧只交整份簿：{line}");
                 last = Some(body);
@@ -767,7 +781,10 @@ mod tests {
             folds.reset(),
             vec![
                 ("live", r#"{"sid":"s1","run":"a1","cards":[]}"#.to_string()),
-                ("book", serde_json::to_string(&SessionBook::default()).unwrap()),
+                (
+                    "book",
+                    serde_json::to_string(&SessionBook::default()).unwrap()
+                ),
             ]
         );
     }
