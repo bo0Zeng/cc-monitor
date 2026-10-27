@@ -6,10 +6,10 @@ use crate::plan::fixture::{dump, fake_pb, runs, scratch, workspace};
 use crate::plan::wire::{PlanAdopted, PlanCmdReply};
 use std::cell::RefCell;
 
-/// 界面能点的只剩 0.5 有的那几条；记原话 · 接过仓库的旧名 · 旧的画图命令都不在。
+/// 界面能点的只剩 0.5 有的那几条（`repo` 是新计划框的［新建］）；记原话 · 接过仓库的旧名 · 旧的画图命令都不在。
 #[test]
 fn only_the_verbs_pb_05_has_are_offered() {
-    assert_eq!(VERBS, ["continue", "pause", "adopt", "render"]);
+    assert_eq!(VERBS, ["continue", "pause", "adopt", "render", "repo"]);
     for gone in ["take", "record", "view"] {
         assert!(!VERBS.contains(&gone), "{gone}");
     }

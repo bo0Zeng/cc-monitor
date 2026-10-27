@@ -1,5 +1,6 @@
 //! 命令表 · 计划：读面 `plan-list` · `plan-read` · `plan-cell-view`（planned-build 的工作区 · 仓库 · 一个节点的 agent 视角；只读）；
-//! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `adopt` · `render`；写盘的是 pb）；
+//! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `adopt` · `render` · `repo`；写盘的是 pb）；
+//! 新计划框 `plan-new`（能选的领域 · 落在哪 · 要敲的那一行；只起 `pb dump --domains`）；
 //! 校验 `plan-pb-check`（一个路径能不能当 pb 用）；认消息里的编号 `plan-refs`（认编号交 pb 的 `dump --refs`）；
 //! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
 
@@ -19,7 +20,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 代敲也在阻塞档：起一次 pb（`render` 要画整张图）。写盘的是 pb（工作区配置 · 系统临时目录里那一页），本族不写。
     typed::blocking::<crate::faces::plan_face::PlanCommandCmd>(
-        "以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲",
+        "以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）· `repo`（在 `workspace` 那个目录登记 `path` 那一片，带 `domain`；撞上已有的一片 ⇒ 只带名字切过去）；这一侧带着 agent 身份 ⇒ 用户命令不代敲",
+    ),
+    // 新计划框：起一次 `pb dump --domains`（只读、不写盘）⇒ 阻塞档。
+    typed::blocking::<crate::faces::plan_face::PlanNewCmd>(
+        "新计划框问的那一份：那个目录能选的领域（`pb dump --domains`）· pb 往上找到的工作区 · 仓库落在哪 · 路径最后一段撞上的那一片 · 要敲的那一行 `pb repo …`；pb 不在 · 太旧写在回包里",
     ),
     typed::blocking::<crate::faces::plan_face::PlanPbCheckCmd>(
         "一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问",

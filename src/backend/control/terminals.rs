@@ -277,10 +277,26 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
 
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
 pub(crate) use cmd_wire::session::Refused;
+use cmd_wire::session::SentAct;
 
 /// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：`session-say` 恢复再送，换模型 / 权限档记下等恢复，同这一判。
 pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
     matches!(why, Some(Refused::NotKnown | Refused::Ended))
+}
+
+/// 结局与原因 ⇒ 送完之后出口可以做的下一步（出口照它摆，不按 `why` 自己挑）：
+/// 改得了的拒因（画面变了 · 一时认不出 · 不止一个终端）给再发一次；终端可能换了 · 没了 ⇒ 重读名单；画面可能变了 ⇒ 重抓一屏。
+pub(crate) fn acts_of(result: SentResult, why: Option<Refused>) -> Vec<SentAct> {
+    use SentAct::{Recapture, Relist, Retry};
+    match (result, why) {
+        (SentResult::Delivered, _) => vec![],
+        (SentResult::Unsure, _) => vec![Recapture],
+        (SentResult::Refused, Some(Refused::ScreenChanged)) => vec![Retry, Recapture],
+        (SentResult::Refused, Some(Refused::NotKnown)) => vec![Retry, Relist],
+        (SentResult::Refused, Some(Refused::Ambiguous)) => vec![Retry],
+        (SentResult::Refused, Some(Refused::Ended)) => vec![Relist],
+        (SentResult::Refused, _) => vec![],
+    }
 }
 
 /// 原因 ⇒ 给人看的那一句。
@@ -887,6 +903,7 @@ pub(crate) fn input_reply(result: SentResult, why: Option<Refused>, screen: Opti
         said: why.map(no_said),
         screen: screen.map(str::to_string),
         resumed: false,
+        acts: acts_of(result, why),
     }
 }
 

@@ -214,6 +214,28 @@
     color: var(--warn);
   }
 
+  /* 按组看那一枚末尾的 ×。 */
+  .pvChipX {
+    display: inline-flex;
+    align-items: center;
+    margin-right: calc(-1 * var(--space-2));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .pvChipX:hover {
+    color: var(--text);
+  }
+
+  /* 块表「组」那一格：组模块没答 ⇒ 「—」用警示色（原因在悬停）。 */
+  .pvGroups[data-tone="warn"] {
+    color: var(--warn);
+    cursor: help;
+  }
+
   .pvStrips {
     display: flex;
     flex: none;
