@@ -1132,6 +1132,18 @@
       "zh": "未发送 · 正文超过 1200 字节 · 写成文件，给路径",
       "args": []
     },
+    "beCcBus.envelope.notSameGroup": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 收件人不在发件人的组里",
+      "args": []
+    },
+    "beCcBus.envelope.noRoster": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 组员名单不可用",
+      "args": []
+    },
     "beCcBus.envelope.badArgs": {
       "kind": "error",
       "role": "命令行",
@@ -13267,7 +13279,7 @@
     "rsToolRegistry.tools.ccBusBinNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-bus 自己的安装脚本建的命令链接 · 非 cc-monitor 所建\n钩子诊断只查 cc-bus-stop-hook 在不在\n计数按 cc- 前缀数 · 别的工具建的同前缀链接也算在内",
+      "zh": "cc-bus 自己的安装脚本建的命令链接 · 非 cc-monitor 所建\n钩子诊断只查 cc-bus stop-hook 在不在\n计数按 cc- 前缀数 · 别的工具建的同前缀链接也算在内",
       "args": [],
       "limited": ["hook"]
     },
@@ -18371,7 +18383,7 @@
     "extPage.hooks.stop": {
       "kind": "body",
       "role": "说明",
-      "zh": "Stop → cc-bus-stop-hook",
+      "zh": "Stop → cc-bus stop-hook",
       "args": [],
       "limited": ["hook"]
     },

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# cc-peek [id] [--max-lines N] [--token-file PATH]
+# cc-bus peek [id] [--max-lines N] [--token-file PATH]
 #   两阶段读口的**第一跳:纯读**。渲染消息文本 ＋ 吐一个自包含令牌,**不写任何状态**。
-#   第二跳是 cc-commit(唯一的副作用)。cc-recv 一字不改地留着 ≡ peek 之后立刻 commit。
+#   第二跳是 cc-bus commit(唯一的副作用)。`cc-bus recv` 就是入口里 peek 接 commit,渲染只此一份。
 #
 # ## 为什么非有不可(设计,实测事故)
 #
@@ -10,7 +10,7 @@
 #  ⇒ 那 40 条再也读不到。」
 # ⇒ 两阶段口把这件事从「**推进了再退回**」换成「**没确认就不推进**」。
 #   而 `--max-lines` 是它顺带买到的解药:积压分若干轮排空,每轮都在上限以下
-#   (cc-recv 做不到分段 —— 它要么全推要么不推)。
+#   (一次推完的读法做不到分段 —— 它要么全推要么不推)。
 #
 # ## 令牌:`<from>.<to>.<anchor>`,**不落盘**
 #
@@ -44,23 +44,23 @@ ccbus_adapt_load || exit 13        # 两个 trait 装不齐就不干活(fail-clo
 id=""; maxlines=""; tokfile=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --max-lines)  [ $# -ge 2 ] || { echo "cc-peek: --max-lines 后面要跟一个数" >&2; exit 2; }
+    --max-lines)  [ $# -ge 2 ] || { echo "cc-bus peek: --max-lines 后面要跟一个数" >&2; exit 2; }
                   maxlines="$2"; shift 2 ;;
-    --token-file) [ $# -ge 2 ] || { echo "cc-peek: --token-file 后面要跟一个路径" >&2; exit 2; }
+    --token-file) [ $# -ge 2 ] || { echo "cc-bus peek: --token-file 后面要跟一个路径" >&2; exit 2; }
                   tokfile="$2"; shift 2 ;;
     --) shift; break ;;
-    -*) echo "cc-peek: 不认识的旗标 '$1'" >&2; exit 2 ;;
-    *)  [ -z "$id" ] || { echo "cc-peek: 多给了一个 id '$1'" >&2; exit 2; }; id="$1"; shift ;;
+    -*) echo "cc-bus peek: 不认识的旗标 '$1'" >&2; exit 2 ;;
+    *)  [ -z "$id" ] || { echo "cc-bus peek: 多给了一个 id '$1'" >&2; exit 2; }; id="$1"; shift ;;
   esac
 done
 if [ -n "$maxlines" ]; then
-  case "$maxlines" in ''|*[!0-9]*|0) echo "cc-peek: --max-lines 要正整数,给的是 '$maxlines'" >&2; exit 2;; esac
+  case "$maxlines" in ''|*[!0-9]*|0) echo "cc-bus peek: --max-lines 要正整数,给的是 '$maxlines'" >&2; exit 2;; esac
 fi
 # 🔴 令牌文件**不许落在总线目录里**:本命令的全部价值是"零写面",
 #    而一个写进 `$BUS/` 的令牌文件会把它变成"写了一点点",并且要有人清(撞 §3ter.2 那条)。
-case "${tokfile:-}" in "$BUS"/*) echo "cc-peek: --token-file 不许指向总线目录 $BUS 里" >&2; exit 2;; esac
-[ -n "$id" ] || id=$("$SELFDIR/cc-whoami")
-case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-peek: 非法/空 id '$id'" >&2; exit 2;; esac
+case "${tokfile:-}" in "$BUS"/*) echo "cc-bus peek: --token-file 不许指向总线目录 $BUS 里" >&2; exit 2;; esac
+[ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh")
+case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-bus peek: 非法/空 id '$id'" >&2; exit 2;; esac
 
 inbox="$BUS/inbox/$id.jsonl"
 posf="$BUS/state/$id.pos"
@@ -69,16 +69,16 @@ posf="$BUS/state/$id.pos"
 # ★ 锁:**共享读锁,锁文件仍是 `<inbox>.lock`**(格④「锁不搬家,只多一处」)。
 #   罩住「量行数 ＋ 取那一段 ＋ 算 anchor」,否则 route_deliver 的追加会让读者读到半行。
 # ⚠ `9>>"$inbox.lock"` 是本脚本**唯一**碰盘的一处(打开锁文件);它在判据里**逐条登记豁免** ——
-#   不开这个 fd 就没有锁,而锁文件必须与 route_deliver / cc-recv 是同一个(不许另开第二把)。
+#   不开这个 fd 就没有锁,而锁文件必须与 route_deliver / cc-bus commit 是同一个(不许另开第二把)。
 raw=$(
   (
     store_lock_shared 9 || exit 13     # 锁失败要**显式**退出:别指望 errexit 替你收场
     total=$(awk 'END{print NR}' "$inbox")
     pos=$(cat "$posf" 2>/dev/null || echo 0)
-    [[ "$pos" =~ ^[0-9]+$ ]] || pos=0          # 损坏归零:与 cc-recv:16 同一条
-    # ⚠ 这里**刻意不把"越界"改写成 0**(cc-recv:17 那条自愈):peek 不写,
-    #   而令牌的 from 必须与盘上那个值逐字相等,否则 cc-commit 的 CAS 永远比不中。
-    #   截短这一格由 cc-commit 按「cur > total」认出来,并逐条登记为单调性的唯一豁免。
+    [[ "$pos" =~ ^[0-9]+$ ]] || pos=0          # 损坏归零:与 cc-bus commit 同一条
+    # ⚠ 这里**刻意不把"越界"改写成 0**(越界归零那条自愈):peek 不写,
+    #   而令牌的 from 必须与盘上那个值逐字相等,否则 cc-bus commit 的 CAS 永远比不中。
+    #   截短这一格由 cc-bus commit 按「cur > total」认出来,并逐条登记为单调性的唯一豁免。
     from=$pos
     [ "$pos" -le "$total" ] || pos=0
     if [ "$total" -gt "$pos" ]; then
@@ -87,18 +87,16 @@ raw=$(
       new=$(sed -n "$((pos+1)),${to}p" "$inbox")
       printf '%s.%s.%s\n' "$from" "$to" "$(twophase_anchor "$inbox" "$to")"
       # 显示:fromjson? 跳过非法 JSON 坏行(防毒丸卡死)。给 agent 读的那一段只印线上码(act · tier),不放显示用的词。
-      # 🔴 **这一段与 cc-recv 是同一套渲染**,判据逐字对拍两边的 jq 程序 ——
-      #    分成两份写就会漂,而"漂了"在输出上只表现成"两条命令给出不同的正文"。
+      # 渲染只此一份:`cc-bus recv` 印的就是这里的输出(入口里 peek 接 commit)。
       printf '%s\n' "$new" \
-        | jq -Rr 'fromjson? // empty | "[cc-bus] id=\(.id // "-") from=\(.from // "?") ts=\(.ts // "?") tier=\(.tier // "?") act=\(.act // "?")\(if .re then " re=\(.re)" else "" end)\ntitle: \(.title // "")\(if ((.refs // []) | length) > 0 then "\nrefs: \(.refs | join(" "))" else "" end)\n\(.text // "")\n(reply: cc-send \(.from // "?") --act answer --re \(.id // "-") --title \"…\")\n"'
+        | jq -Rr 'fromjson? // empty | "[cc-bus] id=\(.id // "-") from=\(.from // "?") ts=\(.ts // "?") tier=\(.tier // "?") act=\(.act // "?")\(if .re then " re=\(.re)" else "" end)\ntitle: \(.title // "")\(if ((.refs // []) | length) > 0 then "\nrefs: \(.refs | join(" "))" else "" end)\n\(.text // "")\n(reply: cc-bus send \(.from // "?") --act answer --re \(.id // "-") --title \"…\")\n"'
       _seen=$(printf '%s\n' "$new" | grep -c . || true)
       _ok=$(printf '%s\n' "$new" | jq -Rr 'fromjson? // empty | .id // "-"' 2>/dev/null | grep -c . || true)
       if [ "${_seen:-0}" -gt "${_ok:-0}" ]; then
         printf '⚠ 跳过 %s 条读不懂的消息（收件箱 %s 的第 %s..%s 行，它们不会再出现）\n' \
           "$(( _seen - _ok ))" "$inbox" "$((pos+1))" "$to"
       fi
-      # ⚠ 哨兵是**承重的**:命令替换会把尾随换行全吃掉,而 cc-recv 的正文末尾**有**空行。
-      #   不补这一字节,「与 cc-recv 同一套渲染」就差一个换行 —— 判据 B7 现打逮到过。
+      # ⚠ 哨兵是**承重的**:命令替换会把尾随换行全吃掉,而正文末尾**有**空行 —— 不补这一字节就差一个换行。
       printf '\001'
     fi
   ) 9>>"$inbox.lock"

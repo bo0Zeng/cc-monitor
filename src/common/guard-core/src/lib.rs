@@ -1743,7 +1743,7 @@ fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, S
             }
             // ★ **空列表 = 不按扩展名筛**〔`PS1` 08-13 补的能力〕。
             //
-            // 为什么非补不可：`src/shared/cc-bus/` 那 17 个文件里，脚本（`cc-send` / `cc-recv` / …）
+            // 为什么非补不可：`src/shared/cc-bus/` 那 17 个文件里，脚本（`cc-bus send` / `cc-bus recv` / …）
             // **没有扩展名**。原来空列表会退化成「一个都不要」——于是想扫那棵树的判据
             // 只能自己 `read_dir`，而那正是 `scanning_guard_registry` 那条**递减棘轮**禁的，
             // 且它逐字「**不许把上限调上去让今天好过**」。

@@ -107,7 +107,7 @@ fn an_install_over_identical_files_refreshes_a_stale_record() {
 fn the_embedded_file_list_matches_the_repo() {
     let root = guard_core::addr::repo_root().join("src/shared/cc-bus");
     // ⚠ 走 `guard_core::scan_tree!(&root, &[])` —— **空列表 = 不筛扩展名**，
-    //   那个能力是 08-13 补进原语的：cc-bus 的脚本（`cc-send` / …）**没有扩展名**，
+    //   那个能力是 08-13 补进原语的：cc-bus 的入口（`cc-bus`）**没有扩展名**，
     //   而原语此前按扩展名筛 ⇒ 想扫这棵树只能自己 `read_dir`，
     //   那又撞 `scanning_guard_registry` 的递减棘轮（「不许把上限调上去让今天好过」）。
     //   ⇒ **缺的是原语的能力，不是纪律的例外。**
@@ -160,8 +160,8 @@ fn the_state_names_exactly_the_files_that_would_change() {
     );
     let dest = t.0.join("skills/cc-bus");
     std::fs::write(dest.join("SKILL.md"), b"old").unwrap();
-    std::fs::remove_file(dest.join("scripts/cc-send")).unwrap();
-    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-send"]);
+    std::fs::remove_file(dest.join("scripts/cc-bus-send.sh")).unwrap();
+    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-bus-send.sh"]);
 }
 
 /// 目录在、但一个内嵌文件都没有 ⇒ 全部要写，且目录在（装时先改名留作备份）。
@@ -297,13 +297,13 @@ fn the_writes_are_precise_and_ignore_extra_files() {
     let dest = d.0.join("skills/cc-bus");
     assert_eq!(writes(&skills), Vec::<String>::new());
     std::fs::write(dest.join("SKILL.md"), b"tampered").unwrap();
-    std::fs::write(dest.join("scripts/cc-peek"), b"tampered").unwrap();
-    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-peek"]);
+    std::fs::write(dest.join("scripts/cc-bus-peek.sh"), b"tampered").unwrap();
+    assert_eq!(writes(&skills), vec!["SKILL.md", "scripts/cc-bus-peek.sh"]);
     install(&d.0).unwrap();
     std::fs::write(dest.join("scripts/cc-legacy-thing"), b"old script").unwrap();
     assert_eq!(writes(&skills), Vec::<String>::new(), "清单外的文件不算");
-    std::fs::remove_file(dest.join("scripts/cc-recv")).unwrap();
-    assert_eq!(writes(&skills), vec!["scripts/cc-recv"]);
+    std::fs::remove_file(dest.join("scripts/cc-bus")).unwrap();
+    assert_eq!(writes(&skills), vec!["scripts/cc-bus"]);
 }
 
 /// ★ 落点被一个**普通文件**占着（用户手滑 / 旧版留下的残骸）〔08-13 复核〕。
@@ -377,14 +377,14 @@ fn an_unwritable_skills_dir_fails_loudly() {
 
 /// ★ 装完就能跑：`scripts/` 下的必须可执行。
 ///
-/// ⚠ 反面也钉：不带 shebang 的示例（`examples/policy.tsv`）**不许**被顺手标成可执行。
+/// ⚠ 反面也钉：不带 shebang 的示例（`examples/config`）**不许**被顺手标成可执行。
 #[cfg(unix)]
 #[test]
 fn deployed_scripts_are_executable() {
     use std::os::unix::fs::PermissionsExt;
     let t = tmpdir("exec");
     install(&t.0).expect("部署");
-    for rel in ["scripts/cc-send", "scripts/cc-bus-stop-hook"] {
+    for rel in ["scripts/cc-bus", "scripts/cc-bus-stop-hook.sh"] {
         let p = t.0.join("skills/cc-bus").join(rel);
         let mode = std::fs::metadata(&p).unwrap().permissions().mode();
         assert!(
@@ -392,63 +392,79 @@ fn deployed_scripts_are_executable() {
             "{rel} 装完不可执行等于没装（mode={mode:o}）"
         );
     }
-    let policy = t.0.join("skills/cc-bus/examples/policy.tsv");
-    let mode = std::fs::metadata(&policy).unwrap().permissions().mode();
+    let example = t.0.join("skills/cc-bus/examples/config");
+    let mode = std::fs::metadata(&example).unwrap().permissions().mode();
     assert!(
         mode & 0o111 == 0,
-        "policy.tsv 不是脚本，却被标成了可执行（mode={mode:o}）"
+        "examples/config 不是脚本，却被标成了可执行（mode={mode:o}）"
     );
 }
 
-/// 命令面只剩收发这几条（起停会话 · 保活 · 守护进程 · 广播 · 登记都不在：会话 id 由 cc-monitor 认）。
-/// 装出去的 `scripts/`（去掉被 source 的 `.sh`）· 安装脚本链进 PATH 的那一串 · 装出去的 `examples/` 都照这一份。
-const COMMANDS: &[&str] = &[
-    "cc-bus-stop-hook",
-    "cc-commit",
-    "cc-list",
-    "cc-log",
-    "cc-peek",
-    "cc-recv",
-    "cc-send",
-    "cc-whoami",
-];
-
+/// 命令面只有一个入口 `cc-bus`（各动词的本体是 `cc-bus-<动词>.sh`，被它调）：装出去的 `scripts/` 里不带 `.sh` 的只有它 ·
+/// 安装脚本链进 PATH 的只有它 · 老名字（`cc-send` 那一族）一个不留 · 装出去的 `examples/` 只有 `config`。
 #[test]
-fn the_install_manifest_carries_only_the_send_and_receive_commands() {
-    let mut scripts: Vec<&str> = FILES
+fn the_install_manifest_carries_one_entry_and_no_old_names() {
+    let mut entries: Vec<&str> = FILES
         .iter()
         .filter_map(|(rel, _)| rel.strip_prefix("scripts/"))
         .filter(|s| !s.ends_with(".sh"))
         .collect();
-    scripts.sort_unstable();
-    assert_eq!(scripts, COMMANDS, "装出去的命令不是收发那几条");
+    entries.sort_unstable();
+    assert_eq!(entries, ["cc-bus"], "装出去的命令不止一个入口");
+    let verbs: Vec<&str> = FILES
+        .iter()
+        .filter_map(|(rel, _)| rel.strip_prefix("scripts/cc-bus-")?.strip_suffix(".sh"))
+        .filter(|v| {
+            !v.starts_with("adapt") && !v.starts_with("agent") && *v != "lib" && *v != "install"
+        })
+        .collect();
+    let mut verbs = verbs;
+    verbs.sort_unstable();
+    assert_eq!(
+        verbs,
+        [
+            "commit",
+            "list",
+            "log",
+            "peek",
+            "send",
+            "stop-hook",
+            "unread",
+            "whoami"
+        ],
+        "各动词的本体（`recv` 是入口里 peek 接 commit，不单出一份）"
+    );
+    for old in [
+        "cc-send",
+        "cc-recv",
+        "cc-peek",
+        "cc-commit",
+        "cc-list",
+        "cc-log",
+        "cc-whoami",
+        "cc-bus-stop-hook",
+    ] {
+        assert!(
+            !FILES
+                .iter()
+                .any(|(rel, _)| *rel == format!("scripts/{old}")),
+            "老名字 {old} 还在装口单子里"
+        );
+    }
     let mut examples: Vec<&str> = FILES
         .iter()
         .filter_map(|(rel, _)| rel.strip_prefix("examples/"))
         .collect();
     examples.sort_unstable();
-    assert_eq!(
-        examples,
-        ["config", "policy.tsv"],
-        "装出去的示例多了删掉的那几样"
-    );
+    assert_eq!(examples, ["config"], "装出去的示例多了删掉的那几样");
     let install = include_str!("../../../src/shared/cc-bus/scripts/cc-bus-install.sh");
-    let line = install
+    let links: Vec<&str> = install
         .lines()
-        .find(|l| l.starts_with("for s in cc-"))
-        .expect("安装脚本里找不到链进 PATH 的那一串");
-    let mut linked: Vec<&str> = line
-        .trim_start_matches("for s in ")
-        .split(';')
-        .next()
-        .unwrap()
-        .split_whitespace()
+        .filter(|l| l.trim_start().starts_with("ln "))
         .collect();
-    linked.sort_unstable();
-    let want: Vec<&str> = COMMANDS
-        .iter()
-        .copied()
-        .filter(|c| *c != "cc-log")
-        .collect();
-    assert_eq!(linked, want, "安装脚本链进 PATH 的不是收发那几条");
+    assert_eq!(
+        links,
+        [r#"ln -sfn "$SRC/cc-bus" "$dst""#],
+        "安装脚本链进 PATH 的只该有入口那一条"
+    );
 }
