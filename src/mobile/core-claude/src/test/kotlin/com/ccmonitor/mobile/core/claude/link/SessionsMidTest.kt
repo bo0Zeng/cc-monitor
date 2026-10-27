@@ -59,7 +59,7 @@ class SessionsMidTest {
     fun `session-say：入参 sid · text · client；结局同送字那一形`() {
         assertEquals(mapOf("sid" to "s1", "text" to "/compact", "client" to "mobile"), SessionSay.args("s1", "/compact"))
         assertEquals(TerminalInput.Result.Delivered, SessionSay.of(mapOf("result" to "delivered")))
-        assertEquals(TerminalInput.Result.Refused("先答完需手动", "waiting"), SessionSay.of(mapOf("result" to "refused", "why" to "waiting", "said" to "先答完需手动")))
+        assertEquals(TerminalInput.Result.Refused("先答完需手动", "waiting", emptyList()), SessionSay.of(mapOf("result" to "refused", "why" to "waiting", "said" to "先答完需手动")))
     }
 
     @Test

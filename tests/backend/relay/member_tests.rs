@@ -73,7 +73,7 @@ fn an_oversized_content_length_is_refused_without_allocating_it() {
 
 /// ★★★ **上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream_select::endpoint::relay_with`，
 /// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、各段各落各位；再交给**生产段那张决策表**
-/// （`accounts::upstream_select::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成一个未登记的名字（手写）⇒ 拒（404 ＋ 原因头，FIX3 之前是 502）。
+/// （`accounts::upstream_select::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成一个未登记的名字（手写）⇒ 拒（404 ＋ 原因头）。
 ///
 #[test]
 fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {

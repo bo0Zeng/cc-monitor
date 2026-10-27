@@ -125,7 +125,7 @@ class ChatSessionTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
-                    "session-open" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))
+                    "session-open" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "acts" to listOf("retry", "relist"))))
                     "session-say" -> ok(mapOf("result" to "delivered"))
                     else -> Reply.LinkDown
                 }
@@ -421,7 +421,14 @@ class ChatSessionTest {
     fun `送达未知 · 画面变了 · 会话已结束：各是各的标，字照文案表`() =
         runTest {
             val link = FakeCoreLink()
-            val results = ArrayDeque(listOf(mapOf("result" to "unsure"), mapOf("result" to "refused", "why" to "screen_changed", "said" to "画面已变"), mapOf("result" to "refused", "why" to "ended", "said" to "已结束")))
+            val results =
+                ArrayDeque(
+                    listOf(
+                        mapOf("result" to "unsure", "acts" to listOf("recapture")),
+                        mapOf("result" to "refused", "why" to "screen_changed", "said" to "画面已变", "acts" to listOf("retry", "recapture")),
+                        mapOf("result" to "refused", "why" to "ended", "said" to "已结束", "acts" to listOf("relist")),
+                    ),
+                )
             link.answer = { cmd, _ -> if (cmd == "session-say") ok(results.removeFirst()) else Reply.LinkDown }
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
             s.send("a")

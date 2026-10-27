@@ -16,6 +16,7 @@ import type { Origin } from "./ipc/origin";
 import { screenText, type ScreenLine } from "./terminal-screen";
 import type { Preview } from "./generated/Preview";
 import type { Sent } from "./generated/Sent";
+import type { SentAct } from "./generated/SentAct";
 import type { TerminalsList } from "./generated/TerminalsList";
 
 /** 抓一屏的期限。 */
@@ -91,16 +92,20 @@ export async function listTerminals(origin: Origin): Promise<TerminalRow[]> {
 /** 送什么：一段字（`enter` ＝ 之后补一个回车）或一颗键（有限键表，后端定）。 */
 export type TerminalSend = { text: string; enter: boolean } | { key: string };
 
-/** 送字 / 送键的回话：送到了 · 不知道送没送到 · 被拒（原因码给程序认 · 那一句后端写好；画面变了时带新指纹）。 */
-export type TerminalSent = { result: "delivered" } | { result: "unsure" } | { result: "refused"; why: string; said: string; screen: string | null };
+/** 送字 / 送键的回话：送到了 · 不知道送没送到 · 被拒（那一句后端写好；画面变了时带新指纹）；`acts` 是后端判好的下一步（再发一次 · 重抓 · 重读名单）。 */
+export type TerminalSent =
+  | { result: "delivered"; acts: SentAct[] }
+  | { result: "unsure"; acts: SentAct[] }
+  | { result: "refused"; said: string; screen: string | null; acts: SentAct[] };
 
 /** 送字 / 送键的期限（与抓一屏同）。 */
 const INPUT_BUDGET_MS = 20_000;
 
 /** `terminal-input` 的回包 ⇒ 结局（被拒的那一句后端写好；缺了落「被拒」，不按码猜）。 */
 export function sentOf(v: Sent): TerminalSent {
-  if (v.result !== "refused") return { result: v.result };
-  return { result: "refused", why: v.why ?? "", said: v.said ?? noSaid(), screen: v.screen ?? null };
+  const acts = v.acts ?? [];
+  if (v.result !== "refused") return { result: v.result, acts };
+  return { result: "refused", said: v.said ?? noSaid(), screen: v.screen ?? null, acts };
 }
 
 /** 往那个终端送一段字或一颗键；带上看到的那一屏的指纹（画面已经变了 ⇒ 后端不送）。失败 ⇒ 抛 `ControlError`。 */

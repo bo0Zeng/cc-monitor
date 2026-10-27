@@ -9,10 +9,18 @@ export type PlanCommandReq = {
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `adopt` · `render`。
+ * `continue` · `pause` · `adopt` · `render` · `repo`（`repo` 的 `workspace` 是新计划框里选的目录）。
  */
-cmd: "continue" | "pause" | "adopt" | "render", 
+cmd: "continue" | "pause" | "adopt" | "render" | "repo", 
 /**
  * `adopt` 接过哪一个仓库（仓库名）；别的动词不带。
  */
-slice?: string | null, };
+slice?: string | null, 
+/**
+ * `repo` 登记的仓库相对工作区根在哪；别的动词不带。
+ */
+path?: string | null, 
+/**
+ * `repo` 选的那一档领域（缺 ⇒ 不带）；别的动词不带。
+ */
+domain?: string | null, };

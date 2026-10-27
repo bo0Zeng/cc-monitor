@@ -46,6 +46,10 @@ pub enum CodexRecordKind {
     AgentMessage,
     /// event_msg token_count —— **用量**（F5；info.total/last_token_usage）。
     TokenCount,
+    /// 顶层 token_usage_record —— 一次请求的用量（0.159 写：`usage` · `response_id`）。簿记，不出记录。
+    TokenUsage,
+    /// 顶层 inter_agent_communication_metadata —— 来信的元数据（`trigger_turn`）。簿记，不出记录。
+    AgentMailMeta,
     /// event_msg 其它子型（mcp_tool_call_end / thread_rolled_back / thread_settings_applied / …）。
     OtherEvent,
     /// 未知顶层 type / 信封缺失（前向兼容、坏行）。
@@ -64,6 +68,8 @@ pub fn classify(v: &Value) -> CodexRecordKind {
         "turn_context" => K::TurnContext,
         "world_state" => K::WorldState,
         "inter_agent_communication" => K::AgentMail,
+        "inter_agent_communication_metadata" => K::AgentMailMeta,
+        "token_usage_record" => K::TokenUsage,
         "response_item" => match payload_type(payload) {
             Some("message") => K::Message,
             Some("reasoning") => K::Reasoning,
@@ -454,7 +460,7 @@ pub(crate) fn message_said(payload: &Value) -> Option<UserText> {
 }
 
 /// agent 之间的一封信（`response_item.agent_message` · 顶层 `inter_agent_communication`）是谁说的。
-fn agent_mail_said(payload: &Value) -> UserText {
+pub(crate) fn agent_mail_said(payload: &Value) -> UserText {
     let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
     let s = |k: &str| payload.get(k).and_then(Value::as_str);
     mail_said(&text, s("author"), s("recipient"))
