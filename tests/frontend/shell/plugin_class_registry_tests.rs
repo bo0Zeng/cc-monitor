@@ -351,11 +351,11 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
         bus.iter().any(|n| *n == "bus-list"),
         "后端命令表里抠不到 `bus-list` —— 抽取器坏了（或那条命令改了名），下面那条零命中会恒绿：{bus:?}"
     );
-    // ★ **刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），backend 代读等于把消息从人那里偷走
+    // ★ **刻意没有 `bus-recv`**：`cc-bus recv` 有副作用（推进已读位置），backend 代读等于把消息从人那里偷走
     //   （理由全文在 `src/backend/control/cc_bus.rs` 的模块头注 ①）。
     assert!(
         !bus.iter().any(|n| *n == "bus-recv"),
-        "后端长出了 `bus-recv`：`cc-recv` 推进已读位置，backend 代读 = 把消息从人那里偷走。今天的 `bus-*`：{bus:?}"
+        "后端长出了 `bus-recv`：`cc-bus recv` 推进已读位置，backend 代读 = 把消息从人那里偷走。今天的 `bus-*`：{bus:?}"
     );
 
     // ③ 起进程口**恰好一处**，且那一处住在**通用调用口**里 —— `E5`/`EL1` 那条

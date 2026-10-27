@@ -33,9 +33,10 @@ const FILES: &[(&str, &[u8])] = &[
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),
     ),
+    // 唯一的入口（PATH 上只有它）；各动词的本体是同目录的 `cc-bus-<动词>.sh`。
     (
-        "examples/policy.tsv",
-        include_bytes!("../../shared/cc-bus/examples/policy.tsv"),
+        "scripts/cc-bus",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus"),
     ),
     (
         "scripts/cc-bus-adapt.sh",
@@ -58,12 +59,8 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-agent-codex.sh"),
     ),
     (
-        "scripts/cc-commit",
-        include_bytes!("../../shared/cc-bus/scripts/cc-commit"),
-    ),
-    (
-        "scripts/cc-peek",
-        include_bytes!("../../shared/cc-bus/scripts/cc-peek"),
+        "scripts/cc-bus-commit.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-commit.sh"),
     ),
     (
         "scripts/cc-bus-install.sh",
@@ -74,29 +71,32 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-lib.sh"),
     ),
     (
-        "scripts/cc-bus-stop-hook",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-stop-hook"),
+        "scripts/cc-bus-list.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-list.sh"),
     ),
     (
-        "scripts/cc-list",
-        include_bytes!("../../shared/cc-bus/scripts/cc-list"),
-    ),
-    // 只读看收件箱尾巴（后端 `bus-inbox` 转调它）。
-    (
-        "scripts/cc-log",
-        include_bytes!("../../shared/cc-bus/scripts/cc-log"),
+        "scripts/cc-bus-log.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-log.sh"),
     ),
     (
-        "scripts/cc-recv",
-        include_bytes!("../../shared/cc-bus/scripts/cc-recv"),
+        "scripts/cc-bus-peek.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-peek.sh"),
     ),
     (
-        "scripts/cc-send",
-        include_bytes!("../../shared/cc-bus/scripts/cc-send"),
+        "scripts/cc-bus-send.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-send.sh"),
     ),
     (
-        "scripts/cc-whoami",
-        include_bytes!("../../shared/cc-bus/scripts/cc-whoami"),
+        "scripts/cc-bus-stop-hook.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-stop-hook.sh"),
+    ),
+    (
+        "scripts/cc-bus-unread.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-unread.sh"),
+    ),
+    (
+        "scripts/cc-bus-whoami.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-whoami.sh"),
     ),
 ];
 

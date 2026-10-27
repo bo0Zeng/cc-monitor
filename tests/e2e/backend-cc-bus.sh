@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `P4f`：backend 的 cc-bus 命令 —— `--bus-list` / `--bus-inbox` **真跑**；发信 `cc-send` 问 `--bus-envelope` 核信封、再自己投（A13-2）。
+# `P4f`：backend 的 cc-bus 命令 —— `--bus-list` / `--bus-inbox` **真跑**；发信 `cc-bus send` 问 `--bus-envelope` 核信封、再自己投（A13-2）。
 #
 # ## 为什么必须有真跑这一层
 #
@@ -67,7 +67,7 @@ fi
 tmux kill-session -t "=$_canary" 2>/dev/null || true
 
 SCRIPTS="$REPO/src/shared/cc-bus/scripts"
-[ -x "$SCRIPTS/cc-list" ] || { echo "仓内没有 cc-list：$SCRIPTS"; exit 1; }
+[ -x "$SCRIPTS/cc-bus" ] || { echo "仓内没有 cc-bus：$SCRIPTS"; exit 1; }
 
 pass=0; fail=0
 chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
@@ -75,7 +75,6 @@ chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "
 # 一次调用 = 一个干净的 env（**逐次显式给全**，免得上一格的变量漏进来）
 d() {
   env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-      CCBUS_POLICY_MODE="${POLICY:-off}" \
       "$TIMEOUT" "$WALL_CEILING_S" "$D" -- "$@" 2>"$SANDBOX/err.txt"
 }
 
@@ -104,7 +103,7 @@ chk "★ 有记录的那条：标题是会话自己的（不是会话 id）· �
 chk "★ 这台没记录的那条：判不了 ⇒ live=null（不是 false）· 标题照实就是会话 id" \
   "$(printf '%s' "$out" | jq -r --arg s "$SU" '.agents[] | select(.id==$s) | [.title, .live] | map(tostring) | join("|")')" "$SU|null"
 
-# ===== 发信：cc-send 问后端 `bus-envelope` 核信封（唯一一处），再自己走管线投递 =====
+# ===== 发信：cc-bus send 问后端 `bus-envelope` 核信封（唯一一处），再自己走管线投递 =====
 # 台架的 ccm：一份记账的桩 —— `--bus-envelope` 原样转给被测的后端二进制（真核），看屏 / 说一句只记下来、答「送到了」。
 #   `--session-self`（「我是哪条会话」）答 `$SELF_SID`；它空着 ⇒ 照后端的形状拒成 `not_in_session`。
 #   不起真 claude、不碰真会话：敲门那一下到桩为止，桩里看得见 cc-bus 要后端做什么（`idle_only` 带没带）。
@@ -128,13 +127,13 @@ EOF
 chmod +x "$FK/ccm"
 # 一次发信 = 一个干净的 env（逐次给全）。FROM 缺 ⇒ SA。
 snd() {
-  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-      CC_BUS_HOME="$BUS" SELF_SID="${FROM-$SA}" CCBUS_POLICY_MODE="${POLICY:-off}" \
-      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$@" 2>"$SANDBOX/snd.err"
+  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="${SNDHOME:-$NOHOME}" \
+      CC_BUS_HOME="$BUS" SELF_SID="${FROM-$SA}" \
+      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" send "$@" 2>"$SANDBOX/snd.err"
 }
 lines_of() { if [ -f "$BUS/inbox/$1.jsonl" ]; then wc -l < "$BUS/inbox/$1.jsonl" | tr -d ' '; else echo 0; fi; }
 
-echo "[3] cc-send：信封过后端、落进收件人的收件箱；缺省二档、不敲门"
+echo "[3] cc-bus send：信封过后端、落进收件人的收件箱；缺省二档、不敲门"
 : > "$CALLS"; : > "$SAYS"
 snd "$SB" --act inform --title "占位标题" "占位正文" >/dev/null; _rc=$?
 chk "退出 0" "$_rc" "0"
@@ -149,7 +148,7 @@ chk "  信封确实是问后端核的（问过一次 bus-envelope）" "$(grep -c
 
 echo "[4] ★ 信封不合格当场拒（rc=2）、一个字节都不写；那一句是后端文案表里的那一句"
 _before="$(lines_of "$SB")"
-rej() {  # <期望的那一句的文案键> <cc-send 参数…>
+rej() {  # <期望的那一句的文案键> <cc-bus send 参数…>
   local key="$1"; shift
   snd "$@" >/dev/null; local rc=$?
   chk "  [$key] 退出码 2" "$rc" "2"
@@ -172,7 +171,7 @@ chk "★ 拒掉的一封都没进收件箱" "$(lines_of "$SB")" "$_before"
 head -c 1200 /dev/zero | tr '\0' y | snd "$SB" --act inform --title "正好 1200 字节" - >/dev/null; _rc=$?
 chk "  对照：正好 1200 字节（从 stdin 读）照样发得出去" "$_rc|$(lines_of "$SB")" "0|$((_before + 1))"
 
-echo "[5] ★ 一档：投完敲门，且要后端「只在闲着时送」；被路由层拦下 ⇒ rc=3"
+echo "[5] ★ 一档：投完敲门，且要后端「只在闲着时送」"
 : > "$CALLS"; : > "$SAYS"
 snd "$SB" --tier 1 --act request --title "合一下" --ref commit:393349b8b >/dev/null; _rc=$?
 chk "退出 0" "$_rc" "0"
@@ -180,18 +179,35 @@ chk "★ 敲了门：先看屏、再说一句" "$(grep -c -- '--terminal-preview
 chk "★ 说的那一句要后端只在闲着时送（idle_only）、敲的是收件人那条会话、带着看到的指纹" \
   "$(jq -sc '.[0] | [.idle_only, .sid, .seen_screen]' "$SAYS")" "[true,\"$SB\",\"fp-0\"]"
 chk "  敲门那一句不带正文（只说去收信）" "$(jq -s -r '.[0].text | contains("合一下")' "$SAYS")" "false"
-printf 'probe*\tnobody\n%s\tnobody\n' "$SA" > "$BUS/policy.tsv"
-POLICY=on snd "$SB" --act inform --title "t" >/dev/null; _rc=$?
-chk "★ 被路由层拦下：rc=3（与信封被拒的 2 分得开）" "$_rc" "3"
-rm -f "$BUS/policy.tsv"
+chk "  敲门那一句叫对方跑 cc-bus recv（一个入口）" "$(jq -s -r '.[0].text | contains("cc-bus recv")' "$SAYS")" "true"
+SW="eeee0000-1111-2222-3333-444444444444"
+: > "$CALLS"; : > "$SAYS"
+CCBUS_ADAPT_OS=windows snd "$SW" --tier 1 --act request --title "Windows 那一侧" >/dev/null; _rc=$?
+chk "★ Windows 那一侧（CCBUS_ADAPT_OS=windows）：一档照样经后端敲门，不靠适配层读会话" "$_rc|$(grep -c -- '--session-say' "$CALLS")|$(jq -sc '.[0].sid' "$SAYS")" "0|1|\"$SW\""
+
+echo "[5b] ★ 组范围（后端核信封那一处判）：发件人在组里 ⇒ 只送得到同组；名单读不到 ⇒ 拒；退 3 与信封写错的 2 分得开"
+# 沙箱家里的一份注解（只采结构）：SA · SD 在「开发组」，SG 不在任何组。
+GH="$SANDBOX/grouphome"; mkdir -p "$GH/.cc-monitor"
+SD="d0000000-1111-2222-3333-444444444444"; SG="99999999-1111-2222-3333-444444444444"
+printf '{"version":1,"entries":{"%s":{"starred":false,"customTitle":null,"groups":["g1"],"updatedAt":1},"%s":{"starred":false,"customTitle":null,"groups":["g1"],"updatedAt":1}},"groups":{"g1":{"name":"开发组","made":1,"named":1}}}\n' "$SA" "$SD" > "$GH/.cc-monitor/history-metadata.json"
+SNDHOME="$GH" snd "$SG" --act inform --title "组外" "x" >/dev/null; _rc=$?
+chk "★ 收件人不在发件人那组：退 3、一个字节不写" "$_rc|$(lines_of "$SG")" "3|0"
+chk "  stderr 那一句带着发件人在哪组（开发组）" "$(grep -c '开发组' "$SANDBOX/snd.err")" "1"
+SNDHOME="$GH" snd "$SD" --act inform --title "组内" "x" >/dev/null; _rc=$?
+chk "★ 同组照常投到" "$_rc|$(lines_of "$SD")" "0|1"
+FROM="$SG" SNDHOME="$GH" snd "$SD" --act inform --title "组外的人发进来" "x" >/dev/null; _rc=$?
+chk "  发件人不在任何组 ⇒ 照今天，发给谁都行" "$_rc|$(lines_of "$SD")" "0|2"
+printf 'not json' > "$GH/.cc-monitor/history-metadata.json"
+SNDHOME="$GH" snd "$SD" --act inform --title "读不到名单" "x" >/dev/null; _rc=$?
+chk "★ 名单读不到 ⇒ 退 3（不退回成全放行）· 一个字节不写" "$_rc|$(lines_of "$SD")|$(grep -c 'group roster not read' "$SANDBOX/snd.err")" "3|2|1"
 
 echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$EMPTY" HOME="$NOHOME" PATH="$EMPTY" \
     "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err6.txt"
 chk "码是 not_installed（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err6.txt" 2>/dev/null)" "not_installed"
 msg="$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err6.txt" 2>/dev/null)"
-chk "  列出了 ~/.local/bin 那一处" "$(printf '%s' "$msg" | grep -c '.local/bin/cc-list')" "1"
-chk "  列出了 skills 那一处" "$(printf '%s' "$msg" | grep -c 'skills/cc-bus/scripts/cc-list')" "1"
+chk "  列出了 ~/.local/bin 那一处" "$(printf '%s' "$msg" | grep -c '.local/bin/cc-bus')" "1"
+chk "  列出了 skills 那一处" "$(printf '%s' "$msg" | grep -c 'skills/cc-bus/scripts/cc-bus')" "1"
 chk "  告诉人怎么指过去" "$(printf '%s' "$msg" | grep -c 'CC_BUS_BIN_DIR')" "1"
 
 echo "[7] ★ 两个入口都有：CLI 面上调得动"
@@ -208,8 +224,8 @@ echo "[8] ★ cc-bus 命令卡住时，backend 不许陪着一起卡"
 # ⚠ 修法**不是**在后端里加计时器（零定时器铁律 + 协议逐字「超时一律推给客户端」）——
 #   而是让**子进程自己**有期限（timeout 前缀，同 ccm 问后端那条）。
 mkdir -p "$SANDBOX/hangbin"
-printf '#!/bin/bash\nsleep %s\n' "$((2 * WALL_CEILING_S))" > "$SANDBOX/hangbin/cc-log"
-chmod +x "$SANDBOX/hangbin/cc-log"
+printf '#!/bin/bash\nsleep %s\n' "$((2 * WALL_CEILING_S))" > "$SANDBOX/hangbin/cc-bus"
+chmod +x "$SANDBOX/hangbin/cc-bus"
 # 卡住的那一个睡两倍兜底上限、外面按兜底上限掐 ⇒ 期限不生效就是被掐（退出码 124）。不按墙钟数「几秒内回来」。
 printf '{"id":"x_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" \
     CC_BUS_BIN_DIR="$SANDBOX/hangbin" CC_BUS_TIMEOUT_SECS=2 \
@@ -236,20 +252,20 @@ for _c in --ping --bus-list; do
     "$([ -n "$_o" ] && [ "$_rc9" -ne 124 ] && echo yes || echo "no（退出码 $_rc9，输出 ${_o:-<空>}）")" "yes"
 done
 
-echo "[10] ★ 人读的 cc-list：名字与在不在只问 cc-monitor；没装就只列收件箱、说判不了"
-# 装了：桩把 `--bus-list` 转给被测的后端（真判），cc-list 照它答的原样印。
+echo "[10] ★ 人读的 cc-bus list：名字与在不在只问 cc-monitor；没装就只列收件箱、说判不了"
+# 装了：桩把 `--bus-list` 转给被测的后端（真判），cc-bus list 照它答的原样印。
 _l="$(env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" CC_BUS_HOME="$LB" CC_BUS_BIN_DIR="$SCRIPTS" \
-      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-list" 2>/dev/null)"
+      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" list 2>/dev/null)"
 chk "★ 装了 ccm：每个收件箱一行，在不在照后端答的（有记录的 false · 没记录的 null）" \
   "$(printf '%s\n' "$_l" | awk -F'\t' -v a="$SR" -v b="$SU" '$1==a||$1==b{print $1"|"$2}' | sort | tr '\n' ' ')" "$(printf '%s|false\n%s|null\n' "$SR" "$SU" | sort | tr '\n' ' ')"
 _NL="$SANDBOX/noccm-list"; mkdir -p "$_NL"
-for _t in bash sh env awk cat basename dirname readlink grep sed tr; do _p="$(command -v "$_t")" && ln -sf "$_p" "$_NL/$_t"; done
-_l="$(env PATH="$_NL" HOME="$NOHOME" CC_BUS_HOME="$LB" "$SCRIPTS/cc-list" 2>"$SANDBOX/cl.err")"
+for _t in bash sh env awk cat basename dirname readlink grep sed tr uname flock; do _p="$(command -v "$_t")" && ln -sf "$_p" "$_NL/$_t"; done
+_l="$(env PATH="$_NL" HOME="$NOHOME" CC_BUS_HOME="$LB" "$SCRIPTS/cc-bus" list 2>"$SANDBOX/cl.err")"
 chk "★ 没装 ccm：只列会话 id 与待读，并说名字与在不在判不了" \
   "$(printf '%s\n' "$_l" | sort | tr '\n' ' ')|$(grep -c 'cannot be told' "$SANDBOX/cl.err")" "$(printf '%s\t2\n%s\t1\n' "$SR" "$SU" | sort | tr '\n' ' ')|1"
 
 echo "[11] ★ 收信的那一段只印线上码（act · tier），不放显示用的词"
-_r="$(env CCM_BIN="$FK/ccm" CALLS="$CALLS" SELF_SID="$SB" CC_BUS_HOME="$BUS" HOME="$NOHOME" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-recv" 2>/dev/null)"
+_r="$(env CCM_BIN="$FK/ccm" CALLS="$CALLS" SELF_SID="$SB" CC_BUS_HOME="$BUS" HOME="$NOHOME" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" recv 2>/dev/null)"
 chk "★ 每一封印 act= · tier= · title:" \
   "$(printf '%s\n' "$_r" | grep -c '^\[cc-bus\] id=m[0-9a-f]* from='"$SA"' ts=[^ ]* tier=[12] act=[a-z]*')" "3"
 chk "  标题一行" "$(printf '%s\n' "$_r" | grep -c '^title: 占位标题$')" "1"
@@ -267,7 +283,7 @@ echo 1 > "$MB/state/old_x.pos"
 printf 'm-old\t0\told_y\n' > "$MB/state/lastread-old_x__old_y"
 printf '%s\n' '{"from":"old_x","ts":"t4","text":"收件人换不出会话 id"}' > "$MB/inbox/old_z.jsonl"
 env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-    CC_BUS_HOME="$MB" SELF_SID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "迁完之后的第一封" >/dev/null 2>&1
+    CC_BUS_HOME="$MB" SELF_SID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" send "$SY" --act ask --title "迁完之后的第一封" >/dev/null 2>&1
 chk "★ 迁过一次：标记在" "$([ -e "$MB/state/envelope-2" ] && echo 在 || echo 没有)" "在"
 chk "★ 旧的按名字的收件箱不在原处了" "$(ls "$MB/inbox" | grep -c '^old_')" "0"
 chk "  旧状态（已读位置 · lastread）也挪走了" "$(ls "$MB/state" | grep -cE '^old_|^lastread-')" "0"
@@ -279,7 +295,7 @@ chk "  读过的那一条不搬、换不出会话 id 的不搬（只在存档里
 chk "  bus.log 记下了留在存档里的那两条" "$(grep -c 'MIGRATE archived-only' "$MB/log/bus.log")" "2"
 chk "  迁完之后那一封照常投到" "$(wc -l < "$MB/inbox/$SY.jsonl" | tr -d ' ')" "1"
 env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-    CC_BUS_HOME="$MB" SELF_SID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$SY" --act ask --title "再一封" >/dev/null 2>&1
+    CC_BUS_HOME="$MB" SELF_SID="$SX" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" send "$SY" --act ask --title "再一封" >/dev/null 2>&1
 chk "★ 只迁一次：再发一封不再迁（存档只有一份）" "$(ls -d "$MB"/legacy/*/ | wc -l | tr -d ' ')|$(wc -l < "$MB/inbox/$SX.jsonl" | tr -d ' ')" "1|1"
 
 echo "[13] ★ 「我是哪条会话」只问 ccm 的 --session-self（装与不装 cc-monitor 各一条 · Codex 会话照样收得到）"
@@ -292,45 +308,75 @@ _wp="$(tmux display-message -p -t "=whoami_cc:" '#{pane_id}' 2>/dev/null)"
 tmux set-option -p -t "$_wp" @ccm_sid "$DECOY" >/dev/null 2>&1
 chk "  台架自检：窗格上确实挂着诱饵标记" "$(tmux display-message -p -t "$_wp" '#{@ccm_sid}' 2>/dev/null)" "$DECOY"
 # 一次 = 一个干净的 env；诱饵三样（CC_BUS_ID · CLAUDE_CODE_SESSION_ID · 窗格标记）全摆上。
-idrun() {  # <要跑的脚本> [参数…]；SELF_SID / AGENT / CCM 由调用方给
+idrun() {  # <动词> [参数…]；SELF_SID / AGENT / CCM 由调用方给
   local s="$1"; shift
   env ${CCM:+CCM_BIN="$CCM"} D="$D" CALLS="$CALLS" SAYS="$SAYS" SELF_SID="${SELF_SID-}" HOME="$NOHOME" PATH="${IDPATH:-$PATH}" \
       CC_BUS_HOME="$IB" CCBUS_ADAPT_AGENT="${AGENT:-claude}" CLAUDE_CONFIG_DIR="$CLA" \
       CC_BUS_ID="$DECOY" CLAUDE_CODE_SESSION_ID="$DECOY" TMUX_PANE="$_wp" \
-      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/$s" "$@" 2>"$SANDBOX/id.err"
+      "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" "$s" "$@" 2>"$SANDBOX/id.err"
 }
-# 收件箱里给两条会话各放一封（经 cc-send 正常投：信封过后端）。
+# 收件箱里给两条会话各放一封（经 cc-bus send 正常投：信封过后端）。
 FROM="$SA" snd "$SC" --act inform --title "给真身份的一封" "x" >/dev/null
 FROM="$SA" snd "$DECOY" --act inform --title "给诱饵的一封" "x" >/dev/null
 cp "$BUS/inbox/$SC.jsonl" "$IB/inbox/"; cp "$BUS/inbox/$DECOY.jsonl" "$IB/inbox/"
 for AGENT in claude codex; do
-  CCM="$FK/ccm" SELF_SID="$SC" idrun cc-whoami > "$SANDBOX/who.txt"; _rc=$?
-  chk "★ 装了 ccm（$AGENT 词典）：cc-whoami 给的是 --session-self 答的那条（诱饵一个不认）" "$_rc|$(cat "$SANDBOX/who.txt")" "0|$SC"
+  CCM="$FK/ccm" SELF_SID="$SC" idrun whoami > "$SANDBOX/who.txt"; _rc=$?
+  chk "★ 装了 ccm（$AGENT 词典）：cc-bus whoami 给的是 --session-self 答的那条（诱饵一个不认）" "$_rc|$(cat "$SANDBOX/who.txt")" "0|$SC"
   rm -f "$IB/state/"*.pos
-  _h="$(printf '{}' | CCM="$FK/ccm" SELF_SID="$SC" idrun cc-bus-stop-hook)"; _rc=$?
+  _h="$(printf '{}' | CCM="$FK/ccm" SELF_SID="$SC" idrun stop-hook)"; _rc=$?
   chk "★ 装了 ccm（$AGENT 词典）：Stop 钩子把那条会话的信喂回（拦停 · 是给真身份的那一封）" \
     "$_rc|$(printf '%s' "$_h" | jq -r '.decision' 2>/dev/null)|$(printf '%s' "$_h" | jq -r '.reason' 2>/dev/null | grep -c '给真身份的一封')|$(printf '%s' "$_h" | jq -r '.reason' 2>/dev/null | grep -c '给诱饵的一封')" "0|block|1|0"
 done
 AGENT=claude
-CCM="$FK/ccm" SELF_SID="" idrun cc-whoami >/dev/null; _rc=$?
-chk "★ ccm 说不在会话里：cc-whoami 退 1（不退回去认诱饵）" "$_rc" "1"
+CCM="$FK/ccm" SELF_SID="" idrun whoami >/dev/null; _rc=$?
+chk "★ ccm 说不在会话里：cc-bus whoami 退 1（不退回去认诱饵）" "$_rc" "1"
 # 没装：PATH 里只有基本工具（没有 ccm · cc-monitor-backend），家目录里也没有 ~/.cc-monitor/bin/ccm。
 _NC="$SANDBOX/noccm"; mkdir -p "$_NC"
-for _t in bash sh env awk cat wc date tr sed grep head tail mkdir touch flock mv rm sort cut timeout jq cksum mktemp readlink dirname basename; do
+for _t in bash sh env awk cat wc date tr sed grep head tail mkdir touch flock mv rm sort cut timeout jq cksum mktemp readlink dirname basename uname; do
   _p="$(command -v "$_t")" && ln -sf "$_p" "$_NC/$_t"
 done
 chk "  台架自检：这个 PATH 里没有 ccm" "$(PATH="$_NC" command -v ccm cc-monitor-backend >/dev/null 2>&1 && echo 有 || echo 没有)" "没有"
 rm -f "$IB/state/"*.pos
-IDPATH="$_NC" SELF_SID="$SC" idrun cc-whoami >/dev/null; _rc=$?
-chk "★ 没装 ccm：cc-whoami 退 1、说没装 cc-monitor（诱饵一个不认）" "$_rc|$(grep -c 'no cc-monitor backend' "$SANDBOX/id.err")" "1|1"
-_h="$(printf '{}' | IDPATH="$_NC" SELF_SID="$SC" idrun cc-bus-stop-hook)"; _rc=$?
+IDPATH="$_NC" SELF_SID="$SC" idrun whoami >/dev/null; _rc=$?
+chk "★ 没装 ccm：cc-bus whoami 退 1、说没装 cc-monitor（诱饵一个不认）" "$_rc|$(grep -c 'no cc-monitor backend' "$SANDBOX/id.err")" "1|1"
+_h="$(printf '{}' | IDPATH="$_NC" SELF_SID="$SC" idrun stop-hook)"; _rc=$?
 chk "★ 没装 ccm：Stop 钩子静默放行（不喂、不推已读位置）" "$_rc|${_h:-<空>}|$(ls "$IB/state" | grep -c '\.pos$')" "0|<空>|0"
 _before="$(wc -l < "$IB/inbox/$SC.jsonl" | tr -d ' ')"
-IDPATH="$_NC" idrun cc-send "$SC" --act inform --title "t" >/dev/null; _rc=$?
-chk "★ 没装 ccm：cc-send 退 1、一个字节不写" "$_rc|$(wc -l < "$IB/inbox/$SC.jsonl" | tr -d ' ')" "1|$_before"
+IDPATH="$_NC" idrun send "$SC" --act inform --title "t" >/dev/null; _rc=$?
+chk "★ 没装 ccm：cc-bus send 退 1、一个字节不写" "$_rc|$(wc -l < "$IB/inbox/$SC.jsonl" | tr -d ' ')" "1|$_before"
 env PATH="$_NC" HOME="$NOHOME" CC_BUS_HOME="$IB" bash -c '. "$1/cc-bus-lib.sh" && route_load_config && route_nudge "$2" "$3"' _ "$SCRIPTS" "$SC" "$SA" 2>/dev/null
 chk "★ 没装 ccm：敲门那一步照实记 NUDGE noccm（只入收件箱，等 Stop 钩子）" "$(grep -c "NUDGE noccm sid=$SC" "$IB/log/bus.log")" "1"
 tmux kill-session -t "=whoami_cc" 2>/dev/null || true
+
+echo "[14] ★ unread：只读的未读数（与名单的待读同一个口径），一个字节不写"
+UB="$SANDBOX/unbus"; mkdir -p "$UB"/{inbox,state,log}; touch "$UB/state/envelope-2"
+printf '%s\n' '{"id":"m1"}' '{"id":"m2"}' '{"id":"m3"}' > "$UB/inbox/$SC.jsonl"; : > "$UB/inbox/$SC.jsonl.lock"; echo 1 > "$UB/state/$SC.pos"
+unr() { env HOME="$NOHOME" CC_BUS_HOME="$UB" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus" unread "$@" 2>"$SANDBOX/un.err"; }
+_usnap() { (cd "$UB" && find . -printf '%p %s %T@\n' | sort | md5sum); }
+_ub="$(_usnap)"
+_u="$(unr "$SC")"; _rc=$?
+chk "★ 三封读掉一封 ⇒ 2（退出 0）" "$_rc|$_u" "0|2"
+_u="$(unr "$SA")"; _rc=$?
+chk "  没有收件箱 ⇒ 0" "$_rc|$_u" "0|0"
+unr "a/b" >/dev/null; _rc=$?
+chk "  id 不是那个形状 ⇒ 退 2" "$_rc" "2"
+chk "★ 跑过三趟，总线目录一个字节没变（不建目录 · 不迁 · 不写锁文件以外的东西）" "$(_usnap)" "$_ub"
+
+echo "[15] ★ 装：PATH 上只有 cc-bus 一个命令；从前链进来的老名字删掉，别人的同名命令不碰"
+IH="$SANDBOX/insthome"; mkdir -p "$IH/.local/bin" "$IH/other"
+ln -s "$IH/.claude/skills/cc-bus/scripts/cc-send" "$IH/.local/bin/cc-send"        # 老版装进来的（指向某个 cc-bus/scripts/，已经不在）
+ln -s "$SCRIPTS/cc-whoami" "$IH/.local/bin/cc-whoami"                              # 老版装进来的（指向仓里）
+printf '#!/bin/sh\n' > "$IH/other/cc-recv"; chmod +x "$IH/other/cc-recv"; ln -s "$IH/other/cc-recv" "$IH/.local/bin/cc-recv"   # 别人的
+env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" CC_BUS_HOME="$IH/.cc-bus" bash "$SCRIPTS/cc-bus-install.sh" >"$SANDBOX/inst.out" 2>&1; _rc=$?
+chk "★ 装完链接目录里只有 cc-bus（＋ 别人的那一个）" "$_rc|$(ls "$IH/.local/bin" | tr '\n' ' ')" "0|cc-bus cc-recv "
+chk "  cc-bus 指向仓里这一份入口" "$(readlink -f "$IH/.local/bin/cc-bus")" "$SCRIPTS/cc-bus"
+chk "  别人的同名命令原样留着" "$(readlink "$IH/.local/bin/cc-recv")" "$IH/other/cc-recv"
+_hv="$(env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" cc-bus help 2>&1)"; _rc=$?
+chk "  装完在 PATH 上叫得动：cc-bus help 退 0、列出各动词" "$_rc|$(printf '%s' "$_hv" | grep -cE '^ +(send|recv|peek|commit|list|whoami|unread|log|stop-hook) ')" "0|9"
+env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" cc-bus nosuchverb >/dev/null 2>&1; _rc=$?
+chk "  不认识的动词退 2" "$_rc" "2"
+env HOME="$IH" PATH="$IH/.local/bin:/usr/bin:/bin" CC_BUS_HOME="$IH/.cc-bus" bash "$SCRIPTS/cc-bus-install.sh" >/dev/null 2>&1
+chk "  再装一次：照旧只有那两个（幂等）" "$(ls "$IH/.local/bin" | tr '\n' ' ')" "cc-bus cc-recv "
 
 echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好名字 · 收件箱只看尾巴）"
 # 台架造一个**脏**的总线家（只采结构：文件名不过字符集的收件箱 · 坏行 · 已读位置）。
@@ -350,12 +396,12 @@ chk "★ 收件箱只看尾巴（末 2 行：一条坏、一条好）" "$(printf
 chk "★ 读收件箱不推已读位置" "$(cat "$DB/state/alpha_cc.pos")" "$_pos_before"
 chk "  也不在 state/ 里写任何东西" "$(ls "$DB/state" | tr '\n' ' ')" "$_state_before"
 printf '{"id":"--help"}' | dd --bus-inbox >/dev/null
-chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
-# 老 cc-bus：`cc-list` 不认 --tsv（照打人读表）或还是上一版的名册 ⇒ 明说要重新部署，不解成一份空名单。
+chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-bus log 之前拒）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
+# 老 cc-bus：`cc-bus list` 不认 --tsv（照打人读表）或还是上一版的名册 ⇒ 明说要重新部署，不解成一份空名单。
 _TOOOLD="$(zh_frag beCcBus.read.tooOld)"
 _old="$SANDBOX/oldbus"; mkdir -p "$_old"
 for _shape in 'echo "ID           TMUX               待读"' 'printf "#cc-list-tsv\\t1\\nalpha_cc\\talpha_cc:0.0\\tts\\t1\\t0\\n#skipped\\t0\\n"'; do
-  printf '#!/bin/sh\n%s\n' "$_shape" > "$_old/cc-list"; chmod +x "$_old/cc-list"
+  printf '#!/bin/sh\n%s\n' "$_shape" > "$_old/cc-bus"; chmod +x "$_old/cc-bus"
   env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$DB" CC_BUS_BIN_DIR="$_old" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err.txt"
   # 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
   chk "★ 老 cc-bus（${_shape:0:12}…）⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"

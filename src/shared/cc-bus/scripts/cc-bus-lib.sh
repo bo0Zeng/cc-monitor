@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# cc-bus-lib.sh — 路由管线的【唯一实现】,被 cc-send source(投递只一条路:就地跑管线写进收件箱)。
+# cc-bus-lib.sh — 路由管线的【唯一实现】,被 cc-bus send source(投递只一条路:就地跑管线写进收件箱)。
 # 约定:route_* 阀门返回 0=放行,返回 1=拦截(并已 route_log 记原因)。
 # 本文件只提供函数、不自执行。BUS 由调用方设好(或此处按 CC_BUS_HOME 兜底)。
 #
-# 管线顺序(route_process):policy → rate → deliver → nudge → log。防风暴只靠限流。
+# 管线顺序(route_process):rate → deliver → nudge → log。防风暴只靠限流;范围(组)在后端核信封那一处判,这里不判。
 #
 # config 键(~/.cc-bus/config,sourceable KEY=VAL,全部有默认):
 #   CCBUS_NUDGE_DEBOUNCE  同一收件人两次敲门最小间隔秒(默 2)
-#   CCBUS_POLICY_MODE     off=全放行 / on=按 policy.tsv 强制 ACL(默 off)
 #   CCBUS_RATE_PAIR / CCBUS_RATE_GLOBAL / CCBUS_RATE_WINDOW  限流(见 route_rate_check)
-# policy.tsv 行:  <from-glob>\t<允许的 to-glob,逗号分隔>   (# 开头为注释)
 
 : "${BUS:=${CC_BUS_HOME:-$HOME/.cc-bus}}"
 
@@ -22,9 +20,9 @@ ccbus_adapt_load || return 13
 
 # ── 敲门那一句 ───────────────────────────────────────────────────────────
 # 🔴 敲门那一句是对方的输入,正文进去就成了指令 ⇒ 只填发信人(过了白名单)。正文只经 Stop 钩子喂回。
-ccbus_knock_text() { printf '🔔 cc-bus: 你有来自 %s 的新消息,运行 cc-recv 读取并按内容处理' "$1"; }
+ccbus_knock_text() { printf '🔔 cc-bus: 你有来自 %s 的新消息,运行 cc-bus recv 读取并按内容处理' "$1"; }
 
-# 两阶段读口的锚(cc-peek 发、cc-commit 校验,**两边必须是同一份实现**,否则永远比不中)。
+# 两阶段读口的锚(cc-bus peek 发、cc-bus commit 校验,**两边必须是同一份实现**,否则永远比不中)。
 # 取第 <行号> 行现算 cksum,形如 `<校验和>-<字节数>`,零新依赖。
 twophase_anchor() { sed -n "${2}p" "$1" | cksum | awk '{print $1"-"$2}'; }
 
@@ -32,7 +30,6 @@ route_load_config() {
   # shellcheck disable=SC1091
   [ -f "$BUS/config" ] && . "$BUS/config" || true
   : "${CCBUS_NUDGE_DEBOUNCE:=2}"
-  : "${CCBUS_POLICY_MODE:=off}"
   : "${CCBUS_RATE_PAIR:=0}"             # 0=关
   : "${CCBUS_RATE_GLOBAL:=0}"           # 0=关
   : "${CCBUS_RATE_WINDOW:=60}"
@@ -47,34 +44,7 @@ route_load_config() {
 
 route_log() { printf '[%s] %s\n' "$(store_now)" "$*" >> "$BUS/log/bus.log" 2>/dev/null || true; }
 
-# 阀门1:ACL。off/无 policy.tsv → 放行;on → 首个匹配 from 的规则决定 to 是否允许。
-route_policy_check() {
-  local from="$1" to="$2" pf="$BUS/policy.tsv" mode="${CCBUS_POLICY_MODE:-off}"
-  case "${mode,,}" in on|1|true|yes|enabled) ;; *) return 0;; esac   # 大小写不敏感;其余=全放行
-  [ -f "$pf" ] || return 0
-  local fglob allow g matched=0 ok=0
-  while IFS=$'\t' read -r fglob allow; do
-    [ -n "$fglob" ] || continue
-    case "$fglob" in \#*) continue;; esac
-    # shellcheck disable=SC2254
-    if [[ "$from" == $fglob ]]; then
-      matched=1
-      # 用 read -ra 按逗号切,避免 globs=($allow) 对 "*" 做路径名展开(会把 * 展成文件名)
-      local globs; IFS=',' read -ra globs <<< "$allow"
-      for g in "${globs[@]}"; do
-        g="${g// /}"; [ -n "$g" ] || continue
-        # shellcheck disable=SC2254
-        if [[ "$to" == $g ]]; then ok=1; break; fi
-      done
-      break
-    fi
-  done < "$pf"
-  { [ "$matched" = 1 ] && [ "$ok" = 1 ]; } && return 0
-  route_log "REJECT acl $from->$to"
-  return 1
-}
-
-# 阀门2:限流(per-pair + global 固定窗口计数 + 熔断)。全 0=关(放行)。
+# 阀门:限流(per-pair + global 固定窗口计数 + 熔断)。全 0=关(放行)。
 # 拆成【只读 CHECK】(投递前)+ 【COMMIT】(deliver 成功后才做):
 # 一次 deliver 失败不留计数增量:发信方重发时不会被误 THROTTLE。
 # 代价:并发投递下限额变近似(可能超出约并发度),对限流可接受。
@@ -126,6 +96,27 @@ _rate_bump() {
     if [ $(( now - start )) -ge "$win" ]; then start=$now; cnt=0; fi
     printf '%s %s\n' "$start" "$((cnt+1))" > "$f"
   ) 7>>"$f.lock"
+}
+
+# 未读数(名单的待读 · `cc-bus unread` 都照它):收件箱行数 − 已读位置。口径与 peek 读的那一段相同 ——
+#   末行没换行也算一行;位置坏了按 0;位置比行数大(收件箱被截短)按 0。
+# 只读:不建目录;锁文件在才拿共享锁(用读的 fd 开它,不建);没有锁文件 = 从没人往里投过(投的那一下必建它)。
+_ccbus_unread_count() {
+  local total pos
+  total=$(awk 'END{print NR}' "$1")
+  pos=$(cat "$2" 2>/dev/null || echo 0)
+  [[ "$pos" =~ ^[0-9]+$ ]] || pos=0
+  [ "$pos" -le "$total" ] || pos=0
+  printf '%d\n' "$((total - pos))"
+}
+ccbus_unread_of() {   # <会话 id> → 印一个数;收件箱不在 ⇒ 0
+  local inbox="$BUS/inbox/$1.jsonl" posf="$BUS/state/$1.pos"
+  [ -f "$inbox" ] || { printf '0\n'; return 0; }
+  if [ -e "$inbox.lock" ]; then
+    ( store_lock_shared 9 || exit 13; _ccbus_unread_count "$inbox" "$posf" ) 9<"$inbox.lock"
+  else
+    _ccbus_unread_count "$inbox" "$posf"
+  fi
 }
 
 # 投递:写收件人 inbox(源头),加锁。返回非零=投递失败。
@@ -186,8 +177,7 @@ route_process() {
   from=$(printf '%s' "$line" | jq -r '.from' 2>/dev/null)
   to=$(printf '%s' "$line" | jq -r '.to' 2>/dev/null)
   tier=$(printf '%s' "$line" | jq -r '.tier' 2>/dev/null)
-  # 这两道门是【只读】的;限流的计数仅在 deliver 成功后(见下)才提交。
-  route_policy_check "$from" "$to" || return 10
+  # 这道门是【只读】的;限流的计数仅在 deliver 成功后(见下)才提交。
   route_rate_check   "$from" "$to" || return 10
   # 能力降级:按收件方 agent 词典的三位能力,把「拦停」降到做得到的那一档。
   #   拦停 ⇒ 敲门 ⇒ 只入收件箱 ⇒ **投递前就拒**(别让消息烂在收件箱里)。每降一级 bus.log 里一行。
@@ -220,7 +210,7 @@ route_process() {
 #   ① 旧的整份(收件箱 · 已读位置 · lastread · 敲门去抖)挪进 legacy/<时刻>/ 存档,不再读;
 #   ② 还没读的那几条照登记那一格(agents.tsv 第 5 列)把名字换成会话 id,补成二档 inform 的新信封,
 #      **过后端那一处校验**再写进新收件箱;换不出会话 id · 后端拒(正文超长之类)· 找不到后端 ⇒ 只留在存档里,bus.log 记一行。
-# 被 cc-send · cc-recv · Stop 钩子调(谁先跑谁迁)。迁不成也不挡调用方。
+# 被 cc-bus send · cc-bus recv · Stop 钩子调(谁先跑谁迁)。迁不成也不挡调用方。
 ccbus_migrate_once() {
   local mark="$BUS/state/envelope-2"
   [ -e "$mark" ] && return 0

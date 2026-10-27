@@ -18,9 +18,9 @@
 # 三位投递能力。**这三个键名是判据的分母**(与 `CCBUS_BEHAVIOR_CAP` 那张表两向对拍)。
 #   can_block    有结束钩子 ⇒ 能把"本轮结束"拦下来
 #   can_nudge    能往它的会话说一句(经后端 `session-say`)⇒ 能敲门
-#   can_readback 有"读消息"这个动作(cc-recv / cc-peek)⇒ 能让它自己来读
+#   can_readback 有"读消息"这个动作(cc-bus recv / cc-bus peek)⇒ 能让它自己来读
 # 另一位 can_peer 不是投递语义:它自己够得着同一台上的别的 Claude(Claude 自带的 ListAgents / SendMessage)。
-#   发方与收方都是这一家时,cc-send 的回执里提一句可用原生的;消息照投,不拒、不替它改道。
+#   发方与收方都是这一家时,cc-bus send 的回执里提一句可用原生的;消息照投,不拒、不替它改道。
 agent_caps() { printf 'agent=claude can_block=yes can_nudge=yes can_readback=yes can_peer=yes\n'; }
 
 # 结束钩子的形状:从 `<文件>` 读正文,吐 claude 认的那个 JSON。

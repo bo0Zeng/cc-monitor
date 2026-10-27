@@ -304,7 +304,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "cc-bus agent id 形状",
     // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
     //   后端 `bus-inbox` 入口
-    //   在交给 `cc-log` 之前判（拒码 `bad_id`）。界面那一份（发 / 查在线）删了，界面也不发信了；
+    //   在交给 `cc-bus log` 之前判（拒码 `bad_id`）。界面那一份（发 / 查在线）删了，界面也不发信了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
     homes: ["shell-quote-core::bus_id_ok"],
     status: "zero",
@@ -887,7 +887,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     gated_tys: NONE,
     ty_of: NONE,
     fnv32: NONE,
-    // 传输台开单那几条：窗口那一份补上机器名成后端那一份（`from` · `on`，monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
+    // 传输台开单那几条：窗口那一份补上机器名成后端那一份（`from` · `on`，monitor 的 `transfer_relay::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     from: NONE,
     on: NONE,
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。

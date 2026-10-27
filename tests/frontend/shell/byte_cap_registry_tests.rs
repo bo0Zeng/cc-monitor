@@ -696,7 +696,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/control/cc_bus.rs",
         "INBOX_CAP",
-        "`bus-inbox` 交回的收件箱尾巴（`cc-log` 的回显）",
+        "`bus-inbox` 交回的收件箱尾巴（`cc-bus log` 的回显）",
         // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
     ),

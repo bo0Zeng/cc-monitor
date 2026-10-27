@@ -4,13 +4,13 @@ set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 cat >/dev/null                     # CC 从 stdin 传入 JSON(含 stop_hook_active 等),这里不需要就丢弃
-id=$("$SELFDIR/cc-whoami" 2>/dev/null || true)
+id=$("$SELFDIR/cc-bus-whoami.sh" 2>/dev/null || true)
 [ -n "$id" ] || exit 0             # cc-monitor 说不出这是哪条会话(没装 · 不在会话里)= 不是 bus 成员,直接放行
 # 路由库自己会装载两个适配面(拦停这一格是 agent 能力,`agent_block_reason`)。
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh" || exit 0   # 适配层装不齐:**放行**(钩子的失败不该卡死用户的本轮)
 ccbus_migrate_once || true             # 旧收件箱迁一次(迁过就是一次 stat)
-# ★★ **`cc-recv` 是有副作用的:它会推进已读位置**。而"喂回给 Claude"这一步在它之后
+# ★★ **`cc-bus recv` 是有副作用的:它会推进已读位置**。而"喂回给 Claude"这一步在它之后
 #    ——中间任何一步失败,消息就**被消费掉却没人看见**。〔08-13 实测事故〕
 #
 # 实测触发的不是什么边角:40 条普通消息(每条约 4KB,单条都不超限)累计 160KB
@@ -18,15 +18,15 @@ ccbus_migrate_once || true             # 旧收件箱迁一次(迁过就是一�
 #    stdout 空,而**已读位置已经推到 40** ⇒ 那 40 条再也读不到。
 #    (一个 agent 离开一阵子回来,积压到这个量是正常的。)
 #
-# 🔴 **上一版这里是"事后退回":先 cc-recv(推位置)、喂不回去再把位置写回去。**
+# 🔴 **上一版这里是"事后退回":先 cc-bus recv(推位置)、喂不回去再把位置写回去。**
 #    那条退回**不在任何 flock 里、也不比较当前值** ⇒ 若这期间另一个读者已经推得更前,
 #    它会把别人的进度一起退回去(已读位置倒退 ⇒ 那一段被重复喂)。
 #    头注当年那句「第二道管的是**所有**失败模式」买到的其实是「所有失败模式都会触发这条退回」,
 #    **不是**「这条退回在所有并发形态下都正确」—— 两件事当年写成了同一句。
 #
 # ⇒ 本版换成两阶段:**没确认就不推进**(设计)。
-#    ① cc-peek  纯读,拿正文 ＋ 一个自包含令牌(**不动 .pos**)
-#    ② 喂回成功之后才 cc-commit,由它在锁内 CAS 推进
+#    ① cc-bus peek  纯读,拿正文 ＋ 一个自包含令牌(**不动 .pos**)
+#    ② 喂回成功之后才 cc-bus commit,由它在锁内 CAS 推进
 #    ⇒ **那条退回整条消失**(没 commit 就没推进,无可退),不是"改成加锁"。
 #
 # ⚠ 语义仍然是 **at-least-once(可能重复,绝不吞掉)** —— 与上一版同向,逐字:
@@ -37,7 +37,7 @@ rf=""
 # 它是"一次要处理多少"这个决定的家 —— 而那个决定属于调用方(本钩子),不属于 cc-bus。
 peekargs=()
 [ -n "${CCBUS_PEEK_MAX_LINES:-}" ] && peekargs=(--max-lines "$CCBUS_PEEK_MAX_LINES")
-msgs=$("$SELFDIR/cc-peek" "$id" --token-file "$tf" "${peekargs[@]+"${peekargs[@]}"}" 2>/dev/null || true)
+msgs=$("$SELFDIR/cc-bus-peek.sh" "$id" --token-file "$tf" "${peekargs[@]+"${peekargs[@]}"}" 2>/dev/null || true)
 if [ -n "$msgs" ]; then
   rf=$(mktemp) || exit 0
   # 开场白一句 ＋ 正文原样(正文走文件,不走 argv:160KB 那件事故)
@@ -46,17 +46,17 @@ if [ -n "$msgs" ]; then
   # `{decision:"block", reason}`;别的 agent 可能根本没有 ⇒ 由词典自陈,这里只调它。
   if agent_block_reason "$rf"; then   # 拦下结束,把消息喂给 Claude
     rc=0
-    "$SELFDIR/cc-commit" "$id" "$(cat "$tf")" 2>/dev/null || rc=$?
+    "$SELFDIR/cc-bus-commit.sh" "$id" "$(cat "$tf")" 2>/dev/null || rc=$?
     case "$rc" in
       0)  ;;
-      11) echo "cc-bus-stop-hook: 有人替我推过了(rc=11)——手上这段照常已喂回,不重试" >&2 ;;
-      12) echo "cc-bus-stop-hook: 收件箱在两跳之间变了(rc=12)——位置没推,下一轮会再喂一次" >&2 ;;
-      *)  echo "cc-bus-stop-hook: cc-commit rc=$rc —— 位置没推,消息不会丢(下一轮还在)" >&2 ;;
+      11) echo "cc-bus stop-hook: 有人替我推过了(rc=11)——手上这段照常已喂回,不重试" >&2 ;;
+      12) echo "cc-bus stop-hook: 收件箱在两跳之间变了(rc=12)——位置没推,下一轮会再喂一次" >&2 ;;
+      *)  echo "cc-bus stop-hook: cc-bus commit rc=$rc —— 位置没推,消息不会丢(下一轮还在)" >&2 ;;
     esac
   else
     rc=$?
     # 没喂出去 ⇒ **什么都没发生**:位置本来就没动,下一轮原样再来。
-    echo "cc-bus-stop-hook: 喂回消息失败(rc=$rc)——已读位置从头到尾没动过,消息不会丢" >&2
+    echo "cc-bus stop-hook: 喂回消息失败(rc=$rc)——已读位置从头到尾没动过,消息不会丢" >&2
   fi
 fi
 rm -f "$tf" ${rf:+"$rf"}

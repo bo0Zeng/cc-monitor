@@ -131,44 +131,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
 
 // ───────── agent 自问（`session-self`）的接线：本体住 `history/session_self.rs`；转给常驻 · 读机器表是控制面的事，接在命令表这一层 ─────────
 
-/// 转给常驻问各台：等这么久（毫秒；它问到各台 ＋ 回程，同「需手动」那一问）。
-fn resident_wait_ms() -> u64 {
-    20_000
-}
-
-/// 这一端问各台的那一张（这台 ＋ 机器表里的每一台）。
-fn machines_here() -> Vec<cmd_wire::Machine> {
-    std::iter::once(cmd_wire::Machine::named(cmd_wire::LOCAL))
-        .chain(
-            crate::control::machines::here()
-                .iter()
-                .map(|h| cmd_wire::Machine::named(h.name().to_string())),
-        )
-        .collect()
-}
-
-/// 转给这台的常驻：`groups-read {这一端的机器表}`。
-async fn via_resident(
-    tz: crate::common::time::Tz,
-) -> Result<crate::history::groups::GroupsRead, String> {
-    let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
-    let asked = crate::wire::listen::ResidentCall {
-        cmd: <crate::history::groups::GroupsReadCmd as crate::wire::typed::Command>::NAME
-            .to_string(),
-        args: serde_json::json!({ "machines": machines_here() }),
-    };
-    let ms = resident_wait_ms();
-    let v = crate::control::resident::call_at(
-        &home,
-        &asked,
-        Some(ms),
-        &tz,
-        crate::platform::child::Deadline::millis(ms),
-    )
-    .await
-    .map_err(|f| f.message)?;
-    serde_json::from_value(v).map_err(|e| e.to_string())
-}
+// 转给常驻问各台那一段住 `control/cc_bus_scope.rs::groups_via_resident`（cc-bus 的范围判定也读它，只一处）。
 
 impl crate::wire::typed::Handle for crate::history::session_self::SessionSelfCmd {
     type Needs = crate::wire::typed::needs::Nothing;
@@ -193,8 +156,8 @@ impl crate::wire::typed::Handle for crate::history::session_self::SessionSelfCmd
             let tz = cx.tz.clone();
             Ok(me::answer(
                 sid,
-                via_resident(tz.clone()),
-                crate::history::groups::read_here(tz),
+                crate::control::cc_bus_scope::groups_via_resident(&tz),
+                crate::history::groups::read_here(tz.clone()),
             )
             .await)
         }

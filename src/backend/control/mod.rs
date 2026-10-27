@@ -11,7 +11,8 @@
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
 //! - [`cli_args`]：CLI 面读入参的唯一一处（`stream::cli` 经它读）。
 //! - [`cc_bus`]：cc-bus 的读命令（`bus-list` / `bus-inbox`），转调本机的 cc-bus 命令；不读 cc-bus 的任何数据文件，只把它的命令当接口。
-//! - [`cc_bus_envelope`]：cc-bus 信封的唯一一处校验（`bus-envelope`；`cc-send` 发之前问它，不合格当场拒）。
+//! - [`cc_bus_envelope`]：cc-bus 信封的唯一一处校验（`bus-envelope`；`cc-bus send` 发之前问它，不合格当场拒）。
+//! - [`cc_bus_scope`]：cc-bus 的范围（组）：同组才送得到，名单读不到就拒。
 //! - [`deploy_plan`]：给那台装 / 升级后端（帧命令 `deploy-install`；编排住 `deploy` crate）。
 //!
 //! # 这一层不许引用 [`crate::observe`]
@@ -24,6 +25,7 @@ pub(crate) mod bookmarks; // 这台的书签（`~/.cc-monitor/bookmarks.json`）
 pub mod capture_pane;
 pub(crate) mod cc_bus;
 pub(crate) mod cc_bus_envelope;
+pub(crate) mod cc_bus_scope; // cc-bus 的范围：组（`bus-envelope` 核完各格之后判）
 pub(crate) mod cc_bus_wire; // cc-bus 那三条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
 pub mod cli_args;

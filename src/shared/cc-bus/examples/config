@@ -1,10 +1,8 @@
-# cc-bus 配置示例 —— 复制到 ~/.cc-bus/config 并按需改。全部键都有内置默认,
-# 缺文件/缺键 = 用默认(且 POLICY_MODE 默 off = 全放行,行为等同无路由层)。
-# 这是 sourceable 的 KEY=VAL,不要写引号外的空格。
+# cc-bus 配置示例 —— 复制到 ~/.cc-bus/config 并按需改。全部键都有内置默认,缺文件/缺键 = 用默认。
+# 这是 sourceable 的 KEY=VAL,不要写引号外的空格。范围(谁送得到谁)由组定,不在这里配。
 
-# —— 敲门与 ACL ——
+# —— 敲门 ——
 CCBUS_NUDGE_DEBOUNCE=2      # 同一收件人两次敲门最小间隔秒
-CCBUS_POLICY_MODE=off       # off=全放行;on=按 ~/.cc-bus/policy.tsv 强制 ACL
 
 # —— 限流(防风暴只靠它,opt-in,默认 0=关)——
 # CCBUS_RATE_PAIR=0         # 每 (from,to) 每窗口最大条数,0=不限
@@ -14,4 +12,4 @@ CCBUS_POLICY_MODE=off       # off=全放行;on=按 ~/.cc-bus/policy.tsv 强制 A
 # —— 推荐 ——
 #   CCBUS_RATE_PAIR=12       # 同一对话最多 12 条/分钟,足够正常来回、挡住失控回环
 #   CCBUS_RATE_GLOBAL=60     # 全网 60 条/分钟熔断
-# 改本文件即时生效:cc-send 每发即读。
+# 改本文件即时生效:每发一封都读一次。
