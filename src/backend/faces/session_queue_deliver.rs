@@ -1,8 +1,8 @@
 //! 会话输入队的**投递**：主人这台一条线程，一条会话一次送一条，到「能送」才送（队本体与写口在 `history/session_queue.rs`）。
 //!
 //! - **起**：占着常驻的那一个进程起一份（[`start`]，经 `stream::inbound::deliver_queues`）；一台只有它一个投递的，不会两边各送一次。
-//! - **醒**：活会话表发布一份（[`crate::history::live_table::on_publish`] 那一声）· 本进程投进一条（[`kick`]）·
-//!   队目录动了（别的进程投的，watcher 看见 ⇒ [`crate::history::session_queue::moved`]）·
+//! - **醒**：活会话表发布一份（[`crate::history::live_table::on_publish`] 那一声）· 队动了（本进程投进一条 · watcher 看见别的进程写了队目录，
+//!   都经 [`crate::history::session_queue::moved`]）·
 //!   有等着的期限（送出后等那一轮起来 [`CONFIRM_MS`] · 收着的等够了）到点。别的时候一直睡。
 //! - **判**（[`step`]，纯函数）：
 //!   - 不活：这一段队里有东西时看见它活过 ⇒ 会话结束，没送的标未送达；没看见过 ⇒ 送（送字本体恢复它，那一句当第一句）。
@@ -66,9 +66,7 @@ fn settled(look: &Look, sent_ms: i64, now_ms: i64) -> bool {
 
 /// 排在最前那一条此刻送不送（见头注）。
 pub(crate) fn step(look: &Look, memo: &Memo, now_ms: i64) -> Step {
-    let waiting_turn = memo
-        .sent_ms
-        .is_some_and(|t| !settled(look, t, now_ms));
+    let waiting_turn = memo.sent_ms.is_some_and(|t| !settled(look, t, now_ms));
     match look.doing {
         None if memo.live => Step::End,
         None if waiting_turn => Step::Wait,
@@ -126,7 +124,11 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             Step::Wait => {}
             Step::End => {
                 if let Err(f) = q::end(deps.own, sid, now_ms) {
-                    tracing::warn!("[session-queue] {sid} 标未送达没成：{} {}", f.code, f.message);
+                    tracing::warn!(
+                        "[session-queue] {sid} 标未送达没成：{} {}",
+                        f.code,
+                        f.message
+                    );
                 }
                 memo.live = false;
                 continue;
@@ -134,16 +136,27 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             Step::Send => match (deps.send)(sid, &item) {
                 Ok(sent) => match landed(&sent) {
                     Some(true) => {
-                        let _ = q::delivered(deps.own, sid, &item.id);
+                        noted(
+                            q::delivered(deps.own, sid, &item.id),
+                            sid,
+                            "摘掉送到的那一条",
+                        );
                         memo.sent_ms = Some(now_ms);
                     }
                     Some(false) => {
-                        tracing::warn!("[session-queue] {sid} 那一条送不进去（{:?}），标未送达", sent.why);
-                        let _ = q::give_up(deps.own, sid, &item.id);
+                        tracing::warn!(
+                            "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
+                            sent.why
+                        );
+                        noted(q::give_up(deps.own, sid, &item.id), sid, "标未送达");
                     }
                     None => {}
                 },
-                Err(f) => tracing::warn!("[session-queue] {sid} 送没成，下次再试：{} {}", f.code, f.message),
+                Err(f) => tracing::warn!(
+                    "[session-queue] {sid} 送没成，下次再试：{} {}",
+                    f.code,
+                    f.message
+                ),
             },
         }
         if look.doing.is_some() {
@@ -156,13 +169,24 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
     wake
 }
 
+/// 送完之后改队那一下没成（那一条已不在排着 · 写不进）：只留一行日志，下一遍照盘上此刻的样子再判。
+fn noted(r: Result<bool, Fail>, sid: &str, what: &str) {
+    match r {
+        Ok(true) => {}
+        Ok(false) => tracing::info!("[session-queue] {sid} {what}：那一条已不在排着（撤了）"),
+        Err(f) => tracing::warn!("[session-queue] {sid} {what}没成：{} {}", f.code, f.message),
+    }
+}
+
 /// 叫醒投递线程的那一头（没起 ⇒ 没有）。
 static BELL: std::sync::OnceLock<std::sync::mpsc::Sender<()>> = std::sync::OnceLock::new();
 
-/// 叫一声投递线程（本进程投进 · 撤了一条之后；没起投递线程的进程里什么都不做）。
-pub(crate) fn kick() {
+/// 叫一声投递线程（活会话表发布一份 · 队动了；没起投递线程的进程里什么都不做）。
+fn kick() {
     if let Some(tx) = BELL.get() {
-        let _ = tx.send(());
+        if tx.send(()).is_err() {
+            tracing::warn!("[session-queue] 投递线程已经收了，这一声没人听");
+        }
     }
 }
 
@@ -224,9 +248,12 @@ fn sleep_until(rx: &std::sync::mpsc::Receiver<()>, wake: Option<i64>) -> bool {
 /// 发自哪一端是合形状的前端名 ⇒ 当这次请求自报的前端过身份门；不是 ⇒ 不自报（照名字规则）。
 fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Sent, Fail> {
     use super::session_say_face as say;
-    let sid: cmd_wire::Sid = sid
-        .parse()
-        .map_err(|e: cmd_wire::sid::NotASid| Fail::new("bad_args", crate::common::contract::malformed(&e.to_string())))?;
+    let sid: cmd_wire::Sid = sid.parse().map_err(|e: cmd_wire::sid::NotASid| {
+        Fail::new(
+            "bad_args",
+            crate::common::contract::malformed(&e.to_string()),
+        )
+    })?;
     let client = crate::control::gate_rules::client_name_ok(&item.end).then(|| item.end.clone());
     let req = say::SessionSayReq {
         sid,
@@ -238,8 +265,15 @@ fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Sent, Fail> {
     };
     let home = crate::history::listing::agent_home();
     let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
-    let resume = |r: &say::SessionSayReq| say::resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files);
-    say::say_with(&req, &waiting, &crate::control::terminals_wire::say, &resume)
+    let resume = |r: &say::SessionSayReq| {
+        say::resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files)
+    };
+    say::say_with(
+        &req,
+        &waiting,
+        &crate::control::terminals_wire::say,
+        &resume,
+    )
 }
 
 #[cfg(test)]

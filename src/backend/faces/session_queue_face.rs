@@ -51,8 +51,8 @@ impl typed::Handle for SessionQueuePutCmd {
                 &req,
                 move || {
                     let put = q::put(&own, &r, crate::common::time::now_ms());
-                    // 投进来了 ⇒ 叫一声这台的投递线程（这一个进程没起它 ⇒ 不做什么，常驻那一份由队目录动了那一声叫醒）。
-                    super::session_queue_deliver::kick();
+                    // 投进来了 ⇒ 叫一声这台的投递那一侧（这一个进程没起它 ⇒ 不做什么，常驻那一份由 watcher 看见队目录动了叫醒）。
+                    q::moved();
                     put
                 },
                 SessionQueuePutErr::ALL,

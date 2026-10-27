@@ -112,7 +112,12 @@ fn since_of_is_the_latest_state_start_among_live_processes() {
         ..row(pid, "s", Some(A::Idle), false)
     };
     let t = of_rows(
-        vec![at(1, Some(10), true), at(2, Some(30), true), at(3, Some(99), false), at(4, None, true)],
+        vec![
+            at(1, Some(10), true),
+            at(2, Some(30), true),
+            at(3, Some(99), false),
+            at(4, None, true),
+        ],
         &[],
     );
     assert_eq!(t.since_of("s"), Some(30), "活着的里最晚那一个；死了的不算");

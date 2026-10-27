@@ -450,12 +450,6 @@ pub(crate) struct Due {
     pub(crate) held_until: Option<i64>,
 }
 
-/// 同 [`due`]，只要那一条（判据用）。
-#[cfg(test)]
-pub(crate) fn next_due(own: &Own, sid: &str, now_ms: i64) -> Result<Option<QueueItem>, Fail> {
-    due(own, sid, now_ms).map(|d| d.item)
-}
-
 /// 投递口：那一条送不进去 ⇒ 标未送达（不在排着 ⇒ `false`）。
 pub(crate) fn give_up(own: &Own, sid: &str, id: &str) -> Result<bool, Fail> {
     with_book(own, sid, |b| Ok(b.give_up(id)))

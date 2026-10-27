@@ -108,13 +108,17 @@ fn two_queued_while_a_turn_runs_go_one_per_turn() {
     put(&o, "a", T0);
     put(&o, "b", T0 + 1);
     rig.pass(&o, &mut memos, T0 + 2);
-    assert!(rig.said().is_empty(), "本轮在跑 ⇒ 一条都不送");
+    assert!(rig.said().is_empty(), "一轮在跑 ⇒ 一条都不送");
 
     rig.set(Some(Some(A::Idle)), T0 + 10);
     rig.pass(&o, &mut memos, T0 + 20);
-    assert_eq!(rig.said(), vec!["text of a"], "本轮完了先送第一条");
+    assert_eq!(rig.said(), vec!["text of a"], "那一轮完了先送第一条");
     rig.pass(&o, &mut memos, T0 + 30);
-    assert_eq!(rig.said(), vec!["text of a"], "送出后那一态没换过 ⇒ 那一轮还没起来，不送第二条");
+    assert_eq!(
+        rig.said(),
+        vec!["text of a"],
+        "送出后那一态没换过 ⇒ 那一轮还没起来，不送第二条"
+    );
 
     rig.set(Some(Some(A::Working)), T0 + 40);
     rig.pass(&o, &mut memos, T0 + 50);
@@ -141,7 +145,11 @@ fn a_line_that_starts_no_turn_lets_the_next_go_after_the_confirm_window() {
     rig.pass(&o, &mut memos, T0 + CONFIRM_MS);
     assert_eq!(rig.said().len(), 1, "还没到期限");
     rig.pass(&o, &mut memos, T0 + 1 + CONFIRM_MS);
-    assert_eq!(rig.said(), vec!["text of a", "text of b"], "过了期限那一态还没换 ⇒ 送下一条");
+    assert_eq!(
+        rig.said(),
+        vec!["text of a", "text of b"],
+        "过了期限那一态还没换 ⇒ 送下一条"
+    );
 }
 
 #[test]
@@ -185,7 +193,11 @@ fn a_line_for_a_session_not_seen_alive_is_sent_to_resume_it() {
     put(&o, "a", T0);
     put(&o, "b", T0);
     rig.pass(&o, &mut memos, T0 + 1);
-    assert_eq!(rig.said(), vec!["text of a"], "没看见它活过 ⇒ 送（送字本体恢复它）");
+    assert_eq!(
+        rig.said(),
+        vec!["text of a"],
+        "没看见它活过 ⇒ 送（送字本体恢复它）"
+    );
     rig.pass(&o, &mut memos, T0 + 2);
     assert_eq!(rig.said().len(), 1, "恢复起来之前不送第二条");
     assert_eq!(states(&o), vec![("b".to_string(), S::Queued)]);
@@ -209,7 +221,11 @@ fn a_refused_line_is_marked_undelivered_and_the_next_one_goes() {
     );
     *rig.answer.borrow_mut() = sent(SentResult::Delivered, None);
     rig.pass(&o, &mut memos, T0 + 2);
-    assert_eq!(rig.said(), vec!["text of a", "text of b"], "被拒的那一条不挡后面的");
+    assert_eq!(
+        rig.said(),
+        vec!["text of a", "text of b"],
+        "被拒的那一条不挡后面的"
+    );
 }
 
 #[test]
@@ -220,7 +236,11 @@ fn a_waiting_refusal_keeps_the_line_queued_and_unsure_is_not_resent() {
     let mut memos = Memos::default();
     put(&o, "a", T0);
     rig.pass(&o, &mut memos, T0 + 1);
-    assert_eq!(states(&o), vec![("a".to_string(), S::Queued)], "送的那一刻框开了 ⇒ 照排着");
+    assert_eq!(
+        states(&o),
+        vec![("a".to_string(), S::Queued)],
+        "送的那一刻框开了 ⇒ 照排着"
+    );
     *rig.answer.borrow_mut() = sent(SentResult::Unsure, None);
     rig.pass(&o, &mut memos, T0 + 2);
     assert!(states(&o).is_empty(), "不知道送没送到 ⇒ 摘掉、不重送");
@@ -231,5 +251,9 @@ fn nothing_pending_means_no_wake_up() {
     let o = own("idle");
     let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
     let mut memos = Memos::default();
-    assert_eq!(rig.pass(&o, &mut memos, T0), None, "队是空的 ⇒ 一直睡到有事");
+    assert_eq!(
+        rig.pass(&o, &mut memos, T0),
+        None,
+        "队是空的 ⇒ 一直睡到有事"
+    );
 }
