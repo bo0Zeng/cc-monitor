@@ -5,14 +5,14 @@
  * 只排版 —— 字、语气、要不要附话、题目全照核心那一份 `needs.ask`（后端 `agents/asks.rs`），一个字不在这里拼：
  * - 头一行 `needs.head`（「等批准 · Bash」）＋ 子 agent 那一趟的种类 ＋ 已等多久；要批的全文（命令 · 计划原文）进等宽块，长了块内滚；
  * - 选项按核心排好的序分三行：允许那一族（第一颗是主按钮，批准一步的标数字键）· 拒绝那一族（只有「拒绝并停下」红字）·
- *   改到终端里答（幽灵、排末尾）。哪一项进哪一行按选项 id（协议里的闭集，`control::asks::verdict_of`），不按字；
+ *   改到终端里答（幽灵、排末尾）。哪一项进哪一行照核心给的 `row`、红字照 `tone: fail`，不认选项 id、不按字；
  * - 要附话的（`note` 不是 none）点了原地换一行输入框：Enter 交、Esc 回；必附的空着不交；
  * - 提问：每题照原样排（单选圆点 · 多选方块 · 末尾一格自由文本），每题都答了「提交答案」才可点，按题 id 交 picks；
  * - 没挂上请求（`ask: null`：信任框 · 别处起的会话 · 放行联网 … 每一种 needs.kind 都走这一支）⇒ 核心写好的那一句（只能在终端里答 / 答题口没接上）＋
  *   ［看终端］，能去它的终端时再多一颗（Windows ↗［切到终端］· 远端 tmux［在终端里打开］）。
  *
  * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）。别处先答了 ⇒ 块淡出收起、留一行（稳定态，
- * 下一条请求来了 / 切走才没）：点了才知道的（already_answered · closed_elsewhere）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
+ * 下一条请求来了 / 切走才没）：点了才知道的（回包 `result: "gone"`）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
  * 没人答、那台替人答了（会话事实 `autoAnswered`）⇒ 同一行写核心那一句，切走再回来也在，那条会话下一次挂上提问才换掉。
  */
 import type { Tab } from "./tab-model";
@@ -231,7 +231,7 @@ export class AnswerBlock {
         row.dataset.row = line;
         rows.set(line, row);
       }
-      const kind = where === "release" ? "ghost" : c.id === "deny-stop" ? "danger-text" : first ? "primary" : "secondary";
+      const kind = where === "release" ? "ghost" : c.tone === "fail" ? "danger-text" : first ? "primary" : "secondary";
       first = false;
       const b = button({ label: c.note === "none" ? c.text : copyText("askBlock.choice.more", { label: c.text }), kind, onClick: () => this.pick(tab, ask, c, b) });
       b.dataset.choice = c.id;

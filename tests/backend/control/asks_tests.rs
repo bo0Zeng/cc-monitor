@@ -1,4 +1,4 @@
-//! 待答登记表：挂上 · 第一个答案落下其余 already_answered · 连接断了撤掉 · 子 agent 的请求照样挂、带 agent_id · needs 配上 ask。
+//! 待答登记表：挂上 · 第一个答案落下、其余回「别处已答」那一种结局（`gone` ＋ 那一句）· 连接断了撤掉 · 子 agent 的请求照样挂、带 agent_id · needs 配上 ask。
 //! 登记表是进程里一份，各条用各自的会话 id，并行跑互不相扰。夹具正文都是编的。
 
 use super::*;
@@ -36,6 +36,11 @@ fn approve(sid: &str) -> AskIn {
 
 fn ids(a: &Ask) -> Vec<&str> {
     a.choices.iter().map(|c| c.id.as_str()).collect()
+}
+
+/// 别处先答了 / 那一头撤了的那一份回包：结局 `gone` ＋ 后端那一句。
+fn gone(said: &str) -> Value {
+    json!({"result": "gone", "said": said})
 }
 
 fn answer_of(sid: &str, ask: &str, choice: &str) -> Result<Value, (&'static str, String)> {
@@ -95,7 +100,7 @@ fn plan_and_question_choices() {
 }
 
 #[test]
-fn the_first_answer_lands_and_the_rest_are_already_answered() {
+fn the_first_answer_lands_and_the_rest_are_gone() {
     let sid = "t-first";
     let mut rx = open_id(AGENT, approve(sid), 9001).1;
     let a = pending(sid).pop().expect("挂上了");
@@ -111,14 +116,15 @@ fn the_first_answer_lands_and_the_rest_are_already_answered() {
         ]})
     );
     assert_eq!(
-        answer_of(sid, &a.id, "deny").unwrap_err().0,
-        "already_answered"
+        answer_of(sid, &a.id, "deny").unwrap(),
+        gone(&copy_text("beAsk.answer.already", &[])),
+        "别处先答了是一种结局，不是错"
     );
     assert!(pending(sid).is_empty(), "答掉 ⇒ 不再挂着");
 }
 
 #[test]
-fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() {
+fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_later_answers_are_gone() {
     let sid = "t-gone";
     let desk = Desk::new();
     let _rx = open_id(AGENT, approve(sid), desk.conn()).1;
@@ -126,8 +132,8 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() 
     drop(desk); // hook 那条连接断了（终端先答了 · 被打断 · 到点）
     assert!(pending(sid).is_empty());
     assert_eq!(
-        answer_of(sid, &a.id, "allow").unwrap_err().0,
-        "closed_elsewhere"
+        answer_of(sid, &a.id, "allow").unwrap(),
+        gone(&copy_text("beAsk.answer.closed", &[]))
     );
     assert_eq!(
         answer_of(sid, "ask-nope", "allow").unwrap_err().0,
@@ -136,13 +142,13 @@ fn when_the_hook_side_goes_away_the_request_is_withdrawn_and_closed_elsewhere() 
 }
 
 #[test]
-fn a_dead_receiver_is_closed_elsewhere_not_answered() {
+fn a_dead_receiver_is_gone_not_answered() {
     let sid = "t-deadrx";
     drop(open_id(AGENT, approve(sid), 9002).1);
     let a = pending(sid).pop().unwrap();
     assert_eq!(
-        answer_of(sid, &a.id, "allow").unwrap_err().0,
-        "closed_elsewhere"
+        answer_of(sid, &a.id, "allow").unwrap(),
+        gone(&copy_text("beAsk.answer.closed", &[]))
     );
 }
 
@@ -486,8 +492,7 @@ async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
         .iter()
         .any(|r| r.sid == sid && r.said.0 == said));
     // 之后桌面 · 手机再答：已有人答过，那一句是记录那一句。
-    let e = answer_of(sid, &id, "dismiss").unwrap_err();
-    assert_eq!(e, ("already_answered", said));
+    assert_eq!(answer_of(sid, &id, "dismiss").unwrap(), gone(&said));
     // 下一次挂上提问 ⇒ 那条记录换掉。
     let _rx = open_id(AGENT, approve(sid), 9102).1;
     assert_eq!(answered(sid), None);

@@ -529,7 +529,10 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     tool: Some(s("t1")),
                     parent: Some(s("a9")),
                     state: RunState::Failed,
+                    status_text: crate::common::cells::Words(s("核心·失败")),
+                    label_text: crate::common::cells::Words(s("scan")),
                     last: Some(RunDid::Tool { name: s("Bash") }),
+                    last_text: Some(crate::common::cells::Words(s("调用 Bash"))),
                     waiting: Some(s("Bash")),
                     started_ms: Some(1_000),
                     started_text: Some(s("00:00")),
@@ -544,6 +547,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     run: s("a0"),
                     tool: s("t0"),
                     state: RunState::Failed,
+                    status_text: crate::common::cells::Words(s("核心·失败")),
                 }],
             }),
             Frame::SessionRuns(crate::wire::SessionRuns {
@@ -879,9 +883,12 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 tool: Some("t1".into()),
                 parent: Some("a0".into()),
                 state: RunState::Running,
+                status_text: crate::common::cells::Words("核心·在跑".into()),
+                label_text: crate::common::cells::Words("scan".into()),
                 last: Some(RunDid::Tool {
                     name: "Bash".into(),
                 }),
+                last_text: Some(crate::common::cells::Words("调用 Bash".into())),
                 waiting: Some("Bash".into()),
                 started_ms: Some(1_000),
                 active_ms: Some(2_000),
@@ -911,11 +918,12 @@ fn session_runs_frames_have_exactly_these_bytes() {
             run: "a0".into(),
             tool: "t0".into(),
             state: RunState::Failed,
+            status_text: crate::common::cells::Words("核心·失败".into()),
         }],
     });
     assert_eq!(
         to_line(&f).unwrap(),
-        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"calls\":3,\"background\":true},{\"run\":\"a2\",\"state\":\"failed\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\"}]}\n"
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"status_text\":\"核心·在跑\",\"label_text\":\"scan\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"last_text\":\"调用 Bash\",\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"calls\":3,\"background\":true},{\"run\":\"a2\",\"state\":\"failed\",\"status_text\":\"\",\"label_text\":\"\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"status_text\":\"\",\"label_text\":\"\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\",\"status_text\":\"核心·失败\"}]}\n"
     );
     assert!(
         !f.loss_is_recoverable(),

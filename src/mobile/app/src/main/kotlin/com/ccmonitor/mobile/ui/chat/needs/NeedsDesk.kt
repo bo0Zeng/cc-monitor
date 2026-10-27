@@ -14,6 +14,7 @@ import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
 import com.ccmonitor.mobile.core.wire.gen.NeedsNote
 import com.ccmonitor.mobile.core.wire.gen.NeedsQuestion
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -126,7 +127,7 @@ data class ChoiceRow(
 
 /**
  * 选项分段（照那台排好的次序，不重排）：哪一项进哪一段照那台给的 `row`（照做 · 不照做 · 放开这一条），不按 id 认、不按字。
- * 照做那一段第一项实心；「拒绝并停下」红字描边；放开那一段文字按钮。
+ * 照做那一段第一项实心；语气 `fail` 的（「拒绝并停下」）红字描边，照 `tone` 不认 id；放开那一段文字按钮。
  */
 fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
     val groups = sortedMapOf<NeedsChoiceRow, MutableList<ChoiceRow>>()
@@ -135,7 +136,7 @@ fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
         val look =
             when {
                 c.row == NeedsChoiceRow.RELEASE -> ChoiceLook.QUIET
-                c.id == DENY_STOP -> ChoiceLook.DANGER
+                c.tone == Tone.FAIL -> ChoiceLook.DANGER
                 c.row == NeedsChoiceRow.MAIN && list.isEmpty() -> ChoiceLook.PRIMARY
                 else -> ChoiceLook.OUTLINE
             }
@@ -144,8 +145,6 @@ fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
     return groups.values.toList()
 }
 
-private const val DENY_STOP = "deny-stop"
-
 /** 交题目答案的那一项（带 picks 交）。 */
 private const val ANSWER = "answer"
 
@@ -153,7 +152,7 @@ private const val ANSWER = "answer"
  * 一条会话的需手动（聊天屏那一块）：读跨会话需手动板上那台那一份（[NeedsBoard]，这里不另问 `sessions-needs`）里这一条；
  * 什么时候重问归板管，这里答完叫它重问一次。答走 `needs-answer`（同桌面那一条，不送键）：
  * - 答上了 ⇒ 抽屉收起，那一份不再给［答］，钉条等重问里没了才消失；
- * - `already_answered` · `closed_elsewhere` ⇒ 抽屉里按钮全灰、那台那一句、只留［关闭］，随后重问；
+ * - 回包是「别处已答」那一种结局（`result: gone`）⇒ 抽屉里按钮全灰、那台那一句、只留［关闭］，随后重问；
  * - 抽屉开着、重问里那条请求没了（终端 / 桌面先答了 · 没人答、那台替人答了）⇒ 同一态，那一句同桌面（替人答的那一种照那台那一句）；
  * - 没在等、那台说上一条提问已替人答过 ⇒ 那一句（[NeedsUi.answered]），下一次挂上提问那台才换掉；
  * - 别的失败 ⇒ 那一句 ＋ 详情，照旧可点。
@@ -275,16 +274,17 @@ class NeedsDesk(
         update { it.copy(sheet = sheet.copy(sending = choice, failed = null)) }
         scope.launch {
             val r = answerCall(NeedsAnswer.COMMAND, NeedsAnswer.args(s, sheet.ask.id, choice, note, picks))
+            val gone = (r as? Reply.Ok)?.let { NeedsAnswer.gone(it.data) }
             when {
-                r is Reply.Ok -> {
+                gone != null -> {
                     settled = sheet.ask.id
-                    update { it.copy(sheet = null) }
+                    update { ui -> ui.copy(sheet = ui.sheet?.copy(sending = null, noteFor = null, gone = gone)) }
                     publish()
                     reask()
                 }
-                r is Reply.Failed && NeedsAnswer.gone(r.failure.code) -> {
+                r is Reply.Ok -> {
                     settled = sheet.ask.id
-                    update { ui -> ui.copy(sheet = ui.sheet?.copy(sending = null, noteFor = null, gone = r.failure.message)) }
+                    update { it.copy(sheet = null) }
                     publish()
                     reask()
                 }

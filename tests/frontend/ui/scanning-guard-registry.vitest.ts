@@ -98,6 +98,7 @@ const WALKERS: Record<string, string> = {
   "tests/frontend/ui/morph-only.vitest.ts": "只扫 `src/frontend/` 下的产品 `.ts`，自己住 `tests/`",
   "tests/shots/browser-env.vitest.ts": "只扫 `tests/shots/` 下的 `.mjs` 脚本（起浏览器的那几份），自己是 `.vitest.ts`",
   "tests/shots/real-keys.vitest.ts": "只扫 `tests/shots/scenes/` 下的场景源码，自己住 `tests/shots/`",
+  "tests/frontend/ui/exit-said-acts.vitest.ts": "只扫 `src/frontend/ui` 的产品 `.ts` 与 `src/mobile` 的产品 `.kt`（摘掉 test · generated · gen），自己住 `tests/`",
 };
 
 /**

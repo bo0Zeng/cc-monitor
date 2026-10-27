@@ -97,7 +97,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
     crate::wire::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
-        "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
+        "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回「别处已答」（`gone` ＋ 那一句）",
     ),
     // 会话事实（`observe/recognize/facts.rs`）。只收路径：接着上一次算由后端按路径留着（`observe::record_scan`）。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),
@@ -138,11 +138,11 @@ fn resident_wait_ms() -> u64 {
 
 /// 这一端问各台的那一张（这台 ＋ 机器表里的每一台）。
 fn machines_here() -> Vec<cmd_wire::Machine> {
-    std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
+    std::iter::once(cmd_wire::Machine::named(cmd_wire::LOCAL))
         .chain(
             crate::control::machines::here()
                 .iter()
-                .map(|h| cmd_wire::Machine(h.name().to_string())),
+                .map(|h| cmd_wire::Machine::named(h.name().to_string())),
         )
         .collect()
 }

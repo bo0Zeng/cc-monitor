@@ -41,7 +41,7 @@
         "note": "none",
         "row": "hold",
         "text": "拒绝并停下",
-        "tone": "warn"
+        "tone": "fail"
       }
     ],
     "detail": "touch a.txt\necho ok",
@@ -200,7 +200,7 @@
         "note": "none",
         "row": "hold",
         "text": "拒绝并停下",
-        "tone": "warn"
+        "tone": "fail"
       },
       {
         "id": "release",
