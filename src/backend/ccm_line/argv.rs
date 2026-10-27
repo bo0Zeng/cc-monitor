@@ -34,6 +34,8 @@ pub(crate) mod flag {
     pub(crate) const TAB: &str = "--tab";
     /// `--tab-from <别名>`：`--tab` 是哪个别名写的（ccm 往 tmux 里那一趟交下去用，那一趟的命令行里已经没有别名了）。
     pub(crate) const TAB_FROM: &str = "--tab-from";
+    /// `--ccm-alias <别名>`：这一发是经哪条别名起的（ccm 往 tmux 里那一趟交下去用，同 `--tab-from`；不进配置）。
+    pub(crate) const CCM_ALIAS: &str = "--ccm-alias";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
     /// 这一发不轮换，只用起它的那个号（同 `session-open` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。
@@ -113,6 +115,8 @@ pub(crate) struct Opts {
     pub(crate) tab: Option<cmd_wire::session::Tab>,
     /// `--tab` 是哪个别名写的（合并那一处按来处填 · tmux 里那一趟由 `--tab-from` 交来）；空 ＝ 命令行当场给的 / 没给。
     pub(crate) tab_from: String,
+    /// 这一发经哪条别名起的（合并那一处取最末那一层 · tmux 里那一趟由 `--ccm-alias` 交来）；空 ＝ 不经别名。
+    pub(crate) alias: String,
     /// `--account-dir`；空 = 没给。
     pub(crate) account_dir: String,
     /// `--no-rotation`：这一发不轮换。
@@ -189,6 +193,7 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         ccm_sid: String::new(),
         tab: None,
         tab_from: String::new(),
+        alias: String::new(),
         account_dir: String::new(),
         no_rotation: Defaults::NO_ROTATION,
         print: Defaults::PRINT,
@@ -220,6 +225,7 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::CCM_SID,
     flag::TAB,
     flag::TAB_FROM,
+    flag::CCM_ALIAS,
     flag::ACCOUNT_DIR,
     flag::NO_ROTATION,
 ];
@@ -282,6 +288,7 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         | flag::CCM_SID
         | flag::TAB
         | flag::TAB_FROM
+        | flag::CCM_ALIAS
         | flag::ACCOUNT_DIR
         | flag::TMUX_SIZE => {
             let (v, n) = one()?;
@@ -331,6 +338,7 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
             })?)
         }
         flag::TAB_FROM => o.tab_from = v(0),
+        flag::CCM_ALIAS => o.alias = v(0),
         flag::ACCOUNT_DIR => o.account_dir = v(0),
         flag::DETACH => o.detach = true,
         flag::NO_ROTATION => o.no_rotation = true,
@@ -462,6 +470,10 @@ pub(crate) fn parse_layered(
             vals: w.vals.clone(),
             layer: name(*li),
         });
+    }
+    // 这一发叫的是基于链最末那一层（`@名`）；`--ccm-alias` 明说了的不盖。
+    if o.alias.is_empty() {
+        o.alias = layers.last().map(|l| l.name.clone()).unwrap_or_default();
     }
     Ok((Parsed::Opts(Box::new(finish(o)?)), origins))
 }
@@ -600,6 +612,12 @@ pub(crate) fn check_values(o: &Opts) -> Result<(), Die> {
         return die(copy_text(
             "beArgv.validate.badTabFrom",
             &[("name", &format!("{:?}", o.tab_from))],
+        ));
+    }
+    if !o.alias.is_empty() && !shell_quote_core::account_name_ok(&o.alias) {
+        return die(copy_text(
+            "beArgv.validate.badAlias",
+            &[("name", &format!("{:?}", o.alias))],
         ));
     }
     if !o.account.is_empty() && !shell_quote_core::account_name_ok(&o.account) {

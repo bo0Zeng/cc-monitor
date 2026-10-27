@@ -1,4 +1,4 @@
-//! **启动台账**（`launch-accounts.json`）的形状与读：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页`。
+//! **启动台账**（`launch-accounts.json`）的形状与读：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页` ＋ 经别名起的那几条 `sid → 别名`。
 //! 历史清单并进每行的「上次用哪个号」· 隐藏的判定（起会话时那一格）· 起会话跟随上次的号都读它。
 //! 只有观测侧看见会话那一刻写它（认便条、锁里原子写：`control::launch_account::adopt`）。
 
@@ -25,6 +25,9 @@ pub(crate) struct Book {
     pub(crate) sessions: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) tabs: BTreeMap<String, LaunchTab>,
+    /// 经别名起的那几条 `sid → 别名`（补足一组时按它数「用这一行的别名起的」）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) aliases: BTreeMap<String, String>,
 }
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。

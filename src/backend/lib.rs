@@ -238,6 +238,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-command",
     // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-files",
+    // 补足一组会话的预览（`set-plan`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--set-plan",
+    // 照存好的一组补足、逐条起（`set-launch`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--set-launch",
     // 新计划框问的那一份（`plan-new`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-new",
     // 校验 pb 路径（`plan-pb-check`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
@@ -495,6 +499,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--terminal-preview",
     "--terminal-ssh",
     "--terminals-list",
+    // 「终端」视图那张名单（`terminals-board-here` 这台那几行 · `terminals-board` 各台合成）派生的 CLI 面（一次性进程里可达表是空的 ⇒ 别的台照实进那一组的 `down`）。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
+    "--terminals-board-here",
+    "--terminals-board",
     "--tmux-notify",
 ];
 

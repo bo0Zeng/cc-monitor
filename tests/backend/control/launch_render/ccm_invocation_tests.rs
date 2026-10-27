@@ -32,6 +32,7 @@ fn base_spec() -> CliSpec<'static> {
         default_launcher: "claude",
         args: &[],
         ccm_path: "ccm",
+        alias: None,
         detach: false,
     }
 }
@@ -222,6 +223,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         default_launcher: "claude",
         args: &["--verbose"],
         ccm_path: "ccm",
+        alias: None,
         detach: false,
     };
     assert_eq!(
@@ -417,6 +419,7 @@ fn launch(agent: &str, act: super::super::Act) -> super::super::Launch {
         launcher,
         default_launcher,
         preset_args: Vec::new(),
+        alias: None,
     }
 }
 
@@ -671,4 +674,19 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     let mut attach = launch("claude", Act::Attach("cc-x".into()));
     attach.tmux = Some("cc-x".into());
     assert!(line_of(&attach, &Settled::Base, win, &caps, "C:/cc/ccm.exe").is_err());
+}
+
+/// 经别名起：`@别名` 紧跟入口（ccm 只认第一个词是 `@名`）；PowerShell 那一行写成字面量（裸的 `@名` 在那里是摊开变量）。
+#[test]
+fn an_alias_goes_right_after_the_entry_and_is_a_literal_in_powershell() {
+    let spec = CliSpec {
+        alias: Some("dev"),
+        ..base_spec()
+    };
+    let argv = ccm_argv(&spec, &caps_all()).unwrap();
+    assert_eq!(argv.get(1).map(String::as_str), Some("@dev"), "{argv:?}");
+    let ps = render_ccm_invocation_ps(&spec, &caps_all()).unwrap();
+    assert!(ps.contains(" '@dev' "), "{ps}");
+    let sh = render_ccm_invocation(&spec, &caps_all()).unwrap();
+    assert!(sh.starts_with("ccm @dev "), "{sh}");
 }

@@ -82,10 +82,13 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表（起 tmux 控制模式客户端，声明了 `no_tmux`）。
     //    🔴 **5 → 6**：计划退回 `plan-return` 进表（送字走 `terminal-input` 的本体、要起 tmux，声明了 `no_tmux`）。
     //    🔴 **−1**：没人调的 `launch` 撤了。
+    //    🔴 **+2**：起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里，声明了 `no_tmux`）进表。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
         vec![
+            "set-plan",
+            "set-launch",
             "terminal-preview",
             "terminal-input",
             "session-model",
@@ -229,9 +232,12 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     // 🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表。
     // 🔴 **5 → 6**：计划退回 `plan-return` 进表。
     // 🔴 **−1**：没人调的 `launch` 撤了。
+    // 🔴 **+2**：起一组那两条进表。
     assert_eq!(
         names,
         vec![
+            "set-plan".to_string(),
+            "set-launch".to_string(),
             "terminal-preview".to_string(),
             "terminal-input".to_string(),
             "session-model".to_string(),

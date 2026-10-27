@@ -795,6 +795,57 @@ fn shown_in(path: &str, home: &str) -> String {
     crate::platform::paths::home_short(path, Some(std::path::Path::new(home)))
 }
 
+/// 一组里的一行：目录 · 别名 · 补足到几个 · 改过的组名（缺省 ⇒ `null`）· 第几行。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SetRowOut {
+    cwd: String,
+    alias: String,
+    n: u8,
+    tab_group: Option<String>,
+    #[cfg_attr(test, ts(type = "number"))]
+    line: usize,
+}
+
+/// 存好的一组：名字 · 几行 · 写错的几处（有 ⇒ 这一组此刻不能用）。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SetOut {
+    name: String,
+    rows: Vec<SetRowOut>,
+    problems: Vec<ProblemOut>,
+}
+
+fn set_out(s: &profile::Set) -> SetOut {
+    SetOut {
+        name: s.name.clone(),
+        rows: s
+            .rows
+            .iter()
+            .map(|r| SetRowOut {
+                cwd: r.cwd.clone(),
+                alias: r.alias.clone(),
+                n: r.n,
+                tab_group: r.tab_group.clone(),
+                line: r.line,
+            })
+            .collect(),
+        problems: s
+            .problems
+            .iter()
+            .map(|p| ProblemOut {
+                line: p.line,
+                message: p.message.clone(),
+                detail: None,
+            })
+            .collect(),
+    }
+}
+
 /// `profiles-read` 的应答：配置文件整份。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -814,6 +865,8 @@ pub(crate) struct ProfilesBook {
     /// TOML 本身写坏 ⇒ 那一处（这时 `profiles` 为空、不能按条目改）；否则 `null`。
     file_problem: Option<ProblemOut>,
     profiles: Vec<ProfileOut>,
+    /// 这台存好的几组会话（`[set."组名"]`，照写下的先后）；一组写错只那一组带 `problems`。
+    sets: Vec<SetOut>,
     /// 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
     seed: Vec<ProfileOut>,
     /// 空态那一块的说明与按钮字，随 `seed` 的条数（没有 tmux 的那台只建一条）；`seed` 空 ⇒ 空串。
@@ -885,6 +938,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         edited_at: edited_at(d, &store, &path, tz),
         file_problem,
         profiles,
+        sets: store.book.sets.iter().map(set_out).collect(),
         seed,
         seed_hint,
         seed_create,
@@ -1134,6 +1188,45 @@ pub(crate) enum Op {
     Init { seed: bool },
     /// 迁移说明「知道了」：删掉那张说明。
     AckMigrated {},
+    /// 存一组（`was` ＝ `null` ⇒ 新建；名字变了 ⇒ 改名）。
+    SaveSet {
+        was: Option<String>,
+        set: profile::SetEdit,
+    },
+    /// 删一组。
+    RemoveSet { name: String },
+}
+
+/// 存一组 ⇒ 配置文件那几处改动：新建或改名撞上已有的组名 ⇒ 拒；改名 ＝ 删旧的、写新的。
+fn changes_of_save_set(
+    book: &Book,
+    was: Option<&str>,
+    e: &profile::SetEdit,
+) -> Result<Vec<Change>, String> {
+    if was != Some(e.name.as_str()) && book.find_set(&e.name).is_some() {
+        return Err(copy_text("beProfile.set.taken", &[("name", &e.name)]));
+    }
+    let mut out = Vec::new();
+    if let Some(w) = was.filter(|w| *w != e.name) {
+        out.push(Change::RemoveSet(w.to_string()));
+    }
+    out.push(Change::SetSet(e.clone()));
+    Ok(out)
+}
+
+/// 改完之后新冒出来的组坏处（原来就坏的那几组不算），一组一句。
+fn fresh_set_problems(was: &Book, now: &Book) -> Vec<String> {
+    now.sets
+        .iter()
+        .filter(|s| !s.problems.is_empty())
+        .filter(|s| was.find_set(&s.name).is_none_or(|o| o.problems.is_empty()))
+        .map(|s| {
+            copy_text(
+                "beProfile.named.say",
+                &[("name", &s.name), ("said", &s.problems[0].message)],
+            )
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -1266,6 +1359,8 @@ fn changes_of(text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
             Op::Remove { name, children } => changes_of_remove(&book, name, *children)?,
             Op::Init { seed: true } => seed_changes(),
             Op::Init { seed: false } | Op::AckMigrated {} => continue,
+            Op::SaveSet { was, set } => changes_of_save_set(&book, was.as_deref(), set)?,
+            Op::RemoveSet { name } => vec![Change::RemoveSet(name.clone())],
         };
         cur = profile::apply_changes(Some(&cur), &step)?;
         book = profile::parse_book(&cur);
@@ -1362,7 +1457,8 @@ pub(crate) fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<Pro
             Change::Set(e) => Some(e.name.clone()),
             Change::Remove(n) => Some(n.clone()),
             Change::Rename { from, to } => Some(format!("{from}\n{to}")),
-            Change::SetFrom { .. } => None,
+            // 存 / 删一组不改哪一段别名合下来的样子。
+            Change::SetFrom { .. } | Change::SetSet(_) | Change::RemoveSet(_) => None,
         })
         .flat_map(|s| s.split('\n').map(str::to_string).collect::<Vec<_>>())
         .collect();
@@ -1575,9 +1671,10 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
         (None, _) => None,
     };
     let text = profile::apply_changes(base, &changes).map_err(refused)?;
+    let after = profile::parse_book(&text);
     let was = broken(&store.book);
-    let now = broken(&profile::parse_book(&text));
-    let fresh: Vec<String> = now
+    let now = broken(&after);
+    let mut fresh: Vec<String> = now
         .iter()
         .filter(|(k, _)| !was.contains_key(*k))
         .map(|(k, m)| match k {
@@ -1585,6 +1682,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
             None => m.clone(),
         })
         .collect();
+    fresh.extend(fresh_set_problems(&store.book, &after));
     if !fresh.is_empty() {
         return Err(refused(fresh.join("\n")));
     }

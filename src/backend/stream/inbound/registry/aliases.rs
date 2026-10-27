@@ -24,6 +24,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::assets::aliases::page::ProfilesWrite>(
         "按条目改配置文件（手写的注释与排版留着），照它补链接 / 终端函数",
     ),
+    crate::wire::typed::blocking::<crate::faces::session_set_face::SetPlanCmd>(
+        "补足一组会话的预览：每行已有几个 · 再起几个 · 进哪个组 · 起不了的原因",
+    ),
+    crate::wire::typed::blocking::<crate::faces::session_set_face::SetLaunchCmd>(
+        "照存好的一组补足、逐条起：起之前写好组注解，一条不行不挡别的",
+    ),
     crate::wire::typed::blocking::<crate::assets::aliases::AliasesBlockRender>("别名块预览"),
     crate::wire::typed::blocking::<crate::assets::aliases::AliasesBlockInstall>(
         "别名块装进人选的那份启动文件",

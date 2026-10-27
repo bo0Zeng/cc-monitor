@@ -131,6 +131,10 @@ pub(crate) struct NewOpen {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) rotation: Option<RotationPick>,
+    /// 经哪条别名起（一类 ＝ 一条别名：那一行 `ccm @别名`，别名合下来的几格在 ccm 那一侧合、这一趟给的盖过它）；缺 ⇒ 不经别名。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) alias: Option<String>,
 }
 
 /// `session-open` 会回的码（`bad_args` 打头）。
@@ -440,6 +444,7 @@ fn attach_line(name: &str, here: Here, deps: &Deps) -> Result<String, Failed> {
         launcher: String::new(),
         default_launcher: String::new(),
         preset_args: Vec::new(),
+        alias: None,
     };
     let entry = own_entry(deps).map_err(|m| fail("refused", m, None))?;
     lr::line_of(&l, &Settled::Unsaid, here, deps.caps, &entry).map_err(|m| fail("refused", m, None))
@@ -613,6 +618,7 @@ fn resume_launch(it: &Item, b: &Batch, tmux: Option<&str>) -> Launch {
         launcher: b.launcher.clone(),
         default_launcher: b.default_launcher.clone(),
         preset_args: tail_args(it, b),
+        alias: None,
     }
 }
 
@@ -935,6 +941,11 @@ fn start_new(
     {
         return Err(malformed("`model` is not a model name"));
     }
+    let alias = match req.alias.as_deref().map(str::trim) {
+        None => None,
+        Some(a) if crate::assets::aliases::profile::name_ok(a).is_ok() => Some(a.to_string()),
+        Some(_) => return Err(malformed("`alias` is not an alias name")),
+    };
     // 没给 ⇒ 这台偏好里那一家的那一档（那一家已不认 ⇒ 不带）。
     let asked_mode = req
         .permission_mode
@@ -1055,6 +1066,7 @@ fn start_new(
         launcher,
         default_launcher: face.default_launcher.to_string(),
         preset_args,
+        alias,
     };
     pretrust(&account, &cwd, deps);
     let launch = || -> Result<Opened, Failed> {

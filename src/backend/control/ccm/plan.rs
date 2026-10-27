@@ -593,6 +593,8 @@ pub(crate) struct Direct {
     pub(crate) plugin_files: Vec<(&'static str, String)>,
     /// `--tab`（与写它的别名）：最后那一跳记进便条，观测侧认便条时落进启动台账。
     pub(crate) tab: Option<crate::control::launch_account::LaunchTab>,
+    /// 这一发经哪条别名起的：最后那一跳记进便条，观测侧认便条时落进启动台账（补足一组时按它数）。`None` ⇒ 不经别名。
+    pub(crate) alias: Option<String>,
     /// `--no-rotation`：exec 之前在轮换账本里记一条「不轮换」。`None` ⇒ 不记。
     pub(crate) no_rotation: Option<NoRotation>,
 }
@@ -1160,6 +1162,11 @@ pub(crate) fn build_among(
                 opts.push(o.tab_from.clone());
             }
         }
+        // 经哪条别名起的随这一发走（窗格那一趟的命令行里已经没有别名了）。
+        if !o.alias.is_empty() {
+            opts.push(flag::CCM_ALIAS.into());
+            opts.push(o.alias.clone());
+        }
         // 不轮换由窗格里那一趟记（它定会话ID、交给那一家）。
         if o.no_rotation {
             opts.push(flag::NO_ROTATION.into());
@@ -1391,6 +1398,7 @@ pub(crate) fn build_among(
             tab,
             alias: (!o.tab_from.is_empty()).then(|| o.tab_from.clone()),
         }),
+        alias: (!o.alias.is_empty()).then(|| o.alias.clone()),
         no_rotation,
     }))
 }
