@@ -579,7 +579,7 @@ fn the_read_loop_really_calls_the_dispatch() {
         "分派必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
     );
     // ★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一处 —— 恰好一处，说 `<local>`，
-    // 而且两条循环结束时都把经它开的传输一起收场（`sftp_pool::fail_owned_by`，各恰好一处）。
+    // 而且两条循环结束时都把经它开的传输一起收场（`transfer_relay::fail_owned_by`，各恰好一处）。
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
@@ -600,9 +600,9 @@ fn the_read_loop_really_calls_the_dispatch() {
         ("local_backend.rs", &prod),
         ("local_backend_host.rs", &host),
     ] {
-        guard_core::find_pinned(src, "crate::sftp_pool::fail_owned_by(").unwrap_or_else(|e| {
+        guard_core::find_pinned(src, "crate::transfer_relay::fail_owned_by(").unwrap_or_else(|e| {
             panic!(
-                "{name}：读循环结束时不是恰好一处 `sftp_pool::fail_owned_by`（{e:?}）—— 断流时在飞的传输会干等到超时"
+                "{name}：读循环结束时不是恰好一处 `transfer_relay::fail_owned_by`（{e:?}）—— 断流时在飞的传输会干等到超时"
             )
         });
     }
