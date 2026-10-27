@@ -286,7 +286,11 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
         ("control/ccm", &[]),
     ] {
         for (p, raw) in guard_core::scan_tree_excluding(&src.join(dir), &["rs"], excluded) {
-            let rel = p.strip_prefix(&src).unwrap_or(&p).to_string_lossy().replace('\\', "/");
+            let rel = p
+                .strip_prefix(&src)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
             others.push((rel, raw));
         }
     }
@@ -297,7 +301,10 @@ fn ccm_flag_literals_live_only_in_argv_rs() {
         others.iter().map(|(r, _)| r).collect::<Vec<_>>()
     );
     let argv = guard_core::production_code(include_str!("../../../src/backend/ccm_line/argv.rs"));
-    assert!(argv.contains("\"--"), "正控：`argv.rs` 里一个旗标字面量都没有 —— 认法坏了");
+    assert!(
+        argv.contains("\"--"),
+        "正控：`argv.rs` 里一个旗标字面量都没有 —— 认法坏了"
+    );
     let mut hits: Vec<String> = Vec::new();
     for (name, raw) in &others {
         if guard_core::production_code(raw).contains("\"--") {

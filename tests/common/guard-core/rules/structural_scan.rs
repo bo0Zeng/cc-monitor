@@ -2036,7 +2036,11 @@ fn the_dead_name_scanner_really_sees_each_shape() {
             "{f} 的 `#` 注释没算成散文：{rows:?}"
         );
         let (_, dead) = dead_names_on_disk(&[(f.to_string(), hashed)], min);
-        assert_eq!(dead.len(), 1, "{f} 的 `#` 注释里点名的死名字没进人群：{dead:?}");
+        assert_eq!(
+            dead.len(),
+            1,
+            "{f} 的 `#` 注释里点名的死名字没进人群：{dead:?}"
+        );
     }
 }
 

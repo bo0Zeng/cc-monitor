@@ -298,9 +298,17 @@ fn the_registered_names_are_the_ones_the_file_window_calls() {
         .expect("`cmd-wire/src/files.rs` 里找不到 `calls! { … }` 那张表");
     let names: std::collections::BTreeSet<&str> = table
         .lines()
-        .filter_map(|l| l.split_once("=> \"").and_then(|(_, r)| r.split_once('"')).map(|(n, _)| n))
+        .filter_map(|l| {
+            l.split_once("=> \"")
+                .and_then(|(_, r)| r.split_once('"'))
+                .map(|(n, _)| n)
+        })
         .collect();
-    assert!(names.len() > 10, "`calls!` 表只读到 {} 行 —— 读法坏了", names.len());
+    assert!(
+        names.len() > 10,
+        "`calls!` 表只读到 {} 行 —— 读法坏了",
+        names.len()
+    );
     assert_eq!(seen, names, "这里过的与 `calls!` 表登的对不上");
 }
 
