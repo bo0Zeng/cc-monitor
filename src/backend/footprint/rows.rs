@@ -837,7 +837,7 @@ pub struct SettingsScope {
 }
 
 /// cc-bus 钩子在 settings 里的程序名 —— 住址是 `observe/cc_bus_hooks.rs::PROGRAM`（钩子诊断那一份），这里只用。
-/// **这是全文粗匹配，不是解析**：`permissions.allow` 里一条 `Bash(cc-bus-stop-hook)` 也会命中 ⇒ 本页只答「文件里有没有这个字样」，
+/// **这是全文粗匹配，不是解析**：`permissions.allow` 里一条 `Bash(cc-bus stop-hook)` 也会命中 ⇒ 本页只答「文件里有没有这个字样」，
 /// 装没装是 `hooks-diag` 的事（两页对同一文件给出不同话是设计如此）。
 pub(crate) const HOOK_PROGRAMS: [&str; 1] = [crate::observe::cc_bus_hooks::PROGRAM];
 

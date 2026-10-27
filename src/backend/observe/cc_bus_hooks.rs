@@ -1,12 +1,13 @@
 //! cc-bus 钩子诊断 —— 帧命令 `hooks-diag` 的本体（只读）。
 //!
 //! 这台后端读它自己那台的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
-//! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：一条 Stop 钩子直接指向这台装好的 cc-bus 里的那个脚本
+//! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：一条 Stop 钩子直接指向这台装好的 cc-bus 的入口、带动词 `stop-hook`
 //! （脚本靠 `readlink -f` 认自己的目录；不依赖 `PATH`）；cc-bus 没装 ⇒ 不给。本机远端同一条命令（`chan.call(origin, "hooks-diag")`），
 //! 帧面宿主在顶层 `feature_face`。
 //!
-//! 判据不是字符串等值：`"$HOME/.local/bin/cc-bus-stop-hook"` 与规范片段 `cc-bus-stop-hook` 功能等价、字符串不等
-//! ⇒ 按「被执行的程序」判。看不懂的形态答「无法判断」，不猜「未装」。
+//! 判据不是字符串等值：`"$HOME/.local/bin/cc-bus" stop-hook` 与规范片段 `cc-bus stop-hook` 功能等价、字符串不等
+//! ⇒ 按「被执行的程序 ＋ 它的第一个参数」判。看不懂的形态答「无法判断」，不猜「未装」。
+//! 老版那条 `cc-bus-stop-hook`（独立的脚本）不算：那个程序不在了（老名字不留）。
 //! 只读：不写 `settings.json`（用户的共享全局配置，由用户自己合并），只生成要加的内容。
 
 use crate::platform::fs::Ro;
@@ -16,8 +17,10 @@ use serde::Serialize;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
-/// 钩子命令里那个程序（`Stop` → `cc-bus-stop-hook`）。会话起来时不用登记：会话 id 由 cc-monitor 认。
-pub(crate) const PROGRAM: &str = "cc-bus-stop-hook";
+/// 钩子命令里那个程序（`Stop` → `cc-bus stop-hook`：唯一的入口 ＋ 动词）。会话起来时不用登记：会话 id 由 cc-monitor 认。
+pub(crate) const PROGRAM: &str = "cc-bus";
+/// 钩子命令里程序后面紧跟的那个词。
+pub(crate) const VERB: &str = "stop-hook";
 
 /// 读 `settings.json` 的上限（它是几 KB 的配置；超了按「读不到」说）。
 const SETTINGS_CAP_BYTES: u64 = 1 << 20;
@@ -111,6 +114,20 @@ pub(crate) fn program_of(cmd: &str) -> Option<(String, String)> {
     Some((base.to_string(), unq.to_string()))
 }
 
+/// 被执行的程序后面紧跟的那个词（剥一层配对引号）；没有 ⇒ `None`。
+pub(crate) fn first_arg_of(cmd: &str) -> Option<String> {
+    let mut words = cmd
+        .split_whitespace()
+        .skip_while(|tok| match tok.find('=') {
+            Some(i) if i > 0 => tok[..i]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
+            _ => false,
+        });
+    words.next()?;
+    words.next().map(|w| unquote_once(w).to_string())
+}
+
 /// 命令里是否**出现过**目标程序（不一定是被直接执行的那个）—— 包装写法据此判「无法判断」。
 fn mentions_program(cmd: &str, want: &str) -> bool {
     cmd.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ';' | '&' | '|' | '(' | ')'))
@@ -120,21 +137,24 @@ fn mentions_program(cmd: &str, want: &str) -> bool {
         })
 }
 
-/// 判一条命令是不是在调 `want` 并定态；`exists` 问「这个路径在不在」（注入，纯函数好测）。
+/// 判一条命令是不是在调 `want`（程序 ＋ 第一个参数）并定态；`exists` 问「这个路径在不在」（注入，纯函数好测）。
 pub(crate) fn classify_command(
     cmd: &str,
-    want: &str,
+    want: (&str, &str),
     exists: &dyn Fn(&str) -> bool,
 ) -> Option<HookState> {
+    let (program, verb) = want;
     let unknown = || {
-        mentions_program(cmd, want).then(|| HookState::Unknown {
-            command: cmd.trim().to_string(),
+        (mentions_program(cmd, program) && mentions_program(cmd, verb)).then(|| {
+            HookState::Unknown {
+                command: cmd.trim().to_string(),
+            }
         })
     };
     let Some((base, full)) = program_of(cmd) else {
         return unknown();
     };
-    if base != want {
+    if base != program || first_arg_of(cmd).as_deref() != Some(verb) {
         return unknown();
     }
     let command = cmd.trim().to_string();
@@ -157,7 +177,7 @@ pub(crate) fn classify_command(
 pub(crate) fn diagnose_event(
     root: &serde_json::Value,
     event: &str,
-    want: &str,
+    want: (&str, &str),
     exists: &dyn Fn(&str) -> bool,
 ) -> HookState {
     let mut fallback: Option<HookState> = None;
@@ -202,13 +222,13 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
         return noted(copy_text("rsHooksDiag.diagnose.notObject", &[]));
     }
     HooksDiagnosis {
-        stop: diagnose_event(&v, "Stop", PROGRAM, exists),
+        stop: diagnose_event(&v, "Stop", (PROGRAM, VERB), exists),
         note: String::new(),
     }
 }
 
-/// 要加的内容：一条 Stop 钩子直接指向 `<skills 根>/cc-bus/scripts/` 里那个脚本（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）。
-/// 脚本不在 ⇒ `None`（cc-bus 没装，先装）。
+/// 要加的内容：一条 Stop 钩子直接指向 `<skills 根>/cc-bus/scripts/cc-bus`、带动词 `stop-hook`（家目录底下 ⇒ `"$HOME/…"`，否则绝对路径）。
+/// 入口不在 ⇒ `None`（cc-bus 没装，先装）。
 pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
     let script: PathBuf = skills
         .join(crate::assets::cc_bus_install::NAME)
@@ -221,8 +241,9 @@ pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
         Some(rel) => posix::home_path_word(&rel.to_string_lossy().replace('\\', "/")),
         None => shell_quote_core::posix_quote(&script.display().to_string()),
     };
+    let command = format!("{word} {VERB}");
     let v = json!({ "hooks": {
-        "Stop": [ { "hooks": [ { "type": "command", "command": word } ] } ],
+        "Stop": [ { "hooks": [ { "type": "command", "command": command } ] } ],
     } });
     serde_json::to_string_pretty(&v).ok()
 }

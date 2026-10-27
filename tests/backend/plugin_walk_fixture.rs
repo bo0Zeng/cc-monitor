@@ -159,7 +159,7 @@ mod tests {
 
     /// 那个真插件族对**同一个数**的说法 —— 活体对拍用（不是手抄的表）。
     fn real_plugin_word(code: Option<i32>) -> String {
-        match crate::control::cc_bus::classify_exit("cc-log", code, "detail", 10) {
+        match crate::control::cc_bus::classify_exit("cc-bus log", code, "detail", 10) {
             Ok(()) => "<成事>".to_string(),
             Err((word, _)) => word,
         }

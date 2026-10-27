@@ -1,11 +1,11 @@
-//! cc-bus 的写面只有一条路（`cc-send`）：monitor 不拼 cc-bus 脚本的 shell 串（只经后端的 `bus-*` 读），
+//! cc-bus 的写面只有一条路（`cc-bus send`）：monitor 不拼 cc-bus 脚本的 shell 串（只经后端的 `bus-*` 读），
 //! 界面说 `bus-*` 那几条只经 `src/frontend/ui/cc-bus-control.ts` 一处。
 
 use super::{equal, none, rule};
 
 /// cc-bus 写面的脚本名（现拼，免得本文件自己成了别的扫描的命中）。
 fn verbs() -> Vec<String> {
-    ["send"].iter().map(|v| format!("cc-{v}")).collect()
+    ["send"].iter().map(|v| format!("cc-bus {v}")).collect()
 }
 
 /// 那份生产段里提到的脚本名。
@@ -30,7 +30,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
             })
             .collect();
         // 正控：发信那条脚本自己的报错行里有它的名字，同一个认法认得出（shell 没有测试段，取全文）。
-        let control = named(repo.file("src/shared/cc-bus/scripts/cc-send").text()).len();
+        let control = named(repo.file("src/shared/cc-bus/scripts/cc-bus-send.sh").text()).len();
         none(
             "monitor 生产段里提到 cc-bus 写面脚本名（monitor 不发信，只经后端的 `bus-*` 读）",
             found,

@@ -3,12 +3,12 @@
  *
  * 都由界面经 `chan.call` 直接问那台机器的后端，本机与远端同一条路（本机由 `<local>` 那条长连接答）。
  * 起会话走「开会话」（`session-open`），「谁起的谁」读血缘 —— 总线这里不起、不收会话。
- * 界面不发信：人要说话就在会话里说；agent 之间发信走 `cc-send`（信封由后端 `bus-envelope` 那一处核）。
+ * 界面不发信：人要说话就在会话里说；agent 之间发信走 `cc-bus send`（信封由后端 `bus-envelope` 那一处核）。
  *
  * # 本文件做的只有两件（都是调用方那一侧的事）
  *
  * 1. **按类型问**：入参 · 回包都是后端类型生成的（`generated/`），回包形状由握手时的形状指纹管（对不上就不发、说「后端版本不同」），
- *    这里不逐格判。agent id 的形状不在这里判：规则只有一份（`shell_quote_core::bus_id_ok`），后端交给 `cc-log` 之前先判、
+ *    这里不逐格判。agent id 的形状不在这里判：规则只有一份（`shell_quote_core::bus_id_ok`），后端交给 `cc-bus log` 之前先判、
  *    判不过回 `bad_id`（`INVARIANTS §47`）。
  * 2. **说人话**：拒绝码逐码一句（认不出的原样带出去）；通道三层走 `src/frontend/ui/control-said.ts` 那一份。句子住文案表 `ccBus.*`。
  *
@@ -48,7 +48,7 @@ export async function agentOnline(origin: Origin, id: string): Promise<boolean> 
 }
 
 // ─── 驾驶舱读面（`bus-list` · `bus-inbox`）───
-// 后端转调 cc-bus 的机器可读读命令（`cc-list --tsv` · `cc-log`）出成品；形状由握手指纹管。
+// 后端转调 cc-bus 的机器可读读命令（`cc-bus list --tsv` · `cc-bus log`）出成品；形状由握手指纹管。
 
 /** 名单（每一行一个收件箱；`title` · `live` 由后端判，`live` 判不了是 null）。 */
 export type BusList = BusListWire;
