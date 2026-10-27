@@ -59,6 +59,9 @@
 //! `readonly_guard::g6_reach` 那一格钉「只读铁律的豁免理由覆盖了哪几条」，与本文件的 [`tests::TRANSCALLS`]
 //! **不是同一条规矩的两处住址**：后者钉「`K33`『不要 bash 脚本』对每一条各裁了什么」。
 
+pub(crate) mod rules;
+pub(crate) mod store;
+
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
