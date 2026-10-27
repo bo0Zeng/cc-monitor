@@ -1357,11 +1357,6 @@ fn every_symbol_address_in_the_sources_still_resolves() {
     /// 下面有一条保鲜自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
     const EXCEPTIONS: &[(&str, &str)] = &[
         (
-            "resolve_claude_dir",
-            "**历史句**：那句话逐字写的就是「从它**原样搬来**」——今天它已经改名并搬进 \
-                 agent 适配层。删掉这个地址反而丢掉「这段逻辑是从哪儿来的」",
-        ),
-        (
             "setup",
             "tauri 的 `.setup(move |app| …)` 钩子闭包 —— 是真东西，但不是一处声明。\
                  （同一条例外逐字住在 `doc/` 那条同族判据里，两处口径一致）",
@@ -1455,136 +1450,36 @@ fn every_symbol_address_in_the_sources_still_resolves() {
     );
 }
 
-/// ★★ **行号地址：不许越界，而且不许再添新的。**
+/// ★★ **源码里不写行号地址**（`文件·rs:行号` 那一形，零命中，带正控）。
 ///
-/// # 为什么是棘轮，而不是「判它今天指得对不对」
+/// 行号每一轮都会变，写下去下一轮自动变成假话，而它指得对不对机器判不了（要读语义）。
+/// ⇒ 一处都不许有：点符号（`文件·rs::函数名` / 常量名 / 类型名），它的真伪由
+/// `every_symbol_address_in_the_sources_still_resolves` 判；说的是历史 ⇒ 删掉，或改成说现状；
+/// 第三方 crate 里的地址写模块路径（`russh-sftp` 的 `protocol::file_attrs`），不写行号。
 ///
-/// 判后者**要读语义**，机器读不了 —— 09-02 逐处手核过全部 70 处，
-/// 而**一处都不是机器判出来的**。粗判据试过一次：拿地址旁边的引文去比对，
-/// 手核四支**假阳两支**（一支的引文是引用方自己的话；一支是订正段里当反面教材
-/// 留着的历史行号 —— 天真的判据会去红「记录了这个病的那段话」本身）。
-///
-/// ⇒ 本条**不判真伪**，只做两件机器判得了的事：
-///   ① **越界**：被引文件根本没有那么多行 ⇒ 一定是假的（零语义）。
-///   ② **棘轮**：存量登记在下表里，**新写的地址一律红** ——
-///      逼它去写符号地址，而符号地址的真伪由上面那条**真的判得了**。
-///
-/// # 它买不到什么（逐条写明）
-///
-/// - 存量那三十几处**今天指得对不对，本条判不了**，将来烂了也不会红。
-/// - 棘轮**按去重后的（引用方文件, 被引地址）对**认：把一处删掉、另换一处写上，
-///   总数不变，本条**看不见**。它拦的是「顺手又写一个」，不是恶意。
-/// - 被引文件不在本仓（第三方 crate 的路径）时，越界那半**无从判起**，如实跳过。
+/// 买不到：不带 `.rs` 的写法（`launch` 第 196 行）；冒号与数字之间夹了别的字。
 #[test]
-fn line_number_addresses_stay_in_range_and_never_grow() {
-    /// **存量登记**：`(引用方文件基名, 被引路径原样, 被引行号)`。
-    ///
-    /// 这一张表就是「改完之后还剩什么没牙」的**逐条点名**：
-    /// 表里每一行都是一处**判不了真伪**的地址。想少一行的唯一办法是把它改成符号地址。
-    ///
-    /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
-    const INVENTORY: &[(&str, &str, usize)] = &[
-        ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        ("lib.rs", "main.rs", 26),
-        ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
-        ("local_backend_host.rs", "launch.rs", 196),
-        ("local_backend_host.rs", "launch.rs", 198),
-        ("table.rs", "server.rs", 24),
-    ];
-
-    let corpus = addr_corpus();
-    // 基名 → 盘上的那几份（消歧要用）
-    let mut bybase: std::collections::BTreeMap<String, Vec<&(std::path::PathBuf, String)>> =
-        std::collections::BTreeMap::new();
-    for e in &corpus {
-        bybase.entry(addr_base(&e.0)).or_default().push(e);
-    }
-
-    let mut seen: std::collections::BTreeSet<(String, String, usize)> =
-        std::collections::BTreeSet::new();
-    let mut newly: Vec<String> = Vec::new();
-    let mut overrun: Vec<String> = Vec::new();
-    for (p, raw) in &corpus {
-        let fname = addr_base(p);
-        for (ln, cited, n) in line_addresses(raw) {
-            let key = (fname.clone(), cited.clone(), n);
-            seen.insert(key.clone());
-            if !INVENTORY
-                .iter()
-                .any(|(a, b, c)| *a == fname && *b == cited && *c == n)
-            {
-                newly.push(format!("  {fname}:{ln}  指 {cited} 的第 {n} 行"));
-            }
-            // 越界那半：先消歧，消不了就如实跳过（不猜）。
-            let base = cited.rsplit('/').next().unwrap_or(&cited).to_string();
-            let Some(cands) = bybase.get(&base) else {
-                continue; // 第三方 crate / 不在本仓 ⇒ 无从判起
-            };
-            // 消歧只走一步：**路径后缀唯一**。消不了就跳过，**不猜**
-            // —— 猜错时它会输出一个看起来完全合理的东西（`K-R10` 否掉选法 ① 的
-            // 理由逐字就是这个），那比不判更坏。
-            // `cited` 用 `/` 写（`control/tmux_hook.rs`）⇒ 盘上路径先归一成 `/` 再比：
-            // 不归一的话 Windows 上带目录的地址一个都消不了歧，越界那半静默跳过。
-            let narrowed: Vec<&&(std::path::PathBuf, String)> = cands
-                .iter()
-                .filter(|e| {
-                    e.0.to_string_lossy()
-                        .replace('\\', "/")
-                        .ends_with(cited.as_str())
-                })
-                .collect();
-            if narrowed.len() != 1 {
-                continue;
-            }
-            let len = narrowed[0].1.lines().count();
-            if n > len {
-                overrun.push(format!(
-                    "  {fname}:{ln}  指 {cited} 的第 {n} 行，而它只有 {len} 行"
-                ));
-            }
-        }
-    }
-
-    // ★ 三条断言的**顺序是承重的**（09-02 变异台逼出来的）：
-    //   越界 → 新增 → 登记表保鲜。把保鲜排在前面时，「有人把一处地址指到了文件末尾之后」
-    //   这一刀报出来的是「登记表里那一行盘上没有了」——**指错了修法**，
-    //   而本仓反复吃过「读诊断」的亏：指错地方的诊断比没有诊断更费时间。
-    // 语料面塌没塌由 `addr_corpus` 自己判（每棵根都要扫到东西）；抽取器认不认得出由
-    //   `the_address_extractors_really_see_each_shape` 拿合成样本判。
-    assert!(
-        overrun.is_empty(),
-        "这些行号地址**越界**了 —— 被引文件根本没有那么多行，一定是假的：\n{}\n\n\
-             ⇒ 改法只有一条：**点符号**（函数名 / 常量名 / 类型名），别换一个今天对的行号 ——\
-             换一个今天对的行号就是把这一族再走一遍。",
-        overrun.join("\n")
-    );
-    assert!(
-        newly.is_empty(),
-        "这几处是**新写的行号地址**，而行号是每一轮都会变的量，写下去下一轮自动变成假话：\n{}\n\n\
-             ⇒ 三条出路，按优先级：\n\
-             ① **点符号**（`文件·rs::函数名` / 常量名 / 类型名）—— 它的真伪由\
-             `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\n\
-             ② 那一处说的是历史 ⇒ 删掉，或改成说现状；\n\
-             ③ 确实只能用行号 ⇒ 加进本条的存量登记表，**并在提交信息里写清为什么点不了符号**。\n\
-             ⚠ **不许**为了让本条变绿就把它删掉了事：删掉的是线索，不是病。",
-        newly.join("\n")
-    );
-
-    // ★ 登记表保鲜：登记的那一处已经不在盘上了 ⇒ 删掉它，别让表替真判据挡枪。
-    let gone: Vec<String> = INVENTORY
+fn the_sources_hold_no_line_number_addresses() {
+    let found: Vec<String> = addr_corpus()
         .iter()
-        .filter(|(a, b, c)| !seen.contains(&(a.to_string(), b.to_string(), *c)))
-        .map(|(a, b, c)| format!("  {a} → {b} 的第 {c} 行"))
+        .flat_map(|(p, raw)| {
+            let fname = addr_base(p);
+            line_addresses(raw)
+                .into_iter()
+                .map(move |(ln, cited, n)| format!("  {fname}:{ln}  指 {cited} 的第 {n} 行"))
+        })
         .collect();
-    assert!(
-        gone.is_empty(),
-        "存量登记里这几条盘上已经没有了 —— **把它们从表里删掉**（多半是有人把它改成符号地址了，那是好事）：\n{}",
-        gone.join("\n")
+    // 正控：同一个抽取器在合成样本上认得出一处行号地址。
+    let control = line_addresses(&format!("见 relay/server.rs{}97", ":")).len();
+    super::none(
+        "源码里写了行号地址 —— 改成点符号（`文件·rs::函数名`），说的是历史就删掉或改成说现状，别换一个今天对的行号",
+        found,
+        control,
     );
 }
 
 /// 上面两条判据的**活体夹具** —— 它们在真树上今天恰好都是绿的
-/// （越界 0 处、新增 0 处、符号对不上 0 处），而「今天该是空的」那种格是**空真**：
+/// （行号地址 0 处、符号对不上 0 处），而「今天该是空的」那种格是**空真**：
 /// 闸死了 `[] == []` 照样成立。⇒ 这里造一份**真的会红**的语料，逐格切开验。
 ///
 /// 夹具文本一律**现拼**（`.rs` 与冒号分开写），免得夹具自己被真树上的扫描收进人群 ——
@@ -1628,19 +1523,12 @@ fn the_address_extractors_really_see_each_shape() {
     let t = format!("形如 文件.rs{colon}123 与 文件.rs{dcolon}符号");
     assert!(line_addresses(&t).is_empty() && symbol_addresses(&t).is_empty());
 
-    // ⑥ **越界真的判得出来**：拿真树上一份文件，指它末行之后一行。
-    let corpus = addr_corpus();
-    let (probe, src) = corpus
-        .iter()
-        .find(|(p, _)| addr_base(p) == "structural_scan.rs")
-        .expect("语料面里必须有本文件自己 —— 没有就说明自收那一步掉了");
-    let len = src.lines().count();
-    assert!(len > 100, "{probe:?} 只有 {len} 行 —— 语料读坏了");
-    let addr = line_addresses(&format!("指 structural_scan.rs{colon}{}", len + 1));
-    assert_eq!(addr.len(), 1);
+    // ⑥ 语料面收着规则目录（本文件自己在里面）。
     assert!(
-        addr[0].2 > len,
-        "越界那一格必须是「被引行号 > 文件行数」，否则上面那条的越界半边是空转的"
+        addr_corpus()
+            .iter()
+            .any(|(p, _)| addr_base(p) == "structural_scan.rs"),
+        "语料面里必须有本文件自己 —— 没有就说明自收那一步掉了"
     );
 }
 

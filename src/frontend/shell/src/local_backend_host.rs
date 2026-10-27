@@ -440,7 +440,7 @@ fn send_attach(
 /// - **协议改走这台家里的套接字** —— 管子没了就得有别的说话方式，那正是 `listen::ENV_RESIDENT`。
 ///
 /// ⚠ **`process_group` 不改变父子关系** ⇒ **不 `wait` 就留僵尸**
-/// （`launch.rs:196-198` 头注逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
+/// （`spawn_managed.rs::Lifetime` 的 `Detached` 那一格逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
 /// 不是轮询。monitor 自己退出之后那个进程被 init 接管，由 init 收 —— 那一格不归我们。
 ///
 /// 哪些平台能脱离由 `platform::proc::CAN_DETACH` 答（原先是这里两份 `cfg` 分身）；不能 ⇒ 那句「不支持」照旧。
@@ -608,7 +608,7 @@ fn reap_detached(
     std::thread::Builder::new()
         .name("ccm-detached-reaper".into())
         .spawn(move || {
-            // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`launch.rs:198` 逐字）。
+            // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`spawn_managed.rs::Lifetime` 逐字）。
             // ★ `K-P3b`：**`wait()` 回来那一刻就是这条路上唯一拿得到退出状态的时刻** ——
             //   在这里记账，不在别处猜。
             match c.wait() {

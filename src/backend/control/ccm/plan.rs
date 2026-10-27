@@ -10,7 +10,7 @@
 //! # 本文件不许出现 ccm 旗标的字面量
 //!
 //! 旗标名的唯一住址是 [`crate::ccm_line::argv::flag`]。由
-//! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
+//! `argv::tests::ccm_flag_literals_live_only_in_argv_rs` 机检（`KR48D2`）。
 
 use crate::ccm_line::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use crate::platform::fs::Ro;

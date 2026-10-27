@@ -71,7 +71,7 @@ path = "main.rs"
 #
 # 🔴 **为什么源码不住 `src/backend/benches/`** —— 现打，不是偏好：
 # 本 crate 有 **17 个扫描型守卫**按 `guard_core::addr::backend_src_root()`（= 本 manifest 所在目录）
-# **递归走全树收 `.rs`**。比如 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
+# **递归走全树收 `.rs`**。比如 `readonly_guard` 那张只读白名单。
 # ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
 #   这与 `.cargo/config.toml` 把 `target-dir` 挪出源码树是**同一条理由的第二例**：

@@ -27,7 +27,6 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 #   〔审计 F 🔴-3〕先前这两行正好说反（monitor 开、backend 不开）：那是 `K-H2a` 裁四「backend 只许读」时的分工，RM1a / GP1 / US1 之后倒过来了。
 # ⇒ 默认构建下本 crate **零依赖、零平台 cfg**，那条共享约束原样成立；
 #   平台原语只在开了 `harden` 的那一侧存在。
-# ⚠ **这句话是要被判据钉的，不是自述**：见 `perm.rs` 的 `the_default_build_has_no_platform_dependency`。
 #
 # ⚠ **诚实边界**：默认关掉不等于「backend 的 lock 不受影响」——`Cargo.lock` 记的是解析出来的图，
 # 可选依赖在不在里面要**单独量**。读数与量法见件文件 `§0e`（两份 lock 分开量、分开报）。
