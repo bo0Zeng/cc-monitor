@@ -72,7 +72,7 @@ pub(super) async fn flush_lines(
         .map(|l| (l.session_id.clone(), l.seq, l.end))
         .collect();
     // 同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
-    let origin = crate::origin::Origin(host_label.to_string());
+    let origin = crate::origin::Origin::named(host_label.to_string());
     let payloads = crate::batch_to_payloads(lines, &origin, runs);
     // 交给订了它的那些会话流（`event_replay` 头注「订阅」）；出口在它手里，不再经 `app` 广播。
     replay.on_line_batch_awaited(payloads).await;
@@ -199,7 +199,8 @@ impl LineIntake {
     pub(super) fn removed(&mut self, sid: &str) {
         self.runs.forget(sid);
         self.snapshots.cancel(sid);
-        crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
+        let origin = crate::origin::Origin::named(self.origin_label.clone());
+        crate::snapshot_resume::forget(&origin, sid);
     }
 }
 

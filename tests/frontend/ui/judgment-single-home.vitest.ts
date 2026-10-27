@@ -837,10 +837,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 几台的搜索结果合一份 · 最近优先那一个排序（本机后端扇出完 · 手机核心逐台问完都调它）：界面只照抄合好的那一份，TS 侧没有孪生。
     merge: "J15",
     sort_by_recency: "J15",
-    // 本机那一个 · 远端名 · 线上那个串 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
+    // 造一台 · 本机那一个 · 远端名 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
     local: NONE,
     host_name: NONE,
-    as_wire_str: NONE,
+    named: NONE,
     route: NONE,
     // 形状对不上那个码与那一句（`copy-core::backend_differs`）只在 monitor：它比指纹、它写好带机器名的那一句，界面照抄拒绝里的话。
     SHAPE_DIFFERS: NONE,

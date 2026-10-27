@@ -2689,7 +2689,7 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
         FakeBackend::new(&["files-stat"], Declared::default()),
     )
     .await;
-    let origin = comms_inward::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let paths: Vec<String> = vec![a, b, format!("{dir}/gone.bin")];
     let got = crate::writeops::probe_modes(&wired.line, &origin, &paths).await;
     assert_eq!(got, vec![Some(0o640), Some(0o600), None]);

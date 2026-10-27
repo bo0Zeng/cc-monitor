@@ -205,7 +205,7 @@ impl Backends for InboundBackends {
 
     /// 那台的能力事实 = 它此刻那条连接握手时交出的那一份（`inbound_client::offer_of`，一个家）。
     fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
-        inbound_client::offer_of(origin.as_wire_str())
+        inbound_client::offer_of(origin)
     }
 }
 
@@ -266,7 +266,13 @@ impl InboundBackends {
                 }
             } else {
                 client
-                    .call_at(origin.as_wire_str(), &op.0, args, view.as_ref(), deadline)
+                    .call_at(
+                        origin.host_name().unwrap_or_default(),
+                        &op.0,
+                        args,
+                        view.as_ref(),
+                        deadline,
+                    )
                     .await
             };
             match answer {
@@ -318,22 +324,23 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
         return Err(OursFault::Misuse.into());
     };
     // 本机那一侧先分：本机没有 SFTP 传输这回事（文件窗口只开在远端上）⇒ 说真实原因，不让下一行答一句「未找到远端配置: <local>」。
-    if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
+    if origin.is_local() {
         return Err(refused(
             "local_has_no_transfer",
             copy_text("rsChanHost.transfer.localNone", &[]),
         ));
     }
-    if !crate::machine_table::has(origin.as_wire_str()) {
+    let host = origin.host_name().unwrap_or_default();
+    if !crate::machine_table::has(host) {
         return Err(refused(
             "no_such_origin",
             copy_text(
                 "rsChanHost.transfer.noConfig",
-                &[("machine", &(origin.as_wire_str()).to_string())],
+                &[("machine", &host.to_string())],
             ),
         ));
     }
-    match crate::sftp_pool::transfer_call(origin.as_wire_str().to_string(), &op.0, &args).await {
+    match crate::sftp_pool::transfer_call(host.to_string(), &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
@@ -350,7 +357,7 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default()
         .to_string();
-    for machine in [origin.as_wire_str().to_string(), to] {
+    for machine in [origin.to_string(), to] {
         if machine == inbound_client::LOCAL_ORIGIN {
             return Err(refused(
                 "local_has_no_transfer",
@@ -364,7 +371,7 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
             ));
         }
     }
-    match crate::sftp_pool::copy_call(origin.as_wire_str().to_string(), &args, left).await {
+    match crate::sftp_pool::copy_call(origin.to_string(), &args, left).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
@@ -382,22 +389,23 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
         return Err(OursFault::Misuse.into());
     };
     // 文件窗口只开在远端上⇒ 本机这一问不存在，说真实原因。
-    if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
+    if origin.is_local() {
         return Err(refused(
             "local_has_no_file_window",
             copy_text("rsChanHost.terminal.localNone", &[]),
         ));
     }
-    if !crate::machine_table::has(origin.as_wire_str()) {
+    let host = origin.host_name().unwrap_or_default();
+    if !crate::machine_table::has(host) {
         return Err(refused(
             "no_such_origin",
             copy_text(
                 "rsChanHost.terminal.noConfig",
-                &[("machine", &(origin.as_wire_str()).to_string())],
+                &[("machine", &host.to_string())],
             ),
         ));
     }
-    let ask = serde_json::json!({ "machine": origin.as_wire_str(), "cwd": cwd.clone() });
+    let ask = serde_json::json!({ "machine": host, "cwd": cwd.clone() });
     let Some(local) = inbound_client::local_client() else {
         return Err(backend_route::layer_no_channel(HOP));
     };
@@ -436,7 +444,7 @@ async fn filewin_open(origin: Origin, payload: Body) -> Result<Body, CallError> 
     let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
         return Err(OursFault::Misuse.into());
     };
-    match crate::filewin::entry::open_from_window(origin.as_wire_str(), &args).await {
+    match crate::filewin::entry::open_from_window(&origin.to_string(), &args).await {
         Ok(()) => Ok(Body(b"{}".to_vec())),
         Err((code, why)) => Err(refused(code, why)),
     }
@@ -467,7 +475,7 @@ async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
     // 拉到前面走主窗口那一处（与第二次启动同一条：还原 · 显示 · 聚焦，失败各留一行日志）。
     crate::platform::window::raise_main(&app, None, true);
     let said = serde_json::json!({
-        "origin": origin.as_wire_str(),
+        "origin": origin,
         "workspace": t.workspace,
         "slice": t.slice,
         "id": t.id,

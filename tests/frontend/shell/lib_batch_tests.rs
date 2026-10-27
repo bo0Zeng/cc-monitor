@@ -69,7 +69,7 @@ fn origin_is_propagated_to_payloads() {
     let lines = vec![jline("s-remote", 0, Some(r#"{"type":"user"}"#), None)];
     let payloads = batch_to_payloads(
         lines,
-        &crate::origin::Origin("pi".to_string()),
+        &crate::origin::Origin::named("pi".to_string()),
         &mut SkipRuns::default(),
     );
     assert_eq!(payloads.len(), 1);

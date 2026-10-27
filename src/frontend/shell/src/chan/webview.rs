@@ -264,7 +264,7 @@ pub fn chan_subscribe(
     // 空白名：`route` 那道闸拒 ⇒ 交给句柄一个空名，它原位回 `Closed{Ours(Misuse)}`（同 `chan_call` 那一格）。
     let origin = match origin.route("chan_subscribe") {
         Ok(_) => origin,
-        Err(_) => crate::origin::Origin(String::new()),
+        Err(_) => crate::origin::Origin::named(String::new()),
     };
     replay.subscribe(webview.label(), id, &origin, &kind, from.map(Cursor), want);
 }

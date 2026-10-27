@@ -31,14 +31,14 @@ fn replay() -> std::sync::Arc<crate::event_replay::EventReplay> {
 #[tokio::test]
 async fn a_changed_frame_of_that_topic_on_that_machine_comes_out_as_is() {
     let replay = replay();
-    let me = Origin("chan-changed-a".to_string());
+    let me = Origin::named("chan-changed-a".to_string());
     let mut s = InboundBackends.subscribe(me.clone(), Kind("changed/plan".to_string()), None);
     assert!(
         matches!(next(&mut s).await, Some(Item::Unseen { .. })),
         "那台还没接上 ⇒ 先说看不见"
     );
     replay.changed(
-        &Origin("chan-changed-other".to_string()),
+        &Origin::named("chan-changed-other".to_string()),
         "plan",
         "{}".into(),
     );
@@ -65,7 +65,7 @@ async fn a_changed_frame_of_that_topic_on_that_machine_comes_out_as_is() {
 #[tokio::test]
 async fn a_malformed_changed_kind_is_refused_in_place() {
     replay();
-    let o = || Origin("chan-changed-b".to_string());
+    let o = || Origin::named("chan-changed-b".to_string());
     for kind in ["changed/", "changed/a/b", "no-such-kind"] {
         let mut s = InboundBackends.subscribe(o(), Kind(kind.to_string()), None);
         assert!(

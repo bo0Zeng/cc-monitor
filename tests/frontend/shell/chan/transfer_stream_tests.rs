@@ -106,7 +106,7 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
     let label = "判据机器·transfer-stream";
     let id = open_upload(label).await;
     let mut sub = client.subscribe(
-        &crate::chan::wire::Origin(label.to_string()),
+        &crate::chan::wire::Origin::named(label.to_string()),
         &kind(&id),
         None,
         4,
@@ -173,7 +173,7 @@ async fn a_transfer_that_ends_before_the_first_take_streams_just_its_end() {
     let label = "判据机器·transfer-coalesced";
     let id = open_upload(label).await;
     let sub = client.subscribe(
-        &crate::chan::wire::Origin(label.to_string()),
+        &crate::chan::wire::Origin::named(label.to_string()),
         &kind(&id),
         None,
         0,
@@ -210,7 +210,7 @@ async fn stopping_the_subscription_cancels_the_transfer() {
     let label = "判据机器·transfer-stop";
     let id = open_upload(label).await;
     let mut sub = client.subscribe(
-        &crate::chan::wire::Origin(label.to_string()),
+        &crate::chan::wire::Origin::named(label.to_string()),
         &kind(&id),
         None,
         8,
@@ -236,7 +236,7 @@ async fn a_bad_transfer_subscription_says_why_in_place() {
     let be = backend_rig(&ALL);
     let client = rig().await;
     let label = "判据机器·transfer-bad";
-    let origin = crate::chan::wire::Origin(label.to_string());
+    let origin = crate::chan::wire::Origin::named(label.to_string());
     let code_of = |items: &[Item]| match items {
         [Item::Closed { by: By::Peer(b) }] => {
             body_json(b)["code"].as_str().unwrap_or("").to_string()
@@ -293,7 +293,7 @@ async fn opening_a_transfer_for_an_unknown_machine_is_refused_out_loud() {
     let client = rig().await;
     let r = client
         .call(
-            &crate::chan::wire::Origin("判据里不存在的机器·transfer".to_string()),
+            &crate::chan::wire::Origin::named("判据里不存在的机器·transfer".to_string()),
             &Op(crate::sftp_pool::TRANSFER_UPLOAD.to_string()),
             Body(br#"{"local_path":"/nonexistent"}"#.to_vec()),
             budget(5_000),
@@ -317,7 +317,7 @@ async fn a_coded_failure_reaches_the_window_with_its_code() {
     let label = "判据机器·transfer-coded";
     let id = open_upload(label).await;
     let sub = client.subscribe(
-        &crate::chan::wire::Origin(label.to_string()),
+        &crate::chan::wire::Origin::named(label.to_string()),
         &kind(&id),
         None,
         4,
@@ -350,7 +350,7 @@ async fn the_terminal_ask_is_taken_by_the_monitor_and_refused_out_loud_when_it_c
     ] {
         let r = client
             .call(
-                &crate::chan::wire::Origin(origin.to_string()),
+                &crate::chan::wire::Origin::named(origin.to_string()),
                 &Op(filewin_contract::TERMINAL_OPEN_OP.to_string()),
                 Body(
                     serde_json::to_vec(&filewin_contract::terminal_open_args(serde_json::json!(

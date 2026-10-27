@@ -107,8 +107,8 @@ fn rig(tag: &str) -> (PathBuf, PathBuf) {
 
 fn req(a: &Path, b: &Path, names: &[&str], on: OnExists, ticket: Option<&str>) -> TransferCopyReq {
     TransferCopyReq {
-        from: cmd_wire::Machine("a".into()),
-        to: cmd_wire::Machine("b".into()),
+        from: cmd_wire::Machine::named("a"),
+        to: cmd_wire::Machine::named("b"),
         items: names
             .iter()
             .map(|n| CopyFrom {
@@ -466,8 +466,8 @@ fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
             &w,
             rt,
             TransferCopyReq {
-                from: cmd_wire::Machine("a".into()),
-                to: cmd_wire::Machine("b".into()),
+                from: cmd_wire::Machine::named("a"),
+                to: cmd_wire::Machine::named("b"),
                 items: ["src/f.bin", "src/d"]
                     .iter()
                     .map(|p| CopyFrom { remote_path: at(p) })

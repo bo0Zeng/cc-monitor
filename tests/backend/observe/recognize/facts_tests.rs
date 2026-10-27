@@ -1555,10 +1555,10 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
                 rank: ranked(*tier, *waited).rank,
                 session: waiting_row(sid, *tier, *waited),
             };
-            match machines.iter_mut().find(|x| x.0 .0 == *m) {
+            match machines.iter_mut().find(|x| x.0.to_string() == *m) {
                 Some(x) => x.1.items.push(item),
                 None => machines.push((
-                    cmd_wire::Machine(m.to_string()),
+                    cmd_wire::Machine::named(m.to_string()),
                     cmd_wire::needs::NeedsList {
                         items: vec![item],
                         answered: vec![],
@@ -1574,7 +1574,7 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         for x in &got.items {
             let (m, ..) = rows.iter().find(|r| r.1 == item_name(&x.item)).unwrap();
             assert_eq!(
-                x.origin.0,
+                x.origin.to_string(),
                 *m,
                 "{name}：{} 带回的台不对",
                 item_name(&x.item)
@@ -1595,12 +1595,12 @@ fn needs_merge_orders_across_machines_by_the_one_rule() {
         vec![],
     );
     let down = vec![NeedsDown {
-        origin: cmd_wire::Machine("pi".into()),
+        origin: cmd_wire::Machine::named("pi"),
         said: "那台没在跑".into(),
     }];
     let got = merge_needs(
         vec![
-            (cmd_wire::Machine("devbox".into()), remote),
+            (cmd_wire::Machine::named("devbox"), remote),
             (cmd_wire::Machine::local(), local),
         ],
         down,

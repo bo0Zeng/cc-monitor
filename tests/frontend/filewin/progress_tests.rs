@@ -152,8 +152,8 @@ fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticke
         said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
     }));
     let (at, home) = (
-        crate::source::Origin("devbox".into()),
-        crate::source::Origin("devbox".into()),
+        crate::source::Origin::named("devbox"),
+        crate::source::Origin::named("devbox"),
     );
     b.set_route(at.clone(), home.clone());
     p.settle(0);
@@ -181,8 +181,8 @@ fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticke
     // 全成了 ⇒ 不带按钮。
     let ok = crate::batch::BatchBoard::new(b.plan());
     ok.set_route(
-        crate::source::Origin("devbox".into()),
-        crate::source::Origin("devbox".into()),
+        crate::source::Origin::named("devbox"),
+        crate::source::Origin::named("devbox"),
     );
     p.add(
         Trip::Batch {

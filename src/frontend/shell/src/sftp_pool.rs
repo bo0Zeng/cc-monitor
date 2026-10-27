@@ -178,14 +178,14 @@ pub async fn transfer_call(
         // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比。
         TRANSFER_UPLOAD => {
             let ask: TransferUploadAsk = ask_of(op, payload)?;
-            relay(&machine, ask.on(cmd_wire::Machine(machine.clone()))).await
+            relay(&machine, ask.on(cmd_wire::Machine::named(machine.clone()))).await
         }
         // 这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
         // 下载的本机落点是原始字节（字符串或 `{"b16": …}`：有损名在 Linux 上按原始字节落名），原样转给本机后端判。
         TRANSFER_DOWNLOAD => {
             let ask: TransferDownloadAsk = ask_of(op, payload)?;
-            relay(&machine, ask.on(cmd_wire::Machine(machine.clone()))).await
+            relay(&machine, ask.on(cmd_wire::Machine::named(machine.clone()))).await
         }
         other => Err(Refusal::of(
             "bad_args",
@@ -205,7 +205,7 @@ pub async fn copy_call(
     left: Duration,
 ) -> Result<serde_json::Value, Refusal> {
     let ask: cmd_wire::transfer::TransferCopyAsk = ask_of(TRANSFER_COPY, payload)?;
-    let req = ask.from(cmd_wire::Machine(machine));
+    let req = ask.from(cmd_wire::Machine::named(machine));
     let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
     let client = crate::inbound_client::local_backend_accepting(TRANSFER_COPY)
         .await
@@ -267,7 +267,7 @@ async fn relay<R: cmd_wire::files::Call<Reply = cmd_wire::transfer::TransferOpen
         relays().insert(
             id.to_string(),
             Relay {
-                origin: crate::origin::Origin(machine.to_string()),
+                origin: crate::origin::Origin::named(machine.to_string()),
                 owner: Arc::downgrade(&client),
                 state: Arc::new(tx),
                 watched: false,

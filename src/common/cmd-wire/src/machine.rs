@@ -104,10 +104,11 @@ pub const KEYS_NOT_NAMES: &[&str] = &[LOCAL];
 /// 只能在**读进来之后**用 [`Machine::is_local`] 分。这是刻意的：
 /// 那两个值的线上形状必须与今天逐字节相同，不许为了类型好看而改协议。
 ///
-/// ⚠ 字段是 `pub` 的：`Machine` 是**一个机器名**，不是一个带不变式的容器。
-/// 唯一的不变式（「名字不许是空白」）由 [`Machine::route`] 那个漏斗执行 ——
-/// 装在构造器上反而会把它拆成「构造时拒」与「路由时拒」两处，而那两处会漂。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 字段私有、不借出 `&str`：按机器记的表以 `Machine` 当键（`Hash` · `Ord`），比本机远端用
+/// [`Machine::is_local`] · [`Machine::host_name`]，要远端那台的名字只有 `host_name` 一个口；
+/// 日志与拼路径 · URL 要线上那串经 `Display`。造一台走 [`Machine::named`]（不判名字，
+/// 「名字不许是空白」由 [`Machine::route`] 那个漏斗执行 —— 装在构造器上会拆成两处、会漂）。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 // TS 那一侧照旧叫 `Origin`（界面几十处引它）。
 //   别的 crate 的测试档里有生成类型嵌着它 ⇒ 那边经 `ts` feature 拿到同一个派生，也会把它当依赖导出一份；
 //   落点因此写成本包根起算的绝对路径（相对的会跟着那边的目录走，曾经落到仓根 `frontend/`；判据 `ts_export_guard`）。
@@ -121,7 +122,7 @@ pub const KEYS_NOT_NAMES: &[&str] = &[LOCAL];
     )
 )]
 #[serde(transparent)]
-pub struct Machine(pub String);
+pub struct Machine(String);
 
 /// 手写而不是 `derive` —— 为的就是 `expecting()` 那句话。
 ///
@@ -154,6 +155,11 @@ impl<'de> Deserialize<'de> for Machine {
 }
 
 impl Machine {
+    /// 名字叫 `name` 的那一台（`"<local>"` 即本机）。不判名字（空白名由 [`Machine::route`] 拒）。
+    pub fn named(name: impl Into<String>) -> Self {
+        Machine(name.into())
+    }
+
     /// 本机那一个。
     pub fn local() -> Self {
         Machine(LOCAL.to_string())
@@ -175,14 +181,6 @@ impl Machine {
     /// 而这个方法**只答远端**。叫 `name` 会让调用方以为本机也能取到。
     pub fn host_name(&self) -> Option<&str> {
         self.is_remote().then_some(self.0.as_str())
-    }
-
-    /// 线上那个字符串。给还在用 `&str` 的那 46 处调用点过渡用。
-    ///
-    /// ⚠ 它**不再回 `Option`** —— 上一拍那个 `None` 是 `Unspecified` 的出口，
-    /// 而那个变体已经退役（头注逐条写了为什么）。线上没有「没有字符串」这一档了。
-    pub fn as_wire_str(&self) -> &str {
-        &self.0
     }
 
     /// **合并后的命令唯一的入口分派**（步 12·C）。
@@ -216,6 +214,13 @@ impl Machine {
         } else {
             Ok(Route::Remote(&self.0))
         }
+    }
+}
+
+/// 线上那一串（本机 `"<local>"`）：给日志与拼路径 · URL 用。按机器分什么不走它（用 `is_local` · `host_name`）。
+impl std::fmt::Display for Machine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
     }
 }
 

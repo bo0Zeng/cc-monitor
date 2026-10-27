@@ -115,22 +115,22 @@ fn every_failure_has_a_plain_sentence_on_both_kinds_of_machine() {
     // 两向：样本覆盖了每一格（3×3 跳 ＋ 2 对端 ＋ 3×2 本侧），也没有重复格。
     assert_eq!(got.len(), all.len(), "样本里有重复的格：{got:?}");
     assert_eq!(got.len(), 9 + 2 + 6, "样本没覆盖全部格：{got:?}");
-    let remote = Origin("devbox".into());
+    let remote = Origin::named("devbox");
     let local = Origin::local();
     for (e, names) in &all {
         for origin in [&remote, &local] {
             let s = said(e, origin);
             let who = arm(e);
-            assert!(!s.trim().is_empty(), "{who} @ {}：没有那一句", origin.0);
+            assert!(!s.trim().is_empty(), "{who} @ {}：没有那一句", origin);
             for w in NOT_ON_SCREEN {
-                assert!(!s.contains(w), "{who} @ {}：{s:?} 里带了 {w:?}", origin.0);
+                assert!(!s.contains(w), "{who} @ {}：{s:?} 里带了 {w:?}", origin);
             }
             if *names {
                 let call = machine(origin);
                 assert!(
                     s.contains(&call),
                     "{who} @ {}：{s:?} 没称呼那台（{call}）",
-                    origin.0
+                    origin
                 );
             }
         }
@@ -150,20 +150,20 @@ fn whether_it_was_sent_is_always_said() {
         reach,
         why,
     };
-    for origin in [Origin("devbox".into()), Origin::local()] {
+    for origin in [Origin::named("devbox"), Origin::local()] {
         for why in [HopFault::Unreachable, HopFault::Dropped, HopFault::Overrun] {
             let not_sent = said(&hop(Reach::NotSent, why), &origin);
             let unknown = said(&hop(Reach::Unknown, why), &origin);
             assert_ne!(
                 not_sent, unknown,
                 "{why:?} @ {}：没发出与拿不准说成了同一句",
-                origin.0
+                origin
             );
             assert_eq!(
                 unknown,
                 said(&hop(Reach::Sent, why), &origin),
                 "{why:?} @ {}",
-                origin.0
+                origin
             );
         }
     }
@@ -176,7 +176,7 @@ fn a_refusal_says_the_peer_sentence_or_that_it_is_unreadable() {
             body: Body(body.to_vec()),
         },
     };
-    let devbox = Origin("devbox".into());
+    let devbox = Origin::named("devbox");
     assert_eq!(
         said(
             &refused(r#"{"code":"no_tmux","message":"devbox 无 tmux"}"#.as_bytes()),

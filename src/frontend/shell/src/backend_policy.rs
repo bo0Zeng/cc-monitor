@@ -64,7 +64,8 @@ async fn exit_policy_call(
     budget: std::time::Duration,
 ) -> Result<Value, String> {
     let at = origin;
-    let origin = origin.as_wire_str();
+    let origin_s = origin.to_string();
+    let origin = origin_s.as_str();
     let Some(client) = inbound_client::local_client() else {
         return Err(said(no_channel(origin)));
     };
@@ -125,14 +126,14 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
         Ok(None) => {
             tracing::warn!(
                 "退出：[{}] 的退出策略应答形状不对 ⇒ 按缺省（不结束）办",
-                origin.as_wire_str()
+                origin
             );
             false
         }
         Err(e) => {
             tracing::warn!(
                 "退出：问不到 [{}] 的退出策略（{e}）⇒ 按缺省（不结束）办 —— 这不等于有人这么选过",
-                origin.as_wire_str()
+                origin
             );
             false
         }

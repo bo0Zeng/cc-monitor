@@ -64,7 +64,8 @@ pub async fn backend_status(origin: String) -> Result<BackendStatus, Said> {
 /// [`backend_status`] 的本体。
 fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
     check_origin(&origin)?;
-    let channel = crate::inbound_client::offer_of(&origin).is_some();
+    let channel =
+        crate::inbound_client::offer_of(&cmd_wire::Machine::named(origin.clone())).is_some();
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
     // 不许拿 `channel` 或 `pid` 反推（假信号不报错，它只是一直说是）。远端那侧是 `null`（「它脱没脱离」在远端这条路上没有意义）。
     // 三格一起算：`the_three_ports_are_one_command_each_and_all_take_origin` 逐口只许有一处 `is_local(&origin)` 分派。

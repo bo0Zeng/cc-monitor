@@ -103,7 +103,7 @@ fn load_of(wired: &Wired, key: &PicKey, cap: u64) -> Load {
     Load {
         rt: tokio::runtime::Handle::current(),
         line: wired.line.clone(),
-        origin: crate::source::Origin(wired.origin.clone()),
+        origin: crate::source::Origin::named(wired.origin.clone()),
         wire: cmd_wire::files::WirePath::from(key.path.as_str()),
         cap,
         side: 8192,
