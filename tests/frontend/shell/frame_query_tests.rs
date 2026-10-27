@@ -435,6 +435,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "session-open-dir",
         "typed：后端出成品 `DirChecked`（`faces/session_open_face.rs::SessionOpenDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
+    // 起一组会话：补足的样子与照补足起都在那台后端（`control/session_set.rs`），连同界面照摆的几句。
+    (
+        "set-plan",
+        "typed：后端出成品 `SetPlan`（每行已有 · 再起 · 组名 · 起不了的原因 · 写好的几句，只读）；前端 `set-reads.ts::planSet` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "set-launch",
+        "typed：后端照补足逐条走 `session-open` 起、起之前写好组注解，回 `SetLaunched`（连起完那一句）；前端 `set-reads.ts::launchSet` 按类型问，monitor 这一侧零发送点",
+    ),
     // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
     (
         "session-model",
