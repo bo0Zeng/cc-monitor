@@ -14,4 +14,8 @@ terminals: Array<Terminal>,
 /**
  * 一个都没有时为什么。
  */
-why?: ShownWhy, };
+why?: ShownWhy, 
+/**
+ * 会话在 tmux 里（问它的那台照带给出口：窗口关了时给不给［在终端里打开］）。旧版那台不带 ⇒ 当不在。
+ */
+tmux: boolean, };

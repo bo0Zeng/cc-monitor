@@ -30,4 +30,8 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };

@@ -18,6 +18,10 @@ path: string,
  */
 rows: Array<RunRow>, 
 /**
+ * 这一页从哪个字节起（行头）：往前再读一页拿它当 `before`；0 ⇒ 前面没有了。
+ */
+from: number, 
+/**
  * 读到哪了（最后一个整行之后）。
  */
 end: number, 

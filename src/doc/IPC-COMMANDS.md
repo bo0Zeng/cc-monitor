@@ -22,7 +22,7 @@
 | `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
 | `shapes` | {string: string}? | typed 命令的形状指纹 `{命令: 8 位十六进制}`（`crate::shapes::SHAPES`） |
 | `frames` | {string: string}? | 每种帧（`hello` 除外）的形状指纹 `{kind: 8 位十六进制}`（`crate::frame_shapes::FRAMES`） |
-| `unseen` | SessionFace? | 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造（`SessionFace::of(Life::Unseen)`），壳只取本机后端那一份，每发一格「说不清」都带上它 |
+| `unseen` | SessionFace? | 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造，壳只取本机后端那一份，每发一格「说不清」都带上它 |
 
 ### `line`
 
@@ -35,7 +35,7 @@
 | `seq` | number | 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset` |
 | `record` | Record? | 这一行的通用记录；缺 ＝ 不进界面、照占号 |
 | `cwd` | string? | 这条记录自己的工作目录 |
-| `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义逐字节对齐手机端 `LineFramer.endOffset`：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
+| `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset** ＝ 下一行的起点，两端拿它续读：计 CRLF 的 `\r`、含 `\n`、残行不计；从 N 续读 ⇒ `tail -c +(N+1)` |
 | `rid` | string? | 这一行的对账键（适配层给；流的「开始」带同一个值） |
 
 ### `session_added`
@@ -80,25 +80,14 @@ A new session file appeared。
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来 · 换了一份 ⇒ 带上最新的；没变 ⇒ 不上线 |
 
-### `session_state`
+### `session_left`
 
-**会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 `SessionFate`）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sid` | string | 会话 id |
-| `state` | SessionFate | 离开「活」之后的去向 |
-| `face` | SessionFace | 离开「活」之后这条会话的整份脸（可重连 · 已结束 · 记录已不在） |
-
-### `session_removed`
-
-A session file went away。
+**一条会话离开「活」的那一帧**（只这一帧）：去向就是 `face.life`（可重连 · 已结束· 记录已不在）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `cause` | RemovalCause? | 这个 sid 是「死了」还是「被顶替了」 |
-| `by` | string? | 被顶替时（`cause: superseded`），顶替它的那条会话的 sid；不是顶替 ⇒ 不上线 |
+| `face` | SessionFace | 离开「活」之后这条会话的整份脸（一生在 `face.life`） |
 
 ### `overflow`
 
@@ -296,7 +285,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `dot` | SessionDot |  |
-| `live` | FaceLive | 进程在不在；在干什么只住在「在」那一支里 |
+| `life` | Life | 这条会话的一生（在干什么只住在「活」那一支里） |
 | `settled` | bool | 那台看不见时照旧作数（已结束 · 记录已不在） |
 | `name` | Words | 短名（运行中 · 需手动 · 已结束 …） |
 | `tip` | Words | 悬停那一句 |
@@ -306,12 +295,15 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `can` | SessionCan |  |
 | `account` | string? | 跑在账号库里哪个号下：那台后端宣告时读会话进程环境判一次，这条会话之后的脸（含离开「活」的那几张）都带它 |
 
-#### `FaceLive`
+#### `Life`
 
-进程在不在：`{is: "yes", activity?}`（判得出在干什么才带 `activity`）· `{is: "no"}`。
+**一条会话的一生**（线上只此一处说活不活）：`{is: "live", activity?}`（判得出在干什么才带）· `{is: "reconnectable"}` 程序退了、tmux 会话还在 · `{is: "ended", by?}` 进程没了（被顶替 ⇒ `by` 是顶替它的那条）· `{is: "gone"}` 已结束、记录也不在了 · `{is: "unclear"}` 说不清（判不了 · 那台看不见）。
 
-- `is: "yes"`，带 `activity` SessionActivity?
-- `is: "no"`
+- `is: "live"`，带 `activity` SessionActivity?
+- `is: "reconnectable"`
+- `is: "ended"`，带 `by` string?
+- `is: "gone"`
+- `is: "unclear"`
 
 #### `SessionDot`
 
@@ -338,6 +330,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `reattach` | Allow | 程序退了、tmux 会话还在 ⇒ 接回 |
 | `model` | Allow | 换模型（`session-model`） |
 | `permission` | Allow | 切权限档（`session-permission`） |
+| `stop` | Allow | 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能 |
 
 #### `Allow`
 
@@ -382,20 +375,6 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 
 - `host: "tmux"`，带 `terminal` string? —— 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）
 - `host: "none"` —— 环境读得到、不在任何宿主里
-
-#### `SessionFate`
-
-`session_state` 的 `state`：**一条会话离开「活」之后是什么** —— 那台机器的后端自己裁，客户端只收成品、不再猜。
-
-- `reconnectable` —— claude 退了、它的 tmux 会话还在 ⇒ 接得回去
-- `ended` —— 进程没了、容器也没了（或被顶替了）⇒ 只能 resume
-
-#### `RemovalCause`
-
-`session_removed` 的 `cause`。
-
-- `gone` —— 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind
-- `superseded` —— 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**（直接归档，不再去查 tmux 快照）
 
 #### `Unavailable`
 
@@ -3243,39 +3222,28 @@ type Words = string;
 
 #### `machine-interrupts`
 
-停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么。
+停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前，会打断什么。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machine-interrupts`
+收 `args` · 可撤 · CLI：`ccm -- --machine-interrupts`
 
-入参 `MachineInterruptsReq` · 回包 `Interrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `MachineInterruptsReq` · 回包 `MachineInterruptsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Interrupts = { 
-/**
- * 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）。
- */
-relayedSessions: number, 
-/**
- * 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）。
- */
-relayedMaybe: number, 
-/**
- * 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）。
- */
-liveStreams: number, 
-/**
- * 这台账上通往问的那台机器的转发（问的是重启 / 退出 cc-monitor ⇒ 账上全部）。
- */
-forwards: number, };
+type MachineInterruptsReply = { relayedSessions: number | null, relayedMaybe: number, liveStreams: number, forwards: number, };
 type MachineInterruptsReq = { 
 /**
- * 数通往哪台的转发（缺 ⇒ 不数）。
+ * 停的是哪台：别的台 ⇒ 这台后端经那台的常驻流问它自己那一份（会话三格）、再数自己账上通往它的转发；缺 · 本机 ⇒ 只答这台。
  */
 machine?: string | null, 
 /**
  * `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
  */
-appExit?: boolean | null, };
+appExit?: boolean | null, 
+/**
+ * 带 `appExit` 时一并问的那几台（各照它自己的退出行为答，答到的加起来；问不到的不算）。问到那几台时不带它（不往下扇）。
+ */
+machines?: Array<Origin> | null, };
+type Origin = string;
 ```
 
 码：`bad_args`
@@ -4143,10 +4111,10 @@ removed: boolean, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
 type HereMember = { sid: string, groups: Array<string>, pinned: boolean, face: SessionFace, facts: MemberFacts, };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
 /**
  * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
@@ -4197,13 +4165,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -4248,7 +4220,6 @@ type Words = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4293,6 +4264,7 @@ pinned: Array<GroupMember>,
 machines: Array<GroupsMachine>, };
 type GroupsReadReq = { machines: Array<string>, };
 type HistoryMachineRead = { "is": "ok", notice: string | null, } | { "is": "stale", why: string, at: string, } | { "is": "failed", why: string, } | { "is": "unread" };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type MemberFacts = { 
 /**
  * 显示的标题（改过的 ＞ 标题 ＞ 第一句 ＞ 清单那一句「没名字」）。
@@ -4342,13 +4314,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -4410,7 +4386,6 @@ type HereGroup = { id: string, name: string, made: number, named: number, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
  * 组头那一句（「需手动 2」那样，出口照摆）。
@@ -4439,6 +4414,7 @@ named: number | null, known: GroupKnown,
  * 组员：照问的台序、再照 sid。
  */
 members: Array<GroupMember>, counts: Array<GroupCount>, };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Looked = "every" | "this_machine" | "nothing";
 type MemberFacts = { 
 /**
@@ -4490,13 +4466,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -4570,7 +4550,6 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -4671,6 +4650,7 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
  */
 origin?: string, };
 type HistorySort = "activity" | "created";
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4695,13 +4675,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -4770,7 +4754,6 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -4903,6 +4886,7 @@ type HistoryRowId = {
 origin?: string, sid: string, };
 type HistorySection = { at: number, text: string, };
 type HistorySort = "activity" | "created";
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type SessionCan = { 
 /**
  * 关掉它的标签页。
@@ -4927,13 +4911,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -5020,9 +5008,9 @@ type HistoryRawRow = { agent: AgentKind, sessionId: string, projectPath: string,
  */
 title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
 /**
- * 这台判的活不活（判不了：合成历史没有 pidfile ⇒ `null`）。
+ * 这台判的这条会话的一生（判不了：合成历史没有 pidfile ⇒ 说不清）。
  */
-life: HistoryRowLife | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+life: Life, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */
@@ -5039,8 +5027,8 @@ projectDir: string,
  * 分组键：哪一家 ＋ 真实目录。
  */
 group: string, lastAccount?: string, };
-type HistoryRowLife = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended" };
 type LaunchTab = { tab: Tab, alias?: string, };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type ResumeWith = { model?: string, permissionMode?: string, end: number, };
 type Rules = { childTab: Tab, bgTab: Tab, };
 type SyncHead<H> = { total: number, info: H, };
@@ -5084,7 +5072,6 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5126,6 +5113,7 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -5229,13 +5217,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -5300,7 +5292,6 @@ type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Wor
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -5330,6 +5321,7 @@ limit?: number,
  * 只比会话标题与第一句（不搜内容）。
  */
 titles?: boolean, };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type Merged = { 
 /**
  * 各会话命中数（`hits` 条数 ＋ `moreHits`）之和。
@@ -5464,13 +5456,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -5557,6 +5553,10 @@ path: string,
  */
 rows: Array<RunRow>, 
 /**
+ * 这一页从哪个字节起（行头）：往前再读一页拿它当 `before`；0 ⇒ 前面没有了。
+ */
+from: number, 
+/**
  * 读到哪了（最后一个整行之后）。
  */
 end: number, 
@@ -5580,7 +5580,15 @@ tool?: string,
 /**
  * 从这个字节起读（缺 ⇒ 0）；续读拿上一次的 `end`。
  */
-from?: number | null, };
+from?: number | null, 
+/**
+ * 从尾巴读（在跑的那一个从底部读起）：回记录里最后一页；与 `from` 都给以它为准。
+ */
+tail?: boolean | null, 
+/**
+ * 往前再读一页：读到这个字节为止（拿上一页的 `from`）；给了就是往前读，与 `from` 都给以它为准。
+ */
+before?: number | null, };
 type LineRecord = { 
 /**
  * 哪一家（注册表里那一家的 `kind`）。
@@ -6895,6 +6903,7 @@ pasted?: Array<Pasted>, };
 入参 `HistoryTurnsReq` · 回包 `HistoryTurns`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FoldFail = { uuid: string, tool: string | null, line: number, };
 type FoldSegment = { 
 /**
  * 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
@@ -6924,10 +6933,14 @@ untilLine: number | null,
 /**
  * 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
  */
-phase: TurnPhase, };
+phase: TurnPhase, 
+/**
+ * 这一段里第一处失败落在哪（「跳到第一处失败」照它走，界面不自己找）；这一段没有失败 ⇒ 没有。
+ */
+firstFail: FoldFail | null, };
 type HistoryTurns = { 
 /**
- * 起点字节（＝ 请求的 `from`）。
+ * 起点字节（＝ 请求的 `from`；问的是 `cover` ⇒ 包着它的那一轮的 `at`）。
  */
 from: number, 
 /**
@@ -6951,6 +6964,14 @@ path: string,
  * 从这个字节起扫（缺 ⇒ 0；续取传还在跑的那一轮的 `at`）。
  */
 from?: number | null, 
+/**
+ * 任一字节：从包着它的那一轮起（只拉了记录后半截的一端拿已拉到的最上面那一行问）；与 `from` 都给以它为准。
+ */
+cover?: number | null, 
+/**
+ * 只出开头在这个字节之前的轮（缺 ⇒ 到文件尾）；截在这里 ⇒ 没有下一页、`end` ＝ 它。
+ */
+to?: number | null, 
 /**
  * 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
@@ -7032,9 +7053,9 @@ type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
 type ManualItem = { "kind": "accountLogin", agent: AgentKind, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
@@ -7225,13 +7246,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -7278,9 +7303,9 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LoginStartReq = { "kind": "account", agent: AgentKind, account: string, } | { "kind": "mcp", agent: AgentKind, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
 type ManualItem = { "kind": "accountLogin", agent: AgentKind, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
@@ -7463,13 +7488,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -7599,7 +7628,6 @@ cmd: string | null,
 at: string | null, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
 type FactsBackground = { 
 /**
  * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
@@ -7776,6 +7804,7 @@ at: string | null,
  * `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
  */
 atMs: number | null, };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type LimitFrom = "relay" | "setting" | "model" | "observed" | "assumed";
 type McpStatus = "needsLogin" | "failed" | "pending" | "disabled" | "unknown";
 type McpTrouble = { name: string, 
@@ -7998,13 +8027,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -9930,7 +9963,7 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 设置「扩展」页那张表。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 可撤 · 只在流上
 
 入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -10004,7 +10037,13 @@ name: string,
 /**
  * 那台上开过会话的项目目录（装到项目时给人选）。
  */
-projects: Array<string>, };
+projects: Array<string>, 
+/**
+ * 那台的 MCP 列表（那台 `mcp-read` 的成品原样：本机后端问到再交，`faces/ext_list_face.rs::with_mcp`）；
+ * 表里没有 MCP 行 · 那台没连上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。这一层只转交、不读它：
+ * 形状是 `mcp-read` 的回包（金样 `tests/__fixtures__/mcp-read.golden.json` 钉），界面按那个生成类型收（`ext-reads.ts::mcpOf`）。
+ */
+mcp?: unknown, };
 type ExtPlace = { at: ExtLoc, 
 /**
  * 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
@@ -10128,7 +10167,13 @@ name: string,
 /**
  * 那台上开过会话的项目目录（装到项目时给人选）。
  */
-projects: Array<string>, };
+projects: Array<string>, 
+/**
+ * 那台的 MCP 列表（那台 `mcp-read` 的成品原样：本机后端问到再交，`faces/ext_list_face.rs::with_mcp`）；
+ * 表里没有 MCP 行 · 那台没连上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。这一层只转交、不读它：
+ * 形状是 `mcp-read` 的回包（金样 `tests/__fixtures__/mcp-read.golden.json` 钉），界面按那个生成类型收（`ext-reads.ts::mcpOf`）。
+ */
+mcp?: unknown, };
 type ExtPlace = { at: ExtLoc, 
 /**
  * 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
@@ -11098,6 +11143,8 @@ cwd?: string | { b16: string }, };
 入参 `SessionWindowReq` · 回包 `SessionWindow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FrontAct = { "kind": "connect" } | { "kind": "open-in-terminal" } | { "kind": "open-here" } | { "kind": "copy", detail: string, } | { "kind": "update" } | { "kind": "retry" } | { "kind": "reconnect" };
+type FrontFace = { title: Words, body: Words, hint?: Words, tone: Tone, acts: Array<FrontAct>, };
 type Link = { 
 /**
  * 进程号。
@@ -11118,18 +11165,17 @@ type SessionWindow = {
  */
 labels: Array<string>, 
 /**
- * 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `why`。
+ * 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `face`。
  */
 chain: Array<Link>, 
 /**
- * 链为什么是空的：`detached`（在 tmux 里、没终端连着）· `no-terminal`（进程没有终端）· `unreadable`（读不了那台的终端）·
- * `not-ssh`（那台本地屏幕上的终端）· `elsewhere`（连接不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`（这台没查成）。
+ * 会话在 tmux 里。
  */
-why?: "detached" | "no-terminal" | "unreadable" | "not-ssh" | "elsewhere" | "mismatch" | "query-failed", 
+tmux: boolean, 
 /**
- * `elsewhere` 时那台看到的对面地址。
+ * 链为什么是空的：写好的那一张（出口照摆；壳按标签也没找到窗口时摆它）。
  */
-addr?: string, };
+face?: FrontFace, };
 type SessionWindowReq = { 
 /**
  * 会话所在那台（本机 ⇒ `<local>`）。
@@ -11140,9 +11186,11 @@ machine: Origin,
  */
 sid: Sid, };
 type Sid = string;
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Words = string;
 ```
 
-码：`bad_args` · `no_such_session` · `failed` · `child_timed_out` · `backend_old` · `timed_out` · `unreached`
+码：`bad_args` · `failed` · `child_timed_out`
 
 #### `session-terminals`
 
@@ -11161,7 +11209,11 @@ terminals: Array<Terminal>,
 /**
  * 一个都没有时为什么。
  */
-why?: ShownWhy, };
+why?: ShownWhy, 
+/**
+ * 会话在 tmux 里（问它的那台照带给出口：窗口关了时给不给［在终端里打开］）。旧版那台不带 ⇒ 当不在。
+ */
+tmux: boolean, };
 type ShownWhy = "detached" | "no-terminal" | "unreadable";
 type Sid = string;
 type SidReq = { 
@@ -13462,6 +13514,57 @@ type NoArgs = Record<symbol, never>;
 
 码：`bad_args`
 
+#### `drift-merge`
+
+本机与各台的漂移账。
+
+不收 `args` · 可撤 · CLI：`ccm -- --drift-merge`
+
+入参 `NoArgs` · 回包 `DriftMerge`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DriftEntry = { 
+/**
+ * 看不懂的那个值（记录 type / kind / status / token）。
+ */
+key: string, 
+/**
+ * 见过多少次（本进程内的计数，不落盘）。
+ */
+count: number, 
+/**
+ * **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
+ */
+first_sample: string | null, };
+type DriftFaceReport = { 
+/**
+ * 那一家的面的名字（那一家自己的词）。
+ */
+face: string, 
+/**
+ * 这个面「看不懂时会发生什么」（那一家写好的那一句）。
+ */
+consequence: string, 
+/**
+ * 按 `count` 降序、同数按键名升序。
+ */
+entries: Array<DriftEntry>, 
+/**
+ * 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
+ */
+overflowed: boolean, };
+type DriftMerge = { machines: Array<DriftOn>, };
+type DriftOn = { 
+/**
+ * 那台的键（本机 `<local>`，别的台是机器表里的名字）。
+ */
+origin: string, report: DriftReport | null, };
+type DriftReport = { faces: Array<DriftFaceReport>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
+
 #### `forward-start`
 
 起一条本地端口转发。
@@ -13762,7 +13865,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
 type PlanBlock = { id: string, 
 /**
@@ -14088,13 +14191,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -14457,7 +14564,7 @@ key: string, };
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
-type FaceLive = { "is": "yes", activity?: WireSessionActivity, } | { "is": "no" };
+type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
  * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
@@ -14541,13 +14648,17 @@ model: Allow,
 /**
  * 切权限档（`session-permission`）。
  */
-permission: Allow, };
+permission: Allow, 
+/**
+ * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+ */
+stop: Allow, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
- * 进程在不在；在干什么只住在「在」那一支里。
+ * 这条会话的一生（在干什么只住在「活」那一支里）。
  */
-live: FaceLive, 
+life: Life, 
 /**
  * 那台看不见时照旧作数（已结束 · 记录已不在）。
  */
@@ -14622,6 +14733,7 @@ type Words = string;
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--chores-merge` | ＝ 帧命令 `chores-merge`：问到各台的「文件与数据」、件数合成一份 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
+| `--drift-merge` | ＝ 帧命令 `drift-merge`：本机与各台的漂移账 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |
@@ -14681,7 +14793,7 @@ type Words = string;
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
-| `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
+| `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前，会打断什么 |
 | `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
 | `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
 | `--machines-try` | ＝ 帧命令 `machines-try`：这串补丁若现在落盘，机器表那一道过不过（盘上不动） |
