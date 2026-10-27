@@ -140,10 +140,17 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 
     }
 }
 
-/// 本平台有没有常驻后端（脱离当前进程单独跑 · 听这台家里的套接字）：有 ⇒ `None`；没有 ⇒ 那一句话。
-/// `--resident-ensure`（回 `unsupported`）与带常驻开关的流模式（`main.rs::claim_then_log`，退 [`crate::wire::listen::EXIT_BAD_LISTEN_CONFIG`]）
-/// 都在建任何目录之前先问它 —— 同一句话、同一处判（判本身住平台层 `platform::child::cannot_detach`）。
+/// 本平台的后端能不能当常驻那一位**听**这台家里的通道（带常驻开关的流模式，`main.rs::claim_then_log`，
+/// 不能 ⇒ 退 [`crate::wire::listen::EXIT_BAD_LISTEN_CONFIG`]）：能 ⇒ `None`。在建任何目录之前先问它。
+/// 听只要本人通道（`own-chan`：Unix 套接字 · Windows 命名管道），不要自己脱离 —— Windows 本机那一位是壳脱离着起的。
+/// 自己把自己脱离着起（`--resident-ensure`，远端那条）另问 [`ensure_unsupported_here`]。
 pub fn unsupported_here() -> Option<String> {
+    None
+}
+
+/// `--resident-ensure` 那一条（后端把自己脱离着起一个常驻的）在本平台做不做得了：做得了 ⇒ `None`；做不了 ⇒ 那一句话
+/// （判本身住平台层 `platform::child::cannot_detach`，与 [`crate::platform::child`] 的脱离同一处）。
+pub fn ensure_unsupported_here() -> Option<String> {
     crate::platform::child::cannot_detach()
 }
 
@@ -407,7 +414,7 @@ pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
 /// `--resident-ensure` 的入口：宿主层环境 = 中转口 · stderr 诊断文件（凭据与历史注解住家里，那台后端按家自己推）。
 pub fn ensure(args: &[String], own: &Own) -> i32 {
     // 本平台没有常驻 ⇒ 先说，一个目录都不建（诊断文件那层目录也不建）。
-    if let Some(why) = unsupported_here() {
+    if let Some(why) = ensure_unsupported_here() {
         return fail(ENSURE, "unsupported", why);
     }
     let hosted = vec![
@@ -637,7 +644,7 @@ fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
         Err(e) => return Err(cannot(&e)),
     };
     // 套接字住只给本人的目录里，连得上的就是本人那一位（常驻那一侧收连接时另核对端 uid）。
-    let (_, pid) = s.peer().map_err(|e| cannot(&e))?;
+    let pid = s.peer_pid().map_err(|e| cannot(&e))?;
     // 在听的那一位连上就先写 hello；卡住不写也不把这一次性进程挂死，超长 ⇒ 不是它。
     #[allow(
         clippy::disallowed_methods,
@@ -795,7 +802,7 @@ pub fn claim(own: &Own) -> Claim {
         Err(e) => return Claim::Failed(bind_failed(dir, &e)),
     };
     let len = sock.as_path().as_os_str().len();
-    if len > SOCKET_PATH_MAX {
+    if own_chan::BOUND_AS_FILE && len > SOCKET_PATH_MAX {
         return Claim::Failed(copy_text(
             "beResident.claim.pathTooLong",
             &[
