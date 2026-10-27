@@ -703,6 +703,15 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
         vec![zsh.display().to_string()],
         "POSIX：报「块在」的不是恰好装过的那一份"
     );
+    // 每份候选带这台按家目录写好的显示形（界面照抄）。
+    let shown: Vec<String> = rc_candidates_in(&h.0, P, None)
+        .into_iter()
+        .map(|c| c.shown)
+        .collect();
+    assert!(
+        shown.contains(&"~/.zshrc".to_string()) && shown.contains(&"~/.bashrc".to_string()),
+        "启动文件的显示形不是 `~/…`：{shown:?}"
+    );
 
     // PowerShell：PS 7 的目录在 ⇒ 四份候选；装进 PS 7 的 AllHosts 那一份（它从前被当成「装错了的遗留」）。
     let ps7 = h.0.join("Documents/PowerShell");

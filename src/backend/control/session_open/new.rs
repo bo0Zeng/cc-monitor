@@ -94,6 +94,8 @@ pub(crate) struct OpenDirReq {
 pub(crate) struct DirChecked {
     /// 这个目录在不在。
     pub(crate) exists: bool,
+    /// 这台按自己的家目录写好的显示形（`~/…`），两端照抄。
+    pub(crate) shown: String,
     /// 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
     pub(crate) tmux_name: Option<String>,
 }
@@ -134,5 +136,10 @@ pub(crate) fn dir_answer(
         }
         Ok(None) | Err(_) => None,
     };
-    Ok(DirChecked { exists, tmux_name })
+    let shown = crate::platform::paths::home_short(&cwd, home);
+    Ok(DirChecked {
+        exists,
+        shown,
+        tmux_name,
+    })
 }

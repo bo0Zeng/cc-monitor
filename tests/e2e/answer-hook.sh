@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 答题 hook 端到端（真后端二进制、沙箱家目录与私有套接字，不起任何真 agent）：
 #   常驻不在 ⇒ hook 客户端空手退；常驻在 ⇒ 喂一份 PermissionRequest（照 10-10 真机录下的那一份脱敏）⇒ 这条会话的 needs 出 ask ⇒
-#   needs-answer 答 ⇒ hook 客户端 stdout 打出那一家要的决定、退出 0；再答一次 ⇒ already_answered；hook 那一头被杀 ⇒ 撤掉、再答 closed_elsewhere。
+#   needs-answer 答 ⇒ hook 客户端 stdout 打出那一家要的决定、退出 0；再答一次 ⇒ 回包 result gone（别处已答）；hook 那一头被杀 ⇒ 撤掉、再答同样回 gone。
 # 跑法：bash tests/e2e/answer-hook.sh   （npm run test:answer-hook）
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -uo pipefail
@@ -110,7 +110,7 @@ want='{"hookSpecificOutput":{"decision":{"behavior":"allow","updatedPermissions"
 got="$(python3 -I -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])), sort_keys=True, separators=(",", ":")))' "$WORK/out1" 2>/dev/null)"
 [ "$got" = "$want" ] && ok "stdout 是那一家要的决定（带上那条以后不再问）" || bad "stdout：$(cat "$WORK/out1")"
 r="$(ask needs-answer "{\"sid\":\"$SID\",\"ask\":\"$id\",\"choice\":\"deny\"}")"
-case "$r" in *already_answered*) ok "再答一次 ⇒ already_answered" ;; *) bad "再答：$r" ;; esac
+case "$r" in *'"ok": true'*'"gone"'*) ok "再答一次 ⇒ gone（别处已答）" ;; *) bad "再答：$r" ;; esac
 
 echo "== hook 那一头走了 ⇒ 撤掉"
 hook_input | "$BACKEND" -- --answer-hook claude > "$WORK/out2" & HOOKPID=$!
@@ -119,7 +119,7 @@ id="$(ask_id)"
 kill -TERM "$HOOKPID"; wait "$HOOKPID" 2>/dev/null; HOOKPID=""
 wall_until '[ -z "$(ask_id)" ]' && ok "连接断了 ⇒ needs 里那条 ask 撤了" || bad "没撤"
 r="$(ask needs-answer "{\"sid\":\"$SID\",\"ask\":\"$id\",\"choice\":\"allow\"}")"
-case "$r" in *closed_elsewhere*) ok "再答 ⇒ closed_elsewhere" ;; *) bad "撤了之后再答：$r" ;; esac
+case "$r" in *'"ok": true'*'"gone"'*) ok "再答 ⇒ gone（别处已答）" ;; *) bad "撤了之后再答：$r" ;; esac
 [ ! -s "$WORK/out2" ] && ok "被杀的那个 hook 什么都没打" || bad "被杀的 hook 打了：$(cat "$WORK/out2")"
 
 echo "== 收尾 ⇒ 常驻停了、这一趟起的进程一个不剩"

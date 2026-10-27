@@ -293,10 +293,12 @@ pub(crate) fn agent_facts(
 }
 
 /// 各家记录里的工作目录 ⇒ 最近用过的那几个（新的在前，同一个目录只出一次；不出会话的那个目录不算）。
+/// 显示形按 `home`（这台的家目录）写（[`crate::platform::paths::home_short`]）。
 pub(crate) fn recent_dirs(
     items: &[(String, i64)],
     hidden: &dyn Fn(&str) -> bool,
     clock: &crate::common::time::TextClock,
+    home: Option<&std::path::Path>,
 ) -> Vec<RecentDir> {
     let mut best: BTreeMap<&str, i64> = BTreeMap::new();
     for (cwd, ms) in items {
@@ -312,6 +314,7 @@ pub(crate) fn recent_dirs(
         .take(RECENT_MAX)
         .map(|(cwd, ms)| RecentDir {
             cwd: cwd.to_string(),
+            shown: crate::platform::paths::home_short(cwd, home),
             last_ms: ms,
             last_text: clock
                 .text(u64::try_from(ms.div_euclid(1000)).unwrap_or(0))
@@ -460,6 +463,7 @@ pub(crate) fn facts(
                 u64::try_from(crate::common::time::now_secs()).unwrap_or(0),
                 tz,
             ),
+            crate::platform::paths::home_dir().as_deref(),
         ),
         tmux,
         run,

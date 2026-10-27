@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.chat.newsession
 import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.AccountsSetDefault
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
@@ -24,9 +23,10 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 最近用过的一个目录（那台给的）：[missing] ＝ 点过、那台说不在。 */
+/** 最近用过的一个目录（那台给的；[shown] 是它按自己的家目录写好的 `~/…`）：[missing] ＝ 点过、那台说不在。 */
 data class RecentRow(
     val cwd: String,
+    val shown: String,
     val lastText: String,
     val missing: Boolean = false,
 )
@@ -35,6 +35,8 @@ data class RecentRow(
 data class NewSessionUi(
     /** 这一张起在哪个目录（打开就是填好的：从哪进来用哪的 → 那台最近的第一个 → `~`）。 */
     val cwd: String,
+    /** [cwd] 屏上那一串（那台写好的；还没问到 ⇒ 原样）。 */
+    val cwdShown: String = cwd,
     val agents: List<AgentFacts> = emptyList(),
     /** 起哪一家（线上 kind）。 */
     val agent: String? = null,
@@ -46,8 +48,6 @@ data class NewSessionUi(
     val account: String? = null,
     /** 那台的新会话默认号。 */
     val defaultAccount: String? = null,
-    /** 那台的家目录（路径缩成 `~` 用）。 */
-    val home: String? = null,
     val accountsFailed: String? = null,
     /** 轮换策略目录；还没问（账号抽屉没开过）⇒ `null`。 */
     val strategies: List<RotStrategyItem>? = null,
@@ -104,7 +104,7 @@ class NewSessionPicker(
 
     private suspend fun load() {
         loadFacts()
-        loadHome()
+        loadFromShown()
         loadAccounts()
     }
 
@@ -119,21 +119,24 @@ class NewSessionPicker(
             return
         }
         val agent = SessionOpenFacts.pick(facts.agents, null)?.kind
+        val first = facts.recent.firstOrNull()
         _state.update { s ->
             s.copy(
                 agents = facts.agents,
                 agent = agent,
-                recent = facts.recent.map { RecentRow(it.cwd, it.lastText) },
-                cwd = from ?: facts.recent.firstOrNull()?.cwd ?: HOME,
+                recent = facts.recent.map { RecentRow(it.cwd, it.shown, it.lastText) },
+                cwd = from ?: first?.cwd ?: HOME,
+                cwdShown = if (from != null) s.cwdShown else first?.shown ?: HOME,
                 factsFailed = null,
             )
         }
     }
 
-    /** 那台的家目录（路径里缩成 `~`）；问不到 ⇒ 路径原样。 */
-    private suspend fun loadHome() {
-        val home = (link.call(FilesHome.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { FilesHome.text(it.data) } ?: return
-        _state.update { it.copy(home = home) }
+    /** 从一条会话里进来的那个目录：屏上那一串问那台（`session-open-dir` 写好的）；问不到 ⇒ 原样。 */
+    private suspend fun loadFromShown() {
+        val cwd = from ?: return
+        val got = (link.call(SessionOpenDir.COMMAND, SessionOpenDir.args(cwd), READ_MS) as? Reply.Ok)?.let { SessionOpenDir.of(it.data) } ?: return
+        _state.update { s -> if (s.cwd == cwd) s.copy(cwdShown = got.shown) else s }
     }
 
     private suspend fun loadAccounts(keep: Boolean = false) {
@@ -150,7 +153,6 @@ class NewSessionPicker(
                 accounts = list.accounts,
                 defaultAccount = list.meta.effectiveDefault,
                 account = kept ?: list.meta.effectiveDefault?.takeIf { d -> list.accounts.any { it.name == d } },
-                home = s.home ?: list.meta.home,
                 accountsFailed = null,
             )
         }
@@ -195,21 +197,22 @@ class NewSessionPicker(
         done: (Boolean) -> Unit = {},
     ) {
         scope.launch {
-            val exists = (link.call(SessionOpenDir.COMMAND, SessionOpenDir.args(cwd), READ_MS) as? Reply.Ok)?.let { SessionOpenDir.of(it.data) }
+            val got = (link.call(SessionOpenDir.COMMAND, SessionOpenDir.args(cwd), READ_MS) as? Reply.Ok)?.let { SessionOpenDir.of(it.data) }
             _state.update { s ->
-                when (exists) {
-                    true -> s.copy(cwd = cwd, recent = s.recent.map { if (it.cwd == cwd) it.copy(missing = false) else it })
+                val shown = s.recent.firstOrNull { it.cwd == cwd }?.shown ?: got?.shown ?: cwd
+                when (got?.exists) {
+                    true -> s.copy(cwd = cwd, cwdShown = shown, recent = s.recent.map { if (it.cwd == cwd) it.copy(missing = false) else it })
                     false -> s.copy(recent = s.recent.map { if (it.cwd == cwd) it.copy(missing = true) else it })
                     // 问不到 ⇒ 照选：起的时候那台再核（`no_dir` 那一句）。
-                    null -> s.copy(cwd = cwd)
+                    null -> s.copy(cwd = cwd, cwdShown = shown)
                 }
             }
-            done(exists != false)
+            done(got?.exists != false)
         }
     }
 
-    /** 浏览屏里选的（那台列出来的，在）。 */
-    fun pickDir(path: String) = _state.update { it.copy(cwd = path) }
+    /** 浏览屏里选的（那台列出来的，在；屏上那一串照那一行）。 */
+    fun pickDir(picked: Picked) = _state.update { it.copy(cwd = picked.path, cwdShown = picked.shown) }
 
     /** 设为这台的新会话默认号（账号库里那一格，桌面同一份）；之后再问一次账号。 */
     fun setDefault(name: String) {

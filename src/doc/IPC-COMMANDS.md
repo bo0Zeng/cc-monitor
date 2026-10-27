@@ -459,6 +459,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `run` | string |  |
 | `tool` | string |  |
 | `state` | RunState |  |
+| `status_text` | Words? | 终态写好的字（同 `RunInfo::status_text`） |
 
 #### `RunInfo`
 
@@ -472,7 +473,10 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `tool` | string? | 派出它的那次工具调用（父侧 id）；还没对上 ⇒ 不上线 |
 | `parent` | string? | 派出它的那个子运行；主运行派的（或还没对上派出它的那次调用）⇒ 不上线 |
 | `state` | RunState |  |
+| `status_text` | Words? | 状态写好的字（在跑 · 完成 · 失败 · 已中止 · 状态不明）：出口照抄，不按 `state` 挑字 |
+| `label_text` | Words? | 名字写好的字：`label`，没有 ⇒ 通称（「agent」） |
 | `last` | RunDid? |  |
+| `last_text` | Words? | `last` 写好的字（写回复中 · 思考中 · 调用 X）；没有 `last` ⇒ 不上线 |
 | `waiting` | string? | 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑） |
 | `started_ms` | number? | 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条） |
 | `started_text` | string? | `started_ms` 在看的那一台钟上的钟面 `HH:MM`（推出去那一下按这条流的时区写，`Frame::stamp`；界面照抄、不换算） |
@@ -1734,8 +1738,16 @@ type_text: string,
 /**
  * 读得起来的那几道门；目录（含指向目录的链接）缺。
  */
-gates?: Gates, };
+gates?: Gates, 
+/**
+ * `path` 的显示形（那台按自己的家目录写好的 `~/…`，原始字节同 `path`），两端照抄。
+ */
+shown: WirePath, };
 type LsHead = { 
+/**
+ * 列的这一级的显示形（那台按自己的家目录写好的 `~/…`，原始字节），两端照抄。
+ */
+shown: WirePath, 
 /**
  * 上一级；到顶 ⇒ `null`。
  */
@@ -3113,6 +3125,10 @@ baseUrl?: string | null, };
 ```ts
 type AccountRow = { 
 /**
+ * `configDir` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）；账号 0 ⇒ `null`。
+ */
+configDirShown: string | null, 
+/**
  * API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
  */
 keyMasked: string | null, 
@@ -3219,11 +3235,7 @@ nextDefault: string | null,
 /**
  * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
  */
-effectiveDefault: string | null, 
-/**
- * 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
- */
-home: string | null, };
+effectiveDefault: string | null, };
 type Words = string;
 ```
 
@@ -7508,7 +7520,7 @@ type AskReq = { agent: AgentKind, hook: unknown, };
 
 #### `needs-answer`
 
-答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`。
+答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回「别处已答」（`gone` ＋ 那一句）。
 
 收 `args` · 可撤 · 只在流上
 
@@ -7536,12 +7548,12 @@ note?: string | null,
  * 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
  */
 picks?: { [key in string]: AskPick } | null, };
-type AnswerResult = "answered";
-type Answered = { 
+type AnswerResult = "answered" | "gone";
+type Answered = { result: AnswerResult, 
 /**
- * 恒 `answered`。
+ * `gone` 时写好的那一句（已有人答过 · 已在终端答过或已关闭 · 替人答过的那一句）；`answered` ⇒ 不上线。
  */
-result: AnswerResult, };
+said?: Words, };
 type AskPick = { 
 /**
  * 选项 id（`needs.ask.questions[].options[].id`）；缺 ⇒ 没选。
@@ -7551,9 +7563,10 @@ options?: Array<string>,
  * 自由文本；缺 / 空白 ⇒ 没写。
  */
 text?: string | null, };
+type Words = string;
 ```
 
-码：`bad_args` · `not_found` · `already_answered` · `closed_elsewhere` · `bad_choice` · `note_required`
+码：`bad_args` · `not_found` · `bad_choice` · `note_required`
 
 #### `history-facts`
 
@@ -9033,6 +9046,10 @@ type FirstRunStepId = "terminal" | "named" | "remote";
 ```ts
 type AccountRow = { 
 /**
+ * `configDir` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）；账号 0 ⇒ `null`。
+ */
+configDirShown: string | null, 
+/**
  * API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
  */
 keyMasked: string | null, 
@@ -9204,11 +9221,7 @@ nextDefault: string | null,
 /**
  * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
  */
-effectiveDefault: string | null, 
-/**
- * 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
- */
-home: string | null, };
+effectiveDefault: string | null, };
 type Origin = string;
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
@@ -10418,10 +10431,6 @@ present: boolean,
 conflictingFunctions: Array<AliasNameClash>, };
 type AliasListing = { 
 /**
- * 这台的家目录（界面拿它把路径写成 `~/…` 短形，只做这一步缩写）。
- */
-home: string, 
-/**
  * 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
  */
 rcCandidates: Array<AliasStartupFile>, 
@@ -10443,6 +10452,10 @@ type AliasStartupFile = {
  * 绝对路径。
  */
 path: string, 
+/**
+ * `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
+ */
+shown: string, 
 /**
  * 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
  */
@@ -10549,13 +10562,13 @@ type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
 /**
- * 这台的家目录（界面拿它把路径写成 `~/…`）。
- */
-home: string, 
-/**
  * 配置文件的路径。
  */
 path: string, 
+/**
+ * `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
+ */
+pathShown: string, 
 /**
  * 配置文件在不在。
  */
@@ -10609,6 +10622,10 @@ count: number,
  * 配置文件的路径。
  */
 path: string, 
+/**
+ * `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份是空串、读的时候盖掉。
+ */
+shown: string, 
 /**
  * 没能转的那几行（原样）。
  */
@@ -11072,13 +11089,13 @@ cwd?: string | { b16: string }, };
 
 码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`
 
-#### `terminal-processes`
+#### `session-window`
 
-那台报来的终端连接是这台电脑上哪个进程开的。
+这条会话在这台电脑上的哪儿（窗口标签 · 进程链，或原因）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 可撤 · 只在流上
 
-入参 `TerminalProcessesReq` · 回包 `Processes`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `SessionWindowReq` · 回包 `SessionWindow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type Link = { 
@@ -11094,58 +11111,38 @@ name: string,
  * 启动时刻（系统原值；拿不到 ⇒ 0）。
  */
 start: number, };
-type Processes = { 
+type Origin = string;
+type SessionWindow = { 
 /**
- * 这台上开着那条连接的进程链（自下而上）。
+ * 显示它的终端带的窗口标签（`<shell 进程号>-<起始时刻>`），最近动静在前；没带 ⇒ 空。
+ */
+labels: Array<string>, 
+/**
+ * 这台上显示它的那个终端进程往上的进程链（自下而上）；空 ⇔ 有 `why`。
  */
 chain: Array<Link>, 
 /**
- * 对不上时：`not-ssh` · `elsewhere`（不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`。
+ * 链为什么是空的：`detached`（在 tmux 里、没终端连着）· `no-terminal`（进程没有终端）· `unreadable`（读不了那台的终端）·
+ * `not-ssh`（那台本地屏幕上的终端）· `elsewhere`（连接不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`（这台没查成）。
  */
-why?: "not-ssh" | "elsewhere" | "mismatch" | "query-failed", 
+why?: "detached" | "no-terminal" | "unreadable" | "not-ssh" | "elsewhere" | "mismatch" | "query-failed", 
 /**
- * `elsewhere` 时对面那个地址。
+ * `elsewhere` 时那台看到的对面地址。
  */
 addr?: string, };
-type SshConnection = { 
+type SessionWindowReq = { 
 /**
- * 对面地址。
+ * 会话所在那台（本机 ⇒ `<local>`）。
  */
-clientAddr: string, 
+machine: Origin, 
 /**
- * 对面端口。
+ * 会话 id。
  */
-clientPort: number, 
-/**
- * 本机地址。
- */
-serverAddr: string, 
-/**
- * 本机端口。
- */
-serverPort: number, };
-type Terminal = { 
-/**
- * 经 ssh 连过来的那条连接；`null` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
- * 键恒在：产这一格的 `session-terminals` 不是经 ssh 也写 `null`；交来的缺这一键 ⇒ 认不得的形（`bad_args`），不当「不是经 ssh」。
- */
-ssh: SshConnection | null, 
-/**
- * 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
- */
-activity: number | null, 
-/**
- * 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
- */
-window?: string, };
-type TerminalProcessesReq = { 
-/**
- * 1–16 个，最近动静在前。
- */
-terminals: Array<Terminal>, };
+sid: Sid, };
+type Sid = string;
 ```
 
-码：`bad_args`
+码：`bad_args` · `no_such_session` · `failed` · `child_timed_out` · `backend_old` · `timed_out` · `unreached`
 
 #### `session-terminals`
 
@@ -11162,9 +11159,10 @@ type Showing = {
  */
 terminals: Array<Terminal>, 
 /**
- * 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
+ * 一个都没有时为什么。
  */
-why?: "detached" | "no-terminal" | "unreadable", };
+why?: ShownWhy, };
+type ShownWhy = "detached" | "no-terminal" | "unreadable";
 type Sid = string;
 type SidReq = { 
 /**
@@ -12328,6 +12326,10 @@ type RecentDir = {
  */
 cwd: string, 
 /**
+ * 那台按自己的家目录写好的显示形（`~/…`），两端照抄。
+ */
+shown: string, 
+/**
  * 那个目录最近一次会话的修改时刻（毫秒）。
  */
 lastMs: number, 
@@ -12354,6 +12356,10 @@ type DirChecked = {
  * 这个目录在不在。
  */
 exists: boolean, 
+/**
+ * 这台按自己的家目录写好的显示形（`~/…`），两端照抄。
+ */
+shown: string, 
 /**
  * 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
  */

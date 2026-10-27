@@ -488,7 +488,7 @@ class ChatSessionTest {
                     "session-open-facts" ->
                         ok(
                             mapOf(
-                                "recent" to listOf(mapOf("cwd" to "/h/orders", "lastMs" to 1.0, "lastText" to "19:02")),
+                                "recent" to listOf(mapOf("cwd" to "/h/orders", "shown" to "~/orders", "lastMs" to 1.0, "lastText" to "19:02")),
                                 "tmux" to true,
                                 "run" to "tmux",
                                 "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },

@@ -289,28 +289,3 @@ fn a_home_that_could_not_be_asked_says_why_and_asks_again_on_click() {
         "点了问不到的家目录，没有再问一次"
     );
 }
-
-/// 窗口那一格叫 `WriteGate`（管的是那台通不通 · 此刻能不能写）：旧名全仓零命中，正控是新名有命中。
-/// 什么时候删：旧名零命中、交回签收那一趟。
-#[test]
-fn the_old_link_name_is_gone_repo_wide() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let files = |name: &str| -> Vec<String> {
-        let out = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&root)
-            .args(["grep", "-l", "-w", name])
-            .output()
-            .expect("git grep 跑不起来");
-        String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .map(str::to_owned)
-            .collect()
-    };
-    let old = concat!("Link", "State");
-    assert!(
-        files("WriteGate").contains(&"src/frontend/filewin/src/chrome.rs".to_owned()),
-        "正控：定义那一份里找不到新名，扫描本身没在扫"
-    );
-    assert_eq!(files(old), Vec::<String>::new(), "旧名还有命中");
-}

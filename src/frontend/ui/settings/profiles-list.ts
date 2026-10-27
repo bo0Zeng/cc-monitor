@@ -14,7 +14,6 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { button } from "../kit/button";
 import { el } from "../kit/el";
-import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
 import { morph } from "../kit/morph";
 import { write } from "../ipc/write";
@@ -44,6 +43,8 @@ import { sayFailure } from "../kit/detail";
 export interface ProfileClash {
   name: string;
   path: string;
+  /** `path` 的显示形（那台写好的 `~/…`，照抄）。 */
+  shown: string;
   line: number;
   wins: ClashWins;
 }
@@ -248,7 +249,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   let subscribed = false;
   let seq = 0;
 
-  const short = (p: string): string => homeShort(p, book?.home ?? null);
   const find = (n: string): ProfileRow | undefined => book?.profiles.find((p) => p.name === n);
   const kidsOf = (n: string): string[] => (book?.profiles ?? []).filter((p) => p.from === n).map((p) => p.name);
   /** 表单那一格的名字：后端 `profiles-read` 写好的（`slots`），这里不另存一份。 */
@@ -267,7 +267,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     editedAt = book.editedAt;
     opts.onHead(
       book.exists
-        ? copyText("profilesPage.head.line", { n: String(book.profiles.length), path: short(book.path) })
+        ? copyText("profilesPage.head.line", { n: String(book.profiles.length), path: book.pathShown })
         : copyText("profilesPage.head.none"),
     );
     if (selected && !find(selected)) selected = null;
@@ -492,7 +492,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     acts.append(
       button({ label: b.seedCreate, kind: "primary", onClick: quiet(() => void init(true)) }),
       button({ label: copyText("profilesPage.seed.blank"), onClick: quiet(() => void init(false)) }),
-      el("span", "cfg-hint", copyText("profilesPage.seed.where", { path: short(b.path) })),
+      el("span", "cfg-hint", copyText("profilesPage.seed.where", { path: b.pathShown })),
     );
     box.append(tree, acts);
     return box;
@@ -507,7 +507,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const m = book.migrated;
       const n = el("div", "cfg-note prof-note-ok");
       n.dataset.role = "migrated";
-      n.appendChild(el("span", "", copyText("profilesPage.migrated.line", { n: String(m.count), path: short(m.path) })));
+      n.appendChild(el("span", "", copyText("profilesPage.migrated.line", { n: String(m.count), path: m.shown })));
       if (opts.local) n.appendChild(link(copyText("profilesPage.edited.look"), () => void onOpenFile()));
       n.appendChild(link(copyText("profilesPage.migrated.ack"), () => void ackMigrated()));
       for (const s of m.skipped) n.appendChild(el("div", "prof-sub", s));
@@ -571,7 +571,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     // 「待办」里同名那一件［去定…］带 `clash` 锚点跳到这里。
     card.dataset.anchor = "clash";
     const names = [...new Set(clashes.map((c) => c.name))];
-    const paths = [...new Set(clashes.map((c) => c.path))];
+    const paths = [...new Map(clashes.map((c) => [c.path, c.shown])).values()];
     const lines = clashes.map((c) => String(c.line)).join(copyText("profilesPage.list.sep"));
     const wins = new Set(clashes.map((c) => c.wins));
     const now =
@@ -583,7 +583,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
             ? copyText("machineAliases.clash.nowList")
             : copyText("machineAliases.clash.nowUnclear");
     card.appendChild(
-      el("div", "prof-card-title", copyText("profilesPage.clash.title", { names: names.join(copyText("profilesPage.list.sep")), path: paths.length === 1 ? short(paths[0]) : copyText("machineAliases.clash.manyFiles"), lines, now })),
+      el("div", "prof-card-title", copyText("profilesPage.clash.title", { names: names.join(copyText("profilesPage.list.sep")), path: paths.length === 1 ? paths[0] : copyText("machineAliases.clash.manyFiles"), lines, now })),
     );
     const opt = (title: string, hint: string, rec: boolean, tail?: HTMLElement): HTMLElement => {
       const o = el("div", rec ? "prof-opt rec" : "prof-opt");
@@ -593,7 +593,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       return o;
     };
     const copyLines = link(copyText("profilesPage.clash.copyLines"), () => {
-      void writeClipboard(clashes.map((c) => `${short(c.path)}:${c.line}`).join("\n")).then(
+      void writeClipboard(clashes.map((c) => `${c.shown}:${c.line}`).join("\n")).then(
         () => toast(copyText("profilesPage.clash.copied"), "", { level: "info" }),
         (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }),
       );

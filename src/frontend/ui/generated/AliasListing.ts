@@ -6,10 +6,6 @@ import type { AliasStartupFile } from "./AliasStartupFile";
  */
 export type AliasListing = { 
 /**
- * 这台的家目录（界面拿它把路径写成 `~/…` 短形，只做这一步缩写）。
- */
-home: string, 
-/**
  * 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
  */
 rcCandidates: Array<AliasStartupFile>, 

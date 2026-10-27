@@ -64,7 +64,6 @@ import { readRecordById } from "./record-reads";
 import {
   TabSessionActions,
   bringMonitorToFront,
-  bringRemoteTerminalToFront,
   bringTerminalToFront,
   e2eLog,
   frontOnce,
@@ -124,7 +123,6 @@ export class TabManager {
       closeEndedIn: (gid) => this.closeEndedIn(gid),
       openTabCwd: (sid) => this.openTabCwd(sid),
       bringTerminalToFront: (sid) => this.frontFrom(sid, "row"),
-      bringRemoteTerminalToFront: (sid) => this.frontFrom(sid, "row"),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
       answerAt: (sid) => {
@@ -559,7 +557,7 @@ export class TabManager {
 
   /**
    * attach / 「杀死空 tmux」对这个会话有没有意义。默认 true：只认后端明说的 `attachable:false`（契约 `src/doc/IPC-PROTOCOL.md` §9.3）。
-   * ↗ 不看它：点的那一刻现查（`remote-terminal-front.ts`）。
+   * ↗ 不看它：点的那一刻现查（本机后端 `session-window`）。
    */
   isAttachable(sid: string): boolean {
     return !this.store.notAttachableSids.has(sid);
@@ -1508,7 +1506,7 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const origin = tab.origin;
-    const run = (): Promise<FrontResult> => (isRemoteOrigin(origin) ? bringRemoteTerminalToFront(origin, sid) : bringTerminalToFront(sid));
+    const run = (): Promise<FrontResult> => bringTerminalToFront(origin, sid);
     const r = await frontOnce(sid, run, (on) => {
       this.bar.setFrontPending(sid, on);
       setFrontBusy(this.frontAnchor(sid, from), on);

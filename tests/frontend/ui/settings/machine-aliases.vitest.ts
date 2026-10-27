@@ -27,8 +27,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   let policyAfter: ExecPolicy | null;
   let onPathSaid: string;
 
+  // 显示形是那台写好的（`/h` 底下 ⇒ `~/…`）；界面照抄，不拿家目录自己缩。
   const cand = (path: string, over: { exists?: boolean; policy?: ExecPolicy | null } = {}) => ({
     path,
+    shown: path.replace(/^\/h\//, "~/"),
     sourced: blockAt.has(path),
     policy: over.policy ?? null,
     exists: over.exists ?? true,
@@ -77,8 +79,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
         readProfiles: (origin: string) => {
           seen.push({ cmd: "profiles_read", args: { origin } });
           return Promise.resolve({
-            home: "/h",
             path: "/h/.cc-monitor/profiles.toml",
+            pathShown: "~/.cc-monitor/profiles.toml",
             exists: true,
             rev: "fp",
             modified: 1,
@@ -99,7 +101,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
           if (rcPath === "/etc/x") return Promise.reject(Object.assign(new Error("拒绝写这个配置文件：只能落在 home 之内"), { detail: "d-fence" }));
           const other = rcPath ? `/h/${rcPath.replace(/^~\//, "")}` : null;
           return Promise.resolve({
-            home: "/h",
             rcCandidates: [cand("/h/rc-a", { policy: policyA }), cand("/h/rc-b", { exists: false }), ...(other ? [cand(other)] : [])],
             otherRc: other,
           });

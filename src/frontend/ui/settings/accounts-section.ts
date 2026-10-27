@@ -38,7 +38,6 @@ import { openMenu, type MenuItem } from "../kit/menu";
 import { spinner } from "../kit/progress";
 import { tag } from "../kit/badge";
 import { toast, failToast } from "../kit/toast";
-import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { machineName } from "../control-said";
@@ -583,7 +582,7 @@ export class AccountsSection {
     line(copyText("acctPage.detail.model"), model, scope, modelErr);
     if (a.configDir !== null) {
       const dir = a.configDir;
-      line(copyText("acctPage.detail.dir"), mono(homeShort(dir, f.state.meta?.home)), button({ label: revealLabel(origin), kind: "ghost", size: "compact", onClick: () => void this.reveal(origin, dir) }));
+      line(copyText("acctPage.detail.dir"), mono(a.configDirShown ?? dir), button({ label: revealLabel(origin), kind: "ghost", size: "compact", onClick: () => void this.reveal(origin, dir) }));
       const del = button({ label: copyText("acctPage.menu.remove", { name: a.name }), kind: "danger-text", size: "compact", onClick: () => void this.remove(f, a) });
       if (readonly) setDisabled(del, copyText("acctPage.offline.hover"));
       const foot = document.createElement("div");

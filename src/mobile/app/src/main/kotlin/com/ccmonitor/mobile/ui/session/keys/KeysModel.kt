@@ -282,5 +282,5 @@ fun durationLine(
             single -> copyText("mobKeys.dur.followAll")
             else -> copyText("mobKeys.dur.followSys")
         }
-    return "$effective ms" + copyText("kit.text.sep") + how
+    return copyText("mobKeys.dur.value", "ms" to effective) + copyText("kit.text.sep") + how
 }

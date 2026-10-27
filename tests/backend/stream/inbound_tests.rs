@@ -1362,8 +1362,8 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "sid": "s-1", "extra": 1 }),
         ),
         (
-            "terminal-processes",
-            serde_json::json!({ "terminals": [{ "ssh": null, "activity": null, "extra": 1 }] }),
+            "session-window",
+            serde_json::json!({ "machine": "<local>", "sid": "s-1", "extra": 1 }),
         ),
         (
             "session-say",

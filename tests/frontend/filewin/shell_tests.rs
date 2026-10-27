@@ -84,6 +84,11 @@ fn a_symlink_to_a_directory_walks_in_on_activate_and_enter() {
         let link = |name: &str, to_dir: bool| crate::source::Listed {
             link: true,
             link_dir: to_dir,
+            class: if to_dir {
+                cmd_wire::files::FileClass::Folder
+            } else {
+                cmd_wire::files::FileClass::Other
+            },
             ..crate::source::Listed::plain(file_row(name))
         };
         FileWindow::seeded(

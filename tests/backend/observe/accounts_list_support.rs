@@ -30,6 +30,7 @@ pub(crate) fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> Accou
     let new_session = super::new_session_of(&a);
     AccountRow {
         plate: Words(a.name.clone()),
+        config_dir_shown: a.config_dir.clone(),
         scanned: a,
         key_masked: None,
         base_url: None,
@@ -77,6 +78,5 @@ fn meta(enabled: bool, effective_default: Option<String>, error: Option<String>)
         unsupported: None,
         next_default: None,
         effective_default,
-        home: None,
     }
 }
