@@ -17,7 +17,7 @@
 //!
 //! # 进不来的那几份
 //!
-//! 中转的宿主（后端 `relay/listen.rs`：绑口 · 期限值）与面 A 的传输面候选（`stream_source/` · `sftp.rs` · `sftp_pool.rs`）
+//! 中转的宿主（后端 `relay/listen.rs`：绑口 · 期限值）与面 A 的传输面候选（`stream_source/` · `sftp.rs` · `transfer_relay.rs`）
 //! 不在通信层里；它们**为什么在外面**（被哪几条咬）逐份写在判据那两张表里，两向相等 —— 散文腐了当场红。
 //!
 //! # 买不到什么（如实登记）

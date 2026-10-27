@@ -754,7 +754,7 @@ const REMOTE_ONLY_MARKS: &[&str] = &[
     "machine_table::has(",
     "stream_source::",
     "refuse_local_write(",
-    "sftp_pool::",
+    "transfer_relay::",
 ];
 
 /// 生产段里「走 origin 无关帧面」的标记。

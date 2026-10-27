@@ -1313,7 +1313,7 @@ mod tests {
     /// 文件页那一问：交进 `files-ls` 的原行 ⇒ 顶栏 · ⋯（每项四格）· 点一下做什么；那台断着 ⇒ 灰着说离线；读不动 ⇒ 什么都不给。
     #[test]
     fn the_pick_menu_reads_the_ls_rows_as_they_came() {
-        let rows = r#"[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":12}]"#;
+        let rows = r#"[{"path":"/h/docs","shown":"~/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":12}]"#;
         let up = pick_core::Here::default();
         let v: serde_json::Value = serde_json::from_str(&super::pick_menu_json(rows, &up)).unwrap();
         assert_eq!(v["bar"][0]["id"], "download");

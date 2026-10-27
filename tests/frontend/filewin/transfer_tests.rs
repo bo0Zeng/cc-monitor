@@ -354,7 +354,7 @@ fn a_pending_upload_targets_the_current_remote_directory_with_forward_slashes() 
 
 /// ⚠ **判源码是代理，不是标的**（同 `source_tests` 那条的如实标注）。
 ///
-/// 上一版这里钉的是「上传走 `sftp_pool` 那条既有命令」。**今天反过来**：
+/// 上一版这里钉的是「上传走 `transfer_relay` 那条既有命令」。**今天反过来**：
 /// 窗口进程一行 SFTP 都不碰——上传经通道开单、订阅、再经后端提交。
 /// 买的是：这一层**只剩**通道那几个口（整组开单 · 提交各恰好一处），自己开连接 / 分块写 /
 /// 直调池子传输命令的痕迹一个都没有。行为那一半由下面 `an_upload_opens_watches_then_commits…` 那一族判。
@@ -398,7 +398,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
     }
     // 池子那一个前缀**一处都不剩**（复制那一腿的取消随复制走后端一起删了）。
     assert_eq!(
-        prod.matches("sftp_pool::").count(),
+        prod.matches("transfer_relay::").count(),
         0,
         "窗口这一侧又够到了池子"
     );
@@ -1086,7 +1086,7 @@ fn cancelling_goes_through_the_stop_token_only() {
         "../../../src/frontend/filewin/src/transfer.rs"
     ));
     assert_eq!(
-        prod.matches("sftp_pool::").count(),
+        prod.matches("transfer_relay::").count(),
         0,
         "窗口的传输模块又够到了池子 —— 撤只许经停订"
     );

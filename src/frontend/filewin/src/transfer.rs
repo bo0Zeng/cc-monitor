@@ -52,7 +52,7 @@ use std::sync::{Arc, Mutex};
 /// 它原先是池里那道 4 条车道闸的副本（两份 ＋ 相等断言）；车道闸随浏览离开 SFTP
 /// 退役之后改钉「占不满池子的通道闸」；池子搬进后端之后改钉两条关系
 /// （`transfer_tests::one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection`）。
-/// 窗口进程照旧一个 `sftp_pool` 的符号都不碰（`boundary_tests::WINDOW_SIDE` 两向钉着）。
+/// 窗口进程照旧一个 `transfer_relay` 的符号都不碰（`boundary_tests::WINDOW_SIDE` 两向钉着）。
 pub const WINDOW_TRANSFER_LANES: usize = 4;
 
 /// 一趟拖入同时起几件 —— 窗口那一侧拿这个数的**唯一**落点。
@@ -448,7 +448,7 @@ pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10)
 
 /// 开单那一条（窗口说给 monitor，monitor 补拨号请求转给本机后端的传输台）。
 pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::files::Call>::NAME;
-/// 进度流的 `kind` 前缀（传输台那一侧 `sftp_pool::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
+/// 进度流的 `kind` 前缀（传输台那一侧 `transfer_relay::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
 pub const KIND_PREFIX: &str = "transfer/";
 /// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
 pub const CMD_COMMIT: &str = "files-commit-upload";

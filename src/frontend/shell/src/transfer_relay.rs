@@ -418,5 +418,5 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
 
 /// 判据 ＋ 台架（假本机后端）。`pub(crate)`：通道那一侧的判据（`chan/transfer_stream_tests`）借同一台台架。
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/sftp_pool_tests.rs"]
+#[path = "../../../../tests/frontend/shell/transfer_relay_tests.rs"]
 pub(crate) mod tests;

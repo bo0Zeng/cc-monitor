@@ -96,7 +96,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
         files.len()
     );
     let ask_ls = "LsReq";
-    let pool_ls = format!("sftp_pool::sftp_{}(", "list_dir");
+    let pool_ls = format!("transfer_relay::sftp_{}(", "list_dir");
     let mut asking: Vec<(String, bool)> = Vec::new();
     let mut total_prod = 0usize;
     for path in &files {
