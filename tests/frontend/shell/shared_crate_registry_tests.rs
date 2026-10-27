@@ -503,7 +503,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd，sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制\
              （起成本机常驻后端，stdio 载体、私有 HOME / TMUX_TMPDIR）。门禁沙箱里起不了 sshd ⇒ 进不了门禁。\
              触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
-             核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `deploy.rs` / `sftp_pool.rs` 中继 /\
+             核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `deploy.rs` / `transfer_relay.rs` 中继 /\
              后端 `ssh-dial/sftp.rs` · `deploy/` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
         ),
         (

@@ -56,7 +56,7 @@ pub(crate) fn route(
             None => tracing::warn!("[{at}] 还没握手就来了应答，丢掉"),
         },
         // 传输台住本机后端：进度 / 终局交中继（从不阻塞）。
-        Frame::Transfer(t) if local => crate::sftp_pool::deliver(t),
+        Frame::Transfer(t) if local => crate::transfer_relay::deliver(t),
         // 测试连接在本机常驻后端里跑：那一格原样交会话流句柄（`probe-progress/<票>`，界面严格收）。
         Frame::Probe(p) if local => to_replay(|r| r.on_probe(&p.ticket, p.cell.to_string())),
         Frame::Transfer(_) | Frame::Probe(_) => {

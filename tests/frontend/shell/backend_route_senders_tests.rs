@@ -92,10 +92,10 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
     // skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
-    // ★ 传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
+    // ★ 传输台的中继（`transfer_relay.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `frame_query.rs` 那一行逐字相同。
-    ("sftp_pool.rs", Verdict::UsesRouter),
+    ("transfer_relay.rs", Verdict::UsesRouter),
     // ★ 装后端：把「怎么够到那台 ＋ 这一版带着的那几格落在哪」交给**本机**后端 `deploy-install`，
     //   经 `deploy.rs::install_for` 这一口；那一趟住后端，没有第二条路可回落。形状与 `asset_sync.rs` 那一行同。
     ("deploy.rs", Verdict::UsesRouter),

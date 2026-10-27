@@ -198,7 +198,7 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
     (
         "transfer-upload",
         Own::Channel,
-        "传输台开单：转给本机常驻后端的传输台（经中继 `sftp_pool.rs`），不按寻址去那台",
+        "传输台开单：转给本机常驻后端的传输台（经中继 `transfer_relay.rs`），不按寻址去那台",
     ),
     (
         "transfer-download",

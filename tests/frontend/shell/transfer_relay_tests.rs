@@ -1,4 +1,4 @@
-//! 传输台**中继**（`sftp_pool.rs`）的判据：开单 / 起跑 / 停订 / 流断了 都原样转给本机常驻后端，
+//! 传输台**中继**（`transfer_relay.rs`）的判据：开单 / 起跑 / 停订 / 流断了 都原样转给本机常驻后端，
 //! 后端推上来的 `transfer` 帧翻成窗口认的那几格。
 //!
 //! 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient` ＋ **真的**本机吸收点
@@ -285,7 +285,7 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
     let steps = drain(s).await;
     assert_eq!(
         steps.last().and_then(end_of).cloned(),
-        Some(crate::sftp_pool::failed(
+        Some(crate::transfer_relay::failed(
             "本机后端的流断了（判据）".to_string()
         ))
     );

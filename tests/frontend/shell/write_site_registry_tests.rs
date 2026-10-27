@@ -118,7 +118,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // 「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
     //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（`control/transfer.rs`，写经帧面交来的 `Face`；传输台 layer11 起归原生那一块），
     //    monitor 这一侧零写盘。上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
-    //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
+    //    （`transfer_relay.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
     // 原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
     ("atomic.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     ("atomic.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
