@@ -3,12 +3,13 @@ package com.ccmonitor.mobile.ui.chat.attach
 import com.ccmonitor.mobile.core.claude.link.AttachAsk
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
+import com.ccmonitor.mobile.core.claude.link.RawJson
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentCheck
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentCommit
 import com.ccmonitor.mobile.core.claude.link.SessionAttachmentDrop
 import com.ccmonitor.mobile.core.claude.link.Transfer
-import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.rs.Core
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -51,9 +52,12 @@ sealed interface AttachPhase {
     data class Failed(
         val said: String,
     ) : AttachPhase
+
+    /** 本机那一份副本开不了（进错条，可重试）。 */
+    data object Lost : AttachPhase
 }
 
-/** 输入框上方的一张卡。 */
+/** 输入框上方的一张卡；[line] · [removeLabel] 是核心写好的字（卡上第二行 · ✕ 的读屏名）。 */
 data class AttachCard(
     val key: String,
     val name: String,
@@ -63,12 +67,15 @@ data class AttachCard(
     /** 本机那一份副本（缩略图照它画）。 */
     val file: File,
     val phase: AttachPhase,
+    val line: String? = null,
+    val removeLabel: String = "",
 )
 
-/** 卡下那一条：那一句 ＋ 按钮（没有按钮 ⇒ [act] 为 `null`）。 */
+/** 卡下那一条（核心写好）：那一句 ＋ 按钮（没有按钮 ⇒ [act] 为 `null`）；[dashed] ⇒ 断着那一档（虚线灰）。 */
 data class AttachNote(
     val text: String,
     val act: Act?,
+    val dashed: Boolean = false,
 ) {
     enum class Act {
         /** 那台的错：重传失败的那几份。 */
@@ -91,6 +98,36 @@ data class AttachUi(
 }
 
 /**
+ * ➤ 那一下交什么：字与附件都没有 · 那一排还没全落好 ⇒ `null`（不发）；没有那一排 ⇒ 编号为空；
+ * 否则那一排的编号（按先后，那一排清空），记在 [localId] 名下（没送到重发照带，[AttachTray.settled] 了才不记）。回 [localId] 与编号。
+ */
+fun AttachTray?.handOver(
+    text: String,
+    localId: String,
+): Pair<String, List<String>>? {
+    val cards =
+        this
+            ?.state
+            ?.value
+            ?.cards
+            .orEmpty()
+    if (text.isBlank() && cards.isEmpty()) return null
+    if (this == null) return localId to emptyList()
+    return take()?.let { ids -> localId to ids.also { handed(localId, it) } }
+}
+
+/** 手机这边的错（那一条最先说它）。 */
+enum class LocalWhy(
+    val wire: String,
+) {
+    /** 拷不进本机（空间满 …）：［换一张］。 */
+    NO_ROOM("no_room"),
+
+    /** 没有能拍照的系统相机。 */
+    NO_CAMERA("no_camera"),
+}
+
+/**
  * 一条会话输入框上方那一排附件：选好一份先拷进本机（[AttachStore]，被杀回来照样在），再逐份
  * `session-attachment-check`（整排按先后问，收不收 · 上限全由那台判）→ 分块送进暂存区（[CoreLink.transfer]，循环在核心）→
  * `session-attachment-commit` ⇒ 编号。断着 · 送到一半断了 ⇒ 回排队、连上（[CoreLink.state] 通了 · [CoreLink.epoch] 换了）接着传。
@@ -105,12 +142,14 @@ class AttachTray(
     /** 现开本机那一份的描述符交给核心（核心用完就关）。 */
     private val fdOf: (File) -> Int,
     private val io: CoroutineContext = Dispatchers.IO,
+    /** 那一排的字：交此刻每张卡走到哪，回卡上第二行与卡下那一条（内嵌核心写，[Core.attachFace]）。 */
+    private val face: (String) -> String = Core::attachFace,
 ) {
     private val _state = MutableStateFlow(AttachUi())
     val state: StateFlow<AttachUi> = _state.asStateFlow()
 
-    /** 手机这边那一句（存不下）：下一次加 · 撤就收掉。 */
-    private var local: AttachNote? = null
+    /** 手机这边的错：下一次加 · 撤就收掉。 */
+    private var local: LocalWhy? = null
 
     /** 最近一趟断在路上（流还算通着）：等 [CoreLink.epoch] 换了再走。 */
     private var cut = false
@@ -145,7 +184,7 @@ class AttachTray(
                 try {
                     withContext(io) { store.keep(s, name, image, open) }
                 } catch (_: IOException) {
-                    local = AttachNote(copyText("mobAttach.note.local"), AttachNote.Act.REPICK)
+                    local = LocalWhy.NO_ROOM
                     publish()
                     return@launch
                 }
@@ -169,9 +208,15 @@ class AttachTray(
         kick()
     }
 
+    /** 手机这边的错（没有相机 …）：下一次加 · 撤就收掉。 */
+    fun local(why: LocalWhy) {
+        local = why
+        publish()
+    }
+
     /** ［重试］：失败的那几份回排队再走一遍。 */
     fun retry() {
-        publish(cards().map { if (it.phase is AttachPhase.Failed) it.copy(phase = AttachPhase.Queued) else it })
+        publish(cards().map { if (it.phase is AttachPhase.Failed || it.phase == AttachPhase.Lost) it.copy(phase = AttachPhase.Queued) else it })
         cut = false
         kick()
     }
@@ -248,7 +293,7 @@ class AttachTray(
                     set(card.key, AttachPhase.Moving(done, if (total < 0) card.bytes else total))
                 }
             } catch (_: IOException) {
-                return set(card.key, AttachPhase.Failed(copyText("mobFiles.local.readFailed", "name" to card.name)))
+                return set(card.key, AttachPhase.Lost)
             }
         val staged = (r as? Reply.Ok)?.let { FilesCommitUpload.Staged.of(it.data) } ?: return failOne(card, r, STAGE)
         val c = link.call(SessionAttachmentCommit.COMMAND, SessionAttachmentCommit.args(s, card.name, staged), CHUNK_MS)
@@ -300,18 +345,36 @@ class AttachTray(
         phase: AttachPhase,
     ) = publish(cards().map { if (it.key == key) it.copy(phase = phase) else it })
 
-    /** 摆上 [cards]，错条照此刻重写：手机这边那一句 › 失败的那几份 › 断着。 */
+    /** 摆上 [cards]：字交核心照此刻写（卡上第二行 · ✕ 的读屏名 · 卡下那一条）。 */
     private fun publish(cards: List<AttachCard> = cards()) {
         val offline = cards.any { it.phase == AttachPhase.Queued } && !up()
-        val failed = cards.mapNotNull { (it.phase as? AttachPhase.Failed)?.said }
-        val note =
-            local
-                ?: failed.firstOrNull()?.let { said ->
-                    val text = if (failed.size == 1) copyText("mobAttach.note.failed", "said" to said) else copyText("mobAttach.note.failedMany", "n" to failed.size, "said" to said)
-                    AttachNote(text, AttachNote.Act.RETRY)
-                }
-                ?: if (offline) AttachNote(copyText("mobAttach.note.offline", "said" to (link.offline.value ?: machine)), null) else null
-        _state.value = AttachUi(cards, note, offline)
+        val want =
+            mapOf(
+                "cards" to cards.map { wireOf(it) },
+                "offline" to if (offline) link.offline.value ?: machine else null,
+                "local" to local?.wire,
+            )
+        val got = RawJson.read(face(RawJson.write(want))) as? Map<*, *>
+        val rows = (got?.get("cards") as? List<*>).orEmpty()
+        val shown = cards.mapIndexed { i, c -> (rows.getOrNull(i) as? Map<*, *>)?.let { r -> c.copy(line = r["line"] as? String, removeLabel = r["remove"] as? String ?: "") } ?: c }
+        _state.value = AttachUi(shown, noteOf(got?.get("note") as? Map<*, *>), offline)
+    }
+
+    private fun wireOf(c: AttachCard): Map<String, Any?> =
+        mapOf("name" to c.name) +
+            when (val p = c.phase) {
+                AttachPhase.Queued -> mapOf("phase" to "queued")
+                is AttachPhase.Moving -> mapOf("phase" to "moving", "done" to p.done, "total" to p.total)
+                is AttachPhase.Landed -> mapOf("phase" to "landed")
+                is AttachPhase.Refused -> mapOf("phase" to "refused", "said" to p.said)
+                is AttachPhase.Failed -> mapOf("phase" to "failed", "said" to p.said)
+                AttachPhase.Lost -> mapOf("phase" to "lost")
+            }
+
+    private fun noteOf(m: Map<*, *>?): AttachNote? {
+        val text = m?.get("text") as? String ?: return null
+        val act = AttachNote.Act.entries.firstOrNull { it.name.lowercase() == m["act"] }
+        return AttachNote(text, act, m["dashed"] == true)
     }
 
     private companion object {

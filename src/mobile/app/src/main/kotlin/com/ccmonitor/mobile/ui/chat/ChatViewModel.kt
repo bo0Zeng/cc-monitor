@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.ui.chat
 
 import androidx.lifecycle.ViewModel
+import com.ccmonitor.mobile.ui.chat.attach.AttachActions
+import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
 import kotlinx.coroutines.flow.StateFlow
 
@@ -35,7 +37,10 @@ class ChatViewModel(
 
     fun jumpFail(after: String) = session.jumpFail(after)
 
-    /** 输入那一圈（➤ · ■ · 两颗 chip · ［+］面板）。 */
+    /** 输入框上方那一排附件；新建会话 ⇒ `null`。 */
+    val attach: StateFlow<AttachUi>? get() = session.attach?.state
+
+    /** 输入那一圈（➤ · ■ · 两颗 chip · ［+］面板 · 附件那一排）。 */
     val actions: ChatInputActions =
         ChatInputActions(
             send = session::send,
@@ -46,6 +51,7 @@ class ChatViewModel(
             loadCommands = session::loadCommands,
             say = session::say,
             editDraft = session::editDraft,
+            attach = session.attach?.let { t -> AttachActions(add = t::add, remove = t::remove, retry = t::retry, local = t::local) },
         )
 
     /** 聊天屏进 / 出（`stream-watch` 名单跟着它）。 */

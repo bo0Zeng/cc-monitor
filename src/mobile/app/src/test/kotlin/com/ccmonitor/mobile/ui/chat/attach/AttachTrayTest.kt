@@ -144,7 +144,11 @@ class AttachTrayTest {
             val t = tray(link)
             t.put("a.png")
             runCurrent()
-            assertEquals(copyText("mobAttach.note.failed", "said" to "devbox 磁盘满"), t.state.value.note?.text)
+            assertEquals(
+                copyText("mobAttach.note.failed", "said" to "devbox 磁盘满"),
+                t.state.value.note
+                    ?.text,
+            )
         }
 
     @Test
@@ -157,7 +161,13 @@ class AttachTrayTest {
             runCurrent()
             assertEquals(listOf<AttachPhase>(AttachPhase.Queued), t.phases)
             assertTrue(t.state.value.offline)
-            assertEquals(AttachNote(copyText("mobAttach.note.offline", "said" to FakeCoreLink.OFFLINE), null), t.state.value.note)
+            assertEquals(AttachNote(copyText("mobAttach.note.offline", "said" to FakeCoreLink.OFFLINE), null, dashed = true), t.state.value.note)
+            assertEquals(
+                copyText("mobAttach.card.queued"),
+                t.state.value.cards
+                    .single()
+                    .line,
+            )
             assertEquals(emptyList<Any>(), link.transfers)
 
             link.state.value = linkUp()
@@ -192,7 +202,9 @@ class AttachTrayTest {
             val t = tray(link, store)
             t.put("a.png")
             runCurrent()
-            val card = t.state.value.cards.single()
+            val card =
+                t.state.value.cards
+                    .single()
             t.remove(card.key)
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "s1", "id" to "id-1")), link.calls("session-attachment-drop"))

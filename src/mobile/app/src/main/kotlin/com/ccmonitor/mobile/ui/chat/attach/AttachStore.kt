@@ -37,7 +37,12 @@ class AttachStore(
         image: Boolean,
         open: () -> InputStream,
     ): Kept {
-        val key = UUID.randomUUID().toString().replace("-", "").take(KEY_LEN)
+        val key =
+            UUID
+                .randomUUID()
+                .toString()
+                .replace("-", "")
+                .take(KEY_LEN)
         val shown = lastSegment(name)
         val home = File(dirOf(sid), key)
         val file = File(home, shown)

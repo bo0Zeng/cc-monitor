@@ -56,7 +56,14 @@ class AttachStoreTest {
         val failed = runCatching { a.keep("s1", "big.bin", image = false) { broken } }
         assertTrue(failed.exceptionOrNull() is IOException)
         assertEquals(emptyList<AttachStore.Kept>(), a.list("s1"))
-        assertEquals(emptyList<String>(), dir.root.walk().filter { it.isFile && it.name == "big.bin" }.map { it.path }.toList())
+        assertEquals(
+            emptyList<String>(),
+            dir.root
+                .walk()
+                .filter { it.isFile && it.name == "big.bin" }
+                .map { it.path }
+                .toList(),
+        )
     }
 
     @Test
