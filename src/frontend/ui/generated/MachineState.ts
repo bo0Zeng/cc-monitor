@@ -44,7 +44,11 @@ word: string,
 /**
  * 问题行那一句（空 ⇒ 不出问题行）。
  */
-said: string, fixes: Array<MachineFixButton>, 
+said: string, 
+/**
+ * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
+ */
+offlineSaid: string, fixes: Array<MachineFixButton>, 
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
  */

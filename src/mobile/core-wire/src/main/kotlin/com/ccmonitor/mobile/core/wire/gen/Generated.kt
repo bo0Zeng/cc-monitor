@@ -11553,6 +11553,7 @@ data class MachineState(
     val os: String?,
     val word: String,
     val said: String,
+    val offlineSaid: String,
     val fixes: List<MachineFixButton>,
     val seenHostKey: String?,
     val expectedHostKey: String?,
@@ -11573,13 +11574,14 @@ data class MachineState(
             Field("os", { opt(Str) }, optional = false, nullable = true),
             Field("word", { Str }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
+            Field("offlineSaid", { Str }, optional = false, nullable = false),
             Field("fixes", { arr(MachineFixButton.ADAPTER) }, optional = false, nullable = false),
             Field("seenHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as List<MachineFixButton>, a[11] as String?, a[12] as String?, a[13] as String?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?) },
+            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail) },
         )
     }
 }
