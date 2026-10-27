@@ -20056,6 +20056,12 @@
       "zh": "历史清单缓存 · 每份记录的标题与条数 · 重启不重扫 · 可重建",
       "args": []
     },
+    "rsDataPaths.backend.remoteListing": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "远端各机的会话清单副本 · 一台一份 · 重启后照它增量同步 · 可重建",
+      "args": []
+    },
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
       "role": "说明",
