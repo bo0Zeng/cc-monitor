@@ -5,6 +5,10 @@ package com.ccmonitor.mobile.ui.chat
  */
 object ChatTestTags {
     const val PANE = "chat-pane"
+
+    /** 一段过程的那一行 · 点开后「跳到第一处失败」。 */
+    const val PROCESS = "chat-process"
+    const val JUMP_FAIL = "chat-jump-fail"
     const val INPUT = "chat-input"
     const val SEND = "chat-send"
     const val STOP = "chat-stop"

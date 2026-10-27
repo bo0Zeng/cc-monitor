@@ -21,6 +21,7 @@
   "history-read": [{"path":"/p/s.jsonl","offset":0,"until":10}],
   "history-search": [{"query":"q"}],
   "history-tail": [{"path":"/p/s.jsonl","n":50},{"path":"/p/s.jsonl","n":50,"held":{"path":"/p/s.jsonl","next":3,"next_byte":30,"mark":"m"}}],
+  "history-turns": [{"path":"/p/s.jsonl","cover":30},{"path":"/p/s.jsonl","from":30}],
   "kill": [{"name":"demo","client":"mobile"}],
   "login-cancel": [{"job":"j"}],
   "login-finish": [{"job":"j","pasted":"code"}],

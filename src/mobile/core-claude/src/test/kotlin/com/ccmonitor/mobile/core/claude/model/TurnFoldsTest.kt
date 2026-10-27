@@ -75,6 +75,17 @@ class TurnFoldsTest {
     }
 
     @Test
+    fun `一张卡收在哪一段：段里的回那一段的 after，露着的 · 不在的回 null；点开画出来的卡带着它`() {
+        assertEquals("a3", TurnFolds.owner(units, turns, "a4#0"))
+        assertEquals("u1", TurnFolds.owner(units, turns, "a2#0"))
+        assertEquals("u2", TurnFolds.owner(units, turns, "b1#0"))
+        assertEquals(null, TurnFolds.owner(units, turns, "a3#0"))
+        assertEquals(null, TurnFolds.owner(units, turns, "zz"))
+        val open = TurnFolds.fold(units, turns, setOf("u1")).filterIsInstance<StreamItem.Card>()
+        assertEquals(listOf(null, "u1", "u1", null, null, null), open.map { it.fold })
+    }
+
+    @Test
     fun `没有分段（还没问到 · 问不到）⇒ 照原样逐条画`() {
         assertEquals(units.map { it.key }, shape(TurnFolds.fold(units, emptyList(), emptySet())))
     }

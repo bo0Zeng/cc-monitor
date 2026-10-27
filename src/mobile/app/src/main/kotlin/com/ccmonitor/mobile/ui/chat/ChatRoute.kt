@@ -174,11 +174,18 @@ private fun ChatBody(
         actions = vm.actions,
         onRetrySend = vm::retry,
         onLoadOlder = vm::loadOlder,
+        process = ProcessActions(toggle = vm::toggle, jumpFail = vm::jumpFail),
         awaiting = needsUi.awaiting,
         needs = { ChatNeeds(needs) },
         modifier = modifier,
     )
 }
+
+/** 过程行那两样动作：开 ⇄ 合 · 跳到第一处失败（都按那一段的 `after`）。 */
+data class ProcessActions(
+    val toggle: (String) -> Unit = {},
+    val jumpFail: (String) -> Unit = {},
+)
 
 /** 开一条对话要的那几样（DI 按类型取这一件，不按位置取几个裸串）。 */
 data class ChatOpen(

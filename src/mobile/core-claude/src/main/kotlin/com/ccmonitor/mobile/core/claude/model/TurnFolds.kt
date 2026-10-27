@@ -11,6 +11,8 @@ sealed interface StreamItem {
 
     data class Card(
         val unit: RenderUnit,
+        /** 它在哪一段过程里（那一段的 `after`；点开了才画出来）；露着的 ⇒ `null`。 */
+        val fold: String? = null,
     ) : StreamItem {
         override val key: String get() = unit.key
     }
@@ -46,7 +48,7 @@ object TurnFolds {
             // 一条记录的头一张卡：段到 `until` 为止；又是另一段的 `after` · 本机还没进记录的那一句 ⇒ 也到此为止。
             val firstOfRecord = i == 0 || units[i - 1].sourceUuid != id
             if (cur != null && firstOfRecord && ends(cur, id, byAfter)) cur = null
-            if (cur == null || cur.after in open) out += StreamItem.Card(u)
+            if (cur == null || cur.after in open) out += StreamItem.Card(u, cur?.after)
             // 这一条的最后一张卡之后：它是某一段的 `after` ⇒ 插那一行、往下的卡归那一段。
             val next = byAfter[id].takeIf { i == units.lastIndex || units[i + 1].sourceUuid != id }
             if (next != null) {
@@ -55,6 +57,16 @@ object TurnFolds {
             }
         }
         return out
+    }
+
+    /** 卡 [key] 收在哪一段过程里（那一段的 `after`）；露着 · 不在 ⇒ `null`。跳到一条之前先展开它（记成手动开）。 */
+    fun owner(
+        units: List<RenderUnit>,
+        turns: List<TurnRow>,
+        key: String,
+    ): String? {
+        val all = turns.flatMapTo(HashSet()) { t -> t.folds.map { it.after } }
+        return fold(units, turns, all).firstNotNullOfOrNull { (it as? StreamItem.Card)?.takeIf { c -> c.unit.key == key }?.fold }
     }
 
     /** 只拉了后半截：最上面那一段的 `after` 还没拉到 ⇒ 过程行画在已拉到的最上面、开头那几张卡归它。 */
