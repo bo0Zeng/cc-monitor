@@ -489,6 +489,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-attach-commit",
     "--session-attach-drop",
     "--session-permission",
+    // 会话输入队那三条（`session-queue-*`）派生的 CLI 面：手机与别的后端从这一面问。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--session-queue-cancel",
+    "--session-queue-put",
+    "--session-queue-read",
     "--session-say",
     "--sessions-stop",
     "--sessions-where",

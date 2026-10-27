@@ -1084,6 +1084,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "跳过+说清",
     ),
     (
+        "src/backend/egress/tunnel.rs",
+        "HEAD_CAP",
+        "出网口经 HTTP 代理那一跳的 `CONNECT` 回包头（读到空行为止）；超了 ⇒ 这一跳报错（代理那一步），连接不建",
+        "拒收+回错",
+    ),
+    (
         "src/backend/relay/key.rs",
         "KEY_MAX_BYTES",
         "中转钥匙文件 `~/.cc-monitor/relay-key`（一行）；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把",
@@ -1120,6 +1126,18 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/bookmarks.rs",
         "MAX_BYTES",
         "这台的书签 `~/.cc-monitor/bookmarks.json`（超了当读不懂：`bookmarks_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/history/session_queue.rs",
+        "MAX_BYTES",
+        "一条会话的输入队 `~/.cc-monitor/session-queue/<sid>.json`（超了当读不懂：`queue_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/history/session_queue.rs",
+        "TEXT_MAX",
+        "投进输入队的一句（超了拒收：`text_too_long`，一个字节不落）",
         "拒收+回错",
     ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
