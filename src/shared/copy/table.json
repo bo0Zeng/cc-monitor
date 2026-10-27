@@ -4117,6 +4117,12 @@
       "zh": "改名",
       "args": []
     },
+    "tabMenu.group.inPlan": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在计划中查看本组接手的块",
+      "args": []
+    },
     "tabMenu.group.collapse": {
       "kind": "action",
       "role": "菜单项",
@@ -14155,6 +14161,30 @@
       "role": "报错",
       "zh": "要更新 · 计划不可用\n需 planned-build 0.5 及以上（输出形状 6） · 现为形状 {shape}",
       "args": ["shape"]
+    },
+    "bePlan.groups.unread": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "读取组失败 · {why}",
+      "args": ["why"]
+    },
+    "bePlan.new.repoAt": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仓库 {dir}",
+      "args": ["dir"]
+    },
+    "bePlan.new.existing": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已有此片 · {domain} · 只切换",
+      "args": ["domain"]
+    },
+    "bePlan.new.existingBare": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已有此片 · 只切换",
+      "args": []
     },
     "bePlan.face.noPb": {
       "kind": "error",
@@ -27365,6 +27395,132 @@
       "kind": "body",
       "role": "片段",
       "zh": "—",
+      "args": []
+    },
+    "plan.blocks.groups": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "组",
+      "args": []
+    },
+    "plan.group.clear": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "取消按组筛选",
+      "args": []
+    },
+    "plan.group.none": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "本组在当前片没有接手的块",
+      "args": []
+    },
+    "plan.new.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新计划…",
+      "args": []
+    },
+    "plan.new.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "新计划",
+      "args": []
+    },
+    "plan.new.create": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建",
+      "args": []
+    },
+    "plan.new.switch": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "切换到此片",
+      "args": []
+    },
+    "plan.new.machine": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "机器",
+      "args": []
+    },
+    "plan.new.workspace": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "工作区",
+      "args": []
+    },
+    "plan.new.workspaceHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "向上未找到工作区时，此目录成为工作区根",
+      "args": []
+    },
+    "plan.new.known": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已有工作区",
+      "args": []
+    },
+    "plan.new.cwd": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "会话的工作目录",
+      "args": []
+    },
+    "plan.new.path": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "路径",
+      "args": []
+    },
+    "plan.new.pathHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "相对工作区根 · 最后一段是片名",
+      "args": []
+    },
+    "plan.new.domain": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "领域",
+      "args": []
+    },
+    "plan.new.domainHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "建后不改",
+      "args": []
+    },
+    "plan.new.line": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "执行",
+      "args": []
+    },
+    "plan.new.lineHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "之后在会话里 pb claim 认领此片",
+      "args": []
+    },
+    "plan.new.needPath": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需填路径",
+      "args": []
+    },
+    "plan.new.needDomain": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需选领域",
+      "args": []
+    },
+    "plan.new.created": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已登记",
       "args": []
     },
     "plan.page.listSep": {
