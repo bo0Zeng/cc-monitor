@@ -1054,36 +1054,6 @@
       "zh": "未删除会话 {id} · {path} 不像会话记录",
       "args": ["id", "path"]
     },
-    "beCcBus.find.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "该机可能未装 cc-bus · 装在别处就用 CC_BUS_BIN_DIR 指过去",
-      "args": []
-    },
-    "beCcBus.timedOut.say": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "cc-bus 等 {dur} 未结束 · 已停",
-      "args": ["dur"]
-    },
-    "beCcBus.read.tooOld": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "此机 cc-bus 比后端旧 · 不认 {cmd} · 重新部署 cc-bus 后再试",
-      "args": ["cmd"]
-    },
-    "beCcBus.read.truncated": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{cmd} 的输出只读到一半 · 未采用",
-      "args": ["cmd"]
-    },
-    "beCcBus.run.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "{name} 拒绝这组参数 · {detail}",
-      "args": ["name", "detail"]
-    },
     "beCcBus.envelope.badFrom": {
       "kind": "error",
       "role": "命令行",
@@ -1150,23 +1120,53 @@
       "zh": "未发送 · 信封缺格或格式不对",
       "args": []
     },
-    "beCcBus.run.failed": {
+    "beCcBus.envelope.duplicate": {
       "kind": "error",
       "role": "命令行",
-      "zh": "{name} 失败 · {detail} · 退出码 {status}",
-      "args": ["name", "status", "detail"]
+      "zh": "未发送 · 同一封刚发过",
+      "args": []
+    },
+    "beCcBus.envelope.throttled": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 发得太快 · 稍后再发",
+      "args": []
+    },
+    "beCcBus.store.failed": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "收件箱读写失败",
+      "args": []
+    },
+    "beCcBus.commit.stale": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "已读位置已被推过 · 手上这段照常处理",
+      "args": []
+    },
+    "beCcBus.commit.changed": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "收件箱在两次读取之间被改动 · 位置未推",
+      "args": []
+    },
+    "beCcBus.commit.badToken": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "令牌无效",
+      "args": []
+    },
+    "beCcBus.peek.skipped": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "读取收件箱 {n} 行失败 · 内容无法解析 · 已跳过",
+      "args": ["n"]
     },
     "beCcBus.inbox.badId": {
       "kind": "error",
       "role": "原因格",
       "zh": "收件箱名无效 · {id}",
       "args": ["id"]
-    },
-    "beCcBus.inbox.tooOld": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{reason} · 此机 cc-bus 比后端旧 · 重新部署 cc-bus 后再试",
-      "args": ["reason"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
@@ -2355,18 +2355,6 @@
       "zh": "{machine} 未确认结束 {target} · 按未结束处理 · 刷新会话列表后再定是否重试",
       "args": ["machine", "target"]
     },
-    "ccBus.online.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "查询在线状态失败 · 未装",
-      "args": []
-    },
-    "ccBus.online.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "查询在线状态无应答",
-      "args": []
-    },
     "ccBus.online.otherCode": {
       "kind": "error",
       "role": "报错",
@@ -2379,18 +2367,6 @@
       "zh": "{id} 在线状态未知 · 不在 {machine} 的总线名单 · 或该机未查到 tmux",
       "args": ["id", "machine"],
       "limited": ["tmux"]
-    },
-    "ccBus.read.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取 cc-bus 失败 · 未装",
-      "args": []
-    },
-    "ccBus.read.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取 cc-bus 无应答",
-      "args": []
     },
     "ccBus.read.badId": {
       "kind": "error",
@@ -3011,7 +2987,7 @@
     "stream.proc.jumpFail": {
       "kind": "action",
       "role": "按钮",
-      "zh": "跳到第一处失败",
+      "zh": "跳到首处失败",
       "args": []
     },
     "stream.step.rejected": {
@@ -12585,27 +12561,21 @@
       "zh": "加一行",
       "args": []
     },
-    "newSessionSet.row.alias": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "别名",
-      "args": []
-    },
     "newSessionSet.row.less": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "action",
+      "role": "按钮",
       "zh": "少起一个",
       "args": []
     },
     "newSessionSet.row.more": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "action",
+      "role": "按钮",
       "zh": "多起一个",
       "args": []
     },
     "newSessionSet.row.drop": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "action",
+      "role": "按钮",
       "zh": "删除此行",
       "args": []
     },
@@ -12621,30 +12591,6 @@
       "zh": "缺省",
       "args": []
     },
-    "newSessionSet.preview.have": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已有 {n}",
-      "args": ["n"]
-    },
-    "newSessionSet.preview.none": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "—",
-      "args": []
-    },
-    "newSessionSet.preview.total": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "补足每一行到它的个数 · 已有的不动 · 共再起 {n}",
-      "args": ["n"]
-    },
-    "newSessionSet.action.start": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "启动 {n}",
-      "args": ["n"]
-    },
     "newSessionSet.action.save": {
       "kind": "action",
       "role": "按钮",
@@ -12654,18 +12600,24 @@
     "newSessionSet.save.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已保存 {name}",
-      "args": ["name"]
+      "zh": "已保存",
+      "args": []
     },
     "newSessionSet.name.empty": {
-      "kind": "error",
-      "role": "报错",
+      "kind": "body",
+      "role": "说明",
       "zh": "先填组名",
       "args": []
     },
+    "newSessionSet.cwd.empty": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先填每一行的目录",
+      "args": []
+    },
     "newSessionSet.alias.none": {
-      "kind": "error",
-      "role": "报错",
+      "kind": "body",
+      "role": "说明",
       "zh": "无可用别名 · 先在设置的别名页新建",
       "args": []
     },
@@ -16228,6 +16180,78 @@
       "role": "报错",
       "zh": "组「{name}」写错 · {why}",
       "args": ["name", "why"]
+    },
+    "beSessionSet.row.counted": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cwd} {group} {have}/{want}",
+      "args": ["cwd", "group", "have", "want"]
+    },
+    "beSessionSet.row.blocked": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cwd} {why}",
+      "args": ["cwd", "why"]
+    },
+    "beSessionSet.row.sep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
+    "beSessionSet.row.have": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已有 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.more.some": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "再起 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.more.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "beSessionSet.more.full": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已齐",
+      "args": []
+    },
+    "beSessionSet.more.total": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "补足每一行到它的个数 · 已有的不动 · 共再起 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.start.some": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "启动 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.launched.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已启动 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.launched.partial": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动 {started}/{all}",
+      "args": ["started", "all"]
+    },
+    "beSessionSet.launched.fail": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{alias} 启动失败 · {why}",
+      "args": ["alias", "why"]
     },
     "beSession.hidden.launch": {
       "kind": "body",
@@ -24750,54 +24774,6 @@
       "role": "菜单项",
       "zh": "编辑组…",
       "args": []
-    },
-    "setMenu.item.more": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "再起 {n}",
-      "args": ["n"]
-    },
-    "setMenu.item.full": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已齐",
-      "args": []
-    },
-    "setMenu.row.counted": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{cwd} {group} {have}/{want}",
-      "args": ["cwd", "group", "have", "want"]
-    },
-    "setMenu.row.blocked": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{cwd} {why}",
-      "args": ["cwd", "why"]
-    },
-    "setMenu.row.sep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
-    "setMenu.launched.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已启动 {name} · {n}",
-      "args": ["name", "n"]
-    },
-    "setMenu.launched.partial": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动 {started}/{all} · {name}",
-      "args": ["started", "all", "name"]
-    },
-    "setMenu.launched.fail": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{alias} 启动失败 · {why}",
-      "args": ["alias", "why"]
     },
     "setMenu.launched.retry": {
       "kind": "action",

@@ -10,11 +10,11 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("../../../src/frontend/ui/profiles-reads", () => ({ readProfiles: h.readProfiles, writeProfiles: h.writeProfiles }));
 vi.mock("../../../src/frontend/ui/set-reads", () => ({ planSet: h.planSet }));
-vi.mock("../../../src/frontend/ui/set-menu", () => ({ startSet: h.startSet }));
+vi.mock("../../../src/frontend/ui/set-start", () => ({ startSet: h.startSet }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: h.toast }));
 
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { previewSaid, setPage } from "../../../src/frontend/ui/new-session-set";
+import { setPage } from "../../../src/frontend/ui/new-session-set";
 import type { SetPlan } from "../../../src/frontend/ui/generated/SetPlan";
 
 const book = {
@@ -36,12 +36,17 @@ const book = {
   ],
 };
 
+/** 那台写好的几句用占位字（界面照摆、不拼）；都够了 ⇒ 主按钮那一句是「已齐」那一形。 */
 const plan = (more: number): SetPlan => ({
   rows: [
-    { cwd: "~/work/cc-monitor", alias: "dev", want: 2, have: 2, more: 0, group: "dev", blocked: null },
-    { cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: null },
+    { cwd: "~/work/cc-monitor", alias: "dev", want: 2, have: 2, more: 0, group: "dev", blocked: null, said: "R1", haveSaid: "HAVE-2", moreSaid: "DASH" },
+    { cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: more ? null : "look 不存在", said: "R2", haveSaid: "HAVE-0", moreSaid: more ? "MORE-1" : "look 不存在" },
   ],
   more,
+  said: "R1 · R2",
+  moreSaid: more ? "MORE" : "FULL",
+  totalSaid: `TOTAL-${more}`,
+  startSaid: more ? "START-1" : "FULL",
 });
 
 beforeEach(() => {
@@ -80,19 +85,19 @@ describe("一组页", () => {
     expect(rows[0].querySelector<HTMLInputElement>('[data-role="set-group"]')!.placeholder).toBe("dev");
     expect(rows[1].querySelector<HTMLInputElement>('[data-role="set-group"]')!.value).toBe("看图");
     const preview = p.el.querySelector<HTMLElement>('[data-role="set-preview"]')!.textContent ?? "";
-    expect(preview).toContain(copyText("newSessionSet.preview.have", { n: "2" }));
-    expect(preview).toContain(copyText("setMenu.item.more", { n: "1" }));
-    expect(preview).toContain(copyText("newSessionSet.preview.total", { n: "1" }));
-    expect(p.action()).toBe(copyText("newSessionSet.action.start", { n: "1" }));
+    for (const w of ["HAVE-2", "DASH", "HAVE-0", "MORE-1", "TOTAL-1"]) expect(preview).toContain(w);
+    expect(p.action()).toBe("START-1");
     expect(p.blocked()).toBeNull();
   });
 
-  it("都齐了：主按钮字换「已齐」、点不了；起不了的那一行右侧写原因", async () => {
+  it("都齐了：主按钮照那台那一句、点不了；起不了的那一行右侧写原因", async () => {
     h.planSet.mockResolvedValue(plan(0));
     const { p } = await mount("工具链");
-    expect(p.action()).toBe(copyText("setMenu.item.full"));
-    expect(p.blocked()).toBe(copyText("setMenu.item.full"));
-    expect(previewSaid({ cwd: "/x", alias: "rev", want: 1, have: 0, more: 0, group: "rev", blocked: "rev 不存在" })).toBe("rev 不存在");
+    expect(p.action()).toBe("FULL");
+    expect(p.blocked()).toBe("FULL");
+    const lines = [...p.el.querySelectorAll<HTMLElement>('[data-role="set-preview"] > *')];
+    expect(lines[1].dataset.intent).toBe("error");
+    expect(lines[1].textContent).toContain("look 不存在");
   });
 
   it("改一格：停手 300ms 才再问一次预览（只问一次）；加一行带上一行的目录与别名", async () => {

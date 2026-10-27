@@ -1,10 +1,10 @@
 /**
- * 新建会话框的「一组」页：组名 ＋［换一组］· 几行（目录 · 别名 · 个数 · 组名）·［＋ 加一行］· 预览 ·［仅保存］，主按钮「启动 N 个」。
+ * 新建会话框的「一组」页：组名 ＋［换一组］· 几行（目录 · 别名 · 个数 · 组名）·［＋ 加一行］· 预览 ·［仅保存］，主按钮「启动 N」。
  *
- * - 判定全在那台后端：预览现问 `set-plan {rows}`（改了停手 300ms 再问，只读不写）；每行已有几个 · 再起几个 · 组名缺省是什么 · 起不了的原因都照成品画。
- *   个数上限 · 同一目录同一别名只许一行 · 合计上限由那台存的时候判（`profiles-write` 拒了那一句落在页底）。
+ * - 判定与那几句全在那台后端：预览现问 `set-plan {rows}`（改了停手 300ms 再问，只读不写）；每行已有几个 · 再起几个 · 组名缺省是什么 ·
+ *   起不了的原因 · 合计 · 主按钮的字都照成品摆。个数上限 · 同一目录同一别名只许一行 · 合计上限由那台存的时候判（拒了那一句落在页底）。
  * - 组名一格留空 ＝ 缺省（占位字是那台算的缺省组名）；写了才进那一行的 `tab-group`。
- * - ［仅保存］只写配置文件那一段（`profiles-write` 的 `saveSet`）；主按钮 ＝ 存 ＋ 照存下的补足起（`set-menu.ts` 的 `startSet`，同栏顶那一项）。
+ * - ［仅保存］只写配置文件那一段（`profiles-write` 的 `saveSet`）；主按钮 ＝ 存 ＋ 照存下的补足起（`set-start.ts`，同栏顶那一项）。
  */
 import { copyText } from "./copy-table";
 import { el } from "./kit/el";
@@ -15,7 +15,7 @@ import { toast } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 import { readProfiles, writeProfiles } from "./profiles-reads";
 import { planSet, type RowEdit, type SetPlan } from "./set-reads";
-import { startSet } from "./set-menu";
+import { startSet } from "./set-start";
 import type { Origin } from "./ipc/origin";
 import type { SetOut } from "./generated/SetOut";
 import s from "./new-session.module.css";
@@ -30,7 +30,7 @@ export interface SetPage {
   load(origin: Origin, name: string | null): Promise<void>;
   /** 主按钮为什么点不了（`null` ＝ 能点）。 */
   blocked(): string | null;
-  /** 主按钮的字：「启动 N 个」/「已齐」。 */
+  /** 主按钮的字：那台写好的「启动 N」/「已齐」（还没问到 ⇒ 正在读）。 */
   action(): string;
   /** 存 ＋ 起；成了 ⇒ `null`（框关），不成 ⇒ 那一句（落在按钮行上方）。 */
   submit(): Promise<{ said: string; detail: string } | null>;
@@ -44,15 +44,12 @@ interface Draft {
   tabGroup: string;
 }
 
-/** 框里那几行 ⇒ 交给那台的那一形。 */
-export function rowsOf(drafts: readonly Draft[]): RowEdit[] {
-  return drafts.map((d) => ({ cwd: d.cwd.trim(), alias: d.alias, n: d.n, tabGroup: d.tabGroup.trim() === "" ? null : d.tabGroup.trim() }));
-}
+/** 一格空着没有（只看框里自己的字）。 */
+const blank = (v: string): boolean => v.trim().length === 0;
 
-/** 预览那一行右侧：起不了 ⇒ 原因；再起 ⇒「再起 n」；够了 ⇒「—」。 */
-export function previewSaid(r: SetPlan["rows"][number]): string {
-  if (r.blocked !== null) return r.blocked;
-  return r.more > 0 ? copyText("setMenu.item.more", { n: String(r.more) }) : copyText("newSessionSet.preview.none");
+/** 框里那几行 ⇒ 交给那台的那一形（组名空着 ＝ 缺省）。 */
+export function rowsOf(drafts: readonly Draft[]): RowEdit[] {
+  return drafts.map((d) => ({ cwd: d.cwd.trim(), alias: d.alias, n: d.n, tabGroup: blank(d.tabGroup) ? null : d.tabGroup.trim() }));
 }
 
 /**
@@ -72,7 +69,7 @@ export function setPage(refresh: () => void): SetPage {
   let seq = 0;
   let idle: ReturnType<typeof setTimeout> | null = null;
 
-  const root = el("div", s.nsForm);
+  const root = el("div", s.nsPage);
   root.dataset.role = "set-page";
   const nameInput = el("input", s.nsInput);
   nameInput.type = "text";
@@ -115,7 +112,7 @@ export function setPage(refresh: () => void): SetPage {
     note.dataset.intent = "error";
   };
 
-  /** 预览：每行「目录 组名 已有 n」＋ 右侧再起几个 / 起不了的原因，末行合计。 */
+  /** 预览：每行「目录 组名 已有 n」＋ 右侧再起几个 / 起不了的原因，末行合计（那几句都是那台写好的）。 */
   const paintPreview = (): void => {
     preview.replaceChildren();
     if (planFailed !== null) {
@@ -128,13 +125,13 @@ export function setPage(refresh: () => void): SetPage {
       line.append(
         el("span", s.nsSetCwd, r.cwd),
         el("span", "", r.group),
-        el("span", s.nsPlaceNote, copyText("newSessionSet.preview.have", { n: String(r.have) })),
-        el("span", s.nsSetMore, previewSaid(r)),
+        el("span", s.nsPlaceNote, r.haveSaid),
+        el("span", s.nsSetMore, r.moreSaid),
       );
       if (r.blocked !== null) line.dataset.intent = "error";
       preview.append(line);
     }
-    preview.append(el("div", s.nsPlaceNote, copyText("newSessionSet.preview.total", { n: String(plan.more) })));
+    preview.append(el("div", s.nsPlaceNote, plan.totalSaid));
   };
 
   const ask = async (): Promise<void> => {
@@ -176,7 +173,7 @@ export function setPage(refresh: () => void): SetPage {
 
   const aliasSel = (d: Draft): SelectHandle =>
     select({
-      label: copyText("newSessionSet.row.alias"),
+      label: copyText("newSession.label.alias"),
       options: aliases.map((a) => ({ value: a, label: a })),
       value: d.alias,
       onChange: (v) => {
@@ -298,7 +295,7 @@ export function setPage(refresh: () => void): SetPage {
   saveBtn.addEventListener("click", () => {
     if (page.blocked() !== null) return;
     void save().then((bad) => {
-      if (bad === null) toast(copyText("newSessionSet.save.done", { name: nameInput.value.trim() }), "", { level: "info" });
+      if (bad === null) toast(copyText("newSessionSet.save.done"), nameInput.value.trim(), { level: "info" });
       else say(bad.said);
     });
   });
@@ -323,14 +320,15 @@ export function setPage(refresh: () => void): SetPage {
     },
     blocked: () => {
       if (readFailed !== null) return readFailed;
-      if (nameInput.value.trim() === "") return copyText("newSessionSet.name.empty");
-      if (drafts.some((d) => d.cwd.trim() === "")) return copyText("newSession.cwd.empty");
+      if (blank(nameInput.value)) return copyText("newSessionSet.name.empty");
+      if (drafts.some((d) => blank(d.cwd))) return copyText("newSessionSet.cwd.empty");
       if (aliases.length === 0) return copyText("newSessionSet.alias.none");
       if (plan === null) return copyText("kit.state.reading");
-      if (plan.more === 0) return copyText("setMenu.item.full");
+      // 都够了：主按钮灰着，为什么就是那台写好的「已齐」。
+      if (plan.more === 0) return plan.startSaid;
       return null;
     },
-    action: () => (plan !== null && plan.more === 0 ? copyText("setMenu.item.full") : copyText("newSessionSet.action.start", { n: String(plan?.more ?? 0) })),
+    action: () => plan?.startSaid ?? copyText("kit.state.reading"),
     submit: async () => {
       const bad = await save();
       if (bad !== null) return bad;
@@ -342,23 +340,25 @@ export function setPage(refresh: () => void): SetPage {
 }
 
 /** 页签那一条：「单个 · 一组」，点了换页。 */
-export function pageTabs(onPick: (p: "single" | "set") => void): { el: HTMLElement; set(p: "single" | "set"): void } {
+export function pageTabs(onPick: (onSet: boolean) => void): { el: HTMLElement; set(onSet: boolean): void } {
   const bar = el("div", s.nsTabs);
   bar.setAttribute("role", "tablist");
-  const mk = (p: "single" | "set", label: string): HTMLButtonElement => {
+  const mk = (onSet: boolean, page: string, label: string): HTMLButtonElement => {
     const b = el("button", s.nsTab, label);
     b.type = "button";
     b.setAttribute("role", "tab");
-    b.dataset.page = p;
-    b.addEventListener("click", () => onPick(p));
+    b.dataset.page = page;
+    b.addEventListener("click", () => onPick(onSet));
     return b;
   };
-  const tabs = [mk("single", copyText("newSession.page.single")), mk("set", copyText("newSession.page.set"))];
-  bar.append(...tabs);
+  const single = mk(false, "single", copyText("newSession.page.single"));
+  const group = mk(true, "set", copyText("newSession.page.set"));
+  bar.append(single, group);
   return {
     el: bar,
-    set: (p) => {
-      for (const t of tabs) t.setAttribute("aria-selected", String(t.dataset.page === p));
+    set: (onSet) => {
+      single.setAttribute("aria-selected", String(!onSet));
+      group.setAttribute("aria-selected", String(onSet));
     },
   };
 }

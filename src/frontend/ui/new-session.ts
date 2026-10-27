@@ -347,9 +347,10 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   // 「单个 · 一组」页签：分叉 · 计划页接手（锁目录 · 带第一句）只有单个，不出页签。
   const paged = !fork && spec.lockCwd !== true && spec.prompt === undefined;
-  let page: "single" | "set" = paged && spec.set !== undefined ? "set" : "single";
+  /** 此刻露着一组页（否则单个页）。 */
+  let onSet = paged && spec.set !== undefined;
   const tabs = pageTabs((p) => {
-    page = p;
+    onSet = p;
     paintPage();
   });
   if (paged) form.appendChild(tabs.el);
@@ -372,7 +373,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       void loadMachine();
       void loadAliases();
       setsOf = null;
-      if (page === "set") paintPage();
+      if (onSet) paintPage();
     },
   });
   const machineRow = row(copyText("newSession.label.machine"), machineSel.el, false);
@@ -730,29 +731,29 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     focusAction: true,
     blocked: () => {
       if (!up()) return offlineLine();
-      if (page === "set") return sets.blocked();
+      if (onSet) return sets.blocked();
       if (facts === null) return copyText("kit.state.reading");
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");
       return null;
     },
-    submit: () => (page === "set" ? sets.submit() : submit()),
+    submit: () => (onSet ? sets.submit() : submit()),
     dirty: () => true,
   });
 
   /** 换页 · 一组页的预览变了：露哪一份 · 页签勾哪一个 · 主按钮的字与能不能点。 */
   function paintPage(): void {
     // 一组页第一次露出来（或换了机器）才读那台存好的几组。
-    if (page === "set" && setsOf !== origin) {
+    if (onSet && setsOf !== origin) {
       setsOf = origin;
       void sets.load(origin, openSet);
       openSet = null;
     }
-    single.hidden = page !== "single";
-    sets.el.hidden = page !== "set";
-    tabs.set(page);
-    handle.setAction(page === "set" ? sets.action() : copyText("newSession.action.create"));
+    single.hidden = onSet;
+    sets.el.hidden = !onSet;
+    tabs.set(onSet);
+    handle.setAction(onSet ? sets.action() : copyText("newSession.action.create"));
     handle.refresh();
   }
 

@@ -257,20 +257,18 @@
     gap: var(--space-3);
   }
 
-  .nsSetLine[data-intent="error"] .nsSetMore {
-    color: var(--error-text);
-  }
-
   .nsSetCwd {
-    overflow: hidden;
     font-family: var(--font-mono);
     font-size: var(--font-size-mono);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .nsSetMore {
     color: var(--text-2);
     text-align: end;
+  }
+
+  .nsSetLine[data-intent="error"] .nsSetMore {
+    color: var(--error-text);
   }
 }
