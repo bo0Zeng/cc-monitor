@@ -12,6 +12,7 @@ fn sent(result: SentResult) -> Sent {
         said: (result == SentResult::Refused).then(|| "x".to_string()),
         screen: None,
         resumed: false,
+        acts: vec![],
     }
 }
 

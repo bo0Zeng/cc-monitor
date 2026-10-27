@@ -6277,27 +6277,6 @@ enum class FirstRunStepId(val wire: String) {
 }
 
 @Suppress("UNCHECKED_CAST")
-data class FirstSay(
-    val result: String,
-    val why: String?,
-    val said: String?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<FirstSay> = obj(
-            listOf(
-            Field("result", { Str }, optional = false, nullable = false),
-            Field("why", { opt(Str) }, optional = false, nullable = true),
-            Field("said", { opt(Str) }, optional = false, nullable = true),
-            ),
-            { a -> FirstSay(a[0] as String, a[1] as String?, a[2] as String?) },
-            { v -> arrayOf(v.result, v.why, v.said) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class FoldSegment(
     val after: String,
     val afterLine: Long,
@@ -10744,6 +10723,7 @@ sealed interface LocalBackend {
 @Suppress("UNCHECKED_CAST")
 data class LogFileEntry(
     val path: String,
+    val shown: String,
     val sizeText: String?,
     val modifiedMs: Long,
 ) : Ordered {
@@ -10753,11 +10733,12 @@ data class LogFileEntry(
         val ADAPTER: JsonAdapter<LogFileEntry> = obj(
             listOf(
             Field("path", { Str }, optional = false, nullable = false),
+            Field("shown", { Str }, optional = false, nullable = false),
             Field("size_text", { opt(Str) }, optional = false, nullable = true),
             Field("modified_ms", { Lng }, optional = false, nullable = false),
             ),
-            { a -> LogFileEntry(a[0] as String, a[1] as String?, a[2] as Long) },
-            { v -> arrayOf(v.path, v.sizeText, v.modifiedMs) },
+            { a -> LogFileEntry(a[0] as String, a[1] as String, a[2] as String?, a[3] as Long) },
+            { v -> arrayOf(v.path, v.shown, v.sizeText, v.modifiedMs) },
         )
     }
 }
@@ -10765,7 +10746,9 @@ data class LogFileEntry(
 @Suppress("UNCHECKED_CAST")
 data class LogFileInfo(
     val dir: String,
+    val dirShown: String,
     val currentFile: String?,
+    val currentFileShown: String?,
     val currentSizeText: String?,
     val allFiles: List<LogFileEntry>,
     val backendStderr: List<LogFileEntry>,
@@ -10776,13 +10759,15 @@ data class LogFileInfo(
         val ADAPTER: JsonAdapter<LogFileInfo> = obj(
             listOf(
             Field("dir", { Str }, optional = false, nullable = false),
+            Field("dir_shown", { Str }, optional = false, nullable = false),
             Field("current_file", { opt(Str) }, optional = false, nullable = true),
+            Field("current_file_shown", { opt(Str) }, optional = false, nullable = true),
             Field("current_size_text", { opt(Str) }, optional = false, nullable = true),
             Field("all_files", { arr(LogFileEntry.ADAPTER) }, optional = false, nullable = false),
             Field("backend_stderr", { arr(LogFileEntry.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> LogFileInfo(a[0] as String, a[1] as String?, a[2] as String?, a[3] as List<LogFileEntry>, a[4] as List<LogFileEntry>) },
-            { v -> arrayOf(v.dir, v.currentFile, v.currentSizeText, v.allFiles, v.backendStderr) },
+            { a -> LogFileInfo(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as List<LogFileEntry>, a[6] as List<LogFileEntry>) },
+            { v -> arrayOf(v.dir, v.dirShown, v.currentFile, v.currentFileShown, v.currentSizeText, v.allFiles, v.backendStderr) },
         )
     }
 }
@@ -13114,7 +13099,7 @@ data class Opened(
     val cwd: String?,
     val account: LaunchedAccount?,
     val note: String?,
-    val prompt: FirstSay?,
+    val prompt: Sent?,
     val arrival: ArriveAsk?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -13130,10 +13115,10 @@ data class Opened(
             Field("cwd", { opt(Str) }, optional = false, nullable = true),
             Field("account", { opt(LaunchedAccount.ADAPTER) }, optional = false, nullable = true),
             Field("note", { opt(Str) }, optional = false, nullable = true),
-            Field("prompt", { opt(FirstSay.ADAPTER) }, optional = false, nullable = true),
+            Field("prompt", { opt(Sent.ADAPTER) }, optional = false, nullable = true),
             Field("arrival", { opt(ArriveAsk.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> Opened(a[0] as Landed, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as LaunchedAccount?, a[7] as String?, a[8] as FirstSay?, a[9] as ArriveAsk?) },
+            { a -> Opened(a[0] as Landed, a[1] as String?, a[2] as String?, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as LaunchedAccount?, a[7] as String?, a[8] as Sent?, a[9] as ArriveAsk?) },
             { v -> arrayOf(v.landed, v.session, v.line, v.sid, v.agent, v.cwd, v.account, v.note, v.prompt, v.arrival) },
         )
     }
@@ -13560,6 +13545,7 @@ data class PlanBlock(
     val handoff: String?,
     val handoffError: String?,
     val takeover: PlanTakeover,
+    val groups: PlanBlockGroups,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13577,9 +13563,31 @@ data class PlanBlock(
             Field("handoff", { opt(Str) }, optional = false, nullable = true),
             Field("handoffError", { opt(Str) }, optional = false, nullable = true),
             Field("takeover", { PlanTakeover.ADAPTER }, optional = false, nullable = false),
+            Field("groups", { PlanBlockGroups.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?, a[10] as PlanTakeover) },
-            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError, v.takeover) },
+            { a -> PlanBlock(a[0] as String, a[1] as List<String>, a[2] as PlanKids?, a[3] as String?, a[4] as PlanWho?, a[5] as String?, a[6] as String?, a[7] as Boolean, a[8] as String?, a[9] as String?, a[10] as PlanTakeover, a[11] as PlanBlockGroups) },
+            { v -> arrayOf(v.id, v.cells, v.inside, v.dir, v.owner, v.phase, v.at, v.listed, v.handoff, v.handoffError, v.takeover, v.groups) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanBlockGroups(
+    val groups: List<PlanGroup>,
+    val text: String,
+    val unread: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanBlockGroups> = obj(
+            listOf(
+            Field("groups", { arr(PlanGroup.ADAPTER) }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("unread", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanBlockGroups(a[0] as List<PlanGroup>, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.groups, v.text, v.unread) },
         )
     }
 }
@@ -13746,6 +13754,8 @@ data class PlanCommandReq(
     val workspace: String,
     val cmd: PlanCommandReqCmd,
     val slice: String? = null,
+    val path: String? = null,
+    val domain: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -13755,9 +13765,11 @@ data class PlanCommandReq(
             Field("workspace", { Str }, optional = false, nullable = false),
             Field("cmd", { PlanCommandReqCmd.ADAPTER }, optional = false, nullable = false),
             Field("slice", { opt(Str) }, optional = true, nullable = true),
+            Field("path", { opt(Str) }, optional = true, nullable = true),
+            Field("domain", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> PlanCommandReq(a[0] as String, a[1] as PlanCommandReqCmd, a[2] as String?) },
-            { v -> arrayOf(v.workspace, v.cmd, v.slice) },
+            { a -> PlanCommandReq(a[0] as String, a[1] as PlanCommandReqCmd, a[2] as String?, a[3] as String?, a[4] as String?) },
+            { v -> arrayOf(v.workspace, v.cmd, v.slice, v.path, v.domain) },
         )
     }
 }
@@ -13767,6 +13779,7 @@ enum class PlanCommandReqCmd(val wire: String) {
     PAUSE("pause"),
     ADOPT("adopt"),
     RENDER("render"),
+    REPO("repo"),
     ;
 
     companion object {
@@ -13998,6 +14011,25 @@ data class PlanFilesReq(
             ),
             { a -> PlanFilesReq(a[0] as String) },
             { v -> arrayOf(v.dir) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanGroup(
+    val id: String,
+    val title: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanGroup> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("title", { Str }, optional = false, nullable = false),
+            ),
+            { a -> PlanGroup(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.id, v.title) },
         )
     }
 }
@@ -14238,6 +14270,81 @@ data class PlanNeeds(
             ),
             { a -> PlanNeeds(a[0] as Long) },
             { v -> arrayOf(v.needs) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanNewExisting(
+    val slice: String,
+    val domain: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanNewExisting> = obj(
+            listOf(
+            Field("slice", { Str }, optional = false, nullable = false),
+            Field("domain", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanNewExisting(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.slice, v.domain) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanNewForm(
+    val pb: PlanPb,
+    val workspace: String?,
+    val root: String,
+    val slice: String?,
+    val domains: List<PlanDomain>,
+    val existing: PlanNewExisting?,
+    val repoDir: String?,
+    val note: String?,
+    val line: String?,
+    val failed: String?,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanNewForm> = obj(
+            listOf(
+            Field("pb", { PlanPb.ADAPTER }, optional = false, nullable = false),
+            Field("workspace", { opt(Str) }, optional = false, nullable = true),
+            Field("root", { Str }, optional = false, nullable = false),
+            Field("slice", { opt(Str) }, optional = false, nullable = true),
+            Field("domains", { arr(PlanDomain.ADAPTER) }, optional = false, nullable = false),
+            Field("existing", { opt(PlanNewExisting.ADAPTER) }, optional = false, nullable = true),
+            Field("repoDir", { opt(Str) }, optional = false, nullable = true),
+            Field("note", { opt(Str) }, optional = false, nullable = true),
+            Field("line", { opt(Str) }, optional = false, nullable = true),
+            Field("failed", { opt(Str) }, optional = false, nullable = true),
+            ),
+            { a -> PlanNewForm(a[0] as PlanPb, a[1] as String?, a[2] as String, a[3] as String?, a[4] as List<PlanDomain>, a[5] as PlanNewExisting?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?) },
+            { v -> arrayOf(v.pb, v.workspace, v.root, v.slice, v.domains, v.existing, v.repoDir, v.note, v.line, v.failed) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanNewReq(
+    val dir: String,
+    val path: String,
+    val domain: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanNewReq> = obj(
+            listOf(
+            Field("dir", { Str }, optional = false, nullable = false),
+            Field("path", { Str }, optional = false, nullable = false),
+            Field("domain", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> PlanNewReq(a[0] as String, a[1] as String, a[2] as String?) },
+            { v -> arrayOf(v.dir, v.path, v.domain) },
         )
     }
 }
@@ -19449,6 +19556,7 @@ data class Sent(
     val said: String? = null,
     val screen: String? = null,
     val resumed: Boolean? = null,
+    val acts: List<SentAct>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19460,10 +19568,22 @@ data class Sent(
             Field("said", { opt(Str) }, optional = true, nullable = true),
             Field("screen", { opt(Str) }, optional = true, nullable = true),
             Field("resumed", { opt(Bool) }, optional = true, nullable = true),
+            Field("acts", { opt(arr(SentAct.ADAPTER)) }, optional = true, nullable = true),
             ),
-            { a -> Sent(a[0] as SentResult, a[1] as Refused?, a[2] as String?, a[3] as String?, a[4] as Boolean?) },
-            { v -> arrayOf(v.result, v.why, v.said, v.screen, v.resumed) },
+            { a -> Sent(a[0] as SentResult, a[1] as Refused?, a[2] as String?, a[3] as String?, a[4] as Boolean?, a[5] as List<SentAct>?) },
+            { v -> arrayOf(v.result, v.why, v.said, v.screen, v.resumed, v.acts) },
         )
+    }
+}
+
+enum class SentAct(val wire: String) {
+    RETRY("retry"),
+    RECAPTURE("recapture"),
+    RELIST("relist"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<SentAct> = enumOf(entries) { it.wire }
     }
 }
 

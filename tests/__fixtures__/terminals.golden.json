@@ -183,10 +183,12 @@
         "result": "refused",
         "why": "screen_changed",
         "said": "画面已变",
-        "screen": "0000000000000000"
+        "screen": "0000000000000000",
+        "acts": ["retry", "recapture"]
       },
       {
-        "result": "unsure"
+        "result": "unsure",
+        "acts": ["recapture"]
       }
     ],
     "codes": [

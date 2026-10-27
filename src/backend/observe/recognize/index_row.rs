@@ -103,53 +103,29 @@ pub(crate) fn index_row_of(
         row.x = Some(ui.excerpt);
         row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
     }
-    // 正文的形状：不住记录树的那一家（原文是它自己的形状）⇒ 数它翻出来的那条通用记录的块；
-    // 记录树那一家 ⇒ 问它的文本面（`agents::body_shape`，正文在哪 · 哪种块算折叠单元是它的格式知识）。两条同一个数法。
-    let translated = crate::agents::record_face(kind)
-        .filter(|f| f.tree.is_none())
-        .map(|f| translated_of(&f, v));
-    match translated {
-        Some((blocks, said_by)) => {
-            if let Some(said_by) = said_by {
-                row.sp = Some(said_by).filter(|k| !matches!(*k, "human" | "toolResult"));
+    // 正文的形状：那一家有文本面 ⇒ 问它（`agents::body_shape`，正文在哪 · 哪种块算折叠单元是它的格式知识）；
+    // 没有 ⇒ 数一拍里的件：正文 ⇒ 字数行数，调用 · 结果 · 思考 · 图 ⇒ 各一个折叠单元（与文本面同一个数法）。
+    match crate::agents::body_shape(kind, v) {
+        Some(shape) => {
+            for s in shape.prose {
+                count_prose(s, &mut row);
             }
-            for b in &blocks {
-                match b {
-                    crate::agents::record::Block::Text { text } => count_prose(text, &mut row),
-                    _ => row.fd += 1,
-                }
-            }
+            row.fd += shape.folded;
         }
         None => {
-            if let Some(shape) = crate::agents::body_shape(kind, v) {
-                for s in shape.prose {
-                    count_prose(s, &mut row);
+            use crate::agents::beat::Act;
+            for a in beat.map_or(&[][..], |b| &b.acts) {
+                match a {
+                    Act::Text(t) => count_prose(t, &mut row),
+                    Act::Call { .. } | Act::Result { .. } | Act::Thinking | Act::Image => {
+                        row.fd += 1
+                    }
+                    _ => {}
                 }
-                row.fd += shape.folded;
             }
         }
     }
     row
-}
-
-/// 那一家把这一行翻成的通用记录：它的块 · 人那一侧是谁说的（`Speaker` 的 `kind`）。不进界面 / 没有块 ⇒ 块空。
-fn translated_of(
-    face: &crate::agents::RecordFace,
-    v: &serde_json::Value,
-) -> (Vec<crate::agents::record::Block>, Option<&'static str>) {
-    use crate::agents::record::Body;
-    let Some(rec) = (face.parse)(&crate::agents::Line::new(&v.to_string(), 0))
-        .ok()
-        .flatten()
-        .and_then(|t| t.record)
-    else {
-        return (Vec::new(), None);
-    };
-    match rec.body {
-        Body::Said { blocks, who, .. } => (blocks, Some(who.speaker.kind())),
-        Body::Reply { blocks, .. } => (blocks, None),
-        _ => (Vec::new(), None),
-    }
 }
 
 /// 数一段 markdown 正文：围栏代码块内外分开数（代码走等宽行高、正文走折行估计，两者算法不同）。

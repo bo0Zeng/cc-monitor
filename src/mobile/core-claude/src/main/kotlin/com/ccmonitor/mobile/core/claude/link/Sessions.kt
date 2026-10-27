@@ -5,7 +5,6 @@ import com.ccmonitor.mobile.core.wire.gen.AgentFacts
 import com.ccmonitor.mobile.core.wire.gen.ArriveAsk
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.FactsReply
-import com.ccmonitor.mobile.core.wire.gen.FirstSay
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.JsonValue
 import com.ccmonitor.mobile.core.wire.gen.Landed
@@ -15,6 +14,7 @@ import com.ccmonitor.mobile.core.wire.gen.ModeSwitched
 import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.Opened
+import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.HistoryLines as HistoryLinesPage
@@ -253,28 +253,23 @@ object TerminalInput {
         /** 不知道送没送到：别重发。 */
         data object Unsure : Result
 
-        /** 没送：[said] 是那台写好的那一句，[why] 是原因码（`screen_changed` · `ended` …）。 */
+        /** 没送：[said] 是那台写好的那一句，[why] 是原因码，[acts] 是那台判好的下一步（有 [SentAct.RETRY] ⇒ 给［再发一次］）。 */
         data class Refused(
             val said: String,
             val why: String?,
+            val acts: List<SentAct>,
         ) : Result
     }
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带那一句 ⇒ `null`（没有可上屏的话）。 */
-    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it.result, it.why?.wire, it.said) }
+    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it) }
 
-    /** 起会话时第一句的结局（同三格，`result` 是字：照 [SentResult] 的线上字认）。 */
-    fun of(first: FirstSay): Result? = Wire.bind<SentResult>(first.result)?.let { of(it, first.why, first.said) }
-
-    private fun of(
-        result: SentResult,
-        why: String?,
-        said: String?,
-    ): Result? =
-        when (result) {
+    /** 解过的回包（`terminal-input` · `session-say` · `session-open` 里第一句那一格同一形）⇒ 结局。 */
+    fun of(sent: SentWire): Result? =
+        when (sent.result) {
             SentResult.DELIVERED -> Result.Delivered
             SentResult.UNSURE -> Result.Unsure
-            SentResult.REFUSED -> said?.let { Result.Refused(it, why) }
+            SentResult.REFUSED -> sent.said?.let { Result.Refused(it, sent.why?.wire, sent.acts.orEmpty()) }
         }
 }
 
