@@ -14,8 +14,8 @@ pub const VIEW_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
 /// 两端自己解得开的那几种图（其余的图不当图读）。
 const DECODABLE: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
-/// 按名字判那一种住 `cmd_wire::file_class`（聊天附件的出口与各家适配层同一份）。
-pub use cmd_wire::file_class::{class_of_name, ext_of};
+/// 按名字判那一种 · 那一种的词住 `cmd_wire::file_class`（聊天附件的出口与各家适配层同一份）。
+pub use cmd_wire::file_class::{class_of_name, ext_of, label};
 
 /// 列表里一项画哪种图标：链接画它指向的那一种（指向目录 ⇒ 文件夹，其余按名字）。
 pub fn class_of_entry(name: &[u8], is_dir: bool, link: bool, link_dir: bool) -> FileClass {
@@ -30,20 +30,6 @@ pub fn type_key(name: &[u8], is_dir: bool, link: bool) -> (FileClass, Option<Str
         class_of_name(name, is_dir)
     };
     (class, ext_of(name))
-}
-
-/// 那一种的词（「类型」那一列 · 聊天附件 chip 上的类别字同一份）。
-pub fn label(c: FileClass) -> String {
-    match c {
-        FileClass::Folder => copy_text("beFilesKind.label.folder", &[]),
-        FileClass::Text => copy_text("beFilesKind.label.text", &[]),
-        FileClass::Code => copy_text("beFilesKind.label.code", &[]),
-        FileClass::Image => copy_text("beFilesKind.label.image", &[]),
-        FileClass::Archive => copy_text("beFilesKind.label.archive", &[]),
-        FileClass::Pdf => copy_text("beFilesKind.label.pdf", &[]),
-        FileClass::Link => copy_text("beFilesKind.label.link", &[]),
-        FileClass::Other => copy_text("beFilesKind.label.other", &[]),
-    }
 }
 
 /// 「类型」那一列写什么：那一种的词，文件再跟上扩展名（`代码 · RS`）；链接写「链接 → 文件夹」，断的写「链接 · 目标不存在」。

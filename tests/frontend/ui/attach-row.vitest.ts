@@ -104,7 +104,7 @@ describe("终端面板输入行的附件", () => {
     box.dispatchEvent(words);
     expect(words.defaultPrevented).toBe(false);
     await flush();
-    expect(chips(page).map((c) => c.querySelector("[title]")?.getAttribute("title"))).toEqual(["image-1.png"]);
+    expect(chips(page).map((c) => c.textContent)).toEqual([expect.stringContaining("image-1.png")]);
   });
 
   it("拖到面板上 ⇒ 整块画目标框（放进哪条会话 · 哪台 · 几份），松手进这一排；目录照样进、由那台判", async () => {

@@ -79,7 +79,7 @@ fn verdict(it: &AttachItem, why: Option<AttachRefused>) -> AttachVerdict {
     AttachVerdict {
         ok: why.is_none(),
         class,
-        class_text: crate::files::class::label(class),
+        class_text: cmd_wire::file_class::label(class),
         why,
         said: why.map(said_of),
     }

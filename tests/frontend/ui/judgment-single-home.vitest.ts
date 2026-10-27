@@ -813,6 +813,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 按名字判一项是哪一种（`file_class.rs`）：文件管理 · 聊天附件的出口与适配层都调它，类别字也由后端写好；界面只照 `class` / `class_text` 摆，TS 侧没有孪生。
     class_of_name: NONE,
     ext_of: NONE,
+    label: NONE,
     // ↗ 浮层那一张（`front.rs`：壳的窗口结局 `FrontOutcome::told` · 会话为什么没有链 `Unplaced::face`）：壳与本机后端写、界面照摆；TS 侧没有孪生（A16-1-8）。
     told: NONE,
     face: NONE,

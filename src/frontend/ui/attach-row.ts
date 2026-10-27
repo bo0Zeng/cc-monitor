@@ -191,7 +191,6 @@ export class AttachRow {
       chip.appendChild(img);
     } else chip.appendChild(el("span", s.attachTag, c.classText));
     const name = el("span", s.attachName, c.name);
-    name.title = c.name;
     const word = STATE_WORD[c.at.at]();
     const sep = copyText("kit.text.sep");
     const detail = stateDetail(c, offline);
