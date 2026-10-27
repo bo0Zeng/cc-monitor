@@ -175,14 +175,14 @@ internal fun RowMenu(
     ActionSheet(title = row.label, actions = rowMenu(row, ops), onDismiss = onDismiss)
 }
 
-/** 改标题：框里先放此刻的标题、一出来就有焦点；留空 ＝ 回到那台算的标题。 */
+/** 改标题（会话清单那一行 · 会话页「⋯」）：框里先放此刻的标题 [current]、一出来就有焦点；留空 ＝ 回到那台算的标题。 */
 @Composable
 internal fun RenameDialog(
-    row: ChatRow,
+    current: String,
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
 ) {
-    var text by rememberSaveable { mutableStateOf(row.label) }
+    var text by rememberSaveable { mutableStateOf(current) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(

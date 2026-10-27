@@ -1,8 +1,8 @@
 //! 进程这一族的平台差异〔余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
 
-/// 本机常驻后端能不能**脱离**起（`local_backend_host.rs::spawn_detached`）：今天只在 Linux 上成立 ——
-/// 别的平台走被监护那条（Windows 那一族没做，「本机常驻后端脱离不了」那一行）。
-pub const CAN_DETACH: bool = cfg!(target_os = "linux");
+/// 本机常驻后端能不能**脱离**起（`local_backend_host.rs::spawn_detached`）：Linux（套接字）与 Windows（命名管道，`own-chan`）上成立 ——
+/// 别的平台走被监护那条。
+pub const CAN_DETACH: bool = cfg!(any(target_os = "linux", windows));
 
 /// 这个平台上可执行文件名的后缀（Windows `.exe`，别处空串）。`filewin/proc.rs::window_bin_name` 用它：平台原语只住这一层。
 pub const EXE_SUFFIX: &str = std::env::consts::EXE_SUFFIX;

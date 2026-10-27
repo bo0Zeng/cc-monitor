@@ -28,8 +28,6 @@ export interface Tab {
   sessionId: string;
   /** 后台会话（后端判好的 `background`）⇒ ⚙ 标题。 */
   background: boolean;
-  /** bg 任务名（pidfile 的 name 字段）；bg 标题优先用它。 */
-  bgName: string | null;
   /** Tab 标题（[`computeTitleFor`] 排出来的：核心给的名字 ＋ 项目那一格 ＋ 机器 / ⚙ / ↳ 那几样记号）。 */
   title: string;
   /**
@@ -218,7 +216,7 @@ export function projectNameFromCwd(dir: string): string | null {
 /**
  * 标题怎么排（只排版，名字与项目那一格都是核心给的）：
  *   有项目那一格 → `[项目] 名字`；没有 → `名字`；核心还没报过名字 → `<sid 前 8 位>`
- *   后台会话 → `⚙ 任务名`（任务名缺 ⇒ 名字）
+ *   后台会话 → `⚙ 名字`（叫什么由后端定：后台的 pidfile 名也在核心那条顺序里）
  * 远端 Tab 再加 `[那台远端] ` 前缀（如 `[raspberrypi.local] [proj] 名字`）；本机不加。fork 来的再加 `↳ `。
  * 第四个参数是**前缀里写的那台远端名**（本机 ⇒ `null`，没有前缀），不是 origin：
  * 「是不是本机」由调用方经 `ipc/origin.ts` 判完再传进来 —— 本文件只有类型，零运行期依赖（`tabs-split-graph` 钉着）。
@@ -229,11 +227,10 @@ export function computeTitleFor(
   labelProject: string | null,
   remoteLabel: string | null = null,
   background = false,
-  bgName: string | null = null,
   forkedFromSessionId: string | null = null,
 ): string {
   const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
   const name = label ?? sessionId.slice(0, 8);
-  const base = background ? `⚙ ${bgName ?? name}` : labelProject ? `[${labelProject}] ${name}` : name;
+  const base = background ? `⚙ ${name}` : labelProject ? `[${labelProject}] ${name}` : name;
   return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
 }

@@ -269,6 +269,8 @@ pub(crate) fn truncate_excerpt(s: &str, n: usize) -> String {
 pub(crate) struct LabelFacts {
     /// 在 monitor 里改的名（那台的注解）。
     pub(crate) custom: Option<String>,
+    /// 后台会话的 pidfile 名（只后台会话有；同一 sid 有人坐着的那一份 ⇒ 没有）。
+    pub(crate) bg_name: Option<String>,
     /// 最后一条标题记录（代理起的 · 在代理里改的）。
     pub(crate) title: Option<String>,
     /// 首条人说的话的摘录（[`truncate_excerpt`] 过的；没有 ⇒ 空串）。
@@ -279,7 +281,7 @@ pub(crate) struct LabelFacts {
 
 /// 叫这条会话什么：回（名字，名字是不是起出来的 —— 改过的名 · 标题 · 第一句是；都没有 ⇒ 「没有说过话的会话」那一句，不是）。
 /// 只此一处：标签页（`session_added` / `session_status` 的 `label`）· 历史清单的 `label` · 全文搜索的标题 · 一轮结束的通知都是它出的。
-/// 顺序：改过的名 → 标题记录 → 第一句 → 文案表 `history.row.untitled`；空白的当没有。项目不进名字（帧上另一格 `label_project`）。
+/// 顺序：改过的名 → 后台会话的 pidfile 名 → 标题记录 → 第一句 → 文案表 `history.row.untitled`；空白的当没有。项目不进名字（帧上另一格 `label_project`）。
 pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
     let given = |s: &Option<String>| {
         s.as_deref()
@@ -287,6 +289,7 @@ pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
             .map(str::to_string)
     };
     match given(&facts.custom)
+        .or_else(|| given(&facts.bg_name))
         .or_else(|| given(&facts.title))
         .or_else(|| (!facts.first.trim().is_empty()).then(|| facts.first.clone()))
     {

@@ -61,7 +61,7 @@ pub enum AttachRefused {
     NoSession,
 }
 
-/// 一份的答：收 ⇒ 只有 `ok: true`；不收 ⇒ 原因 ＋ 那台写好的一句。
+/// 一份的答：收 ⇒ `ok: true`；不收 ⇒ 原因 ＋ 那台写好的一句。收不收都带它是哪一种（chip 上的类别字）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -70,6 +70,10 @@ pub enum AttachRefused {
 )]
 pub struct AttachVerdict {
     pub ok: bool,
+    /// 照名字判的那一种（目录 ⇒ 文件夹；[`crate::file_class::class_of_name`]）。
+    pub class: FileClass,
+    /// 那一种的词（那台写好，同文件管理「类型」那一列的词）：chip 上的类别字。
+    pub class_text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub why: Option<AttachRefused>,
@@ -164,6 +168,10 @@ pub struct Attachment {
     pub name: String,
     /// 相对会话工作目录的路径。
     pub rel: String,
+    /// 哪一种（照名字判，[`crate::file_class::class_of_name`]）。
+    pub class: FileClass,
+    /// 那一种的词（那台写好）：chip 上的类别字。
+    pub class_text: String,
     /// 那一份此刻多大；不在了 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]

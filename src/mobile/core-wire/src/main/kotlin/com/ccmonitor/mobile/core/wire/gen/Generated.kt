@@ -1109,6 +1109,7 @@ data class AnnotateReq(
 data class Annotated(
     val entry: Entry,
     val prev: Hide?,
+    val prevTitle: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -1117,9 +1118,10 @@ data class Annotated(
             listOf(
             Field("entry", { Entry.ADAPTER }, optional = false, nullable = false),
             Field("prev", { opt(Hide.ADAPTER) }, optional = false, nullable = true),
+            Field("prev_title", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> Annotated(a[0] as Entry, a[1] as Hide?) },
-            { v -> arrayOf(v.entry, v.prev) },
+            { a -> Annotated(a[0] as Entry, a[1] as Hide?, a[2] as String?) },
+            { v -> arrayOf(v.entry, v.prev, v.prevTitle) },
         )
     }
 }
@@ -1584,6 +1586,8 @@ enum class AttachRefused(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class AttachVerdict(
     val ok: Boolean,
+    val `class`: FileClass,
+    val classText: String,
     val why: AttachRefused? = null,
     val said: String? = null,
 ) : Ordered {
@@ -1593,11 +1597,13 @@ data class AttachVerdict(
         val ADAPTER: JsonAdapter<AttachVerdict> = obj(
             listOf(
             Field("ok", { Bool }, optional = false, nullable = false),
+            Field("class", { FileClass.ADAPTER }, optional = false, nullable = false),
+            Field("class_text", { Str }, optional = false, nullable = false),
             Field("why", { opt(AttachRefused.ADAPTER) }, optional = true, nullable = true),
             Field("said", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> AttachVerdict(a[0] as Boolean, a[1] as AttachRefused?, a[2] as String?) },
-            { v -> arrayOf(v.ok, v.why, v.said) },
+            { a -> AttachVerdict(a[0] as Boolean, a[1] as FileClass, a[2] as String, a[3] as AttachRefused?, a[4] as String?) },
+            { v -> arrayOf(v.ok, v.`class`, v.classText, v.why, v.said) },
         )
     }
 }
@@ -1636,6 +1642,8 @@ enum class AttachedKind(val wire: String) {
 data class Attachment(
     val name: String,
     val rel: String,
+    val `class`: FileClass,
+    val classText: String,
     val bytes: Long? = null,
     val sizeText: String? = null,
     val gone: Boolean? = null,
@@ -1647,12 +1655,14 @@ data class Attachment(
             listOf(
             Field("name", { Str }, optional = false, nullable = false),
             Field("rel", { Str }, optional = false, nullable = false),
+            Field("class", { FileClass.ADAPTER }, optional = false, nullable = false),
+            Field("classText", { Str }, optional = false, nullable = false),
             Field("bytes", { opt(U64) }, optional = true, nullable = true),
             Field("sizeText", { opt(Str) }, optional = true, nullable = true),
             Field("gone", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> Attachment(a[0] as String, a[1] as String, a[2] as Long?, a[3] as String?, a[4] as Boolean?) },
-            { v -> arrayOf(v.name, v.rel, v.bytes, v.sizeText, v.gone) },
+            { a -> Attachment(a[0] as String, a[1] as String, a[2] as FileClass, a[3] as String, a[4] as Long?, a[5] as String?, a[6] as Boolean?) },
+            { v -> arrayOf(v.name, v.rel, v.`class`, v.classText, v.bytes, v.sizeText, v.gone) },
         )
     }
 }
@@ -2710,6 +2720,7 @@ data class BusEnvelope(
 data class BusEnvelopeReq(
     val from: String,
     val to: String,
+    val machine: String? = null,
     val tier: Long? = null,
     val act: BusAct,
     val title: String,
@@ -2724,6 +2735,7 @@ data class BusEnvelopeReq(
             listOf(
             Field("from", { Str }, optional = false, nullable = false),
             Field("to", { Str }, optional = false, nullable = false),
+            Field("machine", { opt(Str) }, optional = true, nullable = true),
             Field("tier", { opt(Lng) }, optional = true, nullable = true),
             Field("act", { BusAct.ADAPTER }, optional = false, nullable = false),
             Field("title", { Str }, optional = false, nullable = false),
@@ -2731,8 +2743,8 @@ data class BusEnvelopeReq(
             Field("refs", { opt(arr(Str)) }, optional = true, nullable = true),
             Field("text", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> BusEnvelopeReq(a[0] as String, a[1] as String, a[2] as Long?, a[3] as BusAct, a[4] as String, a[5] as String?, a[6] as List<String>?, a[7] as String?) },
-            { v -> arrayOf(v.from, v.to, v.tier, v.act, v.title, v.re, v.refs, v.text) },
+            { a -> BusEnvelopeReq(a[0] as String, a[1] as String, a[2] as String?, a[3] as Long?, a[4] as BusAct, a[5] as String, a[6] as String?, a[7] as List<String>?, a[8] as String?) },
+            { v -> arrayOf(v.from, v.to, v.machine, v.tier, v.act, v.title, v.re, v.refs, v.text) },
         )
     }
 }
@@ -12017,6 +12029,33 @@ data class MachineInterruptsReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class MachineLink(
+    val endpoint: String,
+    val jump: Boolean,
+    val compressed: Boolean,
+    val bytesIn: Long,
+    val bytesOut: Long,
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<MachineLink> = obj(
+            listOf(
+            Field("endpoint", { Str }, optional = false, nullable = false),
+            Field("jump", { Bool }, optional = false, nullable = false),
+            Field("compressed", { Bool }, optional = false, nullable = false),
+            Field("bytesIn", { U64 }, optional = false, nullable = false),
+            Field("bytesOut", { U64 }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> MachineLink(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as Long, a[4] as Long, a[5] as String) },
+            { v -> arrayOf(v.endpoint, v.jump, v.compressed, v.bytesIn, v.bytesOut, v.said) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class MachineMenu(
     val from: MachineFrom,
     val head: MachineState?,
@@ -12219,6 +12258,7 @@ data class MachineState(
     val expectedHostKey: String?,
     val detail: String?,
     val unclear: Int? = null,
+    val links: List<MachineLink>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -12241,9 +12281,10 @@ data class MachineState(
             Field("expectedHostKey", { opt(Str) }, optional = false, nullable = true),
             Field("detail", { opt(Str) }, optional = false, nullable = true),
             Field("unclear", { opt(Int32) }, optional = true, nullable = true),
+            Field("links", { opt(arr(MachineLink.ADAPTER)) }, optional = true, nullable = true),
             ),
-            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as Int?) },
-            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.unclear) },
+            { a -> MachineState(a[0] as String, a[1] as MachineStateKind, a[2] as Boolean, a[3] as DialWhy?, a[4] as MachineStage?, a[5] as String?, a[6] as VersionRelation?, a[7] as String?, a[8] as String, a[9] as String, a[10] as String, a[11] as List<MachineFixButton>, a[12] as String?, a[13] as String?, a[14] as String?, a[15] as Int?, a[16] as List<MachineLink>?) },
+            { v -> arrayOf(v.name, v.state, v.offline, v.reason, v.stage, v.version, v.versionRelation, v.os, v.word, v.said, v.offlineSaid, v.fixes, v.seenHostKey, v.expectedHostKey, v.detail, v.unclear, v.links) },
         )
     }
 }

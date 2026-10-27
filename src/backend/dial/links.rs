@@ -53,12 +53,12 @@ pub(crate) fn rows(f: &LinkFacts) -> Vec<MachineLink> {
 
 fn item(w: &ssh_dial::pool::Wire, jump: bool) -> MachineLink {
     let packing = if w.compressed {
-        copy_core::copy_text("beLinks.compressed", &[])
+        copy_core::copy_text("beLinks.pack.compressed", &[])
     } else {
-        copy_core::copy_text("beLinks.plain", &[])
+        copy_core::copy_text("beLinks.pack.plain", &[])
     };
     let line = copy_core::copy_text(
-        "beLinks.line",
+        "beLinks.row.line",
         &[
             ("endpoint", &w.endpoint),
             ("packing", &packing),
@@ -73,7 +73,7 @@ fn item(w: &ssh_dial::pool::Wire, jump: bool) -> MachineLink {
         bytes_in: w.bytes_in,
         bytes_out: w.bytes_out,
         said: if jump {
-            copy_core::copy_text("beLinks.jumpLine", &[("line", &line)])
+            copy_core::copy_text("beLinks.row.jumpLine", &[("line", &line)])
         } else {
             line
         },

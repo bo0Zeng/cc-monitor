@@ -1,0 +1,107 @@
+/* 终端面板输入行上方那一排附件：chip（小图 / 类别字 · 名字 · 状态 · ✕ · 细进度）与拖进来时的目标框。 */
+@layer components {
+  .attachRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .attachRow[hidden] {
+    display: none;
+  }
+
+  .attachChip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 280px;
+    min-height: var(--control-h-compact);
+    padding: 2px 4px 2px 2px;
+    overflow: hidden;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text);
+  }
+
+  .attachChip[data-state="failed"] {
+    border-color: var(--error);
+  }
+
+  .attachChip[data-state="offline"] {
+    border-style: dashed;
+  }
+
+  .attachThumb {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-s);
+    object-fit: cover;
+  }
+
+  .attachTag {
+    flex: none;
+    min-width: 24px;
+    padding: 0 4px;
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    line-height: 24px;
+    text-align: center;
+  }
+
+  .attachName {
+    composes: one-line from global;
+    min-width: 0;
+  }
+
+  .attachState {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .attachChip[data-state="failed"] .attachState {
+    color: var(--error-text);
+  }
+
+  .attachBar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  .attachDrop {
+    position: absolute;
+    z-index: var(--z-overlay);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    opacity: 0.94;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .attachDrop[hidden] {
+    display: none;
+  }
+
+  .attachDropTitle {
+    color: var(--text);
+  }
+
+  .attachDropSub {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+}

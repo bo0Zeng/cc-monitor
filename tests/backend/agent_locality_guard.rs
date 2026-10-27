@@ -153,11 +153,6 @@ mod tests {
     /// 长出永久居民 —— 递减棘轮就此失去意义（`S3-Y3`）。
     const NOT_AGENT_KNOWLEDGE: &[(&str, &str, &str)] = &[
         (
-            "files/class.rs",
-            "\"jsonl\"",
-            "文件管理器认代码文件的扩展名表（`jsonl` 画代码图标、预览按它上色），不是哪个 agent 的会话格式知识。",
-        ),
-        (
             "control/cc_bus/store.rs",
             ".jsonl",
             "cc-bus 收件箱的文件名（`<会话 id>.jsonl`，一行一封信封）：后端自己的落盘，不是哪个 agent 的会话格式知识。",

@@ -45,7 +45,6 @@ export interface TabBarPrefsHost {
     projectDir: string | null,
     origin: Origin,
     background: boolean,
-    name: string | null,
   ): void;
   /** 复活出来的固定 tab 空态里那颗「Resume 这个会话」（与右键菜单的 Resume 同一个动作）。 */
   resumeTab(sessionId: string): Promise<void>;
@@ -160,7 +159,7 @@ export class TabBarPrefs {
   revivePinned(p: { origin: Origin; sid: string; facts: MemberFacts }): void {
     if (this.store.tabs.has(p.sid) || this.revived.has(p.sid)) return;
     this.revived.add(p.sid);
-    this.host.createSkeletonTab(p.sid, p.facts.cwd, p.origin, p.facts.bg, null);
+    this.host.createSkeletonTab(p.sid, p.facts.cwd, p.origin, p.facts.bg);
     const t = this.store.tabs.get(p.sid);
     if (!t) return;
     t.parentPath = p.facts.record ?? ""; // resume 与「有没有记录」都靠它

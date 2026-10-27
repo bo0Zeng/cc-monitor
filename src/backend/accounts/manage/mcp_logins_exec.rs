@@ -11,7 +11,7 @@ use super::mcp_logins::{self, Cells, Entries, LoginBase, LoginWrite, SeenLogins}
 use super::mcp_share_exec::{load_store, lock, manifest_in, put_private};
 use crate::accounts::oauth::store::{self, Locked, Read};
 use crate::agents::{EntryLogins, LoginFace};
-use crate::common::door::{self, Door};
+use crate::common::door::Door;
 use crate::platform::fs::Own;
 use copy_core::copy_text;
 use serde_json::Value;
@@ -109,7 +109,7 @@ fn revert(next: &mut LoginBase, old: &LoginBase, dir: &str, key: &str) {
 
 /// 同步一趟（文件事件 · 加号 · 建库之后，跟在服务器定义那一半后面）。`own` = 写自家状态的句柄（铸各号的凭据窄句柄）。
 pub(crate) fn sync(d: &dyn Door, own: &Own) -> Result<Synced, Refusal> {
-    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(Synced::default());

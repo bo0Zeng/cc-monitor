@@ -34,17 +34,8 @@ import ts from "typescript";
 import { describe, it, expect } from "vitest";
 import { productionCssFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 
-/** `(文件, 所在声明)` —— 今天 tab 代码里按 bg 分叉 / 搬运 bg 字段的全部住处，逐条写理由。 */
-const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [
-  ["src/frontend/ui/tab-model.ts", "Tab", "字段声明：bg 任务名（pidfile 的 name）"],
-  [
-    "src/frontend/ui/tab-model.ts",
-    "computeTitleFor",
-    "标题 `⚙ 任务名` —— 没要求删它；要删就删这一行",
-  ],
-  ["src/frontend/ui/tabs.ts", "TabManager.ensureTab", "同 sid 两份身份（bg-spare 谎报父 sid）⇒ 交互恒压过后台的升格；建 tab 时带上任务名"],
-  ["src/frontend/ui/tabs.ts", "TabManager.computeTitle", "搬运：把任务名交给 `computeTitleFor`"],
-];
+/** `(文件, 所在声明)` —— 今天 tab 代码里按 bg 分叉 / 搬运 bg 字段的全部住处，逐条写理由（今天一处都没有：后台会话叫什么也由后端定，标题只摆 `label`）。 */
+const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [];
 
 /** 人群：`src/` 顶层的 `tabs.ts` ＋ `tab-*.ts`（遍历借 `production-sources.ts` 那一个家）。 */
 function tabSources(): { file: string; text: string }[] {

@@ -22,6 +22,12 @@ pub(crate) const ROLLED_BACK_NAME: &str = ".rolled-back";
 /// 清单的文件名（账号库目录下；住址只在契约 crate）。
 pub(crate) const MANIFEST_FILE: &str = relay_route_core::ACCOUNTS_MANIFEST_NAME;
 
+/// 这台的家目录（经文件管理面问），照这一族的写法交出（`/` 分隔：Windows 上 `C:/Users/…`，[`acct_view::slash_form`]）。
+/// 账号库这一族拿家目录只经这里，拼接与比较（[`join`] · [`is_under`]）才只有一种写法。
+pub(crate) fn home(d: &dyn crate::common::door::Door) -> Result<String, String> {
+    crate::common::door::home(d).map(|h| acct_view::slash_form(&h))
+}
+
 /// 这台的账号库目录：`<家目录>/.cc-monitor/accounts`。位置只跟着家走（契约 crate 那一段），这一族都经它。
 pub(crate) fn accts_root(home: &str) -> String {
     join(home, relay_route_core::ACCOUNTS_DIR_REL)

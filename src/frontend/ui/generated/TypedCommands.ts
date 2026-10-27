@@ -409,7 +409,7 @@ export interface TypedCommands {
   "bus-inbox": { req: BusInboxReq; reply: BusInbox; code: "bad_args" | "bad_id" | "failed" };
   "bus-list": { req: NoArgs; reply: BusList; code: "bad_args" | "failed" };
   "bus-peek": { req: BusPeekReq; reply: BusPeeked; code: "bad_args" | "bad_id" | "failed" };
-  "bus-send": { req: BusEnvelopeReq; reply: BusSent; code: "bad_args" | "bad_from" | "bad_to" | "bad_tier" | "bad_title" | "need_re" | "bad_re" | "bad_ref" | "too_long" | "not_same_group" | "no_roster" | "duplicate" | "throttled" | "io_failed" };
+  "bus-send": { req: BusEnvelopeReq; reply: BusSent; code: "bad_args" | "bad_from" | "bad_to" | "bad_tier" | "bad_title" | "need_re" | "bad_re" | "bad_ref" | "too_long" | "not_same_group" | "no_roster" | "duplicate" | "throttled" | "io_failed" | "offline" };
   "bus-unread": { req: BusUnreadReq; reply: BusUnread; code: "bad_args" | "bad_id" | "failed" };
   "cancel": { req: CancelReq; reply: null; code: "bad_args" };
   "cc-bus-install": { req: NoReq; reply: CcBusInstalled; code: "bad_args" | "bad_file" | "refused" };

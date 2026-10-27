@@ -26,16 +26,16 @@ fn key_of(hosts: &[Host], name: &str) -> String {
 
 fn line(endpoint: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> String {
     copy_core::copy_text(
-        "beLinks.line",
+        "beLinks.row.line",
         &[
             ("endpoint", endpoint),
             (
                 "packing",
                 &copy_core::copy_text(
                     if compressed {
-                        "beLinks.compressed"
+                        "beLinks.pack.compressed"
                     } else {
-                        "beLinks.plain"
+                        "beLinks.pack.plain"
                     },
                     &[],
                 ),
@@ -97,7 +97,7 @@ fn pool_links_land_on_the_machine_whose_identity_they_carry() {
         bytes_out: o,
         said: if jump {
             copy_core::copy_text(
-                "beLinks.jumpLine",
+                "beLinks.row.jumpLine",
                 &[("line", &line(endpoint, compressed, i, o))],
             )
         } else {
@@ -136,7 +136,7 @@ fn the_line_says_where_whether_packed_and_the_bytes() {
     let said = &r[0].said;
     for part in [
         "h:22".to_string(),
-        copy_core::copy_text("beLinks.compressed", &[]),
+        copy_core::copy_text("beLinks.pack.compressed", &[]),
         copy_core::size_text(1536),
         copy_core::size_text(100),
     ] {

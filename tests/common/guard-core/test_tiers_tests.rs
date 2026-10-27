@@ -334,6 +334,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("虚拟机判据：要一台没有 OpenGL 2.0 的 Windows 桌面会话（Win11 虚拟机，没装显卡驱动）。CI 的 Windows 机器能不能开真窗口没核实（本仓从没有一条在 Windows 上开真窗口的测试，不推送验不了），那台机器有没有 OpenGL 2.0 也不由我们定；跑法住它自己的头注"),
     ),
     (
+        "tests/frontend/shell/own_chan_any_os_tests.rs",
+        "e2e_the_local_backend_outlives_the_monitor",
+        Trigger::Manual("虚拟机判据：Windows 上 monitor 退了本机常驻后端照跑。交叉编出壳的测试程序与一份 Windows 后端，拷到 Win11 虚拟机上，`CCM_E2E_BACKEND=<那份后端>` 跑它（带 `--ignored`）；沙箱家目录、不起 claude，跑法住它自己的头注"),
+    ),
+    (
         "tests/frontend/filewin/hover_sweep_tests.rs",
         "real_window_rig_for_the_frame_log",
         Trigger::Manual("台架不是判据：在一台真桌面（Windows 真机 / 虚拟机，或私有 Xvfb）上开真文件窗口录帧日志，外面另起进程模拟鼠标乱动；跑法住它自己的头注"),

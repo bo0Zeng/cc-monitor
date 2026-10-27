@@ -54,7 +54,7 @@ fn rearm(home: &str) {
 
 /// 一趟：名单跟上 ⇒ 同步一趟。只出声，不拖垮后端。
 fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
-    let home = match crate::common::door::home(d) {
+    let home = match super::scan::home(d) {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("账号之间同步 MCP：家目录说不出来：{e}");
