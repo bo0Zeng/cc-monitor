@@ -866,6 +866,7 @@ fn label_of(entry: &FileEntry) -> String {
     let s = entry.session();
     search_rules::session_label(&search_rules::LabelFacts {
         custom: None,
+        bg_name: None,
         title: s.title().map(str::to_string),
         first: s.excerpt().to_string(),
         project_dir: None,

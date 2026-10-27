@@ -37,7 +37,7 @@ pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
     let Some(cells) = layout::face().and_then(|f| f.trust) else {
         return Ok(Vec::new());
     };
-    let home = door::home(d).map_err(|e| Refusal::new("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| Refusal::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(Vec::new());
@@ -157,7 +157,7 @@ pub(crate) fn pretrust(
     let Some(cells) = layout::face().and_then(|f| f.trust) else {
         return Ok(Marked::Nothing);
     };
-    let home = door::home(d)?;
+    let home = super::scan::home(d)?;
     let _held = lock(&home).map_err(crate::common::said::Said::from)?;
     let Some(m) = manifest_in(&home).map_err(crate::common::said::Said::from)? else {
         return Ok(Marked::Nothing);

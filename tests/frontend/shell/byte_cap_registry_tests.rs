@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "SCROLLBACK",
+        "**行数**不是体量：托管终端（`host/managed/screen.rs`）的回滚留几行，与终端页往回看的上限 `MAX_SCROLLBACK` 对齐。",
+    ),
+    (
+        "LAST_WRITE_MS",
+        "**毫秒**不是体量：托管终端收尾时等各端把 `ended` 写完的一次宽限（`host/managed/run.rs`）。",
+    ),
+    (
         "MASK_READ",
         "**访问掩码的位**不是体量：`creds-core/src/perm.rs` 一条 ACE 里读得到内容的那几位。",
     ),
@@ -433,6 +441,49 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "FILETIME_TICKS_PER_SEC",
         "**时间刻度**（一秒里有多少个 100ns 的 FILETIME tick）。单位换算，不是任何东西的上限。",
     ),
+    // ── Windows 本人通道（`own-chan` 的命名管道）与建符号链接（后端 `platform/fs/mod.rs`）带进来的 ──
+    //    全是 Win32 标志位 / 哨兵值 / 一个时长，没有一个量字节。
+    (
+        "GENERIC_READ",
+        "**Win32 访问掩码**（`CreateFileW` 的读权限位）。是位掩码不是尺寸。",
+    ),
+    ("GENERIC_WRITE", "同上：Win32 访问掩码（写权限位）。"),
+    (
+        "FILE_FLAG_OVERLAPPED",
+        "**Win32 打开标志位**（`CreateFileW` 以重叠方式开句柄）。是位掩码不是尺寸。",
+    ),
+    (
+        "SECURITY_SQOS_PRESENT",
+        "**Win32 打开标志位**（`CreateFileW` 带上安全服务质量那几位）。是位掩码不是尺寸。",
+    ),
+    (
+        "SECURITY_IDENTIFICATION",
+        "**Win32 模拟级别**（管道服务端只能认出客户端是谁、不能冒用）。是位掩码不是尺寸。",
+    ),
+    (
+        "INFINITE",
+        "**「一直等」的哨兵值**（`WaitForSingleObject` 的 `INFINITE`，全 1；同 `WAIT_FOREVER`）。不是上限。",
+    ),
+    (
+        "BUSY_WAIT_MS",
+        "**时间**（管道每个实例都连着人时最多等多久再连，毫秒），不是字节。",
+    ),
+    (
+        "TOKEN_QUERY",
+        "**Win32 访问掩码**（`OpenProcessToken` 的查询权限位）。是位掩码不是尺寸。",
+    ),
+    (
+        "SYMBOLIC_LINK_FLAG_DIRECTORY",
+        "**Win32 标志位**（`CreateSymbolicLinkW`：建的是目录那一种链接）。是位掩码不是尺寸。",
+    ),
+    (
+        "SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE",
+        "**Win32 标志位**（`CreateSymbolicLinkW`：开发者模式下不要特权）。是位掩码不是尺寸。",
+    ),
+    (
+        "RRF_RT_REG_DWORD",
+        "**Win32 标志位**（`RegGetValueW` 只收 DWORD 那一种值）。是位掩码不是尺寸。",
+    ),
     // ⚠ `MIN_SCANNED_CODE_BYTES` 那条已删（08-06）：它是**测试段里的地板**，
     //    本表原来扫整份文件才需要排它；扫描面收窄到生产段之后它成了死规则，
     //    而本表自己的 `the_exclusion_list_is_not_dead_wood` 当场要求删。
@@ -477,6 +528,24 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     // 预览 · 看图那几道门（后端在 `files-ls` 每行上判好给出，两端照画）。超了：**不读**，摆出后端写好的那一句；不截一半。
+    (
+        "src/backend/host/managed/home.rs",
+        "FACTS_CAP",
+        "托管终端的事实文件 `hosts/<id>/facts.json` 读多少（几百字节的东西）",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/host/managed/serve.rs",
+        "QUEUE_CAP",
+        "托管口给一端排着没写出去的帧（字节）：那一端不读时攒到多少",
+        "降级+说清",
+    ),
+    (
+        "src/backend/host/managed/wire.rs",
+        "MAX_FRAME",
+        "托管口一帧最长（种 ＋ 载荷，字节）",
+        "硬报错",
+    ),
     (
         "src/backend/files/class.rs",
         "PREVIEW_TEXT_MAX_BYTES",

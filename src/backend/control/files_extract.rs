@@ -72,12 +72,15 @@ fn over_bytes(cap: u64) -> Fail {
     ))
 }
 
-/// 这个平台建不建得了链接（计划趟据此决定「链接 ⇒ 记下来」还是「链接 ⇒ 整趟拒」）。
-pub const LINKS_SUPPORTED: bool = cfg!(unix);
+/// 这台此刻建不建得了链接（计划趟据此决定「链接 ⇒ 记下来」还是「链接 ⇒ 整趟拒」）：unix 恒能；
+/// Windows 要开发者模式或建链接的特权（平台层只读地判，`platform::fs::links_creatable`）。
+pub fn links_supported() -> bool {
+    crate::platform::fs::links_creatable()
+}
 
 /// 在 `root ＋ rel` 上建一条链接，目标文本 ＝ `target`（原样，不解、不判 —— 它指到哪是它的内容，同 `cp -P`）。
 /// 链接自己那条路径先过 [`walk_in_root`]；已在（含一条链接）⇒ 系统拒，一个字节不动。
-#[cfg(unix)]
+/// 这台建不了链接（[`links_supported`] 为假；计划趟已整趟拒，到这里是兜底）⇒ 说清、不建。
 pub fn land_link(
     face: &Face,
     root: &Path,
@@ -85,6 +88,12 @@ pub fn land_link(
     target: &Path,
 ) -> Result<PathBuf, WriteRefusal> {
     let at = walk_in_root(Last::Link, root, rel).map_err(WriteRefusal::Refused)?;
+    if !links_supported() {
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesLink.land.unsupported",
+            &[("path", &at.display().to_string())],
+        )));
+    }
     face.make_link(target, &at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
@@ -98,21 +107,6 @@ pub fn land_link(
         )
     })?;
     Ok(at.into_path_buf())
-}
-
-/// 非 unix：没有「建链接」这个动词（计划趟看 [`LINKS_SUPPORTED`] 已整趟拒，走不到这里；兜底仍说清）。
-#[cfg(not(unix))]
-pub fn land_link(
-    _face: &Face,
-    root: &Path,
-    rel: &Path,
-    _target: &Path,
-) -> Result<PathBuf, WriteRefusal> {
-    let at = walk_in_root(Last::Link, root, rel).map_err(WriteRefusal::Refused)?;
-    Err(WriteRefusal::Refused(copy_text(
-        "beFilesLink.land.unsupported",
-        &[("path", &at.display().to_string())],
-    )))
 }
 
 //
@@ -280,7 +274,7 @@ fn admit(
             size,
         },
         Raw::Link(to) => {
-            if !LINKS_SUPPORTED {
+            if !links_supported() {
                 return Err(refused(copy_text(
                     "beFilesExtract.entry.linkUnsupported",
                     &[("name", &shown(name))],

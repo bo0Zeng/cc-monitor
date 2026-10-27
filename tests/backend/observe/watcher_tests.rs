@@ -1993,16 +1993,41 @@ fn with_bg_announces_bg_with_metadata() {
             background,
             cwd,
             name,
+            name_face,
             ..
         })) => {
             assert_eq!(sid, "bg-sid");
             assert!(background, "后台会话那一格由适配层判好");
             assert_eq!(cwd.as_deref(), Some("/proj/x"));
             assert_eq!(name.as_deref(), Some("评估任务"));
+            assert_eq!(
+                name_face.label.0, "评估任务",
+                "后台会话叫 pidfile 名：后端定、帧上交出"
+            );
         }
         other => panic!("expected SessionAdded with metadata, got {other:?}"),
     }
     assert!(state.active_sids.contains("bg-sid"), "bg 行要能流出");
+    // 同一 sid 来了人坐着的那一份 ⇒ 不再是后台，pidfile 名跟着去掉，推一帧新名字。
+    while rx.try_recv().is_ok() {}
+    // 另一份进程状态文件（文件名就是 pid，放另一个目录）。
+    std::fs::create_dir_all(dir.join("again")).unwrap();
+    let again = dir.join("again").join(format!("{pid}.json"));
+    std::fs::write(
+        &again,
+        format!(r#"{{"pid":{pid},"sessionId":"bg-sid","cwd":"/proj/x","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    process_session_added(&again, &mut state, &mut sink);
+    let mut renamed = None;
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::SessionStatus(st) = f {
+            renamed = Some(st.name_face.label.0);
+        }
+    }
+    let renamed = renamed.expect("交互那一份来了 ⇒ 推一帧新名字");
+    assert_ne!(renamed, "评估任务");
+    assert_eq!(state.name_face("bg-sid").label.0, renamed);
     std::fs::remove_dir_all(&dir).ok();
 }
 

@@ -190,7 +190,7 @@ pub(crate) fn put_private(
         return door::put(d, home, rel, text, expect, false, false).map(|_| ());
     }
     door::put(d, home, rel, "", None, false, true)?;
-    door::chmod(d, home, rel, 0o600).map_err(|said| Refused::Peer {
+    super::exec::set_mode(d, home, rel, 0o600).map_err(|said| Refused::Peer {
         code: "io_failed".to_string(),
         said,
     })?;
@@ -293,7 +293,7 @@ fn run(
     why: Why,
     decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Refusal>,
 ) -> Result<AccountMcpView, Refusal> {
-    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
@@ -368,7 +368,7 @@ pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
 /// 停 ⇒ 之后各号各管各的，已经同步过去的一条不删；开 ⇒ 落下那一格之后立刻同步一趟（停着那段时间各号改的照三方对照采纳，
 /// 两边都改了的照常列出来等挑）。已经是那一态 ⇒ 不写，照答。
 pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal> {
-    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
     {
         let _held = lock(&home)?;
         let Some(m) = manifest_in(&home)? else {
@@ -420,7 +420,7 @@ fn view_after(h: &Here) -> AccountMcpView {
 
 /// `accounts-mcp-read`：此刻的样子（只算不写；冲突照算）。
 pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
-    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let home = super::scan::home(d).map_err(|e| ("io_failed", e))?;
     let Some(m) = manifest_in(&home)? else {
         return Ok(AccountMcpView::default());
     };

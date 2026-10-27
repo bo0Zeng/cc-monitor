@@ -197,8 +197,7 @@ export class TabManager {
   /** tab 栏的三份落盘偏好（集合 · 固定 · 顺序，`tab-bar-prefs.ts`）。 */
   private readonly prefs = new TabBarPrefs(this.store, {
     refreshTabBar: () => this.refreshTabBar(),
-    createSkeletonTab: (sid, projectDir, origin, background, name) =>
-      this.createSkeletonTab(sid, projectDir, origin, background, name),
+    createSkeletonTab: (sid, projectDir, origin, background) => this.createSkeletonTab(sid, projectDir, origin, background),
     resumeTab: (sid) => this.actions.resume(sid),
     streamElOf: (sid) => this.streamElOf(sid),
   });
@@ -544,7 +543,6 @@ export class TabManager {
     projectDir: string | null,
     origin: Origin,
     background: boolean | null = null,
-    name: string | null = null,
     // `null` ＝ 没说 ＝ 视为可以；只有显式 `false` 才记账。
     attachable: boolean | null = null,
     // 会话宣告带的隐藏那一格（`undefined` ＝ 不是宣告来的，如固定复活 ⇒ 不动）。
@@ -552,7 +550,7 @@ export class TabManager {
   ): void {
     if (attachable === false) this.store.notAttachableSids.add(sessionId);
     else this.store.notAttachableSids.delete(sessionId);
-    this.ensureTab(sessionId, projectDir, "", origin, background, name);
+    this.ensureTab(sessionId, projectDir, "", origin, background);
     if (hidden !== undefined) this.hider.land(sessionId, hidden);
     this.slots.tabAppeared(sessionId);
   }
@@ -672,7 +670,6 @@ export class TabManager {
     sourcePath: string,
     origin: Origin = LOCAL_ORIGIN,
     background: boolean | null = null,
-    bgName: string | null = null,
   ): Tab {
     this.settleClose(sessionId); // 撤销期里关掉的那个又来了 ⇒ 先把旧的收干净，再按新的建
     let tab = this.store.tabs.get(sessionId);
@@ -688,7 +685,6 @@ export class TabManager {
       // interactive 恒压过 bg —— 后到的 interactive 在此升格纠正标题，反向绝不降格。升格不动位置。
       if (background === false && tab.background) {
         tab.background = false;
-        tab.bgName = null;
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
         if (sessionId === this.store.activeId) this.publishActive();
@@ -713,7 +709,6 @@ export class TabManager {
       pendingName?.labelProject ?? null,
       isRemoteOrigin(origin) ? origin : null,
       background ?? false,
-      bgName,
     );
 
     // 渲染那一半（流 · 时间线 · 折叠层 · 窗口账本 · 骨架 · 大纲 · 按轮折叠 · 刻度）整份由流视图建，这里只接过来（`TabStreamDom`）。
@@ -730,7 +725,6 @@ export class TabManager {
     tab = {
       sessionId,
       background: background ?? false,
-      bgName,
       title,
       projectDir,
       label: pendingName?.label ?? null,
@@ -826,7 +820,6 @@ export class TabManager {
       tab.labelProject,
       isRemoteOrigin(tab.origin) ? tab.origin : null,
       tab.background,
-      tab.bgName,
       tab.forkedFromSessionId,
     );
   }

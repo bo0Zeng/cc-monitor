@@ -70,7 +70,7 @@ export function titleParts(tab: Tab): TitleParts {
   const bg = tab.background;
   const forked = tab.forkedFromSessionId !== null;
   const name = tab.label ?? tab.sessionId.slice(0, 8);
-  return { proj: tab.labelProject, title: bg ? (tab.bgName ?? name) : name, bg, forked };
+  return { proj: tab.labelProject, title: name, bg, forked };
 }
 
 /** 一行写完的标题（会话头 · 悬停卡第一行）：`项目 标题`。 */

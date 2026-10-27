@@ -902,7 +902,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。
     onSessionStarted: (sessionId, meta) => {
       // 没有就建骨架；已有（固定的 / 已结束的）就对齐后端给的项目目录（又活了那张脸随宣告紧跟着到）。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden);
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, null, meta.hidden);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
     },
@@ -969,14 +969,13 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
       }
     },
-    // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
+    // 远端会话宣告 → 骨架 Tab，附项目目录 / kind：叫什么随后由会话事实那一格交来（后端定，后台的 pidfile 名也在里头）。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       tabs.createSkeletonTab(
         sessionId,
         meta.projectDir || null,
         origin,
         meta.background,
-        meta.name,
         meta.attachable,
         meta.hidden,
       );

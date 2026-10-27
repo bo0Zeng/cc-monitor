@@ -16,7 +16,7 @@ use super::layout::{describe, Op, Plan};
 use super::model::Manifest;
 use super::scan::{is_under, item_at, join, Roots, BACKUP_PREFIX, ROLLED_BACK_NAME, UNDO_NAME};
 use crate::common::door::{self, Door, Refused};
-use crate::platform::acct_view::Item;
+use crate::platform::acct_view::{is_absolute, under_root, Item};
 use copy_core::copy_text;
 
 /// 一趟执行的结局。
@@ -42,6 +42,15 @@ pub(crate) struct KeyTable<'a> {
     pub(crate) restore: &'a dyn Fn(&str, &str) -> Result<(), String>,
 }
 
+/// 改权限位（经 `files-chmod`）。这台没有 unix 权限位那一格（Windows：家目录本来只给本人）⇒ 不改、照成功算 ——
+/// 账号库这一族改权限只经这里。
+pub(crate) fn set_mode(d: &dyn Door, home: &str, rel: &str, mode: u32) -> Result<(), String> {
+    if !crate::platform::acct_view::has_mode_bits() {
+        return Ok(());
+    }
+    door::chmod(d, home, rel, mode)
+}
+
 struct Run<'a> {
     d: &'a dyn Door,
     r: &'a Roots,
@@ -63,7 +72,7 @@ impl Run<'_> {
     }
 
     fn chmod(&self, abs: &str, mode: u32) -> Result<(), String> {
-        door::chmod(self.d, &self.r.home, &self.rel(abs)?, mode)
+        set_mode(self.d, &self.r.home, &self.rel(abs)?, mode)
     }
 
     /// 把 `p` 原样拷进备份（同一路径只拷第一次：留住最原始的那一份）。不在 ⇒ 什么都不做。
@@ -72,7 +81,7 @@ impl Run<'_> {
         if !it.exists() {
             return Ok(());
         }
-        let dest = format!("{}/root{p}", self.bk);
+        let dest = format!("{}/root{}", self.bk, under_root(p));
         if item_at(&dest).exists() {
             return Ok(());
         }
@@ -312,7 +321,7 @@ pub(crate) fn apply(
     if !item_at(&r.accts).exists() {
         mkdirs(d, &r.home, &r.accts).map_err(fail)?;
     }
-    door::chmod(
+    set_mode(
         d,
         &r.home,
         &door::rel_under(&r.home, &r.accts).map_err(fail)?,
@@ -323,7 +332,7 @@ pub(crate) fn apply(
     let bk = join(&r.accts, &format!("{BACKUP_PREFIX}{id}"));
     let bk_rel = door::rel_under(&r.home, &bk).map_err(fail)?;
     door::mkdir(d, &r.home, &bk_rel).map_err(fail)?;
-    door::chmod(d, &r.home, &bk_rel, 0o700).map_err(fail)?;
+    set_mode(d, &r.home, &bk_rel, 0o700).map_err(fail)?;
     door::mkdir(d, &r.home, &format!("{bk_rel}/root")).map_err(fail)?;
     let mut run = Run {
         d,
@@ -429,12 +438,10 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
     let mut bad = Vec::new();
     for line in text.lines().filter(|l| !l.is_empty()) {
         match line.split_once('\t') {
-            Some(("RESTORE", p)) if p.starts_with('/') => {
-                restore.push(Undo::Restore(p.to_string()))
-            }
-            Some(("DELETE", p)) if p.starts_with('/') => delete.push(Undo::Delete(p.to_string())),
+            Some(("RESTORE", p)) if is_absolute(p) => restore.push(Undo::Restore(p.to_string())),
+            Some(("DELETE", p)) if is_absolute(p) => delete.push(Undo::Delete(p.to_string())),
             Some(("UNMOVE", rest)) => match rest.split_once('\t') {
-                Some((at, from)) if at.starts_with('/') && from.starts_with('/') => {
+                Some((at, from)) if is_absolute(at) && is_absolute(from) => {
                     restore.push(Undo::Back {
                         at: at.to_string(),
                         from: from.to_string(),
@@ -443,12 +450,10 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
                 _ => bad.push(line.to_string()),
             },
             Some(("REKEY", rest)) => match rest.split_once('\t') {
-                Some((t, c)) if t.starts_with('/') && c.starts_with('/') => {
-                    restore.push(Undo::Rekey {
-                        table: t.to_string(),
-                        config_dir: c.to_string(),
-                    })
-                }
+                Some((t, c)) if is_absolute(t) && is_absolute(c) => restore.push(Undo::Rekey {
+                    table: t.to_string(),
+                    config_dir: c.to_string(),
+                }),
                 _ => bad.push(line.to_string()),
             },
             _ => bad.push(line.to_string()),
@@ -500,7 +505,9 @@ pub(crate) fn rollback(
     let aside = join(bk, "pre-rollback");
     for u in steps {
         let res = match u {
-            Undo::Restore(p) => restore_one(d, r, &format!("{bk}/root{p}"), &aside, p),
+            Undo::Restore(p) => {
+                restore_one(d, r, &format!("{bk}/root{}", under_root(p)), &aside, p)
+            }
             Undo::Back { at, from } if restore_target_ok(r, from) => {
                 restore_one(d, r, from, &aside, at)
             }
@@ -545,7 +552,7 @@ fn rekey_one(
     let k = keys
         .filter(|k| k.path == table)
         .ok_or_else(|| copy_text("beAcctExec.key.noDoor", &[("path", table)]))?;
-    let saved = format!("{bk}/root{table}");
+    let saved = format!("{bk}/root{}", under_root(table));
     if !item_at(&saved).exists() {
         return Err(copy_text(
             "beAcctExec.rollback.notSaved",

@@ -126,6 +126,8 @@ fn the_relay_says_absent_only_when_nobody_listens() {
 }
 
 /// 套接字路径太长 ⇒ 不绑、说清（内核会截断成另一个路径）。锁也不留着。
+/// 只在 Unix 上有这一格：Windows 的本人通道是命名管道，不是盘上文件，没有 `sun_path` 那个上限（`own_chan::BOUND_AS_FILE`）。
+#[cfg(unix)]
 #[tokio::test]
 async fn a_socket_path_over_the_cap_is_refused_out_loud() {
     let base = scratch("long");

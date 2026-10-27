@@ -324,8 +324,8 @@ pub enum JsonlRecord {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
-    // Claude Code v2.1.x 起把 ai-title schema 改为 custom-title / customTitle
-    // （旧 ai-title 在历史 jsonl 里仍可能出现，两个都保留）。两个都翻成通用记录的 `title`（`by` 分谁起的）。
+    // ai-title 是 agent 自己起的标题；custom-title / customTitle 是人在 Claude 里 /rename 写的。
+    // 两个都翻成通用记录的 `title`（`by` 分谁起的）；cc-monitor 定名只认 agent 起的那一种（A2-12）。
     #[serde(rename = "custom-title")]
     CustomTitle {
         #[serde(rename = "customTitle")]
