@@ -361,7 +361,12 @@ fn login_shell(
         });
     }
     // 机器表里那台：同一组白名单与跳板，只是 `--` 后面不跟命令（载荷那一格不渲，填个占位）。
-    let dial = super::dial_named(hosts, &name, "stream", serde_json::json!({ "command": ":" }))?;
+    let dial = super::dial_named(
+        hosts,
+        &name,
+        "stream",
+        serde_json::json!({ "command": ":" }),
+    )?;
     Ok(SshCommand {
         command: shell_line(&dial, powershell, ssh_path(ssh, powershell)?, false)?,
     })
@@ -374,12 +379,10 @@ pub(crate) fn local_login_shell(powershell: bool) -> Result<String, CmdErr> {
         return Ok(posix::cd_then_login_shell(None));
     }
     let Some(home) = crate::platform::paths::home_dir() else {
-        return Err((
-            "unobservable",
-            copy_text("beTerminal.login.noHome", &[]),
-        ));
+        return Err(("unobservable", copy_text("beTerminal.login.noHome", &[])));
     };
-    let line = crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));
+    let line =
+        crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));
     Ok(line.trim_end().trim_end_matches(';').to_string())
 }
 

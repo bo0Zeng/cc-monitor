@@ -183,7 +183,10 @@ fn no_ssh_client_grays_the_remote_terminal_but_not_the_local_one() {
         &SshClient::Missing,
         false,
     );
-    assert!(act(&remote, MenuAct::OpenTerminal).unwrap().blocked.is_some());
+    assert!(act(&remote, MenuAct::OpenTerminal)
+        .unwrap()
+        .blocked
+        .is_some());
     let local = menu_in(
         cmd_wire::machine::LOCAL,
         MachineFrom::Local,
@@ -191,7 +194,10 @@ fn no_ssh_client_grays_the_remote_terminal_but_not_the_local_one() {
         &SshClient::Missing,
         false,
     );
-    assert!(act(&local, MenuAct::OpenTerminal).unwrap().blocked.is_none());
+    assert!(act(&local, MenuAct::OpenTerminal)
+        .unwrap()
+        .blocked
+        .is_none());
     // 本机没有文件窗口 ⇒ 这一样不列。
     assert!(act(&local, MenuAct::Files).is_none());
 }
