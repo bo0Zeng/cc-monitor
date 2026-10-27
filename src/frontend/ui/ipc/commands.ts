@@ -59,7 +59,7 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 // 本机逐字送 `LOCAL_ORIGIN`（`"<local>"`，住 `../backend-policy.ts`）；TS 侧其余各处的 origin 也是这一个表示
 //（判据：`commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节）。
 import type { Origin } from "../generated/Origin";
-import type { FrontOutcome } from "../generated/FrontOutcome";
+import type { FrontTold } from "../generated/FrontTold";
 import type { SessionWindow } from "../generated/SessionWindow";
 import type { TabSession } from "../generated/TabSession";
 import type { TerminalChoices } from "../generated/TerminalChoices";
@@ -266,9 +266,9 @@ export const commands = {
     run?: string;
   }) => invoke<void>("open_session_in_new_window", args),
 
-  /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链原样交来，先按标签、再沿链；回结局族（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
-  bring_terminal_to_front: (args: Pick<SessionWindow, "labels" | "chain">) =>
-    invoke<FrontOutcome | null>("bring_terminal_to_front", args),
+  /** ↗ 拉前会话的终端窗口：本机后端 `session-window` 答的标签 · 进程链 · tmux 那一格原样交来，先按标签、再沿链；回切过去了或写好的那一张（标签没对上、链又空 ⇒ `null`）。**桶①**。 */
+  bring_terminal_to_front: (args: Pick<SessionWindow, "labels" | "chain" | "tmux">) =>
+    invoke<FrontTold | null>("bring_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) =>
