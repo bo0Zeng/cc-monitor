@@ -544,7 +544,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 - **② 自由文本类**（路径 · 已有 tmux 会话的 attach 目标）：走唯一的 quote ＋ 这种值的形式判定（绝对 · 不含 `..` · 不空）＋ 拒绝集权威表（控制字符 · shell 元字符 · 视觉欺骗字符，`acct-core` 的 `config_dir_char_unsafe` 一族）。这一形是拒绝集，不是白名单。
 - **③ 命令片段类**（启动器）：不 quote（要被 shell 拆词、按 alias / PATH 解析），只能是一张对 bash 与 PowerShell 都安全的白名单（ASCII 字母数字 · 空格 · `-_./` · 打头的 `~/`），住 `shell_quote_core::launcher_refused_char`。
 
-本侧判的是**形状**，不是成员资格（「这个账号存不存在」归拥有那份名单的一方）。cc-bus 的 id 在后端交给 `cc-send` / `cc-log` 之前判（拒码 `bad_id`），规则住 `shell_quote_core::bus_id_ok`。
+本侧判的是**形状**，不是成员资格（「这个账号存不存在」归拥有那份名单的一方）。cc-bus 的 id 在后端交给 `cc-bus send` / `cc-bus log` 之前判（拒码 `bad_id`），规则住 `shell_quote_core::bus_id_ok`。
 
 **为什么不能松动**：对端校验的是它自己的入口，本侧不判，拼错的那一段已经在路上了（收掉一个 agent 的后果是杀掉一棵进程树）；盘上真出现过没人预料的 id（一份名叫 `--help.jsonl` 的收件箱文件）。
 

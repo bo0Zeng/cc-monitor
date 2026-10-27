@@ -713,7 +713,7 @@ run_gate platform '判过的条数（判据本体每趟现算并印在它自己�
 # ── `ccbus-twophase`：cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧 ──
 # 推进已读位置是有副作用的那一跳，错一次就是「消息被消费掉却没人看见」。判据本体与射程住
 # `tests/evidence/W24C-ccbus-twophase-ruler.py`；Windows 那侧靠 `CCBUS_ADAPT_OS=windows` 在 Linux 上跑实现，不买真 Windows。
-run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：静态 7 条 —— `cc-peek` 零写面（写形集合 == 登记的两处豁免，且正控要在 `cc-commit` 上扫出写）· `.pos` 写点全仓集合相等 · 锁族不增 · 通用层零脚印（带正控）· 与 `cc-recv` 的渲染逐字节对拍 · `cc-recv` 的 sha256 恒等 · 手册页那几句；真跑 14 条 —— 令牌/CAS/anchor/分段/并发/截短自愈/Stop 钩子两条路/Windows 那一侧四条；kinds 静态 2 条（敲门模板零正文 ＋ 正控）· 真跑 3 条；保活 1 条 —— 共 27）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」** —— 某一格悄悄没跑与它过了，在输出上一模一样。⚠ 它**不判**在真 Windows 上跑得起来（无真机）、不判性能、不判并发的公平性' \
+run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：静态 7 条 —— `cc-bus peek` 零写面（写形集合 == 登记的两处豁免，且正控要在 `cc-bus commit` 上扫出写）· `.pos` 写点全仓集合相等 · 锁族不增 · 通用层零脚印（带正控）· 与 `cc-bus recv` 的渲染逐字节对拍 · `cc-bus recv` 的 sha256 恒等 · 手册页那几句；真跑 14 条 —— 令牌/CAS/anchor/分段/并发/截短自愈/Stop 钩子两条路/Windows 那一侧四条；kinds 静态 2 条（敲门模板零正文 ＋ 正控）· 真跑 3 条；保活 1 条 —— 共 27）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」** —— 某一格悄悄没跑与它过了，在输出上一模一样。⚠ 它**不判**在真 Windows 上跑得起来（无真机）、不判性能、不判并发的公平性' \
          python3 tests/evidence/W24C-ccbus-twophase-ruler.py
 
 # ── `fmt`：`src/frontend/shell` workspace 的排版 ──

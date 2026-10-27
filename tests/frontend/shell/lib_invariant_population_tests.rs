@@ -61,8 +61,8 @@ fn production_sources() -> Vec<(String, String)> {
             .any(|(r, _)| r == "src/backend/observe/watcher.rs")
             && out
                 .iter()
-                .any(|(r, _)| r == "src/shared/cc-bus/scripts/cc-whoami"),
-        "扫到的生产源码只有 {} 份、或缺 watcher.rs / cc-whoami —— 根没对上，下面的相等会空真",
+                .any(|(r, _)| r == "src/shared/cc-bus/scripts/cc-bus-whoami.sh"),
+        "扫到的生产源码只有 {} 份、或缺 watcher.rs / cc-bus-whoami.sh —— 根没对上，下面的相等会空真",
         out.len()
     );
     out
