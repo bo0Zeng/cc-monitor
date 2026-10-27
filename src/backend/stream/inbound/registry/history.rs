@@ -97,7 +97,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
     crate::wire::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
-        "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
+        "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回「别处已答」（`gone` ＋ 那一句）",
     ),
     // 会话事实（`observe/recognize/facts.rs`）。只收路径：接着上一次算由后端按路径留着（`observe::record_scan`）。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),

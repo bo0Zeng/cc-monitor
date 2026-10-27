@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.AnswerReq
+import com.ccmonitor.mobile.core.wire.gen.AnswerResult
+import com.ccmonitor.mobile.core.wire.gen.Answered
 import com.ccmonitor.mobile.core.wire.gen.AskPick
 
 /*
@@ -40,8 +42,6 @@ object NeedsAnswer {
             ),
         )
 
-    /** 别处先答了 / 那一头撤了（那一句是那台写好的）。 */
-    fun gone(code: String): Boolean = code in GONE
-
-    private val GONE = setOf("already_answered", "closed_elsewhere")
+    /** 回包是「别处已答」那一种结局（别处先答了 / 那一头撤了）⇒ 那台写好的那一句；答上了 ⇒ `null`。 */
+    fun gone(data: Any?): String? = Wire.bind<Answered>(data)?.takeIf { it.result == AnswerResult.GONE }?.let { it.said.orEmpty() }
 }

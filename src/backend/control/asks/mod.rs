@@ -1,6 +1,6 @@
 //! **待答登记表**（常驻后端进程里一份，通用、不认是哪一家）：会话里弹批准 / 提问 / 批计划的框时，那一家的答题 hook
-//! 经 `needs-ask` 把请求挂进来、阻塞等；任一出口（桌面 · 手机）经 `needs-answer` 答，**第一个答案落下**，其余回 `already_answered`；
-//! hook 那条连接断了（终端那边先答了 · 被打断 · 到点）⇒ 撤掉，之后再答回 `closed_elsewhere`。挂上 · 撤掉 · 答掉都推 `changed {needs, key: sid}`。
+//! 经 `needs-ask` 把请求挂进来、阻塞等；任一出口（桌面 · 手机）经 `needs-answer` 答，**第一个答案落下**，其余回「别处已答」（`gone` ＋ 那一句）；
+//! hook 那条连接断了（终端那边先答了 · 被打断 · 到点）⇒ 撤掉，之后再答同样回 `gone`。挂上 · 撤掉 · 答掉都推 `changed {needs, key: sid}`。
 //!
 //! 成品挂在会话的 `needs` 上（`observe::recognize::facts::dress_ask`）：`needs.ask` 是「这一条可以怎么答」—— 选项的字、语气、要不要附一句话都由这里写好，出口不按工具名取字；
 //! pidfile 说在等、却没有挂着的请求（用户自己起的会话 · 只能本人答的框 · 工作区信任框 …）⇒ `ask: null`，`manualText` 写好「只能在终端里答」。
@@ -297,7 +297,7 @@ pub(crate) fn answered_rows() -> Vec<cmd_wire::needs::AnsweredRow> {
         .collect()
 }
 
-/// 这条连接挂的全撤掉（之后再答 ⇒ `closed_elsewhere`）。
+/// 这条连接挂的全撤掉（之后再答 ⇒ `gone`）。
 pub(crate) fn withdraw_conn(conn: u64) {
     let gone: Vec<(String, String)> = {
         let mut b = book();
@@ -447,10 +447,6 @@ crate::wire::typed::codes! {
     pub(crate) enum AnswerErr {
         /// 没这一条（或不是这个会话的）。
         NotFound = "not_found",
-        /// 别处先答了。
-        AlreadyAnswered = "already_answered",
-        /// hook 那头已经走了（终端那边答了 · 被打断）。
-        ClosedElsewhere = "closed_elsewhere",
         /// 选项不在这一条的选项里 / 那一家写不出这个决定。
         BadChoice = "bad_choice",
         /// 选项要附一句话，没给。
@@ -478,27 +474,33 @@ impl crate::wire::typed::Handle for NeedsAnswerCmd {
     }
 }
 
-/// `needs-answer` 的本体 ⇒ `{result: "answered"}`；
-/// 别处先答了 ⇒ `already_answered`；hook 那头已经走了（终端那边答了 · 被打断）⇒ `closed_elsewhere`；没这一条 ⇒ `not_found`。
+/// 别处已答那一种结局 ＋ 那一句。
+fn gone(said: String) -> Answered {
+    Answered {
+        result: AnswerResult::Gone,
+        said: Some(Words(said)),
+    }
+}
+
+/// `needs-answer` 的本体 ⇒ `{result: "answered"}`；别处先答了（别的出口 · 替人答过）· hook 那头已经走了（终端那边答了 · 被打断）
+/// ⇒ `{result: "gone", said}`（不是错：这一下没答进去，也不用再答）；没这一条 ⇒ `not_found`。
 pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
     let (sid, id, choice) = (req.sid.as_str(), req.ask.as_str(), req.choice.as_str());
     let mut b = book();
     let Some(o) = b.open.get(id).filter(|o| o.ask.sid == sid) else {
-        return Err(match b.settled(id) {
-            Some(Settled::Answered) => {
-                refuse("already_answered", copy_text("beAsk.answer.already", &[]))
-            }
-            Some(Settled::Auto) => refuse(
-                "already_answered",
+        return match b.settled(id) {
+            Some(Settled::Answered) => Ok(gone(copy_text("beAsk.answer.already", &[]))),
+            Some(Settled::Auto) => Ok(gone(
                 b.answered
                     .get(sid)
                     .map_or_else(|| copy_text("beAsk.answer.already", &[]), |w| w.0.clone()),
-            ),
-            Some(Settled::Closed) => {
-                refuse("closed_elsewhere", copy_text("beAsk.answer.closed", &[]))
-            }
-            None => refuse("not_found", copy_text("beAsk.answer.notFound", &[])),
-        });
+            )),
+            Some(Settled::Closed) => Ok(gone(copy_text("beAsk.answer.closed", &[]))),
+            None => Err(refuse(
+                "not_found",
+                copy_text("beAsk.answer.notFound", &[]),
+            )),
+        };
     };
     let verdict = verdict_of(
         &o.ask,
@@ -531,16 +533,14 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
     );
     drop(b);
     moved(sid);
-    if delivered {
-        Ok(Answered {
+    Ok(if delivered {
+        Answered {
             result: AnswerResult::Answered,
-        })
+            said: None,
+        }
     } else {
-        Err(refuse(
-            "closed_elsewhere",
-            copy_text("beAsk.answer.closed", &[]),
-        ))
-    }
+        gone(copy_text("beAsk.answer.closed", &[]))
+    })
 }
 
 #[cfg(test)]

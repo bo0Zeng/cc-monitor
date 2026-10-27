@@ -101,6 +101,13 @@ describe("甲1 批准一步", () => {
     ]);
   });
 
+  it("★ 红字照核心给的语气（`tone: fail`），不认选项 id", () => {
+    const swapped = { ...ASKS.approve, choices: ASKS.approve.choices.map((x) => (x.id === "deny" ? { ...x, tone: "fail" as const } : x.id === "deny-stop" ? { ...x, tone: "warn" as const } : x)) };
+    const { b } = rig(tab(needs(swapped)));
+    const kinds = Object.fromEntries([...b.el.querySelectorAll<HTMLButtonElement>("button[data-choice]")].map((x) => [x.dataset.choice, x.dataset.kind]));
+    expect([kinds["deny"], kinds["deny-stop"]]).toEqual(["danger-text", "secondary"]);
+  });
+
   it("★ 点一项即答：交回核心给的 ask id 与选项 id；答出去后等重读（块还在、按钮进行中不可再点）", async () => {
     const { b, answers } = rig(tab(needs(ASKS.approve)));
     btn(b, ASKS.approve.choices[1].text).click();

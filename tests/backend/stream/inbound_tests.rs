@@ -1004,7 +1004,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     drop(client);
     h.await.unwrap();
 
-    // hook 那一头走了 ⇒ 撤掉，之后再答回 closed_elsewhere。
+    // hook 那一头走了 ⇒ 撤掉，之后再答是「别处已答」那一种结局。
     let (mut client, server) = tokio::io::duplex(1 << 16);
     let (tx, _rx) = chan();
     let h = spawn(
@@ -1029,9 +1029,9 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
             )
             .unwrap()
         )
-        .unwrap_err()
-        .0,
-        "closed_elsewhere"
+        .expect("撤掉之后再答是一种结局，不是错")
+        .result,
+        cmd_wire::needs::AnswerResult::Gone
     );
 }
 

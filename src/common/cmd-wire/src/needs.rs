@@ -445,20 +445,25 @@ pub struct AnswerPick {
     pub text: Option<String>,
 }
 
-/// `needs-answer` 的应答。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `needs-answer` 的应答：答上了 · 别处已答（那一句写好，出口照摆、块收起）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Answered {
-    /// 恒 `answered`。
     pub result: AnswerResult,
+    /// `gone` 时写好的那一句（已有人答过 · 已在终端答过或已关闭 · 替人答过的那一句）；`answered` ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub said: Option<Words>,
 }
 
-/// `needs-answer` 成功那一形（闭集一个词：失败各走自己的码）。
+/// `needs-answer` 的结局：答上了 · 别处已答（别的出口先答了、终端那边答了或撤了：这一下没答进去，也不用再答）。
+/// 别的没答成走各自的码。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub enum AnswerResult {
     Answered,
+    Gone,
 }
