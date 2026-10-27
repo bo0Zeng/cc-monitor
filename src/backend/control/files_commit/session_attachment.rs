@@ -280,7 +280,12 @@ pub fn commit(
         Ok(l) => l,
         Err(e) => {
             if let Ok(d) = walk_in_root(Last::Link, &root, &id) {
-                let _ = face.delete_dir(&d);
+                if let Err(gone) = face.delete_dir(&d) {
+                    tracing::warn!(
+                        "[session-attach-commit] 没落成，空编号目录 {} 没删掉：{gone}",
+                        d.display()
+                    );
+                }
             }
             return Err(e.flat());
         }
