@@ -172,6 +172,7 @@ fn label_of(
 ) -> String {
     let facts = crate::history::search_rules::LabelFacts {
         custom: custom.map(str::to_string),
+        bg_name: None,
         title: title.map(str::to_string),
         first: first.to_string(),
         project_dir: (!project.is_empty()).then(|| project.to_string()),
