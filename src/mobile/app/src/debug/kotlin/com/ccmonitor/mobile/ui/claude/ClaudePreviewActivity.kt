@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.ui.theme.AppTheme
 
 /**
@@ -20,7 +21,7 @@ class ClaudePreviewActivity : ComponentActivity() {
             AppTheme {
                 Scaffold { inner ->
                     ClaudeReadingPane(
-                        units = sampleRenderUnits(),
+                        items = sampleRenderUnits().map { StreamItem.Card(it) },
                         modifier = Modifier.fillMaxSize().padding(inner),
                     )
                 }

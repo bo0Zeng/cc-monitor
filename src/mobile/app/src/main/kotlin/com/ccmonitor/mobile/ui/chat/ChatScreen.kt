@@ -39,13 +39,15 @@ fun ChatScreen(
     onLoadOlder: () -> Unit = {},
     /** 重发一条失败的消息（传本地 key）。 */
     onRetrySend: (String) -> Unit = {},
+    /** 过程行的开合 · 跳到第一处失败。 */
+    process: ProcessActions = ProcessActions(),
     /** 流里在等的那一步（那张工具卡上标它）。 */
     awaiting: AwaitingStep? = null,
     /** 需手动那一块（钉条 ＋ 答题抽屉），贴在输入框上方。 */
     needs: @Composable () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize()) {
-        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, awaiting = awaiting)
+        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting)
         needs()
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
         ChatInputArea(state = state, actions = actions)
@@ -63,6 +65,7 @@ fun ChatTranscript(
     modifier: Modifier = Modifier,
     onLoadOlder: () -> Unit = {},
     onRetrySend: (String) -> Unit = {},
+    process: ProcessActions = ProcessActions(),
     awaiting: AwaitingStep? = null,
 ) {
     val listState = rememberLazyListState()
@@ -97,14 +100,15 @@ fun ChatTranscript(
     // 活卡逐字长在正文尾巴上：它的字数也在 key 里，贴着底时跟着它长。
     val lastUnit = state.units.lastOrNull()
     val liveLength = state.live.sumOf { c -> c.blocks.sumOf { it.text.orEmpty().length } + 1 }
-    val total = state.units.size + state.live.size
+    val total = state.stream.size + state.live.size
     val viewport by remember { derivedStateOf { listState.layoutInfo.viewportSize.height } }
 
     // 从一处命中打开：落点那张卡出来了 ⇒ 滚到它、不跟到底（人滚到底才又跟）；落点出来之前也不跟到底。
     var landed by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(state.landing) {
+    // 落点收在折着的那一段里：会话先展开那一段（流里才有它），这里等它出现在流里再滚。
+    LaunchedEffect(state.landing, state.stream.any { it.key == state.landing }) {
         val key = state.landing ?: return@LaunchedEffect
-        val i = state.units.indexOfFirst { it.key == key }
+        val i = state.stream.indexOfFirst { it.key == key }
         if (i < 0) return@LaunchedEffect
         following = false
         landed = key
@@ -119,7 +123,7 @@ fun ChatTranscript(
         HistoryStatusBar(state)
 
         ClaudeReadingPane(
-            units = state.units,
+            items = state.stream,
             modifier = Modifier.weight(1f).testTag(ChatTestTags.PANE),
             listState = listState,
             // 落点那张卡：描边，折着的展开。
@@ -129,6 +133,7 @@ fun ChatTranscript(
             onRetrySend = onRetrySend,
             trailer = { liveCards(state.live) },
             stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
+            process = { ProcessRow(it, process) },
         )
 
         state.failedWhy?.let {

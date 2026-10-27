@@ -21,6 +21,7 @@ import com.ccmonitor.mobile.core.claude.link.generation
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Draft
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
@@ -91,6 +92,8 @@ data class ChatUiState(
     val draft: String? = null,
     /** 从一处命中打开的落点（那张卡的 key：滚到它、折着就展开）；不是从命中打开的 · 那张卡还没读到 ⇒ `null`。 */
     val landing: String? = null,
+    /** 流里画的那几项：[units] 照那台 `history-turns` 的分段折好（[ChatTurns]）；分段还没问到 · 问不到 ⇒ 逐条摊开。 */
+    val stream: List<StreamItem> = emptyList(),
 )
 
 /**
@@ -216,6 +219,9 @@ class ChatSession(
     private var follow: Job? = null
     private var starting: Job? = null
 
+    /** 过程怎么分段（那台 `history-turns`）· 点开着的那几段。 */
+    private val folds = ChatTurns(link)
+
     /** 开屏：先填上次没发的草稿；已有的那条先上缓存、再读最后一屏、跟上；新建会话什么都不问那台。 */
     fun open() {
         if (!draftAsked) {
@@ -282,10 +288,32 @@ class ChatSession(
             anchorPath = null
             landingKey = null
             landingTool = null
+            folds.forget(all = true)
             body.reset(emptyList())
             _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
             publishLocked()
             follow = scope.launch { attach(by, fresh = true) }
+        }
+    }
+
+    /** 点一行过程：开 ⇄ 合。 */
+    fun toggle(after: String) = underLock { folds.toggle(after) }
+
+    /** 「跳到第一处失败」：那一段展开（记成手动开），落点是那台指的那一步那张卡。 */
+    fun jumpFail(after: String) =
+        underLock {
+            folds.failOf(body.units(), after)?.let {
+                landingKey = it
+                landingTool = null
+            }
+        }
+
+    private fun underLock(f: () -> Unit) {
+        scope.launch {
+            lock.withLock {
+                f()
+                publishLocked()
+            }
         }
     }
 
@@ -533,6 +561,7 @@ class ChatSession(
         with(chips) { watch(s) }
         val (p, facts) = recordOf(s, fresh) ?: return@coroutineScope
         path = p
+        followTurns(s, p)
         if (facts != null) chips.take(facts) else launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { loadLocked(p, at) }
@@ -593,9 +622,20 @@ class ChatSession(
             // 从头重读了：手上那一份不交（续点作废），读最后一屏、整份重来（同桌面那一 tab 整份重来）。
             Event.Reread -> {
                 anchorOffset = null
+                folds.forget()
                 reloadLocked(p)
             }
         }
+
+    /** 过程分段跟着记录问（见 [ChatTurns.follow]）：问之前取已拉到的最上面那一行，问到了在锁里接上、上屏。 */
+    private fun CoroutineScope.followTurns(
+        s: String,
+        p: String,
+    ) = folds.follow(this, p, link.table.map { it.live[s]?.face }, { head }) { block ->
+        lock.withLock {
+            if (path == p && block()) publishLocked()
+        }
+    }
 
     /**
      * 上次读到的（缓存里的页原样，交给与线上同一个解码器）先上屏 ＋ 续点；上次没送完的那几句照它们的结局挂回去。
@@ -798,6 +838,7 @@ class ChatSession(
     ) {
         put(rs)
         rs.filterIsInstance<LineRecord.Said>().mapTo(heard) { it.who.text }
+        folds.want()
     }
 
     /** 新排进来的记录里出现了同一句人话 ⇒ 那一句的本地标消失（一行只消一句）；其余的接在记录后面。 */
@@ -809,9 +850,9 @@ class ChatSession(
             scope.launch { cache.forget(seen.map { it.localId }) }
         }
         val local = outgoing.map { RenderUnit.UserText(it.localId, it.text, null, it.delivery, it.deliveryText) }
-        val units = body.units()
+        val units = body.units() + local
         val landing = landingTool?.let { t -> units.firstOrNull { it is RenderUnit.ToolCall && it.toolUseId == t }?.key } ?: landingKey
-        _state.value = _state.value.copy(units = units + local, landing = landing)
+        _state.value = _state.value.copy(units = units, landing = landing, stream = folds.fold(units, landing))
     }
 
     companion object {

@@ -30,6 +30,11 @@ class ChatViewModel(
 
     fun stop() = session.stop()
 
+    /** 点一行过程（开 ⇄ 合）· 「跳到第一处失败」。 */
+    fun toggle(after: String) = session.toggle(after)
+
+    fun jumpFail(after: String) = session.jumpFail(after)
+
     /** 输入那一圈（➤ · ■ · 两颗 chip · ［+］面板）。 */
     val actions: ChatInputActions =
         ChatInputActions(

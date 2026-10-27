@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.diff.structuredPatchToDiff
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
+import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -55,12 +56,12 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
- * 会话只读阅读面：把 [RenderUnit] 列表渲染成卡片流，嵌在会话屏里复用。
- * LazyColumn key 用 [RenderUnit.key]（分类器算的 uuid#blockIndex，身份稳定），实时追加不错位。
+ * 会话只读阅读面：把流里的那几项（卡 ‖ 一段过程的那一行，[StreamItem]）渲染成卡片流，嵌在会话屏里复用。
+ * LazyColumn key 用 [StreamItem.key]（卡是分类器算的 uuid#blockIndex，身份稳定），实时追加不错位。
  */
 @Composable
 fun ClaudeReadingPane(
-    units: List<RenderUnit>,
+    items: List<StreamItem>,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     matchedKeys: Set<String> = emptySet(), // 搜索命中的 unit.key：高亮，并展开命中的折叠卡
@@ -71,6 +72,8 @@ fun ClaudeReadingPane(
     trailer: LazyListScope.() -> Unit = {},
     // 一次工具调用（tool_use id）此刻在等人 ⇒ 卡上那枚标的字（那台写好的）；不在等 ⇒ null。
     stepBadge: (String) -> String? = { null },
+    // 一段过程的那一行（聊天屏画它）。
+    process: @Composable (StreamItem.Process) -> Unit = {},
 ) {
     val tokens = LocalAppTokens.current
     // 整个面共享一个 Markwon 实例，避免每张卡重建解析器。
@@ -86,24 +89,52 @@ fun ClaudeReadingPane(
             // `contentType` 要给：卡片有好几种，不给的话 Compose 会试图把一种卡的组合复用到另一种上。
             // 更要紧的是它与 `AndroidView` 的 View 复用串联：Markwon 走 `AndroidView`，View 复用只在外层组合被复用时发生；
             // 没有 contentType 组合就不复用，每滑一屏都在重建 TextView、重跑 Markwon。
-            items(units, key = { it.key }, contentType = { it::class }) { unit ->
-                val matched = unit.key in matchedKeys
-                when (unit) {
-                    is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend)
-                    is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
-                    is RenderUnit.Thinking -> ThinkingCard(unit, matched)
-                    is RenderUnit.ToolCall -> ToolCallCard(unit, matched, stepBadge(unit.toolUseId))
-                    // 斜杠命令、bash 输入输出、compact 摘要各有自己的卡片。
-                    is RenderUnit.SlashCommand -> SlashCommandCard(unit, matched)
-                    is RenderUnit.BashInput -> BashInputCard(unit, matched)
-                    is RenderUnit.BashOutput -> BashOutputCard(unit, matched)
-                    is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
-                    is RenderUnit.Interrupt -> InterruptLine(unit)
-                    is RenderUnit.Unread -> UnreadLine(unit, matched)
+            items(items, key = { it.key }, contentType = { (it as? StreamItem.Card)?.unit?.let { u -> u::class } ?: it::class }) { item ->
+                when (item) {
+                    is StreamItem.Process -> process(item)
+                    // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
+                    is StreamItem.Card ->
+                        Box(if (item.fold != null) Modifier.foldRail() else Modifier) {
+                            UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, stepBadge)
+                        }
                 }
             }
             trailer()
         }
+    }
+}
+
+/** 过程里那几张卡左边那一道竖线。 */
+@Composable
+private fun Modifier.foldRail(): Modifier {
+    val tokens = LocalAppTokens.current
+    val rail = tokens.borderStrong
+    return this
+        .drawBehind { drawRect(rail, size = Size(2.dp.toPx(), size.height)) }
+        .padding(start = tokens.spacing.sm)
+}
+
+/** 一张卡（照它今天的样子）。 */
+@Composable
+private fun UnitCard(
+    unit: RenderUnit,
+    matched: Boolean,
+    onCopyCode: (String) -> Unit,
+    onRetrySend: (String) -> Unit,
+    stepBadge: (String) -> String?,
+) {
+    when (unit) {
+        is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend)
+        is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
+        is RenderUnit.Thinking -> ThinkingCard(unit, matched)
+        is RenderUnit.ToolCall -> ToolCallCard(unit, matched, stepBadge(unit.toolUseId))
+        // 斜杠命令、bash 输入输出、compact 摘要各有自己的卡片。
+        is RenderUnit.SlashCommand -> SlashCommandCard(unit, matched)
+        is RenderUnit.BashInput -> BashInputCard(unit, matched)
+        is RenderUnit.BashOutput -> BashOutputCard(unit, matched)
+        is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
+        is RenderUnit.Interrupt -> InterruptLine(unit)
+        is RenderUnit.Unread -> UnreadLine(unit, matched)
     }
 }
 
