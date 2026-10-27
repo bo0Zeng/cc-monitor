@@ -2,7 +2,7 @@
  * **改一个标签页的名**：名字住会话那台的注解（`history-annotate {customTitle}`，历史页「改标题」同一格），
  * 叫它什么由那台后端定（改过的名 ＞ agent 起的标题 ＞ 第一句）、随帧交来（`Tab.label`）—— 这里只交命令，tab 上的名字等推帧来了才换。
  *
- * 入口：标题双击 · 右键「改标题」· 命令面板「改标题」，都经 {@link renameTab}。
+ * 入口：标题双击 · 右键「改标题」· 命令面板「改标题」，都经 {@link renameTab}；历史页「改标题」经 {@link askRename}（交法 · 撤销 · 失败那一句同一处）。
  * 有标签页栏的窗口 ⇒ 栏上就地改（栏建起来时经 {@link mountInline} 登记自己）；没有（撕出来的查看窗）、或那一行此刻看不见 ⇒ 对话框。
  */
 import type { Tab } from "./tab-model";
@@ -26,33 +26,41 @@ export function mountInline(begin: Inline): () => void {
   };
 }
 
-/** 改这个标签页的名：栏上就地改；改不了 ⇒ 对话框（同历史页）。 */
+/** 改这个标签页的名：栏上就地改；改不了 ⇒ 对话框。 */
 export function renameTab(tab: Tab): void {
   if (inline?.(tab) === true) return;
-  void askText({
+  void askRename(tab, tab.label ?? "");
+}
+
+/** 对话框里改名（历史页 · 没有栏的窗口）：`initial` 是框里的初值；取消 ⇒ 不交。 */
+export async function askRename(who: Renamed, initial: string): Promise<void> {
+  const next = await askText({
     title: copyText("history.rename.title"),
     label: copyText("history.rename.prompt"),
     action: copyText("history.rename.action"),
-    initial: tab.label ?? "",
-  }).then((next) => {
-    if (next !== null) void commitRename(tab, next);
+    initial,
   });
+  if (next !== null) await commitRename(who, next);
 }
+
+/** 改谁：会话那一台 · 会话 · 此刻的名（与它相同 ⇒ 不交）。 */
+export type Renamed = Pick<Tab, "origin" | "sessionId" | "label">;
+
+const failed = (e: unknown): void => void failToast(copyText("history.rename.failed"), e);
 
 /**
  * 交改好的名：去掉首尾空白；空 ⇒ 交空串（回到原标题）；与此刻的名相同 ⇒ 不交。
  * 交成 ⇒ 可撤销的提示，撤销照回包里改之前那一格（`prev_title`；没有 ⇒ 空串）交回去。交给会话那一台（`origin`）。
  */
-export async function commitRename(tab: Pick<Tab, "origin" | "sessionId" | "label">, next: string): Promise<void> {
+export async function commitRename(who: Renamed, next: string): Promise<void> {
   const name = next.trim();
-  if (name === (tab.label ?? "")) return;
-  const { origin, sessionId } = tab;
+  if (name === (who.label ?? "")) return;
+  const { origin, sessionId } = who;
   try {
     const r = await annotate(origin, sessionId, { customTitle: name });
-    const undo = (): void => void annotate(origin, sessionId, { customTitle: r.prev_title ?? "" }).catch((e: unknown) => failToast(copyText("history.rename.failed"), e));
-    undoToast(copyText("history.rename.done"), undo, () => {});
+    undoToast(copyText("history.rename.done"), () => void annotate(origin, sessionId, { customTitle: r.prev_title ?? "" }).catch(failed), () => {});
   } catch (e) {
-    failToast(copyText("history.rename.failed"), e);
+    failed(e);
   }
 }
 
