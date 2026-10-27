@@ -21,6 +21,9 @@ import org.junit.rules.TemporaryFolder
 import java.io.IOException
 import kotlin.coroutines.EmptyCoroutineContext
 
+/** 那台判「收」的那一格（照生成的那一形：类别 ＋ 类别字必填）。 */
+internal val OK: Map<String, Any?> = mapOf("ok" to true, "class" to "image", "class_text" to "图")
+
 /**
  * 输入框上方那一排：选好一份 ⇒ 拷进本机 ⇒ 那台问收不收 ⇒ 分块送进暂存区 ⇒ 落成编号；收不收 · 上限 · 那一句全是那台的。
  * 三类错各一条：手机这边（存不下 ⇒ 换一张）· 那台的错（那台那一句 ＋ 重试）· 离线（排队、连上接着传）。
@@ -36,7 +39,7 @@ class AttachTrayTest {
     private fun remote(said: String) = Reply.Failed(CoreFailure("dir_full", said, "d", null))
 
     /** 那台：全收；落一份回一个新编号；撤照收。 */
-    private fun FakeCoreLink.happy(verdicts: (Int) -> List<Map<String, Any?>> = { n -> List(n) { mapOf("ok" to true) } }) {
+    private fun FakeCoreLink.happy(verdicts: (Int) -> List<Map<String, Any?>> = { n -> List(n) { OK } }) {
         var n = 0
         answer = { cmd, args ->
             when (cmd) {
@@ -104,7 +107,7 @@ class AttachTrayTest {
     @Test
     fun what_the_far_side_refuses_before_sending_carries_its_sentence_and_is_never_sent() =
         runTest {
-            val link = FakeCoreLink().apply { happy { n -> List(n) { i -> if (i == 1) mapOf("ok" to false, "why" to "too_big", "said" to "超上限 · ≤50 MB") else mapOf("ok" to true) } } }
+            val link = FakeCoreLink().apply { happy { n -> List(n) { i -> if (i == 1) OK + mapOf("ok" to false, "why" to "too_big", "said" to "超上限 · ≤50 MB") else OK } } }
             val t = tray(link)
             t.put("a.png")
             runCurrent()

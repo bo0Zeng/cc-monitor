@@ -313,6 +313,13 @@ fn attachments_ride_with_the_line_and_sent_ids_are_listed() {
     cancel(&o, SID, "b", T0).unwrap();
     let l = read(&o, SID, T0).unwrap();
     assert_eq!((l.items.len(), l.sent.clone()), (0, vec!["a".to_string()]));
+    // 重投收过的编号：回执那一句照那条此刻的样子写（送进去了 · 撤了）。
+    let again = |id: &str| put(&o, &req(id, "desk", None, T0), T0).unwrap();
+    assert_eq!(
+        (again("a").outcome, again("a").said),
+        (O::Seen, copy_text("beQueue.said.sent", &[]))
+    );
+    assert_eq!(again("b").said, copy_text("beQueue.said.cancelled", &[]));
     for i in 0..SENT_KEEP + 3 {
         let id = format!("m{i}");
         put(&o, &req(&id, "desk", None, T0), T0).unwrap();

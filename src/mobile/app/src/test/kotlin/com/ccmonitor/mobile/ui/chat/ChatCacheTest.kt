@@ -261,7 +261,7 @@ class ChatCacheTest {
         runTest {
             val link = FakeCoreLink()
             val file = FakeCoreLink.File()
-            link.answer = { cmd, args -> if (cmd == "session-queue-put") Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L)) else file.answer(cmd, args) ?: Reply.LinkDown }
+            link.answer = { cmd, args -> if (cmd == "session-queue-put") Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")) else file.answer(cmd, args) ?: Reply.LinkDown }
             link.report("s1", "/w")
             val cache = MemCache().apply { drafts["s1"] = "没发的" }
             val s = open(link, cache)
@@ -306,7 +306,7 @@ class ChatCacheTest {
                     val id = args!!["id"] as String
                     queue.putIfAbsent(id, args["text"] as String)
                     val place = queue.keys.indexOf(id) + 1L
-                    Reply.Ok(mapOf("outcome" to "queued", "seq" to place, "place" to place))
+                    Reply.Ok(mapOf("outcome" to "queued", "seq" to place, "place" to place, "said" to "q-$place"))
                 } else {
                     file.answer(cmd, args) ?: Reply.LinkDown
                 }
@@ -315,10 +315,10 @@ class ChatCacheTest {
             val cache = MemCache().apply { pend += Pending("local-x", "s1", "半路的", PendingOutcome.PENDING, 1) }
             val s = open(link, cache)
             runCurrent()
-            val box = s.state.value.outbox.single()
+            val box = s.box().single()
             assertEquals("local-x" to "半路的", box.id to box.text)
             assertEquals(copyText("mobChat.delivery.sending"), box.said)
-            assertTrue("回执到之前不进流", s.state.value.units.filterIsInstance<RenderUnit.UserText>().isEmpty())
+            assertTrue("回执到之前不进流", s.said().isEmpty())
             assertTrue("断着不交", link.calls("session-queue-put").isEmpty())
 
             link.state.value = linkUp()
@@ -329,17 +329,20 @@ class ChatCacheTest {
             runCurrent()
             assertEquals("那台队里只有一条", listOf("local-x"), queue.keys.toList())
             assertTrue(link.calls("session-queue-put").all { it!!["id"] == "local-x" })
-            assertTrue(s.state.value.outbox.isEmpty())
-            val u =
-                s.state.value.units
-                    .filterIsInstance<RenderUnit.UserText>()
-                    .single()
+            assertTrue(s.box().isEmpty())
+            val u = s.said().single()
             assertEquals("半路的", u.text)
             assertEquals(DeliveryState.QUEUED, u.delivery)
-            assertEquals(copyText("mobChat.delivery.queued", "place" to "1"), u.deliveryText)
+            assertEquals("那台写的那一句", "q-1", u.deliveryText)
             assertEquals(PendingOutcome.DELIVERED, cache.pend.single().outcome)
             assertNull(s.state.value.draft)
         }
+
+    /** 待发里（还没回执）的那几句。 */
+    private fun ChatSession.box() = state.value.outbox
+
+    /** 流里本地那几句（回执到了的）。 */
+    private fun ChatSession.said() = state.value.units.filterIsInstance<RenderUnit.UserText>()
 
     /** 待发里还没回执的那一句撤掉：本地删掉、不再交；照编号请那台撤（万一已经交到了）。 */
     @Test
@@ -357,7 +360,7 @@ class ChatCacheTest {
             runCurrent()
             link.state.value = linkUp()
             runCurrent()
-            assertTrue(s.state.value.outbox.isEmpty())
+            assertTrue(s.box().isEmpty())
             assertTrue(cache.pend.isEmpty())
             assertTrue("撤了就不再交", link.calls("session-queue-put").isEmpty())
             assertEquals(listOf("local-x"), link.calls("session-queue-cancel").map { it!!["id"] })

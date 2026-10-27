@@ -169,10 +169,16 @@ impl Book {
             return Ok(self.receipt(i, QueuePutOutcome::Seen));
         }
         if self.saw(&req.id) {
+            let said = if self.sent.iter().any(|s| s == &req.id) {
+                copy_text("beQueue.said.sent", &[])
+            } else {
+                copy_text("beQueue.said.cancelled", &[])
+            };
             return Ok(QueuePut {
                 outcome: QueuePutOutcome::Seen,
                 seq: None,
                 place: None,
+                said,
             });
         }
         if req.text.len() > TEXT_MAX {
@@ -207,10 +213,19 @@ impl Book {
 
     fn receipt(&self, i: usize, outcome: QueuePutOutcome) -> QueuePut {
         let e = &self.items[i];
+        let place = (e.state == QueueState::Queued).then(|| self.place_of(e));
+        let said = match (e.state, place) {
+            (QueueState::Queued, Some(p)) => {
+                copy_text("beQueue.said.place", &[("place", &p.to_string())])
+            }
+            (QueueState::Undelivered, _) => copy_text("beQueue.said.undelivered", &[]),
+            _ => copy_text("beQueue.said.held", &[]),
+        };
         QueuePut {
             outcome,
             seq: e.seq,
-            place: (e.state == QueueState::Queued).then(|| self.place_of(e)),
+            place,
+            said,
         }
     }
 

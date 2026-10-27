@@ -73,6 +73,7 @@ fn queued(_: &SessionQueuePutReq) -> Result<QueuePut, Fail> {
         outcome: QueuePutOutcome::Queued,
         seq: Some(1),
         place: Some(1),
+        said: String::new(),
     })
 }
 

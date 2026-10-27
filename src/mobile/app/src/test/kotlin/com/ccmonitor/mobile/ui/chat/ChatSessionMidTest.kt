@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.Allow
@@ -212,19 +213,26 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `面板里的动作经 session-say 说那一句；那台不送 ⇒ chip 上方那一句`() =
+    fun `面板里的动作同 ➤ 那一句：进待发、投进那条会话的输入队；没回执 ⇒ 在输入框上方发送中，回执到了进流`() =
         runTest {
             val link = FakeCoreLink()
-            val replies = ArrayDeque(listOf(mapOf("result" to "delivered"), mapOf("result" to "refused", "why" to "waiting", "said" to "先答完需手动")))
-            val s = existing(link) { cmd, _ -> if (cmd == "session-say") Reply.Ok(replies.removeFirst()) else null }
+            val replies = ArrayDeque(listOf<Reply>(Reply.Ok(mapOf("outcome" to "queued", "seq" to 1L, "place" to 1L, "said" to "q-1")), Reply.TimedOut))
+            val s = existing(link) { cmd, _ -> if (cmd == "session-queue-put") replies.removeFirst() else null }
             runCurrent()
             s.say("/compact")
             runCurrent()
-            assertNull(s.state.value.note)
             s.say("/clear")
             runCurrent()
-            assertEquals(copyText("terminal.input.failed", "why" to "先答完需手动"), s.state.value.note)
-            assertEquals(listOf("/compact", "/clear"), link.calls("session-say").map { it?.get("text") })
+            assertNull(s.state.value.note)
+            assertEquals(listOf("/compact", "/clear"), link.calls("session-queue-put").map { it?.get("text") })
+            assertEquals(
+                listOf("/compact"),
+                s.state.value.units
+                    .filterIsInstance<RenderUnit.UserText>()
+                    .map { it.text },
+            )
+            val box = s.state.value.outbox
+            assertEquals(listOf("/clear" to copyText("mobChat.delivery.sending")), box.map { it.text to it.said })
         }
 
     /** 核心交来的一处整份：[texts] 每一项一张卡（一块正文）。 */

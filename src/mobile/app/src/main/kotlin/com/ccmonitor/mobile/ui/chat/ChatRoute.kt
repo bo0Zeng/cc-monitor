@@ -116,7 +116,6 @@ fun ChatRoute(
     val vm: ChatViewModel = koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
     val backends = koinInject<HostBackends>()
-    val sid = remember(vm) { vm.state.map { it.sid } }
     // 在屏上才进这台的 stream-watch 名单（离屏 ⇒ 退出，列表页上名单是空的）。
     DisposableEffect(vm) {
         vm.visible(true)
@@ -130,7 +129,7 @@ fun ChatRoute(
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
     }
     val picker = vm.picker
-    val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), sid, host.machine)
+    val needs = rememberChatNeeds(open.key, hostId, backends.of(hostId), remember(vm) { vm.state.map { it.sid } }, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(

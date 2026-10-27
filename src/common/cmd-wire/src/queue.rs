@@ -114,6 +114,8 @@ pub struct QueuePut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub place: Option<u32>,
+    /// 那一条此刻的样子，会话那台写好（排队 · 第几 · 已送进 · 已撤），发件端贴在那一句下面。
+    pub said: String,
 }
 
 /// `session-queue-cancel` 的入参：撤 `machine` 那台 `sid` 那条会话队里的 `id`。

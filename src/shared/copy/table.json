@@ -22948,22 +22948,34 @@
       "zh": "发送中",
       "args": []
     },
-    "mobChat.delivery.queued": {
+    "beQueue.said.place": {
       "kind": "body",
       "role": "状态",
       "zh": "排队 · 第 {place}",
       "args": ["place"]
     },
-    "mobChat.delivery.arrived": {
+    "beQueue.said.held": {
       "kind": "body",
       "role": "状态",
       "zh": "排队",
       "args": []
     },
-    "mobChat.delivery.inAgent": {
+    "beQueue.said.sent": {
       "kind": "body",
       "role": "片段",
       "zh": "已送进会话",
+      "args": []
+    },
+    "beQueue.said.cancelled": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已取消",
+      "args": []
+    },
+    "beQueue.said.undelivered": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "失败 · 未送进会话",
       "args": []
     },
     "mobChat.outbox.cancel": {
