@@ -331,6 +331,48 @@ where
     reply_of(machine, C::NAME, v)
 }
 
+/// [`hop`] 交给那台最多等多久（发起方给得更短 ⇒ 照发起方）。
+const HOP_CAP: crate::platform::child::Deadline = crate::platform::child::Deadline::secs(10);
+
+/// **跨台那一跳**：写只住会话所在那台的东西（会话输入队 · 收件箱），会话在别台 ⇒ 经 [`ask_resident`] 把同一条交给那台的常驻。
+/// `here` ＝ 同一份入参、`machine` 已换成那台眼里的本机；`ours` ＝ 这一条码表里的码：那台答了其中一个（那台说「不行」）⇒ 原样交回；
+/// 别的（不在机器表 · 链路坏 · 常驻没在跑 · 过了期限）⇒ `offline`、那一句照连接层写的，本机一个字节不写、不攒着回头再发。
+/// `machine` 没有名字（本机）⇒ `bad_args`：本机的调用方就地做，不走这里。
+pub(crate) async fn hop<C: crate::wire::typed::Command>(
+    machine: &cmd_wire::Machine,
+    here: &C::Req,
+    ours: &[&str],
+    tz: &crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<C::Reply, crate::wire::spec::Fail>
+where
+    C::Req: serde::Serialize,
+    C::Reply: serde::de::DeserializeOwned,
+{
+    use crate::wire::spec::Fail;
+    let Some(host) = machine.host_name() else {
+        return Err(Fail::new(
+            "bad_args",
+            crate::common::contract::malformed("`machine` must name a machine"),
+        ));
+    };
+    ask_resident::<C>(
+        host,
+        here,
+        tz,
+        crate::platform::child::Deadline::within(HOP_CAP, until),
+        table,
+        remote,
+    )
+    .await
+    .map_err(|Said { code, message }| match code.as_deref() {
+        Some(c) if ours.contains(&c) => Fail::new(c, message),
+        _ => Fail::new("offline", message),
+    })
+}
+
 /// 一台的结局：答回来的那一份 · 那台的码与那一句。
 pub(crate) type Asked<R> = (cmd_wire::Machine, Result<R, Said>);
 
