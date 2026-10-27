@@ -75,7 +75,6 @@ chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "
 # 一次调用 = 一个干净的 env（**逐次显式给全**，免得上一格的变量漏进来）
 d() {
   env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-      CCBUS_POLICY_MODE="${POLICY:-off}" \
       "$TIMEOUT" "$WALL_CEILING_S" "$D" -- "$@" 2>"$SANDBOX/err.txt"
 }
 
@@ -128,8 +127,8 @@ EOF
 chmod +x "$FK/ccm"
 # 一次发信 = 一个干净的 env（逐次给全）。FROM 缺 ⇒ SA。
 snd() {
-  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="$NOHOME" \
-      CC_BUS_HOME="$BUS" SELF_SID="${FROM-$SA}" CCBUS_POLICY_MODE="${POLICY:-off}" \
+  env CCM_BIN="$FK/ccm" D="$D" CALLS="$CALLS" SAYS="$SAYS" CLAUDE_CONFIG_DIR="$CLA" HOME="${SNDHOME:-$NOHOME}" \
+      CC_BUS_HOME="$BUS" SELF_SID="${FROM-$SA}" \
       "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-send" "$@" 2>"$SANDBOX/snd.err"
 }
 lines_of() { if [ -f "$BUS/inbox/$1.jsonl" ]; then wc -l < "$BUS/inbox/$1.jsonl" | tr -d ' '; else echo 0; fi; }
@@ -172,7 +171,7 @@ chk "★ 拒掉的一封都没进收件箱" "$(lines_of "$SB")" "$_before"
 head -c 1200 /dev/zero | tr '\0' y | snd "$SB" --act inform --title "正好 1200 字节" - >/dev/null; _rc=$?
 chk "  对照：正好 1200 字节（从 stdin 读）照样发得出去" "$_rc|$(lines_of "$SB")" "0|$((_before + 1))"
 
-echo "[5] ★ 一档：投完敲门，且要后端「只在闲着时送」；被路由层拦下 ⇒ rc=3"
+echo "[5] ★ 一档：投完敲门，且要后端「只在闲着时送」"
 : > "$CALLS"; : > "$SAYS"
 snd "$SB" --tier 1 --act request --title "合一下" --ref commit:393349b8b >/dev/null; _rc=$?
 chk "退出 0" "$_rc" "0"
@@ -180,10 +179,22 @@ chk "★ 敲了门：先看屏、再说一句" "$(grep -c -- '--terminal-preview
 chk "★ 说的那一句要后端只在闲着时送（idle_only）、敲的是收件人那条会话、带着看到的指纹" \
   "$(jq -sc '.[0] | [.idle_only, .sid, .seen_screen]' "$SAYS")" "[true,\"$SB\",\"fp-0\"]"
 chk "  敲门那一句不带正文（只说去收信）" "$(jq -s -r '.[0].text | contains("合一下")' "$SAYS")" "false"
-printf 'probe*\tnobody\n%s\tnobody\n' "$SA" > "$BUS/policy.tsv"
-POLICY=on snd "$SB" --act inform --title "t" >/dev/null; _rc=$?
-chk "★ 被路由层拦下：rc=3（与信封被拒的 2 分得开）" "$_rc" "3"
-rm -f "$BUS/policy.tsv"
+
+echo "[5b] ★ 组范围（后端核信封那一处判）：发件人在组里 ⇒ 只送得到同组；名单读不到 ⇒ 拒；退 3 与信封写错的 2 分得开"
+# 沙箱家里的一份注解（只采结构）：SA · SD 在「开发组」，SG 不在任何组。
+GH="$SANDBOX/grouphome"; mkdir -p "$GH/.cc-monitor"
+SD="d0000000-1111-2222-3333-444444444444"; SG="99999999-1111-2222-3333-444444444444"
+printf '{"version":1,"entries":{"%s":{"starred":false,"customTitle":null,"groups":["g1"],"updatedAt":1},"%s":{"starred":false,"customTitle":null,"groups":["g1"],"updatedAt":1}},"groups":{"g1":{"name":"开发组","made":1,"named":1}}}\n' "$SA" "$SD" > "$GH/.cc-monitor/history-metadata.json"
+SNDHOME="$GH" snd "$SG" --act inform --title "组外" "x" >/dev/null; _rc=$?
+chk "★ 收件人不在发件人那组：退 3、一个字节不写" "$_rc|$(lines_of "$SG")" "3|0"
+chk "  stderr 那一句带着发件人在哪组（开发组）" "$(grep -c '开发组' "$SANDBOX/snd.err")" "1"
+SNDHOME="$GH" snd "$SD" --act inform --title "组内" "x" >/dev/null; _rc=$?
+chk "★ 同组照常投到" "$_rc|$(lines_of "$SD")" "0|1"
+FROM="$SG" SNDHOME="$GH" snd "$SD" --act inform --title "组外的人发进来" "x" >/dev/null; _rc=$?
+chk "  发件人不在任何组 ⇒ 照今天，发给谁都行" "$_rc|$(lines_of "$SD")" "0|2"
+printf 'not json' > "$GH/.cc-monitor/history-metadata.json"
+SNDHOME="$GH" snd "$SD" --act inform --title "读不到名单" "x" >/dev/null; _rc=$?
+chk "★ 名单读不到 ⇒ 退 3（不退回成全放行）· 一个字节不写" "$_rc|$(lines_of "$SD")|$(grep -c 'group roster not read' "$SANDBOX/snd.err")" "3|2|1"
 
 echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$EMPTY" HOME="$NOHOME" PATH="$EMPTY" \

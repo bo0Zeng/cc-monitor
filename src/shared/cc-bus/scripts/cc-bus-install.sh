@@ -35,9 +35,8 @@ for s in cc-bus-lib.sh cc-bus-adapt.sh cc-bus-adapt-posix.sh cc-bus-adapt-window
 done
 [ -n "$skipped" ] && echo "⚠ 跳过(PATH 已有同名命令,未覆盖):$skipped —— 确认要用本版本请先手动移除再重装"
 
-# 放示例配置(不覆盖已有;默认不激活任何阀门/ACL)
+# 放示例配置(不覆盖已有;默认不开限流)
 [ -f "$BUSHOME/config.example" ]     || cp "$SKILLDIR/examples/config"     "$BUSHOME/config.example"
-[ -f "$BUSHOME/policy.tsv.example" ] || cp "$SKILLDIR/examples/policy.tsv" "$BUSHOME/policy.tsv.example"
 
 echo "✅ 已安装:7 个命令 → $BINDIR;运行时根 → $BUSHOME"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac
@@ -56,7 +55,7 @@ cat <<EOF
    没装 cc-monitor ⇒ 认不出身份、敲不了门,cc-bus 不工作。
    (查自己是谁:cc-whoami;看谁在线:cc-list)
 
-3) 【可选:开路由策略】cp $BUSHOME/config.example $BUSHOME/config,按需开限流/ACL(见文件注释)。
+3) 【可选:开路由策略】cp $BUSHOME/config.example $BUSHOME/config,按需开限流(见文件注释)。
 
 —— Codex CLI 激活(cc-bus 跨工具:Claude Code 与 Codex 共用同一条 ~/.cc-bus 总线)——
 

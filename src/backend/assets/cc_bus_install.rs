@@ -34,10 +34,6 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/examples/config"),
     ),
     (
-        "examples/policy.tsv",
-        include_bytes!("../../shared/cc-bus/examples/policy.tsv"),
-    ),
-    (
         "scripts/cc-bus-adapt.sh",
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt.sh"),
     ),
@@ -72,6 +68,10 @@ const FILES: &[(&str, &[u8])] = &[
     (
         "scripts/cc-bus-lib.sh",
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-lib.sh"),
+    ),
+    (
+        "scripts/cc-bus-unread.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-unread.sh"),
     ),
     (
         "scripts/cc-bus-stop-hook",

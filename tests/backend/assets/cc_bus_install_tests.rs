@@ -377,7 +377,7 @@ fn an_unwritable_skills_dir_fails_loudly() {
 
 /// ★ 装完就能跑：`scripts/` 下的必须可执行。
 ///
-/// ⚠ 反面也钉：不带 shebang 的示例（`examples/policy.tsv`）**不许**被顺手标成可执行。
+/// ⚠ 反面也钉：不带 shebang 的示例（`examples/config`）**不许**被顺手标成可执行。
 #[cfg(unix)]
 #[test]
 fn deployed_scripts_are_executable() {
@@ -392,11 +392,11 @@ fn deployed_scripts_are_executable() {
             "{rel} 装完不可执行等于没装（mode={mode:o}）"
         );
     }
-    let policy = t.0.join("skills/cc-bus/examples/policy.tsv");
-    let mode = std::fs::metadata(&policy).unwrap().permissions().mode();
+    let example = t.0.join("skills/cc-bus/examples/config");
+    let mode = std::fs::metadata(&example).unwrap().permissions().mode();
     assert!(
         mode & 0o111 == 0,
-        "policy.tsv 不是脚本，却被标成了可执行（mode={mode:o}）"
+        "examples/config 不是脚本，却被标成了可执行（mode={mode:o}）"
     );
 }
 
@@ -429,7 +429,7 @@ fn the_install_manifest_carries_only_the_send_and_receive_commands() {
     examples.sort_unstable();
     assert_eq!(
         examples,
-        ["config", "policy.tsv"],
+        ["config"],
         "装出去的示例多了删掉的那几样"
     );
     let install = include_str!("../../../src/shared/cc-bus/scripts/cc-bus-install.sh");
