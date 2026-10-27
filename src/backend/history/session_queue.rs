@@ -471,14 +471,33 @@ pub(crate) fn sids(own: &Own) -> Vec<String> {
     };
     let mut out: Vec<String> = rd
         .filter_map(Result::ok)
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            let sid = name.strip_suffix(".json")?;
-            sid.parse::<cmd_wire::Sid>().ok().map(|_| sid.to_string())
-        })
+        .filter_map(|e| sid_of_name(e.file_name().to_str()?))
         .collect();
     out.sort();
     out
+}
+
+/// `<sid>.json` ⇒ 那个 sid（别的名字：锁 · 换名上位前的旁名 ⇒ `None`）。
+fn sid_of_name(name: &str) -> Option<String> {
+    let sid = name.strip_suffix(".json")?;
+    sid.parse::<cmd_wire::Sid>().ok().map(|_| sid.to_string())
+}
+
+/// 这台的队目录（家目录解析不出来 ⇒ `None`）：watcher 盯它。
+pub(crate) fn dir_here() -> Option<std::path::PathBuf> {
+    crate::platform::paths::home_dir().map(|h| crate::platform::paths::home_join(&h, DIR_REL))
+}
+
+/// 这一批文件事件里动过的那几条会话的队（`dir` 下的 `<sid>.json`；批内去重、照名排）。**纯函数**（判据直接喂路径）。
+pub(crate) fn sids_touched<'a>(
+    paths: impl Iterator<Item = &'a std::path::Path>,
+    dir: &std::path::Path,
+) -> Vec<String> {
+    let out: std::collections::BTreeSet<String> = paths
+        .filter(|p| p.parent() == Some(dir))
+        .filter_map(|p| sid_of_name(p.file_name()?.to_str()?))
+        .collect();
+    out.into_iter().collect()
 }
 
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。
