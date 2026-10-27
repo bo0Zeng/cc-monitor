@@ -766,3 +766,43 @@ fn a_reply_written_after_the_pidfile_says_waiting_stays_outside() {
         );
     }
 }
+
+/// ★ 每段带「第一处失败」落在哪：工具结果出错 ⇒ 发出那次调用的那一条 ＋ 调用 id；收场通知说失败 ⇒ 那条通知；
+/// 段里没有失败 ⇒ 没有。两处都失败的段只指头一处。
+#[test]
+fn each_fold_points_at_its_first_failure() {
+    let t = "2026-10-07T08:00:00Z";
+    let lines = [
+        user("u1", t, "q"),
+        said("a1", t, calls("t1")),
+        result("r1", "t1", false),
+        said("a2", t, text("中间的话")),
+        said("a3", t, calls("t2")),
+        said("a3b", t, calls("t3")),
+        result("r2", "t2", false),
+        result("r3", "t3", true),
+        serde_json::json!({"type":"user","uuid":"n1","timestamp":t,"origin":{"kind":"task-notification"},"message":{"content":"<task-notification><task-id>bg1</task-id><status>failed</status></task-notification>"}}),
+        said("a4", t, text("又说一句")),
+        serde_json::json!({"type":"user","uuid":"n2","timestamp":t,"origin":{"kind":"task-notification"},"message":{"content":"<task-notification><task-id>bg2</task-id><status>failed</status></task-notification>"}}),
+        said("a5", t, text("结论")),
+    ];
+    let row = scan(&body_of(&lines), 0).remove(0);
+    assert_eq!(afters(&row), ["u1", "a2", "a4"]);
+    let fails: Vec<Option<FailAt>> = row.folds.iter().map(|f| f.first_fail.clone()).collect();
+    assert_eq!(
+        fails,
+        [
+            None,
+            Some(FailAt {
+                uuid: "a3b".into(),
+                tool: Some("t3".into()),
+                line: 5,
+            }),
+            Some(FailAt {
+                uuid: "n2".into(),
+                tool: None,
+                line: 10,
+            }),
+        ]
+    );
+}

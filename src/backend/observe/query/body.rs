@@ -341,6 +341,115 @@ pub(crate) fn read_page(
     })
 }
 
+/// 从尾巴往前读**一页**（在跑的子运行从底部读起、往上翻再取上一页）：`[from, end)`，`end` ＝ `before`（缺 ⇒ 文件里最后一个整行之后，
+/// 没写完的残尾不交）；`from` 切在行头、不超过 `page` 字节往前 —— 一页里连一个行头都没有（一行比 `page` 还长）⇒ 往前续读到那一行的行头，
+/// 但那一行不超过 `line_cap`（超了回 `oversized_line`，同 [`read_page`]）。往前再读一页拿 `from` 当 `before`；`from` ＝ 0 ⇒ 到头了。
+pub(crate) fn read_back(
+    agent_home: &Path,
+    jsonl_path: &str,
+    before: Option<u64>,
+    page: usize,
+    line_cap: usize,
+) -> Result<BackPage, (&'static str, String)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
+    let mut f = Ro::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
+    let len = f
+        .metadata()
+        .map_err(|e| ("failed", format!("stat failed: {e}")))?
+        .len();
+    let mut grab = |from: u64, to: u64| -> Result<Vec<u8>, (&'static str, String)> {
+        let mut buf = Vec::with_capacity((to - from) as usize);
+        f.seek(SeekFrom::Start(from))
+            .map_err(|e| ("failed", format!("seek failed: {e}")))?;
+        (&mut f)
+            .take(to - from)
+            .read_to_end(&mut buf)
+            .map_err(|e| ("failed", format!("read failed: {e}")))?;
+        Ok(buf)
+    };
+    let too_long = |at: u64| {
+        (
+            "oversized_line",
+            copy_text(
+                "beHistoryQuery.readPage.lineTooLong",
+                &[
+                    ("lineCap", &line_cap.to_string()),
+                    ("offset", &at.to_string()),
+                ],
+            ),
+        )
+    };
+    let mut end = before.map_or(len, |b| b.min(len));
+    if before.is_none() {
+        // 残尾不交：切在最后一个整行之后（往前找那个换行，一块一块读）。
+        let mut at = end;
+        loop {
+            if at == 0 {
+                end = 0;
+                break;
+            }
+            let lo = at.saturating_sub(64 * 1024);
+            let chunk = grab(lo, at)?;
+            if let Some(i) = chunk.iter().rposition(|&b| b == b'\n') {
+                end = lo + i as u64 + 1;
+                break;
+            }
+            at = lo;
+        }
+    }
+    // 带上起点前那一个字节：它是换行（或起点 ＝ 0）⇒ 起点就是行头。
+    let want = end.saturating_sub(page as u64);
+    let mut lo = want.saturating_sub(1);
+    let mut bytes = grab(lo, end)?;
+    let line_head = |bytes: &[u8], lo: u64, s: u64| s == 0 || bytes[(s - 1 - lo) as usize] == b'\n';
+    // 一页里第一个行头（不含末尾）：从 `want` 往后找。
+    let first = (want..end).find(|&s| line_head(&bytes, lo, s));
+    let from = match first {
+        Some(s) => s,
+        None => loop {
+            // 一页里没有行头：那一行从更前面起，往前续读到它的行头。
+            if let Some(s) = (lo..want)
+                .rev()
+                .find(|&s| s == 0 || (s > lo && line_head(&bytes, lo, s)))
+            {
+                break s;
+            }
+            if end - lo > line_cap as u64 {
+                return Err(too_long(lo));
+            }
+            let earlier = lo.saturating_sub(64 * 1024);
+            let mut more = grab(earlier, lo)?;
+            more.extend_from_slice(&bytes);
+            bytes = more;
+            lo = earlier;
+        },
+    };
+    if end - from > line_cap as u64 && first.is_none() {
+        return Err(too_long(from));
+    }
+    bytes.drain(..(from - lo) as usize);
+    Ok(BackPage {
+        bytes,
+        from,
+        end,
+        more: end < len,
+    })
+}
+
+/// [`read_back`] 的一页。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct BackPage {
+    /// 原始字节（整行）。
+    pub bytes: Vec<u8>,
+    /// 这一页从这里起（行头）；往前再读一页拿它当 `before`，0 ⇒ 到头了。
+    pub from: u64,
+    /// `end` 之后还有字节（往后从 `end` 接着读；残尾也算）。
+    pub more: bool,
+    /// 这一页到这里为止（最后一个整行之后）。
+    pub end: u64,
+}
+
 /// [`read_page`] 的一页。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ReadPage {
