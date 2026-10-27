@@ -28,6 +28,10 @@ screen?: string,
  */
 resumed?: boolean, 
 /**
+ * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
+ */
+gone?: Array<string>, 
+/**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };

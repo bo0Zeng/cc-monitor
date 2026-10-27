@@ -3,6 +3,7 @@ import type { ProfileProblem } from "./ProfileProblem";
 import type { ProfileRow } from "./ProfileRow";
 import type { ProfileSlot } from "./ProfileSlot";
 import type { ProfilesMigrated } from "./ProfilesMigrated";
+import type { SetOut } from "./SetOut";
 
 /**
  * `profiles-read` 的应答：配置文件整份。
@@ -32,6 +33,10 @@ editedAt: string | null,
  * TOML 本身写坏 ⇒ 那一处（这时 `profiles` 为空、不能按条目改）；否则 `null`。
  */
 fileProblem: ProfileProblem | null, profiles: Array<ProfileRow>, 
+/**
+ * 这台存好的几组会话（`[set."组名"]`，照写下的先后）；一组写错只那一组带 `problems`。
+ */
+sets: Array<SetOut>, 
 /**
  * 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
  */

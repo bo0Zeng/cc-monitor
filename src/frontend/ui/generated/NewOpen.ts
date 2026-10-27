@@ -42,4 +42,8 @@ permissionMode?: string,
 /**
  * 轮换：缺 ＝ 用「新会话用」的那份策略 · `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
  */
-rotation?: RotationPick, };
+rotation?: RotationPick, 
+/**
+ * 经哪条别名起（一类 ＝ 一条别名：那一行 `ccm @别名`，别名合下来的几格在 ccm 那一侧合、这一趟给的盖过它）；缺 ⇒ 不经别名。
+ */
+alias?: string, };
