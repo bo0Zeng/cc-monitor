@@ -2648,6 +2648,7 @@ version = "0.1.0"
 dependencies = [
  "cmd-wire",
  "copy-core",
+ "egress",
  "flate2",
  "guard-core",
  "libc",

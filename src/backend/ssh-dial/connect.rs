@@ -422,35 +422,54 @@ pub fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<clie
     })
 }
 
+/// 经代理那一跳的握手期限（代理收了连接却一直不答 ⇒ 这么久之后那一下读报错返回，拨号报 `timeout`）：一次阻塞读写的上限，不是周期唤醒。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "经代理拨 SSH 时代理握手那几次阻塞读写的上限（出网口装在 socket 上），不是会自己醒来的构件"
+)]
+const PROXY_HANDSHAKE: Duration = Duration::from_millis(30_000);
+
 /// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 跨这一跳的字节压不压)` ——
 /// 判准的答案过了闸（[`RUSSH_ZLIB_SOUND`]）才算数。
+///
+/// TCP 经出网口开（`out`：生产是这台的那一份 `egress::here()`）：直连，或经代理（握手完了交回的就是到那台的隧道）。
+/// 跳板那一形不走这里的是目标那一跳（它走跳板的 direct-tcpip）；最外那一台跳板的 TCP 照样经这里。
 async fn tcp_hop(
     ep: &Endpoint,
+    out: &egress::Egress,
 ) -> Result<(tokio::net::TcpStream, bool), (&'static str, std::io::Error)> {
-    // 测试档不许出网：目的地不是本机回环（回环判定只有 `upstream_is_loopback` 那一个家）⇒ 当场 panic，不连、不解析名字。
-    // 本 crate 自己的判据（`test`）与后端的测试档（经 dev 依赖开 `test-support`）都管到。
-    #[cfg(any(test, feature = "test-support"))]
-    assert!(
-        upstream_url_core::upstream_is_loopback(&ep.host),
-        "测试档不许出网：{}",
-        ep.host
-    );
-    // 先解析（解析不出来与拨不通是两件事，原因码分开），再按解析出来的地址逐个拨。
-    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((ep.host.as_str(), ep.port))
-        .await
-        .map_err(|e| ("resolve", e))?
-        .collect();
-    if addrs.is_empty() {
-        return Err((
-            "resolve",
-            std::io::Error::other(copy_text("beConnect.race.noAddress", &[])),
-        ));
-    }
-    let tcp = tokio::net::TcpStream::connect(&addrs[..])
-        .await
-        .map_err(|e| (stage_of_io(&e), e))?;
+    // 解析不出来与拨不通是两件事，原因码分开（出网口按步交回）；「测试档不许出网」那一句断言住出网口真开 TCP 的那一处。
+    let (host, port, out) = (ep.host.clone(), ep.port, out.clone());
+    let opened = tokio::task::spawn_blocking(move || {
+        egress::open(&out, &host, port, Some(PROXY_HANDSHAKE))
+    })
+    .await
+    .map_err(|e| ("other", std::io::Error::other(e)))?
+    .map_err(|f| {
+        match f.stage {
+            // 解析出来零个地址：那一句照旧。
+            egress::Stage::Resolve if f.io.kind() == std::io::ErrorKind::NotFound => (
+                "resolve",
+                std::io::Error::other(copy_text("beConnect.race.noAddress", &[])),
+            ),
+            egress::Stage::Resolve => ("resolve", f.io),
+            egress::Stage::Connect | egress::Stage::Proxy => (stage_of_io(&f.io), f.io),
+        }
+    })?;
+    let via_proxy = opened.via_proxy;
+    let std_tcp = opened.tcp;
+    // 期限只管代理握手那几下；之后这条 socket 交给异步运行时（非阻塞，期限也不再生效），照旧清掉。
+    let to_async = |s: std::net::TcpStream| -> std::io::Result<tokio::net::TcpStream> {
+        s.set_read_timeout(None)?;
+        s.set_write_timeout(None)?;
+        s.set_nonblocking(true)?;
+        tokio::net::TcpStream::from_std(s)
+    };
+    let tcp = to_async(std_tcp).map_err(|e| (stage_of_io(&e), e))?;
     let rtt = crate::tcp_rtt::rtt_us(&tcp);
-    let judged = compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
+    // 经代理 ⇒ 这条 socket 的对端是代理：量到的往返不是到那台的 ⇒ 照「读不到」那一格（压）。
+    let judged = via_proxy
+        || compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
     let compress = judged && RUSSH_ZLIB_SOUND;
     tracing::info!(
         "dial: {} 往返 {} ⇒ 判准：{}{}",
@@ -516,7 +535,7 @@ async fn race(
                     endpoint: ep_label.clone(),
                     heard: Arc::clone(&heard),
                 };
-                let r = match tcp_hop(&ep).await {
+                let r = match tcp_hop(&ep, egress::here()).await {
                     Ok((tcp, compress)) => {
                         stages.step(crate::step::TCP);
                         let config = config(apply && compress);
@@ -1148,3 +1167,7 @@ pub async fn establish(
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_compress_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/dial_egress_tests.rs"]
+mod egress_tests;
