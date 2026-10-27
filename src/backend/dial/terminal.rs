@@ -120,22 +120,16 @@ fn literal(powershell: bool, s: &str) -> String {
 }
 
 /// 一份拨号请求 ＋ 命令 ⇒ 这台电脑终端里跑的那一行（`powershell` ＝ 本机终端是不是 PowerShell，见模块头注；`ssh` ＝ ssh 客户端全路径）。
+/// `run` ＝ `--` 后面跟不跟请求里那串命令（不跟 ⇒ 那台自己的登录 shell，那串不验也不渲）。
 pub(crate) fn render(
-    req: &super::DialRequest,
-    powershell: bool,
-    ssh: &str,
-) -> Result<String, CmdErr> {
-    check_command(&req.command, powershell)?;
-    shell_line(req, powershell, ssh, true)
-}
-
-/// [`render`] 的外壳：`run` ＝ `--` 后面跟不跟那串命令（不跟 ⇒ 那台自己的登录 shell）。
-fn shell_line(
     req: &super::DialRequest,
     powershell: bool,
     ssh: &str,
     run: bool,
 ) -> Result<String, CmdErr> {
+    if run {
+        check_command(&req.command, powershell)?;
+    }
     if !user_ok(&req.user) {
         return Err(refused(copy_text(
             "beTerminal.refuse.user",
@@ -327,7 +321,7 @@ pub(crate) fn answer_with(
         serde_json::json!({ "command": command }),
     )?;
     Ok(SshCommand {
-        command: render(&dial, powershell, ssh_path(ssh, powershell)?)?,
+        command: render(&dial, powershell, ssh_path(ssh, powershell)?, true)?,
     })
 }
 
@@ -368,7 +362,7 @@ fn login_shell(
         serde_json::json!({ "command": ":" }),
     )?;
     Ok(SshCommand {
-        command: shell_line(&dial, powershell, ssh_path(ssh, powershell)?, false)?,
+        command: render(&dial, powershell, ssh_path(ssh, powershell)?, false)?,
     })
 }
 
