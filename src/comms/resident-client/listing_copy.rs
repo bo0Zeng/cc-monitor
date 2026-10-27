@@ -141,8 +141,18 @@ impl Copies {
     /// 问不成：手上那份不动、记下那一句（[`Copies::kept`] 照它答），下一次问成了清掉。
     pub fn missed(&self, machine: &str, why: String) {
         let mut book = self.lock();
-        let _ = self.slot(&mut book, machine);
-        book.entry(machine.to_string()).or_default().failed = Some(why);
+        match self.slot(&mut book, machine) {
+            Some(slot) => slot.failed = Some(why),
+            None => {
+                book.insert(
+                    machine.to_string(),
+                    Slot {
+                        failed: Some(why),
+                        ..Slot::default()
+                    },
+                );
+            }
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Slot>> {
