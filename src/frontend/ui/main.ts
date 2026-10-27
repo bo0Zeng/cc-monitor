@@ -42,6 +42,9 @@ import {
 } from "./window-events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
+import { TerminalsView } from "./views/terminals-view";
+import { endRows, readBoard } from "./terminals-board-reads";
+import { openTerminalWindow } from "./terminal-window-open";
 import { PlanView } from "./views/plan";
 import { PlanNeedsBook } from "./plan-needs";
 import { NeedsBook } from "./needs-book";
@@ -217,6 +220,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 终端页跟着当前标签页走（占位标签页显着时看它的那个终端）；`tabs` 在下面才建 ⇒ 先经两个口子取，建好了再接上。
   let activeTab: () => Tab | null = () => null;
   let watched: () => Watched | null = () => null;
+  // 「终端」视图问哪几台：同会话流订的那几台（机器表变了跟着换）。
+  let boardMachines: Origin[] = [LOCAL_ORIGIN];
   const terminalPage = new TerminalPage({
     active: () => watched(),
     front: (sid) => tabs.frontFor(sid),
@@ -227,6 +232,37 @@ window.addEventListener("DOMContentLoaded", async () => {
       el.focus({ preventScroll: true });
     },
   });
+  // 顶层「终端」视图：各台的终端名单（本机后端合好的成品）＋ 同一个终端面部件，看名单里选中的那个终端。
+  let boardWatched: Watched | null = null;
+  const boardFace = new TerminalPage({ active: () => boardWatched, front: (sid) => tabs.frontFor(sid), focusStream: () => {} });
+  const terminalsView: TerminalsView = new TerminalsView({
+    machines: () => boardMachines,
+    read: readBoard,
+    face: () => boardFace.el,
+    watch: (w) => {
+      boardWatched = w;
+      boardFace.setVisible(w !== null);
+      boardFace.sessionChanged();
+    },
+    end: (items) => endRows(items),
+    reconnect: (origin) => tabs.reconnect(origin),
+    goSession: (_origin, sid) => {
+      terminalsView.close();
+      tabs.switchTo(sid);
+    },
+    openWindow: (p) => void openTerminalWindow({ origin: p.origin, terminal: p.row.terminal, name: p.row.tmux_name, title: p.row.title }),
+    newSession: (origin) => void openNewSession(origin ? { origin } : {}),
+  });
+  // 会话状态变了 · 机器连上断开 ⇒ 开着的「终端」视图再问一次（连着来的合成一问）。
+  let boardPoke: ReturnType<typeof setTimeout> | null = null;
+  const pokeBoard = (): void => {
+    if (!terminalsView.isVisible() || boardPoke !== null) return;
+    // 调度：合批 —— 连着来的会话状态变化 · 机器连上断开合成一问
+    boardPoke = setTimeout(() => {
+      boardPoke = null;
+      void terminalsView.refresh();
+    }, 300);
+  };
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
   document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);
@@ -255,6 +291,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     terminalPage.machineUp(origin);
+    boardFace.machineUp(origin);
+    pokeBoard();
     void chores.refreshAll();
     void needsBook.refresh(origin);
     void groupBook.refreshAll([origin]);
@@ -331,6 +369,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         sessionHead.render();
         terminalPage.sessionChanged();
         paintTerminalActs();
+        pokeBoard();
         answerBlock.render();
         paintNeedsTitle();
       });
@@ -535,6 +574,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 计划页（planned-build 的工作区 · 片 · 格）：跟历史同形的顶层视图；接手 / 签收人的标签与「切到会话」看主窗口此刻的标签页。
   const planView = new PlanView();
   overlays.register("plan", planView);
+  overlays.register("terminals", terminalsView);
   planView.tabOf = (sid) => tabs.tabsInOrder().find((t) => t.sessionId === sid) ?? null;
   planView.cwdsOf = (origin) => [...new Set(tabs.tabsInOrder().flatMap((t) => (t.origin === origin && t.projectDir ? [t.projectDir] : [])))];
   planView.switchTo = (sid) => tabs.switchTo(sid);
@@ -636,6 +676,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         },
       },
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
+      { id: "open-terminals", group: "open", icon: "terminal", title: copyText("main.cmd.openTerminals"), keywords: copyText("main.cmd.terminalsKeywords"), run: () => overlays.open("terminals") },
       { id: "open-plan", group: "open", icon: "plan", title: copyText("main.cmd.openPlan"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
       { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
@@ -803,6 +844,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const onMachinesMoved = (now: readonly Origin[], added: readonly Origin[], dropped: readonly Origin[]): void => {
     // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
     tabs.setMachines(now);
+    boardMachines = [...now];
+    pokeBoard();
     for (const o of dropped) void needsBook.drop(o);
     for (const o of dropped) void groupBook.drop(o);
     // 需手动：每台问一次（之后那台推 `changed {needs | plan | manual}` · 条上会话进出需手动再问它）；计划那一侧同。
