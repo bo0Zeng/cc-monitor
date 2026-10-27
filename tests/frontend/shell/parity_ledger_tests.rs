@@ -91,18 +91,9 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   注解的读写者换成本机常驻后端（帧命令 `history-annotate`，界面经通道问 `<local>`；上次的号并进 `session-account`）。
     // `search_history`（`search.history`，Both）退役：本机远端的全文搜索都经通道说 `history-search`
     //   （界面 `src/frontend/ui/views/history-search.ts`），不再是 Tauri 命令 ⇒ 能力数 −1（它是这项能力唯一的命令；原本对称 ⇒ 不对称数不动）。
-    // ⚠ **P3b 复核（08-12）：这条能力两侧都登记着，但实现是 Win32 专属。**
-    // `bind.rs` 的 `SetForegroundWindow` / `IsWindow` / `ShowWindow` 全在 `#[cfg(windows)]` 下
-    // ⇒ **Linux 上这两条命令都没有实现**（不是坏了，是没写）。
-    // 本表记的是「本地/远端平价」，不是「平台覆盖」—— 所以 `Both` 没记错；
-    // 但只读这一行会以为 Linux 也有。⇒ 平台那一维归 `U14`（已裁：要做，排在后面）。
-    ("bring_terminal_to_front", "terminal.focus", Side::Local),
-    // 已握手的终端数：从别名读回口里拆出来（住 monitor 进程的 `BindRegistry`），与拉前同一项能力。
-    (
-        "bring_remote_terminal_to_front",
-        "terminal.focus",
-        Side::Remote,
-    ),
+    // ↗ 本机会话与远端会话同一条命令：本机后端 `session-window` 答它在这台电脑上的哪儿，界面原样交来 ⇒ `Both`。
+    // 本表记的是「本地/远端平价」，不是「平台覆盖」（平台那一维住壳的宿主事实那一格）。
+    ("bring_terminal_to_front", "terminal.focus", Side::Both),
     // 钩子诊断本机 / 远端那一对退役：本机远端合成一条帧命令 `hooks-diag`，界面经通道直问那台。
     // 项目清单那一对 Tauri 命令（Local / Remote）退役：清单住本机常驻后端（`history-list {origin?}`，界面每台一问），
     //   能力 `history.list-projects` 在本表里不再有行。
@@ -958,7 +949,8 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
     (Derived::RemoteOnly, 1),
     (Derived::FramePlane, 0),
     (Derived::Mixed, 1), // `deploy_remote_backend`：两支都走，不是失败退回
-    (Derived::Unclassified, 3),
+    // A3-6 重签：↗ 远端那一条（Unclassified）并进 `bring_terminal_to_front`（`Both`）。
+    (Derived::Unclassified, 2),
 ];
 
 /// 派生器在**整张** `LEDGER` 上认出的 `FramePlane` 命令数（不分 `Side`）—— 候选集（`Remote` 那一栏里的
@@ -1046,8 +1038,9 @@ fn the_remote_side_column_is_signed_off() {
     // 🔴 **地板 17 → 14。** 端口转发三条 `Side::Remote` 退役（转发账进本机常驻后端，界面经通道直问），人群真少了 3 个，现打 14。
     // 🔴 **地板 → 11。** 主线 17 ＋ MIG-1 −6。
     // 🔴 **地板 6 → 5。** 开终端交机器事实那条 `Side::Remote`（`terminal_dial`）退役（A10-2-2：界面只交名字，经通道直问 `terminal-ssh`），人群真少了 1 个。
+    // 🔴 **地板 5 → 4。** ↗ 远端那条 `Side::Remote` 并进 `bring_terminal_to_front`（`Both`：本机后端 `session-window` 答本机远端同一个形），人群真少了 1 个。
     assert!(
-        remote_rows.len() >= 5,
+        remote_rows.len() >= 4,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );

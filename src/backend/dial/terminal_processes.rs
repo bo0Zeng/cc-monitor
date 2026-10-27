@@ -1,5 +1,6 @@
-//! 帧命令 `terminal-processes`：那台报来的「此刻显示这个会话的终端」（`session-terminals` 的 `terminals` 原样交来）
-//! ⇒ **这台电脑上开着那条连接的进程，和它往上的进程链**；或一条说得出的原因。
+//! ↗ 那一问（`session-window`，`faces/session_window_face.rs`）的本机那一半：那台报来的「此刻显示这个会话的终端」
+//! （那台 `session-terminals` 的 `terminals`）⇒ **这台电脑上开着那条连接的进程，和它往上的进程链**；或一条说得出的原因。
+//! 本机会话的链也从这里数（[`chain`]：从显示它的那个终端进程往上）。
 //!
 //! - 事实只来自一趟只读的系统查询（`platform::connection_and_process_tables`，直调系统接口：已建立的 TCP 连接表 ＋
 //!   进程表的进程号 · 父进程号 · 名字 · 启动时刻四格）。不读任何进程的命令行、不读别的进程的内存。
@@ -82,43 +83,12 @@ pub(crate) enum Found {
     QueryFailed,
 }
 
-/// `terminal-processes` 的入参：那台 `session-terminals` 答的 `terminals`，原样交来。
+/// 要对的那几个终端：那台 `session-terminals` 答的 `terminals`，原样交来。
 #[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TerminalProcessesReq {
     /// 1–16 个，最近动静在前。
     pub(crate) terminals: Vec<crate::common::seen_terminal::Terminal>,
-}
-
-crate::wire::typed::codes! {
-    /// `terminal-processes` 自己没有别的码（没查成也照答：`why: "query-failed"`）。
-    pub(crate) enum TerminalProcessesErr {}
-}
-
-/// `terminal-processes`：那台报来的终端连接是这台电脑上哪个进程开的。阻塞档：读连接表 ＋ 进程表四格。
-pub(crate) struct TerminalProcesses;
-
-impl crate::wire::typed::Command for TerminalProcesses {
-    const NAME: &'static str = "terminal-processes";
-    type Req = TerminalProcessesReq;
-    type Reply = Processes;
-    type Err = TerminalProcessesErr;
-}
-
-impl crate::wire::typed::Handle for TerminalProcesses {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: TerminalProcessesReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Processes, TerminalProcessesErr>> + Send + 'static
-    {
-        async move {
-            answer_with(&req, crate::platform::connection_and_process_tables)
-                .map_err(|(_, said)| TerminalProcessesErr::BadArgs(said))
-        }
-    }
 }
 
 /// 本体，系统那一趟是参数（判据喂合成的 JSON）。入参先验，验不过不去问系统（码只有 `bad_args`）。
@@ -130,33 +100,23 @@ pub(crate) fn answer_with(
     let found = match query().and_then(|raw| parse_tables(&raw)) {
         Ok(t) => decide(&wanted, &t),
         Err(e) => {
-            tracing::warn!("terminal-processes: 连接表 / 进程表没问成：{e}");
+            tracing::warn!("session-window: 连接表 / 进程表没问成：{e}");
             Found::QueryFailed
         }
     };
     Ok(product(&found))
 }
 
-/// `terminal-processes` 的应答：进程链（对不上 ⇒ 空链 ＋ 为什么，`elsewhere` 另带对面地址）。
+/// 对出来的：进程链（对不上 ⇒ 空链 ＋ 为什么，`elsewhere` 另带对面地址）。`session-window` 的回包照搬这三格。
 #[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Processes {
     /// 这台上开着那条连接的进程链（自下而上）。
     pub(crate) chain: Vec<Link>,
     /// 对不上时：`not-ssh` · `elsewhere`（不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        test,
-        ts(
-            optional,
-            type = "\"not-ssh\" | \"elsewhere\" | \"mismatch\" | \"query-failed\""
-        )
-    )]
     pub(crate) why: Option<&'static str>,
     /// `elsewhere` 时对面那个地址。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
     pub(crate) addr: Option<String>,
 }
 
