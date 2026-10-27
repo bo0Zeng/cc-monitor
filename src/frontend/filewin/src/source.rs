@@ -126,9 +126,9 @@ impl Listed {
         }
     }
 
-    /// 点得进去：目录，或指向目录的链接。
+    /// 点得进去：那台画成文件夹的那几行（目录 · 指向目录的链接，后端 `files/class.rs::class_of_entry` 判；同手机 `Files.kt::entryOf`）。
     pub fn opens_as_dir(&self) -> bool {
-        self.row.is_dir || self.link_dir
+        self.class == cmd_wire::files::FileClass::Folder
     }
 
     /// 这一行交给「能做什么」那一套（`pick-core`）的那几格。
@@ -561,7 +561,8 @@ pub const CMD_LS: &str = "files-ls";
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
 /// | `mtime_text`（可能缺） | `mtime_text` | 后端按那台本地钟写好的短写法，原样；缺 ⇒ `None` |
 /// | `mtime_full`（可能缺） | `mtime_full` | 后端按那台本地钟写好的完整写法，原样；缺 ⇒ `None` |
-/// | `class` | `class` | 原样（画哪种图标） |
+/// | `class` | `class` | 原样（画哪种图标 · 点不点得进去：[`Listed::opens_as_dir`]） |
+/// | `shown`（头与每一行） | —— | 窗口不读（给手机选目录那一屏的显示形） |
 /// | `type_text` | `type_text` | 原样（「类型」那一列） |
 /// | `gates`（目录缺） | `gates` | 原样（预览 · 看图 · 编辑许不许、许多少） |
 /// | `order` · `up` | 那一屏有几行 | 照回包换进手上那一份（[`Shown`]），由 [`screen_of`] 照先后摊开 |

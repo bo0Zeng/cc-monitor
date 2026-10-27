@@ -6,32 +6,36 @@ use crate::history::history_annotations::kept_for_resume;
 #[test]
 fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
     let items: Vec<(String, i64)> = vec![
-        ("/a".into(), 10),
+        ("/home/x/a".into(), 10),
         ("/b".into(), 30),
-        ("/a".into(), 40),
+        ("/home/x/a".into(), 40),
         ("".into(), 99),
         ("/hidden".into(), 100),
     ];
     // 此刻 ＝ 1970-01-01 00:01（UTC）：40 ms、30 ms 都在当天 ⇒ 时刻字只写 `HH:MM`。
     let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
-    let got = recent_dirs(&items, &|c| c == "/hidden", &clock);
+    // 那台家目录 `/home/x` ⇒ 显示形由这里写好（`~/a`），两端照抄。
+    let home = Some(std::path::Path::new("/home/x"));
+    let got = recent_dirs(&items, &|c| c == "/hidden", &clock, home);
     assert_eq!(
         got,
         vec![
             RecentDir {
-                cwd: "/a".into(),
+                cwd: "/home/x/a".into(),
+                shown: "~/a".into(),
                 last_ms: 40,
                 last_text: "00:00".into(),
             },
             RecentDir {
                 cwd: "/b".into(),
+                shown: "/b".into(),
                 last_ms: 30,
                 last_text: "00:00".into(),
             }
         ]
     );
     let many: Vec<(String, i64)> = (0..20).map(|i| (format!("/d{i}"), i)).collect();
-    let got = recent_dirs(&many, &|_| false, &clock);
+    let got = recent_dirs(&many, &|_| false, &clock, home);
     assert_eq!(got.len(), RECENT_MAX);
     assert_eq!(got[0].cwd, "/d19");
 }
@@ -174,7 +178,7 @@ fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_ch
     assert!(codex.model_default.is_none() && codex.model_note.is_none());
 }
 
-/// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes, permissionDefault}`，`recent` 每项 `{cwd, lastMs, lastText}`。
+/// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes, permissionDefault}`，`recent` 每项 `{cwd, shown, lastMs, lastText}`。
 #[test]
 fn the_new_session_facts_wire_names_its_cells() {
     let v = serde_json::to_value(agent_facts("claude", &Default::default())).unwrap();
@@ -196,10 +200,11 @@ fn the_new_session_facts_wire_names_its_cells() {
         serde_json::json!({"value": "sonnet", "text": copy_core::copy_text("beSessionNew.model.sonnet", &[])})
     );
     let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
-    let r = serde_json::to_value(&recent_dirs(&[("/a".into(), 1)], &|_| false, &clock)[0]).unwrap();
+    let home = Some(std::path::Path::new("/home/x"));
+    let r = serde_json::to_value(&recent_dirs(&[("/home/x/a".into(), 1)], &|_| false, &clock, home)[0]).unwrap();
     assert_eq!(
         r,
-        serde_json::json!({"cwd": "/a", "lastMs": 1, "lastText": "00:00"})
+        serde_json::json!({"cwd": "/home/x/a", "shown": "~/a", "lastMs": 1, "lastText": "00:00"})
     );
 }
 

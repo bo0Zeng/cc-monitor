@@ -104,6 +104,8 @@ const FILE_END: &str = "# === cc-monitor aliases END ===";
 pub(crate) struct StartupFile {
     /// 绝对路径。
     pub path: String,
+    /// `path` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）。
+    pub shown: String,
     /// 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
     pub sourced: bool,
     /// 这份文件在不在盘上。POSIX 只列在的（恒 true）；PowerShell 的 `$PROFILE` 常常要装的时候才建。
@@ -192,8 +194,6 @@ impl Alias {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AliasListing {
-    /// 这台的家目录（界面拿它把路径写成 `~/…` 短形，只做这一步缩写）。
-    pub home: String,
     /// 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
     pub rc_candidates: Vec<StartupFile>,
     /// 人另指的那一份（`read_via` 的 `extra_rc`）过了围栏之后的绝对路径 —— 界面拿它在候选里认出「刚指的是哪一份」。
@@ -479,6 +479,8 @@ pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
     let note = serde_json::to_string(&page::Migrated {
         count: profile::parse_book(&text).profiles.len(),
         path: profile::path_in(home),
+        // 显示形读的那一下才写（存盘这一份不带）。
+        shown: String::new(),
         skipped: notes,
     })
     .map_err(|e| e.to_string())?;
@@ -676,7 +678,6 @@ pub(crate) fn read_via(
     Ok(AliasListing {
         rc_candidates: rc_candidates_via(d, &home, shell, extra.as_deref(), &names)?,
         other_rc: extra,
-        home,
     })
 }
 
@@ -859,6 +860,7 @@ pub(crate) fn rc_candidates_asking(
                 .map(|h| asked.entry(h).or_insert_with(|| ask(h)).clone()),
             block_lines: block::render_block(Shell::of_target(Path::new(&c.path)), home)
                 .map_or(0, |t| t.lines().count()),
+            shown: crate::platform::paths::home_short(&c.path, Some(Path::new(home))),
             path: c.path,
         });
     }
