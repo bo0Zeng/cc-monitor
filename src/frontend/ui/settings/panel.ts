@@ -509,7 +509,7 @@ export class SettingsPanel {
     if (!face) return;
     this.machineOf.delete(LOCAL_ORIGIN);
     const machine = machineName(LOCAL_ORIGIN);
-    this.remoteSection?.setLocalBackend(face);
+    this.remoteSection?.setLocalBackend(l);
     this.router.setNavDot(LOCAL_MACHINE_PAGE_ID, face.dot, `${machine} · ${face.word}`);
     this.machinePages.get(LOCAL_MACHINE_PAGE_ID)?.setMachine(face);
   }
