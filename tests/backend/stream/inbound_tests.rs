@@ -1136,11 +1136,11 @@ fn history_search_options_are_not_subcommand_words() {
     }
 }
 
-/// 账号那几条换成 typed 之前钉的线上字节（沙箱里的空家：没有会话 · 没有转发）。
+/// 账号那几条换成 typed 之前钉的线上字节（沙箱里的空家：没有会话 · 没有转发）。`machine-interrupts` 在异步档（本机后端并好再答）。
 #[test]
 fn the_account_reads_keep_their_wire_bytes() {
     let wire = |cmd: &str, args: serde_json::Value| {
-        serde_json::to_string(&run_registered(cmd, args).unwrap()).unwrap()
+        serde_json::to_string(&run_any(cmd, args).unwrap()).unwrap()
     };
     assert_eq!(
         wire("machine-interrupts", serde_json::json!({})),

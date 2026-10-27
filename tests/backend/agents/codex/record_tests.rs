@@ -612,7 +612,7 @@ fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
         let row = crate::observe::recognize::index_row::index_row_of(
             super::super::AGENT_KIND,
             Some(&v),
-            None,
+            crate::agents::beat_of(super::super::AGENT_KIND, &v).as_ref(),
             offset,
             raw.len() as u64 + 1,
         );

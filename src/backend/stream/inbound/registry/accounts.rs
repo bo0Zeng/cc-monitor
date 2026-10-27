@@ -51,9 +51,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
     crate::wire::typed::blocking::<crate::faces::read_face::AccountsListCmd>("账号清单"),
-    // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（界面问那台 ＋ 问本机数通往那台的转发，并排画）。只读。
-    crate::wire::typed::blocking::<crate::faces::read_face::MachineInterrupts>(
-        "停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么",
+    // 停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么：界面只问本机后端这一条，别的台那一份由它经那台的常驻流问到、
+    //   并好再答（`read_face::interrupts_hub`）⇒ 异步档（这台自己那一份读 pidfile，在阻塞池里出）。只读。
+    crate::wire::typed::asynchronous::<crate::faces::read_face::MachineInterrupts>(
+        "停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前，会打断什么",
     ),
     // 改账号库的那几条（typed：入参 · 成品 · 码表都从 `cmd_wire::accounts` 与 `faces::accounts_face` 的类型来）：本体 `accounts/manage/`，
     //   帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了改配置文件、重生成别名）。

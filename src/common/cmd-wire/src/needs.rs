@@ -222,7 +222,7 @@ pub struct Needs {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub rank: u64,
     /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
-    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
     pub waited_ms: Option<u64>,
     /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。

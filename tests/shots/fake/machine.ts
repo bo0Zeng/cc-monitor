@@ -70,12 +70,16 @@ export function machineOps(): Record<string, OpHandler> {
     },
     // 停 / 重启 / 更新 / 卸载之前「会打断什么」（形状同 `tests/__fixtures__/machine-interrupts.golden.json`）：
     //   devbox 上两个会话的请求经它、一个活着；本机账上通往 devbox 的转发一条；别的台什么都不断。
-    "machine-interrupts": (origin, req) => ({
-      relayedSessions: origin === "devbox" ? 2 : 0,
-      relayedMaybe: 0,
-      liveStreams: origin === "devbox" ? 2 : 0,
-      forwards: origin === "<local>" && req.machine === "devbox" ? 1 : 0,
-    }),
+    //   界面只问本机后端（它问到那台、并好再答）：`machine` = 停的那台；`appExit` 带各台名单。
+    "machine-interrupts": (_origin, req) => {
+      const devbox = req.machine === "devbox" || (req.appExit === true && Array.isArray(req.machines) && req.machines.includes("devbox"));
+      return {
+        relayedSessions: devbox ? 2 : 0,
+        relayedMaybe: 0,
+        liveStreams: devbox ? 2 : 0,
+        forwards: req.machine === "devbox" ? 1 : 0,
+      };
+    },
     // 共用 MCP：两条共用；issue-tracker 在 personal 号里也改了一版（两边都改，等人选）。
     "accounts-mcp-read": () => ({
       enabled: true,

@@ -10,21 +10,21 @@
 //!
 //! - 问的是那台**热着的常驻**（`--resident-call`）：那台扫过的清单缓存与这一问的备忘都在它那里；
 //!   那台常驻不在 ⇒ 照实失败（`resident_absent`），不在那台起一个冷进程顶上。
-//! - 副本只在内存里（按机器名），本机后端重启后第一问整份一次；不按时间过期（这一层不看钟）：历史页开页 · 刷新带 `fresh` 才同步。
+//! - 副本表是端核心那一份（`resident_client::listing_copy`，手机核心同一份）；本机后端把它落在数据目录底下
+//!   `cache/remote-listing/<机器>.json`（缓存：读不懂当没有、不迁移），重启后头一问带盘上那份的记号；
+//!   不按时间过期（这一层不看钟）：历史页开页 · 刷新带 `fresh` 才同步。
 //! - 等多久只归发起方：`history-list` · `history-browse` 那一发交来的截止时刻（请求信封 `within_ms`）原样往下带（本机等它、那台 `--resident-call --within-ms` 也等它）；
 //!   没带 ⇒ `bad_args`，这里不自己定一个。
 //! - 压缩照旧在 SSH 那一层，这里不另做。
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
-
 use cmd_wire::listing::{Listing, ListingHead, RawRow};
-use cmd_wire::sync::{Hand, Held, Patch};
+use cmd_wire::sync::{Held, Patch};
 use serde::{Deserialize, Serialize};
 
 use crate::common::views::{ViewSource, Views};
 use crate::dial::remote_ask::{Remote, Table};
 use crate::platform::child::{Deadline, Until};
+use crate::platform::fs::{Own, OwnPath};
 
 // ───────────────────────── 那台怎么答 ─────────────────────────
 
@@ -109,41 +109,8 @@ pub(crate) fn answer_with(
 
 // ───────────────────────── 本机后端怎么取、怎么存 ─────────────────────────
 
-/// 远端那几台的副本：机器名 ⇒ 手上那份（记号 ＋ 先后 ＋ 各行 ＋ 头）＋ 上一次同步没成的那一句（成了就清掉）。
-#[derive(Default)]
-pub(crate) struct Copies(Mutex<BTreeMap<String, Slot>>);
-
-/// 一台的副本：没问成过 ⇒ `hand.held` 缺。
-#[derive(Default)]
-pub(crate) struct Slot {
-    hand: Hand<ListingHead, RawRow>,
-    failed: Option<String>,
-    /// 手上那份落下的那一刻（毫秒）：同步没成时照它说「下面是那一刻读到的」。
-    at_ms: i64,
-}
-
-impl Copies {
-    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, Slot>> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
-    }
-}
-
-/// 手上那份那台的清单此刻是什么样（不去问）。
-#[derive(Debug)]
-pub(crate) enum Kept {
-    /// 拼回来的那份。
-    Got(Listing),
-    /// 上一次同步没成、手上有之前那份：照出、标明是旧的（那一句 ＋ 那份落下的那一刻）。
-    Stale {
-        listing: Listing,
-        why: String,
-        at_ms: i64,
-    },
-    /// 从没问成过、同步又没成：只有那一句。
-    Failed(String),
-    /// 还没问成过、这一趟也没去问。
-    Unread,
-}
+use resident_client::listing_copy::{Ask, Shelf};
+pub(crate) use resident_client::listing_copy::{Copies, Kept};
 
 /// 那一台手上那份（生产：本进程的副本表）。
 pub(crate) fn kept(machine: &str) -> Kept {
@@ -152,24 +119,99 @@ pub(crate) fn kept(machine: &str) -> Kept {
 
 /// [`kept`] 的本体（副本表由调用方给）。
 pub(crate) fn kept_in(copies: &Copies, machine: &str) -> Kept {
-    let book = copies.lock();
-    let Some(c) = book.get(machine) else {
-        return Kept::Unread;
-    };
-    match (&c.failed, c.hand.held.is_some()) {
-        (Some(why), true) => Kept::Stale {
-            listing: assembled(&c.hand),
-            why: why.clone(),
-            at_ms: c.at_ms,
-        },
-        (Some(why), false) => Kept::Failed(why.clone()),
-        (None, true) => Kept::Got(assembled(&c.hand)),
-        (None, false) => Kept::Unread,
+    copies.kept(machine)
+}
+
+/// 本进程那一份副本表：落在启动时装的那个数据目录底下（[`install`]）；没装（判据 · 一次性进程）⇒ 只在内存。
+static COPIES: std::sync::LazyLock<Copies> = std::sync::LazyLock::new(|| Copies::on(Installed));
+
+/// 副本落盘的家（启动时装一次：[`install`]）。
+static HOME: std::sync::OnceLock<Own> = std::sync::OnceLock::new();
+
+/// 启动时装一次（拿启动时造的写句柄）：之后副本落在它的数据目录底下，重启照盘上那份接着问。
+pub(crate) fn install(own: &Own) {
+    if HOME.set(own.clone()).is_err() {
+        tracing::debug!("remote listing copy home already installed; keeping the first one");
     }
 }
 
-/// 本进程那一份副本表。
-static COPIES: std::sync::LazyLock<Copies> = std::sync::LazyLock::new(Copies::default);
+/// 生产那一个落盘处：每一下照装好的家（没装 ⇒ 不读不写）。
+struct Installed;
+
+impl Shelf for Installed {
+    fn load(&self, machine: &str) -> Option<Vec<u8>> {
+        load_at(HOME.get()?, machine)
+    }
+    fn store(&self, machine: &str, body: &[u8]) {
+        if let Some(own) = HOME.get() {
+            store_at(own, machine, body);
+        }
+    }
+}
+
+/// 副本落盘那一份：缓存（读不懂 · 版本对不上 ⇒ 当没有，照那台再问一次整份）。一台一份，文件名照 `listing_copy::file_stem`。
+const COPY_DOC: crate::common::own_state::Doc<Vec<u8>> = crate::common::own_state::Doc::cache(
+    ".cc-monitor/cache/remote-listing/<machine>.json",
+    COPY_MAX_READ,
+);
+
+/// 读一台副本的上限。
+const COPY_MAX_READ: u64 = 64 << 20;
+
+/// 落在 `own` 那个数据目录底下的副本表（[`relay_route_core::REMOTE_LISTING_DIR_REL`]，一台一份）。
+pub(crate) fn disk_copies(own: Own) -> Copies {
+    Copies::on(DiskShelf(own))
+}
+
+/// 落在给定数据目录底下的那一个落盘处（判据用：换一张空副本表读同一个目录 ＝ 重启过）。
+struct DiskShelf(Own);
+
+impl Shelf for DiskShelf {
+    fn load(&self, machine: &str) -> Option<Vec<u8>> {
+        load_at(&self.0, machine)
+    }
+    fn store(&self, machine: &str, body: &[u8]) {
+        store_at(&self.0, machine, body);
+    }
+}
+
+/// 从数据目录往下的那几层目录，与那台的文件。
+fn copy_at(own: &Own, machine: &str) -> Option<(Vec<OwnPath>, OwnPath)> {
+    let rel = relay_route_core::REMOTE_LISTING_DIR_REL.strip_prefix(".cc-monitor/")?;
+    let mut dirs = vec![own.root()?];
+    for seg in rel.split('/') {
+        let next = dirs.last()?.join(seg).ok()?;
+        dirs.push(next);
+    }
+    let name = format!("{}.json", resident_client::listing_copy::file_stem(machine));
+    let file = dirs.last()?.join(&name).ok()?;
+    Some((dirs, file))
+}
+
+/// 读那台落盘的那一份（不在 · 读不出来 ⇒ 当没有）。
+fn load_at(own: &Own, machine: &str) -> Option<Vec<u8>> {
+    let (_, file) = copy_at(own, machine)?;
+    match COPY_DOC.read_with(file.as_path(), Ok) {
+        crate::common::own_state::Read::Present(b) => Some(b),
+        _ => None,
+    }
+}
+
+/// 整份写那台的那一份。写不成只记一笔调试日志：缓存，下一次照那台整份重来。
+fn store_at(own: &Own, machine: &str, body: &[u8]) {
+    let written = (|| -> Result<(), String> {
+        let (dirs, file) = copy_at(own, machine).ok_or("no data dir")?;
+        for d in &dirs {
+            own.ensure_dir(d).map_err(|e| e.to_string())?;
+        }
+        let dir = dirs.last().ok_or("no data dir")?;
+        let held = own.lock(dir).map_err(|e| format!("{e:?}"))?;
+        own.write(&file, &held, body).map_err(|e| e.said)
+    })();
+    if let Err(e) = written {
+        tracing::debug!("remote listing copy of {machine} not stored: {e}");
+    }
+}
 
 /// 那一台的清单（生产：可达表 · 池里那条 SSH · 本进程的副本表）。`until` ＝ 发起方给的截止时刻（没给 ⇒ `bad_args`）。
 pub(crate) async fn listing(
@@ -209,13 +251,9 @@ pub(crate) async fn listing_with(
     remote: &dyn Remote,
     copies: &Copies,
 ) -> Result<Listing, (&'static str, String)> {
-    let held = {
-        let book = copies.lock();
-        match book.get(machine).map(|c| &c.hand) {
-            Some(hand) if !fresh && hand.held.is_some() => return Ok(assembled(hand)),
-            Some(hand) => hand.held.clone(),
-            None => None,
-        }
+    let held = match copies.to_ask(machine, fresh) {
+        Ask::Held(listing) => return Ok(listing),
+        Ask::With(held) => held,
     };
     let got = crate::dial::remote_ask::ask_resident::<HistoryListingCmd>(
         machine,
@@ -227,19 +265,15 @@ pub(crate) async fn listing_with(
     )
     .await
     .map_err(|s| (code_of(s.code.as_deref()), s.message));
-    let mut book = copies.lock();
-    let slot = book.entry(machine.to_string()).or_default();
     match got {
         Ok(patch) => {
-            slot.failed = None;
-            slot.hand.apply(patch);
-            slot.at_ms = crate::common::time::now()
+            let at_ms = crate::common::time::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_millis() as i64);
-            Ok(assembled(&slot.hand))
+            Ok(copies.took(machine, patch, at_ms))
         }
         Err(e) => {
-            slot.failed = Some(e.1.clone());
+            copies.missed(machine, e.1.clone());
             Err(e)
         }
     }
@@ -252,21 +286,6 @@ fn code_of(code: Option<&str>) -> &'static str {
         Some("resident_absent") => "resident_absent",
         Some(_) => "failed",
     }
-}
-
-/// 手上那份拼回一份清单（行照 `order` 的先后）。
-fn assembled(hand: &Hand<ListingHead, RawRow>) -> Listing {
-    let rows = hand
-        .order
-        .iter()
-        .filter_map(|k| hand.items.get(k).cloned())
-        .collect();
-    let head = hand
-        .head
-        .as_ref()
-        .map(|h| h.info.clone())
-        .unwrap_or_default();
-    Listing::join(head, rows)
 }
 
 #[cfg(test)]

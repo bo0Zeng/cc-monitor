@@ -67,6 +67,7 @@ function seg(after: string, over: Partial<FoldSegment> = {}): FoldSegment {
     span: { text: "02:01–02:04 · {dur}", from: 0, to: 182_000 },
     phase: "idle",
     until: null,
+    firstFail: null,
     ...over,
   };
 }
@@ -201,24 +202,33 @@ describe("按段折叠", () => {
     expect(lines(content)[0].getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("点「失败 ×N」：展开并滚到第一处失败；点行别处 ＝ 开合", async () => {
+  it("点「失败 ×N」：展开并滚到后端指的那一处（不按卡上的样子自己找）；点行别处 ＝ 开合", async () => {
     const ok = card("card-steps", "a1");
     const bad = card("card-steps", "a2");
+    // 标了失败样子的那一张不是后端指的：后端指的是 a1 里调用 t1 画成的那一块。
     const step = document.createElement("div");
     step.className = "step-line";
     step.dataset.state = "failed";
     bad.appendChild(step);
+    const block = document.createElement("div");
+    block.dataset.tool = "t1";
+    ok.appendChild(block);
     const parts = [
       { text: "头", tone: "plain" as const },
       { text: "失败 ×1", tone: "fail" as const },
     ];
-    const { content, fold } = rig([card("card-user", "u1"), ok, bad], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [seg("u1", { parts })] })] }]);
+    const firstFail = { uuid: "a1", tool: "t1", line: 1 };
+    const { content, fold } = rig([card("card-user", "u1"), ok, bad], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { folds: [seg("u1", { parts, firstFail })] })] }]);
+    vi.stubGlobal("CSS", { escape: (x: string) => x });
     const scrolled = vi.fn();
-    step.scrollIntoView = scrolled;
+    const wrong = vi.fn();
+    block.scrollIntoView = scrolled;
+    step.scrollIntoView = wrong;
     await fold.refresh();
     lines(content)[0].querySelector<HTMLElement>(".proc-fails")!.click();
     expect([hidden(ok), hidden(bad)]).toEqual([false, false]);
     expect(scrolled).toHaveBeenCalled();
+    expect(wrong).not.toHaveBeenCalled();
     lines(content)[0].querySelector<HTMLElement>(".proc-fails")!.click();
     expect(hidden(bad)).toBe(false);
     lines(content)[0].click();

@@ -7086,7 +7086,7 @@ tone: Tone,
 rank: number, 
 /**
  * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
- * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
 /**
@@ -7332,7 +7332,7 @@ tone: Tone,
 rank: number, 
 /**
  * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
- * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
 /**
@@ -7831,7 +7831,7 @@ tone: Tone,
 rank: number, 
 /**
  * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
- * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：各出口从收到那一刻起按本机钟接着加（时长读口对同一份金样）。
  */
 waitedMs: number | null, 
 /**
@@ -11482,7 +11482,12 @@ screen?: string,
 /**
  * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
  */
-resumed?: boolean, };
+resumed?: boolean, 
+/**
+ * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
+ */
+acts?: Array<SentAct>, };
+type SentAct = "retry" | "recapture" | "relist";
 type SentResult = "delivered" | "unsure" | "refused";
 type TerminalInputReq = { 
 /**
@@ -11743,7 +11748,12 @@ screen?: string,
 /**
  * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
  */
-resumed?: boolean, };
+resumed?: boolean, 
+/**
+ * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
+ */
+acts?: Array<SentAct>, };
+type SentAct = "retry" | "recapture" | "relist";
 type SentResult = "delivered" | "unsure" | "refused";
 type SessionSayReq = { 
 /**
@@ -12021,19 +12031,6 @@ since: number,
  */
 session: string | null, };
 type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
-type FirstSay = { 
-/**
- * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
- */
-result: string, 
-/**
- * `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
- */
-why: string | null, 
-/**
- * `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
- */
-said: string | null, };
 type ForkFrom = { 
 /**
  * 源会话 id。
@@ -12131,19 +12128,47 @@ account: LaunchedAccount | null,
  */
 note: string | null, 
 /**
- * 第一句交进去的结局；没给第一句 ⇒ `null`。
+ * 第一句交进去的结局（同 `terminal-input` 的回包）；没给第一句 ⇒ `null`。第一句作为启动参数交给那一家 ⇒ 起好了就是送到了（起不成整条失败、走不到这里）。
  */
-prompt: FirstSay | null, 
+prompt: Sent | null, 
 /**
  * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
  */
 arrival: ArriveAsk | null, };
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
 type RotationPick = { 
 /**
  * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
  */
 strategy: string | null, };
 type Run = "tmux" | "direct";
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, 
+/**
+ * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
+ */
+resumed?: boolean, 
+/**
+ * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
+ */
+acts?: Array<SentAct>, };
+type SentAct = "retry" | "recapture" | "relist";
+type SentResult = "delivered" | "unsure" | "refused";
 type SessionOpenReq = { 
 /**
  * 起新的 · 恢复某条 · 接回 · 开一个 shell。
@@ -13767,7 +13792,24 @@ handoffError: string | null,
 /**
  * 「新会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
  */
-takeover: PlanTakeover, };
+takeover: PlanTakeover, 
+/**
+ * 接手的会话此刻在哪几组（帧面答之前现标，见 [`super::groups`]；pb 不知道有组）。
+ */
+groups: PlanBlockGroups, };
+type PlanBlockGroups = { 
+/**
+ * 组模块答了 ⇒ 那条会话在的几组（照组的先后；不在组里 ⇒ 空）；没有接手会话 · 组模块没答 ⇒ 空。
+ */
+groups: Array<PlanGroup>, 
+/**
+ * 那一格的字：组名照排；一组都没有（不在组里 · 没有接手会话 · 没答）⇒「—」。
+ */
+text: string, 
+/**
+ * 组模块没答 ⇒ 那一句（「读取组失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
+ */
+unread: string | null, };
 type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
 /**
  * 状态里记着的值，一个值一项带笔数（pb 原样，照类上登的先后）。
@@ -13850,6 +13892,7 @@ checkText: string | null,
  * 同一份文件还挂在哪几格（编号）。
  */
 alsoBy: Array<string>, };
+type PlanGroup = { id: string, title: string, };
 type PlanKids = { done: number, of: number, };
 type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, 
 /**
@@ -14113,7 +14156,7 @@ id: string, };
 
 #### `plan-command`
 
-以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲。
+以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）· `repo`（在 `workspace` 那个目录登记 `path` 那一片，带 `domain`；撞上已有的一片 ⇒ 只带名字切过去）；这一侧带着 agent 身份 ⇒ 用户命令不代敲。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
 
@@ -14140,16 +14183,101 @@ type PlanCommandReq = {
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `adopt` · `render`。
+ * `continue` · `pause` · `adopt` · `render` · `repo`（`repo` 的 `workspace` 是新计划框里选的目录）。
  */
-cmd: "continue" | "pause" | "adopt" | "render", 
+cmd: "continue" | "pause" | "adopt" | "render" | "repo", 
 /**
  * `adopt` 接过哪一个仓库（仓库名）；别的动词不带。
  */
-slice?: string | null, };
+slice?: string | null, 
+/**
+ * `repo` 登记的仓库相对工作区根在哪；别的动词不带。
+ */
+path?: string | null, 
+/**
+ * `repo` 选的那一档领域（缺 ⇒ 不带）；别的动词不带。
+ */
+domain?: string | null, };
 ```
 
 码：`bad_args` · `failed` · `no_pb` · `no_such_slice` · `not_workspace` · `pb_unsupported` · `refused`
+
+#### `plan-new`
+
+新计划框问的那一份：那个目录能选的领域（`pb dump --domains`）· pb 往上找到的工作区 · 仓库落在哪 · 路径最后一段撞上的那一片 · 要敲的那一行 `pb repo …`；pb 不在 · 太旧写在回包里。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-new`
+
+入参 `PlanNewReq` · 回包 `PlanNewForm`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanDomain = { name: string | null, error: string | null, kinds: Array<PlanKind>, phases: Array<PlanPhase>, };
+type PlanEdgeWords = { to: string | null, with: string | null, after: string | null, replaces: string | null, };
+type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, 
+/**
+ * 这一类许记的状态值（照表里的先后）。
+ */
+values: Array<string>, };
+type PlanNewExisting = { slice: string, domain: string | null, };
+type PlanNewForm = { 
+/**
+ * 找不到 pb ⇒ `missing`；pb 没有 `dump --domains` ⇒ `unsupported`（两样都带那一句）。
+ */
+pb: PlanPb, 
+/**
+ * pb 往上找到的工作区根；找不到 ⇒ `null`（`root` 就成工作区根）。
+ */
+workspace: string | null, 
+/**
+ * `pb repo` 在哪个目录敲（＝ `workspace`，没有 ⇒ 问的那个目录）。
+ */
+root: string, 
+/**
+ * 登记之后那一片叫什么（路径最后一段 ＝ 仓库名；撞上 ⇒ 那一片）；路径空 ⇒ `null`。
+ */
+slice: string | null, 
+/**
+ * 能选的几档（形状同 `PlanRead.domains`）。
+ */
+domains: Array<PlanDomain>, 
+/**
+ * 路径最后一段撞上的那一片（领域建了不改）。
+ */
+existing: PlanNewExisting | null, 
+/**
+ * 仓库会落在哪（绝对路径）；路径空 ⇒ `null`。
+ */
+repoDir: string | null, 
+/**
+ * 路径底下那一句（「仓库 …」· 撞上 ⇒「已有此片 · 软件 · 只切换」）；路径空 ⇒ `null`。
+ */
+note: string | null, 
+/**
+ * 要敲的那一行；路径空 ⇒ `null`。
+ */
+line: string | null, 
+/**
+ * 起 pb 没成（超时 · 读不懂 · 别的退出码）：那一句。
+ */
+failed: string | null, };
+type PlanNewReq = { 
+/**
+ * 在哪个目录开（那台机器上的绝对路径；还不在也行）。
+ */
+dir: string, 
+/**
+ * 仓库相对工作区根在哪（最后一段是片名）；空 ⇒ 只问领域。
+ */
+path: string, 
+/**
+ * 选的那一档领域。
+ */
+domain?: string | null, };
+type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
+type PlanPhase = { name: string | null, does: string | null, };
+```
+
+码：`bad_args`
 
 #### `plan-pb-check`
 
@@ -14566,9 +14694,10 @@ type Words = string;
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一个节点的 agent 视角（agent 站在那个节点时 pb 印给它的那一段，原样；点到才起 `pb dump --node`） |
-| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲 |
+| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）· `repo`（在 `workspace` 那个目录登记 `path` 那一片，带 `domain`；撞上已有的一片 ⇒ 只带名字切过去）；这一侧带着 agent 身份 ⇒ 用户命令不代敲 |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
+| `--plan-new` | ＝ 帧命令 `plan-new`：新计划框问的那一份：那个目录能选的领域（`pb dump --domains`）· pb 往上找到的工作区 · 仓库落在哪 · 路径最后一段撞上的那一片 · 要敲的那一行 `pb repo …`；pb 不在 · 太旧写在回包里 |
 | `--plan-pb-check` | ＝ 帧命令 `plan-pb-check`：一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问 |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view） |
 | `--plan-refs` | ＝ 帧命令 `plan-refs`：会话消息里提到的格：照会话接手的那块（否则工作目录所在的那片）认片，几段正文一次交 pb 的 `dump --refs`，回每段的几处（UTF-16 下标 ＋ 跟在编号后面的标题）；认不出片 · pb 不在 ⇒ 每段空 |
