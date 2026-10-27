@@ -185,7 +185,7 @@ walkdir = "2"
 # **`russh` / `russh-sftp` / `primefield` 三行出了本清单：界面进程零 SSH**（用户
 # 「SFTP 进本机常驻后端」；SR1a 已把其余拨号搬进本机常驻后端）。那三行的来历（ring 后端 · 3.0.0 选型 ·
 # primefield rc.9 的解析杠杆）逐字搬进了 `../backend/Cargo.toml` 那两行的注释旁边 —— 那一侧今天是唯一的 SSH 客户端。
-# 终点判据：`dial_home_registry` 的二值旗（`russh` 不在界面 manifest 里）翻面、`the_monitor_manifest_names_no_ssh_crate` 零命中。
+# 判据：`dial_home_registry` 的二值旗（`russh` 不在界面 manifest 里）。
 
 tokio = { version = "1", features = ["full"] }
 # 远端 fan-out 并发（R9）：join_all 同时查所有已配置远端，借用不需 'static/Send。
@@ -256,7 +256,7 @@ windows = { version = "0.56", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
-    # ccbus-win 09-10 第七拍：`cc_bus::reap_whole_tree_on_drop` 要 Job Object
+    # `platform/spawn.rs::assign_to_job` 要 Job Object
     # （`CreateJobObjectW` / `SetInformationJobObject` / `AssignProcessToJobObject`）。
     # 起因是一条有云端读数的真缺陷：Windows 上 `Git\bin\bash.exe` 是外壳，起完真 bash
     # 自己就退，`kill_on_drop` 的 `TerminateProcess` 打在一个已经死了的 pid 上 ⇒

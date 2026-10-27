@@ -1385,7 +1385,7 @@ impl Workspace {
         };
         let slot = self.other.clone();
         *slot.lock().unwrap() = None;
-        let origin = super::source::Origin(machine.to_string());
+        let origin = super::source::Origin::named(machine.to_string());
         let what = machine.to_string();
         self.set_notice(copy_text(
             "rsFilewinChrome.other.opening",

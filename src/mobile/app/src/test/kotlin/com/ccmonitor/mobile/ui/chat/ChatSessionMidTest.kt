@@ -1,8 +1,6 @@
 package com.ccmonitor.mobile.ui.chat
 
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.Allow
@@ -137,7 +135,7 @@ class ChatSessionMidTest {
             runCurrent()
             assertNull(s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.state.value = LinkState.Down(Said("", ""))
+            link.state.value = linkDown("")
             runCurrent()
             val off = FakeCoreLink.OFFLINE
             assertEquals(off to off, s.state.value.model.blocked to s.state.value.permission.blocked)

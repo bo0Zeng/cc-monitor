@@ -160,7 +160,7 @@ pub(super) async fn snapshot_dispatcher(
             return; // 队列已关（排队项作废，重连重拉）
         };
         // 没在看的会话不拉（它的行也不上流）：进名单那一刻由 `stream-watch` 的 `from[]` 叫界面自己补。
-        let origin = crate::origin::Origin(host_label.clone());
+        let origin = crate::origin::Origin::named(host_label.clone());
         if !replay.watched(&origin).contains(&item.sid) {
             tracing::debug!("snapshot [{host_label}] {}: 没在看，不拉", item.sid);
             drop(permit);
@@ -281,7 +281,7 @@ async fn fetch_snapshot(
     use cmd_wire::session::TailHow;
     let sid = &item.sid;
     let path = &item.path;
-    let origin = crate::origin::Origin(host_label.to_string());
+    let origin = crate::origin::Origin::named(host_label.to_string());
     let held = crate::snapshot_resume::cursor_of(&origin, sid);
     // 快照是两件事、各一个期限：先问（一问，`PAGE_BUDGET`）；剩下的正文（分页）在知道还差多少字节之后再造、按大小给。
     let tail = frame_query::tail(

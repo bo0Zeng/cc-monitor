@@ -18,7 +18,7 @@
 //! | 原先钉的 | 改后钉的 | 住在哪一条 |
 //! |---|---|---|
 //! | 线上 `null` 解得出 `Unspecified` | 线上 `null` **解不出来**，报错里逐字有 `"<local>"` | `A` 组 `an_unknown_shape_is_refused_not_guessed` |
-//! | `Unspecified.is_local() == false` | `Origin("").is_local() == false`（空白名既不是本机也不是远端）| `C` 组 `a_blank_name_is_neither_local_nor_remote` |
+//! | `Unspecified.is_local() == false` | `Origin::named("").is_local() == false`（空白名既不是本机也不是远端）| `C` 组 `a_blank_name_is_neither_local_nor_remote` |
 //! | `route(null)` ⇒ `Err`，点名命令 ＋ 逐字 `"<local>"` | `route("")` ⇒ `Err`，**同样**点名命令 ＋ 逐字 `"<local>"` | `E` 组 `route_names_both_wire_values_and_refuses_the_one_that_says_nothing` |
 //! | 本机与「没说」序列化出来不同 | **没有任何 `Origin` 序列化成 `null`**（换成对线上形状的全集断言）| `E` 组 `route_is_exactly_two_outcomes_and_local_is_not_a_missing_value` |
 //!
@@ -53,7 +53,7 @@ fn the_two_surviving_wire_values_are_byte_identical() {
     //   两件事刻意不合在一处 —— 「这两个值没变」与「那一个值没了」是两个事实。
     for (wire, want) in [
         ("\"<local>\"", Origin::local()),
-        ("\"devbox\"", Origin("devbox".into())),
+        ("\"devbox\"", Origin::named("devbox")),
     ] {
         let got: Origin =
             serde_json::from_str(wire).unwrap_or_else(|e| panic!("读不进 {wire}：{e}"));
@@ -135,7 +135,7 @@ fn a_blank_name_is_neither_local_nor_remote() {
     //   要么由调用点补默认，**不许在类型这一层悄悄当成本机**。
     //
     for blank in ["", " ", "\t", "\n  "] {
-        let u = Origin(blank.to_string());
+        let u = Origin::named(blank.to_string());
         assert!(
             !u.is_local(),
             "空白名 {blank:?} 被判成了本机 —— 那是在替调用方做决定"
@@ -143,10 +143,10 @@ fn a_blank_name_is_neither_local_nor_remote() {
         assert!(!u.is_remote(), "空白名 {blank:?} 被判成了远端");
         assert_eq!(u.host_name(), None, "空白名 {blank:?} 不该答出一个机器名");
     }
-    // ⚠ 射程边界，写出来：空白名**仍然构造得出来**（`Origin` 的字段是 `pub` 的），
+    // ⚠ 射程边界，写出来：空白名**仍然构造得出来**（`Origin::named` 不判名字），
     //   也仍然有线上字符串。挡它的是 `route` 那道闸（`E` 组），不是类型本身。
     //   这一格买的只是「那三个判定不会把它当成一台机器」。
-    assert_eq!(Origin(String::new()).as_wire_str(), "");
+    assert_eq!(Origin::named(String::new()).to_string(), "");
 }
 
 #[test]
@@ -158,12 +158,35 @@ fn local_and_remote_are_exactly_complementary() {
         None,
         "🔴 `host_name` 只答远端 —— 本机回 None 是刻意的"
     );
-    assert_eq!(l.as_wire_str(), LOCAL);
+    assert_eq!(l.to_string(), LOCAL);
 
-    let r = Origin("devbox".into());
+    let r = Origin::named("devbox");
     assert!(r.is_remote() && !r.is_local(), "远端那一个的两个判定不互补");
     assert_eq!(r.host_name(), Some("devbox"));
-    assert_eq!(r.as_wire_str(), "devbox");
+    assert_eq!(r.to_string(), "devbox");
+}
+
+/// 按机器记的表以 `Origin` 当键：同名同一格、本机与远端各一格，`Display` 是线上那一串（字段私有，没有别的口借出名字）。
+#[test]
+fn a_machine_keys_a_table_by_its_name() {
+    let mut t = std::collections::HashMap::new();
+    t.insert(Origin::local(), 1);
+    t.insert(Origin::named("devbox"), 2);
+    t.insert(Origin::named("devbox"), 3);
+    assert_eq!(t.len(), 2, "同名两台成了两格，或本机与远端并成了一格");
+    assert_eq!(
+        t.get(&Origin::named(LOCAL)),
+        Some(&1),
+        "按 `<local>` 造的不是本机那一格"
+    );
+    assert_eq!(t.get(&Origin::named("devbox")), Some(&3));
+    let mut keys: Vec<Origin> = t.into_keys().collect();
+    keys.sort();
+    assert_eq!(
+        keys.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        [LOCAL, "devbox"],
+        "排序不按线上那一串"
+    );
 }
 
 // ── D：迁移进度 —— 递减棘轮 ───────────────────────────────────────────────
@@ -326,12 +349,12 @@ fn route_names_both_wire_values_and_refuses_the_one_that_says_nothing() {
     );
     // ⚠ 全空白也算「没给名字」—— 只挡 `""` 等于给 `" "` 留门。
     assert!(
-        Origin(" \t ".into()).route("t").is_err(),
+        Origin::named(" \t ").route("t").is_err(),
         "全空白的名字被路由出去了 —— 只挡空串就是给它留门"
     );
     // ★ 反向：非空白的名字**不许**被这道闸误杀（假红比不查更坏）。
     assert_eq!(
-        Origin(" devbox ".into()).route("t"),
+        Origin::named(" devbox ").route("t"),
         Ok(Route::Remote(" devbox ")),
         "带空格的机器名被误当成「没给名字」，而且 `route` 不许 trim（trim 会让\n\
          今天找不到配置的 label 突然找得到 —— 那是行为变更，不归本步）"
@@ -344,7 +367,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
     // 拿到 `Route` 的代码**没有办法**把它误当本机。
     // 这一格用**穷尽 match**（没有 `_` 臂）把这件事钉在类型上：
     // 哪天有人给 `Route` 加第三个变体，这里编译不过。
-    for (o, want_local) in [(Origin::local(), true), (Origin("devbox".into()), false)] {
+    for (o, want_local) in [(Origin::local(), true), (Origin::named("devbox"), false)] {
         let got = o.route("t").expect("具名的 origin 不该被拒");
         let is_local = match got {
             Route::Local => true,
@@ -365,9 +388,9 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
     //    两者在 UI 上都长成「没填」—— 所以线上必须**一个字节**都装不下「没填」。
     for o in [
         Origin::local(),
-        Origin("devbox".into()),
-        Origin(String::new()),
-        Origin(" ".into()),
+        Origin::named("devbox"),
+        Origin::named(String::new()),
+        Origin::named(" "),
     ] {
         let wire = serde_json::to_string(&o).expect("写不出去");
         assert_ne!(

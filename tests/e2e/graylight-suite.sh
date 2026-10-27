@@ -186,7 +186,7 @@ fi
 # ⇒ 开跑前数一次；多于一个（这一趟 app 自己那个）就 ABORT，让人先清干净。
 # ⚠⚠ **人群补齐**〔P0b 08-12 实测〕：本格原来只数 `.build/backend/...` 那一族，
 #     而实测盘上活着的后端走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-backend`
-#     （`sftp::ensure_backend_deployed` 的落点）——**那一族当时根本不在人群里**，
+#     （后端 `deploy/install.rs::install` 的落点）——**那一族当时根本不在人群里**，
 #     计数器却会安心地报 0。⇒ 两族都数。
 #     （`needle_anchor_registry` 管的就是这个：**匹配单位不许比事实小**。）
 # ★★★ **`U10g` 落地〔08-13 自批，举证见下〕：判别从「按个数」换成「按身份」。**

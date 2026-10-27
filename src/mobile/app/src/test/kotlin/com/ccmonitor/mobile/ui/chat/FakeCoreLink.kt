@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.chat
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
@@ -15,7 +14,11 @@ import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.MachineState
+import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
@@ -27,11 +30,54 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
+/** 那台的状态成品（测试摆，只填画到的那几格；机器名 · 那几句是结构夹具）。 */
+internal fun machineOf(
+    state: MachineStateKind,
+    said: String = "",
+    detail: String = "",
+    fixes: List<MachineFixButton> = emptyList(),
+) = MachineState(
+    name = "m",
+    state = state,
+    offline = false,
+    reason = null,
+    stage = null,
+    version = null,
+    versionRelation = null,
+    os = null,
+    word = "",
+    said = said,
+    offlineSaid = FakeCoreLink.OFFLINE,
+    fixes = fixes,
+    seenHostKey = null,
+    expectedHostKey = null,
+    detail = detail.takeIf { it.isNotEmpty() },
+)
+
+/** 核心交的那一行：通着。 */
+internal fun linkUp(
+    said: String = "",
+    detail: String = "",
+    fixes: List<MachineFixButton> = emptyList(),
+    state: MachineStateKind = MachineStateKind.UP,
+) = LinkLine.Up(0L, machineOf(state, said, detail, fixes))
+
+/** 核心交的那一行：断着。 */
+internal fun linkDown(
+    said: String,
+    detail: String = "",
+    fixes: List<MachineFixButton> = emptyList(),
+    state: MachineStateKind = MachineStateKind.DOWN,
+) = LinkLine.Down(machineOf(state, said, detail, fixes))
+
+/** 核心交的那一行：正在连。 */
+internal fun linkConnecting() = LinkLine.Connecting(machineOf(MachineStateKind.CONNECTING))
+
 /** 一台核心的替身：会话表 · 记录行 · 一问一答都由测试摆；每一问记下来（命令名 ＋ 入参）。 */
 internal class FakeCoreLink :
     CoreLink,
     SessionWatch {
-    override val state = MutableStateFlow<LinkState>(LinkState.Up())
+    override val state = MutableStateFlow<LinkLine?>(linkUp())
 
     /** 那台成品写的离线那一句（假的那台的成品一开始就到了）。 */
     override val offline = MutableStateFlow<String?>(OFFLINE)

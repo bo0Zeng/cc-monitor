@@ -37,12 +37,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -97,7 +97,7 @@ fun RotationScreen(
                 .testTag(RotTags.SCREEN),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            val down = linkState as? LinkState.Down
+            val down = linkState as? LinkLine.Down
             when {
                 // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
                 down != null -> DownBox(offline ?: copyText("sessionState.unseen.name"))

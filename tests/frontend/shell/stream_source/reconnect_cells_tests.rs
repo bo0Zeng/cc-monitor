@@ -214,7 +214,7 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
     replay.subscribe(
         "w",
         1,
-        &crate::origin::Origin(ORIGIN.into()),
+        &crate::origin::Origin::named(ORIGIN),
         &format!("{}/{SID}", crate::event_replay::SESSION_LINES_KIND),
         None,
         64,

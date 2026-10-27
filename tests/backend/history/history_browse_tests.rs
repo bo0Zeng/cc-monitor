@@ -44,17 +44,14 @@ fn shape_of(c: &Value) -> Shape {
         by: serde_json::from_value(c["view"].clone()).unwrap(),
         all_open: !c["query"].as_str().unwrap().is_empty(),
         fold,
-        forks: forks
-            .into_iter()
-            .map(|r| (r.origin.map(|m| m.0), r.sid))
-            .collect(),
+        forks: forks.into_iter().map(|r| (r.origin, r.sid)).collect(),
     }
 }
 
 /// 摊好的一列照金样那一形写成一条一条（段头插在它落的那一项之前；孤儿那一句只在按时间那一形里画）。
 fn tokens(laid: &Laid, by: By) -> Vec<String> {
     let mut out = Vec::new();
-    let o = |m: &Option<cmd_wire::Machine>| m.as_ref().map_or(String::new(), |m| m.0.clone());
+    let o = |m: &Option<cmd_wire::Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
     for (i, line) in laid.lines.iter().enumerate() {
         for s in laid.sections.iter().filter(|s| s.at as usize == i) {
             out.push(format!("sec:{}", s.text.0));
@@ -109,7 +106,7 @@ fn machines_ok(g: &Value) -> Vec<MachineHead> {
         .map(|m| MachineHead {
             origin: m["origin"]
                 .as_str()
-                .map(|o| cmd_wire::Machine(o.to_string())),
+                .map(|o| cmd_wire::Machine::named(o.to_string())),
             total: m["rows"].as_array().unwrap().len() as u32,
             read: Read::Ok { notice: None },
         })
@@ -183,7 +180,11 @@ fn each_machine_says_whether_it_was_read() {
     assert_eq!(answered.len(), 2, "只有读到了的与有旧副本的出成品");
     assert_eq!(answered[1].rows.len(), 1, "旧副本的行要照出");
     assert_eq!(
-        answered[1].rows[0].origin.as_ref().map(|m| m.0.as_str()),
+        answered[1].rows[0]
+            .origin
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
         Some("old")
     );
     let v = serde_json::to_value(&heads).unwrap();

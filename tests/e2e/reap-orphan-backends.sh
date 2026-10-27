@@ -9,7 +9,7 @@
 #    `pkill -f xdg-terminal-exec`，**把我自己的 shell 打死了**（模式命中了我自己的命令行）。
 #    模式杀没有"只杀我起的那些"这个概念。
 # ② **它挑错了人群**。08-12 实测：盘上活着的后端走的是**部署路径**
-#    `~/.cc-monitor/bin/cc-monitor-backend`（`sftp::ensure_backend_deployed` 的落点），
+#    `~/.cc-monitor/bin/cc-monitor-backend`（后端 `deploy/install.rs::install` 的落点），
 #    而那句 `pkill` 与 gate 丁 的计数器都只认 `.build/backend/...`。
 #    ⇒ 真正在攒的那一族**可能根本不在人群里**，而计数器会安心地报 0。
 #    （`needle_anchor_registry` 管的就是这个：**匹配单位不许比事实小**。）

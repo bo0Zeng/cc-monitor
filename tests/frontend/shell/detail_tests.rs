@@ -10,7 +10,7 @@ fn label(k: &str) -> String {
 #[test]
 fn a_remote_refusal_gets_a_local_line_and_a_local_one_does_not() {
     let remote = format!("{}：kill_failed", label("detail.label.code"));
-    let got = relayed(&Origin("devbox".into()), &remote);
+    let got = relayed(&Origin::named("devbox"), &remote);
     assert!(got.starts_with(&remote), "{got}");
     assert!(
         got.contains(&format!("\n{}：cc-monitor ", label("detail.label.local"))),
@@ -39,7 +39,7 @@ fn a_channel_failure_detail_names_the_machine_command_hop_and_code() {
         reach: w::Reach::NotSent,
         why: w::HopFault::Unreachable,
     };
-    let d = of_channel(&Origin("devbox".into()), "accounts-list", &e);
+    let d = of_channel(&Origin::named("devbox"), "accounts-list", &e);
     for want in [
         format!(
             "{}：devbox（{}）",
@@ -104,7 +104,7 @@ fn a_backend_call_failure_keeps_the_detail_the_backend_wrote() {
     let far = Said::of_call(
         "x".into(),
         "deploy-plan",
-        &Origin("devbox".into()),
+        &Origin::named("devbox"),
         &refused,
     );
     assert!(far.detail.starts_with(&wrote), "{}", far.detail);
@@ -355,7 +355,7 @@ fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
         } => of_refusal_body(&body.0),
         other => panic!("不是拒绝：{other:?}"),
     };
-    let far = relay_refusal(&Origin("devbox".into()), refused());
+    let far = relay_refusal(&Origin::named("devbox"), refused());
     let d = detail_of(&far);
     assert!(d.starts_with(&wrote), "{d}");
     assert_eq!(
@@ -370,7 +370,7 @@ fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
     );
     let hop: w::CallError = w::OursFault::Broken.into();
     assert_eq!(
-        format!("{:?}", relay_refusal(&Origin("devbox".into()), hop.clone())),
+        format!("{:?}", relay_refusal(&Origin::named("devbox"), hop.clone())),
         format!("{hop:?}")
     );
 }

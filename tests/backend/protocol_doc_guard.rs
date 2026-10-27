@@ -139,7 +139,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
         "ccm_line/argv.rs",
         "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
-         （由 `ccm_line::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
+         （由 `ccm_line::argv::tests::ccm_flag_literals_live_only_in_argv_rs` 钉），\
          它们是终端命令面、不是 wire 协议面。",
     ),
     // `ccm …` 调用行的渲染器（从 monitor 搬进后端）：它**写**那套终端旗标给用户的 shell 跑，不是后端分派的 argv。

@@ -128,7 +128,8 @@ pub fn main() {
         Ok(())
     });
     crate::stream_source::install_local_health(health.clone());
-    let children: Arc<Mutex<HashMap<String, crate::spawn_managed::ManagedChild>>> = Arc::default();
+    let children: Arc<Mutex<HashMap<cmd_wire::Machine, crate::spawn_managed::ManagedChild>>> =
+        Arc::default();
 
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -145,10 +146,7 @@ pub fn main() {
         match cmd {
             Cmd::Machines { machines } => {
                 crate::session_book::machines_changed(
-                    machines
-                        .iter()
-                        .map(|m| m.origin.as_wire_str().to_string())
-                        .collect(),
+                    machines.iter().map(|m| m.origin.to_string()).collect(),
                 );
                 // 只起本机那一台：别台的常驻流归本机后端（台架那份假 ssh 由它自己去接），那台流上的事经本机这一条转来。
                 for m in machines.iter().filter(|m| m.origin.is_local()) {
@@ -163,12 +161,12 @@ pub fn main() {
             Cmd::Watch { sessions } => replay.set_main_watch(
                 sessions
                     .into_iter()
-                    .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+                    .map(|w| (w.origin.to_string(), w.session_id)),
             ),
             Cmd::Kept { sessions } => replay.set_main_kept(
                 sessions
                     .into_iter()
-                    .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+                    .map(|w| (w.origin.to_string(), w.session_id)),
             ),
             Cmd::Sub {
                 id,
@@ -218,13 +216,10 @@ pub fn main() {
                 if let Some(mut c) = children
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .remove(origin.as_wire_str())
+                    .remove(&origin)
                 {
                     if let Err(e) = c.kill() {
-                        tracing::warn!(
-                            "shots_shell：杀 {} 的后端没杀成：{e}",
-                            origin.as_wire_str()
-                        );
+                        tracing::warn!("shots_shell：杀 {} 的后端没杀成：{e}", origin);
                     }
                 }
             }
@@ -243,10 +238,10 @@ fn start(
     m: &Machine,
     replay: &Arc<EventReplay>,
     health: &crate::stream_source::HealthOut,
-    children: &Arc<Mutex<HashMap<String, crate::spawn_managed::ManagedChild>>>,
+    children: &Arc<Mutex<HashMap<cmd_wire::Machine, crate::spawn_managed::ManagedChild>>>,
 ) {
     let Some((prog, args)) = m.argv.split_first() else {
-        tracing::error!("shots_shell：{} 没给命令", m.origin.as_wire_str());
+        tracing::error!("shots_shell：{} 没给命令", m.origin);
         return;
     };
     let mut cmd = std::process::Command::new(prog);
@@ -261,12 +256,12 @@ fn start(
     ) {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!("shots_shell：{} 的后端起不来：{e}", m.origin.as_wire_str());
+            tracing::error!("shots_shell：{} 的后端起不来：{e}", m.origin);
             return;
         }
     };
     let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
-        tracing::error!("shots_shell：{} 的后端没有管道", m.origin.as_wire_str());
+        tracing::error!("shots_shell：{} 的后端没有管道", m.origin);
         return;
     };
     let (tx, rx) = tokio::sync::mpsc::channel(crate::local_lines::LOCAL_LINES_CAPACITY);
@@ -283,5 +278,5 @@ fn start(
     children
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .insert(m.origin.as_wire_str().to_string(), child);
+        .insert(m.origin.clone(), child);
 }
