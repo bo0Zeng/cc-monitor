@@ -2,9 +2,25 @@
  * 「会打断什么」：`machine-interrupts` 金样那几形排得出「中断 · 保留」两行（回包按生成类型用，形状由握手指纹管）。
  * Rust 那一侧（`tests/backend/observe/accounts_query_tests.rs`）由生产函数现产、与同一份金样逐格比。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const { sent, reply } = vi.hoisted(() => ({
+  sent: [] as Array<{ origin: string; cmd: string; req: unknown }>,
+  reply: { now: null as Record<string, number | null> | null },
+}));
+vi.mock("../../../../src/frontend/ui/ipc/chan-caller", () => ({
+  budgetWithin: () => ({ until: 0 }),
+  callTyped: (origin: string, cmd: string, req: unknown) => {
+    sent.push({ origin, cmd, req });
+    return reply.now ? Promise.resolve(reply.now) : Promise.reject(new Error("问不到"));
+  },
+}));
+vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
+  commands: { filewin_interrupts: () => Promise.resolve({ windows: 1, unsaved: 1, running: 0 }) },
+}));
+
 import golden from "../../../__fixtures__/machine-interrupts.golden.json";
-import { interruptRows } from "../../../../src/frontend/ui/settings/interrupts";
+import { askAppExitInterrupts, askInterrupts, interruptRows } from "../../../../src/frontend/ui/settings/interrupts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import type { Interrupts } from "../../../../src/frontend/ui/generated/Interrupts";
 
@@ -41,5 +57,40 @@ describe("会打断什么 · 文件窗口那一份", () => {
       copyText("interrupts.item.filewinUnknown"),
     ]);
     expect(interruptRows({ ...none, unsaved: 0, filewinRunning: 0 }, copyText("restartNow.dialog.everywhere"), "stop")).toEqual([]);
+  });
+});
+
+describe("会打断什么 · 只问本机后端一条", () => {
+  const none = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
+
+  it("★ 停 / 更新一台：只发一条 `machine-interrupts` 给本机后端（带那台的名字），那台问不到 ⇒ 会话那一格 null、转发照数", async () => {
+    sent.length = 0;
+    reply.now = { ...none, relayedSessions: null, forwards: 2 };
+    const got = await askInterrupts("devbox");
+    expect(sent).toEqual([{ origin: "<local>", cmd: "machine-interrupts", req: { machine: "devbox" } }]);
+    expect(got).toEqual({ ...none, relayedSessions: null, forwards: 2 });
+  });
+
+  it("★ 本机那一台：同一条、不带名字", async () => {
+    sent.length = 0;
+    reply.now = { ...none, liveStreams: 1 };
+    expect(await askInterrupts("<local>")).toEqual({ ...none, liveStreams: 1, forwards: 0 });
+    expect(sent).toEqual([{ origin: "<local>", cmd: "machine-interrupts", req: {} }]);
+  });
+
+  it("★ 本机后端问不到 ⇒ 会话与转发都说数不出", async () => {
+    sent.length = 0;
+    reply.now = null;
+    const got = await askInterrupts("devbox");
+    expect(got.relayedSessions).toBeNull();
+    expect(got.forwards).toBeNull();
+  });
+
+  it("★ 现在重启 / 退出：后端只发一条（本机后端带上各台的名单），不再 1 ＋ N", async () => {
+    sent.length = 0;
+    reply.now = { ...none, relayedSessions: 2, liveStreams: 4, forwards: 2 };
+    const got = await askAppExitInterrupts(["devbox", "gpu"]);
+    expect(sent).toEqual([{ origin: "<local>", cmd: "machine-interrupts", req: { appExit: true, machines: ["devbox", "gpu"] } }]);
+    expect(got).toEqual({ ...none, relayedSessions: 2, liveStreams: 4, forwards: 2, unsaved: 1, filewinRunning: 0 });
   });
 });
