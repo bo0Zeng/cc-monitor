@@ -43,6 +43,11 @@ fn ids(q: &SessionQueue) -> Vec<(&str, Option<u64>, S)> {
         .collect()
 }
 
+/// 排在最前、还没送的那一条（[`due`] 的那一格）。
+fn next_due(o: &Own, sid: &str, now_ms: i64) -> Result<Option<QueueItem>, Fail> {
+    due(o, sid, now_ms).map(|d| d.item)
+}
+
 const T0: i64 = 1_800_000_000_000;
 const TEN_MIN: i64 = 10 * 60 * 1000;
 
@@ -247,4 +252,42 @@ fn a_full_queue_refuses_the_next_one() {
     }
     let e = put(&o, &req("over", "desk", None, T0), T0).unwrap_err();
     assert_eq!(e.code, "queue_full");
+}
+
+#[test]
+fn the_delivery_side_lists_queues_and_names_touched_ones() {
+    let h = home("list");
+    let o = own(&h);
+    assert!(sids(&o).is_empty(), "队目录还没有 ⇒ 空");
+    put(&o, &req("a", "desk", None, T0), T0).unwrap();
+    let dir = h.join(DIR_REL);
+    std::fs::write(dir.join("not a sid.json"), b"{}").unwrap();
+    assert_eq!(sids(&o), vec![SID.to_string()], "只认 `<sid>.json`");
+    let paths = [
+        dir.join(format!("{SID}.json")),
+        dir.join(format!("{SID}.json")),
+        dir.join(format!(".{SID}.json.tmp")),
+        dir.join("not a sid.json"),
+        h.join("s2.json"),
+    ];
+    assert_eq!(
+        sids_touched(paths.iter().map(|p| p.as_path()), &dir),
+        vec![SID.to_string()],
+        "批内去重；旁名 · 别的目录不算"
+    );
+}
+
+#[test]
+fn a_refused_line_is_kept_as_undelivered_and_a_held_one_says_when_it_is_due() {
+    let o = own(&home("giveup"));
+    put(&o, &req("a", "desk", None, T0), T0).unwrap();
+    assert!(give_up(&o, SID, "a").unwrap());
+    assert!(!give_up(&o, SID, "a").unwrap(), "不在排着 ⇒ 不动");
+    assert_eq!(
+        ids(&read(&o, &sid(), T0).unwrap()),
+        vec![("a", Some(1), S::Undelivered)]
+    );
+    put(&o, &req("h", "deskB", Some(2), T0), T0 + 5).unwrap();
+    let d = due(&o, SID, T0 + 6).unwrap();
+    assert_eq!((d.item, d.held_until), (None, Some(T0 + 5 + HOLD_MS)));
 }

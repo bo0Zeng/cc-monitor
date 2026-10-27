@@ -46,6 +46,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
+import com.ccmonitor.mobile.ui.agents.agentsEntry
 import com.ccmonitor.mobile.ui.chat.attach.AttachStore
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
 import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
@@ -64,6 +65,7 @@ import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import java.io.File
@@ -93,6 +95,8 @@ fun ChatRoute(
     tool: String? = null,
     /** 顶栏「⋯」→ 轮换：这条会话（sid）的轮换屏。 */
     onOpenRotation: (String) -> Unit = {},
+    /** 顶栏「⋯」→ agent：这条会话（sid）的 agent 列表。 */
+    onOpenAgents: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
     /** 顶栏右上「需手动 n」：总览。 */
@@ -106,9 +110,7 @@ fun ChatRoute(
     val host = rememberChatHost(hostId) ?: return
     val product = rememberProductName(hostId)
     val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd), host.machine) else existingChat(hostId, sessionId, host.machine, at, tool)
-    val vm: ChatViewModel =
-        org.koin.androidx.compose
-            .koinViewModel(key = open.key) { parametersOf(open) }
+    val vm: ChatViewModel = koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
     val backends = koinInject<HostBackends>()
     val sid = remember(vm) { vm.state.map { it.sid } }
@@ -143,6 +145,7 @@ fun ChatRoute(
                     },
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
+                    agents = rememberAgentsEntry(hostId, state.sid)?.let { MoreAgents(it, onOpenAgents) },
                     needs = { NeedsEntry(onOpenOverview) },
                 )
             },
@@ -278,6 +281,8 @@ private fun ChatTopBar(
     findTerminal: suspend (String) -> TermEntry?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
+    /** ⋯「agent」那一项；这条会话没有运行表 ⇒ `null`、不出这一项。 */
+    agents: MoreAgents?,
     /** ⋯ 左边那颗「需手动 n」（0 不画；空的新建会话里同样有）。 */
     needs: @Composable () -> Unit,
 ) {
@@ -322,6 +327,12 @@ private fun ChatTopBar(
                             },
                         )
                     }
+                    agents?.let { a ->
+                        DropdownMenuItem(text = { Text(a.text) }, onClick = {
+                            menu = false
+                            a.open(sid)
+                        })
+                    }
                     DropdownMenuItem(text = { Text(copyText("mobChat.more.rotation")) }, onClick = {
                         menu = false
                         onRotation(sid)
@@ -333,6 +344,23 @@ private fun ChatTopBar(
 }
 
 private const val MORE_GLYPH = "⋯"
+
+/** ⋯「agent」那一项：字是那台写好的那一句（[agentsEntry]），点了进这条会话的 agent 列表。 */
+private data class MoreAgents(
+    val text: String,
+    val open: (String) -> Unit,
+)
+
+/** 会话簿里这条会话（[sid]）的运行表那一句；还没起好 · 没有运行表 ⇒ `null`。 */
+@Composable
+private fun rememberAgentsEntry(
+    hostId: String,
+    sid: String?,
+): String? {
+    val backends = koinInject<HostBackends>()
+    val book by remember(hostId) { backends.of(hostId).table }.collectAsStateWithLifecycle()
+    return sid?.let { agentsEntry(book, it) }
+}
 
 /**
  * 连上主机就起前台保活服务。

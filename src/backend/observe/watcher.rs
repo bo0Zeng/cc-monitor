@@ -60,7 +60,6 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
-use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
@@ -588,6 +587,48 @@ impl ProfilesEar {
             self.arm(debouncer);
         }
         hit || dir_moved
+    }
+}
+
+/// 会话输入队那一层（`~/.cc-monitor/session-queue/`）那道耳朵：盯这个目录（不递归），起步不在 ⇒ 先挂上一层、出现时重挂（同配置文件那道）。
+/// 一批里动过的每一份 `<sid>.json` ⇒ 那条会话的队变了（别的进程投的也算），叫一声投递那一侧（[`crate::history::session_queue::moved`]）。
+struct QueueEar {
+    dir: PathBuf,
+    watched: bool,
+    parent_watched: bool,
+}
+
+impl QueueEar {
+    fn new() -> Option<Self> {
+        Some(QueueEar {
+            dir: crate::history::session_queue::dir_here()?,
+            watched: false,
+            parent_watched: false,
+        })
+    }
+
+    fn arm(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+        rewatch_agent_home(
+            debouncer,
+            &self.dir,
+            "session queue dir",
+            &mut self.watched,
+            &mut self.parent_watched,
+        );
+    }
+
+    /// 一批事件里队动没动：目录自己出现 / 消失 ⇒ 重挂，也算动了（重挂之前写进去的那几份听不见）；
+    /// 否则看动过的 `<sid>.json`。
+    fn touched<'a>(
+        &mut self,
+        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        paths: impl Iterator<Item = &'a Path> + Clone,
+    ) -> bool {
+        if paths.clone().any(|p| p == self.dir) {
+            self.arm(debouncer);
+            return true;
+        }
+        !crate::history::session_queue::sids_touched(paths, &self.dir).is_empty()
     }
 }
 
@@ -1264,6 +1305,11 @@ fn watch_loop(
         for ear in &mut hide_ears {
             ear.arm(&mut debouncer);
         }
+        // 会话输入队那一层：动了 ⇒ 叫一声投递那一侧。
+        let mut queue_ear = QueueEar::new();
+        if let Some(ear) = queue_ear.as_mut() {
+            ear.arm(&mut debouncer);
+        }
         // 「开着即活」那几家：记录根挂上 debouncer（读行；根还不在 ⇒ 等写者那道耳朵报它出现时再挂）＋ 写者那道耳朵。
         let mut writer_watch: Vec<(PathBuf, bool)> =
             writer_roots.iter().map(|r| (r.clone(), false)).collect();
@@ -1291,7 +1337,7 @@ fn watch_loop(
             ears,
             sock_dir_watched,
             accounts_ear,
-            (profiles_ear, notes_ear, hide_ears),
+            (profiles_ear, notes_ear, hide_ears, queue_ear),
             (writer_watch, writer_ears),
         ))
     });
@@ -1301,7 +1347,7 @@ fn watch_loop(
         mut ears,
         mut sock_dir_watched,
         mut accounts_ear,
-        (mut profiles_ear, mut notes_ear, mut hide_ears),
+        (mut profiles_ear, mut notes_ear, mut hide_ears, mut queue_ear),
         (mut writer_watch, _writer_ears),
     )) = armed
     else {
@@ -1394,6 +1440,12 @@ fn watch_loop(
                 }
                 if rules_moved {
                     state.rejudge_hidden(&mut sink);
+                }
+                // 会话输入队动了（批内合并成一声）。
+                if let Some(ear) = queue_ear.as_mut() {
+                    if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
+                        crate::history::session_queue::moved();
+                    }
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
@@ -1643,6 +1695,9 @@ fn watch_loop(
                         ear.arm(&mut debouncer);
                     }
                     for ear in &mut hide_ears {
+                        ear.arm(&mut debouncer);
+                    }
+                    if let Some(ear) = queue_ear.as_mut() {
                         ear.arm(&mut debouncer);
                     }
                     state.reload_annotations(annotations_table(), &mut sink);
@@ -3009,7 +3064,7 @@ fn note_activity(
     }));
 }
 
-/// 读到的一条记录若改了叫这条会话什么（标题记录 · 还没有第一句时人说的第一句）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
+/// 读到的一条记录若改了叫这条会话什么（判法住 [`crate::history::search_rules::heard`]）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
 /// 子运行的记录也经这里：子运行里的人话不是这条会话的第一句 —— 它们的记录在子运行自己的文件里、sid 认不到这条会话的账上。
 fn note_name(
     sid: &str,
@@ -3017,22 +3072,7 @@ fn note_name(
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) {
-    use crate::agents::record::Body;
-    let change = |f: &mut crate::history::search_rules::LabelFacts| match body {
-        Body::Title { text, .. } if f.title.as_deref() != Some(text) => {
-            f.title = Some(text.clone());
-            true
-        }
-        Body::Said { who, .. } if f.first.is_empty() => match who.speech() {
-            Some(s) => {
-                f.first = crate::history::search_rules::truncate_excerpt(&s, 120);
-                true
-            }
-            None => false,
-        },
-        _ => false,
-    };
-    state.renamed(sid, change, sink);
+    state.renamed(sid, |f| crate::history::search_rules::heard(f, body), sink);
 }
 
 /// **从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
