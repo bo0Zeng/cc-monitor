@@ -22281,12 +22281,6 @@
       "zh": "送达未知 · {machine} 无应答 · 未重发 · 先看画面",
       "args": ["machine"]
     },
-    "terminal.input.screenChanged": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "画面已变 · 未送 · 先看画面",
-      "args": []
-    },
     "terminal.input.retry": {
       "kind": "action",
       "role": "按钮",
