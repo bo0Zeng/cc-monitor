@@ -52,21 +52,21 @@ fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
 /// 两者今天的成员集相同，**而都不许手抄** —— 各自从生产段现算。
 const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
     (
-        "cc-list",
+        "list",
         "只读",
         "cc-bus 的**收件箱与已读位置是它自己的私有格式**（`inbox/*.jsonl` \
-             ＋ `state/*.pos`，`cc-list` 现打就是在数这两样）。收进后端 = 把那份格式\
+             ＋ `state/*.pos`，`cc-bus list` 现打就是在数这两样）。收进后端 = 把那份格式\
              再实现一遍 ⇒ 一处改、一处漏，而且错得静悄悄。「后面我可能要改ccbus」\
              ⇒ 今天焊进来的每一个字段，都是他改那天的一笔返工。",
         "cc-bus 那份文件格式**稳下来**，或者 cc-bus 本身被收成后端的一部分（那时它就不是\
              『外部插件』了，本表整张作废）。⚠ 解锁的判据不是『过了多久』，是**格式契约有没有定**。",
     ),
     (
-        "cc-log",
+        "log",
         "只读（共享锁，不推已读位置）",
         "驾驶舱读收件箱的尾巴：收件箱与它的锁是 cc-bus 的私有格式（`inbox/<id>.jsonl` ＋ `<inbox>.lock`），\
-把命令当接口 ⇒ 后端转调它、不读那份文件；消费性读仍只走 `cc-peek` / `cc-commit`。",
-        "同 `cc-list`：cc-bus 本身被收成后端的一部分的那天。",
+把命令当接口 ⇒ 后端转调它、不读那份文件；消费性读仍只走 `cc-bus peek` / `cc-bus commit`。",
+        "同 `list`：cc-bus 本身被收成后端的一部分的那天。",
     ),
 ];
 
@@ -170,7 +170,7 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
         "bad_id"
     );
     assert_eq!(
-        inbox_reply(ib["log"].as_str().expect("缺 log")).expect("`cc-log` 样例解析失败"),
+        inbox_reply(ib["log"].as_str().expect("缺 log")).expect("`cc-bus log` 样例解析失败"),
         ib["reply"],
         "`bus-inbox` 成品与金样不相等"
     );
@@ -193,7 +193,7 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
     }
 }
 
-/// 老 cc-bus（不认 `--tsv` / 没有 `cc-log`）与半份输出都**明说**，不猜着解成一份空名单。
+/// 老 cc-bus（不认 `--tsv` / 没有 `cc-bus log`）与半份输出都**明说**，不猜着解成一份空名单。
 #[test]
 fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
     let human = "ID           TMUX               待读\nx_cc         x_cc:0.0           2\n";
@@ -303,13 +303,13 @@ fn title_and_liveness_come_from_the_judge_and_unknown_stays_unknown() {
 #[test]
 fn the_not_installed_message_names_the_places_it_looked() {
     let home = PathBuf::from("/home/u");
-    let fixed = fixed_candidates(None, Some(&home), "cc-list");
+    let fixed = fixed_candidates(None, Some(&home), "cc-bus");
     assert_eq!(fixed.len(), 2, "固定位置应当是两处：{fixed:?}");
     let msg =
-        crate::plugin::discover::not_installed_message("cc-list", &fixed, 9, &NOT_INSTALLED_HINT);
-    assert!(msg.contains("/home/u/.local/bin/cc-list"), "{msg}");
+        crate::plugin::discover::not_installed_message("cc-bus", &fixed, 9, &NOT_INSTALLED_HINT);
+    assert!(msg.contains("/home/u/.local/bin/cc-bus"), "{msg}");
     assert!(
-        msg.contains(".claude/skills/cc-bus/scripts/cc-list"),
+        msg.contains(".claude/skills/cc-bus/scripts/cc-bus"),
         "{msg}"
     );
     assert!(
@@ -327,8 +327,8 @@ fn the_not_installed_message_names_the_places_it_looked() {
 fn the_override_dir_wins_over_the_fixed_places() {
     let over = PathBuf::from("/opt/ccbus");
     let home = PathBuf::from("/home/u");
-    let fixed = fixed_candidates(Some(&over), Some(&home), "cc-send");
-    assert_eq!(fixed[0], PathBuf::from("/opt/ccbus/cc-send"));
+    let fixed = fixed_candidates(Some(&over), Some(&home), "cc-bus");
+    assert_eq!(fixed[0], PathBuf::from("/opt/ccbus/cc-bus"));
     assert_eq!(fixed.len(), 3);
 }
 
@@ -338,11 +338,11 @@ fn the_override_dir_wins_over_the_fixed_places() {
 /// （并成一个码，人就分不出「我给的 id 不对」和「cc-bus 坏了」）。
 #[test]
 fn read_exit_codes_keep_refused_apart_from_failed() {
-    assert!(classify_exit("cc-log", Some(0), "", 10).is_ok());
-    let bad = classify_exit("cc-log", Some(2), "x", 10).unwrap_err().0;
-    let other = classify_exit("cc-log", Some(9), "x", 10).unwrap_err().0;
-    let killed = classify_exit("cc-log", None, "x", 10).unwrap_err().0;
-    let late = classify_exit("cc-log", Some(TIMED_OUT_CODE), "x", 10)
+    assert!(classify_exit("cc-bus log", Some(0), "", 10).is_ok());
+    let bad = classify_exit("cc-bus log", Some(2), "x", 10).unwrap_err().0;
+    let other = classify_exit("cc-bus log", Some(9), "x", 10).unwrap_err().0;
+    let killed = classify_exit("cc-bus log", None, "x", 10).unwrap_err().0;
+    let late = classify_exit("cc-bus log", Some(TIMED_OUT_CODE), "x", 10)
         .unwrap_err()
         .0;
     assert_ne!(bad, other, "「入参被拒」与「别的失败」必须分得开");
@@ -350,10 +350,10 @@ fn read_exit_codes_keep_refused_apart_from_failed() {
     assert_eq!(killed, other, "被信号打断与其它失败同档（都是 failed）");
 }
 
-/// 〔`INVARIANTS §47` ①〕**id 的形状在交给 `cc-send` / `cc-log` 之前先判**，
+/// 〔`INVARIANTS §47` ①〕**id 的形状在交给 `cc-bus send` / `cc-bus log` 之前先判**，
 /// 规则是共享那一份（`shell_quote_core::bus_id_ok`，全仓唯一；monitor 读收件箱用的是同一个函数）。
 ///
-/// 这一条替掉了 `P4f-Y5` 那一格原来的判据（「backend 不重复校验收件人合法性，放行到 cc-send 那一步由它拒」）：
+/// 这一条替掉了 `P4f-Y5` 那一格原来的判据（「backend 不重复校验收件人合法性，放行到 cc-bus send 那一步由它拒」）：
 /// `§47` 逐字「**『对端会校验』不是理由**」—— 界面那一道按删了之后，「本侧」就是真把 id 交出去的这一侧。
 /// ⚠ 判的是**形状**不是**成员资格**：一个形状合法但没登记过的名字照样发（`registered:false` 如实回），不在这里拒。
 ///
@@ -407,7 +407,7 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
 /// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
 /// 各格异源：
-/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `roster_agents`（挂身份空间）现算）·
+/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-bus list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `roster_agents`（挂身份空间）现算）·
 /// 码集合 == `inbound::REGISTRY` 那一块。
 #[test]
 fn the_bus_products_match_the_cross_language_golden() {
@@ -493,7 +493,7 @@ fn a_timeout_says_how_long_it_actually_waited() {
         .unwrap_or_else(|_| panic!("起不来 sleep"));
     assert!(out.timed_out());
     assert_eq!(out.waited_secs, Some(1), "原语交回的不是截短后的那个时长");
-    let (code, said) = classify_exit("cc-log", out.code, "", waited_secs(&out)).unwrap_err();
+    let (code, said) = classify_exit("cc-bus log", out.code, "", waited_secs(&out)).unwrap_err();
     assert_eq!(code, "child_timed_out");
     assert!(
         copy_core::copy_matches_with("beCcBus.timedOut.say", &[("secs", "1")], &said)
@@ -503,7 +503,7 @@ fn a_timeout_says_how_long_it_actually_waited() {
 }
 
 /// 总线的帧命令只剩三条：名单 · 读收件箱 · 核信封。起停会话走 `session-open` · 血缘，广播删了（A13-1 减法）；
-/// 界面不发信，发信由 `cc-send` 问信封那一条再自己投（A13-2）。
+/// 界面不发信，发信由 `cc-bus send` 问信封那一条再自己投（A13-2）。
 #[test]
 fn the_bus_commands_are_list_inbox_and_envelope_only() {
     let mut got: Vec<&str> = crate::stream::inbound::REGISTRY

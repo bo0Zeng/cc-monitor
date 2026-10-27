@@ -1399,10 +1399,10 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
     );
     // 🔴 窗口自己**不许**直接调那四条池命令 —— 它们只许经 `apply_remote` 走。
     for banned in [
-        "sftp_pool::sftp_mkdir",
-        "sftp_pool::sftp_delete",
-        "sftp_pool::sftp_rename",
-        "sftp_pool::sftp_chmod",
+        "transfer_relay::sftp_mkdir",
+        "transfer_relay::sftp_delete",
+        "transfer_relay::sftp_rename",
+        "transfer_relay::sftp_chmod",
     ] {
         assert!(
             !prod.contains(banned),

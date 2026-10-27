@@ -34,7 +34,7 @@ pub(crate) fn read_said(code: &str) -> String {
     }
 }
 
-/// 信封（`bus-envelope`）被拒成 `code` 时给发信的 agent 看的那一句（`cc-send` 原样印到 stderr）。
+/// 信封（`bus-envelope`）被拒成 `code` 时给发信的 agent 看的那一句（`cc-bus send` 原样印到 stderr）。
 /// 哪一格、什么值进原话（复制详情），不进这一句。
 pub(crate) fn envelope_said(code: &str) -> String {
     match code {
@@ -46,6 +46,8 @@ pub(crate) fn envelope_said(code: &str) -> String {
         "bad_re" => copy_text("beCcBus.envelope.badRe", &[]),
         "bad_ref" => copy_text("beCcBus.envelope.badRef", &[]),
         "too_long" => copy_text("beCcBus.envelope.tooLong", &[]),
+        "not_same_group" => copy_text("beCcBus.envelope.notSameGroup", &[]),
+        "no_roster" => copy_text("beCcBus.envelope.noRoster", &[]),
         _ => copy_text("beCcBus.envelope.badArgs", &[]),
     }
 }
@@ -74,7 +76,7 @@ pub(crate) struct BusList {
     pub(crate) agents: Vec<BusAgent>,
 }
 
-/// 一封信（规范信封）：`bus-envelope` 盖出来、`cc-send` 原样写进收件箱的那一行，`bus-inbox` 读回的也是它。
+/// 一封信（规范信封）：`bus-envelope` 盖出来、`cc-bus send` 原样写进收件箱的那一行，`bus-inbox` 读回的也是它。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -145,7 +147,7 @@ pub(crate) struct BusInbox {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BusInboxReq {
-    /// 交给 `cc-log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+    /// 交给 `cc-bus log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
     pub(crate) id: String,
     /// 1..=2000，缺 ⇒ 200。
     #[serde(default)]
@@ -153,7 +155,7 @@ pub(crate) struct BusInboxReq {
     pub(crate) lines: Option<u64>,
 }
 
-/// `bus-envelope` 的入参：发信人要发的那一封（`cc-send` 组好交来）。各格的规矩在 [`cc_bus_envelope`]。
+/// `bus-envelope` 的入参：发信人要发的那一封（`cc-bus send` 组好交来）。各格的规矩在 [`cc_bus_envelope`]。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -215,6 +217,10 @@ typed::codes! {
         BadRe = "bad_re",
         BadRef = "bad_ref",
         TooLong = "too_long",
+        /// 收件人不在发件人那几组里（范围，`cc_bus_scope`）。
+        NotSameGroup = "not_same_group",
+        /// 问不到组员名单（不退回成全放行）。
+        NoRoster = "no_roster",
     }
 }
 
@@ -252,7 +258,7 @@ impl crate::wire::typed::Handle for BusInboxCmd {
     }
 }
 
-/// `bus-envelope`：核一封信、盖上 id 与时间。纯函数、不碰盘、不起进程。
+/// `bus-envelope`：核一封信、判范围（组，`cc_bus_scope`）、盖上 id 与时间。各格的校验是纯函数；范围那一步读组名单（问常驻 · 读这台）。
 pub(crate) struct BusEnvelopeCmd;
 impl Command for BusEnvelopeCmd {
     const NAME: &'static str = "bus-envelope";
@@ -264,13 +270,19 @@ impl crate::wire::typed::Handle for BusEnvelopeCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: BusEnvelopeReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusEnvelope, BusEnvelopeErr>> + Send + 'static
     {
+        let tz = cx.tz.clone();
         async move {
-            cc_bus_envelope::envelope_now(&req)
-                .map_err(|(c, raw)| (c.to_string(), raw))
-                .map_err(of(BusEnvelopeErr::BadArgs, envelope_said))
+            let refused = |(c, raw): cc_bus_envelope::Refusal| {
+                of(BusEnvelopeErr::BadArgs, envelope_said)((c.to_string(), raw))
+            };
+            let env = cc_bus_envelope::envelope_now(&req).map_err(refused)?;
+            let roster = super::cc_bus_scope::groups_now(tz).await;
+            super::cc_bus_scope::scope(&env.from, &env.to, roster.as_ref().map_err(String::as_str))
+                .map_err(refused)?;
+            Ok(env)
         }
     }
 }

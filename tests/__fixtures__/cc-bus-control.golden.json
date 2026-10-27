@@ -4,7 +4,7 @@
     "后端侧（tests/backend/control/cc_bus_tests.rs::the_bus_products_match_the_cross_language_golden）：成品 == 生产构造器（bus-list 由同一份输入样例现算）· 码集合 == inbound::REGISTRY 那一块。",
     "界面侧（tests/frontend/ui/cc-bus-control.vitest.ts）：请求体 == 这里那一份 · 解码器读同一份成品 · 同一份码集合逐码说出一句各不相同的话。",
     "内容是结构占位（会话 id 与标题都是占位），不含真会话正文。",
-    "input.sessions：后端那一处对每条会话判的「叫它什么 · 此刻有没有谁持着它」（没记录 ⇒ 两格都是 null）；名单的行只来自 cc-list --tsv（收件箱）。","ids：规则只有一份（shell_quote_core::bus_id_ok）—— 后端 bus-inbox 入口（tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus）与 monitor 读收件箱（tests/frontend/shell/cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples）各读这一份；界面不再判 id，只把 bad_id 说成人话。"
+    "input.sessions：后端那一处对每条会话判的「叫它什么 · 此刻有没有谁持着它」（没记录 ⇒ 两格都是 null）；名单的行只来自 cc-bus list --tsv（收件箱）。","ids：规则只有一份（shell_quote_core::bus_id_ok）—— 后端 bus-inbox 入口（tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus）与 monitor 读收件箱（tests/frontend/shell/cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples）各读这一份；界面不再判 id，只把 bad_id 说成人话。"
   ],
   "ids": {
     "ok": ["alpha_cc", "proj_cc-2", "a", "A_1", "cc-monitor"],

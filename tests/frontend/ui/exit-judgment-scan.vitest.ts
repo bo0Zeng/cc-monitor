@@ -28,8 +28,9 @@ import { RULE_IDS, SAMPLE_TABLE, TS_SAMPLES, scanTs, type CopyTable } from "./ex
 /** 换成两句那一趟收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。
  * 上调过一次（+3）：本机后端没起来那一格的词 · 句 · ［重试］从契约 crate 的 `local()`（不在扫描面）搬进壳自己那一格
  * （`local_backend_host.rs::local_backend`，`LocalBackend`），是搬家不是新增文案，全仓取字总数没变。
- * 又上调过一次（+86）：`branch` 那一句跟进同文件里取文的小函数，原来看不见的存量现形，不是新增。 */
-const CEILING_AT_MOST = 1936;
+ * 又上调过一次（+86）：`branch` 那一句跟进同文件里取文的小函数，原来看不见的存量现形，不是新增。
+ * 再上调一次（+3）：手机标签页重名编号与按键时长那三处原是出口拼的字面量（扫描器看不见），改成取带插值的键后现形，不是新增。 */
+const CEILING_AT_MOST = 1939;
 
 type Lang = "ts" | "rs" | "kt";
 

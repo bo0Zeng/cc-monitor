@@ -537,15 +537,15 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
     // 窗口包不链 monitor（`contract_crate_guard` ②）⇒ 下面那几条壳里的路按构造够不着；这里再钉一道：一个 `monitor_lib::` 都不许有。
     const BANNED_PREFIX: &[&str] = &["backend::", "monitor_lib::"];
     const BANNED_EXACT: &[&str] = &[
-        "sftp_pool::sftp_list_dir",
-        "sftp_pool::sftp_stat",
-        "sftp_pool::sftp_mkdir",
-        "sftp_pool::sftp_delete",
-        "sftp_pool::sftp_rename",
-        "sftp_pool::sftp_chmod",
-        "sftp_pool::sftp_write_text",
-        "sftp_pool::sftp_realpath",
-        "sftp_pool::SftpEntry",
+        "transfer_relay::sftp_list_dir",
+        "transfer_relay::sftp_stat",
+        "transfer_relay::sftp_mkdir",
+        "transfer_relay::sftp_delete",
+        "transfer_relay::sftp_rename",
+        "transfer_relay::sftp_chmod",
+        "transfer_relay::sftp_write_text",
+        "transfer_relay::sftp_realpath",
+        "transfer_relay::SftpEntry",
     ];
     let hits: Vec<&String> = window
         .keys()
@@ -574,11 +574,11 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
     }
     // 反向自检：切块 ＋ 抽取认得出一条被禁的边。
     let fake = chunks_by_fn(&format!(
-        "fn x() {{ {CRATE_WORD}::sftp_pool::sftp_list_dir(a) }}"
+        "fn x() {{ {CRATE_WORD}::transfer_relay::sftp_list_dir(a) }}"
     ));
     assert!(fake
         .iter()
-        .any(|(n, c)| n == "x" && app_side_edges(c).contains("sftp_pool::sftp_list_dir")));
+        .any(|(n, c)| n == "x" && app_side_edges(c).contains("transfer_relay::sftp_list_dir")));
 }
 
 /// ★ **表里每一类都还活着** —— 类别不许长草；而且每一类只出现在它该在的那一侧。
@@ -729,8 +729,8 @@ fn the_path_extractor_sees_what_it_should_and_nothing_else() {
     );
 
     // ⑦ 自己人（`filewin::…`）不算一条边，别人算。
-    let src = format!("{w}::{FILEWIN_MOD}::rows::show; {w}::sftp_pool::sftp_stat();");
-    assert_eq!(app_side_edges(&src), want(&["sftp_pool::sftp_stat"]));
+    let src = format!("{w}::{FILEWIN_MOD}::rows::show; {w}::transfer_relay::sftp_stat();");
+    assert_eq!(app_side_edges(&src), want(&["transfer_relay::sftp_stat"]));
     // ⑧ 反向那个抽取器带前缀回。
     assert_eq!(
         filewin_reaches(&format!("commands![{FILEWIN_MOD}::entry::open_x]")),

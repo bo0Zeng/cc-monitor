@@ -431,7 +431,7 @@ fn the_uninstall_reply_decoder_reads_the_golden() {
 }
 
 /// **界面那一侧对着真后端 ＋ 真 sshd**：装 · 卸经本机常驻后端（`deploy-install` · `deploy-uninstall`）、
-/// 传输经中继（`sftp_pool::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
+/// 传输经中继（`transfer_relay::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
 ///
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
@@ -568,9 +568,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
     let origin = crate::origin::Origin::named(cfg.clone());
     let up = s("up");
-    let r = crate::sftp_pool::transfer_call(
+    let r = crate::transfer_relay::transfer_call(
         cfg.clone(),
-        crate::sftp_pool::TRANSFER_UPLOAD,
+        crate::transfer_relay::TRANSFER_UPLOAD,
         &serde_json::json!({ "items": [{ "local_path": up }], "remote_dir": "/tmp" }),
     )
     .await
@@ -579,7 +579,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         r["items"][0]["id"].as_str().unwrap(),
         r["items"][0]["staged"].as_str().unwrap(),
     );
-    let last = crate::sftp_pool::watch_ticket(&origin, id)
+    let last = crate::transfer_relay::watch_ticket(&origin, id)
         .expect("订阅")
         .collect::<Vec<_>>()
         .await
@@ -588,7 +588,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let want = std::fs::read(&up).unwrap();
     // 上传那一路的传完带整份摘要（64 位十六进制；算法对不对由后端那一侧对拍 `sha2`）。
     assert!(
-        matches!(crate::sftp_pool::end_of(&last), Some(crate::sftp_pool::End::Done { bytes, sha256: Some(h) })
+        matches!(crate::transfer_relay::end_of(&last), Some(crate::transfer_relay::End::Done { bytes, sha256: Some(h) })
             if *bytes == want.len() as u64 && h.len() == 64),
         "{last:?}"
     );
@@ -596,9 +596,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     assert!(staged == want, "暂存件不是本机那份的字节");
     // ⑥ 下载经中继
     let dl_local = s("dl_local");
-    let r = crate::sftp_pool::transfer_call(
+    let r = crate::transfer_relay::transfer_call(
         cfg.clone(),
-        crate::sftp_pool::TRANSFER_DOWNLOAD,
+        crate::transfer_relay::TRANSFER_DOWNLOAD,
         &serde_json::json!({
             "items": [{ "remote_path": s("dl_remote"), "name": std::path::Path::new(&dl_local).file_name().unwrap().to_string_lossy() }],
             "local_dir": std::path::Path::new(&dl_local).parent().unwrap().to_string_lossy(),
@@ -607,7 +607,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     )
     .await
     .expect("开单（下载）");
-    let last = crate::sftp_pool::watch_ticket(&origin, r["items"][0]["id"].as_str().unwrap())
+    let last = crate::transfer_relay::watch_ticket(&origin, r["items"][0]["id"].as_str().unwrap())
         .expect("订阅")
         .collect::<Vec<_>>()
         .await
@@ -615,8 +615,8 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .unwrap();
     assert!(
         matches!(
-            crate::sftp_pool::end_of(&last),
-            Some(crate::sftp_pool::End::Done { .. })
+            crate::transfer_relay::end_of(&last),
+            Some(crate::transfer_relay::End::Done { .. })
         ),
         "{last:?}"
     );

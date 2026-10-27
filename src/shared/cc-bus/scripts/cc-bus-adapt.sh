@@ -6,10 +6,10 @@
 # 换一个 OS 或换一个 agent 不该改遍所有脚本 ⇒ 本文件把那道缝写成**函数名的契约**:
 #   ① agent 适配 —— 结束钩子形状(能不能拦停)、能力位
 #   ② 存储 适配 —— 排他/共享锁、原子追加、时间戳、路径原语(按 OS 族一份:posix · windows)
-# 「我是哪条会话」不在这里:只问 cc-monitor 的公开命令(`cc-whoami` → `ccm -- --session-self`)。
+# 「我是哪条会话」不在这里:只问 cc-monitor 的公开命令(`cc-bus whoami` → `ccm -- --session-self`)。
 #
 # 🔴 **缝切在 shell 里,不搬进后端**(「不要. cc-bus 就是额外的
-#    东西解耦清楚」)⇒ 通用层(cc-peek / cc-commit / cc-bus-lib.sh 的阀门段)不认识
+#    东西解耦清楚」)⇒ 通用层(cc-bus peek / cc-bus commit / cc-bus-lib.sh 的阀门段)不认识
 #    tmux / flock,只认识下面这两张表里的函数名。
 #
 # ## ①② 刻意用两种抄法,不是一种
@@ -21,7 +21,7 @@
 #   ⇒ 每个 agent 词典声明自己支持哪几种投递语义(can_block / can_nudge / can_readback),
 #     配的行为在不支持时**按下面那条降级链降级,不硬失败**。
 #
-# 本文件只提供函数与常量、**不自执行**;被 cc-peek / cc-commit / cc-bus-lib.sh source。
+# 本文件只提供函数与常量、**不自执行**;被 cc-bus peek / cc-bus commit / cc-bus-lib.sh source。
 # 返回码:13 = 适配层能力缺失(没装齐 / 这一侧没做)—— 与 11/12 同族:不是崩,是"办不到"。
 
 # ── 契约:每个 trait 的必备函数 ───────────────────────────────────────────────
@@ -59,7 +59,7 @@ ccbus_ccm_bin() {
 }
 
 # 适配日志:降级、能力缺失都要留痕(§3.2b 逐字「并在 bus.log 里说清降级了」)。
-# ⚠ 刻意不调 route_log:本文件会被**不 source cc-bus-lib.sh** 的 cc-peek / cc-commit 用。
+# ⚠ 刻意不调 route_log:本文件会被**不 source cc-bus-lib.sh** 的 cc-bus peek / cc-bus commit 用。
 ccbus_adapt_log() {
   local bus="${BUS:-${CC_BUS_HOME:-$HOME/.cc-bus}}"
   mkdir -p "$bus/log" 2>/dev/null || true

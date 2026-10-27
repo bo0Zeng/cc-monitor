@@ -3,11 +3,11 @@
   "diagnosis": {
     "stop": {
       "kind": "installed-at-path",
-      "command": "\"$HOME/.local/bin/cc-bus-stop-hook\"",
-      "path": "$HOME/.local/bin/cc-bus-stop-hook"
+      "command": "\"$HOME/.local/bin/cc-bus\" stop-hook",
+      "path": "$HOME/.local/bin/cc-bus"
     },
     "note": ""
   },
-  "snippet": "{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook\\\"\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+  "snippet": "{\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"\\\"$HOME/.claude/skills/cc-bus/scripts/cc-bus\\\" stop-hook\",\n            \"type\": \"command\"\n          }\n        ]\n      }\n    ]\n  }\n}",
   "source": "/HOME/.claude/settings.json"
 }
