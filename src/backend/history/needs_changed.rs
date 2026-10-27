@@ -1,24 +1,35 @@
-//! **会话的需手动那几格变了**那一声（[`moved`]）与**哪几条会话挂着待答请求**（[`asked_sids`]）：
-//! 流的 tap 订那一声推 `changed {needs, key: sid}`；watcher 订它、照此刻挂着请求的那几条改会话的点；活会话表判「在等人」也问 [`asked_sids`]。
-//! 登记表本身（挂上 · 撤掉 · 答掉）住控制面（`control::asks`）：它每变一次调 [`moved`]，头一回开张时把自己的读法交进来（[`answer_asked`]）；
-//! 没开张过（一次性子命令 · 常驻进程里还没人挂过）⇒ 空。注解里「没人答时自动答」那一格改了也调 [`moved`]。
+//! **需手动的铃**（进程里只这一个）与**哪几条会话挂着待答请求**（[`asked_sids`]）：
+//! 一条会话的需手动那一判可能变了 ⇒ [`moved`]（挂着的请求挂上 · 撤掉 · 答掉 —— 登记表 `control::asks` 调；注解里「没人答时自动答」改了；
+//! 活会话表发布时那条进出等人 · 离开「活」—— `live_table::publish` 调）；不止一条会话或会话外那几项可能变了 ⇒ [`ring`]
+//! （账号清单 · 某个号记「MCP 要登录」的那份文件翻了 · 一份登录作业收了 · 续令牌没成 · 计划要人看的数变了）。
+//! watcher 订这一个铃：照此刻挂着请求的那几条改会话的点、给运行表配 needs，再从出方向推 `changed {needs, key?}`（不可丢）；活会话表判「在等人」也问 [`asked_sids`]。
+//! 登记表头一回开张时把自己的读法交进来（[`answer_asked`]）；没开张过（一次性子命令 · 常驻进程里还没人挂过）⇒ 空。
 
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
-/// 某条会话的需手动那几格变了 ⇒ 那个会话 id。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
-    static TX: OnceLock<tokio::sync::broadcast::Sender<String>> = OnceLock::new();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
+/// 铃：`Some(sid)` ＝ 那条会话；`None` ＝ 整份可能变了。
+pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<Option<String>> {
+    static TX: OnceLock<tokio::sync::broadcast::Sender<Option<String>>> = OnceLock::new();
+    TX.get_or_init(|| tokio::sync::broadcast::channel::<Option<String>>(64).0)
 }
 
-/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 推 `changed {needs, key: sid}`。
+/// 这条会话的需手动那一判可能变了 ⇒ 推 `changed {needs, key: sid}`。
 pub(crate) fn moved(sid: &str) {
-    let _ = changes().send(sid.to_string());
+    ring_for(Some(sid.to_string()));
 }
 
-/// 订那一声（watcher：它照此刻挂着请求的那几条改会话的点）。
-pub(crate) fn moved_rx() -> tokio::sync::broadcast::Receiver<String> {
+/// 不止一条会话、或会话外那几项可能变了 ⇒ 推 `changed {needs}`（不带 key，整份重问）。
+pub(crate) fn ring() {
+    ring_for(None);
+}
+
+fn ring_for(sid: Option<String>) {
+    let _ = changes().send(sid);
+}
+
+/// 订那一声（watcher）。
+pub(crate) fn moved_rx() -> tokio::sync::broadcast::Receiver<Option<String>> {
     changes().subscribe()
 }
 

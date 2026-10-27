@@ -112,12 +112,12 @@ fn of_rows(rows: Vec<LiveRow>, asked: &[&str]) -> LiveTable {
 
 /// 发布了的那一份里收到的 `needs_changed` 那一声（只认 `sids` 里的，别的判据也在敲）。
 fn heard_after(
-    rx: &mut tokio::sync::broadcast::Receiver<String>,
+    rx: &mut tokio::sync::broadcast::Receiver<Option<String>>,
     sids: &[&str],
 ) -> BTreeSet<String> {
     let mut got = BTreeSet::new();
-    while let Ok(s) = rx.try_recv() {
-        if sids.contains(&s.as_str()) {
+    while let Ok(m) = rx.try_recv() {
+        if let Some(s) = m.filter(|s| sids.contains(&s.as_str())) {
             got.insert(s);
         }
     }

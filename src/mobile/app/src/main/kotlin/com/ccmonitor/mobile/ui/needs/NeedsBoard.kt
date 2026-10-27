@@ -45,7 +45,7 @@ data class MachineNeeds(
 
 /**
  * 跨会话的需手动板（进程级一份）：对此刻起着的每条常驻流（[sources]，不为它另连）各持那台最后一份 `sessions-needs` 整份。
- * 什么时候问那一台：那条流一挂上来 · 换了一条流 · 那台推 `changed {needs | plan | manual}`（去抖合成一次）· 没问到之后退避再问
+ * 什么时候问那一台：那条流一挂上来 · 换了一条流 · 那台推 `changed {needs}`（那台的需手动只这一个铃；去抖合成一次）· 没问到之后退避再问
  * （[RETRY_FIRST_MS] 起、翻倍、封顶；问到了归零）；别处答完 / 登完也可以叫它重问（[reask]）。会话进出需手动由那台照它的活会话表推 `needs`，这里不看点。总览照它画、聊天屏右上那颗入口数它、聊天屏那一块需手动读它里面那一条 —— 别处都不再自己问。
  * 判 · 排 · 写字全在那台；这里只记、只把几台的条数相加。
  */
@@ -144,6 +144,6 @@ class NeedsBoard(
         private const val RETRY_MAX_MS = 30_000L
 
         /** 那台这几样变了 ⇒ 整份可能变了。 */
-        private fun Changed.wholeMayChange(): Boolean = this is Changed.Needs || this is Changed.Plan || this is Changed.Manual
+        private fun Changed.wholeMayChange(): Boolean = this is Changed.Needs
     }
 }

@@ -131,21 +131,23 @@ class NeedsBoardTest {
         }
 
     @Test
-    fun `那台推 changed needs · plan · manual ⇒ 只重问那一台；别的主题不问；会外读不出 ⇒ 数说不准、那台那一句`() =
+    fun `那台推 changed needs（带不带会话）⇒ 只重问那一台；别的主题不问；会外读不出 ⇒ 数说不准、那台那一句`() =
         runTest {
             val a = Machine(listOf(session("a1")))
             val b = Machine(listOf())
             val board = boardOf("a" to a, "b" to b)
-            for (c in listOf(Changed.Needs("a1"), Changed.Plan("/w"), Changed.Manual)) {
+            for (c in listOf(Changed.Needs("a1"), Changed.Needs())) {
                 a.pushes.emit(c)
                 settle()
             }
-            a.pushes.emit(Changed.Tasks("a1"))
-            settle()
-            assertEquals(4, a.asked("sessions-needs"))
+            for (c in listOf(Changed.Plan("/w"), Changed.Tasks("a1"))) {
+                a.pushes.emit(c)
+                settle()
+            }
+            assertEquals(3, a.asked("sessions-needs"))
             assertEquals(1, b.asked("sessions-needs"))
             b.unreadable = "账号库无法解析"
-            b.pushes.emit(Changed.Manual)
+            b.pushes.emit(Changed.Needs())
             settle()
             val ov = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
             assertTrue(ov.uncertain)
