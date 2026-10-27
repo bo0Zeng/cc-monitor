@@ -72,7 +72,7 @@ fn a_client_whose_queue_overflows_gets_a_resync_and_rebuilds_the_same_screen() {
     let p = replay(&frames, vt100::Parser::new(24, 80, 0));
     assert_eq!(
         grid(p.screen()),
-        grid(hub.screen().screen()),
+        grid(hub.screen.screen()),
         "还原的屏与托管那一屏逐格相等"
     );
 }
@@ -126,7 +126,7 @@ fn the_pty_takes_the_holders_size_and_a_viewer_never_changes_it() {
     // B 接管 ⇒ 跟 B 报的最近那个尺寸。
     let eff = hub.frame(b, Frame::Ctl(Ctl::Take), 1);
     assert_eq!(eff, vec![Effect::Resize(sz(90, 30))]);
-    assert_eq!(hub.holder(), Some(b));
+    assert_eq!(hub.holder, Some(b));
 }
 
 #[test]
@@ -140,14 +140,14 @@ fn the_newest_terminal_wanting_input_holds_and_a_backend_never_does_by_hello() {
     );
     let (be, _) = hub.connect(None, 0);
     hub.frame(be, hello(Want::Input, WhoKind::Backend, None), 0);
-    assert_eq!(hub.holder(), Some(a), "后端 hello 不抢输入");
+    assert_eq!(hub.holder, Some(a), "后端 hello 不抢输入");
     let (b, _) = hub.connect(None, 0);
     hub.frame(
         b,
         hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
         0,
     );
-    assert_eq!(hub.holder(), Some(b), "最新连上的真终端持有");
+    assert_eq!(hub.holder, Some(b), "最新连上的真终端持有");
 }
 
 #[test]
@@ -165,12 +165,12 @@ fn when_the_holder_leaves_input_goes_to_the_latest_other_terminal_or_nobody() {
         hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
         0,
     );
-    assert_eq!(hub.holder(), Some(b));
+    assert_eq!(hub.holder, Some(b));
     let eff = hub.gone(b);
-    assert_eq!(hub.holder(), Some(a));
+    assert_eq!(hub.holder, Some(a));
     assert_eq!(eff, vec![Effect::Resize(sz(100, 30))], "尺寸回到 A 的");
     hub.gone(a);
-    assert_eq!(hub.holder(), None);
+    assert_eq!(hub.holder, None);
     assert_eq!(hub.size(), sz(100, 30), "没人持有 ⇒ 保持上一次的");
 }
 
@@ -190,14 +190,14 @@ fn a_backend_can_take_and_release_back_to_the_terminal() {
         hub.frame(be, Frame::Ctl(Ctl::Take), 1).is_empty(),
         "后端接管不改尺寸"
     );
-    assert_eq!(hub.holder(), Some(be));
+    assert_eq!(hub.holder, Some(be));
     let got = take(&a_out);
     assert!(
         got.iter().any(|f| matches!(f, Frame::Ctl(Ctl::Holder { holder: Some(h) }) if h.client == be && !h.mine)),
         "A 收到持有者换了：{got:?}"
     );
     hub.frame(be, Frame::Ctl(Ctl::Release), 2);
-    assert_eq!(hub.holder(), Some(a));
+    assert_eq!(hub.holder, Some(a));
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn welcome_carries_the_whole_screen_and_who_holds() {
     hub.frame(a, hello(Want::Input, WhoKind::Terminal, Some(sz(40, 5))), 0);
     let got = take(&a_out);
     let p = replay(&got, vt100::Parser::new(5, 40, 0));
-    assert_eq!(grid(p.screen()), grid(hub.screen().screen()));
+    assert_eq!(grid(p.screen()), grid(hub.screen.screen()));
     assert!(got.iter().any(
         |f| matches!(f, Frame::Ctl(Ctl::Holder { holder: Some(h) }) if h.mine && h.pid == Some(7))
     ));

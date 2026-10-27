@@ -679,17 +679,8 @@ mod os {
         }
     }
 
-    /// 脱离：自成会话（`setsid`，也就自成一组、没有控制终端）——起它的那个终端关了、发 SIGHUP 给它那一会话，碰不到这一个。
     pub(super) fn detach(cmd: &mut Command) -> Result<(), ChildFail> {
-        // SAFETY: `setsid` 是异步信号安全的，`fork` 之后、`exec` 之前只调它一个。
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setsid() == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
+        cmd.process_group(0);
         Ok(())
     }
 
@@ -1216,6 +1207,8 @@ pub(crate) struct TerminalIo {
 /// 等托管终端里的子进程退出。
 pub(crate) struct TerminalChild {
     child: Box<dyn portable_pty::Child + Send + Sync>,
+    /// 等它退那一下按 pid 不收尸地等（只 Unix 用；Windows 上句柄占着进程）。
+    #[cfg_attr(not(unix), allow(dead_code))]
     pid: Option<u32>,
     reaped: Arc<Mutex<bool>>,
 }
@@ -1227,8 +1220,6 @@ impl TerminalChild {
         if let Some(pid) = self.pid {
             os::exited_unreaped_pid(pid);
         }
-        #[cfg(not(unix))]
-        let _ = self.pid;
         let mut r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
         *r = true;
         let status = self.child.wait();

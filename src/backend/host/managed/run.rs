@@ -1,7 +1,7 @@
 //! 托管进程本体：`ccm -- --host-run <id> [键=值…] -- <argv>`（A3-3-1）。
 //!
 //! 持一个伪终端（里面跑 `argv`），把它的输出算进屏（[`super::screen`]），经托管口（[`super::wire`] · [`super::serve`]）给各端；
-//! 输入只收持有者的。子进程退了 ⇒ 各端收 `ended{code}`、删自己的目录、退出（10-05：Claude 退出终端跟着收）。
+//! 输入只收持有者的。子进程退了 ⇒ 各端收 `ended{code}`、删自己的目录、退出（Claude 退出，终端跟着收）。
 //! 收到 `end` ⇒ 子进程组 SIGHUP，等它退。
 //!
 //! 线程：读伪终端一条（阻塞读，永远不等哪一端）· 写伪终端一条（写满了只堵它自己）· 等子进程一条；
@@ -124,7 +124,9 @@ impl Ctx {
         for e in effects {
             match e {
                 Effect::Write(b) => {
-                    let _ = locked(&self.pty_in).send(b);
+                    if locked(&self.pty_in).send(b).is_err() {
+                        tracing::warn!("托管终端：写伪终端那条线已经没了，这几个字节没送进去");
+                    }
                 }
                 Effect::Resize(s) => {
                     if let Err(e) = self.term.resize(s.rows, s.cols) {
@@ -246,13 +248,17 @@ pub(crate) async fn run(
                     }
                 }
             }
-            let _ = eof_tx.send(());
+            if eof_tx.send(()).is_err() {
+                tracing::debug!("托管终端：读到头时收尾那一方已经不等了");
+            }
         });
     }
     // 等子进程。
     let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<Option<i32>>();
     std::thread::spawn(move || {
-        let _ = exit_tx.send(waiter.wait());
+        if exit_tx.send(waiter.wait()).is_err() {
+            tracing::debug!("托管终端：子进程退了，收尾那一方已经不在了");
+        }
     });
     // 收连接：只收本人的（`own-chan` 核对端 uid）。
     let writers: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> = Arc::default();
@@ -309,7 +315,12 @@ const LAST_WRITE_MS: u64 = 2000;
     reason = "托管终端收尾时等最后那几行 · 各端写完 ended 的一次有界宽限：孙进程攥着终端或某一端不读时不能一直挂着"
 )]
 async fn wait_briefly<F: std::future::Future>(f: F, within_ms: u64) {
-    let _ = tokio::time::timeout(std::time::Duration::from_millis(within_ms), f).await;
+    if tokio::time::timeout(std::time::Duration::from_millis(within_ms), f)
+        .await
+        .is_err()
+    {
+        tracing::info!("托管终端收尾：等了 {within_ms} 毫秒没等到，不等了");
+    }
 }
 
 /// 接一条连接：登记进账、起读写两个任务；交回写那一半的任务（收尾时等它把 `ended` 写完）。
@@ -344,7 +355,9 @@ async fn write_out<W: tokio::io::AsyncWrite + Unpin>(out: &Outbox, wr: &mut W) {
             let (frames, closed) = locked(&out.q).drain();
             if frames.is_empty() {
                 if closed {
-                    let _ = wr.shutdown().await;
+                    if let Err(e) = wr.shutdown().await {
+                        tracing::debug!("托管口：关一条连接没关干净：{e}");
+                    }
                     return;
                 }
                 break;

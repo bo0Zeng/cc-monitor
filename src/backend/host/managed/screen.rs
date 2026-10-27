@@ -111,24 +111,17 @@ impl Screen {
         v
     }
 
-    /// 判据看那一屏的格子。
-    #[cfg(test)]
+    /// 那一屏的格子（托管口那一张账的判据也照它比）。
     pub(crate) fn screen(&self) -> &vt100::Screen {
         self.parser.screen()
     }
 
     pub(crate) fn size(&self) -> (u16, u16) {
-        self.parser.screen().size()
+        self.screen().size()
     }
 
     pub(crate) fn resize(&mut self, rows: u16, cols: u16) {
         self.parser.screen_mut().set_size(rows, cols);
-    }
-
-    /// 里面的程序最近一次设的标题（OSC 0 / 2）。
-    #[cfg(test)]
-    pub(crate) fn title(&self) -> String {
-        String::from_utf8_lossy(&self.parser.callbacks().title).into_owned()
     }
 
     /// 往回抓：回滚里最近的 `back` 行 ＋ 当屏（形同 `tmux capture-pane -p -S -<back>`，`color` ⇒ 带 SGR，同 `-e`）。

@@ -117,7 +117,7 @@ fn kitty_keyboard_query_is_not_answered() {
 fn the_title_is_kept_for_new_clients() {
     let mut s = Screen::new(5, 20);
     s.feed(b"\x1b]0;hello\x07");
-    assert_eq!(s.title(), "hello");
+    assert_eq!(s.parser.callbacks().title, b"hello");
     // 新接上的一端只拿整屏字节：标题也在里面。
     struct T(Vec<u8>);
     impl vt100::Callbacks for T {

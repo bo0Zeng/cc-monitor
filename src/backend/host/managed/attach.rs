@@ -134,8 +134,7 @@ pub(crate) async fn session(
     )
     .await
     .map_err(|e| Said::with_raw(copy_text("beHost.attach.lost", &[]), &e))?;
-    let _ = outer.out.write_all(ENTER_OUTER);
-    let _ = outer.out.flush();
+    put(&mut *outer.out, ENTER_OUTER);
     let in_tmux = outer.in_tmux;
     let (prefix, vi) = (outer.prefix, outer.vi);
     let mut c = Client {
@@ -160,7 +159,9 @@ pub(crate) async fn session(
                     }
                 }
                 Ok(None) | Err(_) => {
-                    let _ = ftx.send(None);
+                    if ftx.send(None).is_err() {
+                        tracing::debug!("瘦客户端：托管口断了，这一趟已经在收尾");
+                    }
                     return;
                 }
             }
@@ -177,7 +178,7 @@ pub(crate) async fn session(
                 // 接管那一下到 `holder` 回来之间敲的键：回来了就送。
                 if c.holding() && !c.typed_while_taking.is_empty() {
                     let b = std::mem::take(&mut c.typed_while_taking);
-                    let _ = wire::write_frame(&mut wr, &Frame::In(b)).await;
+                    send(&mut wr, &Frame::In(b)).await;
                 }
                 if !told_tmux && c.you != 0 {
                     told_tmux = true;
@@ -190,7 +191,7 @@ pub(crate) async fn session(
                 };
                 let (sends, left) = c.key(&k, list);
                 for f in sends {
-                    if wire::write_frame(&mut wr, &f).await.is_err() {
+                    if !send(&mut wr, &f).await {
                         break;
                     }
                 }
@@ -201,19 +202,36 @@ pub(crate) async fn session(
             r = c.outer.resized.recv() => {
                 if r.is_some() {
                     if let Some(s) = (c.outer.size)() {
-                        let _ = wire::write_frame(&mut wr, &Frame::Ctl(Ctl::Resize { rows: s.rows, cols: s.cols })).await;
+                        send(&mut wr, &Frame::Ctl(Ctl::Resize { rows: s.rows, cols: s.cols })).await;
                     }
                 }
             }
         }
     };
     if matches!(left, Left::Detached | Left::Switch(_) | Left::OuterGone) {
-        let _ = wire::write_frame(&mut wr, &Frame::Ctl(Ctl::Bye)).await;
+        send(&mut wr, &Frame::Ctl(Ctl::Bye)).await;
     }
     reader.abort();
-    let _ = c.outer.out.write_all(LEAVE_OUTER);
-    let _ = c.outer.out.flush();
+    put(&mut *c.outer.out, LEAVE_OUTER);
     Ok(left)
+}
+
+/// 往外层终端写一段并冲出去；写不进（终端没了）⇒ 记一行，这一趟由读键那一侧读到头收。
+fn put(out: &mut dyn Write, b: &[u8]) {
+    if let Err(e) = out.write_all(b).and_then(|()| out.flush()) {
+        tracing::debug!("瘦客户端：外层终端写不进：{e}");
+    }
+}
+
+/// 往托管口发一帧；发不出去（托管那边断了）⇒ 记一行、交 `false`，读那一侧会收到断开。
+async fn send<W: tokio::io::AsyncWrite + Unpin>(wr: &mut W, f: &Frame) -> bool {
+    match wire::write_frame(wr, f).await {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::debug!("瘦客户端：托管口写不进：{e}");
+            false
+        }
+    }
 }
 
 impl Client {
@@ -226,11 +244,15 @@ impl Client {
     }
 
     fn write(&mut self, b: &[u8]) {
-        let _ = self.outer.out.write_all(b);
+        if let Err(e) = self.outer.out.write_all(b) {
+            tracing::debug!("瘦客户端：外层终端写不进：{e}");
+        }
     }
 
     fn flush(&mut self) {
-        let _ = self.outer.out.flush();
+        if let Err(e) = self.outer.out.flush() {
+            tracing::debug!("瘦客户端：外层终端冲不出去：{e}");
+        }
     }
 
     /// 整屏重画（当屏 ＋ 标题；盖着的那一层不画）。

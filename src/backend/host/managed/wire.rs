@@ -213,8 +213,7 @@ impl std::fmt::Display for Bad {
     }
 }
 
-/// 从字节里解一帧：`Ok(None)` ＝ 还不够一帧。交回帧与用掉的字节数（判据解队列里编好的帧用）。
-#[cfg(test)]
+/// 从字节里解一帧：`Ok(None)` ＝ 还不够一帧。交回帧与用掉的字节数。
 pub(crate) fn decode(buf: &[u8]) -> Result<Option<(Frame, usize)>, Bad> {
     if buf.len() < 4 {
         return Ok(None);
@@ -254,9 +253,11 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option
     if len == 0 || len > MAX_FRAME {
         return Err(Bad::TooLong(len));
     }
-    let mut body = vec![0u8; len as usize];
-    r.read_exact(&mut body).await.map_err(Bad::Io)?;
-    frame_of(body[0], &body[1..]).map(Some)
+    let mut buf = vec![0u8; 4 + len as usize];
+    buf[..4].copy_from_slice(&head);
+    r.read_exact(&mut buf[4..]).await.map_err(Bad::Io)?;
+    // 整帧在手：解法与同步那一形同一份。
+    Ok(decode(&buf)?.map(|(f, _)| f))
 }
 
 /// 写一帧。

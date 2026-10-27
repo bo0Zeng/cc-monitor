@@ -102,21 +102,9 @@ impl Hub {
         }
     }
 
-    /// 判据看托管那一屏。
-    #[cfg(test)]
-    pub(crate) fn screen(&self) -> &Screen {
-        &self.screen
-    }
-
     pub(crate) fn size(&self) -> Size {
         let (rows, cols) = self.screen.size();
         Size { rows, cols }
-    }
-
-    /// 判据看此刻谁持有。
-    #[cfg(test)]
-    pub(crate) fn holder(&self) -> Option<u64> {
-        self.holder
     }
 
     /// 一条连接进来了（还没说 `hello`）：交回它的连接号与队列。

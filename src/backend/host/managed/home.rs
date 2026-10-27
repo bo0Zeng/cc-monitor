@@ -119,7 +119,13 @@ impl Home {
         };
         let stale = dir.join(SOCK)?;
         if Ro::symlink_metadata(stale.as_path()).is_ok() {
-            let _ = own.delete_file(&stale);
+            if let Err(e) = own.delete_file(&stale) {
+                // 删不掉 ⇒ 下一步绑托管口那一下照实报起不来。
+                tracing::warn!(
+                    "托管终端：陈旧的套接字 {} 没删掉：{e}",
+                    stale.as_path().display()
+                );
+            }
         }
         Ok(Home {
             own: own.clone(),
@@ -155,7 +161,15 @@ impl Home {
 pub(crate) fn read_facts(dir: &Path) -> Option<Facts> {
     match FACTS_DOC.read(&dir.join(FACTS)) {
         crate::common::own_state::Read::Present(f) => Some(f),
-        _ => None,
+        crate::common::own_state::Read::Absent => None,
+        crate::common::own_state::Read::Unreadable(why) => {
+            tracing::warn!(
+                "托管终端 {}：事实文件读不出来，不列：{}",
+                dir.display(),
+                why.logged()
+            );
+            None
+        }
     }
 }
 
