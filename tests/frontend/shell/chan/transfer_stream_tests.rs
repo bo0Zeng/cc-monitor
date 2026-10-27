@@ -4,7 +4,7 @@
 //!
 //! **真回环口 ＋ 真钥匙 ＋ 真路由器 ＋ 生产句柄 [`InboundBackends`]**（不是 `chan_tests` 那个合成句柄）。
 //! 传输台搬进了本机常驻后端 ⇒ 这里唯一合成的是**那个本机后端**：借中继判据那台
-//! 「真 client ＋ 真吸收点 ＋ 假后端」（`sftp_pool::tests::rig`），它按剧本回开单 / 起跑的应答、往本机那条流上塞 `transfer` 帧。
+//! 「真 client ＋ 真吸收点 ＋ 假后端」（`transfer_relay::tests::rig`），它按剧本回开单 / 起跑的应答、往本机那条流上塞 `transfer` 帧。
 //!
 //! # 买到什么
 //!
@@ -22,7 +22,7 @@ use super::super::wire::{
     Body, Budget, By, CallError, CancelToken, Comms, Item, Op, PeerFault, Sub,
 };
 use super::*;
-use crate::sftp_pool::tests::{cfg, rig as backend_rig, ALL};
+use crate::transfer_relay::tests::{cfg, rig as backend_rig, ALL};
 use futures::stream::StreamExt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -78,14 +78,14 @@ fn body_json(b: &Body) -> serde_json::Value {
 }
 
 fn kind(id: &str) -> crate::chan::wire::Kind {
-    crate::chan::wire::Kind(format!("{}{id}", crate::sftp_pool::TRANSFER_KIND_PREFIX))
+    crate::chan::wire::Kind(format!("{}{id}", crate::transfer_relay::TRANSFER_KIND_PREFIX))
 }
 
 /// 开一张上传单（经中继、转给台架那个本机后端），回票号。
 async fn open_upload(label: &str) -> String {
-    let v = crate::sftp_pool::transfer_call(
+    let v = crate::transfer_relay::transfer_call(
         cfg(label),
-        crate::sftp_pool::TRANSFER_UPLOAD,
+        crate::transfer_relay::TRANSFER_UPLOAD,
         &serde_json::json!({ "items": [{ "local_path": "/tmp/ccm-sr1b-chan.bin" }], "remote_dir": "/srv" }),
     )
     .await
@@ -96,7 +96,7 @@ async fn open_upload(label: &str) -> String {
 /// 🔴🔴 **生产句柄对 `transfer/<id>` 真的出帧**，而且那些帧说的就是本机后端推上来的那几格。
 ///
 /// **逐格对拍**：每推一帧，先等流把上一格交出来再推。快照流按设计会合并还没被取走的中间几格
-/// （`sftp_pool` 的中继头注「合并掉中间几格不丢信息」）⇒ 一口气推完的话看得见几格取决于调度
+/// （`transfer_relay` 的中继头注「合并掉中间几格不丢信息」）⇒ 一口气推完的话看得见几格取决于调度
 /// （Windows CI 上撞到过一格进度都没有、只剩终局那一形 —— 那一形由下一条钉）。对拍之后每一格都是确定的。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_production_handle_streams_the_local_backends_frames_over_real_loopback() {
@@ -294,7 +294,7 @@ async fn opening_a_transfer_for_an_unknown_machine_is_refused_out_loud() {
     let r = client
         .call(
             &crate::chan::wire::Origin::named("判据里不存在的机器·transfer".to_string()),
-            &Op(crate::sftp_pool::TRANSFER_UPLOAD.to_string()),
+            &Op(crate::transfer_relay::TRANSFER_UPLOAD.to_string()),
             Body(br#"{"local_path":"/nonexistent"}"#.to_vec()),
             budget(5_000),
         )

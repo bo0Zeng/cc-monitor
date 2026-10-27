@@ -78,7 +78,7 @@
         ["src/frontend/shell/src/platform/window.rs", "key", 2],
         ["src/frontend/shell/src/prefs_migration.rs", "key", 2],
         ["src/frontend/shell/src/remote_resident.rs", "key", 1],
-        ["src/frontend/shell/src/sftp_pool.rs", "key", 8],
+        ["src/frontend/shell/src/transfer_relay.rs", "key", 8],
         ["src/frontend/shell/src/stream_source/frame.rs", "key", 2],
         ["src/frontend/shell/src/stream_source/snapshot.rs", "key", 3],
         ["src/frontend/shell/src/ui_error.rs", "key", 6],

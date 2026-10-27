@@ -132,7 +132,7 @@ tauri-plugin-single-instance = "2"
 arboard = { version = "3.6", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
-# 传输台开单那两条（`transfer-upload` / `-download`）的线上类型：窗口那一份按它解、补上拨号按后端那一份发（`sftp_pool.rs`）。
+# 传输台开单那两条（`transfer-upload` / `-download`）的线上类型：窗口那一份按它解、补上拨号按后端那一份发（`transfer_relay.rs`）。
 cmd-wire = { path = "../../common/cmd-wire" }
 # `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
 serde_json = { version = "1", features = ["raw_value"] }
