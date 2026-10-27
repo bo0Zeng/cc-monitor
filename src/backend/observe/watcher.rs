@@ -60,7 +60,6 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
-use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
 use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
@@ -3065,7 +3064,7 @@ fn note_activity(
     }));
 }
 
-/// 读到的一条记录若改了叫这条会话什么（标题记录 · 还没有第一句时人说的第一句）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
+/// 读到的一条记录若改了叫这条会话什么（判法住 [`crate::history::search_rules::heard`]）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
 /// 子运行的记录也经这里：子运行里的人话不是这条会话的第一句 —— 它们的记录在子运行自己的文件里、sid 认不到这条会话的账上。
 fn note_name(
     sid: &str,
@@ -3073,22 +3072,7 @@ fn note_name(
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) {
-    use crate::agents::record::Body;
-    let change = |f: &mut crate::history::search_rules::LabelFacts| match body {
-        Body::Title { text, .. } if f.title.as_deref() != Some(text) => {
-            f.title = Some(text.clone());
-            true
-        }
-        Body::Said { who, .. } if f.first.is_empty() => match who.speech() {
-            Some(s) => {
-                f.first = crate::history::search_rules::truncate_excerpt(&s, 120);
-                true
-            }
-            None => false,
-        },
-        _ => false,
-    };
-    state.renamed(sid, change, sink);
+    state.renamed(sid, |f| crate::history::search_rules::heard(f, body), sink);
 }
 
 /// **从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
