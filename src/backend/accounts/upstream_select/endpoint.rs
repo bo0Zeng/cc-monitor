@@ -162,7 +162,7 @@ pub(crate) fn relay_for_exec(
         &super::file_face::machine_rows(),
         &|port, url| {
             keyed_for_exec(url, &get).is_some()
-                && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
+                && egress::open(egress::here(), "127.0.0.1", port, None).is_ok()
         },
     )
 }

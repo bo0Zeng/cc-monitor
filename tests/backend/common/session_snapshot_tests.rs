@@ -128,15 +128,14 @@ fn the_stale_read_door_never_appears_in_production_code() {
 fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/backend/common/session_snapshot.rs"
-    ));
-    guard_core::assert_no_test_code("common/session_snapshot.rs", &prod);
+    // 探测器住宿主口 tmux 那一形（`host::tmux::list_sessions`，快照只交它造）。
+    let prod = guard_core::production_code(include_str!("../../../src/backend/host/tmux.rs"));
+    guard_core::assert_no_test_code("host/tmux.rs", &prod);
 
-    let starts = prod.matches("Child::new(\"tmux\")").count();
+    let starts = prod.matches("\"list-sessions\"").count();
     assert_eq!(
         starts, 1,
-        "本模块起 tmux 的处数变了（实得 {starts}，登记 1）—— 它是**唯一**一处\
+        "`list-sessions` 的处数变了（实得 {starts}，登记 1）—— 它是**唯一**一处\
              「一次列全部会话」的起进程点，多一处就说明快照又被绕开了。"
     );
     let flat: String = prod.chars().filter(|c| !c.is_whitespace()).collect();

@@ -80,6 +80,17 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "copy_planned",
         "用户的目录（`files-copy` 复制目录，逐条建）",
     ),
+    // 聊天附件两处 +2：会话工作目录下的 `.ccm-attach/` 与它里面一份一个的编号目录（用户工作目录里，不是 `~/.cc-monitor` 一族）。
+    (
+        "control/files_commit/session_attachment.rs",
+        "ensure_root",
+        "会话工作目录下的附件目录 `.ccm-attach/`（`session-attach-commit`，不在才建）",
+    ),
+    (
+        "control/files_commit/session_attachment.rs",
+        "mint",
+        "附件目录里一份一个的编号目录（`session-attach-commit`）",
+    ),
     // 解压两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
     (
         "control/files_extract.rs",

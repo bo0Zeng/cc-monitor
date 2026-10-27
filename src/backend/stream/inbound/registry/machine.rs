@@ -30,6 +30,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::machine_state::MachineReadCmd>(
         "机器表里每台此刻的状态",
     ),
+    // **命令面板打机器名**（`control/machine_menu.rs`）：认那台 · 那台能做的几样（头是上面那份成品）。只读机器表与 `~/.ssh/config` ⇒ 阻塞档。
+    crate::wire::typed::blocking::<crate::control::machine_menu::MachineFindCmd>(
+        "打的字是不是恰好一台（名字 · 本机 · ssh 配置的 Host · 名字后跟第几条）",
+    ),
+    crate::wire::typed::blocking::<crate::control::machine_menu::MachineMenuCmd>(
+        "那台此刻能做的几样（打开终端 · 新建会话 · 文件 · 机器状态 · 加入机器表）",
+    ),
     // **机器页「起」·［重试］/「停」**：那台的常驻流住本后端 ⇒ 叫醒它 / 先停它、再在那台跑 `--resident-stop`（拨号 ⇒ 异步档）。
     crate::wire::typed::asynchronous::<crate::control::feeds::MachineWake>(
         "叫醒那台的常驻流（不再停着、断着就马上再接）",

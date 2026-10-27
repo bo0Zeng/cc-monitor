@@ -266,6 +266,7 @@ dependencies = [
  "creds-core",
  "deploy",
  "deploy-contract",
+ "egress",
  "flate2",
  "guard-core",
  "jiff",
@@ -850,6 +851,15 @@ dependencies = [
  "signature",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "egress"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "test-home",
+ "upstream-url-core",
 ]
 
 [[package]]
@@ -2638,6 +2648,7 @@ version = "0.1.0"
 dependencies = [
  "cmd-wire",
  "copy-core",
+ "egress",
  "flate2",
  "guard-core",
  "libc",

@@ -368,6 +368,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
+        attach: None,
     };
     let mut reg: Vec<crate::agents::Adapter> = crate::agents::REGISTRY
         .iter()
@@ -590,6 +591,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
+        attach: None,
     };
     let got = crate::agents::mcp_read_among(
         std::slice::from_ref(&adapter),

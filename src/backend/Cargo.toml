@@ -151,6 +151,8 @@ deploy-contract = { path = "../common/deploy-contract" }
 ssh-dial = { path = "ssh-dial" }
 # 装 / 升级远端后端的判定与编排（与 ssh-dial 并列；手机 mobcore 链同一份）。
 deploy = { path = "deploy" }
+# 出网口（这台所有出站 TCP 只在那里开：直连或经代理）：中转去上游 · 拨 SSH 都经它；本后端起来时照自己的环境装这台的描述（`main.rs`）。
+egress = { path = "egress" }
 # 连远端常驻后端的客户端那一侧（桌面 · 手机同一份）：测试连接拿表单那份配置跑一趟它的常驻流（`dial/probe.rs`），与真连接同一串。
 # 它的期限与退避属客户端那一侧，不进本 crate 的零定时器判据人群。
 resident-client = { path = "../comms/resident-client" }
@@ -334,6 +336,8 @@ test-home = { path = "../common/test-home" }
 cmd-wire = { path = "../common/cmd-wire", features = ["ts"] }
 # 测试档不许出网：拨号核心那一句断言（`test-support`）在后端的测试档里也开着（resolver 2 ⇒ 不并进发布构建）。
 ssh-dial = { path = "ssh-dial", features = ["test-support"] }
+# 测试档不许出网：那一句断言住出网口真开 TCP 的那一处（`test-support`）。
+egress = { path = "egress", features = ["test-support"] }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
 comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
@@ -379,7 +383,7 @@ strip = true
 # 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "ssh-dial", "deploy", "../mobile/core-rs/rust"]
+members = [".", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # ── 测试档（dev 与继承它的 test）里给沙箱的策略引擎开优化：轮换一致性的推演（s22 · s26 · s36）跑在 Rhai 上，

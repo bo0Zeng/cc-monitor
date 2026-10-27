@@ -41,6 +41,8 @@ pub enum Refused {
     NotResumed,
     /// 要求「只在闲着时送」，而它此刻不闲（一轮在跑 · 后台在跑 · 判不出 · 不活）：不插进那一轮中间（`session-say` 才回它）。
     NotIdle,
+    /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过）：一个字都没送，`gone` 列出那几个编号（`session-say` 才回它）。
+    AttachmentGone,
 }
 
 /// `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 那一句；画面变了带新指纹）。
@@ -69,6 +71,10 @@ pub struct Sent {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub resumed: bool,
+    /// `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
+    pub gone: Vec<String>,
     /// 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<SentAct>>"))]

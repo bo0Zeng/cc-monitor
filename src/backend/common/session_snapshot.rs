@@ -7,7 +7,8 @@
 //! 2. 铸名避让只能问它：[`TakenNames`] 的字段是模块私有的 ⇒ 本模块之外造不出一份「已占用的名字」。
 //!
 //! 住 `common/`：control（Gate 判活与铸名）与 observe（watcher 发布）都要，而 `control/` 不许引用 `observe/`；
-//! 平台无关（起的是 `tmux` 这个跨平台程序）、无域知识（只认「会话名 + `@ccm_sid`」两个字段）。
+//! 无域知识（只认「会话名 + `@ccm_sid`」两个字段）。探测器（起 tmux 那一发）住 `host::tmux::list_sessions`，
+//! 进程内那一份由 `host::snapshot` 造（`common/` 只引 `platform/`）。
 //!
 //! # 不承诺的
 //!
@@ -15,11 +16,9 @@
 //!   名字会被重新绑定 ⇒ 不许拿它去下破坏性命令。
 //! - 不带 `#{session_id}`：两个消费者（`cc_bus::join_identity` 与 `ccm` 的铸名避让）都不问那一列，watcher 那条路（`TMUX_LS_FMT`）里也没有它。
 
-use crate::platform::child::{Child, Deadline};
-use copy_core::copy_text;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
-use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_FLAG};
+use crate::common::tmux_utf8::tab_underflow;
 
 /// 命令级错误：`(code, message)`。与 [`crate::control::gate`] 同型。
 pub(crate) type CmdErr = (&'static str, String);
@@ -86,7 +85,7 @@ impl TakenNames {
 }
 
 /// 探回来一份的那个动作。测试用假的替掉，生产用 [`probe_tmux`]。
-type Prober = Box<dyn Fn() -> Result<Vec<SessionRow>, CmdErr> + Send + Sync>;
+pub(crate) type Prober = Box<dyn Fn() -> Result<Vec<SessionRow>, CmdErr> + Send + Sync>;
 
 /// 那一张快照。
 pub(crate) struct SessionSnapshot {
@@ -95,7 +94,8 @@ pub(crate) struct SessionSnapshot {
 }
 
 impl SessionSnapshot {
-    fn new(probe: Prober) -> Self {
+    /// 拿一个探测器造一份（进程内那一份在 `crate::host::snapshot`）。
+    pub(crate) fn new(probe: Prober) -> Self {
         Self {
             rows: Mutex::new(Vec::new()),
             probe,
@@ -149,41 +149,11 @@ impl SessionSnapshot {
     }
 }
 
-/// 进程内那一份。
-pub(crate) fn global() -> &'static SessionSnapshot {
-    static ONE: OnceLock<SessionSnapshot> = OnceLock::new();
-    ONE.get_or_init(|| SessionSnapshot::new(Box::new(probe_tmux)))
-}
-
-/// 探测格式串。**三列**用 TAB 分隔：会话名（tmux 转义成字面 `\t`）· 活动窗格的 `@ccm_sid` · 各窗格的 `@ccm_sid`
-/// （见 [`pane_sids`]，会话 id 的字符集 `[A-Za-z0-9-]`）⇒ 下溢与过溢都不会由合法内容触发，下溢只可能是打印通道被改写。
-const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}\t#{W:#{P:#{@ccm_sid} }}";
-
-/// `LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数。**
+/// `crate::host::tmux::LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数。**
 const LIST_FMT_FIELDS: usize = 3;
 
-/// 全 crate 唯一一处「一次列全部 tmux 会话」的起进程点：一次调用列全部，不是每个成员探一次。
-/// 不看退出码（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
-/// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（本模块测试段那条判据钉住次序）。
-/// 期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限；界面等它的命令预算都在 10 s 以上）。
-const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
-
-fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
-    let out = Child::new("tmux")
-        .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
-        .run(LIST_SESSIONS_WITHIN)
-        .map_err(|e| {
-            // 句子只说原因词；系统原话记一行日志（快照的失败形是「码 ＋ 一句」，没有原话位）。
-            let (c, s) = e.into_cmd_said("no_tmux", |why| {
-                copy_text("reason.tmux.startFailed", &[("why", why)])
-            });
-            (c, crate::common::said::IntoNote::into_note(s))
-        })?;
-    Ok(parse_rows(&String::from_utf8_lossy(&out.stdout)))
-}
-
-/// 把 `LIST_FMT` 的 stdout 切成行。段数下溢 ⇒ 打印通道被改写 ⇒ 出声 + 整行不当好数据。空行不算下溢（本来就该被 `name.is_empty()` 丢掉）。
-fn parse_rows(text: &str) -> Vec<SessionRow> {
+/// 把 `crate::host::tmux::LIST_FMT` 的 stdout 切成行（探测器 `host::tmux::list_sessions` 交来）。段数下溢 ⇒ 打印通道被改写 ⇒ 出声 + 整行不当好数据。空行不算下溢（本来就该被 `name.is_empty()` 丢掉）。
+pub(crate) fn parse_rows(text: &str) -> Vec<SessionRow> {
     text.lines()
         .filter_map(|line| {
             if !line.trim().is_empty() && tab_underflow(line, LIST_FMT_FIELDS) {

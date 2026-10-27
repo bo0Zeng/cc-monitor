@@ -77,6 +77,7 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "login-finish",
     "login-cancel",
     "machine-read",
+    "machine-menu",
     "machine-wake",
     "machine-stop",
     "session-arrive",

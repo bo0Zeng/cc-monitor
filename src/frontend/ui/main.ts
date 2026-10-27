@@ -638,7 +638,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const curOrigin = cur === null ? null : tabs.originOf(cur);
     const cmds: Command[] = [];
     // 会话（空输入时只列在等你的那几行，在「需手动」一组）。
-    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0])));
+    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0]), (sid) => tabs.attachInTerminal(sid)));
     if (cur !== null && curOrigin !== null) {
       cmds.push(
         { id: "find", group: "current", icon: "search", title: copyText("main.cmd.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },

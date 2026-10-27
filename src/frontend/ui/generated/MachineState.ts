@@ -60,4 +60,8 @@ expectedHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, };
+detail: string | null, 
+/**
+ * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
+ */
+unclear?: number, };

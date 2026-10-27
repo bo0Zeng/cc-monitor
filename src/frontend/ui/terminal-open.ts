@@ -99,3 +99,8 @@ export async function openTerminal(
   // 只交名字：地址 · 跳板 · 先试哪条都照本机后端的机器表。
   await openWindow(await lineOf({ machine: origin, command }));
 }
+
+/** 在用户面前这台机器上开一个终端，进 `origin` 那台的登录 shell（本机 ⇒ 本机 shell；那一行是本机后端 `terminal-ssh` 渲的）。 */
+export async function openLoginShell(origin: Origin): Promise<void> {
+  await openWindow(await lineOf({ machine: origin }));
+}

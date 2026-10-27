@@ -217,7 +217,7 @@ const SET_SID_WITHIN: crate::platform::child::Deadline = crate::platform::child:
 
 /// 真写那一下：`set-option -p -t <窗格句柄> <事实键> <sid>`。
 ///
-/// tmux 的 stderr 收下来进原因（不然失败只剩一个退出码）。`cmd` 由调用方造（生产 = `Child::new("tmux")`），
+/// tmux 的 stderr 收下来进原因（不然失败只剩一个退出码）。`cmd` 由调用方造（生产 = `host::tmux::child(None)`，经 `door`），
 /// 判据换一个假 tmux 的绝对路径进来，不碰进程级 `PATH`。
 fn set_sid(
     cmd: crate::platform::child::Child,

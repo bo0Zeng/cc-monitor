@@ -19,19 +19,20 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "io-util", "net", "sync", "time"] }
 tracing = "0.1"
+# 出网口：拨 SSH 那一跳的 TCP 经它开（直连或经代理）；这台的描述由宿主装（`egress::install`），手机没装 ⇒ 直连。
+egress = { path = "../egress" }
 libc = "0.2"
 # 版本与 feature 集同后端那一行（两边握出来的必须是同一套算法集）；签字与来历在 `../Cargo.toml` 那一段。
 russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 russh-sftp = "3"
 # 后端的测试档经 dev 依赖打开 `test-support`（resolver 2 ⇒ dev 依赖的 feature 不并进发布构建）：
-# 测试档不许出网（`connect.rs::tcp_hop` 那一句断言）· 拨了必被拒的本机口 · 合成 SFTP 服务端（`sftp::rig`）。
-upstream-url-core = { path = "../../common/upstream-url-core", optional = true }
+# 测试档不许出网（那一句断言住出网口真开 TCP 的那一处，随 `egress/test-support` 开）· 拨了必被拒的本机口 · 合成 SFTP 服务端（`sftp::rig`）。
 # 机器那一形（`machine::Host`）的 TS 派生：后端的测试档有生成类型嵌着它（`MachinesReply` 等）⇒ 经 `ts` 拿到同一个派生；发布构建不开。
 ts-rs = { version = "12.0.1", optional = true }
 
 [features]
 # 后端的测试档经 dev 依赖开它，`ts` 随它一起开（那边要导出嵌着 `Host` 的生成类型）。
-test-support = ["dep:upstream-url-core", "ts"]
+test-support = ["ts", "egress/test-support"]
 ts = ["dep:ts-rs"]
 
 [dev-dependencies]
@@ -39,6 +40,8 @@ ts = ["dep:ts-rs"]
 test-home = { path = "../../common/test-home" }
 guard-core = { path = "../../common/guard-core" }
 upstream-url-core = { path = "../../common/upstream-url-core" }
+# 测试档不许出网：出网口真开 TCP 那一处的断言在本 crate 自己的判据里也开着。
+egress = { path = "../egress", features = ["test-support"] }
 # 保活那几条判据走虚拟钟（`start_paused`）：200 ms 一轮的保活，墙钟上忙机里回话一晚就误判死。
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync", "time", "fs", "test-util"] }
 sha2 = "0.11"

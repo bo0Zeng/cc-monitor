@@ -3,6 +3,7 @@
 //!
 //! 不住命令表那一份族文件：同读的那一份（`files_face.rs`）的理由，族文件只放登记那几行。
 
+use crate::control::files_commit::session_attachment as sa;
 use crate::platform::fs::Face;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes, Command};
@@ -510,6 +511,166 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
                     FilesCommitUploadErr::BadArgs,
                 ),
             })
+        }
+    }
+}
+
+// ── 聊天附件（本体在 `control/files_commit/session_attachment.rs`）────────────
+//
+// 入参交会话 id：那台按会话记录读它的项目目录（会话起在哪，同 `session-say` 恢复那一支读的那一格），读不出 ⇒ `no_session`。
+
+/// 这条会话的工作目录（这台记录树里那份会话记录开头写的项目目录）；读不出 ⇒ `None`。
+fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
+    let home = crate::agents::home_at(None, true);
+    let at = crate::agents::find_session(&home, sid).ok()?;
+    crate::agents::project_dir_of(&at.file).map(std::path::PathBuf::from)
+}
+
+/// 附件那一支的失败 ⇒ 这一条的码表。
+fn attach_fail<E: Codes>(f: sa::Fail, fallback: fn(String) -> E) -> E {
+    typed::of_fail(
+        Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+        fallback,
+    )
+}
+
+/// `session-attach-check`：开传前那一问（纯读，不要写句柄）。找不到工作目录 ⇒ 逐份 `no_session`（不是错）。
+pub(crate) struct SessionAttachCheck;
+
+codes! {
+    /// `session-attach-check` 的码（不收的那几份逐份答在回包里，不是错）。
+    pub(crate) enum SessionAttachCheckErr {}
+}
+
+impl Command for SessionAttachCheck {
+    const NAME: &'static str = "session-attach-check";
+    type Req = cmd_wire::attachment::SessionAttachCheckReq;
+    type Reply = cmd_wire::attachment::SessionAttachCheckReply;
+    type Err = SessionAttachCheckErr;
+}
+
+impl crate::wire::typed::Handle for SessionAttachCheck {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: cmd_wire::attachment::SessionAttachCheckReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<cmd_wire::attachment::SessionAttachCheckReply, SessionAttachCheckErr>,
+    > + Send
+           + 'static {
+        async move {
+            let items = match session_cwd(req.sid.as_str()) {
+                Some(cwd) => sa::check(&cwd, &req.items),
+                None => sa::check(std::path::Path::new(""), &req.items),
+            };
+            Ok(cmd_wire::attachment::SessionAttachCheckReply { items })
+        }
+    }
+}
+
+codes! {
+    /// `session-attach-commit` 的码。
+    pub(crate) enum SessionAttachCommitErr {
+        /// 这一份超过单份上限。
+        TooBig = "too_big",
+        /// 附件目录装不下了。
+        DirFull = "dir_full",
+        /// 工作目录不可写（不回落别处）。
+        NotWritable = "not_writable",
+        /// 那台找不到这条会话的工作目录。
+        NoSession = "no_session",
+        /// 原名不合这台的规则（得是一段）。
+        BadName = "bad_name",
+        /// 盘上这一步没成。
+        IoFailed = "io_failed",
+        /// 路径解析拒了 · 暂存件不对。
+        Refused = "refused",
+        /// 暂存件的摘要对不上（删掉了，从头重传）。
+        Stale = "stale",
+        /// 新编号目录连撞了几次。
+        Exists = "exists",
+    }
+}
+
+/// `session-attach-commit`：暂存区里传完的一份落进会话工作目录下一个新的附件目录。
+pub(crate) struct SessionAttachCommit;
+
+impl Command for SessionAttachCommit {
+    const NAME: &'static str = "session-attach-commit";
+    type Req = cmd_wire::attachment::SessionAttachCommitReq;
+    type Reply = cmd_wire::attachment::SessionAttachCommitReply;
+    type Err = SessionAttachCommitErr;
+}
+
+impl crate::wire::typed::Handle for SessionAttachCommit {
+    type Needs = crate::wire::typed::needs::Face;
+    fn run(
+        req: cmd_wire::attachment::SessionAttachCommitReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<cmd_wire::attachment::SessionAttachCommitReply, SessionAttachCommitErr>,
+    > + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+            let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
+                attach_fail(
+                    sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
+                    SessionAttachCommitErr::BadArgs,
+                )
+            })?;
+            sa::commit_here(face, &cwd, req)
+                .map_err(|f| attach_fail(f, SessionAttachCommitErr::BadArgs))
+        }
+    }
+}
+
+codes! {
+    /// `session-attach-drop` 的码。
+    pub(crate) enum SessionAttachDropErr {
+        /// 那台找不到这条会话的工作目录。
+        NoSession = "no_session",
+        /// 工作目录不可写。
+        NotWritable = "not_writable",
+        /// 盘上这一步没成。
+        IoFailed = "io_failed",
+        /// 路径解析拒了。
+        Refused = "refused",
+    }
+}
+
+/// `session-attach-drop`：草稿上撤掉的那一份，那台删掉它的编号目录。
+pub(crate) struct SessionAttachDrop;
+
+impl Command for SessionAttachDrop {
+    const NAME: &'static str = "session-attach-drop";
+    type Req = cmd_wire::attachment::SessionAttachDropReq;
+    type Reply = cmd_wire::attachment::SessionAttachDropReply;
+    type Err = SessionAttachDropErr;
+}
+
+impl crate::wire::typed::Handle for SessionAttachDrop {
+    type Needs = crate::wire::typed::needs::Face;
+    fn run(
+        req: cmd_wire::attachment::SessionAttachDropReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<cmd_wire::attachment::SessionAttachDropReply, SessionAttachDropErr>,
+    > + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+            let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
+                attach_fail(
+                    sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
+                    SessionAttachDropErr::BadArgs,
+                )
+            })?;
+            sa::drop_one(face, &cwd, &req.id)
+                .map(|removed| cmd_wire::attachment::SessionAttachDropReply { removed })
+                .map_err(|f| attach_fail(f, SessionAttachDropErr::BadArgs))
         }
     }
 }

@@ -76,6 +76,13 @@ pub enum Body {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         cwd: Option<String>,
+        /// 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[cfg_attr(
+            any(test, feature = "ts"),
+            ts(optional, as = "Option<Vec<crate::attachment::Attachment>>")
+        )]
+        attachments: Vec<crate::attachment::Attachment>,
     },
     /// 代理的回复。
     #[serde(rename_all = "camelCase")]
@@ -839,6 +846,7 @@ mod lenient_tests {
                 blocks: vec![],
                 results: BTreeMap::new(),
                 cwd: None,
+                attachments: Vec::new(),
             },
             Body::Reply {
                 blocks: vec![],

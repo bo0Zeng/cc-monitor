@@ -1,6 +1,7 @@
 /**
  * 命令面板里「切到会话」那几行：按标签页栏看到的顺序，每行一个会话（状态点 ＋ 机器徽标 ＋ 项目 ＋ 标题 ＋ 在等什么）、
  * 右侧它的数字键（前 9 个）。只读标签页栏那一份事实（`session-face.ts`），这里不另判。
+ * 给了 `attach` ⇒ 远端的会话行 Shift+Enter 在终端里打开（同会话头［在终端里打开］那一条路）。
  */
 import type { Command } from "./views/command-bar";
 import type { Tab } from "./tab-model";
@@ -8,7 +9,12 @@ import { dotOf, needsOf, stateWord, titleParts } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
-export function sessionCommands(tabs: readonly Tab[], switchTo: (sid: string) => void, keyOf: (n: number) => string | undefined): Command[] {
+export function sessionCommands(
+  tabs: readonly Tab[],
+  switchTo: (sid: string) => void,
+  keyOf: (n: number) => string | undefined,
+  attach?: (sid: string) => void,
+): Command[] {
   return tabs.map((t, i) => {
     const p = titleParts(t);
     const dot = dotOf(t);
@@ -19,7 +25,8 @@ export function sessionCommands(tabs: readonly Tab[], switchTo: (sid: string) =>
       title: p.proj ? `${p.proj} ${p.title}` : p.title,
       keywords: copyText("main.cmd.switchSessionKeywords", { cwd: t.projectDir ?? "", machine: machine ?? "" }),
       hint: i < 9 ? keyOf(i + 1) : undefined,
-      session: { dot, dotLabel: stateWord(t), machine, project: p.proj, title: p.title, waiting: n ? n.text : null },
+      session: { dot, dotLabel: stateWord(t), machine, project: p.proj, title: p.title, waiting: n ? n.text : null, origin: t.origin },
+      alt: attach && machine !== null ? () => attach(t.sessionId) : undefined,
       run: () => switchTo(t.sessionId),
     };
   });

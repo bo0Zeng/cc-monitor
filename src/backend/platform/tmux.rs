@@ -6,8 +6,8 @@
 ///
 /// # 判准为什么正好是「`PATH` 上有没有一个可执行的 `tmux`」
 ///
-/// 因为**真调用那一刻就是这么找的**：`control/kill.rs` `control/gate.rs` `control/launch.rs`
-/// 三处都走 `Command::new("tmux")`，unix 上它是 `execvp` ⇒ 逐字就是 `PATH` 查找。
+/// 因为**真调用那一刻就是这么找的**：起 tmux 那一处（`host/tmux.rs::child`）
+/// 走 `Child::new("tmux")`，unix 上它是 `execvp` ⇒ 逐字就是 `PATH` 查找。
 /// 事前那句话与事后那句话用**同一个判准**，两者才不会各说各话。
 ///
 /// # `None`（判不出来）今天只剩**一个**来源

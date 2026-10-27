@@ -6,8 +6,8 @@ import type { LocalBackend } from "../generated/LocalBackend";
 import type { MachineState } from "../generated/MachineState";
 import type { MachineFix } from "../generated/MachineFix";
 import type { MachineFixButton } from "../generated/MachineFixButton";
-import type { MachineStateKind } from "../generated/MachineStateKind";
 import type { MachineDotState } from "../kit/status-dot";
+import { machineDot } from "../machine-dot";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
@@ -31,27 +31,14 @@ export interface MachineFace {
   next: string;
 }
 
-const DOT: Record<MachineStateKind, MachineDotState> = {
-  up: "up",
-  newer: "up",
-  connecting: "unknown",
-  installing: "unknown",
-  updating: "unknown",
-  unknown: "unknown",
-  down: "failed",
-  host_key_changed: "failed",
-  unsupported: "failed",
-  needs_update: "needs-you",
-  disabled: "exited",
-};
-
 export function machineFace(m: MachineState): MachineFace {
   const busy = m.state === "connecting" || m.state === "installing" || m.state === "updating";
+  const dot = machineDot(m.state);
   return {
-    dot: DOT[m.state],
+    dot,
     word: m.word,
     problem: m.said,
-    tone: busy ? "busy" : DOT[m.state] === "needs-you" ? "warn" : "error",
+    tone: busy ? "busy" : dot === "needs-you" ? "warn" : "error",
     bar: m.state === "installing" || m.state === "updating",
     fixes: m.fixes,
     detail: m.detail ?? "",

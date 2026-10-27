@@ -10,7 +10,7 @@
 //!
 //! 今天 monitor 那条路是「渲染一整条 shell 串 → `ssh -t "bash -lic '<串>'"`」，于是
 //! 引号 / 转义 / 注入是一整类必须一直防的问题。本模块用
-//! `Child::new("tmux").args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
+//! `host::tmux::child(None).args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
 //! 不是「被挡住了」。这是搬进后端最实在的收益之一。
 //!
 //! # ★ 这里的校验是**形状校验**，不是安全边界
@@ -389,10 +389,10 @@ const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
 fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
-    ran(Child::new("tmux"), args)
+    ran(crate::host::tmux::child(None), args)
 }
 
-/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Child::new("tmux")`；判据换一个假 tmux 的绝对路径，
+/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `host::tmux::child(None)`；判据换一个假 tmux 的绝对路径，
 /// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
 pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
     match cmd.args(args).run(LAUNCH_TMUX_WITHIN) {
@@ -795,35 +795,92 @@ pub(crate) fn check_input_text(text: &str) -> Result<(), CmdErr> {
     check_typed_payload(text)
 }
 
+/// 一次括号粘贴之后隔多久再送下一样：粘贴后立刻交的回车会被 agent 当成粘贴里的换行吞掉；一张图的路径粘进去，要等它收成图片附件再粘下一样。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "送一句里两下按键之间的间隔，只给 `settle` 那一次等待用；不是节拍：那一句送完就没了，不会自己再醒"
+)]
+pub(crate) const PASTE_SETTLE: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// 隔 [`PASTE_SETTLE`]（生产那一份）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "一次送字之内、括号粘贴与下一下按键之间等一下（agent 收完粘贴才认回车）；调用方是那一次送字，送完就返回，不是定时器"
+)]
+pub(crate) fn settle() {
+    std::thread::sleep(PASTE_SETTLE);
+}
+
 /// 送一段**字面字**（终端管理 L1 送字那一半）：单行 `send-keys -l`（不解释成键名）；多行按粘贴送
-/// （`paste-buffer -p`：程序开了括号粘贴就带上，用完即删那个缓冲）。`enter` ⇒ 之后再补一个回车键。
+/// （`paste-buffer -p`：程序开了括号粘贴就带上，用完即删那个缓冲）。`pastes` 每一样在正文之前单独粘一次（聊天附件的图片路径），
+/// 每次粘完隔一下（`settle`）；`enter` ⇒ 之后再补一个回车键，前面是粘贴就先隔一下。
 /// 只收门发的令牌（[`super::gate::admit`] · [`super::gate::admit_with`]）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
 pub(crate) fn type_literal(
     at: &super::gate::Admitted,
+    pastes: &[String],
     text: &str,
     enter: bool,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    settle: &dyn Fn(),
 ) -> Result<Ran, CmdErr> {
-    let target = at.handle();
-    let sent = if text.contains('\n') {
-        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let buf = format!(
-            "ccm-input-{}-{}",
-            std::process::id(),
-            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        );
-        let set = tmux(&["set-buffer", "-b", &buf, "--", text])?;
-        if !set.ok {
-            return Ok(set);
+    type_into(at.handle(), pastes, text, enter, tmux, settle)
+}
+
+/// [`type_literal`] 的本体（目标是门交的句柄）。
+fn type_into(
+    target: &str,
+    pastes: &[String],
+    text: &str,
+    enter: bool,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+    settle: &dyn Fn(),
+) -> Result<Ran, CmdErr> {
+    let mut last_pasted = false;
+    for p in pastes {
+        let r = paste_into(target, p, tmux)?;
+        if !r.ok {
+            return Ok(r);
         }
-        tmux(&["paste-buffer", "-p", "-d", "-b", &buf, "-t", target])?
+        settle();
+        last_pasted = false;
+    }
+    let sent = if text.is_empty() {
+        Ran {
+            ok: true,
+            stderr: String::new(),
+        }
+    } else if text.contains('\n') || !pastes.is_empty() {
+        last_pasted = true;
+        paste_into(target, text, tmux)?
     } else {
         tmux(&["send-keys", "-t", target, "-l", "--", text])?
     };
     if !sent.ok || !enter {
         return Ok(sent);
     }
+    if last_pasted {
+        settle();
+    }
     tmux(&["send-keys", "-t", target, "Enter"])
+}
+
+/// 一次括号粘贴：进一个用完即删的缓冲，再 `paste-buffer -p`。
+fn paste_into(
+    target: &str,
+    text: &str,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<Ran, CmdErr> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let buf = format!(
+        "ccm-input-{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let set = tmux(&["set-buffer", "-b", &buf, "--", text])?;
+    if !set.ok {
+        return Ok(set);
+    }
+    tmux(&["paste-buffer", "-p", "-d", "-b", &buf, "-t", target])
 }
 
 /// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。只收门发的令牌。

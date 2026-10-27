@@ -214,6 +214,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
             blocks: vec![Block::Text { text: "x".into() }],
             results: Default::default(),
             cwd: None,
+            attachments: Vec::new(),
         },
     };
     let line = Frame::Line(crate::wire::Line {

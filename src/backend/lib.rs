@@ -53,6 +53,7 @@ pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-
 #[path = "../../tests/backend/golden.rs"]
 mod golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（仅测试构建）
 pub mod history; // 历史清单与注解（history_list · history_annotations）
+pub mod host; // 宿主口：终端住在哪种宿主里（tmux · 托管），起 tmux 进程只在 `host/tmux.rs`；control · observe 都引它，它不引那两层
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
@@ -319,6 +320,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--machines-read",
     "--machines-try",
     "--machines-set",
+    // 命令面板打机器名那一问（`machine-find`：读机器表 ＋ `~/.ssh/config`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--machine-find",
     // 忘掉一台的主机指纹（`host-keys-forget`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--host-keys-forget",
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
@@ -482,7 +485,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-commands",
     "--session-model",
+    "--session-attach-check",
+    "--session-attach-commit",
+    "--session-attach-drop",
     "--session-permission",
+    // 会话输入队那三条（`session-queue-*`）派生的 CLI 面：手机与别的后端从这一面问。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--session-queue-cancel",
+    "--session-queue-put",
+    "--session-queue-read",
     "--session-say",
     "--sessions-stop",
     "--sessions-where",
