@@ -709,6 +709,9 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("hooks-diag", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
     ("mcp-read", "与 `session-terminals` 同住 `feature_face.rs`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("tasks-list", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
+    ("ext-list", "表里有 MCP 行 ⇒ 本机那一格读 `feature_face.rs::mcp_read_here`（同 `mcp-read` 被连带）；扫目录 · 读 MCP 都不碰 tmux"),
+    ("ext-uninstall-preview", "同 `ext-list`：只因与它同住 `ext_list_face.rs` 被连带；本身不碰 tmux"),
+    ("ext-uninstall-apply", "同 `ext-list`：只因与它同住 `ext_list_face.rs` 被连带；本身不碰 tmux"),
     (
         "session-terminals",
         "tmux 只在那个会话本来就在 tmux 里时被问（`list-clients`，socket 取自那个进程自己的 `TMUX`）；\

@@ -171,11 +171,6 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
             .iter()
             .find(|s| s.name == cmd)
             .unwrap();
-        let Some(Prepared::Blocking(run)) =
-            invoke(spec.run, &crate::stream::inbound::hands(Some(&own)))
-        else {
-            panic!("{cmd} 不在阻塞档");
-        };
         let req = crate::wire::Request {
             id: "t".to_string(),
             cmd: cmd.to_string(),
@@ -185,7 +180,18 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
             tz: Default::default(),
             until: None,
         };
-        let got = run(req).map(|_| ()).map_err(|f| f.code);
+        // 阻塞档就地跑；异步档（`ext-list`：各台那一格 `mcp` 要问到别的台）照它的未来跑完。
+        let got = match invoke(spec.run, &crate::stream::inbound::hands(Some(&own))) {
+            Some(Prepared::Blocking(run)) => run(req),
+            Some(Prepared::Async(run)) => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(run(req)),
+            _ => panic!("{cmd} 不在阻塞档也不在异步档"),
+        }
+        .map(|_| ())
+        .map_err(|f| f.code);
         assert_eq!(got, Err("bad_args".to_string()), "{cmd}");
     }
     assert!(!d.join(".cc-monitor").exists(), "多一个键的那几问写了盘");

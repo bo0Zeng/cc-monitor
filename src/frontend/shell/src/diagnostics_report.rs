@@ -2,14 +2,15 @@
 //!
 //! 一段里有：这一版的版本号与构建标识 · 各台的系统 · 状态码与原因码（与机器列表同一份成品）· 读不懂的数据
 //!（每台那本记录账的条数；读不到的那台照实说读不到）· config.json 里认不出的项 · 日志位置。不含会话内容与 key。
-//! 记录账与认不出的键由界面交来（记录账界面经通道问各台 `drift-report`，壳不另开发送点；键表住界面），条数在这里数。
+//! 记录账与认不出的键由界面交来（记录账界面经通道问本机后端一条 `drift-merge`，本机后端问到各台、原样交来，壳不另开发送点；
+//! 键表住界面），条数在这里数。
 //! 日志页那一行「未识别数据 · …」读同一份答复里的数（不另起一个数）。
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
 use serde::{Deserialize, Serialize};
 
-/// 界面交来的一台的记录账（`drift-report` 的应答原样；读不到 ⇒ `null`）。
+/// 界面交来的一台的记录账（`drift-merge` 回包里那一行原样：那台 `drift-report` 的应答；读不到 ⇒ `null`）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct DriftIn {
     pub origin: String,

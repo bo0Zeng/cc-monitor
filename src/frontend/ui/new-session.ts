@@ -37,6 +37,8 @@ import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
 import type { ForkSlot } from "./generated/ForkSlot";
+import { readMachines } from "./machine-feed";
+import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import s from "./new-session.module.css";
@@ -67,25 +69,20 @@ interface MachineOpt {
   up: boolean;
 }
 
+/**
+ * 机器清单：本机后端手上各台此刻的状态成品（`machine-read` 一问，一台都不问）；`up` 才算连着，「连接这台」关着的不列。
+ * 本机在前；问不到 ⇒ 只有本机、灰着。
+ */
 async function listMachines(): Promise<MachineOpt[]> {
-  let origins: string[] = [];
+  let got: [string, MachineState][] = [];
   try {
-    const got: unknown = await commands.backend_machines();
-    origins = Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [];
-  } catch {
-    origins = [];
+    got = Object.entries(await readMachines()).filter(([, m]) => m.state !== "disabled");
+  } catch (e) {
+    console.warn("[new-session] 问不到各台的状态成品：", e);
   }
-  if (!origins.some(isLocalOrigin)) origins.unshift(LOCAL_ORIGIN);
-  return Promise.all(
-    origins.map(async (origin) => {
-      try {
-        const st = await commands.backend_status({ origin });
-        return { origin, up: st.channel };
-      } catch {
-        return { origin, up: false };
-      }
-    }),
-  );
+  const opts = got.map(([origin, m]) => ({ origin, up: m.state === "up" }));
+  const local = opts.filter((m) => isLocalOrigin(m.origin));
+  return [...(local.length > 0 ? local : [{ origin: LOCAL_ORIGIN, up: false }]), ...opts.filter((m) => !isLocalOrigin(m.origin))];
 }
 
 /** 账号那一格的一项。`ready: false` ⇒ 选不了（`why` 是那台写好的那一句，`login` ⇒ 给［登录…］）。 */

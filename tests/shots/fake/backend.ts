@@ -194,6 +194,24 @@ export class FakeBackend {
     return this.call(origin, op, req, view, leftMs);
   }
 
+  /** 合成的 `ext-list` 表里有 MCP 行 ⇒ 够得着的每台那一格 `mcp` 是那台真后端答的 `mcp-read`；问不到 ⇒ 缺。 */
+  private async withMcp(v: unknown): Promise<unknown> {
+    const list = v as { machines: { here: boolean; key: string | null; reachable: boolean; mcp?: unknown }[]; rows: { kind: string }[] };
+    if (!list.rows.some((r) => r.kind === "mcp")) return v;
+    await Promise.all(
+      list.machines.map(async (m) => {
+        const origin = m.here ? LOCAL : m.key;
+        if (!m.reachable || origin === null) return;
+        try {
+          m.mcp = JSON.parse(dec.decode(await this.real(origin, "mcp-read", {}, null))) as unknown;
+        } catch {
+          // 那台问不到 ⇒ 那一格缺（同真本机后端）
+        }
+      }),
+    );
+    return v;
+  }
+
   /** [`real`] 那一跳本身（不等起好：起世界那一段自己也用）。 */
   private async call(origin: string, op: string, req: Record<string, unknown>, view: unknown, leftMs?: number): Promise<ArrayBuffer> {
     const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null, leftMs }) });
@@ -414,7 +432,8 @@ export class FakeBackend {
       return Promise.reject({ err: "Unsupported", body: [] });
     }
     try {
-      const v = handler(origin, req, this.world);
+      // `ext-list` 那张表是场景合成的；各台那一格 `mcp` 照真本机后端的做法填（问那台真后端的 `mcp-read`，`ext_list_face::with_mcp`）。
+      const v = op === "ext-list" ? this.withMcp(handler(origin, req, this.world)) : handler(origin, req, this.world);
       const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
       return later.then(
         // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：

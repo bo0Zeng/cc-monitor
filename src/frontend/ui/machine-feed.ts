@@ -40,6 +40,16 @@ export function onLocalBackend(cb: (local: LocalBackend) => void): () => void {
   };
 }
 
+/**
+ * 问一次本机后端各台此刻的成品（`machine-read`，含本机），每台先记下名字与离线那一句；问不到 ⇒ 抛。
+ * 只要此刻那一份、不跟着变的（起新会话框的机器清单）用它；要跟着变的订 {@link onMachineState}。
+ */
+export async function readMachines(): Promise<Record<string, MachineState>> {
+  const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
+  for (const [origin, m] of Object.entries(r.machines)) noteMachine(origin, m);
+  return r.machines;
+}
+
 /** 订一份：每来一台的一帧回调一次（先记下那台的名字与离线那一句，`machineName` · `offlineSaid` 照它）。回退订函数。 */
 export function onMachineState(each: (origin: string, machine: MachineState) => void): () => void {
   const cb = (origin: string, machine: MachineState): void => {
@@ -50,8 +60,8 @@ export function onMachineState(each: (origin: string, machine: MachineState) => 
   let dropped = false;
   const readAll = async (): Promise<void> => {
     try {
-      const r = await callTyped(LOCAL_ORIGIN, "machine-read", {}, budgetWithin(READ_BUDGET_MS));
-      for (const [origin, m] of Object.entries(r.machines)) if (!dropped) cb(origin, m);
+      const machines = await readMachines();
+      for (const [origin, m] of Object.entries(machines)) if (!dropped) each(origin, m);
     } catch (e) {
       console.warn("[machine-state] 问不到远端各台：", e);
     }

@@ -2,9 +2,10 @@
 //! `claudecode/drift.rs`），注册表 [`super::RecordFace::drift`] 交出来的是这一形；帧命令 `drift-report` 把各家的面并成一份。
 //!
 //! 面的名字是那一家自己的词（`unknown_record_type` …），通用层不认，原样带着；后果那一句也是那一家写好的。
+//! 也收得进来（`Deserialize`）：本机后端经常驻流问到别的台那一份（`drift-merge`）。
 
 /// 一个键的记账。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct DriftEntry {
@@ -18,7 +19,7 @@ pub(crate) struct DriftEntry {
 }
 
 /// 一个面的快照。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct DriftFaceReport {
@@ -33,7 +34,7 @@ pub(crate) struct DriftFaceReport {
 }
 
 /// `drift-report` 的应答：注册表里各家的面并在一起（注册序；不记的那一家没有面）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct DriftReport {

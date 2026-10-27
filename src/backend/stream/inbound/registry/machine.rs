@@ -81,6 +81,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。
     // 漂移账出成品（`read_face.rs` 那一臂 ＋ 注册表 `RecordFace.drift`）。纯内存读一把锁，不进阻塞档（同 `forward-list`）。
     crate::wire::typed::asynchronous::<crate::faces::read_face::DriftReportCmd>("这台后端的漂移账"),
+    // 本机与机器表里每台的漂移账（诊断信息那一份）：界面只问本机后端这一条，别的台由它经那台的常驻流问 `drift-report`、
+    //   并好再答（`read_face::drift_hub`）⇒ 异步档（读机器表进阻塞池）。只读。
+    crate::wire::typed::asynchronous::<crate::faces::read_face::DriftMergeCmd>(
+        "本机与各台的漂移账",
+    ),
     // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
     //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
     //   停 / 列 = 纯内存（一把锁），不进阻塞档。三条都只在流面上有意义（`stream::cli::STREAM_ONLY`）。
