@@ -158,7 +158,7 @@ class CodexRecordGoldenTest {
                 .readLines()
                 .mapNotNull(Json::obj)
                 .mapNotNull { it.obj("face") }
-                .first { it.obj("live")?.str("activity") == "working" }
+                .first { it.obj("life")?.str("activity") == "working" }
                 .str("name")
         assertNotEquals("宣告那一帧判不出就不许先说运行中", working, texts.first())
     }
