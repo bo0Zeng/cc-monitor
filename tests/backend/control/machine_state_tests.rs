@@ -24,6 +24,7 @@ fn a_round_noted_is_pushed_as_the_product() {
     let mut rx = changes().subscribe();
     let got = note_in(
         &[("ms-round".to_string(), true)],
+        &Links::new(),
         "ms-round",
         Fact::Round {
             round: Round::Down {
@@ -66,6 +67,7 @@ fn turning_connect_off_pushes_a_disabled_row_with_connect() {
     let mut rx = changes().subscribe();
     note_in(
         &[("ms-off".to_string(), true)],
+        &Links::new(),
         "ms-off",
         Fact::Round {
             round: Round::Up {
@@ -76,7 +78,7 @@ fn turning_connect_off_pushes_a_disabled_row_with_connect() {
         },
     );
     assert_eq!(next_of(&mut rx, "ms-off").state, MachineStateKind::Up);
-    table_moved_in(&[("ms-off".to_string(), false)]);
+    table_moved_in(&[("ms-off".to_string(), false)], &Links::new());
     let p = next_of(&mut rx, "ms-off");
     assert_eq!(
         (p.state, p.fixes.iter().map(|f| f.fix).collect::<Vec<_>>()),
@@ -88,15 +90,16 @@ fn turning_connect_off_pushes_a_disabled_row_with_connect() {
 fn a_machine_dropped_from_the_table_is_forgotten() {
     note_in(
         &[("ms-gone".to_string(), true)],
+        &Links::new(),
         "ms-gone",
         Fact::Round {
             round: Round::Connecting,
             version: Some("9.9.9".into()),
         },
     );
-    table_moved_in(&[]);
+    table_moved_in(&[], &Links::new());
     assert_eq!(
-        read_in(&[("ms-gone".to_string(), true)])["ms-gone"].state,
+        read_in(&[("ms-gone".to_string(), true)], &Links::new())["ms-gone"].state,
         MachineStateKind::Unknown,
         "表里拿掉的那台还留着上一份"
     );
@@ -190,7 +193,7 @@ fn the_product_matches_the_cross_language_golden() {
 /// 机器表里没有它，也照样带出。
 #[test]
 fn the_local_row_comes_from_this_backend() {
-    let got = read_in(&[("ms-local-peer".to_string(), true)]);
+    let got = read_in(&[("ms-local-peer".to_string(), true)], &Links::new());
     let local = got
         .get(cmd_wire::machine::LOCAL)
         .expect("机器状态里没有本机那一行");
@@ -229,4 +232,72 @@ fn shipped_version() -> String {
         .as_str()
         .expect("package.json 没有 version")
         .to_string()
+}
+
+/// ★ 到那台的连接进它的成品：收事实推的那一帧 · 表动了推的那一帧 · `machine-read` 都带同一份；别的台不带；本机那一行没有。
+#[test]
+fn the_product_carries_the_links_to_that_machine() {
+    let link = cmd_wire::machine::MachineLink {
+        endpoint: "10.0.0.2:22".into(),
+        jump: false,
+        compressed: true,
+        bytes_in: 4096,
+        bytes_out: 100,
+        said: "那一句".into(),
+    };
+    let links: Links = [("ms-linked".to_string(), vec![link.clone()])]
+        .into_iter()
+        .collect();
+    let hosts = [
+        ("ms-linked".to_string(), true),
+        ("ms-unlinked".to_string(), true),
+    ];
+    let mut rx = changes().subscribe();
+    let noted = note_in(
+        &hosts,
+        &links,
+        "ms-linked",
+        Fact::Round {
+            round: Round::Connecting,
+            version: None,
+        },
+    );
+    assert_eq!(noted.links, vec![link.clone()], "收事实回的成品没带连接");
+    assert_eq!(next_of(&mut rx, "ms-linked").links, vec![link.clone()]);
+    table_moved_in(&hosts, &links);
+    assert_eq!(
+        next_of(&mut rx, "ms-linked").links,
+        vec![link.clone()],
+        "表动了推的那一帧没带连接"
+    );
+    assert!(next_of(&mut rx, "ms-unlinked").links.is_empty());
+    let read = read_in(&hosts, &links);
+    assert_eq!(read["ms-linked"].links, vec![link]);
+    assert!(read["ms-unlinked"].links.is_empty(), "没连接的那台不该带");
+    assert!(read[cmd_wire::machine::LOCAL].links.is_empty(), "本机不经 SSH");
+    let wire = serde_json::to_value(&read["ms-unlinked"]).expect("成品写不出");
+    assert!(wire.get("links").is_none(), "没连接 ⇒ 线上省略那一格");
+}
+
+/// ★ 池里成员动了一笔 ⇒ 推一遍；发端收了 ⇒ 跟的那一路收工（不空转）。
+#[tokio::test]
+async fn a_pool_move_repushes_and_the_follower_ends_with_the_pool() {
+    static PUSHED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    fn push() {
+        PUSHED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    let (tx, rx) = tokio::sync::watch::channel(0u64);
+    let run = tokio::spawn(follow(rx, push));
+    tx.send_modify(|n| *n += 1);
+    let waited = tokio::time::timeout(guard_core::wall::CEILING, async {
+        while PUSHED.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    assert!(waited.is_ok(), "成员动了一笔，没推");
+    drop(tx);
+    let ended = tokio::time::timeout(guard_core::wall::CEILING, run).await;
+    assert!(ended.is_ok(), "池没了，跟的那一路还在等");
+    assert_eq!(PUSHED.load(std::sync::atomic::Ordering::SeqCst), 1, "动一笔只推一遍");
 }
