@@ -930,7 +930,16 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
         "正控：量的就是那一家真端点"
     );
     let hit = std::panic::catch_unwind(|| {
-        comms_outward::fetch(&super::open_here, &ep.base, "POST", &ep.rest, &[], b"{}", ep.deadline, 1024)
+        comms_outward::fetch(
+            &super::open_here,
+            &ep.base,
+            "POST",
+            &ep.rest,
+            &[],
+            b"{}",
+            ep.deadline,
+            1024,
+        )
     });
     let why = hit.expect_err("应当 panic");
     let said = why.downcast_ref::<String>().cloned().unwrap_or_default();

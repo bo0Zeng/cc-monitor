@@ -440,22 +440,21 @@ async fn tcp_hop(
 ) -> Result<(tokio::net::TcpStream, bool), (&'static str, std::io::Error)> {
     // 解析不出来与拨不通是两件事，原因码分开（出网口按步交回）；「测试档不许出网」那一句断言住出网口真开 TCP 的那一处。
     let (host, port, out) = (ep.host.clone(), ep.port, out.clone());
-    let opened = tokio::task::spawn_blocking(move || {
-        egress::open(&out, &host, port, Some(PROXY_HANDSHAKE))
-    })
-    .await
-    .map_err(|e| ("other", std::io::Error::other(e)))?
-    .map_err(|f| {
-        match f.stage {
-            // 解析出来零个地址：那一句照旧。
-            egress::Stage::Resolve if f.io.kind() == std::io::ErrorKind::NotFound => (
-                "resolve",
-                std::io::Error::other(copy_text("beConnect.race.noAddress", &[])),
-            ),
-            egress::Stage::Resolve => ("resolve", f.io),
-            egress::Stage::Connect | egress::Stage::Proxy => (stage_of_io(&f.io), f.io),
-        }
-    })?;
+    let opened =
+        tokio::task::spawn_blocking(move || egress::open(&out, &host, port, Some(PROXY_HANDSHAKE)))
+            .await
+            .map_err(|e| ("other", std::io::Error::other(e)))?
+            .map_err(|f| {
+                match f.stage {
+                    // 解析出来零个地址：那一句照旧。
+                    egress::Stage::Resolve if f.io.kind() == std::io::ErrorKind::NotFound => (
+                        "resolve",
+                        std::io::Error::other(copy_text("beConnect.race.noAddress", &[])),
+                    ),
+                    egress::Stage::Resolve => ("resolve", f.io),
+                    egress::Stage::Connect | egress::Stage::Proxy => (stage_of_io(&f.io), f.io),
+                }
+            })?;
     let via_proxy = opened.via_proxy;
     let std_tcp = opened.tcp;
     // 期限只管代理握手那几下；之后这条 socket 交给异步运行时（非阻塞，期限也不再生效），照旧清掉。
@@ -468,8 +467,8 @@ async fn tcp_hop(
     let tcp = to_async(std_tcp).map_err(|e| (stage_of_io(&e), e))?;
     let rtt = crate::tcp_rtt::rtt_us(&tcp);
     // 经代理 ⇒ 这条 socket 的对端是代理：量到的往返不是到那台的 ⇒ 照「读不到」那一格（压）。
-    let judged = via_proxy
-        || compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
+    let judged =
+        via_proxy || compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
     let compress = judged && RUSSH_ZLIB_SOUND;
     tracing::info!(
         "dial: {} 往返 {} ⇒ 判准：{}{}",

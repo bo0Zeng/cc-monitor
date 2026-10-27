@@ -10,7 +10,10 @@ const OPENERS: &[&str] = &["TcpStream::connect", "TcpSocket::new"];
 fn production() -> Vec<(String, String)> {
     let repo = guard_core::addr::repo_root();
     let mut out = Vec::new();
-    for root in [guard_core::addr::backend_src_root(), guard_core::addr::relay_root()] {
+    for root in [
+        guard_core::addr::backend_src_root(),
+        guard_core::addr::relay_root(),
+    ] {
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path
                 .strip_prefix(&repo)
@@ -59,7 +62,10 @@ fn only_the_egress_port_opens_outbound_tcp() {
         "出网口以外有生产段自己开 TCP（改走 `egress::open`，照这台或那个会话的出网描述）：\n  {}",
         stray.join("\n  ")
     );
-    assert!(home >= 1, "出网口里一处 `TcpStream::connect` 都没量到 —— 尺子在空转");
+    assert!(
+        home >= 1,
+        "出网口里一处 `TcpStream::connect` 都没量到 —— 尺子在空转"
+    );
 }
 
 /// 反向自检：同一把尺子放到一份别处的生产段上，量得出来。

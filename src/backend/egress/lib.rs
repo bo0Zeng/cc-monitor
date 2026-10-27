@@ -31,7 +31,8 @@ pub fn install(e: Egress) -> Result<(), Egress> {
 /// 这台的描述（还没装 ⇒ 直连）。
 pub fn here() -> &'static Egress {
     static DIRECT: OnceLock<Egress> = OnceLock::new();
-    HERE.get().unwrap_or_else(|| DIRECT.get_or_init(Egress::direct))
+    HERE.get()
+        .unwrap_or_else(|| DIRECT.get_or_init(Egress::direct))
 }
 
 /// 开出去的一条 TCP。
@@ -68,7 +69,12 @@ impl From<Failed> for io::Error {
 }
 
 /// 照描述 `e` 开一条到 `host:port` 的 TCP。`deadline` 装在 socket 上（读写各一次的上限），代理握手也受它管；`None` ⇒ 不装（同 `TcpStream` 的缺省）。
-pub fn open(e: &Egress, host: &str, port: u16, deadline: Option<Duration>) -> Result<Opened, Failed> {
+pub fn open(
+    e: &Egress,
+    host: &str,
+    port: u16,
+    deadline: Option<Duration>,
+) -> Result<Opened, Failed> {
     match e.hop_for(host) {
         Hop::Direct => Ok(Opened {
             tcp: tcp_to(host, port, deadline)?,

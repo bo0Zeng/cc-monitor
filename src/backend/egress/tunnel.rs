@@ -100,7 +100,11 @@ fn read_exact(tcp: &mut TcpStream, n: usize) -> io::Result<Vec<u8>> {
 
 fn socks5(tcp: &mut TcpStream, p: &Proxy, target: Target<'_>, port: u16) -> io::Result<()> {
     // 问候：带鉴权就同时报「不要鉴权」与「用户名口令」两种，由代理挑。
-    let methods: &[u8] = if p.auth.is_some() { &[0x00, 0x02] } else { &[0x00] };
+    let methods: &[u8] = if p.auth.is_some() {
+        &[0x00, 0x02]
+    } else {
+        &[0x00]
+    };
     let mut hello = vec![0x05, methods.len() as u8];
     hello.extend_from_slice(methods);
     tcp.write_all(&hello)?;
@@ -124,7 +128,11 @@ fn socks5(tcp: &mut TcpStream, p: &Proxy, target: Target<'_>, port: u16) -> io::
                 return Err(refused("SOCKS5 proxy rejected the credentials".to_string()));
             }
         }
-        (m, _) => return Err(refused(format!("SOCKS5 proxy offers no usable method ({m:#04x})"))),
+        (m, _) => {
+            return Err(refused(format!(
+                "SOCKS5 proxy offers no usable method ({m:#04x})"
+            )))
+        }
     }
     let mut req = vec![0x05, 0x01, 0x00];
     match target {
@@ -162,14 +170,21 @@ fn socks5(tcp: &mut TcpStream, p: &Proxy, target: Target<'_>, port: u16) -> io::
     tcp.write_all(&req)?;
     let rep = read_exact(tcp, 4)?;
     if rep[1] != 0x00 {
-        return Err(refused(format!("SOCKS5 proxy refused the connection (reply {})", rep[1])));
+        return Err(refused(format!(
+            "SOCKS5 proxy refused the connection (reply {})",
+            rep[1]
+        )));
     }
     // 回包里代理那一端的绑定地址：读掉，不用。
     let rest = match rep[3] {
         0x01 => 4,
         0x04 => 16,
         0x03 => usize::from(read_exact(tcp, 1)?[0]),
-        _ => return Err(refused("SOCKS5 reply has an unknown address type".to_string())),
+        _ => {
+            return Err(refused(
+                "SOCKS5 reply has an unknown address type".to_string(),
+            ))
+        }
     };
     read_exact(tcp, rest + 2)?;
     Ok(())
@@ -185,8 +200,16 @@ pub(crate) fn base64(b: &[u8]) -> String {
             | u32::from(*c.get(2).unwrap_or(&0));
         out.push(T[(n >> 18) as usize & 63] as char);
         out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if c.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }

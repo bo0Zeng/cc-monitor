@@ -83,7 +83,10 @@ pub enum Hop<'a> {
     Direct,
     Via(&'a Proxy),
     /// 代理那一格读不懂：不连。
-    Refuse { from: &'a str, why: &'static str },
+    Refuse {
+        from: &'a str,
+        why: &'static str,
+    },
 }
 
 /// 读这台环境时认的名字，按先后（小写在前，同 curl）：目的地是 https 与 SSH 这两种，不认 `http_proxy`（它只管明文 http，而明文上游只许回环）。
@@ -212,11 +215,19 @@ impl NoProxy {
 fn in_net(ip: IpAddr, net: IpAddr, bits: u8) -> bool {
     match (ip.to_canonical(), net.to_canonical()) {
         (IpAddr::V4(a), IpAddr::V4(n)) => {
-            let mask = if bits == 0 { 0 } else { u32::MAX << (32 - u32::from(bits.min(32))) };
+            let mask = if bits == 0 {
+                0
+            } else {
+                u32::MAX << (32 - u32::from(bits.min(32)))
+            };
             u32::from(a) & mask == u32::from(n) & mask
         }
         (IpAddr::V6(a), IpAddr::V6(n)) => {
-            let mask = if bits == 0 { 0 } else { u128::MAX << (128 - u32::from(bits.min(128))) };
+            let mask = if bits == 0 {
+                0
+            } else {
+                u128::MAX << (128 - u32::from(bits.min(128)))
+            };
             u128::from(a) & mask == u128::from(n) & mask
         }
         _ => false,

@@ -37,7 +37,10 @@ fn connect_proxy() -> (SocketAddr, mpsc::Receiver<String>) {
 #[test]
 fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
     let (proxy, asks) = connect_proxy();
-    let via = Arc::new(egress::Egress::via(&format!("http://127.0.0.1:{}", proxy.port()), ""));
+    let via = Arc::new(egress::Egress::via(
+        &format!("http://127.0.0.1:{}", proxy.port()),
+        "",
+    ));
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(
             RoutingTable::build(std::iter::empty()),
@@ -47,7 +50,9 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
         super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(Taps::default())),
         Arc::new(move |h: &str, p: u16, d| {
-            egress::open(&via, h, p, Some(d)).map(|o| o.tcp).map_err(Into::into)
+            egress::open(&via, h, p, Some(d))
+                .map(|o| o.tcp)
+                .map_err(Into::into)
         }),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,

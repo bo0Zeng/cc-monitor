@@ -45,7 +45,10 @@ fn socks_proxy() -> (std::net::SocketAddr, mpsc::Receiver<(String, u16)>) {
         s.read_exact(&mut name).expect("name");
         let mut p = [0u8; 2];
         s.read_exact(&mut p).expect("port");
-        let _ = tx.send((String::from_utf8_lossy(&name).into_owned(), u16::from_be_bytes(p)));
+        let _ = tx.send((
+            String::from_utf8_lossy(&name).into_owned(),
+            u16::from_be_bytes(p),
+        ));
         let _ = s.write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 22]);
         let _ = s.write_all(b"SSH-2.0-far\r\n");
         let mut sink = [0u8; 64];
@@ -75,9 +78,15 @@ async fn the_ssh_hop_goes_through_an_http_proxy() {
     let via = egress::Egress::via(&format!("http://127.0.0.1:{}", p.port()), "");
     let (mut tcp, compress) = tcp_hop(&far(), &via).await.expect("经代理拨");
     let head = asks.recv().expect("代理收到一问");
-    assert!(head.starts_with("CONNECT devbox.test:22 HTTP/1.1\r\n"), "{head:?}");
+    assert!(
+        head.starts_with("CONNECT devbox.test:22 HTTP/1.1\r\n"),
+        "{head:?}"
+    );
     assert_eq!(first_line(&mut tcp).await, "SSH-2.0-far\r\n");
-    assert_eq!(compress, RUSSH_ZLIB_SOUND, "量到的是到代理（回环）的往返，不是到那台的 ⇒ 不能判成不压");
+    assert_eq!(
+        compress, RUSSH_ZLIB_SOUND,
+        "量到的是到代理（回环）的往返，不是到那台的 ⇒ 不能判成不压"
+    );
 }
 
 /// 经 SOCKS5（`socks5h://`）：名字交给代理。
@@ -86,7 +95,10 @@ async fn the_ssh_hop_goes_through_a_socks5_proxy() {
     let (p, asks) = socks_proxy();
     let via = egress::Egress::via(&format!("socks5h://127.0.0.1:{}", p.port()), "");
     let (mut tcp, _) = tcp_hop(&far(), &via).await.expect("经 SOCKS5 拨");
-    assert_eq!(asks.recv().expect("代理收到一问"), ("devbox.test".to_string(), 22));
+    assert_eq!(
+        asks.recv().expect("代理收到一问"),
+        ("devbox.test".to_string(), 22)
+    );
     assert_eq!(first_line(&mut tcp).await, "SSH-2.0-far\r\n");
 }
 

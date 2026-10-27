@@ -57,7 +57,10 @@ struct SocksAsk {
 }
 
 /// 假 SOCKS5 代理：要鉴权（`want`）就挑 0x02 并核对；记下那一问，回成功，之后当回声。`reply` 是回包第二字节（0 = 成功）。
-fn socks_proxy(want: Option<(&'static str, &'static str)>, reply: u8) -> (SocketAddr, mpsc::Receiver<SocksAsk>) {
+fn socks_proxy(
+    want: Option<(&'static str, &'static str)>,
+    reply: u8,
+) -> (SocketAddr, mpsc::Receiver<SocksAsk>) {
     let l = TcpListener::bind("127.0.0.1:0").expect("bind");
     let a = l.local_addr().expect("addr");
     let (tx, rx) = mpsc::channel();
@@ -81,7 +84,8 @@ fn socks_proxy(want: Option<(&'static str, &'static str)>, reply: u8) -> (Socket
             let c = (String::from_utf8(u).unwrap(), String::from_utf8(p).unwrap());
             let ok = want.is_some_and(|(wu, wp)| c.0 == wu && c.1 == wp);
             creds = Some(c);
-            s.write_all(&[1, if ok { 0 } else { 1 }]).expect("auth reply");
+            s.write_all(&[1, if ok { 0 } else { 1 }])
+                .expect("auth reply");
             if !ok {
                 return;
             }
@@ -144,8 +148,14 @@ fn an_http_proxy_gets_connect_and_the_tunnel_carries_bytes_both_ways() {
         head.starts_with("CONNECT api.anthropic.com:443 HTTP/1.1\r\n"),
         "{head:?}"
     );
-    assert!(head.contains("\r\nHost: api.anthropic.com:443\r\n"), "{head:?}");
-    assert!(!head.contains("Proxy-Authorization"), "没设鉴权就不带：{head:?}");
+    assert!(
+        head.contains("\r\nHost: api.anthropic.com:443\r\n"),
+        "{head:?}"
+    );
+    assert!(
+        !head.contains("Proxy-Authorization"),
+        "没设鉴权就不带：{head:?}"
+    );
     assert!(o.via_proxy);
     assert_eq!(round_trip(&mut o), b"SSH-2.0-probe\r\n");
 }
@@ -154,7 +164,10 @@ fn an_http_proxy_gets_connect_and_the_tunnel_carries_bytes_both_ways() {
 #[test]
 fn http_proxy_credentials_go_as_basic_auth() {
     let (p, asks) = http_proxy("HTTP/1.1 200 OK\r\n\r\n");
-    let e = Egress::via(&format!("http://al%40ce:s3cr%3At@127.0.0.1:{}/", p.port()), "");
+    let e = Egress::via(
+        &format!("http://al%40ce:s3cr%3At@127.0.0.1:{}/", p.port()),
+        "",
+    );
     open(&e, "devbox.test", 22, wait()).expect("经代理开");
     let head = asks.recv().expect("代理收到一问");
     // base64("al@ce:s3cr:t")
@@ -170,7 +183,10 @@ fn an_ipv6_destination_is_bracketed_in_the_connect_line() {
     let (p, asks) = http_proxy("HTTP/1.1 200 OK\r\n\r\n");
     let e = Egress::via(&format!("127.0.0.1:{}", p.port()), "");
     open(&e, "2001:db8::7", 22, wait()).expect("经代理开");
-    assert!(asks.recv().unwrap().starts_with("CONNECT [2001:db8::7]:22 HTTP/1.1\r\n"));
+    assert!(asks
+        .recv()
+        .unwrap()
+        .starts_with("CONNECT [2001:db8::7]:22 HTTP/1.1\r\n"));
 }
 
 /// 代理拒（407）⇒ 错在代理那一步，话里带状态行。
@@ -211,7 +227,10 @@ fn a_socks5_proxy_gets_an_address() {
     let e = Egress::via(&format!("socks5://127.0.0.1:{}", p.port()), "");
     open(&e, "192.0.2.7", 443, wait()).expect("经 SOCKS5 开");
     let ask = asks.recv().unwrap();
-    assert_eq!((ask.methods, ask.atyp, ask.addr, ask.port), (vec![0], 1, vec![192, 0, 2, 7], 443));
+    assert_eq!(
+        (ask.methods, ask.atyp, ask.addr, ask.port),
+        (vec![0], 1, vec![192, 0, 2, 7], 443)
+    );
 }
 
 /// SOCKS5 回非零 ⇒ 错在代理那一步。
@@ -238,21 +257,48 @@ fn a_loopback_destination_never_goes_through_the_proxy() {
 /// 免代理表：`*` · 名字与它的子域 · IP · CIDR ⇒ 直连；别的照代理。
 #[test]
 fn the_no_proxy_list_sends_matching_destinations_direct() {
-    let e = Egress::via("http://127.0.0.1:3128", "corp.example, .lan 10.0.0.0/8,192.0.2.9,[2001:db8::1]");
-    for h in ["corp.example", "git.corp.example", "nas.lan", "10.1.2.3", "192.0.2.9", "2001:db8::1", "[2001:db8::1]", "localhost"] {
+    let e = Egress::via(
+        "http://127.0.0.1:3128",
+        "corp.example, .lan 10.0.0.0/8,192.0.2.9,[2001:db8::1]",
+    );
+    for h in [
+        "corp.example",
+        "git.corp.example",
+        "nas.lan",
+        "10.1.2.3",
+        "192.0.2.9",
+        "2001:db8::1",
+        "[2001:db8::1]",
+        "localhost",
+    ] {
         assert_eq!(e.hop_for(h), Hop::Direct, "{h}");
     }
-    for h in ["example", "notcorp.example", "lanx", "11.0.0.1", "192.0.2.10", "api.anthropic.com"] {
+    for h in [
+        "example",
+        "notcorp.example",
+        "lanx",
+        "11.0.0.1",
+        "192.0.2.10",
+        "api.anthropic.com",
+    ] {
         assert!(matches!(e.hop_for(h), Hop::Via(_)), "{h}");
     }
-    assert_eq!(Egress::via("http://127.0.0.1:3128", "*").hop_for("api.anthropic.com"), Hop::Direct);
+    assert_eq!(
+        Egress::via("http://127.0.0.1:3128", "*").hop_for("api.anthropic.com"),
+        Hop::Direct
+    );
 }
 
 /// 环境读法：小写在前 · `https_proxy` 先于 `all_proxy` · 空串当没设 · 不认 `http_proxy` · 免代理表同读。
 #[test]
 fn the_environment_is_read_in_order() {
     let env = |pairs: &'static [(&'static str, &'static str)]| {
-        Egress::from_env(&move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string()))
+        Egress::from_env(&move |k| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        })
     };
     let proxy_of = |e: &Egress| match e.hop_for("api.anthropic.com") {
         Hop::Via(p) => Some((p.kind, p.host.clone(), p.port)),
@@ -261,7 +307,10 @@ fn the_environment_is_read_in_order() {
     assert_eq!(proxy_of(&env(&[])), None);
     assert_eq!(proxy_of(&env(&[("http_proxy", "http://h:1")])), None);
     assert_eq!(
-        proxy_of(&env(&[("HTTPS_PROXY", "http://big:2"), ("https_proxy", "http://small:3")])),
+        proxy_of(&env(&[
+            ("HTTPS_PROXY", "http://big:2"),
+            ("https_proxy", "http://small:3")
+        ])),
         Some((Kind::Http, "small".into(), 3))
     );
     assert_eq!(
@@ -275,8 +324,15 @@ fn the_environment_is_read_in_order() {
 /// 代理那一格读不懂 ⇒ 一条都不连（不改直连），错在代理那一步、说出是哪一格。
 #[test]
 fn an_unreadable_proxy_setting_refuses_instead_of_going_direct() {
-    let e = Egress::from_env(&|k| (k == "https_proxy").then(|| "https://tls-proxy:443".to_string()));
-    assert!(matches!(e.hop_for("api.anthropic.com"), Hop::Refuse { from: "https_proxy", .. }));
+    let e =
+        Egress::from_env(&|k| (k == "https_proxy").then(|| "https://tls-proxy:443".to_string()));
+    assert!(matches!(
+        e.hop_for("api.anthropic.com"),
+        Hop::Refuse {
+            from: "https_proxy",
+            ..
+        }
+    ));
     let f = open(&e, "api.anthropic.com", 443, wait()).expect_err("不连");
     assert_eq!(f.stage, Stage::Proxy);
     assert!(f.io.to_string().contains("https_proxy"), "{}", f.io);
@@ -287,7 +343,10 @@ fn an_unreadable_proxy_setting_refuses_instead_of_going_direct() {
 fn the_description_never_prints_the_proxy_password() {
     let e = Egress::via("http://user:hunter2@127.0.0.1:3128", "");
     let shown = format!("{e:?}");
-    assert!(shown.contains("user") && !shown.contains("hunter2"), "{shown}");
+    assert!(
+        shown.contains("user") && !shown.contains("hunter2"),
+        "{shown}"
+    );
 }
 
 /// 没装 ⇒ 直连。
@@ -298,7 +357,15 @@ fn without_an_installed_description_it_is_direct() {
 
 #[test]
 fn base64_matches_the_rfc_vectors() {
-    for (i, o) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+    for (i, o) in [
+        ("", ""),
+        ("f", "Zg=="),
+        ("fo", "Zm8="),
+        ("foo", "Zm9v"),
+        ("foob", "Zm9vYg=="),
+        ("fooba", "Zm9vYmE="),
+        ("foobar", "Zm9vYmFy"),
+    ] {
         assert_eq!(tunnel::base64(i.as_bytes()), o);
     }
 }

@@ -2663,7 +2663,6 @@ dependencies = [
  "tokio",
  "tracing",
  "ts-rs",
- "upstream-url-core",
 ]
 
 [[package]]

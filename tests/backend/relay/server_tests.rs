@@ -2875,7 +2875,8 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2, UPSTREAM_DEADLINE, &super::open_here).expect("connect upstream") {
+    match upstream::connect(&base2, UPSTREAM_DEADLINE, &super::open_here).expect("connect upstream")
+    {
         upstream::Conn::Plain(s) => {
             assert!(
                 s.nodelay().expect("getsockopt"),
@@ -2980,7 +2981,8 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2, UPSTREAM_DEADLINE, &super::open_here).expect("connect upstream") {
+    match upstream::connect(&base2, UPSTREAM_DEADLINE, &super::open_here).expect("connect upstream")
+    {
         upstream::Conn::Plain(s) => {
             assert_eq!(
                 s.read_timeout().expect("getsockopt"),
