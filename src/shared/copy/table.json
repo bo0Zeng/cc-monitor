@@ -16894,6 +16894,24 @@
       "zh": "传输已开始 · {tid}",
       "args": ["tid"]
     },
+    "attach.blocked.sending": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "附件传输中 {done}/{n}",
+      "args": ["done", "n"]
+    },
+    "attach.blocked.failed": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "附件失败 ×{n}",
+      "args": ["n"]
+    },
+    "attach.chip.gone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "附件已不在",
+      "args": []
+    },
     "beAttach.no.isDir": {
       "kind": "body",
       "role": "片段",
