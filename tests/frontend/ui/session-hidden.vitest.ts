@@ -301,7 +301,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
   });
 
   it("命令交到会话所在那台：`history-annotate {sid, patch: {hide}}`；回改之前那一格；撤销的词照它（`null` ⇒ `rule`）", async () => {
-    vi.mocked(annotate).mockResolvedValueOnce({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: "off" });
+    vi.mocked(annotate).mockResolvedValueOnce({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: "off", prev_title: null });
     expect(await setHide("gpu-01", "s1", "on")).toBe("off");
     expect(vi.mocked(annotate)).toHaveBeenCalledWith("gpu-01", "s1", { hide: "on" });
     expect([undoHide("off"), undoHide("on"), undoHide(null)]).toEqual(["off", "on", "rule"]);
