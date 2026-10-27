@@ -387,7 +387,7 @@ pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fa
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。
-#[cfg_attr(not(test), allow(dead_code, reason = "投递那一步接上之前只有判据调它"))]
+#[cfg_attr(not(test), allow(dead_code))] // 投递那一步接上之前只有判据调它（下面两个同）
 pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fail> {
     with_book(own, sid, |b| {
         b.end(now_ms);
@@ -396,7 +396,7 @@ pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fai
 }
 
 /// 投递口：排在最前、还没送的那一条。
-#[cfg_attr(not(test), allow(dead_code, reason = "投递那一步接上之前只有判据调它"))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn next_due(own: &Own, sid: &str, now_ms: i64) -> Result<Option<QueueItem>, Fail> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
@@ -405,7 +405,7 @@ pub(crate) fn next_due(own: &Own, sid: &str, now_ms: i64) -> Result<Option<Queue
 }
 
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。
-#[cfg_attr(not(test), allow(dead_code, reason = "投递那一步接上之前只有判据调它"))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Fail> {
     with_book(own, sid, |b| Ok(b.delivered(id)))
 }
