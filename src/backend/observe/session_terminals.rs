@@ -9,7 +9,7 @@
 //! - 零定时器：只在被问时答。读不了别人的进程 ⇒ 照实说 `unreadable`。
 //! - 问它的是别台的本机后端（`--resident-call`，`faces/session_window_face.rs`）；本机会话那一问在同一进程里走 [`here_by`]（连进程号一起交）。
 
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::Deadline;
 use serde::{Deserialize, Serialize};
 
 use crate::platform::proc::{proc_env_var, EnvRead};
@@ -289,7 +289,7 @@ pub(crate) fn list_clients(
     socket: &str,
     pane: &str,
 ) -> Result<Vec<(u32, u64)>, (&'static str, String)> {
-    let out = Child::new("tmux")
+    let out = crate::host::tmux::child(None)
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])
         // 控制模式客户端（终端实时预览那个订阅者）整行留空 ⇒ 解析时丢掉：它没有终端窗口可切。

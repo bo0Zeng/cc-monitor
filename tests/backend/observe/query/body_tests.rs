@@ -136,6 +136,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
             local: None,
             live: crate::agents::LiveBy::Unknown,
             asks: None,
+            attach: None,
         }
     }
     let reg = [

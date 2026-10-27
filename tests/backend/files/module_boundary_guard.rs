@@ -181,6 +181,8 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 const MEMBERS_ELSEWHERE: &[&str] = &[
     "control/files_batch.rs",
     "control/files_commit.rs",
+    // 上传提交的一支：聊天附件（落点固定在会话工作目录下）。
+    "control/files_commit/session_attachment.rs",
     "control/files_extract.rs",
     "control/files_upload_chunks.rs",
     "control/files_write.rs",
@@ -511,6 +513,26 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "看的那一台的时区：修改时间那两格按请求带来的它写",
     ),
     (
+        "common::attachment_dir",
+        Kind::Common,
+        "聊天附件在会话那台的落点形状（`.ccm-attach/<编号>/<原名>`）：落 · 撤 · 清的一侧与送字 · 认记录的一侧各引各的",
+    ),
+    (
+        "common::time::Tz::here",
+        Kind::Common,
+        "聊天附件的编号取这台的钟（月日时分）",
+    ),
+    (
+        "common::time::civil_from_days",
+        Kind::Common,
+        "聊天附件的编号：本地钟秒数 ⇒ 月日",
+    ),
+    (
+        "common::time::now_secs",
+        Kind::Common,
+        "聊天附件落下那一刻（编号 · 清超过七天的）",
+    ),
+    (
         "common::time::Tz::default",
         Kind::Common,
         "写面那张分派表里没有请求信封的那一路（门 · 判据）：上传提交的同名清单时刻按缺省时区写",
@@ -638,6 +660,11 @@ const DOORS: &[(&str, &str)] = &[
         "stream/inbound/files_write_face.rs",
         "control::files_commit::CommitRefused",
     ),
+    // 聊天附件那一支（落 · 撤 · 开传前那一问）：入参交会话 id，工作目录由命令那一层从会话记录读好交下去，不经 `Act`。
+    (
+        "stream/inbound/files_write_face.rs",
+        "control::files_commit::session_attachment",
+    ),
 ];
 
 #[test]
@@ -723,7 +750,8 @@ fn the_doors_are_the_command_registry() {
         // 9 → 11：上传提交同名要问那一形带同名清单：`files_commit::commit_upload_of` ＋ 它的拒绝类型 `CommitRefused`。
         // 11 → 12：正被浏览的目录有了动静的通道 `files::dir_changes`（推 `changed {files_dir}`）。
         // 12 → 14：浏览名单每条连接一份：`files::browse`（带本连接的号）· `files::leave_browsing`（连接断了摘掉）。
-        command, 14,
+        // 14 → 15：聊天附件那一支 `control::files_commit::session_attachment`。
+        command, 15,
         "命令注册那一处够到的入口从 14 个变成了 {command} 个 —— \
          读（`files::answer` ＋ `files::Ask`）／ 写 · 上传提交 · 解压（`control::files_write::answer` ＋ `control::files_write::Act`）／ 删会话（`control::files_write::delete_session_of`），\
          〔SR1b 09-24 +3，layer11 −3〕传输台归原生那一块，三格出列。\

@@ -460,14 +460,17 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
-    // A 块搬出之后，「本模块」仍是原 `watcher.rs` 那一份 = 两份生产段拼起来（人群不缩，
-    // 下面的登记值与地板一个不动）；起 `sh` 的两处今天都住 `tmux_observe.rs`。
+    // A 块搬出之后，「本模块」仍是原 `watcher.rs` 那一份 = 两份生产段拼起来（人群不缩）；
+    // 观测那两条脚本经 `host/tmux.rs` 同一处起 `sh`。
     let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     guard_core::assert_no_test_code("observe/watcher.rs", &prod);
     let moved =
         guard_core::production_code(include_str!("../../../src/backend/observe/tmux_observe.rs"));
     guard_core::assert_no_test_code("observe/tmux_observe.rs", &moved);
-    let prod = format!("{prod}{moved}");
+    // 起 `sh` 那一跳与它挂的 env 住宿主口 tmux 那一形（`host::tmux::via_shell`，两条脚本共用那一处）。
+    let host = guard_core::production_code(include_str!("../../../src/backend/host/tmux.rs"));
+    guard_core::assert_no_test_code("host/tmux.rs", &host);
+    let prod = format!("{prod}{moved}{host}");
     // 非空对照：剥过头 / 没读到 ⇒ 下面全是 0 == 0 的空真。
     // 地板 = 实测值的一半（09-04 现打 41_149 字节）。
     assert!(
@@ -477,7 +480,7 @@ fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     );
     /// 本模块起 `sh` 的处数 —— **登记值**。这张表不是豁免清单：
     /// 新增一处 ⇒ 它也要挂 env，并把这个数一起改。
-    const SH_CALL_SITES: usize = 2;
+    const SH_CALL_SITES: usize = 1;
     let starts = prod.matches("posix_shell(").count();
     assert_eq!(
         starts, SH_CALL_SITES,

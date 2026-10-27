@@ -138,6 +138,7 @@ subscribe(origin, kind)    → 流
 模块地图（`src/backend/`，逐文件清单见它的 README，每个目录的 `mod.rs` 头注是那一块的说明）：
 
 - `platform/`：平台原语与平台 cfg 的唯一住处（路径 · 进程 · 判活的读法 · 信号 · 文件原语 · 脱离）；`platform/shell/` 是 shell 方言知识的唯一住处（引号 · 定义函数 · 导出环境 · rc / `$PROFILE` 在哪）。
+- `host/`：宿主口（终端住在哪种宿主里：tmux · 托管）。`host/tmux.rs` 是起 `tmux` 进程的唯一一处（`child`：别处对 tmux 下命令经它拿命令、argv 自给）与终端名单 · 会话快照探测器 · 观测那两跳 `sh -c`；`host/managed.rs` 是托管那一臂；`host::list` 把两种宿主的行合成一份。`control/` 与 `observe/` 都引它，它不引那两层（`layering_guard` 判）；「真起 tmux 的生产文件恰好是 `host/tmux.rs`」由 `target_parity_guard` 判。
 - `observe/`：产出观测帧的读（会话文件 watcher · 会话账本 · 划段 · tmux 观测 · 历史 / 搜索 / 任务 / 账号查询）。
 - `control/`：改状态的动作，以及只喂控制决策的只读查询（起会话与命令渲染 · kill · 送键 · 抓屏 · 分叉落盘 · 常驻与退出行为 · 部署计划 · 写用户文件的那一族 · 传输台）。
 - `files/`：文件管理的读面（常驻文件名索引 · 列 · 读 · 按内容搜）。

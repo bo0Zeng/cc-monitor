@@ -9,7 +9,7 @@
 //!
 //! # 住 `control/`
 //!
-//! 它只读，但 tmux 的 argv 直传承载都在 `control/` 与 `common/`（`observe/` 碰 tmux 走 `platform/shell.rs` 的 `sh -c`），
+//! 它只读，但对 tmux 下命令的那几处都在 `control/`（起进程经 `host::tmux::child`），
 //! 而 `common/` 要 ≥2 个上层用、本模块只有一个调用方。它不参与「能不能改这个会话」的决策（与 `gate` 不同）。
 //!
 //! # 三态分得开：抓不到时说得出真实原因
@@ -34,7 +34,7 @@
 //! 文本级（生产段里不出现任何会改 tmux 状态的动词）＋ 反向自检（合成样本必须被逮到）。
 
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
-use crate::platform::child::{Child, ChildFail, Deadline};
+use crate::platform::child::Deadline;
 use copy_core::copy_text;
 
 /// 抓一屏那一发的期限：界面等 `terminal-preview` 的预算是 20 s（抓屏 ＋ 问尺寸两发），tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
@@ -92,28 +92,8 @@ pub(crate) fn capture_with_on(
     classify(&spawn_tmux(socket, &argv)?)
 }
 
-/// stderr 里「这台机上一个 tmux server 都没有」的形状。
-///
-/// `(针, 为什么它算这一档)` —— 加一条要连理由一起加。
-pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
-    (
-        "error connecting to",
-        "🔴 **真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\
-         逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\
-         ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \
-         第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\
-         「tmux 断开时会说 no server running」是个想当然，实测把它证伪了一半。",
-    ),
-    (
-        "no server running",
-        "tmux 在**默认 socket**（生产走的那条）上找不到 server 时的原话\
-         （`no server running on /tmp/tmux-<uid>/default`）。\
-         ⚠ **这一句没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\
-         而默认 socket 在沙箱里没法造出「无 server」态（那台沙箱自己在用 tmux）。\
-         ⇒ 它今天只由 `every_registered_needle_lands_in_its_own_bucket` \
-         用合成样本证明「落对了档」，**不是**「见过它」。",
-    ),
-];
+/// stderr 里「这台机上一个 tmux server 都没有」的形状（家在宿主口 tmux 那一形，名单那一发同用）。
+pub(crate) use crate::host::tmux::NO_SERVER_NEEDLES;
 
 /// stderr 里「server 在，而这个目标不存在」的形状。
 ///
@@ -145,13 +125,8 @@ pub(crate) struct RawCapture {
     pub(crate) stderr: String,
 }
 
-/// 「tmux 这个程序起不来」那一档的唯一造句处。这一档要与「会话不存在」分得开，而沙箱门禁里摘不掉 tmux ⇒
-/// 判据只能打这一处：钉的是「这一档存在、且与另外两档不同码不同话」，不是在没装 tmux 的机器上实测过。超时那一档另说（`child_timed_out`）。
-pub(crate) fn tmux_unavailable(e: ChildFail) -> CmdErr {
-    CmdErr::from(e.into_cmd_said("no_tmux", |why| {
-        copy_text("reason.tmux.startFailed", &[("why", why)])
-    }))
-}
+/// 「tmux 这个程序起不来」那一档的造句（家在宿主口 tmux 那一形）。
+pub(crate) use crate::host::tmux::tmux_unavailable;
 
 /// 把一次原始读数判成结局。**纯函数。**
 ///
@@ -190,11 +165,7 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
 ///
 /// `socket`：`None` = 让 tmux 按环境解析默认 socket（生产恒 `None`）；`Some(p)` = 显式 `-S <p>`，只为在隔离的 tmux server 上测得出内容。
 fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr> {
-    let mut cmd = Child::new("tmux");
-    if let Some(s) = socket {
-        cmd = cmd.args(["-S", s]);
-    }
-    let out = cmd
+    let out = crate::host::tmux::child(socket)
         .args(argv)
         .run(CAPTURE_WITHIN)
         .map_err(tmux_unavailable)?;

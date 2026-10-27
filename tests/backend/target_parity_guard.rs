@@ -485,7 +485,12 @@ fn paths_in(me: &[String], src: &str) -> Vec<Vec<String>> {
             }
             break;
         }
-        if segs.len() > 1 {
+        // 紧跟 `(` 的最后一段是函数名，不是模块：摘掉再找文件（不然文件内联模块里的 `super::f()` 会被读成顶层模块 `f`）。
+        let chain = segs.len() > 1;
+        if chain && b.get(j) == Some(&b'(') {
+            segs.pop();
+        }
+        if chain {
             if let Some(p) = absolutize(segs) {
                 out.push(p);
             }
@@ -723,7 +728,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
         "ccm-print",
         "〔合并主线时本条当场点出〕W5-ALIAS 的别名预览：`control/ccm/mod.rs::plan_of` 经 \
-         `session_snapshot::global().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
+         `host::snapshot().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
          （`plan::build` 头注的诚实降级），预览照出；它的能力是渲计划，不是 tmux",
     ),
     // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
@@ -753,10 +758,10 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
     );
     let edges = file_edges(&tree);
     let spawners = tmux_spawning_files(&tree);
-    // 地板只防人群塌成空集；主锚是下面两向相等。现打（立格时）：7 份直呼 + 1 份经 shell（`observe/watcher.rs`）。
+    // 只防人群塌成空集；是哪一份由 `tmux_is_spawned_only_in_the_host_tmux_file` 钉，主锚是下面两向相等。
     assert!(
-        spawners.len() >= 5,
-        "真起 tmux 的文件只找到 {spawners:?} —— 取法坏了"
+        !spawners.is_empty(),
+        "真起 tmux 的文件一份都没找到 —— 取法坏了"
     );
     let handlers = handler_files(&tree);
     let names: BTreeSet<&str> = crate::stream::inbound::REGISTRY
@@ -811,6 +816,32 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
     );
 }
 
+/// 🔴 宿主口：真起 tmux 的生产文件恰好一份 `host/tmux.rs`（别处起 tmux 经 `host::tmux::child`）。
+/// 删的时刻：tmux 那一形宿主整个删掉的那一版。
+#[test]
+fn tmux_is_spawned_only_in_the_host_tmux_file() {
+    let spawners = tmux_spawning_files(&backend_tree());
+    assert_eq!(
+        spawners.into_iter().collect::<Vec<_>>(),
+        vec!["host/tmux.rs".to_string()],
+        "真起 tmux 的生产文件该恰好是 `host/tmux.rs`：起进程改走 `crate::host::tmux::child`，\
+         `sh -c` 那两跳的脚本与起法也住那里"
+    );
+    // 正控：两种起法各在合成树上认得出（直呼 · 经 shell 送带 `tmux ` 的脚本），不带 tmux 的 shell 不算。
+    let tree: Tree = [
+        ("x.rs", "fn a() { let _ = Child::new( \"tmux\" ); }"),
+        ("y.rs", "fn b() { posix_shell(&format!(\"tmux ls\")); }"),
+        ("z.rs", "fn c() { posix_shell(\"ls\"); }"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    assert_eq!(
+        tmux_spawning_files(&tree).into_iter().collect::<Vec<_>>(),
+        vec!["x.rs".to_string(), "y.rs".to_string()]
+    );
+}
+
 /// 🔴 正反两控：引用图在合成树上认得出 `use` 分组 / `super::` / `crate::` 链 / 子模块，也不乱连。
 #[test]
 fn the_tmux_reach_ruler_works_on_a_synthetic_tree() {
@@ -848,6 +879,32 @@ fn the_tmux_reach_ruler_works_on_a_synthetic_tree() {
     assert!(
         !edges["b/mod.rs"].contains("b/inner.rs"),
         "只声明没使用的子模块被当成了引用"
+    );
+}
+
+/// 紧跟 `(` 的最后一段是函数：文件内联模块里的 `super::f()` 不连顶层模块 `f`；`子模块::g()` 照连那个子模块。
+#[test]
+fn the_tmux_reach_ruler_reads_a_trailing_call_as_a_function() {
+    let tree: Tree = [
+        ("lib.rs", "pub mod f; pub mod k;"),
+        (
+            "k/mod.rs",
+            "mod door;\nfn f() {}\nmod inner { pub fn run() { super::f(); door::g(); } }",
+        ),
+        ("k/door.rs", "pub fn g() {}"),
+        (
+            "f.rs",
+            "pub fn spawn() { let _ = crate::platform::child::Child::new(\"tmux\"); }",
+        ),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let edges = file_edges(&tree);
+    assert_eq!(
+        edges["k/mod.rs"].iter().collect::<Vec<_>>(),
+        vec!["k/door.rs"],
+        "`super::f()` 不该连到顶层模块 `f`、`door::g()` 该连子模块：{edges:?}"
     );
 }
 

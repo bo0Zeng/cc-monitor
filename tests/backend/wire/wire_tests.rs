@@ -1089,6 +1089,7 @@ fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
             blocks: vec![Block::Text { text: text.into() }],
             results: Default::default(),
             cwd: None,
+            attachments: Vec::new(),
         },
     }
 }

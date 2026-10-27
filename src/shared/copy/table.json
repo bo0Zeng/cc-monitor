@@ -11569,6 +11569,12 @@
       "zh": "会话不在闲着 · 没送",
       "args": []
     },
+    "beTerminal.no.attachmentGone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "附件已不在 · 没送",
+      "args": []
+    },
     "beTerminal.no.elsewhere": {
       "kind": "body",
       "role": "片段",
@@ -16713,6 +16719,72 @@
       "role": "报错",
       "zh": "传输已开始 · {tid}",
       "args": ["tid"]
+    },
+    "beAttach.no.isDir": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不收目录",
+      "args": []
+    },
+    "beAttach.no.tooBig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "超上限 · ≤{cap}",
+      "args": ["cap"]
+    },
+    "beAttach.no.tooMany": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "一条最多 {n} 份",
+      "args": ["n"]
+    },
+    "beAttach.no.tooMuch": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "一条合计超上限 · ≤{cap}",
+      "args": ["cap"]
+    },
+    "beAttach.no.dirFull": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "附件目录已满 · ≤{cap}",
+      "args": ["cap"]
+    },
+    "beAttach.no.notWritable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "工作目录不可写",
+      "args": []
+    },
+    "beAttach.no.noSession": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "找不到会话的工作目录",
+      "args": []
+    },
+    "beAttach.commit.notDir": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 不是目录 · 附件未落",
+      "args": ["path"]
+    },
+    "beAttach.commit.mkdirFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "建附件目录失败 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beAttach.commit.ignoreFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写附件目录的忽略规则失败 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beAttach.drop.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "删附件失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesCommit.upload.corruptRemoved": {
       "kind": "body",

@@ -77,14 +77,10 @@ pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
     probe_with(tmux_on(None), target)
 }
 
-/// 本模块起 tmux 的唯一构造处。`socket`：`None` = 让 tmux 按环境解析默认 socket（**生产恒 `None`**）；
-/// `Some(p)` = 显式 `-S <p>`（只为让「按 sid 找窗格」在隔离的 tmux server 上测得出来，同 `capture_pane::capture_on`）。
+/// 本模块起 tmux 的那一处（经宿主口 `host::tmux::child`）。`socket`：`None` = 让 tmux 按环境解析默认 socket（**生产恒 `None`**）；
+/// `Some(p)` = 显式 `-S <p>`（只为让「按 sid 找窗格」在隔离的 tmux server 上测得出来）。
 fn tmux_on(socket: Option<&str>) -> Child {
-    let cmd = Child::new("tmux");
-    match socket {
-        Some(s) => cmd.args(["-S", s]),
-        None => cmd,
-    }
+    crate::host::tmux::child(socket)
 }
 
 /// 一个会话里的一个窗格（[`panes_on`] 的一行）。

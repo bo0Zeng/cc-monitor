@@ -13,6 +13,7 @@ fn req(sid: &str, text: &str) -> SessionSayReq {
         client: Some("phone".into()),
         seen_screen: None,
         idle_only: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -250,4 +251,66 @@ fn a_seen_screen_rides_along_and_a_gone_terminal_is_not_resumed() {
         .unwrap();
         assert_eq!((got.result, got.why), (SentResult::Refused, Some(gone)));
     }
+}
+
+// ── 带附件说一句 ────────────────────────────────────────────
+
+/// 一个会话工作目录：`ids` 各落一份（编号目录里一份 `<名>`）。
+fn workdir(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-say-att-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&d).ok();
+    for (id, name) in files {
+        let at = d.join(".ccm-attach").join(id);
+        std::fs::create_dir_all(&at).expect("建编号目录");
+        std::fs::write(at.join(name), b"x").expect("摆一份");
+    }
+    d
+}
+
+/// ★ 带一张图一份文件说一句（Claude）：送字那一条收到「图的绝对路径单独粘」＋「正文后面一行 `@相对路径`」；恢复那一支交的第一句全写成行。
+#[test]
+fn a_say_with_attachments_types_what_the_agent_adapter_wrote() {
+    let cwd = workdir(
+        "ok",
+        &[("1023-1529-a3f2", "a.png"), ("1023-1529-7c01", "login.css")],
+    );
+    let mut r = req(SID, "截图在这");
+    r.attachments = vec!["1023-1529-a3f2".into(), "1023-1529-7c01".into()];
+    let typed = typed_of(&r, crate::agents::claudecode::AGENT_KIND, &cwd).expect("都在");
+    let abs = cwd
+        .join(".ccm-attach/1023-1529-a3f2/a.png")
+        .display()
+        .to_string();
+    assert_eq!(typed.pastes, [abs.clone()]);
+    assert_eq!(
+        typed.text,
+        "截图在这\n@.ccm-attach/1023-1529-7c01/login.css"
+    );
+    let sent = RefCell::new(Vec::<TerminalInputReq>::new());
+    let send = |t: &TerminalInputReq| {
+        sent.borrow_mut().push(t.clone());
+        Ok(sent_as(SentResult::Delivered))
+    };
+    let got = say_typed(&r, &typed, &|_| false, &send, &no_resume).unwrap();
+    assert_eq!(got.result, SentResult::Delivered);
+    let s = &sent.borrow()[0];
+    assert_eq!(s.pastes, [abs]);
+    assert_eq!(s.text.as_deref(), Some(typed.text.as_str()));
+    let _ = std::fs::remove_dir_all(&cwd);
+}
+
+/// 有一份那台已清掉 ⇒ 一个字都不送：`refused` ＋ `attachment_gone`，`gone` 列出那几个编号。
+#[test]
+fn a_cleared_attachment_refuses_the_whole_say_and_names_it() {
+    let cwd = workdir("gone", &[("1023-1529-a3f2", "a.png")]);
+    let mut r = req(SID, "再看下");
+    r.attachments = vec!["1023-1529-a3f2".into(), "1023-1530-e95b".into()];
+    let no = typed_of(&r, crate::agents::claudecode::AGENT_KIND, &cwd).expect_err("该拒");
+    assert_eq!(
+        (no.result, no.why),
+        (SentResult::Refused, Some(Refused::AttachmentGone))
+    );
+    assert_eq!(no.gone, ["1023-1530-e95b"]);
+    assert!(no.said.is_some());
+    let _ = std::fs::remove_dir_all(&cwd);
 }
