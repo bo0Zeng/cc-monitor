@@ -1252,8 +1252,9 @@ pub struct RunInfo {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub background: bool,
-    /// 事实那一行的各截（已跑 · 用时 · 最近 · 工具 ×n · agent ×n · 后台派出；「几点起」在 `started_text`）。
-    #[serde(default)]
+    /// 事实那一行的各截（已跑 · 用时 · 最近 · 工具 ×n · agent ×n · 后台派出；「几点起」在 `started_text`）；一截都没有 ⇒ 不上线。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<RunLine>>"))]
     pub facts: Vec<RunLine>,
     /// 说明（在跑且没在等 ⇒ 不上线）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
