@@ -56,6 +56,12 @@ fn entry() -> Result<PathBuf, Fail> {
         .map_err(|m| Fail::new("no_pb", m.said()))
 }
 
+/// 生产的「这条会话此刻在不在等人」：活会话表那一判（`LiveTable::waiting`，同 `sessions-needs`），这一次读取取一份表。
+fn waiting_port() -> impl Fn(&str) -> bool {
+    let table = crate::history::live_table::now(&crate::history::listing::agent_home());
+    move |sid: &str| table.waiting(sid)
+}
+
 /// 生产的「这个 id 是谁」：活会话表（判活与在干什么同主窗口标签页）· 有它的记录（哪一家都算）⇒ 会话；
 /// 记录树里有它的子 agent 记录 ⇒ 挂在父会话底下（活不活看父会话）；都不中 ⇒ 认不出。
 fn who_port() -> impl Fn(&str) -> Whose {
@@ -134,9 +140,10 @@ pub(crate) fn annotated(doc: wire::PlanRead, tz: &crate::Tz) -> wire::PlanRead {
 /// 读一个目录（并进本子）；读到了就开始盯它的工作区。回的是**没标**认可的那一份（[`annotated`] 再标）。
 fn read_dir(entry: &Path, dir: &Path) -> Result<wire::PlanRead, book::Miss> {
     let who = who_port();
+    let waiting = waiting_port();
     let review = review_now();
     let prior = |ws: &str, slice: &str| review.prior(ws, slice);
-    let mut out = book::book().read(entry, dir, &who, now_ms(), &prior)?;
+    let mut out = book::book().read(entry, dir, &who, &waiting, now_ms(), &prior)?;
     if let Some(ws) = Some(out.workspace.as_str())
         .filter(|w| !w.is_empty())
         .map(PathBuf::from)
@@ -144,7 +151,7 @@ fn read_dir(entry: &Path, dir: &Path) -> Result<wire::PlanRead, book::Miss> {
         // pb 的输出里印的路径可能随当前目录变 ⇒ 一律以工作区根为准再读一次，
         // 摘要才与盯盘那一路（当前目录 ＝ 工作区根）对得上，不会凭空推一帧。
         if ws.as_path() != dir {
-            out = book::book().read(entry, &ws, &who, now_ms(), &prior)?;
+            out = book::book().read(entry, &ws, &who, &waiting, now_ms(), &prior)?;
         }
         arm(entry, &ws);
     }
@@ -155,9 +162,12 @@ fn arm(entry: &Path, ws: &Path) {
     let e = entry.to_path_buf();
     let reread: watch::Reread = std::sync::Arc::new(move |p: &Path| {
         let who = who_port();
+        let waiting = waiting_port();
         let review = review_now();
         let prior = |ws: &str, slice: &str| review.prior(ws, slice);
-        let mut v = book::book().read(&e, p, &who, now_ms(), &prior).ok()?;
+        let mut v = book::book()
+            .read(&e, p, &who, &waiting, now_ms(), &prior)
+            .ok()?;
         review.annotate(&mut v);
         Some((seen_of(&v), watch::spots(&v)))
     });

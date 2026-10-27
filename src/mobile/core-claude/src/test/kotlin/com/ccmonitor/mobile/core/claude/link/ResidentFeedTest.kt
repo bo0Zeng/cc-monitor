@@ -466,8 +466,9 @@ class ResidentFeedTest {
             core.emit("frame", """{"kind":"changed","topic":"session_hidden","key":"s2","body":{"hidden":null}}""")
             core.emit("frame", """{"kind":"changed","topic":"history_list"}""")
             core.emit("frame", """{"kind":"changed","topic":"needs"}""")
+            core.emit("frame", """{"kind":"changed","topic":"tasks"}""")
             core.emit("frame", """{"kind":"sessions_replayed"}""")
-            assertEquals(listOf(Changed.Rotation("s1"), Changed.SessionHidden("s2", HiddenNow(null)), Changed.HistoryList), got)
+            assertEquals(listOf(Changed.Rotation("s1"), Changed.SessionHidden("s2", HiddenNow(null)), Changed.HistoryList, Changed.Needs()), got)
             assertEquals(1, breaks.size)
         }
 

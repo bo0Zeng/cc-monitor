@@ -174,6 +174,10 @@ pub(crate) fn watch(
                 }
             }
             if last.as_ref() != Some(&now) {
+                // 要你看的数变了 ⇒ 需手动整份也可能变了（同一个铃）。
+                if last.as_ref().map(|l| l.1) != Some(now.1) {
+                    crate::history::needs_changed::ring();
+                }
                 last = Some(now.clone());
                 let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));
             }

@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.needs
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
-import com.ccmonitor.mobile.core.claude.link.faces
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
@@ -11,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,8 +45,8 @@ data class MachineNeeds(
 
 /**
  * 跨会话的需手动板（进程级一份）：对此刻起着的每条常驻流（[sources]，不为它另连）各持那台最后一份 `sessions-needs` 整份。
- * 什么时候问那一台：那条流一挂上来 · 换了一条流 · 那台推 `changed {needs | plan | manual}` · 那台会话表里谁的点变了（去抖合成一次）；
- * 别处答完 / 登完也可以叫它重问（[reask]）。总览照它画、聊天屏右上那颗入口数它、聊天屏那一块需手动读它里面那一条 —— 别处都不再自己问。
+ * 什么时候问那一台：那条流一挂上来 · 换了一条流 · 那台推 `changed {needs}`（那台的需手动只这一个铃；去抖合成一次）· 没问到之后退避再问
+ * （[RETRY_FIRST_MS] 起、翻倍、封顶；问到了归零）；别处答完 / 登完也可以叫它重问（[reask]）。会话进出需手动由那台照它的活会话表推 `needs`，这里不看点。总览照它画、聊天屏右上那颗入口数它、聊天屏那一块需手动读它里面那一条 —— 别处都不再自己问。
  * 判 · 排 · 写字全在那台；这里只记、只把几台的条数相加。
  */
 @OptIn(FlowPreview::class)
@@ -94,28 +94,39 @@ class NeedsBoard(
             launch {
                 merge(
                     src.pushes.filter { it.wholeMayChange() }.map { },
-                    src.link.table
-                        .map { t -> t.faces().mapValues { it.value.dot } }
-                        .distinctUntilChanged()
-                        .drop(1)
-                        .map { },
                     src.link.epoch
                         .drop(1)
                         .map { },
                 ).collect { wake.trySend(Unit) }
             }
-            wake.receiveAsFlow().debounce(DEBOUNCE_MS).collect { fetch(id, src.link) }
+            var backoff = 0L
+            var retry: Job? = null
+            wake.receiveAsFlow().debounce(DEBOUNCE_MS).collect {
+                retry?.cancel()
+                if (fetch(id, src.link)) {
+                    backoff = 0L
+                } else {
+                    backoff = if (backoff == 0L) RETRY_FIRST_MS else minOf(backoff * 2, RETRY_MAX_MS)
+                    val wait = backoff
+                    retry =
+                        launch {
+                            delay(wait)
+                            wake.trySend(Unit)
+                        }
+                }
+            }
         }
     }
 
+    /** 问那一台一次：问到了 ⇒ 换上、`true`；读不出 ⇒ 旧的一份照留、`false`（退避再问）。 */
     private suspend fun fetch(
         id: String,
         link: CoreLink,
-    ) {
+    ): Boolean {
         val r = link.call(SessionsNeeds.COMMAND, null, READ_MS)
-        // 读不出 ⇒ 旧的一份照留（下一次变化再问）。
-        val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) } ?: return
+        val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) } ?: return false
         put(id) { it.copy(list = list) }
+        return true
     }
 
     private fun put(
@@ -128,7 +139,11 @@ class NeedsBoard(
         const val DEBOUNCE_MS = 300L
         private const val READ_MS = 15_000L
 
+        /** 没问到之后头一回隔多久再问；之后每回翻倍、封顶 [RETRY_MAX_MS]。 */
+        const val RETRY_FIRST_MS = 1_000L
+        private const val RETRY_MAX_MS = 30_000L
+
         /** 那台这几样变了 ⇒ 整份可能变了。 */
-        private fun Changed.wholeMayChange(): Boolean = this is Changed.Needs || this is Changed.Plan || this is Changed.Manual
+        private fun Changed.wholeMayChange(): Boolean = this is Changed.Needs
     }
 }

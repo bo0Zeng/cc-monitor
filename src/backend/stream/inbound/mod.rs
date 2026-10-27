@@ -454,7 +454,7 @@ fn dispatch(
                                         body: Some(SignInState::of(ended)),
                                     },
                                 ));
-                                crate::accounts::sign_in::ring_manual();
+                                crate::history::needs_changed::ring();
                             });
                         crate::faces::login_face::start(&r, asks, on_end)
                     },

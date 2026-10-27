@@ -94,8 +94,6 @@ const WINDOW_MAX = 2000;
 export class HistoryView {
   /** 删会话前问一句：主窗口里它此刻活着吗（列表拉下来那一刻的状态可能已旧）。 */
   liveInTabs: (sid: string) => boolean = () => false;
-  /** 主窗口里这个会话此刻「需手动」的那个词；不在 / 不需要 ⇒ `null`。 */
-  needsOf: (sid: string) => string | null = () => null;
   /** 切到主窗口里的这个会话。 */
   switchTo: (sid: string) => void = () => {};
 
@@ -959,7 +957,6 @@ export class HistoryView {
    * 第二行项目 · 机器 · 路径 · 时间段（条数由查看器读完接上）。都按这一行的事实画，能做什么看 `can`。
    */
   private headOf(r: HistoryRow): ViewerHead {
-    const needs = r.origin ? null : this.needsOf(r.sessionId);
     const acts = document.createElement("span");
     acts.className = s.hvHeadActs;
     acts.append(
@@ -977,7 +974,7 @@ export class HistoryView {
     toList.classList.add(s.hvToList);
     return {
       lead: toList,
-      badges: rowBadges(r, needs),
+      badges: rowBadges(r),
       actions: acts,
       meta: [project, machine, ...(r.projectPath ? [viewerPath(r.projectPath)] : []), span],
     };
@@ -1067,7 +1064,6 @@ export class HistoryView {
         safeSetJson(LS_KEYS.historyExpandedForks, [...this.openForks]);
         this.refresh();
       },
-      needs: (r) => (r.origin ? null : this.needsOf(r.sessionId)),
     };
   }
 

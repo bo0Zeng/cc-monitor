@@ -122,7 +122,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
     "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
     "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`；「没人答时自动答」那一格同一条命令
-    "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf`，字照抄核心写的）
+    "src/frontend/ui/session-face.ts", // 撤销提示与关掉提示里的整题（`fullTitle`）· 会话事实投影里在等什么（`needsOf`）
     "src/frontend/ui/face-can.ts", // 那台的脸上能做什么（关 / 拉前 · 说不清那一张）
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
