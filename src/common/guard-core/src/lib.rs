@@ -176,7 +176,7 @@ fn cfg_is_test_only(attr: &str) -> bool {
 ///
 /// 锚点照样匹配，但这里没有块可剥 —— 于是「列 0 的右大括号」会一路找到**下一个顶层 item 的
 /// 收尾大括号**，把中间**全部生产代码**当测试段吞掉。实测：加上这条声明后，
-/// backend `main.rs:26–179` 整段消失（`const BUILD_ID` / `const CAPABILITIES` / `const EMITS` /
+/// backend `main.rs` 开头那一大段消失（`const BUILD_ID` / `const CAPABILITIES` / `const EMITS` /
 /// `fn split_stream_flags` 全没了），而 `no_timer_guard` 在那一段上**静默变瞎** ——
 /// 把 `thread::sleep` 放进被吞区间**全绿**，放到测试模块之后才红。
 ///
@@ -1292,11 +1292,6 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
             // 散文里逐字提到测试属性是**正常的**（本文件的头注就在解释它），
             // 那不是「剥法坏了」。U8a-2a 实测：两侧各有一个文件因此假红
             //（`guard-core/src/lib.rs` 自己 + monitor 当年一份判据文件，那份随派生脚本删了）。
-            // 🔴 **这个地址从行号改成了符号。**
-            // 原来写的是当年一份契约判据文件里的一个行号。那份文件剖分之后只剩 40 行 ⇒ 行号越界，
-            // `structural_scan::line_number_addresses_stay_in_range_and_never_grow` 当场红，
-            // 而它的诊断逐字写着「改法只有一条：**点符号**，别换一个今天对的行号 ——
-            // 换一个今天对的行号就是把这一族再走一遍」。⇒ 照它说的办。
             let prod = production_code(&src);
             assert_no_test_code(&who, &prod);
             // 第二半：剥法**认不出**的测试模块（里面可能一个 `#[test]` 都没有 ⇒ 上一条看不见它）。

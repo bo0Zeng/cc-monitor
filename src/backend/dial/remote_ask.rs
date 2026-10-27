@@ -174,7 +174,7 @@ pub(crate) fn reach_rows(table: &Table) -> Vec<ReachRow> {
         .into_iter()
         .map(|o| ReachRow {
             machine: table.peer(&o),
-            origin: cmd_wire::Machine(o),
+            origin: cmd_wire::Machine::named(o),
         })
         .collect()
 }
@@ -379,7 +379,7 @@ where
                 None => unreachable!("本机那一台只列一次（上面去过重）"),
             }
         } else {
-            let name = m.as_wire_str().to_string();
+            let name = m.host_name().unwrap_or_default().to_string();
             asks.push(Box::pin(async move {
                 ask_resident::<C>(&name, req, tz, total, table, remote).await
             }));

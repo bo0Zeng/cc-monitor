@@ -244,11 +244,12 @@ fn the_replies_the_file_window_reads_keep_their_wire_bytes() {
 }
 
 /// 登记那一行的名字与回包类型，跟文件窗口照着发的那张表（`cmd_wire::files::Call`）是同一份：名字抄错一处就红。
+/// 读写两面都过；过的条数 == `calls!` 那张表的行数（表里多一条没人在这里过 ⇒ 红）。
 #[test]
 fn the_registered_names_are_the_ones_the_file_window_calls() {
     use crate::wire::typed::Command;
     use cmd_wire::files::Call;
-    fn same<C: Command>()
+    fn same<C: Command>(seen: &mut std::collections::BTreeSet<&'static str>)
     where
         C::Req: Call<Reply = C::Reply>,
     {
@@ -258,19 +259,57 @@ fn the_registered_names_are_the_ones_the_file_window_calls() {
             "`{}` 不在登记表里",
             C::NAME
         );
+        assert!(seen.insert(C::NAME), "`{}` 过了两遍", C::NAME);
     }
     use crate::stream::inbound::files_face::*;
-    same::<FilesLs>();
-    same::<FilesStat>();
-    same::<FilesFind>();
-    same::<FilesIndexStatus>();
-    same::<FilesIndexRebuild>();
-    same::<FilesBrowse>();
-    same::<FilesReadText>();
-    same::<FilesReadChunk>();
-    same::<FilesSize>();
-    same::<FilesHome>();
-    same::<FilesGrep>();
+    use crate::stream::inbound::files_session_face::FilesDeleteSession;
+    use crate::stream::inbound::files_write_face::*;
+    let mut seen = std::collections::BTreeSet::new();
+    let s = &mut seen;
+    same::<FilesLs>(s);
+    same::<FilesStat>(s);
+    same::<FilesFind>(s);
+    same::<FilesIndexStatus>(s);
+    same::<FilesIndexRebuild>(s);
+    same::<FilesBrowse>(s);
+    same::<FilesReadText>(s);
+    same::<FilesReadChunk>(s);
+    same::<FilesSize>(s);
+    same::<FilesHome>(s);
+    same::<FilesGrep>(s);
+    same::<FilesCreate>(s);
+    same::<FilesMkdir>(s);
+    same::<FilesRename>(s);
+    same::<FilesDelete>(s);
+    same::<FilesChmod>(s);
+    same::<FilesCopy>(s);
+    same::<FilesExtract>(s);
+    same::<FilesWriteText>(s);
+    same::<FilesDeleteSession>(s);
+    same::<FilesStageChunk>(s);
+    same::<FilesCommitText>(s);
+    same::<FilesCommitUpload>(s);
+    // `calls!` 那张表的行（`入参 => "名字", 回包;`），照源码数。
+    let src = include_str!("../../../src/common/cmd-wire/src/files.rs");
+    let table = src
+        .split_once("\ncalls! {")
+        .and_then(|(_, rest)| rest.split_once("\n}"))
+        .map(|(body, _)| body)
+        .expect("`cmd-wire/src/files.rs` 里找不到 `calls! { … }` 那张表");
+    let names: std::collections::BTreeSet<&str> = table
+        .lines()
+        .filter_map(|l| {
+            l.split_once("=> \"")
+                .and_then(|(_, r)| r.split_once('"'))
+                .map(|(n, _)| n)
+        })
+        .collect();
+    assert!(
+        names.len() > 10,
+        "`calls!` 表只读到 {} 行 —— 读法坏了",
+        names.len()
+    );
+    assert_eq!(seen, names, "这里过的与 `calls!` 表登的对不上");
 }
 
 // ── 写的那几条 ─────────────────────────────────────

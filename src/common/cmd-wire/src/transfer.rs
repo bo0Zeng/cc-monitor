@@ -252,7 +252,7 @@ impl TransferCopyAsk {
     pub fn from(self, from: crate::Machine) -> TransferCopyReq {
         TransferCopyReq {
             from,
-            to: crate::Machine(self.to),
+            to: crate::Machine::named(self.to),
             items: self.items,
             to_dir: self.to_dir,
             on_exists: self.on_exists,

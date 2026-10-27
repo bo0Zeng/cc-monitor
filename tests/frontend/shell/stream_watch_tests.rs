@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn one_desk_per_machine_and_it_starts_empty() {
-    let o = |s: &str| crate::origin::Origin(s.into());
+    let o = |s: &str| crate::origin::Origin::named(s);
     let a = desk(&o("o-watch-test"));
     let b = desk(&o("o-watch-test"));
     assert!(Arc::ptr_eq(&a, &b), "同一台两张名单台");

@@ -79,7 +79,7 @@ waiver_reason() {
 
 # ★★ **版本门：这一格要的 tmux 最低版本**〔E2 尾 09-27，取代 `CI-J3` 那条 `meta_dollar` 登记豁免〕。
 #
-# `meta_dollar`（`cc-a$x`）只在 tmux **≤3.4** 上造不出真会话：3.4 的 `session_check_name` 过 `utf8_stravis`，
+# `meta_dollar`（`cc-a$x`）只在 tmux **≤3.4** 上造不出真会话：3.4 的 session_check_name() 过 utf8_stravis()，
 #   那条 `$` 规则**不看任何 flag**（`$` 后跟字母 / `_` / `{` 就插一个反斜杠）⇒ 存进 server 的真名是「cc-a 反斜杠 $x」、
 #   `=cc-a$x:` 找不到。上游 `692ce59bcef5`（2024-05-24）给它加了 `VIS_DQ` 门、首次随 **3.5** 出货
 #   （CI 的 ubuntu-24.04 装的是 3.4：runner 日志逐字 `tmux 3.4-1ubuntu0.1`；开发机 3.6）。

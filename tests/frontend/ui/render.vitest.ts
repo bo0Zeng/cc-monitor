@@ -110,10 +110,13 @@ describe("#42 奇数/游离 $$ 不吞掉真公式 + 行边界回归", () => {
   it("CRLF 行尾块公式 → 仍渲染（#42 重要1）", () => {
     expect(renderMarkdown("结果\r\n$$\r\nE=mc^2\r\n$$").includes("katex")).toBe(true);
   });
-  it("行中 $$x$$（前后有正文）不被块规则误吞（不 throw、有输出）", () => {
+  it("行中 $$x$$（前后有正文）不被块规则误吞：整句留在同一个段落里，前后的正文都在", () => {
     const html = renderMarkdown("价格从 $$5 到 $$10 不等");
-    expect(typeof html).toBe("string");
-    expect(html.length).toBeGreaterThan(0);
+    const body = new DOMParser().parseFromString(html, "text/html").body;
+    expect(body.children.length, html).toBe(1);
+    expect(body.firstElementChild?.tagName, html).toBe("P");
+    const text = body.textContent ?? "";
+    for (const part of ["价格从", "10 不等"]) expect(text).toContain(part);
   });
 });
 

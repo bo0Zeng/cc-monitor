@@ -337,7 +337,7 @@ fn the_probe_format_asks_for_both_fields() {
 // ★★ **2026-09-09：根因查出来了。这段话原来写着「根因至今未知」，那句今天不成立了。**
 //
 // **tmux ≤3.4 会在会话名里给 `$` 前面插一个反斜杠**，只要 `$` 后面跟的是字母 / `_` / `{`：
-// `session_check_name()` 把新名字过 `utf8_stravis(…)`（`:`→`_` 也是这儿来的，那正是
+// tmux 的 session_check_name() 把新名字过 utf8_stravis()（`:`→`_` 也是这儿来的，那正是
 // `meta_colon`），而 3.4 的 `utf8.c` 里那条 `$` 规则**不看任何 flag**。
 // ⇒ `cc-a$x` 存进 server 的真名是 `cc-a` + 反斜杠 + `$x`，`=cc-a$x:` 当然找不到
 // ⇒ 正是 F20 那条复核 skip。上游 `692ce59bcef5`（2024-05-24）给它加了 `VIS_DQ` 门，

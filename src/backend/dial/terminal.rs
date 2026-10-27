@@ -293,7 +293,7 @@ pub(crate) fn answer_in(
     };
     let dial = super::dial_named(
         hosts,
-        req.machine.as_wire_str(),
+        &req.machine.to_string(),
         "stream",
         serde_json::json!({ "command": command }),
     )?;

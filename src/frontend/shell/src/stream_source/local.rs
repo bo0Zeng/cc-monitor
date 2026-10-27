@@ -66,7 +66,7 @@ struct Conn {
 
 impl Conn {
     fn open(origin: &crate::origin::Origin, replay: &Arc<EventReplay>, health: &HealthOut) -> Conn {
-        let label = origin.as_wire_str().to_string();
+        let label = origin.to_string();
         Conn {
             intake: LineIntake::open(label.clone(), replay, health),
             tally: crate::frame_tally::FrameTally::new(format!("stream_source {label}")),
@@ -91,7 +91,7 @@ pub(crate) async fn consume(
     health: HealthOut,
 ) {
     let local = crate::origin::Origin::local();
-    let mut conns: HashMap<String, Conn> = HashMap::new();
+    let mut conns: HashMap<crate::origin::Origin, Conn> = HashMap::new();
     loop {
         let Some(item) = recv_or_flush(&mut conns, &mut rx).await else {
             // 发送端全没了（进程收摊）：残批照发，然后退出。
@@ -100,36 +100,30 @@ pub(crate) async fn consume(
             }
             return;
         };
-        if !matches!(item, LocalItem::StreamEnded) && !conns.contains_key(local.as_wire_str()) {
-            conns.insert(
-                local.as_wire_str().to_string(),
-                Conn::open(&local, &replay, &health),
-            );
+        if !matches!(item, LocalItem::StreamEnded) && !conns.contains_key(&local) {
+            conns.insert(local.clone(), Conn::open(&local, &replay, &health));
             replay.origin_seen(&local, true);
         }
         match item {
             LocalItem::Frame(Ordered::Relayed(r)) => relayed(r, &mut conns, &replay, &health).await,
             LocalItem::Frame(f) => {
-                if let Some(c) = conns.get_mut(local.as_wire_str()) {
+                if let Some(c) = conns.get_mut(&local) {
                     apply(&local, f, &mut c.intake, &replay, &health).await
                 }
             }
             LocalItem::LineLost => {
-                if let Some(c) = conns.get_mut(local.as_wire_str()) {
+                if let Some(c) = conns.get_mut(&local) {
                     c.intake.lost().await
                 }
             }
             LocalItem::StreamEnded => {
-                let mut all: Vec<String> = conns
-                    .keys()
-                    .filter(|o| o.as_str() != local.as_wire_str())
-                    .cloned()
-                    .collect();
+                let mut all: Vec<crate::origin::Origin> =
+                    conns.keys().filter(|o| !o.is_local()).cloned().collect();
                 all.sort();
                 for o in all {
-                    ended(&crate::origin::Origin(o), &mut conns, &replay).await;
+                    ended(&o, &mut conns, &replay).await;
                 }
-                if conns.contains_key(local.as_wire_str()) {
+                if conns.contains_key(&local) {
                     ended(&local, &mut conns, &replay).await;
                 }
                 tracing::info!(
@@ -143,7 +137,7 @@ pub(crate) async fn consume(
 /// 带静默窗地收下一件：哪一台手里攒着行，最多等 [`BATCH_QUIET`]，窗内没来新东西就把各台攒的冲掉再回去等。
 /// ⚠ 超时打在 `recv` 上（cancel-safe），不打在读行上：tokio 的读行不是 cancellation-safe。
 async fn recv_or_flush(
-    conns: &mut HashMap<String, Conn>,
+    conns: &mut HashMap<crate::origin::Origin, Conn>,
     rx: &mut tokio::sync::mpsc::Receiver<LocalItem>,
 ) -> Option<LocalItem> {
     loop {
@@ -164,7 +158,7 @@ async fn recv_or_flush(
 /// 本机后端转来的别台那条流上的一件 ⇒ 那台那一份收口。
 async fn relayed(
     r: Relayed,
-    conns: &mut HashMap<String, Conn>,
+    conns: &mut HashMap<crate::origin::Origin, Conn>,
     replay: &Arc<EventReplay>,
     health: &HealthOut,
 ) {
@@ -175,26 +169,26 @@ async fn relayed(
     };
     match r {
         Relayed::Line { machine, line } => {
-            let origin = crate::origin::Origin(machine);
-            if origin == crate::origin::Origin::local() {
+            let origin = crate::origin::Origin::named(machine);
+            if origin.is_local() {
                 tracing::warn!("本机后端转来了一件说是本机的，丢掉");
                 return;
             }
             // 里面那一行是 hello ⇒ 那台这一条连接开（同一台又来一行 hello ＝ 新的一条：旧的那份收口冲完换新，不说「断了」）。
             if cmd_wire::frame::kind_of(&line).ok().as_deref() == Some("hello") {
-                if let Some(mut old) = conns.remove(origin.as_wire_str()) {
+                if let Some(mut old) = conns.remove(&origin) {
                     old.intake.flush().await;
                 }
                 let mut c = Conn::open(&origin, replay, health);
                 let hello = c.unread.take(&line, None, &mut c.tally, &say);
                 attached(&origin, hello, replay);
-                conns.insert(origin.as_wire_str().to_string(), c);
+                conns.insert(origin.clone(), c);
                 return;
             }
-            let Some(c) = conns.get_mut(origin.as_wire_str()) else {
+            let Some(c) = conns.get_mut(&origin) else {
                 tracing::warn!(
                     "[{}] 还没接上就来了一帧，丢掉：{}",
-                    origin.as_wire_str(),
+                    origin,
                     line.chars().take(200).collect::<String>()
                 );
                 return;
@@ -206,13 +200,13 @@ async fn relayed(
         }
         // 那台流上一行超长、整行丢了 ⇒ 订阅原位一格 `Gap`（`to_seq` 缺）。
         Relayed::Gap { machine } => {
-            if let Some(c) = conns.get_mut(&machine) {
+            if let Some(c) = conns.get_mut(&crate::origin::Origin::named(machine)) {
                 c.intake.lost().await;
             }
         }
         Relayed::Ended { machine } => {
-            let origin = crate::origin::Origin(machine);
-            if conns.contains_key(origin.as_wire_str()) {
+            let origin = crate::origin::Origin::named(machine);
+            if conns.contains_key(&origin) {
                 ended(&origin, conns, replay).await;
             }
         }
@@ -221,7 +215,7 @@ async fn relayed(
 
 /// 那台这一条连接接上了（里面那一行 hello）：记下它的能力事实 · 资产同步 · 书签迁移 · 报在看名单 · 订阅收 `Seen`。
 fn attached(origin: &crate::origin::Origin, hello: Option<Frame>, replay: &Arc<EventReplay>) {
-    let at = origin.as_wire_str();
+    let at = origin.to_string();
     let Some(Frame::Hello(h)) = hello else {
         tracing::warn!("[{at}] 那台的 hello 这一侧解不出");
         return;
@@ -232,9 +226,9 @@ fn attached(origin: &crate::origin::Origin, hello: Option<Frame>, replay: &Arc<E
         h.host_arch,
         h.commands
     );
-    let offer = crate::inbound_client::reached(at, &h);
+    let offer = crate::inbound_client::reached(origin, &h);
     // 连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
-    crate::asset_sync::on_remote_ready(at, offer.admits(crate::asset_sync::REMOTE_NEEDS));
+    crate::asset_sync::on_remote_ready(&at, offer.admits(crate::asset_sync::REMOTE_NEEDS));
     // 〔一次性迁移 · 下一版删〕桌面旧书签文件里这台那一格交给这台后端。
     crate::bookmarks_migration::after_ready(origin.clone());
     // 那台的在看名单经本机后端交那台的名单台（这条连接上整份报一次）。
@@ -248,15 +242,15 @@ fn attached(origin: &crate::origin::Origin, hello: Option<Frame>, replay: &Arc<E
 /// 那台这一条连接断了：残批先冲完（行先落）、摘它的能力事实、成品整份作废（说不清）、订阅原位收 `Unseen`（不是终点）。
 async fn ended(
     origin: &crate::origin::Origin,
-    conns: &mut HashMap<String, Conn>,
+    conns: &mut HashMap<crate::origin::Origin, Conn>,
     replay: &Arc<EventReplay>,
 ) {
-    if let Some(mut c) = conns.remove(origin.as_wire_str()) {
+    if let Some(mut c) = conns.remove(origin) {
         c.intake.flush().await;
     }
-    let at = origin.as_wire_str().to_string();
-    if *origin != crate::origin::Origin::local() {
-        crate::inbound_client::gone(&at);
+    let at = origin.to_string();
+    if !origin.is_local() {
+        crate::inbound_client::gone(origin);
     }
     // 连接断了 ≠ 会话死了：那台的成品整份作废，当时活的 / 可重连的一律「说不清」；重连之后那台的新连接自己重报一遍。
     crate::session_book::feed(BookIn::LinkLost { origin: at.clone() });

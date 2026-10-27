@@ -147,7 +147,7 @@ impl DirPick {
             path.to_string(),
         );
         h.spawn(async move {
-            let to = comms_inward::chan::wire::Origin(machine.clone());
+            let to = super::source::Origin::named(machine.clone());
             let path = if path.is_empty() {
                 match super::source::home_of(&line, &to, super::transfer::PROBE_BUDGET).await {
                     Ok(h) => h,
@@ -191,7 +191,7 @@ impl DirPick {
         let name = copy_text("rsFilewinWriteops.inline.newDir", &[]);
         let (me, line) = (self.clone(), line.clone());
         h.spawn(async move {
-            let to = comms_inward::chan::wire::Origin(now.machine.clone());
+            let to = super::source::Origin::named(now.machine.clone());
             let op = super::writeops::WriteOp::Mkdir {
                 dir: now.path.clone(),
                 name: name.clone(),

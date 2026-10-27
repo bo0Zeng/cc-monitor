@@ -181,7 +181,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
         FakeBackend::new(&[CMD_READ_TEXT], Declared::default()),
     )
     .await;
-    let origin = crate::source::Origin(wired.origin.clone());
+    let origin = crate::source::Origin::named(wired.origin.clone());
     let got = |p: &'static str| {
         let line = wired.line.clone();
         let origin = origin.clone();
@@ -216,7 +216,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     let old = wire_up("edit-read-old", FakeBackend::new(&[], Declared::default())).await;
     let e = read_text(
         &old.line,
-        &crate::source::Origin(old.origin.clone()),
+        &crate::source::Origin::named(old.origin.clone()),
         "/srv/a.md",
     )
     .await
@@ -417,7 +417,7 @@ async fn save_rig(
     be.refuse_stage_at = refuse_stage_at;
     let committed = be.committed.clone();
     let wired = crate::find::testing::wire_up(tag, be).await;
-    let origin = crate::source::Origin(wired.origin.clone());
+    let origin = crate::source::Origin::named(wired.origin.clone());
     (wired, origin, committed)
 }
 
@@ -651,7 +651,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
 #[test]
 fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
     let sha = crate::find::testing::fake_sha256("hi\n");
-    let o = crate::source::Origin("devbox".into());
+    let o = crate::source::Origin::named("devbox");
     assert_eq!(
         opened_from_reply(
             &o,

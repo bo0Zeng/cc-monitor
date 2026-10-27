@@ -459,7 +459,7 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     for _ in 0..5 {
         let mine = w.search.start();
         let b = w.search.clone();
-        let o = comms_inward::origin::Origin(wired.origin.clone());
+        let o = comms_inward::origin::Origin::named(wired.origin.clone());
         let line = wired.line.clone();
         let asked = Asked {
             query: NEEDLE.to_string(),

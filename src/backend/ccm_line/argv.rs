@@ -1,7 +1,7 @@
 //! `ccm` 这套 argv 的唯一解析口与唯一默认值住址。
 //!
 //! - 解析只许在这一个文件里：`plan.rs` / `mod.rs` 一律拿 [`Opts`]，不许自己再看一眼 `args`
-//!   （`the_ccm_argv_is_parsed_in_exactly_one_place` 机检）。
+//!   （`ccm_flag_literals_live_only_in_argv_rs` 机检）。
 //! - 每个参数的默认值只许写在 [`Defaults`] 里（`every_default_lives_only_in_the_defaults_block` 机检）：两份默认迟早分叉。
 //! - 每个 `--flag` 的字面量只住在 [`flag`] 里；`plan.rs` 拼内层载荷时也从这里取。本文件是本 crate 里唯一允许持有
 //!   ccm 旗标字面量的地方（`protocol_doc_guard::TERMINAL_SURFACE_FILES` 登记并机检）。

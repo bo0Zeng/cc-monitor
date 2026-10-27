@@ -82,12 +82,22 @@ wait_for() {
   wall_until 'grep -qF -- "$_wf_pat" "$OUT"'
 }
 send() { printf '%s\n' "$1" >&3; }
+# stdout 里同时含这一两个模式的那一行；恰好 1 条才印出来，否则印选到几条、返回 1（重复的应答也要看得见）。
+only_line() {
+  _ol="$(grep -F -- "$1" "$OUT" || true)"
+  [ -z "${2:-}" ] || _ol="$(printf '%s\n' "$_ol" | grep -F -- "$2" || true)"
+  _oln="$(printf '%s' "$_ol" | grep -c '' || true)"
+  [ "$_oln" = 1 ] || { echo "（选到 $_oln 条：$1 ${2:-}）"; return 1; }
+  printf '%s' "$_ol"
+}
+# 那个 id 的应答行（恰好 1 条）。
+reply_of() { only_line '"kind":"reply"' "\"id\":\"$1\""; }
 
 # ── 1. hello 先到，且声明了入方向命令集（U6b-2）─────────────────────────────────
 if wait_for '"kind":"hello"'; then ok "backend 发出 hello"; else
   bad "10s 内没等到 hello"; echo "--- stderr ---"; tail -20 "$ERR"
 fi
-HELLO="$(head -1 "$OUT")"
+HELLO="$(only_line '"kind":"hello"')" || bad "hello 不是恰好一条：$HELLO"
 # F04a：新增 kill（第一条破坏性入方向命令）—— 这一行与后端命令表里的单词命令（`hello.commands` 从命令表派生）
 # 由 monitor 侧 `the_e2e_command_list_matches_the_backend_command_table` 逐项钉住，两处要一起动。
 # 新增 resync（手动对齐）。
@@ -103,7 +113,8 @@ if wait_for '"kind":"reply"'; then
   # ⚠ **选择谓词与断言谓词必须不同**。第一版两边都用 `grep '"id":"e2e-ping-1"'` ——
   #   先用它选出 REPLY 再断言 REPLY 含它，那条断言在结构上不可能失败（D 审计点名，
   #   地板 15 里有 1 分是白送的）。现在按 kind 选、按 id 断言。
-  REPLY="$(grep -F '"kind":"reply"' "$OUT" | head -1)"
+  #   此刻只发过这一问 ⇒ 应答行恰好一条。
+  REPLY="$(only_line '"kind":"reply"')" || bad "ping 之后的应答不是恰好一条：$REPLY"
   if printf '%s' "$REPLY" | grep -qF '"ok":true'; then
     ok "ping 收到 {\"kind\":\"reply\",\"ok\":true}"
   else
@@ -122,7 +133,7 @@ fi
 # ── 3. 未知命令 → 结构化错误，**不是**沉默也不是崩 ──────────────────────────────
 send '{"id":"e2e-unknown-1","cmd":"definitely-not-a-command","args":{}}'
 if wait_for '"id":"e2e-unknown-1"'; then
-  R="$(grep -F '"id":"e2e-unknown-1"' "$OUT" | head -1)"
+  R="$(reply_of e2e-unknown-1)" || bad "未知命令的应答不是恰好一条：$R"
   if printf '%s' "$R" | grep -qF '"ok":false' && printf '%s' "$R" | grep -qF 'unknown_command'; then
     ok "未知命令回 unknown_command"
   else
@@ -150,7 +161,7 @@ if wait_for '"id":"e2e-after-garbage"'; then ok "坏输入之后读循环仍在�
 # ── 7. cancel 一个不存在的 id 是**幂等的**、不是错误 ────────────────────────────
 send '{"id":"e2e-cancel-1","cmd":"cancel","args":{"target":"no-such-id"}}'
 if wait_for '"id":"e2e-cancel-1"'; then
-  R="$(grep -F '"id":"e2e-cancel-1"' "$OUT" | head -1)"
+  R="$(reply_of e2e-cancel-1)" || bad "cancel 的应答不是恰好一条：$R"
   if printf '%s' "$R" | grep -qF '"ok":true'; then ok "cancel 不存在的 id 幂等回 ok"; else
     bad "cancel 幂等性破了：$R"
   fi

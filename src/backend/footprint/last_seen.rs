@@ -168,8 +168,8 @@ pub(crate) fn store_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(DOC.rel))
 }
 
-fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::wire::spec::Fail> {
-    Some(m.0.as_str())
+fn origin_arg(m: &cmd_wire::Machine) -> Result<String, crate::wire::spec::Fail> {
+    Some(m.to_string())
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
 }
@@ -190,7 +190,7 @@ pub(crate) fn read_at(
 ) -> Answer<LastSeen> {
     let origin = origin_arg(&req.origin)?;
     let all = load(path);
-    let mine = all.get(origin);
+    let mine = all.get(&origin);
     Ok(LastSeen {
         accounts: seen_of(mine, SeenKind::Accounts, clock),
         data: seen_of(mine, SeenKind::Data, clock),
@@ -224,7 +224,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     if req.forget.is_some() {
         return forget_at(own, req, now_ms);
     }
-    let origin = origin_arg(&req.origin)?.to_string();
+    let origin = origin_arg(&req.origin)?;
     let kind = req
         .kind
         .ok_or_else(|| bad("`kind` is not one of accounts / data"))?;
@@ -350,7 +350,7 @@ fn forget_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenW
     if !dir.as_path().is_dir() {
         return Ok(LastSeenWritten { at_ms: now_ms });
     }
-    locked_edit(own, &dir, &file, |all| all.remove(origin).is_some())?;
+    locked_edit(own, &dir, &file, |all| all.remove(&origin).is_some())?;
     Ok(LastSeenWritten { at_ms: now_ms })
 }
 
