@@ -142,7 +142,7 @@ export const SWITCH_SCENES: Scene[] = [
   sw(
     "main-switch-ended",
     "会话头 · 已结束的会话",
-    "已结束的会话：两颗都亮着（session_state 带的 switch；选了记下、恢复照它起）；［恢复 ▾］照旧在右边",
+    "已结束的会话：两颗都亮着（session_left 那张脸的 can 带的 switch；选了记下、恢复照它起）；［恢复 ▾］照旧在右边",
     async () => {
       await mainReady(ALL_TABS);
       await openTab(2);
