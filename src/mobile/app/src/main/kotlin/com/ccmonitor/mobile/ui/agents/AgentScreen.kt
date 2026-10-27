@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,17 +53,17 @@ fun AgentScreen(
     onBack: () -> Unit,
     onOpen: (RunInfo) -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     rememberHostLink(hostId, "agents-$hostId")
     val backends = koinInject<HostBackends>()
     val feed = remember(hostId) { backends.of(hostId) }
     val table by feed.table.collectAsState()
     val runs = table.runs[sid]
     val info = runs?.runs?.firstOrNull { it.run == run }
-    val machine = rememberMachine(hostId) ?: return
-    val parent = rememberParentPath(feed, sid, table.live[sid]?.path) ?: return
     // 进屏那一刻在不在跑定首屏从哪读；之后运行表变了只往下接着读。
     val running = remember(run) { info?.state == RunState.RUNNING }
-    val scope = rememberCoroutineScope()
+    val machine = rememberMachine(hostId) ?: return
+    val parent = rememberParentPath(feed, sid, table.live[sid]?.path) ?: return
     val body = remember(parent, run) { AgentRun(feed, machine, parent, run, running, scope).also { it.open() } }
     val ui by body.state.collectAsState()
     // 在跑的那一个记录在长（运行表里它最近动的时刻变了 · 收场了）⇒ 往下接着读。
@@ -104,7 +104,7 @@ private fun Head(
         Line(listOfNotNull(x.lead, clock(x.line)).joinToString(copyText("kit.text.sep")))
         x.note?.let { Line(it, small = true) }
         if (x.refresh == true) {
-            TextButton(onClick = onRefresh, modifier = Modifier.padding(horizontal = 8.dp)) { Text(copyText("agentWindow.why.refresh")) }
+            SecondaryButton(onClick = onRefresh, modifier = Modifier.padding(horizontal = 8.dp)) { Text(copyText("agentWindow.why.refresh")) }
         }
     }
 }
