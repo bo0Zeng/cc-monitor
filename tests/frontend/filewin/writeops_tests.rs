@@ -178,7 +178,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         FakeBackend::new(&["files-mkdir", "files-delete"], Declared::default()),
     )
     .await;
-    let origin = comms_inward::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let e = super::apply_remote(
         &wired.line,
         &origin,
@@ -217,7 +217,11 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     .await
     .expect_err("后端没声明 `files-chmod`，却成了");
     // 按文案键断言，不按原文：「是哪条命令」由下面线上那张单子认（没上线），不靠句子点名。
-    assert_eq!(e, copy_core::backend_old(&origin.0), "没说后端不支持");
+    assert_eq!(
+        e,
+        copy_core::backend_old(&origin.to_string()),
+        "没说后端不支持"
+    );
     assert_eq!(
         wired.cmds(),
         ["files-mkdir", "files-mkdir"],
@@ -746,7 +750,7 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         ),
     )
     .await;
-    let origin = comms_inward::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let ops = [
         WriteOp::Mkdir {
             dir: "/srv/data".into(),
@@ -802,7 +806,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         ),
     )
     .await;
-    let origin = comms_inward::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin::named(wired.origin.clone());
     let raw = b"caf\xe9.txt".to_vec();
     let ops = [
         WriteOp::Delete {
