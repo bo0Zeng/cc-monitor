@@ -53,6 +53,7 @@ import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.chat.needs.NeedsViewModel
 import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
+import com.ccmonitor.mobile.ui.chats.RenameDialog
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.chatHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -134,7 +135,7 @@ fun ChatRoute(
             modifier = modifier,
             topBar = {
                 ChatTopBar(
-                    title = if (state.drafting) copyText("newSession.title.plain") else product,
+                    title = if (state.drafting) copyText("newSession.title.plain") else state.label ?: product,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     sid = state.sid?.takeIf { !state.drafting },
                     findTerminal = { s ->
@@ -145,6 +146,7 @@ fun ChatRoute(
                     },
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
+                    rename = Renaming(state.label, vm::rename),
                     agents = rememberAgentsEntry(hostId, state.sid)?.let { MoreAgents(it, onOpenAgents) },
                     needs = { NeedsEntry(onOpenOverview) },
                 )
@@ -265,9 +267,31 @@ private fun rememberProductName(hostId: String): String {
     return got
 }
 
+/** ⋯「在终端里打开」那一项：第二行是它所在的 tmux 会话名（终端已经不在 ⇒「恢复后在新终端中显示」）。 */
+@Composable
+private fun TerminalItem(
+    t: TermEntry,
+    onClick: () -> Unit,
+) = DropdownMenuItem(
+    text = {
+        Column {
+            Text(copyText("sessionHead.act.openTerm"))
+            Text(t.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    },
+    modifier = Modifier.testTag(ChatTestTags.MORE_TERMINAL),
+    onClick = onClick,
+)
+
+/** ⋯「改标题」：此刻的名字（框里的初值；还没有 ⇒ 空框）· 交那台（名字等会话簿那一格换）。 */
+private class Renaming(
+    val label: String?,
+    val commit: (String) -> Unit,
+)
+
 /**
- * 聊天屏的顶栏：左上 ☰ 拉出抽屉；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（第二行是它所在的 tmux 会话名；终端已经不在 ⇒
- * 「恢复后在新终端中显示」，点了终端屏先让那台恢复再附着；名单问不到 ⇒ 不画；答不了的需手动从这里进终端）· 轮换。
+ * 聊天屏的顶栏：左上 ☰ 拉出抽屉，标题是这条会话叫什么（那台定的）；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（点了终端屏先让那台恢复再附着；
+ * 名单问不到 ⇒ 不画；答不了的需手动从这里进终端）· agent · 改标题 · 轮换。
  * 还没起好的新建会话（[sid] 为 `null`）不画 ⋯。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -281,12 +305,14 @@ private fun ChatTopBar(
     findTerminal: suspend (String) -> TermEntry?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
+    rename: Renaming,
     /** ⋯「agent」那一项；这条会话没有运行表 ⇒ `null`、不出这一项。 */
     agents: MoreAgents?,
     /** ⋯ 左边那颗「需手动 n」（0 不画；空的新建会话里同样有）。 */
     needs: @Composable () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    var renaming by remember(sid) { mutableStateOf(false) }
     var terminal by remember(sid) { mutableStateOf<TermEntry?>(null) }
     val scope = rememberCoroutineScope()
     TopAppBar(
@@ -313,19 +339,10 @@ private fun ChatTopBar(
                 ) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     terminal?.let { t ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(copyText("sessionHead.act.openTerm"))
-                                    Text(t.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            },
-                            modifier = Modifier.testTag(ChatTestTags.MORE_TERMINAL),
-                            onClick = {
-                                menu = false
-                                onTerminal(t.target(sid))
-                            },
-                        )
+                        TerminalItem(t) {
+                            menu = false
+                            onTerminal(t.target(sid))
+                        }
                     }
                     agents?.let { a ->
                         DropdownMenuItem(text = { Text(a.text) }, onClick = {
@@ -333,11 +350,16 @@ private fun ChatTopBar(
                             a.open(sid)
                         })
                     }
+                    DropdownMenuItem(text = { Text(copyText("history.menu.rename")) }, onClick = {
+                        menu = false
+                        renaming = true
+                    })
                     DropdownMenuItem(text = { Text(copyText("mobChat.more.rotation")) }, onClick = {
                         menu = false
                         onRotation(sid)
                     })
                 }
+                if (renaming) RenameDialog(rename.label.orEmpty(), onDismiss = { renaming = false }, onRename = rename.commit)
             }
         },
     )

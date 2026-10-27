@@ -165,7 +165,7 @@ private fun RowSheets(
             RowMenu(r, ops, onDismiss = { if (dialog == null) onDismiss() })
         }
         RowDialog.RENAME ->
-            RenameDialog(r, onDismiss = onDismiss) { title ->
+            RenameDialog(r.label, onDismiss = onDismiss) { title ->
                 on { annotate(it, snackbar, HistoryAnnotate.rename(r.sessionId, title), copyText("history.rename.failed"), done = copyText("history.rename.done")) }
             }
         RowDialog.DELETE ->
