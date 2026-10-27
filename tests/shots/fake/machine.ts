@@ -12,6 +12,14 @@ const HOME = "/home/user";
 
 const pidOf = (origin: string, w: World): number => 3200 + w.machines.indexOf(origin) * 17;
 
+/** 那台的漂移账（`drift-report` 那一形）：devbox 上记下了三种认不出的会话流（结构夹具：键名是造的）。 */
+const driftOf = (origin: string) => ({
+  faces:
+    origin === "devbox"
+      ? [{ face: "record_type", consequence: "不显示", overflowed: false, entries: ["tool_progress", "ghost_note", "x_marker"].map((key) => ({ key, count: 2, first_sample: null })) }]
+      : [],
+});
+
 /** 扩展页那张表：金样的临时目录换成合成那台的家，两台机器换成本机与 devbox。 */
 function extList(w: World): unknown {
   const g = JSON.parse(JSON.stringify(EXT_GOLDEN.list).split("<BASE>/a").join(HOME).split("<BASE>/b").join("/home/dev")) as {
@@ -90,13 +98,9 @@ export function machineOps(): Record<string, OpHandler> {
       notes: [],
     }),
     "accounts-mcp-sync": (_o, req) => ({ enabled: true, sync: req.on === true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
-    // devbox 上记下了三种认不出的会话流（结构夹具：键名是造的）。
-    "drift-report": (origin) => ({
-      faces:
-        origin === "devbox"
-          ? [{ face: "record_type", consequence: "不显示", overflowed: false, entries: ["tool_progress", "ghost_note", "x_marker"].map((key) => ({ key, count: 2, first_sample: null })) }]
-          : [],
-    }),
+    "drift-report": (origin) => driftOf(origin),
+    // 诊断信息那一份只问本机后端一条（照真本机后端：本机在前、其余照机器表；看不见的那台问不到 ⇒ null）。
+    "drift-merge": (_o, _r, w) => ({ machines: w.machines.map((origin) => ({ origin, report: w.unseenMachines.includes(origin) ? null : driftOf(origin) })) }),
     // 起新会话要的三格那台推：源会话在跑 ⇒ 号与终端都知道；已结束 ⇒ 号与终端说不出（码同真后端）。
     "session-fork": (_o, req, w) => {
       const s = w.sessions.find((x) => x.sid === req.sid);
