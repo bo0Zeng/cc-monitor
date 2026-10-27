@@ -16735,7 +16735,7 @@
     "beAttach.no.tooMany": {
       "kind": "body",
       "role": "片段",
-      "zh": "一条最多 {n} 份",
+      "zh": "附件数超上限 · ≤{n}",
       "args": ["n"]
     },
     "beAttach.no.tooMuch": {
@@ -16759,7 +16759,7 @@
     "beAttach.no.noSession": {
       "kind": "body",
       "role": "片段",
-      "zh": "找不到会话的工作目录",
+      "zh": "无法读取会话工作目录",
       "args": []
     },
     "beAttach.commit.notDir": {

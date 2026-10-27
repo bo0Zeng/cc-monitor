@@ -139,24 +139,17 @@ pub fn check(cwd: &Path, items: &[AttachItem]) -> Vec<AttachVerdict> {
         .collect()
 }
 
-/// 盘上那一步没成 ⇒ 失败：权限不够 · 只读盘 ⇒ `not_writable`；别的 ⇒ `io_failed`（那一句 ＋ 原话）。
-fn io_fail(key: &str, path: &Path, e: &std::io::Error) -> WriteFail {
+/// 盘上那一步没成 ⇒ 失败：权限不够 · 只读盘 ⇒ `not_writable`；别的 ⇒ `io_failed`（`said` 拿 `[(path, …), (why, …)]` 写那一句 ＋ 原话）。
+fn io_fail(path: &Path, e: &std::io::Error, said: impl FnOnce(&str, &str) -> String) -> WriteFail {
     if matches!(
         e.kind(),
         std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
     ) {
         return refused(AttachRefused::NotWritable);
     }
-    WriteFail::io(
-        copy_text(
-            key,
-            &[
-                ("path", &path.display().to_string()),
-                ("why", &io_reason(e.kind())),
-            ],
-        ),
-        e,
-    )
+    let at = path.display().to_string();
+    let why = io_reason(e.kind());
+    WriteFail::io(said(&at, &why), e)
 }
 
 fn path_fail(said: String) -> WriteFail {
@@ -177,7 +170,11 @@ fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, WriteFail> {
         Err(_) => match face.make_dir(&at) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(io_fail("beAttach.commit.mkdirFailed", &at, &e)),
+            Err(e) => {
+                return Err(io_fail(&at, &e, |at, why| {
+                    copy_text("beAttach.commit.mkdirFailed", &[("path", at), ("why", why)])
+                }))
+            }
         },
     }
     let root = cwd.join(DIR);
@@ -190,7 +187,14 @@ fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, WriteFail> {
         match written {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(io_fail("beAttach.commit.ignoreFailed", &ignore, &e)),
+            Err(e) => {
+                return Err(io_fail(&ignore, &e, |at, why| {
+                    copy_text(
+                        "beAttach.commit.ignoreFailed",
+                        &[("path", at), ("why", why)],
+                    )
+                }))
+            }
         }
     }
     Ok(root)
@@ -220,7 +224,11 @@ fn mint(
         match face.make_dir(&dir) {
             Ok(()) => return Ok((id, dir.into_path_buf())),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(dir),
-            Err(e) => return Err(io_fail("beAttach.commit.mkdirFailed", &dir, &e)),
+            Err(e) => {
+                return Err(io_fail(&dir, &e, |at, why| {
+                    copy_text("beAttach.commit.mkdirFailed", &[("path", at), ("why", why)])
+                }))
+            }
         }
     }
     let at = last.map(|d| d.display().to_string()).unwrap_or_default();
@@ -327,13 +335,19 @@ pub fn drop_one(face: &Face, cwd: &Path, id: &str) -> Result<bool, WriteFail> {
                 continue;
             };
             if Ro::symlink_metadata(&at).is_ok_and(|m| !m.is_dir()) {
-                face.delete_file(&at)
-                    .map_err(|e| io_fail("beAttach.drop.failed", &at, &e))?;
+                face.delete_file(&at).map_err(|e| {
+                    io_fail(&at, &e, |at, why| {
+                        copy_text("beAttach.drop.failed", &[("path", at), ("why", why)])
+                    })
+                })?;
             }
         }
     }
-    face.delete_dir(&dir)
-        .map_err(|e| io_fail("beAttach.drop.failed", &dir, &e))?;
+    face.delete_dir(&dir).map_err(|e| {
+        io_fail(&dir, &e, |at, why| {
+            copy_text("beAttach.drop.failed", &[("path", at), ("why", why)])
+        })
+    })?;
     Ok(true)
 }
 

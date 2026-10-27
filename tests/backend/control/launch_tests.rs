@@ -1359,8 +1359,8 @@ fn a_pasted_text_waits_before_enter_and_a_typed_line_does_not() {
         ]
     );
     assert_eq!(
-        typed_into(&[], "继续", true),
-        ["send-keys 继续", "send-keys Enter"]
+        typed_into(&[], "接着改", true),
+        ["send-keys 接着改", "send-keys Enter"]
     );
     assert_eq!(
         typed_into(&["/w/x.png"], "", true),

@@ -285,6 +285,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它不限任何字节量 —— 暂存区能长多大今天**没有上限**，孤儿只按时间收。",
     ),
     (
+        "STALE_SECS",
+        "**时间**不是体量：聊天附件的编号目录多少秒没动过，下一次落附件时清掉\
+             （后端 `session_attachment·rs::sweep`，事件上跑、不是节拍器）。附件目录的体量上限是另一格 `MAX_DIR_BYTES`。",
+    ),
+    (
         "TRIM_SLACK",
         "**条数**不是体量：重放缓冲里一个会话要**多出**这么多条才修剪一次\
              （`event_replay·rs::push_and_trim`）—— 量的是摊还节奏，不是容量。\
@@ -769,6 +774,25 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/stream/inbound/mod.rs",
         "MAX_LINE_BYTES",
         "入方向单行",
+        "拒收+回错",
+    ),
+    // 聊天附件（会话那台判，开传前那一问与落的那一下同一组常量）。
+    (
+        "src/backend/control/files_commit/session_attachment.rs",
+        "MAX_ONE_BYTES",
+        "随一句发的一份附件",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/files_commit/session_attachment.rs",
+        "MAX_MESSAGE_BYTES",
+        "随一句发的附件合计",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/files_commit/session_attachment.rs",
+        "MAX_DIR_BYTES",
+        "一个工作目录下附件目录的合计",
         "拒收+回错",
     ),
     // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
