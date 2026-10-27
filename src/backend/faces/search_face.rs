@@ -101,11 +101,17 @@ async fn search_here(
         };
         let here = crate::history::session_hidden::Here::read_now();
         let mark = |row: &cmd_wire::search::SessionHits| Marks {
-            label: annotations
-                .get(&row.session_id)
-                .and_then(|e| e.custom_title.clone())
-                .filter(|t| !t.trim().is_empty())
-                .unwrap_or_else(|| row.title.clone()),
+            // 搜索那一侧出的 `title` 已是记录里那几档（[`search_rules::session_label`] 不带注解）；这里只盖上改过的名，同一条规则。
+            label: crate::history::search_rules::session_label(
+                &crate::history::search_rules::LabelFacts {
+                    custom: annotations
+                        .get(&row.session_id)
+                        .and_then(|e| e.custom_title.clone()),
+                    title: Some(row.title.clone()),
+                    ..Default::default()
+                },
+            )
+            .0,
             starred: annotations.get(&row.session_id).is_some_and(|e| e.starred),
             hidden: crate::history::session_hidden::hidden_here(
                 &here,

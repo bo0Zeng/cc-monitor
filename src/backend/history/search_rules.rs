@@ -295,6 +295,33 @@ pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
     }
 }
 
+/// 读到的一条记录改不改叫这条会话什么（改了 ⇒ 记进 `facts`、回 `true`）：agent 起的标题记录（[`TitleBy::Agent`]）·
+/// 还没有第一句时人说的那一句。人在 agent 里改的名（[`TitleBy::User`]，如 Claude 的 `/rename`）不收：改名只认 monitor 那一格（`custom`）。
+///
+/// [`TitleBy::Agent`]: crate::agents::record::TitleBy::Agent
+/// [`TitleBy::User`]: crate::agents::record::TitleBy::User
+pub(crate) fn heard(facts: &mut LabelFacts, body: &crate::agents::record::Body) -> bool {
+    use crate::agents::record::{Body, TitleBy};
+    use crate::agents::UserTextExt as _;
+    match body {
+        Body::Title {
+            text,
+            by: TitleBy::Agent,
+        } if facts.title.as_deref() != Some(text) => {
+            facts.title = Some(text.clone());
+            true
+        }
+        Body::Said { who, .. } if facts.first.is_empty() => match who.speech() {
+            Some(s) => {
+                facts.first = truncate_excerpt(&s, 120);
+                true
+            }
+            None => false,
+        },
+        _ => false,
+    }
+}
+
 /// 项目目录的最后一截（两种分隔符都认，尾巴上的分隔符不算）；一截都没有 ⇒ `None`。
 pub(crate) fn project_name(dir: &str) -> Option<&str> {
     dir.split(['/', '\\']).rfind(|s| !s.is_empty())
