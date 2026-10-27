@@ -9,7 +9,9 @@
 //! | G5 | 这台那一片没读成（别的台读到了也不算）⇒ 名单算没读成 |
 
 use super::*;
-use crate::history::groups::{GroupKnown, GroupMember, GroupRead, GroupsMachine, GroupsRead, MemberFacts};
+use crate::history::groups::{
+    GroupKnown, GroupMember, GroupRead, GroupsMachine, GroupsRead, MemberFacts,
+};
 use crate::history::history_browse::Read;
 use cmd_wire::Machine;
 
@@ -70,7 +72,11 @@ fn g1_same_group_passes_and_outside_the_group_is_refused() {
 #[test]
 fn g2_several_groups_are_a_union() {
     let r = read(
-        vec![group("g1", "甲", &["a", "b"]), group("g2", "乙", &["a", "d"]), group("g3", "丙", &["c"])],
+        vec![
+            group("g1", "甲", &["a", "b"]),
+            group("g2", "乙", &["a", "d"]),
+            group("g3", "丙", &["c"]),
+        ],
         ok(),
     );
     assert_eq!(scope("a", "b", Ok(&r)), Ok(()));
@@ -94,10 +100,21 @@ fn g4_no_roster_is_refused_not_waved_through() {
 
 #[test]
 fn g5_this_machines_slice_unread_means_no_roster() {
-    let r = read(vec![], Read::Failed { why: "注解文件读不懂".into() });
+    let r = read(
+        vec![],
+        Read::Failed {
+            why: "注解文件读不懂".into(),
+        },
+    );
     assert_eq!(scope("a", "b", Ok(&r)).unwrap_err().0, "no_roster");
     let r = read(vec![], Read::Unread);
     assert_eq!(scope("a", "b", Ok(&r)).unwrap_err().0, "no_roster");
-    let r = read(vec![], Read::Stale { why: "x".into(), at: "t".into() });
+    let r = read(
+        vec![],
+        Read::Stale {
+            why: "x".into(),
+            at: "t".into(),
+        },
+    );
     assert_eq!(scope("a", "b", Ok(&r)), Ok(()), "上次所知也是一份名单");
 }

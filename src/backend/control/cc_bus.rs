@@ -392,7 +392,12 @@ fn read_via(verb: &str, args: &[&str]) -> Result<String, (String, String)> {
     if out.timed_out() {
         return Err(timed_out_err(waited_secs(&out)));
     }
-    classify_exit(&format!("{PROGRAM} {verb}"), out.code, &out.diagnosis(), waited_secs(&out))?;
+    classify_exit(
+        &format!("{PROGRAM} {verb}"),
+        out.code,
+        &out.diagnosis(),
+        waited_secs(&out),
+    )?;
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 

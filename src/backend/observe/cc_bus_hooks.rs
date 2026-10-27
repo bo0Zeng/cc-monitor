@@ -116,12 +116,14 @@ pub(crate) fn program_of(cmd: &str) -> Option<(String, String)> {
 
 /// 被执行的程序后面紧跟的那个词（剥一层配对引号）；没有 ⇒ `None`。
 pub(crate) fn first_arg_of(cmd: &str) -> Option<String> {
-    let mut words = cmd.split_whitespace().skip_while(|tok| match tok.find('=') {
-        Some(i) if i > 0 => tok[..i]
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_'),
-        _ => false,
-    });
+    let mut words = cmd
+        .split_whitespace()
+        .skip_while(|tok| match tok.find('=') {
+            Some(i) if i > 0 => tok[..i]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
+            _ => false,
+        });
     words.next()?;
     words.next().map(|w| unquote_once(w).to_string())
 }
@@ -143,8 +145,10 @@ pub(crate) fn classify_command(
 ) -> Option<HookState> {
     let (program, verb) = want;
     let unknown = || {
-        (mentions_program(cmd, program) && mentions_program(cmd, verb)).then(|| HookState::Unknown {
-            command: cmd.trim().to_string(),
+        (mentions_program(cmd, program) && mentions_program(cmd, verb)).then(|| {
+            HookState::Unknown {
+                command: cmd.trim().to_string(),
+            }
         })
     };
     let Some((base, full)) = program_of(cmd) else {

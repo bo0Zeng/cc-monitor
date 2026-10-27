@@ -13,7 +13,12 @@ use super::cc_bus_envelope::Refusal;
 
 /// 这台那一片算不算读到了：答了 · 上次所知都算（上次所知也是一份名单）；读不到 · 没同步过不算。
 fn here_read(r: &GroupsRead) -> Result<(), String> {
-    match r.machines.iter().find(|m| m.origin.is_local()).map(|m| &m.read) {
+    match r
+        .machines
+        .iter()
+        .find(|m| m.origin.is_local())
+        .map(|m| &m.read)
+    {
         Some(Read::Ok { .. } | Read::Stale { .. }) => Ok(()),
         Some(Read::Failed { why }) => Err(why.clone()),
         Some(Read::Unread) | None => Err("this machine's slice was not read".into()),
@@ -44,10 +49,7 @@ pub(crate) fn scope(
         .collect();
     Err((
         "not_same_group",
-        format!(
-            "`to` {to:?} is in none of the sender's groups: {}",
-            names.join(" · ")
-        ),
+        format!("`to` {to:?} is in none of the sender's groups: {names:?}"),
     ))
 }
 
@@ -65,18 +67,19 @@ pub(crate) async fn groups_now(tz: crate::common::time::Tz) -> Result<GroupsRead
 }
 
 /// 转给这台的常驻：`groups-read {这台 ＋ 机器表里的每一台}`（等 20 秒：它问到各台 ＋ 回程）。
-/// `session-self` 那一问也该走这一处（命令表 `registry/history.rs` 里今天还有一份同样的，合并树换成调这里）。
+/// `session-self` 那一问也走这一处（命令表 `registry/history.rs` 里那一份同样的换成调这里）。
 pub(crate) async fn groups_via_resident(
     tz: &crate::common::time::Tz,
 ) -> Result<GroupsRead, String> {
     let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
-    let machines: Vec<cmd_wire::Machine> = std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
-        .chain(
-            super::machines::here()
-                .iter()
-                .map(|h| cmd_wire::Machine(h.name().to_string())),
-        )
-        .collect();
+    let machines: Vec<cmd_wire::Machine> =
+        std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
+            .chain(
+                super::machines::here()
+                    .iter()
+                    .map(|h| cmd_wire::Machine(h.name().to_string())),
+            )
+            .collect();
     let asked = crate::wire::listen::ResidentCall {
         cmd: <crate::history::groups::GroupsReadCmd as crate::wire::typed::Command>::NAME
             .to_string(),

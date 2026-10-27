@@ -414,18 +414,40 @@ fn the_install_manifest_carries_one_entry_and_no_old_names() {
     let verbs: Vec<&str> = FILES
         .iter()
         .filter_map(|(rel, _)| rel.strip_prefix("scripts/cc-bus-")?.strip_suffix(".sh"))
-        .filter(|v| !v.starts_with("adapt") && !v.starts_with("agent") && *v != "lib" && *v != "install")
+        .filter(|v| {
+            !v.starts_with("adapt") && !v.starts_with("agent") && *v != "lib" && *v != "install"
+        })
         .collect();
     let mut verbs = verbs;
     verbs.sort_unstable();
     assert_eq!(
         verbs,
-        ["commit", "list", "log", "peek", "send", "stop-hook", "unread", "whoami"],
+        [
+            "commit",
+            "list",
+            "log",
+            "peek",
+            "send",
+            "stop-hook",
+            "unread",
+            "whoami"
+        ],
         "各动词的本体（`recv` 是入口里 peek 接 commit，不单出一份）"
     );
-    for old in ["cc-send", "cc-recv", "cc-peek", "cc-commit", "cc-list", "cc-log", "cc-whoami", "cc-bus-stop-hook"] {
+    for old in [
+        "cc-send",
+        "cc-recv",
+        "cc-peek",
+        "cc-commit",
+        "cc-list",
+        "cc-log",
+        "cc-whoami",
+        "cc-bus-stop-hook",
+    ] {
         assert!(
-            !FILES.iter().any(|(rel, _)| *rel == format!("scripts/{old}")),
+            !FILES
+                .iter()
+                .any(|(rel, _)| *rel == format!("scripts/{old}")),
             "老名字 {old} 还在装口单子里"
         );
     }

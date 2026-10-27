@@ -28,10 +28,7 @@ pub(crate) const NAME: &str = "cc-bus";
 ///
 /// ⚠ 加文件要同时加到这里 —— 判据 `the_embedded_file_list_matches_the_repo` 会对拍，少一个当场红。
 const FILES: &[(&str, &[u8])] = &[
-    (
-        "SKILL.md",
-        include_bytes!("../../shared/cc-bus/SKILL.md"),
-    ),
+    ("SKILL.md", include_bytes!("../../shared/cc-bus/SKILL.md")),
     (
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),

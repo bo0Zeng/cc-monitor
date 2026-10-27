@@ -48,7 +48,7 @@ pub(crate) fn envelope_said(code: &str) -> String {
         "too_long" => copy_text("beCcBus.envelope.tooLong", &[]),
         "not_same_group" => copy_text("beCcBus.envelope.notSameGroup", &[]),
         "no_roster" => copy_text("beCcBus.envelope.noRoster", &[]),
-        _ =>copy_text("beCcBus.envelope.badArgs", &[]),
+        _ => copy_text("beCcBus.envelope.badArgs", &[]),
     }
 }
 

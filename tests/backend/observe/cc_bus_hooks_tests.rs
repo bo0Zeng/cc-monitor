@@ -67,7 +67,11 @@ fn only_the_entry_with_the_stop_hook_verb_counts() {
         "cc-bus recv",
     ] {
         let raw = serde_json::json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": cmd}]}]}}).to_string();
-        assert_eq!(diagnose(Some(&raw), &always).stop, HookState::NotInstalled, "{cmd:?}");
+        assert_eq!(
+            diagnose(Some(&raw), &always).stop,
+            HookState::NotInstalled,
+            "{cmd:?}"
+        );
     }
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
     assert!(diagnose(Some(raw), &always).stop.is_working());
@@ -86,8 +90,14 @@ fn program_of_handles_real_shapes() {
         Some("stop-hook")
     );
     // 前导环境赋值要剥掉
-    assert_eq!(program_of("FOO=1 BAR=2 cc-bus stop-hook").unwrap().0, "cc-bus");
-    assert_eq!(first_arg_of("FOO=1 BAR=2 cc-bus stop-hook").as_deref(), Some("stop-hook"));
+    assert_eq!(
+        program_of("FOO=1 BAR=2 cc-bus stop-hook").unwrap().0,
+        "cc-bus"
+    );
+    assert_eq!(
+        first_arg_of("FOO=1 BAR=2 cc-bus stop-hook").as_deref(),
+        Some("stop-hook")
+    );
     assert_eq!(first_arg_of("cc-bus"), None);
     // `=` 在首位不是赋值
     assert_eq!(program_of("=weird").unwrap().0, "=weird");
