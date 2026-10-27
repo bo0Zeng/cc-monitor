@@ -110,6 +110,40 @@
     text-align: center;
   }
 
+  /* 「机器」那一块的头：不可选，底色略深，像一张卡的页头。 */
+  .cbMachineHead {
+    margin-bottom: var(--space-2);
+    background: var(--bg-2);
+    cursor: default;
+  }
+
+  .cbMachineHead[aria-disabled="true"] {
+    opacity: 1;
+  }
+
+  .cbMachineName {
+    color: var(--text);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .cbRight {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  /* 会话行的第二样（Shift+Enter）：选中那一行才露。 */
+  .cbAlt {
+    display: none;
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cbItem[aria-selected="true"] .cbAlt {
+    display: inline;
+  }
+
   .cbFoot {
     display: flex;
     flex: none;

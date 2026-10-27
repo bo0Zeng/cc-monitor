@@ -1,5 +1,6 @@
 // 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `command-bar.module.css` 渲染出的规范文本（逐字）。
 declare const classes: {
+  readonly cbAlt: string;
   readonly cbEmpty: string;
   readonly cbFoot: string;
   readonly cbGroup: string;
@@ -7,8 +8,11 @@ declare const classes: {
   readonly cbInput: string;
   readonly cbItem: string;
   readonly cbList: string;
+  readonly cbMachineHead: string;
+  readonly cbMachineName: string;
   readonly cbMain: string;
   readonly cbProject: string;
+  readonly cbRight: string;
   readonly cbSub: string;
   readonly cbText: string;
   readonly cbTitle: string;
