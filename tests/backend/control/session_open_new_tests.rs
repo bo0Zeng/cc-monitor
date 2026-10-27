@@ -756,3 +756,17 @@ fn a_launch_carries_the_model_and_the_permission_mode_it_was_asked_for() {
         assert!(rig.ccm.borrow().is_empty(), "{extra}");
     }
 }
+
+/// 挑了别名（一类）⇒ 那一行 ccm 以 `@别名` 打头（别名合下来的那几格在 ccm 那一侧合，这一趟给的盖过它）；
+/// 名字不能当别名 ⇒ 不起。
+#[test]
+fn an_alias_leads_the_ccm_line_and_a_bad_alias_name_is_refused() {
+    let rig = Rig::new(Some(vec![]));
+    rig.call(req(json!({"alias": "dev"}))).unwrap();
+    let argv = rig.ccm.borrow()[0].clone();
+    assert_eq!(argv.get(1).map(String::as_str), Some("@dev"), "{argv:?}");
+    let e = Rig::new(Some(vec![]))
+        .call(req(json!({"alias": "a b"})))
+        .unwrap_err();
+    assert_eq!(e.0, "bad_args", "{e:?}");
+}

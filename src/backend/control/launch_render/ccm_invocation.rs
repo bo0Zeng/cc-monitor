@@ -165,6 +165,8 @@ pub struct CliSpec<'a> {
     pub default_launcher: &'a str,
     pub args: &'a [&'a str],
     pub ccm_path: &'a str,
+    /// 经哪条别名起（`ccm @别名 …`：那一段合下来的几格在 ccm 那一侧合，这里给的旗标盖过它）；`None` ⇒ 不经别名。
+    pub alias: Option<&'a str>,
     /// 建进 tmux 之后不接进去（`--detach`，只对新建 tmux 容器那一形有意义）：后端自己替人起会话时用（tab 栏批量在 tmux 里起）。
     pub detach: bool,
 }
@@ -287,7 +289,14 @@ pub fn render_ccm_invocation_ps(
         "& {}",
         crate::platform::shell::dialect::ps_literal(head)
     ))
-    .chain(rest.iter().map(|t| argv(t)))
+    // `@名` 在 PowerShell 里是摊开变量 ⇒ 写成字面量。
+    .chain(rest.iter().map(|t| {
+        if t.starts_with('@') {
+            crate::platform::shell::dialect::ps_literal(t)
+        } else {
+            argv(t)
+        }
+    }))
     .collect::<Vec<_>>()
     .join(" "))
 }
@@ -323,6 +332,10 @@ pub fn ccm_argv(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, 
         return Ok(join_halves(tokens, ours));
     }
     let face = launch_face(spec.agent)?;
+    // `@别名` 只许打头（ccm 只认第一个词是 `@名`）。
+    if let Some(a) = spec.alias {
+        tokens.push(format!("@{a}"));
+    }
 
     match spec.action {
         Action::Resume { sid } => {

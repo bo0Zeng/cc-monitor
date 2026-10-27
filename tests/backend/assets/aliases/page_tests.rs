@@ -707,7 +707,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     let t = tmp("pin-seed", None);
     assert_eq!(
         wire_in(&without_path_facts(read(&t)), &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":null,"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tab":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tab":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"seedCreate":"建这两条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条","slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"}],"tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":null,"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tab":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tab":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"seedCreate":"建这两条","seedHint":"别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"}],"tmux":true}"#
     );
 
     let t = tmp(
@@ -727,7 +727,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     r["fileProblem"]["detail"] = json!("<DETAIL>");
     assert_eq!(
         wire_in(&r, &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"migrated":{"count":2,"path":"/a/b","shown":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","seed":[],"seedCreate":"","seedHint":"","slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"}],"tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"migrated":{"count":2,"path":"/a/b","shown":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","pathShown":"~/.cc-monitor/profiles.toml","profiles":[],"rev":"33-2c4c3ef6bd89afa9","seed":[],"seedCreate":"","seedHint":"","sets":[],"slots":[{"id":"account","label":"账号"},{"id":"tmux","label":"在哪起"},{"id":"cwdIf","label":"按目录"},{"id":"cwd","label":"其余进哪"},{"id":"agent","label":"agent"},{"id":"args","label":"交给 agent"},{"id":"launcher","label":"启动器"},{"id":"tmuxSize","label":"tmux 尺寸"},{"id":"detach","label":"起完不接进去"},{"id":"tab","label":"标签页"}],"tmux":true}"#
     );
 
     let lost = BOOK.to_string() + "\n[orphan]\nfrom = \"nope\"\n";
@@ -847,4 +847,86 @@ fn a_free_command_line_folds_into_the_alias_form_on_the_backend() {
         form(json!({"name": "x", "line": "claude \"open"})).is_err(),
         "引号没配对"
     );
+}
+
+#[test]
+fn read_carries_the_sets_with_their_rows_and_problems_and_sets_are_not_sections() {
+    let text = format!(
+        "{BOOK}\n[set.\"工具链开发\"]\nrow = [\n  {{ cwd = \"~/work/pb\", alias = \"cct\", n = 2 }},\n  {{ cwd = \"~/work/cp\", alias = \"cct\", n = 1, tab-group = \"cp\" }},\n]\n\n[set.\"坏的\"]\nrow = [{{ cwd = \"~/a\", alias = \"cct\", n = 0 }}]\n"
+    );
+    let t = tmp("sets", Some(&text));
+    let r = read(&t);
+    assert!(
+        r["profiles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["name"] != "set"),
+        "set 那一节不是一段别名"
+    );
+    let sets = r["sets"].as_array().expect("profiles-read 带上组");
+    assert_eq!(sets.len(), 2);
+    assert_eq!(sets[0]["name"], "工具链开发");
+    assert_eq!(
+        sets[0]["rows"],
+        json!([
+            {"cwd": "~/work/pb", "alias": "cct", "n": 2, "tabGroup": null, "line": 23},
+            {"cwd": "~/work/cp", "alias": "cct", "n": 1, "tabGroup": "cp", "line": 24},
+        ])
+    );
+    assert_eq!(sets[0]["problems"], json!([]));
+    assert_eq!(sets[1]["name"], "坏的");
+    assert_eq!(sets[1]["problems"][0]["line"], 28);
+    assert!(r["fileProblem"].is_null());
+}
+
+#[test]
+fn write_saves_renames_and_removes_a_set_and_refuses_a_broken_one() {
+    let t = tmp("set-write", Some(BOOK));
+    let row = json!({"cwd": "~/work/pb", "alias": "cct", "n": 2, "tabGroup": null});
+    write(
+        &t,
+        json!([{"op": "saveSet", "was": null, "set": {"name": "工具链", "rows": [row]}}]),
+    )
+    .expect("存一组");
+    assert!(
+        t.text().starts_with(BOOK),
+        "别的段一个字节不动：\n{}",
+        t.text()
+    );
+    assert_eq!(read(&t)["sets"][0]["name"], "工具链");
+    assert_eq!(read(&t)["sets"][0]["rows"][0]["n"], 2);
+
+    // 改名：旧名不在、新名在，几行照旧。
+    write(
+        &t,
+        json!([{"op": "saveSet", "was": "工具链", "set": {"name": "开发", "rows": [row]}}]),
+    )
+    .expect("改名");
+    let sets = read(&t)["sets"].clone();
+    assert_eq!(sets.as_array().unwrap().len(), 1);
+    assert_eq!(sets[0]["name"], "开发");
+
+    // 写坏的一组不写：一个字节不动。
+    let before = t.text();
+    let bad = json!({"cwd": "~/work/pb", "alias": "cct", "n": 0, "tabGroup": null});
+    let e = write(
+        &t,
+        json!([{"op": "saveSet", "was": "开发", "set": {"name": "开发", "rows": [bad]}}]),
+    )
+    .unwrap_err();
+    assert_eq!(e.0, "refused", "{e:?}");
+    assert_eq!(t.text(), before);
+
+    // 新建撞上已有的组名 ⇒ 拒。
+    let e = write(
+        &t,
+        json!([{"op": "saveSet", "was": null, "set": {"name": "开发", "rows": [row]}}]),
+    )
+    .unwrap_err();
+    assert_eq!(e.0, "refused", "{e:?}");
+
+    write(&t, json!([{"op": "removeSet", "name": "开发"}])).expect("删一组");
+    assert_eq!(read(&t)["sets"], json!([]));
+    assert_eq!(t.text().trim_end(), BOOK.trim_end());
 }

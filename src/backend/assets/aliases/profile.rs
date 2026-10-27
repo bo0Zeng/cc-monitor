@@ -15,6 +15,8 @@
 //! - **先后**：继承链父 → 子，命令行当场给的最后盖；每一格怎么盖只住 `argv::parse_layered`。
 //! - **可以手改**：每次用都读、校验；写错报到哪一行，写错的那一段（与基于它的）此刻不能用，别的照用。
 //! - **按条目改**：设置窗改一段只动那一段（[`set_profile`] / [`remove_profile`]），手写的注释与排版留着。
+//! - **一组会话**住同一份文件的 `[set."组名"]`：`row = [{ cwd, alias, n, tab-group? }]`，一行 ＝ 目录 ＋ 别名 ＋ 补足到几个；
+//!   `set` 因此是保留名、不能当别名。读出 [`Book::sets`]，写经 [`Change::SetSet`] / [`Change::RemoveSet`]；一组写错只坏那一组。
 
 use crate::common::said::IntoNote as _;
 use crate::platform::fs::Ro;
@@ -27,6 +29,18 @@ use crate::ccm_line::argv::{self, flag, Die, Layer, Origin, Parsed};
 pub(crate) const FROM_KEY: &str = "from";
 /// 交给 agent 的那几个词（命令行上 `--` 左边那串）。
 pub(crate) const ARGS_KEY: &str = "args";
+/// 一组会话那一节（`[set."组名"]`）：保留名，不能当别名（它也是 shell 内建命令，做成链接或函数都会坏事）。
+pub(crate) const SET_KEY: &str = "set";
+/// 一组里那几行的键。
+const ROW_KEY: &str = "row";
+/// 一行的四个键：目录 · 别名 · 个数 · 标签页分组名（只在改过组名时写）。
+const ROW_CWD: &str = "cwd";
+const ROW_ALIAS: &str = "alias";
+const ROW_N: &str = "n";
+const ROW_TAB_GROUP: &str = "tab-group";
+/// 一行最多几个、一组合计最多几个。
+pub(crate) const ROW_MAX: u8 = 9;
+pub(crate) const SET_MAX: u32 = 12;
 
 /// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
 /// （`--no-rotation` 是给程序起的那一发用的；常用的会话不轮换在轮换设置里定），写成固定配置没意义；它们照样能在命令行 `--` 右边当场给。
@@ -92,7 +106,26 @@ impl Profile {
     }
 }
 
-/// 一处写错：哪一段（`None` ＝ 整份文件）· 第几行 · 什么错。
+/// 一组里的一行：在哪个目录 · 用哪条别名 · 补足到几个 · 进哪个标签页组（`None` ＝ 缺省，由补足那一侧算）· 行号。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SetRow {
+    pub cwd: String,
+    pub alias: String,
+    pub n: u8,
+    pub tab_group: Option<String>,
+    pub line: usize,
+}
+
+/// 一组会话（`[set."名"]`）：名字 · 段头那一行 · 几行 · 写错的几处（有 ⇒ 这一组此刻不能用，别的组与别名照用）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Set {
+    pub name: String,
+    pub line: usize,
+    pub rows: Vec<SetRow>,
+    pub problems: Vec<Problem>,
+}
+
+/// 一处写错：哪一段（`None` ＝ 整份文件；组那一侧的记在组身上）· 第几行 · 什么错。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct Problem {
     pub profile: Option<String>,
@@ -103,16 +136,22 @@ pub(crate) struct Problem {
     pub raw: Option<String>,
 }
 
-/// 读出来的整份：认得的几段 ＋ 写错的几处。TOML 本身写错 ⇒ 一段都不认（整份不能用）。
+/// 读出来的整份：认得的几段 ＋ 几组 ＋ 写错的几处。TOML 本身写错 ⇒ 一段一组都不认（整份不能用）。
+/// 组写错的那几处记在那一组自己身上（[`Set::problems`]），不进 `problems`：一组坏了不挡别名。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Book {
     pub profiles: Vec<Profile>,
+    pub sets: Vec<Set>,
     pub problems: Vec<Problem>,
 }
 
 impl Book {
     pub(crate) fn find(&self, name: &str) -> Option<&Profile> {
         self.profiles.iter().find(|p| p.name == name)
+    }
+
+    pub(crate) fn find_set(&self, name: &str) -> Option<&Set> {
+        self.sets.iter().find(|s| s.name == name)
     }
 
     fn problem_of(&self, name: &str) -> Option<&Problem> {
@@ -139,6 +178,9 @@ fn line_at(raw: &str, at: usize) -> usize {
 /// 这个名字能不能当一段配置的名字：两种 shell 都认得的命令名，而且不是 ccm 自己（[`crate::ccm_line::is_own_name`]）。
 pub(crate) fn name_ok(name: &str) -> Result<(), String> {
     use crate::platform::shell::dialect::Shell;
+    if name == SET_KEY {
+        return Err(copy_text("beProfile.name.reserved", &[("name", name)]));
+    }
     if crate::ccm_line::is_own_name(name) {
         return Err(copy_text("beProfile.name.own", &[("name", name)]));
     }
@@ -214,6 +256,7 @@ pub(crate) fn parse_book(text: &str) -> Book {
         Err(e) => {
             return Book {
                 profiles: Vec::new(),
+                sets: Vec::new(),
                 problems: vec![Problem {
                     profile: None,
                     line: e.span().map(|s| line_at(text, s.start)),
@@ -231,6 +274,18 @@ pub(crate) fn parse_book(text: &str) -> Book {
             .get_key_value(name)
             .expect("key listed just above");
         let line = line_of(key);
+        if name == SET_KEY {
+            match item.as_table() {
+                Some(t) => book.sets.extend(sets_of(text, t)),
+                None => book.problems.push(Problem {
+                    profile: None,
+                    line: Some(line),
+                    message: copy_text("beProfile.set.shape", &[]),
+                    raw: None,
+                }),
+            }
+            continue;
+        }
         let mut problem = |profile: Option<&str>, line: usize, message: String| {
             book.problems.push(Problem {
                 profile: profile.map(str::to_string),
@@ -298,6 +353,146 @@ pub(crate) fn parse_book(text: &str) -> Book {
         book.profiles.push(p);
     }
     book
+}
+
+/// `set` 那一节 ⇒ 几组（照写下的先后）。一组写错只记在它自己身上。
+fn sets_of(text: &str, t: &Table) -> Vec<Set> {
+    let span_line = |s: Option<std::ops::Range<usize>>| s.map_or(0, |s| line_at(text, s.start));
+    t.iter()
+        .map(|(name, item)| {
+            let (key, _) = t.get_key_value(name).expect("key listed just above");
+            let line = span_line(key.span());
+            let mut errs: Vec<(usize, String)> = Vec::new();
+            let mut rows: Vec<SetRow> = Vec::new();
+            if name.trim().is_empty() {
+                errs.push((line, copy_text("beProfile.set.name", &[])));
+            }
+            match item.as_table() {
+                None => errs.push((line, copy_text("beProfile.set.shape", &[]))),
+                Some(body) => {
+                    let mut found: Vec<(&dyn toml_edit::TableLike, usize)> = Vec::new();
+                    for (k, v) in body.iter() {
+                        let (kk, _) = body.get_key_value(k).expect("key listed just above");
+                        let kl = span_line(kk.span());
+                        if k != ROW_KEY {
+                            errs.push((kl, copy_text("beProfile.set.shape", &[])));
+                        } else if let Some(a) = v.as_array() {
+                            for x in a.iter() {
+                                match x.as_inline_table() {
+                                    Some(r) => found.push((r, span_line(x.span()).max(kl))),
+                                    None => {
+                                        errs.push((kl, copy_text("beProfile.set.rowShape", &[])))
+                                    }
+                                }
+                            }
+                        } else if let Some(a) = v.as_array_of_tables() {
+                            for r in a.iter() {
+                                found.push((r, span_line(r.span()).max(kl)));
+                            }
+                        } else {
+                            errs.push((kl, copy_text("beProfile.set.rowShape", &[])));
+                        }
+                    }
+                    for (r, rl) in found {
+                        match row_of(r, rl) {
+                            Ok(row) => rows.push(row),
+                            Err(m) => errs.push((rl, m)),
+                        }
+                    }
+                    if rows.is_empty() && errs.is_empty() {
+                        errs.push((line, copy_text("beProfile.set.empty", &[])));
+                    }
+                }
+            }
+            for (i, r) in rows.iter().enumerate() {
+                if let Some(first) = rows[..i]
+                    .iter()
+                    .find(|o| o.cwd == r.cwd && o.alias == r.alias)
+                {
+                    errs.push((
+                        r.line,
+                        copy_text(
+                            "beProfile.set.dup",
+                            &[
+                                ("cwd", &r.cwd),
+                                ("alias", &r.alias),
+                                ("line", &first.line.to_string()),
+                            ],
+                        ),
+                    ));
+                }
+            }
+            let total: u32 = rows.iter().map(|r| u32::from(r.n)).sum();
+            if total > SET_MAX {
+                errs.push((
+                    line,
+                    copy_text(
+                        "beProfile.set.total",
+                        &[("max", &SET_MAX.to_string()), ("n", &total.to_string())],
+                    ),
+                ));
+            }
+            Set {
+                name: name.to_string(),
+                line,
+                rows,
+                problems: errs
+                    .into_iter()
+                    .map(|(l, message)| Problem {
+                        profile: None,
+                        line: Some(l),
+                        message,
+                        raw: None,
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
+}
+
+/// 一行 ⇒ [`SetRow`]：四个键之外的不认；目录要钉住；别名要是能当别名的名字；个数 1–[`ROW_MAX`]；组名非空。
+/// 别名在不在不在这里判（不在 ⇒ 那一行起不了、别的照起，判在补足那一侧）。
+fn row_of(t: &dyn toml_edit::TableLike, line: usize) -> Result<SetRow, String> {
+    let shape = || copy_text("beProfile.set.rowShape", &[]);
+    let mut row = SetRow {
+        cwd: String::new(),
+        alias: String::new(),
+        n: 0,
+        tab_group: None,
+        line,
+    };
+    let (mut cwd, mut alias, mut n) = (None, None, None);
+    for (k, v) in t.iter() {
+        match k {
+            ROW_CWD => cwd = Some(v.as_str().ok_or_else(shape)?.to_string()),
+            ROW_ALIAS => alias = Some(v.as_str().ok_or_else(shape)?.to_string()),
+            ROW_N => n = Some(v.as_integer().ok_or_else(shape)?),
+            ROW_TAB_GROUP => {
+                let g = v.as_str().ok_or_else(shape)?;
+                if g.trim().is_empty() {
+                    return Err(copy_text("beProfile.set.tabGroup", &[]));
+                }
+                row.tab_group = Some(g.to_string());
+            }
+            other => return Err(copy_text("beProfile.set.rowKey", &[("key", other)])),
+        }
+    }
+    let missing = |key: &str| copy_text("beProfile.set.rowMissing", &[("key", key)]);
+    row.cwd = cwd.ok_or_else(|| missing(ROW_CWD))?;
+    row.alias = alias.ok_or_else(|| missing(ROW_ALIAS))?;
+    let n = n.ok_or_else(|| missing(ROW_N))?;
+    if !super::pinned_anywhere(&row.cwd) {
+        return Err(copy_text(
+            "beProfile.value.notPinned",
+            &[("key", ROW_CWD), ("value", &row.cwd)],
+        ));
+    }
+    name_ok(&row.alias)?;
+    row.n = u8::try_from(n)
+        .ok()
+        .filter(|n| (1..=ROW_MAX).contains(n))
+        .ok_or_else(|| copy_text("beProfile.set.count", &[("max", &ROW_MAX.to_string())]))?;
+    Ok(row)
 }
 
 /// 配置文件在这台机器上的路径。
@@ -591,9 +786,143 @@ pub(crate) fn set_from(
     Ok(())
 }
 
-/// 对配置文件的一处改动（设置窗存一下、建号删号那一刻、迁移，都折成这几种）。
+/// 一组要写成的样子：名字 ＋ 几行。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SetEdit {
+    pub name: String,
+    pub rows: Vec<RowEdit>,
+}
+
+/// 一行要写成的样子（`tab_group` 只在改过组名时给）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RowEdit {
+    pub cwd: String,
+    pub alias: String,
+    pub n: u8,
+    #[serde(default)]
+    pub tab_group: Option<String>,
+}
+
+/// 这一组自己写的样子（框的回填从这里取）。
+pub(crate) fn edit_of_set(s: &Set) -> SetEdit {
+    SetEdit {
+        name: s.name.clone(),
+        rows: s
+            .rows
+            .iter()
+            .map(|r| RowEdit {
+                cwd: r.cwd.clone(),
+                alias: r.alias.clone(),
+                n: r.n,
+                tab_group: r.tab_group.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// 几行 ⇒ `row` 那个值：一行一张行内表，一行一个、末尾带逗号（手改好读）。
+fn rows_value(rows: &[RowEdit]) -> Value {
+    let mut a = Array::new();
+    for r in rows {
+        let mut t = toml_edit::InlineTable::new();
+        t.insert(ROW_CWD, r.cwd.as_str().into());
+        t.insert(ROW_ALIAS, r.alias.as_str().into());
+        t.insert(ROW_N, i64::from(r.n).into());
+        if let Some(g) = &r.tab_group {
+            t.insert(ROW_TAB_GROUP, g.as_str().into());
+        }
+        t.fmt();
+        a.push_formatted(Value::InlineTable(t).decorated("\n  ", ""));
+    }
+    a.set_trailing_comma(true);
+    a.set_trailing("\n");
+    a.into()
+}
+
+/// 把一组改成 `e` 那样（没有就加在末尾）。几行意思没变 ⇒ 一个字节不动；别的段与组一个字节不动。
+pub(crate) fn set_set(doc: &mut DocumentMut, e: &SetEdit) -> Result<(), String> {
+    if e.name.trim().is_empty() {
+        return Err(copy_text("beProfile.set.name", &[]));
+    }
+    let fresh_root = !doc.contains_key(SET_KEY);
+    if fresh_root {
+        let mut t = Table::new();
+        t.set_implicit(true);
+        doc.insert(SET_KEY, Item::Table(t));
+    }
+    let nonempty = doc.as_table().iter().any(|(k, _)| k != SET_KEY);
+    let root = doc
+        .get_mut(SET_KEY)
+        .and_then(Item::as_table_mut)
+        .ok_or_else(|| copy_text("beProfile.set.shape", &[]))?;
+    if !root.contains_key(&e.name) {
+        let mut t = Table::new();
+        if nonempty || !root.is_empty() {
+            t.decor_mut().set_prefix("\n");
+        }
+        root.insert(&e.name, Item::Table(t));
+    }
+    let t = root
+        .get_mut(&e.name)
+        .and_then(Item::as_table_mut)
+        .ok_or_else(|| copy_text("beProfile.set.shape", &[]))?;
+    // 盘上那几行意思与要写的一样 ⇒ 一个字节不动（连同手写的排版）。
+    let same = t.get(ROW_KEY).and_then(Item::as_array).is_some_and(|a| {
+        let rows: Option<Vec<SetRow>> = a
+            .iter()
+            .map(|x| x.as_inline_table().and_then(|r| row_of(r, 0).ok()))
+            .collect();
+        rows.is_some_and(|rows| {
+            let set = Set {
+                name: e.name.clone(),
+                line: 0,
+                rows,
+                problems: Vec::new(),
+            };
+            edit_of_set(&set).rows == e.rows
+        })
+    });
+    if !same {
+        let keep_suffix = t
+            .get(ROW_KEY)
+            .and_then(Item::as_value)
+            .and_then(|o| o.decor().suffix().cloned());
+        let mut v = rows_value(&e.rows).decorated(" ", "");
+        if let Some(s) = keep_suffix {
+            v.decor_mut().set_suffix(s);
+        }
+        t.insert(ROW_KEY, Item::Value(v));
+    }
+    Ok(())
+}
+
+/// 删一组；`set` 那一节空了连它一起删。别的段与组一个字节不动。
+pub(crate) fn remove_set(doc: &mut DocumentMut, name: &str) {
+    let empty = match doc.get_mut(SET_KEY).and_then(Item::as_table_mut) {
+        Some(root) => {
+            root.remove(name);
+            root.is_empty()
+        }
+        None => return,
+    };
+    if empty {
+        doc.remove(SET_KEY);
+    }
+}
+
+/// 对配置文件的一处改动（设置窗存一下、建号删号那一刻、迁移、存一组，都折成这几种）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Change {
+    /// 存一组（没有就加在末尾）。
+    SetSet(SetEdit),
+    /// 删一组。
+    RemoveSet(String),
     Set(ProfileEdit),
     Remove(String),
     /// 改名：那一段原地换个名字（位置、注释、各项一个字节不动）。
@@ -623,6 +952,8 @@ pub(crate) fn apply_changes(text: Option<&str>, changes: &[Change]) -> Result<St
             Change::Remove(n) => remove_profile(&mut doc, n),
             Change::Rename { from, to } => rename_profile(&mut doc, from, to)?,
             Change::SetFrom { name, from } => set_from(&mut doc, name, from.as_deref())?,
+            Change::SetSet(e) => set_set(&mut doc, e)?,
+            Change::RemoveSet(n) => remove_set(&mut doc, n),
         }
     }
     Ok(doc.to_string())
@@ -649,6 +980,17 @@ pub(crate) fn problems_after(text: &str) -> Vec<String> {
             if let Err(e) = resolve(&b, &p.name, &[]) {
                 out.push(e);
             }
+        }
+    }
+    for s in &b.sets {
+        for p in &s.problems {
+            let said = p
+                .line
+                .map_or(p.message.clone(), |l| at_line(l, p.message.clone()));
+            out.push(copy_text(
+                "beProfile.named.say",
+                &[("name", &s.name), ("said", &said)],
+            ));
         }
     }
     out

@@ -91,6 +91,14 @@ fn answer(
     })
 }
 
+/// 同 [`with_launch_ctx`]，分支记录那一手由这里造（起一组那一族不分叉，手里没有它）。
+pub(crate) fn with_launch_ctx_here<T>(
+    own: &crate::platform::fs::Own,
+    f: impl FnOnce(ForkWrite, &PreRotation, Option<&std::path::Path>) -> T,
+) -> T {
+    with_launch_ctx(own, &crate::platform::fs::NewFile::issue(), f)
+}
+
 /// 起新会话要的那几下（写分支记录 · 先定 sid · 写 / 撤轮换）＋ 这台的家目录，交给 `f`。
 pub(crate) fn with_launch_ctx<T>(
     own: &crate::platform::fs::Own,

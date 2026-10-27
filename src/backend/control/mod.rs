@@ -64,6 +64,7 @@ pub mod resident;
 pub(crate) mod session_arrive; // 帧命令 `session-arrive`：等起好的会话报到（认法住观测层，抓屏住 terminals）
 pub(crate) mod session_batch;
 pub(crate) mod session_open;
+pub(crate) mod session_set; // 帧命令 `set-plan`：补足一组会话的判定（每行已有几个 · 再起几个 · 进哪个组）
 pub(crate) mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
                           // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
 pub(crate) mod session_new_ticket;

@@ -394,3 +394,28 @@ fn each_unavailable_shape_has_its_own_sentence() {
     // 清单读不出时有替代也不提（那台的默认号未必还能用）。
     assert!(!unavailable_said(&u(true, false, Some("acct-alt"))).contains("acct-alt"));
 }
+
+/// 经别名起的那一发：便条带别名名字，认便条时记进启动台账的 `aliases`（没有号、没写 `--tab` 也照记）。
+#[test]
+fn a_note_carries_the_alias_into_the_launch_ledger() {
+    let h = temp_home("alias");
+    leave(
+        &own_at(&h),
+        81,
+        &Note {
+            account: String::new(),
+            at: 1_000,
+            plugin: false,
+            tab: None,
+            alias: Some("dev".into()),
+        },
+    )
+    .unwrap();
+    assert!(adopt(&own_at(&h), 81, "s-alias", Some(990), &none_alive).unwrap());
+    let book = read_book(&h).unwrap();
+    assert_eq!(book.aliases.get("s-alias").map(String::as_str), Some("dev"));
+    assert_eq!(book.sessions.get("s-alias"), None);
+    // 已经记着 ⇒ 不再写。
+    assert!(!adopt(&own_at(&h), 81, "s-alias", Some(990), &none_alive).unwrap());
+    let _ = std::fs::remove_dir_all(&h);
+}

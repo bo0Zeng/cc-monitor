@@ -220,6 +220,9 @@ pub(crate) struct Note {
     /// 起这个进程时给了 `--tab`（别名里写的也算）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) tab: Option<LaunchTab>,
+    /// 这个进程经哪条别名起的（补足一组时按它数）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) alias: Option<String>,
 }
 
 /// 一个进程一张便条：状态（写的那一下不读它；读不懂的那张不作数）。读盘上限与启动台账同一个。
@@ -228,8 +231,14 @@ const NOTE: crate::common::own_state::Doc<Note> = crate::common::own_state::Doc:
     crate::history::launch_book::MAX_BYTES,
 );
 
-/// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条（号说得出名字才记 · 答题插件是不是经环境交下去的 · `--tab`）。
+/// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条（号说得出名字才记 · 答题插件是不是经环境交下去的 · `--tab` · 别名）。
 /// 失败只出声（不挡起会话）。落点：写句柄的数据目录那一根（`home`）底下的便条目录。
+pub(crate) fn leave(own: &Own, pid: u32, note: &Note) -> Result<(), crate::common::said::Said> {
+    write_note(own, pid, note)
+}
+
+/// [`leave`] 不带别名的那几格写法（判据夹具用）。
+#[cfg(test)]
 pub(crate) fn leave_note(
     own: &Own,
     pid: u32,
@@ -246,6 +255,7 @@ pub(crate) fn leave_note(
             at: now,
             plugin,
             tab,
+            alias: None,
         },
     )
 }
@@ -339,7 +349,8 @@ pub(crate) fn adopt(
             }
         }
     }
-    let Some(note) = note.filter(|n| !n.account.is_empty() || n.tab.is_some()) else {
+    let Some(note) = note.filter(|n| !n.account.is_empty() || n.tab.is_some() || n.alias.is_some())
+    else {
         return Ok(false);
     };
     let book = read_book(home)?;
@@ -349,10 +360,21 @@ pub(crate) fn adopt(
             .tab
             .as_ref()
             .is_none_or(|t| book.tabs.get(sid) == Some(t))
+        && note
+            .alias
+            .as_ref()
+            .is_none_or(|a| book.aliases.get(sid) == Some(a))
     {
         return Ok(false);
     }
-    record(own, &home_dir, sid, account, note.tab.as_ref())?;
+    record(
+        own,
+        &home_dir,
+        sid,
+        account,
+        note.tab.as_ref(),
+        note.alias.as_deref(),
+    )?;
     Ok(true)
 }
 
@@ -368,6 +390,7 @@ fn record(
     sid: &str,
     account: Option<&str>,
     tab: Option<&LaunchTab>,
+    alias: Option<&str>,
 ) -> Result<(), crate::common::said::Said> {
     own.ensure_dir(home)
         .map_err(|e| failed(home.as_path(), &e))?;
@@ -378,6 +401,9 @@ fn record(
     }
     if let Some(t) = tab {
         book.tabs.insert(sid.to_string(), t.clone());
+    }
+    if let Some(a) = alias {
+        book.aliases.insert(sid.to_string(), a.to_string());
     }
     let file = home.join(FILE_NAME)?;
     let body = crate::common::own_state::json_body(file.as_path(), &book)?;
