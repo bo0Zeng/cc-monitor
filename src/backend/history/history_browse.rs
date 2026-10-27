@@ -309,14 +309,13 @@ pub(crate) async fn answer(
     }
     let mut seen = BTreeSet::new();
     for m in &req.remotes {
-        if m.0.is_empty() || !seen.insert(m.0.as_str()) {
+        if m.to_string().is_empty() || !seen.insert(m) {
             return Err(bad("`remotes` must be distinct non-empty machine names"));
         }
     }
-    if let Some(m) = req.fresh.iter().find(|m| !seen.contains(m.0.as_str())) {
+    if let Some(m) = req.fresh.iter().find(|m| !seen.contains(m)) {
         return Err(bad(&format!(
-            "`fresh` names `{}`, which is not in `remotes`",
-            m.0
+            "`fresh` names `{m}`, which is not in `remotes`"
         )));
     }
     if !req.fresh.is_empty() && until.is_none() {
@@ -329,8 +328,8 @@ pub(crate) async fn answer(
         .remotes
         .iter()
         .map(|m| {
-            let (m, tz) = (m.0.clone(), tz.clone());
-            let sync = req.fresh.iter().any(|f| f.0 == m);
+            let sync = req.fresh.contains(m);
+            let (m, tz) = (m.to_string(), tz.clone());
             tokio::spawn(async move {
                 // 同步那几台先同步（没成的那一句副本表记下了）；之后一律照副本表读：成了 ⇒ 新的那份，没成 ⇒ 旧副本标旧 · 或只有那一句。
                 if sync {
@@ -381,11 +380,7 @@ pub(crate) async fn answer(
         by: req.by,
         all_open: ask.query.is_some(),
         fold: req.groups,
-        forks: req
-            .forks
-            .into_iter()
-            .map(|r| (r.origin.map(|m| m.0), r.sid))
-            .collect(),
+        forks: req.forks.into_iter().map(|r| (r.origin, r.sid)).collect(),
     };
     let range = req.range;
     blocking(move || {
@@ -422,7 +417,7 @@ pub(crate) fn per_machine(
     let mut heads = Vec::new();
     let mut answered = Vec::new();
     for (origin, g) in got {
-        let machine = origin.clone().map(Machine);
+        let machine = origin.clone().map(Machine::named);
         match g {
             Got::Listing(l) => {
                 let (head, rows) = product(&l, origin.as_deref(), ask, now_ms, tz);
@@ -493,7 +488,7 @@ pub(crate) struct Shape {
     /// 搜着字 ⇒ 组都开着（命中的就在眼前）。
     pub(crate) all_open: bool,
     pub(crate) fold: Fold,
-    pub(crate) forks: BTreeSet<(Option<String>, String)>,
+    pub(crate) forks: BTreeSet<(Option<Machine>, String)>,
 }
 
 impl Shape {
@@ -524,21 +519,21 @@ fn merge_by<'a, T>(lists: &[&'a [T]], key: impl Fn(&T) -> i64) -> Vec<&'a T> {
     }
 }
 
-type Id = (Option<String>, String);
+type Id = (Option<Machine>, String);
 
 fn id_of(r: &HistoryRow) -> Id {
-    (r.origin.as_ref().map(|m| m.0.clone()), r.session_id.clone())
+    (r.origin.clone(), r.session_id.clone())
 }
 
 fn parent_of(r: &HistoryRow) -> Option<Id> {
     r.forked_from_session_id
         .as_ref()
-        .map(|p| (r.origin.as_ref().map(|m| m.0.clone()), p.clone()))
+        .map(|p| (r.origin.clone(), p.clone()))
 }
 
 /// 一项的键（同一个会话在两台上是两项；组头另一种）。
 fn key_of(line: &HistoryLine) -> String {
-    let o = |m: &Option<Machine>| m.as_ref().map_or(String::new(), |m| m.0.clone());
+    let o = |m: &Option<Machine>| m.as_ref().map_or(String::new(), ToString::to_string);
     match line {
         HistoryLine::Group { group, .. } => {
             format!("g\u{1f}{}\u{1f}{}", o(&group.origin), group.key)
@@ -600,10 +595,10 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
             let groups = merge_by(&group_lists, |g| g.order);
             laid.projects = u32::try_from(groups.len()).unwrap_or(u32::MAX);
             laid.grouped = groups.iter().map(|g| g.count).sum();
-            let mut by_group: BTreeMap<(Option<String>, &str), Vec<&HistoryRow>> = BTreeMap::new();
+            let mut by_group: BTreeMap<(Option<Machine>, &str), Vec<&HistoryRow>> = BTreeMap::new();
             for r in &rows {
                 by_group
-                    .entry((r.origin.as_ref().map(|m| m.0.clone()), r.group.as_str()))
+                    .entry((r.origin.clone(), r.group.as_str()))
                     .or_default()
                     .push(r);
             }
@@ -616,7 +611,7 @@ pub(crate) fn lay(answered: &[Answered], shape: &Shape) -> Laid {
                 if !open {
                     continue;
                 }
-                let gk = (g.origin.as_ref().map(|m| m.0.clone()), g.key.as_str());
+                let gk = (g.origin.clone(), g.key.as_str());
                 for r in by_group.get(&gk).into_iter().flatten().copied() {
                     if !nested(r) {
                         push(&mut laid, r);

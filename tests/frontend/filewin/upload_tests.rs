@@ -23,7 +23,7 @@ impl crate::picker::Picker for One {
 async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() {
     use crate::copy::testing::rects_of;
     let (line, origin, log) = xfer_rig(Ends::Clash).await;
-    let cfg = origin.0.clone();
+    let cfg = origin.to_string();
     let mut w = crate::shell::FileWindow::seeded(
         crate::source::Source::remote(cfg),
         "/srv".to_string(),

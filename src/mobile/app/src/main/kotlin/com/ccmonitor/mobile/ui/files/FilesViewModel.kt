@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesReadText
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.over
 import com.ccmonitor.mobile.core.claude.link.retry
@@ -14,6 +13,7 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.link.Problem
@@ -83,7 +83,7 @@ class FilesViewModel(
     val selection: StateFlow<Selection> = _selection.asStateFlow()
 
     /** 那台此刻通着（断着 ⇒ 选中照留、能做的那几件由核心灰掉，列表顶一条说离线）。 */
-    val online: StateFlow<Boolean> = feed.state.map { it is LinkState.Up }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val online: StateFlow<Boolean> = feed.state.map { it is LinkLine.Up }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** 那台成品写的离线那一句（屏上那一条照摆；成品还没到 ⇒ `null`，未知不当离线）。 */
     val offline: StateFlow<String?> = feed.offline

@@ -1063,7 +1063,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         },
     };
     assert_eq!(
-        detail_of(&Origin("devbox".into()), "files-commit-upload", &refused),
+        detail_of(&Origin::named("devbox"), "files-commit-upload", &refused),
         wrote
     );
     let hop = CallError::Hop {
@@ -1074,7 +1074,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         reach: Reach::NotSent,
         why: HopFault::Unreachable,
     };
-    let d = detail_of(&Origin("devbox".into()), "files-ls", &hop);
+    let d = detail_of(&Origin::named("devbox"), "files-ls", &hop);
     for want in [
         format!(
             "{}：devbox（{}）",
@@ -1095,7 +1095,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
     assert!(d.starts_with(&label("detail.label.at")), "{d}");
     // 看本机时不带（出错的就是本机）。
     let here = detail_of(
-        &Origin(comms_inward::origin::LOCAL.into()),
+        &Origin::named(comms_inward::origin::LOCAL),
         "files-ls",
         &hop,
     );
@@ -1105,7 +1105,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
     );
     let own = failed_here(
         "x".into(),
-        &Origin("devbox".into()),
+        &Origin::named("devbox"),
         "files-ls",
         Some("boom"),
     );
@@ -1161,7 +1161,7 @@ fn an_unreadable_refusal_keeps_its_body_out_of_the_sentence_and_in_the_detail() 
             body: Body(b"<html>bad gateway</html>".to_vec()),
         },
     };
-    let at = Origin("devbox".into());
+    let at = Origin::named("devbox");
     let s = comms_inward::chan::said::said(&refused, &at);
     assert!(!s.contains("html"), "{s}");
     let d = detail_of(&at, "files-ls", &refused);
@@ -1215,7 +1215,7 @@ impl comms_inward::chan::router::Backends for RawLog {
 async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let line = crate::find::testing::wire(std::sync::Arc::new(RawLog(log.clone())), 1 << 20);
-    let o = Origin("R".into());
+    let o = Origin::named("R");
     let plain = RemotePath::plain("/srv/a b");
     let lossy = RemotePath::from_bytes(b"/srv/d\xff");
     for p in [&plain, &lossy] {
@@ -1285,7 +1285,7 @@ fn a_gone_monitor_is_told_apart_from_a_reconnecting_machine() {
 #[test]
 fn a_machines_link_is_read_from_its_state_product() {
     use comms_inward::chan::wire::{Body, HopFault, HopId, Item};
-    let gpu = Origin("gpu".into());
+    let gpu = Origin::named("gpu");
     let cell = |key: &str, state: &str| Item::Frame {
         seq: 1,
         body: Body(
@@ -1329,7 +1329,7 @@ fn a_machines_link_is_read_from_its_state_product() {
 #[test]
 fn a_call_cut_at_the_monitor_pipe_is_not_said_as_the_machine_offline() {
     use comms_inward::chan::wire::{CallError, HopFault, HopId, Reach};
-    let at = Origin("devbox".into());
+    let at = Origin::named("devbox");
     let hop = |idx: u8, reach: Reach, why: HopFault| CallError::Hop {
         at: HopId { idx, tag: "write" },
         reach,
@@ -1390,7 +1390,7 @@ async fn watch_script(
     let line = crate::find::testing::wire(std::sync::Arc::new(Scripted(items)), 1 << 20);
     let stop = comms_inward::chan::wire::CancelToken::new();
     let mut seen = Vec::new();
-    let r = watch(&line, &Origin("R".into()), "transfer/t1", &stop, |g, t| {
+    let r = watch(&line, &Origin::named("R"), "transfer/t1", &stop, |g, t| {
         seen.push((g, t))
     })
     .await;

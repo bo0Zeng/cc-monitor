@@ -19,17 +19,20 @@ describe("机器状态成品", () => {
       const m = decoded(c.name);
       const f = machineFace(m);
       expect([f.word, f.problem, f.fixes], c.name).toEqual([m.word, m.said, m.fixes]);
+      // 离线 · 要更新是成品的事（页头照成品数），画法不另抄一份。
+      expect(Object.keys(f), c.name).not.toContain("offline");
+      expect(Object.keys(f), c.name).not.toContain("needsUpdate");
     }
-    expect(machineFace(decoded("连着"))).toMatchObject({ dot: "up", problem: "", offline: false, needsUpdate: false });
+    expect(machineFace(decoded("连着"))).toMatchObject({ dot: "up", problem: "" });
     expect(machineFace(decoded("正在连"))).toMatchObject({ dot: "unknown", tone: "busy", bar: false });
     expect(machineFace(decoded("正在装"))).toMatchObject({ tone: "busy", bar: true });
     expect(machineFace(decoded("正在更新"))).toMatchObject({ tone: "busy", bar: true });
-    expect(machineFace(decoded("密钥被拒"))).toMatchObject({ dot: "failed", tone: "error", offline: true });
-    expect(machineFace(decoded("指纹变了"))).toMatchObject({ dot: "failed", offline: true });
-    expect(machineFace(decoded("要更新"))).toMatchObject({ dot: "needs-you", tone: "warn", needsUpdate: true });
+    expect(machineFace(decoded("密钥被拒"))).toMatchObject({ dot: "failed", tone: "error" });
+    expect(machineFace(decoded("指纹变了"))).toMatchObject({ dot: "failed" });
+    expect(machineFace(decoded("要更新"))).toMatchObject({ dot: "needs-you", tone: "warn" });
     expect(machineFace(decoded("版本不可比"))).toMatchObject({ dot: "up", problem: "" });
     expect(machineFace(decoded("停用"))).toMatchObject({ dot: "exited" });
-    expect(machineFace(decoded("不是 Unix"))).toMatchObject({ dot: "failed", offline: true });
+    expect(machineFace(decoded("不是 Unix"))).toMatchObject({ dot: "failed" });
   });
 
   it("★ 后端的成品不带下一步那一行", () => {
@@ -46,13 +49,15 @@ describe("机器状态成品", () => {
     const down: LocalBackend = { state: "down", word: "离线（夹具）", said: "本机连接失败（夹具）", fixes, next };
     const f = localBackendFace(down)!;
     expect(localBackendFace({ state: "up" })).toBeNull();
-    expect(f).toMatchObject({ dot: "failed", tone: "error", word: down.word, problem: down.said, fixes, next, offline: true });
+    expect(f).toMatchObject({ dot: "failed", tone: "error", word: down.word, problem: down.said, fixes, next });
+    expect(Object.keys(f)).not.toContain("offline");
+    expect(Object.keys(f)).not.toContain("needsUpdate");
     const el = document.createElement("div");
     paintProblem(el, f, () => {});
     expect(el.querySelector(".machine-problem-next")?.textContent).toBe(next);
     expect(localBackendFace({ state: "starting", word: "w", said: "s" })).toMatchObject({ dot: "unknown", tone: "busy", fixes: [], next: "" });
-    expect(localBackendFace({ state: "older", word: "w", said: "s", fixes, next: null })).toMatchObject({ dot: "needs-you", tone: "warn", needsUpdate: true, next: "" });
-    expect(localBackendFace({ state: "newer", word: "w", said: "s", fixes, next: null })).toMatchObject({ tone: "error", offline: false });
+    expect(localBackendFace({ state: "older", word: "w", said: "s", fixes, next: null })).toMatchObject({ dot: "needs-you", tone: "warn", next: "" });
+    expect(localBackendFace({ state: "newer", word: "w", said: "s", fixes, next: null })).toMatchObject({ tone: "error" });
   });
 
   it("★ 修法按钮：字照成品、点了交那一颗的码；更新那一颗是主按钮", () => {

@@ -715,6 +715,45 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(p.renamed.some((r) => r.id === "machine:a")).toBe(false);
   });
 
+  it("★ 页头那一句照各台成品数：离线读成品的 offline、要更新读成品那一态；本机后端没起来读壳那一格", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")], p.host);
+    const count = () => sec.element.querySelector<HTMLElement>(".remote-machine-count")!.textContent;
+    const ms = (over: Partial<MachineState>): MachineState => ({
+      name: "m",
+      state: "up",
+      offline: false,
+      reason: null,
+      stage: null,
+      version: null,
+      versionRelation: null,
+      os: null,
+      word: "",
+      said: "",
+      offlineSaid: "m 离线",
+      fixes: [],
+      seenHostKey: null,
+      expectedHostKey: null,
+      detail: null,
+      ...over,
+    });
+    const sep = copyText("kit.text.sep");
+    const line = (off: number, upd: number) =>
+      [copyText("machineList.count.all", { n: 4 }), copyText("machineList.count.off", { a: off }), copyText("machineList.count.update", { b: upd })].join(sep);
+    sec.setMachine("machine:a", ms({ state: "needs_update", word: "w", said: "s" }));
+    // 登录过了、拒开会话：点是红的，但成品说不算离线 ⇒ 不数。
+    sec.setMachine("machine:b", ms({ state: "down", offline: false, said: "s" }));
+    sec.setMachine("machine:c", ms({ state: "down", offline: true, said: "s" }));
+    expect(count()).toBe(line(1, 1));
+    sec.setLocalBackend({ state: "older", word: "w", said: "s", fixes: [], next: null });
+    expect(count()).toBe(line(1, 2));
+    sec.setLocalBackend({ state: "down", word: "w", said: "s", fixes: [], next: null });
+    expect(count()).toBe(line(2, 1));
+    // 本机后端起来了、本机那一台的成品到了 ⇒ 读成品，壳那一格作废。
+    sec.setMachine(LOCAL_MACHINE_PAGE_ID, ms({}));
+    expect(count()).toBe(line(1, 1));
+  });
+
   it("★ 点机器名 → 跳到它那一页", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);

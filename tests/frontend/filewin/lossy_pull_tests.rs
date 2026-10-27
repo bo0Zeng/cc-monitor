@@ -55,7 +55,7 @@ impl comms_inward::chan::router::Backends for Two {
         self.log
             .lock()
             .unwrap()
-            .push((origin.0.clone(), op.0.clone(), a.clone()));
+            .push((origin.to_string(), op.0.clone(), a.clone()));
         let v = if op.0 == "files-read-chunk" {
             let off = a["offset"].as_u64().unwrap() as usize;
             let len = a["len"].as_u64().unwrap() as usize;
@@ -104,7 +104,7 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
     let local = crate::source::wire_bytes(b"/tmp/dl/f\xfe");
     pull_by_bytes(
         &line,
-        &comms_inward::chan::wire::Origin("R".into()),
+        &comms_inward::chan::wire::Origin::named("R"),
         b"/srv/d\xff/f\xfe",
         local,
         true,

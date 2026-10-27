@@ -1,9 +1,11 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.HiddenNow
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
@@ -250,11 +252,12 @@ class ResidentFeedTest {
         }
 
     /**
-     * `state` 那一行读的是核心现产的那一份（跨语言金样 `mobile-state-line.golden.json`，Rust 那一侧逐字比）：每一行落成 [LinkState]，
-     * 那一句 · 详情 · 修法都取成品（[MachineState]），这里只按通没通分三形，不另判；部署那一趟的几步（成品说正在问 / 装 / 更新）落成 [Busy]。
+     * `state` 那一行读的是核心现产的那一份（跨语言金样 `mobile-state-line.golden.json`，Rust 那一侧逐字比）：[CoreLink.state] 就是那一行
+     * （契约里的 [LinkLine]：通没通 ＋ 那台的 [MachineState]），手机不另抄一份；那一句 · 详情 · 修法 · 离线不离线都从成品取，
+     * 部署那一趟的几步（成品说正在问 / 装 / 更新）由 [busy] 照成品那一态取。
      */
     @Test
-    fun `核心交的每一行状态照成品落：那一句 · 详情 · 修法原样，通没通照标签，epoch 跟着变`() =
+    fun `核心交的每一行状态原样落：通没通照标签、成品逐格不动，epoch 跟着变`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
             val f = feed(core)
@@ -265,6 +268,7 @@ class ResidentFeedTest {
                     "正在装" to Busy("安装 cc-monitor → box", bar = true),
                     "正在更新" to Busy("更新 box · cc-monitor", bar = true),
                 )
+            assertNull("核心还没交过 ⇒ 没有那一行（当正在连）", f.state.value)
             assertNull("成品还没到 ⇒ 没有离线那一句（未知不当离线）", f.offline.value)
             for (c in cases) {
                 val name = c.str("name").need()
@@ -272,15 +276,14 @@ class ResidentFeedTest {
                 val m = line.obj("machine").need()
                 core.emit("state", Json.args(line))
                 assertEquals("$name：离线那一句照成品", m.str("offlineSaid").need(), f.offline.value)
-                val said = Said(m.str("said").need(), m.str("detail").orEmpty())
+                val got = f.state.value!!
+                assertEquals(name, line.str("state"), got.state)
+                assertEquals(name, m.str("said").need(), got.machine.said)
+                assertEquals(name, m.str("detail"), got.machine.detail)
+                assertEquals(name, m["offline"] as Boolean, got.machine.offline)
                 val fixes = m.objs("fixes").need().map { MachineFixButton(fixOf(it.str("fix").need()), it.str("label").need()) }
-                val want =
-                    when (line.str("state")) {
-                        "connecting" -> LinkState.Connecting
-                        "up" -> LinkState.Up(said.takeIf { it.text.isNotEmpty() }, fixes, busy[name])
-                        else -> LinkState.Down(said, fixes, busy[name])
-                    }
-                assertEquals(name, want, f.state.value)
+                assertEquals(name, fixes, got.machine.fixes)
+                assertEquals(name, busy[name], got.busy())
                 line.num("epoch")?.let { assertEquals(name, it, f.epoch.value) }
             }
             assertEquals(12, cases.size)
@@ -319,7 +322,7 @@ class ResidentFeedTest {
             core.emit("state", line("连着"))
             core.emit("state", """{"state":"down","machine":{"said":"x","detail":null,"fixes":[{"fix":"fly","label":"y"}]}}""")
             core.emit("state", """{"state":"down"}""")
-            assertEquals(LinkState.Up(null, emptyList()), f.state.value)
+            assertEquals(Wire.read<LinkLine>(line("连着")), f.state.value)
             assertEquals(2, breaks.size)
         }
 

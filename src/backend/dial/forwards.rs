@@ -75,7 +75,7 @@ fn port_of(text: &str) -> Option<u16> {
 /// 没选那台 · 端口不是 1–65535 · 远端 host 空白 ⇒ `bad_spec` 带那一句（界面照抄）；缺格 / 类型不对在解入参那一步就回了（`bad_args`）。
 pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, String)> {
     let bad = |said: String| ("bad_spec", said);
-    if req.origin.as_wire_str().trim().is_empty() {
+    if req.origin.to_string().trim().is_empty() {
         return Err(bad(copy_text("beForwards.spec.origin", &[])));
     }
     let local_port =
@@ -86,7 +86,7 @@ pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, Stri
     let remote_port = port_of(&req.remote_port)
         .ok_or_else(|| bad(copy_text("beForwards.spec.remotePort", &[])))?;
     Ok(Spec {
-        origin: req.origin.as_wire_str().to_string(),
+        origin: req.origin.to_string(),
         local_port,
         remote_host: req.remote_host.trim().to_string(),
         remote_port,
@@ -323,7 +323,7 @@ pub(crate) fn list_with(ledger: &Ledger) -> Forwards {
         .iter()
         .map(|(n, e)| ForwardRow {
             id: id_text(*n),
-            origin: cmd_wire::Machine(e.spec.origin.clone()),
+            origin: cmd_wire::Machine::named(e.spec.origin.clone()),
             local_port: e.spec.local_port,
             remote_host: e.spec.remote_host.clone(),
             remote_port: e.spec.remote_port,

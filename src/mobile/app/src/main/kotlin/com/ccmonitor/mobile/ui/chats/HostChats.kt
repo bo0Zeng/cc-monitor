@@ -8,10 +8,10 @@ import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.HistorySearch
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.claude.link.retry
@@ -22,6 +22,7 @@ import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
@@ -85,7 +86,7 @@ class HostChats(
         scope.launch { cached.value = syncing.withLock { held() }.takeIf { it.order.isNotEmpty() }?.let(HistoryList::page) }
         scope.launch {
             link.state
-                .map { it is LinkState.Up }
+                .map { it is LinkLine.Up }
                 .distinctUntilChanged()
                 .filter { it }
                 .collect { fetch() }
@@ -185,7 +186,8 @@ sealed interface Searched {
 data class HostSnap(
     val hostId: String,
     val machine: String,
-    val link: LinkState,
+    /** 核心交的那一行（通没通 ＋ 那台的状态成品）；还没交过 ⇒ `null`。 */
+    val link: LinkLine?,
     val table: SessionBook,
     val list: Fetched<HistoryListPage>,
     val cached: HistoryListPage?,
@@ -261,16 +263,16 @@ internal fun hostPart(
     ssh: HostLink? = null,
 ): HostPart {
     val plain = s.ask == ListAsk()
-    val down = s.link as? LinkState.Down
+    val down = s.link as? LinkLine.Down
     val got = (s.list as? Fetched.Got)?.value
     val answer = if (down != null) s.cached.takeIf { plain } else got ?: s.cached.takeIf { plain }
     val bar =
         when {
             ssh is HostLink.Failed -> HostBar(s.hostId, Problem(ssh.why, ""), offline = true, edit = ssh.edit)
             down != null && !plain -> HostBar(s.hostId, Problem(downLine(s.machine, s.ask), ""), offline = true)
-            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), s.deploying, busy = down.busy)
+            down != null -> HostBar(s.hostId, down.problem(), offline = down.deployFix() == null, down.deployFix(), s.deploying, busy = down.busy())
             s.list is Fetched.Failed -> HostBar(s.hostId, s.list.problem, offline = false)
-            s.link is LinkState.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying, busy = s.link.busy) }
+            s.link is LinkLine.Up -> s.link.notice()?.let { HostBar(s.hostId, it, offline = false, s.link.deployFix(), s.deploying, busy = s.link.busy()) }
             else -> null
         }
     val table = s.table.takeIf { down == null }

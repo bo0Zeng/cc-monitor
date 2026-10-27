@@ -12,16 +12,16 @@ use resident_client::watch::Desk;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// 每台一张（键是那台的线上串；本机 · 远端同一张表，进程里一直留着）。
-fn desks() -> &'static Mutex<HashMap<String, Arc<Desk>>> {
-    static D: OnceLock<Mutex<HashMap<String, Arc<Desk>>>> = OnceLock::new();
+/// 每台一张（键是那台；本机 · 远端同一张表，进程里一直留着）。
+fn desks() -> &'static Mutex<HashMap<Origin, Arc<Desk>>> {
+    static D: OnceLock<Mutex<HashMap<Origin, Arc<Desk>>>> = OnceLock::new();
     D.get_or_init(Default::default)
 }
 
 /// 那台的名单台（没有就起一张，名单照此刻的）。连接那一侧拿它：写 attach 行时问名单、接上时交连接。
 pub(crate) fn desk(origin: &Origin) -> Arc<Desk> {
     let mut t = desks().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(d) = t.get(origin.as_wire_str()) {
+    if let Some(d) = t.get(origin) {
         return Arc::clone(d);
     }
     let (held_at, from_at) = (origin.clone(), origin.clone());
@@ -41,12 +41,12 @@ pub(crate) fn desk(origin: &Origin) -> Arc<Desk> {
     let d = if origin.is_local() {
         Desk::new(held, from)
     } else {
-        Desk::at(origin.as_wire_str(), held, from)
+        Desk::at(origin.host_name().unwrap_or_default(), held, from)
     };
     if let Some(r) = crate::event_replay::host() {
         d.set(r.watched(origin), r.kept(origin));
     }
-    t.insert(origin.as_wire_str().to_string(), Arc::clone(&d));
+    t.insert(origin.clone(), Arc::clone(&d));
     d
 }
 
@@ -56,14 +56,13 @@ pub(crate) fn spawn(replay: Arc<EventReplay>) {
     tauri::async_runtime::spawn(async move {
         let mut ticks = replay.watch_changes();
         loop {
-            let all: Vec<(String, Arc<Desk>)> = desks()
+            let all: Vec<(Origin, Arc<Desk>)> = desks()
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .iter()
                 .map(|(o, d)| (o.clone(), Arc::clone(d)))
                 .collect();
-            for (wire, d) in all {
-                let origin = Origin(wire);
+            for (origin, d) in all {
                 let want = replay.watched(&origin);
                 // 不在看的会话：续点作废（它们的行不来，续点停住了；重连时别从旧续点补读一段）。
                 crate::snapshot_resume::keep_only(&origin, &want);

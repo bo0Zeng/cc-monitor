@@ -712,10 +712,10 @@ pub(crate) fn answer_from(
     // 问的是哪一台：每行每组都带上（界面把几台并成一列时认得出是哪台的）。
     if let Some(o) = origin {
         rows.iter_mut()
-            .for_each(|r| r.origin = Some(cmd_wire::Machine(o.to_string())));
+            .for_each(|r| r.origin = Some(cmd_wire::Machine::named(o.to_string())));
         groups
             .iter_mut()
-            .for_each(|g| g.origin = Some(cmd_wire::Machine(o.to_string())));
+            .for_each(|g| g.origin = Some(cmd_wire::Machine::named(o.to_string())));
     }
     (
         HistoryHead {
@@ -928,7 +928,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         at_text: w("t"),
         section_text: w("s"),
         span_text: w("p"),
-        origin: Some(cmd_wire::Machine(s("m"))),
+        origin: Some(cmd_wire::Machine::named(s("m"))),
     }];
     let groups = vec![HistoryGroup {
         key: s("agent:/w"),
@@ -943,7 +943,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         at_text: Some(w("t")),
         order: 2,
         failed: Some(s("x")),
-        origin: Some(cmd_wire::Machine(s("m"))),
+        origin: Some(cmd_wire::Machine::named(s("m"))),
     }];
     // 离开活的那两形也各露一行（能做什么那几格的「不能」与为什么：已结束只灰终端那两格，记录已不在连换模型 · 权限档也灰）。
     for (sid, life) in [
@@ -1006,7 +1006,7 @@ pub(crate) async fn answer(
     let held = req.held;
     let origin = match req.origin {
         None => None,
-        Some(cmd_wire::Machine(s)) if !s.is_empty() => Some(s),
+        Some(m) if !m.to_string().is_empty() => Some(m.to_string()),
         Some(_) => return Err(bad("`origin` must be a non-empty string")),
     };
     let listing = match &origin {
