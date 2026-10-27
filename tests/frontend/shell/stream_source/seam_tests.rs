@@ -28,7 +28,7 @@ fn a_local_only_frame_from_a_remote_is_said_and_dropped() {
         .with_ansi(false)
         .with_max_level(tracing::Level::WARN)
         .finish();
-    let origin = crate::origin::Origin("devbox".into());
+    let origin = crate::origin::Origin::named("devbox");
     let got = tracing::subscriber::with_default(subscriber, || {
         tracing::callsite::rebuild_interest_cache();
         [

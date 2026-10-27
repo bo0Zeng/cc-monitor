@@ -36,7 +36,7 @@ async fn next_frame(s: &mut BoxStream<'static, Item>) -> Option<serde_json::Valu
 #[tokio::test]
 async fn a_live_card_frame_goes_straight_into_that_machines_live_card_stream() {
     let r = replay();
-    let box_a = crate::origin::Origin("handoff-live-a".into());
+    let box_a = crate::origin::Origin::named("handoff-live-a");
     let mut s = r.subscribe_stream(&box_a, "session-live-card", None);
     let line = r#"{"kind":"live_card","sid":"s1","card":7,"n":0,"op":"open","rid":"m","phase":"awaiting","clipped":false,"blocks":[]}"#;
     assert!(
@@ -68,7 +68,7 @@ async fn a_probe_cell_from_the_local_stream_goes_straight_into_its_tickets_progr
 #[tokio::test]
 async fn a_terminal_follow_end_goes_straight_into_that_machines_screen_stream_without_its_ticket() {
     let r = replay();
-    let box_b = crate::origin::Origin("handoff-screen-b".into());
+    let box_b = crate::origin::Origin::named("handoff-screen-b");
     let mut s = r.subscribe_stream(&box_b, "terminal-screen/handoff-t1", None);
     let line = r#"{"kind":"terminal_follow_end","ticket":"handoff-t1","why":"gone","said":"那台写的一句"}"#;
     assert!(route(&box_b, None, frame(line)).is_none());

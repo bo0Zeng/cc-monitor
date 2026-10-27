@@ -10,7 +10,7 @@ pub fn machine(origin: &Origin) -> String {
     if origin.is_local() {
         copy_core::local_machine()
     } else {
-        origin.0.clone()
+        origin.to_string()
     }
 }
 

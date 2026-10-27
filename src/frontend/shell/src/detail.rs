@@ -82,7 +82,7 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     let name = if origin.is_local() {
         copy_text("detail.label.local", &[])
     } else {
-        origin.0.clone()
+        origin.to_string()
     };
     let local = (!origin.is_local()).then(local_line);
     copy_core::detail::channel(

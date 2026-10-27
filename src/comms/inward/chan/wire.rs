@@ -265,7 +265,10 @@ impl From<OursFault> for CallError {
 /// 那一句（[`super::said::said`]）；这一层不知道是哪台，称呼「该机」。
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&super::said::said(self, &Origin(copy_core::peer_machine())))
+        f.write_str(&super::said::said(
+            self,
+            &Origin::named(copy_core::peer_machine()),
+        ))
     }
 }
 

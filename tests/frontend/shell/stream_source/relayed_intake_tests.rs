@@ -97,7 +97,7 @@ fn harness(
     replay.subscribe(
         "w",
         1,
-        &crate::origin::Origin(machine.into()),
+        &crate::origin::Origin::named(machine),
         &format!("{}/{SID}", crate::event_replay::SESSION_LINES_KIND),
         None,
         64,
@@ -119,7 +119,7 @@ fn live(sid: &str) -> bool {
 fn live_at(machine: &str, sid: &str) -> bool {
     crate::session_book::book()
         .read()
-        .is_live(&crate::origin::Origin(machine.into()), sid)
+        .is_live(&crate::origin::Origin::named(machine), sid)
 }
 
 /// 那台这一条连接：hello ⇒ `Seen`；行 ⇒ 那台的订阅收到；丢了一行 ⇒ `Gap`；断了 ⇒ `Unseen`、那台成品作废。

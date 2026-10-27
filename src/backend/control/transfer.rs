@@ -807,7 +807,7 @@ pub(crate) fn dial_by_name(
     hosts: &[crate::dial::Host],
     machine: &cmd_wire::Machine,
 ) -> Result<(serde_json::Value, Dial), String> {
-    crate::dial::sftp_named(hosts, machine.as_wire_str())
+    crate::dial::sftp_named(hosts, &machine.to_string())
 }
 
 impl Drop for Desk {

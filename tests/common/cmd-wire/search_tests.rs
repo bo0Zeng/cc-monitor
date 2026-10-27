@@ -56,7 +56,7 @@ fn reply(
 fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
     let local = Machine::local();
     let down = vec![SearchDown {
-        origin: Machine("wsl".into()),
+        origin: Machine::named("wsl"),
         said: "那台没在跑".into(),
     }];
     let m = merge(
@@ -70,7 +70,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
                 ),
             ),
             (
-                Machine("pi".into()),
+                Machine::named("pi"),
                 reply(
                     &[("rem-new", 300, 2, true), ("tie-a", 150, 0, false)],
                     2,
@@ -80,13 +80,13 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         ],
         down.clone(),
     );
-    let order: Vec<(&str, Option<&str>)> = m
+    let order: Vec<(&str, Option<String>)> = m
         .sessions
         .iter()
         .map(|s| {
             (
                 s.row.row.session_id.as_str(),
-                s.origin.as_ref().map(|o| o.0.as_str()),
+                s.origin.as_ref().map(ToString::to_string),
             )
         })
         .collect();
@@ -94,9 +94,9 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
     assert_eq!(
         order,
         [
-            ("rem-new", Some("pi")),
+            ("rem-new", Some("pi".to_string())),
             ("tie-b", None),
-            ("tie-a", Some("pi")),
+            ("tie-a", Some("pi".to_string())),
             ("local-old", None)
         ]
     );
@@ -122,7 +122,7 @@ fn merging_sorts_newest_first_stably_and_sums_what_each_machine_said() {
 fn integer_cells_of_a_real_reply_pass_through_as_integers() {
     let m = merge(
         vec![(
-            Machine("pi".into()),
+            Machine::named("pi"),
             reply(&[("s1", 1_767_225_600_123, 3, false)], 0, &[]),
         )],
         vec![],

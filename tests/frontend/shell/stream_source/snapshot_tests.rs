@@ -236,7 +236,7 @@ async fn a_cold_snapshot_asks_once() {
 /// 做完存后端新给的那一份。
 #[tokio::test]
 async fn a_resumed_snapshot_hands_back_what_it_holds_and_asks_once() {
-    let origin = crate::origin::Origin("frame3-resume".into());
+    let origin = crate::origin::Origin::named("frame3-resume");
     let held = cmd_wire::session::Held {
         path: "/p/s.jsonl".into(),
         next: 7,
@@ -245,7 +245,7 @@ async fn a_resumed_snapshot_hands_back_what_it_holds_and_asks_once() {
     };
     crate::snapshot_resume::note_done(&origin, "s-resume", held.clone());
     let (first, extra, out) =
-        one_snapshot(origin.as_wire_str(), "s-resume", tail_reply("resume", 7)).await;
+        one_snapshot(&origin.to_string(), "s-resume", tail_reply("resume", 7)).await;
     assert_eq!(first["cmd"], "history-tail");
     assert_eq!(
         first["args"]["held"],

@@ -38,8 +38,8 @@ pub(crate) fn route(
     client: Option<&crate::inbound_client::InboundClient>,
     frame: Frame,
 ) -> Option<Ordered> {
-    let at = origin.as_wire_str();
-    let local = *origin == crate::origin::Origin::local();
+    let at = origin.to_string();
+    let local = origin.is_local();
     match frame {
         Frame::Hello(_) => tracing::warn!("[{at}] 流中间来了 hello，丢掉"),
         Frame::Relayed(r) if local => return Some(Ordered::Relayed(r)),
@@ -118,7 +118,7 @@ pub(crate) async fn apply(
     replay: &Arc<EventReplay>,
     health: &HealthOut,
 ) {
-    let host_label = origin.as_wire_str();
+    let host_label = origin.to_string();
     let at = host_label.to_string();
     if matches!(item, Ordered::SessionRemoved(_) | Ordered::SessionState(_)) {
         intake.flush().await;
@@ -225,7 +225,7 @@ fn told(origin: String, frame: Frame) {
 /// 那台管道拥塞丢过帧：日志 ＋ 经 `remote-health` 原样交那台写的那一句（标题位界面排机器名）。
 /// 丢了会话状态那一类的，那台紧跟着在同一条连接上整份重报，这里不判、不重接。
 fn on_overflow(origin: &crate::origin::Origin, health: &HealthOut, o: &wire::Overflow) {
-    let at = origin.as_wire_str();
+    let at = origin.to_string();
     tracing::warn!("stream_source [{at}] overflow: {}", o.said.0);
     let payload = crate::ui_contract::RemoteHealthPayload {
         origin: at.to_string(),

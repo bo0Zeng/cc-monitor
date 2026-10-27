@@ -117,7 +117,7 @@ fn outcome(
     errors: &[String],
 ) -> AssetsSyncRow {
     AssetsSyncRow {
-        origin: cmd_wire::Machine(key.to_string()),
+        origin: cmd_wire::Machine::named(key.to_string()),
         peer: peer.map(str::to_string),
         changed,
         pushed,
@@ -307,7 +307,8 @@ pub(crate) async fn answer_with(
     remote: &dyn Remote,
     table: &Table,
 ) -> Result<AssetsSynced, (&'static str, String)> {
-    let origin = req.origin.as_ref().map(cmd_wire::Machine::as_wire_str);
+    let origin = req.origin.as_ref().map(ToString::to_string);
+    let origin = origin.as_deref();
     if origin == Some("") {
         return Err((
             "bad_args",

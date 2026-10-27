@@ -71,7 +71,7 @@ impl Backends for Fake {
     ) -> BoxFuture<'static, Result<Body, CallError>> {
         self.views.lock().unwrap().push(view);
         self.calls.lock().unwrap().push((
-            origin.0.clone(),
+            origin.to_string(),
             op.0.clone(),
             payload.0.clone(),
             left,
@@ -174,7 +174,7 @@ async fn a_synthetic_frontend_connects_over_a_pipe_pair_and_calls_through() {
     let payload = vec![0u8, 1, 2, 0xfe, 0xff, b'{'];
     let got = c
         .call(
-            &Origin("某台机器".into()),
+            &Origin::named("某台机器"),
             &Op("echo".into()),
             Body(payload.clone()),
             budget(5_000),
@@ -207,7 +207,7 @@ async fn a_synthetic_frontend_connects_over_a_pipe_pair_and_calls_through() {
 async fn a_view_on_the_call_head_reaches_the_handle_verbatim() {
     let (fake, c) = rig();
     c.call(
-        &Origin("<local>".into()),
+        &Origin::named("<local>"),
         &Op("echo".into()),
         Body(b"x".to_vec()),
         budget(5_000),
@@ -228,7 +228,7 @@ async fn a_view_on_the_call_head_reaches_the_handle_verbatim() {
     let view = serde_json::json!({"omit": {"record": ["blocks[type=tool_use].input"]}});
     let head = Head::Call {
         id: 1,
-        origin: Origin("<local>".into()),
+        origin: Origin::named("<local>"),
         op: "echo".into(),
         left: Duration::from_secs(5),
         view: Some(view.clone()),
@@ -244,7 +244,7 @@ async fn a_view_on_the_call_head_reaches_the_handle_verbatim() {
 
     let bare = serde_json::to_string(&Head::Call {
         id: 2,
-        origin: Origin("<local>".into()),
+        origin: Origin::named("<local>"),
         op: "echo".into(),
         left: Duration::from_secs(5),
         view: None,
@@ -258,7 +258,7 @@ async fn a_view_on_the_call_head_reaches_the_handle_verbatim() {
 #[tokio::test]
 async fn peer_and_hop_errors_cross_the_wire_intact() {
     let (_fake, c) = rig();
-    let o = Origin("<local>".into());
+    let o = Origin::named("<local>");
     let r = c
         .call(&o, &Op("refuse".into()), Body::default(), budget(5_000))
         .await;
@@ -296,7 +296,7 @@ async fn subscribe_receives_frames_in_order_and_from_passes_through() {
     let (_fake, c) = rig();
     let from = Some(Cursor(b"at-7\x00".to_vec()));
     let sub = c.subscribe(
-        &Origin("<local>".into()),
+        &Origin::named("<local>"),
         &Kind("three".into()),
         from.clone(),
         16,
@@ -326,7 +326,7 @@ async fn subscribe_receives_frames_in_order_and_from_passes_through() {
 async fn round_trip(c: &Client) {
     let got = c
         .call(
-            &Origin("<local>".into()),
+            &Origin::named("<local>"),
             &Op("echo".into()),
             Body(b"fence".to_vec()),
             budget(5_000),
@@ -339,7 +339,7 @@ async fn round_trip(c: &Client) {
 #[tokio::test]
 async fn credit_is_backpressure_not_loss() {
     let (fake, c) = rig();
-    let mut sub = c.subscribe(&Origin("<local>".into()), &Kind("endless".into()), None, 2);
+    let mut sub = c.subscribe(&Origin::named("<local>"), &Kind("endless".into()), None, 2);
     let mut seqs = Vec::new();
     for _ in 0..2 {
         match tokio::time::timeout(guard_core::wall::CEILING, sub.next()).await {
@@ -387,7 +387,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
     let t0 = Instant::now();
     let r = c
         .call(
-            &Origin("<local>".into()),
+            &Origin::named("<local>"),
             &Op("hang".into()),
             Body::default(),
             budget(300),
@@ -431,7 +431,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
     };
     let r = c
         .call(
-            &Origin("<local>".into()),
+            &Origin::named("<local>"),
             &Op("echo".into()),
             Body::default(),
             dead,
@@ -462,7 +462,7 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
         let c = c.clone();
         async move {
             c.call(
-                &Origin("<local>".into()),
+                &Origin::named("<local>"),
                 &Op("hang".into()),
                 Body::default(),
                 b,
@@ -498,7 +498,7 @@ async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not
     let server = tokio::spawn(router::serve(brd, bwr, Terms { frame: FRAME }, fake));
     let (ard, awr) = tokio::io::split(a);
     let c = Client::over(ard, awr, FRAME);
-    let mut sub = c.subscribe(&Origin("<local>".into()), &Kind("endless".into()), None, 1);
+    let mut sub = c.subscribe(&Origin::named("<local>"), &Kind("endless".into()), None, 1);
     assert!(matches!(
         tokio::time::timeout(guard_core::wall::CEILING, sub.next()).await,
         Ok(Some(Item::Frame { .. }))
@@ -507,7 +507,7 @@ async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not
         let c = c.clone();
         async move {
             c.call(
-                &Origin("<local>".into()),
+                &Origin::named("<local>"),
                 &Op("hang".into()),
                 Body::default(),
                 budget(10_000),
@@ -564,7 +564,7 @@ async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
     let prod = InboundBackends;
     let r = prod
         .call(
-            Origin("判据里不存在的机器·chan".into()),
+            Origin::named("判据里不存在的机器·chan"),
             Op("files-ls".into()),
             Body(b"{}".to_vec()),
             None,
@@ -584,7 +584,7 @@ async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
         })
     );
     let items: Vec<Item> = prod
-        .subscribe(Origin("<local>".into()), Kind("anything".into()), None)
+        .subscribe(Origin::named("<local>"), Kind("anything".into()), None)
         .collect()
         .await;
     assert_eq!(items.len(), 1, "生产订阅应当恰好一格就说完");
@@ -746,7 +746,7 @@ fn the_client_implements_the_05_signature() {
 #[tokio::test]
 async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
     let (fake, c) = rig();
-    let origin = Origin("<local>".into());
+    let origin = Origin::named("<local>");
     let got = c.offer(&origin, budget(5_000)).await.expect("问得到");
     assert_eq!(got, fake.offer(&origin));
     for (op, runs_on) in [(STUCK, true), ("stall", false)] {

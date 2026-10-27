@@ -38,7 +38,7 @@ impl FileWindow {
             ),
         };
         // 缺省机器：除开这一台的第一台远端（本机不在这张表里：落到本机是「下载」）；落点缺省那台上次选到的，没有就那台的主目录。
-        let here = self.source.origin().0;
+        let here = self.source.origin().to_string();
         let machine = self
             .machines
             .iter()
@@ -110,7 +110,7 @@ impl FileWindow {
             into: Some(format!("{}:{}", p.machine.trim(), p.dir)),
             machine: self.source.label(),
         };
-        let home = crate::source::Origin(crate::cross_copy::LOCAL_ORIGIN.to_string());
+        let home = crate::source::Origin::local();
         if !self.start_batch(plan, home, egui_phosphor::regular::ARROWS_LEFT_RIGHT, ctx) {
             return false;
         }
@@ -129,7 +129,7 @@ impl FileWindow {
         let machine = crate::cross_copy::origin_of(&p.machine);
         // 选择器跟着下拉那台走：换了机器（或刚打开）⇒ 去那台上次的落点 / 主目录。
         let pick = self.cross_pick_follow(ui, &machine);
-        let here = self.source.origin().0;
+        let here = self.source.origin().to_string();
         let machines: Vec<String> = self
             .machines
             .iter()

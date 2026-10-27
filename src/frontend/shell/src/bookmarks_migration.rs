@@ -68,13 +68,13 @@ pub(crate) fn after_ready(origin: crate::origin::Origin) {
     let Some(file) = crate::config::resolve_monitor_data_dir().map(|d| d.join(OLD_FILE)) else {
         return;
     };
-    let Some(dirs) = pending_at(&file, origin.as_wire_str()) else {
+    let Some(dirs) = pending_at(&file, &origin.to_string()) else {
         return;
     };
     tauri::async_runtime::spawn(async move {
         let deadline = crate::frame_query::Deadline::within(std::time::Duration::from_secs(10));
         let args = serde_json::json!({ "op": "add", "dirs": dirs });
-        let who = origin.as_wire_str().to_string();
+        let who = origin.to_string();
         match crate::frame_query::call(&origin, "bookmarks-edit", args, None, deadline).await {
             Ok(_) => match settled_at(&file, &who) {
                 Ok(()) => tracing::info!("书签迁移：[{who}] 的旧书签已交给那台后端"),

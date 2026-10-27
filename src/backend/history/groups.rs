@@ -330,10 +330,10 @@ codes! {
 
 /// 各台上一次答的那一半 ＋ 那一刻（毫秒）：缓存，只在本进程。
 #[derive(Default)]
-pub(crate) struct Kept(Mutex<BTreeMap<String, (GroupsHere, i64)>>);
+pub(crate) struct Kept(Mutex<BTreeMap<Machine, (GroupsHere, i64)>>);
 
 impl Kept {
-    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, (GroupsHere, i64)>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<Machine, (GroupsHere, i64)>> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -395,7 +395,7 @@ pub(crate) async fn read_here(tz: crate::common::time::Tz) -> Result<GroupsRead,
             })
     };
     read_with(
-        &[Machine(cmd_wire::LOCAL.into())],
+        &[Machine::named(cmd_wire::LOCAL)],
         local,
         &tz,
         None,
@@ -443,7 +443,7 @@ pub(crate) async fn read_with(
     {
         let mut k = kept.lock();
         for (origin, r) in got {
-            let key = origin.as_wire_str().to_string();
+            let key = origin.clone();
             let (half, read) = match r {
                 Ok(h) => {
                     k.insert(key, (h.clone(), now_ms));
@@ -863,7 +863,7 @@ pub(crate) async fn send_with(
     table: &crate::dial::remote_ask::Table,
     remote: &dyn Remote,
 ) -> Result<GroupsWritten, GroupsWriteErr> {
-    let here = vec![Machine(cmd_wire::LOCAL.into())];
+    let here = vec![Machine::named(cmd_wire::LOCAL)];
     let (machines, id, fwd) = match req {
         GroupsWriteReq::Rename { id, name, machines } => {
             let id = group_id(&id).map_err(write_err)?;
