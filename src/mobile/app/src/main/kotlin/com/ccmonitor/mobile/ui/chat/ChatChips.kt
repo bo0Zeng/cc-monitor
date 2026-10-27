@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryFacts
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
 import com.ccmonitor.mobile.core.claude.link.SessionModel
@@ -13,6 +12,7 @@ import com.ccmonitor.mobile.core.claude.link.face
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.FactsReply
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.ModeSwitchResult
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
@@ -135,7 +135,7 @@ internal class ChatChips(
         launch {
             combine(link.state, link.table, link.offline) { st, t, off -> Triple(st, t, off) }.collect { (st, t, off) ->
                 val (model, permission) =
-                    if (st is LinkState.Down) {
+                    if (st is LinkLine.Down) {
                         (off ?: copyText("sessionState.unseen.name")).let { it to it }
                     } else {
                         val can = t.face(s)?.can

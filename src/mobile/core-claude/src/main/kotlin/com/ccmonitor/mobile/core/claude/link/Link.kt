@@ -4,9 +4,12 @@ import com.ccmonitor.mobile.core.wire.gen.BatchAnswer
 import com.ccmonitor.mobile.core.wire.gen.BatchLine
 import com.ccmonitor.mobile.core.wire.gen.ClashRow
 import com.ccmonitor.mobile.core.wire.gen.Decide
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.MachineState
+import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,46 +21,35 @@ data class Said(
     val detail: String,
 )
 
-/** 一台的常驻流此刻通不通（核心判，手机照画）；那一句与修法取那台的状态成品（后端 `deploy::machine` 定）。 */
-sealed interface LinkState {
-    /** 部署那一趟走到哪（成品说正在问那台 · 正在装 · 正在更新）；没在装 ⇒ `null`。 */
-    val busy: Busy? get() = null
-
-    data object Connecting : LinkState
-
-    /** 通着。[notice] ＝ 通着但要人动手的那一句（那台旧了 · 较新）；[fixes] ＝ 成品给的修法。 */
-    data class Up(
-        val notice: Said? = null,
-        val fixes: List<MachineFixButton> = emptyList(),
-        override val busy: Busy? = null,
-    ) : LinkState
-
-    /** 断着：那一句 ＋ 成品给的修法。 */
-    data class Down(
-        val said: Said,
-        val fixes: List<MachineFixButton> = emptyList(),
-        override val busy: Busy? = null,
-    ) : LinkState
-}
-
 /** 正在装 / 更新那一句（成品写好的）；[bar] ⇒ 放字节那一段（屏上走一条进度条）。 */
 data class Busy(
     val text: String,
     val bar: Boolean,
 )
 
-/** 装一次会好的那一颗（［安装］/［更新］：手机这一侧做得了的只有这两种）；成品没给 ⇒ `null`。 */
-fun LinkState.deployFix(): MachineFixButton? {
-    val fixes =
-        when (this) {
-            is LinkState.Up -> fixes
-            is LinkState.Down -> fixes
-            LinkState.Connecting -> emptyList()
-        }
-    return fixes.firstOrNull { it.fix == MachineFix.INSTALL || it.fix == MachineFix.UPDATE }
+/*
+ * 一台此刻怎样就是核心交的那一行（契约里的 [LinkLine]：通没通 ＋ 那台的状态成品 [MachineState]，后端 `deploy::machine` 定）；
+ * 手机不另抄一份，下面几样只从成品里挑格。`null` ＝ 核心还没交过那一行（当正在连）。流自己在接（[LinkLine.Connecting]）时不另说。
+ */
+
+/** 部署那一趟走到哪（成品说正在问那台 · 正在装 · 正在更新）；没在装 ⇒ `null`。 */
+fun LinkLine?.busy(): Busy? {
+    val m = machineSaying() ?: return null
+    return when (m.state) {
+        MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> Busy(m.said, bar = true)
+        // 流还通着 / 断着、成品已在连 ⇒ 部署那一趟在问那台 · 在换常驻。
+        MachineStateKind.CONNECTING -> Busy(m.said, bar = false)
+        else -> null
+    }
 }
 
-/** 给一台装 / 更新后端这一趟的结局（话都是核心写好的；走到哪一步在成品里，见 [LinkState.busy]）。 */
+/** 装一次会好的那一颗（［安装］/［更新］：手机这一侧做得了的只有这两种）；成品没给 ⇒ `null`。 */
+fun LinkLine?.deployFix(): MachineFixButton? = machineSaying()?.fixes?.firstOrNull { it.fix == MachineFix.INSTALL || it.fix == MachineFix.UPDATE }
+
+/** 流通着或断着时那台的成品；正在连 · 还没交过 ⇒ `null`。 */
+private fun LinkLine?.machineSaying(): MachineState? = if (this is LinkLine.Up || this is LinkLine.Down) machine else null
+
+/** 给一台装 / 更新后端这一趟的结局（话都是核心写好的；走到哪一步在成品里，见 [busy]）。 */
 sealed interface Deploying {
     /** 做完了：那一句（装上了 · 已是这一版 · 那台不比这一版旧）。 */
     data class Done(
@@ -72,8 +64,8 @@ sealed interface Deploying {
 
 /** 一台的常驻流对外的那几样：会话簿 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */
 interface CoreLink {
-    /** 此刻通不通（核心判的）：断着 ⇒ 那台离线，屏上那几颗要连着那台的按钮都灰。 */
-    val state: StateFlow<LinkState>
+    /** 核心交的那一行（通没通 ＋ 那台的状态成品）：断着 ⇒ 屏上那几颗要连着那台的按钮都灰；核心还没交过 ⇒ `null`。 */
+    val state: StateFlow<LinkLine?>
 
     /** 那台离线那一句（那台状态成品里连接层写好的，出口照摆）；成品还没到 ⇒ `null`（未知不当离线）。 */
     val offline: StateFlow<String?>
@@ -164,7 +156,7 @@ interface CoreLink {
  * 一台的［重试］（会话列表问题条 · 文件页那一屏走这同一条）：流断着 ⇒ 整份重接（停在要人动手那一步的也重拨；
  * 接上了 [CoreLink.epoch] · [CoreLink.state] 跟着变，看着它的那一处重问）；通着 ⇒ [ask] 重问。
  */
-fun CoreLink.retry(ask: () -> Unit) = if (state.value is LinkState.Down) reconnect() else ask()
+fun CoreLink.retry(ask: () -> Unit) = if (state.value is LinkLine.Down) reconnect() else ask()
 
 /** 分块传哪一半（[CoreLink.transfer]）。 */
 sealed interface Transfer {
