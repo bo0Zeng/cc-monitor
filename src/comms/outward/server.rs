@@ -25,7 +25,7 @@ use super::door;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
-use super::upstream::{self, Base, Conn, Open};
+use super::upstream::{self, Base, Conn, Open, OpenFor};
 use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
 use std::io::{BufReader, Read, Write};
 use std::net::TcpStream;
@@ -201,9 +201,9 @@ pub struct Relay {
     downstream_deadline: std::time::Duration,
     /// 上游那条 socket 的读写期限。同上，由后端交下来。
     upstream_deadline: std::time::Duration,
-    /// 开上游那条 TCP 的那一口（主机 · 端口 · 期限 ⇒ 一条 TCP）。**由后端交下来**：后端交的是它的出网口
-    /// （直连或经代理，代理永远在最外层）；中转自己不开 TCP，也不知道这一跳经没经代理。
-    open: Arc<Open>,
+    /// 开上游那条 TCP 的那一口（这一发的来处 · 主机 · 端口 · 期限 ⇒ 一条 TCP）。**由后端交下来**：后端交的是它的出网口
+    /// （按那条会话的出网描述，没有 ⇒ 这台的；直连或经代理，代理永远在最外层）；中转自己不开 TCP，也不知道这一跳经没经代理。
+    open: Arc<OpenFor>,
 }
 
 impl Relay {
@@ -218,7 +218,7 @@ impl Relay {
         dest: Arc<dyn Destinations>,
         door: door::Keys,
         tee: TeeSink,
-        open: Arc<Open>,
+        open: Arc<OpenFor>,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
     ) -> Self {
@@ -539,7 +539,7 @@ fn send_upstream(
     rest: &str,
     body: &[u8],
     deadline: std::time::Duration,
-    open: &Open,
+    open: &Open<'_>,
 ) -> Answered {
     let mut up = match upstream::connect(base, deadline, open) {
         Ok(c) => c,
@@ -657,6 +657,9 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         body: &body,
         heads: &heads,
     };
+    // 开上游那一口带上这一发的来处（不透明，宿主按它取那条会话的出网描述）；被拒后重发也是同一发、同一个来处。
+    let token = r.origin.as_ref().map(|o| o.token.as_str());
+    let open = |h: &str, p: u16, d: std::time::Duration| (relay.open)(token, h, p, d);
     // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
     let mut tag = String::new();
     let mut answered: Option<Answered> = None;
@@ -667,7 +670,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             &r.rest,
             &body,
             relay.upstream_deadline,
-            &*relay.open,
+            &open,
             &mut tag,
         ));
     });
@@ -748,7 +751,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                     &r.rest,
                     &body,
                     relay.upstream_deadline,
-                    &*relay.open,
+                    &open,
                     &mut next_tag,
                 ));
             });
@@ -803,7 +806,7 @@ fn dispatch(
     rest: &str,
     body: &[u8],
     deadline: std::time::Duration,
-    open: &Open,
+    open: &Open<'_>,
     tag_out: &mut String,
 ) -> Answered {
     match d {

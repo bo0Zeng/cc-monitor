@@ -34,6 +34,11 @@ fn env(relay: plan::RelayAsk) -> Env {
 
 /// 起一次 claude（`--resume s1`，直路），计划交给接管那一下，继承来的环境由 `vars` 答。
 fn launch(relay: plan::RelayAsk, vars: &[(&str, &str)]) -> plan::Direct {
+    launch_taken(relay, vars).0
+}
+
+/// 同 [`launch`]，连同交回的那一份（这条会话要留的上游描述）。
+fn launch_taken(relay: plan::RelayAsk, vars: &[(&str, &str)]) -> (plan::Direct, Option<Taken>) {
     let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
     let crate::ccm_line::argv::Parsed::Opts(o) =
         crate::ccm_line::argv::parse(&crate::ccm_line::argv::tests::mixed_to_split(&a))
@@ -47,11 +52,49 @@ fn launch(relay: plan::RelayAsk, vars: &[(&str, &str)]) -> plan::Direct {
             .find(|(n, _)| *n == k)
             .map(|(_, v)| v.to_string())
     };
-    onto(&mut p, crate::agents::proxy_of("claude"), &get);
+    let taken = onto(&mut p, crate::agents::proxy_of("claude"), &get);
     let Plan::Direct(d) = p else {
         panic!("该是直路")
     };
-    d
+    (d, taken)
+}
+
+/// 交回的那一份：这一发的来处 ＋ 继承来的、这一家认的出网设置变量原样（不认的不带）；没设代理 · 不注入 ⇒ 不交回。
+#[test]
+fn the_session_part_is_this_launch_origin_and_the_inherited_proxy_variables() {
+    let (d, taken) = launch_taken(
+        ask,
+        &[
+            ("HTTPS_PROXY", "http://127.0.0.1:3128"),
+            ("NO_PROXY", "internal.example"),
+            ("ALL_PROXY", "http://127.0.0.1:9"),
+        ],
+    );
+    assert!(
+        d.relay
+            .as_deref()
+            .is_some_and(|u| u.ends_with("/~0123abcd")),
+        "{:?}",
+        d.relay
+    );
+    let t = taken.expect("设了代理、地址带来处 ⇒ 交回那一份");
+    assert_eq!(t.origin, "0123abcd");
+    assert_eq!(
+        t.egress,
+        vec![
+            (
+                "HTTPS_PROXY".to_string(),
+                "http://127.0.0.1:3128".to_string()
+            ),
+            ("NO_PROXY".to_string(), "internal.example".to_string()),
+        ]
+    );
+    assert!(launch_taken(ask, &[("NO_PROXY", "x")]).1.is_none());
+    assert!(
+        launch_taken(no_relay, &[("HTTPS_PROXY", "http://127.0.0.1:9")])
+            .1
+            .is_none()
+    );
 }
 
 fn value<'a>(d: &'a plan::Direct, k: &str) -> Option<&'a str> {

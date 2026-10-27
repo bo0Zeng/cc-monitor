@@ -77,6 +77,11 @@ fn no_tap() -> std::sync::Arc<dyn comms_outward::TapPort> {
     std::sync::Arc::new(Taps::default())
 }
 
+/// 没有哪条会话带着出网描述（中转开上游照这台的）。
+fn no_egress() -> crate::relay::EgressOf {
+    std::sync::Arc::new(|_| None)
+}
+
 /// 一次性目录（判据绝不碰用户真实的凭据文件）。
 fn tmpdir(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!(
@@ -168,6 +173,7 @@ fn a_process_that_was_not_handed_a_port_hosts_no_relay() {
             &rotating(&creds),
             no_tap(),
             &own_of(&creds),
+            no_egress(),
         );
         assert!(
             matches!(got, Hosted::NotAsked),
@@ -190,6 +196,7 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
         &rotating(&creds),
         no_tap(),
         &own_of(&creds),
+        no_egress(),
     );
     let Hosted::Listening(addr) = got else {
         panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
@@ -219,6 +226,7 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
         &rotating(&creds),
         no_tap(),
         &own_of(&creds),
+        no_egress(),
     );
     let Hosted::Listening(addr) = got else {
         panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
@@ -234,6 +242,7 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
         &rotating(&creds),
         no_tap(),
         &own_of(&creds),
+        no_egress(),
     );
     assert!(
         matches!(failed, Hosted::Failed(_)),
@@ -260,6 +269,7 @@ fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {
         &rotating(&creds),
         no_tap(),
         &own_of(&creds),
+        no_egress(),
     );
     match got {
         Hosted::Failed(why) => {
@@ -279,6 +289,7 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
             &rotating(&creds),
             no_tap(),
             &own_of(&creds),
+            no_egress(),
         );
         match got {
             Hosted::Failed(why) => assert!(why.contains(junk), "理由里要带那个原串：{why}"),
@@ -304,6 +315,7 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
         &rotating(&creds),
         no_tap(),
         &own_of(&creds),
+        no_egress(),
     );
     assert!(
         matches!(got, Hosted::Failed(_)),
@@ -540,6 +552,7 @@ fn hosted_with_tap(
         &rotating(&creds),
         tap,
         &own_of(&creds),
+        no_egress(),
     ) {
         Hosted::Listening(a) => a,
         other => panic!("交了端口 0 ⇒ 应在听，得 {other:?}"),

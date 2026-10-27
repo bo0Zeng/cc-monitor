@@ -122,6 +122,7 @@ fn prepare(
     startup: &dyn Startup,
     tee: TeeSink,
     own: &crate::platform::fs::Own,
+    egress_of: super::EgressOf,
 ) -> Result<(TcpListener, Arc<Relay>), String> {
     // 上游选择认不出时这里拿不到「为什么」：这一支只印一句 `[relay] bad upstream base url`（改那句要同拍改
     // `creds_guard::LOG_SITES`）；每一行账号的 `base_url` 为什么认不出，装表时已经印出去了。
@@ -184,7 +185,7 @@ fn prepare(
         dest,
         door,
         tee,
-        Arc::new(super::open_here),
+        super::open_for(egress_of),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     );
@@ -275,11 +276,13 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
 /// ② tee 落宿主交下来的 tap 口（[`TeeSink::to_port`]）：本进程的 stdout 在 stdio 载体上就是 wire，宿主把事件转成 `tap` 帧走它自己的有界通道；
 /// ③ 起不来不退出（见 [`Hosted`]）。
 /// `own`：写自家状态的句柄（启动时造的那一份）；钥匙经它读回或铸。
+/// `egress_of`：来处 ⇒ 那条会话的出网描述（宿主递进来；中转开上游那一口先问它，没有 ⇒ 这台的出网描述）。
 pub(crate) fn host(
     get: &dyn Fn(&str) -> Option<String>,
     startup: &dyn Startup,
     tap: std::sync::Arc<dyn comms_outward::TapPort>,
     own: &crate::platform::fs::Own,
+    egress_of: super::EgressOf,
 ) -> Hosted {
     let Some(raw) = get(ENV_PORT).filter(|s| !s.trim().is_empty()) else {
         return Hosted::NotAsked;
@@ -291,7 +294,8 @@ pub(crate) fn host(
             return Hosted::Failed(format!("{ENV_PORT}={raw:?} 不是端口号（{e}）"));
         }
     };
-    let (listener, relay) = match prepare(port, get, startup, TeeSink::to_port(tap), own) {
+    let (listener, relay) = match prepare(port, get, startup, TeeSink::to_port(tap), own, egress_of)
+    {
         Ok(x) => x,
         Err(why) => return Hosted::Failed(why),
     };
