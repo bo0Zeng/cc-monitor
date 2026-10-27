@@ -179,6 +179,33 @@ pub enum Entry {
     Backend(Vec<String>),
 }
 
+/// ccm 那一串是不是托管进程那一跳：`-- --host-run …`（只许紧跟打头的 `--`）。交回 `--host-run` 之后那一串。
+pub(crate) fn host_run_args(args: &[String]) -> Option<&[String]> {
+    (args.first().map(String::as_str) == Some(argv::flag::END)
+        && args.get(1).map(String::as_str) == Some(argv::flag::HOST_RUN))
+    .then(|| &args[2..])
+}
+
+/// 托管进程（`host/managed/run.rs`）：持伪终端直到子进程退出、收完尾；交回进程退出码。
+/// `ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完（同 [`attach_managed`]）。
+fn host_run(args: &[String], own: &crate::platform::fs::Own) -> i32 {
+    block_on(crate::host::managed::run::main(args, own))
+}
+
+/// 在入口那个运行时上跑完一段异步的（没有运行时 ⇒ 当场起一个单线程的）。
+fn block_on(f: impl std::future::Future<Output = i32>) -> i32 {
+    match tokio::runtime::Handle::try_current() {
+        Ok(h) => tokio::task::block_in_place(|| h.block_on(f)),
+        Err(_) => match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt.block_on(f),
+            Err(e) => die(&e.to_string()),
+        },
+    }
+}
+
 /// 分流：`argv0` 是这个进程被叫成的名字，`args` 是其后那一串。
 /// - 被叫成一段配置的名字（[`profile_called`]）⇒ ccm，前面补上 `@<名>`（参数一个都不进后端）；
 /// - 打头的 `--` 紧跟后端词（一次性子命令 / 流模式旗标）⇒ 后端（argv = `--` 之后那一串；
@@ -259,6 +286,10 @@ pub fn run(
     accounts: AccountsScan,
 ) -> i32 {
     use std::io::IsTerminal;
+    // 托管终端的托管进程那一跳（脱离起、没有终端）：不进起会话那一套。
+    if let Some(rest) = host_run_args(args) {
+        return host_run(rest, own);
+    }
     if refuses_without_terminal(
         args,
         std::io::stdin().is_terminal(),
@@ -637,12 +668,24 @@ fn die(msg: &str) -> i32 {
     2
 }
 
+/// 接上一个托管终端（瘦客户端）。`ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完。
+fn attach_managed(own: &crate::platform::fs::Own, id: &str) -> i32 {
+    block_on(crate::host::managed::attach::attach(own, id))
+}
+
 /// 真跑。
 /// `upstream` ＝ 这条会话要留的上游描述那一份（[`egress::onto`]；只直路有）。
 fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::fs::Own) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--ccm-print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
+        // `--attach <名|句柄>` 先在托管名单里认：认到 ⇒ 瘦客户端接上（`host/managed/attach.rs`）；认不到 ⇒ 照旧 `tmux attach`。
+        Plan::Attach { name } if crate::host::managed::home::find(own, name).is_some() => {
+            let id = crate::host::managed::home::find(own, name)
+                .map(|f| f.id)
+                .unwrap_or_default();
+            attach_managed(own, &id)
+        }
         Plan::Attach { .. } | Plan::Rejoin { .. } => {
             if let Plan::Rejoin { name, sid, .. } = &plan {
                 eprintln!(

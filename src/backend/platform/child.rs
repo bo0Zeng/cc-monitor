@@ -652,6 +652,13 @@ mod os {
                 libc::kill(-self.0, libc::SIGKILL);
             }
         }
+
+        /// 整组 SIGHUP（终端关了的那一下：程序自己收尾）。同 [`Group::kill`]，只在直接子进程还没被收尸时调。
+        pub(super) fn hangup(&self) {
+            unsafe {
+                libc::kill(-self.0, libc::SIGHUP);
+            }
+        }
     }
 
     /// 等直接子进程退出但**不收尸**（`WNOWAIT`）：收尸之前它的 pid 一直占着，杀组那一下不会误伤。
@@ -800,6 +807,11 @@ mod os {
                     TerminateProcess(self.process, 1);
                 },
             }
+        }
+
+        /// Windows 没有挂断信号：关伪终端那一下 ConPTY 自己通知里面；这里退成终止整组（A3-3-9 再细做）。
+        pub(super) fn hangup(&self) {
+            self.kill();
         }
     }
 
@@ -1000,45 +1012,7 @@ impl Child {
     /// 如 `claude mcp login`）。输出逐行交成 [`Heard::Out`]，只留人看得见的字（[`plain_line`]）；[`Conversation::say`] 以回车收尾。
     /// 环境与 [`Child::run`] 同一套（自有格 · 内部格照摘）；程序照交给它的 `PATH` 找。
     pub(crate) fn converse_in_terminal(self) -> Result<Conversation, ChildFail> {
-        let cmd = self.command();
-        let mut b = portable_pty::CommandBuilder::new(cmd.get_program());
-        b.args(cmd.get_args());
-        // 环境算全再交：继承的（`inherit_only` ⇒ 不继承）叠上 `command()` 里显式设 · 摘的那几格。
-        let mut env: std::collections::BTreeMap<OsString, OsString> = if self.inherit_only.is_some()
-        {
-            Default::default()
-        } else {
-            std::env::vars_os().collect()
-        };
-        for (k, v) in cmd.get_envs() {
-            match v {
-                Some(v) => env.insert(k.to_os_string(), v.to_os_string()),
-                None => env.remove(k),
-            };
-        }
-        b.env_clear();
-        for (k, v) in &env {
-            b.env(k, v);
-        }
-        if let Some(d) = cmd.get_current_dir() {
-            b.cwd(d);
-        }
-        let pair = portable_pty::native_pty_system()
-            .openpty(TERMINAL_SIZE)
-            .map_err(pty_fail)?;
-        let mut child = pair.slave.spawn_command(b).map_err(|e| {
-            // 找不到程序那一形照 `run` 那一套报（调用方据此说「没装」）。
-            let s = e.to_string();
-            if s.contains("does not exist") || s.contains("No such file") || s.contains("not found")
-            {
-                ChildFail::of_spawn(std::io::Error::from(std::io::ErrorKind::NotFound))
-            } else {
-                pty_fail(e)
-            }
-        })?;
-        // 我们这边那一端的从端要关掉：它退了之后主端才读得到头。
-        drop(pair.slave);
-        let master = pair.master;
+        let (master, mut child) = self.spawn_in_pty(TERMINAL_SIZE)?;
         let reader = master.try_clone_reader().map_err(pty_fail)?;
         let writer = master.take_writer().map_err(pty_fail)?;
         // Windows 上句柄占着进程，不用 pid 去等、去杀 ⇒ 只在 Unix 上取。
@@ -1091,6 +1065,168 @@ impl Child {
             heard: Some(rx),
             eol: b"\r",
         })
+    }
+
+    /// 托管终端那一形（`host/managed/run.rs`）：起在一个伪终端里、长寿、不读不判它说什么 —— 主端的读写原样交出去，
+    /// 改尺寸 · 挂断 · 等它退经 [`Terminal`] / [`TerminalChild`]。它是那个伪终端的会话首进程（伪终端库替它 `setsid`），
+    /// 组号 ＝ 它的 pid。环境同 [`Child::run`] 那一套。
+    pub(crate) fn in_terminal(
+        self,
+        rows: u16,
+        cols: u16,
+    ) -> Result<(Terminal, TerminalIo, TerminalChild), ChildFail> {
+        let size = portable_pty::PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let (master, mut child) = self.spawn_in_pty(size)?;
+        let reader = master.try_clone_reader().map_err(pty_fail)?;
+        let writer = master.take_writer().map_err(pty_fail)?;
+        let pid = child.process_id();
+        #[cfg(unix)]
+        let group = pid.filter(|&p| p > 0).map(os::Group::of_pid);
+        #[cfg(windows)]
+        let group = child.as_raw_handle().map(os::Group::tree_of_handle);
+        let Some(group) = group else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(pty_fail("no pid"));
+        };
+        let reaped = Arc::new(Mutex::new(false));
+        Ok((
+            Terminal {
+                master: Mutex::new(master),
+                group,
+                pid,
+                reaped: Arc::clone(&reaped),
+            },
+            TerminalIo { reader, writer },
+            TerminalChild { child, pid, reaped },
+        ))
+    }
+
+    /// 开一对伪终端、在从端起它；交回主端与子进程（我们这边的从端已关：它退了之后主端才读得到头）。
+    fn spawn_in_pty(&self, size: portable_pty::PtySize) -> Result<PtyPair, ChildFail> {
+        let cmd = self.command();
+        let mut b = portable_pty::CommandBuilder::new(cmd.get_program());
+        b.args(cmd.get_args());
+        // 环境算全再交：继承的（`inherit_only` ⇒ 不继承）叠上 `command()` 里显式设 · 摘的那几格。
+        let mut env: std::collections::BTreeMap<OsString, OsString> = if self.inherit_only.is_some()
+        {
+            Default::default()
+        } else {
+            std::env::vars_os().collect()
+        };
+        for (k, v) in cmd.get_envs() {
+            match v {
+                Some(v) => env.insert(k.to_os_string(), v.to_os_string()),
+                None => env.remove(k),
+            };
+        }
+        b.env_clear();
+        for (k, v) in &env {
+            b.env(k, v);
+        }
+        if let Some(d) = cmd.get_current_dir() {
+            b.cwd(d);
+        }
+        let pair = portable_pty::native_pty_system()
+            .openpty(size)
+            .map_err(pty_fail)?;
+        let child = pair.slave.spawn_command(b).map_err(|e| {
+            // 找不到程序那一形照 `run` 那一套报（调用方据此说「没装」）。
+            let s = e.to_string();
+            if s.contains("does not exist") || s.contains("No such file") || s.contains("not found")
+            {
+                ChildFail::of_spawn(std::io::Error::from(std::io::ErrorKind::NotFound))
+            } else {
+                pty_fail(e)
+            }
+        })?;
+        drop(pair.slave);
+        Ok((pair.master, child))
+    }
+}
+
+/// 开好的伪终端主端，连同在从端起的那个子进程。
+type PtyPair = (
+    Box<dyn portable_pty::MasterPty + Send>,
+    Box<dyn portable_pty::Child + Send + Sync>,
+);
+
+/// 托管终端的伪终端那一侧（[`Child::in_terminal`]）：改尺寸 · 挂断。
+pub(crate) struct Terminal {
+    master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
+    group: os::Group,
+    pid: Option<u32>,
+    reaped: Arc<Mutex<bool>>,
+}
+
+// SAFETY: Windows 那一臂的 `Group` 攥着两个内核句柄（裸指针），只读不改；用它的两样（终止 Job · 终止进程）系统许多线程同时调。
+// 主端在锁里。Unix 那一臂本来就是两个整数。
+unsafe impl Send for Terminal {}
+unsafe impl Sync for Terminal {}
+
+impl Terminal {
+    /// 子进程的 pid（Windows 上伪终端库给得出就有）。
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+
+    /// 改伪终端尺寸（里面的程序收到 SIGWINCH）。
+    pub(crate) fn resize(&self, rows: u16, cols: u16) -> std::io::Result<()> {
+        self.master
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .resize(portable_pty::PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    }
+
+    /// 给它那一组发 SIGHUP（终端关了）；已收尸 ⇒ 什么都不做（组号可能已不归它）。
+    pub(crate) fn hangup(&self) {
+        let r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
+        if !*r {
+            self.group.hangup();
+        }
+    }
+}
+
+/// 伪终端主端的读写：读 ＝ 里面的程序写出来的，写 ＝ 送进去的键。
+pub(crate) struct TerminalIo {
+    pub(crate) reader: Box<dyn Read + Send>,
+    pub(crate) writer: Box<dyn std::io::Write + Send>,
+}
+
+/// 等托管终端里的子进程退出。
+pub(crate) struct TerminalChild {
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    /// 等它退那一下按 pid 不收尸地等（只 Unix 用；Windows 上句柄占着进程）。
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pid: Option<u32>,
+    reaped: Arc<Mutex<bool>>,
+}
+
+impl TerminalChild {
+    /// 等它退（阻塞）：交回退出码（被信号杀的 ⇒ 伪终端库给的那个数）。
+    pub(crate) fn wait(mut self) -> Option<i32> {
+        #[cfg(unix)]
+        if let Some(pid) = self.pid {
+            os::exited_unreaped_pid(pid);
+        }
+        let mut r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
+        *r = true;
+        let status = self.child.wait();
+        drop(r);
+        status
+            .ok()
+            .map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))
     }
 }
 
