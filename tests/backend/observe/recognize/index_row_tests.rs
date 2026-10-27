@@ -220,10 +220,9 @@ fn the_t_doc_lists_exactly_the_skeleton_classes() {
     // 穷举：`RecordClass` 加一类不在这里补就编不过。
     fn every(c: RecordClass) -> bool {
         match c {
-            RecordClass::Said
-            | RecordClass::Reply
-            | RecordClass::Retry
-            | RecordClass::Title => true,
+            RecordClass::Said | RecordClass::Reply | RecordClass::Retry | RecordClass::Title => {
+                true
+            }
             RecordClass::Unread => false,
         }
     }
@@ -237,7 +236,13 @@ fn the_t_doc_lists_exactly_the_skeleton_classes() {
     let want: std::collections::BTreeSet<String> = all
         .into_iter()
         .filter(|c| every(*c))
-        .map(|c| serde_json::to_value(c).unwrap().as_str().unwrap().to_string())
+        .map(|c| {
+            serde_json::to_value(c)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
         .collect();
     let src = include_str!("../../../../src/backend/observe/recognize/index_row.rs");
     let line = src
@@ -256,5 +261,8 @@ fn the_t_doc_lists_exactly_the_skeleton_classes() {
         .map(str::to_string)
         .collect();
     assert!(!got.is_empty(), "值域一个词都没抽到 —— 下面的相等判不了");
-    assert_eq!(got, want, "`IndexRow.t` 说明里列的值域与 `RecordClass` 对不上");
+    assert_eq!(
+        got, want,
+        "`IndexRow.t` 说明里列的值域与 `RecordClass` 对不上"
+    );
 }
