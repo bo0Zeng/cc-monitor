@@ -915,25 +915,25 @@ pub(crate) fn status_text(s: RunState) -> Words {
 const DUR_SLOT: &str = "{dur}";
 
 /// 写好的一截：整句。
-fn said(key: &str, args: &[(&str, &str)]) -> RunLine {
+fn said(text: String) -> RunLine {
     RunLine {
-        text: Words(copy_text(key, args)),
+        text: Words(text),
         from: None,
     }
 }
 
-/// 写好的一截：从 `from` 起算的会走的钟（`{dur}` 是空位）；没有起点 ⇒ 按 0 写好整句。
-fn ticking(key: &str, args: &[(&str, &str)], from: Option<u64>) -> RunLine {
-    let zero = copy_core::short_duration(0);
-    let dur = if from.is_some() {
-        DUR_SLOT
-    } else {
-        zero.as_str()
-    };
-    let mut all: Vec<(&str, &str)> = args.to_vec();
-    all.push(("dur", dur));
+/// 会走的钟那一截 `{dur}` 填什么：有起点 ⇒ 空位（出口按此刻填）；没有 ⇒ 按 0 写好。
+fn dur_of(from: Option<u64>) -> String {
+    match from {
+        Some(_) => DUR_SLOT.to_string(),
+        None => copy_core::short_duration(0),
+    }
+}
+
+/// 写好的一截：从 `from` 起算的会走的钟（`text` 里带 [`dur_of`] 填的那一格）。
+fn ticking(text: String, from: Option<u64>) -> RunLine {
     RunLine {
-        text: Words(copy_text(key, &all)),
+        text: Words(text),
         from,
     }
 }
@@ -943,28 +943,35 @@ fn facts_of(i: &RunInfo, kids: usize) -> Vec<RunLine> {
     let mut out = Vec::new();
     let live = matches!(i.state, RunState::Running | RunState::Unknown);
     if i.state == RunState::Running && i.started_ms.is_some() {
-        out.push(ticking("agentWindow.facts.running", &[], i.started_ms));
+        let dur = dur_of(i.started_ms);
+        out.push(ticking(
+            copy_text("agentWindow.facts.running", &[("dur", &dur)]),
+            i.started_ms,
+        ));
     }
     if !live {
         if let (Some(a), Some(b)) = (i.started_ms, i.ended_ms) {
             let took = copy_core::short_duration(b.saturating_sub(a));
-            out.push(said("agentWindow.facts.took", &[("dur", &took)]));
+            out.push(said(copy_text("agentWindow.facts.took", &[("dur", &took)])));
         }
     }
     if live && i.active_ms.is_some() {
-        out.push(ticking("agentWindow.facts.active", &[], i.active_ms));
-    }
-    if i.calls > 0 {
-        out.push(said(
-            "agentWindow.facts.calls",
-            &[("n", &i.calls.to_string())],
+        let dur = dur_of(i.active_ms);
+        out.push(ticking(
+            copy_text("agentWindow.facts.active", &[("dur", &dur)]),
+            i.active_ms,
         ));
     }
+    if i.calls > 0 {
+        let n = i.calls.to_string();
+        out.push(said(copy_text("agentWindow.facts.calls", &[("n", &n)])));
+    }
     if kids > 0 {
-        out.push(said("agentWindow.facts.kids", &[("n", &kids.to_string())]));
+        let n = kids.to_string();
+        out.push(said(copy_text("agentWindow.facts.kids", &[("n", &n)])));
     }
     if i.background {
-        out.push(said("agentWindow.facts.background", &[]));
+        out.push(said(copy_text("agentWindow.facts.background", &[])));
     }
     out
 }
@@ -975,24 +982,31 @@ fn explain_of(i: &RunInfo) -> Option<RunExplain> {
         line,
         ..RunExplain::default()
     };
+    let dur = dur_of(i.active_ms);
     Some(match i.state {
         RunState::Running => {
             let tool = i.waiting.as_deref()?;
             RunExplain {
-                line: ticking("agentWindow.why.waiting", &[("tool", tool)], i.active_ms),
+                line: ticking(
+                    copy_text("agentWindow.why.waiting", &[("tool", tool), ("dur", &dur)]),
+                    i.active_ms,
+                ),
                 note: Some(Words(copy_text("agentWindow.why.waitingNote", &[]))),
                 ..RunExplain::default()
             }
         }
-        RunState::Done => plain(said("agentWindow.why.done", &[])),
-        RunState::Failed => plain(said("agentWindow.why.failed", &[])),
-        RunState::Stopped => plain(said("agentWindow.why.stopped", &[])),
+        RunState::Done => plain(said(copy_text("agentWindow.why.done", &[]))),
+        RunState::Failed => plain(said(copy_text("agentWindow.why.failed", &[]))),
+        RunState::Stopped => plain(said(copy_text("agentWindow.why.stopped", &[]))),
         RunState::Unknown => RunExplain {
             lead: Some(status_text(i.state)),
             line: if i.why == Some(RunWhy::Orphaned) {
-                said("agentWindow.why.orphaned", &[])
+                said(copy_text("agentWindow.why.orphaned", &[]))
             } else {
-                ticking("agentWindow.why.quiet", &[], i.active_ms)
+                ticking(
+                    copy_text("agentWindow.why.quiet", &[("dur", &dur)]),
+                    i.active_ms,
+                )
             },
             note: None,
             refresh: true,
@@ -1004,13 +1018,19 @@ fn explain_of(i: &RunInfo) -> Option<RunExplain> {
 fn end_of(i: &RunInfo) -> Option<RunEndLine> {
     let sub = match i.state {
         RunState::Running => return None,
-        RunState::Done => said("agentWindow.end.done", &[]),
-        RunState::Failed => said("agentWindow.end.failed", &[]),
-        RunState::Stopped => said("agentWindow.end.stopped", &[]),
+        RunState::Done => said(copy_text("agentWindow.end.done", &[])),
+        RunState::Failed => said(copy_text("agentWindow.end.failed", &[])),
+        RunState::Stopped => said(copy_text("agentWindow.end.stopped", &[])),
         RunState::Unknown if i.why == Some(RunWhy::Orphaned) => {
-            said("agentWindow.end.orphaned", &[])
+            said(copy_text("agentWindow.end.orphaned", &[]))
         }
-        RunState::Unknown => ticking("agentWindow.end.quiet", &[], i.active_ms),
+        RunState::Unknown => {
+            let dur = dur_of(i.active_ms);
+            ticking(
+                copy_text("agentWindow.end.quiet", &[("dur", &dur)]),
+                i.active_ms,
+            )
+        }
     };
     Some(RunEndLine {
         head: status_text(i.state),

@@ -531,27 +531,27 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     background: true,
                     facts: vec![
                         RunLine {
-                            text: w("用时 {dur}"),
+                            text: w("核心·用时 {dur}"),
                             from: Some(1_000),
                         },
                         RunLine {
-                            text: w("工具 ×7"),
+                            text: w("核心·工具 ×7"),
                             from: None,
                         },
                     ],
                     explain: Some(RunExplain {
                         lead: Some(w("核心·不明")),
                         line: RunLine {
-                            text: w("失败"),
+                            text: w("核心·失败说明"),
                             from: None,
                         },
-                        note: Some(w("补一句")),
+                        note: Some(w("核心·补一句")),
                         refresh: true,
                     }),
                     end: Some(RunEndLine {
                         head: w("核心·失败"),
                         sub: RunLine {
-                            text: w("记录 {dur} 无更新"),
+                            text: w("核心·记录 {dur}"),
                             from: Some(2_000),
                         },
                     }),
@@ -572,7 +572,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     recent: vec![s("a1")],
                     older: vec![s("a2")],
                 },
-                summary: Some(w("agent 1")),
+                summary: Some(w("核心·agent 1")),
             }),
             Frame::SessionRuns(crate::wire::SessionRuns {
                 sid: s("s1"),
