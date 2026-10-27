@@ -49,7 +49,12 @@ impl typed::Handle for SessionQueuePutCmd {
             let r = req.clone();
             route::<Self, _>(
                 &req,
-                move || q::put(&own, &r, crate::common::time::now_ms()),
+                move || {
+                    let put = q::put(&own, &r, crate::common::time::now_ms());
+                    // 投进来了 ⇒ 叫一声这台的投递线程（这一个进程没起它 ⇒ 不做什么，常驻那一份由队目录动了那一声叫醒）。
+                    super::session_queue_deliver::kick();
+                    put
+                },
                 SessionQueuePutErr::ALL,
                 &cx.tz,
                 cx.until,
