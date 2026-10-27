@@ -40,11 +40,20 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
             codes(&term, "terminal-preview"),
             None,
         ),
-        // 信封的码不在跨语言金样里（界面不发信）：取命令自己的码表。
+        // 发信与推已读位置的码不在跨语言金样里（界面不发信、不读走信）：取命令自己的码表。
         (
-            "bus-envelope",
-            Box::new(cc_bus_wire::envelope_said),
-            <cc_bus_wire::BusEnvelopeErr as crate::wire::typed::Codes>::ALL
+            "bus-send",
+            Box::new(cc_bus_wire::send_said),
+            <cc_bus_wire::BusSendErr as crate::wire::typed::Codes>::ALL
+                .iter()
+                .map(|c| c.to_string())
+                .collect(),
+            None,
+        ),
+        (
+            "bus-commit",
+            Box::new(cc_bus_wire::commit_said),
+            <cc_bus_wire::BusCommitErr as crate::wire::typed::Codes>::ALL
                 .iter()
                 .map(|c| c.to_string())
                 .collect(),

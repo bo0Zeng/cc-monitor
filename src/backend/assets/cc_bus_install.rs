@@ -29,26 +29,10 @@ pub(crate) const NAME: &str = "cc-bus";
 /// ⚠ 加文件要同时加到这里 —— 判据 `the_embedded_file_list_matches_the_repo` 会对拍，少一个当场红。
 const FILES: &[(&str, &[u8])] = &[
     ("SKILL.md", include_bytes!("../../shared/cc-bus/SKILL.md")),
-    (
-        "examples/config",
-        include_bytes!("../../shared/cc-bus/examples/config"),
-    ),
     // 唯一的入口（PATH 上只有它）；各动词的本体是同目录的 `cc-bus-<动词>.sh`。
     (
         "scripts/cc-bus",
         include_bytes!("../../shared/cc-bus/scripts/cc-bus"),
-    ),
-    (
-        "scripts/cc-bus-adapt.sh",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt.sh"),
-    ),
-    (
-        "scripts/cc-bus-adapt-posix.sh",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt-posix.sh"),
-    ),
-    (
-        "scripts/cc-bus-adapt-windows.sh",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt-windows.sh"),
     ),
     (
         "scripts/cc-bus-agent-claude.sh",

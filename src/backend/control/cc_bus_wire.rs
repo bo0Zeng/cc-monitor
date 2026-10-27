@@ -1,6 +1,6 @@
-//! cc-bus 那三条帧命令的形状：入参 · 回包 · 码表 · 怎么跑。
-//! 读的两条（`bus-list` · `bus-inbox`）本体在 [`super::cc_bus`]（转调 cc-bus 的脚本、读它的输出）；
-//! 信封那一条（`bus-envelope`）本体在 [`super::cc_bus_envelope`]（唯一一处校验，纯函数，不起进程）。
+//! cc-bus 那几条帧命令的形状：入参 · 回包 · 码表 · 怎么跑。
+//! 发信一条（`bus-send`）：核信封（[`super::cc_bus_envelope`]，纯函数）→ 范围（[`super::cc_bus_scope`]）→ 规矩与落盘（[`super::cc_bus::store`]）。
+//! 读的几条（`bus-list` · `bus-inbox` · `bus-peek` · `bus-unread`）与推已读位置那一条（`bus-commit`）本体在 [`super::cc_bus`]。
 
 use super::{cc_bus, cc_bus_envelope};
 use crate::wire::spec::Fail;
@@ -15,28 +15,33 @@ fn of<E: Codes>(
     move |pair| typed::of_fail_said(Fail::from(pair), fallback, |c| Some(said(c)))
 }
 
-/// 查在线（`bus-list`）被拒成 `code` 时给人看的那一句。
-pub(crate) fn list_said(code: &str) -> String {
-    match code {
-        "not_installed" => copy_text("ccBus.online.notInstalled", &[]),
-        "child_timed_out" => copy_text("ccBus.online.timedOut", &[]),
-        _ => copy_text("ccBus.online.otherCode", &[]),
-    }
+/// 查在线（`bus-list`）被拒成 `code` 时给人看的那一句（只剩读不成那一种）。
+pub(crate) fn list_said(_code: &str) -> String {
+    copy_text("ccBus.online.otherCode", &[])
 }
 
-/// 读收件箱（`bus-inbox`）被拒成 `code` 时给人看的那一句。
+/// 读收件箱（`bus-inbox` · `bus-peek` · `bus-unread`）被拒成 `code` 时给人看的那一句。
 pub(crate) fn read_said(code: &str) -> String {
     match code {
-        "not_installed" => copy_text("ccBus.read.notInstalled", &[]),
-        "child_timed_out" => copy_text("ccBus.read.timedOut", &[]),
         "bad_id" => copy_text("ccBus.read.badId", &[]),
         _ => copy_text("ccBus.read.otherCode", &[]),
     }
 }
 
-/// 信封（`bus-envelope`）被拒成 `code` 时给发信的 agent 看的那一句（`cc-bus send` 原样印到 stderr）。
+/// 推已读位置（`bus-commit`）被拒成 `code` 时的那一句（`cc-bus commit` · Stop 钩子照码分退出码，那一句印到 stderr）。
+pub(crate) fn commit_said(code: &str) -> String {
+    match code {
+        "stale" => copy_text("beCcBus.commit.stale", &[]),
+        "changed" => copy_text("beCcBus.commit.changed", &[]),
+        "bad_token" => copy_text("beCcBus.commit.badToken", &[]),
+        "io_failed" => copy_text("beCcBus.store.failed", &[]),
+        other => read_said(other),
+    }
+}
+
+/// 发信（`bus-send`）被拒成 `code` 时给发信的 agent 看的那一句（`cc-bus send` 原样印到 stderr）。
 /// 哪一格、什么值进原话（复制详情），不进这一句。
-pub(crate) fn envelope_said(code: &str) -> String {
+pub(crate) fn send_said(code: &str) -> String {
     match code {
         "bad_from" => copy_text("beCcBus.envelope.badFrom", &[]),
         "bad_to" => copy_text("beCcBus.envelope.badTo", &[]),
@@ -48,6 +53,9 @@ pub(crate) fn envelope_said(code: &str) -> String {
         "too_long" => copy_text("beCcBus.envelope.tooLong", &[]),
         "not_same_group" => copy_text("beCcBus.envelope.notSameGroup", &[]),
         "no_roster" => copy_text("beCcBus.envelope.noRoster", &[]),
+        "duplicate" => copy_text("beCcBus.envelope.duplicate", &[]),
+        "throttled" => copy_text("beCcBus.envelope.throttled", &[]),
+        "io_failed" => copy_text("beCcBus.store.failed", &[]),
         _ => copy_text("beCcBus.envelope.badArgs", &[]),
     }
 }
@@ -76,7 +84,7 @@ pub(crate) struct BusList {
     pub(crate) agents: Vec<BusAgent>,
 }
 
-/// 一封信（规范信封）：`bus-envelope` 盖出来、`cc-bus send` 原样写进收件箱的那一行，`bus-inbox` 读回的也是它。
+/// 一封信（规范信封）：`bus-send` 盖出来、原样写进收件箱的那一行，`bus-inbox` 读回的也是它。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -147,7 +155,7 @@ pub(crate) struct BusInbox {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BusInboxReq {
-    /// 交给 `cc-bus log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+    /// 先过形状判定，不过 ⇒ `bad_id`。
     pub(crate) id: String,
     /// 1..=2000，缺 ⇒ 200。
     #[serde(default)]
@@ -155,7 +163,7 @@ pub(crate) struct BusInboxReq {
     pub(crate) lines: Option<u64>,
 }
 
-/// `bus-envelope` 的入参：发信人要发的那一封（`cc-bus send` 组好交来）。各格的规矩在 [`cc_bus_envelope`]。
+/// `bus-send` 的入参：发信人要发的那一封（`cc-bus send` 组好交来）。各格的规矩在 [`cc_bus_envelope`]。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -187,28 +195,114 @@ pub(crate) struct BusEnvelopeReq {
     pub(crate) text: Option<String>,
 }
 
+/// `bus-send` 的应答：收进收件箱的那一封 ＋ 要不要敲门（tier 1 且这条会话去抖窗里没敲过）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BusSent {
+    pub(crate) envelope: BusEnvelope,
+    pub(crate) knock: bool,
+}
+
+/// `bus-peek` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BusPeekReq {
+    /// 会话 id（先过形状判定）。
+    pub(crate) id: String,
+    /// 这一段最多几封（分段排空积压）；缺 ⇒ 不分段。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "number"))]
+    pub(crate) max_lines: Option<u64>,
+}
+
+/// `bus-peek` 的应答：给 agent 读的那一段 ＋ 令牌（交给 `bus-commit`）。没有新的 ⇒ 正文空、令牌 `null`。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BusPeeked {
+    pub(crate) text: String,
+    pub(crate) token: Option<String>,
+    /// 这一段几封。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) count: u64,
+    /// 读不懂、跳过的几行（它们不会再出现）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) skipped: u64,
+}
+
+/// `bus-commit` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BusCommitReq {
+    pub(crate) id: String,
+    /// `bus-peek` 给的令牌。
+    pub(crate) token: String,
+}
+
+/// `bus-commit` 的应答：已读位置推到了第几行。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BusCommitted {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) read: u64,
+}
+
+/// `bus-unread` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BusUnreadReq {
+    pub(crate) id: String,
+}
+
+/// `bus-unread` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BusUnread {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) unread: u64,
+}
+
 typed::codes! {
     /// `bus-list` 的码。
     pub(crate) enum BusReadErr {
-        NotInstalled = "not_installed",
-        ChildTimedOut = "child_timed_out",
         Failed = "failed",
     }
 }
 
 typed::codes! {
-    /// `bus-inbox` 的码。
+    /// `bus-inbox` · `bus-peek` · `bus-unread` 的码。
     pub(crate) enum BusIdErr {
         BadId = "bad_id",
-        NotInstalled = "not_installed",
-        ChildTimedOut = "child_timed_out",
         Failed = "failed",
     }
 }
 
 typed::codes! {
-    /// `bus-envelope` 的码：每条校验一个码（次序即校验次序）。`act` 是类型，写错在解入参时就是 `bad_args`。
-    pub(crate) enum BusEnvelopeErr {
+    /// `bus-commit` 的码。
+    pub(crate) enum BusCommitErr {
+        BadId = "bad_id",
+        /// 令牌坏了（不是 `bus-peek` 给的那一形 · 自相矛盾）。
+        BadToken = "bad_token",
+        /// 盘上的已读位置不是令牌的 from：别人推过了（手上那段照常处理，不重试）。
+        Stale = "stale",
+        /// 令牌末行那一行在两跳之间变了：不推。
+        Changed = "changed",
+        IoFailed = "io_failed",
+    }
+}
+
+typed::codes! {
+    /// `bus-send` 的码：每条校验一个码（次序即校验次序）。`act` 是类型，写错在解入参时就是 `bad_args`。
+    pub(crate) enum BusSendErr {
         BadFrom = "bad_from",
         BadTo = "bad_to",
         BadTier = "bad_tier",
@@ -221,10 +315,16 @@ typed::codes! {
         NotSameGroup = "not_same_group",
         /// 问不到组员名单（不退回成全放行）。
         NoRoster = "no_roster",
+        /// 去重窗里同一封已经投过（`cc_bus::rules`）。
+        Duplicate = "duplicate",
+        /// 这一对或这台超了限流（`cc_bus::rules`）。
+        Throttled = "throttled",
+        /// 收件箱或状态文件读写不成（读不出来的不覆盖）。
+        IoFailed = "io_failed",
     }
 }
 
-/// `bus-list`：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少（起子进程并等它退出 ⇒ 阻塞档，下同）。
+/// `bus-list`：各收件箱 ＋ 叫它什么 · 在不在 ＋ 待读多少。
 /// 它的 Handle 住帧面宿主（`faces/mod.rs`）：在不在问观测层那一处，control 不引用 observe。
 pub(crate) struct BusListCmd;
 impl Command for BusListCmd {
@@ -235,12 +335,12 @@ impl Command for BusListCmd {
     type Err = BusReadErr;
 }
 
-/// `bus-list` 的本体：名单问 cc-bus，每条会话的那两样问 `seen`；码表照这一条的换。
+/// `bus-list` 的本体：名单读收件箱那一处，每条会话的那两样问 `seen`；码表照这一条的换。
 pub(crate) fn bus_list(seen: &dyn Fn(&str) -> cc_bus::Seen) -> Result<BusList, BusReadErr> {
     cc_bus::list_for_inbound(seen).map_err(of(BusReadErr::Failed, list_said))
 }
 
-/// `bus-inbox`：只读看一个 agent 收件箱的尾巴。
+/// `bus-inbox`：只读看一个收件箱的尾巴。
 pub(crate) struct BusInboxCmd;
 impl Command for BusInboxCmd {
     const NAME: &'static str = "bus-inbox";
@@ -258,31 +358,95 @@ impl crate::wire::typed::Handle for BusInboxCmd {
     }
 }
 
-/// `bus-envelope`：核一封信、判范围（组，`cc_bus_scope`）、盖上 id 与时间。各格的校验是纯函数；范围那一步读组名单（问常驻 · 读这台）。
-pub(crate) struct BusEnvelopeCmd;
-impl Command for BusEnvelopeCmd {
-    const NAME: &'static str = "bus-envelope";
-    type Req = BusEnvelopeReq;
-    type Reply = BusEnvelope;
-    type Err = BusEnvelopeErr;
+/// `bus-peek`：两阶段读的第一跳（纯读）。
+pub(crate) struct BusPeekCmd;
+impl Command for BusPeekCmd {
+    const NAME: &'static str = "bus-peek";
+    type Req = BusPeekReq;
+    type Reply = BusPeeked;
+    type Err = BusIdErr;
 }
-impl crate::wire::typed::Handle for BusEnvelopeCmd {
+impl crate::wire::typed::Handle for BusPeekCmd {
     type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusPeekReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusPeeked, BusIdErr>> + Send + 'static {
+        async move { cc_bus::peek_for_inbound(&req).map_err(of(BusIdErr::Failed, read_said)) }
+    }
+}
+
+/// `bus-commit`：两阶段读的第二跳（锁里推已读位置）。
+pub(crate) struct BusCommitCmd;
+impl Command for BusCommitCmd {
+    const NAME: &'static str = "bus-commit";
+    type Req = BusCommitReq;
+    type Reply = BusCommitted;
+    type Err = BusCommitErr;
+}
+impl crate::wire::typed::Handle for BusCommitCmd {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: BusCommitReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusCommitted, BusCommitErr>> + Send + 'static
+    {
+        let (_cx, own) = cx.split();
+        async move {
+            cc_bus::commit_for_inbound(&own, &req).map_err(of(BusCommitErr::IoFailed, commit_said))
+        }
+    }
+}
+
+/// `bus-unread`：未读几封（只读）。
+pub(crate) struct BusUnreadCmd;
+impl Command for BusUnreadCmd {
+    const NAME: &'static str = "bus-unread";
+    type Req = BusUnreadReq;
+    type Reply = BusUnread;
+    type Err = BusIdErr;
+}
+impl crate::wire::typed::Handle for BusUnreadCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusUnreadReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusUnread, BusIdErr>> + Send + 'static {
+        async move { cc_bus::unread_for_inbound(&req).map_err(of(BusIdErr::Failed, read_said)) }
+    }
+}
+
+/// `bus-send`：核信封 · 判范围（组，`cc_bus_scope`）· 盖上 id 与时间 · 照规矩收进收件人的收件箱，回那一封与敲不敲。
+pub(crate) struct BusSendCmd;
+impl Command for BusSendCmd {
+    const NAME: &'static str = "bus-send";
+    type Req = BusEnvelopeReq;
+    type Reply = BusSent;
+    type Err = BusSendErr;
+}
+impl crate::wire::typed::Handle for BusSendCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: BusEnvelopeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<BusEnvelope, BusEnvelopeErr>> + Send + 'static
-    {
+    ) -> impl std::future::Future<Output = Result<BusSent, BusSendErr>> + Send + 'static {
+        let (cx, own) = cx.split();
         let tz = cx.tz.clone();
         async move {
             let refused = |(c, raw): cc_bus_envelope::Refusal| {
-                of(BusEnvelopeErr::BadArgs, envelope_said)((c.to_string(), raw))
+                tracing::info!("cc-bus send refused: {c} {raw}");
+                of(BusSendErr::BadArgs, send_said)((c.to_string(), raw))
             };
             let env = cc_bus_envelope::envelope_now(&req).map_err(refused)?;
             let roster = super::cc_bus_scope::groups_now(tz).await;
             super::cc_bus_scope::scope(&env.from, &env.to, roster.as_ref().map_err(String::as_str))
                 .map_err(refused)?;
-            Ok(env)
+            let knock = cc_bus::store::deliver(&own, &env, crate::common::time::now_ms())
+                .map_err(refused)?;
+            Ok(BusSent {
+                envelope: env,
+                knock,
+            })
         }
     }
 }

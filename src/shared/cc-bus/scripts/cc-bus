@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # cc-bus <动词> [参数…] —— cc-bus 唯一的入口(PATH 上只有它)。
-#   每个动词的本体是同目录的 `cc-bus-<动词>.sh`(被这里调,不进 PATH);`recv` 就是这里把 peek 接上 commit,不另写渲染。
+#   每个动词的本体是同目录的 `cc-bus-<动词>.sh`(被这里调,不进 PATH),每一条只是把一句交给 cc-monitor 后端;
+#   `recv` 就是这里把 peek 接上 commit,不另写渲染。
 #   退出码照各动词;不认识的动词 · 没给动词 ⇒ 2。
 set -uo pipefail
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -12,7 +13,7 @@ usage() {
   recv      [<会话 id>]                          读新消息并推进已读位置(= peek 接 commit)
   peek      [<会话 id>] [--max-lines N] [--token-file <路径>]   纯读,令牌走 stderr 或那份文件
   commit    <会话 id> <令牌>                     确认,推进已读位置
-  list      [--tsv]                              各收件箱:会话 id · 在不在 · 待读 · 标题
+  list                                           各收件箱:会话 id · 在不在 · 待读 · 标题
   whoami                                         这是哪条会话(问 cc-monitor)
   unread    [<会话 id>]                          未读几条(只读)
   log       <会话 id> [-n N]                     只读看收件箱尾巴
@@ -26,10 +27,6 @@ case "$verb" in
   send|peek|commit|list|whoami|unread|log|stop-hook)
     exec "$SELFDIR/cc-bus-$verb.sh" "$@" ;;
   recv)
-    BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
-    # shellcheck source=cc-bus-lib.sh
-    . "$SELFDIR/cc-bus-lib.sh" || exit 13
-    ccbus_migrate_once || true            # 旧收件箱迁一次(迁过就是一次 stat)
     [ $# -le 1 ] || { echo "cc-bus recv: 多给了参数" >&2; exit 2; }
     id="${1:-}"
     [ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh") || exit 1
