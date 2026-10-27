@@ -1288,7 +1288,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
             })?;
             // 链接 ⇒ 记下它的目标文本（原样，不跟进去）；平台建不了链接时照旧整趟拒。
             let link_to = match kind {
-                Err("link") if super::files_extract::LINKS_SUPPORTED => {
+                Err("link") if super::files_extract::links_supported() => {
                     Some(Ro::read_link(&at).map_err(|e| {
                         WriteRefusal::io(
                             copy_text(

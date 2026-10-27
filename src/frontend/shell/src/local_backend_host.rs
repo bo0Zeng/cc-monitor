@@ -148,8 +148,8 @@ pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 /// 在听的那一位的 pid：连它的套接字、内核报的对端（不靠盘上的记录）。问不到 ⇒ 0（不知道）。
 fn listener_pid(sock: &std::path::Path) -> u32 {
     own_chan::connect_blocking(sock)
-        .and_then(|s| s.peer())
-        .map_or(0, |(_, pid)| pid)
+        .and_then(|s| s.peer_pid())
+        .unwrap_or(0)
 }
 
 /// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
@@ -573,9 +573,9 @@ pub fn is_detached() -> bool {
 
 /// 这台机今天走不走脱离那条路。**纯函数**，两个入参都是外面喂进来的 ——
 /// 否则「关掉了」那一支在 Linux 上永远走不到（`KPY5` 要的负例就没了）。
-pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool {
+pub(crate) fn detach_wanted(can_detach: bool, no_detach_env: Option<&str>) -> bool {
     // 空串按「没设」算：shell 里 `export CCM_NO_DETACH=` 是常态。
-    is_linux && !no_detach_env.is_some_and(|v| !v.trim().is_empty())
+    can_detach && !no_detach_env.is_some_and(|v| !v.trim().is_empty())
 }
 
 /// 收尸。**由「流断了」这个事件触发，不是轮询。**
@@ -1778,3 +1778,7 @@ pub(crate) fn local_backend(channel: bool, mine: Option<&str>) -> LocalBackend {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/local_backend_host_tests.rs"]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/own_chan_any_os_tests.rs"]
+mod own_chan_any_os_tests;

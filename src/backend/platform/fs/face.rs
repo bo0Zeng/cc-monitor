@@ -277,6 +277,24 @@ impl Face {
         at::symlink(target.as_os_str(), &at.dir, &at.name)
     }
 
+    /// Windows：目标此刻是目录 ⇒ 建目录那一种链接
+    /// （相对的目标按链接所在那一层解）。建不了（没开开发者模式、又没有建链接的特权）⇒ 系统那一句原样回。
+    #[cfg(windows)]
+    pub(crate) fn make_link(&self, target: &Path, at: &Resolved) -> io::Result<()> {
+        let seen = match at.path.parent() {
+            Some(base) if target.is_relative() => base.join(target),
+            _ => target.to_path_buf(),
+        };
+        let dir = super::Ro::metadata(&seen).is_ok_and(|m| m.is_dir());
+        super::imp::symlink(target, &at.path, dir)
+    }
+
+    /// 别的平台：没有这件原语。
+    #[cfg(not(any(unix, windows)))]
+    pub(crate) fn make_link(&self, _target: &Path, _at: &Resolved) -> io::Result<()> {
+        Err(io::Error::from(io::ErrorKind::Unsupported))
+    }
+
     /// 把 `at` 那一份文件落盘（不跟链接；暂存件改名上位之前）。
     pub(crate) fn sync(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
