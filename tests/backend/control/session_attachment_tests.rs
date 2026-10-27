@@ -40,8 +40,8 @@ fn stage(home: &Path, key: &str, bytes: &[u8]) {
     .expect("摆暂存件");
 }
 
-fn req(name: &str, body: &[u8]) -> SessionAttachCommitReq {
-    SessionAttachCommitReq {
+fn req(name: &str, body: &[u8]) -> SessionAttachmentCommitReq {
+    SessionAttachmentCommitReq {
         sid: cmd_wire::Sid::try_from("0b3f9a52-1111-4222-8333-444455556666".to_string())
             .expect("合形的 sid"),
         key: KEY.to_string(),

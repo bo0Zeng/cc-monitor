@@ -485,9 +485,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-commands",
     "--session-model",
-    "--session-attach-check",
-    "--session-attach-commit",
-    "--session-attach-drop",
+    "--session-attachment-check",
+    "--session-attachment-commit",
+    "--session-attachment-drop",
     "--session-permission",
     // 会话输入队那三条（`session-queue-*`）派生的 CLI 面：手机与别的后端从这一面问。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-queue-cancel",

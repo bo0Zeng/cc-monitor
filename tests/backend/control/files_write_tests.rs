@@ -95,21 +95,26 @@ pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-commit-text" => one::<w::FilesCommitTextReq>(args),
         "files-commit-upload" => one::<w::FilesCommitUploadReq>(args),
         // 聊天附件那两条：工作目录由命令那一层按会话读；这里只问「形状不对 ⇒ 落在哪个码」，工作目录给空的（读不出 ⇒ `no_session`）。
-        "session-attach-commit" => via(args, |r: cmd_wire::attachment::SessionAttachCommitReq| {
-            crate::control::files_commit::session_attachment::commit_here(
-                &Face::issue(),
-                std::path::Path::new(""),
-                r,
-            )
-        }),
-        "session-attach-drop" => via(args, |r: cmd_wire::attachment::SessionAttachDropReq| {
-            crate::control::files_commit::session_attachment::drop_one(
-                &Face::issue(),
-                std::path::Path::new(""),
-                &r.id,
-            )
-            .map(|removed| cmd_wire::attachment::SessionAttachDropReply { removed })
-        }),
+        "session-attachment-commit" => via(
+            args,
+            |r: cmd_wire::attachment::SessionAttachmentCommitReq| {
+                crate::control::files_commit::session_attachment::commit_here(
+                    &Face::issue(),
+                    std::path::Path::new(""),
+                    r,
+                )
+            },
+        ),
+        "session-attachment-drop" => {
+            via(args, |r: cmd_wire::attachment::SessionAttachmentDropReq| {
+                crate::control::files_commit::session_attachment::drop_one(
+                    &Face::issue(),
+                    std::path::Path::new(""),
+                    &r.id,
+                )
+                .map(|removed| cmd_wire::attachment::SessionAttachmentDropReply { removed })
+            })
+        }
         other => panic!("`{other}` 不是文件管理写的那几条"),
     }
 }

@@ -1,4 +1,4 @@
-//! 聊天里随一句发的附件：`session-attach-check` · `session-attach-commit` · `session-attach-drop` 三条的入参与回包，
+//! 聊天里随一句发的附件：`session-attachment-check` · `session-attachment-commit` · `session-attachment-drop` 三条的入参与回包，
 //! 和记录里认出来的那一项（[`Attachment`]，随 `said` 记录带出）。两端同一份：后端按这里的类型回，界面用导出的类型，手机按生成的类解。
 //! 落点在会话那台的形状（`.ccm-attach/<编号>/<原名>`）住后端（`common/attachment_dir.rs`），线上只过编号与那台写好的路径。
 
@@ -23,7 +23,7 @@ pub struct AttachItem {
     pub dir: bool,
 }
 
-/// `session-attach-check`：这一条草稿里的全部附件（已传完的也列进来，按草稿里的先后），开传前问那台收不收。
+/// `session-attachment-check`：这一条草稿里的全部附件（已传完的也列进来，按草稿里的先后），开传前问那台收不收。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -31,7 +31,7 @@ pub struct AttachItem {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct SessionAttachCheckReq {
+pub struct SessionAttachmentCheckReq {
     pub sid: crate::Sid,
     pub items: Vec<AttachItem>,
 }
@@ -78,18 +78,18 @@ pub struct AttachVerdict {
     pub said: Option<String>,
 }
 
-/// `session-attach-check` 的回包：逐份，与入参同序同数。
+/// `session-attachment-check` 的回包：逐份，与入参同序同数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-pub struct SessionAttachCheckReply {
+pub struct SessionAttachmentCheckReply {
     pub items: Vec<AttachVerdict>,
 }
 
-/// `session-attach-commit`：暂存区里传完的那一份（`<key>.part`；给了 `chunks` ⇒ 先把 `<key>.<seq>.chunk` 拼起来）落进会话工作目录下一个新的附件目录。
+/// `session-attachment-commit`：暂存区里传完的那一份（`<key>.part`；给了 `chunks` ⇒ 先把 `<key>.<seq>.chunk` 拼起来）落进会话工作目录下一个新的附件目录。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -97,7 +97,7 @@ pub struct SessionAttachCheckReply {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct SessionAttachCommitReq {
+pub struct SessionAttachmentCommitReq {
     pub sid: crate::Sid,
     pub key: String,
     /// 原名（一段，过那台的名字规则）。
@@ -117,7 +117,7 @@ pub struct SessionAttachCommitReq {
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-pub struct SessionAttachCommitReply {
+pub struct SessionAttachmentCommitReply {
     pub id: String,
     pub name: String,
     pub path: String,
@@ -128,7 +128,7 @@ pub struct SessionAttachCommitReply {
     pub class: FileClass,
 }
 
-/// `session-attach-drop`：撤一份（草稿上 ✕ 掉）：那台删掉那个附件目录。
+/// `session-attachment-drop`：撤一份（草稿上 ✕ 掉）：那台删掉那个附件目录。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -136,19 +136,19 @@ pub struct SessionAttachCommitReply {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct SessionAttachDropReq {
+pub struct SessionAttachmentDropReq {
     pub sid: crate::Sid,
     pub id: String,
 }
 
-/// `session-attach-drop` 的回包：删了 ⇒ `true`；本来就不在 ⇒ `false`（不是错）。
+/// `session-attachment-drop` 的回包：删了 ⇒ `true`；本来就不在 ⇒ `false`（不是错）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
-pub struct SessionAttachDropReply {
+pub struct SessionAttachmentDropReply {
     pub removed: bool,
 }
 
