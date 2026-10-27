@@ -15967,6 +15967,36 @@
       "zh": "别名 {name} 设为隐藏",
       "args": ["name"]
     },
+    "beSessionSet.alias.missing": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{alias} 不存在",
+      "args": ["alias"]
+    },
+    "beSessionSet.dir.missing": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "目录不存在 · {cwd}",
+      "args": ["cwd"]
+    },
+    "beSessionSet.group.withDir": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "{group} · {dir}",
+      "args": ["group", "dir"]
+    },
+    "beSessionSet.set.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "没有叫「{name}」的组",
+      "args": ["name"]
+    },
+    "beSessionSet.set.broken": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "组「{name}」写错 · {why}",
+      "args": ["name", "why"]
+    },
     "beSession.hidden.launch": {
       "kind": "body",
       "role": "悬停",
