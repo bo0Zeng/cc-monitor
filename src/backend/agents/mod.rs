@@ -1998,6 +1998,31 @@ pub(crate) struct DefaultUpstream {
     /// 起会话时怎么把这一家指到中转（`ccm` 最终 exec 那一处照这一格做）。是 [`Inject::Env`] 的那一家，
     /// 继承来的那一条地址（用户自己的端点 · 别的号的中转）也只看那个变量。
     pub(crate) inject: Inject,
+    /// 这一家自己认的出网设置变量（`ccm` 起会话时接管：免代理表加上中转口 · 那条会话的上游描述照它记）。
+    pub(crate) proxy: ProxyFace,
+}
+
+/// 一家认哪几个出网设置变量（按先后，小写在前）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProxyFace {
+    /// 代理那几个（`https_proxy` 一类）。
+    pub(crate) via: &'static [&'static str],
+    /// 免代理表那几个（`no_proxy` 一类）。
+    pub(crate) skip: &'static [&'static str],
+}
+
+/// 某一家（wire 上的 kind）在给定注册表里认的出网设置变量。认不出 / 没登记默认上游 ⇒ `None`。
+pub(crate) fn proxy_among(registry: &[Adapter], kind: &str) -> Option<ProxyFace> {
+    registry
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.upstream.as_ref())
+        .map(|u| u.proxy)
+}
+
+/// [`proxy_among`] 在生产注册表上。
+pub(crate) fn proxy_of(kind: &str) -> Option<ProxyFace> {
+    proxy_among(REGISTRY, kind)
 }
 
 /// 一份「用满」回包：状态行里状态码那一截 · 头 · 体。

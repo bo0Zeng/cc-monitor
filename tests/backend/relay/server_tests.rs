@@ -708,7 +708,7 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
         dest_of(two_accounts_no_key(&base)),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(port),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
@@ -1892,7 +1892,7 @@ fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
         dest_of(table),
         super::key::key_tests::test_keys(),
         no_tap(),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
@@ -2702,7 +2702,7 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
         dest_of(two_accounts_no_key(&base)),
         super::key::key_tests::test_keys(),
         no_tap(),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     );
@@ -2853,7 +2853,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
         dest_of(two_accounts_no_key(&base)),
         super::key::key_tests::test_keys(),
         no_tap(),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     );
@@ -2952,7 +2952,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
         dest_of(two_accounts_no_key(&base)),
         super::key::key_tests::test_keys(),
         no_tap(),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     );
@@ -3657,7 +3657,7 @@ fn spawn_relay_with_upstream_deadline(
         dest_of(two_accounts_no_key(&base)),
         super::key::key_tests::test_keys(),
         no_tap(),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,
     ));

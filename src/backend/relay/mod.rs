@@ -21,14 +21,41 @@ pub(crate) use comms_outward::{
     RouteKey, Startup, TapBody, TapEvent, TapPort,
 };
 
-/// 开上游 TCP 的那一口：照这台的出网描述经出网口（直连或经代理）。中转去上游 · 续登录令牌那一发都交它。
-/// 按会话的出网描述以后从这里换进来，缺省仍是这台的。
+/// 开上游 TCP 的那一口：照这台的出网描述经出网口（直连或经代理）。后端自己发的那几发（续登录令牌）交它；
+/// 中转转发的那一发经 [`open_for`]（先按那条会话的描述）。
 pub(crate) fn open_here(
     host: &str,
     port: u16,
     deadline: std::time::Duration,
 ) -> std::io::Result<std::net::TcpStream> {
-    egress::open(egress::here(), host, port, Some(deadline))
+    open_by(egress::here(), host, port, deadline)
+}
+
+/// 来处 ⇒ 那条会话的出网描述（起会话时接过来的代理）；没有 ⇒ `None`。由宿主递进来（上游选择读它那一份），中转宿主不认识它住哪。
+pub(crate) type EgressOf = std::sync::Arc<dyn Fn(&str) -> Option<egress::Egress> + Send + Sync>;
+
+/// 中转转发那一发开上游 TCP 的那一口（来处 · 主机 · 端口 · 期限 ⇒ 一条 TCP；同 `comms_outward` 里 `upstream::OpenFor` 的形状）。
+type OpenFor = dyn Fn(Option<&str>, &str, u16, std::time::Duration) -> std::io::Result<std::net::TcpStream>
+    + Send
+    + Sync;
+
+/// 中转转发那一发开上游 TCP 的那一口：这一发带着来处、那条会话有描述 ⇒ 照它；否则照这台的出网描述。
+pub(crate) fn open_for(egress_of: EgressOf) -> std::sync::Arc<OpenFor> {
+    std::sync::Arc::new(move |origin, host, port, deadline| {
+        match origin.and_then(|o| egress_of(o)) {
+            Some(e) => open_by(&e, host, port, deadline),
+            None => open_by(egress::here(), host, port, deadline),
+        }
+    })
+}
+
+fn open_by(
+    e: &egress::Egress,
+    host: &str,
+    port: u16,
+    deadline: std::time::Duration,
+) -> std::io::Result<std::net::TcpStream> {
+    egress::open(e, host, port, Some(deadline))
         .map(|o| o.tcp)
         .map_err(Into::into)
 }

@@ -57,6 +57,8 @@ pub(crate) mod file_face;
 pub(crate) mod endpoint;
 mod policy; // 热重载（`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
 pub mod rotate;
+// 每条会话一份的上游描述：`ccm` 起会话最终那一跳留 · 中转开上游那一口按这一发的来处读（读的那只手由 `host_relay` 递进中转）。
+pub(crate) mod session_upstream;
 pub(crate) mod table;
 pub(crate) mod turn; // 第五版那一判：叫策略、缓存到下一个节点 // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值** // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）
 
@@ -217,6 +219,8 @@ pub(crate) fn host_relay(
         &Rotating(library, own.clone(), adoptions),
         tap,
         &own,
+        // 中转开上游那一口按来处取那条会话的出网描述（`ccm` 起会话时留的那一份）。
+        session_upstream::egress_of(&own),
     );
     // 接上了中转 ⇒ 旧版的中转已经让出了口：宿主在这一刻做它的事（盘上的轮换若还是旧版，升级写回）。
     if hosted.listening() {

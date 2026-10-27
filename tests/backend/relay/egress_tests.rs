@@ -49,7 +49,7 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
         )),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(Taps::default())),
-        Arc::new(move |h: &str, p: u16, d| {
+        Arc::new(move |_: Option<&str>, h: &str, p: u16, d| {
             egress::open(&via, h, p, Some(d))
                 .map(|o| o.tcp)
                 .map_err(Into::into)
@@ -84,4 +84,63 @@ fn a_relayed_request_reaches_the_upstream_through_the_configured_proxy() {
     );
     // 代理那一跳之后 TLS 握手不成 ⇒ 中转出声回 502（不静默挂着）。
     assert!(out.starts_with("HTTP/1.1 502"), "{out:?}");
+}
+
+/// ★ 第一条会红（后半句）：`ccm` 起会话时留下的那一份（来处 → 假代理）在沙箱的数据目录里，中转开上游那一口是生产段那一形
+/// （上游选择递进来的那只手读描述）；地址带着那个来处的一发 ⇒ 假代理收到 `CONNECT api.anthropic.com:443`。
+/// 这台的出网描述是直连（没装 ⇒ 直连；测试档直连非回环当场 panic）⇒ 收到那一问 ＝ 照会话的描述走了。
+#[test]
+fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
+    use crate::accounts::upstream_select::session_upstream::{egress_of, leave, UpstreamDesc};
+    let (proxy, asks) = connect_proxy();
+    let data = std::env::temp_dir().join(format!("relay-session-egress-{}", std::process::id()));
+    std::fs::remove_dir_all(&data).ok();
+    std::fs::create_dir_all(&data).expect("sandbox");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let desc = UpstreamDesc {
+        egress: vec![(
+            "HTTPS_PROXY".to_string(),
+            format!("http://127.0.0.1:{}", proxy.port()),
+        )],
+        pid: std::process::id(),
+        at: 1,
+    };
+    leave(&own, "0123abcd", &desc, &|_| true).expect("留得下");
+    let relay = Arc::new(Relay::new(
+        Arc::new(Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            Upstreams::from_env(&|_| None).expect("内置默认上游"),
+            crate::platform::fs::Own::for_tests(),
+        )),
+        super::key::key_tests::test_keys(),
+        TeeSink::to_port(Arc::new(Taps::default())),
+        super::open_for(egress_of(&own)),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
+    ));
+    let listener = listen(0).expect("listen");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || serve(listener, relay, Default::default()));
+
+    let mut c = TcpStream::connect(addr).expect("connect relay");
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
+        .expect("read deadline");
+    c.write_all(
+        format!(
+            "POST /{}/t/claude-code/0/~0123abcd/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}",
+            super::key::key_tests::TEST_KEY
+        )
+        .as_bytes(),
+    )
+    .expect("write");
+    let mut out = String::new();
+    let _ = c.read_to_string(&mut out);
+    let head = asks
+        .recv_timeout(guard_core::wall::CEILING)
+        .unwrap_or_else(|_| panic!("假代理一问都没收到；中转回的是：{out:?}"));
+    assert!(
+        head.starts_with("CONNECT api.anthropic.com:443 HTTP/1.1\r\n"),
+        "{head:?}"
+    );
+    std::fs::remove_dir_all(&data).ok();
 }

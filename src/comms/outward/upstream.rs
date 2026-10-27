@@ -131,11 +131,16 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
 
 /// 开出站 TCP 的那一口：主机 · 端口 · 期限 ⇒ 一条到那里的 TCP。由宿主交进来（后端交的是它的出网口：直连或经代理），
 /// 本 crate 自己不开 TCP（「测试档不许出网」那一句断言也住出网口，真开 TCP 的那一处）。
-pub type Open = dyn Fn(&str, u16, Duration) -> std::io::Result<TcpStream> + Send + Sync;
+pub type Open<'a> = dyn Fn(&str, u16, Duration) -> std::io::Result<TcpStream> + Send + Sync + 'a;
+
+/// 中转转发那一发时开上游 TCP 的那一口：多收这一发的来处（地址里的来处段那个号，[`crate::RouteOrigin::token`]；没有 ⇒ `None`）。
+/// 来处对本 crate 是不透明的串：宿主按它取那条会话的出网描述（起会话时接过来的代理），本 crate 不解释。
+pub type OpenFor =
+    dyn Fn(Option<&str>, &str, u16, Duration) -> std::io::Result<TcpStream> + Send + Sync;
 
 /// 期限的值由后端交进来（`UPSTREAM_DEADLINE` 住 `relay/listen.rs`）：值归后端 · 执行归通信层，本文件生产段零期限字面量。
 /// TCP 经 `open` 开（经代理时它交回的是握手完了的隧道），TLS 照旧在这里、在它里面：代理只看得到 `CONNECT 主机:端口`。
-pub fn connect(base: &Base, deadline: Duration, open: &Open) -> std::io::Result<Conn> {
+pub fn connect(base: &Base, deadline: Duration, open: &Open<'_>) -> std::io::Result<Conn> {
     let tcp = open(&base.host, base.port, deadline)?;
     // ★ Nagle 两个方向都要关。参考实现登记过：没关会让 p95 塌到 3504ms。
     tcp.set_nodelay(true)?;
@@ -171,7 +176,7 @@ pub struct Fetched {
     reason = "一发请求的五样 ＋ 怎么连（开 TCP 的那一口 · 期限）＋ 回包上限，各自独立由调用方给"
 )]
 pub fn fetch(
-    open: &Open,
+    open: &Open<'_>,
     base: &Base,
     method: &str,
     rest: &str,

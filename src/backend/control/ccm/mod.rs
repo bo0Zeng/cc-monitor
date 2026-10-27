@@ -33,6 +33,7 @@
 //!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
+mod egress;
 pub(crate) mod on_path;
 pub(crate) mod plan;
 pub(crate) mod user_path;
@@ -296,7 +297,11 @@ pub fn run(
             let mut env = env;
             // 这一家认不认得这份扫描由计划那一侧问适配层（`Adapter::live`）。
             env.running_sessions = o.resumes.is_some().then_some(running);
-            let Planned { plan, env } = match plan_of(&o, env, true, accounts) {
+            let Planned {
+                plan,
+                env,
+                upstream,
+            } = match plan_of(&o, env, true, accounts) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),
             };
@@ -315,7 +320,7 @@ pub fn run(
                 );
                 return 0;
             }
-            execute(plan, own)
+            execute(plan, upstream.as_ref(), own)
         }
     }
 }
@@ -367,14 +372,26 @@ fn plan_of(
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
     let taken = crate::host::snapshot().taken_names().ok();
     // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
-    let plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
-    Ok(Planned { plan, env })
+    let mut plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
+    // 接管 agent 原本的出网设置（免代理表加中转口）：继承那一格同账号目录，别名预览不继承。
+    let nothing = |_: &str| None;
+    let upstream = egress::onto(
+        &mut plan,
+        crate::agents::proxy_of(&o.agent),
+        if inherit_account { &get } else { &nothing },
+    );
+    Ok(Planned {
+        plan,
+        env,
+        upstream,
+    })
 }
 
-/// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境（`--ccm-print` 的「来自」按同一份写）。
+/// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境（`--ccm-print` 的「来自」按同一份写）＋ 这条会话要留的上游描述那一份。
 struct Planned {
     plan: Plan,
     env: Env,
+    upstream: Option<egress::Taken>,
 }
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
@@ -621,7 +638,8 @@ fn die(msg: &str) -> i32 {
 }
 
 /// 真跑。
-fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
+/// `upstream` ＝ 这条会话要留的上游描述那一份（[`egress::onto`]；只直路有）。
+fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::fs::Own) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--ccm-print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
@@ -744,7 +762,7 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                     ));
                 }
             }
-            exec_direct(d, own)
+            exec_direct(d, upstream, own)
         }
     }
 }
@@ -853,7 +871,11 @@ pub(crate) const NO_SHELL: &str = "no_shell";
 ///
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
-fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
+fn exec_direct(
+    d: &plan::Direct,
+    upstream: Option<&egress::Taken>,
+    own: &crate::platform::fs::Own,
+) -> i32 {
     if d.keeps_user_base_url {
         eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
     }
@@ -873,6 +895,7 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
         plugin: d.plugin_dirs.is_some(),
         tab: d.tab.clone(),
         alias: d.alias.clone(),
+        upstream,
     };
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
@@ -956,13 +979,15 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     )
 }
 
-/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的。
+/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的；
+/// 另给那条会话留它的上游描述（[`egress::Taken`]，按来处存）。
 #[derive(Clone)]
 struct Note<'a> {
     account: Option<&'a str>,
     plugin: bool,
     tab: Option<crate::control::launch_account::LaunchTab>,
     alias: Option<String>,
+    upstream: Option<&'a egress::Taken>,
 }
 
 impl Note<'_> {
@@ -972,6 +997,7 @@ impl Note<'_> {
         plugin: false,
         tab: None,
         alias: None,
+        upstream: None,
     };
 }
 
@@ -1087,6 +1113,20 @@ fn exec_or_spawn(
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
+        // 这条会话的上游描述（中转开上游那一口按来处读）；写不成只出声、照常起。
+        if let Some(t) = leave.upstream {
+            use crate::accounts::upstream_select::session_upstream::{
+                leave as left_for, UpstreamDesc,
+            };
+            let desc = UpstreamDesc {
+                egress: t.egress.clone(),
+                pid,
+                at: now,
+            };
+            if let Err(e) = left_for(own, &t.origin, &desc, &crate::platform::proc::pid_alive) {
+                eprintln!("ccm: {}", e.logged());
+            }
+        }
         if leave.account.is_none() && !leave.plugin && leave.tab.is_none() && leave.alias.is_none()
         {
             return;

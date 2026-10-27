@@ -380,7 +380,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
         )),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),
-        Arc::new(super::open_here),
+        super::open_for(std::sync::Arc::new(|_| None)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
