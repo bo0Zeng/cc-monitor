@@ -128,6 +128,11 @@ pub struct ExtMachine {
     pub name: String,
     /// 那台上开过会话的项目目录（装到项目时给人选）。
     pub projects: Vec<String>,
+    /// 那台的 MCP 列表（那台 `mcp-read` 的成品原样：本机后端问到再交，`faces/ext_list_face.rs::with_mcp`）；
+    /// 表里没有 MCP 行 · 那台连不上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, as = "Option<crate::faces::feature_face::McpReadReply>"))]
+    pub mcp: Option<serde_json::Value>,
 }
 
 /// 一格（一台机器）。
@@ -460,6 +465,7 @@ fn columns<'a>(cat: &'a Catalog, reach: &[(String, Option<String>)]) -> Vec<Colu
                     key,
                     here,
                     projects: snap.project_dirs.clone(),
+                    mcp: None,
                 },
                 shared: snap.shared_mcp,
             }
