@@ -1,0 +1,54 @@
+/* 新计划框：机器 · 工作区并排一行，路径 · 领域 · 执行各一行（标签在上，同输入框），那一行等宽字只读；撞上已有的一片 ⇒ 领域那一排锁住变淡。 */
+@layer components {
+  .pnForm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+
+  .pnPair {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: var(--space-4);
+  }
+
+  .pnRow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .pnRow[data-locked="true"] {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .pnLabel {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .pnNote {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    overflow-wrap: anywhere;
+  }
+
+  .pnNote:empty {
+    display: none;
+  }
+
+  .pnLine {
+    display: block;
+    min-height: var(--control-h);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+}

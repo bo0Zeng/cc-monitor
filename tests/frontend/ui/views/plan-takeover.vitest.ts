@@ -27,6 +27,7 @@ const block = (extra: Partial<PlanBlock> = {}): PlanBlock => ({
   handoff: HANDOFF,
   handoffError: null,
   takeover: "open",
+  groups: { groups: [], text: "—", unread: null },
   ...extra,
 });
 

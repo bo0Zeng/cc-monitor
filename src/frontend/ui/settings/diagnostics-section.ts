@@ -13,14 +13,12 @@ import { toast, failToast } from "../kit/toast";
 import { button, setDisabled } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { icon } from "../kit/icon";
-import { homeShort } from "../kit/path";
 import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { unknownConfigKeys } from "../config";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { homeDir } from "@tauri-apps/api/path";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import { readRecordDrift, type RecordDriftFace } from "../record-reads";
@@ -293,17 +291,12 @@ export class DiagnosticsSection {
   }
 
   private async paintFiles(): Promise<void> {
-    let home: string | null = null;
     try {
-      home = await homeDir();
-    } catch {
-      home = null;
-    }
-    try {
+      // 路径摆壳写好的显示形（`*_shown` · `shown`），原路径只用来打开。
       const info = await commands.get_log_file_info();
       const today = info.current_file;
       this.todayRow.replaceChildren(
-        fileText(copyText("diagnostics.files.today"), today ? homeShort(today, home) : copyText("diagnostics.files.noFile", { dir: homeShort(info.dir, home) })),
+        fileText(copyText("diagnostics.files.today"), today ? (info.current_file_shown ?? today) : copyText("diagnostics.files.noFile", { dir: info.dir_shown })),
       );
       if (today) {
         const open = button({ label: copyText("diagnostics.files.open"), size: "compact", onClick: () => void openFile(today) });
@@ -313,7 +306,7 @@ export class DiagnosticsSection {
       const latest = info.backend_stderr[0];
       if (latest) {
         const open = button({ label: copyText("diagnostics.files.open"), size: "compact", onClick: () => void openFile(latest.path) });
-        this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), homeShort(latest.path, home)), ...sizeOf(latest.size_text), open);
+        this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), latest.shown), ...sizeOf(latest.size_text), open);
       } else {
         // 没有就只说没有，不摆按钮。
         this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), copyText("diagnostics.files.outputNone"), false));

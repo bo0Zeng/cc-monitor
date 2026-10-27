@@ -122,6 +122,13 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在开窗而 exe 旁边没有它时放；\
              写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
     ),
+    // 诊断页日志路径的显示形：只拿家目录那一截去缩写（`copy_core::home_short`），不读家里任何东西。
+    (
+        "logging.rs",
+        "log_file_info",
+        "家目录本身（缩写日志路径的那一截）",
+        "**不是伸手拿用户的东西**：不读、不 stat 家里的文件；日志目录本身在 monitor 自己的数据目录里（`config::resolve_monitor_data_dir`）",
+    ),
     // `("local_backend_host.rs", "cc_monitor_dir")` 那一行摘了：钥匙与「谁在听」改住这台的家（`config::resolve_monitor_data_dir`，
     //   门牌只跟着家走），不再单独 `home_dir()` 拼一份。
     // 拨号代理的二进制解析那一行**摘了**：monitor 不再找 / 起拨号代理（拨号挪进本机常驻后端）。

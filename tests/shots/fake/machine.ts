@@ -264,11 +264,13 @@ export function machineCommands(): Record<string, CommandHandler> {
     set_diagnostics_config: () => "needs_restart",
     get_log_file_info: () => ({
       dir: `${HOME}/.cc-monitor/logs`,
+      dir_shown: "~/.cc-monitor/logs",
       current_file: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`,
+      current_file_shown: "~/.cc-monitor/logs/monitor.2026-10-01.log",
       current_size_text: "470.8 KB",
       all_files: [
-        { path: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`, size_text: "470.8 KB", modified_ms: Date.parse("2026-10-01T11:58:00Z") },
-        { path: `${HOME}/.cc-monitor/logs/monitor.2026-09-30.log`, size_text: "1.1 MB", modified_ms: Date.parse("2026-09-30T23:59:00Z") },
+        { path: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`, shown: "~/.cc-monitor/logs/monitor.2026-10-01.log", size_text: "470.8 KB", modified_ms: Date.parse("2026-10-01T11:58:00Z") },
+        { path: `${HOME}/.cc-monitor/logs/monitor.2026-09-30.log`, shown: "~/.cc-monitor/logs/monitor.2026-09-30.log", size_text: "1.1 MB", modified_ms: Date.parse("2026-09-30T23:59:00Z") },
       ],
       backend_stderr: [],
     }),

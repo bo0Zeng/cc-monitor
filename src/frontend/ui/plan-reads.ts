@@ -27,6 +27,7 @@ import type { PlanPhase } from "./generated/PlanPhase";
 import type { PlanProgress } from "./generated/PlanProgress";
 import type { PlanRead } from "./generated/PlanRead";
 import type { PlanRed } from "./generated/PlanRed";
+import type { PlanNewForm } from "./generated/PlanNewForm";
 import type { PlanRef } from "./generated/PlanRef";
 import type { PlanRefs } from "./generated/PlanRefs";
 import type { PlanReturned } from "./generated/PlanReturned";
@@ -62,6 +63,7 @@ export type {
   PlanListSlice,
   PlanListWorkspace,
   PlanNeed,
+  PlanNewForm,
   PlanPb,
   PlanPhase,
   PlanProgress,
@@ -120,6 +122,18 @@ export async function adoptRepo(origin: Origin, workspace: string, slice: string
   const r = await callTyped(origin, "plan-command", { workspace, cmd: "adopt", slice }, budgetWithin(READ_BUDGET_MS));
   if (r.adopted === null) throw new ControlError(r.said ?? "");
   return { ...r, adopted: r.adopted };
+}
+
+/** 新计划框问的那一份：那个目录能选的领域 · 落在哪 · 撞没撞上已有的一片 · 要敲的那一行（后端判、后端写）。 */
+export async function fetchPlanNew(origin: Origin, dir: string, path: string, domain: string | null): Promise<PlanNewForm> {
+  const req = domain === null ? { dir, path } : { dir, path, domain };
+  return callTyped(origin, "plan-new", req, budgetWithin(READ_BUDGET_MS));
+}
+
+/** 在 `dir` 那个目录登记 `path` 那一片（pb 的 `repo`；撞上已有的一片 ⇒ 后端只带名字切过去）。pb 拒 ⇒ 抛 pb 那一句。 */
+export async function registerRepo(origin: Origin, dir: string, path: string, domain: string | null): Promise<PlanCmdReply> {
+  const req = domain === null ? { workspace: dir, cmd: "repo" as const, path } : { workspace: dir, cmd: "repo" as const, path, domain };
+  return callTyped(origin, "plan-command", req, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 认可一条 / 撤掉认可（只记在 cc-monitor，不写计划仓）。 */

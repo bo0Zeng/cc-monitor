@@ -372,7 +372,7 @@ export interface TypedCommands {
   "backend-log": { req: BackendLogReq; reply: LogTail; code: "bad_args" | "failed" };
   "bookmarks-edit": { req: BookmarksEditReq; reply: Bookmarks; code: "bad_args" | "io_failed" | "bookmarks_unreadable" };
   "bookmarks-read": { req: BookmarksReadReq; reply: Bookmarks; code: "bad_args" | "io_failed" | "bookmarks_unreadable" };
-  "bus-envelope": { req: BusEnvelopeReq; reply: BusEnvelope; code: "bad_args" | "bad_from" | "bad_to" | "bad_tier" | "bad_title" | "need_re" | "bad_re" | "bad_ref" | "too_long" };
+  "bus-envelope": { req: BusEnvelopeReq; reply: BusEnvelope; code: "bad_args" | "bad_from" | "bad_to" | "bad_tier" | "bad_title" | "need_re" | "bad_re" | "bad_ref" | "too_long" | "not_same_group" | "no_roster" };
   "bus-inbox": { req: BusInboxReq; reply: BusInbox; code: "bad_args" | "bad_id" | "not_installed" | "child_timed_out" | "failed" };
   "bus-list": { req: NoArgs; reply: BusList; code: "bad_args" | "not_installed" | "child_timed_out" | "failed" };
   "cancel": { req: CancelReq; reply: null; code: "bad_args" };
