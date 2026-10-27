@@ -46,7 +46,9 @@ pub(crate) fn envelope_said(code: &str) -> String {
         "bad_re" => copy_text("beCcBus.envelope.badRe", &[]),
         "bad_ref" => copy_text("beCcBus.envelope.badRef", &[]),
         "too_long" => copy_text("beCcBus.envelope.tooLong", &[]),
-        _ => copy_text("beCcBus.envelope.badArgs", &[]),
+        "not_same_group" => copy_text("beCcBus.envelope.notSameGroup", &[]),
+        "no_roster" => copy_text("beCcBus.envelope.noRoster", &[]),
+        _ =>copy_text("beCcBus.envelope.badArgs", &[]),
     }
 }
 
@@ -215,6 +217,10 @@ typed::codes! {
         BadRe = "bad_re",
         BadRef = "bad_ref",
         TooLong = "too_long",
+        /// 收件人不在发件人那几组里（范围，`cc_bus_scope`）。
+        NotSameGroup = "not_same_group",
+        /// 问不到组员名单（不退回成全放行）。
+        NoRoster = "no_roster",
     }
 }
 
@@ -252,7 +258,7 @@ impl crate::wire::typed::Handle for BusInboxCmd {
     }
 }
 
-/// `bus-envelope`：核一封信、盖上 id 与时间。纯函数、不碰盘、不起进程。
+/// `bus-envelope`：核一封信、判范围（组，`cc_bus_scope`）、盖上 id 与时间。各格的校验是纯函数；范围那一步读组名单（问常驻 · 读这台）。
 pub(crate) struct BusEnvelopeCmd;
 impl Command for BusEnvelopeCmd {
     const NAME: &'static str = "bus-envelope";
@@ -264,13 +270,19 @@ impl crate::wire::typed::Handle for BusEnvelopeCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: BusEnvelopeReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusEnvelope, BusEnvelopeErr>> + Send + 'static
     {
+        let tz = cx.tz.clone();
         async move {
-            cc_bus_envelope::envelope_now(&req)
-                .map_err(|(c, raw)| (c.to_string(), raw))
-                .map_err(of(BusEnvelopeErr::BadArgs, envelope_said))
+            let refused = |(c, raw): cc_bus_envelope::Refusal| {
+                of(BusEnvelopeErr::BadArgs, envelope_said)((c.to_string(), raw))
+            };
+            let env = cc_bus_envelope::envelope_now(&req).map_err(refused)?;
+            let roster = super::cc_bus_scope::groups_now(tz).await;
+            super::cc_bus_scope::scope(&env.from, &env.to, roster.as_ref().map_err(String::as_str))
+                .map_err(refused)?;
+            Ok(env)
         }
     }
 }
