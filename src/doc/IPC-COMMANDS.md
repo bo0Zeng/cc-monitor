@@ -22,7 +22,6 @@
 | `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
 | `shapes` | {string: string}? | typed 命令的形状指纹 `{命令: 8 位十六进制}`（`crate::shapes::SHAPES`） |
 | `frames` | {string: string}? | 每种帧（`hello` 除外）的形状指纹 `{kind: 8 位十六进制}`（`crate::frame_shapes::FRAMES`） |
-| `unseen` | SessionFace? | 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造，壳只取本机后端那一份，每发一格「说不清」都带上它 |
 
 ### `line`
 
@@ -204,6 +203,8 @@ A new session file appeared。
 | `sid` | string | 会话 id |
 | `runs` | [RunInfo] | 在表里的子运行（整份） |
 | `ended` | [RunEnded] | 被挤出表的已收场子运行 |
+| `groups` | RunGroups? | 列表的三组（各是 `runs` 里的运行 id，最近动过的在前）：出口照这三组排，不按 `state` 分 |
+| `summary` | Words? | 这条会话的 agent 那一枚写好的字（「agent n · m 在跑」·「agent n」）；表是空的 ⇒ 不上线 |
 
 ### `session_branch`
 
@@ -268,6 +269,45 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `hidden` | Hidden? |  |
+
+#### `RunGroups`
+
+运行表分成的三组（`SessionRuns::groups`）：在跑的全列 · 最近结束的至多几个 · 其余（连状态不明的）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `running` | [string] |  |
+| `recent` | [string] |  |
+| `older` | [string] |  |
+
+#### `RunLine`
+
+写好的一截字。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `text` | Words |  |
+| `from` | number? |  |
+
+#### `RunExplain`
+
+说明那一块（`RunInfo::explain`）：为什么是这个样子。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `lead` | Words? | 打头那一格（状态不明那一种单独写状态字）；别的 ⇒ 不上线 |
+| `line` | RunLine |  |
+| `note` | Words? | 小一号的补一句 |
+| `refresh` | bool? | 带［刷新］（状态不明） |
+
+#### `RunEndLine`
+
+尾巴上的结束线（`RunInfo::end`）：状态字（图标由出口照 `state` 画）＋ 一句。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `head` | Words |  |
+| `sub` | RunLine |  |
 
 #### `SessionActivity`
 
@@ -368,6 +408,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 终端住在哪种宿主里（线上 `host`）。
 
 - `tmux`
+- `managed` —— cc-monitor 自己持伪终端的终端（后端 `host/managed.rs` 报的行）
 
 #### `SessionContainer`
 
@@ -396,9 +437,8 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `rotation_strategies` —— 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
-- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）
+- `needs` —— 这台的需手动可能变了（`key` ＝ sid：那条会话挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 进出等人 · 离开「活」，重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号要登录 · MCP 要登录 · 登录作业收了）或计划要人看的数变了，重问 `sessions-needs`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
-- `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `sessions-needs`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
@@ -458,13 +498,17 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `last_text` | Words? | `last` 写好的字（写回复中 · 思考中 · 调用 X）；没有 `last` ⇒ 不上线 |
 | `waiting` | string? | 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑） |
 | `started_ms` | number? | 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条） |
-| `started_text` | string? | `started_ms` 在看的那一台钟上的钟面 `HH:MM`（推出去那一下按这条流的时区写，`Frame::stamp`；界面照抄、不换算） |
+| `started_text` | string? | 「几点起」那一句（`started_ms` 在看的那一台钟上的钟面，推出去那一下按这条流的时区写，`Frame::stamp`；界面照抄、不换算）：事实那一行的头一截 |
 | `active_ms` | number? | 最近动静：它自己最近一条记录 |
 | `ended_ms` | number? | 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线） |
 | `why` | RunWhy? | 为什么是这个结局（在跑 ⇒ 不上线） |
 | `error` | string? | 失败收场时的报错原话（说得出才有；至多 `observe::runs::ERROR_CHARS` 个字） |
 | `calls` | number? | 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线） |
 | `background` | bool? | 派出那一方没等它、接着做自己的事（后台派出；否则不上线） |
+| `facts` | [RunLine]? | 事实那一行的各截（已跑 · 用时 · 最近 · 工具 ×n · agent ×n · 后台派出；「几点起」在 `started_text`）；一截都没有 ⇒ 不上线 |
+| `explain` | RunExplain? | 说明（在跑且没在等 ⇒ 不上线） |
+| `end` | RunEndLine? | 结束线（在跑 ⇒ 不上线） |
+| `needs` | Needs? | 它挂着的待答请求（同会话事实的 `needs` 那一形，最早挂上的那一条）；没有 ⇒ 不上线 |
 
 #### `RunState`
 
@@ -1493,6 +1537,64 @@ type WirePath = string | { b16: string };
 码：`bad_args` · `bad_name` · `bad_path` · `io_failed` · `refused` · `stale` · `exists`
 
 失败带 `data` 的码：`exists` ⇒ `Conflicts`
+
+#### `session-attach-check`
+
+开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attach-check`
+
+入参 `SessionAttachCheckReq` · 回包 `SessionAttachCheckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AttachItem = { name: string, bytes: number, dir?: boolean, };
+type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
+type AttachVerdict = { ok: boolean, why?: AttachRefused, said?: string, };
+type SessionAttachCheckReply = { items: Array<AttachVerdict>, };
+type SessionAttachCheckReq = { sid: Sid, items: Array<AttachItem>, };
+type Sid = string;
+```
+
+码：`bad_args`
+
+#### `session-attach-commit`
+
+把暂存区里传完的一份落进会话工作目录下一个新的附件目录。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attach-commit`
+
+入参 `SessionAttachCommitReq` · 回包 `SessionAttachCommitReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
+type SessionAttachCommitReply = { id: string, name: string, path: string, rel: string, bytes: number, sha256: Sha256Hex, class: FileClass, };
+type SessionAttachCommitReq = { sid: Sid, key: string, 
+/**
+ * 原名（一段，过那台的名字规则）。
+ */
+name: string, bytes: number, chunks?: number, expect: Sha256Expect, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type Sid = string;
+```
+
+码：`bad_args` · `too_big` · `dir_full` · `not_writable` · `no_session` · `bad_name` · `io_failed` · `refused` · `stale` · `exists`
+
+#### `session-attach-drop`
+
+删掉会话工作目录下的一个附件目录（草稿上撤掉那一份）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attach-drop`
+
+入参 `SessionAttachDropReq` · 回包 `SessionAttachDropReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type SessionAttachDropReply = { removed: boolean, };
+type SessionAttachDropReq = { sid: Sid, id: string, };
+type Sid = string;
+```
+
+码：`bad_args` · `no_session` · `not_writable` · `io_failed` · `refused`
 
 #### `files-browse`
 
@@ -5525,6 +5627,23 @@ question: string,
  * 可以选几项（`true` ＝ 多选）。
  */
 multi: boolean, options: Array<AskOption>, };
+type Attachment = { name: string, 
+/**
+ * 相对会话工作目录的路径。
+ */
+rel: string, 
+/**
+ * 那一份此刻多大；不在了 ⇒ 缺。
+ */
+bytes?: number, 
+/**
+ * 大小写给人看的那一格（那台写好）；不在了 ⇒ 缺。
+ */
+sizeText?: string, 
+/**
+ * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
+ */
+gone?: boolean, };
 type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
@@ -5621,7 +5740,11 @@ results?: { [key in string]: StepResult },
 /**
  * 这条记录自己的工作目录。
  */
-cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+cwd?: string, 
+/**
+ * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
+ */
+attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
  * 型号名原样。
  */
@@ -5901,6 +6024,23 @@ question: string,
  * 可以选几项（`true` ＝ 多选）。
  */
 multi: boolean, options: Array<AskOption>, };
+type Attachment = { name: string, 
+/**
+ * 相对会话工作目录的路径。
+ */
+rel: string, 
+/**
+ * 那一份此刻多大；不在了 ⇒ 缺。
+ */
+bytes?: number, 
+/**
+ * 大小写给人看的那一格（那台写好）；不在了 ⇒ 缺。
+ */
+sizeText?: string, 
+/**
+ * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
+ */
+gone?: boolean, };
 type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
@@ -5981,7 +6121,11 @@ results?: { [key in string]: StepResult },
 /**
  * 这条记录自己的工作目录。
  */
-cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+cwd?: string, 
+/**
+ * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
+ */
+attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
  * 型号名原样。
  */
@@ -6246,6 +6390,23 @@ question: string,
  * 可以选几项（`true` ＝ 多选）。
  */
 multi: boolean, options: Array<AskOption>, };
+type Attachment = { name: string, 
+/**
+ * 相对会话工作目录的路径。
+ */
+rel: string, 
+/**
+ * 那一份此刻多大；不在了 ⇒ 缺。
+ */
+bytes?: number, 
+/**
+ * 大小写给人看的那一格（那台写好）；不在了 ⇒ 缺。
+ */
+sizeText?: string, 
+/**
+ * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
+ */
+gone?: boolean, };
 type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
@@ -6318,7 +6479,11 @@ results?: { [key in string]: StepResult },
 /**
  * 这条记录自己的工作目录。
  */
-cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+cwd?: string, 
+/**
+ * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
+ */
+attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
  * 型号名原样。
  */
@@ -6575,6 +6740,23 @@ question: string,
  * 可以选几项（`true` ＝ 多选）。
  */
 multi: boolean, options: Array<AskOption>, };
+type Attachment = { name: string, 
+/**
+ * 相对会话工作目录的路径。
+ */
+rel: string, 
+/**
+ * 那一份此刻多大；不在了 ⇒ 缺。
+ */
+bytes?: number, 
+/**
+ * 大小写给人看的那一格（那台写好）；不在了 ⇒ 缺。
+ */
+sizeText?: string, 
+/**
+ * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
+ */
+gone?: boolean, };
 type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
@@ -6655,7 +6837,11 @@ results?: { [key in string]: StepResult },
 /**
  * 这条记录自己的工作目录。
  */
-cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+cwd?: string, 
+/**
+ * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
+ */
+attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
  * 型号名原样。
  */
@@ -8391,6 +8577,23 @@ question: string,
  * 可以选几项（`true` ＝ 多选）。
  */
 multi: boolean, options: Array<AskOption>, };
+type Attachment = { name: string, 
+/**
+ * 相对会话工作目录的路径。
+ */
+rel: string, 
+/**
+ * 那一份此刻多大；不在了 ⇒ 缺。
+ */
+bytes?: number, 
+/**
+ * 大小写给人看的那一格（那台写好）；不在了 ⇒ 缺。
+ */
+sizeText?: string, 
+/**
+ * 那台已清掉（过了七天 · 草稿上撤过）⇒ `true`：画「已清理」、不可点。
+ */
+gone?: boolean, };
 type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
 /**
  * 对的是哪次工具调用。
@@ -8508,7 +8711,11 @@ results?: { [key in string]: StepResult },
 /**
  * 这条记录自己的工作目录。
  */
-cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+cwd?: string, 
+/**
+ * 随这一句发的附件（适配层从正文里认出、正文里那几行引用已去掉；图片附件照旧是 `blocks` 里的图片块）。没有 ⇒ 缺。
+ */
+attachments?: Array<Attachment>, } | { "t": "reply", blocks: Array<Block>, 
 /**
  * 型号名原样。
  */
@@ -10631,6 +10838,10 @@ editedAt: string | null,
  */
 fileProblem: ProfileProblem | null, profiles: Array<ProfileRow>, 
 /**
+ * 这台存好的几组会话（`[set."组名"]`，照写下的先后）；一组写错只那一组带 `problems`。
+ */
+sets: Array<SetOut>, 
+/**
  * 配置文件不在时首建那几条的预览（在 ⇒ 空）：两条（`cc` · `cct`），没有 tmux 的那台只一条。
  */
 seed: Array<ProfileRow>, 
@@ -10675,6 +10886,8 @@ shown: string,
  * 没能转的那几行（原样）。
  */
 skipped: Array<string>, };
+type SetOut = { name: string, rows: Array<SetRowOut>, problems: Array<ProfileProblem>, };
+type SetRowOut = { cwd: string, alias: string, n: number, tabGroup: string | null, line: number, };
 type Tab = "show" | "hide";
 ```
 
@@ -10797,13 +11010,15 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
 tab: Tab | null, };
-type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
+type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesImpact = { affected: Array<ProfileAffected>, };
 type ProfilesImpactReq = { changes: Array<ProfileOp>, };
+type RowEdit = { cwd: string, alias: string, n: number, tabGroup: string | null, };
+type SetEdit = { name: string, rows: Array<RowEdit>, };
 type Tab = "show" | "hide";
 ```
 
@@ -10846,15 +11061,167 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
 tab: Tab | null, };
-type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
+type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesWriteDone = { wrote: boolean, rev: string | null, reload: string | null, };
 type ProfilesWriteReq = { changes: Array<ProfileOp>, ifRev: string | null, };
+type RowEdit = { cwd: string, alias: string, n: number, tabGroup: string | null, };
+type SetEdit = { name: string, rows: Array<RowEdit>, };
 type Tab = "show" | "hide";
 ```
 
 码：`bad_args` · `refused` · `stale`
+
+#### `set-plan`
+
+补足一组会话的预览：每行已有几个 · 再起几个 · 进哪个组 · 起不了的原因。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --set-plan` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SetPlanReq` · 回包 `SetPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RowEdit = { cwd: string, alias: string, n: number, tabGroup: string | null, };
+type RowPlan = { cwd: string, alias: string, 
+/**
+ * 要补足到几个。
+ */
+want: number, 
+/**
+ * 此刻已有几个。
+ */
+have: number, 
+/**
+ * 这一下再起几个（起不了 ⇒ 0）。
+ */
+more: number, 
+/**
+ * 起出来的进哪个标签页组。
+ */
+group: string, 
+/**
+ * 这一行起不了的原因（能起 ⇒ `null`）。
+ */
+blocked: string | null, };
+type SetPlan = { rows: Array<RowPlan>, more: number, };
+type SetPlanReq = { name?: string, rows?: Array<RowEdit>, };
+```
+
+码：`bad_args` · `no_tmux` · `no_such_set` · `refused`
+
+#### `set-launch`
+
+照存好的一组补足、逐条起：起之前写好组注解，一条不行不挡别的。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --set-launch` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SetLaunchReq` · 回包 `SetLaunched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AgentKind = string;
+type ArriveAsk = { 
+/**
+ * 认它用的那一格。
+ */
+by: ArriveBy, 
+/**
+ * 起之前这台报到的序号：只认这之后报到的。
+ */
+since: number, 
+/**
+ * 起在哪个 tmux 会话里（没见到时抓那一屏当原话）；开窗起的 ⇒ `null`。
+ */
+session: string | null, };
+type ArriveBy = { "kind": "sid", sid: Sid, } | { "kind": "cwd", cwd: string, };
+type GroupRef = { id: string, name: string, };
+type Landed = "started" | "in_place" | "running" | "idle" | "window";
+type LaunchFail = { code: string, message: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type Opened = { 
+/**
+ * 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
+ */
+landed: Landed, 
+/**
+ * 落在哪个 tmux 会话（`window` ⇒ `null`）。
+ */
+session: string | null, 
+/**
+ * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
+ */
+line: string | null, 
+/**
+ * 恢复 / 接回 ⇒ 那一条；新起 ⇒ 先定好的 sid（那一家不认先定 ⇒ `null`）。
+ */
+sid: string | null, 
+/**
+ * 起的是哪一家（接回不起 agent ⇒ `null`）。
+ */
+agent: AgentKind | null, 
+/**
+ * 起在哪个目录（`~` 已按这台的家目录展开；开窗的起始目录、认报到都用它；接回 · 接上已有的 shell ⇒ `null`）。
+ */
+cwd: string | null, 
+/**
+ * 实际用的号（账号 0 / 不表态 / 没另起 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, 
+/**
+ * 那台要附带说的一句（命中几个在跑的、接了第一个）；没有 ⇒ `null`。
+ */
+note: string | null, 
+/**
+ * 第一句交进去的结局（同 `terminal-input` 的回包）；没给第一句 ⇒ `null`。第一句作为启动参数交给那一家 ⇒ 起好了就是送到了（起不成整条失败、走不到这里）。
+ */
+prompt: Sent | null, 
+/**
+ * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
+ */
+arrival: ArriveAsk | null, };
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
+type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, failed: Array<LaunchFail>, blocked: string | null, };
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, 
+/**
+ * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
+ */
+resumed?: boolean, 
+/**
+ * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
+ */
+gone?: Array<string>, 
+/**
+ * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
+ */
+acts?: Array<SentAct>, };
+type SentAct = "retry" | "recapture" | "relist";
+type SentResult = "delivered" | "unsure" | "refused";
+type SetLaunchReq = { name: string, };
+type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, };
+type Sid = string;
+```
+
+码：`bad_args` · `no_tmux` · `no_such_set` · `refused`
 
 #### `aliases-block-render`
 
@@ -11687,7 +12054,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
 type Sent = { 
 /**
  * 结局。
@@ -11709,6 +12076,10 @@ screen?: string,
  * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
  */
 resumed?: boolean, 
+/**
+ * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
+ */
+gone?: Array<string>, 
 /**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
@@ -11875,7 +12246,7 @@ why?: Refused,
  * 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
 type SessionModelReq = { 
 /**
  * 会话 id。
@@ -11925,7 +12296,7 @@ why?: Refused,
  * `unsure` · `refused` 时给人看的那一句。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
 type SessionPermissionReq = { 
 /**
  * 会话 id。
@@ -11953,7 +12324,7 @@ type Sid = string;
 入参 `SessionSayReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
 type Sent = { 
 /**
  * 结局。
@@ -11975,6 +12346,10 @@ screen?: string,
  * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
  */
 resumed?: boolean, 
+/**
+ * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
+ */
+gone?: Array<string>, 
 /**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
@@ -12002,7 +12377,12 @@ seen_screen?: string,
 /**
  * `true` ⇒ 只在这条会话闲着（等下一句输入）时送；一轮在跑 · 后台在跑 · 判不出 ⇒ 不送、回 `refused` ＋ `not_idle`。缺 ⇒ 不要求。
  */
-idle_only?: boolean, };
+idle_only?: boolean, 
+/**
+ * 随这一句发的附件（`session-attach-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
+ * （[`crate::agents::typed_with`]）；有一份已不在 ⇒ 一个字都不送、回 `refused` ＋ `attachment_gone`。缺 ⇒ 不带。
+ */
+attachments?: Array<string>, };
 type Sid = string;
 ```
 
@@ -12308,7 +12688,11 @@ permissionMode?: string,
 /**
  * 轮换：缺 ＝ 用「新会话用」的那份策略 · `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
  */
-rotation?: RotationPick, };
+rotation?: RotationPick, 
+/**
+ * 经哪条别名起（一类 ＝ 一条别名：那一行 `ccm @别名`，别名合下来的几格在 ccm 那一侧合、这一趟给的盖过它）；缺 ⇒ 不经别名。
+ */
+alias?: string, };
 type OpenField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
 type OpenRefusal = { 
 /**
@@ -12361,7 +12745,7 @@ prompt: Sent | null,
  * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
  */
 arrival: ArriveAsk | null, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
 type RotationPick = { 
 /**
  * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
@@ -12389,6 +12773,10 @@ screen?: string,
  * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
  */
 resumed?: boolean, 
+/**
+ * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
+ */
+gone?: Array<string>, 
 /**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
@@ -12941,13 +13329,129 @@ expectedHostKey: string | null,
 /**
  * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
  */
-detail: string | null, };
+detail: string | null, 
+/**
+ * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
+ */
+unclear?: number, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type NoArgs = Record<symbol, never>;
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
 ```
 
 码：`bad_args`
+
+#### `machine-find`
+
+打的字是不是恰好一台（名字 · 本机 · ssh 配置的 Host · 名字后跟第几条）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machine-find`
+
+入参 `MachineFindReq` · 回包 `MachineFind`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineFind = { hit: MachineHit | null, };
+type MachineFindReq = { query: string, };
+type MachineFrom = "local" | "table" | "ssh_config";
+type MachineHit = { 
+/**
+ * 那台的名字（本机 ⇒ `<local>`；机器表里的写法）。
+ */
+machine: Origin, from: MachineFrom, 
+/**
+ * 名字后跟的数字：那台的第几条会话（从 1 起）；没跟 ⇒ 空。
+ */
+nth: number | null, };
+type Origin = string;
+```
+
+码：`bad_args`
+
+#### `machine-menu`
+
+那台此刻能做的几样（打开终端 · 新建会话 · 文件 · 机器状态 · 加入机器表）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `MachineMenuReq` · 回包 `MachineMenu`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineFrom = "local" | "table" | "ssh_config";
+type MachineMenu = { from: MachineFrom, 
+/**
+ * 那台的机器状态成品（同设置 › 机器卡那一份）；只在 ssh 配置里的那一种没有。
+ */
+head: MachineState | null, actions: Array<MenuAction>, };
+type MachineMenuReq = { machine: Origin, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { 
+/**
+ * 给人看的那台的名字（问题行那一句里说的就是它）。
+ */
+name: string, state: MachineStateKind, 
+/**
+ * 算不算离线（页头「N 台离线」数的就是这一格）：没连上 · 指纹不对 · 做不了 ⇒ 是；登录过了、只是拒开会话 ⇒ 不是。
+ */
+offline: boolean, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, 
+/**
+ * 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
+ */
+offlineSaid: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。拨号核心说的，不在这里算。
+ */
+expectedHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, 
+/**
+ * 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
+ */
+unclear?: number, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
+type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
+type Origin = string;
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
+```
+
+码：`bad_args` · `no_such_machine`
 
 #### `machine-wake`
 
@@ -14967,6 +15471,7 @@ type Words = string;
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
+| `--machine-find` | ＝ 帧命令 `machine-find`：打的字是不是恰好一台（名字 · 本机 · ssh 配置的 Host · 名字后跟第几条） |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前，会打断什么 |
 | `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
 | `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
@@ -15021,6 +15526,9 @@ type Words = string;
 | `--rotation-use-now` | ＝ 帧命令 `rotation-use-now`：现在用这个号 |
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-account` | ＝ 帧命令 `session-account`：一条会话的号 |
+| `--session-attach-check` | ＝ 帧命令 `session-attach-check`：开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写） |
+| `--session-attach-commit` | ＝ 帧命令 `session-attach-commit`：把暂存区里传完的一份落进会话工作目录下一个新的附件目录 |
+| `--session-attach-drop` | ＝ 帧命令 `session-attach-drop`：删掉会话工作目录下的一个附件目录（草稿上撤掉那一份） |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-model` | ＝ 帧命令 `session-model`：换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起） |
@@ -15034,6 +15542,8 @@ type Words = string;
 | `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：问到各台的需手动、合成一个先后 |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
+| `--set-launch` | ＝ 帧命令 `set-launch`：照存好的一组补足、逐条起：起之前写好组注解，一条不行不挡别的 |
+| `--set-plan` | ＝ 帧命令 `set-plan`：补足一组会话的预览：每行已有几个 · 再起几个 · 进哪个组 · 起不了的原因 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
 | `--skill-read` | ＝ 帧命令 `skill-read`：读来源那台上的一个 skill |
@@ -15042,6 +15552,8 @@ type Words = string;
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
 | `--terminal-preview` | ＝ 帧命令 `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方） |
 | `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
+| `--terminals-board` | ＝ 帧命令 `terminals-board`：「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数） |
+| `--terminals-board-here` | ＝ 帧命令 `terminals-board-here`：这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好） |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 | `--unplace-self` | 卸载那一趟：暂存区里传上去的这一份删掉落点 `~/.cc-monitor/bin/ccm`（不认身份）、再删自己；回 `{removed: true\|false}`；不在暂存区 ⇒ `outside_staging` |

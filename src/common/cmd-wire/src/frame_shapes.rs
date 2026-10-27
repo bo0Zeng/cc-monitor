@@ -4,9 +4,9 @@
 /// `(kind, 形状指纹)`，按 kind 排。
 pub const FRAMES: &[(&str, &str)] = &[
     ("cancelled", "59eb66d7"),
-    ("changed", "18b5ac6e"),
+    ("changed", "d06986f8"),
     ("files_batch", "b343f828"),
-    ("line", "3a905bb3"),
+    ("line", "92ac7813"),
     ("live_card", "4320b506"),
     ("overflow", "6c57a5a8"),
     ("probe", "9b42ff05"),
@@ -18,7 +18,7 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("session_file_reread", "bdab1d4a"),
     ("session_left", "05b3a69c"),
     ("session_primed", "84796fd7"),
-    ("session_runs", "feddb710"),
+    ("session_runs", "77275c42"),
     ("session_status", "a2225e2b"),
     ("sessions_replayed", "039f74b7"),
     ("terminal_follow_end", "59702041"),
