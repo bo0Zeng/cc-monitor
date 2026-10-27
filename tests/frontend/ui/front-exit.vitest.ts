@@ -43,7 +43,7 @@ describe("↗ 浮层：出口照摆写好的那一张", () => {
     const be = readFileSync(join(ROOT, "src/common/cmd-wire/src/front.rs"), "utf8");
     for (const k of ["front.title.unsure", "front.body.severalUnregistered", "front.title.gone", "front.body.detached", "front.body.notSsh"]) {
       // 按调用认、不按排版：带参数的那几处 rustfmt 折成多行（`copy_text(` 换行再写键）。
-      expect(be, `正控：${k} 由 cmd_wire::front 写`).toMatch(new RegExp(`copy_text\\(\\s*"${k.replaceAll(".", "\\.")}"`));
+      expect(be, `正控：${k} 由 cmd_wire::front 写`).toMatch(new RegExp(`copy_text\\(\\s*"${k.replace(/\./g, "\\.")}"`));
     }
   });
 
