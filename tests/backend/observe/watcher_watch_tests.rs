@@ -292,18 +292,30 @@ fn conn(
     rx
 }
 
+/// 离开那一帧说的去向（`Ended` · `Reconnectable`，同改形之前的写法）。
+fn went(s: &crate::wire::SessionLeft) -> &'static str {
+    match s.face.life {
+        crate::wire::WireLife::Reconnectable => "Reconnectable",
+        _ => "Ended",
+    }
+}
+
 /// 这一趟收到的会话账那几帧：`ended x` · `reconnectable x` · `listed`。
 fn told(rx: &mut FrameRx) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         match f {
-            Frame::SessionState(s) => {
+            Frame::SessionLeft(s) => {
+                let life = match s.face.life {
+                    crate::wire::WireLife::Reconnectable => crate::wire::Life::Reconnectable,
+                    _ => crate::wire::Life::Ended,
+                };
                 assert_eq!(
-                    Frame::SessionState(s.clone()),
-                    Frame::session_state(s.sid.clone(), s.state, None),
+                    Frame::SessionLeft(s.clone()),
+                    Frame::session_left(s.sid.clone(), life, None, None),
                     "与别处发的同一句"
                 );
-                out.push(format!("{:?} {}", s.state, s.sid));
+                out.push(format!("{} {}", went(&s), s.sid));
             }
             Frame::SessionsReplayed(_) => out.push("listed".into()),
             _ => {}
@@ -351,11 +363,12 @@ fn kept_sessions_the_ledger_still_holds_are_not_answered() {
     let mut sink = ledgered(true);
     sink.send(added_frame("live"));
     sink.send(added_frame("due"));
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "due".into(),
-        cause: crate::wire::RemovalCause::Gone,
-        by: None,
-    }));
+    sink.send(Frame::session_left(
+        "due".into(),
+        crate::wire::Life::Ended,
+        None,
+        None,
+    ));
     sink.tmux(crate::observe::tmux_observe::TmuxObservation::Sessions(
         "n\t/w\tzsh\t0\t1\tback\t$1\tback \n".into(),
     ));
@@ -464,7 +477,7 @@ fn heard(rx: &mut FrameRx) -> Vec<String> {
             Frame::SessionAdded(a) => format!("added {}", a.sid),
             Frame::SessionPrimed(p) => format!("primed {}", p.sid),
             Frame::SessionsReplayed(_) => "listed".into(),
-            Frame::SessionState(s) => format!("{:?} {}", s.state, s.sid),
+            Frame::SessionLeft(s) => format!("{} {}", went(&s), s.sid),
             Frame::Changed(c) => {
                 format!(
                     "changed {} {}",
@@ -490,12 +503,13 @@ fn realigned() -> String {
 
 /// ⑩ 丢一帧会话状态 ⇒ 通了之后这条连接依次收到：那一句（已重新对齐）· 此刻的样子（宣告 · 读完了 · 清单报完）· 手上留着的重答。
 #[test]
-fn a_lost_session_state_is_reported_again_in_place_after_the_overflow() {
+fn a_lost_session_left_is_reported_again_in_place_after_the_overflow() {
     let (dir, mut state, mut sink, mut rx) = narrow("realign");
     fill(&mut sink, 8);
-    sink.send(Frame::session_state(
+    sink.send(Frame::session_left(
         "z".into(),
-        crate::wire::SessionFate::Ended,
+        crate::wire::Life::Ended,
+        None,
         None,
     ));
     while rx.try_recv().is_ok() {}
@@ -574,9 +588,10 @@ fn a_lost_change_and_a_lost_branch_page_come_back_in_the_report() {
 fn a_report_that_jams_again_is_said_and_reported_again_until_it_gets_through() {
     let (dir, mut state, mut sink, mut rx) = narrow("jam");
     fill(&mut sink, 8);
-    sink.send(Frame::session_state(
+    sink.send(Frame::session_left(
         "z".into(),
-        crate::wire::SessionFate::Ended,
+        crate::wire::Life::Ended,
+        None,
         None,
     ));
     while rx.try_recv().is_ok() {}

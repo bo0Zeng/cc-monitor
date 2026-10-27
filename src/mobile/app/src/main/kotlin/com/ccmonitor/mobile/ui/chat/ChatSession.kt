@@ -17,7 +17,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.generation
-import com.ccmonitor.mobile.core.claude.link.running
+import com.ccmonitor.mobile.core.claude.link.canStop
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -263,7 +263,7 @@ class ChatSession(
     }
 
     /**
-     * 这条会话被顶替了（清空之后同一个进程另起一份记录，那台在 `session_removed.by` 里说是哪一条）⇒ 跟过去：换 sid、从新记录读起；
+     * 这条会话被顶替了（清空之后同一个进程另起一份记录，那台在离开那一帧的 `face.life.by` 里说是哪一条）⇒ 跟过去：换 sid、从新记录读起；
      * 旧的那条照旧在会话列表里（已结束）。
      */
     private suspend fun succeed(by: String) {
@@ -776,7 +776,7 @@ class ChatSession(
         launch {
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
-                val running = t.running(s)
+                val running = t.canStop(s)
                 if (running != _state.value.running) _state.value = _state.value.copy(running = running)
             }
         }

@@ -62,7 +62,7 @@
 
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
-use crate::wire::{Changed, Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
+use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::RecursiveMode;
@@ -1495,7 +1495,7 @@ fn watch_loop(
                 }
                 // ★ S0：一批事件处理完再决定探不探（批内多次漂移只探一次；`tmux_inflight`
                 // 再兜一层去重）。**注意这只让快照更新鲜，不是本 bug 的修复** ——
-                // 真正的修复是 `RemovalCause::Superseded`（让 monitor 不必依赖这份快照）。
+                // 真正的修复是离开那一帧带 `by`（被顶替）（让 monitor 不必依赖这份快照）。
                 //
                 // 🔴 上面这段原先还有一句：「`@ccm_sid` 由 `shared/ccm` 的
                 // 1 秒 poller 回填，这次探测很可能仍抓到**旧** tag」。**今天两半都不成立**：
@@ -1543,7 +1543,6 @@ fn watch_loop(
                         // pidfd 醒了 = 那个进程实例真的退了。
                         retire_sid_if_unreferenced(
                             &e.sid,
-                            RemovalCause::Gone,
                             None,
                             &mut state,
                             &mut sink,
@@ -1705,7 +1704,7 @@ struct ReaderState {
     /// PID-file path → [`SessionEntry`] for sessions currently considered ACTIVE
     /// (announced via `SessionAdded`). The pid + captured procStart let the
     /// liveness poll detect both a dead process AND a **reused PID** (#34); the
-    /// cached sid lets a file-delete still emit the right `SessionRemoved`.
+    /// cached sid lets a file-delete still emit the right `SessionLeft`.
     sessions: HashMap<PathBuf, SessionEntry>,
     /// P2：统一事件 channel 的发送端，由 `watch_loop` 注入。
     /// **测试里为 `None`** ⇒ 不起 pidfd 看守线程（11 处 `ReaderState::new` 因此无需改签名；
@@ -3135,7 +3134,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
 ///
 /// | 组 | 帧 |
 /// |---|---|
-/// | 控制（不动 `sessions/`） | `hello · line · session_added · session_removed · tmux_sessions×2` |
+/// | 控制（不动 `sessions/`） | `hello · line · session_added · session_left · tmux_sessions×2` |
 /// | **删掉再建** | **`hello · tmux_sessions`** |
 ///
 /// 下面那一行**与 `#60` 全链台架量到的 app 路径签名逐字相同**，而台架自己在 backend
@@ -3283,7 +3282,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
     // 必须走 removed 路径：旧实现 insert 直接覆盖 entry，旧 sid 既不清
-    // active_sids 也永不发 SessionRemoved、还被挤出活性 poll 遍历 → 假 live
+    // active_sids 也永不发离开那一帧、还被挤出活性 poll 遍历 → 假 live
     // 到断连（跨机审计实锤，本地 diff_sessions 按 sid 集合 diff 无此病）。
     // 引用计数感知：其它 pidfile 仍持旧 sid 时只解绑本 entry、不发帧。
     if let Some(old) = state.sessions.remove(&key) {
@@ -3291,7 +3290,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
         retire_sid_if_unreferenced(
             &old.sid,
-            RemovalCause::Superseded,
             Some(sid.as_str()),
             state,
             sink,
@@ -4008,17 +4006,16 @@ fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut Fram
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
         // pidfile 从盘上没了 = 真死。
-        retire_sid_if_unreferenced(&e.sid, RemovalCause::Gone, None, state, sink);
+        retire_sid_if_unreferenced(&e.sid, None, state, sink);
     }
 }
 
 /// Batch6-F22：sid 退休的**唯一**出口——`sessions` 表中已无任何存活 entry 持有
-/// 该 sid 时才清 active_sids + 发 [`Frame::SessionRemoved`]。同 sid 多 pidfile
+/// 该 sid 时才清 active_sids + 发离开那一帧 [`Frame::SessionLeft`]（会话账本拦下它、裁好去向再发）。同 sid 多 pidfile
 /// （resume 时原进程未死）场景下，先死的那个只解绑、不误杀整个 tab。
 /// 调用方约定：先从 `state.sessions` remove 掉当事 entry 再调本函数。
 fn retire_sid_if_unreferenced(
     sid: &str,
-    cause: RemovalCause,
     by: Option<&str>,
     state: &mut ReaderState,
     sink: &mut FrameSink,
@@ -4038,11 +4035,13 @@ fn retire_sid_if_unreferenced(
     if let Some(f) = state.retire_runs(sid) {
         sink.send(f);
     }
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: sid.to_string(),
-        cause,
-        by: by.map(str::to_string),
-    }));
+    // 离开那一帧：被顶替 ⇒ 带顶替它的那条；去向（可重连 · 已结束 · 记录已不在）由会话账本裁好再发（[`FrameSink::send`]）。
+    sink.send(Frame::session_left(
+        sid.to_string(),
+        crate::wire::Life::Ended,
+        by.map(str::to_string),
+        None,
+    ));
 }
 
 /// 每一家的记录根走一遍，找这个 sid 的记录文件（宣告会话时把它已有的那几行带上）。
@@ -4891,11 +4890,7 @@ impl FrameSink {
         for sid in due {
             s.kept_answered.insert(sid.clone());
             l.said_ended(&sid);
-            s.push(Frame::session_state(
-                sid,
-                crate::wire::SessionFate::Ended,
-                None,
-            ));
+            s.push(Frame::session_left(sid, crate::wire::Life::Ended, None, None));
         }
     }
 
@@ -5037,8 +5032,7 @@ fn row_moved_by(frame: &Frame) -> Option<&str> {
     match frame {
         Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })
         | Frame::SessionStatus(crate::wire::SessionStatus { sid, .. })
-        | Frame::SessionState(crate::wire::SessionState { sid, .. })
-        | Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => Some(sid),
+        | Frame::SessionLeft(crate::wire::SessionLeft { sid, .. }) => Some(sid),
         Frame::Line(crate::wire::Line { session_id, .. })
         | Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. })
         | Frame::SessionFileReread(crate::wire::SessionFileReread { session_id, .. }) => {

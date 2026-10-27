@@ -39,7 +39,7 @@ fn the_session_added_arm_is_not_silent() {
 
 // monitor 不存 tmux 原文；收割在后端会话账本里（`tests/backend/observe/session_ledger_tests.rs` 的「tmux 会话关了当场已结束」）。
 
-/// ★ 与上一条**成对**：`SessionRemoved` 那一臂也不许静默。
+/// ★ 与上一条**成对**：离开那一帧（`SessionLeft`）那一臂也不许静默。
 ///
 /// # 为什么成对才有用
 ///
@@ -53,18 +53,16 @@ fn the_session_added_arm_is_not_silent() {
 /// 少跑一条**（`4 passed` 里没有它）。⇒ 加判据之后要核**名字出现在跑的清单里**，
 /// 不是只看「全绿」——本仓「0 passed 不是绿」的同一族。
 #[test]
-fn the_session_removed_arm_is_not_silent() {
-    // 「死亡那跳到没到」今天是两帧：`session_removed`（内容流收口）与紧跟的 `session_state`（后端裁的去向）。
-    //   两行都要留；去向那一行排在转交**之前**（转交卡住时也留下「收到了」）。
+fn the_session_left_arm_is_not_silent() {
+    // 「死亡那跳到没到」只一帧：`session_left`（内容流收口 ＋ 后端裁的去向在 `face.life`）。
+    //   那一行排在转交**之前**（转交卡住时也留下「收到了、去向是什么」）。
     let prod = guard_core::addr::stream_source_production();
-    guard_core::find_pinned(&prod, "session-removed: [{host_label}] sid={sid}").expect(
-        "`SessionRemoved` 那一臂必须留下一行「收到了」——`#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」。",
+    let at = guard_core::find_pinned(&prod, "session-left: [{host_label}] sid={sid} → {:?}").expect(
+        "离开那一臂必须留下一行「收到了、去向是什么」——`#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」。",
     );
-    let at = guard_core::find_pinned(&prod, "session-state: [{host_label}] sid={sid} → {state:?}")
-        .expect("`SessionState` 那一臂必须留下一行「收到了、去向是什么」—— 少了它，灰灯与归档分不出走了哪条");
     let fwd = &prod[at..(at + 400).min(prod.len())];
     assert!(
-        guard_core::find_pinned(fwd, "told(at, Frame::SessionState(s));").is_ok(),
+        guard_core::find_pinned(fwd, "told(at, Frame::SessionLeft(s));").is_ok(),
         "那行日志与它要守的那次转交之间隔太远（或被排到了后面）"
     );
 }
@@ -223,8 +221,7 @@ fn the_shared_stripper_keeps_the_arms_this_guard_must_scan() {
         &guard_core::addr::stream_source_raw(),
         &[
             "session-added: [{host_label}] sid={sid}",
-            "session-removed: [{host_label}] sid={sid}",
-            "session-state: [{host_label}] sid={sid} → {state:?}",
+            "session-left: [{host_label}] sid={sid} → {:?}",
         ],
     );
 }

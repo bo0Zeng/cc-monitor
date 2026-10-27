@@ -1,6 +1,6 @@
 //! **monitor 手里「这条连接上那台后端说过的会话成品」** —— 纯缓存，不裁决。
 //!
-//! 活 / 可重连 / 已结束由那台机器的后端裁（`src/backend/observe/session_ledger.rs`，帧 `session_added` · `session_state` ·
+//! 活 / 可重连 / 已结束由那台机器的后端裁（`src/backend/observe/session_ledger.rs`，帧 `session_added` · `session_left` ·
 //! `sessions_replayed`），本机远端同一形。monitor 这一侧只做三件事：
 //! ① 收的那一头（`stream_source::consume`：本机那条流 · 本机后端转来的各台）把成品交进来（[`feed`]）；
 //! ② 按原样转给前端（出口由 `lib.rs` 装：[`Out`] ⇒ 事件 ＋ 拉前那几样副作用）；
@@ -16,13 +16,13 @@ use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use cmd_wire::frame::{Frame, SessionAdded, SessionFate, SessionRuns, SessionState, SessionStatus};
+use cmd_wire::frame::{Frame, Life, SessionAdded, SessionLeft, SessionRuns, SessionStatus};
 use resident_client::book::{Seat, SessionBook};
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum In {
-    /// 那台说的一帧会话帧（`session_added` · `session_status` · `session_state` · `session_removed` · `session_file_reread` ·
+    /// 那台说的一帧会话帧（`session_added` · `session_status` · `session_left` · `session_file_reread` ·
     /// `sessions_replayed` · `session_runs`），原样交进来。
     Told {
         origin: String,
@@ -60,7 +60,7 @@ pub enum Out {
     },
     Left {
         origin: String,
-        state: SessionState,
+        left: SessionLeft,
     },
     /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一刻：前端据此收空组、说记住的那一格没出现）。
     Listed {
@@ -170,7 +170,7 @@ impl Book {
                 };
                 let sids: Vec<String> = b
                     .seats()
-                    .filter(|(_, p)| !matches!(p, Seat::Left(s) if s.state == SessionFate::Ended))
+                    .filter(|(_, p)| !matches!(p, Seat::Left(s) if !reconnectable(s)))
                     .map(|(s, _)| s.clone())
                     .collect();
                 if sids.is_empty() {
@@ -194,14 +194,14 @@ impl Book {
                 meta,
             }],
             Frame::SessionStatus(status) => vec![Out::Status { origin, status }],
-            Frame::SessionState(state) => {
+            Frame::SessionLeft(left) => {
                 if let Some(m) = self
                     .branch
                     .get_mut(&crate::origin::Origin::named(origin.clone()))
                 {
-                    m.remove(&state.sid);
+                    m.remove(&left.sid);
                 }
-                vec![Out::Left { origin, state }]
+                vec![Out::Left { origin, left }]
             }
             Frame::SessionRuns(runs) => vec![Out::Runs { origin, runs }],
             Frame::SessionsReplayed(_) => {
@@ -327,10 +327,10 @@ impl Book {
                             });
                         }
                     }
-                    Seat::Left(s) if s.state == SessionFate::Reconnectable => {
+                    Seat::Left(s) if reconnectable(s) => {
                         r.after.push(Out::Left {
                             origin: (*o).clone(),
-                            state: s.clone(),
+                            left: s.clone(),
                         })
                     }
                     Seat::Left(_) => {}
@@ -343,10 +343,10 @@ impl Book {
             let b = self.origins.get(origin);
             match b.and_then(|b| b.seat(sid)) {
                 Some(Seat::Live(_)) => {}
-                Some(Seat::Left(s)) if s.state == SessionFate::Reconnectable => {}
+                Some(Seat::Left(s)) if reconnectable(s) => {}
                 Some(Seat::Left(s)) => settled.push(Out::Left {
                     origin: origin.clone(),
-                    state: s.clone(),
+                    left: s.clone(),
                 }),
                 // 那台报完了清单、这条没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
                 None if b.is_some_and(|b| b.listed) => {}
@@ -394,7 +394,7 @@ impl Out {
         match self {
             Out::Live { meta, .. } => F::Added(meta.clone()),
             Out::Status { status, .. } => F::Status(status.clone()),
-            Out::Left { state, .. } => F::State(state.clone()),
+            Out::Left { left, .. } => F::Left(left.clone()),
             Out::Listed { origin, all } => F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin::named(origin.clone()),
                 all: *all,
@@ -429,9 +429,9 @@ impl Book {
                         sid: sid.clone(),
                         meta: m.clone(),
                     }),
-                    Seat::Left(s) if s.state == SessionFate::Reconnectable => v.push(Out::Left {
+                    Seat::Left(s) if reconnectable(s) => v.push(Out::Left {
                         origin: origin.to_string(),
-                        state: s.clone(),
+                        left: s.clone(),
                     }),
                     Seat::Left(_) => {}
                 }
@@ -482,3 +482,8 @@ fn send(outs: Vec<Out>) {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/session_book_tests.rs"]
 mod tests;
+
+/// 走了的那一条接得回去（那台说可重连）。
+fn reconnectable(s: &SessionLeft) -> bool {
+    s.face.life == Life::Reconnectable
+}

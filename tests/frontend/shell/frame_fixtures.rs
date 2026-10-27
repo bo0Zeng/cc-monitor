@@ -22,17 +22,18 @@ pub(crate) fn our_hello(commands: &[&str]) -> crate::stream_source::Frame {
 fn face(dot: &str, name: &str) -> serde_json::Value {
     let yes = serde_json::json!({"can": "yes"});
     serde_json::json!({
-        "dot": dot, "live": {"is": "no"}, "settled": false, "name": name, "tip": "T", "line": "L", "tone": "plain", "order": 5,
-        "can": {"close": {"can": "quiet"}, "resume": yes, "term": {"can": "yes", "tmux": false}, "reattach": yes, "model": yes, "permission": yes},
+        "dot": dot, "life": {"is": "ended"}, "settled": false, "name": name, "tip": "T", "line": "L", "tone": "plain", "order": 5,
+        "can": {"close": {"can": "quiet"}, "resume": yes, "term": {"can": "yes", "tmux": false}, "reattach": yes, "model": yes, "permission": yes, "stop": {"can": "no", "why": "W"}},
     })
 }
 
-/// 判据用的一帧去向（`state` 取线上那一形：`reconnectable` / `ended`），`text` 是那台写的短名。
-pub(crate) fn session_state(sid: &str, state: &str, text: &str) -> cmd_wire::frame::SessionState {
+/// 判据用的一帧离开（`life` 取线上那一形：`reconnectable` / `ended`），`text` 是那台写的短名。
+pub(crate) fn session_left(sid: &str, life: &str, text: &str) -> cmd_wire::frame::SessionLeft {
+    let mut face = face("ended", text);
+    face["life"] = serde_json::json!({"is": life});
     serde_json::from_value(serde_json::json!({
         "sid": sid,
-        "state": state,
-        "face": face("ended", text),
+        "face": face,
     }))
     .expect("判据造的去向解不开")
 }

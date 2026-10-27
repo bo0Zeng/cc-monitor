@@ -209,7 +209,7 @@ fn stale_listing() -> cmd_wire::listing::Listing {
     let mut l = cmd_wire::listing::Listing::default();
     l.rows = vec![serde_json::from_value(json!({
         "agent": "claude", "sessionId": "s-old", "projectPath": "/w/p", "projectName": "p", "aiTitle": null,
-        "firstUserExcerpt": "x", "title": "x", "startedAt": 1, "updatedAt": 2, "jsonlPath": "/x", "life": null,
+        "firstUserExcerpt": "x", "title": "x", "startedAt": 1, "updatedAt": 2, "jsonlPath": "/x", "life": {"is": "unclear"},
         "messageCountApprox": 0, "isBg": false, "starred": false, "customTitle": null, "launchTab": null, "parent": null,
         "projectDir": "-w-p", "group": "claude:/w/p", "lastAccount": null
     }))

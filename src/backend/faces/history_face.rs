@@ -1409,7 +1409,7 @@ pub(crate) fn kin_of(
     let kin = |k: &str| Kin {
         sid: k.to_string(),
         title: title_here(k, &annotations),
-        face: crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(live.life_of(k)))),
+        face: crate::wire::SessionFace::of(crate::wire::Life::of_wire(&live.life_of(k))),
         hidden: crate::history::session_hidden::hidden_here(
             here,
             &annotations,

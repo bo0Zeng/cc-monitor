@@ -12,7 +12,8 @@ use super::listing_scan::SessionScan;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::platform::fs::{Own, OwnPath, Ro};
-pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume, RowLife};
+pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
+use crate::wire::WireLife;
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -24,8 +25,8 @@ use std::time::UNIX_EPOCH;
 /// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
 /// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
 /// 历史清单的行与全文搜索的命中同一个函数。
-pub(crate) fn can_of(kind: &str, life: Option<RowLife>, bg: bool) -> Can {
-    let live = matches!(life, Some(RowLife::Live { .. }));
+pub(crate) fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
+    let live = life.is_live();
     Can {
         resume: if live {
             CanResume::Switch
@@ -37,9 +38,9 @@ pub(crate) fn can_of(kind: &str, life: Option<RowLife>, bg: bool) -> Can {
         accounts: crate::agents::account_env_of(kind).is_some(),
         fork: crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
         delete: match life {
-            Some(RowLife::Live { .. }) => CanDelete::Live,
-            None => CanDelete::Unsure,
-            Some(_) => CanDelete::Yes,
+            WireLife::Live { .. } => CanDelete::Live,
+            WireLife::Unclear => CanDelete::Unsure,
+            _ => CanDelete::Yes,
         },
     }
 }

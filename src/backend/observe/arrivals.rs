@@ -66,7 +66,7 @@ impl Arrivals {
                     self.arrive(sid, cwd.clone());
                 }
             }
-            Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => {
+            Frame::SessionLeft(crate::wire::SessionLeft { sid, .. }) => {
                 self.live.remove(sid);
             }
             _ => {}

@@ -594,7 +594,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J34: {
     what: "哪些号能当换号 · 加号的候选（起会话时没说是哪个号的 `_` 不是）",
     // 从前界面三处（账号面板的轮换那一块 · 现在就换 · 设置页轮换的「＋ 加号…」）各把额度账与没出过数的号拼起来、自己滤 `_`，
-    //   后端会话那一份（`session_state`）另滤一遍。⇒ `quota-read` 回包写 `candidates`，会话那一份调同一个判断；界面只照抄。
+    //   后端会话那一份（`session_left`）另滤一遍。⇒ `quota-read` 回包写 `candidates`，会话那一份调同一个判断；界面只照抄。
     homes: ["src/backend/accounts/quota/name_words.rs::is_candidate"],
     status: "zero",
     defs: [],

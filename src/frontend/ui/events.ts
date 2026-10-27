@@ -623,8 +623,8 @@ export async function bindEvents(
           take({ kind: "branch", payload: f.branch });
         } else if (f !== null && typeof f === "object" && "watch" in f) {
           take({ kind: "watch", origin, payload: f.watch });
-        } else if (f !== null && typeof f === "object" && "state" in f) {
-          take({ kind: "face", sessionId: f.state.sid, face: f.state.face, name: null });
+        } else if (f !== null && typeof f === "object" && "left" in f) {
+          take({ kind: "face", sessionId: f.left.sid, face: f.left.face, name: null });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
           take({ kind: "unseen", origin: f.unseen.origin, face: f.unseen.face });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
@@ -894,8 +894,8 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
         if (f === null || typeof f !== "object") continue;
         if ("line" in f) {
           if (f.line.session_id === sid) lines.push(f.line);
-        } else if ("state" in f) {
-          if (f.state.sid === sid && f.state.state === "ended") out.push({ t: "live", live: false });
+        } else if ("left" in f) {
+          if (f.left.sid === sid && f.left.face.life.is !== "reconnectable") out.push({ t: "live", live: false });
         } else if ("added" in f) {
           if (f.added.sid === sid) out.push({ t: "live", live: true });
         } else if ("unseen" in f) out.push({ t: "sight", seen: false });

@@ -143,10 +143,9 @@ fn the_first_layer_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_added",
             // 读完了、从第几行起（本机消费者在这一帧排旁路快照）。
             "session_primed",
-            "session_removed",
             // 「X 变了」（本机消费者交 `changed/<主题>` 订阅）。
             "changed",
-            "session_state",
+            "session_left",
             "session_status",
             "sessions_replayed",
             // 记录文件的出声（同一条内容通道，与行同序）。

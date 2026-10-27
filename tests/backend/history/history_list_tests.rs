@@ -322,8 +322,8 @@ fn the_machine_listing_carries_group_dir_failures_synth_and_last_accounts() {
     assert_eq!(cx["projectDir"], "codex:/w/delta");
     assert_eq!(
         cx["life"],
-        Value::Null,
-        "合成历史判不了活 ⇒ null，不是 false"
+        json!({"is": "unclear"}),
+        "合成历史判不了活 ⇒ 说不清，不是已结束"
     );
     assert_eq!(
         answer(json!({}))["rows"][0].get("life"),
@@ -343,7 +343,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     let s1 = find(&v, S1);
     assert_eq!(s1["starred"], true);
     assert_eq!(s1["label"], "支付回调验签");
-    assert_eq!(s1["face"]["live"]["is"], "yes");
+    assert_eq!(s1["face"]["life"]["is"], "live");
     assert_eq!(
         s1["can"],
         json!({"resume": "switch", "accounts": true, "fork": true, "delete": "live"})
@@ -952,11 +952,11 @@ fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
     let o = session_row(&v(other), "-w-a", &none).unwrap();
     let live = session_row(&v(sid), "-w-a", &live_table(&[(sid, None)], &[sid])).unwrap();
     assert_eq!(
-        [&r, &o, &live].map(|x| x.life),
+        [&r, &o, &live].map(|x| x.life.clone()),
         [
-            Some(RowLife::Reconnectable),
-            Some(RowLife::Ended),
-            Some(RowLife::Live { activity: None })
+            crate::wire::WireLife::Reconnectable,
+            crate::wire::WireLife::Ended { by: None },
+            crate::wire::WireLife::Live { activity: None }
         ]
     );
 }

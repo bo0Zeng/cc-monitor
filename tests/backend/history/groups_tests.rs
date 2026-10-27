@@ -17,7 +17,7 @@
 
 use super::*;
 use crate::dial::remote_ask::test_peers::{until, Peers};
-use cmd_wire::listing::RowLife;
+use crate::wire::WireLife;
 use cmd_wire::Machine;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -26,9 +26,9 @@ fn m(name: &str) -> Machine {
     Machine::named(name)
 }
 
-fn face(life: RowLife) -> cmd_wire::frame::SessionFace {
+fn face(life: WireLife) -> cmd_wire::frame::SessionFace {
     use crate::wire::SessionFaceExt as _;
-    cmd_wire::frame::SessionFace::of(crate::wire::Life::of_row(Some(life)))
+    cmd_wire::frame::SessionFace::of(crate::wire::Life::of_wire(&life))
 }
 
 /// 复活那几格（占位的值，照真东西的形状）。
@@ -43,7 +43,7 @@ fn facts(sid: &str) -> MemberFacts {
     }
 }
 
-fn member(sid: &str, groups: &[&str], pinned: bool, life: RowLife) -> HereMember {
+fn member(sid: &str, groups: &[&str], pinned: bool, life: WireLife) -> HereMember {
     HereMember {
         sid: sid.into(),
         groups: groups.iter().map(|g| g.to_string()).collect(),
@@ -53,8 +53,8 @@ fn member(sid: &str, groups: &[&str], pinned: bool, life: RowLife) -> HereMember
     }
 }
 
-fn running() -> RowLife {
-    RowLife::Live {
+fn running() -> WireLife {
+    WireLife::Live {
         activity: Some(crate::agents::SessionActivity::Working),
     }
 }
@@ -120,7 +120,7 @@ fn on_c() -> GroupsHere {
 fn on_e() -> GroupsHere {
     slice(
         vec![rec("g1", "甲", 5, 5)],
-        vec![member("e", &["g1"], false, RowLife::Ended)],
+        vec![member("e", &["g1"], false, WireLife::Ended { by: None })],
     )
 }
 
@@ -167,11 +167,11 @@ async fn g1_a_sees_the_group_through_the_one_slice_it_can_reach() {
 async fn g2_the_newest_name_across_slices_wins_and_nobody_is_home() {
     let c = slice(
         vec![rec("g1", "旧名", 3, 10)],
-        vec![member("c", &["g1"], false, RowLife::Ended)],
+        vec![member("c", &["g1"], false, WireLife::Ended { by: None })],
     );
     let local = slice(
         vec![rec("g1", "新名", 5, 20)],
-        vec![member("a", &["g1"], false, RowLife::Ended)],
+        vec![member("a", &["g1"], false, WireLife::Ended { by: None })],
     );
     let got = read_at(
         &["C", cmd_wire::LOCAL],
@@ -345,7 +345,7 @@ fn g6_this_machines_slice_is_its_groups_and_its_grouped_or_pinned_sessions() {
         let life = if sid == "s1" {
             running()
         } else {
-            RowLife::Ended
+            WireLife::Ended { by: None }
         };
         (face(life), facts(sid))
     });
@@ -500,7 +500,7 @@ fn g8_unknown_keys_in_the_groups_section_survive_and_an_unreadable_file_is_never
 async fn g9_member_rows_carry_what_resurrecting_a_tab_needs() {
     let b = slice(
         vec![rec("g1", "开发", 7, 7)],
-        vec![member("s-b", &["g1"], true, RowLife::Ended)],
+        vec![member("s-b", &["g1"], true, WireLife::Ended { by: None })],
     );
     let got = read_at(
         &[cmd_wire::LOCAL, "devbox"],
@@ -523,7 +523,7 @@ async fn g9_member_rows_carry_what_resurrecting_a_tab_needs() {
     assert_eq!(pin.origin.to_string(), "devbox");
 }
 
-fn raw_row(sid: &str, life: Option<RowLife>) -> cmd_wire::listing::RawRow {
+fn raw_row(sid: &str, life: Option<WireLife>) -> cmd_wire::listing::RawRow {
     let mut v = serde_json::json!({
         "agent": "claude",
         "sessionId": sid,
@@ -572,7 +572,7 @@ fn g10_this_machines_facts_come_from_its_listing_row() {
     assert_eq!(f.dot, cmd_wire::frame::SessionDot::Running, "照活会话表");
     assert_eq!(x.record, None);
     assert_eq!(x.title.0, "改过的", "改过的标题照注解");
-    let (_, x) = unlisted(None, RowLife::Ended);
+    let (_, x) = unlisted(None, WireLife::Ended { by: None });
     assert_eq!(
         x.title.0,
         copy_core::copy_text("history.row.untitled", &[]),

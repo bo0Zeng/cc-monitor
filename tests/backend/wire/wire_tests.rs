@@ -248,8 +248,9 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::wire::{
         LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
-        SessionContainer, SessionFate, TransferEnd, Unavailable,
+        SessionContainer, TransferEnd, Unavailable,
     };
+    use crate::wire::Life;
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
     vec![
@@ -390,24 +391,10 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
             }),
         ],
-        {
-            // 全格：可重连；最少格：已结束（不能那几样带为什么）。
-            [
-                Frame::session_state(s("s1"), SessionFate::Reconnectable, Some(s("b"))),
-                Frame::session_state(s("s1"), SessionFate::Ended, None),
-            ]
-        },
+        // 全格：被顶替（带顶替它的那条）、带号；少的那一形：可重连（不带号，关不掉 · 终端那两格的形只它有）。
         [
-            Frame::SessionRemoved(crate::wire::SessionRemoved {
-                sid: s("s1"),
-                cause: RemovalCause::Superseded,
-                by: Some(s("s2")),
-            }),
-            Frame::SessionRemoved(crate::wire::SessionRemoved {
-                sid: s("s1"),
-                cause: RemovalCause::Gone,
-                by: None,
-            }),
+            Frame::session_left(s("s1"), Life::Ended, Some(s("s2")), Some(s("b"))),
+            Frame::session_left(s("s1"), Life::Reconnectable, None, None),
         ],
         [Frame::overflow(0, true), Frame::overflow(7, false)],
         [
@@ -1092,107 +1079,22 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     assert_eq!(v["seq"], 42);
 }
 
-/// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
-/// 只有 `Superseded` 才出现。这条同时是**跨语言双写点**的本侧锚：字面量
-/// `"superseded"` 与 monitor `src/frontend/shell/src/stream_source/` 的解析处逐字一致。
+/// 离开「活」那一帧的**逐字节**金标准：`sid` 在前、整份脸在后；去向只在 `face.life`（`is` 那几个字面量客户端按 `cmd-wire` 认）。
+/// 被顶替才带 `by`，别的不出这一格。
 #[test]
-fn removal_cause_is_additive_on_the_wire() {
-    let gone = to_line(&Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "s".into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    }))
-    .unwrap();
-    assert!(
-        !gone.contains("cause"),
-        "Gone 必须不写 cause 字段（否则旧 monitor 看到未知字段、帧也白白变大）：{gone}"
-    );
-    let sup = to_line(&Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "s".into(),
-        cause: RemovalCause::Superseded,
-        by: Some("s2".into()),
-    }))
-    .unwrap();
-    assert_eq!(
-        sup,
-        "{\"kind\":\"session_removed\",\"sid\":\"s\",\"cause\":\"superseded\",\"by\":\"s2\"}\n",
-        "被顶替时带上顶替它的那条会话；不是顶替不出这一格"
-    );
-    assert!(!gone.contains("by"), "{gone}");
-    assert!(
-        sup.contains(r#""cause":"superseded""#),
-        "Superseded 必须逐字发 \"superseded\"（monitor 侧按这个字面量解析）：{sup}"
-    );
-    // 反向自检：两条不是同一个串（否则上面两个断言可能同时被一个退化实现满足）。
-    assert_ne!(gone, sup);
-}
-
-/// `session_added.container` 的线上形：对象 ＋ 缺席，四格各钉一处（精确字节）。
-///
-/// - 缺席：「不知道」。
-/// - `{"host":"tmux","terminal":…}` / `{"host":"tmux"}`（句柄算不出就不写那一格）/ `{"host":"none"}`。
-#[test]
-fn session_added_container_is_an_object_with_host_and_terminal() {
-    use crate::wire::SessionContainer;
-    let frame = |c: Option<SessionContainer>| {
-        to_line(&Frame::SessionAdded(crate::wire::SessionAdded {
-            sid: "s".into(),
-            agent_kind: "claude".to_string(),
-            background: false,
-            attachable: None,
-            cwd: None,
-            project_dir: None,
-            name: None,
-            path: None,
-            face: crate::wire::SessionFace::of(crate::wire::Life::Live {
-                activity: None,
-                tmux: None,
-            }),
-            name_face: crate::history::search_rules::name_face(&Default::default()),
-            hidden: None,
-            container: c,
-            pid: 0,
-        }))
-        .unwrap()
-    };
-    let hosted = |t: Option<&str>| SessionContainer::Tmux {
-        terminal: t.map(str::to_string),
-    };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":0}\n");
-    assert_eq!(
-        frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
-    );
-    assert_eq!(
-        frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
-    );
-    assert_eq!(
-        frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
-    );
-}
-
-/// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；整份脸跟在 `state` 后面。
-/// 客户端按 `cmd-wire` 的类型认这两个字面量。
-#[test]
-fn mig1_session_state_has_exactly_these_bytes() {
-    use crate::wire::SessionFate;
-    for (state, word) in [
-        (SessionFate::Reconnectable, "reconnectable"),
-        (SessionFate::Ended, "ended"),
+fn the_session_left_frame_has_exactly_these_bytes() {
+    for (life, by, word) in [
+        (crate::wire::Life::Reconnectable, None, r#"{"is":"reconnectable"}"#),
+        (crate::wire::Life::Ended, None, r#"{"is":"ended"}"#),
+        (crate::wire::Life::Ended, Some("s2"), r#"{"is":"ended","by":"s2"}"#),
+        (crate::wire::Life::Gone, None, r#"{"is":"gone"}"#),
     ] {
-        let face = serde_json::to_string(
-            &<crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(match state {
-                SessionFate::Reconnectable => crate::wire::Life::Reconnectable,
-                SessionFate::Ended => crate::wire::Life::Ended,
-            }),
-        )
-        .unwrap();
-        assert_eq!(
-            to_line(&Frame::session_state("abc".into(), state, None)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"face\":{face}}}\n")
+        let line = to_line(&Frame::session_left("abc".into(), life, by.map(str::to_string), None)).unwrap();
+        assert!(
+            line.starts_with(r#"{"kind":"session_left","sid":"abc","face":{"dot":"#),
+            "{line}"
         );
+        assert!(line.contains(&format!(r#""life":{word},"#)), "{line}");
     }
 }
 
@@ -1230,7 +1132,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"live\":{\"is\":\"yes\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"face\":{\"dot\":\"idle\",\"life\":{\"is\":\"live\"},\"settled\":false,\"name\":\"状态不明\",\"tip\":\"状态不明\",\"line\":\"状态不明\",\"tone\":\"plain\",\"order\":3,\"can\":{\"close\":{\"can\":\"no\",\"why\":\"运行中\"},\"resume\":{\"can\":\"no\",\"why\":\"运行中\"},\"term\":{\"can\":\"yes\",\"tmux\":false},\"reattach\":{\"can\":\"no\",\"why\":\"运行中\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"no\",\"why\":\"状态不明\"}}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1319,7 +1221,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
 //
 // 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
 // （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
-// 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::tests::FROZEN`），不在这张表。
+// 会话三帧（`session_added` · `session_status` · `session_left`）在格目录里，冻结的格登在那边（`cells_catalog::tests::FROZEN`），不在这张表。
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
 pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
@@ -1533,7 +1435,7 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
 #[test]
 fn session_frames_carry_the_state_written_and_toned() {
     use crate::agents::SessionActivity as A;
-    use crate::wire::{Life, SessionFate};
+    use crate::wire::Life;
     let status = |a: Option<A>| {
         serde_json::to_value(Frame::<crate::agents::record::Record>::SessionStatus(
             crate::wire::SessionStatus {
@@ -1599,23 +1501,23 @@ fn session_frames_carry_the_state_written_and_toned() {
     assert_eq!(reading["tone"], "plain");
     assert_eq!(reading["order"], none["order"]);
     assert!(
-        reading["live"].get("activity").is_none(),
+        reading["life"].get("activity").is_none(),
         "读记录中不说判出了哪一态"
     );
 
     for (f, name, hint) in [
         (
-            SessionFate::Reconnectable,
+            Life::Reconnectable,
             "sessionState.reconnectable.name",
             "sessionState.reconnectable.tooltip",
         ),
         (
-            SessionFate::Ended,
+            Life::Ended,
             "sessionState.ended.name",
             "sessionState.ended.tooltip",
         ),
     ] {
-        let v = &serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"];
+        let v = &serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"];
         assert_eq!(v["name"], copy_core::copy_text(name, &[]), "{f:?}");
         assert_eq!(v["tip"], copy_core::copy_text(hint, &[]), "{f:?}");
         assert_eq!(v["tone"], "plain", "{f:?}");
@@ -1953,7 +1855,7 @@ fn the_flat_state_cells_are_gone_from_the_sources() {
     assert!(hits.is_empty(), "平铺的旧状态格还在：{hits:#?}");
 }
 
-/// 监控板组内一把尺：可重连 · 已结束的 `session_state` 那份脸的序，都排在任何活会话的序之后；
+/// 监控板组内一把尺：可重连 · 已结束的 `session_left` 那份脸的序，都排在任何活会话的序之后；
 /// 界面只按这一格排、不再自己按状态分段。
 #[test]
 fn the_fates_sort_after_every_live_session_on_one_ruler() {
@@ -1977,14 +1879,14 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
     })
     .collect();
     let fate = |f| {
-        serde_json::to_value(Frame::session_state("s".into(), f, None)).unwrap()["face"]["order"]
+        serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"]["order"]
             .as_u64()
     };
     assert_eq!(live, [0, 1, 2, 3].into());
     assert_eq!(
         (
-            fate(crate::wire::SessionFate::Reconnectable),
-            fate(crate::wire::SessionFate::Ended)
+            fate(crate::wire::Life::Reconnectable),
+            fate(crate::wire::Life::Ended)
         ),
         (Some(4), Some(5))
     );
@@ -1994,15 +1896,15 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
 /// 只在右键菜单里关，不给恢复（也许还在跑，再起一份就是同一会话两个进程），别的都不给；字里不写机器名。
 #[test]
 fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
-    use cmd_wire::frame::{Allow, CanClose, CanTerm, FaceLive, SessionDot};
+    use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionDot};
     let f = crate::wire::SessionFace::of(Life::Unseen);
     assert_eq!(f.dot, SessionDot::Unknown);
-    assert_eq!(f.live, FaceLive::No);
+    assert_eq!(f.life, crate::wire::WireLife::Unclear);
     assert!(!f.settled, "看不见不是定局：重连后那台的帧把脸带回来");
     assert_eq!(f.can.close, CanClose::Menu);
     assert!(matches!(f.can.resume, Allow::No { .. }));
     assert!(matches!(f.can.term, CanTerm::No { .. }));
-    for a in [&f.can.reattach, &f.can.model, &f.can.permission] {
+    for a in [&f.can.reattach, &f.can.model, &f.can.permission, &f.can.stop] {
         assert!(matches!(a, Allow::No { .. }), "{a:?}");
     }
     assert_eq!(

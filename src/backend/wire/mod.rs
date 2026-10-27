@@ -24,21 +24,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 pub use topic::TopicExt;
 
-pub use cmd_wire::frame::FaceLive;
+/// 线上那一格一生（[`cmd_wire::frame::Life`]）：这一层的 [`Life`] 是造脸的入参，名字让给它。
+pub use cmd_wire::frame::Life as WireLife;
 /// 帧的线上形住 `cmd-wire`（[`cmd_wire::frame`]，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionCan, SessionDot, SessionFace};
-pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
+pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
 pub use cmd_wire::frame::{NameFace, SessionActivity};
-pub use cmd_wire::frame::{RemovalCause, SessionFate, Topic, Unavailable};
+pub use cmd_wire::frame::{Topic, Unavailable};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 
-/// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）。
+/// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）：比线上那一格 [`WireLife`] 多带写字要的几样
+/// （在不在 tmux 里 · 记录读没读完 · 那台看不见）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Life {
     /// 进程在：那一家说在干什么（说不清 ⇒ `None`）· 在不在 tmux 里（判不了 ⇒ `None`）。
@@ -74,17 +76,17 @@ impl Life {
         Life::Reading { tmux: in_tmux(c) }
     }
 
-    /// 清单行 · 搜索命中那一段：那台判的活不活（判不了 ⇒ 说不清；清单不看容器）。
-    pub(crate) fn of_row(life: Option<cmd_wire::listing::RowLife>) -> Self {
-        use cmd_wire::listing::RowLife;
+    /// 清单行 · 搜索命中那一段：那台判的一生（清单不看容器）。
+    pub(crate) fn of_wire(life: &WireLife) -> Self {
         match life {
-            Some(RowLife::Live { activity }) => Life::Live {
-                activity,
+            WireLife::Live { activity } => Life::Live {
+                activity: *activity,
                 tmux: None,
             },
-            Some(RowLife::Reconnectable) => Life::Reconnectable,
-            Some(RowLife::Ended) => Life::Ended,
-            None => Life::Unclear,
+            WireLife::Reconnectable => Life::Reconnectable,
+            WireLife::Ended { .. } => Life::Ended,
+            WireLife::Gone => Life::Gone,
+            WireLife::Unclear => Life::Unclear,
         }
     }
 }
@@ -133,11 +135,11 @@ impl SessionFaceExt for SessionFace {
                 ));
                 SessionFace {
                     dot: SessionDot::Exited,
-                    live: FaceLive::No,
+                    life: WireLife::Reconnectable,
                     settled: false,
                     name: Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
                     line: tip.clone(),
-                    tip,
+                    tip: tip.clone(),
                     tone: Tone::Plain,
                     order: 4,
                     account: None,
@@ -149,6 +151,7 @@ impl SessionFaceExt for SessionFace {
                         // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
                         model: Allow::Yes,
                         permission: Allow::Yes,
+                        stop: no(tip.clone()),
                     },
                 }
             }
@@ -170,7 +173,11 @@ impl SessionFaceExt for SessionFace {
                 let why = ended_why(&name);
                 SessionFace {
                     dot,
-                    live: FaceLive::No,
+                    life: if gone {
+                        WireLife::Gone
+                    } else {
+                        WireLife::Ended { by: None }
+                    },
                     settled: true,
                     line: tip.clone(),
                     account: None,
@@ -178,7 +185,8 @@ impl SessionFaceExt for SessionFace {
                         close: CanClose::Quiet,
                         resume: if gone { no(tip.clone()) } else { Allow::Yes },
                         term: CanTerm::No { why: why.clone() },
-                        reattach: no(why),
+                        reattach: no(why.clone()),
+                        stop: no(why),
                         // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
                         model: if gone { no(tip.clone()) } else { Allow::Yes },
                         permission: if gone { no(tip.clone()) } else { Allow::Yes },
@@ -193,7 +201,7 @@ impl SessionFaceExt for SessionFace {
                 let tip = Words(copy_core::copy_text("sessionState.unseen.tooltip", &[]));
                 SessionFace {
                     dot: SessionDot::Unknown,
-                    live: FaceLive::No,
+                    life: WireLife::Unclear,
                     settled: false,
                     name: Words(copy_core::copy_text("sessionState.unseen.name", &[])),
                     line: tip.clone(),
@@ -210,6 +218,7 @@ impl SessionFaceExt for SessionFace {
                         reattach: no(tip.clone()),
                         model: no(tip.clone()),
                         permission: no(tip.clone()),
+                        stop: no(tip.clone()),
                     },
                     tip,
                 }
@@ -218,7 +227,7 @@ impl SessionFaceExt for SessionFace {
                 let name = Words(copy_core::copy_text("beSession.activity.unclear", &[]));
                 SessionFace {
                     dot: SessionDot::Unknown,
-                    live: FaceLive::No,
+                    life: WireLife::Unclear,
                     settled: false,
                     tip: name.clone(),
                     line: name.clone(),
@@ -235,6 +244,7 @@ impl SessionFaceExt for SessionFace {
                         reattach: no(name.clone()),
                         model: no(name.clone()),
                         permission: no(name.clone()),
+                        stop: no(name.clone()),
                     },
                     name,
                 }
@@ -321,9 +331,14 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
         ),
         _ => (Allow::Yes, Allow::Yes),
     };
+    // 一轮在跑 ⇒ 停得下（送 Esc）；别的时候没有在跑的一轮可停，理由就是此刻在干什么那一句。
+    let stop = match activity {
+        Some(SessionActivity::Working) => Allow::Yes,
+        _ => no(name.clone()),
+    };
     SessionFace {
         dot,
-        live: FaceLive::Yes { activity },
+        life: WireLife::Live { activity },
         settled: false,
         line: name.clone(),
         name,
@@ -340,6 +355,7 @@ fn live_face(activity: Option<SessionActivity>, tmux: Option<bool>, reading: boo
             reattach: no(running()),
             model,
             permission,
+            stop,
         },
     }
 }
@@ -421,10 +437,9 @@ pub(crate) trait FrameMake {
     /// `changed` 帧（只此一处装进帧）：发端造好那个主题那一臂；体序列化后超了主题表那一格的上限 ⇒ 不带（客户端重问）。
     fn changed(c: Changed) -> Frame;
 
-    /// `session_state` 帧：去向 ＋ 它写好的字与语气（只此一处造这一帧）；`account` 是宣告时判的那个号（脸上带着）。
-    fn session_state(sid: String, state: SessionFate, account: Option<String>) -> Frame;
-    /// 离开「活」的那一帧（[`Life::Reconnectable`] · [`Life::Ended`] · [`Life::Gone`]）。
-    fn session_left(sid: String, life: Life, account: Option<String>) -> Frame;
+    /// 离开「活」的那一帧（[`Life::Reconnectable`] · [`Life::Ended`] · [`Life::Gone`]；只此一处造这一帧）：
+    /// `by` ＝ 顶替它的那条会话（只在已结束时作数）；`account` 是宣告时判的那个号（脸上带着）。
+    fn session_left(sid: String, life: Life, by: Option<String>, account: Option<String>) -> Frame;
 
     /// `overflow` 帧：这条连接拥塞丢了约 `lines` 行 · 会话状态要不要（已）重新对齐，写成那一句。
     fn overflow(lines: u64, realigned: bool) -> Frame;
@@ -466,24 +481,12 @@ impl FrameMake for Frame {
         Frame::Overflow(Overflow { said: Words(said) })
     }
 
-    fn session_state(sid: String, state: SessionFate, account: Option<String>) -> Frame {
-        Frame::session_left(
-            sid,
-            match state {
-                SessionFate::Reconnectable => Life::Reconnectable,
-                SessionFate::Ended => Life::Ended,
-            },
-            account,
-        )
-    }
-
-    fn session_left(sid: String, life: Life, account: Option<String>) -> Frame {
-        let state = match life {
-            Life::Reconnectable => SessionFate::Reconnectable,
-            _ => SessionFate::Ended,
-        };
-        let face = SessionFace::of(life).under(account);
-        Frame::SessionState(SessionState { sid, state, face })
+    fn session_left(sid: String, life: Life, by: Option<String>, account: Option<String>) -> Frame {
+        let mut face = SessionFace::of(life).under(account);
+        if let WireLife::Ended { by: b } = &mut face.life {
+            *b = by;
+        }
+        Frame::SessionLeft(SessionLeft { sid, face })
     }
 
     fn failed(id: String, f: crate::wire::detail::Failed) -> Frame {
@@ -542,9 +545,8 @@ impl FrameRules for Frame {
             Frame::SessionAdded(_) => false,
             // 一次性的「读完了、从第几行起」：没有「下一次必然重发」⇒ 丢了客户端不知道从哪接、也不拉快照。
             Frame::SessionPrimed(_) => false,
-            Frame::SessionRemoved(_) => false,
             // 账本的成品：一次裁决的结果，别处没有 ⇒ 不可恢复。
-            Frame::SessionState(_) => false,
+            Frame::SessionLeft(_) => false,
             // 状态变迁；没有「下一次必然重发」的保证 ⇒ 保守。
             Frame::SessionStatus(_) => false,
             // 握手帧丢了这条连接就没有身份了。
@@ -596,8 +598,7 @@ impl FrameRules for Frame {
             | Frame::SessionAdded(_)
             | Frame::SessionPrimed(_)
             | Frame::SessionStatus(_)
-            | Frame::SessionState(_)
-            | Frame::SessionRemoved(_)
+            | Frame::SessionLeft(_)
             | Frame::Overflow(_)
             | Frame::Reply(_)
             | Frame::Cancelled(_)

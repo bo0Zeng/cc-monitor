@@ -648,14 +648,9 @@ pub(crate) const PRODUCTS: &[Product] = &[
         specimens: specimens::session_status,
     },
     Product {
-        name: "session_state",
+        name: "session_left",
         tags: &[],
-        specimens: specimens::session_state,
-    },
-    Product {
-        name: "session_removed",
-        tags: &[],
-        specimens: specimens::session_removed,
+        specimens: specimens::session_left,
     },
     // 额度账（`quota-read`）：手机照每号写好的几行 · 5h 那一格 · 开窗那一句与号名表读。
     Product {
@@ -687,7 +682,7 @@ mod specimens {
         RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::recognize::index_row::IndexRow;
-    use crate::wire::{Frame, Life, RemovalCause, SessionContainer, SessionFace, SessionFate};
+    use crate::wire::{Frame, Life, SessionContainer, SessionFace};
     use crate::wire::{FrameMake as _, SessionFaceExt as _};
     use std::collections::BTreeMap;
 
@@ -1216,21 +1211,16 @@ mod specimens {
             .collect()
     }
 
-    pub(super) fn session_state() -> Vec<Specimen> {
-        [Life::Reconnectable, Life::Ended, Life::Gone]
-            .into_iter()
-            .map(|l| node_of(&Frame::session_left(s("s"), l, some("b"))))
-            .collect()
-    }
-
-    pub(super) fn session_removed() -> Vec<Specimen> {
-        vec![node_of::<Frame>(&Frame::SessionRemoved(
-            crate::wire::SessionRemoved {
-                sid: s("s"),
-                cause: RemovalCause::Superseded,
-                by: some("s2"),
-            },
-        ))]
+    pub(super) fn session_left() -> Vec<Specimen> {
+        // 已结束那一形带上顶替它的那条（`face.life.by` 露得出来）；可重连 · 记录已不在没有这一格。
+        [
+            (Life::Reconnectable, None),
+            (Life::Ended, some("s2")),
+            (Life::Gone, None),
+        ]
+        .into_iter()
+        .map(|(l, by)| node_of(&Frame::session_left(s("s"), l, by, some("b"))))
+        .collect()
     }
 }
 

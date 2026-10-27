@@ -6246,8 +6246,8 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     const seen: (string | null)[] = [];
     for (const f of frames.filter((x) => x.kind === "session_added" || x.kind === "session_status")) {
       tm.onFace(codexSid, f.face!);
-      const live = home(tm).store.tabs.get(codexSid)!.face!.live;
-      const doing = live.is === "yes" ? (live.activity ?? null) : null;
+      const live = home(tm).store.tabs.get(codexSid)!.face!.life;
+      const doing = live.is === "live" ? (live.activity ?? null) : null;
       if (seen[seen.length - 1] !== doing) seen.push(doing);
     }
     // 宣告不等记录（这一家没有进程状态文件 ⇒ 宣告那一帧判不出，照实写「读记录中」、不先说「运行中」）；读完记录紧跟一帧说闲着。

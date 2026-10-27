@@ -24,7 +24,7 @@ use std::sync::Mutex;
 
 use cmd_wire::cells::Words;
 use cmd_wire::frame::{SessionDot, SessionFace};
-use cmd_wire::listing::RowLife;
+use crate::wire::WireLife;
 use cmd_wire::Machine;
 use serde::{Deserialize, Serialize};
 
@@ -144,7 +144,7 @@ pub(crate) fn seen_from(
 }
 
 /// 清单里没有的那一条（记录已不在 · 还没落盘）：样子照活会话表，标题照注解（没有 ⇒ 清单那一句「没名字」）。
-pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: RowLife) -> Seen {
+pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife) -> Seen {
     let label = super::search_rules::session_label(&super::search_rules::LabelFacts {
         custom: entry.and_then(|e| e.custom_title.clone()),
         title: None,
@@ -153,7 +153,7 @@ pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: RowLife) 
     })
     .0;
     (
-        SessionFace::of(crate::wire::Life::of_row(Some(life))),
+        SessionFace::of(crate::wire::Life::of_wire(&life)),
         MemberFacts {
             title: Words(label),
             cwd: None,
@@ -167,7 +167,7 @@ pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: RowLife) 
 
 /// 这台的组那一半此刻的记号（不看样子与那几格）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
 pub(crate) fn mark(table: &Table, book: &Book) -> u64 {
-    let half = here_of(table, book, |_| unlisted(None, RowLife::Ended));
+    let half = here_of(table, book, |_| unlisted(None, WireLife::Ended { by: None }));
     let bytes = serde_json::to_vec(&half).unwrap_or_default();
     crate::common::digest::Fnv::default().part(&bytes).value()
 }

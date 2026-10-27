@@ -2,17 +2,16 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.SyncHand
 import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.FaceLive
 import com.ccmonitor.mobile.core.wire.gen.Hidden
 import com.ccmonitor.mobile.core.wire.gen.HiddenBy
 import com.ccmonitor.mobile.core.wire.gen.Hide
+import com.ccmonitor.mobile.core.wire.gen.Life
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
-import com.ccmonitor.mobile.core.wire.gen.SessionFate
-import com.ccmonitor.mobile.core.wire.gen.SessionState
+import com.ccmonitor.mobile.core.wire.gen.SessionLeft
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,7 +33,7 @@ class ProductsTest {
                     "w" to SessionAdded(sid = "w", agentKind = "claude", face = face("live-working-plain"), pid = 2, label = "乙"),
                     "d" to SessionAdded(sid = "d", agentKind = "claude", face = face("live-unclear"), pid = 3, label = "丁"),
                 ),
-            left = mapOf("c" to SessionState("c", SessionFate.ENDED, face("ended"))),
+            left = mapOf("c" to SessionLeft("c", face("ended"))),
             rereads = mapOf("a" to 1L),
         )
 
@@ -49,13 +48,13 @@ class ProductsTest {
     }
 
     @Test
-    fun `会话簿：只有判得出在跑才算在跑；重读过几回照核心记的`() {
-        assertTrue(book.running("w"))
-        assertFalse("需手动不算在跑", book.running("a"))
-        assertNull((book.face("d")!!.live as? FaceLive.Yes)?.activity)
-        assertFalse("判不出不算在跑", book.running("d"))
-        assertFalse("走了的不算", book.running("c"))
-        assertFalse("不在 ⇒ 不算", book.running("zz"))
+    fun `会话簿：停止键只照那台说的停得下；重读过几回照核心记的`() {
+        assertTrue(book.canStop("w"))
+        assertFalse("需手动停不下", book.canStop("a"))
+        assertNull((book.face("d")!!.life as? Life.Live)?.activity)
+        assertFalse("判不出停不下", book.canStop("d"))
+        assertFalse("走了的停不下", book.canStop("c"))
+        assertFalse("不在 ⇒ 不算", book.canStop("zz"))
         assertEquals(1L, book.generation("a"))
         assertEquals(0L, book.generation("d"))
     }

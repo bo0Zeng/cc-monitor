@@ -146,8 +146,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   开窗那一跳的 `.env(k, v)` 由 monitor 自己的 `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 钉着。
     // `stream_source/emits_parity.rs → src/backend/lib.rs`（`EMITS` 两侧对拍）那一条随那份判据删了：
     //   认得哪些帧改由跨语言金样 `tests/__fixtures__/session-stream.golden.jsonl` 两向比（后端写、monitor 读）。
-    // `ssh_source_f032_idle_tests.rs → src/backend/wire/mod.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
-    //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
         "tests/frontend/shell/stream_source/stream_flag_gate_tests.rs",
