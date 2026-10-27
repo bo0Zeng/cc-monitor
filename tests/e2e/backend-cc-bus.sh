@@ -251,9 +251,9 @@ chk "  台架自检：这个 PATH 里没有 ccm" "$(PATH="$_NC" command -v ccm c
 env PATH="$_NC" HOME="$EH" "$SCRIPTS/cc-bus" send "$SB" --act inform --title "t" "x" >/dev/null 2>"$SANDBOX/nc.err"; _rc=$?
 chk "★ 退 1 · 说没装 cc-monitor" "$_rc|$(grep -c 'no cc-monitor backend' "$SANDBOX/nc.err")" "1|1"
 chk "★ 那个家里一个文件都没落" "$(find "$EH" -mindepth 1 | wc -l | tr -d ' ')" "0"
-for _v in peek unread "commit $SB 0.1.0000000000000000" "log $SB"; do
+for _v in "peek $SB" "unread $SB" "commit $SB 0.1.0000000000000000" "log $SB"; do
   # shellcheck disable=SC2086
-  env PATH="$_NC" HOME="$EH" "$SCRIPTS/cc-bus" $_v "$SB" >/dev/null 2>&1; _rc=$?
+  env PATH="$_NC" HOME="$EH" "$SCRIPTS/cc-bus" $_v >/dev/null 2>&1; _rc=$?
   chk "  cc-bus ${_v%% *}：没装 ⇒ 退 1（不自己读写收件箱）" "$_rc|$(find "$EH" -mindepth 1 | wc -l | tr -d ' ')" "1|0"
 done
 chk "★ 脚本源里零出现收件箱文件 · 锁 · 规矩（route_rate · flock · .jsonl · .pos）" \
@@ -334,7 +334,7 @@ chk "  再装一次：照旧只有那两个（幂等）" "$(ls "$IH/.local/bin" 
 
 echo "[SH1-b] ★ 驾驶舱读面 —— 名单只认会话 id 形状的收件箱 · 收件箱只看尾巴、不推位置"
 # 台架造一个**脏**的收件箱目录（只采结构：名字不是会话 id 的 · 坏行）。
-DH="$SANDBOX/dirtyhome"; DB="$(busdir "$DH")"
+DH="$SANDBOX/dirtyhome"; mkdir -p "$DH"; DB="$(busdir "$DH")"
 SDB="b2000000-1111-2222-3333-444444444444"
 DHOME="$DH" d --bus-list </dev/null >/dev/null
 FROM="$SA" SNDHOME="$DH" snd "$SDB" --act inform --title "占位" "占位一" >/dev/null
