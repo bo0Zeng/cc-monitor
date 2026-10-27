@@ -27,15 +27,9 @@ bad()  { echo "  ✗ $1"; fail=$((fail+1)); }
 # snap_key 维护;触发后新增行里找不到快照 = 仪器失效,显式硬失败。
 SNAP_MARK=0
 snapline() { tail -n "+$((SNAP_MARK+1))" "$LOG" | grep "\[e2e\] snapshot" | tail -1 | sed 's/.*snapshot //'; }
-jget() { python3 -c "import json,sys;v=json.loads(sys.stdin.read()).get('$1');print(v if v is not None else 'null')"; }
-
-win() {
-  # 取主窗口(1100x800 的 cc-monitor;tear-off 窗口名为项目名,不匹配)
-  for w in $(xdotool search --class monitor 2>/dev/null); do
-    if [ "$(xdotool getwindowname "$w" 2>/dev/null)" = "cc-monitor" ]; then echo "$w"; return; fi
-  done
-  echo ""; return 1
-}
+# 找主窗 `win` · 取快照字段 `jget` · 取 tab 行点击点 `rowxy`（单测：f40-pick.test.sh）
+# shellcheck source=tests/e2e/f40-lib.sh
+. "$REPO/tests/e2e/f40-lib.sh"
 
 echo "== F40 E2E 套件(display $DISPLAY) =="
 
@@ -123,7 +117,7 @@ DIST=$(jget distBottom <<<"$S1"); ERR=$(jget err <<<"$S1"); P1=$(jget pending <<
 
 # ── 4. 上翻补批:滚动后账本下降、无错误 ───────────────────────────────────
 TOP1=$(jget scrollTop <<<"$S1")
-xdotool mousemove 650 400
+xdotool mousemove --sync $((WX + 650)) $((WY + 400)) # 消息流区（窗口内坐标，同 5.5）
 xdotool click --repeat 300 --delay 4 4; sleep 2
 snap_key
 S2=$(snapline)
@@ -138,14 +132,29 @@ fi
 [ "$ERR2" = "null" ] && ok "补批后无 ERR" || bad "补批后错误:$ERR2"
 
 # ── 5. 逐个点 tab:贴底 + 有内容;顺带找 fork fixture 断言折叠 ─────────────
-# (键盘 Ctrl+Tab 同样进不了 webview,直接点竖直 tab 栏各行:首行 y≈+19,行距 30
-#  ——来源 styles.css #tab-bar 的 .tab 行高;若改版 tab 栏布局需同步这两个常数)
+# 键盘 Ctrl+Tab 同样进不了 webview,直接点竖直 tab 栏各行。行的点击点不写死像素:快照的 `rows` 是 e2e-probe.ts
+# 当场量的(栏顶那排图标、「需手动」条、离线条都会把行往下推)。每点一行先看快照的 `activeRow` 是不是这一行、
+# sid 跟着变了没有 —— 点到 tab 行以外(比如栏顶的「历史」,整页换走)当场报,不等下一次中键才报仪器失效。
+pick_row() { # $1 = 第几行;照上一张快照 $S 里的点击点点它、再快照进 $S;没点中 ⇒ 硬失败
+  local xy
+  xy=$(rowxy "$1" <<<"$S") || { bad "快照里没有第 $1 个 tab 行:$S"; echo "FAIL"; exit 1; }
+  xdotool mousemove --sync $((WX + ${xy% *})) $((WY + ${xy#* })) click 1; sleep 0.8
+  snap_key; S=$(snapline)
+  [ "$(jget activeRow <<<"$S")" = "$1" ] \
+    || { bad "点第 $1 个 tab 行没点中(点到了 tab 行以外?):$S"; echo "FAIL"; exit 1; }
+}
+S=$S2
+NROWS=$(python3 -c 'import json,sys;print(len(json.loads(sys.stdin.read()).get("rows") or []))' <<<"$S")
+[ "$NROWS" -gt 0 ] || { bad "快照里没有 tab 行(探针没报 rows?页面不在会话视图?):$S"; echo "FAIL"; exit 1; }
 FOUND_FORK=0; BIG_ROW=-1
-for i in $(seq 0 15); do
-  xdotool mousemove --sync $((WX + 110)) $((WY + 19 + i * 30)) click 1; sleep 0.8
-  snap_key
-  S=$(snapline)
+PREV_ROW=$(jget activeRow <<<"$S"); PREV_SID=$(jget sid <<<"$S")
+for i in $(seq 0 $((NROWS - 1))); do
+  pick_row "$i"
   SIDN=$(jget sid <<<"$S"); TL=$(jget timeline <<<"$S"); DB=$(jget distBottom <<<"$S")
+  if [ "$PREV_ROW" != "$i" ] && [ "$SIDN" = "$PREV_SID" ]; then
+    bad "点第 $i 个 tab 行后快照的 sid 没变($SIDN):$S"
+  fi
+  PREV_ROW=$i; PREV_SID=$SIDN
   PN=$(jget pending <<<"$S")
   # 记住一个账本厚实的 tab(补批真实断言用)
   if [ "$BIG_ROW" -lt 0 ] && [ "$PN" != "null" ] && [ "$PN" -gt 250 ] 2>/dev/null; then BIG_ROW=$i; fi
@@ -163,8 +172,8 @@ done
 
 # ── 5.5 真实补批断言:切到账本厚实的 tab,滚轮上翻,账本必须下降 ────────────
 if [ "$BIG_ROW" -ge 0 ]; then
-  xdotool mousemove --sync $((WX + 110)) $((WY + 19 + BIG_ROW * 30)) click 1; sleep 0.8
-  snap_key; B1=$(snapline); PB1=$(jget pending <<<"$B1"); TB1=$(jget scrollTop <<<"$B1")
+  pick_row "$BIG_ROW"
+  B1=$S; PB1=$(jget pending <<<"$B1"); TB1=$(jget scrollTop <<<"$B1")
   xdotool mousemove --sync $((WX + 650)) $((WY + 400))
   xdotool click --repeat 300 --delay 4 4; sleep 2
   snap_key; B2=$(snapline); PB2=$(jget pending <<<"$B2"); EB=$(jget err <<<"$B2"); TB2=$(jget scrollTop <<<"$B2")
