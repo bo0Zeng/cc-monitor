@@ -84,7 +84,7 @@ const POWERSHELL_TODAY: &[(&str, &str)] = &[
     // 手机端的两份：只在 Windows 开发机上装 / 激活 Android 工具链，不进产品、不进门禁，仍零 lint。
     (
         "src/mobile/scripts/bootstrap-android-env.ps1",
-        "手机端：在 Windows 开发机上装一套隔离的 Android 工具链（JDK ＋ SDK）",
+        "手机端：在 Windows 开发机上装一套隔离的 Android 工具链（JDK ＋ SDK ＋ NDK）",
     ),
     (
         "src/mobile/scripts/env.ps1",
