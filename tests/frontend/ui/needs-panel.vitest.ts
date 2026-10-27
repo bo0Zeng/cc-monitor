@@ -67,7 +67,7 @@ function rig(tabs: Tab[], answers: Record<string, NeedsRead>) {
   store.activeId = tabs[0]?.sessionId ?? null;
   const host = {
     refreshTabBar: vi.fn(), closeEndedIn: vi.fn(), openTabCwd: vi.fn().mockResolvedValue(undefined), bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
-    bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined), closeTab: vi.fn(), switchTo: vi.fn(), answerAt: vi.fn(), pick: vi.fn(),
+    closeTab: vi.fn(), switchTo: vi.fn(), answerAt: vi.fn(), pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false), beginDrag: vi.fn(), takeSuppressedClick: vi.fn().mockReturnValue(false), beginGroupDrag: vi.fn(),
     takeSuppressedHeadClick: vi.fn().mockReturnValue(false), openMenu: vi.fn(), toggleSelect: vi.fn(), openMenuAt: vi.fn(), rereadAll: vi.fn().mockResolvedValue(undefined), reconnect: vi.fn(),
   } satisfies TabBarViewHost;
