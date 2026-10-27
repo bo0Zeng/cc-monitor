@@ -41,6 +41,7 @@ import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
 import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import type { MachineState } from "./generated/MachineState";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -203,8 +204,8 @@ export class TabBarView {
   readonly listEl: HTMLDivElement;
   /** 起新会话之后的占位标签页那几行（`launch-slot.ts` 往里放）：恒在列表最末。 */
   readonly slotTail: HTMLDivElement;
-  /** 机器 → 它看不见是从何时起（`markOriginDown`）；连上了摘掉。 */
-  private readonly downSince = new Map<string, number>();
+  /** 机器 → 离线条那一格：几条状态不明（后端数的，`MachineState.unclear`）· 从何时起这一窗看见它离线（`machineChanged`）；连上了 / 一条都没了摘掉。 */
+  private readonly down = new Map<string, { n: number; since: number }>();
 
   constructor(
     private readonly store: TabStore,
@@ -276,11 +277,12 @@ export class TabBarView {
     this.headActs.replaceChildren(...buttons);
   }
 
-  /** 那台看不见了（会话流 `unseen` 格）⇒ 记下从何时起；连上了（报完清单）⇒ 摘掉。 */
-  markOriginDown(origin: string, down: boolean, at: number = Date.now()): void {
-    if (down) {
-      if (!this.downSince.has(origin)) this.downSince.set(origin, at);
-    } else this.downSince.delete(origin);
+  /** 一台的状态成品来了：离线、还有状态不明的会话（几条由后端数）⇒ 记下（从何时起照这一窗第一次看见）；否则摘掉。 */
+  machineChanged(origin: string, m: MachineState, at: number = Date.now()): void {
+    const n = m.unclear ?? 0;
+    if (m.offline && n > 0) this.down.set(origin, { n, since: this.down.get(origin)?.since ?? at });
+    else this.down.delete(origin);
+    this.updateMachineDown();
   }
 
   /**
@@ -797,11 +799,7 @@ export class TabBarView {
   private updateMachineDown(): void {
     const now = Date.now();
     const rows: { origin: string; n: number; since: number }[] = [];
-    for (const [origin, since] of this.downSince) {
-      let n = 0;
-      for (const t of this.store.tabs.values()) if (t.origin === origin && t.face?.dot === "unknown") n++;
-      if (n > 0) rows.push({ origin, n, since });
-    }
+    for (const [origin, { n, since }] of this.down) rows.push({ origin, n, since });
     const drawn = rows.map((r) => `${r.origin}\u0000${r.n}\u0000${sinceText(r.since, now)}`).join("\u0001");
     if (this.downEl.dataset.drawn === drawn) return;
     this.downEl.dataset.drawn = drawn;

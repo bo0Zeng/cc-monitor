@@ -639,14 +639,14 @@ describe("TabManager 生命周期", () => {
     expect(said()).toBe(goldenFace("ended").line);
   });
 
-  it("★ 那台看不见 ⇒ 不是定局的画说不清（换成本机后端交来的那一张）、已结束 · 记录已不在照旧；那台的帧回来 ⇒ 各回各的脸", () => {
+  it("★ 那台看不见 ⇒ 本机后端逐条说的说不清照画（它只说活的 · 可重连的）、已结束 · 记录已不在照旧；那台的帧回来 ⇒ 各回各的脸", () => {
     for (const sid of ["u1", "u2", "u3", "u4"]) tm.ensureTab(sid, "/x", "p", "gpu-01");
     tm.ensureTab("o1", "/x", "p", "other");
     tm.onFace("u2", goldenFace("reconnectable"));
     tm.onFace("u3", goldenFace("ended"));
     tm.onFace("u4", goldenFace("gone"));
     const tab = (sid: string) => home(tm).store.tabs.get(sid)!;
-    tm.markOriginUnseen("gpu-01", goldenFace("unseen"));
+    for (const sid of ["u1", "u2"]) tm.onFace(sid, goldenFace("unseen")); // 本机后端断线那一刻逐条发的 `left`
     expect(["u1", "u2", "u3", "u4", "o1"].map((sid) => tab(sid).face?.dot)).toEqual(["unknown", "unknown", "ended", "gone", "running"]);
     expect(stateLine(tab("u1"), Date.now()).text, "那一句照后端交来的那张脸").toBe(goldenFace("unseen").line);
     tm.onFace("u1", liveFace("idle"));
@@ -2217,7 +2217,7 @@ describe("：↗ 问本机后端一次、交壳一次", () => {
   });
 
   it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
-    answer({ labels: [], chain: [], tmux: false, face: face("没终端", "后台", "plain") });
+    answer({ labels: [], chain: [], tmux: false, face: face("没终端", "在后台跑", "plain") });
     const tm = makeTM();
     tm.createSkeletonTab("r2", "/p", "devbox", false, null, false);
     expect(tm.isAttachable("r2"), "量具自检：这个会话确实被宣告成不可 attach").toBe(false);
@@ -4320,27 +4320,23 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
 
-  it("★ 说不清：固定复活 ⇒ 说不清（字里零处「已结束」）；清单报完了照旧说不清；那台答了已结束 ⇒ 已结束；宣告了 ⇒ 活", async () => {
+  it("★ 固定复活 ⇒ 不画点、字里零处「已结束」（界面不替那台下结论）；清单报完了照旧；那台答了已结束 ⇒ 已结束；宣告了 ⇒ 活", async () => {
     const be = groupBackend();
     be.note("pi", "p1").pinned = true;
     be.note(LOCAL_ORIGIN, "p2").pinned = true;
     be.note(LOCAL_ORIGIN, "p3").pinned = true;
     await be.connect(tm);
     for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).face, "复活出来还没人说过它 ⇒ 不画点").toBeNull();
-    // 重放到了：那几条那台还没报（壳的「说不清」那一格）⇒ 落成本机后端交来的那一张。
-    for (const o of [LOCAL_ORIGIN, "pi"]) tm.markOriginUnseen(o, goldenFace("unseen"));
-    for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).face?.dot).toBe("unknown");
-    // T4：说不清那一刻，tab 的提示句 · 状态名 · 固定空态，一处都不许说「已结束」。
+    // T4：还没人说过它们那一刻，tab 的提示句 · 状态名 · 固定空态，一处都不许说「已结束」。
     const said = (): string =>
       ["p1", "p2", "p3"].map((sid) => cardText(tm, sid)).join("\n") +
       [...document.querySelectorAll<HTMLElement>(".pin-revived-hint")].map((n) => n.textContent).join("\n");
-    expect(said()).toContain(goldenFace("unseen").name);
     expect(said()).not.toContain(copyText("sessionState.ended.name"));
     // 清单报完不下结论；p3 被宣告 ⇒ 活。
     tm.markOriginSeen(LOCAL_ORIGIN);
     tm.markOriginSeen("pi");
     tm.onFace("p3", liveFace("working", true));
-    expect([tabOf("p1").face?.dot, tabOf("p2").face?.dot, tabOf("p3").face?.dot]).toEqual(["unknown", "unknown", "running"]);
+    expect([tabOf("p1").face?.dot, tabOf("p2").face?.dot, tabOf("p3").face?.dot]).toEqual([undefined, undefined, "running"]);
     expect(said()).not.toContain(copyText("sessionState.ended.name"));
     // 那台答了 p1 已结束（会话流 `ended` 格）。正控：这时才出现「已结束」。
     tm.onFace("p1", goldenFace("ended"));
@@ -4373,7 +4369,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
 
 /**
  * **远端断连 ⇒ 说不清，不是已结束**（「`Unseen` 不许被显示成已结束」）。
- * 会话流 `unseen` 格（机器级）→ `TabManager.markOriginUnseen`，TabManager 真走。
+ * 本机后端断线那一刻给那台活的 · 可重连的逐条发 `left`（说不清那一张脸）→ `TabManager.onFace`，TabManager 真走。
  */
 describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   let tm: TabManager;
@@ -4392,19 +4388,18 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u2", "/x", "p", "pi");
     tm.onFace("u2", goldenFace("reconnectable")); // 可重连
     tm.ensureTab("o1", "/x", "p", "mu"); // 别的机器上的活会话
-    tm.markOriginUnseen("pi", goldenFace("unseen")); // 机器级一格
+    for (const sid of ["u1", "u2"]) tm.onFace(sid, goldenFace("unseen")); // 本机后端逐条说
     expect([tabOf("u1").face?.dot, tabOf("u2").face?.dot]).toEqual(["unknown", "unknown"]);
     expect(tabOf("o1").face?.dot, "别的机器不受牵连").toBe("running");
     // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
     expect(titles().split(copyText("sessionState.unseen.name")).length - 1).toBe(2);
     expect(titles()).not.toContain(copyText("sessionState.ended.name"));
-    // 死透了的不动：已结束 / 记录没了收到 unseen 照旧（正控：这时才出现「已结束」）。
+    // 死透了的本机后端不说：已结束 / 记录没了照旧（正控：这时才出现「已结束」）。
     tm.ensureTab("u3", "/x", "p", "pi");
     tm.onFace("u3", goldenFace("ended"));
     tm.ensureTab("u4", "/x", "p", "pi");
     tm.onFace("u4", goldenFace("ended"));
     tm.onFace("u4", goldenFace("gone"));
-    tm.markOriginUnseen("pi", goldenFace("unseen"));
     expect([tabOf("u3").face?.dot, tabOf("u4").face?.dot]).toEqual(["ended", "gone"]);
     expect(titles()).toContain(copyText("sessionState.ended.name"));
   });
@@ -4412,7 +4407,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的照旧说不清，等那台答（它在手上的 tab 里，随名单报上去）", () => {
     tm.ensureTab("r1", "/x", "p", "pi");
     tm.ensureTab("r2", "/x", "p", "pi");
-    tm.markOriginUnseen("pi", goldenFace("unseen"));
+    for (const sid of ["r1", "r2"]) tm.onFace(sid, goldenFace("unseen"));
     expect([tabOf("r1").face?.dot, tabOf("r2").face?.dot]).toEqual(["unknown", "unknown"]);
     tm.onFace("r1", liveFace("working")); // 重连后后端初扫重宣告 r1：那一帧带着脸
     tm.createSkeletonTab("r1", "/x", "pi");
@@ -4447,7 +4442,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("k2", "/x", "p", "pi");
     tm.onFace("k1", goldenFace("reconnectable"));
     tm.onFace("k2", goldenFace("reconnectable"));
-    tm.markOriginUnseen("pi", goldenFace("unseen"));
+    for (const sid of ["k1", "k2"]) tm.onFace(sid, goldenFace("unseen"));
     expect([tabOf("k1").face?.dot, tabOf("k2").face?.dot]).toEqual(["unknown", "unknown"]);
     // emitter 那一笔：k1 的 tmux 还在 ⇒ idle 格；k2 不在 ⇒ ended 格；**然后**才是 listed 格。
     tm.onFace("k1", goldenFace("reconnectable"));
@@ -4456,11 +4451,6 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     expect([tabOf("k1").face?.dot, tabOf("k2").face?.dot]).toEqual(["exited", "ended"]);
     const k1Title = home(tm).bar.tabButtons.get("k1")!.root.title;
     expect(k1Title, "重连后 tmux 还在的那条被说成已结束了").not.toContain(copyText("sessionState.ended.name"));
-  });
-
-  it("★ 那台一个 tab 都没有时收到 unseen ⇒ 什么都不建", () => {
-    tm.markOriginUnseen("nowhere", goldenFace("unseen"));
-    expect(home(tm).store.tabs.size).toBe(0);
   });
 });
 
@@ -4475,12 +4465,12 @@ describe("〔U4b〕main.ts 接线", () => {
       n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一刻：收空组 · 交「启动时记住的那一格」
     ]).toEqual([1, 1, 1]);
   });
-  // 「那台机器看不见了」主窗接一处（入口脚本没有 DOM 判据够得着）；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
-  it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 零处（不建标签页）", () => {
+  // 机器离线条照各台的状态成品（离线 · 几条状态不明都是本机后端说的）主窗接一处；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
+  it("★〔GP1〕机器状态接到栏：main.ts 恰一处 · entry-viewer.ts 零处（不建标签页）", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
     expect([
-      n("src/frontend/ui/main.ts", "onOriginUnseen: (origin, face) => tabs.markOriginUnseen(origin, face)"),
+      n("src/frontend/ui/main.ts", "onMachineState((origin, m) => tabs.machineChanged(origin, m));"),
       n("src/frontend/ui/entry-viewer.ts", "TabManager"),
     ]).toEqual([1, 0]);
   });

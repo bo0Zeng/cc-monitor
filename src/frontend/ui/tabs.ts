@@ -14,6 +14,7 @@ import { runLabel } from "./runs";
 
 import type { SessionRuns } from "./generated/SessionRuns";
 import type { WatchFrom } from "./generated/WatchFrom";
+import type { MachineState } from "./generated/MachineState";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
@@ -1017,7 +1018,6 @@ export class TabManager {
   markOriginSeen(origin: Origin): void {
     this.store.seenOrigins.add(origin);
     this.settleUnarrivedOnce(); // 壳那一刻先到了、这一台的流后报完 ⇒ 到这时才认「没回来」
-    this.bar.markOriginDown(origin, false);
   }
 
   /** 从「需手动」的入口跳到一个会话之后（焦点进答题块；主窗口挂进来）。 */
@@ -1098,22 +1098,9 @@ export class TabManager {
     }
   }
 
-  /**
-   * 这台机器**看不见了**（会话流 `unseen` 格：到它的连接断了 / F5 时它还没报完清单）。机器级：一格说一台。
-   * 那台上不是定局（`face.settled` 为假）的、一张脸都还没收到的，换成 `face`（本机后端造的那一张，随这一格来；本机后端还没握上手 ⇒ `null`，不画点）；
-   * 已结束 · 记录已不在照旧。之后那台重连、重发的帧把脸带回来。
-   */
-  markOriginUnseen(origin: Origin, face: SessionFace | null): void {
-    this.store.seenOrigins.delete(origin);
-    this.bar.markOriginDown(origin, true);
-    let changed = false;
-    for (const tab of this.store.tabs.values()) {
-      if (tab.origin !== origin || tab.face?.settled === true || tab.face === face) continue;
-      tab.face = face;
-      changed = true;
-      this.emitTabStateProbe(tab);
-    }
-    if (changed) this.refreshTabBar();
+  /** 一台的状态成品来了（本机后端推的 `changed {machine}`）⇒ 栏里那条机器离线条照它画（离线 · 几条状态不明都是后端说的）。 */
+  machineChanged(origin: Origin, m: MachineState): void {
+    this.bar.machineChanged(origin, m);
   }
 
   /** 栏顶左边那几颗全局入口（宿主建好交进来）。 */
