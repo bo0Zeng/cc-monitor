@@ -193,14 +193,14 @@ fixtures:
 
 1. **backend-frame 级(无 GUI,最稳,后端半场)**:`bash tests/e2e/graylight-backend-frames.sh`
    (需仓内 debug 后端;缺则 `CCM_E2E_BACKEND=<某个 p1p+ 的 cc-monitor-backend>`)。断言后端 stdout 帧:
-   `session_added` → (kill fake-claude) `session_removed` **且** `session_state` = `reconnectable`
-   (=灰) → (kill-session) `session_state` = `ended`(=归档边沿；原看 `tmux_sessions` 快照帧，那一帧删了)。
+   `session_added` →(原地换 sid)旧 sid 的 `session_left`、`face.life` = `{is: ended, by: <新 sid>}` →(kill fake-claude)`session_left`、`face.life.is` = `reconnectable`
+   (=灰) →(kill-session)`session_left`、`face.life.is` = `ended`(=归档边沿)。离开「活」只这一帧。
 
 2. **全链级(GUI + loopback SSH)**:台架用 `tier2-rig.sh` 搭（见上「全链套件的台架」：wrapper 放在台架那台 sshd 那一头的后端落点上），
    `tier2-rig.sh run` 跑它。断言 monitor 日志:`[e2e] tab-state … dot=exited`(Claude 已退出)→
    `… dot=ended`(已结束)。开跑前自证台架：握手过、且有一个后端进程环境里带着 fixture 的 `CLAUDE_CONFIG_DIR`
    （握手里不带盯哪个目录，按进程环境认；每条连接的 `--resident-attach` 小中继不算后端）。杀 fake-claude 前先等一段，
-   让后端会话账本见过含 @ccm_sid 的 tmux 快照，否则 removed 到达时判不出「还挂着」→ 判已结束、丢灰。
+   让后端会话账本见过含 @ccm_sid 的 tmux 快照，否则 claude 死那一刻判不出「还挂着」→ 判已结束、丢灰。
 
 ## auto-e2e:resume idle 就地复用(F-E2,#75/#76)
 
@@ -226,8 +226,8 @@ fixtures / 驱动:
    就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座
    落当前工作账号 / 重复 resume 幂等(create-gate 短路) / tmux 消失回退 / 会话仍 live 守卫不误动。
 2. **backend-frame 复活清灰(后端半场)**:`bash tests/e2e/resume-backend-frames.sh`(需仓内 debug 后端;缺则
-   `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-backend>`)。序列 `SessionAdded`(live)→(kill fake-claude)
-   `SessionRemoved` + tmux 帧仍含 @ccm_sid(灰)→(真源就地 resume 命令复用原名)`SessionAdded` **再现**
+   `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-backend>`)。序列 `session_added`(live)→(kill fake-claude)
+   `session_left`、`face.life.is` = `reconnectable`(灰)→(真源就地 resume 命令复用原名)`session_added` **再现**
    = 后端灰→live 复活边沿;全程 tmux 单会话无 `-N` 孤儿。
 
 ## auto-e2e:换号重启(帧命令 `session-restart`)

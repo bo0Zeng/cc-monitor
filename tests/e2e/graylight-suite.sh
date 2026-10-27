@@ -6,11 +6,11 @@
 #     (把后端的 CLAUDE_CONFIG_DIR 钉到隔离 fixture 目录,防与本地会话双 tab);
 #   - 本机可读 monitor 日志(fe_perf/[e2e] 行是断言数据源)。
 # 序列(跨进程整链,单测碰不到):
-#   建 fixture(fake-claude 活 + @ccm_sid) → app 经 backend SessionAdded 建 live 远端 tab
-#   → kill fake-claude(留 tmux shell) → backend SessionRemoved + SessionState(reconnectable)（后端会话账本裁）
-#     → 去向那一帧(脸 exited)→ tabs.onFace → `[e2e] tab-state … dot=exited`(Claude 已退出)
+#   建 fixture(fake-claude 活 + @ccm_sid) → app 经 backend session_added 建 live 远端 tab
+#   → kill fake-claude(留 tmux shell) → backend session_left(life 可重连;后端会话账本裁)
+#     → 那一帧的脸(exited)→ tabs.onFace → `[e2e] tab-state … dot=exited`(Claude 已退出)
 #   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰,§24bis) → @ccm_sid 消失
-#     → 收割/对账 retire → 去向那一帧(脸 ended)→ tabs.onFace → `[e2e] tab-state … dot=ended`(已结束)
+#     → 收割/对账 retire → session_left(life 已结束,脸 ended)→ tabs.onFace → `[e2e] tab-state … dot=ended`(已结束)
 # 探针行在那颗点变了的那一刻打一行(`tabs.ts::onFace`)。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tabs.vitest.ts` 对拍。
 set -euo pipefail
 
@@ -331,7 +331,7 @@ TAB="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 dot=(running|needs-you|back
 ok "live 前置:app 建出了这个会话的 tab:$TAB"
 
 # 裁决在后端会话账本：它要先见过一份挂着 @ccm_sid=sid 的 tmux 快照（起步初探即有）再杀 claude，
-# 否则 SessionRemoved 那一刻账本判不出「还挂着」→ 裁已结束而非可重连。留一段余量（原来等的是 app 收到 TmuxSessions 帧，那一帧已删）。
+# 否则 claude 死那一刻账本判不出「还挂着」→ 裁已结束而非可重连。留一段余量（原来等的是 app 收到 TmuxSessions 帧，那一帧已删）。
 TMUX_SETTLE="${E2E_TMUX_SETTLE:-14}"
 echo "-- 等 ${TMUX_SETTLE}s 让后端会话账本见过含 @ccm_sid 的 tmux 快照 --"
 sleep "$TMUX_SETTLE"
