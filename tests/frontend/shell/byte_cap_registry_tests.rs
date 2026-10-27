@@ -285,6 +285,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它不限任何字节量 —— 暂存区能长多大今天**没有上限**，孤儿只按时间收。",
     ),
     (
+        "STALE_SECS",
+        "**时间**不是体量：聊天附件的编号目录多少秒没动过，下一次落附件时清掉\
+             （后端 `session_attachment·rs::sweep`，事件上跑、不是节拍器）。附件目录的体量上限是另一格 `MAX_DIR_BYTES`。",
+    ),
+    (
         "TRIM_SLACK",
         "**条数**不是体量：重放缓冲里一个会话要**多出**这么多条才修剪一次\
              （`event_replay·rs::push_and_trim`）—— 量的是摊还节奏，不是容量。\
@@ -771,6 +776,25 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "入方向单行",
         "拒收+回错",
     ),
+    // 聊天附件（会话那台判，开传前那一问与落的那一下同一组常量）。
+    (
+        "src/backend/control/files_commit/session_attachment.rs",
+        "MAX_ONE_BYTES",
+        "随一句发的一份附件",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/files_commit/session_attachment.rs",
+        "MAX_MESSAGE_BYTES",
+        "随一句发的附件合计",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/files_commit/session_attachment.rs",
+        "MAX_DIR_BYTES",
+        "一个工作目录下附件目录的合计",
+        "拒收+回错",
+    ),
     // 公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
     (
         "src/backend/assets/pubkey.rs",
@@ -1060,6 +1084,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "跳过+说清",
     ),
     (
+        "src/backend/egress/tunnel.rs",
+        "HEAD_CAP",
+        "出网口经 HTTP 代理那一跳的 `CONNECT` 回包头（读到空行为止）；超了 ⇒ 这一跳报错（代理那一步），连接不建",
+        "拒收+回错",
+    ),
+    (
         "src/backend/relay/key.rs",
         "KEY_MAX_BYTES",
         "中转钥匙文件 `~/.cc-monitor/relay-key`（一行）；超了 ⇒ `warn!` 带路径说读不懂，当没有、重铸一把",
@@ -1096,6 +1126,18 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/bookmarks.rs",
         "MAX_BYTES",
         "这台的书签 `~/.cc-monitor/bookmarks.json`（超了当读不懂：`bookmarks_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/history/session_queue.rs",
+        "MAX_BYTES",
+        "一条会话的输入队 `~/.cc-monitor/session-queue/<sid>.json`（超了当读不懂：`queue_unreadable`，不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/history/session_queue.rs",
+        "TEXT_MAX",
+        "投进输入队的一句（超了拒收：`text_too_long`，一个字节不落）",
         "拒收+回错",
     ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。

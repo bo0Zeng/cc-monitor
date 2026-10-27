@@ -921,7 +921,7 @@ fn an_unknown_agent_gets_relative_lines_and_no_attachment_means_no_change() {
     let got = typed_with("nobody", "看图", &refs);
     assert!(got.pastes.is_empty());
     assert_eq!(got.text, "看图\n.ccm-attach/1023-1529-a3f2/a.png");
-    let plain = typed_with(claudecode::AGENT_KIND, "继续", &[]);
-    assert_eq!((plain.text.as_str(), plain.pastes.len()), ("继续", 0));
-    assert_eq!(plain.first_say, "继续");
+    let plain = typed_with(claudecode::AGENT_KIND, "接着改", &[]);
+    assert_eq!((plain.text.as_str(), plain.pastes.len()), ("接着改", 0));
+    assert_eq!(plain.first_say, "接着改");
 }

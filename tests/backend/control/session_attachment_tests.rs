@@ -126,12 +126,12 @@ fn a_corrupt_stage_leaves_no_numbered_dir_behind() {
     )
     .expect_err("摘要不等该拒");
     assert_eq!(err.code, "stale");
-    let left: Vec<String> = std::fs::read_dir(cwd.join(".ccm-attach"))
-        .expect("附件目录在")
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
-    assert_eq!(left, vec![".gitignore".to_string()]);
+    let tried = format!("1023-1529-{}", &sha(b"expected")[..4]);
+    assert!(cwd.join(".ccm-attach/.gitignore").is_file());
+    assert!(
+        !cwd.join(".ccm-attach").join(&tried).exists(),
+        "没落成，刚建的编号目录 {tried} 该删掉"
+    );
 }
 
 /// 单份超上限 ⇒ 开传前那一问就拒，落的那一下也拒（`too_big`），盘上零新增。
