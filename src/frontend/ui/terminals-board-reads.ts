@@ -30,40 +30,36 @@ export interface BoardPick {
 
 /** 结束这几行：先确认（同一种确认框），再每台交命令；没结束的数一句。 */
 export async function endRows(items: readonly BoardPick[], confirm: ConfirmFn = confirmDialog): Promise<void> {
-  const n = String(items.length);
   const ok = await confirm({
-    title: copyText("terminalsView.end.title", { n }),
+    title: copyText("terminalsView.end.title"),
     rows: [{ label: copyText("kit.interrupts.cut"), items: items.map((i) => i.row.title) }],
-    action: copyText("terminalsView.select.end", { n }),
+    action: copyText("terminalsView.select.end"),
     danger: true,
   });
   if (!ok) return;
   const byOrigin = new Map<Origin, BoardPick[]>();
   for (const i of items) byOrigin.set(i.origin, [...(byOrigin.get(i.origin) ?? []), i]);
-  const done = await Promise.all(
-    [...byOrigin].map(async ([origin, list]): Promise<number> => {
+  const each = await Promise.all(
+    [...byOrigin].map(async ([origin, list]): Promise<boolean> => {
       const sids = list.flatMap((i) => (i.row.sid ? [i.row.sid] : []));
-      let ended = 0;
+      let all = true;
       if (sids.length > 0) {
         try {
-          ended += (await callStop(origin, sids)).filter((r) => r.outcome === "done").length;
+          all = (await callStop(origin, sids)).every((r) => r.outcome === "done");
         } catch {
-          // 没结束的照数进下面那一句。
+          all = false;
         }
       }
       for (const i of list.filter((i) => !i.row.sid)) {
         try {
           await killSession(origin, i.row.tmux_name);
-          ended++;
         } catch {
-          // 同上。
+          all = false;
         }
       }
-      return ended;
+      return all;
     }),
   );
-  const ended = done.reduce((a, b) => a + b, 0);
-  const left = items.length - ended;
-  if (left > 0) toast(copyText("terminalsView.end.failed", { n: String(left) }), "");
-  else toast(copyText("terminalsView.end.done", { n }), "", { level: "success" });
+  if (each.every(Boolean)) toast(copyText("terminalsView.end.done"), "", { level: "success" });
+  else toast(copyText("terminalsView.end.failed"), "");
 }

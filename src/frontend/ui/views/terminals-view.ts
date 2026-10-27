@@ -11,8 +11,9 @@
 import { copyText } from "../copy-table";
 import { dispatcher } from "../keybindings/registry";
 import { el } from "../kit/el";
-import { button, setButtonLabel } from "../kit/button";
+import { button } from "../kit/button";
 import { emptyState } from "../kit/empty";
+import { saidOf } from "../kit/detail";
 import { skeletonRows } from "../kit/skeleton";
 import { statusDot, setDot } from "../kit/status-dot";
 import type { Origin } from "../ipc/origin";
@@ -54,6 +55,9 @@ interface RowView {
   pick: BoardPick;
 }
 
+/** 连着来的推送合成一问：等这么久。 */
+const POKE_MS = 300;
+
 /** 键 ⇒ 在哪台（多选结束要交）。 */
 const keyOf = (origin: Origin, row: BoardRow): string => `${origin}\u0000${row.key}`;
 
@@ -69,7 +73,8 @@ export class TerminalsView {
   private readonly findBox: HTMLInputElement;
   private isOpen = false;
   private board: TerminalsBoard | null = null;
-  private failed = false;
+  /** 头一问就没问到 ⇒ 那一句（后端写好）；问到过 ⇒ 照上一份画。 */
+  private failed: string | null = null;
   private filter: BoardTag = "all";
   /** 每台此刻摆的先后（行键）：重新打开 · 换筛选才照后端那份重排。 */
   private order = new Map<Origin, string[]>();
@@ -79,6 +84,7 @@ export class TerminalsView {
   private anchor: string | null = null;
   private seq = 0;
   private faceView: HTMLElement | null = null;
+  private pokeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pickEl = el("div", s.tvPick, copyText("terminalsView.face.pick"));
 
   constructor(private readonly host: TerminalsHost) {
@@ -104,11 +110,12 @@ export class TerminalsView {
     this.listEl = el("div", s.tvList);
     this.selectBar = el("div", s.tvSelectBar);
     this.selectBar.dataset.selectBar = "";
-    this.selectBar.hidden = true;
-    this.selectCount = el("span", s.tvSelectCount);
-    this.endBtn = button({ label: "", kind: "danger-text", onClick: () => void this.endSelected() });
+    this.selectCount = el("span", s.tvCount);
+    this.endBtn = button({ label: copyText("terminalsView.select.end"), kind: "danger-text", onClick: () => void this.endSelected() });
     this.endBtn.dataset.end = "";
+    const picked = el("span", s.tvSelectCount, copyText("terminalsView.select.count"));
     this.selectBar.append(
+      picked,
       this.selectCount,
       el("span", s.tvSpacer),
       button({ label: copyText("terminalsView.select.clear"), kind: "ghost", onClick: () => this.clearSelection() }),
@@ -139,7 +146,7 @@ export class TerminalsView {
     if (this.isOpen) return;
     this.isOpen = true;
     this.board = null;
-    this.failed = false;
+    this.failed = null;
     this.order.clear();
     this.rows.clear();
     document.body.appendChild(this.root);
@@ -159,6 +166,16 @@ export class TerminalsView {
     this.host.watch(null);
   }
 
+  /** 宿主转来「会话状态变了 · 机器连上断开」：开着才问，连着来的合成一问。 */
+  poke(): void {
+    if (!this.isOpen || this.pokeTimer !== null) return;
+    // 调度：合批 —— 连着来的会话状态变化 · 机器连上断开合成一问
+    this.pokeTimer = setTimeout(() => {
+      this.pokeTimer = null;
+      void this.refresh();
+    }, POKE_MS);
+  }
+
   /** 再问一次（开着才问；叠着问只收最后一问）。 */
   async refresh(): Promise<void> {
     if (!this.isOpen) return;
@@ -167,10 +184,10 @@ export class TerminalsView {
       const b = await this.host.read(this.host.machines());
       if (mine !== this.seq || !this.isOpen) return;
       this.board = b;
-      this.failed = false;
-    } catch {
+      this.failed = null;
+    } catch (e) {
       if (mine !== this.seq || !this.isOpen) return;
-      this.failed = this.board === null;
+      this.failed = this.board === null ? saidOf(e) : null;
     }
     this.paint(false);
   }
@@ -193,8 +210,8 @@ export class TerminalsView {
 
   private paint(reorder: boolean): void {
     this.paintFilters();
-    if (this.failed) {
-      const e = emptyState({ text: copyText("terminalsView.list.failed"), icon: "error" });
+    if (this.failed !== null) {
+      const e = emptyState({ text: this.failed, icon: "error" });
       e.dataset.failed = "";
       this.listEl.replaceChildren(e);
       this.rows.clear();
@@ -212,7 +229,7 @@ export class TerminalsView {
         icon: "terminal",
         action: button({ label: copyText("terminalsView.page.new"), kind: "secondary", icon: "plus", onClick: () => this.host.newSession(null) }),
       });
-      e.dataset.empty = "";
+      e.dataset.boardEmpty = "";
       this.listEl.replaceChildren(e);
       this.rows.clear();
       return;
@@ -276,7 +293,7 @@ export class TerminalsView {
       e.tabIndex = 0;
       e.setAttribute("role", "option");
       const dot = statusDot(null, null, "compact");
-      const title = el("span", s.tvRowTitle);
+      const title = el("span", `${s.tvRowTitle} one-line`);
       const badge = el("span", s.tvBadge);
       const at = el("span", s.tvAt);
       const top = el("div", s.tvRowTop);
@@ -294,18 +311,11 @@ export class TerminalsView {
     const r = pick.row;
     setDot(v.dot, r.dot, r.dot_name);
     v.title.textContent = r.title;
-    v.title.classList.toggle(s.tvMono, r.mono);
+    v.title.toggleAttribute("data-mono", r.mono);
     v.badge.textContent = r.badge ?? "";
-    v.badge.hidden = !r.badge;
     v.at.textContent = r.at_text;
-    const parts: HTMLElement[] = [];
-    r.meta.forEach((m, i) => {
-      if (i > 0) parts.push(el("span", s.tvSep, "·"));
-      parts.push(el("span", "", m));
-    });
-    for (const c of r.chips) parts.push(el("span", s.tvPill, c));
-    v.meta.replaceChildren(...parts);
-    v.el.classList.toggle(s.tvStale, stale);
+    v.meta.replaceChildren(el("span", "", r.meta), ...r.chips.map((c) => el("span", s.tvPill, c)));
+    v.el.toggleAttribute("data-stale", stale);
     return v.el;
   }
 
@@ -337,12 +347,11 @@ export class TerminalsView {
   private paintSelection(): void {
     for (const [k, v] of this.rows) {
       v.el.setAttribute("aria-selected", String(k === this.current));
-      v.el.classList.toggle(s.tvPicked, this.selected.has(k));
+      v.el.toggleAttribute("data-marked", this.selected.has(k));
     }
     const n = this.selected.size;
-    this.selectBar.hidden = n === 0;
-    this.selectCount.textContent = copyText("terminalsView.select.count", { n: String(n) });
-    setButtonLabel(this.endBtn, copyText("terminalsView.select.end", { n: String(n) }));
+    this.selectBar.toggleAttribute("data-shown", n > 0);
+    this.selectCount.textContent = String(n);
   }
 
   private clearSelection(): void {
@@ -375,7 +384,7 @@ export class TerminalsView {
     if (p.row.can_end === true) {
       acts.push(
         button({
-          label: copyText("terminalsView.select.end", { n: "1" }),
+          label: copyText("terminalsView.face.end"),
           kind: "ghost",
           size: "compact",
           icon: "stop",
@@ -389,8 +398,7 @@ export class TerminalsView {
   /** 右边：没选 ⇒「选择终端查看」；选了 ⇒ 终端面。 */
   private paintFace(): void {
     if (!this.faceView) this.faceView = this.host.face();
-    this.pickEl.hidden = this.current !== null;
-    this.faceView.hidden = this.current === null;
-    if (this.faceView.parentElement !== this.faceEl) this.faceEl.replaceChildren(this.pickEl, this.faceView);
+    const want = this.current === null ? this.pickEl : this.faceView;
+    if (want.parentElement !== this.faceEl) this.faceEl.replaceChildren(want);
   }
 }

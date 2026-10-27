@@ -11,7 +11,6 @@ import { loadTheme } from "./theme";
 import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
-import { copyText } from "./copy-table";
 import { TerminalPage, type Watched } from "./terminal-page";
 import { onMachineUp } from "./machine-feed";
 
@@ -27,10 +26,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const q = new URLSearchParams(location.search);
   const terminal = q.get("terminal");
   const root = document.getElementById("terminal-window");
-  if (!terminal || !root) {
-    if (root) root.textContent = copyText("entryViewer.module.missingParam");
-    return;
-  }
+  // 壳开这扇窗时恒带句柄；缺了 ⇒ 不是壳开的，什么都不挂。
+  if (!terminal || !root) return;
   const raw = q.get("origin");
   const origin: Origin = raw === null || raw === "" || isLocalOrigin(raw) ? LOCAL_ORIGIN : raw;
   const watched: Watched = { kind: "slot", origin, terminal, name: q.get("name") ?? "", title: q.get("title") ?? "" };

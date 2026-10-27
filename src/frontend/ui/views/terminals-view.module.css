@@ -138,11 +138,11 @@
   }
 
   .tvRow[aria-selected="true"],
-  .tvPicked {
+  .tvRow[data-marked] {
     background: var(--selected-bg);
   }
 
-  .tvStale {
+  .tvRow[data-stale] {
     opacity: 0.6;
   }
 
@@ -153,12 +153,10 @@
   }
 
   .tvRowTitle {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
   }
 
-  .tvMono {
+  .tvRowTitle[data-mono] {
     font-family: var(--font-mono);
     font-size: var(--font-size-mono);
   }
@@ -166,6 +164,10 @@
   .tvBadge {
     color: var(--warn);
     font-size: var(--font-size-small);
+  }
+
+  .tvBadge:empty {
+    display: none;
   }
 
   .tvAt {
@@ -184,10 +186,6 @@
     font-size: var(--font-size-small);
   }
 
-  .tvSep {
-    color: var(--text-faint);
-  }
-
   .tvPill {
     padding: 0 var(--space-2);
     border: 1px solid var(--border-soft);
@@ -196,6 +194,10 @@
   }
 
   .tvSelectBar {
+    display: none;
+  }
+
+  .tvSelectBar[data-shown] {
     display: flex;
     flex: none;
     align-items: center;
@@ -205,9 +207,6 @@
     background: var(--bg-2);
   }
 
-  .tvSelectBar[hidden] {
-    display: none;
-  }
 
   .tvSelectCount {
     font-size: var(--font-size-small);
@@ -241,10 +240,6 @@
     align-items: center;
     justify-content: center;
     color: var(--text-2);
-  }
-
-  .tvPick[hidden] {
-    display: none;
   }
 
   @media (width <= 900px) {

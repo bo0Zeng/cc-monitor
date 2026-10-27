@@ -128,8 +128,11 @@ fn a_row_is_written_whole() {
     assert!(!s.mono);
     assert_eq!(s.sid.as_deref(), Some("c"));
     assert_eq!(
-        s.meta,
-        vec![Words("work".into()), Words("~/src/app".into())]
+        s.meta.0,
+        copy_text(
+            "beTermBoard.meta.line",
+            &[("who", "work"), ("cwd", "~/src/app")]
+        )
     );
     assert_eq!(
         s.chips,
@@ -141,10 +144,16 @@ fn a_row_is_written_whole() {
     let shell = by("shell");
     assert!(shell.mono);
     assert_eq!(shell.dot, SessionDot::Idle);
-    assert_eq!(shell.at_text.0, copy_text("beTermBoard.at.now", &[]));
+    assert_eq!(shell.at_text.0, copy_core::short_duration(5_000));
     assert_eq!(
-        shell.meta[0].0,
-        copy_text("beTermBoard.meta.noSession", &[])
+        shell.meta.0,
+        copy_text(
+            "beTermBoard.meta.line",
+            &[
+                ("who", &copy_text("beTermBoard.meta.noSession", &[])),
+                ("cwd", "~/src/app")
+            ]
+        )
     );
     assert_eq!(
         shell.chips,
@@ -175,7 +184,10 @@ fn merge_keeps_machine_order_counts_and_draws_the_silent_one_from_last_time() {
     merge(
         vec![(
             gpu.clone(),
-            Got::Answered(here(vec![term("g", Some("c"), "claude", 0, NOW)]), "10:31".into()),
+            Got::Answered(
+                here(vec![term("g", Some("c"), "claude", 0, NOW)]),
+                "10:31".into(),
+            ),
         )],
         &last,
     );
@@ -199,7 +211,11 @@ fn merge_keeps_machine_order_counts_and_draws_the_silent_one_from_last_time() {
     let names: Vec<&str> = b.groups.iter().map(|g| g.name.0.as_str()).collect();
     assert_eq!(
         names,
-        vec![copy_text("beTermBoard.group.local", &[]).as_str(), "gpu", "never"]
+        vec![
+            copy_text("beTermBoard.group.local", &[]).as_str(),
+            "gpu",
+            "never"
+        ]
     );
     assert!(b.groups[0].down.is_none());
     let g = &b.groups[1];
@@ -207,14 +223,25 @@ fn merge_keeps_machine_order_counts_and_draws_the_silent_one_from_last_time() {
         g.down.as_ref().unwrap().said.0,
         copy_text(
             "beTermBoard.group.downSampled",
-            &[("machine", "gpu"), ("said", "offline"), ("at", "10:31")]
+            &[("machine", "gpu"), ("at", "10:31")]
         )
     );
     assert_eq!(g.rows.len(), 1);
-    assert_eq!(g.rows[0].dot, SessionFace::of(crate::wire::Life::Unseen).dot);
+    assert_eq!(
+        g.rows[0].dot,
+        SessionFace::of(crate::wire::Life::Unseen).dot
+    );
     assert!(b.groups[2].rows.is_empty() && b.groups[2].down.is_some());
     // 键跨台不撞。
     assert_ne!(b.groups[0].rows[0].key, "a");
+    // 单独终端窗口的系统标题带那台的名字。
+    assert_eq!(
+        g.rows[0].window_title.0,
+        copy_text(
+            "beTermBoard.window.title",
+            &[("title", &g.rows[0].title.0), ("machine", "gpu")]
+        )
+    );
     let counts: Vec<(BoardTag, u32)> = b.filters.iter().map(|f| (f.tag, f.count)).collect();
     assert_eq!(
         counts,

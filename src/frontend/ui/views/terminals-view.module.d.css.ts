@@ -17,11 +17,9 @@ declare const classes: {
   readonly tvList: string;
   readonly tvMain: string;
   readonly tvMeta: string;
-  readonly tvMono: string;
   readonly tvNoMatch: string;
   readonly tvPartial: string;
   readonly tvPick: string;
-  readonly tvPicked: string;
   readonly tvPill: string;
   readonly tvRight: string;
   readonly tvRow: string;
@@ -29,9 +27,7 @@ declare const classes: {
   readonly tvRowTop: string;
   readonly tvSelectBar: string;
   readonly tvSelectCount: string;
-  readonly tvSep: string;
   readonly tvSpacer: string;
-  readonly tvStale: string;
   readonly tvTitle: string;
   readonly tvView: string;
 };

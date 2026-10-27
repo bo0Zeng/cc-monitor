@@ -25,14 +25,12 @@ pub(crate) struct SessionBits {
     pub(crate) face: SessionFace,
 }
 
-/// 前台是这几个之一 ⇒ 没会话的那个终端算闲着（只剩 shell）。
-const SHELLS: &[&str] = &[
-    "bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "pwsh", "powershell",
-];
+/// 前台程序名是这几个之一 ⇒ 没会话的那个终端算闲着（只剩 shell）。只比 tmux 报的前台程序名，不起 shell。
+const SHELLS: &str = "bash zsh fish sh dash ksh tcsh csh nu pwsh powershell";
 
 fn is_shell(program: &str) -> bool {
     let p = program.trim_start_matches('-');
-    SHELLS.contains(&p)
+    SHELLS.split_whitespace().any(|s| s == p)
 }
 
 /// 在等人 0 · 有终端窗口连着 1 · 后台 2。
@@ -44,13 +42,11 @@ fn band(dot: SessionDot, attached: bool) -> u8 {
     }
 }
 
-/// 行尾那一格：不满一分钟「现在」，否则短时长（`6m` · `2h` · `3d`）。
+/// 行尾那一格：距最近动静多久（短时长：`45s` · `6m` · `2h` · `3d`）。
 pub(crate) fn at_text(last_activity: u64, now: u64) -> Words {
-    let ago = now.saturating_sub(last_activity);
-    if ago < 60 {
-        return Words(copy_text("beTermBoard.at.now", &[]));
-    }
-    Words(copy_core::short_duration(ago.saturating_mul(1000)))
+    Words(copy_core::short_duration(
+        now.saturating_sub(last_activity).saturating_mul(1000),
+    ))
 }
 
 /// 一个终端写成一行（不是 cc-monitor 起的 ⇒ `None`）。
@@ -106,8 +102,10 @@ fn row_of(
             )
         }
     };
-    let mut meta: Vec<Words> = first.into_iter().collect();
-    meta.push(Words(cwd.clone()));
+    let meta = Words(match &first {
+        Some(who) => copy_text("beTermBoard.meta.line", &[("who", &who.0), ("cwd", &cwd)]),
+        None => cwd.clone(),
+    });
     let mut chips = Vec::new();
     if attached {
         chips.push(Words(copy_text(
@@ -140,6 +138,7 @@ fn row_of(
             dot,
             dot_name,
             title: Words(title),
+            window_title: Words::default(),
             mono,
             badge,
             meta,
@@ -199,7 +198,8 @@ impl LastSeen {
     }
 }
 
-pub(crate) static LAST_SEEN: std::sync::LazyLock<LastSeen> = std::sync::LazyLock::new(LastSeen::new);
+pub(crate) static LAST_SEEN: std::sync::LazyLock<LastSeen> =
+    std::sync::LazyLock::new(LastSeen::new);
 
 /// 组头那一句。
 fn sub_of(rows: &[BoardRow]) -> Words {
@@ -209,7 +209,10 @@ fn sub_of(rows: &[BoardRow]) -> Words {
         .filter(|r| r.tags.contains(&BoardTag::Background))
         .count();
     if bg == 0 {
-        Words(copy_text("beTermBoard.group.count", &[("n", &n.to_string())]))
+        Words(copy_text(
+            "beTermBoard.group.count",
+            &[("n", &n.to_string())],
+        ))
     } else {
         Words(copy_text(
             "beTermBoard.group.countBg",
@@ -248,7 +251,7 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
                         }
                         let said = copy_text(
                             "beTermBoard.group.downSampled",
-                            &[("machine", &name), ("said", &said), ("at", at)],
+                            &[("machine", &name), ("at", at)],
                         );
                         (old, Some(BoardDown { said: Words(said) }))
                     }
@@ -268,11 +271,16 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
                 }
             }
         };
+        let name = name_of(&machine).0;
         let rows: Vec<BoardRow> = here
             .rows
             .into_iter()
             .map(|mut r| {
                 r.key = format!("{prefix}{}", r.key);
+                r.window_title = Words(copy_text(
+                    "beTermBoard.window.title",
+                    &[("title", &r.title.0), ("machine", &name)],
+                ));
                 r
             })
             .collect();
@@ -294,15 +302,21 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
         u32::try_from(n).unwrap_or(u32::MAX)
     };
     let filters = [
-        (BoardTag::All, "beTermBoard.filter.all"),
-        (BoardTag::Session, "beTermBoard.filter.session"),
-        (BoardTag::Bare, "beTermBoard.filter.bare"),
-        (BoardTag::Background, "beTermBoard.filter.background"),
+        (BoardTag::All, copy_text("beTermBoard.filter.all", &[])),
+        (
+            BoardTag::Session,
+            copy_text("beTermBoard.filter.session", &[]),
+        ),
+        (BoardTag::Bare, copy_text("beTermBoard.filter.bare", &[])),
+        (
+            BoardTag::Background,
+            copy_text("beTermBoard.filter.background", &[]),
+        ),
     ]
     .into_iter()
-    .map(|(tag, key)| BoardFilter {
+    .map(|(tag, label)| BoardFilter {
         tag,
-        label: Words(copy_text(key, &[])),
+        label: Words(label),
         count: count(tag),
     })
     .collect();

@@ -250,19 +250,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       terminalsView.close();
       tabs.switchTo(sid);
     },
-    openWindow: (p) => void openTerminalWindow({ origin: p.origin, terminal: p.row.terminal, name: p.row.tmux_name, title: p.row.title }),
+    openWindow: (p) =>
+      void openTerminalWindow({ origin: p.origin, terminal: p.row.terminal, name: p.row.tmux_name, title: p.row.title, windowTitle: p.row.window_title }),
     newSession: (origin) => void openNewSession(origin ? { origin } : {}),
   });
-  // 会话状态变了 · 机器连上断开 ⇒ 开着的「终端」视图再问一次（连着来的合成一问）。
-  let boardPoke: ReturnType<typeof setTimeout> | null = null;
-  const pokeBoard = (): void => {
-    if (!terminalsView.isVisible() || boardPoke !== null) return;
-    // 调度：合批 —— 连着来的会话状态变化 · 机器连上断开合成一问
-    boardPoke = setTimeout(() => {
-      boardPoke = null;
-      void terminalsView.refresh();
-    }, 300);
-  };
+  // 会话状态变了 · 机器连上断开 ⇒ 开着的「终端」视图再问一次（视图自己合批、关着不问）。
+  const pokeBoard = (): void => terminalsView.poke();
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
   document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);

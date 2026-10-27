@@ -44,14 +44,16 @@ pub struct BoardRow {
     /// 点的名字（读屏 · 悬停）。
     pub dot_name: Words,
     pub title: Words,
+    /// 单独终端窗口的系统标题（标题 · 终端 · 那台）：各台合成那一步写（那台叫什么合成时才知道），这台那一份是空的。
+    pub window_title: Words,
     /// 标题照命令原文、等宽画（没有会话的终端）。
     pub mono: bool,
     /// 标题旁的徽标（在等人 ⇒ 那一态的短名）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub badge: Option<Words>,
-    /// 第二行那几段（号或「没有会话」· 目录）。
-    pub meta: Vec<Words>,
+    /// 第二行（号或「没有会话」· 目录）。
+    pub meta: Words,
     /// 第二行尾的小签（后台 · 终端窗口 ×n · 已退出）。
     pub chips: Vec<Words>,
     /// 行尾那一格（现在 · 1m · 2h）。

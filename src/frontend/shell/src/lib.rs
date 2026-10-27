@@ -1096,9 +1096,7 @@ async fn open_session_in_new_window(
         if let Some((x, y)) = at {
             builder = builder.position(x, y);
         }
-        let w = builder
-            .build()
-            .map_err(|e| Said::with_raw(copy_text("rsShellCmd.viewer.openFailed", &[]), e))?;
+        let w = builder.build().map_err(viewer_open_failed)?;
         fit_window_to_work_area(&w);
         Ok(())
     }
@@ -1157,14 +1155,17 @@ async fn open_terminal_in_new_window(
         if let Some((x, y)) = agent_window_spot(&window, open) {
             builder = builder.position(x, y);
         }
-        let w = builder
-            .build()
-            .map_err(|e| Said::with_raw(copy_text("rsShellCmd.viewer.openFailed", &[]), e))?;
+        let w = builder.build().map_err(viewer_open_failed)?;
         fit_window_to_work_area(&w);
         Ok(())
     }
     .await;
     r.map_err(|s| s.named("open_terminal_in_new_window"))
+}
+
+/// 查看窗一类（会话窗 · agent 窗 · 单独终端窗）开不出来时那一句（连系统原话）。
+fn viewer_open_failed(e: tauri::Error) -> Said {
+    Said::with_raw(copy_text("rsShellCmd.viewer.openFailed", &[]), e)
 }
 
 /// 单独终端窗口名的前缀（落在查看窗那一组窗口名里，同一套权限）。

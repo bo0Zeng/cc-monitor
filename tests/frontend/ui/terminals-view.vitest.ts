@@ -13,7 +13,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-// 新加的字在合并树里才进文案表：表里没有的那几条照键名出（有的照表）。
+// 表里没有的键照键名出（有的照表），夹具不依赖文案表的现值。
 vi.mock("../../../src/frontend/ui/copy-table", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/copy-table")>();
   return {
@@ -41,11 +41,12 @@ function row(key: string, over: Partial<BoardRow> = {}): BoardRow {
     tmux_name: `ccm-${key}`,
     sid: `sid-${key}`,
     dot: "running",
-    dot_name: "运行中",
+    dot_name: "dot-running",
     title: `title ${key}`,
+    window_title: `window ${key}`,
     mono: false,
-    meta: ["work", "~/src"],
-    chips: ["后台"],
+    meta: "work ~/src",
+    chips: ["chip-bg"],
     at_text: "1m",
     tags: ["session", "background"],
     find: `title ${key}\n~/src`,
@@ -55,17 +56,17 @@ function row(key: string, over: Partial<BoardRow> = {}): BoardRow {
 }
 
 function group(machine: string, rows: BoardRow[], over: Partial<BoardGroup> = {}): BoardGroup {
-  return { machine, name: machine, sub: `${rows.length} 个终端`, complete: true, rows, ...over };
+  return { machine, name: machine, sub: `n=${rows.length}`, complete: true, rows, ...over };
 }
 
 function board(groups: BoardGroup[]): TerminalsBoard {
   const n = groups.reduce((a, g) => a + g.rows.length, 0);
   return {
     filters: [
-      { tag: "all", label: "全部", count: n },
-      { tag: "session", label: "有会话的", count: n },
-      { tag: "bare", label: "没有会话的", count: 0 },
-      { tag: "background", label: "后台", count: n },
+      { tag: "all", label: "f-all", count: n },
+      { tag: "session", label: "f-session", count: n },
+      { tag: "bare", label: "f-bare", count: 0 },
+      { tag: "background", label: "f-bg", count: n },
     ],
     groups,
   };
@@ -113,13 +114,13 @@ describe("「终端」视图", () => {
     await flush();
     expect(keys()).toEqual(["a", "b", "c"]);
     const bEl = rowEl("b");
-    next(board([group("<local>", [row("b", { dot: "needs-you", badge: "需手动", at_text: "现在" }), row("a"), row("c")])]));
+    next(board([group("<local>", [row("b", { dot: "needs-you", badge: "badge-wait", at_text: "3s" }), row("a"), row("c")])]));
     await view.refresh();
     await flush();
     expect(keys()).toEqual(["a", "b", "c"]);
     expect(rowEl("b")).toBe(bEl);
-    expect(rowEl("b").textContent).toContain("需手动");
-    expect(rowEl("b").textContent).toContain("现在");
+    expect(rowEl("b").textContent).toContain("badge-wait");
+    expect(rowEl("b").textContent).toContain("3s");
     view.close();
   });
 
@@ -168,7 +169,7 @@ describe("「终端」视图", () => {
     rowEl("a").dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
     rowEl("c").dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
     const bar = document.querySelector<HTMLElement>("[data-select-bar]")!;
-    expect(bar.hidden).toBe(false);
+    expect(bar.hasAttribute("data-shown")).toBe(true);
     expect(bar.textContent).toContain("2");
     bar.querySelector<HTMLElement>("[data-end]")!.click();
     await flush();
@@ -194,14 +195,14 @@ describe("「终端」视图", () => {
     const empty = rig(board([group("<local>", [])]));
     await empty.view.open();
     await flush();
-    expect(document.querySelector("[data-empty]")).not.toBeNull();
+    expect(document.querySelector("[data-board-empty]")).not.toBeNull();
     empty.view.close();
 
-    const down = rig(board([group("gpu", [row("g", { dot: "unknown" })], { down: { said: "gpu 未答 · offline" } })]));
+    const down = rig(board([group("gpu", [row("g", { dot: "unknown" })], { down: { said: "gpu down offline" } })]));
     await down.view.open();
     await flush();
     const d = document.querySelector<HTMLElement>("[data-down]")!;
-    expect(d.textContent).toContain("gpu 未答 · offline");
+    expect(d.textContent).toContain("gpu down offline");
     d.querySelector("button")!.click();
     expect(down.host.reconnect).toHaveBeenCalledWith("gpu");
     expect(keys()).toEqual(["g"]);

@@ -3,8 +3,6 @@
  */
 import { commands } from "./ipc/commands";
 import type { Origin } from "./ipc/origin";
-import { machineName } from "./control-said";
-import { copyText } from "./copy-table";
 
 export interface OpenTerminalWindow {
   origin: Origin;
@@ -14,13 +12,10 @@ export interface OpenTerminalWindow {
   name: string;
   /** 名单那一行的标题。 */
   title: string;
-}
-
-/** 系统标题：标题 · 终端 · 那台。 */
-export function terminalWindowTitle(o: OpenTerminalWindow): string {
-  return copyText("terminalWindow.page.title", { title: o.title, machine: machineName(o.origin) });
+  /** 系统标题（后端写好的那一格）。 */
+  windowTitle: string;
 }
 
 export async function openTerminalWindow(o: OpenTerminalWindow): Promise<void> {
-  await commands.open_terminal_in_new_window({ ...o, windowTitle: terminalWindowTitle(o) });
+  await commands.open_terminal_in_new_window(o);
 }

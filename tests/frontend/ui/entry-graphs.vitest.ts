@@ -779,7 +779,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/login-drawer.module.css": { stacked: false, why: "登录抽屉的内容（`login-drawer.ts`）：只挂自己的哈希类（外框是 kit 抽屉，按钮 · 输入框 · 红条是 kit 的，输入框包在本文件的一格里）" },
   "src/frontend/ui/answer-block.module.css": { stacked: false, why: "答题块（`answer-block.ts`）：只挂自己的哈希类（按钮是 kit 的，数字键那一格按属性认、不叠类）" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
-  "src/frontend/ui/views/terminals-view.module.css": { stacked: false, why: "顶层「终端」视图（`views/terminals-view.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/views/terminals-view.module.css": { stacked: true, why: "顶层「终端」视图（`views/terminals-view.ts`）：行标题叠全局 `one-line`（单行省略只住全局那一处）" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-screen.module.css": { stacked: false, why: "终端画面那块 `pre`（`terminal-screen.ts::screenPre`）：只挂自己的哈希类；版位与滚动归外面那一格（终端页的类 / 浮层的全局类，在另一个元素上）" },
   "src/frontend/ui/kit/dock.module.css": { stacked: false, why: "底部抽屉件：只挂自己的哈希类（网格那一格的 id 由主窗口挂，不是类）" },
