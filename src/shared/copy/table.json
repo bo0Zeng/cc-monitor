@@ -16984,6 +16984,18 @@
       "zh": "附件 {n} · 传到会话工作目录",
       "args": ["n"]
     },
+    "attach.msg.image": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "附带的图片",
+      "args": []
+    },
+    "attach.msg.cleared": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已清理",
+      "args": []
+    },
     "attach.class.folder": {
       "kind": "body",
       "role": "片段",

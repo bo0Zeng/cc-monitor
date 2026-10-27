@@ -28,7 +28,7 @@ export interface AttachRowHost {
 }
 
 /** 类别字（chip 左边那一格）。 */
-function classWord(c: FileClass | null): string {
+export function classWord(c: FileClass | null): string {
   switch (c) {
     case "folder":
       return copyText("attach.class.folder");

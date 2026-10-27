@@ -25,6 +25,7 @@ import { buildBriefCard } from "./brief";
 import { buildAgentCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
+import { attachStrip } from "./attach-strip";
 import type { Pasted } from "../generated/Pasted";
 import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
@@ -265,10 +266,14 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
           // 派给子 agent 的活：不是用户说的，画成带抬头的框（谁派的 · 几点派的）。
           if (!said.text) return { kind: "skip" };
           return { kind: "card", element: buildBriefCard(said.text, time, ctx.briefFrom ?? null) };
-        default:
-          // 人说的话：用户气泡；没有正文（只有图片之类）不建卡。
-          if (!said.text) return { kind: "skip" };
-          return { kind: "card", element: buildUserCard(time, said.text, said.pasted) };
+        default: {
+          // 人说的话：用户气泡；带的附件（图片块 · `attachments[]`）画在正文上方。正文与附件都没有 ⇒ 不建卡。
+          const cwd = rec.cwd;
+          const open = isRemoteOrigin(ctx.origin) && cwd ? (rel: string) => void openRemoteFileInSftp(ctx.origin, `${cwd.replace(/\/+$/, "")}/${rel}`) : undefined;
+          const strip = attachStrip(rec.blocks, rec.attachments ?? [], open);
+          if (!said.text && strip === null) return { kind: "skip" };
+          return { kind: "card", element: buildUserCard(time, said.text, said.pasted, strip) };
+        }
       }
 
       // 工具结果回灌：注入到对应 tool_use 折叠条内部，返回 null；
@@ -405,15 +410,19 @@ function buildUserCard(
   time: string,
   text: string,
   pasted?: readonly Pasted[],
+  strip: HTMLElement | null = null,
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
   card.appendChild(cardHeader(copyText("cards.user.title"), time));
+  if (strip) card.appendChild(strip);
 
-  const body = document.createElement("div");
-  body.className = "card-body";
-  fillSaid(body, text, pasted);
-  card.appendChild(body);
+  if (text) {
+    const body = document.createElement("div");
+    body.className = "card-body";
+    fillSaid(body, text, pasted);
+    card.appendChild(body);
+  }
   return card;
 }
 
