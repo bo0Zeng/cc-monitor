@@ -110,6 +110,30 @@ impl russh::server::Handler for Peer {
         session.eof(channel)?;
         session.close(channel)
     }
+
+    /// 当跳板：只许开到回环（测试档不许出网）。
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::server::Msg>,
+        host: &str,
+        port: u32,
+        _oa: &str,
+        _op: u32,
+        _session: &mut russh::server::Session,
+    ) -> Result<bool, Self::Error> {
+        assert_eq!(host, "127.0.0.1", "测试档不许出网：跳板被要求开到 {host}");
+        let Ok(port) = u16::try_from(port) else {
+            return Ok(false);
+        };
+        let Ok(mut tcp) = tokio::net::TcpStream::connect((host, port)).await else {
+            return Ok(false);
+        };
+        tokio::spawn(async move {
+            let mut ch = channel.into_stream();
+            let _ = tokio::io::copy_bidirectional(&mut ch, &mut tcp).await;
+        });
+        Ok(true)
+    }
 }
 
 /// 对端量到的：它收了多少 · 发了多少（线上字节）。
@@ -272,4 +296,36 @@ async fn the_pool_lists_live_links_by_identity_and_says_when_they_move() {
         "最后一个用它的人走了（连接收掉），moved 没记一笔"
     );
     assert!(pool.links().is_empty(), "收掉的连接还列着");
+}
+
+/// ★ 经跳板：目标那一条的地址是目标，跳板那一条另报（不压）；跳板那条 TCP 运着整条隧道 ⇒ 它的进出都不少于目标那一条。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_jumped_link_reports_its_jump_hop_too() {
+    let (jump_port, _) = peer().await;
+    let (target_port, _) = peer().await;
+    let mut v = serde_json::to_value(request(target_port)).expect("请求写不出");
+    v["jump"] = serde_json::json!({
+        "host": "127.0.0.1",
+        "port": jump_port,
+        "user": "u",
+        "key_path": KEY_ID,
+    });
+    let req: DialRequest = serde_json::from_value(v).expect("拨号请求读不动");
+    let l = establish(&req, &StageSink::new(false))
+        .await
+        .map_err(|(e, _)| e.said)
+        .expect("经跳板没连上");
+    assert_eq!(exec_once(&l).await, REPLY_LEN);
+    let f = l.facts();
+    assert_eq!(f.link.endpoint, format!("127.0.0.1:{target_port}"));
+    assert_eq!(f.jumps.len(), 1, "一台跳板一项");
+    let j = &f.jumps[0];
+    assert_eq!(j.endpoint, format!("127.0.0.1:{jump_port}"));
+    assert!(!j.compressed, "跳板那一条只运隧道，不压");
+    assert!(
+        j.bytes_in >= f.link.bytes_in && f.link.bytes_in >= REPLY_LEN as u64,
+        "跳板那条进 {} · 目标那条进 {}：跳板运着整条隧道，不该比目标少",
+        j.bytes_in,
+        f.link.bytes_in
+    );
 }
