@@ -93,8 +93,9 @@ export default defineConfig(async () => ({
     //   index.html    → src/frontend/ui/entry-main.ts      主窗口
     //   settings.html → src/frontend/ui/entry-settings.ts  只含设置面板 ＋ 主题 ＋ 键位
     //   viewer.html   → src/frontend/ui/entry-viewer.ts    只含 tab 管理 ＋ 渲染栈
-    // Tauri 开窗那两处（`src/frontend/shell/src/lib.rs` 的 `open_settings_window` /
-    // `open_session_in_new_window`）指向后两个 html。
+    //   terminal.html → src/frontend/ui/entry-terminal.ts  只含终端面部件
+    // Tauri 开窗那三处（`src/frontend/shell/src/lib.rs` 的 `open_settings_window` /
+    // `open_session_in_new_window` / `open_terminal_in_new_window`）指向后三个 html。
     // 🔴 「设置窗里没有高亮/数学/tab 管理」由 `tests/frontend/ui/entry-graphs.vitest.ts` 对**本配置真跑出来的**
     //    构建产物做零命中断言 —— 它读的就是这张 `input` 表，改这里那边跟着变，不存在两份副本。
     rollupOptions: {
@@ -102,6 +103,7 @@ export default defineConfig(async () => ({
         main: "index.html",
         settings: "settings.html",
         viewer: "viewer.html",
+        terminal: "terminal.html",
       },
     },
   },

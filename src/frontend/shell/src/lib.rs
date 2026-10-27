@@ -712,6 +712,7 @@ pub fn run() {
             kept_sessions,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
+            open_terminal_in_new_window,
             // F82a(#56+#47): 设置独立窗口
             open_settings_window,
             // ↗ 拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿，界面原样交来）
@@ -1095,15 +1096,102 @@ async fn open_session_in_new_window(
         if let Some((x, y)) = at {
             builder = builder.position(x, y);
         }
-        let w = builder
-            .build()
-            .map_err(|e| Said::with_raw(copy_text("rsShellCmd.viewer.openFailed", &[]), e))?;
+        let w = builder.build().map_err(viewer_open_failed)?;
         fit_window_to_work_area(&w);
         Ok(())
     }
     .await;
     r.map_err(|s| s.named("open_session_in_new_window"))
 }
+
+/// 开一扇只装终端面的窗（「终端」视图上「新窗口」）：一个终端一扇（窗口名按「那台 ＋ 句柄」定，已开着就拉前）；
+/// 终端结束了窗不关（面上照「已结束」画），退出 app 一起关。`origin` · 句柄 · tmux 会话名 · 标题随 URL 交给那扇窗。
+#[tauri::command]
+async fn open_terminal_in_new_window(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    origin: crate::origin::Origin,
+    terminal: String,
+    name: String,
+    title: String,
+    window_title: String,
+) -> Result<(), Said> {
+    let r: Result<(), Said> = async move {
+        use tauri::Manager;
+        origin
+            .route("open_terminal_in_new_window")
+            .map_err(Said::written)?;
+        let origin_s = origin.to_string();
+        let label = terminal_window_label(&origin_s, &terminal);
+        if let Some(w) = app.get_webview_window(&label) {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+            return Ok(());
+        }
+        let (o, t, n, ti) = (
+            pct_encode(&origin_s),
+            pct_encode(&terminal),
+            pct_encode(&name),
+            pct_encode(&title),
+        );
+        let url = tauri::WebviewUrl::App(
+            format!("terminal.html?origin={o}&terminal={t}&name={n}&title={ti}").into(),
+        );
+        let open = app
+            .webview_windows()
+            .keys()
+            .filter(|l| l.starts_with(TERMINAL_WINDOW_PREFIX))
+            .count();
+        let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
+            .title(if window_title.is_empty() {
+                "cc-monitor"
+            } else {
+                &window_title
+            })
+            .inner_size(980.0, 700.0)
+            .min_inner_size(480.0, 320.0)
+            .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+        if let Some((x, y)) = agent_window_spot(&window, open) {
+            builder = builder.position(x, y);
+        }
+        let w = builder.build().map_err(viewer_open_failed)?;
+        fit_window_to_work_area(&w);
+        Ok(())
+    }
+    .await;
+    r.map_err(|s| s.named("open_terminal_in_new_window"))
+}
+
+/// 查看窗一类（会话窗 · agent 窗 · 单独终端窗）开不出来时那一句（连系统原话）。
+fn viewer_open_failed(e: tauri::Error) -> Said {
+    Said::with_raw(copy_text("rsShellCmd.viewer.openFailed", &[]), e)
+}
+
+/// 单独终端窗口名的前缀（落在查看窗那一组窗口名里，同一套权限）。
+const TERMINAL_WINDOW_PREFIX: &str = "viewer-term-";
+
+/// 单独终端窗口名：`viewer-term-<那台>-<句柄>`，两段里字母数字以外（连 `-`）一律写成 `_xx`，两段之间的 `-` 才不会认错。
+fn terminal_window_label(origin: &str, terminal: &str) -> String {
+    let mut out = String::from(TERMINAL_WINDOW_PREFIX);
+    for (i, part) in [origin, terminal].into_iter().enumerate() {
+        if i > 0 {
+            out.push('-');
+        }
+        for b in part.bytes() {
+            if b.is_ascii_alphanumeric() {
+                out.push(char::from(b));
+            } else {
+                out.push_str(&format!("_{b:02x}"));
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/terminal_window_tests.rs"]
+mod terminal_window_tests;
 
 /// agent 窗口名的前缀（`viewer-agent-<sid>-<运行>`：落在查看窗那一组窗口名里，同一套权限）。
 const AGENT_WINDOW_PREFIX: &str = "viewer-agent-";
