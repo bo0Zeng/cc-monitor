@@ -25,7 +25,7 @@ const STATE_NAME: &str = "state.json";
 /// 一份收件箱的读上限：一封最多千来字节，64 MiB 装得下几万封。
 pub(crate) const INBOX_CAP: u64 = 64 * 1024 * 1024;
 const INBOX: crate::common::own_state::Doc<Vec<u8>> =
-    crate::common::own_state::Doc::state(".cc-monitor/cc-bus/<会话 id>.jsonl", INBOX_CAP);
+    crate::common::own_state::Doc::state(".cc-monitor/cc-bus/<sid>.jsonl", INBOX_CAP);
 
 /// 状态文件的版本。
 const VERSION: u32 = 1;
