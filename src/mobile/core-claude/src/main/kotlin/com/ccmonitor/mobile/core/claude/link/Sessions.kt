@@ -253,10 +253,9 @@ object TerminalInput {
         /** 不知道送没送到：别重发。 */
         data object Unsure : Result
 
-        /** 没送：[said] 是那台写好的那一句，[why] 是原因码，[acts] 是那台判好的下一步（有 [SentAct.RETRY] ⇒ 给［再发一次］）。 */
+        /** 没送：[said] 是那台写好的那一句，[acts] 是那台判好的下一步（有 [SentAct.RETRY] ⇒ 给［再发一次］）。 */
         data class Refused(
             val said: String,
-            val why: String?,
             val acts: List<SentAct>,
         ) : Result
     }
@@ -269,7 +268,7 @@ object TerminalInput {
         when (sent.result) {
             SentResult.DELIVERED -> Result.Delivered
             SentResult.UNSURE -> Result.Unsure
-            SentResult.REFUSED -> sent.said?.let { Result.Refused(it, sent.why?.wire, sent.acts.orEmpty()) }
+            SentResult.REFUSED -> sent.said?.let { Result.Refused(it, sent.acts.orEmpty()) }
         }
 }
 

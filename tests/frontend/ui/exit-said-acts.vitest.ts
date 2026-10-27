@@ -40,7 +40,7 @@ function hits(files: string[], needles: readonly string[]): string[] {
  * 还在照拒因码自己判、改动已另交给占着它的那一路的出口：每一项都要真还命中（不命中 ⇒ 红，删掉那一项），不是豁免名单。
  * 手机聊天屏那一份照 `acts` 判的改动随它那一路落。
  */
-const PENDING = ["src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatSession.kt"] as const;
+const PENDING: readonly string[] = [];
 
 /** 后端判这几件的那几处（正控）。 */
 const backend = (p: string) => readFileSync(join(ROOT, p), "utf8");

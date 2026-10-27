@@ -30,6 +30,7 @@ import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.LiveCardNow
+import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.TailHow
 import com.ccmonitor.mobile.link.problem
@@ -860,10 +861,7 @@ private sealed interface Event {
     data object Reread : Event
 }
 
-/** 改得了的拒因（画面变了 · 一时认不出）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */
-private val RETRYABLE = setOf("screen_changed", "ambiguous", "not_known")
-
-/** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。 */
+/** 那台判的送没送到（`terminal-input` 的回话 · `session-open` 回包里第一句的结局）⇒ 标与那一句。能不能再发一次照那台给的下一步（[SentAct.RETRY]）。 */
 private fun outcomeOf(
     res: TerminalInput.Result,
     machine: String,
@@ -872,7 +870,7 @@ private fun outcomeOf(
         TerminalInput.Result.Delivered -> null to null
         TerminalInput.Result.Unsure -> unsure(machine)
         is TerminalInput.Result.Refused ->
-            (if (res.why in RETRYABLE) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
+            (if (SentAct.RETRY in res.acts) DeliveryState.FAILED else DeliveryState.FAILED_PERMANENT) to
                 copyText("terminal.input.failed", "why" to res.said)
     }
 

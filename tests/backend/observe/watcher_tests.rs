@@ -795,10 +795,10 @@ fn appending_lines_advances_offset_and_seq_monotonically() {
 
 #[test]
 fn byte_offset_matches_mobile_lineframer() {
-    // backend-01（gap#2）：Line.byte_offset **逐字节对齐手机端 `LineFramer.endOffset`**——计 CRLF 的 `\r`、
-    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自手机端 LineFramerTest 的关键语料。
+    // Line.byte_offset 是本行末尾（含 `\n`）的累计**原始字节**偏移 ＝ 下一行的起点（两端拿它续读）——计 CRLF 的 `\r`、
+    // 含 `\n`、残行不计、在原始字节上算（非解码后串）。下面的语料逐条钉这几样。
     let mut seqs = SeqCounter::new();
-    // 手机端 feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
+    // "你\r\nx\n" → byte_offset [5,7]
     // 你=3B + \r + \n = 5；x + \n = 2 → 累计 7。raw 剥 \r/\n。
     let (out, cur) = read_new_lines(
         "你\r\nx\n".as_bytes(),

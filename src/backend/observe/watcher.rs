@@ -94,23 +94,13 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
 
-// ============ P2（zero-poll-liveness）：统一事件 channel + pidfd 判活 ============
+// ============ 统一事件 channel + pidfd 判活 ============
 //
-// **账本第 1 行的最终形态在这里建立**（§3）：
-// `watch_loop` 阻塞在**无超时 `recv()`** 上、消费**单一** `mpsc<WatchEvent>`。
-// 所有事件源（notify / pidfd / tmux 探测）都往这一个 channel 发。
-//
-// **给 P3/P4 的硬约束**：往里**加事件源**，**不许**各自再挂一条独立线程 + 定时器
-// ——那正是"补丁叠补丁"。加一个 `WatchEvent` 变体 + 一个发送方即可。
-//
-// P2 之前这里有两条轮询：
-// - **轮询 A**（本功能消掉）：循环 tick 2s（`recv_timeout` 的超时值本身）驱动的判活扫描，
-//   遍历 `state.sessions` 调 `session_alive` 检「pidfile 还在但 PID 已死」+ PID 复用。
-// - ~~**轮询 B**：`TMUX_EMIT_INTERVAL` = 8s 的 `tmux ls`~~ **P5 已删**。P2 曾把它从
-//   "主循环里的节流判断"搬进一条独立 ticker 线程，
-//   使主循环**现在**就是最终形态；P5 删 ticker 线程即可，不必再动循环结构。
+// `watch_loop` 只等**一个** `mpsc<WatchEvent>`：所有事件源（notify / pidfd / tmux 探测 / 外部戳 …）都往这一个 channel 发，
+// 等的期限只有「久未动静」与主运行心跳那两个到点时刻（见主循环）。没有轮询、没有定时器。
+// 加事件源 ＝ 加一个 `WatchEvent` 变体 ＋ 一个发送方；不另挂独立线程 ＋ 定时器。
 
-/// P2：`watch_loop` 消费的统一事件。
+/// `watch_loop` 消费的统一事件。
 enum WatchEvent {
     /// 这台问过一条会话的记录在不在（[`record_seen`]）。
     RecordSeen { sid: String, present: bool },
@@ -130,22 +120,14 @@ enum WatchEvent {
     PidDied { key: PathBuf, pid: u32 },
     /// 一次性 `tmux ls` 探测线程的结果。
     TmuxObserved(TmuxProbe),
-    /// tmux 探测节拍——**本 crate 剩下的唯一定时器**，住在独立 ticker 线程里。**P5 删。**
+    /// 起来时探一次 tmux（[`initial_tmux_probe`] 发，只此一次）。
     TmuxProbeDue,
-    /// **P4：外部戳一下** —— 语义与 [`WatchEvent::TmuxProbeDue`] **完全相同**（立刻重探
-    /// tmux 并走同一条差分/发帧路径），区别只在**来源**：这个是事件驱动的（tmux hook
-    /// → `--tmux-notify` → `SIGUSR1` → 这里），那个是定时器。
-    ///
-    /// **为什么不复用 `TmuxProbeDue` 就完事**：两者共用一条处理路径是对的，但**来源要能
-    /// 分辨** —— P5 删掉 ticker 之后，「还有没有人在戳」是判断 hook 通路是否活着的唯一线索；
-    /// 混成一个变体就再也分不出「hook 没装上」与「ticker 还在兜底」。
+    /// 外部戳一下：与 [`WatchEvent::TmuxProbeDue`] 走同一段（立刻重探 tmux、同一条差分 / 发帧路径），
+    /// 来源是事件（tmux hook → `--tmux-notify` → `SIGUSR1` → 这里）。分成两个变体是为了分得出来源：
+    /// 「还有没有人在戳」是判 hook 通路活着没有的唯一线索。
     Poke,
-    /// 预留给 P5：删掉 ticker 之后，主循环需要一条**显式**的停机信号才能及时
-    /// 发现 stdout 写端已关（`sink.is_closed()` 现在靠 ticker 每 8s 醒一次来复查）。
-    ///
-    /// **P5 已接上**：`main` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`]
-    /// 发它。没有它的话，删掉 ticker 之后 reader 线程会一直阻塞在 `recv()`
-    ///（进程退出时才随之消亡——不是泄漏，但「没人听就停读」这条性质会丢）。
+    /// 显式停机：`main` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`] 发它。
+    /// 主循环没有定期醒来复查 `sink.is_closed()`，没有它 reader 线程会一直等在 `recv()` 上，「没人听就停读」这条性质就丢了。
     Shutdown,
     /// 别台那条常驻流上的事（本机后端那几条 feed 交的，[`relay`]）：投给每条连接。
     Relay(Frame),
@@ -1336,11 +1318,11 @@ fn watch_loop(
     let mut watched_socket: Option<PathBuf> = None;
     initial_tmux_probe(&events_tx);
 
-    // P2：**无超时** `recv()`——本循环没有节拍（轮询 A 已由 pidfd 取代）。唯一的期限：有在跑的子运行时，至多等到
-    // 最早那个「久未动静」的时刻（`runs::next_event`），到点回循环头判一次、重算期限；没有在跑的 ⇒ 照旧无超时等。
-    // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · tmux 探测/节拍线程。
-    // **P3/P4 只往 `WatchEvent` 加变体 + 加发送方，不许再挂独立定时器。**
-    // 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
+    // 本循环没有节拍。期限两个，取早的那个（`runs::next_event`）：会话账本里最早那个「久未动静」的时刻 ·
+    // 主运行心跳的到点时刻（`beat_due`）；到点回循环头判一次、重算期限；两个都没有 ⇒ 无超时等。
+    // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · 一次性 tmux 探测线程 · 外部戳。
+    // 加事件源只往 `WatchEvent` 加变体 ＋ 加发送方，不另挂独立定时器。
+    // 所有发送端都掉了就结束。
     loop {
         // 每一拍（事件之后 · 到点）都按此刻把全部会话的「久未动静」判一遍，表变了的才发帧。
         let now = crate::common::time::now();
@@ -2114,8 +2096,7 @@ struct SessionEntry {
 pub struct ReadLine {
     pub seq: u64,
     pub raw: String,
-    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐手机端 `LineFramer`
-    /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
+    /// 本行末尾（含 `\n`）的累计**原始字节** offset ＝ 下一行的起点（两端拿它续读；计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
     pub byte_offset: u64,
     /// 本行第一个字节在文件里的偏移（没有自己身份的记录拿它合成 id，`agents::line_id`）。
     pub start: u64,
@@ -2280,8 +2261,8 @@ fn scan_new_lines(
         // (mid-write, possibly mid-multibyte) is deferred to the next event.
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         consumed = complete_end as u64;
-        // backend-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
-        // 累计原始字节（对齐手机端 `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
+        // **在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
+        // 累计原始字节（计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
         // 3 字节换 1 字节）会漂。每行的原始内容单独 lossy 解码（残行已在 tail 外，故整行 multibyte 完整、安全）。
         let mut pos = 0usize; // 相对 slice 的原始字节游标
         while pos < complete_end {
@@ -2987,7 +2968,7 @@ fn send_line(
         seq: line.seq,
         record,
         cwd,
-        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐手机端 LineFramer）
+        byte_offset: line.byte_offset, // 累计原始字节 ＝ 下一行的起点
         rid: rec.rid,
     }));
     // 这一行说此刻进到哪一态（没有进程状态文件的那一家，适配层照记录事件翻）⇒ 变了才发一帧 `session_status`。
