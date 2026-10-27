@@ -1037,6 +1037,8 @@ pub fn spawn(
     reactions: Reactions,
 ) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
     crate::observe::record_hook::install(record_seen);
+    // 托管名单与打标那一臂的家（`hosts/` 在这个数据目录底下）：看守起来这一下装上。
+    crate::host::managed::install(&own);
     let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
@@ -3919,13 +3921,17 @@ fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
     }
 }
 
-/// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：交给控制面那一手（[`Reactions::tag`]），
-/// 回（容器，这次真写了没有）。那一手自带「值一样就不动」⇒ 对账不多写一次。
+/// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：两种宿主在这里分——
+/// 住在托管终端里的交宿主口的托管那一臂（`host::managed::tag_pid`），别的交控制面那一手（[`Reactions::tag`]，tmux）。
+/// 回（容器，这次真写了没有）。两臂都自带「值一样就不动」⇒ 对账不多写一次。
 fn tag_identity(
     state: &ReaderState,
     pid: u32,
     sid: &str,
 ) -> (Option<crate::wire::SessionContainer>, bool) {
+    if let Some(t) = crate::host::managed::tag_pid(pid, sid) {
+        return t;
+    }
     (state.tag)(pid, sid)
 }
 

@@ -164,7 +164,24 @@ pub(crate) async fn run(
     own: &Own,
     ready: impl FnOnce(&std::path::Path),
 ) -> Result<(), Said> {
+    super::home::sweep_stale(own);
     let home = Home::claim(own, &spec.id)?;
+    // 托管口先绑、再起子进程：子进程一存在口就连得上（里面的 claude 写 pidfile、后端来打标时不扑空）。
+    // 绑好到开始收之间连上来的在内核的队里等，收是在事实写好之后 ⇒ 打标写的 sid 不会被起步那一份事实盖掉。
+    let listener = match own_chan::bind(home.sock()) {
+        Ok(l) => l,
+        Err(e) => {
+            let said = Said::with_raw(
+                copy_text(
+                    "beHost.run.bindFailed",
+                    &[("path", &home.sock().display().to_string())],
+                ),
+                &e,
+            );
+            home.clear();
+            return Err(said);
+        }
+    };
     let mut child = crate::platform::child::Child::new(&spec.argv[0])
         .args(&spec.argv[1..])
         .env(HOST_ENV, &spec.id);
@@ -200,15 +217,6 @@ pub(crate) async fn run(
         sid: String::new(),
     };
     home.write_facts(&facts)?;
-    let listener = own_chan::bind(home.sock()).map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beHost.run.bindFailed",
-                &[("path", &home.sock().display().to_string())],
-            ),
-            &e,
-        )
-    })?;
 
     let sock = home.sock().to_path_buf();
     let (wtx, wrx) = std::sync::mpsc::channel::<Vec<u8>>();
@@ -373,4 +381,4 @@ async fn write_out<W: tokio::io::AsyncWrite + Unpin>(out: &Outbox, wr: &mut W) {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/host/run_tests.rs"]
-mod tests;
+pub(crate) mod tests; // `pub(crate)`：起托管终端的夹具（沙箱家 · `start` · `hello`）给名单 · 一生那几份判据共用

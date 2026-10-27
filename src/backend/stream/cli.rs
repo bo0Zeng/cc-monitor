@@ -165,6 +165,8 @@ pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
 /// `tz` ＝ 看的那一台的时区（[`crate::wire::cli_words::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
 /// `own` ＝ 启动入口造的那一份写句柄（只递给写自家状态的那几条，同帧面分派）。
 pub async fn run(args: &[String], tz: &crate::Tz, own: &crate::platform::Own) -> i32 {
+    // 一次性那一形没有看守：托管名单的家在这里装（`--terminals-list` 一次性问也列得出托管终端）。
+    crate::host::managed::install(own);
     run_io(
         args,
         tz,

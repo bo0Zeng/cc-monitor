@@ -203,6 +203,37 @@ pub(crate) fn alive(own: &Own) -> Vec<Facts> {
     v
 }
 
+/// 删掉陈旧的家（机器重启过 · 托管进程被杀：目录与事实还在、锁没人攥）。只由起托管进程的那一方调（写只在托管那一处）。
+///
+/// 只删有事实的：正在占家的那一方先建目录、再抢锁、起了子进程才写事实 ⇒ 没事实的目录可能正被占着，不碰；
+/// 有事实却拿得到锁的，那个托管进程已经没了。
+pub(crate) fn sweep_stale(own: &Own) {
+    let Ok(hosts) = hosts_dir(own) else { return };
+    let Ok(rd) = Ro::read_dir(hosts.as_path()) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if !id_ok(&name) || !e.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let Ok(dir) = hosts.join(&name) else { continue };
+        if Ro::symlink_metadata(&dir.as_path().join(FACTS)).is_err() {
+            continue;
+        }
+        let Ok(Some(lock)) = own.try_lock(&dir) else {
+            continue;
+        };
+        match own.clear_dir(&dir, &lock) {
+            Ok(()) => tracing::info!("托管终端：删了陈旧的 {}", dir.as_path().display()),
+            Err(e) => tracing::warn!(
+                "托管终端：陈旧的 {} 没删成：{e}",
+                dir.as_path().display()
+            ),
+        }
+    }
+}
+
 /// 按名或句柄认一个活着的托管终端（`ccm --attach <名|句柄>`）。
 pub(crate) fn find(own: &Own, name_or_id: &str) -> Option<Facts> {
     let all = alive(own);

@@ -57,7 +57,7 @@ pub(crate) struct SessionLedger {
     paths: BTreeMap<String, String>,
     /// 宣告时判的号（脸上那一格）：离开「活」的那几张脸照旧带它。
     accounts: BTreeMap<String, String>,
-    /// 宣告时就知道不在 tmux 里的活会话（容器 `none`）：走了不必等 tmux 观测。
+    /// 宣告时就知道 claude 一退终端不留的活会话（容器 `none` · `managed`：托管终端跟着 claude 收）：走了当场已结束，不必等 tmux 观测。
     outside: BTreeSet<String>,
 }
 
@@ -93,7 +93,10 @@ impl SessionLedger {
                 ..
             }) => {
                 self.live.insert(sid.clone());
-                if matches!(container, Some(SessionContainer::None)) {
+                if matches!(
+                    container,
+                    Some(SessionContainer::None | SessionContainer::Managed { .. })
+                ) {
                     self.outside.insert(sid.clone());
                 } else {
                     self.outside.remove(sid);
