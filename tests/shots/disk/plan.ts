@@ -11,11 +11,15 @@ export const PB_ROOT = ".claude/plugins/cache/shots/planned-build/0.5.2";
 /** 入口脚本（相对家目录）。 */
 export const PB_ENTRY = `${PB_ROOT}/skills/planned-build/tools/entry.py`;
 
-/** 替身怎么演：`dumpRc` ⇒ `dump` 直接以它退（4 ＝ 没有 dump 的旧 pb）· `refuse` ⇒ 那几条命令照 pb 拒（退 2、stderr 那一句）· `brokenAfterFirst` ⇒ 头一次之后那个仓库读不成。 */
+/**
+ * 替身怎么演：`dumpRc` ⇒ `dump` 直接以它退（4 ＝ 没有 dump 的旧 pb）· `refuse` ⇒ 那几条命令照 pb 拒（退 2、stderr 那一句）· `brokenAfterFirst` ⇒ 头一次之后那个仓库读不成 ·
+ * `domains` ⇒ `dump --domains` 往上找不到工作区时给的插件那几档（缺 ⇒ 空）。
+ */
 export interface PbStandIn {
   dumpRc?: number;
   refuse?: Record<string, string>;
   brokenAfterFirst?: { repo: string; said: string };
+  domains?: unknown[];
 }
 
 const ENTRY_PY = String.raw`import json, os, sys
@@ -27,14 +31,19 @@ if verb == "help":
     print("planned-build"); sys.exit(0)
 if verb == "dump" and cfg.get("dumpRc") is not None:
     sys.stderr.write("用法：没有 dump 这个动词\n"); sys.exit(cfg["dumpRc"])
-d = os.getcwd()
+domains = verb == "dump" and sys.argv[2:3] == ["--domains"]
+d = sys.argv[3] if domains and len(sys.argv) > 3 else os.getcwd()
 while not os.path.isdir(os.path.join(d, ".planned-build")):
     up = os.path.dirname(d)
     if up == d:
+        if domains:
+            sys.stdout.write(json.dumps({"pb": "0.6.0", "shape": 6, "workspace": None, "domains": cfg.get("domains", [])}, ensure_ascii=False)); sys.exit(0)
         sys.stderr.write("读不成：这里不是一个 pb 工作区\n"); sys.exit(3)
     d = up
 f = os.path.join(d, ".planned-build", "dump.json")
 doc = json.load(open(f))
+if domains:
+    sys.stdout.write(json.dumps({"pb": doc.get("pb"), "shape": doc.get("shape"), "workspace": doc.get("workspace"), "domains": doc.get("domains", [])}, ensure_ascii=False)); sys.exit(0)
 def save():
     tmp = f + ".tmp"
     open(tmp, "w").write(json.dumps(doc, ensure_ascii=False))
