@@ -31,7 +31,7 @@ impl Books {
 
 /// 不接通道、手上已有这几条的一份（判据直接喂画面用：悬停扫 · 截图场景）。
 pub(crate) fn holding(origin: &str, dirs: &[&str]) -> Shelf {
-    let s = Shelf::open(None, None, &Origin(origin.into()));
+    let s = Shelf::open(None, None, &Origin::named(origin));
     s.0.land(
         1,
         Ok(Bookmarks {
@@ -53,11 +53,10 @@ impl comms_inward::chan::router::Backends for Books {
     ) -> futures::future::BoxFuture<'static, Result<Body, CallError>> {
         let args: serde_json::Value =
             serde_json::from_slice(&payload.0).unwrap_or(serde_json::Value::Null);
-        self.log.lock().unwrap().push((
-            origin.as_wire_str().to_string(),
-            op.0.clone(),
-            args.clone(),
-        ));
+        self.log
+            .lock()
+            .unwrap()
+            .push((origin.to_string(), op.0.clone(), args.clone()));
         if let Some(said) = self.refuse.lock().unwrap().clone() {
             let body = serde_json::json!({ "code": "io_failed", "message": said });
             return Box::pin(async move {
@@ -108,7 +107,7 @@ pub(crate) fn shelf_on(line: &Line, origin: &str) -> Shelf {
     Shelf::open(
         tokio::runtime::Handle::try_current().ok(),
         Some(line.clone()),
-        &Origin(origin.into()),
+        &Origin::named(origin),
     )
 }
 
@@ -168,7 +167,7 @@ async fn local_and_remote_ask_their_backend_in_the_same_shape() {
 /// 先发后到的回包不盖掉后发的那一问（第 1 问晚到 ⇒ 不认）。
 #[test]
 fn a_late_reply_of_an_earlier_ask_is_not_taken() {
-    let s = Shelf::open(None, None, &Origin("x".into()));
+    let s = Shelf::open(None, None, &Origin::named("x"));
     s.0.land(
         2,
         Ok(Bookmarks {

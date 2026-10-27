@@ -566,7 +566,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
-    let origin = crate::origin::Origin(cfg.clone());
+    let origin = crate::origin::Origin::named(cfg.clone());
     let up = s("up");
     let r = crate::sftp_pool::transfer_call(
         cfg.clone(),

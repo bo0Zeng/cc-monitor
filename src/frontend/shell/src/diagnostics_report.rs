@@ -197,7 +197,7 @@ pub async fn diagnostics_report(
                 let build = if origin == local {
                     mine.map(str::to_string)
                 } else {
-                    crate::inbound_client::build_of(&origin)
+                    crate::inbound_client::build_of(&cmd_wire::Machine::named(origin.clone()))
                 };
                 // 本机后端没答（没起来 · 正在起 · 口上占着别的）⇒ 本机那一行的状态照壳那一格说。
                 let unanswered = (origin == local && m.is_none())

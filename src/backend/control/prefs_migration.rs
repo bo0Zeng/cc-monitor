@@ -65,7 +65,7 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
     let models = |at: &cmd_wire::Machine| -> BTreeMap<String, String> {
         cfg.pointer(&format!(
             "/accounts/byMachine/{}/modelByAccount",
-            at.as_wire_str().replace('~', "~0").replace('/', "~1")
+            at.to_string().replace('~', "~0").replace('/', "~1")
         ))
         .and_then(Value::as_object)
         .into_iter()
@@ -94,7 +94,7 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
         }
     };
     let mut local = one(
-        &cmd_wire::Machine(LOCAL_ORIGIN.to_string()),
+        &cmd_wire::Machine::named(LOCAL_ORIGIN.to_string()),
         text(cfg, "localResumeCommand"),
     );
     // 数据目录只说本机（设置页那一格从来只管这一台）。

@@ -698,7 +698,7 @@ pub(crate) async fn xfer_rig_raw(
     );
     (
         line,
-        comms_inward::chan::wire::Origin("判据机器·窗口传输".into()),
+        comms_inward::chan::wire::Origin::named("判据机器·窗口传输"),
         log,
         raw,
     )

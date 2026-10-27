@@ -1191,7 +1191,7 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
 #[tokio::test]
 async fn a_relayed_machines_offer_lives_from_its_hello_to_its_end() {
     let _g = local_origin_test_lock();
-    let machine = format!("reached-{}", std::process::id());
+    let machine = cmd_wire::Machine::named(format!("reached-{}", std::process::id()));
     let line = r#"{"kind":"hello","v":1,"build_id":"rb","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill"]}"#;
     let Ok(cmd_wire::frame::Frame::Hello(h)) = crate::stream_source::decode(line) else {
         panic!("是 hello");

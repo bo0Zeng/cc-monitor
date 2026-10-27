@@ -603,7 +603,7 @@ pub fn opened_from_reply(
     };
     if !is_sha256_hex(&got.sha256) {
         return Err(super::source::failed_here(
-            copy_core::backend_old(&origin.0),
+            copy_core::backend_old(&origin.to_string()),
             origin,
             CMD_READ_TEXT,
             None,

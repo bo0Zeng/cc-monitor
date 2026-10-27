@@ -1608,11 +1608,11 @@ mod tests {
         let want = cmd_wire::search::merge(
             vec![
                 (
-                    cmd_wire::Machine("phone-a".into()),
+                    cmd_wire::Machine::named("phone-a"),
                     serde_json::from_value(a).unwrap(),
                 ),
                 (
-                    cmd_wire::Machine("phone-b".into()),
+                    cmd_wire::Machine::named("phone-b"),
                     serde_json::from_value(b).unwrap(),
                 ),
             ],

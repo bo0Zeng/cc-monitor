@@ -607,7 +607,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     remote.origin = Some("box".to_string());
     r.on_line_batch_awaited(vec![remote]).await;
     rec.clear();
-    let boxo = crate::origin::Origin("box".to_string());
+    let boxo = crate::origin::Origin::named("box".to_string());
     r.origin_seen(&boxo, true);
     r.subscribe("main", 2, &boxo, "session-lines", None, 10);
     for _ in guard_core::wall::rounds() {
@@ -684,7 +684,7 @@ async fn what_cannot_be_served_is_said_in_place_and_unseen_is_not_the_end() {
     r.subscribe(
         "w",
         3,
-        &crate::origin::Origin(" ".into()),
+        &crate::origin::Origin::named(" "),
         "session-lines",
         None,
         9,
@@ -776,8 +776,8 @@ async fn stop_and_resubscribe_leave_no_orphans() {
 #[tokio::test]
 async fn the_changed_accounts_stream_carries_only_reachability_and_account_notices() {
     let (r, rec) = hub();
-    let box_a = crate::origin::Origin("box-a".into());
-    let box_b = crate::origin::Origin("box-b".into());
+    let box_a = crate::origin::Origin::named("box-a");
+    let box_b = crate::origin::Origin::named("box-b");
     let by_sub = |rec: &Rec| -> Vec<(u64, &'static str, u64)> {
         rec.0
             .lock()
@@ -934,7 +934,7 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
     for n in 0..3 {
         r.on_live_card(&local(), tap(n));
     }
-    r.on_live_card(&crate::origin::Origin("pi".into()), tap(9)); // 别的机器
+    r.on_live_card(&crate::origin::Origin::named("pi"), tap(9)); // 别的机器
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 0, 0), ("tap", 1, 1)]
@@ -987,7 +987,7 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
     r.subscribe(
         "w",
         3,
-        &crate::origin::Origin("far".into()),
+        &crate::origin::Origin::named("far"),
         "session-lines",
         None,
         10,
@@ -1048,7 +1048,7 @@ async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
 #[tokio::test]
 async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
     let (r, rec) = hub();
-    let far = crate::origin::Origin("far".to_string());
+    let far = crate::origin::Origin::named("far".to_string());
     r.origin_seen(&local(), true);
     r.origin_seen(&far, true);
     r.subscribe("w", 1, &local(), "session-lines", None, 3);
@@ -1279,8 +1279,8 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
 #[tokio::test]
 async fn a_changed_cell_reaches_only_its_own_machine_and_topic() {
     let (r, rec) = hub();
-    let box_a = crate::origin::Origin("box-a".into());
-    let box_b = crate::origin::Origin("box-b".into());
+    let box_a = crate::origin::Origin::named("box-a");
+    let box_b = crate::origin::Origin::named("box-b");
     r.subscribe("w", 1, &box_a, "changed/tasks", None, 4);
     r.subscribe("w", 2, &box_a, "changed/accounts", None, 4);
     r.subscribe("w", 3, &box_b, "changed/tasks", None, 4);
@@ -1337,7 +1337,7 @@ fn a_changed_stream_needs_one_topic() {
 async fn the_terminal_screen_stream_carries_the_cell_to_that_origins_ticket_only() {
     let (r, rec) = hub();
     let local = crate::origin::Origin::local();
-    let box_a = crate::origin::Origin("box-a".into());
+    let box_a = crate::origin::Origin::named("box-a");
     r.subscribe("w", 1, &box_a, "terminal-screen/t-1", None, 4);
     r.subscribe("w", 2, &box_a, "terminal-screen/t-2", None, 4);
     r.subscribe("w", 3, &local, "terminal-screen/t-1", None, 4);
@@ -1410,13 +1410,13 @@ async fn requests_within(
 async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_origin() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let mut peer = local_peer(&["terminal-unfollow"]);
-    let box_a = crate::origin::Origin("unfollow-box-a".into());
+    let box_a = crate::origin::Origin::named("unfollow-box-a");
     let crate::stream_source::Frame::Hello(h) =
         crate::frame_fixtures::our_hello(&["terminal-unfollow"])
     else {
         unreachable!()
     };
-    crate::inbound_client::reached(box_a.as_wire_str(), &h);
+    crate::inbound_client::reached(&box_a, &h);
     let (r, _rec) = hub();
     let local = crate::origin::Origin::local();
     let quiet = std::time::Duration::from_millis(300);
@@ -1467,7 +1467,7 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
         requests_within(&mut peer, quiet).await,
         vec![unfollow("t-5", "unfollow-box-a")]
     );
-    crate::inbound_client::gone(box_a.as_wire_str());
+    crate::inbound_client::gone(&box_a);
 }
 
 // ==== 「在看哪几个会话」（`stream-watch`）====
@@ -1498,7 +1498,7 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
         "主窗口还没报：只有查看窗那一条"
     );
     assert_eq!(
-        r.watched(&crate::origin::Origin("box".into())),
+        r.watched(&crate::origin::Origin::named("box")),
         set(&[]),
         "主窗口还没报：别的台是空名单（不是全看）"
     );
@@ -1512,9 +1512,9 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
     assert!(ticks.has_changed().unwrap());
     ticks.mark_unchanged();
     assert_eq!(r.watched(&local()), set(&["a", "b"]));
-    assert_eq!(r.watched(&crate::origin::Origin("box".into())), set(&["c"]));
+    assert_eq!(r.watched(&crate::origin::Origin::named("box")), set(&["c"]));
     assert_eq!(
-        r.watched(&crate::origin::Origin("far".into())),
+        r.watched(&crate::origin::Origin::named("far")),
         set(&[]),
         "没在看的那台报空名单"
     );
@@ -1652,7 +1652,7 @@ async fn aligning_the_remote_streams_tells_the_window_on_the_local_machines_stre
     r.subscribe(
         "w",
         3,
-        &crate::origin::Origin("box".into()),
+        &crate::origin::Origin::named("box"),
         "changed/machines",
         None,
         4,
@@ -1680,7 +1680,7 @@ async fn aligning_the_remote_streams_tells_the_window_on_the_local_machines_stre
 async fn a_stream_subscription_shares_the_table_and_the_credit() {
     use futures::StreamExt as _;
     let (r, rec) = hub();
-    let o = crate::origin::Origin("stream-a".into());
+    let o = crate::origin::Origin::named("stream-a");
     r.origin_seen(&o, true);
     r.subscribe("w", 1, &o, "changed/plan", None, 4);
     let mut s = r.subscribe_stream(&o, "changed/plan", None);
@@ -1745,7 +1745,7 @@ async fn a_stream_subscription_shares_the_table_and_the_credit() {
 async fn a_stream_subscription_refuses_in_place() {
     use futures::StreamExt as _;
     let (r, _) = hub();
-    let o = crate::origin::Origin("stream-b".into());
+    let o = crate::origin::Origin::named("stream-b");
     for (kind, from) in [
         ("changed/a/b", None),
         ("changed/plan", Some(Cursor(b"1".to_vec()))),

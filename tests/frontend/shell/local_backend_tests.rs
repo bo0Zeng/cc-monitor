@@ -860,7 +860,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let cfg_dir = home.join(".claude");
     std::fs::create_dir_all(cfg_dir.join("projects")).expect("建沙箱 HOME");
     // ⚠⚠ **只设 `HOME` 不够，而且这条是实测逼出来的**（P2s 摸底 08-11）：
-    // backend 的 `resolve_claude_dir()` 逐字「`$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`」
+    // backend 的 `resolve_agent_home()`：「`$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`」
     // ⇒ 继承来的 `CLAUDE_CONFIG_DIR` **压过** `HOME`。本条第一版只设 HOME，
     // 那一跑后端读的其实是**真实**的配置目录（只读 tail，没有写，但隔离是假的）。
     let envs = vec![
@@ -2082,7 +2082,7 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     //   ⚠⚠ **09-01（`C` 第七拍）两处一起收口成共享原语**：
     //   本条与主守卫原来各写了一份**私有副本**（只剥 `//` 打头的整行），现在都直接调
     //   `guard_core::strip_comment_lines`。仓规逐字「剥注释只许有一个权威实现」
-    //   （`structural_scan.rs:425`）；**先量再选**的读数（`*` 打头的解引用行会被多剥掉，
+    //   （`structural_scan.rs::every_comment_stripping_transformer_is_registered`）；**先量再选**的读数（`*` 打头的解引用行会被多剥掉，
     //   而今天判决不同 0 处）写在 `local_backend_host.rs` 那条正题守卫的同名那一段里，不在这里抄一遍。
     //   🔴 **它剥不掉块注释里那些自己不以 `//` / `*` / `/*` 打头的内层行** ——
     //   `/*` 与 `*/` 各独占一行、内层行以 `let ` 打头时，那几行原样留着。

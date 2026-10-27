@@ -577,7 +577,7 @@ fn desk_on(tx: mpsc::Sender<Frame>) -> Desk {
 
 /// `h` 那一台照表组好的传输拨号。
 fn test_dial() -> Dial {
-    dial_by_name(&hosts(), &cmd_wire::Machine("h".into()))
+    dial_by_name(&hosts(), &cmd_wire::Machine::named("h"))
         .unwrap()
         .1
 }

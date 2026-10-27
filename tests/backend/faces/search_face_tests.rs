@@ -199,7 +199,7 @@ fn reply_text(rows: &[(&str, i64)]) -> String {
 
 fn search_req(machines: &[&str]) -> HistorySearchMergeReq {
     HistorySearchMergeReq {
-        machines: machines.iter().map(|m| Machine((*m).into())).collect(),
+        machines: machines.iter().map(|m| Machine::named(*m)).collect(),
         search: HistorySearchReq {
             query: "docker".into(),
             include_tools: None,
@@ -235,29 +235,29 @@ async fn the_local_backend_asks_each_machine_itself_and_merges() {
     )
     .await
     .expect("合得出");
-    let order: Vec<(&str, Option<&str>)> = got
+    let order: Vec<(&str, Option<String>)> = got
         .sessions
         .iter()
         .map(|r| {
             (
                 r.row.row.session_id.as_str(),
-                r.origin.as_ref().map(|m| m.0.as_str()),
+                r.origin.as_ref().map(ToString::to_string),
             )
         })
         .collect();
     assert_eq!(
         order,
         [
-            ("rem-new", Some("devbox")),
+            ("rem-new", Some("devbox".to_string())),
             ("loc", None),
-            ("rem-old", Some("devbox"))
+            ("rem-old", Some("devbox".to_string()))
         ]
     );
     assert_eq!(
         (got.unreadable, got.skipped.clone()),
         (2, vec!["Codex".to_string()])
     );
-    let down: Vec<&str> = got.down.iter().map(|d| d.origin.0.as_str()).collect();
+    let down: Vec<String> = got.down.iter().map(|d| d.origin.to_string()).collect();
     assert_eq!(down, ["pi", "gone"], "没答上的那几台照实列出");
     assert!(
         got.down[0].said.contains("pi"),

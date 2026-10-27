@@ -26,7 +26,7 @@
 //! 看起来像是「推上去就是 0600」。
 //! 对面是 Windows 时**那不是「不生效」，是「静默地不生效」**，三条读数（分母都在，量于 08-27）：
 //! 1. 那个 mode 只以 SFTP v3 的 `SSH_FILEXFER_ATTR_PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上
-//!    （`russh-sftp-2.3.0/src/protocol/file_attrs.rs:29`）——**顺不顺是服务端的事，协议不回执**；
+//!    （`russh-sftp` 的 `protocol::file_attrs`）——**顺不顺是服务端的事，协议不回执**；
 //! 2. **没有第二次机会**：那一段的头注逐字禁掉了兜底 `set_metadata`
 //!    （理由是 OpenSSH sftp-server 上 setstat 会把文件截成 0 字节 —— 而那条理由是在一台
 //!    **POSIX** 服务端上量的）；

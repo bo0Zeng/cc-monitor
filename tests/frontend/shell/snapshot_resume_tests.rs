@@ -29,7 +29,7 @@ fn the_snapshot_tail_is_the_replay_keep() {
 /// 只在**连续**到达、而且带着末端时前推；做完一次不回退（实时行推得更远就留推远的）；会话真结束就忘掉。
 #[test]
 fn the_cursor_only_moves_on_contiguous_lines() {
-    let o = &crate::origin::Origin("c2-test-origin".to_string());
+    let o = &crate::origin::Origin::named("c2-test-origin".to_string());
     let s = "c2-test-sid";
     forget(o, s);
     note_flushed(o, [(s, 0, Some(5))]);
@@ -70,7 +70,7 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
         "crate::snapshot_resume::note_done(&origin, sid, tail.held);",
         "crate::snapshot_resume::note_flushed(",
         // 「会话结束真的忘」在 `LineIntake::removed`（远端与本机两个帧源共用那一处）。
-        "crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);",
+        "crate::snapshot_resume::forget(&origin, sid);",
     ] {
         guard_core::find_pinned(&prod, anchor)
             .unwrap_or_else(|e| panic!("stream_source 生产段里 `{anchor}` 不是恰好一处：{e}"));
@@ -80,8 +80,8 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
 /// 报了名单 ⇒ 那台不在看的会话续点作废（重连时它只读尾段，不从停住的旧续点补读一段）；在看的与别台的照留。
 #[test]
 fn unwatched_sessions_lose_their_cursor() {
-    let here = Origin("proj9-keep-only-a".into());
-    let there = Origin("proj9-keep-only-b".into());
+    let here = Origin::named("proj9-keep-only-a");
+    let there = Origin::named("proj9-keep-only-b");
     for sid in ["seen", "unseen"] {
         note_done(&here, sid, held("/p.jsonl", 10, 100));
     }

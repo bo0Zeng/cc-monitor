@@ -84,7 +84,7 @@ struct Shared {
     calls: Mutex<Option<HashMap<u64, Answer>>>,
     taps: Mutex<HashMap<u64, Arc<Mutex<Tap>>>>,
     /// 问过的那几台的能力事实（[`Client::offer`] 填）：本地撤单时据此说「那台可能还在跑」。
-    offers: Mutex<HashMap<String, Offer>>,
+    offers: Mutex<HashMap<Origin, Offer>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -196,8 +196,8 @@ impl Client {
             serde_json::from_slice(&body.0).map_err(|_| CallError::from(OursFault::Broken))?;
         let mut cache = lock(&self.shared.offers);
         match &offer {
-            Some(x) => cache.insert(origin.as_wire_str().to_string(), x.clone()),
-            None => cache.remove(origin.as_wire_str()),
+            Some(x) => cache.insert(origin.clone(), x.clone()),
+            None => cache.remove(origin),
         };
         Ok(offer)
     }
@@ -205,7 +205,7 @@ impl Client {
     /// 这一条被本地撤掉之后，那台是不是可能还在跑（手里那份 `Offer` 说它不认撤这一条）。没问过那台 ⇒ `false`。
     fn runs_on_after_cancel(&self, origin: &Origin, op: &Op) -> bool {
         lock(&self.shared.offers)
-            .get(origin.as_wire_str())
+            .get(origin)
             .is_some_and(|o| o.withdraw(&op.0) == Withdraw::NotOffered)
     }
 

@@ -51,7 +51,7 @@ impl Backends for Fake {
         cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
         self.seen.lock().unwrap().push((
-            origin.as_wire_str().to_string(),
+            origin.to_string(),
             op.0.clone(),
             payload.0.clone(),
             view,
@@ -94,7 +94,7 @@ async fn payload_origin_and_op_reach_the_backend_verbatim() {
     let payload = vec![0u8, 0xff, 0xfe, b'{', b'}', 0x80];
     let got = call_via(
         &fake,
-        Origin("devbox".into()),
+        Origin::named("devbox"),
         "echo".into(),
         payload.clone(),
         Some(serde_json::json!({"omit": {"record": ["results.*.patch"]}})),
@@ -121,7 +121,7 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
     let started = std::time::Instant::now();
     let err = call_via(
         &fake,
-        Origin("<local>".into()),
+        Origin::named("<local>"),
         "hang".into(),
         Vec::new(),
         None,
@@ -157,7 +157,7 @@ async fn an_expired_budget_never_reaches_the_backend() {
     let fake = Fake::default();
     let err = call_via(
         &fake,
-        Origin("devbox".into()),
+        Origin::named("devbox"),
         "echo".into(),
         b"{}".to_vec(),
         None,
@@ -184,7 +184,7 @@ async fn backend_errors_pass_through_unchanged() {
     let fake = Fake::default();
     let refused = call_via(
         &fake,
-        Origin("devbox".into()),
+        Origin::named("devbox"),
         "refuse".into(),
         Vec::new(),
         None,
@@ -203,7 +203,7 @@ async fn backend_errors_pass_through_unchanged() {
     );
     let unreachable = call_via(
         &fake,
-        Origin("devbox".into()),
+        Origin::named("devbox"),
         "other".into(),
         Vec::new(),
         None,
@@ -261,7 +261,7 @@ fn the_fail_shape_equals_the_golden_file_the_ts_side_decodes() {
     for (name, e) in cases {
         got.insert(
             name.to_string(),
-            wire_of(fail(&Origin("devbox".into()), "op", e)),
+            wire_of(fail(&Origin::named("devbox"), "op", e)),
         );
     }
     let got = serde_json::Value::Object(got);
@@ -283,7 +283,7 @@ fn a_blank_origin_never_reaches_a_backend() {
     // `chan_call` 用 `Origin::route` 那道闸挡空白名；这里钉那道闸对三种空白都说不。
     for blank in ["", " ", "\t"] {
         assert!(
-            Origin(blank.to_string()).route("chan_call").is_err(),
+            Origin::named(blank.to_string()).route("chan_call").is_err(),
             "空白名 {blank:?} 过了闸"
         );
     }
@@ -423,7 +423,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
     ];
     let mut rows = vec![serde_json::json!({
         "case": "no_channel",
-        "fail": wire_of(fail(&Origin("devbox".into()), "op", layer_no_channel(1))),
+        "fail": wire_of(fail(&Origin::named("devbox"), "op", layer_no_channel(1))),
         // `client_for` 回 None ⇒ `backend_route::no_channel` ⇒ `Routed::NoChannel`（一个字节都没发）。
         "provablyNotSent": true,
     })];
@@ -434,7 +434,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
         );
         rows.push(serde_json::json!({
             "case": name,
-            "fail": wire_of(fail(&Origin("devbox".into()), "op", layer_call_error(&e, 1).error)),
+            "fail": wire_of(fail(&Origin::named("devbox"), "op", layer_call_error(&e, 1).error)),
             "provablyNotSent": may_fall_back,
         }));
     }
@@ -488,12 +488,12 @@ fn the_fail_carries_the_channel_sentence() {
         },
         OursFault::Broken.into(),
     ];
-    for origin in [Origin("devbox".into()), Origin::local()] {
+    for origin in [Origin::named("devbox"), Origin::local()] {
         for e in &cases {
             let want = super::super::said::said(e, &origin);
             let got = serde_json::to_value(fail(&origin, "op", e.clone())).expect("可序列化");
             assert!(!want.trim().is_empty(), "{e:?}");
-            assert_eq!(got["said"], want, "{e:?} @ {}", origin.0);
+            assert_eq!(got["said"], want, "{e:?} @ {}", origin);
         }
     }
 }
@@ -510,7 +510,7 @@ fn every_unavailable_op_carries_its_sentence() {
             .collect(),
     );
     for (origin, name) in [
-        (Origin("devbox".into()), "devbox".to_string()),
+        (Origin::named("devbox"), "devbox".to_string()),
         (Origin::local(), copy_core::local_machine()),
     ] {
         let v = offer_view(&offer, &origin);
@@ -524,7 +524,7 @@ fn every_unavailable_op_carries_its_sentence() {
             assert!(
                 !said.trim().is_empty() && said.contains(&name) && !said.contains(code.as_str()),
                 "{op} {code} @ {}：{said}",
-                origin.0
+                origin
             );
         }
     }

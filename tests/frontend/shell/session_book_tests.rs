@@ -143,7 +143,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Unseen { origin, sids, .. } => format!("unseen {origin} {sids:?}"),
                 Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
-                Out::Branch { origin, sid, .. } => format!("branch {}/{sid}", origin.as_wire_str()),
+                Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
             })
             .collect()
     };
@@ -296,7 +296,7 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
 fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     let off = |ids: &[&str]| -> Vec<String> { ids.iter().map(|i| i.to_string()).collect() };
     let branch = |s: &str, path: &str, at: u64, ids: &[&str]| In::Branch {
-        origin: crate::origin::Origin("pi".into()),
+        origin: crate::origin::Origin::named("pi"),
         sid: s.into(),
         path: path.into(),
         at,
@@ -309,7 +309,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     assert_eq!(
         b.step(branch("a", "/a.jsonl", 0, &["u1"])),
         vec![Out::Branch {
-            origin: crate::origin::Origin("pi".into()),
+            origin: crate::origin::Origin::named("pi"),
             sid: "a".into(),
             off: off(&["u1"])
         }]
@@ -318,7 +318,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     assert_eq!(
         b.step(branch("a", "/a.jsonl", 1, &["u2", "u3"])),
         vec![Out::Branch {
-            origin: crate::origin::Origin("pi".into()),
+            origin: crate::origin::Origin::named("pi"),
             sid: "a".into(),
             off: off(&["u1", "u2", "u3"])
         }]
@@ -358,7 +358,7 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
         sid: sid.into(),
         ..Default::default()
     };
-    let pi = crate::origin::Origin("pi".into());
+    let pi = crate::origin::Origin::named("pi");
     let branch = |s: &str, at: u64, ids: &[&str], sum: &str| In::Branch {
         origin: pi.clone(),
         sid: s.into(),
@@ -408,7 +408,7 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
 #[test]
 fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_is() {
     use cmd_wire::watch::BranchHeld;
-    let pi = crate::origin::Origin("pi".into());
+    let pi = crate::origin::Origin::named("pi");
     let branch = |at: u64, ids: &[&str], sum: &str| In::Branch {
         origin: pi.clone(),
         sid: "a".into(),

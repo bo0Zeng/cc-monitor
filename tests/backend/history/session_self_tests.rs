@@ -64,7 +64,7 @@ fn s4_walking_up_stops_at_the_top_on_a_loop_and_at_the_cap() {
 
 fn member(origin: &str, sid: &str) -> GroupMember {
     GroupMember {
-        origin: Machine(origin.into()),
+        origin: Machine::named(origin),
         sid: sid.into(),
         pinned: false,
         face: crate::wire::unseen_face(),

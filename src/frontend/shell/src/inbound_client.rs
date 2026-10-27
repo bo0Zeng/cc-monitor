@@ -109,16 +109,17 @@ struct Reached {
     build: String,
 }
 
-fn reached_book() -> &'static Mutex<HashMap<String, Reached>> {
-    static B: std::sync::OnceLock<Mutex<HashMap<String, Reached>>> = std::sync::OnceLock::new();
+fn reached_book() -> &'static Mutex<HashMap<cmd_wire::Machine, Reached>> {
+    static B: std::sync::OnceLock<Mutex<HashMap<cmd_wire::Machine, Reached>>> =
+        std::sync::OnceLock::new();
     B.get_or_init(Default::default)
 }
 
 /// 那台这一条连接接上了（收的那一头见到它的 hello）：记下能力事实，回它（同一台换一条连接 ⇒ 换成新的）。
-pub(crate) fn reached(machine: &str, hello: &cmd_wire::frame::Hello) -> Offer {
+pub(crate) fn reached(machine: &cmd_wire::Machine, hello: &cmd_wire::frame::Hello) -> Offer {
     let offer = Offer::of(hello);
     lock(reached_book()).insert(
-        machine.to_string(),
+        machine.clone(),
         Reached {
             offer: offer.clone(),
             build: hello.build_id.clone(),
@@ -128,21 +129,21 @@ pub(crate) fn reached(machine: &str, hello: &cmd_wire::frame::Hello) -> Offer {
 }
 
 /// 那台这一条连接断了。
-pub(crate) fn gone(machine: &str) {
+pub(crate) fn gone(machine: &cmd_wire::Machine) {
     lock(reached_book()).remove(machine);
 }
 
 /// 那台的能力事实：本机 ⇒ 本机那条连接握手时交的；别台 ⇒ 本机后端转来的那台 hello 里的（本机没连着 ⇒ 问不到那台，`None`）。
-pub fn offer_of(origin: &str) -> Option<Offer> {
+pub fn offer_of(origin: &cmd_wire::Machine) -> Option<Offer> {
     let local = local_client()?;
-    if origin == LOCAL_ORIGIN {
+    if origin.is_local() {
         return Some(local.offer());
     }
     lock(reached_book()).get(origin).map(|r| r.offer.clone())
 }
 
 /// 那台这一条连接握手时报的构建标识（诊断信息用）；没连着 ⇒ `None`。
-pub fn build_of(machine: &str) -> Option<String> {
+pub fn build_of(machine: &cmd_wire::Machine) -> Option<String> {
     lock(reached_book()).get(machine).map(|r| r.build.clone())
 }
 

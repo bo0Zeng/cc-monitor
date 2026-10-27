@@ -238,7 +238,7 @@ fn reading_shows_each_hosts_keys_and_forgetting_drops_only_that_one() {
     assert_eq!(r.host_keys.get("pi"), Some(&vec![fb.clone()]));
     let own = Own::issue_at(&home);
     let req = |m: &str| HostKeysForgetReq {
-        machine: cmd_wire::Machine(m.to_string()),
+        machine: cmd_wire::Machine::named(m.to_string()),
     };
     let after = answer_forget_in(Some(&home), &own, &req("gpu")).unwrap();
     assert_eq!(after.host_keys.get("gpu"), None);
