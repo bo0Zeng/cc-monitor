@@ -45,6 +45,22 @@ fn slice_goes_with_take_and_only_with_it() {
     assert_eq!(f.code, "bad_args");
 }
 
+/// `path` · `domain` 只跟 `repo` 走：`repo` 不带 `path` · 别的动词带了 ⇒ `bad_args`（在起 pb 之前）；`plan-new` 的 `dir` 要绝对路径。
+#[test]
+fn path_goes_with_repo_and_only_with_it() {
+    for bad in [
+        json!({"workspace": "/w", "cmd": "repo"}),
+        json!({"workspace": "/w", "cmd": "repo", "domain": "软件"}),
+        json!({"workspace": "/w", "cmd": "pause", "path": "a"}),
+        json!({"workspace": "/w", "cmd": "render", "domain": "软件"}),
+    ] {
+        assert_eq!(ask("plan-command", bad.clone()).unwrap_err().code, "bad_args", "{bad}");
+    }
+    let f = ask("plan-new", json!({"dir": "rel/dir", "path": "x"})).unwrap_err();
+    assert_eq!(f.code, "bad_args");
+    assert_eq!(ask("plan-new", json!({"dir": "/w"})).unwrap_err().code, "bad_args");
+}
+
 /// ★ 不重问时（`plan-list {}` · `sessions-needs` 计划那一截）同一个目录只起一次 pb：认出是工作区 · 不是工作区 · 读不成（pb 失败 · 不认得）
 /// 都记在本子里，连问两次第二次照记下的那个结局；读不成的那一种照旧说 pb 不认得。`fresh` ⇒ 重起。
 #[test]

@@ -635,6 +635,39 @@ pub(crate) struct PlanAdopted {
     pub switched: bool,
 }
 
+/// `plan-new` 的回包：在那个目录开一片能选哪几档 · 落在哪 · 撞没撞上 · 要敲的那一行（[`super::new_slice`]）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanNewForm {
+    /// 找不到 pb ⇒ `missing`；pb 没有 `dump --domains` ⇒ `unsupported`（两样都带那一句）。
+    pub pb: PlanPb,
+    /// pb 往上找到的工作区根；找不到 ⇒ `null`（`root` 就成工作区根）。
+    pub workspace: Option<String>,
+    /// `pb repo` 在哪个目录敲（＝ `workspace`，没有 ⇒ 问的那个目录）。
+    pub root: String,
+    /// 能选的几档（形状同 `PlanRead.domains`）。
+    pub domains: Vec<PlanDomain>,
+    /// 路径最后一段撞上的那一片（领域建了不改）。
+    pub existing: Option<PlanNewExisting>,
+    /// 仓库会落在哪（绝对路径）；路径空 ⇒ `null`。
+    pub repo_dir: Option<String>,
+    /// 要敲的那一行；路径空 ⇒ `null`。
+    pub line: Option<String>,
+    /// 起 pb 没成（超时 · 读不懂 · 别的退出码）：那一句。
+    pub failed: Option<String>,
+}
+
+/// 撞上的那一片：名字 · 它的领域。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanNewExisting {
+    pub slice: String,
+    pub domain: Option<String>,
+}
+
 /// `plan-pb-check` 的回包：这个路径能不能当 pb 用 ＋ 给人看的那一句。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

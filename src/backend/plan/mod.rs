@@ -28,6 +28,7 @@ pub(crate) mod dump;
 pub(crate) mod groups;
 pub(crate) mod locate;
 pub(crate) mod needs;
+pub(crate) mod new_slice;
 pub(crate) mod owners;
 pub(crate) mod product;
 pub(crate) mod refs;

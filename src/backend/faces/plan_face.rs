@@ -6,7 +6,9 @@
 //!   （认过的目录不再问，`fresh: true` 全部重问）。
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
 //! - `plan-cell-view {workspace, slice, id}`：一个节点的 agent 视角（点到才起 `pb dump --node`）。
-//! - `plan-command {workspace, cmd: continue|pause|adopt|render, slice?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；`adopt` 接过 `slice` 那个仓库。
+//! - `plan-command {workspace, cmd: continue|pause|adopt|render|repo, slice?, path?, domain?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；
+//!   `adopt` 接过 `slice` 那个仓库；`repo` 在 `workspace` 那个目录登记 `path` 那一片（新计划框的［新建］·［切到这一片］）。
+//! - `plan-new {dir, path, domain?}`：新计划框问的那一份（[`crate::plan::new_slice`]：能选的领域 · 落在哪 · 撞没撞上 · 要敲的那一行）。
 //! - `plan-files {dir}`：文件窗口反查（[`crate::plan::owners`]）：这个目录落在哪一片的仓库里、每份文件归哪一格。
 //! - `plan-pb-check {dir}`：这个路径能不能当 pb 用（[`locate::check`]），设置里存 pb 路径之前问。
 //! - `plan-refs {sid, texts}`：会话消息里提到的格（[`crate::plan::refs`]：认片在这一侧，认编号交 pb 的 `dump --refs`）。
@@ -190,17 +192,71 @@ fn miss(m: book::Miss) -> Fail {
     }
 }
 
-/// `plan-command {workspace, cmd, slice?}`：以人的身份代敲 pb 的一条命令（[`crate::plan::command`]）。
+/// `plan-new {dir, path, domain?}`：开一片之前问的那一份（[`crate::plan::new_slice`]，只起 `pb dump --domains`）。
+/// 那个工作区已有哪几片照本子里读好过的那一份（没读好过现读一次）。
+fn new_form(req: &PlanNewReq) -> wire::PlanNewForm {
+    let set = crate::control::machine_prefs::pb_dir_now();
+    let entry = locate::pick(set.as_deref(), &crate::agents::plugins(&config_roots()));
+    let found = entry.as_ref().ok().cloned();
+    let slices = |ws: &str| {
+        let doc = book::book().last(ws).or_else(|| {
+            found
+                .as_deref()
+                .and_then(|e| read_dir(e, Path::new(ws)).ok())
+        });
+        doc.map(|d| {
+            d.slices
+                .into_iter()
+                .map(|s| (s.name, s.domain))
+                .collect()
+        })
+        .unwrap_or_default()
+    };
+    crate::plan::new_slice::form(
+        &crate::plan::new_slice::Ask {
+            dir: &req.dir,
+            path: &req.path,
+            domain: req.domain.as_deref(),
+        },
+        entry,
+        &slices,
+    )
+}
+
+/// `plan-command {workspace, cmd, slice?, path?, domain?}`：以人的身份代敲 pb 的一条命令（[`crate::plan::command`]）。
 /// 写盘的是 pb；改了工作区配置 ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` · 只做计划 · 当前仓库都在成品里）。
 /// `adopt` 先现读一次（起 pb），按那个仓库此刻是不是只做计划 · 是不是当前仓库定敲哪几条。
+/// `repo` 先照 `plan-new` 同一份判（`workspace` 是新计划框里选的那个目录）：在哪敲、撞上已有的一片 ⇒ 只带名字，敲的就是框里写出的那一行。
 fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, Fail> {
     let cmd = Some(req.cmd.as_str())
         .filter(|c| crate::plan::command::VERBS.contains(c))
-        .ok_or_else(|| bad("`cmd` must be one of continue · pause · adopt · render"))?;
+        .ok_or_else(|| bad("`cmd` must be one of continue · pause · adopt · render · repo"))?;
     if (cmd == "adopt") != req.slice.is_some() {
         return Err(bad("`slice` goes with `adopt` and only with it"));
     }
+    if (cmd == "repo") != req.path.is_some() || (cmd != "repo" && req.domain.is_some()) {
+        return Err(bad("`path` · `domain` go with `repo` and only with it"));
+    }
     let entry = entry()?;
+    if cmd == "repo" {
+        let path = req.path.as_deref().unwrap_or_default();
+        let f = new_form(&PlanNewReq {
+            dir: req.workspace.clone(),
+            path: path.to_string(),
+            domain: req.domain.clone(),
+        });
+        if let Some(said) = f.pb.said.clone().filter(|_| f.pb.state != "ok").or(f.failed) {
+            return Err(Fail::new("failed", said));
+        }
+        let args = crate::plan::new_slice::repo_args(
+            path,
+            req.domain.as_deref(),
+            f.existing.as_ref().map(|e| e.slice.as_str()),
+        );
+        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+        return crate::plan::command::run(&entry, Path::new(&f.root), &argv)
+            .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()));
+    }
     let ws = Path::new(&req.workspace);
     let run = |args: &[&str]| crate::plan::command::run(&entry, ws, args);
     let out = match req.slice.as_deref() {
@@ -399,13 +455,40 @@ pub(crate) struct PlanCellView {
 pub(crate) struct PlanCommandReq {
     /// 工作区根。
     pub(crate) workspace: String,
-    /// `continue` · `pause` · `adopt` · `render`。
-    #[cfg_attr(test, ts(type = "\"continue\" | \"pause\" | \"adopt\" | \"render\""))]
+    /// `continue` · `pause` · `adopt` · `render` · `repo`（`repo` 的 `workspace` 是新计划框里选的目录）。
+    #[cfg_attr(
+        test,
+        ts(type = "\"continue\" | \"pause\" | \"adopt\" | \"render\" | \"repo\"")
+    )]
     pub(crate) cmd: String,
     /// `adopt` 接过哪一个仓库（仓库名）；别的动词不带。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) slice: Option<String>,
+    /// `repo` 登记的仓库相对工作区根在哪；别的动词不带。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) path: Option<String>,
+    /// `repo` 选的那一档领域（缺 ⇒ 不带）；别的动词不带。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) domain: Option<String>,
+}
+
+/// `plan-new` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanNewReq {
+    /// 在哪个目录开（那台机器上的绝对路径；还不在也行）。
+    pub(crate) dir: String,
+    /// 仓库相对工作区根在哪（最后一段是片名）；空 ⇒ 只问领域。
+    pub(crate) path: String,
+    /// 选的那一档领域。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) domain: Option<String>,
 }
 
 /// `plan-pb-check` 的入参。
@@ -429,7 +512,7 @@ pub(crate) struct PlanFilesReq {
 }
 
 typed::codes! {
-    /// `plan-list` · `plan-files` · `plan-pb-check` · `plan-refs` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
+    /// `plan-list` · `plan-files` · `plan-pb-check` · `plan-refs` · `plan-new` 的码：只有入参不对那一种（读不成的工作区 · pb 不在都写在回包里）。
     pub(crate) enum PlanListErr {}
 }
 
@@ -569,6 +652,34 @@ impl Handle for PlanCommandCmd {
     ) -> impl std::future::Future<Output = Result<wire::PlanCmdReply, PlanCommandErr>> + Send + 'static
     {
         async move { command(&req, &cx.tz).map_err(|f| typed::of_fail(f, PlanCommandErr::Failed)) }
+    }
+}
+
+/// `plan-new`：开一片之前问的那一份（起一次 `pb dump --domains` ⇒ 阻塞档；不写盘）。pb 不在 · 读不成都写在回包里。
+pub(crate) struct PlanNewCmd;
+
+impl Command for PlanNewCmd {
+    const NAME: &'static str = "plan-new";
+    type Req = PlanNewReq;
+    type Reply = wire::PlanNewForm;
+    type Err = PlanListErr;
+}
+
+impl Handle for PlanNewCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanNewReq,
+        _cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanNewForm, PlanListErr>> + Send + 'static
+    {
+        async move {
+            if !Path::new(req.dir.trim()).is_absolute() {
+                return Err(PlanListErr::BadArgs(crate::common::contract::malformed(
+                    "`dir` must be an absolute path",
+                )));
+            }
+            Ok(new_form(&req))
+        }
     }
 }
 
