@@ -129,9 +129,10 @@ pub struct ExtMachine {
     /// 那台上开过会话的项目目录（装到项目时给人选）。
     pub projects: Vec<String>,
     /// 那台的 MCP 列表（那台 `mcp-read` 的成品原样：本机后端问到再交，`faces/ext_list_face.rs::with_mcp`）；
-    /// 表里没有 MCP 行 · 那台连不上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。
+    /// 表里没有 MCP 行 · 那台没连上 · 问不到 ⇒ 缺（界面那台的 MCP 格不画小标）。这一层只转交、不读它：
+    /// 形状是 `mcp-read` 的回包（金样 `tests/__fixtures__/mcp-read.golden.json` 钉），界面按那个生成类型收（`ext-reads.ts::mcpOf`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, as = "Option<crate::faces::feature_face::McpReadReply>"))]
+    #[cfg_attr(test, ts(optional, type = "unknown"))]
     pub mcp: Option<serde_json::Value>,
 }
 

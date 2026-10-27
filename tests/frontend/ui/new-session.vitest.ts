@@ -121,7 +121,7 @@ const machineOf = (name: string, state: string, offlineSaid = `${name} 离线`) 
   word: "", said: "", offlineSaid, fixes: [], seenHostKey: null, expectedHostKey: null, detail: null,
 });
 /** `machine-read` 的回包：本机与 devbox 都连着。 */
-const MACHINES = { machines: { "<local>": machineOf("本机", "up"), devbox: machineOf("devbox", "up") } };
+const MACHINES = { machines: { "<local>": machineOf("workstation", "up"), devbox: machineOf("devbox", "up") } };
 /** 等报到那几问（`session-arrive` 的入参）。 */
 const arriveAsks = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-arrive").map((s) => s.body);
 

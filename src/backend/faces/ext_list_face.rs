@@ -44,7 +44,7 @@ impl crate::wire::typed::Handle for ExtListCmd {
                 })
                 .await
                 .ok()?
-                .map_err(|e| tracing::warn!("ext-list: 这台的 mcp-read 没成：{e:?}"))
+                .map_err(|e| tracing::warn!("ext-list: local mcp-read failed: {e:?}"))
                 .ok()?;
                 serde_json::to_value(read).ok()
             };
@@ -65,7 +65,11 @@ impl crate::wire::typed::Handle for ExtListCmd {
 
 /// [`ExtListCmd`] 填各台那一格 `mcp` 的那一层（这台怎么读 · 怎么问到那台由调用方给，判据喂假的）：
 /// 表里没有 MCP 行 ⇒ 谁都不问；有 ⇒ 这台（`here`）就地读，别的够得着的台（有键）同时问，问不到的那一格留空。
-pub(crate) async fn with_mcp<H, HF, T, TF>(mut list: ext::ExtList, here: H, there: T) -> ext::ExtList
+pub(crate) async fn with_mcp<H, HF, T, TF>(
+    mut list: ext::ExtList,
+    here: H,
+    there: T,
+) -> ext::ExtList
 where
     H: FnOnce() -> HF,
     HF: std::future::Future<Output = Option<serde_json::Value>>,

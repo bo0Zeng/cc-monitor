@@ -44,6 +44,7 @@ import {
   type ExtPlace,
   type ExtRow,
   type ExtUninstallCard,
+  mcpOf,
   type McpEntry,
 } from "../ext-reads";
 import { copyDetailButton, saidOf, sayFailure } from "../kit/detail";
@@ -282,7 +283,7 @@ export class ExtSection {
   private mcpEntry(r: ExtRow, m: ExtMachine): McpEntry | null {
     if (r.kind !== "mcp" || !m.reachable) return null;
     const own = this.list?.machines.find((x) => machineKey(x) === machineKey(m)) ?? m;
-    return own.mcp?.entries.find((e) => e.name === r.name) ?? null;
+    return mcpOf(own)?.entries.find((e) => e.name === r.name) ?? null;
   }
 
   /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。

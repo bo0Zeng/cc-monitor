@@ -31,6 +31,7 @@ import type { ExtTokens } from "./generated/ExtTokens";
 import type { HubApplied } from "./generated/HubApplied";
 import type { HubPreview } from "./generated/HubPreview";
 import type { McpReadEntry } from "./generated/McpReadEntry";
+import type { McpReadReply } from "./generated/McpReadReply";
 import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
 
@@ -89,3 +90,11 @@ export async function extNoteSet(kind: ExtKind, name: string, text: string): Pro
 
 /** `ext-list` 回包里一台那一格 `mcp` 的一条（那台 `mcp-read` 的成品；金样 `tests/__fixtures__/mcp-read.golden.json` 钉线上形）。`mark` = 小标画哪一种（后端定）。 */
 export type McpEntry = McpReadEntry;
+
+/**
+ * 一台那一格 `mcp`：本机后端只转交（那一层不读它，类型上是 `unknown`），线上形就是那台 `mcp-read` 的回包 ⇒ 照那个生成类型收。
+ * 没问到 ⇒ `null`。
+ */
+export function mcpOf(m: ExtMachine): McpReadReply | null {
+  return (m.mcp ?? null) as McpReadReply | null;
+}

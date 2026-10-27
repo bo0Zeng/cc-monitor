@@ -552,7 +552,7 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(marks(s, "demo").map(([m]) => m)).toEqual([null, null]);
   });
 
-  it("没小标只说装了：那台答的那一条 mark 为空 · 本机后端没问到那台（`mcp` 为 null）· 那台连不上 ⇒ 都不画", async () => {
+  it("没小标只说装了：那台答的那一条 mark 为空 · 本机后端没问到那台（`mcp` 为 null）· 那台没连上 ⇒ 都不画", async () => {
     mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] } };
     const s = await page([mcpList()]);
     expect(marks(s, "tracker")).toEqual([

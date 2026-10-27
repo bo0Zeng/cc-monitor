@@ -85,7 +85,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 扩展页那张表：这台现扫一次、记下（资产目录的写口从这扇门递进去），各台目录合成「条目 × 机器」。
     //   读可达表认出每台的名字 ⇒ 只在流面上。表里有 MCP 行 ⇒ 各台那一格 `mcp` 由这台问到再交（`ext_list_face::with_mcp`）
     //   ⇒ 异步档（扫目录与本机那一份进阻塞池）。
-    crate::wire::typed::asynchronous::<crate::faces::ext_list_face::ExtListCmd>("设置「扩展」页那张表"),
+    crate::wire::typed::asynchronous::<crate::faces::ext_list_face::ExtListCmd>(
+        "设置「扩展」页那张表",
+    ),
     // 〔第二个前端 2026-10-08〕扩展页那张表的**本机那一半**：同一份 `assets::ext::answer_list`，只是目录先裁到这台自己那一格。
     //   凭据在 `ext::columns`：本机那一列**压根不问可达表**（`here` 为真 ⇒ `reachable` 恒真、`key` 恒 `null`、`name` 取目录里那台自报的 label），
     //   可达表只被**别的台**那几列用来认名字与连没连上。裁完一列不剩 ⇒ 可达表无从参与 ⇒ 这一条在一次性进程里与常驻那一个**答得一样真**，
