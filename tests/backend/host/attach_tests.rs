@@ -11,7 +11,10 @@ fn sandbox_own(tag: &str) -> Own {
     let _ = std::fs::remove_dir_all(&data);
     std::fs::create_dir_all(&data).expect("建沙箱数据目录");
     let d = data.to_string_lossy().into_owned();
-    let home = test_home::sandbox_root().join("home").to_string_lossy().into_owned();
+    let home = test_home::sandbox_root()
+        .join("home")
+        .to_string_lossy()
+        .into_owned();
     Own::issue_with(&move |k| match k {
         "CCM_DATA_DIR" => Some(d.clone()),
         "HOME" => Some(home.clone()),
@@ -19,7 +22,14 @@ fn sandbox_own(tag: &str) -> Own {
     })
 }
 
-async fn host(own: &Own, id: &str, script: &str) -> (std::path::PathBuf, tokio::task::JoinHandle<Result<(), Said>>) {
+async fn host(
+    own: &Own,
+    id: &str,
+    script: &str,
+) -> (
+    std::path::PathBuf,
+    tokio::task::JoinHandle<Result<(), Said>>,
+) {
     let spec = Spec {
         id: id.into(),
         name: id.into(),
@@ -90,7 +100,12 @@ fn attach_fake(sock: &std::path::Path) -> Fake {
     };
     let sock = sock.to_path_buf();
     let task = tokio::spawn(async move { session(&sock, outer, &Vec::new).await });
-    Fake { keys: ktx, _resized: rtx, screen, task }
+    Fake {
+        keys: ktx,
+        _resized: rtx,
+        screen,
+        task,
+    }
 }
 
 /// 等外层终端上出现那段字（拍子跟着托管口走，判据这边只能轮询；每轮让出一下）。
@@ -108,7 +123,12 @@ async fn until_seen(s: &Screen, needle: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_screen() {
     let own = sandbox_own("detach");
-    let (sock, task) = host(&own, "a-detach", r#"printf 'ready\r\n'; while read x; do printf 'echo:%s\r\n' "$x"; done"#).await;
+    let (sock, task) = host(
+        &own,
+        "a-detach",
+        r#"printf 'ready\r\n'; while read x; do printf 'echo:%s\r\n' "$x"; done"#,
+    )
+    .await;
     let a = attach_fake(&sock);
     until_seen(&a.screen, "ready").await;
     a.keys.send(b"hello\r".to_vec()).unwrap();
@@ -123,8 +143,15 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
     let b = attach_fake(&sock);
     until_seen(&b.screen, "echo:hello").await;
     let after = b.screen.seen();
-    assert_eq!(before.screen().contents(), after.screen().contents(), "再接上屏幕逐格相同");
-    assert_eq!(before.screen().cursor_position(), after.screen().cursor_position());
+    assert_eq!(
+        before.screen().contents(),
+        after.screen().contents(),
+        "再接上屏幕逐格相同"
+    );
+    assert_eq!(
+        before.screen().cursor_position(),
+        after.screen().cursor_position()
+    );
     b.keys.send(b"\x02x".to_vec()).unwrap();
     until_seen(&b.screen, &copy_text("beHost.attach.confirmEnd", &[])).await;
     b.keys.send(b"y".to_vec()).unwrap();
@@ -135,7 +162,12 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_viewer_types_nothing_until_enter_takes_over() {
     let own = sandbox_own("take");
-    let (sock, task) = host(&own, "a-take", r#"printf 'ready\r\n'; while read x; do printf 'echo:%s\r\n' "$x"; done"#).await;
+    let (sock, task) = host(
+        &own,
+        "a-take",
+        r#"printf 'ready\r\n'; while read x; do printf 'echo:%s\r\n' "$x"; done"#,
+    )
+    .await;
     let a = attach_fake(&sock);
     until_seen(&a.screen, "ready").await;
     // B 接上 ⇒ B 持有，A 只看。
@@ -143,7 +175,14 @@ async fn a_viewer_types_nothing_until_enter_takes_over() {
     until_seen(&b.screen, "ready").await;
     until_seen(&a.screen, &copy_text("beHost.attach.viewOnly", &[])).await;
     a.keys.send(b"zz".to_vec()).unwrap();
-    until_seen(&a.screen, &copy_text("beHost.attach.heldBy", &[("who", &copy_text("beHost.attach.whoTerminal", &[]))])).await;
+    until_seen(
+        &a.screen,
+        &copy_text(
+            "beHost.attach.heldBy",
+            &[("who", &copy_text("beHost.attach.whoTerminal", &[]))],
+        ),
+    )
+    .await;
     // 回车接管（这个回车不送进去），之后送得进。
     a.keys.send(b"\r".to_vec()).unwrap();
     for _ in 0..2000 {
@@ -152,7 +191,10 @@ async fn a_viewer_types_nothing_until_enter_takes_over() {
     a.keys.send(b"mine\r".to_vec()).unwrap();
     until_seen(&b.screen, "echo:mine").await;
     assert!(!b.screen.text().contains("echo:zz"), "只看时敲的键没送进去");
-    assert!(!b.screen.text().contains("echo:\r"), "接管的那个回车没送进去");
+    assert!(
+        !b.screen.text().contains("echo:\r"),
+        "接管的那个回车没送进去"
+    );
     b.keys.send(b"\x02x".to_vec()).unwrap();
     for _ in 0..2000 {
         tokio::task::yield_now().await;
@@ -171,14 +213,22 @@ async fn the_session_ending_returns_the_childs_code() {
     until_seen(&a.screen, "ready").await;
     a.keys.send(b"\r".to_vec()).unwrap();
     assert_eq!(a.task.await.unwrap().unwrap(), Left::Ended(Some(5)));
-    assert!(a.screen.raw().ends_with("\x1b[?1049l"), "出来时还原外层终端");
+    assert!(
+        a.screen.raw().ends_with("\x1b[?1049l"),
+        "出来时还原外层终端"
+    );
     task.await.unwrap().unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copy_mode_shows_history_from_the_host() {
     let own = sandbox_own("copy");
-    let (sock, task) = host(&own, "a-copy", r#"i=1; while [ $i -le 60 ]; do printf 'row %s\r\n' $i; i=$((i+1)); done; read x"#).await;
+    let (sock, task) = host(
+        &own,
+        "a-copy",
+        r#"i=1; while [ $i -le 60 ]; do printf 'row %s\r\n' $i; i=$((i+1)); done; read x"#,
+    )
+    .await;
     let a = attach_fake(&sock);
     until_seen(&a.screen, "row 60").await;
     a.keys.send(b"\x02[".to_vec()).unwrap();
@@ -194,10 +244,23 @@ async fn copy_mode_shows_history_from_the_host() {
 
 #[test]
 fn the_host_run_word_routes_to_the_hosted_terminal_not_the_query_face() {
-    let a: Vec<String> = ["--", "--host-run", "h1", "--", "sh"].iter().map(|s| s.to_string()).collect();
-    let crate::control::ccm::Entry::Backend(b) = crate::control::ccm::route("ccm", &a) else {
-        panic!("没进后端那一侧");
-    };
-    assert!(crate::control::ccm::is_host_run(&b));
-    assert!(!crate::control::ccm::is_host_run(&["--sessions-needs".to_string()]));
+    let a: Vec<String> = ["--", "--host-run", "h1", "--", "sh"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    // 不进后端的一次性查询面（那一面只认 `SUBCOMMANDS`），落在 ccm 那一侧、由它在起会话那一套之前接走。
+    assert_eq!(
+        crate::control::ccm::route("ccm", &a),
+        crate::control::ccm::Entry::Ccm(a.clone())
+    );
+    assert_eq!(crate::control::ccm::host_run_args(&a), Some(&a[2..]));
+    let not: Vec<String> = ["--host-run", "h1", "--", "sh"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        crate::control::ccm::host_run_args(&not),
+        None,
+        "不紧跟打头的 `--` 不算"
+    );
 }

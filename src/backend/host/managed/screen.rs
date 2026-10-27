@@ -30,14 +30,9 @@ struct Hooks {
     replies: Vec<u8>,
     clear_scrollback: bool,
     title: Vec<u8>,
-    bells: u32,
 }
 
 impl vt100::Callbacks for Hooks {
-    fn audible_bell(&mut self, _: &mut vt100::Screen) {
-        self.bells = self.bells.saturating_add(1);
-    }
-
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
         self.title = title.to_vec();
     }
@@ -60,9 +55,9 @@ impl vt100::Callbacks for Hooks {
                 self.replies
                     .extend_from_slice(format!("\x1b[{};{}R", r + 1, col + 1).as_bytes());
             }
-            (Some(b'>'), 'q', 0) => self.replies.extend_from_slice(
-                format!("\x1bP>|ccm {}\x1b\\", crate::BUILD_ID).as_bytes(),
-            ),
+            (Some(b'>'), 'q', 0) => self
+                .replies
+                .extend_from_slice(format!("\x1bP>|ccm {}\x1b\\", crate::BUILD_ID).as_bytes()),
             (None, 'J', 3) => self.clear_scrollback = true,
             _ => {}
         }
@@ -104,11 +99,20 @@ impl Screen {
         self.parser = fresh;
     }
 
-    /// 整屏字节：喂给一个同尺寸的新终端 ⇒ 逐格 · 光标 · 模式都相同（新接上的一端 · `resync` 发的就是它）。
+    /// 整屏字节：喂给一个同尺寸的新终端 ⇒ 逐格 · 光标 · 模式都相同，标题也带上（新接上的一端 · `resync` 发的就是它）。
     pub(crate) fn full(&self) -> Vec<u8> {
-        self.parser.screen().state_formatted()
+        let mut v = self.parser.screen().state_formatted();
+        let title = &self.parser.callbacks().title;
+        if !title.is_empty() {
+            v.extend_from_slice(b"\x1b]2;");
+            v.extend_from_slice(title);
+            v.push(0x07);
+        }
+        v
     }
 
+    /// 判据看那一屏的格子。
+    #[cfg(test)]
     pub(crate) fn screen(&self) -> &vt100::Screen {
         self.parser.screen()
     }
@@ -122,13 +126,9 @@ impl Screen {
     }
 
     /// 里面的程序最近一次设的标题（OSC 0 / 2）。
+    #[cfg(test)]
     pub(crate) fn title(&self) -> String {
         String::from_utf8_lossy(&self.parser.callbacks().title).into_owned()
-    }
-
-    /// 到此为止响过几次铃。
-    pub(crate) fn bells(&self) -> u32 {
-        self.parser.callbacks().bells
     }
 
     /// 往回抓：回滚里最近的 `back` 行 ＋ 当屏（形同 `tmux capture-pane -p -S -<back>`，`color` ⇒ 带 SGR，同 `-e`）。

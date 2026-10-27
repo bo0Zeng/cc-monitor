@@ -149,8 +149,6 @@ async fn main() {
                 },
                 faces::launch_account_face::list_at,
             )),
-            // 托管终端的托管进程（`-- --host-run <id> … -- <argv>`）：持伪终端直到子进程退出（`host/managed/run.rs`）。
-            control::ccm::Entry::Backend(a) if control::ccm::is_host_run(&a) => std::process::exit(control::ccm::host_run(&a, &own).await),
             control::ccm::Entry::Backend(a) => a,
         }
     };

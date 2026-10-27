@@ -17,19 +17,34 @@ fn every_kind_of_frame_survives_a_round_trip() {
         proto: PROTO,
         build: "b".into(),
         want: Want::Input,
-        size: Some(Size { rows: 40, cols: 120 }),
-        who: Who { kind: WhoKind::Terminal, client: None },
+        size: Some(Size {
+            rows: 40,
+            cols: 120,
+        }),
+        who: Who {
+            kind: WhoKind::Terminal,
+            client: None,
+        },
     }));
     round(Frame::Ctl(Ctl::Welcome {
         proto: PROTO,
         id: "h1".into(),
         size: Size { rows: 24, cols: 80 },
         you: 3,
-        holder: Some(Holder { client: 3, kind: WhoKind::Terminal, front: None, pid: Some(9), mine: true }),
+        holder: Some(Holder {
+            client: 3,
+            kind: WhoKind::Terminal,
+            front: None,
+            pid: Some(9),
+            mine: true,
+        }),
         screen: "\x1b[Hhi".into(),
     }));
     round(Frame::Ctl(Ctl::Ended { code: Some(7) }));
-    round(Frame::Ctl(Ctl::Capture { back: 2000, color: true }));
+    round(Frame::Ctl(Ctl::Capture {
+        back: 2000,
+        color: true,
+    }));
     round(Frame::Ctl(Ctl::Bye));
 }
 
@@ -71,10 +86,20 @@ fn half_a_frame_is_not_yet_a_frame() {
 #[tokio::test]
 async fn async_read_and_write_agree_with_encode() {
     let (mut a, mut b) = tokio::io::duplex(1024);
-    write_frame(&mut a, &Frame::In(b"x".to_vec())).await.expect("写");
-    write_frame(&mut a, &Frame::Ctl(Ctl::Take)).await.expect("写");
+    write_frame(&mut a, &Frame::In(b"x".to_vec()))
+        .await
+        .expect("写");
+    write_frame(&mut a, &Frame::Ctl(Ctl::Take))
+        .await
+        .expect("写");
     drop(a);
-    assert_eq!(read_frame(&mut b).await.expect("读"), Some(Frame::In(b"x".to_vec())));
-    assert_eq!(read_frame(&mut b).await.expect("读"), Some(Frame::Ctl(Ctl::Take)));
+    assert_eq!(
+        read_frame(&mut b).await.expect("读"),
+        Some(Frame::In(b"x".to_vec()))
+    );
+    assert_eq!(
+        read_frame(&mut b).await.expect("读"),
+        Some(Frame::Ctl(Ctl::Take))
+    );
     assert_eq!(read_frame(&mut b).await.expect("读"), None);
 }

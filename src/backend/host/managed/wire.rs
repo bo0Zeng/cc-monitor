@@ -213,7 +213,8 @@ impl std::fmt::Display for Bad {
     }
 }
 
-/// 从字节里解一帧：`Ok(None)` ＝ 还不够一帧。交回帧与用掉的字节数。
+/// 从字节里解一帧：`Ok(None)` ＝ 还不够一帧。交回帧与用掉的字节数（判据解队列里编好的帧用）。
+#[cfg(test)]
 pub(crate) fn decode(buf: &[u8]) -> Result<Option<(Frame, usize)>, Bad> {
     if buf.len() < 4 {
         return Ok(None);
@@ -259,7 +260,10 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option
 }
 
 /// 写一帧。
-pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, f: &Frame) -> std::io::Result<()> {
+pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
+    w: &mut W,
+    f: &Frame,
+) -> std::io::Result<()> {
     w.write_all(&encode(f)).await
 }
 

@@ -179,14 +179,31 @@ pub enum Entry {
     Backend(Vec<String>),
 }
 
-/// 后端那一串是不是托管进程那一跳（`--host-run …`，[`host_run`] 接）。
-pub fn is_host_run(backend_args: &[String]) -> bool {
-    backend_args.first().map(String::as_str) == Some(crate::host::managed::run::WORD)
+/// ccm 那一串是不是托管进程那一跳：`-- --host-run …`（只许紧跟打头的 `--`）。交回 `--host-run` 之后那一串。
+pub(crate) fn host_run_args(args: &[String]) -> Option<&[String]> {
+    (args.first().map(String::as_str) == Some(argv::flag::END)
+        && args.get(1).map(String::as_str) == Some(argv::flag::HOST_RUN))
+    .then(|| &args[2..])
 }
 
-/// 托管进程（`host/managed/run.rs`）：`--host-run <id> … -- <argv>`，持伪终端直到子进程退出、收完尾；交回进程退出码。
-pub async fn host_run(backend_args: &[String], own: &crate::platform::fs::Own) -> i32 {
-    crate::host::managed::run::main(backend_args.get(1..).unwrap_or_default(), own).await
+/// 托管进程（`host/managed/run.rs`）：持伪终端直到子进程退出、收完尾；交回进程退出码。
+/// `ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完（同 [`attach_managed`]）。
+fn host_run(args: &[String], own: &crate::platform::fs::Own) -> i32 {
+    block_on(crate::host::managed::run::main(args, own))
+}
+
+/// 在入口那个运行时上跑完一段异步的（没有运行时 ⇒ 当场起一个单线程的）。
+fn block_on(f: impl std::future::Future<Output = i32>) -> i32 {
+    match tokio::runtime::Handle::try_current() {
+        Ok(h) => tokio::task::block_in_place(|| h.block_on(f)),
+        Err(_) => match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt.block_on(f),
+            Err(e) => die(&e.to_string()),
+        },
+    }
 }
 
 /// 分流：`argv0` 是这个进程被叫成的名字，`args` 是其后那一串。
@@ -204,9 +221,7 @@ pub fn route(argv0: &str, args: &[String]) -> Entry {
         return Entry::Ccm(v);
     }
     if args.first().map(String::as_str) == Some(argv::flag::END)
-        && args
-            .get(1)
-            .is_some_and(|w| is_backend_word(w) || w == crate::host::managed::run::WORD)
+        && args.get(1).is_some_and(|w| is_backend_word(w))
     {
         return Entry::Backend(args[1..].to_vec());
     }
@@ -271,6 +286,10 @@ pub fn run(
     accounts: AccountsScan,
 ) -> i32 {
     use std::io::IsTerminal;
+    // 托管终端的托管进程那一跳（脱离起、没有终端）：不进起会话那一套。
+    if let Some(rest) = host_run_args(args) {
+        return host_run(rest, own);
+    }
     if refuses_without_terminal(
         args,
         std::io::stdin().is_terminal(),
@@ -651,13 +670,7 @@ fn die(msg: &str) -> i32 {
 
 /// 接上一个托管终端（瘦客户端）。`ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完。
 fn attach_managed(own: &crate::platform::fs::Own, id: &str) -> i32 {
-    match tokio::runtime::Handle::try_current() {
-        Ok(h) => tokio::task::block_in_place(|| h.block_on(crate::host::managed::attach::attach(own, id))),
-        Err(_) => match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-            Ok(rt) => rt.block_on(crate::host::managed::attach::attach(own, id)),
-            Err(e) => die(&e.to_string()),
-        },
-    }
+    block_on(crate::host::managed::attach::attach(own, id))
 }
 
 /// 真跑。
@@ -668,7 +681,9 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
         // 它与 `--ccm-print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
         // `--attach <名|句柄>` 先在托管名单里认：认到 ⇒ 瘦客户端接上（`host/managed/attach.rs`）；认不到 ⇒ 照旧 `tmux attach`。
         Plan::Attach { name } if crate::host::managed::home::find(own, name).is_some() => {
-            let id = crate::host::managed::home::find(own, name).map(|f| f.id).unwrap_or_default();
+            let id = crate::host::managed::home::find(own, name)
+                .map(|f| f.id)
+                .unwrap_or_default();
             attach_managed(own, &id)
         }
         Plan::Attach { .. } | Plan::Rejoin { .. } => {

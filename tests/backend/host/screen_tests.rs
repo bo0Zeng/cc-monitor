@@ -8,7 +8,12 @@ fn cells(s: &vt100::Screen) -> Vec<(String, vt100::Color, vt100::Color, bool)> {
     for r in 0..rows {
         for c in 0..cols {
             let cell = s.cell(r, c).expect("格在");
-            v.push((cell.contents().to_string(), cell.fgcolor(), cell.bgcolor(), cell.bold()));
+            v.push((
+                cell.contents().to_string(),
+                cell.fgcolor(),
+                cell.bgcolor(),
+                cell.bold(),
+            ));
         }
     }
     v
@@ -70,7 +75,11 @@ fn erase_scrollback_clears_history_like_a_real_terminal() {
     s.feed(b"\x1b[3Jkept");
     let got = s.capture(100, false);
     assert_eq!(got.lines.len(), 5, "只剩当屏：{:?}", got.lines);
-    assert!(got.lines.iter().any(|l| l.contains("kept")), "当屏还在：{:?}", got.lines);
+    assert!(
+        got.lines.iter().any(|l| l.contains("kept")),
+        "当屏还在：{:?}",
+        got.lines
+    );
 }
 
 #[test]
@@ -109,11 +118,24 @@ fn the_title_is_kept_for_new_clients() {
     let mut s = Screen::new(5, 20);
     s.feed(b"\x1b]0;hello\x07");
     assert_eq!(s.title(), "hello");
+    // 新接上的一端只拿整屏字节：标题也在里面。
+    struct T(Vec<u8>);
+    impl vt100::Callbacks for T {
+        fn set_window_title(&mut self, _: &mut vt100::Screen, t: &[u8]) {
+            self.0 = t.to_vec();
+        }
+    }
+    let mut fresh = vt100::Parser::new_with_callbacks(5, 20, 0, T(Vec::new()));
+    fresh.process(&s.full());
+    assert_eq!(fresh.callbacks().0, b"hello");
 }
 
 #[test]
 fn the_scrollback_constant_matches_the_terminal_page_limit() {
-    assert_eq!(SCROLLBACK, crate::control::terminals::MAX_SCROLLBACK as usize);
+    assert_eq!(
+        SCROLLBACK,
+        crate::control::terminals::MAX_SCROLLBACK as usize
+    );
 }
 
 #[test]

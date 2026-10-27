@@ -23,7 +23,11 @@ fn ordinary_bytes_pass_through_and_split_around_the_prefix() {
     let mut k = Keys::new(DEFAULT_PREFIX);
     assert_eq!(
         feed(&mut k, b"ab\x02rcd"),
-        vec![Act::Send(b"ab".to_vec()), Act::Redraw, Act::Send(b"cd".to_vec())]
+        vec![
+            Act::Send(b"ab".to_vec()),
+            Act::Redraw,
+            Act::Send(b"cd".to_vec())
+        ]
     );
 }
 
@@ -38,7 +42,11 @@ fn the_prefix_can_arrive_in_one_chunk_and_the_key_in_the_next() {
 fn a_key_not_in_the_table_after_the_prefix_does_nothing() {
     let mut k = Keys::new(DEFAULT_PREFIX);
     assert!(feed(&mut k, b"\x02z").is_empty());
-    assert_eq!(feed(&mut k, b"z"), vec![Act::Send(b"z".to_vec())], "之后回到平常");
+    assert_eq!(
+        feed(&mut k, b"z"),
+        vec![Act::Send(b"z".to_vec())],
+        "之后回到平常"
+    );
 }
 
 #[test]
@@ -62,23 +70,27 @@ fn prefix_x_asks_first_and_only_y_ends() {
 #[test]
 fn another_prefix_key_is_honoured() {
     let mut k = Keys::new(0x01);
-    assert_eq!(feed(&mut k, b"\x02"), vec![Act::Send(vec![0x02])], "Ctrl+b 成了普通键");
+    assert_eq!(
+        feed(&mut k, b"\x02"),
+        vec![Act::Send(vec![0x02])],
+        "Ctrl+b 成了普通键"
+    );
     assert_eq!(feed(&mut k, b"\x01d"), vec![Act::Detach]);
-}
-
-#[test]
-fn prefix_of_parses_single_ctrl_keys_only() {
-    assert_eq!(prefix_of("C-b"), Some(0x02));
-    assert_eq!(prefix_of("C-a"), Some(0x01));
-    assert_eq!(prefix_of("Ctrl+a"), Some(0x01));
-    assert_eq!(prefix_of("M-a"), None);
-    assert_eq!(prefix_of("a"), None);
 }
 
 #[test]
 fn the_key_list_names_every_binding_like_tmux() {
     let text = list_keys(DEFAULT_PREFIX);
-    for cmd in ["send-prefix", "detach-client", "choose-client", "refresh-client", "list-keys", "copy-mode", "kill-pane", "choose-tree"] {
+    for cmd in [
+        "send-prefix",
+        "detach-client",
+        "choose-client",
+        "refresh-client",
+        "list-keys",
+        "copy-mode",
+        "kill-pane",
+        "choose-tree",
+    ] {
         assert!(text.contains(cmd), "{cmd} 不在：{text}");
     }
     assert!(text.contains("C-b d"), "{text}");
@@ -111,7 +123,13 @@ fn copy_mode_search_collects_text_until_enter() {
     assert!(c.feed(b"/").is_empty());
     assert!(c.feed(b"abc").is_empty());
     assert_eq!(c.prompt(), Some("/abc"));
-    assert_eq!(c.feed(b"\r"), vec![Copy::Search { text: "abc".into(), forward: true }]);
+    assert_eq!(
+        c.feed(b"\r"),
+        vec![Copy::Search {
+            text: "abc".into(),
+            forward: true
+        }]
+    );
     assert_eq!(c.feed(b"n"), vec![Copy::Next]);
     assert_eq!(c.feed(b"N"), vec![Copy::Prev]);
     assert!(c.feed(b"?x\x7f").is_empty(), "退格删掉一个字");

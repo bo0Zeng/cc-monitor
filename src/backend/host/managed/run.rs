@@ -1,4 +1,4 @@
-//! 托管进程本体：`ccm -- --host-run <id> [选项] -- <argv>`（A3-3-1）。
+//! 托管进程本体：`ccm -- --host-run <id> [键=值…] -- <argv>`（A3-3-1）。
 //!
 //! 持一个伪终端（里面跑 `argv`），把它的输出算进屏（[`super::screen`]），经托管口（[`super::wire`] · [`super::serve`]）给各端；
 //! 输入只收持有者的。子进程退了 ⇒ 各端收 `ended{code}`、删自己的目录、退出（10-05：Claude 退出终端跟着收）。
@@ -9,7 +9,7 @@
 
 use super::home::{Facts, Home};
 use super::serve::{Effect, Hub, Outbox};
-use super::wire::{self, Frame, Size};
+use super::wire::{self, Size};
 use crate::platform::child::Terminal;
 use crate::platform::fs::Own;
 use copy_core::copy_text;
@@ -19,8 +19,6 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::io::AsyncWriteExt;
 
-/// 后端词。
-pub(crate) const WORD: &str = "--host-run";
 /// 没给尺寸时的样子。
 pub(crate) const DEFAULT_SIZE: Size = Size { rows: 24, cols: 80 };
 
@@ -42,7 +40,8 @@ pub(crate) struct Spec {
     pub(crate) argv: Vec<String>,
 }
 
-/// `<id> [--name N] [--size 列x行] [--cwd D] [--agent A] [--client C] -- <argv…>`。
+/// `<id> [name=N] [size=列x行] [cwd=D] [agent=A] [client=C] -- <argv…>`（`--host-run` 之后那一串；那个词住 `ccm_line::argv::flag`）。
+/// 选项写成 `键=值`：它们是 ccm 起托管进程时自己拼的，不是给人敲的旗标。
 pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
     let bad = |what: &str| -> Said { copy_text("beHost.run.badArgs", &[("what", what)]).into() };
     let mut it = args.iter();
@@ -60,18 +59,19 @@ pub(crate) fn parse(args: &[String]) -> Result<Spec, Said> {
         argv: Vec::new(),
     };
     while let Some(a) = it.next() {
-        if a == "--" {
+        if a == crate::ccm_line::argv::flag::END {
             spec.argv = it.cloned().collect();
             break;
         }
-        let v = it.next().cloned().ok_or_else(|| bad(a))?;
-        match a.as_str() {
-            "--name" if super::home::id_ok(&v) => spec.name = v,
-            "--size" => spec.size = size_of(&v).ok_or_else(|| bad("--size"))?,
-            "--cwd" => spec.cwd = v,
-            "--agent" => spec.agent = v,
-            "--client" => spec.client = v,
-            other => return Err(bad(other)),
+        let (k, v) = a.split_once('=').ok_or_else(|| bad(a))?;
+        let v = v.to_string();
+        match k {
+            "name" if super::home::id_ok(&v) => spec.name = v,
+            "size" => spec.size = size_of(&v).ok_or_else(|| bad(a))?,
+            "cwd" => spec.cwd = v,
+            "agent" => spec.agent = v,
+            "client" => spec.client = v,
+            _ => return Err(bad(a)),
         }
     }
     if spec.argv.is_empty() {
@@ -200,7 +200,10 @@ pub(crate) async fn run(
     home.write_facts(&facts)?;
     let listener = own_chan::bind(home.sock()).map_err(|e| {
         Said::with_raw(
-            copy_text("beHost.run.bindFailed", &[("path", &home.sock().display().to_string())]),
+            copy_text(
+                "beHost.run.bindFailed",
+                &[("path", &home.sock().display().to_string())],
+            ),
             &e,
         )
     })?;
@@ -278,12 +281,12 @@ pub(crate) async fn run(
 
     let code = exit_rx.await.ok().flatten();
     // 它最后写的那几行先读完再报结束（读不到头 ⇒ 有逃出组的孙进程攥着终端：给一小段宽限就不等了）。
-    wait_briefly(eof_rx, std::time::Duration::from_millis(500)).await;
+    wait_briefly(eof_rx, LAST_LINES_MS).await;
     accept.abort();
     locked(&ctx.hub).child_exited(code);
     let pending: Vec<_> = std::mem::take(&mut *locked(&writers));
     for w in pending {
-        wait_briefly(w, std::time::Duration::from_secs(2)).await;
+        wait_briefly(w, LAST_WRITE_MS).await;
     }
     for (_, h) in std::mem::take(&mut *locked(&ctx.readers)) {
         h.abort();
@@ -295,31 +298,35 @@ pub(crate) async fn run(
     Ok(())
 }
 
+/// 子进程退了之后，等它最后那几行读完的宽限（毫秒）。
+const LAST_LINES_MS: u64 = 500;
+/// 各端把 `ended` 写完的宽限（毫秒）。
+const LAST_WRITE_MS: u64 = 2000;
+
 /// 收尾时的有界等待：等的东西一直不来就不等了（不是节拍，只等一次）。
 #[allow(
     clippy::disallowed_methods,
     reason = "托管终端收尾时等最后那几行 · 各端写完 ended 的一次有界宽限：孙进程攥着终端或某一端不读时不能一直挂着"
 )]
-async fn wait_briefly<F: std::future::Future>(f: F, within: std::time::Duration) {
-    let _ = tokio::time::timeout(within, f).await;
+async fn wait_briefly<F: std::future::Future>(f: F, within_ms: u64) {
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(within_ms), f).await;
 }
 
 /// 接一条连接：登记进账、起读写两个任务；交回写那一半的任务（收尾时等它把 `ended` 写完）。
 fn serve_conn(ctx: &Arc<Ctx>, s: own_chan::Stream) -> tokio::task::JoinHandle<()> {
-    let pid = s.peer_cred().ok().and_then(|c| c.pid()).and_then(|p| u32::try_from(p).ok());
+    let pid = s
+        .peer_cred()
+        .ok()
+        .and_then(|c| c.pid())
+        .and_then(|p| u32::try_from(p).ok());
     let (id, out) = locked(&ctx.hub).connect(pid, crate::common::time::now_ms());
     let (mut rd, mut wr) = tokio::io::split(s);
     let reader = {
         let ctx = Arc::clone(ctx);
         tokio::spawn(async move {
-            loop {
-                match wire::read_frame(&mut rd).await {
-                    Ok(Some(f)) => {
-                        let eff = locked(&ctx.hub).frame(id, f, crate::common::time::now_ms());
-                        ctx.apply(eff);
-                    }
-                    Ok(None) | Err(_) => break,
-                }
+            while let Ok(Some(f)) = wire::read_frame(&mut rd).await {
+                let eff = locked(&ctx.hub).frame(id, f, crate::common::time::now_ms());
+                ctx.apply(eff);
             }
             let eff = locked(&ctx.hub).gone(id);
             ctx.apply(eff);

@@ -36,10 +36,6 @@ impl Queue {
         self.bytes = 0;
         (v, self.closed)
     }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.frames.is_empty()
-    }
 }
 
 /// 一端的队列，连同叫醒写那一端的铃。
@@ -106,6 +102,8 @@ impl Hub {
         }
     }
 
+    /// 判据看托管那一屏。
+    #[cfg(test)]
     pub(crate) fn screen(&self) -> &Screen {
         &self.screen
     }
@@ -115,6 +113,8 @@ impl Hub {
         Size { rows, cols }
     }
 
+    /// 判据看此刻谁持有。
+    #[cfg(test)]
     pub(crate) fn holder(&self) -> Option<u64> {
         self.holder
     }
@@ -127,7 +127,10 @@ impl Hub {
         self.clients.insert(
             id,
             Client {
-                who: Who { kind: WhoKind::Backend, client: None },
+                who: Who {
+                    kind: WhoKind::Backend,
+                    client: None,
+                },
                 want: Want::View,
                 size: None,
                 pid,
@@ -190,7 +193,9 @@ impl Hub {
         c.last_ms = now_ms;
         if !c.greeted {
             return match f {
-                Frame::Ctl(Ctl::Hello { want, size, who, .. }) => self.hello(id, want, size, who),
+                Frame::Ctl(Ctl::Hello {
+                    want, size, who, ..
+                }) => self.hello(id, want, size, who),
                 _ => vec![Effect::Drop(id)],
             };
         }
@@ -245,7 +250,10 @@ impl Hub {
                     Frame::Ctl(Ctl::Captured {
                         lines: got.lines,
                         capped: got.capped,
-                        size: Size { rows: got.rows, cols: got.cols },
+                        size: Size {
+                            rows: got.rows,
+                            cols: got.cols,
+                        },
                         cursor: [got.cursor.0, got.cursor.1],
                     }),
                 );
@@ -321,7 +329,13 @@ impl Hub {
         }
         self.screen.resize(s.rows, s.cols);
         for id in self.greeted_ids() {
-            self.push(id, Frame::Ctl(Ctl::Size { rows: s.rows, cols: s.cols }));
+            self.push(
+                id,
+                Frame::Ctl(Ctl::Size {
+                    rows: s.rows,
+                    cols: s.cols,
+                }),
+            );
         }
         vec![Effect::Resize(s)]
     }
@@ -367,11 +381,6 @@ impl Hub {
                 mine: *id == viewer,
             })
             .collect()
-    }
-
-    /// 各端的进程号（↗ 的进程链从这里起；A3-3-6）。
-    pub(crate) fn client_pids(&self) -> Vec<u32> {
-        self.clients.values().filter_map(|c| c.pid).collect()
     }
 
     fn greeted_ids(&self) -> Vec<u64> {

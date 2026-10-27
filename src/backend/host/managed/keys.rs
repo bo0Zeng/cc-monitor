@@ -1,7 +1,7 @@
 //! 瘦客户端的键表：照 tmux 的缺省键（A3-3-3-1，用户 10-27 定）。一张表，`前缀 ?` 也照它印。
 //!
 //! - 前缀缺省 `Ctrl+b`（[`DEFAULT_PREFIX`]）；`前缀 前缀` 把一个前缀字节送进去（tmux `send-prefix`）。
-//!   前缀之后按了表里没有的键 ⇒ 什么都不做（同 tmux）。前缀可改：只认单个 `Ctrl+<键>`（[`prefix_of`]），不读 `~/.tmux.conf`。
+//!   前缀之后按了表里没有的键 ⇒ 什么都不做（同 tmux）。前缀由调用方交（[`Keys::new`]；机器偏好那一格还没接，今天恒是缺省），不读 `~/.tmux.conf`。
 //! - 翻看（`copy-mode`）里照 tmux 缺省 emacs 表；`VISUAL` / `EDITOR` 含 `vi` 时用 vi 表（[`vi_from`]，同 tmux）。选中复制这一版不做。
 //!
 //! 这里只把字节变成动作，不碰终端、不碰托管口；送不送（只看的那一端不送）由 `attach.rs` 定。
@@ -62,22 +62,6 @@ fn act_of(key: &[u8], prefix: u8) -> Option<Act> {
         b"s" => Act::ChooseTerminal,
         _ => return None,
     })
-}
-
-/// `C-b` · `Ctrl+b` · `^B` 这几种写法的单个 `Ctrl+<字母>` ⇒ 那个控制字节；别的（`M-a` · 单字母 · 多个键）⇒ `None`。
-pub(crate) fn prefix_of(s: &str) -> Option<u8> {
-    let t = s.trim();
-    let rest = t
-        .strip_prefix("C-")
-        .or_else(|| t.strip_prefix("Ctrl+"))
-        .or_else(|| t.strip_prefix("ctrl+"))
-        .or_else(|| t.strip_prefix('^'))?;
-    let mut cs = rest.chars();
-    let c = cs.next()?;
-    if cs.next().is_some() || !c.is_ascii_alphabetic() {
-        return None;
-    }
-    Some(c.to_ascii_lowercase() as u8 - b'a' + 1)
 }
 
 /// 一个前缀字节给人看的写法（`0x02` ⇒ `C-b`）。
@@ -143,7 +127,11 @@ impl Keys {
                 State::Plain => plain.push(b),
                 State::Confirm => {
                     self.state = State::Plain;
-                    acts.push(if b == b'y' || b == b'Y' { Act::End } else { Act::CancelEnd });
+                    acts.push(if b == b'y' || b == b'Y' {
+                        Act::End
+                    } else {
+                        Act::CancelEnd
+                    });
                 }
                 State::Prefixed(key) => {
                     key.push(b);

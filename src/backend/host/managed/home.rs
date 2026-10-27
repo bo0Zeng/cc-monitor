@@ -18,6 +18,9 @@ pub(crate) const FACTS: &str = "facts.json";
 pub(crate) const SOCK_PATH_MAX: usize = 107;
 /// 事实文件读的上限（几百字节的东西，大了就不是我们写的）。
 const FACTS_CAP: u64 = 64 * 1024;
+/// `facts.json` 的声明：状态（托管进程活着时它是那个终端的事实；读不出来 ⇒ 这个终端不列，不覆盖）。
+const FACTS_DOC: crate::common::own_state::Doc<Facts> =
+    crate::common::own_state::Doc::state(".cc-monitor/hosts/<id>/facts.json", FACTS_CAP);
 
 /// `facts.json`：托管进程自己写，后端经托管口 `tag` 补 sid。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -107,7 +110,12 @@ impl Home {
         let lock = match own.try_lock(&dir) {
             Ok(Some(l)) => l,
             Ok(None) => return Err(copy_text("beHost.home.taken", &[("id", id)]).into()),
-            Err(e) => return Err(Said::with_raw(copy_text("beHost.home.lockFailed", &[("id", id)]), &e)),
+            Err(e) => {
+                return Err(Said::with_raw(
+                    copy_text("beHost.home.lockFailed", &[("id", id)]),
+                    &e,
+                ))
+            }
         };
         let stale = dir.join(SOCK)?;
         if Ro::symlink_metadata(stale.as_path()).is_ok() {
@@ -125,28 +133,30 @@ impl Home {
         &self.sock
     }
 
-    pub(crate) fn dir(&self) -> &Path {
-        self.dir.as_path()
-    }
-
     /// 整份写事实。
     pub(crate) fn write_facts(&self, f: &Facts) -> Result<(), Said> {
-        let body = serde_json::to_vec_pretty(f).unwrap_or_default();
-        self.own.write(&self.dir.join(FACTS)?, &self.lock, &body)
+        let path = self.dir.join(FACTS)?;
+        let body = crate::common::own_state::json_body(path.as_path(), f)?;
+        self.own.write(&path, &self.lock, &body)
     }
 
     /// 收尾：删整个目录（锁随之放）。
     pub(crate) fn clear(self) {
         if let Err(e) = self.own.clear_dir(&self.dir, &self.lock) {
-            tracing::warn!("托管终端收尾：删 {} 没删成：{e}", self.dir.as_path().display());
+            tracing::warn!(
+                "托管终端收尾：删 {} 没删成：{e}",
+                self.dir.as_path().display()
+            );
         }
     }
 }
 
 /// 读一个托管终端目录里的事实（读不懂 ⇒ `None`）。
 pub(crate) fn read_facts(dir: &Path) -> Option<Facts> {
-    let raw = Ro::read_regular_capped(&dir.join(FACTS), FACTS_CAP).ok()?;
-    serde_json::from_slice(&raw).ok()
+    match FACTS_DOC.read(&dir.join(FACTS)) {
+        crate::common::own_state::Read::Present(f) => Some(f),
+        _ => None,
+    }
 }
 
 /// 这台此刻活着的托管终端（锁有人攥着的那几个），按起来的先后排。陈旧的不列、也不在这里删（写只在起托管的那一处）。

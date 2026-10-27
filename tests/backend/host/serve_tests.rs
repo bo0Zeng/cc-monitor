@@ -29,7 +29,8 @@ fn take(out: &Outbox) -> Vec<Frame> {
 fn replay(frames: &[Frame], mut p: vt100::Parser) -> vt100::Parser {
     for f in frames {
         match f {
-            Frame::Ctl(Ctl::Welcome { size, screen, .. }) | Frame::Ctl(Ctl::Resync { size, screen }) => {
+            Frame::Ctl(Ctl::Welcome { size, screen, .. })
+            | Frame::Ctl(Ctl::Resync { size, screen }) => {
                 p = vt100::Parser::new(size.rows, size.cols, 0);
                 p.process(screen.as_bytes());
             }
@@ -63,18 +64,28 @@ fn a_client_whose_queue_overflows_gets_a_resync_and_rebuilds_the_same_screen() {
     assert!(slow_out.q.lock().unwrap().overflows > 0, "塞满过");
     let frames = take(&slow_out);
     assert!(
-        frames.iter().any(|f| matches!(f, Frame::Ctl(Ctl::Resync { .. }))),
+        frames
+            .iter()
+            .any(|f| matches!(f, Frame::Ctl(Ctl::Resync { .. }))),
         "收到了 resync"
     );
     let p = replay(&frames, vt100::Parser::new(24, 80, 0));
-    assert_eq!(grid(p.screen()), grid(hub.screen().screen()), "还原的屏与托管那一屏逐格相等");
+    assert_eq!(
+        grid(p.screen()),
+        grid(hub.screen().screen()),
+        "还原的屏与托管那一屏逐格相等"
+    );
 }
 
 #[test]
 fn a_non_holder_typing_gets_held_elsewhere_and_nothing_reaches_the_pty() {
     let mut hub = Hub::new("h", sz(80, 24));
     let (a, _a_out) = hub.connect(Some(10), 0);
-    hub.frame(a, hello(Want::Input, WhoKind::Terminal, Some(sz(120, 40))), 0);
+    hub.frame(
+        a,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(120, 40))),
+        0,
+    );
     let (b, b_out) = hub.connect(Some(11), 0);
     hub.frame(b, hello(Want::View, WhoKind::Terminal, Some(sz(80, 24))), 0);
     take(&b_out);
@@ -85,21 +96,32 @@ fn a_non_holder_typing_gets_held_elsewhere_and_nothing_reaches_the_pty() {
         matches!(got.as_slice(), [Frame::Ctl(Ctl::HeldElsewhere { holder: Some(h) })] if h.client == a && !h.mine),
         "{got:?}"
     );
-    assert_eq!(hub.frame(a, Frame::In(b"ok".to_vec()), 2), vec![Effect::Write(b"ok".to_vec())]);
+    assert_eq!(
+        hub.frame(a, Frame::In(b"ok".to_vec()), 2),
+        vec![Effect::Write(b"ok".to_vec())]
+    );
 }
 
 #[test]
 fn the_pty_takes_the_holders_size_and_a_viewer_never_changes_it() {
     let mut hub = Hub::new("h", sz(80, 24));
     let (a, _) = hub.connect(None, 0);
-    let eff = hub.frame(a, hello(Want::Input, WhoKind::Terminal, Some(sz(120, 40))), 0);
+    let eff = hub.frame(
+        a,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(120, 40))),
+        0,
+    );
     assert_eq!(eff, vec![Effect::Resize(sz(120, 40))]);
     let (b, _) = hub.connect(None, 0);
     // B 接上只看：仍 120×40。
-    assert!(hub.frame(b, hello(Want::View, WhoKind::Terminal, Some(sz(80, 24))), 0).is_empty());
+    assert!(hub
+        .frame(b, hello(Want::View, WhoKind::Terminal, Some(sz(80, 24))), 0)
+        .is_empty());
     assert_eq!(hub.size(), sz(120, 40));
     // 只看的那一端改尺寸也不动伪终端。
-    assert!(hub.frame(b, Frame::Ctl(Ctl::Resize { rows: 30, cols: 90 }), 0).is_empty());
+    assert!(hub
+        .frame(b, Frame::Ctl(Ctl::Resize { rows: 30, cols: 90 }), 0)
+        .is_empty());
     assert_eq!(hub.size(), sz(120, 40));
     // B 接管 ⇒ 跟 B 报的最近那个尺寸。
     let eff = hub.frame(b, Frame::Ctl(Ctl::Take), 1);
@@ -111,12 +133,20 @@ fn the_pty_takes_the_holders_size_and_a_viewer_never_changes_it() {
 fn the_newest_terminal_wanting_input_holds_and_a_backend_never_does_by_hello() {
     let mut hub = Hub::new("h", sz(80, 24));
     let (a, _) = hub.connect(None, 0);
-    hub.frame(a, hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))), 0);
+    hub.frame(
+        a,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        0,
+    );
     let (be, _) = hub.connect(None, 0);
     hub.frame(be, hello(Want::Input, WhoKind::Backend, None), 0);
     assert_eq!(hub.holder(), Some(a), "后端 hello 不抢输入");
     let (b, _) = hub.connect(None, 0);
-    hub.frame(b, hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))), 0);
+    hub.frame(
+        b,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        0,
+    );
     assert_eq!(hub.holder(), Some(b), "最新连上的真终端持有");
 }
 
@@ -124,9 +154,17 @@ fn the_newest_terminal_wanting_input_holds_and_a_backend_never_does_by_hello() {
 fn when_the_holder_leaves_input_goes_to_the_latest_other_terminal_or_nobody() {
     let mut hub = Hub::new("h", sz(80, 24));
     let (a, _) = hub.connect(None, 0);
-    hub.frame(a, hello(Want::Input, WhoKind::Terminal, Some(sz(100, 30))), 0);
+    hub.frame(
+        a,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(100, 30))),
+        0,
+    );
     let (b, _) = hub.connect(None, 0);
-    hub.frame(b, hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))), 0);
+    hub.frame(
+        b,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        0,
+    );
     assert_eq!(hub.holder(), Some(b));
     let eff = hub.gone(b);
     assert_eq!(hub.holder(), Some(a));
@@ -140,11 +178,18 @@ fn when_the_holder_leaves_input_goes_to_the_latest_other_terminal_or_nobody() {
 fn a_backend_can_take_and_release_back_to_the_terminal() {
     let mut hub = Hub::new("h", sz(80, 24));
     let (a, a_out) = hub.connect(None, 0);
-    hub.frame(a, hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))), 0);
+    hub.frame(
+        a,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        0,
+    );
     let (be, _) = hub.connect(None, 0);
     hub.frame(be, hello(Want::View, WhoKind::Backend, None), 0);
     take(&a_out);
-    assert!(hub.frame(be, Frame::Ctl(Ctl::Take), 1).is_empty(), "后端接管不改尺寸");
+    assert!(
+        hub.frame(be, Frame::Ctl(Ctl::Take), 1).is_empty(),
+        "后端接管不改尺寸"
+    );
     assert_eq!(hub.holder(), Some(be));
     let got = take(&a_out);
     assert!(
@@ -164,14 +209,19 @@ fn welcome_carries_the_whole_screen_and_who_holds() {
     let got = take(&a_out);
     let p = replay(&got, vt100::Parser::new(5, 40, 0));
     assert_eq!(grid(p.screen()), grid(hub.screen().screen()));
-    assert!(got.iter().any(|f| matches!(f, Frame::Ctl(Ctl::Holder { holder: Some(h) }) if h.mine && h.pid == Some(7))));
+    assert!(got.iter().any(
+        |f| matches!(f, Frame::Ctl(Ctl::Holder { holder: Some(h) }) if h.mine && h.pid == Some(7))
+    ));
 }
 
 #[test]
 fn a_frame_before_hello_drops_the_connection() {
     let mut hub = Hub::new("h", sz(80, 24));
     let (a, _) = hub.connect(None, 0);
-    assert_eq!(hub.frame(a, Frame::In(b"x".to_vec()), 0), vec![Effect::Drop(a)]);
+    assert_eq!(
+        hub.frame(a, Frame::In(b"x".to_vec()), 0),
+        vec![Effect::Drop(a)]
+    );
 }
 
 #[test]
@@ -181,7 +231,10 @@ fn terminal_queries_are_answered_into_the_pty_not_to_clients() {
     hub.frame(a, hello(Want::View, WhoKind::Backend, None), 0);
     take(&a_out);
     let eff = hub.pty_out(b"\x1b[c");
-    assert_eq!(eff, vec![Effect::Write(super::super::screen::DA1_REPLY.to_vec())]);
+    assert_eq!(
+        eff,
+        vec![Effect::Write(super::super::screen::DA1_REPLY.to_vec())]
+    );
 }
 
 #[test]
@@ -207,9 +260,16 @@ fn clients_lists_everyone_with_holder_and_mine() {
     take(&a_out);
     hub.frame(a, Frame::Ctl(Ctl::Clients), 300);
     let got = take(&a_out);
-    let Some(Frame::Ctl(Ctl::ClientsAre { clients })) = got.first() else { panic!("{got:?}") };
+    let Some(Frame::Ctl(Ctl::ClientsAre { clients })) = got.first() else {
+        panic!("{got:?}")
+    };
     assert_eq!(clients.len(), 2);
-    assert!(clients.iter().any(|c| c.client == a && c.holder && c.mine && c.pid == Some(5) && c.last_ms == 300));
-    assert!(clients.iter().any(|c| c.client == b && !c.holder && !c.mine));
-    assert_eq!(hub.client_pids().len(), 2);
+    assert!(clients.iter().any(|c| c.client == a
+        && c.holder
+        && c.mine
+        && c.pid == Some(5)
+        && c.last_ms == 300));
+    assert!(clients
+        .iter()
+        .any(|c| c.client == b && !c.holder && !c.mine));
 }

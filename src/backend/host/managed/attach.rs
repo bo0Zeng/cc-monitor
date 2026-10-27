@@ -110,7 +110,10 @@ pub(crate) async fn session(
 ) -> Result<Left, Said> {
     let stream = own_chan::connect(sock).await.map_err(|e| {
         Said::with_raw(
-            copy_text("beHost.attach.connectFailed", &[("path", &sock.display().to_string())]),
+            copy_text(
+                "beHost.attach.connectFailed",
+                &[("path", &sock.display().to_string())],
+            ),
             &e,
         )
     })?;
@@ -322,7 +325,13 @@ impl Client {
 
     fn ctl(&mut self, ctl: Ctl) -> Option<Left> {
         match ctl {
-            Ctl::Welcome { size, you, holder, screen, .. } => {
+            Ctl::Welcome {
+                size,
+                you,
+                holder,
+                screen,
+                ..
+            } => {
                 self.you = you;
                 self.holder = holder;
                 self.reset(size, &screen);
@@ -360,7 +369,11 @@ impl Client {
                     Over::Copy(v) => v.up,
                     _ => 0,
                 };
-                let mut v = CopyView { lines, up, found: None };
+                let mut v = CopyView {
+                    lines,
+                    up,
+                    found: None,
+                };
                 if up == usize::MAX {
                     v.up = usize::from(self.rows().saturating_sub(1));
                 }
@@ -380,7 +393,8 @@ impl Client {
 
     fn reset(&mut self, size: Size, screen: &str) {
         let title = self.parser.callbacks().title.clone();
-        self.parser = vt100::Parser::new_with_callbacks(size.rows, size.cols, 0, Hooks { title, bells: 0 });
+        self.parser =
+            vt100::Parser::new_with_callbacks(size.rows, size.cols, 0, Hooks { title, bells: 0 });
         self.parser.process(screen.as_bytes());
         if matches!(self.over, Over::None | Over::Hint) {
             self.redraw();
@@ -470,7 +484,11 @@ impl Client {
     }
 
     /// 外层敲了一块键：交回要发给托管的帧与（收了的话）怎么收的。
-    fn key(&mut self, k: &[u8], list: &(dyn Fn() -> Vec<(String, String)> + Sync)) -> (Vec<Frame>, Option<Left>) {
+    fn key(
+        &mut self,
+        k: &[u8],
+        list: &(dyn Fn() -> Vec<(String, String)> + Sync),
+    ) -> (Vec<Frame>, Option<Left>) {
         // 盖着的那几层先吃键。
         match &self.over {
             Over::Copy(_) => {
@@ -484,7 +502,10 @@ impl Client {
             Over::Choose(items) => {
                 let items = items.clone();
                 self.take_over();
-                let pick = k.first().and_then(|b| (*b as char).to_digit(10)).map(|d| d as usize);
+                let pick = k
+                    .first()
+                    .and_then(|b| (*b as char).to_digit(10))
+                    .map(|d| d as usize);
                 if let Some((id, _)) = pick.and_then(|d| items.get(d)) {
                     return (Vec::new(), Some(Left::Switch(id.clone())));
                 }
@@ -534,7 +555,11 @@ impl Client {
                 Act::CopyMode | Act::CopyModePageUp => {
                     self.over = Over::Copy(CopyView {
                         lines: Vec::new(),
-                        up: if a == Act::CopyModePageUp { usize::MAX } else { 0 },
+                        up: if a == Act::CopyModePageUp {
+                            usize::MAX
+                        } else {
+                            0
+                        },
                         found: None,
                     });
                     sends.push(Frame::Ctl(Ctl::Capture {
@@ -573,7 +598,9 @@ impl Client {
 
 /// 翻看里搜：从视口往老（或往新）找第一行含那段字的，把它摆到视口最底那一行。
 fn search(v: &mut CopyView, rows: usize, reverse: bool) {
-    let Some((text, forward)) = v.found.clone() else { return };
+    let Some((text, forward)) = v.found.clone() else {
+        return;
+    };
     let older = forward != reverse;
     let total = v.lines.len();
     let max_up = total.saturating_sub(rows);
@@ -591,19 +618,17 @@ fn search(v: &mut CopyView, rows: usize, reverse: bool) {
 
 fn strip_sgr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let mut it = s.chars().peekable();
-    while let Some(c) = it.next() {
-        if c == '\x1b' && it.peek() == Some(&'[') {
-            it.next();
-            for d in it.by_ref() {
-                if ('\x40'..='\x7e').contains(&d) {
-                    break;
-                }
-            }
-        } else {
-            out.push(c);
-        }
+    let mut rest = s;
+    while let Some(at) = rest.find("\x1b[") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 2..];
+        let end = tail
+            .char_indices()
+            .find(|(_, d)| ('\x40'..='\x7e').contains(d))
+            .map_or(tail.len(), |(i, d)| i + d.len_utf8());
+        rest = &tail[end..];
     }
+    out.push_str(rest);
     out
 }
 
@@ -637,7 +662,9 @@ pub(crate) fn stdio_outer(prefix: u8) -> Result<(Outer, crate::platform::term::R
         Outer {
             keys: krx,
             resized,
-            size: Box::new(|| crate::platform::term::size().map(|(rows, cols)| Size { rows, cols })),
+            size: Box::new(|| {
+                crate::platform::term::size().map(|(rows, cols)| Size { rows, cols })
+            }),
             out: Box::new(std::io::stdout()),
             prefix,
             vi: keys::vi_from(get("VISUAL").as_deref(), get("EDITOR").as_deref()),

@@ -1117,16 +1117,7 @@ impl Child {
     }
 
     /// 开一对伪终端、在从端起它；交回主端与子进程（我们这边的从端已关：它退了之后主端才读得到头）。
-    fn spawn_in_pty(
-        &self,
-        size: portable_pty::PtySize,
-    ) -> Result<
-        (
-            Box<dyn portable_pty::MasterPty + Send>,
-            Box<dyn portable_pty::Child + Send + Sync>,
-        ),
-        ChildFail,
-    > {
+    fn spawn_in_pty(&self, size: portable_pty::PtySize) -> Result<PtyPair, ChildFail> {
         let cmd = self.command();
         let mut b = portable_pty::CommandBuilder::new(cmd.get_program());
         b.args(cmd.get_args());
@@ -1167,6 +1158,12 @@ impl Child {
         Ok((pair.master, child))
     }
 }
+
+/// 开好的伪终端主端，连同在从端起的那个子进程。
+type PtyPair = (
+    Box<dyn portable_pty::MasterPty + Send>,
+    Box<dyn portable_pty::Child + Send + Sync>,
+);
 
 /// 托管终端的伪终端那一侧（[`Child::in_terminal`]）：改尺寸 · 挂断。
 pub(crate) struct Terminal {

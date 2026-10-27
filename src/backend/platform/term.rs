@@ -45,7 +45,10 @@ mod os {
         for fd in [1, 0, 2] {
             // SAFETY: `winsize` 在本栈上；问的是本进程的标准描述符。
             let mut w: libc::winsize = unsafe { std::mem::zeroed() };
-            if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut w) } == 0 && w.ws_row > 0 && w.ws_col > 0 {
+            if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut w) } == 0
+                && w.ws_row > 0
+                && w.ws_col > 0
+            {
                 return Some((w.ws_row, w.ws_col));
             }
         }
@@ -53,7 +56,8 @@ mod os {
     }
 
     pub(super) fn resizes() -> std::io::Result<tokio::sync::mpsc::UnboundedReceiver<()>> {
-        let mut sig = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
+        let mut sig =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         tokio::spawn(async move {
             while sig.recv().await.is_some() {
@@ -71,7 +75,10 @@ mod os {
     use super::Raw;
 
     fn unsupported() -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::Unsupported, "managed terminal client: not on this platform yet")
+        std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "managed terminal client: not on this platform yet",
+        )
     }
 
     pub(super) fn enter_raw() -> std::io::Result<Raw> {
