@@ -131,25 +131,63 @@ class NeedsBoardTest {
         }
 
     @Test
-    fun `那台推 changed needs · plan · manual ⇒ 只重问那一台；别的主题不问；会外读不出 ⇒ 数说不准、那台那一句`() =
+    fun `那台推 changed needs（带不带会话）⇒ 只重问那一台；别的主题不问；会外读不出 ⇒ 数说不准、那台那一句`() =
         runTest {
             val a = Machine(listOf(session("a1")))
             val b = Machine(listOf())
             val board = boardOf("a" to a, "b" to b)
-            for (c in listOf(Changed.Needs("a1"), Changed.Plan("/w"), Changed.Manual)) {
+            for (c in listOf(Changed.Needs("a1"), Changed.Needs())) {
                 a.pushes.emit(c)
                 settle()
             }
-            a.pushes.emit(Changed.Tasks("a1"))
-            settle()
-            assertEquals(4, a.asked("sessions-needs"))
+            for (c in listOf(Changed.Plan("/w"), Changed.Tasks("a1"))) {
+                a.pushes.emit(c)
+                settle()
+            }
+            assertEquals(3, a.asked("sessions-needs"))
             assertEquals(1, b.asked("sessions-needs"))
             b.unreadable = "账号库无法解析"
-            b.pushes.emit(Changed.Manual)
+            b.pushes.emit(Changed.Needs())
             settle()
             val ov = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
             assertTrue(ov.uncertain)
             assertEquals(listOf("gpu-01" to "账号库无法解析"), ov.unreadable.map { (h, s) -> h.label to s })
+        }
+
+    @Test
+    fun `第一次 sessions-needs 没问到 ⇒ 不用谁再叫，过一会儿自己又问；问到了就不再自己问`() =
+        runTest {
+            val a = Machine(listOf(session("a1")))
+            var failFirst = true
+            val ok = a.link.answer
+            a.link.answer = { cmd, args ->
+                if (cmd == "sessions-needs" && failFirst) {
+                    failFirst = false
+                    Reply.LinkDown
+                } else {
+                    ok(cmd, args)
+                }
+            }
+            val board = boardOf("a" to a)
+            assertEquals(1, a.asked("sessions-needs"))
+            assertNull(board.state.value["a"]?.list)
+            advanceTimeBy(NeedsBoard.RETRY_FIRST_MS + NeedsBoard.DEBOUNCE_MS + 1)
+            runCurrent()
+            assertEquals(2, a.asked("sessions-needs"))
+            assertEquals(1, board.total())
+            advanceTimeBy(60_000)
+            runCurrent()
+            assertEquals(2, a.asked("sessions-needs"))
+        }
+
+    @Test
+    fun `会话表里谁的点变了不另问：进出需手动由那台推 changed needs`() =
+        runTest {
+            val a = Machine(listOf(session("a1")))
+            boardOf("a" to a)
+            a.link.report("x", "/w", Faces.of("live-needs-you-tmux"))
+            settle()
+            assertEquals(1, a.asked("sessions-needs"))
         }
 
     @Test

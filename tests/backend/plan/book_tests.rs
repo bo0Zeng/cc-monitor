@@ -8,7 +8,8 @@ use serde_json::Value;
 
 /// 判据用的几个口（生产不用，住这里不进生产树）。
 impl Book {
-    /// [`Book::ingest_with`]，本子里没记过的「哪次进的那一步」就用这一次的 rev。
+    /// [`Book::ingest_with`]，本子里没记过的「哪次进的那一步」就用这一次的 rev；
+    /// 活会话表那一判照身份表说的讲（身份表说那条会话在等人 ⇒ 表也说在等）。
     pub(crate) fn ingest(
         &self,
         ran: Ran,
@@ -16,13 +17,35 @@ impl Book {
         who: WhoPort,
         now_ms: u64,
     ) -> Result<PlanRead, Miss> {
-        self.ingest_with(ran, dir, who, now_ms, &|_, _| None)
+        self.ingest_with(
+            ran,
+            dir,
+            who,
+            &|sid| waits_per(who, sid),
+            now_ms,
+            &|_, _| None,
+        )
     }
 
     /// 上一次读好的那一份的摘要。
     pub(crate) fn rev(&self, workspace: &str) -> Option<String> {
         self.last(workspace).map(|d| d.rev)
     }
+}
+
+/// 身份表说这条会话活着、在等人。
+pub(crate) fn waits_per(who: WhoPort, sid: &str) -> bool {
+    use crate::plan::{Live, Whose};
+    matches!(
+        who(sid),
+        Whose::Session {
+            live: Some(Live {
+                activity: Some(crate::agents::SessionActivity::NeedsYou),
+                ..
+            }),
+            ..
+        }
+    )
 }
 
 /// [`Book::ingest`]（夹具的身份表）出的那一份，线上那一形（判据按键看）。
@@ -141,7 +164,9 @@ fn reading_a_workspace_writes_nothing_in_it() {
     let ws = workspace(&d.join("ws"), &dump("/synthetic"));
     let before = snapshot(&ws);
     let b = Book::default();
-    let out = b.read(&entry, &ws, &who, 1, &|_, _| None).unwrap();
+    let out = b
+        .read(&entry, &ws, &who, &|_| false, 1, &|_, _| None)
+        .unwrap();
     assert_eq!(out.slices[0].name, "alpha");
     assert_eq!(snapshot(&ws), before);
 }
@@ -201,6 +226,7 @@ fn a_fresh_book_adopts_the_entered_rev_from_a_prior_ack() {
             ran(&dump_top_signed("/w")),
             Path::new("/w"),
             &who,
+            &|sid| waits_per(&who, sid),
             1,
             &prior,
         )

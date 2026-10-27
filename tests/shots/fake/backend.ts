@@ -106,7 +106,7 @@ export const REAL_OPS = new Set([
  * 会话外的需手动可能变了（`manual`：那台后端盯着账号库与各号的「要登录」那一笔）· 终端实时画面（`terminal-screen/<票>`：那台后端挂一个只读客户端看替身窗格、有变化推一屏）。
  * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（只交 `seen`，不推）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/manual", "changed/session_hidden", "changed/plan", "changed/machines", "changed/machine"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden", "changed/plan", "changed/machines", "changed/machine"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/") || kind.startsWith("terminal-screen/");
 
 /**

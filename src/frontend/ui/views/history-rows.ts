@@ -27,8 +27,6 @@ export interface RowHooks {
   menu(r: HistoryRow, at: HTMLElement | { x: number; y: number }): void;
   openWindow(r: HistoryRow): void;
   toggleForks(r: HistoryRow): void;
-  /** 这一会话在主窗口里此刻「需手动」的那个词（等批准 …）；不在 / 不需要 ⇒ `null`。 */
-  needs(r: HistoryRow): string | null;
 }
 
 /** 机器标签（与主窗口标签页上的同一个样子：图标 ＋ 名字）；本机不画。 */
@@ -46,23 +44,22 @@ function badge(text: string, tone?: "live" | "need"): HTMLElement {
   return b;
 }
 
-/** 状态点：只画进程在的（那台给这一行的脸）与需手动。 */
-function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
-  if (needs) return statusDot("needs-you", needs, "compact");
+/** 状态点：只画进程在的（那台给这一行的脸，需手动也在脸上）。 */
+function dotOf(r: HistoryRow): HTMLElement | null {
   if (r.face.life.is === "live") return statusDot(r.face.dot, r.face.name, "compact");
   return null;
 }
 
 /**
- * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 需手动（等批准 …）／ 在跑。
+ * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 需手动（那一行的脸说的）／ 在跑。
  * `live` ＝ 在跑也画成徽标（按项目那一形与内容头；按时间那一形的在跑由状态点说）。
  */
-export function rowBadges(r: HistoryRow, needs: string | null, live = true): HTMLElement[] {
+export function rowBadges(r: HistoryRow, live = true): HTMLElement[] {
   const badges: HTMLElement[] = [];
   if (r.agentTag) badges.push(badge(r.agentTag));
   if (r.isBg) badges.push(badge(copyText("history.row.bg")));
   if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
-  if (needs) badges.push(badge(needs, "need"));
+  if (r.face.life.is === "live" && r.face.dot === "needs-you") badges.push(badge(r.face.name, "need"));
   else if (live && r.face.life.is === "live") badges.push(badge(copyText("history.row.live"), "live"));
   return badges;
 }
@@ -119,8 +116,7 @@ export function sessionRow(
   if (r.context) el.dataset.context = "true";
   el.setAttribute("role", "option");
   el.tabIndex = -1;
-  const needs = h.needs(r);
-  const dot = dotOf(r, needs);
+  const dot = dotOf(r);
   if (dot) {
     dot.classList.add(s.hvDot);
     el.appendChild(dot);
@@ -137,7 +133,7 @@ export function sessionRow(
   t.textContent = labelOf(r);
   if (r.untitled) t.dataset.untitled = "true";
   l1.appendChild(t);
-  const badges = rowBadges(r, needs, o.compact);
+  const badges = rowBadges(r, o.compact);
   if (o.compact) l1.append(...badges);
   const tm = document.createElement("span");
   tm.className = s.hvTime;

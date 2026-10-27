@@ -104,8 +104,11 @@ use walkdir::WalkDir;
 enum WatchEvent {
     /// 这台问过一条会话的记录在不在（[`record_seen`]）。
     RecordSeen { sid: String, present: bool },
-    /// 此刻挂着待答请求的那几条（[`hear_asks`]）。
-    Asked(std::collections::BTreeSet<String>),
+    /// 需手动的铃响了一声：此刻挂着待答请求的那几条 · 哪条会话（`None` ＝ 整份；[`hear_asks`]）。
+    Asked {
+        now: std::collections::BTreeSet<String>,
+        moved: Option<String>,
+    },
     /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
     Notify(DebounceEventResult),
     /// **P3：tmux server 的 pidfd 醒了** —— 那个 server 进程实例已退出 ⇒ 等价于零会话。
@@ -1360,7 +1363,7 @@ fn watch_loop(
                 {
                     sink.send(Frame::changed(Changed::Accounts {}));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
-                    crate::accounts::sign_in::ring_manual();
+                    crate::history::needs_changed::ring();
                 }
                 // 哪个号记「MCP 要登录」的那份文件翻了（那一家连它碰到要登录 · 登完自己删掉那一条）⇒ 需手动清单可能变了。
                 if needs_login_touched(
@@ -1369,7 +1372,7 @@ fn watch_loop(
                     &agent_home,
                     &crate::agents::mcp_needs_login_files(),
                 ) {
-                    crate::accounts::sign_in::ring_manual();
+                    crate::history::needs_changed::ring();
                 }
                 // 配置文件动了 ⇒ 一帧 `changed {profiles}`（批内合并）。
                 if let Some(ear) = profiles_ear.as_mut() {
@@ -1614,14 +1617,13 @@ fn watch_loop(
             WatchEvent::Relay(f) => sink.fan(f),
             WatchEvent::Arrive { by, since, tell } => sink.arrivals.expect(by, since, tell),
             WatchEvent::RecordSeen { sid, present } => sink.record_seen(&sid, present),
-            WatchEvent::Asked(now) => {
-                asked_now(now, &mut state, &mut sink);
-                dress_run_needs(
-                    &mut state,
-                    &mut sink,
-                    &crate::history::needs_changed::pending_of,
-                );
-            }
+            WatchEvent::Asked { now, moved } => needs_rang(
+                now,
+                moved,
+                &mut state,
+                &mut sink,
+                &crate::history::needs_changed::pending_of,
+            ),
             WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
@@ -1646,7 +1648,7 @@ fn watch_loop(
                     state.reload_annotations(annotations_table(), &mut sink);
                     sink.send(Frame::changed(Changed::Accounts {}));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
-                    crate::accounts::sign_in::ring_manual();
+                    crate::history::needs_changed::ring();
                 }
                 state.table_dirty = true;
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
@@ -3512,6 +3514,20 @@ fn asked_now(
     }
 }
 
+/// 需手动的铃响了一声（[`hear_asks`] 交来：此刻挂着请求的那几条 · 哪条会话，`None` ＝ 整份）：改点 · 给运行表配 needs，
+/// 再从出方向推一帧 `changed {needs, key?}`（不可丢：丢了记主题与 key、重报时补发）。
+fn needs_rang(
+    now: std::collections::BTreeSet<String>,
+    moved: Option<String>,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    pending: &dyn Fn(&str) -> Vec<crate::agents::asks::Ask>,
+) {
+    asked_now(now, state, sink);
+    dress_run_needs(state, sink, pending);
+    sink.send(Frame::changed(Changed::Needs { key: moved }));
+}
+
 /// 需手动变了 ⇒ 有运行表的每条会话照此刻挂着的请求（`pending`：按会话读，登记表交的那一个读法）给运行表那几项配 needs，
 /// 配的变了的那几条各发一帧运行表。
 fn dress_run_needs(
@@ -3542,7 +3558,7 @@ fn publish_table(agent_home: &Path, state: &mut ReaderState) {
     crate::history::live_table::publish(table);
 }
 
-/// 需手动那几格每变一次（`history::needs_changed::moved` 那一声；漏听了几声也照样）⇒ 把此刻挂着请求的那几条交给 watcher（[`WatchEvent::Asked`]）。
+/// 需手动的铃每响一声（`history::needs_changed` 那一个；漏听了几声 ⇒ 当整份变了）⇒ 把此刻挂着请求的那几条与哪条会话交给 watcher（[`WatchEvent::Asked`]）。
 /// 那一声的发端没了 · watcher 已退 ⇒ 这条线程跟着收。
 fn hear_asks(tx: std::sync::mpsc::Sender<WatchEvent>) {
     let mut rx = crate::history::needs_changed::moved_rx();
@@ -3550,13 +3566,17 @@ fn hear_asks(tx: std::sync::mpsc::Sender<WatchEvent>) {
         .name("asks-moved".into())
         .spawn(move || loop {
             use tokio::sync::broadcast::error::RecvError;
-            if matches!(rx.blocking_recv(), Err(RecvError::Closed)) {
-                break;
-            }
+            let moved = match rx.blocking_recv() {
+                Ok(m) => m,
+                // 漏听了几声：不知道是哪几条 ⇒ 当整份变了。
+                Err(RecvError::Lagged(_)) => None,
+                Err(RecvError::Closed) => break,
+            };
             if tx
-                .send(WatchEvent::Asked(
-                    crate::history::needs_changed::asked_sids(),
-                ))
+                .send(WatchEvent::Asked {
+                    now: crate::history::needs_changed::asked_sids(),
+                    moved,
+                })
                 .is_err()
             {
                 break;

@@ -109,3 +109,54 @@ fn of_rows(rows: Vec<LiveRow>, asked: &[&str]) -> LiveTable {
         reconnectable: Default::default(),
     }
 }
+
+/// 发布了的那一份里收到的 `needs_changed` 那一声（只认 `sids` 里的，别的判据也在敲）。
+fn heard_after(
+    rx: &mut tokio::sync::broadcast::Receiver<Option<String>>,
+    sids: &[&str],
+) -> BTreeSet<String> {
+    let mut got = BTreeSet::new();
+    while let Ok(m) = rx.try_recv() {
+        if let Some(s) = m.filter(|s| sids.contains(&s.as_str())) {
+            got.insert(s);
+        }
+    }
+    got
+}
+
+#[test]
+fn a_pidfile_that_stops_waiting_rings_the_needs_bell_when_the_table_is_published() {
+    let home = std::env::temp_dir().join(format!("ccm-live-bell-{}", std::process::id()));
+    let mine = ["bell-waits", "bell-works", "bell-leaves"];
+    let table = |rows: Vec<LiveRow>| LiveTable {
+        home: home.clone(),
+        ..of_rows(rows, &[])
+    };
+    publish(table(vec![
+        row(1, "bell-waits", Some(A::NeedsYou), false),
+        row(2, "bell-works", Some(A::Working), false),
+        row(3, "bell-leaves", Some(A::Working), false),
+    ]));
+    let mut rx = crate::history::needs_changed::changes().subscribe();
+    publish(table(vec![
+        row(1, "bell-waits", Some(A::Working), false),
+        row(2, "bell-works", Some(A::Working), false),
+    ]));
+    assert_eq!(
+        heard_after(&mut rx, &mine),
+        ["bell-leaves", "bell-waits"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        "从等人写成在跑 ⇒ 响；离开「活」⇒ 响；一直在跑 ⇒ 不响"
+    );
+    publish(table(vec![
+        row(1, "bell-waits", Some(A::Working), false),
+        row(2, "bell-works", Some(A::NeedsYou), false),
+    ]));
+    assert_eq!(
+        heard_after(&mut rx, &mine),
+        ["bell-works".to_string()].into_iter().collect(),
+        "从在跑写成等人 ⇒ 响"
+    );
+}

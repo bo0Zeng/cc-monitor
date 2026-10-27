@@ -124,7 +124,12 @@ fn need(kind: &str, key: String, block: Option<String>, cell: Option<String>) ->
 }
 
 /// 一片（成品）的要你看。`entered` ＝ 顶层全签收那一次的 rev（不知道 ⇒ 不出 `top` 那一条）。
-pub(crate) fn of_slice(sl: &PlanSlice, entered: Option<&str>) -> Vec<PlanNeed> {
+/// `waiting(sid)` ＝ 活会话表说这条会话此刻在等人（`LiveTable::waiting`，与 `sessions-needs` 同一判）：`ask` 那一种只问它。
+pub(crate) fn of_slice(
+    sl: &PlanSlice,
+    entered: Option<&str>,
+    waiting: &dyn Fn(&str) -> bool,
+) -> Vec<PlanNeed> {
     let mut out = Vec::new();
     if let (true, Some(rev)) = (top_done(sl), entered) {
         let root = block(sl, TOP_BLOCK).and_then(root_of);
@@ -152,8 +157,16 @@ pub(crate) fn of_slice(sl: &PlanSlice, entered: Option<&str>) -> Vec<PlanNeed> {
         let Some(o) = &b.owner else { continue };
         // 认不出 ⇒ 说不清停没停、问没问。
         let Some(sid) = &o.sid else { continue };
-        let now = owner_now(o);
-        if now == OwnerNow::Stopped {
+        if waiting(sid) {
+            let mut n = need(
+                ASK,
+                format!("ask:{}@{}", b.id, o.id),
+                Some(b.id.clone()),
+                b.at.clone().or_else(|| root_of(b)),
+            );
+            n.sid = Some(sid.clone());
+            out.push(n);
+        } else if owner_now(o) == OwnerNow::Stopped {
             if !block_finished(sl, b) {
                 let mut n = need(
                     "ended",
@@ -164,15 +177,6 @@ pub(crate) fn of_slice(sl: &PlanSlice, entered: Option<&str>) -> Vec<PlanNeed> {
                 n.sid = Some(sid.clone());
                 out.push(n);
             }
-        } else if now == OwnerNow::Live(Some(crate::agents::SessionActivity::NeedsYou)) {
-            let mut n = need(
-                ASK,
-                format!("ask:{}@{}", b.id, o.id),
-                Some(b.id.clone()),
-                b.at.clone().or_else(|| root_of(b)),
-            );
-            n.sid = Some(sid.clone());
-            out.push(n);
         }
     }
     out

@@ -134,9 +134,8 @@
 | `rotation_strategies` | 是 | — | — | 带（≤ 8192 B） | `rotation-strategies` |
 | `plan` | 是 | 带 | 带 | 带（≤ 64 B） | `plan-read` |
 | `tasks` | 否 | 带 | — | 带（≤ 8192 B） | `tasks-list` |
-| `needs` | 是 | 带 | — | — | `sessions-needs` |
+| `needs` | 否 | 带 | — | — | `sessions-needs` |
 | `login` | 否 | 带 | — | 带（≤ 8192 B） | `sessions-needs` |
-| `manual` | 是 | — | — | — | `sessions-needs` |
 | `machines` | 是 | — | — | — | `machines-read` |
 | `machine` | 是 | 带 | — | 带（≤ 8192 B） | `machine-read` |
 | `session_hidden` | 否 | 带 | — | 带（≤ 1024 B） | `history-list` |
@@ -145,10 +144,10 @@
 | `groups` | 否 | — | — | — | `groups-read` |
 <!-- topic-table:end -->
 
-`key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
+`key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：需手动可能变了，进程里只一个铃（`history/needs_changed.rs`），从 watcher 的出方向发、不可丢。带 `key` ＝ 那个会话（挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 那台说进出等人 · 离开「活」），重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号清单动了 · 某个号记「MCP 要登录」的那份文件翻了 · 一份登录作业收了 · 续令牌没成）或计划要人看的数变了，重问 `sessions-needs`（会外那一截在它的整份里）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
 `body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
-`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `sessions-needs`（会外那一截在它的整份里）。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。`machine`：这一端连的某台远端此刻的状态变了（接常驻那一轮 · 部署走到哪一步 · 「连接这台」开关），`key` 是那台的名字，`body` 是那台的状态成品（同 `machine-read` 里那一格）；本机常驻后端才推。
+`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。`machine`：这一端连的某台远端此刻的状态变了（接常驻那一轮 · 部署走到哪一步 · 「连接这台」开关），`key` 是那台的名字，`body` 是那台的状态成品（同 `machine-read` 里那一格）；本机常驻后端才推。
 `session_hidden`：这台某个活会话隐不隐藏变了（注解 · 这台偏好 `childTab` / `bgTab` · 会话血缘动了之后重判的），`key` 是会话 id，`body` 是 `{hidden}`（那一格 `{by, said}`，不隐藏 ⇒ `null`；判定只住后端一处，`session_added` · `history-list` 每行 · `sessions-needs` 每行带的是同一格），收到就换、不重读整份清单；万一没收到，重问 `history-list {sid}` 那一行。
 `files_dir`：这台某个正被浏览的目录（名单由 `files-browse` 交）里有了动静，`key` 是那个目录（UTF-8 ⇒ 路径本身；不是 ⇒ `\0` ＋ 十六进制小写）；正开着那个目录的那一屏带着手上的记号（`held`）重问 `files-ls`，回包只带变了的那几行。
 `history_list`：这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则）；同一个会话在这台答下一份清单之前只说一次（记录每长一行不是每行一帧），连着几下没取走也只一帧。正看着清单的那一屏带着手上的记号（`held`）重问 `history-list`，回包只带变了的那几行；看的是远端那台的，本机后端带 `fresh` 先去同步副本。

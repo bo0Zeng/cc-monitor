@@ -110,10 +110,6 @@ pub struct TapRx {
     nodes: Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
-    /// 某个会话挂着的待答请求变了的通道（挂上 · 撤掉 · 答掉，推一帧 `changed {needs, key: sid}`）；`None` ＝ 不订。
-    needs: Option<tokio::sync::broadcast::Receiver<String>>,
-    /// 会话外的需手动清单可能变了的铃（推一帧 `changed {manual}`）；`None` ＝ 不订。
-    manual: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端的机器表变了的铃（推一帧 `changed {machines}`）；`None` ＝ 不订。
     machines: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端连的某台远端的状态成品变了的通道（推一帧 `changed {machine, key: 那台, body: 成品}`）；`None` ＝ 不订。
@@ -207,11 +203,6 @@ impl TapSource for TapRx {
                     Some(None) => {}
                     None => self.plan = None,
                 },
-                moved = bell_moved(&mut self.manual) => match moved {
-                    // 落后丢了几件也照推一帧（客户端反正整份重问）。
-                    Some(()) => self.out.push_back(Frame::changed(Changed::Manual {})),
-                    None => self.manual = None,
-                },
                 moved = bell_moved(&mut self.machines) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
                     Some(()) => self.out.push_back(Frame::changed(Changed::Machines {})),
@@ -225,12 +216,6 @@ impl TapSource for TapRx {
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.machine = None,
-                },
-                moved = item_moved(&mut self.needs) => match moved {
-                    Some(Some(sid)) => self.out.push_back(Frame::changed(Changed::Needs { key: sid })),
-                    // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
-                    Some(None) => {}
-                    None => self.needs = None,
                 },
                 moved = item_moved(&mut self.dirs) => match moved {
                     Some(Some(dir)) => self.out.push_back(Frame::changed(Changed::FilesDir { key: dir })),
@@ -258,8 +243,6 @@ pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
     }
     rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
-    rx.needs = Some(crate::history::needs_changed::changes().subscribe());
-    rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
     rx.machines = Some(crate::control::machines::changes().subscribe());
     rx.machine = Some(crate::control::machine_state::changes().subscribe());
     rx.dirs = Some(crate::stream::inbound::files_face::dir_changes());
@@ -292,7 +275,7 @@ async fn latest_moved(r: &mut Option<tokio::sync::watch::Receiver<u64>>) -> bool
     }
 }
 
-/// 只打铃不带东西的那几条（会话外的需手动清单 · 这一端的机器表）变了 ⇒ `Some(())`（落后丢了几件也算变了）；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+/// 只打铃不带东西的那几条（这一端的机器表）变了 ⇒ `Some(())`（落后丢了几件也算变了）；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
 async fn bell_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Option<()> {
     use tokio::sync::broadcast::error::RecvError;
     match r {
@@ -323,10 +306,6 @@ async fn node_moved(
             if n.source == Source::Strategies {
                 out.push(Changed::RotationStrategies { body: None });
             }
-            // 续令牌没成：「需重新登录」那一项可能进了需手动清单。
-            if n.source == Source::Login {
-                out.push(Changed::Manual {});
-            }
             if let Some(sid) = n.sid {
                 out.push(Changed::Rotation { key: sid });
             }
@@ -350,8 +329,6 @@ pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
         out: std::collections::VecDeque::new(),
         nodes: None,
         plan: None,
-        needs: None,
-        manual: None,
         machines: None,
         machine: None,
         dirs: None,
