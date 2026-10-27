@@ -22942,6 +22942,30 @@
       "zh": "发送中",
       "args": []
     },
+    "mobChat.delivery.queued": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已到 · 排第 {place}",
+      "args": ["place"]
+    },
+    "mobChat.delivery.arrived": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已到",
+      "args": []
+    },
+    "mobChat.delivery.inAgent": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已送进",
+      "args": []
+    },
+    "mobChat.outbox.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "撤回",
+      "args": []
+    },
     "mobChat.history.retry": {
       "kind": "body",
       "role": "说明",

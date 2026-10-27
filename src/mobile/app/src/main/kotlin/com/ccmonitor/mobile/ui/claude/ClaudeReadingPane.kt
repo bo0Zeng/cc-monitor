@@ -399,10 +399,10 @@ private fun UserTextCard(
     ) {
         Column {
             Text(unit.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-            // 投递状态贴在这条消息下面（字照文案表 `terminal.input.*` 那一族）：只有在送 · 送达未知 · 没送到才有。
+            // 投递状态贴在这条消息下面：只有在送 · 排着（已到 · 排第 N · 已送进）· 送达未知 · 没送到才有。
             val line = unit.deliveryText
             when (unit.delivery) {
-                DeliveryState.SENDING, DeliveryState.UNSURE ->
+                DeliveryState.SENDING, DeliveryState.QUEUED, DeliveryState.UNSURE ->
                     line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 DeliveryState.FAILED ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
