@@ -332,7 +332,7 @@ class Bus:
         # 台架写的就是新版信封 ⇒ 标成「已迁过」(不然第一次跑 cc-bus recv / 钩子会把它当旧收件箱挪进存档)。
         (self.home / "state" / "envelope-2").touch()
         self.inbox = self.home / "inbox" / "tester.jsonl"
-        # 「我是哪条会话」只问后端(`cc-whoami` → `ccm -- --session-self`):每份台架带一个后端替身,答 `W24C_SELF`。
+        # 「我是哪条会话」只问后端(`cc-bus whoami` → `ccm -- --session-self`):每份台架带一个后端替身,答 `W24C_SELF`。
         self.ccm = self.home / "ccm-shim"
         self.ccm.write_text(SHIM_CCM, encoding="utf-8")
         self.ccm.chmod(0o755)
