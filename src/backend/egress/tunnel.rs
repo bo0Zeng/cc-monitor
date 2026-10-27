@@ -83,7 +83,7 @@ fn resolve_here(host: &str, port: u16) -> io::Result<IpAddr> {
         .to_socket_addrs()?
         .next()
         .map(|a| a.ip())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("no address for {h}")))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("{h}: no address")))
 }
 
 fn read_exact(tcp: &mut TcpStream, n: usize) -> io::Result<Vec<u8>> {

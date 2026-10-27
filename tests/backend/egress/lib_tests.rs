@@ -259,13 +259,13 @@ fn a_loopback_destination_never_goes_through_the_proxy() {
 fn the_no_proxy_list_sends_matching_destinations_direct() {
     let e = Egress::via(
         "http://127.0.0.1:3128",
-        "corp.example, .lan 10.0.0.0/8,192.0.2.9,[2001:db8::1]",
+        "corp.example, .lan 198.51.100.0/24,192.0.2.9,[2001:db8::1]",
     );
     for h in [
         "corp.example",
         "git.corp.example",
         "nas.lan",
-        "10.1.2.3",
+        "198.51.100.77",
         "192.0.2.9",
         "2001:db8::1",
         "[2001:db8::1]",
@@ -277,7 +277,7 @@ fn the_no_proxy_list_sends_matching_destinations_direct() {
         "example",
         "notcorp.example",
         "lanx",
-        "11.0.0.1",
+        "198.51.101.1",
         "192.0.2.10",
         "api.anthropic.com",
     ] {

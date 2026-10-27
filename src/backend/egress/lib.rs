@@ -121,7 +121,7 @@ fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream
     if addrs.is_empty() {
         return Err(Failed {
             stage: Stage::Resolve,
-            io: io::Error::new(io::ErrorKind::NotFound, format!("no address for {h}")),
+            io: io::Error::new(io::ErrorKind::NotFound, format!("{h}: no address")),
         });
     }
     let tcp = TcpStream::connect(&addrs[..]).map_err(|io| Failed {

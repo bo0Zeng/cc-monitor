@@ -73,7 +73,7 @@ pub(crate) enum Skip {
     All,
     /// 一个名字：它自己与它底下的子域（`example.com` 与 `.example.com` 同义）。
     Domain(String),
-    /// 一个地址或一段地址（`10.0.0.0/8`；不带 `/` ⇒ 只那一个）。
+    /// 一个地址或一段地址（`198.51.100.0/24`；不带 `/` ⇒ 只那一个）。
     Net(IpAddr, u8),
 }
 

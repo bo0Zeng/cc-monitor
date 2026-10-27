@@ -6,6 +6,9 @@
 /// 开 TCP 的写法（std 与 tokio 两家）。
 const OPENERS: &[&str] = &["TcpStream::connect", "TcpSocket::new"];
 
+/// 出网口住的那棵（按路径段比，整段相等）。
+const HOME: [&str; 3] = ["src", "backend", "egress"];
+
 /// 后端源码树 ＋ 中转 crate 里每一份 `.rs` 的生产段：`(仓根相对的路径, 文本)`。
 fn production() -> Vec<(String, String)> {
     let repo = guard_core::addr::repo_root();
@@ -50,7 +53,7 @@ fn only_the_egress_port_opens_outbound_tcp() {
     let mut home = 0;
     for (rel, text) in &corpus {
         for (o, n) in openers_in(text) {
-            if rel.starts_with("src/backend/egress/") {
+            if rel.split('/').take(3).eq(HOME) {
                 home += n;
             } else {
                 stray.push(format!("{rel}: {o} ×{n}"));
