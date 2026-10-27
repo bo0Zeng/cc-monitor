@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "SCROLLBACK",
+        "**行数**不是体量：托管终端（`host/managed/screen.rs`）的回滚留几行，与终端页往回看的上限 `MAX_SCROLLBACK` 对齐。",
+    ),
+    (
+        "LAST_WRITE_MS",
+        "**毫秒**不是体量：托管终端收尾时等各端把 `ended` 写完的一次宽限（`host/managed/run.rs`）。",
+    ),
+    (
         "MASK_READ",
         "**访问掩码的位**不是体量：`creds-core/src/perm.rs` 一条 ACE 里读得到内容的那几位。",
     ),
@@ -520,6 +528,24 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     // 预览 · 看图那几道门（后端在 `files-ls` 每行上判好给出，两端照画）。超了：**不读**，摆出后端写好的那一句；不截一半。
+    (
+        "src/backend/host/managed/home.rs",
+        "FACTS_CAP",
+        "托管终端的事实文件 `hosts/<id>/facts.json` 读多少（几百字节的东西）",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/host/managed/serve.rs",
+        "QUEUE_CAP",
+        "托管口给一端排着没写出去的帧（字节）：那一端不读时攒到多少",
+        "降级+说清",
+    ),
+    (
+        "src/backend/host/managed/wire.rs",
+        "MAX_FRAME",
+        "托管口一帧最长（种 ＋ 载荷，字节）",
+        "硬报错",
+    ),
     (
         "src/backend/files/class.rs",
         "PREVIEW_TEXT_MAX_BYTES",
