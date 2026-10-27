@@ -1517,7 +1517,9 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
     let lines = [
         r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-09T01:30:01.000Z","message":{"role":"user","content":"修一下登录"}}"#,
         r#"{"type":"user","uuid":"u-2","timestamp":"2026-10-09T01:30:02.000Z","message":{"role":"user","content":"第二句不算"}}"#,
-        r#"{"type":"custom-title","customTitle":"登录修复","sessionId":"sess-1"}"#,
+        r#"{"type":"ai-title","aiTitle":"登录修复","sessionId":"sess-1"}"#,
+        // 人在 Claude 里 `/rename` 写的那一条不改名：改名只认 monitor 那一格。
+        r#"{"type":"custom-title","customTitle":"Claude 里改的","sessionId":"sess-1"}"#,
     ];
     std::fs::write(&path, lines.map(|l| format!("{l}\n")).concat()).unwrap();
     process_jsonl(&path, &mut state, &mut sink);

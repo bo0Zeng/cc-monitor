@@ -184,6 +184,14 @@ impl LiveTable {
         Some(doing_of(heard, self.asked.contains(sid)))
     }
 
+    /// 这一条此刻那一态从何时起（epoch ms，那台的钟）：几个进程都说了 ⇒ 最晚的那个；不活 · 都没说 ⇒ `None`。
+    /// 会话输入队的投递判「送出之后那一轮起来过没有」读它。
+    pub(crate) fn since_of(&self, sid: &str) -> Option<u64> {
+        self.live_rows(sid)
+            .filter_map(|r| r.fact.status_since_ms)
+            .max()
+    }
+
     /// **这台上需手动的会话**：活着、在等人的（那台说在等 ∪ 有请求挂着），按会话 id 排。
     pub(crate) fn needs(&self) -> Vec<String> {
         self.doing()
@@ -328,6 +336,18 @@ pub(crate) fn publish(mut table: LiveTable) {
     for sid in needs_moved(&prev, &next) {
         super::needs_changed::moved(&sid);
     }
+    if let Some(ring) = LISTENER.get() {
+        ring();
+    }
+}
+
+/// 每发布一份就叫一声的那一个（一个进程一个；表不认是谁在听）。
+static LISTENER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// 登记「每发布一份叫我一声」（会话输入队的投递线程起来时登记，`faces::session_queue_deliver::start`）。
+/// 已有一个 ⇒ 不换，回 `false`。
+pub(crate) fn on_publish(ring: fn()) -> bool {
+    LISTENER.set(ring).is_ok()
 }
 
 /// 两份之间需手动那一判动了的会话：在等人的进出 ∪ 离开「活」的。

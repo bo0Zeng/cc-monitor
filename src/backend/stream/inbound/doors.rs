@@ -126,6 +126,12 @@ pub fn watch_account_mcp(own: &crate::platform::fs::Own) {
     crate::accounts::manage::mcp_share_watch::start(&LocalFiles, own.clone());
 }
 
+/// 常驻后端里起会话输入队的投递线程（`faces::session_queue_deliver`；终端没了恢复那一支预标信任经 [`LocalFiles`]，与帧命令同一扇门）。
+/// 只由 `main.rs` 在占着常驻的那一个进程里调：一台只有一个投递的，同一条不会被两个进程各送一次。
+pub fn deliver_queues(own: &crate::platform::fs::Own) {
+    crate::faces::session_queue_deliver::start(own.clone(), &LocalFiles);
+}
+
 /// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调
 /// （`main.rs` 接中转那一刻，与 `rotation.json` 换形写回同一处、同一个写的人）。
 pub fn fill_account_colors() {

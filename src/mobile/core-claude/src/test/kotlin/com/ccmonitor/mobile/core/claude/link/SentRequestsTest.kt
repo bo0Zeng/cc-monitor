@@ -56,6 +56,7 @@ class SentRequestsTest {
             HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY)), HistoryList.args(ListAsk(), "e.1.2")),
             HistorySearch.COMMAND to listOf(HistorySearch.args("q")),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
+            HistoryRun.COMMAND to listOf(HistoryRun.after("/p/s.jsonl", "r", 0L), HistoryRun.tail("/p/s.jsonl", "r"), HistoryRun.before("/p/s.jsonl", "r", 30L)),
             HistoryTail.COMMAND to listOf(HistoryTail.args("/p/s.jsonl", 50), HistoryTail.args("/p/s.jsonl", 50, Held("/p/s.jsonl", 3L, 30L, "m"))),
             Turns.COMMAND to listOf(Turns.cover("/p/s.jsonl", 30L), Turns.from("/p/s.jsonl", 30L)),
             Kill.COMMAND to listOf(Kill.args("demo")),

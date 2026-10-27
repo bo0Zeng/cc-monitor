@@ -144,9 +144,13 @@ class DrawerTest {
     @Test
     fun theEntrancesTheDrawerReplacedAreGone() {
         val route = codeOnly(source("ChatRoute.kt"))
-        // 每一项头一个字是哪个键：两向相等（多一项 · 少一项都红）。
-        val items = Regex("DropdownMenuItem\\([\\s\\S]*?copyText\\(\"([^\"]+)\"").findAll(route).map { it.groupValues[1] }.toList()
-        assertEquals("聊天屏 ⋯ 菜单只放对这条会话本身做的事：在终端里打开 · 轮换", listOf("sessionHead.act.openTerm", "mobChat.more.rotation"), items)
+        // 每一项头一个字是哪个键（agent 那一项照抄那台写好的那一句，记作 agents）：两向相等（多一项 · 少一项都红）。
+        val items =
+            Regex("DropdownMenuItem\\([\\s\\S]*?(?:copyText\\(\"([^\"]+)\"|Text\\(a\\.text\\))")
+                .findAll(route)
+                .map { it.groupValues[1].ifEmpty { "agents" } }
+                .toList()
+        assertEquals("聊天屏 ⋯ 菜单只放对这条会话本身做的事：在终端里打开 · agent · 轮换", listOf("sessionHead.act.openTerm", "agents", "mobChat.more.rotation"), items)
         assertEquals(items.size, Regex("DropdownMenuItem\\(").findAll(route).count())
         for (gone in listOf("onOpenConversations", "onNewConversation", "onSwitchHost", "onOpenSettings")) {
             assertFalse("聊天屏不再有 $gone 这个入口", route.contains(gone))

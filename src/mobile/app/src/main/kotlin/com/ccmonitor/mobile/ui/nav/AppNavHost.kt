@@ -31,6 +31,9 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
+import com.ccmonitor.mobile.ui.agents.AgentScreen
+import com.ccmonitor.mobile.ui.agents.AgentStack
+import com.ccmonitor.mobile.ui.agents.AgentsScreen
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatRoute
 import com.ccmonitor.mobile.ui.chat.chatKey
@@ -126,6 +129,7 @@ private fun AppNavGraph(
             }
         }
         rotationRoutes(nav, tabManager)
+        agentRoutes(nav)
         sessionRoute(nav, tabManager)
         composable(Screen.Identities.route) { IdentityScreen(onBack = { nav.popBackStack() }) }
         composable(Screen.Keys.route) { KeysEditorScreen(onBack = { nav.popBackStack() }) }
@@ -423,6 +427,32 @@ private fun NavGraphBuilder.rotationRoutes(
     }
 }
 
+/** agent 列表 → agent 屏 → 它派出的（推屏；栈里已有同一个运行 ⇒ 退回到它，见 [AgentStack]）。 */
+private fun NavGraphBuilder.agentRoutes(nav: NavHostController) {
+    composable(Screen.Agents.route) { entry ->
+        val hostId = entry.arguments?.getString("hostId").orEmpty()
+        val sid = entry.arguments?.getString("sid").orEmpty()
+        AgentsScreen(hostId, sid, onBack = { nav.popBackStack() }, onOpen = { nav.openAgent(hostId, sid, it.run) })
+    }
+    composable(Screen.Agent.route) { entry ->
+        val hostId = entry.arguments?.getString("hostId").orEmpty()
+        val sid = entry.arguments?.getString("sid").orEmpty()
+        val run = entry.arguments?.getString(Screen.Agent.ARG_RUN).orEmpty()
+        AgentScreen(hostId, sid, run, onBack = { nav.popBackStack() }, onOpen = { nav.openAgent(hostId, sid, it.run) })
+    }
+}
+
+/** 进一个 agent 屏：就在顶上 ⇒ 不动；返回栈里已有那一屏（路由连参数对上）⇒ 退回到它；没有 ⇒ 压一层。 */
+private fun NavHostController.openAgent(
+    hostId: String,
+    sid: String,
+    run: String,
+) {
+    val top = currentBackStackEntry?.takeIf { it.destination.route == Screen.Agent.route }?.arguments
+    val here = top?.takeIf { it.getString("hostId") == hostId && it.getString("sid") == sid }?.getString(Screen.Agent.ARG_RUN)
+    AgentStack.open(here, run, popTo = { popBackStack(Screen.Agent.of(hostId, sid, it), inclusive = false) }, push = { navigate(Screen.Agent.of(hostId, sid, it)) })
+}
+
 /**
  * 设置那一组屏的当前那台：上次那台（核对过还在主机表里）；没有 ⇒ `null`。还在查 ⇒ 不画。
  * 设置 · 账号 · 轮换（设置页那一形）三处同一份。
@@ -516,6 +546,7 @@ private fun NavGraphBuilder.chatRoutes(
             tool = entry.arguments?.getString(Screen.Chat.ARG_TOOL),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
+            onOpenAgents = { s -> nav.navigate(Screen.Agents.of(hostId, s)) },
             onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
             onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) },
         )
