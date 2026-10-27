@@ -104,6 +104,11 @@ async fn main() {
     topic_hook::install(topic_body::body_now);
     // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那一处写根。
     dial::host();
+    // 出网口装上这台的出网描述：照本后端起来那一刻的环境（`egress::PROXY_NAMES` · `NO_PROXY_NAMES` 那几个名字）。
+    // 中转去上游 · 拨 SSH 都经它；每台用自己的，不跨机器传。
+    if egress::install(egress::Egress::from_env(&|k| std::env::var(k).ok())).is_err() {
+        tracing::error!("egress: 出网口那一份已经被别人装过了 —— 本后端起来那一刻的出网设置不在用");
+    }
     // 拨号层要的「这一端的机器表怎么读」：起来那一下装一次（之后各台的常驻流 · 问那台 · 传输 · 部署都按名字查它）。
     faces::install_machines();
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**

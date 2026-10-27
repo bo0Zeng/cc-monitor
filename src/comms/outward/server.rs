@@ -25,7 +25,7 @@ use super::door;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
-use super::upstream::{self, Base, Conn};
+use super::upstream::{self, Base, Conn, Open};
 use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
 use std::io::{BufReader, Read, Write};
 use std::net::TcpStream;
@@ -201,6 +201,9 @@ pub struct Relay {
     downstream_deadline: std::time::Duration,
     /// 上游那条 socket 的读写期限。同上，由后端交下来。
     upstream_deadline: std::time::Duration,
+    /// 开上游那条 TCP 的那一口（主机 · 端口 · 期限 ⇒ 一条 TCP）。**由后端交下来**：后端交的是它的出网口
+    /// （直连或经代理，代理永远在最外层）；中转自己不开 TCP，也不知道这一跳经没经代理。
+    open: Arc<Open>,
 }
 
 impl Relay {
@@ -215,6 +218,7 @@ impl Relay {
         dest: Arc<dyn Destinations>,
         door: door::Keys,
         tee: TeeSink,
+        open: Arc<Open>,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
     ) -> Self {
@@ -226,6 +230,7 @@ impl Relay {
             tee,
             downstream_deadline,
             upstream_deadline,
+            open,
         }
     }
 }
@@ -534,8 +539,9 @@ fn send_upstream(
     rest: &str,
     body: &[u8],
     deadline: std::time::Duration,
+    open: &Open,
 ) -> Answered {
-    let mut up = match upstream::connect(base, deadline) {
+    let mut up = match upstream::connect(base, deadline, open) {
         Ok(c) => c,
         Err(e) => {
             let who = Who::of(base);
@@ -661,6 +667,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             &r.rest,
             &body,
             relay.upstream_deadline,
+            &*relay.open,
             &mut tag,
         ));
     });
@@ -741,6 +748,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                     &r.rest,
                     &body,
                     relay.upstream_deadline,
+                    &*relay.open,
                     &mut next_tag,
                 ));
             });
@@ -795,6 +803,7 @@ fn dispatch(
     rest: &str,
     body: &[u8],
     deadline: std::time::Duration,
+    open: &Open,
     tag_out: &mut String,
 ) -> Answered {
     match d {
@@ -818,7 +827,7 @@ fn dispatch(
         // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
         Destination::Passthrough { upstream, tag } => {
             tag.clone_into(tag_out);
-            send_upstream(upstream, None, head, rest, body, deadline)
+            send_upstream(upstream, None, head, rest, body, deadline, open)
         }
         // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
         // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
@@ -837,6 +846,7 @@ fn dispatch(
                 rest,
                 swapped.unwrap_or(body),
                 deadline,
+                open,
             )
         }
     }

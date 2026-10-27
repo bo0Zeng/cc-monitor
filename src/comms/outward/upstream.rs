@@ -129,17 +129,14 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
     Arc::new(cfg)
 }
 
-/// 期限的值由后端交进来（`UPSTREAM_DEADLINE` 住 `relay/listen.rs`）：值归后端 · 执行归通信层，本文件生产段零期限字面量。
+/// 开出站 TCP 的那一口：主机 · 端口 · 期限 ⇒ 一条到那里的 TCP。由宿主交进来（后端交的是它的出网口：直连或经代理），
+/// 本 crate 自己不开 TCP（「测试档不许出网」那一句断言也住出网口，真开 TCP 的那一处）。
+pub type Open = dyn Fn(&str, u16, Duration) -> std::io::Result<TcpStream> + Send + Sync;
 
-pub fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> {
-    // 测试档不许出网：目的地不是本机回环（回环判定只有 `upstream_is_loopback` 那一个家）⇒ 当场 panic，不连、不解析名字。
-    #[cfg(any(test, feature = "test-support"))]
-    assert!(
-        upstream_url_core::upstream_is_loopback(&base.host),
-        "测试档不许出网：{}",
-        base.host
-    );
-    let tcp = TcpStream::connect((base.host.as_str(), base.port))?;
+/// 期限的值由后端交进来（`UPSTREAM_DEADLINE` 住 `relay/listen.rs`）：值归后端 · 执行归通信层，本文件生产段零期限字面量。
+/// TCP 经 `open` 开（经代理时它交回的是握手完了的隧道），TLS 照旧在这里、在它里面：代理只看得到 `CONNECT 主机:端口`。
+pub fn connect(base: &Base, deadline: Duration, open: &Open) -> std::io::Result<Conn> {
+    let tcp = open(&base.host, base.port, deadline)?;
     // ★ Nagle 两个方向都要关。参考实现登记过：没关会让 p95 塌到 3504ms。
     tcp.set_nodelay(true)?;
     // ★★ 读写期限：没有它，一条死了但没发 FIN 的上游会把一条连接线程**永久**钉在
@@ -168,7 +165,13 @@ pub struct Fetched {
 
 /// 一问一答：发一整发（`Connection: close`）、读回整段回包。给后端自己要发的那几发用；
 /// 期限（连接上每一次读写）与回包体上限都由调用方给。回包体超过上限 ⇒ 错，不截断。
+/// TCP 经 `open` 开（同 [`connect`]）。
+#[allow(
+    clippy::too_many_arguments,
+    reason = "一发请求的五样 ＋ 怎么连（开 TCP 的那一口 · 期限）＋ 回包上限，各自独立由调用方给"
+)]
 pub fn fetch(
+    open: &Open,
     base: &Base,
     method: &str,
     rest: &str,
@@ -177,7 +180,7 @@ pub fn fetch(
     deadline: Duration,
     cap: usize,
 ) -> std::io::Result<Fetched> {
-    let mut up = connect(base, deadline)?;
+    let mut up = connect(base, deadline, open)?;
     let mut head = format!(
         "{method} {} HTTP/1.1\r\nHost: {}\r\nAccept-Encoding: identity\r\nConnection: close\r\n",
         base.upstream_target(rest),

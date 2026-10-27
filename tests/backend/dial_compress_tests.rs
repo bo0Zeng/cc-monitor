@@ -162,7 +162,7 @@ async fn the_kernel_measures_the_loopback_hop_and_the_judge_says_no() {
         host: "127.0.0.1".to_string(),
         port: addr.port(),
     };
-    let (tcp, compress) = tcp_hop(&ep).await.expect("回环拨不通");
+    let (tcp, compress) = tcp_hop(&ep, egress::here()).await.expect("回环拨不通");
     let rtt = crate::tcp_rtt::rtt_us(&tcp);
     let us = rtt.expect("回环 socket 上 TCP_INFO 读不到往返时间 —— 平台那一半坏了");
     assert!(
