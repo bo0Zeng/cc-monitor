@@ -127,7 +127,7 @@ interface GroupRefs {
 function badgesInputs(s: GridSessionSnapshot, now: number): string {
   return [
     s.runningAgents,
-    s.totalAgents,
+    s.agents ?? "",
     s.context?.text ?? "",
     s.context?.tone ?? "",
     s.unread,
@@ -142,7 +142,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement, now: number):
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-agents";
     b.textContent = copyText("gridMonitor.renderBadges.agentsLabel", { runningAgents: s.runningAgents });
-    b.title = copyText("gridMonitor.renderBadges.agents", { runningAgents: s.runningAgents, totalAgents: s.totalAgents });
+    if (s.agents !== null) b.title = s.agents; // 后端写好的那一句，照抄
     badges.appendChild(b);
   }
   if (s.context !== null) {

@@ -217,10 +217,12 @@ object SessionCommandList {
 object SessionSay {
     const val COMMAND: String = "session-say"
 
+    /** [attachments]：随这一句发的附件编号（[SessionAttachmentCommit] 回的，按草稿里的先后）；没有 ⇒ 不带这一格。 */
     fun args(
         sid: String,
         text: String,
-    ): Map<String, Any?> = mapOf("sid" to sid, "text" to text, "client" to CLIENT)
+        attachments: List<String> = emptyList(),
+    ): Map<String, Any?> = mapOf("sid" to sid, "text" to text, "client" to CLIENT) + listOfNotNull(attachments.takeIf { it.isNotEmpty() }?.let { "attachments" to it })
 
     fun of(data: Any?): TerminalInput.Result? = TerminalInput.of(data)
 }
