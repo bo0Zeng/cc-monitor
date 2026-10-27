@@ -83,7 +83,7 @@ fn several_says_how_many_and_why_and_does_not_pick_one() {
             Tone::Warn,
             vec![FrontAct::Connect]
         ),
-        "Linux：没登记 ⇒ 给［接上终端］"
+        "Linux：没登记 ⇒ 给［front.act.connect］"
     );
 }
 
@@ -354,7 +354,7 @@ fn windows_sentences_do_not_mention_registering() {
         )
     });
     let others = [
-        Unplaced::NotLive.face("本机"),
+        Unplaced::NotLive.face(&copy_core::local_machine()),
         said(
             FrontOutcome::NoWindow {
                 program: "claude.exe".into(),
@@ -369,8 +369,9 @@ fn windows_sentences_do_not_mention_registering() {
             f.body.0,
             f.hint.clone().map(|h| h.0).unwrap_or_default()
         );
+        let connect = t("front.act.connect");
         assert!(
-            !["登记", "新开", "接上终端"]
+            !["登记", "新开", connect.as_str()]
                 .iter()
                 .any(|w| text.contains(w)),
             "{text}"
