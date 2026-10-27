@@ -631,6 +631,32 @@ pub(crate) async fn forward(
     })
 }
 
+/// **本机后端自己问那台一条有类型的命令**（并好再答的那几条用它：界面只问本机后端一次）：与 [`forward`] 同一条路
+/// （经那台的常驻流），入参 · 回包照那条命令的类型；期限是发起方那一份（`until`）。那台的回包对不上类型 ⇒ 说读不懂那台的回包。
+pub(crate) async fn call<C>(
+    machine: &str,
+    req: &C::Req,
+    until: Option<crate::platform::child::Until>,
+) -> Result<C::Reply, crate::wire::spec::Fail>
+where
+    C: crate::wire::typed::Command,
+    C::Req: serde::Serialize,
+    C::Reply: serde::de::DeserializeOwned,
+{
+    use crate::wire::spec::Fail;
+    let unreadable = || Fail::new("failed", copy_core::reply_unreadable(machine));
+    let line = serde_json::json!({
+        "id": "",
+        "cmd": C::NAME,
+        "args": serde_json::to_value(req).map_err(|_| unreadable())?,
+        "within_ms": until.map(|u| u.left_ms()),
+    });
+    let mut asked: crate::wire::Request = serde_json::from_value(line).map_err(|_| unreadable())?;
+    asked.until = until;
+    let got = forward(machine.to_string(), asked).await?;
+    serde_json::from_value(got.unwrap_or(serde_json::Value::Null)).map_err(|_| unreadable())
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/control/feeds_tests.rs"]
 mod tests;

@@ -505,7 +505,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "machine-interrupts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
-         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按生成类型收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 只问本机后端（它经那台常驻流问到、并好再答）、按生成类型收，monitor 这一侧零发送点",
     ),
     // 生在帧面上、界面直接问的那一条。
     (

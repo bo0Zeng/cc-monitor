@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, DuplexStream};
 
 /// 那台认的几条命令（转过去问的那一条在里面）。
-const COMMANDS: &[&str] = &["ping", "history-tail"];
+const COMMANDS: &[&str] = &["ping", "history-tail", "machine-interrupts"];
 
 /// 那台握手那一行（命令表 · 形状指纹 · 帧表照本侧编进来的那一份，`build` 是那台自报的身份）。
 fn hello(build: &str) -> String {
@@ -142,6 +142,15 @@ async fn serve(peer: Peer, up: DuplexStream, mut down: DuplexStream) {
         let asked: serde_json::Value = serde_json::from_str(&l).unwrap();
         let reply = if asked["cmd"] == "ping" {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true})
+        } else if asked["cmd"] == "machine-interrupts" {
+            // 有类型的那一问（`call`）：那台照入参答它自己那一份（带 appExit ⇒ 7 个活着的，不带 ⇒ 3 个）。
+            let live = if asked["args"]["appExit"] == true {
+                7
+            } else {
+                3
+            };
+            serde_json::json!({"kind": "reply", "id": asked["id"], "ok": true,
+                "data": {"relayedSessions": 1, "relayedMaybe": 0, "liveStreams": live, "forwards": 0}})
         } else if asked["args"]["fail"] == true {
             serde_json::json!({"kind": "reply", "id": asked["id"], "ok": false,
                 "code": "no_such_file", "message": "那台说：没有这个文件", "detail": "那台的原话"})
@@ -325,6 +334,43 @@ async fn a_call_for_a_machine_without_a_stream_is_not_sent() {
     )
     .await
     .expect_err("没有那一条就不发");
+    assert_eq!(fail.code, UNREACHABLE);
+}
+
+/// 本机后端自己问那台一条有类型的命令（`call`，并好再答的那几条用）：经同一条常驻流，入参照类型带过去、回包照类型收；
+/// 没有那一条 ⇒ 同 `forward` 那个码。
+#[tokio::test]
+async fn a_typed_call_from_this_backend_goes_through_the_same_stream() {
+    use crate::faces::read_face::{MachineInterrupts, MachineInterruptsReq};
+    let _one = one_at_a_time().await;
+    let machine = "feeds-call";
+    let fake = Arc::new(Fake::default());
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Serve(crate::BUILD_ID.to_string()));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    align_in(&[machine.to_string()], &ssh, &quiet());
+    until("那台的成品是 up", || state_of(machine) == "up").await;
+    let within =
+        crate::platform::child::Until::after(crate::platform::child::Deadline::millis(30_000));
+    let exit = MachineInterruptsReq {
+        app_exit: Some(true),
+        ..Default::default()
+    };
+    let got = call::<MachineInterrupts>(machine, &exit, within)
+        .await
+        .expect("问到了");
+    assert_eq!(got.live_streams, 7, "入参照类型带到那台");
+    assert_eq!(got.relayed_sessions, Some(1));
+    let plain = call::<MachineInterrupts>(machine, &MachineInterruptsReq::default(), within)
+        .await
+        .expect("问到了");
+    assert_eq!(plain.live_streams, 3);
+    align_in(&[], &ssh, &quiet());
+    let fail = call::<MachineInterrupts>("feeds-call-nowhere", &exit, within)
+        .await
+        .expect_err("没有那一条就不发");
     assert_eq!(fail.code, UNREACHABLE);
 }
 

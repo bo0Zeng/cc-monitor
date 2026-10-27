@@ -1,7 +1,7 @@
 /**
- * 停下 / 重启 / 更新 / 卸载那台之前「会打断什么」：问那台后端（`machine-interrupts`：经它中转的活会话 · 活着的会话）
- * ＋ 问本机后端（同一条，`machine` = 那台：通往那台的端口转发），两份事实并排排成对话框里的两行（中断 · 保留）。
- * 退出 / 重启 cc-monitor 还多一份：各文件窗口手上没存的 · 在跑的（壳现读它那张表，`filewin_interrupts`）。
+ * 停下 / 重启 / 更新 / 卸载那台之前「会打断什么」：只问本机后端一条 `machine-interrupts`（`machine` = 那台）——
+ * 它经那台的常驻流问到那台的活会话（经它中转的 · 活着的），再数自己账上通往那台的端口转发，并好再答；排成对话框里的两行（中断 · 保留）。
+ * 退出 / 重启 cc-monitor：同一条带 `appExit` 与各台名单，本机后端问到各台、加起来答；另有一份各文件窗口手上没存的 · 在跑的（壳现读它那张表，`filewin_interrupts`）。
  * 什么都不会断 ⇒ 空，调用方就不弹框。这里不判什么，只排版。
  */
 import { budgetWithin, callTyped } from "../ipc/chan-caller";
@@ -9,7 +9,8 @@ import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
 import type { DialogRow } from "../kit/dialog";
-import type { Interrupts as InterruptsReply } from "../generated/Interrupts";
+import type { MachineInterruptsReply } from "../generated/MachineInterruptsReply";
+import type { MachineInterruptsReq } from "../generated/MachineInterruptsReq";
 
 /** 那几份事实并起来（问不到的那一格是 `null`，不当成 0）。 */
 export interface Interrupts {
@@ -23,30 +24,32 @@ export interface Interrupts {
   filewinRunning?: number | null;
 }
 
-/** 那一问的期限：那台扫一遍活会话 ＋ 回程。 */
+/** 那一问的期限：本机后端问到那台（那台扫一遍活会话 ＋ 回程）再答。 */
 const INTERRUPTS_BUDGET_MS = 10_000;
 
-/** 问一家（那台 / 本机）；问不到 ⇒ `null`。`appExit` ⇒ 问的是「重启 / 退出 cc-monitor」（那台后端按它自己的退出行为答）。 */
-async function askOne(origin: string, machine: string | null, appExit = false): Promise<InterruptsReply | null> {
+/** 问本机后端那一条；问不到 ⇒ `null`。 */
+async function askHub(req: MachineInterruptsReq): Promise<MachineInterruptsReply | null> {
   try {
-    const req = appExit ? { appExit: true } : machine === null ? {} : { machine };
-    return await callTyped(origin, "machine-interrupts", req, budgetWithin(INTERRUPTS_BUDGET_MS));
+    return await callTyped(LOCAL_ORIGIN, "machine-interrupts", req, budgetWithin(INTERRUPTS_BUDGET_MS));
   } catch (e) {
-    console.warn(`[interrupts] ${origin} 问不到会打断什么：`, e);
+    console.warn("[interrupts] 本机后端问不到会打断什么：", e);
     return null;
   }
 }
 
-/** 那台的会话三格 ＋ 本机账上通往那台的转发（本机那一台只问一家）。 */
-export async function askInterrupts(origin: string): Promise<Interrupts> {
-  const local = isLocalOrigin(origin);
-  const [there, here] = await Promise.all([askOne(origin, null), local ? Promise.resolve(null) : askOne(LOCAL_ORIGIN, origin)]);
+/** 后端那一份 ⇒ 界面那几格（本机后端问不到 ⇒ 会话与转发都 `null`，说数不出）。 */
+function fromHub(got: MachineInterruptsReply | null): Interrupts {
   return {
-    relayedSessions: there?.relayedSessions ?? null,
-    relayedMaybe: there?.relayedMaybe ?? 0,
-    liveStreams: there?.liveStreams ?? 0,
-    forwards: local ? 0 : (here?.forwards ?? null),
+    relayedSessions: got?.relayedSessions ?? null,
+    relayedMaybe: got?.relayedMaybe ?? 0,
+    liveStreams: got?.liveStreams ?? 0,
+    forwards: got === null ? null : got.forwards,
   };
+}
+
+/** 那台的会话三格 ＋ 本机账上通往那台的转发：问本机后端一条（本机那一台不带名字）。 */
+export async function askInterrupts(origin: string): Promise<Interrupts> {
+  return fromHub(await askHub(isLocalOrigin(origin) ? {} : { machine: origin }));
 }
 
 /** 各文件窗口手上的（壳现读那张表）；问不到 ⇒ `null`（说数不出）。 */
@@ -60,22 +63,13 @@ async function askFileWindows(): Promise<{ unsaved: number; running: number } | 
 }
 
 /**
- * 「现在重启 cc-monitor」之前：问本机与各台（`appExit`，各台照它自己的退出行为答会不会跟着停），加起来。
- * 本机问不到 ⇒ 会话那一格 `null`（说数不出）；远端问不到 ⇒ 那台本来就没连着，不算。文件窗口那两格随 cc-monitor 一起没（照算）。
+ * 「现在重启 cc-monitor」之前：问本机后端一条（`appExit` ＋ 各台名单）——它问到各台（各台照它自己的退出行为答会不会跟着停）、加起来；
+ * 远端问不到 ⇒ 那台本来就没连着，不算（后端那一侧定）。本机后端问不到 ⇒ 说数不出。文件窗口那两格随 cc-monitor 一起没（照算）。
  */
 export async function askAppExitInterrupts(remotes: readonly string[]): Promise<Interrupts> {
-  const [files, here, ...there] = await Promise.all([
-    askFileWindows(),
-    askOne(LOCAL_ORIGIN, null, true),
-    ...remotes.map((o) => askOne(o, null, true)),
-  ]);
-  const got = [here, ...there].filter((x): x is InterruptsReply => x !== null);
-  const sum = (k: keyof InterruptsReply): number => got.reduce((n, x) => n + x[k], 0);
+  const [files, got] = await Promise.all([askFileWindows(), askHub({ appExit: true, machines: [...remotes] })]);
   return {
-    relayedSessions: here === null ? null : sum("relayedSessions"),
-    relayedMaybe: sum("relayedMaybe"),
-    liveStreams: sum("liveStreams"),
-    forwards: here === null ? null : sum("forwards"),
+    ...fromHub(got),
     unsaved: files?.unsaved ?? null,
     filewinRunning: files?.running ?? null,
   };
