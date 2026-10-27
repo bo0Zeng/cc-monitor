@@ -12531,6 +12531,144 @@
       "zh": "第一句话",
       "args": []
     },
+    "newSession.label.alias": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "别名",
+      "args": []
+    },
+    "newSession.alias.none": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "不用别名",
+      "args": []
+    },
+    "newSession.page.single": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "单个",
+      "args": []
+    },
+    "newSession.page.set": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "一组",
+      "args": []
+    },
+    "newSessionSet.label.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "组",
+      "args": []
+    },
+    "newSessionSet.label.rows": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "行",
+      "args": []
+    },
+    "newSessionSet.label.preview": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "预览",
+      "args": []
+    },
+    "newSessionSet.set.switch": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "换一组",
+      "args": []
+    },
+    "newSessionSet.row.add": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加一行",
+      "args": []
+    },
+    "newSessionSet.row.alias": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "别名",
+      "args": []
+    },
+    "newSessionSet.row.less": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "少起一个",
+      "args": []
+    },
+    "newSessionSet.row.more": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "多起一个",
+      "args": []
+    },
+    "newSessionSet.row.drop": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "删除此行",
+      "args": []
+    },
+    "newSessionSet.row.group": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "进组",
+      "args": []
+    },
+    "newSessionSet.row.groupDefault": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "缺省",
+      "args": []
+    },
+    "newSessionSet.preview.have": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已有 {n}",
+      "args": ["n"]
+    },
+    "newSessionSet.preview.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "newSessionSet.preview.total": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "补足每一行到它的个数 · 已有的不动 · 共再起 {n}",
+      "args": ["n"]
+    },
+    "newSessionSet.action.start": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "启动 {n}",
+      "args": ["n"]
+    },
+    "newSessionSet.action.save": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "仅保存",
+      "args": []
+    },
+    "newSessionSet.save.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已保存 {name}",
+      "args": ["name"]
+    },
+    "newSessionSet.name.empty": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "先填组名",
+      "args": []
+    },
+    "newSessionSet.alias.none": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无可用别名 · 先在设置的别名页新建",
+      "args": []
+    },
     "newSession.recent.label": {
       "kind": "control",
       "role": "标签",
@@ -13894,7 +14032,7 @@
     "bePlan.build.sayNotTaken": {
       "kind": "error",
       "role": "命令行",
-      "zh": "{agent} 起的时候不收第一句话 · --say 用不了",
+      "zh": "{agent} 启动时不接受第一句话 · 无法用 --say",
       "args": ["agent"]
     },
     "bePlan.build.freeTextRefused": {
@@ -24575,6 +24713,96 @@
       "kind": "body",
       "role": "说明",
       "zh": "新建 会话 起 启动 new session launch",
+      "args": []
+    },
+    "main.cmd.startSet": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "起一组…",
+      "args": []
+    },
+    "main.cmd.startSetKeywords": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "一组 补足 起 启动 别名 set launch",
+      "args": []
+    },
+    "setMenu.open.label": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "存好的几组",
+      "args": []
+    },
+    "setMenu.list.heading": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "一组",
+      "args": []
+    },
+    "setMenu.list.create": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建一组…",
+      "args": []
+    },
+    "setMenu.list.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "编辑组…",
+      "args": []
+    },
+    "setMenu.item.more": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "再起 {n}",
+      "args": ["n"]
+    },
+    "setMenu.item.full": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已齐",
+      "args": []
+    },
+    "setMenu.row.counted": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cwd} {group} {have}/{want}",
+      "args": ["cwd", "group", "have", "want"]
+    },
+    "setMenu.row.blocked": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cwd} {why}",
+      "args": ["cwd", "why"]
+    },
+    "setMenu.row.sep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
+    "setMenu.launched.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已启动 {name} · {n}",
+      "args": ["name", "n"]
+    },
+    "setMenu.launched.partial": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动 {started}/{all} · {name}",
+      "args": ["started", "all", "name"]
+    },
+    "setMenu.launched.fail": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{alias} 启动失败 · {why}",
+      "args": ["alias", "why"]
+    },
+    "setMenu.launched.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重试",
       "args": []
     },
     "main.cmd.find": {

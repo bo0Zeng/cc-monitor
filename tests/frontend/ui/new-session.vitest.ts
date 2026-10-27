@@ -192,6 +192,40 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   });
 });
 
+describe("单个 · 一组：页签与别名那一格", () => {
+  const BOOK = { rev: "r", sets: [], profiles: [{ name: "look", usable: true }, { name: "bad", usable: false }] };
+
+  it("★ 单个页多一格「别名」（那台能用的几条 ＋ 不用别名）；挑了 ⇒ 请求带 alias", async () => {
+    replies.set("profiles-read", BOOK);
+    const done = openNewSession({ origin: "devbox" });
+    await flush();
+    const alias = sel(copyText("newSession.label.alias"));
+    expect(rowOf(alias).hidden).toBe(false);
+    expect(optionsOf(alias)).toEqual([copyText("newSession.alias.none"), "look"]);
+    choose(alias, "look");
+    createBtn().click();
+    await flush();
+    await done;
+    expect(whatOf(newRequests()[0]).alias).toBe("look");
+  });
+
+  it("页签「单个 · 一组」：换到一组页，主按钮字跟着换；分叉打开时没有页签", async () => {
+    replies.set("profiles-read", BOOK);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const tab = (p: string): HTMLButtonElement => dialog().querySelector<HTMLButtonElement>(`[role="tab"][data-page="${p}"]`)!;
+    expect(tab("single").getAttribute("aria-selected")).toBe("true");
+    tab("set").click();
+    await flush();
+    expect(dialog().querySelector<HTMLElement>('[data-role="set-page"]')!.hidden).toBe(false);
+    expect(createBtn()).toBeUndefined();
+    document.body.replaceChildren();
+    void openNewSession({ origin: "devbox", fork: { sid: "s", uuid: "u", title: "源" } });
+    await flush();
+    expect(dialog().querySelector('[role="tab"]')).toBeNull();
+  });
+});
+
 describe("点［新建］：交那台的那一份", () => {
   it("★ 一问 `session-open`：哪一家 · 目录 · 点名的号 · 放在哪；没改终端名就不带（那台铸）；主窗口里起好了 ⇒ 交占位标签页（按展开过的目录认、带终端名），不接进终端、不再另等", async () => {
     const slot = vi.fn(() => true);
@@ -204,7 +238,7 @@ describe("点［新建］：交那台的那一份", () => {
     expect(newRequests()).toEqual([
       { what: { kind: "new", agent: "claude", cwd: "/home/u/srv/orders" }, run: "tmux", local: false, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
     ]);
-    expect(sent.map((x) => x.op).filter((op) => op !== "session-open-facts" && op !== "session-open-dir" && op !== "rotation-strategies" && op !== "machine-read"), "只这一问").toEqual(["session-open"]);
+    expect(sent.map((x) => x.op).filter((op) => op !== "session-open-facts" && op !== "session-open-dir" && op !== "rotation-strategies" && op !== "machine-read" && op !== "profiles-read"), "只这一问").toEqual(["session-open"]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
     expect(slot.mock.calls).toEqual([[{ origin: "devbox", cwd: "/home/u/srv/orders", tmuxName: "orders-cc", arrival: OK.arrival }]]);

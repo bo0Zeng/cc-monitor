@@ -41,6 +41,8 @@ import { readMachines } from "./machine-feed";
 import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
+import { readProfiles } from "./profiles-reads";
+import { pageTabs, setPage } from "./new-session-set";
 import s from "./new-session.module.css";
 
 /** 设置窗 → 主窗口：切到那个会话（载荷 `{origin, sid}`）。 */
@@ -61,6 +63,8 @@ export interface NewSessionSpec {
   agent?: string;
   /** 分叉：源会话 · 从哪条消息处 · 源会话的标题（框顶那一句）。 */
   fork?: { sid: string; uuid: string; title: string };
+  /** 开在「一组」页：存好的那一组的名字（`null` ＝ 新建一组）；缺 ⇒ 单个页。 */
+  set?: string | null;
 }
 
 /** 一台机器那一项：连没连上。 */
@@ -341,6 +345,15 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   top.className = s.nsTop;
   form.appendChild(top);
 
+  // 「单个 · 一组」页签：分叉 · 计划页接手（锁目录 · 带第一句）只有单个，不出页签。
+  const paged = !fork && spec.lockCwd !== true && spec.prompt === undefined;
+  let page: "single" | "set" = paged && spec.set !== undefined ? "set" : "single";
+  const tabs = pageTabs((p) => {
+    page = p;
+    paintPage();
+  });
+  if (paged) form.appendChild(tabs.el);
+
   if (fork) {
     const { box, fromLine } = forkBox(fork.title);
     form.appendChild(box);
@@ -357,15 +370,44 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       cwdInput.value = "";
       cwdRow.setNote("");
       void loadMachine();
+      void loadAliases();
+      setsOf = null;
+      if (page === "set") paintPage();
     },
   });
   const machineRow = row(copyText("newSession.label.machine"), machineSel.el, false);
   form.appendChild(machineRow.root);
 
+  // 单个页那几格住 `single`；一组页是另一份（`new-session-set.ts`），换页只换哪一份露着。
+  const single = el("div", s.nsPage);
+  form.appendChild(single);
+  const sets = setPage(() => paintPage());
+  /** 一组页读的是哪台的（`null` ＝ 还没读）。 */
+  let setsOf: Origin | null = null;
+  /** 打开时点名的那一组（只第一次读时用）。 */
+  let openSet = spec.set ?? null;
+  if (paged) form.appendChild(sets.el);
+
+  // 别名（一类 ＝ 一条别名；起的那一行 `ccm @别名`，合下来的几格在那台合）：第一项「不用别名」。别名住在那台 ⇒ 换机器重列。
+  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [{ value: "", label: copyText("newSession.alias.none") }], value: "" });
+  const aliasRow = row(copyText("newSession.label.alias"), aliasSel.el, false);
+  aliasRow.root.hidden = true;
+  single.appendChild(aliasRow.root);
+  const loadAliases = async (): Promise<void> => {
+    let names: string[] = [];
+    try {
+      names = fork ? [] : (await readProfiles(origin)).profiles.filter((p) => p.usable).map((p) => p.name);
+    } catch {
+      names = [];
+    }
+    aliasRow.root.hidden = names.length === 0;
+    aliasSel.setOptions([{ value: "", label: copyText("newSession.alias.none") }, ...names.map((n) => ({ value: n, label: n }))], "");
+  };
+
   // 工作目录 ＋「最近的」
   const cwdLocked = spec.lockCwd === true;
   const { cwdInput, recentBtn, cwdRow } = cwdField(spec.cwd ?? "", cwdLocked);
-  form.appendChild(cwdRow.root);
+  single.appendChild(cwdRow.root);
 
   // agent（那台能起的多于一家才出）
   const agentSel = select({
@@ -380,7 +422,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   });
   const agentRow = row(copyText("newSession.label.agent"), agentSel.el, false);
   agentRow.root.hidden = true;
-  form.appendChild(agentRow.root);
+  single.appendChild(agentRow.root);
 
   // 账号
   const accountSel = select({
@@ -393,13 +435,13 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   });
   const accountRow = row(copyText("newSession.label.account"), accountSel.el, false);
   accountRow.root.hidden = true;
-  form.appendChild(accountRow.root);
+  single.appendChild(accountRow.root);
 
   // 轮换：用哪份策略（缺省新会话用的那份）· 不轮换 · 那台的各份策略（标题 ＝ 文件名，灰字 ＝ 说明第一行）。读不出那台的策略目录 ⇒ 不出这一行。
   const rotSel = select({ label: copyText("rot.new.label"), options: [], menuWidth: 340 });
   const rotRow = row(copyText("rot.new.label"), rotSel.el, false);
   rotRow.root.hidden = true;
-  form.appendChild(rotRow.root);
+  single.appendChild(rotRow.root);
   let rotSeq = 0;
   let forNew = "";
   const paintRotation = async (): Promise<void> => {
@@ -427,7 +469,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const places = el("div");
   places.className = s.nsPlaces;
   const placeRow = row(copyText("newSession.label.place"), places, false);
-  form.appendChild(placeRow.root);
+  single.appendChild(placeRow.root);
   const tmuxRadio = placeRadio(places, "tmux");
   const windowRadio = placeRadio(places, "window");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
@@ -440,11 +482,11 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   promptInput.value = spec.prompt ?? "";
   promptInput.setAttribute("aria-label", copyText("newSession.label.prompt"));
   const promptRow = row(copyText("newSession.label.prompt"), promptInput);
-  form.appendChild(promptRow.root);
+  single.appendChild(promptRow.root);
 
   // 更多
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
-  form.appendChild(moreRow);
+  single.appendChild(moreRow);
 
   /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
   const place = (): "tmux" | "window" | null =>
@@ -592,6 +634,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (cmdInput.value.trim() !== "") what.command = cmdInput.value.trim();
     if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
     if (place() === "tmux" && promptInput.value.trim() !== "") what.prompt = promptInput.value;
+    if (!aliasRow.root.hidden && aliasSel.value() !== "") what.alias = aliasSel.value();
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
     if (rot !== forNew) what.rotation = { strategy: rot === "" ? null : rot };
@@ -687,15 +730,31 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     focusAction: true,
     blocked: () => {
       if (!up()) return offlineLine();
+      if (page === "set") return sets.blocked();
       if (facts === null) return copyText("kit.state.reading");
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");
       return null;
     },
-    submit,
+    submit: () => (page === "set" ? sets.submit() : submit()),
     dirty: () => true,
   });
+
+  /** 换页 · 一组页的预览变了：露哪一份 · 页签勾哪一个 · 主按钮的字与能不能点。 */
+  function paintPage(): void {
+    // 一组页第一次露出来（或换了机器）才读那台存好的几组。
+    if (page === "set" && setsOf !== origin) {
+      setsOf = origin;
+      void sets.load(origin, openSet);
+      openSet = null;
+    }
+    single.hidden = page !== "single";
+    sets.el.hidden = page !== "set";
+    tabs.set(page);
+    handle.setAction(page === "set" ? sets.action() : copyText("newSession.action.create"));
+    handle.refresh();
+  }
 
   // 接线
   for (const inp of [cwdInput, tmuxInput, cmdInput]) {
@@ -739,6 +798,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     machineSel.setDisabled(spec.lockMachine === true || fork !== null);
     void loadMachine();
   });
+  void loadAliases();
+  paintPage();
   paintPlace();
   await handle.done;
 }
