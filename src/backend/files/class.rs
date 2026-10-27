@@ -32,7 +32,8 @@ pub fn type_key(name: &[u8], is_dir: bool, link: bool) -> (FileClass, Option<Str
     (class, ext_of(name))
 }
 
-fn label(c: FileClass) -> String {
+/// 那一种的词（「类型」那一列 · 聊天附件 chip 上的类别字同一份）。
+pub fn label(c: FileClass) -> String {
     match c {
         FileClass::Folder => copy_text("beFilesKind.label.folder", &[]),
         FileClass::Text => copy_text("beFilesKind.label.text", &[]),

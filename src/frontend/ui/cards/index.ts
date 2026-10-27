@@ -268,11 +268,8 @@ export function renderMessage(rec: LineRecord, ctx: RenderContext, seq?: number)
           return { kind: "card", element: buildBriefCard(said.text, time, ctx.briefFrom ?? null) };
         default: {
           // 人说的话：用户气泡；带的附件（图片块 · `attachments[]`）画在正文上方。正文与附件都没有 ⇒ 不建卡。
-          const cwd = rec.cwd;
-          const open = isRemoteOrigin(ctx.origin) && cwd ? (rel: string) => void openRemoteFileInSftp(ctx.origin, `${cwd.replace(/\/+$/, "")}/${rel}`) : undefined;
-          const strip = attachStrip(rec.blocks, rec.attachments ?? [], open);
-          if (!said.text && strip === null) return { kind: "skip" };
-          return { kind: "card", element: buildUserCard(time, said.text, said.pasted, strip) };
+          const card = buildSaidCard(rec, ctx, time);
+          return card === null ? { kind: "skip" } : { kind: "card", element: card };
         }
       }
 
@@ -404,6 +401,15 @@ function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | u
     at = p.end;
   }
   plain(afterFold ? text.slice(at).replace(/^\r?\n/, "") : text.slice(at));
+}
+
+/** 人说的那一句：气泡（带的附件画在正文上方；远端那台上的点开 ⇒ 文件窗口定位到那一份）。正文与附件都没有 ⇒ `null`。 */
+function buildSaidCard(rec: Extract<LineRecord, { t: "said" }>, ctx: RenderContext, time: string): HTMLElement | null {
+  const cwd = rec.cwd;
+  const open = isRemoteOrigin(ctx.origin) && cwd ? (rel: string) => void openRemoteFileInSftp(ctx.origin, `${cwd.replace(/\/+$/, "")}/${rel}`) : undefined;
+  const strip = attachStrip(rec.blocks, rec.attachments ?? [], open);
+  if (!rec.who.text && strip === null) return null;
+  return buildUserCard(time, rec.who.text, rec.who.pasted, strip);
 }
 
 function buildUserCard(

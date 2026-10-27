@@ -75,9 +75,11 @@ pub fn refused(why: AttachRefused) -> WriteFail {
 }
 
 fn verdict(it: &AttachItem, why: Option<AttachRefused>) -> AttachVerdict {
+    let class = cmd_wire::file_class::class_of_name(it.name.as_bytes(), it.dir);
     AttachVerdict {
         ok: why.is_none(),
-        class: cmd_wire::file_class::class_of_name(it.name.as_bytes(), it.dir),
+        class,
+        class_text: crate::files::class::label(class),
         why,
         said: why.map(said_of),
     }

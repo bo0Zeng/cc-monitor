@@ -215,6 +215,12 @@ fn each_verdict_carries_the_class_of_its_name() {
         .map(|v| v.class)
         .collect();
     assert_eq!(gone, vec![C::Image]);
+    // 类别字也由这台写好（同文件管理那一列的词），界面照摆。
+    let words: Vec<String> = check(&cwd, &items[1..2])
+        .into_iter()
+        .map(|v| v.class_text)
+        .collect();
+    assert_eq!(words, vec![copy_text("beFilesKind.label.code", &[])]);
 }
 
 /// 工作目录不在 ⇒ 逐份 `no_session`；只读 ⇒ `not_writable`，落的那一下也拒、不回落别处。

@@ -778,6 +778,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/needs-panel.module.css": { stacked: false, why: "「需手动」浮层里的那几行（`needs-panel.ts`）：只挂自己的哈希类（外框是 kit 浮层，按钮 · 状态点 · 图标是 kit 的）" },
   "src/frontend/ui/login-drawer.module.css": { stacked: false, why: "登录抽屉的内容（`login-drawer.ts`）：只挂自己的哈希类（外框是 kit 抽屉，按钮 · 输入框 · 红条是 kit 的，输入框包在本文件的一格里）" },
   "src/frontend/ui/answer-block.module.css": { stacked: false, why: "答题块（`answer-block.ts`）：只挂自己的哈希类（按钮是 kit 的，数字键那一格按属性认、不叠类）" },
+  "src/frontend/ui/attach-row.module.css": { stacked: false, why: "输入行上方那一排附件（`attach-row.ts`）：chip 与目标框只挂自己的哈希类（［＋］· ✕ ·［重试］是 kit 按钮）" },
+  "src/frontend/ui/cards/attach-strip.module.css": { stacked: false, why: "人说的那一句带的附件（`cards/attach-strip.ts`）：缩略图与 chip 只挂自己的哈希类，挂在气泡里、不叠在全局卡片类上" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/views/terminals-view.module.css": { stacked: true, why: "顶层「终端」视图（`views/terminals-view.ts`）：行标题叠全局 `one-line`（单行省略只住全局那一处）" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },

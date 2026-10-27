@@ -24,7 +24,7 @@ function rig(opts: { hold?: boolean; sent?: { sent: TerminalSent; gone: string[]
   const held = new Promise<void>((r) => (release = r));
   let n = 0;
   const io: AttachIo = {
-    check: async (_sid: string, items: AttachItem[]) => items.map((it) => ({ ok: true, class: it.name.endsWith(".png") ? ("image" as const) : ("code" as const) })),
+    check: async (_sid: string, items: AttachItem[]) => items.map((it) => ({ ok: true, class: it.name.endsWith(".png") ? ("image" as const) : ("code" as const), class_text: "kind-code" })),
     stage: async () => {
       if (opts.hold) await held;
     },
@@ -80,12 +80,12 @@ describe("终端面板输入行的附件", () => {
     picker.dispatchEvent(new Event("change"));
     await flush();
     const [c] = chips(page);
-    expect(c.textContent).toContain(copyText("attach.class.code"));
+    expect(c.textContent).toContain("kind-code");
     expect(c.textContent).toContain("login.css");
     expect(c.dataset.state).toBe("sending");
     const send = Array.from(page.el.querySelectorAll("button")).find((b) => b.textContent === copyText("terminal.input.send")) as HTMLButtonElement;
     expect(send.getAttribute("aria-disabled")).toBe("true");
-    expect(send.title).toBe(copyText("attach.blocked.sending", { done: 0, n: 1 }));
+    expect(send.title).toBe(copyText("attach.blocked.sending"));
     release();
     await flush();
     expect(chips(page)[0].dataset.state).toBe("done");
@@ -115,8 +115,8 @@ describe("终端面板输入行的附件", () => {
     page.el.dispatchEvent(enter);
     const overlay = q<HTMLElement>(page, '[data-role="attach-drop"]');
     expect(overlay.hidden).toBe(false);
-    expect(overlay.textContent).toContain(copyText("attach.drop.title", { title: "web-console", machine: "devbox" }));
-    expect(overlay.textContent).toContain(copyText("attach.drop.sub", { n: 2 }));
+    expect(overlay.textContent).toContain(copyText("attach.drop.title"));
+    expect(overlay.textContent).toContain(["web-console", "devbox"].join(copyText("kit.text.sep")));
     const drop = new Event("drop", { cancelable: true }) as DragEvent;
     Object.defineProperty(drop, "dataTransfer", { value: dt });
     page.el.dispatchEvent(drop);

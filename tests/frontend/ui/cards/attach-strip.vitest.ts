@@ -38,19 +38,19 @@ function card(rec: LineRecord): HTMLElement {
 describe("消息流里人说的那一句带的附件", () => {
   it("★ 图片块画成缩略图、附件画成 chip（类别字 · 名 · 大小），都在正文上方", () => {
     const el = card(
-      said("截图在这", [{ type: "text", text: "截图在这" }, IMAGE], [{ name: "login.css", rel: ".ccm-attach/1023-1529-7c01/login.css", class: "code", bytes: 1300, sizeText: "1.3 KB" }]),
+      said("截图在这", [{ type: "text", text: "截图在这" }, IMAGE], [{ name: "login.css", rel: ".ccm-attach/1023-1529-7c01/login.css", class: "code", classText: "kind-code", bytes: 1300, sizeText: "1.3 KB" }]),
     );
     const strip = el.querySelector('[data-role="said-attachments"]') as HTMLElement;
     expect(strip).not.toBeNull();
     expect(strip.compareDocumentPosition(el.querySelector(".card-body") as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect((strip.querySelector("img") as HTMLImageElement).src).toBe("data:image/png;base64,AAAA");
     const chip = strip.querySelector('[data-role="said-attachment"]') as HTMLElement;
-    expect(chip.textContent).toBe(`${copyText("attach.class.code")}login.css1.3 KB`);
+    expect(chip.textContent).toBe("kind-codelogin.css1.3 KB");
     expect(chip.dataset.gone).toBe("false");
   });
 
   it("那台已清掉 ⇒ 虚线「已清理」、不可点", () => {
-    const el = card(said("这张是上周那次的", [{ type: "text", text: "x" }], [{ name: "old.pdf", rel: ".ccm-attach/1016-0900-aaaa/old.pdf", class: "pdf", gone: true }]));
+    const el = card(said("这张是上周那次的", [{ type: "text", text: "x" }], [{ name: "old.pdf", rel: ".ccm-attach/1016-0900-aaaa/old.pdf", class: "pdf", classText: "kind-pdf", gone: true }]));
     const chip = el.querySelector('[data-role="said-attachment"]') as HTMLElement;
     expect(chip.dataset.gone).toBe("true");
     expect(chip.tagName).toBe("SPAN");

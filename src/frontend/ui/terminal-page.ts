@@ -21,7 +21,7 @@
 import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { machineName } from "./control-said";
+import { machineName, offlineSaid } from "./control-said";
 import { canResume, hasTerminal, inTmux, isLive, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
@@ -279,7 +279,7 @@ export class TerminalPage {
         const w = this.host.active();
         return { title: w ? labelOf(w) : "", machine: w ? machineWord(w) : "" };
       },
-      machine: () => (this.origin === undefined ? "" : machineName(this.origin)),
+      offline: () => (this.origin === undefined ? "" : (offlineSaid(this.origin) ?? machineName(this.origin))),
       blocked: () => this.inputNo(),
     });
     boxRow.append(this.attach.plus, this.box, this.sendBtn);
@@ -517,9 +517,21 @@ export class TerminalPage {
 
   /** 送一段字或一颗键。能不能送由名单里后端那一格说了算；送完按回话说一句、该重抓就重抓。 */
   async send(what: TerminalSend): Promise<boolean> {
+    const row = this.row;
+    if (row === null) return false;
+    const sent = await this.deliver((origin) => this.reads.send(origin, row.terminal, what, this.shot?.screen ?? null), what);
+    return sent?.result === "delivered";
+  }
+
+  /**
+   * 送一下（送字送键 · 带附件说一句同一条路）并照回话说一句：送到了（一会儿就走）· 不知道 · 被拒（下一步照后端判好的 `acts` 摆：
+   * 给不给［重试］· 重抓一屏 · 重读名单）。没送成 · 送不了 · 送的时候切走了 ⇒ `null`。
+   */
+  private async deliver(go: (origin: Origin) => Promise<TerminalSent>, retry: TerminalSend | null): Promise<TerminalSent | null> {
     const w = this.host.active();
     const row = this.row;
-    if (!w || row === null || this.origin === undefined || this.sending || row.inputNo !== null) return false;
+    const origin = this.origin;
+    if (!w || row === null || origin === undefined || this.sending || row.inputNo !== null) return null;
     const sid = this.sid;
     this.sending = true;
     this.paint();
@@ -527,28 +539,28 @@ export class TerminalPage {
     let failed: string | null = null;
     let detail = "";
     try {
-      sent = await this.reads.send(this.origin, row.terminal, what, this.shot?.screen ?? null);
+      sent = await go(origin);
     } catch (e) {
       failed = saidOf(e);
       detail = detailOf(e);
     }
-    if (sid !== this.sid) return false;
+    if (sid !== this.sid) return null;
     this.sending = false;
+    const again = retry === null ? {} : { retry };
     if (failed !== null || sent === null) {
-      this.showNote({ text: failed ?? copyText("reason.code.refused"), tone: "error", retry: what, detail });
-      return false;
+      this.showNote({ text: failed ?? copyText("reason.code.refused"), tone: "error", ...again, detail });
+      return null;
     }
     if (sent.result === "delivered") {
       this.showNote({ text: copyText("terminal.input.delivered"), tone: "ok" });
       if (!this.isLive) this.schedule();
-      return true;
+      return sent;
     }
-    // 下一步照后端判好的 `acts` 摆：给不给［重试］· 重抓一屏 · 重读名单。
-    const text = sent.result === "unsure" ? copyText("terminal.input.unsure", { machine: machineName(this.origin) }) : copyText("terminal.input.failed", { why: sent.said });
-    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? { retry: what } : {}) });
+    const text = sent.result === "unsure" ? copyText("terminal.input.unsure", { machine: machineName(origin) }) : copyText("terminal.input.failed", { why: sent.said });
+    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? again : {}) });
     if (sent.acts.includes("recapture")) void this.recapture();
     if (sent.acts.includes("relist")) void this.refresh();
-    return false;
+    return sent;
   }
 
   /** 此刻那条会话的附件草稿（没有 ⇒ 现建）；认不出会话（占位 · 名单里没挂会话）⇒ `null`。 */
@@ -576,44 +588,23 @@ export class TerminalPage {
 
   /** 带附件说一句（`session-say`）：送到 / 不知道 ⇒ 字与 chip 一起清；被拒 ⇒ 原样留着，那台说已不在的那几颗变失败。 */
   private async say(draft: AttachDraft, text: string): Promise<void> {
-    const origin = this.origin;
-    if (origin === undefined || this.sending) return;
-    const sid = this.sid;
-    this.sending = true;
-    this.paint();
-    let got: { sent: TerminalSent; gone: string[] } | null = null;
-    let failed: string | null = null;
-    let detail = "";
-    try {
-      got = await this.attachReads.say(origin, { sid: draft.sid, text, attachments: draft.ids(), ...(this.shot ? { seen_screen: this.shot.screen } : {}) });
-    } catch (e) {
-      failed = saidOf(e);
-      detail = detailOf(e);
-    }
-    if (sid !== this.sid) return;
-    this.sending = false;
-    if (failed !== null || got === null) {
-      this.showNote({ text: failed ?? copyText("reason.code.refused"), tone: "error", detail });
+    let gone: string[] = [];
+    const sent = await this.deliver(async (origin) => {
+      const got = await this.attachReads.say(origin, { sid: draft.sid, text, attachments: draft.ids(), ...(this.shot ? { seen_screen: this.shot.screen } : {}) });
+      gone = got.gone;
+      return got.sent;
+    }, null);
+    if (sent === null) return;
+    if (sent.result === "refused") {
+      draft.markGone(gone);
       return;
     }
-    const sent = got.sent;
-    if (sent.result !== "refused") {
-      if (this.box.value === text) {
-        this.box.value = "";
-        if (this.sid !== null) this.drafts.delete(this.sid);
-        this.onBoxInput();
-      }
-      draft.clear();
-      if (sent.result === "delivered") {
-        this.showNote({ text: copyText("terminal.input.delivered"), tone: "ok" });
-        if (!this.isLive) this.schedule();
-      } else this.showNote({ text: copyText("terminal.input.unsure", { machine: machineName(origin) }), tone: "error" });
-      return;
+    if (this.box.value === text) {
+      this.box.value = "";
+      if (this.sid !== null) this.drafts.delete(this.sid);
+      this.onBoxInput();
     }
-    if (got.gone.length > 0) draft.markGone(got.gone);
-    this.showNote({ text: copyText("terminal.input.failed", { why: sent.said }), tone: "error" });
-    if (sent.acts.includes("recapture")) void this.recapture();
-    if (sent.acts.includes("relist")) void this.refresh();
+    draft.clear();
   }
 
   /** 送框里那段字（`enter` ＝ 之后补一个回车）。送到了才清框。草稿里有附件 ⇒ 传完了才送、经 `session-say` 带上。 */

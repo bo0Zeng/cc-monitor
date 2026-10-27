@@ -23,7 +23,7 @@ const OFFLINE = new Error("offline");
 function rig(over: Partial<AttachIo> = {}) {
   let keys = 0;
   const io = {
-    check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map((it) => ({ ok: !it.dir, class: it.dir ? "folder" : it.name.endsWith(".png") ? "image" : "code", ...(it.dir ? { why: "is_dir" as const, said: "refused-dir" } : {}) }))),
+    check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map((it) => ({ ok: !it.dir, class: it.dir ? "folder" : it.name.endsWith(".png") ? "image" : "code", class_text: `class-of-${it.name}`, ...(it.dir ? { why: "is_dir" as const, said: "refused-dir" } : {}) }))),
     stage: vi.fn(async (_key: string, _seq: number, _bytes: Uint8Array) => {}),
     commit: vi.fn(async (req: SessionAttachmentCommitReq) => ({ id: `1027-1200-${req.key.slice(0, 4)}`, name: req.name, path: `/w/.ccm-attach/x/${req.name}`, rel: `.ccm-attach/x/${req.name}`, bytes: req.bytes, sha256: req.expect.sha256, class: "code" as const })),
     drop: vi.fn(async (_sid: string, _id: string) => {}),
@@ -42,7 +42,7 @@ describe("桌面附件草稿", () => {
   it("★ 收的逐块进暂存区再提交（块数 · 字节 · 摘要照交），完了才给编号；送出不再挡", async () => {
     const { draft, io } = rig();
     draft.add([{ name: "login.css", blob: blob(CHUNK * 2 + 5) }]);
-    expect(draft.blocker()).toBe(copyText("attach.blocked.sending", { done: 0, n: 1 }));
+    expect(draft.blocker()).toBe(copyText("attach.blocked.sending"));
     await flush();
     expect(io.check).toHaveBeenCalledWith("s-1", [{ name: "login.css", bytes: CHUNK * 2 + 5 }]);
     expect(io.stage.mock.calls.map((c) => [c[1], c[2].length])).toEqual([
@@ -53,6 +53,7 @@ describe("桌面附件草稿", () => {
     expect(io.commit).toHaveBeenCalledWith({ sid: "s-1", key: io.stage.mock.calls[0][0], name: "login.css", bytes: CHUNK * 2 + 5, chunks: 3, expect: { sha256: "ab".repeat(32) } });
     expect(draft.ids()).toEqual(["1027-1200-0001"]);
     expect(draft.chips()[0].class).toBe("code");
+    expect(draft.chips()[0].classText).toBe("class-of-login.css");
     expect(draft.blocker()).toBeNull();
   });
 
@@ -68,7 +69,7 @@ describe("桌面附件草稿", () => {
     expect(dir.class).toBe("folder");
     expect(png.at.at).toBe("done");
     expect(io.stage).toHaveBeenCalledTimes(1);
-    expect(draft.blocker()).toBe(copyText("attach.blocked.failed", { n: 1 }));
+    expect(draft.blocker()).toBe(copyText("attach.blocked.failed"));
     draft.remove(dir.n);
     expect(draft.blocker()).toBeNull();
   });
@@ -98,7 +99,7 @@ describe("桌面附件草稿", () => {
     draft.add([{ name: "big.log", blob: blob(CHUNK * 2) }]);
     await flush();
     expect(draft.chips()[0].at).toEqual({ at: "offline", done: CHUNK });
-    expect(draft.blocker()).toBe(copyText("attach.blocked.sending", { done: 0, n: 1 }));
+    expect(draft.blocker()).toBe(copyText("attach.blocked.sending"));
     draft.resume();
     await flush();
     expect(io.stage.mock.calls.map((c) => c[1])).toEqual([0, 1, 1]);

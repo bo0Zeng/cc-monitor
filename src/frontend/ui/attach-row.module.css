@@ -78,7 +78,7 @@
 
   .attachDrop {
     position: absolute;
-    z-index: 2;
+    z-index: var(--z-overlay);
     display: flex;
     flex-direction: column;
     align-items: center;

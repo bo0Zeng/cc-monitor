@@ -8,7 +8,7 @@
  * - ✕：传着的那份下一块不再送（已送的块交那台的孤儿扫）；传完的那份 `session-attachment-drop`。
  * - 送出那一下要的：编号（[`AttachDraft.ids`]，按草稿先后）· 挡着送出的那一句（[`AttachDraft.blocker`]）。
  *
- * 判收不收 · 上限 · 落点 · 类别都是那台的事（`class` 从那一问的答来）；这里只排先后、记进度。问那台的几口 · 读文件 · 摘要都经 [`AttachIo`]，测试换假的。
+ * 判收不收 · 上限 · 落点 · 类别都是那台的事（`class` · `class_text` 从那一问的答来）；这里只排先后、记进度。问那台的几口 · 读文件 · 摘要都经 [`AttachIo`]，测试换假的。
  */
 import { copyText } from "./copy-table";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
@@ -36,7 +36,7 @@ export interface AttachIo {
   read(blob: Blob, start: number, end: number): Promise<Uint8Array>;
   /** 现造一个暂存键（32 位小写十六进制）。 */
   newKey(): string;
-  /** 这一下没成是因为那台连不上（⇒ 排队 · 离线，不算失败）。 */
+  /** 没成的原因是会话所在机器未连接（⇒ 排队 · 离线，不算失败）。 */
   offline(e: unknown): boolean;
 }
 
@@ -58,6 +58,8 @@ export interface Chip {
   readonly dir: boolean;
   /** 那台判的那一种（问过之前 ⇒ `null`）。 */
   class: FileClass | null;
+  /** 那一种的词（那台写好；问过之前 ⇒ 空）。 */
+  classText: string;
   at: ChipAt;
 }
 
@@ -70,7 +72,7 @@ export interface AttachInput {
 
 /** 草稿里一份的内账：暂存键 · 送到第几块 · 问过没有 · 撤了没有。 */
 interface Slot extends Chip {
-  key: string;
+  stash: string;
   seq: number;
   checked: boolean;
   dropped: boolean;
@@ -97,7 +99,7 @@ export class AttachDraft {
   /** 加一批：先问那台收不收，收的排进去传。 */
   add(files: readonly AttachInput[]): void {
     for (const f of files) {
-      this.slots.push({ n: ++this.seq, name: f.name, bytes: f.blob.size, blob: f.blob, dir: f.dir === true, class: null, at: { at: "queued" }, key: "", seq: 0, checked: false, dropped: false });
+      this.slots.push({ n: ++this.seq, name: f.name, bytes: f.blob.size, blob: f.blob, dir: f.dir === true, class: null, classText: "", at: { at: "queued" }, stash: "", seq: 0, checked: false, dropped: false });
     }
     this.changed();
     void this.ask();
@@ -131,8 +133,9 @@ export class AttachDraft {
 
   /** 送字时那台说这几份已不在 ⇒ 变失败 · 可重传。 */
   markGone(ids: readonly string[]): void {
+    const said = copyText("attach.chip.gone");
     for (const s of this.slots) {
-      if (s.at.at === "done" && ids.includes(s.at.id)) s.at = { at: "failed", said: copyText("attach.chip.gone"), retry: true, detail: "" };
+      if (s.at.at === "done" && ids.includes(s.at.id)) s.at = { at: "failed", said, retry: true, detail: "" };
     }
     this.changed();
   }
@@ -149,17 +152,21 @@ export class AttachDraft {
     return this.slots.flatMap((s) => (s.at.at === "done" ? [s.at.id] : []));
   }
 
-  /** 挡着送出的那一句：有失败 ⇒「附件失败 ×n」；有没传完的 ⇒「附件传输中 已完成/总数」；都传完了 ⇒ `null`。 */
+  /** 挡着送出的那一句：有失败 ⇒「附件失败」；有没传完的 ⇒「附件传输中」；都传完了 ⇒ `null`。 */
   blocker(): string | null {
-    const failed = this.slots.filter((s) => s.at.at === "failed").length;
-    if (failed > 0) return copyText("attach.blocked.failed", { n: failed });
-    const done = this.slots.filter((s) => s.at.at === "done").length;
-    return done < this.slots.length ? copyText("attach.blocked.sending", { done, n: this.slots.length }) : null;
+    const { failed, pending } = this.tally();
+    if (failed) return copyText("attach.blocked.failed");
+    return pending ? copyText("attach.blocked.sending") : null;
+  }
+
+  /** 有没有失败的 · 有没有还没传完的。 */
+  private tally(): { failed: boolean; pending: boolean } {
+    return { failed: this.slots.some((s) => s.at.at === "failed"), pending: this.slots.some((s) => s.at.at !== "done") };
   }
 
   private restart(s: Slot): void {
     s.at = { at: "queued" };
-    s.key = "";
+    s.stash = "";
     s.seq = 0;
   }
 
@@ -178,7 +185,8 @@ export class AttachDraft {
         if (s.checked || !v) return;
         s.checked = true;
         s.class = v.class;
-        if (!v.ok) s.at = { at: "failed", said: v.said ?? copyText("reason.code.refused"), retry: false, detail: "" };
+        s.classText = v.class_text;
+        if (!v.ok) s.at = { at: "failed", said: v.said ?? "", retry: false, detail: "" };
       });
     } catch (e) {
       for (const s of fresh) s.at = this.io.offline(e) ? { at: "offline", done: 0 } : { at: "failed", said: saidOf(e), retry: true, detail: detailOf(e) };
@@ -206,8 +214,8 @@ export class AttachDraft {
   }
 
   private async upload(s: Slot): Promise<void> {
-    if (s.key === "") {
-      s.key = this.io.newKey();
+    if (s.stash === "") {
+      s.stash = this.io.newKey();
       s.seq = 0;
     }
     const chunks = Math.ceil(s.bytes / CHUNK);
@@ -219,7 +227,7 @@ export class AttachDraft {
         const end = Math.min(s.bytes, start + CHUNK);
         const bytes = await this.io.read(s.blob, start, end);
         if (s.dropped) return;
-        await this.io.stage(s.key, s.seq, bytes);
+        await this.io.stage(s.stash, s.seq, bytes);
         if (s.dropped) return;
         s.seq++;
         s.at = { at: "sending", done: end };
@@ -227,7 +235,7 @@ export class AttachDraft {
       }
       const sha256 = await this.io.digest(s.blob);
       if (s.dropped) return;
-      const got = await this.io.commit({ sid: this.sid, key: s.key, name: s.name, bytes: s.bytes, chunks, expect: { sha256 } });
+      const got = await this.io.commit({ sid: this.sid, key: s.stash, name: s.name, bytes: s.bytes, chunks, expect: { sha256 } });
       if (s.dropped) {
         void this.io.drop(this.sid, got.id).catch(() => {});
         return;
@@ -239,7 +247,7 @@ export class AttachDraft {
       if (this.io.offline(e)) s.at = { at: "offline", done: Math.min(s.bytes, s.seq * CHUNK) };
       else {
         s.at = { at: "failed", said: saidOf(e), retry: true, detail: detailOf(e) };
-        s.key = "";
+        s.stash = "";
         s.seq = 0;
       }
     }

@@ -16897,14 +16897,14 @@
     "attach.blocked.sending": {
       "kind": "body",
       "role": "悬停",
-      "zh": "附件传输中 {done}/{n}",
-      "args": ["done", "n"]
+      "zh": "附件传输中",
+      "args": []
     },
     "attach.blocked.failed": {
       "kind": "body",
       "role": "悬停",
-      "zh": "附件失败 ×{n}",
-      "args": ["n"]
+      "zh": "附件失败",
+      "args": []
     },
     "attach.chip.gone": {
       "kind": "body",
@@ -16921,14 +16921,8 @@
     "attach.chip.sending": {
       "kind": "body",
       "role": "状态",
-      "zh": "传输中 · {done} / {total}",
-      "args": ["done", "total"]
-    },
-    "attach.chip.offline": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "排队 · {machine} 离线",
-      "args": ["machine"]
+      "zh": "传输中",
+      "args": []
     },
     "attach.chip.done": {
       "kind": "body",
@@ -16938,9 +16932,9 @@
     },
     "attach.chip.failed": {
       "kind": "body",
-      "role": "片段",
-      "zh": "失败 · {why}",
-      "args": ["why"]
+      "role": "状态",
+      "zh": "失败",
+      "args": []
     },
     "attach.chip.retry": {
       "kind": "action",
@@ -16951,8 +16945,8 @@
     "attach.chip.remove": {
       "kind": "action",
       "role": "按钮",
-      "zh": "移除 {name}",
-      "args": ["name"]
+      "zh": "移除附件",
+      "args": []
     },
     "attach.chip.removeHint": {
       "kind": "body",
@@ -16975,14 +16969,8 @@
     "attach.drop.title": {
       "kind": "body",
       "role": "说明",
-      "zh": "放进「{title}」 · {machine}",
-      "args": ["title", "machine"]
-    },
-    "attach.drop.sub": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "附件 {n} · 传到会话工作目录",
-      "args": ["n"]
+      "zh": "放进会话工作目录",
+      "args": []
     },
     "attach.msg.image": {
       "kind": "body",
@@ -16994,48 +16982,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "已清理",
-      "args": []
-    },
-    "attach.class.folder": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "目录",
-      "args": []
-    },
-    "attach.class.text": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文本",
-      "args": []
-    },
-    "attach.class.code": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "代码",
-      "args": []
-    },
-    "attach.class.archive": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "压缩包",
-      "args": []
-    },
-    "attach.class.pdf": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "PDF",
-      "args": []
-    },
-    "attach.class.image": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "图片",
-      "args": []
-    },
-    "attach.class.other": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文件",
       "args": []
     },
     "beAttach.no.isDir": {
