@@ -212,11 +212,7 @@ fn bad_inputs_are_refused_and_say_which_cell() {
         "refused",
         "host 注入"
     );
-    // 契约错：缺命令 / 缺机器 / 机器缺 user。
-    assert_eq!(
-        answer(&json!({ "machine": c() })).unwrap_err().0,
-        "bad_args"
-    );
+    // 契约错：缺机器 / 机器缺 user（缺命令是登录 shell 那一形，见末尾那一节）。
     assert_eq!(
         answer(&json!({ "command": "x" })).unwrap_err().0,
         "bad_args"
@@ -404,10 +400,7 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
         by_intent,
         answer(&json!({ "machine": m, "cwd": "/srv/c" })).unwrap()
     );
-    for bad in [
-        json!({ "machine": m, "cwd": "/srv", "command": "ls" }),
-        json!({ "machine": m }),
-    ] {
+    for bad in [json!({ "machine": m, "cwd": "/srv", "command": "ls" })] {
         assert_eq!(answer(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
 }
@@ -545,4 +538,60 @@ fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
     ] {
         assert_ne!(said, copy_text(missing, &[]));
     }
+}
+
+// ── 登录 shell 那一形（`{machine}`，`command` · `cwd` 都不给）────────────────────────────
+
+fn login(args: &Value, aliases: &[&str], powershell: bool, ssh: &SshClient) -> Result<String, CmdErr> {
+    let mut wire = args.clone();
+    let mut hosts = Vec::new();
+    if let Some(m) = args.get("machine").filter(|m| m.is_object()) {
+        let h = crate::dial::machine::loose(m)?;
+        wire["machine"] = json!(h.name());
+        hosts.push(h);
+    }
+    let req: TerminalSshReq =
+        crate::wire::typed::take(&wire).map_err(|f| ("bad_args", f.message))?;
+    let aliases: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
+    answer_with(&req, &hosts, &aliases, powershell, ssh)
+        .map(|r| r.command)
+}
+
+/// 机器表里那台：ssh 外壳照旧，`--` 后面不跟命令 ⇒ 那台自己的登录 shell（那台是什么系统都成）。
+#[test]
+fn a_login_shell_on_a_listed_machine_is_ssh_with_no_remote_command() {
+    let got = login(&json!({ "machine": machine("pi.local", "pi", 2222, None) }), &[], true, &found()).unwrap();
+    assert_eq!(got, format!("{}-t -p 2222{} pi@pi.local", call(), kh()));
+    assert!(!got.contains("--"), "不带远端命令: {got}");
+}
+
+/// 本机：不走 ssh，本机终端方言的那一行登录 shell。
+#[test]
+fn a_login_shell_on_this_machine_is_the_local_login_shell() {
+    let posix = login(&json!({ "machine": "<local>" }), &[], false, &SshClient::Missing).unwrap();
+    assert_eq!(posix, "exec ${SHELL:-bash} -l");
+    let ps = login(&json!({ "machine": "<local>" }), &[], true, &SshClient::Missing).unwrap();
+    assert_eq!(ps, "Set-Location -LiteralPath $HOME");
+}
+
+/// 机器表里没有、`~/.ssh/config` 里恰好有那个 Host ⇒ 照用户的 ssh 配置连（只交别名）；两处都没有 ⇒ 照旧说查无。
+#[test]
+fn a_login_shell_on_an_ssh_config_host_hands_ssh_the_alias() {
+    let got = login(&json!({ "machine": "backup" }), &["backup", "nas"], true, &found()).unwrap();
+    assert_eq!(got, format!("{}-t{} backup", call(), kh()));
+    let posix = login(&json!({ "machine": "backup" }), &["backup"], false, &SshClient::At("/usr/bin/ssh".into())).unwrap();
+    assert_eq!(posix, format!("'/usr/bin/ssh' -t{} backup", super::config_arg(crate::dial::known_hosts::terminal_config().as_deref(), false)));
+    assert!(login(&json!({ "machine": "backup" }), &[], true, &found()).is_err());
+    // 别名过不了白名单 ⇒ 不当一台。
+    assert!(login(&json!({ "machine": "-oProxyCommand=x" }), &["-oProxyCommand=x"], true, &found()).is_err());
+}
+
+/// 远端的登录 shell 也要本机有 ssh 客户端；`command` 与 `cwd` 同给仍拒。
+#[test]
+fn a_login_shell_still_needs_an_ssh_client_and_both_forms_together_are_refused() {
+    let m = machine("pi.local", "pi", 22, None);
+    let e = login(&json!({ "machine": m.clone() }), &[], false, &SshClient::Missing).unwrap_err();
+    assert_eq!(e.0, "no_ssh_client");
+    let e = login(&json!({ "machine": m, "command": "ls", "cwd": "/tmp" }), &[], false, &found()).unwrap_err();
+    assert_eq!(e.0, "bad_args");
 }
