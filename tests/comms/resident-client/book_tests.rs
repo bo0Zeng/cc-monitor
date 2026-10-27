@@ -27,8 +27,16 @@ fn a_session_sits_in_one_place_and_reads_its_face_from_there() {
     for sid in b.live.keys() {
         assert!(!b.left.contains_key(sid), "{sid} 同时在活的与走了的里");
     }
-    assert_eq!(b.face("a").map(|f| f.order), Some(0), "活的 ⇒ 最新状态那一张");
-    assert_eq!(b.face("c").map(|f| f.settled), Some(true), "走了的 ⇒ 去向那一张");
+    assert_eq!(
+        b.face("a").map(|f| f.order),
+        Some(0),
+        "活的 ⇒ 最新状态那一张"
+    );
+    assert_eq!(
+        b.face("c").map(|f| f.settled),
+        Some(true),
+        "走了的 ⇒ 去向那一张"
+    );
     assert!(b.face("zz").is_none(), "没宣告过的状态帧不进簿");
     let order: Vec<&str> = b.seats().map(|(s, _)| s.as_str()).collect();
     assert_eq!(order, ["a", "b", "c", "d"]);
@@ -38,7 +46,11 @@ fn a_session_sits_in_one_place_and_reads_its_face_from_there() {
 #[test]
 fn a_left_session_announced_again_is_live_again_and_other_frames_do_not_touch_the_book() {
     let mut b = folded(FRAMES);
-    let again = FRAMES.lines().next().unwrap().replace("\"sid\":\"a\"", "\"sid\":\"b\"");
+    let again = FRAMES
+        .lines()
+        .next()
+        .unwrap()
+        .replace("\"sid\":\"a\"", "\"sid\":\"b\"");
     assert!(b.fold(&decode::<serde_json::Value>(&again).unwrap()));
     assert!(b.live.contains_key("b") && !b.left.contains_key("b"));
     let before = b.clone();
@@ -47,7 +59,10 @@ fn a_left_session_announced_again_is_live_again_and_other_frames_do_not_touch_th
         assert!(!b.fold(&f), "不是会话帧 ⇒ 不动");
     }
     let plain = r#"{"kind":"session_removed","sid":"d"}"#;
-    assert!(!b.fold(&decode::<serde_json::Value>(plain).unwrap()), "没有顶替 ⇒ 去向等 session_state");
+    assert!(
+        !b.fold(&decode::<serde_json::Value>(plain).unwrap()),
+        "没有顶替 ⇒ 去向等 session_state"
+    );
     assert_eq!(b, before);
     b.forget("c");
     assert!(b.seat("c").is_none());

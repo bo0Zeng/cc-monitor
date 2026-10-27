@@ -84,8 +84,14 @@ fn an_open_replaces_the_whole_card_and_a_close_takes_it_away() {
     let now = b.cards_of("s1", None);
     assert!(now.cards[0].clipped);
     assert_eq!(texts(&b, "s1", None), [[Some("尾巴".to_string())]]);
-    let closed = b.apply(&f(serde_json::json!({"sid":"s1","card":7,"n":1,"op":"close","why":"record"})));
-    assert_eq!(closed, Some(("s1".into(), None)), "撤 ⇒ 那一处变了（交空的）");
+    let closed = b.apply(&f(
+        serde_json::json!({"sid":"s1","card":7,"n":1,"op":"close","why":"record"}),
+    ));
+    assert_eq!(
+        closed,
+        Some(("s1".into(), None)),
+        "撤 ⇒ 那一处变了（交空的）"
+    );
     assert!(b.cards_of("s1", None).cards.is_empty());
     assert!(b.is_empty());
 }
@@ -109,15 +115,26 @@ fn a_sub_run_card_lives_under_its_run_and_cards_keep_their_arrival_order() {
     for x in &card("s1", 3, "r", &["子"], Some("a1"))[..2] {
         assert_eq!(b.apply(x), Some(("s1".into(), Some("a1".into()))));
     }
-    assert!(b.cards_of("s1", None).cards.is_empty(), "子运行的卡不上主运行");
+    assert!(
+        b.cards_of("s1", None).cards.is_empty(),
+        "子运行的卡不上主运行"
+    );
     let sub = b.cards_of("s1", Some("a1"));
     assert_eq!(sub.run.as_deref(), Some("a1"));
-    assert_eq!(texts(&b, "s1", Some("a1")), [[None, Some("子".to_string())]]);
+    assert_eq!(
+        texts(&b, "s1", Some("a1")),
+        [[None, Some("子".to_string())]]
+    );
     // 后开的卡排在后面；先开的那张再来一张整卡也不挪位。
     b.apply(&card("s1", 1, "m2", &[], None)[0]);
     b.apply(&card("s1", 0, "m3", &[], None)[0]);
     b.apply(&card("s1", 1, "m2", &[], None)[0]);
-    let order: Vec<String> = b.cards_of("s1", None).cards.into_iter().map(|c| c.rid).collect();
+    let order: Vec<String> = b
+        .cards_of("s1", None)
+        .cards
+        .into_iter()
+        .map(|c| c.rid)
+        .collect();
     assert_eq!(order, ["m2", "m3"]);
 }
 
@@ -129,7 +146,13 @@ fn dropping_a_session_or_clearing_says_which_places_changed() {
     b.apply(&card("s2", 3, "m", &[], None)[0]);
     let mut gone = b.drop_session("s1");
     gone.sort();
-    assert_eq!(gone, [("s1".to_string(), None), ("s1".to_string(), Some("a1".to_string()))]);
+    assert_eq!(
+        gone,
+        [
+            ("s1".to_string(), None),
+            ("s1".to_string(), Some("a1".to_string()))
+        ]
+    );
     assert_eq!(b.len(), 1);
     assert_eq!(b.clear(), [("s2".to_string(), None)]);
     assert!(b.clear().is_empty(), "空板再清 ⇒ 没有哪处变了");

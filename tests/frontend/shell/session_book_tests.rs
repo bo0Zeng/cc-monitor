@@ -33,7 +33,10 @@ fn left(o: &str, s: &str, fate: SessionFate) -> In {
 }
 
 fn listed(o: &str) -> In {
-    told(o, Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}))
+    told(
+        o,
+        Frame::SessionsReplayed(cmd_wire::frame::SessionsReplayed {}),
+    )
 }
 
 /// ★ 同一串帧喂桌面与手机，两端拿到的会话簿逐格相同、出自同一个函数：壳这一侧照分派那一路（会话帧原样交 `In::Told`）喂夹具那一串，

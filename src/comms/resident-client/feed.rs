@@ -460,7 +460,10 @@ impl<T: Transport> Feed<T> {
     }
 
     fn offline(&self) -> Problem {
-        Problem::new(comms_inward::chan::said::offline(&self.cfg.machine), String::new())
+        Problem::new(
+            comms_inward::chan::said::offline(&self.cfg.machine),
+            String::new(),
+        )
     }
 
     async fn run(self: Arc<Self>) {

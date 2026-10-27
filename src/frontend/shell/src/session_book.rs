@@ -29,9 +29,7 @@ pub enum In {
         frame: crate::stream_source::Frame,
     },
     /// 到那台的连接断了。
-    LinkLost {
-        origin: String,
-    },
+    LinkLost { origin: String },
     /// 本机后端握上手时 hello 带来的那一张「那台看不见」的脸（`Hello.unseen`）：此后每一格「说不清」都带上它。
     UnseenFace {
         face: Option<cmd_wire::frame::SessionFace>,
@@ -432,12 +430,10 @@ impl Book {
                         sid: sid.clone(),
                         meta: m.clone(),
                     }),
-                    Seat::Left(s) if s.state == SessionFate::Reconnectable => {
-                        v.push(Out::Left {
-                            origin: origin.to_string(),
-                            state: s.clone(),
-                        })
-                    }
+                    Seat::Left(s) if s.state == SessionFate::Reconnectable => v.push(Out::Left {
+                        origin: origin.to_string(),
+                        state: s.clone(),
+                    }),
                     Seat::Left(_) => {}
                 }
             }
