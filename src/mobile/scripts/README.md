@@ -22,7 +22,7 @@
 .\scripts\bootstrap-android-env.ps1 -Root D:\android-dev
 ```
 
-装 Temurin JDK 21 与 Android SDK（cmdline-tools、platform-tools、`platforms;android-36`、`build-tools;36.0.0`）。不装 NDK / CMake：termlib 用仓内 `libs/m2/` 里的包，只有改 termlib 原生代码时才要。幂等，已存在的组件跳过。
+装 Temurin JDK 21 与 Android SDK（cmdline-tools、platform-tools、`platforms;android-36`、`build-tools;36.0.0`）与 NDK（版本读 `gradle.properties` 的 `ccm.ndkVersion`：手机嵌的 Rust 核心由 cargo 编，NDK 给它 clang 与链接器）。不装 CMake（termlib 用仓内 `libs/m2/` 里的包），也不装 Rust：两个 android target 照结尾印的那一行 `rustup target add` 另装。幂等，已存在的组件跳过。
 
 ## gate-count.sh — 门禁条数
 
