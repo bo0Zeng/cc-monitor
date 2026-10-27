@@ -67,8 +67,8 @@ impl From<Failed> for io::Error {
     }
 }
 
-/// 照描述 `e` 开一条到 `host:port` 的 TCP。`deadline` 装在 socket 上（读写各一次的上限），代理握手也受它管。
-pub fn open(e: &Egress, host: &str, port: u16, deadline: Duration) -> Result<Opened, Failed> {
+/// 照描述 `e` 开一条到 `host:port` 的 TCP。`deadline` 装在 socket 上（读写各一次的上限），代理握手也受它管；`None` ⇒ 不装（同 `TcpStream` 的缺省）。
+pub fn open(e: &Egress, host: &str, port: u16, deadline: Option<Duration>) -> Result<Opened, Failed> {
     match e.hop_for(host) {
         Hop::Direct => Ok(Opened {
             tcp: tcp_to(host, port, deadline)?,
@@ -97,7 +97,7 @@ pub fn open(e: &Egress, host: &str, port: u16, deadline: Duration) -> Result<Ope
 }
 
 /// 真开 TCP 的那一处：先解析、再按解析出来的地址逐个连。
-fn tcp_to(host: &str, port: u16, deadline: Duration) -> Result<TcpStream, Failed> {
+fn tcp_to(host: &str, port: u16, deadline: Option<Duration>) -> Result<TcpStream, Failed> {
     // 测试档不许出网：真开 TCP 的那个目的地（代理或目标）不是本机回环 ⇒ 当场 panic，不连、不解析名字。
     #[cfg(any(test, feature = "test-support"))]
     assert!(
@@ -123,8 +123,8 @@ fn tcp_to(host: &str, port: u16, deadline: Duration) -> Result<TcpStream, Failed
         io,
     })?;
     let set = |tcp: &TcpStream| -> io::Result<()> {
-        tcp.set_read_timeout(Some(deadline))?;
-        tcp.set_write_timeout(Some(deadline))
+        tcp.set_read_timeout(deadline)?;
+        tcp.set_write_timeout(deadline)
     };
     set(&tcp).map_err(|io| Failed {
         stage: Stage::Connect,
@@ -141,3 +141,8 @@ mod tests;
 #[cfg(test)]
 #[used]
 static TEST_HOME: fn() = test_home::linked;
+
+// 出站 TCP 只此一口（扫后端源码树 ＋ 中转 crate 的生产段）。
+#[cfg(test)]
+#[path = "../../../tests/backend/egress_guard.rs"]
+mod egress_guard;

@@ -90,6 +90,7 @@ pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketA
         )),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(taps),
+        Arc::new(super::open_here),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));

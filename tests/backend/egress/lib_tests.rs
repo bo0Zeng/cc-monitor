@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::mpsc;
 
-fn wait() -> Duration {
-    Duration::from_secs(10)
+fn wait() -> Option<Duration> {
+    Some(Duration::from_secs(10))
 }
 
 /// 假 HTTP 代理：接一条连接，读到空行为止，把请求头交出来；回 `answer`，之后当回声（隧道那头的「目的地」）。
