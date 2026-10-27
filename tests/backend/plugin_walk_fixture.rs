@@ -6,16 +6,10 @@
 //! 与 `agents/fake/` 是两件东西：那一份是最小假 agent（纯函数、不起进程），本份是最小假插件，必须真起进程。
 //! 落在 `plugin/` 层外：假插件要带自己那张码表，放进层内会被 `plugin::layer_guard` 的码表判据打红（那正是它该挡的）。
 //!
-//! # 这个假插件刻意与仓里那个真插件族不同形（[`tests::this_fake_plugin_is_deliberately_unlike_the_real_one`] 逐维对拍活体）
+//! # 这个假插件自带它自己的知识（候选路径 · 子命令 · 退出码语义），通用层一样都不认识
 //!
-//! | 维 | 那个真插件族 | 本假插件 |
-//! |---|---|---|
-//! | 可执行文件的粒度 | 一个动词一个二进制 | 一个二进制 ＋ 子命令 |
-//! | 候选路径 | 用户装机位，兜 `PATH` | 调用方给的一个根 ＋ `libexec/` 一级，刻意不兜 `PATH` |
-//! | 契约走 env 的那一样 | 可选的身份覆盖 | 必需的作业域；缺了用自己的码拒 |
-//! | 退出码语义 | `2` = 收件人非法 · `3` = 路由层拒绝 | `5` = 台账过期该重试 · `6` = 作业域上锁 · `7` = 不认识这条子命令 |
+//! 走通证明的是「通用调用口不替插件解释任何东西」：它的码表 · 找法都住这份夹具里，不住 `plugin/`。
 //!
-//! 假的若照抄真的，通用层拿真的的知识去解释它恰好也能读出东西 ⇒ 走通证明不了什么。
 //!
 //! # 买不到
 //!
@@ -68,7 +62,7 @@ mod tests {
     /// 尾巴若取自路径里出现得了的字符，那条断言就会**靠路径恒真**。
     const NOT_FOUND_HINT: &str = "（夹具口径：只查上面这两处，刻意不兜 PATH）";
 
-    /// 它自己的退出码 —— **语义与那个真插件族互斥**（同一个数在两边不是同一件事）。
+    /// 它自己的退出码：语义只住这里（同一个数在别的插件里可以是另一件事）。
     const STALE_LEDGER: i32 = 5;
     const REALM_LOCKED: i32 = 6;
     const UNKNOWN_SUB: i32 = 7;
@@ -87,7 +81,7 @@ mod tests {
     fn script_text() -> String {
         let lines: Vec<String> = vec![
             "#!/bin/sh".to_string(),
-            "# 夹具用的假插件 —— 一个可执行文件 + 子命令。刻意与仓里那个真插件族不同形。"
+            "# 夹具用的假插件 —— 一个可执行文件 + 子命令。码表与找法只住夹具里。"
                 .to_string(),
             "case \"$1\" in".to_string(),
             format!("  {WORK_SUB})"),
@@ -123,8 +117,7 @@ mod tests {
     ///
     /// **两级，第一级刻意留空** —— 找法必须真的走过一个不存在的候选才到第二级；
     /// 少了这一点，「顺序即优先级」这一格就是空真。
-    /// `search_path` 由 [`walk`] 给 `false`（那个真插件族给的是 `true`，
-    /// 由 [`this_fake_plugin_is_deliberately_unlike_the_real_one`] 对拍钉住）。
+    /// `search_path` 由 [`walk`] 给 `false`：找不到就说查过这两处，不兜 `PATH`。
     fn discovery_of(root: &Path, name: &str) -> (Vec<PathBuf>, &'static str) {
         (
             vec![root.join("libexec").join(name), root.join(name)],
@@ -154,14 +147,6 @@ mod tests {
             Some(TIMED_OUT_CODE) => "deadline_hit",
             Some(_) => "broke",
             None => "signalled",
-        }
-    }
-
-    /// 那个真插件族对**同一个数**的说法 —— 活体对拍用（不是手抄的表）。
-    fn real_plugin_word(code: Option<i32>) -> String {
-        match crate::control::cc_bus::classify_exit("cc-bus log", code, "detail", 10) {
-            Ok(()) => "<成事>".to_string(),
-            Err((word, _)) => word,
         }
     }
 
@@ -448,11 +433,6 @@ mod tests {
         guard_core::addr::backend_src_root()
     }
 
-    /// 那个真适配层今天的生产段（活体对拍语料，不是手抄的 fixture）。
-    fn real_adapter_production() -> String {
-        guard_core::production_code(include_str!("../../src/backend/control/cc_bus.rs"))
-    }
-
     /// 通用调用口那一层今天的生产段，逐文件。
     ///
     /// ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`：`scanning_guard_registry`
@@ -514,123 +494,6 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════
     // 四 · 判据
     // ═══════════════════════════════════════════════════════════════════════
-
-    /// `KW2E2`：这个假插件**每一维都刻意与那个真插件族不同形** —— 逐维活体对拍。
-    ///
-    /// # 为什么这是地基而不是趣味
-    ///
-    /// 假的若照抄真的，通用层拿真的的知识去解释它**恰好也能读出东西** ——
-    /// 那时「走通全流程」证明的是「一份布局被施加到另一个名字上」，
-    /// 那是**一个粉饰的通过**（`agents/fake/mod.rs` 头注逐字）。
-    ///
-    /// # ⚠ 它对拍的是**活体**，不是手抄的表
-    ///
-    /// 候选路径与退出码语义两维都去问 `control/cc_bus.rs` **今天的函数**；
-    /// 「兜不兜 `PATH`」那一维去钉它生产段里**那一行**。
-    /// ⇒ 那边哪天改了形，这一格会红，而红的意思是「两边还不同形吗，来个人看一眼」。
-    #[test]
-    fn this_fake_plugin_is_deliberately_unlike_the_real_one() {
-        let name = plugin_name();
-        let home = PathBuf::from("/home/u");
-
-        // ── ① 候选路径：两边**互不相交**，且各有一级对方没有的 ─────────────
-        let theirs = crate::control::cc_bus::fixed_candidates(None, Some(&home), &name);
-        let (mine, hint) = discovery_of(&home, &name);
-        assert!(
-            !theirs.is_empty() && !mine.is_empty(),
-            "有一边的候选列表是空的 ⇒ 下面的不相交断言是空真：mine={mine:?} theirs={theirs:?}"
-        );
-        for p in &mine {
-            assert!(
-                !theirs.contains(p),
-                "候选路径撞上了那个真插件族的装机位：{p:?}"
-            );
-        }
-        fn has_component(ps: &[PathBuf], seg: &str) -> bool {
-            ps.iter()
-                .any(|p| p.components().any(|c| c.as_os_str() == seg))
-        }
-        assert!(
-            has_component(&mine, "libexec"),
-            "本夹具那一级 `libexec` 不见了 —— 本条在空转"
-        );
-        assert!(
-            !has_component(&theirs, "libexec"),
-            "那个真插件族也走 `libexec` 了 —— 这一维不再不同形"
-        );
-        assert!(
-            has_component(&theirs, ".local"),
-            "对照坏了：那个真插件族不再找用户装机位"
-        );
-        assert!(
-            !has_component(&mine, ".local"),
-            "本夹具跑去找用户装机位了 —— 那是照抄"
-        );
-
-        // ── ② 兜不兜 `PATH`：那边显式 `true`，本夹具显式 `false` ───────────
-        let prod = real_adapter_production();
-        guard_core::pin_line(
-            &prod,
-            "crate::plugin::discover::find(name, &fixed, true, &NOT_INSTALLED_HINT)",
-        )
-        .unwrap_or_else(|why| {
-            panic!(
-                "那个真适配层「兜 `PATH`」那一行对不上了：{why}\n\
-                 本条钉的**不是**那一行不许变，而是「两边在这一维上还不同形吗」——\
-                 它变了就该有人来看一眼（本夹具给的是 `false`，由下面那句 `0 个目录` 钉住）。"
-            );
-        });
-        let missing = crate::plugin::discover::not_installed_message(&name, &mine, 0, hint);
-        assert!(
-            copy_core::copy_matches_with(
-                "beDiscover.notInstalledMessage.notFound",
-                &[("pathDirs", "0")],
-                &missing
-            ),
-            "本夹具没走成「不兜 PATH」那一侧：{missing}"
-        );
-
-        // ── ③ 退出码语义：同一个数，两边**不是同一件事** ────────────────────
-        for c in [
-            Some(2),
-            Some(3),
-            Some(STALE_LEDGER),
-            Some(REALM_LOCKED),
-            Some(UNKNOWN_SUB),
-            Some(TIMED_OUT_CODE),
-            None,
-        ] {
-            assert_ne!(
-                code_word(c),
-                real_plugin_word(c).as_str(),
-                "退出码 {c:?} 在两边是同一个语义词 —— 码表照抄了，\
-                 而「同一个数在不同插件里语义互斥」正是 `E6` 那条判断的全部依据"
-            );
-        }
-        // 唯一刻意重叠的那一格：`0` 两边都是成事 —— 那不是照抄，是「成功」这件事本身。
-        assert_eq!(code_word(Some(0)), "sealed");
-        assert_eq!(real_plugin_word(Some(0)), "<成事>");
-        // 三档非零码互不相同（并成一个码，人就分不出「该重试」与「被拒」）。
-        assert_ne!(code_word(Some(STALE_LEDGER)), code_word(Some(REALM_LOCKED)));
-        assert_ne!(code_word(Some(REALM_LOCKED)), code_word(Some(UNKNOWN_SUB)));
-        assert_ne!(code_word(Some(STALE_LEDGER)), code_word(Some(UNKNOWN_SUB)));
-
-        // ── ④ 知识表与 `Caps` 的字段**不许漂开** ────────────────────────────
-        let full = Caps::full();
-        assert_eq!(
-            full.present(),
-            KNOWLEDGE.len(),
-            "`Caps::full()` 交出来的知识数与 `KNOWLEDGE` 对不上 —— 两处漂开了"
-        );
-        assert_eq!(HOPS.len(), KNOWLEDGE.len(), "跳与知识不是一一对应了");
-        for k in KNOWLEDGE {
-            assert_eq!(
-                full.without(k).present(),
-                KNOWLEDGE.len() - 1,
-                "挖「{k}」这个洞没有挖到任何东西"
-            );
-        }
-    }
 
     /// 正题：**一个假插件把三跳串成一条路、真起进程**，而通用层一行没改。
     #[test]
@@ -1475,7 +1338,7 @@ mod tests {
     /// | 5 | `readonly_guard::spawn_registry`（`SPAWN_SITES_TODAY` 今天 **9**，相等断言） | ✅ 红 | 🔴 **只在没有复用那唯一一处起进程口时**；`E5` 裁定复用 ⇒ 这个数**不许涨**（这里一处没动） |
     /// | 6 | `plugin::layer_guard::FILES_IN_THIS_LAYER`（逐个列名） | ✅ 红 | 🔴 **只在往 `plugin/` 里加文件时** —— 而按 `E6` 新插件的东西根本不该进那一层 |
     /// | 7 | `agent_boundary_guard::CORE_FILES` + 它的棘轮表 | ✅ 红 | 🔴 同 6（`FILES_IN_THIS_LAYER` 的诊断文案逐字要求**同轮**加） |
-    /// | 8 | 新插件**自己那组专有针** | ❌ **没人管** | 无条件 —— `cc_bus_boundary_guard` 那 5 根针是那一族的专有词，对新插件零覆盖 |
+    /// | 8 | 新插件**自己那组专有针** | ❌ **没人管** | 无条件 —— 没有一条机检逼新插件带它自己那组针 |
     ///
     /// **⇒ 两个数，各带条件（这才是诚实的形状，一个数说不清）**：
     /// · **无条件**要动宿主的：**2 处**（1、2）+ **1 处没人管**（8）；
@@ -1492,51 +1355,18 @@ mod tests {
     /// # ⚠ 第 8 行 PM 特别点名：本夹具**要不要**自己带一组专有针
     ///
     /// **带了。** [`the_generic_port_never_learns_this_fixtures_vocabulary`] 就是它 ——
-    /// 分母是本夹具自己那张词表，与那一族的 5 根针**零重叠**。
+    /// 分母是本夹具自己那张词表。
     /// ⚠ 但**说清它买到的是什么**：它只守「本夹具的词不许漏进通用层」，
     /// **不守**「所有将来的插件的词」——`E6` 要求的是「每加一个插件要加它自己那组专有针」，
     /// 而**没有任何机检能逼下一个人加**。那一格今天仍然没人管，第 8 行**不许划掉**。
     #[test]
     fn adding_a_plugin_still_costs_the_host_something() {
-        // 落点 1/2 的机检**今天真在**：命令表两侧互为镜子，且每条转调型命令都带文档锚点。
+        // 落点 1/2 的机检**今天真在**：命令表两侧互为镜子（协议参考由登记生成）。
         assert_eq!(
             crate::stream::inbound::command_names().len(),
             crate::stream::inbound::REGISTRY.len(),
             "命令表两侧的条数对不上 —— 落点 1 那道机检此刻自己就是红的"
         );
-        let owners: Vec<&crate::wire::spec::CommandSpec> = crate::stream::inbound::REGISTRY
-            .iter()
-            .filter(|s| s.codes.contains(&"not_installed"))
-            .collect();
-        assert!(
-            !owners.is_empty(),
-            "没有任何一条命令登记那个词 —— 落点 1/2 的读数此刻量不出来"
-        );
-        for s in &owners {
-            assert!(
-                !s.summary.is_empty(),
-                "转调插件的命令 `{}` 没有一句话说明 —— 落点 2 协议参考里它那一节是空的",
-                s.name
-            );
-        }
-
-        // 落点 8：那一族的专有针对本夹具**零覆盖** —— 这一格是本行「没人管」的证据。
-        //
-        // ⚠ 分母：`cc_bus_boundary_guard` 那 5 根针的**词**住它自己那份源码里，
-        //   这里不复述成第二份字面量 —— 只断言「它的语料里一个本夹具的词都没有」。
-        let their_guard = guard_core::production_code(include_str!("cc_bus_boundary_guard.rs"));
-        let vocab = fixture_vocabulary();
-        let covered: Vec<&str> = vocab
-            .iter()
-            .map(|(w, _)| w.as_str())
-            .filter(|w| their_guard.contains(*w))
-            .collect();
-        assert!(
-            covered.is_empty(),
-            "那一族的边界判据里出现了本夹具的词 {covered:?} —— \
-             那样「专有针对新插件零覆盖」这条读数就变了，落点 8 的说法要同轮改"
-        );
-
         // 落点 5：`E5` 裁定「插件调用复用那一处口」⇒ 一处起进程点都不许加。
         // 生产段那个数由 `readonly_guard::spawn_registry` 的相等断言看着（这里没动它）；
         // 这里只钉本文件这一侧：本文件的**生产段**里一个 `Command` 都没有。

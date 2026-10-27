@@ -169,7 +169,7 @@ fn body_is_at_most_1200_bytes() {
 #[test]
 fn every_refusal_code_is_in_the_command_code_table() {
     use crate::wire::typed::Codes;
-    let table = crate::control::cc_bus_wire::BusEnvelopeErr::ALL;
+    let table = crate::control::cc_bus_wire::BusSendErr::ALL;
     for c in [
         "bad_from",
         "bad_to",
@@ -180,7 +180,7 @@ fn every_refusal_code_is_in_the_command_code_table() {
         "bad_ref",
         "too_long",
     ] {
-        assert!(table.contains(&c), "{c} 不在 bus-envelope 的码表里");
+        assert!(table.contains(&c), "{c} 不在 bus-send 的码表里");
     }
 }
 
@@ -198,7 +198,7 @@ fn sealing_stamps_an_id_that_re_accepts_and_a_utc_time() {
 
 #[test]
 fn sealed_envelope_round_trips_through_check() {
-    // 迁移与重发都拿规范信封再过一遍：盖过的那份必须原样过得去。
+    // 盖过的那份照原样再交一遍也过得去（同一封重发：各格都合规矩）。
     let e = seal(check_json(ok_req()).unwrap(), 1_761_465_600_123, 7);
     let v = json!({"from": e.from, "to": e.to, "tier": e.tier, "act": e.act, "title": e.title, "refs": e.refs, "text": e.text});
     assert_eq!(code_of(v), "ok");

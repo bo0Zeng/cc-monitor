@@ -46,14 +46,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/asks.rs",
         include_str!("../../src/backend/agents/asks.rs"),
     ),
-    // P4f：`control/cc_bus.rs` 里有 `"--` 打头的字面量（转调 `cc-bus list --tsv` 的旗标）。派生的文件集按「生产段里出现 `"--`」收人，
-    // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
-    (
-        "control/cc_bus.rs",
-        include_str!("../../src/backend/control/cc_bus.rs"),
-    ),
     // `control/launch.rs`：终端管理送字那一段里有 `"--"` 字面量（`send-keys -l -- <字>` · `set-buffer -- <字>`：
-    // 显式结束旗标，免得以 `--` 开头的字被 tmux 当成选项）。同上一条 cc_bus.rs 的处置：登记，不改判据。
+    // 显式结束旗标，免得以 `--` 开头的字被 tmux 当成选项）。登记，不改判据。
     (
         "control/launch.rs",
         include_str!("../../src/backend/control/launch.rs"),
@@ -175,12 +169,6 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
 /// 那是把扫描面静默挖空；正路就是登记在这里、让 ①② 接住。
 pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     // 一份文件发给几个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
-    (
-        "control/cc_bus.rs",
-        "src/shared/cc-bus/scripts/cc-bus-list.sh",
-        &["--tsv"],
-        "`bus-list` 转调 `cc-bus list --tsv`（机器可读的名册）。是 cc-bus list 的命令面，不是后端的子命令。",
-    ),
     // 子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
     //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
     (
@@ -370,7 +358,7 @@ mod tests {
     /// 🔴 [`CHILD_PROCESS_FLAGS`] 的接盘判据：**①② 两向相等**（登记表头注写着为什么）。
     ///
     /// ⚠ 买不到：「旗标的**值**对不对」—— 那一格由子进程自己 rc=2 判，
-    /// 行为判据住 `control::cc_bus::tests`（argv 形状）与 `tests/e2e/backend-cc-bus.sh`（真跑）。
+    /// 行为判据住各子进程自己那一侧（真跑）。
     #[test]
     fn child_process_flags_are_exactly_what_the_file_sends_and_what_the_child_accepts() {
         assert!(
