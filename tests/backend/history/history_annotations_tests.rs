@@ -195,6 +195,8 @@ fn patch_semantics_match_what_the_monitor_did() {
     )
     .unwrap();
     assert_eq!(e["entry"]["customTitle"], "占位标题一");
+    // 回包带改之前改过的名（`prev_title`）：tab 上只知道定好的名，撤销改名照它交回去。
+    assert_eq!(e["prev_title"], "占位标题一", "{e}");
     // 空白串清空。
     let e = answer_annotate_at(
         &own_of(&p),
@@ -203,6 +205,23 @@ fn patch_semantics_match_what_the_monitor_did() {
     )
     .unwrap();
     assert_eq!(e["entry"]["customTitle"], Value::Null);
+    assert_eq!(e["prev_title"], "占位标题一", "{e}");
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"customTitle": "修登录"}}),
+        8,
+    )
+    .unwrap();
+    assert_eq!(e["entry"]["customTitle"], "修登录");
+    assert_eq!(e["prev_title"], Value::Null, "改之前没有改过的名 ⇒ null：{e}");
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"customTitle": ""}}),
+        8,
+    )
+    .unwrap();
+    assert_eq!(e["entry"]["customTitle"], Value::Null, "改成空 ＝ 回到原标题");
+    assert_eq!(e["prev_title"], "修登录", "{e}");
     assert_eq!(e["entry"]["starred"], true, "没给的格被动了");
     // 新的一条：从缺省起。
     let e = answer_annotate_at(
