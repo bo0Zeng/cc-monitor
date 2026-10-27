@@ -51,7 +51,7 @@ const TAB_LAYER = [
   "src/frontend/ui/tab-session-actions.ts",
 ];
 
-/** 加上 ↗ 结局那一份（tab 层的「切到终端」那几句搬到了它那里）。 */
+/** 加上 ↗ 结局那一份（出口自己那一跳的失败那几句；壳 · 后端交来的那一张由 `cmd_wire::front` 写）。 */
 const SPOKEN = [...TAB_LAYER, "src/frontend/ui/front-result.ts"];
 
 /** 一份源码里全部字符串 / 模板字面量的文字（模板的各段拼起来，插值处留空）。 */
@@ -110,7 +110,7 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
   it("★ 抽取器自检：12 份里抽得出字面量，且认得出改之后的新词", () => {
     const all = SPOKEN.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     nonEmpty(all);
-    expect(all).toContain(copyText("front.title.unsure"));
+    expect(all, "出口自己那一跳的失败（壳 · 后端写好的那一张在 `cmd-wire/src/front.rs`，不在这几份里）").toContain(copyText("front.title.failed"));
     expect(all, "期限到的那一族（原先「切到终端窗口超时」）").toContain(copyText("front.body.timeout", { machine: "{machine}" }));
     // 模板字面量也要抽得到（插值处留空）。
     expect(all).toContain("[tabs] 骨架未接（）：");
