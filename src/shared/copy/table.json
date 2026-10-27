@@ -2579,12 +2579,6 @@
       "zh": "上下文 {ctx}",
       "args": ["ctx"]
     },
-    "gridMonitor.renderBadges.agents": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "agent {totalAgents} · {runningAgents} 在跑",
-      "args": ["runningAgents", "totalAgents"]
-    },
     "gridMonitor.renderBadges.agentsLabel": {
       "kind": "body",
       "role": "状态",
@@ -22242,6 +22236,24 @@
       "role": "按钮",
       "zh": "agent {n}",
       "args": ["n"]
+    },
+    "agentsPanel.render.summaryDoneAtLeast": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "agent 至少 {n}",
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上是读数（agent 总数下界），「至少」去掉就把下界说成了实数"
+      }
+    },
+    "agentsPanel.render.summaryAtLeast": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "agent 至少 {n} · {running} 在跑",
+      "args": ["n", "running"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上是读数（agent 总数下界 · 在跑数），压掉哪格都少一件事实"
+      }
     },
     "usageHud.chip.ctx": {
       "kind": "body",
