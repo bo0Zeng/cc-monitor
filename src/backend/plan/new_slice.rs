@@ -138,7 +138,9 @@ fn existing_ancestor(dir: &Path) -> PathBuf {
 
 /// 那一行里的一个参数：只有字母数字与几个路径常用的记号 ⇒ 原样；别的（空白 · 引号 · 变量记号 …）⇒ 照 POSIX 单引号括起（共享那一份）。
 fn quoted(a: &str) -> String {
-    if a.chars().all(|c| c.is_alphanumeric() || "-_./:@+=,".contains(c)) {
+    if a.chars()
+        .all(|c| c.is_alphanumeric() || "-_./:@+=,".contains(c))
+    {
         a.to_string()
     } else {
         shell_quote_core::posix_quote(a)
