@@ -211,3 +211,50 @@ fn index_rows_match_the_shared_seq_space_golden() {
     assert_eq!(tail["count"].as_u64(), count);
     assert_eq!(tail["end"].as_u64(), end);
 }
+
+/// `t` 那一格的说明（`IPC-COMMANDS.md` 由它生成）列的值域 ＝ `RecordClass` 去掉 `unread`（骨架不出认不出的行）。
+/// 多列一个不存在的类、漏列一个新加的类都红。
+#[test]
+fn the_t_doc_lists_exactly_the_skeleton_classes() {
+    use crate::agents::record::RecordClass;
+    // 穷举：`RecordClass` 加一类不在这里补就编不过。
+    fn every(c: RecordClass) -> bool {
+        match c {
+            RecordClass::Said
+            | RecordClass::Reply
+            | RecordClass::Retry
+            | RecordClass::Title => true,
+            RecordClass::Unread => false,
+        }
+    }
+    let all = [
+        RecordClass::Said,
+        RecordClass::Reply,
+        RecordClass::Retry,
+        RecordClass::Title,
+        RecordClass::Unread,
+    ];
+    let want: std::collections::BTreeSet<String> = all
+        .into_iter()
+        .filter(|c| every(*c))
+        .map(|c| serde_json::to_value(c).unwrap().as_str().unwrap().to_string())
+        .collect();
+    let src = include_str!("../../../../src/backend/observe/recognize/index_row.rs");
+    let line = src
+        .lines()
+        .find(|l| l.contains("这一行会翻成哪一类通用记录（"))
+        .expect("`t` 那一格的说明不见了");
+    let list = line
+        .split_once("通用记录（")
+        .and_then(|(_, r)| r.split_once('，'))
+        .map(|(l, _)| l)
+        .expect("说明里那一串值域没找到");
+    let got: std::collections::BTreeSet<String> = list
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    assert!(!got.is_empty(), "值域一个词都没抽到 —— 下面的相等判不了");
+    assert_eq!(got, want, "`IndexRow.t` 说明里列的值域与 `RecordClass` 对不上");
+}

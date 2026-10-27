@@ -19,7 +19,7 @@ pub(crate) struct IndexRow {
     pub(crate) o: u64,
     /// 行字节长（**含**结尾 `\n`）。
     pub(crate) n: u64,
-    /// 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；
+    /// 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title`，与读正文时那条记录的 `t` 同一个词）；
     /// 不进界面（元数据 · 解析不出 · 认不出）⇒ 省略。判定在适配层（注册表 `RecordFace.class`，与它的翻译表对拍）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) t: Option<crate::agents::record::RecordClass>,
