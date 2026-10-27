@@ -319,9 +319,24 @@ static PUBLISHED: Mutex<Option<Arc<LiveTable>>> = Mutex::new(None);
 static RECONNECTABLE: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 /// watcher 交来整份（只它写）。可重连照此刻交来的那一份盖上。
+/// 跟上一份（同一个家）比：进出需手动的 · 离开「活」的（计划那一侧的要人看可能多一条）各敲一声需手动的铃（[`super::needs_changed::moved`]）。
 pub(crate) fn publish(mut table: LiveTable) {
     table.reconnectable = lock(&RECONNECTABLE).clone();
-    *lock(&PUBLISHED) = Some(Arc::new(table));
+    let next = Arc::new(table);
+    let prev = lock(&PUBLISHED).replace(Arc::clone(&next));
+    let prev = prev.filter(|p| p.home == next.home).unwrap_or_default();
+    for sid in needs_moved(&prev, &next) {
+        super::needs_changed::moved(&sid);
+    }
+}
+
+/// 两份之间需手动那一判动了的会话：在等人的进出 ∪ 离开「活」的。
+fn needs_moved(prev: &LiveTable, next: &LiveTable) -> BTreeSet<String> {
+    let was: BTreeSet<String> = prev.needs().into_iter().collect();
+    let now: BTreeSet<String> = next.needs().into_iter().collect();
+    let mut out: BTreeSet<String> = was.symmetric_difference(&now).cloned().collect();
+    out.extend(prev.sids().difference(&next.sids()).cloned());
+    out
 }
 
 /// **问这张表的唯一入口**：发布过、问的是同一个家 ⇒ 那一份（挂着的请求换成此刻的）；否则现扫（[`LiveTable::scan`]）。
