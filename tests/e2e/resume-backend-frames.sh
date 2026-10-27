@@ -6,11 +6,11 @@
 # (见 tests/e2e/README + resume-suite.sh 头注)。故复活的**执行**由本脚本用生产渲染链造的
 # 命令驱动(命令级),复活的**检测**(灰→live)由后端判活边沿断言(后端半场)。
 # 序列:
-#   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → SessionAdded(sid)      = live
-#   (kill fake-claude,tmux 会话留活)                → SessionRemoved(sid)    = 灰(claude 死、tmux 在)
-#   SessionState(sid, reconnectable)                  = 灰后端条件(后端会话账本裁,原看 tmux 快照帧)
+#   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → session_added(sid)     = live
+#   (kill fake-claude,tmux 会话留活)                → session_left(sid, life {is:reconnectable})
+#                                                    = 灰(claude 死、tmux 在;后端会话账本裁)
 #   (取 `session-open` 本体交出去的那一行〔`open-line-emit.sh` 空 tmux 那一形〕键进原会话就地 resume,复用原名)
-#     → fake-claude 复活(新 pidfile,同 sessionId)   → SessionAdded(sid) 再现 = **复活清灰**(后端边沿)
+#     → fake-claude 复活(新 pidfile,同 sessionId)   → session_added(sid) 再现 = **复活清灰**(后端边沿)
 #   全程 tmux 只有一个 cc-<sid8>(复用,无 -N 孤儿,治 #76)
 # 红线:backend 零改动(只跑它)/ CLAUDE_CONFIG_DIR 隔离绝不碰真 ~/.claude / 不改 TMUX_LS_FMT。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
@@ -125,29 +125,30 @@ TAG="$(tmux display-message -p -t "=$SESSION:" '#{@ccm_sid}' 2>/dev/null || true
   && ok "tmux 会话 $SESSION 挂着 @ccm_sid=$SID(live)" \
   || bad "$SESSION 的 @ccm_sid 不是 $SID（实得 '$TAG'）"
 
-# ── 2. GRAY:kill fake-claude(留 tmux)→ SessionRemoved + tmux 帧仍含 @ccm_sid ──
+# ── 2. GRAY:kill fake-claude(留 tmux)→ session_left life 可重连 ──
 FAKE_PID="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$CLAUDE_DIR"/sessions/*.json)"
 echo "-- kill fake-claude pid=$FAKE_PID(claude 退,tmux 会话保留 = 灰)--"
-# 记号必须在 kill **之前**取：后端靠 pidfd 判死、几乎零延迟，kill 之后再数行数，那一刻的 session_state
+# 记号必须在 kill **之前**取：后端靠 pidfd 判死、几乎零延迟，kill 之后再数行数，那一刻的 session_left
 #   可能已经写进帧日志、落在记号之前 ⇒ 「等不到可重连」（主线 6 过 1 红的根因；与仓路径是不是 ASCII 无关）。
 MARK_KILL="$(wc -l <"$FRAMES")"
 kill "$FAKE_PID" 2>/dev/null || true
 FAKE_PID=""
-SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID")" \
-  && ok "SessionRemoved(claude 死 → 灰):$SR" \
-  || bad "上限内未见 SessionRemoved($SID)"
-# claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰）。原来 monitor 拿缓存的最后一份 `tmux_sessions` 快照自己裁
-# （E67③ 那段：kill 之后不会有新快照，只能读最近一帧）；裁决进了后端、快照帧删了 ⇒ 等成品帧 `session_state`（它随 session_removed 同拍发）。
+# claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰）：离开「活」只这一帧，去向在 `face.life`。
+SL="$(wait_line "$MARK_KILL" "\"kind\":\"session_left\",\"sid\":\"$SID\"" || true)"  # 从 kill 那一刻之后找（它就是这一刻的裁决）
+[ -n "$SL" ] \
+  && ok "session_left(claude 死):$(printf '%.160s' "$SL")" \
+  || bad "上限内未见 session_left($SID)"
 GRAY_ALIVE="$(tmux has-session -t "=$SESSION:" 2>/dev/null && echo 1 || echo 0)"
-SS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"session_state\".*$SID" || true)"  # 从 kill 那一刻之后找（它就是这一刻的裁决）
-if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SS_GRAY" | grep -q '"state":"reconnectable"'; then
-  ok "claude 死后 tmux 会话仍在、后端裁可重连 ⇒ 灰(非已结束):$SS_GRAY"
-else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$SS_GRAY"; fi
+if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SL" | grep -qF '"life":{"is":"reconnectable"}'; then
+  ok "claude 死后 tmux 会话仍在、后端裁可重连 ⇒ 灰(非已结束)"
+else bad "claude 死后会话没了($GRAY_ALIVE) 或 life 不是 {is:reconnectable}(不该):$SL"; fi
 
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
 echo "-- 就地 resume(session-open 空 tmux 那一形交出去的那一行,复用 $SESSION,账号目录 = 后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
 # 后端监视的那个目录登记成沙箱账号清单里的一个号，按名字点它。
+# 选得了才起：号要「登录过」（目录里有凭据文件；同 `restart-suite.sh`，空的一份就够），否则 ccm 拒「账号 'e2e' 不可用」、复活那一步起不来。
+printf '{}\n' >"$CLAUDE_DIR/.credentials.json"
 cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON
 { "version": 1, "accounts": [ { "name": "e2e", "configDir": "$CLAUDE_DIR", "isDefault": false } ] }
 JSON
