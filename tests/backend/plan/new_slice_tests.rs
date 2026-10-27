@@ -35,6 +35,7 @@ fn 空目录上问领域_列出那几档() {
     assert_eq!(f.root, dir_s);
     assert_eq!(f.repo_dir.as_deref(), Some(format!("{dir_s}/invoice").as_str()));
     assert_eq!(f.line.as_deref(), Some("pb repo invoice 软件"));
+    assert_eq!(f.slice.as_deref(), Some("invoice"));
     assert_eq!(f.existing, None);
     assert_eq!(runs(&root.join("pb")), [vec!["dump".to_string(), "--domains".into(), dir_s.clone()]]);
 }
@@ -104,7 +105,9 @@ fn 没有领域_路径空_那一行照实() {
             &no_slices,
         )
     };
-    assert_eq!(ask("notes/q3", None).line.as_deref(), Some("pb repo notes/q3"));
+    let q3 = ask("notes/q3", None);
+    assert_eq!(q3.line.as_deref(), Some("pb repo notes/q3"));
+    assert_eq!(q3.slice.as_deref(), Some("q3"));
     assert_eq!(ask("my notes", Some("研究")).line.as_deref(), Some("pb repo 'my notes' 研究"));
     let empty = ask("", Some("研究"));
     assert_eq!((empty.line, empty.repo_dir), (None, None));

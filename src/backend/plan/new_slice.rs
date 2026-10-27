@@ -27,6 +27,7 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
         pb: pb_state("ok", None),
         workspace: None,
         root: dir.to_string(),
+        slice: None,
         domains: Vec::new(),
         existing: None,
         repo_dir: None,
@@ -76,6 +77,7 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
             .find(|(n, _)| n == name)
             .map(|(slice, domain)| PlanNewExisting { slice, domain })
     });
+    out.slice = Some(name.to_string());
     out.repo_dir = Some(format!("{}/{path}", out.root));
     let args = repo_args(path, ask.domain, out.existing.as_ref().map(|e| e.slice.as_str()));
     let shown: Vec<String> = args.iter().map(|a| quoted(a)).collect();

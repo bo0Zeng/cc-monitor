@@ -647,6 +647,8 @@ pub(crate) struct PlanNewForm {
     pub workspace: Option<String>,
     /// `pb repo` 在哪个目录敲（＝ `workspace`，没有 ⇒ 问的那个目录）。
     pub root: String,
+    /// 登记之后那一片叫什么（路径最后一段 ＝ 仓库名；撞上 ⇒ 那一片）；路径空 ⇒ `null`。
+    pub slice: Option<String>,
     /// 能选的几档（形状同 `PlanRead.domains`）。
     pub domains: Vec<PlanDomain>,
     /// 路径最后一段撞上的那一片（领域建了不改）。
