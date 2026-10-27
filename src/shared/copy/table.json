@@ -2756,7 +2756,7 @@
     "commandBar.build.placeholder": {
       "kind": "control",
       "role": "占位",
-      "zh": "搜索命令或会话",
+      "zh": "搜索命令、会话或机器",
       "args": []
     },
     "outlineSource.run.noReply": {
@@ -11657,11 +11657,11 @@
     "beTerminal.login.noHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "无法判断本机家目录 · 本机 shell 未打开",
+      "zh": "无法判断本机主目录 · 本机 shell 未打开",
       "args": []
     },
     "beMachineMenu.action.notNow": {
-      "kind": "body",
+      "kind": "error",
       "role": "原因格",
       "zh": "{machine} {word}",
       "args": ["machine", "word"]
@@ -11680,15 +11680,16 @@
       "limited": ["SSH"]
     },
     "beMachineMenu.terminal.hostKey": {
-      "kind": "body",
+      "kind": "error",
       "role": "原因格",
       "zh": "主机指纹变更 · 先比对指纹",
-      "args": []
+      "args": [],
+      "limited": ["SSH 主机指纹"]
     },
     "beMachineMenu.terminal.anyway": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 连接失败 · 终端照开",
+      "zh": "cc-monitor 离线 · 终端照开",
       "args": []
     },
     "beMachineMenu.add.where": {
@@ -24367,6 +24368,79 @@
       "role": "标题",
       "zh": "需手动",
       "args": []
+    },
+    "commandBar.group.machine": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "机器",
+      "args": []
+    },
+    "commandBar.machine.openTerminal": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "打开终端",
+      "args": []
+    },
+    "commandBar.machine.newSession": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建会话…",
+      "args": []
+    },
+    "commandBar.machine.files": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "文件",
+      "args": []
+    },
+    "commandBar.machine.filesHome": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "主目录",
+      "args": []
+    },
+    "commandBar.machine.status": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "机器状态…",
+      "args": []
+    },
+    "commandBar.machine.add": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "加入机器表…",
+      "args": []
+    },
+    "commandBar.machine.unlisted": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未加入",
+      "args": []
+    },
+    "commandBar.machine.fromSshConfig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "~/.ssh/config",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "commandBar.machine.sessions": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话 · {machine}",
+      "args": ["machine"]
+    },
+    "commandBar.machine.altHint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "Shift Enter 在终端里打开",
+      "args": []
+    },
+    "commandBar.machine.terminalFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开终端失败 · {machine}",
+      "args": ["machine"]
     },
     "commandBar.group.current": {
       "kind": "title",

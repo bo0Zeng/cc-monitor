@@ -87,7 +87,7 @@ fn state(kind: MachineStateKind, offline: bool, word: &str) -> MachineState {
         os: None,
         word: word.into(),
         said: String::new(),
-        offline_said: "nas 离线".into(),
+        offline_said: "nas w-off".into(),
         fixes: Vec::new(),
         seen_host_key: None,
         expected_host_key: None,
@@ -133,7 +133,7 @@ fn offline_keeps_the_terminal_and_grays_what_needs_the_backend() {
     let m = menu_in(
         "nas",
         MachineFrom::Table,
-        Some(state(MachineStateKind::Down, true, "离线")),
+        Some(state(MachineStateKind::Down, true, "w-down")),
         &ssh(),
         false,
     );
@@ -142,7 +142,7 @@ fn offline_keeps_the_terminal_and_grays_what_needs_the_backend() {
     assert!(t.note.is_some(), "照开时说一句连接失败");
     for a in [MenuAct::NewSession, MenuAct::Files] {
         let said = act(&m, a).unwrap().blocked.clone().expect("灰");
-        assert!(said.contains("nas") && said.contains("离线"), "{said}");
+        assert!(said.contains("nas") && said.contains("w-down"), "{said}");
     }
     assert!(act(&m, MenuAct::MachineStatus).unwrap().blocked.is_none());
 }
@@ -152,7 +152,7 @@ fn a_changed_host_key_grays_the_terminal_too() {
     let m = menu_in(
         "nas",
         MachineFrom::Table,
-        Some(state(MachineStateKind::HostKeyChanged, true, "指纹变更")),
+        Some(state(MachineStateKind::HostKeyChanged, true, "w-key")),
         &ssh(),
         false,
     );
@@ -165,7 +165,7 @@ fn needs_update_grays_only_new_session() {
     let m = menu_in(
         "nas",
         MachineFrom::Table,
-        Some(state(MachineStateKind::NeedsUpdate, false, "要更新")),
+        Some(state(MachineStateKind::NeedsUpdate, false, "w-update")),
         &ssh(),
         false,
     );

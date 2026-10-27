@@ -1,0 +1,105 @@
+// 命令面板「机器」那一块怎么从后端回包摆出来：动作几样照回包（灰 · 副文 · 提醒原样带）、会话按那台挑、第几条选中、空输入每台一行。
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({ budgetWithin: () => 0, callTyped: vi.fn() }));
+
+import { machineBlock, machineRows, type MachineActions } from "../../../src/frontend/ui/machine-commands";
+import type { Command } from "../../../src/frontend/ui/views/command-bar";
+import type { MachineMenu } from "../../../src/frontend/ui/generated/MachineMenu";
+import type { MachineState } from "../../../src/frontend/ui/generated/MachineState";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+
+const state = (name: string, over: Partial<MachineState> = {}): MachineState => ({
+  name,
+  state: "up",
+  offline: false,
+  reason: null,
+  stage: null,
+  version: null,
+  versionRelation: null,
+  os: "Linux",
+  word: "",
+  said: "",
+  offlineSaid: `${name} 离线`,
+  fixes: [],
+  seenHostKey: null,
+  expectedHostKey: null,
+  detail: null,
+  ...over,
+});
+
+const ses = (id: string, origin: string): Command => ({
+  id,
+  title: id,
+  session: { dot: "running", dotLabel: "", machine: origin, project: null, title: id, waiting: null, origin },
+  run: vi.fn(),
+});
+
+const to = (): MachineActions => ({ openTerminal: vi.fn(), newSession: vi.fn(), files: vi.fn(), status: vi.fn(), addMachine: vi.fn() });
+
+const menu: MachineMenu = {
+  from: "table",
+  head: state("nas", { state: "down", offline: true, word: "离线", said: "连接失败 · 端口不通" }),
+  actions: [
+    { act: "open_terminal", sub: "ssh nas · 登录 shell", blocked: null, note: "终端照开" },
+    { act: "new_session", sub: null, blocked: "nas 离线", note: null },
+    { act: "files", sub: null, blocked: "nas 离线", note: null },
+    { act: "machine_status", sub: "设置 → 机器 → nas", blocked: null, note: null },
+  ],
+};
+
+describe("machineBlock", () => {
+  it("🔴 头照成品画、动作照回包（灰那一句 · 副文 · 提醒原样）、选中第一样能做的", () => {
+    const acts = to();
+    const b = machineBlock({ machine: "nas", from: "table", nth: null }, menu, [], acts);
+    const [head, ...rest] = b.sections[0].items;
+    expect(head.machine).toEqual({ dot: "failed", name: "nas", word: "离线", said: "连接失败 · 端口不通", right: "Linux" });
+    expect(rest.map((c) => [c.title, c.sub, c.disabled, c.note])).toEqual([
+      [copyText("commandBar.machine.openTerminal"), "ssh nas · 登录 shell", undefined, "终端照开"],
+      [copyText("commandBar.machine.newSession"), undefined, "nas 离线", undefined],
+      [copyText("commandBar.machine.files"), copyText("commandBar.machine.filesHome"), "nas 离线", undefined],
+      [copyText("commandBar.machine.status"), "设置 → 机器 → nas", undefined, undefined],
+    ]);
+    expect(b.select).toBe(rest[0].id);
+    rest[0].run();
+    expect(acts.openTerminal).toHaveBeenCalledWith("nas");
+    rest[3].run();
+    expect(acts.status).toHaveBeenCalledWith("nas");
+  });
+
+  it("这台的会话按那台挑、照给的先后编号；带了第几条 ⇒ 选中那一条，超出 ⇒ 不选会话", () => {
+    const sessions = [ses("a", "nas"), ses("x", "devbox"), ses("b", "nas")];
+    const b = machineBlock({ machine: "nas", from: "table", nth: 2 }, menu, sessions, to());
+    expect(b.sections[1].title).toBe(copyText("commandBar.machine.sessions", { machine: "nas" }));
+    expect(b.sections[1].items.map((c) => [c.id, c.hint])).toEqual([
+      ["a", "1"],
+      ["b", "2"],
+    ]);
+    expect(b.select).toBe("b");
+    expect([...b.claimed]).toEqual(["a", "b"]);
+    const far = machineBlock({ machine: "nas", from: "table", nth: 7 }, menu, sessions, to());
+    expect(far.select).toBe(far.sections[0].items[1].id);
+  });
+
+  it("只在 ssh 配置里的：头说未加入、右侧写出处", () => {
+    const b = machineBlock(
+      { machine: "backup", from: "ssh_config", nth: null },
+      { from: "ssh_config", head: null, actions: [{ act: "open_terminal", sub: "ssh backup · 登录 shell", blocked: null, note: null }, { act: "add_machine", sub: "设置 → 机器 → 从 ssh 配置导入", blocked: null, note: null }] },
+      [],
+      to(),
+    );
+    expect(b.sections[0].items[0].machine).toMatchObject({ name: "backup", word: copyText("commandBar.machine.unlisted"), right: copyText("commandBar.machine.fromSshConfig") });
+    expect(b.sections).toHaveLength(1);
+  });
+});
+
+describe("machineRows", () => {
+  it("每台一行，本机在前；词照成品；Enter 填名字", () => {
+    const rows = machineRows({ nas: state("nas"), "<local>": state("本机"), lab: state("lab", { state: "down", word: "连接失败" }) });
+    expect(rows.map((r) => [r.title, r.sub, r.dot, r.fill, r.group])).toEqual([
+      ["本机", undefined, "up", "本机", "machine"],
+      ["nas", undefined, "up", "nas", "machine"],
+      ["lab", "连接失败", "failed", "lab", "machine"],
+    ]);
+  });
+});
