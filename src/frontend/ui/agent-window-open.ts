@@ -5,7 +5,7 @@
 import { commands } from "./ipc/commands";
 import type { Origin } from "./ipc/origin";
 import type { RunInfo } from "./generated/RunInfo";
-import { agentWindowTitle } from "./agent-window-text";
+import { agentWindowTitle } from "./runs";
 
 export interface OpenAgentWindow {
   origin: Origin;

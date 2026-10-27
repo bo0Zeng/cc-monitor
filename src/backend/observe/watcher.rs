@@ -1614,7 +1614,14 @@ fn watch_loop(
             WatchEvent::Relay(f) => sink.fan(f),
             WatchEvent::Arrive { by, since, tell } => sink.arrivals.expect(by, since, tell),
             WatchEvent::RecordSeen { sid, present } => sink.record_seen(&sid, present),
-            WatchEvent::Asked(now) => asked_now(now, &mut state, &mut sink),
+            WatchEvent::Asked(now) => {
+                asked_now(now, &mut state, &mut sink);
+                dress_run_needs(
+                    &mut state,
+                    &mut sink,
+                    &crate::history::needs_changed::pending_of,
+                );
+            }
             WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
@@ -3502,6 +3509,20 @@ fn asked_now(
     state.asked = now;
     for sid in &moved {
         send_heard(state, sink, sid);
+    }
+}
+
+/// 需手动变了 ⇒ 有运行表的每条会话照此刻挂着的请求（`pending`：按会话读，登记表交的那一个读法）给运行表那几项配 needs，
+/// 配的变了的那几条各发一帧运行表。
+fn dress_run_needs(
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    pending: &dyn Fn(&str) -> Vec<crate::agents::asks::Ask>,
+) {
+    for sid in state.book.sids() {
+        if state.book.dress_needs(&sid, pending(&sid)) {
+            sink.send(state.runs_frame(&sid));
+        }
     }
 }
 

@@ -10,7 +10,7 @@ import { copyText } from "./copy-table";
 import type { LiveCardNow } from "./generated/LiveCardNow";
 import type { SessionLiveCardsPayload } from "./generated/SessionLiveCardsPayload";
 import type { RunInfo } from "./generated/RunInfo";
-import { RunBoard } from "./runs";
+import { RunBoard, type RunTable } from "./runs";
 
 type BlockKind = import("./generated/BlockKind").BlockKind;
 
@@ -127,8 +127,8 @@ export class LiveCards {
   }
 
   /** 一个会话的运行表到了。回：这一次收场的那几个（卡由后端撤）。 */
-  onRuns(sid: string, runs: RunInfo[]): RunInfo[] {
-    return this.board.set(sid, runs);
+  onRuns(sid: string, table: RunTable): RunInfo[] {
+    return this.board.set(sid, table);
   }
 
   /** 某个子运行的卡有动静（它的时间线开着的话要重画活卡那一截）。宿主装。 */
