@@ -50,9 +50,14 @@ pub trait Conn: Send + Sync + 'static {
     fn reclaim_idle(&self) -> bool;
     /// 最后一次收到对端字节的时刻（[`Heard::at`]）。一条成员被判死时，族里那之后也没动静的跟着摘（[`Watch`]）。
     fn heard_at(&self) -> u64;
+    /// 放进了池：它没了（断开 · 最后一个用它的人走了）那一刻给池记一笔「成员动了」（[`Pool::moved`]）。不报的连接不用管。
+    fn joined(&self, _moved: Arc<tokio::sync::watch::Sender<u64>>) {}
 }
 
 impl Conn for Linked {
+    fn joined(&self, moved: Arc<tokio::sync::watch::Sender<u64>>) {
+        self.heard.joined(moved);
+    }
     fn is_closed(&self) -> bool {
         self.session.is_closed()
     }
@@ -94,10 +99,17 @@ pub fn mono_ms() -> u64 {
 /// 一条连接**最后一次收到对端字节**的时刻（[`mono_ms`]；0 = 还没收到过）。TCP 那一层每读到字节记一笔
 /// （`connect::Hearing`）。健康的空闲连接也会每 10 秒收到一次保活回话（`connect::KEEPALIVE`）⇒
 /// 「很久没收到」说明对端没在回话：路断成黑洞时 TCP 看着还活着，只有这一格看得出来。
+///
+/// 同一层也数这条连接的**线上字节**：读到的记「进」、写出去的记「出」（SSH 底下那条字节流上数 ⇒ 加密 · 压缩之后的字节；
+/// 经跳板时是隧道里这一条的，不含跳板那条 TCP 上别人的）。
 pub struct Heard {
     at: AtomicU64,
     /// 这条连接没了（russh 报「断开」那一刻置真）。握着连接的那一种链路（`use: hold`）等它 —— 事件，不是计时。
     gone: tokio::sync::watch::Sender<bool>,
+    bytes_in: AtomicU64,
+    bytes_out: AtomicU64,
+    /// 这条连接放进了哪个池：它没了那一刻给那个池记一笔「成员动了」（[`Pool::moved`]）。没进池（跳板那几条 · 判据直连）⇒ 空。
+    pool_moved: Mutex<Option<Arc<tokio::sync::watch::Sender<u64>>>>,
 }
 
 impl Default for Heard {
@@ -105,6 +117,9 @@ impl Default for Heard {
         Heard {
             at: AtomicU64::new(0),
             gone: tokio::sync::watch::Sender::new(false),
+            bytes_in: AtomicU64::new(0),
+            bytes_out: AtomicU64::new(0),
+            pool_moved: Mutex::new(None),
         }
     }
 }
@@ -135,7 +150,70 @@ impl Heard {
     /// 这条连接没了（`connect::Checker` 在 russh 报断开时调）。
     pub fn mark_gone(&self) {
         self.gone.send_replace(true);
+        self.tell_pool();
     }
+
+    /// 从对端读到 `n` 个字节（线上的）。
+    pub fn took(&self, n: usize) {
+        self.bytes_in.fetch_add(n as u64, Ordering::Relaxed);
+    }
+
+    /// 往对端写出 `n` 个字节（线上的）。
+    pub fn gave(&self, n: usize) {
+        self.bytes_out.fetch_add(n as u64, Ordering::Relaxed);
+    }
+
+    /// 此刻为止的 `(进, 出)` 字节。
+    pub fn bytes(&self) -> (u64, u64) {
+        (
+            self.bytes_in.load(Ordering::Relaxed),
+            self.bytes_out.load(Ordering::Relaxed),
+        )
+    }
+
+    fn joined(&self, moved: Arc<tokio::sync::watch::Sender<u64>>) {
+        *self.pool_moved.lock().unwrap_or_else(|e| e.into_inner()) = Some(moved);
+    }
+
+    /// 给它所在的池记一笔「成员动了」（没进池 ⇒ 不做）。只碰一个 watch，不拿池的锁（它可能在池的锁里被 drop）。
+    pub(crate) fn tell_pool(&self) {
+        if let Some(m) = self
+            .pool_moved
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            stir(m);
+        }
+    }
+}
+
+/// 「成员动了」那一笔：代数加一。
+fn stir(m: &tokio::sync::watch::Sender<u64>) {
+    m.send_modify(|n| *n = n.wrapping_add(1));
+}
+
+/// 一条 SSH 连接（或它经过的一台跳板那一条）此刻的读数。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Wire {
+    /// 连的是哪（`主机:口`；跳板那几条是那台跳板）。
+    pub endpoint: String,
+    /// 这一条上的字节压没压（协商时交出去的偏好序：判准 ＋ 闸都答压才压）。
+    pub compressed: bool,
+    /// 线上收到的字节。
+    pub bytes_in: u64,
+    /// 线上发出的字节。
+    pub bytes_out: u64,
+}
+
+/// 池里一条连接的读数：它自己那一条，外加经过的跳板（外在先）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkFacts {
+    pub link: Wire,
+    pub jumps: Vec<Wire>,
+}
+
+impl Heard {
 
     /// 等这条连接没了（已经没了 ⇒ 当场回）。
     pub async fn gone(&self) {
@@ -293,6 +371,8 @@ impl<C: Conn> Family<C> {
 /// 连接池。键 = [`identity`]。
 pub struct Pool<C> {
     families: Mutex<HashMap<String, Arc<Family<C>>>>,
+    /// 成员动了的代数（放进一条 · 一条断了 · 一条没人用了 各加一）：机器健康照它重出（[`Pool::moved`]）。
+    moved: Arc<tokio::sync::watch::Sender<u64>>,
 }
 
 impl<C: Conn> Default for Pool<C> {
@@ -305,7 +385,13 @@ impl<C: Conn> Pool<C> {
     pub fn new() -> Self {
         Pool {
             families: Mutex::new(HashMap::new()),
+            moved: Arc::new(tokio::sync::watch::Sender::new(0)),
         }
+    }
+
+    /// 等「成员动了」：放进一条 · 一条断了 · 一条最后一个用它的人走了，各记一笔。事件，不是计时。
+    pub fn moved(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.moved.subscribe()
     }
 
     fn family(&self, key: &str) -> Arc<Family<C>> {
@@ -353,6 +439,7 @@ impl<C: Conn> Pool<C> {
             if let Some(why) = Family::dial_reason(&live, lane) {
                 let conn = Arc::new(dial().await?);
                 conn.budget().attach(Arc::clone(&fam.freed));
+                conn.joined(Arc::clone(&self.moved));
                 let permit = match lane {
                     Lane::Tunnel => None,
                     _ => conn.budget().try_take(lane),
@@ -371,6 +458,7 @@ impl<C: Conn> Pool<C> {
                     }
                 };
                 drop(guard);
+                stir(&self.moved);
                 return Ok(Placed { conn, permit, how });
             }
             drop(guard);
@@ -438,6 +526,23 @@ impl<C: Conn> Pool<C> {
                     .count()
             })
             .sum()
+    }
+}
+
+impl Pool<Linked> {
+    /// 此刻每个身份 → 那一族活着、没关的每条连接的读数（老的在前；身份按字典序）。只读：不放置、不摘。
+    pub fn links(&self) -> Vec<(String, Vec<LinkFacts>)> {
+        let fams: Vec<(String, Arc<Family<Linked>>)> = {
+            let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
+            g.iter().map(|(k, f)| (k.clone(), Arc::clone(f))).collect()
+        };
+        let mut out: Vec<(String, Vec<LinkFacts>)> = fams
+            .into_iter()
+            .map(|(k, f)| (k, f.live().iter().map(|c| c.facts()).collect::<Vec<_>>()))
+            .filter(|(_, v)| !v.is_empty())
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 }
 
