@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.NeedsAsk
 import com.ccmonitor.mobile.core.wire.gen.NeedsChoiceRow
+import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import com.ccmonitor.mobile.ui.needs.NeedsBoard
@@ -258,7 +259,7 @@ class NeedsDeskTest {
     @Test
     fun `别处先答了（点了才知道）：按钮全灰 ＋ 那台那一句 ＋ 只留关闭；随后重问`() =
         runTest {
-            val r = rig(needs("approve")) { Reply.Failed(CoreFailure("closed_elsewhere", "已在终端答过或已关闭", "d")) }
+            val r = rig(needs("approve")) { Reply.Ok(mapOf("result" to "gone", "said" to "已在终端答过或已关闭")) }
             r.desk.open()
             val before = r.link.calls("sessions-needs").size
             r.desk.pick("allow")
@@ -429,6 +430,19 @@ class NeedsDeskTest {
 
         val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.RELEASE) else it })
         assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
+
+        val swapped =
+            sub.copy(
+                choices =
+                    sub.choices.map {
+                        when (it.id) {
+                            "deny" -> it.copy(tone = Tone.FAIL)
+                            "deny-stop" -> it.copy(tone = Tone.WARN)
+                            else -> it
+                        }
+                    },
+            )
+        assertEquals("红字只照那台给的 tone，不按 id 认", listOf(ChoiceLook.DANGER, ChoiceLook.OUTLINE, ChoiceLook.OUTLINE), choiceGroups(swapped)[1].map { it.look })
     }
 
     @Test

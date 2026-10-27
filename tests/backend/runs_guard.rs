@@ -1626,3 +1626,69 @@ fn a_first_child_read_holds_about_a_block_not_the_file() {
         "第一次读 {BIG} 字节的子运行记录，本线程手里最多 {held} 字节，上界 {HELD_BOUND}"
     );
 }
+
+/// ★ 运行表的每一项带写好的状态字 · 名字 · 最近一件事：出口照抄，不按 `state` · `last.t` 挑字、不替没名字的补「agent」。
+#[test]
+fn the_run_table_carries_its_own_words() {
+    use crate::common::cells::Words;
+    use crate::observe::runs::{status_text, testing::seed};
+    use crate::wire::{RunDid, RunInfo};
+    use copy_core::copy_text;
+    let book = RunBook::default();
+    let sid = "s-words";
+    seed(
+        &book,
+        sid,
+        RunInfo {
+            run: "a".into(),
+            label: Some("审交互".into()),
+            last: Some(RunDid::Tool {
+                name: "Bash".into(),
+            }),
+            ..RunInfo::default()
+        },
+    );
+    seed(
+        &book,
+        sid,
+        RunInfo {
+            run: "b".into(),
+            state: RunState::Failed,
+            last: Some(RunDid::Think),
+            ..RunInfo::default()
+        },
+    );
+    let Frame::SessionRuns(s) = book.frame_at(sid, SystemTime::now()) else {
+        panic!("运行表那一帧")
+    };
+    let words = |r: &RunInfo| {
+        (
+            r.status_text.clone(),
+            r.label_text.clone(),
+            r.last_text.clone(),
+        )
+    };
+    assert_eq!(
+        words(&s.runs[0]),
+        (
+            Words(copy_text("runs.state.running", &[])),
+            Words("审交互".into()),
+            Some(Words(copy_text("runs.last.tool", &[("tool", "Bash")]))),
+        )
+    );
+    assert_eq!(
+        words(&s.runs[1]),
+        (
+            Words(copy_text("runs.state.failed", &[])),
+            Words(copy_text("runs.label.unnamed", &[])),
+            Some(Words(copy_text("runs.last.think", &[]))),
+        )
+    );
+    for (st, key) in [
+        (RunState::Done, "runs.state.done"),
+        (RunState::Stopped, "runs.state.stopped"),
+        (RunState::Unknown, "runs.state.unknown"),
+    ] {
+        assert_eq!(status_text(st), Words(copy_text(key, &[])), "{st:?}");
+    }
+}

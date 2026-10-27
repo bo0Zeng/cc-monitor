@@ -1984,10 +1984,10 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     tm.onSessionRuns({
       sid: "s1",
       runs: [
-        { run: "1", label: "done1", state: "done" },
-        { run: "2", label: "run1", state: "running" },
-        { run: "3", label: "stop1", state: "stopped" },
-        { run: "4", label: "run2", state: "running" },
+        { run: "1", label: "done1", label_text: "done1", state: "done", status_text: "核心·完成" },
+        { run: "2", label: "run1", label_text: "run1", state: "running", status_text: "核心·在跑" },
+        { run: "3", label: "stop1", label_text: "stop1", state: "stopped", status_text: "核心·已中止" },
+        { run: "4", label: "run2", label_text: "run2", state: "running", status_text: "核心·在跑" },
       ],
       ended: [],
     });
@@ -2397,9 +2397,9 @@ describe("agent 来话的事件条：标签按运行表查（流视图把运行�
     const tm = makeTM();
     tm.ensureTab("l3", "/w", "p", LOCAL_ORIGIN);
     tm.switchTo("l3");
-    tm.onSessionRuns({ sid: "l3", runs: [{ run: "a7", label: "审面板交互" }], ended: [] } as never);
+    tm.onSessionRuns({ sid: "l3", runs: [{ run: "a7", label: "审面板交互", label_text: "核心·审面板交互" }], ended: [] } as never);
     const label = (tm as unknown as { view: { host: { runLabelOf(sid: string, run: string): string | undefined } } }).view.host.runLabelOf;
-    expect(label("l3", "a7")).toBe("审面板交互");
+    expect(label("l3", "a7")).toBe("核心·审面板交互");
     expect(label("l3", "zz"), "表里没有 ⇒ 不给，用来话自带的").toBeUndefined();
   });
 });

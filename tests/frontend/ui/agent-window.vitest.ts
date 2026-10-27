@@ -78,8 +78,12 @@ function say(uuid: string, text: string): unknown {
   };
 }
 
-function frame(runs: RunInfo[]): void {
-  h.sink?.({ t: "runs", payload: { sid: "s1", runs, ended: [] } } satisfies FollowEvent);
+/** 运行表那一帧里的一项还没写字的样子：`frame` 照后端那样写上状态字与名字（`observe::runs` 出帧那一下写）。 */
+type Bare = Omit<RunInfo, "status_text" | "label_text">;
+
+function frame(runs: Bare[]): void {
+  const dressed: RunInfo[] = runs.map((r) => ({ ...r, status_text: copyText(`runs.state.${r.state}`), label_text: r.label ?? copyText("runs.label.unnamed") }));
+  h.sink?.({ t: "runs", payload: { sid: "s1", runs: dressed, ended: [] } } satisfies FollowEvent);
 }
 
 async function settle(): Promise<void> {
@@ -100,7 +104,7 @@ async function open(): Promise<{ w: AgentWindow; root: HTMLElement }> {
   return { w, root };
 }
 
-const RUN: RunInfo = { run: "a1", label: "审交互", kind: "general-purpose", tool: "t1", state: "running", started_ms: T0, active_ms: T0 + 60_000, calls: 2 };
+const RUN: Bare = { run: "a1", label: "审交互", kind: "general-purpose", tool: "t1", state: "running", started_ms: T0, active_ms: T0 + 60_000, calls: 2 };
 
 beforeEach(() => {
   vi.stubGlobal(

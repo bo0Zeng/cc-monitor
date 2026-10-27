@@ -15,7 +15,6 @@ import { tabs } from "../kit/tabs";
 import { button } from "../kit/button";
 import { countBadge } from "../kit/badge";
 import { banner } from "../kit/banner";
-import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
@@ -460,7 +459,8 @@ export class DataPage {
       body.className = "data-item-body";
       const path = document.createElement("div");
       path.className = "data-item-path";
-      path.textContent = homeShort(c.path.replace(/^~/, report.home), report.home);
+      // 那台写的就是 `~/…` 那一形（`footprint/data.rs::changed`），照抄。
+      path.textContent = c.path;
       const what = document.createElement("div");
       what.className = "data-item-sub";
       what.textContent = c.undo ? copyText("dataPage.changed.line", { what: c.what, where: undoWhere(c.undo) }) : c.what;

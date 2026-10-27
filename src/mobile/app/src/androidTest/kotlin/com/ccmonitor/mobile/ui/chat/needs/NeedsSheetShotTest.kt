@@ -138,7 +138,8 @@ class NeedsSheetShotTest {
         text: String,
         row: NeedsChoiceRow,
         note: NeedsNote = NeedsNote.NONE,
-    ) = NeedsChoice(id, text, Tone.PLAIN, note, row)
+        tone: Tone = Tone.PLAIN,
+    ) = NeedsChoice(id, text, tone, note, row)
 
     private fun quiz(questions: List<NeedsQuestion>) =
         NeedsAsk(
@@ -167,7 +168,7 @@ class NeedsSheetShotTest {
                     choice("always-0", "允许，且允许访问 /srv/archive（本次会话）", NeedsChoiceRow.MAIN),
                     choice("deny", "拒绝", NeedsChoiceRow.HOLD),
                     choice("deny-note", "拒绝并说明…", NeedsChoiceRow.HOLD, NeedsNote.REQUIRED),
-                    choice("deny-stop", "拒绝并停下", NeedsChoiceRow.HOLD),
+                    choice("deny-stop", "拒绝并停下", NeedsChoiceRow.HOLD, tone = Tone.FAIL),
                 ),
             questions = emptyList(),
             sinceMs = 0,

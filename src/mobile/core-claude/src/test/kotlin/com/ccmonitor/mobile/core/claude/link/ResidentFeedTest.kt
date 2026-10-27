@@ -442,13 +442,13 @@ class ResidentFeedTest {
             val core = FakeCore()
             val f = feed(core)
             val reply =
-                """{"held":"h1","whole":true,"same":false,"order":["docs"],"up":{"docs":{"path":"/h/docs","name":"docs","kind":"dir",""" +
+                """{"held":"h1","whole":true,"same":false,"order":["docs"],"up":{"docs":{"path":"/h/docs","shown":"~/docs","name":"docs","kind":"dir",""" +
                     """"class":"folder","type_text":"","mtime_secs":1700000000,"size":12}},""" +
-                    """"head":{"total":1,"info":{"up":null,"crumbs":[],"truncated":false,"total":1,"unreadable":0}}}"""
+                    """"head":{"total":1,"info":{"shown":"~","up":null,"crumbs":[],"truncated":false,"total":1,"unreadable":0}}}"""
             val listing = FilesLs.of(Json.obj(reply))!!
             val menu = f.picks(listing.entries.map { it.row })
             assertEquals(
-                """[{"path":"/h/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":1700000000,"size":12}]""",
+                """[{"path":"/h/docs","shown":"~/docs","name":"docs","kind":"dir","class":"folder","type_text":"","mtime_secs":1700000000,"size":12}]""",
                 core.picks.single().second,
             )
             assertEquals(PhoneMenu(listOf(MenuEntry("download", "下载", false, "docs")), emptyList(), "open"), menu)

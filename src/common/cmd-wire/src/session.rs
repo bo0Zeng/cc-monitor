@@ -658,6 +658,8 @@ pub struct OpenFacts {
 pub struct RecentDir {
     /// 工作目录。
     pub cwd: String,
+    /// 那台按自己的家目录写好的显示形（`~/…`），两端照抄。
+    pub shown: String,
     /// 那个目录最近一次会话的修改时刻（毫秒）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub last_ms: i64,

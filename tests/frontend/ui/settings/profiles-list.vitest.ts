@@ -55,8 +55,9 @@ describe("buildProfilesList", () => {
     writes = [];
     staleOnce = false;
     book = {
-      home: "/h",
       path: "/h/.cc-monitor/profiles.toml",
+      // 那台写好的显示形；界面照抄，不拿家目录自己缩。
+      pathShown: "~/.cc-monitor/profiles.toml",
       exists: true,
       rev: "fp-1",
       editedAt: null,

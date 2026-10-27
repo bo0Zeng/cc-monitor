@@ -185,7 +185,6 @@ fn scan_accounts(
         next_default: next.clone(),
         // 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，界面与起会话都读这一格。
         effective_default,
-        home: None,
     };
     match read {
         Err(e) => (meta(false, None, None, 0, Some(e), None), Vec::new()),
@@ -445,7 +444,7 @@ pub(crate) fn badge_of(
 
 /// [`list_product`] 的全参本体（账号库目录是参数：判据拿夹具喂它，不碰真家目录）。
 ///
-/// - `meta.home`：这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+/// - 每个号 `configDirShown`：号目录的显示形，按 `home`（这台的家目录）写（[`crate::platform::paths::home_short`]），界面照抄。
 /// - 每个号 `keyMasked` · `baseUrl`：API 号在这台 apikey 表里那一行的掩码（只留末四位）与端点；
 ///   订阅号 / 表里没有它那一行 / 没配 key ⇒ `null`。key 本体从不出后端。
 pub(crate) fn list_product_with(
@@ -460,8 +459,7 @@ pub(crate) fn list_product_with(
     let routed = |dir: &str| {
         !acct_core::apikey_routed_subset(&[dir.to_string()], rows, agent, table_agent).is_empty()
     };
-    let (mut meta, scanned) = scan_accounts(accts_dir, &routed);
-    meta.home = home.map(|h| h.to_string_lossy().into_owned());
+    let (meta, scanned) = scan_accounts(accts_dir, &routed);
     let accounts: Vec<AccountRow> = scanned
         .into_iter()
         .map(|a| {
@@ -482,6 +480,10 @@ pub(crate) fn list_product_with(
                 relay_running,
             );
             AccountRow {
+                config_dir_shown: a
+                    .config_dir
+                    .as_deref()
+                    .map(|d| crate::platform::paths::home_short(d, home)),
                 key_masked: fact.and_then(|k| k.masked.clone()),
                 base_url: fact.and_then(|k| k.base_url.clone()),
                 badge,

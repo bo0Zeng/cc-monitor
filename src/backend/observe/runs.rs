@@ -6,9 +6,11 @@
 //! - [`RunTrack`]：watcher 那一侧的手 —— 子运行的记录文件在哪（`ChildFace::sources`）、读到哪了；与主记录走同一条文件事件管线，不轮询。
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
+use crate::common::cells::Words;
 use crate::platform::fs::Ro;
 use crate::platform::paths::path_key;
-use crate::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
+use crate::wire::{Frame, RunDid, RunEnded, RunInfo, RunState, RunWhy};
+use copy_core::copy_text;
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Seek, SeekFrom};
@@ -389,7 +391,7 @@ impl Sess {
     fn table(&self) -> Vec<RunInfo> {
         let mut v: Vec<&Run> = self.runs.iter().collect();
         v.sort_by_key(|r| r.seen);
-        v.into_iter().map(|r| r.info.clone()).collect()
+        v.into_iter().map(|r| dressed(r.info.clone())).collect()
     }
 
     /// 被挤出表的已收场运行里对上了派出调用的那些（先挤出的在前）。
@@ -402,6 +404,7 @@ impl Sess {
                     run: run.clone(),
                     tool: g.info.tool.clone()?,
                     state: g.info.state,
+                    status_text: status_text(g.info.state),
                 })
             })
             .collect()
@@ -845,6 +848,36 @@ pub(crate) fn next_event<T>(
         Err(RecvTimeoutError::Timeout) => Ok(None),
         Err(RecvTimeoutError::Disconnected) => Err(RecvError),
     }
+}
+
+/// 状态写好的字（运行表 · 被挤出的那几项同一处）。
+pub(crate) fn status_text(s: RunState) -> Words {
+    Words(match s {
+        RunState::Running => copy_text("runs.state.running", &[]),
+        RunState::Done => copy_text("runs.state.done", &[]),
+        RunState::Failed => copy_text("runs.state.failed", &[]),
+        RunState::Stopped => copy_text("runs.state.stopped", &[]),
+        RunState::Unknown => copy_text("runs.state.unknown", &[]),
+    })
+}
+
+/// 出帧那一下给一项写好字：状态 · 名字（没有 ⇒ 通称）· 最近一件事。簿里记的是事实，字只在这里写。
+fn dressed(mut i: RunInfo) -> RunInfo {
+    i.status_text = status_text(i.state);
+    i.label_text = Words(
+        i.label
+            .clone()
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| copy_text("runs.label.unnamed", &[])),
+    );
+    i.last_text = i.last.as_ref().map(|d| {
+        Words(match d {
+            RunDid::Say => copy_text("runs.last.say", &[]),
+            RunDid::Think => copy_text("runs.last.think", &[]),
+            RunDid::Tool { name } => copy_text("runs.last.tool", &[("tool", name)]),
+        })
+    });
+    i
 }
 
 /// 判据用：往一本运行簿里直接记一个在跑的子运行（不走记录那一条管线）。

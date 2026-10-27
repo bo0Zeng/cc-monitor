@@ -182,7 +182,7 @@ impl FileWindow {
             return false;
         };
         // 此刻写不了（断着）⇒ 不发：［保存］灰着、条上说着为什么（Ctrl+S 与「全部保存后关闭」那一路也到这里）。
-        if self.link.write_refused().is_some() {
+        if self.gate.write_refused().is_some() {
             return false;
         }
         // 🔴 敲超上限 ⇒ 屏幕上先说，不发那趟注定被池子拒的往返。
@@ -643,8 +643,8 @@ impl FileWindow {
         } else {
             copy_text("rsFilewinShell.editor.save", &[])
         };
-        // 能不能写读窗口那一格（[`crate::chrome::LinkState::write_refused`]，与工具条 · 菜单同一处）。
-        let refused = self.link.write_refused();
+        // 能不能写读窗口那一格（[`crate::chrome::WriteGate::write_refused`]，与工具条 · 菜单同一处）。
+        let refused = self.gate.write_refused();
         let can = pane.is_some() && dirty && idle && !over && refused.is_none();
         let why = if let Some(r) = refused {
             r
@@ -732,7 +732,7 @@ impl FileWindow {
                     acts.reopen = true;
                 }
             }
-            if let Some(cut) = self.link.cut() {
+            if let Some(cut) = self.gate.cut() {
                 let line = match cut {
                     pick_core::Cut::Monitor => copy_text("rsFilewinEditPage.severed.line", &[]),
                     pick_core::Cut::Machine => copy_text(

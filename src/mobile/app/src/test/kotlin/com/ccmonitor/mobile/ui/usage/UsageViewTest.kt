@@ -30,6 +30,7 @@ class UsageViewTest {
         label = name,
         email = "",
         configDir = null,
+        configDirShown = null,
         isDefault = false,
         mode = "subscription",
         exists = true,

@@ -433,6 +433,8 @@ pub struct LsEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub gates: Option<Gates>,
+    /// `path` 的显示形（那台按自己的家目录写好的 `~/…`，原始字节同 `path`），两端照抄。
+    pub shown: WirePath,
 }
 
 /// `files-ls` 的回包：带键集合那一形（[`crate::sync::Patch`]）。键 ＝ 那一行末段名的 [`WirePath::key`]，
@@ -448,6 +450,8 @@ pub type LsReply = crate::sync::Patch<LsHead, LsEntry>;
 )]
 #[serde(deny_unknown_fields)]
 pub struct LsHead {
+    /// 列的这一级的显示形（那台按自己的家目录写好的 `~/…`，原始字节），两端照抄。
+    pub shown: WirePath,
     /// 上一级；到顶 ⇒ `null`。
     pub up: Option<WirePath>,
     /// 根到这一级的每一段，根在最前（那台按自己的路径规则切：Windows 的盘符那一段是 `C:\`）。

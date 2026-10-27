@@ -132,10 +132,9 @@ class AsksTest {
     }
 
     @Test
-    fun `别处先答了的两个码（核心那一句照抄）；别的码不算`() {
-        assertTrue(NeedsAnswer.gone("already_answered"))
-        assertTrue(NeedsAnswer.gone("closed_elsewhere"))
-        assertEquals(false, NeedsAnswer.gone("bad_choice"))
+    fun `别处已答是回包的一种结局（核心那一句照抄）；答上了不算`() {
+        assertEquals("已在终端答过或已关闭", NeedsAnswer.gone(mapOf("result" to "gone", "said" to "已在终端答过或已关闭")))
+        assertNull(NeedsAnswer.gone(mapOf("result" to "answered")))
     }
 
     /**

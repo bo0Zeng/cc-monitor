@@ -274,14 +274,15 @@ export class AgentWindow {
       if (r.tool === undefined) continue;
       const card = this.runCards.get(r.tool);
       if (!card) continue;
-      markRunCard(card, r.run, r.state, r);
+      markRunCard(card, r, r);
       markRunWindow(card, this.windows.has(r.run));
     }
   }
 
   /** 照此刻的运行表把标题区 · 说明 · 派出的 · 结束线 · 路径 · 系统标题 · 状态栏重画一遍。 */
   paint(now = Date.now()): void {
-    const r: RunInfo = this.info ?? { run: this.run, state: "unknown" };
+    // 运行表还没到（窗口先开、那一帧后到）⇒ 成品未到那一态：骨架字。
+    const r: RunInfo = this.info ?? { run: this.run, state: "unknown", status_text: copyText("runs.state.unknown"), label_text: copyText("runs.label.unnamed") };
     const kids = kidsOf(this.runs, this.run);
     const chain = chainOf(this.runs, r);
     const parent = chain.length > 0 ? chain[chain.length - 1] : null;
@@ -300,7 +301,7 @@ export class AgentWindow {
     title.appendChild(label);
     const facts = document.createElement("div");
     facts.className = s.awFacts;
-    const mark = tag(runStateText(r.state));
+    const mark = tag(runStateText(r));
     mark.prepend(runStateMark(r.state));
     mark.dataset.state = r.state;
     mark.classList.add(s.awMark);

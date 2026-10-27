@@ -164,10 +164,10 @@ impl comms_inward::chan::router::Backends for ScreenHost {
                         "held": "h1", "whole": true, "same": false,
                         "order": ["甲", "乙.txt"],
                         "up": {
-                            "甲": { "path": format!("{dir}/甲"), "name": "甲", "kind": "dir", "class": "folder", "type_text": "" },
-                            "乙.txt": { "path": format!("{dir}/乙.txt"), "name": "乙.txt", "kind": "file", "size": 3, "class": "text", "type_text": "" },
+                            "甲": { "path": format!("{dir}/甲"), "shown": format!("{dir}/甲"), "name": "甲", "kind": "dir", "class": "folder", "type_text": "" },
+                            "乙.txt": { "path": format!("{dir}/乙.txt"), "shown": format!("{dir}/乙.txt"), "name": "乙.txt", "kind": "file", "size": 3, "class": "text", "type_text": "" },
                         },
-                        "head": { "total": 2, "info": { "up": null, "crumbs": [], "truncated": false, "total": 2, "unreadable": 0 } },
+                        "head": { "total": 2, "info": { "shown": "/a", "up": null, "crumbs": [], "truncated": false, "total": 2, "unreadable": 0 } },
                     }))
                 }
                 _ => Err(comms_inward::chan::wire::CallError::Peer {
