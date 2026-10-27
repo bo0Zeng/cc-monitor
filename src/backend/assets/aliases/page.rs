@@ -775,8 +775,8 @@ pub(crate) struct Migrated {
     pub(crate) count: usize,
     /// 配置文件的路径。
     pub(crate) path: String,
-    /// `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份不带。
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    /// `path` 的显示形（读的那一下按这台的家目录写好，界面照抄）；存盘那一份是空串、读的时候盖掉。
+    #[serde(default)]
     pub(crate) shown: String,
     /// 没能转的那几行（原样）。
     pub(crate) skipped: Vec<String>,

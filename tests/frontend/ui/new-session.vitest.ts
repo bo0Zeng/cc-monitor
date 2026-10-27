@@ -103,7 +103,7 @@ const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op ===
 const whatOf = (r: Record<string, unknown>): Record<string, unknown> => r.what as Record<string, unknown>;
 
 const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], modelDefault: null, modelNote: null, permissionModes: [] });
-const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, run: "tmux", agents: [agentOf("claude")], fork: null };
+const FACTS = { recent: [{ cwd: "/home/u/srv/orders", shown: "~/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", shown: "~/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, run: "tmux", agents: [agentOf("claude")], fork: null };
 const OK = {
   landed: "started",
   session: "orders-cc",
@@ -482,7 +482,8 @@ describe("目录格 · 最近的 · 更多那几格", () => {
     const recent = dialog().querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.recent.label")}"]`)!;
     recent.click();
     const items = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
-    expect(items.map((i) => i.textContent)).toEqual(["/home/u/srv/orders", "/home/u/srv/billing"]);
+    // 每项画那台写好的显示形（照抄）；点了填进目录格的是原路径。
+    expect(items.map((i) => i.textContent)).toEqual(["~/srv/orders", "~/srv/billing"]);
     expect(items.map((i) => i.getAttribute("aria-checked"))).toEqual(["true", "false"]);
     items[1].click();
     await flush();

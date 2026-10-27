@@ -97,9 +97,9 @@ function refusal(code: string, message: string): ChanError {
 }
 
 function acct(p: Partial<Account>): Account {
-  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
+  return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", configDirShown: "~/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
 }
-const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", effectiveDefault: "work", home: "/h" };
+const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", effectiveDefault: "work" };
 function state(p: Partial<AccountsState> = {}): AccountsState {
   return {
     origin: "devbox",
@@ -251,17 +251,23 @@ describe("账号表", () => {
     expect(rowOf(el2, "api").querySelector(".acct-key .acct-detail-mono")!.textContent).toBe(copyText("acctPage.row.keyNotSaved"));
   });
 
-  it("账号目录写成 ~/… 短形（家目录是那台答的；不在家目录下 / 没答 ⇒ 原样）", async () => {
+  it("账号目录照抄那台写好的显示形（`configDirShown`），界面不自己缩", async () => {
     const el = await mount();
     (rowOf(el, "work").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     const monos = () => [...rowOf(el, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent);
     expect(monos()).toContain("~/.cc-monitor/accounts/z");
-    fetchAccounts.mockResolvedValue(state({ meta: { ...META, home: null } }));
+    // 那台家目录是 /home/x、目录 /home/x/a ⇒ 那台写 `~/a`；界面照抄（换一个界面推不出的字也照抄）。
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", configDir: "/home/x/a", configDirShown: "~/a" })] }));
     const el2 = await mount();
     (rowOf(el2, "work").querySelector(".acct-row") as HTMLElement).click();
     await settle();
-    expect([...rowOf(el2, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent)).toContain("/h/.cc-monitor/accounts/z");
+    expect([...rowOf(el2, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent)).toContain("~/a");
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", configDir: "/h/.cc-monitor/accounts/z", configDirShown: "SHOWN-BY-BACKEND" })] }));
+    const el3 = await mount();
+    (rowOf(el3, "work").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    expect([...rowOf(el3, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent)).toContain("SHOWN-BY-BACKEND");
   });
 
   it("默认模型是下拉：第一项「{家} 默认」＋ 那一家认得的模型；盘上存的不在里面 ⇒ 多列它一项；选中即存（键是这台 ＋ 这个号）", async () => {
