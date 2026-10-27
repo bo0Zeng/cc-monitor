@@ -816,13 +816,13 @@ pub fn nav_keys(events: &[egui::Event]) -> Vec<NavKey> {
         .collect()
 }
 
-/// 那台此刻连没连着（整扇窗一份，每个标签页拿同一份；`link` 那条流写进来）。
+/// 窗口此刻能不能写：那台连没连着、断在哪一段、不能写为什么（整扇窗一份，每个标签页拿同一份；[`super::source::watch_link`] 那条订阅写进来）。
 /// 没订上 / 流说不清 ⇒ `None`（当连着：不画断线条、不灰按钮）。
 #[derive(Clone, Default)]
-pub struct LinkState(Arc<Mutex<LinkInner>>);
+pub struct WriteGate(Arc<Mutex<GateInner>>);
 
 #[derive(Default)]
-struct LinkInner {
+struct GateInner {
     seen: Option<super::source::LinkSeen>,
     /// 断了之后又连上过几次（窗口据它让每个标签页带着记号重问一遍）。
     ups: u64,
@@ -830,8 +830,8 @@ struct LinkInner {
     watching: bool,
 }
 
-impl LinkState {
-    fn lock(&self) -> std::sync::MutexGuard<'_, LinkInner> {
+impl WriteGate {
+    fn lock(&self) -> std::sync::MutexGuard<'_, GateInner> {
         match self.0.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
@@ -969,7 +969,7 @@ impl Workspace {
         // 和那台断着 ⇒ 工具条下一条窗口级警告条：在重连 ⇒「devbox 断开 · 重新连接中…」；
         //   一轮没连上 ⇒「devbox 离线 · 采样 13:40」＋［重新连接］（采样 ＝ 摆着的这一屏是什么时候列到的）；
         //   和 monitor 断了 ⇒「与 cc-monitor 的连接已断开 …」＋［关闭窗口］。
-        if let Some(seen) = self.link.seen().filter(|_| self.link.offline()) {
+        if let Some(seen) = self.gate.seen().filter(|_| self.gate.offline()) {
             let machine = self.pane_on(f).source.label();
             let severed = seen == super::source::LinkSeen::Severed;
             let (text, acts) = match seen {
@@ -1131,7 +1131,7 @@ impl Workspace {
             let mut act = None;
             // 表照这一帧真排出来的各行长高（含失败摊开的那几行）：差多少下一帧补多少，到窗高六成为止；再多在表里滚。高度变了 ⇒ 再画一帧。
             let max = (ctx.content_rect().height() * 0.6).max(120.0);
-            let offline = self.link.offline();
+            let offline = self.gate.offline();
             let h = self.progress_h.clamp(80.0, max);
             let mut short = 0.0;
             egui::Panel::bottom("filewin-progress")
