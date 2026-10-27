@@ -153,8 +153,7 @@ fn put_state(
     s: &State,
 ) -> Result<(), Refusal> {
     let path = dir.join(STATE_NAME).map_err(|e| io(e.said))?;
-    let body =
-        crate::common::own_state::json_body(path.as_path(), s).map_err(|e| io(e.said))?;
+    let body = crate::common::own_state::json_body(path.as_path(), s).map_err(|e| io(e.said))?;
     own.write(&path, held, &body).map_err(|e| io(e.said))
 }
 
@@ -174,7 +173,9 @@ pub(crate) fn deliver(
     }
     body.push_str(&line);
     body.push('\n');
-    let inbox = dir.join(&format!("{}.jsonl", env.to)).map_err(|e| io(e.said))?;
+    let inbox = dir
+        .join(&format!("{}.jsonl", env.to))
+        .map_err(|e| io(e.said))?;
     own.write(&inbox, &held, body.as_bytes())
         .map_err(|e| io(e.said))?;
     s.version = VERSION;
@@ -197,8 +198,8 @@ fn parse_token(t: &str) -> Option<(u64, u64, u64)> {
 /// 两阶段读的第二跳：令牌对得上 ⇒ 把那条会话的已读位置推到 `to`，回推到了第几行。
 /// 盘上的位置不是令牌的 from ⇒ `stale`（别人推过了：手上那段照常处理）；第 to 行变了 ⇒ `changed`；令牌坏 ⇒ `bad_token`。
 pub(crate) fn commit(own: &crate::platform::Own, sid: &str, token: &str) -> Result<u64, Refusal> {
-    let (from, to, want) = parse_token(token)
-        .ok_or_else(|| ("bad_token", format!("not a peek token: {token:?}")))?;
+    let (from, to, want) =
+        parse_token(token).ok_or_else(|| ("bad_token", format!("not a peek token: {token:?}")))?;
     let (dir, held) = locked(own)?;
     let mut s = state(dir.as_path()).map_err(io)?;
     let rows = lines(dir.as_path(), sid).map_err(io)?;

@@ -179,7 +179,7 @@ fn title_and_liveness_come_from_the_judge_and_unknown_stays_unknown() {
 
 /// 读面收的 id 在拼进收件箱路径之前先过形状判定（`§47`）。样本取跨语言金样 `cc-bus-control.golden.json` 的 `ids`。
 #[test]
-fn bus_ids_are_judged_here_before_they_reach_the_inbox() {
+fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
     let g: serde_json::Value = serde_json::from_str(include_str!(
         "../../__fixtures__/cc-bus-control.golden.json"
     ))

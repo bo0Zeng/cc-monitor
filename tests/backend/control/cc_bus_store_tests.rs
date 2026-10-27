@@ -71,7 +71,11 @@ fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
     deliver(&own(&d), &env(B, "t1", "m1"), 1_000).unwrap();
     let tok = token_of(&d, B, None);
     assert_eq!(commit(&own(&d), B, &tok), Ok(1));
-    assert_eq!(commit(&own(&d), B, &tok).unwrap_err().0, "stale", "第二个读者照常处理手上那段");
+    assert_eq!(
+        commit(&own(&d), B, &tok).unwrap_err().0,
+        "stale",
+        "第二个读者照常处理手上那段"
+    );
     // 第 to 行在两跳之间换了 ⇒ changed。
     deliver(&own(&d), &env(B, "t2", "m2"), 2_000).unwrap();
     let tok = token_of(&d, B, None);
@@ -87,7 +91,11 @@ fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
     assert_eq!(commit(&own(&d), B, &tok).unwrap_err().0, "changed");
     assert_eq!(unread(&bus(&d), B).unwrap(), 1, "没推");
     for bad in ["", "1.2", "a.b.c", "1.2.zz", "0.0.0000000000000000"] {
-        assert_eq!(commit(&own(&d), B, bad).unwrap_err().0, "bad_token", "{bad:?}");
+        assert_eq!(
+            commit(&own(&d), B, bad).unwrap_err().0,
+            "bad_token",
+            "{bad:?}"
+        );
     }
 }
 
@@ -95,7 +103,12 @@ fn the_same_token_commits_once_and_a_changed_inbox_is_caught() {
 fn max_lines_reads_a_backlog_in_slices() {
     let d = tmp("slices");
     for i in 0..5 {
-        deliver(&own(&d), &env(B, &format!("t{i}"), &format!("m{i}")), 1_000 + i).unwrap();
+        deliver(
+            &own(&d),
+            &env(B, &format!("t{i}"), &format!("m{i}")),
+            1_000 + i,
+        )
+        .unwrap();
     }
     let p = peek(&bus(&d), B, Some(2)).unwrap().unwrap();
     assert_eq!((p.from, p.to, p.lines.len()), (0, 2, 2));
@@ -109,12 +122,20 @@ fn max_lines_reads_a_backlog_in_slices() {
 fn a_truncated_inbox_is_read_from_the_top_and_the_position_heals() {
     let d = tmp("trunc");
     for i in 0..3 {
-        deliver(&own(&d), &env(B, &format!("t{i}"), &format!("m{i}")), 1_000 + i).unwrap();
+        deliver(
+            &own(&d),
+            &env(B, &format!("t{i}"), &format!("m{i}")),
+            1_000 + i,
+        )
+        .unwrap();
     }
     commit(&own(&d), B, &token_of(&d, B, None)).unwrap();
     std::fs::write(
         bus(&d).join(format!("{B}.jsonl")),
-        format!("{}\n", serde_json::to_string(&env(B, "only", "my")).unwrap()),
+        format!(
+            "{}\n",
+            serde_json::to_string(&env(B, "only", "my")).unwrap()
+        ),
     )
     .unwrap();
     assert_eq!(unread(&bus(&d), B).unwrap(), 1, "位置比行数大 ⇒ 按 0 算");
@@ -136,26 +157,28 @@ fn the_roster_lists_session_shaped_inboxes_with_their_unread() {
     let mut want = vec![(A.to_string(), 0), (B.to_string(), 1)];
     want.sort();
     assert_eq!(got, want);
-    assert!(inboxes(&d.join("nothing-here")).unwrap().is_empty(), "没投过信 ⇒ 空名单");
+    assert!(
+        inboxes(&d.join("nothing-here")).unwrap().is_empty(),
+        "没投过信 ⇒ 空名单"
+    );
 }
 
 #[test]
 fn reading_never_writes() {
     let d = tmp("ro");
     deliver(&own(&d), &env(B, "t", "m1"), 1_000).unwrap();
+    // 这个目录里写得出的只有那两份（收件箱 · 状态文件）：逐份比字节与修改时刻。
     let snap = || {
-        let mut v: Vec<(String, Vec<u8>)> = std::fs::read_dir(bus(&d))
-            .unwrap()
-            .map(|e| {
-                let e = e.unwrap();
+        [format!("{B}.jsonl"), "state.json".to_string()]
+            .iter()
+            .map(|n| {
+                let p = bus(&d).join(n);
                 (
-                    e.file_name().to_string_lossy().into_owned(),
-                    std::fs::read(e.path()).unwrap(),
+                    std::fs::read(&p).unwrap(),
+                    std::fs::metadata(&p).unwrap().modified().unwrap(),
                 )
             })
-            .collect();
-        v.sort();
-        v
+            .collect::<Vec<_>>()
     };
     let before = snap();
     let _ = peek(&bus(&d), B, None).unwrap();

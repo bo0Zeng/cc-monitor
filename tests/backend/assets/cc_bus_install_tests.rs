@@ -414,9 +414,7 @@ fn the_install_manifest_carries_one_entry_and_no_old_names() {
     let verbs: Vec<&str> = FILES
         .iter()
         .filter_map(|(rel, _)| rel.strip_prefix("scripts/cc-bus-")?.strip_suffix(".sh"))
-        .filter(|v| {
-            !v.starts_with("agent") && *v != "lib" && *v != "install"
-        })
+        .filter(|v| !v.starts_with("agent") && *v != "lib" && *v != "install")
         .collect();
     let mut verbs = verbs;
     verbs.sort_unstable();

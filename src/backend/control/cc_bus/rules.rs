@@ -56,7 +56,10 @@ pub(crate) struct Window {
 /// 「同一封」的指纹：除了 id 与时间（每次另盖）以外的每一格。
 fn fingerprint(e: &BusEnvelope) -> String {
     let same = serde_json::json!([e.from, e.to, e.tier, e.act, e.title, e.re, e.refs, e.text]);
-    format!("{:016x}", cmd_wire::fnv::fnv1a64(same.to_string().as_bytes()))
+    format!(
+        "{:016x}",
+        cmd_wire::fnv::fnv1a64(same.to_string().as_bytes())
+    )
 }
 
 /// 这一窗还开着没有（没开过 ⇒ 当已经关了）。

@@ -38,7 +38,11 @@ fn the_same_letter_twice_within_the_window_is_a_duplicate() {
     assert!(said.contains("m1"), "那一句说的是跟哪一封重了：{said}");
     // 拒掉的不进账：窗口过了照常收。
     assert_eq!(
-        code(admit(&mut l, &env(A, B, 2, "t", "m3"), t0 + DEDUP_WINDOW_MS)),
+        code(admit(
+            &mut l,
+            &env(A, B, 2, "t", "m3"),
+            t0 + DEDUP_WINDOW_MS
+        )),
         "ok"
     );
 }
@@ -69,7 +73,11 @@ fn a_pair_over_its_limit_is_throttled_and_others_still_pass() {
     let t0 = 5_000_000;
     for i in 0..RATE_PAIR {
         assert_eq!(
-            code(admit(&mut l, &env(A, B, 2, &format!("t{i}"), "m"), t0 + i64::from(i))),
+            code(admit(
+                &mut l,
+                &env(A, B, 2, &format!("t{i}"), "m"),
+                t0 + i64::from(i)
+            )),
             "ok"
         );
     }
@@ -79,7 +87,11 @@ fn a_pair_over_its_limit_is_throttled_and_others_still_pass() {
     assert_eq!(code(admit(&mut l, &env(A, C, 2, "x", "m"), t0 + 101)), "ok");
     // 窗口翻过去照常。
     assert_eq!(
-        code(admit(&mut l, &env(A, B, 2, "again", "m"), t0 + RATE_WINDOW_MS)),
+        code(admit(
+            &mut l,
+            &env(A, B, 2, "again", "m"),
+            t0 + RATE_WINDOW_MS
+        )),
         "ok"
     );
 }
@@ -90,10 +102,7 @@ fn the_whole_machine_has_one_limit_too() {
     let t0 = 9_000_000;
     let sid = |i: u32| format!("{i:08x}-1111-2222-3333-444455556666");
     for i in 0..RATE_GLOBAL {
-        assert_eq!(
-            code(admit(&mut l, &env(&sid(i), B, 2, "t", "m"), t0)),
-            "ok"
-        );
+        assert_eq!(code(admit(&mut l, &env(&sid(i), B, 2, "t", "m"), t0)), "ok");
     }
     let (c, _) = admit(&mut l, &env(&sid(RATE_GLOBAL), B, 2, "t", "m"), t0).unwrap_err();
     assert_eq!(c, "throttled");

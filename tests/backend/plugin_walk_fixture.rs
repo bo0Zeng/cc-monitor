@@ -81,8 +81,7 @@ mod tests {
     fn script_text() -> String {
         let lines: Vec<String> = vec![
             "#!/bin/sh".to_string(),
-            "# 夹具用的假插件 —— 一个可执行文件 + 子命令。码表与找法只住夹具里。"
-                .to_string(),
+            "# 夹具用的假插件 —— 一个可执行文件 + 子命令。码表与找法只住夹具里。".to_string(),
             "case \"$1\" in".to_string(),
             format!("  {WORK_SUB})"),
             format!("    if [ -z \"${REALM_ENV}\" ]; then"),

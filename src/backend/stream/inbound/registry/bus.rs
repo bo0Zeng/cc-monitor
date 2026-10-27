@@ -23,7 +23,5 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::cc_bus_wire::BusCommitCmd>(
         "推已读位置（比令牌）",
     ),
-    crate::wire::typed::blocking::<crate::control::cc_bus_wire::BusUnreadCmd>(
-        "未读几封",
-    ),
+    crate::wire::typed::blocking::<crate::control::cc_bus_wire::BusUnreadCmd>("未读几封"),
 ];
