@@ -499,6 +499,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--terminal-preview",
     "--terminal-ssh",
     "--terminals-list",
+    // 「终端」视图那张名单（`terminals-board-here` 这台那几行 · `terminals-board` 各台合成）派生的 CLI 面（一次性进程里可达表是空的 ⇒ 别的台照实进那一组的 `down`）。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
+    "--terminals-board-here",
+    "--terminals-board",
     "--tmux-notify",
 ];
 

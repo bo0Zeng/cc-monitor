@@ -30978,6 +30978,230 @@
       "role": "说明",
       "zh": "在本机 bash 里运行",
       "args": []
+    },
+    "beTermBoard.dot.shell": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "空闲",
+      "args": []
+    },
+    "beTermBoard.dot.program": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "运行中",
+      "args": []
+    },
+    "beTermBoard.meta.noSession": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没有会话",
+      "args": []
+    },
+    "beTermBoard.chip.windows": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端窗口 ×{n}",
+      "args": ["n"]
+    },
+    "beTermBoard.chip.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台",
+      "args": []
+    },
+    "beTermBoard.group.count": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "终端 {n}",
+      "args": ["n"]
+    },
+    "beTermBoard.group.countBg": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "终端 {n} · 后台 {bg}",
+      "args": ["n", "bg"]
+    },
+    "beTermBoard.group.local": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "本机",
+      "args": []
+    },
+    "beTermBoard.group.down": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 离线 · {said}",
+      "args": ["machine", "said"]
+    },
+    "beTermBoard.group.downSampled": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 离线 · 名单采样 {at}",
+      "args": ["machine", "at"]
+    },
+    "beTermBoard.filter.all": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "全部",
+      "args": []
+    },
+    "beTermBoard.filter.session": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "有会话的",
+      "args": []
+    },
+    "beTermBoard.filter.bare": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "没有会话的",
+      "args": []
+    },
+    "beTermBoard.filter.background": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "后台",
+      "args": []
+    },
+    "terminalsView.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "终端",
+      "args": []
+    },
+    "terminalsView.page.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "返回",
+      "args": []
+    },
+    "terminalsView.page.search": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "按名字或目录找",
+      "args": []
+    },
+    "terminalsView.page.new": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建",
+      "args": []
+    },
+    "terminalsView.empty.title": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无终端",
+      "args": []
+    },
+    "terminalsView.empty.body": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "新建会话或终端后列在此处",
+      "args": []
+    },
+    "terminalsView.empty.noMatch": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "没有符合的终端",
+      "args": []
+    },
+    "terminalsView.face.pick": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "选择终端查看",
+      "args": []
+    },
+    "terminalsView.select.count": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已选",
+      "args": []
+    },
+    "terminalsView.select.clear": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "取消选择",
+      "args": []
+    },
+    "terminalsView.select.end": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "结束所选",
+      "args": []
+    },
+    "terminalsView.end.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "结束所选终端",
+      "args": []
+    },
+    "terminalsView.end.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "有终端没结束",
+      "args": []
+    },
+    "terminalsView.end.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "所选终端已结束",
+      "args": []
+    },
+    "terminalsView.list.partial": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "名单不全",
+      "args": []
+    },
+    "terminalsView.group.reconnect": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新连接",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "terminalsView.face.openWindow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新窗口",
+      "args": []
+    },
+    "terminalsView.face.goSession": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "去它的会话",
+      "args": []
+    },
+    "main.cmd.openTerminals": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "终端",
+      "args": []
+    },
+    "main.cmd.terminalsKeywords": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端 terminal tmux 后台",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "terminalsView.face.end": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "结束",
+      "args": []
+    },
+    "beTermBoard.window.title": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{title} · 终端 · {machine}",
+      "args": ["title", "machine"]
+    },
+    "beTermBoard.meta.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{who} · {cwd}",
+      "args": ["who", "cwd"]
     }
   }
 }
