@@ -41,7 +41,10 @@ export interface TerminalsHost {
   reconnect(origin: Origin): void;
   goSession(origin: Origin, sid: string): void;
   openWindow(pick: BoardPick): void;
-  newSession(origin: Origin | null): void;
+  /** 起新会话（框里照常挑台）。 */
+  newSession(): void;
+  /** 在这一台起新会话。 */
+  newSessionOn(origin: Origin): void;
 }
 
 /** 一行在页上的那几样（原地改字用）。 */
@@ -102,7 +105,7 @@ export class TerminalsView {
       this.filtersEl,
       spacer,
       this.findBox,
-      button({ label: copyText("terminalsView.page.new"), kind: "primary", icon: "plus", onClick: () => this.host.newSession(null) }),
+      button({ label: copyText("terminalsView.page.new"), kind: "primary", icon: "plus", onClick: () => this.host.newSession() }),
       button({ label: copyText("terminalsView.page.back"), kind: "ghost", onClick: () => this.close() }),
     );
     const body = el("div", s.tvMain);
@@ -227,7 +230,7 @@ export class TerminalsView {
         text: copyText("terminalsView.empty.title"),
         hint: copyText("terminalsView.empty.body"),
         icon: "terminal",
-        action: button({ label: copyText("terminalsView.page.new"), kind: "secondary", icon: "plus", onClick: () => this.host.newSession(null) }),
+        action: button({ label: copyText("terminalsView.page.new"), kind: "secondary", icon: "plus", onClick: () => this.host.newSession() }),
       });
       e.dataset.boardEmpty = "";
       this.listEl.replaceChildren(e);
@@ -240,7 +243,7 @@ export class TerminalsView {
     for (const g of this.board.groups) {
       const head = el("div", s.tvGroupHead);
       head.append(el("span", s.tvGroupName, g.name), el("span", s.tvGroupSub, g.sub), el("span", s.tvSpacer));
-      head.append(button({ label: copyText("terminalsView.page.new"), kind: "ghost", size: "compact", icon: "plus", onClick: () => this.host.newSession(g.machine) }));
+      head.append(button({ label: copyText("terminalsView.page.new"), kind: "ghost", size: "compact", icon: "plus", onClick: () => this.host.newSessionOn(g.machine) }));
       out.push(head);
       if (g.down) {
         const d = el("div", s.tvDown);

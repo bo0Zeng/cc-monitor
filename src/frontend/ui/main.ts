@@ -252,7 +252,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     openWindow: (p) =>
       void openTerminalWindow({ origin: p.origin, terminal: p.row.terminal, name: p.row.tmux_name, title: p.row.title, windowTitle: p.row.window_title }),
-    newSession: (origin) => void openNewSession(origin ? { origin } : {}),
+    newSession: () => void openNewSession({}),
+    newSessionOn: (origin) => void openNewSession({ origin }),
   });
   // 会话状态变了 · 机器连上断开 ⇒ 开着的「终端」视图再问一次（视图自己合批、关着不问）。
   const pokeBoard = (): void => terminalsView.poke();

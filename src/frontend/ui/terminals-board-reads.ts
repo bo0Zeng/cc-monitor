@@ -29,8 +29,8 @@ export interface BoardPick {
 }
 
 /** 结束这几行：先确认（同一种确认框），再每台交命令；没结束的数一句。 */
-export async function endRows(items: readonly BoardPick[], confirm: ConfirmFn = confirmDialog): Promise<void> {
-  const ok = await confirm({
+export async function endRows(items: readonly BoardPick[], ask: ConfirmFn = confirmDialog): Promise<void> {
+  const ok = await ask({
     title: copyText("terminalsView.end.title"),
     rows: [{ label: copyText("kit.interrupts.cut"), items: items.map((i) => i.row.title) }],
     action: copyText("terminalsView.select.end"),

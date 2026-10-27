@@ -89,6 +89,7 @@ function rig(first: TerminalsBoard): Rig {
     goSession: vi.fn(),
     openWindow: vi.fn(),
     newSession: vi.fn(),
+    newSessionOn: vi.fn(),
     watch: vi.fn((w: Watched | null) => void watched.push(w)),
     face: () => {
       const el = document.createElement("div");
