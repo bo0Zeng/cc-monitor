@@ -33,6 +33,7 @@
 //!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
+mod egress;
 pub(crate) mod on_path;
 pub(crate) mod plan;
 pub(crate) mod user_path;
@@ -367,7 +368,14 @@ fn plan_of(
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
     let taken = crate::host::snapshot().taken_names().ok();
     // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
-    let plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
+    let mut plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
+    // 接管 agent 原本的出网设置（免代理表加中转口）：继承那一格同账号目录，别名预览不继承。
+    let nothing = |_: &str| None;
+    egress::onto(
+        &mut plan,
+        crate::agents::proxy_of(&o.agent),
+        if inherit_account { &get } else { &nothing },
+    );
     Ok(Planned { plan, env })
 }
 

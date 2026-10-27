@@ -40,6 +40,18 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
     // 没有这一家认得的「用满」回包 ⇒ 硬上限对它不成立。
     limit_reply: None,
     inject: crate::agents::Inject::Args(launch_args),
+    // 照常见 HTTP 客户端的读法：另认 `ALL_PROXY`。
+    proxy: crate::agents::ProxyFace {
+        via: &[
+            "https_proxy",
+            "HTTPS_PROXY",
+            "http_proxy",
+            "HTTP_PROXY",
+            "all_proxy",
+            "ALL_PROXY",
+        ],
+        skip: &["no_proxy", "NO_PROXY"],
+    },
 };
 
 /// 中转地址 ⇒ 垫在透传之前的那一组 `-c`（值是 TOML 串）。计划里拿到的是不带钥匙的地址，`ccm` exec 那一刻插上钥匙。

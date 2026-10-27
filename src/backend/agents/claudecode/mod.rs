@@ -110,6 +110,11 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     limit_reply: Some(quota::limit_reply),
     // 认 `ANTHROPIC_BASE_URL`：插上钥匙的整条地址进这个变量。
     inject: super::Inject::Env(paths::BASE_URL_ENV),
+    // 官方客户端认的代理与免代理变量（大小写两形；不认 `ALL_PROXY`）。
+    proxy: super::ProxyFace {
+        via: &["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"],
+        skip: &["no_proxy", "NO_PROXY"],
+    },
 };
 
 /// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法

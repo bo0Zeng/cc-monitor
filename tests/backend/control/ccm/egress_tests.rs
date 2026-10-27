@@ -1,0 +1,132 @@
+//! 起会话时接管 agent 原本的出网设置：注入中转、设了代理 ⇒ agent 的免代理表（两形）加上中转口，计划里与打印那一行同一份。
+//! 不起真 agent、不连网：计划面是纯的（继承来的环境由夹具答）。
+
+use super::*;
+use crate::control::ccm::plan::{self, Env, Plan};
+
+fn ask(
+    _: &str,
+    _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+) -> Result<Option<String>, String> {
+    Ok(Some("http://127.0.0.1:8788/t/claude-code/x".into()))
+}
+
+fn no_relay(
+    _: &str,
+    _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+) -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+fn env(relay: plan::RelayAsk) -> Env {
+    Env {
+        home: "/home/pi".into(),
+        pwd: "/p".into(),
+        accts_manifest: "/nonexistent/accounts.json".into(),
+        account_env: "CLAUDE_CONFIG_DIR".into(),
+        base_url_env: crate::agents::claudecode::paths::BASE_URL_ENV.into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
+        relay: Some(relay),
+        origin_token: Some("0123abcd".into()),
+        ..Default::default()
+    }
+}
+
+/// 起一次 claude（`--resume s1`，直路），计划交给接管那一下，继承来的环境由 `vars` 答。
+fn launch(relay: plan::RelayAsk, vars: &[(&str, &str)]) -> plan::Direct {
+    let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
+    let crate::ccm_line::argv::Parsed::Opts(o) =
+        crate::ccm_line::argv::parse(&crate::ccm_line::argv::tests::mixed_to_split(&a))
+            .expect("解析得动")
+    else {
+        panic!()
+    };
+    let mut p = plan::build(&o, &env(relay), &plan::tests::no_library, None).expect("算得出计划");
+    let get = |k: &str| {
+        vars.iter()
+            .find(|(n, _)| *n == k)
+            .map(|(_, v)| v.to_string())
+    };
+    onto(&mut p, crate::agents::proxy_of("claude"), &get);
+    let Plan::Direct(d) = p else {
+        panic!("该是直路")
+    };
+    d
+}
+
+fn value<'a>(d: &'a plan::Direct, k: &str) -> Option<&'a str> {
+    d.relay_env
+        .iter()
+        .find(|(n, _)| n == k)
+        .map(|(_, v)| v.as_str())
+}
+
+/// ★ 第一条会红：带 `HTTPS_PROXY=<代理>` 起会话 ⇒ agent 的免代理表（两形）含中转口、原来那一份在前，打印那一行照实印；
+/// 代理变量本身不由 ccm 改（照继承留给 agent）。
+#[test]
+fn a_launch_with_a_proxy_keeps_the_relay_off_it() {
+    let d = launch(
+        ask,
+        &[
+            ("HTTPS_PROXY", "http://127.0.0.1:3128"),
+            ("NO_PROXY", "internal.example"),
+        ],
+    );
+    for k in ["NO_PROXY", "no_proxy"] {
+        assert_eq!(
+            value(&d, k),
+            Some("internal.example,127.0.0.1"),
+            "{k} 没含中转口：{:?}",
+            d.relay_env
+        );
+    }
+    let line = plan::render(&Plan::Direct(d.clone()));
+    assert!(
+        line.contains("export NO_PROXY=") && line.contains("export no_proxy="),
+        "打印那一行没说免代理表：{line}"
+    );
+    assert!(
+        !d.relay_env
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("https_proxy")),
+        "代理变量该照留（不由 ccm 改）：{:?}",
+        d.relay_env
+    );
+}
+
+/// 没设代理 ⇒ 免代理变量不设（继承来的免代理表也不动）。
+#[test]
+fn without_a_proxy_nothing_is_taken_over() {
+    let d = launch(ask, &[("NO_PROXY", "internal.example")]);
+    assert_eq!(value(&d, "NO_PROXY"), None, "{:?}", d.relay_env);
+    assert_eq!(value(&d, "no_proxy"), None);
+}
+
+/// 这一家不认的代理变量（Claude 不认 `ALL_PROXY`）⇒ 当没设。
+#[test]
+fn a_proxy_variable_the_family_does_not_read_is_not_taken() {
+    let d = launch(ask, &[("ALL_PROXY", "http://127.0.0.1:9")]);
+    assert_eq!(value(&d, "NO_PROXY"), None);
+}
+
+/// 不注入中转 ⇒ 都不动。
+#[test]
+fn without_the_relay_nothing_is_taken_over() {
+    let d = launch(no_relay, &[("HTTPS_PROXY", "http://127.0.0.1:9")]);
+    assert_eq!(d.relay, None);
+    assert_eq!(value(&d, "NO_PROXY"), None);
+}
+
+/// 免代理表里已经有中转口的主机 ⇒ 不重复加；只设了小写那一形 ⇒ 两形都设成同一份。
+#[test]
+fn the_relay_host_is_added_once_and_both_forms_agree() {
+    let d = launch(
+        ask,
+        &[
+            ("https_proxy", "http://127.0.0.1:9"),
+            ("no_proxy", "127.0.0.1,.corp"),
+        ],
+    );
+    assert_eq!(value(&d, "no_proxy"), Some("127.0.0.1,.corp"));
+    assert_eq!(value(&d, "NO_PROXY"), Some("127.0.0.1,.corp"));
+}
