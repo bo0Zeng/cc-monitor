@@ -53,7 +53,7 @@ pub(crate) fn scope(
 
 /// 读名单：先问这台的常驻（`groups-read` 问到各台），常驻不在只读这台；都没成 ⇒ 那一句。
 pub(crate) async fn groups_now(tz: crate::common::time::Tz) -> Result<GroupsRead, String> {
-    match via_resident(&tz).await {
+    match groups_via_resident(&tz).await {
         Ok(r) => Ok(r),
         Err(why) => {
             tracing::info!("cc-bus 范围：常驻没答（{why}），只读这台的组");
@@ -64,8 +64,11 @@ pub(crate) async fn groups_now(tz: crate::common::time::Tz) -> Result<GroupsRead
     }
 }
 
-/// 这台的常驻问各台（这台 ＋ 机器表里的每一台）。
-async fn via_resident(tz: &crate::common::time::Tz) -> Result<GroupsRead, String> {
+/// 转给这台的常驻：`groups-read {这台 ＋ 机器表里的每一台}`（等 20 秒：它问到各台 ＋ 回程）。
+/// `session-self` 那一问也该走这一处（命令表 `registry/history.rs` 里今天还有一份同样的，合并树换成调这里）。
+pub(crate) async fn groups_via_resident(
+    tz: &crate::common::time::Tz,
+) -> Result<GroupsRead, String> {
     let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
     let machines: Vec<cmd_wire::Machine> = std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
         .chain(
