@@ -41,7 +41,7 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
         }
     };
     let cwd = existing_ancestor(Path::new(dir));
-    match super::dump::ran_of(super::pb(&entry, &cwd, &["dump", "--domains", dir])) {
+    match super::dump::run_domains(&entry, &cwd, dir) {
         super::dump::Ran::Dump { doc, .. } => {
             out.domains = super::product::domains_of(&doc);
             out.workspace = doc
