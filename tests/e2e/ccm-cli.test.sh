@@ -33,12 +33,7 @@ zh() { "$REPO/node_modules/.bin/tsx" "$REPO/tests/e2e/copy-text.mts" "$@"; }
 export HOME="$CCMDIR/home"; mkdir -p "$HOME"
 unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 
-# ⚠ **这里原来有两道 `jq` 的 fail-closed 硬依赖闸，已删。**
-#   它们守的是本文件那几份**假 backend**（`mk_mirror_backend` 用 `jq` 把夹具 manifest 翻成
-#   `--list-accounts` 的帧形状、`KREC` 的记账 shim 转发给 `/usr/bin:/bin` 上那一个）——
-#   而那几份假后端与它们服务的判据也一起删了：同一个进程之下没有「帧」这回事，
-#   账号表由后端自己读那份 manifest。**本文件今天一处都不用 `jq`**（`grep -c jq` 自己看）。
-# 原来这里还有一条「`npx` 那条纪律仍在」（会话名派生那一节拿 `npx tsx` 真跑前端那个函数对拍）：前端那份删了，那一节改手写期望，本文件不再要 `npx`。
+# 本文件不用 `jq` 也不用 `npx`：账号表由后端自己读那份 manifest，会话名派生那一节是手写期望。
 
 PASS=0; FAIL=0
 # ccm 起的会话（启动器就是这一家默认的那一个）在启动器后面垫答题 hook：会话级 `--settings <只含那一个 hook 的 JSON>`，
@@ -370,8 +365,7 @@ done
 #     **同一个二进制之下「找不到后端」这个概念不存在了**：敲的那个命令就是后端。
 #   · 账号解析走后端一整节（第 84–152）—— 往返次数 / 帧形状 / 无 jq 纯 bash 解析路 /
 #     「这段 bash 起了几个外部进程」的记账尺子。语义那一半已落成后端侧 Rust 判据
-#     （`the_account_table_has_exactly_one_source` · `picking_an_account_never_falls_back_to_a_different_one`
-#      · `needs_account_table`）。
+#     （`plan_tests.rs::the_account_is_judged_from_the_listing_product` · `picking_an_account_never_falls_back_to_a_different_one`）。
 #   · `JSONENC` 47 条（第 153–199）—— 那个**手写的 bash JSON 编码器**与 `jq -Rs .` 的逐字节对拍。
 #     Rust 侧是 `serde_json`，**不是我们的实现，不必我们来测**。
 #   · `WIRE` 85 条（第 200–284）—— 「发了 / 发对了 / 不可达 / 撞名 / 缺省尺寸 / 控制字符」。

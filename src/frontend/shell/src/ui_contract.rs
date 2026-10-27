@@ -63,7 +63,7 @@ pub struct JsonlLinePayload {
     // **C03 大整数策略**：量纲是**per-file 行号**，`Number.MAX_SAFE_INTEGER` = 2^53-1 行
     // ——按每行约 1 KB 算是 9 EB 的单个 jsonl 文件 ⇒ f64 精度足够。
     // 而 `bigint` 是错的：Tauri IPC 走 `serde_json::to_string` ⇒ 线上是 JSON 文本
-    // ⇒ `JSON.parse` 永远给不出 BigInt（`tauri-2.11.2/src/ipc/mod.rs:181-183`）。
+    // ⇒ `JSON.parse` 永远给不出 BigInt。
     #[cfg_attr(test, ts(type = "number"))]
     pub seq: u64,
     /// issue #15：数据来源标签。`None` = 本地（不序列化，前端视为本地，Tab 标题无前缀）；

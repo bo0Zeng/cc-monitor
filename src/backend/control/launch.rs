@@ -691,10 +691,8 @@ fn run_with(
             // —— 今天由 `readonly_guard`（写 tmux 变量那一族只许 `control/identity_tag.rs`）与
             // `ccm/plan_tests.rs::the_container_path_carries_every_intent_inward`（渲出的命令只写意图键）钉住。
             //
-            // ⚠ **为什么可以现在就改**：这条臂今天**零生产调用方** ——
-            //   `launch_wire::the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path`
-            //   与 `readonly_guard` 的 `g6_staged_zero` 两条判据一起钉着「生产段不发
-            //   `create-or-attach`」。⇒ 本改动今天不改变任何一条在跑的路径的行为，
+            // ⚠ **为什么可以现在就改**：这条臂今天**零生产调用方**（界面与手机都不发
+            //   `create-or-attach`；这个零没有判据钉着）。⇒ 本改动今天不改变任何一条在跑的路径的行为，
             //   它是把「接线时会踩的那颗雷」在接线之前拆掉。
             //
             // `@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**

@@ -137,8 +137,6 @@ pub(crate) const HOME_DIR_NAME: &str = ".claude";
 ///
 /// Windows（只为编译/冒烟，真实目标是 Linux）：`$HOME` 缺失时退 `%USERPROFILE%\.claude`，
 /// 再退 cwd 下的 `.claude`，让二进制至少起得来。
-///
-/// `S3` 从 `main.rs::resolve_claude_dir` 原样搬来（逻辑一字未改）。
 pub fn resolve_home() -> PathBuf {
     match std::env::var_os(CONFIG_DIR_ENV) {
         Some(dir) => PathBuf::from(dir),

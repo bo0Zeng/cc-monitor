@@ -10,10 +10,12 @@
  *   `case "dup":`（连同那个 `switch` 的 `default:`）、`CODES.has(x)` / `CODES.includes(x)`（`CODES` 是本文件里一组字面码）。
  *   管到的分支：`if` 的两头 · 三元的两头 · `&&` / `||` / `??` 的右侧 · `case` / `default` 底下；进到里面再定义的具名函数 · 方法 · 类就不算，
  *   箭头函数跟着外面的分支算（按码挂上去的回调取的字，也是按码挑的字）。
+ *   分支里调本文件里取文的函数（具名函数 · 绑在 `const` 上的箭头函数 · 函数表达式，体里取文或再调这样的函数）也算一处：
+ *   取文挪进小函数，取的仍是按码挑的字。
  * TS 这一半在这里（typescript 的语法树）；Kotlin 那一半是 `src/mobile/detekt-rules` 里的 detekt 规则，
  * 壳与文件窗口的 Rust 那一半是 `tests/frontend/filewin/exit_scan_tests.rs`。
  *
- * 买不到：比的码不是字面量（从别处拿来的常量、枚举）就认不出是在按码判；先 `if (…) return` 再在后面取文，后面那一句不在分支里，也认不出；
+ * 买不到：分支里调的是别的文件里的函数或类的方法，取文在那边，认不出；比的码不是字面量（从别处拿来的常量、枚举）就认不出是在按码判；先 `if (…) return` 再在后面取文，后面那一句不在分支里，也认不出；
  * 不经文案表、直接写在代码里的字归文案表那几条判据管，不在这里。
  */
 import ts from "typescript";
@@ -131,24 +133,71 @@ function branchOnCode(parent: ts.Node, child: ts.Node, lists: Set<string>): bool
   return false;
 }
 
+/** 调的是哪个名字（`f(…)` ⇒ `f`；别的形状 ⇒ null）。 */
+function calleeName(n: ts.Node): string | null {
+  return ts.isCallExpression(n) && ts.isIdentifier(n.expression) ? n.expression.text : null;
+}
+
+/**
+ * 本文件里取文的函数：具名函数与绑在 `const` 上的箭头函数 · 函数表达式，体里调了 `copyText`，
+ * 或调了本文件里另一个取文的函数（一直传到不再变）。
+ */
+function textFns(sf: ts.SourceFile): Set<string> {
+  const bodies = new Map<string, ts.Node>();
+  const collect = (n: ts.Node): void => {
+    if (ts.isFunctionDeclaration(n) && n.name && n.body) bodies.set(n.name.text, n.body);
+    else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      const init = unwrap(n.initializer);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) bodies.set(n.name.text, init.body);
+    }
+    ts.forEachChild(n, collect);
+  };
+  collect(sf);
+  const calls = new Map<string, Set<string>>();
+  for (const [name, body] of bodies) {
+    const out = new Set<string>();
+    const walk = (n: ts.Node): void => {
+      const c = calleeName(n);
+      if (c !== null) out.add(c);
+      ts.forEachChild(n, walk);
+    };
+    walk(body);
+    calls.set(name, out);
+  }
+  const takes = new Set<string>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [name, cs] of calls) {
+      if (!takes.has(name) && [...cs].some((c) => c === "copyText" || takes.has(c))) {
+        takes.add(name);
+        grew = true;
+      }
+    }
+  }
+  return takes;
+}
+
 /** 一份 TS 生产代码里两句各命中几处。 */
 export function scanTs(code: string, table: CopyTable, file = "x.ts"): Record<RuleId, number> {
   const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const lists = codeLists(sf);
+  const takes = textFns(sf);
   const got: Record<RuleId, number> = { key: 0, branch: 0 };
+  const inCodeBranch = (n: ts.Node): boolean => {
+    let child: ts.Node = n;
+    for (let p = n.parent; p && !ts.isSourceFile(p) && !isFunctionLike(child); child = p, p = p.parent) {
+      if (branchOnCode(p, child, lists)) return true;
+    }
+    return false;
+  };
   const visit = (n: ts.Node): void => {
-    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "copyText") {
-      const a = n.arguments[0];
+    const callee = calleeName(n);
+    if (callee === "copyText") {
+      const a = (n as ts.CallExpression).arguments[0];
       const key = a !== undefined && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) ? a.text : null;
       if (!skeletonKey(key, table)) got.key++;
-      let child: ts.Node = n;
-      for (let p = n.parent; p && !ts.isSourceFile(p) && !isFunctionLike(child); child = p, p = p.parent) {
-        if (branchOnCode(p, child, lists)) {
-          got.branch++;
-          break;
-        }
-      }
-    }
+      if (inCodeBranch(n)) got.branch++;
+    } else if (callee !== null && takes.has(callee) && inCodeBranch(n)) got.branch++;
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -177,6 +226,9 @@ export const TS_SAMPLES: { code: string; want: Record<RuleId, number> }[] = [
   { code: 'el.textContent = copyText("no.such.key");', want: { key: 1, branch: 0 } },
   { code: 'if (x.code === "dup") btn.onclick = () => say(copyText("s.k.x"));', want: { key: 0, branch: 1 } },
   { code: 'const t = rows.some((r) => r.kind === "x") ? copyText("s.k.x") : null;', want: { key: 0, branch: 1 } },
+  // 取文挪进同文件的小函数：按码判的分支里调它，算一处（连它再调的同文件函数一起看）。
+  { code: 'function none() { return span(copyText("s.k.x")); }\nif (b.takeover === "no_line") box.append(none());', want: { key: 0, branch: 1 } },
+  { code: 'const word = () => copyText("s.k.x");\nfunction none() { return word(); }\nconst t = x.code === "dup" ? none() : null;', want: { key: 0, branch: 1 } },
   // 阴性：骨架字照摆；条件不比码；分支里再定义的具名函数不算；比码的那一侧在条件里不算；两侧都是字面量不算。
   { code: 'el.textContent = copyText("s.k.x");', want: { key: 0, branch: 0 } },
   { code: 'empty.textContent = copyText("p.k.x");', want: { key: 0, branch: 0 } },
@@ -184,4 +236,7 @@ export const TS_SAMPLES: { code: string; want: Record<RuleId, number> }[] = [
   { code: 'if (x.code === "dup") { function g() { return copyText("s.k.x"); } }', want: { key: 0, branch: 0 } },
   { code: 'if (copyText("s.k.x") === "y") go();', want: { key: 0, branch: 0 } },
   { code: 'const t = "a" === "b" ? copyText("s.k.x") : null;', want: { key: 0, branch: 0 } },
+  // 阴性：同一个取文的小函数在分支外调不算；分支里调的同文件函数不取文不算。
+  { code: 'function none() { return copyText("s.k.x"); }\nbox.append(none());', want: { key: 0, branch: 0 } },
+  { code: 'function plain() { return 1; }\nif (x.code === "dup") go(plain());', want: { key: 0, branch: 0 } },
 ];
