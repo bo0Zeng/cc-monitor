@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.needs
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.faces
 import com.ccmonitor.mobile.core.wire.gen.Changed
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.NeedsList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
@@ -87,7 +87,7 @@ class NeedsBoard(
         return scope.launch {
             launch {
                 src.link.state
-                    .map { it is LinkState.Up }
+                    .map { it is LinkLine.Up }
                     .distinctUntilChanged()
                     .collect { up -> put(id) { it.copy(down = !up) } }
             }

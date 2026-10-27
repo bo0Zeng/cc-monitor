@@ -1,12 +1,13 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
+import com.ccmonitor.mobile.ui.chat.linkConnecting
+import com.ccmonitor.mobile.ui.chat.linkUp
 import com.ccmonitor.mobile.ui.chat.needs.NeedsDesk
 import com.ccmonitor.mobile.ui.chats.HostName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -114,14 +115,14 @@ class NeedsBoardTest {
             val a = Machine(listOf(session("a1")))
             val b = Machine(listOf(session("b1"), manual("t")))
             val board = boardOf("a" to a, "b" to b)
-            b.link.state.value = LinkState.Connecting
+            b.link.state.value = linkConnecting()
             settle()
             val down = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
             assertEquals(listOf("a1"), down.needs.map(::name))
             assertEquals(1, down.total)
             assertEquals(listOf("gpu-01"), down.down.map { it.label })
             b.items = listOf(session("b2"))
-            b.link.state.value = LinkState.Up()
+            b.link.state.value = linkUp()
             b.link.epoch.value = 1L
             settle()
             assertEquals(2, b.asked("sessions-needs"))

@@ -4,9 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.EMPTY_BOOK
 import com.ccmonitor.mobile.core.claude.link.HistoryListPage
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.ListAsk
-import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Can
@@ -15,8 +13,10 @@ import com.ccmonitor.mobile.core.wire.gen.CanResume
 import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFix
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
+import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
@@ -25,6 +25,9 @@ import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.leftSeat
+import com.ccmonitor.mobile.ui.chat.linkConnecting
+import com.ccmonitor.mobile.ui.chat.linkDown
+import com.ccmonitor.mobile.ui.chat.linkUp
 import com.ccmonitor.mobile.ui.chat.liveSeat
 import com.ccmonitor.mobile.ui.common.HostLink
 import org.junit.Assert.assertEquals
@@ -95,7 +98,7 @@ class ChatsViewTest {
     private val list = Fetched.Got(page(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")).copy(truncated = true))
 
     private fun snap(
-        link: LinkState = LinkState.Up(),
+        link: LinkLine? = linkUp(),
         table: SessionBook = EMPTY_BOOK,
         got: Fetched<HistoryListPage> = list,
         cached: HistoryListPage? = null,
@@ -122,21 +125,21 @@ class ChatsViewTest {
     fun `装一次会好的那一颗照成品带上（断着 · 通着旧了），别的修法不挑；正在装或更新照成品那一句带上，结局在条上没画时单独一行`() {
         val install = MachineFixButton(MachineFix.INSTALL, copyText("machineState.fix.install"))
         val update = MachineFixButton(MachineFix.UPDATE, copyText("machineState.fix.update"))
-        val down = hostPart(snap(LinkState.Down(Said("远端 cc-monitor 未装", ""), listOf(install))))
+        val down = hostPart(snap(linkDown("远端 cc-monitor 未装", fixes = listOf(install))))
         assertEquals(install, down.bar?.fix)
         assertEquals("装一次会好 ⇒ 红条（不是断线那一条）", false, down.bar?.offline)
         assertNull(down.bar?.busy)
         val retry = listOf(MachineFixButton(MachineFix.RETRY, copyText("machineState.fix.retry")))
-        assertNull(hostPart(snap(LinkState.Down(Said("m 离线", ""), retry))).bar?.fix)
-        val old = hostPart(snap(LinkState.Up(Said("box 后端要更新", ""), listOf(update))))
+        assertNull(hostPart(snap(linkDown("m 离线", fixes = retry))).bar?.fix)
+        val old = hostPart(snap(linkUp("box 后端要更新", fixes = listOf(update), state = MachineStateKind.NEEDS_UPDATE)))
         assertEquals(update, old.bar?.fix)
         assertEquals(Problem("box 后端要更新", ""), old.bar?.problem)
         val installing = Busy("安装 cc-monitor → m", bar = true)
-        assertEquals(installing, hostPart(snap(LinkState.Down(Said(installing.text, ""), busy = installing))).bar?.busy)
+        assertEquals(installing, hostPart(snap(linkDown(installing.text, state = MachineStateKind.INSTALLING))).bar?.busy)
         val updating = Busy("更新 m · cc-monitor", bar = true)
-        assertEquals(updating, hostPart(snap(LinkState.Up(Said(updating.text, ""), busy = updating))).bar?.busy)
+        assertEquals(updating, hostPart(snap(linkUp(updating.text, state = MachineStateKind.UPDATING))).bar?.busy)
         val done = Deploying.Done("已装上")
-        val connecting = view(hostPart(snap(LinkState.Connecting, deploying = done)))
+        val connecting = view(hostPart(snap(linkConnecting(), deploying = done)))
         assertEquals("连着的那一会儿条上没东西 ⇒ 结局单独一行", done, connecting.deploying.single().deploying)
         assertNull(hostPart(snap()).bar)
     }
@@ -159,7 +162,7 @@ class ChatsViewTest {
 
     @Test
     fun `流走不通只说核心那一句；问失败的单独说；通着但那台后端旧了照列、多一句`() {
-        val down = hostPart(snap(LinkState.Down(Said("m 离线", "boom"))))
+        val down = hostPart(snap(linkDown("m 离线", "boom")))
         assertEquals(Problem("m 离线", "boom"), down.bar?.problem)
         assertEquals(true, down.bar?.offline)
         assertTrue(down.rows.isEmpty())
@@ -168,14 +171,14 @@ class ChatsViewTest {
         assertEquals(p, failed.bar?.problem)
         assertEquals(false, failed.bar?.offline)
         assertEquals(false, failed.loading)
-        val old = hostPart(snap(LinkState.Up(Said("m 后端要更新", "theirs: p9"))))
+        val old = hostPart(snap(linkUp("m 后端要更新", "theirs: p9", state = MachineStateKind.NEEDS_UPDATE)))
         assertEquals(Problem("m 后端要更新", "theirs: p9"), old.bar?.problem)
         assertEquals(4, old.rows.size)
     }
 
     @Test
     fun `SSH 那层接不上：那一句当这台的条，不算在读`() {
-        val p = hostPart(snap(LinkState.Connecting, got = Fetched.Loading), HostLink.Failed("认证失败"))
+        val p = hostPart(snap(linkConnecting(), got = Fetched.Loading), HostLink.Failed("认证失败"))
         assertEquals(Problem("认证失败", ""), p.bar?.problem)
         assertEquals(false, p.loading)
     }
@@ -200,10 +203,10 @@ class ChatsViewTest {
     @Test
     fun `没筛选：断着 · 还在接 · 在问都先画缓存；问到了换成那台这一份`() {
         val cached = page(row("1", "昨天"), row("2", "昨天"))
-        val down = hostPart(snap(LinkState.Down(Said("m 离线", "boom")), got = Fetched.Loading, cached = cached))
+        val down = hostPart(snap(linkDown("m 离线", "boom"), got = Fetched.Loading, cached = cached))
         assertEquals(listOf("1", "2"), down.rows.map { it.sessionId })
         assertEquals(Problem("m 离线", "boom"), down.bar?.problem)
-        assertEquals(listOf("1", "2"), hostPart(snap(LinkState.Connecting, got = Fetched.Loading, cached = cached)).rows.map { it.sessionId })
+        assertEquals(listOf("1", "2"), hostPart(snap(linkConnecting(), got = Fetched.Loading, cached = cached)).rows.map { it.sessionId })
         assertEquals("在问 ⇒ 先画上次那一份", listOf("1", "2"), hostPart(snap(got = Fetched.Loading, cached = cached)).rows.map { it.sessionId })
         assertEquals("问到了 ⇒ 照那台这一份", listOf("1", "2", "3", "4"), hostPart(snap(cached = cached)).rows.map { it.sessionId })
     }
@@ -211,7 +214,7 @@ class ChatsViewTest {
     @Test
     fun `带了筛选：缓存不画；那台断着 ⇒ 零行、那一句是离线 · 未列出（在搜 ⇒ 未搜索）`() {
         val cached = page(row("1", "昨天"))
-        val downLink = LinkState.Down(Said("m 离线", "boom"))
+        val downLink = linkDown("m 离线", "boom")
         val week = hostPart(snap(downLink, got = Fetched.Loading, cached = cached, ask = ListAsk(withinDays = 7)))
         assertTrue(week.rows.isEmpty())
         assertEquals(copyText("history.list.machineDown", "machine" to "m"), week.bar?.problem?.text)
@@ -227,10 +230,10 @@ class ChatsViewTest {
     fun `断着：那台说看不见时照旧作数的（已结束 · 记录已不在）照画，其余点画说不清、字写那台离线，不照断前那张会话表`() {
         val cached = page(row("1", "昨天"), row("2", "昨天", face = Faces.of("ended")), row("3", "昨天", face = Faces.of("gone")))
         val stale = live("1", "live-working-plain")
-        val by = hostPart(snap(LinkState.Down(Said("m 离线", "boom")), stale, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
+        val by = hostPart(snap(linkDown("m 离线", "boom"), stale, Fetched.Loading, cached)).rows.associateBy { it.sessionId }
         assertEquals(SessionDot.UNKNOWN, by.getValue("1").dot)
         assertEquals("字照那台成品写的离线那一句", Toned(offLine, Tone.PLAIN), by.getValue("1").status)
-        val unknown = hostPart(snap(LinkState.Down(Said("m 离线", "boom")), stale, Fetched.Loading, cached, offline = null)).rows.first { it.sessionId == "1" }
+        val unknown = hostPart(snap(linkDown("m 离线", "boom"), stale, Fetched.Loading, cached, offline = null)).rows.first { it.sessionId == "1" }
         assertEquals("成品还没到 ⇒ 不说离线，说状态不明", Toned(copyText("sessionState.unseen.name"), Tone.PLAIN), unknown.status)
         assertEquals(SessionDot.ENDED, by.getValue("2").dot)
         assertEquals("已结束", by.getValue("2").status.text)
