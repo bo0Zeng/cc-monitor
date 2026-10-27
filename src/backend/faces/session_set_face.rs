@@ -263,7 +263,7 @@ fn launch(
             .collect()
     };
     let leave = |sid: &str, g: &GroupRef| {
-        let _ = groups::write_at(
+        let r = groups::write_at(
             own,
             GroupsWriteReq::Move {
                 sid: sid.to_string(),
@@ -272,6 +272,10 @@ fn launch(
             },
             now(),
         );
+        if let Err(e) = r {
+            use crate::wire::typed::Codes as _;
+            tracing::warn!("起一组：{sid} 没出组 {}：{}", g.id, e.into_fail().message);
+        }
     };
     // 先定的那几个 sid 各进了哪一组（那一家没用上先定的 ⇒ 照它摘）。
     let marked = std::cell::RefCell::new(Vec::<(String, GroupRef)>::new());
