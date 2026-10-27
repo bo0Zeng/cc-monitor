@@ -136,14 +136,12 @@ fn existing_ancestor(dir: &Path) -> PathBuf {
         .to_path_buf()
 }
 
-/// 那一行里的一个参数：带空白或引号 ⇒ 单引号括起（照 shell 的写法），否则原样。
+/// 那一行里的一个参数：只有字母数字与几个路径常用的记号 ⇒ 原样；别的（空白 · 引号 · 变量记号 …）⇒ 照 POSIX 单引号括起（共享那一份）。
 fn quoted(a: &str) -> String {
-    if a.chars()
-        .any(|c| c.is_whitespace() || "'\"\\$`".contains(c))
-    {
-        format!("'{}'", a.replace('\'', r"'\''"))
-    } else {
+    if a.chars().all(|c| c.is_alphanumeric() || "-_./:@+=,".contains(c)) {
         a.to_string()
+    } else {
+        shell_quote_core::posix_quote(a)
     }
 }
 
