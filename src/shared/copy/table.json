@@ -3008,6 +3008,12 @@
       "zh": "收起这段过程",
       "args": []
     },
+    "stream.proc.jumpFail": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跳到第一处失败",
+      "args": []
+    },
     "stream.step.rejected": {
       "kind": "body",
       "role": "片段",
