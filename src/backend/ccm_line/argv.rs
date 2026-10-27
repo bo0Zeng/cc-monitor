@@ -40,6 +40,9 @@ pub(crate) mod flag {
     pub(crate) const TAB_GROUP: &str = "--tab-group";
     /// `--say <那句>`：开口那句 —— 这一发落在 tmux 里、起新会话时交给 agent 当第一句（`plan::build_among`）。claude 没有同名旗标。
     pub(crate) const SAY: &str = "--say";
+    /// `ccm -- --host-run <句柄> [键=值…] -- <命令…>`：托管终端的托管进程（`host/managed/run.rs`）。只许紧跟打头的 `--`，
+    /// 由 ccm / 后端起托管终端时自己拼，不进配置。
+    pub(crate) const HOST_RUN: &str = "--host-run";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
     /// 这一发不轮换，只用起它的那个号（同 `session-open` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。

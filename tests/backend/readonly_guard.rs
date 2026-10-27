@@ -1187,6 +1187,15 @@ mod spawn_registry {
             "缩性质",
             "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
         ),
+        (
+            "host/managed/run.rs",
+            "<非字面量>",
+            "托管终端（`--host-run <id> … -- <argv>`）：在它自己的伪终端里起 ccm 交来的那一行（同送进 tmux 容器的那一行，argv 直传不过 shell），\
+             与 tmux 在窗格里起它同一个角色：里面的程序写什么归它自己（agent 照它自己的样子用它自己的目录），托管进程只读它的输出、按持有者送键。\
+             **不是**后端进程自身写用户既有数据。只从 `ccm -- --host-run` 进来。",
+            "缩性质",
+            "托管终端改由别的宿主（或不再由本二进制持伪终端）的那天摘掉。⚠ 起的只许是 `--host-run` 那一串 `--` 之后的 argv。",
+        ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
             "control/session_open/mod.rs",
@@ -2441,6 +2450,13 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "伪终端：只在 `platform/child.rs::converse_in_terminal` 开一对终端、在里面起子进程（要终端才肯问的官方登录子命令）。\
              它自己不写盘：只开系统给的伪终端设备、读写那一对终端；子进程写什么归子进程（同 `Child` 别的几种用法）",
+        ),
+        (
+            "vt100",
+            DEPS,
+            UNMEASURED,
+            "终端屏的模型：托管终端（`host/managed/screen.rs` · `attach.rs`）把伪终端吐的字节喂给它、读回格子与整屏字节。\
+             纯内存里的解析与格子，backend 在它身上的用法不需要它碰盘、也不起进程",
         ),
         (
             "notify-debouncer-mini",
