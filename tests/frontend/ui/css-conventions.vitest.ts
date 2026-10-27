@@ -274,8 +274,16 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
   "src/frontend/ui/launch-slot.ts::this.panel":
     "占位标签页那一页 `this.panel`（`s.slotPanel`）—— 建时收起",
+  "src/frontend/ui/new-session-set.ts::note":
+    "一组页底那一句（存不成 · 读不出）`note`（`s.nsNote`）—— 建时收起",
   "src/frontend/ui/new-session.ts::accountRow.root":
     "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::aliasRow.root":
+    "「别名」那一行 `aliasRow.root`（`s.nsRow`）—— 建时收起（那台有能用的别名才出）",
+  "src/frontend/ui/new-session.ts::sets.el":
+    "一组页 `sets.el`（`s.nsPage`，它写了 display:flex，`.nsPage[hidden]` 收住）—— 单个页露着时收起",
+  "src/frontend/ui/new-session.ts::single":
+    "单个页 `single`（`s.nsPage`，同上）—— 一组页露着时收起",
   "src/frontend/ui/new-session.ts::agentRow.root":
     "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
   "src/frontend/ui/new-session.ts::rotRow.root":

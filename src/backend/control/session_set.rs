@@ -5,7 +5,8 @@
 //! - 「用哪条别名起的」只认启动台账记下的（`ccm @名` 那一发留的便条，`control::launch_account`）；不经别名起的不算进任何一行。
 //! - 目录照这台的家目录展开 `~` 再比，末尾的 `/` 不算。
 //! - 起不了的那一行（别名不存在 · 别名合不下来 · 目录不存在）照数已有的、不算进「再起」，别的行照起。
-//! - 组名：行里写了 `tab-group` 就是它；否则取别名的名字，这组里同一条别名出现在不止一个目录 ⇒「别名 · 目录末一段」。
+//! - 组名：行里写了 `tab-group` 就是它；否则取别名合下来的 `tab-group`（别名没写 ⇒ 别名的名字），这组里同一条别名出现在
+//!   不止一个目录 ⇒「分组名 · 目录末一段」。
 
 use crate::assets::aliases::profile::{self, Book, RowEdit};
 use copy_core::copy_text;
@@ -37,9 +38,15 @@ pub(crate) struct RowPlan {
     pub(crate) group: String,
     /// 这一行起不了的原因（能起 ⇒ `null`）。
     pub(crate) blocked: Option<String>,
+    /// 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单第二行里的一段）。
+    pub(crate) said: String,
+    /// 「已有 n」。
+    pub(crate) have_said: String,
+    /// 右侧那一格：「再起 n」· 够了「—」· 起不了 ⇒ 原因。
+    pub(crate) more_said: String,
 }
 
-/// 整组补足的样子：每行 ＋ 合计再起几个。
+/// 整组补足的样子：每行 ＋ 合计再起几个，连同界面照摆的几句。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -47,6 +54,23 @@ pub(crate) struct RowPlan {
 pub(crate) struct SetPlan {
     pub(crate) rows: Vec<RowPlan>,
     pub(crate) more: u32,
+    /// 几行连起来的那一句（组菜单那一项的第二行）。
+    pub(crate) said: String,
+    /// 右侧那一格：「再起 N」· 都够了「已齐」。
+    pub(crate) more_said: String,
+    /// 预览末行：合计再起几个。
+    pub(crate) total_said: String,
+    /// 主按钮的字：「启动 N」· 都够了「已齐」。
+    pub(crate) start_said: String,
+}
+
+/// 「再起 n」· 都够了 ⇒ 整组「已齐」/ 一行「—」。
+fn more_said(more: u32, whole: bool) -> String {
+    match (more, whole) {
+        (0, true) => copy_text("beSessionSet.more.full", &[]),
+        (0, false) => copy_text("beSessionSet.more.none", &[]),
+        _ => copy_text("beSessionSet.more.some", &[("n", &more.to_string())]),
+    }
 }
 
 /// 比目录用的那一形：展开 `~`、去掉末尾的分隔符（根目录本身留着）。
@@ -68,12 +92,20 @@ fn last_seg(d: &str) -> &str {
         .unwrap_or(d)
 }
 
+/// 别名合下来的标签页分组名（`--tab-group`）；没写 · 合不下来 ⇒ `None`。
+fn alias_group(book: &Book, alias: &str) -> Option<String> {
+    match profile::resolve(book, alias, &[]).ok()?.parsed {
+        crate::ccm_line::argv::Parsed::Opts(o) if !o.tab_group.is_empty() => Some(o.tab_group),
+        _ => None,
+    }
+}
+
 /// 这一行进哪个组（规则见头注）。
-fn group_of(r: &RowEdit, rows: &[RowEdit]) -> String {
+fn group_of(r: &RowEdit, rows: &[RowEdit], book: &Book) -> String {
     if let Some(g) = &r.tab_group {
         return g.clone();
     }
-    let base = r.alias.clone();
+    let base = alias_group(book, &r.alias).unwrap_or_else(|| r.alias.clone());
     if rows.iter().filter(|o| o.alias == r.alias).count() > 1 {
         copy_text(
             "beSessionSet.group.withDir",
@@ -137,19 +169,51 @@ pub(crate) fn plan_rows(
                 Some(_) => 0,
                 None => u32::from(r.n).saturating_sub(have),
             };
+            let group = group_of(r, rows, book);
+            let said = match &blocked {
+                Some(why) => {
+                    copy_text("beSessionSet.row.blocked", &[("cwd", &r.cwd), ("why", why)])
+                }
+                None => copy_text(
+                    "beSessionSet.row.counted",
+                    &[
+                        ("cwd", &r.cwd),
+                        ("group", &group),
+                        ("have", &have.to_string()),
+                        ("want", &r.n.to_string()),
+                    ],
+                ),
+            };
             RowPlan {
                 cwd: r.cwd.clone(),
                 alias: r.alias.clone(),
                 want: r.n,
                 have,
                 more,
-                group: group_of(r, rows),
+                group,
+                said,
+                have_said: copy_text("beSessionSet.row.have", &[("n", &have.to_string())]),
+                more_said: blocked.clone().unwrap_or_else(|| more_said(more, false)),
                 blocked,
             }
         })
         .collect();
+    let more: u32 = out.iter().map(|r| r.more).sum();
+    let sep = copy_text("beSessionSet.row.sep", &[]);
     SetPlan {
-        more: out.iter().map(|r| r.more).sum(),
+        said: out
+            .iter()
+            .map(|r| r.said.as_str())
+            .collect::<Vec<_>>()
+            .join(&sep),
+        more_said: more_said(more, true),
+        total_said: copy_text("beSessionSet.more.total", &[("n", &more.to_string())]),
+        start_said: if more > 0 {
+            copy_text("beSessionSet.start.some", &[("n", &more.to_string())])
+        } else {
+            copy_text("beSessionSet.more.full", &[])
+        },
+        more,
         rows: out,
     }
 }
@@ -260,6 +324,10 @@ pub(crate) struct SetLaunched {
     pub(crate) rows: Vec<RowLaunched>,
     pub(crate) started: u32,
     pub(crate) failed: u32,
+    /// 起完那一句：全成「已启动 n」· 有没成的「启动 成/全」。
+    pub(crate) said: String,
+    /// 没成的逐条一行「别名 启动失败 · 原因」（全成 ⇒ 空串）。
+    pub(crate) detail: String,
 }
 
 /// 起一组要动的那几下（入口交：找 / 建组 · 先定 sid 并写好组注解 · 走 `session-open` 起一条 · 起不成摘掉注解）。
@@ -283,6 +351,8 @@ pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> Se
         rows: Vec::new(),
         started: 0,
         failed: 0,
+        said: String::new(),
+        detail: String::new(),
     };
     for (r, p) in rows.iter().zip(&plan.rows) {
         let mut done = RowLaunched {
@@ -329,6 +399,33 @@ pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> Se
         }
         out.rows.push(done);
     }
+    out.said = if out.failed == 0 {
+        copy_text(
+            "beSessionSet.launched.done",
+            &[("n", &out.started.to_string())],
+        )
+    } else {
+        copy_text(
+            "beSessionSet.launched.partial",
+            &[
+                ("started", &out.started.to_string()),
+                ("all", &(out.started + out.failed).to_string()),
+            ],
+        )
+    };
+    out.detail = out
+        .rows
+        .iter()
+        .flat_map(|r| {
+            r.failed.iter().map(|f| {
+                copy_text(
+                    "beSessionSet.launched.fail",
+                    &[("alias", &r.alias), ("why", &f.message)],
+                )
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     out
 }
 

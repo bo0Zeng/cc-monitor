@@ -98,6 +98,7 @@ import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { setLaunchSlots } from "./session-open";
 import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
+import { newSessionSplit, startSetCommand, type SetMenuHost } from "./set-menu";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
@@ -601,7 +602,17 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 远端文件入口：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台选单（openSftpFromTopbar）；终点是原生文件窗口（`file-window.ts`）。
   const sftpTrigger = headButton("sftp-trigger", "files", copyText("main.cmd.openFiles"), hintWithKey(copyText("main.topbar.filesHint"), null), () => void toggleSftpFromTopbar(sftpTrigger));
-  tabs.mountHeadActions([gridTrigger, sftpTrigger, planTrigger, historyTrigger, settingsTrigger]);
+  // 栏顶最前一颗拆分按钮「＋ ⌄」：新建会话（框起在此刻那个标签页的那台、那个目录）· 那台存好的几组（`set-menu.ts`）。
+  const hereNow = (): { origin: Origin; cwd?: string } => {
+    const t = tabs.activeTab();
+    return t ? { origin: t.origin, cwd: t.projectDir ?? undefined } : { origin: LOCAL_ORIGIN };
+  };
+  const setHost: SetMenuHost = {
+    newSession: () => void openNewSession(hereNow()),
+    editSets: (name) => void openNewSession({ origin: hereNow().origin, set: name }),
+  };
+  const newSplit = newSessionSplit(() => hereNow().origin, setHost);
+  tabs.mountHeadActions([newSplit, gridTrigger, sftpTrigger, planTrigger, historyTrigger, settingsTrigger]);
 
   // cc-bus 驾驶舱是顶层运营视图，入口在命令面板里、不另占顶栏图标（低频视图；理由见 `views/cc-bus-view.ts` 头注）。
   const ccBusView = new CcBusView();
@@ -665,11 +676,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         icon: "plus",
         title: copyText("main.cmd.newSession"),
         keywords: copyText("main.cmd.newSessionKeywords"),
-        run: () => {
-          const t = tabs.activeTab();
-          void openNewSession(t ? { origin: t.origin, cwd: t.projectDir ?? undefined } : {});
-        },
+        run: () => setHost.newSession(),
       },
+      startSetCommand(() => newSplit, () => hereNow().origin, setHost),
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
       { id: "open-terminals", group: "open", icon: "terminal", title: copyText("main.cmd.openTerminals"), keywords: copyText("main.cmd.terminalsKeywords"), run: () => overlays.open("terminals") },
       { id: "open-plan", group: "open", icon: "plan", title: copyText("main.cmd.openPlan"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },

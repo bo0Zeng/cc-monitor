@@ -126,6 +126,40 @@ fn the_group_name_defaults_to_the_alias_and_takes_the_dir_when_the_alias_repeats
     );
 }
 
+/// 别名写了 `tab-group`（自己写的或基于的那一段写的）⇒ 组名缺省取它；同一条别名在几个目录 ⇒ 「分组名 · 目录末一段」。
+#[test]
+fn the_group_name_defaults_to_the_aliases_tab_group_when_it_has_one() {
+    let book = parse_book(
+        "[dev]\nccm-tmux = true\ntab-group = \"开发\"\n\n[dev2]\nfrom = \"dev\"\n\n[look]\naccount = \"b\"\n",
+    );
+    let p = plan_rows(
+        &[
+            row("~/work/cc-monitor", "dev", 2),
+            row("~/work/pb", "dev", 1),
+            row("~/work/cp", "dev2", 1),
+            row("~/work/cc-bus", "look", 1),
+        ],
+        &book,
+        &[],
+        home(),
+        &every_dir,
+    );
+    assert!(p.rows.iter().all(|r| r.blocked.is_none()), "{p:?}");
+    let groups: Vec<&str> = p.rows.iter().map(|r| r.group.as_str()).collect();
+    let with_dir = |g: &str, d: &str| {
+        copy_core::copy_text("beSessionSet.group.withDir", &[("group", g), ("dir", d)])
+    };
+    assert_eq!(
+        groups,
+        vec![
+            with_dir("开发", "cc-monitor").as_str(),
+            with_dir("开发", "pb").as_str(),
+            "开发",
+            "look",
+        ]
+    );
+}
+
 #[test]
 fn set_plan_reads_a_saved_set_or_unsaved_rows_and_refuses_both_or_neither() {
     let text = format!("{BOOK}\n[set.\"g\"]\nrow = [{{ cwd = \"/srv/a\", alias = \"dev\", n = 2 }}]\n\n[set.\"坏\"]\nrow = [{{ cwd = \"/srv/a\", alias = \"dev\", n = 0 }}]\n");
@@ -242,5 +276,112 @@ fn launching_marks_each_new_session_with_its_group_before_starting_it() {
     assert_eq!(
         out.rows[0].group.as_ref().map(|g| g.id.as_str()),
         Some("g1")
+    );
+}
+
+/// 界面照摆的几句由这里写好：每行（菜单第二行那一段 · 已有几个 · 右侧再起 / 够了 / 起不了的原因）· 整组（几行连起来 · 右侧再起 / 已齐 · 合计 · 主按钮的字）。
+#[test]
+fn the_plan_carries_the_written_lines_the_ui_shows_as_is() {
+    let book = parse_book(BOOK);
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let p = plan_rows(
+        &[row("/srv/a", "dev", 2), row("/srv/b", "gone", 1)],
+        &book,
+        &[live("s1", "/srv/a", Some("dev"))],
+        home(),
+        &every_dir,
+    );
+    let why = t("beSessionSet.alias.missing", &[("alias", "gone")]);
+    let a = t(
+        "beSessionSet.row.counted",
+        &[
+            ("cwd", "/srv/a"),
+            ("group", "dev"),
+            ("have", "1"),
+            ("want", "2"),
+        ],
+    );
+    let b = t(
+        "beSessionSet.row.blocked",
+        &[("cwd", "/srv/b"), ("why", &why)],
+    );
+    assert_eq!(p.rows[0].said, a);
+    assert_eq!(p.rows[1].said, b);
+    assert_eq!(
+        p.rows[0].have_said,
+        t("beSessionSet.row.have", &[("n", "1")])
+    );
+    assert_eq!(
+        p.rows[0].more_said,
+        t("beSessionSet.more.some", &[("n", "1")])
+    );
+    assert_eq!(p.rows[1].more_said, why);
+    assert_eq!(p.said, format!("{a}{}{b}", t("beSessionSet.row.sep", &[])));
+    assert_eq!(p.more_said, t("beSessionSet.more.some", &[("n", "1")]));
+    assert_eq!(p.total_said, t("beSessionSet.more.total", &[("n", "1")]));
+    assert_eq!(p.start_said, t("beSessionSet.start.some", &[("n", "1")]));
+    // 都够了：右侧「已齐」、行右侧「—」、主按钮「已齐」。
+    let full = plan_rows(
+        &[row("/srv/a", "dev", 1)],
+        &book,
+        &[live("s1", "/srv/a", Some("dev"))],
+        home(),
+        &every_dir,
+    );
+    assert_eq!(full.more_said, t("beSessionSet.more.full", &[]));
+    assert_eq!(full.start_said, t("beSessionSet.more.full", &[]));
+    assert_eq!(full.rows[0].more_said, t("beSessionSet.more.none", &[]));
+}
+
+/// 起完那一句也由这里写：全成「已启动 n」；有没成的「启动 成/全」＋ 逐条「别名 启动失败 · 原因」。
+#[test]
+fn the_launch_result_carries_its_sentence_and_one_line_per_failure() {
+    let book = parse_book(BOOK);
+    let rows = vec![row("/srv/a", "dev", 1), row("/srv/b", "look", 1)];
+    let plan = plan_rows(&rows, &book, &[], home(), &every_dir);
+    let run = |fail_b: bool| {
+        launch_rows(
+            &rows,
+            &plan,
+            &mut Hands {
+                group_for: &mut |name: &str| {
+                    Ok(GroupRef {
+                        id: "g".into(),
+                        name: name.into(),
+                    })
+                },
+                mark: &mut |_| None,
+                start: &mut |r: &RowEdit, _| {
+                    if fail_b && r.cwd == "/srv/b" {
+                        Err(LaunchFail {
+                            code: "start_failed".into(),
+                            message: "b 需登录".into(),
+                        })
+                    } else {
+                        Ok(opened(None))
+                    }
+                },
+                unmark: &mut |_, _| {},
+            },
+        )
+    };
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let ok = run(false);
+    assert_eq!(ok.said, t("beSessionSet.launched.done", &[("n", "2")]));
+    assert_eq!(ok.detail, "");
+    let part = run(true);
+    assert_eq!(
+        part.said,
+        t(
+            "beSessionSet.launched.partial",
+            &[("started", "1"), ("all", "2")]
+        )
+    );
+    assert_eq!(
+        part.detail,
+        t(
+            "beSessionSet.launched.fail",
+            &[("alias", "look"), ("why", "b 需登录")]
+        )
     );
 }

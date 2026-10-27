@@ -1001,6 +1001,29 @@ pub(crate) fn build(
     build_among(crate::agents::REGISTRY, o, env, accounts, taken)
 }
 
+/// 开口那句（`--say`）交不交、怎么交：这一发落在 tmux 里（`--ccm-tmux` 那一路，连已在 tmux 里就地起）、起新会话、
+/// 透传里还没有那一家自己的 `--`（这一趟当场给了第一句 ⇒ 它盖过别名的）⇒ 接在透传末尾成 `-- <那句>`（`None` ＝ 照原样）；
+/// 窗格里那一趟拿到的就是普通透传。不进 tmux 的那一发起在当前终端里，开口留给人，不交。
+/// 那一家起的时候不收第一句（`LaunchFace::first_prompt_arg`）⇒ 说清、不起。
+fn say_into(o: &Opts, face: Option<crate::agents::LaunchFace>) -> Result<Option<Vec<String>>, Die> {
+    if o.say.is_empty()
+        || !o.use_tmux
+        || o.resumes.is_some()
+        || o.passthru.iter().any(|a| a == flag::END)
+    {
+        return Ok(None);
+    }
+    if !face.is_some_and(|f| f.first_prompt_arg) {
+        return Err(Die(copy_text(
+            "bePlan.build.sayNotTaken",
+            &[("agent", &o.agent)],
+        )));
+    }
+    let mut passthru = o.passthru.clone();
+    passthru.extend([flag::END.to_string(), o.say.clone()]);
+    Ok(Some(passthru))
+}
+
 /// [`build`] 的内核：按哪一家起会有什么不同，**只问** `registry` 里这一家的起会话事实（`agents::LaunchFace`），
 /// 不认名字。生产走 `agents::REGISTRY`；判据喂含夹具家的合成注册表。认不出这一家 ⇒ 每一格都按「没有」算。
 pub(crate) fn build_among(
@@ -1025,6 +1048,19 @@ pub(crate) fn build_among(
             name: o.attach_name.clone(),
         });
     }
+
+    // 开口那句落成那一家的第一句：之后两路（容器 · 直起）读的都是接好的透传。
+    let said: Opts;
+    let o = match say_into(o, face)? {
+        Some(passthru) => {
+            said = Opts {
+                passthru,
+                ..o.clone()
+            };
+            &said
+        }
+        None => o,
+    };
 
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;

@@ -1054,36 +1054,6 @@
       "zh": "未删除会话 {id} · {path} 不像会话记录",
       "args": ["id", "path"]
     },
-    "beCcBus.find.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "该机可能未装 cc-bus · 装在别处就用 CC_BUS_BIN_DIR 指过去",
-      "args": []
-    },
-    "beCcBus.timedOut.say": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "cc-bus 等 {dur} 未结束 · 已停",
-      "args": ["dur"]
-    },
-    "beCcBus.read.tooOld": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "此机 cc-bus 比后端旧 · 不认 {cmd} · 重新部署 cc-bus 后再试",
-      "args": ["cmd"]
-    },
-    "beCcBus.read.truncated": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{cmd} 的输出只读到一半 · 未采用",
-      "args": ["cmd"]
-    },
-    "beCcBus.run.refused": {
-      "kind": "error",
-      "role": "命令行",
-      "zh": "{name} 拒绝这组参数 · {detail}",
-      "args": ["name", "detail"]
-    },
     "beCcBus.envelope.badFrom": {
       "kind": "error",
       "role": "命令行",
@@ -1150,23 +1120,53 @@
       "zh": "未发送 · 信封缺格或格式不对",
       "args": []
     },
-    "beCcBus.run.failed": {
+    "beCcBus.envelope.duplicate": {
       "kind": "error",
       "role": "命令行",
-      "zh": "{name} 失败 · {detail} · 退出码 {status}",
-      "args": ["name", "status", "detail"]
+      "zh": "未发送 · 同一封刚发过",
+      "args": []
+    },
+    "beCcBus.envelope.throttled": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 发得太快 · 稍后再发",
+      "args": []
+    },
+    "beCcBus.store.failed": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "收件箱读写失败",
+      "args": []
+    },
+    "beCcBus.commit.stale": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "已读位置已被推过 · 手上这段照常处理",
+      "args": []
+    },
+    "beCcBus.commit.changed": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "收件箱在两次读取之间被改动 · 位置未推",
+      "args": []
+    },
+    "beCcBus.commit.badToken": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "令牌无效",
+      "args": []
+    },
+    "beCcBus.peek.skipped": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "读取收件箱 {n} 行失败 · 内容无法解析 · 已跳过",
+      "args": ["n"]
     },
     "beCcBus.inbox.badId": {
       "kind": "error",
       "role": "原因格",
       "zh": "收件箱名无效 · {id}",
       "args": ["id"]
-    },
-    "beCcBus.inbox.tooOld": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{reason} · 此机 cc-bus 比后端旧 · 重新部署 cc-bus 后再试",
-      "args": ["reason"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
@@ -2355,18 +2355,6 @@
       "zh": "{machine} 未确认结束 {target} · 按未结束处理 · 刷新会话列表后再定是否重试",
       "args": ["machine", "target"]
     },
-    "ccBus.online.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "查询在线状态失败 · 未装",
-      "args": []
-    },
-    "ccBus.online.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "查询在线状态无应答",
-      "args": []
-    },
     "ccBus.online.otherCode": {
       "kind": "error",
       "role": "报错",
@@ -2379,18 +2367,6 @@
       "zh": "{id} 在线状态未知 · 不在 {machine} 的总线名单 · 或该机未查到 tmux",
       "args": ["id", "machine"],
       "limited": ["tmux"]
-    },
-    "ccBus.read.notInstalled": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取 cc-bus 失败 · 未装",
-      "args": []
-    },
-    "ccBus.read.timedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取 cc-bus 无应答",
-      "args": []
     },
     "ccBus.read.badId": {
       "kind": "error",
@@ -3011,7 +2987,7 @@
     "stream.proc.jumpFail": {
       "kind": "action",
       "role": "按钮",
-      "zh": "跳到第一处失败",
+      "zh": "跳到首处失败",
       "args": []
     },
     "stream.step.rejected": {
@@ -12531,6 +12507,120 @@
       "zh": "第一句话",
       "args": []
     },
+    "newSession.label.alias": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "别名",
+      "args": []
+    },
+    "newSession.alias.none": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "不用别名",
+      "args": []
+    },
+    "newSession.page.single": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "单个",
+      "args": []
+    },
+    "newSession.page.set": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "一组",
+      "args": []
+    },
+    "newSessionSet.label.name": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "组",
+      "args": []
+    },
+    "newSessionSet.label.rows": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "行",
+      "args": []
+    },
+    "newSessionSet.label.preview": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "预览",
+      "args": []
+    },
+    "newSessionSet.set.switch": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "换一组",
+      "args": []
+    },
+    "newSessionSet.row.add": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加一行",
+      "args": []
+    },
+    "newSessionSet.row.less": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "少起一个",
+      "args": []
+    },
+    "newSessionSet.row.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "多起一个",
+      "args": []
+    },
+    "newSessionSet.row.drop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除此行",
+      "args": []
+    },
+    "newSessionSet.row.group": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "进组",
+      "args": []
+    },
+    "newSessionSet.row.groupDefault": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "缺省",
+      "args": []
+    },
+    "newSessionSet.action.save": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "仅保存",
+      "args": []
+    },
+    "newSessionSet.save.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已保存",
+      "args": []
+    },
+    "newSessionSet.name.empty": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先填组名",
+      "args": []
+    },
+    "newSessionSet.cwd.empty": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先填每一行的目录",
+      "args": []
+    },
+    "newSessionSet.alias.none": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "无可用别名 · 先在设置的别名页新建",
+      "args": []
+    },
     "newSession.recent.label": {
       "kind": "control",
       "role": "标签",
@@ -13733,6 +13823,18 @@
       "zh": "--ccm-alias 的值 {name} 不是能用的别名名",
       "args": ["name"]
     },
+    "beArgv.validate.blankTabGroup": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "--tab-group 要写非空的分组名",
+      "args": []
+    },
+    "beArgv.validate.badSay": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "--say 的值 {say} 含不能交给 agent 的字符",
+      "args": ["say"]
+    },
     "beArgv.validate.nameAndBase": {
       "kind": "error",
       "role": "命令行",
@@ -13878,6 +13980,12 @@
       "zh": "attach 不支持 --tmux-size · 接回的会话保持原尺寸",
       "args": [],
       "limited": ["tmux"]
+    },
+    "bePlan.build.sayNotTaken": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "{agent} 启动时不接受第一句话 · 无法用 --say",
+      "args": ["agent"]
     },
     "bePlan.build.freeTextRefused": {
       "kind": "error",
@@ -14044,7 +14152,7 @@
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --no-rotation      这一发不轮换，只用起它的那个号（不管「新会话用」设的哪一份；只管起新会话）\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --tab show|hide    进不进标签页（不给就照这台的偏好：子会话 · 分身会话各一格）\n  --tab-from <别名>  --tab 是哪个别名写的（ccm 往 tmux 里交下去时带）\n  --ccm-alias <别名> 这一发是哪个别名起的（ccm 往 tmux 里交下去时带）\n  --tab-group <名>   起出来的会话进哪个标签页分组（一组会话那一行没写组名时取它）\n  --say <那句>       第一句话：在 tmux 里起新会话时交给 agent（-- 左边自己写了第一句话就用那句）\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -16072,6 +16180,78 @@
       "role": "报错",
       "zh": "组「{name}」写错 · {why}",
       "args": ["name", "why"]
+    },
+    "beSessionSet.row.counted": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cwd} {group} {have}/{want}",
+      "args": ["cwd", "group", "have", "want"]
+    },
+    "beSessionSet.row.blocked": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{cwd} {why}",
+      "args": ["cwd", "why"]
+    },
+    "beSessionSet.row.sep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
+    "beSessionSet.row.have": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已有 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.more.some": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "再起 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.more.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "beSessionSet.more.full": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已齐",
+      "args": []
+    },
+    "beSessionSet.more.total": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "补足每一行到它的个数 · 已有的不动 · 共再起 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.start.some": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "启动 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.launched.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已启动 {n}",
+      "args": ["n"]
+    },
+    "beSessionSet.launched.partial": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动 {started}/{all}",
+      "args": ["started", "all"]
+    },
+    "beSessionSet.launched.fail": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{alias} 启动失败 · {why}",
+      "args": ["alias", "why"]
     },
     "beSession.hidden.launch": {
       "kind": "body",
@@ -24559,6 +24739,48 @@
       "zh": "新建 会话 起 启动 new session launch",
       "args": []
     },
+    "main.cmd.startSet": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "起一组…",
+      "args": []
+    },
+    "main.cmd.startSetKeywords": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "一组 补足 起 启动 别名 set launch",
+      "args": []
+    },
+    "setMenu.open.label": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "存好的几组",
+      "args": []
+    },
+    "setMenu.list.heading": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "一组",
+      "args": []
+    },
+    "setMenu.list.create": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "新建一组…",
+      "args": []
+    },
+    "setMenu.list.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "编辑组…",
+      "args": []
+    },
+    "setMenu.launched.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重试",
+      "args": []
+    },
     "main.cmd.find": {
       "kind": "action",
       "role": "按钮",
@@ -25428,6 +25650,18 @@
       "kind": "control",
       "role": "标签",
       "zh": "标签页",
+      "args": []
+    },
+    "beProfile.slot.tabGroup": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "标签页分组",
+      "args": []
+    },
+    "beProfile.slot.say": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "第一句话",
       "args": []
     },
     "beProfile.said.slot": {

@@ -44,6 +44,8 @@ pub(crate) enum SlotId {
     TmuxSize,
     Detach,
     Tab,
+    TabGroup,
+    Say,
 }
 
 /// 表单的一格：`id`（[`ProfileForm`] 里那一格的名字）· 标签（文案键）· 落在配置文件里的哪几个键。
@@ -112,6 +114,16 @@ pub(crate) const SLOTS: &[Slot] = &[
         id: SlotId::Tab,
         label: || copy_text("beProfile.slot.tab", &[]),
         flags: &[flag::TAB],
+    },
+    Slot {
+        id: SlotId::TabGroup,
+        label: || copy_text("beProfile.slot.tabGroup", &[]),
+        flags: &[flag::TAB_GROUP],
+    },
+    Slot {
+        id: SlotId::Say,
+        label: || copy_text("beProfile.slot.say", &[]),
+        flags: &[flag::SAY],
     },
 ];
 
@@ -277,6 +289,12 @@ pub(crate) struct ProfileForm {
     /// 标签页：显示 / 隐藏（`null` ＝ 继承）。
     #[serde(default)]
     pub tab: Option<cmd_wire::session::Tab>,
+    /// 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+    #[serde(default)]
+    pub tab_group: Option<String>,
+    /// 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+    #[serde(default)]
+    pub say: Option<String>,
 }
 
 /// 表单 ⇒ 配置文件里那一段要写成的样子（ccm 选项按 [`SLOTS`] 的顺序）。一格文本的引号没配对 ⇒ 那一句。
@@ -328,6 +346,8 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
     if let Some(t) = f.tab {
         ccm.extend([flag::TAB.to_string(), argv::tab_word(t).to_string()]);
     }
+    pair(flag::TAB_GROUP, s(&f.tab_group), &mut ccm);
+    pair(flag::SAY, s(&f.say), &mut ccm);
     let agent = match &f.args {
         Some(a) => super::form::split_box(a)
             .map_err(|_| copy_text("beAliasForm.passthru.unbalanced", &[]))?,
@@ -449,6 +469,8 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
             flag::TMUX_SIZE => f.tmux_size = Some(one()),
             flag::DETACH => f.detach = true,
             flag::TAB => f.tab = argv::tab_of(&one()),
+            flag::TAB_GROUP => f.tab_group = Some(one()),
+            flag::SAY => f.say = Some(one()),
             _ => {}
         }
     }

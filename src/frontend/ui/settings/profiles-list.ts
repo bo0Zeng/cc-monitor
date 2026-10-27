@@ -157,6 +157,8 @@ const emptyForm = (name = "", from: string | null = null): ProfileForm => ({
   tmuxSize: null,
   detach: false,
   tab: null,
+  tabGroup: null,
+  say: null,
 });
 
 /** 一格写了没有（开关写 `true` 才算写了）。 */
@@ -213,7 +215,7 @@ export const TMUX_NAMING: Record<"auto" | "fixed" | "base", { stepsAside: boolea
 
 /** 表单上直接露出来的几格；其余收在「更多」里。 */
 const MAIN_SLOTS: readonly SlotId[] = ["account", "tmux", "cwdIf", "cwd"];
-const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach"];
+const MORE_SLOTS: readonly SlotId[] = ["agent", "args", "launcher", "tmuxSize", "detach", "tabGroup", "say"];
 
 export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const root = el("div", "prof");
@@ -919,7 +921,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       return cell;
     }
     const row = el("div", "prof-inhrow");
-    const v = f[s as "cwd" | "agent" | "args" | "launcher" | "tmuxSize"] ?? "";
+    const v = f[s as "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "tabGroup" | "say"] ?? "";
     row.append(text(v, slotName(s), (nv) => changed({ ...f, [s]: nv }), undefined, `slot.${s}`), back);
     cell.appendChild(row);
     return cell;
