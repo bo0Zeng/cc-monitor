@@ -192,6 +192,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/frontend/ui/tab-bar-view.ts": [
     "src/frontend/ui/account-color.ts",
+    "src/frontend/ui/tab-rename.ts", // 标签页就地改名：双击标题 · 登记给菜单 / 命令面板用的那一口
     "src/frontend/ui/duration-format.ts", // 机器掉线那一行「多久前」没有起点时的 0（那一个读口写，单位不写死）
     "src/frontend/ui/app-store.ts", // 号徽章 · 悬停那两行照会话那台写好的 `session-account`；停发那一句照 `rotation-view`：都从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
@@ -234,6 +235,7 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
+    "src/frontend/ui/tab-rename.ts", // 「改标题」：栏上就地改 · 没有栏走对话框
     "src/frontend/ui/agent-profile.ts", // 恢复 ▸ 的账号组：这一家有没有账号这一维 · 叫什么（会话是哪一家由会话事实给）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表

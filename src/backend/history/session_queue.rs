@@ -8,7 +8,8 @@
 //!   收着超过 [`HOLD_MS`] 还没等到 ⇒ 照到达先后排。不带 `n` 的照到达先后。不起定时器：每一次读写先把等够了的排掉。
 //! - **撤**：排着 · 收着 · 未送达的撤得了（未送达的撤 ＝ 从名单里拿掉）；送过的撤不了（`cancelled: false`）。
 //! - **会话结束**：没送的全标未送达、留在名单里给发件人看（[`end`]）。
-//! - **投递口**：[`next_due`] 交排在最前、还没送的那一条；[`delivered`] 把它摘掉。
+//! - **投递口**（`faces/session_queue_deliver.rs` 那条线程用）：[`sids`] 这台有队的会话 · [`due`] 交排在最前、还没送的那一条
+//!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束。
 //! - 全仓唯一的写口在这里：读—改—写在那个目录的跨进程锁里、原子换。读不出来（坏了 · 更新的版本）⇒ `queue_unreadable`，不覆盖。
 
 use super::session_queue_wire::{
@@ -244,6 +245,28 @@ impl Book {
             .map(item)
     }
 
+    /// 那一条送不进去（恢复没成 · 附件没了 · 不归我们）：标未送达、留给发件人看。不在排着 ⇒ `false`。
+    pub(crate) fn give_up(&mut self, id: &str) -> bool {
+        let Some(e) = self
+            .items
+            .iter_mut()
+            .find(|e| e.id == id && e.state == QueueState::Queued)
+        else {
+            return false;
+        };
+        e.state = QueueState::Undelivered;
+        true
+    }
+
+    /// 有收着的（同一端前一号还没到）：最早那一条等够了是几点（主人的钟）。
+    pub(crate) fn held_until(&self) -> Option<i64> {
+        self.items
+            .iter()
+            .filter(|e| e.state == QueueState::Held)
+            .map(|e| e.arrived_ms.saturating_add(HOLD_MS))
+            .min()
+    }
+
     /// 那一条送掉了：从队里摘掉（id 照记）。不在排着 ⇒ `false`。
     pub(crate) fn delivered(&mut self, id: &str) -> bool {
         let Some(i) = self
@@ -354,6 +377,21 @@ fn with_book<R>(
     Ok(out)
 }
 
+/// 队目录动了就叫一声的那一个（一个进程一个；队不认是谁在听）。
+static LISTENER: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// 登记「队目录动了叫我一声」（投递线程起来时登记，`faces::session_queue_deliver::start`）。已有一个 ⇒ 不换，回 `false`。
+pub(crate) fn on_moved(ring: fn()) -> bool {
+    LISTENER.set(ring).is_ok()
+}
+
+/// 队目录动了（watcher 看见别的进程写了 `session-queue/` 里的一份）：叫一声登记的那一个。
+pub(crate) fn moved() {
+    if let Some(ring) = LISTENER.get() {
+        ring();
+    }
+}
+
 /// `session-queue-put` 在主人这台的那一半：投一条。
 pub(crate) fn put(own: &Own, req: &SessionQueuePutReq, now_ms: i64) -> Result<QueuePut, Fail> {
     with_book(own, req.sid.as_str(), |b| {
@@ -387,7 +425,6 @@ pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fa
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。
-#[cfg_attr(not(test), allow(dead_code))] // 投递那一步接上之前只有判据调它（下面两个同）
 pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fail> {
     with_book(own, sid, |b| {
         b.end(now_ms);
@@ -395,17 +432,69 @@ pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fai
     })
 }
 
-/// 投递口：排在最前、还没送的那一条。
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn next_due(own: &Own, sid: &str, now_ms: i64) -> Result<Option<QueueItem>, Fail> {
+/// 投递口：排在最前、还没送的那一条 ＋ 还有收着的话最早那一条等够了是几点（到那一刻要再看一次）。
+pub(crate) fn due(own: &Own, sid: &str, now_ms: i64) -> Result<Due, Fail> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
-        Ok(b.next_due())
+        Ok(Due {
+            item: b.next_due(),
+            held_until: b.held_until(),
+        })
     })
 }
 
+/// [`due`] 交的那一份。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Due {
+    pub(crate) item: Option<QueueItem>,
+    pub(crate) held_until: Option<i64>,
+}
+
+/// 投递口：那一条送不进去 ⇒ 标未送达（不在排着 ⇒ `false`）。
+pub(crate) fn give_up(own: &Own, sid: &str, id: &str) -> Result<bool, Fail> {
+    with_book(own, sid, |b| Ok(b.give_up(id)))
+}
+
+/// 投递口：这台此刻有队的那几条会话（`session-queue/` 里每一份 `<sid>.json`，照名排；目录不在 · 读不了 ⇒ 空）。
+pub(crate) fn sids(own: &Own) -> Vec<String> {
+    let Ok(dir) = own.at_home(DIR_REL) else {
+        return Vec::new();
+    };
+    let Ok(rd) = crate::platform::fs::Ro::read_dir(dir.as_path()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = rd
+        .filter_map(Result::ok)
+        .filter_map(|e| sid_of_name(e.file_name().to_str()?))
+        .collect();
+    out.sort();
+    out
+}
+
+/// `<sid>.json` ⇒ 那个 sid（别的名字：锁 · 换名上位前的旁名 ⇒ `None`）。
+fn sid_of_name(name: &str) -> Option<String> {
+    let sid = name.strip_suffix(".json")?;
+    sid.parse::<cmd_wire::Sid>().ok().map(|_| sid.to_string())
+}
+
+/// 这台的队目录（家目录解析不出来 ⇒ `None`）：watcher 盯它。
+pub(crate) fn dir_here() -> Option<std::path::PathBuf> {
+    crate::platform::paths::home_dir().map(|h| crate::platform::paths::home_join(&h, DIR_REL))
+}
+
+/// 这一批文件事件里动过的那几条会话的队（`dir` 下的 `<sid>.json`；批内去重、照名排）。**纯函数**（判据直接喂路径）。
+pub(crate) fn sids_touched<'a>(
+    paths: impl Iterator<Item = &'a std::path::Path>,
+    dir: &std::path::Path,
+) -> Vec<String> {
+    let out: std::collections::BTreeSet<String> = paths
+        .filter(|p| p.parent() == Some(dir))
+        .filter_map(|p| sid_of_name(p.file_name()?.to_str()?))
+        .collect();
+    out.into_iter().collect()
+}
+
 /// 投递口：那一条送掉了（不在排着 ⇒ `false`）。
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn delivered(own: &Own, sid: &str, id: &str) -> Result<bool, Fail> {
     with_book(own, sid, |b| Ok(b.delivered(id)))
 }

@@ -1,7 +1,7 @@
 /**
  * **右键一个标签页，菜单里放哪几项**（会话头「更多」是同一份）—— 以及那几格要异步就绪的项怎么就绪。
  *
- * 分组从上到下：看它（在新窗口打开 · 打开工作目录 · 切到终端 · 看它的终端 · 看一眼终端画面）· 固定 / 分组 / 隐藏
+ * 分组从上到下：看它（在新窗口打开 · 打开工作目录 · 切到终端 · 看它的终端 · 看一眼终端画面）· 改标题 / 固定 / 分组 / 隐藏
  *（「已隐藏」那一行里的：只有取消隐藏 —— 隐藏的会话不是标签页，不固定、不分组）·
  * 恢复这个会话 ▸ · 在终端里打开 · 账号… · 关闭标签页 · 结束会话…（红字，最后一组，在 tmux 里的才有）。
  * 灰着的项第二行写为什么；还在问那台 tmux 的那几项先画出来、右侧转圈，答回来才变可点（`sessions-where`，界面不判）。
@@ -36,6 +36,7 @@ import type { ActionId } from "./keybindings/actions";
 import { terminalFrontAvailable } from "./terminal-front";
 import { fullTitle } from "./session-face";
 import { fmtDur } from "./duration-format";
+import { renameTab } from "./tab-rename";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
 const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "session-open" };
@@ -194,8 +195,9 @@ export class TabMenu {
     }
     if (t) items.push({ icon: "terminal", label: copyText("tabMenu.open.drawer"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
 
-    // ② 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
+    // ② 改标题 · 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
     items.push({ label: "", divider: true });
+    if (t) items.push({ id: "rename", icon: "text", label: copyText("history.menu.rename"), onClick: () => renameTab(t) });
     const hidden = t?.hidden ?? null;
     if (t && hidden !== null) {
       items.push({

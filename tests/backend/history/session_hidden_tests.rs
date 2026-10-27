@@ -221,3 +221,29 @@ fn the_three_carriers_get_the_cell_from_this_one_function() {
         );
     }
 }
+
+/// 叫一条会话什么（这台的）：monitor 里改的名 ＞ agent 起的标题 ＞ 第一句；人在 Claude 里 `/rename` 写的那一条不算。
+/// 认得出记录的走 `listing::session_title_of`（带上改过的名），cc-bus 名单 · MCP 断开那一句也是它。
+#[test]
+fn the_name_here_takes_the_monitor_rename_and_never_the_agent_rename() {
+    let dir = std::env::temp_dir().join(format!("ccm-title-here-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s-1.jsonl");
+    std::fs::write(
+        &p,
+        concat!(
+            r#"{"type":"user","uuid":"u1","timestamp":"2026-10-27T08:00:00Z","sessionId":"s-1","message":{"role":"user","content":"第一句"}}"#,
+            "\n",
+            r#"{"type":"ai-title","aiTitle":"起的","sessionId":"s-1"}"#,
+            "\n",
+            r#"{"type":"custom-title","customTitle":"Claude 里改的","sessionId":"s-1"}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+    let of = crate::history::listing::session_title_of;
+    assert_eq!(of(&p, None), "起的");
+    assert_eq!(of(&p, Some("修登录".into())), "修登录");
+    assert_eq!(of(&p, Some(" ".into())), "起的");
+    std::fs::remove_dir_all(&dir).ok();
+}

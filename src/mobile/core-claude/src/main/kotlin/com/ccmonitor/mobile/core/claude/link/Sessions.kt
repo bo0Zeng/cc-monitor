@@ -19,6 +19,7 @@ import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.HistoryLines as HistoryLinesPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryRead as HistoryReadPage
+import com.ccmonitor.mobile.core.wire.gen.HistoryRun as HistoryRunPage
 import com.ccmonitor.mobile.core.wire.gen.HistoryTail as HistoryTailReply
 import com.ccmonitor.mobile.core.wire.gen.Sent as SentWire
 
@@ -293,6 +294,33 @@ object HistoryTail {
         }
 
     fun of(data: Any?): HistoryTailReply? = Wire.bind<HistoryTailReply>(data)
+}
+
+/**
+ * `history-run`：一个子运行的记录，一页（父记录 [parent] ＋ 运行表里那一格 [run]）。哪一份记录 · 一页多大 · 读到哪那台定；
+ * 收场的从头读（[after] 0）、在跑的从尾巴读（[tail]），往前一页拿上一页的 `from` 当 [before]，往后一页拿 `end` 当 [after] 的起点。
+ */
+object HistoryRun {
+    const val COMMAND: String = "history-run"
+
+    fun after(
+        parent: String,
+        run: String,
+        from: Long,
+    ): Map<String, Any?> = mapOf("parent" to parent, "run" to run, "from" to from)
+
+    fun tail(
+        parent: String,
+        run: String,
+    ): Map<String, Any?> = mapOf("parent" to parent, "run" to run, "tail" to true)
+
+    fun before(
+        parent: String,
+        run: String,
+        before: Long,
+    ): Map<String, Any?> = mapOf("parent" to parent, "run" to run, "before" to before)
+
+    fun of(data: Any?): HistoryRunPage? = Wire.bind<HistoryRunPage>(data)
 }
 
 /** `history-read`：按字节读 `[offset, until)` 那一段，每行一条通用记录（不进界面的行没有记录、不出）。 */
