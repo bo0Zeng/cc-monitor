@@ -161,6 +161,8 @@ pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
 pub const SKELETON_DIR_REL: &str = ".cc-monitor/cache/skeleton";
 /// 历史清单缓存（后端历史清单在数据目录底下落的一份：每份记录读到哪了、标题与条数那几格；重启照它接着认，删了照记录重建；`history/listing.rs`）。
 pub const LISTING_CACHE_REL: &str = ".cc-monitor/cache/listing.json";
+/// 远端那几台的会话清单副本（本机后端在数据目录底下落的缓存：一台一份 `<机器>.json`，重启后头一问带它的记号；删了照那台再问一次整份；`history/remote_listing.rs`）。
+pub const REMOTE_LISTING_DIR_REL: &str = ".cc-monitor/cache/remote-listing";
 
 /// 〔同上〕**答题插件**（`ccm` 换了启动器起会话时写、经 `CLAUDE_CODE_PLUGIN_DIRS` 交给那一家）：清单 ＋ 答题那一组 hook，内容由后端生成、随时可重写。
 pub const ANSWER_PLUGIN_DIR_REL: &str = ".cc-monitor/answer-plugin";
@@ -471,6 +473,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("extBackups", EXT_BACKUPS_DIR_REL, true, true),
     ("skeleton", SKELETON_DIR_REL, true, false),
     ("listingCache", LISTING_CACHE_REL, false, false),
+    ("remoteListing", REMOTE_LISTING_DIR_REL, true, false),
 ];
 
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。

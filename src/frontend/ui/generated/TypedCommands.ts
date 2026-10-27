@@ -223,6 +223,8 @@ import type { PlanFilesReq } from "./PlanFilesReq";
 import type { PlanList } from "./PlanList";
 import type { PlanListReq } from "./PlanListReq";
 import type { PlanMsgRefs } from "./PlanMsgRefs";
+import type { PlanNewForm } from "./PlanNewForm";
+import type { PlanNewReq } from "./PlanNewReq";
 import type { PlanPbCheck } from "./PlanPbCheck";
 import type { PlanPbCheckReq } from "./PlanPbCheckReq";
 import type { PlanRead } from "./PlanRead";
@@ -475,6 +477,7 @@ export interface TypedCommands {
   "plan-command": { req: PlanCommandReq; reply: PlanCmdReply; code: "bad_args" | "failed" | "no_pb" | "no_such_slice" | "not_workspace" | "pb_unsupported" | "refused" };
   "plan-files": { req: PlanFilesReq; reply: PlanFiles; code: "bad_args" };
   "plan-list": { req: PlanListReq; reply: PlanList; code: "bad_args" };
+  "plan-new": { req: PlanNewReq; reply: PlanNewForm; code: "bad_args" };
   "plan-pb-check": { req: PlanPbCheckReq; reply: PlanPbCheck; code: "bad_args" };
   "plan-read": { req: PlanReadReq; reply: PlanRead; code: "bad_args" | "failed" | "no_pb" | "not_workspace" | "pb_unsupported" };
   "plan-refs": { req: PlanRefsReq; reply: PlanMsgRefs; code: "bad_args" };

@@ -9,7 +9,8 @@
 //! - [`watch`]：`stream-watch` 名单（整份换 · 新连接重报 · `from[]` 补段）；
 //! - [`feed`]：一台的常驻流断了自己接回去（两端同一条重连循环；全仓只这一处，monitor `one_loop_guard` 守着）；
 //! - [`book`]：一台的会话簿（会话帧折成整份；两端只调这一份折法）；
-//! - [`live`]：一台的活卡板（`live_card` 帧折成某会话某运行整份的卡；两端只调这一份折法）。
+//! - [`live`]：一台的活卡板（`live_card` 帧折成某会话某运行整份的卡；两端只调这一份折法）；
+//! - [`listing_copy`]：远端那几台的会话清单副本（副本表 · 照答换 · 落盘那一形；两端同一份）。
 //!
 //! 有计时器（期限 · 退避），属客户端那一侧：不进后端的判据人群（`no_timer_guard`）。
 
@@ -20,6 +21,7 @@ pub mod client;
 pub mod feed;
 pub mod frames;
 pub mod line;
+pub mod listing_copy;
 pub mod live;
 pub mod watch;
 

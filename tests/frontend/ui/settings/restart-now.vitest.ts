@@ -43,12 +43,10 @@ beforeEach(() => {
 });
 
 describe("现在重启 · 会打断什么", () => {
-  it("★ 问本机与各台都带 appExit；加起来；远端问不到 ＝ 本来就没连着、不算；本机问不到 ⇒ 说数不出", async () => {
-    answers.set("<local>", { ...machineZero, liveStreams: 1, forwards: 2 });
-    answers.set("devbox", { ...machineZero, relayedSessions: 2, liveStreams: 3 });
+  it("★ 只问本机后端一条（带 appExit 与各台名单，它问到各台、加起来答）；本机后端问不到 ⇒ 说数不出", async () => {
+    answers.set("<local>", { ...machineZero, relayedSessions: 2, liveStreams: 4, forwards: 2 });
     const got = await askAppExitInterrupts(["devbox", "gpu"]);
-    expect(calls.every((c) => c.op === "machine-interrupts" && c.args.appExit === true)).toBe(true);
-    expect(calls.map((c) => c.origin).sort()).toEqual(["<local>", "devbox", "gpu"]);
+    expect(calls).toEqual([{ origin: "<local>", op: "machine-interrupts", args: { appExit: true, machines: ["devbox", "gpu"] } }]);
     expect(got).toEqual({ relayedSessions: 2, relayedMaybe: 0, liveStreams: 4, forwards: 2, unsaved: 1, filewinRunning: 2 });
     answers.delete("<local>");
     const blind = await askAppExitInterrupts([]);

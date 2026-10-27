@@ -257,19 +257,47 @@ pub(crate) fn with_quota(
 }
 
 /// `machine-interrupts` 的入参。
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct MachineInterruptsReq {
-    /// 数通往哪台的转发（缺 ⇒ 不数）。
-    #[serde(default)]
+    /// 停的是哪台：别的台 ⇒ 这台后端经那台的常驻流问它自己那一份（会话三格）、再数自己账上通往它的转发；缺 · 本机 ⇒ 只答这台。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) machine: Option<String>,
     /// `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) app_exit: Option<bool>,
+    /// 带 `appExit` 时一并问的那几台（各照它自己的退出行为答，答到的加起来；问不到的不算）。问到那几台时不带它（不往下扇）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) machines: Option<Vec<cmd_wire::Machine>>,
+}
+
+/// `machine-interrupts` 的回包：会话三格 ＋ 转发（[`crate::observe::accounts_query::Interrupts`] 那几格）；
+/// 问的是别的台而那台问不到 ⇒ `relayedSessions` 是 `null`（说不清，不当成 0），另两格 0，转发照这台账上的数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MachineInterruptsReply {
+    pub(crate) relayed_sessions: Option<u32>,
+    pub(crate) relayed_maybe: u32,
+    pub(crate) live_streams: u32,
+    pub(crate) forwards: u32,
+}
+
+impl From<crate::observe::accounts_query::Interrupts> for MachineInterruptsReply {
+    fn from(i: crate::observe::accounts_query::Interrupts) -> Self {
+        MachineInterruptsReply {
+            relayed_sessions: Some(i.relayed_sessions),
+            relayed_maybe: i.relayed_maybe,
+            live_streams: i.live_streams,
+            forwards: i.forwards,
+        }
+    }
 }
 
 crate::wire::typed::codes! {
@@ -277,14 +305,15 @@ crate::wire::typed::codes! {
     pub(crate) enum MachineInterruptsErr {}
 }
 
-/// `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
-/// 这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读（读 pidfile ⇒ 阻塞档）。
+/// `machine-interrupts`：停 / 重启 / 更新 / 卸载一台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
+/// 那台的活会话经不经本机中转 · 活着的几个 · 这台账上通往那台的转发。界面只问本机后端这一条：别的台那一份由这台经它的常驻流问到
+/// （`control/feeds.rs::call`）、并好再答（[`interrupts_hub`]）。只读；这台自己那一份读 pidfile ⇒ 进阻塞池。
 pub(crate) struct MachineInterrupts;
 
 impl crate::wire::typed::Command for MachineInterrupts {
     const NAME: &'static str = "machine-interrupts";
     type Req = MachineInterruptsReq;
-    type Reply = crate::observe::accounts_query::Interrupts;
+    type Reply = MachineInterruptsReply;
     type Err = MachineInterruptsErr;
 }
 
@@ -292,20 +321,120 @@ impl crate::wire::typed::Handle for MachineInterrupts {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: MachineInterruptsReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<
-        Output = Result<crate::observe::accounts_query::Interrupts, MachineInterruptsErr>,
-    > + Send
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<MachineInterruptsReply, MachineInterruptsErr>>
+           + Send
            + 'static {
-        async move { Ok(interrupts_at(&crate::history::listing::agent_home(), &req)) }
+        let until = cx.until;
+        async move {
+            let here = |r: MachineInterruptsReq| async move {
+                let home = crate::history::listing::agent_home();
+                tokio::task::spawn_blocking(move || interrupts_at(&home, &r))
+                    .await
+                    .unwrap_or(MachineInterruptsReply {
+                        relayed_sessions: None,
+                        relayed_maybe: 0,
+                        live_streams: 0,
+                        forwards: 0,
+                    })
+            };
+            let there = move |m: String, r: MachineInterruptsReq| async move {
+                crate::control::feeds::call::<MachineInterrupts>(&m, &r, until)
+                    .await
+                    .map_err(|f| tracing::warn!("machine-interrupts [{m}]: {}", f.message))
+                    .ok()
+            };
+            Ok(interrupts_hub(req, here, there).await)
+        }
     }
 }
 
-/// [`MachineInterrupts`] 的本体，家目录是参数（判据拿夹具喂它）。
+/// [`MachineInterrupts`] 并好再答的那一层（这台自己怎么答 · 怎么问到那台由调用方给，判据喂假的）：
+/// - `machine` 是别的台 ⇒ 那台那一份（不带 `machine`）的会话三格 ＋ 这台那一份（带 `machine`）的转发，两边同时问；那台问不到 ⇒ 会话那一格 `null`。
+/// - `appExit` ⇒ 这台那一份 ＋ `machines` 里各台（只带 `appExit`）答到的加起来；问不到的那台不算。
+/// - 别的（缺 `machine` · 本机）⇒ 只答这台。
+pub(crate) async fn interrupts_hub<H, HF, T, TF>(
+    req: MachineInterruptsReq,
+    here: H,
+    there: T,
+) -> MachineInterruptsReply
+where
+    H: Fn(MachineInterruptsReq) -> HF,
+    HF: std::future::Future<Output = MachineInterruptsReply>,
+    T: Fn(String, MachineInterruptsReq) -> TF,
+    TF: std::future::Future<Output = Option<MachineInterruptsReply>> + Send + 'static,
+{
+    if req.app_exit == Some(true) {
+        let own = MachineInterruptsReq {
+            app_exit: Some(true),
+            ..Default::default()
+        };
+        let mut names: Vec<String> = Vec::new();
+        for m in req.machines.iter().flatten() {
+            if let Some(n) = m.host_name() {
+                if !names.iter().any(|x| x == n) {
+                    names.push(n.to_string());
+                }
+            }
+        }
+        let mut asks = tokio::task::JoinSet::new();
+        for n in names {
+            asks.spawn(there(n, own.clone()));
+        }
+        let mine = here(own.clone()).await;
+        let mut theirs = Vec::new();
+        while let Some(got) = asks.join_next().await {
+            theirs.push(got.ok().flatten());
+        }
+        return theirs
+            .into_iter()
+            .flatten()
+            .fold(mine, |a, b| MachineInterruptsReply {
+                relayed_sessions: Some(
+                    a.relayed_sessions.unwrap_or(0) + b.relayed_sessions.unwrap_or(0),
+                ),
+                relayed_maybe: a.relayed_maybe + b.relayed_maybe,
+                live_streams: a.live_streams + b.live_streams,
+                forwards: a.forwards + b.forwards,
+            });
+    }
+    let remote = req
+        .machine
+        .as_deref()
+        .filter(|m| cmd_wire::Machine::named(*m).is_remote())
+        .map(str::to_string);
+    let Some(name) = remote else {
+        return here(MachineInterruptsReq {
+            machine: None,
+            app_exit: None,
+            machines: None,
+        })
+        .await;
+    };
+    let counted = MachineInterruptsReq {
+        machine: Some(name.clone()),
+        ..Default::default()
+    };
+    let (mine, theirs) = tokio::join!(here(counted), there(name, MachineInterruptsReq::default()));
+    match theirs {
+        Some(t) => MachineInterruptsReply {
+            forwards: mine.forwards,
+            ..t
+        },
+        None => MachineInterruptsReply {
+            relayed_sessions: None,
+            relayed_maybe: 0,
+            live_streams: 0,
+            forwards: mine.forwards,
+        },
+    }
+}
+
+/// 这台自己那一份（[`interrupts_hub`] 的 `here`），家目录是参数（判据拿夹具喂它）。
 pub(crate) fn interrupts_at(
     home: &std::path::Path,
     req: &MachineInterruptsReq,
-) -> crate::observe::accounts_query::Interrupts {
+) -> MachineInterruptsReply {
     use crate::observe::accounts_query;
     let lines = accounts_query::session_accounts_here(home);
     if req.app_exit == Some(true) {
@@ -314,13 +443,14 @@ pub(crate) fn interrupts_at(
             kill,
             &lines,
             crate::dial::forwards::running_all(),
-        );
+        )
+        .into();
     }
     let forwards = req
         .machine
         .as_deref()
         .map_or(0, crate::dial::forwards::running_to_machine);
-    accounts_query::machine_product(&lines, forwards)
+    accounts_query::machine_product(&lines, forwards).into()
 }
 
 /// 过围栏 ⇒ 这份记录是哪一家的（注册表按它落在谁的根下认），解释交那一家。
@@ -365,6 +495,10 @@ pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/read_face_tests.rs"]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/interrupts_hub_tests.rs"]
+mod interrupts_hub_tests;
 
 /// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `recognize::facts::dress_ask_with`）；
 /// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。
