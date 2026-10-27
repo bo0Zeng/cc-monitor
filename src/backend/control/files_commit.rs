@@ -34,7 +34,7 @@
 //! 块数没有单独的上限：每块至少 1 字节 ⇒ 块数 ≤ 总长 ≤ `files::READ_TEXT_MAX_BYTES`。
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
 //!
-//! # 第三种落点：聊天附件（`session-attach-commit` · `session-attach-drop`）
+//! # 第三种落点：聊天附件（`session-attachment-commit` · `session-attachment-drop`）
 //!
 //! 目标不由调用方给：会话工作目录下一个新的编号目录（[`session_attachment`]），落那一下就是上传提交这一条（[`commit_upload_at`]）。
 
@@ -99,12 +99,12 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     },
     // ── 聊天附件（头注「第三种落点」一节）──────────────
     ManageCommand {
-        name: "session-attach-commit",
+        name: "session-attachment-commit",
         purpose: "把暂存区里传完的一份（或先拼好的块）落进会话工作目录下一个新的附件目录 `.ccm-attach/<编号>/<原名>`\
                   （判单份与附件目录上限；工作目录不可写 ⇒ 拒；核整份摘要；成了顺手清超过七天的编号目录）",
     },
     ManageCommand {
-        name: "session-attach-drop",
+        name: "session-attachment-drop",
         purpose: "删掉会话工作目录下的一个附件编号目录（草稿上撤掉那一份；不在 ⇒ `removed: false`）",
     },
 ];

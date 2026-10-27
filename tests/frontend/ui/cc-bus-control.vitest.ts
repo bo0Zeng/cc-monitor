@@ -121,7 +121,7 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
       ["不在名单里", { ok: LIST.reply }, "nobody_cc", "ccBus.online.unknown"],
       ["live 是 null", { ok: withNull }, "n_cc", "ccBus.online.unknown"],
       ["通道不在", { fail: NO_CHANNEL }, "aaaaaaaa-0000-4000-8000-000000000001", "rsChanSaid.hop.localDown"],
-      ["被拒", { fail: refusedReply("child_timed_out", copyText("ccBus.online.timedOut")) }, "aaaaaaaa-0000-4000-8000-000000000001", "ccBus.online.timedOut"],
+      ["被拒", { fail: refusedReply("failed", copyText("ccBus.online.otherCode")) }, "aaaaaaaa-0000-4000-8000-000000000001", "ccBus.online.otherCode"],
     ];
     for (const [what, reply, id, key] of cases) {
       answer(reply);
