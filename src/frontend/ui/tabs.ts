@@ -10,7 +10,7 @@
  */
 import { markRunCard, markRunWindow } from "./cards/subagent";
 import { openAgentWindow } from "./agent-window-open";
-import { runLabel } from "./runs";
+import { NO_RUNS, runLabel } from "./runs";
 
 import type { SessionRuns } from "./generated/SessionRuns";
 import type { WatchFrom } from "./generated/WatchFrom";
@@ -884,7 +884,7 @@ export class TabManager {
   onSessionRuns(p: SessionRuns): void {
     const tab = this.store.tabs.get(p.sid);
     if (!tab) return;
-    this.live.onRuns(tab.sessionId, p.runs);
+    this.live.onRuns(tab.sessionId, p);
     for (const r of p.runs) {
       if (r.tool === undefined) continue;
       const card = tab.runCards.get(r.tool);
@@ -898,7 +898,7 @@ export class TabManager {
       markRunCard(card, e);
       markRunWindow(card, this.runWindows.has(`${tab.sessionId}\u0000${e.run}`));
     }
-    if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
+    if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p);
   }
 
   /**
@@ -1380,7 +1380,7 @@ export class TabManager {
         this.reportWatching();
         // 关掉最后一个 ⇒ 任务面板进空态。
         this.tasksPanel?.setSession(null, []);
-        this.agentsPanel?.setSession(null, []);
+        this.agentsPanel?.setSession(null, NO_RUNS);
         // 没有邻居可切 ⇒ 当前 tab 那一格清空（HUD 不残留死会话的数）。
         this.publishActive();
         this.refreshTabBar();
@@ -1684,7 +1684,7 @@ export class TabManager {
         });
       }
       this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
-      this.agentsPanel?.setSession(sessionId, this.live.board.of(sessionId));
+      this.agentsPanel?.setSession(sessionId, this.live.board.table(sessionId));
       // 任务面板 · agent 面板 · HUD 都切到新的当前会话。
       this.publishActive(); // 当前 tab 那一格（usage · 要不到的原因）
     });

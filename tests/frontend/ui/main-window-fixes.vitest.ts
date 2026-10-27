@@ -453,16 +453,18 @@ describe("agent 面板：运行表每来一帧不整表重建", () => {
     };
     document.body.append(p.summaryElement, p.pageElement);
     const run = (id: string, state: string): RunInfo => ({ run: id, state, label: id, kind: "Explore", tool: `t-${id}` }) as never;
-    p.setSession("s", [run("r1", "running"), run("r2", "running")]);
+    // 运行表那一份：三组是后端写好的（最近动过的在前）。
+    const both = { runs: [run("r1", "running"), run("r2", "running")], groups: { running: ["r2", "r1"], recent: [], older: [] } };
+    p.setSession("s", both);
     const rowOf = (id: string) => p.pageElement.querySelector<HTMLElement>(`.agent-row[data-run="${id}"]`)!;
     rowOf("r2").click(); // 开 r2 的窗口
     expect(opened).toEqual(["r2"]);
     const r1 = rowOf("r1");
     r1.focus();
-    p.setSession("s", [run("r1", "running"), run("r2", "running")]);
+    p.setSession("s", { ...both });
     expect(rowOf("r1")).toBe(r1);
     expect(document.activeElement).toBe(r1);
-    p.setSession("s", [run("r1", "done"), run("r2", "running")]);
+    p.setSession("s", { runs: [run("r1", "done"), run("r2", "running")], groups: { running: ["r2"], recent: ["r1"], older: [] } });
     expect(rowOf("r1"), "状态变了：同一个行节点原地改").toBe(r1);
     expect(document.activeElement, "键盘焦点还在那一行").toBe(r1);
     expect(r1.classList.contains("agent-done")).toBe(true);

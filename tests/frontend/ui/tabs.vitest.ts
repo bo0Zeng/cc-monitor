@@ -1989,6 +1989,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
         { run: "4", label: "run2", label_text: "run2", state: "running", status_text: "核心·在跑" },
       ],
       ended: [],
+      groups: { running: ["4", "2"], recent: ["3", "1"], older: [] },
     });
 
     const p = tm.peekSession("s1");

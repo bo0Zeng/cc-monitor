@@ -83,7 +83,7 @@ type Bare = Omit<RunInfo, "status_text" | "label_text">;
 
 function frame(runs: Bare[]): void {
   const dressed: RunInfo[] = runs.map((r) => ({ ...r, status_text: copyText(`runs.state.${r.state}`), label_text: r.label ?? copyText("runs.label.unnamed") }));
-  h.sink?.({ t: "runs", payload: { sid: "s1", runs: dressed, ended: [] } } satisfies FollowEvent);
+  h.sink?.({ t: "runs", payload: { sid: "s1", runs: dressed, ended: [], groups: { running: [], recent: [], older: [] } } } satisfies FollowEvent);
 }
 
 async function settle(): Promise<void> {
@@ -132,23 +132,40 @@ describe("agent 窗口", () => {
     await settle();
     expect(h.titles.at(-1)).toBe(`审交互 · ${copyText("runs.state.running")} · 主会话`);
     expect(root.querySelector('[data-role="new-content"]')?.hasAttribute("hidden")).toBe(true);
-    frame([{ ...RUN, state: "failed", why: "reported", ended_ms: T0 + 120_000, error: "API Error: 529" }]);
+    frame([
+      {
+        ...RUN,
+        state: "failed",
+        why: "reported",
+        ended_ms: T0 + 120_000,
+        error: "API Error: 529",
+        started_text: "核心·10:00 起",
+        facts: [{ text: "核心·用时 2m" }],
+        explain: { line: { text: "核心·失败说明" } },
+        end: { head: "核心·失败", sub: { text: "核心·交回 {dur}", from: Date.now() - 6 * 60_000 } },
+      },
+    ]);
     await settle();
     expect(h.titles.at(-1)).toBe(`审交互 · ${copyText("runs.state.failed")} · 主会话`);
-    expect(root.textContent).toContain(copyText("agentWindow.why.failed"));
+    // 事实 · 说明 · 结束线都照抄运行表写好的字（会走的钟那一截按此刻填），界面不按 `state` 挑字。
+    expect(root.textContent).toContain(["核心·10:00 起", "核心·用时 2m"].join(copyText("kit.text.sep")));
+    expect(root.textContent).toContain("核心·失败说明");
+    expect(root.textContent).not.toContain(copyText("agentWindow.why.failed"));
     expect(root.querySelector("pre")?.textContent).toBe("API Error: 529");
-    expect(root.textContent).toContain(copyText("agentWindow.end.failed"));
+    expect(root.textContent).toContain("核心·交回 6m");
   });
 
-  it("在等工具 ⇒ 说明写等哪个、等了多久；在跑没在等 ⇒ 不出说明", async () => {
+  it("在等工具 ⇒ 说明照写好的那一句（等了多久按此刻填）；运行表没给说明 ⇒ 不出说明", async () => {
     h.pages = [{ rows: [] }, { rows: [] }, { rows: [] }];
     const { root } = await open();
     frame([RUN]);
     await settle();
-    expect(root.textContent).not.toContain(copyText("agentWindow.why.waitingNote"));
-    frame([{ ...RUN, waiting: "Bash", active_ms: Date.now() - 6 * 60_000 }]);
+    expect(root.textContent).not.toContain("核心·等待说明");
+    const at = Date.now() - 6 * 60_000;
+    frame([{ ...RUN, waiting: "Bash", active_ms: at, explain: { line: { text: "核心·等 Bash · {dur}", from: at }, note: "核心·等待说明" } }]);
     await settle();
-    expect(root.textContent).toContain(copyText("agentWindow.why.waiting", { tool: "Bash", dur: "6m" }));
+    expect(root.textContent).toContain("核心·等 Bash · 6m");
+    expect(root.textContent).toContain("核心·等待说明");
   });
 
   it("派活那段话不是用户气泡：带抬头的框，抬头说是谁派的（父 agent 有 ⇒ 它的标签）", async () => {

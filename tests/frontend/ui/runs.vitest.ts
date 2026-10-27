@@ -3,7 +3,7 @@
  * 「全是agent的 / 我们不是有agent部分吗, 为什么全部放主界面」；派出它的那张工具卡标状态。界面只收通用形
  * （运行表 ＋ 归一事件），不认任何一家的目录、字段、事件名。
  *
- * 三段：纯状态（`LiveCards` ＋ 运行表）· 面板的上界（`panelGroups`，期望手写）· 真 TabManager ＋ 真面板
+ * 三段：纯状态（`LiveCards` ＋ 运行表）· 面板照帧里写好的三组与 chip 的字排（`groups` · `summary`，不按 `state` 分）· 真 TabManager ＋ 真面板
  * （主 tab 零子运行行、面板分组与五态、后台派出只拿到「已启动」那次结果的不是完成、被叫停的是「已停止」）。
  */
 import { describe, it, expect, vi } from "vitest";
@@ -38,7 +38,10 @@ import type { RunState } from "../../../src/frontend/ui/generated/RunState";
 import { TabManager } from "../../../src/frontend/ui/tabs";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
-import { panelGroups, RECENT_ENDED, runLabel, runLastText, runStateMark, runStateText } from "../../../src/frontend/ui/runs";
+import { runLabel, runLastText, runStateMark, runStateText } from "../../../src/frontend/ui/runs";
+import type { RunEnded } from "../../../src/frontend/ui/generated/RunEnded";
+import type { RunGroups } from "../../../src/frontend/ui/generated/RunGroups";
+import type { SessionRuns } from "../../../src/frontend/ui/generated/SessionRuns";
 import { installViewerRig, line, userLine } from "../../test-support/session-viewer-rig";
 
 const O = "<local>";
@@ -52,6 +55,14 @@ function opened(no: number, rid: string, blocks: LiveCardNow["blocks"], run?: st
 /** 后端写好的状态字（夹具用记号，界面照抄才对得上：不许按 `state` 自己挑）。 */
 const said = (s: RunState) => `核心·${s}`;
 const run = (id: string, state: RunState, label = id, tool?: string): RunInfo => ({ run: id, label, state, status_text: said(state), label_text: `核心·${label}`, ...(tool ? { tool } : {}) });
+/** 运行表那一帧：三组与 chip 的字是后端写好的（没给三组 ⇒ 全放「最近结束」，最近动过的在前；只看卡与行的几条不在乎分在哪组）。 */
+const table = (runs: RunInfo[], ended: RunEnded[] = [], groups?: RunGroups): SessionRuns => ({
+  sid: SID,
+  runs,
+  ended,
+  groups: groups ?? { running: [], recent: [...runs].reverse().map((r) => r.run), older: [] },
+  ...(runs.length > 0 ? { summary: `核心·agent ${runs.length}` } : {}),
+});
 
 /** 状态那一格画的是什么：在跑 ＝ 呼吸的状态点，其余四态 ＝ Phosphor 图标（经 kit/icon）；不许是字符。 */
 function markOf(host: Element | null): string | undefined {
@@ -88,7 +99,7 @@ describe("运行表 × 活卡", () => {
       (o, s) => o === O && s === SID,
       () => null,
     );
-    live.onRuns(SID, [run("w1", "running", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]);
+    live.onRuns(SID, table([run("w1", "running", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]));
     live.onCards(opened(1, "r1", [{ kind: "tool", tool: "Bash" }], "w1"));
     live.onCards(opened(2, "r2", [{ kind: "thinking" }], "w2"));
     live.onCards(opened(0, "r0", [{ kind: "text", text: "主" }]));
@@ -99,35 +110,30 @@ describe("运行表 × 活卡", () => {
     expect(live.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
     expect(live.liveBlockOf(SID, "w2")?.kind).toBe("thinking");
 
-    const finished = live.onRuns(SID, [run("w1", "stopped", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]);
+    const finished = live.onRuns(SID, table([run("w1", "stopped", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]));
     expect(finished.map((r) => r.run)).toEqual(["w1"]);
   });
 });
 
-describe("面板的上界：在跑的全列 ＋ 最近结束的几个，其余与状态不明的收进「更早的」", () => {
-  it("运行表（最早动过的在前）⇒ 三组，每组最近的在前；最近结束的恰好 RECENT_ENDED 个", () => {
-    expect(RECENT_ENDED).toBe(5);
-    const table: RunInfo[] = [
-      run("e1", "done"),
-      run("u1", "unknown"),
-      run("e2", "failed"),
-      run("r1", "running"),
-      run("e3", "done"),
-      run("e4", "stopped"),
-      run("e5", "done"),
-      run("r2", "running"),
-      run("e6", "done"),
-      run("u2", "unknown"),
-      run("e7", "failed"),
-      run("r3", "running"),
-    ];
-    const g = panelGroups(table);
-    const ids = (v: RunInfo[]) => v.map((r) => r.run);
-    expect(ids(g.running)).toEqual(["r3", "r2", "r1"]);
-    expect(ids(g.recent)).toEqual(["e7", "e6", "e5", "e4", "e3"]);
-    expect(ids(g.older)).toEqual(["u2", "e2", "u1", "e1"]);
-    // 两向：三组恰好分完整张表，不重不漏。
-    expect([...ids(g.running), ...ids(g.recent), ...ids(g.older)].sort()).toEqual(ids(table).sort());
+describe("面板照帧里写好的三组与 chip 的字排", () => {
+  it("★ 三组照 `groups`（与 `state` 无关）、组内照它给的先后；chip 的字照抄 `summary`；组里点名表里没有的 ⇒ 不画", () => {
+    const panel = new AgentsPanel();
+    // 故意让分组与状态对不上：界面若还按 `state` 自己分，这条就红。
+    const runs = [run("a", "done"), run("b", "running"), run("c", "failed"), run("d", "unknown")];
+    panel.setSession(SID, { ...table(runs, [], { running: ["c", "a"], recent: ["d"], older: ["b", "gone"] }), summary: "核心·agent 摘要" });
+    const rows = () => [...panel.pageElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => r.dataset.run);
+    expect(rows()).toEqual(["c", "a", "d"]);
+    expect([...panel.pageElement.querySelectorAll(".agent-group")].map((g) => g.textContent)).toEqual([
+      copyText("agentsPanel.group.running"),
+      copyText("agentsPanel.group.recent"),
+      copyText("agentsPanel.group.older", { n: 1 }),
+    ]);
+    expect(panel.summaryElement.textContent).toBe("核心·agent 摘要");
+    expect(panel.label).toBe("核心·agent 摘要");
+    panel.pageElement.querySelector<HTMLButtonElement>(".agent-older-toggle")!.click();
+    expect(rows()).toEqual(["c", "a", "d", "b"]);
+    panel.setSession(SID, table([]));
+    expect(panel.summaryElement.style.display).toBe("none");
   });
 });
 
@@ -208,11 +214,11 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ sid: SID, runs: SIX, ended: [] });
+    tm.onSessionRuns(table(SIX, []));
     const row = panel.pageElement.querySelector<HTMLElement>('.agent-row[data-run="w6"]')!;
     row.tabIndex = 0;
     row.focus();
-    tm.onSessionRuns({ sid: SID, runs: [run("w7", "running", "新的一个", "t2"), ...SIX], ended: [] });
+    tm.onSessionRuns(table([run("w7", "running", "新的一个", "t2"), ...SIX], []));
     expect(panel.pageElement.querySelector('.agent-row[data-run="w6"]')).toBe(row);
     expect(document.activeElement).toBe(row);
   });
@@ -221,7 +227,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ sid: SID, runs: SIX, ended: [] });
+    tm.onSessionRuns(table(SIX, [], { running: ["w6"], recent: ["w4", "w3", "w2", "w1"], older: ["w5"] }));
 
     // 主 tab：只在运行表里出现的那几个标签，消息流里一个字都没有；也没有任何按运行标的行。
     const mainText = streamRootEl.textContent ?? "";
@@ -258,7 +264,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ sid: SID, runs: [run("w6", "done", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns(table([run("w6", "done", "扫目录", "t1")], []));
     const handback = (seq: number, from: string) =>
       userLine(seq, `u${seq}`, "<agent-message>…</agent-message>", {
         who: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
@@ -295,9 +301,9 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.onLine(launched(1, "t1"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns(table([run("w6", "running", "扫目录", "t1")], []));
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("running") }]);
-    tm.onSessionRuns({ sid: SID, runs: [run("w6", "stopped", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns(table([run("w6", "stopped", "扫目录", "t1")], []));
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("stopped") }]);
     expect(MARK.stopped).not.toBe(MARK.done);
   });
@@ -307,7 +313,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.onLine(launched(1, "t1"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns(table([run("w6", "running", "扫目录", "t1")], []));
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     expect(card.querySelector('[data-role="run-result"]'), "回执不是交回").toBeNull();
     expect(card.dataset.runState).toBe("running");
@@ -321,7 +327,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
-    tm.onSessionRuns({ sid: SID, runs: [], ended: [{ run: "w6", tool: "t1", state: "done", status_text: said("done") }] });
+    tm.onSessionRuns(table([], [{ run: "w6", tool: "t1", state: "done", status_text: said("done") }]));
     expect([card.dataset.runState, card.querySelector('[data-role="run-state"]')?.textContent]).toEqual(["done", said("done")]);
     expect(panel.pageElement.querySelector('.agent-row[data-run="w6"]')).toBeNull();
   });
@@ -332,10 +338,10 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.switchTo(SID);
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     const stateOf = () => card.querySelector('[data-role="run-state"]')?.textContent;
-    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns(table([run("w6", "running", "扫目录", "t1")], []));
     expect([card.dataset.runState, stateOf()]).toEqual(["running", said("running")]);
     const T = Date.parse("2026-10-01T10:00:00Z");
-    tm.onSessionRuns({ sid: SID, runs: [{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, ended_ms: T + 120_000 }], ended: [] });
+    tm.onSessionRuns(table([{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, ended_ms: T + 120_000 }], []));
     expect([card.dataset.runState, stateOf()]).toEqual([
       "failed",
       [said("failed"), copyText("agentWindow.facts.took", { dur: "2m" })].join(copyText("kit.text.sep")),
@@ -363,7 +369,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
     tm.setRunWindow(SID, "w6", true);
-    tm.onSessionRuns({ sid: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    tm.onSessionRuns(table([run("w6", "running", "扫目录", "t1")], []));
     const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     expect(card.querySelector('[data-role="window-open"]')).not.toBeNull();
   });
