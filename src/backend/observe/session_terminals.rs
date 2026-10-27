@@ -7,9 +7,10 @@
 //! - 读环境只抠写死的那几个键（`TMUX` · `TMUX_PANE` · `SSH_CONNECTION` · `LC_CCM_WINDOW`），不回整份环境。
 //! - `LC_CCM_WINDOW` 是本机那个终端窗口的标签（PowerShell 接入块设、经 ssh 送过来），这里只原样回显，认窗口归本机。
 //! - 零定时器：只在被问时答。读不了别人的进程 ⇒ 照实说 `unreadable`。
+//! - 问它的是别台的本机后端（`--resident-call`，`faces/session_window_face.rs`）；本机会话那一问在同一进程里走 [`here_by`]（连进程号一起交）。
 
 use crate::platform::child::{Child, Deadline};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::platform::proc::{proc_env_var, EnvRead};
 
@@ -36,7 +37,7 @@ pub(crate) enum Shown {
 }
 
 /// `session-terminals` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
@@ -68,19 +69,42 @@ pub(crate) fn answer_at(
 }
 
 /// `session-terminals` 的应答：此刻显示它的终端（一个都没有 ⇒ 空 ＋ 为什么）。
-#[derive(Debug, Serialize)]
+/// 问它的那台本机后端（`session-window`）照同一个类型解回来。
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Showing {
     /// 此刻显示它的终端，最近动静在前，最多 16 个。
     pub(crate) terminals: Vec<Terminal>,
-    /// 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        test,
-        ts(optional, type = "\"detached\" | \"no-terminal\" | \"unreadable\"")
-    )]
-    pub(crate) why: Option<&'static str>,
+    /// 一个都没有时为什么。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) why: Option<ShownWhy>,
+}
+
+/// 一个终端都没有的原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ShownWhy {
+    /// 在 tmux 里、没终端连着。
+    Detached,
+    /// 不在 tmux 里、进程没有终端。
+    NoTerminal,
+    /// 读不了。
+    Unreadable,
+}
+
+impl ShownWhy {
+    /// 线上那个词（`session-window` 的 `why` 照搬）。
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            ShownWhy::Detached => "detached",
+            ShownWhy::NoTerminal => "no-terminal",
+            ShownWhy::Unreadable => "unreadable",
+        }
+    }
 }
 
 /// 事实 ⇒ 线上成品。
@@ -94,9 +118,9 @@ pub(crate) fn product(shown: &Shown) -> Showing {
             terminals: t.clone(),
             why: None,
         },
-        Shown::Detached => empty("detached"),
-        Shown::NoTerminal => empty("no-terminal"),
-        Shown::Unreadable => empty("unreadable"),
+        Shown::Detached => empty(ShownWhy::Detached),
+        Shown::NoTerminal => empty(ShownWhy::NoTerminal),
+        Shown::Unreadable => empty(ShownWhy::Unreadable),
     }
 }
 
@@ -125,28 +149,69 @@ pub(crate) fn shown_by(pid: u32) -> Result<Shown, (&'static str, String)> {
             },
         });
     };
+    Ok(match tmux_clients(pid, &tmux)? {
+        Clients::By(seen) => Shown::By(seen.into_iter().map(|(_, t)| t).collect()),
+        Clients::Detached => Shown::Detached,
+        Clients::Unreadable => Shown::Unreadable,
+    })
+}
+
+/// 本机那一问（`session-window`）要的：此刻显示这个会话的终端进程（链从它起）和它的终端，最近动静在前；或没有终端连着。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Here {
+    By(Vec<(u32, Terminal)>),
+    Detached,
+}
+
+/// `pid`（本机那个 claude 进程）此刻由哪个终端进程显示：在 tmux 里 ⇒ 连着它的 tmux 客户端（一个都没有 ⇒ `Detached`）；
+/// 不在 tmux 里、或读不出 tmux 那几格（Windows 读不到别的进程的环境）⇒ 它自己（它挂在那个终端上）。
+pub(crate) fn here_by(pid: u32) -> Result<Here, (&'static str, String)> {
+    if let Ok(Some(tmux)) = env(pid, TMUX_ENV) {
+        match tmux_clients(pid, &tmux)? {
+            Clients::By(seen) => return Ok(Here::By(seen)),
+            Clients::Detached => return Ok(Here::Detached),
+            Clients::Unreadable => {}
+        }
+    }
+    let own = terminal_of(pid, None).unwrap_or(Terminal {
+        ssh: None,
+        activity: None,
+        window: None,
+    });
+    Ok(Here::By(vec![(pid, own)]))
+}
+
+/// 问 tmux 谁连着：每个客户端的进程号与终端（最近动静在前）· 没有 · 读不出。
+enum Clients {
+    By(Vec<(u32, Terminal)>),
+    Detached,
+    Unreadable,
+}
+
+/// `pid` 的 `TMUX`（`tmux`）⇒ 那个 socket 上连着它所在会话的客户端。tmux 起不来 / 报错 ⇒ `failed`。
+fn tmux_clients(pid: u32, tmux: &str) -> Result<Clients, (&'static str, String)> {
     let socket = tmux.split(',').next().unwrap_or_default();
     let Ok(Some(pane)) = env(pid, TMUX_PANE_ENV) else {
-        return Ok(Shown::Unreadable);
+        return Ok(Clients::Unreadable);
     };
     if !socket_ok(socket) || !pane_ok(pane.trim()) {
-        return Ok(Shown::Unreadable);
+        return Ok(Clients::Unreadable);
     }
     let clients = list_clients(socket, pane.trim())?;
     if clients.is_empty() {
-        return Ok(Shown::Detached);
+        return Ok(Clients::Detached);
     }
-    let mut seen: Vec<Terminal> = clients
+    let mut seen: Vec<(u32, Terminal)> = clients
         .into_iter()
-        .filter_map(|(cpid, activity)| terminal_of(cpid, Some(activity)))
+        .filter_map(|(cpid, activity)| Some((cpid, terminal_of(cpid, Some(activity))?)))
         .collect();
     if seen.is_empty() {
-        return Ok(Shown::Unreadable);
+        return Ok(Clients::Unreadable);
     }
     // 最近有动静的在前；同一秒的保持 tmux 列出的顺序（稳定排序）。
-    seen.sort_by(|a, b| b.activity.cmp(&a.activity));
+    seen.sort_by(|a, b| b.1.activity.cmp(&a.1.activity));
     seen.truncate(MAX_TERMINALS);
-    Ok(Shown::By(seen))
+    Ok(Clients::By(seen))
 }
 
 /// 读一个终端进程的 `SSH_CONNECTION` 与窗口标签；环境读不到 ⇒ `None`（调用方据此说 `unreadable`）。

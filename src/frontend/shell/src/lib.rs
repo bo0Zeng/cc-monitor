@@ -714,9 +714,8 @@ pub fn run() {
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
             open_settings_window,
+            // ↗ 拉前会话的终端窗口（本机后端答过它在这台电脑上的哪儿，界面原样交来）
             bring_terminal_to_front,
-            // 远端 Tab ↗ 拉前对应本地终端窗口（界面问过那台与本机后端，交来对上的窗口）
-            bring_remote_terminal_to_front,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
@@ -1210,62 +1209,27 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
     r.map_err(|s| s.named("bring_monitor_to_front"))
 }
 
-/// 拉本机会话的终端窗口：点那一刻现走那个 claude 往上的进程链（`bind::bring_local_window`，与远端那一格同一条规则），
-/// 校验、拉前。会话账里没有它的进程号（不在活集里）⇒ 会话已不在运行。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
+/// ↗ 拉会话的终端窗口（本机会话与远端会话同一条）：本机后端 `session-window` 答的窗口标签 · 进程链原样交来 ⇒
+/// 先按标签、再沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，校验、拉前
+/// （`bind::bring_session_window`），回结局族（`bind::FrontOutcome`，句子在界面的文案表）。标签没对上、链又空 ⇒ `None`（界面摆后端那条原因）。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
 #[tauri::command]
 async fn bring_terminal_to_front(
-    session_id: String,
+    labels: Vec<String>,
+    chain: Vec<bind::ChainLink>,
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<bind::FrontOutcome, Said> {
-    let r: Result<bind::FrontOutcome, Said> = async move {
+) -> Result<Option<bind::FrontOutcome>, Said> {
+    let r: Result<Option<bind::FrontOutcome>, Said> = async move {
         let bind = bind_state.inner().clone();
         Ok(tokio::task::spawn_blocking(move || {
-            let pid = session_book::book()
-                .read()
-                .live_pid(&crate::origin::Origin::local(), &session_id);
-            match pid {
-                Some(pid) => bind::bring_local_window(pid, &bind),
-                None => bind::front_refusal().unwrap_or(bind::FrontOutcome::Unbound {
-                    why: bind::UnboundWhy::NotLive,
-                }),
-            }
+            bind::bring_session_window(&labels, &chain, &bind)
         })
         .await
         .map_err(Said::crashed)?)
     }
     .await;
     r.map_err(|s| s.named("bring_terminal_to_front"))
-}
-
-/// 拉对应**远端** Tab 的本地终端窗口，两问各一次（界面按顺序调）：
-/// ① 交那台 `session-terminals` 的 `terminals` 原样 ⇒ 按窗口标签找（`bind::bring_labeled_window`）：对上了回那一次的结局，
-///    没有标签 / 对不上回 `None`（界面接着问第二问）；
-/// ② 交本机后端 `terminal-processes` 的成品 `chain` ⇒ 沿链每一级先问它显示在哪个窗口（Windows 问控制台 · Linux 查握手表）、再看属主的窗口，
-///    校验、拉前（`bind::bring_chain_window`），回结局。两样都空 ⇒ `None`。
-/// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
-#[tauri::command]
-async fn bring_remote_terminal_to_front(
-    terminals: Option<Vec<serde_json::Value>>,
-    chain: Option<Vec<bind::ChainLink>>,
-    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<Option<bind::FrontOutcome>, Said> {
-    let r: Result<Option<bind::FrontOutcome>, Said> = async move {
-        let bind = bind_state.inner().clone();
-        Ok(tokio::task::spawn_blocking(move || {
-            if let Some(t) = terminals.filter(|t| !t.is_empty()) {
-                return bind::bring_labeled_window(&t, &bind);
-            }
-            chain
-                .filter(|c| !c.is_empty())
-                .map(|c| bind::bring_chain_window(&c, &bind))
-        })
-        .await
-        .map_err(Said::crashed)?)
-    }
-    .await;
-    r.map_err(|s| s.named("bring_remote_terminal_to_front"))
 }
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时

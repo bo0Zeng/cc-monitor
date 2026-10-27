@@ -159,10 +159,21 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     let windows: Vec<Option<String>> = ts.iter().map(|t| t.window.clone()).collect();
     assert_eq!(windows, vec![Some("4242-133000000000000000".into()), None]);
 
+    // 本机那一问（`session-window`）：同样两个终端、同样的先后，连各自那个 tmux 客户端的进程号（链从它起，不从 pane 里的进程起）。
+    let Here::By(here) = here_by(pane_pid).unwrap() else {
+        panic!("两个终端连着，本机那一问却答成没有");
+    };
+    assert_eq!(here.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(), ts);
+    let listed = tmux(&sock, &["list-clients", "-F", "#{client_pid}"]);
+    for (pid, _) in &here {
+        assert!(listed.lines().any(|l| l.trim() == pid.to_string()), "{pid} 不是连着的 tmux 客户端：{listed}");
+    }
+
     // 断开 ⇒ 又是「没有终端连着」。
     tmux(&sock, &["detach-client", "-s", "a"]);
     assert!(wait_until(|| clients(&sock) == 0), "客户端没断开");
     assert_eq!(shown_by(pane_pid).unwrap(), Shown::Detached);
+    assert_eq!(here_by(pane_pid).unwrap(), Here::Detached);
 
     tmux(&sock, &["kill-server"]);
     for c in [&mut a, &mut b] {
@@ -217,6 +228,12 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
             window: Some("4242-133000000000000000".into()),
         }])
     );
+    // 本机那一问：不在 tmux 里 ⇒ 链从它自己起。
+    let Here::By(here) = here_by(pid).unwrap() else {
+        panic!("不在 tmux 里，本机那一问却答成没有");
+    };
+    assert_eq!(here.iter().map(|(p, _)| *p).collect::<Vec<_>>(), vec![pid]);
+    assert_eq!(here[0].1.window.as_deref(), Some("4242-133000000000000000"));
     let _ = kid.kill();
     let _ = kid.wait();
     let _ = Command::new("kill").arg(pid.to_string()).status();
@@ -233,6 +250,11 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
     let bpid = bare.id();
     assert!(wait_until(|| exec_settled(bpid, "sleep")));
     assert_eq!(shown_by(bpid).unwrap(), Shown::NoTerminal);
+    // 本机那一问不看有没有控制终端：链从它自己起（找不到窗口那一句归壳沿链去说）。
+    let Here::By(here) = here_by(bpid).unwrap() else {
+        panic!("没有控制终端，本机那一问却答成没有终端连着");
+    };
+    assert_eq!(here.iter().map(|(p, _)| *p).collect::<Vec<_>>(), vec![bpid]);
     let _ = bare.kill();
     let _ = bare.wait();
     let _ = std::fs::remove_dir_all(&dir);

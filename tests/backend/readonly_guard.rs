@@ -1170,7 +1170,7 @@ mod spawn_registry {
              ② **写一格用户设置**：`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`（HKCU 那一档，值写死），\
              只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（「只在用户点击并确认后执行，不代改」）；\
              ③ 现问连接表与进程表（`Get-NetTCPConnection -State Established` ＋ `Win32_Process` 只取进程号 · 父进程号 · 名字 · 启动时刻四格，\
-             只读、不吃入参；`terminal-processes`，点 ↗ 时问一次）。",
+             只读、不吃入参；`session-window`，点 ↗ 时问一次）。",
             "缩性质",
             "有别的办法读到那台 PowerShell 的内建别名表与执行策略（不起进程）的那天摘掉只读那两种。\
              ⚠ 写的那一种只许是上面那一句固定脚本，不许收界面给的策略值。",

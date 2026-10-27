@@ -9,10 +9,12 @@ import type { AccountAsk } from "./launch-account";
 import type { Run } from "./generated/Run";
 import { toast, failToast } from "./kit/toast";
 import { openSession } from "./session-open";
-import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
-import { frontByLocalLabel, planRemoteFront } from "./remote-terminal-front";
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { ChanError } from "../../comms/inward/chan";
+import { budgetWithin, callTyped, isOldBackend, refusalIn } from "./ipc/chan-caller";
 import type { FrontResult } from "./front-result";
 import type { FrontOutcome } from "./generated/FrontOutcome";
+import type { SessionWindow } from "./generated/SessionWindow";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { openFileWindow } from "./file-window";
@@ -246,14 +248,14 @@ export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: 
 /** 壳那一跳的期限（极端情况下 Win32 调用卡住）：到了 ⇒ 「无应答」。 */
 const FRONT_SHELL_MS = 5000;
 
-/** 壳那一跳：期限内回结局；到期 ⇒ `timeout`；出错 ⇒ `unknown`（细节可复制）。 */
-async function shellFront(ask: () => Promise<FrontOutcome>): Promise<FrontResult> {
+/** 壳那一跳：期限内回结局（`null` ＝ 标签没对上、链又空）；到期 ⇒ `timeout`；出错 ⇒ `unknown`（细节可复制）。 */
+async function shellFront(ask: () => Promise<FrontOutcome | null>): Promise<FrontResult | null> {
   let timer = 0;
   try {
     return await Promise.race([
       ask(),
       new Promise<FrontResult>((r) => {
-        // 调度：一次性 —— ↗ 壳那一跳的期限，到点落成「无应答」（本机 / 远端共用）
+        // 调度：一次性 —— ↗ 壳那一跳的期限，到点落成「无应答」
         timer = window.setTimeout(() => r({ kind: "timeout" }), FRONT_SHELL_MS);
       }),
     ]);
@@ -265,37 +267,55 @@ async function shellFront(ask: () => Promise<FrontOutcome>): Promise<FrontResult
   }
 }
 
-/** 按窗口标签找那一问（monitor 没回话 / 抛了 ⇒ 当没对上）。 */
-function frontByLabel(terminals: unknown[]): Promise<FrontResult | null> {
-  return commands.bring_remote_terminal_to_front({ terminals }).catch((e: unknown) => {
-    console.warn("terminal front by label failed:", e);
-    return null;
-  });
+/** 本机后端那一问的期限：远端会话它要经那台问一次（读 `/proc` ＋ 问一次 tmux）、再读一次这台的连接表与进程表。 */
+const WINDOW_ASK_MS = 15_000;
+
+/** 本机后端说了链为什么是空的 ⇒ 结局族。 */
+function placedResult(p: SessionWindow): FrontResult {
+  switch (p.why) {
+    case "elsewhere":
+      return { kind: "elsewhere", addr: p.addr ?? "" };
+    case "query-failed":
+      return { kind: "query-failed", detail: "session-window: query-failed" };
+    case undefined:
+      return { kind: "bad-shape", detail: "session-window: empty chain without why" };
+    default:
+      return { kind: p.why };
+  }
+}
+
+/** 那一问失败了 ⇒ 结局族：本机后端的码（会话不在 · 那台旧 · 到期 · 没问到那台，那一句照摆）· 通道那一跳的归因（断开那一句是连接层交出的，照摆）。 */
+function failedAsk(e: unknown): FrontResult {
+  const refused = refusalIn(e);
+  switch (refused?.code) {
+    case "no_such_session":
+      return { kind: "not-live" };
+    case "backend_old":
+      return { kind: "too-old" };
+    case "timed_out":
+      return { kind: "timeout" };
+    case "unreached":
+      return { kind: "offline", said: refused.message };
+  }
+  if (isOldBackend(e)) return { kind: "too-old" };
+  if (e instanceof ChanError && e.error.layer === "hop") return e.error.why === "Overrun" ? { kind: "timeout" } : { kind: "offline", said: e.message };
+  return { kind: "unknown", detail: e instanceof Error ? e.message : String(e) };
 }
 
 /**
- * 拉本机会话的终端到前台：壳点那一刻从会话的 agent 进程往上沿进程链找窗口、三重指纹校验、拉前；壳说「没登记」⇒ 再按窗口标签找一次（本机后端答谁在显示它，
- * `remote-terminal-front.ts::frontByLocalLabel`），对上了用那一次的结局，否则照旧「没登记」。回结局族（界面照族排版，`front-result.ts`）。
+ * ↗ 拉会话的终端到前台（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链，或原因），
+ * 答话原样交壳一次（先按标签、再沿链找窗口、三重指纹校验、拉前）。后端说了原因、又没有标签可找 ⇒ 不找窗口；壳没对上 ⇒ 摆后端那条原因。
+ * 回结局族（界面照族排版，`front-result.ts`）。
  */
-export async function bringTerminalToFront(sessionId: string): Promise<FrontResult> {
-  const r = await shellFront(() => commands.bring_terminal_to_front({ sessionId }));
-  if (r.kind !== "unbound") return r;
-  return (await frontByLocalLabel(sessionId, frontByLabel)) ?? r;
-}
-
-/**
- * 拉远端会话对应的本机终端窗口：点那一刻现查 —— 那台谁在显示它 · 按窗口标签找 · 本机哪串进程开着那条连接，顺序住
- * `remote-terminal-front.ts`；最后一跳壳沿进程链找属主的窗口、校验、拉前。每一步的结局都落成结局族。
- */
-export async function bringRemoteTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
-  // 按窗口标签那一问出了事（monitor 没回话 / 抛了）⇒ 当没对上，接着按连接对。
-  const plan = await planRemoteFront(origin, sessionId, frontByLabel);
-  if ("result" in plan) return plan.result;
-  return shellFront(async () => {
-    const o = await commands.bring_remote_terminal_to_front({ chain: plan.chain });
-    if (o === null) throw new Error("bring_remote_terminal_to_front: no outcome for a chain");
-    return o;
-  });
+export async function bringTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
+  let placed: SessionWindow;
+  try {
+    placed = await callTyped(LOCAL_ORIGIN, "session-window", { machine: origin, sid: sessionId }, budgetWithin(WINDOW_ASK_MS));
+  } catch (e) {
+    return failedAsk(e);
+  }
+  if (placed.labels.length === 0 && placed.chain.length === 0) return placedResult(placed);
+  return (await shellFront(() => commands.bring_terminal_to_front({ labels: placed.labels, chain: placed.chain }))) ?? placedResult(placed);
 }
 
 /** 关 tab 时让后端把这个会话的重放历史丢掉（失败只记日志）。 */

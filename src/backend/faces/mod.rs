@@ -41,6 +41,7 @@ pub(crate) mod session_mode_face;
 pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：换模型（送那一行、从记录读回；终端没了记下等恢复） // 帧面 `session-permission`（typed）：切权限档（按循环键、等重画、读回到了为止；终端没了记下等恢复）
 pub(crate) mod session_open_face; // 帧面 `session-open` · `-facts` · `-dir`：起新的 · 恢复 · 接回一个请求，起新会话框要的这台事实与目录那一问
 pub mod session_restart_face;
+pub(crate) mod session_window_face; // 帧面 `session-window`（typed）：↗ 那一问，会话在这台电脑上的哪儿（本机 · 远端同一个形）
 pub(crate) mod session_say_face; // 帧面 `session-say`（typed）：往一条会话说一句，在等人 ⇒ 不送，不在等 ⇒ 照 `terminal-input` 送 // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-where` / `sessions-stop` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch
 
 /// 拨号层要的「这一端的机器表怎么读」由这里装（拨号层不认控制面）：进程起来那一下调一次。

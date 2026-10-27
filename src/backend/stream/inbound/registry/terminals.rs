@@ -1,4 +1,4 @@
-//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
+//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -9,13 +9,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::dial::terminal::TerminalSsh>(
         "给一台远端开终端要跑的那一串",
     ),
-    // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
-    //   （`dial/terminal_processes.rs`）。阻塞档：读连接表 ＋ 进程表四格（Windows 直调系统接口、每个进程开一次句柄问启动时刻 · Linux 读 `/proc`）。只在被问时答。
-    crate::wire::typed::blocking::<crate::dial::terminal_processes::TerminalProcesses>(
-        "那台报来的终端连接是这台电脑上哪个进程开的",
+    // ↗ 那一问：这条会话在这台电脑上的哪儿：`{machine, sid}` ⇒ `{labels, chain:[{pid, name, start}…], why?, addr?}`
+    //   （`faces/session_window_face.rs`）。异步档：远端会话经 `--resident-call` 问那台的 `session-terminals`；
+    //   读 `/proc` · 起一次 `tmux list-clients` · 读连接表 ＋ 进程表四格放阻塞线程。只在被问时答。
+    crate::wire::typed::asynchronous::<crate::faces::session_window_face::SessionWindowCmd>(
+        "这条会话在这台电脑上的哪儿（窗口标签 · 进程链，或原因）",
     ),
     // 此刻是哪个终端在显示这个会话：`{sid}` ⇒ `{terminals:[{ssh, activity}…], why?}`（`observe/session_terminals.rs`）。
-    //   阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。零定时器，只在被问时答。
+    //   问它的是别台的本机后端（`session-window` 的远端一半）。阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。零定时器，只在被问时答。
     crate::wire::typed::blocking::<crate::faces::feature_face::SessionTerminals>(
         "此刻是哪个终端在显示这个会话",
     ),

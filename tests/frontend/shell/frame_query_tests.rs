@@ -382,15 +382,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::request`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
-    // 远端 ↗ 的前两问：那台谁在显示这个会话 · 本机哪串进程开着那条连接。
+    // ↗ 那一问：会话在这台电脑上的哪儿（本机会话与远端会话同一问）。
     (
-        "session-terminals",
-        "此刻连着这个会话的终端：会话所在那台后端 `observe/session_terminals.rs` 答；前端 `src/frontend/ui/remote-terminal-front.ts` 问",
-    ),
-    (
-        "terminal-processes",
-        "那台报来的终端连接是这台电脑上哪串进程：本机后端 `dial/terminal_processes.rs` 答；前端 `src/frontend/ui/remote-terminal-front.ts` 问，\
-         monitor 那一侧只沿进程链找窗口、拉前",
+        "session-window",
+        "窗口标签 · 进程链或原因：本机后端 `faces/session_window_face.rs` 答（远端会话它自己问那台）；前端 `src/frontend/ui/tab-session-actions.ts` 问，\
+         monitor 那一侧只照答找窗口、拉前",
     ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (

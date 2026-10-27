@@ -277,13 +277,6 @@ impl Book {
             .is_some_and(|b| b.live.contains_key(sid))
     }
 
-    /// 那台那个会话此刻活着时，宣告它的那一帧带来的 agent 进程号（↗ 点那一刻从它往上走进程链；没带 / 不活 ⇒ `None`）。
-    pub fn live_pid(&self, origin: &crate::origin::Origin, sid: &str) -> Option<u32> {
-        self.origins
-            .get(origin.as_wire_str())
-            .and_then(|b| b.live.get(sid))
-            .map(|meta| meta.pid)
-    }
 
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
     pub fn forget(&mut self, sid: &str) {
