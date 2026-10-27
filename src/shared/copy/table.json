@@ -766,6 +766,12 @@
       "zh": "凭据文件 {path} 须在主目录 {home} 下 · 写绝对路径或以 ~/ 开头",
       "args": ["path", "home"]
     },
+    "beAcctWire.platform.noSymlink": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法创建符号链接 · 多账号不可用\n需开启开发者模式（设置 → 系统 → 开发者选项）或以管理员身份运行",
+      "args": []
+    },
     "beAcctWire.platform.unsupported": {
       "kind": "error",
       "role": "报错",
