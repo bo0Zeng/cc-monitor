@@ -67,6 +67,7 @@ fn no_said(why: &str) -> String {
 
 fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow {
     TermRow {
+        host: crate::wire::TerminalHost::Tmux,
         id: id.into(),
         pane: None,
         shared: false,

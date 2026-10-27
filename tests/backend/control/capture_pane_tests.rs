@@ -1,4 +1,5 @@
 use super::*;
+use crate::platform::child::ChildFail;
 use std::process::Command;
 
 fn raw(code: Option<i32>, stdout: &str, stderr: &str) -> RawCapture {

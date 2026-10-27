@@ -365,7 +365,7 @@ fn plan_of(
     //
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
-    let taken = crate::common::session_snapshot::global().taken_names().ok();
+    let taken = crate::host::snapshot().taken_names().ok();
     // 号那一格只在真要判的时候读成品（`--base` · 已继承号目录 · 这一家没有账号这一维都不读）。
     let plan = plan::build(o, &env, &|| accounts(&env.home, &o.agent), taken.as_ref())?;
     Ok(Planned { plan, env })

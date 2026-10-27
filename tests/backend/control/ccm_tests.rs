@@ -40,9 +40,9 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
              `plan::build` 的产物，算两次就是两条路各自铸一次名。"
     );
     assert!(
-        prod.contains("session_snapshot::global().taken_names()"),
+        prod.contains("host::snapshot().taken_names()"),
         "喂给 `plan::build` 的那份「已占用的名字」不是从会话快照来的。\n\
-             ★ `R52` 裁定二：那张 hash 表只有一处住址（`common::session_snapshot`）。"
+             ★ `R52` 裁定二：那张 hash 表只有一处住址（`common::session_snapshot`，进程内那一份是 `host::snapshot`）。"
     );
     assert!(
         !prod.contains("next_free_name"),

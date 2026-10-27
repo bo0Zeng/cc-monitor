@@ -4,5 +4,5 @@
 //! `tests/backend/control/identity_tag_door.rs`：只交本线程注入的假 tmux，没注入就炸（`INVARIANTS §48.3`）。
 
 pub(super) fn tmux() -> crate::platform::child::Child {
-    crate::platform::child::Child::new("tmux")
+    crate::host::tmux::child(None)
 }

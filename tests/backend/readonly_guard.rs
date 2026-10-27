@@ -1009,7 +1009,7 @@ mod spawn_registry {
              这个决策的一部分（定框 C13）。\
              ⚠ **`K-R96`（09-12）：这一条从前还盖着第二处** —— P4f 续刀那条 \
              `list-sessions -F`（一次列全部会话）。用户 `R52` 裁定一之后，\
-             判活改成向 `common/session_snapshot.rs` 那张快照发一次询问 \
+             判活改成向 那张会话快照（探测器在 `host/tmux.rs`）发一次询问 \
              ⇒ 那处调用点搬去了那边。\
              今天两条子命令共用本文件**一处**起进程：探测那条 `display-message`，以及按 sid 找窗格那条只读的 \
              `list-panes -s -F '#{pane_id}…#{@ccm_sid}…'`（一个 tmux 会话里可以有几个 claude 窗格；`kill.rs` 杀之前读 pane pid 也走它）。",
@@ -1036,7 +1036,7 @@ mod spawn_registry {
             "这一条是**只读 tmux**，本来就落在收窄后的性质之内 —— 同 `control/gate.rs` 那条：\
              等哪天有一条**通用**判据能机检「这个起进程点只读」，它就该从受管例外里摘出去。\
              ⚠ [`super::capture_is_read_only`] **不是**那条通用判据：它只盖本文件这一处 \
-             ⇒ 不许拿它去把 `control/gate.rs` / `common/session_snapshot.rs` 那两条也摘掉。\
+             ⇒ 不许拿它去把 `control/gate.rs` / `host/tmux.rs` 那两条也摘掉。\
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二个 tmux 子命令 —— \
              这一处的立身之本就是「抓一屏只有一处、而且只抓一屏」。\
              终端预览要的颜色（`-e`）与往回几行（`-S -N`）是同一条子命令上的两类只读旗（`capture_argv_with`，值级同样钉着）。",
@@ -1061,21 +1061,18 @@ mod spawn_registry {
             "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉（托管进程自己推画面）。",
         ),
         (
-            "common/session_snapshot.rs",
+            "host/tmux.rs",
             "tmux",
-            "`K-R96`（09-12）：**全 crate 唯一一处「一次列全部 tmux 会话」的探测点**\
-             （`list-sessions -F '#{session_name}\t#{@ccm_sid}'`，argv 直传不过 shell）。\
-             用户 `R52` 裁定一逐字：「Gate 能不能改成直接读那份快照. **可以** / \
-             改为**向快照发一次询问, 快照更新一次**」⇒ 这一处就是那「一次询问」。\
-             两个消费者：① `faces/session_batch_face.rs`；② `ccm` 铸名避让（`R52` 裁定二那张 hash 表）。\
-             （Gate 判 `bus-list` 成员活不活那一路随 A13-3 删了：判活改问 `session_holders`。）\
-             **只读 tmux**，不改任何状态。\
-             ⚠ **一次调用列全部**，不是每个成员探一次（用户那台的总线有 86 行）。\
-             ⚠ **这一条从 `control/gate.rs` 搬来，不是新增的面**：净处数不变。",
+            "宿主口 tmux 那一形：**起 `tmux` 的唯一构造**（`child`，只指 server、不定子命令）。\
+             经它起的算调用方那份文件起 tmux，写面在本表逐个调用方登记（扫描认 `host::tmux::child(`）。\
+             本文件自己发的只有只读三样：终端名单两发（`list-panes -a` · `list-clients`）、\
+             `On::read`（调用方经它问尺寸与光标 `display-message -p` · 问版本 `-V`）、\
+             **全 crate 唯一一处「一次列全部 tmux 会话」**（`list-sessions`，会话快照的探测器：\
+             `R52` 裁定一「向快照发一次询问, 快照更新一次」那「一次询问」；一次调用列全部，不是每个成员探一次）。\
+             **只读 tmux**，不改任何状态。",
             "缩性质",
-            "同 `control/gate.rs` 那条：只读，等有判据能机检「这个起进程点只读」时摘出去。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二个 tmux 子命令 —— \
-             这一处的立身之本就是「列全部会话只有一处」，加一个子命令就要回来重判。",
+            "tmux 那一形宿主整个删掉（托管成为唯一宿主）的那一版。\
+             ⚠ 在那之前**不许**往本文件自己发的那几样底下加会改 tmux 状态的子命令 —— 写面归调用方、各自登记。",
         ),
         (
             // 搬家不是新增：`Command::new("tmux")` 从 `identity_tag.rs` 挪进它的 `door`
@@ -1234,6 +1231,9 @@ mod spawn_registry {
         ),
     ];
 
+    /// 经宿主口起 tmux 的写法：调用方那份文件算起 tmux（构造本身住 `host/tmux.rs`）。
+    const HOST_TMUX_CHILD: &str = "host::tmux::child(";
+
     /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
     #[test]
     fn every_process_spawn_in_production_is_registered() {
@@ -1276,6 +1276,10 @@ mod spawn_registry {
         let mut found: Vec<(String, String)> = Vec::new();
         for (name, raw) in &files {
             let prod = guard_core::production_code(raw);
+            // 经宿主口起 tmux（`host::tmux::child(`）算这份文件起 tmux：写面逐个调用方登记。
+            for _ in prod.matches(HOST_TMUX_CHILD) {
+                found.push((name.clone(), "tmux".to_string()));
+            }
             let mut from = 0usize;
             while let Some(rel) = prod[from..].find("Child::new(") {
                 let at = from + rel + "Child::new(".len();
@@ -1375,7 +1379,7 @@ mod spawn_registry {
         let shell =
             guard_core::production_code(include_str!("../../src/backend/platform/shell/mod.rs"));
         assert!(
-            hook.contains("Child::new(\"tmux\")"),
+            hook.contains(HOST_TMUX_CHILD),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
         );
         assert!(
@@ -1429,6 +1433,9 @@ mod spawn_registry {
                 }
                 let prod =
                     guard_core::production_code(&std::fs::read_to_string(&path).expect("read rs"));
+                if prod.contains(HOST_TMUX_CHILD) {
+                    found.push((rel.clone(), "tmux".to_string()));
+                }
                 let mut from = 0usize;
                 while let Some(at) = prod[from..].find("Child::new(") {
                     let i = from + at + "Child::new(".len();
@@ -1480,7 +1487,7 @@ mod spawn_registry {
 /// # 它盖多大（⚠ 别读大）
 ///
 /// **只盖 `control/capture_pane.rs` 这一份文件。** 它不是通用判据
-/// ⇒ **不许**拿它去把 `control/gate.rs` / `common/session_snapshot.rs` 那两条
+/// ⇒ **不许**拿它去把 `control/gate.rs` / `host/tmux.rs` 那两条
 /// 「只读 tmux」的受管例外摘掉 —— 那两处今天仍然只有 `ALLOWED` 那一行看着。
 ///
 /// # 两层 ＋ 一条反向自检，缺一不可
@@ -1576,7 +1583,7 @@ mod capture_is_read_only {
         );
         guard_core::assert_no_test_code("capture_is_read_only", &prod);
         assert!(
-            prod.contains(&format!("Child::{}", "new(\"tmux\")")),
+            prod.contains(&format!("host::tmux::{}", "child(")),
             "那一处起进程不见了 —— 本模块声称盖的东西已经不在它声称的地方了"
         );
     }
@@ -1666,7 +1673,7 @@ mod capture_is_read_only {
     #[test]
     fn the_capture_site_is_one_shot() {
         let prod = site();
-        let spawns = prod.matches(&format!("Child::{}", "new(")).count();
+        let spawns = prod.matches(&format!("host::tmux::{}", "child(")).count();
         assert_eq!(
             spawns, 1,
             "抓屏那一处的生产段里有 {spawns} 处起进程 —— 该恰好 1 处。\n\
