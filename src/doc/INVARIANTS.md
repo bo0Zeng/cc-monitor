@@ -55,7 +55,7 @@
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
-| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫） |
+| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `ssh_config` `profiles-written.json` `cache/skeleton/` `cache/listing.json` `cache/remote-listing/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 终端用的 ssh 配置 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫）· 远端那几台的会话清单副本（照那台再问一次整份） |
 | `relay-key` `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `bookmarks.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `rotation-uses.json` `lineage.json` `launch-accounts.json` `known_hosts` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 这台的书签（文件窗口与手机收藏的目录）· 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号 · 各台的主机钥匙（删了下回连上就是首见）。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
@@ -280,7 +280,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 
 ## 24. 远端活跃集 `remote_active` 恒等于"前端当前应视为 live 的远端 sid"（issue #20）
 
-monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那台后端的会话账本裁（`observe/session_ledger.rs::SessionLedger`，单写者 = 发帧唯一出口），成品帧 `session_state`；monitor 只留成品缓存 `session_book.rs`（本机远端同一条 `session-book-emitter` 线程转交，不裁决），自己唯一知道的事实是「到那台的连接断了」⇒ 那台的成品作废、界面说「说不清」，不许显示成「已结束」。
+monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那台后端的会话账本裁（`observe/session_ledger.rs::SessionLedger`，单写者 = 发帧唯一出口），成品帧 `session_left`（去向在 `face.life`）；monitor 只留成品缓存 `session_book.rs`（本机远端同一条 `session-book-emitter` 线程转交，不裁决），自己唯一知道的事实是「到那台的连接断了」⇒ 那台的成品作废、界面说「说不清」，不许显示成「已结束」。
 
 两条派生约束照旧：① 一个会话的 `session_added` 必须先于（或同批于）它的行到达；② 前端把起停帧与行同序处理（`events.ts` 同一条队列）。
 

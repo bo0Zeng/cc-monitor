@@ -11,9 +11,9 @@ import { toast, failToast } from "./kit/toast";
 import { openSession } from "./session-open";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, isOldBackend, refusalIn } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, isOldBackend } from "./ipc/chan-caller";
 import type { FrontResult } from "./front-result";
-import type { FrontOutcome } from "./generated/FrontOutcome";
+import type { FrontTold } from "./generated/FrontTold";
 import type { SessionWindow } from "./generated/SessionWindow";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
@@ -248,8 +248,8 @@ export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: 
 /** 壳那一跳的期限（极端情况下 Win32 调用卡住）：到了 ⇒ 「无应答」。 */
 const FRONT_SHELL_MS = 5000;
 
-/** 壳那一跳：期限内回结局（`null` ＝ 标签没对上、链又空）；到期 ⇒ `timeout`；出错 ⇒ `unknown`（细节可复制）。 */
-async function shellFront(ask: () => Promise<FrontOutcome | null>): Promise<FrontResult | null> {
+/** 壳那一跳：期限内回切过去了或那一张（`null` ＝ 标签没对上、链又空）；到期 ⇒ `timeout`；出错 ⇒ `unknown`（细节可复制）。 */
+async function shellFront(ask: () => Promise<FrontTold | null>): Promise<FrontResult | null> {
   let timer = 0;
   try {
     return await Promise.race([
@@ -270,42 +270,25 @@ async function shellFront(ask: () => Promise<FrontOutcome | null>): Promise<Fron
 /** 本机后端那一问的期限：远端会话它要经那台问一次（读 `/proc` ＋ 问一次 tmux）、再读一次这台的连接表与进程表。 */
 const WINDOW_ASK_MS = 15_000;
 
-/** 本机后端说了链为什么是空的 ⇒ 结局族。 */
+/** 本机后端写好的那一张（链为什么是空的）；链空却没带 ⇒ 认不出。 */
 function placedResult(p: SessionWindow): FrontResult {
-  switch (p.why) {
-    case "elsewhere":
-      return { kind: "elsewhere", addr: p.addr ?? "" };
-    case "query-failed":
-      return { kind: "query-failed", detail: "session-window: query-failed" };
-    case undefined:
-      return { kind: "bad-shape", detail: "session-window: empty chain without why" };
-    default:
-      return { kind: p.why };
-  }
+  return p.face ? { kind: "said", ...p.face } : { kind: "bad-shape", detail: "session-window: empty chain without face" };
 }
 
-/** 那一问失败了 ⇒ 结局族：本机后端的码（会话不在 · 那台旧 · 到期 · 没问到那台，那一句照摆）· 通道那一跳的归因（断开那一句是连接层交出的，照摆）。 */
+/**
+ * 那一问失败了 ⇒ 出口自己那一跳的结局：本机后端不认这一问 · 通道那一跳的归因（断开那一句是连接层交出的，照摆）· 别的（这台没查成的码也在这里，细节可复制）。
+ * 会话不在 · 那台旧 · 那台到期 · 没问到那台是后端写好的那一张，不走这里。
+ */
 function failedAsk(e: unknown): FrontResult {
-  const refused = refusalIn(e);
-  switch (refused?.code) {
-    case "no_such_session":
-      return { kind: "not-live" };
-    case "backend_old":
-      return { kind: "too-old" };
-    case "timed_out":
-      return { kind: "timeout" };
-    case "unreached":
-      return { kind: "offline", said: refused.message };
-  }
   if (isOldBackend(e)) return { kind: "too-old" };
   if (e instanceof ChanError && e.error.layer === "hop") return e.error.why === "Overrun" ? { kind: "timeout" } : { kind: "offline", said: e.message };
   return { kind: "unknown", detail: e instanceof Error ? e.message : String(e) };
 }
 
 /**
- * ↗ 拉会话的终端到前台（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链，或原因），
- * 答话原样交壳一次（先按标签、再沿链找窗口、三重指纹校验、拉前）。后端说了原因、又没有标签可找 ⇒ 不找窗口；壳没对上 ⇒ 摆后端那条原因。
- * 回结局族（界面照族排版，`front-result.ts`）。
+ * ↗ 拉会话的终端到前台（本机会话与远端会话同一条）：问本机后端一次这条会话在这台电脑上的哪儿（`session-window`：窗口标签 · 进程链 · tmux，或写好的那一张），
+ * 答话原样交壳一次（先按标签、再沿链找窗口、三重指纹校验、拉前）。后端说了原因、又没有标签可找 ⇒ 不找窗口；壳没对上 ⇒ 摆后端那一张。
+ * 回切过去了 · 那一张 · 出口自己那一跳的失败（`front-result.ts` 照摆）。
  */
 export async function bringTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
   let placed: SessionWindow;
@@ -315,7 +298,7 @@ export async function bringTerminalToFront(origin: Origin, sessionId: string): P
     return failedAsk(e);
   }
   if (placed.labels.length === 0 && placed.chain.length === 0) return placedResult(placed);
-  return (await shellFront(() => commands.bring_terminal_to_front({ labels: placed.labels, chain: placed.chain }))) ?? placedResult(placed);
+  return (await shellFront(() => commands.bring_terminal_to_front({ labels: placed.labels, chain: placed.chain, tmux: placed.tmux }))) ?? placedResult(placed);
 }
 
 /** 关 tab 时让后端把这个会话的重放历史丢掉（失败只记日志）。 */

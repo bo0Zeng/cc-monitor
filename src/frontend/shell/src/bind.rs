@@ -359,67 +359,9 @@ fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
 }
 
-/// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数和原因。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum FrontOutcome {
-    /// 窗口到前面了（核过前台），要切的标签页也选中了（或窗口里只有一个标签 / 没有标签这回事）。
-    Switched,
-    /// 链上哪一级都认不出显示在哪个窗口，终端程序又开着几个窗口 ⇒ 分不清；`count` 是候选窗口个数，`why` 是为什么认不出。
-    Several {
-        program: String,
-        count: usize,
-        why: SeveralWhy,
-    },
-    /// 窗口到前面了，标签页没切成（原因见 `why`）：前面显示的可能是同一窗口里别的标签。
-    SwitchedWindow { why: TabMiss },
-    /// 认得的那个窗口已经不在了。
-    WindowGone,
-    /// 句柄或进程号已被别的进程复用 ⇒ 认不准（细节进日志）。
-    Unclear,
-    /// 找到了，系统不许抢前台（它在任务栏闪），或答应了前台却没换。
-    Refused,
-    /// 整条链上哪一级都没有窗口：真在后台。
-    NoWindow { program: String },
-    /// Wayland 会话：别的程序的窗口 cc-monitor 看不见、也切不过去（`desktop` 是桌面名，可能空）。界面给［在 cc-monitor 里打开］。
-    DesktopWontSwitch { desktop: String },
-    /// 这台系统没有「按句柄找 / 验 / 拉前窗口」这一族。
-    Unsupported,
-}
-
-/// 分不清时，链上为什么没有一级认出它显示在哪个窗口（[`several_why`] 判）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "kebab-case")]
-pub enum SeveralWhy {
-    /// Linux：本会话的 shell 没登记（开在接上终端之前）。
-    Unregistered,
-    /// Windows：借本会话的控制台被系统拒了。
-    ConsoleUnreachable,
-    /// Windows：终端是以管理员身份运行的，cc-monitor 借不到它名下的控制台。
-    Elevated,
-    /// Windows：终端程序不提供控制台（不把伪控制台挂到自己窗口下，如 VS Code 的终端）。
-    Foreign,
-}
-
-/// 窗口切过去了、标签页没切成的原因（[`pick_tab`] · [`tab_step`] 判）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "kebab-case")]
-pub enum TabMiss {
-    /// 记号一直没出现在标签名上：标签名被固定（手动改过名）· 终端设置不显示程序标题（`suppressApplicationTitle`）。
-    TitleIgnored,
-    /// 读不到 / 点不了那个窗口的标签页（UI Automation 不给）。
-    NoUia,
-    /// 终端是以管理员身份运行的：cc-monitor 无权读它的标签页。
-    Elevated,
-    /// 读不到本会话的控制台（挂不上记号）。
-    NoConsole,
-}
+// ↗ 一次的结局（`FrontOutcome`）与它的两种原因住 `cmd_wire::front`：浮层那一张也在那里写（[`FrontOutcome::told`]），壳只判窗口的事。
+// 分不清的原因由 [`several_why`] 判，标签页没切成的原因由 [`pick_tab`] · [`tab_step`] 判。
+use cmd_wire::front::{FrontOutcome, SeveralWhy, TabMiss};
 
 /// 这一种桌面会话上 ↗ 走不走得通：Windows · X11 ⇒ 走（`None`）；Wayland ⇒ 照实说切不了；别的 ⇒ 不支持。
 pub(crate) fn refusal_of(session: &crate::platform::hwnd::DisplaySession) -> Option<FrontOutcome> {
