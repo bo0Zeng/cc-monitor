@@ -46,7 +46,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/asks.rs",
         include_str!("../../src/backend/agents/asks.rs"),
     ),
-    // P4f：`control/cc_bus.rs` 里有 `"--` 打头的字面量（转调 `cc-list --tsv` 的旗标）。派生的文件集按「生产段里出现 `"--`」收人，
+    // P4f：`control/cc_bus.rs` 里有 `"--` 打头的字面量（转调 `cc-bus list --tsv` 的旗标）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
     (
         "control/cc_bus.rs",
@@ -156,7 +156,7 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
 ///
 /// [`dispatched_subcommands`] 把 [`DISPATCH_FILES`] 里**每一个** `"--x"` 字面量都当成
 /// 「后端自己认的 token」，于是要求它进 `lib.rs` 的 argv 三分表、进 `IPC-PROTOCOL.md §10`。
-/// 而后端转调 `cc-list` 时要发 `--tsv` —— 那是**cc-list 的**旗标：塞进 `SUBCOMMAND_OPTIONS`
+/// 而后端转调 `cc-bus list` 时要发 `--tsv` —— 那是**cc-bus list 的**旗标：塞进 `SUBCOMMAND_OPTIONS`
 /// 会改 `is_query_mode` 的行为（`--tsv` 打头的 argv 从此被当成「子命令选项脱离了子命令」），
 /// 写进 §10 会让冻结契约描述一件它不负责的事。
 /// 旧模型里只有两类（wire 面 · 终端面 [`TERMINAL_SURFACE_FILES`]），这是第三类。
@@ -177,9 +177,9 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     // 一份文件发给几个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
     (
         "control/cc_bus.rs",
-        "src/shared/cc-bus/scripts/cc-list",
+        "src/shared/cc-bus/scripts/cc-bus-list.sh",
         &["--tsv"],
-        "`bus-list` 转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
+        "`bus-list` 转调 `cc-bus list --tsv`（机器可读的名册）。是 cc-bus list 的命令面，不是后端的子命令。",
     ),
     // 子进程是仓外的 `claude` ⇒ ② 那一侧读金样 `agent-profile-golden.tsv` 里 flag 形的 `resume_token`
     //   （那张表记的就是各家 agent 的命令形，见接盘判据里按扩展名分的那一支）。
@@ -537,7 +537,7 @@ mod tests {
         accepts
     }
 
-    /// 没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-list` 的 `--tsv`）。
+    /// 没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-bus list` 的 `--tsv`）。
     fn shell_first_arg_flags(script: &str) -> Vec<String> {
         let pat = "[ \"${1:-}\" = --";
         script

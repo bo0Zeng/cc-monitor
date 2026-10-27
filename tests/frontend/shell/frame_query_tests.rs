@@ -648,7 +648,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。
     (
         "bus-inbox",
-        "新帧命令：后端转调只读的 `cc-log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
+        "新帧命令：后端转调只读的 `cc-bus log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
          界面 `cc-bus-control.ts::decodeInbox` 按形状收",
     ),
     // `mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
