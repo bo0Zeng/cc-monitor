@@ -2,7 +2,11 @@
 //! 那台的常驻流这一轮怎么了（`control/feeds.rs`，循环交的那一态原样）。判定在 `deploy::machine`；每变一次推 `changed {machine, key: 名字, body: 成品}`。
 //! 本机（键 `<local>`）也是其中一台：这个后端在答就是连着、与手上同一份字节，那一行由这里出（[`local_row`]）。
 //! 后端重启表就空：各台的常驻流随后端一起重起，各自重报。
+//!
+//! 成品里到那台的连接（`links`：每条 SSH 连接压没压 · 进出字节）不是这一轮的事实，出成品时照本进程的连接池现填
+//! （[`crate::dial::links`]）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
 
+use crate::dial::links::Links;
 use cmd_wire::machine::{MachineState, Round};
 use deploy::machine::{fold, product, Entry, Fact};
 use std::collections::BTreeMap;
@@ -19,16 +23,41 @@ fn table() -> std::sync::MutexGuard<'static, BTreeMap<String, Entry>> {
 pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<(String, MachineState)> {
     static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<(String, MachineState)>> =
         std::sync::OnceLock::new();
+    follow_pool();
     TX.get_or_init(|| tokio::sync::broadcast::channel::<(String, MachineState)>(64).0)
 }
 
-/// 机器表此刻那一张：名字 → 连不连。
-fn hosts() -> Vec<(String, bool)> {
-    crate::control::machines::answer_read_in(crate::platform::paths::home_dir().as_deref())
-        .hosts
+/// 池里成员动了 ⇒ 每台照此刻的连接重推一份。一个进程起一次：头一回在异步运行时里要这条通道的那一下起
+/// （流连接订它、各台的常驻流推它，都在运行时里）；不在运行时里 ⇒ 这一下不起，下一回再看。
+fn follow_pool() {
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    rt.spawn(follow(crate::dial::links::moved(), table_moved));
+}
+
+/// 每记一笔「成员动了」就推一遍（`push`）；池没了（发端收了）⇒ 收工。
+async fn follow(mut moved: tokio::sync::watch::Receiver<u64>, push: fn()) {
+    while moved.changed().await.is_ok() {
+        push();
+    }
+}
+
+/// 机器表此刻那一张：名字 → 连不连；连同到每台的连接（照同一张表归）。
+fn hosts() -> (Vec<(String, bool)>, Links) {
+    let rows =
+        crate::control::machines::answer_read_in(crate::platform::paths::home_dir().as_deref())
+            .hosts;
+    let table: Vec<crate::dial::Host> = rows.iter().map(|r| (**r).clone()).collect();
+    let names = table
         .iter()
         .map(|h| (h.name().to_string(), h.connect))
-        .collect()
+        .collect();
+    (names, crate::dial::links::now(&table))
 }
 
 fn enabled_in(hosts: &[(String, bool)], machine: &str) -> bool {
@@ -38,31 +67,46 @@ fn enabled_in(hosts: &[(String, bool)], machine: &str) -> bool {
         .is_none_or(|(_, c)| *c)
 }
 
-/// 收一件事实、推一帧。
-pub(crate) fn note(machine: &str, fact: Fact) -> MachineState {
-    note_in(&hosts(), machine, fact)
+/// 一台的成品：判定那一份 ＋ 此刻到它的连接。
+fn product_in(e: &Entry, machine: &str, enabled: bool, links: &Links) -> MachineState {
+    let mut p = product(e, machine, enabled, true);
+    p.links = links.get(machine).cloned().unwrap_or_default();
+    p
 }
 
-/// [`note`] 的本体（机器表由调用方给）。
-pub(crate) fn note_in(hosts: &[(String, bool)], machine: &str, fact: Fact) -> MachineState {
+/// 收一件事实、推一帧。
+pub(crate) fn note(machine: &str, fact: Fact) -> MachineState {
+    let (hosts, links) = hosts();
+    note_in(&hosts, &links, machine, fact)
+}
+
+/// [`note`] 的本体（机器表与连接由调用方给）。
+pub(crate) fn note_in(
+    hosts: &[(String, bool)],
+    links: &Links,
+    machine: &str,
+    fact: Fact,
+) -> MachineState {
     let enabled = enabled_in(hosts, machine);
     let p = {
         let mut t = table();
         let e = t.entry(machine.to_string()).or_default();
         fold(e, fact);
-        product(e, machine, enabled, true)
+        product_in(e, machine, enabled, links)
     };
     let _ = changes().send((machine.to_string(), p.clone()));
     p
 }
 
-/// 机器表改了（`machines::ring`）：表里没了的那几台作废；每台照「连接这台」现推一帧（停用 ⇄ 恢复）。
+/// 机器表改了（`machines::ring`）· 池里的连接动了（[`follow_pool`]）：表里没了的那几台作废；
+/// 每台照「连接这台」与此刻的连接现推一帧。
 pub(crate) fn table_moved() {
-    table_moved_in(&hosts());
+    let (hosts, links) = hosts();
+    table_moved_in(&hosts, &links);
 }
 
-/// [`table_moved`] 的本体（机器表由调用方给）。
-pub(crate) fn table_moved_in(hosts: &[(String, bool)]) {
+/// [`table_moved`] 的本体（机器表与连接由调用方给）。
+pub(crate) fn table_moved_in(hosts: &[(String, bool)], links: &Links) {
     let products: Vec<(String, MachineState)> = {
         let mut t = table();
         t.retain(|m, _| hosts.iter().any(|(n, _)| n == m));
@@ -71,7 +115,7 @@ pub(crate) fn table_moved_in(hosts: &[(String, bool)]) {
             .map(|(n, c)| {
                 (
                     n.clone(),
-                    product(t.get(n).unwrap_or(&Entry::default()), n, *c, true),
+                    product_in(t.get(n).unwrap_or(&Entry::default()), n, *c, links),
                 )
             })
             .collect()
@@ -83,18 +127,19 @@ pub(crate) fn table_moved_in(hosts: &[(String, bool)]) {
 
 /// 机器表里每台此刻的成品（`machine-read`）。
 pub(crate) fn read() -> BTreeMap<String, MachineState> {
-    read_in(&hosts())
+    let (hosts, links) = hosts();
+    read_in(&hosts, &links)
 }
 
-/// [`read`] 的本体（机器表由调用方给）：表里每台，外加本机那一行。
-pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState> {
+/// [`read`] 的本体（机器表与连接由调用方给）：表里每台，外加本机那一行。
+pub(crate) fn read_in(hosts: &[(String, bool)], links: &Links) -> BTreeMap<String, MachineState> {
     let t = table();
     let mut out: BTreeMap<String, MachineState> = hosts
         .iter()
         .map(|(n, c)| {
             (
                 n.clone(),
-                product(t.get(n).unwrap_or(&Entry::default()), n, *c, true),
+                product_in(t.get(n).unwrap_or(&Entry::default()), n, *c, links),
             )
         })
         .collect();
@@ -103,6 +148,7 @@ pub(crate) fn read_in(hosts: &[(String, bool)]) -> BTreeMap<String, MachineState
 }
 
 /// 本机那一行：问得到这个后端 ⇒ 连着、与手上同一份字节；版本号是这份二进制出自的那一版（`build.rs` 交的）。
+/// 不经 SSH ⇒ 没有连接那一格。
 fn local_row() -> MachineState {
     let mut e = Entry::default();
     fold(
