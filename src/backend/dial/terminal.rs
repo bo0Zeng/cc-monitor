@@ -340,12 +340,9 @@ fn login_shell(
     ssh: &SshClient,
 ) -> Result<SshCommand, CmdErr> {
     if req.machine.is_local() {
-        let command = if powershell {
-            "Set-Location -LiteralPath $HOME".to_string()
-        } else {
-            posix::cd_then_login_shell(None)
-        };
-        return Ok(SshCommand { command });
+        return Ok(SshCommand {
+            command: local_login_shell(powershell)?,
+        });
     }
     let name = req.machine.to_string();
     if !hosts.iter().any(|h| h.name() == name)
@@ -370,8 +367,24 @@ fn login_shell(
     })
 }
 
+/// 本机那一台的登录 shell（不走 ssh）：POSIX `exec ${SHELL:-bash} -l`；PowerShell 窗口本身就是 shell ⇒ 只回家目录。
+/// 说不出家目录 ⇒ 判不了，不猜一个。
+pub(crate) fn local_login_shell(powershell: bool) -> Result<String, CmdErr> {
+    if !powershell {
+        return Ok(posix::cd_then_login_shell(None));
+    }
+    let Some(home) = crate::platform::paths::home_dir() else {
+        return Err((
+            "unobservable",
+            copy_text("beTerminal.login.noHome", &[]),
+        ));
+    };
+    let line = crate::platform::shell::powershell::set_location(&ps_literal(&home.to_string_lossy()));
+    Ok(line.trim_end().trim_end_matches(';').to_string())
+}
+
 /// 这台找到的 ssh 客户端全路径；没装 / 判不了 ⇒ 那一句（不说没装）。
-fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, CmdErr> {
+pub(crate) fn ssh_path(ssh: &SshClient, powershell: bool) -> Result<&str, CmdErr> {
     match ssh {
         SshClient::At(p) => Ok(p),
         SshClient::Missing => {

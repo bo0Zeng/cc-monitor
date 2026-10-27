@@ -11654,6 +11654,63 @@
       "args": ["why"],
       "limited": ["SSH"]
     },
+    "beTerminal.login.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法判断本机家目录 · 本机 shell 未打开",
+      "args": []
+    },
+    "beMachineMenu.action.notNow": {
+      "kind": "body",
+      "role": "原因格",
+      "zh": "{machine} {word}",
+      "args": ["machine", "word"]
+    },
+    "beMachineMenu.terminal.local": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "本机 shell",
+      "args": []
+    },
+    "beMachineMenu.terminal.ssh": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "ssh {machine} · 登录 shell",
+      "args": ["machine"],
+      "limited": ["SSH"]
+    },
+    "beMachineMenu.terminal.hostKey": {
+      "kind": "body",
+      "role": "原因格",
+      "zh": "主机指纹变更 · 先比对指纹",
+      "args": []
+    },
+    "beMachineMenu.terminal.anyway": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-monitor 连接失败 · 终端照开",
+      "args": []
+    },
+    "beMachineMenu.add.where": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "设置 → 机器 → 从 ssh 配置导入",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "beMachineMenu.status.where": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "设置 → 机器 → {machine}",
+      "args": ["machine"]
+    },
+    "beMachineMenu.menu.noSuch": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "机器表与 ssh 配置里都没有 {machine}",
+      "args": ["machine"],
+      "limited": ["SSH"]
+    },
     "rsLaunch.local.spawnFailed": {
       "kind": "error",
       "role": "原因格",

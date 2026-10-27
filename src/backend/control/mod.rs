@@ -35,6 +35,7 @@ pub mod feeds; // 各台的常驻流（机器表里要连的那几台各一条�
 pub mod files_commit;
 pub(crate) mod machine_prefs;
 pub use machine_prefs::apply_agent_homes;
+pub(crate) mod machine_menu; // 命令面板打机器名：`machine-find` 认那台 · `machine-menu` 那台能做的几样
 pub(crate) mod machine_state;
 pub(crate) mod machines;
 // 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。

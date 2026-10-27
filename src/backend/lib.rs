@@ -319,6 +319,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--machines-read",
     "--machines-try",
     "--machines-set",
+    // 命令面板打机器名那一问（`machine-find`：读机器表 ＋ `~/.ssh/config`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--machine-find",
     // 忘掉一台的主机指纹（`host-keys-forget`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--host-keys-forget",
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

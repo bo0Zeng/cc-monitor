@@ -571,7 +571,8 @@ fn a_login_shell_on_this_machine_is_the_local_login_shell() {
     let posix = login(&json!({ "machine": "<local>" }), &[], false, &SshClient::Missing).unwrap();
     assert_eq!(posix, "exec ${SHELL:-bash} -l");
     let ps = login(&json!({ "machine": "<local>" }), &[], true, &SshClient::Missing).unwrap();
-    assert_eq!(ps, "Set-Location -LiteralPath $HOME");
+    let home = crate::platform::paths::home_dir().expect("测试档有家目录");
+    assert_eq!(ps, format!("Set-Location -LiteralPath {}", ps_literal(&home.to_string_lossy())));
 }
 
 /// 机器表里没有、`~/.ssh/config` 里恰好有那个 Host ⇒ 照用户的 ssh 配置连（只交别名）；两处都没有 ⇒ 照旧说查无。
