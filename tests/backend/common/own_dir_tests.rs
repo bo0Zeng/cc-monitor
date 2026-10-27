@@ -84,12 +84,12 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
     (
         "control/files_commit/session_attachment.rs",
         "ensure_root",
-        "会话工作目录下的附件目录 `.ccm-attach/`（`session-attach-commit`，不在才建）",
+        "会话工作目录下的附件目录 `.ccm-attach/`（`session-attachment-commit`，不在才建）",
     ),
     (
         "control/files_commit/session_attachment.rs",
         "mint",
-        "附件目录里一份一个的编号目录（`session-attach-commit`）",
+        "附件目录里一份一个的编号目录（`session-attachment-commit`）",
     ),
     // 解压两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
     (

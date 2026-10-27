@@ -1,91 +1,22 @@
 #!/usr/bin/env bash
 # cc-bus commit <id> <令牌>
-#   两阶段读口的**第二跳:唯一的副作用**。校验通过 ⇒ 把已读位置推到令牌里的 `to`。校验不过 ⇒ **一个字节都不写**。
-#
-# ## 它是一次 CAS(比较后写),不是"覆盖"
-#
-# 两个读者同时 peek 到同一段、各自 commit:**先到的赢**。后到的拿 rc=11,
-# 而**它手上那段文本照常处理** —— 输掉的只是"谁来推位置",不是内容。
-# 🔴 调用方必须把 rc=11 当成「有人替我推过了」:**不重试、不报错给用户**。
-#    重试会转成一个循环;而把它当失败会把 cc-bus 的投递语义读反。
-# ⇒ 这等于把语义写死成 **at-least-once(可能重复,绝不吞掉)**,
-#   与 `cc-bus stop-hook` 早就选的那一边同向(逐字:「宁可下轮再读一次,也不能吞掉」)。
-#
-# ## 三条校验,全在锁内做(设计)
-#
-#   ① 格式   `^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$`           不合 ⇒ rc=2
-#   ② from == 当前 `.pos`?                               不等 ⇒ rc=11 STALE(别人已经推过了)
-#   ③ 第 to 行现算 cksum == anchor?                      不等 ⇒ rc=12 CHANGED(收件箱变了)
-#
-# ## 退出码(11/12 刻意选在 10 那一族)
-#
-#   0  推进成功
-#   2  令牌/参数格式非法,或令牌自相矛盾(`to ≤ from` 而收件箱并没有被截短)
-#   11 STALE   别人已经推过了     ┐ `route_process` 里 10 ＝「被阀门拦截(已消费,不投递不重试)」
-#   12 CHANGED 收件箱变了         ┘ ⇒ 11/12 与它同族:**不是错,是被规则挡下**(1/2/3 已被占)
-#   13 适配层办不到(锁这一侧没做 / trait 没装齐)
-# ⚠ 新增的码要同拍登记进 cc-bus 自己那张「退出码 → 语义码」映射表(`control/cc_bus.rs` 头注
-#   逐字:那张表**刻意不上收**,同一个码在不同插件里语义互斥)⇒ 加码就要改那一处。
-#   〔本轮那一处在写区外(`src/backend/`),已在交件里登记,没有偷偷改。〕
-#
-# ## 单调性:只许前进,唯一的例外逐条登记
-#
-# 已读位置只许**变大**。唯一允许变小的是「收件箱被外部清空/截短,而 `.pos` 仍高」——
-# 与 peek 的越界归零是同一格(不让它自愈就永远收不到新消息)。
-# 本脚本把它认成 `cur > total`,写之前记一行日志;除此之外 `to ≤ cur` 一律 rc=2。
-set -euo pipefail
-BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
+#   两阶段读的第二跳:交后端 `bus-commit`,它在锁里比令牌(CAS)再推已读位置;比不上 ⇒ 一个字节都不写。
+#   退出码:
+#     0  推进成功
+#     2  令牌 / 参数非法
+#     11 STALE   别人已经推过了 —— 照常处理手上那段,不重试、不当错(语义是 at-least-once:可能重复,绝不吞掉)
+#     12 CHANGED 收件箱在两跳之间变了 —— 位置没推,下一轮再读一次
+#     1  后端不在 / 写不成
+set -uo pipefail
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
-# shellcheck source=cc-bus-adapt.sh
-. "$SELFDIR/cc-bus-adapt.sh"
-ccbus_adapt_load || exit 13        # 两个 trait 装不齐就不干活(fail-closed,不退化成裸 flock)
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 
-id="${1:-}"; token="${2:-}"
-[ -n "$id" ] && [ -n "$token" ] || { echo "用法: cc-bus commit <id> <令牌>" >&2; exit 2; }
-[ $# -le 2 ] || { echo "cc-bus commit: 多余的参数" >&2; exit 2; }
-case "$id" in *[!A-Za-z0-9_-]*) echo "cc-bus commit: 非法 id '$id'" >&2; exit 2;; esac
-[[ "$token" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]] || { echo "cc-bus commit: 令牌格式非法 '$token'" >&2; exit 2; }
-
-from=${token%%.*}
-rest=${token#*.}
-to=${rest%%.*}
-anchor=${rest#*.}
-
-inbox="$BUS/inbox/$id.jsonl"
-posf="$BUS/state/$id.pos"
-[ -f "$inbox" ] || { echo "cc-bus commit: 没有收件箱 $inbox —— 它在 peek 之后被删了" >&2; exit 12; }
-
-# ★ 锁:**排他,锁文件仍是 `<inbox>.lock`**。
-#   `.pos` 与 inbox 第 `to` 行必须是**同一个快照** ⇒ 两份状态一把锁罩住。
-#   ❌ 不另开 `<id>.pos.lock`:两把锁保同一个不变式 ⇒ 有锁序 ⇒ 有死锁(`D1`)。
-(
-  store_lock_exclusive 9 || exit 13           # 锁失败要**显式**退出,不靠 errexit
-  mkdir -p "$BUS/state"
-  total=$(awk 'END{print NR}' "$inbox")
-  cur=$(cat "$posf" 2>/dev/null || echo 0)
-  [[ "$cur" =~ ^[0-9]+$ ]] || cur=0            # 与 cc-bus peek 同一条消毒(两边必须逐字同口径)
-  [ "$cur" = "$from" ] || {
-    printf 'cc-bus commit: STALE —— 令牌说 from=%s,盘上已经是 %s。有人替你推过了:照常处理你手上那段,别重试\n' \
-      "$from" "$cur" >&2
-    exit 11
-  }
-  now=$(twophase_anchor "$inbox" "$to")
-  [ "$now" = "$anchor" ] || {
-    printf 'cc-bus commit: CHANGED —— 第 %s 行现算 %s,令牌里是 %s。收件箱在两跳之间变了,不推进\n' \
-      "$to" "$now" "$anchor" >&2
-    exit 12
-  }
-  if [ "$to" -le "$cur" ]; then
-    if [ "$cur" -gt "$total" ]; then
-      route_log "POS heal $id $cur→$to(收件箱只剩 $total 行,越界归零)"
-    else
-      printf 'cc-bus commit: 令牌自相矛盾 —— to=%s 不大于 from=%s,而收件箱有 %s 行(没被截短)\n' \
-        "$to" "$cur" "$total" >&2
-      exit 2
-    fi
-  fi
-  # 接在哪一条后面由发信人写进信封(`re`),这里不再替谁记「最近读过谁的哪一条」。
-  echo "$to" > "$posf"                         # ★ 全仓第二处、也是两阶段口唯一的一处 .pos 推进
-) 9>>"$inbox.lock"
+[ $# -eq 2 ] && [ -n "$1" ] && [ -n "$2" ] || { echo "用法: cc-bus commit <id> <令牌>" >&2; exit 2; }
+ccbus_ask commit "$(jq -cn --arg id "$1" --arg t "$2" '{id:$id, token:$t}')" && exit 0
+case "$CCBUS_CODE" in
+  stale) exit 11 ;;
+  changed) exit 12 ;;
+  bad_*) exit 2 ;;
+  *) exit 1 ;;
+esac

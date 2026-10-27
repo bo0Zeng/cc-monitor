@@ -356,8 +356,8 @@ fn the_wire_face_requires_an_explicit_digest_and_knows_only_its_command() {
             "files-commit-upload",
             "files-stage-chunk",
             "files-commit-text",
-            "session-attach-commit",
-            "session-attach-drop"
+            "session-attachment-commit",
+            "session-attachment-drop"
         ]
     );
     // 表里每一条，分派都够得到（空参数 ⇒ 拒在参数那一关、码在它自己的登记里，不是「不认这条命令」那句）。

@@ -15,7 +15,8 @@ use layout::{DIR, GITIGNORE, GITIGNORE_BODY};
 pub type Fail = WriteFail;
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::attachment::{
-    AttachItem, AttachRefused, AttachVerdict, SessionAttachCommitReply, SessionAttachCommitReq,
+    AttachItem, AttachRefused, AttachVerdict, SessionAttachmentCommitReply,
+    SessionAttachmentCommitReq,
 };
 use copy_core::{copy_text, io_reason, size_text};
 use std::path::{Path, PathBuf};
@@ -165,7 +166,7 @@ fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, WriteFail> {
             return Err(path_fail(copy_text(
                 "beAttach.commit.notDir",
                 &[("path", &at.display().to_string())],
-            )))
+            )));
         }
         Err(_) => match face.make_dir(&at) {
             Ok(()) => {}
@@ -173,7 +174,7 @@ fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, WriteFail> {
             Err(e) => {
                 return Err(io_fail(&at, &e, |at, why| {
                     copy_text("beAttach.commit.mkdirFailed", &[("path", at), ("why", why)])
-                }))
+                }));
             }
         },
     }
@@ -193,7 +194,7 @@ fn ensure_root(face: &Face, cwd: &Path) -> Result<PathBuf, WriteFail> {
                         "beAttach.commit.ignoreFailed",
                         &[("path", at), ("why", why)],
                     )
-                }))
+                }));
             }
         }
     }
@@ -227,7 +228,7 @@ fn mint(
             Err(e) => {
                 return Err(io_fail(&dir, &e, |at, why| {
                     copy_text("beAttach.commit.mkdirFailed", &[("path", at), ("why", why)])
-                }))
+                }));
             }
         }
     }
@@ -245,10 +246,10 @@ pub fn commit(
     face: &Face,
     home: &Path,
     cwd: &Path,
-    req: SessionAttachCommitReq,
+    req: SessionAttachmentCommitReq,
     at_secs: i64,
     tz: &crate::common::time::Tz,
-) -> Result<SessionAttachCommitReply, WriteFail> {
+) -> Result<SessionAttachmentCommitReply, WriteFail> {
     if let Some(why) = cwd_state(cwd) {
         return Err(refused(why));
     }
@@ -282,7 +283,7 @@ pub fn commit(
             if let Ok(d) = walk_in_root(Last::Link, &root, &id) {
                 if let Err(gone) = face.delete_dir(&d) {
                     tracing::warn!(
-                        "[session-attach-commit] 没落成，空编号目录 {} 没删掉：{gone}",
+                        "[session-attachment-commit] 没落成，空编号目录 {} 没删掉：{gone}",
                         d.display()
                     );
                 }
@@ -292,7 +293,7 @@ pub fn commit(
     };
     sweep(face, cwd, u64::try_from(at_secs).unwrap_or(0), &id);
     let name = req.name;
-    Ok(SessionAttachCommitReply {
+    Ok(SessionAttachmentCommitReply {
         rel: layout::rel_of(&id, &name),
         path: crate::files::raw::to_path_buf(landed.path.bytes())
             .display()
@@ -309,8 +310,8 @@ pub fn commit(
 pub fn commit_here(
     face: &Face,
     cwd: &Path,
-    req: SessionAttachCommitReq,
-) -> Result<SessionAttachCommitReply, WriteFail> {
+    req: SessionAttachmentCommitReq,
+) -> Result<SessionAttachmentCommitReply, WriteFail> {
     let home = super::home_dir()?;
     let tz = crate::common::time::Tz::here();
     commit(face, &home, cwd, req, crate::common::time::now_secs(), &tz)

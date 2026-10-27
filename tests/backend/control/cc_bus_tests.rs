@@ -16,143 +16,75 @@ fn val<T: serde::Serialize>(v: T) -> serde_json::Value {
 fn parse_inbox(v: &serde_json::Value) -> Result<(String, u64), (String, String)> {
     super::parse_inbox(&owned(take(v))?)
 }
-fn agent(v: &serde_json::Value) -> BusAgent {
-    BusAgent {
-        id: v["id"].as_str().unwrap_or_default().to_string(),
-        title: v["title"].as_str().unwrap_or_default().to_string(),
-        unread: v["unread"].as_i64().unwrap_or_default(),
-        live: v["live"].as_bool(),
-    }
+fn rows_of(v: &serde_json::Value) -> Vec<String> {
+    v.as_array()
+        .expect("金样缺那几行")
+        .iter()
+        .map(|l| l.as_str().expect("一行不是字符串").to_string())
+        .collect()
 }
-fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, String)> {
-    super::inbox_reply(text).map(val)
-}
-fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
-    val(super::list_reply(agents.iter().map(agent).collect()))
-}
-/// **本模块每一条「转调 shell 脚本」的裁定，逐条写成数据。**
-///
-/// `(被调命令, 写面, 这一趟为什么不收进后端, 解锁条件)`
-///
-/// # 为什么有这张表
-///
-/// 定框 `K33` 逐字「**不要有什么 bash 脚本**」，而本模块今天**每一条**都在转调
-/// cc-bus 的脚本。`K-R111` 摸底把这件事登记为「后端那一侧也还有活」，
-/// `KR113D2` 逼出一次裁定：**收，还是不收，都要落成盘上看得见的东西**。
-/// 裁的是**乙（不收）** —— 理由逐条写在下面第三栏，**不是一句「以后再说」**。
-///
-/// 形状抄 `readonly_guard::spawn_registry::ALLOWED` 与 `stream::cli::NOT_ON_CLI`
-///（逐字：「把『为什么这条不上』写成**数据**，好让机检对着它比 —— 散文里说一遍，
-/// 下一个人加命令时看不见」）。
-///
-/// # ⚠ 它与 `readonly_guard::g6_reach` 那一格**不是同一条规矩的两处住址**
-///
-/// 那一格钉的是「只读铁律的豁免理由今天覆盖了哪几条被调命令」（`ALLOWED` 的键
-/// 分不出被调命令，那是它唯一的机器提醒）；本表钉的是「`K33` 对每一条各裁了什么」。
-/// 两者今天的成员集相同，**而都不许手抄** —— 各自从生产段现算。
-const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
-    (
-        "list",
-        "只读",
-        "cc-bus 的**收件箱与已读位置是它自己的私有格式**（`inbox/*.jsonl` \
-             ＋ `state/*.pos`，`cc-bus list` 现打就是在数这两样）。收进后端 = 把那份格式\
-             再实现一遍 ⇒ 一处改、一处漏，而且错得静悄悄。「后面我可能要改ccbus」\
-             ⇒ 今天焊进来的每一个字段，都是他改那天的一笔返工。",
-        "cc-bus 那份文件格式**稳下来**，或者 cc-bus 本身被收成后端的一部分（那时它就不是\
-             『外部插件』了，本表整张作废）。⚠ 解锁的判据不是『过了多久』，是**格式契约有没有定**。",
-    ),
-    (
-        "log",
-        "只读（共享锁，不推已读位置）",
-        "驾驶舱读收件箱的尾巴：收件箱与它的锁是 cc-bus 的私有格式（`inbox/<id>.jsonl` ＋ `<inbox>.lock`），\
-把命令当接口 ⇒ 后端转调它、不读那份文件；消费性读仍只走 `cc-bus peek` / `cc-bus commit`。",
-        "同 `list`：cc-bus 本身被收成后端的一部分的那天。",
-    ),
-];
 
-/// 从**生产段**现算：本模块今天经 [`crate::plugin::invoke`] 转调了哪几条 cc-bus 命令。
-///
-/// 取法与 `readonly_guard::g6_reach` 那一格**刻意相同**（`run("` / `read_via("` 之后
-/// 那一个字符串字面量）—— 两处认的是同一件事实，取法不同才会各说各话。
-fn transcalled_today() -> Vec<String> {
-    let prod = guard_core::production_code(include_str!("../../../src/backend/control/cc_bus.rs"));
-    let mut out: Vec<String> = Vec::new();
-    for opener in ["run(\"", "read_via(\""] {
-        let mut from = 0usize;
-        while let Some(k) = prod[from..].find(opener) {
-            let at = from + k + opener.len();
-            let end = prod[at..]
-                .find('"')
-                .expect("被调命令的字面量没有闭合 —— 抽取坏了");
-            out.push(prod[at..at + end].to_string());
-            from = at + end;
+fn codes_of(op: &str) -> Vec<String> {
+    let mut v: Vec<String> = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == op)
+        .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
+        .codes
+        .iter()
+        .map(|c| c.to_string())
+        .collect();
+    v.sort();
+    v
+}
+
+fn golden_codes(g: &serde_json::Value) -> Vec<String> {
+    let mut v: Vec<String> = g["codes"]
+        .as_array()
+        .expect("金样缺 codes")
+        .iter()
+        .map(|c| c.as_str().expect("码不是字符串").to_string())
+        .collect();
+    v.sort();
+    v
+}
+
+/// 这一块一个子进程都不起：收件箱住后端，读写都在 `store` 那一处，不起 cc-bus 脚本、不认它的输出形。
+#[test]
+fn the_bus_backend_starts_no_cc_bus_script() {
+    for (file, src) in [
+        (
+            "control/cc_bus.rs",
+            include_str!("../../../src/backend/control/cc_bus.rs"),
+        ),
+        (
+            "control/cc_bus/store.rs",
+            include_str!("../../../src/backend/control/cc_bus/store.rs"),
+        ),
+        (
+            "control/cc_bus_wire.rs",
+            include_str!("../../../src/backend/control/cc_bus_wire.rs"),
+        ),
+    ] {
+        let prod = guard_core::production_code(src);
+        for needle in [
+            "plugin::invoke",
+            "plugin::discover",
+            "Command::new",
+            "#cc-list-tsv",
+            "#cc-log",
+        ] {
+            assert!(!prod.contains(needle), "{file} 的生产段里还有 `{needle}`");
         }
     }
-    out.sort();
-    out.dedup();
-    out
-}
-
-/// ★★ `KR113D2`〔09-13 裁**乙**：这一趟不收〕：**每一条转调，都要有一条写在盘上的裁定。**
-///
-/// # 它逮哪三形
-///
-/// ① **登记被删掉** ⇒ 那条转调没有裁定了 —— 下一个人只会看见一句「这里在调 shell」，
-///    看不见「这是裁过的」，于是要么当成待办去动它，要么当成默认继续躺着。
-/// ② **新加一条转调而不裁** ⇒ `K33` 那条定框上又多一笔债，而没有任何人被通知。
-/// ③ **裁定过期**（表里那条命令今天已经不转调了）⇒ 幽灵条目
-///    （`spawn_registry` 那张表里躺过一条 13 天的幽灵，形状逐字相同）。
-///
-/// # ⚠ 它买不到什么
-///
-/// **不判那条理由说得对不对**（住址级判得了，语义判不了）。
-/// 它买到的是「这一族里没有一条是**没人裁过**就躺在那儿的」。
-#[test]
-fn every_shelled_out_command_carries_a_written_ruling() {
-    let today = transcalled_today();
-    // 反空真地板：抽取塌了的话，下面两个差集都会是空的，本条会零命中地绿。
+    // 正控：同一个认法在真起子进程的那一处认得出。
     assert!(
-        today.len() >= 2,
-        "生产段只抠到 {} 条转调（地板 2，实测 2）—— 抽取塌了，本条此刻在空转：{today:?}",
-        today.len()
+        guard_core::production_code(include_str!("../../../src/backend/plan/mod.rs"))
+            .contains("plugin::invoke")
     );
-    let ruled: Vec<&str> = TRANSCALLS.iter().map(|(c, ..)| *c).collect();
-    let unruled: Vec<&String> = today
-        .iter()
-        .filter(|c| !ruled.contains(&c.as_str()))
-        .collect();
-    assert!(
-        unruled.is_empty(),
-        "这几条转调 cc-bus 脚本的命令**没有一条写在盘上的裁定**：{unruled:?}\n\
-             定框 `K33` 逐字「不要有什么 bash 脚本」⇒ 每一条要么收进后端，要么在 `TRANSCALLS` \n\
-             里写明「写面 · 这一趟为什么不收 · 解锁条件」。写「以后再说」不算理由。"
-    );
-    let ghosts: Vec<&&str> = ruled
-        .iter()
-        .filter(|c| !today.contains(&c.to_string()))
-        .collect();
-    assert!(
-        ghosts.is_empty(),
-        "`TRANSCALLS` 里这几条**今天已经不转调了**：{ghosts:?} —— 裁定过期了，\n\
-             收进后端时要**同时**把它这一行删掉（不删就是一条幽灵，\n\
-             下一个人会照着一份不成立的理由做判断）。"
-    );
-    for (cmd, face, _, unlock) in TRANSCALLS {
-        assert!(
-            !face.trim().is_empty(),
-            "`{cmd}` 没写写面 —— 那一栏正是只读铁律那条豁免理由要引用的东西"
-        );
-        assert!(
-            unlock.chars().count() >= 20,
-            "`{cmd}` 没写解锁条件 —— 没有解锁条件的裁定会一直躺着，\
-                 而『躺着』与『裁过』在盘上长得一模一样"
-        );
-    }
 }
 
 /// **跨语言金样**：驾驶舱读收件箱的成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
-/// 要求：「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· 收件箱只看尾巴。
-/// 异源：输入样例经**生产**解析器（`parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。
+/// 异源：输入那几行经**生产**解析器（`parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。
 #[test]
 fn the_cockpit_read_products_match_the_cross_language_golden() {
     let g: serde_json::Value =
@@ -165,107 +97,57 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
     );
     assert_eq!(
         parse_inbox(&ib["badRequest"])
-            .expect_err("`--help` 当 id 必须在起进程之前拒")
+            .expect_err("`--help` 当 id 必须拒")
             .0,
         "bad_id"
     );
     assert_eq!(
-        inbox_reply(ib["log"].as_str().expect("缺 log")).expect("`cc-bus log` 样例解析失败"),
+        val(super::inbox_reply(&rows_of(&ib["lines"]))),
         ib["reply"],
         "`bus-inbox` 成品与金样不相等"
     );
-    for (op, key) in [("bus-inbox", "inbox")] {
-        let mut want: Vec<&str> = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == op)
-            .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
-            .codes
-            .to_vec();
-        want.sort_unstable();
-        let mut got: Vec<&str> = g[key]["codes"]
-            .as_array()
-            .expect("缺 codes")
-            .iter()
-            .map(|c| c.as_str().unwrap())
-            .collect();
-        got.sort_unstable();
-        assert_eq!(got, want, "金样 `{op}` 的拒绝码与后端登记的不相等");
-    }
-}
-
-/// 老 cc-bus（不认 `--tsv` / 没有 `cc-bus log`）与半份输出都**明说**，不猜着解成一份空名单。
-#[test]
-fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
-    let human = "ID           TMUX               待读\nx_cc         x_cc:0.0           2\n";
-    for (what, got) in [
-        ("名册", parse_roster_tsv(human).map(|_| ())),
-        (
-            "收件箱",
-            inbox_reply("{\"from\":\"a\",\"text\":\"b\"}\n").map(|_| ()),
-        ),
-    ] {
-        let e = got.expect_err(what);
-        assert!(
-            copy_core::copy_matches("beCcBus.read.tooOld", &e.1),
-            "{what}：老 cc-bus 那一句没说清下一步：{e:?}"
-        );
-    }
-    let half =
-        parse_roster_tsv("#cc-list-tsv\t2\nalpha_cc\t0\n").expect_err("缺末行的名册必须回错");
-    assert!(
-        copy_core::copy_matches("beCcBus.read.truncated", &half.1),
-        "{half:?}"
-    );
-    // 上一版的名册（带登记地址那一形）也是「cc-bus 比后端旧」，不按新的两格硬解。
-    let v1 = parse_roster_tsv("#cc-list-tsv\t1\nalpha_cc\ta:0.0\tts\t1\t0\n#skipped\t0\n")
-        .expect_err("上一版的名册必须明说");
-    assert!(
-        copy_core::copy_matches("beCcBus.read.tooOld", &v1.1),
-        "{v1:?}"
-    );
-    // 正控：首尾齐的空名单是「真的一个都没有」，不是错。
     assert_eq!(
-        parse_roster_tsv("#cc-list-tsv\t2\n#skipped\t0\n").unwrap(),
-        (Vec::new(), 0)
+        golden_codes(ib),
+        codes_of("bus-inbox"),
+        "金样 `bus-inbox` 的拒绝码与后端登记的不相等"
     );
 }
 
-/// 名单的行只有收件箱那两格（会话 id · 待读）；行形状不对、id 过不了本侧判定的都算坏行，不丢好行。
+/// 收件箱的回显超上限保尾、说 `truncated`；坏行跳过计数、不丢好行。
 #[test]
-fn the_roster_rows_are_inbox_id_and_unread_only() {
-    let (rows, skipped) = parse_roster_tsv(
-        "#cc-list-tsv\t2\nsid-a\t3\n--help\t1\nsid-b\tx\nsid-c\t1\textra\nsid-d\t0\n#skipped\t1\n",
-    )
+fn the_inbox_tail_keeps_the_newest_and_says_so() {
+    let good = serde_json::to_string(&BusEnvelope {
+        id: "m19a1b2c3d4e0001".into(),
+        ts: "2026-10-26T08:00:00Z".into(),
+        from: "peer-a".into(),
+        to: "alpha-b".into(),
+        tier: 2,
+        act: cmd_wire::bus::BusAct::Inform,
+        title: "占位".into(),
+        re: None,
+        refs: vec![],
+        text: "x".repeat(1024 * 1024),
+    })
     .unwrap();
+    let rows: Vec<String> = std::iter::repeat_n(good, 6)
+        .chain(["not json".to_string()])
+        .collect();
+    let r = super::inbox_reply(&rows);
+    assert!(r.truncated);
     assert_eq!(
-        rows,
-        vec![
-            RosterRow {
-                id: "sid-a".into(),
-                unread: 3
-            },
-            RosterRow {
-                id: "sid-d".into(),
-                unread: 0
-            },
-        ]
+        (r.messages.len(), r.skipped),
+        (3, 1),
+        "4 MiB 装得下末三封 ＋ 末行坏的那一行"
     );
-    assert_eq!(skipped, 4, "cc-bus 报的 1 行 ＋ 本侧拒的 3 行");
+    let r = super::inbox_reply(&rows[4..]);
+    assert!(!r.truncated);
+    assert_eq!((r.messages.len(), r.skipped), (2, 1));
 }
 
 /// 叫它什么 · 在不在只问后端那一处（判官由调用方交进来）；判不了 ⇒ `live` 是 null、标题照实就是会话 id。
 #[test]
 fn title_and_liveness_come_from_the_judge_and_unknown_stays_unknown() {
-    let rows = vec![
-        RosterRow {
-            id: "s1".into(),
-            unread: 1,
-        },
-        RosterRow {
-            id: "s2".into(),
-            unread: 0,
-        },
-    ];
+    let rows = vec![("s1".to_string(), 1), ("s2".to_string(), 0)];
     let got = roster_agents(&rows, &|sid| match sid {
         "s1" => Seen {
             title: Some("标题".into()),
@@ -295,69 +177,7 @@ fn title_and_liveness_come_from_the_judge_and_unknown_stays_unknown() {
     );
 }
 
-/// `P4f-Y4`：找不到时要说**查过哪儿**。
-///
-/// ⚠ 拼那句话的活搬去通用口了，**这一格没跟着搬**：它核的是 cc-bus 自己那三样
-///（两处固定位置的形状 + [`NOT_INSTALLED_HINT`] 这句尾巴），而 `tests/e2e/backend-cc-bus.sh` 的
-/// 第 6 组逐字 `grep` 的正是这三条。搬走它等于把那三条 e2e 的单测对位丢掉。
-#[test]
-fn the_not_installed_message_names_the_places_it_looked() {
-    let home = PathBuf::from("/home/u");
-    let fixed = fixed_candidates(None, Some(&home), "cc-bus");
-    assert_eq!(fixed.len(), 2, "固定位置应当是两处：{fixed:?}");
-    let msg =
-        crate::plugin::discover::not_installed_message("cc-bus", &fixed, 9, &NOT_INSTALLED_HINT);
-    assert!(msg.contains("/home/u/.local/bin/cc-bus"), "{msg}");
-    assert!(
-        msg.contains(".claude/skills/cc-bus/scripts/cc-bus"),
-        "{msg}"
-    );
-    assert!(
-        copy_core::copy_matches_with(
-            "beDiscover.notInstalledMessage.notFound",
-            &[("pathDirs", "9")],
-            &msg
-        ),
-        "PATH 那半没说：{msg}"
-    );
-    assert!(msg.contains("CC_BUS_BIN_DIR"), "没告诉人怎么指过去：{msg}");
-}
-
-#[test]
-fn the_override_dir_wins_over_the_fixed_places() {
-    let over = PathBuf::from("/opt/ccbus");
-    let home = PathBuf::from("/home/u");
-    let fixed = fixed_candidates(Some(&over), Some(&home), "cc-bus");
-    assert_eq!(fixed[0], PathBuf::from("/opt/ccbus/cc-bus"));
-    assert_eq!(fixed.len(), 3);
-}
-
-/// 读命令的退出码各自映射成语义码：入参被拒（2）与别的失败分得开，被信号打断与别的失败同档。
-///
-/// ⚠ 判据钉「互不相同」而不是逐条对字符串 —— 前者才是这条 DoD 的内容
-/// （并成一个码，人就分不出「我给的 id 不对」和「cc-bus 坏了」）。
-#[test]
-fn read_exit_codes_keep_refused_apart_from_failed() {
-    assert!(classify_exit("cc-bus log", Some(0), "", 10).is_ok());
-    let bad = classify_exit("cc-bus log", Some(2), "x", 10).unwrap_err().0;
-    let other = classify_exit("cc-bus log", Some(9), "x", 10).unwrap_err().0;
-    let killed = classify_exit("cc-bus log", None, "x", 10).unwrap_err().0;
-    let late = classify_exit("cc-bus log", Some(TIMED_OUT_CODE), "x", 10)
-        .unwrap_err()
-        .0;
-    assert_ne!(bad, other, "「入参被拒」与「别的失败」必须分得开");
-    assert_ne!(late, other, "超时单独一档");
-    assert_eq!(killed, other, "被信号打断与其它失败同档（都是 failed）");
-}
-
-/// 〔`INVARIANTS §47` ①〕**id 的形状在交给 `cc-bus send` / `cc-bus log` 之前先判**，
-/// 规则是共享那一份（`shell_quote_core::bus_id_ok`，全仓唯一；monitor 读收件箱用的是同一个函数）。
-///
-/// 这一条替掉了 `P4f-Y5` 那一格原来的判据（「backend 不重复校验收件人合法性，放行到 cc-bus send 那一步由它拒」）：
-/// `§47` 逐字「**『对端会校验』不是理由**」—— 界面那一道按删了之后，「本侧」就是真把 id 交出去的这一侧。
-/// ⚠ 判的是**形状**不是**成员资格**：一个形状合法但没登记过的名字照样发（`registered:false` 如实回），不在这里拒。
-///
-/// 样本取跨语言金样 `cc-bus-control.golden.json` 的 `ids`（手写：`--help` 在盘上真出现过）：两个入口正反各一格。
+/// 读面收的 id 在拼进收件箱路径之前先过形状判定（`§47`）。样本取跨语言金样 `cc-bus-control.golden.json` 的 `ids`。
 #[test]
 fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
     let g: serde_json::Value = serde_json::from_str(include_str!(
@@ -394,58 +214,39 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
             "{id:?}：那一句没点出是哪个值：{}",
             e.1
         );
+        for checked in [
+            peek_for_inbound(&BusPeekReq {
+                id: id.clone(),
+                max_lines: None,
+            })
+            .map(|_| ()),
+            unread_for_inbound(&BusUnreadReq { id: id.clone() }).map(|_| ()),
+        ] {
+            assert_eq!(
+                checked.unwrap_err().0,
+                "bad_id",
+                "{id:?}：peek · unread 也先判形状"
+            );
+        }
     }
     // 空是「缺」（`bad_args`），不是「形状不对」—— 两件事的话不一样。
     assert_eq!(parse_inbox(&json!({ "id": "" })).unwrap_err().0, "bad_args");
-    // 「规则只有一份、后端入口用的就是共享那一个」由 `tests/frontend/ui/judgment-single-home.vitest.ts` 的 J12 行钉（`rustNeedles`）。
 }
 
-/// ★★**跨语言金样**：界面直接收的 cc-bus 那几份成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
-///
-/// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线由界面经通道直接说（界面不发信）
-/// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
-///
-/// 各格异源：
-/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-bus list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `roster_agents`（挂身份空间）现算）·
-/// 码集合 == `inbound::REGISTRY` 那一块。
+/// ★★**跨语言金样**：界面直接收的 `bus-list` 成品，两侧读同一份 `tests/__fixtures__/cc-bus-control.golden.json`。
+/// 成品 == **生产**构造器（名单行由金样里那份收件箱样例经 `roster_agents` 现算）· 码集合 == `inbound::REGISTRY`。
 #[test]
 fn the_bus_products_match_the_cross_language_golden() {
-    use serde_json::{json, Value};
+    use serde_json::Value;
     let g: Value = serde_json::from_str(include_str!(
         "../../__fixtures__/cc-bus-control.golden.json"
     ))
     .expect("金样读不出来");
-    let codes_of = |op: &str| -> Vec<String> {
-        let mut v: Vec<String> = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == op)
-            .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
-            .codes
-            .iter()
-            .map(|c| c.to_string())
-            .collect();
-        v.sort();
-        v
-    };
-    let golden_codes = |op: &str| -> Vec<String> {
-        let mut v: Vec<String> = g[op]["codes"]
-            .as_array()
-            .unwrap_or_else(|| panic!("金样 `{op}` 缺 `codes`"))
-            .iter()
-            .map(|c| c.as_str().expect("码不是字符串").to_string())
-            .collect();
-        v.sort();
-        v
-    };
-    for op in ["bus-list"] {
-        assert_eq!(
-            golden_codes(op),
-            codes_of(op),
-            "金样里 `{op}` 的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
-        );
-    }
-    // bus-list：名单由输入样例现算（判官照样例里那几条会话答，样例里没有的 ⇒ 判不了）。
+    assert_eq!(
+        golden_codes(&g["bus-list"]),
+        codes_of("bus-list"),
+        "金样里 `bus-list` 的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
+    );
     let sessions = g["input"]["sessions"]
         .as_array()
         .expect("输入样例缺 `sessions`")
@@ -462,55 +263,97 @@ fn the_bus_products_match_the_cross_language_golden() {
             },
         )
     };
-    let agents: Vec<Value> = roster_agents(
-        &parse_roster_tsv(
-            g["input"]["ccListTsv"]
-                .as_str()
-                .expect("输入样例缺 `ccListTsv`"),
-        )
-        .expect("名册样例读得动")
-        .0,
-        &judge,
-    )
-    .into_iter()
-    .map(val)
-    .collect();
+    let rows: Vec<(String, u64)> = g["input"]["inboxes"]
+        .as_array()
+        .expect("输入样例缺 `inboxes`")
+        .iter()
+        .map(|r| {
+            (
+                r["id"].as_str().expect("缺 id").to_string(),
+                r["unread"].as_u64().expect("缺 unread"),
+            )
+        })
+        .collect();
     assert_eq!(
-        list_reply(agents),
+        val(list_reply(roster_agents(&rows, &judge))),
         g["bus-list"]["reply"],
         "`bus-list` 成品与金样不相等"
     );
 }
 
-/// 超时那句说的秒数 ＝ 实际等了多久：命令总期限把一发截短到 1 s（cc-bus 自己的期限是 10 s）⇒ 话里是 1，不是 10。
-/// 真起一个睡着的子进程走同一个原语（`plugin::invoke::run`），再经 cc-bus 这一侧的分档出那句话。
-#[cfg(unix)]
+/// 给 agent 读的那一段：一封一段、只印线上码、有引用才印引用那一行、读不懂的行跳过并在末尾说跳过几条。
 #[test]
-fn a_timeout_says_how_long_it_actually_waited() {
-    use crate::platform::child::{Budget, Deadline};
-    let _total = Budget::capped(Deadline::secs(1), None);
-    let out = crate::plugin::invoke::run(std::path::Path::new("sleep"), &["30"], 10, &[], None)
-        .unwrap_or_else(|_| panic!("起不来 sleep"));
-    assert!(out.timed_out());
-    assert_eq!(out.waited_secs, Some(1), "原语交回的不是截短后的那个时长");
-    let (code, said) = classify_exit("cc-bus log", out.code, "", waited_secs(&out)).unwrap_err();
-    assert_eq!(code, "child_timed_out");
-    assert!(
-        copy_core::copy_matches_with("beCcBus.timedOut.say", &[("secs", "1")], &said)
-            && !said.contains("10"),
-        "{said}"
+fn the_peeked_text_is_one_block_per_letter_with_wire_codes_only() {
+    let e = |id: &str, re: Option<&str>, refs: Vec<&str>| {
+        serde_json::to_string(&BusEnvelope {
+            id: id.into(),
+            ts: "2026-10-27T00:00:00Z".into(),
+            from: "aaaaaaaa-1111-2222-3333-444444444444".into(),
+            to: "bbbbbbbb-1111-2222-3333-444444444444".into(),
+            tier: 1,
+            act: cmd_wire::bus::BusAct::Answer,
+            title: "占位标题".into(),
+            re: re.map(str::to_string),
+            refs: refs.into_iter().map(str::to_string).collect(),
+            text: "占位正文".into(),
+        })
+        .unwrap()
+    };
+    let (text, shown, skipped) = render(&[
+        e(
+            "m1aaaaaaaaaaaa",
+            Some("m0aaaaaaaaaaaa"),
+            vec!["commit:393349b8b"],
+        ),
+        "not json".to_string(),
+        e("m2aaaaaaaaaaaa", None, vec![]),
+    ]);
+    assert_eq!((shown, skipped), (2, 1));
+    assert_eq!(text.matches("[cc-bus] id=").count(), 2);
+    assert!(text.contains(
+        "[cc-bus] id=m1aaaaaaaaaaaa from=aaaaaaaa-1111-2222-3333-444444444444 ts=2026-10-27T00:00:00Z tier=1 act=answer re=m0aaaaaaaaaaaa\ntitle: 占位标题\nrefs: commit:393349b8b\n占位正文\n"
+    ));
+    assert_eq!(
+        text.matches("refs: ").count(),
+        1,
+        "没有引用的那一封不印引用行"
     );
+    assert!(text.contains(
+        "(reply: cc-bus send aaaaaaaa-1111-2222-3333-444444444444 --act answer --re m2aaaaaaaaaaaa"
+    ));
+    assert!(
+        !text.contains(&copy_core::copy_text("ccBus.act.answer", &[])),
+        "不印显示用的词"
+    );
+    assert!(
+        copy_core::copy_matches_with(
+            "beCcBus.peek.skipped",
+            &[("n", "1")],
+            text.trim_end().lines().last().unwrap()
+        ),
+        "末行说跳过了一条：{text}"
+    );
+    assert_eq!(render(&[]), (String::new(), 0, 0));
 }
 
-/// 总线的帧命令只剩三条：名单 · 读收件箱 · 核信封。起停会话走 `session-open` · 血缘，广播删了（A13-1 减法）；
-/// 界面不发信，发信由 `cc-bus send` 问信封那一条再自己投（A13-2）。
+/// 总线的帧命令：名单 · 读收件箱 · 发信 · 两阶段读两跳 · 未读数。界面不发信（人要说话就在会话里说）。
 #[test]
-fn the_bus_commands_are_list_inbox_and_envelope_only() {
+fn the_bus_commands_are_the_inbox_and_its_ops() {
     let mut got: Vec<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .map(|s| s.name)
         .filter(|n| n.starts_with("bus-"))
         .collect();
     got.sort_unstable();
-    assert_eq!(got, ["bus-envelope", "bus-inbox", "bus-list"]);
+    assert_eq!(
+        got,
+        [
+            "bus-commit",
+            "bus-inbox",
+            "bus-list",
+            "bus-peek",
+            "bus-send",
+            "bus-unread"
+        ]
+    );
 }

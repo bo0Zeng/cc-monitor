@@ -1084,6 +1084,13 @@
       "note": "不叫 attach · 接回去 · 拉起。"
     },
     {
+      "word": "附件",
+      "tier": "正名",
+      "meaning": "随一句消息一起发给会话的文件（图片或别的文件），落在会话工作目录下 `.ccm-attach/<编号>/<原名>`。",
+      "source": "A3-1 聊天发附件 · A17-41 改名（R2：与常驻流握手的 attach 撞名）",
+      "note": "内部名一律 attachment（命令 `session-attachment-check / -commit / -drop`）；attach 只指常驻流的握手（`{\"attach\":true}` · `--resident-attach`）与接回 tmux 会话，不拿来叫附件。"
+    },
+    {
       "word": "分叉",
       "tier": "正名",
       "meaning": "从某条消息分出一条新会话（按钮「从这里分叉」）。",
