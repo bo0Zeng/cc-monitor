@@ -860,7 +860,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 那台说的整份脸（宣告 · 活动 · 去向三帧都带）。
     // 进出「需手动」· 停了不在这里判：那台照它的活会话表推 `changed {needs}`（下面 `needs` 那一支）。
-    onSessionFace: (sessionId, face) => tabs.onFace(sessionId, face),
+    onSessionFace: (sessionId, face) => {
+      tabs.onFace(sessionId, face);
+    },
     onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
     // 某台机器的活会话清单报完了。
     onOriginSessionsListed: (origin, all) => {

@@ -105,7 +105,7 @@ export class NeedsBook {
   /** 没问到：退避一段再问（翻倍、封顶）。 */
   private retryLater(): void {
     this.backoff = this.backoff === 0 ? RETRY_FIRST_MS : Math.min(this.backoff * 2, RETRY_MAX_MS);
-    // 调度：退避重试 —— 一问没问到，过一会儿自己再问。
+    // 调度：一次性 —— 一问没问到，退避一段自己再问一次（问到了不再排）。
     this.retry = setTimeout(() => {
       this.retry = null;
       void this.ask();
