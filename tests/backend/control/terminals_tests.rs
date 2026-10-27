@@ -84,6 +84,7 @@ fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow 
         program: program.into(),
         cwd: "/p".into(),
         title: "t".into(),
+        input: crate::host::Input::Shared,
     }
 }
 
@@ -515,7 +516,7 @@ impl Iso {
             .as_array()
             .unwrap()
             .iter()
-            .find(|t| t["tmux_name"] == name)
+            .find(|t| t["name"] == name)
             .unwrap_or_else(|| panic!("名单里没有 {name}：{l}"))["terminal"]
             .as_str()
             .unwrap()
@@ -746,7 +747,7 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
         .as_array()
         .unwrap()
         .iter()
-        .map(|t| format!("{}:{}", t["tmux_name"], t["session"]["sid"]))
+        .map(|t| format!("{}:{}", t["name"], t["session"]["sid"]))
         .collect();
     assert_eq!(
         sids,
@@ -850,7 +851,7 @@ fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_l
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|t| t["tmux_name"] == name && t["program"] == want);
+                .any(|t| t["name"] == name && t["program"] == want);
             if !hit {
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }

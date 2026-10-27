@@ -503,11 +503,15 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 发版时统一 bump。
+    // 结束 · 接管输入 · 交还（`terminal-end` · `terminal-take-input` · `terminal-release-input`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--terminal-end",
     "--terminal-input",
     // 开终端那一串（`terminal-ssh`）派生的 CLI 面：原先在 `stream::cli` 那张「只有界面用得着」的表里，
     //   复核后放出（那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--terminal-preview",
+    "--terminal-release-input",
     "--terminal-ssh",
+    "--terminal-take-input",
     "--terminals-list",
     // 「终端」视图那张名单（`terminals-board-here` 这台那几行 · `terminals-board` 各台合成）派生的 CLI 面（一次性进程里可达表是空的 ⇒ 别的台照实进那一组的 `down`）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。

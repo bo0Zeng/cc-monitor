@@ -920,7 +920,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
         untitled: false,
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: Some(crate::agents::SessionActivity::Working),
-            tmux: None,
+            host: None,
         }),
         can: can_of("agent", &crate::wire::WireLife::Ended { by: None }, false),
         agent_tag: Some(w("g")),

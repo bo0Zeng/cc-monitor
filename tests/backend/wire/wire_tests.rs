@@ -316,7 +316,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: Some(s("/w")),
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None })
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), host: None })
                     .under(Some(s("b"))),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
@@ -349,7 +349,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: None,
                 name: None,
                 path: None,
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, host: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 hidden: None,
                 container: None,
@@ -371,7 +371,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), tmux: None })
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: Some(crate::agents::SessionActivity::NeedsYou), host: None })
                     .under(Some(s("b"))),
                 name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
@@ -385,7 +385,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             }),
             Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: s("s1"),
-                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, tmux: None }),
+                face: crate::wire::SessionFace::of(crate::wire::Life::Live { activity: None, host: None }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 path: None,
@@ -1182,7 +1182,7 @@ fn loc1b_session_added_carries_the_pid() {
         path: None,
         face: crate::wire::SessionFace::of(crate::wire::Life::Live {
             activity: None,
-            tmux: None,
+            host: None,
         }),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         hidden: None,
@@ -1500,7 +1500,7 @@ fn session_frames_carry_the_state_written_and_toned() {
                 sid: "s".into(),
                 face: crate::wire::SessionFace::of(Life::Live {
                     activity: a,
-                    tmux: None,
+                    host: None,
                 }),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
@@ -1555,7 +1555,7 @@ fn session_frames_carry_the_state_written_and_toned() {
     );
     // 读记录中：同「说不清」那一档，字照实说。
     let reading =
-        serde_json::to_value(crate::wire::SessionFace::of(Life::Reading { tmux: None })).unwrap();
+        serde_json::to_value(crate::wire::SessionFace::of(Life::Reading { host: None })).unwrap();
     assert_eq!(reading["tone"], "plain");
     assert_eq!(reading["order"], none["order"]);
     assert!(
@@ -1685,7 +1685,7 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
     };
     let live = |a: Option<A>| Life::Live {
         activity: a,
-        tmux: None,
+        host: None,
     };
     assert_eq!(
         switch(live(Some(A::Working))),
@@ -1699,7 +1699,7 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
         live(Some(A::Idle)),
         live(Some(A::BackgroundWork)),
         live(None),
-        Life::Reading { tmux: None },
+        Life::Reading { host: None },
     ] {
         assert_eq!(
             switch(life),
@@ -1732,38 +1732,43 @@ fn every_life_has_one_whole_face_and_it_matches_the_golden() {
             "live-needs-you-tmux",
             Life::Live {
                 activity: Some(A::NeedsYou),
-                tmux: Some(true),
+                host: Some(crate::wire::Housed::In(crate::wire::TerminalHost::Tmux)),
             },
         ),
         (
             "live-working-plain",
             Life::Live {
                 activity: Some(A::Working),
-                tmux: Some(false),
+                host: Some(crate::wire::Housed::Bare),
             },
         ),
         (
             "live-background",
             Life::Live {
                 activity: Some(A::BackgroundWork),
-                tmux: None,
+                host: None,
             },
         ),
         (
             "live-idle",
             Life::Live {
                 activity: Some(A::Idle),
-                tmux: None,
+                host: None,
             },
         ),
         (
             "live-unclear",
             Life::Live {
                 activity: None,
-                tmux: None,
+                host: None,
             },
         ),
-        ("reading", Life::Reading { tmux: Some(true) }),
+        (
+            "reading",
+            Life::Reading {
+                host: Some(crate::wire::Housed::In(crate::wire::TerminalHost::Tmux)),
+            },
+        ),
         ("reconnectable", Life::Reconnectable),
         ("ended", Life::Ended),
         ("gone", Life::Gone),
@@ -1931,7 +1936,7 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
         u64::from(
             crate::wire::SessionFace::of(crate::wire::Life::Live {
                 activity: a,
-                tmux: None,
+                host: None,
             })
             .order,
         )

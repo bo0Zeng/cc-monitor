@@ -176,7 +176,7 @@ pub(crate) fn who_of(id: Option<&str>, who: WhoPort) -> Option<PlanWho> {
         crate::wire::SessionFace::of(match l {
             Some(l) => crate::wire::Life::Live {
                 activity: l.activity,
-                tmux: None,
+                host: None,
             },
             None => crate::wire::Life::Ended,
         })

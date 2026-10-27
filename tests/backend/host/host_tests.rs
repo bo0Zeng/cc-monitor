@@ -1,7 +1,7 @@
 use super::*;
 use crate::wire::TerminalHost;
 
-/// 一行假托管终端（形照 `TermRow`；句柄就是 id）。
+/// 一行假托管终端（形照 `TermRow`；句柄就是 id）；桌面经后端持有输入。
 fn managed_row() -> TermRow {
     TermRow {
         host: TerminalHost::Managed,
@@ -17,10 +17,11 @@ fn managed_row() -> TermRow {
         program: "sh".into(),
         cwd: "/w".into(),
         title: String::new(),
+        input: Input::Held(Some(HeldBy::Front("desktop".into()))),
     }
 }
 
-/// 名单两种宿主合一份：隔离 socket 上真 tmux 那一行与注入的托管那一行都在，各带自己的 `host`（线上 `terminals-list` 那一形）。
+/// 名单两种宿主合一份：隔离 socket 上真 tmux 那一行与注入的托管那一行都在，各带自己的 `host` · `name` · `input`（线上 `terminals-list` 那一形）。
 #[test]
 fn the_list_carries_both_hosts_each_with_its_own_host() {
     let sb = crate::tmux_sandbox::SandboxTmux::new("host-list");
@@ -30,11 +31,14 @@ fn the_list_carries_both_hosts_each_with_its_own_host() {
         tmux::On {
             socket: Some(&sock),
         },
-        &|| vec![managed_row()],
+        &|| (vec![managed_row()], vec![("m-7f3a".to_string(), 10, 20)]),
     )
     .expect("名单");
     let wire = serde_json::to_value(crate::control::terminals::list_reply(
-        &rows, &clients, complete, None,
+        &rows,
+        &clients,
+        complete,
+        Some("desktop"),
     ))
     .unwrap();
     let got: Vec<(String, String)> = wire["terminals"]
@@ -44,7 +48,7 @@ fn the_list_carries_both_hosts_each_with_its_own_host() {
         .map(|t| {
             (
                 t["host"].as_str().unwrap().to_string(),
-                t["tmux_name"].as_str().unwrap().to_string(),
+                t["name"].as_str().unwrap().to_string(),
             )
         })
         .collect();
@@ -56,9 +60,22 @@ fn the_list_carries_both_hosts_each_with_its_own_host() {
         ],
         "名单该是隔离 server 上的 `keep` 那一行 ＋ 托管那一行：{wire}"
     );
+    let m = &wire["terminals"][1];
+    assert_eq!(m["terminal"], "m-7f3a", "托管那一行的句柄就是它的 id");
     assert_eq!(
-        wire["terminals"][1]["terminal"], "m-7f3a",
-        "托管那一行的句柄就是它的 id"
+        m["input"],
+        serde_json::json!({"kind": "held", "holder": {"who": "desktop", "mine": true}}),
+        "托管那一行带此刻的持有者：{wire}"
+    );
+    assert_eq!(
+        m["clients"].as_array().map(Vec::len),
+        Some(1),
+        "连着的真终端进名单：{wire}"
+    );
+    assert_eq!(m["can"]["input"], true, "托管的全是我们起的：不跑名字规则");
+    assert_eq!(
+        wire["terminals"][0]["input"],
+        serde_json::json!({"kind": "shared"})
     );
     assert!(
         wire["terminals"][0]["terminal"]
@@ -67,10 +84,4 @@ fn the_list_carries_both_hosts_each_with_its_own_host() {
             .starts_with("tmux-"),
         "tmux 那一行的句柄照旧：{wire}"
     );
-}
-
-/// 生产的托管那一臂这一版是空名单（没有托管进程）。
-#[test]
-fn the_managed_arm_lists_nothing_yet() {
-    assert!(managed::rows().is_empty());
 }
