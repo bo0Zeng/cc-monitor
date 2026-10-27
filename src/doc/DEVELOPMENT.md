@@ -16,7 +16,7 @@
 | Windows：WebView2 Runtime | Windows 11 自带，Windows 10 [手装](https://developer.microsoft.com/microsoft-edge/webview2/) | — |
 | Linux：WebKitGTK 等 | `libwebkit2gtk-4.1-dev` · `libgtk-3-dev` · `libayatana-appindicator3-dev` · `librsvg2-dev` | `pkg-config --modversion webkit2gtk-4.1` |
 | e2e 另需 | `tmux` · `jq` · `Xvfb`（GUI 那几套） | — |
-| 手机端另需 | JDK 21 · Android SDK（不要 NDK），见 [`src/mobile/README.md`](../mobile/README.md) | `java -version` |
+| 手机端另需 | JDK 21 · Android SDK · NDK（版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`）· Rust 的两个 android target，见 [`src/mobile/README.md`](../mobile/README.md) | `java -version` |
 
 ---
 

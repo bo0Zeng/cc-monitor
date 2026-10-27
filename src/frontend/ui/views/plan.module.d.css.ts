@@ -7,7 +7,9 @@ declare const classes: {
   readonly pvCellName: string;
   readonly pvChev: string;
   readonly pvChip: string;
+  readonly pvChipX: string;
   readonly pvChips: string;
+  readonly pvGroups: string;
   readonly pvH1: string;
   readonly pvH1Text: string;
   readonly pvHead: string;

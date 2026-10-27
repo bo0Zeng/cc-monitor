@@ -3,7 +3,7 @@
 #
 # Codex 有回合末钩子(`Stop`,接法见 `cc-bus-install.sh` 的 C1 段 / `examples/codex-hooks.json`),
 # 钩子的回包与 claude 同形(`{decision:"block", reason}`)⇒ 能拦停。
-# 敲门经后端 `session-say`(与 claude 同一条);有 cc-recv / cc-peek ⇒ 能读回。
+# 敲门经后端 `session-say`(与 claude 同一条);有 cc-bus recv / cc-bus peek ⇒ 能读回。
 # 降级链照 `cc-bus-adapt.sh`:拦停 → 敲门 → 只入收件箱。
 # 没有 can_peer:Codex 没有原生的会话间通道,它与别的会话之间只走 cc-bus。
 #

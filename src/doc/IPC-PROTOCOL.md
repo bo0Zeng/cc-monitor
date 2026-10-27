@@ -114,7 +114,7 @@
 3. 状态：`session_status`（红绿灯变了才发，天然稀疏；带整份脸 `face`：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么，在干什么在 `face.life.activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带；一轮在跑时 `face.can.stop` 是 `yes`，停止键照它画）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
 4. 离开：只一帧 `session_left {sid, face}`，去向在 `face.life`（`reconnectable` 容器还在、接得回去 · `ended` 只能 resume，同一个 pidfile 原地换了 sid ⇒ `ended {by}` 带顶替它的那条 · `gone` 记录也不在了）。这台后端自己裁：宣告时就知道不在 tmux 里 ⇒ 当场发；在 tmux 里 · 判不了 ⇒ 等摘除之后那份 tmux 观测回来再发。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。
-6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` 丢了可以从记录文件补；`session_added` / `session_status` / `session_left` / 不可丢主题的 `changed`（`lost` 里 `kind: "changed"`、`subject` ＝ `主题` 或 `主题/key`）这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
+6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`，只带那台写好的一句 `said`（丢了约几行 · 会话状态已重新对齐 · 两样都有）。`line` 丢了可以从记录文件补；会话状态那一类（`session_added` / `session_status` / `session_left`）与不可丢主题的 `changed` 丢了，那台紧跟着在同一条连接上把此刻的样子整份重报一次（`changed` 再发一帧、不带体，客户端重问），客户端不判、不重接。
 7. 别台：各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事原样转给连着本机后端的每条流连接，一种帧 `relayed`：`machine` 说是哪一台，`what` 分三形 ——`line`（那台流上的一行原样，字符串；每条连接先来它的 hello）· `gap`（那台流上超长丢了一行，或这一端挤丢了一行）· `ended`（那台这一条连接断了，下一条从 hello 起）。不进 `overflow`：挤丢了 ⇒ 这条连接在那台下一帧之前先收那台一格 `gap`（断了的那一帧挤丢 ⇒ 补 `ended`）。
 
 ### `changed` 主题表
@@ -183,13 +183,13 @@
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形；
   `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格 · 整份脸那几格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
-- **改了冻结的格就得打版本号**（同加子命令）：`build_id_guard` 的指纹带一行冻结格的摘要 ⇒ 第二个前端连上只核 `BUILD_ID` 这一处，不用逐格核。
+- **改了冻结的格就得打版本号**（同加子命令）：`build_id_guard` 的指纹带一行冻结格的摘要 ⇒ 冻结格一变 `BUILD_ID` 就变。第二个前端连上不逐格核：attach 行带手上这一版，那台在回话里说相对它的新旧，能不能用逐条命令按 hello 里的形状指纹判。
 - 一次性子命令：第二个前端只调 `--resident-ensure`（可带 `--replace`）· `--resident-attach`，其余都走常驻流上的帧命令。
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `face`；那一家的原词不上线。
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那两条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json`。
-- 部署：第二个前端不部署后端。它连上一台走 `--resident-attach`，attach 回话说那台相对自己这一版的新旧，不是同一版就只发形状指纹对得上的命令、提示那台要更新；远端的后端由桌面那一端的本机后端装（它那几条常驻流接不上或那台不是这一版时走 `deploy-install` 那一趟）。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
+- 部署：第二个前端不在重连循环里自己装。它连上一台走 `--resident-attach`，attach 回话说那台相对自己这一版的新旧：比自己旧 ⇒ 照接、只发形状指纹对得上的命令、提示那台要更新，人按［安装］/［更新］才从包里那两份 Linux 后端装上去（同桌面那一份 `deploy` crate）；桌面那一端的本机后端在它那几条常驻流接不上或那台不是这一版时自己走 `deploy-install` 那一趟。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
 
 ### 通用记录
 
@@ -280,8 +280,9 @@
 
 ## 切到终端：此刻显示这个会话的是哪个窗口
 
-点 ↗ 那一刻现查，不缓存：本机会话从 agent 进程往上走进程链；远端会话先问那台此刻谁连着它（带窗口标签 `LC_CCM_WINDOW` 就先按标签），
-再问本机后端开着那条连接的是哪串进程（`terminal-processes`）。最后一跳在 monitor（`bind.rs::pick_chain_window`）：沿链从下往上，
+点 ↗ 那一刻现查，不缓存：本机后端答一次这条会话在这台电脑上的哪儿（`session-window`：显示它的终端带的窗口标签 `LC_CCM_WINDOW` · 那个终端进程往上的进程链，或一条原因；
+本机会话的链从连着它的 tmux 客户端 · 不在 tmux 里就是它自己起，远端会话由本机后端问那台谁连着它、拿这台的连接表对出开着那条连接的进程）。
+最后一跳在 monitor（`bind.rs::bring_session_window`）：先按标签，再沿链从下往上（`pick_chain_window`），
 每一级先问「它显示在哪个窗口」，再看它名下的可见顶层窗口，碰到终端本身就停（恰好一个窗口 ⇒ 它，几个 ⇒ 照实说分不清）。
 
 「它显示在哪个窗口」：

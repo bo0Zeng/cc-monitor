@@ -210,7 +210,7 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     let cur = backend_stderr_log_path(&root);
     let dir = cur.parent().unwrap().to_path_buf();
     assert!(
-        list_log_entries(&dir, None).is_empty(),
+        list_log_entries(&dir, None, None).is_empty(),
         "目录不在时应当是空"
     );
     std::fs::create_dir_all(&dir).unwrap();
@@ -222,7 +222,7 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
         .unwrap();
     drop(f);
-    let got: Vec<(String, Option<String>)> = list_log_entries(&dir, None)
+    let got: Vec<(String, Option<String>)> = list_log_entries(&dir, None, None)
         .into_iter()
         .map(|e| (e.path, e.size_text))
         .collect();
@@ -243,7 +243,7 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     let ours = monitor_log_dir(&root);
     std::fs::create_dir_all(&ours).unwrap();
     std::fs::write(ours.join("monitor.2026-09-25.log"), b"m").unwrap();
-    let top = list_log_entries(&ours, Some(LOG_FILE_SUFFIX));
+    let top = list_log_entries(&ours, Some(LOG_FILE_SUFFIX), None);
     assert_eq!(top.len(), 1, "monitor 那一层混进了后端那一族：{top:?}");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -342,4 +342,56 @@ fn log_file_info_reports_the_backend_stderr_file_from_the_same_path_it_was_hande
         "后端那一份混进了 monitor 自己的当前文件"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 设置页摆的路径是壳按这台的家目录写好的显示形（`copy_core::home_short`）：家底下的日志目录 · 当前文件 · 后端那份 ⇒ `~/…`，
+/// 原路径照留（打开用）；家说不出 ⇒ 原样。界面不自己缩。
+#[test]
+fn log_file_info_carries_the_paths_shown_under_the_home() {
+    let home = std::env::temp_dir().join(format!("a210-logging-shown-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let root = home.join(".cc-monitor");
+    let (_layer, reload_handle) = reload::Layer::new(EnvFilter::new("info"));
+    let state = LoggingState {
+        cfg: RwLock::new(DiagnosticsConfig::default()),
+        reload_handle,
+        log_dir: monitor_log_dir(&root),
+        monitor_data_dir: root.clone(),
+        _guard: Mutex::new(None),
+    };
+    let name = format!("monitor.2026-10-26.{LOG_FILE_SUFFIX}");
+    let today = monitor_log_dir(&root).join(&name);
+    std::fs::create_dir_all(today.parent().unwrap()).unwrap();
+    std::fs::write(&today, b"x").unwrap();
+    let back = backend_stderr_log_path(&root);
+    std::fs::create_dir_all(back.parent().unwrap()).unwrap();
+    std::fs::write(&back, b"y").unwrap();
+
+    let sep = std::path::MAIN_SEPARATOR.to_string();
+    let tilde = |rel: &[&str]| format!("~{sep}{}", rel.join(&sep));
+    let info = state.file_info(Some(&home));
+    assert_eq!(info.dir_shown, tilde(&[".cc-monitor", "logs", "monitor"]));
+    assert_eq!(
+        info.current_file.as_deref(),
+        Some(today.to_string_lossy().as_ref()),
+        "原路径照留（打开用）"
+    );
+    assert_eq!(
+        info.current_file_shown,
+        Some(tilde(&[".cc-monitor", "logs", "monitor", &name]))
+    );
+    assert_eq!(
+        Some(info.all_files[0].shown.clone()),
+        info.current_file_shown
+    );
+    assert_eq!(info.backend_stderr[0].path, back.to_string_lossy());
+    assert_eq!(
+        info.backend_stderr[0].shown,
+        tilde(&[".cc-monitor", "logs", "backend", "stderr.log"])
+    );
+
+    let bare = state.file_info(None);
+    assert_eq!(bare.dir_shown, bare.dir, "家说不出 ⇒ 原样");
+    assert_eq!(bare.backend_stderr[0].shown, bare.backend_stderr[0].path);
+    let _ = std::fs::remove_dir_all(&home);
 }

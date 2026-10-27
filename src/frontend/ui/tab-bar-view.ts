@@ -125,6 +125,8 @@ export interface TabBarViewHost {
   openMenuAt(anchor: HTMLElement, sid: string): void;
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
   reconnect(origin: string): void;
+  /** 组的菜单「在计划中查看本组接手的块」：开计划页按这一组筛块（组员照栏里的先后）；没挂 ⇒ 菜单里不出这一项。 */
+  planForGroup?(gid: string, name: string, members: readonly { origin: string; sid: string }[]): void;
 }
 
 /** 一个组在栏里的那几块（组头各格 ＋ 组员列表）；`drawn` ＝ 组头上次画的样子（没变就不写）。 */
@@ -984,7 +986,7 @@ export class TabBarView {
     if (head) this.openGroupMenu(gid, { el: head, align: "end" });
   }
 
-  /** 组的菜单（「⋯」/ 组头右键）：改名 · 收起或展开 · 全部收起 · 全部展开 · 关闭组里已结束的（n）· 解散分组。 */
+  /** 组的菜单（「⋯」/ 组头右键）：改名 · 收起或展开 · 全部收起 · 全部展开 · 在计划中查看本组接手的块（宿主挂了才有）· 关闭组里已结束的（n）· 解散分组。 */
   private openGroupMenu(gid: string, anchor: MenuAnchor): void {
     const col = this.prefs.collections.find((c) => c.id === gid);
     if (!col) return;
@@ -1009,6 +1011,19 @@ export class TabBarView {
         },
       },
       { divider: true, label: "" },
+      ...(this.host.planForGroup
+        ? [
+            {
+              label: copyText("tabMenu.group.inPlan"),
+              onClick: () =>
+                this.host.planForGroup?.(
+                  gid,
+                  col.name,
+                  [...this.store.tabs.values()].filter((t) => t.group === gid).map((t) => ({ origin: t.origin, sid: t.sessionId })),
+                ),
+            },
+          ]
+        : []),
       { label: copyText("sessionState.closeEnded.inGroup", { n: ended }), enabled: ended > 0, onClick: () => this.host.closeEndedIn(gid) },
       { divider: true, label: "" },
       {

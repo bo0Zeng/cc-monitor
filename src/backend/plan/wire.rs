@@ -300,6 +300,30 @@ pub(crate) struct PlanBlock {
     pub handoff_error: Option<String>,
     /// 「新会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
     pub takeover: PlanTakeover,
+    /// 接手的会话此刻在哪几组（帧面答之前现标，见 [`super::groups`]；pb 不知道有组）。
+    pub groups: PlanBlockGroups,
+}
+
+/// 一个权力范围的接手会话在哪几组（块表「组」那一格，字后端写好）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanBlockGroups {
+    /// 组模块答了 ⇒ 那条会话在的几组（照组的先后；不在组里 ⇒ 空）；没有接手会话 · 组模块没答 ⇒ 空。
+    pub groups: Vec<PlanGroup>,
+    /// 那一格的字：组名照排；一组都没有（不在组里 · 没有接手会话 · 没答）⇒「—」。
+    pub text: String,
+    /// 组模块没答 ⇒ 那一句（「读取组失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
+    pub unread: Option<String>,
+}
+
+/// 一组：id（全局不重，界面按它筛）· 叫它什么（组模块写好的）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanGroup {
+    pub id: String,
+    pub title: String,
 }
 
 /// 一个建了的权力范围此刻给不给「新会话接手」。还没划出（`unbuiltBlocks`）⇒ 灰：那一列本身就是这一判，不另带一格。
@@ -608,6 +632,43 @@ pub(crate) struct PlanAdopted {
     pub path: String,
     /// `true` ⇒ 先把当前仓库切成了它（pb 的 `adopt` 只接当前仓库）。
     pub switched: bool,
+}
+
+/// `plan-new` 的回包：在那个目录开一片能选哪几档 · 落在哪 · 撞没撞上 · 要敲的那一行（[`super::new_slice`]）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanNewForm {
+    /// 找不到 pb ⇒ `missing`；pb 没有 `dump --domains` ⇒ `unsupported`（两样都带那一句）。
+    pub pb: PlanPb,
+    /// pb 往上找到的工作区根；找不到 ⇒ `null`（`root` 就成工作区根）。
+    pub workspace: Option<String>,
+    /// `pb repo` 在哪个目录敲（＝ `workspace`，没有 ⇒ 问的那个目录）。
+    pub root: String,
+    /// 登记之后那一片叫什么（路径最后一段 ＝ 仓库名；撞上 ⇒ 那一片）；路径空 ⇒ `null`。
+    pub slice: Option<String>,
+    /// 能选的几档（形状同 `PlanRead.domains`）。
+    pub domains: Vec<PlanDomain>,
+    /// 路径最后一段撞上的那一片（领域建了不改）。
+    pub existing: Option<PlanNewExisting>,
+    /// 仓库会落在哪（绝对路径）；路径空 ⇒ `null`。
+    pub repo_dir: Option<String>,
+    /// 路径底下那一句（「仓库 …」· 撞上 ⇒「已有此片 · 软件 · 只切换」）；路径空 ⇒ `null`。
+    pub note: Option<String>,
+    /// 要敲的那一行；路径空 ⇒ `null`。
+    pub line: Option<String>,
+    /// 起 pb 没成（超时 · 读不懂 · 别的退出码）：那一句。
+    pub failed: Option<String>,
+}
+
+/// 撞上的那一片：名字 · 它的领域。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanNewExisting {
+    pub slice: String,
+    pub domain: Option<String>,
 }
 
 /// `plan-pb-check` 的回包：这个路径能不能当 pb 用 ＋ 给人看的那一句。

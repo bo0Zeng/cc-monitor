@@ -35,7 +35,7 @@ import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { titleParts } from "../session-face";
-import { ackNeed, adoptRepo, fetchPlanList, fetchPlanRead, planCommand, type PlanBlock, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
+import { ackNeed, adoptRepo, fetchPlanList, fetchPlanNew, fetchPlanRead, planCommand, registerRepo, type PlanBlock, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
@@ -57,6 +57,8 @@ import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHos
 import type { PlanNeedsBook } from "../plan-needs";
 import type { PlanNeedItem } from "../needs-book";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
+import { blocksOfGroup, groupsCell, sliceForGroup } from "./plan-groups";
+import { openNewPlan } from "./plan-new";
 import { openNewSession } from "../new-session";
 import { openSettingsWindow } from "../open-settings";
 import { pbDirOf } from "../settings-dest";
@@ -96,6 +98,8 @@ type Read = { state: "loading"; prev: PlanRead | null } | { state: "ok"; doc: Pl
 export class PlanView {
   /** 主窗口里这个会话的标签页（拿标题、状态点）；不在 ⇒ `null`。 */
   tabOf: (sid: string) => Tab | null = () => null;
+  /** 这台那几个标签页的项目目录（新计划框的工作区下拉列在已有工作区后面）。 */
+  cwdsOf: (origin: Origin) => readonly string[] = () => [];
   /** 切到主窗口里的这个会话（并关掉计划页）。 */
   switchTo: (sid: string) => void = () => {};
   /** 那台离线 ⇒［重新连接］。 */
@@ -126,6 +130,10 @@ export class PlanView {
   private seq = 0;
   private autoFail: string | null = null;
   private renderQueued = false;
+  /** 按组看（标签页组菜单「在计划里看这一组接的块」）：块表只留这一组的会话接手的那几块；`null` ⇒ 不筛。 */
+  private group: { id: string; name: string } | null = null;
+  /** 从组菜单进来、还没落到哪一片：各台 `plan-list` 回来再照组员挑。 */
+  private groupMembers: readonly { origin: Origin; sid: string }[] | null = null;
 
   private headEl!: HTMLElement;
   private subEl!: HTMLElement;
@@ -189,6 +197,16 @@ export class PlanView {
     this.selected = cell;
     this.atItem = null;
     // 已经开着（文件窗口那一下常是这样）⇒ 就地换到那一片那一格。
+    if (this.isOpen) this.afterList();
+    else await this.open();
+  }
+
+  /** 开计划页按组看（标签页组菜单）：落到组员接手的块所在的那一片（照各台 `plan-list` 的 `bySession`），块表只留这一组的。 */
+  async openForGroup(gid: string, name: string, members: readonly { origin: Origin; sid: string }[]): Promise<void> {
+    this.group = { id: gid, name };
+    this.groupMembers = members;
+    this.selected = null;
+    this.atItem = null;
     if (this.isOpen) this.afterList();
     else await this.open();
   }
@@ -293,6 +311,13 @@ export class PlanView {
 
   private afterList(): void {
     const all = this.allSlices();
+    if (this.groupMembers) {
+      const lists = new Map<Origin, PlanList>();
+      for (const x of all) lists.set(x.ref.origin, x.list);
+      const hit = sliceForGroup(lists, this.groupMembers);
+      if (hit) this.current = hit;
+      if (hit || this.everyMachineAnswered()) this.groupMembers = null;
+    }
     if (!this.current || !all.some((x) => refKey(x.ref) === refKey(this.current!))) {
       const remembered = all.find((x) => refKey(x.ref) === this.prefs.last);
       const pick = remembered ?? all.find((x) => x.slice.current && !isRemoteOrigin(x.ref.origin)) ?? all[0];
@@ -496,7 +521,7 @@ export class PlanView {
     const search = document.createElement("label");
     search.className = s.pvSearch;
     search.append(icon("search", "compact"), this.searchInput);
-    const parts: HTMLElement[] = [title, slices, spacer(), search];
+    const parts: HTMLElement[] = [title, slices, spacer(), search, this.newButton()];
     const ws = this.currentWs();
     if (ws) {
       parts.push(this.autoSwitch(ws));
@@ -567,6 +592,47 @@ export class PlanView {
     sw.root.classList.add(s.pvAuto);
     attachTooltip(sw.input, () => [copyText("plan.auto.scope", { ws: ws.workspace, list: ws.slices.map((x) => x.name).join(copyText("kit.text.sep")) }), copyText("plan.auto.cmds"), copyText("plan.auto.what")].join("\n"));
     return sw.root;
+  }
+
+  /** ［新计划…］：开新计划框，预填此刻这一片那台与工作区（没有 ⇒ 本机头一个已有工作区，再没有 ⇒ 头一个会话目录）。 */
+  private newButton(): HTMLButtonElement {
+    const b = button({ label: copyText("plan.new.open"), icon: "plus", kind: "ghost", onClick: () => this.newPlan() });
+    b.dataset.act = "new-plan";
+    return b;
+  }
+
+  /** 一台的目录：读到过的工作区 · 会话的项目目录。 */
+  private dirsOf(origin: Origin): { known: string[]; cwds: string[] } {
+    const st = this.per.get(origin);
+    const list = st?.state === "ok" ? st.list : (st?.prev ?? null);
+    return { known: (list?.workspaces ?? []).map((w) => w.workspace), cwds: [...this.cwdsOf(origin)] };
+  }
+
+  private newPlan(): void {
+    const origin = this.current?.origin ?? LOCAL_ORIGIN;
+    const d = this.dirsOf(origin);
+    const dir = this.current?.workspace ?? d.known[0] ?? d.cwds[0] ?? "";
+    openNewPlan(
+      {
+        machines: () => this.machines,
+        dirs: (o) => this.dirsOf(o),
+        ask: (o, dir2, path, domain) => fetchPlanNew(o, dir2, path, domain),
+        create: (o, dir2, path, domain) => registerRepo(o, dir2, path, domain),
+        done: (o, root, slice, said) => {
+          // 新的工作区记进这台手加的目录（下次开页 `plan-list` 也问它），重问那台、选中那一片。
+          const key = isRemoteOrigin(o) ? o : "";
+          const list = (this.prefs.dirs[key] ??= []);
+          if (!this.dirsOf(o).known.includes(root) && !list.includes(root)) list.push(root);
+          this.current = { origin: o, workspace: root, name: slice };
+          this.prefs.last = refKey(this.current);
+          this.savePrefs();
+          this.selected = null;
+          toast(said, "", { level: "success" });
+          this.refresh(true, o);
+        },
+      },
+      { origin, dir },
+    );
   }
 
   private wholeButton(): HTMLButtonElement {
@@ -672,8 +738,29 @@ export class PlanView {
       un.append(icon("warning", "compact"), document.createTextNode(copyText("plan.check.unparsed", { list: slice.check.unparsed.join(copyText("plan.page.listSep")) })));
       parts.push(un);
     }
-    parts.push(spacer(), this.filterChips(slice));
+    parts.push(spacer());
+    if (this.group) parts.push(this.groupChip(this.group.name));
+    parts.push(this.filterChips(slice));
     this.subEl.replaceChildren(...parts);
+  }
+
+  /** 按组看那一枚：「组 <名>」＋ ×（点了不再按组筛）。 */
+  private groupChip(name: string): HTMLElement {
+    const b = document.createElement("span");
+    b.className = `${s.pvChip} plan-group-filter`;
+    b.setAttribute("aria-pressed", "true");
+    b.append(document.createTextNode(copyText("plan.blocks.groups")), text(name, s.pvSliceName));
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = s.pvChipX;
+    x.setAttribute("aria-label", copyText("plan.group.clear"));
+    x.appendChild(icon("close", "compact"));
+    x.addEventListener("click", () => {
+      this.group = null;
+      this.render();
+    });
+    b.appendChild(x);
+    return b;
   }
 
   /** 「只写文档」：pb 只管图、仓库不守，接过来之前 agent 不写仓库。 */
@@ -992,11 +1079,14 @@ export class PlanView {
 
     // 块
     // 末一格「接手」照后端那一格（建了的 `takeover` · 还没建的那一列）。
-    const blocks = slice.blocks.filter((b) => b.id !== "project");
-    const unbuilt = slice.unbuiltBlocks;
-    if (blocks.length + unbuilt.length > 0) {
+    // 按组看 ⇒ 只留这一组的会话接手的那几块（还没建的没有接手会话，不留）。
+    const all = slice.blocks.filter((b) => b.id !== "project");
+    const g = this.group;
+    const blocks = g ? blocksOfGroup(all, g.id) : all;
+    const unbuilt = g ? [] : slice.unbuiltBlocks;
+    if (g || blocks.length + unbuilt.length > 0) {
       const sec = section(copyText("plan.overview.blocks"), String(blocks.length + unbuilt.length));
-      const tbl = table([copyText("plan.blocks.block"), copyText("plan.blocks.owner"), copyText("plan.blocks.phase"), copyText("plan.blocks.at"), copyText("plan.blocks.inside"), ""], [4, 5]);
+      const tbl = table([copyText("plan.blocks.block"), copyText("plan.blocks.owner"), copyText("plan.blocks.groups"), copyText("plan.blocks.phase"), copyText("plan.blocks.at"), copyText("plan.blocks.inside"), ""], [5, 6]);
       const none = (): HTMLElement => text(copyText("plan.page.none"));
       for (const b of blocks) {
         const root = byId.get(b.cells[0] ?? "");
@@ -1004,6 +1094,7 @@ export class PlanView {
         const tr = tbl.row([
           text(labelOf(slice, root?.id ?? b.id)),
           b.owner ? this.whoChip(b.owner) : none(),
+          groupsCell(b),
           b.phase ? phaseBadge(b.phase) : none(),
           text(at ? labelOf(slice, at.id) : copyText("plan.page.none")),
           text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
@@ -1013,10 +1104,11 @@ export class PlanView {
       }
       for (const u of unbuilt) {
         const root = byId.get(u.cells[0] ?? "");
-        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), stop(unbuiltTakeoverCell())]);
+        const tr = tbl.row([text(labelOf(slice, root?.id ?? u.id ?? "")), none(), none(), none(), none(), none(), stop(unbuiltTakeoverCell())]);
         if (root) clickRow(tr, () => this.select(root.id));
       }
       sec.appendChild(tbl.el);
+      if (g && blocks.length === 0) sec.appendChild(text(copyText("plan.group.none"), s.pvMeta));
       box.appendChild(sec);
     }
 

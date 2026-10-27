@@ -21,7 +21,7 @@
 //! 「按变量点名 tmux」的脚本，**要么**同一个文件里做了身份核对（提到 `pane_pid`），
 //! **要么**登记在 [`EXEMPT`] 里写明为什么不需要。
 //!
-//! 「我是哪条会话」不在这张表里：`cc-whoami` 只问 cc-monitor 的 `session-self`，不碰 tmux。
+//! 「我是哪条会话」不在这张表里：`cc-bus whoami` 只问 cc-monitor 的 `session-self`，不碰 tmux。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 //!

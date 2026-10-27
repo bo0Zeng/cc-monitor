@@ -132,15 +132,15 @@ pub struct InboundBackends;
 /// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
 const HOP: u8 = 1;
 
-/// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
+/// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `transfer_relay.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
-/// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
+/// 传输那两条从传输台那一份名单取（`transfer_relay::TRANSFER_OPS`，一份名单一个家）。
 /// 窗口说「手上有什么会被打断」那一条由窗口那条通道的句柄（[`WindowBackends`]）接；从别处（主界面）来的这一条是用错了。
 pub(crate) const HOST_OPS: [&str; 7] = [
     filewin_contract::FILEWIN_BUSY_OP,
-    crate::sftp_pool::TRANSFER_OPS[0],
-    crate::sftp_pool::TRANSFER_OPS[1],
-    crate::sftp_pool::TRANSFER_COPY,
+    crate::transfer_relay::TRANSFER_OPS[0],
+    crate::transfer_relay::TRANSFER_OPS[1],
+    crate::transfer_relay::TRANSFER_COPY,
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
     filewin_contract::PLAN_OPEN_OP,
@@ -177,7 +177,10 @@ impl Backends for InboundBackends {
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item> {
         // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
-        if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
+        if let Some(id) = kind
+            .0
+            .strip_prefix(crate::transfer_relay::TRANSFER_KIND_PREFIX)
+        {
             return transfer_stream(&origin, id, from);
         }
         // 一组做到哪了：按票（窗口铸的）转后端推来的 `files_batch` 帧，那一组在哪台做都一样。`from` 没有意义（只留最新那一格）。
@@ -221,17 +224,17 @@ impl InboundBackends {
         left: Duration,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
         // 🔴**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
-        // 传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
+        // 传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `transfer_relay.rs` 转过去；
         //    其余一切照旧按 `origin` 去 `inbound_client`。
         // 通道上由 monitor 自己接的那几条（[`HOST_OPS`]，两向登记在 `command_home_registry_tests::CHANNEL_OWN`）。
         if HOST_OPS.contains(&op.0.as_str()) {
             if op.0 == filewin_contract::FILEWIN_BUSY_OP {
                 return Box::pin(async { Err(OursFault::Misuse.into()) });
             }
-            if crate::sftp_pool::is_transfer_op(&op.0) {
+            if crate::transfer_relay::is_transfer_op(&op.0) {
                 return Box::pin(transfer_open(origin, op, payload));
             }
-            if op.0 == crate::sftp_pool::TRANSFER_COPY {
+            if op.0 == crate::transfer_relay::TRANSFER_COPY {
                 return Box::pin(transfer_copy(origin, payload, left));
             }
             if op.0 == filewin_contract::FILEWIN_OPEN_OP {
@@ -290,7 +293,7 @@ impl InboundBackends {
 // 传输台那一口：开单 ＋ 进度流
 // ══════════════════════════════════════════════════════════════════
 //
-// 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台那一格（`sftp_pool::Step`）原样装进通道的格子（帧照 `cmd_wire::frame::Transfer` · 收场照 `TransferEnd` 序列化，不手写）。
+// 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台那一格（`transfer_relay::Step`）原样装进通道的格子（帧照 `cmd_wire::frame::Transfer` · 收场照 `TransferEnd` 序列化，不手写）。
 // 传输本身（借通道 · 写暂存区 · 续传 · 撤）不在这里。
 
 /// 拒绝的信封：与后端命令的拒绝**同一个形状**（`{"code","message"}`，`backend_route::layer_call_error`
@@ -301,7 +304,7 @@ impl InboundBackends {
 /// 「生产段不许自己拼 / 匹配那个错误枚举」—— 分层判定只许有一个家。这里不做任何分层判定：
 /// 传输台说了「不行」，就是对端说了「不行」，原样装进那个信封。
 fn refused(code: &str, message: String) -> CallError {
-    refused_with(crate::sftp_pool::Refusal {
+    refused_with(crate::transfer_relay::Refusal {
         code: code.to_string(),
         message,
         data: None,
@@ -309,7 +312,7 @@ fn refused(code: &str, message: String) -> CallError {
 }
 
 /// 同 [`refused`]，后端带了 `data` 的（`exists` 的同名清单）一并装进信封，窗口照它画冲突框。
-fn refused_with(r: crate::sftp_pool::Refusal) -> CallError {
+fn refused_with(r: crate::transfer_relay::Refusal) -> CallError {
     let mut v = serde_json::json!({ "code": r.code, "message": r.message });
     if let Some(d) = r.data {
         v["data"] = d;
@@ -340,7 +343,7 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
             ),
         ));
     }
-    match crate::sftp_pool::transfer_call(host.to_string(), &op.0, &args).await {
+    match crate::transfer_relay::transfer_call(host.to_string(), &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
@@ -371,7 +374,7 @@ async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<
             ));
         }
     }
-    match crate::sftp_pool::copy_call(origin.to_string(), &args, left).await {
+    match crate::transfer_relay::copy_call(origin.to_string(), &args, left).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
         Err(r) => Err(refused_with(r)),
     }
@@ -490,7 +493,7 @@ async fn plan_open(origin: Origin, payload: Body) -> Result<Body, CallError> {
 
 /// 传输台的一格 ⇒ 流里的一格。进度是 `Frame{seq, Transfer}`（后端那一帧原样）；
 /// 收场那一格是 `Closed{Peer(TransferEnd)}`（码 · 复制详情原样，窗口按码换路）。
-fn step_item(seq: u64, step: crate::sftp_pool::Step) -> Item {
+fn step_item(seq: u64, step: crate::transfer_relay::Step) -> Item {
     let bytes = |v: Result<Vec<u8>, serde_json::Error>| Body(v.unwrap_or_default());
     match step {
         Ok(t) => match &t.end {
@@ -522,7 +525,7 @@ fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream
     if from.is_some() {
         return closed("bad_args", copy_text("rsChanHost.transfer.noResume", &[]));
     }
-    match crate::sftp_pool::watch_ticket(origin, id) {
+    match crate::transfer_relay::watch_ticket(origin, id) {
         Ok(steps) => Box::pin(
             steps
                 .enumerate()

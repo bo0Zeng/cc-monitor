@@ -1,5 +1,5 @@
 //! `P4f`：cc-bus 的**读命令** —— `bus-list`（谁在线 + 各自待读数）与 `bus-inbox`（只读看收件箱尾巴）。
-//! 发信不经这里：`cc-send` 先问 `bus-envelope`（[`super::cc_bus_envelope`]，唯一一处校验），再自己走管线投递；
+//! 发信不经这里：`cc-bus send` 先问 `bus-envelope`（[`super::cc_bus_envelope`]，唯一一处校验），再自己走管线投递；
 //! 界面不发信（人要说话就在会话里说）。
 //!
 //! 〔用 08-13〕逐字：「**也是后端先把基础命令做了, 其他具体的细节先按原本的就行,
@@ -7,8 +7,8 @@
 //!
 //! # ① 第一刀**不做** `bus-recv`
 //!
-//! `cc-recv` **有副作用**：它会推进已读位置。backend 代读 = **把消息从人那里偷走** ——
-//! agent 自己再跑 `cc-recv` 就什么都看不到了。（08-13 刚修过同一族的一条真事故：
+//! `cc-bus recv` **有副作用**：它会推进已读位置。backend 代读 = **把消息从人那里偷走** ——
+//! agent 自己再跑 `cc-bus recv` 就什么都看不到了。（08-13 刚修过同一族的一条真事故：
 //! Stop 钩子把 40 条积压「读过了却没喂回去」，账本 `P4b §7g-9k`。）
 //!
 //! ⇒ 消费性操作第一刀不做；「有没有新的」这个需求由 `bus-list` 的**待读数**满足
@@ -27,7 +27,7 @@
 //! 改的时候前者会被当接口对待，后者不会。
 //!
 //! ⚠ 张力如实写：不读文件就意味着**依赖输出格式**。二者必居其一。
-//! 名册只读 `cc-list --tsv` 那一形（首尾两行有标记，行形状归 cc-bus、id 形状本侧判）⇒ 一个解析器（[`parse_roster_tsv`]）。
+//! 名册只读 `cc-bus list --tsv` 那一形（首尾两行有标记，行形状归 cc-bus、id 形状本侧判）⇒ 一个解析器（[`parse_roster_tsv`]）。
 //!
 //! 这条由 [`tests::no_cc_bus_data_layout_leaks_into_the_backend`] 钉住。
 //!
@@ -46,8 +46,9 @@
 //! 起进程那一处已经搬去 [`crate::plugin::invoke`]（登记也跟着搬了，`readonly_guard::ALLOWED`
 //! 里那一行的文件名同轮改掉 —— 键是 `(文件, 程序名)`，不改会当场红）。
 //! 本模块经那一处转调的外部命令**今天是两条**，都只读：
-//! · `cc-list` **只读**；
-//! · `cc-log` **只读**（共享锁，不推已读位置）。
+//! · `cc-bus list --tsv` **只读**；
+//! · `cc-bus log` **只读**（共享锁，不推已读位置）。
+//! cc-bus 只有一个入口（[`PROGRAM`]），转调的是它的动词。
 //!
 //! ⚠ **别照这段散文数** —— 「今天转调哪几条」的唯一住址是
 //! [`tests::TRANSCALLS`]（从生产段现算之后与它对拍）。这一段只讲写面。
@@ -68,7 +69,7 @@ use crate::plugin::invoke::TIMED_OUT_CODE;
 
 use super::cc_bus_wire::{BusAgent, BusEnvelope, BusInbox, BusInboxItem, BusInboxReq, BusList};
 
-/// `bus-list` 整条命令总期限的上限（`cc-list` ＋ 列 tmux 会话）。
+/// `bus-list` 整条命令总期限的上限（`cc-bus list` ＋ 列 tmux 会话）。
 pub(crate) const BUS_LIST_CAP: Deadline = Deadline::secs(13);
 
 /// 找不到时那句话的**尾巴** —— 这是 cc-bus 自己的话，通用层不该认识它。
@@ -130,7 +131,10 @@ fn timeout_secs() -> u64 {
         .unwrap_or(10)
 }
 
-/// 转调一条 cc-bus 命令。起进程那一处住 [`crate::plugin::invoke`]。
+/// cc-bus 唯一的入口：转调的都是它的动词（`cc-bus list --tsv` · `cc-bus log`）。
+pub(crate) const PROGRAM: &str = "cc-bus";
+
+/// 转调 cc-bus 的一个动词。起进程那一处住 [`crate::plugin::invoke`]。
 ///
 /// argv 直传、**不过 shell** ⇒ 收件人/正文里的元字符不构成注入面。
 ///
@@ -160,7 +164,7 @@ fn timeout_secs() -> u64 {
 /// （常驻监听口的地址与令牌）顺着环境漏进插件」这条没人设计过的回程。
 ///
 /// ⚠ **代价落在这里**：本插件族此前是靠**继承**拿到自己的配置的
-/// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE`），
+/// （`CC_BUS_HOME` · `CCBUS_RATE_*`），
 /// 而本模块**一个都没显式交办过**。现打读数：只加 `env_clear()` 那一刀之后
 /// `tests/e2e/backend-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
 /// 其中最重的一格是 `[15]`：`CC_BUS_HOME` 一没，被调的那条命令就照着**另一个家里的空名册**
@@ -174,13 +178,15 @@ fn timeout_secs() -> u64 {
 /// ⇒ **谁的插件，谁交办**：这一族键的家只能是本模块。
 ///
 /// 按**前缀**而不是逐个列名：这是 cc-bus 自己的命名空间，而它是一族**会长**的东西
-/// （`CCBUS_RATE_*` · `CCBUS_POLICY_MODE` · `CCBUS_NUDGE_DEBOUNCE` …），
+/// （`CCBUS_RATE_*` · `CCBUS_NUDGE_DEBOUNCE` …），
 /// 逐个列名今天就会漏，明天更会漏。
 /// ⚠ 诚实边界：前缀式交办把**本进程环境里**带这两个前缀的键**全部**交给子进程 ——
 /// 它守的是「不再多给」（宿主的秘密不在这个命名空间里），**不是**「按需最小授权」。
 /// 真要收到按键最小化，那是给这一族插件立一份「它认哪几个键」的清单，另一件。
-fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
-    let bin = find(name)?;
+fn run(verb: &str, args: &[&str]) -> Result<Done, CmdErr> {
+    let bin = find(PROGRAM)?;
+    let name = format!("{PROGRAM} {verb}");
+    let argv: Vec<&str> = std::iter::once(verb).chain(args.iter().copied()).collect();
     let secs = timeout_secs();
     let owned: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| k.starts_with("CC_BUS_") || k.starts_with("CCBUS_"))
@@ -190,12 +196,12 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
     // 转调的只剩读命令（id ＋ 行数），argv 撑不爆；万一撑爆也照「起不来」说。
-    crate::plugin::invoke::run(&bin, args, secs, &env, None).map_err(|e| match e {
+    crate::plugin::invoke::run(&bin, &argv, secs, &env, None).map_err(|e| match e {
         NotRun::ArgListTooLong => (
             "failed",
             copy_text(
                 "beCcBus.run.failed",
-                &[("name", name), ("status", "E2BIG"), ("detail", "")],
+                &[("name", &name), ("status", "E2BIG"), ("detail", "")],
             ),
         ),
         // 这条失败形没有原话位：系统原话记一行日志，句子只带原因词。
@@ -223,7 +229,7 @@ pub(crate) fn waited_secs(out: &Done) -> u64 {
     out.waited_secs.unwrap_or_else(timeout_secs)
 }
 
-/// 机器可读形的首行标记（`cc-list --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、照打人读表，或还是上一版的名册（带登记地址那一形）
+/// 机器可读形的首行标记（`cc-bus list --tsv` / `cc-bus log`；标记的字样沿用老名字，是线上的形状，不是命令名）。老 cc-bus 不认 `--tsv`、照打人读表，或还是上一版的名册（带登记地址那一形）
 /// ⇒ 见不到这一版的标记就明说「cc-bus 比后端旧」，不猜着解（命令是接口，接口认不出就说）。
 const ROSTER_TSV_HEAD: &str = "#cc-list-tsv\t2";
 const LOG_HEAD: &str = "#cc-log\t1";
@@ -270,10 +276,10 @@ pub(crate) struct RosterRow {
     pub(crate) unread: i64,
 }
 
-/// `cc-list --tsv` → `(名册, 坏行数)` —— 纯函数。行的形状归 cc-bus（恰好 2 格）；id 的形状由本侧判
+/// `cc-bus list --tsv` → `(名册, 坏行数)` —— 纯函数。行的形状归 cc-bus（恰好 2 格）；id 的形状由本侧判
 /// （`INVARIANTS §47`，唯一一份 `bus_id_ok`），过不了的算坏行（`--help` 那种 cc-bus 自己的字符集放得过）。
 pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (String, String)> {
-    let (rows, mut skipped) = framed("cc-list --tsv", text, ROSTER_TSV_HEAD)?;
+    let (rows, mut skipped) = framed("cc-bus list --tsv", text, ROSTER_TSV_HEAD)?;
     let mut out = Vec::new();
     for l in rows {
         let f: Vec<&str> = l.split('\t').collect();
@@ -288,7 +294,7 @@ pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (S
     Ok((out, skipped))
 }
 
-/// 读命令（`cc-list --tsv` · `cc-log`）的退出码 → **语义码** —— 纯函数。`name` 是那条命令，进那一句。
+/// 读命令（`cc-bus list --tsv` · `cc-bus log`）的退出码 → **语义码** —— 纯函数。`name` 是那条命令，进那一句。
 ///
 /// # ★ 这张表**刻意住在这里**，不许上收到 `plugin/`（`E6`）
 ///
@@ -333,7 +339,7 @@ pub(crate) fn classify_exit(
     }
 }
 
-/// 〔`INVARIANTS §47` ①〕agent id 在交给 `cc-send` / `cc-log` **之前**先过形状判定
+/// 〔`INVARIANTS §47` ①〕agent id 在交给 `cc-bus log` **之前**先过形状判定
 /// （`shell_quote_core::bus_id_ok`：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`，全仓唯一一份）。判不过 ⇒ `bad_id`，一个进程都不起。
 ///
 /// 为什么在这里判、而不是「交给 cc-bus 自己去拒」：`§47` 逐字「**『对端会校验』不是理由**」—— id 会拼进对端的文件路径；
@@ -355,7 +361,7 @@ pub(crate) struct Seen {
     pub(crate) live: Option<bool>,
 }
 
-/// 总线名单 —— `bus-list` 读它。行只来自 cc-bus 的收件箱（[`roster`]，`cc-list --tsv`）；
+/// 总线名单 —— `bus-list` 读它。行只来自 cc-bus 的收件箱（[`roster`]，`cc-bus list --tsv`）；
 /// 叫它什么 · 在不在问 `seen`（后端那一处）。没重部署 cc-bus 的机器上老脚本 ⇒ 明说「cc-bus 比后端旧」（[`too_old`]）。
 pub(crate) fn list_for_inbound(seen: &dyn Fn(&str) -> Seen) -> Result<BusList, (String, String)> {
     let (rows, skipped) = roster()?;
@@ -380,19 +386,24 @@ pub(crate) fn roster_agents(rows: &[RosterRow], seen: &dyn Fn(&str) -> Seen) -> 
         .collect()
 }
 
-/// 转调一条只读的 cc-bus 命令、要求它 0 退出，交回 stdout —— `--tsv` 两条与 `cc-log` 共用。
-fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
-    let out = run(name, args).map_err(|(c, m)| (c.to_string(), m))?;
+/// 转调一条只读的 cc-bus 动词、要求它 0 退出，交回 stdout —— `list --tsv` 与 `log` 共用。
+fn read_via(verb: &str, args: &[&str]) -> Result<String, (String, String)> {
+    let out = run(verb, args).map_err(|(c, m)| (c.to_string(), m))?;
     if out.timed_out() {
         return Err(timed_out_err(waited_secs(&out)));
     }
-    classify_exit(name, out.code, &out.diagnosis(), waited_secs(&out))?;
+    classify_exit(
+        &format!("{PROGRAM} {verb}"),
+        out.code,
+        &out.diagnosis(),
+        waited_secs(&out),
+    )?;
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// 名册（机器可读形）：`bus-list` 读它。
 pub(crate) fn roster() -> Result<(Vec<RosterRow>, usize), (String, String)> {
-    parse_roster_tsv(&read_via("cc-list", &["--tsv"])?)
+    parse_roster_tsv(&read_via("list", &["--tsv"])?)
 }
 
 /// `bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），
@@ -407,7 +418,7 @@ const INBOX_LINES_DEFAULT: u64 = 200;
 const INBOX_LINES_MAX: u64 = 2000;
 const INBOX_CAP: usize = 4 * 1024 * 1024;
 
-/// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（`§47`：交给 `cc-log` 之前本侧先判，拒码 `bad_id`、一个进程都不起）。
+/// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（`§47`：交给 `cc-bus log` 之前本侧先判，拒码 `bad_id`、一个进程都不起）。
 pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), (String, String)> {
     if req.id.is_empty() {
         return Err((
@@ -432,10 +443,10 @@ pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), (String, S
     Ok((req.id.clone(), lines))
 }
 
-/// `bus-inbox`：只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置 —— 不是 `bus-recv`）。
+/// `bus-inbox`：只读看一个 agent 收件箱的尾巴（转调 `cc-bus log`，不推已读位置 —— 不是 `bus-recv`）。
 pub(crate) fn inbox_for_inbound(req: &BusInboxReq) -> Result<BusInbox, (String, String)> {
     let (id, lines) = parse_inbox(req)?;
-    let text = read_via("cc-log", &[&id, "-n", &lines.to_string()]).map_err(|(c, m)| {
+    let text = read_via("log", &[&id, "-n", &lines.to_string()]).map_err(|(c, m)| {
         if c == "not_installed" {
             (
                 c,
@@ -451,13 +462,13 @@ pub(crate) fn inbox_for_inbound(req: &BusInboxReq) -> Result<BusInbox, (String, 
     inbox_reply(&text)
 }
 
-/// `cc-log` 的输出 → `bus-inbox` 成品 —— 纯函数。逐行解析（坏行跳过计数、不抛、不因坏行丢好行）；
+/// `cc-bus log` 的输出 → `bus-inbox` 成品 —— 纯函数。逐行解析（坏行跳过计数、不抛、不因坏行丢好行）；
 /// 超上限保尾（这是回显，不是清单）并说 `truncated`。
 pub(crate) fn inbox_reply(text: &str) -> Result<BusInbox, (String, String)> {
     let body = match text.split_once('\n') {
         Some((head, rest)) if head.trim_end_matches('\r') == LOG_HEAD => rest,
         None if text.trim_end_matches('\r') == LOG_HEAD => "",
-        _ => return Err(too_old("cc-log")),
+        _ => return Err(too_old("cc-bus log")),
     };
     let (body, truncated) = if body.len() > INBOX_CAP {
         let cut = body.len() - INBOX_CAP;

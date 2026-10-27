@@ -3,7 +3,7 @@
 #
 # ## 这一侧今天做到哪(如实写,别读宽)
 #
-# ✅ **存储适配做了**:cc-peek / cc-commit 在 Windows 的 bash(MSYS2 / Cygwin / Git-Bash)上
+# ✅ **存储适配做了**:cc-bus peek / cc-bus commit 在 Windows 的 bash(MSYS2 / Cygwin / Git-Bash)上
 #    跑得起来 —— 只要那台机器上有 `flock(1)`。判据靠 `CCBUS_ADAPT_OS=windows` 在 Linux 上
 #    把这一侧整段跑一遍(否则"Windows 那一侧"永远没人判,只能靠读代码相信)。
 # ⚠ **共享读锁买不到**:`flock -s` 这一侧没有对应物 ⇒ `store_lock_shared` **退化成排他**,

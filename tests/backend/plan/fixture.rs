@@ -539,6 +539,7 @@ pub(crate) fn scratch(tag: &str) -> PathBuf {
 /// ① 把自己的 argv · 当前目录 · 环境里有没有 `PB_ID` 记进 `<root>/ran.json`（最近那一次），argv 另追加一行进 `<root>/runs.log`（每一次）；
 /// ② 当前目录（往上找）有 `.planned-build/` ⇒ `dump --node` 印 `<那个目录>/node.json`；`dump --refs` 把标准输入记进 `<root>/stdin.txt`、
 /// 印 `<那个目录>/refs.json`；别的印 `<那个目录>/dump.json`；退 0。没有 ⇒ stderr 一句、退 3。
+/// `dump --domains <目录>` 从那个目录（不在 ⇒ 往上第一个在的）往上找：找到 ⇒ 同上印 `dump.json`；找不到 ⇒ 印 `<root>/domains.json`（插件里那几档）、退 0。
 /// 它认的 `--` 旗标就是真 pb 那边后端会发的那几个（`protocol_doc_guard` 的子进程旗标对拍读这份）。
 /// `rc` 给了就不管上面，直接以它退出（造「没有 dump」「别的失败」）。
 pub(crate) fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
@@ -562,6 +563,11 @@ forced = {forced}
 if forced is not None:
     sys.stderr.write("forced\n"); sys.exit(forced)
 d = os.getcwd()
+domains = sys.argv[1:3] == ["dump", "--domains"]
+if domains and len(sys.argv) > 3:
+    d = sys.argv[3]
+    while not os.path.isdir(d) and os.path.dirname(d) != d:
+        d = os.path.dirname(d)
 while True:
     if os.path.isdir(os.path.join(d, ".planned-build")):
         how = sys.argv[1:3]
@@ -571,13 +577,22 @@ while True:
         sys.stdout.write(open(os.path.join(d, f)).read()); sys.exit(0)
     up = os.path.dirname(d)
     if up == d:
+        if domains:
+            sys.stdout.write(open({plugin_domains:?}).read()); sys.exit(0)
         sys.stderr.write("读不成：这里不是一个 pb 工作区\n"); sys.exit(3)
     d = up
 "#,
             ran = ran.to_string_lossy(),
             runs = root.join("runs.log").to_string_lossy(),
             stdin = root.join("stdin.txt").to_string_lossy(),
+            plugin_domains = root.join("domains.json").to_string_lossy(),
         ),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("domains.json"),
+        json!({"pb": "0.5.2", "shape": 6, "workspace": null, "domains": [research(), software()]})
+            .to_string(),
     )
     .unwrap();
     tools.join("entry.py")

@@ -675,7 +675,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     for raw in ["=pipe-x:", "$1", "%0", "pipe-x"] {
         assert_eq!(
             input_on(iso.on(), &json!({ "terminal": raw, "text": "x" })).unwrap(),
-            json!({ "result": "refused", "why": "not_known", "said": no_said("not_known") })
+            json!({ "result": "refused", "why": "not_known", "said": no_said("not_known"), "acts": ["retry", "relist"] })
         );
         assert_eq!(
             preview_on(iso.on(), &json!({ "terminal": raw }), &Default::default())
@@ -1005,6 +1005,41 @@ fn every_refusal_reason_has_its_sentence() {
     assert_eq!(no_said("ended"), no_said("not_known"));
     let r = input_reply("refused", Some("not_yours"), None);
     assert_eq!(r["said"], no_said("not_yours"));
+}
+
+/// 送完之后的下一步由这一处判（出口照 `acts` 摆，不按 `why` 自己挑）：改得了的拒因给［再发一次］，终端可能换了 ⇒ 重读名单，
+/// 画面可能变了 ⇒ 重抓一屏；已经没了 · 不归这里管的 ⇒ 不给重发。
+#[test]
+fn the_next_steps_after_a_send_are_judged_here() {
+    // 没有下一步 ⇒ 不带这一格（同 `resumed`）。
+    let acts = |result: &str, why: Option<&str>| match input_reply(result, why, None).get("acts") {
+        None => json!([]),
+        Some(Value::Array(a)) if a.is_empty() => panic!("空的 `acts` 写上了线"),
+        Some(a) => a.clone(),
+    };
+    assert_eq!(acts("delivered", None), json!([]));
+    assert_eq!(acts("unsure", None), json!(["recapture"]));
+    assert_eq!(
+        acts("refused", Some("screen_changed")),
+        json!(["retry", "recapture"])
+    );
+    assert_eq!(
+        acts("refused", Some("not_known")),
+        json!(["retry", "relist"])
+    );
+    assert_eq!(acts("refused", Some("ambiguous")), json!(["retry"]));
+    assert_eq!(acts("refused", Some("ended")), json!(["relist"]));
+    for no_retry in [
+        "not_yours",
+        "not_managed",
+        "other_windows",
+        "waiting",
+        "elsewhere",
+        "not_resumed",
+        "not_idle",
+    ] {
+        assert_eq!(acts("refused", Some(no_retry)), json!([]), "{no_retry}");
+    }
 }
 
 /// 终端这一族线上的原因码与状态（名单 `can.*.no` · `terminal-input` 的 `why` · 名单行的 `state`）和同族命令级码一个写法：

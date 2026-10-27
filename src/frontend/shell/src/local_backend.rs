@@ -1545,7 +1545,7 @@ pub(crate) fn local_stdio_consumer(
 
     // 流没了 ⇒ 经它开的传输一律带原因收场（后端的票表随那条流一起撤了；不让看的人干等到超时）。
     if let Some(mine) = registered.as_ref() {
-        crate::sftp_pool::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
+        crate::transfer_relay::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
     }
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();

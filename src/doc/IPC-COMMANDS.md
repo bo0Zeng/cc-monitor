@@ -10976,7 +10976,7 @@ refs?: Array<string> | null,
 text?: string | null, };
 ```
 
-码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long`
+码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long` · `not_same_group` · `no_roster`
 
 #### `bus-inbox`
 
@@ -11044,7 +11044,7 @@ refs: Array<string>,
 text: string, };
 type BusInboxReq = { 
 /**
- * 交给 `cc-log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+ * 交给 `cc-bus log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
  */
 id: string, 
 /**
@@ -14666,7 +14666,7 @@ type Words = string;
 |---|---|---|
 | `o` | number | 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)` |
 | `n` | number | 行字节长（**含**结尾 `\n`） |
-| `t` | RecordClass? | 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；不进界面（元数据 · 解析不出 · 认不出）⇒ 省略 |
+| `t` | RecordClass? | 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title`，与读正文时那条记录的 `t` 同一个词）；不进界面（元数据 · 解析不出 · 认不出）⇒ 省略 |
 | `u` | string? | 只在用户输入那张小表里带；扫描图按它认一条记录在第几轮） |
 | `sc` | bool? | 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出） |
 | `sp` | string? | user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清） |

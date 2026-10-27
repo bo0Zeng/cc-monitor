@@ -201,7 +201,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `stream::cli::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
-    // 帧面 `bus-envelope` 的 CLI 面（`cc-send` 发之前问它核信封）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    // 帧面 `bus-envelope` 的 CLI 面（`cc-bus send` 发之前问它核信封）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--bus-envelope",
     // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。
     "--bus-inbox",
@@ -236,6 +236,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-command",
     // 文件窗口反查（`plan-files`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-files",
+    // 新计划框问的那一份（`plan-new`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--plan-new",
     // 校验 pb 路径（`plan-pb-check`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-pb-check",
     // 认会话消息里的编号（`plan-refs`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

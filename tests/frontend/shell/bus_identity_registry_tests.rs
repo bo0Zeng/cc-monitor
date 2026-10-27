@@ -42,8 +42,8 @@ fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
     assert!(
         files
             .iter()
-            .any(|f| f.replace('\\', "/").ends_with("/scripts/cc-send")),
-        "列到的 cc-bus 脚本里没有 `cc-send` —— 清单取法坏了，本断言在空转：{files:?}"
+            .any(|f| f.replace('\\', "/").ends_with("/scripts/cc-bus-send.sh")),
+        "列到的 cc-bus 脚本里没有 `cc-bus-send.sh` —— 清单取法坏了，本断言在空转：{files:?}"
     );
     let mut targeting: Vec<String> = Vec::new();
     let mut unverified: Vec<String> = Vec::new();

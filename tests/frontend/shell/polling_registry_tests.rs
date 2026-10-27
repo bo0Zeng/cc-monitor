@@ -160,7 +160,7 @@ fn repo_root() -> PathBuf {
 /// `setInterval` 这个词（写的是「不许有」）。不剥的话它们会被自己的纪律说明命中 ——
 /// 与 `launch-cli-wire.vitest.ts` 那次「文档注释里就写着 `deny_unknown_fields`」同一个坑。
 /// 一行里有没有周期唤醒的形态。
-/// `shared/` 下的 shell 脚本全集：`.sh` 后缀 **或** 首行有 shebang（`cc-send`/`cc-recv`
+/// `shared/` 下的 shell 脚本全集：`.sh` 后缀 **或** 首行有 shebang（`cc-bus send`/`cc-bus recv`
 /// 这些没有后缀）。**按内容认，不按后缀认** —— 后缀是可选的，shebang 才是「它是脚本」的证据。
 fn collect_shell(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut out = Vec::new();

@@ -86,11 +86,11 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 - **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
 - **流只发要看的会话**：每台一张名单台（`resident-client` 的 `watch::Desk`）：attach 行带上「在看哪几个会话」、那台从第一帧起照它发，之后变了经 `stream-watch {sids}` 报；刚进名单的会话从第几行起上流由那台回，界面据它补上没上流的那段。名单从空开始；桌面名单 ＝ 主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（壳 `stream_watch.rs` 交名单台），手机是它屏上的会话（核心 `resident.rs` 计数）。
 - **seq 是后端给的行号**，界面 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。一条记录至多一张卡：纯工具的记录画成一张「几步」卡（每步一行），界面不把相邻的并组 —— 哪几条收进「过程」只由后端划段（`observe/recognize/turns.rs`）。
-- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、界面说「说不清」。
+- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是端核心那一份 `resident_client::book`，手机同一份），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、那几条交出去说「说不清」（脸是本机后端在 hello 里给的那一张 `unseen`）。
 - **背压**：界面给 credit；实时行没有 credit 就丢，并在原位报 gap，界面按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`--resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，界面进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
-- **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
+- **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录，各家的翻译表在 `agents/<家>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
 - **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `wire/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `changed {tasks, key: sid}`，界面订 `changed/tasks`，收到就重问 `tasks-list`。
 
@@ -194,7 +194,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `no_timer_guard`（后端） | 后端里不许有自己醒过来的构件，零容忍 |
 | `polling_registry` | 界面 TS 与 `src/shared/` 下的 shell |
 | `rust_timer_registry` 的 `REGISTERED` | monitor Rust 里的 `sleep` / `interval` |
-| `rust_timer_registry` 的 `SHELL_WAKES` | monitor Rust 拼出来的 shell 循环（前三张都看不见它） |
+| `rust_timer_registry` 的 shell 那一条 | monitor Rust 拼出来的 shell 循环（前三张都看不见它）：零命中，带一条合成的正控 |
 
 后端也不产出自带节拍的 shell 串（`no_timer_guard` 的 `f09_external_beat` 零命中）。期限一律由发起那件事的一方给一个绝对时刻，下游只收紧，通信层自己没有期限常量。
 
@@ -208,7 +208,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 ### 2.8 其余几块
 
-- **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。装那一趟整趟在后端（帧命令 `deploy-install`，手机同一份 `deploy` crate）：「换不换、换成什么」只升不降，身份读字节里的戳、不跑它；SFTP 只写暂存区，落点由新传上去的那一份自己 `--place-self` 换进去。monitor 只交字节文件的路径、收进度。手机今天只核 `BUILD_ID`、对不上就说那台要更新，不自己装后端。
+- **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。装那一趟整趟在后端（帧命令 `deploy-install`，手机同一份 `deploy` crate）：「换不换、换成什么」只升不降，身份读字节里的戳、不跑它；SFTP 只写暂存区，落点由新传上去的那一份自己 `--place-self` 换进去。monitor 只交字节文件的路径、收进度。手机不在重连循环里自己装：那台比手上这一版旧 ⇒ 照接、说要更新，人按［安装］/［更新］才从包里那两份 Linux 后端装上去（`core-rs/rust/install.rs`）。
 - **资产**：每台后端一份资产目录，本机后端按事件在各后端之间拉 / 合 / 推；装到别的机器要用户点，先看差异。
 - **退出行为**：住那台机器自己的 `~/.cc-monitor/backend.json`，只有那台后端读写（`control/exit_policy`），决定那一刻现读。
 
@@ -236,7 +236,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 **出口扫描判据**：按意思判两句——出口取的文案键只许骨架那几档（文案表 `kind` 的 title · control · action · aria · body）且不带插值；拿一个值去比字面的码的分支里不许取文。扫的树照上表「输出适配层」那一行：界面 TS（`tests/frontend/ui/exit-rules.ts`，typescript 语法树）、壳与文件窗口的 Rust（`tests/frontend/filewin/exit_scan_tests.rs`）、手机 Kotlin（`src/mobile/detekt-rules` 的 detekt 规则）。今天的存量登在欠账名单 `tests/frontend/ui/exit-debt.json`，三门语言共用，逐格恒等、只许删不许加。
 
-**会走的钟**：核心写的时刻字是发出那一刻的字。手机与 CLI 要它跟着走就按节拍重问（出口零格式化）；桌面秒级走的那几处（过程行 `{dur}` · 「已等」）只留一个时长读口（TS `duration-format.ts::fmtDur`，与 Rust `copy_core::short_duration` 对同一份金样 `short-duration.golden.json`）。
+**会走的钟**：核心写的时刻字是发出那一刻的字。秒级要走的那几处（过程行 `{dur}` · 「已等」）核心交起点或答出那一刻已等多久，出口从收到起按本机的钟接着走，不重问那台。时长只一个读口：桌面 TS `duration-format.ts::fmtDur`，手机 `core-copy` 的 `DurationFormat`（经 JNI 调 `copy_core::short_duration`），对同一份金样 `short-duration.golden.json`。
 
 #### 格目录
 
@@ -284,7 +284,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - **一张表两个面**：帧面（长连接上的 `{op, args}`）与 CLI 面（`ccm -- --<命令>`，入参从 stdin 读一段 JSON 或 `--args-b64`）从同一张表派生；只上帧面的登记为 `STREAM_ONLY`。CLI 面的子命令全表是 `lib.rs::SUBCOMMANDS`，其中不从命令表派生、只在 CLI 面的那几条说明在 `stream/inbound/cli_only.rs`。
 - **协议参考从代码生成**：`IPC-COMMANDS.md` 由 `tests/backend/protocol_doc_gen.rs` 从命令表与帧类型写出，判据是「重新生成 == 仓里那份」；改了命令或帧之后那条判据红、现打的那份落在 `.build/golden/`，对过后 `bash tests/scripts/bless-golden.sh` 拷回（所有金样判据都是这一个写口，判据本身只比不写）。
 - **握手**：hello 带 `commands`（这台接受的命令）· `unavailable`（接得下、这台做不到的，带码）· `shapes`（每条 typed 命令的形状指纹，撤不撤得动算在里面）；出口据它置灰，不猜。
-- **调用方**：桌面界面经 `chan.call(origin, op, payload)`，回包解码写在各 `*-reads.ts`；手机经 `core-claude` 的 `FrameClient`；脚本与 skill 走 CLI 面。
+- **调用方**：桌面界面经 `chan.call(origin, op, payload)`，回包解码写在各 `*-reads.ts`；手机经 `core-claude` 的 `CoreLink`（`link/Link.kt`；一问一答由手机嵌的核心里那份 `resident-client` 发，同桌面）；脚本与 skill 走 CLI 面。
 
 ### 3.3 中转与账号轮换
 
@@ -309,7 +309,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
 
-**去向**：后端已是第五版的分层（上表：事实 · 节点 · 判 · 推演 · 策略文件 · 两份账本，第一版 / 第二版由接上中转的那个进程一次升级写回两份、原文留 `.v1` / `.v2`，写回之前读的一侧当没有）。还没进主线的是界面那一刀：设置页与会话面板照第五版的 `rotation-*` 命令读写。
+**去向**：后端已是第五版的分层（上表：事实 · 节点 · 判 · 推演 · 策略文件 · 两份账本，第一版 / 第二版由接上中转的那个进程一次升级写回两份、原文留 `.v1` / `.v2`，写回之前读的一侧当没有）。桌面设置页与会话面板、手机都照第五版的 `rotation-*` 命令读写。
 
 ### 3.4 文件
 
@@ -369,16 +369,17 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 | 模块 | 管什么 |
 |---|---|
-| `app` | 屏与导航、注入、前台保活；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏用拨号网关与 tmux 网关 |
-| `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了接回）与核心成品的解码；`model/` 把通用记录映射成渲染单元 |
-| `core-ssh` | 连接管理（单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` |
-| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里 |
+| `app` | 屏与导航、注入、前台保活；主机连接的生死只经 `ssh/HostConnector.kt`；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏一条 shell 命令都不拼：进哪儿问那台 `session-open`、列 · 结束 · 新建 tmux 会话也问那台核心（`ui/session/TerminalOps.kt`）；［安装］/［更新］后端（`ui/common/BackendDeploy.kt`） |
+| `core-claude` | `link/`：那台常驻流交来的事（会话簿 · 活卡 · 记录行 · 一问一答的结局 · 那台的状态成品）落成手机这一侧的几条流（`CoreLink`）；接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`（桌面同一份）；`model/` 把通用记录映射成渲染单元 |
+| `core-wire` | 线上契约的 Kotlin 那一头：生成的类与编解码（`gen/`，不手改），不放判定 |
+| `core-ssh` | 终端 · 文件走的那层 SSH 连接（按机器单飞）与 `RustTransport`：SSH 本身走 `core-rs`；自己不拨重连、不判死、不退避，跟着常驻流那条循环换连接 |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里；常驻流宿主（`resident.rs`，会话簿照端核心那一份折好再交）· 装后端（`install.rs`，同一份 `deploy` crate）· 分块传与一组一条命令（`transfer.rs` · `batch.rs`，桌面文件窗口同一份） |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-data` | 本地库（Room） |
 | `core-ui` | 共用主题与反馈 |
 | `core-copy` | 取文口与大小 · 时长格式（同一张文案表） |
 
-谁调谁：`core-ssh` 拨号 → `core-rs` 里那份 `resident-client` 在同一份拨号身份上开链路跑 `ccm -- --resident-attach` → `core-claude` 在上面说帧（与桌面连远端同一条路、同一份后端）→ `app` 排版。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；手机的界面令牌今天是它自己一套，不与桌面共用。
+谁调谁：`core-rs` 里那份 `resident-client` 用 Kotlin 交的拨号请求开链路跑 `ccm -- --resident-attach`（与桌面连远端同一条路、同一份后端），交上来的事 → `core-claude` 照生成的类解 → `app` 排版；`core-ssh` 那层跟着它报的通断换连接。手机与桌面共吃同一批冻结格与金样（IPC-PROTOCOL §7）；界面令牌两端同一份 `src/shared/theme/tokens.css`（`core-ui` 构建时生成 Kotlin 那一份）。
 
 ### 3.10 组
 

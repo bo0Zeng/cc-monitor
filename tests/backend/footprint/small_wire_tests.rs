@@ -93,7 +93,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
         wire(&super::last_seen::read_at(&file, &take(json!({ "origin": o })), &clock).unwrap())
     };
     assert_eq!(read("devbox"), r#"{"accounts":null,"data":null}"#);
-    let v = json!({"meta": {"enabled": true, "acctsDir": "/a", "manifestPath": "/a/m.json", "updatedAt": null, "sharedStore": null, "count": 0, "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null, "home": null}, "accounts": [], "notice": null});
+    let v = json!({"meta": {"enabled": true, "acctsDir": "/a", "manifestPath": "/a/m.json", "updatedAt": null, "sharedStore": null, "count": 0, "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null}, "accounts": [], "notice": null});
     assert_eq!(
         wire(
             &ls(
@@ -118,7 +118,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     );
     assert_eq!(
         read("devbox"),
-        r#"{"accounts":{"seen":{"atMs":1000,"said":"采样于 00:00"},"state":"kept","value":{"accounts":[],"meta":{"acctsDir":"/a","count":0,"effectiveDefault":null,"enabled":true,"error":null,"home":null,"manifestPath":"/a/m.json","nextDefault":null,"sharedStore":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"seen":{"atMs":2000,"said":"采样于 00:00"},"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"home":"/h","own":[],"rank":2,"tmux":null,"todo":[]}}}"#
+        r#"{"accounts":{"seen":{"atMs":1000,"said":"采样于 00:00"},"state":"kept","value":{"accounts":[],"meta":{"acctsDir":"/a","count":0,"effectiveDefault":null,"enabled":true,"error":null,"manifestPath":"/a/m.json","nextDefault":null,"sharedStore":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"seen":{"atMs":2000,"said":"采样于 00:00"},"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"home":"/h","own":[],"rank":2,"tmux":null,"todo":[]}}}"#
     );
     assert_eq!(
         wire(&ls(&own, &json!({"origin": "devbox", "forget": true}), 3000).unwrap()),

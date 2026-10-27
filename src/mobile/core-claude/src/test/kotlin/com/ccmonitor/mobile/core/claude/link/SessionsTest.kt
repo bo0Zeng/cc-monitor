@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.Landed
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
+import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.TailHow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -70,8 +71,8 @@ class SessionsTest {
         val base = opened + ("sid" to "s1")
         assertEquals(TerminalInput.Result.Delivered, SessionOpen.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null)))?.prompt)
         assertEquals(
-            TerminalInput.Result.Refused("终端已不在", "not_known"),
-            SessionOpen.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))?.prompt,
+            TerminalInput.Result.Refused("终端已不在", "not_known", listOf(SentAct.RETRY, SentAct.RELIST)),
+            SessionOpen.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在", "acts" to listOf("retry", "relist"))))?.prompt,
         )
         assertNull(SessionOpen.of(base)?.prompt)
         assertNull("prompt 那一格认不出 ⇒ 解不出", SessionOpen.of(base + ("prompt" to mapOf("result" to "maybe"))))
@@ -107,7 +108,7 @@ class SessionsTest {
     fun `terminal-input：金样三种回话都解得出，拒的那句照抄`() {
         val replies = terminals.obj("terminal-input")!!.objs("replies")!!.map(TerminalInput::of)
         assertEquals(TerminalInput.Result.Delivered, replies[0])
-        assertEquals(TerminalInput.Result.Refused(said = "画面已变", why = "screen_changed"), replies[1])
+        assertEquals(TerminalInput.Result.Refused(said = "画面已变", why = "screen_changed", acts = listOf(SentAct.RETRY, SentAct.RECAPTURE)), replies[1])
         assertEquals(TerminalInput.Result.Unsure, replies[2])
         assertNull(TerminalInput.of(mapOf("result" to "refused")))
         assertNull(TerminalInput.of(mapOf("result" to "maybe")))
