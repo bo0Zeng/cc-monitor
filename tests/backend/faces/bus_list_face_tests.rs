@@ -26,7 +26,8 @@ fn a_known_session_gets_its_title_and_a_judged_liveness_an_unknown_one_stays_unk
         ),
     )
     .unwrap();
-    let got = seen_at(&home, sid);
+    let none = Default::default();
+    let got = seen_at(&home, sid, &none);
     assert_eq!(
         got.live,
         Some(false),
@@ -38,12 +39,21 @@ fn a_known_session_gets_its_title_and_a_judged_liveness_an_unknown_one_stays_unk
         "标题该是会话自己的：{title}"
     );
     assert_eq!(
-        seen_at(&home, "b5000000-0000-4000-8000-0000000000ff"),
+        seen_at(&home, "b5000000-0000-4000-8000-0000000000ff", &none),
         Seen {
             title: None,
             live: None
         },
         "这台没有它的记录 ⇒ 两格都判不了（不是「不在」）"
+    );
+    // 这台注解里给它改过名 ⇒ 名单上叫改过的名（与标签页 · 历史清单同一个名）。
+    let renamed: crate::history::history_annotations::Table = serde_json::from_value(
+        serde_json::json!({ sid: {"starred": false, "customTitle": "修登录", "updatedAt": 0} }),
+    )
+    .unwrap();
+    assert_eq!(
+        seen_at(&home, sid, &renamed).title.as_deref(),
+        Some("修登录")
     );
     let _ = std::fs::remove_dir_all(&home);
 }

@@ -2,7 +2,7 @@
 //! - 会话级那几格（[`SessionLine`]：是谁说的一句 · 标题 · 后台会话 · 时刻 · cwd · 分叉来源）—— 历史清单那一行与全文搜索索引同一份读法；
 //! - 正文的形状（[`BodyShape`]：正文几段 · 折叠单元几个）—— 骨架索引按它粗估高度。
 //!
-//! 字段名（`type` · `sessionKind` · `aiTitle` · `customTitle` · `forkedFrom` · `message.content` 的块类型）只住这里；
+//! 字段名（`type` · `sessionKind` · `aiTitle` · `forkedFrom` · `message.content` 的块类型）只住这里；
 //! 通用层的扫描器（`history::listing_scan::SessionScan`）只拿翻好的那一行累计，不认这一家的格式。
 
 use crate::agents::{BodyShape, LineRole, SessionLine};
@@ -72,8 +72,6 @@ struct Head<'a> {
     cwd: LooseStr<'a>,
     #[serde(rename = "aiTitle", borrow, default)]
     ai_title: LooseStr<'a>,
-    #[serde(rename = "customTitle", borrow, default)]
-    custom_title: LooseStr<'a>,
     #[serde(rename = "forkedFrom", default)]
     forked_from: Option<Value>,
 }
@@ -88,12 +86,11 @@ impl<'a> Head<'a> {
             timestamp: s("timestamp"),
             cwd: s("cwd"),
             ai_title: s("aiTitle"),
-            custom_title: s("customTitle"),
             forked_from: v.get("forkedFrom").cloned(),
         }
     }
 
-    /// 翻成通用的那一行：时刻与分叉来源只认人说的 / 回话那两类记录；标题认 `ai-title` 与 CC v2.1.x 起的 `custom-title`（两个都还会出现）。
+    /// 翻成通用的那一行：时刻与分叉来源只认人说的 / 回话那两类记录；标题只认 agent 起的 `ai-title`：`custom-title` 是人在 Claude 里 `/rename` 写的，改名只认 monitor 那一格。
     fn line(self) -> SessionLine {
         let role = match self.kind.0.as_deref() {
             Some("user") => Some(LineRole::Said),
@@ -102,7 +99,8 @@ impl<'a> Head<'a> {
         };
         let title = match self.kind.0.as_deref() {
             Some("ai-title") => self.ai_title.0,
-            Some("custom-title") => self.custom_title.0,
+            // 人在 Claude 里 `/rename` 写的那一条：不是这一行的标题（改名只认 monitor 那一格）。
+            Some("custom-title") => None,
             _ => None,
         };
         let talk = role.is_some();

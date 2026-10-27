@@ -5,13 +5,12 @@
 /// 标题抽取那段 `match` 只认两种记录，其余走 `_ => {}` —— 静默忽略。
 /// 对绝大多数记录类型这是对的（它们与标题无关），
 /// **但对「又冒出一种承载标题的记录」就不是** ——
-/// 而那件事**真的发生过**：Claude Code v2.1.x 把 `ai-title` 改名成 `custom-title`，
-/// 仓里因此多了 `JsonlRecord::CustomTitle` 这一支。
-/// 那次是**靠人发现的**：改名之后标题会静默消失，没有任何判据会红。
+/// 而那件事**真的发生过**：仓里多了 `JsonlRecord::CustomTitle` 这一支（人在 Claude 里 `/rename` 写的）时，
+/// 那次是**靠人发现的**：没接住的标题会静默消失，没有任何判据会红。
 ///
 /// ⇒ 本条把「谁承载标题」这件事变成可机检的：
 /// 人群 = `agents/claudecode/schema.rs`（原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
-/// 性质 = 它必须被标题抽取段接住 ——那一段今天住适配层 `agents/claudecode/session_line.rs` 的 `Head::line`
+/// 性质 = 它必须被标题抽取段具名接住（收它 · 或明写不收，如 `custom-title`：改名只认 monitor 那一格）——那一段今天住适配层 `agents/claudecode/session_line.rs` 的 `Head::line`
 /// （历史清单那一行与全文搜索索引同一个扫描器 `history/listing_scan.rs::SessionScan` 经它读；本机与远端同一个函数），按记录的线上类型名分臂。
 /// 加第三种标题记录而忘了接 ⇒ 红。
 ///
