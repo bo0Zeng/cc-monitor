@@ -389,7 +389,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
   function rig(rows: Row[], cur: { t: Tab | null }, mode: "snapOnly" | "live" = "snapOnly") {
     let shots = 0;
     const sent: { what: TerminalSend; seen: string | null }[] = [];
-    let reply: () => Promise<TerminalSent> = async () => ({ result: "delivered" });
+    let reply: () => Promise<TerminalSent> = async () => ({ result: "delivered", acts: [] });
     let shotFails: Error | null = null;
     const follows: FollowRig[] = [];
     const reads: TerminalReads = {
@@ -516,18 +516,18 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     }
   });
 
-  it("★ 画面已经变了 ⇒ 不送、字留着、重抓一次；不知道送没送到 ⇒ 照实说、不重发；没送到 ⇒ 字留着、给［重试］", async () => {
+  it("★ 后端说重抓 ⇒ 不送、字留着、重抓一次；不知道送没送到 ⇒ 照实说、不重发；没送到 ⇒ 字留着、给［重试］", async () => {
     const r = rig([row("a")], { t: tab("a") });
     r.page.setVisible(true);
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "screen_changed", said: "那台写的一句 · 画面", screen: "fp9" }));
+    r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 画面", screen: "fp9", acts: ["recapture"] }));
     key(b, "Enter");
     await flush();
     expect([b.value, r.shotCount()]).toEqual(["1", 2]);
-    expect(r.page.el.textContent).toContain(copyText("terminal.input.screenChanged"));
-    r.setReply(async () => ({ result: "unsure" }));
+    expect(r.page.el.textContent).toContain(copyText("terminal.input.failed", { why: "那台写的一句 · 画面" }));
+    r.setReply(async () => ({ result: "unsure", acts: [] }));
     key(b, "Enter");
     await flush();
     expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: copyText("control.machine.unsure") }));
@@ -542,19 +542,25 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(retry).toBeDefined();
   });
 
-  it("★ 送字被拒 ⇒ 那一句（后端写好）排进「未送达 · … · 内容保留」；终端已不在 ⇒ 重找", async () => {
+  it("★ 送字被拒 ⇒ 那一句（后端写好）排进「未送达 · … · 内容保留」；后端说重读 ⇒ 重找；［重试］只在后端给了 retry 时出", async () => {
     const r = rig([row("a")], { t: tab("a") });
     r.page.setVisible(true);
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "not_known", said: "那台写的一句 · 不在", screen: null }));
+    const retryButton = () => [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("terminal.input.retry"));
+    r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 不在", screen: null, acts: ["relist"] }));
     const lists = vi.mocked(r.reads.list).mock.calls.length;
     key(b, "Enter");
     await flush();
     expect(r.page.el.textContent).toContain(copyText("terminal.input.failed", { why: "那台写的一句 · 不在" }));
     expect(b.value).toBe("1");
-    expect(vi.mocked(r.reads.list).mock.calls.length, "终端已不在 ⇒ 重问名单").toBe(lists + 1);
+    expect(vi.mocked(r.reads.list).mock.calls.length, "后端说重读 ⇒ 重问名单").toBe(lists + 1);
+    expect(retryButton(), "没给 retry ⇒ 不出［重试］").toBeUndefined();
+    r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 认不出", screen: null, acts: ["retry"] }));
+    key(b, "Enter");
+    await flush();
+    expect(retryButton(), "给了 retry ⇒ 出［重试］").toBeDefined();
   });
 
   it("★ 没送到、那一端写了详情 ⇒ 红字是人话那一句（原话不进句子）＋［重试］＋［复制详情］，复制的是那句 ＋ 详情", async () => {

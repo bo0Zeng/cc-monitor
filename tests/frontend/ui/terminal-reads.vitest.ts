@@ -101,11 +101,11 @@ describe("抓一屏：金样与形状", () => {
     expect(shot.lines[0].spans, "抓一屏要连颜色段一起交给画面").toEqual([{ from: 0, to: 4, fg: "red", bold: true }]);
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
     expect(INPUT.replies.map((r) => sentOf(r as Sent))).toEqual([
-      { result: "delivered" },
-      { result: "refused", why: "screen_changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
-      { result: "unsure" },
+      { result: "delivered", acts: [] },
+      { result: "refused", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000", acts: ["retry", "recapture"] },
+      { result: "unsure", acts: ["recapture"] },
     ]);
-    expect(sentOf({ result: "refused", why: "ambiguous" }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", why: "ambiguous", said: copyText("reason.code.refused"), screen: null });
+    expect(sentOf({ result: "refused", why: "ambiguous", acts: ["retry"] }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", said: copyText("reason.code.refused"), screen: null, acts: ["retry"] });
   });
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {

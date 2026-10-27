@@ -1414,7 +1414,7 @@
       }
     },
     "session-open": {
-      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"result-x\",\"why\":\"why-x\",\"said\":\"said-x\"},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\"}}",
+      "rust": "{\"landed\":\"started\",\"session\":\"session-x\",\"line\":\"line-x\",\"sid\":\"sid-x\",\"agent\":\"agent-x\",\"cwd\":\"cwd-x\",\"account\":{\"name\":\"name-x\",\"configDir\":\"configDir-x\",\"model\":\"model-x\"},\"note\":\"note-x\",\"prompt\":{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true,\"acts\":[\"retry\"]},\"arrival\":{\"by\":{\"kind\":\"sid\",\"sid\":\"sid-x\"},\"since\":7,\"session\":\"session-x\"}}",
       "sample": {
         "account": {
           "configDir": "configDir-x",
@@ -1435,9 +1435,14 @@
         "line": "line-x",
         "note": "note-x",
         "prompt": {
-          "result": "result-x",
+          "acts": [
+            "retry"
+          ],
+          "result": "delivered",
+          "resumed": true,
           "said": "said-x",
-          "why": "why-x"
+          "screen": "screen-x",
+          "why": "not_yours"
         },
         "session": "session-x",
         "sid": "sid-x"
@@ -1521,8 +1526,11 @@
       }
     },
     "session-say": {
-      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true}",
+      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true,\"acts\":[\"retry\"]}",
       "sample": {
+        "acts": [
+          "retry"
+        ],
         "result": "delivered",
         "resumed": true,
         "said": "said-x",
@@ -1644,8 +1652,11 @@
       }
     },
     "terminal-input": {
-      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true}",
+      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true,\"acts\":[\"retry\"]}",
       "sample": {
+        "acts": [
+          "retry"
+        ],
         "result": "delivered",
         "resumed": true,
         "said": "said-x",

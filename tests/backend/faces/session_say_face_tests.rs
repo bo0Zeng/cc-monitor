@@ -24,13 +24,12 @@ fn no_resume(_: &SessionSayReq) -> Option<Reopened> {
 }
 
 fn refused(why: Refused) -> Sent {
-    Sent {
-        result: SentResult::Refused,
-        why: Some(why),
-        said: Some(crate::control::terminals::no_said(why)),
-        screen: None,
-        resumed: false,
-    }
+    crate::control::terminals::input_reply(SentResult::Refused, Some(why), None)
+}
+
+/// 送那一下的结局（没被拒）。
+fn sent_as(result: SentResult) -> Sent {
+    crate::control::terminals::input_reply(result, None, None)
 }
 
 /// 恢复落在 `landed`（`session` ＝ 落在的那个 tmux 会话）。
@@ -60,13 +59,7 @@ fn a_session_that_waits_for_someone_gets_nothing_typed_into_it() {
     let sent = RefCell::new(Vec::<TerminalInputReq>::new());
     let send = |r: &TerminalInputReq| {
         sent.borrow_mut().push(r.clone());
-        Ok(Sent {
-            result: SentResult::Delivered,
-            why: None,
-            said: None,
-            screen: None,
-            resumed: false,
-        })
+        Ok(sent_as(SentResult::Delivered))
     };
     let got = say_with(&req(SID, "继续"), &|_| true, &send, &no_resume).unwrap();
     assert_eq!(got.result, SentResult::Refused);
@@ -119,13 +112,7 @@ fn a_session_that_does_not_wait_gets_the_line_with_enter() {
     let sent = RefCell::new(Vec::<TerminalInputReq>::new());
     let send = |r: &TerminalInputReq| {
         sent.borrow_mut().push(r.clone());
-        Ok(Sent {
-            result: SentResult::Unsure,
-            why: None,
-            said: None,
-            screen: None,
-            resumed: false,
-        })
+        Ok(sent_as(SentResult::Unsure))
     };
     let got = say_with(&req(SID, "/compact"), &|_| false, &send, &no_resume).unwrap();
     assert_eq!(got.result, SentResult::Unsure);
@@ -178,14 +165,7 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
         assert_eq!(wire["resumed"], true);
     }
     // 送到了的那一形不带这一格。
-    let wire = serde_json::to_value(Sent {
-        result: SentResult::Delivered,
-        why: None,
-        said: None,
-        screen: None,
-        resumed: false,
-    })
-    .unwrap();
+    let wire = serde_json::to_value(sent_as(SentResult::Delivered)).unwrap();
     assert!(wire.get("resumed").is_none(), "{wire}");
 }
 

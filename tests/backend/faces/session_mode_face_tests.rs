@@ -51,6 +51,7 @@ impl ModeIo for Fake {
             said: None,
             screen: None,
             resumed: false,
+            acts: vec![],
         })
     }
     fn redrawn(&mut self) -> bool {
