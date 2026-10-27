@@ -1,4 +1,4 @@
-//! 开一片之前问的那一份：空目录上问领域列出 pb 给的那几档 · pb 不在 ⇒「未装 planned-build」· 工作区里撞上已有的一片 ⇒ 领域锁成它的、
+//! 开一片之前问的那一份：空目录上问领域列出 pb 给的那几档 · pb 不在 ⇒ 说未装 · 工作区里撞上已有的一片 ⇒ 领域锁成它的、
 //! 那一行只带名字 · pb 太旧没有 `--domains` ⇒ 要更新 · 那一行照路径与领域写。
 
 use super::*;
@@ -33,13 +33,22 @@ fn 空目录上问领域_列出那几档() {
     // 往上找不到工作区 ⇒ 这个目录就成工作区根（目录还不在也行）。
     assert_eq!(f.workspace, None);
     assert_eq!(f.root, dir_s);
-    assert_eq!(f.repo_dir.as_deref(), Some(format!("{dir_s}/invoice").as_str()));
+    assert_eq!(
+        f.repo_dir.as_deref(),
+        Some(format!("{dir_s}/invoice").as_str())
+    );
     assert_eq!(f.line.as_deref(), Some("pb repo invoice 软件"));
     assert_eq!(f.slice.as_deref(), Some("invoice"));
     let at = format!("{dir_s}/invoice");
-    assert_eq!(f.note, Some(copy_core::copy_text("bePlan.new.repoAt", &[("dir", &at)])));
+    assert_eq!(
+        f.note,
+        Some(copy_core::copy_text("bePlan.new.repoAt", &[("dir", &at)]))
+    );
     assert_eq!(f.existing, None);
-    assert_eq!(runs(&root.join("pb")), [vec!["dump".to_string(), "--domains".into(), dir_s.clone()]]);
+    assert_eq!(
+        runs(&root.join("pb")),
+        [vec!["dump".to_string(), "--domains".into(), dir_s.clone()]]
+    );
 }
 
 #[test]
@@ -54,7 +63,10 @@ fn 没装pb_说未装() {
         &no_slices,
     );
     assert_eq!(f.pb.state, "missing");
-    assert_eq!(f.pb.said.as_deref(), Some("未装 planned-build"));
+    assert_eq!(
+        f.pb.said,
+        Some(copy_core::copy_text("bePlan.face.noPb", &[]))
+    );
     assert!(f.domains.is_empty());
     assert_eq!(f.line, None);
 }
@@ -68,7 +80,10 @@ fn 工作区里撞上已有的一片_领域锁成它的_只带名字() {
     let deeper = format!("{ws_s}/repos");
     let slices = |w: &str| {
         assert_eq!(w, ws_s);
-        vec![("alpha".to_string(), Some("软件".to_string())), ("beta".into(), Some("研究".into()))]
+        vec![
+            ("alpha".to_string(), Some("软件".to_string())),
+            ("beta".into(), Some("研究".into())),
+        ]
     };
     let f = form(
         &Ask {
@@ -91,7 +106,10 @@ fn 工作区里撞上已有的一片_领域锁成它的_只带名字() {
     assert_eq!(f.line.as_deref(), Some("pb repo alpha"));
     assert_eq!(
         f.note,
-        Some(copy_core::copy_text("bePlan.new.existing", &[("domain", "软件")]))
+        Some(copy_core::copy_text(
+            "bePlan.new.existing",
+            &[("domain", "软件")]
+        ))
     );
 }
 
@@ -114,7 +132,10 @@ fn 没有领域_路径空_那一行照实() {
     let q3 = ask("notes/q3", None);
     assert_eq!(q3.line.as_deref(), Some("pb repo notes/q3"));
     assert_eq!(q3.slice.as_deref(), Some("q3"));
-    assert_eq!(ask("my notes", Some("研究")).line.as_deref(), Some("pb repo 'my notes' 研究"));
+    assert_eq!(
+        ask("my notes", Some("研究")).line.as_deref(),
+        Some("pb repo 'my notes' 研究")
+    );
     let empty = ask("", Some("研究"));
     assert_eq!((empty.line, empty.repo_dir), (None, None));
 }
@@ -122,8 +143,14 @@ fn 没有领域_路径空_那一行照实() {
 /// 代敲那几个参数与框里那一行同一判；在一个空目录里起 ⇒ 当前目录就是它（pb 在那里建工作区）。
 #[test]
 fn 代敲repo_参数与那一行同一判() {
-    assert_eq!(repo_args("notes/q3/", Some("研究"), None), ["repo", "notes/q3", "研究"]);
-    assert_eq!(repo_args("repos/alpha", Some("研究"), Some("alpha")), ["repo", "alpha"]);
+    assert_eq!(
+        repo_args("notes/q3/", Some("研究"), None),
+        ["repo", "notes/q3", "研究"]
+    );
+    assert_eq!(
+        repo_args("repos/alpha", Some("研究"), Some("alpha")),
+        ["repo", "alpha"]
+    );
     assert_eq!(repo_args("x", Some(""), None), ["repo", "x"]);
     let root = scratch("new-run");
     let entry = fake_pb(&root.join("pb"), "planned-build", None);

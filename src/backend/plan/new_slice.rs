@@ -7,8 +7,8 @@
 //! - 名字合不合 pb 的规矩这里不判：提交即起 `pb repo`，照它的退出码与那一句（[`super::command`]）。
 
 use super::locate::Missing;
-use copy_core::copy_text;
 use super::wire::{PlanNewExisting, PlanNewForm, PlanPb};
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 问的是什么：那台机器上的目录 · 相对工作区根的路径 · 选了哪一档领域。
@@ -89,7 +89,11 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
         None => copy_text("bePlan.new.repoAt", &[("dir", &repo_dir)]),
     });
     out.repo_dir = Some(repo_dir);
-    let args = repo_args(path, ask.domain, out.existing.as_ref().map(|e| e.slice.as_str()));
+    let args = repo_args(
+        path,
+        ask.domain,
+        out.existing.as_ref().map(|e| e.slice.as_str()),
+    );
     let shown: Vec<String> = args.iter().map(|a| quoted(a)).collect();
     out.line = Some(format!("pb {}", shown.join(" ")));
     out
@@ -99,7 +103,11 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
 pub(crate) fn repo_args(path: &str, domain: Option<&str>, existing: Option<&str>) -> Vec<String> {
     match (existing, domain.filter(|d| !d.is_empty())) {
         (Some(name), _) => vec!["repo".into(), name.into()],
-        (None, Some(d)) => vec!["repo".into(), path.trim().trim_matches('/').into(), d.into()],
+        (None, Some(d)) => vec![
+            "repo".into(),
+            path.trim().trim_matches('/').into(),
+            d.into(),
+        ],
         (None, None) => vec!["repo".into(), path.trim().trim_matches('/').into()],
     }
 }
@@ -130,7 +138,9 @@ fn existing_ancestor(dir: &Path) -> PathBuf {
 
 /// 那一行里的一个参数：带空白或引号 ⇒ 单引号括起（照 shell 的写法），否则原样。
 fn quoted(a: &str) -> String {
-    if a.chars().any(|c| c.is_whitespace() || "'\"\\$`".contains(c)) {
+    if a.chars()
+        .any(|c| c.is_whitespace() || "'\"\\$`".contains(c))
+    {
         format!("'{}'", a.replace('\'', r"'\''"))
     } else {
         a.to_string()
