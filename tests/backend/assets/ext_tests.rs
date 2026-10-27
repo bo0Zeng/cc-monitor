@@ -1288,10 +1288,10 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// 枢纽命令只剩一套：旧的两套外层命令名在仓里零出现（BUILD_ID 的子命令历史那张表是冻结的旧记录，照原样留）。
-/// 正控：同一把尺子数得出新那一套。
+/// 旧的两套枢纽命令名（连字符与下划线两种写法，名字现拼、免得本文件自己命中）在仓里零出现
+/// （BUILD_ID 的子命令历史那张表是冻结的旧记录，照原样留）。正控：同一把尺子数得出新那一套。
 #[test]
-fn only_one_pair_of_hub_commands_is_left_in_the_repo() {
+fn the_old_hub_command_names_are_gone_from_the_repo() {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let old: Vec<String> = ["skill-install", "mcp-sync"]
         .iter()

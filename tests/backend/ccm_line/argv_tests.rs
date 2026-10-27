@@ -1,7 +1,7 @@
 //! # （ccm argv 的组合规则一条都不许静默忽略）＋ / `D2`
 //!
 //! 后端的纪律是「一条都不许静默忽略」（`ccm_line/argv.rs`）；三种互斥 / 依赖组合
-//! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`the_ccm_argv_is_parsed_in_exactly_one_place` 对 `D1`「一个判定只有一个家」；
+//! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`ccm_flag_literals_live_only_in_argv_rs` 对 `D1`「一个判定只有一个家」；
 //! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。
 
 use super::*;
@@ -271,32 +271,37 @@ fn every_default_lives_only_in_the_defaults_block() {
     );
 }
 
-/// 🔴 `KR48D2` 的机检：**这套 argv 的解析只许在本文件里发生。**
+/// 🔴 `KR48D2` 的机检：**ccm 的旗标字面量只住 `argv.rs`。**
 ///
 /// 失效方向（`KR48D2` 逐字）：「有人再起第二个 argv 解析口、或把某条子命令的行为
-/// 在第二处重写一遍」。判法 = 扫本模块**除本文件外**的生产段，
-/// 不许出现任何 ccm 旗标的字面量。
+/// 在第二处重写一遍」。判法 = 扫 `ccm_line/` 与 `control/ccm/` 两棵目录下**除 `argv.rs` 外**
+/// 全部 `.rs` 的生产段，不许出现 `"--` 打头的字面量（正控：`argv.rs` 自己有）。
+/// 买不到：不经字面量拼出来的旗标名；这两棵目录以外的文件。
 #[test]
-fn the_ccm_argv_is_parsed_in_exactly_one_place() {
-    let others: &[(&str, &str)] = &[
-        (
-            "ccm_line/mod.rs",
-            include_str!("../../../src/backend/ccm_line/mod.rs"),
-        ),
-        (
-            "control/ccm/mod.rs",
-            include_str!("../../../src/backend/control/ccm/mod.rs"),
-        ),
-        (
-            "control/ccm/plan.rs",
-            include_str!("../../../src/backend/control/ccm/plan.rs"),
-        ),
-    ];
+fn ccm_flag_literals_live_only_in_argv_rs() {
+    let src = guard_core::addr::backend_src_root();
+    let mut others: Vec<(String, String)> = Vec::new();
+    for (dir, excluded) in [
+        ("ccm_line", &["src/backend/ccm_line/argv.rs"] as &[&str]),
+        ("control/ccm", &[]),
+    ] {
+        for (p, raw) in guard_core::scan_tree_excluding(&src.join(dir), &["rs"], excluded) {
+            let rel = p.strip_prefix(&src).unwrap_or(&p).to_string_lossy().replace('\\', "/");
+            others.push((rel, raw));
+        }
+    }
+    assert!(
+        others.len() >= 5,
+        "两棵目录只扫到 {} 份（argv.rs 之外）—— 住址坏了，本条在空人群上恒绿：{:?}",
+        others.len(),
+        others.iter().map(|(r, _)| r).collect::<Vec<_>>()
+    );
+    let argv = guard_core::production_code(include_str!("../../../src/backend/ccm_line/argv.rs"));
+    assert!(argv.contains("\"--"), "正控：`argv.rs` 里一个旗标字面量都没有 —— 认法坏了");
     let mut hits: Vec<String> = Vec::new();
-    for (name, raw) in others {
-        let prod = guard_core::production_code(raw);
-        if prod.contains("\"--") {
-            hits.push((*name).to_string());
+    for (name, raw) in &others {
+        if guard_core::production_code(raw).contains("\"--") {
+            hits.push(name.clone());
         }
     }
     assert!(

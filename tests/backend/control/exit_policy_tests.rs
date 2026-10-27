@@ -328,19 +328,34 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
 
 // ═══════════════════════════ E1：写者全仓只有一处 ═══════════════════════════
 
-/// 本模块生产段里的写原语 —— **恰好**一处（按词找，钉住「只有一个写口」）。
+/// 本模块生产段里的落盘原语 —— 几种写法加起来**恰好**一处，就是 `own.write(`
+/// （那一下原子写进去，真正落进 `backend.json` 的唯一一下）。
+/// 数的写法：`.write(` · `write_all(` · `fs::write` · `File::create` · `OpenOptions` · `rename(` · `.put(`。
+/// 买不到：经别的模块转一手的写（那一半归下面 `E1` 的全仓半）。
 #[test]
 fn the_module_has_exactly_one_commit_point() {
     let prod =
         guard_core::production_code(include_str!("../../../src/backend/control/exit_policy.rs"));
-    for (needle, why) in [(
-        "own.write(",
-        "那一下原子写进去 —— 真正落进 `backend.json` 的**唯一**一下",
-    )] {
-        guard_core::find_pinned(&prod, needle).unwrap_or_else(|e| {
-            panic!("`exit_policy.rs` 里 `{needle}` 不是恰好一处（{why}）：{e}")
-        });
-    }
+    let writes: Vec<(&str, usize)> = [
+        ".write(",
+        "write_all(",
+        "fs::write",
+        "File::create",
+        "OpenOptions",
+        "rename(",
+        ".put(",
+    ]
+    .into_iter()
+    .map(|n| (n, prod.matches(n).count()))
+    .filter(|(_, c)| *c > 0)
+    .collect();
+    assert_eq!(
+        writes,
+        vec![(".write(", 1)],
+        "`exit_policy.rs` 生产段的落盘写法不是恰好一处 `.write(`"
+    );
+    guard_core::find_pinned(&prod, "own.write(")
+        .unwrap_or_else(|e| panic!("那一处 `.write(` 不是 `own.write(`：{e}"));
 }
 
 /// 一份生产源码去掉注释之后的样子（按扩展名分流，剥法全走共享原语，不另写一份）：
