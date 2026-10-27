@@ -25362,7 +25362,7 @@
     "beProfile.set.rowShape": {
       "kind": "error",
       "role": "报错",
-      "zh": "row 写成一行一张表 · { cwd = \"目录\", alias = \"别名\", n = 个数 }",
+      "zh": "row 写成一行一张表 · 键为 cwd · alias · n",
       "args": []
     },
     "beProfile.set.rowKey": {
@@ -25374,7 +25374,7 @@
     "beProfile.set.rowMissing": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一行缺 {key}",
+      "zh": "行内缺 {key}",
       "args": ["key"]
     },
     "beProfile.set.count": {
@@ -25392,13 +25392,13 @@
     "beProfile.set.dup": {
       "kind": "error",
       "role": "报错",
-      "zh": "{cwd} · {alias} 与第 {line} 行重复 · 同一目录同一别名只写一行",
+      "zh": "{cwd} · {alias} 与行 {line} 重复 · 同一目录同一别名只写一行",
       "args": ["cwd", "alias", "line"]
     },
     "beProfile.set.total": {
       "kind": "error",
       "role": "报错",
-      "zh": "一组合计最多 {max} 个会话 · 此刻 {n}",
+      "zh": "一组合计上限 {max} · 此刻 {n}",
       "args": ["max", "n"]
     },
     "beProfile.set.taken": {
