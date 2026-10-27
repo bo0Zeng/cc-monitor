@@ -206,7 +206,7 @@ impl Source {
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
     /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
     pub fn origin(&self) -> Origin {
-        Origin(self.0.clone())
+        Origin::named(self.0.clone())
     }
 }
 
@@ -774,7 +774,7 @@ pub(crate) fn failed_here(said: String, origin: &Origin, cmd: &str, raw: Option<
         said,
         detail: Detail::new()
             .item(Label::At, now_stamp())
-            .item(Label::Machine, &origin.0)
+            .item(Label::Machine, origin.to_string())
             .maybe(Label::Local, local_line_for(origin))
             .item(Label::Command, cmd)
             .maybe(Label::Raw, raw)
@@ -792,7 +792,7 @@ pub(crate) fn set_local_line(line: &str) {
 
 /// 看 `origin` 那台时窗口自己写的详情要不要带「本机」那一行：远端 ⇒ 带（值是种子交来的）；本机 ⇒ 不带（出错的就是本机）。
 fn local_line_for(origin: &Origin) -> Option<String> {
-    (origin.0 != super::cross_copy::LOCAL_ORIGIN)
+    (!origin.is_local())
         .then(|| LOCAL_LINE.get().cloned())
         .flatten()
         .filter(|l| !l.trim().is_empty())
@@ -810,7 +810,7 @@ fn now_stamp() -> String {
 /// 别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写时刻 · 机器（没发出去标「未连上」）· 本机 · 命令 · 断在 · 码
 /// （取法住通信层 `HopFacts`，排法住 `copy_core::detail::channel`，与 monitor 壳同一份）。
 pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
-    let origin = at.0.as_str();
+    let origin = &at.to_string();
     use comms_inward::chan::wire::{CallError, PeerFault};
     // 拒绝体读不懂（不是 JSON）⇒ 那段原文进「原话」（句子只说被拒，[`comms_inward::chan::said::said`]）。
     let mut raw_body: Option<String> = None;
@@ -1105,7 +1105,7 @@ pub fn machine_seen(origin: &Origin, item: &comms_inward::chan::wire::Item) -> O
     match item {
         Item::Frame { body, .. } if !origin.is_local() => {
             let v: serde_json::Value = serde_json::from_slice(&body.0).ok()?;
-            if v.get("key").and_then(serde_json::Value::as_str) != Some(origin.as_wire_str()) {
+            if v.get("key").and_then(serde_json::Value::as_str) != origin.host_name() {
                 return None;
             }
             let state = serde_json::from_value(v.get("body")?.get("state")?.clone()).ok()?;
@@ -1127,10 +1127,7 @@ async fn machine_now(line: &Line, origin: &Origin) -> Option<LinkSeen> {
     )
     .await
     .ok()?;
-    let state = got
-        .get("machines")?
-        .get(origin.as_wire_str())?
-        .get("state")?;
+    let state = got.get("machines")?.get(origin.to_string())?.get("state")?;
     Some(seen_of_state(serde_json::from_value(state.clone()).ok()?))
 }
 
@@ -1470,7 +1467,7 @@ pub async fn kick_link(line: &Line, origin: &Origin) {
         line,
         &Origin::local(),
         "machine-wake",
-        &serde_json::json!({ "machine": origin.as_wire_str() }),
+        &serde_json::json!({ "machine": origin }),
         std::time::Duration::from_secs(5),
     )
     .await
