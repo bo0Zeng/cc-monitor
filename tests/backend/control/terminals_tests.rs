@@ -1126,3 +1126,38 @@ fn screen_fingerprint_value_is_pinned() {
     let lines: Vec<String> = ["a ", "b", "c  "].map(String::from).to_vec();
     assert_eq!(fingerprint(&lines, 2), "fff1451912fbad5a");
 }
+
+/// 托管那一形送进伪终端的字节：一行字 ＋ 回车 ⇒ 原样 ＋ `\r`；多行 ⇒ 包括号粘贴；粘的那几段各包一次；键照 xterm 那一套。
+#[test]
+fn hosted_input_turns_into_the_bytes_a_terminal_would_send() {
+    let text = |t: &str, enter: bool| Input::Text {
+        text: t.into(),
+        enter,
+    };
+    assert_eq!(managed_bytes(&text("hi", true), &[]), b"hi\r".to_vec());
+    assert_eq!(managed_bytes(&text("hi", false), &[]), b"hi".to_vec());
+    assert_eq!(
+        managed_bytes(&text("a\nb", true), &[]),
+        b"\x1b[200~a\nb\x1b[201~\r".to_vec()
+    );
+    assert_eq!(
+        managed_bytes(&text("", true), &["/p.png".into()]),
+        b"\x1b[200~/p.png\x1b[201~\r".to_vec()
+    );
+    for (wire, bytes) in [
+        ("esc", &b"\x1b"[..]),
+        ("ctrl-c", b"\x03"),
+        ("up", b"\x1b[A"),
+        ("shift-tab", b"\x1b[Z"),
+        ("enter", b"\r"),
+        ("backspace", b"\x7f"),
+        ("page-down", b"\x1b[6~"),
+    ] {
+        let k = KEYS.iter().find(|(w, _)| *w == wire).expect("键表里有").1;
+        assert_eq!(managed_bytes(&Input::Key(k), &[]), bytes.to_vec(), "{wire}");
+    }
+    // 键表里每一颗都有字节（漏一颗 ⇒ 托管那一形按了没反应）。
+    for (wire, k) in KEYS {
+        assert!(!managed_bytes(&Input::Key(k), &[]).is_empty(), "{wire}");
+    }
+}
