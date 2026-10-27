@@ -1132,6 +1132,12 @@
       "zh": "未发送 · 发得太快 · 稍后再发",
       "args": []
     },
+    "beCcBus.envelope.offline": {
+      "kind": "error",
+      "role": "命令行",
+      "zh": "未发送 · 收件会话所在机器离线",
+      "args": []
+    },
     "beCcBus.store.failed": {
       "kind": "error",
       "role": "命令行",
