@@ -44,6 +44,18 @@ class AttachmentsTest {
         assertEquals(listOf("x", "y"), Wire.bind<SessionSayReq>(with)?.attachments)
     }
 
+    /** 发出去的那一行（同跨语言金样那一形，[Json.args]）：格序照生成的类，缺省的格不交。 */
+    @Test
+    fun the_lines_on_the_wire() {
+        assertEquals("""{"sid":"s","items":[{"name":"a.png","bytes":5}]}""", Json.args(SessionAttachmentCheck.args("s", listOf(AttachAsk("a.png", 5L)))))
+        assertEquals(
+            """{"sid":"s","key":"k","name":"a.png","bytes":9,"chunks":3,"expect":{"sha256":"${"ab".repeat(32)}"}}""",
+            Json.args(SessionAttachmentCommit.args("s", "a.png", staged)),
+        )
+        assertEquals("""{"sid":"s","id":"i"}""", Json.args(SessionAttachmentDrop.args("s", "i")))
+        assertEquals("""{"sid":"s","text":"hi","client":"mobile","attachments":["i"]}""", Json.args(SessionSay.args("s", "hi", listOf("i"))))
+    }
+
     @Test
     fun replies_decode_through_the_generated_types() {
         val verdicts =
