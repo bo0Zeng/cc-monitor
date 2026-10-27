@@ -17542,6 +17542,30 @@
       "zh": "{host}:{port} · 经跳板机",
       "args": ["host", "port"]
     },
+    "beLinks.row.line": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{endpoint} · {packing} · 收 {in} · 发 {out}",
+      "args": ["endpoint", "packing", "in", "out"]
+    },
+    "beLinks.row.jumpLine": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "跳板 {line}",
+      "args": ["line"]
+    },
+    "beLinks.pack.compressed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "压缩",
+      "args": []
+    },
+    "beLinks.pack.plain": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不压缩",
+      "args": []
+    },
     "beConnect.jump.targetFailed": {
       "kind": "error",
       "role": "报错",
