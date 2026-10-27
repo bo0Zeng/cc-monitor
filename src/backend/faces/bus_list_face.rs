@@ -1,4 +1,4 @@
-//! 帧面 `bus-list` 的宿主：名单的行问 cc-bus（`control::cc_bus_wire::bus_list`，转调 `cc-bus list --tsv`），
+//! 帧面 `bus-list` 的宿主：名单的行是这台的收件箱（`control::cc_bus_wire::bus_list`），
 //! 每条会话叫它什么 · 此刻有没有谁持着它问观测层那一处（control 不许引用 observe，接线就住这一层）。
 
 use crate::control::cc_bus::Seen;

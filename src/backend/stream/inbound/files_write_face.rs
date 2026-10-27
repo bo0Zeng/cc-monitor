@@ -534,28 +534,31 @@ fn attach_fail<E: Codes>(f: sa::Fail, fallback: fn(String) -> E) -> E {
     )
 }
 
-/// `session-attach-check`：开传前那一问（纯读，不要写句柄）。找不到工作目录 ⇒ 逐份 `no_session`（不是错）。
-pub(crate) struct SessionAttachCheck;
+/// `session-attachment-check`：开传前那一问（纯读，不要写句柄）。找不到工作目录 ⇒ 逐份 `no_session`（不是错）。
+pub(crate) struct SessionAttachmentCheck;
 
 codes! {
-    /// `session-attach-check` 的码（不收的那几份逐份答在回包里，不是错）。
-    pub(crate) enum SessionAttachCheckErr {}
+    /// `session-attachment-check` 的码（不收的那几份逐份答在回包里，不是错）。
+    pub(crate) enum SessionAttachmentCheckErr {}
 }
 
-impl Command for SessionAttachCheck {
-    const NAME: &'static str = "session-attach-check";
-    type Req = cmd_wire::attachment::SessionAttachCheckReq;
-    type Reply = cmd_wire::attachment::SessionAttachCheckReply;
-    type Err = SessionAttachCheckErr;
+impl Command for SessionAttachmentCheck {
+    const NAME: &'static str = "session-attachment-check";
+    type Req = cmd_wire::attachment::SessionAttachmentCheckReq;
+    type Reply = cmd_wire::attachment::SessionAttachmentCheckReply;
+    type Err = SessionAttachmentCheckErr;
 }
 
-impl crate::wire::typed::Handle for SessionAttachCheck {
+impl crate::wire::typed::Handle for SessionAttachmentCheck {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
-        req: cmd_wire::attachment::SessionAttachCheckReq,
+        req: cmd_wire::attachment::SessionAttachmentCheckReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<cmd_wire::attachment::SessionAttachCheckReply, SessionAttachCheckErr>,
+        Output = Result<
+            cmd_wire::attachment::SessionAttachmentCheckReply,
+            SessionAttachmentCheckErr,
+        >,
     > + Send
            + 'static {
         async move {
@@ -563,14 +566,14 @@ impl crate::wire::typed::Handle for SessionAttachCheck {
                 Some(cwd) => sa::check(&cwd, &req.items),
                 None => sa::check(std::path::Path::new(""), &req.items),
             };
-            Ok(cmd_wire::attachment::SessionAttachCheckReply { items })
+            Ok(cmd_wire::attachment::SessionAttachmentCheckReply { items })
         }
     }
 }
 
 codes! {
-    /// `session-attach-commit` 的码。
-    pub(crate) enum SessionAttachCommitErr {
+    /// `session-attachment-commit` 的码。
+    pub(crate) enum SessionAttachmentCommitErr {
         /// 这一份超过单份上限。
         TooBig = "too_big",
         /// 附件目录装不下了。
@@ -592,23 +595,26 @@ codes! {
     }
 }
 
-/// `session-attach-commit`：暂存区里传完的一份落进会话工作目录下一个新的附件目录。
-pub(crate) struct SessionAttachCommit;
+/// `session-attachment-commit`：暂存区里传完的一份落进会话工作目录下一个新的附件目录。
+pub(crate) struct SessionAttachmentCommit;
 
-impl Command for SessionAttachCommit {
-    const NAME: &'static str = "session-attach-commit";
-    type Req = cmd_wire::attachment::SessionAttachCommitReq;
-    type Reply = cmd_wire::attachment::SessionAttachCommitReply;
-    type Err = SessionAttachCommitErr;
+impl Command for SessionAttachmentCommit {
+    const NAME: &'static str = "session-attachment-commit";
+    type Req = cmd_wire::attachment::SessionAttachmentCommitReq;
+    type Reply = cmd_wire::attachment::SessionAttachmentCommitReply;
+    type Err = SessionAttachmentCommitErr;
 }
 
-impl crate::wire::typed::Handle for SessionAttachCommit {
+impl crate::wire::typed::Handle for SessionAttachmentCommit {
     type Needs = crate::wire::typed::needs::Face;
     fn run(
-        req: cmd_wire::attachment::SessionAttachCommitReq,
+        req: cmd_wire::attachment::SessionAttachmentCommitReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<cmd_wire::attachment::SessionAttachCommitReply, SessionAttachCommitErr>,
+        Output = Result<
+            cmd_wire::attachment::SessionAttachmentCommitReply,
+            SessionAttachmentCommitErr,
+        >,
     > + Send
            + 'static {
         let (_cx, needs) = cx.split();
@@ -617,18 +623,18 @@ impl crate::wire::typed::Handle for SessionAttachCommit {
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
                 attach_fail(
                     sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
-                    SessionAttachCommitErr::BadArgs,
+                    SessionAttachmentCommitErr::BadArgs,
                 )
             })?;
             sa::commit_here(face, &cwd, req)
-                .map_err(|f| attach_fail(f, SessionAttachCommitErr::BadArgs))
+                .map_err(|f| attach_fail(f, SessionAttachmentCommitErr::BadArgs))
         }
     }
 }
 
 codes! {
-    /// `session-attach-drop` 的码。
-    pub(crate) enum SessionAttachDropErr {
+    /// `session-attachment-drop` 的码。
+    pub(crate) enum SessionAttachmentDropErr {
         /// 那台找不到这条会话的工作目录。
         NoSession = "no_session",
         /// 工作目录不可写。
@@ -640,23 +646,23 @@ codes! {
     }
 }
 
-/// `session-attach-drop`：草稿上撤掉的那一份，那台删掉它的编号目录。
-pub(crate) struct SessionAttachDrop;
+/// `session-attachment-drop`：草稿上撤掉的那一份，那台删掉它的编号目录。
+pub(crate) struct SessionAttachmentDrop;
 
-impl Command for SessionAttachDrop {
-    const NAME: &'static str = "session-attach-drop";
-    type Req = cmd_wire::attachment::SessionAttachDropReq;
-    type Reply = cmd_wire::attachment::SessionAttachDropReply;
-    type Err = SessionAttachDropErr;
+impl Command for SessionAttachmentDrop {
+    const NAME: &'static str = "session-attachment-drop";
+    type Req = cmd_wire::attachment::SessionAttachmentDropReq;
+    type Reply = cmd_wire::attachment::SessionAttachmentDropReply;
+    type Err = SessionAttachmentDropErr;
 }
 
-impl crate::wire::typed::Handle for SessionAttachDrop {
+impl crate::wire::typed::Handle for SessionAttachmentDrop {
     type Needs = crate::wire::typed::needs::Face;
     fn run(
-        req: cmd_wire::attachment::SessionAttachDropReq,
+        req: cmd_wire::attachment::SessionAttachmentDropReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
-        Output = Result<cmd_wire::attachment::SessionAttachDropReply, SessionAttachDropErr>,
+        Output = Result<cmd_wire::attachment::SessionAttachmentDropReply, SessionAttachmentDropErr>,
     > + Send
            + 'static {
         let (_cx, needs) = cx.split();
@@ -665,12 +671,12 @@ impl crate::wire::typed::Handle for SessionAttachDrop {
             let cwd = session_cwd(req.sid.as_str()).ok_or_else(|| {
                 attach_fail(
                     sa::refused(cmd_wire::attachment::AttachRefused::NoSession),
-                    SessionAttachDropErr::BadArgs,
+                    SessionAttachmentDropErr::BadArgs,
                 )
             })?;
             sa::drop_one(face, &cwd, &req.id)
-                .map(|removed| cmd_wire::attachment::SessionAttachDropReply { removed })
-                .map_err(|f| attach_fail(f, SessionAttachDropErr::BadArgs))
+                .map(|removed| cmd_wire::attachment::SessionAttachmentDropReply { removed })
+                .map_err(|f| attach_fail(f, SessionAttachmentDropErr::BadArgs))
         }
     }
 }

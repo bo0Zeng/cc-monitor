@@ -1,43 +1,11 @@
 #!/usr/bin/env bash
 # cc-bus peek [id] [--max-lines N] [--token-file PATH]
-#   两阶段读口的**第一跳:纯读**。渲染消息文本 ＋ 吐一个自包含令牌,**不写任何状态**。
-#   第二跳是 cc-bus commit(唯一的副作用)。`cc-bus recv` 就是入口里 peek 接 commit,渲染只此一份。
-#
-# ## 为什么非有不可(设计,实测事故)
-#
-# 「40 条普通消息(每条约 4KB,单条都不超限)累计 160KB ⇒ `jq --arg r "$reason"` 走 argv,
-#  撞 `MAX_ARG_STRLEN`(128 KiB)⇒ 钩子 rc=126、stdout 空,而**已读位置已经推到 40**
-#  ⇒ 那 40 条再也读不到。」
-# ⇒ 两阶段口把这件事从「**推进了再退回**」换成「**没确认就不推进**」。
-#   而 `--max-lines` 是它顺带买到的解药:积压分若干轮排空,每轮都在上限以下
-#   (一次推完的读法做不到分段 —— 它要么全推要么不推)。
-#
-# ## 令牌:`<from>.<to>.<anchor>`,**不落盘**
-#
-#   from   peek 那一刻的已读位置(行号,与 `.pos` 同一口径)
-#   to     这一段的末行行号
-#   anchor 第 `to` 行现算的 `cksum`,形如 `<校验和>-<字节数>`(零新依赖:与 `_dedup_hash` 同一招)
-#
-# 落盘就要有人清(cc-bus 已经有孤儿 tmp / 死信两条清扫龄,再加一族就是第三条),
-# ⇒ 令牌的全部信息塞进令牌自己里,**不建第二个源头**(`D2`)。
-# ⚠ anchor **买到**:收件箱被外部清空/截短后同一行号指向另一条消息 ⇒ 显式失败,不静默推错。
-# ⚠ anchor **买不到**:防篡改。谁都能造一个令牌 —— 能写令牌的人本来就能直接写 `.pos`。
-#
-# ## 令牌走哪条通道
-#
-# **默认 stderr(裸的一行),`--token-file` 写文件。** 刻意**不混进 stdout**:
-# stdout 是消息正文,而 Stop 钩子会把它整个当正文喂给 Claude ⇒ 令牌会被当成消息内容。
-# (把"走哪条通道"登记为判不了,缺的证据是"钩子改造后的取法定了没有" ——
-#  本轮把钩子一起改了,取法就是 `--token-file`,于是这一格有答案了。)
-#
-# 退出码:0 = 正常(有没有新消息都是 0) · 2 = 参数非法 · 13 = 适配层办不到。
-set -euo pipefail
-BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
-# 自举:适配层还没装载,这一处只能用裸 `readlink -f`(与其余 13 个脚本同一个写法)
+#   两阶段读的第一跳:纯读。交后端 `bus-peek`,正文印到 stdout(后端写好的那一段),令牌默认印到 stderr(裸的一行)、
+#   给了 `--token-file` 就写进那份文件(调用方指定,不进正文:Stop 钩子把 stdout 整个当正文喂回)。不推已读位置。
+#   第二跳是 cc-bus commit;`cc-bus recv` 就是入口里 peek 接 commit。
+#   退出码:0 正常(有没有新信都是 0)· 2 参数非法 · 1 后端不在 / 读不成。
+set -uo pipefail
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
-# shellcheck source=cc-bus-adapt.sh
-. "$SELFDIR/cc-bus-adapt.sh"
-ccbus_adapt_load || exit 13        # 两个 trait 装不齐就不干活(fail-closed,不退化成裸 flock)
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 
@@ -53,64 +21,16 @@ while [ $# -gt 0 ]; do
     *)  [ -z "$id" ] || { echo "cc-bus peek: 多给了一个 id '$1'" >&2; exit 2; }; id="$1"; shift ;;
   esac
 done
-if [ -n "$maxlines" ]; then
-  case "$maxlines" in ''|*[!0-9]*|0) echo "cc-bus peek: --max-lines 要正整数,给的是 '$maxlines'" >&2; exit 2;; esac
-fi
-# 🔴 令牌文件**不许落在总线目录里**:本命令的全部价值是"零写面",
-#    而一个写进 `$BUS/` 的令牌文件会把它变成"写了一点点",并且要有人清(撞 §3ter.2 那条)。
-case "${tokfile:-}" in "$BUS"/*) echo "cc-bus peek: --token-file 不许指向总线目录 $BUS 里" >&2; exit 2;; esac
-[ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh")
-case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-bus peek: 非法/空 id '$id'" >&2; exit 2;; esac
+case "$maxlines" in ''|*[!0-9]*|0) [ -z "$maxlines" ] || { echo "cc-bus peek: --max-lines 要正整数,给的是 '$maxlines'" >&2; exit 2; } ;; esac
+[ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh") || exit 1
 
-inbox="$BUS/inbox/$id.jsonl"
-posf="$BUS/state/$id.pos"
-[ -f "$inbox" ] || exit 0
-
-# ★ 锁:**共享读锁,锁文件仍是 `<inbox>.lock`**(格④「锁不搬家,只多一处」)。
-#   罩住「量行数 ＋ 取那一段 ＋ 算 anchor」,否则 route_deliver 的追加会让读者读到半行。
-# ⚠ `9>>"$inbox.lock"` 是本脚本**唯一**碰盘的一处(打开锁文件);它在判据里**逐条登记豁免** ——
-#   不开这个 fd 就没有锁,而锁文件必须与 route_deliver / cc-bus commit 是同一个(不许另开第二把)。
-raw=$(
-  (
-    store_lock_shared 9 || exit 13     # 锁失败要**显式**退出:别指望 errexit 替你收场
-    total=$(awk 'END{print NR}' "$inbox")
-    pos=$(cat "$posf" 2>/dev/null || echo 0)
-    [[ "$pos" =~ ^[0-9]+$ ]] || pos=0          # 损坏归零:与 cc-bus commit 同一条
-    # ⚠ 这里**刻意不把"越界"改写成 0**(越界归零那条自愈):peek 不写,
-    #   而令牌的 from 必须与盘上那个值逐字相等,否则 cc-bus commit 的 CAS 永远比不中。
-    #   截短这一格由 cc-bus commit 按「cur > total」认出来,并逐条登记为单调性的唯一豁免。
-    from=$pos
-    [ "$pos" -le "$total" ] || pos=0
-    if [ "$total" -gt "$pos" ]; then
-      to=$total
-      if [ -n "$maxlines" ] && [ $((pos+maxlines)) -lt "$total" ]; then to=$((pos+maxlines)); fi
-      new=$(sed -n "$((pos+1)),${to}p" "$inbox")
-      printf '%s.%s.%s\n' "$from" "$to" "$(twophase_anchor "$inbox" "$to")"
-      # 显示:fromjson? 跳过非法 JSON 坏行(防毒丸卡死)。给 agent 读的那一段只印线上码(act · tier),不放显示用的词。
-      # 渲染只此一份:`cc-bus recv` 印的就是这里的输出(入口里 peek 接 commit)。
-      printf '%s\n' "$new" \
-        | jq -Rr 'fromjson? // empty | "[cc-bus] id=\(.id // "-") from=\(.from // "?") ts=\(.ts // "?") tier=\(.tier // "?") act=\(.act // "?")\(if .re then " re=\(.re)" else "" end)\ntitle: \(.title // "")\(if ((.refs // []) | length) > 0 then "\nrefs: \(.refs | join(" "))" else "" end)\n\(.text // "")\n(reply: cc-bus send \(.from // "?") --act answer --re \(.id // "-") --title \"…\")\n"'
-      _seen=$(printf '%s\n' "$new" | grep -c . || true)
-      _ok=$(printf '%s\n' "$new" | jq -Rr 'fromjson? // empty | .id // "-"' 2>/dev/null | grep -c . || true)
-      if [ "${_seen:-0}" -gt "${_ok:-0}" ]; then
-        printf '⚠ 跳过 %s 条读不懂的消息（收件箱 %s 的第 %s..%s 行，它们不会再出现）\n' \
-          "$(( _seen - _ok ))" "$inbox" "$((pos+1))" "$to"
-      fi
-      # ⚠ 哨兵是**承重的**:命令替换会把尾随换行全吃掉,而正文末尾**有**空行 —— 不补这一字节就差一个换行。
-      printf '\001'
-    fi
-  ) 9>>"$inbox.lock"
-) || exit $?
-[ -n "$raw" ] || exit 0                        # 没有新消息:不出正文、不出令牌
-
-raw=${raw%$'\001'}
-token=${raw%%$'\n'*}
-body=${raw#*$'\n'}
-[ "$body" != "$raw" ] || body=""               # 只有令牌一行(理论上不会发生)时别把它当正文
-[ -z "$body" ] || printf '%s' "$body"
+req=$(jq -cn --arg id "$id" --arg m "$maxlines" '{id:$id} + (if $m == "" then {} else {max_lines:($m | tonumber)} end)')
+ccbus_ask peek "$req" || { case "$CCBUS_CODE" in bad_*) exit 2 ;; *) exit 1 ;; esac; }
+token=$(printf '%s' "$CCBUS_OUT" | jq -r '.token // empty')
+[ -n "$token" ] || exit 0                      # 没有新信:不出正文、不出令牌
+printf '%s' "$CCBUS_OUT" | jq -j '.text'
 if [ -n "$tokfile" ]; then
-  printf '%s' "$token" > "$tokfile"            # 调用方指定的文件,不在 BUS 里 ⇒ 不是总线状态
+  printf '%s' "$token" > "$tokfile"
 else
   printf '%s\n' "$token" >&2
 fi
-exit 0

@@ -36,7 +36,7 @@ pub(crate) struct SessionSayReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) idle_only: Option<bool>,
-    /// 随这一句发的附件（`session-attach-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
+    /// 随这一句发的附件（`session-attachment-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
     /// （[`crate::agents::typed_with`]）；有一份已不在 ⇒ 一个字都不送、回 `refused` ＋ `attachment_gone`。缺 ⇒ 不带。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]

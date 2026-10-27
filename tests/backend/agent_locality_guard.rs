@@ -158,11 +158,9 @@ mod tests {
             "文件管理器认代码文件的扩展名表（`jsonl` 画代码图标、预览按它上色），不是哪个 agent 的会话格式知识。",
         ),
         (
-            "control/cc_bus.rs",
-            ".claude",
-            "这是 **cc-bus 的门牌号**（`~/.claude/skills/cc-bus/scripts`），不是 agent 知识 —— \
-             cc-bus 恰好装在那个目录下而已。`cc_bus_boundary_guard` 的头注逐字写着这条分界：\
-             「允许**命令的地址**，禁**数据布局**」。同 `S1` 的 `@ccm_sid`、`S2` 的 `sessions/` 那一族。",
+            "control/cc_bus/store.rs",
+            ".jsonl",
+            "cc-bus 收件箱的文件名（`<会话 id>.jsonl`，一行一封信封）：后端自己的落盘，不是哪个 agent 的会话格式知识。",
         ),
         // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
         // `observe/search_query.rs` 那一条摘了（第 8 批）：`history-search-merge` 的回包改成 typed 结构体，字面量 `"sessions"` 随之没了。

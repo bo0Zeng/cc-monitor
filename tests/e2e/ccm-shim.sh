@@ -32,7 +32,6 @@ CCM_ENTRY="$HOME/.cc-monitor/bin/ccm"
 mkdir -p "$HOME/.cc-monitor/bin"
 ln -s "$CCM_E2E_BIN" "$CCM_ENTRY"
 export CCM_ENTRY
-export CC_BUS_HOME="$CCM_SHIM_DIR/cc-bus"
 unset CLAUDE_CONFIG_DIR CCM_ENV \
   ANTHROPIC_BASE_URL CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS
 

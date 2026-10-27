@@ -23,7 +23,6 @@
 //! 「用户既有数据」是**语义**命题，人群是**文本形状 ＋ 类型**，两者之间没有可机检的桥。
 //! 人群比性质**小**：不含依赖 crate 的写（见下：签字表守）· 不含被起进程的写面（`spawn_registry` 逐条登记）·
 //! 不含不经那几个命名空间的写（裸系统调用：`platform/fs/` 外今天一处没有，但没有一条判据钉它）。
-//! ⇒ **它今天真能拦住的形状与一个今天在盘上、形状相同却通过了的反例都在 [`g6_reach`]。**
 //!
 //! # 远端那一半另有一层
 //!
@@ -1103,9 +1102,7 @@ mod spawn_registry {
             "`K-W1A`（08-26）：**插件通用调用口**里唯一一处起进程 —— argv 直传不过 shell，\
              期限由起子进程原语执行（调用方给秒数，到点杀整组）。\
              程序名是**查出来的路径**（PATH 里未必有用户级 bin 目录）⇒ 非字面量。\
-             这条登记覆盖的 cc-bus 写面**今天是这样**：`cc-bus list` 只读；\
-             `cc-bus log` 只读（共享锁，收件箱初次被看时它会建出那个空锁文件 —— 与 `cc-bus peek` 同一格）。\
-             后端不再转调发信那一条（A13-2：发信由 agent 自己跑的脚本投，后端只核信封）。\
+             cc-bus 不再经这一处口：收件箱住后端自己的数据目录，读写都在后端里（A13-8）。\
              万一将来有写的，也是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
              （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**\
              不写用户既有数据）。当年一条**破坏性**的转调命令漏登过 13 天（键分不出被调命令、判据全绿），\
@@ -1127,12 +1124,11 @@ mod spawn_registry {
              ★★ **第三个使用者到了，逐条记在这里** —— 上游选择 \
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
              写面：**只读**。今天这个使用者已不在：账号库改由后端自己建，那份外部脚本与 `accounts/iso.rs` 一起删了。\
-             ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条相等断言只数 \
-             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。",
+             ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`）—— 是人回来读了这一段才写下的。\
+             今天经它起的是计划读面那一条（`plan/mod.rs` 起 pb）。",
             "缩性质",
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，几条命令共用一个键）。\
-             ⚠ 在那之前，本条的覆盖面由 [`super::g6_reach`] 那一格钉着：\
-             `control/cc_bus.rs` 今天经它转调的那几条钉成相等，多一条会红。",
+             ⚠ 在那之前，本条的覆盖面没有机检：加一种被调命令时回来重读这一段。",
         ),
         (
             "platform/shell/mod.rs", // `platform/shell.rs` 成了目录模块
@@ -1849,72 +1845,6 @@ pub(crate) mod g6_doctrine {
                 "闭集自己的 `{cell}` 都认不出来 —— `is_cell` 坏了，上面那条在空转"
             );
         }
-    }
-}
-
-/// **本护栏今天真能拦住的形状全表 + 那条 `<非字面量>` 起进程键今天覆盖的被调命令。**
-///
-/// # 为什么先列全表，再谈放宽（`§0c 裁五`）
-///
-/// 摸底那三条反例**全部**落在「它本来就拦不住」那一侧 —— 存量、未经放宽就通过。
-/// ⇒ **不许在一个拦不住的东西上讨论怎么放宽它。** 本模块交两样：
-/// ① 它今天真能拦住的形状**全表**（逐形一刀读数，分母用**相等断言**钉住）；
-/// ② 当年那个反例（经插件口起一条会删 / 覆盖用户数据的外部命令）随那条命令一起删了；剩下的是它留下的那道闸：
-///    经 `<非字面量>` 那个键转调的命令钉成相等（下面那一格）。
-#[cfg(test)]
-mod g6_reach {
-
-    /// 反例表的语料。**住址与语料在这里对死** —— 加一行反例而不接语料，这里当场 panic。
-    fn source_of(rel: &str) -> &'static str {
-        match rel {
-            "control/cc_bus.rs" => include_str!("../../src/backend/control/cc_bus.rs"),
-            other => panic!("反例表里出现了没接语料的住址：{other}"),
-        }
-    }
-
-    /// ★ 那条 `<非字面量>` 键今天覆盖了**恰好两条**被调命令（`cc-bus list` · `cc-bus log`，都只读；字面量是动词）。
-    ///
-    /// # 它钉的是 `ALLOWED` 逮不到的那一面（活体标本，不是设想）
-    ///
-    /// `spawn_registry` 的三条判据用的键是 `(文件, 程序名)`，而 `plugin/invoke.rs` 那条的
-    /// 程序名是 `<非字面量>` ⇒ **同一个键下加第二种被调命令不会红**。
-    /// 08-13 加进来的一条**破坏性**命令因此漏登 13 天，三条判据全绿。
-    /// 本条把今天的那几条钉成**相等**：多一条就必须回来重读那条豁免理由。
-    #[test]
-    fn the_non_literal_spawn_key_still_covers_exactly_two_commands() {
-        let prod = guard_core::production_source(source_of("control/cc_bus.rs"));
-        let mut cmds: Vec<&str> = Vec::new();
-        // 只读的经 `read_via("…"` 转调（同一个起进程口）。
-        for opener in ["run(\"", "read_via(\""] {
-            let mut from = 0usize;
-            while let Some(k) = prod[from..].find(opener) {
-                let at = from + k + opener.len();
-                let end = prod[at..]
-                    .find('"')
-                    .expect("被调命令的字面量没有闭合 —— 抽取坏了");
-                cmds.push(&prod[at..at + end]);
-                from = at + end;
-            }
-        }
-        cmds.sort_unstable();
-        cmds.dedup();
-        assert_eq!(
-            cmds,
-            vec!["list", "log"],
-            "经 `plugin/invoke.rs` 那个 `<非字面量>` 键转调的命令变了：{cmds:?}\n\
-             ⇒ 回 `ALLOWED` 里 `plugin/invoke.rs` 那条**重读它的豁免理由**，\n\
-             把新命令的写面写进去。**不许只改这个断言。**\n\
-             （那条键分不出是哪个插件，所以这一格是它唯一的机器提醒。）"
-        );
-        let invoke_keys = super::spawn_registry::ALLOWED
-            .iter()
-            .filter(|(f, ..)| *f == "plugin/invoke.rs")
-            .count();
-        assert_eq!(
-            invoke_keys, 1,
-            "`ALLOWED` 里 `plugin/invoke.rs` 有 {invoke_keys} 条键 —— \
-             本条的前提是「那几条命令共用**一个**键」，键数变了这格就该重判"
-        );
     }
 }
 
