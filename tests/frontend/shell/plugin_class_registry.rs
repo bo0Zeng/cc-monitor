@@ -63,7 +63,6 @@
 //!
 //! # 与已有判据的分工（**不重造**）
 //!
-//! · 后端不许碰 cc-bus 的**数据布局** → `tests/backend/cc_bus_boundary_guard.rs`；
 //! · backend 生产段的**起进程点总数** → `readonly_guard::spawn_registry`（相等断言，今天 9 处）；
 //!
 //! 本模块只在**上面这些判据管不到的接缝**上补：`E4` 那张表的**每一格**今天成不成立。

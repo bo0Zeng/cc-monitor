@@ -13442,12 +13442,6 @@
       "zh": "cc-monitor 后端",
       "args": []
     },
-    "rsToolRegistry.tools.ccBusStateNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "运行期状态：收件箱、名单、队列、日志\n本机与远端都读；发消息、派活、广播、结束 agent 这些写操作只动远端那份",
-      "args": []
-    },
     "rsToolRegistry.tools.ccBusBinNote": {
       "kind": "body",
       "role": "说明",
@@ -20454,6 +20448,18 @@
       "kind": "body",
       "role": "说明",
       "zh": "起会话账号记录 · 各会话最近一次启动用的账号",
+      "args": []
+    },
+    "rsDataPaths.backend.sessionQueue": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话输入队 · 还没送进会话的几句 · 一条会话一份",
+      "args": []
+    },
+    "rsDataPaths.backend.ccBus": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-bus 收件箱 · 各会话的信与已读位置",
       "args": []
     },
     "rsDataPaths.backend.launchNotes": {
