@@ -577,3 +577,90 @@ fn the_scale_corpora_are_what_this_translator_gives() {
         wrong.join("\n")
     );
 }
+
+// ── 人说的那一条里认附件 ────────────────────────────────────
+
+/// 一条带一张图（开头 `[Image #1]` ＋ 图片块）、正文后面一行 `@.ccm-attach/…` 的人说的话；`cwd` 是那份附件所在的工作目录。
+fn said_with_attachments(cwd: &str) -> String {
+    serde_json::json!({
+        "type": "user", "uuid": "u-att", "timestamp": "2026-10-23T07:31:00.000Z", "cwd": cwd,
+        "origin": {"kind": "human"}, "imagePasteIds": [1],
+        "message": {"role": "user", "content": [
+            {"type": "text", "text": "[Image #1] 截图在这\n@.ccm-attach/1023-1529-7c01/login.css"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}
+        ]}
+    })
+    .to_string()
+}
+
+/// ★ 正文去掉 `[Image #N]` 与引用行，引用收进 `attachments`（名 · 相对路径 · 大小）；图照旧是图片块。那一份已不在 ⇒ `gone`。
+#[test]
+fn a_human_say_lists_its_attachments_and_keeps_only_the_words() {
+    let d = std::env::temp_dir().join(format!("ccm-rec-att-{}", std::process::id()));
+    std::fs::remove_dir_all(&d).ok();
+    std::fs::create_dir_all(d.join(".ccm-attach/1023-1529-7c01")).expect("建");
+    std::fs::write(
+        d.join(".ccm-attach/1023-1529-7c01/login.css"),
+        b"0123456789",
+    )
+    .expect("写");
+    let cwd = d.display().to_string();
+    let Some(Record {
+        body:
+            Body::Said {
+                who,
+                blocks,
+                attachments,
+                ..
+            },
+        ..
+    }) = one(&said_with_attachments(&cwd))
+    else {
+        panic!("该是人说的一条")
+    };
+    assert_eq!(who.text, "截图在这");
+    assert!(matches!(blocks.last(), Some(Block::Image { .. })));
+    assert_eq!(attachments.len(), 1);
+    let a = &attachments[0];
+    assert_eq!(
+        (a.name.as_str(), a.rel.as_str(), a.bytes, a.gone),
+        (
+            "login.css",
+            ".ccm-attach/1023-1529-7c01/login.css",
+            Some(10),
+            false
+        )
+    );
+    assert!(a.size_text.is_some());
+    std::fs::remove_dir_all(&d).ok();
+    let Some(Record {
+        body: Body::Said { attachments, .. },
+        ..
+    }) = one(&said_with_attachments(&cwd))
+    else {
+        panic!("该是人说的一条")
+    };
+    assert!(attachments[0].gone && attachments[0].bytes.is_none());
+}
+
+/// 不指进 `.ccm-attach/` 的 `@` 行是人自己写的，不动；不带图片块时 `[Image #1]` 那几个字也不动。
+#[test]
+fn ordinary_mentions_and_bracket_words_stay_in_the_text() {
+    let raw = serde_json::json!({
+        "type": "user", "uuid": "u-plain", "timestamp": "2026-10-23T07:31:00.000Z", "cwd": "/w",
+        "origin": {"kind": "human"},
+        "message": {"role": "user", "content": "[Image #1] 看看\n@src/main.rs"}
+    })
+    .to_string();
+    let Some(Record {
+        body: Body::Said {
+            who, attachments, ..
+        },
+        ..
+    }) = one(&raw)
+    else {
+        panic!("该是人说的一条")
+    };
+    assert_eq!(who.text, "[Image #1] 看看\n@src/main.rs");
+    assert!(attachments.is_empty());
+}

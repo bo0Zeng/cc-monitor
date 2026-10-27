@@ -146,16 +146,21 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             user_text,
             tool_results,
             ..
-        } => Some(rec_of(
-            uuid,
-            Some(timestamp),
-            Body::Said {
-                who: user_text,
-                blocks: blocks_of(&message.content),
-                results: tool_results,
-                cwd,
-            },
-        )),
+        } => {
+            let blocks = blocks_of(&message.content);
+            let (who, attachments) = with_attachments(user_text, &blocks, cwd.as_deref());
+            Some(rec_of(
+                uuid,
+                Some(timestamp),
+                Body::Said {
+                    who,
+                    blocks,
+                    results: tool_results,
+                    cwd,
+                    attachments,
+                },
+            ))
+        }
         JsonlRecord::Assistant {
             uuid,
             timestamp,
@@ -228,16 +233,21 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             attachment: Some(a),
             user_text: Some(who),
             ..
-        } => Some(rec_of(
-            uuid,
-            Some(timestamp),
-            Body::Said {
-                who,
-                blocks: blocks_of(&a.prompt),
-                results: Default::default(),
-                cwd,
-            },
-        )),
+        } => {
+            let blocks = blocks_of(&a.prompt);
+            let (who, attachments) = with_attachments(who, &blocks, cwd.as_deref());
+            Some(rec_of(
+                uuid,
+                Some(timestamp),
+                Body::Said {
+                    who,
+                    blocks,
+                    results: Default::default(),
+                    cwd,
+                    attachments,
+                },
+            ))
+        }
         // 认不出（没见过的类型 · 见过的类型形状变了）：每行一条 `unread`；相邻同类并成一条是出记录页那一遍的事。
         // 没见过的类型、又没有链上身份 ⇒ 簿记行，不成卡（[`quiet_unread_of`]）。
         JsonlRecord::Unrecognized {
@@ -272,6 +282,96 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
     }
 }
 
+/// 人说的那一条里认附件（送字那一下 [`super::ATTACH`] 写的那几形）：正文结尾那几行是指进附件目录的 `@相对路径` ⇒ 收进附件、从正文去掉；
+/// 这一条带图片块 ⇒ 开头那几个 `[Image #N]`（括号粘贴图片路径收成的占位）也去掉，图照旧在图片块里。别的说话人 · 别的 `@` 行不动。
+/// 附件在不在、多大，按这一条的工作目录现看一眼；没有工作目录 ⇒ 说不出（不标已清理）。
+fn with_attachments(
+    mut who: cmd_wire::record::UserText,
+    blocks: &[Block],
+    cwd: Option<&str>,
+) -> (
+    cmd_wire::record::UserText,
+    Vec<cmd_wire::attachment::Attachment>,
+) {
+    use crate::common::attachment_dir as layout;
+    if who.speaker != cmd_wire::record::Speaker::Human {
+        return (who, Vec::new());
+    }
+    let mut lines: Vec<&str> = who.text.lines().collect();
+    let mut found = Vec::new();
+    while let Some(rel) = lines
+        .last()
+        .and_then(|l| l.trim().strip_prefix('@'))
+        .filter(|r| r.starts_with(layout::DIR))
+    {
+        let Some((id, name)) = layout::parse_rel(rel) else {
+            break;
+        };
+        found.push(attachment_at(cwd, id, name));
+        lines.pop();
+    }
+    found.reverse();
+    let body = lines.join("\n");
+    let has_image = blocks.iter().any(|b| matches!(b, Block::Image { .. }));
+    let kept = if has_image {
+        strip_image_marks(&body)
+    } else {
+        body.as_str()
+    };
+    if found.is_empty() && kept.len() == body.len() {
+        return (who, found);
+    }
+    let cut = u32::try_from(body[..body.len() - kept.len()].encode_utf16().count()).unwrap_or(0);
+    let text = kept.trim_end().to_string();
+    let end = u32::try_from(text.encode_utf16().count()).unwrap_or(0);
+    who.pasted = std::mem::take(&mut who.pasted)
+        .into_iter()
+        .filter(|p| p.start >= cut && p.end - cut <= end)
+        .map(|mut p| {
+            p.start -= cut;
+            p.end -= cut;
+            p.body_start -= cut;
+            p.body_end -= cut;
+            p
+        })
+        .collect();
+    who.text = text;
+    (who, found)
+}
+
+/// 开头那几个 `[Image #N]`（连同它们之间与之后的空白）去掉之后的那一截。
+fn strip_image_marks(s: &str) -> &str {
+    let mut rest = s.trim_start();
+    while let Some(after) = rest.strip_prefix("[Image #") {
+        let Some(end) = after.find(']') else {
+            break;
+        };
+        if end == 0 || !after[..end].bytes().all(|b| b.is_ascii_digit()) {
+            break;
+        }
+        rest = after[end + 1..].trim_start();
+    }
+    rest
+}
+
+/// 编号 `id` 那一份（原名 `name`）此刻在工作目录 `cwd` 下的样子。
+fn attachment_at(cwd: Option<&str>, id: &str, name: &str) -> cmd_wire::attachment::Attachment {
+    let rel = crate::common::attachment_dir::rel_of(id, name);
+    let meta = cwd.map(|c| {
+        crate::platform::fs::Ro::symlink_metadata(std::path::Path::new(c).join(&rel))
+            .ok()
+            .filter(|m| m.is_file())
+    });
+    let gone = matches!(meta, Some(None));
+    let bytes = meta.flatten().map(|m| m.len());
+    cmd_wire::attachment::Attachment {
+        name: name.to_string(),
+        rel,
+        bytes,
+        size_text: bytes.map(copy_core::size_text),
+        gone,
+    }
+}
 /// `message.content`（字符串 · 块数组）⇒ 通用内容块；认不出的块跳过。
 pub(crate) fn blocks_of(content: &Value) -> Vec<Block> {
     match content {

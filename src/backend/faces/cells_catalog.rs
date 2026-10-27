@@ -805,6 +805,7 @@ mod specimens {
                 ],
                 results: one("c", result(Answer::Approved)),
                 cwd: some("/w"),
+                attachments: Vec::new(),
             }),
             rec(Body::Said {
                 who: who(Speaker::Human),
@@ -816,6 +817,7 @@ mod specimens {
                     }),
                 ),
                 cwd: some("/w"),
+                attachments: Vec::new(),
             }),
             rec(Body::Reply {
                 blocks: vec![
@@ -908,6 +910,7 @@ mod specimens {
                 blocks: vec![Block::Text { text: s("t") }],
                 results: one("c", result(Answer::Approved)),
                 cwd: some("/w"),
+                attachments: Vec::new(),
             }));
         }
         // 认不出的一行：两个原因各一个（`why` 是闭集的词，样本各给一种）。

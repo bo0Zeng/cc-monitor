@@ -164,7 +164,7 @@ pub struct Attachment {
     pub name: String,
     /// 相对会话工作目录的路径。
     pub rel: String,
-    pub class: FileClass,
+    /// 那一份此刻多大；不在了 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub bytes: Option<u64>,
