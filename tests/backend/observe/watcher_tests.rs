@@ -4930,7 +4930,10 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     process_jsonl(&rec, &mut state, &mut sink);
     let back: Vec<Frame> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
-        back.iter().filter_map(face_of).last().map(|f| f.life.clone())
+        back.iter()
+            .filter_map(face_of)
+            .last()
+            .map(|f| f.life.clone())
             == Some(crate::wire::WireLife::Live {
                 activity: Some(SessionActivity::Working)
             }),

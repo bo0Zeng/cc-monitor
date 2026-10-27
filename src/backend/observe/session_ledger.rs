@@ -128,7 +128,9 @@ impl SessionLedger {
                 self.miss.remove(sid);
                 let outside = self.outside.remove(sid);
                 match &face.life {
-                    WireLife::Ended { by: Some(by) } => (false, vec![self.end(sid, Some(by.clone()))]),
+                    WireLife::Ended { by: Some(by) } => {
+                        (false, vec![self.end(sid, Some(by.clone()))])
+                    }
                     _ if outside => (false, vec![self.end(sid, None)]),
                     _ => {
                         self.pending.insert(sid.clone(), false);

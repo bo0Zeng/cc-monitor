@@ -22,9 +22,9 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+use crate::wire::WireLife;
 use cmd_wire::cells::Words;
 use cmd_wire::frame::{SessionDot, SessionFace};
-use crate::wire::WireLife;
 use cmd_wire::Machine;
 use serde::{Deserialize, Serialize};
 
@@ -167,7 +167,9 @@ pub(crate) fn unlisted(entry: Option<&cmd_wire::listing::Entry>, life: WireLife)
 
 /// 这台的组那一半此刻的记号（不看样子与那几格）：watcher 重读注解文件时照它判「组那一半变了没有」、变了才推 `changed {groups}`。
 pub(crate) fn mark(table: &Table, book: &Book) -> u64 {
-    let half = here_of(table, book, |_| unlisted(None, WireLife::Ended { by: None }));
+    let half = here_of(table, book, |_| {
+        unlisted(None, WireLife::Ended { by: None })
+    });
     let bytes = serde_json::to_vec(&half).unwrap_or_default();
     crate::common::digest::Fnv::default().part(&bytes).value()
 }

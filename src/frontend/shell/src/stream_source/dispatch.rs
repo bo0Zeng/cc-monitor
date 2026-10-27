@@ -160,10 +160,7 @@ pub(crate) async fn apply(
         Ordered::SessionLeft(s) => {
             // 内容流的边界：摘排队中的快照、给在途的打取消标记、续点作废；去向（`face.life`）原样交出口。
             let sid = &s.sid;
-            tracing::info!(
-                "session-left: [{host_label}] sid={sid} → {:?}",
-                s.face.life
-            );
+            tracing::info!("session-left: [{host_label}] sid={sid} → {:?}", s.face.life);
             intake.removed(sid);
             told(at, Frame::SessionLeft(s));
         }

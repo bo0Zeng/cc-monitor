@@ -327,12 +327,10 @@ impl Book {
                             });
                         }
                     }
-                    Seat::Left(s) if reconnectable(s) => {
-                        r.after.push(Out::Left {
-                            origin: (*o).clone(),
-                            left: s.clone(),
-                        })
-                    }
+                    Seat::Left(s) if reconnectable(s) => r.after.push(Out::Left {
+                        origin: (*o).clone(),
+                        left: s.clone(),
+                    }),
                     Seat::Left(_) => {}
                 }
             }

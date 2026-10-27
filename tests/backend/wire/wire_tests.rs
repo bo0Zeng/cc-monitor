@@ -246,11 +246,11 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 /// `live` 一种 `op` 一形：全格取整卡（带 `run`），最少格取「说完了」那一形（不带 `run`）。
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
+    use crate::wire::Life;
     use crate::wire::{
         LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
         SessionContainer, TransferEnd, Unavailable,
     };
-    use crate::wire::Life;
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
     vec![
@@ -1084,12 +1084,26 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
 #[test]
 fn the_session_left_frame_has_exactly_these_bytes() {
     for (life, by, word) in [
-        (crate::wire::Life::Reconnectable, None, r#"{"is":"reconnectable"}"#),
+        (
+            crate::wire::Life::Reconnectable,
+            None,
+            r#"{"is":"reconnectable"}"#,
+        ),
         (crate::wire::Life::Ended, None, r#"{"is":"ended"}"#),
-        (crate::wire::Life::Ended, Some("s2"), r#"{"is":"ended","by":"s2"}"#),
+        (
+            crate::wire::Life::Ended,
+            Some("s2"),
+            r#"{"is":"ended","by":"s2"}"#,
+        ),
         (crate::wire::Life::Gone, None, r#"{"is":"gone"}"#),
     ] {
-        let line = to_line(&Frame::session_left("abc".into(), life, by.map(str::to_string), None)).unwrap();
+        let line = to_line(&Frame::session_left(
+            "abc".into(),
+            life,
+            by.map(str::to_string),
+            None,
+        ))
+        .unwrap();
         assert!(
             line.starts_with(r#"{"kind":"session_left","sid":"abc","face":{"dot":"#),
             "{line}"
@@ -1517,7 +1531,8 @@ fn session_frames_carry_the_state_written_and_toned() {
             "sessionState.ended.tooltip",
         ),
     ] {
-        let v = &serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"];
+        let v =
+            &serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"];
         assert_eq!(v["name"], copy_core::copy_text(name, &[]), "{f:?}");
         assert_eq!(v["tip"], copy_core::copy_text(hint, &[]), "{f:?}");
         assert_eq!(v["tone"], "plain", "{f:?}");
@@ -1879,7 +1894,8 @@ fn the_fates_sort_after_every_live_session_on_one_ruler() {
     })
     .collect();
     let fate = |f| {
-        serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"]["order"]
+        serde_json::to_value(Frame::session_left("s".into(), f, None, None)).unwrap()["face"]
+            ["order"]
             .as_u64()
     };
     assert_eq!(live, [0, 1, 2, 3].into());
@@ -1904,7 +1920,12 @@ fn the_unseen_face_is_unknown_closes_from_the_menu_and_offers_nothing_else() {
     assert_eq!(f.can.close, CanClose::Menu);
     assert!(matches!(f.can.resume, Allow::No { .. }));
     assert!(matches!(f.can.term, CanTerm::No { .. }));
-    for a in [&f.can.reattach, &f.can.model, &f.can.permission, &f.can.stop] {
+    for a in [
+        &f.can.reattach,
+        &f.can.model,
+        &f.can.permission,
+        &f.can.stop,
+    ] {
         assert!(matches!(a, Allow::No { .. }), "{a:?}");
     }
     assert_eq!(

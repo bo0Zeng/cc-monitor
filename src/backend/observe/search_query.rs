@@ -630,8 +630,7 @@ impl SearchIndex {
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
                     let life = live.life_of(&session.session_id);
-                    session.face =
-                        crate::wire::SessionFace::of(crate::wire::Life::of_wire(&life));
+                    session.face = crate::wire::SessionFace::of(crate::wire::Life::of_wire(&life));
                     session.is_bg = bg;
                     session.can = crate::history::listing::can_of(&session.agent, &life, bg);
                     found.push(session);

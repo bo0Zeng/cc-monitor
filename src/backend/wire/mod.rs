@@ -34,10 +34,10 @@ pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
 pub use cmd_wire::frame::{NameFace, SessionActivity};
-pub use cmd_wire::frame::{Topic, Unavailable};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
+pub use cmd_wire::frame::{Topic, Unavailable};
 
 /// 一条会话此刻处在哪一段（[`SessionFaceExt::of`] 的入参）：比线上那一格 [`WireLife`] 多带写字要的几样
 /// （在不在 tmux 里 · 记录读没读完 · 那台看不见）。

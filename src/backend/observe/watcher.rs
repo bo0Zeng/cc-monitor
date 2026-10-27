@@ -1523,12 +1523,7 @@ fn watch_loop(
                 if state.sessions.get(&key).map(|e| e.pid) == Some(pid) {
                     if let Some(e) = state.sessions.remove(&key) {
                         // pidfd 醒了 = 那个进程实例真的退了。
-                        retire_sid_if_unreferenced(
-                            &e.sid,
-                            None,
-                            &mut state,
-                            &mut sink,
-                        );
+                        retire_sid_if_unreferenced(&e.sid, None, &mut state, &mut sink);
                     }
                 }
             }
@@ -3269,12 +3264,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if let Some(old) = state.sessions.remove(&key) {
         // ★ S0：**同 pidfile 原地换 sid** —— 旧 sid 不是死了，是被顶替了。
         // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
-        retire_sid_if_unreferenced(
-            &old.sid,
-            Some(sid.as_str()),
-            state,
-            sink,
-        );
+        retire_sid_if_unreferenced(&old.sid, Some(sid.as_str()), state, sink);
     }
     // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
     // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
@@ -4871,7 +4861,12 @@ impl FrameSink {
         for sid in due {
             s.kept_answered.insert(sid.clone());
             l.said_ended(&sid);
-            s.push(Frame::session_left(sid, crate::wire::Life::Ended, None, None));
+            s.push(Frame::session_left(
+                sid,
+                crate::wire::Life::Ended,
+                None,
+                None,
+            ));
         }
     }
 
