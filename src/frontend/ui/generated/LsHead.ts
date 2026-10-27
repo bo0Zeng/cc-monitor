@@ -7,6 +7,10 @@ import type { WirePath } from "./WirePath";
  */
 export type LsHead = { 
 /**
+ * 列的这一级的显示形（那台按自己的家目录写好的 `~/…`，原始字节），两端照抄。
+ */
+shown: WirePath, 
+/**
  * 上一级；到顶 ⇒ `null`。
  */
 up: WirePath | null, 

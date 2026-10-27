@@ -7,8 +7,9 @@
  * 只能在**读进来之后**用 [`Machine::is_local`] 分。这是刻意的：
  * 那两个值的线上形状必须与今天逐字节相同，不许为了类型好看而改协议。
  *
- * ⚠ 字段是 `pub` 的：`Machine` 是**一个机器名**，不是一个带不变式的容器。
- * 唯一的不变式（「名字不许是空白」）由 [`Machine::route`] 那个漏斗执行 ——
- * 装在构造器上反而会把它拆成「构造时拒」与「路由时拒」两处，而那两处会漂。
+ * 字段私有、不借出 `&str`：按机器记的表以 `Machine` 当键（`Hash` · `Ord`），比本机远端用
+ * [`Machine::is_local`] · [`Machine::host_name`]，要远端那台的名字只有 `host_name` 一个口；
+ * 日志与拼路径 · URL 要线上那串经 `Display`。造一台走 [`Machine::named`]（不判名字，
+ * 「名字不许是空白」由 [`Machine::route`] 那个漏斗执行 —— 装在构造器上会拆成两处、会漂）。
  */
 export type Origin = string;

@@ -9,6 +9,10 @@ export type DirChecked = {
  */
 exists: boolean, 
 /**
+ * 这台按自己的家目录写好的显示形（`~/…`），两端照抄。
+ */
+shown: string, 
+/**
  * 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
  */
 tmuxName: string | null, };

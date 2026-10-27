@@ -7,6 +7,10 @@ import type { Words } from "./Words";
  */
 export type AccountRow = { 
 /**
+ * `configDir` 的显示形（这台按自己的家目录写好的 `~/…`，界面照抄）；账号 0 ⇒ `null`。
+ */
+configDirShown: string | null, 
+/**
  * API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
  */
 keyMasked: string | null, 

@@ -9,6 +9,10 @@ export type RecentDir = {
  */
 cwd: string, 
 /**
+ * 那台按自己的家目录写好的显示形（`~/…`），两端照抄。
+ */
+shown: string, 
+/**
  * 那个目录最近一次会话的修改时刻（毫秒）。
  */
 lastMs: number, 
