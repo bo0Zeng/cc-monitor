@@ -414,7 +414,11 @@ fn write_diagnostics_to_config(
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct LogFileInfo {
     pub dir: String,
+    /// `dir` 的显示形（家目录那一截写成 `~`，`copy_core::home_short`；界面照抄、不自己缩）。
+    pub dir_shown: String,
     pub current_file: Option<String>,
+    /// `current_file` 的显示形（同上）。
+    pub current_file_shown: Option<String>,
     /// 当前那份的大小，写好的字（`copy_core::size_text`，界面照抄）；没有当前文件 · 读不到大小 ⇒ `null`。
     pub current_size_text: Option<String>,
     pub all_files: Vec<LogFileEntry>,
@@ -426,7 +430,10 @@ pub struct LogFileInfo {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct LogFileEntry {
+    /// 原路径（打开用）。
     pub path: String,
+    /// `path` 的显示形（家目录那一截写成 `~`，`copy_core::home_short`；界面照抄）。
+    pub shown: String,
     /// 大小，写好的字（`copy_core::size_text`，界面照抄）；读不到大小 ⇒ `null`。
     pub size_text: Option<String>,
     // 量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年** ⇒ f64 精度足够（C03 大整数策略）。
@@ -434,8 +441,12 @@ pub struct LogFileEntry {
     pub modified_ms: i64,
 }
 
-/// 一个目录里的普通文件（`ext` 给了就只收那个扩展名），按 mtime 新在前。目录不在 ⇒ 空。
-pub(crate) fn list_log_entries(dir: &Path, ext: Option<&str>) -> Vec<LogFileEntry> {
+/// 一个目录里的普通文件（`ext` 给了就只收那个扩展名），按 mtime 新在前；显示形按 `home` 写。目录不在 ⇒ 空。
+pub(crate) fn list_log_entries(
+    dir: &Path,
+    ext: Option<&str>,
+    home: Option<&Path>,
+) -> Vec<LogFileEntry> {
     let mut entries = Vec::new();
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
@@ -453,8 +464,10 @@ pub(crate) fn list_log_entries(dir: &Path, ext: Option<&str>) -> Vec<LogFileEntr
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
+            let path = p.to_string_lossy().into_owned();
             entries.push(LogFileEntry {
-                path: p.to_string_lossy().into_owned(),
+                shown: copy_core::home_short(&path, home),
+                path,
                 size_text,
                 modified_ms: mtime,
             });
@@ -465,21 +478,32 @@ pub(crate) fn list_log_entries(dir: &Path, ext: Option<&str>) -> Vec<LogFileEntr
 }
 
 impl LoggingState {
+    /// 日志文件信息，显示形按这台的家目录写（`creds_core::store::home_dir`）。
     pub fn log_file_info(&self) -> LogFileInfo {
-        let entries = list_log_entries(&self.log_dir, Some(LOG_FILE_SUFFIX));
-        let current_file = entries.first().map(|e| e.path.clone());
-        let current_size_text = entries.first().and_then(|e| e.size_text.clone());
+        self.file_info(creds_core::store::home_dir().as_deref())
+    }
+
+    /// 同 [`Self::log_file_info`]，家目录由调用方给（说不出 ⇒ `None`，显示形原样）。
+    pub(crate) fn file_info(&self, home: Option<&Path>) -> LogFileInfo {
+        let entries = list_log_entries(&self.log_dir, Some(LOG_FILE_SUFFIX), home);
+        let current = entries.first();
+        let current_file = current.map(|e| e.path.clone());
+        let current_file_shown = current.map(|e| e.shown.clone());
+        let current_size_text = current.and_then(|e| e.size_text.clone());
         // 后端那一份：路径与起后端时交出去的是同一个函数算的（它的父目录）。
         let backend_dir = backend_stderr_log_path(&self.monitor_data_dir)
             .parent()
             .map(Path::to_path_buf);
+        let dir = self.log_dir.to_string_lossy().into_owned();
         LogFileInfo {
-            dir: self.log_dir.to_string_lossy().into_owned(),
+            dir_shown: copy_core::home_short(&dir, home),
+            dir,
             current_file,
+            current_file_shown,
             current_size_text,
             all_files: entries,
             backend_stderr: backend_dir
-                .map(|d| list_log_entries(&d, None))
+                .map(|d| list_log_entries(&d, None, home))
                 .unwrap_or_default(),
         }
     }

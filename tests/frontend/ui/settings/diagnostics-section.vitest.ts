@@ -16,10 +16,12 @@ const { setDiag, getDiag, logInfo, opened, report } = vi.hoisted(() => ({
   logInfo: {
     value: {
       dir: "/d/logs",
-      current_file: "/d/logs/monitor.2026-09-25.log",
+      dir_shown: "壳写的目录显示形",
+      current_file: "/d/logs/monitor.2026-09-25.log" as string | null,
+      current_file_shown: "壳写的今天那份显示形" as string | null,
       current_size_text: "台架写的今天那份" as string | null,
       all_files: [] as unknown[],
-      backend_stderr: [] as { path: string; size_text: string | null; modified_ms: number }[],
+      backend_stderr: [] as { path: string; shown: string; size_text: string | null; modified_ms: number }[],
     },
   },
   opened: vi.fn(),
@@ -55,7 +57,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: opened }));
-vi.mock("@tauri-apps/api/path", () => ({ homeDir: () => Promise.resolve("/d") }));
 
 import { DiagnosticsSection } from "../../../../src/frontend/ui/settings/diagnostics-section";
 import { restartReasons, __resetRestartNoticeForTests } from "../../../../src/frontend/ui/settings/restart-notice";
@@ -90,6 +91,8 @@ beforeEach(() => {
   getDiag.logEnabled = true;
   report.fail = null;
   logInfo.value.backend_stderr = [];
+  logInfo.value.current_file = "/d/logs/monitor.2026-09-25.log";
+  logInfo.value.current_file_shown = "壳写的今天那份显示形";
   opened.mockClear();
   document.body.replaceChildren();
 });
@@ -149,13 +152,14 @@ describe("会写回壳的三格：读回来之前不可交互", () => {
 describe("文件：本机 cc-monitor 输出", () => {
   const row = (el: HTMLElement) => el.querySelector<HTMLElement>("[data-role=local-output]")!;
 
-  it("★ 有那份文件：显示路径（~ 缩写）与大小，［打开］打开的恰是它（新在前的第一份）", async () => {
+  it("★ 有那份文件：显示壳写好的显示形与大小，［打开］打开的恰是它（新在前的第一份）", async () => {
     logInfo.value.backend_stderr = [
-      { path: "/d/logs/backend/stderr.log", size_text: "台架写的新那份", modified_ms: 2 },
-      { path: "/d/logs/backend/stderr.old.log", size_text: "台架写的旧那份", modified_ms: 1 },
+      { path: "/d/logs/backend/stderr.log", shown: "壳写的新那份显示形", size_text: "台架写的新那份", modified_ms: 2 },
+      { path: "/d/logs/backend/stderr.old.log", shown: "壳写的旧那份显示形", size_text: "台架写的旧那份", modified_ms: 1 },
     ];
     const sec = await loaded();
-    expect(row(sec.element).textContent).toContain("~/logs/backend/stderr.log");
+    expect(row(sec.element).textContent).toContain("壳写的新那份显示形");
+    expect(row(sec.element).textContent, "界面不该摆原路径").not.toContain("/d/logs");
     // 大小是壳写好的字，界面照抄。
     expect(row(sec.element).querySelector(".diag-file-size")?.textContent).toBe("台架写的新那份");
     expect(sec.element.querySelector("[data-role=today-log] .diag-file-size")?.textContent).toBe("台架写的今天那份");
@@ -169,6 +173,23 @@ describe("文件：本机 cc-monitor 输出", () => {
     const sec = await loaded();
     expect(row(sec.element).textContent).toContain(copyText("diagnostics.files.outputNone"));
     expect(row(sec.element).querySelector("button")).toBeNull();
+  });
+});
+
+describe("文件：今天的日志照抄壳写好的路径", () => {
+  const today = (el: HTMLElement) => el.querySelector<HTMLElement>("[data-role=today-log]")!;
+
+  it("★ 有今天那份 ⇒ 摆它的显示形，不摆原路径", async () => {
+    const sec = await loaded();
+    expect(today(sec.element).textContent).toContain("壳写的今天那份显示形");
+    expect(today(sec.element).textContent).not.toContain("/d/logs");
+  });
+
+  it("★ 还没有 ⇒ 那一句里的目录是壳写的显示形", async () => {
+    logInfo.value.current_file = null;
+    logInfo.value.current_file_shown = null;
+    const sec = await loaded();
+    expect(today(sec.element).textContent).toContain(copyText("diagnostics.files.noFile", { dir: "壳写的目录显示形" }));
   });
 });
 

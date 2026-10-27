@@ -26,11 +26,13 @@ pub const TABLE_JSON: &str = include_str!("../../../shared/copy/table.json");
 mod civil;
 mod count;
 mod duration;
+mod path;
 mod peer;
 mod size;
 pub use civil::civil_from_days;
 pub use count::{count_short, count_text};
 pub use duration::{format_duration, format_elapsed, rel_duration, short_duration};
+pub use path::{home_short, home_short_bytes};
 pub use peer::{
     backend_differs, backend_old, local_machine, peer_machine, reply_unreadable, unavailable,
 };
