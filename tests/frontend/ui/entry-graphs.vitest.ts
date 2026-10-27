@@ -53,6 +53,7 @@ const WINDOWS = {
   main: { html: "index.html", entry: "src/frontend/ui/entry-main.ts" },
   settings: { html: "settings.html", entry: "src/frontend/ui/entry-settings.ts" },
   viewer: { html: "viewer.html", entry: "src/frontend/ui/entry-viewer.ts" },
+  terminal: { html: "terminal.html", entry: "src/frontend/ui/entry-terminal.ts" },
 } as const;
 type Win = keyof typeof WINDOWS;
 
@@ -117,6 +118,7 @@ const REQUIRED: Record<Win, readonly string[]> = {
   main: ["src/frontend/ui/main.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/views/history.ts"],
   settings: ["src/frontend/ui/entry-settings.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/theme.ts", "src/frontend/ui/keybindings/registry.ts", "src/frontend/ui/keybindings/editor.ts"],
   viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/views/session-viewer.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/theme.ts"],
+  terminal: ["src/frontend/ui/entry-terminal.ts", "src/frontend/ui/terminal-page.ts", "src/frontend/ui/theme.ts"],
 };
 
 /** 一个窗口的闭包：它会加载的全部 JS 模块 ＋ 全部 CSS 资产。 */
@@ -230,7 +232,8 @@ describe("三入口 · 住址对账（html ↔ 入口模块 ↔ vite input ↔ T
     // 分母：今天恰好两处开窗（设置窗 ＋ viewer 窗）。多了少了都要有人来看一眼。
     // viewer 的 URL 多带一个 `origin`：独立窗口自己订 `session-lines/<sid>`，要知道会话在哪台机器上；
     // 开的是一个子运行自己的窗口（agent 窗口）时再带 `&run=<运行>`（`run_q`，同一个入口）。
-    expect(urls.sort()).toEqual(["settings.html", "viewer.html?viewer={session_id}&origin={origin_q}{run_q}"]);
+    // 单独终端窗口：带那台 · 句柄 · tmux 会话名 · 标题（各格百分号编码）。
+    expect(urls.sort()).toEqual(["settings.html", "terminal.html?origin={o}&terminal={t}&name={n}&title={ti}", "viewer.html?viewer={session_id}&origin={origin_q}{run_q}"]);
     const htmls = new Set<string>(Object.values(WINDOWS).map((w) => w.html));
     for (const u of urls) expect(htmls.has(u.split("?")[0]), `lib.rs 开窗指向 ${u}，它不是构建输入之一`).toBe(true);
     // 主窗口由 tauri.conf.json 的 windows[0] 开，不写 url ＝ 默认 index.html。
@@ -776,6 +779,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/login-drawer.module.css": { stacked: false, why: "登录抽屉的内容（`login-drawer.ts`）：只挂自己的哈希类（外框是 kit 抽屉，按钮 · 输入框 · 红条是 kit 的，输入框包在本文件的一格里）" },
   "src/frontend/ui/answer-block.module.css": { stacked: false, why: "答题块（`answer-block.ts`）：只挂自己的哈希类（按钮是 kit 的，数字键那一格按属性认、不叠类）" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/views/terminals-view.module.css": { stacked: false, why: "顶层「终端」视图（`views/terminals-view.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-screen.module.css": { stacked: false, why: "终端画面那块 `pre`（`terminal-screen.ts::screenPre`）：只挂自己的哈希类；版位与滚动归外面那一格（终端页的类 / 浮层的全局类，在另一个元素上）" },
   "src/frontend/ui/kit/dock.module.css": { stacked: false, why: "底部抽屉件：只挂自己的哈希类（网格那一格的 id 由主窗口挂，不是类）" },
