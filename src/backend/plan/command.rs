@@ -1,4 +1,5 @@
-//! 以人的身份代敲 pb 的命令（`continue` · `pause` · `adopt` · `render`；`adopt` 接的不是当前仓库时先 `repo <仓库名>`）：
+//! 以人的身份代敲 pb 的命令（`continue` · `pause` · `adopt` · `render` · `repo`；`adopt` 接的不是当前仓库时先 `repo <仓库名>`；
+//! `repo` 敲哪几个参数照 [`super::new_slice::repo_args`]，与新计划框写出的那一行同一判）：
 //! 起法见 [`super::pb`]（当前目录设在工作区根）；认退出码，拆 `render` 那句话里的页面路径。
 //! 这一侧自己带着 agent 的身份（在 agent 的 shell 里起的）⇒ 用户命令一律不代敲：pb 的用户命令只许人发起。
 //! 人定了事不经这里：由会话里的 agent 写原话节点（pb 0.5 没有记原话的命令）。
@@ -13,7 +14,7 @@ use copy_core::said::Said;
 use std::path::Path;
 
 /// 界面能点的那几条（pb 的命令名原样）。
-pub(crate) const VERBS: [&str; 4] = ["continue", "pause", "adopt", "render"];
+pub(crate) const VERBS: [&str; 5] = ["continue", "pause", "adopt", "render", "repo"];
 
 /// 只许人发起的那几条（pb 的用户命令）：代敲只在这一侧不带 agent 身份时起。
 const USER_VERBS: [&str; 4] = ["continue", "pause", "repo", "adopt"];

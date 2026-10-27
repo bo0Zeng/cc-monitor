@@ -536,6 +536,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const planView = new PlanView();
   overlays.register("plan", planView);
   planView.tabOf = (sid) => tabs.tabsInOrder().find((t) => t.sessionId === sid) ?? null;
+  planView.cwdsOf = (origin) => [...new Set(tabs.tabsInOrder().flatMap((t) => (t.origin === origin && t.projectDir ? [t.projectDir] : [])))];
   planView.switchTo = (sid) => tabs.switchTo(sid);
   planView.reconnect = (origin) => tabs.reconnect(origin);
   planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
@@ -545,6 +546,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
   planView.needItems = () => needsBook.plans();
   tabs.attachPlanNeeds({ at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i) });
+  // 组的菜单「在计划里看这一组接的块」：开计划页、落到组员接手的那一片、块表按这一组筛。
+  tabs.onPlanForGroup = (gid, name, members) => void planView.openForGroup(gid, name, members);
   // 「需手动」：入口 · 浮层 · 窗口标题；点会话外那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
   tabs.attachNeeds(needsBook, (origin, item) => {
     if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void needsBook.refresh(origin) });

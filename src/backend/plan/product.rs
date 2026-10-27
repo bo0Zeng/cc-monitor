@@ -250,13 +250,9 @@ fn phases_of(v: &Value) -> Vec<PlanPhase> {
         .collect()
 }
 
-/// 整份加工。`rev` 是这一份输出的摘要、`read_at` 是读到的时刻（[`super::book`] 给）。
-/// 要你看 · 认可 · 退回 · 时刻的字此刻都空着：本子（[`super::book`]）· 认可记录（[`super::review`]）· [`with_time_texts`] 再填。
-pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> PlanRead {
-    let repo = doc.get("current_repo").and_then(Value::as_str);
-    let slices: Vec<PlanSlice> = arr(doc, "repos").map(|r| slice(r, repo, who)).collect();
-    let by_session = by_session(&slices);
-    let domains = arr(doc, "domains")
+/// 能选的领域（`pb dump` 与 `pb dump --domains` 顶上那一列，同一形）：表读不成 ⇒ `error`、类与阶段空。
+pub(crate) fn domains_of(doc: &Value) -> Vec<PlanDomain> {
+    arr(doc, "domains")
         .map(|d| match d.get("error").filter(|e| !e.is_null()) {
             Some(e) => PlanDomain {
                 name: s(d, "name"),
@@ -271,7 +267,16 @@ pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> Plan
                 phases: phases_of(d),
             },
         })
-        .collect();
+        .collect()
+}
+
+/// 整份加工。`rev` 是这一份输出的摘要、`read_at` 是读到的时刻（[`super::book`] 给）。
+/// 要你看 · 认可 · 退回 · 时刻的字此刻都空着：本子（[`super::book`]）· 认可记录（[`super::review`]）· [`with_time_texts`] 再填。
+pub(crate) fn make(doc: &Value, who: WhoPort, rev: String, read_at: u64) -> PlanRead {
+    let repo = doc.get("current_repo").and_then(Value::as_str);
+    let slices: Vec<PlanSlice> = arr(doc, "repos").map(|r| slice(r, repo, who)).collect();
+    let by_session = by_session(&slices);
+    let domains = domains_of(doc);
     PlanRead {
         pb: s(doc, "pb"),
         workspace: s(doc, "workspace").unwrap_or_default(),
@@ -638,6 +643,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 handoff: s(b, "handoff"),
                 handoff_error: s(b, "handoff_error"),
                 takeover: PlanTakeover::Unsure,
+                groups: super::groups::nobody(),
             };
             block.takeover = super::needs::takeover(&block);
             block

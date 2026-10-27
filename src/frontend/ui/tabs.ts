@@ -140,6 +140,7 @@ export class TabManager {
       openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
       reconnect: (origin) => this.reconnect(origin),
+      planForGroup: (gid, name, members) => this.onPlanForGroup(gid, name, members),
     });
     this.slots = new LaunchSlots(
       {
@@ -1021,6 +1022,9 @@ export class TabManager {
 
   /** 从「需手动」的入口跳到一个会话之后（焦点进答题块；主窗口挂进来）。 */
   onAnswerJump: (sid: string) => void = () => {};
+
+  /** 组的菜单「在计划中查看本组接手的块」（主窗口挂到计划页上）。 */
+  onPlanForGroup: (gid: string, name: string, members: readonly { origin: string; sid: string }[]) => void = () => {};
 
   /** 一个会话的会话事实再问一次（那台推 `changed {needs}` · 答题块答出去之后）。 */
   rereadFacts(sid: string): void {
