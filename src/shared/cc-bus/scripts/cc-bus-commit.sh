@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-commit <id> <令牌>
+# cc-bus commit <id> <令牌>
 #   两阶段读口的**第二跳:唯一的副作用**。校验通过 ⇒ 把已读位置推到令牌里的 `to`。校验不过 ⇒ **一个字节都不写**。
 #
 # ## 它是一次 CAS(比较后写),不是"覆盖"
@@ -9,7 +9,7 @@
 # 🔴 调用方必须把 rc=11 当成「有人替我推过了」:**不重试、不报错给用户**。
 #    重试会转成一个循环;而把它当失败会把 cc-bus 的投递语义读反。
 # ⇒ 这等于把语义写死成 **at-least-once(可能重复,绝不吞掉)**,
-#   与 `cc-bus-stop-hook` 早就选的那一边同向(逐字:「宁可下轮再读一次,也不能吞掉」)。
+#   与 `cc-bus stop-hook` 早就选的那一边同向(逐字:「宁可下轮再读一次,也不能吞掉」)。
 #
 # ## 三条校验,全在锁内做(设计)
 #
@@ -31,7 +31,7 @@
 # ## 单调性:只许前进,唯一的例外逐条登记
 #
 # 已读位置只许**变大**。唯一允许变小的是「收件箱被外部清空/截短,而 `.pos` 仍高」——
-# 与 `cc-recv:17` 那条归零自愈是同一格(不让它自愈就永远收不到新消息)。
+# 与 peek 的越界归零是同一格(不让它自愈就永远收不到新消息)。
 # 本脚本把它认成 `cur > total`,写之前记一行日志;除此之外 `to ≤ cur` 一律 rc=2。
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
@@ -43,10 +43,10 @@ ccbus_adapt_load || exit 13        # 两个 trait 装不齐就不干活(fail-clo
 . "$SELFDIR/cc-bus-lib.sh"
 
 id="${1:-}"; token="${2:-}"
-[ -n "$id" ] && [ -n "$token" ] || { echo "用法: cc-commit <id> <令牌>" >&2; exit 2; }
-[ $# -le 2 ] || { echo "cc-commit: 多余的参数" >&2; exit 2; }
-case "$id" in *[!A-Za-z0-9_-]*) echo "cc-commit: 非法 id '$id'" >&2; exit 2;; esac
-[[ "$token" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]] || { echo "cc-commit: 令牌格式非法 '$token'" >&2; exit 2; }
+[ -n "$id" ] && [ -n "$token" ] || { echo "用法: cc-bus commit <id> <令牌>" >&2; exit 2; }
+[ $# -le 2 ] || { echo "cc-bus commit: 多余的参数" >&2; exit 2; }
+case "$id" in *[!A-Za-z0-9_-]*) echo "cc-bus commit: 非法 id '$id'" >&2; exit 2;; esac
+[[ "$token" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]] || { echo "cc-bus commit: 令牌格式非法 '$token'" >&2; exit 2; }
 
 from=${token%%.*}
 rest=${token#*.}
@@ -55,7 +55,7 @@ anchor=${rest#*.}
 
 inbox="$BUS/inbox/$id.jsonl"
 posf="$BUS/state/$id.pos"
-[ -f "$inbox" ] || { echo "cc-commit: 没有收件箱 $inbox —— 它在 peek 之后被删了" >&2; exit 12; }
+[ -f "$inbox" ] || { echo "cc-bus commit: 没有收件箱 $inbox —— 它在 peek 之后被删了" >&2; exit 12; }
 
 # ★ 锁:**排他,锁文件仍是 `<inbox>.lock`**。
 #   `.pos` 与 inbox 第 `to` 行必须是**同一个快照** ⇒ 两份状态一把锁罩住。
@@ -65,23 +65,23 @@ posf="$BUS/state/$id.pos"
   mkdir -p "$BUS/state"
   total=$(awk 'END{print NR}' "$inbox")
   cur=$(cat "$posf" 2>/dev/null || echo 0)
-  [[ "$cur" =~ ^[0-9]+$ ]] || cur=0            # 与 cc-peek 同一条消毒(两边必须逐字同口径)
+  [[ "$cur" =~ ^[0-9]+$ ]] || cur=0            # 与 cc-bus peek 同一条消毒(两边必须逐字同口径)
   [ "$cur" = "$from" ] || {
-    printf 'cc-commit: STALE —— 令牌说 from=%s,盘上已经是 %s。有人替你推过了:照常处理你手上那段,别重试\n' \
+    printf 'cc-bus commit: STALE —— 令牌说 from=%s,盘上已经是 %s。有人替你推过了:照常处理你手上那段,别重试\n' \
       "$from" "$cur" >&2
     exit 11
   }
   now=$(twophase_anchor "$inbox" "$to")
   [ "$now" = "$anchor" ] || {
-    printf 'cc-commit: CHANGED —— 第 %s 行现算 %s,令牌里是 %s。收件箱在两跳之间变了,不推进\n' \
+    printf 'cc-bus commit: CHANGED —— 第 %s 行现算 %s,令牌里是 %s。收件箱在两跳之间变了,不推进\n' \
       "$to" "$now" "$anchor" >&2
     exit 12
   }
   if [ "$to" -le "$cur" ]; then
     if [ "$cur" -gt "$total" ]; then
-      route_log "POS heal $id $cur→$to(收件箱只剩 $total 行,按 cc-recv:17 同一条自愈)"
+      route_log "POS heal $id $cur→$to(收件箱只剩 $total 行,越界归零)"
     else
-      printf 'cc-commit: 令牌自相矛盾 —— to=%s 不大于 from=%s,而收件箱有 %s 行(没被截短)\n' \
+      printf 'cc-bus commit: 令牌自相矛盾 —— to=%s 不大于 from=%s,而收件箱有 %s 行(没被截短)\n' \
         "$to" "$cur" "$total" >&2
       exit 2
     fi

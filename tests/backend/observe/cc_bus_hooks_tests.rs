@@ -18,7 +18,7 @@ fn never(_: &str) -> bool {
 fn real_user_settings_is_installed_not_misreported() {
     // 逐字取自 2026-07-28 的 ~/.claude/settings.json
     let raw = r#"{"hooks":{
-          "Stop":[{"hooks":[{"type":"command","command":"\"$HOME/.local/bin/cc-bus-stop-hook\""}]}]}}"#;
+          "Stop":[{"hooks":[{"type":"command","command":"\"$HOME/.local/bin/cc-bus\" stop-hook"}]}]}}"#;
     let d = diagnose(Some(raw), &always);
     assert!(d.stop.is_working(), "实测形态必须判为已装: {:?}", d.stop);
     // 且必须是"显式路径"那一态，不能滑成 PATH 态
@@ -29,7 +29,7 @@ fn real_user_settings_is_installed_not_misreported() {
 fn canonical_snippet_form_is_also_installed() {
     // cc-bus-install.sh 的规范片段（裸命令）同样要认
     let raw = r#"{"hooks":{
-          "Stop":[{"hooks":[{"type":"command","command":"cc-bus-stop-hook"}]}]}}"#;
+          "Stop":[{"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
     let d = diagnose(Some(raw), &never); // never：证明裸命令**不查路径存在性**
     assert!(matches!(d.stop, HookState::InstalledViaPath { .. }));
 }
@@ -38,10 +38,10 @@ fn canonical_snippet_form_is_also_installed() {
 #[test]
 fn explicit_path_that_does_not_exist_is_the_third_state() {
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command",
-          "command":"/opt/gone/cc-bus-stop-hook"}]}]}}"#;
+          "command":"/opt/gone/cc-bus stop-hook"}]}]}}"#;
     let d = diagnose(Some(raw), &never);
     match &d.stop {
-        HookState::PathMissing { path, .. } => assert_eq!(path, "/opt/gone/cc-bus-stop-hook"),
+        HookState::PathMissing { path, .. } => assert_eq!(path, "/opt/gone/cc-bus"),
         other => panic!("应为 PathMissing，实得 {other:?}"),
     }
     assert!(!d.stop.is_working(), "PathMissing 绝不能算能用");
@@ -51,30 +51,44 @@ fn explicit_path_that_does_not_exist_is_the_third_state() {
 fn same_name_elsewhere_but_present_counts_as_installed() {
     // 装在别处但**确实存在** → 算已装（它能跑）。只有不存在才是问题。
     let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command",
-          "command":"/usr/local/bin/cc-bus-stop-hook"}]}]}}"#;
+          "command":"/usr/local/bin/cc-bus stop-hook"}]}]}}"#;
     let d = diagnose(Some(raw), &always);
     assert!(d.stop.is_working());
+}
+
+/// ★ 一个入口：程序是 `cc-bus`、第一个参数是 `stop-hook` 才算；老版的独立脚本 `cc-bus-stop-hook`（老名字不留）·
+/// 只有入口没有动词 · 别的动词都不算装了这条钩子。
+#[test]
+fn only_the_entry_with_the_stop_hook_verb_counts() {
+    for cmd in [
+        "cc-bus-stop-hook",
+        "\"$HOME/.local/bin/cc-bus-stop-hook\"",
+        "cc-bus",
+        "cc-bus recv",
+    ] {
+        let raw = serde_json::json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": cmd}]}]}}).to_string();
+        assert_eq!(diagnose(Some(&raw), &always).stop, HookState::NotInstalled, "{cmd:?}");
+    }
+    let raw = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
+    assert!(diagnose(Some(raw), &always).stop.is_working());
 }
 
 // ===== program_of：只做够用的事，看不懂就说不知道 =====
 #[test]
 fn program_of_handles_real_shapes() {
+    assert_eq!(program_of("cc-bus stop-hook").unwrap().0, "cc-bus");
     assert_eq!(
-        program_of("cc-bus-stop-hook").unwrap().0,
-        "cc-bus-stop-hook"
+        program_of("\"$HOME/.local/bin/cc-bus\" stop-hook >/dev/null 2>&1 || true").unwrap(),
+        ("cc-bus".into(), "$HOME/.local/bin/cc-bus".into())
     );
     assert_eq!(
-        program_of("\"$HOME/.local/bin/cc-bus-stop-hook\" >/dev/null 2>&1 || true").unwrap(),
-        (
-            "cc-bus-stop-hook".into(),
-            "$HOME/.local/bin/cc-bus-stop-hook".into()
-        )
+        first_arg_of("\"$HOME/.local/bin/cc-bus\" stop-hook >/dev/null 2>&1 || true").as_deref(),
+        Some("stop-hook")
     );
     // 前导环境赋值要剥掉
-    assert_eq!(
-        program_of("FOO=1 BAR=2 cc-bus-stop-hook").unwrap().0,
-        "cc-bus-stop-hook"
-    );
+    assert_eq!(program_of("FOO=1 BAR=2 cc-bus stop-hook").unwrap().0, "cc-bus");
+    assert_eq!(first_arg_of("FOO=1 BAR=2 cc-bus stop-hook").as_deref(), Some("stop-hook"));
+    assert_eq!(first_arg_of("cc-bus"), None);
     // `=` 在首位不是赋值
     assert_eq!(program_of("=weird").unwrap().0, "=weird");
     assert_eq!(program_of("   "), None);
@@ -99,7 +113,7 @@ fn coexisting_hooks_do_not_require_exclusivity() {
     // 同一事件挂多条：别的工具在前、cc-bus 在后，仍算已装
     let raw = r#"{"hooks":{"Stop":[
           {"hooks":[{"type":"command","command":"other-tool"}]},
-          {"hooks":[{"type":"command","command":"cc-bus-stop-hook"}]}]}}"#;
+          {"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
     assert!(diagnose(Some(raw), &always).stop.is_working());
 }
 
@@ -107,8 +121,8 @@ fn coexisting_hooks_do_not_require_exclusivity() {
 fn working_entry_wins_over_path_missing() {
     // 一条坏的 + 一条好的 → 报好的（用户实际能用）
     let raw = r#"{"hooks":{"Stop":[
-          {"hooks":[{"type":"command","command":"/gone/cc-bus-stop-hook"}]},
-          {"hooks":[{"type":"command","command":"cc-bus-stop-hook"}]}]}}"#;
+          {"hooks":[{"type":"command","command":"/gone/cc-bus stop-hook"}]},
+          {"hooks":[{"type":"command","command":"cc-bus stop-hook"}]}]}}"#;
     let d = diagnose(Some(raw), &never);
     assert!(matches!(d.stop, HookState::InstalledViaPath { .. }));
 }
@@ -142,11 +156,11 @@ fn malformed_input_degrades_with_a_reason() {
 
 #[test]
 fn bom_is_tolerated() {
-    let raw = "\u{feff}{\"hooks\":{\"Stop\":[{\"hooks\":[{\"command\":\"cc-bus-stop-hook\"}]}]}}";
+    let raw = "\u{feff}{\"hooks\":{\"Stop\":[{\"hooks\":[{\"command\":\"cc-bus stop-hook\"}]}]}}";
     assert!(diagnose(Some(raw), &always).stop.is_working());
 }
 
-/// 在 `<skills>/cc-bus/scripts/` 放上那个脚本（空文件，只造结构）。
+/// 在 `<skills>/cc-bus/scripts/` 放上入口（空文件，只造结构）。
 fn put_scripts(skills: &std::path::Path) {
     let dir = skills.join("cc-bus").join("scripts");
     std::fs::create_dir_all(&dir).unwrap();
@@ -173,7 +187,7 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     );
     assert_eq!(
         v["hooks"]["Stop"][0]["hooks"][0]["command"],
-        serde_json::json!("\"$HOME/.claude/skills/cc-bus/scripts/cc-bus-stop-hook\"")
+        serde_json::json!("\"$HOME/.claude/skills/cc-bus/scripts/cc-bus\" stop-hook")
     );
     let exists = |s: &str| expand(s, Some(&home)).exists();
     let d = diagnose(Some(&text), &exists);
@@ -185,13 +199,13 @@ fn the_snippet_points_at_the_installed_scripts_and_reads_back_as_installed() {
     // skills 根不在家目录底下 ⇒ 绝对路径（POSIX 单引号）。
     let other = scratch("snippet-elsewhere");
     let text = snippet(&skills, Some(&other)).unwrap();
-    let abs = skills.join("cc-bus/scripts/cc-bus-stop-hook");
+    let abs = skills.join("cc-bus/scripts/cc-bus");
     assert!(
         text.contains(&shell_quote_core::posix_quote(&abs.display().to_string())),
         "{text}"
     );
     // 脚本不在了就不给。
-    std::fs::remove_file(skills.join("cc-bus/scripts/cc-bus-stop-hook")).unwrap();
+    std::fs::remove_file(skills.join("cc-bus/scripts/cc-bus")).unwrap();
     assert_eq!(snippet(&skills, Some(&home)), None);
     let _ = std::fs::remove_dir_all(&home);
     let _ = std::fs::remove_dir_all(&other);
@@ -212,14 +226,14 @@ fn unquote_only_strips_a_matched_pair() {
     assert_eq!(unquote_once("\""), "\"");
     // 真实形态照旧
     assert_eq!(
-        unquote_once("\"$HOME/.local/bin/cc-bus-stop-hook\""),
-        "$HOME/.local/bin/cc-bus-stop-hook"
+        unquote_once("\"$HOME/.local/bin/cc-bus\""),
+        "$HOME/.local/bin/cc-bus"
     );
     // 走到 program_of 上：不配对引号不该被当成正常路径
-    let (base, full) = program_of("\"$HOME/.local/bin/cc-bus-stop-hook").unwrap();
-    assert_eq!(base, "cc-bus-stop-hook");
+    let (base, full) = program_of("\"$HOME/.local/bin/cc-bus stop-hook").unwrap();
+    assert_eq!(base, "cc-bus");
     assert_eq!(
-        full, "\"$HOME/.local/bin/cc-bus-stop-hook",
+        full, "\"$HOME/.local/bin/cc-bus",
         "不配对的引号要留着，让下游看到这条命令形状可疑"
     );
 }
@@ -230,17 +244,17 @@ fn unquote_only_strips_a_matched_pair() {
 #[test]
 fn wrapper_forms_are_unknown_not_not_installed() {
     for cmd in [
-        r#"sh -c "cc-bus-stop-hook""#,
-        "bash -lc cc-bus-stop-hook",
-        "exec cc-bus-stop-hook",
-        "command cc-bus-stop-hook",
-        "/usr/bin/env cc-bus-stop-hook",
-        "timeout 5 cc-bus-stop-hook",
-        "nohup cc-bus-stop-hook &",
-        "true && cc-bus-stop-hook",
-        r#""$HOME/.local/bin/cc-bus-stop-hook"; echo hi"#,
+        r#"sh -c "cc-bus stop-hook""#,
+        "bash -lc 'cc-bus stop-hook'",
+        "exec cc-bus stop-hook",
+        "command cc-bus stop-hook",
+        "/usr/bin/env cc-bus stop-hook",
+        "timeout 5 cc-bus stop-hook",
+        "nohup cc-bus stop-hook &",
+        "true && cc-bus stop-hook",
+        r#""$HOME/.local/bin/cc-bus" stop-hook; echo hi"#,
     ] {
-        let st = classify_command(cmd, "cc-bus-stop-hook", &always);
+        let st = classify_command(cmd, (PROGRAM, VERB), &always);
         match st {
             Some(HookState::Unknown { .. }) => {}
             // 直接执行也可以（说明 program_of 认出来了，更好）
@@ -250,7 +264,7 @@ fn wrapper_forms_are_unknown_not_not_installed() {
     }
     // 真的没提到目标 → 仍然是 NotInstalled
     assert_eq!(
-        classify_command("other-tool --register", "cc-bus-stop-hook", &always),
+        classify_command("other-tool --register", (PROGRAM, VERB), &always),
         None
     );
 }
@@ -272,14 +286,14 @@ fn brace_home_form_is_not_a_false_alarm() {
             std::path::PathBuf::from(s)
         };
         // 模拟"这个路径存在"
-        expanded == std::path::PathBuf::from("/home/u/.local/bin/cc-bus-stop-hook")
+        expanded == std::path::PathBuf::from("/home/u/.local/bin/cc-bus")
     };
     for form in [
-        "$HOME/.local/bin/cc-bus-stop-hook",
-        "${HOME}/.local/bin/cc-bus-stop-hook",
-        "~/.local/bin/cc-bus-stop-hook",
+        "$HOME/.local/bin/cc-bus stop-hook",
+        "${HOME}/.local/bin/cc-bus stop-hook",
+        "~/.local/bin/cc-bus stop-hook",
     ] {
-        let st = classify_command(form, "cc-bus-stop-hook", &exists).unwrap();
+        let st = classify_command(form, (PROGRAM, VERB), &exists).unwrap();
         assert!(
             matches!(st, HookState::InstalledAtPath { .. }),
             "{form} 应判为已装，实得 {st:?}"
@@ -310,7 +324,7 @@ fn the_product_is_the_golden_the_ui_decodes() {
     std::fs::write(
         agent.join("settings.json"),
         r#"{"hooks":{
-          "Stop":[{"hooks":[{"type":"command","command":"\"$HOME/.local/bin/cc-bus-stop-hook\""}]}]}}"#,
+          "Stop":[{"hooks":[{"type":"command","command":"\"$HOME/.local/bin/cc-bus\" stop-hook"}]}]}}"#,
     )
     .unwrap();
     let skills = agent.join("skills");

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-bus-lib.sh — 路由管线的【唯一实现】,被 cc-send source(投递只一条路:就地跑管线写进收件箱)。
+# cc-bus-lib.sh — 路由管线的【唯一实现】,被 cc-bus send source(投递只一条路:就地跑管线写进收件箱)。
 # 约定:route_* 阀门返回 0=放行,返回 1=拦截(并已 route_log 记原因)。
 # 本文件只提供函数、不自执行。BUS 由调用方设好(或此处按 CC_BUS_HOME 兜底)。
 #
@@ -20,9 +20,9 @@ ccbus_adapt_load || return 13
 
 # ── 敲门那一句 ───────────────────────────────────────────────────────────
 # 🔴 敲门那一句是对方的输入,正文进去就成了指令 ⇒ 只填发信人(过了白名单)。正文只经 Stop 钩子喂回。
-ccbus_knock_text() { printf '🔔 cc-bus: 你有来自 %s 的新消息,运行 cc-recv 读取并按内容处理' "$1"; }
+ccbus_knock_text() { printf '🔔 cc-bus: 你有来自 %s 的新消息,运行 cc-bus recv 读取并按内容处理' "$1"; }
 
-# 两阶段读口的锚(cc-peek 发、cc-commit 校验,**两边必须是同一份实现**,否则永远比不中)。
+# 两阶段读口的锚(cc-bus peek 发、cc-bus commit 校验,**两边必须是同一份实现**,否则永远比不中)。
 # 取第 <行号> 行现算 cksum,形如 `<校验和>-<字节数>`,零新依赖。
 twophase_anchor() { sed -n "${2}p" "$1" | cksum | awk '{print $1"-"$2}'; }
 
@@ -210,7 +210,7 @@ route_process() {
 #   ① 旧的整份(收件箱 · 已读位置 · lastread · 敲门去抖)挪进 legacy/<时刻>/ 存档,不再读;
 #   ② 还没读的那几条照登记那一格(agents.tsv 第 5 列)把名字换成会话 id,补成二档 inform 的新信封,
 #      **过后端那一处校验**再写进新收件箱;换不出会话 id · 后端拒(正文超长之类)· 找不到后端 ⇒ 只留在存档里,bus.log 记一行。
-# 被 cc-send · cc-recv · Stop 钩子调(谁先跑谁迁)。迁不成也不挡调用方。
+# 被 cc-bus send · cc-bus recv · Stop 钩子调(谁先跑谁迁)。迁不成也不挡调用方。
 ccbus_migrate_once() {
   local mark="$BUS/state/envelope-2"
   [ -e "$mark" ] && return 0

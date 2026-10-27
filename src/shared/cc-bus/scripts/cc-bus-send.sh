@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-send <to-sid> --act <code> --title <one line> [--tier 1|2] [--re <msg-id>] [--ref <ref>]... [--] [body...]
+# cc-bus send <to-sid> --act <code> --title <one line> [--tier 1|2] [--re <msg-id>] [--ref <ref>]... [--] [body...]
 #   组请求 → 交后端 `bus-envelope` 核（信封的规矩只在那一处）→ 拿回规范信封 → 就地跑路由管线写进收件人的收件箱。
 #   act：ask · answer · request · inform · handback · correct（answer / handback / correct 必带 --re）。
 #   tier：1 ⇒ 敲门（对方闲着才送）；2（缺省）⇒ 只进收件箱、轮末由 Stop 钩子喂回。
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ "${#body[@]}" -eq 1 ] && [ "${body[0]}" = "-" ]; then text=$(cat); else text="${body[*]-}"; fi
-from=$("$SELFDIR/cc-whoami" 2>/dev/null || true)   # 会话 id；认不出就交空串，后端拒成 bad_from
+from=$("$SELFDIR/cc-bus-whoami.sh" 2>/dev/null || true)   # 会话 id；认不出就交空串，后端拒成 bad_from
 
 # 请求原样交给后端：每一格都不在这里判（tier 是不是数字也交给它 —— 不是数字就原样当串交，后端按入参形状拒）。
 req=$(jq -cn --arg from "$from" --arg to "$to" --arg act "$act" --arg title "$title" \
@@ -38,7 +38,7 @@ req=$(jq -cn --arg from "$from" --arg to "$to" --arg act "$act" --arg title "$ti
    + (if $tier == "" then {} else {tier: ($tier | tonumber? // $tier)} end)
    + (if $re == "" then {} else {re:$re} end)' "${refs[@]+"${refs[@]}"}")
 
-ccm=$(ccbus_ccm_bin) || { echo "cc-send: no cc-monitor backend (~/.cc-monitor/bin/ccm) — nothing sent" >&2; exit 1; }
+ccm=$(ccbus_ccm_bin) || { echo "cc-bus send: no cc-monitor backend (~/.cc-monitor/bin/ccm) — nothing sent" >&2; exit 1; }
 errf=$(mktemp); trap 'rm -f "$errf"' EXIT
 set +e; out=$(printf '%s' "$req" | "$ccm" -- --bus-envelope --within-ms 10000 2>"$errf"); rc=$?; set -e
 if [ "$rc" -ne 0 ]; then
@@ -52,6 +52,6 @@ env=$(printf '%s' "$out" | jq -c '(.data // .)')
 set +e; route_process "$env"; rc=$?; set -e
 case "$rc" in
   0)  printf 'sent %s -> %s\n' "$(printf '%s' "$env" | jq -r .id)" "$to" ;;
-  10) echo "cc-send: stopped by the rate limit (see bus.log) -> $to" >&2; exit 3 ;;
-  *)  echo "cc-send: delivery failed (not written, safe to resend) -> $to" >&2; exit 1 ;;
+  10) echo "cc-bus send: stopped by the rate limit (see bus.log) -> $to" >&2; exit 3 ;;
+  *)  echo "cc-bus send: delivery failed (not written, safe to resend) -> $to" >&2; exit 1 ;;
 esac

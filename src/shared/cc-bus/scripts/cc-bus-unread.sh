@@ -10,6 +10,6 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 . "$SELFDIR/cc-bus-lib.sh" || exit 13
 id="${1:-}"
 [ $# -le 1 ] || { echo "cc-bus unread: 多给了参数" >&2; exit 2; }
-[ -n "$id" ] || id=$("$SELFDIR/cc-whoami")
+[ -n "$id" ] || id=$("$SELFDIR/cc-bus-whoami.sh")
 case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-bus unread: 非法/空 id '$id'" >&2; exit 2;; esac
 ccbus_unread_of "$id"
