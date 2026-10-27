@@ -25,9 +25,6 @@ export interface MachineFace {
   tone: "error" | "warn" | "busy";
   bar: boolean;
   fixes: MachineFixButton[];
-  /** 页头「N 台离线 · M 台要更新」那两段各算不算它。 */
-  offline: boolean;
-  needsUpdate: boolean;
   /** 问题行那句后面跟的复制详情（壳写好的；空 ＝ 不出［复制详情］）。 */
   detail: string;
   /** 问题行下面那一句下一步（本机后端起的时候被拒，壳写好的；空 ＝ 不出那一行）。 */
@@ -57,8 +54,6 @@ export function machineFace(m: MachineState): MachineFace {
     tone: busy ? "busy" : DOT[m.state] === "needs-you" ? "warn" : "error",
     bar: m.state === "installing" || m.state === "updating",
     fixes: m.fixes,
-    offline: m.offline,
-    needsUpdate: m.state === "needs_update",
     detail: m.detail ?? "",
     next: "",
   };
@@ -79,8 +74,6 @@ export function localBackendFace(l: LocalBackend): MachineFace | null {
     problem: l.said,
     bar: false,
     fixes: l.state === "starting" ? [] : l.fixes,
-    offline: l.state === "down",
-    needsUpdate: l.state === "older",
     detail: "",
     next: l.state === "starting" ? "" : (l.next ?? ""),
   };
