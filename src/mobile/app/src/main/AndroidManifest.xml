@@ -27,6 +27,17 @@
             </intent-filter>
         </activity>
 
+        <!-- 拍照附件：给系统相机一份可写的地址（不另要相机权限） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.attach"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/attach_paths" />
+        </provider>
+
         <!-- SSH 保活前台服务（dataSync 型；会话数归零自停） -->
         <service
             android:name=".service.SshKeepAliveService"

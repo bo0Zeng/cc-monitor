@@ -46,6 +46,8 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
+import com.ccmonitor.mobile.ui.chat.attach.AttachStore
+import com.ccmonitor.mobile.ui.chat.attach.AttachTray
 import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.chat.needs.NeedsViewModel
 import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
@@ -59,10 +61,13 @@ import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.needs.NeedsEntry
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.TerminalOps
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
+import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 /**
@@ -169,6 +174,7 @@ private fun ChatBody(
     modifier: Modifier,
 ) {
     val needsUi by needs.desk.state.collectAsStateWithLifecycle()
+    val attach = vm.attach?.collectAsStateWithLifecycle()?.value
     ChatScreen(
         state = state,
         actions = vm.actions,
@@ -178,6 +184,7 @@ private fun ChatBody(
         awaiting = needsUi.awaiting,
         needs = { ChatNeeds(needs) },
         modifier = modifier,
+        attach = attach,
     )
 }
 
@@ -217,9 +224,16 @@ fun ChatController.sessionOf(
     watchOf: (hostId: String) -> SessionWatch,
     /** 那台的本地缓存（生产上是 `LocalCache.chat(hostId)`）。 */
     cacheOf: (hostId: String) -> ChatCache = { ChatCache.None },
+    /** 那台的附件在本机住哪（生产上是 `files/attach/<主机>`）；不给 ⇒ 没有附件那一排。 */
+    attachRoot: ((hostId: String) -> File)? = null,
+    /** 现开本机一份的描述符（交核心）。 */
+    fdOf: (File) -> Int = { throw IOException(it.path) },
 ): ChatSession =
     sessionFor(key = open.key, hostId = open.hostId) { scope ->
-        ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope, cache = cacheOf(open.hostId))
+        val link = linkOf(open.hostId)
+        val store = attachRoot?.let { AttachStore(it(open.hostId)) }
+        val attach: ((CoroutineScope, () -> String?) -> AttachTray)? = store?.let { st -> { s, sid -> AttachTray(link, open.machine, st, s, sid, fdOf) } }
+        ChatSession(link, watchOf(open.hostId), open.target, open.machine, scope, cache = cacheOf(open.hostId), attachOf = attach)
     }.also { s -> open.at?.let { s.jump(it, open.tool) } }
 
 /** 这台在手机上的名字；还没读到 ⇒ `null`。 */

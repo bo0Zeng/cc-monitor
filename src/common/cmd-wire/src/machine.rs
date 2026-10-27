@@ -380,6 +380,39 @@ pub struct MachineState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub unclear: Option<u32>,
+    /// 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
+    /// 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<Vec<MachineLink>>")
+    )]
+    pub links: Vec<MachineLink>,
+}
+
+/// 到一台的一条 SSH 连接（或它经过的那台跳板那一条）此刻的读数。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MachineLink {
+    /// 连的是哪（`主机:口`；跳板那一项是那台跳板）。
+    pub endpoint: String,
+    /// 是不是经过的那台跳板那一条（只运隧道，不压）。
+    pub jump: bool,
+    /// 这一条上的字节压没压。
+    pub compressed: bool,
+    /// 线上收到的字节（加密 · 压缩之后）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes_in: u64,
+    /// 线上发出的字节。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes_out: u64,
+    /// 写好的那一句（地址 · 压没压 · 进出字节）。
+    pub said: String,
 }
 
 /// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。

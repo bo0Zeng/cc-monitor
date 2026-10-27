@@ -56,6 +56,12 @@ import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.SessionAct
 import com.ccmonitor.mobile.core.wire.gen.SessionCommand
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
+import com.ccmonitor.mobile.ui.chat.attach.AttachActions
+import com.ccmonitor.mobile.ui.chat.attach.AttachArea
+import com.ccmonitor.mobile.ui.chat.attach.AttachSource
+import com.ccmonitor.mobile.ui.chat.attach.AttachUi
+import com.ccmonitor.mobile.ui.chat.attach.PlusAttachRow
+import com.ccmonitor.mobile.ui.chat.attach.rememberAttachPick
 
 /** 输入那一圈要的几样动作（聊天屏往会话里做的事都经 [ChatSession]）。 */
 data class ChatInputActions(
@@ -68,28 +74,38 @@ data class ChatInputActions(
     val say: (String) -> Unit = {},
     /** 输入框里的字变了（本地存草稿）。 */
     val editDraft: (String) -> Unit = {},
+    /** 输入框上方那一排附件；这条会话没有那一排（新建会话）⇒ `null`。 */
+    val attach: AttachActions? = null,
 )
 
 /**
  * 输入区：chip 上方那一行 · 输入框 · 下面一排［+］· 模型 · 权限档 ……… 发送 / 停止。
  * 新建会话（还没 sid）只有输入框与发送：草稿里的那几颗 chip 归新建会话那一屏。
+ * 有附件那一排（[attach]）⇒ 画在输入框上方，➤ 灰到全传完。
  */
 @Composable
 internal fun ChatInputArea(
     state: ChatUiState,
     actions: ChatInputActions,
+    attach: AttachUi? = null,
 ) {
     // `rememberSaveable`：转屏会重建 Activity，`remember` 的草稿会丢光。
     var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var sheet by remember { mutableStateOf<InputSheet?>(null) }
     RestoreDraft(state.draft, draft) { draft = it }
+    val pick = actions.attach?.let { rememberAttachPick(it) }
     val open = state.sid != null
-    val busy = state.model.pending != null || state.permission.pending != null
     val tokens = LocalAppTokens.current
     // 输入区是骨架（`--bg-2`），输入框底 `--field-bg`、边 `--border-medium`、聚焦 `--accent`；➤ / ■ 是这一屏唯一的主按钮。
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
+            if (attach != null && actions.attach != null) {
+                AttachArea(attach, actions.attach) {
+                    actions.loadCommands()
+                    sheet = InputSheet.Plus
+                }
+            }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = edited(draft, it, actions.editDraft) },
@@ -112,32 +128,41 @@ internal fun ChatInputArea(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
             ) {
-                if (open) {
-                    val plus = copyText("mobPlus.sheet.title")
-                    SecondaryButton(
-                        onClick = {
-                            actions.loadCommands()
-                            sheet = InputSheet.Plus
-                        },
-                        modifier = Modifier.semantics { contentDescription = plus }.testTag(ChatTestTags.PLUS),
-                    ) { PhIcon(Ph.Plus, contentDescription = null) }
-                    SwitchChipView(state.model, copyText("session.model.title"), enabled = !busy && state.model.blocked == null, tag = ChatTestTags.MODEL_CHIP) {
-                        actions.loadPicks()
-                        sheet = InputSheet.Models
-                    }
-                    SwitchChipView(state.permission, copyText("session.permission.title"), enabled = !busy && state.permission.blocked == null, tag = ChatTestTags.PERMISSION_MODE) {
-                        actions.loadPicks()
-                        sheet = InputSheet.Modes
-                    }
-                }
+                if (open) OpenChips(state, actions) { sheet = it }
                 Spacer(Modifier.weight(1f))
-                SendOrStop(state.running, draft.text, actions) { draft = TextFieldValue("") }
+                SendOrStop(state.running, sendable(draft.text, attach), actions, { actions.send(draft.text) }) { draft = TextFieldValue("") }
             }
         }
     }
-    InputSheets(sheet, state, actions, { sheet = it }) { text ->
+    InputSheets(sheet, state, actions, pick, { sheet = it }) { text ->
         draft = TextFieldValue(text, TextRange(text.length))
         actions.editDraft(text)
+    }
+}
+
+/** 已有的那条才有的那几颗：［+］· 模型 · 权限档（点了升起哪一个抽屉经 [open]）。 */
+@Composable
+private fun OpenChips(
+    state: ChatUiState,
+    actions: ChatInputActions,
+    open: (InputSheet) -> Unit,
+) {
+    val busy = state.model.pending != null || state.permission.pending != null
+    val plus = copyText("mobPlus.sheet.title")
+    SecondaryButton(
+        onClick = {
+            actions.loadCommands()
+            open(InputSheet.Plus)
+        },
+        modifier = Modifier.semantics { contentDescription = plus }.testTag(ChatTestTags.PLUS),
+    ) { PhIcon(Ph.Plus, contentDescription = null) }
+    SwitchChipView(state.model, copyText("session.model.title"), enabled = !busy && state.model.blocked == null, tag = ChatTestTags.MODEL_CHIP) {
+        actions.loadPicks()
+        open(InputSheet.Models)
+    }
+    SwitchChipView(state.permission, copyText("session.permission.title"), enabled = !busy && state.permission.blocked == null, tag = ChatTestTags.PERMISSION_MODE) {
+        actions.loadPicks()
+        open(InputSheet.Modes)
     }
 }
 
@@ -169,6 +194,7 @@ private fun InputSheets(
     sheet: InputSheet?,
     state: ChatUiState,
     actions: ChatInputActions,
+    pick: ((AttachSource) -> Unit)?,
     set: (InputSheet?) -> Unit,
     fill: (String) -> Unit,
 ) {
@@ -182,6 +208,13 @@ private fun InputSheets(
             PlusSheet(
                 at = sheet,
                 view = state.commands,
+                pick =
+                    pick?.let { p ->
+                        { source: AttachSource ->
+                            set(null)
+                            p(source)
+                        }
+                    },
                 go = set,
                 close = { set(null) },
                 fill = { text ->
@@ -275,23 +308,38 @@ internal fun chipText(
     label: String,
 ): String = chip.pending?.text ?: chip.text ?: label
 
+/** ➤ 此刻怎样：框里没字也没附件 · 附件还没全落好（灰）· 能发。 */
+internal enum class Sendable { EMPTY, WAITING, READY }
+
+/** 纯函数，判据读：没字没附件 ⇒ [Sendable.EMPTY]；有附件没落好 ⇒ [Sendable.WAITING]；否则能发（只有附件、没字也能发）。 */
+internal fun sendable(
+    text: String,
+    attach: AttachUi?,
+): Sendable =
+    when {
+        text.isBlank() && attach?.cards.isNullOrEmpty() -> Sendable.EMPTY
+        attach?.ready == false -> Sendable.WAITING
+        else -> Sendable.READY
+    }
+
 @Composable
 private fun SendOrStop(
     running: Boolean,
-    draft: String,
+    can: Sendable,
     actions: ChatInputActions,
+    send: () -> Unit,
     clear: () -> Unit,
 ) {
-    // 运行中且框里没字 ⇒ 停止；二选一，不并存。输入框永远不锁。
-    if (running && draft.isBlank()) {
+    // 运行中且框里没字、没附件 ⇒ 停止；二选一，不并存。输入框永远不锁。
+    if (running && can == Sendable.EMPTY) {
         SendButton(Ph.Stop, copyText("mobChat.input.stop"), enabled = true, onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP))
     } else {
         SendButton(
             Ph.PaperPlaneRight,
             copyText("mobChat.input.send"),
-            enabled = draft.isNotBlank(),
+            enabled = can == Sendable.READY,
             onClick = {
-                actions.send(draft)
+                send()
                 clear()
             },
             modifier = Modifier.testTag(ChatTestTags.SEND),
@@ -356,7 +404,8 @@ private fun PickSheet(
 }
 
 /**
- * ［+］面板：命令 › · Skill ›（那台给这条会话的那一份）；分隔线下两个一次性动作：压缩上下文 · 清空会话。
+ * ［+］面板：头一排拍照 · 图片 · 文件（这条会话有附件那一排才有，[pick]）；命令 › · Skill ›（那台给这条会话的那一份）；
+ * 分隔线下两个一次性动作：压缩上下文 · 清空会话。
  * 在不在 · 说哪一句 · 先不先确认都照那份清单的 `compact` / `clear`（那台给的）。点命令 · Skill 只填进输入框。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -364,6 +413,7 @@ private fun PickSheet(
 private fun PlusSheet(
     at: InputSheet,
     view: CommandsView,
+    pick: ((AttachSource) -> Unit)?,
     go: (InputSheet) -> Unit,
     close: () -> Unit,
     fill: (String) -> Unit,
@@ -377,6 +427,7 @@ private fun PlusSheet(
                 at != InputSheet.Plus && list != null -> CommandList(at, list, back = { go(InputSheet.Plus) }, fill = fill)
                 else -> {
                     SheetTitle(copyText("mobPlus.sheet.title"))
+                    pick?.let { PlusAttachRow(it) }
                     when (view) {
                         CommandsView.Idle, CommandsView.Loading -> SheetLine(copyText("kit.state.reading"))
                         is CommandsView.Failed -> SheetLine(view.why)

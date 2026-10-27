@@ -1,6 +1,7 @@
 /**
- * 〔-extra〕组头就地改名的输入框（`tab-bar-view.ts::beginGroupRename`）。
- * 占住名字按钮让出来的那一格：同字号、同左对齐，只多一道边框让人看出「现在可以打字」。
+ * 〔-extra〕就地改名的输入框：组头（`tab-bar-view.ts::beginGroupRename`）· 标签页标题（`tab-rename.ts::editOver`）。
+ * 占住名字让出来的那一格：同字号、同左对齐，只多一道边框让人看出「现在可以打字」。
+ * 标签页那一种浮在标题上（`.floating`：挂在 body 上，位置按标题那一格此刻的位置给）。
  */
 @layer components {
   .input {
@@ -13,5 +14,10 @@
     font: inherit;
     font-size: var(--font-size-xs);
     padding: 1px 4px;
+  }
+
+  .floating {
+    position: fixed;
+    z-index: var(--z-menu);
   }
 }

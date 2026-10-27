@@ -554,7 +554,7 @@ static MCP_BOOK: std::sync::Mutex<Option<McpBook>> = std::sync::Mutex::new(None)
 
 /// 这台此刻活着的交互会话（`homes` 各号的家那一张活会话表，后台任务不算）里，
 /// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
-/// 每条会话只读 MCP 那一格、只读新长出来的那一截（[`McpBook`]）；标题取历史清单的缓存（`history::listing::session_title_of`）。
+/// 每条会话只读 MCP 那一格、只读新长出来的那一截（[`McpBook`]）；标题取历史清单的缓存，带上这台注解里改过的名（`history::listing::session_title_of`）。
 pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let mut book = MCP_BOOK
         .lock()
@@ -562,6 +562,8 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let book = book.get_or_insert_with(McpBook::default);
     let mut seen: Vec<PathBuf> = Vec::new();
     let mut out: Vec<LiveMcpFailed> = Vec::new();
+    // 这台的注解（叫什么带上改过的名）：真有断开的 MCP 要配标题时才读一次。
+    let annotations = std::cell::OnceCell::new();
     for home in homes {
         let table = crate::history::live_table::now(home);
         for row in table.interactive() {
@@ -588,7 +590,18 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
                 }
                 out.retain(|o| o.name != m.name);
                 let title = title
-                    .get_or_insert_with(|| crate::history::listing::session_title_of(&path))
+                    .get_or_insert_with(|| {
+                        let annotations = annotations.get_or_init(|| {
+                            match crate::history::history_annotations::load() {
+                                crate::history::history_annotations::Loaded::Read(t) => t,
+                                _ => Default::default(),
+                            }
+                        });
+                        crate::history::listing::session_title_of(
+                            &path,
+                            annotations.get(sid).and_then(|e| e.custom_title.clone()),
+                        )
+                    })
                     .clone();
                 out.push(LiveMcpFailed {
                     name: m.name,

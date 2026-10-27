@@ -40,6 +40,7 @@ import type { ManualItem } from "./login-reads";
 import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
+import { commitRename, editOver, mountInline, renameTab } from "./tab-rename";
 import { abbrOf, dotOf, fullTitle, needsOf, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
 import type { MachineState } from "./generated/MachineState";
 
@@ -213,13 +214,16 @@ export class TabBarView {
     barEl: HTMLElement,
     private readonly host: TabBarViewHost,
   ) {
-    // 事件委托：整条栏只在 `barEl` 上挂三个监听器。子按钮上：
+    // 事件委托：整条栏的手势只在 `barEl` 上挂（点 · 双击 · 按下 · 右键 · 键按下 / 松开）。子按钮上：
     // ① 按下不起拖、不触发中键关 ⇒ mousedown 先看目标在不在子按钮里；
     // ② click / mousedown 不往上冒到 `document` ⇒ 这里 `stopPropagation()`（`barEl` 与按钮之间只隔组容器，组容器上没有这两个监听）。
     barEl.addEventListener("click", (e) => this.onBarClick(e));
+    barEl.addEventListener("dblclick", (e) => this.onBarDoubleClick(e));
     barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
     barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
     barEl.addEventListener("keydown", (e) => this.onBarKeyDown(e));
+    // 菜单 · 命令面板的「改标题」经 `tab-rename.ts` 找到这条栏就地改（一个窗口一条栏）。
+    mountInline((tab) => this.renameTabNow(tab));
     // 按钮上的 Space 在松开时点它（会切过去）：栏里 Space 是「选中」，松开那一下也吞掉。
     barEl.addEventListener("keyup", (e) => {
       if (e.key === " " && this.rowOf(e.target) !== null && !isTyping(e.target)) e.preventDefault();
@@ -639,6 +643,31 @@ export class TabBarView {
   /** 组 `gid` 的整块 · 组头 · 组员列表（拖拽画目标框 · 点亮那一块 · 拖整组时变暗用）；没有 ⇒ `undefined`。 */
   groupParts(gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } | undefined {
     return this.groupEls.get(gid);
+  }
+
+  /**
+   * 栏上就地改这个标签页的名（`tab-rename.ts`：输入框浮在标题那一格上）。这一行不在栏上 / 看不见（收着的组里 · 已隐藏那一行收着）⇒ `false`（改走对话框）。
+   */
+  renameTabNow(tab: Tab): boolean {
+    const refs = this.tabButtons.get(tab.sessionId);
+    const title = refs?.label.parentElement;
+    const folded = this.isHiddenTab(tab.sessionId) || (tab.hidden !== null && !this.hiddenOpen());
+    if (!refs || !title || !this.listEl.contains(refs.root) || folded) return false;
+    editOver(title, tab.label ?? "", (next) => {
+      if (next !== null) void commitRename(tab, next);
+    });
+    return true;
+  }
+
+  /** 双击标签页的标题那一格 ⇒ 就地改名（行尾动作 · 点 · 徽标上的双击不算）。 */
+  private onBarDoubleClick(e: MouseEvent): void {
+    const t = e.target as Element | null;
+    if (!t || typeof t.closest !== "function" || t.closest(".tab-title") === null) return;
+    const row = this.rowOf(t);
+    const tab = row?.kind === "tab" ? this.store.tabs.get(row.sid) : undefined;
+    if (!tab) return;
+    e.preventDefault();
+    renameTab(tab);
   }
 
   /** 刚建的组：组头名字框立刻打开、全选（打字即改；Esc 留默认名）。 */
