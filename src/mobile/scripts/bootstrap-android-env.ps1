@@ -5,8 +5,9 @@
 .DESCRIPTION
   装到 -Root(默认 E:\android-dev):
     <Root>\jdk\   ← Temurin JDK 21(给 AGP / Gradle 用;全局 JAVA_HOME 维持不动)
-    <Root>\sdk\   ← Android SDK(cmdline-tools + platform-tools + platform + build-tools)
-  NDK / CMake 不装:termlib 用仓内 libs/m2/ 里的包,只有改 termlib 原生代码时才要。
+    <Root>\sdk\   ← Android SDK(cmdline-tools + platform-tools + platform + build-tools + NDK)
+  NDK 版本读 gradle.properties 的 ccm.ndkVersion(手机嵌的 Rust 核心由 cargo 编,NDK 给它 clang 与链接器)。
+  CMake 不装:termlib 用仓内 libs/m2/ 里的包。Rust 与两个 android target 不归本脚本(结尾印那一行)。
   幂等:已存在的组件跳过。激活用 scripts\env.ps1(只改当前 shell)。
 .PARAMETER Root
   工具链根目录。默认 E:\android-dev。
@@ -26,6 +27,12 @@ $ProgressPreference     = 'SilentlyContinue'   # 大文件下载不渲染进度�
 
 $Sdk = Join-Path $Root 'sdk'
 $Jdk = Join-Path $Root 'jdk'
+
+# NDK 版本只住 gradle.properties 那一行(构建与门禁读同一行),这里不另写一份。
+$Props = Join-Path $PSScriptRoot '..\gradle.properties'
+$NdkLine = Select-String -Path $Props -Pattern '^ccm\.ndkVersion=(.+)$' | Select-Object -First 1
+if (-not $NdkLine) { throw "gradle.properties 里没有 ccm.ndkVersion: $Props" }
+$Ndk = $NdkLine.Matches[0].Groups[1].Value.Trim()
 
 function Get-AndFlatten {
   # 下载 zip,解压,把"唯一顶层目录"的内容提到 $Dest(处理 jdk-21.x\ / cmdline-tools\ 这种嵌套)
@@ -73,10 +80,10 @@ $env:JAVA_HOME = $Jdk
 $env:PATH = "$Jdk\bin;$env:PATH"
 $sdkmanager = Join-Path $Clt 'bin\sdkmanager.bat'
 
-Write-Host "`n[3/3] 接受 license + 安装 SDK 包(platform-tools, platforms;$Platform, build-tools;$BuildTools)"
+Write-Host "`n[3/3] 接受 license + 安装 SDK 包(platform-tools, platforms;$Platform, build-tools;$BuildTools, ndk;$Ndk)"
 $yes = ((1..50 | ForEach-Object { 'y' }) -join "`n")
 $yes | & $sdkmanager --sdk_root="$Sdk" --licenses | Out-Null
-& $sdkmanager --sdk_root="$Sdk" "platform-tools" "platforms;$Platform" "build-tools;$BuildTools"
+& $sdkmanager --sdk_root="$Sdk" "platform-tools" "platforms;$Platform" "build-tools;$BuildTools" "ndk;$Ndk"
 if ($LASTEXITCODE -ne 0) { throw "sdkmanager 安装失败(exit $LASTEXITCODE)" }
 
 Write-Host "`n=== 完成。验证: ==="
@@ -84,4 +91,6 @@ Write-Host "`n=== 完成。验证: ==="
 Write-Host "platform-tools: $(Test-Path (Join-Path $Sdk 'platform-tools\adb.exe'))"
 Write-Host "platform:       $(Test-Path (Join-Path $Sdk "platforms\$Platform"))"
 Write-Host "build-tools:    $(Test-Path (Join-Path $Sdk "build-tools\$BuildTools"))"
-Write-Host "`n激活(每个新 shell):  . .\scripts\env.ps1"
+Write-Host "ndk:            $(Test-Path (Join-Path $Sdk "ndk\$Ndk"))"
+Write-Host "`nRust(本脚本不装):  rustup target add aarch64-linux-android x86_64-linux-android"
+Write-Host "激活(每个新 shell):  . .\scripts\env.ps1"
