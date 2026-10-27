@@ -66,7 +66,7 @@ pub(crate) fn here_ties() -> Result<GroupsRead, String> {
         unlisted(None, cmd_wire::listing::RowLife::Ended)
     });
     Ok(merge(
-        &[(cmd_wire::Machine(cmd_wire::LOCAL.into()), Half::Now(half))],
+        &[(cmd_wire::Machine::local(), Half::Now(half))],
         Vec::new(),
     ))
 }

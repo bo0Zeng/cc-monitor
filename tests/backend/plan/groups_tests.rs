@@ -36,7 +36,7 @@ fn ties() -> GroupsRead {
         members: vec![member(MAIN, &["g1", "g3"]), member("someone-else", &["g2"])],
     };
     merge(
-        &[(Machine(cmd_wire::LOCAL.into()), Half::Now(here))],
+        &[(Machine::local(), Half::Now(here))],
         Vec::new(),
     )
 }
