@@ -1538,37 +1538,37 @@ type WirePath = string | { b16: string };
 
 失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
-#### `session-attach-check`
+#### `session-attachment-check`
 
 开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attach-check`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attachment-check`
 
-入参 `SessionAttachCheckReq` · 回包 `SessionAttachCheckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `SessionAttachmentCheckReq` · 回包 `SessionAttachmentCheckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type AttachItem = { name: string, bytes: number, dir?: boolean, };
 type AttachRefused = "is_dir" | "too_big" | "too_many" | "too_much" | "dir_full" | "not_writable" | "no_session";
 type AttachVerdict = { ok: boolean, why?: AttachRefused, said?: string, };
-type SessionAttachCheckReply = { items: Array<AttachVerdict>, };
-type SessionAttachCheckReq = { sid: Sid, items: Array<AttachItem>, };
+type SessionAttachmentCheckReply = { items: Array<AttachVerdict>, };
+type SessionAttachmentCheckReq = { sid: Sid, items: Array<AttachItem>, };
 type Sid = string;
 ```
 
 码：`bad_args`
 
-#### `session-attach-commit`
+#### `session-attachment-commit`
 
 把暂存区里传完的一份落进会话工作目录下一个新的附件目录。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attach-commit`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attachment-commit`
 
-入参 `SessionAttachCommitReq` · 回包 `SessionAttachCommitReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `SessionAttachmentCommitReq` · 回包 `SessionAttachmentCommitReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
-type SessionAttachCommitReply = { id: string, name: string, path: string, rel: string, bytes: number, sha256: Sha256Hex, class: FileClass, };
-type SessionAttachCommitReq = { sid: Sid, key: string, 
+type SessionAttachmentCommitReply = { id: string, name: string, path: string, rel: string, bytes: number, sha256: Sha256Hex, class: FileClass, };
+type SessionAttachmentCommitReq = { sid: Sid, key: string, 
 /**
  * 原名（一段，过那台的名字规则）。
  */
@@ -1580,17 +1580,17 @@ type Sid = string;
 
 码：`bad_args` · `too_big` · `dir_full` · `not_writable` · `no_session` · `bad_name` · `io_failed` · `refused` · `stale` · `exists`
 
-#### `session-attach-drop`
+#### `session-attachment-drop`
 
 删掉会话工作目录下的一个附件目录（草稿上撤掉那一份）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attach-drop`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-attachment-drop`
 
-入参 `SessionAttachDropReq` · 回包 `SessionAttachDropReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `SessionAttachmentDropReq` · 回包 `SessionAttachmentDropReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type SessionAttachDropReply = { removed: boolean, };
-type SessionAttachDropReq = { sid: Sid, id: string, };
+type SessionAttachmentDropReply = { removed: boolean, };
+type SessionAttachmentDropReq = { sid: Sid, id: string, };
 type Sid = string;
 ```
 
@@ -10783,7 +10783,15 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
-tab: Tab | null, };
+tab: Tab | null, 
+/**
+ * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+ */
+tabGroup: string | null, 
+/**
+ * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+ */
+say: string | null, };
 type ProfileKind = "link" | "function";
 type ProfileOwnItem = { key: string, slot: ProfileSlotId, vals: Array<string>, line: number, };
 type ProfileProblem = { line: number | null, message: string, 
@@ -10809,7 +10817,7 @@ accountShape: ProfileAccountShape | null,
  */
 start: string, };
 type ProfileSlot = { id: ProfileSlotId, label: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
@@ -10912,7 +10920,15 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
-tab: Tab | null, };
+tab: Tab | null, 
+/**
+ * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+ */
+tabGroup: string | null, 
+/**
+ * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+ */
+say: string | null, };
 type ProfileMergeRow = { key: string, slot: ProfileSlotId, label: string, vals: Array<string>, said: string, from: string, overriddenBy: string | null, };
 type ProfileResolved = { 
 /**
@@ -10935,7 +10951,7 @@ lineError: string | null,
  * 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`。
  */
 problem: string | null, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesResolveReq = { 
@@ -10971,7 +10987,15 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
-tab: Tab | null, };
+tab: Tab | null, 
+/**
+ * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+ */
+tabGroup: string | null, 
+/**
+ * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+ */
+say: string | null, };
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesFromLineReq = { name: string, 
@@ -11009,10 +11033,18 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
-tab: Tab | null, };
+tab: Tab | null, 
+/**
+ * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+ */
+tabGroup: string | null, 
+/**
+ * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+ */
+say: string | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "tab" | "tabGroup" | "say";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesImpact = { affected: Array<ProfileAffected>, };
@@ -11060,7 +11092,15 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
-tab: Tab | null, };
+tab: Tab | null, 
+/**
+ * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+ */
+tabGroup: string | null, 
+/**
+ * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+ */
+say: string | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", } | { "op": "saveSet", was: string | null, set: SetEdit, } | { "op": "removeSet", name: string, };
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
@@ -11103,8 +11143,36 @@ group: string,
 /**
  * 这一行起不了的原因（能起 ⇒ `null`）。
  */
-blocked: string | null, };
-type SetPlan = { rows: Array<RowPlan>, more: number, };
+blocked: string | null, 
+/**
+ * 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单第二行里的一段）。
+ */
+said: string, 
+/**
+ * 「已有 n」。
+ */
+haveSaid: string, 
+/**
+ * 右侧那一格：「再起 n」· 够了「—」· 起不了 ⇒ 原因。
+ */
+moreSaid: string, };
+type SetPlan = { rows: Array<RowPlan>, more: number, 
+/**
+ * 几行连起来的那一句（组菜单那一项的第二行）。
+ */
+said: string, 
+/**
+ * 右侧那一格：「再起 N」· 都够了「已齐」。
+ */
+moreSaid: string, 
+/**
+ * 预览末行：合计再起几个。
+ */
+totalSaid: string, 
+/**
+ * 主按钮的字：「启动 N」· 都够了「已齐」。
+ */
+startSaid: string, };
 type SetPlanReq = { name?: string, rows?: Array<RowEdit>, };
 ```
 
@@ -11217,7 +11285,15 @@ acts?: Array<SentAct>, };
 type SentAct = "retry" | "recapture" | "relist";
 type SentResult = "delivered" | "unsure" | "refused";
 type SetLaunchReq = { name: string, };
-type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, };
+type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, 
+/**
+ * 起完那一句：全成「已启动 n」· 有没成的「启动 成/全」。
+ */
+said: string, 
+/**
+ * 没成的逐条一行「别名 启动失败 · 原因」（全成 ⇒ 空串）。
+ */
+detail: string, };
 type Sid = string;
 ```
 
@@ -11274,7 +11350,7 @@ type BlockReq = { rcPath: string, };
 
 谁在线 + 各自待读多少。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-list`
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-list`
 
 入参 `NoArgs` · 回包 `BusList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -11300,15 +11376,15 @@ type BusList = { agents: Array<BusAgent>, };
 type NoArgs = Record<symbol, never>;
 ```
 
-码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
+码：`bad_args` · `failed`
 
-#### `bus-envelope`
+#### `bus-send`
 
-核一封信、盖上 id 与时间。
+发一封信：核信封、照规矩收进收件箱。
 
-收 `args` · 可撤 · CLI：`ccm -- --bus-envelope`
+收 `args` · 可撤 · CLI：`ccm -- --bus-send`
 
-入参 `BusEnvelopeReq` · 回包 `BusEnvelope`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `BusEnvelopeReq` · 回包 `BusSent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type BusAct = "ask" | "answer" | "request" | "inform" | "handback" | "correct";
@@ -11386,9 +11462,10 @@ refs?: Array<string> | null,
  * 正文，不超过 1200 字节（长的写成文件，给路径）。缺 ⇒ 只有标题。
  */
 text?: string | null, };
+type BusSent = { envelope: BusEnvelope, knock: boolean, };
 ```
 
-码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long` · `not_same_group` · `no_roster`
+码：`bad_args` · `bad_from` · `bad_to` · `bad_tier` · `bad_title` · `need_re` · `bad_re` · `bad_ref` · `too_long` · `not_same_group` · `no_roster` · `duplicate` · `throttled` · `io_failed`
 
 #### `bus-inbox`
 
@@ -11456,7 +11533,7 @@ refs: Array<string>,
 text: string, };
 type BusInboxReq = { 
 /**
- * 交给 `cc-bus log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+ * 先过形状判定，不过 ⇒ `bad_id`。
  */
 id: string, 
 /**
@@ -11465,7 +11542,72 @@ id: string,
 lines?: number, };
 ```
 
-码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
+码：`bad_args` · `bad_id` · `failed`
+
+#### `bus-peek`
+
+读新信（不推已读位置）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-peek`
+
+入参 `BusPeekReq` · 回包 `BusPeeked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusPeekReq = { 
+/**
+ * 会话 id（先过形状判定）。
+ */
+id: string, 
+/**
+ * 这一段最多几封（分段排空积压）；缺 ⇒ 不分段。
+ */
+max_lines?: number, };
+type BusPeeked = { text: string, token: string | null, 
+/**
+ * 这一段几封。
+ */
+count: number, 
+/**
+ * 读不懂、跳过的几行（它们不会再出现）。
+ */
+skipped: number, };
+```
+
+码：`bad_args` · `bad_id` · `failed`
+
+#### `bus-commit`
+
+推已读位置（比令牌）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-commit`
+
+入参 `BusCommitReq` · 回包 `BusCommitted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusCommitReq = { id: string, 
+/**
+ * `bus-peek` 给的令牌。
+ */
+token: string, };
+type BusCommitted = { read: number, };
+```
+
+码：`bad_args` · `bad_id` · `bad_token` · `stale` · `changed` · `io_failed`
+
+#### `bus-unread`
+
+未读几封。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-unread`
+
+入参 `BusUnreadReq` · 回包 `BusUnread`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusUnread = { unread: number, };
+type BusUnreadReq = { id: string, };
+```
+
+码：`bad_args` · `bad_id` · `failed`
 
 ### 4.8 终端与会话
 
@@ -12379,7 +12521,7 @@ seen_screen?: string,
  */
 idle_only?: boolean, 
 /**
- * 随这一句发的附件（`session-attach-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
+ * 随这一句发的附件（`session-attachment-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
  * （[`crate::agents::typed_with`]）；有一份已不在 ⇒ 一个字都不送、回 `refused` ＋ `attachment_gone`。缺 ⇒ 不带。
  */
 attachments?: Array<string>, };
@@ -13112,7 +13254,135 @@ type Sid = string;
 
 失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable` · `ambiguous` ⇒ `RestartRefused` · `already_live` ⇒ `RestartRefused` · `stop_failed` ⇒ `RestartRefused` · `start_failed` ⇒ `RestartRefused`
 
-### 4.9 机器
+### 4.9 会话输入队
+
+#### `session-queue-put`
+
+往一条会话投一句（排进那条会话的队；同 id 只入队一次，同一端按端序号保序）。
+
+收 `args` · 可撤 · CLI：`ccm -- --session-queue-put`
+
+入参 `SessionQueuePutReq` · 回包 `QueuePut`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Origin = string;
+type QueuePut = { outcome: "queued" | "held" | "seen", 
+/**
+ * 那一条的序号（收着的还没有）。
+ */
+seq?: number, 
+/**
+ * 排第几（排着的那几条里，从 1 数；不是排着 ⇒ 不在）。
+ */
+place?: number, };
+type SessionQueuePutReq = { 
+/**
+ * 会话所在那台（本机 ⇒ `<local>`）。
+ */
+machine: Origin, sid: Sid, 
+/**
+ * 发件端给的唯一 id：同 id 再投只入队一次。
+ */
+id: string, 
+/**
+ * 发自哪一端。
+ */
+end: string, 
+/**
+ * 这一端自己的递增序号（从 1 数）：给了 ⇒ 同一端先后两条保序（前一号没到先收着）；不给 ⇒ 照到达先后。
+ */
+n?: number, 
+/**
+ * 几点发的（发件端的 unix 毫秒，只给人看）。
+ */
+atMs: number, text: string, };
+type Sid = string;
+```
+
+码：`bad_args` · `io_failed` · `queue_unreadable` · `queue_full` · `text_too_long` · `offline`
+
+#### `session-queue-cancel`
+
+撤队里一条还没送的。
+
+收 `args` · 可撤 · CLI：`ccm -- --session-queue-cancel`
+
+入参 `SessionQueueCancelReq` · 回包 `QueueCancelled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Origin = string;
+type QueueCancelled = { 
+/**
+ * `false` ⇒ 那一条已不在队里（送过 · 撤过 · 没有这一条），什么都没动。
+ */
+cancelled: boolean, queue: SessionQueue, };
+type QueueItem = { 
+/**
+ * 主人发的序号（收着的那几条还没有）。先后只看它。
+ */
+seq?: number, 
+/**
+ * 发件端给的唯一 id（重发去重）。
+ */
+id: string, 
+/**
+ * 发自哪一端。
+ */
+end: string, 
+/**
+ * 发件端说的几点发的（unix 毫秒；只给人看，不参与排序）。
+ */
+atMs: number, 
+/**
+ * 那一句。
+ */
+text: string, state: "queued" | "held" | "undelivered", };
+type SessionQueue = { items: Array<QueueItem>, };
+type SessionQueueCancelReq = { machine: Origin, sid: Sid, id: string, };
+type Sid = string;
+```
+
+码：`bad_args` · `io_failed` · `queue_unreadable` · `offline`
+
+#### `session-queue-read`
+
+一条会话此刻的队列名单。
+
+收 `args` · 可撤 · CLI：`ccm -- --session-queue-read`
+
+入参 `SessionQueueReadReq` · 回包 `SessionQueue`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Origin = string;
+type QueueItem = { 
+/**
+ * 主人发的序号（收着的那几条还没有）。先后只看它。
+ */
+seq?: number, 
+/**
+ * 发件端给的唯一 id（重发去重）。
+ */
+id: string, 
+/**
+ * 发自哪一端。
+ */
+end: string, 
+/**
+ * 发件端说的几点发的（unix 毫秒；只给人看，不参与排序）。
+ */
+atMs: number, 
+/**
+ * 那一句。
+ */
+text: string, state: "queued" | "held" | "undelivered", };
+type SessionQueue = { items: Array<QueueItem>, };
+type SessionQueueReadReq = { machine: Origin, sid: Sid, };
+type Sid = string;
+```
+
+码：`bad_args` · `io_failed` · `queue_unreadable` · `offline`
+
+### 4.10 机器
 
 #### `ccm-print`
 
@@ -14492,7 +14762,7 @@ partial: boolean, };
 
 码：`bad_args`
 
-### 4.10 计划
+### 4.11 计划
 
 #### `plan-list`
 
@@ -15402,9 +15672,12 @@ type Words = string;
 | `--backend-log` | ＝ 帧命令 `backend-log`：这台后端的 stderr 诊断文件尾部 |
 | `--bookmarks-edit` | ＝ 帧命令 `bookmarks-edit`：切换 · 删 · 加几条书签，回改完的整份 |
 | `--bookmarks-read` | ＝ 帧命令 `bookmarks-read`：这台的书签 |
-| `--bus-envelope` | ＝ 帧命令 `bus-envelope`：核一封信、盖上 id 与时间 |
+| `--bus-commit` | ＝ 帧命令 `bus-commit`：推已读位置（比令牌） |
 | `--bus-inbox` | ＝ 帧命令 `bus-inbox`：只读看一个 agent 收件箱的尾巴 |
 | `--bus-list` | ＝ 帧命令 `bus-list`：谁在线 + 各自待读多少 |
+| `--bus-peek` | ＝ 帧命令 `bus-peek`：读新信（不推已读位置） |
+| `--bus-send` | ＝ 帧命令 `bus-send`：发一封信：核信封、照规矩收进收件箱 |
+| `--bus-unread` | ＝ 帧命令 `bus-unread`：未读几封 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
@@ -15526,9 +15799,9 @@ type Words = string;
 | `--rotation-use-now` | ＝ 帧命令 `rotation-use-now`：现在用这个号 |
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-account` | ＝ 帧命令 `session-account`：一条会话的号 |
-| `--session-attach-check` | ＝ 帧命令 `session-attach-check`：开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写） |
-| `--session-attach-commit` | ＝ 帧命令 `session-attach-commit`：把暂存区里传完的一份落进会话工作目录下一个新的附件目录 |
-| `--session-attach-drop` | ＝ 帧命令 `session-attach-drop`：删掉会话工作目录下的一个附件目录（草稿上撤掉那一份） |
+| `--session-attachment-check` | ＝ 帧命令 `session-attachment-check`：开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写） |
+| `--session-attachment-commit` | ＝ 帧命令 `session-attachment-commit`：把暂存区里传完的一份落进会话工作目录下一个新的附件目录 |
+| `--session-attachment-drop` | ＝ 帧命令 `session-attachment-drop`：删掉会话工作目录下的一个附件目录（草稿上撤掉那一份） |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-model` | ＝ 帧命令 `session-model`：换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起） |
@@ -15536,6 +15809,9 @@ type Words = string;
 | `--session-open-dir` | ＝ 帧命令 `session-open-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-open-facts` | ＝ 帧命令 `session-open-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起） |
+| `--session-queue-cancel` | ＝ 帧命令 `session-queue-cancel`：撤队里一条还没送的 |
+| `--session-queue-put` | ＝ 帧命令 `session-queue-put`：往一条会话投一句（排进那条会话的队；同 id 只入队一次，同一端按端序号保序） |
+| `--session-queue-read` | ＝ 帧命令 `session-queue-read`：一条会话此刻的队列名单 |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--session-self` | ＝ 帧命令 `session-self`：我是哪条会话 · 在哪几组 · 组员有谁 |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |

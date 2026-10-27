@@ -2636,6 +2636,42 @@ data class BusAgent(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class BusCommitReq(
+    val id: String,
+    val token: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusCommitReq> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("token", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BusCommitReq(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.id, v.token) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusCommitted(
+    val read: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusCommitted> = obj(
+            listOf(
+            Field("read", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> BusCommitted(a[0] as Long) },
+            { v -> arrayOf(v.read) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class BusEnvelope(
     val id: String,
     val ts: String,
@@ -2791,6 +2827,101 @@ data class BusList(
             ),
             { a -> BusList(a[0] as List<BusAgent>) },
             { v -> arrayOf(v.agents) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusPeekReq(
+    val id: String,
+    val maxLines: Long? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusPeekReq> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("max_lines", { opt(Lng) }, optional = true, nullable = true),
+            ),
+            { a -> BusPeekReq(a[0] as String, a[1] as Long?) },
+            { v -> arrayOf(v.id, v.maxLines) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusPeeked(
+    val text: String,
+    val token: String?,
+    val count: Long,
+    val skipped: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusPeeked> = obj(
+            listOf(
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("token", { opt(Str) }, optional = false, nullable = true),
+            Field("count", { Lng }, optional = false, nullable = false),
+            Field("skipped", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> BusPeeked(a[0] as String, a[1] as String?, a[2] as Long, a[3] as Long) },
+            { v -> arrayOf(v.text, v.token, v.count, v.skipped) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusSent(
+    val envelope: BusEnvelope,
+    val knock: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusSent> = obj(
+            listOf(
+            Field("envelope", { BusEnvelope.ADAPTER }, optional = false, nullable = false),
+            Field("knock", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> BusSent(a[0] as BusEnvelope, a[1] as Boolean) },
+            { v -> arrayOf(v.envelope, v.knock) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusUnread(
+    val unread: Long,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusUnread> = obj(
+            listOf(
+            Field("unread", { Lng }, optional = false, nullable = false),
+            ),
+            { a -> BusUnread(a[0] as Long) },
+            { v -> arrayOf(v.unread) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class BusUnreadReq(
+    val id: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<BusUnreadReq> = obj(
+            listOf(
+            Field("id", { Str }, optional = false, nullable = false),
+            ),
+            { a -> BusUnreadReq(a[0] as String) },
+            { v -> arrayOf(v.id) },
         )
     }
 }
@@ -16200,6 +16331,8 @@ data class ProfileForm(
     val tmuxSize: String?,
     val detach: Boolean,
     val tab: Tab?,
+    val tabGroup: String?,
+    val say: String?,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -16218,9 +16351,11 @@ data class ProfileForm(
             Field("tmuxSize", { opt(Str) }, optional = false, nullable = true),
             Field("detach", { Bool }, optional = false, nullable = false),
             Field("tab", { opt(Tab.ADAPTER) }, optional = false, nullable = true),
+            Field("tabGroup", { opt(Str) }, optional = false, nullable = true),
+            Field("say", { opt(Str) }, optional = false, nullable = true),
             ),
-            { a -> ProfileForm(a[0] as String, a[1] as String?, a[2] as ProfileAccountPick?, a[3] as ProfileTmuxPick?, a[4] as List<ProfileCwdCase>?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Tab?) },
-            { v -> arrayOf(v.name, v.from, v.account, v.tmux, v.cwdIf, v.cwd, v.agent, v.args, v.launcher, v.tmuxSize, v.detach, v.tab) },
+            { a -> ProfileForm(a[0] as String, a[1] as String?, a[2] as ProfileAccountPick?, a[3] as ProfileTmuxPick?, a[4] as List<ProfileCwdCase>?, a[5] as String?, a[6] as String?, a[7] as String?, a[8] as String?, a[9] as String?, a[10] as Boolean, a[11] as Tab?, a[12] as String?, a[13] as String?) },
+            { v -> arrayOf(v.name, v.from, v.account, v.tmux, v.cwdIf, v.cwd, v.agent, v.args, v.launcher, v.tmuxSize, v.detach, v.tab, v.tabGroup, v.say) },
         )
     }
 }
@@ -16535,6 +16670,8 @@ enum class ProfileSlotId(val wire: String) {
     TMUX_SIZE("tmuxSize"),
     DETACH("detach"),
     TAB("tab"),
+    TAB_GROUP("tabGroup"),
+    SAY("say"),
     ;
 
     companion object {
@@ -16907,6 +17044,95 @@ enum class PushVia(val wire: String) {
 
     companion object {
         val ADAPTER: JsonAdapter<PushVia> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class QueueCancelled(
+    val cancelled: Boolean,
+    val queue: SessionQueue,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<QueueCancelled> = obj(
+            listOf(
+            Field("cancelled", { Bool }, optional = false, nullable = false),
+            Field("queue", { SessionQueue.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> QueueCancelled(a[0] as Boolean, a[1] as SessionQueue) },
+            { v -> arrayOf(v.cancelled, v.queue) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class QueueItem(
+    val seq: Long? = null,
+    val id: String,
+    val end: String,
+    val atMs: Long,
+    val text: String,
+    val state: QueueState,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<QueueItem> = obj(
+            listOf(
+            Field("seq", { opt(Lng) }, optional = true, nullable = true),
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("end", { Str }, optional = false, nullable = false),
+            Field("atMs", { Lng }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("state", { QueueState.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> QueueItem(a[0] as Long?, a[1] as String, a[2] as String, a[3] as Long, a[4] as String, a[5] as QueueState) },
+            { v -> arrayOf(v.seq, v.id, v.end, v.atMs, v.text, v.state) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class QueuePut(
+    val outcome: QueuePutOutcome,
+    val seq: Long? = null,
+    val place: Long? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<QueuePut> = obj(
+            listOf(
+            Field("outcome", { QueuePutOutcome.ADAPTER }, optional = false, nullable = false),
+            Field("seq", { opt(Lng) }, optional = true, nullable = true),
+            Field("place", { opt(Lng) }, optional = true, nullable = true),
+            ),
+            { a -> QueuePut(a[0] as QueuePutOutcome, a[1] as Long?, a[2] as Long?) },
+            { v -> arrayOf(v.outcome, v.seq, v.place) },
+        )
+    }
+}
+
+enum class QueuePutOutcome(val wire: String) {
+    QUEUED("queued"),
+    HELD("held"),
+    SEEN("seen"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<QueuePutOutcome> = enumOf(entries) { it.wire }
+    }
+}
+
+enum class QueueState(val wire: String) {
+    QUEUED("queued"),
+    HELD("held"),
+    UNDELIVERED("undelivered"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<QueueState> = enumOf(entries) { it.wire }
     }
 }
 
@@ -19721,6 +19947,9 @@ data class RowPlan(
     val more: Long,
     val group: String,
     val blocked: String?,
+    val said: String,
+    val haveSaid: String,
+    val moreSaid: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -19734,9 +19963,12 @@ data class RowPlan(
             Field("more", { Lng }, optional = false, nullable = false),
             Field("group", { Str }, optional = false, nullable = false),
             Field("blocked", { opt(Str) }, optional = false, nullable = true),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("haveSaid", { Str }, optional = false, nullable = false),
+            Field("moreSaid", { Str }, optional = false, nullable = false),
             ),
-            { a -> RowPlan(a[0] as String, a[1] as String, a[2] as Long, a[3] as Long, a[4] as Long, a[5] as String, a[6] as String?) },
-            { v -> arrayOf(v.cwd, v.alias, v.want, v.have, v.more, v.group, v.blocked) },
+            { a -> RowPlan(a[0] as String, a[1] as String, a[2] as Long, a[3] as Long, a[4] as Long, a[5] as String, a[6] as String?, a[7] as String, a[8] as String, a[9] as String) },
+            { v -> arrayOf(v.cwd, v.alias, v.want, v.have, v.more, v.group, v.blocked, v.said, v.haveSaid, v.moreSaid) },
         )
     }
 }
@@ -20537,43 +20769,43 @@ data class SessionAdded(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionAttachCheckReply(
+data class SessionAttachmentCheckReply(
     val items: List<AttachVerdict>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<SessionAttachCheckReply> = obj(
+        val ADAPTER: JsonAdapter<SessionAttachmentCheckReply> = obj(
             listOf(
             Field("items", { arr(AttachVerdict.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> SessionAttachCheckReply(a[0] as List<AttachVerdict>) },
+            { a -> SessionAttachmentCheckReply(a[0] as List<AttachVerdict>) },
             { v -> arrayOf(v.items) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionAttachCheckReq(
+data class SessionAttachmentCheckReq(
     val sid: String,
     val items: List<AttachItem>,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<SessionAttachCheckReq> = obj(
+        val ADAPTER: JsonAdapter<SessionAttachmentCheckReq> = obj(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("items", { arr(AttachItem.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> SessionAttachCheckReq(a[0] as String, a[1] as List<AttachItem>) },
+            { a -> SessionAttachmentCheckReq(a[0] as String, a[1] as List<AttachItem>) },
             { v -> arrayOf(v.sid, v.items) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionAttachCommitReply(
+data class SessionAttachmentCommitReply(
     val id: String,
     val name: String,
     val path: String,
@@ -20585,7 +20817,7 @@ data class SessionAttachCommitReply(
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<SessionAttachCommitReply> = obj(
+        val ADAPTER: JsonAdapter<SessionAttachmentCommitReply> = obj(
             listOf(
             Field("id", { Str }, optional = false, nullable = false),
             Field("name", { Str }, optional = false, nullable = false),
@@ -20595,14 +20827,14 @@ data class SessionAttachCommitReply(
             Field("sha256", { Str }, optional = false, nullable = false),
             Field("class", { FileClass.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> SessionAttachCommitReply(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Long, a[5] as String, a[6] as FileClass) },
+            { a -> SessionAttachmentCommitReply(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Long, a[5] as String, a[6] as FileClass) },
             { v -> arrayOf(v.id, v.name, v.path, v.rel, v.bytes, v.sha256, v.`class`) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionAttachCommitReq(
+data class SessionAttachmentCommitReq(
     val sid: String,
     val key: String,
     val name: String,
@@ -20613,7 +20845,7 @@ data class SessionAttachCommitReq(
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<SessionAttachCommitReq> = obj(
+        val ADAPTER: JsonAdapter<SessionAttachmentCommitReq> = obj(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("key", { Str }, optional = false, nullable = false),
@@ -20622,43 +20854,43 @@ data class SessionAttachCommitReq(
             Field("chunks", { opt(U64) }, optional = true, nullable = true),
             Field("expect", { Sha256Expect.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> SessionAttachCommitReq(a[0] as String, a[1] as String, a[2] as String, a[3] as Long, a[4] as Long?, a[5] as Sha256Expect) },
+            { a -> SessionAttachmentCommitReq(a[0] as String, a[1] as String, a[2] as String, a[3] as Long, a[4] as Long?, a[5] as Sha256Expect) },
             { v -> arrayOf(v.sid, v.key, v.name, v.bytes, v.chunks, v.expect) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionAttachDropReply(
+data class SessionAttachmentDropReply(
     val removed: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<SessionAttachDropReply> = obj(
+        val ADAPTER: JsonAdapter<SessionAttachmentDropReply> = obj(
             listOf(
             Field("removed", { Bool }, optional = false, nullable = false),
             ),
-            { a -> SessionAttachDropReply(a[0] as Boolean) },
+            { a -> SessionAttachmentDropReply(a[0] as Boolean) },
             { v -> arrayOf(v.removed) },
         )
     }
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionAttachDropReq(
+data class SessionAttachmentDropReq(
     val sid: String,
     val id: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
-        val ADAPTER: JsonAdapter<SessionAttachDropReq> = obj(
+        val ADAPTER: JsonAdapter<SessionAttachmentDropReq> = obj(
             listOf(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("id", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionAttachDropReq(a[0] as String, a[1] as String) },
+            { a -> SessionAttachmentDropReq(a[0] as String, a[1] as String) },
             { v -> arrayOf(v.sid, v.id) },
         )
     }
@@ -21110,6 +21342,92 @@ data class SessionPermissionReq(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class SessionQueue(
+    val items: List<QueueItem>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionQueue> = obj(
+            listOf(
+            Field("items", { arr(QueueItem.ADAPTER) }, optional = false, nullable = false),
+            ),
+            { a -> SessionQueue(a[0] as List<QueueItem>) },
+            { v -> arrayOf(v.items) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionQueueCancelReq(
+    val machine: String,
+    val sid: String,
+    val id: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionQueueCancelReq> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("id", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionQueueCancelReq(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.machine, v.sid, v.id) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionQueuePutReq(
+    val machine: String,
+    val sid: String,
+    val id: String,
+    val end: String,
+    val n: Long? = null,
+    val atMs: Long,
+    val text: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionQueuePutReq> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("end", { Str }, optional = false, nullable = false),
+            Field("n", { opt(Lng) }, optional = true, nullable = true),
+            Field("atMs", { Lng }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionQueuePutReq(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Long?, a[5] as Long, a[6] as String) },
+            { v -> arrayOf(v.machine, v.sid, v.id, v.end, v.n, v.atMs, v.text) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionQueueReadReq(
+    val machine: String,
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionQueueReadReq> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionQueueReadReq(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.machine, v.sid) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class SessionRuns(
     val sid: String,
     val runs: List<RunInfo>,
@@ -21286,25 +21604,6 @@ sealed interface SessionStreamFrame {
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionUnseenPayload(
-    val origin: String,
-    val face: SessionFace?,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionUnseenPayload> = obj(
-            listOf(
-            Field("origin", { Str }, optional = false, nullable = false),
-            Field("face", { opt(SessionFace.ADAPTER) }, optional = false, nullable = true),
-            ),
-            { a -> SessionUnseenPayload(a[0] as String, a[1] as SessionFace?) },
-            { v -> arrayOf(v.origin, v.face) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class SessionWindow(
     val labels: List<String>,
     val chain: List<Link>,
@@ -21387,6 +21686,8 @@ data class SetLaunched(
     val rows: List<RowLaunched>,
     val started: Long,
     val failed: Long,
+    val said: String,
+    val detail: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21396,9 +21697,11 @@ data class SetLaunched(
             Field("rows", { arr(RowLaunched.ADAPTER) }, optional = false, nullable = false),
             Field("started", { Lng }, optional = false, nullable = false),
             Field("failed", { Lng }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("detail", { Str }, optional = false, nullable = false),
             ),
-            { a -> SetLaunched(a[0] as List<RowLaunched>, a[1] as Long, a[2] as Long) },
-            { v -> arrayOf(v.rows, v.started, v.failed) },
+            { a -> SetLaunched(a[0] as List<RowLaunched>, a[1] as Long, a[2] as Long, a[3] as String, a[4] as String) },
+            { v -> arrayOf(v.rows, v.started, v.failed, v.said, v.detail) },
         )
     }
 }
@@ -21428,6 +21731,10 @@ data class SetOut(
 data class SetPlan(
     val rows: List<RowPlan>,
     val more: Long,
+    val said: String,
+    val moreSaid: String,
+    val totalSaid: String,
+    val startSaid: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21436,9 +21743,13 @@ data class SetPlan(
             listOf(
             Field("rows", { arr(RowPlan.ADAPTER) }, optional = false, nullable = false),
             Field("more", { Lng }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("moreSaid", { Str }, optional = false, nullable = false),
+            Field("totalSaid", { Str }, optional = false, nullable = false),
+            Field("startSaid", { Str }, optional = false, nullable = false),
             ),
-            { a -> SetPlan(a[0] as List<RowPlan>, a[1] as Long) },
-            { v -> arrayOf(v.rows, v.more) },
+            { a -> SetPlan(a[0] as List<RowPlan>, a[1] as Long, a[2] as String, a[3] as String, a[4] as String, a[5] as String) },
+            { v -> arrayOf(v.rows, v.more, v.said, v.moreSaid, v.totalSaid, v.startSaid) },
         )
     }
 }

@@ -23,4 +23,16 @@ group: string,
 /**
  * 这一行起不了的原因（能起 ⇒ `null`）。
  */
-blocked: string | null, };
+blocked: string | null, 
+/**
+ * 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单第二行里的一段）。
+ */
+said: string, 
+/**
+ * 「已有 n」。
+ */
+haveSaid: string, 
+/**
+ * 右侧那一格：「再起 n」· 够了「—」· 起不了 ⇒ 原因。
+ */
+moreSaid: string, };

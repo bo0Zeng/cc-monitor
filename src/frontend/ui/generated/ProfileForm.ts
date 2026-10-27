@@ -16,4 +16,12 @@ args: string | null, launcher: string | null, tmuxSize: string | null, detach: b
 /**
  * 标签页：显示 / 隐藏（`null` ＝ 继承）。
  */
-tab: Tab | null, };
+tab: Tab | null, 
+/**
+ * 起出来的会话进哪个标签页组（`null` ＝ 继承）。
+ */
+tabGroup: string | null, 
+/**
+ * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
+ */
+say: string | null, };

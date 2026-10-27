@@ -4,4 +4,12 @@ import type { RowLaunched } from "./RowLaunched";
 /**
  * `set-launch` 的回包：每行 ＋ 起成几条 · 没成几条。
  */
-export type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, };
+export type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, 
+/**
+ * 起完那一句：全成「已启动 n」· 有没成的「启动 成/全」。
+ */
+said: string, 
+/**
+ * 没成的逐条一行「别名 启动失败 · 原因」（全成 ⇒ 空串）。
+ */
+detail: string, };

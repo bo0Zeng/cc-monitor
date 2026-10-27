@@ -5,7 +5,7 @@
  */
 export type BusInboxReq = { 
 /**
- * 交给 `cc-bus log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+ * 先过形状判定，不过 ⇒ `bad_id`。
  */
 id: string, 
 /**

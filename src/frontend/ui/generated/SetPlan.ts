@@ -2,6 +2,22 @@
 import type { RowPlan } from "./RowPlan";
 
 /**
- * 整组补足的样子：每行 ＋ 合计再起几个。
+ * 整组补足的样子：每行 ＋ 合计再起几个，连同界面照摆的几句。
  */
-export type SetPlan = { rows: Array<RowPlan>, more: number, };
+export type SetPlan = { rows: Array<RowPlan>, more: number, 
+/**
+ * 几行连起来的那一句（组菜单那一项的第二行）。
+ */
+said: string, 
+/**
+ * 右侧那一格：「再起 N」· 都够了「已齐」。
+ */
+moreSaid: string, 
+/**
+ * 预览末行：合计再起几个。
+ */
+totalSaid: string, 
+/**
+ * 主按钮的字：「启动 N」· 都够了「已齐」。
+ */
+startSaid: string, };

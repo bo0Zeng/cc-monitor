@@ -2,7 +2,7 @@
 import type { BusAct } from "./BusAct";
 
 /**
- * 一封信（规范信封）：`bus-envelope` 盖出来、`cc-bus send` 原样写进收件箱的那一行，`bus-inbox` 读回的也是它。
+ * 一封信（规范信封）：`bus-send` 盖出来、原样写进收件箱的那一行，`bus-inbox` 读回的也是它。
  */
 export type BusEnvelope = { 
 /**
