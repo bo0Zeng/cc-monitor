@@ -312,6 +312,7 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::Elsewhere => copy_text("beTerminal.no.elsewhere", &[]),
         Refused::NotResumed => copy_text("beTerminal.no.notResumed", &[]),
         Refused::NotIdle => copy_text("beTerminal.no.notIdle", &[]),
+        Refused::AttachmentGone => copy_text("beTerminal.no.attachmentGone", &[]),
     }
 }
 
@@ -874,7 +875,13 @@ pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, CmdErr> {
     let bad = |m: &str| CmdErr::new("bad_args", crate::common::contract::malformed(m));
     match (&req.text, &req.key) {
         (Some(t), None) => {
-            super::launch::check_input_text(t)?;
+            // 只带附件、没写字（`session-say` 那一支）⇒ 正文可以是空的，粘的那几段照同一把尺子量。
+            for p in &req.pastes {
+                super::launch::check_input_text(p)?;
+            }
+            if !(t.is_empty() && !req.pastes.is_empty()) {
+                super::launch::check_input_text(t)?;
+            }
             Ok(Input::Text {
                 text: t.clone(),
                 enter: req.enter.unwrap_or(true),
@@ -903,6 +910,7 @@ pub(crate) fn input_reply(result: SentResult, why: Option<Refused>, screen: Opti
         said: why.map(no_said),
         screen: screen.map(str::to_string),
         resumed: false,
+        gone: Vec::new(),
         acts: acts_of(result, why),
     }
 }
@@ -1003,7 +1011,14 @@ fn send_on(
     }
     let tmux = |a: &[&str]| super::launch::ran(on.cmd(), a);
     let sent = match &input {
-        Input::Text { text, enter } => super::launch::type_literal(&at, text, *enter, &tmux)?,
+        Input::Text { text, enter } => super::launch::type_literal(
+            &at,
+            &req.pastes,
+            text,
+            *enter,
+            &tmux,
+            &super::launch::settle,
+        )?,
         Input::Key(k) => super::launch::press_key(&at, k, &tmux)?,
     };
     if sent.ok {

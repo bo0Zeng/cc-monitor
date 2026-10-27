@@ -1293,3 +1293,86 @@ fn a_shell_session_is_made_bare_or_left_as_it_is() {
     assert_eq!(e.code, "bad_args");
     assert!(!f.verbs().contains(&"new-session".to_string()));
 }
+
+// ── 送字那一串（括号粘贴 · 隔一下再回车）────────────────────────────
+
+/// 一次送字里 tmux 收到的每一发（`settle` 记成 `"settle"`），只留动词与它送的那一段。
+fn typed_into(pastes: &[&str], text: &str, enter: bool) -> Vec<String> {
+    let log = std::cell::RefCell::new(Vec::<String>::new());
+    let tmux = |a: &[&str]| {
+        let shown = match a.first().copied() {
+            Some("set-buffer") => format!("set-buffer {}", a.last().copied().unwrap_or("")),
+            Some("send-keys") => format!("send-keys {}", a.last().copied().unwrap_or("")),
+            Some(v) => v.to_string(),
+            None => String::new(),
+        };
+        log.borrow_mut().push(shown);
+        Ok(Ran {
+            ok: true,
+            stderr: String::new(),
+        })
+    };
+    let settle = || log.borrow_mut().push("settle".to_string());
+    let pastes: Vec<String> = pastes.iter().map(|p| p.to_string()).collect();
+    type_into("%1", &pastes, text, enter, &tmux, &settle).expect("送成");
+    log.into_inner()
+}
+
+/// ★ 带图那一句：每张图单独一次括号粘贴（只有路径）、各隔一下；再粘正文；隔一下才交回车（粘贴后立刻回车会被当成粘贴里的换行吞掉）。
+#[test]
+fn each_image_is_its_own_paste_and_enter_waits_after_the_last_paste() {
+    let got = typed_into(
+        &[
+            "/w/.ccm-attach/1023-1529-a3f2/a.png",
+            "/w/.ccm-attach/1023-1529-a3f3/b.png",
+        ],
+        "截图在这\n@.ccm-attach/1023-1529-7c01/login.css",
+        true,
+    );
+    assert_eq!(
+        got,
+        [
+            "set-buffer /w/.ccm-attach/1023-1529-a3f2/a.png",
+            "paste-buffer",
+            "settle",
+            "set-buffer /w/.ccm-attach/1023-1529-a3f3/b.png",
+            "paste-buffer",
+            "settle",
+            "set-buffer 截图在这\n@.ccm-attach/1023-1529-7c01/login.css",
+            "paste-buffer",
+            "settle",
+            "send-keys Enter",
+        ]
+    );
+}
+
+/// 多行正文按粘贴送 ⇒ 同样隔一下才回车；单行照 `send-keys -l`、不用等；只有图没有字 ⇒ 粘完图隔一下就回车。
+#[test]
+fn a_pasted_text_waits_before_enter_and_a_typed_line_does_not() {
+    assert_eq!(
+        typed_into(&[], "a\nb", true),
+        [
+            "set-buffer a\nb",
+            "paste-buffer",
+            "settle",
+            "send-keys Enter"
+        ]
+    );
+    assert_eq!(
+        typed_into(&[], "继续", true),
+        ["send-keys 继续", "send-keys Enter"]
+    );
+    assert_eq!(
+        typed_into(&["/w/x.png"], "", true),
+        [
+            "set-buffer /w/x.png",
+            "paste-buffer",
+            "settle",
+            "send-keys Enter"
+        ]
+    );
+    assert_eq!(
+        typed_into(&[], "a\nb", false),
+        ["set-buffer a\nb", "paste-buffer"]
+    );
+}

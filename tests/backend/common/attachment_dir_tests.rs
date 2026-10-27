@@ -45,3 +45,16 @@ fn a_reference_reads_back_to_id_and_name_relative_or_absolute() {
         assert_eq!(parse_rel(bad), None, "{bad:?}");
     }
 }
+
+/// 按编号找回那一份的原名：在 ⇒ 名字；编号目录不在 · 编号不合形 ⇒ `None`。
+#[test]
+fn find_reads_back_the_one_file_in_a_numbered_dir() {
+    let d = std::env::temp_dir().join(format!("ccm-attdir-find-{}", std::process::id()));
+    std::fs::remove_dir_all(&d).ok();
+    std::fs::create_dir_all(d.join(".ccm-attach/1023-1529-7c01")).expect("建");
+    std::fs::write(d.join(".ccm-attach/1023-1529-7c01/login.css"), b"x").expect("写");
+    assert_eq!(find(&d, "1023-1529-7c01").as_deref(), Some("login.css"));
+    assert_eq!(find(&d, "1023-1529-7c02"), None);
+    assert_eq!(find(&d, "../1023-1529-7c01"), None);
+    let _ = std::fs::remove_dir_all(&d);
+}

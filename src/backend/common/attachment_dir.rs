@@ -48,6 +48,18 @@ pub fn parse_rel(s: &str) -> Option<(&str, &str)> {
         .then_some((id, name))
 }
 
+/// 工作目录 `cwd` 下编号 `id` 那一份的原名（编号目录里那一份普通文件）；编号不合形 · 目录不在 · 里面没有普通文件 ⇒ `None`。
+pub fn find(cwd: &std::path::Path, id: &str) -> Option<String> {
+    if !is_id(id) {
+        return None;
+    }
+    crate::platform::fs::Ro::read_dir(cwd.join(DIR).join(id))
+        .ok()?
+        .flatten()
+        .filter(|e| crate::platform::fs::Ro::symlink_metadata(e.path()).is_ok_and(|m| m.is_file()))
+        .find_map(|e| e.file_name().to_str().map(str::to_string))
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/common/attachment_dir_tests.rs"]
 mod tests;

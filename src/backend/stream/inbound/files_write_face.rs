@@ -517,11 +517,13 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
 
 // ── 聊天附件（本体在 `control/files_commit/session_attachment.rs`）────────────
 //
-// 入参交会话 id：那台按会话记录读它的工作目录（同 `session-say` 恢复那一支，`session_open_face::resume_of`），读不出 ⇒ `no_session`。
+// 入参交会话 id：那台按会话记录读它的项目目录（会话起在哪，同 `session-say` 恢复那一支读的那一格），读不出 ⇒ `no_session`。
 
-/// 这条会话的工作目录（那台的会话记录里读）；读不出 ⇒ `None`。
+/// 这条会话的工作目录（这台记录树里那份会话记录开头写的项目目录）；读不出 ⇒ `None`。
 fn session_cwd(sid: &str) -> Option<std::path::PathBuf> {
-    crate::faces::session_open_face::resume_of(sid).map(|r| std::path::PathBuf::from(r.cwd))
+    let home = crate::agents::home_at(None, true);
+    let at = crate::agents::find_session(&home, sid).ok()?;
+    crate::agents::project_dir_of(&at.file).map(std::path::PathBuf::from)
 }
 
 /// 附件那一支的失败 ⇒ 这一条的码表。

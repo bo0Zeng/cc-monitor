@@ -36,6 +36,11 @@ pub(crate) struct SessionSayReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) idle_only: Option<bool>,
+    /// 随这一句发的附件（`session-attach-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
+    /// （[`crate::agents::typed_with`]）；有一份已不在 ⇒ 一个字都不送、回 `refused` ＋ `attachment_gone`。缺 ⇒ 不带。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
+    pub(crate) attachments: Vec<String>,
 }
 
 typed::codes! {
@@ -78,10 +83,23 @@ impl crate::wire::typed::Handle for SessionSay {
                 return Ok(no);
             }
             let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
+            let words = if req.attachments.is_empty() {
+                plain(&req.text)
+            } else {
+                // 附件住会话工作目录下；工作目录与哪一家读会话记录那一处（同恢复那一支）。读不出 ⇒ 每一份都算不在。
+                let found = super::session_open_face::resume_of(req.sid.as_str());
+                let (agent, cwd) = found.map_or_else(Default::default, |r| (r.agent, r.cwd));
+                match typed_of(&req, &agent, std::path::Path::new(&cwd)) {
+                    Ok(t) => t,
+                    Err(no) => return Ok(no),
+                }
+            };
+            let first = words.first_say.clone();
             let resume =
-                |r: &SessionSayReq| resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files);
-            say_with(
+                |r: &SessionSayReq| resume_here(&r.sid, r.client.as_deref(), Some(&first), files);
+            say_typed(
                 &req,
+                &words,
                 &waiting,
                 &crate::control::terminals_wire::say,
                 &resume,
@@ -140,9 +158,61 @@ pub(crate) fn idle_gate(
     }
 }
 
-/// `session-say` 的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送。
+/// 不带附件的那一句：原样送、原样当恢复的第一句。
+pub(crate) fn plain(text: &str) -> crate::agents::Typed {
+    crate::agents::Typed {
+        pastes: Vec::new(),
+        text: text.to_string(),
+        first_say: text.to_string(),
+    }
+}
+
+/// 带附件的那一句：编号 ⇒ 工作目录 `cwd` 下那一份（[`crate::common::attachment_dir::find`]），照 `agent` 那一家的写法拼（[`crate::agents::typed_with`]）。
+/// 有不在的 ⇒ 被拒的那一份（`attachment_gone`，`gone` 列出那几个编号），一个字都不送。
+pub(crate) fn typed_of(
+    req: &SessionSayReq,
+    agent: &str,
+    cwd: &std::path::Path,
+) -> Result<crate::agents::Typed, Sent> {
+    use crate::common::attachment_dir as layout;
+    let mut found = Vec::new();
+    let mut gone = Vec::new();
+    for id in &req.attachments {
+        match layout::find(cwd, id) {
+            Some(name) => {
+                let rel = layout::rel_of(id, &name);
+                found.push((name, cwd.join(&rel).display().to_string(), rel));
+            }
+            None => gone.push(id.clone()),
+        }
+    }
+    if !gone.is_empty() {
+        return Err(Sent {
+            gone,
+            ..input_reply(SentResult::Refused, Some(Refused::AttachmentGone), None)
+        });
+    }
+    let refs: Vec<crate::agents::AttachRef<'_>> = found
+        .iter()
+        .map(|(name, abs, rel)| crate::agents::AttachRef { name, abs, rel })
+        .collect();
+    Ok(crate::agents::typed_with(agent, &req.text, &refs))
+}
+
+/// `session-say` 的本体（不带附件）：同 [`say_typed`]，那一句原样送。
 pub(crate) fn say_with(
     req: &SessionSayReq,
+    waiting: &dyn Fn(&str) -> bool,
+    send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
+    resume: &dyn Fn(&SessionSayReq) -> Option<Reopened>,
+) -> Result<Sent, CmdErr> {
+    say_typed(req, &plain(&req.text), waiting, send, resume)
+}
+
+/// `session-say` 的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送 `words`（各单独粘一次的 ＋ 正文）。
+pub(crate) fn say_typed(
+    req: &SessionSayReq,
+    words: &crate::agents::Typed,
     waiting: &dyn Fn(&str) -> bool,
     send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
     resume: &dyn Fn(&SessionSayReq) -> Option<Reopened>,
@@ -156,10 +226,11 @@ pub(crate) fn say_with(
     }
     let sent = send(&TerminalInputReq {
         sid: Some(req.sid.to_string()),
-        text: Some(req.text.clone()),
+        text: Some(words.text.clone()),
         enter: Some(true),
         client: req.client.clone(),
         seen_screen: req.seen_screen.clone(),
+        pastes: words.pastes.clone(),
         ..TerminalInputReq::default()
     })?;
     // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。带了看见的那一屏 ⇒ 不恢复。

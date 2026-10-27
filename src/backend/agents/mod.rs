@@ -152,6 +152,8 @@ pub(crate) struct Adapter {
     /// 这一家的**答题口**：会话里弹批准 / 提问 / 批计划的框时，经它的 hook 把请求交给常驻后端、把人的答案交回去
     /// （[`AskFace`]）；`None` ＝ 这一家今天没有，那几种框只能在终端里答。
     pub(crate) asks: Option<AskFace>,
+    /// 这一家的**附件引用写法**（[`AttachFace`]）：聊天里随一句发的附件写成粘贴还是正文后面的一行；`None` ＝ 全写相对路径、一行一个。
+    pub(crate) attach: Option<AttachFace>,
 }
 
 /// 一家的**答题口**（[`Adapter::asks`]）：那一家的 hook 输入长什么样、答案写成什么、起会话时怎么挂上 hook，只住适配层；
@@ -2726,9 +2728,9 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), clear_request: Some(claudecode::CLEAR_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), clear_request: Some(claudecode::CLEAR_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE), attach: Some(claudecode::ATTACH) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: Some(codex::PROCESS_NAMES), launch: Some(codex::LAUNCH), compact_request: None, clear_request: None, local: None, live: codex::LIVE, asks: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: Some(codex::PROCESS_NAMES), launch: Some(codex::LAUNCH), compact_request: None, clear_request: None, local: None, live: codex::LIVE, asks: None, attach: Some(codex::ATTACH) },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
@@ -2765,6 +2767,74 @@ pub(crate) fn base_url_env_of(kind: &str) -> Option<&'static str> {
     }
 }
 
+/// 一家的**附件引用写法**（[`Adapter::attach`]）：聊天里随一句发的一份附件，送进那一家时写成哪一形。
+/// 落点（`.ccm-attach/<编号>/<原名>`）住通用层（`common::attachment_dir`）；拼成一句的那一步只此一处（[`typed_with`]）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AttachFace {
+    pub(crate) refer: fn(&AttachRef<'_>) -> Refer,
+}
+
+/// 会话那台上落好的一份附件：原名 · 绝对路径 · 相对工作目录的路径。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AttachRef<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) abs: &'a str,
+    pub(crate) rel: &'a str,
+}
+
+/// 一份附件送进去的样子：在正文之前单独粘一次（图片路径 ⇒ 那一家收成图片附件）· 正文后面的一行。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Refer {
+    Paste(String),
+    Line(String),
+}
+
+/// 一句连同它的附件写成送进去的样子：各单独粘一次的 · 正文（引用行接在后面）· 终端没了要恢复时随起交的第一句（粘贴那一形交不进去 ⇒ 全写成行）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Typed {
+    pub(crate) pastes: Vec<String>,
+    pub(crate) text: String,
+    pub(crate) first_say: String,
+}
+
+/// 认不出是哪一家 · 这一家没有 [`Adapter::attach`] ⇒ 全写相对路径、一行一个（路径在那台读得到，模型照路径自己读）。
+fn refer_plain(a: &AttachRef<'_>) -> Refer {
+    Refer::Line(a.rel.to_string())
+}
+
+/// `kind` 那一家把 `text` 连同 `refs` 写成送进去的样子（[`Typed`]）。
+pub(crate) fn typed_with(kind: &str, text: &str, refs: &[AttachRef<'_>]) -> Typed {
+    let refer = REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.attach)
+        .map_or(refer_plain as fn(&AttachRef<'_>) -> Refer, |f| f.refer);
+    let join = |head: &str, lines: &[String]| {
+        std::iter::once(head.to_string())
+            .filter(|h| !h.is_empty())
+            .chain(lines.iter().cloned())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let (mut pastes, mut lines, mut all) = (Vec::new(), Vec::new(), Vec::new());
+    for r in refs {
+        match refer(r) {
+            Refer::Paste(p) => {
+                all.push(p.clone());
+                pastes.push(p);
+            }
+            Refer::Line(l) => {
+                all.push(l.clone());
+                lines.push(l);
+            }
+        }
+    }
+    Typed {
+        pastes,
+        text: join(text, &lines),
+        first_say: join(text, &all),
+    }
+}
 /// 某一家清空会话用的那一句（[`Adapter::clear_request`]）。认不出这家 / 这一家不支持 ⇒ `None`。
 pub(crate) fn clear_request_of(kind: &str) -> Option<&'static str> {
     REGISTRY
