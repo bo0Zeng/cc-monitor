@@ -37,9 +37,6 @@ mod build_features; // 判据构建与发布构建的 serde_json 特性集相同
 #[cfg(test)]
 #[path = "../../tests/backend/build_id_guard.rs"]
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
-#[cfg(test)]
-#[path = "../../tests/backend/cc_bus_boundary_guard.rs"]
-mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 pub mod ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
@@ -202,11 +199,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `stream::cli::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
-    // 帧面 `bus-envelope` 的 CLI 面（`cc-bus send` 发之前问它核信封）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
-    "--bus-envelope",
-    // 帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。
+    // `cc-bus <动词>` 每一条只是把一句交给这几条（收件箱住后端，A13-8）：发信 · 两阶段读两跳 · 未读数 · 名单 · 收件箱尾巴。
+    //   ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--bus-commit",
     "--bus-inbox",
     "--bus-list",
+    "--bus-peek",
+    "--bus-send",
+    "--bus-unread",
     // 组那三条（`groups-here` · `groups-read` · `groups-write`）自动派生的 CLI 面。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--groups-here",
     "--groups-read",

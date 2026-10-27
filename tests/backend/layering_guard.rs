@@ -41,34 +41,37 @@ mod tests {
     /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
     const ALLOWED_INTO_PLUGIN: &[(&str, &str, &str)] = &[
         (
-            "control",
+            "plan",
             "crate::plugin::discover::find",
             "① 找它：候选顺序、要不要兜 PATH、找不到那句话的尾巴**全是入参**，\
              调用口只负责按顺序走一遍并把「查过哪儿」拼成一句能自证的话",
         ),
         (
-            "control",
-            "crate::plugin::invoke::run",
-            "③ 传 argv 起它：**全 crate 唯一一处**起进程口（`readonly_guard::ALLOWED` 里登记的那一处），\
-             期限走 `timeout` 前缀交给子进程 —— 零定时器铁律的落点",
+            "plan",
+            "crate::plugin::invoke::run_fed",
+            "② 传 argv（＋ stdin）起它：**全 crate 唯一一处**起进程口（`readonly_guard::ALLOWED` 里登记的那一处），\
+             期限由起子进程原语执行 —— 零定时器铁律的落点",
         ),
         (
-            "control",
+            "plan",
             "crate::plugin::invoke::Done",
-            "④ 骨架的**返回类型**：`code`（`None` = 被信号打断）+ 两条流 + `diagnosis()`。\
+            "③ 骨架的**返回类型**：`code`（`None` = 被信号打断）+ 两条流。\
              ⚠ 码→语义的**映射表刻意不在这里** —— 同一个码在不同插件里语义互斥",
         ),
         (
-            "control",
-            "crate::plugin::invoke::NotRun",
-            "「根本没跑起来」那一类的类型：调用方要 `match` 它，才分得出\
-             「我给的参数太大」（自己能修）与「那个程序坏了」（自己修不了）",
+            "plan",
+            "crate::plugin::invoke::NotRun::ArgListTooLong",
+            "「根本没跑起来」的一种：参数太大（调用方自己能修）",
         ),
         (
-            "control",
-            "crate::plugin::invoke::TIMED_OUT_CODE",
-            "过了期限时交成的那个退出码。它是**期限的事实**、不是某个插件的语义 ⇒ 住通用层；\
-             而「超时之后跟人怎么说」是插件自己的话，留在调用方",
+            "plan",
+            "crate::plugin::invoke::NotRun::Failed",
+            "「根本没跑起来」的另一种：那个程序坏了（调用方修不了）",
+        ),
+        (
+            "plan",
+            "crate::plugin::invoke::first_line",
+            "从一条流里摘第一行当诊断：取法是调用口的形状，怎么说给人听留在调用方",
         ),
     ];
 
@@ -440,13 +443,13 @@ mod tests {
     /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
     /// 今天那份脚本与 `accounts/iso.rs` 都删了（账号库由 `accounts/manage/` 自己建），`accounts/` 照旧留在扫描面里。
     ///
-    /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
+    /// ⚠ 扫的是 **`control/` · `observe/` · `accounts/` · `plan/`**（今天用它的只有 plan：cc-bus 的收件箱进了后端，control 不再起插件）——
     /// 「今天只有 control 在用」是**读数**，不是性质。观测层哪天伸手过来（它一旦这么做，
     /// 就等于在只读层起进程），这条会红并逼人先把那条边写进表里。
     #[test]
     fn the_interface_into_plugin_is_exactly_the_registered_set() {
         let mut found: Vec<(String, String)> = Vec::new();
-        for layer in ["control", "observe", "accounts"] {
+        for layer in ["control", "observe", "accounts", "plan"] {
             let files = layer_sources(layer);
             assert_collection_is_complete(layer, &files);
             for (_, code) in &files {
