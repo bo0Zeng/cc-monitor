@@ -153,6 +153,42 @@ class NeedsBoardTest {
         }
 
     @Test
+    fun `第一次 sessions-needs 没问到 ⇒ 不用谁再叫，过一会儿自己又问；问到了就不再自己问`() =
+        runTest {
+            val a = Machine(listOf(session("a1")))
+            var failFirst = true
+            val ok = a.link.answer
+            a.link.answer = { cmd, args ->
+                if (cmd == "sessions-needs" && failFirst) {
+                    failFirst = false
+                    Reply.LinkDown
+                } else {
+                    ok(cmd, args)
+                }
+            }
+            val board = boardOf("a" to a)
+            assertEquals(1, a.asked("sessions-needs"))
+            assertNull(board.state.value["a"]?.list)
+            advanceTimeBy(NeedsBoard.RETRY_FIRST_MS + NeedsBoard.DEBOUNCE_MS + 1)
+            runCurrent()
+            assertEquals(2, a.asked("sessions-needs"))
+            assertEquals(1, board.total())
+            advanceTimeBy(60_000)
+            runCurrent()
+            assertEquals(2, a.asked("sessions-needs"))
+        }
+
+    @Test
+    fun `会话表里谁的点变了不另问：进出需手动由那台推 changed needs`() =
+        runTest {
+            val a = Machine(listOf(session("a1")))
+            boardOf("a" to a)
+            a.link.report("x", "/w", Faces.of("live-needs-you-tmux"))
+            settle()
+            assertEquals(1, a.asked("sessions-needs"))
+        }
+
+    @Test
     fun `聊天屏那一块读板上那一条：打开它不另问 sessions-needs`() =
         runTest {
             val a = Machine(listOf(session("s1")))
