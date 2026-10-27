@@ -9,7 +9,11 @@ fn a_path_under_the_home_is_shown_with_a_tilde() {
     assert_eq!(home_short("/home/x/a", x), "~/a");
     assert_eq!(home_short("/home/x", x), "~");
     assert_eq!(home_short("/home/x/a", Some(Path::new("/home/x/"))), "~/a");
-    assert_eq!(home_short("/home/xy/a", x), "/home/xy/a");
+    // 前缀相同、不在分隔处断开 ⇒ 不是家底下（`/home/u` 与 `/home/user`）。
+    assert_eq!(
+        home_short("/home/user/a", Some(Path::new("/home/u"))),
+        "/home/user/a"
+    );
     assert_eq!(home_short("/etc/a", x), "/etc/a");
     assert_eq!(home_short("~/a", x), "~/a");
     assert_eq!(home_short("/home/x/a", None), "/home/x/a");
