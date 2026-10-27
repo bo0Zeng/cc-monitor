@@ -45,8 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.BuildConfig
 import com.ccmonitor.mobile.core.claude.link.Deploying
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.TabKind
+import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -58,6 +58,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.FileState
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.Tone
@@ -123,7 +124,7 @@ private fun MachineBody(
 }
 
 /** 读那台的几行此刻能不能读：离线 · 要装 / 要更新 · 正在装 ⇒ 不能（灰着、不画旧值）。 */
-private fun readable(link: LinkState): Boolean = link !is LinkState.Down && link.deployFix() == null && link.busy == null
+private fun readable(link: LinkLine?): Boolean = link !is LinkLine.Down && link.deployFix() == null && link.busy() == null
 
 @Composable
 private fun Body(
@@ -172,7 +173,7 @@ private fun Body(
 private fun AccountCard(
     here: Here,
     board: MachineSettings,
-    link: LinkState,
+    link: LinkLine?,
     offlineLine: String,
     deploying: Deploying?,
     onReconnect: () -> Unit,
@@ -181,8 +182,8 @@ private fun AccountCard(
     val tokens = LocalAppTokens.current
     val ui by board.state.collectAsState()
     val fix = link.deployFix()
-    val busy = link.busy
-    val offline = link is LinkState.Down && fix == null && busy == null
+    val busy = link.busy()
+    val offline = link is LinkLine.Down && fix == null && busy == null
     val shape = RoundedCornerShape(tokens.radius.m)
     val border = tokens.borderFaint
     val frame =
@@ -209,7 +210,7 @@ private fun AccountCard(
                 when {
                     busy != null || offline -> null
                     fix != null -> tokens.warn
-                    link is LinkState.Up -> tokens.success
+                    link is LinkLine.Up -> tokens.success
                     else -> null
                 },
             )
@@ -221,7 +222,7 @@ private fun AccountCard(
                     Text(busy.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     CircularProgressIndicator(Modifier.size(SPIN.dp), strokeWidth = 2.dp)
                 }
-            fix != null -> NeedsFix(here, fix, (link as? LinkState.Down)?.said?.text ?: (link as? LinkState.Up)?.notice?.text, deploying)
+            fix != null -> NeedsFix(here, fix, link?.machine?.said?.takeIf { it.isNotEmpty() || link is LinkLine.Down }, deploying)
             offline ->
                 CardLine(offlineLine, MaterialTheme.colorScheme.onSurfaceVariant) {
                     SecondaryButton(onClick = onReconnect) { Text(copyText("newSession.machine.reconnect")) }

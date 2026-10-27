@@ -11,7 +11,6 @@ import com.ccmonitor.mobile.core.wire.gen.Decide
 import com.ccmonitor.mobile.core.wire.gen.DeployEnd
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.LiveCards
-import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.Moved
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
@@ -157,8 +156,8 @@ class ResidentFeed(
     private val onBreak: (String) -> Unit = {},
 ) : CoreLink,
     SessionWatch {
-    private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
-    override val state: StateFlow<LinkState> = stateFlow.asStateFlow()
+    private val stateFlow = MutableStateFlow<LinkLine?>(null)
+    override val state: StateFlow<LinkLine?> = stateFlow.asStateFlow()
     private val offlineFlow = MutableStateFlow<String?>(null)
     override val offline: StateFlow<String?> = offlineFlow.asStateFlow()
 
@@ -376,28 +375,13 @@ class ResidentFeed(
 
     /** `state` 那一行：通没通（[LinkLine] 那几支）＋ 那台的状态成品（部署走到哪一步也在它里面）。 */
     private fun onState(line: LinkLine) {
-        val machine = line.machine
-        offlineFlow.value = machine.offlineSaid
-        val said = Said(machine.said, machine.detail.orEmpty())
-        val busy =
-            when (machine.state) {
-                MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> Busy(machine.said, bar = true)
-                // 流还通着 / 断着、成品已在连 ⇒ 部署那一趟在问那台 · 在换常驻（流自己在接时不另说）。
-                MachineStateKind.CONNECTING -> Busy(machine.said, bar = false)
-                else -> null
-            }
-        when (line) {
-            // 会话簿随旧连接作废：核心在这一行之前交了空簿。
-            is LinkLine.Connecting -> stateFlow.value = LinkState.Connecting
-            is LinkLine.Up -> {
-                if (line.epoch != epochFlow.value) epochFlow.value = line.epoch
-                stateFlow.value = LinkState.Up(said.takeIf { it.text.isNotEmpty() }, machine.fixes, busy)
-            }
-            is LinkLine.Down -> stateFlow.value = LinkState.Down(said, machine.fixes, busy)
-        }
-        // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。
-        val now = stateFlow.value
-        if (deployFlow.value is Deploying.Done && (now is LinkState.Down || (now as? LinkState.Up)?.notice != null)) deployFlow.value = null
+        offlineFlow.value = line.machine.offlineSaid
+        // 会话簿随旧连接作废（连接中那一行之前核心交了空簿）；换了一条流 ⇒ epoch 跟着换。
+        if (line is LinkLine.Up && line.epoch != epochFlow.value) epochFlow.value = line.epoch
+        stateFlow.value = line
+        // 「装好了」那一句只留到下一次出事（断了 · 通着又有问题行）；没装上那一句留着，等下一趟。
+        val trouble = line is LinkLine.Down || (line is LinkLine.Up && line.machine.said.isNotEmpty())
+        if (deployFlow.value is Deploying.Done && trouble) deployFlow.value = null
     }
 
     /** 流上来的那几样：别的帧 · 核心解不开的一帧 · 核心折好的整份（会话簿换掉手上那一本；活卡是那一处此刻整份的卡）。 */

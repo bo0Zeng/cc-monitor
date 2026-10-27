@@ -1,14 +1,13 @@
 package com.ccmonitor.mobile.link
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 
 /**
  * 屏上那一句 ＋ 复制详情。核心写好的失败（[CoreFailure]）原样：`message` 上屏、`detail` 进详情；
- * 常驻流走不通 · 通着但那台后端旧了，那一句也是核心写好的（[Said]，桌面同一套字），手机不另判、不另写。
+ * 常驻流走不通 · 通着但那台后端旧了，那一句也是核心写好的（那台状态成品的 `said`，桌面同一套字），手机不另判、不另写。
  */
 data class Problem(
     val text: String,
@@ -17,13 +16,11 @@ data class Problem(
 
 private fun core(f: CoreFailure) = Problem(f.message, f.detail)
 
-private fun Said.problem() = Problem(text, detail)
+/** 那台状态成品的那一句 ＋ 复制详情（接一台走不通 ⇒ 核心说的那一句）。 */
+fun LinkLine.problem(): Problem = Problem(machine.said, machine.detail.orEmpty())
 
-/** 接一台走不通 ⇒ 核心说的那一句。 */
-fun LinkState.Down.problem(): Problem = said.problem()
-
-/** 通着、但那台旧了 · 较新（照用对得上的那几条）⇒ 成品那一句；没有 ⇒ `null`。 */
-fun LinkState.Up.notice(): Problem? = notice?.problem()
+/** 通着、但那台旧了 · 较新（照用对得上的那几条）⇒ 成品那一句；成品不出问题行 ⇒ `null`。 */
+fun LinkLine.Up.notice(): Problem? = problem().takeIf { it.text.isNotEmpty() }
 
 /**
  * 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。

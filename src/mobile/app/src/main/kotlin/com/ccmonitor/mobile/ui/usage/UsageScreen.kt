@@ -39,7 +39,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
@@ -47,6 +46,7 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.QuotaCell
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.Fetched
@@ -98,7 +98,7 @@ fun UsageScreen(
                 .testTag(UsageTags.SCREEN),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (link is LinkState.Down) {
+            if (link is LinkLine.Down) {
                 // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
                 DashedBar(offline ?: copyText("sessionState.unseen.name"), copyText("newSession.machine.reconnect"), feed::reconnect, Modifier.testTag(UsageTags.DOWN))
             } else {
@@ -106,7 +106,7 @@ fun UsageScreen(
             }
             when (val q = ui.quota) {
                 Fetched.Loading -> repeat(SKELETON_CARDS) { SkeletonCard() }
-                is Fetched.Failed -> if (link !is LinkState.Down) DashedBar(q.problem.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
+                is Fetched.Failed -> if (link !is LinkLine.Down) DashedBar(q.problem.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
                 is Fetched.Got -> {
                     val view = usageView(q.value, ui.accounts, ui.defaultAccount)
                     Head(view, board::reloadQuota)
