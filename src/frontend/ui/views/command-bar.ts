@@ -129,25 +129,20 @@ export function filterCommands(cmds: Command[], query: string): Command[] {
 
 const GROUP_ORDER: readonly CommandGroup[] = ["needs", "current", "machine", "open", "window", "account"];
 
+/** 每一段的标题（骨架字，不随数据变）。 */
+const GROUP_TITLE: Record<CommandGroup | "sessions" | "commands", () => string> = {
+  needs: () => copyText("commandBar.group.needs"),
+  current: () => copyText("commandBar.group.current"),
+  machine: () => copyText("commandBar.group.machine"),
+  open: () => copyText("commandBar.group.open"),
+  window: () => copyText("commandBar.group.window"),
+  account: () => copyText("commandBar.group.account"),
+  sessions: () => copyText("commandBar.group.sessions"),
+  commands: () => copyText("commandBar.group.commands"),
+};
+
 function groupTitle(g: CommandGroup | "sessions" | "commands"): string {
-  switch (g) {
-    case "needs":
-      return copyText("commandBar.group.needs");
-    case "current":
-      return copyText("commandBar.group.current");
-    case "machine":
-      return copyText("commandBar.group.machine");
-    case "open":
-      return copyText("commandBar.group.open");
-    case "window":
-      return copyText("commandBar.group.window");
-    case "account":
-      return copyText("commandBar.group.account");
-    case "sessions":
-      return copyText("commandBar.group.sessions");
-    case "commands":
-      return copyText("commandBar.group.commands");
-  }
+  return GROUP_TITLE[g]();
 }
 
 /**

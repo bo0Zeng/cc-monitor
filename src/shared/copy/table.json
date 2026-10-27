@@ -11699,6 +11699,12 @@
       "args": [],
       "limited": ["SSH"]
     },
+    "beMachineMenu.files.home": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "主目录",
+      "args": []
+    },
     "beMachineMenu.status.where": {
       "kind": "body",
       "role": "说明",
@@ -24393,12 +24399,6 @@
       "zh": "文件",
       "args": []
     },
-    "commandBar.machine.filesHome": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "主目录",
-      "args": []
-    },
     "commandBar.machine.status": {
       "kind": "action",
       "role": "菜单项",
@@ -24424,23 +24424,11 @@
       "args": [],
       "limited": ["SSH"]
     },
-    "commandBar.machine.sessions": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "会话 · {machine}",
-      "args": ["machine"]
-    },
     "commandBar.machine.altHint": {
       "kind": "body",
       "role": "片段",
       "zh": "Shift Enter 在终端里打开",
       "args": []
-    },
-    "commandBar.machine.terminalFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "打开终端失败 · {machine}",
-      "args": ["machine"]
     },
     "commandBar.group.current": {
       "kind": "title",

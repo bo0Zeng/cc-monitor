@@ -210,7 +210,7 @@ pub(crate) fn menu_in(
     if from != MachineFrom::Local {
         out.push(action(
             MenuAct::Files,
-            None,
+            Some(copy_text("beMachineMenu.files.home", &[])),
             (!reachable).then(|| not_now.clone().unwrap_or_default()),
         ));
     }

@@ -20,7 +20,7 @@ const state = (name: string, over: Partial<MachineState> = {}): MachineState => 
   os: "Linux",
   word: "",
   said: "",
-  offlineSaid: `${name} 离线`,
+  offlineSaid: `${name} w-off`,
   fixes: [],
   seenHostKey: null,
   expectedHostKey: null,
@@ -39,11 +39,11 @@ const to = (): MachineActions => ({ openTerminal: vi.fn(), newSession: vi.fn(), 
 
 const menu: MachineMenu = {
   from: "table",
-  head: state("nas", { state: "down", offline: true, word: "离线", said: "连接失败 · 端口不通" }),
+  head: state("nas", { state: "down", offline: true, word: "w-down", said: "said-down" }),
   actions: [
     { act: "open_terminal", sub: "ssh nas · 登录 shell", blocked: null, note: "终端照开" },
-    { act: "new_session", sub: null, blocked: "nas 离线", note: null },
-    { act: "files", sub: null, blocked: "nas 离线", note: null },
+    { act: "new_session", sub: null, blocked: "nas w-down", note: null },
+    { act: "files", sub: "sub-home", blocked: "nas w-down", note: null },
     { act: "machine_status", sub: "设置 → 机器 → nas", blocked: null, note: null },
   ],
 };
@@ -53,11 +53,11 @@ describe("machineBlock", () => {
     const acts = to();
     const b = machineBlock({ machine: "nas", from: "table", nth: null }, menu, [], acts);
     const [head, ...rest] = b.sections[0].items;
-    expect(head.machine).toEqual({ dot: "failed", name: "nas", word: "离线", said: "连接失败 · 端口不通", right: "Linux" });
+    expect(head.machine).toEqual({ dot: "failed", name: "nas", word: "w-down", said: "said-down", right: "Linux" });
     expect(rest.map((c) => [c.title, c.sub, c.disabled, c.note])).toEqual([
       [copyText("commandBar.machine.openTerminal"), "ssh nas · 登录 shell", undefined, "终端照开"],
-      [copyText("commandBar.machine.newSession"), undefined, "nas 离线", undefined],
-      [copyText("commandBar.machine.files"), copyText("commandBar.machine.filesHome"), "nas 离线", undefined],
+      [copyText("commandBar.machine.newSession"), undefined, "nas w-down", undefined],
+      [copyText("commandBar.machine.files"), "sub-home", "nas w-down", undefined],
       [copyText("commandBar.machine.status"), "设置 → 机器 → nas", undefined, undefined],
     ]);
     expect(b.select).toBe(rest[0].id);
@@ -70,7 +70,7 @@ describe("machineBlock", () => {
   it("这台的会话按那台挑、照给的先后编号；带了第几条 ⇒ 选中那一条，超出 ⇒ 不选会话", () => {
     const sessions = [ses("a", "nas"), ses("x", "devbox"), ses("b", "nas")];
     const b = machineBlock({ machine: "nas", from: "table", nth: 2 }, menu, sessions, to());
-    expect(b.sections[1].title).toBe(copyText("commandBar.machine.sessions", { machine: "nas" }));
+    expect(b.sections[1].title).toBe(copyText("commandBar.group.sessions"));
     expect(b.sections[1].items.map((c) => [c.id, c.hint])).toEqual([
       ["a", "1"],
       ["b", "2"],
@@ -84,7 +84,7 @@ describe("machineBlock", () => {
   it("只在 ssh 配置里的：头说未加入、右侧写出处", () => {
     const b = machineBlock(
       { machine: "backup", from: "ssh_config", nth: null },
-      { from: "ssh_config", head: null, actions: [{ act: "open_terminal", sub: "ssh backup · 登录 shell", blocked: null, note: null }, { act: "add_machine", sub: "设置 → 机器 → 从 ssh 配置导入", blocked: null, note: null }] },
+      { from: "ssh_config", head: null, actions: [{ act: "open_terminal", sub: "ssh backup · 登录 shell", blocked: null, note: null }, { act: "add_machine", sub: "add-where", blocked: null, note: null }] },
       [],
       to(),
     );
@@ -95,11 +95,11 @@ describe("machineBlock", () => {
 
 describe("machineRows", () => {
   it("每台一行，本机在前；词照成品；Enter 填名字", () => {
-    const rows = machineRows({ nas: state("nas"), "<local>": state("本机"), lab: state("lab", { state: "down", word: "连接失败" }) });
+    const rows = machineRows({ nas: state("nas"), "<local>": state("here"), lab: state("lab", { state: "down", word: "w-fail" }) });
     expect(rows.map((r) => [r.title, r.sub, r.dot, r.fill, r.group])).toEqual([
-      ["本机", undefined, "up", "本机", "machine"],
+      ["here", undefined, "up", "here", "machine"],
       ["nas", undefined, "up", "nas", "machine"],
-      ["lab", "连接失败", "failed", "lab", "machine"],
+      ["lab", "w-fail", "failed", "lab", "machine"],
     ]);
   });
 });
