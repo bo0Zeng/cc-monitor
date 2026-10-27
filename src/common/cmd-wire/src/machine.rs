@@ -405,13 +405,15 @@ pub struct MachineLink {
     pub jump: bool,
     /// 这一条上的字节压没压。
     pub compressed: bool,
+    /// 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
+    pub via_proxy: bool,
     /// 线上收到的字节（加密 · 压缩之后）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes_in: u64,
     /// 线上发出的字节。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes_out: u64,
-    /// 写好的那一句（地址 · 压没压 · 进出字节）。
+    /// 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
     pub said: String,
 }
 

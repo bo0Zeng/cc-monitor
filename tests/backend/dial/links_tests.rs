@@ -1,4 +1,4 @@
-//! `dial/links.rs`：池里的连接读数归到机器表里的那一台、写成成品的那几项（`MachineState.links`）。
+//! `dial/links.rs`：池里的连接读数归到机器表里的那一台、写成成品的那几项（`MachineState.links`；那几项怎么写在 `ssh_dial::pool::rows_of`）。
 //! 池快照是判据造的（不拨号）：身份照生产那一处现算（拨号请求 → `ssh_dial::pool::identity`），期望逐项手写。
 
 use super::*;
@@ -12,6 +12,7 @@ fn wire(endpoint: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> Wire
     Wire {
         endpoint: endpoint.to_string(),
         compressed,
+        via_proxy: false,
         bytes_in,
         bytes_out,
     }
@@ -24,11 +25,11 @@ fn key_of(hosts: &[Host], name: &str) -> String {
     ssh_dial::pool::identity(&req)
 }
 
-fn line(endpoint: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> String {
+fn line(place: &str, compressed: bool, bytes_in: u64, bytes_out: u64) -> String {
     copy_core::copy_text(
         "beLinks.row.line",
         &[
-            ("endpoint", endpoint),
+            ("endpoint", place),
             (
                 "packing",
                 &copy_core::copy_text(
@@ -93,6 +94,7 @@ fn pool_links_land_on_the_machine_whose_identity_they_carry() {
         endpoint: endpoint.to_string(),
         jump,
         compressed,
+        via_proxy: false,
         bytes_in: i,
         bytes_out: o,
         said: if jump {
@@ -125,13 +127,14 @@ fn pool_links_land_on_the_machine_whose_identity_they_carry() {
     assert_eq!(got, want);
 }
 
-/// ★ 写好的那一句：地址 · 压没压 · 进出字节都在里面（字照文案表，大小照 `size_text`）。
+/// ★ 写好的那一句：地址 · 压没压 · 进出字节都在里面（字照文案表，大小照 `size_text`）；直连那条不说经代理。
 #[test]
 fn the_line_says_where_whether_packed_and_the_bytes() {
-    let r = rows(&LinkFacts {
+    let r = LinkFacts {
         link: wire("h:22", true, 1536, 100),
         jumps: vec![],
-    });
+    }
+    .rows();
     assert_eq!(r.len(), 1);
     let said = &r[0].said;
     for part in [
@@ -143,4 +146,38 @@ fn the_line_says_where_whether_packed_and_the_bytes() {
         assert!(said.contains(&part), "那一句「{said}」里没有「{part}」");
     }
     assert!(!said.contains('〔'), "那一句用了文案表里没有的键：{said}");
+    assert!(!r[0].via_proxy);
+    assert_eq!(
+        *said,
+        line("h:22", true, 1536, 100),
+        "直连那条的地址那一格就是地址本身"
+    );
+}
+
+/// ★ 经代理：那一项带上 `via_proxy`，那一句的地址那一格照「经代理」那一条写（跳板那一项同样）；没经的那一项照旧。
+#[test]
+fn a_proxied_hop_says_so_in_its_line() {
+    let mut outer = wire("edge.test:22", false, 5000, 900);
+    outer.via_proxy = true;
+    let r = LinkFacts {
+        link: wire("deep.test:22", true, 3000, 100),
+        jumps: vec![outer],
+    }
+    .rows();
+    assert_eq!(r.len(), 2);
+    assert!(!r[0].via_proxy && r[1].via_proxy, "{r:?}");
+    let place = copy_core::copy_text("beLinks.route.proxy", &[("endpoint", "edge.test:22")]);
+    assert!(
+        !place.contains('〔'),
+        "「经代理」那一条不在文案表里：{place}"
+    );
+    assert_ne!(place, "edge.test:22", "「经代理」那一条什么也没加");
+    assert_eq!(
+        r[1].said,
+        copy_core::copy_text(
+            "beLinks.row.jumpLine",
+            &[("line", &line(&place, false, 5000, 900))]
+        )
+    );
+    assert_eq!(r[0].said, line("deep.test:22", true, 3000, 100));
 }
