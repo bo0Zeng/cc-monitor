@@ -576,7 +576,7 @@ export class TabManager {
       // 一张脸都还没收到（恢复的标签页、重放还没到）⇒ 监控板先不列它：格子画的就是那张脸，界面不替它拼一张。
       if (tab.face === null) continue;
       const face = tab.face;
-      const runs = this.live.board.of(tab.sessionId);
+      const runs = this.live.board.table(tab.sessionId);
       out.push({
         sessionId: tab.sessionId,
         title: tab.title,
@@ -584,8 +584,8 @@ export class TabManager {
         cwd: tab.projectDir,
         face, // 与 tab 栏同一张脸
         needs: needsOf(tab)?.text ?? null,
-        runningAgents: runs.filter((r) => r.state === "running").length,
-        totalAgents: runs.length,
+        runningAgents: runs.groups.running.length,
+        agents: runs.summary ?? null,
         context: tab.usage === null ? null : { text: tab.usage.contextText, tone: tab.usage.contextTone, percent: tab.usage.percent },
         unread: tab.unread,
         background: tab.background,
