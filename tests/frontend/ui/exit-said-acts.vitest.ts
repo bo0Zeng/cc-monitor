@@ -3,7 +3,7 @@
  * - 答题「别处已答」是 `needs-answer` 回包的一种结局（`result: "gone"` ＋ 那一句）：桌面 · 手机的产品源里不再认 `already_answered` · `closed_elsewhere` 两个码；
  * - 选项标红照语气（`tone: fail`）：出口不认 `deny-stop` 这个选项 id；
  * - 运行表的状态字 · 名字 · 记录里最近一件事由后端写进那一帧（`status_text` · `label_text` · `last_text`）：`runs.ts` 不再取 `runs.state.*` · `runs.label.*` · `runs.last.tool`；
- * - 送字的结局带下一步（`terminal-input` · `session-say` 回包的 `acts`：再发一次 · 重抓 · 重读名单）：出口不认拒因码。
+ * - 送字的结局带下一步（`terminal-input` 回包的 `acts`：再发一次 · 重抓 · 重读名单）：出口不认拒因码。
  * 正控：同一把尺在后端那一处量得到它们（没量到 ⇒ 本条在空转）。
  * 只扫生产源：测试与生成物不算；注释照扫（「零出现」就是零出现，免得说明里还留着旧码让人照抄）。
  */
@@ -56,7 +56,7 @@ describe("回答与运行表：出口照摆后端写好的成品", () => {
 
   it("★ 送字的结局：出口不认拒因码，给不给［再发一次］· 重抓 · 重读照后端的 `acts`", () => {
     // 拒因码里不与别的词撞的那几个（`ambiguous` · `ended` · `waiting` · `elsewhere` 别处另有义项，不当针），连手机那张「能重发」表的名字。
-    const needles = ["screen_changed", "not_known", "not_yours", "not_managed", "other_windows", "not_resumed", "not_idle", "RETRYABLE"] as const;
+    const needles = ["screen_changed", "not_known", "not_yours", "not_managed", "other_windows", "not_resumed", "RETRYABLE"] as const;
     const got = hits(EXITS, needles);
     expect(got.filter((h) => !PENDING.some((p) => h.startsWith(`${p} · `)))).toEqual([]);
     for (const p of PENDING) expect(got.some((h) => h.startsWith(`${p} · `)), `${p} 已经不认拒因码了 —— 把它从 PENDING 里删掉`).toBe(true);

@@ -27749,14 +27749,8 @@
     "plan.return.sent": {
       "kind": "body",
       "role": "toast",
-      "zh": "已送给 {session}",
+      "zh": "已排进 {session} 的输入队",
       "args": ["session"]
-    },
-    "plan.return.unsure": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "送达未知 · 别重发",
-      "args": []
     },
     "plan.return.resumeSend": {
       "kind": "action",
@@ -27769,12 +27763,6 @@
       "role": "按钮",
       "zh": "恢复并送出",
       "args": []
-    },
-    "plan.return.resumedSent": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已恢复 {session} 并送出",
-      "args": ["session"]
     },
     "plan.return.copied": {
       "kind": "body",

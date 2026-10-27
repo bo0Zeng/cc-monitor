@@ -1,12 +1,14 @@
 /**
- * 终端面板输入行的附件：［＋］· 粘贴 · 拖进同一排 chip；没传完 ⇒［送出］灰着说为什么；带附件经 `session-say` 送、送到清空、
- * 那台说已不在的那几颗变失败。读写换成假的（附件那几口照真的形状回）。
+ * 终端面板输入行的附件：［＋］· 粘贴 · 拖进同一排 chip；没传完 ⇒［送出］灰着说为什么；带附件那一句投进输入队（编号随那一句交）、
+ * 回执到了清空，那台拒了原样留着。读写换成假的（附件那几口照真的形状回）。
  */
 import { describe, expect, it, vi } from "vitest";
 
 import { TerminalPage, type AttachReads, type TerminalReads, type Watched } from "../../../src/frontend/ui/terminal-page";
 import type { AttachIo } from "../../../src/frontend/ui/attach-draft";
-import type { TerminalRow, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
+import type { TerminalRow, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
+import type { QueuePut } from "../../../src/frontend/ui/generated/QueuePut";
+import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { AttachItem } from "../../../src/frontend/ui/generated/AttachItem";
 import type { SessionAttachmentCommitReq } from "../../../src/frontend/ui/generated/SessionAttachmentCommitReq";
@@ -19,7 +21,7 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-function rig(opts: { hold?: boolean; sent?: { sent: TerminalSent; gone: string[] } } = {}) {
+function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut> } = {}) {
   let release: () => void = () => {};
   const held = new Promise<void>((r) => (release = r));
   let n = 0;
@@ -35,14 +37,14 @@ function rig(opts: { hold?: boolean; sent?: { sent: TerminalSent; gone: string[]
     newKey: () => "0".repeat(32),
     offline: () => false,
   };
-  const say = vi.fn(async () => opts.sent ?? { sent: { result: "delivered" as const, acts: [] }, gone: [] });
+  const say = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 1, place: 1, said: "q-1" })));
   const reads = {
     list: vi.fn(async () => [ROW]),
     shot: vi.fn(async () => SHOT),
     send: vi.fn(async () => ({ result: "delivered" as const, acts: [] })),
     follow: vi.fn(() => ({ stop: () => {} })),
   };
-  const attach: AttachReads = { say, io: () => io };
+  const attach: AttachReads = { put: say, io: () => io };
   const page = new TerminalPage({ active: () => SLOT, front: () => {}, focusStream: () => {} }, reads as unknown as TerminalReads, attach);
   document.body.replaceChildren(page.el);
   return { page, reads, say, release };
@@ -125,7 +127,7 @@ describe("终端面板输入行的附件", () => {
     expect(chips(page).length).toBe(2);
   });
 
-  it("★ 带附件那一句经 session-say 送（编号按先后 · 不走送字）；送到 ⇒ 字与 chip 一起清", async () => {
+  it("★ 带附件那一句投进输入队（编号按先后 · 不走送字）；回执到了 ⇒ 字与 chip 一起清", async () => {
     const { page, reads, say } = await opened();
     const picker = q<HTMLInputElement>(page, 'input[type="file"]');
     Object.defineProperty(picker, "files", { value: [file("a.css"), file("b.png")], configurable: true });
@@ -135,14 +137,15 @@ describe("终端面板输入行的附件", () => {
     box.value = "看下截图";
     box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flush();
-    expect(say).toHaveBeenCalledWith("devbox", { sid: "s-1", text: "看下截图", attachments: ["1027-1200-0001", "1027-1200-0002"], seen_screen: "fp" });
+    expect(say).toHaveBeenCalledWith("devbox", expect.objectContaining({ machine: "<local>", sid: "s-1", text: "看下截图", attachments: ["1027-1200-0001", "1027-1200-0002"], end: "monitor" }));
     expect(reads.send).not.toHaveBeenCalled();
     expect(box.value).toBe("");
     expect(chips(page)).toEqual([]);
   });
 
-  it("那台说有一份已不在 ⇒ 不清字，那一颗变失败 · 可重试", async () => {
-    const { page } = await opened({ sent: { sent: { result: "refused", said: "gone-said", screen: null, acts: [] }, gone: ["1027-1200-0001"] } });
+  it("那台拒了（附件已不在）⇒ 不清字、chip 留着，照那台那一句说", async () => {
+    const refused = new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "attachment_gone", message: "gone-said" })) }, "gone-said");
+    const { page } = await opened({ put: async () => Promise.reject(refused) });
     const picker = q<HTMLInputElement>(page, 'input[type="file"]');
     Object.defineProperty(picker, "files", { value: [file("a.css")], configurable: true });
     picker.dispatchEvent(new Event("change"));
@@ -152,8 +155,34 @@ describe("终端面板输入行的附件", () => {
     box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flush();
     expect(box.value).toBe("x");
-    const [c] = chips(page);
-    expect(c.dataset.state).toBe("failed");
-    expect(c.textContent).toContain(copyText("attach.chip.retry"));
+    expect(chips(page).length).toBe(1);
+    expect(page.el.textContent).toContain("gone-said");
+  });
+});
+
+/** ★ 说一句先成待发、没回执就留着：回执到之前那台断开 ⇒ 字留在框里「发送中」；那台连上 ⇒ 照同一个编号再交，回执到了才清框。 */
+describe("说一句：回执到了才算送出", () => {
+  it("回执前那台断开 ⇒ 待发里还在；连上后重交同一个编号；回执到了清框", async () => {
+    const down = new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
+    let up = false;
+    const { page, say } = await opened({ put: async () => (up ? { outcome: "seen", seq: 1, place: 1, said: "q-1" } : Promise.reject(down)) });
+    const picker = q<HTMLInputElement>(page, 'input[type="file"]');
+    Object.defineProperty(picker, "files", { value: [file("a.css")], configurable: true });
+    picker.dispatchEvent(new Event("change"));
+    await flush();
+    const box = q<HTMLTextAreaElement>(page, "textarea");
+    box.value = "接着做";
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await flush();
+    expect(box.value).toBe("接着做");
+    expect(page.el.textContent).toContain("no-answer");
+    up = true;
+    page.machineUp("devbox");
+    await flush();
+    const ids = say.mock.calls.map((c) => ((c as unknown[])[1] as { id: string }).id);
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(1);
+    expect(box.value).toBe("");
+    expect(page.el.textContent).toContain("q-1");
   });
 });
