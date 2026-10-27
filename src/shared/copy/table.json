@@ -31516,6 +31516,101 @@
       "zh": "清空会话",
       "args": []
     },
+    "mobAttach.plus.camera": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "拍照",
+      "args": []
+    },
+    "mobAttach.plus.image": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "图片",
+      "args": []
+    },
+    "mobAttach.plus.file": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "文件",
+      "args": []
+    },
+    "mobAttach.card.queued": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "排队",
+      "args": []
+    },
+    "mobAttach.card.failed": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "失败",
+      "args": []
+    },
+    "mobAttach.card.percent": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{n}%",
+      "args": [
+        "n"
+      ]
+    },
+    "mobAttach.card.remove": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移除 {name}",
+      "args": [
+        "name"
+      ]
+    },
+    "mobAttach.note.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "附件失败 · {said}",
+      "args": [
+        "said"
+      ]
+    },
+    "mobAttach.note.failedMany": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "附件失败 ×{n} · {said}",
+      "args": [
+        "n",
+        "said"
+      ]
+    },
+    "mobAttach.note.offline": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{said} · 连上后接着传",
+      "args": [
+        "said"
+      ]
+    },
+    "mobAttach.note.local": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "附件未存入本机",
+      "args": []
+    },
+    "mobAttach.note.noCamera": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "没有可用的相机",
+      "args": []
+    },
+    "mobAttach.act.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重试",
+      "args": []
+    },
+    "mobAttach.act.repick": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "换一张",
+      "args": []
+    },
     "sessionOpen.attached.title": {
       "kind": "body",
       "role": "说明",
