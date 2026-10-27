@@ -3,7 +3,7 @@
 //! ⚠ 家目录一律是临时目录（`Own::issue_at`），真 `~/.cc-monitor/` 一个字节都不碰；本机那一支不碰可达表与对面。
 
 use super::*;
-use crate::history::session_queue_wire::QueuePutOutcome;
+use cmd_wire::queue::QueuePutOutcome;
 use serde_json::json;
 
 fn home(tag: &str) -> std::path::PathBuf {
@@ -83,4 +83,36 @@ async fn local_put_lands_on_this_machine() {
     let list = q::read(&own, "s1", 101).unwrap();
     assert_eq!(list.items.len(), 1);
     assert_eq!(list.items[0].text, "hi");
+}
+
+/// 带附件投：有一份不在（或会话工作目录读不出）⇒ `attachment_gone`、那一句列出编号、队文件一个字节没写；都在 ⇒ 排进去、编号随那一条。
+#[test]
+fn attachments_are_checked_on_the_owner_before_anything_is_written() {
+    let h = home("attach");
+    let own = crate::platform::fs::Own::issue_at(&h);
+    let cwd = h.join("proj");
+    let at = cwd.join(".ccm-attach").join("1027-1200-a3f2");
+    std::fs::create_dir_all(&at).unwrap();
+    std::fs::write(at.join("a.png"), b"x").unwrap();
+    let req = |ids: &[&str]| {
+        put_req(json!({
+            "machine": "<local>", "sid": "s1", "id": "m1", "end": "desk", "atMs": 5, "text": "看图", "attachments": ids
+        }))
+        .unwrap()
+    };
+    let file = h.join(".cc-monitor/session-queue/s1.json");
+    let found = |_: &str| Some(cwd.clone());
+    let no = put_here(&own, &req(&["1027-1200-a3f2", "1027-1201-e95b"]), 100, &found)
+        .expect_err("有一份不在 ⇒ 拒");
+    assert_eq!(no.code, "attachment_gone");
+    assert!(no.message.to_string().contains("1027-1201-e95b"), "{}", no.message);
+    let no = put_here(&own, &req(&["1027-1200-a3f2"]), 100, &|_: &str| None).expect_err("读不出工作目录 ⇒ 拒");
+    assert_eq!(no.code, "attachment_gone");
+    assert!(!file.exists(), "拒了还写了队文件");
+    let got = put_here(&own, &req(&["1027-1200-a3f2"]), 100, &found).expect("都在");
+    assert_eq!(got.outcome, QueuePutOutcome::Queued);
+    assert_eq!(
+        q::read(&own, "s1", 101).unwrap().items[0].attachments,
+        ["1027-1200-a3f2"]
+    );
 }

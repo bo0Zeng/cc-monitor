@@ -9,9 +9,7 @@
 #[cfg(test)]
 use crate::dial::remote_ask::Said;
 use crate::dial::remote_ask::{Remote, Table};
-use crate::history::session_queue_wire::{
-    SessionQueueCancelReq, SessionQueuePutReq, SessionQueueReadReq,
-};
+use cmd_wire::queue::{SessionQueueCancelReq, SessionQueuePutReq, SessionQueueReadReq};
 use crate::platform::child::Until;
 use crate::wire::spec::Fail;
 use crate::wire::typed::Command;

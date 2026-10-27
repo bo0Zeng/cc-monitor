@@ -78,7 +78,7 @@ pub(crate) struct TerminalInputReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
-    /// `text` 之前各单独粘一次的那几段（`session-say` 带附件时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
+    /// `text` 之前各单独粘一次的那几段（投递带附件那一句时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
     #[serde(skip)]
     #[cfg_attr(test, ts(skip))]
     pub(crate) pastes: Vec<String>,
@@ -263,7 +263,7 @@ pub(crate) fn input(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
     t::input_on(On::default(), req)
 }
 
-/// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。`session-say` 经它送。
+/// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。输入队投递经它送（`faces/session_send.rs`）。
 pub(crate) fn say(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
     t::say_on(On::default(), req)
 }

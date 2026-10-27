@@ -11545,11 +11545,11 @@
       "zh": "会话在等批准或回答",
       "args": []
     },
-    "beTerminal.no.notIdle": {
+    "beQueue.put.attachmentGone": {
       "kind": "body",
       "role": "片段",
-      "zh": "会话不在闲着 · 没送",
-      "args": []
+      "zh": "附件已不在：{ids} · 没排进队",
+      "args": ["ids"]
     },
     "beTerminal.no.attachmentGone": {
       "kind": "body",
@@ -14471,12 +14471,6 @@
       "role": "报错",
       "zh": "该节点无{role} · 换一个送给",
       "args": ["role"]
-    },
-    "bePlan.return.waiting": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "会话在等批准或回答 · 先去会话里答",
-      "args": []
     },
     "sessionState.planReturn.ended": {
       "kind": "error",

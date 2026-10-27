@@ -1,6 +1,6 @@
 //! 聊天里随一句发的附件在会话那台的落点：`<工作目录>/.ccm-attach/<编号>/<原名>`，一份一个编号目录（名字原样、两份同名不撞）。
 //! 编号 `<MMDD-HHMM>-<4 位小写十六进制>`：落下那一刻那台钟上的月日时分 ＋ 四位尾巴。
-//! 写的一侧（`control/files_commit/session_attachment.rs`，文件管理那一块）与读的一侧（`session-say` 拼引用 · 各家适配层认记录里的引用）
+//! 写的一侧（`control/files_commit/session_attachment.rs`，文件管理那一块）与读的一侧（投进队时判在不在 · 投递时拼引用 · 各家适配层认记录里的引用）
 //! 认同一个形状；两块之间零互相依赖，共用的只许住 `common/`（同 [`super::staging`]）。
 
 /// 附件目录相对工作目录的名字。
@@ -58,6 +58,14 @@ pub fn find(cwd: &std::path::Path, id: &str) -> Option<String> {
         .flatten()
         .filter(|e| crate::platform::fs::Ro::symlink_metadata(e.path()).is_ok_and(|m| m.is_file()))
         .find_map(|e| e.file_name().to_str().map(str::to_string))
+}
+
+/// 工作目录 `cwd` 下找不到的那几个编号（照 `ids` 的先后；都在 ⇒ 空）。
+pub fn missing(cwd: &std::path::Path, ids: &[String]) -> Vec<String> {
+    ids.iter()
+        .filter(|id| find(cwd, id).is_none())
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]

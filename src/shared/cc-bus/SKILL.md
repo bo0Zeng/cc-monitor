@@ -120,10 +120,10 @@ bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 
 ## 适配面
 
-只剩 agent 那一面:结束钩子的回包怎么写(`agent_block_reason`;claude · codex 两本词典,`CCBUS_ADAPT_AGENT` 选,缺省 claude)。身份两家都问 cc-monitor 的 `--session-self`。敲门经后端 `session-say`,与 OS 无关。
+只剩 agent 那一面:结束钩子的回包怎么写(`agent_block_reason`;claude · codex 两本词典,`CCBUS_ADAPT_AGENT` 选,缺省 claude)。身份两家都问 cc-monitor 的 `--session-self`。敲门是投进对方会话的输入队(后端 `session-queue-put`),对方闲着时由后端送进去,与 OS 无关。
 
 ## 排障
 
 - 没送到:先看 `cc-bus send` 的退出码与 stderr 那一句(2 信封 · 3 范围 / 重复 / 限流 · 1 后端不在)。
-- 没敲门:二档本来不敲;一档 2 秒内对同一条会话只敲一次;看不到那一屏、对方不闲都不敲(stderr 说一句,信在收件箱里,轮末照样喂回)。
+- 没敲门:二档本来不敲;一档 2 秒内对同一条会话只敲一次;没投进对方的输入队就不敲(stderr 说一句,信在收件箱里,轮末照样喂回)。
 - 拒掉的那几封(重复 · 限流 · 范围)后端诊断日志里各记一行。

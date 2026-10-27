@@ -1366,10 +1366,13 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "machine": "<local>", "sid": "s-1", "extra": 1 }),
         ),
         (
-            "session-say",
-            serde_json::json!({ "sid": "s-1", "text": "hi", "enter": false }),
+            "session-queue-put",
+            serde_json::json!({ "machine": "<local>", "sid": "s-1", "id": "m", "end": "e", "atMs": 1, "text": "hi", "enter": false }),
         ),
-        ("session-say", serde_json::json!({ "sid": "s-1" })),
+        (
+            "session-queue-put",
+            serde_json::json!({ "machine": "<local>", "sid": "s-1" }),
+        ),
         (
             "session-permission",
             serde_json::json!({ "sid": "s-1", "mode": "plan", "key": "shift-tab" }),

@@ -12,7 +12,7 @@
 //!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束。
 //! - 全仓唯一的写口在这里：读—改—写在那个目录的跨进程锁里、原子换。读不出来（坏了 · 更新的版本）⇒ `queue_unreadable`，不覆盖。
 
-use super::session_queue_wire::{
+use cmd_wire::queue::{
     QueueCancelled, QueueItem, QueuePut, QueuePutOutcome, QueueState, SessionQueue,
     SessionQueuePutReq,
 };
@@ -28,6 +28,8 @@ use std::collections::{BTreeMap, VecDeque};
 pub(crate) const HOLD_MS: i64 = 3_000;
 /// 记住最近几个见过的 id（重发去重）。
 pub(crate) const SEEN_KEEP: usize = 512;
+/// 名单的 `sent` 留最近几个送进去的 id。
+pub(crate) const SENT_KEEP: usize = 32;
 /// 一条会话的队里最多几条（排着 · 收着 · 未送达合计）。
 pub(crate) const ITEMS_MAX: usize = 256;
 /// 一句最长多少字节。
@@ -60,6 +62,9 @@ pub(crate) struct Book {
     /// 还在名单里的那几条（排着 · 收着 · 未送达），照到达先后。
     #[serde(default)]
     items: Vec<Entry>,
+    /// 最近送进 agent 的那几条的 id（先进先出，留 [`SENT_KEEP`] 个）。
+    #[serde(default)]
+    sent: VecDeque<String>,
 }
 
 /// 盘上的一条：线上那几格 ＋ 端序号 ＋ 到主人这台的时刻（主人的钟）。
@@ -75,6 +80,8 @@ struct Entry {
     at_ms: i64,
     arrived_ms: i64,
     text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attachments: Vec<String>,
     state: QueueState,
 }
 
@@ -86,6 +93,7 @@ impl Default for Book {
             ends: BTreeMap::new(),
             seen: VecDeque::new(),
             items: Vec::new(),
+            sent: VecDeque::new(),
         }
     }
 }
@@ -182,6 +190,7 @@ impl Book {
             at_ms: req.at_ms,
             arrived_ms: now_ms,
             text: req.text.clone(),
+            attachments: req.attachments.clone(),
             state: QueueState::Held,
         });
         let i = self.items.len() - 1;
@@ -277,6 +286,10 @@ impl Book {
             return false;
         };
         self.items.remove(i);
+        self.sent.push_back(id.to_string());
+        while self.sent.len() > SENT_KEEP {
+            self.sent.pop_front();
+        }
         true
     }
 
@@ -300,6 +313,7 @@ impl Book {
         });
         SessionQueue {
             items: v.into_iter().map(item).collect(),
+            sent: self.sent.iter().cloned().collect(),
         }
     }
 }
@@ -311,6 +325,7 @@ fn item(e: &Entry) -> QueueItem {
         end: e.end.clone(),
         at_ms: e.at_ms,
         text: e.text.clone(),
+        attachments: e.attachments.clone(),
         state: e.state,
     }
 }

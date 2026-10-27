@@ -482,18 +482,17 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-open-facts",
     // 起会话 · 恢复 · 接回一个请求（`session-open`）派生的 CLI 面，理由同上。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-open",
-    // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    // 会话那几条（`session-commands` · `-model` · `-attachment-*` · `-permission`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-commands",
     "--session-model",
     "--session-attachment-check",
     "--session-attachment-commit",
     "--session-attachment-drop",
     "--session-permission",
-    // 会话输入队那三条（`session-queue-*`）派生的 CLI 面：手机与别的后端从这一面问。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    // 会话输入队那三条（`session-queue-*`）派生的 CLI 面：别的后端与 cc-bus 敲门从这一面投。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-queue-cancel",
     "--session-queue-put",
     "--session-queue-read",
-    "--session-say",
     "--sessions-stop",
     "--sessions-where",
     // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

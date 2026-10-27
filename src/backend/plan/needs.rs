@@ -73,7 +73,7 @@ pub(crate) struct Returned {
     pub(crate) at: u64,
     /// 送到的会话 sid。
     pub(crate) to: String,
-    /// `delivered` · `unsure`（送达未知）。
+    /// `queued`（投进了输入队）；盘上也认 `delivered` · `unsure`（送达未知）。
     pub(crate) result: String,
     /// 当时那一格的子格。
     pub(crate) children: Vec<String>,

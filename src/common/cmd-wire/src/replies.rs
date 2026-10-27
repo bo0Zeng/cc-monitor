@@ -128,7 +128,6 @@ replies! {
     "session-open-facts" => OpenFacts,
     "session-open" => Opened,
     "session-permission" => ModeSwitched,
-    "session-say" => Sent,
     "sessions-needs" => NeedsList,
     "terminal-input" => Sent,
     "terminal-preview" => Preview,
