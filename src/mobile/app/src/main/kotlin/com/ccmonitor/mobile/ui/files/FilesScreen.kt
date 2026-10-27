@@ -592,9 +592,8 @@ private fun DialogHost(
             DirBrowseScreen(
                 d.browser,
                 d.machine,
-                home = null,
                 onPick = {
-                    vm.copyTo(d.entries, RemotePath.of(it))
+                    vm.copyTo(d.entries, RemotePath.of(it.path))
                     close()
                 },
                 onDismiss = close,

@@ -20,8 +20,8 @@ import java.io.File
 class LaunchFromAliasesTest {
     private val book =
         mapOf(
-            "home" to "/h",
             "path" to "/h/.cc-monitor/profiles.toml",
+            "pathShown" to "~/.cc-monitor/profiles.toml",
             "exists" to true,
             "rev" to "fp1",
             "editedAt" to null,

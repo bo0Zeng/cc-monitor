@@ -41,8 +41,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 fun DirBrowseScreen(
     browser: DirBrowser,
     machine: String,
-    home: String?,
-    onPick: (String) -> Unit,
+    onPick: (Picked) -> Unit,
     onDismiss: () -> Unit,
     title: String = copyText("mobNewSession.dir.browseTitle"),
     pick: String = copyText("mobNewSession.dir.pick"),
@@ -56,7 +55,8 @@ fun DirBrowseScreen(
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
                 }
-                PathBar(s.path?.let { homeShort(it, home) }.orEmpty(), onUp = browser::up)
+                // 那台写好的那一串；那一层读不出 ⇒ 敲进来的原样。
+                PathBar(s.shown ?: s.path.orEmpty(), onUp = browser::up)
                 HorizontalDivider()
                 s.failed?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
                 LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
@@ -71,7 +71,8 @@ fun DirBrowseScreen(
                         )
                     }
                 }
-                Footer(browser.picked()?.let { homeShort(it, home) }, pick, enabled = browser.picked() != null && !s.loading) { browser.picked()?.let(onPick) }
+                val picked = browser.picked()
+                Footer(picked?.shown, pick, enabled = picked != null && !s.loading) { picked?.let(onPick) }
             }
         }
     }

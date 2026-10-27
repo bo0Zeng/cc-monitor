@@ -70,7 +70,7 @@ fun NewSessionPane(
         null -> Unit
     }
     if (browsing) {
-        DirBrowseScreen(browser, machine, ui.home, onPick = {
+        DirBrowseScreen(browser, machine, onPick = {
             picker.pickDir(it)
             browsing = false
         }, onDismiss = { browsing = false })

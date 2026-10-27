@@ -153,7 +153,7 @@ internal fun tabBaseLabel(
 }
 
 /**
- * 渲染期给重复标签编号：同名标签第 2、3 次出现补 ` ·2`/` ·3`，首个不编号，
+ * 渲染期给重复标签编号：同名标签第 2、3 次出现补编号（`mobTabs.row.numbered`），首个不编号，
  * 让 forceNew 产生的同名副本在面板里可区分。只是渲染修饰，不进 tab 元数据与去重键。
  */
 internal fun numberDuplicates(labels: List<String>): List<String> {
@@ -161,6 +161,6 @@ internal fun numberDuplicates(labels: List<String>): List<String> {
     return labels.map { l ->
         val n = (seen[l] ?: 0) + 1
         seen[l] = n
-        if (n > 1) "$l ·$n" else l
+        if (n > 1) copyText("mobTabs.row.numbered", "label" to l, "n" to n) else l
     }
 }

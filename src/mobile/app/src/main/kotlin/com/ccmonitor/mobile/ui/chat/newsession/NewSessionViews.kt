@@ -82,7 +82,7 @@ fun NewSessionBar(
             }
         }
         Chip(onClick = { onOpen(NewSessionSheet.Cwd) }, tag = NewSessionTags.CWD, modifier = Modifier.fillMaxWidth()) {
-            Text(homeShort(ui.cwd, ui.home), style = monoBody, maxLines = 1, overflow = TextOverflow.StartEllipsis, modifier = Modifier.weight(1f))
+            Text(ui.cwdShown, style = monoBody, maxLines = 1, overflow = TextOverflow.StartEllipsis, modifier = Modifier.weight(1f))
         }
         ui.factsFailed?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
@@ -167,7 +167,7 @@ fun CwdSheet(
     }
     ui.recent.forEach { r ->
         PickRow(
-            title = homeShort(r.cwd, ui.home),
+            title = r.shown,
             tag = NewSessionTags.ROW,
             mono = true,
             second = if (r.missing) copyText("newSession.cwd.missing") else null,

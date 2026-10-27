@@ -169,16 +169,3 @@ internal fun MachineDot(up: Boolean?) {
 }
 
 private const val DIM = 0.45f
-
-/** 路径里那台的家目录缩成 `~`（同桌面 `kit/path.ts::homeShort`）；家目录不知道 ⇒ 原样。 */
-internal fun homeShort(
-    path: String,
-    home: String?,
-): String {
-    val h = home?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return path
-    return when {
-        path == h -> "~"
-        path.startsWith("$h/") -> "~" + path.removePrefix(h)
-        else -> path
-    }
-}
