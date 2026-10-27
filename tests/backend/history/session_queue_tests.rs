@@ -263,7 +263,7 @@ fn the_delivery_side_lists_queues_and_names_touched_ones() {
         dir.join(format!("{SID}.json")),
         dir.join(format!(".{SID}.json.tmp")),
         dir.join("not a sid.json"),
-        h.join(format!("{SID}.json")),
+        h.join("s2.json"),
     ];
     assert_eq!(
         sids_touched(paths.iter().map(|p| p.as_path()), &dir),
