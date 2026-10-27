@@ -4355,12 +4355,6 @@
       "zh": "{program} 窗口 ×{n} · 此程序不提供控制台",
       "args": ["program", "n"]
     },
-    "front.body.unregistered": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本会话所在终端未登记",
-      "args": []
-    },
     "front.hint.unregistered": {
       "kind": "body",
       "role": "说明",
@@ -28126,6 +28120,12 @@
       "zh": "关闭",
       "args": []
     },
+    "mobTabs.row.numbered": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{label} · {n}",
+      "args": ["label", "n"]
+    },
     "mobTabs.open.aria": {
       "kind": "action",
       "role": "按钮",
@@ -28799,6 +28799,21 @@
         "C-W6": "按键时长那一栏以毫秒为单位输入，这里说的是输入框的单位，不是时长读数"
       }
     },
+    "mobKeys.dur.value": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{ms} ms",
+      "args": ["ms"],
+      "waive": {
+        "C-W6": "按键时长那一栏以毫秒为单位设定，这里写的是设定值与它的单位，不是时长读数"
+      }
+    },
+    "mobKeys.dur.unit": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "ms",
+      "args": []
+    },
     "mobKeys.dur.tip": {
       "kind": "body",
       "role": "悬停",
@@ -29104,13 +29119,13 @@
     "mobTmux.row.running": {
       "kind": "body",
       "role": "片段",
-      "zh": " · {command}",
+      "zh": "{command}",
       "args": ["command"]
     },
     "mobTmux.row.attached": {
       "kind": "body",
       "role": "片段",
-      "zh": " · 已有终端接入",
+      "zh": "已有终端接入",
       "args": []
     },
     "mobTmux.row.attach": {
