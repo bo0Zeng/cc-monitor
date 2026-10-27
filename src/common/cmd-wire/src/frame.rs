@@ -190,11 +190,6 @@ pub struct Hello {
         ts(optional, as = "Option<BTreeMap<String, String>>")
     )]
     pub frames: BTreeMap<String, String>,
-    /// 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造，
-    /// 壳只取本机后端那一份，每发一格「说不清」都带上它。没带 ⇒ 省略。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub unseen: Option<SessionFace>,
 }
 
 /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。

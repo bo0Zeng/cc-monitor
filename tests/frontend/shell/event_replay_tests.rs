@@ -454,7 +454,6 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
                     "added",
                     "status",
                     "left",
-                    "unseen",
                     "listed",
                     "snapshot_inflight",
                     "watch",
@@ -597,9 +596,8 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
             ("line", 3, 2),
             ("line", 4, 3),
             ("line", 5, 4),
+            // 有行、成品缓存里没说过 ⇒ 壳不补终局（去向由那台后端答，说不清也是它发的）。
             ("end", 6, 0),
-            // 有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（没 credit 也照交，排在行后）。
-            ("unseen", 7, 0)
         ]
     );
     // 过了就绪点：同一个 webview 再订一条（另一台机器的整台流）⇒ 当场交它的留存
@@ -611,19 +609,14 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     r.origin_seen(&boxo, true);
     r.subscribe("main", 2, &boxo, "session-lines", None, 10);
     for _ in guard_core::wall::rounds() {
-        if rec.all().iter().any(|i| what(i).0 == "unseen") {
+        if rec.all().iter().any(|i| what(i).0 == "end") {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert_eq!(
         rec.all().iter().map(what).collect::<Vec<_>>(),
-        vec![
-            ("start", 0, 0),
-            ("line", 1, 0),
-            ("end", 2, 0),
-            ("unseen", 3, 0)
-        ]
+        vec![("start", 0, 0), ("line", 1, 0), ("end", 2, 0),]
     );
 }
 
@@ -640,7 +633,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     r.on_line_batch_awaited(early).await;
     r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 100);
     for _ in guard_core::wall::rounds() {
-        if rec.all().iter().any(|i| what(i).0 == "unseen") {
+        if rec.all().iter().any(|i| what(i).0 == "end") {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -652,7 +645,6 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
             ("line", 1, 0),
             ("line", 2, 1),
             ("end", 3, 0),
-            ("unseen", 4, 0) // 只它那一个会话的终局
         ]
     );
     rec.clear();
@@ -662,7 +654,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     r.on_line_batch_awaited(mix).await;
     assert_eq!(
         rec.all().iter().map(what).collect::<Vec<_>>(),
-        vec![("line", 5, 2)] // 位置 4 是上面那格终局
+        vec![("line", 4, 2)] // 接着上面那格就绪点之后
     );
 }
 
@@ -1255,21 +1247,18 @@ async fn lifecycle_frames_go_out_without_credit_and_are_owed() {
     );
 }
 
-/// 只跟一个会话的订阅（`session-lines/<sid>`）收**机器级**「说不清」（它跟的那一条所在的那台看不见了），
+/// 只跟一个会话的订阅（`session-lines/<sid>`）只收说它那一条的格：它所在的那台看不见了也是逐条的一格 `left`（说不清），
 /// 不收「清单报完了」这种整台的簿记；说别的会话的格照旧不收。
 #[test]
-fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
+fn a_single_session_subscription_hears_only_its_own_session() {
     use crate::ui_contract::{self as b, SessionStreamFrame as F};
-    let unseen = F::Unseen(b::SessionUnseenPayload {
-        origin: crate::origin::Origin::local(),
-        face: None,
-    });
+    let unclear = F::Left(crate::frame_fixtures::session_left("mine", "unclear", "T"));
     let listed = F::Listed(b::OriginSessionsListedPayload {
         origin: crate::origin::Origin::local(),
         all: false,
     });
     let other = ended("other");
-    assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
+    assert!(unclear.reaches(Some("mine")) && unclear.reaches(None));
     assert!(!listed.reaches(Some("mine")) && listed.reaches(None));
     assert!(!other.reaches(Some("mine")) && other.reaches(Some("other")));
 }

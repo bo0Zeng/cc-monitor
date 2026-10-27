@@ -78,11 +78,11 @@ impl Conn {
 /// **会话内容的唯一收口**：吃 `local_lines` 通道；本机那条流 · 本机后端转来的各台那几条流（`relayed`），按那台各一份 [`LineIntake`]（本机 `<local>` 也是表里一格）。
 ///
 /// - 本机：这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）。
-/// - 别台：里面那一行是 hello ⇒ 那台这一条连接开（[`attached`]）；`gap` ⇒ 原位一格；`ended` ⇒ 冲完、那台成品作废、`Unseen`（[`ended`]）。
+/// - 别台：里面那一行是 hello ⇒ 那台这一条连接开（[`attached`]）；`gap` ⇒ 原位一格；`ended` ⇒ 冲完、那台清单作废、订阅原位 `Unseen`（[`ended`]）；那台各条的说不清是本机后端在 `ended` 之前发的 `session_left`。
 /// - 本机那条流结束（[`LocalItem::StreamEnded`]）⇒ 本机与经它转来的各台一并收（各台的连接随本机这条一起没了）；
 ///   下一条流换新的：本机后端先交此刻接着的各台的 hello、重新宣告每个活会话，旁路快照按续点接着拉（`snapshot_resume`）。
 ///
-/// **会话的起停也从这条流来**：有序的那几种经 [`apply`] 交 `session_book` 与收口；流断 ⇒ 那台的成品作废、当时活的 / 可重连的说不清（`session_book::In::LinkLost`），不归档。
+/// **会话的起停也从这条流来**：有序的那几种经 [`apply`] 交 `session_book` 与收口；流断 ⇒ 那台那一本的「清单报完了」作废（`session_book::In::Closed`），会话一条都不在这一侧改：说不清由本机后端逐条发。
 /// ⚠ 本任务**绝不**等一个经本机通道的应答（快照那几问在分发器的任务里）：读循环可能正停在往本通道送东西上，
 ///   这里要是也等它 ⇒ 互等。
 pub(crate) async fn consume(
@@ -239,7 +239,7 @@ fn attached(origin: &crate::origin::Origin, hello: Option<Frame>, replay: &Arc<E
     replay.origin_seen(origin, true);
 }
 
-/// 那台这一条连接断了：残批先冲完（行先落）、摘它的能力事实、成品整份作废（说不清）、订阅原位收 `Unseen`（不是终点）。
+/// 那台这一条连接断了：残批先冲完（行先落）、摘它的能力事实、那一本的清单作废、订阅原位收 `Unseen`（不是终点）。
 async fn ended(
     origin: &crate::origin::Origin,
     conns: &mut HashMap<crate::origin::Origin, Conn>,
@@ -252,10 +252,10 @@ async fn ended(
     if !origin.is_local() {
         crate::inbound_client::gone(origin);
     }
-    // 连接断了 ≠ 会话死了：那台的成品整份作废，当时活的 / 可重连的一律「说不清」；重连之后那台的新连接自己重报一遍。
-    crate::session_book::feed(BookIn::LinkLost { origin: at.clone() });
+    // 连接断了 ≠ 会话死了：说不清由本机后端逐条发（`session_left`，已经折进账里）；这里只作废「清单报完了」，下一条连接自己重报。
+    crate::session_book::feed(BookIn::Closed { origin: at.clone() });
     replay.origin_seen(origin, false);
-    tracing::info!("stream_source [{at}] 那一条连接结束 ⇒ 收口换新、这台的会话成品作废（说不清）");
+    tracing::info!("stream_source [{at}] 那一条连接结束 ⇒ 收口换新、这台的清单作废");
 }
 
 #[cfg(test)]

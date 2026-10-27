@@ -80,7 +80,7 @@ import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage, type Watched } from "./terminal-page";
-import { onMachineUp } from "./machine-feed";
+import { onMachineState, onMachineUp } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -282,6 +282,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const needsBook = new NeedsBook();
   // 组的账：本机后端问到各台的组并成一份（标签页栏的分组与固定照它画）。
   const groupBook = new GroupBook();
+  // 各台的状态成品 ⇒ 栏里的机器离线条（离线 · 几条状态不明都是本机后端说的）。
+  onMachineState((origin, m) => tabs.machineChanged(origin, m));
   // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
   onMachineUp((origin) => {
     terminalPage.machineUp(origin);
@@ -885,8 +887,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
       recordFile.onSessionFileNotice(sessionId, change);
     },
-    // 那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。机器级一格。
-    onOriginUnseen: (origin, face) => tabs.markOriginUnseen(origin, face),
     // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
     openMachineSettings: (origin) => void openSettingsWindow(undefined, dest.machineOf(origin)),
     // 本机会话宣告：没有 Tab（运行中途新出现的本地会话）→ 建骨架：bg 会话的 kind / name 只从这里来（首行建的 tab 不带 kind）。

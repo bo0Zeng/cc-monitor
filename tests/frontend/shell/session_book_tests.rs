@@ -1,7 +1,7 @@
-//! 「monitor 只收成品帧」· 「`Unseen` 不许被显示成已结束」—— `session_book` 只记账、不裁决。
+//! 「monitor 只收成品帧」· 「说不清不许被显示成已结束」—— `session_book` 只记账、不裁决。
 //!
-//! 钉两件：① 交进来的成品原样交出去（顺序不变），monitor 自己只说「连接断了 ⇒ 当时活的 / 可重连的说不清」；
-//! ② F5 重放计划：骨架在前、终局在后；有行却没成品的：那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说（去向由那台后端答）。
+//! 钉两件：① 交进来的成品原样交出去（顺序不变），连接断了 monitor 一句都不自己说（说不清是本机后端逐条发的 `session_left`）；
+//! ② F5 重放计划：骨架在前、终局在后；有行却没成品的不说（去向由那台后端答）。
 use super::*;
 
 fn meta(cwd: &str) -> cmd_wire::frame::SessionAdded {
@@ -53,7 +53,7 @@ fn the_shared_frames_fold_into_the_same_book_the_phone_gets() {
 }
 
 #[test]
-fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word() {
+fn products_pass_through_in_order_and_a_closed_link_adds_nothing() {
     let mut b = Book::default();
     let mut out = Vec::new();
     for ev in [
@@ -64,11 +64,11 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         left("pi", "c", "ended"),
         listed("pi"),
         live("<local>", "x"),
-        In::LinkLost {
+        In::Closed {
             origin: "pi".into(),
         },
-        In::LinkLost {
-            origin: "pi".into(),
+        In::Closed {
+            origin: "nowhere".into(),
         },
     ] {
         out.extend(b.step(ev));
@@ -82,7 +82,6 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
             Out::Listed { origin, all } => {
                 format!("listed {origin}{}", if *all { " all" } else { "" })
             }
-            Out::Unseen { origin, sids, .. } => format!("unseen {origin} {sids:?}"),
             Out::Runs { runs, .. } => format!("runs {}", runs.sid),
             Out::Branch { sid, .. } => format!("branch {sid}"),
         })
@@ -96,9 +95,8 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
             "left b Reconnectable",
             "left c Ended",
             "listed pi",
+            // 连接收了：一格都不交（说不清由本机后端逐条发，这一侧不合成）。
             "live x",
-            // 断连：活的 ∪ 可重连的说不清；已结束的不动；那台的账整份作废（再断一次无话可说）；别的机器不受牵连。
-            r#"unseen pi ["a", "b"]"#,
         ]
     );
 }
@@ -110,6 +108,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         live("pi", "a"),
         left("pi", "r", "reconnectable"),
         left("pi", "e", "ended"),
+        left("pi", "u", "unclear"),
         listed("pi"),
         live("mu", "m"),
     ] {
@@ -118,6 +117,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     let buffered: Vec<(String, String)> = [
         ("a", "pi"),
         ("e", "pi"),
+        ("u", "pi"),
         ("gone", "pi"),
         ("m", "mu"),
         ("n", "mu"),
@@ -137,7 +137,6 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }
-                Out::Unseen { origin, sids, .. } => format!("unseen {origin} {sids:?}"),
                 Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
@@ -148,35 +147,40 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     assert_eq!(
         said(&r.after),
         vec![
-            // 有行、这条连接上没说过、那台没报完（`mu`）/ 根本没连上（`zz`）⇒ **机器级**说不清，排在终局最前；
-            //   紧跟着那台说过的活会话再宣告一次（前端按机器落说不清会把它一并落下，这一格翻回来）。
-            r#"unseen mu ["n"]"#,
-            "live mu/m",
-            r#"unseen zz ["far"]"#,
             "left pi/r Reconnectable",
             "left pi/e Ended",
-            // 那台报完了清单、这条没被说过（`gone`）⇒ 不说：去向由那台后端答（这里补一句就是 monitor 自己在裁）。
+            // 本机后端在断线那一刻说过的说不清照原样再说一次。
+            "left pi/u Unclear",
+            // 有行、没被说过（`gone` · 那台没报完的 `mu/n` · 根本没连上的 `zz/far`）⇒ 不说：去向由那台后端答（这里补一句就是 monitor 自己在合成）。
             "listed pi",
         ]
     );
 }
 
-/// 〔「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）。
+/// ★ 说不清是本机后端发的那一帧 `session_left`（`face.life = unclear`）：原样转成会话流一格 `left`；之后连接收了，这一侧一格都不补。
 #[test]
-fn unseen_is_one_machine_level_cell() {
+fn the_backends_unclear_left_passes_through_and_a_closed_link_adds_nothing() {
     let mut b = Book::default();
     b.step(live("pi", "a"));
-    b.step(left("pi", "r", "reconnectable"));
-    let lost = b.step(In::LinkLost {
-        origin: "pi".into(),
-    });
-    let frames: Vec<String> = lost
+    let said = b.step(left("pi", "a", "unclear"));
+    let frames: Vec<serde_json::Value> = said
         .iter()
-        .map(|o| serde_json::to_string(&o.frame()).unwrap())
+        .map(|o| serde_json::to_value(o.frame()).unwrap())
         .collect();
+    assert_eq!(frames.len(), 1, "{frames:?}");
     assert_eq!(
-        frames,
-        vec![r#"{"unseen":{"origin":"pi","face":null}}"#.to_string()]
+        frames[0]["left"]["face"]["life"],
+        serde_json::json!({"is": "unclear"})
+    );
+    assert!(b
+        .step(In::Closed {
+            origin: "pi".into(),
+        })
+        .is_empty());
+    assert_eq!(
+        b.of("pi").map(|p| p.left.len()),
+        Some(1),
+        "账照留：F5 重放照它再说"
     );
 }
 
@@ -274,8 +278,8 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
         all_of(b.step(listed("gpu-01"))),
         vec![("gpu-01".into(), true)]
     );
-    // 那台断了（账作废）⇒ 再报一次之前不立。
-    b.step(In::LinkLost {
+    // 那台这一条连接收了（清单作废）⇒ 再报一次之前不立。
+    b.step(In::Closed {
         origin: "pi".into(),
     });
     assert_eq!(
@@ -349,7 +353,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
 /// read8c：报名单时交回手上那份主线外清单（条数 ＋ 那台给的最后一帧的摘要）—— 断线不摘（重接之后交回，那台只补缺的）；
 /// 拼的时候中间缺过一截（`at` 比手上的长）⇒ 说不准，交 `at: 0`；没有的、会话离开了的 ⇒ `at: 0`；那台报完清单时不在了 ⇒ 摘。
 #[test]
-fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
+fn the_branch_list_on_hand_is_handed_back_across_a_lost_link_said_unclear() {
     use cmd_wire::watch::BranchHeld;
     let nothing = |sid: &str| BranchHeld {
         sid: sid.into(),
@@ -376,7 +380,10 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     b.step(branch("a", 2, &["u3"], "s3"));
     b.step(branch("b", 0, &["x"], "sx"));
     b.step(branch("b", 5, &["y"], "sy")); // 前 5 条照旧，手上只有 1 条 ⇒ 中间缺过
-    b.step(In::LinkLost {
+                                          // 断的那一刻本机后端先说两条说不清，再收这一条连接。
+    b.step(left("pi", "a", "unclear"));
+    b.step(left("pi", "b", "unclear"));
+    b.step(In::Closed {
         origin: "pi".into(),
     });
     assert_eq!(
@@ -447,40 +454,11 @@ fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_
     );
 }
 
-/// 「说不清」那一格带的脸是本机后端 hello 交来的那一张（壳只转交，不自己拼）；本机后端还没握上手 ⇒ `null`（界面不画点）。
-#[test]
-fn the_unseen_cell_carries_the_face_the_local_backend_handed_over() {
-    let faces = |outs: Vec<Out>| -> Vec<Option<cmd_wire::frame::SessionFace>> {
-        outs.iter()
-            .filter_map(|o| match o.frame() {
-                crate::ui_contract::SessionStreamFrame::Unseen(p) => Some(p.face),
-                _ => None,
-            })
-            .collect()
-    };
-    let mut b = Book::default();
-    b.step(live("pi", "a"));
-    let lost = b.step(In::LinkLost {
-        origin: "pi".into(),
-    });
-    assert_eq!(faces(lost), vec![None], "本机后端还没握上手 ⇒ 不画点");
-    let face = crate::frame_fixtures::session_left("a", "ended", "T").face;
-    assert!(b
-        .step(In::UnseenFace {
-            face: Some(face.clone())
-        })
-        .is_empty());
-    b.step(live("pi", "a"));
-    let lost = b.step(In::LinkLost {
-        origin: "pi".into(),
-    });
-    assert_eq!(faces(lost), vec![Some(face)], "照本机后端交来的那一张");
-}
-
 /// 离开那一帧说的去向（同改形之前的写法：`Reconnectable` · `Ended`）。
 fn went(l: &cmd_wire::frame::SessionLeft) -> &'static str {
     match l.face.life {
         cmd_wire::frame::Life::Reconnectable => "Reconnectable",
+        cmd_wire::frame::Life::Unclear => "Unclear",
         _ => "Ended",
     }
 }

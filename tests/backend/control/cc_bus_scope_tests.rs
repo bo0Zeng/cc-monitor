@@ -20,7 +20,9 @@ fn member(origin: &str, sid: &str) -> GroupMember {
         origin: Machine::named(origin),
         sid: sid.into(),
         pinned: false,
-        face: crate::wire::unseen_face(),
+        face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
+            crate::wire::Life::Unseen,
+        ),
         facts: MemberFacts {
             title: "t".into(),
             cwd: None,

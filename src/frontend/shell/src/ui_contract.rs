@@ -9,7 +9,7 @@
 use serde::Serialize;
 
 pub mod events {
-    // 会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
+    // 会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` /
     //   `-activity` · `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进了会话流 `subscribe(origin, "session-lines")`：
     //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），没 credit 也照交、不丢（[`super::SessionStreamFrame::never_dropped`]）。
     // `task-update` 事件退役：任务变更经通道 `subscribe(origin, "changed/tasks")`（后端 `changed {tasks}` 帧）。
@@ -144,8 +144,6 @@ pub enum SessionStreamFrame {
     Status(cmd_wire::frame::SessionStatus),
     /// 离开「活」（`session_left`：去向在 `face.life`）。
     Left(cmd_wire::frame::SessionLeft),
-    /// 说不清（那台看不见了 / F5 时那台还没报完清单）。
-    Unseen(SessionUnseenPayload),
     /// 那台的活会话清单报完了。
     Listed(OriginSessionsListedPayload),
     /// 旁路快照在途几份（全局电平；批模式据此不提前收尾）。
@@ -170,7 +168,6 @@ impl SessionStreamFrame {
             SessionStreamFrame::Added(_)
             | SessionStreamFrame::Status(_)
             | SessionStreamFrame::Left(_)
-            | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_)
             | SessionStreamFrame::Runs(_)
@@ -179,13 +176,13 @@ impl SessionStreamFrame {
         }
     }
 
-    /// 一条订阅（`only` = 只跟某一个会话的那一形）收不收这一格：说某个会话的 ⇒ 是它才收；说整台的 ⇒ 整台订阅都收，
-    /// 只跟一个会话的只收机器级「说不清」（那台看不见了，它跟的那一条也说不清了）。
+    /// 一条订阅（`only` = 只跟某一个会话的那一形）收不收这一格：说某个会话的 ⇒ 是它才收；说整台的 ⇒ 只有整台订阅收
+    /// （说不清也是逐会话的 `session_left`）。
     pub fn reaches(&self, only: Option<&str>) -> bool {
         match (only, self.session_id()) {
             (None, _) => true,
             (Some(want), Some(sid)) => want == sid,
-            (Some(_), None) => matches!(self, SessionStreamFrame::Unseen(_)),
+            (Some(_), None) => false,
         }
     }
 
@@ -201,7 +198,6 @@ impl SessionStreamFrame {
             SessionStreamFrame::Branch(p) => Some(&p.sid),
             SessionStreamFrame::Watch(p) => Some(&p.sid),
             SessionStreamFrame::Batch(_)
-            | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_) => None,
         }
@@ -257,18 +253,6 @@ pub struct SessionFileNoticePayload {
 pub enum BatchEdge {
     Start,
     End,
-}
-
-/// 「说不清」的 payload（会话流 `unseen` 那一格）。
-/// **机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
-/// （原先逐会话发一格 `session_id`）。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionUnseenPayload {
-    pub origin: crate::origin::Origin,
-    /// 那几条落成的那一张脸：本机后端造好、随它的 hello 交来的那一份（界面照它画，不自己拼）；本机后端还没握上手 ⇒ `null`（不画点）。
-    pub face: Option<cmd_wire::frame::SessionFace>,
 }
 
 /// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：哪台机器 ＋ 那台某会话某运行此刻整份的活卡（壳照端核心的活卡板折好，

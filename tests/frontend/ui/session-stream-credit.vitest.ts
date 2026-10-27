@@ -28,7 +28,6 @@ const ONE: { [K in Kind]: unknown } = {
   added: { sid: "s", agent_kind: "claude", pid: 1, container: { host: "none" } },
   status: { sid: "s" },
   left: { sid: "s", face: { life: { is: "ended" } } },
-  unseen: { origin: "<local>" },
   listed: { origin: "<local>", all: true },
   snapshot_inflight: { count: 0 },
   runs: { sid: "s", runs: [], ended: [] },

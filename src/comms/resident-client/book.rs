@@ -2,7 +2,7 @@
 //! （`mobcore::resident`，每台一本）都只调这里的 [`SessionBook::fold`]，各端不另写一份折法。
 //!
 //! 只记、不裁：活 / 可重连 / 已结束、脸、标题都是那台后端裁好的（帧 `session_added` · `session_status` · `session_left` …），
-//! 这里只照帧把整份换到此刻。连接断了那一刻（说不清）由各端自己说：簿随连接走，断了各端丢掉这一本。
+//! 这里只照帧把整份换到此刻。连接断了那一刻的说不清也是一帧 `session_left`（`face.life = unclear`）：桌面那一路由本机后端照它那一本发（`control/feeds.rs`）。
 
 use std::collections::BTreeMap;
 

@@ -18,8 +18,6 @@ import type { SessionRuns } from "./generated/SessionRuns";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { WatchFrom } from "./generated/WatchFrom";
 import type { SessionFace } from "./generated/SessionFace";
-/** 「说不清」那一格带来的那张脸（本机后端还没握上手 ⇒ `null`，不画点）。 */
-type UnseenFace = SessionFace | null;
 export type { JsonlLinePayload };
 
 
@@ -92,13 +90,6 @@ export interface EventHandlers {
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读之后的尾段由壳照宣告那样重取，排在它后面。
    */
   onSessionFileNotice?: (sessionId: string, change: string) => void;
-  /**
-   * 那台机器看不见了（会话流 `unseen` 格：连接断了 / F5 时那台还没报完清单）⇒ 那台上活的 · 可重连的落说不清。
-   * 机器级：一格说一台。后端紧跟着把那台还活着的再宣告一次 ⇒ 真活着的翻回活。
-   * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
-   * `face` ＝ 那几条落成的那一张（本机后端造好、壳转交；本机后端还没握上手 ⇒ `null`，不画点）。
-   */
-  onOriginUnseen?: (origin: string, face: UnseenFace) => void;
   /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
   openMachineSettings?: (origin: Origin) => void;
   /**
@@ -185,8 +176,6 @@ type Queued =
   | { kind: "branch"; payload: SessionBranchPayload }
   | { kind: "watch"; origin: Origin; payload: WatchFrom }
   | { kind: "listed"; origin: string; all: boolean }
-  // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
-  | { kind: "unseen"; origin: string; face: UnseenFace }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string };
 
@@ -469,8 +458,6 @@ export async function bindEvents(
         handlers.onSessionWatch?.(item.origin, item.payload);
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin, item.all);
-      } else if (item.kind === "unseen") {
-        handlers.onOriginUnseen?.(item.origin, item.face);
       } else if (item.kind === "file-notice") {
         handlers.onSessionFileNotice?.(item.sessionId, item.change);
       } else if (item.kind === "gap") {
@@ -625,8 +612,6 @@ export async function bindEvents(
           take({ kind: "watch", origin, payload: f.watch });
         } else if (f !== null && typeof f === "object" && "left" in f) {
           take({ kind: "face", sessionId: f.left.sid, face: f.left.face, name: null });
-        } else if (f !== null && typeof f === "object" && "unseen" in f) {
-          take({ kind: "unseen", origin: f.unseen.origin, face: f.unseen.face });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
           take({ kind: "listed", origin: f.listed.origin, all: f.listed.all === true });
         } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {
@@ -895,11 +880,13 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
         if ("line" in f) {
           if (f.line.session_id === sid) lines.push(f.line);
         } else if ("left" in f) {
-          if (f.left.sid === sid && f.left.face.life.is !== "reconnectable") out.push({ t: "live", live: false });
+          // 说不清（断线那一刻本机后端说的）⇒ 看不见，不是走了；可重连 ⇒ 不算走了。
+          const life = f.left.sid === sid ? f.left.face.life.is : "reconnectable";
+          if (life === "unclear") out.push({ t: "sight", seen: false });
+          else if (life !== "reconnectable") out.push({ t: "live", live: false });
         } else if ("added" in f) {
           if (f.added.sid === sid) out.push({ t: "live", live: true });
-        } else if ("unseen" in f) out.push({ t: "sight", seen: false });
-        else if ("runs" in f) {
+        } else if ("runs" in f) {
           if (f.runs.sid === sid) out.push({ t: "runs", payload: f.runs });
         } else if ("branch" in f) {
           if (f.branch.sid === sid) out.push({ t: "branch", off: f.branch.off });

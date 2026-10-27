@@ -9,13 +9,16 @@
 //! - 版本号：那台 hello 自报的那一格（`version`；没带 ⇒ 空）。
 //! - 那台流上的事原样转给连着本机后端的每条流连接（[`Relay`]，生产 ＝ 每一份 watcher 的出方向，由 `main.rs` 接上）：
 //!   每条连接先它的 hello、再流上的帧、丢了一行一格 `gap`、断了一帧 `ended`（`relayed` 帧，`cmd_wire::frame::Relayed`）。
+//!   断的那一刻先给那台活的 · 可重连的每一条转一帧 `session_left`（说不清），这一端记着那台说过的会话（端核心的会话簿）。
 //!   新连上来的流先收此刻接着的各台的 hello（[`attached_hellos`]），不然它收不到那台这一条连接的开头。
 //! - 在看名单：每台一张名单台（[`Desk`]，随这个进程一直留着，那台换连接重报）；连着本机后端的各条流报那台的名单
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
 use crate::wire::Frame;
+use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use cmd_wire::frame::Relayed;
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
+use resident_client::book::{Seat, SessionBook};
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;
 use std::collections::{BTreeSet, HashMap};
@@ -195,6 +198,73 @@ struct Seen {
     attached: bool,
     /// 那台 hello 自报的版本号（最近一次接上的那一份）。
     version: Option<String>,
+    /// 那台说过的会话（端核心的会话簿，只折 `session_*` 那几种）：随这一台的 feed 活着，换连接不丢 ——
+    /// 断的那一刻照它说哪几条说不清（[`unclear_now`]），重连之后那台重报的帧把它们一条条换掉。
+    book: SessionBook,
+    /// 上一回记进机器状态的「这台几条状态不明」。
+    counted: u32,
+}
+
+impl Seen {
+    /// 簿里此刻几条说不清；与上一回记的不同 ⇒ 交回新数（调用方记进机器状态）。
+    fn recount(&mut self) -> Option<u32> {
+        let n = self
+            .book
+            .left
+            .values()
+            .filter(|s| s.face.life == cmd_wire::frame::Life::Unclear)
+            .count();
+        let n = u32::try_from(n).unwrap_or(u32::MAX);
+        (n != self.counted).then(|| {
+            self.counted = n;
+            n
+        })
+    }
+}
+
+/// 「这台几条状态不明」变了 ⇒ 记进机器状态（推 `changed {machine}`）。
+fn note_unclear(machine: &str, n: Option<u32>) {
+    if let Some(n) = n {
+        crate::control::machine_state::note(machine, deploy::machine::Fact::Unclear(n));
+    }
+}
+
+/// 流上这一行是会话帧 ⇒ 折进那台的簿（别的帧不解）。
+fn fold_line(book: &mut SessionBook, line: &str) {
+    let Ok(kind) = cmd_wire::frame::kind_of(line) else {
+        return;
+    };
+    if !kind.starts_with("session") {
+        return;
+    }
+    if let Ok(f) = cmd_wire::frame::decode::<serde::de::IgnoredAny>(line) {
+        book.fold(&f);
+    }
+}
+
+/// 那台这一条连接断的那一刻：簿里活的 · 可重连的每一条落成说不清（看不见那一张脸，`face.life = unclear`），
+/// 自己先折进簿，交回要转出去的那几行（按 sid 排）。已结束 · 记录已不在的不说。
+fn unclear_now(book: &mut SessionBook) -> Vec<String> {
+    let open: Vec<String> = book
+        .seats()
+        .filter(|(_, p)| match p {
+            Seat::Live(_) => true,
+            Seat::Left(s) => s.face.life == cmd_wire::frame::Life::Reconnectable,
+        })
+        .map(|(sid, _)| sid.clone())
+        .collect();
+    let face = SessionFace::of(crate::wire::Life::Unseen);
+    open.into_iter()
+        .filter_map(|sid| {
+            let f: cmd_wire::frame::Frame<serde_json::Value> =
+                cmd_wire::frame::Frame::SessionLeft(SessionLeft {
+                    sid,
+                    face: face.clone(),
+                });
+            book.fold(&f);
+            serde_json::to_string(&f).ok()
+        })
+        .collect()
 }
 
 /// 起一台的那一条：循环交的那一态原样进机器状态；那台流上的事原样转出去（[`Relay`]）。
@@ -229,20 +299,42 @@ fn start_one(machine: &str, ssh: &Arc<dyn Ssh>, relay: &Relay) -> Arc<Feed<Link>
                         line: hello,
                     }));
                 }
-                Event::Frame(line) => relay(Frame::Relayed(Relayed::Line { machine, line })),
+                Event::Frame(line) => {
+                    let n = {
+                        let mut s = lock(&seen);
+                        fold_line(&mut s.book, &line);
+                        s.recount()
+                    };
+                    note_unclear(&name, n);
+                    relay(Frame::Relayed(Relayed::Line { machine, line }));
+                }
                 Event::Gap => relay(Frame::Relayed(Relayed::Gap { machine })),
                 Event::State(st) => {
                     let up = matches!(st, feed::State::Up { .. });
-                    let (version, ended) = {
+                    let (version, ended, unclear, n) = {
                         let mut s = lock(&seen);
                         s.up = up.then(|| crate::dial::streams::hold(&name));
                         let ended = !up && std::mem::take(&mut s.attached);
-                        (s.version.clone(), ended)
+                        let unclear = if ended {
+                            unclear_now(&mut s.book)
+                        } else {
+                            Vec::new()
+                        };
+                        let n = s.recount();
+                        (s.version.clone(), ended, unclear, n)
                     };
                     if ended {
                         lock(hellos()).remove(&machine);
+                        // 断了 ≠ 会话死了：那台活的 · 可重连的由这一端说说不清（排在 `ended` 之前），壳不合成。
+                        for line in unclear {
+                            relay(Frame::Relayed(Relayed::Line {
+                                machine: machine.clone(),
+                                line,
+                            }));
+                        }
                         relay(Frame::Relayed(Relayed::Ended { machine }));
                     }
+                    note_unclear(&name, n);
                     crate::control::machine_state::note(
                         &name,
                         deploy::machine::Fact::Round {

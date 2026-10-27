@@ -22,6 +22,7 @@ import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-ba
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
+import type { MachineState } from "../../../src/frontend/ui/generated/MachineState";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { FactsLine } from "../../../src/frontend/ui/generated/FactsLine";
 import type { WireSessionActivity } from "../../../src/frontend/ui/generated/WireSessionActivity";
@@ -293,22 +294,23 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(seen.length, "换成只能在终端里答").toBe(n0 + 2);
   });
 
-  it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", async () => {
+  it("★ 机器离线：那台的成品说离线、还有几条状态不明（后端数的）⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", async () => {
     const r = await bar([tab("a"), tab("g1", { origin: "gpu-01" as never, face: goldenFace("unseen") }), tab("g2", { origin: "gpu-01" as never, face: goldenFace("unseen") })]);
-    r.view.markOriginDown("gpu-01", true, Date.now() - 180_000);
+    const machine = (offline: boolean, unclear?: number): MachineState => ({ offline, unclear }) as MachineState;
+    r.view.machineChanged("gpu-01", machine(true, 5), Date.now() - 180_000);
     r.view.refresh();
     const row = r.el.querySelector<HTMLElement>(".tab-machine-down-row")!;
-    expect(row.textContent).toContain(copyText("tabBar.machineDown.body", { machine: "gpu-01", n: 2 }));
+    // N 照后端那一格（5），不是界面数手上几颗说不清（2）。
+    expect(row.textContent).toContain(copyText("tabBar.machineDown.body", { machine: "gpu-01", n: 5 }));
     expect(row.textContent).toContain(copyText("tabBar.machineDown.seen", { ago: "3m" }));
     row.querySelector<HTMLElement>("[data-reconnect]")!.click();
     expect(r.host.reconnect).toHaveBeenCalledWith("gpu-01");
     expect(r.host.pick, "点离线条不算点在列表空白上").not.toHaveBeenCalled();
-    r.view.markOriginDown("gpu-01", false);
+    r.view.machineChanged("gpu-01", machine(false));
     r.view.refresh();
     expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
-    // 看不见、但那台一个状态不明的会话都没有（全是已结束的）⇒ 不出条。
-    r.view.markOriginDown("gpu-01", true);
-    for (const sid of ["g1", "g2"]) (r.store.tabs.get(sid) as Tab).face = goldenFace("ended");
+    // 离线、但后端说那台一条状态不明都没有 ⇒ 不出条（手上那两颗说不清也不数）。
+    r.view.machineChanged("gpu-01", machine(true));
     r.view.refresh();
     expect(r.el.querySelector(".tab-machine-down-row")).toBeNull();
   });

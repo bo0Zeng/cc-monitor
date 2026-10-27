@@ -140,10 +140,9 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
   });
 });
 
-// 「说不清」（会话流里的 `{"unseen": …}` 那一格，机器级）进 queue、交给 `onOriginUnseen`，
-// 且与会话流里的行**保序**（断连那一刻之前的行先落）。。
-// 入口脚本（`main.ts`）那一跳由 `tabs.vitest.ts`「unseen 格 接线」数调用点；本条管 events.ts 这一跳。
-describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
+// 「说不清」是本机后端断线那一刻逐条发的 `left`（`face.life = unclear`）：进 queue、照脸交给 `onSessionFace`，
+// 且与会话流里的行**保序**（断连那一刻之前的行先落）。界面没有机器级那一格。
+describe("〔GP1〕说不清那一格 left 进 queue、照脸交出", () => {
   beforeEach(() => {
     subs.clear();
     streamFake.reset();
@@ -155,20 +154,19 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     vi.restoreAllMocks();
   });
 
-  it("★ 先到的行先落、之后才是那一条 unseen", async () => {
+  it("★ 先到的行先落、之后才是那一条说不清", async () => {
     const order: string[] = [];
     await bindEvents({
       onLine: (e: { seq: number }) => order.push(`line-${e.seq}`),
-      onSessionFace: vi.fn(),
-      onOriginUnseen: (origin: string) => order.push(`unseen-${origin}`),
+      onSessionFace: (sid: string, face: { life: { is: string } }) => order.push(`${face.life.is}-${sid}`),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
     expect(subs.has("session-unseen"), "不再有裸事件 `session-unseen`（并进了会话流）").toBe(false);
     streamFake.lines([line(1)]);
-    streamFake.lifecycle([{ unseen: { origin: "pi" } }]);
+    streamFake.lifecycle([{ left: { sid: "s1", face: { life: { is: "unclear" } } } }]);
     await vi.runAllTimersAsync();
-    expect(order).toEqual(["line-1", "unseen-pi"]);
+    expect(order).toEqual(["line-1", "unclear-s1"]);
   });
 
   it("★ listed 格把壳给的「各台都报完」（`all`）原样交给处理器，界面不自己数", async () => {

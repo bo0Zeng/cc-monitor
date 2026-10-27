@@ -376,8 +376,6 @@ fn build_hello() -> Frame {
             .iter()
             .map(|(k, h)| (k.to_string(), h.to_string()))
             .collect(),
-        // 那台看不见时画的那一张：本机后端替它造（壳只取本机那一份），界面不自己拼。
-        unseen: Some(wire::unseen_face()),
     })
 }
 
