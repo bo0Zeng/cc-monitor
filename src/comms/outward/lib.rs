@@ -106,7 +106,7 @@
 //!   `both_peers_really_carry_their_read_and_write_deadline_on_the_socket`（那个数真装上了）
 //!   + `a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread`（装上之后读会报错返回、无人重试）。
 //!
-//! - **`connect` 那一步没有期限**。`upstream::connect` 用 `TcpStream::connect((host, port))`。
+//! - **`connect` 那一步没有期限**。`upstream::connect` 经宿主交进来的那一口开 TCP（后端交的是出网口，出网口里直连那一形是 `TcpStream::connect`）。
 //!   故意不做：读/写是**真无界**（对端不发就永不返回），而 connect 有内核 SYN 重试上限
 //!   与解析器自己的上限兜着 —— **有上限**。⚠ 那个上限具体多少**我没量** ⇒
 //!   只敢说「不是无界」，不敢说「够小」。真要收紧得先量它（且 `connect_timeout` 要 `SocketAddr`，
@@ -123,7 +123,8 @@
 //!
 //! 中转是一个独立的 crate，普通依赖只有 `copy-core` · `relay-route-core` · `upstream-url-core` · `rustls` · `webpki-roots`
 //! （边界判据按依赖图判，第一方业务 crate 一个都不许出现）⇒ 后端的观测面 · 控制面 · 适配层 · 调用口它在编译期就够不着。
-//! 它要的东西都由宿主递进来（`Relay::new`：上游选择那只手 · 钥匙 · tee 落点 · 两个期限值）。
+//! 它要的东西都由宿主递进来（`Relay::new`：上游选择那只手 · 钥匙 · tee 落点 · 开上游 TCP 的那一口（后端的出网口）· 两个期限值）。
+//! 本 crate 自己不开 TCP：直连还是经代理（代理永远在最外层）是出网口的事，TLS 在它交回的那条 TCP 里面。
 //! 对外的口就是本文件里 `pub` 的那几样，逐条登记在后端 `layering_guard::RELAY_EXPORTS`（两向相等）。
 
 // 上游选择不在这里：它住后端 `src/backend/accounts/`（用户逐字「中转层不要有账号, 账号就账号中转就中转」）。

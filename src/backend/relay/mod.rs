@@ -21,6 +21,22 @@ pub(crate) use comms_outward::{
     RouteKey, Startup, TapBody, TapEvent, TapPort,
 };
 
+/// 开上游 TCP 的那一口：照这台的出网描述经出网口（直连或经代理）。中转去上游 · 续登录令牌那一发都交它。
+/// 按会话的出网描述以后从这里换进来，缺省仍是这台的。
+pub(crate) fn open_here(
+    host: &str,
+    port: u16,
+    deadline: std::time::Duration,
+) -> std::io::Result<std::net::TcpStream> {
+    egress::open(egress::here(), host, port, Some(deadline))
+        .map(|o| o.tcp)
+        .map_err(Into::into)
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/egress_tests.rs"]
+mod egress_tests;
+
 // ── 判据：读的是中转 crate 与上游选择的源码（路径不变），挂在后端这一侧 ──
 // 「中转层里没有账号」：四条两向集合相等（残留表已清空 ⇒ 零命中形态）
 #[cfg(test)]

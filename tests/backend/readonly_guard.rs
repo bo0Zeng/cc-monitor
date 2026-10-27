@@ -2430,6 +2430,19 @@ mod g6_dependency_signoff {
              远端那几下（建目录 · 放 ＋ 读回 · 删残件）全经 `ssh-dial/sftp.rs` 的原语，写面记在 ssh-dial 那一行",
         ),
         (
+            "egress",
+            DEPS,
+            MEASURED_CLEAN,
+            "出网口（这台所有出站 TCP 只在那里开：直连 · HTTP CONNECT · SOCKS5）：仓内 crate、只依赖标准库，住本 crate 目录底下（`egress/`）⇒ \
+             源码在本护栏的人群里。现打 0 处写面：不开文件、不碰盘、不读环境（描述由宿主照它的环境造好装进来）",
+        ),
+        (
+            "egress",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上一行那个仓内 crate，测试构建多开 `test-support`（测试档不许出网那句断言住它真开 TCP 的那一处），多出来的 0 处写面",
+        ),
+        (
             "resident-client",
             DEPS,
             MEASURED_CLEAN,

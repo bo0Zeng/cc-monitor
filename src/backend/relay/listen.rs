@@ -180,7 +180,14 @@ fn prepare(
     }
     // 顺序：起监听之后、进接受循环之前 —— 放在前面的话，端口起不来那条支会先把还不相干的凭据路径印出来。
     let dest = ready.into_destinations(get, &mut std::io::stderr());
-    let relay = Relay::new(dest, door, tee, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE);
+    let relay = Relay::new(
+        dest,
+        door,
+        tee,
+        Arc::new(super::open_here),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
+    );
     Ok((listener, Arc::new(relay)))
 }
 
