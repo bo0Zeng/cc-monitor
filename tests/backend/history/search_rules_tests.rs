@@ -119,6 +119,39 @@ fn session_label_picks_in_order() {
     assert_eq!(f(None, None, " "), untitled);
 }
 
+/// 读到的一条记录改不改叫这条会话什么：agent 起的标题收；人在 agent 里改的名（`TitleBy::User`，Claude `/rename`）不收 ——
+/// 改名只认 ccm 那一格（`customTitle`）。还没有第一句时人说的那一句记成第一句，之后的不动。
+#[test]
+fn heard_takes_agent_titles_and_the_first_said_only() {
+    use crate::agents::record::{Body, TitleBy};
+    let title = |text: &str, by| Body::Title {
+        text: text.into(),
+        by,
+    };
+    let said = |text: &str| Body::Said {
+        who: cmd_wire::record::UserText {
+            speaker: cmd_wire::record::Speaker::Human,
+            text: text.into(),
+            pasted: Vec::new(),
+        },
+        blocks: vec![],
+        results: Default::default(),
+        cwd: None,
+        attachments: Vec::new(),
+    };
+    let mut f = LabelFacts::default();
+    assert!(!heard(&mut f, &title("Claude 里改的", TitleBy::User)));
+    assert_eq!(f.title, None);
+    assert!(heard(&mut f, &title("起的", TitleBy::Agent)));
+    assert_eq!(f.title.as_deref(), Some("起的"));
+    assert!(!heard(&mut f, &title("起的", TitleBy::Agent)));
+    assert!(!heard(&mut f, &title("又改", TitleBy::User)));
+    assert_eq!(f.title.as_deref(), Some("起的"));
+    assert!(heard(&mut f, &said("第一句")));
+    assert!(!heard(&mut f, &said("第二句")));
+    assert_eq!(f.first, "第一句");
+}
+
 // ═══ 搜索口径只有一个家（原 `tests/frontend/shell/search_kou_jing_guard.rs` 的 ①② 两道，随家搬进后端）══════
 //
 // 要求：「一个判定只有一个家」。家从共享 crate `search-core` 拆成两份：通用口径 = 本文件的被测

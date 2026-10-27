@@ -100,6 +100,7 @@ import { setLaunchSlots } from "./session-open";
 import { FOCUS_SESSION_EVENT, openNewSession } from "./new-session";
 import { newSessionSplit, startSetCommand, type SetMenuHost } from "./set-menu";
 import { copyText } from "./copy-table";
+import { renameTab } from "./tab-rename";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
 import { SessionHead, terminalActsOf } from "./session-head";
@@ -664,6 +665,11 @@ window.addEventListener("DOMContentLoaded", async () => {
         tabs.isPinned(cur)
           ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
           : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
+        // 改标题：栏上就地改（同双击标题 · 右键「改标题」，`tab-rename.ts`）。
+        { id: "rename", group: "current", icon: "text", title: copyText("history.menu.rename"), run: () => {
+          const t = tabs.activeTab();
+          if (t) renameTab(t);
+        } },
         ...groupCommands(),
         { id: "proc-expand", group: "current", icon: "expand", title: copyText("main.cmd.procExpand"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
         { id: "acct-panel", group: "current", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) },

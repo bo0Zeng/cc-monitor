@@ -23,13 +23,14 @@ import { spinner } from "../kit/progress";
 import { openPopover, closePopover } from "../kit/popover";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { toast, undoToast, failToast } from "../kit/toast";
-import { askText, confirmDialog } from "../kit/dialog";
+import { confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation } from "../history-reads";
+import { askRename } from "../tab-rename";
 import { setHide } from "../session-hidden-cmds";
 import { undoHide } from "../session-hidden";
 import { fetchBrowse, type BrowseWindow, type HistoryGroup, type HistoryMachine, type HistoryRow } from "../history-list-reads";
@@ -1143,20 +1144,7 @@ export class HistoryView {
   }
 
   private async rename(r: HistoryRow): Promise<void> {
-    const next = await askText({
-      title: copyText("history.rename.title"),
-      label: copyText("history.rename.prompt"),
-      action: copyText("history.rename.action"),
-      initial: r.customTitle ?? r.label,
-    });
-    if (next === null) return;
-    const before = r.customTitle;
-    try {
-      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: next.trim() });
-      undoToast(copyText("history.rename.done"), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: before ?? "" }), () => {});
-    } catch (e) {
-      failToast(copyText("history.rename.failed"), e);
-    }
+    await askRename({ origin: r.origin ?? LOCAL_ORIGIN, sessionId: r.sessionId, label: r.customTitle ?? r.label }, r.customTitle ?? r.label);
   }
 
   /** 删除只问一次；在跑的不让删（后端判的 `can.delete`，主窗口此刻的状态再核一次）。 */
