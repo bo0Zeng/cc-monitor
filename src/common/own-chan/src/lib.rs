@@ -415,29 +415,38 @@ mod win {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
-    /// 路径散列成名字的那一截：分隔符统一成 `\`、不分大小写（Windows 的路径不分）之后的 FNV-1a 64。
-    pub(crate) fn path_key(p: &Path) -> String {
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for c in p.to_string_lossy().chars() {
-            let c = if c == '/' { '\\' } else { c };
-            for lc in c.to_lowercase() {
-                let mut b = [0u8; 4];
-                for byte in lc.encode_utf8(&mut b).bytes() {
-                    h ^= u64::from(byte);
-                    h = h.wrapping_mul(0x0100_0000_01b3);
-                }
-            }
+    /// 路径写进名字的那一截（不散列，原样可读）：不分大小写（Windows 的路径不分）、两种分隔符都换成 `|`
+    /// （管道名与内核对象名里唯一不许的字符是 `\`）。
+    fn path_key(p: &Path) -> String {
+        p.to_string_lossy()
+            .chars()
+            .flat_map(char::to_lowercase)
+            .map(|c| if c == '/' || c == '\\' { '|' } else { c })
+            .collect()
+    }
+
+    /// 名字里路径那一截的长度上限（管道名 256、内核对象名 260 个字符，留出前缀）。
+    /// 路径长到写不进 ⇒ 不绑 / 不锁 / 不连，回 `InvalidInput`（不截断：截了就是另一个名字）。
+    const KEY_MAX: usize = 230;
+
+    fn key_of(p: &Path) -> io::Result<String> {
+        let k = path_key(p);
+        if k.chars().count() > KEY_MAX {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("path longer than {KEY_MAX} characters"),
+            ));
         }
-        format!("{h:016x}")
+        Ok(k)
     }
 
     /// 那个套接字路径对应的管道名。
-    pub(crate) fn pipe_name(p: &Path) -> String {
-        format!(r"\\.\pipe\ccm-own-{}", path_key(p))
+    fn pipe_name(p: &Path) -> io::Result<String> {
+        Ok(format!(r"\\.\pipe\ccm-own-{}", key_of(p)?))
     }
 
     pub fn try_hold(dir: &Path) -> io::Result<Option<Handle>> {
-        let name = wide(&format!("ccm-own-lock-{}", path_key(dir)));
+        let name = wide(&format!("ccm-own-lock-{}", key_of(dir)?));
         // SAFETY：名字以 0 结尾；不要初始持有（持有与否不要紧：在不在才是那把锁）。
         let h = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
         // SAFETY：紧跟着 `CreateMutexW` 读它留下的错号。
@@ -564,7 +573,7 @@ mod win {
 
     impl Listener {
         pub fn bind(path: &Path) -> io::Result<Listener> {
-            let name = pipe_name(path);
+            let name = pipe_name(path)?;
             let first = instance(&name, true)?;
             Ok(Listener {
                 name,
@@ -594,7 +603,7 @@ mod win {
     }
 
     pub async fn connect(path: &Path) -> io::Result<Stream> {
-        let name = pipe_name(path);
+        let name = pipe_name(path)?;
         let mut waited = 0u32;
         loop {
             match ClientOptions::new()
@@ -639,7 +648,7 @@ mod win {
 
     impl Blocking {
         pub fn connect(path: &Path) -> io::Result<Blocking> {
-            let name = wide(&pipe_name(path));
+            let name = wide(&pipe_name(path)?);
             let mut waited = false;
             loop {
                 // SAFETY：名字以 0 结尾；其余入参是常量。
