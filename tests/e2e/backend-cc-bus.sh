@@ -332,6 +332,20 @@ env PATH="$_NC" HOME="$NOHOME" CC_BUS_HOME="$IB" bash -c '. "$1/cc-bus-lib.sh" &
 chk "★ 没装 ccm：敲门那一步照实记 NUDGE noccm（只入收件箱，等 Stop 钩子）" "$(grep -c "NUDGE noccm sid=$SC" "$IB/log/bus.log")" "1"
 tmux kill-session -t "=whoami_cc" 2>/dev/null || true
 
+echo "[14] ★ unread：只读的未读数（与名单的待读同一个口径），一个字节不写"
+UB="$SANDBOX/unbus"; mkdir -p "$UB"/{inbox,state,log}; touch "$UB/state/envelope-2"
+printf '%s\n' '{"id":"m1"}' '{"id":"m2"}' '{"id":"m3"}' > "$UB/inbox/$SC.jsonl"; : > "$UB/inbox/$SC.jsonl.lock"; echo 1 > "$UB/state/$SC.pos"
+unr() { env HOME="$NOHOME" CC_BUS_HOME="$UB" "$TIMEOUT" "$WALL_CEILING_S" "$SCRIPTS/cc-bus-unread.sh" "$@" 2>"$SANDBOX/un.err"; }
+_usnap() { (cd "$UB" && find . -printf '%p %s %T@\n' | sort | md5sum); }
+_ub="$(_usnap)"
+_u="$(unr "$SC")"; _rc=$?
+chk "★ 三封读掉一封 ⇒ 2（退出 0）" "$_rc|$_u" "0|2"
+_u="$(unr "$SA")"; _rc=$?
+chk "  没有收件箱 ⇒ 0" "$_rc|$_u" "0|0"
+unr "a/b" >/dev/null; _rc=$?
+chk "  id 不是那个形状 ⇒ 退 2" "$_rc" "2"
+chk "★ 跑过三趟，总线目录一个字节没变（不建目录 · 不迁 · 不写锁文件以外的东西）" "$(_usnap)" "$_ub"
+
 echo "[SH1-b] ★ 驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（名单只认好名字 · 收件箱只看尾巴）"
 # 台架造一个**脏**的总线家（只采结构：文件名不过字符集的收件箱 · 坏行 · 已读位置）。
 DB="$SANDBOX/dirtybus"; mkdir -p "$DB"/{inbox,state,log}

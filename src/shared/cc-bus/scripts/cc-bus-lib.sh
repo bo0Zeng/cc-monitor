@@ -128,6 +128,27 @@ _rate_bump() {
   ) 7>>"$f.lock"
 }
 
+# 未读数(名单的待读 · `cc-bus unread` 都照它):收件箱行数 − 已读位置。口径与 peek 读的那一段相同 ——
+#   末行没换行也算一行;位置坏了按 0;位置比行数大(收件箱被截短)按 0。
+# 只读:不建目录;锁文件在才拿共享锁(用读的 fd 开它,不建);没有锁文件 = 从没人往里投过(投的那一下必建它)。
+_ccbus_unread_count() {
+  local total pos
+  total=$(awk 'END{print NR}' "$1")
+  pos=$(cat "$2" 2>/dev/null || echo 0)
+  [[ "$pos" =~ ^[0-9]+$ ]] || pos=0
+  [ "$pos" -le "$total" ] || pos=0
+  printf '%d\n' "$((total - pos))"
+}
+ccbus_unread_of() {   # <会话 id> → 印一个数;收件箱不在 ⇒ 0
+  local inbox="$BUS/inbox/$1.jsonl" posf="$BUS/state/$1.pos"
+  [ -f "$inbox" ] || { printf '0\n'; return 0; }
+  if [ -e "$inbox.lock" ]; then
+    ( store_lock_shared 9 || exit 13; _ccbus_unread_count "$inbox" "$posf" ) 9<"$inbox.lock"
+  else
+    _ccbus_unread_count "$inbox" "$posf"
+  fi
+}
+
 # 投递:写收件人 inbox(源头),加锁。返回非零=投递失败。
 route_deliver() {
   local to="$1" line="$2"
