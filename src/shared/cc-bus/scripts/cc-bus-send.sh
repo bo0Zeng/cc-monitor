@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # cc-bus send <to-sid> --act <code> --title <one line> [--tier 1|2] [--re <msg-id>] [--ref <ref>]... [--] [body...]
-#   组请求 → 交后端 `bus-envelope` 核（信封的规矩只在那一处）→ 拿回规范信封 → 就地跑路由管线写进收件人的收件箱。
+#   组请求 → 交后端 `bus-send`(信封 · 范围 · 去重 · 限流都在那一处判,判完它收进收件人的收件箱)→ 后端说要敲门才敲。
 #   act：ask · answer · request · inform · handback · correct（answer / handback / correct 必带 --re）。
 #   tier：1 ⇒ 敲门（对方闲着才送）；2（缺省）⇒ 只进收件箱、轮末由 Stop 钩子喂回。
 #   正文：其余参数用空格连起来；写 `-` ⇒ 从 stdin 读。正文不超过 1200 字节，长的写成文件、用 --ref 给路径。
-#   范围：发件人在组里 ⇒ 只送得到同组的会话（后端核信封那一处判；名单读不到也拒）。
-#   退出码：0 已投递 · 2 信封被拒（后端那一句印在 stderr）/ 参数用错 · 3 被范围（组）或限流拦下 · 1 投递出错 / 找不到后端。
-set -euo pipefail
-BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
-SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)   # 解析 symlink,确保能找到同目录的 lib
+#   退出码：0 已投递 · 2 信封被拒 / 参数用错 · 3 被范围（组）· 重复 · 限流拦下 · 1 后端不在 / 投递出错。
+set -uo pipefail
+SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
-ccbus_migrate_once || true
 
 usage() { sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
@@ -31,27 +28,22 @@ done
 if [ "${#body[@]}" -eq 1 ] && [ "${body[0]}" = "-" ]; then text=$(cat); else text="${body[*]-}"; fi
 from=$("$SELFDIR/cc-bus-whoami.sh" 2>/dev/null || true)   # 会话 id；认不出就交空串，后端拒成 bad_from
 
-# 请求原样交给后端：每一格都不在这里判（tier 是不是数字也交给它 —— 不是数字就原样当串交，后端按入参形状拒）。
+# 请求原样交给后端：每一格都不在这里判（tier 不是数字就原样当串交，后端按入参形状拒）。
 req=$(jq -cn --arg from "$from" --arg to "$to" --arg act "$act" --arg title "$title" \
   --arg tier "$tier" --arg re "$re" --arg text "$text" --args \
   '{from:$from, to:$to, act:$act, title:$title, text:$text, refs:$ARGS.positional}
    + (if $tier == "" then {} else {tier: ($tier | tonumber? // $tier)} end)
    + (if $re == "" then {} else {re:$re} end)' "${refs[@]+"${refs[@]}"}")
 
-ccm=$(ccbus_ccm_bin) || { echo "cc-bus send: no cc-monitor backend (~/.cc-monitor/bin/ccm) — nothing sent" >&2; exit 1; }
-errf=$(mktemp); trap 'rm -f "$errf"' EXIT
-set +e; out=$(printf '%s' "$req" | "$ccm" -- --bus-envelope --within-ms 10000 2>"$errf"); rc=$?; set -e
-if [ "$rc" -ne 0 ]; then
-  # 失败信封 {code, message, detail}：那一句 ＋ 原话照印；信封被拒（入参不对）⇒ 2，范围拦下 ⇒ 3，别的（后端起不来 · 超时）⇒ 1。
-  jq -r '.message + (if (.detail // "") != "" then "\n" + .detail else "" end)' < "$errf" >&2 2>/dev/null || cat "$errf" >&2
-  code=$(jq -r '.code // ""' < "$errf" 2>/dev/null || true)
-  case "$code" in bad_*|need_re|too_long) exit 2 ;; not_same_group|no_roster) exit 3 ;; *) exit 1 ;; esac
+if ! ccbus_ask send "$req"; then
+  echo "cc-bus send: not sent (${CCBUS_CODE:-failed}) -> $to" >&2
+  case "$CCBUS_CODE" in
+    bad_*|need_re|too_long) exit 2 ;;
+    not_same_group|no_roster|duplicate|throttled) exit 3 ;;
+    *) exit 1 ;;
+  esac
 fi
-env=$(printf '%s' "$out" | jq -c '(.data // .)')
-
-set +e; route_process "$env"; rc=$?; set -e
-case "$rc" in
-  0)  printf 'sent %s -> %s\n' "$(printf '%s' "$env" | jq -r .id)" "$to" ;;
-  10) echo "cc-bus send: stopped by the rate limit (see bus.log) -> $to" >&2; exit 3 ;;
-  *)  echo "cc-bus send: delivery failed (not written, safe to resend) -> $to" >&2; exit 1 ;;
-esac
+if [ "$(printf '%s' "$CCBUS_OUT" | jq -r '.knock')" = true ]; then
+  ccbus_say "$to" "$(ccbus_knock_text "$from")" || true
+fi
+printf 'sent %s -> %s\n' "$(printf '%s' "$CCBUS_OUT" | jq -r '.envelope.id')" "$to"

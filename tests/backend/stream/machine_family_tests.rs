@@ -124,11 +124,11 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
         ),
         ("bus-list", json!({ "extra": 1 })),
         (
-            "bus-envelope",
+            "bus-send",
             json!({ "from": "a", "to": "b", "act": "ask", "title": "t", "extra": 1 }),
         ),
         (
-            "bus-envelope",
+            "bus-send",
             json!({ "from": "a", "to": "b", "act": "ask", "title": 3 }),
         ),
         ("bus-inbox", json!({ "id": "a_cc", "lines": "200" })),
