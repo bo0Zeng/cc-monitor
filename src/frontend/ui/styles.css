@@ -92,6 +92,23 @@
   color: var(--text);
 }
 
+/* 栏顶拆分按钮「＋ ⌄」（`set-menu.ts`）：左半新建会话 · 右半存好的几组，两半贴着、共一个圆角框。窄栏只剩「＋」（见栏收起那一段）。 */
+.tab-bar-split {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tab-bar-split-plus {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.tab-bar-split-caret {
+  width: 16px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
 /* 「需手动 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标。 */
 .tab-needs {
   flex: none;
@@ -2697,8 +2714,11 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-trail,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-machine,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-acts,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > *,
-body[data-tab-bar="folded"]:not(.viewer-mode) [data-role="set-menu"] {
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-bar-split-caret {
   display: none;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-bar-split-plus {
+  border-radius: var(--radius-m);
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs {
   justify-content: center;

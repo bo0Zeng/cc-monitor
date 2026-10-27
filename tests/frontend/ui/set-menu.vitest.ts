@@ -1,4 +1,5 @@
-// 栏顶组菜单 · 命令面板「起一组…」：项照 set-plan 成品排（再起 · 已齐 · 写错 · 答不了），点一项发 set-launch，起成的交等报到，起完说一句。
+// 栏顶组菜单 · 命令面板「起一组…」：项照 set-plan 成品摆（再起 · 已齐 · 写错 · 答不了，几句都是那台写好的），
+// 点一项发 set-launch，起成的交等报到，起完照那台那一句说。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -14,7 +15,8 @@ vi.mock("../../../src/frontend/ui/session-open", () => ({ awaitArrival: h.awaitA
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: h.toast }));
 
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { launchedSaid, newSessionSplit, rowsSaid, setItem, startSet, startSetCommand, type SetMenuHost } from "../../../src/frontend/ui/set-menu";
+import { newSessionSplit, setItem, startSetCommand, type SetMenuHost } from "../../../src/frontend/ui/set-menu";
+import { startSet } from "../../../src/frontend/ui/set-start";
 import type { SetOut } from "../../../src/frontend/ui/generated/SetOut";
 import type { SetPlan } from "../../../src/frontend/ui/generated/SetPlan";
 import type { SetLaunched } from "../../../src/frontend/ui/generated/SetLaunched";
@@ -26,13 +28,14 @@ const flush = async (): Promise<void> => {
 
 const set = (name: string, problems: SetOut["problems"] = []): SetOut => ({ name, rows: [], problems });
 
+/** 那台写好的几句用占位字：界面照摆，不拼。 */
 const plan = (more: number): SetPlan => ({
-  rows: [
-    { cwd: "~/work/cc-monitor", alias: "dev", want: 2, have: 2, more: 0, group: "开发 · cc-monitor", blocked: null },
-    { cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: null },
-    { cwd: "~/work/gone", alias: "rev", want: 1, have: 0, more: 0, group: "rev", blocked: "rev 不存在" },
-  ],
+  rows: [{ cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: null, said: "ROW", haveSaid: "HAVE", moreSaid: "RMORE" }],
   more,
+  said: "ROWS-SAID",
+  moreSaid: "MORE-SAID",
+  totalSaid: "TOTAL",
+  startSaid: "START",
 });
 
 const opened = (cwd: string): Opened => ({
@@ -60,22 +63,17 @@ afterEach(() => {
 });
 
 describe("组菜单那一项", () => {
-  it("能起的：右侧「再起 N」，第二行按行写已有/要的、起不了的那行写原因；点了起", () => {
+  it("能起的：右侧、第二行照那台写好的那两句；点了起", () => {
     const start = vi.fn();
     const it = setItem(set("工具链"), { kind: "plan", plan: plan(1) }, start);
-    expect(it.label).toBe("工具链");
-    expect(it.detail).toBe(copyText("setMenu.item.more", { n: "1" }));
-    expect(it.body).toBe(rowsSaid(plan(1)));
-    expect(it.body).toContain(copyText("setMenu.row.counted", { cwd: "~/work/cc-monitor", group: "开发 · cc-monitor", have: "2", want: "2" }));
-    expect(it.body).toContain(copyText("setMenu.row.blocked", { cwd: "~/work/gone", why: "rev 不存在" }));
-    expect(it.enabled).not.toBe(false);
+    expect([it.label, it.detail, it.body, it.enabled]).toEqual(["工具链", "MORE-SAID", "ROWS-SAID", undefined]);
     it.onClick!();
     expect(start).toHaveBeenCalledTimes(1);
   });
 
-  it("已齐的灰着、右侧「已齐」；写错的 · 答不了的灰着、写为什么；还在问的转圈", () => {
+  it("已齐的灰着、右侧照那一句；写错的 · 答不了的灰着、写为什么；还在问的转圈", () => {
     const full = setItem(set("周报"), { kind: "plan", plan: plan(0) }, vi.fn());
-    expect([full.enabled, full.detail, full.onClick]).toEqual([false, copyText("setMenu.item.full"), undefined]);
+    expect([full.enabled, full.detail, full.why, full.onClick]).toEqual([false, "MORE-SAID", "ROWS-SAID", undefined]);
     const broken = setItem(set("坏", [{ section: null, line: 3, message: "行 3 写错", detail: null } as SetOut["problems"][number]]), { kind: "plan", plan: plan(1) }, vi.fn());
     expect([broken.enabled, broken.why]).toEqual([false, "行 3 写错"]);
     const failed = setItem(set("远"), { kind: "failed", said: "devbox 离线" }, vi.fn());
@@ -92,29 +90,35 @@ describe("起一组", () => {
     ],
     started: 1,
     failed,
+    said: "SAID",
+    detail: failed ? "DETAIL" : "",
   });
 
-  it("发 set-launch {name}；起成的交等报到；全成说「已启动」", async () => {
+  it("发 set-launch {name}；起成的交等报到；全成照那台那一句说（标题是组名）", async () => {
     h.launchSet.mockResolvedValue(launched(0));
     await startSet("local", "工具链");
     expect(h.launchSet).toHaveBeenCalledWith("local", "工具链");
     expect(h.awaitArrival).toHaveBeenCalledTimes(1);
     expect(h.awaitArrival.mock.calls[0][2]).toBe("/w/a");
-    expect(h.toast).toHaveBeenCalledWith(copyText("setMenu.launched.done", { name: "工具链", n: "1" }), "", { level: "info" });
+    expect(h.toast).toHaveBeenCalledWith("工具链", "SAID", { level: "info" });
   });
 
-  it("有没成的：出错那一句 ＋ 逐条原因 ＋［重试］（再点一次 ＝ 只起还缺的）", async () => {
+  it("有没成的：那一句 ＋ 逐条原因进明细 ＋［重试］（再点一次 ＝ 只起还缺的）", async () => {
     h.launchSet.mockResolvedValue(launched(1));
     await startSet("local", "工具链");
-    const said = launchedSaid("工具链", launched(1));
-    expect(said.title).toBe(copyText("setMenu.launched.partial", { name: "工具链", started: "1", all: "2" }));
-    expect(said.body).toBe(copyText("setMenu.launched.fail", { alias: "look", why: "b 需登录" }));
     const [title, body, opts] = h.toast.mock.calls[0];
-    expect([title, body]).toEqual([said.title, said.body]);
+    expect([title, body, opts.more]).toEqual(["工具链", "SAID", ["DETAIL"]]);
+    expect(opts.action.label).toBe(copyText("setMenu.launched.retry"));
     h.launchSet.mockResolvedValue(launched(0));
     opts.action.run();
     await flush();
     expect(h.launchSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("那台拒了（没 tmux · 没这一组）⇒ 那一句原样说", async () => {
+    h.launchSet.mockRejectedValue(new Error("这台没有 tmux"));
+    await startSet("local", "工具链");
+    expect(h.toast.mock.calls[0][0]).toBe("这台没有 tmux");
   });
 });
 
@@ -133,7 +137,7 @@ describe("栏顶拆分按钮 · 命令面板那一条", () => {
     const text = document.body.textContent ?? "";
     expect(text).toContain(copyText("main.cmd.newSession"));
     expect(text).toContain("工具链");
-    expect(text).toContain(copyText("setMenu.item.more", { n: "1" }));
+    expect(text).toContain("MORE-SAID");
     expect(text).toContain(copyText("setMenu.list.edit"));
   });
 
@@ -160,6 +164,6 @@ describe("栏顶拆分按钮 · 命令面板那一条", () => {
     c.run();
     await flush();
     expect(h.readProfiles).toHaveBeenCalledWith("devbox");
-    expect(document.body.textContent).toContain(copyText("setMenu.item.full"));
+    expect(document.body.textContent).toContain("MORE-SAID");
   });
 });
