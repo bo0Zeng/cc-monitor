@@ -23,7 +23,7 @@ function walk(dir: string, ext: string[], skip: (p: string) => boolean): string[
   return out;
 }
 
-const rel = (p: string) => relative(ROOT, p).replaceAll("\\", "/");
+const rel = (p: string) => relative(ROOT, p).split("\\").join("/");
 const skip = (p: string) => /[\\/](node_modules|generated|build|test|androidTest|testFixtures)([\\/]|$)/.test(p) || /[\\/]gen([\\/]|$)/.test(p);
 /** 出口：桌面界面 · 手机端（生产源）。 */
 const EXITS = [...walk(join(ROOT, "src/frontend/ui"), [".ts"], skip), ...walk(join(ROOT, "src/mobile"), [".kt"], skip)];

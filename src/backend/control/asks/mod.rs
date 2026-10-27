@@ -496,10 +496,7 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
                     .map_or_else(|| copy_text("beAsk.answer.already", &[]), |w| w.0.clone()),
             )),
             Some(Settled::Closed) => Ok(gone(copy_text("beAsk.answer.closed", &[]))),
-            None => Err(refuse(
-                "not_found",
-                copy_text("beAsk.answer.notFound", &[]),
-            )),
+            None => Err(refuse("not_found", copy_text("beAsk.answer.notFound", &[]))),
         };
     };
     let verdict = verdict_of(
