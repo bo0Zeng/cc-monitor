@@ -50,6 +50,7 @@
     "test:resume-frames": "bash tests/e2e/resume-backend-frames.sh",
     "test:exec-bits": "bash tests/e2e/exec-bit-guard.sh",
     "test:f40": "bash tests/e2e/f40-suite.sh",
+    "test:f40-pick": "bash tests/e2e/f40-pick.test.sh",
     "shots": "node tests/shots/run.mjs"
   },
   "dependencies": {

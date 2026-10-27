@@ -134,6 +134,7 @@ const E2E: &[&str] = &[
     "tests/e2e/ccm-contract-parity.sh",
     "tests/e2e/ccm-print-parity.sh",
     "tests/e2e/exec-bit-guard.sh",
+    "tests/e2e/f40-pick.test.sh", // f40 套件找主窗 · 取 tab 行点击点（假 xdotool，不起 app）
     "tests/e2e/f40-suite.sh",
     "tests/e2e/files-manager.sh",
     "tests/e2e/graylight-backend-frames.sh",
@@ -153,6 +154,7 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/assert-pass-floor.sh",
     "tests/e2e/backend-wrapper.sh",
     "tests/e2e/ccm-shim.sh", // 把编出来的后端二进制以 `ccm` 之名放上 PATH ＋ 沙箱 HOME（真跑那一行 `ccm …` 的几套 source 它）
+    "tests/e2e/f40-lib.sh", // f40-suite 与 f40-pick.test 共用：找主窗 · 取快照字段 · 取 tab 行点击点
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
     "tests/e2e/local-backend-container/build-image.sh",
