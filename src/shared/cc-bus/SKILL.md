@@ -5,7 +5,7 @@ description: 各自独立运行的 agent 会话(Claude Code · Codex)之间的�
 
 # cc-bus:会话之间的信箱加门铃
 
-一个入口:`cc-bus <动词>`。身份、名单、组、敲门都经 cc-monitor 后端;没装 cc-monitor,cc-bus 不工作。
+一个入口:`cc-bus <动词>`。每个动词只是把一句交给 cc-monitor 后端(`ccm -- --bus-<动词>`):收件箱、已读位置、发信的规矩(信封 · 组 · 去重 · 限流)都住后端;身份、名单、敲门也经它。没装 cc-monitor,cc-bus 不工作(退 1,一个文件不落)。
 
 ## 该不该用
 
@@ -31,7 +31,7 @@ cc-bus help
 
 ## 发信:信封的规矩
 
-后端 `bus-envelope` 一处核,不合格当场拒(退 2,stderr 那一句说哪一格):
+后端 `bus-send` 一处核,不合格当场拒(退 2,stderr 那一句说哪一格):
 
 - `--act` 六个码:`ask`(问,要答复)· `answer`(答)· `request`(请,要对方做事)· `inform`(告知,免动)· `handback`(交回,做完了)· `correct`(更正前面那一条)。`answer` · `handback` · `correct` 必带 `--re <消息 id>`。
 - `--title` 必填、一行、不超过 80 字;正文不超过 1200 字节,长的写成文件、用 `--ref` 给路径。
@@ -45,7 +45,9 @@ cc-bus send <sid> --act answer --re m19a1b2c3d4e0001 --title "结论:可以合"
 cc-bus send <sid> --act handback --re m19a1b2c3d4e0002 --title "A13-4 做完" --ref pb:A13/A13-4
 ```
 
-退出码:0 已投递 · 2 信封被拒 / 参数用错 · 3 被范围(组)或限流拦下 · 1 投递出错 / 找不到后端。
+退出码:0 已投递 · 2 信封被拒 / 参数用错 · 3 被范围(组)· 重复 · 限流拦下 · 1 投递出错 / 找不到后端。
+
+去重与限流(后端那一处判,上限是后端的常量,不另配):同一发件人发给同一收件人、各格都一样的一封,10 秒内再发 ⇒ 重复、不收;每一对每分钟 20 封、整台每分钟 120 封,超了不收。原样弹回来的信、来回不停的两条会话都由这两条挡住。
 
 ## 两档
 
@@ -59,6 +61,7 @@ cc-bus send <sid> --act handback --re m19a1b2c3d4e0002 --title "A13-4 做完" --
 - 发件人不在任何组 ⇒ 送得到谁都行。
 - 组名单只问后端(`groups-read`);问不到 ⇒ 退 3,不退回成全放行。
 - 对一整组发一封不做。
+- 这一版只在一台机器上:收件人得是这台的会话。
 
 ## 收信
 
@@ -81,12 +84,12 @@ title: …
 `recv` 就是 peek 接 commit。分开用是为了「没确认就不推进」:喂回失败时位置一步没动,下一轮原样再来。
 
 ```bash
-cc-bus peek --token-file /tmp/tok          # 纯读:正文走 stdout,令牌写进那份文件(不许落在 ~/.cc-bus 里)
+cc-bus peek --token-file /tmp/tok          # 纯读:正文走 stdout,令牌写进那份文件
 cc-bus commit "$(cc-bus whoami)" "$(cat /tmp/tok)"
 cc-bus peek --max-lines 20                 # 分段读:积压太大时一轮只吃 20 条
 ```
 
-令牌 = `<from>.<to>.<anchor>`,不落盘:`from` 是 peek 那一刻的已读位置,`to` 是这一段的末行,`anchor` 是第 `to` 行的 cksum。不防篡改,防的是漂移;没有 TTL。
+令牌 = `<from>.<to>.<anchor>`,不落盘:`from` 是 peek 那一刻的已读位置,`to` 是这一段的末行,`anchor` 是第 `to` 行的指纹。后端在锁里比它(CAS)。不防篡改,防的是漂移;没有 TTL。
 
 | rc | 含义 | 处置 |
 |---|---|---|
@@ -94,7 +97,7 @@ cc-bus peek --max-lines 20                 # 分段读:积压太大时一轮只�
 | 2 | 令牌 / 参数非法 | 修调用,不重试 |
 | 11 | **STALE**:别人已经推过了 | 照常处理手上那段,不重试、不当错 |
 | 12 | **CHANGED**:收件箱在两跳之间变了 | 位置没推,下一轮再读一次 |
-| 13 | 适配层办不到 | 看 `~/.cc-bus/log/bus.log` 的 `ADAPT` 行 |
+| 1 | 后端不在 / 写不成 | stderr 那一句说清;位置没推 |
 
 投递语义因此是 **at-least-once**:可能重复,绝不吞掉。
 
@@ -113,17 +116,14 @@ cc-bus peek --max-lines 20                 # 分段读:积压太大时一轮只�
 bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 ```
 
-只把 `cc-bus` 一个链进 `~/.local/bin`(老版装进来的 `cc-send` 那一族链接当场删掉,别的同名命令不碰)、建 `~/.cc-bus/`、放示例配置,再印需手动做的:Stop 钩子 `cc-bus stop-hook` 合进 `~/.claude/settings.json`(Codex 合进 `~/.codex/hooks.json` 并 `/hooks` 信任)。不改全局设置、不起守护进程。skill 目录本身由 cc-monitor 扩展页那一行装(内嵌在后端里)。
+只把 `cc-bus` 一个链进 `~/.local/bin`(老版装进来的 `cc-send` 那一族链接当场删掉,别的同名命令不碰),再印需手动做的:Stop 钩子 `cc-bus stop-hook` 合进 `~/.claude/settings.json`(Codex 合进 `~/.codex/hooks.json` 并 `/hooks` 信任)。不建运行时目录(收件箱住 cc-monitor 后端的数据目录 `cc-bus/`)、不改全局设置、不起守护进程。skill 目录本身由 cc-monitor 扩展页那一行装(内嵌在后端里)。
 
-限流(可选,`~/.cc-bus/config`,示例见 `examples/config`):`CCBUS_RATE_PAIR` 每对每窗口几条 · `CCBUS_RATE_GLOBAL` 全局熔断 · `CCBUS_RATE_WINDOW` 窗口秒数;敲门去抖 `CCBUS_NUDGE_DEBOUNCE`(默 2 秒)。
+## 适配面
 
-## 两个适配面
-
-缝切在 shell 这一层:① agent(`agent_caps` · `agent_block_reason`;claude · codex 两本词典,`CCBUS_ADAPT_AGENT` 选)② 存储(`store_*`;POSIX 用 `flock` 含共享读锁,Windows 有 `flock` 就用、共享锁退化成排他并记一行 `DEGRADE`,没有 `flock` 退 13)。agent 做不到的投递行为按降级链降:拦停 ⇒ 敲门 ⇒ 只入收件箱 ⇒ 都不行就投递前拒。敲门两边都经后端 `session-say`,与 OS 无关。
+只剩 agent 那一面:结束钩子的回包怎么写(`agent_block_reason`;claude · codex 两本词典,`CCBUS_ADAPT_AGENT` 选,缺省 claude)。身份两家都问 cc-monitor 的 `--session-self`。敲门经后端 `session-say`,与 OS 无关。
 
 ## 排障
 
-- 没敲门:`tail ~/.cc-bus/log/bus.log` 看 `NUDGE tier2`(二档本来不敲)· `NUDGE noscreen`(看不到那一屏)· `NUDGE refused why=not_idle`(对方不闲,轮末喂回)· `NUDGE noccm`(找不到后端)。
-- 没送到:先看 `cc-bus send` 的退出码(2 信封 · 3 范围或限流,stderr 那一句说清)· 再看 bus.log 的 `DELIVER` / `THROTTLE` / `DEGRADE` / `MIGRATE`。
-- 升级后第一次跑:旧收件箱自动迁一次(没读的补成二档 `inform` 新信封;换不出会话 id 的留在 `~/.cc-bus/legacy/<时刻>/`)。
-- 程序读的只读形(cc-monitor 后端调它们,不读 `~/.cc-bus/` 的文件):`cc-bus list --tsv` · `cc-bus log <id>`。
+- 没送到:先看 `cc-bus send` 的退出码与 stderr 那一句(2 信封 · 3 范围 / 重复 / 限流 · 1 后端不在)。
+- 没敲门:二档本来不敲;一档 2 秒内对同一条会话只敲一次;看不到那一屏、对方不闲都不敲(stderr 说一句,信在收件箱里,轮末照样喂回)。
+- 拒掉的那几封(重复 · 限流 · 范围)后端诊断日志里各记一行。

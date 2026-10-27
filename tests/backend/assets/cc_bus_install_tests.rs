@@ -194,7 +194,7 @@ fn the_embedded_digest_is_what_the_catalog_sees_after_an_install() {
 /// 编译照过、测试照绿，而**装出去的 cc-bus 少一个文件**，
 /// 在用户机器上表现成「新版脚本调一个不存在的命令」。
 ///
-/// ⚠ 只钉 `scripts/`：`examples/` 与 `SKILL.md` 是另一族（那边多一个示例文件
+/// ⚠ 只钉 `scripts/`：`SKILL.md` 是另一族（那边多一份文档
 /// 不影响能不能跑），要钉得单独论证。**判据的人群等于它真正证明的那件事。**
 #[test]
 fn every_script_in_the_repo_is_embedded_for_deployment() {
@@ -377,7 +377,7 @@ fn an_unwritable_skills_dir_fails_loudly() {
 
 /// ★ 装完就能跑：`scripts/` 下的必须可执行。
 ///
-/// ⚠ 反面也钉：不带 shebang 的示例（`examples/config`）**不许**被顺手标成可执行。
+/// ⚠ 反面也钉：不带 shebang 的说明书（`SKILL.md`）**不许**被顺手标成可执行。
 #[cfg(unix)]
 #[test]
 fn deployed_scripts_are_executable() {
@@ -392,16 +392,16 @@ fn deployed_scripts_are_executable() {
             "{rel} 装完不可执行等于没装（mode={mode:o}）"
         );
     }
-    let example = t.0.join("skills/cc-bus/examples/config");
-    let mode = std::fs::metadata(&example).unwrap().permissions().mode();
+    let doc = t.0.join("skills/cc-bus/SKILL.md");
+    let mode = std::fs::metadata(&doc).unwrap().permissions().mode();
     assert!(
         mode & 0o111 == 0,
-        "examples/config 不是脚本，却被标成了可执行（mode={mode:o}）"
+        "SKILL.md 不是脚本，却被标成了可执行（mode={mode:o}）"
     );
 }
 
 /// 命令面只有一个入口 `cc-bus`（各动词的本体是 `cc-bus-<动词>.sh`，被它调）：装出去的 `scripts/` 里不带 `.sh` 的只有它 ·
-/// 安装脚本链进 PATH 的只有它 · 老名字（`cc-send` 那一族）一个不留 · 装出去的 `examples/` 只有 `config`。
+/// 安装脚本链进 PATH 的只有它 · 老名字（`cc-send` 那一族）一个不留 · 不装示例配置（规矩的上限是后端的常量）。
 #[test]
 fn the_install_manifest_carries_one_entry_and_no_old_names() {
     let mut entries: Vec<&str> = FILES
@@ -415,7 +415,7 @@ fn the_install_manifest_carries_one_entry_and_no_old_names() {
         .iter()
         .filter_map(|(rel, _)| rel.strip_prefix("scripts/cc-bus-")?.strip_suffix(".sh"))
         .filter(|v| {
-            !v.starts_with("adapt") && !v.starts_with("agent") && *v != "lib" && *v != "install"
+            !v.starts_with("agent") && *v != "lib" && *v != "install"
         })
         .collect();
     let mut verbs = verbs;
@@ -456,7 +456,7 @@ fn the_install_manifest_carries_one_entry_and_no_old_names() {
         .filter_map(|(rel, _)| rel.strip_prefix("examples/"))
         .collect();
     examples.sort_unstable();
-    assert_eq!(examples, ["config"], "装出去的示例多了删掉的那几样");
+    assert!(examples.is_empty(), "装出去了示例配置：{examples:?}");
     let install = include_str!("../../../src/shared/cc-bus/scripts/cc-bus-install.sh");
     let links: Vec<&str> = install
         .lines()

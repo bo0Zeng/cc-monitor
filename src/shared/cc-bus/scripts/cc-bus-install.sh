@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# cc-bus 安装脚本 —— 把唯一的入口 `cc-bus` 软链到 PATH、建运行时目录、放示例配置。
+# cc-bus 安装脚本 —— 把唯一的入口 `cc-bus` 软链到 PATH。收件箱与规矩都住 cc-monitor 后端,这里不建任何运行时目录。
 # 【只做可逆的本地安装】:不改全局 settings.json、不 systemctl。最后打印需手动做的激活步骤。
-# 可用环境变量覆盖(供测试):CCBUS_BINDIR(默 ~/.local/bin)、CC_BUS_HOME(默 ~/.cc-bus)。
+# 可用环境变量覆盖(供测试):CCBUS_BINDIR(默 ~/.local/bin)。
 #
 # 老版装进来的十几个命令(cc-send · cc-recv · …)老名字不留:链接目录里指向某个 `cc-bus/scripts/` 的同名链接当场删掉;
 # 别的同名命令(不是链接、或指向别处)不碰,只说一句。
 set -euo pipefail
 SRC=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)     # 脚本规范源目录
 BINDIR="${CCBUS_BINDIR:-$HOME/.local/bin}"
-BUSHOME="${CC_BUS_HOME:-$HOME/.cc-bus}"
-SKILLDIR=$(dirname "$SRC")                                # skills/cc-bus
 
-mkdir -p "$BINDIR" "$BUSHOME"/{inbox,state,log}
+mkdir -p "$BINDIR"
 
-# 前置检查:cc-bus 运行时需要 jq / flock。缺了只告警(不失败——安装本身不需要它们)。
-miss=""; for c in jq flock; do command -v "$c" >/dev/null 2>&1 || miss="$miss $c"; done
-[ -n "$miss" ] && echo "⚠ 运行时依赖缺失(cc-bus 需要):$miss"
+# 前置检查:cc-bus 运行时需要 jq。缺了只告警(不失败——安装本身不需要它)。
+command -v jq >/dev/null 2>&1 || echo "⚠ 运行时依赖缺失(cc-bus 需要):jq"
 
 # 老名字:从前装进 PATH 的那几条。
 OLD_NAMES="cc-whoami cc-send cc-recv cc-peek cc-commit cc-list cc-log cc-bus-stop-hook cc-register cc-agents cc-spawn cc-kill cc-broadcast cc-busd cc-spawned-record cc-keepalive"
@@ -40,10 +37,7 @@ if [ -e "$dst" ] || [ -L "$dst" ]; then
 fi
 ln -sfn "$SRC/cc-bus" "$dst"
 
-# 放示例配置(不覆盖已有;默认不开限流)
-[ -f "$BUSHOME/config.example" ] || cp "$SKILLDIR/examples/config" "$BUSHOME/config.example"
-
-echo "✅ 已安装:cc-bus → $BINDIR;运行时根 → $BUSHOME"
+echo "✅ 已安装:cc-bus → $BINDIR"
 [ -n "$removed" ] && echo "   删掉了老名字的链接:$removed"
 [ -n "$kept" ] && echo "⚠ 同名的老名字不是这份 cc-bus 装的,没动:$kept"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac
@@ -60,9 +54,7 @@ cat <<EOF
    Codex:同一条(Stop → cc-bus stop-hook)写进 ~/.codex/hooks.json,再在 Codex 里 /hooks 信任它。
 
 2) 【会话】用 cc-monitor 开会话 —— 身份 = 会话 id,由 cc-monitor 认(cc-bus whoami 问 \`ccm -- --session-self\`)。
-   没装 cc-monitor ⇒ 认不出身份、敲不了门,cc-bus 不工作。
-
-3) 【可选:限流】cp $BUSHOME/config.example $BUSHOME/config,按需开(见文件注释)。
+   收件箱住 cc-monitor 后端;没装 cc-monitor ⇒ cc-bus 不工作。
 
 停用:删 settings.json 里那条钩子;删 $BINDIR/cc-bus。脚本本体无害留存。
 EOF
