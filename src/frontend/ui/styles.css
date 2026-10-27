@@ -2696,7 +2696,8 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-title,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-trail,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-machine,
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-acts,
-body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > * {
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > *,
+body[data-tab-bar="folded"]:not(.viewer-mode) [data-role="set-menu"] {
   display: none;
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs {
