@@ -300,6 +300,31 @@ pub(crate) struct PlanBlock {
     pub handoff_error: Option<String>,
     /// 「新会话接手」那一格（后端判，界面照画；字在 `handoff` · `handoffError`）。
     pub takeover: PlanTakeover,
+    /// 接手的会话此刻在哪几组（帧面答之前现标，见 [`super::groups`]；pb 不知道有组）。
+    pub groups: PlanBlockGroups,
+}
+
+/// 一个权力范围的接手会话在哪几组。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "is", rename_all = "snake_case")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) enum PlanBlockGroups {
+    /// 没有对得上这台会话的接手人（没人认领 · 认不出）。
+    None,
+    /// 组模块答了：照组的先后（不在组里 ⇒ 空）。
+    Read { groups: Vec<PlanGroup> },
+    /// 组模块没答：那一句。
+    Unread { why: String },
+}
+
+/// 一组：id（全局不重，界面按它筛）· 叫它什么（组模块写好的）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanGroup {
+    pub id: String,
+    pub title: String,
 }
 
 /// 一个建了的权力范围此刻给不给「新会话接手」。还没划出（`unbuiltBlocks`）⇒ 灰：那一列本身就是这一判，不另带一格。

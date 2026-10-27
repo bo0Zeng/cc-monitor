@@ -169,12 +169,14 @@ pub(crate) fn seen_of(v: &wire::PlanRead) -> watch::Seen {
     (v.rev.clone(), u64::from(v.need_count))
 }
 
-/// 现读一个工作区（起 pb）并标好；计划审面送退回之前用它拿此刻的接手与状态。
+/// 现读一个工作区（起 pb）并标好（认可 · 时刻的字 · 每块的接手会话在哪几组）；计划审面送退回之前用它拿此刻的接手与状态。
 pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<wire::PlanRead, Fail> {
     let entry = entry()?;
-    read_dir(&entry, Path::new(ws))
+    let mut doc = read_dir(&entry, Path::new(ws))
         .map(|d| annotated(d, tz))
-        .map_err(miss)
+        .map_err(miss)?;
+    crate::plan::groups::annotate(&mut doc, &crate::plan::groups::here_ties);
+    Ok(doc)
 }
 
 fn miss(m: book::Miss) -> Fail {

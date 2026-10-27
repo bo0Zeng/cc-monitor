@@ -25,6 +25,7 @@
 pub(crate) mod book;
 pub(crate) mod command;
 pub(crate) mod dump;
+pub(crate) mod groups;
 pub(crate) mod locate;
 pub(crate) mod needs;
 pub(crate) mod owners;

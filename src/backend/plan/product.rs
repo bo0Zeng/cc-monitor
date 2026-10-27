@@ -638,6 +638,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort) -> PlanSlice {
                 handoff: s(b, "handoff"),
                 handoff_error: s(b, "handoff_error"),
                 takeover: PlanTakeover::Unsure,
+                groups: super::wire::PlanBlockGroups::None,
             };
             block.takeover = super::needs::takeover(&block);
             block
