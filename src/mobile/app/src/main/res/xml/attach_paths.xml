@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 拍照附件：系统相机写进缓存目录 shots/ 里这一份，拷进输入框上方那一排之后就删（ui/chat/attach/AttachViews.kt）。 -->
+<paths>
+    <cache-path name="shots" path="shots/" />
+</paths>

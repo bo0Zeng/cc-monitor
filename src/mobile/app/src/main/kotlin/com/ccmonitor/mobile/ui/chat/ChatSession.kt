@@ -36,6 +36,8 @@ import com.ccmonitor.mobile.core.wire.gen.SessionCommands
 import com.ccmonitor.mobile.core.wire.gen.TailHow
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
+import com.ccmonitor.mobile.ui.chat.attach.AttachTray
+import com.ccmonitor.mobile.ui.chat.attach.handOver
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -163,6 +165,8 @@ sealed interface ChatTarget {
  * - 在屏上（[visible]）才进这台的 `stream-watch` 名单；进名单 · 断线重接之后，`[已有, seq)` 那一段按行号用 `history-lines` 补上
  *   （`from[]` 给的 seq，或来了一行比已有的新、中间缺着），缺得多就整份重读最后一屏；重叠处按行号去重。
  * 手机这边只记「送出去、记录里还没出现」的那几句；记录里出现了同一句人话 ⇒ 那一句的标消失。
+ * - 附件：输入框上方那一排（[attach]，`attachOf` 造，给它这条会话的作用域与 sid；不给 ⇒ 没有那一排）只给已有的那条
+ *   （落附件要 sid 认工作目录，起会话那一问还不收附件）。➤ 照 [handOver]：全落好了才发，编号随那一句交、重发照带。
  *
  * 它不是 `ViewModel`：持有者是应用级的 [ChatController]，离开聊天屏照样跟着。
  */
@@ -177,12 +181,14 @@ class ChatSession(
     private val arrivalMs: Long = ARRIVAL_MS,
     /** 这台的本地缓存（记录页 · 续点 · 待发 · 草稿）：先上它、再跟那台对齐。 */
     private val cache: ChatCache = ChatCache.None,
+    attachOf: ((CoroutineScope, () -> String?) -> AttachTray)? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState(sid = (target as? ChatTarget.Existing)?.sid, drafting = target is ChatTarget.Draft))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private val draft = target as? ChatTarget.Draft
     private val chips = ChatChips(link, machine, scope, _state) { sid }
+    val attach: AttachTray? = attachOf?.takeIf { draft == null }?.invoke(scope) { sid }
 
     /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
     val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, scope) }
@@ -228,6 +234,7 @@ class ChatSession(
             draftAsked = true
             scope.launch { cache.draft(draftKey())?.let { _state.value = _state.value.copy(draft = it) } }
         }
+        attach?.open()
         if (!succeeding) {
             succeeding = true
             scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
@@ -333,9 +340,9 @@ class ChatSession(
     }
 
     fun send(text: String) {
-        if (text.isBlank()) return
+        val (localId, ids) = attach.handOver(text, "local-${UUID.randomUUID()}") ?: return
         draftSave?.cancel()
-        val o = Outgoing("local-${UUID.randomUUID()}", text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"))
+        val o = Outgoing(localId, text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"), attachments = ids)
         outgoing += o
         publish()
         val key = draftKey()
@@ -364,13 +371,7 @@ class ChatSession(
 
     fun switchPermission(pick: AgentPick) = chips.switchPermission(pick)
 
-    fun loadPicks() =
-        chips.loadPicks(
-            sid?.let {
-                link.table.value.live[it]
-                    ?.agentKind
-            },
-        )
+    fun loadPicks() = chips.loadPicks(sid?.let(link.table.value.live::get)?.agentKind)
 
     /** ［+］面板打开（见 [ChatChips.loadCommands]）。 */
     fun loadCommands() = chips.loadCommands()
@@ -446,8 +447,9 @@ class ChatSession(
     /** ➤：经 `session-say` 往那条会话说（那台判：在等人不送 · 终端没了按记下的号恢复再交）。 */
     private suspend fun deliver(o: Outgoing) {
         val s = sid ?: started(o)?.also { if (o.handed) return } ?: return fail(o, permanent = false, text = null)
-        val (delivery, text) = outcomeOf(link.call(SessionSay.COMMAND, SessionSay.args(s, o.text), INPUT_MS))
+        val (delivery, text) = outcomeOf(link.call(SessionSay.COMMAND, SessionSay.args(s, o.text, o.attachments), INPUT_MS))
         mark(o, delivery, text)
+        if (delivery != DeliveryState.FAILED) attach?.settled(o.localId)
     }
 
     /** `session-say` 的回话 ⇒ 气泡下的标与那一句（送到了 ⇒ 没有标）。 */
@@ -671,7 +673,7 @@ class ChatSession(
                     PendingOutcome.REFUSED -> failed(null)
                     else -> unsure(machine)
                 }
-            outgoing += Outgoing(p.id, p.text, d, text, p.attempts)
+            outgoing += Outgoing(p.id, p.text, d, text, p.attempts, attach?.handedOf(p.id).orEmpty())
         }
     }
 
@@ -880,6 +882,8 @@ private class Outgoing(
     var delivery: DeliveryState?,
     var deliveryText: String?,
     var attempts: Int = 1,
+    /** 随这一句发的附件编号（重发照带）。 */
+    val attachments: List<String> = emptyList(),
 ) {
     /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
     var handed = false
