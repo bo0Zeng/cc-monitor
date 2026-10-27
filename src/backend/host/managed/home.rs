@@ -16,11 +16,6 @@ pub(crate) const SOCK: &str = "sock";
 pub(crate) const FACTS: &str = "facts.json";
 /// Unix 套接字路径的上限（`sun_path` 108 字节含结尾的 0）。超过 ⇒ 起不来并说清，不偷偷换地方。
 pub(crate) const SOCK_PATH_MAX: usize = 107;
-/// 事实文件读的上限（几百字节的东西，大了就不是我们写的）。
-const FACTS_CAP: u64 = 64 * 1024;
-/// `facts.json` 的声明：状态（托管进程活着时它是那个终端的事实；读不出来 ⇒ 这个终端不列，不覆盖）。
-const FACTS_DOC: crate::common::own_state::Doc<Facts> =
-    crate::common::own_state::Doc::state(".cc-monitor/hosts/<id>/facts.json", FACTS_CAP);
 
 /// `facts.json`：托管进程自己写，后端经托管口 `tag` 补 sid。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -157,7 +152,13 @@ impl Home {
     }
 }
 
-/// 读一个托管终端目录里的事实（读不懂 ⇒ `None`）。
+/// 事实文件读的上限（几百字节的东西，大了就不是我们写的）：超了当读不出来 ⇒ [`read_facts`] 说是哪一个、这个终端不列。
+const FACTS_CAP: u64 = 64 * 1024;
+/// `facts.json` 的声明：状态（托管进程活着时它是那个终端的事实；读不出来 ⇒ 这个终端不列，不覆盖）。只有紧跟着的 [`read_facts`] 读它。
+const FACTS_DOC: crate::common::own_state::Doc<Facts> =
+    crate::common::own_state::Doc::state(".cc-monitor/hosts/<id>/facts.json", FACTS_CAP);
+
+/// 读一个托管终端目录里的事实（读不懂 ⇒ `None`，`warn!` 带目录）。
 pub(crate) fn read_facts(dir: &Path) -> Option<Facts> {
     match FACTS_DOC.read(&dir.join(FACTS)) {
         crate::common::own_state::Read::Present(f) => Some(f),
@@ -201,6 +202,34 @@ pub(crate) fn alive(own: &Own) -> Vec<Facts> {
     }
     v.sort_by(|a, b| a.started_ms.cmp(&b.started_ms).then(a.id.cmp(&b.id)));
     v
+}
+
+/// 删掉陈旧的家（机器重启过 · 托管进程被杀：目录与事实还在、锁没人攥）。只由起托管进程的那一方调（写只在托管那一处）。
+///
+/// 只删有事实的：正在占家的那一方先建目录、再抢锁、起了子进程才写事实 ⇒ 没事实的目录可能正被占着，不碰；
+/// 有事实却拿得到锁的，那个托管进程已经没了。
+pub(crate) fn sweep_stale(own: &Own) {
+    let Ok(hosts) = hosts_dir(own) else { return };
+    let Ok(rd) = Ro::read_dir(hosts.as_path()) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if !id_ok(&name) || !e.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let Ok(dir) = hosts.join(&name) else { continue };
+        if Ro::symlink_metadata(&dir.as_path().join(FACTS)).is_err() {
+            continue;
+        }
+        let Ok(Some(lock)) = own.try_lock(&dir) else {
+            continue;
+        };
+        match own.clear_dir(&dir, &lock) {
+            Ok(()) => tracing::info!("托管终端：删了陈旧的 {}", dir.as_path().display()),
+            Err(e) => tracing::warn!("托管终端：陈旧的 {} 没删成：{e}", dir.as_path().display()),
+        }
+    }
 }
 
 /// 按名或句柄认一个活着的托管终端（`ccm --attach <名|句柄>`）。

@@ -1004,8 +1004,8 @@ impl TerminalHost {
 
 /// `session_added` 的 `container`：**这条活着的会话住在什么容器里**，词与 `terminals-list` 同一套。
 ///
-/// 线上是对象：`{"host":"tmux","terminal":"tmux-3-7"}` · `{"host":"none"}`。在宿主里的，claude 退了终端还在（「可重连」）；
-/// 不在的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄；打标那一刻算不出 ⇒ 不写这一格。
+/// 线上是对象：`{"host":"tmux","terminal":"tmux-3-7"}` · `{"host":"managed","terminal":"<id>"}` · `{"host":"none"}`。
+/// 在 tmux 里的，claude 退了终端还在（「可重连」）；托管的与不在宿主里的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄；打标那一刻算不出 ⇒ 不写这一格。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(rename = "WireSessionContainer", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -1013,6 +1013,12 @@ impl TerminalHost {
 pub enum SessionContainer {
     /// 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
     Tmux {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        terminal: Option<String>,
+    },
+    /// 在托管终端里（进程环境里的 `CCM_HOST` 认得那个托管终端，`terminal` 是它的句柄）。claude 一退终端跟着收 ⇒ 没有「可重连」。
+    Managed {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         terminal: Option<String>,
