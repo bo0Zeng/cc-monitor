@@ -35,10 +35,7 @@ fn ties() -> GroupsRead {
         ],
         members: vec![member(MAIN, &["g1", "g3"]), member("someone-else", &["g2"])],
     };
-    merge(
-        &[(Machine::local(), Half::Now(here))],
-        Vec::new(),
-    )
+    merge(&[(Machine::local(), Half::Now(here))], Vec::new())
 }
 
 fn block<'a>(doc: &'a PlanRead, slice: &str, id: &str) -> &'a PlanBlock {
