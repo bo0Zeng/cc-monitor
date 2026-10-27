@@ -32,6 +32,7 @@
  * 本模块不排定时器（`polling_registry`）：触发全靠宿主（新记录到了 · 批结束 · 会话事实变了 · 切 tab）与 DOM 变动（`MutationObserver`）。
  */
 import { readTurns, type TurnsResult } from "./session-reads";
+import type { FoldFail } from "./generated/FoldFail";
 import type { FoldSegment } from "./generated/FoldSegment";
 import type { TurnRow } from "./generated/TurnRow";
 import type { TurnSpan } from "./generated/TurnSpan";
@@ -52,8 +53,6 @@ export const PROC_TAIL_CLASS = "proc-tail";
 export const PROC_REVEAL_EVENT = "proc-reveal";
 /** ESC 回退段的外壳。 */
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
-/** 过程里出了错的那一处（点「失败 ×N」滚到第一处）。 */
-const FAILED_SELECTOR = '.step-line[data-state="failed"], .card-api-error, [data-failed="1"]';
 /** 过程行占的高（还没建出一条可量时用）：28 高 ＋ 12 下边距。 */
 const LINE_PX_FALLBACK = 40;
 /** 连续要不到几次就不再要（同大纲 / 事实的口径）。 */
@@ -528,13 +527,13 @@ export class TurnFold {
   private onLineClick(uuid: string, e: MouseEvent): void {
     const ref = this.byAfter.get(uuid);
     if (!ref) return;
-    // 点「失败 ×N」那一段 ⇒ 展开并滚到第一处失败；整行其余地方点 ＝ 开合。
+    // 点「失败 ×N」那一段 ⇒ 展开并滚到后端指的第一处失败（`firstFail`）；整行其余地方点 ＝ 开合。
     const onFail = e.target instanceof Element && e.target.closest(".proc-fails") !== null;
     if (onFail) {
       this.overrides.set(uuid, true);
       this.apply();
       this.opened();
-      this.firstFailure(uuid)?.scrollIntoView({ block: "center" });
+      this.failCard(ref.fold.firstFail)?.scrollIntoView({ block: "center" });
       return;
     }
     const open = !this.expanded(ref);
@@ -543,14 +542,11 @@ export class TurnFold {
     if (open) this.opened();
   }
 
-  private firstFailure(uuid: string): HTMLElement | null {
-    for (const el of Array.from(this.content.children)) {
-      if (!(el instanceof HTMLElement) || el.dataset.procOf !== uuid) continue;
-      if (el.matches(FAILED_SELECTOR)) return el;
-      const hit = el.querySelector<HTMLElement>(FAILED_SELECTOR);
-      if (hit) return hit;
-    }
-    return null;
+  /** 后端指的那一处画在哪：一次调用 ⇒ 它画成的那一块（`data-tool`），否则那一条的卡（`data-id`）；没指 / 还没建出来 ⇒ `null`。 */
+  private failCard(at: FoldFail | null): HTMLElement | null {
+    if (at === null) return null;
+    const sel = at.tool !== null ? `[data-tool="${CSS.escape(at.tool)}"]` : `[data-id="${CSS.escape(at.uuid)}"]`;
+    return this.content.querySelector<HTMLElement>(sel);
   }
 
 }

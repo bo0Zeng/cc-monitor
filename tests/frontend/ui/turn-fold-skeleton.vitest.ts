@@ -81,7 +81,7 @@ const turn = (k: number): TurnRow => ({
   reply: "",
   done: true,
   phase: "idle",
-  folds: [{ after: `u${k * PER_TURN}`, afterLine: k * PER_TURN, until: `u${k * PER_TURN + ENDING_AT}`, untilLine: k * PER_TURN + ENDING_AT, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle" }],
+  folds: [{ after: `u${k * PER_TURN}`, afterLine: k * PER_TURN, until: `u${k * PER_TURN + ENDING_AT}`, untilLine: k * PER_TURN + ENDING_AT, parts: [{ text: "p", tone: "plain" }], span: { text: "", from: null, to: null }, phase: "idle", firstFail: null }],
 });
 
 async function rig() {
