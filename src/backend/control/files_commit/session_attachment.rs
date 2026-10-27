@@ -298,7 +298,7 @@ pub fn commit(
         path: crate::files::raw::to_path_buf(landed.path.bytes())
             .display()
             .to_string(),
-        class: crate::files::class::class_of_name(name.as_bytes(), false),
+        class: cmd_wire::file_class::class_of_name(name.as_bytes(), false),
         bytes: landed.bytes,
         sha256: cmd_wire::files::Sha256Hex(sha),
         id,

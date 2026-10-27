@@ -632,6 +632,8 @@ fn a_human_say_lists_its_attachments_and_keeps_only_the_words() {
         )
     );
     assert!(a.size_text.is_some());
+    // 类别照名字判（与 `session-attachment-commit` 回包同一个 `class_of_name`）。
+    assert_eq!(a.class, cmd_wire::files::FileClass::Code);
     std::fs::remove_dir_all(&d).ok();
     let Some(Record {
         body: Body::Said { attachments, .. },

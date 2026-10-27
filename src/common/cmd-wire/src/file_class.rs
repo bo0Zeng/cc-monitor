@@ -1,0 +1,94 @@
+//! **按名字判一项是哪一种**（唯一一处）：扩展名表 · 没有扩展名却一看就是代码的那几个名字。
+//! 后端文件管理（`files/class.rs`：图标 · 「类型」那一列 · 几道门）、聊天附件的出口（`session-attachment-commit` 的回包）与
+//! 各家适配层认出的附件（记录里 `said.attachments[].class`）都调它，两端照 [`FileClass`] 画。
+
+use crate::files::FileClass;
+
+const TEXT: &[&str] = &[
+    "txt", "md", "markdown", "log", "csv", "tsv", "rst", "ini", "cfg", "conf", "env", "org", "adoc",
+];
+const CODE: &[&str] = &[
+    "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "go", "c", "h", "cpp", "hpp", "cc", "cxx",
+    "java", "kt", "kts", "swift", "rb", "php", "sh", "bash", "zsh", "fish", "ps1", "psm1", "lua",
+    "sql", "html", "htm", "css", "scss", "sass", "less", "json", "jsonl", "toml", "yaml", "yml",
+    "xml", "vue", "svelte", "cs", "dart", "r", "pl", "scala", "zig", "nim", "ex", "exs", "hs",
+    "ml", "vim", "diff", "patch", "gradle", "cmake", "mk", "proto", "graphql", "tf",
+];
+const IMAGE: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "tif", "tiff", "avif", "heic",
+];
+const ARCHIVE: &[&str] = &[
+    "zip", "tar", "gz", "tgz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "7z", "rar", "jar", "deb",
+    "rpm",
+];
+/// 没有扩展名、但一看名字就是代码的那几个。
+const CODE_NAMES: &[&str] = &[
+    "makefile",
+    "dockerfile",
+    "justfile",
+    "rakefile",
+    "cmakelists.txt",
+];
+
+/// 扩展名（ASCII 小写；`.bashrc` 这种只有前导点的不算；不是合法 UTF-8 ⇒ 不认）。
+pub fn ext_of(name: &[u8]) -> Option<String> {
+    let i = name.iter().rposition(|&b| b == b'.')?;
+    let e = std::str::from_utf8(&name[i + 1..]).ok()?;
+    (i > 0 && !e.is_empty()).then(|| e.to_ascii_lowercase())
+}
+
+/// 按名字（与是不是目录）判的那一种；链接由调用方定。
+pub fn class_of_name(name: &[u8], is_dir: bool) -> FileClass {
+    if is_dir {
+        return FileClass::Folder;
+    }
+    if CODE_NAMES
+        .iter()
+        .any(|n| name.eq_ignore_ascii_case(n.as_bytes()))
+    {
+        return FileClass::Code;
+    }
+    let Some(ext) = ext_of(name) else {
+        return FileClass::Other;
+    };
+    let e = ext.as_str();
+    if TEXT.contains(&e) {
+        FileClass::Text
+    } else if CODE.contains(&e) {
+        FileClass::Code
+    } else if IMAGE.contains(&e) {
+        FileClass::Image
+    } else if ARCHIVE.contains(&e) {
+        FileClass::Archive
+    } else if e == "pdf" {
+        FileClass::Pdf
+    } else {
+        FileClass::Other
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use FileClass as C;
+
+    /// 几种名字 ⇒ 几种类：扩展名不分大小写 · 无扩展名的代码名 · 只有前导点的不算扩展名 · 目录先于名字。
+    #[test]
+    fn names_map_to_their_class() {
+        for (name, want) in [
+            ("login.CSS", C::Code),
+            ("Makefile", C::Code),
+            ("notes.md", C::Text),
+            ("shot.png", C::Image),
+            ("a.tar.gz", C::Archive),
+            ("spec.pdf", C::Pdf),
+            (".bashrc", C::Other),
+            ("blob", C::Other),
+        ] {
+            assert_eq!(class_of_name(name.as_bytes(), false), want, "{name}");
+        }
+        assert_eq!(class_of_name(b"shot.png", true), C::Folder);
+        assert_eq!(ext_of(b"A.Tar.GZ").as_deref(), Some("gz"));
+        assert_eq!(ext_of(b"\xff.\xfe"), None);
+    }
+}

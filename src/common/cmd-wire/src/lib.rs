@@ -38,6 +38,7 @@ pub mod bookmarks;
 pub mod bus;
 pub mod cells;
 pub mod dial;
+pub mod file_class;
 pub mod files;
 #[cfg(any(test, feature = "ts"))]
 pub mod fingerprint;

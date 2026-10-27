@@ -366,6 +366,7 @@ fn attachment_at(cwd: Option<&str>, id: &str, name: &str) -> cmd_wire::attachmen
     let bytes = meta.flatten().map(|m| m.len());
     cmd_wire::attachment::Attachment {
         name: name.to_string(),
+        class: cmd_wire::file_class::class_of_name(name.as_bytes(), false),
         rel,
         bytes,
         size_text: bytes.map(copy_core::size_text),
