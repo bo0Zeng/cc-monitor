@@ -54,6 +54,16 @@ fn run(doc: &PlanRead, args: Value, reply: Value) -> (Out, Vec<Value>, Vec<Rec>)
 }
 
 fn run_resuming(doc: &PlanRead, args: Value, reply: Value) -> (Out, Vec<(Value, bool)>, Vec<Rec>) {
+    run_waiting(doc, args, reply, &|_| false)
+}
+
+/// 活会话表那一判由判据给（`waiting(sid)`）。
+fn run_waiting(
+    doc: &PlanRead,
+    args: Value,
+    reply: Value,
+    waiting: &dyn Fn(&str) -> bool,
+) -> (Out, Vec<(Value, bool)>, Vec<Rec>) {
     let sent: Sent = RefCell::new(Vec::new());
     let kept: Kept = RefCell::new(Vec::new());
     let send = |a: &Value, resume: bool| {
@@ -65,7 +75,7 @@ fn run_resuming(doc: &PlanRead, args: Value, reply: Value) -> (Out, Vec<(Value, 
         Ok(())
     };
     let req: PlanReturnReq = serde_json::from_value(args).expect("入参解得出");
-    let out = return_with(&req, doc, &send, &record, 42).map(|r| as_json(&r));
+    let out = return_with(&req, doc, &send, &record, waiting, 42).map(|r| as_json(&r));
     (out, sent.into_inner(), kept.into_inner())
 }
 
@@ -130,8 +140,12 @@ fn not_knowing_whether_it_arrived_is_kept_too_but_a_refusal_is_not() {
 
 #[test]
 fn an_owner_waiting_for_you_is_refused_without_typing_anything() {
-    let doc = doc_with(&live(crate::agents::SessionActivity::NeedsYou));
-    let (out, sent, kept) = run(&doc, args("A2-1"), json!({"result": "delivered"}));
+    // 在不在等人只问活会话表（脸上说在跑也一样）。
+    let doc = doc_with(&live(crate::agents::SessionActivity::Working));
+    let (out, sent, kept) =
+        run_waiting(&doc, args("A2-1"), json!({"result": "delivered"}), &|sid| {
+            sid == MAIN
+        });
     let out = out.unwrap();
     assert_eq!(out["result"], "refused");
     assert_eq!(out["why"], "waiting");

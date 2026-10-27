@@ -61,15 +61,17 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl Book {
     /// 在 `dir` 里跑一次 dump、并进本子，回成品（顶上带 `rev` · `readAt` · `stale`）。
+    /// `waiting(sid)` ＝ 活会话表说那条会话在等人（[`needs::of_slice`] 判 `ask` 只问它）。
     pub(crate) fn read(
         &self,
         entry: &Path,
         dir: &Path,
         who: WhoPort,
+        waiting: &dyn Fn(&str) -> bool,
         now_ms: u64,
         prior: Prior,
     ) -> Result<PlanRead, Miss> {
-        self.ingest_with(dump::run(entry, dir), dir, who, now_ms, prior)
+        self.ingest_with(dump::run(entry, dir), dir, who, waiting, now_ms, prior)
     }
 
     /// [`Self::read`] 的后一半：一次 dump 的结局进本子（判据直接喂结局）；每片加 `needs`（[`needs::of_slice`]）。
@@ -78,6 +80,7 @@ impl Book {
         ran: Ran,
         dir: &Path,
         who: WhoPort,
+        waiting: &dyn Fn(&str) -> bool,
         now_ms: u64,
         prior: Prior,
     ) -> Result<PlanRead, Miss> {
@@ -96,7 +99,7 @@ impl Book {
                         None => {
                             let at =
                                 self.entered_at(&ws, &sl.name, needs::top_done(sl), &rev, prior);
-                            sl.needs = needs::of_slice(sl, at.as_deref());
+                            sl.needs = needs::of_slice(sl, at.as_deref(), waiting);
                             good.insert(sl.name.clone(), (sl.clone(), now_ms));
                         }
                         Some(error) => {

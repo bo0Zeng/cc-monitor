@@ -47,12 +47,13 @@ fn reply(
     }
 }
 
-/// `plan-return` 的本体：`doc` 是此刻现读、标过的那一份。
+/// `plan-return` 的本体：`doc` 是此刻现读、标过的那一份；`waiting(sid)` ＝ 活会话表说那条会话在等人（在等 ⇒ 拒，只问它）。
 pub(crate) fn return_with(
     req: &PlanReturnReq,
     doc: &PlanRead,
     send: Send,
     record: Record,
+    waiting: &dyn Fn(&str) -> bool,
     now: u64,
 ) -> Answer {
     let (ws, slice, id) = (req.workspace.as_str(), req.slice.as_str(), req.id.as_str());
@@ -90,8 +91,7 @@ pub(crate) fn return_with(
         ));
     };
     let resume = req.resume == Some(true);
-    let live = needs::live_of(to);
-    let alive = live.is_some();
+    let alive = needs::live_of(to).is_some();
     if !alive && !resume {
         return Ok(reply(
             &line,
@@ -101,7 +101,7 @@ pub(crate) fn return_with(
             Some(copy_text("sessionState.planReturn.ended", &[])),
         ));
     }
-    if live == Some(Some(crate::agents::SessionActivity::NeedsYou)) {
+    if waiting(sid) {
         return Ok(reply(
             &line,
             to,
@@ -177,7 +177,7 @@ fn give_back(
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(own, ws, sl, id, r)
     };
-    return_with(req, &doc, &send, &record, now_ms())
+    return_with(req, &doc, &send, &record, &waiting, now_ms())
 }
 
 /// `plan-return` 的入参。
