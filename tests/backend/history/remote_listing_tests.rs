@@ -315,3 +315,60 @@ fn the_peer_half_keys_rows_by_session_and_keeps_the_head() {
     assert_eq!(head.total, 2);
     assert_eq!(head.info.failed[0].project_dir, "-bad");
 }
+
+/// 一个数据目录（判据自己的，不碰真的家）上的写句柄。
+fn own_at(tag: &str) -> (std::path::PathBuf, crate::platform::fs::Own) {
+    let tmp = std::env::temp_dir().join(format!("ccm-remote-listing-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("data")).unwrap();
+    let (data, home) = (
+        tmp.join("data").to_string_lossy().into_owned(),
+        tmp.to_string_lossy().into_owned(),
+    );
+    let own = crate::platform::fs::Own::issue_with(&|k| match k {
+        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
+        "HOME" => Some(home.clone()),
+        _ => None,
+    });
+    (tmp, own)
+}
+
+/// ★ 判据 9：副本落盘（`cache/remote-listing/<机器>.json`）；换一张空副本表读同一个目录（＝ 本机后端重启过）⇒
+/// 头一问带的是盘上那份的记号、手上那份不问就读得到；盘上那份读不懂 ⇒ 当没有（不带记号问、整份）。
+#[tokio::test]
+async fn the_copy_lands_on_disk_and_a_restarted_backend_asks_with_it() {
+    let (tmp, own) = own_at("restart");
+    let peer = Peer::new(vec![row("s1", "一", 30), row("s2", "二", 20)]);
+    let t = table("devbox");
+    let before = disk_copies(own.clone());
+    ask(&peer, &before, &t, true).await.unwrap();
+    let held = peer.last()["held"].clone();
+    assert!(held.is_string(), "{}", peer.last());
+    let file = tmp.join("data/cache/remote-listing/devbox.json");
+    assert!(file.is_file(), "同步成了却没落盘：{}", file.display());
+
+    let after = disk_copies(own.clone());
+    let Kept::Got(l) = kept_in(&after, "devbox") else {
+        panic!("重启之后读不到盘上那份")
+    };
+    assert_eq!(sids(&l), ["s1", "s2"]);
+    ask(&peer, &after, &t, true).await.unwrap();
+    let (_, stdin) = peer.asked.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(
+        stdin["args"]["held"], held,
+        "重启之后头一问没带盘上那份的记号：{stdin}"
+    );
+    assert_eq!(peer.last()["same"], true, "{}", peer.last());
+
+    std::fs::write(&file, b"{\"version\":1,\"hand\":").unwrap();
+    let broken = disk_copies(own);
+    assert!(matches!(kept_in(&broken, "devbox"), Kept::Unread));
+    ask(&peer, &broken, &t, true).await.unwrap();
+    let (_, stdin) = peer.asked.lock().unwrap().last().cloned().unwrap();
+    assert!(
+        stdin["args"]["held"].is_null(),
+        "读不懂的那份当了真：{stdin}"
+    );
+    assert_eq!(peer.last()["whole"], true);
+    let _ = std::fs::remove_dir_all(&tmp);
+}
