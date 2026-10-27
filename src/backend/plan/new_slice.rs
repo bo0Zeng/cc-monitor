@@ -94,8 +94,8 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
         ask.domain,
         out.existing.as_ref().map(|e| e.slice.as_str()),
     );
-    let shown: Vec<String> = args.iter().map(|a| quoted(a)).collect();
-    out.line = Some(format!("pb {}", shown.join(" ")));
+    // 只给人看、不进 shell（代敲起 pb 是逐个参数交的）⇒ 参数原样用空格连。
+    out.line = Some(format!("pb {}", args.join(" ")));
     out
 }
 
@@ -134,17 +134,6 @@ fn existing_ancestor(dir: &Path) -> PathBuf {
         .find(|a| a.is_dir())
         .unwrap_or(Path::new("/"))
         .to_path_buf()
-}
-
-/// 那一行里的一个参数：只有字母数字与几个路径常用的记号 ⇒ 原样；别的（空白 · 引号 · 变量记号 …）⇒ 照 POSIX 单引号括起（共享那一份）。
-fn quoted(a: &str) -> String {
-    if a.chars()
-        .all(|c| c.is_alphanumeric() || "-_./:@+=,".contains(c))
-    {
-        a.to_string()
-    } else {
-        shell_quote_core::posix_quote(a)
-    }
 }
 
 #[cfg(test)]

@@ -132,9 +132,10 @@ fn 没有领域_路径空_那一行照实() {
     let q3 = ask("notes/q3", None);
     assert_eq!(q3.line.as_deref(), Some("pb repo notes/q3"));
     assert_eq!(q3.slice.as_deref(), Some("q3"));
+    // 名字合不合 pb 的规矩不在这里判（提交时 pb 自己拒）：那一行照原样写。
     assert_eq!(
         ask("my notes", Some("研究")).line.as_deref(),
-        Some("pb repo 'my notes' 研究")
+        Some("pb repo my notes 研究")
     );
     let empty = ask("", Some("研究"));
     assert_eq!((empty.line, empty.repo_dir), (None, None));
