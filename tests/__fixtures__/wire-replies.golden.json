@@ -1531,19 +1531,6 @@
         "why": "not_yours"
       }
     },
-    "session-say": {
-      "rust": "{\"result\":\"delivered\",\"why\":\"not_yours\",\"said\":\"said-x\",\"screen\":\"screen-x\",\"resumed\":true,\"acts\":[\"retry\"]}",
-      "sample": {
-        "acts": [
-          "retry"
-        ],
-        "result": "delivered",
-        "resumed": true,
-        "said": "said-x",
-        "screen": "screen-x",
-        "why": "not_yours"
-      }
-    },
     "sessions-needs": {
       "rust": "{\"items\":[{\"kind\":\"session\",\"rank\":7,\"session\":{\"sid\":\"sid-x\",\"label\":\"label-x\",\"face\":{\"dot\":\"running\",\"life\":{\"is\":\"live\",\"activity\":\"working\"},\"settled\":true,\"name\":\"name-x\",\"tip\":\"tip-x\",\"line\":\"line-x\",\"tone\":\"plain\",\"order\":7,\"can\":{\"close\":{\"can\":\"quiet\"},\"resume\":{\"can\":\"yes\"},\"term\":{\"can\":\"yes\",\"tmux\":true},\"reattach\":{\"can\":\"yes\"},\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"},\"stop\":{\"can\":\"yes\"}},\"account\":\"account-x\"},\"needs\":{\"kind\":\"approve\",\"tool\":\"tool-x\",\"call\":\"call-x\",\"what\":\"what-x\",\"sinceMs\":7,\"text\":\"text-x\",\"head\":\"head-x\",\"headCode\":\"headCode-x\",\"tone\":\"plain\",\"rank\":7,\"waitedMs\":7,\"waitedText\":\"waitedText-x\",\"ask\":{\"id\":\"id-x\",\"kind\":\"approve\",\"tool\":\"tool-x\",\"run\":{\"id\":\"id-x\",\"kind\":\"kind-x\"},\"what\":\"what-x\",\"detail\":\"detail-x\",\"choices\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"tone\":\"plain\",\"note\":\"none\",\"row\":\"main\"}],\"questions\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"header\":\"header-x\",\"multi\":true,\"options\":[{\"id\":\"id-x\",\"text\":\"text-x\",\"detail\":\"detail-x\"}],\"other\":true}],\"sinceMs\":7},\"manualText\":\"manualText-x\"},\"hidden\":{\"by\":\"self\",\"said\":\"said-x\"}}}],\"answered\":[{\"sid\":\"sid-x\",\"said\":\"said-x\"}],\"manualUnreadable\":\"manualUnreadable-x\"}",
       "sample": {

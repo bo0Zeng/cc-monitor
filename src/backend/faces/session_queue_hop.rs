@@ -9,10 +9,10 @@
 #[cfg(test)]
 use crate::dial::remote_ask::Said;
 use crate::dial::remote_ask::{Remote, Table};
-use cmd_wire::queue::{SessionQueueCancelReq, SessionQueuePutReq, SessionQueueReadReq};
 use crate::platform::child::Until;
 use crate::wire::spec::Fail;
 use crate::wire::typed::Command;
+use cmd_wire::queue::{SessionQueueCancelReq, SessionQueuePutReq, SessionQueueReadReq};
 use cmd_wire::Machine;
 
 /// 三条的入参都带「会话在哪台」：读它 · 换成那台自己眼里的本机。

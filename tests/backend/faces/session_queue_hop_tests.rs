@@ -5,8 +5,8 @@
 use super::*;
 use crate::faces::session_queue_face::{SessionQueuePutCmd, SessionQueuePutErr};
 use crate::history::session_queue as q;
-use cmd_wire::queue::{QueuePut, QueuePutOutcome};
 use crate::wire::typed::Codes as _;
+use cmd_wire::queue::{QueuePut, QueuePutOutcome};
 use serde_json::{json, Value};
 use std::future::Future;
 use std::pin::Pin;

@@ -12,14 +12,14 @@
 //!   （连同收着的几点等够）· [`delivered`] 把它摘掉 · [`give_up`] 送不进去标未送达 · [`end`] 会话结束。
 //! - 全仓唯一的写口在这里：读—改—写在那个目录的跨进程锁里、原子换。读不出来（坏了 · 更新的版本）⇒ `queue_unreadable`，不覆盖。
 
-use cmd_wire::queue::{
-    QueueCancelled, QueueItem, QueuePut, QueuePutOutcome, QueueState, SessionQueue,
-    SessionQueuePutReq,
-};
 use crate::common::own_state::{json_body, Doc, Read};
 use crate::common::said::Said;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
+use cmd_wire::queue::{
+    QueueCancelled, QueueItem, QueuePut, QueuePutOutcome, QueueState, SessionQueue,
+    SessionQueuePutReq,
+};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};

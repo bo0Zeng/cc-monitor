@@ -97,8 +97,18 @@ fn a_working_owner_gets_the_line_queued_and_the_return_is_kept() {
     assert_eq!(sent.len(), 1);
     let p = &sent[0];
     assert_eq!(
-        (p.sid.as_str(), p.text.as_str(), p.end.as_str(), p.id.as_str()),
-        (MAIN, "人 · A2-1 乙的一半：单位写错了", "monitor", "plan-42-alpha-A2-1")
+        (
+            p.sid.as_str(),
+            p.text.as_str(),
+            p.end.as_str(),
+            p.id.as_str()
+        ),
+        (
+            MAIN,
+            "人 · A2-1 乙的一半：单位写错了",
+            "monitor",
+            "plan-42-alpha-A2-1"
+        )
     );
     assert!(p.machine.is_local() && p.n.is_none() && p.attachments.is_empty());
     assert_eq!(kept.len(), 1);
@@ -107,7 +117,10 @@ fn a_working_owner_gets_the_line_queued_and_the_return_is_kept() {
         (ws.as_str(), sl.as_str(), id.as_str()),
         ("/w", "alpha", "A2-1")
     );
-    assert_eq!((r.at, r.to.as_str(), r.result.as_str()), (42, MAIN, "queued"));
+    assert_eq!(
+        (r.at, r.to.as_str(), r.result.as_str()),
+        (42, MAIN, "queued")
+    );
     assert!(r.children.is_empty());
     let cell = &doc.slices[0].cells[7];
     assert_eq!(cell.id, "A2-1");

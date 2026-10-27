@@ -16,10 +16,10 @@
 use crate::agents::SessionActivity;
 use crate::control::terminals_wire::{Sent, SentResult};
 use crate::history::session_queue as q;
-use cmd_wire::queue::QueueItem;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
 use crate::wire::typed::Files;
+use cmd_wire::queue::QueueItem;
 use cmd_wire::session::Refused;
 use std::collections::BTreeMap;
 

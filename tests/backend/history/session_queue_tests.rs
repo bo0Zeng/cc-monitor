@@ -327,5 +327,8 @@ fn attachments_ride_with_the_line_and_sent_ids_are_listed() {
     }
     let sent = read(&o, SID, T0).unwrap().sent;
     assert_eq!(sent.len(), SENT_KEEP);
-    assert_eq!(sent.last().map(String::as_str), Some(format!("m{}", SENT_KEEP + 2).as_str()));
+    assert_eq!(
+        sent.last().map(String::as_str),
+        Some(format!("m{}", SENT_KEEP + 2).as_str())
+    );
 }

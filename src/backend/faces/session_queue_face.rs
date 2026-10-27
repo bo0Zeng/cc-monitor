@@ -95,7 +95,10 @@ pub(crate) fn put_here(
         if !gone.is_empty() {
             return Err(Fail::new(
                 "attachment_gone",
-                copy_text("beQueue.put.attachmentGone", &[("ids", &gone.join(&copy_text("kit.text.sep", &[])))]),
+                copy_text(
+                    "beQueue.put.attachmentGone",
+                    &[("ids", &gone.join(&copy_text("kit.text.sep", &[])))],
+                ),
             ));
         }
     }
