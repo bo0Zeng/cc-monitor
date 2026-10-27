@@ -2437,3 +2437,41 @@ fn facts_follow_the_pick_kept_for_the_next_resume() {
     dress_kept(&mut f, None);
     assert_eq!(f, base());
 }
+
+/// `history-run` 从尾巴读：`tail` ⇒ 回最后一页（到最后一个整行），`from` 是这一页的行头；`before` ⇒ 往前读到它为止。
+#[test]
+fn history_run_reads_from_the_tail_and_pages_back() {
+    let home = scratch("run-tail");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    let ask = |extra: serde_json::Value| {
+        let mut args = serde_json::json!({"parent": path, "run": "a1"});
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        answer_at(&home, "history-run", &args, &Default::default()).unwrap()
+    };
+    let head = ask(serde_json::json!({}));
+    let tail = ask(serde_json::json!({"tail": true}));
+    assert_eq!(
+        (&tail["from"], &tail["end"], &tail["more"]),
+        (
+            &serde_json::json!(0),
+            &head["end"],
+            &serde_json::json!(false)
+        ),
+        "夹具一页装得下 ⇒ 尾页就是整份"
+    );
+    assert_eq!(tail["rows"], head["rows"]);
+    // 往前读到第一行之后为止 ⇒ 只回第一条，后面还有。
+    let sub = std::fs::read_to_string(head["path"].as_str().unwrap()).unwrap();
+    let first = sub.find('\n').unwrap() as u64 + 1;
+    let back = ask(serde_json::json!({"before": first}));
+    assert_eq!(back["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(back["rows"][0], head["rows"][0]);
+    assert_eq!(
+        (&back["from"], &back["more"]),
+        (&serde_json::json!(0), &serde_json::json!(true))
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
