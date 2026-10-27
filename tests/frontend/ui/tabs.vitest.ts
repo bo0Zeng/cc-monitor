@@ -5695,7 +5695,7 @@ describe("组头", () => {
     expect(head().classList.contains("is-current")).toBe(false);
   });
 
-  it("「⋯」菜单：改名 · 收起 · 全部收起 · 全部展开 · 关闭组里已结束的（n，0 时灰）· 解散分组", () => {
+  it("「⋯」菜单：改名 · 收起 · 全部收起 · 全部展开 · 在计划中查看本组接手的块 · 关闭组里已结束的（n，0 时灰）· 解散分组", () => {
     head().querySelector<HTMLElement>(".tab-group-more")!.click();
     const labels = [...document.body.querySelectorAll("[role=menu] [role^=menuitem]")].map((b) => b.textContent ?? "");
     expect(labels.map((l) => l.split("\n")[0])).toEqual([
@@ -5703,6 +5703,7 @@ describe("组头", () => {
       copyText("tabMenu.group.collapse"),
       copyText("tabMenu.group.collapseAll"),
       copyText("tabMenu.group.expandAll"),
+      copyText("tabMenu.group.inPlan"),
       copyText("sessionState.closeEnded.inGroup", { n: 0 }),
       copyText("tabMenu.group.dissolve"),
     ]);

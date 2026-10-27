@@ -135,7 +135,7 @@ beforeEach(() => {
 const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", blocks: [], blockedBy: [] });
 const run = (id: string): RunInfo => ({ run: id, state: "running", label: `子 ${id}`, kind: null, tool: null, last: null }) as unknown as RunInfo;
 
-const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ lines: [], text: "", screen: "", atText: "" }), send: async () => ({ result: "delivered" }), follow: () => ({ stop: () => {} }) };
+const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ lines: [], text: "", screen: "", atText: "" }), send: async () => ({ result: "delivered", acts: [] }), follow: () => ({ stop: () => {} }) };
 
 function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel; drawer: MainDrawer } {
   const tasks = new TasksPanel();

@@ -756,6 +756,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/launch-slot.module.css": { stacked: true, why: "起会话之后的占位标签页：栏里那一行挂全局的 `.tab`（与真标签页同一个样子 · `.tab-dot` / `.tab-title` 那几格），那一页与报错卡只挂自己的哈希类" },
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
   "src/frontend/ui/views/plan-bits.module.css": { stacked: false, why: "计划页小件：阶段框与类色那几档，全是自己的类" },
+  "src/frontend/ui/views/plan-new.module.css": { stacked: false, why: "新计划框：外框是 kit 表单对话框，里面全是自己的类（下拉 · 输入框 · 分段按钮用 kit 原样）" },
   "src/frontend/ui/views/plan-cell.module.css": { stacked: true, why: "一格详情：给 kit 建的按钮 · 徽标 · 提示条挂本页的版位类" },
   "src/frontend/ui/views/plan-review.module.css": { stacked: false, why: "计划需手动那一条 · 退回框：全是自己的类（按钮用 kit 原样）" },
   "src/frontend/ui/views/plan.module.css": { stacked: true, why: "计划页：给 kit 建的按钮 · 开关 · 状态点挂本页的版位类" },

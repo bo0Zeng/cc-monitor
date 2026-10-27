@@ -489,28 +489,20 @@ export class TerminalPage {
     }
     if (sid !== this.sid) return false;
     this.sending = false;
-    if (failed !== null) {
-      this.showNote({ text: failed, tone: "error", retry: what, detail });
+    if (failed !== null || sent === null) {
+      this.showNote({ text: failed ?? copyText("reason.code.refused"), tone: "error", retry: what, detail });
       return false;
     }
-    if (sent?.result === "delivered") {
+    if (sent.result === "delivered") {
       this.showNote({ text: copyText("terminal.input.delivered"), tone: "ok" });
       if (!this.isLive) this.schedule();
       return true;
     }
-    if (sent?.result === "unsure") {
-      this.showNote({ text: copyText("terminal.input.unsure", { machine: machineName(this.origin) }), tone: "error" });
-      void this.recapture();
-      return false;
-    }
-    const why = sent?.result === "refused" ? sent.why : "";
-    if (why === "screen_changed") {
-      this.showNote({ text: copyText("terminal.input.screenChanged"), tone: "error" });
-      void this.recapture();
-      return false;
-    }
-    this.showNote({ text: copyText("terminal.input.failed", { why: sent?.result === "refused" ? sent.said : copyText("reason.code.refused") }), tone: "error", retry: what });
-    if (why === "not_known" || why === "ended") void this.refresh();
+    // 下一步照后端判好的 `acts` 摆：给不给［重试］· 重抓一屏 · 重读名单。
+    const text = sent.result === "unsure" ? copyText("terminal.input.unsure", { machine: machineName(this.origin) }) : copyText("terminal.input.failed", { why: sent.said });
+    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? { retry: what } : {}) });
+    if (sent.acts.includes("recapture")) void this.recapture();
+    if (sent.acts.includes("relist")) void this.refresh();
     return false;
   }
 

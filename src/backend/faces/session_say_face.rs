@@ -8,7 +8,7 @@
 use crate::common::contract::malformed;
 use crate::control::launch_account::AccountAsk;
 use crate::control::session_open::{self as open, Item, Landed};
-use crate::control::terminals::{input_reply, no_said, CmdErr, Refused};
+use crate::control::terminals::{input_reply, CmdErr, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::wire::typed::{self, Command, Files};
 use serde::Deserialize;
@@ -132,13 +132,11 @@ pub(crate) fn idle_gate(
     }
     match doing(req.sid.as_str()) {
         Some(Some(A::Idle | A::NeedsYou)) => None,
-        _ => Some(Sent {
-            result: SentResult::Refused,
-            why: Some(Refused::NotIdle),
-            said: Some(no_said(Refused::NotIdle)),
-            screen: None,
-            resumed: false,
-        }),
+        _ => Some(input_reply(
+            SentResult::Refused,
+            Some(Refused::NotIdle),
+            None,
+        )),
     }
 }
 
@@ -150,13 +148,11 @@ pub(crate) fn say_with(
     resume: &dyn Fn(&SessionSayReq) -> Option<Reopened>,
 ) -> Result<Sent, CmdErr> {
     if waiting(&req.sid) {
-        return Ok(Sent {
-            result: SentResult::Refused,
-            why: Some(Refused::Waiting),
-            said: Some(no_said(Refused::Waiting)),
-            screen: None,
-            resumed: false,
-        });
+        return Ok(input_reply(
+            SentResult::Refused,
+            Some(Refused::Waiting),
+            None,
+        ));
     }
     let sent = send(&TerminalInputReq {
         sid: Some(req.sid.to_string()),

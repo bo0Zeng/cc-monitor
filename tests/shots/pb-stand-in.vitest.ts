@@ -102,6 +102,17 @@ describe.skipIf(process.platform === "win32")("pb 替身", () => {
     expect(dumped(root, ws).current_repo).toBe("beta");
   });
 
+  it("dump --domains <目录>：往上找到工作区 ⇒ 它那几档；找不到（目录还不在也行）⇒ 插件那几档、工作区 null，都退 0", () => {
+    const plugin = [{ name: "软件", source: "plugin" }];
+    const { root, ws } = home({ domains: plugin });
+    const inWs = JSON.parse(pb(root, root, "dump", "--domains", path.join(ws, "sub", "deeper")).out) as Record<string, unknown>;
+    expect([inWs.shape, inWs.workspace, inWs.domains]).toEqual([6, DOC.workspace, DOC.domains]);
+    const off = pb(root, root, "dump", "--domains", path.join(root, "nowhere", "new"));
+    expect(off.rc).toBe(0);
+    const offDoc = JSON.parse(off.out) as Record<string, unknown>;
+    expect([offDoc.shape, offDoc.workspace, offDoc.domains]).toEqual([6, null, plugin]);
+  });
+
   it("render 说写了哪一页", () => {
     const { root, ws } = home();
     const v = pb(root, ws, "render");

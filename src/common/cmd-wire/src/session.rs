@@ -69,6 +69,27 @@ pub struct Sent {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub resumed: bool,
+    /// 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<SentAct>>"))]
+    pub acts: Vec<SentAct>,
+}
+
+/// 送完之后的一步（闭集）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SentAct {
+    /// 再发一次有用（拒因改得了）：给［再发一次］，字留着。
+    Retry,
+    /// 画面可能变了：重抓一屏再看。
+    Recapture,
+    /// 终端可能换了 · 没了：重读终端名单。
+    Relist,
 }
 
 /// 送字 / 送键的结局。
@@ -495,22 +516,6 @@ pub struct Hidden {
     pub said: String,
 }
 
-/// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。第一句作为启动参数交给那一家 ⇒ 起好了就是 `delivered`（起不成整条失败、走不到这里）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct FirstSay {
-    /// `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
-    pub result: String,
-    /// `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
-    pub why: Option<String>,
-    /// `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
-    pub said: Option<String>,
-}
-
 /// `session-open` 落在哪。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -556,8 +561,8 @@ pub struct Opened {
     pub account: Option<LaunchedAccount>,
     /// 那台要附带说的一句（命中几个在跑的、接了第一个）；没有 ⇒ `null`。
     pub note: Option<String>,
-    /// 第一句交进去的结局；没给第一句 ⇒ `null`。
-    pub prompt: Option<FirstSay>,
+    /// 第一句交进去的结局（同 `terminal-input` 的回包）；没给第一句 ⇒ `null`。第一句作为启动参数交给那一家 ⇒ 起好了就是送到了（起不成整条失败、走不到这里）。
+    pub prompt: Option<Sent>,
     /// 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
     pub arrival: Option<ArriveAsk>,
 }
