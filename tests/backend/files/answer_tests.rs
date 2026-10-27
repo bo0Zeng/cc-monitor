@@ -1383,14 +1383,22 @@ fn ls_carries_the_shown_form_written_against_this_machines_home() {
     let d = home.join(&rel);
     std::fs::remove_dir_all(&d).ok();
     std::fs::create_dir_all(d.join("a")).unwrap();
-    let v = answer("files.ls", &serde_json::json!({ "path": path_json(&d) }), &Default::default())
-        .expect("ls 不该失败");
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&d) }),
+        &Default::default(),
+    )
+    .expect("ls 不该失败");
     assert_eq!(v["head"]["info"]["shown"], format!("~/{rel}"), "{v}");
     assert_eq!(ls_rows(&v)[0]["shown"], format!("~/{rel}/a"));
     std::fs::remove_dir_all(&d).ok();
     let out = f7a_dir("ls-shown");
-    let v = answer("files.ls", &serde_json::json!({ "path": path_json(&out) }), &Default::default())
-        .expect("ls 不该失败");
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&out) }),
+        &Default::default(),
+    )
+    .expect("ls 不该失败");
     if !out.starts_with(&home) {
         assert_eq!(v["head"]["info"]["shown"], out.to_str().unwrap());
     }

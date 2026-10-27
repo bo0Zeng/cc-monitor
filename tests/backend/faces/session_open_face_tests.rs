@@ -201,7 +201,9 @@ fn the_new_session_facts_wire_names_its_cells() {
     );
     let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
     let home = Some(std::path::Path::new("/home/x"));
-    let r = serde_json::to_value(&recent_dirs(&[("/home/x/a".into(), 1)], &|_| false, &clock, home)[0]).unwrap();
+    let r =
+        serde_json::to_value(&recent_dirs(&[("/home/x/a".into(), 1)], &|_| false, &clock, home)[0])
+            .unwrap();
     assert_eq!(
         r,
         serde_json::json!({"cwd": "/home/x/a", "shown": "~/a", "lastMs": 1, "lastText": "00:00"})

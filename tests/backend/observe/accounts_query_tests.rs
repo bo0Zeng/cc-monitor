@@ -1399,13 +1399,39 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
     );
     // 号目录的显示形由这台按自己的家目录写（家 ＝ `root/home`，号目录不在它下面 ⇒ 原样）；只为缩写带的 `meta.home` 不再出。
     assert_eq!(row("b")["configDirShown"], row("b")["configDir"]);
-    assert!(v["meta"].get("home").is_none(), "meta 里还有 home：{}", v["meta"]);
-    let under = list_product_with(&accts, Some(&root), &[], &[], "claude-code", "claude-code", false);
-    let b = under["accounts"].as_array().unwrap().iter().find(|a| a["name"] == "b").cloned().unwrap();
+    assert!(
+        v["meta"].get("home").is_none(),
+        "meta 里还有 home：{}",
+        v["meta"]
+    );
+    let under = list_product_with(
+        &accts,
+        Some(&root),
+        &[],
+        &[],
+        "claude-code",
+        "claude-code",
+        false,
+    );
+    let b = under["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "b")
+        .cloned()
+        .unwrap();
     assert_eq!(b["configDirShown"], "~/accts/acct-b");
-    let zero = under["accounts"].as_array().unwrap().iter().find(|a| a["configDir"].is_null()).cloned();
+    let zero = under["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["configDir"].is_null())
+        .cloned();
     if let Some(z) = zero {
-        assert!(z["configDirShown"].is_null(), "账号 0 没有号目录 ⇒ 显示形也是 null");
+        assert!(
+            z["configDirShown"].is_null(),
+            "账号 0 没有号目录 ⇒ 显示形也是 null"
+        );
     }
     // 表里没有它那一行 ⇒ 两格 null（照样是 api-key 号）。
     let none = list_product_with(
