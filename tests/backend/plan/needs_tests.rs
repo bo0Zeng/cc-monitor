@@ -17,7 +17,20 @@ fn slice_with(doc: &Value, who: &dyn Fn(&str) -> Whose) -> PlanSlice {
 
 /// 一片的要你看，线上那一形（判据按键看）。
 fn ofs(sl: &PlanSlice, entered: Option<&str>) -> Vec<Value> {
-    of_slice(sl, entered).iter().map(as_json).collect()
+    of_slice(sl, entered, &nobody_waits)
+        .iter()
+        .map(as_json)
+        .collect()
+}
+
+/// 活会话表说谁都不在等人。
+fn nobody_waits(_: &str) -> bool {
+    false
+}
+
+/// 活会话表说主会话（也是子 agent 的父会话）在等人。
+fn main_waits(sid: &str) -> bool {
+    sid == MAIN
 }
 
 /// 谁都活着、在跑（不问人）。
@@ -160,9 +173,12 @@ fn an_ended_owner_of_a_signed_scope_or_an_unknown_owner_is_no_need() {
 
 #[test]
 fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
-    // 夹具的身份表：主会话活着、在等你批准；子 agent 的父会话就是它。
-    let sl = slice_with(&dump("/w"), &crate::plan::fixture::who);
-    let n = ofs(&sl, None);
+    // 在不在等人只问活会话表（脸上说在跑也一样）：主会话在等；子 agent 的父会话就是它。
+    let sl = slice_with(&dump("/w"), &all_working);
+    let n: Vec<Value> = of_slice(&sl, None, &main_waits)
+        .iter()
+        .map(as_json)
+        .collect();
     let ask: Vec<_> = n.iter().filter(|x| x["kind"] == "ask").collect();
     assert_eq!(ask.len(), 2);
     let b = ask.iter().find(|x| x["block"] == "A2").unwrap();
@@ -171,8 +187,8 @@ fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
     assert_eq!(b["key"], format!("ask:A2@{SUB}"));
     let p = ask.iter().find(|x| x["block"] == "project").unwrap();
     assert_eq!(p["cell"], "A1-2", "project 站在 A1-2");
-    // 在跑 ⇒ 不问人。
-    let sl = slice_with(&dump("/w"), &all_working);
+    // 表说谁都不在等 ⇒ 不问人（脸上说在等也一样）。
+    let sl = slice_with(&dump("/w"), &crate::plan::fixture::who);
     assert!(ofs(&sl, None).iter().all(|x| x["kind"] != "ask"));
 }
 
@@ -180,7 +196,7 @@ fn an_owner_waiting_for_you_is_an_ask_need_at_the_cell_the_block_stands_on() {
 fn acks_mark_needs_and_the_count_skips_acked_ones_and_asks() {
     let d = dump_top_signed("/w");
     let mut doc = made_with(&d, &crate::plan::fixture::who);
-    doc.slices[0].needs = of_slice(&doc.slices[0], Some("r1"));
+    doc.slices[0].needs = of_slice(&doc.slices[0], Some("r1"), &main_waits);
     // top · red · ask×2。
     assert_eq!(count(&doc), 2, "问人那两条由会话那一侧数");
     mark_acked(&mut doc, &|slice, key| slice == "alpha" && key == "top:r1");
@@ -278,7 +294,7 @@ fn the_line_carries_only_the_facts() {
 fn every_red_check_is_exactly_one_red_need() {
     let sl = slice_with(&dump("/w"), &crate::plan::fixture::who);
     let reds = sl.check.red.len();
-    let got = of_slice(&sl, None);
+    let got = of_slice(&sl, None, &nobody_waits);
     assert_eq!(got.iter().filter(|n| n.kind == "red").count(), reds);
     assert!(reds > 0, "夹具里没有不通过的 —— 本条空转");
 }

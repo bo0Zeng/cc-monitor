@@ -2846,7 +2846,7 @@ fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
     ));
 }
 
-/// 接线：`Notify` 那一臂里**恰好一处**问 `needs_login_touched`、真了敲需手动的铃（推 `changed {manual}`），
+/// 接线：`Notify` 那一臂里**恰好一处**问 `needs_login_touched`、真了敲需手动的铃（推 `changed {needs}`），
 /// 排在逐条处理事件的 `for` 之前（同 `manifest_touched` 那一条的理由）。
 #[test]
 fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
@@ -2855,7 +2855,7 @@ fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
     let ask = guard_core::find_pinned(&prod, "if needs_login_touched(")
         .expect("Notify 那一臂里不是恰好一处问 needs_login_touched");
     let ring = prod[ask..]
-        .find("crate::accounts::sign_in::ring_manual();")
+        .find("crate::history::needs_changed::ring();")
         .map(|k| ask + k)
         .expect("问完之后没有敲需手动的铃");
     let next_if = prod[ask + 3..]
@@ -5086,4 +5086,36 @@ fn an_ask_from_a_sub_agent_dresses_its_run_and_sends_the_table() {
     assert_eq!(needs(&mut rx), None, "没变 ⇒ 不发");
     dress_run_needs(&mut state, &mut sink, &|_: &str| Vec::new());
     assert_eq!(needs(&mut rx), Some(false), "撤了 ⇒ 再发一帧、不带了");
+}
+
+/// ★ 需手动的铃响一声 ⇒ 出方向推一帧 `changed {needs}`：带会话的带那个 key，不带会话的（整份可能变了）不带 key。
+#[test]
+fn the_needs_bell_goes_out_as_one_changed_needs_on_the_watcher_path() {
+    let mut state = ReaderState::new(std::env::temp_dir().join("ccm-needs-bell-unused"));
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
+    let mut sink = FrameSink::new(tx);
+    let needs = |rx: &mut FrameRx| -> Vec<Option<String>> {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|f| match f {
+                Frame::Changed(crate::wire::Changed::Needs { key }) => Some(key),
+                _ => None,
+            })
+            .collect()
+    };
+    needs_rang(
+        Default::default(),
+        Some("s-bell".to_string()),
+        &mut state,
+        &mut sink,
+        &|_: &str| Vec::new(),
+    );
+    assert_eq!(needs(&mut rx), vec![Some("s-bell".to_string())]);
+    needs_rang(
+        Default::default(),
+        None,
+        &mut state,
+        &mut sink,
+        &|_: &str| Vec::new(),
+    );
+    assert_eq!(needs(&mut rx), vec![None], "不带会话 ⇒ 不带 key");
 }
