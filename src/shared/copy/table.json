@@ -17629,6 +17629,12 @@
       "zh": "不压缩",
       "args": []
     },
+    "beLinks.route.proxy": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{endpoint} · 经代理",
+      "args": ["endpoint"]
+    },
     "beConnect.jump.targetFailed": {
       "kind": "error",
       "role": "报错",
@@ -22945,19 +22951,19 @@
     "mobChat.delivery.queued": {
       "kind": "body",
       "role": "状态",
-      "zh": "已到 · 排第 {place}",
+      "zh": "排队 · 第 {place}",
       "args": ["place"]
     },
     "mobChat.delivery.arrived": {
       "kind": "body",
       "role": "状态",
-      "zh": "已到",
+      "zh": "排队",
       "args": []
     },
     "mobChat.delivery.inAgent": {
       "kind": "body",
-      "role": "状态",
-      "zh": "已送进",
+      "role": "片段",
+      "zh": "已送进会话",
       "args": []
     },
     "mobChat.outbox.cancel": {
