@@ -60,8 +60,42 @@ pub struct Linked {
     pub held: Mutex<Vec<Arc<Linked>>>,
     /// 这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
     pub idle_sftp: Mutex<Option<crate::sftp::Parked>>,
-    /// 最后一次收到对端字节的时刻（[`Hearing`] 在 SSH 底下那条字节流上记）。
+    /// 最后一次收到对端字节的时刻 ＋ 线上进出字节（[`Hearing`] 在 SSH 底下那条字节流上记）。
     pub heard: Arc<crate::pool::Heard>,
+    /// 这一条上的字节压没压（协商时交出去的那一份偏好序）。
+    pub compressed: bool,
+    /// 经跳板时各台跳板那一条的地址与记账（外在先，与 `_jumps` 一一对应）；跳板那几条不压（只运隧道，里面是已加密的字节）。
+    pub jump_wires: Vec<(String, Arc<crate::pool::Heard>)>,
+}
+
+/// 最后一个用它的人走了 ⇒ 这条连接收掉：给它所在的池记一笔「成员动了」（池存的是 `Weak`，看不见这一刻）。
+impl Drop for Linked {
+    fn drop(&mut self) {
+        self.heard.tell_pool();
+    }
+}
+
+impl Linked {
+    /// 此刻的读数：这一条 ＋ 经过的各台跳板（[`crate::pool::LinkFacts`]）。
+    pub fn facts(&self) -> crate::pool::LinkFacts {
+        let wire = |endpoint: &str, compressed: bool, h: &crate::pool::Heard| {
+            let (bytes_in, bytes_out) = h.bytes();
+            crate::pool::Wire {
+                endpoint: endpoint.to_string(),
+                compressed,
+                bytes_in,
+                bytes_out,
+            }
+        };
+        crate::pool::LinkFacts {
+            link: wire(&self.endpoint, self.compressed, &self.heard),
+            jumps: self
+                .jump_wires
+                .iter()
+                .map(|(ep, h)| wire(ep, false, h))
+                .collect(),
+        }
+    }
 }
 
 /// SSH 底下那条字节流（直连的 TCP · 经跳板的那条隧道）套一层：**读到对端的字节**就记一笔收包时刻（[`crate::pool::Heard`]）。
@@ -101,6 +135,7 @@ impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Hearing<S> {
         let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
         if matches!(r, std::task::Poll::Ready(Ok(()))) && buf.filled().len() > before {
             self.heard.touch();
+            self.heard.took(buf.filled().len() - before);
             if let Some(s) = self.first.take() {
                 s.step(crate::step::BANNER);
             }
@@ -115,14 +150,22 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Hearing<S> {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+        let r = std::pin::Pin::new(&mut self.inner).poll_write(cx, buf);
+        if let std::task::Poll::Ready(Ok(n)) = r {
+            self.heard.gave(n);
+        }
+        r
     }
     fn poll_write_vectored(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         bufs: &[std::io::IoSlice<'_>],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+        let r = std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs);
+        if let std::task::Poll::Ready(Ok(n)) = r {
+            self.heard.gave(n);
+        }
+        r
     }
     fn is_write_vectored(&self) -> bool {
         self.inner.is_write_vectored()
@@ -956,11 +999,13 @@ async fn through_hops(
         russh::ChannelStream<client::Msg>,
         bool,
         Vec<client::Handle<Checker>>,
+        Vec<(String, Arc<crate::pool::Heard>)>,
     ),
     (Said, Option<String>),
 > {
     let chain = hop_chain(req);
     let mut held: Vec<client::Handle<Checker>> = Vec::new();
+    let mut wires: Vec<(String, Arc<crate::pool::Heard>)> = Vec::new();
     let mut compress = false;
     for hop in chain {
         let name = hop_name(hop);
@@ -972,14 +1017,14 @@ async fn through_hops(
             port: hop.port,
         }];
         let hop_trust = Trust::of(&hop_addrs).map_err(|e| unreadable(stages, e))?;
-        let (mut session, seen) = match held.last() {
+        let (mut session, seen, wire) = match held.last() {
             None => {
-                let (s, o, _w, c, _h) =
+                let (s, o, _w, c, h) =
                     race(req.probe, false, hop_trust, hop_addrs.to_vec(), stages)
                         .await
                         .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
                 compress = c;
-                (s, o)
+                (s, o, h)
             }
             Some(prev) => {
                 let tunnel = open_tunnel(prev, &hop.host, hop.port, stages)
@@ -994,8 +1039,8 @@ async fn through_hops(
                     // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
                     heard: Arc::new(crate::pool::Heard::new()),
                 };
-                let tunnel =
-                    Hearing::new(tunnel, Arc::new(crate::pool::Heard::new())).telling(stages);
+                let wire = Arc::new(crate::pool::Heard::new());
+                let tunnel = Hearing::new(tunnel, Arc::clone(&wire)).telling(stages);
                 let s = client::connect_stream(
                     config_for(req.probe, false, &hop_trust),
                     tunnel,
@@ -1010,7 +1055,7 @@ async fn through_hops(
                         fingerprint_in(&observed),
                     )
                 })?;
-                (s, observed)
+                (s, observed, wire)
             }
         };
         authenticate(
@@ -1031,6 +1076,7 @@ async fn through_hops(
         remember(&hop_addrs, &seen);
         stages.step(crate::step::AUTH);
         held.push(session);
+        wires.push((label(&hop_addrs[0]), wire));
     }
     let last = held.last().expect("调用方只在有跳板时走这里");
     let tunnel = open_tunnel(last, &req.host, req.port, stages)
@@ -1039,7 +1085,7 @@ async fn through_hops(
             stages.note_why(Why::Jump);
             (e, None)
         })?;
-    Ok((tunnel, compress, held))
+    Ok((tunnel, compress, held, wires))
 }
 
 /// 经一条已鉴权的连接开 direct-tcpip 到 `host:port`。
@@ -1088,44 +1134,55 @@ pub async fn establish(
     // 目标那一台的全部地址：库里按它们认这台、记也写它们（经跳板时也一样，同一台机器）。
     let addrs = req.race_order();
     let target_trust = Trust::of(&addrs).map_err(|e| unreadable(stages, e))?;
-    let (mut session, observed, winner, jumps, heard) = if req.jump.is_none() {
-        let (s, o, w, _, h) = race(req.probe, true, target_trust, addrs.clone(), stages).await?;
-        (s, o, w, Vec::new(), h)
-    } else {
-        let (tunnel, compress_inner, jumps) = through_hops(req, stages).await?;
-        let observed: Seen = Arc::default();
-        let ep_label = copy_text(
-            "beConnect.jump.target",
-            &[("host", &req.host), ("port", &req.port.to_string())],
-        );
-        // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
-        let heard = Arc::new(crate::pool::Heard::new());
-        let checker = Checker {
-            trust: target_trust.clone(),
-            observed: Arc::clone(&observed),
-            stages: stages.clone(),
-            endpoint: ep_label,
-            heard: Arc::clone(&heard),
-        };
-        let session = client::connect_stream(
-            config_for(req.probe, compress_inner, &target_trust),
-            Hearing::new(tunnel, Arc::clone(&heard)).telling(stages),
-            checker,
-        )
-        .await
-        .map_err(|e| {
-            stages.note_why(crate::why_of_stage(stage_of_russh(&e)));
-            (
-                Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
-                fingerprint_in(&observed),
+    let (mut session, observed, winner, jumps, heard, compressed, jump_wires) =
+        if req.jump.is_none() {
+            // `apply = true` ⇒ 竞速交回的那一格就是落在这条上的答案。
+            let (s, o, w, c, h) =
+                race(req.probe, true, target_trust, addrs.clone(), stages).await?;
+            (s, o, w, Vec::new(), h, c, Vec::new())
+        } else {
+            let (tunnel, compress_inner, jumps, jump_wires) = through_hops(req, stages).await?;
+            let observed: Seen = Arc::default();
+            let ep_label = copy_text(
+                "beConnect.jump.target",
+                &[("host", &req.host), ("port", &req.port.to_string())],
+            );
+            // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
+            let heard = Arc::new(crate::pool::Heard::new());
+            let checker = Checker {
+                trust: target_trust.clone(),
+                observed: Arc::clone(&observed),
+                stages: stages.clone(),
+                endpoint: ep_label,
+                heard: Arc::clone(&heard),
+            };
+            let session = client::connect_stream(
+                config_for(req.probe, compress_inner, &target_trust),
+                Hearing::new(tunnel, Arc::clone(&heard)).telling(stages),
+                checker,
             )
-        })?;
-        let winner = Endpoint {
-            host: req.host.clone(),
-            port: req.port,
+            .await
+            .map_err(|e| {
+                stages.note_why(crate::why_of_stage(stage_of_russh(&e)));
+                (
+                    Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
+                    fingerprint_in(&observed),
+                )
+            })?;
+            let winner = Endpoint {
+                host: req.host.clone(),
+                port: req.port,
+            };
+            (
+                session,
+                observed,
+                winner,
+                jumps,
+                heard,
+                compress_inner,
+                jump_wires,
+            )
         };
-        (session, observed, winner, jumps, heard)
-    };
     let fingerprint = fingerprint_in(&observed);
     if let Err(e) = authenticate(
         &mut session,
@@ -1160,8 +1217,14 @@ pub async fn establish(
         held: Mutex::new(Vec::new()),
         idle_sftp: Mutex::new(None),
         heard,
+        compressed,
+        jump_wires,
     })
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/dial/link_meter_tests.rs"]
+mod link_meter_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_compress_tests.rs"]
