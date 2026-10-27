@@ -617,7 +617,10 @@ object HostEditTags {
 }
 
 /** 每跳读数：这台手机此刻到那台的每一条连接一行（核心写好的那一句原样，先后照成品：那台在前、跳板跟在后面）。 */
-internal fun linkLines(link: LinkLine?): List<String> = link?.machine?.links.orEmpty().map { it.said }
+internal fun linkLines(link: LinkLine?): List<String> {
+    val links = link?.machine?.links ?: return emptyList()
+    return links.map { it.said }
+}
 
 /** 主机设置里那一行：标题 ＋ 一颗按钮（成品给的那一颗：安装 / 更新；没给 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
 @Composable

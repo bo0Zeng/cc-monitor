@@ -277,11 +277,6 @@ pub fn rows_of(
         .unwrap_or_default()
 }
 
-/// 本进程那个池里 `req` 那个身份此刻的每一项（[`rows_of`] 喂 [`ssh`] 的快照）。
-pub fn links_of(req: &DialRequest) -> Vec<cmd_wire::machine::MachineLink> {
-    rows_of(&ssh().links(), req)
-}
-
 impl Heard {
     /// 等这条连接没了（已经没了 ⇒ 当场回）。
     pub async fn gone(&self) {
