@@ -73,7 +73,10 @@ pub(crate) fn tag_pid_at(own: &Own, pid: u32, sid: &str) -> Option<Tagged> {
     };
     // 形状不对 · sid 不是会话 id：说得出它在托管终端里，但不往里写没核过的字符串。
     if !home::id_ok(&id) {
-        tracing::warn!("托管终端打标：pid {pid} 的 {} 形状不对，不打", run::HOST_ENV);
+        tracing::warn!(
+            "托管终端打标：pid {pid} 的 {} 形状不对，不打",
+            run::HOST_ENV
+        );
         return Some((None, false));
     }
     let container = Some(crate::wire::SessionContainer::Managed {

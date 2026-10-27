@@ -42,6 +42,10 @@ async fn a_hosted_terminal_is_listed_as_managed_from_disk_alone() {
 async fn tagging_the_child_pid_hangs_the_session_on_its_hosted_terminal() {
     let (own, data) = sandbox_own("tag");
     let (sock, task) = start(&own, spec("t-tag", "printf 'ready\\r\\n'; read x")).await;
+    // 等子进程真跑起来（exec 之前 `/proc/<pid>/environ` 还是父进程那一份，没有 `CCM_HOST`）——同生产：claude 跑起来才写 pidfile。
+    let mut w = hello(&sock, Want::View).await;
+    read_until_out(&mut w, "ready").await;
+    drop(w);
     let pid = home::read_facts(&data.join("hosts").join("t-tag"))
         .and_then(|f| f.child_pid)
         .expect("子进程 pid");
@@ -79,7 +83,11 @@ async fn tagging_the_child_pid_hangs_the_session_on_its_hosted_terminal() {
 fn a_process_outside_any_hosted_terminal_is_left_to_tmux() {
     let (own, _data) = sandbox_own("none");
     assert_eq!(
-        tag_pid_at(&own, std::process::id(), "0b9c2f4e-1111-4222-8333-944455556666"),
+        tag_pid_at(
+            &own,
+            std::process::id(),
+            "0b9c2f4e-1111-4222-8333-944455556666"
+        ),
         None
     );
 }

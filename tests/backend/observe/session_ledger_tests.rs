@@ -581,6 +581,9 @@ fn a_session_in_a_hosted_terminal_leaves_in_exactly_one_frame_that_says_ended() 
         panic!("那一帧该是离开那一帧：{:?}", out[0])
     };
     assert_eq!(s.face.life, WireLife::Ended { by: None });
-    assert!(l.on_tmux("", Some("zero_sessions")).iter().all(|f| !matches!(f, Frame::SessionLeft(_))));
+    assert!(l
+        .on_tmux("", Some("zero_sessions"))
+        .iter()
+        .all(|f| !matches!(f, Frame::SessionLeft(_))));
     assert!(!l.reconnectable().contains("a"));
 }

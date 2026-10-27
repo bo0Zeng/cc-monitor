@@ -227,10 +227,7 @@ pub(crate) fn sweep_stale(own: &Own) {
         };
         match own.clear_dir(&dir, &lock) {
             Ok(()) => tracing::info!("托管终端：删了陈旧的 {}", dir.as_path().display()),
-            Err(e) => tracing::warn!(
-                "托管终端：陈旧的 {} 没删成：{e}",
-                dir.as_path().display()
-            ),
+            Err(e) => tracing::warn!("托管终端：陈旧的 {} 没删成：{e}", dir.as_path().display()),
         }
     }
 }

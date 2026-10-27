@@ -79,6 +79,10 @@ async fn after_the_terminal_window_goes_a_new_backend_finds_it_with_the_same_scr
 async fn a_new_backend_rescans_and_retags_without_writing_twice() {
     let (own, data) = sandbox_own("life-retag");
     let (sock, task) = start(&own, spec("t-retag", "printf 'ready\\r\\n'; read x")).await;
+    // 等子进程真跑起来（exec 之前它的环境还是父进程那一份）。
+    let mut w = hello(&sock, Want::View).await;
+    read_until_out(&mut w, "ready").await;
+    drop(w);
     let pid = home::read_facts(&data.join("hosts").join("t-retag"))
         .and_then(|f| f.child_pid)
         .expect("子进程 pid");
@@ -99,11 +103,7 @@ async fn a_new_backend_rescans_and_retags_without_writing_twice() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn when_the_agent_exits_every_end_hears_ended_and_the_row_is_gone() {
     let (own, data) = sandbox_own("life-exit");
-    let (sock, task) = start(
-        &own,
-        spec("t-exit", "printf 'ready\\r\\n'; read x; exit 0"),
-    )
-    .await;
+    let (sock, task) = start(&own, spec("t-exit", "printf 'ready\\r\\n'; read x; exit 0")).await;
     let mut viewer = hello(&sock, Want::View).await;
     let mut term = hello(&sock, Want::Input).await;
     read_until_out(&mut term, "ready").await;
