@@ -57,13 +57,14 @@ fn secrets() -> Vec<&'static str> {
         .collect()
 }
 
-/// 没设 `CLAUDE_CONFIG_DIR` 时的配置根（= 默认共享库）。
+/// 没设 `CLAUDE_CONFIG_DIR` 时的配置根（= 默认共享库），照这一族的写法（`/` 分隔，`platform::acct_view::slash_form`）。
 pub(crate) fn shared_root_in(home: &str) -> String {
-    face()
-        .map(|f| (f.shared_root)(std::path::Path::new(home)))
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned()
+    crate::platform::acct_view::slash_form(
+        &face()
+            .map(|f| (f.shared_root)(std::path::Path::new(home)))
+            .unwrap_or_default()
+            .to_string_lossy(),
+    )
 }
 
 /// `dir` 下那份 `.claude.json` 里登录的邮箱。

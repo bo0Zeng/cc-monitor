@@ -41,3 +41,7 @@ pub(crate) mod trust_share;
 pub(crate) mod trust_share_exec;
 pub(crate) mod verify;
 pub(crate) mod wire;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/manage/library_any_os_tests.rs"]
+mod library_any_os_tests;

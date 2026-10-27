@@ -87,6 +87,23 @@ pub(crate) fn noreplace_unsupported(e: &std::io::Error) -> bool {
     imp::unsupported(e)
 }
 
+/// 这台此刻建不建得了符号链接（只读地判，不试建）。unix 恒能；Windows 要开发者模式开着、或本进程的令牌里有建链接那一项特权
+/// （管理员提权之后有）；别的平台没有这件原语。
+pub(crate) fn links_creatable() -> bool {
+    #[cfg(unix)]
+    {
+        true
+    }
+    #[cfg(windows)]
+    {
+        imp::links_creatable()
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        false
+    }
+}
+
 /// 开文件时加上的「最后一段是链接就失败」那个旗（开法的 `custom_flags` 收它）。
 #[cfg(unix)]
 const NO_FOLLOW: i32 = libc::O_NOFOLLOW;
@@ -130,6 +147,156 @@ mod imp {
 
     pub(super) fn unsupported(_e: &std::io::Error) -> bool {
         false
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateSymbolicLinkW(link: *const u16, target: *const u16, flags: u32) -> u8;
+        fn GetCurrentProcess() -> isize;
+        fn CloseHandle(h: isize) -> i32;
+    }
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn RegGetValueW(
+            key: isize,
+            sub: *const u16,
+            value: *const u16,
+            flags: u32,
+            kind: *mut u32,
+            data: *mut core::ffi::c_void,
+            len: *mut u32,
+        ) -> i32;
+        fn OpenProcessToken(process: isize, access: u32, token: *mut isize) -> i32;
+        fn LookupPrivilegeValueW(system: *const u16, name: *const u16, luid: *mut u64) -> i32;
+        fn GetTokenInformation(
+            token: isize,
+            class: u32,
+            info: *mut core::ffi::c_void,
+            len: u32,
+            ret: *mut u32,
+        ) -> i32;
+    }
+
+    const SYMBOLIC_LINK_FLAG_DIRECTORY: u32 = 0x1;
+    const SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE: u32 = 0x2;
+    const ERROR_INVALID_PARAMETER: i32 = 87;
+    /// `HKEY_LOCAL_MACHINE`（`0x80000002` 按有符号扩展成句柄宽）。
+    const HKEY_LOCAL_MACHINE: isize = 0x8000_0002_u32 as i32 as isize;
+    const RRF_RT_REG_DWORD: u32 = 0x10;
+    const TOKEN_QUERY: u32 = 0x8;
+    /// `TOKEN_INFORMATION_CLASS::TokenPrivileges`。
+    const TOKEN_PRIVILEGES_CLASS: u32 = 3;
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    /// 建一条符号链接 `link → target`（目标文本不解，只把 `/` 换成 `\`：系统按原样存，存进去的 `/` 跟不过去）。`dir` ⇒ 目录那一种。
+    /// 先带「开发者模式下不要特权」那一旗；老系统不认那一旗（`ERROR_INVALID_PARAMETER`）⇒ 不带再来一次。
+    pub(super) fn symlink(target: &Path, link: &Path, dir: bool) -> std::io::Result<()> {
+        use std::os::windows::ffi::OsStrExt as _;
+        let l = win_path_core::win32_path(link)?;
+        let t: Vec<u16> = target
+            .as_os_str()
+            .encode_wide()
+            .map(|c| {
+                if c == u16::from(b'/') {
+                    u16::from(b'\\')
+                } else {
+                    c
+                }
+            })
+            .chain(std::iter::once(0))
+            .collect();
+        let kind = if dir { SYMBOLIC_LINK_FLAG_DIRECTORY } else { 0 };
+        let mut last = std::io::Error::from(std::io::ErrorKind::Unsupported);
+        for flags in [kind | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE, kind] {
+            // SAFETY：两个以 0 结尾的 UTF-16 串活过这一次调用。
+            if unsafe { CreateSymbolicLinkW(l.as_ptr(), t.as_ptr(), flags) } != 0 {
+                return Ok(());
+            }
+            last = std::io::Error::last_os_error();
+            if last.raw_os_error() != Some(ERROR_INVALID_PARAMETER) {
+                break;
+            }
+        }
+        Err(last)
+    }
+
+    /// 开发者模式开着没有（`AppModelUnlock\AllowDevelopmentWithoutDevLicense` = 1）：开着 ⇒ 普通用户也建得了符号链接。
+    fn developer_mode() -> bool {
+        let sub = wide(r"SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock");
+        let name = wide("AllowDevelopmentWithoutDevLicense");
+        let mut v: u32 = 0;
+        let mut len = std::mem::size_of::<u32>() as u32;
+        // SAFETY：串以 0 结尾；`v` / `len` 是本栈上的、大小与 `RRF_RT_REG_DWORD` 要的一致。
+        let rc = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                sub.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_DWORD,
+                std::ptr::null_mut(),
+                (&mut v as *mut u32).cast(),
+                &mut len,
+            )
+        };
+        rc == 0 && v == 1
+    }
+
+    /// 本进程的令牌里有没有「建符号链接」那一项特权（管理员提权之后有；有就建得了，系统那一调用自己去启用它）。
+    fn holds_symlink_privilege() -> bool {
+        let name = wide("SeCreateSymbolicLinkPrivilege");
+        let mut want: u64 = 0;
+        // SAFETY：`name` 以 0 结尾；`want` 是 8 字节的 LUID 落点。
+        if unsafe { LookupPrivilegeValueW(std::ptr::null(), name.as_ptr(), &mut want) } == 0 {
+            return false;
+        }
+        let mut tok: isize = 0;
+        // SAFETY：当前进程的伪句柄不用关；`tok` 由系统填、下面关掉。
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut tok) } == 0 {
+            return false;
+        }
+        let mut len: u32 = 0;
+        // SAFETY：先问要多大（这一次回失败是常态），再按那个大小读一次。
+        unsafe {
+            GetTokenInformation(
+                tok,
+                TOKEN_PRIVILEGES_CLASS,
+                std::ptr::null_mut(),
+                0,
+                &mut len,
+            )
+        };
+        let mut buf = vec![0u8; len as usize];
+        // SAFETY：`buf` 恰好 `len` 字节、活过这一次调用。
+        let ok = len >= 4
+            && unsafe {
+                GetTokenInformation(
+                    tok,
+                    TOKEN_PRIVILEGES_CLASS,
+                    buf.as_mut_ptr().cast(),
+                    len,
+                    &mut len,
+                )
+            } != 0;
+        // SAFETY：`tok` 是上面开出来的那一个。
+        unsafe { CloseHandle(tok) };
+        if !ok {
+            return false;
+        }
+        // TOKEN_PRIVILEGES：u32 个数，接着每项 12 字节（LUID 低 u32 · 高 i32 · 属性 u32）。
+        let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+        buf[4..].chunks_exact(12).take(count).any(|e| {
+            let low = u64::from(u32::from_le_bytes([e[0], e[1], e[2], e[3]]));
+            let high = u64::from(u32::from_le_bytes([e[4], e[5], e[6], e[7]]));
+            (high << 32 | low) == want
+        })
+    }
+
+    pub(super) fn links_creatable() -> bool {
+        developer_mode() || holds_symlink_privilege()
     }
 }
 

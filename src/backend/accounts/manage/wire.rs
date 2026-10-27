@@ -9,7 +9,7 @@ use crate::wire::spec::Fail;
 /// 这一层的拒绝：码 ＋ 那一句 ＋ 下层原话（原话进复制详情）。计划那一层（`layout`）只交 `(码, 句)`，`?` 换过来。
 type Refusal = Fail;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
-use crate::common::door::{self, Door};
+use crate::common::door::Door;
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd, AccountNameArgs,
     AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
@@ -49,7 +49,7 @@ fn supported() -> Result<(), Refusal> {
 }
 
 fn home_of(d: &dyn Door) -> Result<String, Refusal> {
-    door::home(d).map_err(|e| Fail::new("io_failed", e))
+    scan::home(d).map_err(|e| Fail::new("io_failed", e))
 }
 
 /// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
@@ -102,10 +102,13 @@ fn alias_events(before: &[String], after: &[String]) -> Vec<AliasEvent> {
 /// 导入凭据的那个路径：`~/…` 按家目录展开；只收家目录底下的绝对路径（无 `..` 段 · 无控制符）。
 fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
     let t = raw.trim();
-    let abs = crate::platform::paths::expand_tilde_from(t, Some(std::path::Path::new(home)));
+    let abs = crate::platform::acct_view::slash_form(&crate::platform::paths::expand_tilde_from(
+        t,
+        Some(std::path::Path::new(home)),
+    ));
     // 尾部 `/` 先去掉再判：`~/` · `<家>/` 就是家目录本身，不许当成「家目录底下」放过去。
     let abs = abs.trim_end_matches('/');
-    let ok = abs.starts_with('/')
+    let ok = crate::platform::acct_view::is_absolute(&abs)
         && !abs.split('/').any(|s| s == "..")
         && !abs.chars().any(char::is_control)
         && is_under(&abs, home)

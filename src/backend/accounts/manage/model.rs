@@ -125,9 +125,9 @@ pub(crate) fn name_ok(name: &str) -> bool {
     shell_quote_core::account_name_ok(name)
 }
 
-/// 账号目录能不能交给下游拼命令（POSIX 形全表：绝对 · 无 `..` · 无元字符 / 控制符 / 视觉欺骗字符）。
+/// 账号目录能不能交给下游拼命令（这台那一形：绝对 · 无 `..` · 无元字符 / 控制符 / 视觉欺骗字符；平台差异住 `platform::acct_view`）。
 pub(crate) fn config_dir_ok(dir: &str) -> bool {
-    acct_core::config_dir_posix_ok(dir)
+    crate::platform::acct_view::config_dir_ok(dir)
 }
 
 impl Manifest {
