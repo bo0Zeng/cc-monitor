@@ -349,6 +349,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "remote-probe",
         "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按生成类型问、收进度帧",
     ),
+    // 「终端」视图那张名单：本机后端问到各台、合成一份（行 · 字 · 筛选的数都写好）。
+    (
+        "terminals-board",
+        "「终端」视图那张名单：本机后端 `faces/terminals_board_face.rs` 问到各台的 `terminals-board-here`、合成一份（成品住 `control/terminals_board.rs`）；前端 `src/frontend/ui/terminals-board-reads.ts` 原样交给视图",
+    ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
         "terminals-list",

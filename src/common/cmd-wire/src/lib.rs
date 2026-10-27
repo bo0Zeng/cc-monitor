@@ -31,6 +31,7 @@ pub mod accounts;
 pub mod agent;
 pub mod attach;
 pub mod batch;
+pub mod board;
 pub mod bookmarks;
 pub mod bus;
 pub mod cells;

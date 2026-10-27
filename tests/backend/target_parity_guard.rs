@@ -669,6 +669,14 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "终端名单：没 tmux ⇒ 这台没有 tmux 终端、答空名单（不是错）；托管终端做出来后名单里还有它们",
     ),
     (
+        "terminals-board-here",
+        "「终端」视图这台那几行：照 `terminals-list` 那一条（没 tmux ⇒ 空的那几行，不是错）",
+    ),
+    (
+        "terminals-board",
+        "「终端」视图那张名单：各台照 `terminals-board-here`（没 tmux 的那台是空的一组；没答的那台进那一组的 `down`，命令照答）",
+    ),
+    (
         "sessions-where",
         "问这几个会话在哪个 tmux 会话里：没 tmux ⇒ 逐个答「这台没 tmux」、命令照答",
     ),

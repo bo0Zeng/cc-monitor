@@ -90,6 +90,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "`auto-launch.json` 是 monitor 自己写的小文件",
     ),
     ("open_session_in_new_window", Own::Window, "开窗"),
+    ("open_terminal_in_new_window", Own::Window, "开窗"),
     ("open_settings_window", Own::Window, "开窗"),
     (
         "open_file_window",
