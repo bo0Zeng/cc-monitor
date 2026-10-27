@@ -98,6 +98,8 @@ fun ChatRoute(
     onOpenRotation: (String) -> Unit = {},
     /** 顶栏「⋯」→ agent：这条会话（sid）的 agent 列表。 */
     onOpenAgents: (String) -> Unit = {},
+    /** 顶栏「⋯」→ 计划：这台的计划页（sid 带过去认此会话接手的块）。 */
+    onOpenPlan: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
     /** 顶栏右上「需手动 n」：总览。 */
@@ -146,6 +148,7 @@ fun ChatRoute(
                     },
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
+                    onPlan = onOpenPlan,
                     rename = Renaming(state.label, vm::rename),
                     agents = rememberAgentsEntry(hostId, state.sid)?.let { MoreAgents(it, onOpenAgents) },
                     needs = { NeedsEntry(onOpenOverview) },
@@ -305,6 +308,7 @@ private fun ChatTopBar(
     findTerminal: suspend (String) -> TermEntry?,
     onTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit,
     onRotation: (String) -> Unit,
+    onPlan: (String) -> Unit,
     rename: Renaming,
     /** ⋯「agent」那一项；这条会话没有运行表 ⇒ `null`、不出这一项。 */
     agents: MoreAgents?,
@@ -357,6 +361,10 @@ private fun ChatTopBar(
                     DropdownMenuItem(text = { Text(copyText("mobChat.more.rotation")) }, onClick = {
                         menu = false
                         onRotation(sid)
+                    })
+                    DropdownMenuItem(text = { Text(copyText("plan.page.title")) }, onClick = {
+                        menu = false
+                        onPlan(sid)
                     })
                 }
                 if (renaming) RenameDialog(rename.label.orEmpty(), onDismiss = { renaming = false }, onRename = rename.commit)
