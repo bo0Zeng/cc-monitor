@@ -20,7 +20,10 @@ use copy_core::copy_text;
 
 /// 一个 id 对到的会话（`PlanWho`）此刻活不活：活着 ⇒ `Some(在干什么)`；不活 · 认不出 ⇒ `None`。只读那一格的整份脸。
 pub(crate) fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActivity>> {
-    who.face.life.is_live().then(|| who.face.life.activity())
+    match who.face.life {
+        crate::wire::WireLife::Live { activity } => Some(activity),
+        _ => None,
+    }
 }
 
 /// 一个权力范围的负责人那条会话此刻怎样。`ended` 那一种与「另开会话接手」那一格（[`takeover`]）读的是这一处。

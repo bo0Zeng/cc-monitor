@@ -836,21 +836,6 @@ pub enum Life {
     Unclear,
 }
 
-impl Life {
-    /// 活着（进程在）。
-    pub fn is_live(&self) -> bool {
-        matches!(self, Life::Live { .. })
-    }
-
-    /// 活着时那一家说的在干什么（不活 · 判不出 ⇒ `None`）。
-    pub fn activity(&self) -> Option<SessionActivity> {
-        match self {
-            Life::Live { activity } => *activity,
-            _ => None,
-        }
-    }
-}
-
 /// 会话那颗点（线上名与界面状态点同一套）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

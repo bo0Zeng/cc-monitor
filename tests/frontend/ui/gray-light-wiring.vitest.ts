@@ -25,7 +25,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/commands", () => ({
   commands: { frontend_perf_log: vi.fn(() => Promise.resolve()) },
 }));
-// 去向那一帧在会话流里（`{"state": …}`）：换成会话流的桩往里灌。
+// 去向那一帧在会话流里（`{"left": …}`）：换成会话流的桩往里灌。
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../../../src/frontend/ui/events";
@@ -35,7 +35,7 @@ const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
 
 import { srcDirOf } from "../../test-support/repo-root";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
-const face = (dot: string) => ({ dot, live: { is: "no" }, settled: dot === "ended", name: dot, tip: dot, line: dot, tone: "plain", order: 4, can: {} });
+const face = (dot: string) => ({ dot, life: { is: dot === "exited" ? "reconnectable" : "ended" }, settled: dot === "ended", name: dot, tip: dot, line: dot, tone: "plain", order: 4, can: {} });
 
 describe("#60 最后一跳：会话流里的去向那一帧真的走到 onSessionFace", () => {
   beforeEach(() => {
@@ -48,7 +48,7 @@ describe("#60 最后一跳：会话流里的去向那一帧真的走到 onSessio
     await bindEvents({ onSessionFace } as never, STREAMS);
     // 抽取器自检：**没订到就零命中地绿**。
     expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
-    streamFake.lifecycle([{ state: { sid: "sid-gray", state: "reconnectable", face: face("exited") } }]);
+    streamFake.lifecycle([{ left: { sid: "sid-gray", face: face("exited") } }]);
     await vi.waitFor(() => expect(onSessionFace).toHaveBeenCalledWith("sid-gray", face("exited")), UNTIL_CEILING);
   });
 
@@ -68,7 +68,7 @@ describe("#60 最后一跳：会话流里的去向那一帧真的走到 onSessio
   it("去向那几帧与行同队保序：先发的先到", async () => {
     const order: string[] = [];
     await bindEvents({ onSessionFace: (s: string, f: { dot: string }) => order.push(`${f.dot}:${s}`) } as never, STREAMS);
-    streamFake.lifecycle([{ state: { sid: "a", state: "ended", face: face("ended") } }, { state: { sid: "b", state: "reconnectable", face: face("exited") } }]);
+    streamFake.lifecycle([{ left: { sid: "a", face: face("ended") } }, { left: { sid: "b", face: face("exited") } }]);
     await vi.waitFor(() => expect(order.length).toBe(2), UNTIL_CEILING);
     expect(order).toEqual(["ended:a", "exited:b"]);
   });

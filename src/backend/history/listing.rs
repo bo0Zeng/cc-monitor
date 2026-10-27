@@ -26,7 +26,7 @@ use std::time::UNIX_EPOCH;
 /// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（`life` 判不了 ⇒ 确认框里多说一句）。
 /// 历史清单的行与全文搜索的命中同一个函数。
 pub(crate) fn can_of(kind: &str, life: &WireLife, bg: bool) -> Can {
-    let live = life.is_live();
+    let live = matches!(life, WireLife::Live { .. });
     Can {
         resume: if live {
             CanResume::Switch
