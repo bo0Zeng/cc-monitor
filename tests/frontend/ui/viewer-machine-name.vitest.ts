@@ -59,7 +59,7 @@ vi.mock("../../../src/frontend/ui/history-list-reads", () => ({
           origin: "devbox",
           agent: "claudecode",
           can: { fork: false, accounts: false },
-          face: { dot: "ended", live: { is: "no" } },
+          face: { dot: "ended", life: { is: "ended" } },
         },
       ],
     }),

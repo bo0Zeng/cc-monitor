@@ -15,7 +15,7 @@ import { clockNow, spanNow } from "./duration-format";
 /** 会话事实里那一句此刻作数：写它时那一态与脸上那一态相同。不作数 ⇒ `null`。 */
 function lineOf(tab: Tab): FactsLine | null {
   const f = tab.face;
-  return f !== null && f.live.is === "yes" && tab.line !== null && tab.line.for === f.live.activity ? tab.line : null;
+  return f !== null && f.life.is === "live" && tab.line !== null && tab.line.for === f.life.activity ? tab.line : null;
 }
 
 /** 此刻在等人 ⇒ 等的是什么（会话事实那一份，与脸同一刻才认）；不在等 ⇒ `null`。 */

@@ -60,7 +60,7 @@ const BATCH_CAP: usize = 600;
 const BATCH_MAX_AGE_MS: u64 = 200;
 
 /// 攒批出口：远端流、本机流、旁路快照三路的行都从这里出去（`batch_to_payloads` → `on_line_batch_awaited`），用 awaited 变体 —— 大批的块序列发完才返回，
-/// 保证行 emit 严格先于随后的 SessionRemoved / 断连归档（晚到的行会把刚归档的远端 Tab 复活成僵尸 live），同时对 backend 帧流形成天然背压。
+/// 保证行 emit 严格先于随后的离开那一帧（SessionLeft）/ 断连归档（晚到的行会把刚归档的远端 Tab 复活成僵尸 live），同时对 backend 帧流形成天然背压。
 pub(super) async fn flush_lines(
     replay: &Arc<EventReplay>,
     host_label: &str,

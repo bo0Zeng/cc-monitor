@@ -32,7 +32,7 @@ describe("跟着一个会话", () => {
       frame(1, { line: line("s9", 4) }),
       frame(2, { batch: "start" }),
       frame(3, { line: line("s1", 5) }),
-      frame(4, { state: { sid: "s1", state: "ended" } }),
+      frame(4, { left: { sid: "s1", face: { life: { is: "ended" } } } }),
     ]);
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 3), line("s1", 5)] }, { t: "live", live: false }]);
     got.length = 0;

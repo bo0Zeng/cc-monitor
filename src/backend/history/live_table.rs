@@ -237,12 +237,12 @@ impl LiveTable {
     }
 
     /// 这台判的这一条活不活：活着照 [`LiveTable::doing_one`]，否则可重连 · 已结束。
-    pub(crate) fn life_of(&self, sid: &str) -> cmd_wire::listing::RowLife {
-        use cmd_wire::listing::RowLife;
+    pub(crate) fn life_of(&self, sid: &str) -> crate::wire::WireLife {
+        use crate::wire::WireLife;
         match self.doing_one(sid) {
-            Some(activity) => RowLife::Live { activity },
-            None if self.reconnectable.contains(sid) => RowLife::Reconnectable,
-            None => RowLife::Ended,
+            Some(activity) => WireLife::Live { activity },
+            None if self.reconnectable.contains(sid) => WireLife::Reconnectable,
+            None => WireLife::Ended { by: None },
         }
     }
 

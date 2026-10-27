@@ -106,7 +106,7 @@ mod tests {
     /// `duplicate_id` / `handler_panicked` / `wrong_owner` / `too_many_windows`，`.rodata` 全 0 命中），
     /// 而它的清单写着 `p1v-attachable` = 期望值。
     /// ⚠ 那次探测**带对照组才算数**：同一批里「**会被发射**的串」9/9 全命中
-    /// （`session_removed`/`overflow`/`hello`/`capabilities`…），
+    /// （`session_left`/`overflow`/`hello`/`capabilities`…），
     /// 而「只被比较、从不发射」的串命中不稳（`--list-projects` 就是 0）——
     /// 上面那批错误码属前者（它们是写进应答 JSON 的值），所以 0 命中是可信的。
     ///

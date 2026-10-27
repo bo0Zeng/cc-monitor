@@ -4,7 +4,29 @@
 //! 按会话句柄认会话（改名不算关）· 一个会话里几个窗格各挂各的 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
 use crate::wire::SessionFaceExt as _;
-use crate::wire::{Frame, RemovalCause, SessionFate};
+use crate::wire::{Frame, FrameMake as _, WireLife};
+
+/// watcher 摘一条的两种：真走了 · 被顶替了（顶替它的那条叫 `<sid>-new`）。
+#[derive(Debug, Clone, Copy)]
+enum Cause {
+    Gone,
+    Superseded,
+}
+
+/// 账本补发的离开那一帧说的去向（`face.life`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Went {
+    Reconnectable,
+    Ended,
+}
+
+fn went(f: &crate::wire::SessionLeft) -> Went {
+    match f.face.life {
+        WireLife::Reconnectable => Went::Reconnectable,
+        WireLife::Ended { .. } | WireLife::Gone => Went::Ended,
+        ref other => panic!("离开那一帧的一生只该是可重连 · 已结束 · 记录已不在，却是 {other:?}"),
+    }
+}
 
 /// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（观测不再是帧）。
 enum Ev {
@@ -45,13 +67,9 @@ fn added(sid: &str) -> Ev {
     .into()
 }
 
-fn removed(sid: &str, cause: RemovalCause) -> Ev {
-    Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: sid.into(),
-        cause,
-        by: None,
-    })
-    .into()
+fn removed(sid: &str, cause: Cause) -> Ev {
+    let by = matches!(cause, Cause::Superseded).then(|| format!("{sid}-new"));
+    Frame::session_left(sid.into(), crate::wire::Life::Ended, by, None).into()
 }
 
 /// `tmux ls -F` 的一行（8 列：…⇥活动窗格的 `@ccm_sid`⇥`#{session_id}`⇥各窗格的 `@ccm_sid`，空格分隔）。
@@ -74,7 +92,7 @@ fn unobservable() -> Ev {
 
 /// 喂一串帧，收每一帧的「发不发」与补发的成品（按 `(sid, 成品)` 记；清单记成 `("*", None)`）。
 /// `Ev::Probe` = 一份观测从这一刻起了（watcher 每起一次探测都告诉账本）。
-fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
+fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<Went>)>) {
     let mut l = SessionLedger::new();
     let mut passed = Vec::new();
     let mut out = Vec::new();
@@ -90,8 +108,9 @@ fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
         passed.push(pass);
         for e in extra {
             match e {
-                Frame::SessionState(crate::wire::SessionState { sid, state, .. }) => {
-                    out.push((sid, Some(state)))
+                Frame::SessionLeft(s) => {
+                    let w = went(&s);
+                    out.push((s.sid, Some(w)))
                 }
                 Frame::SessionsReplayed(_) => out.push(("*".into(), None)),
                 other => panic!("账本只该补发成品与清单，却补了 {other:?}"),
@@ -101,9 +120,9 @@ fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
     (passed, out)
 }
 
-use SessionFate::{Ended as E, Reconnectable as R};
+use Went::{Ended as E, Reconnectable as R};
 
-fn fates(v: &[(&str, SessionFate)]) -> Vec<(String, Option<SessionFate>)> {
+fn fates(v: &[(&str, Went)]) -> Vec<(String, Option<Went>)> {
     v.iter().map(|(s, f)| (s.to_string(), Some(*f))).collect()
 }
 
@@ -117,9 +136,9 @@ fn removal_is_judged_by_cause_then_by_a_snapshot_taken_after_it() {
     // superseded 恒已结束（快照里那一格已改挂新 sid）· gone ⇒ 等一份摘除之后才起的快照：挂着 ⇒ 可重连 · 不挂 ⇒ 已结束。
     let mut evs = vec![added("a"), added("b"), added("c")];
     evs.extend(fresh(&[("$1", "ta", &["a"]), ("$2", "tb", &["b"])]));
-    evs.push(removed("a", RemovalCause::Superseded));
-    evs.push(removed("b", RemovalCause::Gone));
-    evs.push(removed("c", RemovalCause::Gone));
+    evs.push(removed("a", Cause::Superseded));
+    evs.push(removed("b", Cause::Gone));
+    evs.push(removed("c", Cause::Gone));
     evs.extend(fresh(&[("$1", "ta", &[]), ("$2", "tb", &["b"])]));
     let (_, out) = run(evs);
     assert_eq!(out, fates(&[("a", E), ("b", R), ("c", E)]));
@@ -129,14 +148,14 @@ fn removal_is_judged_by_cause_then_by_a_snapshot_taken_after_it() {
 #[test]
 fn a_snapshot_started_before_the_removal_does_not_judge_it() {
     // ① 快照起于摘除之前、回来时 tmux 会话还在；摘除之后那一份里会话已随 claude 关了 ⇒ 只一格「已结束」。
-    let mut evs = vec![added("a"), Ev::Probe, removed("a", RemovalCause::Gone)];
+    let mut evs = vec![added("a"), Ev::Probe, removed("a", Cause::Gone)];
     evs.push(tmux(&[("$1", "t", &["a"])]));
     evs.extend(fresh(&[]));
     let (_, out) = run(evs);
     assert_eq!(out, fates(&[("a", E)]), "先报可重连、再翻已结束");
 
     // ② 快照起于打标之前（claude 刚起就退）：那份里没挂它；摘除之后那一份挂着 ⇒ 只一格「可重连」。
-    let mut evs = vec![added("b"), Ev::Probe, removed("b", RemovalCause::Gone)];
+    let mut evs = vec![added("b"), Ev::Probe, removed("b", Cause::Gone)];
     evs.push(tmux(&[("$1", "t", &[])]));
     evs.extend(fresh(&[("$1", "t", &["b"])]));
     let (_, out) = run(evs);
@@ -165,19 +184,18 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         pid: 0,
     }));
     assert!(!l.awaits_observation());
-    let (pass, extra) = l.on_frame(&Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "a".into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    }));
-    assert!(pass && extra.is_empty(), "摘除本身照发，去向等观测");
+    let Ev::F(gone) = removed("a", Cause::Gone) else {
+        unreachable!()
+    };
+    let (pass, extra) = l.on_frame(&gone);
+    assert!(!pass && extra.is_empty(), "摘除那一帧不发，去向等观测");
     assert!(l.awaits_observation(), "要一份摘除之后才起的观测");
     l.observing();
     assert!(!l.awaits_observation());
     let (_, out) = run(vec![
         added("z"),
-        removed("z", RemovalCause::Gone),
-        removed("zz", RemovalCause::Gone),
+        removed("z", Cause::Gone),
+        removed("zz", Cause::Gone),
         Ev::Probe,
         unobservable(),
     ]);
@@ -229,7 +247,7 @@ fn two_claudes_in_one_tmux_session_are_both_bound() {
         added("b"),
         tmux(&[("$1", "t", &["a", "b"])]),
         tmux(&[("$1", "t", &["b", "a"])]),
-        removed("a", RemovalCause::Gone),
+        removed("a", Cause::Gone),
     ];
     evs.extend(fresh(&[("$1", "t", &["a", "b"])]));
     evs.push(tmux(&[("$1", "t", &["a", "b"])]));
@@ -246,8 +264,8 @@ fn a_closed_tmux_session_ends_its_reconnectable_at_once() {
         ("$2", "t2", &["twice"]),
         ("$3", "t3", &["twice"]),
     ]));
-    evs.push(removed("idle", RemovalCause::Gone));
-    evs.push(removed("twice", RemovalCause::Gone));
+    evs.push(removed("idle", Cause::Gone));
+    evs.push(removed("twice", Cause::Gone));
     evs.extend(fresh(&[
         ("$1", "t1", &["idle"]),
         ("$2", "t2", &["twice"]),
@@ -349,10 +367,10 @@ fn a_tagged_session_on_a_server_that_started_after_the_backend_is_announced() {
 #[test]
 fn a_session_that_comes_back_leaves_reconnectable_and_the_list_passes_once_tmux_was_seen() {
     let mut evs = vec![tmux(&[("$1", "t", &["a"])]), added("a"), listed()];
-    evs.push(removed("a", RemovalCause::Gone));
+    evs.push(removed("a", Cause::Gone));
     evs.extend(fresh(&[("$1", "t", &["a"])]));
     evs.push(added("a"));
-    evs.push(removed("a", RemovalCause::Gone));
+    evs.push(removed("a", Cause::Gone));
     evs.extend(fresh(&[]));
     let (passed, out) = run(evs);
     assert_eq!(passed[2], true, "快照已经到过 ⇒ 清单不压");
@@ -373,11 +391,11 @@ fn status(sid: &str) -> Frame {
     })
 }
 
-/// 一帧 `session_state` 的那颗点。
+/// 一帧 `session_left` 的那颗点。
 fn dot_of(f: &Frame) -> (String, crate::wire::SessionDot) {
     match f {
-        Frame::SessionState(crate::wire::SessionState { sid, face, .. }) => (sid.clone(), face.dot),
-        other => panic!("该是 session_state，却是 {other:?}"),
+        Frame::SessionLeft(crate::wire::SessionLeft { sid, face }) => (sid.clone(), face.dot),
+        other => panic!("该是 session_left，却是 {other:?}"),
     }
 }
 
@@ -388,7 +406,7 @@ fn a_status_for_a_session_that_is_not_live_is_not_sent() {
     let Ev::F(a) = added("a") else { unreachable!() };
     l.on_frame(&a);
     assert!(l.on_frame(&status("a")).0, "活着的照发");
-    let Ev::F(r) = removed("a", RemovalCause::Superseded) else {
+    let Ev::F(r) = removed("a", Cause::Superseded) else {
         unreachable!()
     };
     l.on_frame(&r);
@@ -409,7 +427,7 @@ fn a_record_seen_flips_an_ended_session_between_ended_and_gone() {
         let Ev::F(f) = f else { unreachable!() };
         l.on_frame(&f);
     }
-    let Ev::F(r) = removed("x", RemovalCause::Superseded) else {
+    let Ev::F(r) = removed("x", Cause::Superseded) else {
         unreachable!()
     };
     let (_, said) = l.on_frame(&r);
@@ -434,7 +452,7 @@ fn a_record_seen_flips_an_ended_session_between_ended_and_gone() {
     );
     assert!(l.on_record("y", false).is_empty(), "活的不动");
     // z 退了、tmux 里还挂着 ⇒ 可重连；记录不在也不动它（接得回去）。
-    let Ev::F(r) = removed("z", RemovalCause::Gone) else {
+    let Ev::F(r) = removed("z", Cause::Gone) else {
         unreachable!()
     };
     l.on_frame(&r);
@@ -466,7 +484,7 @@ fn an_ending_whose_record_is_already_missing_is_said_gone() {
     };
     a.path = Some(missing.to_string_lossy().into_owned());
     l.on_frame(&Frame::SessionAdded(a));
-    let Ev::F(r) = removed("x", RemovalCause::Superseded) else {
+    let Ev::F(r) = removed("x", Cause::Superseded) else {
         unreachable!()
     };
     let (_, said) = l.on_frame(&r);
@@ -490,17 +508,14 @@ fn the_account_said_at_announce_stays_on_the_faces_after_it_leaves() {
     let accounts = |fs: Vec<Frame>| -> Vec<(String, Option<String>)> {
         fs.into_iter()
             .filter_map(|f| match f {
-                Frame::SessionState(s) => Some((s.sid, s.face.account)),
+                Frame::SessionLeft(s) => Some((s.sid, s.face.account)),
                 _ => None,
             })
             .collect()
     };
-    let gone = |sid: &str| {
-        Frame::SessionRemoved(crate::wire::SessionRemoved {
-            sid: sid.into(),
-            cause: RemovalCause::Superseded,
-            by: None,
-        })
+    let gone = |sid: &str| match removed(sid, Cause::Superseded) {
+        Ev::F(f) => f,
+        _ => unreachable!(),
     };
     l.on_frame(&with("a", Some("b")));
     l.on_frame(&with("z", None));
@@ -516,4 +531,28 @@ fn the_account_said_at_announce_stays_on_the_faces_after_it_leaves() {
         accounts(l.on_record("a", false)),
         vec![("a".to_string(), Some("b".to_string()))]
     );
+}
+
+#[test]
+fn a_session_outside_tmux_leaves_in_exactly_one_frame_that_says_ended() {
+    // 宣告时就知道不在 tmux 里（容器 `none`）⇒ 退出那一刻不必等 tmux 观测：只一帧，脸上的一生是已结束。
+    let mut l = SessionLedger::new();
+    let Ev::F(Frame::SessionAdded(mut a)) = added("a") else {
+        unreachable!()
+    };
+    a.container = Some(crate::wire::SessionContainer::None);
+    l.on_frame(&Frame::SessionAdded(a));
+    let Ev::F(gone) = removed("a", Cause::Gone) else {
+        unreachable!()
+    };
+    let (pass, extra) = l.on_frame(&gone);
+    let mut out: Vec<Frame> = extra;
+    if pass {
+        out.insert(0, gone);
+    }
+    assert_eq!(out.len(), 1, "离开「活」只该一帧：{out:?}");
+    let Frame::SessionLeft(s) = &out[0] else {
+        panic!("那一帧该是离开那一帧：{:?}", out[0])
+    };
+    assert_eq!(s.face.life, WireLife::Ended { by: None });
 }

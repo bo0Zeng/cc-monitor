@@ -66,7 +66,8 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "agent_kind",
             "attachable",
             "face.dot",
-            "face.live.activity",
+            "face.life.activity",
+            "face.can.stop.can",
             "face.settled",
             "face.name",
             "face.tone",
@@ -83,7 +84,8 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "sid",
             "waiting_for",
             "face.dot",
-            "face.live.activity",
+            "face.life.activity",
+            "face.can.stop.can",
             "face.settled",
             "face.name",
             "face.tone",
@@ -94,10 +96,11 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
         ]),
     ),
     (
-        "session_state",
+        "session_left",
         Frozen::Cells(&[
             "sid",
             "face.dot",
+            "face.life.by",
             "face.settled",
             "face.name",
             "face.tone",
@@ -107,7 +110,6 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "face.can.permission.why",
         ]),
     ),
-    ("session_removed", Frozen::Cells(&["sid", "cause"])),
     (
         "quota_read",
         Frozen::Cells(&[
@@ -144,7 +146,7 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "up.*.agent",
             "up.*.agentTag",
             "up.*.face.dot",
-            "up.*.face.live.activity",
+            "up.*.face.life.activity",
             "up.*.face.settled",
             "up.*.face.name",
             "up.*.face.tone",
@@ -533,17 +535,18 @@ fn corpus(name: &str) -> Vec<Value> {
             vec![g]
         }
         // 会话流金样里没有「记录已不在」那一帧（离开「活」两样都能换）⇒ 补一帧，灰的那两格才露得出来。
-        "session_state" => {
+        "session_left" => {
             let mut v: Vec<Value> = golden("session-stream.golden.jsonl")
                 .lines()
                 .map(|l| serde_json::from_str::<Value>(l).unwrap())
-                .filter(|v| v["kind"] == "session_state")
+                .filter(|v| v["kind"] == "session_left")
                 .collect();
             v.push(
                 serde_json::to_value(
                     <crate::wire::Frame as crate::wire::FrameMake>::session_left(
                         "s".into(),
                         crate::wire::Life::Gone,
+                        None,
                         None,
                     ),
                 )
@@ -635,6 +638,8 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("facts", "children[].face.account"),
     ("needs_row", "face.account"),
     ("history_list", "up.*.face.account"),
+    // 清单行是冷读出来的：被顶替那一格只有离开那一帧带。
+    ("history_list", "up.*.face.life.by"),
 ];
 
 /// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）；空着的只许是 [`NEVER_WRITTEN`] 登记的，登记的也确实空着。

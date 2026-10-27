@@ -30,14 +30,14 @@
 | 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>","watch":{"sids":[…],"branch":[…],"kept":[…]}}`：三格都可缺；`watch` 与 `stream-watch` 的入参同形，这条流从第一帧起照它发；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
 
 - **`tz`**：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。见 §4「时刻按谁的钟」。
-- **`view`**（只 CLI 那一臂）：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_state` · `session_removed`（整帧就是那件成品，`kind` 不受裁）。
+- **`view`**（只 CLI 那一臂）：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_left`（整帧就是那件成品，`kind` 不受裁）。
   点了别的成品 ⇒ 当认不出。缺 ＝ 全量。应答不受它管（应答各按各的请求信封）。
 - **`mine`**（只常驻那条）：手上这一版的 `BUILD_ID`；回话里那一格 `relation` 由它算，客户端不另问新旧。
 - **`watch`**（只常驻那条）：在看名单 `{sids, branch?, kept?}`（同 `stream-watch` 的入参，下一节）；那台接上那一刻就照它定这条连接的名单，宣告之后的运行表 · 行 · 活卡只发名单里的，`branch` 里的会话接上即补清单。缺 ＝ 全看（不报名单的载体）。
 
 ### 流只发要看的会话
 
-一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch, kept}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。`kept`（可缺）：手上留着记录、要那台说清去向的会话 id（桌面 ＝ 重放留存里那台有行的）；那台清单报完了、会话账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给这条连接一帧 `session_state {state: ended}`（清单还没报完 ⇒ 放出 `sessions_replayed` 那一刻答，排在它后面），一条只答一次。「已结束」只由那台答，客户端不自己推。
+一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch, kept}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。`kept`（可缺）：手上留着记录、要那台说清去向的会话 id（桌面 ＝ 重放留存里那台有行的）；那台清单报完了、会话账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给这条连接一帧 `session_left`（`face.life` 已结束）（清单还没报完 ⇒ 放出 `sessions_replayed` 那一刻答，排在它后面），一条只答一次。「已结束」只由那台答，客户端不自己推。
 应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
 
 桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
@@ -102,7 +102,7 @@
    冷读（`history-facts` 的 `writers` 与「状态不明」的原因 · `history-turns` 还在跑那一轮）问同一个声明（`accounts_query::session_holders`）：
    - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在。
    - 没有 pidfile 的那一家（Codex）：活会话 ＝ **有进程开着它的那份记录写**（看 `/proc/<pid>/fdinfo` 的打开方式，不看进程名）；
-     那个进程退了（pidfd）或把记录写完关闭、复核已没人开着写 ⇒ `session_removed`（`gone`）。「开着它写」是系统给的事实、再加 pidfd 看守，
+     那个进程退了（pidfd）或把记录写完关闭、复核已没人开着写 ⇒ 摘下它，去向由会话账本裁好发 `session_left`。「开着它写」是系统给的事实、再加 pidfd 看守，
      与 pidfile 那一路同一档。
      ⚠ 「Codex 在世期间一直开着这份 rollout」只读过源码（codex-rs 的 rollout 写者任务持有文件），**没在真机上实测过**。
      它要是不成立（中途关了文件），后果是漏认 / 提早摘掉，不会把死的认成活的。
@@ -111,10 +111,10 @@
      只在 Linux 上判得了；别的平台照实判不了，这一家的会话不宣告。
 2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；带整份脸 `face`：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么，在干什么在 `face.live.activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
-4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume；带离开「活」之后那份 `face`）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；带整份脸 `face`：点 · 短名 · 悬停句 · 状态一句 · 序 · 能做什么，在干什么在 `face.life.activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带；一轮在跑时 `face.can.stop` 是 `yes`，停止键照它画）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
+4. 离开：只一帧 `session_left {sid, face}`，去向在 `face.life`（`reconnectable` 容器还在、接得回去 · `ended` 只能 resume，同一个 pidfile 原地换了 sid ⇒ `ended {by}` 带顶替它的那条 · `gone` 记录也不在了）。这台后端自己裁：宣告时就知道不在 tmux 里 ⇒ 当场发；在 tmux 里 · 判不了 ⇒ 等摘除之后那份 tmux 观测回来再发。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；重读的行不逐行上流，帧带读完的行数，客户端照宣告那样从尾段取）。
-6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`，只带那台写好的一句 `said`（丢了约几行 · 会话状态已重新对齐 · 两样都有）。`line` 丢了可以从记录文件补；会话状态那一类（`session_added` / `session_removed` / `session_status` / `session_state`）与不可丢主题的 `changed` 丢了，那台紧跟着在同一条连接上把此刻的样子整份重报一次（`changed` 再发一帧、不带体，客户端重问），客户端不判、不重接。
+6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`，只带那台写好的一句 `said`（丢了约几行 · 会话状态已重新对齐 · 两样都有）。`line` 丢了可以从记录文件补；会话状态那一类（`session_added` / `session_status` / `session_left`）与不可丢主题的 `changed` 丢了，那台紧跟着在同一条连接上把此刻的样子整份重报一次（`changed` 再发一帧、不带体，客户端重问），客户端不判、不重接。
 7. 别台：各台的常驻流归本机后端（`control/feeds.rs`），那台流上的事原样转给连着本机后端的每条流连接，一种帧 `relayed`：`machine` 说是哪一台，`what` 分三形 ——`line`（那台流上的一行原样，字符串；每条连接先来它的 hello）· `gap`（那台流上超长丢了一行，或这一端挤丢了一行）· `ended`（那台这一条连接断了，下一条从 hello 起）。不进 `overflow`：挤丢了 ⇒ 这条连接在那台下一帧之前先收那台一格 `gap`（断了的那一帧挤丢 ⇒ 补 `ended`）。
 
 ### `changed` 主题表
@@ -155,7 +155,7 @@
 `groups`：这台的组那一半动了（这台那几片的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
-历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_state`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。
+历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_left`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。
 
 ## 6. 会话归属与身份门
 
@@ -178,7 +178,7 @@
   `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）`machine`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `agent_kind` `attachable` `background` 与整份脸 `face` 里手机读的那几格）·
-  `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_state`（`sid` 与 `face` 那几格）· `session_removed`（`sid` `cause`）只冻这几格；
+  `session_status`（`sid` `waiting_for` 与 `face` 那几格）· `session_left`（`sid` 与 `face` 那几格，连 `face.life.by`）只冻这几格；
   `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形；
   `quota-read`（`quota_read`：每号的 `rows` · `fiveHour` · `warm` 与号名表 `names` 等）· `history-list`（`history_list`：每行的标题 · 时刻 · 段头 · 注解三格 · 整份脸那几格等）只冻手机读的那几格。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。

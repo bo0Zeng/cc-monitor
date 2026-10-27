@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::wire::SessionFaceExt as _;
-use crate::wire::{RemovalCause, SessionAdded, SessionRemoved};
+use crate::wire::{FrameMake as _, SessionAdded};
 
 fn added(sid: &str, cwd: Option<&str>) -> Frame {
     Frame::SessionAdded(SessionAdded {
@@ -26,11 +26,7 @@ fn added(sid: &str, cwd: Option<&str>) -> Frame {
 }
 
 fn removed(sid: &str) -> Frame {
-    Frame::SessionRemoved(SessionRemoved {
-        sid: sid.into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    })
+    Frame::session_left(sid.into(), crate::wire::Life::Ended, None, None)
 }
 
 fn ear() -> (Tell, tokio::sync::oneshot::Receiver<String>) {

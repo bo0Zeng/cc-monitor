@@ -1,5 +1,5 @@
 //! 会话账本：这台机器上一条会话离开「活」之后是
-//! **可重连**（claude 退了、tmux 会话还在）还是**已结束**，由这台后端自己裁、发成品帧 [`Frame::SessionState`]。
+//! **可重连**（claude 退了、tmux 会话还在）还是**已结束**，由这台后端自己裁、发成品帧 [`Frame::SessionLeft`]（离开「活」只这一帧）。
 //!
 //! 判定在后端：本机远端同一份代码（`INVARIANTS §40`），客户端只收成品。
 //!
@@ -12,7 +12,7 @@
 //! | 看见 | 做什么 |
 //! |---|---|
 //! | `session_added` | 记为活（从可重连里摘掉：又活了） |
-//! | `session_removed` | `superseded` ⇒ 已结束（旧 sid 的 tmux 那一格已改挂新 sid，查快照必错）；`gone` ⇒ 去向**等一份摘除之后才起的 tmux 观测**来裁（[`SessionLedger::observing`]）：那一份里还挂在某个窗格上 ⇒ 可重连，否则已结束。拿摘除之前起的快照裁，会先报错一格、下一份再翻回来 |
+//! | watcher 摘一条（`session_left`，拦下不发） | 被顶替（`by`）⇒ 当场已结束（旧 sid 的 tmux 那一格已改挂新 sid，查快照必错）；宣告时就知道不在 tmux 里 ⇒ 当场已结束；在 tmux 里 / 判不了 ⇒ 去向**等一份摘除之后才起的 tmux 观测**来裁（[`SessionLedger::observing`]）：那一份里还挂在某个窗格上 ⇒ 可重连，否则已结束。拿摘除之前起的快照裁，会先报错一格、下一份再翻回来。每种都只出一帧 |
 //! | tmux 观测（可观测的） | 收割**只对可重连的**（活不活只认 pidfile / pidfd）：它挂的那个 tmux 会话没了（按句柄 `#{session_id}` 认，改名不算没了）⇒ 当场已结束；连续 [`RETIRE_MISS_THRESHOLD`] 份哪个窗格都不挂它 ⇒ 已结束。每一份还宣告「挂着 `@ccm_sid`、却不在活会话里、没报过、也不在等裁」的为可重连 |
 //! | `sessions_replayed` | 第一份 tmux 快照到之前**压住**，到了（不论可不可观测）先放上一格的宣告、再放它 ⇒ 客户端收到「清单报完了」时可重连的也已报过 |
 //! | 一条连接半路接上来 | 账本整台一份（read8a）：给它补 [`SessionLedger::snapshot`]（可重连的 · 清单报完了没有） |
@@ -27,7 +27,7 @@
 use crate::wire::FrameMake as _;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::wire::{Frame, Life, RemovalCause, SessionFate};
+use crate::wire::{Frame, Life, SessionContainer, WireLife};
 
 /// 可重连的会话在 tmux 里**连续几份快照**看不见才算没了（去抖：同一个窗格里换 sid 那一刻新旧并存）。编译期兜死不许小于 2。
 pub(crate) const RETIRE_MISS_THRESHOLD: u32 = 2;
@@ -57,6 +57,8 @@ pub(crate) struct SessionLedger {
     paths: BTreeMap<String, String>,
     /// 宣告时判的号（脸上那一格）：离开「活」的那几张脸照旧带它。
     accounts: BTreeMap<String, String>,
+    /// 宣告时就知道不在 tmux 里的活会话（容器 `none`）：走了不必等 tmux 观测。
+    outside: BTreeSet<String>,
 }
 
 fn bound_in(view: &BTreeMap<String, BTreeSet<String>>, sid: &str) -> bool {
@@ -84,9 +86,18 @@ impl SessionLedger {
     pub(crate) fn on_frame(&mut self, f: &Frame) -> (bool, Vec<Frame>) {
         match f {
             Frame::SessionAdded(crate::wire::SessionAdded {
-                sid, path, face, ..
+                sid,
+                path,
+                face,
+                container,
+                ..
             }) => {
                 self.live.insert(sid.clone());
+                if matches!(container, Some(SessionContainer::None)) {
+                    self.outside.insert(sid.clone());
+                } else {
+                    self.outside.remove(sid);
+                }
                 match &face.account {
                     Some(a) => self.accounts.insert(sid.clone(), a.clone()),
                     None => self.accounts.remove(sid),
@@ -109,16 +120,21 @@ impl SessionLedger {
                 }
                 (true, Vec::new())
             }
-            Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, .. }) => {
+            // watcher 摘了一条：这一帧不发，账本裁好去向再发那一帧（只一帧）。
+            Frame::SessionLeft(crate::wire::SessionLeft { sid, face }) => {
                 if !self.live.remove(sid) {
                     return (true, Vec::new());
                 }
                 self.miss.remove(sid);
-                match cause {
-                    RemovalCause::Superseded => (true, vec![self.end(sid)]),
-                    RemovalCause::Gone => {
+                let outside = self.outside.remove(sid);
+                match &face.life {
+                    WireLife::Ended { by: Some(by) } => {
+                        (false, vec![self.end(sid, Some(by.clone()))])
+                    }
+                    _ if outside => (false, vec![self.end(sid, None)]),
+                    _ => {
                         self.pending.insert(sid.clone(), false);
-                        (true, Vec::new())
+                        (false, Vec::new())
                     }
                 }
             }
@@ -168,9 +184,9 @@ impl SessionLedger {
             self.pending.remove(&sid);
             if bound_in(&now, &sid) {
                 self.reconnectable.insert(sid.clone());
-                out.push(self.state(&sid, SessionFate::Reconnectable));
+                out.push(self.reconnectable_frame(&sid));
             } else {
-                out.push(self.end(&sid));
+                out.push(self.end(&sid, None));
             }
         }
         if observable {
@@ -185,7 +201,7 @@ impl SessionLedger {
                 for sid in closed {
                     if self.reconnectable.remove(&sid) {
                         self.miss.remove(&sid);
-                        out.push(self.end(&sid));
+                        out.push(self.end(&sid, None));
                     }
                 }
             }
@@ -206,7 +222,7 @@ impl SessionLedger {
             for sid in retire {
                 self.reconnectable.remove(&sid);
                 self.miss.remove(&sid);
-                out.push(self.end(&sid));
+                out.push(self.end(&sid, None));
             }
             // ③ 挂着 `@ccm_sid`、却不在活会话里、没报过、也不在等裁的 ⇒ 可重连（从 tmux 自己推出来）。
             //   每一份可观测的都推：后端先起、tmux server 后起时第一份是「零会话」，之后那台 server 上挂着标签的会话也要报。
@@ -217,7 +233,7 @@ impl SessionLedger {
                     && self.reconnectable.insert(sid.clone())
                 {
                     self.ended.remove(sid);
-                    out.push(self.state(sid, SessionFate::Reconnectable));
+                    out.push(self.reconnectable_frame(sid));
                 }
             }
             self.view = Some(now);
@@ -230,24 +246,29 @@ impl SessionLedger {
         out
     }
 
-    /// 这一条离开活、已结束：记下；记录路径知道而那份记录已经不在了 ⇒ 说记录已不在。
-    fn end(&mut self, sid: &str) -> Frame {
+    /// 这一条离开活、已结束（被顶替 ⇒ `by` 是顶替它的那条）：记下；记录路径知道而那份记录已经不在了 ⇒ 说记录已不在。
+    fn end(&mut self, sid: &str, by: Option<String>) -> Frame {
         let present = self
             .paths
             .remove(sid)
             .is_none_or(|p| std::path::Path::new(&p).exists());
         self.ended.insert(sid.to_string(), present);
-        self.left(sid, present)
+        self.left(sid, present, by)
     }
 
-    fn state(&self, sid: &str, state: SessionFate) -> Frame {
-        Frame::session_state(sid.to_string(), state, self.accounts.get(sid).cloned())
+    fn reconnectable_frame(&self, sid: &str) -> Frame {
+        Frame::session_left(
+            sid.to_string(),
+            Life::Reconnectable,
+            None,
+            self.accounts.get(sid).cloned(),
+        )
     }
 
     /// 已结束那一帧：记录在 ⇒ 已结束，不在 ⇒ 记录已不在。
-    fn left(&self, sid: &str, present: bool) -> Frame {
+    fn left(&self, sid: &str, present: bool, by: Option<String>) -> Frame {
         let life = if present { Life::Ended } else { Life::Gone };
-        Frame::session_left(sid.to_string(), life, self.accounts.get(sid).cloned())
+        Frame::session_left(sid.to_string(), life, by, self.accounts.get(sid).cloned())
     }
 
     /// 一条连接手上留着、账上没有的那条，只给它答过已结束：账上也记着（之后问到记录在不在照样翻）。
@@ -260,7 +281,7 @@ impl SessionLedger {
         match self.ended.get(sid) {
             Some(&was) if was != present => {
                 self.ended.insert(sid.to_string(), present);
-                vec![self.left(sid, present)]
+                vec![self.left(sid, present, None)]
             }
             _ => Vec::new(),
         }
@@ -289,7 +310,7 @@ impl SessionLedger {
         let mut out: Vec<Frame> = self
             .reconnectable
             .iter()
-            .map(|sid| self.state(sid, SessionFate::Reconnectable))
+            .map(|sid| self.reconnectable_frame(sid))
             .collect();
         if self.listed {
             out.push(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));

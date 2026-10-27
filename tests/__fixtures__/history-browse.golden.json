@@ -83,12 +83,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -149,12 +153,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -217,12 +225,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -285,12 +297,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -351,12 +367,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -419,12 +439,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -487,12 +511,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -553,12 +581,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -620,12 +652,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -728,12 +764,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -795,12 +835,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -862,12 +906,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,
@@ -969,12 +1017,16 @@
        "term": {
         "can": "no",
         "why": "会话已结束"
+       },
+       "stop": {
+        "can": "no",
+        "why": "会话已结束"
        }
       },
       "dot": "ended",
       "line": "已结束 · 可恢复",
-      "live": {
-       "is": "no"
+      "life": {
+       "is": "ended"
       },
       "name": "已结束",
       "order": 5,

@@ -179,7 +179,7 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
   const blkTitle = cell.blockTitle;
   const owner = cell.owner;
   const signer = cell.signer === false ? null : cell.signer;
-  const canSend = (w: PlanWho | null): boolean => w !== null && w.sid !== null && w.face.live.is === "yes" && w.face.live.activity !== "needs_you";
+  const canSend = (w: PlanWho | null): boolean => w !== null && w.sid !== null && w.face.life.is === "live" && w.face.life.activity !== "needs_you";
   // 已结束、认得出 ⇒ 送出时先在它那台恢复它，这一行当它的第一句（后端 `resume`）。
   const ended = (w: PlanWho | null): boolean => w !== null && w.sid !== null && !isLive(w.face);
   let to: "owner" | "signer" = !canSend(owner) && canSend(signer) ? "signer" : "owner";

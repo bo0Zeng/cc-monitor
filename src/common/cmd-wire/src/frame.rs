@@ -24,8 +24,7 @@ pub enum Frame<R = Record> {
     SessionAdded(SessionAdded),
     SessionPrimed(SessionPrimed),
     SessionStatus(SessionStatus),
-    SessionState(SessionState),
-    SessionRemoved(SessionRemoved),
+    SessionLeft(SessionLeft),
     Overflow(Overflow),
     Reply(Reply),
     Cancelled(Cancelled),
@@ -87,8 +86,7 @@ pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
         SessionAdded => "session_added",
         SessionPrimed => "session_primed",
         SessionStatus => "session_status",
-        SessionState => "session_state",
-        SessionRemoved => "session_removed",
+        SessionLeft => "session_left",
         Overflow => "overflow",
         Reply => "reply",
         Cancelled => "cancelled",
@@ -192,7 +190,7 @@ pub struct Hello {
         ts(optional, as = "Option<BTreeMap<String, String>>")
     )]
     pub frames: BTreeMap<String, String>,
-    /// 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造（`SessionFace::of(Life::Unseen)`），
+    /// 那台看不见（连接断了 · 还没报完清单）时那几条会话画的那一张脸（不写机器名）：只由后端造，
     /// 壳只取本机后端那一份，每发一格「说不清」都带上它。没带 ⇒ 省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -221,8 +219,8 @@ pub struct Line<R = Record> {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub cwd: Option<String>,
-    /// 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
-    /// 语义逐字节对齐手机端 `LineFramer.endOffset`：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)`。
+    /// 本行末尾（含 `\n`）在文件中的**累计原始字节 offset** ＝ 下一行的起点，两端拿它续读：
+    /// 计 CRLF 的 `\r`、含 `\n`、残行不计；从 N 续读 ⇒ `tail -c +(N+1)`。
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub byte_offset: u64,
@@ -325,34 +323,16 @@ pub struct SessionStatus {
     pub path: Option<String>,
 }
 
-/// **会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct SessionState {
-    /// 会话 id。
-    pub sid: String,
-    /// 离开「活」之后的去向。
-    pub state: SessionFate,
-    /// 离开「活」之后这条会话的整份脸（可重连 · 已结束 · 记录已不在）。
-    pub face: SessionFace,
-}
-
-/// A session file went away.
+/// **一条会话离开「活」的那一帧**（只这一帧）：去向就是 `face.life`（可重连 · 已结束〔被顶替带新 sid〕· 记录已不在）。
+/// 那台的会话账本裁好才发：在 tmux 里的等摘除之后那份 tmux 观测回来，不在的当场发。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct SessionRemoved {
+pub struct SessionLeft {
     /// 会话 id。
     pub sid: String,
-    /// **S0（additive）：这个 sid 是「死了」还是「被顶替了」。** [`RemovalCause::Gone`] 不写字段；只有 `Superseded` 才出现 `"cause":"superseded"`。
-    #[serde(default, skip_serializing_if = "RemovalCause::is_gone")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<RemovalCause>"))]
-    pub cause: RemovalCause,
-    /// 被顶替时（`cause: superseded`），顶替它的那条会话的 sid；不是顶替 ⇒ 不上线。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub by: Option<String>,
+    /// 离开「活」之后这条会话的整份脸（一生在 `face.life`）。
+    pub face: SessionFace,
 }
 
 /// 这条连接拥塞丢过帧：那台写好的那一句（只丢了行 · 会话状态已重新对齐 · 两样都有）。
@@ -812,8 +792,8 @@ pub enum SessionActivity {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionFace {
     pub dot: SessionDot,
-    /// 进程在不在；在干什么只住在「在」那一支里。
-    pub live: FaceLive,
+    /// 这条会话的一生（在干什么只住在「活」那一支里）。
+    pub life: Life,
     /// 那台看不见时照旧作数（已结束 · 记录已不在）。
     pub settled: bool,
     /// 短名（运行中 · 需手动 · 已结束 …）。
@@ -833,18 +813,27 @@ pub struct SessionFace {
     pub account: Option<String>,
 }
 
-/// 进程在不在：`{is: "yes", activity?}`（判得出在干什么才带 `activity`）· `{is: "no"}`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// **一条会话的一生**（线上只此一处说活不活）：`{is: "live", activity?}`（判得出在干什么才带）·
+/// `{is: "reconnectable"}` 程序退了、tmux 会话还在 · `{is: "ended", by?}` 进程没了（被顶替 ⇒ `by` 是顶替它的那条）·
+/// `{is: "gone"}` 已结束、记录也不在了 · `{is: "unclear"}` 说不清（判不了 · 那台看不见）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "is", rename_all = "snake_case")]
-pub enum FaceLive {
-    Yes {
-        #[serde(skip_serializing_if = "Option::is_none")]
+pub enum Life {
+    Live {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         activity: Option<SessionActivity>,
     },
-    No,
+    Reconnectable,
+    Ended {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        by: Option<String>,
+    },
+    Gone,
+    Unclear,
 }
 
 /// 会话那颗点（线上名与界面状态点同一套）。
@@ -880,6 +869,8 @@ pub struct SessionCan {
     pub model: Allow,
     /// 切权限档（`session-permission`）。
     pub permission: Allow,
+    /// 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
+    pub stop: Allow,
 }
 
 /// 一样此刻能不能做：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
@@ -960,38 +951,6 @@ pub enum SessionContainer {
     },
     /// 环境读得到、不在任何宿主里。
     None,
-}
-
-/// `session_state` 的 `state`：**一条会话离开「活」之后是什么** —— 那台机器的后端自己裁，客户端只收成品、不再猜。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "snake_case")]
-pub enum SessionFate {
-    /// claude 退了、它的 tmux 会话还在 ⇒ 接得回去。
-    Reconnectable,
-    /// 进程没了、容器也没了（或被顶替了）⇒ 只能 resume。
-    Ended,
-}
-
-/// `session_removed` 的 `cause`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-#[serde(rename_all = "snake_case")]
-pub enum RemovalCause {
-    /// 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind。**默认值** —— 缺字段就是它。
-    #[default]
-    Gone,
-    /// 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**（直接归档，不再去查 tmux 快照）。
-    Superseded,
-}
-
-impl RemovalCause {
-    /// `Gone` 不上线。
-    fn is_gone(&self) -> bool {
-        matches!(self, RemovalCause::Gone)
-    }
 }
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**

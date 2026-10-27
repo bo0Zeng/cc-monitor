@@ -4,7 +4,7 @@
 use super::*;
 use crate::history::groups::{merge, unlisted, GroupsHere, Half, HereGroup, HereMember};
 use crate::plan::fixture::{dump, made_with, who, MAIN};
-use cmd_wire::listing::RowLife;
+use crate::wire::WireLife;
 use cmd_wire::Machine;
 use copy_core::copy_text;
 use std::cell::Cell;
@@ -12,7 +12,7 @@ use std::cell::Cell;
 /// 这台那一半：g1「开发」· g3「评审」里有 MAIN；g2「杂项」里只有别人。
 fn ties() -> GroupsRead {
     let member = |sid: &str, groups: &[&str]| {
-        let (face, facts) = unlisted(None, RowLife::Ended);
+        let (face, facts) = unlisted(None, WireLife::Ended { by: None });
         HereMember {
             sid: sid.into(),
             groups: groups.iter().map(|g| g.to_string()).collect(),

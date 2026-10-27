@@ -21,14 +21,11 @@ fn live(o: &str, s: &str) -> In {
     told(o, Frame::SessionAdded(m))
 }
 
-fn left(o: &str, s: &str, fate: SessionFate) -> In {
-    let state = match fate {
-        SessionFate::Reconnectable => "reconnectable",
-        SessionFate::Ended => "ended",
-    };
+/// 那台说的去向：`reconnectable` · `ended`（线上 `face.life.is` 那一形）。
+fn left(o: &str, s: &str, life: &str) -> In {
     told(
         o,
-        Frame::SessionState(crate::frame_fixtures::session_state(s, state, "T")),
+        Frame::SessionLeft(crate::frame_fixtures::session_left(s, life, "T")),
     )
 }
 
@@ -63,8 +60,8 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         live("pi", "a"),
         live("pi", "b"),
         live("pi", "c"),
-        left("pi", "b", SessionFate::Reconnectable),
-        left("pi", "c", SessionFate::Ended),
+        left("pi", "b", "reconnectable"),
+        left("pi", "c", "ended"),
         listed("pi"),
         live("<local>", "x"),
         In::LinkLost {
@@ -81,7 +78,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         .map(|o| match o {
             Out::Live { sid, .. } => format!("live {sid}"),
             Out::Status { status, .. } => format!("status {}", status.sid),
-            Out::Left { state, .. } => format!("left {} {:?}", state.sid, state.state),
+            Out::Left { left, .. } => format!("left {} {}", left.sid, went(left)),
             Out::Listed { origin, all } => {
                 format!("listed {origin}{}", if *all { " all" } else { "" })
             }
@@ -111,8 +108,8 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     let mut b = Book::default();
     for ev in [
         live("pi", "a"),
-        left("pi", "r", SessionFate::Reconnectable),
-        left("pi", "e", SessionFate::Ended),
+        left("pi", "r", "reconnectable"),
+        left("pi", "e", "ended"),
         listed("pi"),
         live("mu", "m"),
     ] {
@@ -134,8 +131,8 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         v.iter()
             .map(|o| match o {
                 Out::Live { origin, sid, .. } => format!("live {origin}/{sid}"),
-                Out::Left { origin, state } => {
-                    format!("left {origin}/{} {:?}", state.sid, state.state)
+                Out::Left { origin, left } => {
+                    format!("left {origin}/{} {}", left.sid, went(left))
                 }
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
@@ -169,7 +166,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
 fn unseen_is_one_machine_level_cell() {
     let mut b = Book::default();
     b.step(live("pi", "a"));
-    b.step(left("pi", "r", SessionFate::Reconnectable));
+    b.step(left("pi", "r", "reconnectable"));
     let lost = b.step(In::LinkLost {
         origin: "pi".into(),
     });
@@ -197,11 +194,11 @@ fn the_live_cell_is_the_backends_session_added_frame() {
                 "hidden": {"by": "bg", "said": "后端那一句"},
                 "container": {"host": "tmux", "terminal": "tmux-1-2"},
                 "face": {
-                    "dot": "running", "live": {"is": "yes", "activity": "working"}, "settled": false,
+                    "dot": "running", "life": {"is": "live", "activity": "working"}, "settled": false,
                     "name": "跑着", "tip": "跑着", "line": "跑着", "tone": "now", "order": 1,
                     "can": {"close": {"can": "no", "why": "W"}, "resume": {"can": "no", "why": "W"},
                             "term": {"can": "yes", "tmux": true}, "reattach": {"can": "no", "why": "W"},
-                            "model": {"can": "yes"}, "permission": {"can": "yes"}},
+                            "model": {"can": "yes"}, "permission": {"can": "yes"}, "stop": {"can": "yes"}},
                 },
             }),
         ),
@@ -226,7 +223,7 @@ fn the_live_cell_is_the_backends_session_added_frame() {
         serde_json::json!({"host": "tmux", "terminal": "tmux-1-2"})
     );
     assert_eq!(
-        (&a["face"]["live"]["activity"], &a["face"]["name"]),
+        (&a["face"]["life"]["activity"], &a["face"]["name"]),
         (&serde_json::json!("working"), &serde_json::json!("跑着"))
     );
 }
@@ -333,7 +330,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["y"])),
         "{got:?}"
     );
-    b.step(left("pi", "b", SessionFate::Ended));
+    b.step(left("pi", "b", "ended"));
     // 同一个 sid 又活了（续接）：它离开前那份清单不算数，等那台再说。
     b.step(live("pi", "b"));
     let r = b.replay(&[]);
@@ -467,7 +464,7 @@ fn the_unseen_cell_carries_the_face_the_local_backend_handed_over() {
         origin: "pi".into(),
     });
     assert_eq!(faces(lost), vec![None], "本机后端还没握上手 ⇒ 不画点");
-    let face = crate::frame_fixtures::session_state("a", "ended", "T").face;
+    let face = crate::frame_fixtures::session_left("a", "ended", "T").face;
     assert!(b
         .step(In::UnseenFace {
             face: Some(face.clone())
@@ -478,4 +475,12 @@ fn the_unseen_cell_carries_the_face_the_local_backend_handed_over() {
         origin: "pi".into(),
     });
     assert_eq!(faces(lost), vec![Some(face)], "照本机后端交来的那一张");
+}
+
+/// 离开那一帧说的去向（同改形之前的写法：`Reconnectable` · `Ended`）。
+fn went(l: &cmd_wire::frame::SessionLeft) -> &'static str {
+    match l.face.life {
+        cmd_wire::frame::Life::Reconnectable => "Reconnectable",
+        _ => "Ended",
+    }
 }

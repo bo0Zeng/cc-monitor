@@ -22,8 +22,7 @@ import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
 import com.ccmonitor.mobile.core.wire.gen.PhoneMenu
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
-import com.ccmonitor.mobile.core.wire.gen.SessionFate
-import com.ccmonitor.mobile.core.wire.gen.SessionState
+import com.ccmonitor.mobile.core.wire.gen.SessionLeft
 import com.ccmonitor.mobile.ui.Faces
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -423,4 +422,4 @@ internal fun liveSeat(
 internal fun leftSeat(
     sid: String,
     face: SessionFace,
-) = SessionState(sid, SessionFate.RECONNECTABLE, face)
+) = SessionLeft(sid, face)

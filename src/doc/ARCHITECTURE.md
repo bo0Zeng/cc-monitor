@@ -86,7 +86,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 - **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
 - **流只发要看的会话**：每台一张名单台（`resident-client` 的 `watch::Desk`）：attach 行带上「在看哪几个会话」、那台从第一帧起照它发，之后变了经 `stream-watch {sids}` 报；刚进名单的会话从第几行起上流由那台回，界面据它补上没上流的那段。名单从空开始；桌面名单 ＝ 主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（壳 `stream_watch.rs` 交名单台），手机是它屏上的会话（核心 `resident.rs` 计数）。
 - **seq 是后端给的行号**，界面 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。一条记录至多一张卡：纯工具的记录画成一张「几步」卡（每步一行），界面不把相邻的并组 —— 哪几条收进「过程」只由后端划段（`observe/recognize/turns.rs`）。
-- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_state` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是端核心那一份 `resident_client::book`，手机同一份），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、那几条交出去说「说不清」（脸是本机后端在 hello 里给的那一张 `unseen`）。
+- **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_left` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`；每台一本，折法是端核心那一份 `resident_client::book`，手机同一份），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、那几条交出去说「说不清」（脸是本机后端在 hello 里给的那一张 `unseen`）。
 - **背压**：界面给 credit；实时行没有 credit 就丢，并在原位报 gap，界面按行号向那台后端补（帧命令 `history-lines`）。
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`--resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，界面进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
@@ -151,7 +151,7 @@ subscribe(origin, kind)    → 流
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
 - `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里。
 - `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
-- `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问远端后端的唯一一处住 `dial/remote_ask.rs`。
+- `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问远端后端经那台的常驻流（`control/feeds.rs`：`forward` 转界面带 `machine` 的那一问，`call` 是本机后端并好再答时自己问的有类型口）；`dial/remote_ask.rs` 那一路（`--resident-call` 冷 exec）还剩几条跨台合并（`chores-merge` · `history-search-merge` · `sessions-needs-merge` · 组的读写），挪到 `call` 之后它只剩部署与装钥匙。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）。
 
 后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/` 与 `control/files_write.rs` · `files_upload_chunks.rs` · `files_extract.rs` · `files_commit.rs`），两块只共用 `platform/` · `common/` 与 `lib.rs` 的能力声明轴；原生那一块够到文件管理那一块只经帧面分派（命令表文件管理那一族）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。判据 `tests/backend/files/module_boundary_guard.rs`。
@@ -240,7 +240,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 #### 格目录
 
-格目录（本体 `faces/cells_catalog.rs`，落盘一份金样 `tests/__fixtures__/cells-catalog.golden.json`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口照金样就知道有没有那一格，不必读核心代码；`view` 投影按它认成品名与路径。它不是帧命令（原先那条没有调用方，第 8 批删了），整份目录只在测试档现算。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以金样与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_removed` 只冻手机读的那几格）不删、不改名、不换类型。
+格目录（本体 `faces/cells_catalog.rs`，落盘一份金样 `tests/__fixtures__/cells-catalog.golden.json`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口照金样就知道有没有那一格，不必读核心代码；`view` 投影按它认成品名与路径。它不是帧命令（原先那条没有调用方，第 8 批删了），整份目录只在测试档现算。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以金样与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_left` 只冻手机读的那几格）不删、不改名、不换类型。
 
 #### 出口怎么挑格：请求信封里的声明
 

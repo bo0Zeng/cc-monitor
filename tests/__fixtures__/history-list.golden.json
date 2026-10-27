@@ -126,17 +126,20 @@
             "can": "no",
             "why": "运行中"
           },
+          "stop": {
+            "can": "yes"
+          },
           "term": {
             "can": "yes",
             "tmux": false
           }
         },
         "dot": "running",
-        "line": "运行中",
-        "live": {
+        "life": {
           "activity": "working",
-          "is": "yes"
+          "is": "live"
         },
+        "line": "运行中",
         "name": "运行中",
         "order": 1,
         "settled": false,
@@ -195,16 +198,20 @@
           "resume": {
             "can": "yes"
           },
+          "stop": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "term": {
             "can": "no",
             "why": "会话已结束"
           }
         },
         "dot": "ended",
-        "line": "已结束 · 可恢复",
-        "live": {
-          "is": "no"
+        "life": {
+          "is": "ended"
         },
+        "line": "已结束 · 可恢复",
         "name": "已结束",
         "order": 5,
         "settled": true,
@@ -264,16 +271,20 @@
           "resume": {
             "can": "yes"
           },
+          "stop": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "term": {
             "can": "no",
             "why": "会话已结束"
           }
         },
         "dot": "ended",
-        "line": "已结束 · 可恢复",
-        "live": {
-          "is": "no"
+        "life": {
+          "is": "ended"
         },
+        "line": "已结束 · 可恢复",
         "name": "已结束",
         "order": 5,
         "settled": true,
@@ -334,16 +345,20 @@
           "resume": {
             "can": "yes"
           },
+          "stop": {
+            "can": "no",
+            "why": "会话已结束"
+          },
           "term": {
             "can": "no",
             "why": "会话已结束"
           }
         },
         "dot": "ended",
-        "line": "已结束 · 可恢复",
-        "live": {
-          "is": "no"
+        "life": {
+          "is": "ended"
         },
+        "line": "已结束 · 可恢复",
         "name": "已结束",
         "order": 5,
         "settled": true,
@@ -410,16 +425,20 @@
             "can": "no",
             "why": "暂不恢复"
           },
+          "stop": {
+            "can": "no",
+            "why": "状态不明"
+          },
           "term": {
             "can": "no",
             "why": "状态不明"
           }
         },
         "dot": "unknown",
-        "line": "状态不明",
-        "live": {
-          "is": "no"
+        "life": {
+          "is": "unclear"
         },
+        "line": "状态不明",
         "name": "状态不明",
         "order": 3,
         "settled": false,

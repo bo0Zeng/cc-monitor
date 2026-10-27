@@ -56,7 +56,7 @@ pub(crate) fn note_flushed<'a>(
     }
 }
 
-/// 会话真结束（后端报 `session_removed`）⇒ 作废：再宣告时只读尾段（与冷连上同）。
+/// 会话真结束（后端报 `session_left`）⇒ 作废：再宣告时只读尾段（与冷连上同）。
 pub(crate) fn forget(origin: &Origin, sid: &str) {
     registry()
         .lock()

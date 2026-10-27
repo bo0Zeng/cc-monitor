@@ -176,8 +176,15 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
                     continue;
                 }
                 let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
-                // 这几条与本族同住一个模块、不读会话也不读账号（诊断那两条 · 各台需手动清单的纯计算合并），不在本族里。
-                if ["BackendLog", "DriftReportCmd", "NeedsMergeCmd"].contains(&ty) {
+                // 这几条与本族同住一个模块、不读会话也不读账号（诊断那三条 · 各台需手动清单的纯计算合并），不在本族里。
+                if [
+                    "BackendLog",
+                    "DriftReportCmd",
+                    "DriftMergeCmd",
+                    "NeedsMergeCmd",
+                ]
+                .contains(&ty)
+                {
                     continue;
                 }
                 let imp = [
@@ -2114,7 +2121,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"answered":[{"said":"w","sid":"s-2"}],"items":[{"kind":"session","rank":3298534883325,"session":{"face":{"can":{"close":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"term":{"can":"yes","tmux":false}},"dot":"needs-you","line":"需手动","live":{"activity":"needs_you","is":"yes"},"name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}}]}"#
+        r#"{"answered":[{"said":"w","sid":"s-2"}],"items":[{"kind":"session","rank":3298534883325,"session":{"face":{"can":{"close":{"can":"no","why":"运行中"},"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"},"reattach":{"can":"no","why":"运行中"},"resume":{"can":"no","why":"运行中"},"stop":{"can":"no","why":"需手动"},"term":{"can":"yes","tmux":false}},"dot":"needs-you","life":{"activity":"needs_you","is":"live"},"line":"需手动","name":"需手动","order":0,"settled":false,"tip":"需手动","tone":"need"},"hidden":null,"label":"t","needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}}]}"#
     );
 }
 
@@ -2436,4 +2443,42 @@ fn facts_follow_the_pick_kept_for_the_next_resume() {
     let mut f = base();
     dress_kept(&mut f, None);
     assert_eq!(f, base());
+}
+
+/// `history-run` 从尾巴读：`tail` ⇒ 回最后一页（到最后一个整行），`from` 是这一页的行头；`before` ⇒ 往前读到它为止。
+#[test]
+fn history_run_reads_from_the_tail_and_pages_back() {
+    let home = scratch("run-tail");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    let ask = |extra: serde_json::Value| {
+        let mut args = serde_json::json!({"parent": path, "run": "a1"});
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        answer_at(&home, "history-run", &args, &Default::default()).unwrap()
+    };
+    let head = ask(serde_json::json!({}));
+    let tail = ask(serde_json::json!({"tail": true}));
+    assert_eq!(
+        (&tail["from"], &tail["end"], &tail["more"]),
+        (
+            &serde_json::json!(0),
+            &head["end"],
+            &serde_json::json!(false)
+        ),
+        "夹具一页装得下 ⇒ 尾页就是整份"
+    );
+    assert_eq!(tail["rows"], head["rows"]);
+    // 往前读到第一行之后为止 ⇒ 只回第一条，后面还有。
+    let sub = std::fs::read_to_string(head["path"].as_str().unwrap()).unwrap();
+    let first = sub.find('\n').unwrap() as u64 + 1;
+    let back = ask(serde_json::json!({"before": first}));
+    assert_eq!(back["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(back["rows"][0], head["rows"][0]);
+    assert_eq!(
+        (&back["from"], &back["more"]),
+        (&serde_json::json!(0), &serde_json::json!(true))
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }

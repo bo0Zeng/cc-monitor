@@ -270,7 +270,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
     });
     book.write().step(In::Told {
         origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionState(ended_state("done", "T")),
+        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("done", "T")),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -453,7 +453,7 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
                 let k = [
                     "added",
                     "status",
-                    "state",
+                    "left",
                     "unseen",
                     "listed",
                     "snapshot_inflight",
@@ -1075,14 +1075,14 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
 }
 
 /// 那台答的去向（`text` 是那台写的短名）。
-fn ended_state(sid: &str, text: &str) -> cmd_wire::frame::SessionState {
-    crate::frame_fixtures::session_state(sid, "ended", text)
+fn ended_state(sid: &str, text: &str) -> cmd_wire::frame::SessionLeft {
+    crate::frame_fixtures::session_left(sid, "ended", text)
 }
 
 fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
     crate::session_book::Out::Left {
         origin: "<local>".into(),
-        state: ended_state(sid, "T"),
+        left: ended_state(sid, "T"),
     }
     .frame()
 }
@@ -1102,14 +1102,14 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     });
     book.write().step(In::Told {
         origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionState(ended_state("b", "T")),
+        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("b", "T")),
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
     r.ready_point(None).await;
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["added", "start", "line", "line", "end", "state"],
+        vec!["added", "start", "line", "line", "end", "left"],
         "就绪点：骨架（一条活会话一格）→ 留存行 → 终局"
     );
     rec.clear();
@@ -1118,7 +1118,7 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     r.on_lifecycle("<local>", vec![ended("c")]);
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["gap", "state"],
+        vec!["gap", "left"],
         "没 credit 也照交起停（先原位说丢在哪）"
     );
 }
@@ -1169,7 +1169,7 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
     });
     book.write().step(In::Told {
         origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionState(ended_state("p", "那台写的")),
+        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("p", "那台写的")),
     });
     r.set_main_kept([("<local>".to_string(), "p".to_string())]);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
@@ -1180,7 +1180,7 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
         .filter_map(|i| match i {
             WItem::Frame { body, .. } => {
                 let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                v.get("state").map(|e| e["sid"].to_string())
+                v.get("left").map(|e| e["sid"].to_string())
             }
             _ => None,
         })
@@ -1204,7 +1204,7 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     r.ready_point(None).await;
     let out = book.write().step(In::Told {
         origin: "<local>".into(),
-        frame: cmd_wire::frame::Frame::SessionState(ended_state("x", "那台写的")),
+        frame: cmd_wire::frame::Frame::SessionLeft(ended_state("x", "那台写的")),
     });
     r.on_lifecycle("<local>", out.iter().map(|o| o.frame()).collect());
     let ended: Vec<serde_json::Value> = rec
@@ -1213,14 +1213,14 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
         .filter_map(|i| match i {
             WItem::Frame { body, .. } => {
                 let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                v.get("state").cloned()
+                v.get("left").cloned()
             }
             _ => None,
         })
         .collect();
     assert_eq!(ended.len(), 1, "只该有那台答的那一格：{ended:?}");
     assert_eq!(ended[0]["sid"], "x");
-    assert_eq!(ended[0]["state"], "ended");
+    assert_eq!(ended[0]["face"]["life"]["is"], "ended");
     assert_eq!(ended[0]["face"]["name"], "那台写的");
 }
 
@@ -1235,7 +1235,7 @@ async fn lifecycle_frames_go_out_without_credit_and_are_owed() {
     r.on_lifecycle("<local>", vec![ended("c")]); // credit 0 ⇒ 照交，欠一格
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["state"]
+        vec!["left"]
     );
     rec.clear();
     r.on_line_batch_awaited(lines("c", 0..1)).await; // 欠着 ⇒ 丢，位置 1
@@ -1612,15 +1612,15 @@ fn the_codex_sample_frames_decode() {
                     "宣告那一帧判不出却用了在跑的语气"
                 );
                 assert_eq!(
-                    a.face.live,
-                    cmd_wire::frame::FaceLive::Yes { activity: None },
+                    a.face.life,
+                    cmd_wire::frame::Life::Live { activity: None },
                     "宣告那一帧不说判出了哪一态"
                 );
                 added.push((a.sid, a.path))
             }
             Frame::SessionStatus(st)
-                if st.face.live
-                    == cmd_wire::frame::FaceLive::Yes {
+                if st.face.life
+                    == cmd_wire::frame::Life::Live {
                         activity: Some(cmd_wire::frame::SessionActivity::Working),
                     } =>
             {

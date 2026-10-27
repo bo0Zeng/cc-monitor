@@ -27,7 +27,7 @@ const SNAPSHOT_CHUNK_LINES: usize = 500;
 const SNAPSHOT_TAIL_LINES: u64 = crate::event_replay::REPLAY_TAIL_KEEP as u64;
 
 /// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`
-/// （SessionRemoved 时调）摘除排队项 + 给 inflight 打取消标记 + 从 seen 摘除
+/// （离开那一帧 SessionLeft 时调）摘除排队项 + 给 inflight 打取消标记 + 从 seen 摘除
 /// （同连接内 removed→re-added 可重拉，审计 D-S4）；close（断连）**立即作废**
 /// 未开拉的排队项——重连会重建队列重拉，断连后继续拉只会把行灌在归档清算
 /// 之后（审计 D-B1 僵尸复活）。
@@ -44,7 +44,7 @@ struct SnapshotPending {
     cancelled: std::collections::HashSet<String>,
 }
 
-// 会话 / tmux 的裁决住那台后端（`src/backend/observe/session_ledger.rs`，成品帧 `session_state`），本机远端同一份；
+// 会话 / tmux 的裁决住那台后端（`src/backend/observe/session_ledger.rs`，成品帧 `session_left`），本机远端同一份；
 //   monitor 只有一本成品缓存（`session_book.rs`：转交 ＋ F5 重放 ＋ 断连说「说不清」）。
 
 #[derive(Clone)]
@@ -91,7 +91,7 @@ impl SnapshotQueue {
         self.notify.notify_one();
     }
 
-    /// SessionRemoved：摘排队项 + 标记 inflight 取消 + 允许 re-added 重拉。
+    /// 离开那一帧（SessionLeft）：摘排队项 + 标记 inflight 取消 + 允许 re-added 重拉。
     pub(super) fn cancel(&self, sid: &str) {
         let mut p = self.pending.lock().unwrap();
         p.queue.retain(|it| it.sid != sid);
