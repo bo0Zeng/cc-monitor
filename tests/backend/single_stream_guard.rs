@@ -47,7 +47,7 @@
 //! ## ⚠⚠ 09-01 补的那一条：只钉 turbofish，那它在一个**正常拼法**上比旧针还弱
 //!
 //! 08-28 那一版只有下面的 ①（`mpsc::channel::<Frame>(`）。`PM` 09-01 现打了这一刀
-//! （逐字，插在 `main.rs:585` 之后）：
+//! （逐字，插在 `main.rs` 里）：
 //!
 //! ```text
 //! let (_pm_tx2, mut _pm_rx2): (tokio::sync::mpsc::Sender<Frame>, tokio::sync::mpsc::Receiver<Frame>) =
@@ -107,12 +107,12 @@
 //!      ⚠ 教训写在这儿：**分母的单位与它的量法要与判据自己印的那个数同源**，
 //!      不然下一个人照「引用前重打」重打一次，会把 255 999 读成「语料漂了七千多字节」。〕
 //!      量法 = 与 `crate_sources()` 同一份剥法逐文件数子串（同一刻现打）：`channel(` **0 处**；
-//!      `use tokio::sync::mpsc` **2 处**，`stream/inbound/mod.rs:35` 与 `observe/watcher.rs:77`，
+//!      `use tokio::sync::mpsc` **2 处**，`stream/inbound/mod.rs` 与 `observe/watcher.rs` 各一处，
 //!      两处都停在 `::mpsc;`（全 crate `use tokio::sync::mpsc::` **0 处**），
 //!      没有一处 import 到函数那一级。
 //!      **这是那一刻的读数，不是不变量** —— 引用前重打。）
 //!   2. **别的构造函数名**：`std::sync::mpsc::sync_channel(4)` 里 `::` 不紧挨 `channel(`
-//!      ⇒ ② 看不见。今天那一处（`relay/tee.rs:169`）写着 turbofish 且与 `Frame` 无关。
+//!      ⇒ ② 看不见。今天那一处（`relay/tee.rs`）写着 turbofish 且与 `Frame` 无关。
 //!   3. **给 `Frame` 起个类型别名再造通道**（`type F = Frame; mpsc::channel::<F>(8)`）：
 //!      有 turbofish ⇒ ② 不红；字面不是 `Frame` ⇒ ① 也不数。**两条都看不见。**
 //!   4. **`broadcast` / `watch` 这类多消费者原语**带 turbofish 写出来时同理：② 不红、① 不数。

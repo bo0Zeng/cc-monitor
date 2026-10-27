@@ -1485,44 +1485,10 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        ("launch_tests.rs", "launch.rs", 122),
-        // 🔴 **这一行删了 —— 那处行号地址改成了符号地址。**
-        // 原来是 `guard-core/src/lib.rs` 里那句「两侧各有一个文件因此假红」的注，
-        // 点的是当年一份契约判据文件里的一个行号。那份文件剖分后只剩 40 行 ⇒ 越界，
-        // 已按本条的第 ① 条出路改成符号地址（那份判据后来随派生脚本整份删了）。
-        // ⇒ 本条的保鲜自检逐字要求把这一行删掉（「多半是有人把它改成符号地址了，那是好事」）。
-        // **存量少一条，这是往下走**（递减方向），不是把账挂空。
         ("lib.rs", "main.rs", 26),
         ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
-        // `lib.rs → sftp.rs 的第 141 行` 摘了：creds-core 那句改成了点符号（原子上传搬去后端 `put_atomic`）。
-        ("local_backend_tests.rs", "structural_scan.rs", 425),
         ("local_backend_host.rs", "launch.rs", 196),
-        ("local_backend_host_tests.rs", "launch.rs", 196),
         ("local_backend_host.rs", "launch.rs", 198),
-        ("local_backend_host_tests.rs", "local_backend.rs", 336),
-        ("local_backend_host_tests.rs", "structural_scan.rs", 425),
-        ("local_backend_host_tests.rs", "structural_scan.rs", 508),
-        // `("panorama.rs", "engine.rs", 42)` 这一行删了：引用方那份文件随 monitor 的内嵌引擎一起删了。
-        // 🔴 **这一行删掉了**：`config_surface.rs` 的测试段搬走之后
-        //    那份文件只剩 853 行，1062 行**越界**了（本条第 ① 格当场逮住）。
-        //    按本条头注唯一那条改法**改成了符号地址**
-        //    （`rows_tests.rs::either_host_keeps_the_glob_count`，
-        //    那正是原先第 1062 行那段话讲的东西）⇒ 从「判不了真伪」变成
-        //    `every_symbol_address_in_the_sources_still_resolves` **真的判得了**。
-        //    ⚠ 没有「换一个今天对的行号」—— 那是本条头注逐字禁的那一手。
-        // 🔴 **这一行删了**：`parity_ledger_tests.rs` 里点 `sftp.rs` 第 141 行的那句散文
-        //    住在 `creds.apikey` 那条平价欠账的理由里，那条欠账结清、整行删掉，那处行号地址随之没了。
-        //    **存量少一条，这是往下走**（递减方向）。
-        ("ratchet_guard.rs", "control/tmux_hook.rs", 6),
-        ("ratchet_guard.rs", "control/tmux_hook.rs", 102),
-        ("ratchet_guard.rs", "main.rs", 651),
-        ("ratchet_guard.rs", "observe/watcher.rs", 1040),
-        ("ratchet_guard.rs", "tmux_hook.rs", 6),
-        ("single_stream_guard.rs", "stream/inbound/mod.rs", 35),
-        ("single_stream_guard.rs", "main.rs", 585),
-        ("single_stream_guard.rs", "observe/watcher.rs", 77),
-        ("single_stream_guard.rs", "relay/tee.rs", 169),
-        // `single_stream_guard.rs` → monitor 那份 backend 目录头注的那一条行号地址摘了：那份文件随 `backend` 目录删了，散文改成不带行号地址。
         ("table.rs", "server.rs", 24),
     ];
 
@@ -1876,6 +1842,20 @@ fn dead_name_split(path: &str, text: &str) -> Vec<(usize, String, String)> {
             .map(|(i, l)| (i + 1, String::new(), (*l).to_string()))
             .collect();
     }
+    if matches!(ext, "sh" | "toml" | "py" | "yml" | "yaml") {
+        // 整行 `#` 注释算散文（判哪行是整行注释走共享的 `strip_hash_comment_lines`，逐行问它）。
+        return lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                if crate::strip_hash_comment_lines(l).is_empty() {
+                    (i + 1, String::new(), (*l).to_string())
+                } else {
+                    (i + 1, (*l).to_string(), String::new())
+                }
+            })
+            .collect();
+    }
     if !matches!(ext, "rs" | "ts" | "tsx" | "mts" | "mjs" | "js" | "cjs") {
         return lines
             .iter()
@@ -2046,6 +2026,18 @@ fn the_dead_name_scanner_really_sees_each_shape() {
     let json_text = format!("{{\"k\": \"{n}\"}}\n");
     let json_rows = dead_name_split("a.json", &json_text);
     assert!(json_rows[0].2.is_empty() && json_rows[0].1.contains(n.as_str()));
+
+    // ⑧ `#` 那一族（`.sh` · `.toml` · `.py` · `.yml`）：整行 `#` 注释算散文，别的行算代码。
+    for f in ["a.sh", "Cargo.toml", "a.py", "ci.yml"] {
+        let hashed = format!("# 见 {tick}{n}{tick}\nk = 1\n");
+        let rows = dead_name_split(f, &hashed);
+        assert!(
+            rows[0].1.is_empty() && rows[0].2.contains(n.as_str()) && rows[1].1 == "k = 1",
+            "{f} 的 `#` 注释没算成散文：{rows:?}"
+        );
+        let (_, dead) = dead_names_on_disk(&[(f.to_string(), hashed)], min);
+        assert_eq!(dead.len(), 1, "{f} 的 `#` 注释里点名的死名字没进人群：{dead:?}");
+    }
 }
 
 // ── 生产树里不放测试体 ────────────────────────────────────────
