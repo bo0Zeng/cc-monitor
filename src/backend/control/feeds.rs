@@ -15,9 +15,9 @@
 //!   （`stream-watch` 信封带 `machine`，[`watch_at`]），并起来交那张台；那条流走了它那一份摘掉（[`Watching`]）。
 
 use crate::wire::Frame;
+use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use cmd_wire::frame::Relayed;
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom};
-use crate::wire::{SessionFace, SessionFaceExt as _, SessionLeft};
 use resident_client::book::{Seat, SessionBook};
 use resident_client::feed::{self, Boxed, Config, Event, Exec, Feed, Problem, Progress, Transport};
 use resident_client::watch::Desk;

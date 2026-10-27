@@ -31,4 +31,3 @@ fn the_machine_table_is_installed_before_anything_is_dispatched() {
         "`main` 分流之前恰好装一次机器表（`faces::install_machines`）"
     );
 }
-

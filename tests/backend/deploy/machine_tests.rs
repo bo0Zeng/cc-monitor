@@ -639,7 +639,10 @@ fn the_product_carries_its_name_and_whether_it_is_offline() {
 #[test]
 fn the_unclear_count_rides_the_product_as_told() {
     assert_eq!(of(vec![Fact::Unclear(3)], true).unclear, Some(3));
-    assert_eq!(of(vec![Fact::Unclear(3), Fact::Unclear(0)], true).unclear, None);
+    assert_eq!(
+        of(vec![Fact::Unclear(3), Fact::Unclear(0)], true).unclear,
+        None
+    );
     assert_eq!(
         of(vec![Fact::Unclear(2), up(Relation::Same, &[])], true).unclear,
         Some(2)

@@ -568,10 +568,12 @@ async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backe
     let unclear = crate::wire::SessionFace::of(Life::Unseen);
     let said_left = |sid: &str| Relayed::Line {
         machine: machine.into(),
-        line: serde_json::to_string(&Frame::<serde_json::Value>::SessionLeft(crate::wire::SessionLeft {
-            sid: sid.into(),
-            face: unclear.clone(),
-        }))
+        line: serde_json::to_string(&Frame::<serde_json::Value>::SessionLeft(
+            crate::wire::SessionLeft {
+                sid: sid.into(),
+                face: unclear.clone(),
+            },
+        ))
         .unwrap(),
     };
     assert_eq!(

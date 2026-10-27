@@ -616,11 +616,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     }
     assert_eq!(
         rec.all().iter().map(what).collect::<Vec<_>>(),
-        vec![
-            ("start", 0, 0),
-            ("line", 1, 0),
-            ("end", 2, 0),
-        ]
+        vec![("start", 0, 0), ("line", 1, 0), ("end", 2, 0),]
     );
 }
 

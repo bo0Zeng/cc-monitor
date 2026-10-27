@@ -137,7 +137,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }
-                    Out::Status { status, .. } => format!("status {}", status.sid),
+                Out::Status { status, .. } => format!("status {}", status.sid),
                 Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {origin}/{sid}"),
             })
@@ -168,13 +168,20 @@ fn the_backends_unclear_left_passes_through_and_a_closed_link_adds_nothing() {
         .map(|o| serde_json::to_value(o.frame()).unwrap())
         .collect();
     assert_eq!(frames.len(), 1, "{frames:?}");
-    assert_eq!(frames[0]["left"]["face"]["life"], serde_json::json!({"is": "unclear"}));
+    assert_eq!(
+        frames[0]["left"]["face"]["life"],
+        serde_json::json!({"is": "unclear"})
+    );
     assert!(b
         .step(In::Closed {
             origin: "pi".into(),
         })
         .is_empty());
-    assert_eq!(b.of("pi").map(|p| p.left.len()), Some(1), "账照留：F5 重放照它再说");
+    assert_eq!(
+        b.of("pi").map(|p| p.left.len()),
+        Some(1),
+        "账照留：F5 重放照它再说"
+    );
 }
 
 /// ★ 活会话一格 `added`，就是那台的 `session_added`：骨架那几格 · 此刻的灯与名字 · 容器 · 隐藏那一格一起带（不再拆成三格、不重拼）。期望值手写。
@@ -373,7 +380,7 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link_said_unclear() {
     b.step(branch("a", 2, &["u3"], "s3"));
     b.step(branch("b", 0, &["x"], "sx"));
     b.step(branch("b", 5, &["y"], "sy")); // 前 5 条照旧，手上只有 1 条 ⇒ 中间缺过
-    // 断的那一刻本机后端先说两条说不清，再收这一条连接。
+                                          // 断的那一刻本机后端先说两条说不清，再收这一条连接。
     b.step(left("pi", "a", "unclear"));
     b.step(left("pi", "b", "unclear"));
     b.step(In::Closed {
