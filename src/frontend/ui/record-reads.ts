@@ -22,7 +22,7 @@
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
 import type { RecordAt } from "./cards/index";
@@ -32,6 +32,7 @@ import type { HistoryPage } from "./generated/HistoryPage";
 import type { HistoryRun } from "./generated/HistoryRun";
 import type { RecordLine } from "./generated/RecordLine";
 import type { DriftFaceReport } from "./generated/DriftFaceReport";
+import type { DriftMerge } from "./generated/DriftMerge";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
 import { saidOf } from "./kit/detail";
@@ -52,6 +53,9 @@ export type BranchOff = Branch;
 
 /** 那台后端漂移账的一个面（各家的面并在一起；面名 · 后果那一句都是那一家写好的）。 */
 export type RecordDriftFace = DriftFaceReport;
+
+/** 本机与各台的漂移账（后端 `drift-merge`）：一台一行，本机在前；那台问不到 ⇒ `report` 为 `null`。 */
+export type DriftOfAll = DriftMerge["machines"];
 
 /** 按偏移取一段 · 子 agent 那一份：同它上一个住址（一次性远端那一趟的天花板，120 秒）。 */
 const PIECE_BUDGET_MS = 120_000;
@@ -181,4 +185,10 @@ export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]
   const budget = budgetWithin(DRIFT_BUDGET_MS);
   const { faces } = await asked(callTyped(origin, "drift-report", {}, budget));
   return faces;
+}
+
+/** **本机与各台的漂移账**：只问本机后端一条（它经各台的常驻流问到、并好再答）。 */
+export async function readDriftOfAll(): Promise<DriftOfAll> {
+  const { machines } = await asked(callTyped(LOCAL_ORIGIN, "drift-merge", {}, budgetWithin(DRIFT_BUDGET_MS)));
+  return machines;
 }

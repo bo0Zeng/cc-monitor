@@ -108,13 +108,13 @@ impl crate::wire::typed::Handle for HooksDiagCmd {
 }
 
 /// `mcp-read` 的入参。
-#[derive(Debug, Default, serde::Deserialize)]
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct McpReadReq {
     /// 项目目录（绝对路径；缺 · `null` ⇒ 不看项目那一段）。
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) project_dir: Option<String>,
 }
@@ -153,8 +153,8 @@ impl crate::wire::typed::Handle for McpReadCmd {
 }
 
 /// [`McpReadCmd`] 的本体：读法住适配层那一格（`agents::mcp_read`，唯一声明了 MCP 读面的那一家），这里只换壳。
-/// `tz` ＝ 看的那一台的时区：成品里的时刻字按它写。
-fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpReadErr> {
+/// `tz` ＝ 看的那一台的时区：成品里的时刻字按它写。`ext-list` 带本机那一格 `mcp` 也读它（`ext_list_face::with_mcp`）。
+pub(crate) fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpReadErr> {
     let dir = match req.project_dir.as_deref() {
         None => None,
         Some(d) => {

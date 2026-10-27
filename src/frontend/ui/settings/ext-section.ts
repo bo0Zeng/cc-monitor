@@ -13,9 +13,9 @@
  * - 备注：自带扩展的内置备注照画；用户写的经本机后端记进它的目录（`ext-note-set`），写完让本机后端同步一趟各台。
  * - 要加钩子的那一个（自带的 cc-bus）：抽屉里每台一行钩子状态与要加的内容，问那台后端（`hooks-diag`，抽屉打开时问一次），
  *   界面不读那份配置文件、也不写它。
- * - MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行：问那一台自己的后端（`mcp-read`，每次读完表各台问一次），
- *   哪一种、那一句、悬停那一截、原话都是它写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
- *   需登录那一条的［登录…］：那台 `mcp-read` 那一格里写好的解法各一颗（解法 `fix` 是那台写好的 `login-start` 入参），开登录抽屉。
+ * - MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行：随 `ext-list` 一条来（各台那一格 `mcp`：本机后端问到那台的 `mcp-read` 成品，
+ *   界面不逐台问），哪一种、那一句、悬停那一截、原话都是那台写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
+ *   需登录那一条的［登录…］：那一格里写好的解法各一颗（解法 `fix` 是那台写好的 `login-start` 入参），开登录抽屉。
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
 import { copyText } from "../copy-table";
@@ -44,9 +44,8 @@ import {
   type ExtPlace,
   type ExtRow,
   type ExtUninstallCard,
-  mcpRead,
+  mcpOf,
   type McpEntry,
-  type McpRead,
 } from "../ext-reads";
 import { copyDetailButton, saidOf, sayFailure } from "../kit/detail";
 import { write } from "../ipc/write";
@@ -172,8 +171,9 @@ export class ExtSection {
   private readonly table: HTMLElement;
   private readonly drawer: HTMLElement;
   private list: ExtList | null = null;
-  /** `list` 的那一串（重读回来一字不差 ⇒ 不重画）。 */
+  /** `list` 除各台 MCP 那一格以外的那一串（重读回来一字不差 ⇒ 不重画）· 各台 MCP 那一格的那一串（只它变了 ⇒ 只重建 MCP 那几行）。 */
   private listWire = "";
+  private mcpWire = "";
   /** 这一份表里各行建好的那一行（按 `list.rows` 里那一项认）：筛选只挑行往表里放，不重建；换了一份表才清。 */
   private readonly rowEls = new Map<ExtRow, HTMLElement>();
   /** 表顶「cc-monitor 认得」那一组的组头（建一次，按身份留在原地）。 */
@@ -184,9 +184,6 @@ export class ExtSection {
   private slots = new Map<string, Slot>();
   private install: Install = freshInstall();
   private hooks = new Map<string, HookSlot>();
-  /** 各台的 MCP 列表（按 `machineKey`；那台后端 `mcp-read` 答的，带写好的需登录 / 断开）· 那一串（一字不差 ⇒ 不重画）。 */
-  private mcp = new Map<string, McpRead>();
-  private mcpWire = new Map<string, string>();
   /** 备注正在改（那一段草稿；`null` = 没在改）· 写备注那一问没成时那一句。 */
   private noteDraft: string | null = null;
   private noteError: string | null = null;
@@ -247,65 +244,32 @@ export class ExtSection {
       const list = await extList(visit);
       if (my !== this.seq) return;
       // 进页先画手上那份、同步完再读一遍：两份常常一样 ⇒ 一样就不重画（几百行 × 十几台，整张表建一遍上百毫秒）。
-      const wire = JSON.stringify(list);
+      // 各台 MCP 那一格单算一串：只它变了 ⇒ 别的行原样留着（行按 `list.rows` 那一项认，表留旧的那一份、只换各台那几格）。
+      const wire = JSON.stringify({ ...list, machines: list.machines.map((m) => ({ ...m, mcp: null })) });
+      const mcpWire = JSON.stringify(list.machines.map((m) => m.mcp ?? null));
       const changed = wire !== this.listWire;
+      const mcpChanged = mcpWire !== this.mcpWire;
       if (changed) {
         this.list = list;
         this.listWire = wire;
         this.rowEls.clear();
+      } else if (mcpChanged && this.list) {
+        this.list = { ...this.list, machines: list.machines };
       }
+      this.mcpWire = mcpWire;
       const problems = list.problems.length > 0 ? copyText("extPage.status.problems", { n: String(list.problems.length), list: list.problems.join(copyText("extPage.list.sep")) }) : "";
       this.status.textContent = [problems, synced].filter((x) => x !== "").join(" ");
       if (changed) {
         this.renderTable();
         this.renderDrawer();
+      } else if (mcpChanged) {
+        this.repaintMcp();
       }
-      if (this.list) void this.readMcp(this.list);
       if (visit) void this.reload(false, LOCAL_ORIGIN);
     } catch (e) {
       if (my !== this.seq) return;
       sayFailure(this.status, copyText("extPage.status.failed"), e);
     }
-  }
-
-  /**
-   * 表里有 MCP 行 ⇒ 各台（连得上的）问它自己的后端一次 `mcp-read`，小标与抽屉那一行照它画。
-   * 断开的那台 · 问不成的那台：不画小标（没小标只说「装了」）。回来的一字不差 ⇒ 不重画；变了只重建 MCP 那几行与抽屉。
-   */
-  private async readMcp(list: ExtList): Promise<void> {
-    const wanted = list.rows.some((r) => r.kind === "mcp") ? list.machines.filter((m) => m.reachable) : [];
-    const keep = new Set(wanted.map(machineKey));
-    let changed = false;
-    for (const k of [...this.mcp.keys()]) {
-      if (!keep.has(k)) {
-        this.mcp.delete(k);
-        this.mcpWire.delete(k);
-        changed = true;
-      }
-    }
-    if (changed) this.repaintMcp();
-    await Promise.all(
-      wanted.map(async (m) => {
-        const key = machineKey(m);
-        let got: McpRead | null = null;
-        try {
-          got = await mcpRead(originOf(m));
-        } catch {
-          got = null;
-        }
-        if (this.list !== list) return;
-        const wire = got === null ? "" : JSON.stringify(got);
-        if ((this.mcpWire.get(key) ?? "") === wire) return;
-        if (got === null) {
-          this.mcp.delete(key);
-          this.mcpWire.delete(key);
-        } else {
-          this.mcp.set(key, got);
-          this.mcpWire.set(key, wire);
-        }
-        this.repaintMcp();
-      }),
-    );
   }
 
   /** MCP 列表变了：只重建 MCP 那几行（别的行原样留着）、重画表与抽屉。 */
@@ -315,10 +279,11 @@ export class ExtSection {
     this.renderDrawer();
   }
 
-  /** 那台的 MCP 列表里这个名字的那一条（全局那一段）；没问到 ⇒ `null`。 */
+  /** 那台的 MCP 列表（`ext-list` 回包里那台那一格 `mcp`）里这个名字的那一条（全局那一段）；没问到 ⇒ `null`。 */
   private mcpEntry(r: ExtRow, m: ExtMachine): McpEntry | null {
     if (r.kind !== "mcp" || !m.reachable) return null;
-    return this.mcp.get(machineKey(m))?.entries.find((e) => e.name === r.name) ?? null;
+    const own = this.list?.machines.find((x) => machineKey(x) === machineKey(m)) ?? m;
+    return mcpOf(own)?.entries.find((e) => e.name === r.name) ?? null;
   }
 
   /** 让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟；没对上的那几台说出来（表照画手上那一份）。

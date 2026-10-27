@@ -3,11 +3,10 @@
  *
  * | 做什么 | 问哪台 | 命令 |
  * |---|---|---|
- * | 那张表（条目 × 机器：每格的点、那台上的各处、「装到…」能装到哪几处） | 本机后端 | `ext-list` |
+ * | 那张表（条目 × 机器：每格的点、那台上的各处、「装到…」能装到哪几处；表里有 MCP 行 ⇒ 各台那一格 `mcp`：本机后端问到那台的 `mcp-read`） | 本机后端 | `ext-list` |
  * | 装到一台之前那张确认卡 / 装 | 本机后端（枢纽，向来源取、交被写那台写） | `ext-hub-preview` / `ext-hub-apply` |
  * | 从一台的某一处卸之前那张卡 / 卸 | 被卸的那一台 | `ext-uninstall-preview` / `ext-uninstall-apply` |
  * | 写 / 改 / 清一个条目的备注 | 本机后端（记进它的目录，随目录同步） | `ext-note-set` |
- * | MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行的字 | 那一台（判定与写字都在它的后端：`mcp-read`） | `mcp-read` |
  *
  * 判定全在后端。几问都是 typed（`callTyped`：入参 · 回包的类型从后端生成，回包形状由握手指纹核过；线上形状由金样
  * `tests/__fixtures__/ext-flow.golden.json` · `mcp-read.golden.json` 钉），不比较、不推断。
@@ -89,11 +88,13 @@ export async function extNoteSet(kind: ExtKind, name: string, text: string): Pro
   return got.note;
 }
 
-/** `mcp-read` 的成品（形状从后端类型生成；金样 `tests/__fixtures__/mcp-read.golden.json` 钉线上形）。`mark` = 小标画哪一种（后端定）。 */
-export type McpRead = McpReadReply;
+/** `ext-list` 回包里一台那一格 `mcp` 的一条（那台 `mcp-read` 的成品；金样 `tests/__fixtures__/mcp-read.golden.json` 钉线上形）。`mark` = 小标画哪一种（后端定）。 */
 export type McpEntry = McpReadEntry;
 
-/** 问那台它的 MCP 列表（全局那一段；每条带后端写好的需登录 / 断开那几格）。本机远端同一条命令。 */
-export function mcpRead(on: Origin): Promise<McpRead> {
-  return askTyped((budget) => callTyped(on, "mcp-read", {}, budget), LIST_BUDGET_MS);
+/**
+ * 一台那一格 `mcp`：本机后端只转交（那一层不读它，类型上是 `unknown`），线上形就是那台 `mcp-read` 的回包 ⇒ 照那个生成类型收。
+ * 没问到 ⇒ `null`。
+ */
+export function mcpOf(m: ExtMachine): McpReadReply | null {
+  return (m.mcp ?? null) as McpReadReply | null;
 }

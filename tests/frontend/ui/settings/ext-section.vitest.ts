@@ -85,8 +85,6 @@ const manyCard = (a: ManyArgs, over: Record<string, unknown> = {}) => ({
 });
 const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t, name: nameOf(t), done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null, detail: null })) });
 
-/** 各台 `mcp-read` 答什么（按 origin；没写 ⇒ 空表；`Error` ⇒ 那一问没成）。 */
-let mcpAnswers: Record<string, unknown> = {};
 
 /** 按命令名答（`ext-list` 依次答给定的几份）。 */
 function backend(
@@ -114,11 +112,6 @@ function backend(
         return chanReply({ job: "job-1", url: "https://login.example/x", paste: "redirectUrl", auto: false });
       case "login-cancel":
         return chanReply({ was: true });
-      case "mcp-read": {
-        const got = mcpAnswers[a.origin] ?? { entries: [], dirs: [], problems: [] };
-        if (got instanceof Error) throw got;
-        return chanReply(got);
-      }
     }
     throw new Error(`没料到这一问：${a.op}`);
   });
@@ -178,8 +171,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const [, skillOnly] = [...s.element.querySelectorAll(".ext-filter button")] as HTMLButtonElement[];
     skillOnly.click();
     expect(rows()).toEqual(["skill/demo", "skill/noted"]);
-    // 进页那一问算「来看了一次」，随后同步一趟、再读（不算来看）。MCP 那几格的小标另问各台（`mcp-read`，下面那一组判据）。
-    expect(ops().filter(([, op]) => op !== "mcp-read")).toEqual([
+    // 进页那一问算「来看了一次」，随后同步一趟、再读（不算来看）。MCP 那几格的小标随 `ext-list` 的回包来（各台那一格 `mcp`），不另问各台。
+    expect(ops()).toEqual([
       ["<local>", "ext-list", { visit: true }],
       ["<local>", "assets-sync", {}],
       ["<local>", "ext-list", { visit: false }],
@@ -461,7 +454,7 @@ describe("备注 · cc-bus 那一行", () => {
     invokeMock.mockClear();
     (s.element.querySelector('.ext-notes [data-kind="primary"]') as HTMLButtonElement).click();
     await settle();
-    expect(ops().filter(([, op]) => op !== "hooks-diag" && op !== "mcp-read")).toEqual([
+    expect(ops().filter(([, op]) => op !== "hooks-diag")).toEqual([
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "我的话" }],
       ["<local>", "assets-sync", {}],
       ["<local>", "ext-list", { visit: false }],
@@ -525,12 +518,15 @@ export function comparesFingerprints(src: string): string[] {
 // 原来那颗「去登录 · 复制 /mcp 去会话里粘」作废）；
 // 断开那一句 ＋ 原话 ＋［复制详情］；两种都没有 ⇒ 不画）。字与哪一种都是那台后端 `mcp-read` 写好的，界面照抄。
 describe("MCP：每台的小标与抽屉那一行", () => {
+  /** 各台那一格 `mcp`（本机后端问到的那台 `mcp-read` 成品，按 origin；没写 ⇒ `null`：没问到）。 */
+  let mcpAnswers: Record<string, unknown> = {};
   beforeEach(() => {
     invokeMock.mockReset();
     mcpAnswers = {};
   });
   const both = cell("same", [place(user, "same")]);
-  const mcpList = () => ({ machines, problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
+  const withMcp = (ms: typeof machines) => ms.map((m) => ({ ...m, mcp: mcpAnswers[m.here ? "<local>" : (m.key ?? "")] ?? null }));
+  const mcpList = () => ({ machines: withMcp(machines), problems: [], legend: LEGEND, knownTitle: "〈认得〉", rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
   const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
   const fixArgs = { kind: "mcp" as const, agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
   const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), fix: [{ account: "acct-a", fix: { command: "login-start", args: fixArgs } }] };
@@ -556,8 +552,8 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(marks(s, "demo").map(([m]) => m)).toEqual([null, null]);
   });
 
-  it("没小标只说装了：那台答的那一条 mark 为空 · 那一问没成 · 那台连不上（不问它）⇒ 都不画", async () => {
-    mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] }, laptop: new Error("断了") };
+  it("没小标只说装了：那台答的那一条 mark 为空 · 本机后端没问到那台（`mcp` 为 null）· 那台没连上 ⇒ 都不画", async () => {
+    mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] } };
     const s = await page([mcpList()]);
     expect(marks(s, "tracker")).toEqual([
       [null, copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: sameSaid })],
@@ -565,13 +561,18 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     ]);
     open(s, "mcp/tracker");
     expect(s.element.querySelector(".ext-drawer .ext-mcp")).toBeNull();
+    answers();
     const list = mcpList();
-    list.machines = [machines[0], { ...machines[1], reachable: false }];
+    list.machines = [list.machines[0], { ...list.machines[1], reachable: false }];
+    const t = await page([list]);
+    expect(marks(t, "tracker").map(([m]) => m)).toEqual(["ext-dot-mark is-login", null]);
+  });
+
+  it("★ 各台的 MCP 随 `ext-list` 一条来：界面一台都不问 `mcp-read`", async () => {
     answers();
     invokeMock.mockClear();
-    const t = await page([list]);
-    expect(ops().filter(([, op]) => op === "mcp-read").map(([o]) => o)).toEqual(["<local>", "<local>"]);
-    expect(marks(t, "tracker").map(([m]) => m)).toEqual(["ext-dot-mark is-login", null]);
+    await page([mcpList()]);
+    expect(ops().map(([o, op]) => `${o} ${op}`)).toEqual(["<local> ext-list", "<local> assets-sync", "<local> ext-list"]);
   });
 
   it("★ 抽屉：需登录那一句 ＋［登录…］（那一格自己带的解法 `fix`，开登录抽屉、交它的 args）；不复制 /mcp；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
@@ -600,10 +601,11 @@ describe("MCP：每台的小标与抽屉那一行", () => {
 
   it("后台重读回来变了：只重建 MCP 那几行（skill 那一行还是原来那个元素），抽屉不关、换成新的字", async () => {
     answers();
-    const s = await page([mcpList()]);
+    const first = mcpList();
+    mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] }, laptop: { entries: [entry("tracker", { mark: "failed", failed: { ...failed, said: laterSaid } })], dirs: [], problems: [] } };
+    const s = await page([first, first, mcpList()]);
     open(s, "mcp/tracker");
     const skillRow = s.element.querySelector('.ext-row[data-key="skill/demo"]');
-    mcpAnswers = { "<local>": { entries: [entry("tracker", {})], dirs: [], problems: [] }, laptop: { entries: [entry("tracker", { mark: "failed", failed: { ...failed, said: laterSaid } })], dirs: [], problems: [] } };
     s.loadNow();
     await settle();
     expect(s.element.querySelector('.ext-row[data-key="skill/demo"]')).toBe(skillRow);

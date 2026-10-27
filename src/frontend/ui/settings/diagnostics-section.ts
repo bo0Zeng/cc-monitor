@@ -3,7 +3,8 @@
  * 记多细 · 后台出错弹提示 · 文件（今天的日志 · 本机 cc-monitor 输出）· 远端输出去哪看。
  *
  * 诊断信息整段由壳一个命令出（`diagnostics_report`：各版本 · 各台状态与原因码 · 未识别数据 · 日志位置；不含会话内容与 key），
- * 这一页只排版、只交原料：各台的记录账（经通道问那台 `drift-report`，问不到交 `null`）与认不出的顶层键（键表住界面）。
+ * 这一页只排版、只交原料：各台的记录账（只问本机后端一条 `drift-merge`，它问到各台、问不到的那台交 `null`；回包原样交壳）
+ * 与认不出的顶层键（键表住界面）。
  * 那一行「未识别数据 · …」读同一份答复里的数。读到之前 / 读不到 ⇒ 复制置灰（悬停说为什么）。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]。
  */
@@ -21,8 +22,7 @@ import { writeClipboard } from "../clipboard";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
-import { readRecordDrift, type RecordDriftFace } from "../record-reads";
-import { readRemoteConfig } from "../remote-config";
+import { readDriftOfAll, type DriftOfAll } from "../record-reads";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import { copyDetailButton, detailOf, failSaid, sayFailure, sayWithDetail } from "../kit/detail";
 
@@ -331,23 +331,14 @@ export function unknownSaid(r: DiagnosticsReport): string {
   return copyText("diagnostics.unknown.line", { parts: parts.join(copyText("kit.text.sep")) });
 }
 
-/** 各台的记录账（本机 ＋ 机器表里每一台；问不到 ⇒ `null`，壳照实写「读不到」）。 */
-async function driftOfAll(): Promise<{ origin: string; report: { faces: RecordDriftFace[] } | null }[]> {
-  let hosts: string[] = [];
+/** 各台的记录账（本机 ＋ 机器表里每一台，本机后端一条问到；那台问不到 ⇒ `null`，壳照实写「读不到」）。本机后端问不到 ⇒ 只本机一行 `null`。 */
+async function driftOfAll(): Promise<DriftOfAll> {
   try {
-    hosts = (await readRemoteConfig()).hosts.map((r) => r.name);
-  } catch {
-    hosts = [];
+    return await readDriftOfAll();
+  } catch (e) {
+    console.warn("[diagnostics] 本机后端问不到各台的记录账：", e);
+    return [{ origin: LOCAL_ORIGIN, report: null }];
   }
-  return Promise.all(
-    [LOCAL_ORIGIN, ...hosts].map(async (origin) => {
-      try {
-        return { origin, report: { faces: await readRecordDrift(origin) } };
-      } catch {
-        return { origin, report: null };
-      }
-    }),
-  );
 }
 
 /** 壳写好的大小照抄；读不到大小（`null`）⇒ 那一格不摆。 */

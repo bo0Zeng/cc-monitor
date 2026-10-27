@@ -1,6 +1,6 @@
 /**
  * 起新会话框（`new-session.ts`）：那台说什么就画什么 —— 预填 · 几行出不出 · 点［新建］交的那一份 · 某一格不行落在那一格下。
- * 替身：通道（几问，等报到那一问 `session-arrive` 也在里面）· 机器清单 · 账号 · 额度 · 开终端。夹具只造结构。
+ * 替身：通道（几问，等报到那一问 `session-arrive` 也在里面；机器清单是本机后端的 `machine-read`）· 账号 · 额度 · 开终端。夹具只造结构。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -69,7 +69,6 @@ import { openNewSession } from "../../../src/frontend/ui/new-session";
 import { setLaunchSlots } from "../../../src/frontend/ui/session-open";
 import { loginInTmux } from "../../../src/frontend/ui/settings/account-login";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
-import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -116,6 +115,13 @@ const OK = {
   prompt: null,
   arrival: { by: { kind: "cwd", cwd: "/home/u/srv/orders" }, since: 5, session: "orders-cc" },
 };
+/** 一台的状态成品（结构夹具：只填界面读的那几格）。 */
+const machineOf = (name: string, state: string, offlineSaid = `${name} 离线`) => ({
+  name, state, offline: state !== "up", reason: null, stage: null, version: null, versionRelation: null, os: null,
+  word: "", said: "", offlineSaid, fixes: [], seenHostKey: null, expectedHostKey: null, detail: null,
+});
+/** `machine-read` 的回包：本机与 devbox 都连着。 */
+const MACHINES = { machines: { "<local>": machineOf("workstation", "up"), devbox: machineOf("devbox", "up") } };
 /** 等报到那几问（`session-arrive` 的入参）。 */
 const arriveAsks = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-arrive").map((s) => s.body);
 
@@ -127,8 +133,10 @@ beforeEach(() => {
   hang = 0;
   stall = false;
   boom = null;
-  vi.mocked(commands.backend_status).mockImplementation(async () => ({ channel: true }) as never);
+  vi.mocked(commands.backend_status).mockClear();
+  vi.mocked(commands.backend_machines).mockClear();
   vi.mocked(commands.backend_start).mockClear();
+  replies.set("machine-read", MACHINES);
   replies.set("session-open-facts", FACTS);
   replies.set("session-open-dir", { exists: true, tmuxName: "orders-cc" });
   replies.set("session-open", OK);
@@ -196,7 +204,7 @@ describe("点［新建］：交那台的那一份", () => {
     expect(newRequests()).toEqual([
       { what: { kind: "new", agent: "claude", cwd: "/home/u/srv/orders" }, run: "tmux", local: false, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
     ]);
-    expect(sent.map((x) => x.op).filter((op) => op !== "session-open-facts" && op !== "session-open-dir" && op !== "rotation-strategies"), "只这一问").toEqual(["session-open"]);
+    expect(sent.map((x) => x.op).filter((op) => op !== "session-open-facts" && op !== "session-open-dir" && op !== "rotation-strategies" && op !== "machine-read"), "只这一问").toEqual(["session-open"]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
     expect(slot.mock.calls).toEqual([[{ origin: "devbox", cwd: "/home/u/srv/orders", tmuxName: "orders-cc", arrival: OK.arrival }]]);
@@ -406,8 +414,20 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(cwd.value, "换机器没清掉手填的目录").toBe("/srv/b");
   });
 
+  it("★ 机器清单只问本机后端一条 `machine-read`（各台的状态成品），一台都不问；关着的那台不列、断开的灰着", async () => {
+    replies.set("machine-read", { machines: { ...MACHINES.machines, gpu: machineOf("gpu", "down"), old: machineOf("old", "disabled") } });
+    void openNewSession({ origin: "<local>" });
+    await flush();
+    expect(sent.filter((x) => x.op === "machine-read").length).toBe(1);
+    expect(commands.backend_status).not.toHaveBeenCalled();
+    expect(commands.backend_machines).not.toHaveBeenCalled();
+    const items = optionsOf(sel(copyText("newSession.label.machine")));
+    expect(items.some((t) => t.includes("old")), "关着的不列").toBe(false);
+    expect(items.find((t) => t.includes("gpu")), "断开的那台标着").toContain(copyText("newSession.machine.down"));
+    expect(items.find((t) => t.includes("devbox"))).not.toContain(copyText("newSession.machine.down"));
+  });
+
   it("那台连不上、成品还没到 ⇒ 框顶不说离线（不知道 ≠ 离线），说状态不明", async () => {
-    vi.mocked(commands.backend_status).mockImplementation((async (a: { origin: string }) => ({ channel: a.origin !== "box-no-product" })) as never);
     void openNewSession({ origin: "box-no-product" });
     await flush();
     expect(top()).toContain(copyText("settingsNav.dot.unknown", { machine: "box-no-product" }));
@@ -415,8 +435,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("那台连不上 ⇒ 框顶照那台成品说离线 ＋［重连］（点了请后端起那台）、［新建］灰着说为什么；不问那台", async () => {
-    noteMachine("devbox", { name: "devbox", offlineSaid: "成品写的 devbox 离线那一句" });
-    vi.mocked(commands.backend_status).mockImplementation((async (a: { origin: string }) => ({ channel: a.origin !== "devbox" })) as never);
+    replies.set("machine-read", { machines: { ...MACHINES.machines, devbox: machineOf("devbox", "down", "成品写的 devbox 离线那一句") } });
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(top()).toContain("成品写的 devbox 离线那一句");
