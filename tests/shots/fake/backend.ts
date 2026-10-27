@@ -90,6 +90,7 @@ export const REAL_OPS = new Set([
   "plan-return",
   "plan-files",
   "plan-pb-check",
+  "plan-new",
   // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：本机后端那几条常驻流经台架那份假 ssh 真去接各台（[`reachOf`] 的 `fake`），
   // 名字旁的词 · 问题行 · 修法 · 复制详情都是本机后端照它接到的样子算的。
   "machines-read",
