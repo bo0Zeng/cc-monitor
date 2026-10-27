@@ -136,11 +136,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             Step::Send => match (deps.send)(sid, &item) {
                 Ok(sent) => match landed(&sent) {
                     Some(true) => {
-                        noted(
-                            q::delivered(deps.own, sid, &item.id),
-                            sid,
-                            "摘掉送到的那一条",
-                        );
+                        noted(q::delivered(deps.own, sid, &item.id), sid, After::Delivered);
                         memo.sent_ms = Some(now_ms);
                     }
                     Some(false) => {
@@ -148,7 +144,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                             "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
                             sent.why
                         );
-                        noted(q::give_up(deps.own, sid, &item.id), sid, "标未送达");
+                        noted(q::give_up(deps.own, sid, &item.id), sid, After::GaveUp);
                     }
                     None => {}
                 },
@@ -170,12 +166,25 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
 }
 
 /// 送完之后改队那一下没成（那一条已不在排着 · 写不进）：只留一行日志，下一遍照盘上此刻的样子再判。
-fn noted(r: Result<bool, Fail>, sid: &str, what: &str) {
+fn noted(r: Result<bool, Fail>, sid: &str, what: After) {
     match r {
         Ok(true) => {}
-        Ok(false) => tracing::info!("[session-queue] {sid} {what}：那一条已不在排着（撤了）"),
-        Err(f) => tracing::warn!("[session-queue] {sid} {what}没成：{} {}", f.code, f.message),
+        Ok(false) => tracing::info!("[session-queue] {sid} {what:?}：那一条已不在排着（撤了）"),
+        Err(f) => tracing::warn!(
+            "[session-queue] {sid} {what:?} 没成：{} {}",
+            f.code,
+            f.message
+        ),
     }
+}
+
+/// 送完之后改队的那一下（只进日志）。
+#[derive(Debug, Clone, Copy)]
+enum After {
+    /// 摘掉送到的那一条。
+    Delivered,
+    /// 标未送达。
+    GaveUp,
 }
 
 /// 叫醒投递线程的那一头（没起 ⇒ 没有）。
