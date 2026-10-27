@@ -507,3 +507,83 @@ async fn each_streams_watch_list_for_a_machine_unions_into_that_machines_desk() 
     drop(b);
     assert!(desk_of(machine).sids().is_empty());
 }
+
+/// 那台说的一帧会话帧（一行）：宣告 / 离开，脸照后端的构造口造。
+fn told(kind: &str, sid: &str, life: crate::wire::Life) -> String {
+    use crate::wire::SessionFaceExt as _;
+    let face = crate::wire::SessionFace::of(life);
+    let mut v = serde_json::json!({"kind": kind, "sid": sid, "face": face});
+    if kind == "session_added" {
+        v["agent_kind"] = serde_json::json!("claude");
+        v["pid"] = serde_json::json!(7);
+        v["label"] = serde_json::json!(sid);
+    }
+    v.to_string()
+}
+
+/// ★ A1-3-3 先红的那一条：那台这一条连接断的那一刻，本机后端给它簿里活的 · 可重连的每一条转一帧 `session_left`（脸 ＝ 看不见那一张，
+/// `face.life = unclear`），排在 `ended` 之前；已结束的不说。壳一条都不用合成。
+#[tokio::test]
+async fn a_lost_machine_has_each_of_its_open_sessions_said_unclear_by_this_backend() {
+    use crate::wire::{Life, SessionFaceExt as _};
+    use cmd_wire::frame::Relayed;
+    let machine = "feeds-unclear";
+    let _one = one_at_a_time().await;
+    let fake = Arc::new(Fake::default());
+    let talk = vec![
+        told("session_added", "s-live", Life::live(None, None)),
+        told("session_added", "s-back", Life::live(None, None)),
+        told("session_left", "s-back", Life::Reconnectable),
+        told("session_added", "s-done", Life::live(None, None)),
+        told("session_left", "s-done", Life::Ended),
+    ];
+    fake.opens
+        .lock()
+        .unwrap()
+        .push_back(Peer::Talk(crate::BUILD_ID.to_string(), talk.clone()));
+    let ssh: Arc<dyn Ssh> = fake.clone();
+    let (relay, got) = caught();
+    align_in(&[machine.to_string()], &ssh, &relay);
+    until("那台这一条断了 ⇒ 转一帧 ended", || {
+        got.lock()
+            .unwrap()
+            .iter()
+            .any(|f| matches!(f, Frame::Relayed(Relayed::Ended { machine: m }) if m == machine))
+    })
+    .await;
+    align_in(&[], &ssh, &quiet());
+    let seen: Vec<Relayed> = got
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|f| match f {
+            Frame::Relayed(r) => Some(r.clone()),
+            _ => None,
+        })
+        .collect();
+    let end = seen
+        .iter()
+        .position(|r| matches!(r, Relayed::Ended { .. }))
+        .unwrap();
+    let unclear = crate::wire::SessionFace::of(Life::Unseen);
+    let said_left = |sid: &str| Relayed::Line {
+        machine: machine.into(),
+        line: serde_json::to_string(&Frame::<serde_json::Value>::SessionLeft(crate::wire::SessionLeft {
+            sid: sid.into(),
+            face: unclear.clone(),
+        }))
+        .unwrap(),
+    };
+    assert_eq!(
+        seen[1 + talk.len()..=end],
+        [
+            said_left("s-back"),
+            said_left("s-live"),
+            Relayed::Ended {
+                machine: machine.into()
+            },
+        ],
+        "{seen:#?}"
+    );
+    assert_eq!(unclear.life, crate::wire::WireLife::Unclear);
+}
