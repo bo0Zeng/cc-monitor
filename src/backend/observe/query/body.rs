@@ -358,13 +358,12 @@ pub(crate) fn read_back(
         .metadata()
         .map_err(|e| ("failed", format!("stat failed: {e}")))?
         .len();
+    // 读的都是文件长度以内、已知两头的一整段（多大由调用方的 `page` / `line_cap` 管）：读不满 ⇒ 文件在读的时候变短了，算读失败。
     let mut grab = |from: u64, to: u64| -> Result<Vec<u8>, (&'static str, String)> {
-        let mut buf = Vec::with_capacity((to - from) as usize);
+        let mut buf = vec![0u8; (to - from) as usize];
         f.seek(SeekFrom::Start(from))
             .map_err(|e| ("failed", format!("seek failed: {e}")))?;
-        (&mut f)
-            .take(to - from)
-            .read_to_end(&mut buf)
+        f.read_exact(&mut buf)
             .map_err(|e| ("failed", format!("read failed: {e}")))?;
         Ok(buf)
     };
