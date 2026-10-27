@@ -328,7 +328,7 @@ fn a_remote_basename_only_ever_splits_on_slashes() {
 #[test]
 fn a_backend_entry_becomes_a_row() {
     let v = serde_json::json!({
-        "path": "/srv/data/报表.csv", "name": "报表.csv",
+        "path": "/srv/data/报表.csv", "shown": "/srv/data/报表.csv", "name": "报表.csv",
         "kind": "file",
         "size": 4096u64,
         "mtime_secs": 1_700_000_000u64, "size_text": "4 KB",
@@ -367,12 +367,12 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
         ("symlink", false),
         ("other", false),
     ] {
-        let v = serde_json::json!({ "path": format!("/a/{kind}"), "name": kind, "kind": kind, "class": "other", "type_text": "" });
+        let v = serde_json::json!({ "path": format!("/a/{kind}"), "shown": format!("/a/{kind}"), "name": kind, "kind": kind, "class": "other", "type_text": "" });
         let r = entry(&v).unwrap();
         assert_eq!(r.is_dir, want_dir, "`kind={kind}` 判错了");
     }
     // `size` 缺了不整条失败（读不到 stat 也照样给一行）。
-    let v = serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" });
+    let v = serde_json::json!({ "path": "/a/x", "shown": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" });
     assert_eq!(entry(&v).unwrap().size, 0);
 }
 
@@ -388,7 +388,7 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
 #[test]
 fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
     // ① 真叫 U+FFFD 的文件：**合法 UTF-8**，不该判成有损。
-    let v = serde_json::json!({ "path": "/a/\u{FFFD}怪名", "name": "\u{FFFD}怪名", "kind": "file", "class": "other", "type_text": "" });
+    let v = serde_json::json!({ "path": "/a/\u{FFFD}怪名", "shown": "/a/\u{FFFD}怪名", "name": "\u{FFFD}怪名", "kind": "file", "class": "other", "type_text": "" });
     let r = entry(&v).unwrap();
     assert!(
         !r.lossy_name,
@@ -404,7 +404,7 @@ fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
     // ② 真的非 UTF-8 字节（走 `{"b16":…}`）⇒ 判成有损。
     //    `/a/` ＋ 一个孤立的 0xFF（任何 UTF-8 序列里都不合法）。
     let hex = "2f612fff";
-    let v2 = serde_json::json!({ "path": { "b16": hex }, "name": { "b16": "ff" }, "kind": "file", "class": "other", "type_text": "" });
+    let v2 = serde_json::json!({ "path": { "b16": hex }, "shown": { "b16": hex }, "name": { "b16": "ff" }, "kind": "file", "class": "other", "type_text": "" });
     let r2 = entry(&v2).unwrap();
     assert!(r2.lossy_name, "非 UTF-8 字节没被判成有损");
     assert!(
@@ -429,7 +429,7 @@ fn an_entry_we_cannot_read_is_an_error_not_a_skipped_row() {
         assert!(!e.trim().is_empty(), "报错是空串");
     }
     // 阴性对照：正常那条解得出来（否则上面可以靠「什么都报错」全绿）。
-    assert!(entry(&serde_json::json!({ "path": "/a", "name": "a", "kind": "dir", "class": "other", "type_text": "" })).is_ok());
+    assert!(entry(&serde_json::json!({ "path": "/a", "shown": "/a", "name": "a", "kind": "dir", "class": "other", "type_text": "" })).is_ok());
 }
 
 /// 一屏照后端排好的先后摆：窗口不重排（喂一份「不像排过」的序，出来一模一样）。
@@ -437,11 +437,11 @@ fn an_entry_we_cannot_read_is_an_error_not_a_skipped_row() {
 fn a_screenful_keeps_the_backends_order() {
     let d = whole_json(
         serde_json::json!([
-            { "path": "/a/zebra.txt", "name": "zebra.txt", "kind": "file", "class": "other", "type_text": "" },
-            { "path": "/a/Apple", "name": "Apple",     "kind": "dir", "class": "other", "type_text": "" },
-            { "path": "/a/beta.txt", "name": "beta.txt",  "kind": "file", "class": "other", "type_text": "" },
+            { "path": "/a/zebra.txt", "shown": "/a/zebra.txt", "name": "zebra.txt", "kind": "file", "class": "other", "type_text": "" },
+            { "path": "/a/Apple", "shown": "/a/Apple", "name": "Apple",     "kind": "dir", "class": "other", "type_text": "" },
+            { "path": "/a/beta.txt", "shown": "/a/beta.txt", "name": "beta.txt",  "kind": "file", "class": "other", "type_text": "" },
         ]),
-        serde_json::json!({ "up": null, "truncated": false, "crumbs": [], "total": 3, "unreadable": 0 }),
+        serde_json::json!({ "shown": "/a", "up": null, "truncated": false, "crumbs": [], "total": 3, "unreadable": 0 }),
     );
     let (rows, cut) = rows_from_ls_data(&d).expect("这一份该解得出来");
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
@@ -459,12 +459,12 @@ fn a_screenful_keeps_the_backends_order() {
 /// 与「这个文件不存在」分不开。
 #[test]
 fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
-    let info = serde_json::json!({ "up": null, "truncated": false, "crumbs": [], "total": 3, "unreadable": 0 });
+    let info = serde_json::json!({ "shown": "/a", "up": null, "truncated": false, "crumbs": [], "total": 3, "unreadable": 0 });
     let d = whole_json(
         serde_json::json!([
-            { "path": "/a/good.txt", "name": "good.txt", "kind": "file", "class": "other", "type_text": "" },
+            { "path": "/a/good.txt", "shown": "/a/good.txt", "name": "good.txt", "kind": "file", "class": "other", "type_text": "" },
             { "kind": "file" },                       // 没有 path
-            { "path": "/a/also-good", "name": "also-good", "kind": "dir", "class": "other", "type_text": "" },
+            { "path": "/a/also-good", "shown": "/a/also-good", "name": "also-good", "kind": "dir", "class": "other", "type_text": "" },
         ]),
         info.clone(),
     );
@@ -475,7 +475,7 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
     );
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
     let ok = whole_json(
-        serde_json::json!([ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
+        serde_json::json!([ { "path": "/a/x", "shown": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
         info,
     );
     assert_eq!(rows_from_ls_data(&ok).unwrap().0.len(), 1);
@@ -486,7 +486,7 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
 fn truncation_is_carried_back_not_dropped() {
     let d = whole_json(
         serde_json::json!([]),
-        serde_json::json!({ "up": null, "crumbs": [], "truncated": true, "total": 9, "unreadable": 0 }),
+        serde_json::json!({ "shown": "/a", "up": null, "crumbs": [], "truncated": true, "total": 9, "unreadable": 0 }),
     );
     assert!(
         rows_from_ls_data(&d).unwrap().1.truncated,
@@ -494,7 +494,7 @@ fn truncation_is_carried_back_not_dropped() {
     );
     let d2 = whole_json(
         serde_json::json!([]),
-        serde_json::json!({ "up": null, "crumbs": [] }),
+        serde_json::json!({ "shown": "/a", "up": null, "crumbs": [] }),
     );
     assert!(rows_from_ls_data(&d2).is_err(), "缺了截断那一格却解出来了");
 }
@@ -680,6 +680,7 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
     use cmd_wire::files::{FileKind, LinkTo, LsEntry, LsHead, LsReply, WirePath};
     let row = LsEntry {
         path: WirePath::from("/a"),
+        shown: WirePath::from("/a"),
         name: WirePath::from("a"),
         kind: FileKind::Symlink,
         size: Some(1),
@@ -706,6 +707,7 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
         head: Some(cmd_wire::sync::Head {
             total: 1,
             info: LsHead {
+                shown: WirePath::from("/"),
                 up: Some(WirePath::from("/")),
                 crumbs: Vec::new(),
                 truncated: false,
@@ -767,6 +769,10 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
             "变了的那几行（Shown::apply 换进去）；头里那一格（上一级）窗口不读，照当前目录切",
         ),
         ("crumbs", "窗口不读（面包屑照当前目录切）"),
+        (
+            "shown",
+            "窗口不读（头与每一行的显示形给手机选目录那一屏；窗口画面包屑与名字）",
+        ),
         ("size", "size（缺 ＝ 0）"),
         ("size_text", "size_text（大小那一格，原样）"),
         ("class", "class（画哪种图标，原样）"),
@@ -787,37 +793,37 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     let one = |v: serde_json::Value| entry(&v).expect("这一条该解得出来");
     // kind：两格，不是一格。
     let link = one(
-        serde_json::json!({ "path": "/a/l", "name": "l", "kind": "symlink", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/l", "shown": "/a/l", "name": "l", "kind": "symlink", "class": "other", "type_text": "" }),
     );
     assert!(link.link && !link.is_dir, "symlink 没落成 link");
     let dir = one(
-        serde_json::json!({ "path": "/a/d", "name": "d", "kind": "dir", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/d", "shown": "/a/d", "name": "d", "kind": "dir", "class": "other", "type_text": "" }),
     );
     assert!(dir.is_dir && !dir.link);
     let file = one(
-        serde_json::json!({ "path": "/a/f", "name": "f", "kind": "file", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/f", "shown": "/a/f", "name": "f", "kind": "file", "class": "other", "type_text": "" }),
     );
     assert!(!file.is_dir && !file.link);
     // link_dir：链接且为真 ⇒ 点得进去（is_dir 仍为假：删 / 复制按链接本身算）；缺 ⇒ 否。
     let to_dir = one(
-        serde_json::json!({ "path": "/a/ld", "name": "ld", "kind": "symlink", "link_dir": true, "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/ld", "shown": "/a/ld", "name": "ld", "kind": "symlink", "link_dir": true, "class": "folder", "type_text": "" }),
     );
     assert!(to_dir.link && to_dir.link_dir && !to_dir.is_dir && to_dir.opens_as_dir());
     assert!(!link.link_dir && !link.opens_as_dir());
     // link_to：`missing` ⇒ 断了的链接；指向得到的 ⇒ 不是。
     let broken = one(
-        serde_json::json!({ "path": "/a/bl", "name": "bl", "kind": "symlink", "link_to": "missing", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/bl", "shown": "/a/bl", "name": "bl", "kind": "symlink", "link_to": "missing", "class": "other", "type_text": "" }),
     );
     assert!(broken.link_broken && !to_dir.link_broken && !link.link_broken);
     // mtime_secs：原样；缺了是 None，不是 0（1970）。
     let t = one(
-        serde_json::json!({ "path": "/a/t", "name": "t", "kind": "file", "mtime_secs": 1_700_000_000u64, "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/t", "shown": "/a/t", "name": "t", "kind": "file", "mtime_secs": 1_700_000_000u64, "class": "other", "type_text": "" }),
     );
     assert_eq!(t.mtime_secs, Some(1_700_000_000));
     assert_eq!(file.mtime_secs, None);
     // mtime_text · mtime_full：后端按那台本地钟写好的两格，原样（窗口不换算）；缺了是 None。
     let tx = one(
-        serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file", "mtime_secs": 1u64, "mtime_text": "10-02", "mtime_full": "2026-10-02 15:01:23", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/x", "shown": "/a/x", "name": "x", "kind": "file", "mtime_secs": 1u64, "mtime_text": "10-02", "mtime_full": "2026-10-02 15:01:23", "class": "other", "type_text": "" }),
     );
     assert_eq!(
         (tx.mtime_text.as_deref(), tx.mtime_full.as_deref()),
@@ -829,16 +835,16 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     );
     // size：缺 ⇒ 0。
     let s = one(
-        serde_json::json!({ "path": "/a/s", "name": "s", "kind": "file", "size": 42, "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": "/a/s", "shown": "/a/s", "name": "s", "kind": "file", "size": 42, "class": "other", "type_text": "" }),
     );
     assert_eq!((s.size, file.size), (42, 0));
     // name：那台切好的末段；有损那一格跟着**名字那一段**的字节走（目录有损、名字干净 ⇒ 名字照样能用）。
     let lossy = one(
-        serde_json::json!({ "path": { "b16": "2f612f66ff" }, "name": { "b16": "66ff" }, "kind": "file", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": { "b16": "2f612f66ff" }, "shown": { "b16": "2f612f66ff" }, "name": { "b16": "66ff" }, "kind": "file", "class": "other", "type_text": "" }),
     );
     assert!(lossy.lossy_name && lossy.name.ends_with('\u{FFFD}'));
     let in_lossy_dir = one(
-        serde_json::json!({ "path": { "b16": "2fff2f72656164" }, "name": "read", "kind": "file", "class": "other", "type_text": "" }),
+        serde_json::json!({ "path": { "b16": "2fff2f72656164" }, "shown": { "b16": "2fff2f72656164" }, "name": "read", "kind": "file", "class": "other", "type_text": "" }),
     );
     assert_eq!(
         (
@@ -852,8 +858,8 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     assert_eq!(file.name, "f");
     // order · up · head：换进手上那一份、照先后摊开（截断那几格从头来）。
     let (rows, cut) = rows_from_ls_data(&whole_json(
-        serde_json::json!([ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
-        serde_json::json!({ "up": null, "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
+        serde_json::json!([ { "path": "/a/x", "shown": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ]),
+        serde_json::json!({ "shown": "/a", "up": null, "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
     ))
     .unwrap();
     assert_eq!(
@@ -1448,4 +1454,23 @@ async fn a_transfer_missing_a_required_field_is_an_error_not_a_zero() {
         "缺 bytes 的「传完了」被补成了 0：{:?}",
         r.ok().map(|w| w.bytes)
     );
+}
+
+/// 点不点得进去只照那台画成文件夹的那一格（`class`，同手机 `Files.kt::entryOf`）：
+/// `kind` · `link_dir` 说是目录、`class` 说不是 ⇒ 不进；`class` 是文件夹的链接 ⇒ 进。
+#[test]
+fn a_row_opens_as_a_directory_only_when_the_backend_drew_it_as_a_folder() {
+    let one = |v: serde_json::Value| entry(&v).expect("这一条该解得出来");
+    let dir_not_folder = one(
+        serde_json::json!({ "path": "/a/d", "shown": "/a/d", "name": "d", "kind": "dir", "class": "other", "type_text": "" }),
+    );
+    assert!(!dir_not_folder.opens_as_dir(), "class 不是文件夹却点得进去");
+    let link_dir_not_folder = one(
+        serde_json::json!({ "path": "/a/l", "shown": "/a/l", "name": "l", "kind": "symlink", "link_dir": true, "class": "link", "type_text": "" }),
+    );
+    assert!(!link_dir_not_folder.opens_as_dir());
+    let folder_link = one(
+        serde_json::json!({ "path": "/a/m", "shown": "/a/m", "name": "m", "kind": "symlink", "link_dir": true, "class": "folder", "type_text": "" }),
+    );
+    assert!(folder_link.opens_as_dir(), "那台画成文件夹的链接点不进去");
 }
