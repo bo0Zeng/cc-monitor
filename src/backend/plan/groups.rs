@@ -19,12 +19,33 @@ pub(crate) fn annotate(doc: &mut PlanRead, port: GroupsPort) {
     let got = asks.then(port);
     for b in doc.slices.iter_mut().flat_map(|s| &mut s.blocks) {
         b.groups = match (sid_of(b), &got) {
-            (Some(sid), Some(Ok(read))) => PlanBlockGroups::Read {
-                groups: of_sid(read, sid),
+            (Some(sid), Some(Ok(read))) => of_groups(of_sid(read, sid)),
+            (Some(_), Some(Err(why))) => PlanBlockGroups {
+                unread: Some(copy_core::copy_text("bePlan.groups.unread", &[("why", why)])),
+                ..nobody()
             },
-            (Some(_), Some(Err(why))) => PlanBlockGroups::Unread { why: why.clone() },
-            _ => PlanBlockGroups::None,
+            _ => nobody(),
         };
+    }
+}
+
+/// 没有接手会话那一格（成品刚造出来、还没标的时候也是它）。
+pub(crate) fn nobody() -> PlanBlockGroups {
+    of_groups(Vec::new())
+}
+
+/// 读到的那几组 ⇒ 那一格：组名照排，一组都没有 ⇒「—」。
+fn of_groups(groups: Vec<PlanGroup>) -> PlanBlockGroups {
+    let text = if groups.is_empty() {
+        copy_core::copy_text("plan.page.none", &[])
+    } else {
+        let titles: Vec<&str> = groups.iter().map(|g| g.title.as_str()).collect();
+        titles.join(&copy_core::copy_text("kit.text.sep", &[]))
+    };
+    PlanBlockGroups {
+        groups,
+        text,
+        unread: None,
     }
 }
 

@@ -7,6 +7,7 @@
 //! - 名字合不合 pb 的规矩这里不判：提交即起 `pb repo`，照它的退出码与那一句（[`super::command`]）。
 
 use super::locate::Missing;
+use copy_core::copy_text;
 use super::wire::{PlanNewExisting, PlanNewForm, PlanPb};
 use std::path::{Path, PathBuf};
 
@@ -31,6 +32,7 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
         domains: Vec::new(),
         existing: None,
         repo_dir: None,
+        note: None,
         line: None,
         failed: None,
     };
@@ -78,7 +80,15 @@ pub(crate) fn form(ask: &Ask, entry: Result<PathBuf, Missing>, slices: SlicesPor
             .map(|(slice, domain)| PlanNewExisting { slice, domain })
     });
     out.slice = Some(name.to_string());
-    out.repo_dir = Some(format!("{}/{path}", out.root));
+    let repo_dir = format!("{}/{path}", out.root);
+    out.note = Some(match &out.existing {
+        Some(PlanNewExisting {
+            domain: Some(d), ..
+        }) => copy_text("bePlan.new.existing", &[("domain", d)]),
+        Some(_) => copy_text("bePlan.new.existingBare", &[]),
+        None => copy_text("bePlan.new.repoAt", &[("dir", &repo_dir)]),
+    });
+    out.repo_dir = Some(repo_dir);
     let args = repo_args(path, ask.domain, out.existing.as_ref().map(|e| e.slice.as_str()));
     let shown: Vec<String> = args.iter().map(|a| quoted(a)).collect();
     out.line = Some(format!("pb {}", shown.join(" ")));

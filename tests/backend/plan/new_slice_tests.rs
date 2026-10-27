@@ -36,6 +36,8 @@ fn 空目录上问领域_列出那几档() {
     assert_eq!(f.repo_dir.as_deref(), Some(format!("{dir_s}/invoice").as_str()));
     assert_eq!(f.line.as_deref(), Some("pb repo invoice 软件"));
     assert_eq!(f.slice.as_deref(), Some("invoice"));
+    let at = format!("{dir_s}/invoice");
+    assert_eq!(f.note, Some(copy_core::copy_text("bePlan.new.repoAt", &[("dir", &at)])));
     assert_eq!(f.existing, None);
     assert_eq!(runs(&root.join("pb")), [vec!["dump".to_string(), "--domains".into(), dir_s.clone()]]);
 }
@@ -87,6 +89,10 @@ fn 工作区里撞上已有的一片_领域锁成它的_只带名字() {
         })
     );
     assert_eq!(f.line.as_deref(), Some("pb repo alpha"));
+    assert_eq!(
+        f.note,
+        Some(copy_core::copy_text("bePlan.new.existing", &[("domain", "软件")]))
+    );
 }
 
 #[test]

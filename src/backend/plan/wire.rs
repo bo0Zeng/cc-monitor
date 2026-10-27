@@ -304,18 +304,17 @@ pub(crate) struct PlanBlock {
     pub groups: PlanBlockGroups,
 }
 
-/// 一个权力范围的接手会话在哪几组。
+/// 一个权力范围的接手会话在哪几组（块表「组」那一格，字后端写好）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "is", rename_all = "snake_case")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum PlanBlockGroups {
-    /// 没有对得上这台会话的接手人（没人认领 · 认不出）。
-    None,
-    /// 组模块答了：照组的先后（不在组里 ⇒ 空）。
-    Read { groups: Vec<PlanGroup> },
-    /// 组模块没答：那一句。
-    Unread { why: String },
+pub(crate) struct PlanBlockGroups {
+    /// 组模块答了 ⇒ 那条会话在的几组（照组的先后；不在组里 ⇒ 空）；没有接手会话 · 组模块没答 ⇒ 空。
+    pub groups: Vec<PlanGroup>,
+    /// 那一格的字：组名照排；一组都没有（不在组里 · 没有接手会话 · 没答）⇒「—」。
+    pub text: String,
+    /// 组模块没答 ⇒ 那一句（「组读取失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
+    pub unread: Option<String>,
 }
 
 /// 一组：id（全局不重，界面按它筛）· 叫它什么（组模块写好的）。
@@ -655,6 +654,8 @@ pub(crate) struct PlanNewForm {
     pub existing: Option<PlanNewExisting>,
     /// 仓库会落在哪（绝对路径）；路径空 ⇒ `null`。
     pub repo_dir: Option<String>,
+    /// 路径底下那一句（「仓库 …」· 撞上 ⇒「已有此片 · 软件 · 只切换」）；路径空 ⇒ `null`。
+    pub note: Option<String>,
     /// 要敲的那一行；路径空 ⇒ `null`。
     pub line: Option<String>,
     /// 起 pb 没成（超时 · 读不懂 · 别的退出码）：那一句。
