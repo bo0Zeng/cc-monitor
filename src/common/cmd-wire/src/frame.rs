@@ -422,8 +422,12 @@ pub enum Changed {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         body: Option<crate::tasks::TasksList>,
     },
-    /// 某个会话挂着的待答请求（`key` ＝ sid）。
-    Needs { key: String },
+    /// 需手动可能变了（`key` ＝ 那个会话的 sid；不带 ＝ 不止一条会话 / 会话外那几项，整份重问）。
+    Needs {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        key: Option<String>,
+    },
     /// 一份登录作业自己收了（`key` ＝ 作业号）。
     Login {
         key: String,
@@ -431,8 +435,6 @@ pub enum Changed {
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         body: Option<crate::quota::SignInState>,
     },
-    /// 会话外的需手动清单可能变了。
-    Manual {},
     /// 这一端的机器表。
     Machines {},
     /// 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字）。
@@ -489,7 +491,6 @@ impl Changed {
             Changed::Tasks { .. } => Topic::Tasks,
             Changed::Needs { .. } => Topic::Needs,
             Changed::Login { .. } => Topic::Login,
-            Changed::Manual {} => Topic::Manual,
             Changed::Machines {} => Topic::Machines,
             Changed::Machine { .. } => Topic::Machine,
             Changed::SessionHidden { .. } => Topic::SessionHidden,
@@ -502,8 +503,8 @@ impl Changed {
     /// 哪一个；主题不带 `key` ⇒ `None`。
     pub fn key(&self) -> Option<&str> {
         match self {
+            Changed::Needs { key } => key.as_deref(),
             Changed::Rotation { key }
-            | Changed::Needs { key }
             | Changed::FilesDir { key }
             | Changed::Plan { key, .. }
             | Changed::Tasks { key, .. }
@@ -532,12 +533,11 @@ impl Changed {
                 key: key?,
                 body: None,
             },
-            Topic::Needs => Changed::Needs { key: key? },
+            Topic::Needs => Changed::Needs { key },
             Topic::Login => Changed::Login {
                 key: key?,
                 body: None,
             },
-            Topic::Manual => Changed::Manual {},
             Topic::Machines => Changed::Machines {},
             Topic::Machine => Changed::Machine {
                 key: key?,
@@ -1088,12 +1088,11 @@ pub enum Topic {
     Plan,
     /// 这台某个会话的任务清单（`key` ＝ sid）。
     Tasks,
-    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）。
+    /// 这台的需手动可能变了（`key` ＝ sid：那条会话挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 进出等人 · 离开「活」，
+    /// 重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号要登录 · MCP 要登录 · 登录作业收了）或计划要人看的数变了，重问 `sessions-needs`）。
     Needs,
     /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。
     Login,
-    /// 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `sessions-needs`）。
-    Manual,
     /// 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）。
     Machines,
     /// 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）。

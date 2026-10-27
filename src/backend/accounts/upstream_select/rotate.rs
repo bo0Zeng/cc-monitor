@@ -251,6 +251,8 @@ impl Hop {
             if u != oauth::Unusable::Busy {
                 self.quota
                     .notify(super::super::quota::nodes::Source::Login, None);
+                // 「需重新登录」那一项可能进了需手动清单。
+                crate::history::needs_changed::ring();
             }
             Unready::NeedsLogin
         })?;

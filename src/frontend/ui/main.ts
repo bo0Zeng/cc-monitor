@@ -562,8 +562,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   overlays.register("history", historyView);
   // 删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
   historyView.liveInTabs = (sid) => tabs.isSessionLive(sid);
-  // 行上的「等批准」徽标看主窗口此刻的状态；「切过去」切到主窗口那个标签页。
-  historyView.needsOf = (sid) => tabs.needsWordOf(sid);
+  // 「切过去」切到主窗口那个标签页。
   historyView.switchTo = (sid) => tabs.switchTo(sid);
   const historyTrigger = headButton("history-trigger", "history", copyText("main.cmd.openHistory"), hintWithKey(copyText("main.topbar.historyHint"), "app.toggle-history"), () => overlays.toggle("history"));
 
@@ -844,7 +843,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     pokeBoard();
     for (const o of dropped) void needsBook.drop(o);
     for (const o of dropped) void groupBook.drop(o);
-    // 需手动：每台问一次（之后那台推 `changed {needs | plan | manual}` · 条上会话进出需手动再问它）；计划那一侧同。
+    // 需手动：每台问一次（之后那台推 `changed {needs}` 再问它）；计划那一侧同。
     if (added.length > 0) void needsBook.refreshAll(added);
     if (added.length > 0) void groupBook.refreshAll(added);
     for (const o of added) void planNeeds.refresh(o);
@@ -860,13 +859,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
     // 那台说的整份脸（宣告 · 活动 · 去向三帧都带）。
+    // 进出「需手动」· 停了不在这里判：那台照它的活会话表推 `changed {needs}`（下面 `needs` 那一支）。
     onSessionFace: (sessionId, face) => {
-      const tab = tabs.tabsInOrder().find((t) => t.sessionId === sessionId);
-      const ended = face.dot === "ended" && tab?.face?.dot !== "ended";
-      // 进出「需手动」⇒ 那台的需手动整份重问。
-      if (tab && (face.dot === "needs-you") !== (tab.face?.dot === "needs-you")) needsBook.poke(tab.origin);
       tabs.onFace(sessionId, face);
-      if (ended && tab) void planNeeds.refresh(tab.origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
     // 某台机器的活会话清单报完了。
@@ -932,20 +927,17 @@ window.addEventListener("DOMContentLoaded", async () => {
           const plan = { moved, all: change.all || moved.length !== change.cells.length };
           planView.onChanged(origin, plan);
           planNeeds.onChanged(origin, plan);
-          needsBook.poke(origin);
           break;
         }
         case "needs": {
-          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉 · 「没人答时自动答」那一格改了）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
+          // 那台的需手动可能变了（那台只这一个铃）：带会话的 ⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次；
+          //   每一声都重问那台的需手动整份与计划那一侧（接手的会话停了可能多一条；连着来的各自合成一问）。
           if (change.all) tabs.rereadFactsOn(origin);
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
           needsBook.poke(origin);
+          planNeeds.poke(origin);
           break;
         }
-        case "manual":
-          // 那台会话外的需手动清单可能变了 ⇒ 重问那一台的整份。
-          needsBook.poke(origin);
-          break;
         case "profiles":
           break;
         case "history_list":
@@ -989,7 +981,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         liveCards: [origin],
         // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
         //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求 · 会话清单。配置文件那一种只设置窗订。
-        changed: (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual", "session_hidden", "history_list", "groups"] as const).map((topic) => ({ origin, topic })),
+        changed: (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "session_hidden", "history_list", "groups"] as const).map((topic) => ({ origin, topic })),
       }),
       moved: onMachinesMoved,
     },

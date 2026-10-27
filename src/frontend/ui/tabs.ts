@@ -957,13 +957,6 @@ export class TabManager {
     return tab !== undefined && isLive(tab.face);
   }
 
-  /** 这个会话此刻「需手动」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
-  needsWordOf(sessionId: string): string | null {
-    const tab = this.store.tabs.get(sessionId);
-    const n = tab ? needsOf(tab) : null;
-    return n ? n.text : null;
-  }
-
   /**
    * 这个会话的流容器（没有这个 tab ⇒ `null`）—— 记录文件那一句话挂在它顶上
    * （`record-file-notice.ts`；那个模块只由主窗口 `main.ts` 接线，样式随主窗口的产物走，不进与独立查看窗共用的块）。

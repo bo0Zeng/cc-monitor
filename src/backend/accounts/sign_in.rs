@@ -355,18 +355,6 @@ fn withdraw_conn(conn: u64) {
     drop(gone);
 }
 
-/// 进程里那条「会话外的需手动清单可能变了」的铃（流的 tap 订它推 `changed {manual}`）：账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了（watcher）都敲。
-pub(crate) fn manual_changes() -> &'static tokio::sync::broadcast::Sender<()> {
-    static MANUAL_BELL: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> =
-        std::sync::OnceLock::new();
-    MANUAL_BELL.get_or_init(|| tokio::sync::broadcast::channel::<()>(16).0)
-}
-
-/// 敲一下需手动的铃（没人订 ⇒ 什么都不做）。
-pub(crate) fn ring_manual() {
-    let _ = manual_changes().send(());
-}
-
 /// 一条连接上的登录作业：随连接的读循环一起死 ⇒ 它发起的作业一律收。
 pub(crate) struct Desk {
     conn: u64,

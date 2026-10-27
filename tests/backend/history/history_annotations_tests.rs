@@ -396,10 +396,10 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
 fn changing_the_auto_answer_cell_pushes_needs_for_that_session() {
     let p = temp_copy("auto-push");
     let mut rx = crate::history::needs_changed::changes().subscribe();
-    let pushed = |rx: &mut tokio::sync::broadcast::Receiver<String>, sid: &str| {
+    let pushed = |rx: &mut tokio::sync::broadcast::Receiver<Option<String>>, sid: &str| {
         let mut hit = false;
         while let Ok(s) = rx.try_recv() {
-            hit |= s == sid;
+            hit |= s.as_deref() == Some(sid);
         }
         hit
     };

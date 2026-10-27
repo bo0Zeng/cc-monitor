@@ -33,7 +33,7 @@ pub struct TopicSpec {
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
     /// 全部主题（表的行序）。
-    const ALL: [Topic; 16];
+    const ALL: [Topic; 15];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
     /// 线上名。
@@ -41,7 +41,7 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
-    const ALL: [Topic; 16] = [
+    const ALL: [Topic; 15] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -51,7 +51,6 @@ impl TopicExt for Topic {
         Topic::Tasks,
         Topic::Needs,
         Topic::Login,
-        Topic::Manual,
         Topic::Machines,
         Topic::Machine,
         Topic::SessionHidden,
@@ -125,9 +124,10 @@ impl TopicExt for Topic {
                 body_cap: 8192,
                 reask: "tasks-list",
             },
+            // 走 watcher 的出方向（不可丢）：需手动的铃（`history/needs_changed.rs`）响一声推一帧。
             Topic::Needs => TopicSpec {
                 name: "needs",
-                lossy: true,
+                lossy: false,
                 key: true,
                 rev: false,
                 body: false,
@@ -142,16 +142,6 @@ impl TopicExt for Topic {
                 rev: false,
                 body: true,
                 body_cap: 8192,
-                reask: "sessions-needs",
-            },
-            // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
-            Topic::Manual => TopicSpec {
-                name: "manual",
-                lossy: true,
-                key: false,
-                rev: false,
-                body: false,
-                body_cap: 0,
                 reask: "sessions-needs",
             },
             // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
