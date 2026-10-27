@@ -210,6 +210,7 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
+        attach: None,
     };
     let mut reg: Vec<Adapter> = REGISTRY
         .iter()
@@ -698,6 +699,7 @@ fn two_families() -> Vec<Adapter> {
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
+        attach: None,
     };
     vec![
         row(
@@ -856,4 +858,70 @@ fn a_stored_route_name_becomes_a_route_id_in_one_place() {
     assert!(login_of(id).is_some());
     assert!(quota_read_of(id).is_some());
     assert!(window_slot_of(id).is_some() && window_key_of(id).is_some());
+}
+
+// ── 聊天附件的引用写法（各家适配层的 `attach` 那一格）────────────────
+
+fn att<'a>(name: &'a str, abs: &'a str, rel: &'a str) -> AttachRef<'a> {
+    AttachRef { name, abs, rel }
+}
+
+/// ★ Claude：图片单独粘绝对路径（收成图片附件），别的文件正文后面一行一个 `@相对路径`；终端没了要恢复 ⇒ 全写成行（图写绝对路径）。
+#[test]
+fn claude_pastes_images_and_mentions_files_with_at() {
+    let refs = [
+        att(
+            "a.png",
+            "/w/.ccm-attach/1023-1529-a3f2/a.png",
+            ".ccm-attach/1023-1529-a3f2/a.png",
+        ),
+        att(
+            "login.css",
+            "/w/.ccm-attach/1023-1529-7c01/login.css",
+            ".ccm-attach/1023-1529-7c01/login.css",
+        ),
+    ];
+    let got = typed_with(claudecode::AGENT_KIND, "截图在这", &refs);
+    assert_eq!(got.pastes, ["/w/.ccm-attach/1023-1529-a3f2/a.png"]);
+    assert_eq!(got.text, "截图在这\n@.ccm-attach/1023-1529-7c01/login.css");
+    assert_eq!(
+        got.first_say,
+        "截图在这\n/w/.ccm-attach/1023-1529-a3f2/a.png\n@.ccm-attach/1023-1529-7c01/login.css"
+    );
+}
+
+/// Codex：图同 Claude；别的文件只写相对路径（没有 `@` 展开）。
+#[test]
+fn codex_pastes_images_and_writes_plain_relative_paths() {
+    let refs = [
+        att(
+            "a.jpg",
+            "/w/.ccm-attach/1023-1529-a3f2/a.jpg",
+            ".ccm-attach/1023-1529-a3f2/a.jpg",
+        ),
+        att(
+            "r.csv",
+            "/w/.ccm-attach/1023-1529-7c01/r.csv",
+            ".ccm-attach/1023-1529-7c01/r.csv",
+        ),
+    ];
+    let got = typed_with(codex::AGENT_KIND, "", &refs);
+    assert_eq!(got.pastes, ["/w/.ccm-attach/1023-1529-a3f2/a.jpg"]);
+    assert_eq!(got.text, ".ccm-attach/1023-1529-7c01/r.csv");
+}
+
+/// 认不出是哪一家 ⇒ 全写相对路径、一行一个，一张都不粘；没有附件 ⇒ 原样。
+#[test]
+fn an_unknown_agent_gets_relative_lines_and_no_attachment_means_no_change() {
+    let refs = [att(
+        "a.png",
+        "/w/.ccm-attach/1023-1529-a3f2/a.png",
+        ".ccm-attach/1023-1529-a3f2/a.png",
+    )];
+    let got = typed_with("nobody", "看图", &refs);
+    assert!(got.pastes.is_empty());
+    assert_eq!(got.text, "看图\n.ccm-attach/1023-1529-a3f2/a.png");
+    let plain = typed_with(claudecode::AGENT_KIND, "继续", &[]);
+    assert_eq!((plain.text.as_str(), plain.pastes.len()), ("继续", 0));
+    assert_eq!(plain.first_say, "继续");
 }

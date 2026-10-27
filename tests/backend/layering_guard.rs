@@ -1092,6 +1092,16 @@ mod tests {
             "faces",
             "faces 是账号库与上游选择接头的那一处：账号库由 faces 读好交进来（`BookAt`）",
         ),
+        (
+            "host",
+            "control",
+            "宿主口在两层之下：控制面经它对终端下手（起 tmux 只在 `host/tmux.rs`）",
+        ),
+        (
+            "host",
+            "observe",
+            "宿主口在两层之下：观测面经它探 tmux（`tmux ls` · `display-message` 那两跳）",
+        ),
         // 读一份记录的四层（`observe` 里头）：读行 → 认行 → 扫描图与骨架 → 查询，跟读在最上；只许往下引。
         (
             "observe::lines",

@@ -205,7 +205,7 @@ pub(crate) type TmuxRun<'a> = &'a mut dyn FnMut(&[String]) -> Result<(bool, Stri
 /// 生产那一个执行器。**socket 定位**：不传 `-L`/`-S`，靠继承的 `TMUX_TMPDIR` / 默认 socket ——
 /// backend 与它观测的那台 server 本来就在同一套 socket 语义下（`tmux ls` 探测也是这么跑的）。
 fn run_tmux(args: &[String]) -> Result<(bool, String), RunErr> {
-    run_tmux_via(Child::new("tmux"), HOOK_TMUX_WITHIN, args)
+    run_tmux_via(crate::host::tmux::child(None), HOOK_TMUX_WITHIN, args)
 }
 
 /// 装钩子那几发 tmux 各自的期限：在 watcher 的事件循环里就地跑，一发 5 s（同 watcher 探测 tmux 的期限）；

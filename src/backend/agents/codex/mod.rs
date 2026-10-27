@@ -74,6 +74,26 @@ pub(crate) const AGENT_KIND: &str = "codex";
 /// tmux 前台命令算 Codex 的会话：原生装的报 `codex`；npm 装的经 Node 包一层，前台报 `node`（已在 Claude 那张表里）。注册表 `Adapter.processes` 那一格。
 pub(crate) const PROCESS_NAMES: &[&str] = &["codex"];
 
+/// 聊天附件的引用写法（注册表 `Adapter.attach` 那一格）：图片单独括号粘贴一次绝对路径（收成图片附件）；
+/// 别的文件正文后面一行一个相对路径（没有 `@` 展开）。没在真 Codex 上核过。
+pub(crate) const ATTACH: super::AttachFace = super::AttachFace { refer };
+
+/// 括号粘贴一个路径就收成图片附件的那几种。
+const PASTED_IMAGES: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
+
+fn refer(a: &super::AttachRef<'_>) -> super::Refer {
+    let ext = a
+        .name
+        .rsplit_once('.')
+        .filter(|(stem, _)| !stem.is_empty())
+        .map(|(_, e)| e.to_ascii_lowercase());
+    if ext.is_some_and(|e| PASTED_IMAGES.contains(&e.as_str())) {
+        super::Refer::Paste(a.abs.to_string())
+    } else {
+        super::Refer::Line(a.rel.to_string())
+    }
+}
+
 /// 怎么判活（注册表 `Adapter.live` 那一格）：认开着写：没有 pidfile，会话在世期间写记录的那个任务一直开着这份 rollout（codex-rs `rollout/recorder.rs` 的写者任务持有文件；
 /// 新会话第一轮落盘时才建文件，resume 打开旧的那份接着写）。⚠ 只读过源码，没在真机上实测过。
 pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::HeldOpen;

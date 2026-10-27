@@ -33,6 +33,10 @@
 //! 一块一份文件、不往一份上续写：`Face` 没有续写那几种开法（新建只有 `O_EXCL` 一种）。
 //! 块数没有单独的上限：每块至少 1 字节 ⇒ 块数 ≤ 总长 ≤ `files::READ_TEXT_MAX_BYTES`。
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
+//!
+//! # 第三种落点：聊天附件（`session-attach-commit` · `session-attach-drop`）
+//!
+//! 目标不由调用方给：会话工作目录下一个新的编号目录（[`session_attachment`]），落那一下就是上传提交这一条（[`commit_upload_at`]）。
 
 use crate::control::files_write::{
     content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
@@ -93,7 +97,21 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
                `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\
                盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
     },
+    // ── 聊天附件（头注「第三种落点」一节）──────────────
+    ManageCommand {
+        name: "session-attach-commit",
+        purpose: "把暂存区里传完的一份（或先拼好的块）落进会话工作目录下一个新的附件目录 `.ccm-attach/<编号>/<原名>`\
+                  （判单份与附件目录上限；工作目录不可写 ⇒ 拒；核整份摘要；成了顺手清超过七天的编号目录）",
+    },
+    ManageCommand {
+        name: "session-attach-drop",
+        purpose: "删掉会话工作目录下的一个附件编号目录（草稿上撤掉那一份；不在 ⇒ `removed: false`）",
+    },
 ];
+
+/// 聊天附件那一支（落 · 撤 · 清 · 开传前那一问）。
+pub mod session_attachment;
+
 /// `key` 合不合法：恰好 [`KEY_LEN`] 位、只有 `0-9a-f`。
 pub fn is_key(key: &str) -> bool {
     key.len() == KEY_LEN

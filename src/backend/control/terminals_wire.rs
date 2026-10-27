@@ -78,6 +78,10 @@ pub(crate) struct TerminalInputReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
+    /// `text` 之前各单独粘一次的那几段（`session-say` 带附件时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    pub(crate) pastes: Vec<String>,
 }
 
 // ── 回包 ──────────────────────────────────────────────────────────────

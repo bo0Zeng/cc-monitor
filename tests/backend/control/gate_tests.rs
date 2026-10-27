@@ -2,7 +2,7 @@ use super::*;
 
 /// ★★ **`KR96D1` 死值验第一刀：Gate 判活不许自己起 `tmux list-sessions`。**
 ///
-/// 「列全部会话」这件事**只剩快照那一处**（`common/session_snapshot.rs`）。
+/// 「列全部会话」这件事**只剩快照那一处**（探测器 `host/tmux.rs::list_sessions`）。
 /// 本模块回潮（把那条 argv 抄回来）时这一条要红。
 ///
 /// 它守的是「面没变大」：本模块不再列全部会话（谁活着由后端判活那一处答，cc-bus 的名单不再问 tmux）。
@@ -17,10 +17,10 @@ fn listing_every_session_is_no_longer_this_modules_job() {
                而且「向快照发一次询问，快照更新一次」。"
     );
     // 反向自检：这一条不是靠「本文件恰好不含那个词」空转的 —— 快照那边必须有。
-    let owner = include_str!("../../../src/backend/common/session_snapshot.rs");
+    let owner = include_str!("../../../src/backend/host/tmux.rs");
     assert!(
         guard_core::production_code(owner).contains("\"list-sessions\""),
-        "`common/session_snapshot.rs` 的生产段里找不到 `list-sessions` ——\n\
+        "`host/tmux.rs` 的生产段里找不到 `list-sessions` ——\n\
              那处调用点搬走/改名了，本条此刻在空转（它只会证明「谁都没有」）。"
     );
 }
@@ -68,13 +68,12 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
     guard_core::assert_no_test_code("control/gate.rs", &prod);
 
-    let starts = prod.matches("Child::new(\"tmux\")").count();
+    let starts = prod.matches("host::tmux::child(").count();
     assert_eq!(
         starts, 1,
         "本模块起 tmux 的处数变了（实得 {starts}，登记 1）—— 新增的那一处也要带 `-u`，\
              并把这条判据的数一起改。**这张表不是豁免清单。**\n\
-             〔`K-R96` 09-12：2 → 1。`list-sessions` 那一处搬进了 `common/session_snapshot.rs`\
-             （Gate 判活改成问那张快照，`R52` 裁定一），判据也随调用点搬了过去。〕"
+             〔起 tmux 经宿主口 `host::tmux::child`；`list-sessions` 那一处在 `host/tmux.rs`（快照的探测器）。〕"
     );
     // 反向那一针用的人群：把排版这一维抹掉（`-u` 与子命令同不同行由 rustfmt 说了算）。
     let flat: String = prod.chars().filter(|c| !c.is_whitespace()).collect();

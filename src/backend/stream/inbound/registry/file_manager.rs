@@ -113,6 +113,16 @@ pub(super) const SPECS: &[CommandSpec] = &[
     typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
         "把暂存区里一份传完的上传件挪进目标",
     ),
+    // ── 聊天附件：落点固定在会话工作目录下 `.ccm-attach/`（本体住 `control/files_commit/session_attachment.rs`，阻塞档理由同上传提交）──
+    typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachCheck>(
+        "开传前问一次：这一条的附件逐份收不收（上限 · 目录 · 工作目录可写）",
+    ),
+    typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachCommit>(
+        "把暂存区里传完的一份落进会话工作目录下一个新的附件目录",
+    ),
+    typed::blocking::<crate::stream::inbound::files_write_face::SessionAttachDrop>(
+        "删掉会话工作目录下的一个附件目录（草稿上撤掉那一份）",
+    ),
     // 名单记在本连接名下、连接断了摘掉 ⇒ 要本连接的号 ⇒ 帧面硬臂（只在帧面：一次 exec 的进程交了也随它没了）；改盘上的 watch ⇒ 阻塞池。
     typed::frame_blocking::<crate::stream::inbound::files_face::FilesBrowse>(
         "告诉后端「这条连接现在在看哪几个目录」（各条连接的并集被盯着；连接断了摘掉它那份）",

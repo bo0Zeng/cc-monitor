@@ -588,6 +588,7 @@ fn said(who: UserText, blocks: Vec<Block>) -> Body {
         blocks,
         results: Default::default(),
         cwd: None,
+        attachments: Vec::new(),
     }
 }
 

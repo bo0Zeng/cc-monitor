@@ -581,18 +581,17 @@ fn open_client(
             .and_then(|t| t.split(',').next().map(str::to_string))
             .filter(|s| !s.is_empty())
     });
-    let mut child = crate::platform::child::Child::new("tmux");
-    if let Some(s) = &socket {
-        child = child.args(["-S", s.as_str()]);
-    }
-    let child = child.env_remove("TMUX").env_remove("TMUX_PANE").args([
-        "-C",
-        "attach-session",
-        "-f",
-        "read-only,ignore-size",
-        "-t",
-        session,
-    ]);
+    let child = crate::host::tmux::child(socket.as_deref())
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
+        .args([
+            "-C",
+            "attach-session",
+            "-f",
+            "read-only,ignore-size",
+            "-t",
+            session,
+        ]);
     // 起落一个一个来（见 [`SHIFT`]）：占着它起客户端、等 attach 那一问答完，再放开。
     let shift = SHIFT.lock().unwrap_or_else(|p| p.into_inner());
     let mut proc = child

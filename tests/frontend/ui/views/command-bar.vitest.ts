@@ -9,7 +9,7 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay, popOverlay },
 }));
 
-import { filterCommands, CommandBarView, type Command } from "../../../../src/frontend/ui/views/command-bar";
+import { filterCommands, CommandBarView, type Command, type MachineBlock } from "../../../../src/frontend/ui/views/command-bar";
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -84,7 +84,7 @@ const type = (text: string) => {
   input.value = text;
   input.dispatchEvent(new Event("input"));
 };
-const groupTitles = () => [...document.querySelectorAll<HTMLElement>("[role=listbox] > :not([data-role=command-item])")].map((e) => e.textContent);
+const groupTitles = () => [...document.querySelectorAll<HTMLElement>("[role=listbox] > :not([role=option])")].map((e) => e.textContent);
 
 describe("F84 filterCommands", () => {
   const cmds = [
@@ -119,7 +119,7 @@ describe("F84 filterCommands", () => {
 });
 
 describe("命令面板", () => {
-  const mkView = (cmds: Command[]) => new CommandBarView(() => cmds);
+  const mkView = (cmds: Command[]) => new CommandBarView(() => cmds, null);
 
   it("open：模态压栈 ＋ 焦点进框 ＋ 首项选中", () => {
     document.body.replaceChildren();
@@ -256,5 +256,85 @@ describe("命令面板", () => {
     expect(view.isVisible()).toBe(true);
     view.toggle();
     expect(view.isVisible()).toBe(false);
+  });
+});
+
+describe("命令面板 · 机器", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const head = (name: string): Command => ({
+    id: `head-${name}`,
+    title: name,
+    machine: { dot: "up", name, word: "", said: "", right: "Linux" },
+    run: vi.fn(),
+  });
+  const nasSes = (id: string, title: string): Command => ({
+    id,
+    title,
+    session: { dot: "running", dotLabel: "", machine: "nas", project: null, title, waiting: null, origin: "nas" },
+    alt: vi.fn(),
+    run: vi.fn(),
+  });
+
+  it("🔴 打中一台：那一块排最前，头不可选，默认选中块指定的那一条；块里列过的会话下面不再重复", async () => {
+    document.body.replaceChildren();
+    const term = cmd("t", "t-open");
+    const s1 = nasSes("s1", "orders");
+    const s2 = nasSes("s2", "ingest");
+    const block = vi.fn(async (q: string): Promise<MachineBlock | null> =>
+      q.startsWith("nas")
+        ? { sections: [{ title: "", items: [head("nas"), term] }, { title: "会话 · nas", items: [s1, s2] }], select: q === "nas2" ? "s2" : "t", claimed: new Set(["s1", "s2"]) }
+        : null,
+    );
+    const view = new CommandBarView(() => [s1, s2, cmd("h", "nas 历史")], { rows: async () => [], block });
+    view.open();
+    type("nas");
+    await flush();
+    expect(document.querySelector("[data-role=command-machine-head]")?.getAttribute("aria-disabled")).toBe("true");
+    expect(selectedText()).toBe("t-open");
+    expect(items().map((e) => e.textContent?.includes("orders")).filter(Boolean).length, "块里列过的不再重复").toBe(1);
+    key({ key: "ArrowUp" });
+    expect(selectedText(), "上移跳过头，环绕到末项").toBe("nas 历史");
+    type("nas2");
+    await flush();
+    expect(selectedText()).toContain("ingest");
+    key({ key: "Enter", shiftKey: true });
+    expect(s2.alt, "Shift+Enter 做第二样").toHaveBeenCalled();
+    expect(s2.run).not.toHaveBeenCalled();
+  });
+
+  it("迟到的回包丢掉：框里的字已经变了，旧那一块不画", async () => {
+    document.body.replaceChildren();
+    let release: (b: MachineBlock | null) => void = () => {};
+    const slow = new Promise<MachineBlock | null>((r) => (release = r));
+    const block = vi.fn((q: string) => (q === "nas" ? slow : Promise.resolve(null)));
+    const view = new CommandBarView(() => [cmd("h", "历史")], { rows: async () => [], block });
+    view.open();
+    type("nas");
+    type("na");
+    await flush();
+    release({ sections: [{ title: "", items: [head("nas")] }], select: null, claimed: new Set() });
+    await flush();
+    expect(document.querySelector("[data-role=command-machine-head]")).toBeNull();
+    view.close();
+  });
+
+  it("空输入：「机器」一段排在当前会话后面；机器行 Enter 不关框，只把名字填进框", async () => {
+    document.body.replaceChildren();
+    const row: Command = { id: "m-nas", title: "nas", group: "machine", dot: "up", fill: "nas", run: vi.fn() };
+    const block = vi.fn(async () => null);
+    const view = new CommandBarView(() => [cmd("f", "在会话里找", "find", "current"), cmd("h", "历史")], { rows: async () => [row], block });
+    view.open();
+    await flush();
+    expect(groupTitles()).toEqual([copyText("commandBar.group.current"), copyText("commandBar.group.machine"), copyText("commandBar.group.open")]);
+    key({ key: "ArrowDown" });
+    expect(selectedText()).toBe("nas");
+    key({ key: "Enter" });
+    expect(view.isVisible()).toBe(true);
+    expect(row.run).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLInputElement>(INPUT)!.value).toBe("nas");
+    expect(block).toHaveBeenCalledWith("nas", []);
+    type("历");
+    expect(items().map((e) => e.textContent), "有输入时机器行不列").toEqual(["历史"]);
+    view.close();
   });
 });

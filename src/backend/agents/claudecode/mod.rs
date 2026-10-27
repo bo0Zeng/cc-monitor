@@ -173,6 +173,26 @@ pub(crate) const COMPACT_REQUEST: &str = "/compact";
 /// 清空会话用的那一句（注册表 `Adapter.clear_request` 那一格）：在会话里敲的斜杠命令（同一个进程里另起一份新记录，见 `wire::WireLife::Ended` 的 `by`）。
 pub(crate) const CLEAR_REQUEST: &str = "/clear";
 
+/// 聊天附件的引用写法（注册表 `Adapter.attach` 那一格）：图片单独括号粘贴一次绝对路径（输入框里收成 `[Image #N]`，
+/// 记录里成图片块）；别的文件正文后面一行一个 `@相对路径`（它自己把那一份读进来）。
+pub(crate) const ATTACH: super::AttachFace = super::AttachFace { refer };
+
+/// 括号粘贴一个路径就收成图片附件的那几种（收不成的照路径写成 `@` 那一形）。
+const PASTED_IMAGES: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
+
+fn refer(a: &super::AttachRef<'_>) -> super::Refer {
+    let ext = a
+        .name
+        .rsplit_once('.')
+        .filter(|(stem, _)| !stem.is_empty())
+        .map(|(_, e)| e.to_ascii_lowercase());
+    if ext.is_some_and(|e| PASTED_IMAGES.contains(&e.as_str())) {
+        super::Refer::Paste(a.abs.to_string())
+    } else {
+        super::Refer::Line(format!("@{}", a.rel))
+    }
+}
+
 /// 怎么判活（注册表 `Adapter.live` 那一格）：认 pidfile（[`LOCAL`] 的 pidfile 目录），不认谁开着记录。
 pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::Pidfiles;
 

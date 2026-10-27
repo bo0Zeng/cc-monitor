@@ -271,11 +271,11 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         "\n`files-read` 上线的那一组与读族 `Ask` 声明的那一组对不上。\n\
          少接一条的后果是静默的：能力在、判据在，而调用方发过去只会拿到 `unknown_command`。"
     );
-    // ★ 写那一面的**同形相等断言**：登记表 ↔ `REGISTRY` 上真上线的那几条，两向。
-    let wired_write: std::collections::BTreeSet<String> = all_files_prefixed
-        .intersection(&write_face)
-        .cloned()
-        .collect();
+    // ★ 写那一面的**同形相等断言**：登记表 ↔ `REGISTRY` 上真上线的那几条，两向（聊天附件那两条是 `session-attach-*`，不按前缀挑）。
+    let all_names: std::collections::BTreeSet<String> =
+        super::REGISTRY.iter().map(|s| s.name.to_string()).collect();
+    let wired_write: std::collections::BTreeSet<String> =
+        all_names.intersection(&write_face).cloned().collect();
     assert_eq!(
         wired_write, write_face,
         "\n文件管理**写**面登记的那一组与 `inbound::REGISTRY` 上真上线的那一组对不上。\n\

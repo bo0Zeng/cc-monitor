@@ -9,6 +9,7 @@
 //! - [`dial`]：拨号核心写、读它的那一侧读的那几行（阶段 · ack · 收全的结果）；
 //! - [`agent`]：线上一家 agent 的名字 [`AgentKind`]（kind；后端里面的路由名不上线）；
 //! - [`attach`]：接常驻流那一段握手的两行（attach 行 · 回话）与新旧三态 [`attach::Relation`]；
+//! - [`attachment`]：聊天里随一句发的附件（`session-attach-*` 三条的入参与回包 · 记录里认出来的那一项）；
 //! - [`watch`]：「这条流在看哪几个会话」（`stream-watch` 的入参与应答；attach 行带的就是同一份入参）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
 //! - [`quota`]：`quota-read` 的回包（额度账的显示态 · 写好的几行 · 开窗那一判）；
@@ -30,6 +31,7 @@
 pub mod accounts;
 pub mod agent;
 pub mod attach;
+pub mod attachment;
 pub mod batch;
 pub mod board;
 pub mod bookmarks;
