@@ -21,7 +21,10 @@ pub(crate) fn annotate(doc: &mut PlanRead, port: GroupsPort) {
         b.groups = match (sid_of(b), &got) {
             (Some(sid), Some(Ok(read))) => of_groups(of_sid(read, sid)),
             (Some(_), Some(Err(why))) => PlanBlockGroups {
-                unread: Some(copy_core::copy_text("bePlan.groups.unread", &[("why", why)])),
+                unread: Some(copy_core::copy_text(
+                    "bePlan.groups.unread",
+                    &[("why", why)],
+                )),
                 ..nobody()
             },
             _ => nobody(),

@@ -54,11 +54,18 @@ fn path_goes_with_repo_and_only_with_it() {
         json!({"workspace": "/w", "cmd": "pause", "path": "a"}),
         json!({"workspace": "/w", "cmd": "render", "domain": "软件"}),
     ] {
-        assert_eq!(ask("plan-command", bad.clone()).unwrap_err().code, "bad_args", "{bad}");
+        assert_eq!(
+            ask("plan-command", bad.clone()).unwrap_err().code,
+            "bad_args",
+            "{bad}"
+        );
     }
     let f = ask("plan-new", json!({"dir": "rel/dir", "path": "x"})).unwrap_err();
     assert_eq!(f.code, "bad_args");
-    assert_eq!(ask("plan-new", json!({"dir": "/w"})).unwrap_err().code, "bad_args");
+    assert_eq!(
+        ask("plan-new", json!({"dir": "/w"})).unwrap_err().code,
+        "bad_args"
+    );
 }
 
 /// ★ 不重问时（`plan-list {}` · `sessions-needs` 计划那一截）同一个目录只起一次 pb：认出是工作区 · 不是工作区 · 读不成（pb 失败 · 不认得）

@@ -204,13 +204,8 @@ fn new_form(req: &PlanNewReq) -> wire::PlanNewForm {
                 .as_deref()
                 .and_then(|e| read_dir(e, Path::new(ws)).ok())
         });
-        doc.map(|d| {
-            d.slices
-                .into_iter()
-                .map(|s| (s.name, s.domain))
-                .collect()
-        })
-        .unwrap_or_default()
+        doc.map(|d| d.slices.into_iter().map(|s| (s.name, s.domain)).collect())
+            .unwrap_or_default()
     };
     crate::plan::new_slice::form(
         &crate::plan::new_slice::Ask {
@@ -245,7 +240,12 @@ fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, F
             path: path.to_string(),
             domain: req.domain.clone(),
         });
-        if let Some(said) = f.pb.said.clone().filter(|_| f.pb.state != "ok").or(f.failed) {
+        if let Some(said) =
+            f.pb.said
+                .clone()
+                .filter(|_| f.pb.state != "ok")
+                .or(f.failed)
+        {
             return Err(Fail::new("failed", said));
         }
         let args = crate::plan::new_slice::repo_args(

@@ -28,10 +28,17 @@ fn ties() -> GroupsRead {
         named: 1,
     };
     let here = GroupsHere {
-        groups: vec![group("g1", "开发", 1), group("g2", "杂项", 2), group("g3", "评审", 3)],
+        groups: vec![
+            group("g1", "开发", 1),
+            group("g2", "杂项", 2),
+            group("g3", "评审", 3),
+        ],
         members: vec![member(MAIN, &["g1", "g3"]), member("someone-else", &["g2"])],
     };
-    merge(&[(Machine(cmd_wire::LOCAL.into()), Half::Now(here))], Vec::new())
+    merge(
+        &[(Machine(cmd_wire::LOCAL.into()), Half::Now(here))],
+        Vec::new(),
+    )
 }
 
 fn block<'a>(doc: &'a PlanRead, slice: &str, id: &str) -> &'a PlanBlock {
@@ -69,7 +76,10 @@ fn 接手会话在哪几组_子agent照父会话_字照排() {
     let g = &block(&doc, "alpha", "project").groups;
     let ids: Vec<&str> = g.groups.iter().map(|x| x.id.as_str()).collect();
     assert_eq!(ids, ["g1", "g3"]);
-    assert_eq!(g.text, format!("开发{}评审", copy_text("kit.text.sep", &[])));
+    assert_eq!(
+        g.text,
+        format!("开发{}评审", copy_text("kit.text.sep", &[]))
+    );
     assert_eq!(g.unread, None);
     // A2 的负责人是 MAIN 底下的子 agent ⇒ 照 MAIN 那一条。
     assert_eq!(&block(&doc, "alpha", "A2").groups, g);
@@ -84,7 +94,10 @@ fn 读到了_不在组里是一杠() {
     annotate(&mut doc, &|| Ok(ties()));
     let g = &block(&doc, "alpha", "project").groups;
     assert!(g.groups.is_empty());
-    assert_eq!((g.text.as_str(), g.unread.as_deref()), (none().as_str(), None));
+    assert_eq!(
+        (g.text.as_str(), g.unread.as_deref()),
+        (none().as_str(), None)
+    );
 }
 
 #[test]

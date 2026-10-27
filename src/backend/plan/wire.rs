@@ -313,7 +313,7 @@ pub(crate) struct PlanBlockGroups {
     pub groups: Vec<PlanGroup>,
     /// 那一格的字：组名照排；一组都没有（不在组里 · 没有接手会话 · 没答）⇒「—」。
     pub text: String,
-    /// 组模块没答 ⇒ 那一句（「组读取失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
+    /// 组模块没答 ⇒ 那一句（「读取组失败 · …」，悬停看）；答了 · 不用问 ⇒ `null`。
     pub unread: Option<String>,
 }
 
