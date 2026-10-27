@@ -132,11 +132,14 @@ function tabRows(dpr: number): TabRow[] {
 /**
  * 快照（一行 JSON）添上 `rows`（每个看得见的 tab 行的点击点）与 `activeRow`（亮着的是第几行，没有 ⇒ null）。
  * f40 套件照它点 tab，点完看 `activeRow` 是不是点的那一行 —— 栏顶的图标、「需手动」条把行往下推，都不用改套件。导出为单测。
+ * 快照是 `debugSnapshot` 印的一个 JSON 对象：在它末尾的 `}` 前接上这两格，不解它（界面里的解码只住 `ipc/decode.ts`）。
  */
 export function withTabRows(snapshot: string, dpr = window.devicePixelRatio || 1): string {
   const rows = tabRows(dpr);
   const at = rows.findIndex((r) => r.active);
-  return JSON.stringify({ ...(JSON.parse(snapshot) as object), rows, activeRow: at < 0 ? null : at });
+  const head = snapshot.trimEnd().replace(/\}$/, "");
+  const more = `"rows":${JSON.stringify(rows)},"activeRow":${at < 0 ? "null" : String(at)}`;
+  return `${head}${head.trimEnd().endsWith("{") ? "" : ","}${more}}`;
 }
 
 /**
