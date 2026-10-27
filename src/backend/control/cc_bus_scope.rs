@@ -73,11 +73,11 @@ pub(crate) async fn groups_via_resident(
 ) -> Result<GroupsRead, String> {
     let home = crate::platform::paths::data_home().ok_or_else(|| "no data home".to_string())?;
     let machines: Vec<cmd_wire::Machine> =
-        std::iter::once(cmd_wire::Machine(cmd_wire::LOCAL.into()))
+        std::iter::once(cmd_wire::Machine::named(cmd_wire::LOCAL))
             .chain(
                 super::machines::here()
                     .iter()
-                    .map(|h| cmd_wire::Machine(h.name().to_string())),
+                    .map(|h| cmd_wire::Machine::named(h.name().to_string())),
             )
             .collect();
     let asked = crate::wire::listen::ResidentCall {

@@ -17,7 +17,7 @@ use cmd_wire::Machine;
 
 fn member(origin: &str, sid: &str) -> GroupMember {
     GroupMember {
-        origin: Machine(origin.into()),
+        origin: Machine::named(origin),
         sid: sid.into(),
         pinned: false,
         face: crate::wire::unseen_face(),
@@ -50,7 +50,7 @@ fn read(groups: Vec<GroupRead>, local: Read) -> GroupsRead {
         groups,
         pinned: vec![],
         machines: vec![GroupsMachine {
-            origin: Machine(cmd_wire::LOCAL.into()),
+            origin: Machine::named(cmd_wire::LOCAL),
             read: local,
         }],
     }
