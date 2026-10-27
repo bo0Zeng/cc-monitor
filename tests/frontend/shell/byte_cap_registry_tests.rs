@@ -1158,6 +1158,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "读回历史清单缓存（数据目录 `cache/listing.json`，清单那一族落的一份）：超了 ⇒ `warn!` 说一声，当没有缓存、照记录重扫",
         "跳过+说清",
     ),
+    // 远端那几台的清单副本读回来的上限：超了 ⇒ 当没有副本，下一问不带记号、那台答整份（说一声）。
+    (
+        "src/backend/history/remote_listing.rs",
+        "COPY_MAX_READ",
+        "读回一台的远端清单副本（数据目录 `cache/remote-listing/<机器>.json`）：超了 ⇒ `warn!` 说一声，当没有副本、照那台再问一次整份",
+        "跳过+说清",
+    ),
     (
         "src/backend/observe/search_query.rs",
         "RESIDENT_MAX_BYTES",
