@@ -24,9 +24,11 @@ const form = (name: string, from: string | null): ProfileForm => ({
   tmuxSize: null,
   detach: false,
   tab: null,
+  tabGroup: null,
+  say: null,
 });
 
-const SLOT_IDS = ["account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "tab"] as const;
+const SLOT_IDS = ["account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "tab", "tabGroup", "say"] as const;
 
 const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}): ProfileRow => ({
   name,
@@ -72,6 +74,7 @@ describe("buildProfilesList", () => {
       tmux: true,
       // 格名是那台后端写好的（`profiles-read` 的 `slots`）；夹具用占位字，判据按它认格名出自成品。
       slots: SLOT_IDS.map((id) => ({ id, label: `L-${id}` })),
+      sets: [],
     };
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
@@ -185,6 +188,30 @@ describe("buildProfilesList", () => {
     const text = el.querySelector<HTMLElement>('[data-role="profile-form"]')!.textContent ?? "";
     for (const id of ["account", "tmux", "cwdIf", "cwd", "agent", "launcher", "tmuxSize", "detach"]) expect(text, id).toContain(`L-${id}`);
     expect(text).not.toContain(copyText("beProfile.slot.cwdIf"));
+  });
+
+  it("标签页分组 · 第一句话两格在「更多」里，是文本格；改了存时交进那一段的表单", async () => {
+    const { el } = await mount();
+    [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link')][0].click();
+    await flush();
+    const f = (): HTMLElement => el.querySelector<HTMLElement>('[data-role="profile-form"]')!;
+    for (const id of ["tabGroup", "say"]) {
+      const cell = f().querySelector<HTMLElement>(`[data-slot="${id}"]`);
+      expect(cell, id).not.toBeNull();
+      cell!.querySelector<HTMLElement>(".cfg-link")!.click();
+      await flush();
+    }
+    const put = async (id: string, v: string): Promise<void> => {
+      const i = f().querySelector<HTMLInputElement>(`input[data-key="slot.${id}"]`)!;
+      i.value = v;
+      i.dispatchEvent(new Event("change"));
+      await flush();
+    };
+    await put("tabGroup", "看图");
+    await put("say", "读计划图");
+    el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
+    await flush();
+    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), tabGroup: "看图", say: "读计划图" } }], ifRev: "fp-1" }]);
   });
 
   it("★ 这台没有 tmux（那台后端判的）⇒ tmux 那一格不藏，旁边说一句；有 tmux 的那台不说", async () => {
