@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
@@ -624,7 +625,7 @@ private fun BackendRow(hostId: String) {
     val deploy = rememberDeployPress(hostId)
     val conn = deploy.held
     val fix = link.deployFix()
-    val busy = link.busy
+    val busy = link.busy()
     Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(
         onClick = deploy.press,

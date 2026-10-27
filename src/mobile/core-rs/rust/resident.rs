@@ -911,7 +911,7 @@ mod tests {
             "说明": [
                 "手机核心交 Kotlin 的 `state` 那一行（通没通 ＋ 那台的状态成品）的跨语言金样。",
                 "Rust：src/mobile/core-rs/rust/resident.rs 按 name 走生产函数现产，逐字相等。",
-                "Kotlin：core-claude 的 ResidentFeedTest 读同一份逐行解成 LinkState。",
+                "Kotlin：core-claude 的 ResidentFeedTest 读同一份逐行解成 LinkLine，原样交出。",
                 "机器名 · 那一句 · 详情是结构夹具，不取自任何真机。"
             ],
             "cases": out,
