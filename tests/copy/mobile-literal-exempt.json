@@ -12,13 +12,6 @@
         "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
       }
     ],
-    "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Products.kt": [
-      {
-        "text": "{…} 装不进声明的那一份",
-        "use": "内部",
-        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
-      }
-    ],
     "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt": [
       {
         "text": "会话在连接期间已被断开",
