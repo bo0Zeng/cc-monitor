@@ -171,7 +171,9 @@ pub(crate) fn plan_rows(
             };
             let group = group_of(r, rows, book);
             let said = match &blocked {
-                Some(why) => copy_text("beSessionSet.row.blocked", &[("cwd", &r.cwd), ("why", why)]),
+                Some(why) => {
+                    copy_text("beSessionSet.row.blocked", &[("cwd", &r.cwd), ("why", why)])
+                }
                 None => copy_text(
                     "beSessionSet.row.counted",
                     &[
@@ -191,9 +193,7 @@ pub(crate) fn plan_rows(
                 group,
                 said,
                 have_said: copy_text("beSessionSet.row.have", &[("n", &have.to_string())]),
-                more_said: blocked
-                    .clone()
-                    .unwrap_or_else(|| more_said(more, false)),
+                more_said: blocked.clone().unwrap_or_else(|| more_said(more, false)),
                 blocked,
             }
         })
@@ -400,7 +400,10 @@ pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> Se
         out.rows.push(done);
     }
     out.said = if out.failed == 0 {
-        copy_text("beSessionSet.launched.done", &[("n", &out.started.to_string())])
+        copy_text(
+            "beSessionSet.launched.done",
+            &[("n", &out.started.to_string())],
+        )
     } else {
         copy_text(
             "beSessionSet.launched.partial",

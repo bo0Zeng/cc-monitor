@@ -294,18 +294,29 @@ fn the_plan_carries_the_written_lines_the_ui_shows_as_is() {
     let why = t("beSessionSet.alias.missing", &[("alias", "gone")]);
     let a = t(
         "beSessionSet.row.counted",
-        &[("cwd", "/srv/a"), ("group", "dev"), ("have", "1"), ("want", "2")],
+        &[
+            ("cwd", "/srv/a"),
+            ("group", "dev"),
+            ("have", "1"),
+            ("want", "2"),
+        ],
     );
-    let b = t("beSessionSet.row.blocked", &[("cwd", "/srv/b"), ("why", &why)]);
+    let b = t(
+        "beSessionSet.row.blocked",
+        &[("cwd", "/srv/b"), ("why", &why)],
+    );
     assert_eq!(p.rows[0].said, a);
     assert_eq!(p.rows[1].said, b);
-    assert_eq!(p.rows[0].have_said, t("beSessionSet.row.have", &[("n", "1")]));
-    assert_eq!(p.rows[0].more_said, t("beSessionSet.more.some", &[("n", "1")]));
-    assert_eq!(p.rows[1].more_said, why);
     assert_eq!(
-        p.said,
-        format!("{a}{}{b}", t("beSessionSet.row.sep", &[]))
+        p.rows[0].have_said,
+        t("beSessionSet.row.have", &[("n", "1")])
     );
+    assert_eq!(
+        p.rows[0].more_said,
+        t("beSessionSet.more.some", &[("n", "1")])
+    );
+    assert_eq!(p.rows[1].more_said, why);
+    assert_eq!(p.said, format!("{a}{}{b}", t("beSessionSet.row.sep", &[])));
     assert_eq!(p.more_said, t("beSessionSet.more.some", &[("n", "1")]));
     assert_eq!(p.total_said, t("beSessionSet.more.total", &[("n", "1")]));
     assert_eq!(p.start_said, t("beSessionSet.start.some", &[("n", "1")]));
@@ -361,10 +372,16 @@ fn the_launch_result_carries_its_sentence_and_one_line_per_failure() {
     let part = run(true);
     assert_eq!(
         part.said,
-        t("beSessionSet.launched.partial", &[("started", "1"), ("all", "2")])
+        t(
+            "beSessionSet.launched.partial",
+            &[("started", "1"), ("all", "2")]
+        )
     );
     assert_eq!(
         part.detail,
-        t("beSessionSet.launched.fail", &[("alias", "look"), ("why", "b 需登录")])
+        t(
+            "beSessionSet.launched.fail",
+            &[("alias", "look"), ("why", "b 需登录")]
+        )
     );
 }

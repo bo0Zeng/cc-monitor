@@ -479,7 +479,8 @@ fn init_writes_the_seed_or_an_empty_file() {
 #[test]
 fn read_carries_the_form_slot_labels_in_form_order() {
     let want: Vec<Value> = [
-        "account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "tab", "tabGroup", "say",
+        "account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach",
+        "tab", "tabGroup", "say",
     ]
     .iter()
     .map(|id| json!({"id": id, "label": copy_text(&format!("beProfile.slot.{id}"), &[])}))
@@ -940,14 +941,13 @@ fn write_saves_renames_and_removes_a_set_and_refuses_a_broken_one() {
 fn the_tab_group_and_say_slots_round_trip_through_the_file() {
     let t = tmp("say-form", Some(BOOK));
     let form = json!({"name": "look", "from": "cct", "tabGroup": "看图", "say": "读 pb 图，回答关于计划的问题"});
-    write(
-        &t,
-        json!([{"op": "set", "was": null, "form": form}]),
-    )
-    .expect("写一段");
+    write(&t, json!([{"op": "set", "was": null, "form": form}])).expect("写一段");
     let text = t.text();
     assert!(text.contains("tab-group = \"看图\""), "{text}");
-    assert!(text.contains("say = \"读 pb 图，回答关于计划的问题\""), "{text}");
+    assert!(
+        text.contains("say = \"读 pb 图，回答关于计划的问题\""),
+        "{text}"
+    );
     let r = read(&t);
     let back = &prof(&r, "look")["form"];
     assert_eq!(back["tabGroup"], "看图", "{back}");
@@ -965,8 +965,11 @@ fn an_aliases_say_rides_the_line_only_when_it_lands_in_tmux() {
         if let Some(a) = args {
             edit["args"] = json!(a);
         }
-        let r = answer_resolve(&t.door(), &json!({"name": "look", "at": "/tmp", "edit": edit}))
-            .unwrap_or_else(|e| panic!("{e:?}"));
+        let r = answer_resolve(
+            &t.door(),
+            &json!({"name": "look", "at": "/tmp", "edit": edit}),
+        )
+        .unwrap_or_else(|e| panic!("{e:?}"));
         r["line"]
             .as_str()
             .unwrap_or_else(|| panic!("{r}"))
@@ -977,5 +980,8 @@ fn an_aliases_say_rides_the_line_only_when_it_lands_in_tmux() {
     let here = line_of("cc", None);
     assert!(!here.contains(say), "不进 tmux 不带：{here}");
     let own = line_of("cct", Some("-- 这一趟自己的那句"));
-    assert!(own.contains("这一趟自己的那句") && !own.contains(say), "{own}");
+    assert!(
+        own.contains("这一趟自己的那句") && !own.contains(say),
+        "{own}"
+    );
 }
