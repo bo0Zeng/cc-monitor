@@ -51,7 +51,9 @@ fn pids(v: &serde_json::Value) -> Vec<u64> {
         .collect()
 }
 
-async fn remote_answer(shown: serde_json::Value) -> (Result<SessionWindow, SessionWindowErr>, Peers) {
+async fn remote_answer(
+    shown: serde_json::Value,
+) -> (Result<SessionWindow, SessionWindowErr>, Peers) {
     let peers = Peers::new(&[("devbox", shown.to_string())]);
     let t = Peers::table(&["devbox"]);
     let got = answer_with(

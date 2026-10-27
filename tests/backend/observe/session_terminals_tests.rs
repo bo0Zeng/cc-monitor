@@ -166,7 +166,10 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     assert_eq!(here.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(), ts);
     let listed = tmux(&sock, &["list-clients", "-F", "#{client_pid}"]);
     for (pid, _) in &here {
-        assert!(listed.lines().any(|l| l.trim() == pid.to_string()), "{pid} 不是连着的 tmux 客户端：{listed}");
+        assert!(
+            listed.lines().any(|l| l.trim() == pid.to_string()),
+            "{pid} 不是连着的 tmux 客户端：{listed}"
+        );
     }
 
     // 断开 ⇒ 又是「没有终端连着」。

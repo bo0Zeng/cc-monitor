@@ -92,7 +92,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // `search_history`（`search.history`，Both）退役：本机远端的全文搜索都经通道说 `history-search`
     //   （界面 `src/frontend/ui/views/history-search.ts`），不再是 Tauri 命令 ⇒ 能力数 −1（它是这项能力唯一的命令；原本对称 ⇒ 不对称数不动）。
     // ↗ 本机会话与远端会话同一条命令：本机后端 `session-window` 答它在这台电脑上的哪儿，界面原样交来 ⇒ `Both`。
-    // 本表记的是「本地/远端平价」，不是「平台覆盖」（平台那一维见 `platform/host_facts.rs::terminal_front`）。
+    // 本表记的是「本地/远端平价」，不是「平台覆盖」（平台那一维住壳的宿主事实那一格）。
     ("bring_terminal_to_front", "terminal.focus", Side::Both),
     // 钩子诊断本机 / 远端那一对退役：本机远端合成一条帧命令 `hooks-diag`，界面经通道直问那台。
     // 项目清单那一对 Tauri 命令（Local / Remote）退役：清单住本机常驻后端（`history-list {origin?}`，界面每台一问），

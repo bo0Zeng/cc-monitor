@@ -144,17 +144,24 @@ where
             ),
         ));
     };
-    let machine = req.machine.as_wire_str();
-    let shown = crate::dial::remote_ask::ask_resident::<crate::faces::feature_face::SessionTerminals>(
-        machine,
-        &SidReq { sid: req.sid.clone() },
-        tz,
-        crate::platform::child::Deadline::millis(until.left_ms()),
-        table,
-        remote,
-    )
-    .await
-    .map_err(not_asked)?;
+    let Some(machine) = req.machine.host_name() else {
+        return Err(SessionWindowErr::BadArgs(
+            crate::common::contract::malformed("`machine` must name a machine"),
+        ));
+    };
+    let shown =
+        crate::dial::remote_ask::ask_resident::<crate::faces::feature_face::SessionTerminals>(
+            machine,
+            &SidReq {
+                sid: req.sid.clone(),
+            },
+            tz,
+            crate::platform::child::Deadline::millis(until.left_ms()),
+            table,
+            remote,
+        )
+        .await
+        .map_err(not_asked)?;
     blocking(move || remote_window(shown, tables)).await
 }
 
@@ -219,7 +226,11 @@ fn remote_window(
     if let Some(why) = shown.why {
         return Ok(reason(Vec::new(), why.word(), None));
     }
-    let labels = shown.terminals.iter().filter_map(|t| t.window.clone()).collect();
+    let labels = shown
+        .terminals
+        .iter()
+        .filter_map(|t| t.window.clone())
+        .collect();
     let found = crate::dial::terminal_processes::answer_with(
         &TerminalProcessesReq {
             terminals: shown.terminals,

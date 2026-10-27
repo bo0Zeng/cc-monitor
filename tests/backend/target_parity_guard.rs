@@ -625,6 +625,10 @@ fn handler_files_of(
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
+        "session-window",
+        "↗ 那一问：本机会话在 tmux 里才问 tmux 谁连着；不在 tmux 里（Windows 恒是）⇒ 链从会话进程自己起，命令照答",
+    ),
+    (
         "terminal-follow-ack",
         "终端实时预览：与 `terminal-follow` 同住 `control/terminal_follow.rs`（引用图按文件取），它自己只往订阅线程送一个回执、不起 tmux",
     ),

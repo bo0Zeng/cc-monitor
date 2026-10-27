@@ -1208,7 +1208,7 @@ async fn next_request(
 /// 还没过 ⇒ 恰好发一行（正控：同一个对端、同一个读法认得出一行）。
 #[tokio::test]
 async fn an_expired_deadline_sends_nothing() {
-    let origin = Origin("dl1-d3-expired".into());
+    let origin = Origin::named("dl1-d3-expired");
     let _g = inbound_client::local_origin_test_lock();
     let (client, mut peer) = local_channel_for_test(&["history-tail"]);
     let gone = Deadline::within(Duration::ZERO);
@@ -1251,7 +1251,7 @@ async fn an_expired_deadline_sends_nothing() {
     assert_eq!(req["cmd"], "history-tail");
     assert_eq!(
         req["machine"],
-        origin.as_wire_str(),
+        origin.to_string(),
         "问那台没经本机后端转：{req}"
     );
     c.route_reply(
@@ -1279,7 +1279,7 @@ async fn an_expired_deadline_sends_nothing() {
 /// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
 #[tokio::test]
 async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
-    let origin = Origin("said3-refused".into());
+    let origin = Origin::named("said3-refused");
     let _g = inbound_client::local_origin_test_lock();
     let (client, mut peer) = local_channel_for_test(&["machines-read"]);
     let o = origin.clone();
@@ -1298,7 +1298,7 @@ async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
         .expect("一行都没发");
     assert_eq!(
         req["machine"],
-        origin.as_wire_str(),
+        origin.to_string(),
         "问那台没经本机后端转：{req}"
     );
     let wrote = copy_core::detail::Detail::new()
@@ -1569,7 +1569,7 @@ fn the_snapshot_rows_of_the_golden_decode_through_rows_of() {
 /// （界面 `record-reads.ts` 用同一份），放在请求信封的 `view` 那一格、不进 `args`。
 #[tokio::test]
 async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
-    let origin = Origin("proj6-folded-view".into());
+    let origin = Origin::named("proj6-folded-view");
     let _g = inbound_client::local_origin_test_lock();
     let (client, mut peer) = local_channel_for_test(&["history-read"]);
     let o = origin.clone();
@@ -1592,7 +1592,7 @@ async fn the_snapshot_page_carries_the_folded_view_from_the_shared_file() {
     assert_eq!(req["cmd"], "history-read");
     assert_eq!(
         req["machine"],
-        origin.as_wire_str(),
+        origin.to_string(),
         "旁路快照问那台没经本机后端转：{req}"
     );
     assert_eq!(req["view"], shared, "旁路快照没交那份声明：{req}");

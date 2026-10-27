@@ -1932,18 +1932,9 @@ mod g6_reach {
 /// 这里只留一张表：把成员与**两笔今天连判据都没有的欠账**收在一处，让找的人搜得到。
 #[cfg(test)]
 mod g6_staged_zero {
-    /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）, 本 crate 够不够得着)`
-    const STAGED_ZERO: &[(&str, &str, &str, &str, &str)] = &[
-        (
-            // 判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
-            //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
-            "tests/frontend/shell/launch_wire_f07_main_path_tests.rs",
-            "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
-            "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
-            "自己就是那条判据",
-            "跨 crate",
-        ),
-        // `agents/codex/parse.rs` 的 turn-end 那两行**摘了**：函数连同判据删了（零读者判据那次）。
+    /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）)`。
+    /// 住址与名字都要在本 crate 扫得到的那几棵树上（幽灵检查不跳过任何一条）。
+    const STAGED_ZERO: &[(&str, &str, &str, &str)] = &[
         // 🔴 **这一条是刚刚变成零的，不是一直是零。**
         //
         // 「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
@@ -1965,7 +1956,6 @@ mod g6_staged_zero {
             "is_inside_tree",
             "backend 生产段里**跨文件消费者 0 个**（09-23 之前是 `control/files_write.rs` 两处）",
             "—",
-            "本 crate",
         ),
     ];
 
@@ -2019,8 +2009,8 @@ mod g6_staged_zero {
     fn the_staged_zero_registry_has_no_ghost_entries() {
         assert_eq!(
             STAGED_ZERO.len(),
-            2,
-            "这一族的登记表从 2 条变成 {} 条了 —— 加成员是好事，\
+            1,
+            "这一族的登记表从 1 条变成 {} 条了 —— 加成员是好事，\
              但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
             STAGED_ZERO.len()
         );
@@ -2030,19 +2020,10 @@ mod g6_staged_zero {
             "只扫到 {} 个后端源文件 —— **遍历坏了**，本条此刻在空转",
             files.len()
         );
-        let mut out_of_reach = 0usize;
-        for (rel, name, zero, pinned_by, reach) in STAGED_ZERO {
+        for (rel, name, zero, pinned_by) in STAGED_ZERO {
             assert!(
                 zero.trim().chars().count() >= 10 && !pinned_by.trim().is_empty(),
                 "`{rel}` / `{name}` 没写清被钉的那个「零」，或没写今天有没有判据钉它"
-            );
-            if *reach == "跨 crate" {
-                out_of_reach += 1;
-                continue;
-            }
-            assert_eq!(
-                *reach, "本 crate",
-                "`{rel}` / `{name}` 的第五栏是 `{reach}` —— 只有 `本 crate` / `跨 crate` 两种"
             );
             let owner = files
                 .iter()
@@ -2053,26 +2034,20 @@ mod g6_staged_zero {
                 "`{rel}` 里已经找不到 `{name}` 了 —— 删掉了就**同轮摘登记**"
             );
         }
-        assert!(
-            out_of_reach <= 1,
-            "有 {out_of_reach} 条标着 `跨 crate` —— 本判据住 backend crate（它刻意不属于 workspace），\
-             够不着 `src/frontend/shell`。标的条数超过 1 就说明这张表的家选错了，\
-             该按 `Bx` 说的另立一处两侧都够得着的落点。"
-        );
     }
 
     /// ★ 正题二：**那个「零」今天真的是零** —— 标着「今天没有判据」的那几条，由本条替它们钉住。
     ///
     /// ★★ 这一条**接线那天会故意变红**，那正是它存在的理由：
-    /// 谁把 `codex` 的 turn-end 或插件协商接上生产路径，就必须回到这里把那一条摘掉，
+    /// 谁把登记着的符号接回生产路径，就必须回到这里把那一条摘掉，
     /// 而不是让一个「本来说好是零」的事实悄悄变成非零。
     #[test]
     fn the_symbols_registered_as_zero_have_no_cross_file_production_consumer() {
         let files = backend_files();
         let mut checked = 0usize;
         let mut offenders: Vec<String> = Vec::new();
-        for (rel, name, _zero, pinned_by, reach) in STAGED_ZERO {
-            if *pinned_by != "—" || *reach != "本 crate" {
+        for (rel, name, _zero, pinned_by) in STAGED_ZERO {
+            if *pinned_by != "—" {
                 continue;
             }
             checked += 1;
@@ -2087,9 +2062,7 @@ mod g6_staged_zero {
         }
         assert_eq!(
             checked, 1,
-            "只核了 {checked} 条「今天没有判据」的欠账（登记时是 3 条，\
-             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条，`negotiate` 接上生产摘掉之后回到 3 条，\
-             codex turn-end 那两个连同判据删了之后剩 `is_inside_tree` 1 条）—— \
+            "只核了 {checked} 条「今天没有判据」的欠账（该是 `is_inside_tree` 那 1 条）—— \
              筛选条件与登记表脱节了，本条在空转"
         );
         assert!(

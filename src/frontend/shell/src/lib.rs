@@ -861,7 +861,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
             .name("session-book-emitter".into())
             .spawn(move || {
                 while let Ok(out) = book_rx.recv() {
-                    replay.on_lifecycle(out.origin(), vec![out.frame()]);
+                    replay.on_lifecycle(&out.origin(), vec![out.frame()]);
                 }
             });
         if let Err(e) = spawned {
@@ -989,7 +989,7 @@ fn watch_sessions(
         replay.set_main_watch(
             sessions
                 .into_iter()
-                .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+                .map(|w| (w.origin.to_string(), w.session_id)),
         );
         Ok(())
     })();
@@ -1006,7 +1006,7 @@ fn kept_sessions(
         replay.set_main_kept(
             sessions
                 .into_iter()
-                .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+                .map(|w| (w.origin.to_string(), w.session_id)),
         );
         Ok(())
     })();
@@ -1048,7 +1048,7 @@ async fn open_session_in_new_window(
         origin
             .route("open_session_in_new_window")
             .map_err(Said::written)?;
-        let origin_q = pct_encode(origin.as_wire_str());
+        let origin_q = pct_encode(&origin.to_string());
         let run = run.filter(|r| !r.is_empty());
         let label = match &run {
             Some(r) => agent_window_label(&session_id, r),
@@ -1222,11 +1222,11 @@ async fn bring_terminal_to_front(
 ) -> Result<Option<bind::FrontOutcome>, Said> {
     let r: Result<Option<bind::FrontOutcome>, Said> = async move {
         let bind = bind_state.inner().clone();
-        Ok(tokio::task::spawn_blocking(move || {
-            bind::bring_session_window(&labels, &chain, &bind)
-        })
-        .await
-        .map_err(Said::crashed)?)
+        Ok(
+            tokio::task::spawn_blocking(move || bind::bring_session_window(&labels, &chain, &bind))
+                .await
+                .map_err(Said::crashed)?,
+        )
     }
     .await;
     r.map_err(|s| s.named("bring_terminal_to_front"))

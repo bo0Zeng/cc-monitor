@@ -110,7 +110,7 @@ pub struct Book {
     origins: HashMap<String, SessionBook>,
     /// 每台每个会话手上那份主线外清单（F5 重放跟在宣告后面再说一次 · 报名单时交回手上有什么）。
     /// **断线不摘**（不跟 `origins` 那一台一起走）：重接之后交回它，那台只补缺的那一截。会话离开 · 关 tab · 那台报完清单时不在了 ⇒ 摘。
-    branch: HashMap<String, BTreeMap<String, BranchCopy>>,
+    branch: HashMap<crate::origin::Origin, BTreeMap<String, BranchCopy>>,
     /// 订了会话流的那几台（机器表：本机 ＋ 注册着的远端）；`None` = 还不知道 ⇒ 不立「各台都报完」。
     machines: Option<Vec<String>>,
     /// 本机后端交来的那一张「那台看不见」的脸（[`In::UnseenFace`]）。
@@ -137,7 +137,7 @@ impl Book {
             } => {
                 let held = self
                     .branch
-                    .entry(origin.as_wire_str().to_string())
+                    .entry(origin.clone())
                     .or_default()
                     .entry(sid.clone())
                     .or_default();
@@ -195,7 +195,10 @@ impl Book {
             }],
             Frame::SessionStatus(status) => vec![Out::Status { origin, status }],
             Frame::SessionState(state) => {
-                if let Some(m) = self.branch.get_mut(&origin) {
+                if let Some(m) = self
+                    .branch
+                    .get_mut(&crate::origin::Origin::named(origin.clone()))
+                {
                     m.remove(&state.sid);
                 }
                 vec![Out::Left { origin, state }]
@@ -204,7 +207,10 @@ impl Book {
             Frame::SessionsReplayed(_) => {
                 // 清单报完了：那台此刻不在的会话，手上那份清单没用了。
                 let live = &self.origins[&origin].live;
-                if let Some(m) = self.branch.get_mut(&origin) {
+                if let Some(m) = self
+                    .branch
+                    .get_mut(&crate::origin::Origin::named(origin.clone()))
+                {
                     m.retain(|sid, _| live.contains_key(sid));
                 }
                 let all = self.all_listed();
@@ -227,7 +233,7 @@ impl Book {
         origin: &crate::origin::Origin,
         sids: &std::collections::BTreeSet<String>,
     ) -> Vec<cmd_wire::watch::BranchHeld> {
-        let mine = self.branch.get(origin.as_wire_str());
+        let mine = self.branch.get(origin);
         sids.iter()
             .map(|sid| match mine.and_then(|m| m.get(sid)) {
                 Some(BranchCopy {
@@ -273,10 +279,9 @@ impl Book {
     /// 那台那个会话此刻是活的（它最近的成品是 `Live`）。
     pub fn is_live(&self, origin: &crate::origin::Origin, sid: &str) -> bool {
         self.origins
-            .get(origin.as_wire_str())
+            .get(&origin.to_string())
             .is_some_and(|b| b.live.contains_key(sid))
     }
-
 
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
     pub fn forget(&mut self, sid: &str) {
@@ -313,9 +318,10 @@ impl Book {
                                 runs: runs.clone(),
                             });
                         }
-                        if let Some(c) = self.branch.get(*o).and_then(|m| m.get(sid)) {
+                        let at = crate::origin::Origin::named((*o).clone());
+                        if let Some(c) = self.branch.get(&at).and_then(|m| m.get(sid)) {
                             r.before.push(Out::Branch {
-                                origin: crate::origin::Origin((*o).clone()),
+                                origin: at,
                                 sid: sid.clone(),
                                 off: c.off.clone(),
                             });
@@ -370,15 +376,15 @@ impl Book {
 
 impl Out {
     /// 这件事说的是哪台机器。
-    pub fn origin(&self) -> &str {
+    pub fn origin(&self) -> String {
         match self {
             Out::Live { origin, .. }
             | Out::Status { origin, .. }
             | Out::Left { origin, .. }
             | Out::Listed { origin, .. }
             | Out::Unseen { origin, .. }
-            | Out::Runs { origin, .. } => origin,
-            Out::Branch { origin, .. } => origin.as_wire_str(),
+            | Out::Runs { origin, .. } => origin.clone(),
+            Out::Branch { origin, .. } => origin.to_string(),
         }
     }
 
@@ -390,11 +396,11 @@ impl Out {
             Out::Status { status, .. } => F::Status(status.clone()),
             Out::Left { state, .. } => F::State(state.clone()),
             Out::Listed { origin, all } => F::Listed(b::OriginSessionsListedPayload {
-                origin: crate::origin::Origin(origin.clone()),
+                origin: crate::origin::Origin::named(origin.clone()),
                 all: *all,
             }),
             Out::Unseen { origin, face, .. } => F::Unseen(b::SessionUnseenPayload {
-                origin: crate::origin::Origin(origin.clone()),
+                origin: crate::origin::Origin::named(origin.clone()),
                 face: face.clone(),
             }),
             Out::Runs { runs, .. } => F::Runs(runs.clone()),
