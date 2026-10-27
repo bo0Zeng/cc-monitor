@@ -1,5 +1,6 @@
 //! 每一跳可观测：本机后端连接池里那几条 SSH 连接（拨号核心记的读数，`ssh_dial::pool::Pool::links`）归到机器表里的那一台，
-//! 写成机器状态成品里的那几项（`MachineState.links`：地址 · 压没压 · 进出字节 · 写好的那一句）。
+//! 写成机器状态成品里的那几项（`MachineState.links`：地址 · 经没经代理 · 压没压 · 进出字节 · 写好的那一句）。
+//! 一条连接写成哪几项、那一句怎么写在拨号核心（`ssh_dial::pool::rows_of`，手机那份成品同一处）；这里只管「归到哪台」。
 //!
 //! 归到哪台：池按拨号身份分族（`ssh_dial::pool::identity`），身份照机器表现算 —— 与开连接那一处同一个组法（[`super::dial_named`]），
 //! 对上的进那台；对不上（机器表改过、旧身份的连接还没收掉 · 测试连接那种表外的）哪台都不进。
@@ -32,52 +33,12 @@ pub(crate) fn by_machine(hosts: &[Host], snap: &[(String, Vec<LinkFacts>)]) -> L
         let Ok(req) = super::dial_named(hosts, h.name(), "capture", serde_json::json!({})) else {
             continue;
         };
-        let key = ssh_dial::pool::identity(&req);
-        let Some((_, links)) = snap.iter().find(|(k, _)| *k == key) else {
-            continue;
-        };
-        let items: Vec<MachineLink> = links.iter().flat_map(rows).collect();
+        let items = ssh_dial::pool::rows_of(snap, &req);
         if !items.is_empty() {
             out.insert(h.name().to_string(), items);
         }
     }
     out
-}
-
-/// 一条连接 ⇒ 成品里的几项：它自己在前，经过的跳板跟在后面（外在先）。
-pub(crate) fn rows(f: &LinkFacts) -> Vec<MachineLink> {
-    std::iter::once(item(&f.link, false))
-        .chain(f.jumps.iter().map(|w| item(w, true)))
-        .collect()
-}
-
-fn item(w: &ssh_dial::pool::Wire, jump: bool) -> MachineLink {
-    let packing = if w.compressed {
-        copy_core::copy_text("beLinks.pack.compressed", &[])
-    } else {
-        copy_core::copy_text("beLinks.pack.plain", &[])
-    };
-    let line = copy_core::copy_text(
-        "beLinks.row.line",
-        &[
-            ("endpoint", &w.endpoint),
-            ("packing", &packing),
-            ("in", &copy_core::size_text(w.bytes_in)),
-            ("out", &copy_core::size_text(w.bytes_out)),
-        ],
-    );
-    MachineLink {
-        endpoint: w.endpoint.clone(),
-        jump,
-        compressed: w.compressed,
-        bytes_in: w.bytes_in,
-        bytes_out: w.bytes_out,
-        said: if jump {
-            copy_core::copy_text("beLinks.row.jumpLine", &[("line", &line)])
-        } else {
-            line
-        },
-    }
 }
 
 #[cfg(test)]

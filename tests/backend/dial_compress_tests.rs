@@ -162,7 +162,7 @@ async fn the_kernel_measures_the_loopback_hop_and_the_judge_says_no() {
         host: "127.0.0.1".to_string(),
         port: addr.port(),
     };
-    let (tcp, compress) = tcp_hop(&ep, egress::here()).await.expect("回环拨不通");
+    let (tcp, compress, _) = tcp_hop(&ep, egress::here()).await.expect("回环拨不通");
     let rtt = crate::tcp_rtt::rtt_us(&tcp);
     let us = rtt.expect("回环 socket 上 TCP_INFO 读不到往返时间 —— 平台那一半坏了");
     assert!(
@@ -891,7 +891,16 @@ async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail(
         port,
     };
     let stages = StageSink::new(false);
-    let Err((said, _)) = race(true, true, Trust::default(), vec![ep.clone()], &stages).await else {
+    let Err((said, _)) = race(
+        true,
+        true,
+        Trust::default(),
+        vec![ep.clone()],
+        &stages,
+        egress::here(),
+    )
+    .await
+    else {
         panic!("关着的口居然拨通了");
     };
     let addr = format!("127.0.0.1:{port}");

@@ -241,6 +241,7 @@ fn the_product_carries_the_links_to_that_machine() {
         endpoint: "box.test:22".into(),
         jump: false,
         compressed: true,
+        via_proxy: false,
         bytes_in: 4096,
         bytes_out: 100,
         said: "那一句".into(),

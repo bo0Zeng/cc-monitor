@@ -76,7 +76,8 @@ async fn first_line(tcp: &mut tokio::net::TcpStream) -> String {
 async fn the_ssh_hop_goes_through_an_http_proxy() {
     let (p, asks) = http_proxy();
     let via = egress::Egress::via(&format!("http://127.0.0.1:{}", p.port()), "");
-    let (mut tcp, compress) = tcp_hop(&far(), &via).await.expect("经代理拨");
+    let (mut tcp, compress, via_proxy) = tcp_hop(&far(), &via).await.expect("经代理拨");
+    assert!(via_proxy, "经代理开的那一跳没说经了代理");
     let head = asks.recv().expect("代理收到一问");
     assert!(
         head.starts_with("CONNECT devbox.test:22 HTTP/1.1\r\n"),
@@ -94,7 +95,8 @@ async fn the_ssh_hop_goes_through_an_http_proxy() {
 async fn the_ssh_hop_goes_through_a_socks5_proxy() {
     let (p, asks) = socks_proxy();
     let via = egress::Egress::via(&format!("socks5h://127.0.0.1:{}", p.port()), "");
-    let (mut tcp, _) = tcp_hop(&far(), &via).await.expect("经 SOCKS5 拨");
+    let (mut tcp, _, via_proxy) = tcp_hop(&far(), &via).await.expect("经 SOCKS5 拨");
+    assert!(via_proxy, "经 SOCKS5 开的那一跳没说经了代理");
     assert_eq!(
         asks.recv().expect("代理收到一问"),
         ("devbox.test".to_string(), 22)
@@ -112,9 +114,10 @@ async fn a_loopback_sshd_is_dialed_direct_even_with_a_proxy_set() {
         port: sshd.local_addr().unwrap().port(),
     };
     let via = egress::Egress::via(&format!("http://127.0.0.1:{}", p.port()), "");
-    let (_tcp, compress) = tcp_hop(&ep, &via).await.expect("直连回环");
+    let (_tcp, compress, via_proxy) = tcp_hop(&ep, &via).await.expect("直连回环");
     sshd.accept().expect("那台自己接到");
     assert!(!compress);
+    assert!(!via_proxy, "直连回环却说经了代理");
     assert!(asks.try_recv().is_err(), "代理不该收到一问");
 }
 
