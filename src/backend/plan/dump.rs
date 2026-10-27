@@ -35,6 +35,11 @@ pub(crate) fn run(entry: &Path, dir: &Path) -> Ran {
     ran_of(super::pb(entry, dir, &["dump"]))
 }
 
+/// 在 `cwd`（`dir` 往上第一个在的祖先）里跑 `<entry> dump --domains <dir>`：能选的领域（`dir` 不是工作区 · 还不在也照答，退 0）。
+pub(crate) fn run_domains(entry: &Path, cwd: &Path, dir: &str) -> Ran {
+    ran_of(super::pb(entry, cwd, &["dump", "--domains", dir]))
+}
+
 /// 起了一次 pb ⇒ 结局（纯函数）：起不来 ⇒ 失败；过了期限 ⇒ 读计划超时（等了多久照原语说的）；跑完了 ⇒ [`classify`]。
 pub(crate) fn ran_of(r: Result<Done, Said>) -> Ran {
     match r {

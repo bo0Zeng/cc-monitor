@@ -133,6 +133,20 @@ export interface PlanWorldOpts {
   fresh?: boolean;
   /** ledger 只做计划（人还没 `pb adopt`）。 */
   docsOnly?: boolean;
+  /** 本机有两组（注解文件里）：「导入组」里有导入解析、「底座组」里有工程底座；导出实现不在组里。 */
+  groups?: boolean;
+}
+
+/** 两组（id 全局不重 · 名字 · 几时建 · 名字几时起，毫秒）与组员（会话注解上的 `groups`）。 */
+function groupsNotes(): string {
+  const at = Date.parse("2026-10-01T09:00:00Z");
+  const group = (name: string, k: number): Record<string, unknown> => ({ name, named: at + k, made: at + k });
+  const member = (g: string): Record<string, unknown> => ({ groups: [g], updatedAt: at });
+  return JSON.stringify({
+    version: 1,
+    entries: { [PLAN_SIDS.parse]: member("g-import"), [PLAN_SIDS.base]: member("g-base") },
+    groups: { "g-import": group("导入组", 1), "g-base": group("底座组", 2) },
+  });
 }
 
 /** 退回之后 pb 那一侧加的子节点（「已落地」两张图：`cell` ⇒ 检查脚本底下一个 · `top` ⇒ 顶层一个）。 */
@@ -341,6 +355,7 @@ export function planWorld(base: World, o: PlanWorldOpts = {}): World {
         ...(o.pb === "old" ? { dumpRc: 4 } : {}),
         ...(o.autoRefuse && m === LOCAL ? { refuse: { continue: "这个工作区还没有人认领 project" } } : {}),
         ...(o.sliceStale && m === LOCAL ? { brokenAfterFirst: { repo: "ledger", said: "图.md 第 142 行：元数据缺 kind" } } : {}),
+        domains: DOMAINS,
       };
       edit(m, (d) => putPb(d, cfg));
     }
@@ -349,6 +364,7 @@ export function planWorld(base: World, o: PlanWorldOpts = {}): World {
     edit(LOCAL, (d) => putWorkspace(d, LEDGER_REL, ledgerDump(o)));
     edit("devbox", (d) => putWorkspace(d, SITE_REL, dumpOf(SITE_WS, "site", [siteRepo()])));
   }
+  if (o.groups) edit(LOCAL, (d) => (d.files[".cc-monitor/history-metadata.json"] = groupsNotes()));
   return {
     ...base,
     disk,

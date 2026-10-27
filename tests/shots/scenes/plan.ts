@@ -129,6 +129,26 @@ export const PLAN_SCENES: Scene[] = [
     await until(() => (document.querySelector('.plan-view [data-act="adopt"]') ? null : true), 20_000);
     await sleep(300);
   }, { docsOnly: true }),
+  plan("plan-17-groups", "计划 · 权力范围表的「组」那一列", "接手会话在哪几组（真后端照注解文件里的组标好）：导入解析的子 agent 接手的那一块照父会话写「导入组」，工程底座写「底座组」，导出实现不在组里写「—」", async () => {
+    await openPlan();
+    await waitFor(".plan-view .plan-groups");
+  }, { groups: true }),
+  plan("plan-18-new", "计划 · 新计划框", "页头［新计划…］：机器 · 工作区（已有的在前，会话的工作目录在后）· 路径 · 领域（pb dump --domains 给的几档）· 只读「执行」那一行（真后端写的）", async () => {
+    await openPlan();
+    await click('.plan-view [data-act="new-plan"]');
+    await type("[role=dialog] input", "invoice");
+    await sleep(600);
+    await click(await byText("[role=dialog] [role=radiogroup] button", "软件"));
+    await until(() => (document.querySelector("[role=dialog] code")?.textContent ? true : null), 20_000);
+    await sleep(400);
+  }),
+  plan("plan-19-new-exists", "计划 · 新计划框 · 已有这一片", "路径写成已有的 ledger：领域锁成它的、主按钮［切换到此片］，执行那一行只带名字", async () => {
+    await openPlan();
+    await click('.plan-view [data-act="new-plan"]');
+    await type("[role=dialog] input", "ledger");
+    await until(() => (document.querySelector("[role=dialog] [data-locked]") ? true : null), 20_000);
+    await sleep(400);
+  }),
   plan("plan-21-leaf-done", "一个节点 · 叶子 已签收", "点「解析模块」：在哪 · 头 · 位置 · 要做成什么样（话里的编号换成标题链接）· 连着的 · 连着它的", async () => {
     await openPlan();
     await row("A2-1-1");
