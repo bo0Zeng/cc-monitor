@@ -223,6 +223,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::ACCOUNT_DIR,
         // 往 tmux 里那一趟交下去的（别名在那一趟的命令行里已经没有了）：写进配置没意义。
         flag::TAB_FROM,
+        flag::CCM_ALIAS,
         flag::NO_ROTATION,
     ];
     let keys: Vec<&str> = PROFILE_FLAGS.iter().map(|f| key_of(f)).collect();
@@ -255,6 +256,9 @@ fn the_command_line_form_and_the_file_form_say_the_same_thing() {
         "--ccm-tmux",
         "--account",
         "team",
+        // 经别名起的那一发记着别名名字（命令行那一形照 `--ccm-alias` 说同一件事）。
+        "--ccm-alias",
+        "teamcct",
     ]))
     .unwrap();
     let (Parsed::Opts(a), Parsed::Opts(b)) = (&by_file.parsed, &by_cli) else {

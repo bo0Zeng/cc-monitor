@@ -616,3 +616,48 @@ fn quota_warm_takes_its_accounts_from_quota_read_and_names_them_to_ccm() {
         .collect();
     assert_eq!(tails, want, "号单该是 seen1 · fresh，起号用 --account <名>");
 }
+
+/// 经别名起的那一发记下别名名字（合并那一处取最末那一层）：直路便条带它；容器路照 `--ccm-alias` 交给窗格那一趟；
+/// 不经别名起的不带。`--ccm-alias` 的值要是能当别名的名字。
+#[test]
+fn the_alias_name_goes_with_the_launch() {
+    let plan_of = |layers: &[(&str, &[&str])], args: &[&str]| {
+        let layers: Vec<crate::ccm_line::argv::Layer> = layers
+            .iter()
+            .map(|(name, ccm)| crate::ccm_line::argv::Layer {
+                name: name.to_string(),
+                agent: Vec::new(),
+                ccm: ccm.iter().map(|s| s.to_string()).collect(),
+            })
+            .collect();
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let (parsed, _) = crate::ccm_line::argv::parse_layered(&layers, &a).expect("解析得动");
+        let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
+            panic!("该是起会话")
+        };
+        build(&o, &env(), &super::tests::no_library, None).expect("算得出计划")
+    };
+    let alias_of = |p: &Plan| match p {
+        Plan::Direct(d) => d.alias.clone(),
+        _ => panic!("该是直路"),
+    };
+    assert_eq!(alias_of(&plan_of(&[], &["--"])), None);
+    assert_eq!(
+        alias_of(&plan_of(&[("cc", &[]), ("cct", &[])], &["--"])),
+        Some("cct".to_string()),
+        "基于链上最末那一层才是这一发叫的名字"
+    );
+    // 窗格那一趟：命令行里已经没有别名，名字照 `--ccm-alias` 交来。
+    assert_eq!(
+        alias_of(&plan_of(&[], &["--", "--ccm-alias", "dev"])),
+        Some("dev".to_string())
+    );
+    let Plan::Container(c) = plan_of(&[("dev", &[])], &["--", "--ccm-tmux=t", "--detach"]) else {
+        panic!("该是容器路")
+    };
+    assert!(c.payload.contains("'--ccm-alias' 'dev'"), "{}", c.payload);
+    let parse = |a: &[&str]| {
+        crate::ccm_line::argv::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    };
+    assert!(parse(&["--", "--ccm-alias", "a b"]).is_err());
+}
