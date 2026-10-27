@@ -1,0 +1,232 @@
+//! 跨台发信（A13-8-4）：收件人在别台 ⇒ 本机只核信封，经跨台那一跳（`faces/session_queue_hop.rs`）交给那台的常驻，
+//! 那台照它自己的组名单判、收进它自己的收件箱；够不到 ⇒ `offline`，两边一个字节不写。
+//!
+//! 两台各一个临时家目录；对面是替身，照生产那一半（[`send_here`]）在它自己的家里现答。真 SSH 与真远端常驻买不到。
+
+use super::*;
+use crate::control::cc_bus::store;
+use crate::dial::remote_ask::{Remote, Said};
+use crate::history::groups::{
+    GroupKnown, GroupMember, GroupRead, GroupsMachine, GroupsRead, MemberFacts,
+};
+use crate::history::history_browse::Read;
+use cmd_wire::Machine;
+use serde_json::{json, Value};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Mutex;
+
+const A: &str = "0f3c2a1e-1111-2222-3333-444455556666";
+const B: &str = "9a8b7c6d-aaaa-bbbb-cccc-ddddeeeeffff";
+const C: &str = "1c1c1c1c-cccc-cccc-cccc-cccccccccccc";
+
+fn home(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-bus-hop-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+fn member(sid: &str) -> GroupMember {
+    GroupMember {
+        origin: Machine::local(),
+        sid: sid.into(),
+        pinned: false,
+        face: <crate::wire::SessionFace as crate::wire::SessionFaceExt>::of(
+            crate::wire::Life::Unseen,
+        ),
+        facts: MemberFacts {
+            title: "t".into(),
+            cwd: None,
+            record: None,
+            account: None,
+            bg: false,
+            at: None,
+        },
+    }
+}
+
+/// 那台的组名单：`sids` 同在一组（空 ⇒ 没有组）。
+fn roster(sids: &[&str]) -> GroupsRead {
+    let groups = if sids.is_empty() {
+        vec![]
+    } else {
+        vec![GroupRead {
+            id: "g1".into(),
+            name: Some("g1".into()),
+            title: "g1".into(),
+            made: None,
+            named: None,
+            known: GroupKnown::Now,
+            members: sids.iter().map(|s| member(s)).collect(),
+            counts: vec![],
+        }]
+    };
+    GroupsRead {
+        groups,
+        pinned: vec![],
+        machines: vec![GroupsMachine {
+            origin: Machine::local(),
+            read: Read::Ok { notice: None },
+        }],
+    }
+}
+
+/// 那台：自己的家目录 ＋ 自己的组名单；记下收到的每一问。`down` ⇒ 常驻不在。
+struct Owner {
+    home: std::path::PathBuf,
+    roster: GroupsRead,
+    down: bool,
+    asked: Mutex<Vec<(String, Value)>>,
+}
+
+impl Owner {
+    fn at(home: &std::path::Path, roster: GroupsRead, down: bool) -> Self {
+        Self {
+            home: home.to_path_buf(),
+            roster,
+            down,
+            asked: Mutex::new(Vec::new()),
+        }
+    }
+    fn inbox(&self, sid: &str) -> Vec<String> {
+        store::tail(&self.home.join(store::DIR), sid, 100).unwrap()
+    }
+}
+
+impl Remote for Owner {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        unreachable!("跨台那一跳走 run_coded")
+    }
+
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            let line: Value = serde_json::from_str(stdin.as_deref().unwrap_or("")).unwrap();
+            self.asked.lock().unwrap().push((command, line.clone()));
+            if self.down {
+                return Err(Said {
+                    code: Some("resident_absent".into()),
+                    message: "down".into(),
+                });
+            }
+            assert_eq!(line["cmd"], json!("bus-send"));
+            let req: BusEnvelopeReq = serde_json::from_value(line["args"].clone()).unwrap();
+            let own = crate::platform::fs::Own::issue_data_at(&self.home);
+            match send_here(&own, &req, Ok(&self.roster), 1_000) {
+                Ok(sent) => Ok(serde_json::to_string(&sent).unwrap()),
+                Err((code, message)) => Err(Said {
+                    code: Some(code.to_string()),
+                    message,
+                }),
+            }
+        })
+    }
+}
+
+fn letter(machine: Option<&str>, title: &str) -> BusEnvelopeReq {
+    let mut v = json!({"from": A, "to": B, "tier": 1, "act": "inform", "title": title, "text": "占位正文"});
+    if let Some(m) = machine {
+        v["machine"] = json!(m);
+    }
+    serde_json::from_value(v).unwrap()
+}
+
+async fn send_from(
+    here: &std::path::Path,
+    req: &BusEnvelopeReq,
+    owner: &Owner,
+) -> Result<BusSent, BusSendErr> {
+    let own = crate::platform::fs::Own::issue_data_at(here);
+    let table = crate::dial::remote_ask::test_peers::named(&["far"]);
+    send(
+        &own,
+        req,
+        &crate::Tz::default(),
+        None,
+        &table,
+        owner,
+        || async { unreachable!("别台的信不读这台的名单") },
+    )
+    .await
+}
+
+#[test]
+fn the_machine_defaults_to_this_one() {
+    assert!(letter(None, "t").machine.is_local(), "缺 `machine` ⇒ 本机（cc-bus send 不带 --machine 照今天）");
+}
+
+#[tokio::test]
+async fn a_letter_for_another_machine_lands_in_that_machines_inbox_once() {
+    let here = home("here");
+    let there = home("there");
+    let owner = Owner::at(&there, roster(&[]), false);
+    let sent = send_from(&here, &letter(Some("far"), "占位标题"), &owner)
+        .await
+        .unwrap();
+    assert_eq!(owner.inbox(B).len(), 1, "那台收件箱多一封、只一封");
+    assert_eq!(sent.envelope.to, B);
+    assert!(!sent.knock, "本机够不到那台的屏：跨台交回的不敲门");
+    let asked = owner.asked.lock().unwrap();
+    assert_eq!(asked.len(), 1, "只问一次");
+    assert!(asked[0].0.contains("--resident-call"), "问的是那台的常驻");
+    assert_eq!(
+        asked[0].1["args"]["machine"],
+        json!(cmd_wire::LOCAL),
+        "交给那台的是同一条、machine 换成那台眼里的本机"
+    );
+    assert!(!here.join(store::DIR).exists(), "本机一个字节不写");
+}
+
+#[tokio::test]
+async fn an_offline_machine_is_refused_and_nothing_is_kept() {
+    let here = home("off-here");
+    let there = home("off-there");
+    let owner = Owner::at(&there, roster(&[]), true);
+    let e = send_from(&here, &letter(Some("far"), "占位标题"), &owner)
+        .await
+        .unwrap_err();
+    assert_eq!(e.into_fail().code, "offline");
+    // 不在机器表里的那一台：同样 `offline`，一问都不发。
+    let e = send_from(&here, &letter(Some("nowhere"), "占位标题"), &owner)
+        .await
+        .unwrap_err();
+    assert_eq!(e.into_fail().code, "offline");
+    assert_eq!(owner.asked.lock().unwrap().len(), 1);
+    assert!(!here.join(store::DIR).exists(), "不在发件端攒");
+    assert!(!there.join(store::DIR).exists());
+}
+
+#[tokio::test]
+async fn a_bad_envelope_is_refused_here_before_it_leaves() {
+    let here = home("bad-here");
+    let there = home("bad-there");
+    let owner = Owner::at(&there, roster(&[]), false);
+    let e = send_from(&here, &letter(Some("far"), ""), &owner)
+        .await
+        .unwrap_err();
+    assert_eq!(e.into_fail().code, "bad_title");
+    assert!(owner.asked.lock().unwrap().is_empty(), "坏信封不出门");
+}
+
+#[tokio::test]
+async fn the_far_machines_own_group_roster_decides_and_its_code_comes_back() {
+    let here = home("scope-here");
+    let there = home("scope-there");
+    // 那台的名单：发件人与 c 同组，收件人 b 不在 ⇒ 那台拒成 `not_same_group`。
+    let owner = Owner::at(&there, roster(&[A, C]), false);
+    let e = send_from(&here, &letter(Some("far"), "占位标题"), &owner)
+        .await
+        .unwrap_err();
+    assert_eq!(e.into_fail().code, "not_same_group");
+    assert!(owner.inbox(B).is_empty());
+}

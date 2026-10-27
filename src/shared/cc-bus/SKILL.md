@@ -17,7 +17,7 @@ description: 各自独立运行的 agent 会话(Claude Code · Codex)之间的�
 ```bash
 cc-bus whoami                                   # 这是哪条会话(会话 id,问 cc-monitor 的 --session-self)
 cc-bus list                                     # 各收件箱:会话 id · 在不在 · 待读 · 标题
-cc-bus send <会话 id> --act <码> --title "<一行>" [--tier 1|2] [--re <消息 id>] [--ref <引用>]… [正文…|-]
+cc-bus send <会话 id> --act <码> --title "<一行>" [--machine <机器名>] [--tier 1|2] [--re <消息 id>] [--ref <引用>]… [正文…|-]
 cc-bus recv                                     # 读新消息并推进已读位置(= peek 接 commit)
 cc-bus unread [<会话 id>]                       # 未读几条(只读,一个数)
 cc-bus peek [--max-lines N] [--token-file <路径>]   # 纯读,令牌走 stderr 或那份文件
@@ -61,7 +61,7 @@ cc-bus send <sid> --act handback --re m19a1b2c3d4e0002 --title "A13-4 做完" --
 - 发件人不在任何组 ⇒ 送得到谁都行。
 - 组名单只问后端(`groups-read`);问不到 ⇒ 退 3,不退回成全放行。
 - 对一整组发一封不做。
-- 这一版只在一台机器上:收件人得是这台的会话。
+- 收件会话在别台 ⇒ `--machine <机器名>`(机器表里的名字):本机后端只核信封,交给那台收;范围照那台的组名单判,信落进那台的收件箱。那台够不到 ⇒ 退 1、说那台离线,本机不留、不攒。跨台的信不敲门,对方轮末照样喂回。
 
 ## 收信
 

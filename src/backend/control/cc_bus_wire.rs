@@ -164,7 +164,7 @@ pub(crate) struct BusInboxReq {
 }
 
 /// `bus-send` 的入参：发信人要发的那一封（`cc-bus send` 组好交来）。各格的规矩在 [`cc_bus_envelope`]。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
@@ -173,6 +173,10 @@ pub(crate) struct BusEnvelopeReq {
     pub(crate) from: String,
     /// 收件人：会话 id。
     pub(crate) to: String,
+    /// 收件会话在哪台（机器表里的名字）。缺 ⇒ 本机；别台 ⇒ 经跨台那一跳交给那台收（`faces/session_queue_hop.rs`）。
+    #[serde(default = "cmd_wire::Machine::local")]
+    #[cfg_attr(test, ts(as = "Option<cmd_wire::Machine>", optional))]
+    pub(crate) machine: cmd_wire::Machine,
     /// 1 ⇒ 敲门（对方闲着才送）；2 ⇒ 只进收件箱。缺 ⇒ 2。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable, type = "number"))]
@@ -196,7 +200,7 @@ pub(crate) struct BusEnvelopeReq {
 }
 
 /// `bus-send` 的应答：收进收件箱的那一封 ＋ 要不要敲门（tier 1 且这条会话去抖窗里没敲过）。
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct BusSent {
@@ -321,6 +325,8 @@ typed::codes! {
         Throttled = "throttled",
         /// 收件箱或状态文件读写不成（读不出来的不覆盖）。
         IoFailed = "io_failed",
+        /// 收件会话那台够不到（不在机器表 · 链路坏 · 常驻没在跑 · 过了期限）：两边一个字节没写。
+        Offline = "offline",
     }
 }
 
@@ -431,22 +437,85 @@ impl crate::wire::typed::Handle for BusSendCmd {
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusSent, BusSendErr>> + Send + 'static {
         let (cx, own) = cx.split();
-        let tz = cx.tz.clone();
         async move {
-            let refused = |(c, raw): cc_bus_envelope::Refusal| {
-                tracing::info!("cc-bus send refused: {c} {raw}");
-                of(BusSendErr::BadArgs, send_said)((c.to_string(), raw))
-            };
-            let env = cc_bus_envelope::envelope_now(&req).map_err(refused)?;
-            let roster = super::cc_bus_scope::groups_now(tz).await;
-            super::cc_bus_scope::scope(&env.from, &env.to, roster.as_ref().map_err(String::as_str))
-                .map_err(refused)?;
-            let knock = cc_bus::store::deliver(&own, &env, crate::common::time::now_ms())
-                .map_err(refused)?;
-            Ok(BusSent {
-                envelope: env,
-                knock,
-            })
+            let tz = cx.tz.clone();
+            send(
+                &own,
+                &req,
+                &cx.tz,
+                cx.until,
+                &crate::dial::remote_ask::REACH,
+                &crate::dial::remote_ask::DialRemote,
+                || super::cc_bus_scope::groups_now(tz),
+            )
+            .await
         }
     }
 }
+
+/// 拒的那一对（码 ＋ 原话）⇒ `bus-send` 的码表，那一句照「码 → 句」表换；原话记诊断日志一行。
+fn refused((c, raw): cc_bus_envelope::Refusal) -> BusSendErr {
+    tracing::info!("cc-bus send refused: {c} {raw}");
+    of(BusSendErr::BadArgs, send_said)((c.to_string(), raw))
+}
+
+/// 收件会话在这台的那一半：盖上 id 与时间 · 照 `roster`（这台读到的组名单）判范围 · 去重限流 · 收进收件箱。
+/// 别台交来的（跨台那一跳）也是这一半在收件那台跑。
+pub(crate) fn send_here(
+    own: &crate::platform::Own,
+    req: &BusEnvelopeReq,
+    roster: Result<&crate::history::groups::GroupsRead, &str>,
+    now_ms: i64,
+) -> Result<BusSent, cc_bus_envelope::Refusal> {
+    let env = cc_bus_envelope::envelope_now(req)?;
+    super::cc_bus_scope::scope(&env.from, &env.to, roster)?;
+    let knock = cc_bus::store::deliver(own, &env, now_ms)?;
+    Ok(BusSent {
+        envelope: env,
+        knock,
+    })
+}
+
+/// `bus-send` 的本体：照 `req.machine` 分。
+/// - 本机 ⇒ 读这台的组名单（`roster`）· [`send_here`]。
+/// - 别台 ⇒ 先在这台核信封各格（坏信封不出门），再经跨台那一跳（`faces::session_queue_hop::hop`）交给那台的常驻：
+///   范围照那台的名单判、收进那台的收件箱，那台答的码原样交回；够不到 ⇒ `offline`，这台一个字节不写、不攒。
+///   交回的 `knock` 一律 `false`：这台够不到那台的屏（敲门改投那台的会话输入队见 A13-8-3）。
+pub(crate) async fn send<R, F>(
+    own: &crate::platform::Own,
+    req: &BusEnvelopeReq,
+    tz: &crate::Tz,
+    until: Option<crate::platform::child::Until>,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn crate::dial::remote_ask::Remote,
+    roster: R,
+) -> Result<BusSent, BusSendErr>
+where
+    R: FnOnce() -> F,
+    F: std::future::Future<Output = Result<crate::history::groups::GroupsRead, String>>,
+{
+    if req.machine.is_local() {
+        let r = roster().await;
+        let now = crate::common::time::now_ms();
+        return send_here(own, req, r.as_ref().map_err(String::as_str), now).map_err(refused);
+    }
+    cc_bus_envelope::check(req).map_err(refused)?;
+    let sent = crate::faces::session_queue_hop::hop::<BusSendCmd>(
+        req,
+        BusSendErr::ALL,
+        tz,
+        until,
+        table,
+        remote,
+    )
+    .await
+    .map_err(|f| typed::of_fail(f, BusSendErr::BadArgs))?;
+    Ok(BusSent {
+        knock: false,
+        ..sent
+    })
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/control/cc_bus_hop_tests.rs"]
+mod hop_tests;
