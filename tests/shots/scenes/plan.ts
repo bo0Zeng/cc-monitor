@@ -129,7 +129,7 @@ export const PLAN_SCENES: Scene[] = [
     await until(() => (document.querySelector('.plan-view [data-act="adopt"]') ? null : true), 20_000);
     await sleep(300);
   }, { docsOnly: true }),
-  plan("plan-17-groups", "计划 · 权力范围表的「组」那一列", "接手会话在哪几组（真后端照注解文件里的组标好）：导入解析的子 agent 接手的那一块照父会话写「导入」，工程底座写「底座」，导出实现不在组里写「—」", async () => {
+  plan("plan-17-groups", "计划 · 权力范围表的「组」那一列", "接手会话在哪几组（真后端照注解文件里的组标好）：导入解析的子 agent 接手的那一块照父会话写「导入组」，工程底座写「底座组」，导出实现不在组里写「—」", async () => {
     await openPlan();
     await waitFor(".plan-view .plan-groups");
   }, { groups: true }),

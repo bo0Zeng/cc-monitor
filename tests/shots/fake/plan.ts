@@ -133,7 +133,7 @@ export interface PlanWorldOpts {
   fresh?: boolean;
   /** ledger 只做计划（人还没 `pb adopt`）。 */
   docsOnly?: boolean;
-  /** 本机有两组（注解文件里）：「导入」里有导入解析、「底座」里有工程底座；导出实现不在组里。 */
+  /** 本机有两组（注解文件里）：「导入组」里有导入解析、「底座组」里有工程底座；导出实现不在组里。 */
   groups?: boolean;
 }
 
@@ -145,7 +145,7 @@ function groupsNotes(): string {
   return JSON.stringify({
     version: 1,
     entries: { [PLAN_SIDS.parse]: member("g-import"), [PLAN_SIDS.base]: member("g-base") },
-    groups: { "g-import": group("导入", 1), "g-base": group("底座", 2) },
+    groups: { "g-import": group("导入组", 1), "g-base": group("底座组", 2) },
   });
 }
 
