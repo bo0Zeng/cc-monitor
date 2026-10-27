@@ -51,6 +51,9 @@ fn a_known_session_gets_its_title_and_a_judged_liveness_an_unknown_one_stays_unk
         serde_json::json!({ sid: {"starred": false, "customTitle": "修登录", "updatedAt": 0} }),
     )
     .unwrap();
-    assert_eq!(seen_at(&home, sid, &renamed).title.as_deref(), Some("修登录"));
+    assert_eq!(
+        seen_at(&home, sid, &renamed).title.as_deref(),
+        Some("修登录")
+    );
     let _ = std::fs::remove_dir_all(&home);
 }

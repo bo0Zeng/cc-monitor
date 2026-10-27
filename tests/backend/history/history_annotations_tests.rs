@@ -213,14 +213,22 @@ fn patch_semantics_match_what_the_monitor_did() {
     )
     .unwrap();
     assert_eq!(e["entry"]["customTitle"], "修登录");
-    assert_eq!(e["prev_title"], Value::Null, "改之前没有改过的名 ⇒ null：{e}");
+    assert_eq!(
+        e["prev_title"],
+        Value::Null,
+        "改之前没有改过的名 ⇒ null：{e}"
+    );
     let e = answer_annotate_at(
         &own_of(&p),
         &json!({"sid": sid, "patch": {"customTitle": ""}}),
         8,
     )
     .unwrap();
-    assert_eq!(e["entry"]["customTitle"], Value::Null, "改成空 ＝ 回到原标题");
+    assert_eq!(
+        e["entry"]["customTitle"],
+        Value::Null,
+        "改成空 ＝ 回到原标题"
+    );
     assert_eq!(e["prev_title"], "修登录", "{e}");
     assert_eq!(e["entry"]["starred"], true, "没给的格被动了");
     // 新的一条：从缺省起。

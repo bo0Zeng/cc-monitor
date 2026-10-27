@@ -126,7 +126,10 @@ fn c4d_the_row_carries_fork_parent_agent_title_and_first_timestamp() {
     let v = analyze_session(&p);
     assert_eq!(v["forkedFromSessionId"], "parent-sid", "取首条那一个");
     assert_eq!(v["forkedFromMessageUuid"], "m-1");
-    assert_eq!(v["aiTitle"], "旧标题", "custom-title 在后也不取：改名只认 monitor 那一格");
+    assert_eq!(
+        v["aiTitle"], "旧标题",
+        "custom-title 在后也不取：改名只认 monitor 那一格"
+    );
     assert_eq!(
         v["startedAtMs"],
         crate::common::time::parse_iso8601_ms("2026-09-25T01:02:03.456Z").unwrap()
