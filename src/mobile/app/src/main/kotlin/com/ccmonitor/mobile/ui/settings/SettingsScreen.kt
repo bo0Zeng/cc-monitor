@@ -115,7 +115,10 @@ private fun MachineBody(
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val link by feed.state.collectAsState()
     val deploying by feed.deploying.collectAsState()
-    AccountCard(here, board, link, deploying, onReconnect = feed::reconnect, onOpen = onUsage)
+    val offlineSaid by feed.offline.collectAsState()
+    // 断着那一行：那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
+    val offlineLine = offlineSaid ?: copyText("sessionState.unseen.name")
+    AccountCard(here, board, link, offlineLine, deploying, onReconnect = feed::reconnect, onOpen = onUsage)
     Body(here, board, readable(link), onNavigate)
 }
 
@@ -170,6 +173,7 @@ private fun AccountCard(
     here: Here,
     board: MachineSettings,
     link: LinkState,
+    offlineLine: String,
     deploying: Deploying?,
     onReconnect: () -> Unit,
     onOpen: () -> Unit,
@@ -219,7 +223,7 @@ private fun AccountCard(
                 }
             fix != null -> NeedsFix(here, fix, (link as? LinkState.Down)?.said?.text ?: (link as? LinkState.Up)?.notice?.text, deploying)
             offline ->
-                CardLine(copyText("newSession.machine.offline", "machine" to here.machine), MaterialTheme.colorScheme.onSurfaceVariant) {
+                CardLine(offlineLine, MaterialTheme.colorScheme.onSurfaceVariant) {
                     SecondaryButton(onClick = onReconnect) { Text(copyText("newSession.machine.reconnect")) }
                 }
             else -> DefaultAccount(ui)

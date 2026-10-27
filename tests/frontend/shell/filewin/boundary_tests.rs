@@ -302,7 +302,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
     ("comms_inward::chan::client::Client::over", Kind::Channel),
-    // 通道没成时那一句（全产品一份住通信层）：窗口照抄，不自己按层说。
+    // 通道没成时那一句 · 那台离线那一句（全产品一份住通信层）：窗口照抄，不自己按层说。
+    ("comms_inward::chan::said::offline", Kind::Channel),
     ("comms_inward::chan::said::refused", Kind::Channel),
     ("comms_inward::chan::said::said", Kind::Channel),
     // ── 线上类型 ──

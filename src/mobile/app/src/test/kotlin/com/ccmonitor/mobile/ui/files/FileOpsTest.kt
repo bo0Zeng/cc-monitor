@@ -141,7 +141,11 @@ class FileOpsTest {
     @Test
     fun aBrokenLinkSaysTheSentenceTheOtherScreensSay() =
         runTest {
+            // 断着：那一句照那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
             val e = FileOps(FakeCoreLink()) { "box" }.list(dir).exceptionOrNull() as FileOps.Failed
-            assertEquals(copyText("front.body.offline", "machine" to "box"), e.problem.text)
+            assertEquals(FakeCoreLink.OFFLINE, e.problem.text)
+            val noProduct = FakeCoreLink().apply { offline.value = null }
+            val u = FileOps(noProduct) { "box" }.list(dir).exceptionOrNull() as FileOps.Failed
+            assertEquals(copyText("sessionState.unseen.name"), u.problem.text)
         }
 }

@@ -6,8 +6,9 @@
 //! | 「发没发出去」一定说出来：没发出 ≠ 拿不准；发了与拿不准对人是同一件事 | [`whether_it_was_sent_is_always_said`] |
 //! | 对端拒了：它那一句原样；没写 ⇒「后端拒绝 · 原因不明」 | [`a_refusal_says_the_peer_sentence_or_that_it_is_unreadable`] |
 //! | 全产品一份：`rsChanSaid.*` 只在本文件取；调它的恰是那三处（壳交主界面 · 文件窗口 · `CallError` 的 `Display`） | [`the_channel_sentence_lives_in_one_file_with_three_callers`] |
+//! | 离线那一句称呼那台；`link.machine.offline` 在三端产品源码里只在本文件取，原先各出口各取的那 12 把键一处都不剩 | [`the_offline_sentence_names_the_machine`] · [`the_offline_sentence_is_taken_in_one_place`] |
 
-use super::{machine, said};
+use super::{machine, offline, said};
 use crate::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
 use crate::origin::Origin;
 use std::collections::BTreeSet;
@@ -223,5 +224,81 @@ fn the_channel_sentence_lives_in_one_file_with_three_callers() {
             "frontend/shell/src/chan/webview.rs".to_string(),
         ]),
         "调通道那一句的应恰是这三处：壳交给主界面的失败 · 文件窗口 · `CallError` 的 `Display`"
+    );
+}
+
+#[test]
+fn the_offline_sentence_names_the_machine() {
+    let s = offline("devbox");
+    assert_eq!(
+        s,
+        copy_core::copy_text("link.machine.offline", &[("machine", "devbox")])
+    );
+    assert!(s.contains("devbox"), "{s}");
+}
+
+/// 「{machine} 离线」原先各出口各取的键。
+const OFFLINE_OLD: [&str; 12] = [
+    "events.unseen.droppedTitle",
+    "events.unseen.neverTitle",
+    "events.unseen.unreachableTitle",
+    "front.body.offline",
+    "machinePage.problem.offline",
+    "mobSession.bar.dropped",
+    "newSession.machine.offline",
+    "rsBackendRoute.noChannel.message",
+    "rsFilewinChrome.link.offlineNever",
+    "settingsNav.dot.down",
+    "tabMenu.unseen.why",
+    "terminal.liveWhy.offline",
+];
+
+/// 三端的产品源码（Rust · 界面 · 手机），相对 `src/`；测试源码与生成物不算。
+fn product_sources(src: &std::path::Path) -> Vec<String> {
+    let mut all = Vec::new();
+    for ext in ["rs", "ts", "kt"] {
+        all.extend(guard_core::files_by_extension(src, ext));
+    }
+    all.retain(|rel| {
+        !rel.starts_with("vendor/") && !rel.contains("/src/test/") && !rel.contains("/generated/")
+    });
+    all
+}
+
+#[test]
+fn the_offline_sentence_is_taken_in_one_place() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut homes = BTreeSet::new();
+    let mut old = BTreeSet::new();
+    let files = product_sources(&root.join("src"));
+    assert!(
+        ["rs", "ts", "kt"]
+            .iter()
+            .all(|e| files.iter().any(|f| f.ends_with(&format!(".{e}")))),
+        "三端源码都得扫到"
+    );
+    for rel in files {
+        let Ok(raw) = std::fs::read_to_string(root.join("src").join(&rel)) else {
+            continue;
+        };
+        let code = guard_core::production_code(&raw);
+        if code.contains("\"link.machine.offline\"") {
+            homes.insert(rel.clone());
+        }
+        for k in OFFLINE_OLD {
+            if code.contains(&format!("\"{k}\"")) {
+                old.insert((k.to_string(), rel.clone()));
+            }
+        }
+    }
+    assert_eq!(
+        homes,
+        BTreeSet::from(["comms/inward/chan/said.rs".to_string()]),
+        "离线那一句只许在 `chan/said.rs` 取"
+    );
+    assert_eq!(
+        old,
+        BTreeSet::new(),
+        "离线那一句的旧键在三端产品源码里一处都不许剩：出口照摆连接层交出的那一句"
     );
 }

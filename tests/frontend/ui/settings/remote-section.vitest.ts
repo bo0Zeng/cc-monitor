@@ -700,6 +700,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       os: null,
       word: "",
       said: "",
+      offlineSaid: "box-1 离线",
       fixes: [],
       seenHostKey: null,
       expectedHostKey: null,

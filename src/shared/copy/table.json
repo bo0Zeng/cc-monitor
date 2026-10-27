@@ -4423,12 +4423,6 @@
       "zh": "{machine} 无应答",
       "args": ["machine"]
     },
-    "front.body.offline": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "front.body.refused": {
       "kind": "body",
       "role": "说明",
@@ -10300,9 +10294,9 @@
       "zh": "该机不支持 · 未发出",
       "args": []
     },
-    "rsBackendRoute.noChannel.message": {
+    "link.machine.offline": {
       "kind": "error",
-      "role": "原因格",
+      "role": "报错",
       "zh": "{machine} 离线",
       "args": ["machine"]
     },
@@ -12466,12 +12460,6 @@
       "role": "片段",
       "zh": "离线",
       "args": []
-    },
-    "newSession.machine.offline": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
     },
     "newSession.machine.reconnect": {
       "kind": "action",
@@ -15152,12 +15140,6 @@
       "zh": "{machine} 会话停止自动更新 · 重启 cc-monitor 可重新接上",
       "args": ["machine"]
     },
-    "events.unseen.neverTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "events.unseen.neverBody": {
       "kind": "body",
       "role": "说明",
@@ -15165,22 +15147,10 @@
       "args": ["machine"],
       "limited": ["连接"]
     },
-    "events.unseen.droppedTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "events.unseen.overrunTitle": {
       "kind": "error",
       "role": "报错",
       "zh": "{machine} 无应答",
-      "args": ["machine"]
-    },
-    "events.unseen.unreachableTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
       "args": ["machine"]
     },
     "events.unseen.lostBody": {
@@ -21113,12 +21083,6 @@
       "zh": "{machine} 离线 · 采样 {time}",
       "args": ["machine", "time"]
     },
-    "rsFilewinChrome.link.offlineNever": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "rsFilewinChrome.link.retry": {
       "kind": "action",
       "role": "按钮",
@@ -22199,12 +22163,6 @@
       "zh": "画面中断",
       "args": []
     },
-    "terminal.liveWhy.offline": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "terminal.screen.follow": {
       "kind": "action",
       "role": "按钮",
@@ -22500,12 +22458,6 @@
       "zh": "{machine} · 在线",
       "args": ["machine"]
     },
-    "settingsNav.dot.down": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
     "settingsNav.dot.unknown": {
       "kind": "body",
       "role": "说明",
@@ -22561,12 +22513,6 @@
       "role": "状态",
       "zh": "离线",
       "args": []
-    },
-    "machinePage.problem.offline": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
     },
     "machinePage.meta.localBare": {
       "kind": "body",
@@ -24784,12 +24730,6 @@
       "zh": "tmux 会话 ×{n} · 无法确定",
       "args": ["n"],
       "limited": ["tmux"]
-    },
-    "tabMenu.unseen.why": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
     },
     "tabMenu.probe.failed": {
       "kind": "error",
@@ -28293,12 +28233,6 @@
       "zh": "重新连接中…",
       "args": [],
       "limited": ["连接"]
-    },
-    "mobSession.bar.dropped": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
     },
     "mobTerm.model.sendFailed": {
       "kind": "body",

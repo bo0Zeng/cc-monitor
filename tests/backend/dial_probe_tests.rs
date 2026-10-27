@@ -433,7 +433,7 @@ async fn a_dial_nobody_answers_says_the_machine_is_unreached() {
     let (r, cells) = cells_of(&args(), &fake).await;
     let last = copy_text("beProbe.stage.dial", &[("endpoint", "192.0.2.2:22")]);
     assert_eq!(cells, vec![step(&last, "now", ["wait"; 4])]);
-    let offline = copy_text("front.body.offline", &[("machine", "devbox")]);
+    let offline = comms_inward::chan::said::offline("devbox");
     assert_eq!(
         r["said"],
         copy_text("beProbe.test.sshFailed", &[("why", &offline)])

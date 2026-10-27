@@ -80,7 +80,7 @@ class DirBrowser(
         r: Reply,
         command: String,
     ) {
-        val why = (r.problem(machine, command) ?: unreadableReply(machine, command, r.toString())).text
+        val why = (r.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, r.toString())).text
         _state.update { it.copy(dirs = emptyList(), loading = false, failed = why) }
     }
 

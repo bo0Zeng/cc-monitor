@@ -32,6 +32,9 @@ internal class FakeCoreLink :
     CoreLink,
     SessionWatch {
     override val state = MutableStateFlow<LinkState>(LinkState.Up())
+
+    /** 那台成品写的离线那一句（假的那台的成品一开始就到了）。 */
+    override val offline = MutableStateFlow<String?>(OFFLINE)
     override val table = MutableStateFlow(EMPTY_BOOK)
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
@@ -238,6 +241,9 @@ internal class FakeCoreLink :
     }
 
     companion object {
+        /** 假的那台成品里的离线那一句（测试照它比，不取字）。 */
+        const val OFFLINE = "成品写的那台离线那一句"
+
         fun human(
             id: String,
             text: String,

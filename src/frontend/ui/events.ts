@@ -3,7 +3,7 @@ import type { SessionHidden } from "./session-hidden";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { machineName } from "./ipc/chan-caller";
+import { machineName, offlineSaid } from "./ipc/chan-caller";
 import { toast } from "./kit/toast";
 import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { tryDecodeJson } from "./ipc/decode";
@@ -284,16 +284,14 @@ const BATCH_END_GRACE_MS = 300;
 /** 会话流看不见了多久才说（起步那几秒常是「那台还在连」，不算）。 */
 const UNSEEN_SAY_MS = 20_000;
 
-/** 一台机器一直看不见：哪台 · 为什么（从没看见过 ⇒ 只说还没连上）· 能做什么。 */
+/**
+ * 一台机器一直看不见：哪台 · 为什么（从没看见过 ⇒ 只说还没连上）· 能做什么。标题照那台成品写的离线那一句；
+ * 看见过、断在超时那一跳 · 成品还没到（未知不当离线）⇒ 只说那台无应答。
+ */
 function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (() => void) | undefined): void {
   const machine = machineName(origin);
-  const title = !ever
-    ? copyText("events.unseen.neverTitle", { machine })
-    : why === "Dropped"
-      ? copyText("events.unseen.droppedTitle", { machine })
-      : why === "Overrun"
-        ? copyText("events.unseen.overrunTitle", { machine })
-        : copyText("events.unseen.unreachableTitle", { machine });
+  const off = ever && why === "Overrun" ? null : offlineSaid(origin);
+  const title = off ?? copyText("events.unseen.overrunTitle", { machine });
   const body = ever ? copyText("events.unseen.lostBody", { machine }) : copyText("events.unseen.neverBody", { machine });
   toast(title, body, openSettings ? { action: { label: copyText("main.cmd.openSettings"), run: openSettings } } : {});
 }

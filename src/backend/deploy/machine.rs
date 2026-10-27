@@ -138,6 +138,7 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             (K::Down, Some(Blocker::NoBackend), Some(p)) => p.text.clone(),
             _ => said(state, e.stage, why, machine),
         },
+        offline_said: comms_inward::chan::said::offline(machine),
         fixes: fixes(state, why, blocker, installs)
             .into_iter()
             .map(|fix| FixButton {
@@ -235,9 +236,7 @@ pub fn said(state: K, stage: Option<Stage>, why: Option<Why>, machine: &str) -> 
             Why::SessionDenied => {
                 copy_text("machineState.down.sessionDenied", &[("machine", machine)])
             }
-            Why::HostKey | Why::Other => {
-                copy_text("machinePage.problem.offline", &[("machine", machine)])
-            }
+            Why::HostKey | Why::Other => comms_inward::chan::said::offline(machine),
         },
         K::HostKeyChanged => copy_text("machineState.problem.hostKey", &[]),
         K::NeedsUpdate => copy_text("machineState.problem.needsUpdate", &[("machine", machine)]),

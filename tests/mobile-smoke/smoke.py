@@ -1598,7 +1598,7 @@ def walk():
         name = tmux_name_of(f"{T} new session")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
         # 断着：两颗 chip 灰、上方那一行写那台离线（连接那一层判的，桌面同一句）；网回来那一行撤掉。
-        offline = t("newSession.machine.offline", machine=MACHINE)
+        offline = t("link.machine.offline", machine=MACHINE)
         said_offline = wait(offline, 20)
         rig("tmux", "send-keys", "-t", name or "", f"{T} offline", "Enter")
         time.sleep(6)
@@ -1699,7 +1699,7 @@ def walk():
             drawer(t("mobDrawer.item.sessions"))
             if not wait(f"{T} new session", 30):
                 raise Step.Fail("断网时会话列表是空的（没上本地缓存）")
-            if not wait(t("newSession.machine.offline", machine=MACHINE), 10):
+            if not wait(t("link.machine.offline", machine=MACHINE), 10):
                 raise Step.Fail("断着那台的会话行没写离线")
             shot("8b-离线列表")
             tap(f"{T} new session")
@@ -1737,7 +1737,7 @@ def walk():
             raise Step.Fail(f"work 里没有 {ro}")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
         try:
-            if not wait(t("front.body.offline", machine=MACHINE), 60):
+            if not wait(t("link.machine.offline", machine=MACHINE), 60):
                 raise Step.Fail("断了网，文件页 60 秒没顶出那台离线那一条")
             pick_act(ro, t("rsFilewinWriteops.label.delete"))
             said = t("rsFilewinChrome.link.readOnly")
@@ -1751,9 +1751,9 @@ def walk():
         adb("shell", "input", "keyevent", "4")
         # 网回来等它接上（离线那一条自己收掉）再往下：刚放回网时下一步那几排还在重画。
         end = ui.within(60)
-        while time.time() < end and ui.find(t("front.body.offline", machine=MACHINE)) is not None:
+        while time.time() < end and ui.find(t("link.machine.offline", machine=MACHINE)) is not None:
             time.sleep(1)
-        if ui.find(t("front.body.offline", machine=MACHINE)) is not None:
+        if ui.find(t("link.machine.offline", machine=MACHINE)) is not None:
             raise Step.Fail("网回来 60 秒，文件页那条离线还在")
 
     terminal_steps()

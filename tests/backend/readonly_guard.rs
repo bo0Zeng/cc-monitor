@@ -2456,6 +2456,13 @@ mod g6_dependency_signoff {
             "连远端常驻后端的客户端那一侧（桌面 · 手机同一份；本后端只在测试连接 `dial/probe.rs` 里跑一趟它的常驻流）：仓内 crate，\
              连它引的 `comms-inward` 现打 0 处写面（`std::fs` · `tokio::fs` · 起进程一处都没有）；字节只经宿主交来的那条链路进出（`feed::Transport`，本后端那份走拨号核心）",
         ),
+        (
+            "comms-inward",
+            DEPS,
+            MEASURED_CLEAN,
+            "通信层（仓内 crate）：本后端只取它那一句（`chan::said::offline`，那台离线那一句由连接层写）；\
+             现打 0 处写面（`std::fs` · `tokio::fs` · 起进程一处都没有）",
+        ),
         // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,

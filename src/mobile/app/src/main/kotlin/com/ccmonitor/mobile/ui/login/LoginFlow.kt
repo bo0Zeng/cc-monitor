@@ -91,7 +91,7 @@ class LoginFlow(
     private fun said(
         r: Reply,
         command: String,
-    ): String = (r.problem(machine, command) ?: unreadableReply(machine, command, r.toString())).text
+    ): String = (r.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, r.toString())).text
 
     private companion object {
         const val CALL_MS = 20_000L

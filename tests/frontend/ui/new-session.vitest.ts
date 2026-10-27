@@ -69,6 +69,7 @@ import { openNewSession } from "../../../src/frontend/ui/new-session";
 import { setLaunchSlots } from "../../../src/frontend/ui/session-open";
 import { loginInTmux } from "../../../src/frontend/ui/settings/account-login";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -405,12 +406,21 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     expect(cwd.value, "换机器没清掉手填的目录").toBe("/srv/b");
   });
 
-  it("那台连不上 ⇒ 框顶说离线 ＋［重连］（点了请后端起那台）、［新建］灰着说为什么；不问那台", async () => {
+  it("那台连不上、成品还没到 ⇒ 框顶不说离线（不知道 ≠ 离线），说状态不明", async () => {
+    vi.mocked(commands.backend_status).mockImplementation((async (a: { origin: string }) => ({ channel: a.origin !== "box-no-product" })) as never);
+    void openNewSession({ origin: "box-no-product" });
+    await flush();
+    expect(top()).toContain(copyText("settingsNav.dot.unknown", { machine: "box-no-product" }));
+    expect(createBtn().title).toBe(copyText("settingsNav.dot.unknown", { machine: "box-no-product" }));
+  });
+
+  it("那台连不上 ⇒ 框顶照那台成品说离线 ＋［重连］（点了请后端起那台）、［新建］灰着说为什么；不问那台", async () => {
+    noteMachine("devbox", { name: "devbox", offlineSaid: "成品写的 devbox 离线那一句" });
     vi.mocked(commands.backend_status).mockImplementation((async (a: { origin: string }) => ({ channel: a.origin !== "devbox" })) as never);
     void openNewSession({ origin: "devbox" });
     await flush();
-    expect(top()).toContain(copyText("newSession.machine.offline", { machine: "devbox" }));
-    expect(createBtn().title).toBe(copyText("newSession.machine.offline", { machine: "devbox" }));
+    expect(top()).toContain("成品写的 devbox 离线那一句");
+    expect(createBtn().title).toBe("成品写的 devbox 离线那一句");
     expect(sent.filter((x) => x.op.startsWith("session-")), "断开还去问那台").toEqual([]);
     [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
     expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });

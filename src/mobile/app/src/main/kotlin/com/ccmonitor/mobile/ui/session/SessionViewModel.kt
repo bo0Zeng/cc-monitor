@@ -191,6 +191,9 @@ class SessionViewModel(
     /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行 · 推公钥）。 */
     val terminals = TerminalOps(backends.of(hostId), { hostRepo.get(hostId)?.label ?: hostId })
 
+    /** 那台成品写的离线那一句（掉线条幅照摆；成品还没到 ⇒ `null`，未知不当离线）。 */
+    val offline: StateFlow<String?> = backends.of(hostId).offline
+
     private val _reach = MutableStateFlow(Reach())
     val reach: StateFlow<Reach> = _reach.asStateFlow()
 

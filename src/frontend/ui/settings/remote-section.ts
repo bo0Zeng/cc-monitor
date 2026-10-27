@@ -203,6 +203,8 @@ export class RemoteSection {
   private readonly states = new Map<string, MachineState>();
   /** 各页最近一次喂进来的连接（数「几台离线」用）。 */
   private readonly connected = new Map<string, boolean | null>();
+  /** 各页最近一次喂进来的离线那一句（那台成品写的；没有 ⇒ 空串）。 */
+  private readonly offlineLines = new Map<string, string>();
 
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
   private original: RemoteConfig = { hosts: [] };
@@ -359,8 +361,11 @@ export class RemoteSection {
     if (meta) meta.textContent = this.listMetaOfPage(pageId);
   }
 
-  /** 宿主照后端的回答喂进来：那一行的点 · 词 · 问题行。 */
-  setConnected(pageId: string, connected: boolean | null, disabled = this.isDisabledPage(pageId)): void {
+  /**
+   * 宿主照后端的回答喂进来：那一行的点 · 词 · 问题行。断着时 `offlineLine` 是那台成品写的离线那一句（照摆）；
+   * 没有那一句（成品还没到，不知道 ≠ 离线）⇒ 照没问到画。
+   */
+  setConnected(pageId: string, given: boolean | null, offlineLine = this.offlineLines.get(pageId) ?? "", disabled = this.isDisabledPage(pageId)): void {
     const row = this.findMachineRow(pageId);
     if (!row) return;
     if (disabled) {
@@ -368,11 +373,13 @@ export class RemoteSection {
       this.paintCount();
       return;
     }
+    this.offlineLines.set(pageId, offlineLine);
+    const connected = given === false && offlineLine === "" ? null : given;
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
     if (dot) {
       if (connected === true) setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
-      else if (connected === false) setDot(dot, "failed", copyText("settingsNav.dot.down", { machine: name }));
+      else if (connected === false) setDot(dot, "failed", offlineLine);
       else setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
     }
     const word = row.querySelector<HTMLElement>(".remote-machine-word");
@@ -383,7 +390,7 @@ export class RemoteSection {
       problem.hidden = connected !== false;
       if (connected === false) {
         const text = document.createElement("span");
-        text.textContent = copyText("machinePage.problem.offline", { machine: name });
+        text.textContent = offlineLine;
         problem.append(icon("error", "compact"), text);
         if (pageId !== LOCAL_MACHINE_PAGE_ID) {
           problem.appendChild(

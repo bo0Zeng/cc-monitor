@@ -589,10 +589,7 @@ pub(crate) async fn forward(
     let deadline = tokio::time::Instant::now() + left;
     let feed = lock(table()).get(&machine).cloned();
     let unreachable = || {
-        Fail::new(
-            UNREACHABLE,
-            copy_core::copy_text("front.body.offline", &[("machine", &machine)]),
-        )
+        Fail::new(UNREACHABLE, comms_inward::chan::said::offline(&machine))
     };
     let Some(feed) = feed else {
         return Err(unreachable());

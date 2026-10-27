@@ -83,6 +83,13 @@ describe("↗ 结局族", () => {
       acts: [copyText("front.act.openHere")],
     });
     expect(shape({ kind: "desktop-wont-switch", desktop: "" })?.body, "桌面名读不到：不写空名字").toBe(copyText("front.body.desktopWontSwitchBare"));
+    expect(shape({ kind: "offline", said: "连接层写的那一句" }), "断开：连接层随失败交出的那一句照摆").toEqual({
+      title: copyText("front.title.failed"),
+      body: "连接层写的那一句",
+      hint: null,
+      tone: "red",
+      acts: [copyText("front.act.reconnect")],
+    });
     expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("reason.io.unknown"), hint: null, tone: "red", acts: [copyText("detail.act.copy")] });
   });
 

@@ -170,7 +170,7 @@ class TerminalOps(
         val m = machine()
         return when (val r = feed.call(command, args)) {
             is Reply.Ok -> decode(r.data)?.let { Result.success(it) } ?: Result.failure(Problem(unreadableReply(m, command, r.data.toString()).text))
-            else -> Result.failure(Problem(r.problem(m, command)?.text.orEmpty()))
+            else -> Result.failure(Problem(r.problem(m, command, feed.offline.value)?.text.orEmpty()))
         }
     }
 

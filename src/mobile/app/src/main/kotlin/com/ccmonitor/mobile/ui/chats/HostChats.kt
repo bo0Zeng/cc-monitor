@@ -77,9 +77,9 @@ class HostChats(
     private val syncing = Mutex()
 
     val state: StateFlow<HostSnap> =
-        combine(link.state, link.table, list, combine(cached, deploying, asked, ::Triple)) { l, t, got, (c, d, a) ->
-            HostSnap(hostId, machine, l, t, got, c, d, a)
-        }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk()))
+        combine(link.state, link.table, list, link.offline, combine(cached, deploying, asked, ::Triple)) { l, t, got, off, (c, d, a) ->
+            HostSnap(hostId, machine, l, t, got, c, d, a, off)
+        }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk(), link.offline.value))
 
     init {
         scope.launch { cached.value = syncing.withLock { held() }.takeIf { it.order.isNotEmpty() }?.let(HistoryList::page) }
@@ -160,7 +160,7 @@ class HostChats(
         when (reply) {
             // 同一个 BUILD_ID 下解不出 ＝ 应答缺必填格：同帧上缺格的应答一个说法（详情里是哪一条命令）。
             is Reply.Ok -> decode(reply.data)?.let { Fetched.Got(it) } ?: Fetched.Failed(unreadableReply(machine, command, reply.data.toString()))
-            else -> Fetched.Failed(reply.problem(machine, command) ?: unreadableReply(machine, command, reply.toString()))
+            else -> Fetched.Failed(reply.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, reply.toString()))
         }
 
     companion object {
@@ -191,6 +191,8 @@ data class HostSnap(
     val cached: HistoryListPage?,
     val deploying: Deploying?,
     val ask: ListAsk,
+    /** 那台成品写的离线那一句（[CoreLink.offline]；成品还没到 ⇒ `null`）。 */
+    val offline: String?,
 )
 
 /** 会话屏上的一行（各台并成一列之后，每行记着是哪台的）。 */
@@ -275,7 +277,7 @@ internal fun hostPart(
     return HostPart(
         hostId = s.hostId,
         machine = s.machine,
-        rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, s.machine, r, table) },
+        rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, s.offline, r, table) },
         groups = answer?.groups.orEmpty(),
         bar = bar,
         notice = answer?.notice,
@@ -293,18 +295,18 @@ private fun downLine(
 
 /**
  * 每行的脸：流上有它 ⇒ 流上最新那一份，否则清单那一行的。[table] 为 `null` ＝ 那台断着：那台说「看不见时照旧作数」的（已结束 · 记录已不在）照画，
- * 其余点画说不清、字写那台离线（断前的会话表与缓存里的状态都可能过时）。
+ * 其余点画说不清、字照那台成品写的离线那一句（断前的会话表与缓存里的状态都可能过时；成品还没到 ⇒ 状态不明）。
  */
 private fun rowOf(
     hostId: String,
-    machine: String,
+    offline: String?,
     r: HistoryRow,
     table: SessionBook?,
 ): ChatRow {
     val face = if (table == null) r.face.takeIf { it.settled } else table.face(r.sessionId) ?: r.face
     val (status, dot) =
         if (face == null) {
-            Toned(copyText("newSession.machine.offline", "machine" to machine), Tone.PLAIN) to SessionDot.UNKNOWN
+            Toned(offline ?: copyText("sessionState.unseen.name"), Tone.PLAIN) to SessionDot.UNKNOWN
         } else {
             Toned(face.name, face.tone) to face.dot
         }

@@ -75,9 +75,21 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
 /** 每台最近一份机器状态成品里的 `name`（`machine-feed` 收到一份记一份；名字只有后端那一台成品这一个来处）。 */
 const names = new Map<Origin, string>();
 
-/** 收到一台的成品：记下它的名字（只由 `machine-feed` 调）。 */
-export function noteMachineName(origin: Origin, name: string): void {
-  names.set(origin, name);
+/** 每台最近一份成品里的 `offlineSaid`（那台离线那一句，连接层写的）。 */
+const offlines = new Map<Origin, string>();
+
+/** 收到一台的成品：记下它的名字与离线那一句（只由 `machine-feed` 调）。 */
+export function noteMachine(origin: Origin, m: { readonly name: string; readonly offlineSaid: string }): void {
+  names.set(origin, m.name);
+  offlines.set(origin, m.offlineSaid);
+}
+
+/**
+ * 那台离线那一句：照那台成品的 `offlineSaid` 原样摆（连接层写好的，出口不另取字）。
+ * 成品还没到 ⇒ `null`：不知道 ≠ 离线，出口照自己「成品未到」那一态画。
+ */
+export function offlineSaid(origin: Origin): string | null {
+  return offlines.get(origin) ?? null;
 }
 
 /**

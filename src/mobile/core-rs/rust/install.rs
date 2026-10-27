@@ -80,7 +80,7 @@ pub fn start(h: i64, slots_json: &str, on: OnEvent) -> bool {
             KIND,
             failed_json(
                 "offline",
-                &copy_text("front.body.offline", &[("machine", &machine)]),
+                &comms_inward::chan::said::offline(&machine),
                 None,
             ),
         );

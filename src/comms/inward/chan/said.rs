@@ -50,6 +50,11 @@ pub fn said(e: &CallError, origin: &Origin) -> String {
     }
 }
 
+/// 那台离线那一句（`machine` 是给人看的称呼）。全产品只这一处取字：连接层交出的离线那一句都从这里来，出口照摆。
+pub fn offline(machine: &str) -> String {
+    copy_text("link.machine.offline", &[("machine", machine)])
+}
+
 /// 对端拒了：它写的那一句原样；没写（空 · 体读不出）⇒「{machine} 后端拒绝 · 原因不明」。
 pub fn refused(message: &str, origin: &Origin) -> String {
     if message.trim().is_empty() {

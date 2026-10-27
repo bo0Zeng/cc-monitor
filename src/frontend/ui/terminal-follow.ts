@@ -11,7 +11,7 @@
  *   这里不按码挑词：只有通道这一层的事（那台断开 · 那台后端太旧不认这条命令 · 回的东西读不懂）由这里说。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, isOldBackend, machineName, refusalIn } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, isOldBackend, offlineSaid, refusalIn } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import { tryDecodeJson } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
@@ -60,8 +60,11 @@ export interface Follow {
 
 let tickets = 0;
 
-/** 停了 · 那台断开（通道这一层的事）。 */
-const offline = (origin: Origin): FollowStop => ({ kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: machineName(origin) }), offline: true });
+/** 停了 · 那台断开（通道这一层的事）：那一句照那台成品的离线那一句；成品还没到（不知道 ≠ 离线）⇒ 照画面中断。 */
+const offline = (origin: Origin): FollowStop => {
+  const said = offlineSaid(origin);
+  return said === null ? lost() : { kind: "stopped", said, offline: true };
+};
 /** 停了 · 读不懂那台说的（画面中断）。 */
 const lost = (): FollowStop => ({ kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false });
 

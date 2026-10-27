@@ -69,6 +69,7 @@ import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError, machineName } from "../control-said";
+import { offlineSaid } from "../ipc/chan-caller";
 import { focusRotation, RotationSection } from "./rot-section";
 
 /**
@@ -529,24 +530,29 @@ export class SettingsPanel {
     }
   }
 
-  /** 导航里那台机器前的点：连着 · 离线 · 没问到。 */
-  private paintNavDot(origin: string, connected: boolean | null): void {
-    this.channelOf.set(origin, connected);
+  /**
+   * 导航里那台机器前的点：连着 · 离线 · 没问到。离线那一句照那台成品写的那一句；
+   * 成品还没到（不知道 ≠ 离线）⇒ 照没问到画。
+   */
+  private paintNavDot(origin: string, given: boolean | null): void {
+    this.channelOf.set(origin, given);
     const local = isLocalOrigin(origin);
     const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
     if (!pageId) return;
     const machine = machineName(origin);
-    this.remoteSection?.setConnected(pageId, connected);
+    const offlineLine = offlineSaid(origin) ?? "";
+    const connected = given === false && offlineLine === "" ? null : given;
+    this.remoteSection?.setConnected(pageId, connected, offlineLine);
     if (!local && this.remoteSection?.isDisabledPage(pageId)) {
       this.machinePages.get(pageId)?.setDisabled(true);
       this.router.setNavDot(pageId, "exited", copyText("settingsNav.dot.disabled", { machine }));
       return;
     }
     this.machinePages.get(pageId)?.setDisabled(false);
-    this.machinePages.get(pageId)?.setConnected(connected);
+    this.machinePages.get(pageId)?.setConnected(connected, offlineLine);
     this.machinePages.get(pageId)?.setCcSummary(this.ccSummary(origin, connected));
     if (connected === true) this.router.setNavDot(pageId, "up", copyText("settingsNav.dot.up", { machine }));
-    else if (connected === false) this.router.setNavDot(pageId, "failed", copyText("settingsNav.dot.down", { machine }));
+    else if (connected === false) this.router.setNavDot(pageId, "failed", offlineLine);
     else this.router.setNavDot(pageId, "unknown", copyText("settingsNav.dot.unknown", { machine }));
   }
 
@@ -838,7 +844,7 @@ export class SettingsPanel {
     if (parts) page.slots.config.appendChild(parts.terminal);
     this.machinePages.set(pageId, page);
     this.machineTabSlots.set(pageId, { acct: page.slots.acct, rot: page.slots.rot, term: page.slots.config });
-    if (origin) page.setConnected(this.channelOf.get(origin) ?? null);
+    if (origin) page.setConnected(this.channelOf.get(origin) ?? null, offlineSaid(origin) ?? "");
     return page;
   }
 

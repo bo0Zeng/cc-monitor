@@ -15,6 +15,7 @@ import { ChanError, type Item } from "../../../src/comms/inward/chan";
 import { startFollow, TERMINAL_SCREEN_KIND, ACK_GAP_MS, type FollowPort, type FollowEvents, type FollowStop } from "../../../src/frontend/ui/terminal-follow";
 import type { TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { noteMachine } from "../../../src/frontend/ui/ipc/chan-caller";
 import { REPO_ROOT } from "../../test-support/repo-root";
 
 const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/terminals.golden.json"), "utf8")) as Record<string, { reply: Record<string, unknown> }>;
@@ -175,8 +176,9 @@ describe("停", () => {
     }
   });
 
-  it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开）；读不懂的一格 · 收尾没有那一句 ⇒ 停了（画面中断）", async () => {
-    const offline = { kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: "devbox" }), offline: true };
+  it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开，那一句照成品）；读不懂的一格 · 收尾没有那一句 ⇒ 停了（画面中断）", async () => {
+    noteMachine("devbox", { name: "devbox", offlineSaid: "成品写的 devbox 离线那一句" });
+    const offline = { kind: "stopped", said: "成品写的 devbox 离线那一句", offline: true };
     const lost = { kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false };
     for (const [item, want] of [
       [{ t: "closed", by: { ours: "Broken" } }, offline],
@@ -193,6 +195,15 @@ describe("停", () => {
       expect(r.stops).toEqual([want]);
       expect(r.subs[0].stopped).toBe(true);
     }
+  });
+
+  it("流断了、那台成品还没到（不知道 ≠ 离线）⇒ 不说离线，照画面中断", async () => {
+    const r = rig();
+    startFollow("box-no-product", "tmux-1", r.events, r.port);
+    await flush();
+    r.subs[0].sink([{ t: "gap", fromSeq: 0, toSeq: 1 }]);
+    await flush();
+    expect(r.stops).toEqual([{ kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false }]);
   });
 
   it("★★ 订不上：后端说「只能快照 / 停了」＋ 那一句，原样交；后端旧 ⇒ 只能快照；通道不通 ⇒ 停了（那台断开）；那一句都是 monitor 写的", async () => {

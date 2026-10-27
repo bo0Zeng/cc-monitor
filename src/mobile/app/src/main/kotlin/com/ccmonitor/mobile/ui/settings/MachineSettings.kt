@@ -214,14 +214,14 @@ class MachineSettings(
         r: Reply?,
         command: String?,
     ) {
-        val why = if (r != null && command != null) r.problem(machine, command)?.text else null
+        val why = if (r != null && command != null) r.problem(machine, command, link.offline.value)?.text else null
         _state.update { it.copy(note = listOfNotNull(head, why).joinToString(copyText("kit.text.sep"))) }
     }
 
     private fun failed(
         r: Reply,
         command: String,
-    ): Problem = r.problem(machine, command) ?: unreadableReply(machine, command, r.toString())
+    ): Problem = r.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, r.toString())
 
     companion object {
         private const val READ_MS = 15_000L

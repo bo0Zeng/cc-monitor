@@ -429,7 +429,7 @@ class ChatSession(
                     ?: failed(unreadableReply(machine, SessionSay.COMMAND, r.data.toString()).text)
             // 期限到了：发出去了、不知道送没送到 ⇒ 不重发。
             Reply.TimedOut -> unsure(machine)
-            else -> failed(r.problem(machine, SessionSay.COMMAND)?.text)
+            else -> failed(r.problem(machine, SessionSay.COMMAND, link.offline.value)?.text)
         }
 
     private fun mark(
@@ -473,7 +473,7 @@ class ChatSession(
                 is Reply.Ok ->
                     SessionOpen.of(r.data)?.let { a -> a.cwd?.let { a to it } }
                         ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
-                else -> return failSession(r.problem(machine, SessionOpen.COMMAND)?.text)
+                else -> return failSession(r.problem(machine, SessionOpen.COMMAND, link.offline.value)?.text)
             }
         val arrived =
             when (val a = arrivalOf(link, machine, answer, arrivalMs)) {
@@ -567,7 +567,7 @@ class ChatSession(
     /** 只有会话 id：问那台 `history-facts {sid}`，它在自己的记录树里找那份记录（回包的 `path`）；找不到 · 问不到 ⇒ 那台写好的那一句上屏。 */
     private suspend fun byId(s: String): Pair<String, FactsReply>? {
         val r = link.call(HistoryFacts.COMMAND, HistoryFacts.bySid(s), READ_MS)
-        if (r !is Reply.Ok) return null.also { failSession(r.problem(machine, HistoryFacts.COMMAND)?.text) }
+        if (r !is Reply.Ok) return null.also { failSession(r.problem(machine, HistoryFacts.COMMAND, link.offline.value)?.text) }
         val f = HistoryFacts.of(r.data)
         val p = f?.path ?: return null.also { failSession(unreadableReply(machine, HistoryFacts.COMMAND, r.data.toString()).text) }
         return p to f
@@ -747,7 +747,7 @@ class ChatSession(
             val r = link.call(HistoryLines.COMMAND, HistoryLines.args(p, nextSeq, until), READ_MS)
             val page =
                 (r as? Reply.Ok)?.let { HistoryLines.of(it.data) }
-                    ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
+                    ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND, link.offline.value)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
             take(page.records) { body.append(it) }
             more = page.next > nextSeq && !page.eof
             nextSeq = maxOf(nextSeq, page.next)
@@ -918,7 +918,7 @@ private suspend fun arrivalOf(
     return when {
         end is ArriveEnd.Arrived -> Arrival.Sid(end.sid)
         end is ArriveEnd.Missed -> Arrival.Missed(end.said)
-        r !is Reply.Ok -> Arrival.Missed(r.problem(machine, SessionArrive.COMMAND)?.text)
+        r !is Reply.Ok -> Arrival.Missed(r.problem(machine, SessionArrive.COMMAND, link.offline.value)?.text)
         else -> Arrival.Missed(unreadableReply(machine, SessionArrive.COMMAND, r.data.toString()).text)
     }
 }

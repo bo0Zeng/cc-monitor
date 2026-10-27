@@ -362,6 +362,8 @@ pub struct MachineState {
     pub word: String,
     /// 问题行那一句（空 ⇒ 不出问题行）。
     pub said: String,
+    /// 那台离线那一句（恒有，连接层写的；哪一态都带着）。出口要说那台离线时照摆这一句，不各自取字。
+    pub offline_said: String,
     pub fixes: Vec<FixButton>,
     /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
     pub seen_host_key: Option<String>,

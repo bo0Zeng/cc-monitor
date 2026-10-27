@@ -411,7 +411,7 @@ class RotationBoard(
     private fun problemOf(
         r: Reply,
         command: String,
-    ): Problem = r.problem(machine, command) ?: unreadableReply(machine, command, r.toString())
+    ): Problem = r.problem(machine, command, link.offline.value) ?: unreadableReply(machine, command, r.toString())
 
     private companion object {
         const val READ_MS = 15_000L

@@ -10,11 +10,11 @@
  */
 import { copyText } from "./copy-table";
 import { chan, ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, machineName, ReplyUnreadable } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, machineName, offlineSaid, ReplyUnreadable } from "./ipc/chan-caller";
 import { failToast, type ToastAction } from "./kit/toast";
 import type { Origin } from "./ipc/origin";
 
-export { machineName };
+export { machineName, offlineSaid };
 
 /**
  * 界面自己判出来的没做成（空消息不发 · 名单里没有它 …）：`message` 是那一句，`detail` 是复制详情（没有 ⇒ 空串）。

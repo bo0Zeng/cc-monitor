@@ -517,7 +517,7 @@ fn rebuff_of(machine: &str, cmd: &str, e: CallError) -> Rebuff {
         .get("message")
         .and_then(|m| m.as_str())
         .map(str::to_string)
-        .unwrap_or_else(|| copy_core::copy_text("front.body.offline", &[("machine", machine)]));
+        .unwrap_or_else(|| comms_inward::chan::said::offline(machine));
     Rebuff {
         failed: Failed {
             code: None,
