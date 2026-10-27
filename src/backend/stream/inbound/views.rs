@@ -100,8 +100,7 @@ pub(crate) const STREAM_PLACES: &[(&str, &[(&str, &str)])] = &[
     ("line", &[("record", "record")]),
     ("session_added", &[("", "session_added")]),
     ("session_status", &[("", "session_status")]),
-    ("session_state", &[("", "session_state")]),
-    ("session_removed", &[("", "session_removed")]),
+    ("session_left", &[("", "session_left")]),
 ];
 
 /// **一条流的出口声明**（流模式起参 `--view`）：与请求信封的 `view` 同一套词、同一处解（[`parse_view`]）、
@@ -126,7 +125,7 @@ impl StreamView {
             .collect();
         if !stray.is_empty() {
             return Err(format!(
-                "view names {} but the stream carries record, session_added, session_status, session_state, session_removed",
+                "view names {} but the stream carries record, session_added, session_status, session_left",
                 stray.join(", ")
             ));
         }

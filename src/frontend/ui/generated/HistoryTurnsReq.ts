@@ -13,6 +13,14 @@ path: string,
  */
 from?: number | null, 
 /**
+ * 任一字节：从包着它的那一轮起（只拉了记录后半截的一端拿已拉到的最上面那一行问）；与 `from` 都给以它为准。
+ */
+cover?: number | null, 
+/**
+ * 只出开头在这个字节之前的轮（缺 ⇒ 到文件尾）；截在这里 ⇒ 没有下一页、`end` ＝ 它。
+ */
+to?: number | null, 
+/**
  * 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };

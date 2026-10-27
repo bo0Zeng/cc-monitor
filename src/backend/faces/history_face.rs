@@ -348,6 +348,14 @@ pub(crate) struct HistoryRunReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
     pub(crate) from: Option<u64>,
+    /// 从尾巴读（在跑的那一个从底部读起）：回记录里最后一页；与 `from` 都给以它为准。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "boolean | null"))]
+    pub(crate) tail: Option<bool>,
+    /// 往前再读一页：读到这个字节为止（拿上一页的 `from`）；给了就是往前读，与 `from` 都给以它为准。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) before: Option<u64>,
 }
 
 /// `history-run` 的回包。
@@ -361,6 +369,9 @@ pub(crate) struct HistoryRun {
     pub(crate) path: String,
     /// 这一页里每一条进界面的记录。
     pub(crate) rows: Vec<RunRow>,
+    /// 这一页从哪个字节起（行头）：往前再读一页拿它当 `before`；0 ⇒ 前面没有了。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) from: u64,
     /// 读到哪了（最后一个整行之后）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) end: u64,
@@ -422,15 +433,23 @@ pub(crate) fn run_at(
             .map_err(&lower)?;
     let path = source.to_string_lossy().into_owned();
     let (_, face) = record_face(home, &path).map_err(&lower)?;
-    let page = body::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
-        .map_err(&lower)?;
-    let rows = crate::observe::query::body::run_rows(&mut reader(&face, tz), from, &page.bytes);
+    let (from, bytes, end, more) = if req.tail == Some(true) || req.before.is_some() {
+        let page = body::read_back(home, &path, req.before, READ_PAGE_BYTES, LINE_CAP_BYTES)
+            .map_err(&lower)?;
+        (page.from, page.bytes, page.end, page.more)
+    } else {
+        let page = body::read_page(home, &path, from, None, READ_PAGE_BYTES, LINE_CAP_BYTES)
+            .map_err(&lower)?;
+        (from, page.bytes, page.next, !page.eof)
+    };
+    let rows = crate::observe::query::body::run_rows(&mut reader(&face, tz), from, &bytes);
     let reply = HistoryRun {
         run,
         path,
         rows,
-        end: page.next,
-        more: !page.eof,
+        from,
+        end,
+        more,
     };
     match over_cap(&reply) {
         Some(said) => Err(HistoryRunErr::TooLarge(said)),
@@ -1409,7 +1428,7 @@ pub(crate) fn kin_of(
     let kin = |k: &str| Kin {
         sid: k.to_string(),
         title: title_here(k, &annotations),
-        face: crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(live.life_of(k)))),
+        face: crate::wire::SessionFace::of(crate::wire::Life::of_wire(&live.life_of(k))),
         hidden: crate::history::session_hidden::hidden_here(
             here,
             &annotations,

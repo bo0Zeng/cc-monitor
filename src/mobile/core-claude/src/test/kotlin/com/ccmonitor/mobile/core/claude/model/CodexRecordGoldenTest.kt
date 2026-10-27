@@ -6,13 +6,12 @@ import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.obj
 import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.wire.Wire
-import com.ccmonitor.mobile.core.wire.gen.FaceLive
+import com.ccmonitor.mobile.core.wire.gen.Allow
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.SessionAdded
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.core.wire.gen.SessionStatus
 import com.ccmonitor.mobile.core.wire.gen.Tone
-import com.ccmonitor.mobile.core.wire.gen.WireSessionActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -146,12 +145,12 @@ class CodexRecordGoldenTest {
                     } ?: error("会话帧解不开：$f")
                 if (tones.lastOrNull() != face.tone || tones.isEmpty()) tones += face.tone
                 texts += face.name
-                val r = (face.live as? FaceLive.Yes)?.activity == WireSessionActivity.WORKING
+                val r = face.can.stop == Allow.Yes
                 if (running.lastOrNull() != r) running += r
             }
         // 宣告不等记录：这一家没有进程状态文件，宣告那一帧判不出在干什么 ⇒ 核心照实写「读记录中」、语气 plain；读完记录紧跟一帧说空闲。
         assertEquals(listOf(Tone.PLAIN, Tone.NOW, Tone.PLAIN, Tone.NOW, Tone.PLAIN), tones)
-        // 停止键：读记录中不亮（判不出），一轮开始才亮、一轮完了就灭。
+        // 停止键照那台说的停得下：读记录中不亮（判不出），一轮开始才亮、一轮完了就灭。
         assertEquals(listOf(false, true, false, true, false), running)
         // 「运行中」那一句取自同一份金样里真在跑的那一帧（核心写的字，手机不另存）。
         val working =
@@ -159,7 +158,7 @@ class CodexRecordGoldenTest {
                 .readLines()
                 .mapNotNull(Json::obj)
                 .mapNotNull { it.obj("face") }
-                .first { it.obj("live")?.str("activity") == "working" }
+                .first { it.obj("life")?.str("activity") == "working" }
                 .str("name")
         assertNotEquals("宣告那一帧判不出就不许先说运行中", working, texts.first())
     }

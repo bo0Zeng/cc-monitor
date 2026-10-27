@@ -790,6 +790,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "children[].face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "children[].face.can.term.can",
           "type": "string"
         },
@@ -807,20 +813,20 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "children[].face.line",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
-          "path": "children[].face.live.activity",
+          "path": "children[].face.life.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.live.is",
+          "path": "children[].face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "children[].face.line",
           "type": "string"
         },
         {
@@ -1354,6 +1360,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "startedBy.face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "startedBy.face.can.term.can",
           "type": "string"
         },
@@ -1371,20 +1383,20 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "startedBy.face.line",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.live.activity",
+          "path": "startedBy.face.life.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.live.is",
+          "path": "startedBy.face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "startedBy.face.line",
           "type": "string"
         },
         {
@@ -1629,6 +1641,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.stop.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "face.can.term.can",
           "type": "string"
         },
@@ -1646,20 +1670,20 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "face.line",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
-          "path": "face.live.activity",
+          "path": "face.life.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live.is",
+          "path": "face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
           "type": "string"
         },
         {
@@ -2146,6 +2170,18 @@
           "type": "string"
         },
         {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.stop.why",
+          "type": "string"
+        },
+        {
           "frozen": false,
           "kind": "value",
           "path": "face.can.term.can",
@@ -2164,21 +2200,21 @@
           "type": "enum"
         },
         {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.line",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
-          "path": "face.live.activity",
+          "path": "face.life.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live.is",
+          "path": "face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
           "type": "string"
         },
         {
@@ -2343,6 +2379,18 @@
           "type": "string"
         },
         {
+          "frozen": true,
+          "kind": "value",
+          "path": "face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.stop.why",
+          "type": "string"
+        },
+        {
           "frozen": false,
           "kind": "value",
           "path": "face.can.term.can",
@@ -2361,21 +2409,21 @@
           "type": "enum"
         },
         {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.line",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
-          "path": "face.live.activity",
+          "path": "face.life.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live.is",
+          "path": "face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
           "type": "string"
         },
         {
@@ -2518,6 +2566,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.can.stop.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "face.can.term.can",
           "type": "string"
         },
@@ -2540,15 +2600,21 @@
           "type": "enum"
         },
         {
-          "frozen": false,
-          "kind": "text",
-          "path": "face.line",
+          "frozen": true,
+          "kind": "value",
+          "path": "face.life.by",
           "type": "string"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.live.is",
+          "path": "face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "face.line",
           "type": "string"
         },
         {
@@ -2592,44 +2658,9 @@
           "kind": "value",
           "path": "sid",
           "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "state",
-          "type": "enum"
         }
       ],
-      "name": "session_state"
-    },
-    {
-      "cells": [
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "by",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "cause",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "kind",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "sid",
-          "type": "string"
-        }
-      ],
-      "name": "session_removed"
+      "name": "session_left"
     },
     {
       "cells": [
@@ -3499,6 +3530,18 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "up.*.face.can.stop.can",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.can.stop.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "up.*.face.can.term.can",
           "type": "string"
         },
@@ -3521,21 +3564,21 @@
           "type": "enum"
         },
         {
-          "frozen": false,
-          "kind": "text",
-          "path": "up.*.face.line",
-          "type": "string"
-        },
-        {
           "frozen": true,
           "kind": "value",
-          "path": "up.*.face.live.activity",
+          "path": "up.*.face.life.activity",
           "type": "enum"
         },
         {
           "frozen": false,
           "kind": "value",
-          "path": "up.*.face.live.is",
+          "path": "up.*.face.life.is",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "up.*.face.line",
           "type": "string"
         },
         {

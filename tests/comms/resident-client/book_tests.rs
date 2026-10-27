@@ -58,11 +58,6 @@ fn a_left_session_announced_again_is_live_again_and_other_frames_do_not_touch_th
     if let Ok(f) = decode::<serde_json::Value>(other) {
         assert!(!b.fold(&f), "不是会话帧 ⇒ 不动");
     }
-    let plain = r#"{"kind":"session_removed","sid":"d"}"#;
-    assert!(
-        !b.fold(&decode::<serde_json::Value>(plain).unwrap()),
-        "没有顶替 ⇒ 去向等 session_state"
-    );
     assert_eq!(b, before);
     b.forget("c");
     assert!(b.seat("c").is_none());

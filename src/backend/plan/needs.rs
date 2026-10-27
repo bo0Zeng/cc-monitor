@@ -20,9 +20,9 @@ use copy_core::copy_text;
 
 /// 一个 id 对到的会话（`PlanWho`）此刻活不活：活着 ⇒ `Some(在干什么)`；不活 · 认不出 ⇒ `None`。只读那一格的整份脸。
 pub(crate) fn live_of(who: &PlanWho) -> Option<Option<crate::agents::SessionActivity>> {
-    match who.face.live {
-        crate::wire::FaceLive::Yes { activity } => Some(activity),
-        crate::wire::FaceLive::No => None,
+    match who.face.life {
+        crate::wire::WireLife::Live { activity } => Some(activity),
+        _ => None,
     }
 }
 

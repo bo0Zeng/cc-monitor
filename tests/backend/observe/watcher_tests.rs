@@ -116,9 +116,10 @@ fn frames_that_move_a_row_ring_the_list_node_once_per_session() {
     sink.send(line(2));
     sink.send(line(3));
     assert!(!list_rang(&mut list), "同一个会话还没答过清单 ⇒ 不再响");
-    sink.send(Frame::session_state(
+    sink.send(Frame::session_left(
         "b".into(),
-        crate::wire::SessionFate::Ended,
+        crate::wire::Life::Ended,
+        None,
         None,
     ));
     assert!(list_rang(&mut list), "别的会话结束了 ⇒ 响");
@@ -794,10 +795,10 @@ fn appending_lines_advances_offset_and_seq_monotonically() {
 
 #[test]
 fn byte_offset_matches_mobile_lineframer() {
-    // backend-01（gap#2）：Line.byte_offset **逐字节对齐手机端 `LineFramer.endOffset`**——计 CRLF 的 `\r`、
-    // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自手机端 LineFramerTest 的关键语料。
+    // Line.byte_offset 是本行末尾（含 `\n`）的累计**原始字节**偏移 ＝ 下一行的起点（两端拿它续读）——计 CRLF 的 `\r`、
+    // 含 `\n`、残行不计、在原始字节上算（非解码后串）。下面的语料逐条钉这几样。
     let mut seqs = SeqCounter::new();
-    // 手机端 feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
+    // "你\r\nx\n" → byte_offset [5,7]
     // 你=3B + \r + \n = 5；x + \n = 2 → 累计 7。raw 剥 \r/\n。
     let (out, cur) = read_new_lines(
         "你\r\nx\n".as_bytes(),
@@ -1406,8 +1407,8 @@ fn sid_change_in_place_retires_old_sid() {
         // ★ S0：原地换 sid 的 removed 必须带 `Superseded`——monitor 靠它区分
         // 「死了（tmux 还在 ⇒ 灰点）」和「被顶替了（⇒ 直接归档）」。
         // 顶替它的是谁也说（`by`）：同一个进程、同一个终端里新起的那份记录，客户端照它跟过去，不自己拿 pid 对。
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, by }))
-            if sid == "sid-1" && cause == RemovalCause::Superseded && by.as_deref() == Some("sid-2")),
+        matches!(rx.try_recv(), Ok(Frame::SessionLeft(crate::wire::SessionLeft { sid, face }))
+            if sid == "sid-1" && face.life == crate::wire::WireLife::Ended { by: Some("sid-2".into()) }),
         "old sid must be retired BEFORE the new announcement, naming the one that replaced it"
     );
     assert!(
@@ -1583,8 +1584,8 @@ fn same_sid_two_pidfiles_refcount() {
     // 删第二个 → 归零 → Removed 恰一次
     process_session_removed(&p2, &mut state, &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, by }))
-        if sid == "shared-sid" && cause == RemovalCause::Gone && by.is_none())
+        matches!(rx.try_recv(), Ok(Frame::SessionLeft(crate::wire::SessionLeft { sid, face }))
+        if sid == "shared-sid" && face.life == crate::wire::WireLife::Ended { by: None })
     );
     assert!(!state.active_sids.contains("shared-sid"));
     assert!(rx.try_recv().is_err());
@@ -1620,8 +1621,8 @@ fn plain_lifecycle_regression() {
     );
     process_session_removed(&path, &mut state, &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, by }))
-        if sid == "solo" && cause == RemovalCause::Gone && by.is_none())
+        matches!(rx.try_recv(), Ok(Frame::SessionLeft(crate::wire::SessionLeft { sid, face }))
+        if sid == "solo" && face.life == crate::wire::WireLife::Ended { by: None })
     );
     assert!(state.sessions.is_empty() && state.active_sids.is_empty());
     std::fs::remove_dir_all(&dir).ok();
@@ -1733,8 +1734,8 @@ fn status_diff_emits_session_status_frame() {
         })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face.live,
-                crate::wire::FaceLive::Yes {
+                face.life,
+                crate::wire::WireLife::Live {
                     activity: Some(SessionActivity::Working)
                 },
                 "适配层翻好的活动态"
@@ -1762,8 +1763,8 @@ fn status_diff_emits_session_status_frame() {
         })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
-                face.live,
-                crate::wire::FaceLive::Yes {
+                face.life,
+                crate::wire::WireLife::Live {
                     activity: Some(SessionActivity::NeedsYou)
                 }
             );
@@ -1780,7 +1781,7 @@ fn status_diff_emits_session_status_frame() {
             face,
             waiting_for: None,
             ..
-        })) if face.live == crate::wire::FaceLive::Yes { activity: Some(SessionActivity::Idle) }
+        })) if face.life == crate::wire::WireLife::Live { activity: Some(SessionActivity::Idle) }
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1837,8 +1838,8 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         })) => {
             assert_eq!(name_face.label.0, "乙");
             assert_eq!(
-                face.live,
-                crate::wire::FaceLive::Yes {
+                face.life,
+                crate::wire::WireLife::Live {
                     activity: Some(crate::agents::SessionActivity::Working)
                 },
                 "整份脸照记着的那一态带全"
@@ -3126,7 +3127,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
 /// 起步那一下「先挂耳朵、再初扫」（[`arm_then_scan`]）：挂耳朵那一刻之后、初扫之前落下的 pidfile 由初扫报出
 /// （原先先扫后挂，这一形两头都看不见 —— e2e `resume-frames` 间歇红的根因）。
 /// 扫的过程中排队的事件交给主循环时都不再出帧：已报过的再来一次「有动静」不重报；初扫之前就没了的那份，
-/// 它的「删掉了」不冒出一条从没 added 过的 `session_removed`。
+/// 它的「删掉了」不冒出一条从没 added 过的 离开那一帧（`session_left`）。
 #[test]
 fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
     let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
@@ -3675,7 +3676,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
                 Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => {
                     format!("added {sid}")
                 }
-                Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => {
+                Frame::SessionLeft(crate::wire::SessionLeft { sid, .. }) => {
                     format!("removed {sid}")
                 }
                 other => kind_of(&other),
@@ -4868,8 +4869,8 @@ fn a_busy_session_silent_past_the_window_is_not_announced_as_working() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
     assert_eq!(
-        face_of(&added).map(|f| f.live),
-        Some(crate::wire::FaceLive::Yes { activity: None }),
+        face_of(&added).map(|f| f.life.clone()),
+        Some(crate::wire::WireLife::Live { activity: None }),
         "心跳停了 16 分钟、进程还在 ⇒ 不是在跑：{added:?}"
     );
     std::fs::remove_dir_all(&dir).ok();
@@ -4889,8 +4890,8 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
     assert_eq!(
-        face_of(&added).map(|f| f.live),
-        Some(crate::wire::FaceLive::Yes {
+        face_of(&added).map(|f| f.life.clone()),
+        Some(crate::wire::WireLife::Live {
             activity: Some(SessionActivity::Working)
         }),
         "一秒前还有动静 ⇒ 在跑"
@@ -4903,8 +4904,8 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     let f = rx.try_recv().expect("过了时限 ⇒ 发一帧 session_status");
     assert!(matches!(f, Frame::SessionStatus(_)), "{f:?}");
     assert_eq!(
-        face_of(&f).map(|f| f.live),
-        Some(crate::wire::FaceLive::Yes { activity: None })
+        face_of(&f).map(|f| f.life.clone()),
+        Some(crate::wire::WireLife::Live { activity: None })
     );
     assert_eq!(
         face_of(&f).map(|f| f.dot),
@@ -4929,8 +4930,11 @@ fn a_working_session_goes_unclear_when_its_beat_stops_and_back_when_it_writes() 
     process_jsonl(&rec, &mut state, &mut sink);
     let back: Vec<Frame> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
     assert!(
-        back.iter().filter_map(face_of).last().map(|f| f.live)
-            == Some(crate::wire::FaceLive::Yes {
+        back.iter()
+            .filter_map(face_of)
+            .last()
+            .map(|f| f.life.clone())
+            == Some(crate::wire::WireLife::Live {
                 activity: Some(SessionActivity::Working)
             }),
         "记录一写 ⇒ 最后一帧回到在跑：{back:?}"
@@ -4956,8 +4960,8 @@ fn waiting_sessions_and_ones_with_running_children_are_not_judged_frozen() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let added = rx.try_recv().expect("宣告那一帧");
     assert_eq!(
-        face_of(&added).map(|f| f.live),
-        Some(crate::wire::FaceLive::Yes {
+        face_of(&added).map(|f| f.life.clone()),
+        Some(crate::wire::WireLife::Live {
             activity: Some(SessionActivity::NeedsYou)
         })
     );

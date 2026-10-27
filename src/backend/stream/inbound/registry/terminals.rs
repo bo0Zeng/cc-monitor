@@ -25,6 +25,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalsListCmd>(
         "这台的终端名单（形状与宿主无关；这一版宿主是 tmux）",
     ),
+    // 「终端」视图那张名单（`faces/terminals_board_face.rs`）：这台那几行写成成品（阻塞档：起 tmux · 读活会话表）；
+    //   本机后端问到各台合成一份（异步档：别的台经常驻问 `terminals-board-here`，没答的进那一组的 `down`）。
+    crate::wire::typed::blocking::<crate::faces::terminals_board_face::TerminalsBoardHereCmd>(
+        "这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好）",
+    ),
+    crate::wire::typed::asynchronous::<crate::faces::terminals_board_face::TerminalsBoardCmd>(
+        "「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数）",
+    ),
     crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalPreviewCmd>(
         "抓一个终端的一屏（只抓一次，轮询归调用方）",
     ),

@@ -6,7 +6,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
 import com.ccmonitor.mobile.core.wire.gen.Annotated
-import com.ccmonitor.mobile.core.wire.gen.FaceLive
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryHead
@@ -18,7 +17,6 @@ import com.ccmonitor.mobile.core.wire.gen.NeedsRow
 import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionFace
 import com.ccmonitor.mobile.core.wire.gen.Tone
-import com.ccmonitor.mobile.core.wire.gen.WireSessionActivity
 
 /*
  * 核心成品的解码：只认格、不判、不写字。每一格的意思以 `IPC-COMMANDS.md` 为准；
@@ -55,8 +53,8 @@ fun SessionBook.faces(): Map<String, SessionFace> = left.mapValues { it.value.fa
 /** 那一条的记录被从头重读过几回（`session_file_reread`）：值变了 ⇒ 读过的那一代作废、整份重来。 */
 fun SessionBook.generation(sid: String): Long = rereads[sid] ?: 0L
 
-/** 那台判得出那一条一轮在跑（聊天屏的停止键只认它）；判不出 · 不在 ⇒ 不算。 */
-fun SessionBook.running(sid: String): Boolean = (face(sid)?.live as? FaceLive.Yes)?.activity == WireSessionActivity.WORKING
+/** 那台说那一条此刻停得下（`face.can.stop`，一轮在跑时才是；聊天屏的停止键只认它）；不在 ⇒ 不算。 */
+fun SessionBook.canStop(sid: String): Boolean = face(sid)?.can?.stop == Allow.Yes
 
 /** `sessions-needs`：这台需手动的整份（在等的会话 · 计划格 · 会话外的），那台排好——出口照这个先后，不另排。核心按 `cmd-wire` 那一份解过。 */
 object SessionsNeeds {

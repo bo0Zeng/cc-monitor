@@ -630,10 +630,9 @@ impl SearchIndex {
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
                     let life = live.life_of(&session.session_id);
-                    session.face =
-                        crate::wire::SessionFace::of(crate::wire::Life::of_row(Some(life)));
+                    session.face = crate::wire::SessionFace::of(crate::wire::Life::of_wire(&life));
                     session.is_bg = bg;
-                    session.can = crate::history::listing::can_of(&session.agent, Some(life), bg);
+                    session.can = crate::history::listing::can_of(&session.agent, &life, bg);
                     found.push(session);
                 }
             }
@@ -842,7 +841,7 @@ fn session_row(
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
         can: crate::history::listing::can_of(
             &agent,
-            Some(crate::history::listing::RowLife::Ended),
+            &crate::wire::WireLife::Ended { by: None },
             false,
         ),
         face: crate::wire::SessionFace::of(crate::wire::Life::Ended),

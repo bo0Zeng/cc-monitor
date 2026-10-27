@@ -1,6 +1,6 @@
 /**
- * 会话的脸按流里到达的先后落：`added` · `status` · `state` 三格都带整份脸，界面只走一条路（与行同一个队列）落它们，
- * 后到的盖先到的。曾经 `state` 进队列、`status` / `added` 当场派 ⇒ 「可重连 → 活」这一串里排在后面的旧「已退出」
+ * 会话的脸按流里到达的先后落：`added` · `status` · `left` 三格都带整份脸，界面只走一条路（与行同一个队列）落它们，
+ * 后到的盖先到的。曾经去向那一格进队列、`status` / `added` 当场派 ⇒ 「可重连 → 活」这一串里排在后面的旧「已退出」
  * 盖掉「空闲」，之后真退出脸不变、探针也不打。
  */
 import { describe, expect, it, vi } from "vitest";
@@ -43,9 +43,9 @@ async function run(frames: unknown[], faces = frames.length): Promise<{ dots: st
 describe("会话的脸按到达先后落（一条路）", () => {
   it("可重连 → 活（status）：最后是「空闲」；之后真退出 ⇒ 落「已退出」", async () => {
     const { dots, names } = await run([
-      { state: { sid: "s", state: "reconnectable", face: face("exited") } },
+      { left: { sid: "s", face: face("exited") } },
       { status: { sid: "s", face: face("idle"), label } },
-      { state: { sid: "s", state: "reconnectable", face: face("exited") } },
+      { left: { sid: "s", face: face("exited") } },
     ]);
     expect(dots).toEqual(["exited", "idle", "exited"]);
     expect(names, "名字跟着那一格走").toEqual(["s"]);
@@ -53,7 +53,7 @@ describe("会话的脸按到达先后落（一条路）", () => {
 
   it("可重连 → 活（added 又宣告一次）：最后是「空闲」", async () => {
     const { dots } = await run([
-      { state: { sid: "s", state: "reconnectable", face: face("exited") } },
+      { left: { sid: "s", face: face("exited") } },
       { added: { sid: "s", agent_kind: "claude", pid: 1, container: { host: "none" }, face: face("idle"), label } },
     ]);
     expect(dots).toEqual(["exited", "idle"]);
@@ -65,7 +65,7 @@ describe("会话的脸按到达先后落（一条路）", () => {
     });
     const { dots } = await run([
       ...Array.from({ length: 40 }, (_, i) => line(i)),
-      { state: { sid: "s", state: "reconnectable", face: face("exited") } },
+      { left: { sid: "s", face: face("exited") } },
       ...Array.from({ length: 40 }, (_, i) => line(40 + i)),
       { status: { sid: "s", face: face("idle"), label } },
     ], 2);

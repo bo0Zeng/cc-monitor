@@ -114,7 +114,7 @@ fn drain(rx: &mut FrameRx) -> Vec<Frame> {
     v
 }
 
-/// 帧的简写：`added:<kind>` · `line:<seq>` · `removed:<cause>`；别的帧不记。
+/// 帧的简写：`added:<kind>` · `line:<seq>` · `left:<一生>`；别的帧不记。
 fn brief(frames: &[Frame]) -> Vec<String> {
     frames
         .iter()
@@ -126,8 +126,8 @@ fn brief(frames: &[Frame]) -> Vec<String> {
                 Some(format!("added:{agent_kind}"))
             }
             Frame::Line(crate::wire::Line { seq, .. }) => Some(format!("line:{seq}")),
-            Frame::SessionRemoved(crate::wire::SessionRemoved { cause, .. }) => {
-                Some(format!("removed:{cause:?}"))
+            Frame::SessionLeft(crate::wire::SessionLeft { face, .. }) => {
+                Some(format!("left:{:?}", face.life))
             }
             _ => None,
         })
@@ -228,7 +228,7 @@ fn a_closed_record_retires_the_session_and_a_reopen_brings_it_back() {
     let _ = drain(&mut r.rx);
     close_fd(&mut w);
     on_writers(closed(&r.record), &mut r.state, &mut r.sink);
-    assert_eq!(brief(&drain(&mut r.rx)), vec!["removed:Gone"]);
+    assert_eq!(brief(&drain(&mut r.rx)), vec!["left:Ended { by: None }"]);
     assert!(r.state.active_sids.is_empty());
     // resume：另一个进程打开同一份接着写。
     let w2 = writer(&r.record);
@@ -290,7 +290,7 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     gone(w);
     let got = resync_sessions(&pidfiles, &mut r.state, &mut r.sink, None);
     assert_eq!(got.removed, 1);
-    assert_eq!(brief(&drain(&mut r.rx)), vec!["removed:Gone"]);
+    assert_eq!(brief(&drain(&mut r.rx)), vec!["left:Ended { by: None }"]);
     std::fs::remove_dir_all(&r.dir).ok();
 }
 
@@ -359,7 +359,7 @@ fn activities(frames: &[Frame]) -> Vec<Option<String>> {
         .map(|f| {
             let v: serde_json::Value =
                 serde_json::from_str(crate::wire::to_line(f).unwrap().trim()).unwrap();
-            v["face"]["live"]
+            v["face"]["life"]
                 .get("activity")
                 .and_then(|a| a.as_str())
                 .map(str::to_string)

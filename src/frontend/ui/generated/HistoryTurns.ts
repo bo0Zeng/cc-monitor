@@ -6,7 +6,7 @@ import type { TurnRow } from "./TurnRow";
  */
 export type HistoryTurns = { 
 /**
- * 起点字节（＝ 请求的 `from`）。
+ * 起点字节（＝ 请求的 `from`；问的是 `cover` ⇒ 包着它的那一轮的 `at`）。
  */
 from: number, 
 /**

@@ -19,4 +19,12 @@ tool?: string,
 /**
  * 从这个字节起读（缺 ⇒ 0）；续读拿上一次的 `end`。
  */
-from?: number | null, };
+from?: number | null, 
+/**
+ * 从尾巴读（在跑的那一个从底部读起）：回记录里最后一页；与 `from` 都给以它为准。
+ */
+tail?: boolean | null, 
+/**
+ * 往前再读一页：读到这个字节为止（拿上一页的 `from`）；给了就是往前读，与 `from` 都给以它为准。
+ */
+before?: number | null, };

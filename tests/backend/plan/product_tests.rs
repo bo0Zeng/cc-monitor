@@ -140,7 +140,7 @@ fn assignee_and_signer_are_resolved_to_sessions() {
     assert_eq!(owner["kind"], "subagent");
     assert_eq!(owner["sid"], MAIN);
     assert_eq!(owner["id"], SUB);
-    assert_eq!(owner["face"]["live"]["activity"], "needs_you");
+    assert_eq!(owner["face"]["life"]["activity"], "needs_you");
     assert_eq!(owner["needs"], "approve");
     // 负责人是某个会话底下的 agent ⇒ 后端把「{父会话} 的 agent」写好交出去（界面照画，不按码取字）；会话本身 ⇒ 不写（界面写标签页的名字）。
     assert_eq!(

@@ -20,8 +20,7 @@ pub(crate) enum Ordered {
     SessionAdded(wire::SessionAdded),
     SessionPrimed(wire::SessionPrimed),
     SessionStatus(wire::SessionStatus),
-    SessionState(wire::SessionState),
-    SessionRemoved(wire::SessionRemoved),
+    SessionLeft(wire::SessionLeft),
     Overflow(wire::Overflow),
     Changed(wire::Changed),
     SessionsReplayed(wire::SessionsReplayed),
@@ -80,8 +79,7 @@ pub(crate) fn route(
         Frame::SessionAdded(f) => return Some(Ordered::SessionAdded(f)),
         Frame::SessionPrimed(f) => return Some(Ordered::SessionPrimed(f)),
         Frame::SessionStatus(f) => return Some(Ordered::SessionStatus(f)),
-        Frame::SessionState(f) => return Some(Ordered::SessionState(f)),
-        Frame::SessionRemoved(f) => return Some(Ordered::SessionRemoved(f)),
+        Frame::SessionLeft(f) => return Some(Ordered::SessionLeft(f)),
         Frame::Overflow(f) => return Some(Ordered::Overflow(f)),
         Frame::Changed(f) => return Some(Ordered::Changed(f)),
         Frame::SessionsReplayed(f) => return Some(Ordered::SessionsReplayed(f)),
@@ -110,7 +108,7 @@ fn body_without<T: serde::Serialize>(body: &T, key: &str) -> String {
 }
 
 /// 第二层：有序的那一件交会话账与内容收口。
-/// 会话离开（`session_removed`）与去向（`session_state`）先冲残批：它们说的「离开了」必须排在这个会话的行之后。
+/// 会话离开（`session_left`）先冲残批：它说的「离开了」必须排在这个会话的行之后。
 pub(crate) async fn apply(
     origin: &crate::origin::Origin,
     item: Ordered,
@@ -120,7 +118,7 @@ pub(crate) async fn apply(
 ) {
     let host_label = origin.to_string();
     let at = host_label.to_string();
-    if matches!(item, Ordered::SessionRemoved(_) | Ordered::SessionState(_)) {
+    if matches!(item, Ordered::SessionLeft(_)) {
         intake.flush().await;
     }
     match item {
@@ -152,26 +150,19 @@ pub(crate) async fn apply(
         Ordered::SessionPrimed(p) => intake.announced(&p.sid, p.path, p.lines),
         Ordered::SessionStatus(s) => {
             tracing::info!(
-                "session-status: [{at}] sid={} live={:?} waiting_for={:?} → 成品交出口",
+                "session-status: [{at}] sid={} life={:?} waiting_for={:?} → 成品交出口",
                 s.sid,
-                s.face.live,
+                s.face.life,
                 s.waiting_for
             );
             told(at, Frame::SessionStatus(s));
         }
-        Ordered::SessionRemoved(r) => {
-            // 只剩内容流的边界：摘排队中的快照、给在途的打取消标记、续点作废；去向由下一帧 `session_state` 说（簿只记顶替它的那一条）。
-            let sid = &r.sid;
-            tracing::info!(
-                "session-removed: [{host_label}] sid={sid}（内容流收口；去向看 session_state）"
-            );
+        Ordered::SessionLeft(s) => {
+            // 内容流的边界：摘排队中的快照、给在途的打取消标记、续点作废；去向（`face.life`）原样交出口。
+            let sid = &s.sid;
+            tracing::info!("session-left: [{host_label}] sid={sid} → {:?}", s.face.life);
             intake.removed(sid);
-            told(at, Frame::SessionRemoved(r));
-        }
-        Ordered::SessionState(s) => {
-            let (sid, state) = (&s.sid, s.state);
-            tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
-            told(at, Frame::SessionState(s));
+            told(at, Frame::SessionLeft(s));
         }
         Ordered::Overflow(o) => on_overflow(origin, health, &o),
         Ordered::Changed(c) => {

@@ -154,7 +154,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
     return;
   }
   const r = row;
-  let live: boolean | null = r.face.dot === "unknown" ? null : r.face.live.is === "yes";
+  let live: boolean | null = r.face.dot === "unknown" ? null : r.face.life.is === "live";
   const win = getCurrentWindow();
   const paint = (): void => {
     void win.setTitle(windowTitle(r, live)).catch(() => {});
@@ -204,7 +204,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
 /** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。 */
 async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promise<void> {
   const res = await bringTerminalToFront(origin, r.sessionId);
-  const view = frontView(res, machineName(origin), false);
+  const view = frontView(res, machineName(origin));
   if (view === null) {
     flashFrontDone(b);
     return;

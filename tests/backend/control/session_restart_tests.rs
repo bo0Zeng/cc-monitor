@@ -47,11 +47,8 @@ fn added(sid: &str) -> crate::wire::Frame {
 }
 
 fn removed(sid: &str) -> crate::wire::Frame {
-    crate::wire::Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: sid.into(),
-        cause: crate::wire::RemovalCause::Gone,
-        by: None,
-    })
+    use crate::wire::FrameMake as _;
+    crate::wire::Frame::session_left(sid.into(), crate::wire::Life::Ended, None, None)
 }
 
 /// 新进程怎么报出：旧的先走、新的再报到 · 旧的还没走、新的已接上 · 没报出。

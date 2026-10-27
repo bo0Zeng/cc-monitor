@@ -670,7 +670,7 @@ impl EventReplay {
     /// 行进重放缓冲的**唯一**入口：先进留存（[`hold`]），再**当场**交给每一条已过就绪点、订了它的订阅 ——
     /// 小批（< [`INCREMENTAL_BATCH_THRESHOLD`]）逐行交，大批切块、带 `batch` 边界。
     /// 大 batch 的块序列**在调用方任务内交完才返回**（Batch5-F17 审计 R1）——`stream_source` 的攒批 flush
-    /// 用它，保证行先于随后的 SessionRemoved/断连归档交出去（issue #20 / FIX 2 的顺序契约），
+    /// 用它，保证行先于随后的离开那一帧（SessionLeft）/断连归档交出去（issue #20 / FIX 2 的顺序契约），
     /// 同时对后端帧流形成天然背压（交的期间不再收帧）。
     ///
     /// 没 credit 的订阅：丢、位置照占、下一次交之前原位给 `Gap`（头注「订阅」）。**不等 credit。**

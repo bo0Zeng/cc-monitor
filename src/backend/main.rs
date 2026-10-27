@@ -2,7 +2,7 @@
 //!
 //! The remote half of the steel thread: it resolves `~/.claude`, emits a single
 //! `Hello` frame, then tails session JSONL files and streams `line` /
-//! `session_added` / `session_removed` frames as one JSON object per line on
+//! `session_added` / `session_left` frames as one JSON object per line on
 //! stdout. The client end is the cc-monitor Tauri app over an SSH pipe.
 //!
 //! Runtime target is Linux (inotify); the code is cross-platform and compiles +

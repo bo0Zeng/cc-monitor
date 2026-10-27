@@ -33,7 +33,7 @@ use serde_json::Value;
 use crate::common::cells::Words;
 use crate::common::views::{ViewSource, Views};
 use crate::history::history_annotations::{Loaded, Table};
-use crate::history::listing::{can_of, RowLife};
+use crate::history::listing::can_of;
 use crate::wire::SessionFaceExt as _;
 
 /// 不带 `range` 时一窗回几行：排好的头这些行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
@@ -118,7 +118,7 @@ fn session_row(
         started_at: r.started_at_ms,
         updated_at: r.updated_at_ms,
         jsonl_path: r.record_path.clone(),
-        life: Some(live.life_of(sid)),
+        life: live.life_of(sid),
         message_count_approx: r.message_count_approx,
         is_bg: r.is_bg,
         starred: false,
@@ -147,7 +147,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         started_at: s.mtime_ms,
         updated_at: s.mtime_ms,
         jsonl_path: s.path.to_string_lossy().into_owned(),
-        life: None,
+        life: crate::wire::WireLife::Unclear,
         message_count_approx: 0,
         is_bg: false,
         starred: false,
@@ -547,7 +547,7 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         &raw.project_path,
         &raw.session_id,
     );
-    let face = crate::wire::SessionFace::of(crate::wire::Life::of_row(raw.life));
+    let face = crate::wire::SessionFace::of(crate::wire::Life::of_wire(&raw.life));
     Finished {
         raw,
         label,
@@ -590,7 +590,7 @@ fn row_of(
     let (at_text, section_text, span_text) =
         crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
     HistoryRow {
-        can: can_of(&r.agent, r.life, r.is_bg),
+        can: can_of(&r.agent, &r.life, r.is_bg),
         agent_tag: agent_tag(&r.agent).map(Words::from),
         label: Words(f.label),
         untitled: f.untitled,
@@ -837,8 +837,8 @@ fn groups_of(
         });
         g.count += 1;
         // 有在跑的：确定有一个就够；有答不了的就不许说「都没在跑」（同项目清单）。
-        match (&v.face.live, v.face.dot) {
-            (crate::wire::FaceLive::Yes { .. }, _) => g.has_live = Some(true),
+        match (&v.face.life, v.face.dot) {
+            (crate::wire::WireLife::Live { .. }, _) => g.has_live = Some(true),
             (_, crate::wire::SessionDot::Unknown) if g.has_live != Some(true) => g.has_live = None,
             _ => {}
         }
@@ -921,7 +921,7 @@ pub(crate) fn specimen() -> Patch<HistoryHead, HistoryRow> {
             activity: Some(crate::agents::SessionActivity::Working),
             tmux: None,
         }),
-        can: can_of("agent", Some(RowLife::Ended), false),
+        can: can_of("agent", &crate::wire::WireLife::Ended { by: None }, false),
         agent_tag: Some(w("g")),
         context: Some(true),
         at: 2,

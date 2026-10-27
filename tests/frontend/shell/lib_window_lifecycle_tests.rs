@@ -150,6 +150,7 @@ fn every_window_building_command_is_async() {
         vec![
             "lib.rs::open_session_in_new_window".to_string(),
             "lib.rs::open_settings_window".to_string(),
+            "lib.rs::open_terminal_in_new_window".to_string(),
         ],
         "建 `WebviewWindow` 的地方与登记对不上（两向）。新开一个窗口 ⇒ 先回答 `INVARIANTS §22` 第 1 条，再登记进来"
     );
@@ -231,8 +232,8 @@ fn every_tauri_window_is_fitted_once_after_it_is_built() {
     let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
     assert_eq!(
         prod.matches("fit_window_to_work_area(&").count(),
-        1,
-        "会话窗开窗之后夹一次"
+        2,
+        "会话窗 · 单独终端窗开窗之后各夹一次"
     );
     assert_eq!(
         prod.matches("center_window_in_work_area(&").count(),

@@ -166,6 +166,7 @@
   },
   "history-run": {
     "end": 289,
+    "from": 0,
     "more": false,
     "path": "<home>/projects/-golden/r/subagents/agent-a1.jsonl",
     "rows": [

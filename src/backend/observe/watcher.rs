@@ -62,7 +62,7 @@
 
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
-use crate::wire::{Changed, Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
+use crate::wire::{Changed, Frame, RereadWhy, SeqCounter, Topic};
 use crate::wire::{FrameMake as _, FrameRules as _, SessionFaceExt as _, TopicExt as _};
 use cmd_wire::frame::{HiddenNow, Relayed};
 use notify::RecursiveMode;
@@ -94,23 +94,13 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
 
-// ============ P2（zero-poll-liveness）：统一事件 channel + pidfd 判活 ============
+// ============ 统一事件 channel + pidfd 判活 ============
 //
-// **账本第 1 行的最终形态在这里建立**（§3）：
-// `watch_loop` 阻塞在**无超时 `recv()`** 上、消费**单一** `mpsc<WatchEvent>`。
-// 所有事件源（notify / pidfd / tmux 探测）都往这一个 channel 发。
-//
-// **给 P3/P4 的硬约束**：往里**加事件源**，**不许**各自再挂一条独立线程 + 定时器
-// ——那正是"补丁叠补丁"。加一个 `WatchEvent` 变体 + 一个发送方即可。
-//
-// P2 之前这里有两条轮询：
-// - **轮询 A**（本功能消掉）：循环 tick 2s（`recv_timeout` 的超时值本身）驱动的判活扫描，
-//   遍历 `state.sessions` 调 `session_alive` 检「pidfile 还在但 PID 已死」+ PID 复用。
-// - ~~**轮询 B**：`TMUX_EMIT_INTERVAL` = 8s 的 `tmux ls`~~ **P5 已删**。P2 曾把它从
-//   "主循环里的节流判断"搬进一条独立 ticker 线程，
-//   使主循环**现在**就是最终形态；P5 删 ticker 线程即可，不必再动循环结构。
+// `watch_loop` 只等**一个** `mpsc<WatchEvent>`：所有事件源（notify / pidfd / tmux 探测 / 外部戳 …）都往这一个 channel 发，
+// 等的期限只有「久未动静」与主运行心跳那两个到点时刻（见主循环）。没有轮询、没有定时器。
+// 加事件源 ＝ 加一个 `WatchEvent` 变体 ＋ 一个发送方；不另挂独立线程 ＋ 定时器。
 
-/// P2：`watch_loop` 消费的统一事件。
+/// `watch_loop` 消费的统一事件。
 enum WatchEvent {
     /// 这台问过一条会话的记录在不在（[`record_seen`]）。
     RecordSeen { sid: String, present: bool },
@@ -130,22 +120,14 @@ enum WatchEvent {
     PidDied { key: PathBuf, pid: u32 },
     /// 一次性 `tmux ls` 探测线程的结果。
     TmuxObserved(TmuxProbe),
-    /// tmux 探测节拍——**本 crate 剩下的唯一定时器**，住在独立 ticker 线程里。**P5 删。**
+    /// 起来时探一次 tmux（[`initial_tmux_probe`] 发，只此一次）。
     TmuxProbeDue,
-    /// **P4：外部戳一下** —— 语义与 [`WatchEvent::TmuxProbeDue`] **完全相同**（立刻重探
-    /// tmux 并走同一条差分/发帧路径），区别只在**来源**：这个是事件驱动的（tmux hook
-    /// → `--tmux-notify` → `SIGUSR1` → 这里），那个是定时器。
-    ///
-    /// **为什么不复用 `TmuxProbeDue` 就完事**：两者共用一条处理路径是对的，但**来源要能
-    /// 分辨** —— P5 删掉 ticker 之后，「还有没有人在戳」是判断 hook 通路是否活着的唯一线索；
-    /// 混成一个变体就再也分不出「hook 没装上」与「ticker 还在兜底」。
+    /// 外部戳一下：与 [`WatchEvent::TmuxProbeDue`] 走同一段（立刻重探 tmux、同一条差分 / 发帧路径），
+    /// 来源是事件（tmux hook → `--tmux-notify` → `SIGUSR1` → 这里）。分成两个变体是为了分得出来源：
+    /// 「还有没有人在戳」是判 hook 通路活着没有的唯一线索。
     Poke,
-    /// 预留给 P5：删掉 ticker 之后，主循环需要一条**显式**的停机信号才能及时
-    /// 发现 stdout 写端已关（`sink.is_closed()` 现在靠 ticker 每 8s 醒一次来复查）。
-    ///
-    /// **P5 已接上**：`main` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`]
-    /// 发它。没有它的话，删掉 ticker 之后 reader 线程会一直阻塞在 `recv()`
-    ///（进程退出时才随之消亡——不是泄漏，但「没人听就停读」这条性质会丢）。
+    /// 显式停机：`main` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`] 发它。
+    /// 主循环没有定期醒来复查 `sink.is_closed()`，没有它 reader 线程会一直等在 `recv()` 上，「没人听就停读」这条性质就丢了。
     Shutdown,
     /// 别台那条常驻流上的事（本机后端那几条 feed 交的，[`relay`]）：投给每条连接。
     Relay(Frame),
@@ -1336,11 +1318,11 @@ fn watch_loop(
     let mut watched_socket: Option<PathBuf> = None;
     initial_tmux_probe(&events_tx);
 
-    // P2：**无超时** `recv()`——本循环没有节拍（轮询 A 已由 pidfd 取代）。唯一的期限：有在跑的子运行时，至多等到
-    // 最早那个「久未动静」的时刻（`runs::next_event`），到点回循环头判一次、重算期限；没有在跑的 ⇒ 照旧无超时等。
-    // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · tmux 探测/节拍线程。
-    // **P3/P4 只往 `WatchEvent` 加变体 + 加发送方，不许再挂独立定时器。**
-    // 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
+    // 本循环没有节拍。期限两个，取早的那个（`runs::next_event`）：会话账本里最早那个「久未动静」的时刻 ·
+    // 主运行心跳的到点时刻（`beat_due`）；到点回循环头判一次、重算期限；两个都没有 ⇒ 无超时等。
+    // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · 一次性 tmux 探测线程 · 外部戳。
+    // 加事件源只往 `WatchEvent` 加变体 ＋ 加发送方，不另挂独立定时器。
+    // 所有发送端都掉了就结束。
     loop {
         // 每一拍（事件之后 · 到点）都按此刻把全部会话的「久未动静」判一遍，表变了的才发帧。
         let now = crate::common::time::now();
@@ -1495,7 +1477,7 @@ fn watch_loop(
                 }
                 // ★ S0：一批事件处理完再决定探不探（批内多次漂移只探一次；`tmux_inflight`
                 // 再兜一层去重）。**注意这只让快照更新鲜，不是本 bug 的修复** ——
-                // 真正的修复是 `RemovalCause::Superseded`（让 monitor 不必依赖这份快照）。
+                // 真正的修复是离开那一帧带 `by`（被顶替）（让 monitor 不必依赖这份快照）。
                 //
                 // 🔴 上面这段原先还有一句：「`@ccm_sid` 由 `shared/ccm` 的
                 // 1 秒 poller 回填，这次探测很可能仍抓到**旧** tag」。**今天两半都不成立**：
@@ -1541,13 +1523,7 @@ fn watch_loop(
                 if state.sessions.get(&key).map(|e| e.pid) == Some(pid) {
                     if let Some(e) = state.sessions.remove(&key) {
                         // pidfd 醒了 = 那个进程实例真的退了。
-                        retire_sid_if_unreferenced(
-                            &e.sid,
-                            RemovalCause::Gone,
-                            None,
-                            &mut state,
-                            &mut sink,
-                        );
+                        retire_sid_if_unreferenced(&e.sid, None, &mut state, &mut sink);
                     }
                 }
             }
@@ -1705,7 +1681,7 @@ struct ReaderState {
     /// PID-file path → [`SessionEntry`] for sessions currently considered ACTIVE
     /// (announced via `SessionAdded`). The pid + captured procStart let the
     /// liveness poll detect both a dead process AND a **reused PID** (#34); the
-    /// cached sid lets a file-delete still emit the right `SessionRemoved`.
+    /// cached sid lets a file-delete still emit the right `SessionLeft`.
     sessions: HashMap<PathBuf, SessionEntry>,
     /// P2：统一事件 channel 的发送端，由 `watch_loop` 注入。
     /// **测试里为 `None`** ⇒ 不起 pidfd 看守线程（11 处 `ReaderState::new` 因此无需改签名；
@@ -2115,8 +2091,7 @@ struct SessionEntry {
 pub struct ReadLine {
     pub seq: u64,
     pub raw: String,
-    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐手机端 `LineFramer`
-    /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
+    /// 本行末尾（含 `\n`）的累计**原始字节** offset ＝ 下一行的起点（两端拿它续读；计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
     pub byte_offset: u64,
     /// 本行第一个字节在文件里的偏移（没有自己身份的记录拿它合成 id，`agents::line_id`）。
     pub start: u64,
@@ -2281,8 +2256,8 @@ fn scan_new_lines(
         // (mid-write, possibly mid-multibyte) is deferred to the next event.
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         consumed = complete_end as u64;
-        // backend-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
-        // 累计原始字节（对齐手机端 `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
+        // **在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
+        // 累计原始字节（计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
         // 3 字节换 1 字节）会漂。每行的原始内容单独 lossy 解码（残行已在 tail 外，故整行 multibyte 完整、安全）。
         let mut pos = 0usize; // 相对 slice 的原始字节游标
         while pos < complete_end {
@@ -2988,7 +2963,7 @@ fn send_line(
         seq: line.seq,
         record,
         cwd,
-        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐手机端 LineFramer）
+        byte_offset: line.byte_offset, // 累计原始字节 ＝ 下一行的起点
         rid: rec.rid,
     }));
     // 这一行说此刻进到哪一态（没有进程状态文件的那一家，适配层照记录事件翻）⇒ 变了才发一帧 `session_status`。
@@ -3135,7 +3110,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
 ///
 /// | 组 | 帧 |
 /// |---|---|
-/// | 控制（不动 `sessions/`） | `hello · line · session_added · session_removed · tmux_sessions×2` |
+/// | 控制（不动 `sessions/`） | `hello · line · session_added · session_left · tmux_sessions×2` |
 /// | **删掉再建** | **`hello · tmux_sessions`** |
 ///
 /// 下面那一行**与 `#60` 全链台架量到的 app 路径签名逐字相同**，而台架自己在 backend
@@ -3283,19 +3258,13 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
     // 必须走 removed 路径：旧实现 insert 直接覆盖 entry，旧 sid 既不清
-    // active_sids 也永不发 SessionRemoved、还被挤出活性 poll 遍历 → 假 live
+    // active_sids 也永不发离开那一帧、还被挤出活性 poll 遍历 → 假 live
     // 到断连（跨机审计实锤，本地 diff_sessions 按 sid 集合 diff 无此病）。
     // 引用计数感知：其它 pidfile 仍持旧 sid 时只解绑本 entry、不发帧。
     if let Some(old) = state.sessions.remove(&key) {
         // ★ S0：**同 pidfile 原地换 sid** —— 旧 sid 不是死了，是被顶替了。
         // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
-        retire_sid_if_unreferenced(
-            &old.sid,
-            RemovalCause::Superseded,
-            Some(sid.as_str()),
-            state,
-            sink,
-        );
+        retire_sid_if_unreferenced(&old.sid, Some(sid.as_str()), state, sink);
     }
     // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
     // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
@@ -4008,17 +3977,16 @@ fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut Fram
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
         // pidfile 从盘上没了 = 真死。
-        retire_sid_if_unreferenced(&e.sid, RemovalCause::Gone, None, state, sink);
+        retire_sid_if_unreferenced(&e.sid, None, state, sink);
     }
 }
 
 /// Batch6-F22：sid 退休的**唯一**出口——`sessions` 表中已无任何存活 entry 持有
-/// 该 sid 时才清 active_sids + 发 [`Frame::SessionRemoved`]。同 sid 多 pidfile
+/// 该 sid 时才清 active_sids + 发离开那一帧 [`Frame::SessionLeft`]（会话账本拦下它、裁好去向再发）。同 sid 多 pidfile
 /// （resume 时原进程未死）场景下，先死的那个只解绑、不误杀整个 tab。
 /// 调用方约定：先从 `state.sessions` remove 掉当事 entry 再调本函数。
 fn retire_sid_if_unreferenced(
     sid: &str,
-    cause: RemovalCause,
     by: Option<&str>,
     state: &mut ReaderState,
     sink: &mut FrameSink,
@@ -4038,11 +4006,13 @@ fn retire_sid_if_unreferenced(
     if let Some(f) = state.retire_runs(sid) {
         sink.send(f);
     }
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: sid.to_string(),
-        cause,
-        by: by.map(str::to_string),
-    }));
+    // 离开那一帧：被顶替 ⇒ 带顶替它的那条；去向（可重连 · 已结束 · 记录已不在）由会话账本裁好再发（[`FrameSink::send`]）。
+    sink.send(Frame::session_left(
+        sid.to_string(),
+        crate::wire::Life::Ended,
+        by.map(str::to_string),
+        None,
+    ));
 }
 
 /// 每一家的记录根走一遍，找这个 sid 的记录文件（宣告会话时把它已有的那几行带上）。
@@ -4891,9 +4861,10 @@ impl FrameSink {
         for sid in due {
             s.kept_answered.insert(sid.clone());
             l.said_ended(&sid);
-            s.push(Frame::session_state(
+            s.push(Frame::session_left(
                 sid,
-                crate::wire::SessionFate::Ended,
+                crate::wire::Life::Ended,
+                None,
                 None,
             ));
         }
@@ -5037,8 +5008,7 @@ fn row_moved_by(frame: &Frame) -> Option<&str> {
     match frame {
         Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })
         | Frame::SessionStatus(crate::wire::SessionStatus { sid, .. })
-        | Frame::SessionState(crate::wire::SessionState { sid, .. })
-        | Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => Some(sid),
+        | Frame::SessionLeft(crate::wire::SessionLeft { sid, .. }) => Some(sid),
         Frame::Line(crate::wire::Line { session_id, .. })
         | Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. })
         | Frame::SessionFileReread(crate::wire::SessionFileReread { session_id, .. }) => {

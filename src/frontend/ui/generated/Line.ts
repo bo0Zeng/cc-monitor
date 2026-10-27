@@ -28,8 +28,8 @@ record?: R,
  */
 cwd?: string, 
 /**
- * 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
- * 语义逐字节对齐手机端 `LineFramer.endOffset`：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)`。
+ * 本行末尾（含 `\n`）在文件中的**累计原始字节 offset** ＝ 下一行的起点，两端拿它续读：
+ * 计 CRLF 的 `\r`、含 `\n`、残行不计；从 N 续读 ⇒ `tail -c +(N+1)`。
  */
 byte_offset: number, 
 /**

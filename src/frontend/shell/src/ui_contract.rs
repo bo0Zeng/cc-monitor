@@ -142,8 +142,8 @@ pub enum SessionStreamFrame {
     Added(cmd_wire::frame::SessionAdded),
     /// 灯与名字变了（`session_status`）。
     Status(cmd_wire::frame::SessionStatus),
-    /// 离开「活」之后的去向（`session_state`：可重连 · 已结束）。
-    State(cmd_wire::frame::SessionState),
+    /// 离开「活」（`session_left`：去向在 `face.life`）。
+    Left(cmd_wire::frame::SessionLeft),
     /// 说不清（那台看不见了 / F5 时那台还没报完清单）。
     Unseen(SessionUnseenPayload),
     /// 那台的活会话清单报完了。
@@ -169,7 +169,7 @@ impl SessionStreamFrame {
             | SessionStreamFrame::FileNotice(_) => false,
             SessionStreamFrame::Added(_)
             | SessionStreamFrame::Status(_)
-            | SessionStreamFrame::State(_)
+            | SessionStreamFrame::Left(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_)
@@ -196,7 +196,7 @@ impl SessionStreamFrame {
             SessionStreamFrame::FileNotice(p) => Some(&p.session_id),
             SessionStreamFrame::Added(p) => Some(&p.sid),
             SessionStreamFrame::Status(p) => Some(&p.sid),
-            SessionStreamFrame::State(p) => Some(&p.sid),
+            SessionStreamFrame::Left(p) => Some(&p.sid),
             SessionStreamFrame::Runs(p) => Some(&p.sid),
             SessionStreamFrame::Branch(p) => Some(&p.sid),
             SessionStreamFrame::Watch(p) => Some(&p.sid),
