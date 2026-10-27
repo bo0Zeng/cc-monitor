@@ -2,8 +2,8 @@
  * 「需手动」的账：本机后端 `sessions-needs-merge` 自己问到各台的 `sessions-needs`（别的台经它的连接问那台的常驻）、合成一份 ＋ 总数再答
  * （判 · 排 · 数 · 问哪台没问到全在后端；这里只记要问哪几台、只把合好的那一份交出去）。侧栏「需手动 N」· 浮层 · `Ctrl+J` · 窗口标题都读它。
  *
- * 什么时候问：起来 · 那台接上 · 开「需手动」浮层 · `Ctrl+J` · 那台推 `changed {needs | plan | manual}` · 条上那台某个会话进出「需手动」
- * （连着来的合成一问）。在读的时候旧的一份照留（入口照上一份的数），读回来才换。
+ * 什么时候问：起来 · 那台接上 · 开「需手动」浮层 · `Ctrl+J` · 那台推 `changed {needs | plan | manual}`（连着来的合成一问）·
+ * 一问没问到之后自己退避再问（[`RETRY_FIRST_MS`] 起、翻倍、封顶 [`RETRY_MAX_MS`]；问到了归零）。在读的时候旧的一份照留（入口照上一份的数），读回来才换。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
@@ -15,6 +15,10 @@ import type { ManualItem } from "./generated/ManualItem";
 const ASK_BUDGET_MS = 20_000;
 /** 推送 · 会话帧连着来时合成一次重问。 */
 const POKE_MS = 300;
+/** 没问到之后头一回隔多久再问；之后每回翻倍。 */
+const RETRY_FIRST_MS = 1_000;
+/** 退避的封顶。 */
+const RETRY_MAX_MS = 30_000;
 
 /** 本机后端问到这几台、合一份。 */
 export function mergeNeeds(machines: Origin[]): Promise<NeedsMerged> {
@@ -35,6 +39,10 @@ export class NeedsBook {
   /** 要问的那几台（问过的都记着，照先来的先后）。 */
   private readonly origins: Origin[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** 没问到之后排着的那一次再问。 */
+  private retry: ReturnType<typeof setTimeout> | null = null;
+  /** 此刻的退避（ms；0 ＝ 上一问问到了）。 */
+  private backoff = 0;
   private readonly listeners = new Set<() => void>();
   private seq = 0;
   private merged: NeedsMerged = EMPTY;
@@ -78,16 +86,30 @@ export class NeedsBook {
 
   private async ask(): Promise<void> {
     const my = ++this.seq;
+    if (this.retry !== null) clearTimeout(this.retry);
+    this.retry = null;
     let next: NeedsMerged;
     try {
       next = this.origins.length === 0 ? EMPTY : await this.merge([...this.origins]);
     } catch (e) {
       console.warn("[needs] 本机后端没合成，照上一份：", e);
+      if (my === this.seq) this.retryLater();
       return;
     }
     if (my !== this.seq) return;
+    this.backoff = 0;
     this.merged = next;
     this.emit();
+  }
+
+  /** 没问到：退避一段再问（翻倍、封顶）。 */
+  private retryLater(): void {
+    this.backoff = this.backoff === 0 ? RETRY_FIRST_MS : Math.min(this.backoff * 2, RETRY_MAX_MS);
+    // 调度：退避重试 —— 一问没问到，过一会儿自己再问。
+    this.retry = setTimeout(() => {
+      this.retry = null;
+      void this.ask();
+    }, this.backoff);
   }
 
   /** 各台加起来几项（入口 · 窗口标题）。 */
