@@ -101,6 +101,29 @@ fn several_processes_take_the_most_urgent_state() {
     assert_eq!(t.writers("s"), vec![1, 2]);
 }
 
+#[test]
+fn since_of_is_the_latest_state_start_among_live_processes() {
+    let at = |pid, since: Option<u64>, alive| LiveRow {
+        alive,
+        fact: crate::agents::ProcFact {
+            status_since_ms: since,
+            ..row(pid, "s", Some(A::Idle), false).fact
+        },
+        ..row(pid, "s", Some(A::Idle), false)
+    };
+    let t = of_rows(
+        vec![
+            at(1, Some(10), true),
+            at(2, Some(30), true),
+            at(3, Some(99), false),
+            at(4, None, true),
+        ],
+        &[],
+    );
+    assert_eq!(t.since_of("s"), Some(30), "活着的里最晚那一个；死了的不算");
+    assert_eq!(t.since_of("other"), None);
+}
+
 fn of_rows(rows: Vec<LiveRow>, asked: &[&str]) -> LiveTable {
     LiveTable {
         home: std::path::PathBuf::new(),
