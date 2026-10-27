@@ -253,6 +253,7 @@ fn own_what(id: &str) -> String {
         "extBackups" => copy_text("rsDataPaths.backend.extBackups", &[]),
         "skeleton" => copy_text("rsDataPaths.backend.skeleton", &[]),
         "listingCache" => copy_text("rsDataPaths.backend.listingCache", &[]),
+        "remoteListing" => copy_text("rsDataPaths.backend.remoteListing", &[]),
         _ => copy_text("dataPage.own.unknownItem", &[("id", id)]),
     }
 }
