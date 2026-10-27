@@ -6,7 +6,7 @@
  * 唯一出口是后端日志(frontend_perf_log → grep fe_perf)。本模块把两类不可见状态
  * 变成可 grep 的 `[e2e]` 行:
  * - 启动重放抖动：只测 scrollTop 发现不了（§21）—— 逐帧采样可见元素 getBoundingClientRect().top 的方向反转。
- * - 状态快照:贴底距离/账本余量/fold 数等(Ctrl+Alt+F9 触发,e2e 套件用 xdotool 按)。
+ * - 状态快照:贴底距离/账本余量/fold 数等,连每个 tab 行的点击点(Ctrl+Alt+F9 或中键点状态栏触发,e2e 套件用 xdotool 点)。
  */
 import { commands } from "./ipc/commands";
 
@@ -103,9 +103,48 @@ export function stopReplayJitterProbe(report = true): void {
   target = null;
 }
 
+/** 快照里的一个 tab 行：点它落在哪（窗口内设备像素）· 它此刻亮没亮。 */
+type TabRow = { x: number; y: number; active: boolean };
+
+/**
+ * 栏里此刻看得见的会话 tab 行，从上到下。起动中的槽位行（`data-slot`）、收起的行（没有尺寸）、滚出列表可见段的行不算。
+ * 点击点取行宽 4 成处：行尾那排动作（关闭 …）悬停才盖上来，不落在那一段。
+ */
+function tabRows(dpr: number): TabRow[] {
+  const list = document.querySelector(".tab-list");
+  if (!list) return [];
+  const clip = list.getBoundingClientRect();
+  const out: TabRow[] = [];
+  for (const el of list.querySelectorAll<HTMLElement>(".tab:not([data-slot])")) {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) continue;
+    const cy = r.top + r.height / 2;
+    if (cy < clip.top || cy > clip.top + clip.height) continue;
+    out.push({
+      x: Math.round((r.left + r.width * 0.4) * dpr),
+      y: Math.round(cy * dpr),
+      active: el.classList.contains("active"),
+    });
+  }
+  return out;
+}
+
+/**
+ * 快照（一行 JSON）添上 `rows`（每个看得见的 tab 行的点击点）与 `activeRow`（亮着的是第几行，没有 ⇒ null）。
+ * f40 套件照它点 tab，点完看 `activeRow` 是不是点的那一行 —— 栏顶的图标、「需手动」条把行往下推，都不用改套件。导出为单测。
+ * 快照是 `debugSnapshot` 印的一个 JSON 对象：在它末尾的 `}` 前接上这两格，不解它（界面里的解码只住 `ipc/decode.ts`）。
+ */
+export function withTabRows(snapshot: string, dpr = window.devicePixelRatio || 1): string {
+  const rows = tabRows(dpr);
+  const at = rows.findIndex((r) => r.active);
+  const head = snapshot.trimEnd().replace(/\}$/, "");
+  const more = `"rows":${JSON.stringify(rows)},"activeRow":${at < 0 ? "null" : String(at)}`;
+  return `${head}${head.trimEnd().endsWith("{") ? "" : ","}${more}}`;
+}
+
 /**
  * 状态快照触发器：① Ctrl+Alt+F9（真桌面调试用）；② 中键点状态栏 —— xdotool 的合成键盘事件进不了 WebKitGTK webview，
- * 鼠标事件畅通，headless 套件走这条。getSnapshot 由 main.ts 提供（读 TabManager）。
+ * 鼠标事件畅通，headless 套件走这条。getSnapshot 由 main.ts 提供（读 TabManager），落盘前添上 tab 行坐标（`withTabRows`）。
  *
  * 第二出口 `getSessionsSnapshot`（全会话 状态 / origin / 账号 / 不一致）——
  * Ctrl+Alt+F10(真桌面/Tier2 WebDriver 键盘可达)或**中键点账号 chip**(`.status-account`,headless
@@ -120,7 +159,7 @@ export function registerSnapshotHotkey(
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.altKey && e.key === "F9") {
       e.preventDefault();
-      log(`[e2e] snapshot ${getSnapshot()}`);
+      log(`[e2e] snapshot ${withTabRows(getSnapshot())}`);
     }
     if (getSessionsSnapshot && e.ctrlKey && e.altKey && e.key === "F10") {
       e.preventDefault();
@@ -137,7 +176,7 @@ export function registerSnapshotHotkey(
     }
     if (el?.closest?.("#status-bar")) {
       e.preventDefault();
-      log(`[e2e] snapshot ${getSnapshot()}`);
+      log(`[e2e] snapshot ${withTabRows(getSnapshot())}`);
     }
   });
 }

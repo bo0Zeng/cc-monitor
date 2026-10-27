@@ -117,6 +117,13 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 ./tests/e2e/f40-suite.sh          # 环境变量:E2E_DISPLAY / E2E_LOG / E2E_DRAIN_MAX_MS
 ```
 
+`f40-suite` 点哪儿的两条坑（找主窗 · 取 tab 行点击点都在 `f40-lib.sh`，单测 `f40-pick.test.sh` 用假 xdotool 钉住）：
+
+- **进程里有两个叫 `cc-monitor` 的窗口**：GTK 的 client leader 窗（10×10、没映射、号比主窗小）和主窗。找窗只认映射了的
+  （`xdotool search --onlyvisible`），否则取到 leader 窗、中键点在屏幕空白处，报「快照触发未落地」。
+- **tab 行不写死像素**：栏顶那排图标、「需手动」条、离线条都会把行往下推。快照里的 `rows`（每个看得见的 tab 行的点击点，
+  窗口内设备像素）与 `activeRow`（亮着第几行）由 `e2e-probe.ts` 当场量；套件照 `rows` 点，点完 `activeRow` 不是那一行 ⇒ 当场报没点中。
+
 ### 哪些进门禁、哪些不进
 
 真机套件每一套在门禁 `tests/scripts/gate.sh` 里一行 `run_e2e <套件>`，经 `tests/e2e/assert-pass-floor.sh <套件>` 跑：
