@@ -15985,12 +15985,6 @@
       "zh": "{group} · {dir}",
       "args": ["group", "dir"]
     },
-    "beSessionSet.noTmux": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "这台没有 tmux · 一组只起在 tmux 里",
-      "args": []
-    },
     "beSessionSet.set.unknown": {
       "kind": "error",
       "role": "报错",
@@ -20131,7 +20125,7 @@
     "rsDataPaths.backend.remoteListing": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端各机的会话清单副本 · 一台一份 · 重启后照它增量同步 · 可重建",
+      "zh": "远端会话清单副本 · 一台一份 · 重启后增量同步 · 可重建",
       "args": []
     },
     "rsDataPaths.backend.launchAccounts": {

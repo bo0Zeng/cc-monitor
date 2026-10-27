@@ -68,7 +68,7 @@ fn no_tmux() -> Result<(), (&'static str, String)> {
     match crate::control::terminals::tmux_here() {
         Some(false) => Err((
             crate::NO_TMUX,
-            copy_core::copy_text("beSessionSet.noTmux", &[]),
+            copy_core::copy_text("beSessionNew.place.noTmux", &[]),
         )),
         _ => Ok(()),
     }
