@@ -80,6 +80,20 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
         NO_TMUX_YET,
     ),
     ("wire-commands", "plan-return", Target::Windows, NO_TMUX_YET),
+    ("wire-commands", "set-plan", Target::Windows, NO_TMUX_YET),
+    ("wire-commands", "set-launch", Target::Windows, NO_TMUX_YET),
+    (
+        "cli-subcommands",
+        "--set-plan",
+        Target::Windows,
+        NO_TMUX_YET,
+    ),
+    (
+        "cli-subcommands",
+        "--set-launch",
+        Target::Windows,
+        NO_TMUX_YET,
+    ),
     ("wire-commands", "session-say", Target::Windows, NO_TMUX_YET),
     (
         "wire-commands",

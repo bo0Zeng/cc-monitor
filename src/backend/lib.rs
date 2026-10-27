@@ -240,6 +240,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-files",
     // 补足一组会话的预览（`set-plan`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--set-plan",
+    // 照存好的一组补足、逐条起（`set-launch`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--set-launch",
     // 新计划框问的那一份（`plan-new`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--plan-new",
     // 校验 pb 路径（`plan-pb-check`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

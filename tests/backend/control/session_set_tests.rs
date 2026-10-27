@@ -151,3 +151,96 @@ fn set_plan_reads_a_saved_set_or_unsaved_rows_and_refuses_both_or_neither() {
     assert_eq!(ask(None, None).unwrap_err().0, "bad_args");
     assert_eq!(ask(Some("g"), Some(vec![])).unwrap_err().0, "bad_args");
 }
+
+fn opened(sid: Option<&str>) -> cmd_wire::session::Opened {
+    cmd_wire::session::Opened {
+        landed: cmd_wire::session::Landed::Started,
+        session: Some("t".into()),
+        line: None,
+        sid: sid.map(str::to_string),
+        agent: None,
+        cwd: None,
+        account: None,
+        note: None,
+        prompt: None,
+        arrival: None,
+    }
+}
+
+/// 一点就起：每行只起差的几个；起之前那一笔先写好组注解（先定好的 sid 带着组 id）；同一个组名的几行进同一个组、
+/// 组只找 / 建一次；起不成的那一条摘掉注解、照实记下，别的照起；起不了的那一行一条都不起。
+#[test]
+fn launching_marks_each_new_session_with_its_group_before_starting_it() {
+    let book = parse_book(BOOK);
+    let mut cc = row("/srv/cc", "dev", 3);
+    cc.tab_group = Some("开发".into());
+    let mut pb = row("/srv/pb", "dev", 1);
+    pb.tab_group = Some("开发".into());
+    let rows = vec![cc, pb, row("/srv/a", "gone", 1)];
+    let plan = plan_rows(
+        &rows,
+        &book,
+        &[
+            live("s0", "/srv/cc", Some("dev")),
+            live("s00", "/srv/cc", Some("dev")),
+        ],
+        home(),
+        &every_dir,
+    );
+    let log = std::cell::RefCell::new(Vec::<String>::new());
+    let n = std::cell::Cell::new(0);
+    let out = launch_rows(
+        &rows,
+        &plan,
+        &mut Hands {
+            group_for: &mut |name: &str| {
+                log.borrow_mut().push(format!("group {name}"));
+                Ok(GroupRef {
+                    id: "g1".into(),
+                    name: name.into(),
+                })
+            },
+            mark: &mut |g: &GroupRef| {
+                n.set(n.get() + 1);
+                let sid = format!("sid{}", n.get());
+                log.borrow_mut().push(format!("mark {sid} {}", g.id));
+                Some(sid)
+            },
+            start: &mut |r: &RowEdit, sid: Option<&str>| {
+                log.borrow_mut()
+                    .push(format!("start {} {}", r.cwd, sid.unwrap_or("-")));
+                if r.cwd == "/srv/pb" {
+                    Err(LaunchFail {
+                        code: "start_failed".into(),
+                        message: "坏了".into(),
+                    })
+                } else {
+                    Ok(opened(sid))
+                }
+            },
+            unmark: &mut |sid: &str, g: &GroupRef| {
+                log.borrow_mut().push(format!("unmark {sid} {}", g.id));
+            },
+        },
+    );
+    assert_eq!(
+        *log.borrow(),
+        vec![
+            "group 开发",
+            "mark sid1 g1",
+            "start /srv/cc sid1",
+            "mark sid2 g1",
+            "start /srv/pb sid2",
+            "unmark sid2 g1",
+        ]
+    );
+    assert_eq!((out.started, out.failed), (1, 1));
+    assert_eq!(out.rows[0].opened[0].sid.as_deref(), Some("sid1"));
+    assert_eq!(out.rows[1].failed[0].code, "start_failed");
+    assert!(out.rows[2].blocked.is_some());
+    assert!(out.rows[2].opened.is_empty() && out.rows[2].failed.is_empty());
+    assert_eq!(
+        out.rows[0].group.as_ref().map(|g| g.id.as_str()),
+        Some("g1")
+    );
+}

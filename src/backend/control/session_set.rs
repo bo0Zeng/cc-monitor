@@ -107,6 +107,19 @@ fn blocked_of(
     None
 }
 
+/// 这一行已有的那几条：目录对得上、用这一行的别名起的。
+pub(crate) fn members<'a>(
+    r: &RowEdit,
+    live: &'a [Live],
+    home: Option<&std::path::Path>,
+) -> Vec<&'a Live> {
+    let key = dir_key(&r.cwd, home);
+    live.iter()
+        .filter(|l| l.alias.as_deref() == Some(r.alias.as_str()))
+        .filter(|l| dir_key(&l.cwd, home) == key)
+        .collect()
+}
+
 /// **补足的唯一判法**：每行数已有、算再起几个、定组名、说起不了的原因。只读，一个字节不写。
 pub(crate) fn plan_rows(
     rows: &[RowEdit],
@@ -118,12 +131,7 @@ pub(crate) fn plan_rows(
     let out: Vec<RowPlan> = rows
         .iter()
         .map(|r| {
-            let key = dir_key(&r.cwd, home);
-            let have = live
-                .iter()
-                .filter(|l| l.alias.as_deref() == Some(r.alias.as_str()))
-                .filter(|l| dir_key(&l.cwd, home) == key)
-                .count() as u32;
+            let have = members(r, live, home).len() as u32;
             let blocked = blocked_of(r, book, home, is_dir);
             let more = match blocked {
                 Some(_) => 0,
@@ -163,6 +171,8 @@ pub(crate) struct SetPlanReq {
 crate::wire::typed::codes! {
     /// `set-plan` 的码（入参不对是通用的 `bad_args`）：没有那一组 · 那一组写错或配置文件读不了（那一句说清哪一样）。
     pub(crate) enum SetPlanErr {
+        /// 这台没有 tmux（一组只起在 tmux 里）。
+        NoTmux = "no_tmux",
         NoSuchSet = "no_such_set",
         Refused = "refused",
     }
@@ -206,6 +216,169 @@ pub(crate) fn answer(
         }
     };
     Ok(plan_rows(&rows, book, live, home, is_dir))
+}
+
+// ───────────────────────── 一点就起：set-launch ─────────────────────────
+
+/// 一行起出来的会话进的那一组：组 id ＋ 名字。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct GroupRef {
+    pub(crate) id: String,
+    pub(crate) name: String,
+}
+
+/// 一条没起成：`session-open` 回的码 ＋ 那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LaunchFail {
+    pub(crate) code: String,
+    pub(crate) message: String,
+}
+
+/// 一行起的结果：进的组 · 起成的那几条（`session-open` 的回包，带等它报到那一问）· 没起成的那几条 · 起不了的原因。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RowLaunched {
+    pub(crate) cwd: String,
+    pub(crate) alias: String,
+    pub(crate) group: Option<GroupRef>,
+    pub(crate) opened: Vec<cmd_wire::session::Opened>,
+    pub(crate) failed: Vec<LaunchFail>,
+    pub(crate) blocked: Option<String>,
+}
+
+/// `set-launch` 的回包：每行 ＋ 起成几条 · 没成几条。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct SetLaunched {
+    pub(crate) rows: Vec<RowLaunched>,
+    pub(crate) started: u32,
+    pub(crate) failed: u32,
+}
+
+/// 起一组要动的那几下（入口交：找 / 建组 · 先定 sid 并写好组注解 · 走 `session-open` 起一条 · 起不成摘掉注解）。
+pub(crate) struct Hands<'a> {
+    /// 组名 ⇒ 那一组（为这个组名建过、还在 ⇒ 它；否则新建）。
+    pub(crate) group_for: &'a mut dyn FnMut(&str) -> Result<GroupRef, String>,
+    /// 先定这一条的 sid、写好它进这一组的注解；那一家不认先定 sid ⇒ `None`（起好之后再归）。
+    pub(crate) mark: &'a mut dyn FnMut(&GroupRef) -> Option<String>,
+    /// 起这一行的一条（先定的 sid 交进去）。
+    pub(crate) start:
+        &'a mut dyn FnMut(&RowEdit, Option<&str>) -> Result<cmd_wire::session::Opened, LaunchFail>,
+    /// 起不成：摘掉先写的那一笔注解。
+    pub(crate) unmark: &'a mut dyn FnMut(&str, &GroupRef),
+}
+
+/// **照补足起**：每行只起 [`RowPlan::more`] 条；起之前那一笔先写好组注解（界面不猜归哪组）；一条不行不挡别的。
+/// 同一个组名的几行进同一个组，组只找 / 建一次。
+pub(crate) fn launch_rows(rows: &[RowEdit], plan: &SetPlan, h: &mut Hands) -> SetLaunched {
+    let mut groups: Vec<GroupRef> = Vec::new();
+    let mut out = SetLaunched {
+        rows: Vec::new(),
+        started: 0,
+        failed: 0,
+    };
+    for (r, p) in rows.iter().zip(&plan.rows) {
+        let mut done = RowLaunched {
+            cwd: r.cwd.clone(),
+            alias: r.alias.clone(),
+            group: None,
+            opened: Vec::new(),
+            failed: Vec::new(),
+            blocked: p.blocked.clone(),
+        };
+        if p.more > 0 {
+            let group = match groups.iter().find(|g| g.name == p.group) {
+                Some(g) => Ok(g.clone()),
+                None => (h.group_for)(&p.group).inspect(|g| groups.push(g.clone())),
+            };
+            match group {
+                Err(why) => {
+                    done.failed.push(LaunchFail {
+                        code: "refused".into(),
+                        message: why,
+                    });
+                    out.failed += p.more;
+                }
+                Ok(g) => {
+                    for _ in 0..p.more {
+                        let sid = (h.mark)(&g);
+                        match (h.start)(r, sid.as_deref()) {
+                            Ok(o) => {
+                                done.opened.push(o);
+                                out.started += 1;
+                            }
+                            Err(f) => {
+                                if let Some(s) = &sid {
+                                    (h.unmark)(s, &g);
+                                }
+                                done.failed.push(f);
+                                out.failed += 1;
+                            }
+                        }
+                    }
+                    done.group = Some(g);
+                }
+            }
+        }
+        out.rows.push(done);
+    }
+    out
+}
+
+/// 组名 ⇒ 为它建的那一组的 id（「为这一行建过的组还在就进它」：人改了显示名、绑定照旧；组解散了，那个 id 不在了，下次新建）。
+type Bindings = std::collections::BTreeMap<String, String>;
+
+/// 绑定那一份：状态（读不懂不覆盖）。
+const BINDINGS: crate::common::own_state::Doc<Bindings> =
+    crate::common::own_state::Doc::state(".cc-monitor/set-groups.json", 1 << 20);
+
+/// 绑定那一份的文件名（数据目录底下）。
+const BINDINGS_FILE: &str = "set-groups.json";
+
+/// 为组名 `name` 建过的那一组的 id（没有 · 读不出 ⇒ `None`）。
+pub(crate) fn bound(own: &crate::platform::fs::Own, name: &str) -> Option<String> {
+    let file = own.root()?.join(BINDINGS_FILE).ok()?;
+    match BINDINGS.read(file.as_path()) {
+        crate::common::own_state::Read::Present(b) => b.get(name).cloned(),
+        _ => None,
+    }
+}
+
+/// 记下：组名 `name` 进 `id` 那一组。读不懂那一份 ⇒ 不覆盖、那一句。
+pub(crate) fn bind(
+    own: &crate::platform::fs::Own,
+    name: &str,
+    id: &str,
+) -> Result<(), crate::common::said::Said> {
+    let home = own
+        .root()
+        .ok_or_else(|| crate::common::said::Said::from(copy_text("beOwnState.path.noHome", &[])))?;
+    let file = home.join(BINDINGS_FILE)?;
+    let held = own.lock(&home)?;
+    let mut b = match BINDINGS.read(file.as_path()) {
+        crate::common::own_state::Read::Absent => Bindings::new(),
+        crate::common::own_state::Read::Present(b) => b,
+        crate::common::own_state::Read::Unreadable(why) => return Err(why),
+    };
+    b.insert(name.to_string(), id.to_string());
+    let body = crate::common::own_state::json_body(file.as_path(), &b)?;
+    own.write(&file, &held, &body)
+}
+
+/// `set-launch` 的入参：照存好的哪一组补足、立刻起（补足是幂等的：连点两下不多起）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SetLaunchReq {
+    pub(crate) name: String,
 }
 
 #[cfg(test)]
