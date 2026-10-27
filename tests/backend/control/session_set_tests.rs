@@ -126,6 +126,40 @@ fn the_group_name_defaults_to_the_alias_and_takes_the_dir_when_the_alias_repeats
     );
 }
 
+/// 别名写了 `tab-group`（自己写的或基于的那一段写的）⇒ 组名缺省取它；同一条别名在几个目录 ⇒ 「分组名 · 目录末一段」。
+#[test]
+fn the_group_name_defaults_to_the_aliases_tab_group_when_it_has_one() {
+    let book = parse_book(
+        "[dev]\nccm-tmux = true\ntab-group = \"开发\"\n\n[dev2]\nfrom = \"dev\"\n\n[look]\naccount = \"b\"\n",
+    );
+    let p = plan_rows(
+        &[
+            row("~/work/cc-monitor", "dev", 2),
+            row("~/work/pb", "dev", 1),
+            row("~/work/cp", "dev2", 1),
+            row("~/work/cc-bus", "look", 1),
+        ],
+        &book,
+        &[],
+        home(),
+        &every_dir,
+    );
+    assert!(p.rows.iter().all(|r| r.blocked.is_none()), "{p:?}");
+    let groups: Vec<&str> = p.rows.iter().map(|r| r.group.as_str()).collect();
+    let with_dir = |g: &str, d: &str| {
+        copy_core::copy_text("beSessionSet.group.withDir", &[("group", g), ("dir", d)])
+    };
+    assert_eq!(
+        groups,
+        vec![
+            with_dir("开发", "cc-monitor").as_str(),
+            with_dir("开发", "pb").as_str(),
+            "开发",
+            "look",
+        ]
+    );
+}
+
 #[test]
 fn set_plan_reads_a_saved_set_or_unsaved_rows_and_refuses_both_or_neither() {
     let text = format!("{BOOK}\n[set.\"g\"]\nrow = [{{ cwd = \"/srv/a\", alias = \"dev\", n = 2 }}]\n\n[set.\"坏\"]\nrow = [{{ cwd = \"/srv/a\", alias = \"dev\", n = 0 }}]\n");

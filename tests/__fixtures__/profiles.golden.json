@@ -129,7 +129,9 @@
           "from": null,
           "launcher": null,
           "name": "mycc",
+          "say": null,
           "tab": null,
+          "tabGroup": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -167,7 +169,9 @@
           "from": "mycc",
           "launcher": null,
           "name": "mycct",
+          "say": null,
           "tab": null,
+          "tabGroup": null,
           "tmux": {
             "mode": "auto",
             "name": ""
@@ -211,7 +215,9 @@
           "from": "mycct",
           "launcher": null,
           "name": "teamcct",
+          "say": null,
           "tab": null,
+          "tabGroup": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -248,7 +254,9 @@
           "from": "mycct",
           "launcher": null,
           "name": "workcct",
+          "say": null,
           "tab": null,
+          "tabGroup": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -285,7 +293,9 @@
           "from": null,
           "launcher": null,
           "name": "pcc",
+          "say": null,
           "tab": null,
+          "tabGroup": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -370,6 +380,14 @@
       {
         "id": "tab",
         "label": "标签页"
+      },
+      {
+        "id": "tabGroup",
+        "label": "标签页分组"
+      },
+      {
+        "id": "say",
+        "label": "第一句话"
       }
     ],
     "tmux": true

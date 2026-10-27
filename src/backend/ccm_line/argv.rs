@@ -36,6 +36,10 @@ pub(crate) mod flag {
     pub(crate) const TAB_FROM: &str = "--tab-from";
     /// `--ccm-alias <别名>`：这一发是经哪条别名起的（ccm 往 tmux 里那一趟交下去用，同 `--tab-from`；不进配置）。
     pub(crate) const CCM_ALIAS: &str = "--ccm-alias";
+    /// `--tab-group <名>`：起出来的会话进哪个标签页组（一组会话那一行没写组名时，组名缺省取别名合下来的它）。claude 没有同名旗标。
+    pub(crate) const TAB_GROUP: &str = "--tab-group";
+    /// `--say <那句>`：开口那句 —— 这一发落在 tmux 里、起新会话时交给 agent 当第一句（`plan::build_among`）。claude 没有同名旗标。
+    pub(crate) const SAY: &str = "--say";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
     /// 这一发不轮换，只用起它的那个号（同 `session-open` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。
@@ -117,6 +121,10 @@ pub(crate) struct Opts {
     pub(crate) tab_from: String,
     /// 这一发经哪条别名起的（合并那一处取最末那一层 · tmux 里那一趟由 `--ccm-alias` 交来）；空 ＝ 不经别名。
     pub(crate) alias: String,
+    /// `--tab-group`；空 ＝ 没给。
+    pub(crate) tab_group: String,
+    /// `--say`；空 ＝ 没给。
+    pub(crate) say: String,
     /// `--account-dir`；空 = 没给。
     pub(crate) account_dir: String,
     /// `--no-rotation`：这一发不轮换。
@@ -194,6 +202,8 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         tab: None,
         tab_from: String::new(),
         alias: String::new(),
+        tab_group: String::new(),
+        say: String::new(),
         account_dir: String::new(),
         no_rotation: Defaults::NO_ROTATION,
         print: Defaults::PRINT,
@@ -226,6 +236,8 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::TAB,
     flag::TAB_FROM,
     flag::CCM_ALIAS,
+    flag::TAB_GROUP,
+    flag::SAY,
     flag::ACCOUNT_DIR,
     flag::NO_ROTATION,
 ];
@@ -289,6 +301,8 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         | flag::TAB
         | flag::TAB_FROM
         | flag::CCM_ALIAS
+        | flag::TAB_GROUP
+        | flag::SAY
         | flag::ACCOUNT_DIR
         | flag::TMUX_SIZE => {
             let (v, n) = one()?;
@@ -339,6 +353,8 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         }
         flag::TAB_FROM => o.tab_from = v(0),
         flag::CCM_ALIAS => o.alias = v(0),
+        flag::TAB_GROUP => o.tab_group = v(0),
+        flag::SAY => o.say = v(0),
         flag::ACCOUNT_DIR => o.account_dir = v(0),
         flag::DETACH => o.detach = true,
         flag::NO_ROTATION => o.no_rotation = true,
@@ -618,6 +634,16 @@ pub(crate) fn check_values(o: &Opts) -> Result<(), Die> {
         return die(copy_text(
             "beArgv.validate.badAlias",
             &[("name", &format!("{:?}", o.alias))],
+        ));
+    }
+    if !o.tab_group.is_empty() && o.tab_group.trim().is_empty() {
+        return die(copy_text("beArgv.validate.blankTabGroup", &[]));
+    }
+    // 开口那句拼进交给 agent 的那一串（`-- <那句>`），同透传里每个词过同一道。
+    if !o.say.is_empty() && !shell_quote_core::arg_text_ok(&o.say) {
+        return die(copy_text(
+            "beArgv.validate.badSay",
+            &[("say", &format!("{:?}", o.say))],
         ));
     }
     if !o.account.is_empty() && !shell_quote_core::account_name_ok(&o.account) {

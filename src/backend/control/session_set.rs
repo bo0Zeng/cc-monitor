@@ -5,7 +5,8 @@
 //! - 「用哪条别名起的」只认启动台账记下的（`ccm @名` 那一发留的便条，`control::launch_account`）；不经别名起的不算进任何一行。
 //! - 目录照这台的家目录展开 `~` 再比，末尾的 `/` 不算。
 //! - 起不了的那一行（别名不存在 · 别名合不下来 · 目录不存在）照数已有的、不算进「再起」，别的行照起。
-//! - 组名：行里写了 `tab-group` 就是它；否则取别名的名字，这组里同一条别名出现在不止一个目录 ⇒「别名 · 目录末一段」。
+//! - 组名：行里写了 `tab-group` 就是它；否则取别名合下来的 `tab-group`（别名没写 ⇒ 别名的名字），这组里同一条别名出现在
+//!   不止一个目录 ⇒「分组名 · 目录末一段」。
 
 use crate::assets::aliases::profile::{self, Book, RowEdit};
 use copy_core::copy_text;
@@ -68,12 +69,20 @@ fn last_seg(d: &str) -> &str {
         .unwrap_or(d)
 }
 
+/// 别名合下来的标签页分组名（`--tab-group`）；没写 · 合不下来 ⇒ `None`。
+fn alias_group(book: &Book, alias: &str) -> Option<String> {
+    match profile::resolve(book, alias, &[]).ok()?.parsed {
+        crate::ccm_line::argv::Parsed::Opts(o) if !o.tab_group.is_empty() => Some(o.tab_group),
+        _ => None,
+    }
+}
+
 /// 这一行进哪个组（规则见头注）。
-fn group_of(r: &RowEdit, rows: &[RowEdit]) -> String {
+fn group_of(r: &RowEdit, rows: &[RowEdit], book: &Book) -> String {
     if let Some(g) = &r.tab_group {
         return g.clone();
     }
-    let base = r.alias.clone();
+    let base = alias_group(book, &r.alias).unwrap_or_else(|| r.alias.clone());
     if rows.iter().filter(|o| o.alias == r.alias).count() > 1 {
         copy_text(
             "beSessionSet.group.withDir",
@@ -143,7 +152,7 @@ pub(crate) fn plan_rows(
                 want: r.n,
                 have,
                 more,
-                group: group_of(r, rows),
+                group: group_of(r, rows, book),
                 blocked,
             }
         })

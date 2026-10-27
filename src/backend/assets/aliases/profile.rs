@@ -56,6 +56,8 @@ pub(crate) const PROFILE_FLAGS: &[&str] = &[
     flag::AGENT,
     flag::LAUNCHER,
     flag::TAB,
+    flag::TAB_GROUP,
+    flag::SAY,
 ];
 
 /// [`PROFILE_FLAGS`] 写进文件的那个键（去掉打头的 `--`）。
