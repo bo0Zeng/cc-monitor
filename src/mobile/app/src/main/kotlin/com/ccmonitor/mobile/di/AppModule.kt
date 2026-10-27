@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.di
 
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
+import java.io.File
 
 /** :app 的 Koin 模块（ViewModel + dev seeder）。 */
 val appModule =
@@ -44,7 +46,18 @@ val appModule =
             val open = it.get<ChatOpen>()
             val backends = get<HostBackends>()
             val cache = get<LocalCache>()
-            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::of, cache::chat))
+            // 草稿上的附件住应用私有目录（一台一格），被杀回来照样在。
+            val attach = File(androidContext().filesDir, ATTACH_DIR)
+            ChatViewModel(
+                get<ChatController>().sessionOf(
+                    open,
+                    { h -> backends.of(h).also { f -> f.ensure() } },
+                    backends::of,
+                    cache::chat,
+                    attachRoot = { h -> File(attach, h) },
+                    fdOf = { f -> ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY).detachFd() },
+                ),
+            )
         }
         // 应用级的对话持有者，tail 活在这里，不活在屏幕里。逐出要记日志，否则「对话怎么没了」无从查起。
         single {
@@ -126,3 +139,6 @@ val appModule =
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
         single { DevSeeder(androidContext(), get(), get()) }
     }
+
+/** 草稿上的附件在应用私有目录里住哪一格（一台一个子目录）。 */
+private const val ATTACH_DIR = "attach"

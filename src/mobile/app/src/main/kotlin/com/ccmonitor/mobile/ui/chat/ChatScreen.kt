@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.ui.chat.attach.AttachUi
 import com.ccmonitor.mobile.ui.chat.needs.AwaitingStep
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import kotlinx.coroutines.flow.drop
@@ -45,12 +46,14 @@ fun ChatScreen(
     awaiting: AwaitingStep? = null,
     /** 需手动那一块（钉条 ＋ 答题抽屉），贴在输入框上方。 */
     needs: @Composable () -> Unit = {},
+    /** 输入框上方那一排附件此刻的样子；这条会话没有那一排 ⇒ `null`。 */
+    attach: AttachUi? = null,
 ) {
     Column(modifier.fillMaxSize()) {
         ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting)
         needs()
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
-        ChatInputArea(state = state, actions = actions)
+        ChatInputArea(state = state, actions = actions, attach = attach)
     }
 }
 

@@ -132,6 +132,9 @@ object Core {
     /** 下载一组那几格（`{id, machine, names, phase, …}` JSON）⇒ `batch` 那一形的一行；读不动 ⇒ 空串。 */
     external fun downloadEvent(want: String): String
 
+    /** 聊天输入框上方那一排附件的字（`{cards, offline, local}` JSON）⇒ `{cards: [{line, remove}], note}`；读不动 ⇒ 空串。 */
+    external fun attachFace(want: String): String
+
     /** 手机这一侧问的同名（下载 · 上传）那一答（`{all}` · `{each}`；`null` ⇒ 取消）⇒ [keys] 那几行每个键一格（JSON）；取消 ⇒ `null`。 */
     external fun answerOf(
         keys: String,
