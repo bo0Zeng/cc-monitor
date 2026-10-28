@@ -548,7 +548,7 @@ impl RecordScans {
             }
         }
         // 一遍扫了一大份（这一趟进程里为扫描图读的，含同时在扫的别几份）⇒ 扫的时候放掉的那些还给系统，常驻不停在扫的高水位。
-        crate::platform::proc::return_freed_memory_after(self.bytes_read() - read_before);
+        crate::platform::proc::return_freed_memory(self.bytes_read() - read_before);
         let shared = scanned.as_ref().map(Arc::clone).map_err(|e| e.to_string());
         *flight.done.lock().unwrap_or_else(|e| e.into_inner()) = Some(shared);
         flight.cv.notify_all();

@@ -104,7 +104,7 @@ pub(crate) fn search_counting(
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
-    crate::platform::proc::return_freed_memory_after(r.bytes);
+    crate::platform::proc::return_freed_memory(r.bytes);
     tracing::debug!(
         "history-search index: full={} appended={} reused={} bytes={}",
         r.full,

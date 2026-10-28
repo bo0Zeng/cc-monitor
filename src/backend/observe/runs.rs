@@ -762,7 +762,6 @@ impl RunTrack {
     }
 
     /// 到此刻从子运行记录读了多少字节。
-    #[cfg(test)]
     pub(crate) fn child_bytes(&self) -> u64 {
         self.child_read
     }
@@ -829,9 +828,9 @@ impl RunTrack {
             return false;
         }
         ps.push(key);
-        let before = self.child_read;
+        let before = self.child_bytes();
         let changed = self.discover_under(sid, parent);
-        crate::platform::proc::return_freed_memory_after(self.child_read - before);
+        crate::platform::proc::return_freed_memory(self.child_bytes() - before);
         changed
     }
 

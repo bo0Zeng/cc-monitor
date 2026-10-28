@@ -1,4 +1,4 @@
-//! 一趟大读放掉的内存还给系统（[`return_freed_memory_after`]）：两种分配器都要还。
+//! 一趟大读放掉的内存还给系统（[`return_freed_memory`]）：两种分配器都要还。
 //! 远端 musl 版的分配器是 mimalloc（`main.rs`），它在没有分配活动时不会自己把空页还回去；本机 glibc 版靠 `malloc_trim`。
 //! 量的是 `/proc/self/status` 的 RssAnon（整个进程一个数）⇒ 量的那一半在自己起的子进程里单独跑，不受同进程别的判据干扰。
 
@@ -65,7 +65,7 @@ fn child_gives_freed_pages_back() {
         }
     }
     drop(held);
-    return_freed_memory_after(TRIM_AFTER_BYTES);
+    return_freed_memory(TRIM_AFTER_BYTES);
     let after = rss_anon_kb();
     println!("start={start} peak={peak} after={after} kB");
     assert!(
@@ -110,6 +110,6 @@ fn gives_freed_pages_back() {
 
 #[test]
 fn a_small_read_does_not_trigger_it() {
-    assert!(!return_freed_memory_after(TRIM_AFTER_BYTES - 1));
-    assert!(return_freed_memory_after(TRIM_AFTER_BYTES));
+    assert!(!return_freed_memory(TRIM_AFTER_BYTES - 1));
+    assert!(return_freed_memory(TRIM_AFTER_BYTES));
 }
