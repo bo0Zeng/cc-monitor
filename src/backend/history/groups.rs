@@ -610,6 +610,79 @@ fn counts_of(rows: &[GroupMember]) -> Vec<GroupCount> {
     .collect()
 }
 
+/// 格目录的样本（`faces/cells_catalog.rs`）：真合（[`merge`]）出来的一份 —— 名字取自这一问答的那片 · 上次那片各一组，
+/// 各组组头都有计数；那台这一问的结局四种各一台。可缺的格都填上、列表都不空。
+pub(crate) fn specimen() -> GroupsRead {
+    let w = |v: &str| Words(v.to_string());
+    let rec = |id: &str| HereGroup {
+        id: id.to_string(),
+        name: format!("n-{id}"),
+        made: 1,
+        named: 2,
+    };
+    let member = |sid: &str, groups: &[&str], activity| HereMember {
+        sid: sid.to_string(),
+        groups: groups.iter().map(|g| g.to_string()).collect(),
+        pinned: true,
+        face: <SessionFace as crate::wire::SessionFaceExt>::of(crate::wire::Life::Live {
+            activity: Some(activity),
+            host: None,
+        }),
+        facts: MemberFacts {
+            title: w("t"),
+            cwd: Some("/w".to_string()),
+            record: Some("/w/s.jsonl".to_string()),
+            account: Some("a".to_string()),
+            bg: false,
+            at: Some(1),
+        },
+    };
+    let now = GroupsHere {
+        groups: vec![rec("g1")],
+        members: vec![
+            member("s1", &["g1"], crate::agents::SessionActivity::NeedsYou),
+            member("s2", &["g2"], crate::agents::SessionActivity::Working),
+        ],
+    };
+    // 上次所知那片的组员画成看不见那一张（灰的那几格 `can.*.why` 才露得出来）。
+    let before = GroupsHere {
+        groups: vec![rec("g2")],
+        members: vec![member("s3", &["g2"], crate::agents::SessionActivity::Working)],
+    };
+    let at = |m: &str| GroupsMachine {
+        origin: Machine::named(m),
+        read: Read::Unread,
+    };
+    merge(
+        &[
+            (Machine::named("a"), Half::Now(now)),
+            (Machine::named("b"), Half::Before(before, w("t"))),
+        ],
+        vec![
+            GroupsMachine {
+                read: Read::Ok {
+                    notice: Some("n".to_string()),
+                },
+                ..at("a")
+            },
+            GroupsMachine {
+                read: Read::Stale {
+                    why: "w".to_string(),
+                    at: w("t"),
+                },
+                ..at("b")
+            },
+            GroupsMachine {
+                read: Read::Failed {
+                    why: "w".to_string(),
+                },
+                ..at("c")
+            },
+            at("d"),
+        ],
+    )
+}
+
 // ───────────────────────── 写：groups-write ─────────────────────────
 
 /// 组名至多几个字。

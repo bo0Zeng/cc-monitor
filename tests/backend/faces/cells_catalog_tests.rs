@@ -166,6 +166,26 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "head.info.notice",
         ]),
     ),
+    // 组（`groups-read`）：手机会话列表按组分段照这几格摆（段头 · 组员 · 固定 · 那台没读全那一句）。
+    (
+        "groups_read",
+        Frozen::Cells(&[
+            "groups[].id",
+            "groups[].title",
+            "groups[].counts[].text",
+            "groups[].members[].sid",
+            "groups[].members[].facts.title",
+            "groups[].members[].facts.cwd",
+            "groups[].members[].face.dot",
+            "groups[].members[].face.name",
+            "groups[].members[].face.tone",
+            "pinned[].sid",
+            "pinned[].facts.title",
+            "pinned[].face.dot",
+            "machines[].read.is",
+            "machines[].read.why",
+        ]),
+    ),
 ];
 
 /// 那件成品的冻结格（[`FROZEN`] 里没登 ⇒ 不冻结；登没登全由判据管）。
@@ -534,6 +554,9 @@ fn corpus(name: &str) -> Vec<Value> {
             g["order"].as_array_mut().unwrap().push(Value::from("gone"));
             vec![g]
         }
+        // 组：没有跨语言金样 ⇒ 照本机后端那一步真合一份（`groups::merge`，纯函数）：答了的一台 · 上次所知的一台 · 读不到的一台 · 没同步过的一台，
+        // 名字三种来处（答了的那片 · 上次那片 · 哪片都没有记录）都出。
+        "groups_read" => vec![serde_json::to_value(real_groups_read()).unwrap()],
         // 会话流金样里没有「记录已不在」那一帧（离开「活」两样都能换）⇒ 补一帧，灰的那两格才露得出来。
         "session_left" => {
             let mut v: Vec<Value> = golden("session-stream.golden.jsonl")
@@ -560,6 +583,80 @@ fn corpus(name: &str) -> Vec<Value> {
             .filter(|v| v["kind"] == frame)
             .collect(),
     }
+}
+
+/// 照本机后端 `groups-read` 那一步真合的一份（[`corpus`] 用）：各台那一片照线上那一形造，机器名 · 标题是结构夹具。
+fn real_groups_read() -> crate::history::groups::GroupsRead {
+    use crate::history::groups::{merge, GroupsHere, GroupsMachine, Half, HereGroup, HereMember, MemberFacts};
+    use crate::history::history_browse::Read;
+    use crate::wire::SessionFaceExt as _;
+    let m = cmd_wire::Machine::named;
+    let member = |sid: &str, groups: &[&str], pinned: bool, life: crate::wire::Life| HereMember {
+        sid: sid.into(),
+        groups: groups.iter().map(|g| g.to_string()).collect(),
+        pinned,
+        face: crate::wire::SessionFace::of(life),
+        facts: MemberFacts {
+            title: crate::common::cells::Words(format!("标题-{sid}")),
+            cwd: Some(format!("/w/{sid}")),
+            record: Some(format!("/r/{sid}.jsonl")),
+            account: Some("work".into()),
+            bg: false,
+            at: Some(7),
+        },
+    };
+    let rec = |id: &str, name: &str| HereGroup {
+        id: id.into(),
+        name: name.into(),
+        made: 3,
+        named: 4,
+    };
+    let live = |a| crate::wire::Life::Live {
+        activity: Some(a),
+        host: None,
+    };
+    let here = GroupsHere {
+        groups: vec![rec("g1", "前端")],
+        members: vec![
+            member("a", &["g1", "g9"], true, live(crate::agents::SessionActivity::NeedsYou)),
+            member("b", &["g2"], false, live(crate::agents::SessionActivity::Working)),
+        ],
+    };
+    let before = GroupsHere {
+        groups: vec![rec("g2", "后端")],
+        members: vec![member("c", &["g2"], true, crate::wire::Life::Ended)],
+    };
+    let w = |s: &str| crate::common::cells::Words(s.into());
+    merge(
+        &[
+            (m("c"), Half::Now(here)),
+            (m("e"), Half::Before(before, w("1 小时前"))),
+            (m("f"), Half::None),
+        ],
+        vec![
+            GroupsMachine {
+                origin: m("c"),
+                read: Read::Ok {
+                    notice: Some("注解没并上".into()),
+                },
+            },
+            GroupsMachine {
+                origin: m("e"),
+                read: Read::Stale {
+                    why: "连不上".into(),
+                    at: w("1 小时前"),
+                },
+            },
+            GroupsMachine {
+                origin: m("f"),
+                read: Read::Failed { why: "读不到".into() },
+            },
+            GroupsMachine {
+                origin: m("u"),
+                read: Read::Unread,
+            },
+        ],
+    )
 }
 
 /// 用真判定现造的一份 `quota-read`（[`corpus`] 里补金样没有的那几格）。
@@ -640,6 +737,9 @@ const NEVER_WRITTEN: &[(&str, &str)] = &[
     ("history_list", "up.*.face.account"),
     // 清单行是冷读出来的：被顶替那一格只有离开那一帧带。
     ("history_list", "up.*.face.life.by"),
+    // 组员那张脸是各台照清单那一行冷读出来的，同上。
+    ("groups_read", "groups[].members[].face.account"),
+    ("groups_read", "pinned[].face.account"),
 ];
 
 /// ★ 样本把每一格都露出来了：没有 `None`、没有空列表（不然那一格在目录里就漏了）；空着的只许是 [`NEVER_WRITTEN`] 登记的，登记的也确实空着。
