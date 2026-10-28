@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { estimateFromFacts, initialColumnWidth, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
 import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
+import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
@@ -907,7 +908,14 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
     const others = withSessionReads((which, a) =>
       which === "read_session_range"
         ? Array.from({ length: (Number(a.until) - Number(a.offset)) / 100 }, (_, k) => payload(Number(a.offset) / 100 + k))
-        : undefined,
+        : which === "read_session_lines"
+          ? (() => {
+              // 按行号往后读：一页至多 250 行，读到末尾为止
+              const from = Number(a.from);
+              const next = Math.min(rows.length, a.until === undefined ? rows.length : Number(a.until), from + 250);
+              return { from, next, eof: next >= rows.length, payloads: Array.from({ length: next - from }, (_, k) => payload(from + k)) };
+            })()
+          : undefined,
     );
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (isChanCall(cmd, args, "history-index")) {
@@ -924,7 +932,18 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
     const root = document.createElement("div");
     document.body.replaceChildren(root);
     const store = new TabStore();
-    const host = { onLine() {}, refreshTabBar() {}, scheduleTabBarRefresh() {}, userActive() {}, forkFrom() {}, runLabelOf: () => undefined, markNewRunCard() {} };
+    // 按行号取回的行走宿主的 `onLine` 全套（这里就是去重 ＋ 门控）
+    const host = {
+      onLine(p: JsonlLinePayload) {
+        if (tsv.admit(tab as never, p)) tsv.ingest(tab as never, p);
+      },
+      refreshTabBar() {},
+      scheduleTabBarRefresh() {},
+      userActive() {},
+      forkFrom() {},
+      runLabelOf: () => undefined,
+      markNewRunCard() {},
+    };
     const tsv = new TabStreamView(store, root, host);
     onTestFinished(() => tsv.dispose());
     const dom = tsv.mountTabDom("c");
@@ -1056,6 +1075,22 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       return a + Math.max(0, Math.min(b.bottom, VIEW_H) - Math.max(b.top, 0));
     }, 0);
     expect(covered, "接上骨架之后视口里没补满").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
+  });
+
+  // 切进一个没在看的会话：那台从上流点起交，之下那一截整份重来、按行号从老到新取回（`catchUpTo`）。
+  // 从前当前 tab 按「批里首条钉 floor、之后直渲」把取回的 600 行整段建出来（台架冷切长会话 489 个条目就是这一条路）。
+  it("切进来补上流前那一截（按行号从老到新取回 600 行）：取回的只进账本，取完只建视口那一截", async () => {
+    const r = await rig();
+    // 这一形手上一行都没有（台子默认收着重放推来的尾段）
+    r.tab.seenSeqs.clear();
+    r.tab.window.dropPending();
+    r.store.activeId = "c";
+    r.tsv.showOnly("c");
+    r.tsv.catchUpTo(r.tab as never, "/p/c.jsonl", N);
+    await vi.waitFor(() => expect(r.built().length, "取完了没建卡").toBeGreaterThan(0), UNTIL_CEILING);
+    const ids = r.built();
+    expect(ids.length, `取回 ${N} 行之后建了 ${ids.length} 张`).toBeLessThanOrEqual(keepCards);
+    expect(Math.max(...ids)).toBe(N - 1);
   });
 
   it("轮次先落地、骨架等不来（老后端答不了索引）⇒ 接着从尾部窗口补，视口不空着", async () => {

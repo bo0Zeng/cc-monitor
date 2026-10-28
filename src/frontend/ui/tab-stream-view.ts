@@ -178,6 +178,8 @@ export class TabStreamView {
   private readonly indexEnds = new WeakMap<Tab, number>();
   /** 〔骨架〕正文重来时从上一代接过来的账本与它的末字节：要骨架时从这里续，不从 0 再要（`restartTail`）。 */
   private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
+  /** 整份重来、正在按行号取回上流点之下那一截的 tab（`catchUpTo`）：取回的行只进账本，取完照冷开物化视口那一截。 */
+  private readonly coldFills = new WeakSet<Tab>();
   /** 〔骨架〕账本续到末尾那一趟在途的 tab（同一个 tab 同时只续一趟，`extendIndex`）。 */
   private readonly extending = new WeakSet<Tab>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
@@ -698,7 +700,7 @@ export class TabStreamView {
     const floor = tab.window.floorSeq;
     let render: boolean;
     if (floor === null) {
-      render = !this.store.inBatch || this.store.activeId === tab.sessionId;
+      render = !this.store.inBatch || (this.store.activeId === tab.sessionId && !this.coldFills.has(tab));
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
@@ -1368,9 +1370,12 @@ export class TabStreamView {
       return;
     }
     const fresh = have >= 0 ? this.restartTail(tab) : tab;
-    // 取回来的进的是账本（批语义、不建卡）⇒ 取完了它还在眼前，就照切进来那样物化尾段、停下来看时接骨架。
+    // 取回来的进的是账本（批语义、不建卡 —— 当前的那一个也不建：`coldFills`）⇒ 取完了它还在眼前，就照切进来那样物化视口那一截、停下来看时接骨架。
+    // 不记的话当前 tab 按「批里首条钉 floor、之后直渲」把从老到新取回的 600 行整段建出来（台架冷切长会话 489 个条目就是它）。
     // 冷起首个标签页的正文走的就是这一趟（壳冷起不整份重放）⇒ 启动管线那份 timeline 在它落地时落盘（只第一次，`startup-perf.ts`）。
+    this.coldFills.add(fresh);
     this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
+      this.coldFills.delete(fresh);
       if (this.inFront(fresh)) this.activate(fresh);
       noteColdFilled();
     });
