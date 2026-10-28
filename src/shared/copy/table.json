@@ -1863,7 +1863,7 @@
     "beRewind.note.runsAfter": {
       "kind": "body",
       "role": "说明",
-      "zh": "此句之后派出的 {n} 个子 agent 仍在运行",
+      "zh": "此句之后派出的 agent ×{n} 仍在运行",
       "args": ["n"]
     },
     "beSessionModel.set.saved": {
