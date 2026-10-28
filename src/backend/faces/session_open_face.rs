@@ -84,10 +84,17 @@ fn answer(
             },
         ),
     };
+    // 接回两种宿主都认（托管那一行照句柄接）；别的几形要往 tmux 会话里键入或新开 tmux 会话 ⇒ 只认 tmux。
+    let both = matches!(req.what, open::Open::Look { .. });
     with_launch_ctx(own, nf, |fork, pre, home| {
-        super::session_batch_face::with_deps_as(client.as_deref(), &agent, Some(files), |d| {
-            open::answer(req, facts, d, fork, pre, home)
-        })
+        let go =
+            |d: &crate::control::session_batch::Deps| open::answer(req, facts, d, fork, pre, home);
+        let client = client.as_deref();
+        if both {
+            super::session_batch_face::with_deps_both_as(client, &agent, Some(files), go)
+        } else {
+            super::session_batch_face::with_deps_as(client, &agent, Some(files), go)
+        }
     })
 }
 
