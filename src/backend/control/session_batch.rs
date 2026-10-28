@@ -76,6 +76,44 @@ pub(crate) fn pretrust(account: &Settled, cwd: &str, deps: &Deps) {
     }
 }
 
+/// 这台的终端名单 ⇒ 认会话用的那几格（挂着 sid 的窗格各一行）。`managed` ＝ 托管名单的家：给了 ⇒ 托管那一臂也认（停）；
+/// `None` ⇒ 只认 tmux 那一形（起会话 · 分叉 · 就地键入这几处只对 tmux 下手）。`Ok(None)` ＝ 这台没装 tmux、托管那一臂也没有一行；
+/// `Err` 的码只留「过了期限」这一种（[`listed`] 按它整条回超时），别的列不成一律当看不见。
+pub(crate) fn listed_on(
+    on: crate::host::tmux::On<'_>,
+    managed: Option<&crate::platform::fs::Own>,
+) -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+    let tmux = crate::host::tmux::rows_found_on(on)
+        .map(|got| got.map(|(rows, _, _)| rows))
+        .map_err(|f| {
+            let code = if f.code == crate::platform::child::TIMED_OUT {
+                crate::platform::child::TIMED_OUT
+            } else {
+                "failed"
+            };
+            (code, f.into_note())
+        })?;
+    // 托管那一臂并在 tmux 那几行后面（同 `terminals-list` 的次序）。
+    let hosted = managed
+        .map(crate::host::managed::rows_at)
+        .unwrap_or_default();
+    let rows = match (tmux, hosted.is_empty()) {
+        (None, true) => return Ok(None),
+        (tmux, _) => tmux.unwrap_or_default().into_iter().chain(hosted),
+    };
+    Ok(Some(rows.map(entry_of).collect()))
+}
+
+/// 名单里一行 ⇒ 认会话用的四格。
+fn entry_of(r: crate::host::TermRow) -> TmuxEntry {
+    TmuxEntry {
+        agent: crate::agents::is_agent_process(&r.program),
+        terminal: r.handle(),
+        sid: (!r.sid.is_empty()).then_some(r.sid),
+        name: r.name,
+    }
+}
+
 /// 这台的名单（一批一次）：列名单那一发过了期限（总期限用完了）⇒ 整条 `child_timed_out`（同别的装了总期限的命令）；
 /// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
 pub(crate) fn listed(deps: &Deps) -> Result<Option<Vec<TmuxEntry>>, CmdErr> {

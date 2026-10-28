@@ -71,7 +71,6 @@ impl Rig {
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
-        let caps = BTreeSet::new();
         let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
             match self.list_err {
                 Some(c) => Err((c, "said".to_string())),
@@ -85,28 +84,112 @@ impl Rig {
                 None => Ok(()),
             }
         };
-        with_accounts(|accounts| {
-            f(&Deps {
-                list: &list,
-                record: &|_, _| unreachable!("停不读记录"),
-                end: &end,
-                send_into: &|_, _, _| unreachable!("停不键入"),
-                run_ccm: &|_| unreachable!("停不起"),
-                mint: &|_| unreachable!("停不铸名"),
-                caps: &caps,
-                host: crate::control::launch_render::Host {
-                    windows: false,
-                    is_dir: |_| true,
-                    entry: crate::platform::paths::installed_ccm_entry,
-                },
-                accounts,
-                writers: &|_| unreachable!("停不问谁在写"),
-                pretrust: &|_, _| unreachable!("停不预标"),
-                open_shell: &|_, _| unreachable!("不开空 shell"),
-                prefs: &self.prefs,
+        deps_with(&list, &end, &self.prefs, f)
+    }
+}
+
+/// 停与问样子要的那一套：名单与结束由调用方给，别的几样都用不着。
+fn deps_with<T>(
+    list: &dyn Fn() -> Result<Option<Vec<TmuxEntry>>, CmdErr>,
+    end: &dyn Fn(&str) -> Result<(), crate::wire::spec::Fail>,
+    prefs: &crate::common::machine_prefs::Prefs,
+    f: impl FnOnce(&Deps) -> T,
+) -> T {
+    let caps = BTreeSet::new();
+    with_accounts(|accounts| {
+        f(&Deps {
+            list,
+            record: &|_, _| unreachable!("停不读记录"),
+            end,
+            send_into: &|_, _, _| unreachable!("停不键入"),
+            run_ccm: &|_| unreachable!("停不起"),
+            mint: &|_| unreachable!("停不铸名"),
+            caps: &caps,
+            host: crate::control::launch_render::Host {
+                windows: false,
+                is_dir: |_| true,
+                entry: crate::platform::paths::installed_ccm_entry,
+            },
+            accounts,
+            writers: &|_| unreachable!("停不问谁在写"),
+            pretrust: &|_, _| unreachable!("停不预标"),
+            open_shell: &|_, _| unreachable!("不开空 shell"),
+            prefs,
+        })
+    })
+}
+
+/// ★ 一条在托管终端里的会话，标签页菜单［结束］（`sessions-stop`）⇒ 那个托管终端结束、名单少一行，不回「找不到」；
+/// 请求方前端对不上 ⇒ 那一项 `wrong_owner`（界面「对齐后重试」那一支），托管终端还在。
+/// 生产那一份名单（`listed_on`：tmux 指向不存在的私有 socket ＋ 沙箱里的托管家）与 `terminal-end` 那一条；假子进程（`sh`），不起真 claude。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_ends_a_session_living_in_a_hosted_terminal() {
+    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::wire::{read_frame, Ctl, Frame, Want};
+    let (own, data) = sandbox_own("batch-stop");
+    let script = r#"trap 'exit 7' HUP; printf 'ready\r\n'; while :; do read x; done"#;
+    // 桌面端起的那一条（托管那一行的 `client` 照起它的前端）。
+    let mut s = spec("t-batchstop", script);
+    s.client = "desktop".into();
+    let (sock, task) = start(&own, s).await;
+    let mut viewer = hello(&sock, Want::View).await;
+    read_until_out(&mut viewer, "ready").await;
+    crate::host::managed::client::tag(&sock, A).expect("打上 sid");
+    let bogus = data.join("no-tmux-here").to_string_lossy().into_owned();
+    let stop_as = |client: Option<&'static str>| {
+        let (o, b) = (own.clone(), bogus.clone());
+        tokio::task::spawn_blocking(move || {
+            let on = || crate::host::tmux::On { socket: Some(&b) };
+            let list = || listed_on(on(), Some(&o));
+            let end = |terminal: &str| {
+                crate::control::kill::end_terminal(
+                    on(),
+                    Some(&o),
+                    &crate::control::kill::TerminalEndReq {
+                        terminal: Some(terminal.into()),
+                        sid: None,
+                        client: client.map(str::to_string),
+                    },
+                )
+                .map(|_| ())
+            };
+            deps_with(&list, &end, &Default::default(), |d| {
+                stop(&json!({ "sids": [A] }), d)
             })
         })
+    };
+    // 前端对不上（手机来结束桌面端起的那一条）⇒ 过不了门，那一句照单条结束那张表。
+    let refused = stop_as(Some("mobile")).await.expect("线没崩").unwrap();
+    assert_eq!(
+        outcomes(&refused),
+        vec![(A.into(), "failed".into(), json!("wrong_owner"))]
+    );
+    assert_eq!(
+        refused["results"][0]["said"],
+        json!(crate::control::kill::said(
+            "name-t-batchstop",
+            "wrong_owner"
+        ))
+    );
+    assert_eq!(
+        crate::host::managed::rows_at(&own).len(),
+        1,
+        "过不了门 ⇒ 还在"
+    );
+    let out = stop_as(Some("desktop")).await.expect("线没崩").unwrap();
+    assert_eq!(outcomes(&out), vec![(A.into(), "done".into(), Value::Null)]);
+    assert_eq!(out["results"][0]["session"], "name-t-batchstop");
+    loop {
+        match read_frame(&mut viewer).await.expect("读") {
+            Some(Frame::Ctl(Ctl::Ended { .. })) | None => break,
+            Some(_) => {}
+        }
     }
+    task.await.expect("任务没崩").expect("跑完");
+    assert!(
+        crate::host::managed::rows_at(&own).is_empty(),
+        "名单里那一行没了"
+    );
 }
 
 fn outcomes(v: &Value) -> Vec<(String, String, Value)> {
