@@ -74,13 +74,10 @@ pub fn slices(list: &Value) -> Option<Value> {
                         Some(e) => copy_text("plan.strip.sliceUnreadable", &[("reason", e)]),
                         None => joined([s(sl, "domain"), stale_line(sl).as_deref()]),
                     };
-                    let end = sl
-                        .get("progress")
-                        .filter(|p| !p.is_null())
-                        .map(|p| {
-                            let (done, of) = done_of(p);
-                            copy_text("plan.outline.rootProgress", &[("done", &done), ("of", &of)])
-                        });
+                    let end = sl.get("progress").filter(|p| !p.is_null()).map(|p| {
+                        let (done, of) = done_of(p);
+                        copy_text("plan.outline.rootProgress", &[("done", &done), ("of", &of)])
+                    });
                     json!({
                         "slice": s(sl, "name").unwrap_or_default(),
                         "line": line,
@@ -301,7 +298,10 @@ pub fn outline(read: &Value, slice: &str, sid: Option<&str>) -> Option<Value> {
     }
     if let Some(p) = sl.v.get("progress").filter(|p| !p.is_null()) {
         let (done, of) = done_of(p);
-        meta.push(copy_text("plan.overview.top", &[("done", &done), ("of", &of)]));
+        meta.push(copy_text(
+            "plan.overview.top",
+            &[("done", &done), ("of", &of)],
+        ));
     }
     if sl.v.get("docsOnly").and_then(Value::as_bool) == Some(true) {
         meta.push(copy_text("plan.sub.docsOnly", &[]));
