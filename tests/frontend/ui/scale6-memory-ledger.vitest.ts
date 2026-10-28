@@ -128,6 +128,8 @@ function toolUseRec(id: string, name: string, recId: string): LineRecord {
     at: "2026-09-18T12:00:00.000Z",
     blocks: [{ type: "tool_use", id, name, input: { command: "echo hi" } }],
     autoReply: false,
+    draw: "steps",
+    human: false,
   };
 }
 
@@ -139,6 +141,8 @@ function toolResultRec(toolUseId: string, text: string, recId: string): LineReco
     at: "2026-09-18T12:00:01.000Z",
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: toolUseId, content: [{ type: "text", text }], isError: false }],
+    draw: "steps",
+    human: false,
   };
 }
 
@@ -389,6 +393,8 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
         at: "2026-09-18T12:00:00.000Z",
         who: { speaker: { kind: "human" }, text: LONG_TEXT.trim() }, // 后端那一格成品
         blocks: [{ type: "text", text: LONG_TEXT }],
+        draw: "card",
+        human: true,
       },
       ctx,
     );
