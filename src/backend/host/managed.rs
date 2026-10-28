@@ -36,13 +36,16 @@ pub(crate) fn listed_at(own: &Own) -> (Vec<TermRow>, Vec<(String, u64, u64)>) {
     let mut rows = Vec::new();
     let mut clients = Vec::new();
     for f in home::alive(own) {
-        let ends = match home::sock_of(own, &f.id) {
-            Ok(sock) => client::clients(&sock)
-                .map_err(|e| tracing::warn!("托管终端 {}：问连着的各端没问到：{e}", f.id))
-                .ok(),
-            Err(_) => None,
+        let asked = home::sock_of(own, &f.id)
+            .map_err(|s| std::io::Error::other(s.logged()))
+            .and_then(|sock| client::clients(&sock));
+        let ends = match asked {
+            Ok(ends) => ends,
+            Err(e) => {
+                tracing::warn!("托管终端 {}：问连着的各端没问到：{e}", f.id);
+                Vec::new()
+            }
         };
-        let ends = ends.unwrap_or_default();
         for e in ends.iter().filter(|e| e.kind == wire::WhoKind::Terminal) {
             clients.push((f.id.clone(), secs(e.since_ms), secs(e.last_ms)));
         }
