@@ -23629,7 +23629,7 @@
     "main.cmd.terminal": {
       "kind": "action",
       "role": "按钮",
-      "zh": "终端",
+      "zh": "看它的终端",
       "args": []
     },
     "main.cmd.terminalKeywords": {
@@ -32551,7 +32551,7 @@
     "main.cmd.openTerminals": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "终端",
+      "zh": "终端名单",
       "args": []
     },
     "main.cmd.terminalsKeywords": {
