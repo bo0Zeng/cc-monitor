@@ -2,7 +2,8 @@
 @layer components {
   .abBlock {
     position: absolute;
-    bottom: var(--space-5);
+    /* 浮在输入框上面（`--composer-room` 是输入框那么高） */
+    bottom: calc(var(--space-5) + var(--composer-room, 0px));
     left: 50%;
     /* 浮在流上：在场的那条流自己在 --z-sticky，同层时后建的流会盖住块（字透上来、点不着） */
     z-index: var(--z-float);

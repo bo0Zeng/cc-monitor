@@ -4448,8 +4448,8 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     for (const sid of ["u1", "u2"]) tm.onFace(sid, goldenFace("unseen")); // 本机后端逐条说
     expect([tabOf("u1").face?.dot, tabOf("u2").face?.dot]).toEqual(["unknown", "unknown"]);
     expect(tabOf("o1").face?.dot, "别的机器不受牵连").toBe("running");
-    // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
-    expect(titles().split(copyText("sessionState.unseen.name")).length - 1).toBe(2);
+    // 两颗的状态句都是那台的离线那一句（机器成品 `offline_said` 同一处取字）、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
+    expect(titles().split(goldenFace("unseen").line).length - 1).toBe(2);
     expect(titles()).not.toContain(copyText("sessionState.ended.name"));
     // 死透了的本机后端不说：已结束 / 记录没了照旧（正控：这时才出现「已结束」）。
     tm.ensureTab("u3", "/x", "p", "pi");

@@ -29,7 +29,7 @@ pub use cmd_wire::frame::Life as WireLife;
 /// 帧的线上形住 `cmd-wire`（[`cmd_wire::frame`]，客户端按同一份解）；这里是后端在它上面做的事：写字 · 判定 · 丢帧规矩 · 分页 · 钟面
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
-pub use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionCan, SessionDot, SessionFace};
+pub use cmd_wire::frame::{Allow, CanClose, CanSay, CanTerm, SessionCan, SessionDot, SessionFace};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
@@ -59,8 +59,6 @@ pub(crate) enum Life {
     Gone,
     /// 这条路上判不了活不活。
     Unclear,
-    /// 那台看不见（到它的连接断了）：本机后端在断的那一刻给那台活的 · 可重连的每一条发 `session_left` 带这一张（`control/feeds.rs`）。
-    Unseen,
 }
 
 impl Life {
@@ -112,6 +110,9 @@ fn housed(c: Option<&SessionContainer>) -> Option<Housed> {
 /// **一条会话整份脸的唯一构造口**（[`SessionFace`]）：点 · 字 · 语气 · 序 · 能做什么都只在这里判。
 pub(crate) trait SessionFaceExt: Sized {
     fn of(life: Life) -> Self;
+    /// 那台看不见（到它的连接断了）时那一张：本机后端在断的那一刻给那台活的 · 可重连的每一条发 `session_left` 带它（`control/feeds.rs`）；
+    /// `offline` 是那台的离线那一句（与机器成品的 `offline_said` 同一处取字），悬停 · 状态一句照它。
+    fn unseen(offline: Words) -> Self;
     /// 带上这条会话跑在哪个号下（`account`，宣告时判的那一个）。
     fn under(self, account: Option<String>) -> Self;
 }
@@ -120,7 +121,41 @@ fn no(why: Words) -> Allow {
     Allow::No { why }
 }
 
+/// 说得了：框里那一句占位（文案表那一条）。
+fn say_yes(hint: String) -> CanSay {
+    CanSay::Yes { hint: Words(hint) }
+}
+
 impl SessionFaceExt for SessionFace {
+    fn unseen(offline: Words) -> Self {
+        let tip = offline;
+        SessionFace {
+            dot: SessionDot::Unknown,
+            life: WireLife::Unclear,
+            settled: false,
+            name: Words(copy_core::copy_text("sessionState.unseen.name", &[])),
+            line: tip.clone(),
+            tone: Tone::Plain,
+            order: 3,
+            account: None,
+            can: SessionCan {
+                close: CanClose::Menu,
+                resume: no(Words(copy_core::copy_text(
+                    "sessionState.unseen.noResume",
+                    &[],
+                ))),
+                term: CanTerm::No { why: tip.clone() },
+                reattach: no(tip.clone()),
+                model: no(tip.clone()),
+                permission: no(tip.clone()),
+                stop: no(tip.clone()),
+                // 离线照常可写可发：成待发，那台接上照原编号重交。
+                say: say_yes(copy_core::copy_text("composer.input.offline", &[])),
+            },
+            tip,
+        }
+    }
+
     fn under(mut self, account: Option<String>) -> Self {
         self.account = account;
         self
@@ -161,6 +196,8 @@ impl SessionFaceExt for SessionFace {
                         model: Allow::Yes,
                         permission: Allow::Yes,
                         stop: no(tip.clone()),
+                        // 程序退了：先接回（tmux 会话还在），再说。
+                        say: CanSay::No { why: tip.clone() },
                     },
                 }
             }
@@ -199,37 +236,17 @@ impl SessionFaceExt for SessionFace {
                         // 已结束：记在注解上、下次恢复用上；记录已不在 ⇒ 恢复不了，换了也用不上（同恢复那一句）。
                         model: if gone { no(tip.clone()) } else { Allow::Yes },
                         permission: if gone { no(tip.clone()) } else { Allow::Yes },
+                        // 已结束：发一句 ＝ 先恢复再把这句交进它的队；记录已不在 ⇒ 恢复不了。
+                        say: if gone {
+                            CanSay::No { why: tip.clone() }
+                        } else {
+                            say_yes(copy_core::copy_text("composer.input.ended", &[]))
+                        },
                     },
                     name,
                     tip,
                     tone: Tone::Plain,
                     order: 5,
-                }
-            }
-            Life::Unseen => {
-                let tip = Words(copy_core::copy_text("sessionState.unseen.tooltip", &[]));
-                SessionFace {
-                    dot: SessionDot::Unknown,
-                    life: WireLife::Unclear,
-                    settled: false,
-                    name: Words(copy_core::copy_text("sessionState.unseen.name", &[])),
-                    line: tip.clone(),
-                    tone: Tone::Plain,
-                    order: 3,
-                    account: None,
-                    can: SessionCan {
-                        close: CanClose::Menu,
-                        resume: no(Words(copy_core::copy_text(
-                            "sessionState.unseen.noResume",
-                            &[],
-                        ))),
-                        term: CanTerm::No { why: tip.clone() },
-                        reattach: no(tip.clone()),
-                        model: no(tip.clone()),
-                        permission: no(tip.clone()),
-                        stop: no(tip.clone()),
-                    },
-                    tip,
                 }
             }
             Life::Unclear => {
@@ -254,6 +271,7 @@ impl SessionFaceExt for SessionFace {
                         model: no(name.clone()),
                         permission: no(name.clone()),
                         stop: no(name.clone()),
+                        say: CanSay::No { why: name.clone() },
                     },
                     name,
                 }
@@ -373,6 +391,13 @@ fn live_face(
             model,
             permission,
             stop,
+            // 不在任何宿主里（非 cc-monitor 起的）⇒ 投不进去；住哪判不了 ⇒ 交了由那台说。
+            say: match host {
+                Some(Housed::Bare) => CanSay::No {
+                    why: Words(copy_core::copy_text("terminal.empty.notOurs", &[])),
+                },
+                _ => say_yes(copy_core::copy_text("chat.input.placeholder", &[])),
+            },
         },
     }
 }

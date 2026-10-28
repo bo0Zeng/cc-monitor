@@ -1,0 +1,73 @@
+/* 消息流底下的输入框：与正文列同宽、贴着流底；上方一排是待发与那台的队列名单，再上是附件那一排。 */
+@layer components {
+  .composer {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    /* 浮在流上：在场的那条流自己在 --z-sticky，同层时后建的流会盖住它 */
+    z-index: var(--z-float);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-3) var(--space-6) var(--space-4);
+    background: var(--bg);
+  }
+
+  .composer[hidden] {
+    display: none;
+  }
+
+  .composerCol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: min(var(--stream-max-width), 100%);
+  }
+
+  .composerRow {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-l);
+    background: var(--field-bg);
+  }
+
+  .composerBox {
+    flex: 1;
+    min-height: var(--control-h-compact);
+    padding: 3px 4px;
+    resize: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    line-height: 1.5;
+  }
+
+  .composerBox:disabled {
+    opacity: 0.6;
+  }
+
+  .composerNote {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--font-size-small);
+  }
+
+  .composerNote:empty {
+    display: none;
+  }
+
+  .composerNoteOk {
+    color: var(--success);
+  }
+
+  .composerNoteError {
+    color: var(--error-text);
+  }
+}
