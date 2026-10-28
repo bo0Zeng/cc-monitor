@@ -11696,7 +11696,7 @@
     "beTerminal.no.hostOutdated": {
       "kind": "body",
       "role": "片段",
-      "zh": "托管终端版本过低 · 需重开",
+      "zh": "托管终端版本过低 · 结束后恢复即可",
       "args": []
     },
     "beTerminal.holder.here": {
@@ -11726,8 +11726,33 @@
     "beTerminal.holder.none": {
       "kind": "body",
       "role": "片段",
-      "zh": "输入无人持有",
+      "zh": "无人持有输入",
       "args": []
+    },
+    "beTerminal.who.terminalWindow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端窗口",
+      "args": []
+    },
+    "beTerminal.who.desktop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "桌面窗口",
+      "args": []
+    },
+    "beTerminal.who.mobile": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "手机",
+      "args": []
+    },
+    "mobTerms.row.tmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "tmux",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beTerminal.refuse.empty": {
       "kind": "error",
@@ -14928,32 +14953,27 @@
     "beHost.attach.heldBy": {
       "kind": "body",
       "role": "说明",
-      "zh": "输入在{who} · 回车接管",
-      "args": ["who"]
+      "zh": "{said} · 回车接管",
+      "args": ["said"]
     },
-    "beHost.attach.whoTerminal": {
+    "beHost.attach.clientsLegend": {
       "kind": "body",
-      "role": "片段",
-      "zh": "另一个终端",
+      "role": "说明",
+      "zh": "* 持有输入 · < 此处",
       "args": []
     },
-    "beHost.attach.whoDesktop": {
+    "beHost.attach.detached": {
       "kind": "body",
-      "role": "片段",
-      "zh": "桌面窗口",
-      "args": []
+      "role": "命令行",
+      "zh": "[已离开 · {name} 照跑 · ccm --attach {name} 接回]",
+      "args": ["name"],
+      "limited": ["ccm"]
     },
-    "beHost.attach.whoMobile": {
+    "beHost.attach.ended": {
       "kind": "body",
-      "role": "片段",
-      "zh": "手机",
-      "args": []
-    },
-    "beHost.attach.whoNobody": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无人",
-      "args": []
+      "role": "命令行",
+      "zh": "[已结束 · {name}]",
+      "args": ["name"]
     },
     "beHost.attach.confirmEnd": {
       "kind": "body",
@@ -23317,11 +23337,20 @@
       "zh": "交还",
       "args": []
     },
-    "terminal.input.takeSend": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "接管再送",
+    "terminal.input.afterTake": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "接管后可按键",
       "args": []
+    },
+    "terminal.input.placeholderHeld": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "回车说一句 · Shift+回车换行 · 直接打字需接管",
+      "args": [],
+      "waive": {
+        "C-W12": "终端输入框的固定键（不可改绑）"
+      }
     },
     "terminal.queue.sending": {
       "kind": "body",
@@ -23415,6 +23444,18 @@
       "role": "状态",
       "zh": "排队 · 第 {place}",
       "args": ["place"]
+    },
+    "beQueue.said.placeHalf": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "排队 · 第 {place} · 终端里有没交的半句 · 回车或清空后送进",
+      "args": ["place"]
+    },
+    "beQueue.said.waitingHalf": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "排队 · {n} 条 · 终端里有没交的半句 · 回车或清空后送进",
+      "args": ["n"]
     },
     "beQueue.said.held": {
       "kind": "body",
@@ -23545,29 +23586,15 @@
     "terminal.empty.notOurs": {
       "kind": "body",
       "role": "说明",
-      "zh": "非 cc-monitor 启动 · 画面 / 送字不可用",
+      "zh": "非 cc-monitor 起的 · 画面 / 送字不可用",
       "args": []
     },
     "terminal.empty.notOursHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "ccm / 别名启动的可用",
+      "zh": "经 ccm 或 cc-monitor 起的会话可用",
       "args": [],
       "limited": ["ccm"]
-    },
-    "terminal.empty.notInTmux": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "不在 tmux 里 · 画面 / 送字不可用",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "terminal.empty.notInTmuxHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在 tmux 里起的会话可用",
-      "args": [],
-      "limited": ["tmux"]
     },
     "terminal.empty.noSession": {
       "kind": "body",
@@ -29347,12 +29374,6 @@
       "zh": "上一级",
       "args": []
     },
-    "mobNav.newTab.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "新开标签页 · 选择机器",
-      "args": []
-    },
     "mobKeepAlive.notify.body": {
       "kind": "body",
       "role": "说明",
@@ -29616,24 +29637,6 @@
       "kind": "body",
       "role": "空态",
       "zh": "无匹配命令",
-      "args": []
-    },
-    "mobTabs.overview.closeAll": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "关闭全部",
-      "args": []
-    },
-    "mobTabs.overview.new": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新开标签页",
-      "args": []
-    },
-    "mobTabs.row.files": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文件",
       "args": []
     },
     "mobTabs.row.close": {
@@ -30822,12 +30825,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "未分组",
-      "args": []
-    },
-    "mobHosts.newTab.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "选择机器 · 新开标签页 · 不复用已打开的标签页",
       "args": []
     },
     "mobHosts.import.action": {

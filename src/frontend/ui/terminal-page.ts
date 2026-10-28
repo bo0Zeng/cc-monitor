@@ -2,8 +2,8 @@
  * 底部抽屉的「终端」页：当前标签页那个会话所在终端的一屏（这一版是快照）＋ 一行输入 ＋ 几颗常用键。跟着当前标签页走；
  * 占位标签页显着时看它的那个终端（没报到的会话与已有会话看画面是同一页）。
  *
- * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行（占位那一形按终端句柄认）；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着、不在 tmux 里的（容器事实 none）
- *   写「不在 tmux 里」（↗ 真能用时给「切到终端」）；在 tmux 里却认不出的写「非 cc-monitor 启动」。
+ * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行（占位那一形按终端句柄认）；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着的（不在任何终端里 ·
+ *   在终端里却认不出，对用户是同一件事）写「非 cc-monitor 起的」（↗ 真能用时给「切到终端」）。
  * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次，同时订那台的实时画面（`terminal-follow.ts`）：
  *   订上了 ⇒ 头上「● 实时」、画面跟着变、送完不再重抓；那台只能快照 ⇒ 多一枚「仅快照」，照旧送完 0.5 · 1.5 · 3 秒各再抓一次、其余时候点「重新看」；
  *   实时断了 ⇒ 画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条原因 ＋［重新接上］（流断了不自己重连）；断在「那台断开」的，
@@ -11,8 +11,8 @@
  * - 往上翻了不拽回：底部出「回到最新」。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
  * - 托管那一形（输入只收持有者的）：「送往 …」那一行右边写后端那一句（输入在此处 · 在手机 · 在终端窗口 …）＋［接管输入］（不是这一端持有）/［交还］
- *   （`terminal-take-input` · `terminal-release-input`，回的那一格就地换上）。送字被拒成「输入在另一端」⇒ 后端那一项下一步带 `take`，
- *   照那句说、给［接管再送］（同一份字带 `take` 再送）。tmux 那一形不出这两颗。
+ *   （`terminal-take-input` · `terminal-release-input`，回的那一格就地换上；实时流每一帧也带此刻的持有者，就地换）。不是这一端持有 ⇒ 按键一排 · Ctrl+回车灰着，
+ *   按键尾巴写那一句 ＋「接管后可按键」、输入框占位说直接打字需接管；回车（说一句）照旧投进队。tmux 那一形不出这两颗。
  * - 送字带上看到的那一屏的指纹：画面已经变了 ⇒ 后端不送，这里重抓给人看。不知道送没送到 ⇒ 照实说、不重发。
  * - 输入框：回车说一句（投进输入队，见下）· Shift+回车换行 · Ctrl+回车只往终端里打字、不补回车（`terminal-input`）；组字时回车归输入法；
  *   Esc 只把焦点还给消息流（不清字、不收抽屉）。没送的字按会话各记一份，切回来还在。常用键一律往终端里送（按键不是说一句）。
@@ -27,7 +27,7 @@ import { countText } from "./format";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { machineName, offlineSaid } from "./control-said";
-import { canResume, hasTerminal, inTmux, isLive, machineOf } from "./face-can";
+import { canResume, hasTerminal, machineOf } from "./face-can";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
@@ -82,7 +82,7 @@ import s from "./terminal-page.module.css";
 export interface TerminalReads {
   list(origin: Origin): Promise<TerminalRow[]>;
   shot(origin: Origin, terminal: string): Promise<TerminalShot>;
-  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null, take?: boolean): Promise<TerminalSent>;
+  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent>;
   /** 订实时画面。 */
   follow(origin: Origin, terminal: string, events: FollowEvents): Follow;
 }
@@ -167,8 +167,8 @@ const KEYS: readonly { label: string; what: TerminalSend }[] = [
   { label: "3", what: { text: "3", enter: false } },
 ];
 
-/** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试 · 接管再送）。 */
-type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; take?: TerminalSend; detail?: string };
+/** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
+type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; detail?: string };
 
 /** 页内元素 id 的流水号（「送往 …」那一行给输入框当名字）。 */
 let pageSeq = 0;
@@ -249,6 +249,8 @@ export class TerminalPage {
   private readonly box: HTMLTextAreaElement;
   private readonly sendBtn: HTMLButtonElement;
   private readonly keyBtns: HTMLButtonElement[] = [];
+  /** 按键那一排的尾巴：别端持有时写那一句 ＋「接管后可按键」。 */
+  private readonly keysWhy: HTMLElement;
   private readonly noteEl: HTMLElement;
   private readonly body: HTMLElement;
 
@@ -349,6 +351,9 @@ export class TerminalPage {
       this.keyBtns.push(b);
       keys.appendChild(b);
     }
+    this.keysWhy = el("span");
+    this.keysWhy.className = s.termKeysLabel;
+    keys.appendChild(this.keysWhy);
     this.noteEl = el("div");
     this.noteEl.className = s.termNote;
     this.queueRow = new QueueRow({ cancel: (id) => void this.cancelQueued(id), cancelPending: (id) => this.cancelWaiting(id) });
@@ -477,10 +482,12 @@ export class TerminalPage {
     this.live = { at: "joining" };
     let f: Follow | null = null;
     f = this.reads.follow(this.origin, row.terminal, {
-      screen: (shot) => {
+      screen: (shot, holder) => {
         if (this.follow !== f && f !== null) return;
         this.live = { at: "on" };
         this.shotError = null;
+        // 托管那一形：帧里带此刻的持有者（持有者变了画面没变也来一帧）⇒「送往 …」那一行 · 按键就地换。
+        if (holder !== undefined && this.row?.terminal === row.terminal) this.row = { ...this.row, holder };
         this.applyShot(shot);
       },
       stop: (why) => {
@@ -582,17 +589,19 @@ export class TerminalPage {
     this.paint();
   }
 
-  /**
-   * 送一段字或一颗键。能不能送由名单里后端那一格说了算；送完按回话说一句、该重抓就重抓。
-   * `take` ＝［接管再送］：托管终端的输入在别的一端手里时先替这一端接管；送到了 ⇒ 重读名单（持有者换了）。
-   */
-  async send(what: TerminalSend, take = false): Promise<boolean> {
+  /** 送一段字或一颗键。能不能送由名单里后端那一格说了算（托管那一形不是这一端持有 ⇒ 不送，见 [heldNo]）；送完按回话说一句、该重抓就重抓。 */
+  async send(what: TerminalSend): Promise<boolean> {
     const row = this.row;
-    if (row === null) return false;
+    if (row === null || this.heldNo() !== null) return false;
     const seen = this.shot?.screen ?? null;
-    const sent = await this.deliver((origin) => (take ? this.reads.send(origin, row.terminal, what, seen, true) : this.reads.send(origin, row.terminal, what, seen)), what);
-    if (take && sent?.result === "delivered") void this.refresh();
+    const sent = await this.deliver((origin) => this.reads.send(origin, row.terminal, what, seen), what);
     return sent?.result === "delivered";
+  }
+
+  /** 托管那一形、不是这一端持有 ⇒ 按键 · Ctrl+回车不送的那一句（名单 / 实时流那一句 ＋「接管后可按键」）；别的 ⇒ `null`。 */
+  private heldNo(): string | null {
+    const h = this.row?.holder;
+    return h !== undefined && !h.mine ? [h.said, copyText("terminal.input.afterTake")].join(copyText("kit.text.sep")) : null;
   }
 
   /** ［接管输入］/［交还］：交那台，回的那一格就地换上（不重读名单）。没做成 ⇒ 说那台写好的那一句。 */
@@ -648,8 +657,7 @@ export class TerminalPage {
       return sent;
     }
     const text = sent.result === "unsure" ? copyText("terminal.input.unsure", { machine: machineName(origin) }) : copyText("terminal.input.failed", { why: sent.said });
-    const take = retry !== null && sent.acts.includes("take") ? { take: retry } : {};
-    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? again : {}), ...take });
+    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? again : {}) });
     if (sent.acts.includes("recapture")) void this.recapture();
     if (sent.acts.includes("relist")) void this.refresh();
     return sent;
@@ -858,6 +866,12 @@ export class TerminalPage {
     }
     const enter = say;
     if (text === "") return;
+    // 往终端里打字要持有输入：不是这一端持有 ⇒ 一问都不发，提示那一行说那一句（字留着）。
+    const held = this.heldNo();
+    if (held !== null) {
+      this.showNote({ text: held, tone: "error" });
+      return;
+    }
     void this.send({ text, enter }).then((ok) => {
       if (ok && this.box.value === text) {
         this.box.value = "";
@@ -904,19 +918,16 @@ export class TerminalPage {
       const tab = w.tab;
       const sid = tab.sessionId;
       const ended = canResume(tab.face); // 已结束（能恢复的那一态）
-      // 活着、不在 tmux 里（那台判的 `can.term`）：照实说，不当成别人起的。
-      const outside = isLive(tab.face) && !inTmux(tab.face);
+      // 活着、名单里没有：不在任何终端里 · 在终端里却认不出，对用户是同一件事（非 cc-monitor 起的）；↗ 真能用时给［切到终端］。
       this.body.replaceChildren(
         ended
           ? emptyState({ icon: "terminal", text: copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }), hint: copyText("terminal.empty.endedHint") })
-          : outside
-            ? emptyState({
-                icon: "terminal",
-                text: copyText("terminal.empty.notInTmux"),
-                hint: copyText("terminal.empty.notInTmuxHint"),
-                ...(terminalFrontAvailable() ? { action: button({ label: copyText("terminal.head.front"), size: "compact", icon: "front", onClick: () => this.host.front(sid) }) } : {}),
-              })
-            : emptyState({ icon: "terminal", text: copyText("terminal.empty.notOurs"), hint: copyText("terminal.empty.notOursHint") }),
+          : emptyState({
+              icon: "terminal",
+              text: copyText("terminal.empty.notOurs"),
+              hint: copyText("terminal.empty.notOursHint"),
+              ...(terminalFrontAvailable() ? { action: button({ label: copyText("terminal.head.front"), size: "compact", icon: "front", onClick: () => this.host.front(sid) }) } : {}),
+            }),
       );
       return;
     }
@@ -987,7 +998,9 @@ export class TerminalPage {
     setBusy(this.holdBtn, this.holding ? holdLabel : null);
     const no = this.inputNo();
     this.box.disabled = no !== null || this.sending;
-    this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("chat.input.placeholder");
+    const held = this.heldNo();
+    this.box.placeholder =
+      no !== null ? copyText("terminal.input.readOnly", { why: no }) : held !== null ? copyText("terminal.input.placeholderHeld") : copyText("chat.input.placeholder");
     // 占位只写短的那句；快捷键说明挂悬停（送不了时键不起作用，不挂）。
     this.box.title = no !== null ? "" : copyText("terminal.input.keysHint");
     // 附件没传完 / 有失败 ⇒ 送出灰着、悬停说为什么（字照样能打）。
@@ -997,7 +1010,8 @@ export class TerminalPage {
     const qKey = this.origin !== undefined && to !== null ? pendingKey(this.origin, to) : null;
     this.queueRow.paint(qKey !== null && this.queueOf === qKey ? this.queue : null, qKey === null ? [] : (this.waiting.get(qKey) ?? []));
     setBusy(this.sendBtn, this.sending ? copyText("terminal.input.send") : null);
-    for (const b of this.keyBtns) setDisabled(b, no);
+    for (const b of this.keyBtns) setDisabled(b, no ?? held);
+    this.keysWhy.textContent = no === null && held !== null ? held : "";
     this.noteEl.replaceChildren();
     if (this.note) {
       const t = el("span", "", this.note.text);
@@ -1005,8 +1019,6 @@ export class TerminalPage {
       this.noteEl.appendChild(t);
       const retry = this.note.retry;
       if (retry) this.noteEl.appendChild(button({ label: copyText("terminal.input.retry"), kind: "ghost", size: "compact", onClick: () => void this.send(retry) }));
-      const take = this.note.take;
-      if (take) this.noteEl.appendChild(button({ label: copyText("terminal.input.takeSend"), kind: "ghost", size: "compact", onClick: () => void this.send(take, true) }));
       // 那一端写了详情 ⇒ 跟［复制详情］（与同一个原因的那条黄条同一颗）。
       const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
       if (copy) this.noteEl.appendChild(copy);
