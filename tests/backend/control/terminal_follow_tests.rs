@@ -78,7 +78,7 @@ impl Iso {
             .as_array()
             .unwrap()
             .iter()
-            .find(|t| t["tmux_name"] == name)
+            .find(|t| t["name"] == name)
             .unwrap_or_else(|| panic!("名单里没有 {name}：{l}"))["terminal"]
             .as_str()
             .unwrap()

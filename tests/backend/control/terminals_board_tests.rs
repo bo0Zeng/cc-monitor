@@ -8,8 +8,8 @@ const NOW: u64 = 10_000;
 fn term(handle: &str, sid: Option<&str>, program: &str, clients: usize, last: u64) -> TerminalItem {
     TerminalItem {
         terminal: handle.into(),
-        host: "tmux".into(),
-        tmux_name: format!("ccm-{handle}"),
+        host: cmd_wire::frame::TerminalHost::Tmux,
+        name: format!("ccm-{handle}"),
         title: program.into(),
         program: program.into(),
         cwd: "/home/u/src/app".into(),
@@ -28,7 +28,7 @@ fn term(handle: &str, sid: Option<&str>, program: &str, clients: usize, last: u6
                 last_activity: 1,
             })
             .collect(),
-        input: "shared".into(),
+        input: cmd_wire::session::TermInput::Shared,
         state: if sid.is_some() {
             TermState::Running
         } else {
@@ -52,7 +52,7 @@ fn list(ts: Vec<TerminalItem>) -> TerminalsList {
 fn live(activity: crate::agents::SessionActivity) -> SessionFace {
     SessionFace::of(crate::wire::Life::Live {
         activity: Some(activity),
-        tmux: Some(true),
+        host: Some(crate::wire::Housed::In(crate::wire::TerminalHost::Tmux)),
     })
 }
 

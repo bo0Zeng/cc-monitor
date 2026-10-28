@@ -248,6 +248,19 @@ pub(crate) fn identity(name: &str, client: &str, ccm_sid: &str, requester: Optio
     }
 }
 
+/// **按名单那一行的事实判身份**（谁起的 · sid · 宿主）：托管的全是我们起的（只有 ccm 起得了托管进程）⇒ 只看「哪个前端的」那一维、
+/// 不跑名字规则；tmux 那一行照 [`identity`]（名字 · `@ccm_client` · `@ccm_sid`）。只答放不放；tmux 那一形真下手之前仍经 [`admit`] 再探一次。
+pub(crate) fn identity_of(row: &crate::host::TermRow, requester: Option<&str>) -> Who {
+    use crate::control::gate_rules::{gate_client, ClientVerdict};
+    match row.host {
+        crate::wire::TerminalHost::Managed => match gate_client(&row.client, requester) {
+            ClientVerdict::NotYours => Who::OtherClient,
+            ClientVerdict::Own | ClientVerdict::Open => Who::Pass,
+        },
+        crate::wire::TerminalHost::Tmux => identity(&row.name, &row.client, &row.sid, requester),
+    }
+}
+
 /// 过了门的目标（`#{session_id}` 或 `#{pane_id}` 句柄）：字段私有、不能复制 ⇒ 只有本模块造得出，送键只收它。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Admitted(String);
