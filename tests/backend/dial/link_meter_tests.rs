@@ -84,9 +84,11 @@ impl russh::server::Handler for Peer {
     async fn channel_open_session(
         &mut self,
         _channel: russh::Channel<russh::server::Msg>,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut russh::server::Session,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
     }
 
     async fn exec_request(
@@ -119,20 +121,24 @@ impl russh::server::Handler for Peer {
         port: u32,
         _oa: &str,
         _op: u32,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut russh::server::Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         assert_eq!(host, "127.0.0.1", "测试档不许出网：跳板被要求开到 {host}");
         let Ok(port) = u16::try_from(port) else {
-            return Ok(false);
+            reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+            return Ok(());
         };
         let Ok(mut tcp) = tokio::net::TcpStream::connect((host, port)).await else {
-            return Ok(false);
+            reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+            return Ok(());
         };
+        reply.accept().await;
         tokio::spawn(async move {
             let mut ch = channel.into_stream();
             let _ = tokio::io::copy_bidirectional(&mut ch, &mut tcp).await;
         });
-        Ok(true)
+        Ok(())
     }
 }
 

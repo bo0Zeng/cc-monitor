@@ -102,7 +102,7 @@ def main():
                            cwd=os.path.join(ROOT, "src", "backend"), env=env, capture_output=True, text=True, timeout=3000)
         line = next((ln for ln in r.stdout.splitlines() if ln.startswith("NT1-COMPRESS")), "")
         print(f"  read {line}")
-        check("读数用例本身过（不压那趟收全；闸关着 ⇒ 压的那趟 30 s 内收不全 —— 上游 russh 0.61 解压缺陷；闸开着（CZ1 补过的副本）⇒ 收全、逐字节同、线上字节 < 一半）", "1 passed" in r.stdout, (r.stdout[-800:], r.stderr[-800:]))
+        check("读数用例本身过（不压那趟收全；闸关着 ⇒ 压的那趟 30 s 内收不全 —— 上游 russh 0.61 解压缺陷；闸开着（上游 0.62.7 起修好）⇒ 收全、逐字节同、线上字节 < 一半）", "1 passed" in r.stdout, (r.stdout[-800:], r.stderr[-800:]))
         kv = dict(x.split("=", 1) for x in line.split()[1:] if "=" in x)
         if kv.get("wire_on", "0").isdigit() and int(kv.get("wire_on", "0")) > 0:
             print(f"  read 线上字节：不压 {int(kv['wire_off'])} · 压 {int(kv['wire_on'])} ⇒ {int(kv['wire_off']) / int(kv['wire_on']):.1f} 倍")

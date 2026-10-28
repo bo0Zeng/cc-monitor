@@ -1149,14 +1149,7 @@ fn no_production_code_writes_the_agent_settings_file() {
     let writes = |text: &str| WRITES.iter().any(|w| text.contains(w));
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let files: Vec<(PathBuf, String)> =
-        guard_core::scan_tree_excluding(&repo.join("src"), &["rs", "ts"], &[])
-            .into_iter()
-            .filter(|(p, _)| {
-                !p.to_string_lossy()
-                    .replace('\\', "/")
-                    .contains("/src/vendor/")
-            })
-            .collect();
+        guard_core::scan_tree_excluding(&repo.join("src"), &["rs", "ts"], &[]);
     let mut seen: Vec<String> = files
         .iter()
         .filter(|(_, text)| code(text).contains(NEEDLE))
