@@ -782,6 +782,9 @@ pub(crate) struct RecordFace {
     /// 一条已解析的记录 ⇒ 它是不是「认不出、又不成卡」的那种行（这一家的簿记行）⇒ 它的类型名；不是 ⇒ `None`。
     /// 不成卡是这一家的翻译表判的（`parse` 那一格给它不出记录），这一格只让会话事实照实记几行、哪几种。`None` 这一格 ＝ 这一家没有这种行。
     pub(crate) quiet_unread: Option<fn(&serde_json::Value) -> Option<String>>,
+    /// 一行 ⇒ 这一家不读它（不在它认得的那几类里）时它只留下的那几格（身份）；读 ⇒ `None`。
+    /// 不读的行通用层不整行建树（[`Line::of`]），几问都吃这一份小的。`None` 这一格 ＝ 这一家每一行都读。
+    pub(crate) skim: Option<fn(&Line<'_>) -> Option<serde_json::Value>>,
     /// 一条已解析的记录 ⇒ 它的一拍（[`beat::BeatFace`]：轮次 · 会话事实 · 大纲只吃它）。`None` ＝ 这一家不出轮次 · 事实 · 大纲。
     pub(crate) beats: Option<beat::BeatFace>,
     /// 这份会话是从哪个会话分叉来的（[`ForkFace`]）。`None` ＝ 这一家不分叉。
@@ -1397,10 +1400,15 @@ pub(crate) struct Translated {
 /// **一行记录**，交给适配层那几问（成品 · 链事实 · 轮次结束 · 此刻在干什么 · 运行簿）的同一份：原文（去掉 BOM 与两端空白）＋
 /// 起点字节 ＋ 惰性解析的 `Value`。头一个要整行的那一问解一次，之后的都吃这一份 —— 一行只从文本解一次（瓶颈 #8）。
 /// 只要几格的那几问（[`Line::read`]）在没人解过整行时直接从文本解那几格（预读那一路只要链事实，不必整行）。
+///
+/// 按那一家建（[`Line::of`]）：那一家不读的行（[`RecordFace::skim`]）不整行建树，[`Line::value`] 给的是它只留下的身份那几格；
+/// [`Line::read`] 照旧从原文解。
 pub(crate) struct Line<'a> {
     text: &'a str,
     start: u64,
     value: std::cell::OnceCell<Option<serde_json::Value>>,
+    /// `value` 是那一家只留下的那几格，不是整行。
+    skimmed: bool,
 }
 
 impl<'a> Line<'a> {
@@ -1410,12 +1418,27 @@ impl<'a> Line<'a> {
             text: raw.trim_start_matches('\u{feff}').trim(),
             start,
             value: std::cell::OnceCell::new(),
+            skimmed: false,
         }
     }
 
-    /// 同 [`Self::new`]，当场把整行解好：几问都要整行的那一路（实时 `send_line`）用它，只要几格的那几问也从这一份里取。
-    pub(crate) fn whole(raw: &'a str, start: u64) -> Self {
-        let line = Self::new(raw, start);
+    /// 同 [`Self::new`]，按 `kind` 那一家读：它说这一行它不读 ⇒ 整行不建树，只留它给的那几格。
+    pub(crate) fn of(kind: &str, raw: &'a str, start: u64) -> Self {
+        let mut line = Self::new(raw, start);
+        if let Some(v) = record_face(kind)
+            .and_then(|r| r.skim)
+            .and_then(|skim| skim(&line))
+        {
+            line.value = std::cell::OnceCell::from(Some(v));
+            line.skimmed = true;
+        }
+        line
+    }
+
+    /// 同 [`Self::of`]，当场把整行解好（那一家不读的行仍只是它留下的那几格）：几问都要整行的那一路（实时 `send_line`）用它，
+    /// 只要几格的那几问也从这一份里取。
+    pub(crate) fn whole(kind: &str, raw: &'a str, start: u64) -> Self {
+        let line = Self::of(kind, raw, start);
         line.value();
         line
     }
@@ -1440,6 +1463,7 @@ impl<'a> Line<'a> {
         self.value
             .get_or_init(|| {
                 count_parse();
+                TREE_BUILDS.with(|c| c.set(c.get() + 1));
                 serde_json::from_str(self.text).ok()
             })
             .as_ref()
@@ -1451,10 +1475,10 @@ impl<'a> Line<'a> {
         self.value.into_inner().flatten()
     }
 
-    /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。
+    /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过（或手上只是那一家留下的几格）就从文本直接解那几格。
     pub(crate) fn read<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
         match self.value.get() {
-            Some(Some(v)) => T::deserialize(v),
+            Some(Some(v)) if !self.skimmed => T::deserialize(v),
             _ => {
                 count_parse();
                 serde_json::from_str(self.text)
@@ -1466,6 +1490,8 @@ impl<'a> Line<'a> {
 thread_local! {
     /// 本线程到此刻从**文本**解析了几次记录行（[`Line::value`] · [`Line::read`] 记）：判据数「一行解几遍」。
     pub(crate) static LINE_PARSES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// 其中把整行建成 `Value` 的那几次（[`Line::value`] 记）：判据数「哪几行建了树」。
+    pub(crate) static TREE_BUILDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 fn count_parse() {

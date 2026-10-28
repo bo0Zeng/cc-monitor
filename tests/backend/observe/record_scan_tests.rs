@@ -704,3 +704,65 @@ fn r10_turns_folds_and_inputs_carry_the_index_row_of_their_uuid() {
         "正控：夹具里要有行号与物理行号不同的"
     );
 }
+
+/// 照真形状：几轮对话之间夹着这一家不读的簿记行 —— `api-request`（长 `params`，里面是整段对话的副本）·
+/// `api-request-blob`（带一条 `message`）；外加一条它认得的簿记行（`permission-mode`）。正文全是占位字。
+fn with_unread(turns: usize) -> (String, usize, usize) {
+    let filler = "占位".repeat(2000);
+    let (mut s, mut known, mut unread) = (String::new(), 0, 0);
+    for t in 0..turns {
+        s.push_str(&format!(r#"{{"type":"user","uuid":"u{t}","timestamp":"2026-10-01T00:{t:02}:00.000Z","message":{{"role":"user","content":"第 {t} 句"}}}}"#));
+        s.push('\n');
+        s.push_str(&format!(r#"{{"type":"api-request","sessionId":"s","id":"req{t}","timestamp":"2026-10-01T00:{t:02}:00.500Z","version":"2.1.301","querySource":"repl_main_thread","shapeHash":"h","params":{{"model":"m-x","max_tokens":1,"messages":[{{"role":"user","content":[{{"type":"text","text":"{filler}"}},{{"type":"tool_use","id":"x{t}","name":"Bash","input":{{"command":"ls","run_in_background":true}}}}]}}]}}}}"#));
+        s.push('\n');
+        s.push_str(&format!(r#"{{"type":"api-request-blob","sessionId":"s","hash":"b{t}","message":{{"role":"user","content":[{{"type":"text","text":"{filler}"}}]}}}}"#));
+        s.push('\n');
+        s.push_str(&format!(r#"{{"type":"assistant","uuid":"a{t}","parentUuid":"u{t}","timestamp":"2026-10-01T00:{t:02}:01.000Z","message":{{"model":"m-x","stop_reason":"end_turn","content":[{{"type":"text","text":"好"}}],"usage":{{"input_tokens":3,"output_tokens":1}}}}}}"#));
+        s.push('\n');
+        s.push_str(r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#);
+        s.push('\n');
+        known += 3;
+        unread += 2;
+    }
+    (s, known, unread)
+}
+
+/// R11：这一家不读的那几类行不整行建树 —— 一遍扫下来建树的次数 ＝ 它认得的那几类行数；
+/// 那几行照旧各占一行骨架索引（只有起点与长度），会话事实照旧数它们（认不出、又不成卡的几行）。
+#[test]
+fn r11_lines_of_types_the_adapter_does_not_read_build_no_tree() {
+    let (text, known, unread) = with_unread(3);
+    let bytes = text.as_bytes();
+    crate::agents::TREE_BUILDS.with(|c| c.set(0));
+    let map = ScanMap::scan_with(
+        bytes,
+        bytes.len() as u64,
+        crate::agents::claudecode::AGENT_KIND,
+        Some(crate::agents::claudecode::RECORDS),
+    )
+    .unwrap();
+    let built = crate::agents::TREE_BUILDS.with(std::cell::Cell::get);
+    assert_eq!(built as usize, known, "建树的该只有认得的那几类行");
+    assert_eq!(map.index.len(), known + unread, "每行各占一行骨架索引");
+    let bare: Vec<&super::super::recognize::index_row::IndexRow> = map
+        .index
+        .iter()
+        .filter(|r| {
+            let s = &text[r.o as usize..(r.o + r.n) as usize];
+            s.starts_with(r#"{"type":"api-request"#)
+        })
+        .collect();
+    assert_eq!(bare.len(), unread);
+    for r in bare {
+        let want = super::super::recognize::index_row::IndexRow {
+            o: r.o,
+            n: r.n,
+            ..Default::default()
+        };
+        assert_eq!(*r, want, "不读的那一行只有起点与长度");
+    }
+    let quiet = map.facts.quiet_unread.as_ref().expect("事实里该数到它们");
+    assert_eq!(quiet.count as usize, unread, "认不出、又不成卡的几行");
+    assert!(map.facts.bg_tasks.is_empty(), "请求副本里的后台调用不算这条会话的");
+    assert_eq!(map.inputs.len(), 3, "用户输入照旧");
+}

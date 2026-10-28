@@ -645,6 +645,7 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         background: None,
         mcp_said: None,
         quiet_unread: None,
+        skim: None,
         beats: None,
         fork: None,
     }

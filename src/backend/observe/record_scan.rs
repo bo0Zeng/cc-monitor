@@ -124,9 +124,9 @@ impl Scan {
             self.end = start + read as u64;
             slide(&mut self.rest.witness, buf);
             let body = row.body();
-            // 一行只解一次：链事实与下面那四样吃同一份（[`super::lines::parse`] 同一口径）。
+            // 一行只解一次：链事实与下面那四样吃同一份；那一家不读的行不整行建树（[`crate::agents::Line::of`]）。
             let text = String::from_utf8_lossy(body);
-            let line = crate::agents::Line::new(&text, start);
+            let line = crate::agents::Line::of(kind, &text, start);
             let v = line.value();
             if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);

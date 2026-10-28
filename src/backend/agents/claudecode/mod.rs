@@ -319,12 +319,43 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
     quiet_unread: Some(record_of::quiet_unread_of),
+    skim: Some(skim),
     beats: Some(beat::BEATS),
     fork: Some(super::ForkFace {
         of_record: branch::fork_origin,
         of_field: branch::forked_pair,
     }),
 };
+
+/// 注册表 `RecordFace.skim`：行首就写着类型（簿记行都这么写）、而那一类翻译表不认得 ⇒ 只留身份那几格
+/// （`type` · `uuid` · `parentUuid` · `timestamp`，同抢救时取的那几格，[`parse`]）。类型不在行首 · 带转义 · 认得 · 连 JSON 都不是 ⇒ 整行读。
+fn skim(line: &super::Line<'_>) -> Option<serde_json::Value> {
+    use serde_json::Value;
+    #[derive(serde::Deserialize)]
+    struct Ident {
+        uuid: Option<Value>,
+        #[serde(rename = "parentUuid")]
+        parent_uuid: Option<Value>,
+        timestamp: Option<Value>,
+    }
+    let rest = line.text().strip_prefix(r#"{"type":""#)?;
+    let t = rest.get(..rest.find('"')?).filter(|t| !t.contains('\\'))?;
+    // 认不认得只问一处：类型 serde 认不出（`quiet_unread_of` 那一问；探针不带身份）。
+    record_of::quiet_unread_of(&serde_json::json!({ "type": t }))?;
+    let id: Ident = line.read().ok()?;
+    let mut m = serde_json::Map::new();
+    m.insert("type".into(), t.into());
+    for (k, v) in [
+        ("uuid", id.uuid),
+        ("parentUuid", id.parent_uuid),
+        ("timestamp", id.timestamp),
+    ] {
+        if let Some(v) = v {
+            m.insert(k.into(), v);
+        }
+    }
+    Some(Value::Object(m))
+}
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     scan: assets::scan,
