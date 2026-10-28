@@ -227,10 +227,7 @@ fn merge_keeps_machine_order_counts_and_draws_the_silent_one_from_last_time() {
         )
     );
     assert_eq!(g.rows.len(), 1);
-    assert_eq!(
-        g.rows[0].dot,
-        cmd_wire::frame::SessionDot::Unknown
-    );
+    assert_eq!(g.rows[0].dot, cmd_wire::frame::SessionDot::Unknown);
     assert!(b.groups[2].rows.is_empty() && b.groups[2].down.is_some());
     // 键跨台不撞。
     assert_ne!(b.groups[0].rows[0].key, "a");

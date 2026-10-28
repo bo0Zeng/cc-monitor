@@ -1817,9 +1817,6 @@ fn the_written_faces_are_built_in_one_place_only() {
     let mut seen = std::collections::BTreeSet::new();
     for dir in ["src", "tests"] {
         for (path, raw) in guard_core::scan_tree!(&repo.join(dir), &["rs"]) {
-            if path.starts_with(repo.join("src/vendor")) {
-                continue;
-            }
             let code = guard_core::production_code(&raw);
             let rel = path
                 .strip_prefix(&repo)
@@ -1898,9 +1895,7 @@ fn the_flat_state_cells_are_gone_from_the_sources() {
     let mut hits = Vec::new();
     let mut control = std::collections::BTreeSet::new();
     for (path, raw) in guard_core::scan_tree!(&repo.join("src"), &["rs", "ts", "kt"]) {
-        if path.starts_with(repo.join("src/vendor"))
-            || path.components().any(|c| c.as_os_str() == "node_modules")
-        {
+        if path.components().any(|c| c.as_os_str() == "node_modules") {
             continue;
         }
         let code = guard_core::production_code(&raw);
