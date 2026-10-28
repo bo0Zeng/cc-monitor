@@ -33,10 +33,13 @@ pub enum Refused {
     Ended,
     /// 画面变了（带新指纹）。
     ScreenChanged,
-    /// 那台说这条会话在等人（批准 · 回答）：此刻换模型 · 权限档会落进那个框里（`session-model` · `session-permission` 被拒）。
+    /// 那台说这条会话在等人（批准 · 回答）：此刻换模型 · 权限档会落进那个框里（`session-model` · `session-permission` 被拒）；
+    /// 或托管终端里持有输入的那一端敲了半句没回车（输入队投递那一句不送，免得和半句搅在一起）。
     Waiting,
     /// 托管终端的输入此刻在别的一端手里（`terminal-input` 没带 `take`）：没送。
     HeldElsewhere,
+    /// 托管终端跑的是不认「说一句」的旧版托管进程（输入队投递 · 换模型 · 权限档经它送）：没送，那个终端要重开。
+    HostOutdated,
 }
 
 /// `terminal-input` 的回包：送到了 · 不知道送没送到（别重发）· 被拒（原因码 ＋ 那一句；画面变了带新指纹）。

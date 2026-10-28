@@ -376,6 +376,26 @@ fn an_edit_that_stops_now_is_sent_while_a_turn_runs_and_one_that_waits_is_not() 
 
 /// 没退成 ⇒ 那一条标未送达、写上回退那一串说的为什么（不是笼统的「未送进会话」）。
 #[test]
+fn a_line_an_old_hosted_terminal_cannot_take_is_undelivered_saying_so() {
+    use crate::control::terminals::{input_reply, Refused};
+    let o = own("outdated");
+    let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
+    let sent = input_reply(SentResult::Refused, Some(Refused::HostOutdated), None);
+    *rig.answer.borrow_mut() = Delivery::of(sent);
+    let mut memos = Memos::default();
+    put(&o, "a", T0);
+    rig.pass(&o, &mut memos, T0 + 1);
+    let list = q::read(&o, SID, T0 + 2).unwrap();
+    assert_eq!(list.items.len(), 1);
+    assert_eq!(list.items[0].state, S::Undelivered);
+    assert_eq!(
+        list.items[0].said,
+        copy_core::copy_text("beTerminal.no.hostOutdated", &[]),
+        "那一条写明是旧版托管终端、要重开"
+    );
+}
+
+#[test]
 fn a_failed_rewind_is_undelivered_with_its_own_reason() {
     use cmd_wire::rewind::RewindWhen;
     let o = own("edit-no");
