@@ -4,7 +4,7 @@
 
 use crate::accounts::quota::rules::book::{self, Book};
 use crate::accounts::quota::rules::decide::Pick;
-use crate::accounts::quota::rules::{past, standing, Adopted};
+use crate::accounts::quota::rules::{standing, Adopted};
 use crate::accounts::quota::setup::{self, form, script, shelf, uses};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::common::cells::Words;
@@ -14,9 +14,9 @@ use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 use cmd_wire::cells::Tone;
 pub(crate) use cmd_wire::rotation::{
-    RotAccount, RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotHint, RotLogRow, RotMark,
-    RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg, RotPastUse, RotPlate, RotRefused,
-    RotRow, RotStrategyError, RotStrategyItem, RotationStrategiesReply, RotationViewReply,
+    RotAccount, RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotGroup, RotHint, RotLine,
+    RotLogRow, RotMark, RotNote, RotOldFile, RotPlate, RotRefused, RotRow, RotStrategyError,
+    RotStrategyItem, RotationStrategiesReply, RotationViewReply,
 };
 use copy_core::copy_text;
 use serde::Deserialize;
@@ -135,7 +135,7 @@ pub(crate) enum RotTarget {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationViewReq {
     pub(crate) target: RotTarget,
-    /// 往后推几小时（1–48，缺 ⇒ 12）。
+    /// 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) hours: Option<u8>,
@@ -355,70 +355,63 @@ fn face(t: u64, tz: &crate::Tz) -> String {
     crate::common::time::hm(tz.local(i64::try_from(t).unwrap_or(i64::MAX)))
 }
 
-/// 过去那一截往前推演时长的几分之一（12 小时 ⇒ 往前 2 小时）。
-const PAST_SHARE: u64 = 6;
+/// 会话那一形推多远，只为「下一个」那一格的钟点（不上线）。
+const SESSION_HOURS: u64 = 12;
 
-/// 时间轴过去那一截：最上那条照这个会话的换号记录；每号一行照此刻的读数与记录，说不出的空着（[`past`]）。
-/// `first` ＝ 推演第一段（起点 · 用哪个号）：接着此刻、跟它同一个号的那一段不写号名（同一段只写一次，写在推演那一截）。
-#[allow(clippy::too_many_arguments)]
-fn past_of(
-    session: &book::Session,
-    facts: &[crate::accounts::quota::rules::Acct],
-    lanes: &[String],
-    holding: bool,
-    first: Option<(u64, Option<&str>)>,
-    from: u64,
-    now: u64,
-    tz: &crate::Tz,
-) -> RotPast {
-    RotPast {
-        from,
-        uses: past::uses(
-            &session.log,
-            &session.current,
-            session.since,
-            from,
-            now,
-            holding,
-        )
-        .into_iter()
-        .map(|u| {
-            let joins = u.to == now && first == Some((now, u.account.as_deref()));
-            RotPastUse {
-                from: u.from,
-                to: u.to,
-                text: if joins {
-                    String::new()
-                } else {
-                    crate::faces::rotation_try_face::use_text(u.account.as_deref())
+/// 会话的顺序成行（`line` ＝ [`lineup_of`] 排好的先后，第一格是在用的号）：哪一组 · 右格的字 · 策略那一句 · 能不能拖。
+/// `next_at` ＝ 推演里第一次换号换到谁、几点（钟面；推不准 · 马上就换 ⇒ 缺）：换到的正是第二格才写钟点。
+pub(crate) fn lines_of(
+    line: &[String],
+    off: &[String],
+    sendable: &dyn Fn(&str) -> bool,
+    blocked: &dyn Fn(&str) -> Option<String>,
+    why: &[(String, String)],
+    next_at: Option<(String, String)>,
+) -> Vec<RotLine> {
+    let is_off = |a: &str| off.iter().any(|x| x == a);
+    line.iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let group = match () {
+                () if i == 0 => RotGroup::Use,
+                () if is_off(a) => RotGroup::Off,
+                () if !sendable(a) => RotGroup::Out,
+                () => RotGroup::Next,
+            };
+            let state = match group {
+                RotGroup::Use if is_off(a) => copy_text("beRotation.line.offUse", &[]),
+                RotGroup::Use => copy_text("beRotation.line.use", &[]),
+                RotGroup::Next if i == 1 => match &next_at {
+                    Some((to, at)) if to == a => {
+                        copy_text("beRotation.line.nextAt", &[("at", at)])
+                    }
+                    _ => copy_text("beRotation.line.next", &[]),
                 },
-                account: u.account,
+                RotGroup::Next => copy_text("beRotation.line.spare", &[]),
+                RotGroup::Out => {
+                    blocked(a).unwrap_or_else(|| copy_text("beRotation.line.out", &[]))
+                }
+                RotGroup::Off => copy_text("beRotation.line.off", &[]),
+            };
+            let stay = match group {
+                RotGroup::Out => Some(copy_text("beRotation.edit.unusable", &[("acct", a)])),
+                RotGroup::Off => Some(copy_text("beRotation.edit.offNow", &[("acct", a)])),
+                RotGroup::Use | RotGroup::Next => None,
+            };
+            RotLine {
+                account: a.clone(),
+                group,
+                state,
+                why: why
+                    .iter()
+                    .find(|(x, _)| x == a)
+                    .map(|(_, w)| w.clone())
+                    .filter(|w| !w.is_empty()),
+                movable: group == RotGroup::Next,
+                stay,
             }
         })
-        .collect(),
-        lanes: lanes
-            .iter()
-            .filter_map(|id| facts.iter().find(|a| a.id == *id))
-            .map(|a| RotPastLane {
-                account: a.id.clone(),
-                segs: past::lane(a, &session.log, from, now)
-                    .into_iter()
-                    .map(|g| RotPastSeg {
-                        from: g.from,
-                        to: g.to,
-                        sendable: g.sendable,
-                        reset: g.reset,
-                        text: crate::faces::rotation_try_face::seg_text(
-                            g.sendable,
-                            g.reset,
-                            &face(g.from, tz),
-                            None,
-                        ),
-                    })
-                    .collect(),
-            })
-            .collect(),
-    }
+        .collect()
 }
 
 /// 本体（测试给假的账本 · 额度账 · 钟 · 判活）。
@@ -497,6 +490,7 @@ pub(crate) fn view_with(
             start: session.start.clone(),
             current: session.current.clone(),
             lineup: Vec::new(),
+            manual: false,
             off: session.off.clone(),
             // 不轮换 ⇒ 只有开会话的那个号（号列表之外，只为它那一枚号牌）。
             accounts: (!session.start.is_empty())
@@ -518,7 +512,6 @@ pub(crate) fn view_with(
             listed: 0,
             decision: None,
             timeline: None,
-            past: None,
             log: log_rows(&session.log),
             hints,
         });
@@ -528,7 +521,10 @@ pub(crate) fn view_with(
         RotTarget::Session { sid } => sid.as_str(),
         RotTarget::Strategy { .. } => "",
     };
-    let hours = u64::from(req.hours.unwrap_or(12).clamp(1, 48));
+    let hours = match &req.target {
+        RotTarget::Session { .. } => SESSION_HOURS,
+        RotTarget::Strategy { .. } => u64::from(req.hours.unwrap_or(12).clamp(1, 48)),
+    };
     let Judged { facts, d, tl } = judged(ctx, sid, &session, &plan, &row, now, now + hours * 3600);
     let item = match &shelved {
         Some(s) => item_of(s, &base, &for_new, live),
@@ -636,34 +632,47 @@ pub(crate) fn view_with(
             )
         })
         .collect();
-    let (past, lineup, log) = match &req.target {
+    let (lineup, timeline, log) = match &req.target {
         RotTarget::Session { .. } => {
-            let lanes: Vec<String> = tl.lanes.iter().map(|(a, _)| a.clone()).collect();
-            let from = now.saturating_sub(hours * 3600 / PAST_SHARE);
+            // 推演里第一次换号：在用的号推不准几点到上限 ⇒ 不写钟点；马上就换 ⇒ 也不写（接着此刻那段）。
+            let sure = tl.uses.first().is_some_and(|u| !u.cap_unknown);
+            let next_at = tl
+                .switches()
+                .into_iter()
+                .next()
+                .filter(|(at, _)| sure && *at > now)
+                .map(|(at, a)| (a, face(at, tz)));
+            let blocked = |a: &str| {
+                accounts
+                    .iter()
+                    .find(|x| x.fact.account == a)
+                    .and_then(|x| x.fact.blocked.as_ref())
+                    .map(|b| b.text.clone())
+            };
+            let sendable = |a: &str| {
+                facts
+                    .iter()
+                    .find(|x| x.id == a)
+                    .is_some_and(|x| standing::sendable(x, now))
+            };
             (
-                Some(past_of(
-                    &session,
-                    &facts,
-                    &lanes,
-                    matches!(d.pick, Pick::Hold { .. }),
-                    tl.uses.first().map(|u| {
-                        (
-                            u.from,
-                            match &u.pick {
-                                Pick::Use(a) => Some(a.as_str()),
-                                Pick::Hold { .. } => None,
-                            },
-                        )
-                    }),
-                    from,
-                    now,
-                    tz,
-                )),
-                lineup_of(&session, &d, &facts, now),
+                lines_of(
+                    &lineup_of(&session, &d, &facts, now),
+                    &session.off,
+                    &sendable,
+                    &blocked,
+                    &d.why,
+                    next_at,
+                ),
+                None,
                 log_rows(&session.log),
             )
         }
-        RotTarget::Strategy { .. } => (None, Vec::new(), Vec::new()),
+        RotTarget::Strategy { .. } => (
+            Vec::new(),
+            Some(timeline_of(&tl, now, now + hours * 3600, tz)),
+            Vec::new(),
+        ),
     };
     let name = item.id.clone();
     Ok(RotationViewReply {
@@ -675,18 +684,12 @@ pub(crate) fn view_with(
         start: session.start.clone(),
         current: session.current.clone(),
         lineup,
+        manual: !session.temp.is_empty(),
         off: session.off.clone(),
         accounts,
         listed,
         decision: Some(decision_of(&d)),
-        timeline: Some(timeline_of(
-            &tl,
-            past.as_ref().map_or(now, |p| p.from),
-            now,
-            now + hours * 3600,
-            tz,
-        )),
-        past,
+        timeline,
         log,
         hints: hints.into_iter().map(|h| note_of(h, &name, why)).collect(),
     })

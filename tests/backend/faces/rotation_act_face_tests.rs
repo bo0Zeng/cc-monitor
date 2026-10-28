@@ -12,57 +12,26 @@ fn temp(ctx: &Ctx, home: &Home, op: RotTempOp) -> Result<RotationTempReply, Rota
     )
 }
 
-/// ★ 放到第几位（越界取末尾、已在就挪）只是那一串上的事；不在这台账号里的号 ⇒ `not_listed`。
+/// ★ 临时动作只剩顺序里那三样（挪一行 · 先不用 · 清掉）：时间轴那一拖（`place`）入参解析就拒；清掉 ⇒ 空。
 #[test]
-fn a_name_is_put_at_its_place_in_the_dragged_order() {
-    let mut t: Vec<String> = Vec::new();
-    for (a, at, want) in [
-        ("b", 0, vec!["b"]),
-        ("c", 9, vec!["b", "c"]),
-        ("c", 0, vec!["c", "b"]),
-    ] {
-        put_at(&mut t, a, at);
-        assert_eq!(t, want);
-    }
-    let home = Home::new("temp-bad");
-    let ctx = home.ctx();
-    home.saw(&ctx, S1);
-    let place = RotTempOp::Place {
-        account: "zz".into(),
-        t: now() + 60,
+fn only_the_order_ops_are_left() {
+    let req = |op: serde_json::Value| {
+        serde_json::from_value::<RotationTempReq>(serde_json::json!({ "sid": S1, "op": op }))
     };
-    assert!(matches!(
-        temp(&ctx, &home, place),
-        Err(RotationTempErr::NotListed(_))
-    ));
-}
-
-/// ★ 拖号名到最上那条、松在时刻 `t` ⇒ 排到那一刻之后那一段（此刻那段是第 0 位，之后每段换号往后数一位）：
-/// 段数照这个会话此刻的推演，由后端数（界面只交松手那一刻）；清掉 ⇒ 空。
-#[test]
-fn a_name_dropped_on_the_top_lane_goes_after_the_uses_before_that_moment() {
+    assert!(
+        req(serde_json::json!({"place": {"account": "b", "t": now() + 60}})).is_err(),
+        "时间轴那一拖随时间轴删"
+    );
+    for op in [
+        serde_json::json!({"move": {"account": "b", "to": 1}}),
+        serde_json::json!({"off": {"account": "b", "off": true}}),
+        serde_json::json!("clear"),
+    ] {
+        assert!(req(op.clone()).is_ok(), "{op}");
+    }
     let home = Home::new("temp");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    let place = |account: &str, t: u64| {
-        temp(
-            &ctx,
-            &home,
-            RotTempOp::Place {
-                account: account.into(),
-                t,
-            },
-        )
-        .expect("ok")
-        .temp
-    };
-    let v = crate::faces::rotation_view_face::tests::session_view(&ctx, &home, S1);
-    let uses = &v.timeline.as_ref().expect("推演").uses;
-    let later = uses.iter().filter(|u| u.from > now()).count();
-    assert_eq!(later, 0, "这一家推演里此刻之后不换号：{uses:?}");
-    assert_eq!(place("b", now() + 60), ["b"]);
-    assert_eq!(place("c", now() + 3600), ["b", "c"]);
-    assert_eq!(place("b", now() + 60), ["c", "b"], "已在就挪到第 1 位");
     let cleared = temp(&ctx, &home, RotTempOp::Clear).expect("ok");
     assert!(cleared.temp.is_empty());
 }
@@ -84,12 +53,23 @@ fn a_row_dragged_in_the_order_is_moved_there() {
             },
         )
     };
-    let line = crate::faces::rotation_view_face::tests::session_view(&ctx, &home, S1).lineup;
+    let ids = || -> Vec<String> {
+        crate::faces::rotation_view_face::tests::session_view(&ctx, &home, S1)
+            .lineup
+            .into_iter()
+            .map(|l| l.account)
+            .collect()
+    };
+    let line = ids();
     assert!(line.len() >= 3, "{line:?}");
     let x = line[2].clone();
     let moved = mv(&x, 1).expect("ok").temp;
     assert_eq!(moved, [x.clone(), line[1].clone()], "{line:?}");
-    let line = crate::faces::rotation_view_face::tests::session_view(&ctx, &home, S1).lineup;
+    assert!(
+        crate::faces::rotation_view_face::tests::session_view(&ctx, &home, S1).manual,
+        "拖过 ⇒ 回包说手动排过"
+    );
+    let line = ids();
     let i = line.iter().position(|a| *a == x).expect("在");
     assert_eq!(mv(&x, i).expect("ok").temp, moved, "没挪 ⇒ 不动");
     assert!(matches!(mv("zz", 1), Err(RotationTempErr::NotListed(_))));
@@ -167,24 +147,12 @@ fn an_account_left_out_for_this_session_is_not_used() {
     assert_eq!(pick.as_deref(), Some("api"), "去掉的号不该被换上");
     assert_eq!(v.off, ["b"]);
     assert_eq!(
-        v.lineup.first().map(String::as_str),
+        v.lineup.first().map(|l| l.account.as_str()),
         Some("a"),
         "第一格是在用的号"
     );
-    let at = |x: &str| v.lineup.iter().position(|a| a == x).expect("在顺序里");
+    let at = |x: &str| v.lineup.iter().position(|a| a.account == x).expect("在顺序里");
     assert!(at("api") < at("b"), "去掉的沉底：{:?}", v.lineup);
-    let lane = v
-        .timeline
-        .as_ref()
-        .and_then(|t| t.lanes.iter().find(|l| l.account == "b"))
-        .expect("b 那一行");
-    assert!(
-        lane.segs
-            .iter()
-            .all(|s| !s.sendable && s.text == copy_text("rot.sim.off", &[])),
-        "{:?}",
-        lane.segs
-    );
     match use_now_with(
         &ctx,
         &home.own(),
