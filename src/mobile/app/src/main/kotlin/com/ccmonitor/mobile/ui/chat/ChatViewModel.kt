@@ -26,6 +26,9 @@ class ChatViewModel(
 
     fun loadOlder() = session.loadOlder()
 
+    /** 视口贴不贴着底（见 [ChatSession.follow]）。 */
+    fun follow(on: Boolean) = session.follow(on)
+
     fun send(text: String) = session.send(text)
 
     fun retry(localId: String) = session.retry(localId)

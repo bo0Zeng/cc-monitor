@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.wire.gen.TurnPhase
 import com.ccmonitor.mobile.core.wire.gen.TurnRow
 import com.ccmonitor.mobile.core.wire.gen.TurnSpan
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -83,6 +84,45 @@ class TurnFoldsTest {
         assertEquals(null, TurnFolds.owner(units, turns, "zz"))
         val open = TurnFolds.fold(units, turns, setOf("u1")).filterIsInstance<StreamItem.Card>()
         assertEquals(listOf(null, "u1", "u1", null, null, null), open.map { it.fold })
+    }
+
+    /** 从上一份往下重折的结果要与整份折一字不差。 */
+    private fun tail(
+        prevUnits: List<RenderUnit>,
+        prevTurns: List<TurnRow>,
+        nextUnits: List<RenderUnit>,
+        nextTurns: List<TurnRow>,
+        open: Set<String> = emptySet(),
+    ): Pair<List<StreamItem>, List<StreamItem>> {
+        val prev = TurnFolds.fold(prevUnits, prevTurns, open)
+        val got = TurnFolds.foldTail(prev, prevUnits, prevTurns.flatMap { it.folds }, nextUnits, nextTurns, open)
+        assertEquals(TurnFolds.fold(nextUnits, nextTurns, open), got)
+        return prev to got
+    }
+
+    @Test
+    fun `从最后一段过程起往下重折：同整份折一样；那一段之前的项原样留着（同一个实例）`() {
+        val more = units + tool("b2")
+        val (prev, got) = tail(units, turns, more, turns, setOf("a3"))
+        val k = prev.indexOfLast { it is StreamItem.Process }
+        (0 until k).forEach { i -> assertTrue("第 $i 项原样留着", prev[i] === got[i]) }
+    }
+
+    @Test
+    fun `新的一轮接在尾巴上、上一段收了尾（until 有了）· 尾巴那张卡换了结果 · 只拉了后半截 ⇒ 同整份折一样`() {
+        val closed = listOf(turns[0], turn("u2", seg("u2", "b3")), turn("u3", seg("u3", null)))
+        tail(units, turns, units + text("b3") + said("u3") + tool("c1"), closed)
+        tail(units, turns, units.dropLast(1) + tool("b1").copy(resultText = "新"), turns, setOf("u2"))
+        tail(units.drop(1), turns, units.drop(1) + tool("b2"), turns)
+    }
+
+    @Test
+    fun `那一段之前有变（单元换了 · 分段变了）· 没有分段 ⇒ 整份折`() {
+        val swapped = units.toMutableList().also { it[1] = tool("a1").copy(resultText = "新") }
+        tail(units, turns, swapped + tool("b2"), turns, setOf("u1"))
+        val regrouped = listOf(turn("u1", seg("u1", "a5")), turns[1])
+        tail(units, turns, units + tool("b2"), regrouped)
+        tail(units, emptyList(), units + tool("b2"), emptyList())
     }
 
     @Test
