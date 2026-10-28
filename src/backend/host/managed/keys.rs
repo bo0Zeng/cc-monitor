@@ -122,7 +122,11 @@ impl Keys {
 
     /// 平常那一层原样送的一个字节：顺手对括号粘贴的头 / 尾。
     fn pass(&mut self, b: u8) {
-        let want = if self.pasting { PASTE_CLOSE } else { PASTE_OPEN };
+        let want = if self.pasting {
+            PASTE_CLOSE
+        } else {
+            PASTE_OPEN
+        };
         self.mark = if want[self.mark] == b {
             self.mark + 1
         } else {

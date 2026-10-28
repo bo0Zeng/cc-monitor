@@ -254,7 +254,10 @@ async fn a_socket_path_over_the_limit_refuses_to_start_and_says_how_long() {
         said.contains(&sock.as_os_str().len().to_string()),
         "说清多长：{said}"
     );
-    assert!(said.contains(&home::SOCK_PATH_MAX.to_string()), "说清上限：{said}");
+    assert!(
+        said.contains(&home::SOCK_PATH_MAX.to_string()),
+        "说清上限：{said}"
+    );
     assert!(!bound, "没绑口");
     assert!(!data.join("hosts").join("t-long").exists(), "不留那个家");
 }

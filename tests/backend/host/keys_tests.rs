@@ -149,7 +149,11 @@ fn a_bracketed_paste_passes_through_whole_even_with_the_prefix_inside() {
     let mut k = Keys::new(DEFAULT_PREFIX);
     let paste = b"\x1b[200~a\x02db\x1b[201~";
     assert_eq!(feed(&mut k, paste), vec![Act::Send(paste.to_vec())]);
-    assert_eq!(feed(&mut k, b"\x02d"), vec![Act::Detach], "粘完之后前缀照旧");
+    assert_eq!(
+        feed(&mut k, b"\x02d"),
+        vec![Act::Detach],
+        "粘完之后前缀照旧"
+    );
 }
 
 #[test]
