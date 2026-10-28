@@ -268,9 +268,9 @@ fn census() -> (Vec<(String, String, String)>, usize) {
 ///
 /// # 为什么是「返回类型带 `Managed`」而不是「所有 `pub`」
 ///
-/// `wait_with_output` / `wait_for_status` 也是 `pub fn`，但它们是**等**那一下、
-/// 不是**起**那一下。把它们收进名单的话，某一处只要在函数体里出现
-/// `wait_with_output` 就算「够到了出口」，而那句话可以在完全绕开出口的代码里出现。
+/// `wait_for_status` 也是 `pub fn`，但它是**等**那一下、
+/// 不是**起**那一下。把它收进名单的话，某一处只要在函数体里出现
+/// `wait_for_status` 就算「够到了出口」，而那句话可以在完全绕开出口的代码里出现。
 /// ⇒ 判据一整条退化成恒真。这一格由
 /// [`the_exit_entry_point_list_is_derived_and_does_not_say_yes_to_every_pub_fn`] 的阴性对照钉着。
 fn exit_entry_points() -> Vec<String> {
@@ -496,7 +496,7 @@ fn the_exit_entry_point_list_is_derived_and_does_not_say_yes_to_every_pub_fn() {
         );
     }
     // 🔴 阴性那半：**等**那一下不是**起**那一下。
-    for never in ["wait_with_output", "wait_for_status"] {
+    for never in ["wait_for_status"] {
         assert!(
             !entries.iter().any(|e| e == never),
             "`{never}` 混进入口名单了 —— 它是「等它退出」，不是「起它」。\n\

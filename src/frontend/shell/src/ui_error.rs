@@ -13,7 +13,8 @@ use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use crate::utils::now_ms;
+use std::time::{Duration, Instant};
 
 /// 事件名（界面 `backend-errors.ts` 订的那一个）。
 pub const EVENT: &str = crate::ui_contract::events::UI_ERROR;
@@ -140,13 +141,6 @@ impl UiError {
             }),
         }
     }
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 type Emit = Box<dyn Fn(&UiErrorPayload) + Send + Sync>;

@@ -639,7 +639,7 @@ const SITES: &[&str] = &[
 /// 它钉的正是用户那句「可以单独搞」里最实在的那一半 ——
 /// app 侧对 `filewin/` 的**依赖面**只有一个符号宽。
 ///
-/// ⚠ 买不到什么：它判的是**编译期引用**。`lib.rs` 里那句 `pub mod filewin;`
+/// ⚠ 买不到什么：它判的是**编译期引用**。`lib.rs` 里那句 `mod filewin;`
 /// （模块声明，不带 `::`）由下面单独一条钉。
 #[test]
 fn the_app_side_reaches_into_the_file_manager_through_exactly_one_door() {
@@ -675,14 +675,14 @@ fn the_app_side_reaches_into_the_file_manager_through_exactly_one_door() {
 /// ★ 模块声明那一行**恰好一处**，而且在 `lib.rs` 上。
 ///
 /// 🔴 与上一条**刻意分开**：上一条的针是 `filewin::`（带两个冒号），
-/// 它按构造看不见 `pub mod filewin;`。两条合起来才是完整的反向依赖面。
+/// 它按构造看不见 `mod filewin;`。两条合起来才是完整的反向依赖面。
 #[test]
 fn the_file_manager_is_mounted_from_exactly_one_place() {
     let lib = std::fs::read_to_string(repo_root().join("src/frontend/shell/src/lib.rs"))
         .expect("读不到 `src/frontend/shell/src/lib.rs`");
     let prod = guard_core::production_code(&lib);
     // 整行相等（不是子串）—— `pin_line` 自带「恰好一行」那道自检。
-    guard_core::pin_line(&prod, &format!("pub mod {FILEWIN_MOD};"))
+    guard_core::pin_line(&prod, &format!("mod {FILEWIN_MOD};"))
         .expect("`lib.rs` 里那句模块声明不见了、或者有不止一句");
 }
 
