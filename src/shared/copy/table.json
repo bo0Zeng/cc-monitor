@@ -1758,6 +1758,96 @@
       "zh": "未切换权限档 · 此档只能在起会话时指定",
       "args": []
     },
+    "beRewind.how.conversation": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "仅回退消息并重发",
+      "args": []
+    },
+    "beRewind.how.codeAndConversation": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "回退消息与代码并重发",
+      "args": []
+    },
+    "beRewind.when.afterTurn": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "本轮结束后回退",
+      "args": []
+    },
+    "beRewind.when.now": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "立即打断本轮并回退",
+      "args": []
+    },
+    "beRewind.no.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "此会话不支持回退到某一句",
+      "args": []
+    },
+    "beRewind.no.noSuchLine": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 记录主线上已无此句",
+      "args": []
+    },
+    "beRewind.no.inputBusy": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 输入行里有未发出的字",
+      "args": []
+    },
+    "beRewind.no.menuUnlike": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 回退菜单与预想的不一致",
+      "args": []
+    },
+    "beRewind.no.menuClosed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 回退列表未调出",
+      "args": []
+    },
+    "beRewind.no.listUnlike": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 回退列表与记录不一致",
+      "args": []
+    },
+    "beRewind.no.noChoice": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 此句无「{choice}」一项",
+      "args": ["choice"]
+    },
+    "beRewind.no.cannotStop": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未回退 · 此会话不支持中途停下",
+      "args": []
+    },
+    "beRewind.no.notStopped": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "回退结果未知\n已按打断，本轮未停止",
+      "args": []
+    },
+    "beRewind.unsure.notSent": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已回退到此句之前\n修改后的内容未送进",
+      "args": []
+    },
+    "beRewind.unsure.notReadBack": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已送进\n记录里还未读到",
+      "args": []
+    },
     "beSessionModel.set.saved": {
       "kind": "body",
       "role": "说明",
