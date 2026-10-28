@@ -24,9 +24,8 @@ import java.io.File
  * ### 射程：新界面的三个面，不是整个 `app/src/main`
  *
  * `ui/session` / `ui/host` / `ui/identity` 是终端那一路，一个终端屏上写「tmux 会话」是对的。
- * 词表管的是聊天 / 总览 / 设置三个面。射程分两档：
- * - [cleanPackages]：零命中，任何手滑当场红。
- * - [ratchets]：还不干净的包，各上一道棘轮（条数逐个相等，减了就照实改小）：`ui/settings` 剩一句「重新连接」。
+ * 词表管的是聊天 / 总览 / 设置三个面，[cleanPackages] 里每个包零命中，任何手滑当场红
+ * （设置那一句「重新连接」随机器条收走了：离线那一颗的字由核心点名）。
  *
  * 扫描器走共享实现 [KotlinSourceScanner.literalsInCallsTo]；它认 Kotlin 的嵌套块注释，
  * 回归锚钉在 [theScannerDoesNotMistakeANestedKdocForScreenCopy]，词法层那条钉在
@@ -37,14 +36,7 @@ class UiWordlistTest {
     private val banned = listOf("连接", "SSH", "tmux", "exec", "bridge", "daemon", "offset")
 
     /** 已经干净的包。零命中。 */
-    private val cleanPackages = listOf("chats", "chat", "claude")
-
-    /**
-     * 还欠着的包 → 现有的违规条数。
-     *
-     * 这些数只许往下改。往上改 = 又往 UI 上漏了一个技术词。
-     */
-    private val ratchets = mapOf("settings" to 1)
+    private val cleanPackages = listOf("chats", "chat", "claude", "settings")
 
     private fun uiDir(pkg: String): File {
         val rel = "src/main/kotlin/com/ccmonitor/mobile/ui/$pkg"
@@ -80,19 +72,6 @@ class UiWordlistTest {
             emptyList<Hit>(),
             hits,
         )
-    }
-
-    @Test
-    fun thePackagesStillOwingCopyWorkNeverGetWorse() {
-        ratchets.forEach { (pkg, baseline) ->
-            val hits = scan(pkg)
-            assertEquals(
-                "ui/$pkg 的词表违规记的是 $baseline、实数 ${hits.size}：涨了 ⇒ 改成人话；减了 ⇒ 把这个数照实改小：\n" +
-                    hits.joinToString("\n") { "  ${it.where}  「${it.word}」 in ${it.literal}" },
-                baseline,
-                hits.size,
-            )
-        }
     }
 
     /**
