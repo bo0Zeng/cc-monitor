@@ -3,11 +3,11 @@
 //! - 判定：用户点名的号 · 账号 0 · 跟随（这条会话上次的号 → 这台的默认号 → 账号 0）。
 //!   跟随时上次那个号选不了 ⇒ 不起、给一个显式的替代（绝不悄悄换成别的号）。
 //! - 记录：`ccm` 在最终那一跳给将要跑 agent 的那个进程留一张**便条**（`launch-pending/<pid>.json`：号 ＋ 时刻，
-//!   各写各的；起会话时给了 `--tab` 也记在这张上）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号`（与 `sid → 标签页`）记进
+//!   各写各的；起会话时给了 `--tab` 也记在这张上，起在宿主里的记宿主）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号`（与 `sid → 标签页` · `sid → 宿主`）记进
 //!   `launch-accounts.json`（启动台账：只有观测侧写，锁里原子写；形状与读住 `history/launch_book.rs`）。
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
-use crate::history::launch_book::{read_book, FILE_NAME};
+use crate::history::launch_book::{read_book, Book, FILE_NAME};
 use crate::platform::fs::{Own, OwnPath};
 use cmd_wire::accounts::{AccountRow, AccountsList};
 use copy_core::copy_text;
@@ -223,6 +223,9 @@ pub(crate) struct Note {
     /// 这个进程经哪条别名起的（补足一组时按它数）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) alias: Option<String>,
+    /// 这个进程起在哪种宿主里（最终那一跳自己的环境：托管终端 · tmux）；直路 ⇒ 不带。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) host: Option<cmd_wire::frame::TerminalHost>,
 }
 
 /// 一个进程一张便条：状态（写的那一下不读它；读不懂的那张不作数）。读盘上限与启动台账同一个。
@@ -256,6 +259,7 @@ pub(crate) fn leave_note(
             plugin,
             tab,
             alias: None,
+            host: None,
         },
     )
 }
@@ -349,33 +353,33 @@ pub(crate) fn adopt(
             }
         }
     }
-    let Some(note) = note.filter(|n| !n.account.is_empty() || n.tab.is_some() || n.alias.is_some())
-    else {
+    let Some(note) = note else {
         return Ok(false);
     };
-    let book = read_book(home)?;
-    let account = (!note.account.is_empty()).then_some(note.account.as_str());
-    if account.is_none_or(|a| book.sessions.get(sid).map(String::as_str) == Some(a))
-        && note
-            .tab
-            .as_ref()
-            .is_none_or(|t| book.tabs.get(sid) == Some(t))
-        && note
-            .alias
-            .as_ref()
-            .is_none_or(|a| book.aliases.get(sid) == Some(a))
-    {
+    if entered(read_book(home)?, sid, &note).is_none() {
         return Ok(false);
     }
-    record(
-        own,
-        &home_dir,
-        sid,
-        account,
-        note.tab.as_ref(),
-        note.alias.as_deref(),
-    )?;
+    record(own, &home_dir, sid, &note)?;
     Ok(true)
+}
+
+/// 便条记进台账之后的那一份；跟原来一样 ⇒ `None`。号 · 标签页 · 别名有才记；宿主照便条（直路起的便条没宿主 ⇒ 摘掉旧的那一条）。
+fn entered(mut book: Book, sid: &str, note: &Note) -> Option<Book> {
+    let before = book.clone();
+    if !note.account.is_empty() {
+        book.sessions.insert(sid.to_string(), note.account.clone());
+    }
+    if let Some(t) = &note.tab {
+        book.tabs.insert(sid.to_string(), t.clone());
+    }
+    if let Some(a) = &note.alias {
+        book.aliases.insert(sid.to_string(), a.clone());
+    }
+    match note.host {
+        Some(h) => book.hosts.insert(sid.to_string(), h),
+        None => book.hosts.remove(sid),
+    };
+    (book != before).then_some(book)
 }
 
 /// 便条对这个进程作数：进程不晚于便条起（同一秒内算对上）。起始时刻说不出 ⇒ 作数。
@@ -388,23 +392,14 @@ fn record(
     own: &Own,
     home: &OwnPath,
     sid: &str,
-    account: Option<&str>,
-    tab: Option<&LaunchTab>,
-    alias: Option<&str>,
+    note: &Note,
 ) -> Result<(), crate::common::said::Said> {
     own.ensure_dir(home)
         .map_err(|e| failed(home.as_path(), &e))?;
     let held = own.lock(home)?;
-    let mut book = read_book(home.as_path())?;
-    if let Some(a) = account {
-        book.sessions.insert(sid.to_string(), a.to_string());
-    }
-    if let Some(t) = tab {
-        book.tabs.insert(sid.to_string(), t.clone());
-    }
-    if let Some(a) = alias {
-        book.aliases.insert(sid.to_string(), a.to_string());
-    }
+    let Some(book) = entered(read_book(home.as_path())?, sid, note) else {
+        return Ok(());
+    };
     let file = home.join(FILE_NAME)?;
     let body = crate::common::own_state::json_body(file.as_path(), &book)?;
     own.write(&file, &held, &body)

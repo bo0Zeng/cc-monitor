@@ -408,6 +408,7 @@ fn a_note_carries_the_alias_into_the_launch_ledger() {
             plugin: false,
             tab: None,
             alias: Some("dev".into()),
+            host: None,
         },
     )
     .unwrap();
@@ -417,5 +418,40 @@ fn a_note_carries_the_alias_into_the_launch_ledger() {
     assert_eq!(book.sessions.get("s-alias"), None);
     // 已经记着 ⇒ 不再写。
     assert!(!adopt(&own_at(&h), 81, "s-alias", Some(990), &none_alive).unwrap());
+    let _ = std::fs::remove_dir_all(&h);
+}
+
+fn host_note(account: &str, host: Option<cmd_wire::frame::TerminalHost>) -> Note {
+    Note {
+        account: account.to_string(),
+        at: 1_000,
+        plugin: false,
+        tab: None,
+        alias: None,
+        host,
+    }
+}
+
+/// 起在哪种宿主里：便条带宿主（不带号也认）⇒ 记进启动台账的 `hosts`；同一条后来经直路起（便条没宿主）⇒ 摘掉那一条。
+#[test]
+fn a_note_carries_the_host_into_the_launch_ledger_and_a_direct_launch_drops_it() {
+    use cmd_wire::frame::TerminalHost;
+    let h = temp_home("host");
+    leave(&own_at(&h), 91, &host_note("", Some(TerminalHost::Tmux))).unwrap();
+    assert!(adopt(&own_at(&h), 91, "s-host", Some(990), &none_alive).unwrap());
+    assert_eq!(
+        crate::history::launch_book::host_of(Some(&h), "s-host"),
+        Some(TerminalHost::Tmux)
+    );
+    assert!(!adopt(&own_at(&h), 91, "s-host", Some(990), &none_alive).unwrap(), "记着同一个还写");
+    leave(&own_at(&h), 92, &host_note("x", Some(TerminalHost::Managed))).unwrap();
+    assert!(adopt(&own_at(&h), 92, "s-host", Some(990), &none_alive).unwrap());
+    assert_eq!(
+        crate::history::launch_book::host_of(Some(&h), "s-host"),
+        Some(TerminalHost::Managed)
+    );
+    leave(&own_at(&h), 93, &host_note("x", None)).unwrap();
+    assert!(adopt(&own_at(&h), 93, "s-host", Some(990), &none_alive).unwrap());
+    assert_eq!(crate::history::launch_book::host_of(Some(&h), "s-host"), None);
     let _ = std::fs::remove_dir_all(&h);
 }

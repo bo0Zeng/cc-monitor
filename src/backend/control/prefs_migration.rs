@@ -12,6 +12,9 @@
 //!    每台残留的 `resumeCommand` 等旧格不带过去；`remote` 在而认不出（没有 `hosts` 数组）⇒ 不写、留原样。monitor 读到本机 `machines-read`
 //!    说 `ok` 才删 `remote`。各家旧的那一格数据目录（键名问注册表 `old_home_pref_of`）并进本机那一份 `prefs.json` 的 `agentHomes`。
 //!
+//! 4. **`prefs.json` 第 1 版 ⇒ 第 2 版**（[`reshape_prefs_in`]）：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`（开 ⇒ tmux，关 ⇒ 托管）；
+//!    同一位、起来时先于上面几步换；读不懂的一个字节不动。读口只认第 2 版（旧键不留兼容）。
+//!
 //! 旧形状（今天各写者的那几格）：通用页 `resumeCommand` · 本机 `localResumeCommand` · 机器表每台 `remote.hosts[].resumeCommand`
 //! （空 ⇒ 通用页那一格）· `resumeInTmux`（各台同一格）· `contextLimits`（各台同一张）· `accounts.byMachine.<origin>.modelByAccount`
 //! （本机是 `<local>`）。启动命令只记给默认那一家（今天界面就只对它用这一格）。坏值那一条丢掉、不拖垮整份（写口那几条规矩同 `prefs-set`）。
@@ -49,10 +52,7 @@ fn text<'a>(v: &'a Value, key: &str) -> &'a str {
 /// 照旧形状拆（纯）。
 pub(crate) fn plan(cfg: &Value) -> Plan {
     let global = text(cfg, "resumeCommand");
-    let tmux = cfg
-        .get("resumeInTmux")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let resume_where = resume_where_of(cfg.get("resumeInTmux"));
     let limits: BTreeMap<String, u64> = cfg
         .get("contextLimits")
         .and_then(Value::as_object)
@@ -86,7 +86,7 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
         }
         Prefs {
             launchers,
-            resume_in_tmux: tmux,
+            resume_where,
             models: models(at),
             context_limits: limits.clone(),
             agent_homes: BTreeMap::new(),
@@ -100,6 +100,67 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
     // 数据目录只说本机（设置页那一格从来只管这一台）。
     local.agent_homes = old_homes(cfg);
     Plan { local }
+}
+
+/// 旧开关 `resumeInTmux` 读成三选：开 ⇒ tmux；关 / 没有 ⇒ 托管（关着时今天就落托管）。`config.json` 那一格与第 1 版 `prefs.json` 同一条。
+fn resume_where_of(old: Option<&Value>) -> cmd_wire::session::ResumeWhere {
+    use cmd_wire::session::ResumeWhere;
+    if old.and_then(Value::as_bool) == Some(true) {
+        ResumeWhere::Tmux
+    } else {
+        ResumeWhere::Managed
+    }
+}
+
+/// 换第 1 版 `prefs.json` 那一次的结局（判据按它说；生产只记一行日志）。
+#[derive(Debug, PartialEq)]
+pub(crate) enum Reshaped {
+    /// 不在，或已不是第 1 版：什么都不做。
+    Nothing,
+    /// 第 1 版读不懂（那一句）：一个字节不写。
+    Unreadable(String),
+    /// 换成了第 2 版。
+    Done,
+    /// 写没成（那一句）：下次起来再试。
+    WriteFailed(String),
+}
+
+/// `prefs.json` 按原样读（换形要看旧键）：状态（读不懂 ⇒ 不动）。
+const PREFS_RAW: Doc<Value> = Doc::state(relay_route_core::PREFS_REL, MAX_BYTES);
+
+/// 盘上第 1 版的 `prefs.json`（恢复那一格是开关 `resumeInTmux`）⇒ 第 2 版（三选 `resumeWhere`，[`resume_where_of`]），别的几格原样。
+/// 换完照第 2 版的值域核一遍再写；核不过 ⇒ 一个字节不写（读不懂的不当空的换）。
+pub(crate) fn reshape_prefs_in(own: &Own) -> Reshaped {
+    use crate::common::own_state::Read;
+    let Ok(at) = own.at_home(machine_prefs::DOC.rel) else {
+        return Reshaped::Nothing;
+    };
+    let mut v = match PREFS_RAW.read(at.as_path()) {
+        Read::Absent => return Reshaped::Nothing,
+        Read::Unreadable(why) => return Reshaped::Unreadable(why.said),
+        Read::Present(v) => v,
+    };
+    let Some(o) = v.as_object_mut() else {
+        return Reshaped::Unreadable(format!("{} is not an object", machine_prefs::FILE_NAME));
+    };
+    if o.get("version").and_then(Value::as_u64) != Some(1) {
+        return Reshaped::Nothing;
+    }
+    let old = o.remove("resumeInTmux");
+    let w = resume_where_of(old.as_ref());
+    o.insert("resumeWhere".into(), serde_json::json!(w));
+    o.insert("version".into(), serde_json::json!(machine_prefs::VERSION));
+    let p = match serde_json::from_value::<machine_prefs::OnDisk>(v) {
+        Ok(d) => d.prefs,
+        Err(e) => return Reshaped::Unreadable(e.to_string()),
+    };
+    if let Err(why) = machine_prefs::check(&p) {
+        return Reshaped::Unreadable(why);
+    }
+    match write_prefs(own, &p) {
+        Ok(()) => Reshaped::Done,
+        Err(e) => Reshaped::WriteFailed(e.said),
+    }
 }
 
 /// 起来那一次的结局（判据按它说；生产只记一行日志）。
@@ -293,6 +354,12 @@ pub fn migrate_here(own: &Own) {
     if RAN.set(()).is_err() {
         tracing::warn!("换形那一段被叫了第二次（只该在常驻那一位起来时叫一次）：这一次不换");
         return;
+    }
+    match reshape_prefs_in(own) {
+        Reshaped::Nothing => {}
+        Reshaped::Done => tracing::info!("prefs.json 换成了第 2 版（恢复时放在哪改三选）"),
+        Reshaped::Unreadable(why) => tracing::warn!("prefs.json 第 1 版读不懂，没换：{why}"),
+        Reshaped::WriteFailed(why) => tracing::warn!("prefs.json 没换成，下次起来再试：{why}"),
     }
     match migrate_in(own) {
         Migrated::AlreadyThere | Migrated::NoConfig => {}

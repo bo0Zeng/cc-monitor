@@ -49,9 +49,69 @@ fn an_old_config_moves_only_the_local_prefs() {
     assert_eq!(
         p.local,
         prefs(
-            json!({"launchers": {k: "cc"}, "resumeInTmux": true, "models": {"work": "opus"}, "contextLimits": {"opus": 1000000}})
+            json!({"launchers": {k: "cc"}, "resumeWhere": "tmux", "models": {"work": "opus"}, "contextLimits": {"opus": 1000000}})
         )
     );
+}
+
+/// 旧开关读成三选：开 ⇒ tmux；关 / 没有 ⇒ 托管（今天关着的行为）。
+#[test]
+fn the_old_resume_switch_reads_as_one_of_the_three() {
+    use cmd_wire::session::ResumeWhere;
+    for (cfg, want) in [
+        (json!({"resumeInTmux": true}), ResumeWhere::Tmux),
+        (json!({"resumeInTmux": false}), ResumeWhere::Managed),
+        (json!({}), ResumeWhere::Managed),
+    ] {
+        assert_eq!(plan(&cfg).local.resume_where, want, "{cfg}");
+    }
+}
+
+fn write_prefs_raw(home: &Path, text: &str) -> PathBuf {
+    let at = home.join(relay_route_core::PREFS_REL);
+    std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+    std::fs::write(&at, text).unwrap();
+    at
+}
+
+/// 盘上第 1 版的 `prefs.json`（旧开关）⇒ 常驻那一位起来时换成第 2 版：开关读成三选、别的几格原样、旧键不留；第 2 版不再动；读不懂的不动。
+#[test]
+fn a_first_version_prefs_file_is_reshaped_once() {
+    use cmd_wire::session::ResumeWhere;
+    let home = scratch("prefs-v1");
+    let own = Own::issue_at(&home);
+    let at = write_prefs_raw(
+        &home,
+        r#"{"version":1,"launchers":{"claude":"cc"},"resumeInTmux":true,"models":{"work":"opus"},"contextLimits":{},"childTab":"show"}"#,
+    );
+    assert_eq!(reshape_prefs_in(&own), Reshaped::Done);
+    let crate::common::machine_prefs::Loaded::Present(p) =
+        crate::common::machine_prefs::read_at(&at)
+    else {
+        panic!("换完读不懂：{}", std::fs::read_to_string(&at).unwrap())
+    };
+    assert_eq!(p.resume_where, ResumeWhere::Tmux);
+    assert_eq!(p.launchers.get("claude").map(String::as_str), Some("cc"));
+    assert_eq!(p.models.get("work").map(String::as_str), Some("opus"));
+    assert_eq!(p.child_tab, cmd_wire::session::Tab::Show);
+    let raw = std::fs::read_to_string(&at).unwrap();
+    assert!(!raw.contains("resumeInTmux"), "旧键留下了：{raw}");
+    assert_eq!(reshape_prefs_in(&own), Reshaped::Nothing);
+    assert_eq!(std::fs::read_to_string(&at).unwrap(), raw, "第 2 版又被写了");
+    // 关着 ⇒ 托管。
+    write_prefs_raw(&home, r#"{"version":1,"resumeInTmux":false}"#);
+    assert_eq!(reshape_prefs_in(&own), Reshaped::Done);
+    assert_eq!(
+        crate::common::machine_prefs::read_at(&at).prefs().resume_where,
+        ResumeWhere::Managed
+    );
+    // 读不懂（第 1 版里多一格 · 不是 JSON）⇒ 一个字节不动。
+    for bad in [r#"{"version":1,"resumeInTmux":true,"more":1}"#, "{not json"] {
+        write_prefs_raw(&home, bad);
+        assert!(matches!(reshape_prefs_in(&own), Reshaped::Unreadable(_)), "{bad}");
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), bad);
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 /// 新形状（那几格已经不在）⇒ 本机缺省那一份。
