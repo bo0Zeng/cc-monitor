@@ -370,12 +370,8 @@ export class FindStrip {
       n === 0
         ? copyText("findStrip.status.none", { q })
         : this.total > n
-          ? this.opts.panel
-            ? copyText("sessionFind.status.truncated", { total: this.total, n })
-            : copyText("findStrip.status.truncated", { total: this.total, n })
-          : this.opts.panel
-            ? copyText("sessionFind.status.count", { n })
-            : copyText("findStrip.status.count", { n });
+          ? copyText("findStrip.status.truncated", { total: this.total, n })
+          : copyText("findStrip.status.count", { n });
   }
 
   private armAuto(): void {

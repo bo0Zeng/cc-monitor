@@ -1436,14 +1436,12 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(said).not.toContain("k1abcdef-cc");
   });
 
-  // ★★ P3 刀 3：本机**空 tmux**（claude 已退、只剩交互 shell）→ 就地 resume。
-  //
-  // 两条：正面（空壳 ⇒ 两格都在）与反面（有活 claude ⇒ 就地那格必须**不在**）。
-  // 光有正面不够：把「空壳判定」删掉、无条件给这一格，正面照样绿 ——
-  // 而那样会往一个**正在跑 claude** 的会话里再送一遍载荷（F14 逐字记着这个后果）。
-  const resumeIntoBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.inPlace.label"));
+  // 本机**空 tmux**（claude 已退、只剩交互 shell）：恢复只在「恢复 ▸」里（运行于 tmux 那一项），
+  // 菜单顶层不另出一项「在 tmux 会话里恢复」—— 那是同一个动作的重复（A2-17-7-1，本机远端同一份菜单）。
+  const menuLabels = (): string[] =>
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem] [data-part=label]") ?? [])].map((n) => n.textContent ?? "");
 
-  it("P3 刀3 本机空 tmux（Claude 已退出）→ 给「在 tmux 会话里恢复」，结束的确认框点名那个 tmux 会话", async () => {
+  it("本机空 tmux（Claude 已退出）→ 菜单顶层没有「在 tmux 会话里恢复」；结束的确认框点名那个 tmux 会话", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
@@ -1455,11 +1453,11 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(resumeIntoBtn()?.disabled).toBe(false);
+    expect(menuLabels()).not.toContain("在 tmux 会话里恢复");
     expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "i1-cc" }));
   });
 
-  it("P3 刀3 反面：会话里还跑着 claude → **不给**就地 resume（别往活会话再送一遍载荷）", async () => {
+  it("本机 tmux 里还跑着 claude → 结束的确认框写会中断那个 tmux 会话", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
@@ -1470,7 +1468,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(resumeIntoBtn()).toBeNull();
     expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "i1-cc" }));
   });
 
@@ -1484,12 +1481,11 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     );
   };
 
-  it("★ 本机：会话在托管终端里 ⇒ 出［结束］（确认框点名那个终端）；［就地恢复］不出（它只往 tmux 会话里键入）", async () => {
+  it("★ 本机：会话在托管终端里 ⇒ 出［结束］（确认框点名那个终端）", async () => {
     inHostedTerminal("k1abcdef", "idle");
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(resumeIntoBtn()).toBeNull();
     expect(killBtn()?.disabled).toBe(false);
     expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "box-cc" }));
   });
