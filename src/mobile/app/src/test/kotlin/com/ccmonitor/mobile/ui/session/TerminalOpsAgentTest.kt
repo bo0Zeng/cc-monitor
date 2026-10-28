@@ -19,7 +19,7 @@ class TerminalOpsAgentTest {
     private val facts =
         mapOf(
             "recent" to emptyList<Any>(),
-            "tmux" to true,
+            "hosts" to listOf("tmux", "direct"),
             "run" to "tmux",
             "agents" to
                 listOf(
@@ -57,7 +57,7 @@ class TerminalOpsAgentTest {
     ) = FakeCoreLink().apply {
         answer = { cmd, _ ->
             when (cmd) {
-                "session-open-facts" -> Reply.Ok(facts + ("tmux" to tmux))
+                "session-open-facts" -> Reply.Ok(facts + ("hosts" to if (tmux) listOf("tmux", "direct") else listOf("direct")))
                 "terminals-list" -> Reply.Ok(mapOf("terminals" to rows.toList(), "complete" to true))
                 "session-model" -> Reply.Ok(mapOf("result" to "done", "model" to "opus", "said" to "已换成 opus"))
                 "session-open" -> Reply.Ok(opened("idle"))
