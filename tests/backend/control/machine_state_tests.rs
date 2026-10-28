@@ -234,25 +234,22 @@ fn shipped_version() -> String {
         .to_string()
 }
 
-/// ★ 到那台的连接进它的成品：收事实推的那一帧 · 表动了推的那一帧 · `machine-read` 都带同一份；别的台不带；本机那一行没有。
+/// ★ 到那台怎么连过去的进它的成品：收事实推的那一帧 · 表动了推的那一帧 · `machine-read` 都带同一份 `route`，
+/// 每条连接那一句进复制详情；别的台不带；本机那一行没有。
 #[test]
-fn the_product_carries_the_links_to_that_machine() {
-    let link = cmd_wire::machine::MachineLink {
-        endpoint: "box.test:22".into(),
-        jump: false,
-        compressed: true,
-        via_proxy: false,
-        bytes_in: 4096,
-        bytes_out: 100,
-        said: "那一句".into(),
+fn the_product_carries_how_that_machine_is_reached() {
+    let way = ssh_dial::pool::Way {
+        route: Some("经跳板（夹具）".into()),
+        hops: vec!["那一句（夹具）".into()],
     };
-    let links: Links = [("ms-linked".to_string(), vec![link.clone()])]
+    let links: Links = [("ms-linked".to_string(), way.clone())]
         .into_iter()
         .collect();
     let hosts = [
         ("ms-linked".to_string(), true),
         ("ms-unlinked".to_string(), true),
     ];
+    let route = Some("经跳板（夹具）".to_string());
     let mut rx = changes().subscribe();
     let noted = note_in(
         &hosts,
@@ -263,24 +260,34 @@ fn the_product_carries_the_links_to_that_machine() {
             version: None,
         },
     );
-    assert_eq!(noted.links, vec![link.clone()], "收事实回的成品没带连接");
-    assert_eq!(next_of(&mut rx, "ms-linked").links, vec![link.clone()]);
+    assert_eq!(noted.route, route, "收事实回的成品没带 route");
+    assert!(
+        noted
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("那一句（夹具）")),
+        "每条连接那一句没进复制详情：{:?}",
+        noted.detail
+    );
+    assert_eq!(next_of(&mut rx, "ms-linked").route, route);
     table_moved_in(&hosts, &links);
     assert_eq!(
-        next_of(&mut rx, "ms-linked").links,
-        vec![link.clone()],
-        "表动了推的那一帧没带连接"
+        next_of(&mut rx, "ms-linked").route,
+        route,
+        "表动了推的那一帧没带 route"
     );
-    assert!(next_of(&mut rx, "ms-unlinked").links.is_empty());
+    assert_eq!(next_of(&mut rx, "ms-unlinked").route, None);
     let read = read_in(&hosts, &links);
-    assert_eq!(read["ms-linked"].links, vec![link]);
-    assert!(read["ms-unlinked"].links.is_empty(), "没连接的那台不该带");
-    assert!(
-        read[cmd_wire::machine::LOCAL].links.is_empty(),
-        "本机不经 SSH"
-    );
+    assert_eq!(read["ms-linked"].route, route);
+    assert_eq!(read["ms-unlinked"].route, None, "没连接的那台不该带");
+    assert_eq!(read["ms-unlinked"].detail, None);
+    assert_eq!(read[cmd_wire::machine::LOCAL].route, None, "本机不经 SSH");
     let wire = serde_json::to_value(&read["ms-unlinked"]).expect("成品写不出");
-    assert!(wire.get("links").is_none(), "没连接 ⇒ 线上省略那一格");
+    assert!(wire.get("route").is_none(), "直连 ⇒ 线上省略那一格");
+    assert!(
+        wire.get("links").is_none(),
+        "每条连接不再上线（只进复制详情）"
+    );
 }
 
 /// ★ 池里成员动了一笔 ⇒ 推一遍；发端收了 ⇒ 跟的那一路收工（不空转）。

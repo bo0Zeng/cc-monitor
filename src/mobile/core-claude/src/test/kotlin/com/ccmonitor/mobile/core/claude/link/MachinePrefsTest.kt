@@ -19,7 +19,7 @@ class MachinePrefsTest {
         "prefs" to
             mapOf(
                 "launchers" to emptyMap<String, Any>(),
-                "resumeInTmux" to true,
+                "resumeWhere" to "tmux",
                 "models" to mapOf("team" to "opus"),
                 "permissionModes" to emptyMap<String, Any>(),
                 "contextLimits" to emptyMap<String, Any>(),

@@ -570,3 +570,52 @@ async fn a_finished_wait_takes_nobody_out() {
     assert!(next.how == How::Reused && Arc::ptr_eq(&next.conn, &m[0]));
     assert_eq!(dials.load(Ordering::SeqCst), 3);
 }
+
+/// 成品那一台的一份（判据只用到要看的那几格）。
+fn product_of(detail: Option<&str>) -> cmd_wire::machine::MachineState {
+    serde_json::from_value(serde_json::json!({
+        "name": "box", "state": "up", "offline": false, "reason": null, "stage": null,
+        "version": null, "versionRelation": null, "os": null, "word": "", "said": "",
+        "offlineSaid": "box 离线", "fixes": [], "seenHostKey": null, "expectedHostKey": null,
+        "detail": detail,
+    }))
+    .expect("成品读得回")
+}
+
+/// ★ `Way::put`：`route` 照填；每条连接那一句接在复制详情末尾「连接：」一段（一条一行）；没有连接 ⇒ 详情不动。
+#[test]
+fn a_way_puts_its_route_and_appends_its_lines_to_the_detail() {
+    let way = Way {
+        route: Some("经跳板 edge（夹具）".into()),
+        hops: vec!["甲（夹具）".into(), "乙（夹具）".into()],
+    };
+    let section = [
+        copy_core::copy_text("beLinks.detail.head", &[]),
+        copy_core::copy_text("beLinks.detail.row", &[("said", "甲（夹具）")]),
+        copy_core::copy_text("beLinks.detail.row", &[("said", "乙（夹具）")]),
+    ]
+    .join("\n");
+    let mut up = product_of(None);
+    way.put(&mut up);
+    assert_eq!(up.route.as_deref(), Some("经跳板 edge（夹具）"));
+    assert_eq!(
+        up.detail.as_deref(),
+        Some(section.as_str()),
+        "连着、没出错 ⇒ 详情只这一段"
+    );
+    let mut down = product_of(Some("断在：某一跳（夹具）"));
+    way.put(&mut down);
+    assert_eq!(
+        down.detail,
+        Some(format!("断在：某一跳（夹具）\n{section}")),
+        "原有的详情在前，连接那一段接在末尾"
+    );
+    let mut bare = product_of(Some("原样（夹具）"));
+    Way::default().put(&mut bare);
+    assert_eq!(bare.route, None);
+    assert_eq!(
+        bare.detail.as_deref(),
+        Some("原样（夹具）"),
+        "没连接 ⇒ 详情不动"
+    );
+}

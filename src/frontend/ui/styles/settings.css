@@ -430,20 +430,16 @@ body.settings-window-mode .settings-panel {
   font-size: var(--font-size-small);
 }
 
-/* 每跳读数：到这台的每一条连接一行（后端写好的那一句：地址 · 经没经代理 · 压没压 · 收发字节）。 */
-.machine-links {
-  margin-top: var(--space-2);
+/* 怎么连过去的那一行（后端写好的那一句：经跳板 · 经代理），紧跟地址那一行。 */
+.machine-route {
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
   color: var(--text-2);
-  font-family: var(--font-mono);
   font-size: var(--font-size-small);
 }
 
-.machine-links[hidden] {
+.machine-route[hidden] {
   display: none;
-}
-
-.machine-link {
-  overflow-wrap: anywhere;
 }
 
 .machine-conn {

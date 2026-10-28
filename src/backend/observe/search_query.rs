@@ -271,7 +271,8 @@ impl Facts {
             }
             let text = raw.strip_suffix('\n').unwrap_or(raw);
             let text = text.strip_suffix('\r').unwrap_or(text);
-            let Some(v) = super::lines::parse(text.as_bytes()) else {
+            // 那一家不读的行不整行建树（[`crate::agents::Line::of`]）：它们不进索引，只吸收身份那几格。
+            let Some(v) = crate::agents::Line::of(kind, text, 0).into_value() else {
                 continue;
             };
             self.session.absorb_value(kind, &v);
@@ -1129,7 +1130,8 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         if super::lines::counts(row.body()) {
             counted += 1;
         }
-        let Some(v) = super::lines::parse(row.body()) else {
+        let text = String::from_utf8_lossy(row.body());
+        let Some(v) = crate::agents::Line::of(kind, &text, 0).into_value() else {
             continue;
         };
         if matches!(

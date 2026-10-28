@@ -1,0 +1,255 @@
+/* 会话面板的顺序（`rot-order.ts`）：一号一行 · 三组 · 拖动（跟手 · 让位 · 悬停第一格 · 等回包）· 点一行的小窗。 */
+@layer components {
+  /* 会话账号面板中间那一块（`rot-session.ts`）：提示 · 策略一行 · 说明 · 顺序。 */
+  .rotSession {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+    font-size: var(--font-size-small);
+  }
+
+  .rotSession[data-stale="true"] > :not(:first-child) {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .rotSessionAbout {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    min-width: 0;
+    color: var(--text-2);
+  }
+
+  .rotSessionAboutText {
+    composes: one-line from global;
+    min-width: 0;
+  }
+
+  .rotSessionAbout[data-unfolded="true"] > .rotSessionAboutText {
+    white-space: pre-line;
+  }
+
+  .rotOrder {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .rotOrderHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    color: var(--text-2);
+  }
+
+  .rotOrderHeadText {
+    color: var(--text);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotOrderHeadNote {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotOrderSpacer {
+    flex: 1;
+  }
+
+  .rotOrderGroup {
+    margin-top: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotOrderRow {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 44px;
+    padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text);
+    transition: transform var(--dur-press) ease;
+    user-select: none;
+  }
+
+  .rotOrderHandle {
+    display: inline-flex;
+    width: 16px;
+    justify-content: center;
+    color: var(--text-faint);
+  }
+
+  .rotOrderRow:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .rotOrderRow[data-group="next"] {
+    cursor: grab;
+  }
+
+  .rotOrderRow[data-group="out"],
+  .rotOrderRow[data-group="off"] {
+    cursor: not-allowed;
+  }
+
+  .rotOrderRow[data-group="out"] > :not(:last-child),
+  .rotOrderRow[data-group="off"] > :not(:last-child) {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .rotOrderRow[data-in-use="true"] {
+    min-height: 52px;
+    border-color: color-mix(in srgb, var(--success) 45%, var(--border-soft));
+    box-shadow: inset 3px 0 0 var(--success);
+  }
+
+  .rotOrderRow[data-lifted="true"] {
+    z-index: var(--z-drag);
+    border-color: var(--border-medium);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    cursor: grabbing;
+    transition: none;
+    scale: 1.02;
+  }
+
+  .rotOrderRow[data-waiting="true"] .rotOrderHandle {
+    animation: rot-order-wait var(--dur-spin) linear infinite;
+  }
+
+  .rotOrderRow[data-unconfirmed="true"] {
+    border-style: dashed;
+  }
+
+  .rotOrderRow[data-dashed="true"] {
+    border-style: dashed;
+    border-color: var(--border-medium);
+  }
+
+  .rotOrder[data-no-lift="true"] .rotOrderRow {
+    cursor: default;
+  }
+
+  .rotOrder[data-no-lift="true"] .rotOrderHandle {
+    visibility: hidden;
+  }
+
+  .rotOrderFirst {
+    padding: var(--space-2) var(--space-4);
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius-m);
+    color: var(--text);
+    font-size: var(--font-size-xs);
+    text-align: right;
+  }
+
+  .rotOrderIx {
+    width: 2ch;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .rotOrderName {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .rotOrderNameTop {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .rotOrderAcct {
+    composes: one-line from global;
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotOrderWhy {
+    composes: one-line from global;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotOrderEnd {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-left: auto;
+  }
+
+  .rotOrderState {
+    composes: one-line from global;
+    max-width: 18ch;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rotOrderTick {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .rotOrderRefused {
+    padding: var(--space-3) var(--space-5);
+    border-left: 3px solid var(--warn);
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    color: var(--text);
+  }
+
+  /* 读屏念的那一句：不占位、看不见。 */
+  .rotOrderLive {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .rotOrderPop {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 320px;
+    padding: var(--space-4);
+  }
+
+  .rotOrderPopTop {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rotOrderPopName {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotOrderPopLine {
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @keyframes rot-order-wait {
+    to {
+      rotate: 1turn;
+    }
+  }
+}

@@ -54,8 +54,10 @@ import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.chat.needs.NeedsViewModel
 import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
+import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
 import com.ccmonitor.mobile.ui.chats.RenameDialog
 import com.ccmonitor.mobile.ui.common.HostLink
+import com.ccmonitor.mobile.ui.common.MachineBar
 import com.ccmonitor.mobile.ui.common.chatHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
@@ -105,7 +107,7 @@ fun ChatRoute(
     onOpenPlan: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
-    /** 顶栏右上「需手动 n」：总览。 */
+    /** 顶栏右上「需手动 n」：需手动屏。 */
     onOpenOverview: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -166,13 +168,25 @@ fun ChatRoute(
                     .consumeWindowInsets(inner)
                     .imePadding(),
             ) {
-                if (state.drafting && picker != null) {
-                    NewSessionPane(hostId, host.machine, picker, onSwitchMachine = { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) })
-                }
+                ChatHead(hostId, host.machine, picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
                 ChatBody(vm, state, needs, Modifier.weight(1f))
             }
         }
     }
+}
+
+/**
+ * 顶栏下那一截：机器条（那台的连接态，空新会话与读一条会话同一条；通着无事不画）＋ 还没起好的新建会话那一排 chip（[picker] 不为 `null` 时）。
+ */
+@Composable
+private fun ChatHead(
+    hostId: String,
+    machine: String,
+    picker: NewSessionPicker?,
+    onSwitchMachine: (String) -> Unit,
+) {
+    MachineBar(hostId)
+    if (picker != null) NewSessionPane(hostId, machine, picker, onSwitchMachine = onSwitchMachine)
 }
 
 /** 正文 ＋ 需手动 ＋ 输入那一圈（需手动里在等的那一步也递给正文，那张工具卡上标它）。 */

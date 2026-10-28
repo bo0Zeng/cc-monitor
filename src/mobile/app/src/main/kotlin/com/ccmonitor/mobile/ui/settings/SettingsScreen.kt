@@ -13,13 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -33,25 +29,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.BuildConfig
-import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.TabKind
 import com.ccmonitor.mobile.core.claude.link.busy
 import com.ccmonitor.mobile.core.claude.link.deployFix
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -59,17 +48,17 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.FileState
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
-import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import com.ccmonitor.mobile.core.wire.gen.Tone
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
-import com.ccmonitor.mobile.ui.common.HostLink
-import com.ccmonitor.mobile.ui.common.deployLabel
-import com.ccmonitor.mobile.ui.common.rememberDeployPress
+import com.ccmonitor.mobile.ui.common.MachineBar
+import com.ccmonitor.mobile.ui.common.StatusDot
+import com.ccmonitor.mobile.ui.common.barOf
 import com.ccmonitor.mobile.ui.common.rememberHostLink
+import com.ccmonitor.mobile.ui.host.hostRowLook
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import org.koin.compose.koinInject
 
@@ -115,11 +104,7 @@ private fun MachineBody(
     val scope = rememberCoroutineScope()
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val link by feed.state.collectAsState()
-    val deploying by feed.deploying.collectAsState()
-    val offlineSaid by feed.offline.collectAsState()
-    // 断着那一行：那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
-    val offlineLine = offlineSaid ?: copyText("sessionState.unseen.name")
-    AccountCard(here, board, link, offlineLine, deploying, onReconnect = feed::reconnect, onOpen = onUsage)
+    AccountCard(here, board, link, onOpen = onUsage)
     Body(here, board, readable(link), onNavigate)
 }
 
@@ -166,89 +151,36 @@ private fun Body(
 }
 
 /**
- * 账号卡：那台的状态点 · 名字；通着 ⇒ 新会话默认号（号牌 · 名 ·「默认」）与它的用量那一格；离线 ⇒ 虚线、空心点、那一句 ＋［重新连接］；
- * 要装 / 要更新 ⇒ 琥珀点、那一句 ＋ 核心点名的那颗按钮（走机器设置同一个部署）；正在装 ⇒ 那一步 ＋ 转圈；没装成 ⇒ 红字 ＋ 复制详情。
+ * 账号卡：那台的状态点 · 名字（点与机器列表同一颗，照那台的状态成品）；那台有事（离线 · 正在连 · 装 · 要更新 · 没装成）⇒ 机器条（各屏同一条）；
+ * 通着无事 ⇒ 新会话默认号（号牌 · 名 ·「默认」）与它的用量那一格。
  */
 @Composable
 private fun AccountCard(
     here: Here,
     board: MachineSettings,
     link: LinkLine?,
-    offlineLine: String,
-    deploying: Deploying?,
-    onReconnect: () -> Unit,
     onOpen: () -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     val ui by board.state.collectAsState()
-    val fix = link.deployFix()
-    val busy = link.busy()
-    val offline = link is LinkLine.Down && fix == null && busy == null
     val shape = RoundedCornerShape(tokens.radius.m)
-    val border = tokens.borderFaint
-    val frame =
-        if (offline) {
-            Modifier.drawBehind {
-                val w = 1.dp.toPx()
-                drawRoundRect(border, cornerRadius = CornerRadius(tokens.radius.m.toPx()), style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(DASH * w, DASH * w))))
-            }
-        } else {
-            Modifier.background(tokens.card, shape).border(1.dp, border, shape)
-        }
+    val look = hostRowLook(link)
     Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .then(frame)
+            .background(tokens.card, shape)
+            .border(1.dp, tokens.borderFaint, shape)
             .clickable(role = Role.Button, onClick = onOpen)
             .padding(16.dp)
             .testTag(SettingsTags.CARD),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CardDot(
-                when {
-                    busy != null || offline -> null
-                    fix != null -> tokens.warn
-                    link is LinkLine.Up -> tokens.success
-                    else -> null
-                },
-            )
+            StatusDot(look.dot, look.word)
             Text(here.machine, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
-        when {
-            busy != null ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(busy.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    CircularProgressIndicator(Modifier.size(SPIN.dp), strokeWidth = 2.dp)
-                }
-            fix != null -> NeedsFix(here, fix, link?.machine?.said?.takeIf { it.isNotEmpty() || link is LinkLine.Down }, deploying)
-            offline ->
-                CardLine(offlineLine, MaterialTheme.colorScheme.onSurfaceVariant) {
-                    SecondaryButton(onClick = onReconnect) { Text(copyText("newSession.machine.reconnect")) }
-                }
-            else -> DefaultAccount(ui)
-        }
-    }
-}
-
-@Composable
-private fun NeedsFix(
-    here: Here,
-    fix: MachineFixButton,
-    /** 那台的状态成品写好的那一句（没装 ⇒ 那台没有 cc-monitor · 要更新 ⇒ 那台旧了）。 */
-    down: String?,
-    deploying: Deploying?,
-) {
-    val deploy = rememberDeployPress(here.hostId)
-    val said = down.orEmpty()
-    CardLine(said, LocalAppTokens.current.warn) {
-        Button(onClick = deploy.press, modifier = Modifier.testTag(SettingsTags.DEPLOY)) { Text(deployLabel(fix)) }
-    }
-    (deploy.held as? HostLink.Failed)?.let { Text(it.why, color = MaterialTheme.colorScheme.error) }
-    (deploying as? Deploying.Failed)?.let {
-        Text(it.said.text, color = MaterialTheme.colorScheme.error)
-        CopyDetailButton(it.said.text, it.said.detail)
+        if (barOf(link) == null) DefaultAccount(ui) else MachineBar(here.hostId)
     }
 }
 
@@ -279,25 +211,6 @@ internal fun UsageText(
             Tone.PLAIN, Tone.NOW, Tone.BUSY -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     Text(text, style = MaterialTheme.typography.bodySmall, color = color)
-}
-
-@Composable
-private fun CardLine(
-    text: String,
-    color: Color,
-    button: @Composable () -> Unit,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = color, modifier = Modifier.weight(1f).padding(end = 8.dp))
-        button()
-    }
-}
-
-/** 那台的状态点：[color] 为 `null` ⇒ 空心（离线 · 说不清 · 正在装）。 */
-@Composable
-private fun CardDot(color: Color?) {
-    val m = Modifier.size(LocalAppTokens.current.dotSize)
-    if (color == null) Box(m.border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant, CircleShape)) else Box(m.background(color, CircleShape))
 }
 
 /**
@@ -400,10 +313,6 @@ internal fun NavRow(
 /** 测试标签（冒烟按它点）。 */
 object SettingsTags {
     const val CARD = "settings-card"
-    const val DEPLOY = "settings-deploy"
 
     fun tab(kind: TabKind): String = "settings-tab-" + kind.wire
 }
-
-private const val DASH = 4f
-private const val SPIN = 18

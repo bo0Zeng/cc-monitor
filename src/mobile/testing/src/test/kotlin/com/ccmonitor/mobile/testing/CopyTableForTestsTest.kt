@@ -22,7 +22,7 @@ class CopyTableForTestsTest {
 
     @Test
     fun jsonEscapesAreUndone() {
-        val multi = CopyTableForTests.zhOf("mobTmux.kill.body")
+        val multi = CopyTableForTests.zhOf("mobTerms.kill.body")
         assertTrue("换行没解开：$multi", multi != null && '\n' in multi && "\\n" !in multi)
     }
 }

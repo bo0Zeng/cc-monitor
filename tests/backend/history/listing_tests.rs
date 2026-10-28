@@ -666,3 +666,43 @@ fn a_restart_takes_the_listing_from_disk() {
     );
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// 清单缓存：两条线程同时要同一份记录的那一行（后台热缓存与预读取名同时冷开那一形）⇒ 记录只从头扫一遍，
+/// 后到的等先到的扫完、照它留下的那一行起步（没变 ⇒ 不再读）。数清单扫描从记录读的字节（[`READ`]）。
+/// 别的判据同时在扫的都是几 KB 的小夹具，这一份 20 MB：多扫一遍就是多 20 MB。
+#[test]
+fn two_threads_asking_for_one_record_scan_it_once() {
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-once-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-once");
+    let p = dir.join("s-once.jsonl");
+    let body: String = (0..2000)
+        .map(|i| {
+            format!(
+                "{{\"type\":\"user\",\"cwd\":\"/w/once\",\"timestamp\":\"2026-10-01T08:00:00Z\",\"message\":{{\"role\":\"user\",\"content\":\"第 {i} 句 {}\"}}}}\n",
+                "填".repeat(3400)
+            )
+        })
+        .collect();
+    std::fs::write(&p, &body).unwrap();
+    let len = body.len() as u64;
+    let before = READ.load(Ordering::Relaxed);
+    let gate = std::sync::Barrier::new(2);
+    let rows: Vec<_> = std::thread::scope(|s| {
+        let hs: Vec<_> = (0..2)
+            .map(|_| {
+                s.spawn(|| {
+                    gate.wait();
+                    label_facts_of(&p).project_dir
+                })
+            })
+            .collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let read = READ.load(Ordering::Relaxed) - before;
+    assert_eq!(rows, vec![Some("/w/once".to_string()); 2]);
+    assert!(
+        read >= len && read < len + len / 2,
+        "两条线程一齐要这一份，清单扫描读了 {read} 字节（记录 {len}）"
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+}

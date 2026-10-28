@@ -62,6 +62,8 @@ struct Rig {
     list_err: Option<&'static str>,
     /// 这台的偏好。
     prefs: crate::common::machine_prefs::Prefs,
+    /// 启动台账记着的 `sid → 起在哪种宿主里`。
+    started: Vec<(String, crate::wire::TerminalHost)>,
 }
 
 impl Rig {
@@ -73,6 +75,7 @@ impl Rig {
             end_err: None,
             list_err: None,
             prefs: Default::default(),
+            started: vec![],
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
@@ -89,7 +92,13 @@ impl Rig {
                 None => Ok(()),
             }
         };
-        deps_with(&list, &end, &self.prefs, f)
+        let started = |sid: &str| {
+            self.started
+                .iter()
+                .find(|(s, _)| s == sid)
+                .map(|(_, h)| *h)
+        };
+        deps_with(&list, &end, &self.prefs, &started, f)
     }
 }
 
@@ -98,6 +107,7 @@ fn deps_with<T>(
     list: &dyn Fn() -> Result<Listed, CmdErr>,
     end: &dyn Fn(&str) -> Result<(), crate::wire::spec::Fail>,
     prefs: &crate::common::machine_prefs::Prefs,
+    started: &dyn Fn(&str) -> Option<crate::wire::TerminalHost>,
     f: impl FnOnce(&Deps) -> T,
 ) -> T {
     let caps = BTreeSet::new();
@@ -120,6 +130,7 @@ fn deps_with<T>(
             pretrust: &|_, _| unreachable!("停不预标"),
             open_shell: &|_, _| unreachable!("不开空 shell"),
             prefs,
+            started,
         })
     })
 }
@@ -158,7 +169,7 @@ async fn stop_ends_a_session_living_in_a_hosted_terminal() {
                 )
                 .map(|_| ())
             };
-            deps_with(&list, &end, &Default::default(), |d| {
+            deps_with(&list, &end, &Default::default(), &|_| None, |d| {
                 stop(&json!({ "sids": [A] }), d)
             })
         })
@@ -226,6 +237,7 @@ async fn where_names_the_hosted_terminal_a_session_lives_in() {
             &list,
             &|_| unreachable!("问样子不结束"),
             &Default::default(),
+            &|_| None,
             |d| where_(&json!({ "sids": [A] }), d),
         )
     })
@@ -236,7 +248,7 @@ async fn where_names_the_hosted_terminal_a_session_lives_in() {
         out["results"],
         json!([
             { "sid": A, "standing": "idle", "names": ["name-t-batchwhere"],
-              "terminals": [{ "host": "managed", "terminal": handle }] },
+              "terminals": [{ "host": "managed", "terminal": handle }], "run": "managed" },
         ])
     );
     let s = sock.clone();
@@ -249,7 +261,7 @@ async fn where_names_the_hosted_terminal_a_session_lives_in() {
 }
 
 /// ★ 这台没装 tmux、只有托管终端：带着它的那一行照答（宿主 `managed`）；哪个终端都不带着的照旧 `no_tmux`（问样子 · 停同一判法）；
-/// 恢复默认放在哪只看 tmux（偏好「恢复时进 tmux」开着也是直路）。
+/// 恢复默认放在哪只看 tmux（偏好 tmux 也是直路）。
 #[test]
 fn without_tmux_a_hosted_terminal_still_answers_and_the_rest_say_no_tmux() {
     let hosted = TermEntry {
@@ -259,14 +271,14 @@ fn without_tmux_a_hosted_terminal_still_answers_and_the_rest_say_no_tmux() {
     };
     let mut rig = Rig::new(None);
     rig.hosted = vec![hosted];
-    rig.prefs.resume_in_tmux = true;
+    rig.prefs.resume_where = cmd_wire::session::ResumeWhere::Tmux;
     assert_eq!(
         rig.run(|d| where_(&json!({ "sids": [A, B] }), d)).unwrap(),
         json!({ "results": [
             { "sid": A, "standing": "running", "names": ["box-cc"],
-              "terminals": [{ "host": "managed", "terminal": "h-1" }] },
-            { "sid": B, "standing": "no_tmux", "names": [], "terminals": [] },
-        ], "run": "direct" })
+              "terminals": [{ "host": "managed", "terminal": "h-1" }], "run": "direct" },
+            { "sid": B, "standing": "no_tmux", "names": [], "terminals": [], "run": "direct" },
+        ] })
     );
     let out = rig.run(|d| stop(&json!({ "sids": [A, B] }), d)).unwrap();
     assert_eq!(
@@ -307,7 +319,7 @@ fn stop_ends_exactly_the_one_terminal_carrying_each_sid() {
         outcomes(&out),
         vec![
             (A.into(), "done".into(), Value::Null),
-            (B.into(), "skipped".into(), json!("not_in_tmux")),
+            (B.into(), "skipped".into(), json!("not_hosted")),
             (C.into(), "skipped".into(), json!("ambiguous")),
         ]
     );
@@ -380,7 +392,7 @@ fn every_stop_item_not_done_carries_its_sentence() {
         codes,
         [
             "no_tmux",
-            "not_in_tmux",
+            "not_hosted",
             "ambiguous",
             "too_many_windows",
             "wrong_owner",
@@ -451,12 +463,12 @@ fn the_standing_of_a_sid_is_judged_once_for_menu_and_stop() {
         out,
         json!({ "results": [
             { "sid": A, "standing": "running", "names": ["a-cc"],
-              "terminals": [{ "host": "tmux", "terminal": "tmux-a-cc" }] },
+              "terminals": [{ "host": "tmux", "terminal": "tmux-a-cc" }], "run": "direct" },
             { "sid": B, "standing": "idle", "names": ["b-cc"],
-              "terminals": [{ "host": "tmux", "terminal": "tmux-b-cc" }] },
+              "terminals": [{ "host": "tmux", "terminal": "tmux-b-cc" }], "run": "direct" },
             { "sid": C, "standing": "ambiguous", "names": ["c-cc", "c-cc-2"],
-              "terminals": [{ "host": "tmux", "terminal": "tmux-c-cc" }, { "host": "tmux", "terminal": "tmux-c-cc-2" }] },
-        ], "run": "direct" })
+              "terminals": [{ "host": "tmux", "terminal": "tmux-c-cc" }, { "host": "tmux", "terminal": "tmux-c-cc-2" }], "run": "direct" },
+        ] })
     );
     let none = Rig::new(None);
     assert_eq!(
@@ -465,17 +477,27 @@ fn the_standing_of_a_sid_is_judged_once_for_menu_and_stop() {
     );
 }
 
-/// ★ `sessions-where` 顺带答这台恢复默认放在哪：偏好「恢复时进 tmux」× 有没有 tmux（同 `session-open` 恢复没说 `run` 时那一条）。
+/// ★ `sessions-where` 每一项顺带答那条恢复默认放在哪：偏好（三选）× 那条起在哪 × 有没有 tmux（同 `session-open` 恢复没说 `run` 时那一条）。
 #[test]
-fn where_also_says_where_a_resume_lands_by_default() {
-    let run = |rows: Option<Vec<TermEntry>>, pref: bool| {
+fn where_also_says_where_each_resume_lands_by_default() {
+    use cmd_wire::session::ResumeWhere;
+    let run = |rows: Option<Vec<TermEntry>>, pref: ResumeWhere| {
         let mut rig = Rig::new(rows);
-        rig.prefs.resume_in_tmux = pref;
-        rig.run(|d| where_(&json!({ "sids": [A] }), d)).unwrap()["run"].clone()
+        rig.prefs.resume_where = pref;
+        rig.run(|d| where_(&json!({ "sids": [A] }), d)).unwrap()["results"][0]["run"].clone()
     };
-    assert_eq!(run(Some(vec![]), true), "tmux");
-    assert_eq!(run(Some(vec![]), false), "direct");
-    assert_eq!(run(None, true), "direct");
+    assert_eq!(run(Some(vec![]), ResumeWhere::Tmux), "tmux");
+    assert_eq!(run(Some(vec![]), ResumeWhere::Managed), "direct");
+    assert_eq!(run(None, ResumeWhere::Tmux), "direct");
+    // 照起时那一种：两条会话，A 记着起在 tmux 里、B 没记 ⇒ 各自不同。
+    let mut rig = Rig::new(Some(vec![]));
+    rig.prefs.resume_where = ResumeWhere::AsStarted;
+    rig.started = vec![(A.to_string(), crate::wire::TerminalHost::Tmux)];
+    let out = rig.run(|d| where_(&json!({ "sids": [A, B] }), d)).unwrap();
+    assert_eq!(
+        (out["results"][0]["run"].clone(), out["results"][1]["run"].clone()),
+        (json!("tmux"), json!("direct"))
+    );
 }
 
 /// 列名单那一发过了期限（总期限用完了）⇒ 两条都整条回 `child_timed_out`（同别的装了总期限的命令）；

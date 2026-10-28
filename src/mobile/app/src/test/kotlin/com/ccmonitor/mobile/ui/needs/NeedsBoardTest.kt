@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.needs
 
+import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.Changed
@@ -19,6 +20,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -98,7 +100,7 @@ class NeedsBoardTest {
             val a = Machine(listOf(session("a1"), plan("x", 0), plan("x", 1), manual("t")))
             val b = Machine(listOf(session("b1")))
             val board = boardOf("a" to a, "b" to b)
-            val ov = overviewOf(board.state.value, emptyMap(), hosts, current = "b")
+            val ov = overviewOf(board.state.value, hosts, current = "b")
             assertEquals(listOf("b1", "a1", "x×2", "@t"), ov.needs.map(::name))
             assertEquals(5, ov.total)
             assertEquals(5, board.total())
@@ -117,7 +119,7 @@ class NeedsBoardTest {
             val board = boardOf("a" to a, "b" to b)
             b.link.state.value = linkConnecting()
             settle()
-            val down = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
+            val down = overviewOf(board.state.value, hosts, current = "a")
             assertEquals(listOf("a1"), down.needs.map(::name))
             assertEquals(1, down.total)
             assertEquals(listOf("gpu-01"), down.down.map { it.label })
@@ -127,7 +129,7 @@ class NeedsBoardTest {
             settle()
             assertEquals(2, b.asked("sessions-needs"))
             assertEquals(1, a.asked("sessions-needs"))
-            assertEquals(listOf("a1", "b2"), overviewOf(board.state.value, emptyMap(), hosts, current = "a").needs.map(::name))
+            assertEquals(listOf("a1", "b2"), overviewOf(board.state.value, hosts, current = "a").needs.map(::name))
         }
 
     @Test
@@ -149,7 +151,7 @@ class NeedsBoardTest {
             b.unreadable = "账号库无法解析"
             b.pushes.emit(Changed.Needs())
             settle()
-            val ov = overviewOf(board.state.value, emptyMap(), hosts, current = "a")
+            val ov = overviewOf(board.state.value, hosts, current = "a")
             assertTrue(ov.uncertain)
             assertEquals(listOf("gpu-01" to "账号库无法解析"), ov.unreadable.map { (h, s) -> h.label to s })
         }
@@ -212,6 +214,39 @@ class NeedsBoardTest {
         assertEquals(copyText("tabBar.needs.aria", "n" to 3), entryText(3, uncertain = false))
         assertEquals(copyText("tabBar.needs.label"), entryText(3, uncertain = true))
     }
+
+    @Test
+    fun `板还没回 ⇒ 那台算读中、不出「无需手动事项」；都读到且 0 件 ⇒ 才说没有，并写读到了哪几台`() =
+        runTest {
+            val reading = overviewOf(mapOf("a" to MachineNeeds()), hosts, current = "a")
+            assertEquals(listOf("devbox"), reading.loading.map { it.label })
+            assertFalse("没读到不当没有", reading.empty)
+            val board = boardOf("a" to Machine(emptyList()), "b" to Machine(emptyList()))
+            val none = overviewOf(board.state.value, hosts, current = "a")
+            assertTrue(none.empty)
+            assertEquals(listOf("devbox", "gpu-01"), none.readFrom.map { it.label })
+            assertTrue(none.loading.isEmpty())
+        }
+
+    @Test
+    fun `一台 sessions-needs 读不出 ⇒ 那台一行（那台那一句）、数说不准、不说没有；重问问到了那一行就消失`() =
+        runTest {
+            val a = Machine(emptyList())
+            val ok = a.link.answer
+            var fail = true
+            a.link.answer = { cmd, args -> if (cmd == "sessions-needs" && fail) Reply.Failed(CoreFailure("x", "账号库无法解析", "")) else ok(cmd, args) }
+            val board = boardOf("a" to a)
+            val ov = overviewOf(board.state.value, hosts, current = "a")
+            assertEquals(listOf("devbox" to "账号库无法解析"), ov.failed.map { (h, p) -> h.label to p.text })
+            assertTrue(ov.uncertain)
+            assertFalse(ov.empty)
+            fail = false
+            board.reask("a")
+            settle()
+            val after = overviewOf(board.state.value, hosts, current = "a")
+            assertTrue(after.failed.isEmpty())
+            assertTrue(after.empty)
+        }
 
     private fun name(l: NeedsLine): String =
         when (l) {

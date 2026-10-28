@@ -59,6 +59,11 @@ pub(crate) fn last_of(sid: &str) -> Option<String> {
     crate::history::launch_book::last_of(crate::platform::paths::data_home().as_deref(), sid)
 }
 
+/// 某条会话上次起在哪种宿主里（这台家里那份记录；恢复照起时那一种读它）。
+pub(crate) fn host_of(sid: &str) -> Option<crate::wire::TerminalHost> {
+    crate::history::launch_book::host_of(crate::platform::paths::data_home().as_deref(), sid)
+}
+
 /// 交 `f` 一份生产事实（`agent` ＝ 请求说的那一家；认不出 ⇒ 当没有账号这一维）。
 pub(crate) fn with_facts<T>(agent: &str, f: impl FnOnce(&Facts) -> T) -> T {
     let library = || list_of(agent);

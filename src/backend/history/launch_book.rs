@@ -1,5 +1,6 @@
-//! **启动台账**（`launch-accounts.json`）的形状与读：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页` ＋ 经别名起的那几条 `sid → 别名`。
-//! 历史清单并进每行的「上次用哪个号」· 隐藏的判定（起会话时那一格）· 起会话跟随上次的号都读它。
+//! **启动台账**（`launch-accounts.json`）的形状与读：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页` ＋ 经别名起的那几条 `sid → 别名`
+//! ＋ 起在宿主里的那几条 `sid → 宿主`。
+//! 历史清单并进每行的「上次用哪个号」· 隐藏的判定（起会话时那一格）· 起会话跟随上次的号 · 恢复照起时那一种都读它。
 //! 只有观测侧看见会话那一刻写它（认便条、锁里原子写：`control::launch_account::adopt`）。
 
 use crate::wire::typed::codes;
@@ -28,6 +29,9 @@ pub(crate) struct Book {
     /// 经别名起的那几条 `sid → 别名`（补足一组时按它数「用这一行的别名起的」）。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) aliases: BTreeMap<String, String>,
+    /// 起在宿主里的那几条 `sid → 宿主`（tmux · 托管；直路起的不记）：恢复照起时那一种读它（[`host_of`]）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) hosts: BTreeMap<String, cmd_wire::frame::TerminalHost>,
 }
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
@@ -43,6 +47,11 @@ pub(crate) fn read_book(home: &Path) -> Result<Book, crate::common::said::Said> 
 /// 这条会话上次用的号（读不出 / 没记 ⇒ `None`）。
 pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
     read_book(home?).ok()?.sessions.get(sid).cloned()
+}
+
+/// 这条会话上次起在哪种宿主里（读不出 / 没记 · 直路起的 ⇒ `None`）。
+pub(crate) fn host_of(home: Option<&Path>, sid: &str) -> Option<cmd_wire::frame::TerminalHost> {
+    read_book(home?).ok()?.hosts.get(sid).copied()
 }
 
 codes! {

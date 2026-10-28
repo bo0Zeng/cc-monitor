@@ -318,14 +318,30 @@ pub struct RotTryUse {
     pub text: String,
 }
 
-/// 一个号那一行（段同过去那一截：[`RotPastSeg`]）。
+/// 一个号那一行。
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotTryLane {
     pub account: String,
-    pub segs: Vec<RotPastSeg>,
+    pub segs: Vec<RotTrySeg>,
+}
+
+/// 推演里每号一行的一段：事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）·
+/// 开头是不是刚开了新窗 · 写的字（发不出去 ⇒ 空；重置那段 `↻HH:MM`；此刻那段 `剩 40%`；这个会话先不用 ⇒ 「不用」）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotTrySeg {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub from: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub to: u64,
+    pub sendable: bool,
+    pub reset: bool,
+    pub text: String,
 }
 
 /// 一次换号。
@@ -490,56 +506,35 @@ pub struct RotOldFile {
     pub path: String,
 }
 
-/// 过去那一截最上那条的一段（照这个会话的换号记录）：号 ⇒ 用它；缺 ⇒ 停发。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// 会话顺序里一行落在哪一组：在用（第一格）· 接下来可用（可挪）· 此刻用不了 · 这个会话先不用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotPastUse {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub from: u64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub to: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub account: Option<String>,
-    /// 这一段写的字：号名 · 停发那一句；接着此刻、跟推演第一段同一个号的那一段 ⇒ 空（同一段只写一次，写在推演那一截）。
-    pub text: String,
+pub enum RotGroup {
+    Use,
+    Next,
+    Out,
+    Off,
 }
 
-/// 时间轴上每号一行的一段（过去那一截与推演那一截同一形）：事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）·
-/// 开头是不是刚开了新窗 · 写的字（发不出去 ⇒ 空；重置那段 `↻HH:MM`；推演里此刻那段 `剩 40%`；这个会话先不用 ⇒ 「不用」）。
+/// 会话顺序里的一行：号 · 哪一组 · 右格写的字（这个号在顺序里此刻怎样；「下一个」带的钟点由同一份推演出，推不准就不写）·
+/// 策略写的那一句为什么（名下那行灰字；没写 ⇒ 缺）· 能不能拖 · 不能拖时那一句为什么（悬停 · 读屏念它）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotPastSeg {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub from: u64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub to: u64,
-    pub sendable: bool,
-    pub reset: bool,
-    pub text: String,
-}
-
-/// 过去那一截一个号那一行（说不出的那几截不在 `segs` 里：空着）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotPastLane {
+pub struct RotLine {
     pub account: String,
-    pub segs: Vec<RotPastSeg>,
-}
-
-/// 时间轴过去那一截（`from` 到此刻）：最上那条 · 每号一行，号的先后同推演那几行。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotPast {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub from: u64,
-    pub uses: Vec<RotPastUse>,
-    pub lanes: Vec<RotPastLane>,
+    pub group: RotGroup,
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub why: Option<String>,
+    pub movable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub stay: Option<String>,
 }
 
 /// 一条提示：哪一种（按钮照它挂）· 语气（`need` ＝ 需手动）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
@@ -579,7 +574,7 @@ pub struct RotationViewReply {
     pub now_text: String,
     /// 会话那一形：这条会话叫什么（同历史清单那一格：改过的 ＞ 标题 ＞ 第一句；这台记录树里找不到 ⇒ 会话 id 前 8 位）；设置页 ⇒ `null`。
     pub title: Option<String>,
-    /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
+    /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` 也是 `null`、只用开会话的号。
     pub strategy: Option<RotStrategyItem>,
     /// 设置那几格照声明解好（此刻的值 · 从哪来 · 字）：会话 ⇒ 它那份副本里的；设置页 ⇒ 文件此刻的。
     pub board: RotBoard,
@@ -587,7 +582,9 @@ pub struct RotationViewReply {
     pub start: String,
     pub current: String,
     /// 会话那一形的顺序（设置页 ⇒ 空）：第一格 ＝ 在用的号，往下是接下来先用谁（拖出来的 · 策略交的先后），此刻用不了的与先不用的沉底。
-    pub lineup: Vec<String>,
+    pub lineup: Vec<RotLine>,
+    /// 会话那一形：这个会话有拖出来的顺序（「照策略排」清掉它）。
+    pub manual: bool,
     /// 这个会话先不用的号。
     pub off: Vec<String>,
     /// 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
@@ -595,9 +592,10 @@ pub struct RotationViewReply {
     /// 号列表里有几个（`accounts` 前这么多个是列表里的）。
     pub listed: usize,
     pub decision: Option<RotTryDecision>,
+    /// 推演（设置页那一形才有：改一格就看得到接下来怎么换；会话那一形 · 不轮换 ⇒ 缺）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub timeline: Option<RotTryTimeline>,
-    /// 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
-    pub past: Option<RotPast>,
     /// 换号记录（会话才有）。
     pub log: Vec<RotLogRow>,
     pub hints: Vec<RotNote>,

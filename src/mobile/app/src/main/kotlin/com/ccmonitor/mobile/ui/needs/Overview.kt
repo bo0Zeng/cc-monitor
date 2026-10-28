@@ -1,14 +1,15 @@
 package com.ccmonitor.mobile.ui.needs
 
-import com.ccmonitor.mobile.core.claude.link.faces
+import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
 import com.ccmonitor.mobile.core.wire.gen.NeedsRow
-import com.ccmonitor.mobile.core.wire.gen.SessionBook
-import com.ccmonitor.mobile.core.wire.gen.SessionDot
+import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.link.problem
+import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chats.HostName
 
-/** 总览「需手动」组的一行（照那台给的先后）。 */
+/** 需手动屏的一行（照那台给的先后）。 */
 sealed interface NeedsLine {
     val host: HostName
 
@@ -18,7 +19,7 @@ sealed interface NeedsLine {
         val row: NeedsRow,
     ) : NeedsLine
 
-    /** 计划里一片要人看的那几格（同一片收成一行 · 带条数）；手机没有计划页 ⇒ 只画、点了不跳。 */
+    /** 计划里一片要人看的那几格（同一片收成一行 · 带条数）：点了进那一片的大纲。 */
     data class Plan(
         override val host: HostName,
         val workspace: String,
@@ -33,48 +34,53 @@ sealed interface NeedsLine {
     ) : NeedsLine
 }
 
-/** 「在跑」组的一行：那台会话表里点是运行中 · 后台的那几条。 */
-data class RunningLine(
-    val host: HostName,
-    val sid: String,
-    val title: String,
-    val cwd: String?,
-)
-
-/** 总览此刻：需手动组 · 组底那几句（断着的 · 会外读不出的）· 在跑组 · 入口那一个数。 */
+/**
+ * 需手动屏此刻：那几行 · 各台读的结局分开（读中 · 整份没问到 · 断着 · 会外那一截读不出）· 入口那一个数。
+ * 「无需手动事项」只在各台都读到、加起来 0 件时说（[empty]），下一行写读到了哪几台（[readFrom]）；没读到不当没有。
+ */
 data class Overview(
     val needs: List<NeedsLine>,
     val down: List<HostName>,
     val unreadable: List<Pair<HostName, String>>,
-    val running: List<RunningLine>,
+    /** 整份没问到的那几台（那一问的那一句）：一台一行 ＋［重试］。 */
+    val failed: List<Pair<HostName, Problem>>,
+    /** 还在读的那几台：骨架。 */
+    val loading: List<HostName>,
+    /** 读到了的那几台（通着、手上有一份）。 */
+    val readFrom: List<HostName>,
     /** 入口的数（各台加起来，断着的不算）。 */
     val total: Int,
-    /** 有哪台会外那一截读不出 ⇒ 入口不带数字、虚线框（数说不准）。 */
+    /** 有哪台没读全（会外那一截读不出 · 整份没问到）⇒ 入口不带数字、虚线框（数说不准）。 */
     val uncertain: Boolean,
 ) {
     /** 列表里不止一台 ⇒ 会外那一行第二行写机器名。 */
-    val manyHosts: Boolean get() = (needs.map { it.host } + running.map { it.host }).distinct().size > 1
+    val manyHosts: Boolean get() = needs.map { it.host }.distinct().size > 1
+
+    /** 各台都读到了、一件也没有。 */
+    val empty: Boolean get() = needs.isEmpty() && loading.isEmpty() && failed.isEmpty() && readFrom.isNotEmpty()
 }
 
 /**
- * 板 ＋ 各台会话表 ⇒ 总览。机器的先后：当前那台在前，别的照机器列表的先后；每台里的行照那台给的先后，不重排。
+ * 板 ⇒ 需手动屏。机器的先后：当前那台在前，别的照机器列表的先后；每台里的行照那台给的先后，不重排。
  * 这里只按台排、按片收行、把条数相加；判 · 排 · 写字都在那台。
  */
 fun overviewOf(
     board: Map<String, MachineNeeds>,
-    tables: Map<String, SessionBook>,
     hosts: List<HostName>,
     current: String,
 ): Overview {
-    val order = hosts.sortedBy { it.id != current }
-    val up = order.filter { board[it.id]?.down != true }
+    val order = hosts.sortedBy { it.id != current }.filter { board.containsKey(it.id) }
+    val of = { h: HostName -> board.getValue(h.id) }
+    val up = order.filter { !of(it).down }
     return Overview(
-        needs = up.flatMap { h -> linesOf(h, board[h.id]?.list?.items.orEmpty()) },
-        down = order.filter { board[it.id]?.down == true },
-        unreadable = order.mapNotNull { h -> board[h.id]?.unreadable?.let { h to it } },
-        running = up.flatMap { h -> tables[h.id]?.let { runningOf(h, it) }.orEmpty() },
+        needs = up.flatMap { h -> linesOf(h, of(h).list?.items.orEmpty()) },
+        down = order.filter { of(it).down },
+        unreadable = order.mapNotNull { h -> of(h).unreadable?.let { h to it } },
+        failed = order.mapNotNull { h -> of(h).unread?.let { h to (it.problem(h.label, SessionsNeeds.COMMAND, null) ?: unreadableReply(h.label, SessionsNeeds.COMMAND, it.toString())) } },
+        loading = order.filter { of(it).reading },
+        readFrom = up.filter { of(it).list != null },
         total = board.values.sumOf { it.counted },
-        uncertain = board.values.any { it.unreadable != null },
+        uncertain = board.values.any { it.unreadable != null || it.unread != null },
     )
 }
 
@@ -99,17 +105,3 @@ private fun linesOf(
     }
     return out
 }
-
-/** 一台会话表里点是运行中 · 后台的那几条。 */
-private fun runningOf(
-    h: HostName,
-    t: SessionBook,
-): List<RunningLine> =
-    t
-        .faces()
-        .filterValues { it.dot == SessionDot.RUNNING || it.dot == SessionDot.BACKGROUND }
-        .keys
-        .map { sid ->
-            val s = t.live[sid]
-            RunningLine(h, sid, s?.name ?: s?.cwd?.substringAfterLast('/') ?: sid, s?.cwd)
-        }

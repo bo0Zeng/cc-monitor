@@ -55,6 +55,7 @@ import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.common.DashedBar
+import com.ccmonitor.mobile.ui.common.MachineBar
 import com.ccmonitor.mobile.ui.common.STRING_SET_SAVER
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
@@ -80,7 +81,6 @@ fun UsageScreen(
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val ui by board.state.collectAsState()
     val link by feed.state.collectAsState()
-    val offline by feed.offline.collectAsState()
     var open by rememberSaveable(stateSaver = STRING_SET_SAVER) { mutableStateOf(emptySet<String>()) }
     Column(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
@@ -90,6 +90,8 @@ fun UsageScreen(
                 Text(here.machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        // 顶栏下那一格：那台的连接态（离线 · 正在连 · 要更新 …），各屏同一条。
+        MachineBar(here.hostId)
         Column(
             Modifier
                 .fillMaxSize()
@@ -98,10 +100,7 @@ fun UsageScreen(
                 .testTag(UsageTags.SCREEN),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (link is LinkLine.Down) {
-                // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
-                DashedBar(offline ?: copyText("sessionState.unseen.name"), copyText("newSession.machine.reconnect"), feed::reconnect, Modifier.testTag(UsageTags.DOWN))
-            } else {
+            if (link !is LinkLine.Down) {
                 ui.quotaRereadFailed?.let { DashedBar(it.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN)) }
             }
             when (val q = ui.quota) {

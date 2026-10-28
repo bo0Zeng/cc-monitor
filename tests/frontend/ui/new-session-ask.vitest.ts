@@ -36,7 +36,7 @@ vi.mock("../../../src/frontend/ui/account-reads", () => ({
 }));
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
-vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {} } })) }));
+vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: {} } })) }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { openNewSession, type NewSessionSpec } from "../../../src/frontend/ui/new-session";

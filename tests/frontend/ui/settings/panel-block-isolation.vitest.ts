@@ -274,11 +274,12 @@ describe("通用页不再有恢复命令那一格（启动程序 · 恢复到 tm
     document.body.textContent = "";
   });
 
-  it("★ 通用页没有启动程序那个下拉，也没有「恢复到 tmux 里」那个开关", async () => {
+  it("★ 通用页没有启动程序那个下拉，也没有「恢复时放在哪」那一格", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     const general = [...document.querySelectorAll<HTMLElement>(".settings-switch-row label")].map((l) => l.querySelector("span")?.firstChild?.textContent);
-    expect(general).not.toContain(copyText("settingsPanel.behavior.resumeInTmux"));
+    expect(general).not.toContain(copyText("settings.machine.resumeWhere"));
+    expect(document.querySelector(".settings-group [data-role=resume-where]")).toBeNull();
     nonEmpty(general);
     expect(document.querySelector(".settings-group [data-role=resume-select]")).toBeNull();
   });

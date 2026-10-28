@@ -1,11 +1,11 @@
 /**
- * 每台「这台上的 cc-monitor」里「怎么起会话」那几格（本机远端同一个组件）：恢复会话的启动程序 · 恢复到 tmux 里 ·
+ * 每台「这台上的 cc-monitor」里「怎么起会话」那几格（本机远端同一个组件）：恢复会话的启动程序 · 恢复时放在哪 ·
  * 子会话 · 分身会话默认进不进标签栏（［显示｜隐藏］分段按钮 ⇒ `prefs-set {childTab | bgTab}`；判哪条会话隐藏在那台后端，这里只改那台的偏好）。
  * 值住**那台**后端（`prefs.json`，经 `machine-prefs.ts` 的 `prefs-read` / `prefs-set`），界面不存副本：画之前问那台、改了交那台、画写完读回的那一份。
  *
  * - 启动程序：下拉（`ResumeSelect`；空 ＝ 那一家自己的默认启动器）⇒ `prefs-set {launchers: {<默认那一家>: 值}}`；用过的记进界面那份预设
  *   （只是输入历史）；越层启动器那条诊断摆在行下。
- * - 恢复到 tmux 里：开关 ⇒ `prefs-set {resumeInTmux}`。
+ * - 恢复时放在哪：［托管｜tmux｜照起时那一种］分段按钮 ⇒ `prefs-set {resumeWhere}`（读回之前灰着、一段不选）。
  * - 新会话的权限档：下拉（首项「默认」＝ 删那一条；选项是那台 `session-open-facts` 里默认那一家的权限档）⇒
  *   `prefs-set {permissionModes: {<默认那一家>: 值 | null}}`；那一家没有权限档 ⇒ 这一行不画。
  * - 读不懂（那台 `state: "unreadable"`）⇒ 两格禁用、行下摆那台写好的那一句（那台也拒写，不拿空的盖原文）；问不到 ⇒ 禁用、说读不到。
@@ -22,7 +22,7 @@ import { askFacts } from "../new-session-reads";
 import { select } from "../kit/select";
 import type { Prefs } from "../generated/Prefs";
 import { ResumeSelect } from "./resume-select";
-import { toggleSwitch } from "../kit/switch";
+import type { ResumeWhere } from "../generated/ResumeWhere";
 import { segmented } from "../kit/tabs";
 import { attachTooltip } from "../kit/tooltip";
 import { setPlace } from "../session-hidden-cmds";
@@ -164,37 +164,54 @@ export function machineLaunchRows(
   ]);
   launchRow.dataset.col = "resume";
 
-  // ── 恢复到 tmux 里 ──
-  const tmuxErr = document.createElement("div");
-  tmuxErr.className = "settings-row-error";
-  tmuxErr.hidden = true;
-  const sw = toggleSwitch({
-    label: copyText("settingsPanel.behavior.resumeInTmux"),
-    help: copyText("settingsPanel.behavior.resumeInTmuxHelp"),
-    on: false,
-    onChange: async (on) => {
-      tmuxErr.hidden = true;
-      try {
-        const r = await setPrefs(origin, { resumeInTmux: on });
-        sw.set(r.prefs.resumeInTmux);
-        applied();
-        return true;
-      } catch (e) {
-        sayWithDetail(
-          tmuxErr,
-          copyText("settings.behavior.saveFailedLine", { why: String(e) }),
-          detailOf(e),
+  // ── 恢复时放在哪（三段；读回之前灰着、一段不选）──
+  const whereErr = document.createElement("div");
+  whereErr.className = "settings-row-error";
+  whereErr.hidden = true;
+  const whereHelp = document.createElement("div");
+  whereHelp.append(whereErr);
+  const whereSlot = document.createElement("div");
+  let where: ResumeWhere | null = null;
+  let whereWritable = false;
+  const paintWhere = (): void => {
+    const seg = segmented<ResumeWhere>({
+      items: [
+        { key: "managed", label: copyText("settings.machine.resumeManaged") },
+        { key: "tmux", label: copyText("settings.machine.resumeTmux") },
+        { key: "as_started", label: copyText("settings.machine.resumeAsStarted") },
+      ],
+      current: where,
+      label: copyText("settings.machine.resumeWhere"),
+      onChange: (to) => {
+        if (!whereWritable || where === null) return paintWhere();
+        whereErr.hidden = true;
+        setPrefs(origin, { resumeWhere: to }).then(
+          (r) => {
+            where = r.prefs.resumeWhere;
+            paintWhere();
+            applied();
+          },
+          (e: unknown) => {
+            paintWhere();
+            sayWithDetail(whereErr, copyText("settings.behavior.saveFailedLine", { why: String(e) }), detailOf(e));
+            whereErr.hidden = false;
+          },
         );
-        tmuxErr.hidden = false;
-        return false;
-      }
-    },
-  });
-  sw.input.setAttribute("aria-disabled", "true");
-  const tmuxRow = document.createElement("div");
-  tmuxRow.className = "machine-cc-row";
-  tmuxRow.dataset.role = "resume-tmux";
-  tmuxRow.append(sw.root, tmuxErr);
+      },
+    });
+    seg.setAttribute("aria-disabled", String(!whereWritable));
+    whereSlot.replaceChildren(seg);
+  };
+  paintWhere();
+  const whereRow = ccRow(copyText("settings.machine.resumeWhere"), whereHelp, [whereSlot]);
+  whereRow.dataset.role = "resume-where";
+  const whereLabel = whereRow.querySelector<HTMLElement>(".machine-cc-label");
+  if (whereLabel) attachTooltip(whereLabel, copyText("settings.machine.resumeWhereTip"));
+  const fillWhere = (r: PrefsReply): void => {
+    where = r.prefs.resumeWhere;
+    whereWritable = r.state !== "unreadable";
+    paintWhere();
+  };
 
   // ── 新会话的权限档（默认那一家）──
   const permErr = document.createElement("div");
@@ -247,7 +264,7 @@ export function machineLaunchRows(
     saved = r.prefs.launchers[DEFAULT_AGENT] ?? "";
     sel.set(saved, presets);
     paintWarn(saved);
-    sw.set(r.prefs.resumeInTmux);
+    fillWhere(r);
     if (r.state === "unreadable") {
       sayWithDetail(
         err,
@@ -258,7 +275,6 @@ export function machineLaunchRows(
       return;
     }
     sel.disabled = false;
-    sw.input.setAttribute("aria-disabled", "false");
   };
   const load = (): void => {
     // 一条链里问：前一样同步抛了，后一样不会被白白发出去、没人接。
@@ -286,5 +302,5 @@ export function machineLaunchRows(
         },
       );
   };
-  return { rows: [launchRow, tmuxRow, permRow, ...place.rows], load };
+  return { rows: [launchRow, whereRow, permRow, ...place.rows], load };
 }

@@ -1,10 +1,10 @@
-//! **这台的偏好**那份文件的形状、值域与读：每一家用哪条启动命令 · 恢复时进不进 tmux · 每个号默认用哪个模型 · 上下文上限表 · pb 在哪 ·
+//! **这台的偏好**那份文件的形状、值域与读：每一家用哪条启动命令 · 恢复时放在哪 · 每个号默认用哪个模型 · 上下文上限表 · pb 在哪 ·
 //! 子会话 / 分身会话进不进标签页（隐藏的判定读它，`history/session_hidden.rs`）。
 //! 住这台后端的家（`~/.cc-monitor/prefs.json`，[`relay_route_core::PREFS_REL`]），不住各个前端：手机直连这台，
 //! 从来不经过桌面那一份设置，偏好住在这里两端才拿到同一份。写与帧面那两条命令住 `control/machine_prefs.rs`。
 //!
-//! - 谁读：起会话那几条（启动命令 · 模型表 · 进不进 tmux）· `history-facts`（上限表）· 隐藏的判定在要用的那一刻现读（[`read_now`]），不缓存。
-//! - 读不懂：照缺省办（空表 · 不进 tmux），`prefs-read` 照实报 `unreadable`。
+//! - 谁读：起会话那几条（启动命令 · 模型表 · 恢复时放在哪）· `history-facts`（上限表）· 隐藏的判定在要用的那一刻现读（[`read_now`]），不缓存。
+//! - 读不懂：照缺省办（空表 · 恢复落托管），`prefs-read` 照实报 `unreadable`。
 //! - 没人设过（文件不在）：照缺省办，报 `absent`。
 
 use crate::common::said::Said;
@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 /// 那份文件名（字面量只住契约 crate：数据位置页按它列出）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::PREFS_REL);
 
-/// 盘上那一版。
-const VERSION: u32 = 1;
+/// 盘上那一版（2：恢复那一格从开关 `resumeInTmux` 换成三选 `resumeWhere`；第 1 版由常驻那一位起来时换形，`control/prefs_migration.rs`）。
+pub(crate) const VERSION: u32 = 2;
 
 /// 读盘的上限：几张小表。
 const MAX_BYTES: u64 = 256 * 1024;
@@ -37,8 +37,8 @@ pub(crate) const PREFS_ROWS_MAX: usize = 256;
 pub(crate) struct Prefs {
     /// 每一家（线上的 kind）用哪条启动命令（原值）；没有那一家 ⇒ 那一家自己的默认启动器。
     pub(crate) launchers: BTreeMap<String, String>,
-    /// 恢复会话默认进这台的 tmux。
-    pub(crate) resume_in_tmux: bool,
+    /// 恢复会话不说放在哪时落在哪：托管 · tmux · 照那条会话起时那一种。
+    pub(crate) resume_where: cmd_wire::session::ResumeWhere,
     /// 这台每个号默认用哪个模型（号 → 模型，原值）。
     pub(crate) models: BTreeMap<String, String>,
     /// 从这台起新会话默认用哪个权限档（哪一家 → 那一家声明的档的原值）；恢复不读它。
@@ -62,7 +62,7 @@ impl Default for Prefs {
         let rules = cmd_wire::session::Rules::default();
         Prefs {
             launchers: BTreeMap::new(),
-            resume_in_tmux: false,
+            resume_where: cmd_wire::session::ResumeWhere::default(),
             models: BTreeMap::new(),
             permission_modes: BTreeMap::new(),
             context_limits: BTreeMap::new(),
@@ -92,6 +92,17 @@ impl Prefs {
             .filter(|s| !s.is_empty())
             .unwrap_or(default)
             .to_string()
+    }
+
+    /// 恢复一条会话想不想进 tmux（规则住这一处，`session_open::default_run` 收它）：偏好 tmux；或偏好照起时那一种、
+    /// 启动台账记着它起在 tmux 里。记着托管 / 记不着 ⇒ 不想（照托管缺省）。
+    pub(crate) fn resume_wants_tmux(&self, started: Option<cmd_wire::frame::TerminalHost>) -> bool {
+        use cmd_wire::session::ResumeWhere;
+        match self.resume_where {
+            ResumeWhere::Managed => false,
+            ResumeWhere::Tmux => true,
+            ResumeWhere::AsStarted => started == Some(cmd_wire::frame::TerminalHost::Tmux),
+        }
     }
 
     /// 隐藏的判定读的那两格。

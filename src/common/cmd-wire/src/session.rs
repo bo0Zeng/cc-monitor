@@ -495,6 +495,21 @@ pub enum Tab {
     Hide,
 }
 
+/// 恢复会话不说放在哪时这台落在哪（这台偏好 `resumeWhere`）：托管 · tmux · 照那条会话起时那一种（记不着 ⇒ 托管）。缺省托管。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub enum ResumeWhere {
+    #[default]
+    Managed,
+    Tmux,
+    AsStarted,
+}
+
 /// 单个那一格（历史注解 `hide`）：`on` 隐藏 · `off` 不隐藏（缺 ＝ 照规则）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

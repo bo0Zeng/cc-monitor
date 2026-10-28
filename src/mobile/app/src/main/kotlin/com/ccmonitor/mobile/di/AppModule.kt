@@ -8,12 +8,15 @@ import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.link.BackendFiles
 import com.ccmonitor.mobile.link.CoreResident
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.link.PendingResend
+import com.ccmonitor.mobile.link.hostOutbox
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.OldHostKeys
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
 import com.ccmonitor.mobile.ui.chat.ConnectionHolder
+import com.ccmonitor.mobile.ui.chat.attach.AttachStore
 import com.ccmonitor.mobile.ui.chat.sessionOf
 import com.ccmonitor.mobile.ui.chats.ChatsBoard
 import com.ccmonitor.mobile.ui.chats.HostName
@@ -93,6 +96,16 @@ val appModule =
             val files = BackendFiles(androidContext())
             val cache = get<LocalCache>()
             HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, keptOf = cache::batches, backendSlots = files::slots)
+        }
+        // 待发重交（进程级、开 app 就起）：那台一接上就把它名下各会话的待发照原编号重交，不等打开那条会话。
+        single(createdAtStart = true) {
+            val cache = get<LocalCache>()
+            val attach = File(androidContext().filesDir, ATTACH_DIR)
+            PendingResend(
+                get<HostBackends>().feeds,
+                { h -> hostOutbox(cache, h, AttachStore(File(attach, h))) },
+                CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
         }
         // 跨会话的需手动板（进程级）：对起着的每条常驻流各问一份，总览 · 聊天屏入口 · 聊天屏那一块都读它。
         single {
