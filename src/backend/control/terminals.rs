@@ -102,34 +102,26 @@ pub(crate) fn no_said(why: Refused) -> String {
 }
 
 /// 输入那一格的成品：托管那一形写出此刻的持有者，`mine` ＝ 后端替这次请求自报的那个前端持有着，`said` 是给人看的那一句。
-fn input_of_row(input: &crate::host::Input, requester: Option<&str>) -> TermInput {
+pub(crate) fn input_of_row(input: &crate::host::Input, requester: Option<&str>) -> TermInput {
     use crate::host::{HeldBy, Input};
     match input {
         Input::Shared => TermInput::Shared,
         Input::Held(by) => {
+            use crate::host::managed::{hold, wire::WhoKind};
             let (who, mine) = match by {
                 None => (HolderWho::None, false),
-                Some(HeldBy::Terminal) => (HolderWho::TerminalWindow, false),
+                Some(HeldBy::Terminal) => (hold::who_of(WhoKind::Terminal, None), false),
                 Some(HeldBy::Front(f)) => (
-                    if f == "mobile" {
-                        HolderWho::Mobile
-                    } else {
-                        HolderWho::Desktop
-                    },
+                    hold::who_of(WhoKind::Backend, Some(f)),
                     requester == Some(f.as_str()),
                 ),
             };
-            let said = match (who, mine) {
-                (_, true) => copy_text("beTerminal.holder.here", &[]),
-                (HolderWho::Desktop, _) => copy_text("beTerminal.holder.desktop", &[]),
-                (HolderWho::Mobile, _) => copy_text("beTerminal.holder.mobile", &[]),
-                (HolderWho::TerminalWindow, _) => {
-                    copy_text("beTerminal.holder.terminalWindow", &[])
-                }
-                (HolderWho::None, _) => copy_text("beTerminal.holder.none", &[]),
-            };
             TermInput::Held {
-                holder: InputHolder { who, mine, said },
+                holder: InputHolder {
+                    who,
+                    mine,
+                    said: hold::said_of(who, mine),
+                },
             }
         }
     }
