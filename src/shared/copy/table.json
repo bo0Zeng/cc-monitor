@@ -23188,6 +23188,66 @@
       "zh": "撤回",
       "args": []
     },
+    "mobSaidEdit.menu.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "编辑",
+      "args": []
+    },
+    "mobSaidEdit.menu.copy": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "复制",
+      "args": []
+    },
+    "mobSaidEdit.editor.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "发送后回退到此句之前，之后的内容不再保留",
+      "args": []
+    },
+    "mobSaidEdit.editor.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "取消",
+      "args": []
+    },
+    "mobSaidEdit.editor.send": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "发送",
+      "args": []
+    },
+    "mobSaidEdit.pick.loading": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "正在读取回退选项",
+      "args": []
+    },
+    "mobSaidEdit.pick.how": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "回退方式",
+      "args": []
+    },
+    "mobSaidEdit.pick.when": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "回退时机",
+      "args": []
+    },
+    "mobSaidEdit.pick.confirm": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "回退并发送",
+      "args": []
+    },
+    "mobSaidEdit.pick.noSession": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "会话未起成，无法回退",
+      "args": []
+    },
     "mobChat.history.retry": {
       "kind": "body",
       "role": "说明",

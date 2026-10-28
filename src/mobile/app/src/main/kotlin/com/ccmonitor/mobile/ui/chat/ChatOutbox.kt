@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.QueuePut
+import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -40,7 +41,7 @@ internal class ChatOutbox(
         sid: String,
     ) {
         o.inFlight = true
-        val r = link.call(SessionQueuePut.COMMAND, SessionQueuePut.args(sid, o.localId, o.text, System.currentTimeMillis(), o.attachments), INPUT_MS)
+        val r = link.call(SessionQueuePut.COMMAND, SessionQueuePut.args(sid, o.localId, o.text, System.currentTimeMillis(), o.attachments, o.rewind), INPUT_MS)
         o.inFlight = false
         if (lines.none { it === o }) return
         when {
@@ -159,6 +160,8 @@ internal class Outgoing(
     var attempts: Int = 1,
     /** 随这一句发的附件编号（重发照带）。 */
     val attachments: List<String> = emptyList(),
+    /** 编辑已发的那一句（`SaidEdit.kt`）：会话那台投递时先退到 `rewind.to` 之前再说它（重发照带）；普通的一句 ⇒ `null`。 */
+    val rewind: Rewind? = null,
 ) {
     /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
     var handed = false

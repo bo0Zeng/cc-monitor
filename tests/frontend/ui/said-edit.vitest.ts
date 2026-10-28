@@ -155,11 +155,11 @@ describe("编辑已发的一句 · 桌面", () => {
 
   it("★ 那一家不支持 ⇒ 只写那台那一句、不给确认", async () => {
     const { cards } = stream();
-    const { edit, io } = rig({ options: { how: [], when: [], said: "此会话不支持回退到某一句" } });
+    const { edit, io } = rig({ options: { how: [], when: [], said: "said-unsupported" } });
     edit.open(cards[1]!, AT);
     btn("said-edit-send")!.click();
     await flush();
-    expect(document.body.textContent).toContain("此会话不支持回退到某一句");
+    expect(document.body.textContent).toContain("said-unsupported");
     expect(btn("said-edit-confirm")).toBeNull();
     expect(io.send).not.toHaveBeenCalled();
   });

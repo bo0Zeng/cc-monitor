@@ -57,6 +57,7 @@ class ChatViewModel(
             retry = session::retry,
             editDraft = session::editDraft,
             attach = session.attach?.let { t -> AttachActions(add = t::add, remove = t::remove, retry = t::retry, local = t::local) },
+            said = SaidActions(edit = session::editSaid, options = session::rewindOptions, send = session::sayEdited, recall = session::cancelQueued),
         )
 
     /** 聊天屏进 / 出（`stream-watch` 名单跟着它）。 */
