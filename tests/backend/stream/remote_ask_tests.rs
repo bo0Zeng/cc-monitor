@@ -403,3 +403,70 @@ async fn a_failed_remote_command_keeps_its_envelope_code() {
     assert_eq!(e.code, None);
     assert_eq!(e.message, copy_text("beRemoteAsk.run.failed", &[]), "{e:?}");
 }
+
+/// ★ 问别台常驻那一跳（[`ask_resident`]）在那台起的 `--resident-call` 是一次性的：发起方一走（ssh 断开 ⇒ 它 stdout 那根管子的读端没人了），
+/// 就不再等那台常驻、当场收工 —— 不攥着一条常驻连接空等到发起方给的期限（10-28 沙箱 sshd 实测：断开后照活到期限）。
+/// 读端还在 ⇒ 照旧等到期限、报 `timed_out`（「发起方走了」不是一碰就响）。
+/// 扮那台常驻的：绑了套接字、不收不说（连得上，hello 永远不来）。
+#[tokio::test]
+#[cfg(unix)]
+async fn a_resident_call_stops_waiting_once_the_asker_is_gone() {
+    use crate::control::resident::{call_while, stdout_gone};
+    use crate::platform::child::Deadline;
+    let dh = std::env::temp_dir().join("ra-gone");
+    let _ = std::fs::remove_dir_all(&dh);
+    let run = relay_route_core::listen_dir_for(&dh);
+    std::fs::create_dir_all(&run).unwrap();
+    std::fs::set_permissions(&run, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    let _mute = own_chan::bind(&relay_route_core::listen_socket_for(&dh)).expect("绑");
+    let asked = crate::wire::listen::ResidentCall {
+        cmd: "machines-list".into(),
+        args: json!({}),
+    };
+    let tz = crate::Tz::default();
+
+    // 读端一直在：等到期限。
+    let (rd, wr) = std::io::pipe().unwrap();
+    let got = call_while(
+        &dh,
+        &asked,
+        Some(300),
+        &tz,
+        Deadline::millis(300),
+        stdout_gone(wr.into()),
+    )
+    .await;
+    let code = got.map(|r| r.map_err(|f| f.code));
+    assert_eq!(
+        code,
+        Some(Err(crate::wire::listen::CALL_TIMED_OUT.to_string())),
+        "读端还在却当成发起方走了"
+    );
+    drop(rd);
+
+    // 读端被关：不等那 30 秒。
+    let (rd, wr) = std::io::pipe().unwrap();
+    let cut = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        drop(rd);
+    });
+    let got = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        call_while(
+            &dh,
+            &asked,
+            Some(30_000),
+            &tz,
+            Deadline::secs(30),
+            stdout_gone(wr.into()),
+        ),
+    )
+    .await;
+    cut.await.unwrap();
+    let _ = std::fs::remove_dir_all(&dh);
+    assert!(
+        matches!(got, Ok(None)),
+        "发起方走了（读端关了）5 秒还在等那台常驻：{:?}",
+        got.map(|g| g.map(|r| r.map_err(|f| f.code)))
+    );
+}

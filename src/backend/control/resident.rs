@@ -11,7 +11,8 @@
 //! - `--resident-call --stdin-line --within-ms <毫秒> [--tz <IANA 名>]`：**问这台的常驻一条帧命令**（stdin 一行 `{cmd, args}`）。
 //!   连套接字 → 读 hello → 交 attach 行（在看名单交空的：只问不看）→ 发请求 → 等那一条应答（别的帧略过）→ stdout 一行回包、退出 0；
 //!   失败 ⇒ stderr 一行失败信封（常驻答的码原样）、退出 2。没人在听 ⇒ `resident_absent`（不起一个冷的顶上：后端是给定的）。
-//!   等多久只归发起方（`--within-ms` 必给，缺 ⇒ `bad_args`），经期限原语 `platform::child::bounded` 那一处有界等待。
+//!   等多久只归发起方（`--within-ms` 必给，缺 ⇒ `bad_args`），经期限原语 `platform::child::bounded` 那一处有界等待；
+//!   发起方先走了（ssh 断开：stdout 的读端没人了，`stdout_gone`）⇒ 不等到期限、什么都不写、退出 2。
 //!   后端问后端的那一跳（`dial/remote_ask.rs::ask_resident`）经 ssh exec 跑它。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   连这台的套接字问在听的是谁（对端 pid 由内核报，不靠盘上的记录）→ SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 →
@@ -207,14 +208,59 @@ pub async fn call(args: &[String], tz: &crate::Tz) -> i32 {
     let Some(dh) = data_home() else {
         return refuse("no_home", copy_text("beResident.home.missing", &[]));
     };
-    match call_at(&dh, &asked, Some(within_ms), tz, total).await {
-        Ok(data) => {
+    match call_while(&dh, &asked, Some(within_ms), tz, total, asker_gone()).await {
+        Some(Ok(data)) => {
             println!("{data}");
             0
         }
-        Err(f) => f.emit_to(&mut std::io::stderr(), false, tz),
+        Some(Err(f)) => f.emit_to(&mut std::io::stderr(), false, tz),
+        None => ASKER_GONE_EXIT,
     }
 }
+
+/// [`call_at`]，同时看发起方还在不在：`gone` 先交回（发起方走了：ssh 断开）⇒ 不再等那台常驻、交回 `None`
+/// （答了也没人收；不攥着一条常驻连接空等到期限）。
+pub(crate) async fn call_while(
+    data_home: &Path,
+    asked: &crate::wire::listen::ResidentCall,
+    within_ms: Option<u64>,
+    tz: &crate::Tz,
+    total: Deadline,
+    gone: impl std::future::Future<Output = ()>,
+) -> Option<Result<serde_json::Value, crate::wire::detail::Failed>> {
+    tokio::select! {
+        got = call_at(data_home, asked, within_ms, tz, total) => Some(got),
+        () = gone => None,
+    }
+}
+
+/// 发起方走了：`out`（本进程 stdout 的一份）那根管子 · 套接字的读端没人了 —— ssh 断开后 sshd 关掉的就是它。
+/// 只看内核报的错误态（`EPOLLERR`），不写、不轮询、零定时器。注册不进（终端以外的普通文件 · 不是 unix）⇒ 永不交回，只剩期限那一处收场。
+#[cfg(unix)]
+pub(crate) async fn stdout_gone(out: std::os::fd::OwnedFd) {
+    use tokio::io::{unix::AsyncFd, Interest};
+    match AsyncFd::with_interest(out, Interest::ERROR) {
+        Ok(fd) => {
+            let _ = fd.ready(Interest::ERROR).await;
+        }
+        Err(_) => std::future::pending::<()>().await,
+    }
+}
+
+/// 本进程的 stdout 那根管子：发起方走了才交回（[`stdout_gone`]）；取不到一份（不是 unix · dup 不成）⇒ 永不交回。
+async fn asker_gone() {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsFd;
+        if let Ok(out) = std::io::stdout().as_fd().try_clone_to_owned() {
+            return stdout_gone(out).await;
+        }
+    }
+    std::future::pending::<()>().await
+}
+
+/// 发起方走了时的退出码：没人收，什么都不写（同失败那一形的码）。
+const ASKER_GONE_EXIT: i32 = 2;
 
 /// 期限口（`--within-ms`）⇒ 原样往常驻那一跳带的毫秒数 ＋ 本进程等多久（就是那么久）。等多久只归发起方：
 /// 不给 · 给的不是正整数 ⇒ `bad_args`，这里不自己定一个。
