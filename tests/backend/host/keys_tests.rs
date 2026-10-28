@@ -143,3 +143,31 @@ fn vi_is_chosen_from_editor_like_tmux() {
     assert!(!vi_from(Some("emacs"), None));
     assert!(!vi_from(None, None));
 }
+
+#[test]
+fn a_bracketed_paste_passes_through_whole_even_with_the_prefix_inside() {
+    let mut k = Keys::new(DEFAULT_PREFIX);
+    let paste = b"\x1b[200~a\x02db\x1b[201~";
+    assert_eq!(feed(&mut k, paste), vec![Act::Send(paste.to_vec())]);
+    assert_eq!(
+        feed(&mut k, b"\x02d"),
+        vec![Act::Detach],
+        "粘完之后前缀照旧"
+    );
+}
+
+#[test]
+fn a_bracketed_paste_split_across_chunks_is_still_one_paste() {
+    let mut k = Keys::new(DEFAULT_PREFIX);
+    let mut sent = Vec::new();
+    for chunk in [&b"x\x1b[20"[..], b"0~a\x02", b"d\x1b[2", b"01~"] {
+        for a in feed(&mut k, chunk) {
+            match a {
+                Act::Send(b) => sent.extend(b),
+                other => panic!("粘贴里不该有动作：{other:?}"),
+            }
+        }
+    }
+    assert_eq!(sent, b"x\x1b[200~a\x02d\x1b[201~".to_vec());
+    assert_eq!(feed(&mut k, b"\x02d"), vec![Act::Detach]);
+}

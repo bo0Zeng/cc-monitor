@@ -62,6 +62,7 @@
   "session-permission": [{"sid":"s","mode":"plan","client":"mobile"}],
   "session-queue-cancel": [{"machine":"<local>","sid":"s","id":"m"}],
   "session-queue-put": [{"machine":"<local>","sid":"s","id":"m","end":"mobile","atMs":1,"text":"hi"},{"machine":"<local>","sid":"s","id":"m","end":"mobile","atMs":1,"text":"hi","attachments":["i"]}],
+  "session-queue-read": [{"machine":"<local>","sid":"s"}],
   "sessions-needs": [null],
   "terminal-input": [{"sid":"s","text":"hi"},{"sid":"s","key":"esc"}],
   "terminal-preview": [{"terminal":"t1","color":false}],
