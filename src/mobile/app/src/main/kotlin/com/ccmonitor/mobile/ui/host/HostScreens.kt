@@ -619,11 +619,8 @@ object HostEditTags {
     const val DEPLOY = "host-edit-deploy"
 }
 
-/** 每跳读数：这台手机此刻到那台的每一条连接一行（核心写好的那一句原样，先后照成品：那台在前、跳板跟在后面）。 */
-internal fun linkLines(link: LinkLine?): List<String> {
-    val links = link?.machine?.links ?: return emptyList()
-    return links.map { it.said }
-}
+/** 怎么连过去的那一句（核心写好的 `route` 原样：经跳板 · 经代理）；直连不经代理 · 还没有那一行 ⇒ `null`，不画。 */
+internal fun routeLine(link: LinkLine?): String? = link?.machine?.route
 
 /** 主机设置里那一行：标题 ＋ 一颗按钮（成品给的那一颗：安装 / 更新；没给 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
 @Composable
@@ -643,7 +640,7 @@ private fun BackendRow(hostId: String) {
         modifier = Modifier.testTag(HostEditTags.DEPLOY),
     ) { Text(deployLabel(fix)) }
     (conn as? HostLink.Failed)?.let { Text(it.why, color = MaterialTheme.colorScheme.error) }
-    linkLines(link).forEach { Text(it, style = monoSmall, color = LocalAppTokens.current.textFaint) }
+    routeLine(link)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint) }
     busy?.let { return BusyLine(it) }
     when (val d = deploying) {
         is Deploying.Done -> Text(d.text, style = monoSmall, color = LocalAppTokens.current.textFaint)
