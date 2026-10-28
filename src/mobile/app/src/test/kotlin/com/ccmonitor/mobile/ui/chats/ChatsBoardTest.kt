@@ -63,6 +63,9 @@ class ChatsBoardTest {
         /** `history-search` 的回包。 */
         var search: Reply = Reply.LinkDown
 
+        /** `groups-read` 的回包（缺省：没有组、没有固定）。 */
+        var groups: Reply = Reply.Ok(mapOf("groups" to emptyList<Any>(), "pinned" to emptyList<Any>(), "machines" to emptyList<Any>()))
+
         init {
             link.answer = { cmd, _ ->
                 when (cmd) {
@@ -79,6 +82,7 @@ class ChatsBoardTest {
                             ),
                         )
                     "history-search" -> search
+                    "groups-read" -> groups
                     else -> Reply.LinkDown
                 }
             }
@@ -102,9 +106,79 @@ class ChatsBoardTest {
     ): ChatsBoard {
         val by = hosts.associateBy { it.name.id }
         return ChatsBoard(hosts.first().name.id, MutableStateFlow(hosts.map { it.name }), { h, s ->
-            HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), MutableStateFlow(null), {}, ListCache.None, s)
+            HostChats(h.id, h.label, by.getValue(h.id).link, emptyFlow(), emptyFlow(), MutableStateFlow(null), {}, ListCache.None, s)
         }, merge::run, backgroundScope)
     }
+
+    /** `groups-read` 回包里的一条组员：那台写好的标题 ＋ 那张脸（结构夹具）。 */
+    private fun member(
+        sid: String,
+        pinned: Boolean = false,
+    ) = mapOf(
+        "origin" to "<local>",
+        "sid" to sid,
+        "pinned" to pinned,
+        "face" to Faces.raw["ended"],
+        "facts" to mapOf("title" to "标题 $sid", "cwd" to "/w", "record" to null, "account" to null, "bg" to false, "at" to 1L),
+    )
+
+    private fun groupsOf(
+        groups: List<Map<String, Any?>>,
+        pinned: List<Map<String, Any?>> = emptyList(),
+        read: Map<String, Any?> = mapOf("is" to "ok", "notice" to null),
+    ) = Reply.Ok(mapOf("groups" to groups, "pinned" to pinned, "machines" to listOf(mapOf("origin" to "<local>", "read" to read))))
+
+    private fun group(
+        id: String,
+        title: String,
+        members: List<Map<String, Any?>>,
+        counts: List<String>,
+    ) = mapOf(
+        "id" to id,
+        "name" to title,
+        "title" to title,
+        "made" to 1L,
+        "named" to 1L,
+        "known" to mapOf("is" to "now"),
+        "members" to members,
+        "counts" to counts.map { mapOf("dot" to "needs-you", "n" to 1L, "word" to "需手动", "text" to it) },
+    )
+
+    @Test
+    fun `按组分段：固定的一段在最前，再一组一段（段头照那台写好的组名与计数），段里是组员；下面按天的不再重出`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            a.rows = listOf(rowMap("s1", 3), rowMap("s2", 2), rowMap("s3", 1))
+            a.groups = groupsOf(listOf(group("g1", "开发", listOf(member("s1"), member("s9")), listOf("需手动 1"))), pinned = listOf(member("s2", pinned = true)))
+            val board = board(a)
+            runCurrent()
+            val ui = board.ui.value
+            assertEquals(listOf("s2"), ui.pinned.map { it.sessionId })
+            val band = ui.bands.single()
+            assertEquals("开发", band.title)
+            assertEquals(listOf("需手动 1"), band.heads)
+            assertEquals(listOf("s1", "s9"), band.rows.map { it.sessionId })
+            assertEquals("清单里没有的那一条照组员那一行写", listOf("s1", "标题 s9"), band.rows.map { it.label })
+            assertEquals(listOf("s3"), ui.sections.flatMap { s -> s.rows.map { it.sessionId } })
+            board.filters { it.copy(withinDays = 7) }
+            runCurrent()
+            assertEquals("筛着 ⇒ 不分段", emptyList<GroupBand>(), board.ui.value.bands)
+            assertEquals(
+                listOf("s1", "s2", "s3"),
+                board.ui.value.rows
+                    .map { it.sessionId },
+            )
+        }
+
+    @Test
+    fun `那台说组那一片读不到 ⇒ 那一句进注解行，不静默丢`() =
+        runTest {
+            val a = Host(HostName("h1", "a"))
+            a.groups = groupsOf(emptyList(), read = mapOf("is" to "failed", "why" to "读不到注解"))
+            val board = board(a)
+            runCurrent()
+            assertEquals(listOf("读不到注解"), board.ui.value.notices)
+        }
 
     @Test
     fun `筛选改一项 ⇒ 勾上的每台照新的那几格重问；去掉一台 ⇒ 不再问它`() =

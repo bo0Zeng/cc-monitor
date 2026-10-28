@@ -6,9 +6,11 @@ import com.ccmonitor.mobile.core.claude.link.wire.rawPatch
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.Allow
 import com.ccmonitor.mobile.core.wire.gen.Annotated
+import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryHead
+import com.ccmonitor.mobile.core.wire.gen.HistoryMachineRead
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.Merged
 import com.ccmonitor.mobile.core.wire.gen.NeedsItem
@@ -163,6 +165,32 @@ object HistoryAnnotate {
     /** 回包：改之前那一格（`prev`）；撤销「隐藏」原样交回 [hide]（`null` ⇒ 回到规则，不把照规则显示的钉成单独显示）。 */
     fun of(data: Any?): Annotated? = Wire.bind<Annotated>(data)
 }
+
+/**
+ * `groups-read`：手机直连一台、问它自己那一片（`machines` 只写 `<local>`）。组名 · 组头那几句（`counts[].text`）· 组员的脸与标题
+ * 都是那台写好的；几台的组不在这里合。
+ */
+object Groups {
+    const val COMMAND: String = "groups-read"
+
+    val ARGS: Map<String, Any?> = mapOf("machines" to listOf(LOCAL_MACHINE))
+
+    /** 回包（核心按 `cmd-wire` 那一份解过）；缺必填格 ⇒ `null`。 */
+    fun of(data: Any?): GroupsRead? = Wire.bind<GroupsRead>(data)
+
+    /** 那台这一问没读全的那几句（上次所知 · 读不到，照那台写的）。 */
+    fun unread(r: GroupsRead): List<String> =
+        r.machines.mapNotNull {
+            when (val read = it.read) {
+                is HistoryMachineRead.Stale -> read.why
+                is HistoryMachineRead.Failed -> read.why
+                is HistoryMachineRead.Ok, HistoryMachineRead.Unread -> null
+            }
+        }
+}
+
+/** 问一台自己时机器名逐字写这个（`cmd_wire::LOCAL`）。 */
+private const val LOCAL_MACHINE = "<local>"
 
 /** `history-search`：这台的会话内容里搜一个词（不分大小写，子串）。回包原样交 [SearchMerge]（手机不解各台那一份）。 */
 object HistorySearch {
