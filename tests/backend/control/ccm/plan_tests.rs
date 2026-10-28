@@ -1147,11 +1147,11 @@ fn an_inherited_relay_address_of_ours_never_goes_into_the_pane() {
 #[test]
 fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
     use crate::accounts::upstream_select::endpoint::{relay_with, LaunchAccount};
-    fn listening(agent: &str, a: &LaunchAccount) -> Result<Option<String>, String> {
-        relay_with(agent, a, true, 8788, &[], &|_, _| true)
+    fn listening(agent: &str, a: &LaunchAccount, own: bool) -> Result<Option<String>, String> {
+        relay_with(agent, a, own, true, 8788, &[], &|_, _| true)
     }
-    fn not_injecting(agent: &str, a: &LaunchAccount) -> Result<Option<String>, String> {
-        relay_with(agent, a, false, 8788, &[], &|_, _| true)
+    fn not_injecting(agent: &str, a: &LaunchAccount, own: bool) -> Result<Option<String>, String> {
+        relay_with(agent, a, own, false, 8788, &[], &|_, _| true)
     }
     let key = "0123456789abcdef".repeat(4);
     // 账号表只认目录真在的号 ⇒ 夹具目录底下真建 b / q（路由里的账号段是目录名末段）。
@@ -1646,12 +1646,13 @@ fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms
 }
 
 /// 中转地址只在最终 exec 那一处定：问上游选择那一只手（带上这一发的账号），注入的那一句插上那条路由要的钥匙（`/t/` ⇒ 只许直通那一把）；
-/// 环境里已经有用户自己的端点 ⇒ 不问、不动、记下要说一句；有的是我们那一形 ⇒ 照样问；拒 ⇒ 用法错带那一句。
+/// 环境里已经有用户自己的端点 ⇒ 照样问（说上游是自己的）、带来处注入、地址记进计划；不注入 ⇒ 原样不动；有的是我们那一形 ⇒ 照样问；拒 ⇒ 用法错带那一句。
 #[test]
 fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     fn inject(
         agent: &str,
         a: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        own: bool,
     ) -> Result<Option<String>, String> {
         assert_eq!(agent, "claude-code", "问的不是这一家的适配器 id");
         assert_eq!(
@@ -1661,19 +1662,37 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
             },
             "带过去的不是这一发的账号"
         );
+        assert!(!own, "环境里没有用户的地址却说上游是自己的");
+        Ok(Some("http://127.0.0.1:8788/t/claude-code/w".into()))
+    }
+    fn own_upstream(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        own: bool,
+    ) -> Result<Option<String>, String> {
+        assert!(own, "环境里有用户的地址，问的时候没说上游是自己的");
         Ok(Some("http://127.0.0.1:8788/t/claude-code/w".into()))
     }
     fn never(
         _: &str,
         _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
     ) -> Result<Option<String>, String> {
-        panic!("环境里已经有地址还去问了")
+        panic!("容器路去问了")
     }
     fn refuse(
         _: &str,
         _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
     ) -> Result<Option<String>, String> {
         Err("中转没在听".into())
+    }
+    fn down(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
+    ) -> Result<Option<String>, String> {
+        Ok(None)
     }
     let args = ["--resume", "s1", "--", "--account-dir", "/h/.claude-alt/w"];
     let mut e = env();
@@ -1693,13 +1712,41 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
         )),
         "注入那一句的形状变了"
     );
-    e.relay = Some(never);
+    // ★ 第一条会红：环境里是用户自己的上游地址 ⇒ 照样问中转（说上游是自己的）、照样注入、带来处；那个地址进计划里那一格。
+    e.relay = Some(own_upstream);
     e.inherited_base_url = Some("https://my.gateway/v1".into());
+    e.origin_token = Some("0123abcd".into());
     let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
-    assert_eq!(d.relay, None);
-    assert!(d.keeps_user_base_url, "用户自己的端点没记下要说一句");
+    assert_eq!(
+        d.relay.as_deref(),
+        Some("http://127.0.0.1:8788/t/claude-code/w/~0123abcd"),
+        "设了上游地址的会话没经中转口"
+    );
+    assert_eq!(d.own_upstream.as_deref(), Some("https://my.gateway/v1"));
+    assert!(!d.clears_inherited_relay);
+    // 中转不在 / 不注入 ⇒ 用户的地址原样留着（不清、不记）。
+    e.relay = Some(down);
+    let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        (d.relay.as_deref(), d.own_upstream.as_deref()),
+        (None, None)
+    );
+    assert!(!d.clears_inherited_relay, "用户自己的地址被清掉了");
+    // 拼不上来处（中转按来处找描述）⇒ 不注入，用户的地址原样留着。
+    e.relay = Some(own_upstream);
+    e.origin_token = None;
+    let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
+        panic!()
+    };
+    assert_eq!(
+        (d.relay.as_deref(), d.own_upstream.as_deref()),
+        (None, None)
+    );
+    assert!(!d.clears_inherited_relay);
     // 外层留下的我们那一形（别的号的）⇒ 不认，按这一发的账号重问。
     e.relay = Some(inject);
     e.inherited_base_url = Some(format!(
@@ -1709,8 +1756,8 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
-    assert!(
-        !d.keeps_user_base_url,
+    assert_eq!(
+        d.own_upstream, None,
         "外层留下的我们那一形被当成了用户的端点"
     );
     assert_eq!(
@@ -1941,6 +1988,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
     fn inject(
         _: &str,
         _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
     ) -> Result<Option<String>, String> {
         Ok(Some("http://127.0.0.1:8788/t/x/w".into()))
     }
@@ -2048,6 +2096,7 @@ fn the_relay_address_carries_where_the_session_came_from() {
     fn inject(
         _: &str,
         _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
     ) -> Result<Option<String>, String> {
         Ok(Some("http://127.0.0.1:8788/t/claude-code/w".into()))
     }
@@ -2611,12 +2660,14 @@ fn the_shell_line_writes_the_key_the_route_takes() {
     fn pass_route(
         _: &str,
         _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
     ) -> Result<Option<String>, String> {
         Ok(Some("http://127.0.0.1:8788/t/claude-code/w".into()))
     }
     fn full_route(
         _: &str,
         _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+        _: bool,
     ) -> Result<Option<String>, String> {
         Ok(Some("http://127.0.0.1:8788/s/claude-code/w".into()))
     }

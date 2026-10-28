@@ -650,6 +650,80 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
     assert_eq!(got[2].auth, Some(format!("Bearer {B_TOKEN}")));
 }
 
+/// ★ 第一条会红（中转那一侧）：那条会话的上游描述里有用户自己的上游地址（本机假网关）⇒ 那一发到那个网关（带它的路径前缀）、
+/// 鉴权头是下游原来那个；网关回 429 ＋ 官方额度头 ⇒ 原样往下游送：不换号（轮换里有 b 也不发）、不记额度账（说不出是哪个号的）、
+/// 默认上游一发都没收到。反证：描述里没有那个地址的来处 ⇒ 照旧到默认上游、换到 b。
+#[test]
+fn a_session_on_its_own_upstream_goes_there_with_its_own_auth_and_never_rotates() {
+    use crate::accounts::upstream_select::session_upstream::{leave, UpstreamDesc};
+    let home = Home::new("own-upstream");
+    home.set_default(&["b"], None);
+    let (gw, at_gw) = spawn_judging_upstream(|_| refused_with_quota());
+    let (up, at_default) = spawn_judging_upstream(a_refused_b_serves);
+    let desc = UpstreamDesc {
+        egress: Vec::new(),
+        base: Some(format!("http://127.0.0.1:{}/gw", gw.port())),
+        pid: std::process::id(),
+        at: 1,
+    };
+    leave(&home.own(), "0123abcd", &desc, &|_| true).expect("留得下");
+    let relay = home.relay(up);
+    let resp = shoot(
+        relay,
+        "/t/claude-code/a/~0123abcd/v1/messages",
+        &format!("authorization: {AGENT_TOKEN}\r\nx-claude-code-session-id: s-own\r\n"),
+        &request_body(UUID_A),
+    );
+    assert!(resp.starts_with("HTTP/1.1 429"), "{resp}");
+    {
+        let got = at_gw.lock().expect("lock");
+        assert_eq!(got.len(), 1, "网关那一发没到，或被拒以后又发了一次");
+        assert_eq!(got[0].target, "/gw/v1/messages");
+        assert_eq!(
+            got[0].auth.as_deref(),
+            Some(AGENT_TOKEN),
+            "鉴权头没原样转发"
+        );
+    }
+    assert!(
+        at_default.lock().expect("lock").is_empty(),
+        "上游是用户的，默认上游却收到了"
+    );
+    assert!(
+        ledger::answer_of(Some(&home.root.join(ledger::FILE_NAME)), 0)
+            .accounts
+            .is_empty(),
+        "用户网关的回包记进了额度账"
+    );
+    let resp = shoot(
+        relay,
+        "/t/claude-code/a/~4567cdef/v1/messages",
+        &format!("authorization: {AGENT_TOKEN}\r\nx-claude-code-session-id: s-other\r\n"),
+        &request_body(UUID_A),
+    );
+    assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+    assert_eq!(at_default.lock().expect("lock").len(), 2);
+    assert_eq!(at_gw.lock().expect("lock").len(), 1);
+    // 描述里那个地址认不出 ⇒ 拒（我们拒的 4xx），不回落到默认上游。
+    let bad = UpstreamDesc {
+        base: Some("not a url".into()),
+        ..desc
+    };
+    leave(&home.own(), "89abcdef", &bad, &|_| true).expect("留得下");
+    let resp = shoot(
+        relay,
+        "/t/claude-code/a/~89abcdef/v1/messages",
+        &format!("authorization: {AGENT_TOKEN}\r\nx-claude-code-session-id: s-bad\r\n"),
+        &request_body(UUID_A),
+    );
+    assert!(resp.starts_with("HTTP/1.1 404"), "{resp}");
+    assert_eq!(
+        at_default.lock().expect("lock").len(),
+        2,
+        "认不出的地址回落到了默认上游"
+    );
+}
+
 /// ★ 回 429 ⇒ 节点通道上来一件 `Refused`，带这个会话（判的缓存与推送据此当场重跑 / 重推）。
 #[test]
 fn a_refused_answer_sends_a_refused_node_for_that_session() {

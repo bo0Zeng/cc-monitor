@@ -121,7 +121,15 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
         ),
     ];
     for (agent, account, all, reg, want) in cases {
-        let got = decide_launch(agent, &account, all, relay_route_core::PORT, &rows, reg);
+        let got = decide_launch(
+            agent,
+            &account,
+            false,
+            all,
+            relay_route_core::PORT,
+            &rows,
+            reg,
+        );
         assert_eq!(
             got, want,
             "agent={agent} account={account:?} 开关={all} 登记={reg}"
@@ -134,6 +142,7 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
             decide_launch(
                 "claude-code",
                 &account,
+                false,
                 true,
                 relay_route_core::PORT,
                 &rows,
@@ -148,12 +157,49 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
         decide_launch(
             "claude-code",
             &LaunchAccount::Base,
+            false,
             true,
             relay_route_core::PORT,
             &["x".to_string()],
             true
         ),
         Endpoint::None
+    );
+}
+
+/// 上游是用户自己的（继承来的上游地址不是我们那一形）⇒ 恒走直通：API 号那一行也不走 `/s/`（鉴权是用户网关的，不代入表里的 key），
+/// 中转不在 ⇒ 直连（同不经中转）；与表里某一行同名也照注（中转按描述走用户地址，不查表）；全量开关关着 ⇒ 照旧不注。
+#[test]
+fn an_own_upstream_launch_always_takes_the_passthrough_route() {
+    let rows = vec!["acct-a".to_string(), "_".to_string()];
+    let t = "http://127.0.0.1:8788/t/claude-code";
+    let port = relay_route_core::PORT;
+    let acct = named("/h/.claude-alt/acct-a");
+    assert_eq!(
+        decide_launch("claude-code", &acct, true, true, port, &rows, true),
+        inject(&format!("{t}/acct-a"), WhenDown::Direct, None)
+    );
+    assert_eq!(
+        decide_launch(
+            "claude-code",
+            &LaunchAccount::Undeclared,
+            true,
+            true,
+            port,
+            &rows,
+            true
+        ),
+        inject(&format!("{t}/_"), WhenDown::Direct, None)
+    );
+    assert_eq!(
+        decide_launch("claude-code", &acct, true, false, port, &rows, true),
+        Endpoint::None,
+        "全量开关关着还注入了"
+    );
+    assert_eq!(
+        relay_with("claude-code", &acct, true, true, 9911, &rows, &|_, _| false).unwrap(),
+        None,
+        "上游是自己的、中转不在却拒了起会话"
     );
 }
 
@@ -170,7 +216,7 @@ fn us1_the_relay_answer_is_the_product_and_probes_only_when_injecting() {
     };
     let named = named("/h/.claude-alt/acct-a");
     assert_eq!(
-        relay_with("claude-code", &named, false, 9911, &rows, &probe)
+        relay_with("claude-code", &named, false, false, 9911, &rows, &probe)
             .unwrap()
             .as_deref(),
         Some("http://127.0.0.1:9911/s/claude-code/acct-a")
@@ -181,6 +227,7 @@ fn us1_the_relay_answer_is_the_product_and_probes_only_when_injecting() {
             "claude-code",
             &LaunchAccount::Base,
             false,
+            false,
             9911,
             &rows,
             &probe
@@ -190,18 +237,38 @@ fn us1_the_relay_answer_is_the_product_and_probes_only_when_injecting() {
     );
     assert_eq!(probes.get(), 1, "不注入也去探了中转");
     // 非它不可而没在听 ⇒ 拒，说得出是哪个号。
-    let down = relay_with("claude-code", &named, false, 9911, &rows, &|_, _| false).unwrap_err();
+    let down = relay_with("claude-code", &named, false, false, 9911, &rows, &|_, _| {
+        false
+    })
+    .unwrap_err();
     assert!(down.contains("acct-a"), "拒的那一句没说是哪个号：{down}");
     // 有它更好（`/t/`）而没在听 ⇒ 这一发直连。
     let undeclared = LaunchAccount::Undeclared;
     assert_eq!(
-        relay_with("claude-code", &undeclared, true, 9911, &rows, &|_, _| false).unwrap(),
+        relay_with(
+            "claude-code",
+            &undeclared,
+            false,
+            true,
+            9911,
+            &rows,
+            &|_, _| false
+        )
+        .unwrap(),
         None
     );
     assert_eq!(
-        relay_with("claude-code", &undeclared, true, 9911, &rows, &|_, _| true)
-            .unwrap()
-            .as_deref(),
+        relay_with(
+            "claude-code",
+            &undeclared,
+            false,
+            true,
+            9911,
+            &rows,
+            &|_, _| true
+        )
+        .unwrap()
+        .as_deref(),
         Some("http://127.0.0.1:9911/t/claude-code/_")
     );
 }

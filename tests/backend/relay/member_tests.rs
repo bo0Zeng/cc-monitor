@@ -82,6 +82,7 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
         &crate::accounts::upstream_select::endpoint::LaunchAccount::Named {
             config_dir: "/h/.claude-alt/acct-a".to_string(),
         },
+        false,
         true,
         relay_route_core::PORT,
         &[],

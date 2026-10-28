@@ -81,7 +81,8 @@ fn ps_relay_word(word: &str, url: &str, pass: Option<&str>) -> Option<String> {
 /// 环境里继承来的那一条上游地址（[`Env::base_url_env`] 那个变量）里，**用户自己的端点**那一个（不是我们的中转那一形）。
 ///
 /// 我们的中转地址属于某一个号（路由里带着账号段）：它是外层 shell / 上一趟 ccm 留下的，
-/// 不是这一发的 ⇒ 不认（容器路不转进 pane，直路按这一发的目标账号重问）。用户自己的端点 ⇒ 照旧不动。
+/// 不是这一发的 ⇒ 不认（容器路不转进 pane，直路按这一发的目标账号重问）。用户自己的端点 ⇒ 这条会话的上游
+/// （照样注入中转，中转按这条会话的上游描述直通过去；没注入 ⇒ 原样不动）。
 ///
 /// 〔继承表〕中转地址那一格：只有用户自己的端点往下传。
 fn user_base_url(env: &Env) -> Option<&str> {
@@ -357,10 +358,11 @@ pub(crate) fn machine_env(get: impl Fn(&str) -> Option<String>) -> String {
     get("CCM_ENV").unwrap_or_else(|| crate::ccm_line::argv::Defaults::ENV.to_string())
 }
 
-/// 问中转地址的那一只手：`(适配器 id, 这一发用哪个号)` ⇒ 不带钥匙的地址（`None` = 不注入）或拒的那一句。
+/// 问中转地址的那一只手：`(适配器 id, 这一发用哪个号, 上游是不是用户自己的)` ⇒ 不带钥匙的地址（`None` = 不注入）或拒的那一句。
 pub(crate) type RelayAsk = fn(
     &str,
     &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    bool,
 ) -> Result<Option<String>, String>;
 
 impl Env {
@@ -596,8 +598,9 @@ pub(crate) struct Direct {
     pub(crate) relay_via: RelayVia,
     /// 随中转地址一起设的环境（名, 值；适配层 `DefaultUpstream.relay_env`）：注入地址时（`relay` 有）才设，打印那一行与真跑那一趟都按它。
     pub(crate) relay_env: Vec<(String, String)>,
-    /// 环境里本来就有一个不是我们注入的上游地址（用户自己的端点）⇒ 不动它，说一句。
-    pub(crate) keeps_user_base_url: bool,
+    /// 注入了中转、而这条会话的上游是用户自己的（环境里继承来的上游地址不是我们那一形）⇒ 那个地址原样：
+    /// 进这条会话的上游描述，中转按来处把请求直通过去。`None` ＝ 上游不是用户的，或没注入中转（那时环境里那一条原样不动）。
+    pub(crate) own_upstream: Option<String>,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
     pub(crate) clears_inherited_relay: bool,
     /// 非得经 shell 那一趟、`/t/` 地址照字面插的只许直通那一把（[`Env::relay_pass_key`]；不注入 ⇒ `None`）。
@@ -1355,16 +1358,17 @@ pub(crate) fn build_among(
 
     // ── 非容器路（最终 exec 的那一处）────────────────────────────────────
     // 中转地址只在这里定，按**这一发的目标账号**问上游选择那张表（容器路的 pane 里那一趟也走到这里）。
-    // 环境里继承来的：用户自己的端点 ⇒ 不动、说一句；我们的中转那一形（别的号的）⇒ 不认，重问，
+    // 环境里继承来的：用户自己的端点 ⇒ 照样问（说上游是自己的），注入了就把那个地址交给这条会话的上游描述，没注入就原样不动；
+    // 我们的中转那一形（别的号的）⇒ 不认，重问，
     // 这一发不注入时还要清掉它（否则 agent 拿着别的号的路由出去）。
     let relay_via = match crate::agents::inject_among(registry, &o.agent) {
         Some(crate::agents::Inject::Env(v)) => RelayVia::Env(v.to_string()),
         Some(crate::agents::Inject::Args(_)) => RelayVia::Args,
         None => RelayVia::None,
     };
-    let keeps_user_base_url = user_base_url(env).is_some();
-    let relay = match (keeps_user_base_url, env.relay, face) {
-        (false, Some(ask), Some(f)) if relay_via != RelayVia::None => {
+    let own = user_base_url(env);
+    let relay = match (env.relay, face) {
+        (Some(ask), Some(f)) if relay_via != RelayVia::None => {
             let account = if !config_dir.is_empty() {
                 LaunchAccount::Named {
                     config_dir: config_dir.clone(),
@@ -1383,24 +1387,29 @@ pub(crate) fn build_among(
                     None => LaunchAccount::Undeclared,
                 }
             };
-            ask(f.adapter_id, &account).map_err(Die)?
+            ask(f.adapter_id, &account, own.is_some()).map_err(Die)?
         }
         _ => None,
     };
     // 〔会话血缘〕地址尾上带这一趟的来处（＋ 调用方那个会话当父）：中转第一次看见就绑给新会话，它里面再起的都继承这条地址。
-    let relay = match (relay, env.origin_token.as_deref()) {
-        (Some(url), Some(token)) => Some(
+    // 上游是用户自己的 ⇒ 中转按来处找那条会话的上游描述 ⇒ 拼不上来处就不注入（用户的地址原样留着），不让它落到默认上游去。
+    let relay = relay.and_then(|url| {
+        let tagged = env.origin_token.as_deref().and_then(|token| {
             relay_route_core::with_origin(
                 &url,
                 token,
                 env.inherited_parent.as_ref().map(|(_, v)| v.as_str()),
             )
-            .unwrap_or(url),
-        ),
-        (relay, _) => relay,
-    };
+        });
+        match (tagged, own) {
+            (Some(tagged), _) => Some(tagged),
+            (None, None) => Some(url),
+            (None, Some(_)) => None,
+        }
+    });
+    let own_upstream = relay.as_ref().and(own).map(str::to_string);
     let clears_inherited_relay = relay.is_none()
-        && !keeps_user_base_url
+        && own.is_none()
         && matches!(relay_via, RelayVia::Env(_))
         && env
             .inherited_base_url
@@ -1518,7 +1527,7 @@ pub(crate) fn build_among(
         },
         relay,
         relay_via,
-        keeps_user_base_url,
+        own_upstream,
         clears_inherited_relay,
         answer_hook_off,
         plugin_dirs,
