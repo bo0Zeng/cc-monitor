@@ -157,12 +157,11 @@ export class PlanView {
         const cur = this.current;
         if (cur) void openPlanAsk(cur.origin, cur.workspace, slice, cell);
       },
-      // 那台离线（顶上那条［重新连接］那一态）⇒［问图…］灰，悬停照那台成品的离线那一句（成品没到 ⇒ 那台状态不明那一句）。
+      // 那台离线（顶上那条［重新连接］那一态）⇒［问图…］灰，悬停照那台成品的离线那一句（成品没到 ⇒ 不知道 ≠ 离线，不灰）。
       askOff: () => {
         const cur = this.current;
         const m = cur ? this.per.get(cur.origin) : undefined;
-        if (!cur || m?.state !== "failed" || !m.offline) return null;
-        return offlineSaid(cur.origin) ?? copyText("settingsNav.dot.unknown", { machine: machineName(cur.origin) });
+        return cur && m?.state === "failed" && m.offline ? offlineSaid(cur.origin) : null;
       },
     });
     this.review = {

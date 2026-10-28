@@ -130,10 +130,9 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
   /** 成品的复制详情（连着时是每条连接那一段；空 ⇒ ⋯ 里不出「复制详情」）。 */
   let detail = "";
+  const copyItem: MenuItem = { label: copyText("detail.act.copy"), onClick: () => void copyDetail(detail) };
   more.addEventListener("click", () => {
-    const items = [...spec.menu()];
-    if (detail !== "") items.push({ label: copyText("detail.act.copy"), onClick: () => void copyDetail(detail) });
-    openMenu({ el: more, align: "end" }, items);
+    openMenu({ el: more, align: "end" }, detail === "" ? spec.menu() : [...spec.menu(), copyItem]);
   });
   top.appendChild(more);
   head.appendChild(top);
