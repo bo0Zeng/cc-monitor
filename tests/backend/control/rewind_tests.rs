@@ -314,7 +314,7 @@ fn same_line_takes_a_truncated_row_but_not_another_line() {
 /// 发送那一下的选项：照那一家申报的几项；主 agent 在干活才给「什么时候退」，缺省等这一轮完；没申报 ⇒ 空、带不支持那一句。
 #[test]
 fn options_follow_the_declared_choices_and_the_busy_state() {
-    let idle = options_of(Some(&FACE), false);
+    let idle = options_of(Some(&FACE), false, CODE);
     assert_eq!(
         idle.how
             .iter()
@@ -331,7 +331,7 @@ fn options_follow_the_declared_choices_and_the_busy_state() {
     );
     assert_eq!(idle.said, None);
 
-    let busy = options_of(Some(&FACE), true);
+    let busy = options_of(Some(&FACE), true, CODE);
     assert_eq!(
         busy.when
             .iter()
@@ -344,14 +344,174 @@ fn options_follow_the_declared_choices_and_the_busy_state() {
         ..FACE
     };
     assert_eq!(
-        options_of(Some(&no_stop), true).when.len(),
+        options_of(Some(&no_stop), true, CODE).when.len(),
         1,
         "不支持现在停 ⇒ 只给等这一轮完"
     );
 
-    let none = options_of(None, true);
+    let none = options_of(None, true, CODE);
     assert!(none.how.is_empty() && none.when.is_empty());
     assert_eq!(none.said, Some(copy_text("beRewind.no.unsupported", &[])));
+}
+
+/// 那一句之后改过代码、没有子 agent 在跑：两项都能选、都不带原因。
+const CODE: After = After {
+    code: true,
+    runs: 0,
+};
+
+fn rows(o: &RewindOptions) -> Vec<(RewindHow, bool, bool, Option<String>)> {
+    o.how
+        .iter()
+        .map(|c| (c.how, c.enabled, c.default, c.why.clone()))
+        .collect()
+}
+
+/// 第一条：那一句之后没改过代码 ⇒ 「对话和代码一起退」灰着、原因是后端写好的那一句；只退对话照常能选、缺省。
+#[test]
+fn without_code_changes_after_the_line_code_and_conversation_is_off_with_its_reason() {
+    let got = options_of(
+        Some(&FACE),
+        false,
+        After {
+            code: false,
+            runs: 0,
+        },
+    );
+    assert_eq!(
+        rows(&got),
+        [
+            (RewindHow::Conversation, true, true, None),
+            (
+                RewindHow::CodeAndConversation,
+                false,
+                false,
+                Some(copy_text("beRewind.off.noCodeChange", &[]))
+            ),
+        ]
+    );
+    assert_eq!(got.said, None);
+    assert!(rows(&options_of(Some(&FACE), false, CODE))
+        .iter()
+        .all(|(_, on, _, why)| *on && why.is_none()));
+}
+
+/// 那一家只申报了只退对话 ⇒ 「对话和代码一起退」照样列出、灰着写不支持（不是悄悄不给）。
+#[test]
+fn a_way_the_family_does_not_declare_is_listed_off_as_unsupported() {
+    let talk_only = RewindFace {
+        choices: &FACE.choices[..1],
+        ..FACE
+    };
+    let got = options_of(Some(&talk_only), false, CODE);
+    assert_eq!(
+        rows(&got),
+        [
+            (RewindHow::Conversation, true, true, None),
+            (
+                RewindHow::CodeAndConversation,
+                false,
+                false,
+                Some(copy_text("beRewind.off.unsupported", &[]))
+            ),
+        ]
+    );
+}
+
+/// 缺省那一项不能选 ⇒ 缺省落到第一项能选的（缺省不落在灰着的那一项上）。
+#[test]
+fn the_default_never_sits_on_an_option_that_is_off() {
+    const CHOICES: &[crate::agents::RewindChoice] = &[
+        crate::agents::RewindChoice {
+            how: RewindHow::Conversation,
+            label: "a",
+            text: || "a".into(),
+            default: false,
+        },
+        crate::agents::RewindChoice {
+            how: RewindHow::CodeAndConversation,
+            label: "b",
+            text: || "b".into(),
+            default: true,
+        },
+    ];
+    let face = RewindFace {
+        choices: CHOICES,
+        ..FACE
+    };
+    let got = options_of(
+        Some(&face),
+        false,
+        After {
+            code: false,
+            runs: 0,
+        },
+    );
+    assert_eq!(
+        got.how
+            .iter()
+            .map(|c| (c.how, c.default))
+            .collect::<Vec<_>>(),
+        [
+            (RewindHow::Conversation, true),
+            (RewindHow::CodeAndConversation, false)
+        ]
+    );
+}
+
+/// 这句之后派出的子 agent 还有在跑的 ⇒ 选项下面照实写几个（退不碰它们）。
+#[test]
+fn running_agents_launched_after_the_line_are_said_with_their_count() {
+    let got = options_of(
+        Some(&FACE),
+        false,
+        After {
+            code: true,
+            runs: 2,
+        },
+    );
+    assert_eq!(
+        got.said,
+        Some(copy_text("beRewind.note.runsAfter", &[("n", "2")]))
+    );
+}
+
+/// 运行表里数「这句之后派出、还在跑」的：起于那一刻之前的 · 收了场的 · 起的时刻不知道的都不数；那一句的时刻不知道 ⇒ 一个都不说。
+#[test]
+fn runs_after_counts_only_running_ones_started_after_the_line() {
+    let run = |state, started_ms| cmd_wire::frame::RunInfo {
+        state,
+        started_ms,
+        ..Default::default()
+    };
+    use cmd_wire::frame::RunState::{Done, Running};
+    let runs = [
+        run(Running, Some(500)),
+        run(Running, Some(1_000)),
+        run(Running, Some(2_000)),
+        run(Done, Some(2_000)),
+        run(Running, None),
+    ];
+    assert_eq!(runs_after(&runs, Some(1_000)), 2);
+    assert_eq!(runs_after(&runs, None), 0);
+}
+
+/// 那一句起的主线记录里有写文件的调用才算改过代码（那一家的一拍里认；子运行的记录不算）。
+#[test]
+fn code_after_sees_a_write_call_in_the_family_beats() {
+    let said = serde_json::json!({"type": "user", "uuid": "u1", "message": {"role": "user", "content": "改一下"}});
+    let read = serde_json::json!({"type": "assistant", "uuid": "a1", "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/w/a.rs"}}
+    ]}});
+    let edit = serde_json::json!({"type": "assistant", "uuid": "a2", "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": "/w/a.rs", "old_string": "x", "new_string": "y"}}
+    ]}});
+    assert!(!code_after("claude", [&said, &read], &[]));
+    assert!(code_after("claude", [&said, &read, &edit], &[]));
+    assert!(
+        !code_after("claude", [&said, &read, &edit], &["a2".to_string()]),
+        "回退掉的那一条（主线外）改的不算"
+    );
 }
 
 /// 两家今天的申报：Claude 有（缺省只退对话），Codex 没有。

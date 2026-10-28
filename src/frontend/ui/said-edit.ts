@@ -2,7 +2,7 @@
  * **编辑已发的一句**（桌面）：标签页里人说的那一句悬停出「编辑」，气泡就地变编辑框、原文填好，它后面的卡淡掉（示意从这里往后会退掉）。
  *
  * - 改动全攒在这一端：编辑 · 改字 · 选怎么退都不碰会话；改字落本地草稿（按那台 ＋ 会话 ＋ 那一句，重开还在）。
- * - 「发送」⇒ 问会话那台 `session-rewind-options`，照回包摆「怎么退」那几项（缺省那一项先选上）；主 agent 在干活时多一行「什么时候退」
+ * - 「发送」⇒ 问会话那台 `session-rewind-options`（带那一句），照回包摆「怎么退」那几项（缺省那一项先选上；不能选的灰着、下面写为什么）；主 agent 在干活时多一行「什么时候退」
  *   （缺省等这一轮跑完）。回包没有项 ⇒ 只写那台那一句为什么，不给确认。选项的字都是那台写好的，这里不写死。
  * - 「确认」⇒ 带 `rewind {to, how, when}` 的那一句交给输入队那一份待发（宿主给的 [`SaidEditIo.send`]：同编号重交 · 回执才算出去）。
  *   回执到了 ⇒ 草稿清掉、编辑框收起；那台拒了 ⇒ 字留着、说那台那一句；没回执 ⇒ 编辑框收起、草稿留着（待发那一排写「发送中」）。
@@ -28,9 +28,9 @@ export interface SaidAt {
   text: string;
 }
 
-/** 编辑器要的两口：问选项 · 把改好的那一句（带 `rewind`）交给输入队那一份待发。 */
+/** 编辑器要的两口：问选项（退到 `to` 那一句之前）· 把改好的那一句（带 `rewind`）交给输入队那一份待发。 */
 export interface SaidEditIo {
-  options(origin: Origin, sid: string): Promise<RewindOptions>;
+  options(origin: Origin, sid: string, to: string): Promise<RewindOptions>;
   send(origin: Origin, sid: string, text: string, rewind: Rewind): Promise<PutEnd>;
 }
 
@@ -143,7 +143,7 @@ export class SaidEdit {
     pick.replaceChildren(el("p", s.note, copyText("saidEdit.pick.loading")));
     let got: RewindOptions;
     try {
-      got = await this.io.options(at.origin, at.sid);
+      got = await this.io.options(at.origin, at.sid, at.id);
     } catch (e) {
       pick.replaceChildren(el("p", s.note, saidOf(e)));
       return;
@@ -153,12 +153,21 @@ export class SaidEdit {
       pick.replaceChildren(el("p", s.note, got.said ?? ""));
       return;
     }
-    let how = (got.how.find((r) => r.default) ?? got.how[0]!).how;
+    let how = (got.how.find((r) => r.enabled && r.default) ?? got.how.find((r) => r.enabled))?.how;
     let when = (got.when.find((r) => r.default) ?? got.when[0])?.when ?? "after_turn";
     const hows = el("div", s.group);
     hows.setAttribute("role", "radiogroup");
     hows.append(el("span", s.label, copyText("saidEdit.pick.how")));
-    for (const r of got.how) hows.appendChild(radio("said-edit-how", r.text, r.how === how, () => (how = r.how)));
+    for (const r of got.how) {
+      const row = radio("said-edit-how", r.text, r.how === how, () => (how = r.how));
+      if (!r.enabled) {
+        // 不能选：灰着、点不了，下面写那台那一句为什么。
+        row.setAttribute("aria-disabled", "true");
+        row.querySelector("input")!.disabled = true;
+      }
+      hows.appendChild(row);
+      if (r.why !== undefined) hows.appendChild(el("p", s.note, r.why));
+    }
     const rows: HTMLElement[] = [hows];
     if (got.when.length > 0) {
       const whens = el("div", s.group);
@@ -167,13 +176,19 @@ export class SaidEdit {
       for (const r of got.when) whens.appendChild(radio("said-edit-when", r.text, r.when === when, () => (when = r.when)));
       rows.push(whens);
     }
-    const confirm = button({
-      label: copyText("saidEdit.pick.confirm"),
-      kind: "primary",
-      onClick: () => void this.confirm(at, box.value, { to: at.id, how, when }, pick),
-    });
-    confirm.dataset.role = "said-edit-confirm";
-    pick.replaceChildren(...rows, confirm);
+    pick.replaceChildren(...rows);
+    // 一项都不能选 ⇒ 只摆出来（各带为什么），不给确认。
+    if (how !== undefined) {
+      const confirm = button({
+        label: copyText("saidEdit.pick.confirm"),
+        kind: "primary",
+        onClick: () => {
+          if (how !== undefined) void this.confirm(at, box.value, { to: at.id, how, when }, pick);
+        },
+      });
+      confirm.dataset.role = "said-edit-confirm";
+      pick.appendChild(confirm);
+    }
     if (got.said !== undefined) pick.appendChild(el("p", s.note, got.said));
   }
 

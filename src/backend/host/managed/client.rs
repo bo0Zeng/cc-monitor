@@ -112,6 +112,17 @@ pub(crate) fn clients(sock: &Path) -> std::io::Result<Vec<ClientRow>> {
     })
 }
 
+/// 往会话说一句（会话输入队投递那一下）：不持有输入，托管进程照写、不换持有者。
+/// 回 `true` ＝ 写进去了；`false` ＝ 持有者输入行里有没交的字、没写（投递照排着）。
+/// 托管进程是不认 `say` 的旧版本 ⇒ 不答、读到期限报错（调用方当不知道送没送到）。
+pub(crate) fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<bool> {
+    let text = String::from_utf8(bytes.to_vec()).map_err(|_| bad("say: not utf-8"))?;
+    ask(sock, vec![Ctl::Say { text }], |c| match c {
+        Ctl::Said { pending } => Some(!pending),
+        _ => None,
+    })
+}
+
 /// 抓回来的一屏：回滚里最近 `back` 行 ＋ 当屏（`color` ⇒ 行里带 SGR）、尺寸、光标（行 · 列）。
 pub(crate) struct Captured {
     pub(crate) lines: Vec<String>,
