@@ -1250,7 +1250,11 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     // 输入在别的一端手里：下一步是接管再送（界面照它给［接管再送］）。
     assert_eq!(
-        wire(&t::input_reply(SentResult::Refused, Some(t::Refused::HeldElsewhere), None)),
+        wire(&t::input_reply(
+            SentResult::Refused,
+            Some(t::Refused::HeldElsewhere),
+            None
+        )),
         r#"{"acts":["take"],"result":"refused","said":"输入在另一端 · 没送","why":"held_elsewhere"}"#
     );
     // terminal-end：手机那一份入参（`core-claude/.../link/Terminals.kt`）经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 名单里没有它）。
@@ -1389,7 +1393,10 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "sid": "s-1", "model": "opus", "effort": "high" }),
         ),
         ("session-model", serde_json::json!({ "sid": "s-1" })),
-        ("terminal-end", serde_json::json!({ "terminal": "t-1", "extra": 1 })),
+        (
+            "terminal-end",
+            serde_json::json!({ "terminal": "t-1", "extra": 1 }),
+        ),
         ("terminal-end", serde_json::json!({ "terminal": 1 })),
         (
             "session-open",

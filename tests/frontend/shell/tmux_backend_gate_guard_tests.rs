@@ -267,7 +267,10 @@ fn the_front_end_ends_terminals_only_through_one_module() {
             "`{n}` 出现在 `src/frontend/ui/terminal-reads.ts` 之外（或那一份里没有了）—— 界面说结束的家不止一个"
         );
     }
-    assert!(gone_hits.is_empty(), "界面又发起了 `launch` / `kill`：{gone_hits:?}");
+    assert!(
+        gone_hits.is_empty(),
+        "界面又发起了 `launch` / `kill`：{gone_hits:?}"
+    );
     // 正控 ＋ 恒等：结束 1。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),

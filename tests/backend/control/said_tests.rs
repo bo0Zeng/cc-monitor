@@ -31,14 +31,22 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
         (
             "terminal-end",
             Box::new(|c| kill::said("demo-cc", c)),
-            ["no_such_session", "wrong_owner", "too_many_windows", "kill_failed", "child_timed_out"]
-                .into_iter()
-                .inspect(|c| assert!(
+            [
+                "no_such_session",
+                "wrong_owner",
+                "too_many_windows",
+                "kill_failed",
+                "child_timed_out",
+            ]
+            .into_iter()
+            .inspect(|c| {
+                assert!(
                     <kill::TerminalEndErr as crate::wire::typed::Codes>::ALL.contains(c),
                     "{c} 不在 terminal-end 的码表里"
-                ))
-                .map(str::to_string)
-                .collect(),
+                )
+            })
+            .map(str::to_string)
+            .collect(),
             Some("demo-cc"),
         ),
         (

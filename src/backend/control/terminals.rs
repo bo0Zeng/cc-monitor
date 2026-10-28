@@ -121,7 +121,9 @@ fn input_of_row(input: &crate::host::Input, requester: Option<&str>) -> TermInpu
                 (_, true) => copy_text("beTerminal.holder.here", &[]),
                 (HolderWho::Desktop, _) => copy_text("beTerminal.holder.desktop", &[]),
                 (HolderWho::Mobile, _) => copy_text("beTerminal.holder.mobile", &[]),
-                (HolderWho::TerminalWindow, _) => copy_text("beTerminal.holder.terminalWindow", &[]),
+                (HolderWho::TerminalWindow, _) => {
+                    copy_text("beTerminal.holder.terminalWindow", &[])
+                }
                 (HolderWho::None, _) => copy_text("beTerminal.holder.none", &[]),
             };
             TermInput::Held {
