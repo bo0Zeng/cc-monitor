@@ -1087,11 +1087,11 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 /// 两侧异源：左边是真 hello 行经 `stream_source::decode` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
-    // `kill` · `terminals-list` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
+    // `terminal-preview` · `terminals-list` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
     let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
     let line = format!(
-        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","kill","ping","terminals-list"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"kill":"{}","terminals-list":"{}","ping":"{}"}}}}"#,
-        shape("kill"),
+        r#"{{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":["cancel","ping","terminal-preview","terminals-list"],"unavailable":[{{"command":"terminal-preview","code":"no_tmux"}}],"shapes":{{"terminal-preview":"{}","terminals-list":"{}","ping":"{}"}}}}"#,
+        shape("terminal-preview"),
         shape("terminals-list"),
         shape("ping")
     );
@@ -1103,13 +1103,13 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
 
     // ①
     let err = client
-        .call("kill", Value::Null, Duration::from_secs(5))
+        .call("terminal-preview", Value::Null, Duration::from_secs(5))
         .await
         .unwrap_err();
     assert_eq!(
         err,
         CallError::Unavailable {
-            cmd: "kill".into(),
+            cmd: "terminal-preview".into(),
             code: "no_tmux".into()
         }
     );

@@ -1,5 +1,6 @@
 /**
- * **界面说终端管理那几条命令**：终端名单（`terminals-list`）· 抓一屏（`terminal-preview`）· 送字送键（`terminal-input`）。经通道直接问那台后端，本机远端同一条路。
+ * **界面说终端管理那几条命令**：终端名单（`terminals-list`）· 抓一屏（`terminal-preview`）· 送字送键（`terminal-input`）· 结束（`terminal-end`）·
+ * 接管 · 交还输入（`terminal-take-input` · `terminal-release-input`，托管那一形）。经通道直接问那台后端，本机远端同一条路。
  *
  * 目标只认名单里的终端（`terminal` 句柄）或会话 ID（`sid`），不收 tmux 目标串。
  *
@@ -7,10 +8,11 @@
  * 实时预览的帧（`terminal_screen`）的 `view` 就是 `terminal-preview` 的回包类型（帧的形状指纹核过），同一个 [`shotOf`] 收。
  * 预览要带颜色的成品（`color: true`）：每行 `text` ＋ 颜色段交给画面（`terminal-screen.ts`）；纯文字那一份是每行 `text` 用换行接起来，与那一屏逐行相同。
  *
- * 期限：抓一屏 20 秒，送字送键 20 秒，名单 15 秒（远端没连着还要握手）。
+ * 结束是破坏性的：回的句柄与交的那个对得上才算结束了，否则当「不知道结束了没有」（不当成功、不换条路重做）。
+ * 期限：抓一屏 · 送字送键 · 结束 · 接管交还 20 秒，名单 15 秒（远端没连着还要握手）。
  */
 import { copyText } from "./copy-table";
-import { settleTyped } from "./control-said";
+import { ControlError, machineName, settleTyped } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { screenText, type ScreenLine } from "./terminal-screen";
@@ -18,6 +20,7 @@ import type { Preview } from "./generated/Preview";
 import type { Sent } from "./generated/Sent";
 import type { SentAct } from "./generated/SentAct";
 import type { TerminalsList } from "./generated/TerminalsList";
+import type { TermInput } from "./generated/TermInput";
 
 /** 抓一屏的期限。 */
 const PREVIEW_BUDGET_MS = 20_000;
@@ -34,12 +37,25 @@ export interface TerminalRow {
   sid: string | null;
   /** 此刻连着它的终端窗口几个（0 ＝ 后台）。 */
   clients: number;
-  /** 输入怎么进：`shared` ＝ 各端都能打字（tmux）· `held` ＝ 托管那一形，只有持有者的进（谁持有在名单那一行的 `input.holder`）。 */
+  /** 输入怎么进：`shared` ＝ 各端都能打字（tmux）· `held` ＝ 托管那一形，只有持有者的进（谁持有在 `holder`）。 */
   input: TerminalsList["terminals"][number]["input"]["kind"];
+  /** 托管那一形：此刻谁在输入（后端写好的那一句 ＋ 是不是这一端持有）；tmux 那一形没有这一格。 */
+  holder?: TerminalHolder;
   /** Claude 已退出、终端还开着。 */
   programExited: boolean;
   /** 能不能送字 / 送键：`null` ＝ 能；否则为什么不能（后端写好的那一句）。 */
   inputNo: string | null;
+}
+
+/** 托管终端此刻的输入持有者：给人看的那一句（后端写好）· 是不是这一端。 */
+export interface TerminalHolder {
+  said: string;
+  mine: boolean;
+}
+
+/** 输入那一格 ⇒ 持有者（tmux 那一形 ⇒ 没有）。名单那一行与接管 · 交还的回包同一个读法。 */
+export function holderOf(input: TermInput): TerminalHolder | undefined {
+  return input.kind === "held" ? { said: input.holder.said, mine: input.holder.mine } : undefined;
 }
 
 /** 抓到的一屏：每一行（带颜色段）· 纯文字 · 指纹（送字时带回去）· 几点抓的（秒）。 */
@@ -78,6 +94,7 @@ export function rowsOf(v: TerminalsList): TerminalRow[] {
     sid: r.session?.sid ?? null,
     clients: r.clients.length,
     input: r.input.kind,
+    holder: holderOf(r.input),
     programExited: r.state === "program_exited",
     inputNo: r.can.input === true ? null : r.can.input.said,
   }));
@@ -108,9 +125,35 @@ export function sentOf(v: Sent): TerminalSent {
   return { result: "refused", said: v.said ?? noSaid(), screen: v.screen ?? null, acts };
 }
 
-/** 往那个终端送一段字或一颗键；带上看到的那一屏的指纹（画面已经变了 ⇒ 后端不送）。失败 ⇒ 抛 `ControlError`。 */
-export async function sendToTerminal(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent> {
-  const req = { terminal, ...what, ...(seen !== null ? { seen_screen: seen } : {}) };
+/**
+ * 往那个终端送一段字或一颗键；带上看到的那一屏的指纹（画面已经变了 ⇒ 后端不送）。`take` ＝ 托管终端的输入在别的一端手里时先替这一端接管再送
+ * （［接管再送］）。失败 ⇒ 抛 `ControlError`。
+ */
+export async function sendToTerminal(origin: Origin, terminal: string, what: TerminalSend, seen: string | null, take = false): Promise<TerminalSent> {
+  const req = { terminal, ...what, ...(seen !== null ? { seen_screen: seen } : {}), ...(take ? { take: true } : {}) };
   const budget = budgetWithin(INPUT_BUDGET_MS);
   return sentOf(await settleTyped(origin, "terminal-input", callTyped(origin, "terminal-input", req, budget)));
+}
+
+/** 结束 · 接管 · 交还的期限（与送字同）。 */
+const HOLD_BUDGET_MS = 20_000;
+
+/**
+ * 结束那个终端（**破坏性**：调用方先确认）：两种宿主同一条 `terminal-end`，身份门 · 窗口门在后端先过、对句柄下手。
+ * 回的句柄与交的那个对不上（按会话 ID 指时：回的是空）⇒ 当「不知道结束了没有」抛（`name` 是确认框里说的那个名字）。失败 ⇒ 抛（那一句后端写好）。
+ */
+export async function endTerminal(origin: Origin, target: TerminalTarget, name: string): Promise<void> {
+  const v = await settleTyped(origin, "terminal-end", callTyped(origin, "terminal-end", { ...target }, budgetWithin(HOLD_BUDGET_MS)));
+  const confirmed = "terminal" in target ? v.terminal === target.terminal : v.terminal !== "";
+  if (!confirmed) throw new ControlError(copyText("tmuxControl.kill.notConfirmed", { machine: machineName(origin), target: name }), "");
+}
+
+/** 替这一端接管托管终端的输入（之后送字经它）；回那一行此刻的输入那一格。失败 ⇒ 抛（那一句后端写好）。 */
+export async function takeInput(origin: Origin, terminal: string): Promise<TermInput> {
+  return (await settleTyped(origin, "terminal-take-input", callTyped(origin, "terminal-take-input", { terminal }, budgetWithin(HOLD_BUDGET_MS)))).input;
+}
+
+/** 交还托管终端的输入（交给最近连上的真终端，没有就空着）；回那一行此刻的输入那一格。 */
+export async function releaseInput(origin: Origin, terminal: string): Promise<TermInput> {
+  return (await settleTyped(origin, "terminal-release-input", callTyped(origin, "terminal-release-input", { terminal }, budgetWithin(HOLD_BUDGET_MS)))).input;
 }

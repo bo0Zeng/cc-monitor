@@ -670,7 +670,11 @@ fn die(msg: &str) -> i32 {
 
 /// 接上一个托管终端（瘦客户端）。`ccm` 这一趟本身同步，入口那个多线程运行时还在 ⇒ 让出这条线、在它上面跑完。
 fn attach_managed(own: &crate::platform::fs::Own, id: &str) -> i32 {
-    block_on(crate::host::managed::attach::attach(own, id))
+    block_on(crate::host::managed::attach::attach(
+        own,
+        id,
+        crate::history::session_queue::host_line_ears,
+    ))
 }
 
 /// 真跑。

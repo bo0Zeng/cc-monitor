@@ -583,14 +583,11 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
     }
     checked.sort();
     checked.dedup();
-    // 正控 ＋ 人群：今天登记表里直接过门的恰好是 kill 与 terminal-end（admit_destructive，tmux 那一形）；`admit` 由 `session-open` · 换号重启经
+    // 正控 ＋ 人群：今天登记表里直接过门的恰好是 terminal-end（admit_destructive，tmux 那一形）；`admit` 由 `session-open` · 换号重启经
     //   `launch::run` 在里头过（码各自翻成自己的），`terminal-input` 那一路过的是 `admit_with`。多了少了都要回来看一眼。
     assert_eq!(
         checked,
-        vec![
-            ("kill", "admit_destructive"),
-            ("terminal-end", "admit_destructive")
-        ],
+        vec![("terminal-end", "admit_destructive")],
         "过门的命令变了"
     );
 }

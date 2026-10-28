@@ -82,6 +82,8 @@ pub enum SentAct {
     Recapture,
     /// 终端可能换了 · 没了：重读终端名单。
     Relist,
+    /// 输入在别的一端手里：给［接管再送］（同一份字带 `take: true` 再送）。
+    Take,
 }
 
 /// 送字 / 送键的结局。
@@ -181,6 +183,8 @@ pub struct InputHolder {
     pub who: HolderWho,
     /// 是不是这次请求自报的那个前端。
     pub mine: bool,
+    /// 给人看的那一句（「输入在此处」·「输入在手机」…，后端写好，出口照抄）。
+    pub said: String,
 }
 
 /// `terminal-take-input` · `terminal-release-input` 的回包：那一行此刻的输入那一格。
@@ -1031,21 +1035,6 @@ pub struct SessionSkill {
     /// 点它时发进会话的那一句（后端写好，经 `session-queue-put` 投进队）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
     pub say: String,
-}
-
-/// `kill` 的回包：杀成了才有（没杀成走失败信封）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-pub struct Killed {
-    /// 杀掉的 tmux 会话名。
-    pub session: String,
-    /// 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "true"))]
-    pub killed: bool,
 }
 
 /// 尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。

@@ -60,11 +60,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/frontend/shell/backend_kill_tests.rs",
         "src/backend/control/kill.rs",
-        "创建路径不许铸出后端 kill 形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
-         （本侧手抄一份就成了两侧同源的恒等）。原理由「拒绝文案两侧逐字同形」随 monitor 的杀会话发送端迁到界面退役；\
-         同拍删掉的三条边（`backend_launch_tests.rs` → `stream/inbound/` · `backend_send_keys_tests.rs` → `launch.rs` · \
-         `inbound_client_tests.rs` → `launch.rs`）守的「发出去的字段 / mode 名 == 后端解析器认的」改由跨语言金样 \
-         `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
+        "创建路径不许铸出后端结束那一道形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
+         （本侧手抄一份就成了两侧同源的恒等）",
     ),
     // `mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
     // 足迹的申报表与判据进了后端 ⇒ 原先 `tool_registry_tests.rs` → 后端 `assets/*`（五条装 / 卸口对拍）·

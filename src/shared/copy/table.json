@@ -11557,6 +11557,36 @@
       "zh": "输入在另一端 · 没送",
       "args": []
     },
+    "beTerminal.holder.here": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入在此处",
+      "args": []
+    },
+    "beTerminal.holder.desktop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入在桌面",
+      "args": []
+    },
+    "beTerminal.holder.mobile": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入在手机",
+      "args": []
+    },
+    "beTerminal.holder.terminalWindow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入在终端窗口",
+      "args": []
+    },
+    "beTerminal.holder.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入无人持有",
+      "args": []
+    },
     "beTerminal.refuse.empty": {
       "kind": "error",
       "role": "原因格",
@@ -14619,8 +14649,8 @@
     "beHost.attach.viewOnly": {
       "kind": "body",
       "role": "片段",
-      "zh": "[只看] ",
-      "args": []
+      "zh": "[只看 {size}] ",
+      "args": ["size"]
     },
     "beHost.attach.heldBy": {
       "kind": "body",
@@ -22928,6 +22958,24 @@
       "kind": "action",
       "role": "按钮",
       "zh": "重试",
+      "args": []
+    },
+    "terminal.input.take": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "接管输入",
+      "args": []
+    },
+    "terminal.input.release": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "交还",
+      "args": []
+    },
+    "terminal.input.takeSend": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "接管再送",
       "args": []
     },
     "terminal.queue.sending": {

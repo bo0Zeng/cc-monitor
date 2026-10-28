@@ -81,6 +81,7 @@ impl Screen {
 struct Fake {
     keys: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     _resized: tokio::sync::mpsc::UnboundedSender<()>,
+    queued: tokio::sync::mpsc::UnboundedSender<Option<String>>,
     screen: Screen,
     task: tokio::task::JoinHandle<Result<Left, Said>>,
 }
@@ -88,6 +89,7 @@ struct Fake {
 fn attach_fake(sock: &std::path::Path) -> Fake {
     let (ktx, krx) = tokio::sync::mpsc::unbounded_channel();
     let (rtx, rrx) = tokio::sync::mpsc::unbounded_channel();
+    let (qtx, qrx) = tokio::sync::mpsc::unbounded_channel();
     let screen = Screen::default();
     let outer = Outer {
         keys: krx,
@@ -99,10 +101,11 @@ fn attach_fake(sock: &std::path::Path) -> Fake {
         in_tmux: false,
     };
     let sock = sock.to_path_buf();
-    let task = tokio::spawn(async move { session(&sock, outer, &Vec::new).await });
+    let task = tokio::spawn(async move { session(&sock, outer, &Vec::new, qrx).await });
     Fake {
         keys: ktx,
         _resized: rtx,
+        queued: qtx,
         screen,
         task,
     }
@@ -170,10 +173,14 @@ async fn a_viewer_types_nothing_until_enter_takes_over() {
     .await;
     let a = attach_fake(&sock);
     until_seen(&a.screen, "ready").await;
-    // B 接上 ⇒ B 持有，A 只看。
+    // B 接上 ⇒ B 持有，A 只看：标题「[只看 宽×高]」，尺寸是伪终端的（跟持有者 B 的 80×24）。
     let b = attach_fake(&sock);
     until_seen(&b.screen, "ready").await;
-    until_seen(&a.screen, &copy_text("beHost.attach.viewOnly", &[])).await;
+    until_seen(
+        &a.screen,
+        &copy_text("beHost.attach.viewOnly", &[("size", "80×24")]),
+    )
+    .await;
     a.keys.send(b"zz".to_vec()).unwrap();
     until_seen(
         &a.screen,
@@ -203,6 +210,58 @@ async fn a_viewer_types_nothing_until_enter_takes_over() {
     task.await.unwrap().unwrap();
     let _ = a.task.await;
     let _ = b.task.await;
+}
+
+/// ★ 底行照说来的那一句摆：来「排队 2 条」⇒ 最底一行是它；换成「排队 1 条」⇒ 跟着换；里面出字之后照盖；清了 ⇒ 那一行照里面重画。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_bottom_line_shows_the_owner_written_queue_line() {
+    let own = sandbox_own("queued");
+    let (sock, task) = host(
+        &own,
+        "a-queued",
+        r#"printf 'ready\r\n'; while read x; do printf 'echo:%s\r\n' "$x"; done"#,
+    )
+    .await;
+    let a = attach_fake(&sock);
+    until_seen(&a.screen, "ready").await;
+    let line = |n: usize| copy_text("beQueue.said.waiting", &[("n", &n.to_string())]);
+    let bottom = |s: &Screen| s.seen().screen().contents_between(23, 0, 23, 80);
+    a.queued.send(Some(line(2))).unwrap();
+    until_seen(&a.screen, &line(2)).await;
+    assert!(
+        bottom(&a.screen).contains(&line(2)),
+        "盖在最底一行：{:?}",
+        bottom(&a.screen)
+    );
+    a.queued.send(Some(line(1))).unwrap();
+    until_seen(&a.screen, &line(1)).await;
+    assert!(!a.screen.text().contains(&line(2)), "换了那一句");
+    a.keys.send(b"hi\r".to_vec()).unwrap();
+    until_seen(&a.screen, "echo:hi").await;
+    assert!(
+        bottom(&a.screen).contains(&line(1)),
+        "出字之后照盖：{:?}",
+        bottom(&a.screen)
+    );
+    a.queued.send(None).unwrap();
+    for _ in 0..20_000 {
+        if !a.screen.text().contains(&line(1)) {
+            break;
+        }
+        tokio::task::yield_now().await;
+        std::thread::yield_now();
+    }
+    assert!(
+        !a.screen.text().contains(&line(1)),
+        "清了 ⇒ 不再盖：{}",
+        a.screen.text()
+    );
+    assert!(a.screen.text().contains("echo:hi"), "重画照里面");
+    a.keys.send(b"\x02x".to_vec()).unwrap();
+    until_seen(&a.screen, &copy_text("beHost.attach.confirmEnd", &[])).await;
+    a.keys.send(b"y".to_vec()).unwrap();
+    assert!(matches!(a.task.await.unwrap().unwrap(), Left::Ended(_)));
+    task.await.unwrap().unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

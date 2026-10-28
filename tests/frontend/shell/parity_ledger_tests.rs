@@ -224,7 +224,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 列 tmux 会话那两条（远端 `tmux.manage` · 本机 `tmux.local-census`，§40 九对合并「第 10 对」那一注记）出表：
     //   那台后端的 `tmux-list` 出成品、界面经通道直问，本机远端同一条路 —— 通道上的问法不是 Tauri 命令、不进本表（同上面抓屏 / 杀会话 / 送键）。
     // 抓屏那一条（远端抓屏，Remote）退役：界面经通道直接问那台机器的后端
-    //   （`src/frontend/ui/tmux-control.ts::capturePane`，`capture-pane`），本机与远端同一条路；通道上的问法不是 Tauri 命令、不进本表。
+    //   （`src/frontend/ui/terminal-reads.ts::previewShot`，`terminal-preview`），本机与远端同一条路；通道上的问法不是 Tauri 命令、不进本表。
     // P4a（08-12）：读面三条**已经支持本机**（同一条命令串，只是不包进 ssh）⇒ 转 Both。
     // 驾驶舱读名单 / 读收件箱两条 Both 退役：驾驶舱读面改由界面经通道问后端 `bus-list` / `bus-inbox`。
 ];
@@ -985,7 +985,7 @@ const FRAME_PLANE_ANYWHERE: &[&str] = &[
 ///
 const FRAME_PLANE_VERDICTS: &[(&str, FrameVerdict, &str)] = &[
     // 抓屏那一行（远端抓屏）的欠账**随命令一起结了**，不是翻了 `Side`：
-    //   界面经通道直接问那台机器的后端（`src/frontend/ui/tmux-control.ts::capturePane`），本机与远端同一条路，
+    //   界面经通道直接问那台机器的后端（`src/frontend/ui/terminal-reads.ts::previewShot`），本机与远端同一条路，
     //   通道上的问法不是 Tauri 命令、不在 `Side` 这一栏里。
 ];
 

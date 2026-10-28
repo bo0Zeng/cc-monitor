@@ -1,12 +1,11 @@
 /**
  * 「终端」视图那张名单的读写口：本机后端 `terminals-board` 问到各台、合成一份再答（每台一组 · 行排好字写好 · 筛选四格带数）；
- * 结束几行：有会话的那几行每台一次 `sessions-stop`（同 `killInTmux` 那一条），没会话的按 tmux 会话名 `kill`。
+ * 结束几行：逐行按名单里的句柄交那台 `terminal-end`（两种宿主同一条，有没有会话都一样）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { settleTyped } from "./control-said";
-import { callStop } from "./tab-batch-run";
-import { killSession } from "./tmux-control";
+import { endTerminal } from "./terminal-reads";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
@@ -28,7 +27,7 @@ export interface BoardPick {
   row: BoardRow;
 }
 
-/** 结束这几行：先确认（同一种确认框），再每台交命令；没结束的数一句。 */
+/** 结束这几行：先确认（同一种确认框），再逐行交 `terminal-end`；有一行没结束 ⇒ 说没结束。 */
 export async function endRows(items: readonly BoardPick[], ask: ConfirmFn = confirmDialog): Promise<void> {
   const ok = await ask({
     title: copyText("terminalsView.end.title"),
@@ -37,28 +36,13 @@ export async function endRows(items: readonly BoardPick[], ask: ConfirmFn = conf
     danger: true,
   });
   if (!ok) return;
-  const byOrigin = new Map<Origin, BoardPick[]>();
-  for (const i of items) byOrigin.set(i.origin, [...(byOrigin.get(i.origin) ?? []), i]);
   const each = await Promise.all(
-    [...byOrigin].map(async ([origin, list]): Promise<boolean> => {
-      const sids = list.flatMap((i) => (i.row.sid ? [i.row.sid] : []));
-      let all = true;
-      if (sids.length > 0) {
-        try {
-          all = (await callStop(origin, sids)).every((r) => r.outcome === "done");
-        } catch {
-          all = false;
-        }
-      }
-      for (const i of list.filter((i) => !i.row.sid)) {
-        try {
-          await killSession(origin, i.row.tmux_name);
-        } catch {
-          all = false;
-        }
-      }
-      return all;
-    }),
+    items.map((i) =>
+      endTerminal(i.origin, { terminal: i.row.terminal }, i.row.title).then(
+        () => true,
+        () => false,
+      ),
+    ),
   );
   if (each.every(Boolean)) toast(copyText("terminalsView.end.done"), "", { level: "success" });
   else toast(copyText("terminalsView.end.failed"), "");

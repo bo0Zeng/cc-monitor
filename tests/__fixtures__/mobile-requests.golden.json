@@ -23,7 +23,6 @@
   "history-search": [{"query":"q"}],
   "history-tail": [{"path":"/p/s.jsonl","n":50},{"path":"/p/s.jsonl","n":50,"held":{"path":"/p/s.jsonl","next":3,"next_byte":30,"mark":"m"}}],
   "history-turns": [{"path":"/p/s.jsonl","cover":30},{"path":"/p/s.jsonl","from":30}],
-  "kill": [{"name":"demo","client":"mobile"}],
   "login-cancel": [{"job":"j"}],
   "login-finish": [{"job":"j","pasted":"code"}],
   "login-start": [{"kind":"account","agent":"claude","account":"a"},{"kind":"mcp","agent":"claude","account":"a","server":"notes"},{"kind":"mcp","agent":"claude","server":"notes","projectDir":"/w"}],
@@ -64,7 +63,10 @@
   "session-queue-put": [{"machine":"<local>","sid":"s","id":"m","end":"mobile","atMs":1,"text":"hi"},{"machine":"<local>","sid":"s","id":"m","end":"mobile","atMs":1,"text":"hi","attachments":["i"]}],
   "session-queue-read": [{"machine":"<local>","sid":"s"}],
   "sessions-needs": [null],
+  "terminal-end": [{"terminal":"t1","client":"mobile"}],
   "terminal-input": [{"sid":"s","text":"hi"},{"sid":"s","key":"esc"}],
   "terminal-preview": [{"terminal":"t1","color":false}],
+  "terminal-release-input": [{"terminal":"t1","client":"mobile"}],
+  "terminal-take-input": [{"terminal":"t1","client":"mobile"}],
   "terminals-list": [{"client":"mobile"}]
 }

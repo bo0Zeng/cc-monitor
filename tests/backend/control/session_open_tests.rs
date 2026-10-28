@@ -130,8 +130,8 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, "/root".into()))
         };
-        let kill = |_: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
-            unreachable!("session-open 不杀")
+        let end = |_: &str| -> Result<(), crate::wire::spec::Fail> {
+            unreachable!("session-open 不结束")
         };
         let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
             self.sent.borrow_mut().push((name.into(), line.into()));
@@ -189,7 +189,7 @@ impl Rig {
         f(&Deps {
             list: &list,
             record: &record,
-            kill: &kill,
+            end: &end,
             send_into: &send_into,
             run_ccm: &run_ccm,
             mint: &mint,

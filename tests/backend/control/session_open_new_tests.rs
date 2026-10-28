@@ -62,8 +62,8 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |_: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
-            unreachable!("起新会话不杀")
+        let end = |_: &str| -> Result<(), crate::wire::spec::Fail> {
+            unreachable!("起新会话不结束")
         };
         let send_into = |_: &str, _: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
             unreachable!("起新会话不往已有的终端里键入")
@@ -116,7 +116,7 @@ impl Rig {
         let deps = Deps {
             list: &list,
             record: &record,
-            kill: &kill,
+            end: &end,
             send_into: &send_into,
             run_ccm: &run_ccm,
             mint: &mint,
@@ -449,7 +449,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
             let deps = Deps {
                 list,
                 record: &no,
-                kill: &|_, _| unreachable!(),
+                end: &|_| unreachable!(),
                 send_into: &|_, _, _| unreachable!(),
                 run_ccm: &|_| unreachable!(),
                 mint: &mint,

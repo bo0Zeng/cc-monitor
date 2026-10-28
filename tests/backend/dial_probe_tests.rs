@@ -497,8 +497,8 @@ async fn a_hello_that_answers_ping_is_all_green() {
     let fake = Fake::new(vec![Open::Up(Peer::Serve {
         hello: hello(
             "b1",
-            &["ping", "kill", "files-chmod"],
-            json!([{"command": "kill", "code": "no_tmux"}]),
+            &["ping", "terminal-preview", "files-chmod"],
+            json!([{"command": "terminal-preview", "code": "no_tmux"}]),
         ),
         ping: None,
     })]);

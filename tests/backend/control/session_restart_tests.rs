@@ -59,13 +59,13 @@ enum Shows {
     Never,
 }
 
-/// 替身：名单给定；送字 / 杀 / 起只记下来。`summarize` ⇒ 收到压缩那一句时往记录里写一条摘要（像那一家压完了）。
-/// 报到那一本是真的（`observe::arrivals`）：起之前旧进程已报到过，杀 · 起按 `shows` 喂它。
+/// 替身：名单给定；送字 / 结束 / 起只记下来。`summarize` ⇒ 收到压缩那一句时往记录里写一条摘要（像那一家压完了）。
+/// 报到那一本是真的（`observe::arrivals`）：起之前旧进程已报到过，结束 · 起按 `shows` 喂它。
 struct Rig {
     rows: Vec<TmuxEntry>,
     record: PathBuf,
     summarize: bool,
-    kill_err: Option<&'static str>,
+    end_err: Option<&'static str>,
     ccm_exit: i32,
     /// 持着这条会话的活进程：停旧之前 · 停旧之后（替身的 pidfile）。
     live_before: Vec<u32>,
@@ -93,7 +93,7 @@ impl Rig {
             rows: vec![row("proj-cc", SID, true)],
             record,
             summarize: false,
-            kill_err: None,
+            end_err: None,
             ccm_exit: 0,
             live_before: vec![],
             live_after: vec![],
@@ -124,12 +124,12 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |name: &str, sid: &str| -> Result<(), crate::wire::spec::Fail> {
-            note(format!("kill {name} {sid}"));
-            if self.kill_err.is_none() && !matches!(self.shows, Shows::OverOld) {
-                self.book.lock().unwrap().on_frame(&removed(sid));
+        let end = |terminal: &str| -> Result<(), crate::wire::spec::Fail> {
+            note(format!("end {terminal}"));
+            if self.end_err.is_none() && !matches!(self.shows, Shows::OverOld) {
+                self.book.lock().unwrap().on_frame(&removed(SID));
             }
-            match self.kill_err {
+            match self.end_err {
                 Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
                 None => Ok(()),
             }
@@ -173,7 +173,7 @@ impl Rig {
             last: &|_| None,
         };
         let writers = |_: &str| -> Vec<u32> {
-            if self.did("kill") > 0 {
+            if self.did("end") > 0 {
                 self.live_after.clone()
             } else {
                 self.live_before.clone()
@@ -183,7 +183,7 @@ impl Rig {
         f(&Deps {
             list: &list,
             record: &record,
-            kill: &kill,
+            end: &end,
             send_into: &send_into,
             run_ccm: &run_ccm,
             mint: &mint,
@@ -281,16 +281,16 @@ fn go(rig: Rig, a: Value) -> (Result<Value, Fault>, Arc<Rig>) {
     (out, rig)
 }
 
-/// 停失败 ⇒ 一定没起新的（ccm 零调用），码 `stop_failed`、`data` 带杀那一步的原因码。
+/// 停失败 ⇒ 一定没起新的（ccm 零调用），码 `stop_failed`、`data` 带结束那一步的原因码。
 #[test]
 fn a_failed_stop_never_starts_the_new_one() {
     let mut rig = Rig::new("stopfail");
-    rig.kill_err = Some("wrong_owner");
+    rig.end_err = Some("wrong_owner");
     let (out, rig) = go(rig, args(false, 0));
     let (code, _, data) = out.expect_err("停失败却回了成功");
     assert_eq!(code, "stop_failed");
     assert_eq!(data, Some(json!({ "why": "wrong_owner" })));
-    assert_eq!(rig.did("kill"), 1);
+    assert_eq!(rig.did("end"), 1);
     assert_eq!(rig.did("ccm"), 0, "停失败还起了新的：{:?}", rig.calls());
     assert_eq!(rig.did("pretrust"), 0, "没起却预标了：{:?}", rig.calls());
 }
@@ -306,7 +306,7 @@ fn a_restart_stops_and_starts_under_the_same_terminal_name() {
     assert_eq!(v["account"]["name"], "work");
     assert_eq!(v["account"]["model"], "opus");
     let calls = rig.calls();
-    assert_eq!(calls[0], format!("kill proj-cc {SID}"));
+    assert_eq!(calls[0], "end tmux-proj-cc");
     assert_eq!(
         calls[1], "pretrust /h/.cc/work /p",
         "新号起之前先把工作目录标成它信任过：{calls:?}"
@@ -395,7 +395,7 @@ fn compact_waits_for_the_summary_and_goes_on_at_the_deadline() {
     assert!(took >= Duration::from_millis(600), "早退：{took:?}");
     assert!(took < guard_core::wall::CEILING, "拖了：{took:?}");
     assert_eq!(
-        (rig.did("kill"), rig.did("ccm")),
+        (rig.did("end"), rig.did("ccm")),
         (1, 1),
         "{:?}",
         rig.calls()
@@ -435,7 +435,7 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
         .unwrap();
     writeln!(f, "{SUMMARY}").unwrap();
     assert_eq!(
-        (rig.did("kill"), rig.did("ccm")),
+        (rig.did("end"), rig.did("ccm")),
         (0, 0),
         "{:?}",
         rig.calls()
@@ -459,7 +459,7 @@ fn two_live_writers_refuse_the_restart_before_anything_moves() {
     assert_eq!(code, "already_live");
     assert_eq!(data, Some(json!({ "pids": [11, 12] })));
     assert_eq!(
-        rig.did("kill") + rig.did("ccm") + rig.did("send"),
+        rig.did("end") + rig.did("ccm") + rig.did("send"),
         0,
         "{:?}",
         rig.calls()
@@ -484,7 +484,7 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
     let (code, _, data) = out.unwrap_err();
     assert_eq!(code, "already_live");
     assert_eq!(data, Some(json!({ "pids": [13], "stopped": true })));
-    assert_eq!(rig.did("kill"), 1);
+    assert_eq!(rig.did("end"), 1);
     assert_eq!(
         rig.did("ccm"),
         0,
