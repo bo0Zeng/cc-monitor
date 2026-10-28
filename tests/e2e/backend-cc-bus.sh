@@ -356,8 +356,9 @@ _dg="$SANDBOX/dg"; mkdir -p "$_dg"
 tmux new-session -d -s dg-cc -c /tmp env OUT="$_dg" sh -c 'touch "$OUT/a"; exec sleep 60' 2>/dev/null
 wall_until '[ -f "$_dg/a" ]' || true
 _before="$(lines_of "$SB")"
-out="$(printf '{"name":"dg-cc"}' | d --kill)"
-chk "杀会话本身照旧成功" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
+_dgh="$(printf '{}' | d --terminals-list | jq -r '.terminals[] | select(.name == "dg-cc") | .terminal')"
+out="$(jq -cn --arg t "$_dgh" '{terminal:$t}' | d --terminal-end)"
+chk "结束本身照旧成功（按名单句柄交 terminal-end）" "$(printf '%s' "$out" | jq -r .terminal)" "$_dgh"
 chk "★ 收件箱没被动" "$(lines_of "$SB")" "$_before"
 
 echo "[CLI2] ★ CLI 面的入参不再隐含「调用方写得了 stdin」：argv 载荷口 · 开着不写不挂 · --stdin-line 任意位置 · 超大回码"

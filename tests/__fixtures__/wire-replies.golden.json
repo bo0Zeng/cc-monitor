@@ -703,27 +703,6 @@
         "total": 7
       }
     },
-    "kill": {
-      "rust": "{\"session\":\"session-x\",\"killed\":true}",
-      "sample": {
-        "bus": {
-          "detail": "detail-x",
-          "failed": [
-            {
-              "id": "id-x",
-              "why": "why-x"
-            }
-          ],
-          "removed": [
-            "removed-x"
-          ],
-          "said": "said-x",
-          "unread": "unread-x"
-        },
-        "killed": true,
-        "session": "session-x"
-      }
-    },
     "needs-answer": {
       "rust": "{\"result\":\"answered\"}",
       "sample": {

@@ -2,12 +2,13 @@ package com.ccmonitor.mobile.ui.session
 
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.KeyAdd
-import com.ccmonitor.mobile.core.claude.link.Kill
 import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionOpenFacts
+import com.ccmonitor.mobile.core.claude.link.TerminalEnd
+import com.ccmonitor.mobile.core.claude.link.TerminalHold
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
@@ -40,17 +41,23 @@ class TerminalOps(
     private suspend fun handleOf(name: String): Result<String> =
         list().mapCatching { rows -> TerminalsList.handleOf(rows, name) ?: throw Problem(copyText("sessionHead.attach.none", "machine" to machine())) }
 
-    /** 结束 [name]，回屏上那一句（成败不同；被拒 ⇒ 那台写好的那一句原样）。 */
-    suspend fun kill(name: String): Notice =
-        ask(Kill.COMMAND, Kill.args(name), Kill::of)
+    /** 结束名单里的 [row]（按句柄交 `terminal-end`），回屏上那一句（成败不同；回的不是这个句柄 ⇒ 当没确认；被拒 ⇒ 那台写好的那一句原样）。 */
+    suspend fun end(row: TerminalsList.Row): Notice =
+        ask(TerminalEnd.COMMAND, TerminalEnd.args(row.terminal), TerminalEnd::of)
             .fold(
-                onSuccess = { killed ->
+                onSuccess = { ended ->
                     Notice(
-                        if (killed) copyText("mobTmux.kill.done", "name" to name) else copyText("tmuxControl.kill.notConfirmed", "machine" to machine(), "target" to name),
+                        if (ended == row.terminal) copyText("mobTmux.kill.done", "name" to row.name) else copyText("tmuxControl.kill.notConfirmed", "machine" to machine(), "target" to row.name),
                     )
                 },
                 onFailure = { Notice(it.message.orEmpty()) },
             )
+
+    /** 接管（[take]）/ 交还 [row] 的输入（托管那一形）：成了 ⇒ `null`；否则那台写好的那一句。 */
+    suspend fun hold(
+        row: TerminalsList.Row,
+        take: Boolean,
+    ): String? = ask(if (take) TerminalHold.TAKE else TerminalHold.RELEASE, TerminalHold.args(row.terminal), TerminalHold::of).exceptionOrNull()?.message
 
     /** 这台的起会话事实（`session-open-facts`：几家 · 名字 · 可选的模型 · 有没有 tmux 都是那台给的）。 */
     suspend fun facts(): Result<OpenFacts> = ask(SessionOpenFacts.COMMAND, emptyMap(), SessionOpenFacts::of)

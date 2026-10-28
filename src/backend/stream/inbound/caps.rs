@@ -1,7 +1,7 @@
 //! 阻塞档命令的总期限：后端只登记上限，发起方在请求信封里带它这一发愿意等多久（`within_ms`），
 //! 分派那一层按它减余量收紧、装在执行这条命令的线程上。两个入口（帧面 · CLI 面）都经这里装。
 
-use crate::control::{kill, session_batch, session_open, terminals};
+use crate::control::{session_batch, session_open, terminals};
 use crate::platform::child::{Budget, Deadline, Until};
 use crate::wire::Request;
 
@@ -10,7 +10,6 @@ pub(crate) const MARGIN_MS: u64 = 2_000;
 
 /// 装总期限的命令 → 上限。没带发起方期限（CLI 面 · 不带这一格的前端）⇒ 按上限；不在表里的命令不装。
 pub(crate) const CAPS: &[(&str, Deadline)] = &[
-    ("kill", kill::KILL_CAP),
     ("terminals-list", terminals::TERMINALS_LIST_CAP),
     ("terminal-preview", terminals::TERMINAL_PREVIEW_CAP),
     ("terminal-input", terminals::TERMINAL_PREVIEW_CAP),

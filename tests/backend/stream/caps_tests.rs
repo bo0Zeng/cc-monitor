@@ -7,7 +7,7 @@ use crate::wire::Frame;
 #[test]
 fn the_envelope_deadline_is_read_leniently_and_never_rejects_the_request() {
     let parse = |extra: &str| -> Option<u64> {
-        let line = format!(r#"{{"id":"1","cmd":"kill","args":{{}}{extra}}}"#);
+        let line = format!(r#"{{"id":"1","cmd":"terminal-end","args":{{}}{extra}}}"#);
         serde_json::from_str::<Request>(&line)
             .unwrap_or_else(|e| panic!("带 {extra} 的信封被拒了：{e}"))
             .within_ms
@@ -77,7 +77,7 @@ fn every_capped_command_answers_its_timeout_with_the_one_registered_code() {
     }
 }
 
-/// 子进程那一半：假 tmux 放在 PATH 最前（只在这个子进程里），过门那一发照答、之后每发都卡。
+/// 子进程那一半：假 tmux 放在 PATH 最前（只在这个子进程里），`display-message` 照答、别的每发都卡。
 const CAPS_CHILD_MARK: &str = "CCM_CAPS_CHILD";
 
 #[cfg(unix)]
@@ -89,11 +89,11 @@ fn caps_child() {
     }
     // 同一批三条一起进读循环：带期限 3 s · 不带 · 带了个坏的。
     let input = concat!(
-        r#"{"id":"carried","cmd":"kill","args":{"name":"cc-stuck"},"within_ms":3000}"#,
+        r#"{"id":"carried","cmd":"terminal-end","args":{"terminal":"t-stuck"},"within_ms":3000}"#,
         "\n",
-        r#"{"id":"absent","cmd":"kill","args":{"name":"cc-stuck"}}"#,
+        r#"{"id":"absent","cmd":"terminal-end","args":{"terminal":"t-stuck"}}"#,
         "\n",
-        r#"{"id":"broken","cmd":"kill","args":{"name":"cc-stuck"},"within_ms":"3000"}"#,
+        r#"{"id":"broken","cmd":"terminal-end","args":{"terminal":"t-stuck"},"within_ms":"3000"}"#,
         "\n",
     );
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -123,8 +123,7 @@ fn caps_child() {
     });
 }
 
-/// 过了门之后每发 tmux 都卡。杀会话过了门只剩一发 tmux（`kill-session`，一发 5 s；杀之前不再读窗格 pid
-/// —— 那一发随「杀会话顺手注销 cc-bus」一起删了），总期限上限 8 s 这时够不着：
+/// 每发 tmux 都卡。结束一个终端先列一次名单（`list-panes`，一发 5 s），总期限上限 18 s 这时够不着：
 /// 带 3 s 的那条在 3 s − 余量 2 s ＝ 1 s 上回 `child_timed_out`；不带的、带坏了的按那一发自己的 5 s 回。
 #[cfg(unix)]
 #[test]

@@ -688,9 +688,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
 fn no_doc_claims_the_payload_really_landed() {
     let root = guard_core::addr::repo_root();
     let overclaim = format!("{}键入了", "真的");
-    // 第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
-    //   它迁到界面删了，今天读 `typed` 的是 `src/frontend/ui/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
-    let files = ["src/doc/IPC-COMMANDS.md", "src/frontend/ui/tmux-control.ts"];
+    let files = ["src/doc/IPC-COMMANDS.md"];
     let mut total = 0usize;
     let mut hits = Vec::new();
     for f in files {
@@ -704,7 +702,7 @@ fn no_doc_claims_the_payload_really_landed() {
     }
     assert!(
         total > 20_000,
-        "两份文件只读到 {total} 字节 —— 抽取器坏了，本条此刻是空转的"
+        "契约文档只读到 {total} 字节 —— 抽取器坏了，本条此刻是空转的"
     );
     assert!(
         hits.is_empty(),

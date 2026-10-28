@@ -25,7 +25,7 @@ mod table {
     };
     pub(super) use crate::search::HistorySearchReply;
     pub(super) use crate::session::{
-        HistoryTail, Killed, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
+        HistoryTail, ModeSwitched, ModelSwitched, OpenFacts, Opened, Preview, Sent,
         SessionCommands, TerminalsList,
     };
     pub(super) use crate::sync::Patch;
@@ -105,7 +105,6 @@ replies! {
     "history-read" => HistoryRead<OrUnread>,
     "history-search" => HistorySearchReply,
     "history-tail" => HistoryTail<OrUnread>,
-    "kill" => Killed,
     "needs-answer" => Answered,
     "quota-read" => QuotaRead,
     "rotation-facts" => RotationFactsReply,

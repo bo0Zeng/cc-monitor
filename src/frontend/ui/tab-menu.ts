@@ -39,7 +39,7 @@ import { fmtDur } from "./duration-format";
 import { renameTab } from "./tab-rename";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
-const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "session-open" };
+const ITEM_OPS: Readonly<Record<string, string>> = { end: "sessions-stop", "resume-into": "session-open" };
 
 /** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、第二行写为什么。 */
 export function gateByOffer(origin: Origin, item: MenuItem): MenuItem {
@@ -250,7 +250,7 @@ export class TabMenu {
     // ⑤ 结束会话…（在 tmux 里的才有；先画出来、问到了再变可点）
     if (remote !== null || local) {
       items.push({ label: "", divider: true });
-      items.push(grey({ id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, pending: true }));
+      items.push(grey({ id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, pending: true }));
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
     return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen, remote, local };
@@ -325,10 +325,10 @@ export class TabMenu {
     const s = await where();
     if (gen !== menuGeneration()) return;
     const drop = (...ids: string[]): void => ids.forEach((id) => removeMenuItem(id));
-    if (s === undefined) return this.unresolved(["attach", "kill"]);
-    if (s.kind === "none" || s.kind === "no_tmux") return drop("attach", "kill");
+    if (s === undefined) return this.unresolved(["attach", "end"]);
+    if (s.kind === "none" || s.kind === "no_tmux") return drop("attach", "end");
     const name = s.names[0];
-    if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "kill");
+    if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "end");
     const ambiguous = s.kind === "ambiguous";
     updateMenuItem("attach", {
       id: "attach",
@@ -339,9 +339,9 @@ export class TabMenu {
       onClick: () => void this.attachRemote(sid),
     });
     // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
-    updateMenuItem("kill", gateByOffer(origin, ambiguous
-      ? { id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
-      : { id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.killInTmux(origin, sid, name, { idle: s.kind === "idle", title }) }));
+    updateMenuItem("end", gateByOffer(origin, ambiguous
+      ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
+      : { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.endSession(origin, sid, name, { idle: s.kind === "idle", title }) }));
   }
 
   /** 本机：那台答回这个会话在哪个 tmux 会话里 ⇒ 结束 · 就地恢复两格就位（菜单已换 / 已关 ⇒ 不动）。 */
@@ -349,10 +349,10 @@ export class TabMenu {
     const gen = menuGeneration();
     const s = await where();
     if (gen !== menuGeneration()) return;
-    if (s === undefined) return this.unresolved(["kill", "resume-into"]);
+    if (s === undefined) return this.unresolved(["end", "resume-into"]);
     // 不在 tmux 里 ⇒ 不留一个假装能用的破坏性项。
     if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) {
-      removeMenuItem("kill");
+      removeMenuItem("end");
       removeMenuItem("resume-into");
       return;
     }
@@ -361,19 +361,19 @@ export class TabMenu {
       // Claude 已退出、tmux 会话在：就地恢复（非破坏性）与结束并列。
       updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, { id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), onClick: () => void this.actions.resume(sid, { run: "tmux" }) }));
     } else removeMenuItem("resume-into");
-    updateMenuItem("kill", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
-      ? { id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), enabled: false, danger: true, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
-      : { id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.killInTmux(LOCAL_ORIGIN, sid, name, { idle: s.kind === "idle", title }) }));
+    updateMenuItem("end", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
+      ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), enabled: false, danger: true, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
+      : { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.endSession(LOCAL_ORIGIN, sid, name, { idle: s.kind === "idle", title }) }));
   }
 
   /** 问不到那台（通道不在 / 超时）：那几格停在灰着、第二行写原因（不悄悄摘掉）。 */
-  private unresolved(ids: Array<"attach" | "kill" | "resume-into">): void {
+  private unresolved(ids: Array<"attach" | "end" | "resume-into">): void {
     const why = copyText("tabMenu.probe.failed");
     for (const id of ids) {
       const item: MenuItem =
         id === "attach"
           ? { id, icon: "terminal", label: copyText("tabMenu.attach.label") }
-          : id === "kill"
+          : id === "end"
             ? { id, icon: "failed", label: copyText("tabMenu.kill.label"), danger: true }
             : { id, icon: "history", label: copyText("tabMenu.inPlace.label") };
       updateMenuItem(id, { ...item, enabled: false, why });

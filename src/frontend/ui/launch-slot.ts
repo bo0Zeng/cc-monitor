@@ -20,7 +20,7 @@ import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { toast, failToast } from "./kit/toast";
 import { askArrive, openSession, type ArriveSaid, type SlotSpec } from "./session-open";
 import type { ArriveAsk } from "./generated/ArriveAsk";
-import { killSession } from "./tmux-control";
+import { endTerminal } from "./terminal-reads";
 import s from "./launch-slot.module.css";
 
 /** 等多久没报到算「未报到」（那台照它等，到了答那一句）。 */
@@ -32,7 +32,8 @@ export type { SlotSpec };
 export interface SlotActs {
   arrive(origin: Origin, ask: ArriveAsk, within: number): Promise<ArriveSaid>;
   attach(origin: Origin, tmuxName: string): void;
-  kill(origin: Origin, tmuxName: string): Promise<void>;
+  /** 结束名单里的那个终端（句柄；`name` 是确认框里说的那个名字）。 */
+  end(origin: Origin, terminal: string, name: string): Promise<void>;
   confirm: ConfirmFn;
 }
 
@@ -259,9 +260,9 @@ export class LaunchSlots {
         att.dataset.act = "attach";
         acts.push(att);
       }
-      const kill = button({ label: copyText("sessionState.killIdle.action"), size: "compact", onClick: () => void this.killIn(sl.id) });
-      kill.dataset.act = "kill";
-      acts.push(kill);
+      const end = button({ label: copyText("sessionState.killIdle.action"), size: "compact", onClick: () => void this.endIn(sl.id) });
+      end.dataset.act = "end";
+      acts.push(end);
     }
     const sp = document.createElement("span");
     sp.className = s.slotSp;
@@ -275,10 +276,11 @@ export class LaunchSlots {
     this.panel.replaceChildren(head, card);
   }
 
-  private async killIn(id: number): Promise<void> {
+  private async endIn(id: number): Promise<void> {
     const sl = this.slots.get(id);
     const name = sl?.spec.tmuxName;
-    if (!sl || name === null || name === undefined) return;
+    const terminal = sl?.missed?.terminal;
+    if (!sl || name === null || name === undefined || terminal === null || terminal === undefined) return;
     const machine = machineName(sl.spec.origin);
     const ok = await this.acts.confirm({
       title: copyText("sessionState.killIdle.title", { name }),
@@ -288,7 +290,7 @@ export class LaunchSlots {
     });
     if (!ok) return;
     try {
-      await this.acts.kill(sl.spec.origin, name);
+      await this.acts.end(sl.spec.origin, terminal, name);
     } catch (e) {
       failToast(copyText("tabSessionActions.kill.failed", { title: name }), e);
       return;
@@ -302,6 +304,6 @@ export class LaunchSlots {
 export const CHANNEL_ACTS: SlotActs = {
   arrive: askArrive,
   attach: (origin, tmuxName) => void openSession(origin, { what: { kind: "look", session: tmuxName }, local: isLocalOrigin(origin) }),
-  kill: async (origin, tmuxName) => void (await killSession(origin, tmuxName)),
+  end: (origin, terminal, name) => endTerminal(origin, { terminal }, name),
   confirm: confirmDialog,
 };

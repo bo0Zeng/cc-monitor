@@ -60,7 +60,6 @@ const NO_MODE_BITS: &str =
 
 /// 四个 target 之间的差异：`(面, 名, 哪个 target 上没有, 理由)`。
 const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
-    ("wire-commands", "kill", Target::Windows, NO_TMUX_YET),
     (
         "wire-commands",
         "terminal-preview",
@@ -111,7 +110,6 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
         Target::Windows,
         NO_MODE_BITS,
     ),
-    ("cli-subcommands", "--kill", Target::Windows, NO_TMUX_YET),
     (
         "cli-subcommands",
         "--terminal-preview",

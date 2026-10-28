@@ -133,7 +133,7 @@ handle_of() { # <tmux 会话名>
   wait_for "\"id\":\"$rid\"" || return 0
   reply_of "$rid" | NAME="$1" python3 -I -c 'import json, os, sys
 r = json.loads(sys.stdin.readline())
-print(next((t["terminal"] for t in (r.get("data") or {}).get("terminals", []) if t.get("tmux_name") == os.environ["NAME"]), ""))'
+print(next((t["terminal"] for t in (r.get("data") or {}).get("terminals", []) if t.get("name") == os.environ["NAME"]), ""))'
 }
 # 往那个终端送一行字（`terminal-input`，带回车）：<请求 id> <句柄> <字> [client]。
 send_text() {
@@ -280,21 +280,22 @@ else bad "_expect 场景 5s 内无应答"; fi
 # ── F04a：Gate 3（`windows == 1`，**只给破坏性动作**）的真机验收 ───────────
 # 与 Gate 2 的用例表分开：Gate 3 的轴是**窗口数**，不是身份，塞进那张表会让两个轴混在一起。
 echo
-echo "-- F04a Gate 3（kill）--"
+echo "-- F04a Gate 3（terminal-end）--"
 g3() { # <场景名> <会话名> <设不设sid> <开几个窗口> <期望码|OK>
   local what="$1" name="$2" sid="$3" wins="$4" want="$5" rid="e2e-g3-$6"
   fresh_tmux
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null || { bad "$what：建不出会话"; return; }
   [ "$sid" = yes ] && "$TMUX_BIN" set-option -t "=$name:" @ccm_sid abc123 >/dev/null 2>&1
   local i=1; while [ "$i" -lt "$wins" ]; do "$TMUX_BIN" new-window -t "=$name:" >/dev/null 2>&1; i=$((i+1)); done
-  send "{\"id\":\"$rid\",\"cmd\":\"kill\",\"args\":{\"name\":\"$name\"}}"
+  local h; h="$(handle_of "$name")"
+  send "{\"id\":\"$rid\",\"cmd\":\"terminal-end\",\"args\":{\"terminal\":\"$h\"}}"
   wait_for "\"id\":\"$rid\"" || { bad "$what：5s 内无应答"; return; }
   local R; R="$(reply_of "$rid")"
   # 后端先杀、后回话 ⇒ 应答到了，该杀的已经杀了；放行那一档再等 tmux 把会话收干净。
   [ "$want" = OK ] && wall_until '! "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null' || true
   local alive=no; "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null && alive=yes
   if [ "$want" = OK ]; then
-    if printf '%s' "$R" | grep -qF '"killed":true' && [ "$alive" = no ]; then ok "$what → 真的杀掉了"
+    if printf '%s' "$R" | grep -qF "\"terminal\":\"$h\"" && [ "$alive" = no ]; then ok "$what → 真的结束了"
     else bad "$what：期望杀掉，实得 $R（alive=$alive）"; fi
   else
     # 拒绝这一档要同时满足：应答带那个码，**且会话还活着**（只看应答会漏掉「回了错但已经杀了」）
@@ -308,25 +309,25 @@ g3 "非本工具会话 + 单窗口（Gate 2 就挡住）" "someones-box" no 1 wr
 g3 "自定义名 + @ccm_sid + 单窗口" "g3-custom" yes 1 OK 4
 g3 "自定义名 + @ccm_sid + 3 窗口（Gate 3 挡）" "g3-custom" yes 3 too_many_windows 5
 fresh_tmux
-send '{"id":"e2e-g3-nos","cmd":"kill","args":{"name":"g3-nope-cc"}}'
+send '{"id":"e2e-g3-nos","cmd":"terminal-end","args":{"terminal":"tmux-9999"}}'
 if wait_for '"id":"e2e-g3-nos"'; then
   R="$(reply_of e2e-g3-nos)"
-  if printf '%s' "$R" | grep -qF 'no_such_session'; then ok "目标不存在 → no_such_session（Gate 3 没吞掉这一档）"
-  else bad "目标不存在的应答不对：$R"; fi
-else bad "kill 不存在目标：5s 内无应答"; fi
-send '{"id":"e2e-g3-bad","cmd":"kill","args":{"name":"a:b"}}'
+  if printf '%s' "$R" | grep -qF 'not_known'; then ok "名单里没有的句柄 → not_known（Gate 3 没吞掉这一档）"
+  else bad "名单里没有的句柄应答不对：$R"; fi
+else bad "结束不存在的终端：5s 内无应答"; fi
+send '{"id":"e2e-g3-bad","cmd":"terminal-end","args":{"terminal":""}}'
 if wait_for '"id":"e2e-g3-bad"'; then
   R="$(reply_of e2e-g3-bad)"
-  if printf '%s' "$R" | grep -qF 'bad_args'; then ok "名字含 \`:\` → bad_args（形状门在三道门之前）"
-  else bad "形状门没挡住 \`a:b\`：$R"; fi
-else bad "kill 形状门：5s 内无应答"; fi
+  if printf '%s' "$R" | grep -qF 'bad_target'; then ok "空句柄 → bad_target（认目标在三道门之前）"
+  else bad "空句柄没挡住：$R"; fi
+else bad "结束空句柄：5s 内无应答"; fi
 
 # ── 「哪个前端的会话」那一维（`@ccm_client`）的真机验收 ───────────────────────
 # 会话由起它的那一方声明；请求带 `client` 自报。声明了别的前端 ⇒ 只读（哪怕 `@ccm_sid` 在）；
 # 声明归自报的那个 ⇒ 放（名字不必像我们铸的）；声明成 `ccm`（用户终端起的）⇒ 不拦。
 echo
 echo "-- 哪个前端的会话（@ccm_client）--"
-cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send> <client 或空> <期望码|OK> <序号>
+cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 end|send> <client 或空> <期望码|OK> <序号>
   local what="$1" name="$2" decl="$3" sid="$4" cmd="$5" who="$6" want="$7" rid="e2e-cl-$8"
   fresh_tmux
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null || { bad "$what：建不出会话"; return; }
@@ -335,20 +336,21 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
   [ "$sid" = yes ] && "$TMUX_BIN" set-option -t "=$name:" @ccm_sid abc123 >/dev/null 2>&1
   local extra=""; [ -n "$who" ] && extra=",\"client\":\"$who\""
   local marker="CCMCL_$8"
-  if [ "$cmd" = kill ]; then
-    send "{\"id\":\"$rid\",\"cmd\":\"kill\",\"args\":{\"name\":\"$name\"$extra}}"
+  local h; h="$(handle_of "$name")"
+  if [ "$cmd" = end ]; then
+    send "{\"id\":\"$rid\",\"cmd\":\"terminal-end\",\"args\":{\"terminal\":\"$h\"$extra}}"
   else
-    send_text "$rid" "$(handle_of "$name")" "printf %s $marker" "$who"
+    send_text "$rid" "$h" "printf %s $marker" "$who"
   fi
   wait_for "\"id\":\"$rid\"" || { bad "$what：5s 内无应答"; return; }
   local R; R="$(reply_of "$rid")"
-  if [ "$cmd" = kill ] && [ "$want" = OK ]; then wall_until '! "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null' || true
+  if [ "$cmd" = end ] && [ "$want" = OK ]; then wall_until '! "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null' || true
   else settle "=$name:"; fi
   local alive=no; "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null && alive=yes
   local landed=no
   [ "$alive" = yes ] && "$TMUX_BIN" capture-pane -p -t "=$name:" 2>/dev/null | grep -q "$marker" && landed=yes
   if [ "$want" = OK ]; then
-    if [ "$cmd" = kill ] && printf '%s' "$R" | grep -qF '"killed":true' && [ "$alive" = no ]; then ok "$what → 杀掉了"
+    if [ "$cmd" = end ] && printf '%s' "$R" | grep -qF "\"terminal\":\"$h\"" && [ "$alive" = no ]; then ok "$what → 结束了"
     elif [ "$cmd" = send ] && printf '%s' "$R" | grep -qF '"result":"delivered"' && [ "$landed" = yes ]; then ok "$what → 送进去了"
     else bad "$what：期望放行，实得 $R（alive=$alive landed=$landed）"; fi
   else
@@ -356,11 +358,11 @@ cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send>
     else bad "$what：期望 $want 且会话未动，实得 $R（alive=$alive landed=$landed）"; fi
   fi
 }
-cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "phonepipe-a" mobile yes kill "" wrong_owner 1
+cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "phonepipe-a" mobile yes end "" wrong_owner 1
 cl "别的前端的会话，自报 desktop ⇒ 送不进字" "phonepipe-b" mobile yes send desktop '"why":"not_yours"' 2
 cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "phonepipe-c" mobile no send mobile OK 3
-cl "自己起的会话，自报对上 ⇒ 结束得了" "phonepipe-d" mobile no kill mobile OK 4
-cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no kill mobile OK 5
+cl "自己起的会话，自报对上 ⇒ 结束得了" "phonepipe-d" mobile no end mobile OK 4
+cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no end mobile OK 5
 
 # ── 按 sid 结束（批量停）：一个 tmux 会话里几个 claude 窗格 ⇒ 只结束挂着那个 sid 的窗格，没有别的才结束整个会话 ──
 # 身份按挂着那个 sid 的窗格判（活动窗格是谁不算数）。标签照后端的打法打在窗格上（`set-option -p`）。
@@ -402,7 +404,7 @@ if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! "$TMUX_BIN" has-session -
 else bad "按挂着 sid 的窗格判身份：实得 $R"; fi
 
 # ── 按 sid 送字 · 抓屏 · 结束（单条命令带 sid）：落在挂着它的那个窗格，身份按那个窗格判 ──
-# `terminal-input` 带 `sid` · `terminal-preview` 带 `sid` · `kill` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
+# `terminal-input` 带 `sid` · `terminal-preview` 带 `sid` · `terminal-end` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
 echo
 echo "-- 按 sid 送字 · 抓屏 · 结束（单条命令）--"
 SE=eeeeeeee-0000-4000-8000-00000000000e
@@ -441,9 +443,9 @@ PG="$("$TMUX_BIN" split-window -t '=two-cc:' -P -F '#{pane_id}')"
 "$TMUX_BIN" set-option -p -t "$PE" @ccm_sid "$SE" >/dev/null 2>&1
 "$TMUX_BIN" set-option -p -t "$PG" @ccm_sid "$SG" >/dev/null 2>&1
 "$TMUX_BIN" select-pane -t "$PG" >/dev/null 2>&1
-R="$(ask "{\"id\":\"e2e-sid-5\",\"cmd\":\"kill\",\"args\":{\"name\":\"two-cc\",\"sid\":\"$SE\"}}" e2e-sid-5)"
+R="$(ask "{\"id\":\"e2e-sid-5\",\"cmd\":\"terminal-end\",\"args\":{\"sid\":\"$SE\"}}" e2e-sid-5)"
 wall_until '! pane_alive "$PE"' || true
-if printf '%s' "$R" | grep -qF '"killed":true' && ! pane_alive "$PE" && pane_alive "$PG"; then
+if printf '%s' "$R" | grep -qF '"terminal":' && ! pane_alive "$PE" && pane_alive "$PG"; then
   ok "结束带 sid（同会话还有别的 claude）→ 只关了挂着它的那个窗格，另一个 claude 还在"
 else bad "按 sid 结束：实得 $R（E 在=$(pane_alive "$PE" && echo 是 || echo 否) G 在=$(pane_alive "$PG" && echo 是 || echo 否)）"; fi
 

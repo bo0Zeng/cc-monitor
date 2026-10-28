@@ -382,8 +382,8 @@ fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
 /// 那一收拢 == TS `ipc/chan-caller.ts::provablyNotSent`，跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`。
 ///
 /// 守的要求：（面 A「断开时怎么办」）与 `backend_route` 头注那条分界线逐字
-/// 「**能不能证明这条命令根本没发出去**」—— 就地 resume 迁到界面之后（`src/frontend/ui/tmux-control.ts::sendInto`），
-/// 同一条规则在 TS 那一侧有了第二份（它读的是 webview 这一跳上线后的分层错误，不是 inbound 的枚举）。
+/// 「**能不能证明这条命令根本没发出去**」——
+/// 同一条规则在 TS 那一侧另有一份（`src/frontend/ui/ipc/chan-caller.ts::provablyNotSent`，读的是 webview 这一跳上线后的分层错误，不是 inbound 的枚举）。
 /// 两份一漂，后果就是 F14 记的那一形：一次「后端已键入但应答超时」被判成可回落 ⇒ 载荷第二次键入正在跑的 claude。
 ///
 /// 异源：本侧把 inbound 的**每一种**失败（外加「没有控制通道」）经生产的 `layer_call_error` / `layer_no_channel`

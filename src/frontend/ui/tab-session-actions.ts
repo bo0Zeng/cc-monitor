@@ -136,11 +136,11 @@ export class TabSessionActions {
   }
 
   /**
-   * 杀死这个会话所在的 tmux 会话：二次确认后交那台（`sessions-stop`，与批量同一条：那台按 sid 认出是哪个、过三道门、杀句柄）。
+   * 结束这个会话所在的终端：二次确认后交那台（`sessions-stop`，与批量同一条：那台按 sid 认出名单里那一行、交 `terminal-end`，过三道门、杀句柄）。
    * `name` 只用来在确认框里说清是哪个（菜单就绪时那台答的）。变已结束由会话流兜（不主动改状态）。
    * `idle` = 只剩空 shell 的那个（文案别说「正在运行的 Claude」；杀掉它 ⇒ tab 变已结束 ⇒ 可 Resume）。
    */
-  killInTmux(origin: string, sid: string, name: string, opts?: { confirm?: ConfirmFn; idle?: boolean; title?: string }): void {
+  endSession(origin: string, sid: string, name: string, opts?: { confirm?: ConfirmFn; idle?: boolean; title?: string }): void {
     const isLocal = isLocalOrigin(origin);
     const confirmFn: ConfirmFn = opts?.confirm ?? confirmDialog;
     const machine = isLocal ? copyText("tabSessionActions.who.local") : origin;

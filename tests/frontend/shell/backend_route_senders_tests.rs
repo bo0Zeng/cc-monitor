@@ -16,12 +16,8 @@
 /// 目录里每个 `.call(` 的文件都必须在下表里，要么用分流器、要么是**带理由的刻意例外**。
 #[cfg(test)]
 const SENDERS: &[(&str, Verdict)] = &[
-    // 这里原来头三行是 `backend_kill.rs` / `backend_send_keys.rs` / `backend_launch.rs`
-    //   （杀会话 · 送键 · 就地 resume 三个发送端，都 `UsesRouter`；`backend_launch` 那一行还记着 F14 的
-    //   「`may_fall_back` 第三个字段 · 上一版误记成例外、改好当天如设计般红过一次」）。三条 Tauri 命令迁到界面
-    //   （`src/frontend/ui/tmux-control.ts` 经通道直接说 `kill` / `launch`），发送端整份删了，发现阶段扫不到它们 ⇒ 三行摘掉。
-    //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
-    //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
+    // Rust 这一侧的分层判定只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
+    //   「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
 
     // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
@@ -37,7 +33,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
     //   在类型上分得开，怎么对用户说由调用方决定。
     // **上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
-    //   （`src/frontend/ui/tmux-control.ts::capturePane`），monitor 里那个发送端删了 ——
+    //   （`src/frontend/ui/terminal-reads.ts::previewShot`，`terminal-preview`），monitor 里那个发送端删了 ——
     //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
     //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
     // ★ **第七个发送端** —— 原生文件窗口那一侧的搜索

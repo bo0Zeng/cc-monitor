@@ -191,8 +191,8 @@ fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
 }
 
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）
-/// ⇒ `(号, 终端名, 此刻写它的那几个 pid)`。
-fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed> {
+/// ⇒ `(号, 终端名, 名单句柄, 此刻写它的那几个 pid)`。
+fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>), Failed> {
     let _total = Budget::capped(SESSIONS_WHERE_CAP, req.until);
     let account = la::settle(
         &req.item.account,
@@ -215,8 +215,8 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
             None,
         )
     };
-    match rows.as_deref().map(|r| batch::standing(r, &req.item.sid)) {
-        Some(Standing::Running(name)) => {
+    match rows.as_deref().map(|r| batch::carriers(r, &req.item.sid)) {
+        Some(Standing::Running(at)) => {
             let live = (deps.writers)(&req.item.sid);
             if live.len() > 1 {
                 let said = copy_core::copy_text(
@@ -228,25 +228,34 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
                 );
                 return Err(already_live(said, live, false));
             }
-            Ok((account, name, live))
+            Ok((account, at.name.clone(), at.terminal.clone(), live))
         }
-        Some(Standing::Ambiguous(names)) => Err((
+        Some(Standing::Ambiguous(es)) => {
+            let names: Vec<String> = es.iter().map(|e| e.name.clone()).collect();
+            Err((
             "ambiguous",
             copy_core::copy_text(
                 "beSessionRestart.locate.ambiguous",
                 &[("names", &names.join(", "))],
             ),
             Refused::Ambiguous { names }.data(),
-        )),
+        ))
+        }
         Some(Standing::Idle(_) | Standing::None) | None => Err(not_here()),
     }
 }
 
 /// 不可分的那一步：停旧（失败 ⇒ 不起）→ 停完核一次：除了停掉的那个（`mine` ＝ 开动前写它的那几个）另有活进程在写 ⇒ 不起
-/// → 同一个名字用新号起。
-fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> Result<(), Failed> {
+/// → 同一个名字用新号起。停旧按名单句柄（`terminal`），同 `terminal-end`。
+fn swap(
+    req: &Req,
+    account: &Settled,
+    (name, terminal): (&str, &str),
+    mine: &[u32],
+    deps: &Deps,
+) -> Result<(), Failed> {
     let _total = Budget::capped(SWAP_CAP, req.until);
-    if let Err(f) = (deps.kill)(name, &req.item.sid) {
+    if let Err(f) = (deps.end)(terminal) {
         // 换号重启的失败格没有原话位：tmux 原话记一行日志，句子照旧交出去。
         let why = f.code.clone();
         return Err((
@@ -362,15 +371,15 @@ pub(crate) async fn run<H: Host>(
     req.until = until;
     let req = std::sync::Arc::new(req);
     let r = req.clone();
-    let (account, name, mine) = host
+    let (account, name, terminal, mine) = host
         .blocking(move |d| prepare(&r, d).map_err(owned))
         .await?;
     let compact = compact(&req, &name, &host).await;
     // 停之前记下报到序号：此刻在跑的那个进程不算。
     let since = crate::common::arrival_seq::mark();
-    let (r, a, n) = (req.clone(), account.clone(), name.clone());
+    let (r, a, n, t) = (req.clone(), account.clone(), name.clone(), terminal);
     match host
-        .critical(move |d| swap(&r, &a, &n, &mine, d).map_err(owned))
+        .critical(move |d| swap(&r, &a, (&n, &t), &mine, d).map_err(owned))
         .await
     {
         None => {

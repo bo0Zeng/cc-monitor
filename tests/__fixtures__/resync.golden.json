@@ -7,6 +7,6 @@
     "retagged": 1,
     "caught_up": 2,
     "watchers": 1,
-    "unavailable": [{ "command": "kill", "code": "no_tmux" }]
+    "unavailable": [{ "command": "terminal-preview", "code": "no_tmux" }]
   }
 }

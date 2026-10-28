@@ -437,7 +437,7 @@
       "say": "「结束」（结束会话 / 结束进程）。",
       "scan": { "re": "\\bkill\\b", "flags": "i" },
       "source": "CP1 台账",
-      "note": "台账里标着「新词:kill」的那几行随 monitor 的杀会话 / 送键发送端迁到界面退役（那几句改写进文案表 tmuxControl.*，不再说 kill），ledger 摘掉；本条的扫描照旧拦新的。"
+      "note": "对外一律说「结束」（文案表 tmuxControl.* · tabSessionActions.kill.* 那几句）；本条的扫描拦新的。"
     },
     {
       "word": "英文实现词",

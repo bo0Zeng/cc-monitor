@@ -1,14 +1,10 @@
-//! **「谁在建 tmux 会话 ↔ 后端 kill 的形状门」那一族判据**。
+//! **「谁在建 tmux 会话 ↔ 后端结束那一道形状门」那一族判据**。
 //!
 //! 守的要求：`INVARIANTS §34`（三道门：名字形状 · 身份 · 窗口）在创建那一侧的反面 ——
 //! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
 //!
-//! 杀会话的 monitor 发送端从前带着几条自己的单元判据（读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
-//! 经通道直接说后端的 `kill`），发送端删了：
-//! - 它自己的那几条随它退役 —— 「读 `killed` 不许猜」搬到 TS `decodeKilled`，「拒绝码逐码一句」搬到 TS 那张表
-//!   （`tests/frontend/ui/tmux-control.vitest.ts`，码集合取自跨语言金样 `tests/__fixtures__/tmux-control.golden.json`）；
-//! - **本文件剩下的两条不跟着走**（它们守的与 monitor 里有没有发送端无关），文件原地不动，改挂在
-//!   `backend/control/mod.rs` 的测试段（`kill_name_tests`）。
+//! 结束会话只经后端 `terminal-end`（`control/kill.rs`，界面 · 手机按名单句柄说它）；本文件的两条守的是创建那一侧，挂在
+//! `backend/control/mod.rs` 的测试段（`kill_name_tests`）。
 
 /// 「创建路径」的登记表：`(路径, 判定, 理由)`。
 ///
