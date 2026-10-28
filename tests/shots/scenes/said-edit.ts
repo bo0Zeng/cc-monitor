@@ -50,7 +50,9 @@ function scene(id: string, title: string, desc: string, act: Scene["act"], w: ()
 async function ready(): Promise<void> {
   await mainReady(1);
   await openTab(0);
-  await waitFor(".has-said-edit");
+  // 流开在底部：把第一句人说的那一句滚进眼前（真鼠标停在它中央，悬停才算数）。
+  (await waitFor(".has-said-edit")).scrollIntoView({ block: "center" });
+  await sleep(400);
 }
 
 /** 点第一句人说的那一句上的「编辑」，改几个字。 */
