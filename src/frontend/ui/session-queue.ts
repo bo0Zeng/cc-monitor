@@ -14,19 +14,19 @@ import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { QueueCancelled } from "./generated/QueueCancelled";
 import type { QueuePut } from "./generated/QueuePut";
-import type { SessionQueue } from "./generated/SessionQueue";
+import type { QueueList } from "./generated/QueueList";
 import type { SessionQueuePutReq } from "./generated/SessionQueuePutReq";
 import { saidOf } from "./kit/detail";
 import { LS_KEYS, safeGetJson, safeSetJson } from "./local-storage";
 
 /** 读一条会话此刻的名单（`session-queue-read`）。 */
-export type QueueReadFn = (origin: Origin, sid: string) => Promise<SessionQueue>;
+export type QueueReadFn = (origin: Origin, sid: string) => Promise<QueueList>;
 /** 撤一条（`session-queue-cancel`），回撤完的整份名单。 */
 export type QueueCancelFn = (origin: Origin, sid: string, id: string) => Promise<QueueCancelled>;
 
 /** 那台推来的一批 `changed {session_queue}`：带了名单的 ⇒ `got`；没带的 ⇒ `ask`（重问）；`all` ⇒ 期间可能漏了，看着的那几条都重问。 */
 export interface QueueMoved {
-  got: Map<string, SessionQueue>;
+  got: Map<string, QueueList>;
   ask: string[];
   all: boolean;
 }
@@ -49,7 +49,7 @@ export const CHANNEL_WATCH: QueueWatchFn = (origin, on) => {
     const c = changes.get("session_queue");
     if (c === undefined) return;
     const { got, ask, all } = pushedProducts(c, "session_queue");
-    const lists = new Map<string, SessionQueue>();
+    const lists = new Map<string, QueueList>();
     for (const [k, v] of got) if (k !== null) lists.set(k, v);
     on({ got: lists, ask: ask.filter((k): k is string => k !== null), all });
   }).then(

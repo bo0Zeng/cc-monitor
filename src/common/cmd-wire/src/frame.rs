@@ -462,7 +462,7 @@ pub enum Changed {
         key: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        body: Option<crate::queue::SessionQueue>,
+        body: Option<crate::queue::QueueList>,
     },
 }
 

@@ -60,7 +60,10 @@ data class SyncAnchor(
     val mark: String,
 )
 
-/** 待发：一句送出去、结局还没定或没送到的话。[outcome] 照 `session-say` 的回包：[PendingOutcome] 那四种。 */
+/**
+ * 待发：投进会话输入队（`session-queue-put`）的一句，会话那台还没回执、或回执到了还没在记录里出现、或那台拒了。
+ * [id] 就是投队那一下交的编号：没回执 ⇒ 接上照同一个编号再交（那台去重只进一条）。[outcome] 是 [PendingOutcome] 那几种。
+ */
 @Entity(tableName = "pending")
 data class PendingSend(
     /** 本地铸的 id。 */
@@ -76,17 +79,18 @@ data class PendingSend(
     val attempts: Int,
 )
 
-/** [PendingSend.outcome] 的四种（落盘的字，不上屏）。 */
+/** [PendingSend.outcome] 那几种（落盘的字，不上屏）。 */
 object PendingOutcome {
-    /** 交出去了、回包还没到。 */
+    /** 交出去了、会话那台的回执还没到：接上照同一个编号再交。 */
     const val PENDING = "pending"
 
+    /** 回执到了（会话那台已落盘、排进队）：等它在记录里出现。 */
     const val DELIVERED = "delivered"
 
-    /** 发出去了、不知道送没送到（别重发）。 */
+    /** 新建会话随起交的头一句，那台说不知道送没送到（`session-open` 回包）；挂回来照「没回执」投进队再交，那台按编号去重。 */
     const val UNSURE = "unsure"
 
-    /** 那台说没送。 */
+    /** 会话那台拒了（队满 · 太长 · 附件已不在）：不再交，字留着可改了再送。 */
     const val REFUSED = "refused"
 }
 

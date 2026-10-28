@@ -44,6 +44,7 @@ import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.agents.agentsEntry
@@ -64,6 +65,8 @@ import com.ccmonitor.mobile.ui.needs.NeedsEntry
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -235,12 +238,23 @@ fun ChatController.sessionOf(
     attachRoot: ((hostId: String) -> File)? = null,
     /** 现开本机一份的描述符（交核心）。 */
     fdOf: (File) -> Int = { throw IOException(it.path) },
+    /** 那台推来的 `changed` 帧（生产上是那台常驻流的 `changed`；会话的输入队名单从这里来）。 */
+    changedOf: (hostId: String) -> Flow<Changed> = { emptyFlow() },
 ): ChatSession =
     sessionFor(key = open.key, hostId = open.hostId) { scope ->
         val link = linkOf(open.hostId)
         val store = attachRoot?.let { AttachStore(it(open.hostId)) }
         val attach: ((CoroutineScope, () -> String?) -> AttachTray)? = store?.let { st -> { s, sid -> AttachTray(link, open.machine, st, s, sid, fdOf) } }
-        ChatSession(link, watchOf(open.hostId), open.target, open.machine, scope, cache = cacheOf(open.hostId), attachOf = attach)
+        ChatSession(
+            link,
+            watchOf(open.hostId),
+            open.target,
+            open.machine,
+            scope,
+            cache = cacheOf(open.hostId),
+            attachOf = attach,
+            queueMoved = changedOf(open.hostId),
+        )
     }.also { s -> open.at?.let { s.jump(it, open.tool) } }
 
 /** 这台在手机上的名字；还没读到 ⇒ `null`。 */

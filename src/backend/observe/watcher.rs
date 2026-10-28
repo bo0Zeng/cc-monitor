@@ -627,7 +627,10 @@ impl QueueEar {
     ) -> Option<Vec<String>> {
         if paths.clone().any(|p| p == self.dir) {
             self.arm(debouncer);
-            return Some(own.map(crate::history::session_queue::sids).unwrap_or_default());
+            return Some(
+                own.map(crate::history::session_queue::sids)
+                    .unwrap_or_default(),
+            );
         }
         let sids = crate::history::session_queue::sids_touched(paths, &self.dir);
         (!sids.is_empty()).then_some(sids)

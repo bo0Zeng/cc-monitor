@@ -10,7 +10,7 @@ import type { AttachIo } from "../../../src/frontend/ui/attach-draft";
 import type { TerminalRow, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import type { QueuePut } from "../../../src/frontend/ui/generated/QueuePut";
 import type { QueueItem } from "../../../src/frontend/ui/generated/QueueItem";
-import type { SessionQueue } from "../../../src/frontend/ui/generated/SessionQueue";
+import type { QueueList } from "../../../src/frontend/ui/generated/QueueList";
 import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -24,9 +24,9 @@ const flush = async (): Promise<void> => {
 
 /** 名单里的一条（`said` 是会话那台写好的那一句：这里就是排第几）。 */
 const item = (id: string, place: number): QueueItem => ({ seq: place, id, end: "mobile", atMs: 1_700_000_000_000, text: `text of ${id}`, state: "queued", said: `place-${place}`, from: "phone-word" });
-const list = (...items: QueueItem[]): SessionQueue => ({ items, sent: [] });
+const list = (...items: QueueItem[]): QueueList => ({ items, sent: [] });
 
-function rig(opts: { first?: SessionQueue; put?: () => Promise<QueuePut> } = {}) {
+function rig(opts: { first?: QueueList; put?: () => Promise<QueuePut> } = {}) {
   const io = {} as AttachIo;
   let push: (m: QueueMoved) => void = () => {};
   const put = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 9, place: 1, said: "q-1" })));

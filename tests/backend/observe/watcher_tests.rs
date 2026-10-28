@@ -237,7 +237,11 @@ fn cancelling_the_first_pushes_a_list_one_shorter_with_the_second_now_first() {
     };
     assert_eq!(ids(queue_changed(&own, "s1", 2)), ["a", "b"]);
     q::cancel(&own, "s1", "a", 3).unwrap();
-    assert_eq!(ids(queue_changed(&own, "s1", 4)), ["b"], "撤掉第 1 条 ⇒ 少一条、原第 2 条排第 1");
+    assert_eq!(
+        ids(queue_changed(&own, "s1", 4)),
+        ["b"],
+        "撤掉第 1 条 ⇒ 少一条、原第 2 条排第 1"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

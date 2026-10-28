@@ -1,4 +1,4 @@
-//! 会话输入队那三条（`session-queue-put` · `-cancel` · `-read`）的线上形；名单（[`SessionQueue`]）也是 `changed {session_queue}` 的体。
+//! 会话输入队那三条（`session-queue-put` · `-cancel` · `-read`）的线上形；名单（[`QueueList`]）也是 `changed {session_queue}` 的体。
 //! 往一条会话说的每一句都排进那条会话的队，队住会话所在那台（主人），序号由主人发。判定（去重 · 端内保序 · 发序号 · 撤 · 未送达）只住后端
 //! `history/session_queue.rs`；这里只放形状。
 
@@ -55,7 +55,7 @@ pub struct QueueItem {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(deny_unknown_fields)]
-pub struct SessionQueue {
+pub struct QueueList {
     pub items: Vec<QueueItem>,
     /// 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
     pub sent: Vec<String>,
@@ -141,7 +141,7 @@ pub struct SessionQueueCancelReq {
 pub struct QueueCancelled {
     /// `false` ⇒ 那一条已不在队里（送过 · 撤过 · 没有这一条），什么都没动。
     pub cancelled: bool,
-    pub queue: SessionQueue,
+    pub queue: QueueList,
 }
 
 /// `session-queue-read` 的入参。

@@ -15,6 +15,7 @@ import com.ccmonitor.mobile.core.wire.gen.ModelSwitched
 import com.ccmonitor.mobile.core.wire.gen.OpenFacts
 import com.ccmonitor.mobile.core.wire.gen.Opened
 import com.ccmonitor.mobile.core.wire.gen.QueueCancelled
+import com.ccmonitor.mobile.core.wire.gen.QueueList
 import com.ccmonitor.mobile.core.wire.gen.QueuePut
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
@@ -247,6 +248,15 @@ object SessionQueueCancel {
     ): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid, "id" to id)
 
     fun of(data: Any?): QueueCancelled? = Wire.bind<QueueCancelled>(data)
+}
+
+/** `session-queue-read`：一条会话此刻的名单（会话那台那一份；推送 `changed {session_queue}` 没带体时重问它）。 */
+object SessionQueueRead {
+    const val COMMAND: String = "session-queue-read"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid)
+
+    fun of(data: Any?): QueueList? = Wire.bind<QueueList>(data)
 }
 
 /** 问的就是连着的那台自己（线上逐字 `<local>`）。 */

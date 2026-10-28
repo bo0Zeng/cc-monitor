@@ -56,6 +56,7 @@ val appModule =
                     cache::chat,
                     attachRoot = { h -> File(attach, h) },
                     fdOf = { f -> ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY).detachFd() },
+                    changedOf = { h -> backends.of(h).changed },
                 ),
             )
         }

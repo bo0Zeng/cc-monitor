@@ -9,7 +9,7 @@ import { el } from "./kit/el";
 import { button } from "./kit/button";
 import type { Outgoing } from "./session-queue";
 import type { QueueItem } from "./generated/QueueItem";
-import type { SessionQueue } from "./generated/SessionQueue";
+import type { QueueList } from "./generated/QueueList";
 import s from "./queue-row.module.css";
 
 export interface QueueRowHost {
@@ -34,7 +34,7 @@ export class QueueRow {
   }
 
   /** 照此刻的名单与待发重画（名单还没读到 ⇒ `null`）。 */
-  paint(list: SessionQueue | null, pending: readonly Outgoing[]): void {
+  paint(list: QueueList | null, pending: readonly Outgoing[]): void {
     const lines: HTMLElement[] = [];
     const items: readonly QueueItem[] = list?.items ?? [];
     for (const it of items) lines.push(this.line(it.said, `${it.from} · ${clockFaceHere(it.atMs)}`, it.text, it.state, () => this.host.cancel(it.id)));

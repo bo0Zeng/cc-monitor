@@ -50,7 +50,7 @@ import {
   type QueueWatchFn,
 } from "./session-queue";
 import { QueueRow } from "./queue-row";
-import type { SessionQueue } from "./generated/SessionQueue";
+import type { QueueList } from "./generated/QueueList";
 import type { Origin } from "./ipc/origin";
 import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -176,7 +176,7 @@ export class TerminalPage {
   /** 交出去、会话那台还没回执的那几句，按会话各一份（键 ＝ 那台 ＋ 会话 ID，同附件草稿）：落本地存储，那台连上照同一个编号再交。 */
   private readonly waiting: Map<string, Outgoing[]> = loadPending();
   /** 此刻看着的那条会话的名单（会话那台那一份；还没读到 ⇒ `null`）与它是哪一条（键同上）。 */
-  private queue: SessionQueue | null = null;
+  private queue: QueueList | null = null;
   private queueOf: string | null = null;
   /** 这一页交过的编号（本地存储里挂回来的、还没交过的那几句开页时交一次）。 */
   private readonly tried = new Set<string>();
@@ -693,7 +693,7 @@ export class TerminalPage {
   }
 
   /** 会话那台那一份名单到了（问回来的 · 推来的 · 撤完回的）：是此刻看着的那一条才换。 */
-  private gotQueue(key: string, q: SessionQueue): void {
+  private gotQueue(key: string, q: QueueList): void {
     if (this.origin === undefined || this.sayingTo() === null || pendingKey(this.origin, this.sayingTo() as string) !== key) return;
     this.queue = q;
     this.queueOf = key;

@@ -25,6 +25,7 @@ import com.ccmonitor.mobile.core.data.db.Draft
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.AgentPick
 import com.ccmonitor.mobile.core.wire.gen.ArriveEnd
+import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.FactsReply
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
@@ -45,11 +46,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
@@ -65,6 +68,8 @@ data class ChatUiState(
     val units: List<RenderUnit> = emptyList(),
     /** 输入框上方那一排：交出去了、会话那台还没回执的那几句（「发送中」· 撤）。 */
     val outbox: List<OutboxLine> = emptyList(),
+    /** 消息流末尾那一排：会话那台那份输入队名单（哪一端投的都在；自己的回执到了就挪进这里）· 每条可撤。 */
+    val queue: List<QueueLine> = emptyList(),
     /** 这条会话此刻在跑（那台给的脸上在干什么是 `working`）：右端是 ■。 */
     val running: Boolean = false,
     /** 会话那一层的失败（起不来 · 读不出记录）那一句；`null` ＝ 没有。 */
@@ -185,6 +190,8 @@ class ChatSession(
     /** 这台的本地缓存（记录页 · 续点 · 待发 · 草稿）：先上它、再跟那台对齐。 */
     private val cache: ChatCache = ChatCache.None,
     attachOf: ((CoroutineScope, () -> String?) -> AttachTray)? = null,
+    /** 那台推来的 `changed` 帧（这一条会话的输入队名单从这里来）。 */
+    private val queueMoved: Flow<Changed> = emptyFlow(),
 ) {
     private val _state = MutableStateFlow(ChatUiState(sid = (target as? ChatTarget.Existing)?.sid, drafting = target is ChatTarget.Draft))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
@@ -203,6 +210,9 @@ class ChatSession(
     /** 上次上屏以后新排进来的那几条里人说的话（只拿它们消本地那几句的标）。 */
     private val heard = mutableListOf<String>()
     private val box = ChatOutbox(link, machine, scope, cache, attach) { publish() }
+
+    /** 这条会话的输入队（会话那台那一份）。 */
+    private val queue = ChatQueue(link, scope) { publish() }
     private val outgoing get() = box.lines
     private val lock = Mutex()
 
@@ -242,12 +252,19 @@ class ChatSession(
         if (!succeeding) {
             succeeding = true
             scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
-            // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）。
+            // 那台推来的输入队名单（这一条的）照画。
+            queue.watch(queueMoved) { sid }
+            // 每次接上那台：待发里还没回执的那几句照同一个编号再交一遍（那台按编号去重，只进一条）；名单问一次（断着时漏了的推送补上）。
             scope.launch {
                 link.state
                     .map { it is LinkLine.Up }
                     .distinctUntilChanged()
-                    .collect { up -> if (up) resend() }
+                    .collect { up ->
+                        if (up) {
+                            resend()
+                            sid?.let { queue.read(it) }
+                        }
+                    }
             }
         }
         val s = sid ?: return
@@ -308,6 +325,7 @@ class ChatSession(
             landingTool = null
             folds.forget(all = true)
             body.reset(emptyList())
+            queue.reset()
             _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
             publishLocked()
             follow = scope.launch { attach(by, fresh = true) }
@@ -383,6 +401,11 @@ class ChatSession(
 
     /** 撤待发里一句（见 [ChatOutbox.cancel]）。 */
     fun cancel(localId: String) = box.cancel(localId, sid)
+
+    /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）。 */
+    fun cancelQueued(id: String) {
+        sid?.let { queue.cancel(id, it) }
+    }
 
     /** 待发里该再交的那几句照同一个编号再交一遍。 */
     private fun resend() {
@@ -857,11 +880,17 @@ class ChatSession(
             outgoing.removeAll(seen)
             scope.launch { cache.forget(seen.map { it.localId }) }
         }
-        // 回执到了（会话那台已落盘）的才进流；还没回执的在输入框上方那一排（[ChatUiState.outbox]）。
+        // 回执过的那一句在名单里见过、此刻不在名单也不在已送进 ⇒ 哪一端把它撤了：拿掉。
+        val cancelled = outgoing.filter { it.receipt && queue.gone(it.localId) }
+        if (cancelled.isNotEmpty()) {
+            outgoing.removeAll(cancelled)
+            scope.launch { cache.forget(cancelled.map { it.localId }) }
+        }
+        // 回执到了（会话那台已落盘）的才进流；还在名单里的那几句只在名单那一排（[ChatUiState.queue]）；还没回执的在输入框上方（[ChatUiState.outbox]）。
         val (local, outbox) = box.view()
-        val units = body.units() + local
+        val units = body.units() + local.filterNot { queue.holds(it.key) }
         val landing = landingTool?.let { t -> units.firstOrNull { it is RenderUnit.ToolCall && it.toolUseId == t }?.key } ?: landingKey
-        _state.value = _state.value.copy(units = units, outbox = outbox, landing = landing, stream = folds.fold(units, landing))
+        _state.value = _state.value.copy(units = units, outbox = outbox, queue = queue.lines(), landing = landing, stream = folds.fold(units, landing))
     }
 
     companion object {

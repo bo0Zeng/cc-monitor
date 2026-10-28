@@ -37,7 +37,7 @@ fn req(id: &str, end: &str, n: Option<u64>, at_ms: i64) -> SessionQueuePutReq {
     }
 }
 
-fn ids(q: &SessionQueue) -> Vec<(&str, Option<u64>, S)> {
+fn ids(q: &QueueList) -> Vec<(&str, Option<u64>, S)> {
     q.items
         .iter()
         .map(|i| (i.id.as_str(), i.seq, i.state))
@@ -341,8 +341,11 @@ fn each_item_carries_the_owner_written_words() {
     put(&o, &req("a", "mobile", None, T0), T0).unwrap();
     put(&o, &req("b", "monitor", None, T0), T0 + 1).unwrap();
     put(&o, &req("c", "cc-bus", Some(2), T0), T0 + 2).unwrap();
-    let words = |q: &SessionQueue| -> Vec<(String, String)> {
-        q.items.iter().map(|i| (i.said.clone(), i.from.clone())).collect()
+    let words = |q: &QueueList| -> Vec<(String, String)> {
+        q.items
+            .iter()
+            .map(|i| (i.said.clone(), i.from.clone()))
+            .collect()
     };
     let place = |n: u32| copy_text("beQueue.said.place", &[("place", &n.to_string())]);
     assert_eq!(
@@ -354,5 +357,9 @@ fn each_item_carries_the_owner_written_words() {
         ]
     );
     let after = cancel(&o, &sid(), "a", T0 + 4).unwrap().queue;
-    assert_eq!(words(&after)[0].0, place(1), "撤掉第 1 条 ⇒ 原第 2 条写第 1");
+    assert_eq!(
+        words(&after)[0].0,
+        place(1),
+        "撤掉第 1 条 ⇒ 原第 2 条写第 1"
+    );
 }

@@ -17,8 +17,7 @@ use crate::common::said::Said;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
 use cmd_wire::queue::{
-    QueueCancelled, QueueItem, QueuePut, QueuePutOutcome, QueueState, SessionQueue,
-    SessionQueuePutReq,
+    QueueCancelled, QueueItem, QueueList, QueuePut, QueuePutOutcome, QueueState, SessionQueuePutReq,
 };
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
@@ -330,7 +329,7 @@ impl Book {
     }
 
     /// 名单：排着的照序号，收着的照到达先后，未送达的照序号。
-    pub(crate) fn view(&self) -> SessionQueue {
+    pub(crate) fn view(&self) -> QueueList {
         let rank = |s: QueueState| match s {
             QueueState::Queued => 0,
             QueueState::Held => 1,
@@ -347,7 +346,7 @@ impl Book {
                 },
             )
         });
-        SessionQueue {
+        QueueList {
             items: v.into_iter().map(|e| self.item(e)).collect(),
             sent: self.sent.iter().cloned().collect(),
         }
@@ -465,7 +464,7 @@ pub(crate) fn cancel(own: &Own, sid: &str, id: &str, now_ms: i64) -> Result<Queu
 }
 
 /// `session-queue-read` 在主人这台的那一半：此刻的名单（先把等够了的排掉）。
-pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fail> {
+pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail> {
     with_book(own, sid, |b| {
         b.settle(now_ms);
         Ok(b.view())
@@ -473,7 +472,7 @@ pub(crate) fn read(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fa
 }
 
 /// 会话结束：没送的标未送达，回此刻的名单。
-pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<SessionQueue, Fail> {
+pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail> {
     with_book(own, sid, |b| {
         b.end(now_ms);
         Ok(b.view())
