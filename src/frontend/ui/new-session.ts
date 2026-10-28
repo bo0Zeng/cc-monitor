@@ -20,7 +20,7 @@ import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
-import { copyText, type CopyKey } from "./copy-table";
+import { copyText } from "./copy-table";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName, offlineSaid } from "./control-said";
@@ -262,17 +262,11 @@ interface PlaceRadio {
 /** 「运行于」的几张：托管终端 · tmux 里 · 新的终端窗口（直路）。 */
 type Place = "managed" | "tmux" | "window";
 
-const PLACE_LABEL: Record<Place, CopyKey> = {
-  managed: "newSession.place.managed",
-  tmux: "newSession.place.tmux",
-  window: "newSession.place.window",
-};
-
 /** 勾的那一张 ⇒ 线上 `run` 那一格。 */
 const PLACE_RUN: Record<Place, Run> = { managed: "managed", tmux: "tmux", window: "direct" };
 
 /** 「运行于」那一张：单选 ＋ 名字 ＋ 灰字。 */
-function placeRadio(places: HTMLElement, value: Place): PlaceRadio {
+function placeRadio(places: HTMLElement, value: Place, title: string): PlaceRadio {
   const label = el("label");
   label.className = s.nsPlace;
   const input = el("input");
@@ -283,7 +277,7 @@ function placeRadio(places: HTMLElement, value: Place): PlaceRadio {
   t.className = s.nsPlaceText;
   const note = el("div");
   note.className = s.nsPlaceNote;
-  t.append(el("div", "", copyText(PLACE_LABEL[value])), note);
+  t.append(el("div", "", title), note);
   label.append(input, t);
   places.appendChild(label);
   return { label, input, note };
@@ -517,9 +511,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   placeRow.root.hidden = ask !== null;
   single.appendChild(placeRow.root);
   // 只列那台答的 `hosts` 里有的（托管 · tmux；终端窗口恒在）。
-  const managedRadio = placeRadio(places, "managed");
-  const tmuxRadio = placeRadio(places, "tmux");
-  const windowRadio = placeRadio(places, "window");
+  const managedRadio = placeRadio(places, "managed", copyText("newSession.place.managed"));
+  const tmuxRadio = placeRadio(places, "tmux", copyText("newSession.place.tmux"));
+  const windowRadio = placeRadio(places, "window", copyText("newSession.place.window"));
   managedRadio.note.textContent = copyText("newSession.place.managedNote");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
   const radios: Record<Place, PlaceRadio> = { managed: managedRadio, tmux: tmuxRadio, window: windowRadio };

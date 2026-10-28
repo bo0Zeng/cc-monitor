@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1845,
+  "ceiling": 1844,
   "groups": [
     {
       "kind": "首登",
@@ -145,7 +145,7 @@
         ["src/frontend/ui/main.ts", "key", 1],
         ["src/frontend/ui/needs-bar.ts", "key", 1],
         ["src/frontend/ui/needs-panel.ts", "key", 2],
-        ["src/frontend/ui/new-session.ts", "branch", 16],
+        ["src/frontend/ui/new-session.ts", "branch", 14],
         ["src/frontend/ui/new-session.ts", "key", 15],
         ["src/frontend/ui/open-settings.ts", "key", 1],
         ["src/frontend/ui/paste-block.ts", "key", 6],
@@ -153,7 +153,7 @@
         ["src/frontend/ui/record-reads.ts", "key", 1],
         ["src/frontend/ui/remote-health.ts", "branch", 3],
         ["src/frontend/ui/remote-health.ts", "key", 1],
-        ["src/frontend/ui/resume-menu.ts", "branch", 5],
+        ["src/frontend/ui/resume-menu.ts", "branch", 6],
         ["src/frontend/ui/resume-menu.ts", "key", 4],
         ["src/frontend/ui/resync.ts", "key", 5],
         ["src/frontend/ui/reveal-in-folder.ts", "key", 1],

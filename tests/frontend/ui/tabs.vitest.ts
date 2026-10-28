@@ -1754,13 +1754,13 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item(copyText("acct.menu.open"))!.click();
     expect(open).toHaveBeenCalledWith("r2", "devbox");
   });
-  it("★ 远端：一级项 ＋ flyout（最上面「恢复」· 运行于两项单选 · 在此目录新建会话）；勾画在那台答的默认上；没动过 ⇒ 不带 run，挪过 ⇒ 带", async () => {
+  it("★ 远端：一级项 ＋ flyout（最上面「恢复」· 运行于三项单选 · 在此目录新建会话）；勾画在那台答的默认上；没动过 ⇒ 不带 run，挪过 ⇒ 带", async () => {
     // 替身那台答的默认放在哪是「不用 tmux」（`chan-fake.ts::standingProduct`）。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) => (cmd === "list_remote_tmux" ? Promise.resolve([]) : Promise.resolve(undefined))));
     await openArchived();
     const fly = flyout();
     expect([...fly.children].map((c) => (c.getAttribute("role") === "presentation" ? `[${c.textContent}]` : c.getAttribute("role") === "separator" ? "—" : labelOf(c)))).toEqual([
-      RESUME, "—", `[${copyText("resumeMenu.group.run")}]`, TMUX, DIRECT, "—", copyText("history.menu.newInDir"),
+      RESUME, "—", `[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.managed"), TMUX, DIRECT, "—", copyText("history.menu.newInDir"),
     ]);
     expect(item(DIRECT)!.getAttribute("aria-checked"), "勾画在那台答的默认上").toBe("true");
     expect(item(RESUME)!.textContent, "「恢复」右侧灰字是勾着的方式").toContain(DIRECT);

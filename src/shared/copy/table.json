@@ -1659,13 +1659,13 @@
     "beSessionNew.place.noManaged": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台不能托管终端",
+      "zh": "仅能开终端窗口 · 不支持托管终端",
       "args": []
     },
     "beSessionNew.hosted.noName": {
       "kind": "error",
       "role": "报错",
-      "zh": "托管终端没报回名字",
+      "zh": "托管终端未报名字",
       "args": []
     },
     "beSessionNew.tmux.taken": {
@@ -14393,14 +14393,14 @@
     "beCcm.execute.hostSpawnFailed": {
       "kind": "error",
       "role": "命令行",
-      "zh": "ccm: 托管终端 {name} 起不来 · {why}",
+      "zh": "ccm: 托管终端 {name} 启动失败 · {why}",
       "args": ["name", "why"],
       "limited": ["ccm"]
     },
     "beCcm.execute.hostNotUp": {
       "kind": "error",
       "role": "命令行",
-      "zh": "ccm: 托管终端 {name} 在 {secs} 秒内没起来（托管口没绑上 · 名字被占 · 起不了那个程序）",
+      "zh": "ccm: 托管终端 {name} 启动超时 · {secs} 秒（托管口未绑定 · 名字被占）",
       "args": ["name", "secs"],
       "limited": ["ccm"]
     },
@@ -22852,8 +22852,9 @@
     "resumeMenu.run.direct": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新的终端窗口",
-      "args": []
+      "zh": "不用 tmux",
+      "args": [],
+      "limited": ["tmux"]
     },
     "resumeMenu.account.base": {
       "kind": "action",
