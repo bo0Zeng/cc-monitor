@@ -350,7 +350,8 @@ pub const REPLAY_TAIL_KEEP: usize = 600;
 /// **代价**：单会话上界是 750 条不是 600。
 pub const TRIM_SLACK: usize = REPLAY_TAIL_KEEP / 4;
 
-/// 读数：留存总条数 · 留存里的会话数 · 累计修剪条数 · 留存正文字节。
+/// 读数：留存总条数 · 留存里的会话数 · 累计修剪条数 · 留存正文字节（只给判据）。
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayStats {
     pub history_len: usize,
@@ -1460,7 +1461,8 @@ impl EventReplay {
         self.tell_kept(&mut inner);
     }
 
-    /// 读数口（日志与判据用）。
+    /// 读数口（只给判据）。
+    #[cfg(test)]
     pub fn stats(&self) -> ReplayStats {
         let inner = self.inner.lock();
         ReplayStats {
