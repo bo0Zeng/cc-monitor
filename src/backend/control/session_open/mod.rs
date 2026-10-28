@@ -149,7 +149,7 @@ pub(crate) const OPEN_CODES: &[&str] = &[
     "tmux_taken",
     "record_gone",
     "already_live",
-    "not_in_tmux",
+    "not_hosted",
     "wrong_owner",
     "unobservable",
     "fork_failed",
@@ -559,7 +559,7 @@ fn look(
     // 没认到：那一句由调用处取好（这台没 tmux ⇒ 改说放不了）。
     let missing = |said: String| -> Failed {
         if listed.tmux {
-            fail("not_in_tmux", said, None)
+            fail("not_hosted", said, None)
         } else {
             fail(
                 "place_unavailable",
@@ -582,7 +582,7 @@ fn look(
             Standing::Idle(e) => (Landed::Idle, e, None),
             Standing::None => {
                 return Err(missing(copy_core::copy_text(
-                    "beSessionOpen.look.notInTmux",
+                    "beSessionOpen.look.notHosted",
                     &[],
                 )))
             }

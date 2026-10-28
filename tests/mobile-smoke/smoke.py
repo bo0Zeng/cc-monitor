@@ -1034,12 +1034,12 @@ def terminal_steps():
         if not wait(name, 15) or not any(n.get("text") == name for n in ui.nodes()):
             raise Step.Fail(f"tmux 会话列表里没有 {name}")
         attached = sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name)
-        tap_in_row(name, t("mobTmux.row.attach"))
+        tap_in_row(name, t("mobTerms.row.attach"))
         end = ui.within(20)
         while time.time() < end and sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
             time.sleep(1)
         if sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
-            raise Step.Fail(f"点了「{t('mobTmux.row.attach')}」，20 秒内台架 tmux 里没多一个接着 {name} 的终端")
+            raise Step.Fail(f"点了「{t('mobTerms.row.attach')}」，20 秒内台架 tmux 里没多一个接着 {name} 的终端")
         # 手机敲的字先落到那一屏上再按回车、再从桌面敲：`input text` 是异步的，忙时回车会和那段字错开（桌面那句接在没回车的那行后面）。
         typed(f"{T} from phone terminal")
         if not pane_has(name, f"{T} from phone terminal", 20):
@@ -1060,19 +1060,19 @@ def terminal_steps():
         time.sleep(2)
         hide_keyboard()
         tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
-        fill(t("mobTmux.new.name"), f"{T}new"); hide_keyboard()  # 读回核过：忙时 `input text` 会丢字
+        fill(t("mobTerms.new.name"), f"{T}new"); hide_keyboard()  # 读回核过：忙时 `input text` 会丢字
         # 名字框独占一行、按钮在它下面一排：会话多时那一排落在窗里那一段可滚的底下，先往上滑到看得见。
         for _ in range(6):
-            if ui.find(t("mobTmux.new.detached")) is not None:
+            if ui.find(t("mobTerms.new.detached")) is not None:
                 break
             adb("shell", "input", "swipe", "540", "1500", "540", "800", "400")
             time.sleep(1)
-        tap(t("mobTmux.new.detached"))
+        tap(t("mobTerms.new.detached"))
         end = time.time() + 20
         while time.time() < end and f"{T}new" not in tmux_sessions():
             time.sleep(1)
         if f"{T}new" not in tmux_sessions():
-            raise Step.Fail(f"点了「{t('mobTmux.new.detached')}」，台架 tmux 里没有 {T}new")
+            raise Step.Fail(f"点了「{t('mobTerms.new.detached')}」，台架 tmux 里没有 {T}new")
         shot("9b-新建")
         adb("shell", "input", "keyevent", "4")
 
@@ -1146,13 +1146,13 @@ def terminal_steps():
         if not wait(pane, 15):
             raise Step.Fail(f"tmux 会话列表里没有 {pane}")
         # 手机上已有一个 tab 接着它（第 9 步那个）⇒ 点［打开］是切回那个 tab、不另接：台架那边接着它的终端有一个就行。
-        tap_in_row(pane, t("mobTmux.row.attach"))
+        tap_in_row(pane, t("mobTerms.row.attach"))
         end = ui.within(20)
         while time.time() < end and clients() < 1:
             time.sleep(1)
         if clients() < 1:
             shot("9d-打开之后")
-            raise Step.Fail(f"点了「{t('mobTmux.row.attach')}」，台架 tmux 里没有接着 {pane} 的终端")
+            raise Step.Fail(f"点了「{t('mobTerms.row.attach')}」，台架 tmux 里没有接着 {pane} 的终端")
         time.sleep(2)
         hide_keyboard()
         tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)

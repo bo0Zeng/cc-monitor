@@ -34,6 +34,6 @@ class TmuxNewRowLayoutTest {
     }
 
     private companion object {
-        const val PATH = "src/main/kotlin/com/ccmonitor/mobile/ui/session/TmuxManager.kt"
+        const val PATH = "src/main/kotlin/com/ccmonitor/mobile/ui/session/TerminalManager.kt"
     }
 }

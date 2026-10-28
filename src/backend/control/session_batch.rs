@@ -429,7 +429,7 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
 fn stop_said(why: &str, a: &Answer) -> String {
     match why {
         "no_tmux" => copy_core::copy_text("tabBatch.why.noTmux", &[]),
-        "not_in_tmux" => copy_core::copy_text("tabBatch.why.notInTmux", &[]),
+        "not_hosted" => copy_core::copy_text("tabBatch.why.notHosted", &[]),
         "ambiguous" => copy_core::copy_text("tabBatch.why.ambiguous", &[("names", &a.detail)]),
         _ => crate::control::kill::said(a.session.as_deref().unwrap_or_default(), why),
     }
@@ -450,7 +450,7 @@ fn stop_one(sid: &str, listed: &Listed, deps: &Deps) -> Answer {
     let at = match carriers(&listed.rows, sid) {
         Standing::Running(e) | Standing::Idle(e) => e,
         Standing::None if !listed.tmux => return Answer::skipped(sid, "no_tmux", String::new()),
-        Standing::None => return Answer::skipped(sid, "not_in_tmux", String::new()),
+        Standing::None => return Answer::skipped(sid, "not_hosted", String::new()),
         // 命中多个不结束（选错了不可逆）。
         Standing::Ambiguous(es) => {
             let ns: Vec<String> = es.iter().map(|e| e.name.clone()).collect();
