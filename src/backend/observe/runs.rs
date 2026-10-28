@@ -751,6 +751,7 @@ impl RunTrack {
     }
 
     /// 到此刻从子运行记录读了多少字节。
+    #[cfg(test)]
     pub(crate) fn child_bytes(&self) -> u64 {
         self.child_read
     }

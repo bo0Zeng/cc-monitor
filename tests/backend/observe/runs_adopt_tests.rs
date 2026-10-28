@@ -70,7 +70,9 @@ fn child_tool(run: &str, rid: &str) -> String {
 /// 一份子记录（几行工具调用）＋ 派出那一刻旁边落的那一份；写入时刻拨到 `age` 之前。回：它的字节数。
 fn child(parent: &Path, run: &str, tool: &str, age: Duration) -> u64 {
     let p = child_of(parent, run);
-    let lines: Vec<String> = (0..20).map(|i| child_tool(run, &format!("{run}-{i}"))).collect();
+    let lines: Vec<String> = (0..20)
+        .map(|i| child_tool(run, &format!("{run}-{i}")))
+        .collect();
     append(&p, &lines);
     std::fs::write(
         p.with_file_name(format!("agent-{run}.meta.json")),

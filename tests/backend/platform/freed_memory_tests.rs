@@ -86,7 +86,13 @@ fn child_gives_freed_pages_back() {
 #[test]
 fn gives_freed_pages_back() {
     let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
-        .args([CHILD_TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"])
+        .args([
+            CHILD_TEST,
+            "--exact",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
         .env(CHILD_MARK, "1")
         .env("HOME", std::env::temp_dir())
         .output()
