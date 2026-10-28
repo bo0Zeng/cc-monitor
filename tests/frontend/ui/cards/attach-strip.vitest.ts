@@ -49,6 +49,20 @@ describe("消息流里人说的那一句带的附件", () => {
     expect(chip.dataset.gone).toBe("false");
   });
 
+  it("★ 那一排画在气泡外：是气泡前一个兄弟，不在气泡里；只有附件没有字 ⇒ 不画空气泡；只有字 ⇒ 整张卡就是气泡", () => {
+    const el = card(said("截图在这", [{ type: "text", text: "截图在这" }, IMAGE]));
+    const strip = el.querySelector('[data-role="said-attachments"]') as HTMLElement;
+    const bubble = el.querySelector('[data-role="said-bubble"]') as HTMLElement;
+    expect(bubble, "带附件那一句有自己的气泡").not.toBeNull();
+    expect(bubble.contains(strip), "附件不在气泡里").toBe(false);
+    expect(strip.nextElementSibling).toBe(bubble);
+    expect(bubble.querySelector(".card-body")?.textContent).toBe("截图在这");
+    expect(card(said("", [IMAGE])).querySelector('[data-role="said-bubble"]'), "没有字不画空气泡").toBeNull();
+    const plain = card(said("只有字", [{ type: "text", text: "只有字" }]));
+    expect(plain.querySelector('[data-role="said-bubble"]'), "只有字：卡本身是气泡").toBeNull();
+    expect(Array.from(plain.children, (c) => c.className)).toEqual(["card-header", "card-body"]);
+  });
+
   it("那台已清掉 ⇒ 虚线「已清理」、不可点", () => {
     const el = card(said("这张是上周那次的", [{ type: "text", text: "x" }], [{ name: "old.pdf", rel: ".ccm-attach/1016-0900-aaaa/old.pdf", class: "pdf", classText: "kind-pdf", gone: true }]));
     const chip = el.querySelector('[data-role="said-attachment"]') as HTMLElement;
