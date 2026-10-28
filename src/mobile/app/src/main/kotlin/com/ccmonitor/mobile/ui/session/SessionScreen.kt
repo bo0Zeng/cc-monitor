@@ -497,7 +497,7 @@ private fun ConnectedDialogs(
 ) {
     if (showTmux) {
         val reach by vm.reach.collectAsState()
-        TmuxManagerDialog(
+        TerminalManagerDialog(
             terminals = vm.terminals,
             noTmux = reach.noTmux,
             onAttach = { name ->

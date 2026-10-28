@@ -30,6 +30,7 @@ pub use cmd_wire::frame::Life as WireLife;
 /// （扩展特征：孤儿规则不许在那边的类型上加固有方法）。
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{Allow, CanClose, CanTerm, SessionCan, SessionDot, SessionFace};
+use cmd_wire::session::Run;
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionLeft};
 pub use cmd_wire::frame::{FilesBatch, Probe, SessionsReplayed, Transfer};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
@@ -154,7 +155,7 @@ impl SessionFaceExt for SessionFace {
                     can: SessionCan {
                         close: CanClose::No { why: running() },
                         resume: no(running()),
-                        term: CanTerm::Yes { tmux: true },
+                        term: CanTerm::Yes { host: Run::Tmux },
                         reattach: Allow::Yes,
                         // 离开「活」两样都能换：记在注解上、下次恢复用上（没有终端也收）。
                         model: Allow::Yes,
@@ -362,7 +363,11 @@ fn live_face(
             close: CanClose::No { why: running() },
             resume: no(running()),
             term: CanTerm::Yes {
-                tmux: host == Some(Housed::In(TerminalHost::Tmux)),
+                host: match host {
+                    Some(Housed::In(TerminalHost::Tmux)) => Run::Tmux,
+                    Some(Housed::In(TerminalHost::Managed)) => Run::Managed,
+                    Some(Housed::Bare) | None => Run::Direct,
+                },
             },
             reattach: no(running()),
             model,

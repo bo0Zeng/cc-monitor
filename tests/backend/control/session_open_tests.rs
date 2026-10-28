@@ -488,7 +488,7 @@ fn a_local_direct_resume_is_direct_and_carries_the_model_preference() {
     assert!(rig.ccm.borrow().is_empty());
 }
 
-/// 接回：按会话（在跑 / 空 shell）或按会话名，回接进去那一行；不在哪个 tmux 里 ⇒ `not_in_tmux`。
+/// 接回：按会话（在跑 / 空 shell）或按会话名，回接进去那一行；不在哪种宿主里 ⇒ `not_hosted`。
 #[test]
 fn look_attaches_without_starting_anything() {
     let rig = Rig::new(Some(vec![
@@ -510,7 +510,7 @@ fn look_attaches_without_starting_anything() {
     let err = rig
         .open(json!({ "what": { "kind": "look", "sid": U } }))
         .unwrap_err();
-    assert_eq!(err.0, "not_in_tmux");
+    assert_eq!(err.0, "not_hosted");
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
 }
 
@@ -639,7 +639,7 @@ fn every_code_comes_with_a_sentence_written_here() {
             }),
         ),
         (
-            "not_in_tmux",
+            "not_hosted",
             Box::new(|_| json!({ "what": { "kind": "look", "sid": A } })),
         ),
         (
