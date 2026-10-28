@@ -476,7 +476,10 @@ fn the_last_hop_names_the_host_it_runs_in() {
         }
     };
     assert_eq!(host_here(env(&[("CCM_HOST", "h1")])), Some(Managed));
-    assert_eq!(host_here(env(&[("CCM_HOST", "h1"), ("TMUX", "/s,1,0")])), Some(Managed));
+    assert_eq!(
+        host_here(env(&[("CCM_HOST", "h1"), ("TMUX", "/s,1,0")])),
+        Some(Managed)
+    );
     assert_eq!(host_here(env(&[("TMUX", "/s,1,0")])), Some(Tmux));
     assert_eq!(host_here(env(&[("TMUX", ""), ("CCM_HOST", "")])), None);
     assert_eq!(host_here(env(&[])), None);

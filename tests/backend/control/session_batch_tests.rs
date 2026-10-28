@@ -92,12 +92,7 @@ impl Rig {
                 None => Ok(()),
             }
         };
-        let started = |sid: &str| {
-            self.started
-                .iter()
-                .find(|(s, _)| s == sid)
-                .map(|(_, h)| *h)
-        };
+        let started = |sid: &str| self.started.iter().find(|(s, _)| s == sid).map(|(_, h)| *h);
         deps_with(&list, &end, &self.prefs, &started, f)
     }
 }
@@ -495,7 +490,10 @@ fn where_also_says_where_each_resume_lands_by_default() {
     rig.started = vec![(A.to_string(), crate::wire::TerminalHost::Tmux)];
     let out = rig.run(|d| where_(&json!({ "sids": [A, B] }), d)).unwrap();
     assert_eq!(
-        (out["results"][0]["run"].clone(), out["results"][1]["run"].clone()),
+        (
+            out["results"][0]["run"].clone(),
+            out["results"][1]["run"].clone()
+        ),
         (json!("tmux"), json!("direct"))
     );
 }

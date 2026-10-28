@@ -241,7 +241,10 @@ pub(crate) fn plan_rows(
     let (dirs, total_s, stuck_s) = (dirs.to_string(), total.to_string(), stuck.to_string());
     SetPlan {
         short: if stuck == 0 {
-            copy_text("beSessionSet.short.all", &[("dirs", &dirs), ("n", &total_s)])
+            copy_text(
+                "beSessionSet.short.all",
+                &[("dirs", &dirs), ("n", &total_s)],
+            )
         } else {
             copy_text(
                 "beSessionSet.short.blocked",

@@ -443,8 +443,16 @@ fn a_note_carries_the_host_into_the_launch_ledger_and_a_direct_launch_drops_it()
         crate::history::launch_book::host_of(Some(&h), "s-host"),
         Some(TerminalHost::Tmux)
     );
-    assert!(!adopt(&own_at(&h), 91, "s-host", Some(990), &none_alive).unwrap(), "记着同一个还写");
-    leave(&own_at(&h), 92, &host_note("x", Some(TerminalHost::Managed))).unwrap();
+    assert!(
+        !adopt(&own_at(&h), 91, "s-host", Some(990), &none_alive).unwrap(),
+        "记着同一个还写"
+    );
+    leave(
+        &own_at(&h),
+        92,
+        &host_note("x", Some(TerminalHost::Managed)),
+    )
+    .unwrap();
     assert!(adopt(&own_at(&h), 92, "s-host", Some(990), &none_alive).unwrap());
     assert_eq!(
         crate::history::launch_book::host_of(Some(&h), "s-host"),
@@ -452,6 +460,9 @@ fn a_note_carries_the_host_into_the_launch_ledger_and_a_direct_launch_drops_it()
     );
     leave(&own_at(&h), 93, &host_note("x", None)).unwrap();
     assert!(adopt(&own_at(&h), 93, "s-host", Some(990), &none_alive).unwrap());
-    assert_eq!(crate::history::launch_book::host_of(Some(&h), "s-host"), None);
+    assert_eq!(
+        crate::history::launch_book::host_of(Some(&h), "s-host"),
+        None
+    );
     let _ = std::fs::remove_dir_all(&h);
 }
