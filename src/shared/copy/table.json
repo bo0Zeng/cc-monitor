@@ -219,12 +219,6 @@
       "zh": "{machine} 后端版本不同",
       "args": ["machine"]
     },
-    "peerVersion.said.framesDiffer": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 后端版本不同 · 需更新",
-      "args": ["machine"]
-    },
     "peerVersion.said.unreadable": {
       "kind": "error",
       "role": "报错",
@@ -15739,44 +15733,6 @@
       "zh": "取中转钥匙失败 · {why} · 中转未起（无中转钥匙则谁都能用）",
       "args": ["why"]
     },
-    "events.stream.closedTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话更新已停",
-      "args": []
-    },
-    "events.stream.closedLocal": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机会话停止自动更新 · 重启 cc-monitor 可重新接上",
-      "args": []
-    },
-    "events.stream.closedRemote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 会话停止自动更新 · 重启 cc-monitor 可重新接上",
-      "args": ["machine"]
-    },
-    "events.unseen.neverBody": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 会话连上后出现 · 自动重试中 · 连接状态见设置",
-      "args": ["machine"],
-      "limited": ["连接"]
-    },
-    "events.unseen.overrunTitle": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 无应答",
-      "args": ["machine"]
-    },
-    "events.unseen.lostBody": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 的会话运行状态不明 · 自动重试中\n连上后自动接上 · 连接状态见设置",
-      "args": ["machine"],
-      "limited": ["连接"]
-    },
     "settingsPanel.claudeDir.readFailed": {
       "kind": "error",
       "role": "报错",
@@ -22571,13 +22527,6 @@
       "role": "按钮",
       "zh": "在终端里打开",
       "args": []
-    },
-    "sessionHead.act.reconnect": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重新连接",
-      "args": [],
-      "limited": ["连接"]
     },
     "needs.bar.approve": {
       "kind": "body",

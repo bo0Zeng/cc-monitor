@@ -356,18 +356,16 @@ describe("会话头", () => {
     expect(host.find).toHaveBeenCalled();
   });
 
-  it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］；活着不多", () => {
+  it("★ 按状态多一颗：已结束［恢复］· Claude 已退出（远端）［在终端里打开］；状态不明不多（那台由栏底机器条说、在那一行修）；活着不多", () => {
     expect(labels(head(tab("a", { face: goldenFace("ended") })).h.el)).toContain(copyText("sessionHead.act.resume"));
     const exited = head(tab("b", { origin: "devbox" as never, face: goldenFace("reconnectable") }));
     expect(labels(exited.h.el)).toContain(copyText("sessionHead.act.openTerm"));
     expect(labels(head(tab("b2", { face: goldenFace("reconnectable") })).h.el), "本机：没有接回终端的那条路，不画点了没反应的按钮").not.toContain(copyText("sessionHead.act.openTerm"));
-    const unseen = head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") }));
-    const re = [...unseen.h.el.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionHead.act.reconnect"))!;
-    re.click();
-    expect(unseen.host.reconnect).toHaveBeenCalledWith("gpu-01");
+    const unseen = labels(head(tab("c", { origin: "gpu-01" as never, face: goldenFace("unseen") })).h.el);
+    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm"] as const) expect(unseen).not.toContain(copyText(x));
     expect(labels(head(tab("e", { face: goldenFace("ended") })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
     const live = labels(head(tab("d")).h.el);
-    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm", "sessionHead.act.reconnect"] as const) expect(live).not.toContain(copyText(x));
+    for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm"] as const) expect(live).not.toContain(copyText(x));
   });
 
   it("没有当前会话 ⇒ 不显示", () => {
