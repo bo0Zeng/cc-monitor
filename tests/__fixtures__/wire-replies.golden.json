@@ -1440,7 +1440,7 @@
       }
     },
     "session-open-facts": {
-      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"tmux\":true,\"run\":\"tmux\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"permissionDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"}}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
+      "rust": "{\"recent\":[{\"cwd\":\"cwd-x\",\"shown\":\"shown-x\",\"lastMs\":7,\"lastText\":\"lastText-x\"}],\"hosts\":[\"tmux\"],\"run\":\"tmux\",\"agents\":[{\"kind\":\"kind-x\",\"text\":\"text-x\",\"models\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"modelDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"},\"modelNote\":\"modelNote-x\",\"permissionModes\":[{\"value\":\"value-x\",\"text\":\"text-x\"}],\"permissionDefault\":{\"value\":\"value-x\",\"text\":\"text-x\"}}],\"fork\":{\"agent\":\"agent-x\",\"launch\":{\"cwd\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"account\":{\"kind\":\"known\",\"value\":\"value-x\",\"from\":\"record\"},\"terminal\":{\"kind\":\"known\",\"value\":{\"host\":\"tmux\",\"terminal\":\"terminal-x\"},\"from\":\"record\"}},\"turn\":7,\"startText\":\"startText-x\"}}",
       "sample": {
         "agents": [
           {
@@ -1494,6 +1494,9 @@
           "startText": "startText-x",
           "turn": 7
         },
+        "hosts": [
+          "tmux"
+        ],
         "recent": [
           {
             "cwd": "cwd-x",
@@ -1502,8 +1505,7 @@
             "shown": "shown-x"
           }
         ],
-        "run": "tmux",
-        "tmux": true
+        "run": "tmux"
       }
     },
     "session-permission": {

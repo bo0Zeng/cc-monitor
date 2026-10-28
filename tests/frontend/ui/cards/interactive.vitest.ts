@@ -37,7 +37,7 @@ describe("交互等待类工具：不许被折进过程那几步", () => {
     pendingToolResults: new Map(),
     lazy: false,
   });
-  const ask = (cards: Record<string, string> | undefined): LineRecord =>
+  const ask = (cards: Record<string, string> | undefined, draw: "card" | "steps"): LineRecord =>
     ({
       agent: "claude",
       t: "reply",
@@ -45,15 +45,17 @@ describe("交互等待类工具：不许被折进过程那几步", () => {
       at: "2026-01-01T00:00:00.000Z",
       blocks: [{ type: "tool_use", id: "t1", name: "AskUserQuestion", input: { questions: [{ question: "q?", options: [{ label: "x" }] }] } }],
       autoReply: false,
+      draw,
+      human: false,
       ...(cards ? { cards } : {}),
     }) as never;
 
   it("★ 后端说这是交互卡（`toolCards` 里是 `interactive`）⇒ 默认可见的一张卡，不进过程那几步", () => {
-    expect(renderMessage(ask({ t1: "interactive" }), ctx() as never).kind, "问题卡被折叠 = 用户看不出有问题在等他").toBe("card");
+    expect(renderMessage(ask({ t1: "interactive" }, "card"), ctx() as never).kind, "问题卡被折叠 = 用户看不出有问题在等他").toBe("card");
   });
 
   it("★ 反向：没有卡型 ⇒ 普通的几步（界面不按工具名自己判 —— 否则上一条恒真、等于没判据）", () => {
-    expect(renderMessage(ask(undefined), ctx() as never).kind).toBe("steps");
+    expect(renderMessage(ask(undefined, "steps"), ctx() as never).kind).toBe("steps");
   });
 });
 
@@ -90,6 +92,8 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
       cards: { t1: "interactive" },
       steps: { t1: { tool: "AskUserQuestion", known: true, ask: asked("改哪一处", ["甲"]) } },
       autoReply: false,
+      draw: "card",
+      human: false,
     } as unknown as LineRecord;
     const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false };
     const r = renderMessage(rec, ctx as never);
