@@ -9,6 +9,7 @@ import { TerminalPage, type InputHolds, type TerminalReads, type Watched } from 
 import type { TerminalRow, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { ControlError } from "../../../src/frontend/ui/control-said";
 
 const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "billing-2", title: "billing" };
 
@@ -135,5 +136,29 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     expect(page.el.textContent).toContain(copyText("terminal.input.failed", { why: "S-held" }));
     expect([...page.el.querySelectorAll("button")].filter((b) => b.textContent === copyText("terminal.input.retry"))).toHaveLength(0);
     expect(reads.send.mock.calls.map((c) => c.length)).toEqual([4]);
+  });
+});
+
+describe("A2-16 对稿留下的两处（托管那一形）", () => {
+  it("★ 接管被拒 ⇒ 结局那一行是那台写好的那一句（不是空的、不是笼统的「被拒」）", async () => {
+    const { page, holds } = rig([row({ terminal: "%7", name: "billing-2", input: "held", holder: { said: "S-in-window", mine: false } })]);
+    holds.take.mockRejectedValue(new ControlError("S-take-refused", "raw detail"));
+    page.sessionChanged();
+    page.setVisible(true);
+    await flush();
+    [...page.el.querySelectorAll("button")].find((b) => b.textContent === copyText("terminal.input.take"))?.click();
+    await flush();
+    expect(holds.take).toHaveBeenCalled();
+    expect(page.el.textContent).toContain("S-take-refused");
+  });
+
+  it("★ 手机经终端 tab 持有输入（它就是一个终端窗口）⇒ 页头写「终端窗口 ×1」，不写「后台」", async () => {
+    const { page } = rig([row({ terminal: "%7", name: "billing-2", input: "held", clients: 1, holder: { said: "S-in-window", mine: false } })]);
+    page.sessionChanged();
+    page.setVisible(true);
+    await flush();
+    expect(page.el.textContent).toContain(copyText("terminal.tag.windows", { n: 1 }));
+    expect(page.el.textContent).not.toContain(copyText("terminal.tag.background"));
+    expect(page.el.textContent).toContain("S-in-window");
   });
 });
