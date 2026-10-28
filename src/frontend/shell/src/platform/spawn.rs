@@ -70,7 +70,7 @@ fn assign_to_job(raw: std::os::windows::io::RawHandle, what: &str) -> LifetimeGu
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
     unsafe {
@@ -85,7 +85,10 @@ fn assign_to_job(raw: std::os::windows::io::RawHandle, what: &str) -> LifetimeGu
             }
         };
         let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // 许脱离：Job 里的进程**自己要**脱离着起的那一个（带 `CREATE_BREAKAWAY_FROM_JOB`，如被监护的后端起的托管终端）
+        // 不进这个 Job ⇒ 关 monitor 不连它一起收；没要脱离的照旧都在 Job 里、照旧一起收。
+        info.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
         let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
         let ptr = std::ptr::addr_of!(info) as *const core::ffi::c_void;
         if let Err(e) = SetInformationJobObject(job, JobObjectExtendedLimitInformation, ptr, size) {

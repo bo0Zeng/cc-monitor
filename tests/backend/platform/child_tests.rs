@@ -750,3 +750,91 @@ fn dropping_a_terminal_conversation_on_windows_takes_its_grandchild_too() {
     assert!(gone, "孙进程 {pid} 没跟着一起收");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// Windows 上那个进程此刻在不在（`tasklist` 按 pid 筛）。
+#[cfg(windows)]
+fn win_alive(pid: &str) -> bool {
+    let out = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+        .output()
+        .expect("tasklist");
+    String::from_utf8_lossy(&out.stdout).contains(&format!("\"{pid}\""))
+}
+
+/// 下一条判据的帮手（只被它当子进程叫）：脱离起一个 `ping`，把它的 pid 写进 `CCM_T_DETACH_PIDFILE`。
+#[cfg(windows)]
+#[test]
+#[ignore = "只被 a_detached_child_on_windows_outlives_the_job_that_started_it 当子进程叫"]
+fn detach_helper_inner() {
+    let Some(f) = std::env::var_os("CCM_T_DETACH_PIDFILE") else {
+        return;
+    };
+    let n = (4 * guard_core::wall::CEILING_SECS).to_string();
+    let pid = Child::new("ping.exe")
+        .args(["-n", &n, "127.0.0.1"])
+        .detach()
+        .expect("脱离起");
+    let tmp = std::path::PathBuf::from(&f).with_extension("t");
+    std::fs::write(&tmp, pid.to_string()).expect("写 pid");
+    std::fs::rename(&tmp, &f).expect("改名");
+}
+
+/// 脱离起（Windows）：起它的那一方在一个「关句柄即杀」的 Job 里 ——
+/// Job 许脱离 ⇒ 它脱离出去，Job 收掉之后它还活着；Job 不许脱离 ⇒ 照样起得来（退成留在 Job 里），Job 收掉它跟着没（照实）。
+#[cfg(windows)]
+#[test]
+fn a_detached_child_on_windows_outlives_the_job_that_started_it() {
+    for (breakaway_ok, survives) in [(true, true), (false, false)] {
+        let d = scratch(&format!("detach-win-{breakaway_ok}"));
+        let f = d.join("pid");
+        let job = os::TestJob::new(breakaway_ok);
+        let mut inner = std::process::Command::new(std::env::current_exe().expect("本测试程序"))
+            .args([
+                "platform::child::tests::detach_helper_inner",
+                "--exact",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env("CCM_T_DETACH_PIDFILE", &f)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("起帮手");
+        assert!(job.assign(&inner), "帮手放不进 Job（判据没起对）");
+        let status = inner.wait().expect("等帮手");
+        assert!(status.success(), "帮手没脱离起来：{status:?}");
+        let pid = std::fs::read_to_string(&f).expect("脱离起的那个的 pid");
+        let pid = pid.trim().to_string();
+        assert!(win_alive(&pid), "脱离起的 {pid} 一起来就没了");
+        // 哨兵：一个老老实实留在 Job 里的进程。它没了 ＝ Job 已经收过了，这时再看脱离起的那个（等的是条件，不是钟）。
+        let n = (4 * guard_core::wall::CEILING_SECS).to_string();
+        let mut sentinel = std::process::Command::new("ping.exe")
+            .args(["-n", &n, "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("起哨兵");
+        assert!(job.assign(&sentinel), "哨兵放不进 Job");
+        drop(job);
+        let _ = sentinel.wait();
+        let mut alive = win_alive(&pid);
+        if !survives {
+            for _ in guard_core::wall::rounds() {
+                alive = win_alive(&pid);
+                if !alive {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        assert_eq!(
+            alive, survives,
+            "Job（许脱离 = {breakaway_ok}）收掉之后，脱离起的 {pid} 活着 = {alive}"
+        );
+        if alive {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid, "/F"])
+                .output();
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}

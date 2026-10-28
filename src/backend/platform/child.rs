@@ -514,14 +514,15 @@ impl Child {
         }
     }
 
-    /// 脱离起（自成进程组，stdio 全空），不等；回它的 pid。本平台不能脱离（[`cannot_detach`]）：`Io(Unsupported)`，带那一句。
+    /// 脱离起（自成进程组，stdio 全空；Windows 另不要控制台、脱离起它的那个 Job），不等；回它的 pid。
     pub(crate) fn detach(self) -> Result<u32, ChildFail> {
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        os::detach(&mut cmd)?;
-        cmd.spawn().map(|c| c.id()).map_err(ChildFail::of_spawn)
+        os::spawn_detached(&mut cmd)
+            .map(|c| c.id())
+            .map_err(ChildFail::of_spawn)
     }
 
     /// ccm 最终那一跳：POSIX 就地 exec（成功不返回）；Windows 起它、等它、交回它的退出码（由 `main` 退，模块里不退进程）。
@@ -679,9 +680,9 @@ mod os {
         }
     }
 
-    pub(super) fn detach(cmd: &mut Command) -> Result<(), ChildFail> {
+    pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
         cmd.process_group(0);
-        Ok(())
+        cmd.spawn()
     }
 
     pub(super) fn cannot_detach() -> Option<String> {
@@ -723,6 +724,9 @@ mod os {
     const EXTENDED_INFO_CLASS: i32 = 9;
     /// 标志位 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`：最后一个 Job 句柄关掉 ⇒ 系统终止 Job 里的每一个进程。
     const KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    /// 标志位 `JOB_OBJECT_LIMIT_BREAKAWAY_OK`：Job 里的进程起子进程时带 `CREATE_BREAKAWAY_FROM_JOB` ⇒ 那个子进程不进这个 Job。
+    #[cfg(test)]
+    const BREAKAWAY_OK: u32 = 0x0000_0800;
 
     /// `JOBOBJECT_BASIC_LIMIT_INFORMATION`（字段照 winnt.h 的次序与宽度）。
     #[repr(C)]
@@ -851,20 +855,76 @@ mod os {
         }
     }
 
+    /// 判据用的一个「关句柄即杀」的 Job（许不许里面的进程脱离由判据定）：落地即关、里面还活着的全收。
+    #[cfg(test)]
+    pub(super) struct TestJob(RawHandle);
+
+    #[cfg(test)]
+    impl TestJob {
+        pub(super) fn new(breakaway_ok: bool) -> TestJob {
+            let job = unsafe { CreateJobObjectW(core::ptr::null_mut(), core::ptr::null()) };
+            assert!(!job.is_null(), "建不出 Job");
+            let info = ExtendedLimits {
+                basic: BasicLimits {
+                    limit_flags: KILL_ON_JOB_CLOSE | if breakaway_ok { BREAKAWAY_OK } else { 0 },
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let ok = unsafe {
+                SetInformationJobObject(
+                    job,
+                    EXTENDED_INFO_CLASS,
+                    (&info as *const ExtendedLimits).cast(),
+                    std::mem::size_of::<ExtendedLimits>() as u32,
+                )
+            };
+            assert!(ok != 0, "Job 设不上");
+            TestJob(job)
+        }
+
+        pub(super) fn assign(&self, child: &std::process::Child) -> bool {
+            unsafe { AssignProcessToJobObject(self.0, child.as_raw_handle()) != 0 }
+        }
+    }
+
+    #[cfg(test)]
+    impl Drop for TestJob {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
     /// Windows 上句柄占着 pid，不存在收尸前后的误伤 ⇒ 直接等它退出。
     pub(super) fn exited_unreaped(child: &mut std::process::Child) {
         let _ = child.wait();
     }
 
-    pub(super) fn detach(_cmd: &mut Command) -> Result<(), ChildFail> {
-        Err(ChildFail::Io(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            cannot_detach().unwrap_or_default(),
-        )))
+    /// 脱离起：不要控制台（`DETACHED_PROCESS`：关掉起它的那个窗口不连它一起关）· 自成进程组（起它的那一方的 Ctrl+C 不传给它）·
+    /// 脱离起它的那个 Job（`CREATE_BREAKAWAY_FROM_JOB`：那个 Job 被收掉时它不跟着没）。
+    /// 本进程所在的 Job 不许脱离 ⇒ 系统拒（拒绝访问）⇒ 去掉脱离 Job 那一位再起一次，照实记一行：那时它留在 Job 里，Job 收掉它也没。
+    pub(super) fn spawn_detached(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        let stay = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+        cmd.creation_flags(stay | CREATE_BREAKAWAY_FROM_JOB);
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) => {
+                tracing::warn!(
+                    "脱离起 {:?}：本进程所在的 Job 不许脱离，它留在这个 Job 里（Job 收掉时它跟着没）",
+                    cmd.get_program()
+                );
+                cmd.creation_flags(stay);
+                cmd.spawn()
+            }
+            other => other,
+        }
     }
 
     pub(super) fn cannot_detach() -> Option<String> {
-        Some(copy_core::copy_text("beDetach.detach.notUnix", &[]))
+        None
     }
 
     pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
