@@ -474,7 +474,6 @@
       "scan": { "re": "\\b[A-Z](?:-[A-Z])?\\d{1,3}[a-z]?(?![\\w.-])|\\b[A-Z]\\d+[①-⑩]", "flags": "" },
       "examples": ["C14", "K-R49", "U4b", "C8①"],
       "counterExamples": ["SHA256", "UTF-8", "Win32"],
-      "ledger": ["C8①"],
       "source": "内部行话"
     },
     {
