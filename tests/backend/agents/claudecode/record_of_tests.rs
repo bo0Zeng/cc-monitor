@@ -196,10 +196,10 @@ fn every_kind_matches_the_golden_full_and_minimal() {
     );
 }
 
-/// ★ 便宜的判类（骨架行的 `t`）与整条翻译给的类逐条一致：金样每一条 · 不进界面的几类 · 各条去掉任意一格顶层字段
-/// （必填格缺了盘上形状就认不出、不出记录）· 秤的原文语料（`scale2-height-records.jsonl`）每一行。
+/// ★ 骨架行的类 · 画法 · 人说没说就是整条翻译给的那一条的（骨架行从通用记录取，不另判）：金样每一条 · 不进界面的几类 ·
+/// 各条去掉任意一格顶层字段（必填格缺了盘上形状就认不出、不出记录）· 秤的原文语料（`scale2-height-records.jsonl`）每一行。
 #[test]
-fn the_cheap_class_agrees_with_the_record() {
+fn the_skeleton_row_is_what_the_record_says() {
     let root = guard_core::addr::repo_root();
     let scale =
         std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
@@ -231,17 +231,26 @@ fn the_cheap_class_agrees_with_the_record() {
             .map(str::to_string),
     );
     let mut seen = std::collections::BTreeSet::new();
+    let mut drawn = std::collections::BTreeSet::new();
     for raw in &lines {
-        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
-        let want = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
+        let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
-            .and_then(|r| record_of(r, "L1"))
-            .map(|r| r.body.class());
-        // 骨架不出认不出的行（`unread`）：它不在主线判定里起作用，骨架上也没有它的读者 ⇒ 便宜那一问对它答「不出」。
-        let cheap = want.filter(|c| *c != RecordClass::Unread);
-        assert_eq!(class_of(&v), cheap, "{raw}");
-        seen.insert(format!("{want:?}"));
+            .and_then(|r| record_of(r, "L1"));
+        let want = rec.as_ref().map_or(
+            (None, crate::agents::record::Draw::None, false),
+            |r| (Some(r.body.class()), r.draw, r.human),
+        );
+        let row = crate::observe::recognize::index_row::tests::index_row(
+            crate::agents::claudecode::AGENT_KIND,
+            raw.as_bytes(),
+            0,
+            raw.len() as u64 + 1,
+        );
+        assert_eq!((row.t, row.dr, row.hu), want, "{raw}");
+        seen.insert(format!("{:?}", want.0));
+        drawn.insert(format!("{:?}", want.1));
     }
+    assert_eq!(drawn.len(), 4, "四形都得见到：{drawn:?}");
     // 这一家不再出 `queued`（插话是那一行 attachment 出的 `said`）：五类 ＋ 不出记录。
     assert_eq!(seen.len(), 6, "五类 ＋ 不出记录都得见到：{seen:?}");
 }

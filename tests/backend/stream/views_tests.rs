@@ -205,6 +205,8 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         at: None,
         time_text: None,
         at_ms: None,
+        draw: crate::agents::record::Draw::Card,
+        human: true,
         body: Body::Said {
             who: crate::agents::UserText {
                 speaker: crate::agents::Speaker::Human,

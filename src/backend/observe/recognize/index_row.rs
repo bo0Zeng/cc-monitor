@@ -11,16 +11,17 @@
 /// **不是**高度：高度依赖列宽，后端不知道列宽（`§2.5b` 那条「决定性的理由」）。
 ///
 /// ⚠ **口径是近似的，而且近似得有方向**：它不知道前端哪些记录最终不建卡（`stripInternalNoise`、
-/// ESC 折叠、slash/compact 细条…），只按记录的**原料**数。前端据 `t` / `sp` / `fd` 分档，
+/// ESC 折叠…），只按记录的**原料**数。前端据 `dr` / `t` / `fd` 分档，
 /// 分不准的那几档落到偏保守的常数（`§2.5b`：「粗估用偏保守的常数，精算后往下修」）。
-#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub(crate) struct IndexRow {
     /// 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)`。
     pub(crate) o: u64,
     /// 行字节长（**含**结尾 `\n`）。
     pub(crate) n: u64,
-    /// 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title`，与读正文时那条记录的 `t` 同一个词）；
-    /// 不进界面（元数据 · 解析不出 · 认不出）⇒ 省略。判定在适配层（注册表 `RecordFace.class`，与它的翻译表对拍）。
+    /// 这一行翻成的那条通用记录的类（`said` · `reply` · `retry` · `title` · `unread`，与读正文时那条记录的 `t` 同一个词）；
+    /// 不进界面（元数据 · 解析不出）⇒ 省略。取自整条翻译出的那条记录。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) t: Option<crate::agents::record::RecordClass>,
     /// `uuid`（帧面不逐行运它：只在用户输入那张小表里带；扫描图按它认一条记录在第几轮）。
@@ -29,10 +30,12 @@ pub(crate) struct IndexRow {
     /// 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出）。
     #[serde(skip_serializing_if = "is_false")]
     pub(crate) sc: bool,
-    /// user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清）。
-    /// 界面据它决定这一行建不建卡（判定在适配层，画不画在界面）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) sp: Option<&'static str>,
+    /// 画成哪一形（就是那条通用记录的 `draw`）；不画 ⇒ 省略。
+    #[serde(skip_serializing_if = "undrawn")]
+    pub(crate) dr: crate::agents::record::Draw,
+    /// 人在这条里说了话（就是那条通用记录的 `human`）。
+    #[serde(skip_serializing_if = "is_false")]
+    pub(crate) hu: bool,
     /// 正文字符数（**代码块之外**；Unicode 标量计，不含换行）。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) ch: u32,
@@ -68,19 +71,25 @@ pub(crate) struct IndexRow {
 fn is_false(b: &bool) -> bool {
     !*b
 }
+fn undrawn(d: &crate::agents::record::Draw) -> bool {
+    *d == crate::agents::record::Draw::None
+}
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
 /// 一行（已经解析过；解析不了 ⇒ `None`，那一行照样占位 —— 丢了它，后面每一行的 seq 都会错一位）→ [`IndexRow`]。**纯函数**，不碰文件系统。
-/// `kind` ＝ 这份记录是哪一家的（[`crate::agents::record_kind_of`]）：这一行进不进界面、谁说的都照那一家的认法判。
+/// `kind` ＝ 这份记录是哪一家的（[`crate::agents::record_kind_of`]）；`rec` ＝ 这一行整条翻译出的通用记录（不进界面 ⇒ `None`）：
+/// 类 · 画法 · 人说没说都取自它，不另判。
 pub(crate) fn index_row_of(
     kind: &str,
     v: Option<&serde_json::Value>,
     beat: Option<&crate::agents::beat::Beat>,
+    rec: Option<&crate::agents::record::Record>,
     offset: u64,
     len: u64,
 ) -> IndexRow {
+    use crate::agents::record::BodyExt as _;
     let mut row = IndexRow {
         o: offset,
         n: len,
@@ -90,12 +99,12 @@ pub(crate) fn index_row_of(
         return row;
     };
     row.u = beat.and_then(|b| b.id.as_deref()).map(str::to_string);
-    row.t = crate::agents::record_class_of(kind, v);
+    if let Some(r) = rec {
+        row.t = Some(r.body.class());
+        row.dr = r.draw;
+        row.hu = r.human;
+    }
     row.sc = crate::agents::run_of_record(kind, &v).is_some();
-    let said = beat.and_then(|b| b.said());
-    row.sp = said
-        .map(|u| u.speaker.kind())
-        .filter(|k| !matches!(*k, "human" | "toolResult"));
     // 大纲那一项（判定只住 `user_inputs`；这里只搬字段）
     if let Some(ui) =
         beat.and_then(|b| crate::observe::recognize::user_inputs::user_input_given(kind, v, b))

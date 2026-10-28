@@ -72,7 +72,6 @@ struct Rest {
 struct Scan {
     end: u64,
     starts: Vec<u64>,
-    #[serde(deserialize_with = "index_back")]
     index: Vec<IndexRow>,
     #[serde(deserialize_with = "super::recognize::facts::skel::deserialize")]
     facts: SessionFacts,
@@ -103,54 +102,6 @@ struct SkelView<'a> {
     scan: ScanView<'a>,
 }
 
-/// 骨架里的一行骨架索引读回来（线上那一形：省略的格缺 ⇒ 零 / 空；`sp` 只认 `Speaker::kind` 那一份闭集里的词）。
-#[derive(Deserialize)]
-#[serde(default)]
-#[derive(Default)]
-struct IndexBack {
-    o: u64,
-    n: u64,
-    t: Option<crate::agents::record::RecordClass>,
-    u: Option<String>,
-    sc: bool,
-    sp: Option<String>,
-    ch: u32,
-    cj: u32,
-    pl: u32,
-    cb: u32,
-    cl: u32,
-    fd: u32,
-    x: Option<String>,
-    ts: Option<String>,
-}
-
-fn index_back<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<IndexRow>, D::Error> {
-    let rows = Vec::<IndexBack>::deserialize(d)?;
-    Ok(rows
-        .into_iter()
-        .map(|r| IndexRow {
-            o: r.o,
-            n: r.n,
-            t: r.t,
-            u: r.u,
-            sc: r.sc,
-            sp: r.sp.and_then(|s| {
-                crate::agents::SPEAKER_KINDS
-                    .iter()
-                    .position(|k| *k == s)
-                    .map(|i| crate::agents::SPEAKER_KINDS[i])
-            }),
-            ch: r.ch,
-            cj: r.cj,
-            pl: r.pl,
-            cb: r.cb,
-            cl: r.cl,
-            fd: r.fd,
-            x: r.x,
-            ts: r.ts,
-        })
-        .collect())
-}
 
 impl Scan {
     /// 从 `self.end` 接着读 `r`（`r` 已定位在那里），读到 `upto` 为止（之后的不读；残尾不计）。
@@ -165,6 +116,8 @@ impl Scan {
         let said = face.and_then(|f| f.activity);
         let run_of = face.and_then(|f| f.run_of);
         let runs = crate::agents::run_faces(kind);
+        // 骨架行翻译照这份记录那一家（同 `runs`，按 `kind` 取）。
+        let translate = crate::agents::record_face(kind).map(|f| f.parse);
         let mut lines = super::lines::Lines::new(r, self.end).upto(upto);
         while let Some(row) = lines.next()? {
             let (start, buf) = (row.at, row.whole);
@@ -190,15 +143,21 @@ impl Scan {
             }
             // 一拍也只算一次：骨架索引 · 用户输入 · 轮次 · 事实吃同一拍。
             let beat = v.and_then(|v| crate::agents::beat_of(kind, v));
+            let counted = super::lines::counts(body);
+            // 骨架行的类 · 画法 · 人说的取自整条翻译出的那条通用记录（吃同一份解析）。
+            let rec = translate
+                .filter(|_| counted)
+                .and_then(|parse| parse(&line).ok().flatten())
+                .and_then(|t| t.record);
             // 这一行的行号（不算一行的那几行与下一行同号，它们解析不出记录、用不上）。
             let line = self.starts.len() as u64;
-            let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
                 self.index.push(super::recognize::index_row::index_row_of(
                     kind,
                     v,
                     beat.as_ref(),
+                    rec.as_ref(),
                     start,
                     read as u64,
                 ));

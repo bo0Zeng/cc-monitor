@@ -23,7 +23,7 @@ import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live
 import { HeightRefiner, workerMeasure } from "./height-refiner";
 // 〔骨架〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex, rowRuns } from "./skeleton-view";
-import { eagerBodyChars, setInjectedShown, skeletonKind } from "./height-estimate";
+import { eagerBodyChars, setInjectedShown } from "./height-estimate";
 // 「大纲」与历史查看器共用同一份界面与跳转；清单问后端要（`OutlineSource`）。
 // 大纲在会话内查找面板里（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
 import type { JumpResult, JumpTarget } from "./views/user-input-panel";
@@ -261,7 +261,7 @@ export class TabStreamView {
     for (const p of known) seqs.delete(p.seq);
     const runs: Array<[number, number]> = [];
     for (const s of [...seqs].sort((a, b) => a - b)) {
-      if (skeletonKind(sk.ledger.factsOf(s)!) !== "card") continue;
+      if (sk.ledger.factsOf(s)!.dr !== "card") continue;
       const last = runs[runs.length - 1];
       if (last && last[1] === s) last[1] = s + 1;
       else runs.push([s, s + 1]);
@@ -1166,7 +1166,7 @@ export class TabStreamView {
     // 「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
     // 或见过、但骨架接上之后被丢出账本（`keepHighest`）。两种回来之后喂法不同，见下。
     // 不建卡的行在这里也算「有」（切段）：一段里只装要的行，回来的不必再筛（标题那几类不许从历史里喂进 `onLine`）。
-    const runs = rowRuns(ledger, lo, hi, (s) => taken.has(s) || skeletonKind(ledger.factsOf(s)!) === "none");
+    const runs = rowRuns(ledger, lo, hi, (s) => taken.has(s) || ledger.factsOf(s)!.dr === undefined);
     const origin = tab.origin;
     let inflight = this.rangeFetches.get(tab);
     if (!inflight && runs.length > 0) {

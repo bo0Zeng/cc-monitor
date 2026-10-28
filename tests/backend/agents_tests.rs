@@ -631,7 +631,6 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         is_session_file: |_| false,
         tree: None,
         activity: None,
-        class: None,
         chain: None,
         find_session: find,
         branch: None,

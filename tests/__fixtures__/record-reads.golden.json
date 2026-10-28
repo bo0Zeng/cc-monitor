@@ -25,6 +25,8 @@
             }
           ],
           "cwd": "/w",
+          "draw": "card",
+          "human": true,
           "id": "r-1",
           "t": "said",
           "who": {
@@ -51,6 +53,8 @@
               "type": "text"
             }
           ],
+          "draw": "card",
+          "human": false,
           "id": "r-2",
           "t": "reply"
         },
@@ -77,6 +81,8 @@
             }
           ],
           "cwd": "/w",
+          "draw": "card",
+          "human": true,
           "id": "r-1",
           "t": "said",
           "who": {
@@ -103,6 +109,8 @@
               "type": "text"
             }
           ],
+          "draw": "card",
+          "human": false,
           "id": "r-2",
           "t": "reply"
         },
@@ -135,6 +143,8 @@
             }
           ],
           "cwd": "/w",
+          "draw": "card",
+          "human": true,
           "id": "r-1",
           "t": "said",
           "who": {
@@ -158,6 +168,8 @@
               "type": "text"
             }
           ],
+          "draw": "card",
+          "human": false,
           "id": "r-2",
           "t": "reply"
         }
@@ -180,6 +192,8 @@
               "type": "text"
             }
           ],
+          "draw": "card",
+          "human": false,
           "id": "s-1",
           "t": "said",
           "who": {
@@ -201,6 +215,8 @@
               "type": "text"
             }
           ],
+          "draw": "card",
+          "human": false,
           "id": "s-2",
           "t": "reply"
         },

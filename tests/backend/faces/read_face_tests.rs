@@ -393,7 +393,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        ["body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t"],
+        ["body", "classes", "count", "dr", "draws", "end", "fd", "from", "hu", "inputs", "n", "next", "o", "t"],
         "骨架索引的成品形状变了"
     );
     let mut o = 0u64;
@@ -1712,8 +1712,8 @@ fn a_projected_facts_reply_is_the_whole_one_minus_what_it_omits() {
 /// uuid 只有用户输入那几行带（在 `inputs` 那张小表里）。
 pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
     let col = |k: &str| v[k].as_array().cloned().unwrap_or_default();
-    let (o, n, t, fd) = (col("o"), col("n"), col("t"), col("fd"));
-    let classes = col("classes");
+    let (o, n, t, dr, fd) = (col("o"), col("n"), col("t"), col("dr"), col("fd"));
+    let (classes, draws) = (col("classes"), col("draws"));
     let mut at = v["from"].as_u64().unwrap();
     let mut rows: Vec<serde_json::Map<String, serde_json::Value>> = (0
         ..v["count"].as_u64().unwrap() as usize)
@@ -1726,6 +1726,10 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
             let k = t[i].as_u64().unwrap() as usize;
             if k > 0 {
                 r.insert("t".into(), classes[k - 1].clone());
+            }
+            let d = dr[i].as_u64().unwrap() as usize;
+            if d > 0 {
+                r.insert("dr".into(), draws[d - 1].clone());
             }
             if fd[i].as_u64() != Some(0) {
                 r.insert("fd".into(), fd[i].clone());
@@ -1750,26 +1754,24 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
     sparse("body", &["ch", "cj", "pl", "cb", "cl"], &|_, x| {
         x.as_u64() == Some(0)
     });
-    sparse("sp", &["v"], &|_, _| false);
     sparse("inputs", &["u", "x", "ts"], &|k, x| {
         k == "ts" && x.as_str() == Some("")
     });
-    rows.into_iter()
-        .map(|mut r| {
-            if let Some(sp) = r.remove("v") {
-                r.insert("sp".into(), sp);
-            }
-            serde_json::Value::Object(r)
-        })
-        .collect()
+    let mut i: i64 = -1;
+    for gap in col("hu") {
+        i += gap.as_i64().unwrap() + 1;
+        rows[i as usize].insert("hu".into(), true.into());
+    }
+    rows.into_iter().map(serde_json::Value::Object).collect()
 }
 
 /// ★ 骨架索引在帧面上**按列排**：每格一列（偏移是与上一行末尾的差，`t` 是本份 `classes` 里的号，0 ＝ 不进界面）；
-/// 稀疏的几格（正文那五个数 · 来源 · 用户输入的 uuid · 摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。
+/// `dr` 是本份 `draws` 里的号（0 ＝ 不画）；稀疏的几格（正文那五个数 · 用户输入的 uuid · 摘要与时刻）各一张小表，
+/// `at` 是与上一项的行号差（连着 ＝ 0）；人说的那几行（`hu`）也按行号差。
 /// `sc` 不上帧面；每行的 uuid 不上帧面（行号就是下标），只有用户输入那几行在小表里带着。
 #[test]
 fn the_index_is_packed_by_column_with_offsets_as_differences() {
-    use crate::agents::record::RecordClass;
+    use crate::agents::record::{Draw, RecordClass};
     use crate::observe::recognize::index_row::IndexRow;
     let rows = vec![
         IndexRow {
@@ -1777,6 +1779,8 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             n: 100,
             t: Some(RecordClass::Said),
             u: Some("in-1".into()),
+            dr: Draw::Card,
+            hu: true,
             ch: 14,
             pl: 1,
             x: Some("alpha".into()),
@@ -1788,6 +1792,7 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             n: 194,
             t: Some(RecordClass::Reply),
             u: Some("out-1".into()),
+            dr: Draw::Steps,
             fd: 2,
             ..Default::default()
         },
@@ -1801,7 +1806,7 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             o: 310,
             n: 5,
             t: Some(RecordClass::Said),
-            sp: Some("system"),
+            dr: Draw::Strip,
             sc: true,
             ..Default::default()
         },
@@ -1811,10 +1816,10 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
         v,
         serde_json::json!({
             "from": 0, "end": 315, "next": null, "count": 4,
-            "classes": ["said", "reply"],
-            "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "fd": [0, 2, 0, 0],
+            "classes": ["said", "reply"], "draws": ["card", "steps", "strip"],
+            "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "dr": [1, 2, 0, 3], "fd": [0, 2, 0, 0],
             "body": {"at": [0], "ch": [14], "cj": [0], "pl": [1], "cb": [0], "cl": [0]},
-            "sp": {"at": [3], "v": ["system"]},
+            "hu": [0],
             "inputs": {"at": [0], "u": ["in-1"], "x": ["alpha"], "ts": ["t1"]},
         })
     );
@@ -2064,15 +2069,15 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     assert_eq!(
         read_mid,
-        r#"{"eof":true,"next":200,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":null,"hash":3774565367099417574}]}"#
+        r#"{"eof":true,"next":200,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":null,"hash":3774565367099417574}]}"#
     );
     assert_eq!(
         lines_mid,
-        r#"{"end":152,"eof":false,"from":0,"lines":[{"cwd":"/w","end":152,"path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
+        r#"{"end":152,"eof":false,"from":0,"lines":[{"cwd":"/w","end":152,"path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
     );
     assert_eq!(
         tail,
-        r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"text":"a","type":"text"}],"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
+        r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","draw":"card","human":true,"id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"text":"a","type":"text"}],"draw":"card","human":false,"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
     );
     assert_eq!(needs, r#"{"answered":[],"items":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。

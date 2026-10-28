@@ -11,7 +11,7 @@
 //! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy, UnreadWhy};
+use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 use serde_json::Value;
 
 /// 这一家在线上的 `agent` 值。
@@ -89,53 +89,16 @@ fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
     uuid.is_none() && parent_uuid.is_none()
 }
 
-/// 一条已解析的记录（`Value`）⇒ [`record_of`] 会给它的类，不走整条翻译（骨架索引每行一问）。
-/// 只看判别字段与那几类的必填格（缺了 ⇒ 盘上形状认不出、不出记录）；插进来的那一句还要认出是人说的。
-pub(crate) fn class_of(v: &Value) -> Option<RecordClass> {
-    let s = |k: &str| v.get(k).and_then(Value::as_str);
-    let message = || {
-        v.get("message").is_some_and(|m| {
-            m.get("role").is_some_and(Value::is_string) && m.get("content").is_some()
-        })
-    };
-    let said_or_reply = || s("uuid").is_some() && s("timestamp").is_some() && message();
-    match s("type")? {
-        "user" if said_or_reply() => Some(RecordClass::Said),
-        "assistant" if said_or_reply() => Some(RecordClass::Reply),
-        "system" if s("subtype") == Some("api_error") && s("timestamp").is_some() => {
-            Some(RecordClass::Retry)
-        }
-        "ai-title" if s("aiTitle").is_some() && s("sessionId").is_some() => {
-            Some(RecordClass::Title)
-        }
-        "custom-title" if s("customTitle").is_some() && s("sessionId").is_some() => {
-            Some(RecordClass::Title)
-        }
-        "attachment"
-            if s("uuid").is_some()
-                && s("timestamp").is_some()
-                && super::text::user_text_of_record(v).is_some() =>
-        {
-            Some(RecordClass::Said)
-        }
-        _ => None,
-    }
-}
 
 /// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。没有身份的那几类（标题 · 排队）`id` 用 `fallback_id`（调用方给，会话内唯一）。
 pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
-    let rec_of = |id: String, at: Option<String>, body: Body| Record {
-        agent: AGENT.into(),
-        id: if id.is_empty() {
+    let rec_of = |id: String, at: Option<String>, body: Body| {
+        let id = if id.is_empty() {
             fallback_id.to_string()
         } else {
             id
-        },
-        at,
-        // 钟面按看的那一台的时区，出口那一下写（[`Record::stamp`]）。
-        time_text: None,
-        at_ms: None,
-        body,
+        };
+        crate::agents::record::record(AGENT.into(), id, at, body)
     };
     match rec {
         JsonlRecord::User {
