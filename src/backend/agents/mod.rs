@@ -753,9 +753,6 @@ pub(crate) struct RecordFace {
     /// 这一行说这条会话此刻进到哪一态（一轮开始 ⇒ 在跑 · 一轮完了 / 中止 ⇒ 闲着）；不说 ⇒ `None`。
     /// 没有进程状态文件的那一家靠它（[`LocalFace::proc_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
     pub(crate) activity: Option<fn(&Line<'_>) -> Option<SessionActivity>>,
-    /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
-    /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
-    pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
     pub(crate) chain: Option<fn(&Line<'_>) -> Option<mainline::ChainFact>>,
     /// 在这一家自己的记录根（[`records_root_of`]）下按 sid 找那份会话文件。每一家都得答：恢复 · 「记录还在不在」· 按 sid 读会话都经它。
@@ -1059,24 +1056,6 @@ impl StepResultExt for StepResult {
     }
 }
 
-/// [`Speaker::kind`] 那一份闭集（骨架读回来认词用）。
-pub(crate) const SPEAKER_KINDS: [&str; 14] = [
-    "human",
-    "slashCommand",
-    "bashInput",
-    "bashOutput",
-    "commandOutput",
-    "taskNotification",
-    "agentMessage",
-    "peerSession",
-    "coordinator",
-    "agentTask",
-    "system",
-    "compactSummary",
-    "interrupt",
-    "toolResult",
-];
-
 /// 「谁说的」那一侧后端写字的一种（形状在 `cmd-wire`）。
 pub(crate) trait SpeakerExt {
     /// 压缩摘要那一种：数好正文多少字（按字，不按 UTF-16）。
@@ -1262,11 +1241,6 @@ pub(crate) fn run_faces(kind: &str) -> RunFaces {
 }
 
 /// `kind` 那一家的一条已解析记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
-/// `kind` 那一家这条记录会翻成哪一类通用记录（骨架行的 `t`）；那一家答不了 ⇒ `None`。
-pub(crate) fn record_class_of(kind: &str, v: &serde_json::Value) -> Option<record::RecordClass> {
-    record_face(kind).and_then(|r| r.class).and_then(|f| f(v))
-}
-
 pub(crate) fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark> {
     run_faces(kind).run_of(v)
 }

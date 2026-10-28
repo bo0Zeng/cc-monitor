@@ -23,7 +23,7 @@ import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live
 import { HeightRefiner, workerMeasure } from "./height-refiner";
 // 〔骨架〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex, rowRuns } from "./skeleton-view";
-import { eagerBodyChars, setInjectedShown, skeletonKind } from "./height-estimate";
+import { eagerBodyChars, setInjectedShown } from "./height-estimate";
 // 「大纲」与历史查看器共用同一份界面与跳转；清单问后端要（`OutlineSource`）。
 // 大纲在会话内查找面板里（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
 import type { JumpResult, JumpTarget } from "./views/user-input-panel";
@@ -261,7 +261,7 @@ export class TabStreamView {
     for (const p of known) seqs.delete(p.seq);
     const runs: Array<[number, number]> = [];
     for (const s of [...seqs].sort((a, b) => a - b)) {
-      if (skeletonKind(sk.ledger.factsOf(s)!) !== "card") continue;
+      if (sk.ledger.factsOf(s)!.dr !== "card") continue;
       const last = runs[runs.length - 1];
       if (last && last[1] === s) last[1] = s + 1;
       else runs.push([s, s + 1]);
@@ -1166,7 +1166,7 @@ export class TabStreamView {
     // 「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
     // 或见过、但骨架接上之后被丢出账本（`keepHighest`）。两种回来之后喂法不同，见下。
     // 不建卡的行在这里也算「有」（切段）：一段里只装要的行，回来的不必再筛（标题那几类不许从历史里喂进 `onLine`）。
-    const runs = rowRuns(ledger, lo, hi, (s) => taken.has(s) || skeletonKind(ledger.factsOf(s)!) === "none");
+    const runs = rowRuns(ledger, lo, hi, (s) => taken.has(s) || ledger.factsOf(s)!.dr === undefined);
     const origin = tab.origin;
     let inflight = this.rangeFetches.get(tab);
     if (!inflight && runs.length > 0) {
@@ -1332,9 +1332,15 @@ export class TabStreamView {
    * **按行号往后读一段**（`[from, until)`，`until` 缺 ＝ 到末尾）喂进这个 tab：一段 ≤ 1 MiB，接着取到头；
    * 取回的走 `feedHistoryRows`（批语义、不复活远端 tab），见过的由 `(sid, seq)` 去重吃掉。
    * 是**一件事**：开头造一次期限（{@link TabStreamView.GAP_FILL_BUDGET_MS}），每一问交剩下的；到点了还没取完 ⇒ 停、记一行。
+   * 补进来的行按批语义喂、不出「真用户输入上屏」⇒ 补完、真喂进了行、这个 tab 在眼前 ⇒ 大纲接着要一截（补进来的可能有人说的）。
    */
-  private readForward(tab: Tab, path: string, from: number, until: number | undefined, done: () => void = () => {}): void {
+  private readForward(tab: Tab, path: string, from: number, until: number | undefined, finish: () => void = () => {}): void {
     const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
+    let fed = false;
+    const done = (): void => {
+      if (fed && this.store.activeId === tab.sessionId && this.store.tabs.get(tab.sessionId) === tab) this.refreshOutline(tab);
+      finish();
+    };
     const step = (at: number): void => {
       const leftMs = remaining(budget);
       if (leftMs <= 0) {
@@ -1345,10 +1351,9 @@ export class TabStreamView {
       void readLines(tab.origin, path, at, until, leftMs)
         .then((page) => {
           if (this.store.tabs.get(tab.sessionId) !== tab) return done();
-          this.feedHistoryRows(
-            tab,
-            page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
-          );
+          const fresh = page.payloads.filter((p) => !tab.seenSeqs.has(p.seq));
+          if (fresh.length > 0) fed = true;
+          this.feedHistoryRows(tab, fresh);
           tab.seenSeqs.addRange(page.from, page.next); // 同上
           if (page.eof || page.next <= at || (until !== undefined && page.next >= until)) return done();
           step(page.next);

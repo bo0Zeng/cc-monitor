@@ -292,13 +292,13 @@ internal class FakeCoreLink :
         fun human(
             id: String,
             text: String,
-        ): Map<String, Any?> = mapOf("agent" to "claude", "id" to id, "t" to "said", "who" to mapOf("speaker" to mapOf("kind" to "human"), "text" to text), "blocks" to emptyList<Any>())
+        ): Map<String, Any?> = mapOf("agent" to "claude", "id" to id, "t" to "said", "draw" to "card", "human" to true, "who" to mapOf("speaker" to mapOf("kind" to "human"), "text" to text), "blocks" to emptyList<Any>())
 
         fun reply(
             id: String,
             text: String,
         ): Map<String, Any?> =
-            mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "text", "text" to text)))
+            mapOf("agent" to "claude", "id" to id, "t" to "reply", "autoReply" to false, "draw" to "card", "human" to false, "blocks" to listOf(mapOf("type" to "text", "text" to text)))
 
         fun failed(message: String) = Reply.Failed(CoreFailure("start_failed", message, "detail"))
 

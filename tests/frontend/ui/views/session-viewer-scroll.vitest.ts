@@ -233,6 +233,8 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
       // 过程那一行是核心出的一格（`steps.rs::step_of`），夹具照后端成品带上
       steps: { [id]: { tool: "Bash", arg: cmd, known: true } },
       autoReply: false,
+      draw: "steps",
+      human: false,
     });
   const res = (seq: number, uuid: string, id: string, out: string, kind?: "handback"): RigPayload =>
     line(seq, {
@@ -243,6 +245,8 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
       blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: out }], isError: false }],
       // 首行预览是核心出的一格（`steps.rs::preview_of`），夹具照后端成品带上
       results: { [id]: { ok: true, preview: out, chars: [...out].length, ...(kind ? { kind } : {}) } },
+      draw: "steps",
+      human: false,
     });
   const land = (v: SessionViewer, uuid: string, tool?: string): HTMLElement | null =>
     (v as unknown as { scrollToMessage(to: { uuid: string; line: number }, t?: string): HTMLElement | null }).scrollToMessage({ uuid, line: lineOf(uuid) }, tool);
@@ -291,6 +295,8 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
         autoReply: false,
         cards: { t1: "agent" },
         runs: { t1: { label: "扫目录", kind: "Explore" } },
+        draw: "steps",
+        human: false,
       }),
       res(2, "r1", "t1", "交回的那一段 needle", "handback"),
     ]);

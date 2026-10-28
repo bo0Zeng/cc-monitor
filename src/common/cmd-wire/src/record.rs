@@ -41,9 +41,31 @@ pub struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub at_ms: Option<i64>,
+    /// 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+    pub draw: Draw,
+    /// 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+    pub human: bool,
     /// 哪一类与它自己的格。
     #[serde(flatten)]
     pub body: Body,
+}
+
+/// 一条记录在消息流里画成哪一形（[`Record::draw`]）。
+/// 缺省 ＝ 不画（骨架里没有记录的那几行）。
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum Draw {
+    /// 一张卡（人说的 · 回复 · 斜杠命令 · 来话条 · 报错 · 重试 · 认不出 …；哪一种卡由排版件按类与来源挑）。
+    Card,
+    /// 过程里的几步（只有思考 · 工具调用 · 工具结果的那一条，每块一行）。
+    Steps,
+    /// 系统注入那条旁注细条（「显示系统注入」开着才露）。
+    Strip,
+    /// 不画（标题 · 自动应答 · 本地命令回显 · 空的那几条）。
+    #[default]
+    None,
 }
 
 /// [`Record`] 的类别（`t`）与各自的格。
@@ -821,6 +843,9 @@ impl OrUnread {
             at: s("at"),
             time_text: s("timeText").map(Words),
             at_ms: raw.get("atMs").and_then(Value::as_i64),
+            // 认不出的那一条恒画成一张卡（一行 warn 细条），不判。
+            draw: Draw::Card,
+            human: false,
             body: Body::unread(why, kind, &text),
         })
     }

@@ -119,8 +119,8 @@ function bucketOf(n: number): string {
 const EXPECTED_RECORDS = 69;
 /** 每跑一遍语料，各桶应得的样本条数 */
 const EXPECTED_PER_PASS: Readonly<Record<string, number>> = {
-  "<2K": 35,
-  "2-8K": 16,
+  "<2K": 34,
+  "2-8K": 17,
   "8-32K": 12,
   "32-128K": 6,
   // 空不是漏采 —— 真语料里就没有 >128K 的记录（头注射程边界第 3 条）
@@ -138,8 +138,8 @@ const PASSES = 8;
  * 这正是「判据在自己的登记表里找到自己」那一族。⇒ 绝对数必须独立出现一次。
  */
 const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {
-  "<2K": 280,
-  "2-8K": 128,
+  "<2K": 272,
+  "2-8K": 136,
   "8-32K": 96,
   "32-128K": 48,
   ">128K": 0,

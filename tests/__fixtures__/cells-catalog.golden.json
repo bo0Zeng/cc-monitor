@@ -23,6 +23,18 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "draw",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "human",
+          "type": "bool"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "id",
           "type": "string"
         },
@@ -1976,8 +1988,20 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "dr",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "fd",
           "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "hu",
+          "type": "bool"
         },
         {
           "frozen": false,
@@ -2002,12 +2026,6 @@
           "kind": "value",
           "path": "sc",
           "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "sp",
-          "type": "string"
         },
         {
           "frozen": false,

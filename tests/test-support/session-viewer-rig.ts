@@ -169,6 +169,9 @@ export function indexOfChunk(chunk: unknown[]): { available: true; from: 0; end:
     if (!r) return row;
     row.t = r.t;
     if (typeof r.id === "string") row.u = r.id;
+    // 画法 · 人说的就是那条记录的（后端从同一条记录取，台子照抄、不另算）。
+    if (typeof r.draw === "string" && r.draw !== "none") row.dr = r.draw;
+    if (r.human === true) row.hu = true;
     const blocks = Array.isArray(r.blocks) ? (r.blocks as Array<{ type?: string; text?: string }>) : [];
     const ch = blocks.filter((b) => b.type === "text").reduce((n, b) => n + (b.text?.length ?? 0), 0);
     const fd = blocks.filter((b) => b.type !== "text").length;
@@ -225,6 +228,8 @@ export function userLine(
     at: atOf(seq),
     who: { speaker: { kind: "human" }, text: content.trim() },
     blocks: [{ type: "text", text: content }],
+    draw: "card",
+    human: true,
     ...over,
   });
 }
@@ -245,6 +250,8 @@ export function assistantLine(seq: number, id: string, text: string): RigPayload
     at: atOf(seq),
     blocks: [{ type: "text", text }],
     autoReply: false,
+    draw: "card",
+    human: false,
   });
 }
 

@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.wire.gen.Block
+import com.ccmonitor.mobile.core.wire.gen.Draw
 import com.ccmonitor.mobile.core.wire.gen.LineRecord
 import com.ccmonitor.mobile.core.wire.gen.Raw
 import com.ccmonitor.mobile.core.wire.gen.Speaker
@@ -65,7 +66,7 @@ class RecordUnits {
         rows.addAll(at, added)
         for (row in added) {
             val r = row.record as? LineRecord.Reply
-            if (r == null || r.autoReply) continue
+            if (r == null || r.draw == Draw.NONE) continue
             for ((i, b) in r.blocks.withIndex()) {
                 if (b is Block.ToolUse) calls.getOrPut(b.id) { mutableListOf() } += row to i
             }
@@ -105,9 +106,20 @@ class RecordUnits {
         r: LineRecord,
         results: Map<String, Result>,
     ): List<RenderUnit> =
+        // 画不画是后端那一格（`draw`）：不画的与系统注入细条手机不摆。
+        if (r.draw == Draw.NONE || r.draw == Draw.STRIP) {
+            emptyList()
+        } else {
+            unitsOfDrawn(r, results)
+        }
+
+    private fun unitsOfDrawn(
+        r: LineRecord,
+        results: Map<String, Result>,
+    ): List<RenderUnit> =
         when (r) {
             is LineRecord.Said -> listOfNotNull(said(r))
-            is LineRecord.Reply -> if (r.autoReply) emptyList() else reply(r, results)
+            is LineRecord.Reply -> reply(r, results)
             is LineRecord.Unread -> listOf(RenderUnit.Unread(r.id, r.text, r.timeText, r.excerpt, r.id))
             else -> emptyList()
         }

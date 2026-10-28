@@ -14,6 +14,115 @@
 pub use cmd_wire::record::{excerpt_of, unread_text};
 pub(crate) use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 
+pub(crate) use cmd_wire::record::Draw;
+
+/// 造一条通用记录（两家适配层都经它）：画成哪一形（[`Draw`]）· 人说没说，从这条的类与格算一次，界面照摆。
+/// 钟面那两格留给出口（[`RecordExt::stamp`]）。
+pub(crate) fn record(
+    agent: cmd_wire::AgentKind,
+    id: String,
+    at: Option<String>,
+    body: Body,
+) -> Record {
+    Record {
+        agent,
+        id,
+        at,
+        time_text: None,
+        at_ms: None,
+        draw: draw_of(&body),
+        human: human_of(&body),
+        body,
+    }
+}
+
+/// 人在这条里说了话：人打的字 · 斜杠命令 · `!` 命令。
+fn human_of(body: &Body) -> bool {
+    use cmd_wire::record::Speaker;
+    matches!(
+        body,
+        Body::Said { who, .. }
+            if matches!(who.speaker, Speaker::Human | Speaker::SlashCommand { .. } | Speaker::BashInput { .. })
+    )
+}
+
+/// 画成哪一形。思考的空串是「没写进记录」（线上约定），照画成一步；空的正文不算。
+fn draw_of(body: &Body) -> Draw {
+    use cmd_wire::record::{Speaker, ToolCard};
+    let some = |b: bool| if b { Draw::Card } else { Draw::None };
+    match body {
+        Body::Said {
+            who,
+            blocks,
+            attachments,
+            ..
+        } => match &who.speaker {
+            Speaker::System { body } => {
+                if body.as_deref().is_some_and(|b| !b.is_empty()) {
+                    Draw::Strip
+                } else {
+                    Draw::None
+                }
+            }
+            Speaker::CommandOutput => Draw::None,
+            Speaker::Human => some(
+                !who.text.is_empty()
+                    || !attachments.is_empty()
+                    || blocks.iter().any(|b| matches!(b, Block::Image { .. })),
+            ),
+            Speaker::CompactSummary { .. } | Speaker::AgentTask => some(!who.text.is_empty()),
+            Speaker::ToolResult => {
+                if blocks.iter().any(|b| matches!(b, Block::ToolResult { .. })) {
+                    Draw::Steps
+                } else {
+                    Draw::None
+                }
+            }
+            Speaker::SlashCommand { .. }
+            | Speaker::BashInput { .. }
+            | Speaker::BashOutput { .. }
+            | Speaker::TaskNotification { .. }
+            | Speaker::AgentMessage { .. }
+            | Speaker::PeerSession { .. }
+            | Speaker::Coordinator { .. }
+            | Speaker::Interrupt => Draw::Card,
+        },
+        Body::Reply {
+            blocks,
+            auto_reply,
+            cards,
+            error,
+            ..
+        } => {
+            if error.is_some() {
+                return Draw::Card;
+            }
+            if *auto_reply {
+                return Draw::None;
+            }
+            let shown = |b: &&Block| !matches!(b, Block::Text { text } if text.trim().is_empty());
+            let mut any = false;
+            for b in blocks.iter().filter(shown) {
+                any = true;
+                match b {
+                    Block::Text { .. } => return Draw::Card,
+                    Block::ToolUse { id, .. } if cards.get(id) == Some(&ToolCard::Interactive) => {
+                        return Draw::Card
+                    }
+                    _ => {}
+                }
+            }
+            if any {
+                Draw::Steps
+            } else {
+                Draw::None
+            }
+        }
+        Body::Retry { .. } | Body::Unread { .. } => Draw::Card,
+        Body::Title { .. } => Draw::None,
+    }
+}
+
 /// 后端写记录那一侧（形状在 `cmd-wire`，孤儿规则不许在那边的类型上加固有方法）。
 pub(crate) trait RecordExt {
     /// 出口那一下（推 `line` 帧 · 回按页读的那几条）按看的那一台的时区写钟面：`timeText` ＝ `at` 的 `HH:MM`。

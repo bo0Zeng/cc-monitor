@@ -783,14 +783,15 @@ mod specimens {
     }
 
     fn rec(body: Body) -> Record {
-        Record {
-            agent: s("agent").into(),
-            id: s("r"),
-            at: some("2026-10-09T00:00:00Z"),
-            time_text: Some(Words(s("08:00"))),
-            at_ms: Some(1_791_504_000_000),
+        let mut r = crate::agents::record::record(
+            s("agent").into(),
+            s("r"),
+            some("2026-10-09T00:00:00Z"),
             body,
-        }
+        );
+        r.time_text = Some(Words(s("08:00")));
+        r.at_ms = Some(1_791_504_000_000);
+        r
     }
 
     pub(super) fn record() -> Vec<Specimen> {
@@ -1145,7 +1146,8 @@ mod specimens {
             t: Some(crate::agents::record::RecordClass::Said),
             u: some("u"),
             sc: true,
-            sp: Some("system"),
+            dr: crate::agents::record::Draw::Card,
+            hu: true,
             ch: 1,
             cj: 1,
             pl: 1,

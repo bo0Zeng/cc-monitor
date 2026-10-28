@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
-import { estimateFromFacts, SKEL_OUTER, skeletonKind, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
+import { estimateFromFacts, SKEL_OUTER, type SkeletonFacts } from "../../../src/frontend/ui/height-estimate";
 import { SkeletonLedger, TailWindow } from "../../../src/frontend/ui/live-window";
 import { indexPages } from "../../test-support/pack-index";
 
@@ -17,6 +17,8 @@ const user = (ch: number, extra: Partial<SkeletonFacts> = {}): SkeletonFacts => 
   o: 0,
   n: 1,
   t: "said",
+  dr: "card",
+  hu: true,
   ch,
   pl: ch > 0 ? 1 : 0,
   ...extra,
@@ -25,32 +27,26 @@ const asst = (ch: number, extra: Partial<SkeletonFacts> = {}): SkeletonFacts => 
   o: 0,
   n: 1,
   t: "reply",
+  dr: "card",
   ch,
   pl: ch > 0 ? 1 : 0,
   ...extra,
 });
-const toolOnly = (t: SkeletonFacts["t"] = "reply"): SkeletonFacts => ({ o: 0, n: 1, t, fd: 1 });
+const toolOnly = (t: SkeletonFacts["t"] = "reply"): SkeletonFacts => ({ o: 0, n: 1, t, dr: "steps", fd: 1 });
 const none = (t?: SkeletonFacts["t"]): SkeletonFacts => (t ? { o: 0, n: 1, t } : { o: 0, n: 1 });
 
-describe("estimateFromFacts / skeletonKind", () => {
-  it("不建卡的记录高 0：本地命令回显 / 不进界面的行 / 标题 / 解析不出的", () => {
-    for (const f of [user(10, { sp: "commandOutput" }), none(), none("title"), { o: 0, n: 1 }]) {
-      expect(skeletonKind(f)).toBe("none");
+describe("estimateFromFacts（画法是后端那一格 `dr`）", () => {
+  it("不画的行高 0：不进界面的行 / 标题 / 解析不出的，正文再长也一样", () => {
+    for (const f of [none(), none("title"), { o: 0, n: 1 }, { o: 0, n: 1, t: "said", ch: 500, pl: 9 } as SkeletonFacts]) {
       expect(estimateFromFacts(f)).toBe(0);
     }
   });
 
-  it("认的是通用记录的类：said 按人那一侧的气泡、reply 按回复卡、retry 是细条；盘上的原词不再认", () => {
-    expect(skeletonKind(user(10))).toBe("card");
-    expect(skeletonKind(asst(10))).toBe("card");
-    expect(estimateFromFacts({ o: 0, n: 1, t: "retry" })).toBe(SKEL_OUTER.system);
-    for (const raw of ["user", "assistant", "system"]) expect(skeletonKind({ o: 0, n: 1, t: raw as never, ch: 10, pl: 1 })).toBe("none");
-  });
-
-  it("后端判为建卡的来源照常出高（斜杠命令 · 压缩摘要 · 派给子 agent 的活）", () => {
-    for (const sp of ["slashCommand", "compactSummary", "agentTask"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
-    // agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条，照常出高。
-    for (const sp of ["agentMessage", "peerSession", "coordinator", "taskNotification", "interrupt"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
+  it("画成卡的按类分：said 按人那一侧的气泡、reply 按回复卡、retry · 认不出的是一行细条", () => {
+    expect(estimateFromFacts(user(10))).toBeGreaterThan(0);
+    expect(estimateFromFacts(asst(10))).toBeGreaterThan(0);
+    expect(estimateFromFacts({ o: 0, n: 1, t: "retry", dr: "card" })).toBe(SKEL_OUTER.system);
+    expect(estimateFromFacts({ o: 0, n: 1, t: "unread", dr: "card" })).toBe(SKEL_OUTER.system);
   });
 
   it("纯工具记录：回复那一侧一条一张「几步」卡（每步一行 ＋ 步间距 ＋ 外距，不看左邻居）；人那一侧的工具结果注入进调用那一行、高 0", () => {
@@ -118,17 +114,17 @@ describe("SkeletonLedger", () => {
     expect(l.factsOf(8)).toBeUndefined();
   });
 
-  it("按列收：factsOf 现拼的每一行与逐行的料逐格相等（偏移 · 类 · 稀疏的正文与来源 · 跨两页、两页的类表不同）", () => {
+  it("按列收：factsOf 现拼的每一行与逐行的料逐格相等（偏移 · 类 · 画法 · 人说的 · 稀疏的正文 · 跨两页、两页的类表不同）", () => {
     const a: SkeletonFacts[] = [
-      { o: 0, n: 40, t: "said", ch: 12, cj: 3, pl: 2 },
+      { o: 0, n: 40, t: "said", dr: "card", hu: true, ch: 12, cj: 3, pl: 2 },
       { o: 41, n: 9 },
-      { o: 50, n: 70, t: "reply", ch: 900, pl: 4, cb: 1, cl: 7, fd: 2 },
-      { o: 120, n: 30, t: "said", sp: "system" },
+      { o: 50, n: 70, t: "reply", dr: "card", ch: 900, pl: 4, cb: 1, cl: 7, fd: 2 },
+      { o: 120, n: 30, t: "said", dr: "strip" },
     ];
     const b: SkeletonFacts[] = [
-      { o: 150, n: 5, t: "retry" },
-      { o: 155, n: 60, t: "reply", fd: 1 },
-      { o: 300, n: 12, t: "said", ch: 1, pl: 1, sp: "agentMessage" },
+      { o: 150, n: 5, t: "retry", dr: "card" },
+      { o: 155, n: 60, t: "reply", dr: "steps", fd: 1 },
+      { o: 300, n: 12, t: "said", ch: 1, pl: 1, dr: "card" },
     ];
     const l = new SkeletonLedger(10, [...indexPages(a), ...indexPages(b)]);
     expect(Array.from({ length: l.count }, (_, i) => l.factsOf(10 + i))).toEqual([...a, ...b]);

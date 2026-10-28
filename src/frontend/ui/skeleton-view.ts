@@ -44,7 +44,7 @@
  */
 import type { RecordTimeline } from "./record-timeline";
 import { SkeletonLedger, type TurnFolds } from "./live-window";
-import { initialColumnWidth, skeletonKind } from "./height-estimate";
+import { initialColumnWidth } from "./height-estimate";
 import type { HistoryIndex } from "./generated/HistoryIndex";
 import { copyText } from "./copy-table";
 
@@ -376,7 +376,7 @@ export class SkeletonView {
         continue;
       }
       const f = this.ledger.factsOf(e.seq);
-      if (e.kind !== "card" || !f || skeletonKind(f) !== "card" || !(f.t === "reply" || (f.t === "said" && f.sp === undefined))) continue;
+      if (e.kind !== "card" || !f || f.dr !== "card" || !(f.t === "reply" || f.hu)) continue;
       const r = e.element.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue; // 藏着的（折着的过程里建过的卡）
       out[out.length - 1].push({ seq: e.seq, top: r.top });
@@ -658,7 +658,7 @@ export interface RowRun {
 /**
  * **`[lo, hi)` 里要按偏移取回的那几段**（主窗口 tab 与查看器同一处）：会建卡（含注入细条）、`have` 里没有的行连成段，
  * 夹在中间不建卡的行（不进界面 · 标题 · 不画的来源）不切段（多几十字节，省一次往返），已经有的行切段；段的两头都是要的行。
- * 回来的载荷里也就可能带着夹在中间那几行 —— 宿主只认要的那几行时按 `skeletonKind` 自己筛。
+ * 回来的载荷里也就可能带着夹在中间那几行 —— 宿主只认要的那几行时按那一行的 `dr` 筛。
  */
 export function rowRuns(ledger: SkeletonLedger, lo: number, hi: number, have: (seq: number) => boolean): RowRun[] {
   const out: RowRun[] = [];
@@ -677,7 +677,7 @@ export function rowRuns(ledger: SkeletonLedger, lo: number, hi: number, have: (s
       close();
       continue;
     }
-    if (skeletonKind(f) === "none") continue;
+    if (f.dr === undefined) continue;
     if (open) open[1] = s + 1;
     else open = [s, s + 1];
   }

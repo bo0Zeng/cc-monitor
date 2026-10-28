@@ -1080,6 +1080,8 @@ fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
         at: None,
         time_text: None,
         at_ms: None,
+        draw: crate::agents::record::Draw::Card,
+        human: true,
         body: Body::Said {
             who: crate::agents::UserText {
                 speaker: crate::agents::Speaker::Human,

@@ -134,6 +134,7 @@ fn the_index_rows_carry_ids_and_the_outline() {
         .iter()
         .find(|r| r.u.as_deref() == Some("m-env"))
         .unwrap();
-    assert_eq!(env.sp, Some("system"));
+    // 环境说明是系统注入，这一家给不出注入原文 ⇒ 没有细条可摆、不画（同记录那一条的 `draw`）。
+    assert_eq!(env.dr, crate::agents::record::Draw::None);
     assert!(env.ch > 0);
 }
