@@ -35,6 +35,8 @@ data class MachineSettingsUi(
     /** 这台的新会话默认号（那台判的）。 */
     val defaultAccount: String? = null,
     val accountsFailed: Problem? = null,
+    /** 号列表答过一次了（[accounts] 是那台答的，空 ＝ 真没有号）；没答过 ⇒ `false`（读中）。 */
+    val accountsRead: Boolean = false,
     /** 那台的额度账（用量屏整份画；账号卡 · 账号一览按号名取用量那一格）。 */
     val quota: Fetched<QuotaReadReply> = Fetched.Loading,
     /** 手上有一份、再读没成的那一句（那份照画，顶上说这一句）；没有 ⇒ `null`。 */
@@ -108,6 +110,11 @@ class MachineSettings(
         scope.launch { loadPrefs() }
     }
 
+    /** 号列表再问一次（账号屏读不出那一条的［重试］）。 */
+    fun reloadAccounts() {
+        scope.launch { loadAccounts() }
+    }
+
     private suspend fun loadAccounts() {
         val r = link.call(AccountsList.COMMAND, AccountsList.args(""), READ_MS)
         val list = (r as? Reply.Ok)?.let { AccountsList.of(it.data) }
@@ -115,7 +122,7 @@ class MachineSettings(
             if (list == null) {
                 it.copy(accountsFailed = failed(r, AccountsList.COMMAND))
             } else {
-                it.copy(accounts = list.accounts, defaultAccount = list.meta.effectiveDefault, accountsFailed = null)
+                it.copy(accounts = list.accounts, defaultAccount = list.meta.effectiveDefault, accountsFailed = null, accountsRead = true)
             }
         }
     }

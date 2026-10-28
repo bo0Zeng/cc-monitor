@@ -175,6 +175,10 @@ abstract class CacheDao {
         sid: String,
     ): List<PendingSend>
 
+    /** 一台名下该再交的那几句：有会话、还没回执（`pending` · `unsure`），照落库的先后。 */
+    @Query("SELECT * FROM pending WHERE hostId = :hostId AND sid IS NOT NULL AND outcome IN ('pending', 'unsure') ORDER BY mintedAt")
+    abstract suspend fun duePending(hostId: String): List<PendingSend>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     abstract suspend fun insertPending(p: PendingSend)
 

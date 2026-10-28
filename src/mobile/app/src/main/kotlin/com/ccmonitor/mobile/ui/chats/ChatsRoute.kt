@@ -52,6 +52,7 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import com.ccmonitor.mobile.ui.needs.NeedsEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -64,7 +65,7 @@ import org.koin.core.parameter.parametersOf
 
 /**
  * 会话屏的入口：勾上的每台各建一条 SSH 持有（离屏放手），通了那台的常驻流就接上、问清单；几台并成一列交 [ChatsScreen]。
- * 顶栏：抽屉 · 会话 · 🔍（换成搜索框，返回先收框）· 漏斗（有筛选生效时强调色）。手指在滚时列表冻住，松手换最新的。
+ * 顶栏：抽屉 · 会话 ·「需手动 n」（同聊天屏那一颗）· 🔍（换成搜索框，返回先收框）· 漏斗（有筛选生效时强调色）。手指在滚时列表冻住，松手换最新的。
  */
 @Composable
 fun ChatsRoute(
@@ -74,6 +75,8 @@ fun ChatsRoute(
     onNewInDir: (hostId: String, cwd: String) -> Unit,
     onDrawerAction: (DrawerAction) -> Unit,
     onEditHost: (hostId: String) -> Unit,
+    /** 顶栏「需手动 n」：需手动屏。 */
+    onOpenOverview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val board: ChatsBoard = koinViewModel(key = "chats-$hostId") { parametersOf(hostId) }
@@ -128,7 +131,7 @@ fun ChatsRoute(
                         board.query(it)
                     }, onClose = closeSearch)
                 } else {
-                    ChatsTopBar(ui.filters.active, onSearch = { searching = true }, onFilter = { filtering = true }, onOpenDrawer = { scope.launch { drawerState.open() } })
+                    ChatsTopBar(ui.filters.active, onSearch = { searching = true }, onFilter = { filtering = true }, onOpenDrawer = { scope.launch { drawerState.open() } }, onNeeds = onOpenOverview)
                 }
             },
         ) { inner -> ChatsScreen(ui, act, listState, Modifier.fillMaxSize().padding(inner)) }
@@ -259,9 +262,12 @@ private fun ChatsTopBar(
     onSearch: () -> Unit,
     onFilter: () -> Unit,
     onOpenDrawer: () -> Unit,
+    onNeeds: () -> Unit,
 ) {
     TopAppBar(
         actions = {
+            // 同聊天屏那一颗（同一个数 · 同一个去处 · 0 件不画）。
+            NeedsEntry(onNeeds)
             PhIconButton(Ph.MagnifyingGlass, copyText("mobChats.search.open"), onClick = onSearch, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = onFilter, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
         },

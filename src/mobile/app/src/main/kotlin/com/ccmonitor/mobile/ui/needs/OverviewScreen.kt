@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.needs
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,12 +38,12 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.wire.gen.ManualItem
-import com.ccmonitor.mobile.core.wire.gen.SessionBook
 import com.ccmonitor.mobile.core.wire.gen.SessionDot
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chats.HostName
@@ -49,24 +51,24 @@ import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.dashedFrame
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import org.koin.compose.koinInject
 
-/** 聊天屏右上那颗入口的标记（判据按它找）。 */
+/** 「需手动 n」那颗入口的标记（判据按它找）。 */
 const val NEEDS_ENTRY_TAG = "needs-entry"
 
+/** 需手动屏里还在读那一台的骨架（判据按它找）。 */
+const val NEEDS_SKELETON_TAG = "needs-skeleton"
+
 /**
- * 聊天屏顶栏 ⋯ 左边那颗「需手动 n」：n ＝ 板上各台加起来（断着的不算）；0 ⇒ 不画；有哪台会外那一截读不出 ⇒ 不带数字、虚线框。点了进总览。
+ * 「需手动 n」那一颗（聊天屏顶栏 ⋯ 左边 · 会话列表顶栏，同一份）：n ＝ 板上各台加起来（断着的不算）；0 ⇒ 不画；
+ * 有哪台没读全（会外那一截读不出 · 整份没问到）⇒ 不带数字、虚线框。点了进需手动屏。
  */
 @Composable
 fun NeedsEntry(onOpen: () -> Unit) {
     val board = koinInject<NeedsBoard>()
     val all by board.state.collectAsState()
-    NeedsEntryView(board.total(all), all.values.any { it.unreadable != null }, onOpen)
+    NeedsEntryView(board.total(all), all.values.any { it.unreadable != null || it.unread != null }, onOpen)
 }
 
 /** 入口那颗写什么：0 且数说得准 ⇒ 不画（`null`）；数说不准 ⇒ 只写「需手动」；否则「需手动 n」。 */
@@ -106,14 +108,15 @@ fun NeedsEntryView(
 }
 
 /**
- * 总览（聊天屏右上「需手动 n」进）：顶栏 ← · 总览；「需手动 n」组（会话 · 计划 · 会话外，照板上那几台、当前那台在前）＋ 组底那几句；「在跑 n」组。
- * 点会话行 ⇒ 打开那条会话；点会话外那一行或［登录…］⇒ 登录抽屉（目标 ＝ 那一项的 `fix.args` 原样）；计划那一行只画（手机没有计划页）。
+ * 需手动屏（列表 · 聊天屏顶栏「需手动 n」进）：顶栏 ← · 需手动；那几行（会话 · 计划 · 会话外，照板上那几台、当前那台在前）＋ 各台读的结局。
+ * 读中 ⇒ 骨架、组头不带数；整份没问到 ⇒ 那台一行 ＋［重试］；断着 ⇒「X 离线 · 未计入」；各台都读到且 0 件 ⇒「无需手动事项」＋ 读到了哪几台。
+ * 点会话行 ⇒ 打开那条会话；点计划行 ⇒ 那一片的大纲；点会话外那一行或［登录…］⇒ 登录抽屉（目标 ＝ 那一项的 `fix.args` 原样）。
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 @Composable
 fun OverviewScreen(
     current: String,
     onOpen: (hostId: String, sid: String) -> Unit,
+    onPlan: (hostId: String, workspace: String, slice: String) -> Unit,
     onBack: () -> Unit,
 ) {
     val board = koinInject<NeedsBoard>()
@@ -122,38 +125,34 @@ fun OverviewScreen(
     val names = remember(hostRepo) { hostRepo.observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } } }
     val hosts by names.collectAsState(initial = emptyList())
     val all by board.state.collectAsState()
-    val tables by remember(backends) {
-        backends.feeds.flatMapLatest { m ->
-            if (m.isEmpty()) flowOf(emptyMap()) else combine(m.map { (id, f) -> f.table.map { id to it } }) { it.toMap() }
-        }
-    }.collectAsState(initial = emptyMap<String, SessionBook>())
-    val ov = overviewOf(all, tables, hosts, current)
+    val ov = overviewOf(all, hosts, current)
     val scope = rememberCoroutineScope()
     var login by remember { mutableStateOf<Pair<HostName, LoginFlow>?>(null) }
     Column(Modifier.fillMaxSize().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BackButton(onBack)
-            Text(copyText("mobOverview.screen.title"), style = MaterialTheme.typography.titleMedium)
+            Text(copyText("tabBar.needs.label"), style = MaterialTheme.typography.titleMedium)
         }
         LazyColumn(Modifier.fillMaxSize()) {
-            item { Head(if (ov.uncertain) copyText("tabBar.needs.label") else copyText("tabBar.needs.aria", "n" to ov.total)) }
+            item { Head(if (ov.uncertain || ov.loading.isNotEmpty()) copyText("tabBar.needs.label") else copyText("tabBar.needs.aria", "n" to ov.total)) }
             items(ov.needs) { line ->
                 when (line) {
                     is NeedsLine.Session -> SessionLine(line) { onOpen(line.host.id, line.row.sid) }
-                    is NeedsLine.Plan -> PlanLine(line)
+                    is NeedsLine.Plan -> PlanLine(line) { onPlan(line.host.id, line.workspace, line.slice) }
                     is NeedsLine.Manual ->
                         ManualLine(line, ov.manyHosts) { item ->
                             item.fix?.let { fix -> login = line.host to LoginFlow(backends.of(line.host.id), line.host.label, fix.args, scope).also { it.start() } }
                         }
                 }
             }
-            if (ov.needs.isEmpty()) item { Note(copyText("needs.panel.empty")) }
+            items(ov.loading) { SkeletonLine() }
+            items(ov.failed) { (h, p) -> FailedLine(copyText("needs.panel.unreadable", "machine" to h.label), p.text) { board.reask(h.id) } }
+            if (ov.empty) {
+                item { Note(copyText("needs.panel.empty")) }
+                item { Note(ov.readFrom.joinToString(copyText("kit.text.sep")) { it.label }) }
+            }
             items(ov.down) { h -> Note(copyText("needs.panel.offline", "machine" to h.label), dashed = true) }
             items(ov.unreadable) { (h, said) -> Note(copyText("needs.panel.unreadable", "machine" to h.label), dashed = true, more = said) }
-            if (ov.running.isNotEmpty()) {
-                item { Head(copyText("tabBar.group.sumRunning", "n" to ov.running.size)) }
-                items(ov.running) { r -> RunningRow(r) { onOpen(r.host.id, r.sid) } }
-            }
         }
     }
     login?.let { (h, f) ->
@@ -161,6 +160,35 @@ fun OverviewScreen(
             login = null
             board.reask(h.id)
         })
+    }
+}
+
+/** 还在读那一台：骨架一行（灰块，不转圈）。 */
+@Composable
+private fun SkeletonLine() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .testTag(NEEDS_SKELETON_TAG)
+            .height(12.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(LocalAppTokens.current.radius.s)),
+    )
+}
+
+/** 整份没问到那一台：红字 ＋ 那一问的那一句 ＋［重试］。 */
+@Composable
+private fun FailedLine(
+    text: String,
+    said: String,
+    onRetry: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(text, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
+            if (said.isNotEmpty()) Text(said, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
     }
 }
 
@@ -186,8 +214,11 @@ private fun SessionLine(
 }
 
 @Composable
-private fun PlanLine(line: NeedsLine.Plan) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun PlanLine(
+    line: NeedsLine.Plan,
+    onClick: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         PhIcon(Ph.CheckSquare, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
             Text(line.slice, style = MaterialTheme.typography.bodyMedium)
@@ -234,20 +265,6 @@ private fun ManualLine(
             if (second.isNotEmpty()) Text(second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (fix != null) OutlinedButton(onClick = { onLogin(item) }) { Text(copyText("newSession.account.login")) }
-    }
-}
-
-@Composable
-private fun RunningRow(
-    r: RunningLine,
-    onClick: () -> Unit,
-) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        StatusDot(SessionDot.RUNNING, r.title)
-        Column(Modifier.weight(1f)) {
-            Text(r.title, style = MaterialTheme.typography.bodyMedium)
-            r.cwd?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
     }
 }
 

@@ -37,7 +37,7 @@ sealed class Screen(
     // 后者的路由刻意不用 `sessions*` 前缀以免混淆。
     data object SessionsOverview : Screen("sessions")
 
-    /** Claude 对话总览：历史 / 正在跑 / 需手动 三分区。对用户说「对话」，不说「会话」。 */
+    /** 会话列表（抽屉「会话」进）：已固定 → 各组（段头 组名 ＋ 计数）→ 按天；顶栏「需手动 n」进需手动屏。 */
     data object Conversations : Screen("conversations/{hostId}") {
         fun of(hostId: String): String = "conversations/$hostId"
     }
@@ -73,7 +73,7 @@ sealed class Screen(
         const val ARG_TOOL = "tool"
     }
 
-    /** 跨会话的需手动 ＋ 在跑（聊天屏右上那颗入口进）：[hostId] 是进来时的那台（排在最前）。 */
+    /** 需手动屏（会话列表 · 聊天屏顶栏「需手动 n」进）：跨会话、各台的需手动；[hostId] 是进来时的那台（排在最前）。 */
     data object Overview : Screen("overview/{hostId}") {
         fun of(hostId: String): String = "overview/$hostId"
     }

@@ -450,7 +450,7 @@ internal fun MachineTag(name: String) {
     )
 }
 
-/** 一台顶上那一条：正在装 / 更新 ⇒ 成品那一句 ＋ 进度条；断着 ⇒ 虚线条 ＋［重新连接］（核心点名能装 ⇒ 红条 ＋［安装］）；读不出 ⇒ 红条 ＋［重试］［复制详情］。 */
+/** 一台顶上那一条：正在装 / 更新 ⇒ 成品那一句 ＋ 进度条；断着 ⇒ 虚线条 ＋［重试］（重接那台；核心点名能装 ⇒ 红条 ＋［安装］）；读不出 ⇒ 红条 ＋［重试］［复制详情］。 */
 @Composable
 private fun HostBarView(
     b: HostBar,
@@ -462,7 +462,7 @@ private fun HostBarView(
         return
     }
     if (b.offline && b.fix == null) {
-        DashedBar(b.problem.text, copyText("newSession.machine.reconnect"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
+        DashedBar(b.problem.text, copyText("machineState.fix.retry"), { act.retry(b) }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag(ChatsTags.DOWN))
         Box(Modifier.padding(horizontal = 16.dp)) { EditHostButton(b.edit, act.editHost) }
         return
     }
