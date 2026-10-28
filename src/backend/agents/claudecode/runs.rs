@@ -312,8 +312,13 @@ const META_SUFFIX: &str = ".meta.json";
 /// 那一份至多读多少字节（它只有几格）；超了 ⇒ 不认它、说一声（卡等父侧结果回来再对上）。
 const META_MAX: u64 = 64 * 1024;
 
-/// 一份子 agent 记录 ⇒ 派出它的那次 Agent 调用（读旁边那份 `agent-<agentId>.meta.json` 的 `toolUseId`；子 agent 是哪个取文件名）。
-/// 前台派出的要跑完父侧才回带 `agentId` 的结果，在那之前卡和运行只能凭它对上。还没落盘 ⇒ `None`（不说）；读不出 ⇒ `None` 并记一笔。
+/// 后台派出那一形在那一份里的写法（`requestShape`）。
+const META_BACKGROUND: &str = "background";
+
+/// 一份子 agent 记录 ⇒ 派出它的那次 Agent 调用（读旁边那份 `agent-<agentId>.meta.json`：`toolUseId` · 标签 `description` ·
+/// 类别 `agentType` · 派它的子 agent `parentAgentId` · 后台派出 `requestShape`；子 agent 是哪个取文件名）。
+/// 前台派出的要跑完父侧才回带 `agentId` 的结果，在那之前卡和运行只能凭它对上；子 agent 派的孙 agent，派它的那几行只在
+/// 子 agent 自己的记录里，那一份不读的时候标签与「谁派的」只有这里说得出。还没落盘 ⇒ `None`（不说）；读不出 ⇒ `None` 并记一笔。
 pub(crate) fn spawned(child: &Path) -> Option<super::super::ChildLink> {
     let name = child.file_stem()?.to_str()?;
     let run = name.strip_prefix(CHILD_PREFIX).filter(|r| !r.is_empty())?;
@@ -333,9 +338,19 @@ pub(crate) fn spawned(child: &Path) -> Option<super::super::ChildLink> {
         }
     };
     let tool = s(&v, "toolUseId").filter(|t| !t.is_empty())?;
+    let some = |k: &str| {
+        s(&v, k)
+            .map(trim)
+            .filter(|x| !x.is_empty())
+            .map(str::to_string)
+    };
     Some(super::super::ChildLink {
         tool: Some(tool.to_string()),
         run: Some(run.to_string()),
+        label: some("description"),
+        kind: some("agentType"),
+        from: some("parentAgentId"),
+        background: s(&v, "requestShape") == Some(META_BACKGROUND),
         ..super::super::ChildLink::default()
     })
 }
