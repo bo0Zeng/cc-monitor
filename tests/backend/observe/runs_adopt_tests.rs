@@ -253,3 +253,37 @@ fn a_grandchild_keeps_its_label_when_its_spawner_is_not_read() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 分叉出去的孙运行，记录开头抄着派它的那段对话（连派它的那次调用，记成它自己的）：「谁派的」照派出那一刻落的那一份，
+/// 不因为那一行写在它自己的记录里就成了它自己。
+#[test]
+fn a_forked_grandchild_is_not_its_own_spawner() {
+    let dir = scratch("fork");
+    let parent = dir.join(format!("{SID}.jsonl"));
+    append(&parent, &[spawn("t1", "L1"), fg_done("t1", "w1")]);
+    child(&parent, "w1", "t1", old());
+    let as_g1 = |l: String| {
+        l.replacen(
+            r#"{"type":"#,
+            r#"{"isSidechain":true,"agentId":"g1","type":"#,
+            1,
+        )
+    };
+    let g1 = child_of(&parent, "g1");
+    append(&g1, &[as_g1(spawn("t2", "L2")), child_tool("g1", "g1-0")]);
+    std::fs::write(
+        g1.with_file_name("agent-g1.meta.json"),
+        r#"{"agentType":"fork","isFork":true,"description":"L2","toolUseId":"t2","parentAgentId":"w1","spawnDepth":2,"requestShape":"background"}"#,
+    )
+    .unwrap();
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(faces(), book.clone());
+    adopt(&parent, &mut track);
+    let g = book
+        .runs(SID)
+        .into_iter()
+        .find(|r| r.run == "g1")
+        .expect("孙运行在表里");
+    assert_eq!(g.parent.as_deref(), Some("w1"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

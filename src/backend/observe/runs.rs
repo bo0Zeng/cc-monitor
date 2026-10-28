@@ -303,7 +303,10 @@ impl Sess {
     fn spawned(r: &mut Run, sp: &Spawn) {
         r.info.label = sp.label.clone().or(r.info.label.take());
         r.info.kind = sp.kind.clone().or(r.info.kind.take());
-        r.info.parent = sp.parent.clone();
+        // 分叉出去的子运行，记录里抄着派它的那次调用、记成它自己的 ⇒ 那一句说的「谁派的」是它自己，不算。
+        if sp.parent.as_deref() != Some(r.info.run.as_str()) {
+            r.info.parent = sp.parent.clone();
+        }
         let at = sp.at;
         r.info.started_ms = match (r.info.started_ms, at) {
             (Some(a), Some(b)) => Some(a.min(b)),
