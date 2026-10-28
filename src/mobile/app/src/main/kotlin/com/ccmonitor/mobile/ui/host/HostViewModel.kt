@@ -10,22 +10,26 @@ import com.ccmonitor.mobile.core.data.db.machineTable
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.rs.Core
-import com.ccmonitor.mobile.core.ssh.SessionState
-import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConfigParser
 import com.ccmonitor.mobile.core.ssh.forgetHostKey
 import com.ccmonitor.mobile.core.wire.Wire
 import com.ccmonitor.mobile.core.wire.gen.ConfigHost
 import com.ccmonitor.mobile.core.wire.gen.Endpoint
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineCheck
-import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.common.MachineDot
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -34,12 +38,16 @@ import kotlinx.coroutines.withContext
 class HostViewModel(
     private val hostRepo: HostRepository,
     identityRepo: IdentityRepository,
-    connector: HostConnector,
+    backends: HostBackends,
     private val removal: HostRemovalDao,
 ) : ViewModel() {
-    /** 每台此刻的 SSH 连接 ⇒ 行首那颗点（手机自己那条连接的事实）。 */
-    val linkDots: StateFlow<Map<String, MachineDot>> =
-        connector.states().map(::hostLinkDots).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    /** 每台核心交的那一行（起着常驻流的那几台）⇒ 行首那颗点与尾字（[hostRowLook]）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val rowLooks: StateFlow<Map<String, HostRowLook>> =
+        backends.feeds
+            .flatMapLatest { m ->
+                if (m.isEmpty()) flowOf(emptyMap()) else combine(m.map { (id, f) -> f.state.map { id to hostRowLook(it) } }) { it.toMap() }
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val hosts: StateFlow<List<Host>> =
         hostRepo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -151,14 +159,25 @@ fun hostsFromSshConfig(
         )
     }
 
-/** 一台的连接 ⇒ 点：有一条已连接 ⇒ 在线；都没连接、有一条报错 ⇒ 连接失败；其余（未连接 · 连接中）⇒ 不画。 */
-internal fun hostLinkDots(sessions: Map<String, SessionState>): Map<String, MachineDot> =
-    sessions.values
-        .groupBy { it.hostId }
-        .mapNotNull { (host, ss) ->
-            when {
-                ss.any { it.status == SessionStatus.CONNECTED } -> host to MachineDot.UP
-                ss.any { it.status == SessionStatus.ERROR } -> host to MachineDot.FAILED
-                else -> null
-            }
-        }.toMap()
+/** 机器列表一行的点与第二层尾字（那台状态成品的 `word`；空 ⇒ 不写）。 */
+data class HostRowLook(
+    val dot: MachineDot?,
+    val word: String?,
+)
+
+/**
+ * 核心交的那一行 ⇒ 行首那颗点与尾字：正在连 · 装 · 更新 ⇒ 空心点；通着 ⇒ 绿；那台旧了 ⇒ 琥珀（照常能用）；断着 · 做不了 ⇒ 红；
+ * 核心还没交过（这台没起常驻流）⇒ 不画。只挑格，态与字都是成品的（`deploy::machine`，桌面同一份）。
+ */
+internal fun hostRowLook(line: LinkLine?): HostRowLook {
+    val m = line?.machine ?: return HostRowLook(null, null)
+    val dot =
+        when (m.state) {
+            MachineStateKind.CONNECTING, MachineStateKind.INSTALLING, MachineStateKind.UPDATING -> MachineDot.CONNECTING
+            MachineStateKind.UP, MachineStateKind.NEWER -> MachineDot.UP
+            MachineStateKind.NEEDS_UPDATE -> MachineDot.WARN
+            MachineStateKind.DOWN, MachineStateKind.HOST_KEY_CHANGED, MachineStateKind.UNSUPPORTED, MachineStateKind.DISABLED -> MachineDot.FAILED
+            MachineStateKind.UNKNOWN -> if (line is LinkLine.Connecting) MachineDot.CONNECTING else null
+        }
+    return HostRowLook(dot, m.word.ifEmpty { null })
+}

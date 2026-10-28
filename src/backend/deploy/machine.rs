@@ -159,8 +159,8 @@ pub fn product(e: &Entry, machine: &str, enabled: bool, installs: bool) -> Machi
             .and_then(|p| p.expected_key.clone()),
         detail: problem.map(|p| detail(machine, p, &code(why, blocker))),
         unclear: (e.unclear > 0).then_some(e.unclear),
-        // 到这台的连接不是这一轮的事实：宿主照它自己的连接池填（桌面 `control/machine_state.rs`）。
-        links: Vec::new(),
+        // 到这台怎么连过去的不是这一轮的事实：宿主照机器表与它自己的连接池填（`ssh_dial::pool::Way::put`）。
+        route: None,
     }
 }
 

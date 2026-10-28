@@ -242,7 +242,6 @@ private fun NewSessionHostPickerScreen(
         onIdentities = { nav.navigate(Screen.Identities.route) },
         onFiles = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Files)) },
         onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
-        onSessions = { nav.popBackStack() }, // 本页只从会话总览进，「会话」即返回
         newSessionMode = true,
         title = copyText("mobNav.newTab.title"),
     )
@@ -364,7 +363,6 @@ private fun NavGraphBuilder.hostsRoute(
                 nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Files)}")
             },
             onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
-            onSessions = { nav.navigate(Screen.SessionsOverview.route) },
         )
     }
 }
@@ -541,6 +539,7 @@ private fun NavGraphBuilder.chatRoutes(
             onNewInDir = { host, cwd -> nav.navigate(Screen.Chat.of(host, newConversationId(), isNew = true, cwd = cwd)) },
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onEditHost = { hid -> nav.navigate("host/$hid/edit") },
+            onOpenOverview = { nav.navigate(Screen.Overview.of(hostId)) },
         )
     }
     composable(
@@ -584,6 +583,7 @@ private fun NavGraphBuilder.chatRoutes(
         OverviewScreen(
             current = entry.arguments?.getString("hostId").orEmpty(),
             onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
+            onPlan = { host, ws, slice -> nav.navigate(Screen.PlanSlice.of(host, ws, slice, null)) },
             onBack = { nav.popBackStack() },
         )
     }
@@ -679,7 +679,7 @@ internal fun launchDestination(
     newConversationId: () -> String,
 ): String = landingHostId?.let { freshLanding(it, newConversationId) } ?: Screen.Hosts.route
 
-/** 进一台服务器、从空白开始：打开 app 与加完一台共用。哪一家都进空的新对话（送字走 `terminal-input`，不分哪家）。 */
+/** 进一台服务器、从空白开始：打开 app 与加完一台共用。哪一家都进空的新对话（送字投进那条会话的输入队 `session-queue-put`，不分哪家）。 */
 internal fun freshLanding(
     hostId: String,
     newConversationId: () -> String,

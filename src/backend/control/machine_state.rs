@@ -3,7 +3,7 @@
 //! 本机（键 `<local>`）也是其中一台：这个后端在答就是连着、与手上同一份字节，那一行由这里出（[`local_row`]）。
 //! 后端重启表就空：各台的常驻流随后端一起重起，各自重报。
 //!
-//! 成品里到那台的连接（`links`：每条 SSH 连接压没压 · 进出字节）不是这一轮的事实，出成品时照本进程的连接池现填
+//! 成品里到那台怎么连过去的（`route`）与每条 SSH 连接那一句（复制详情末尾）不是这一轮的事实，出成品时照机器表与本进程的连接池现填
 //! （[`crate::dial::links`]）；池里成员动了（放进一条 · 断了 · 没人用了）⇒ 每台重推一份（[`follow_pool`]，零定时器）。
 
 use crate::dial::links::Links;
@@ -70,7 +70,9 @@ fn enabled_in(hosts: &[(String, bool)], machine: &str) -> bool {
 /// 一台的成品：判定那一份 ＋ 此刻到它的连接。
 fn product_in(e: &Entry, machine: &str, enabled: bool, links: &Links) -> MachineState {
     let mut p = product(e, machine, enabled, true);
-    p.links = links.get(machine).cloned().unwrap_or_default();
+    if let Some(way) = links.get(machine) {
+        way.put(&mut p);
+    }
     p
 }
 
