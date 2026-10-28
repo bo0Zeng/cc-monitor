@@ -78,7 +78,6 @@ internal fun Cards(
 ) {
     RotHeader(copyText("rot.h.cards"), copyText("rot.h.cardsHint"))
     val listed = view.accounts.take(view.listed.toInt())
-    val rows = view.board.rows
     val rects = remember { mutableStateMapOf<Int, Rect>() }
     var drag by remember { mutableStateOf<Pair<Int, Offset>?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -92,7 +91,7 @@ internal fun Cards(
                 Card(
                     i = i,
                     f = f,
-                    row = rows.getOrNull(i),
+                    row = rowOf(view, f.account),
                     ui = ui,
                     board = board,
                     lifted = drag?.first == i,
@@ -107,7 +106,7 @@ internal fun Cards(
                             }) { from, at ->
                                 drag = null
                                 val to = rects.entries.firstOrNull { it.value.contains(at) }?.key ?: return@cardDrag
-                                if (to != from) board.edit(RotEdit.move(from, to))
+                                cardMove(view, listed, from, to)?.let { board.edit(it) }
                             },
                 )
             }
@@ -309,23 +308,22 @@ private fun EditSheet(
     board: RotationBoard,
     account: String,
 ) {
-    val i = view.accounts.indexOfFirst { it.account == account }.takeIf { it in 0 until view.listed } ?: return
-    val f = view.accounts[i]
-    val row = view.board.rows.getOrNull(i)
+    val row = rowOf(view, account) ?: return
+    val f = view.accounts.firstOrNull { it.account == account } ?: return
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     ModalBottomSheet(onDismissRequest = { board.open(null) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("rot-pane-$account")) {
         Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AccountBadge(f.plate.text, f.plate.color, 20)
                 Text(board.label(account), fontWeight = FontWeight.SemiBold)
-                Marks(row?.marks.orEmpty())
-                Text(row?.line.orEmpty(), style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Marks(row.marks)
+                Text(row.line, style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 IconButton(onClick = { board.open(null) }, modifier = Modifier.semantics { contentDescription = copyText("rot.pane.close") }) {
                     PhIcon(Ph.X, contentDescription = null, size = Touch.iconInline, tint = muted)
                 }
             }
             f.blocked?.let { b -> NoteBox(NoteTone.WARN) { Text(b.text, style = MaterialTheme.typography.bodySmall) } }
-            row?.let { r -> paneCells(r).forEach { (cell, indent) -> CellRows(ui, board, cell, i, indent) } }
+            paneCells(row).forEach { (cell, indent) -> CellRows(ui, board, cell, row.row.toInt(), indent) }
             HorizontalDivider()
             val (foot, older) = paneFoot(view)
             Text(foot, style = MaterialTheme.typography.bodySmall, color = muted)
@@ -333,7 +331,7 @@ private fun EditSheet(
                 if (older) OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadAll")) }
                 SecondaryButton(onClick = {
                     board.open(null)
-                    board.edit(RotEdit.remove(i))
+                    board.edit(RotEdit.remove(row.row.toInt()))
                 }) { Text(copyText("rot.acct.remove")) }
             }
         }

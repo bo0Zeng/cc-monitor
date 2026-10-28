@@ -47,26 +47,19 @@ mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内
 mod bind;
 mod ui_contract;
 // 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
-mod ui_error;
-// 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
-// `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
-pub mod chan;
+mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
 mod data_paths;
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod event_replay;
-mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
-                      // 🔴原生文件管理窗口。进程形态＝**同进程**、
-                      // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-                      // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
-                      // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-                      //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（34 → 36，逐条住 gate.sh 那一格上方）。
-                      //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
-                      //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
-pub mod filewin;
-mod history;
+mod footprint_client;
+mod ui_error; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
+              // 🔴原生文件管理窗口。进程形态＝**同进程**、
+              // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+              // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+mod filewin;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend_control;
@@ -96,7 +89,7 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
-mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
+mod copy_table; // 过渡：等 stream_source/snapshot.rs 改用 copy_core 再删
 /// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
 pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
@@ -255,7 +248,7 @@ mod utils;
 #[path = "../../../../tests/frontend/shell/write_site_registry.rs"]
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 

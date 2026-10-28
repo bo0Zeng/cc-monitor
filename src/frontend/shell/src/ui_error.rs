@@ -7,13 +7,14 @@
 //! 哪几种要告诉用户，由 [`UiError`] 的变体列全；每个变体的键在 [`UiError::payload`] 里写成字面量。
 
 use crate::backend_policy::Death;
-use crate::copy_table::copy_text;
+use crate::utils::now_ms;
+use copy_core::copy_text;
 use copy_core::detail::{Detail, Label};
 use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 /// 事件名（界面 `backend-errors.ts` 订的那一个）。
 pub const EVENT: &str = crate::ui_contract::events::UI_ERROR;
@@ -140,13 +141,6 @@ impl UiError {
             }),
         }
     }
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 type Emit = Box<dyn Fn(&UiErrorPayload) + Send + Sync>;

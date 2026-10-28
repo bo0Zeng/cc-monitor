@@ -1,21 +1,21 @@
 /**
- * 终端面板输入行的附件：［＋］· 粘贴 · 拖进同一排 chip；没传完 ⇒［送出］灰着说为什么；带附件那一句投进输入队（编号随那一句交）、
+ * 消息流底下那个输入框的附件（`composer.ts`）：［＋］· 粘贴 · 拖进同一排 chip；没传完 ⇒ ➤ 灰着说为什么；带附件那一句投进输入队（编号随那一句交）、
  * 回执到了清空，那台拒了原样留着。读写换成假的（附件那几口照真的形状回）。
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TerminalPage, type AttachReads, type TerminalReads, type Watched } from "../../../src/frontend/ui/terminal-page";
+import { Composer, type ComposerReads } from "../../../src/frontend/ui/composer";
+import { Outbox } from "../../../src/frontend/ui/outbox";
+import type { Tab } from "../../../src/frontend/ui/tab-model";
+import { liveFace } from "../../test-support/session-faces";
 import type { AttachIo } from "../../../src/frontend/ui/attach-draft";
-import type { TerminalRow, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import type { QueuePut } from "../../../src/frontend/ui/generated/QueuePut";
 import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { AttachItem } from "../../../src/frontend/ui/generated/AttachItem";
 import type { SessionAttachmentCommitReq } from "../../../src/frontend/ui/generated/SessionAttachmentCommitReq";
 
-const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "web-1", title: "web-console" };
-const ROW: TerminalRow = { terminal: "%7", name: "web-1", sid: "s-1", clients: 0, input: "shared", programExited: false, inputNo: null };
-const SHOT: TerminalShot = { lines: [], text: "$", screen: "fp", atText: "12:00:00" };
+const TAB = { origin: "devbox", sessionId: "s-1", face: liveFace("idle", true), label: "web-console", labelProject: null, background: false, forkedFromSessionId: null } as unknown as Tab;
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
@@ -38,34 +38,29 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut> } = {}) {
     offline: () => false,
   };
   const say = vi.fn(opts.put ?? (async (): Promise<QueuePut> => ({ outcome: "queued", seq: 1, place: 1, said: "q-1" })));
-  const reads = {
-    list: vi.fn(async () => [ROW]),
-    shot: vi.fn(async () => SHOT),
-    send: vi.fn(async () => ({ result: "delivered" as const, acts: [] })),
-    follow: vi.fn(() => ({ stop: () => {} })),
-  };
-  const attach: AttachReads = {
-    put: say,
+  const reads: ComposerReads = {
     io: () => io,
     read: async () => ({ items: [], sent: [] }),
     cancel: async () => ({ cancelled: false, queue: { items: [], sent: [] } }),
     watch: () => () => {},
   };
-  const page = new TerminalPage({ active: () => SLOT, front: () => {}, focusStream: () => {} }, reads as unknown as TerminalReads, attach);
+  const outbox = new Outbox(say);
+  const page = new Composer({ active: () => TAB, resume: async () => true, front: () => {}, focusStream: () => {} }, outbox, reads);
   document.body.replaceChildren(page.el);
-  return { page, reads, say, release };
+  return { page, say, release, outbox };
 }
 
 async function opened(opts?: Parameters<typeof rig>[0]) {
   const r = rig(opts);
-  r.page.sessionChanged();
-  r.page.setVisible(true);
+  r.page.render();
   await flush();
   return r;
 }
 
-const q = <T extends Element>(page: TerminalPage, sel: string): T => page.el.querySelector(sel) as T;
-const chips = (page: TerminalPage): HTMLElement[] => Array.from(page.el.querySelectorAll<HTMLElement>('[data-role="attach-chip"]'));
+beforeEach(() => localStorage.clear());
+
+const q = <T extends Element>(page: Composer, sel: string): T => page.el.querySelector(sel) as T;
+const chips = (page: Composer): HTMLElement[] => Array.from(page.el.querySelectorAll<HTMLElement>('[data-role="attach-chip"]'));
 const file = (name: string, n = 3, type = ""): File => new File([new Uint8Array(n)], name, { type });
 
 /** 一份造好的 DataTransfer（jsdom 没有构造器）：文件 · 剪贴板里的字。 */
@@ -79,7 +74,7 @@ function transfer(files: File[], text = "", dirs: string[] = []): DataTransfer {
   } as unknown as DataTransfer;
 }
 
-describe("终端面板输入行的附件", () => {
+describe("输入框的附件", () => {
   it("★［＋］选的文件进输入框上方那一排：类别字 · 名字 · 状态；传完前［送出］灰着、悬停说附件传输中", async () => {
     const { page, release } = await opened({ hold: true });
     const picker = q<HTMLInputElement>(page, '[data-role="attach-plus"] input[type="file"]');
@@ -92,7 +87,7 @@ describe("终端面板输入行的附件", () => {
     expect(c.textContent).toContain("login.css");
     expect(c.dataset.state).toBe("sending");
     expect(c.querySelector('[data-role="attach-state"]')?.textContent, "传输中只写那个词，不拼字节").toBe(copyText("attach.chip.sending"));
-    const send = Array.from(page.el.querySelectorAll("button")).find((b) => b.textContent === copyText("terminal.input.send")) as HTMLButtonElement;
+    const send = q<HTMLButtonElement>(page, '[data-role="composer-send"]');
     expect(send.getAttribute("aria-disabled")).toBe("true");
     expect(send.title).toBe(copyText("attach.blocked.sending"));
     release();
@@ -135,7 +130,7 @@ describe("终端面板输入行的附件", () => {
   });
 
   it("★ 带附件那一句投进输入队（编号按先后 · 不走送字）；回执到了 ⇒ 字与 chip 一起清", async () => {
-    const { page, reads, say } = await opened();
+    const { page, say } = await opened();
     const picker = q<HTMLInputElement>(page, 'input[type="file"]');
     Object.defineProperty(picker, "files", { value: [file("a.css"), file("b.png")], configurable: true });
     picker.dispatchEvent(new Event("change"));
@@ -145,7 +140,6 @@ describe("终端面板输入行的附件", () => {
     box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flush();
     expect(say).toHaveBeenCalledWith("devbox", expect.objectContaining({ machine: "<local>", sid: "s-1", text: "看下截图", attachments: ["1027-1200-0001", "1027-1200-0002"], end: "monitor" }));
-    expect(reads.send).not.toHaveBeenCalled();
     expect(box.value).toBe("");
     expect(chips(page)).toEqual([]);
   });
@@ -172,7 +166,7 @@ describe("说一句：回执到了才算送出", () => {
   it("回执前那台断开 ⇒ 待发里还在；连上后重交同一个编号；回执到了清框", async () => {
     const down = new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "no-answer");
     let up = false;
-    const { page, say } = await opened({ put: async () => (up ? { outcome: "seen", seq: 1, place: 1, said: "q-1" } : Promise.reject(down)) });
+    const { page, say, outbox } = await opened({ put: async () => (up ? { outcome: "seen", seq: 1, place: 1, said: "q-1" } : Promise.reject(down)) });
     const picker = q<HTMLInputElement>(page, 'input[type="file"]');
     Object.defineProperty(picker, "files", { value: [file("a.css")], configurable: true });
     picker.dispatchEvent(new Event("change"));
@@ -184,7 +178,8 @@ describe("说一句：回执到了才算送出", () => {
     expect(box.value).toBe("接着做");
     expect(page.el.textContent).toContain("no-answer");
     up = true;
-    page.machineUp("devbox");
+    // 待发那一份的重交挂在「那台接上」（主窗口把机器状态转给它）。
+    outbox.machineUp("devbox");
     await flush();
     const ids = say.mock.calls.map((c) => ((c as unknown[])[1] as { id: string }).id);
     expect(ids.length).toBe(2);

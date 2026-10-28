@@ -323,7 +323,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             } => ("notPromisedLocal", os.as_str(), arch.as_str(), ""),
             Refusal::NotCarried { os, arch } => ("notCarried", os.as_str(), arch.as_str(), ""),
         };
-        let own = crate::copy_table::copy_text(
+        let own = copy_core::copy_text(
             &format!("deploy.refused.{form}"),
             &[
                 ("machine", "devbox"),

@@ -146,7 +146,7 @@ fn every_kind_of_ui_error_is_a_copy_keyed_sentence_and_the_log_line_stays_in_the
     let mut pushed = Vec::new();
     for d in &deaths {
         for then in [Then::Restarted, Then::Down] {
-            let line = ledger_line("<local>", d);
+            let line = ledger_line(d);
             let got = during(|| {
                 tell(UiError::LocalBackendDied {
                     death: d.clone(),

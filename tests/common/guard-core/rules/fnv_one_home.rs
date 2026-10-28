@@ -55,7 +55,7 @@ fn fnv_lives_only_in_cmd_wire() {
         let found: Vec<String> = repo
             .under(&["src"], &["rs", "ts", "kt", "kts"])
             .into_iter()
-            .filter(|f| f.rel != HOME && !f.rel.starts_with("src/vendor/"))
+            .filter(|f| f.rel != HOME)
             .filter_map(|f| {
                 let code = if f.rel.ends_with(".rs") {
                     f.prod()

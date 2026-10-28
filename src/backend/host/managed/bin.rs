@@ -5,7 +5,7 @@
 //! 正从那里跑，系统不许删）就留着，等下一次。别的平台上就是自己。
 //!
 //! 目录名以 `.` 打头：托管 id 不许以 `.` 打头（[`super::home::id_ok`]），名单与陈旧清扫都不会把它当成一个托管终端。
-//! 起托管那一下（A3-3-8「起托管进程」）调 [`host_program`]；今天还没有调用方。
+//! 起托管那一下（`control::ccm` 的 `execute_hosted`）调 [`host_program`]。
 
 use crate::platform::fs::{Own, OwnPath, Ro};
 use copy_core::said::Said;
@@ -23,13 +23,13 @@ fn program_name() -> String {
     format!("ccm{}", std::env::consts::EXE_SUFFIX)
 }
 
-/// 托管进程要跑的那个程序：跑着的程序文件不能被覆盖的平台上是按版本的副本（[`versioned_copy`]），别处就是 `me`（本程序自己）。
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn host_program(own: &Own, me: &Path) -> Result<PathBuf, Said> {
+/// 托管进程（与它里面那一跳）要跑的那个程序：跑着的程序文件不能被覆盖的平台上是按版本的副本（[`versioned_copy`]，从 `me`
+/// —— 本程序自己 —— 复制），别处就是这一趟被叫成的那个词（`called`）。
+pub(crate) fn host_program(own: &Own, called: &str, me: &Path) -> Result<String, Said> {
     if crate::platform::child::RUNNING_PROGRAM_IS_LOCKED {
-        versioned_copy(own, env!("CARGO_PKG_VERSION"), me)
+        versioned_copy(own, env!("CARGO_PKG_VERSION"), me).map(|p| p.to_string_lossy().into_owned())
     } else {
-        Ok(me.to_path_buf())
+        Ok(called.to_string())
     }
 }
 

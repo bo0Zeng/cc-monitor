@@ -179,6 +179,7 @@ object Commands {
             CanClose::class.java to CanClose.ADAPTER,
             CanDelete::class.java to CanDelete.ADAPTER,
             CanResume::class.java to CanResume.ADAPTER,
+            CanSay::class.java to CanSay.ADAPTER,
             CanTerm::class.java to CanTerm.ADAPTER,
             CancelReq::class.java to CancelReq.ADAPTER,
             CaptureOpts::class.java to CaptureOpts.ADAPTER,

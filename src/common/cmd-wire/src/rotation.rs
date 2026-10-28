@@ -833,12 +833,15 @@ pub struct RotMark {
     pub tip: String,
 }
 
-/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格（只回此刻该出的）· 那几格写成的句子（会话里只看的规则摘要，一格一句）· 号名旁的记号。
+/// 号列表的一行：号 · 它在设置号列表里是第几行 · 展开头一行（两窗用量 · 重置；这台账号库没有这个号 ⇒ 照实说）· 号牌悬停那一句 · `scope: each` 那几格（只回此刻该出的）· 那几格写成的句子（会话里只看的规则摘要，一格一句）· 号名旁的记号。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotRow {
     pub account: String,
+    /// 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub row: usize,
     pub line: String,
     pub hover: String,
     pub cells: Vec<RotCell>,
@@ -846,7 +849,7 @@ pub struct RotRow {
     pub marks: Vec<RotMark>,
 }
 
-/// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，与 `accounts` 前 `listed` 个一一对应）。
+/// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，一个号一行、各带它的行号；与 `accounts` 前 `listed` 个一一对应）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]

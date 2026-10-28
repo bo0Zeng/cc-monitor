@@ -773,6 +773,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/acct.module.css": { stacked: true, why: "状态栏账号按钮 `.acctChip` 叠在全局 `.status-account` 上（account-chip.ts 里 btn.className 同时挂两样）；面板里经小工具函数挂的类量具认不出挂到哪，按「叠」算" },
   "src/frontend/ui/views/history.module.css": { stacked: true, why: "历史页根上同时挂全局 `history-view`、搜索框挂 `history-search`（只当截图 / 端到端找它的钩子，全局 CSS 里没有这两条）" },
   "src/frontend/ui/cards/run-card.module.css": { stacked: false, why: "派出卡（`cards/subagent.ts`）：卡 / 卡头 / 结果只挂自己的哈希类（里面的徽标与图标是 kit 的哈希类）" },
+  "src/frontend/ui/composer.module.css": { stacked: false, why: "消息流底下的输入框（`composer.ts`）：外框 / 一行 / 框 / 结局那一句只挂自己的哈希类（附件那一排 · 队列那一排各是自己的 module）" },
   "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
   "src/frontend/ui/views/agent-window.module.css": { stacked: false, why: "agent 窗口（`views/agent-window.ts`）：标题区 · 说明 · 小片 · 结束线只挂自己的哈希类；滚动容器挂全局 `.stream`，不叠这些类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },

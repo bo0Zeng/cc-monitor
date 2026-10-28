@@ -3,8 +3,8 @@
 //! - 停：请本机后端 `machine-stop`（它先停自己那一条、再在那台跑一次 `--resident-stop`：那台自己做「请它收尾 → 宽限期内等 → 到点强杀」），
 //!   拿回 `graceful | killed | not_running`。本机那一趟（`local_backend_host::run_resident_stop`）读 `--resident-stop` 那一行，读法同循环那一份。
 
-use crate::copy_table::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 
 /// 本机后端那条命令（命令表 `src/backend/stream/inbound/registry/machine.rs`）。
 const MACHINE_STOP: &str = "machine-stop";

@@ -247,7 +247,7 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
                     Some((old, at)) => {
                         let mut old = old.clone();
                         for r in &mut old.rows {
-                            stale(r);
+                            stale(r, &name);
                         }
                         let said = copy_text(
                             "beTermBoard.group.downSampled",
@@ -324,9 +324,9 @@ pub(crate) fn merge(got: Vec<(Machine, Got)>, last: &LastSeen) -> TerminalsBoard
 }
 
 /// 上次那一份里的一行：那台此刻看不见 ⇒ 点照「状态不明」、去掉在等的徽标。
-fn stale(r: &mut BoardRow) {
+fn stale(r: &mut BoardRow, name: &str) {
     use crate::wire::SessionFaceExt as _;
-    let face = SessionFace::of(crate::wire::Life::Unseen);
+    let face = SessionFace::unseen(Words(comms_inward::chan::said::offline(name)));
     r.dot = face.dot;
     r.dot_name = face.name;
     r.badge = None;

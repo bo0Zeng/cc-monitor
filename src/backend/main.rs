@@ -100,6 +100,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() {
+    // 远端 musl 版的分配器放回来的空页当场还给系统（不等下一次分配；别的版本什么都不做）。
+    cc_monitor_backend::platform::return_freed_pages_at_once();
     // 帧里的小成品（`changed.body`）照主题表现算：装进发端调的那一层（理由住 `stream/topic_body.rs` 头注）。
     topic_hook::install(topic_body::body_now);
     // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那一处写根。
