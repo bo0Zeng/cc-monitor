@@ -729,8 +729,8 @@ describe("TabManager 生命周期", () => {
   // 🔴 **它服务哪条业务要求：`INVARIANTS.md` §21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
   //    §21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
   //    —— `TabManager.onLine` 按 seq 门控，`seq < tab.window.floorSeq` 的旧记录只进
-  //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化
-  //    尾段 / `switchTo` 时同步物化」——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
+  //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 只进账本，`switchTo` 时同步物化视口那一截」
+  //    〔A17-45-3-4 删了后台空闲物化〕——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
   // 把 §21 记成「全树零命中」并推出「所以它没人守」：读数对
   //    （没人在散文里点出条号），推论错（第 3 项这一组等值断言一直在守）。
   //    ⚠ §21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
@@ -790,7 +790,7 @@ describe("TabManager 生命周期", () => {
     for (let s = 10; s < 15; s++) tm.onLine(mkContent("vg", s, `v-${s}`)); // 后台收纳 5 条
     tm.onBatchEnd();
     const vg = home(tm).store.tabs.get("vg")!;
-    expect(vg.window.pendingCount).toBe(5); // rIC 还没轮到（异步）
+    expect(vg.window.pendingCount).toBe(5); // 后台 tab 只进账本
     spy.mockClear();
     tm.onLine(mkContent("vg", 99, "v-live")); // 真 live 行先到
     expect(vg.window.pendingCount).toBe(0); // 先物化（takeTail 钉 floor=10）
@@ -825,50 +825,6 @@ describe("TabManager 生命周期", () => {
     expect(order.join(",")).toContain("unwrap,render,render,reconcile,rebuild");
     spy.mockImplementation(f15.insertingRender); // ★ 不是 `() => {}`：见 `f15.insertingRender` 头注
     vi.mocked(reconcilePendingToolResults).mockImplementation(() => []);
-  });
-
-  /**
-   * 后台空闲物化一次只建一小截、看着空闲期限走：开窗那几秒里人就会去点 —— 一次空闲回调建满 150 条（Chromium 一下 50 ms 级，
-   * WebKitGTK 没有 requestIdleCallback、走 setTimeout 兜底，一下一两百 ms）就是开窗时一串长任务，点下去要等它跑完。
-   * 期限用完 ⇒ 这个 tab 排回队首，下一个空闲期接着建；总量照旧（virgin 的尾段一共 150 条）。
-   */
-  it("后台空闲物化按空闲期限分截建：期限用完就停、下一个空闲期接着，总量照旧", async () => {
-    const spy = await spyRender();
-    const idle: IdleRequestCallback[] = [];
-    const had = window.requestIdleCallback;
-    window.requestIdleCallback = ((cb: IdleRequestCallback) => idle.push(cb)) as typeof window.requestIdleCallback;
-    try {
-      tm.onLine(mkContent("chunkA", 1, "ch-1")); // active
-      tm.onBatchStart();
-      for (let s = 0; s < 150; s++) tm.onLine(mkContent("chunkB", 1000 + s, `chb-${s}`)); // 后台 virgin 150 条
-      tm.onBatchEnd();
-      const t = home(tm).store.tabs.get("chunkB")!;
-      expect(t.window.pendingCount).toBe(150);
-      spy.mockClear();
-      expect(idle.length, "前提：排了一个空闲回调").toBe(1);
-      idle.shift()!({ didTimeout: false, timeRemaining: () => 0 }); // 期限已经用完
-      const first = spy.mock.calls.length;
-      expect(first, "期限用完还一口气建满 150 条 ⇒ 开窗时一串长任务").toBeLessThan(150);
-      expect(first, "至少建一截（不然永远建不完）").toBeGreaterThan(0);
-      for (let i = 0; i < 40 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 0 });
-      expect(t.window.pendingCount, "分截之后总量照旧：virgin 的尾段 150 条全建").toBe(0);
-    } finally {
-      window.requestIdleCallback = had;
-    }
-  });
-
-  it("F40a S-5：archived tab 不进后台物化队列", () => {
-    tm.onLine(mkContent("act4", 1, "z-1")); // active
-    tm.onBatchStart();
-    tm.onLine(mkContent("dead", 30, "d-1")); // 后台收纳
-    tm.onLine(mkContent("idle1", 40, "i-1")); // 后台收纳 ×2
-    tm.onLine(mkContent("idle2", 41, "i-2"));
-    tm.onFace("dead", goldenFace("ended"));
-    tm.onBatchEnd();
-    // scheduleIdleMaterialize 同步 shift 队首进定时器闭包 → 队列只剩第二个非归档 tab;
-    // 关键断言:dead 从未入队(队首 shift 的是 idle1)
-    expect(home(tm).view.materializeQueue).toEqual(["idle2"]);
-    expect(home(tm).store.tabs.get("dead")!.window.pendingCount).toBe(1); // 未被物化
   });
 
   // === Batch13-F40b：R-1 缓冲 / 上翻补批 / 哨兵 ===
@@ -911,20 +867,21 @@ describe("TabManager 生命周期", () => {
     const t = home(tm).store.tabs.get("fills")!;
     expect(t.window.pendingCount).toBe(700);
 
-    // 选区进行中切入:virgin 物化照走(4 轮×150=600,物化不看选区);
-    // R-2 踢链(不可滚+账余 100)被选区守卫挡 → 账保 100
+    // 选区进行中切入:virgin 物化照走(jsdom 恒不满一屏 ⇒ 一次同步调用建满 8 截 × 20 = 160,物化不看选区);
+    // R-2 踢链(不可滚+账余 540)被选区守卫挡 → 账保 540
     const selSpy = vi
       .spyOn(document, "getSelection")
       .mockReturnValue({ isCollapsed: false } as unknown as Selection);
     tm.switchTo("fills");
-    expect(t.window.pendingCount).toBe(100);
+    expect(t.window.pendingCount).toBe(540);
     // 选区仍在:scroll 也被挡
     t.streamEl.dispatchEvent(new Event("scroll"));
-    expect(t.window.pendingCount).toBe(100);
-    // 选区收起:scroll → 补批弹尽
+    expect(t.window.pendingCount).toBe(540);
+    // 选区收起:scroll → 补一批 200,之后 rAF 自链接着补到弹尽
     selSpy.mockReturnValue({ isCollapsed: true } as unknown as Selection);
     t.streamEl.dispatchEvent(new Event("scroll"));
-    expect(t.window.pendingCount).toBe(0);
+    expect(t.window.pendingCount).toBe(340);
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING);
     selSpy.mockRestore();
 
     // 非 active:先切走,再给 fills(后台,floor 已钉)造残账——onBatchEnd 的
@@ -947,8 +904,8 @@ describe("TabManager 生命周期", () => {
     for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("reB", s, `re-${s}`)); // 后台 300
     tm.onBatchEnd();
     const t = home(tm).store.tabs.get("reB")!;
-    tm.switchTo("reB"); // virgin 全物化(300≤600),floor=1000
-    expect(t.window.pendingCount).toBe(0);
+    tm.switchTo("reB"); // virgin:同步建一截截(jsdom 恒不满一屏),余下的 rAF 自链补完,floor=1000
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING);
 
     tm.switchTo("reA");
     tm.onBatchStart();
@@ -985,7 +942,8 @@ describe("TabManager 生命周期", () => {
     for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("geoB", s, `geo-${s}`));
     tm.onBatchEnd();
     const t = home(tm).store.tabs.get("geoB")!;
-    tm.switchTo("geoB"); // virgin 全物化，floor 钉住
+    tm.switchTo("geoB"); // virgin：同步建一截截、余下的 rAF 自链补完，floor 钉住
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING);
     tm.switchTo("geoA");
     tm.onBatchStart();
     for (let s = 100; s < 400; s++) tm.onLine(mkContent("geoB", s, `geo-old-${s}`)); // < floor ⇒ 收纳 300
@@ -1019,6 +977,7 @@ describe("TabManager 生命周期", () => {
     tm.onBatchEnd();
     const t = home(tm).store.tabs.get("padB")!;
     tm.switchTo("padB");
+    await vi.waitFor(() => expect(t.window.pendingCount).toBe(0), UNTIL_CEILING); // 冷开那一截之后 rAF 自链补完
     tm.switchTo("padA");
     tm.onBatchStart();
     for (let s = 100; s < 400; s++) tm.onLine(mkContent("padB", s, `pad-old-${s}`)); // 账本有余 300
@@ -1074,10 +1033,12 @@ describe("TabManager 生命周期", () => {
     tm.onBatchStart();
     for (let s = 100; s < 300; s++) tm.onLine(mkContent("sentB", s, `sb-${s}`));
     tm.onBatchEnd();
-    tm.switchTo("sentB"); // 物化(4 轮×150 上限 → 200 全弹尽)
+    tm.switchTo("sentB"); // 冷开：同步建 8 截 × 20 = 160（jsdom 恒不满一屏），余 40 下一帧接着补
     const t = home(tm).store.tabs.get("sentB")!;
+    expect(t.window.pendingCount).toBe(40);
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 下一帧补尽
     expect(t.window.pendingCount).toBe(0);
-    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 再下一帧：账尽 ⇒ 按行号往下问
     // 渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链（下一帧）问 [0, 100)
     // 只数这个 tab 的（等那一帧时，前面几格留下的切入那一脚也会在同一帧里跑，问的是它们自己的 tab）
     expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines").filter((a) => (a as { jsonlPath: string }).jsonlPath === "/p/sentB.jsonl")).toEqual([
@@ -1114,8 +1075,8 @@ describe("TabManager 生命周期", () => {
    * 造的正是用户报的那一屏：**`scrollHeight` 说"滚得动"，而屏幕上是半屏空的**。
    * 成因不是假设 —— 每张顶层卡都带 `contain-intrinsic-size: auto <估值>`
    * （`height-estimate.ts`），没渲染过的卡按**估值**计入 `scrollHeight`。
-   * 旧判据 `scrollHeight - clientHeight > 1` 在第 1 轮就成立 ⇒ 补批当场停手（只补 150 条）；
-   * 新判据问的是「最后一张卡的底边到没到容器下沿」⇒ 该补的 4 轮补满（600 条）。
+   * 旧判据 `scrollHeight - clientHeight > 1` 在第 1 截就成立 ⇒ 补批当场停手（只补 20 条）；
+   * 新判据问的是「最后一张卡的底边到没到容器下沿」⇒ 一次同步调用的 8 截补满（160 条）。
    *
    * # 量的是条数，不是像素
    *
@@ -1147,8 +1108,8 @@ describe("TabManager 生命周期", () => {
     tm.switchTo("fillBody"); // virgin ⇒ 同步物化，停手条件就是本格的被测对象
     expect(
       t.window.pendingCount,
-      "读 scrollHeight 的话第 1 轮就停手（余 550）；读真实布局才会补满 4 轮（余 100）",
-    ).toBe(100);
+      "读 scrollHeight 的话第 1 截就停手（余 680）；读真实布局才会补满一次同步调用的 8 截 × 20（余 540）",
+    ).toBe(540);
   });
 
   /**
@@ -3978,7 +3939,8 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       available: true,
       from: fromOffset,
       end: fromOffset + n * 10,
-      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: "reply", dr: "card", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
+      // 第 i 行的类与 `mk` 那一行同一个算法（重来之后取回的那一截收在账本里，接骨架前要对拍 seq 空间）
+      rows: Array.from({ length: n }, (_, k) => ({ o: fromOffset + k * 10, n: 10, t: kindAt(fromOffset / 10 + k), dr: "card", u: `u${fromOffset / 10 + k}`, ch: 100, pl: 1 })),
     });
     /**
      * 一个 tab 先接上 `[0, first)` 的骨架，再从 `watchAt` 起上流（缺得多 ⇒ 正文重来）；按行号取一页答到 `end`。
@@ -4050,7 +4012,8 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
       expect(t.skeleton, "切走了还在后台接骨架").toBeNull();
       tm.switchTo("cp");
       await vi.waitFor(() => expect(t.skeleton, "切回来停住了该接上").not.toBeNull(), UNTIL_CEILING);
-      expect(fromOffsets("cp"), "停着的那一份直接用，不重问").toEqual([0, 3000]);
+      // 接上之后从账本的末字节往后续一截（`extendIndex`：尾段之后来的行进账本，收起时交得回去）不算重问
+      expect(fromOffsets("cp").filter((o) => o <= 3000), "停着的那一份直接用，不重问").toEqual([0, 3000]);
     });
   });
 
@@ -5418,7 +5381,7 @@ describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () 
 // ===== 批的第二道闸：急路要当场物化的正文字符 =====
 // 要求：「批的闸门应是字节预算（或『字节 ＋ 条数』双闸）」＋ 同节「要做的话闸的单位该换成『急路要物化的正文字符』」。
 describe("〔RENDER2〕物化一批按正文字符截", () => {
-  it("两条长正文合起来超预算 ⇒ 第一批只有最高那条、第二批是另一条连同其余短的 ⇒ 建卡顺序 == 手算的 [149, 0‥148]", async () => {
+  it("两条长正文合起来超预算 ⇒ 第一截只有最高那条、第二截是另一条连同其余短的 ⇒ 建卡顺序 == 手算的 [149, 129‥148, 109‥128, …]", async () => {
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     const tm = makeTM();
@@ -5439,7 +5402,9 @@ describe("〔RENDER2〕物化一批按正文字符截", () => {
     spy.mockClear();
     tm.switchTo("bgB");
     const order = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq);
-    expect(order).toEqual([149, ...Array.from({ length: 149 }, (_, i) => i)]);
+    // 冷开一截 20 条、一次同步调用至多 8 截（jsdom 恒不满一屏 ⇒ 8 截建满）：第一截被预算截成只有 149，之后每截 20 条、截内升序
+    const chunk = (hi: number): number[] => Array.from({ length: 20 }, (_, i) => hi - 19 + i);
+    expect(order).toEqual([149, ...[148, 128, 108, 88, 68, 48, 28].flatMap(chunk)]);
   });
 });
 
@@ -6547,7 +6512,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     expect([...inflight()], "前提：B 那一趟在途").toEqual(["B"]);
     const pendingIds = Array.from({ length: idle.length }, (_, k) => idleAsked - idle.length + 1 + k);
     tm.dispose();
-    expect(idleCancelled.sort(), "挂着的空闲回调（空闲物化那几个）当场撤掉").toEqual(pendingIds.sort());
+    expect(idleCancelled.sort(), "挂着的空闲回调（冷读排班那几个）当场撤掉").toEqual(pendingIds.sort());
     const askedAtDispose = idleAsked;
     const coldAtDispose = cold.length;
     // 拆掉以后 window 上的空闲回调一碰就记一笔（测试环境拆掉之后 window 已经不在：碰了就是 ReferenceError）。
