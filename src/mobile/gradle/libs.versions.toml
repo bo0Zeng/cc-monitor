@@ -2,17 +2,17 @@
 # --- 构建工具链（几项须互相兼容）---
 agp = "8.13.2"
 kotlin = "2.3.21"
-ksp = "2.3.9"
+ksp = "2.3.12"
 # --- AndroidX / Compose ---
 # composeBom / coreKtx / material 与 termlib 0.1.2 的传递依赖对齐：termlib 经 core-terminal 的 api(...)
 # 带进这几个版本，Gradle 取高版本，所以这里写的就是实际解析值。
 coreKtx = "1.18.0"
-lifecycle = "2.8.7"
-activityCompose = "1.9.3"
-composeBom = "2026.05.01"
-navigationCompose = "2.8.5"
+lifecycle = "2.10.0"
+activityCompose = "1.13.0"
+composeBom = "2026.06.01"
+navigationCompose = "2.9.8"
 material = "1.14.0"
-coroutines = "1.9.0"
+coroutines = "1.11.0"
 # --- DI（Koin：纯 Kotlin 运行时 DI，无 codegen，不与 Kotlin/KSP 版本耦合）---
 koin = "4.2.2"
 # --- 测试 ---
@@ -21,11 +21,11 @@ androidxTestJunit = "1.2.1"
 androidxTestRunner = "1.6.2"
 androidxTestRules = "1.6.1"
 # --- 功能库 ---
-room = "2.8.4"
+room = "2.8.5"
 moshi = "1.15.2"   # 运行时与 KSP 生成器同一版（core-claude 的线上类走生成的解码器）
 markwon = "4.6.2"
 prism4j = "2.0.0"   # 语法高亮：Prism4j（io.noties）；bundler 是 Java 注解处理器
-tink = "1.17.0"
+tink = "1.24.0"
 # termlib 0.1.2：带捏合缩放持久化、竖滑照桌面终端处理滚轮的规矩走（鼠标上报 → 滚轮 · 备用屏 → 方向键 · 否则回滚区）的改动版，从仓内 maven 仓 libs/m2 解析
 # （见 settings.gradle.kts），不在 Maven Central。
 termlib = "0.1.2"

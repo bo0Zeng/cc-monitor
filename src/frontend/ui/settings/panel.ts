@@ -67,6 +67,7 @@ import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
+import { ADD_MACHINE_ANCHOR } from "../settings-dest";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError, machineName } from "../control-said";
 import { offlineSaid } from "../ipc/chan-caller";
@@ -570,9 +571,16 @@ export class SettingsPanel {
     } else if (t.page && (Object.values(PAGE) as string[]).includes(t.page)) {
       pageId = t.page;
     }
+    // 添加机器框（命令面板「加入机器表… · <名字>」）：等机器表读回来再开（框里「已在列表里」· 撞名都照它判）。
+    const adding = pageId === PAGE.machines && t.anchor?.startsWith(ADD_MACHINE_ANCHOR) === true;
+    if (adding && !this.machinePagesSettled) return;
     this.pendingTarget = null;
     if (!pageId) return;
     this.router.navigate(pageId);
+    if (adding) {
+      void this.remoteSection?.addMachine(t.anchor?.slice(ADD_MACHINE_ANCHOR.length) || undefined);
+      return;
+    }
     // 文件与数据那一页的锚点带着机器（`chores:<origin>` · `placed:<origin>`）：交给那一页落（那一段可能还没读回来）。
     if (pageId === PAGE.data && t.anchor && /^(chores|placed):/.test(t.anchor)) {
       this.dataPage?.focus(t.anchor);

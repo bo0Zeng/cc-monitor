@@ -10,6 +10,7 @@
  * | 上下文浮层［设上限］ | 当前标签页那台 › 上下文上限那一折 |
  * | 快捷键一览「改快捷键…」 | 外观 › 快捷键那一节 |
  * | 一台机器一直看不见时提示里的「打开设置」 | 那台的页 |
+ * | 命令面板「加入机器表… · <名字>」 | 机器页、添加框开着、名字预填 |
  * | 状态栏「待办 N」 | 文件与数据（「待办」那一栏是它的默认栏） |
  * | 计划页「未装 planned-build」［填 pb 路径…］ | 那台 › pb 路径那一行 |
  *
@@ -56,3 +57,11 @@ export const START: SettingsTarget = { page: "machines", anchor: "first-run" };
 
 /** 快捷键那一节。 */
 export const KEYBINDINGS: SettingsTarget = { page: "appearance", anchor: "keybindings" };
+
+/** 机器页的「添加机器」框锚：`add-machine:<打的名字>`（框开着、名字预填；名字空 ⇒ 照常开框）。 */
+export const ADD_MACHINE_ANCHOR = "add-machine:";
+
+/** 命令面板「加入机器表… · <名字>」：机器页、添加框开着、名字预填。 */
+export function addMachineOf(name: string): SettingsTarget {
+  return { page: "machines", anchor: `${ADD_MACHINE_ANCHOR}${name}` };
+}
