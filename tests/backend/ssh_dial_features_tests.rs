@@ -60,11 +60,11 @@ impl russh::server::Handler for Door {
     async fn auth_publickey(
         &mut self,
         _user: &str,
-        key: &russh::keys::PublicKey,
+        key: russh::server::VerifiedPublicKey<'_>,
     ) -> Result<russh::server::Auth, Self::Error> {
         // russh 先核过签名才问到这里：认的是「这把公钥、而且对面真持有它的私钥」。
         Ok(
-            if self.key.as_ref().map(|k| k.key_data()) == Some(key.key_data()) {
+            if self.key.as_ref().map(|k| k.key_data()) == Some(key.public_key.key_data()) {
                 self.note("publickey ok".to_string());
                 russh::server::Auth::Accept
             } else {
@@ -76,9 +76,11 @@ impl russh::server::Handler for Door {
     async fn channel_open_session(
         &mut self,
         _channel: russh::Channel<russh::server::Msg>,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut russh::server::Session,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
     }
 
     async fn pty_request(
@@ -186,24 +188,28 @@ impl russh::server::Handler for Door {
         port: u32,
         _oa: &str,
         _op: u32,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut russh::server::Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
         self.note(format!("tcpip {host}:{port}"));
         let Ok(port) = u16::try_from(port) else {
-            return Ok(false);
+            reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+            return Ok(());
         };
         assert!(
             upstream_url_core::upstream_is_loopback(host),
             "测试档不许出网：跳板被要求开到 {host}"
         );
         let Ok(mut tcp) = tokio::net::TcpStream::connect((host, port)).await else {
-            return Ok(false);
+            reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+            return Ok(());
         };
+        reply.accept().await;
         tokio::spawn(async move {
             let mut ch = channel.into_stream();
             let _ = tokio::io::copy_bidirectional(&mut ch, &mut tcp).await;
         });
-        Ok(true)
+        Ok(())
     }
 }
 

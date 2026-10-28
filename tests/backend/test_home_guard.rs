@@ -40,21 +40,16 @@ fn has_test_marks(t: &str) -> bool {
         || t.contains("mod tests;")
 }
 
-/// 仓里的 Rust crate（`src/` 下每份 `Cargo.toml`，`src/vendor` · `test-home` 自己除外）：
+/// 仓里的 Rust crate（`src/` 下每份 `Cargo.toml`，`test-home` 自己除外）：
 /// （crate 目录, 有没有判据, 引没引）。后端的判据住 `tests/backend/`，按后端算。
 fn crates() -> Vec<(PathBuf, bool, bool)> {
     let src = repo_root().join("src");
     let files = guard_core::scan_tree_excluding(&src, &["toml", "rs"], &[]);
     let skip = |p: &Path| {
         let s = p.to_string_lossy().replace('\\', "/");
-        [
-            "/vendor/",
-            "/target/",
-            "/node_modules/",
-            "/common/test-home/",
-        ]
-        .iter()
-        .any(|x| s.contains(x))
+        ["/target/", "/node_modules/", "/common/test-home/"]
+            .iter()
+            .any(|x| s.contains(x))
     };
     let dirs: Vec<(PathBuf, String)> = files
         .iter()
