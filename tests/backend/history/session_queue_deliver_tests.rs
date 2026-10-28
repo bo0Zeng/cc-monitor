@@ -279,6 +279,50 @@ fn a_waiting_refusal_keeps_the_line_queued_and_unsure_is_not_resent() {
 }
 
 #[test]
+fn a_waiting_line_is_tried_again_when_its_retry_deadline_comes_with_no_other_event() {
+    let o = own("retry");
+    let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
+    *rig.answer.borrow_mut() = Delivery::Waiting;
+    let mut memos = Memos::default();
+    put(&o, "a", T0);
+    let wake = rig.pass(&o, &mut memos, T0 + 1);
+    assert_eq!(
+        wake,
+        Some(T0 + 1 + WAITING_RETRY_MS),
+        "人敲了半句没回车 ⇒ 不只等下一次表变动：到期限再醒一次"
+    );
+    // 人把半句删回空行、不回车：没有任何事件，只有那个期限叫醒。
+    *rig.answer.borrow_mut() = sent(SentResult::Delivered);
+    let at = T0 + 1 + WAITING_RETRY_MS;
+    let wake = rig.pass(&o, &mut memos, at);
+    assert_eq!(rig.said().len(), 2, "期限到了再试一次");
+    assert!(states(&o).is_empty(), "这回送进去了 ⇒ 摘掉");
+    assert_eq!(
+        wake,
+        Some(at + CONFIRM_MS),
+        "送进去之后只剩等那一轮起来的期限，不再按等的期限醒"
+    );
+}
+
+#[test]
+fn a_retry_deadline_that_passes_while_a_turn_runs_does_not_keep_waking() {
+    let o = own("retry-run");
+    let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
+    *rig.answer.borrow_mut() = Delivery::Waiting;
+    let mut memos = Memos::default();
+    put(&o, "a", T0);
+    rig.pass(&o, &mut memos, T0 + 1);
+    rig.set(Some(Some(A::Working)), T0 + 2);
+    let at = T0 + 1 + WAITING_RETRY_MS;
+    assert_eq!(
+        rig.pass(&o, &mut memos, at),
+        None,
+        "到点那一遍在跑、不送 ⇒ 期限用掉了，睡到下一次事件（过了点的期限不一遍遍立刻叫醒）"
+    );
+    assert_eq!(rig.said().len(), 1);
+}
+
+#[test]
 fn nothing_pending_means_no_wake_up() {
     let o = own("idle");
     let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);

@@ -533,7 +533,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   };
 
   const paintPlace = (): void => {
-    const hasTmux = facts?.tmux ?? true;
+    const hasTmux = facts?.hosts.includes("tmux") ?? true;
     tmuxRadio.label.hidden = !hasTmux;
     windowRadio.note.textContent = windowNote(origin, hasTmux);
     tmuxRow.root.hidden = place() !== "tmux";

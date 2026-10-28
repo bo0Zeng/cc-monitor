@@ -251,7 +251,11 @@ object SessionQueuePut {
 object SessionRewindOptions {
     const val COMMAND: String = "session-rewind-options"
 
-    fun args(sid: String): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid)
+    /** `to`：被编辑那一句的 uuid（哪一项能选按那一句之后的事判）。 */
+    fun args(
+        sid: String,
+        to: String,
+    ): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid, "to" to to)
 
     fun of(data: Any?): RewindOptions? = Wire.bind<RewindOptions>(data)
 }

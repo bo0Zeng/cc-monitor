@@ -7,7 +7,8 @@
 //! 读伪终端永远不等任何一端（同 watcher 丢帧后整份重报）。
 //!
 //! 持有者：最新连上、要输入的真终端持有；`take` 谁都能抢（桌面 · 手机经后端接管也走它）。`in` · `resize` 只认持有者，
-//! 别人的 `in` 回 `held-elsewhere`、一个字节都不送。持有者走了或交还 ⇒ 交给最近连上的另一个要输入的真终端，没有就空着。
+//! 别人的 `in` 回 `held-elsewhere`、一个字节都不送。后端的 `say`（会话输入队投递那一句）不看持有者、照写、不换持有者；
+//! 只在持有者输入行里有没交的字时不写（回 `said {pending}`，投递照排着）。持有者走了或交还 ⇒ 交给最近连上的另一个要输入的真终端，没有就空着。
 //! 伪终端尺寸 ＝ 持有者报的尺寸；没人持有 ⇒ 保持上一次的；后端从不改尺寸。
 
 use super::screen::Screen;
@@ -86,6 +87,8 @@ pub(crate) struct Hub {
     screen: Screen,
     clients: BTreeMap<u64, Client>,
     holder: Option<u64>,
+    /// 持有者自上次回车以来敲进、还没交的字数（[`typed_after`]）：不是 0 ⇒ 后端那一句（`say`）不写。换了持有者清零。
+    typed: usize,
     next: u64,
     ended: bool,
 }
@@ -97,6 +100,7 @@ impl Hub {
             screen: Screen::new(size.rows, size.cols),
             clients: BTreeMap::new(),
             holder: None,
+            typed: 0,
             next: 1,
             ended: false,
         }
@@ -190,6 +194,7 @@ impl Hub {
         match f {
             Frame::In(bytes) => {
                 if self.holder == Some(id) {
+                    self.typed = typed_after(self.typed, &bytes);
                     vec![Effect::Write(bytes)]
                 } else {
                     let holder = self.holder_for(id);
@@ -252,11 +257,26 @@ impl Hub {
                 self.push(id, Frame::Ctl(Ctl::ClientsAre { clients }));
                 Vec::new()
             }
+            Ctl::Say { text } => self.say(id, text),
             Ctl::Tag { sid, agent } => vec![Effect::Tag { sid, agent }],
             Ctl::End => vec![Effect::End],
             Ctl::Bye => vec![Effect::Drop(id)],
             // 下行的动词从上行来 · 认不出的 · 第二次 `hello`：不理。
             _ => Vec::new(),
+        }
+    }
+
+    /// 后端说一句：不看谁持有，照写；持有者输入行里有没交的字 ⇒ 不写、回 `pending`。真终端说 `say` ⇒ 不是它该说的，断它。
+    fn say(&mut self, id: u64, text: String) -> Vec<Effect> {
+        if self.clients.get(&id).map(|c| c.who.kind) != Some(WhoKind::Backend) {
+            return vec![Effect::Drop(id)];
+        }
+        let pending = self.typed > 0;
+        self.push(id, Frame::Ctl(Ctl::Said { pending }));
+        if pending {
+            Vec::new()
+        } else {
+            vec![Effect::Write(text.into_bytes())]
         }
     }
 
@@ -300,6 +320,7 @@ impl Hub {
             return Vec::new();
         }
         self.holder = next;
+        self.typed = 0;
         for id in self.greeted_ids() {
             let holder = self.holder_for(id);
             self.push(id, Frame::Ctl(Ctl::Holder { holder }));
@@ -415,6 +436,40 @@ impl Hub {
         drop(q);
         out.bell.notify_one();
     }
+}
+
+/// 持有者送进 `bytes` 之后，输入行里还没交的字数（`before` 是送之前的）。
+/// 回车 · 换行 · Ctrl-C · Ctrl-U ⇒ 清零；退格（DEL · BS）⇒ 减一；转义序列（方向键 · 焦点 · 鼠标）不算；
+/// 别的可见字符（UTF-8 的续字节不另算）⇒ 加一。光标挪到行中间再删这类照字数近似。
+pub(crate) fn typed_after(before: usize, bytes: &[u8]) -> usize {
+    let mut n = before;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        i += 1;
+        match b {
+            b'\r' | b'\n' | 0x03 | 0x15 => n = 0,
+            0x7f | 0x08 => n = n.saturating_sub(1),
+            0x1b => match bytes.get(i) {
+                // CSI：到终止字节（0x40..=0x7e）为止；括号粘贴那一对也是 CSI，粘的正文照算字。
+                Some(b'[') => {
+                    i += 1;
+                    while i < bytes.len() && !(0x40..=0x7e).contains(&bytes[i]) {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                // SS3（`ESC O x`）：连 ESC 三个字节。
+                Some(b'O') => i += 2,
+                Some(_) => i += 1,
+                None => {}
+            },
+            0x80..=0xbf => {}
+            0x20.. => n += 1,
+            _ => {}
+        }
+    }
+    n
 }
 
 #[cfg(test)]

@@ -52,12 +52,30 @@ class SaidEditTest {
 
     @Test
     fun `发送那一下的缺省：照那台标的；没给什么时候退 ⇒ 等这一轮跑完；怎么退没有项 ⇒ 不支持`() {
-        val how = listOf(RewindChoiceRow(RewindHow.CONVERSATION, "a", false), RewindChoiceRow(RewindHow.CODE_AND_CONVERSATION, "b", true))
+        val how = listOf(RewindChoiceRow(RewindHow.CONVERSATION, "a", false, true), RewindChoiceRow(RewindHow.CODE_AND_CONVERSATION, "b", true, true))
         assertEquals(RewindHow.CODE_AND_CONVERSATION to RewindWhen.AFTER_TURN, defaultsOf(RewindOptions(how, emptyList())))
         val whn = listOf(RewindWhenRow(RewindWhen.AFTER_TURN, "c", false), RewindWhenRow(RewindWhen.NOW, "d", true))
         assertEquals(RewindHow.CODE_AND_CONVERSATION to RewindWhen.NOW, defaultsOf(RewindOptions(how, whn)))
         assertNull(defaultsOf(RewindOptions(emptyList(), emptyList(), "不支持")))
     }
+
+    @Test
+    fun `缺省只落在能选的那一项上；一项都不能选 ⇒ 退不了`() {
+        val off = RewindChoiceRow(RewindHow.CODE_AND_CONVERSATION, "b", true, false, "此句之后未改动代码")
+        val on = RewindChoiceRow(RewindHow.CONVERSATION, "a", false, true)
+        assertEquals(RewindHow.CONVERSATION to RewindWhen.AFTER_TURN, defaultsOf(RewindOptions(listOf(on, off), emptyList())))
+        assertNull(defaultsOf(RewindOptions(listOf(off), emptyList())))
+    }
+
+    @Test
+    fun `问选项带被编辑那一句的 uuid`() =
+        runTest {
+            val link = FakeCoreLink()
+            val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope, cache = DraftCache()).also { it.open() }
+            runCurrent()
+            s.edits.options("u2")
+            assertEquals("u2", link.calls("session-rewind-options").single()!!["to"])
+        }
 
     @Test
     fun `确认那一下：投进队的那一句带 rewind；没回执被杀回来照同一个编号带 rewind 再交；回执到了编辑草稿删掉`() =

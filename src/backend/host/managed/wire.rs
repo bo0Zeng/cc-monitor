@@ -3,14 +3,19 @@
 //! 帧：`[u32 长（大端，只算种 ＋ 载荷）][u8 种][载荷]`。种 [`KIND_CTL`] 的载荷是一条 JSON（[`Ctl`]），
 //! [`KIND_OUT`]（下行：伪终端原始输出）· [`KIND_IN`]（上行：要送进伪终端的原始字节）的载荷就是字节本身。
 //!
-//! 版本：`hello` 带 [`PROTO`]；动词只增不改（托管进程活过升级，新后端要接得住旧托管）。认不出的动词读成 [`Ctl::Unknown`]，
+//! 版本：`hello` · `welcome` 各带自己那一方的 [`PROTO`]；动词只增不改（托管进程活过升级，新后端要接得住旧托管）。认不出的动词读成 [`Ctl::Unknown`]，
 //! 收的那一方不理它、不断线。认不出的种、超过 [`MAX_FRAME`] 的长 ⇒ 读的那一方断这条连接。
+//! 要对方回话的上行动词，加的那一版升 [`PROTO`]、记下从哪一版起（[`SAY_SINCE`]）：说之前先看对方 `welcome` 的 proto，低于它 ⇒ 不说、照实报对方是旧版
+//! （旧的收到只会当 [`Ctl::Unknown`] 不理，等它回话只能等到读期限）。
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// 协议版本。加动词不升；改了已有动词的意思才升（那时新的一方要按对方的 `proto` 说话）。
-pub(crate) const PROTO: u32 = 1;
+/// 协议版本。加只发不等回话的动词不升；加要对方回话的动词 · 改了已有动词的意思升（新的一方按对方的 `proto` 说话）。
+/// 1 ＝ 起头那一版；2 ＝ 认 `say`（[`SAY_SINCE`]）。
+pub(crate) const PROTO: u32 = 2;
+/// 托管进程从这一版起认 `say`（回 `said`）：`welcome` 报的比它低 ⇒ 是旧托管进程，不说。
+pub(crate) const SAY_SINCE: u32 = 2;
 /// 一帧最长（种 ＋ 载荷）。整屏一帧最大也就几百 KB；超过它 ⇒ 不是我们的对端，断线。
 pub(crate) const MAX_FRAME: u32 = 16 * 1024 * 1024;
 
@@ -128,6 +133,9 @@ pub(crate) enum Ctl {
     End,
     /// 这一端要走了（断开，会话照跑）。
     Bye,
+    /// 往会话说一句（只后端发：会话输入队投递那一下）：不必持有输入，照写进伪终端、不换持有者；
+    /// 持有者那一端自上次回车以来敲了字 ⇒ 不写（回 `said {pending: true}`），不把这一句和人打到一半的字搅在一起。
+    Say { text: String },
 
     // ── 下行（托管 → 各端）──
     /// 回 `hello`：整屏字节 ＋ 此刻谁持有。
@@ -164,6 +172,8 @@ pub(crate) enum Ctl {
     },
     /// 回 `clients`。
     ClientsAre { clients: Vec<ClientRow> },
+    /// 回 `say`：`pending` ＝ 持有者输入行里有没交的字、这一句没写；否则写进去了。
+    Said { pending: bool },
     /// 子进程退了（之后托管进程收尾退出）。
     Ended {
         #[serde(default, skip_serializing_if = "Option::is_none")]
