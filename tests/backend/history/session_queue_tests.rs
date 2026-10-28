@@ -363,3 +363,81 @@ fn each_item_carries_the_owner_written_words() {
         "撤掉第 1 条 ⇒ 原第 2 条写第 1"
     );
 }
+
+/// 瘦客户端底行那一句（会话那台写）：排着 · 收着合计 N 条；未送达的不算；一条都没在等 ⇒ 没有。
+#[test]
+fn the_waiting_line_counts_queued_and_held_but_not_undelivered() {
+    let o = own(&home("waiting"));
+    let waiting = |n: usize| Some(copy_text("beQueue.said.waiting", &[("n", &n.to_string())]));
+    assert_eq!(
+        waiting_said(&read(&o, SID, T0).unwrap()),
+        None,
+        "空队 ⇒ 没有"
+    );
+    put(&o, &req("a", "mobile", None, T0), T0).unwrap();
+    put(&o, &req("h", "deskA", Some(2), T0), T0 + 1).unwrap();
+    assert_eq!(
+        waiting_said(&read(&o, SID, T0 + 2).unwrap()),
+        waiting(2),
+        "排着 1 ＋ 收着 1"
+    );
+    let left = end(&o, SID, T0 + 3).unwrap();
+    assert_eq!(waiting_said(&left), None, "会话结束标未送达 ⇒ 不算在等");
+}
+
+/// 托管终端的沙箱：数据目录（`hosts/`）与家目录（队）分开，都在判据的沙箱里。
+fn host_own(tag: &str) -> Own {
+    let root = test_home::sandbox_root().join(format!("ql-{tag}"));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("data")).expect("建沙箱数据目录");
+    std::fs::create_dir_all(root.join("home")).expect("建沙箱家目录");
+    let d = root.join("data").to_string_lossy().into_owned();
+    let h = root.join("home").to_string_lossy().into_owned();
+    Own::issue_with(&move |k| match k {
+        "CCM_DATA_DIR" => Some(d.clone()),
+        "HOME" => Some(h.clone()),
+        _ => None,
+    })
+}
+
+/// ★ 瘦客户端底行那一句跟着会话那台的名单走：打标前投的两条，打标那一下现读 ⇒「排队 2 条」；撤一条 ⇒「排队 1 条」；撤完 ⇒ 没有。
+#[test]
+fn the_host_line_follows_the_owners_list_from_tag_to_empty() {
+    use crate::host::managed::home::{Facts, Home};
+    let o = host_own("follow");
+    let id = "ql-follow";
+    let home = Home::claim(&o, id).expect("占家");
+    let mut facts = Facts {
+        id: id.into(),
+        name: id.into(),
+        ..Facts::default()
+    };
+    home.write_facts(&facts).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let tx = std::sync::Mutex::new(tx);
+    let _ears = host_line_ears(
+        &o,
+        id,
+        Box::new(move |l| {
+            let _ = tx.lock().unwrap().send(l);
+        }),
+    )
+    .expect("挂上");
+    let next = || {
+        rx.recv_timeout(guard_core::wall::CEILING)
+            .expect("等到下一句")
+    };
+    let waiting = |n: usize| Some(copy_text("beQueue.said.waiting", &[("n", &n.to_string())]));
+    let now = crate::common::time::now_ms;
+    assert_eq!(next(), None, "还没打标 ⇒ 没有");
+    put(&o, &req("a", "mobile", None, T0), now()).unwrap();
+    put(&o, &req("b", "mobile", None, T0), now()).unwrap();
+    facts.sid = SID.into();
+    home.write_facts(&facts).unwrap();
+    assert_eq!(next(), waiting(2), "打标那一下现读");
+    cancel(&o, SID, "a", now()).unwrap();
+    assert_eq!(next(), waiting(1));
+    cancel(&o, SID, "b", now()).unwrap();
+    assert_eq!(next(), None, "撤完 ⇒ 没有");
+    home.clear();
+}
