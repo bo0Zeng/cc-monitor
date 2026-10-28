@@ -116,7 +116,11 @@ pub(crate) fn unread_health(
     let Unread::BadShape { kind: k, .. } = why else {
         return None;
     };
-    let kind = if k.is_empty() { "?".to_string() } else { k.clone() };
+    let kind = if k.is_empty() {
+        "?".to_string()
+    } else {
+        k.clone()
+    };
     Some(crate::ui_contract::RemoteHealthPayload {
         origin: origin.to_string(),
         kind: "frame-shape".to_string(),

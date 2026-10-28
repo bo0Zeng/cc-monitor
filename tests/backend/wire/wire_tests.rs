@@ -1745,7 +1745,11 @@ fn session_frames_say_whether_the_session_can_be_ended() {
             yes,
             "{host:?}"
         );
-        assert_eq!(end(SessionFace::of(Life::Reading { host })), yes, "{host:?}");
+        assert_eq!(
+            end(SessionFace::of(Life::Reading { host })),
+            yes,
+            "{host:?}"
+        );
     }
     assert_eq!(end(SessionFace::of(Life::Reconnectable)), yes);
     assert_eq!(
@@ -1758,12 +1762,18 @@ fn session_frames_say_whether_the_session_can_be_ended() {
     let ended = copy_core::copy_text("sessionState.ended.name", &[]);
     assert_eq!(
         end(SessionFace::of(Life::Ended)),
-        no(copy_core::copy_text("tabBatch.why.ended", &[("ended", &ended)]))
+        no(copy_core::copy_text(
+            "tabBatch.why.ended",
+            &[("ended", &ended)]
+        ))
     );
     let gone = copy_core::copy_text("sessionState.gone.name", &[]);
     assert_eq!(
         end(SessionFace::of(Life::Gone)),
-        no(copy_core::copy_text("tabBatch.why.ended", &[("ended", &gone)]))
+        no(copy_core::copy_text(
+            "tabBatch.why.ended",
+            &[("ended", &gone)]
+        ))
     );
     assert_eq!(
         end(SessionFace::of(Life::Unclear)),

@@ -398,7 +398,9 @@ fn live_face(
             stop,
             // 不在任何宿主里（非 cc-monitor 起的）⇒ 没有终端可结束；住哪判不了 ⇒ 交了由那台认。
             end: match host {
-                Some(Housed::Bare) => no(Words(copy_core::copy_text("terminal.empty.notOurs", &[]))),
+                Some(Housed::Bare) => {
+                    no(Words(copy_core::copy_text("terminal.empty.notOurs", &[])))
+                }
                 _ => Allow::Yes,
             },
             // 不在任何宿主里（非 cc-monitor 起的）⇒ 投不进去；住哪判不了 ⇒ 交了由那台说。
