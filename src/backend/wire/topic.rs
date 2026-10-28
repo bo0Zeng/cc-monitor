@@ -33,7 +33,7 @@ pub struct TopicSpec {
 /// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
 pub trait TopicExt {
     /// 全部主题（表的行序）。
-    const ALL: [Topic; 15];
+    const ALL: [Topic; 16];
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
     fn spec(self) -> TopicSpec;
     /// 线上名。
@@ -41,7 +41,7 @@ pub trait TopicExt {
 }
 
 impl TopicExt for Topic {
-    const ALL: [Topic; 15] = [
+    const ALL: [Topic; 16] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -57,6 +57,7 @@ impl TopicExt for Topic {
         Topic::FilesDir,
         Topic::HistoryList,
         Topic::Groups,
+        Topic::SessionQueue,
     ];
 
     fn spec(self) -> TopicSpec {
@@ -203,6 +204,16 @@ impl TopicExt for Topic {
                 body: false,
                 body_cap: 0,
                 reask: "groups-read",
+            },
+            // 走 watcher 的出方向（不可丢：各端只照这一份画队）；`body` 由发端给（`observe/watcher.rs::queue_changed`，跑 `session-queue-read` 在这台那一半）。
+            Topic::SessionQueue => TopicSpec {
+                name: "session_queue",
+                lossy: false,
+                key: true,
+                rev: false,
+                body: true,
+                body_cap: 16384,
+                reask: "session-queue-read",
             },
         }
     }
