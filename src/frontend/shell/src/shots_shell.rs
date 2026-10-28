@@ -12,7 +12,7 @@
 //! - 不一样：本机那一台走 stdio 读循环接它的常驻（产品是套接字那一条）；窗口只有一个（订阅都记在 [`LABEL`] 名下）。
 //!
 //! # 线上（标准输入 / 标准输出，一行一个 JSON）
-//! 收：`{"t":"machines","machines":[{"origin","argv":[…]}]}`（起各台后端）·
+//! 收：`{"t":"machines","machines":[{"origin","argv":[…]}]}`（起本机那一台；远端各台的沙箱由台架自己起）·
 //! `{"t":"sub","id","origin","kind","want"}` · `{"t":"want","id","more"}` · `{"t":"stop","id"}` · `{"t":"ready","priority_sid"}` ·
 //! `{"t":"call","n","origin","op","payload","view"?,"left_ms"}`（`payload` 是请求体原文）· `{"t":"kill","origin"}`（那台后端当场杀掉：演「断了」）·
 //! `{"t":"offer","n","origin"}`（那台握上手没有；台架按它等各台起好，等法住台架那一侧）·

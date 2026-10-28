@@ -1,6 +1,6 @@
 /**
- * 截图台架的真后端池：每个场景一屋子盘上原始格式的家目录（页里交来的 `DiskWorld`），每台机器一个真后端进程（stdio 载体），
- * 前面站着壳的真代码（无头壳 `ccm-shots-shell`：`src/frontend/shell/src/shots_shell.rs`，本机那条读循环 → 会话账 → 重放缓冲 → 通道交格）。
+ * 截图台架的真后端池：每个场景一屋子盘上原始格式的家目录（页里交来的 `DiskWorld`），每台机器一个沙箱；本机那一台交给无头壳起，
+ * 本机后端够得到的远端各台由台架自己起（`startBox`：壳照产品只起本机那一台）。本机后端前面站着壳的真代码（无头壳 `ccm-shots-shell`：`src/frontend/shell/src/shots_shell.rs`，本机那条读循环 → 会话账 → 重放缓冲 → 通道交格）。
  * 页里的帧命令与订阅经 vite 的这几个口原样交给无头壳。成品（额度行 · 时刻字 · 状态字 · 拒答的复制详情 …）一律是真后端与壳算的，台架不写。
  *
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
@@ -22,7 +22,7 @@
  *   `windows` 个终端窗口是同一台 tmux 里嵌套的客户端（真后端的终端名单 · 抓屏 · 实时画面照真的那样读）。
  *
  *   世界里的 `reach`（`/__ccm/world` 的那一格，本机后端够得到的那几台远端：`{<origin>: {refuse: [<命令>…], fake?}}`）：各台的常驻流 · 跨台合并那几条都由本机后端自己去
- *   （`--resident-attach` · `--resident-call`），台架照产品那一形让它够得到 —— 每台远端在它的沙箱里另起一个常驻（同一个家 · 同一台私有 tmux；起好了才起 stdio 那一个）；
+ *   （`--resident-attach` · `--resident-call`），台架照产品那一形让它够得到 —— 每台远端在它的沙箱里起一个常驻（同一个家 · 同一台私有 tmux；问得到了沙箱说一声 `up`）；
  *   本机沙箱里起一个只听回环的 sshd（一台远端一个口），登录壳是按口转发的假 ssh（[`forwarderSh`]：只认台架那几台、只转连常驻的那几形，
  *   `refuse` 里的命令照「那一跳断开」拒，`fake` 那一样在这一跳上真长成那样），口取自场景那张机器表（[`reachTable`]）；那张表起本机后端之前整张写进它的家（`machines.json`），
  *   问得到的那几台只换上台架那把私钥，问不到的照原样留着（那个口没人听）。本机那一台的后端就是它的常驻，交给无头壳的是接它那一条（`--resident-attach`）。
@@ -132,6 +132,16 @@ export function tmuxShim(shim, sock) {
   }
   lines.push(`exec ${tmuxBin()} "$@"`);
   return lines.join("\n") + "\n";
+}
+
+/**
+ * 会话流上的一帧是不是那条会话离开「活」的那一帧（`left`，同 `cmd_wire::SessionLeft`；去向是 `face.life.is`：`reconnectable` · `ended` · `gone`）：
+ * 是 ⇒ `{sid, fate}`，别的帧 ⇒ `null`。收场那一段（`endOne`）照它等裁出来的那一格。
+ */
+export function settledAs(f) {
+  const sid = f?.left?.sid;
+  const fate = f?.left?.face?.life?.is;
+  return typeof sid === "string" && typeof fate === "string" ? { sid, fate } : null;
 }
 
 /** 本机那一台的名字（同 `fake/world.ts::LOCAL`）。 */
@@ -360,8 +370,8 @@ export function backendPool({ repo, sandbox }) {
     const w = worlds.get(key);
     if (!w) return;
     worlds.delete(key);
-    w.trace("世界收掉了（无头壳连同各台后端整组杀）");
-    for (const pid of [-w.shell.pid]) {
+    w.trace("世界收掉了（无头壳 · 远端各台的沙箱整组杀）");
+    for (const pid of [w.shell, ...w.boxes].filter(Boolean).map((c) => -c.pid)) {
       try {
         process.kill(pid, "SIGKILL");
       } catch {
@@ -492,13 +502,14 @@ export function backendPool({ repo, sandbox }) {
         sh.push(`${DOER_IN_BOX} serve ${H}/.cc-monitor/run/${DOER_SOCK} ${BACKEND_IN_BOX} </dev/null >>${H}/.shots-run/doer.log 2>&1 &`);
       }
     }
-    // 交给无头壳的那一条：远端各台照旧是 stdio 载体的流模式；本机那一台接它的常驻（产品本机那一形：常驻先给 hello，attach 行进、
-    // 回话那一行收掉，往后就是流 —— 壳那条读循环见到的是 hello 打头的流）。
-    const stream = m.local
-      ? `{ printf '%s\\n' ${q(JSON.stringify({ attach: true, tz: SHOTS_TZ }))}; exec cat; } | ${BACKEND_IN_BOX} -- --resident-attach | { IFS= read -r h && printf '%s\\n' "$h" && IFS= read -r _ && exec cat; }`
-      : backend;
+    // 远端那几台：台架自己起它的沙箱（`makeWorld`），常驻问得到了说一声 `up`，之后只守着常驻（它的流归本机后端去接，没人读这台的标准输出）。
+    // 本机那一台交给无头壳：接它的常驻（产品本机那一形：常驻先给 hello，attach 行进、回话那一行收掉，往后就是流 —— 壳那条读循环见到的是 hello 打头的流）。
+    const stream = `{ printf '%s\\n' ${q(JSON.stringify({ attach: true, tz: SHOTS_TZ }))}; exec cat; } | ${BACKEND_IN_BOX} -- --resident-attach | { IFS= read -r h && printf '%s\\n' "$h" && IFS= read -r _ && exec cat; }`;
     const held = m.primeHeld ?? [];
-    if (held.length === 0) sh.push(m.local ? stream : `exec ${stream}`);
+    if (!m.local) {
+      if (held.length > 0) throw new Error(`${origin}：primeHeld 只演本机那一台（远端的流不经台架）`);
+      sh.push("echo up", "wait");
+    } else if (held.length === 0) sh.push(stream);
     else {
       // 预读演成一直没读完：这几个会话宣告之后的格不往壳那一跳交（后端预读没完成时压着的就是这几种，另加「读完了」那一帧本身）。
       for (const sid of held) if (!/^[0-9a-f-]+$/.test(sid)) throw new Error(`primeHeld 里的 sid 形状不对：${sid}`);
@@ -621,6 +632,26 @@ export function backendPool({ repo, sandbox }) {
     return { child, up, send, call };
   }
 
+  /**
+   * 起远端那一台的沙箱（整条命令同 `start` 交回的那一形）：自成一个进程组（收世界时整组杀）。开场说 `up` ⇒ 那台的常驻问得到了；
+   * 没说就退了 ⇒ 带着它标准错误的末尾几行失败（不拖到本机那一跳 30 秒没握上手才露出来）。
+   */
+  function startBox(m, w) {
+    const [prog, ...args] = m.argv;
+    const child = spawn(prog, args, { detached: true, env: { PATH: "/usr/bin:/bin" }, stdio: ["ignore", "pipe", "pipe"] });
+    w.boxes.push(child);
+    let err = "";
+    child.stderr.on("data", (d) => (err = (err + d).slice(-2000)));
+    return new Promise((resolve, reject) => {
+      child.on("error", (e) => reject(new Error(`${m.origin} 的沙箱起不来：${e.message}`)));
+      child.on("exit", (code) => reject(new Error(`${m.origin} 的沙箱退了（${code}）：${err.trim().split("\n").slice(-5).join(" | ")}`)));
+      createInterface({ input: child.stdout, crlfDelay: Infinity }).on("line", (line) => {
+        w.trace(`${m.origin} 的沙箱 < ${line}`);
+        if (line === "up") resolve();
+      });
+    });
+  }
+
   /** 台架自己订的那几条（编号从这里往上，页里的订阅编号小得多）。 */
   let innerId = 1 << 30;
 
@@ -647,11 +678,12 @@ export function backendPool({ repo, sandbox }) {
         for (const it of items) {
           if (it.t !== "frame") continue;
           const f = JSON.parse(it.body);
-          // 宣告是那台的 `added` 帧；裁出来的去向是 `state` 帧（`ended` · `reconnectable`，同 `SessionStreamFrame`）。
+          // 宣告是那台的 `added` 帧；裁出来的去向是离开「活」的那一帧（[`settledAs`]）。
+          const left = settledAs(f);
           if (!killed && f.added?.sid === d.sid) {
             killed = true;
             if (!d.act()) reject(new Error(`${d.origin} 上 ${d.sid} 的替身关不掉`));
-          } else if (killed && f.state?.sid === d.sid && f.state.state === d.fate) {
+          } else if (killed && left?.sid === d.sid && left.fate === d.fate) {
             clearTimeout(timer);
             w.inner.delete(id);
             w.sh.send({ t: "stop", id });
@@ -680,7 +712,7 @@ export function backendPool({ repo, sandbox }) {
       lines.push(`${String(Date.now() - t0).padStart(7)} ${t}`);
       if (lines.length > TRACE_KEEP) lines.splice(0, lines.length - TRACE_KEEP);
     };
-    const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
+    const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, boxes: [],shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
     worlds.set(key, w);
     // 本机后端问得到的那几台（`reach`）：各起一个常驻；本机那一台起 sshd、挂上它们的套接字目录（先建好，0700 同常驻自己建的那一形）。
     const order = Object.keys(machines);
@@ -714,11 +746,14 @@ export function backendPool({ repo, sandbox }) {
       for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
       return { origin, argv };
     });
+    // 远端问得到的那几台：沙箱由台架起（无头壳照产品只起本机那一台），各台的常驻问得到了才往下（本机沙箱开场也等它们）。
+    await Promise.all(list.filter((m) => peers.some((p) => p.origin === m.origin)).map((m) => startBox(m, w)));
     const sh = startShell(dir, w);
     w.shell = sh.child;
     w.sh = sh;
-    sh.send({ t: "machines", machines: list });
-    await sh.up(list.map((m) => m.origin));
+    sh.send({ t: "machines", machines: list.filter((m) => m.origin === LOCAL) });
+    // 握上手：本机那一台，和本机后端照常接得上的那几台（演旧了 · 拖住 · 正在装的那几台由场景自己等它那一态）。
+    await sh.up(list.filter((m) => m.origin === LOCAL || peers.some((p) => p.origin === m.origin && !p.fake)).map((m) => m.origin));
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
 
