@@ -1083,19 +1083,21 @@ export class TabStreamView {
   }
 
   /**
-   * 〔骨架〕从上一代接过来的账本：只续它没覆盖到的那一截（从它的末字节要到末尾），续上了照常接；
-   * 续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
+   * 〔骨架〕从上一代接过来的账本：盖不到新尾段 ⇒ 从它的末字节续到末尾，续上了照常接；盖得到 ⇒ 一问不发、直接接
+   * （尾段之后的那几行接上之后由 `extendIndex` 续）。续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
    */
   private continueSkeleton(tab: Tab, ledger: SkeletonLedger, end: number): void {
-    void readSessionIndex(tab.origin, tab.parentPath!, end)
+    const short = tab.window.floorSeq! > ledger.endSeq; // 进来时判过 floor 不是 null
+    const more = short ? readSessionIndex(tab.origin, tab.parentPath!, end) : Promise.resolve(null);
+    void more
       .then((res) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
-        if (!res.available) {
+        if (res && !res.available) {
           tab.skeletonFetch = "again";
           return;
         }
-        ledger.append(res.pages);
-        this.indexEnds.set(tab, res.end);
+        if (res) ledger.append(res.pages);
+        this.indexEnds.set(tab, res ? res.end : end);
         tab.skeletonFetch = "done";
         if (this.store.activeId !== tab.sessionId) {
           this.parkedSkeletons.set(tab, ledger);
