@@ -381,6 +381,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
     // resume 接上已在跑的那一个（`Plan::Rejoin`）：名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
     // 「等于」那一格的短形（`render_short`）只给人看、不进任何 shell：词与 `render_*` 同一份计划（已过上面两道放行判定），带空白的才 quote。
+    // 托管容器那一形（`render_managed`）：托管进程那一串（`host_run_argv`）里的名字 · 目录 · 那一家与载荷同一份计划，逐词 quote（同 `render_container`）。
     // 渲给客户端的「接进一个 tmux 会话」（全仓唯一一处）：名字只 quote 进 `=名:` 目标。调用方各自先判过：
     //   `ccm` 那几形的名字过 `plan.rs::validate_tmux_name`（或是 tmux 自己在快照里报的）· 就地 resume 的目标过 `gate_rules::existing_tmux_name_issue`。
     (
@@ -395,7 +396,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     (
         "src/backend/control/ccm/plan.rs",
-        &["build_among", "carried_into_pane", "posix_relay_word", "qarg", "render", "render_container", "render_container_tail", "render_direct", "render_short"],
+        &["build_among", "carried_into_pane", "posix_relay_word", "qarg", "render", "render_container", "render_container_tail", "render_direct", "render_managed", "render_short"],
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

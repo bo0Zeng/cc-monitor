@@ -127,6 +127,7 @@ describe("菜单怎么摆", () => {
       copyText("resumeMenu.account.base"),
       "—",
       `[${copyText("resumeMenu.group.run")}]`,
+      copyText("resumeMenu.run.managed"),
       copyText("resumeMenu.run.tmux"),
       `✓${copyText("resumeMenu.run.direct")}`,
       "—",
@@ -140,7 +141,7 @@ describe("菜单怎么摆", () => {
     const seen: ResumePick[] = [];
     const items = resumeMenuItems({ accounts: LIST, pick, onChange: (p) => seen.push({ ...p }) });
     items[2].onClick?.();
-    items[6].onClick?.();
+    items[7].onClick?.();
     expect(pick).toEqual({ run: "tmux", account: "home", useBase: false });
     items[3].onClick?.();
     expect(pick).toEqual({ run: "tmux", account: undefined, useBase: true });
@@ -165,18 +166,24 @@ describe("菜单怎么摆", () => {
     const none = resumeMenuItems({ accounts: { kind: "none", agentName: "Codex" }, pick: defaultPick() });
     expect(none[1]).toMatchObject({ label: copyText("history.resume.noAccounts", { agent: "Codex" }), enabled: false });
     const off = resumeMenuItems({ accounts: { kind: "off" }, pick: defaultPick(), machineRun: "tmux" });
-    expect(shape(off)).toEqual([`[${copyText("resumeMenu.group.run")}]`, `✓${copyText("resumeMenu.run.tmux")}`, copyText("resumeMenu.run.direct")]);
+    expect(shape(off)).toEqual([`[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.managed"), `✓${copyText("resumeMenu.run.tmux")}`, copyText("resumeMenu.run.direct")]);
     expect(resumeHint({ kind: "off" }, defaultPick(), "direct")).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.direct") }));
   });
 
   it("★ 运行于没动过、也没问到那台 ⇒ 两项都不勾、悬停写照机器设置；请求里不带号也不带放在哪", () => {
     const pick = defaultPick();
     const items = resumeMenuItems({ accounts: { kind: "off" }, pick });
-    expect(shape(items)).toEqual([`[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.tmux"), copyText("resumeMenu.run.direct")]);
+    expect(shape(items)).toEqual([`[${copyText("resumeMenu.group.run")}]`, copyText("resumeMenu.run.managed"), copyText("resumeMenu.run.tmux"), copyText("resumeMenu.run.direct")]);
     expect(resumeHint({ kind: "off" }, pick)).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.machine") }));
     expect(pickAsk(pick)).toEqual({});
-    items[1].onClick?.();
+    items[2].onClick?.();
     expect(pickAsk(pick)).toEqual({ run: "tmux" });
+    items[1].onClick?.();
+    expect(pickAsk(pick)).toEqual({ run: "managed" });
+    // 那台答缺省放在托管 ⇒ 勾托管那一项，悬停照它说。
+    const hosted = resumeMenuItems({ accounts: { kind: "off" }, pick: defaultPick(), machineRun: "managed" });
+    expect(shape(hosted)[1]).toBe(`✓${copyText("resumeMenu.run.managed")}`);
+    expect(resumeHint({ kind: "off" }, defaultPick(), "managed")).toBe(copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.hint.managed") }));
     expect(pickAsk({ run: null, account: "w", useBase: false })).toEqual({ account: { kind: "named", name: "w" } });
     expect(pickAsk({ run: "direct", account: undefined, useBase: true })).toEqual({ account: { kind: "base" }, run: "direct" });
   });

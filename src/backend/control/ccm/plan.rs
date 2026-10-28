@@ -268,6 +268,8 @@ pub(crate) struct Env {
     pub(crate) pwd: String,
     /// `$TMUX` —— 只有**被 attach 的那个进程**才有它。
     pub(crate) tmux: Option<String>,
+    /// 不在 tmux 里敲 `cc` 落托管容器（[`HOSTS_HERE`] 且不在托管终端里：`CCM_HOST` 没设）；`false` ⇒ 直路。
+    pub(crate) can_host: bool,
     /// 调用方**继承来的**账号配置目录（`agents::claudecode::paths::CONFIG_DIR_ENV`
     /// 那个环境变量的值），**不是**本进程设的。
     ///
@@ -376,6 +378,8 @@ impl Env {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default(),
             tmux: get("TMUX"),
+            // 托管进程给里面那一跳设了 `CCM_HOST` ⇒ 已在托管终端里：直路（不再套一层）。
+            can_host: HOSTS_HERE && get(crate::host::managed::run::HOST_ENV).is_none(),
             // 找上游那个变量名与它的继承值，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             base_url_env: String::new(),
             inherited_base_url: None,
@@ -428,6 +432,8 @@ impl Env {
         Env {
             pwd: home.clone(),
             tmux: None,
+            // 新终端里敲：不在 tmux、不在托管终端里 ⇒ 这台能托管就落托管（同真跑）。
+            can_host: HOSTS_HERE,
             base_url_env: String::new(),
             inherited_base_url: None,
             ccm_env: machine_env(get),
@@ -511,21 +517,33 @@ fn names(list: &AccountsList, manifest_path: &str) -> String {
 pub(crate) enum Plan {
     /// 不起 agent，直接接回一个既有会话。
     Attach { name: String },
-    /// 建一个 tmux 容器，把「同一条命令去掉 `--tmux`」送进去。
+    /// 建一个容器（tmux 会话 · 托管终端），把「同一条命令去掉 `--ccm-tmux` / `--hosted`」送进去。
     Container(Container),
     /// 在**本进程**里设好环境、`cd`、然后 `exec`。
     Direct(Direct),
-    /// resume 的那条会话已经在 tmux 会话 `name` 里跑 ⇒ 接上它，不另起一份（`--detach` ⇒ 只报名字）。
+    /// resume 的那条会话已经在终端 `name` 里跑（tmux 会话 · 托管终端）⇒ 接上它，不另起一份（`--detach` ⇒ 只报名字）。
     Rejoin {
         name: String,
         sid: String,
         detach: bool,
+        host: TerminalHost,
     },
 }
 
+pub(crate) use crate::wire::TerminalHost;
+
+/// 这台能不能托管终端（不在 tmux 里敲 `cc` 落托管容器的前提）：Linux 能；Windows 等 ConPTY 那一形（A3-3-9）。
+/// 判只住这一处：ccm 的计划（[`Env::can_host`]）与起会话的缺省放在哪（`session_open::default_run`）都问它。
+pub(crate) const HOSTS_HERE: bool = cfg!(unix);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Container {
+    /// 住在哪种宿主里。
+    pub(crate) host: TerminalHost,
+    /// tmux 会话名 · 托管终端的名字（也是它的句柄）。
     pub(crate) name: String,
+    /// 托管那一形：起托管进程的那一整串（[`host_run_argv`]；脱离起）。tmux 那一形空。
+    pub(crate) host_run: Vec<String>,
     pub(crate) cwd: String,
     pub(crate) agent: String,
     pub(crate) ccm_sid: String,
@@ -974,6 +992,53 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
     Ok(())
 }
 
+/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=ccm [size=宽x高] -- sh -c <载荷>`。
+/// 句柄就是名字（铸名时已避让过这台的 tmux 会话名与托管终端）；载荷与 tmux 那一形键进窗格的是同一串，经 `sh -c` 跑
+/// （那一家一退 `sh` 跟着退、托管终端收尾）。`client=ccm`：同 tmux 那一形 ccm 起的会话（`gate_rules::CLIENT_TERMINAL`）。
+fn host_run_argv(
+    self_argv: &[String],
+    name: &str,
+    cwd: &str,
+    agent: &str,
+    size: Option<&(String, String)>,
+    payload: &str,
+) -> Vec<String> {
+    let mut v: Vec<String> = self_argv.to_vec();
+    v.extend([
+        flag::END.to_string(),
+        flag::HOST_RUN.to_string(),
+        name.to_string(),
+        format!("name={name}"),
+        format!("cwd={cwd}"),
+        format!("agent={agent}"),
+        format!("client={}", crate::control::gate_rules::CLIENT_TERMINAL),
+    ]);
+    if let Some((w, h)) = size {
+        v.push(format!("size={w}x{h}"));
+    }
+    v.extend([
+        flag::END.to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        payload.to_string(),
+    ]);
+    v
+}
+
+/// 这一发进哪种容器（`None` ⇒ 直路）：`--hosted` ⇒ 托管；要 tmux 容器（`use_tmux`：已在 tmux 里且没给名的那一形已摘掉）⇒ tmux；
+/// 都没说、不在 tmux 窗格里、这台能托管（[`Env::can_host`]）⇒ 托管。在 tmux 窗格里敲 · 已在托管终端里 · 不能托管 ⇒ 直路。
+fn container_host(o: &Opts, env: &Env, use_tmux: bool) -> Option<TerminalHost> {
+    if o.hosted {
+        Some(TerminalHost::Managed)
+    } else if use_tmux {
+        Some(TerminalHost::Tmux)
+    } else if !o.use_tmux && env.tmux.is_none() && env.can_host {
+        Some(TerminalHost::Managed)
+    } else {
+        None
+    }
+}
+
 /// 自由文本那几格判不过时的那句话（哪一格 · 原值）。
 fn refuse(what: &str, v: &str) -> Die {
     Die(copy_text(
@@ -1005,9 +1070,15 @@ pub(crate) fn build(
 /// 透传里还没有那一家自己的 `--`（这一趟当场给了第一句 ⇒ 它盖过别名的）⇒ 接在透传末尾成 `-- <那句>`（`None` ＝ 照原样）；
 /// 窗格里那一趟拿到的就是普通透传。不进 tmux 的那一发起在当前终端里，开口留给人，不交。
 /// 那一家起的时候不收第一句（`LaunchFace::first_prompt_arg`）⇒ 说清、不起。
-fn say_into(o: &Opts, face: Option<crate::agents::LaunchFace>) -> Result<Option<Vec<String>>, Die> {
+fn say_into(
+    o: &Opts,
+    env: &Env,
+    face: Option<crate::agents::LaunchFace>,
+) -> Result<Option<Vec<String>>, Die> {
+    // 落在容器里（tmux · 托管）或已在 tmux 里就地起；直路那一发起在当前终端里。
+    let contained = o.use_tmux || container_host(o, env, false).is_some();
     if o.say.is_empty()
-        || !o.use_tmux
+        || !contained
         || o.resumes.is_some()
         || o.passthru.iter().any(|a| a == flag::END)
     {
@@ -1051,7 +1122,7 @@ pub(crate) fn build_among(
 
     // 开口那句落成那一家的第一句：之后两路（容器 · 直起）读的都是接好的透传。
     let said: Opts;
-    let o = match say_into(o, face)? {
+    let o = match say_into(o, env, face)? {
         Some(passthru) => {
             said = Opts {
                 passthru,
@@ -1108,14 +1179,21 @@ pub(crate) fn build_among(
         _ => None,
     };
     if let Some(sid) = o.resumes.as_deref() {
-        match (taken.and_then(|t| t.running(sid)), alive) {
-            // 标记说它在那个 tmux 会话里，进程也真在（或问不了）⇒ 接上它，不另起第二份（两份 agent 同写一份记录）。
+        // 托管终端里那一家一退终端就收 ⇒ 托管那几行挂着它就是在跑。
+        let running = taken.and_then(|t| {
+            t.running(sid)
+                .map(|n| (n, TerminalHost::Tmux))
+                .or_else(|| t.running_hosted(sid).map(|n| (n, TerminalHost::Managed)))
+        });
+        match (running, alive) {
+            // 标记说它在那个终端里，进程也真在（或问不了）⇒ 接上它，不另起第二份（两份 agent 同写一份记录）。
             //   标记在、进程已经没了（agent 退了、只剩 shell 的那个会话）⇒ 不是在跑：照常起（就地 resume 键进的正是那个 pane）。
-            (Some(name), Some(Some(_)) | None) => {
+            (Some((name, host)), Some(Some(_)) | None) => {
                 return Ok(Plan::Rejoin {
                     name: name.to_string(),
                     sid: sid.to_string(),
                     detach: o.detach,
+                    host,
                 });
             }
             // 在跑、却不在 ccm 认得的 tmux 会话里 ⇒ 接不上，也不另起第二份：明说。
@@ -1145,8 +1223,9 @@ pub(crate) fn build_among(
         }
         use_tmux = false;
     }
+    let host = container_host(o, env, use_tmux);
 
-    if use_tmux {
+    if let Some(host) = host {
         inherited_gate(env)?;
         let (base, step_aside) = if !o.tmux_base.is_empty() {
             validate_tmux_name(&o.tmux_base)?;
@@ -1247,12 +1326,26 @@ pub(crate) fn build_among(
             dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
         );
 
+        let size = parse_size(&o.tmux_size);
+        let host_run = match host {
+            TerminalHost::Tmux => Vec::new(),
+            TerminalHost::Managed => host_run_argv(
+                &env.self_argv,
+                &name,
+                &cwd,
+                &o.agent,
+                size.as_ref(),
+                &payload,
+            ),
+        };
         return Ok(Plan::Container(Container {
+            host,
+            host_run,
             name,
             cwd,
             agent: o.agent.clone(),
             ccm_sid: o.ccm_sid.clone(),
-            size: parse_size(&o.tmux_size),
+            size,
             detach: o.detach,
             payload,
             self_check,
@@ -1771,9 +1864,23 @@ pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
     };
     let words = |ws: &[String]| ws.iter().map(|w| word(w)).collect::<Vec<_>>().join(" ");
     match plan {
+        Plan::Rejoin {
+            name,
+            host: TerminalHost::Managed,
+            ..
+        } => attach_managed_line(super::SUBCOMMAND_WORD, &word(name)),
         Plan::Attach { name } | Plan::Rejoin { name, .. } => {
             format!("tmux -u attach -t {}", word(name))
         }
+        Plan::Container(c) if c.host == TerminalHost::Managed => format!(
+            "{} {} {} {} \u{2026} {} {} \u{2026}",
+            super::SUBCOMMAND_WORD,
+            flag::END,
+            flag::HOST_RUN,
+            word(&c.name),
+            words(&c.inner_head),
+            flag::END
+        ),
         Plan::Container(c) => format!(
             "tmux -u new-session -d -s {} \u{2026} {} {} \u{2026}",
             word(&c.name),
@@ -1810,10 +1917,36 @@ pub(crate) fn render(plan: &Plan) -> String {
         Plan::Rejoin {
             name, detach: true, ..
         } => format!("echo {}", sq(&format!("ccm-session={name}"))),
+        Plan::Rejoin {
+            name,
+            host: TerminalHost::Managed,
+            ..
+        } => attach_managed_line(super::SUBCOMMAND_WORD, &sq(name)),
         Plan::Rejoin { name, .. } => crate::common::tmux_utf8::join_session(name),
+        Plan::Container(c) if c.host == TerminalHost::Managed => render_managed(c),
         Plan::Container(c) => render_container(c),
         Plan::Direct(d) => render_direct(d),
     }
+}
+
+/// 接上一个托管终端那一行（瘦客户端）：`<ccm> -- --attach <名>`（`who` · `name` 已是那种写法里的一个词）。
+fn attach_managed_line(who: &str, name: &str) -> String {
+    format!("{who} {} {} {name}", flag::END, flag::ATTACH)
+}
+
+/// 托管那一形的等价 shell：脱离起托管进程（[`Container::host_run`]）→ 收尾（自检 · 接上，[`render_container_tail`]）。
+/// 真跑那条路上脱离起与等它起好在进程里做（`ccm::execute`），收尾那一段是同一份渲染。
+fn render_managed(c: &Container) -> String {
+    let run = c
+        .host_run
+        .iter()
+        .map(|a| sq(a))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "setsid -f {run} </dev/null >/dev/null 2>&1{}",
+        render_container_tail(c)
+    )
 }
 
 fn render_container(c: &Container) -> String {
@@ -1888,10 +2021,18 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // agent 起来时若问「信任这个目录吗」（claude 首次进一个目录），由用户在会话里自己答：
     // 那是它的安全检查，收尾一个键都不替用户按（替它按 Enter 按中的是缺省那一项「不信任、退出」）。
     if !c.detach {
-        seq.push_str(&format!(
-            "; {}",
-            crate::common::tmux_utf8::join_session(&c.name)
-        ));
+        let join = match c.host {
+            TerminalHost::Tmux => crate::common::tmux_utf8::join_session(&c.name),
+            // 接上的是同一个入口（托管进程那一串打头的那个词）。
+            TerminalHost::Managed => {
+                let who = c
+                    .host_run
+                    .first()
+                    .map_or_else(|| super::SUBCOMMAND_WORD.to_string(), |w| sq(w));
+                attach_managed_line(&who, &sq(&c.name))
+            }
+        };
+        seq.push_str(&format!("; {join}"));
     }
     seq
 }

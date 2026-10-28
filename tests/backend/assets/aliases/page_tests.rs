@@ -669,7 +669,13 @@ fn resolve_writes_a_short_form_beside_the_whole_script() {
         "整条还在 line：{cct}"
     );
     let cc = answer_resolve(&t.door(), &json!({"name": "cc", "at": "~"})).unwrap();
-    assert_eq!(cc["lineShort"], "cd ~/projects/notes && claude", "{cc}");
+    // 不进 tmux 的那一条：这台能托管 ⇒ 托管那一形（建哪个托管终端 ＋ 里面跑的是 ccm）；不能 ⇒ 直路。
+    let want = if crate::control::ccm::plan::HOSTS_HERE {
+        "ccm -- --host-run notes-cc … ccm -- …"
+    } else {
+        "cd ~/projects/notes && claude"
+    };
+    assert_eq!(cc["lineShort"], want, "{cc}");
     // 算不出 ⇒ 两格都没有。
     let team = answer_resolve(&t.door(), &json!({"name": "teamcct"})).unwrap();
     assert!(
@@ -954,10 +960,10 @@ fn the_tab_group_and_say_slots_round_trip_through_the_file() {
     assert_eq!(back["say"], "读 pb 图，回答关于计划的问题", "{back}");
 }
 
-/// 开口那句只在这一发落在 tmux 里时交给 agent：「等于」那一行（同 `ccm @名 -- --ccm-print`）带它；
-/// 不进 tmux ⇒ 不带；透传里已经有那一家自己的 `--`（这一趟给了第一句）⇒ 那一句盖过别名的。
+/// 开口那句只在这一发落在容器里时交给 agent（tmux · 托管）：「等于」那一行（同 `ccm @名 -- --ccm-print`）带它；
+/// 直路（这台不能托管时不进 tmux 的那一发）⇒ 不带；透传里已经有那一家自己的 `--`（这一趟给了第一句）⇒ 那一句盖过别名的。
 #[test]
-fn an_aliases_say_rides_the_line_only_when_it_lands_in_tmux() {
+fn an_aliases_say_rides_the_line_only_when_it_lands_in_a_container() {
     let t = tmp("say-line", Some(BOOK));
     let say = "读计划图回答问题";
     let line_of = |from: &str, args: Option<&str>| -> String {
@@ -978,7 +984,11 @@ fn an_aliases_say_rides_the_line_only_when_it_lands_in_tmux() {
     let tmux = line_of("cct", None);
     assert!(tmux.contains(say), "tmux 那一路带开口那句：{tmux}");
     let here = line_of("cc", None);
-    assert!(!here.contains(say), "不进 tmux 不带：{here}");
+    if crate::control::ccm::plan::HOSTS_HERE {
+        assert!(here.contains(say), "托管那一路带开口那句：{here}");
+    } else {
+        assert!(!here.contains(say), "直路不带：{here}");
+    }
     let own = line_of("cct", Some("-- 这一趟自己的那句"));
     assert!(
         own.contains("这一趟自己的那句") && !own.contains(say),

@@ -60,6 +60,8 @@ fn launch_in_child(root: &Path, account: &str) -> (u32, String) {
         .env("HOME", root.join("home"))
         .env("PATH", root.join("bin"))
         .env("LNE_OUT", &out)
+        // 当成已在托管终端里那一跳（托管进程给它设 `CCM_HOST`）：直路 exec，便条在这一跳写。不在 tmux 里的一发今天落托管容器。
+        .env(crate::host::managed::run::HOST_ENV, "lne")
         .current_dir(root)
         .output()
         .expect("起子进程");

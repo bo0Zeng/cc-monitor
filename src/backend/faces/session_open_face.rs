@@ -84,8 +84,9 @@ fn answer(
             },
         ),
     };
-    // 接回两种宿主都认（托管那一行照句柄接）；别的几形要往 tmux 会话里键入或新开 tmux 会话 ⇒ 只认 tmux。
-    let both = matches!(req.what, open::Open::Look { .. });
+    // 接回 · 起新的 · 恢复两种宿主都认（托管那一行照句柄接；名单那一格 `managed` 说这台能不能托管，缺省放在哪照它）；
+    // 开 shell 只开 tmux 会话 ⇒ 只认 tmux。
+    let both = !matches!(req.what, open::Open::Shell { .. });
     with_launch_ctx(own, nf, |fork, pre, home| {
         let go =
             |d: &crate::control::session_batch::Deps| open::answer(req, facts, d, fork, pre, home);
@@ -200,8 +201,20 @@ fn hosted(launch: &cmd_wire::session::ForkLaunch) -> Option<bool> {
 }
 
 /// 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时那一条（[`open::default_run`]）。
-pub(crate) fn facts_run(fork_tmux: Option<bool>, tmux: bool) -> open::Run {
-    open::default_run(open::Intent::New { fork_tmux }, false, tmux)
+pub(crate) fn facts_run(fork_tmux: Option<bool>, tmux: bool, managed: bool) -> open::Run {
+    open::default_run(open::Intent::New { fork_tmux }, false, tmux, managed)
+}
+
+/// 这台能放在哪几种（`OpenFacts.hosts`，照 `Run` 的序）：能托管 ⇒ 托管；有 tmux ⇒ tmux；终端窗口（直路）恒在。
+pub(crate) fn facts_hosts(tmux: bool, managed: bool) -> Vec<open::Run> {
+    [
+        (managed, open::Run::Managed),
+        (tmux, open::Run::Tmux),
+        (true, open::Run::Direct),
+    ]
+    .into_iter()
+    .filter_map(|(here, r)| here.then_some(r))
+    .collect()
 }
 
 /// 「最近用过的目录」最多列几条。
@@ -472,7 +485,8 @@ pub(crate) fn facts(
         super::session_batch_face::tmux_rows(),
         Ok(crate::control::session_batch::Listed { tmux: false, .. })
     );
-    let run = facts_run(fork.as_ref().and_then(|f| hosted(&f.launch)), tmux);
+    let managed = crate::control::session_batch::hosts_with(crate::host::managed::installed());
+    let run = facts_run(fork.as_ref().and_then(|f| hosted(&f.launch)), tmux, managed);
     Ok(OpenFacts {
         recent: recent_dirs(
             &record_dirs(&home),
@@ -483,11 +497,7 @@ pub(crate) fn facts(
             ),
             crate::platform::paths::home_dir().as_deref(),
         ),
-        hosts: if tmux {
-            vec![open::Run::Tmux, open::Run::Direct]
-        } else {
-            vec![open::Run::Direct]
-        },
+        hosts: facts_hosts(tmux, managed),
         run,
         agents: {
             let prefs = crate::common::machine_prefs::read_now().prefs();

@@ -85,7 +85,7 @@ pub(crate) fn line_of(
     caps: &std::collections::BTreeSet<String>,
     entry: &str,
 ) -> Result<String, String> {
-    spec_with(l, account, here, false, entry, |spec| match here {
+    spec_with(l, account, here, false, false, entry, |spec| match here {
         Here::Local { windows: true } => ccm_invocation::render_ccm_invocation_ps(spec, caps),
         _ => ccm_invocation::render_ccm_invocation(spec, caps),
     })
@@ -100,7 +100,24 @@ pub(crate) fn argv_of(
     caps: &std::collections::BTreeSet<String>,
     entry: &str,
 ) -> Result<Vec<String>, String> {
-    spec_with(l, account, here, detach, entry, |spec| {
+    spec_with(l, account, here, detach, false, entry, |spec| {
+        ccm_invocation::ccm_argv(spec, caps)
+    })
+}
+
+/// 起一个托管终端那一行的 argv 形（`--hosted --detach`，`l.tmux` 不看）：这台后端替人起，工作目录恒随行。
+pub(crate) fn hosted_argv_of(
+    l: &Launch,
+    account: &Settled,
+    here: Here,
+    caps: &std::collections::BTreeSet<String>,
+    entry: &str,
+) -> Result<Vec<String>, String> {
+    let l = Launch {
+        tmux: None,
+        ..l.clone()
+    };
+    spec_with(&l, account, here, true, true, entry, |spec| {
         ccm_invocation::ccm_argv(spec, caps)
     })
 }
@@ -113,6 +130,7 @@ fn spec_with<T>(
     account: &Settled,
     here: Here,
     detach: bool,
+    hosted: bool,
     ccm_path: &str,
     f: impl FnOnce(&ccm_invocation::CliSpec) -> Result<T, ccm_invocation::Refusal>,
 ) -> Result<T, String> {
@@ -135,14 +153,15 @@ fn spec_with<T>(
         Act::Resume(sid) => ci::Action::Resume { sid },
         Act::Attach(name) => ci::Action::Attach { name },
     };
-    let local_direct = matches!(here, Here::Local { .. }) && tmux.is_none();
+    let local_direct = matches!(here, Here::Local { .. }) && tmux.is_none() && !hosted;
     let args: Vec<&str> = l.preset_args.iter().map(String::as_str).collect();
     let spec = ci::CliSpec {
         agent: &l.agent,
         action,
-        container: match tmux {
-            Some(name) => ci::Container::Tmux { name },
-            None => ci::Container::None,
+        container: match (tmux, hosted) {
+            (Some(name), _) => ci::Container::Tmux { name },
+            (None, true) => ci::Container::Hosted,
+            (None, false) => ci::Container::None,
         },
         cwd: l.cwd.as_deref().filter(|c| !c.is_empty() && !local_direct),
         account,
