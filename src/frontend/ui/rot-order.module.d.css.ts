@@ -1,0 +1,30 @@
+// 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `rot-order.module.css` 渲染出的规范文本（逐字）。
+declare const classes: {
+  readonly rotOrder: string;
+  readonly rotOrderAcct: string;
+  readonly rotOrderEnd: string;
+  readonly rotOrderFirst: string;
+  readonly rotOrderGroup: string;
+  readonly rotOrderHandle: string;
+  readonly rotOrderHead: string;
+  readonly rotOrderHeadNote: string;
+  readonly rotOrderHeadText: string;
+  readonly rotOrderIx: string;
+  readonly rotOrderLive: string;
+  readonly rotOrderName: string;
+  readonly rotOrderNameTop: string;
+  readonly rotOrderPop: string;
+  readonly rotOrderPopLine: string;
+  readonly rotOrderPopName: string;
+  readonly rotOrderPopTop: string;
+  readonly rotOrderRefused: string;
+  readonly rotOrderRow: string;
+  readonly rotOrderSpacer: string;
+  readonly rotOrderState: string;
+  readonly rotOrderTick: string;
+  readonly rotOrderWhy: string;
+  readonly rotSession: string;
+  readonly rotSessionAbout: string;
+  readonly rotSessionAboutText: string;
+};
+export default classes;

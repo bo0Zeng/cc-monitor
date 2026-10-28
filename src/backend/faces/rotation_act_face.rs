@@ -94,27 +94,16 @@ fn judged_session(ctx: &Ctx, sid: &str, s: &Session, now: u64, end: u64) -> Judg
 
 // ── rotation-temp ─────────────────────────────────────────────────────────────────────────
 
-/// 会话侧的临时动作：拖号名到最上那条、松在时刻 `t` · 顺序里把一行拖到第 `to` 格（0 起，第 0 格是在用的号）· 清掉 ·
-/// 这个会话先不用 / 再用一个号。第几段 · 第几格都由这里照这个会话此刻的推演与顺序认（界面只交松手的地方）。
+/// 会话侧的临时动作：顺序里把一行拖到第 `to` 格（0 起，第 0 格是在用的号）· 清掉 · 这个会话先不用 / 再用一个号。
+/// 第几格由这里照这个会话此刻的顺序认（界面只交松手的那一格）。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum RotTempOp {
-    Place {
-        account: String,
-        #[cfg_attr(test, ts(type = "number"))]
-        t: u64,
-    },
-    Move {
-        account: String,
-        to: usize,
-    },
+    Move { account: String, to: usize },
     Clear,
-    Off {
-        account: String,
-        off: bool,
-    },
+    Off { account: String, off: bool },
 }
 
 /// `rotation-temp` 的入参。
@@ -170,13 +159,6 @@ fn listed(ctx: &Ctx, s: &Session, account: &str) -> bool {
     account == s.start || ctx.hop.library().by_route(account).is_some()
 }
 
-/// 把 `account` 放到那一串第 `at` 位（越界取末尾；已在就挪过去）。
-pub(crate) fn put_at(temp: &mut Vec<String>, account: &str, at: usize) {
-    temp.retain(|a| a != account);
-    let at = at.min(temp.len());
-    temp.insert(at, account.to_string());
-}
-
 /// 顺序 `line` 里把 `account` 拖到第 `to` 格之后，「接下来先用谁」那一串：第二格起到挪动那一截的尽头（第一格在用的号不在里头）。
 /// 没挪 · 不在顺序里 · 越界 ⇒ 缺。
 fn moved(line: &[String], account: &str, to: usize) -> Option<Vec<String>> {
@@ -197,9 +179,7 @@ pub(crate) fn temp_with(
 ) -> Result<RotationTempReply, RotationTempErr> {
     let s = session_of(ctx, &req.sid).ok_or_else(|| RotationTempErr::NoSession(no_session()))?;
     let account = match &req.op {
-        RotTempOp::Place { account, .. }
-        | RotTempOp::Move { account, .. }
-        | RotTempOp::Off { account, .. } => Some(account),
+        RotTempOp::Move { account, .. } | RotTempOp::Off { account, .. } => Some(account),
         RotTempOp::Clear => None,
     };
     if let Some(a) = account.filter(|a| !listed(ctx, &s, a)) {
@@ -228,19 +208,7 @@ pub(crate) fn temp_with(
             off: s.off,
         });
     }
-    // 第几段 · 第几格照这个会话此刻的推演与顺序认（写之前算好，写的那一下只动那一串）。
-    let at = match &req.op {
-        // 此刻那段是第 0 位，之后每段换号往后数一位：排到松手那一刻之后那一段。
-        RotTempOp::Place { t, .. } => {
-            let j = judged_session(ctx, &req.sid, &s, now, (*t).max(now));
-            j.tl.uses
-                .iter()
-                .filter(|u| u.from > now && u.from < *t)
-                .count()
-                + 1
-        }
-        _ => 0,
-    };
+    // 第几格照这个会话此刻的顺序认（写之前算好，写的那一下只动那一串）。
     let next = match &req.op {
         RotTempOp::Move { account, to } => {
             let j = judged_session(ctx, &req.sid, &s, now, now);
@@ -251,7 +219,6 @@ pub(crate) fn temp_with(
     let (temp, off) = rotation::face_change(&ctx.hop.store, own, |b| {
         let s = b.sessions.get_mut(&req.sid)?;
         match &req.op {
-            RotTempOp::Place { account, .. } => put_at(&mut s.temp, account, at),
             RotTempOp::Move { .. } => {
                 if let Some(all) = &next {
                     s.temp.clone_from(all);
