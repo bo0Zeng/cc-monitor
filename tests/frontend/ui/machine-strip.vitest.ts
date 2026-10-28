@@ -21,7 +21,7 @@ const m = (name: string, over: Partial<MachineState> = {}): MachineState =>
     versionRelation: null,
     os: null,
     word: "核心·未连上",
-    said: `核心·${name} 连不上`,
+    said: `核心·${name} 无应答`,
     offlineSaid: `核心·${name} 离线`,
     fixes: [{ fix: "retry", label: "核心·重新连接" }, { fix: "conn_settings", label: "核心·连接设置" }],
     seenHostKey: null,
@@ -40,7 +40,7 @@ describe("机器条", () => {
     const row = s.el.querySelector<HTMLElement>(".machine-strip-row")!;
     expect(row.querySelector(".machine-strip-name")?.textContent).toBe("gpu-01");
     expect(row.querySelector(".machine-strip-word")?.textContent).toBe("核心·未连上");
-    expect(row.querySelector(".machine-strip-said")?.textContent).toBe("核心·gpu-01 连不上");
+    expect(row.querySelector(".machine-strip-said")?.textContent).toBe("核心·gpu-01 无应答");
     const btns = [...row.querySelectorAll<HTMLButtonElement>("button")];
     expect(btns.map((b) => b.textContent), "只给第一个修法").toEqual(["核心·重新连接"]);
     btns[0].click();

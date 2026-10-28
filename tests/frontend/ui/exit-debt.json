@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1786,
+  "ceiling": 1785,
   "groups": [
     {
       "kind": "首登",
@@ -79,7 +79,7 @@
         ["src/frontend/shell/src/prefs_migration.rs", "key", 2],
         ["src/frontend/shell/src/remote_resident.rs", "key", 1],
         ["src/frontend/shell/src/transfer_relay.rs", "key", 8],
-        ["src/frontend/shell/src/stream_source/frame.rs", "key", 2],
+        ["src/frontend/shell/src/stream_source/frame.rs", "key", 1],
         ["src/frontend/shell/src/stream_source/snapshot.rs", "key", 3],
         ["src/frontend/shell/src/ui_error.rs", "key", 6],
         ["src/frontend/ui/account-chip.ts", "branch", 10],

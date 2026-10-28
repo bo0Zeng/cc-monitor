@@ -298,7 +298,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const r = await bar([tab("a"), tab("b")]);
     const list = r.el.querySelector<HTMLElement>(".tab-list")!;
     const first = list.firstElementChild;
-    const down = { name: "gpu-01", state: "down", offline: true, word: "核心·未连上", said: "核心·gpu-01 连不上", fixes: [{ fix: "retry", label: "核心·重新连接" }] } as unknown as MachineState;
+    const down = { name: "gpu-01", state: "down", offline: true, word: "核心·未连上", said: "核心·gpu-01 无应答", fixes: [{ fix: "retry", label: "核心·重新连接" }] } as unknown as MachineState;
     r.view.machineChanged("gpu-01", down);
     const row = r.el.querySelector<HTMLElement>(".machine-strip-row")!;
     expect(row.closest(".machine-strip")?.previousElementSibling, "机器条钉在列表下面").toBe(list);
