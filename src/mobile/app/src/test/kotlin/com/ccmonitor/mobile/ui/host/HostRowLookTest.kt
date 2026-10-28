@@ -2,9 +2,9 @@ package com.ccmonitor.mobile.ui.host
 
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
 import com.ccmonitor.mobile.core.wire.gen.MachineStateKind
+import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.machineOf
 import com.ccmonitor.mobile.ui.common.MachineDot
-import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test

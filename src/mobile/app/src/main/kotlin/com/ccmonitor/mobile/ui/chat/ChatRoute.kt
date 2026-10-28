@@ -54,6 +54,7 @@ import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.chat.needs.NeedsViewModel
 import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
+import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
 import com.ccmonitor.mobile.ui.chats.RenameDialog
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.MachineBar
@@ -167,15 +168,25 @@ fun ChatRoute(
                     .consumeWindowInsets(inner)
                     .imePadding(),
             ) {
-                // 顶栏下那一格：那台的连接态（离线 · 正在连 · 要更新 …），空新会话与读一条会话同一条；通着无事不画。
-                MachineBar(hostId)
-                if (state.drafting && picker != null) {
-                    NewSessionPane(hostId, host.machine, picker, onSwitchMachine = { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) })
-                }
+                ChatHead(hostId, host.machine, picker?.takeIf { state.drafting }) { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) }
                 ChatBody(vm, state, needs, Modifier.weight(1f))
             }
         }
     }
+}
+
+/**
+ * 顶栏下那一截：机器条（那台的连接态，空新会话与读一条会话同一条；通着无事不画）＋ 还没起好的新建会话那一排 chip（[picker] 不为 `null` 时）。
+ */
+@Composable
+private fun ChatHead(
+    hostId: String,
+    machine: String,
+    picker: NewSessionPicker?,
+    onSwitchMachine: (String) -> Unit,
+) {
+    MachineBar(hostId)
+    if (picker != null) NewSessionPane(hostId, machine, picker, onSwitchMachine = onSwitchMachine)
 }
 
 /** 正文 ＋ 需手动 ＋ 输入那一圈（需手动里在等的那一步也递给正文，那张工具卡上标它）。 */

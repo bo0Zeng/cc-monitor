@@ -77,13 +77,7 @@ fun AccountsScreen(
     var login by remember { mutableStateOf<LoginFlow?>(null) }
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
-                BackButton(onBack)
-                Column {
-                    Text(copyText("mobSettings.entry.accounts"), style = MaterialTheme.typography.titleLarge)
-                    Text(here.machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            AccountsHead(here, onBack)
             // 顶栏下那一格：那台的连接态（离线 · 正在连 · 要更新 …），各屏同一条。
             MachineBar(here.hostId)
             val look = accountsLook(ui, line)
@@ -141,6 +135,21 @@ private fun LoginFor(
     LoginSheet(f, row?.plate, row?.color, machine, onClosed = onClosed)
 }
 
+/** 顶栏：← · 账号 · 那台的名字。 */
+@Composable
+private fun AccountsHead(
+    here: Here,
+    onBack: () -> Unit,
+) {
+    Row(Modifier.padding(horizontal = 8.dp).heightIn(min = Touch.topBar), verticalAlignment = Alignment.CenterVertically) {
+        BackButton(onBack)
+        Column {
+            Text(copyText("mobSettings.entry.accounts"), style = MaterialTheme.typography.titleLarge)
+            Text(here.machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 /** 账号屏此刻画哪几样：读中（骨架）· 行（手上那一份）· 行是不是上次所知（那台离线：用量格不出数）· 读不出那一条（那台通着时）。 */
 data class AccountsLook(
     val loading: Boolean,
@@ -172,7 +181,13 @@ private fun SkeletonRow() {
     val shape = RoundedCornerShape(LocalAppTokens.current.radius.s)
     Column(Modifier.fillMaxWidth().heightIn(min = Touch.rowDouble).padding(horizontal = 16.dp, vertical = 12.dp)) {
         Box(Modifier.fillMaxWidth(SKELETON_TITLE).height(12.dp).background(c, shape))
-        Box(Modifier.padding(top = 8.dp).fillMaxWidth(SKELETON_SUB).height(10.dp).background(c, shape))
+        Box(
+            Modifier
+                .padding(top = 8.dp)
+                .fillMaxWidth(SKELETON_SUB)
+                .height(10.dp)
+                .background(c, shape),
+        )
     }
 }
 
