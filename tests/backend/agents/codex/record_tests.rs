@@ -1,7 +1,7 @@
 use super::super::parse::session_meta_cwd;
 use super::CodexRecordKind as K;
 use super::*;
-use crate::agents::record::RecordExt as _;
+use crate::agents::record::{BodyExt as _, RecordExt as _};
 use crate::agents::Speaker;
 use crate::agents::UserText;
 use crate::agents::UserTextExt as _;
@@ -610,7 +610,9 @@ fn the_skeleton_rows_of_a_codex_rollout_are_its_records() {
         );
         assert_eq!(
             (row.t, row.dr, row.hu),
-            rec.as_ref().map_or((None, Default::default(), false), |r| (want, r.draw, r.human)),
+            rec.as_ref().map_or((None, Default::default(), false), |r| (
+                want, r.draw, r.human
+            )),
             "骨架那一行：{raw}"
         );
         // 进界面的那几行骨架上要有料（正文字数 / 折叠单元），不然骨架判它「画不出东西」、查看器照样一张卡都不建。

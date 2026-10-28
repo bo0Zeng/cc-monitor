@@ -89,7 +89,6 @@ fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
     uuid.is_none() && parent_uuid.is_none()
 }
 
-
 /// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。没有身份的那几类（标题 · 排队）`id` 用 `fallback_id`（调用方给，会话内唯一）。
 pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
     let rec_of = |id: String, at: Option<String>, body: Body| {

@@ -236,10 +236,11 @@ fn the_skeleton_row_is_what_the_record_says() {
         let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
             .and_then(|r| record_of(r, "L1"));
-        let want = rec.as_ref().map_or(
-            (None, crate::agents::record::Draw::None, false),
-            |r| (Some(r.body.class()), r.draw, r.human),
-        );
+        let want = rec
+            .as_ref()
+            .map_or((None, crate::agents::record::Draw::None, false), |r| {
+                (Some(r.body.class()), r.draw, r.human)
+            });
         let row = crate::observe::recognize::index_row::tests::index_row(
             crate::agents::claudecode::AGENT_KIND,
             raw.as_bytes(),

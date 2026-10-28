@@ -783,8 +783,12 @@ mod specimens {
     }
 
     fn rec(body: Body) -> Record {
-        let mut r =
-            crate::agents::record::record(s("agent").into(), s("r"), some("2026-10-09T00:00:00Z"), body);
+        let mut r = crate::agents::record::record(
+            s("agent").into(),
+            s("r"),
+            some("2026-10-09T00:00:00Z"),
+            body,
+        );
         r.time_text = Some(Words(s("08:00")));
         r.at_ms = Some(1_791_504_000_000);
         r

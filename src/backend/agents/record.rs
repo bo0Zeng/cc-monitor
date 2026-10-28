@@ -18,7 +18,12 @@ pub(crate) use cmd_wire::record::Draw;
 
 /// 造一条通用记录（两家适配层都经它）：画成哪一形（[`Draw`]）· 人说没说，从这条的类与格算一次，界面照摆。
 /// 钟面那两格留给出口（[`RecordExt::stamp`]）。
-pub(crate) fn record(agent: cmd_wire::AgentKind, id: String, at: Option<String>, body: Body) -> Record {
+pub(crate) fn record(
+    agent: cmd_wire::AgentKind,
+    id: String,
+    at: Option<String>,
+    body: Body,
+) -> Record {
     Record {
         agent,
         id,

@@ -102,7 +102,6 @@ struct SkelView<'a> {
     scan: ScanView<'a>,
 }
 
-
 impl Scan {
     /// 从 `self.end` 接着读 `r`（`r` 已定位在那里），读到 `upto` 为止（之后的不读；残尾不计）。
     fn feed<R: std::io::BufRead>(

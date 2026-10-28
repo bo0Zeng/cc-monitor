@@ -102,9 +102,24 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         b => b,
     };
     let cases: Vec<(&str, Body, Draw, bool)> = vec![
-        ("人说的", said(Speaker::Human, "hi", vec![]), Draw::Card, true),
-        ("人说的、只带图", said(Speaker::Human, "", vec![image()]), Draw::Card, true),
-        ("人说的、空", said(Speaker::Human, "", vec![]), Draw::None, true),
+        (
+            "人说的",
+            said(Speaker::Human, "hi", vec![]),
+            Draw::Card,
+            true,
+        ),
+        (
+            "人说的、只带图",
+            said(Speaker::Human, "", vec![image()]),
+            Draw::Card,
+            true,
+        ),
+        (
+            "人说的、空",
+            said(Speaker::Human, "", vec![]),
+            Draw::None,
+            true,
+        ),
         (
             "斜杠命令",
             said(
@@ -120,7 +135,13 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ),
         (
             "! 命令",
-            said(Speaker::BashInput { command: "ls".into() }, "", vec![]),
+            said(
+                Speaker::BashInput {
+                    command: "ls".into(),
+                },
+                "",
+                vec![],
+            ),
             Draw::Card,
             true,
         ),
@@ -137,10 +158,21 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             Draw::Card,
             false,
         ),
-        ("本地命令回显", said(Speaker::CommandOutput, "", vec![]), Draw::None, false),
+        (
+            "本地命令回显",
+            said(Speaker::CommandOutput, "", vec![]),
+            Draw::None,
+            false,
+        ),
         (
             "系统注入",
-            said(Speaker::System { body: Some("x".into()) }, "", vec![]),
+            said(
+                Speaker::System {
+                    body: Some("x".into()),
+                },
+                "",
+                vec![],
+            ),
             Draw::Strip,
             false,
         ),
@@ -150,8 +182,18 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             Draw::None,
             false,
         ),
-        ("派的活", said(Speaker::AgentTask, "do", vec![]), Draw::Card, false),
-        ("派的活、空", said(Speaker::AgentTask, "", vec![]), Draw::None, false),
+        (
+            "派的活",
+            said(Speaker::AgentTask, "do", vec![]),
+            Draw::Card,
+            false,
+        ),
+        (
+            "派的活、空",
+            said(Speaker::AgentTask, "", vec![]),
+            Draw::None,
+            false,
+        ),
         (
             "压缩摘要、空",
             said(
@@ -164,11 +206,36 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
             Draw::None,
             false,
         ),
-        ("interrupt", said(Speaker::Interrupt, "", vec![]), Draw::Card, false),
-        ("工具结果", said(Speaker::ToolResult, "", vec![result()]), Draw::Steps, false),
-        ("工具结果、空", said(Speaker::ToolResult, "", vec![]), Draw::None, false),
-        ("回复有字", reply(vec![text("a"), call("c")], &[]), Draw::Card, false),
-        ("回复只有工具", reply(vec![call("c"), text("  ")], &[]), Draw::Steps, false),
+        (
+            "interrupt",
+            said(Speaker::Interrupt, "", vec![]),
+            Draw::Card,
+            false,
+        ),
+        (
+            "工具结果",
+            said(Speaker::ToolResult, "", vec![result()]),
+            Draw::Steps,
+            false,
+        ),
+        (
+            "工具结果、空",
+            said(Speaker::ToolResult, "", vec![]),
+            Draw::None,
+            false,
+        ),
+        (
+            "回复有字",
+            reply(vec![text("a"), call("c")], &[]),
+            Draw::Card,
+            false,
+        ),
+        (
+            "回复只有工具",
+            reply(vec![call("c"), text("  ")], &[]),
+            Draw::Steps,
+            false,
+        ),
         (
             "回复里有交互等待",
             reply(vec![call("c")], &[("c", ToolCard::Interactive)]),
@@ -178,11 +245,21 @@ fn draw_and_human_are_worked_out_once_from_the_body() {
         ("回复空正文", reply(vec![text(" ")], &[]), Draw::None, false),
         (
             "思考没写进记录（空串）照画",
-            reply(vec![Block::Thinking { text: String::new() }], &[]),
+            reply(
+                vec![Block::Thinking {
+                    text: String::new(),
+                }],
+                &[],
+            ),
             Draw::Steps,
             false,
         ),
-        ("自动应答", quiet(reply(vec![text("a")], &[])), Draw::None, false),
+        (
+            "自动应答",
+            quiet(reply(vec![text("a")], &[])),
+            Draw::None,
+            false,
+        ),
         ("reply-error", failed(reply(vec![], &[])), Draw::Card, false),
         (
             "retry",

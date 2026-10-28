@@ -393,7 +393,10 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        ["body", "classes", "count", "dr", "draws", "end", "fd", "from", "hu", "inputs", "n", "next", "o", "t"],
+        [
+            "body", "classes", "count", "dr", "draws", "end", "fd", "from", "hu", "inputs", "n",
+            "next", "o", "t"
+        ],
         "骨架索引的成品形状变了"
     );
     let mut o = 0u64;
