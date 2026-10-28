@@ -1,7 +1,7 @@
 /**
  * 「账号」面板（右侧抽屉）：状态栏账号按钮 · 右键「账号…」· 会话头 ⋯ 三处开的同一个。
  * 头下一句（中转没见过这个会话 · 额度账读不出时的那一条）＋ 底栏 `新会话默认 [work ▾] … 管理账号…`。
- * 中间是轮换那四块（策略下拉 · 号牌 · 总体设置 · 模拟 · `现在用`，`rot-mount.ts` 接线、`rot-board.ts` 画，同设置窗「轮换」栏一处实现）。
+ * 中间是这个会话的轮换（提示 · 策略一行 · 顺序，`rot-session.ts`；与设置窗「轮换」栏只共用策略一行与提示）。
  *
  * - 数据只经 `quota-read` · `rotation-view` 与推送（`acct-center.ts` 收进 `appStore`）。界面不判「能不能换 / 该不该换」。
  */
@@ -17,7 +17,7 @@ import { button } from "./kit/button";
 import { openDrawer, type DrawerHandle } from "./kit/drawer";
 import { icon } from "./kit/icon";
 import { closeMenu } from "./kit/menu";
-import { mountRotation, type RotMount } from "./rot-mount";
+import { mountSessionRotation, type SessionRot } from "./rot-session";
 import { accountLabel } from "./acct-words";
 import s from "./acct.module.css";
 
@@ -38,7 +38,7 @@ interface Open {
   origin: Origin;
   drawer: DrawerHandle;
   body: HTMLElement;
-  rot: RotMount;
+  rot: SessionRot;
   unsub: (() => void)[];
 }
 
@@ -81,12 +81,12 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
       open = null;
     },
   });
-  const o: Open = { sid, origin, drawer, body, rot: mountRotation({ origin, sid }), unsub: [] };
+  const o: Open = { sid, origin, drawer, body, rot: mountSessionRotation(origin, sid), unsub: [] };
   open = o;
   const repaint = (): void => {
     if (open === o) render(o, host);
   };
-  // 这个会话的轮换变了（推送 ⇒ `acct-center` 换了它那一格）⇒ 四块重读（面板推得更长，不借 store 里那份）。
+  // 这个会话的轮换变了（推送 ⇒ `acct-center` 换了它那一格）⇒ 重读（拖着一行时先记下，静止了再读）。
   let lastEntry = appStore.sessionRotation.get().get(sid);
   const onRotation = (): void => {
     const e = appStore.sessionRotation.get().get(sid);

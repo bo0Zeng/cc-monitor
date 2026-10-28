@@ -36,7 +36,6 @@ declare const classes: {
   readonly rotPaneName: string;
   readonly rotPaneTop: string;
   readonly rotPick: string;
-  readonly rotRefused: string;
   readonly rotSegRow: string;
   readonly rotSegTime: string;
   readonly rotSegs: string;
@@ -44,7 +43,6 @@ declare const classes: {
   readonly rotSimAxis: string;
   readonly rotSimHead: string;
   readonly rotSimName: string;
-  readonly rotSimNow: string;
   readonly rotSimRow: string;
   readonly rotSimSeg: string;
   readonly rotSimSkip: string;

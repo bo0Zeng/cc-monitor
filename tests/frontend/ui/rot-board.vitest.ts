@@ -1,6 +1,7 @@
 /**
- * 轮换四块（`rot-board.ts`）：只照 `rotation-view` · `rotation-strategies` 的回包画，手势翻成 `BoardActs`。
+ * 设置窗「轮换」栏（`rot-board.ts`）：只照 `rotation-view {strategy}` · `rotation-strategies` 的回包画，手势翻成 `BoardActs`。
  * 号名 · 文件名 · 时刻全是合成的；格（`board`）是后端解好的那一形（label / help / 段上的字都是夹具里的字，不是界面写的）。期望手写。
+ * 会话面板那一块（提示 · 策略一行 · 顺序）的判据在 `rot-session.vitest.ts` · `rot-order.vitest.ts`。
  */
 import { describe, expect, it, vi } from "vitest";
 import { board, draftKey, type BoardActs, type BoardState } from "../../../src/frontend/ui/rot-board";
@@ -46,9 +47,10 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     nowText: "14:30", title: null,
     strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false, hand: false },
     board: BOARD,
-    start: "work",
-    current: "team",
-    lineup: ["team", "lab", "api", "work"],
+    start: "",
+    current: "",
+    lineup: [],
+    manual: false,
     off: [],
     accounts: [fact("work", 94, 40, true), fact("team", 58, 30), fact("lab", 35, 20), fact("api", 0, 0)],
     listed: 3,
@@ -67,7 +69,6 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
       truncated: false,
       ticks: [{ at: NOW + 1800, text: "15:00" }, { at: NOW + 9000, text: "17:00" }],
     },
-    past: null,
     log: [],
     hints: [],
     ...over,
@@ -93,22 +94,19 @@ function acts() {
     create: vi.fn(),
     add: vi.fn(),
     edit: vi.fn(),
-    useNow: vi.fn(),
-    temp: vi.fn(),
-    editStrategy: vi.fn(),
     hours: vi.fn(),
     open: vi.fn(),
     showFile: vi.fn(),
     setTz: vi.fn(),
     loadNew: vi.fn(),
     toggleOld: vi.fn(),
-  };
+  } satisfies BoardActs;
 }
 
-const state = (over: Partial<BoardState> = {}): BoardState => ({ hours: 12, open: null, refused: null, ...over });
+const state = (over: Partial<BoardState> = {}): BoardState => ({ hours: 12, open: null, ...over });
 
-function draw(v: RotationViewReply | null, s: BoardState, a: BoardActs, where: "session" | "settings" = "session"): HTMLElement {
-  const root = board({ view: v, list: LIST, state: s, acts: a, origin: "<local>", where, machine: "夹具机" });
+function draw(v: RotationViewReply | null, s: BoardState, a: BoardActs): HTMLElement {
+  const root = board({ view: v, list: LIST, state: s, acts: a, origin: "<local>", machine: "夹具机" });
   document.body.replaceChildren(root);
   return root;
 }
@@ -123,23 +121,20 @@ describe("第一行与说明", () => {
     expect(root.textContent).toContain("按权重轮换");
   });
 
-  it("★ 会话：第一行「编辑策略」⇒ 进设置页；没有草稿那一套（没存 · 还原 · 存成这份策略）", () => {
-    const a = acts();
-    const root = draw(view(), state(), a);
-    button(root, copyText("rot.top.edit"))!.click();
-    expect(a.editStrategy).toHaveBeenCalledOnce();
-    expect(root.querySelector("[data-rot-card]"), "会话面板不画号牌").toBeNull();
-    const set = draw(view(), state(), { ...acts(), editStrategy: undefined }, "settings");
-    expect(button(set, copyText("rot.top.edit"))).toBeUndefined();
-    expect(set.textContent).toContain(copyText("rot.top.here", { machine: "夹具机" }));
+  it("★ 第一行右边写「设置 · 那台」，没有［编辑策略］（策略就在这里改）", () => {
+    const root = draw(view(), state(), acts());
+    expect(button(root, copyText("rot.top.edit"))).toBeUndefined();
+    expect(root.textContent).toContain(copyText("rot.top.here", { machine: "夹具机" }));
   });
 
-  it("★ 不轮换的会话：第一行 ＋ 一行「只用开会话的号 work」，号牌 · 设置 · 模拟都不出", () => {
-    const root = draw(view({ strategy: null, board: { all: [], rows: [] }, decision: null, timeline: null, accounts: [], listed: 0 }), state(), acts());
+  it("★ 新会话不轮换：第一行 ＋「只用开会话的号」＋［新建策略…］，号牌 · 设置 · 模拟都不出", () => {
+    const a = acts();
+    const root = draw(view({ strategy: null, board: { all: [], rows: [] }, decision: null, timeline: undefined, accounts: [], listed: 0 }), state(), a);
     expect(root.textContent).toContain(copyText("rot.none.desc"));
-    expect(root.textContent).toContain("work");
     expect(root.querySelector("[data-account]")).toBeNull();
     expect(root.textContent).not.toContain(copyText("rot.h.sim"));
+    button(root, copyText("rot.more.create"))!.click();
+    expect(a.create).toHaveBeenCalledOnce();
   });
 
   it("★ 提示照后端写好的那一句；停发那一句里的「还有多久」在画的那一刻照 now · until 填", () => {
@@ -158,11 +153,9 @@ describe("第一行与说明", () => {
 describe("第一行：下拉与「⋯」", () => {
   const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]')];
   const menu = (): string[] => items().map((e) => e.textContent ?? "");
-  it("★ 「⋯」只在设置页：复制 · 改名 · 设为新会话用这份（已是 ⇒ 灰）· 删除（有会话在用 ⇒ 灰）· 新建策略 · 从文件添加；选中的是新会话用的 ⇒ 小标", () => {
-    const sess = draw(view(), state(), acts());
-    expect(sess.querySelector(`button[aria-label="${copyText("rot.more.label")}"]`), "会话面板没有「⋯」").toBeNull();
+  it("★ 「⋯」：复制 · 改名 · 设为新会话用这份（已是 ⇒ 灰）· 删除（有会话在用 ⇒ 灰）· 新建策略 · 从文件添加；选中的是新会话用的 ⇒ 小标", () => {
     const a = acts();
-    const root = draw(view(), state(), a, "settings");
+    const root = draw(view(), state(), a);
     expect(root.textContent).toContain(copyText("rot.tag.forNewHere"));
     root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.more.label")}"]`)!.click();
     const said = menu();
@@ -175,9 +168,9 @@ describe("第一行：下拉与「⋯」", () => {
     expect(a.create).toHaveBeenCalledOnce();
   });
 
-  it("★ 下拉：每份带「新会话用」「手写」小标（后端给的）；设置页末尾「新建策略…」", () => {
+  it("★ 下拉：每份带「新会话用」「手写」小标（后端给的）；末尾「新建策略…」", () => {
     const a = acts();
-    const root = draw(view(), state(), a, "settings");
+    const root = draw(view(), state(), a);
     root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.top.pick")}"]`)!.click();
     const said = menu();
     expect(said.find((t) => t.startsWith("夜里省着用"))).toContain(copyText("rot.tag.hand"));
@@ -188,7 +181,7 @@ describe("第一行：下拉与「⋯」", () => {
 
   it("★ 总体的开关：说明写在旁边", () => {
     const smart: RotCell = { key: "smart", kind: "toggle", label: "夹具·智能", help: "夹具·值得才换", v: true, from: "own" };
-    const root = draw(view({ board: { ...BOARD, all: [smart] } }), state(), acts(), "settings");
+    const root = draw(view({ board: { ...BOARD, all: [smart] } }), state(), acts());
     expect(root.textContent).toContain("夹具·值得才换");
   });
 });
@@ -197,7 +190,7 @@ describe("号色 · 号名照视图里那一格", () => {
   it("★ 号牌的号色 · 号名 · 号牌字都照 rotation-view 每个号身上那一枚（不另问账号清单去对）", () => {
     const work = { ...fact("work", 94, 40, true), plate: { color: 6, label: "夹具·号名", text: "夹" } };
     const v = view({ accounts: [work, fact("team", 58, 30), fact("lab", 35, 20), fact("api", 0, 0)] });
-    const root = draw(v, state(), acts(), "settings");
+    const root = draw(v, state(), acts());
     const card = [...root.querySelectorAll<HTMLElement>(".acct-avatar")].find((e) => e.parentElement?.textContent?.includes("夹具·号名"));
     expect(card, "画了视图里的号名").toBeDefined();
     expect(card!.classList.contains("acct-c6")).toBe(true);
@@ -258,87 +251,23 @@ describe("提示里的按钮", () => {
     expect(a.showFile).toHaveBeenCalledWith("/夹具/v3/旧的两份.rhai");
   });
 
-  it("★ 策略改过了 ⇒ 会话［载入新版］；设置页「N 个会话还在用旧版」写在编辑小窗的底行［都载入新版］，都翻成 loadNew", () => {
+  it("★ 「N 个会话还在用旧版」不在顶上出条，写在编辑小窗的底行［都载入新版］⇒ loadNew", () => {
     const a = acts();
-    const root = draw(view({ hints: [{ hint: { k: "newer" }, tone: "plain", text: "夹具·改过了那一句" }] }), state(), a);
-    expect(root.querySelector("[data-rot-hint=\"newer\"]")?.textContent).toContain("夹具·改过了那一句");
-    button(root, copyText("rot.hint.loadNew"))!.click();
     const older = view({ hints: [{ hint: { k: "older", n: 2 }, tone: "plain", text: "夹具·2 个会话那一句" }] });
-    const set = draw(older, state(), a, "settings");
+    const set = draw(older, state(), a);
     expect(set.querySelector("[data-rot-hint]"), "不在顶上出条").toBeNull();
-    const pane = draw(older, state({ open: "lab" }), a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    const pane = draw(older, state({ open: "lab" }), a).querySelector<HTMLElement>("[data-rot-editor]")!;
     expect(pane.textContent).toContain(copyText("rot.pane.foot", { name: "按权重轮换" }));
     expect(pane.textContent).toContain("夹具·2 个会话那一句");
     button(pane, copyText("rot.hint.loadAll"))!.click();
-    expect(a.loadNew).toHaveBeenCalledTimes(2);
+    expect(a.loadNew).toHaveBeenCalledOnce();
   });
 });
 
-describe("会话的顺序", () => {
-  const rows = (root: HTMLElement): HTMLElement[] => [...root.querySelectorAll<HTMLElement>("[data-rot-row]")];
-  const box = (k: number) => ({ left: 0, right: 300, top: k * 40, bottom: k * 40 + 30, width: 300, height: 30, x: 0, y: k * 40, toJSON: () => ({}) });
-  const drag = (root: HTMLElement, from: number, to: number): void => {
-    const rs = rows(root);
-    rs.forEach((r, k) => (r.getBoundingClientRect = () => box(k)));
-    rs[from].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: from * 40 + 10 }));
-    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10, clientY: from * 40 + 30 }));
-    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: to * 40 + 10 }));
-  };
-
-  it("★ 照后端排好的 lineup 一号一行（第一格在用）；此刻怎样照策略的理由 · 用不了的原因；先不用的勾空着，点勾 ⇒ off", () => {
-    const a = acts();
-    const root = draw(view({ off: ["api"] }), state(), a);
-    const rs = rows(root);
-    expect(rs.map((r) => r.dataset.account)).toEqual(["team", "lab", "api", "work"]);
-    expect(rs[0].dataset.inUse).toBe("true");
-    expect(rs[1].textContent).toContain("夹具·lab 的理由");
-    expect(rs[3].textContent).toContain("5h 用满 · 18:30 重置");
-    const tick = (k: number) => rs[k].querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect([tick(1).checked, tick(2).checked]).toEqual([true, false]);
-    tick(1).click();
-    tick(2).click();
-    expect(a.temp.mock.calls).toEqual([[{ off: { account: "lab", off: true } }], [{ off: { account: "api", off: false } }]]);
-  });
-
-  it("★ 拖一行 ⇒ 交拖的是哪个号 · 松在第几格（拖完那一串 · 第一格当现在用都由后端认）；没挪 ⇒ 不交", () => {
-    const a = acts();
-    const root = draw(view(), state(), a);
-    drag(root, 2, 1);
-    expect(a.temp.mock.calls).toEqual([[{ move: { account: "api", to: 1 } }]]);
-    drag(draw(view(), state(), a), 1, 2);
-    expect(a.temp.mock.calls[1]).toEqual([{ move: { account: "lab", to: 2 } }]);
-    drag(draw(view(), state(), a), 2, 0);
-    expect(a.temp.mock.calls[2]).toEqual([{ move: { account: "api", to: 0 } }]);
-    drag(draw(view(), state(), a), 2, 2);
-    expect(a.temp).toHaveBeenCalledTimes(3);
-    expect(a.useNow).not.toHaveBeenCalled();
-  });
-
-  it("★ 点一行 ⇒ 小窗只看：此刻 · 规则（字照回包）· 立即用 · 编辑策略；被拦下的原因写在顺序上方", () => {
-    const a = acts();
-    const root = draw(view(), state({ refused: { account: "work", text: "work 用不了那一句" } }), a);
-    expect(root.querySelector('[data-rot-order] [role="status"]')?.textContent).toBe("work 用不了那一句");
-    const lab = rows(root)[1];
-    lab.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 }));
-    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
-    const pop = document.querySelector<HTMLElement>("[data-rot-pop]")!;
-    expect(pop.textContent).toContain(copyText("rot.order.now", { why: "夹具·lab 的理由" }));
-    expect(pop.textContent).toContain("夹具·lab 那一行");
-    expect(pop.textContent).toContain("夹具·lab 的规则");
-    expect(pop.querySelector("input"), "只看不改").toBeNull();
-    button(pop, copyText("rot.acct.useNow", { account: "lab" }))!.click();
-    expect(a.useNow).toHaveBeenCalledWith("lab");
-    rows(draw(view(), state(), a))[1].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 }));
-    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
-    button(document.querySelector<HTMLElement>("[data-rot-pop]")!, copyText("rot.top.edit"))!.click();
-    expect(a.editStrategy, "小窗里的［编辑策略］开这个号的编辑小窗").toHaveBeenCalledWith("lab");
-  });
-});
-
-describe("设置页的号牌与点开一个号", () => {
+describe("号牌与点开一个号", () => {
   it("★ 号牌照号列表的先后（列表外的不出），用不了的变淡；点一下翻成 open", () => {
     const a = acts();
-    const root = draw(view(), state(), a, "settings");
+    const root = draw(view(), state(), a);
     const cards = [...root.querySelectorAll<HTMLElement>("[data-account]")];
     expect(cards.map((c) => c.dataset.account)).toEqual(["work", "team", "lab"]);
     expect(cards[0].dataset.blocked).toBe("true");
@@ -349,7 +278,7 @@ describe("设置页的号牌与点开一个号", () => {
 
   it("★ 号牌上那条小计量画不画满照后端说的用满了的那几窗（不照用量自己比）", () => {
     const v = view({ accounts: [{ ...fact("work", 94, 40), full: ["7d"] }, { ...fact("team", 100, 30), full: [] }, fact("lab", 35, 20)] });
-    const root = draw(v, state(), acts(), "settings");
+    const root = draw(v, state(), acts());
     const fills = (account: string) => [...root.querySelector<HTMLElement>(`[data-account="${account}"]`)!.querySelectorAll<HTMLElement>("i")].map((e) => e.dataset.full ?? "");
     expect(fills("work")).toEqual(["", "true"]);
     expect(fills("team")).toEqual(["", ""]);
@@ -357,7 +286,7 @@ describe("设置页的号牌与点开一个号", () => {
 
   it("★ 拖第 1 张松在第 3 张上 ⇒ 交「第 0 行挪到第 2 行前头」那个意图（怎么排是后端的）", () => {
     const a = acts();
-    const root = draw(view(), state(), a, "settings");
+    const root = draw(view(), state(), a);
     const cards = [...root.querySelectorAll<HTMLElement>("[data-account]")];
     cards.forEach((c, k) => (c.getBoundingClientRect = () => ({ left: k * 100, right: k * 100 + 90, top: 0, bottom: 30, width: 90, height: 30, x: k * 100, y: 0, toJSON: () => ({}) })));
     cards[0].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 40, clientY: 10 }));
@@ -369,7 +298,7 @@ describe("设置页的号牌与点开一个号", () => {
 
   it("★ 点开 lab：那一行的字与格照回包（标签是后端挑好的字，跟总体的画虚线）；改开关 ⇒ 交「lab 那一行设这一格」", () => {
     const a = acts();
-    const root = draw(view(), state({ open: "lab" }), a, "settings");
+    const root = draw(view(), state({ open: "lab" }), a);
     const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
     const keys = [...new Set(texts(pane, "span").filter((t) => t.startsWith("夹具")))];
     expect(keys).toEqual(["夹具·lab 那一行", "夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·开关", "夹具·延迟"]);
@@ -380,7 +309,7 @@ describe("设置页的号牌与点开一个号", () => {
 
   it("★ 分段一段一行：改一格 ⇒ 交「改第几段」整段；✕ ⇒ 删那一段；＋ 加一段 ⇒ 三格填好才交；上面那条只画（照回包的字）", () => {
     const a = acts();
-    const root = draw(view(), state({ open: "lab" }), a, "settings");
+    const root = draw(view(), state({ open: "lab" }), a);
     const pane = root.querySelector<HTMLElement>("[data-rot-editor]")!;
     expect(pane.querySelector("[data-day-bar]")!.textContent).toBe("夹具·90");
     const line = pane.querySelector<HTMLElement>('[data-rot-seg="0"]')!;
@@ -411,14 +340,14 @@ describe("设置页的号牌与点开一个号", () => {
   it("★ 加时段的草稿住 state：打的字记进去、重画照它补画（一格一窗只一行）；草稿的 ✕ 只删草稿不发；这一次没画到的（切回同第一窗）画完删掉", () => {
     const a = acts();
     const st = state({ open: "lab" });
-    let pane = draw(view(), st, a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    let pane = draw(view(), st, a).querySelector<HTMLElement>("[data-rot-editor]")!;
     button(pane, copyText("rot.seg.add"))!.click();
     const nf = pane.querySelector<HTMLInputElement>('[data-rot-seg="new"] input')!;
     nf.value = "20:00";
     nf.dispatchEvent(new Event("input"));
     const k5 = draftKey("lab", "caps", "5h");
     expect(st.drafts).toEqual({ [k5]: { from: "20:00", to: "", v: "" } });
-    pane = draw(view(), st, a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    pane = draw(view(), st, a).querySelector<HTMLElement>("[data-rot-editor]")!;
     const lines = () => [...pane.querySelectorAll<HTMLElement>('[data-rot-seg="new"]')];
     expect(lines().map((r) => r.querySelector("input")!.value)).toEqual(["20:00"]);
     button(pane, copyText("rot.seg.add"))!.click();
@@ -430,7 +359,7 @@ describe("设置页的号牌与点开一个号", () => {
     expect(a.edit).not.toHaveBeenCalled();
     st.drafts = { [k5]: { from: "1:00", to: "", v: "" } };
     const rows = [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", [{ ...caps("5h", "own"), same: "夹具·同第一窗", from: "same" }])];
-    draw(view({ board: { ...BOARD, rows } }), st, a, "settings");
+    draw(view({ board: { ...BOARD, rows } }), st, a);
     expect(st.drafts).toEqual({});
   });
 
@@ -439,7 +368,7 @@ describe("设置页的号牌与点开一个号", () => {
     const w7: RotCell = { ...caps("7d", "same"), same: "夹具·同第一窗" };
     const total: RotCell = { key: "outTotal", kind: "percent", label: "夹具·切出条件", v: null, num: 400, from: "own", nullable: "夹具·一有额度", lead: "夹具·前半句", under: "out", min: 0, max: 1000 };
     const rows = [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", [caps("5h", "own"), w7, total])];
-    const root = draw(view({ board: { ...BOARD, rows } }), state({ open: "lab" }), a, "settings");
+    const root = draw(view({ board: { ...BOARD, rows } }), state({ open: "lab" }), a);
     const pane = root.querySelector<HTMLElement>("[data-rot-editor]")!;
     expect(pane.querySelectorAll("[data-rot-seg]").length, "同着的那一窗不出段").toBe(1);
     expect(button(pane, "夹具·同第一窗")!.getAttribute("aria-checked")).toBe("true");
@@ -451,21 +380,19 @@ describe("设置页的号牌与点开一个号", () => {
     expect(a.edit.mock.calls).toEqual([[{ same: { key: "caps", window: "7d", row: 2, same: false } }], [{ set: { key: "outTotal", v: 400, row: 2 } }]]);
   });
 
-  it("★ 号名旁的记号照后端给的（字形 · 悬停；虚线框那一种画在号牌 / 那一行上），设置页号牌与会话顺序都画", () => {
+  it("★ 号名旁的记号照后端给的（字形 · 悬停；虚线框那一种画在号牌上）", () => {
     const marks: RotRow["marks"] = [{ glyph: "↺", dashed: false, tip: "夹具·切入 · 强制切入" }, { dashed: true, tip: "夹具·延迟切入" }];
     const rows = [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", each(true, "own"), marks)];
-    for (const where of ["settings", "session"] as const) {
-      const root = draw(view({ board: { ...BOARD, rows } }), state(), acts(), where);
-      const lab = root.querySelector<HTMLElement>('[data-account="lab"]')!;
-      expect(texts(lab, "[data-rot-mark]"), where).toEqual(["↺"]);
-      expect(lab.dataset.dashed, where).toBe("true");
-      expect(root.querySelector<HTMLElement>('[data-account="team"]')!.dataset.dashed, where).toBeUndefined();
-    }
+    const root = draw(view({ board: { ...BOARD, rows } }), state(), acts());
+    const lab = root.querySelector<HTMLElement>('[data-account="lab"]')!;
+    expect(texts(lab, "[data-rot-mark]")).toEqual(["↺"]);
+    expect(lab.dataset.dashed).toBe("true");
+    expect(root.querySelector<HTMLElement>('[data-account="team"]')!.dataset.dashed).toBeUndefined();
   });
 
   it("★ 小窗的 ✕ ⇒ 收起；［移出这份策略］⇒ 交「移出那一行」", () => {
     const a = acts();
-    const pane = draw(view(), state({ open: "lab" }), a, "settings").querySelector<HTMLElement>("[data-rot-editor]")!;
+    const pane = draw(view(), state({ open: "lab" }), a).querySelector<HTMLElement>("[data-rot-editor]")!;
     button(pane, copyText("rot.acct.remove"))!.click();
     pane.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.pane.close")}"]`)!.click();
     expect(a.edit.mock.calls).toEqual([[{ remove: { row: 2 } }]]);
@@ -476,21 +403,21 @@ describe("设置页的号牌与点开一个号", () => {
 describe("总体设置", () => {
   it("★ 照 board.all 的先后画；可空的那一格点空值说法 ⇒ 交 null，再点 ⇒ 交回框里那个数（后端给的 num）", () => {
     const a = acts();
-    const root = draw(view(), state(), a, "settings");
+    const root = draw(view(), state(), a);
     expect(root.textContent).toContain("夹具·容差");
     expect(root.textContent).toContain("夹具·阈值");
     button(root, "夹具·空值")!.click();
     expect(a.edit.mock.calls).toEqual([[{ set: { key: "force", v: null } }]]);
     const b = acts();
     const force: RotCell = { ...BOARD.all[1], v: null, num: 30 };
-    const again = draw(view({ board: { ...BOARD, all: [BOARD.all[0], force] } }), state(), b, "settings");
+    const again = draw(view({ board: { ...BOARD, all: [BOARD.all[0], force] } }), state(), b);
     button(again, "夹具·空值")!.click();
     expect(b.edit.mock.calls).toEqual([[{ set: { key: "force", v: 30 } }]]);
   });
 });
 
-describe("模拟", () => {
-  it("★ 时刻的字全照回包：此刻 · 刻度 · 换号时刻；最上那条左边留空；每号行此刻那段写剩多少、重置那段写 ↻ 钟面、发不出去的不写字", () => {
+describe("模拟（设置页：改一格就看得到接下来怎么换）", () => {
+  it("★ 时刻的字全照回包：此刻 · 刻度 · 换号时刻；每号行此刻那段写剩多少、重置那段写 ↻ 钟面、发不出去的不写字", () => {
     const root = draw(view(), state(), acts());
     expect(root.textContent).toContain("14:30");
     expect(root.textContent).toContain("17:00");
@@ -500,65 +427,11 @@ describe("模拟", () => {
     expect(segs, "每段的字照回包").toEqual(["夹具·剩 42", "夹具·↻15:30", ""]);
   });
 
-  it("★ 过去那一截：左端是它的开头，过去的段实心（不带虚边）、只有重置那段写 ↻；推演的段全是虚边；此刻一条竖线；换号标签只标将来的", () => {
-    const past = {
-      from: NOW - 7200,
-      uses: [
-        { from: NOW - 7200, to: NOW - 3600, account: "work", text: "work" },
-        { from: NOW - 3600, to: NOW - 1800, text: copyText("rot.sim.hold") },
-        { from: NOW - 1800, to: NOW, account: "team", text: "" },
-      ],
-      lanes: [
-        { account: "team", segs: [{ from: NOW - 5400, to: NOW, sendable: true, reset: true, text: "夹具·↻13:00" }] },
-        { account: "work", segs: [{ from: NOW - 7200, to: NOW - 3600, sendable: true, reset: false, text: "" }, { from: NOW - 3600, to: NOW, sendable: false, reset: false, text: "" }] },
-      ],
-    };
-    const v = view({ past });
-    v.timeline!.switches.unshift({ at: NOW - 3600, atText: "13:30", account: "team" });
-    v.timeline!.ticks.unshift({ at: NOW - 5400, text: "13:00" });
-    const root = draw(v, state(), acts());
-    const pastTop = [...root.querySelectorAll<HTMLElement>('[data-past="true"]')].filter((e) => !e.dataset.state);
-    expect(pastTop.map((e) => e.textContent), "每段的字照回包（接着此刻那段后端给的是空）").toEqual(["work", copyText("rot.sim.hold"), ""]);
-    expect(pastTop.every((e) => e.dataset.future === undefined)).toBe(true);
-    // 12 小时往后 ＋ 2 小时往前：此刻在 1/7 处。
-    expect(Number(pastTop[0].style.getPropertyValue("--rot-x"))).toBe(0);
-    const nowTick = root.querySelector<HTMLElement>('[data-now="true"]')!;
-    expect(Number(nowTick.style.getPropertyValue("--rot-x"))).toBeCloseTo(1 / 7, 5);
-    expect(nowTick.dataset.edge).toBeUndefined();
-    const pastLanes = [...root.querySelectorAll<HTMLElement>('[data-past="true"][data-state]')];
-    expect(pastLanes.map((e) => [e.dataset.state, e.textContent])).toEqual([
-      ["ok", "夹具·↻13:00"],
-      ["ok", ""],
-      ["out", ""],
-    ]);
-    const future = [...root.querySelectorAll<HTMLElement>("[data-state]")].filter((e) => !e.dataset.past);
-    expect(future.every((e) => e.dataset.future === "true")).toBe(true);
-    expect(root.textContent).toContain("13:00");
-    expect(root.textContent, "过去的换号不标").not.toContain(copyText("rot.sim.switch", { at: "13:30", account: "team" }));
-    // 此刻竖线：最上那条 ＋ 每号一行各一条。
-    expect(root.querySelectorAll('[data-rot-now="true"]').length).toBe(3);
-  });
-
-  it("★ 拖出来的那段白描边（data-temp）· 轮到时用不了的写「跳过」· 停发那段写「停下」；标题右边 手动 N 段 · 清掉手动顺序", () => {
-    const a = acts();
-    const root = draw(view({ decision: { pick: "team", order: [], why: [], fromTemp: false, skipped: [], temp: ["team", "lab"] } }), state(), a);
+  it("★ 拖出来的那段白描边（data-temp）· 轮到时用不了的写「跳过」· 停发那段写「停下」；没有拖号名的落点（时间轴上不拖）", () => {
+    const root = draw(view(), state(), acts());
     expect(root.querySelectorAll('[data-temp="true"]').length).toBe(1);
     expect(root.textContent).toContain(copyText("rot.sim.skip", { account: "work" }));
     expect(root.querySelector('[data-hold="true"]')?.textContent).toBe(copyText("rot.sim.hold"));
-    expect(root.textContent).toContain(copyText("rot.sim.manual", { n: 2 }));
-    button(root, copyText("rot.sim.clear"))!.click();
-    expect(a.temp).toHaveBeenCalledWith("clear");
-  });
-
-  it("★ 拖号名松在最上那条上 ⇒ 交松手那一刻（排到第几段由后端照推演数）", () => {
-    const a = acts();
-    const root = draw(view(), state(), a);
-    const top = root.querySelector<HTMLElement>('[data-hold="true"]')!.parentElement!;
-    top.getBoundingClientRect = () => ({ left: 0, right: 1200, top: 100, bottom: 120, width: 1200, height: 20, x: 0, y: 100, toJSON: () => ({}) });
-    const head = root.querySelector<HTMLElement>('[data-drag="true"]')!;
-    head.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 200 }));
-    // 12 小时 ⇒ 1200px：第一次换号在 90 分钟（150px），松在 200px。
-    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 200, clientY: 110 }));
-    expect(a.temp).toHaveBeenCalledWith({ place: { account: "team", t: NOW + 7200 } });
+    expect(root.querySelector('[data-drag="true"]')).toBeNull();
   });
 });
