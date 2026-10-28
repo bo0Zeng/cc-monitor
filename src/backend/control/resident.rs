@@ -241,7 +241,11 @@ pub(crate) async fn stdout_gone(out: std::os::fd::OwnedFd) {
     use tokio::io::{unix::AsyncFd, Interest};
     match AsyncFd::with_interest(out, Interest::ERROR) {
         Ok(fd) => {
-            let _ = fd.ready(Interest::ERROR).await;
+            if fd.ready(Interest::ERROR).await.is_ok() {
+                return;
+            }
+            // 等不成（运行时在收场）：说不出发起方走没走 ⇒ 不当成走了。
+            std::future::pending::<()>().await
         }
         Err(_) => std::future::pending::<()>().await,
     }

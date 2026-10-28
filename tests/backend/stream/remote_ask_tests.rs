@@ -406,7 +406,7 @@ async fn a_failed_remote_command_keeps_its_envelope_code() {
 
 /// ★ 问别台常驻那一跳（[`ask_resident`]）在那台起的 `--resident-call` 是一次性的：发起方一走（ssh 断开 ⇒ 它 stdout 那根管子的读端没人了），
 /// 就不再等那台常驻、当场收工 —— 不攥着一条常驻连接空等到发起方给的期限（10-28 沙箱 sshd 实测：断开后照活到期限）。
-/// 读端还在 ⇒ 照旧等到期限、报 `timed_out`（「发起方走了」不是一碰就响）。
+/// 读端还在 ⇒ 照旧等到期限、报 `timed_out`（「发起方走了」不是一碰就响）；读端已关 ⇒ 交回「走了」，不等到期限。
 /// 扮那台常驻的：绑了套接字、不收不说（连得上，hello 永远不来）。
 #[tokio::test]
 #[cfg(unix)]
@@ -444,29 +444,22 @@ async fn a_resident_call_stops_waiting_once_the_asker_is_gone() {
     );
     drop(rd);
 
-    // 读端被关：不等那 30 秒。
+    // 读端已关：不等那 30 秒期限（还在等 ⇒ 30 秒后交回 `timed_out`，下面那一条红）。
     let (rd, wr) = std::io::pipe().unwrap();
-    let cut = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        drop(rd);
-    });
-    let got = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        call_while(
-            &dh,
-            &asked,
-            Some(30_000),
-            &tz,
-            Deadline::secs(30),
-            stdout_gone(wr.into()),
-        ),
+    drop(rd);
+    let got = call_while(
+        &dh,
+        &asked,
+        Some(30_000),
+        &tz,
+        Deadline::secs(30),
+        stdout_gone(wr.into()),
     )
     .await;
-    cut.await.unwrap();
     let _ = std::fs::remove_dir_all(&dh);
     assert!(
-        matches!(got, Ok(None)),
-        "发起方走了（读端关了）5 秒还在等那台常驻：{:?}",
-        got.map(|g| g.map(|r| r.map_err(|f| f.code)))
+        got.is_none(),
+        "发起方走了（读端关了）还在等那台常驻、等到了期限：{:?}",
+        got.map(|r| r.map_err(|f| f.code))
     );
 }
