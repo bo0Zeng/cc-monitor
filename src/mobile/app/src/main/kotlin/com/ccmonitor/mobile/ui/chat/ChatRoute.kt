@@ -106,7 +106,7 @@ fun ChatRoute(
     onOpenPlan: (String) -> Unit = {},
     /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着它所在的 tmux 会话（名字是那台名单上的），终端已经不在 ⇒ 先让那台恢复再附着。 */
     onOpenTerminal: (SessionTabManager.TabTarget.Terminal) -> Unit = {},
-    /** 顶栏右上「需手动 n」：总览。 */
+    /** 顶栏右上「需手动 n」：需手动屏。 */
     onOpenOverview: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {

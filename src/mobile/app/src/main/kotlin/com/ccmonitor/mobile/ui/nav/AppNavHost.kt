@@ -679,7 +679,7 @@ internal fun launchDestination(
     newConversationId: () -> String,
 ): String = landingHostId?.let { freshLanding(it, newConversationId) } ?: Screen.Hosts.route
 
-/** 进一台服务器、从空白开始：打开 app 与加完一台共用。哪一家都进空的新对话（送字走 `terminal-input`，不分哪家）。 */
+/** 进一台服务器、从空白开始：打开 app 与加完一台共用。哪一家都进空的新对话（送字投进那条会话的输入队 `session-queue-put`，不分哪家）。 */
 internal fun freshLanding(
     hostId: String,
     newConversationId: () -> String,
