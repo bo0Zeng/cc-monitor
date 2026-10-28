@@ -84,10 +84,17 @@ fn answer(
             },
         ),
     };
+    // 接回两种宿主都认（托管那一行照句柄接）；别的几形要往 tmux 会话里键入或新开 tmux 会话 ⇒ 只认 tmux。
+    let both = matches!(req.what, open::Open::Look { .. });
     with_launch_ctx(own, nf, |fork, pre, home| {
-        super::session_batch_face::with_deps_as(client.as_deref(), &agent, Some(files), |d| {
-            open::answer(req, facts, d, fork, pre, home)
-        })
+        let go =
+            |d: &crate::control::session_batch::Deps| open::answer(req, facts, d, fork, pre, home);
+        let client = client.as_deref();
+        if both {
+            super::session_batch_face::with_deps_both_as(client, &agent, Some(files), go)
+        } else {
+            super::session_batch_face::with_deps_as(client, &agent, Some(files), go)
+        }
     })
 }
 
@@ -409,7 +416,7 @@ impl crate::wire::typed::Handle for SessionOpenFacts {
     }
 }
 
-/// `session-open-facts` 的本体：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`。
+/// `session-open-facts` 的本体：`{forkOf?, at?}` ⇒ `{recent, hosts, run, agents, fork}`。
 /// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
 pub(crate) fn facts(
     req: &OpenFactsReq,
@@ -476,7 +483,11 @@ pub(crate) fn facts(
             ),
             crate::platform::paths::home_dir().as_deref(),
         ),
-        tmux,
+        hosts: if tmux {
+            vec![open::Run::Tmux, open::Run::Direct]
+        } else {
+            vec![open::Run::Direct]
+        },
         run,
         agents: {
             let prefs = crate::common::machine_prefs::read_now().prefs();

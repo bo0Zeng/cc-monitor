@@ -52,7 +52,7 @@ function row(key: string, over: Partial<BoardRow> = {}): BoardRow {
   return {
     key,
     terminal: `h-${key}`,
-    tmux_name: `ccm-${key}`,
+    name: `ccm-${key}`,
     sid: `sid-${key}`,
     dot: "running",
     dot_name: "dot-running",

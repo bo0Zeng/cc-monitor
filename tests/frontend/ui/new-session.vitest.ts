@@ -102,7 +102,7 @@ const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op ===
 const whatOf = (r: Record<string, unknown>): Record<string, unknown> => r.what as Record<string, unknown>;
 
 const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], modelDefault: null, modelNote: null, permissionModes: [] });
-const FACTS = { recent: [{ cwd: "/home/u/srv/orders", shown: "~/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", shown: "~/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, run: "tmux", agents: [agentOf("claude")], fork: null };
+const FACTS = { recent: [{ cwd: "/home/u/srv/orders", shown: "~/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", shown: "~/srv/billing", lastMs: 1, lastText: "00:00" }], hosts: ["tmux", "direct"], run: "tmux", agents: [agentOf("claude")], fork: null };
 const OK = {
   landed: "started",
   session: "orders-cc",
@@ -160,7 +160,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   });
 
   it("那台能起两家 ⇒ 出 agent 那一行；那台没 tmux ⇒ 只剩终端窗口那一张、灰字说为什么", async () => {
-    replies.set("session-open-facts", { ...FACTS, tmux: false, run: "direct", agents: [agentOf("claude"), agentOf("codex")] });
+    replies.set("session-open-facts", { ...FACTS, hosts: ["direct"], run: "direct", agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(false);

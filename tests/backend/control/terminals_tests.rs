@@ -1214,3 +1214,59 @@ async fn a_queued_line_reaches_a_hosted_terminal_held_elsewhere_but_waits_out_a_
     drop(t);
     task.await.expect("任务没崩").expect("跑完");
 }
+
+/// 一个假的旧托管进程（`say` 之前那一版：`welcome` 报 proto 1、认不出 `say`、不答）：收一条连接，回 `welcome`，
+/// 之后照读到断，记下有没有收到 `say`。
+async fn old_host(sock: std::path::PathBuf) -> tokio::task::JoinHandle<bool> {
+    use crate::host::managed::wire::{read_frame, write_frame, Ctl, Frame, Size};
+    let l = own_chan::bind(&sock).expect("绑得上");
+    tokio::spawn(async move {
+        let own_chan::Accepted::Ours(mut s) = l.accept().await.expect("收得到") else {
+            panic!("对端是本人");
+        };
+        let size = Size { rows: 24, cols: 80 };
+        let mut said = false;
+        while let Ok(Some(f)) = read_frame(&mut s).await {
+            match f {
+                Frame::Ctl(Ctl::Hello { .. }) => {
+                    let welcome = Ctl::Welcome {
+                        proto: 1,
+                        id: "t-old".into(),
+                        size,
+                        you: 1,
+                        holder: None,
+                        screen: String::new(),
+                    };
+                    write_frame(&mut s, &Frame::Ctl(welcome))
+                        .await
+                        .expect("回 welcome");
+                }
+                Frame::Ctl(Ctl::Say { .. }) => said = true,
+                Frame::Ctl(Ctl::Bye) => break,
+                _ => {}
+            }
+        }
+        said
+    })
+}
+
+/// ★ 机器上还在跑的旧托管进程不认 `say`：后端从 `welcome` 的 proto 就认出它是旧版，不说那一句、当场报「不认」，
+/// 不再等到读期限、当「不知道送没送到」吞掉。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn saying_to_an_old_hosted_terminal_is_turned_down_from_its_welcome_without_waiting() {
+    let dir = test_home::sandbox_root().join("old-host");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建沙箱目录");
+    let sock = dir.join("sock");
+    let host = old_host(sock.clone()).await;
+    let s = sock.clone();
+    let r = tokio::task::spawn_blocking(move || crate::host::managed::client::say(&s, b"hi\r"))
+        .await
+        .expect("没崩");
+    assert_eq!(
+        r.as_ref().map_err(std::io::Error::kind).err(),
+        Some(std::io::ErrorKind::Unsupported),
+        "旧版 ⇒ 当场报不认：{r:?}"
+    );
+    assert!(!host.await.expect("假托管没崩"), "那一句没说给它");
+}

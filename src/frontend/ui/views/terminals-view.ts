@@ -344,7 +344,7 @@ export class TerminalsView {
     this.paintActs();
     this.paintFace();
     const p = this.rows.get(k)?.pick;
-    if (p) this.host.watch({ kind: "slot", origin: p.origin, terminal: p.row.terminal, name: p.row.tmux_name, title: p.row.title });
+    if (p) this.host.watch({ kind: "slot", origin: p.origin, terminal: p.row.terminal, name: p.row.name, title: p.row.title });
   }
 
   private paintSelection(): void {
