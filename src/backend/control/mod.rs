@@ -62,6 +62,8 @@ pub mod launch_account;
 pub mod launch_render;
 pub mod place_self;
 pub mod resident;
+// 编辑已发的一句：调出那一家的回退菜单 · 每按一键前读屏核对 · 送改好的那句 · 读回主线（按法认法住适配层 `RewindFace`）。
+pub(crate) mod rewind;
 pub(crate) mod session_arrive; // 帧命令 `session-arrive`：等起好的会话报到（认法住观测层，抓屏住 terminals）
 pub(crate) mod session_batch;
 pub(crate) mod session_open;

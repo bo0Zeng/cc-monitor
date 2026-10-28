@@ -120,6 +120,8 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     model_text: None,
     model_pick: None,
     model_switch: None,
+    // 它也有双击 Esc（回到上一句重编辑），按法与屏都和 Claude 那一套不同、没实测过 ⇒ 不申报，编辑已发的一句照实回「不支持」。
+    rewind: None,
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。

@@ -37,6 +37,8 @@ use std::path::{Path, PathBuf};
 /// （`the_fixture_agent_never_ships` 钉住）。
 // 子运行形状（与 Claude Code 每一格都不同形；通用层的运行判据拿它跑）。
 pub(crate) mod runs;
+// 回退菜单与它的一个终端（与 Claude 每一屏都不同形；通用层的回退那一串拿它跑）。
+pub(crate) mod rewind;
 
 pub(crate) const AGENT_KIND: &str = "fake";
 
@@ -146,6 +148,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     model_text: None,
     model_pick: None,
     model_switch: None,
+    rewind: Some(rewind::FACE),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

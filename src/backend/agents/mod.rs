@@ -324,6 +324,82 @@ pub(crate) struct LaunchFace {
     pub(crate) model_pick: Option<fn(&str) -> Option<&'static str>>,
     /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
     pub(crate) model_switch: Option<ModelSwitch>,
+    /// 会话开着时怎么回退到人说过的某一句之前（编辑已发的一句）；这一家没申报 ⇒ `None`（照实回「不支持」）。
+    pub(crate) rewind: Option<RewindFace>,
+}
+
+/// 一家的**回退菜单**（[`LaunchFace::rewind`]）：怎么调出来 · 每一屏怎么认 · 各按哪个键 · 「怎么退」那几项在确认页上叫什么。
+/// 键都是 `terminal-input` 键表里的名字。按法 · 认法只住适配层；按的先后 · 每按一键前读屏核对住通用层（`control/rewind.rs`）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RewindFace {
+    /// 在输入行（空着）上调出回退列表的那几下。
+    pub(crate) open: &'static [&'static str],
+    /// [`Self::open`] 两下之间隔多少毫秒（tmux 的 escape-time 会把挨得太近的两下 Esc 并成一键）。
+    pub(crate) open_gap_ms: u64,
+    /// 列表 · 确认页里往上 · 往下移一项。
+    pub(crate) up: &'static str,
+    pub(crate) down: &'static str,
+    /// 列表上进确认页 · 确认页上按下选中那一项。
+    pub(crate) enter: &'static str,
+    /// 退一层（确认页 ⇒ 列表 ⇒ 输入行）。
+    pub(crate) back: &'static str,
+    /// 主 agent 在干活时停下这一轮的那一下；`None` ＝ 不支持「现在停」。
+    pub(crate) interrupt: Option<&'static str>,
+    /// 删输入行里一个字的那一下（被打断的那一句 · 那一家填回来的原句要先删掉）；`None` ＝ 输入行有字就不退。
+    pub(crate) erase: Option<&'static str>,
+    /// 此刻那一屏（纯文本行）是哪一屏。
+    pub(crate) read: fn(&[String]) -> RewindScreen,
+    /// 「怎么退」那几项（只列这一家确认页上有的；缺省那一项恰一个）。
+    pub(crate) choices: &'static [RewindChoice],
+}
+
+/// 「怎么退」的一项在这一家那里的样子。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RewindChoice {
+    pub(crate) how: cmd_wire::rewind::RewindHow,
+    /// 确认页上那一项的字（去掉序号与选中标之后逐字比；屏上没有这一项 ⇒ 不按）。
+    pub(crate) label: &'static str,
+    /// 写给人看的字（发送那一下的选项）。
+    pub(crate) text: fn() -> String,
+    /// 缺省选它。
+    pub(crate) default: bool,
+}
+
+/// 回退那一串认得出的几屏（[`RewindFace::read`] 交出；认不出 ⇒ [`RewindScreen::Unknown`]，一个键不按）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RewindScreen {
+    /// 输入行，主 agent 空着；`typed` ＝ 输入行里此刻的字（空着 ⇒ 空串）。
+    Prompt { typed: String },
+    /// 主 agent 正在这一轮里（出字 · 调工具 · 等工具结果）。
+    Busy,
+    /// 回退列表：人说过的每一句一行（先说的在上），末行是「此刻」。
+    List { rows: Vec<RewindRow> },
+    /// 选中一句之后的确认页：几项、哪项选中。
+    Confirm { items: Vec<RewindItem> },
+    Unknown,
+}
+
+/// 回退列表上的一行。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RewindRow {
+    /// 那一句在屏上的字（可能被截短）。
+    pub(crate) text: String,
+    pub(crate) selected: bool,
+    /// 「此刻」那一行（不是人说过的一句）。
+    pub(crate) current: bool,
+}
+
+/// 确认页上的一项。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RewindItem {
+    /// 去掉序号与选中标之后的字。
+    pub(crate) label: String,
+    pub(crate) selected: bool,
+}
+
+/// `kind` 那一家的回退菜单；认不出 · 没申报 ⇒ `None`。
+pub(crate) fn rewind_face(kind: Option<&str>) -> Option<RewindFace> {
+    pick_kind(kind).ok().and_then(|(_, f)| f.rewind)
 }
 
 impl LaunchFace {
