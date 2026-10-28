@@ -228,7 +228,8 @@ export class TabMenu {
       // 恢复 ▸：与历史页「恢复 ▾」同一个组件（`resume-menu.ts`）；账号那一组等那台的号到了再换上（`appendAccountMenuItems`）。
       items.push({ id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
     }
-    if (remote !== null) items.push(grey({ id: "attach", icon: "terminal", label: copyText("tabMenu.attach.label"), pending: true }));
+    // 在终端里打开：远端两种宿主都出；本机只对托管终端那一行出（tmux 那一行有 ccm 开的那个窗口 ·［切到终端］）—— 问到了再定。
+    if (remote !== null || local) items.push(grey({ id: "attach", icon: "terminal", label: copyText("tabMenu.attach.label"), pending: true }));
     if (local) items.push({ id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), pending: true });
     const openPanel = this.host.accountPanelWired?.() ? this.host.openAccountPanel : undefined;
     if (t && openPanel) items.push(grey({ id: "account", icon: "account", label: copyText("acct.menu.open"), onClick: () => openPanel(sid) }));
@@ -316,7 +317,12 @@ export class TabMenu {
   async attachRemote(sid: string): Promise<void> {
     const t = this.host.tab(sid);
     if (!t || !isRemoteOrigin(t.origin)) return;
-    await openSession(t.origin, { what: { kind: "look", sid }, local: false });
+    await this.attach(t.origin, sid);
+  }
+
+  /** 交那台接回：那一行那台渲（tmux 会话 ⇒ 接会话名 · 托管终端 ⇒ 瘦客户端 `--attach <句柄>`；远端经 SSH），这边开终端窗口跑它。 */
+  private async attach(origin: Origin, sid: string): Promise<void> {
+    await openSession(origin, { what: { kind: "look", sid }, local: isLocalOrigin(origin) });
   }
 
   /** 远端：那台答回这个会话在哪个 tmux 会话里 ⇒ 在终端里打开 · 看一眼画面 · 结束三格就位（菜单已换 / 已关 ⇒ 不动）。 */
@@ -330,17 +336,8 @@ export class TabMenu {
     const name = s.names[0];
     if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "end");
     const ambiguous = s.kind === "ambiguous";
-    // 接回走 `session-open look`，那一条只接 tmux 会话 ⇒ 托管终端那一行不出这一格。
-    if (inTmux(s)) {
-      updateMenuItem("attach", {
-        id: "attach",
-        icon: "terminal",
-        label: copyText("tabMenu.attach.label"),
-        // 命中多个 ⇒ 那台接第一个（第二行先说了）。
-        why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
-        onClick: () => void this.attachRemote(sid),
-      });
-    } else drop("attach");
+    // 接回走 `session-open look`，那台两种宿主都认。
+    updateMenuItem("attach", this.attachItem(origin, sid, s));
     // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
     updateMenuItem("end", gateByOffer(origin, ambiguous
       ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
@@ -352,14 +349,19 @@ export class TabMenu {
     const gen = menuGeneration();
     const s = await where();
     if (gen !== menuGeneration()) return;
-    if (s === undefined) return this.unresolved(["end", "resume-into"]);
-    // 不在 tmux 里 ⇒ 不留一个假装能用的破坏性项。
+    if (s === undefined) return this.unresolved(["attach", "end", "resume-into"]);
+    // 不在哪个终端里 ⇒ 不留一个假装能用的破坏性项。
     if (s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) {
+      removeMenuItem("attach");
       removeMenuItem("end");
       removeMenuItem("resume-into");
       return;
     }
     const name = s.names[0];
+    // 本机 tmux 那一行有 ccm 开的那个窗口（［切到终端］）⇒ 只对托管终端那一行出［在终端里打开］。
+    const attach = this.attachItem(LOCAL_ORIGIN, sid, s);
+    if (inTmux(s)) removeMenuItem("attach");
+    else updateMenuItem("attach", attach);
     if (s.kind === "idle" && inTmux(s)) {
       // Claude 已退出、tmux 会话在：就地恢复（非破坏性）与结束并列。就地恢复往 tmux 会话里键入 ⇒ 托管终端那一行不出。
       updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, { id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), onClick: () => void this.actions.resume(sid, { run: "tmux" }) }));
@@ -367,6 +369,18 @@ export class TabMenu {
     updateMenuItem("end", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
       ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), enabled: false, danger: true, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
       : { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, onClick: () => this.actions.endSession(LOCAL_ORIGIN, sid, name, { idle: s.kind === "idle", title }) }));
+  }
+
+  /** 就位的［在终端里打开］那一项：命中多个 ⇒ 那台接第一个（第二行先说了）。 */
+  private attachItem(origin: Origin, sid: string, s: Standing): MenuItem {
+    const ambiguous = s.kind === "ambiguous";
+    return {
+      id: "attach",
+      icon: "terminal",
+      label: copyText("tabMenu.attach.label"),
+      why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name: s.names[0] }) : undefined,
+      onClick: () => void this.attach(origin, sid),
+    };
   }
 
   /** 问不到那台（通道不在 / 超时）：那几格停在灰着、第二行写原因（不悄悄摘掉）。 */

@@ -34,6 +34,16 @@ pub(crate) fn with_deps_as<T>(
     with_deps_on(tmux_rows, client, agent, files, f)
 }
 
+/// 同 [`with_deps_as`]，名单两种宿主都认：接回（`session-open look`）只交出接进去那一行，托管那一行照句柄接，不往里键入。
+pub(crate) fn with_deps_both_as<T>(
+    client: Option<&str>,
+    agent: &str,
+    files: Option<Files>,
+    f: impl FnOnce(&Deps) -> T,
+) -> T {
+    with_deps_on(both_hosts_rows, client, agent, files, f)
+}
+
 fn with_deps_on<T>(
     list: Listing,
     client: Option<&str>,
