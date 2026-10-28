@@ -892,24 +892,11 @@ pub(crate) fn stdio_outer(prefix: u8) -> Result<(Outer, crate::platform::term::R
     }
     let raw = crate::platform::term::enter_raw()
         .map_err(|e| Said::with_raw(copy_text("beHost.attach.rawFailed", &[]), &e))?;
-    let resized = crate::platform::term::resizes()
+    let crate::platform::term::Input {
+        keys: krx,
+        resized,
+    } = crate::platform::term::input()
         .map_err(|e| Said::with_raw(copy_text("beHost.attach.rawFailed", &[]), &e))?;
-    let (ktx, krx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
-    std::thread::spawn(move || {
-        use std::io::Read as _;
-        let mut stdin = std::io::stdin().lock();
-        let mut buf = [0u8; 4096];
-        loop {
-            match stdin.read(&mut buf) {
-                Ok(0) | Err(_) => return,
-                Ok(n) => {
-                    if ktx.send(buf[..n].to_vec()).is_err() {
-                        return;
-                    }
-                }
-            }
-        }
-    });
     let get = |k: &str| std::env::var(k).ok();
     Ok((
         Outer {
