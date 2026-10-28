@@ -216,17 +216,19 @@ pub struct LinkFacts {
 }
 
 impl LinkFacts {
-    /// 写成机器状态成品里的那几项（`MachineState.links`）：它自己在前，经过的跳板跟在后面（外在先）。
-    /// 后端（`dial/links.rs`）与手机（`mobcore::resident`）同这一处。
-    pub fn rows(&self) -> Vec<cmd_wire::machine::MachineLink> {
-        std::iter::once(row(&self.link, false))
-            .chain(self.jumps.iter().map(|w| row(w, true)))
-            .collect()
+    /// 每一条写好的那一句：它自己在前，经过的跳板跟在后面（外在先）。
+    fn lines(&self) -> impl Iterator<Item = String> + '_ {
+        std::iter::once(line(&self.link, false)).chain(self.jumps.iter().map(|w| line(w, true)))
+    }
+
+    /// 这条或它经过的哪一台跳板的 TCP 是经代理开的。
+    fn proxied(&self) -> bool {
+        self.link.via_proxy || self.jumps.iter().any(|w| w.via_proxy)
     }
 }
 
-/// 一条的读数 ⇒ 成品那一项（那一句照文案表写好：地址〔· 经代理〕· 压没压 · 收 · 发）。
-fn row(w: &Wire, jump: bool) -> cmd_wire::machine::MachineLink {
+/// 一条的读数 ⇒ 那一句（照文案表写好：〔跳板〕地址〔· 经代理〕· 压没压 · 收 · 发）。
+fn line(w: &Wire, jump: bool) -> String {
     use copy_core::{copy_text, size_text};
     let packing = if w.compressed {
         copy_text("beLinks.pack.compressed", &[])
@@ -247,31 +249,70 @@ fn row(w: &Wire, jump: bool) -> cmd_wire::machine::MachineLink {
             ("out", &size_text(w.bytes_out)),
         ],
     );
-    cmd_wire::machine::MachineLink {
-        endpoint: w.endpoint.clone(),
-        jump,
-        compressed: w.compressed,
-        via_proxy: w.via_proxy,
-        bytes_in: w.bytes_in,
-        bytes_out: w.bytes_out,
-        said: if jump {
-            copy_text("beLinks.row.jumpLine", &[("line", &line)])
-        } else {
-            line
-        },
+    if jump {
+        copy_text("beLinks.row.jumpLine", &[("line", &line)])
+    } else {
+        line
     }
 }
 
-/// 一份快照里 `req` 那个身份那一族的每一项（**纯函数**；身份照 [`identity`]，对不上 ⇒ 空）。
-pub fn rows_of(
-    snap: &[(String, Vec<LinkFacts>)],
-    req: &DialRequest,
-) -> Vec<cmd_wire::machine::MachineLink> {
+/// 到一台怎么连过去的（成品 `route`）＋ 此刻每一条连接那一句（进那台的复制详情）。
+/// 后端（`dial/links.rs`）与手机（`mobcore::resident`）同这一处出、同 [`Way::put`] 进成品。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Way {
+    /// 「经跳板 a → b · 经代理」：跳板照拨号请求的跳板链（外到内，连没连上都写）；经代理只有连上了才知道。直连又不经代理 ⇒ `None`。
+    pub route: Option<String>,
+    /// 每一条连接那一句（读数是这一份出的那一刻的）；没连接 ⇒ 空。
+    pub hops: Vec<String>,
+}
+
+impl Way {
+    /// 填进那台的成品：`route` 照填；有连接 ⇒ 复制详情末尾接「连接：」一段（一条一行，原有的详情在前）。
+    pub fn put(&self, m: &mut cmd_wire::machine::MachineState) {
+        use copy_core::copy_text;
+        m.route = self.route.clone();
+        if self.hops.is_empty() {
+            return;
+        }
+        let section = std::iter::once(copy_text("beLinks.detail.head", &[]))
+            .chain(
+                self.hops
+                    .iter()
+                    .map(|s| copy_text("beLinks.detail.row", &[("said", s)])),
+            )
+            .collect::<Vec<_>>()
+            .join("\n");
+        m.detail = Some(match m.detail.take().filter(|d| !d.trim().is_empty()) {
+            Some(d) => format!("{d}\n{section}"),
+            None => section,
+        });
+    }
+}
+
+/// 一份快照里 `req` 那一台怎么连过去的（**纯函数**；连接照 [`identity`] 归，对不上 ⇒ 没连接）。
+pub fn way_of(snap: &[(String, Vec<LinkFacts>)], req: &DialRequest) -> Way {
+    use copy_core::copy_text;
     let key = identity(req);
-    snap.iter()
+    let links: &[LinkFacts] = snap
+        .iter()
         .find(|(k, _)| *k == key)
-        .map(|(_, links)| links.iter().flat_map(LinkFacts::rows).collect())
-        .unwrap_or_default()
+        .map_or(&[], |(_, l)| l.as_slice());
+    let chain: Vec<String> = crate::connect::hop_chain(req)
+        .into_iter()
+        .map(crate::connect::hop_name)
+        .collect();
+    let chain = chain.join(&copy_text("beLinks.route.then", &[]));
+    let proxied = links.iter().any(LinkFacts::proxied);
+    let route = match (chain.is_empty(), proxied) {
+        (true, false) => None,
+        (true, true) => Some(copy_text("beLinks.route.proxyOnly", &[])),
+        (false, false) => Some(copy_text("beLinks.route.jump", &[("chain", &chain)])),
+        (false, true) => Some(copy_text("beLinks.route.jumpProxy", &[("chain", &chain)])),
+    };
+    Way {
+        route,
+        hops: links.iter().flat_map(LinkFacts::lines).collect(),
+    }
 }
 
 impl Heard {

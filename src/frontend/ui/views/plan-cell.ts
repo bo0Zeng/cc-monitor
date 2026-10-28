@@ -32,8 +32,10 @@ export interface CellDetailHost {
   returnCell(slice: PlanSlice, cell: PlanCell): void;
   /** ［新会话接手…］：开全产品那一个新建会话框（`takeoverSpec`）。 */
   takeover(b: PlanBlock): void;
-  /** ［问这一块…］：开问图那个框（`plan-ask.ts`）。 */
+  /** ［问图…］：开问图那个框（`plan-ask.ts`）。 */
   ask(slice: PlanSlice, cell: PlanCell): void;
+  /** 那台离线那一句（计划页知道那台断了 ⇒ ［问图…］灰、悬停摆它）；连着 / 不知道 ⇒ `null`。缺 ⇒ 当连着。 */
+  askOff?(): string | null;
 }
 
 /** 正文里占位的两头（私用区的两个字，渲 md 时原样过）。 */
@@ -115,10 +117,12 @@ export class CellDetail {
     if (cell.covers.includes("project")) h.appendChild(span(copyText("plan.cell.coversAll"), s.cdWhy));
     const gap = document.createElement("span");
     gap.className = s.cdGap;
+    const ask = button({ label: copyText("plan.ask.open"), icon: "chat", size: "compact", onClick: () => this.host.ask(slice, cell) });
+    setDisabled(ask, this.host.askOff?.() ?? null);
     h.append(
       gap,
       button({ label: look === "done" ? copyText("plan.review.return") : copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => this.host.returnCell(slice, cell) }),
-      button({ label: copyText("plan.ask.open"), icon: "chat", size: "compact", onClick: () => this.host.ask(slice, cell) }),
+      ask,
     );
     return h;
   }
