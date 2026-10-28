@@ -48,9 +48,11 @@ fun ChatScreen(
     needs: @Composable () -> Unit = {},
     /** 输入框上方那一排附件此刻的样子；这条会话没有那一排 ⇒ `null`。 */
     attach: AttachUi? = null,
+    /** 视口贴不贴着底（变了才报）：会话照它决定丢不丢离视口远的旧页。 */
+    onFollow: (Boolean) -> Unit = {},
 ) {
     Column(modifier.fillMaxSize()) {
-        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said)
+        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said, onFollow = onFollow)
         needs()
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
         ChatInputArea(state = state, actions = actions, attach = attach)
@@ -72,6 +74,8 @@ fun ChatTranscript(
     awaiting: AwaitingStep? = null,
     /** 自己那句的长按与就地编辑（[SaidEdit]）；不给 ⇒ 不出。 */
     said: SaidActions? = null,
+    /** 视口贴不贴着底（变了才报）。 */
+    onFollow: (Boolean) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -85,6 +89,8 @@ fun ChatTranscript(
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.drop(1).filter { !it }.collect { following = !listState.canScrollForward }
     }
+    // 贴着底才丢离视口远的旧页（会话那头判）：变了就报。
+    LaunchedEffect(following) { onFollow(following) }
 
     // 到顶 ⇒ 请求更早的一段（判法见 [loadOlderNow]）。
     // 注意：判据必须整个进 `derivedStateOf`；漏在效果体里的变量不在 key 里，效果拿过时快照判一次就不再重跑。
@@ -112,7 +118,7 @@ fun ChatTranscript(
     // 从一处命中打开：落点那张卡出来了 ⇒ 滚到它、不跟到底（人滚到底才又跟）；落点出来之前也不跟到底。
     var landed by remember { mutableStateOf<String?>(null) }
     // 落点收在折着的那一段里：会话先展开那一段（流里才有它），这里等它出现在流里再滚。
-    LaunchedEffect(state.landing, state.stream.any { it.key == state.landing }) {
+    LaunchedEffect(state.landing, state.landing?.let { l -> state.stream.any { it.key == l } } == true) {
         val key = state.landing ?: return@LaunchedEffect
         val i = state.stream.indexOfFirst { it.key == key }
         if (i < 0) return@LaunchedEffect
