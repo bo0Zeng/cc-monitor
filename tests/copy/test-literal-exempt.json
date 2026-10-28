@@ -238,9 +238,7 @@
       { "text": "读取画面失败", "use": "输入" }
     ],
     "tests/frontend/ui/tabs.vitest.ts": [
-      { "text": "画面", "use": "词义" }
-    ],
-    "tests/frontend/ui/tmux-control.vitest.ts": [
+      { "text": "画面", "use": "词义" },
       { "text": "预览", "use": "输入" }
     ],
     "tests/frontend/ui/views/command-bar.vitest.ts": [

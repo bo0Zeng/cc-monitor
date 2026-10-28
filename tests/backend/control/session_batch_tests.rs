@@ -49,11 +49,11 @@ fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
     }
 }
 
-/// 替身那一套：名单是给定的，杀只记下来；别的几样停与问样子都用不着。
+/// 替身那一套：名单是给定的，结束只记下来；别的几样停与问样子都用不着。
 struct Rig {
     rows: Option<Vec<TmuxEntry>>,
     calls: RefCell<Vec<String>>,
-    kill_err: Option<&'static str>,
+    end_err: Option<&'static str>,
     /// 列名单那一发失败的码（`None` ⇒ 照 `rows` 答）。
     list_err: Option<&'static str>,
     /// 这台的偏好。
@@ -65,7 +65,7 @@ impl Rig {
         Self {
             rows,
             calls: RefCell::new(vec![]),
-            kill_err: None,
+            end_err: None,
             list_err: None,
             prefs: Default::default(),
         }
@@ -78,9 +78,9 @@ impl Rig {
                 None => Ok(self.rows.clone()),
             }
         };
-        let kill = |name: &str, sid: &str| -> Result<(), crate::wire::spec::Fail> {
-            self.calls.borrow_mut().push(format!("kill {name} {sid}"));
-            match self.kill_err {
+        let end = |terminal: &str| -> Result<(), crate::wire::spec::Fail> {
+            self.calls.borrow_mut().push(format!("end {terminal}"));
+            match self.end_err {
                 Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
                 None => Ok(()),
             }
@@ -89,7 +89,7 @@ impl Rig {
             f(&Deps {
                 list: &list,
                 record: &|_, _| unreachable!("停不读记录"),
-                kill: &kill,
+                end: &end,
                 send_into: &|_, _, _| unreachable!("停不键入"),
                 run_ccm: &|_| unreachable!("停不起"),
                 mint: &|_| unreachable!("停不铸名"),
@@ -125,7 +125,7 @@ fn outcomes(v: &Value) -> Vec<(String, String, Value)> {
 }
 
 #[test]
-fn stop_kills_exactly_the_one_session_carrying_each_sid() {
+fn stop_ends_exactly_the_one_terminal_carrying_each_sid() {
     let rig = Rig::new(Some(vec![
         row("a-cc", Some(A), true),
         row("c-cc", Some(C), true),
@@ -141,8 +141,8 @@ fn stop_kills_exactly_the_one_session_carrying_each_sid() {
             (C.into(), "skipped".into(), json!("ambiguous")),
         ]
     );
-    // 杀的恰好是带着 A 的那一个，按 sid 核；命中两个的那一个一下都不碰（同单个菜单「命中多个拒杀」）。
-    assert_eq!(*rig.calls.borrow(), vec![format!("kill a-cc {A}")]);
+    // 结束的恰好是带着 A 的那一行（按名单句柄交 terminal-end）；命中两个的那一个一下都不碰（同单个菜单「命中多个不结束」）。
+    assert_eq!(*rig.calls.borrow(), vec!["end tmux-a-cc".to_string()]);
     assert_eq!(out["results"][0]["session"], "a-cc");
 }
 
@@ -152,7 +152,7 @@ fn stop_says_why_per_session_and_one_failure_does_not_stop_the_rest() {
         row("a-cc", Some(A), true),
         row("b-cc", Some(B), false),
     ]));
-    rig.kill_err = Some("too_many_windows");
+    rig.end_err = Some("too_many_windows");
     let out = rig.run(|d| stop(&json!({ "sids": [A, B] }), d)).unwrap();
     assert_eq!(
         outcomes(&out),
@@ -170,7 +170,7 @@ fn stop_says_why_per_session_and_one_failure_does_not_stop_the_rest() {
     );
 }
 
-/// 停的每一项没做成 ⇒ 那一句由这台写好（`said`）：名单里的三种（没 tmux · 没找到 · 命中多个）与杀不成的每个码；
+/// 停的每一项没做成 ⇒ 那一句由这台写好（`said`）：名单里的三种（没 tmux · 没找到 · 命中多个）与结束不成的每个码；
 /// 做成的那一项没有那一句。句子里不出现码。
 #[test]
 fn every_stop_item_not_done_carries_its_sentence() {
@@ -202,7 +202,7 @@ fn every_stop_item_not_done_carries_its_sentence() {
         "odd_new_code",
     ] {
         let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
-        rig.kill_err = Some(code);
+        rig.end_err = Some(code);
         cases.push(said_of(rig, A));
     }
     let codes: Vec<&str> = cases.iter().map(|(c, _)| c.as_str()).collect();

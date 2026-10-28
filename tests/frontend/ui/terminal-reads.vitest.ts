@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ChanError } from "../../../src/comms/inward/chan";
-import { previewShot, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
+import { endTerminal, previewShot, releaseInput, rowsOf, sendToTerminal, sentOf, shotOf, takeInput } from "../../../src/frontend/ui/terminal-reads";
 import type { Preview } from "../../../src/frontend/ui/generated/Preview";
 import type { Sent } from "../../../src/frontend/ui/generated/Sent";
 import type { TerminalsList } from "../../../src/frontend/ui/generated/TerminalsList";
@@ -170,4 +170,40 @@ describe("抓一屏：失败怎么说", () => {
     }
   });
 
+});
+
+describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () => {
+  it("★★ 结束交 `terminal-end`（句柄或会话 ID，两种宿主同一条）；回的是同一个句柄才算结束了", async () => {
+    answer({ "terminal-end": { ok: { terminal: "m-7f3a" } } });
+    await endTerminal("devbox", { terminal: "m-7f3a" }, "proj");
+    expect(sentCalls()).toEqual([["devbox", "terminal-end", { terminal: "m-7f3a" }]]);
+    answer({ "terminal-end": { ok: { terminal: "tmux-9" } } });
+    await expect(endTerminal("devbox", { terminal: "m-7f3a" }, "proj"), "回了别的句柄 ⇒ 不当成功").rejects.toThrow(
+      copyText("tmuxControl.kill.notConfirmed", { machine: "devbox", target: "proj" }),
+    );
+    answer({ "terminal-end": { ok: { terminal: "tmux-9" } } });
+    await endTerminal("devbox", { sid: "sid-a" }, "proj");
+    expect(sentCalls().at(-1)).toEqual(["devbox", "terminal-end", { sid: "sid-a" }]);
+  });
+
+  it("★ 被拒：那台写好的那一句原样上屏、复制详情带码", async () => {
+    answer({ "terminal-end": { fail: refusedReply("wrong_owner", "S-wrong_owner") } });
+    const e = await failureOf(() => endTerminal("devbox", { terminal: "tmux-1" }, "proj"));
+    expect(e.message).toBe("S-wrong_owner");
+    expect(e.detail).toContain("wrong_owner");
+  });
+
+  it("★ 接管 · 交还交句柄，回那一行此刻的输入那一格；送字可带 `take`（接管再送）", async () => {
+    const held = { kind: "held", holder: { who: "desktop", mine: true } };
+    answer({ "terminal-take-input": { ok: { input: held } }, "terminal-release-input": { ok: { input: { kind: "held", holder: { who: "none", mine: false } } } } });
+    expect(await takeInput("devbox", "m-1")).toEqual(held);
+    expect((await releaseInput("devbox", "m-1")).kind).toBe("held");
+    answer({ "terminal-input": { ok: { result: "delivered" } } });
+    await sendToTerminal("devbox", "m-1", { text: "hi", enter: false }, null, true);
+    expect(sentCalls()).toEqual([
+      ["devbox", "terminal-take-input", { terminal: "m-1" }],
+      ["devbox", "terminal-release-input", { terminal: "m-1" }],
+      ["devbox", "terminal-input", { terminal: "m-1", text: "hi", enter: false, take: true }],
+    ]);
+  });
 });

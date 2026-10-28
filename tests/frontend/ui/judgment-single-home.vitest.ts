@@ -213,15 +213,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 共享 crate `gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）⇒ homes 换成路径形。
     homes: ["src/backend/control/gate_rules.rs::new_tmux_name_issue", "src/backend/control/gate_rules.rs::existing_tmux_name_issue"],
     status: "zero",
-    // §34 Gate 1「只拒空」的两个住址（界面 `tmux-control.ts::rejectEmptyTarget` · monitor `tmux.rs` 的私有谓词）
-    //   并进本行：目标都是已有会话 ⇒ 判定就是 `existing_tmux_name_issue`；界面那一份删（TS 零，空目标原样交给后端，后端入口拒），
-    //   monitor 那一份改调 gate-core。
+    // §34 Gate 1「只拒空」也在本行：目标都是已有会话 ⇒ 判定就是 `existing_tmux_name_issue`；界面零（空目标原样交给后端，后端入口拒）。
     defs: ["isValidTmuxName", "isValidNewTmuxName", "rejectEmptyTarget"],
     needles: [
       { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0 },
       { text: "[*?=]", count: 0 },
-      { text: 'target === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
-      { text: '.trim() === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
     rustNeedles: [

@@ -1,7 +1,7 @@
 //! **一批会话一次问**：「这个 sid 由哪个 tmux 会话在跑」· 停。tab 栏的单个菜单与批量菜单都走这里（单个 = 一个 sid 的一批）。
 //!
 //! 「这个 sid 此刻在这台 tmux 里是什么样」只在 [`standing`] 判一次，停 / 菜单就绪 / 起会话（`session-open`）共用：
-//! 停 = 同 `kill`（三道门、杀句柄）。一个不成不挡下一个。
+//! 停 = 按名单句柄交 `terminal-end` 那一条（`kill::end_terminal`：三道门、杀句柄；托管的挂断）。一个不成不挡下一个。
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
@@ -40,9 +40,9 @@ pub(crate) struct Deps<'a> {
     pub(crate) list: &'a dyn Fn() -> Result<Option<Vec<TmuxEntry>>, CmdErr>,
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
-    /// `(会话名, sid)` ⇒ 杀。
+    /// 名单句柄 ⇒ 结束那个终端（同 `terminal-end`）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<(), crate::wire::spec::Fail>,
+    pub(crate) end: &'a dyn Fn(&str) -> Result<(), crate::wire::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::wire::spec::Fail>,
@@ -139,7 +139,7 @@ pub(crate) struct Outcome {
     pub(crate) outcome: &'static str,
     /// 跳过 / 失败的原因码（做成了 ⇒ `null`）。
     pub(crate) why: Option<String>,
-    /// 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 ⇒ `null`。
+    /// 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
     pub(crate) said: Option<String>,
     /// 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
     pub(crate) copy_detail: String,
@@ -310,7 +310,7 @@ pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
 pub(crate) struct SidsReq {
     /// 那几个会话（1–64 个，不重复）。
     pub(crate) sids: Vec<cmd_wire::Sid>,
-    /// 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+    /// 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
@@ -379,18 +379,20 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
     let Some(rows) = rows else {
         return Answer::skipped(sid, "no_tmux", String::new());
     };
-    let name = match standing(rows, sid) {
-        Standing::Running(n) | Standing::Idle(n) => n,
+    let at = match carriers(rows, sid) {
+        Standing::Running(e) | Standing::Idle(e) => e,
         Standing::None => return Answer::skipped(sid, "not_in_tmux", String::new()),
-        // 命中多个不杀（选错了不可逆）。
-        Standing::Ambiguous(ns) => {
+        // 命中多个不结束（选错了不可逆）。
+        Standing::Ambiguous(es) => {
+            let ns: Vec<String> = es.iter().map(|e| e.name.clone()).collect();
             return Answer {
                 session: ns.first().cloned(),
                 ..Answer::skipped(sid, "ambiguous", ns.join(", "))
-            }
+            };
         }
     };
-    match (deps.kill)(&name, sid) {
+    let name = at.name.clone();
+    match (deps.end)(&at.terminal) {
         Ok(()) => Answer {
             session: Some(name),
             ..Answer::done(sid)

@@ -1855,7 +1855,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 
-describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions-stop，与批量同一条）", () => {
+describe("auto-e2e F-E4 可注入 confirm seam（endSession：交那台 sessions-stop，与批量同一条；那台那一项走 terminal-end）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1868,9 +1868,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
   // 单个杀交那台一个 sid 的一批（`sessions-stop`；那台按 sid 认出是哪个、过三道门）⇒ 这里数交了几发、交的是哪个 sid。
   const killCalls = (): unknown[] => vi.mocked(callStop).mock.calls;
 
-  it("killInTmux 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
+  it("endSession 默认（不传 opts）→ 弹应用内对话框；答之前不杀，答「取消」⇒ 不杀", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    home(tm).actions.killInTmux("hostA", "s1", "cc-abc");
+    home(tm).actions.endSession("hostA", "s1", "cc-abc");
     await microFlush();
     expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabSessionActions.kill.title", { title: "cc-abc" }));
     expect(killCalls(), "还没答就杀了").toHaveLength(0);
@@ -1880,9 +1880,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
     confirmSpy.mockRestore();
   });
 
-  it("killInTmux 注入 confirm=()=>true → 不碰 window.confirm、交那台这一个 sid", async () => {
+  it("endSession 注入 confirm=()=>true → 不碰 window.confirm、交那台这一个 sid", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    home(tm).actions.killInTmux("hostA", "s1", "cc-abc", { confirm: () => true });
+    home(tm).actions.endSession("hostA", "s1", "cc-abc", { confirm: () => true });
     await microFlush();
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(killCalls()).toHaveLength(1);
@@ -1890,9 +1890,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
     confirmSpy.mockRestore();
   });
 
-  it("killInTmux 注入 confirm=()=>false → no-op，不 invoke", async () => {
+  it("endSession 注入 confirm=()=>false → no-op，不 invoke", async () => {
     const confirmSpy = vi.spyOn(window, "confirm");
-    home(tm).actions.killInTmux("hostA", "s1", "cc-abc", { confirm: () => false });
+    home(tm).actions.endSession("hostA", "s1", "cc-abc", { confirm: () => false });
     await microFlush();
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(killCalls()).toHaveLength(0);
@@ -1900,9 +1900,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
   });
 
   // UX 审计 #1：灰态(idle-tmux) tab 也能 kill——opts.idle 走"Claude 已退出"文案（非"正在运行"），照常 kill。
-  it("killInTmux { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
+  it("endSession { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
     const msgs: string[] = [];
-    home(tm).actions.killInTmux("hostA", "s1", "cc-idle1234", {
+    home(tm).actions.endSession("hostA", "s1", "cc-idle1234", {
       idle: true,
       confirm: (m) => {
         msgs.push(m.body ?? "");
@@ -1918,9 +1918,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
   });
 
   // 护栏：live（非 idle）的确认框逐项写会中断什么（那个 tmux 会话里的 Claude · 当前轮次）与保留什么。
-  it("killInTmux 非 idle → 中断那一项点名 tmux 会话里的 Claude 与当前轮次；保留会话记录（live 路径护栏）", async () => {
+  it("endSession 非 idle → 中断那一项点名 tmux 会话里的 Claude 与当前轮次；保留会话记录（live 路径护栏）", async () => {
     const rows: { label: string; items: string[] }[][] = [];
-    home(tm).actions.killInTmux("hostA", "s1", "cc-live1234", {
+    home(tm).actions.endSession("hostA", "s1", "cc-live1234", {
       title: "表格分页",
       confirm: (m) => {
         rows.push(m.rows ?? []);
@@ -1942,7 +1942,7 @@ describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () =>
   it("二次确认通过 → 交那台这一个 sid（变已结束由会话流兜、不主动 archive）；杀成了说杀的是哪个", async () => {
     vi.mocked(callStop).mockResolvedValue([{ sid: "s1", outcome: "done", why: null, detail: "", session: "cc-abc", bus: { removed: [], failed: [], unread: null }, cmd: null }] as never);
     const tm = home(makeTM()).actions;
-    tm.killInTmux("hostA", "s1", "cc-abc");
+    tm.endSession("hostA", "s1", "cc-abc");
     await answerAskDialog(true);
     await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(callStop).mock.calls).toEqual([["hostA", ["s1"]]]);
@@ -1950,14 +1950,14 @@ describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () =>
   });
   it("二次确认取消 → 不交", async () => {
     const tm = home(makeTM()).actions;
-    tm.killInTmux("hostA", "s1", "cc-abc");
+    tm.endSession("hostA", "s1", "cc-abc");
     await answerAskDialog(false);
     expect(callStop).not.toHaveBeenCalled();
   });
   it("那台没杀（关卡拒 / 不在 tmux 里）⇒ 说那台的原因；关卡 2 拒的 ⇒ 提示带「对齐后重试」", async () => {
     vi.mocked(callStop).mockResolvedValue([{ sid: "s1", outcome: "failed", why: "wrong_owner", detail: "x", session: "cc-abc", bus: null, cmd: null }] as never);
     const tm = home(makeTM()).actions;
-    tm.killInTmux("hostA", "s1", "cc-abc", { confirm: () => true });
+    tm.endSession("hostA", "s1", "cc-abc", { confirm: () => true });
     await new Promise((r) => setTimeout(r, 0));
     const [title, body] = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
     expect(title).toBe(copyText("tabSessionActions.kill.failed", { title: "cc-abc" }));
@@ -6582,5 +6582,31 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     expect(touched, "回来以后又去排下一趟（碰了 window）").toBe(0);
     expect(idleAsked).toBe(askedAtDispose);
     expect(cold.length, "拆掉以后不再发新的冷读").toBe(coldAtDispose);
+  });
+});
+
+describe("那台握手时说过做不到的，菜单置灰并说为什么", () => {
+  it("［结束］（`sessions-stop`）在「没有 tmux」的那台上不可点、字后面带原因；那台没说的项与没问过的机器照常", async () => {
+    const { gateByOffer } = await import("../../../src/frontend/ui/tab-menu");
+    const { chan } = await import("../../../src/comms/inward/chan");
+    vi.mocked(invoke).mockImplementation(((cmd: string, args: { origin?: string }) =>
+      Promise.resolve(
+        cmd === "chan_offer" && args.origin === "net2-box"
+          ? { ops: ["sessions-stop", "terminal-preview"], unavailable: [["sessions-stop", "no_tmux", "net2-box 无 tmux"]] }
+          : null,
+      )) as never);
+    await chan.offer("net2-box");
+    const click = vi.fn();
+    const end = gateByOffer("net2-box", { id: "end", label: copyText("tabMenu.kill.label"), onClick: click });
+    expect(end.enabled).toBe(false);
+    expect(end.why, "第二行写为什么（不拼进项名）").toBe(copyText("control.unavailable.noTmux", { machine: "net2-box" }));
+    expect(end.label).toBe(copyText("tabMenu.kill.label"));
+    end.onClick?.();
+    expect(click).not.toHaveBeenCalled();
+    const preview = { id: "preview", label: "预览", onClick: click };
+    expect(gateByOffer("net2-box", preview)).toBe(preview);
+    const elsewhere = { id: "end", label: copyText("tabMenu.kill.label"), onClick: click };
+    expect(gateByOffer("net2-other", elsewhere)).toBe(elsewhere);
+    vi.mocked(invoke).mockResolvedValue(undefined);
   });
 });

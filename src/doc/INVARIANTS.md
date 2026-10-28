@@ -373,9 +373,9 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
-送键与杀会话只走后端（结束：界面经 `src/frontend/ui/tmux-control.ts` 说 `kill`；送字：`terminal-input` · 会话输入队的投递（`faces/session_send.rs`），就地键入在 `session-open` · 换号重启里头；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
+送键与杀会话只走后端（结束：界面交 `terminal-end`（按名单句柄或会话 ID，两种宿主同一条），批量停 `sessions-stop` 每一项同它；送字：`terminal-input` · 会话输入队的投递（`faces/session_send.rs`），就地键入在 `session-open` · 换号重启里头；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
 
-1. **Gate 1（恒强制）**：目标名过 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符）；入口 `kill.rs::admit_existing_name`（kill · capture 共用）与 `src/backend/control/launch.rs::parse_request`。空目标（`=:` 会被当成当前会话）是唯一真正危险的默认值。
+1. **Gate 1（恒强制）**：目标名过 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符）；入口 `kill.rs::admit_existing_name`（结束 · 抓屏共用）与 `src/backend/control/launch.rs::parse_request`。空目标（`=:` 会被当成当前会话）是唯一真正危险的默认值。
 2. **Gate 2（身份，并集）**：`control/gate.rs::admit`：`is_ccm_tmux_name` 前缀命中**或** `@ccm_sid` 已设（只认事实，不认 `_expect`）。判定本体在 `control/gate_rules.rs`。
 3. **Gate 3（只对 kill）**：`control/gate.rs::admit_destructive`：会话只有一个 window 才许 kill（长出了别的 window ⇒ 有独立于本工具的用户活动）。
 

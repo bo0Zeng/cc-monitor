@@ -677,10 +677,17 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` 调它）",
     ),
     (
-        "kill",
-        "后端应答就是成品 `{session, killed}`（身份门 ＋ 窗口门在后端先过、对句柄下手）；monitor 那条命令只在拒空目标、\
-         转、核 `killed`、按三态说人话 —— 那一份解释搬到 `src/frontend/ui/tmux-control.ts::killSession`，命令与发送端\
-         （`backend_kill.rs`）删了",
+        "terminal-end",
+        "结束名单里的一个终端（两种宿主同一条，身份门 ＋ 窗口门在后端先过、对句柄下手）；界面 `src/frontend/ui/terminal-reads.ts::endTerminal` 交句柄或会话 ID，\
+         被拒照后端那一句说",
+    ),
+    (
+        "terminal-take-input",
+        "托管终端接管输入：后端回那一行此刻的输入那一格（`terminal-reads.ts::takeInput`），终端页就地换上",
+    ),
+    (
+        "terminal-release-input",
+        "托管终端交还输入：同上（`terminal-reads.ts::releaseInput`）",
     ),
     (
         "bus-list",

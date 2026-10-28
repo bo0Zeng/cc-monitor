@@ -1,7 +1,7 @@
 //! 帧面 `sessions-where` / `sessions-stop` 的宿主壳（`session-open` · 换号重启起会话要的那几样也由它拼）：把本体（`control/session_batch.rs`）要的那几样拼成生产那一份交进去。
 //!
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
-//! tmux 名单 = 终端名单那一趟（挂着 sid 的窗格各一行）· 记录在不在 = `history-record` 那一问 · 杀 = `kill`（按 sid 认窗格）·
+//! tmux 名单 = 终端名单那一趟（挂着 sid 的窗格各一行）· 记录在不在 = `history-record` 那一问 · 结束 = `terminal-end` 那一条（按名单句柄）·
 //! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `control::ccm::terminal_name_mint_with` · 起会话 = 这台后端自己当 ccm 跑那一行 ·
 //! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（活会话表 `history::live_table::LiveTable::writers`）。
 
@@ -10,7 +10,7 @@ use crate::faces::launch_account_face::{pretrust_with, Files};
 
 use crate::wire::typed::{self, Command};
 
-/// `client` ＝ 请求自报的前端（「哪个前端的会话」那一维）：杀与就地键入都带它过门。`agent` ＝ 批量起那一家（整批一格；停 / 问样子用不着挑号）。
+/// `client` ＝ 请求自报的前端（「哪个前端的会话」那一维）：结束与就地键入都带它过门。`agent` ＝ 批量起那一家（整批一格；停 / 问样子用不着挑号）。
 fn with_deps<T>(
     client: Option<&str>,
     agent: &str,
@@ -34,7 +34,19 @@ pub(crate) fn with_deps_as<T>(
         crate::observe::query::locate::record_for(&crate::history::listing::agent_home(), dir, sid)
             .map(|p| (p.present, p.root))
     };
-    let kill = |name: &str, sid: &str| crate::control::kill::run_as(name, sid, client);
+    let end = |terminal: &str| {
+        let req = crate::control::kill::TerminalEndReq {
+            terminal: Some(terminal.to_string()),
+            sid: None,
+            client: client.map(str::to_string),
+        };
+        crate::control::kill::end_terminal(
+            crate::host::tmux::On::default(),
+            crate::host::managed::installed(),
+            &req,
+        )
+        .map(|_| ())
+    };
     let send_into = |name: &str, sid: &str, line: &str| {
         let req = crate::control::launch::parse_request(crate::control::launch::LaunchReq {
             mode: crate::control::launch::Mode::SendInto,
@@ -76,7 +88,7 @@ pub(crate) fn with_deps_as<T>(
         f(&Deps {
             list: &list,
             record: &record,
-            kill: &kill,
+            end: &end,
             send_into: &send_into,
             run_ccm: &run_ccm,
             mint: &mint,

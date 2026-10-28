@@ -137,12 +137,7 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 }
 
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
-/// 按 `sid` 认：要求此刻有窗格挂着它（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）；
-/// 那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
-pub(crate) fn run_as(name: &str, sid: &str, requester: Option<&str>) -> Result<(), CmdErr> {
-    run_expecting(name, Some(sid), requester)
-}
-
+/// 带 `sid`：要求此刻有窗格挂着它（认完名字换了人 ⇒ 不杀）；那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
 fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), CmdErr> {
     let target = super::launch::exact_target(name);
     // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。

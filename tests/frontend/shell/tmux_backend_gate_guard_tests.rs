@@ -199,7 +199,7 @@ fn monitor_production_corpus() -> (usize, String) {
 /// ★★**monitor 里没有杀会话的第二条路**（零命中 ＋ 正控）。
 ///
 /// 守的要求：`INVARIANTS §34`（破坏性动作过三道门，门只住后端 `control/gate.rs`）与定框 `C5`
-/// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面经通道说后端的 `kill`，
+/// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面经通道说后端的 `terminal-end`，
 /// 后端先 `admit_destructive` 拿**句柄**再杀。monitor 里再长出一处自己拼 `kill-session` 的 shell 串，
 /// 就是 `K-R72` 删掉的那条对**名字**下手的回落回来了（TOCTOU 窗口）。
 /// 正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词。
@@ -211,7 +211,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     assert!(
         !guard_core::contains_word(&corpus, &verb),
         "monitor 生产段里又出现了 `{verb}` —— 杀会话在 monitor 里长回了一条自己拼 shell 串的路。\n\
-         杀会话只许走后端的 `kill`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/tmux-control.ts::killSession` 说它。"
+         杀会话只许走后端的 `terminal-end`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/terminal-reads.ts::endTerminal` 说它。"
     );
     let kill_rs = guard_core::production_code(
         &fs::read_to_string(guard_core::addr::backend_src_root().join("control/kill.rs"))
@@ -223,20 +223,19 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     );
 }
 
-/// ★★**界面说这条控制类帧命令只经一处**：`kill` 的 `callTyped` 只住 `src/frontend/ui/tmux-control.ts`；
-/// `launch` 那一条界面不再发（送键 · 就地 resume 那两个入口删了）⇒ 全界面零处。
+/// ★★**界面说结束只经一处**：`terminal-end` 的 `callTyped` 只住 `src/frontend/ui/terminal-reads.ts`；
+/// `launch` 与 `kill` 两条界面不发 ⇒ 全界面零处。
 ///
-/// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
-/// 按形状收、`killed` / `typed` 不为真不当成功、就地 resume 能不能回落（F14），这几件只写在那一份里；
-/// 别处直接 `chan.call(…, "kill", …)` 就是绕过它们的第二条路。
-/// 两向相等：出现这几个字面量的文件集合 == `{src/tmux-control.ts}`；正控：那一份里各自恰好几处。
+/// 守的要求：「业务解释只有一个家」—— 结束被拒怎么说、按句柄还是按会话认，只写在那一份里；
+/// 别处直接 `callTyped(…, "terminal-end", …)` 就是第二条路。
+/// 两向相等：出现这个字面量的文件集合 == `{terminal-reads.ts}`；正控：那一份里恰好一处。
 #[test]
-fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
+fn the_front_end_ends_terminals_only_through_one_module() {
     let root = guard_core::addr::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
-    let needles = ["callTyped(origin, \"kill\""];
-    let gone = "chan.call(origin, \"launch\"";
+    let needles = ["callTyped(origin, \"terminal-end\""];
+    let gone = ["chan.call(origin, \"launch\"", "callTyped(origin, \"kill\""];
     let mut gone_hits: Vec<String> = Vec::new();
     let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
     for (p, text) in guard_core::scan_tree_excluding(&root.join("src"), &["ts"], &[]) {
@@ -247,14 +246,14 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             .replace('\\', "/");
         scanned += 1;
         let prod = guard_core::strip_comment_lines(&text);
-        if prod.contains(gone) {
+        if gone.iter().any(|g| prod.contains(g)) {
             gone_hits.push(rel.clone());
         }
         for n in needles {
             let c = prod.matches(n).count();
             if c > 0 {
                 homes.entry(n.to_string()).or_default().push(rel.clone());
-                if rel == "src/frontend/ui/tmux-control.ts" {
+                if rel == "src/frontend/ui/terminal-reads.ts" {
                     *counts.entry(n).or_default() += c;
                 }
             }
@@ -264,23 +263,23 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
     for n in needles {
         assert_eq!(
             homes.get(n).cloned().unwrap_or_default(),
-            vec!["src/frontend/ui/tmux-control.ts".to_string()],
-            "`{n}` 出现在 `src/frontend/ui/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
+            vec!["src/frontend/ui/terminal-reads.ts".to_string()],
+            "`{n}` 出现在 `src/frontend/ui/terminal-reads.ts` 之外（或那一份里没有了）—— 界面说结束的家不止一个"
         );
     }
-    assert!(gone_hits.is_empty(), "界面又发起了 `launch`：{gone_hits:?}");
-    // 正控 ＋ 恒等：结束 1（送键与就地 resume 那两处随入口删了；「打断」那个 mode 名 → 删；抓屏改走 `terminal-preview` → 删）。
+    assert!(gone_hits.is_empty(), "界面又发起了 `launch` / `kill`：{gone_hits:?}");
+    // 正控 ＋ 恒等：结束 1。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
-        vec![("callTyped(origin, \"kill\"", 1)],
-        "`src/frontend/ui/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
+        vec![("callTyped(origin, \"terminal-end\"", 1)],
+        "`src/frontend/ui/terminal-reads.ts` 里这一条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
 }
 
 /// ★★**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
 ///
 /// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」——
-/// 抓屏的解释今天只住 `src/frontend/ui/tmux-control.ts`；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现。
+/// 抓屏的解释只住 `src/frontend/ui/terminal-reads.ts`（`terminal-preview`）；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现。
 /// 正控：同一份语料里认得出 monitor 那个唯一的起子进程口（原来认的是 `tmux.rs` 的转调壳，那份文件删了）。
 #[test]
 fn the_monitor_has_no_capture_path_any_more() {
@@ -296,7 +295,7 @@ fn the_monitor_has_no_capture_path_any_more() {
         assert!(
             !corpus.contains(shape.as_str()),
             "monitor 生产段里又出现了 `{shape}` —— 抓屏在 monitor 里长回了一条路；\
-             它只许住界面一处（`src/frontend/ui/tmux-control.ts::capturePane`）"
+             它只许住界面一处（`src/frontend/ui/terminal-reads.ts::previewShot`）"
         );
     }
     assert!(
