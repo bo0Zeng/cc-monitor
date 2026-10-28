@@ -288,19 +288,10 @@ static LOADED: std::sync::Once = std::sync::Once::new();
 /// 内存那一份自上次落盘之后变过没有（没变不重写）。
 static DIRTY: AtomicBool = AtomicBool::new(false);
 
-/// 清单扫描从每一份记录读了多少字节（判据数自己那份夹具，不按墙钟）。按记录分开记：
-/// 同一进程里别的判据并行扫别的记录，合成一个数就数进了别人的。
-#[cfg(test)]
-static READ: std::sync::Mutex<std::collections::BTreeMap<PathBuf, u64>> =
-    std::sync::Mutex::new(std::collections::BTreeMap::new());
-
-/// 记一笔：清单扫描从 `p` 读了 `n` 字节（只在测试构建里记）。
+/// 记一笔：清单扫描从 `p` 读了 `n` 字节（只在测试构建里记，账住判据那一侧，按记录分开记）。
 fn tally_read(p: &Path, n: u64) {
     #[cfg(test)]
-    {
-        let mut t = READ.lock().unwrap_or_else(|e| e.into_inner());
-        *t.entry(p.to_path_buf()).or_default() += n;
-    }
+    tests::tally_read(p, n);
     let _ = (p, n);
 }
 

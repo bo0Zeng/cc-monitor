@@ -3,6 +3,17 @@
 use super::*;
 use crate::agents::claudecode::paths::projects_root;
 
+/// 清单扫描从每一份记录读了多少字节（判据数自己那份夹具，不按墙钟）。按记录分开记：
+/// 同一进程里别的判据并行扫别的记录，合成一个数就数进了别人的。
+static READ: std::sync::Mutex<std::collections::BTreeMap<PathBuf, u64>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// 清单扫描每读一份记一笔（产品那一侧 [`super::tally_read`] 只在测试构建里调它）。
+pub(super) fn tally_read(p: &Path, n: u64) {
+    let mut t = READ.lock().unwrap_or_else(|e| e.into_inner());
+    *t.entry(p.to_path_buf()).or_default() += n;
+}
+
 fn fixture_project(root: &Path, dir_name: &str) -> PathBuf {
     let dir = root.join("projects").join(dir_name);
     std::fs::create_dir_all(&dir).unwrap();
