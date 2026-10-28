@@ -212,7 +212,10 @@ fn a_tier_one_letter_knocks_by_queueing_one_line_for_the_recipient() {
     let q = queue_of(&h, B);
     assert_eq!(q.len(), 1, "收件人的输入队多一条");
     assert_eq!(q[0].end, "cc-bus", "发自 cc-bus");
-    assert_eq!(q[0].id, "cc-bus-m1", "id 由那一封的 id 来（重投只入队一次）");
+    assert_eq!(
+        q[0].id, "cc-bus-m1",
+        "id 由那一封的 id 来（重投只入队一次）"
+    );
     assert!(q[0].text.contains(A), "那一句说是谁来的信");
     assert!(q[0].text.contains("cc-bus recv"), "叫对方去收信");
     assert!(

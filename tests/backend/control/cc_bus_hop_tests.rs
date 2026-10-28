@@ -200,13 +200,9 @@ async fn a_tier_one_letter_for_another_machine_knocks_in_that_machines_input_que
         .await
         .unwrap();
     let queue = |h: &std::path::Path| {
-        crate::history::session_queue::read(
-            &crate::platform::fs::Own::issue_roots(h, h),
-            B,
-            2_000,
-        )
-        .unwrap()
-        .items
+        crate::history::session_queue::read(&crate::platform::fs::Own::issue_roots(h, h), B, 2_000)
+            .unwrap()
+            .items
     };
     let q = queue(&there);
     assert_eq!(q.len(), 1, "那台那条会话的输入队多一条（敲门在收件那台敲）");
