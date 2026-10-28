@@ -30,7 +30,7 @@ import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation } from "../history-reads";
-import { askRename } from "../tab-rename";
+import { renameOver } from "../tab-rename";
 import { setHide } from "../session-hidden-cmds";
 import { undoHide } from "../session-hidden";
 import { fetchBrowse, type BrowseWindow, type HistoryGroup, type HistoryMachine, type HistoryRow } from "../history-list-reads";
@@ -1143,8 +1143,11 @@ export class HistoryView {
     }
   }
 
-  private async rename(r: HistoryRow): Promise<void> {
-    await askRename({ origin: r.origin ?? LOCAL_ORIGIN, sessionId: r.sessionId, label: r.customTitle ?? r.label }, r.customTitle ?? r.label);
+  private rename(r: HistoryRow): void {
+    // 就地改（同标签页栏）：浮在那一行的标题上；那一行此刻不在 ⇒ 浮在整张列表上。
+    const el = this.rowEl(rowKey(r));
+    const over = el?.querySelector<HTMLElement>(`.${s.hvTitle}`) ?? el ?? this.listEl;
+    renameOver(over, { origin: r.origin ?? LOCAL_ORIGIN, sessionId: r.sessionId, label: r.customTitle ?? r.label }, r.customTitle ?? r.label);
   }
 
   /** 删除只问一次；在跑的不让删（后端判的 `can.delete`，主窗口此刻的状态再核一次）。 */

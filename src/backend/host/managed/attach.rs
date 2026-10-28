@@ -12,9 +12,14 @@
 //! 不缩放、不折行；外层大 ⇒ 多出来的空着。只看的一端标题前缀带伪终端的尺寸。
 //! 终端模式（A3-3-15）：外层的输入模式由这里自己管（[`Modes`]），持有者照里面开的开；只看的不开鼠标 · 括号粘贴 · 焦点。
 //! 里面开着同步输出 `?2026` ⇒ 屏照算、先不画，关上那一下一次画完。
+//!
+//! 鼠标（A3-3-33，照 tmux `mouse on`）：外层的鼠标上报由这里自己开（SGR 1006；按键起落，持有者且里面要拖动 / 任意移动时跟着开），
+//! 出外层备用屏那一下关掉。里面开了鼠标上报 ⇒ 持有者照里面的模式与编码交进去（只看的丢）；没开 ⇒ 滚轮往上进翻看、
+//! 翻看里滚轮上下各 [`WHEEL_LINES`] 行、往下滚到底退回实时，别的鼠标事件丢。外层原生选字按住 Shift（外层终端自己的规矩）。
+//! 外层读不到鼠标事件（老的 Windows 控制台只给鼠标事件记录、不变成序列）⇒ 没有滚轮翻看，`前缀 [` 照旧。
 
 use super::hold;
-use super::keys::{self, Act, Copy, CopyKeys, Keys};
+use super::keys::{self, Act, Copy, CopyKeys, Keys, Mice, Mouse, Piece, Wheel};
 use super::screen::Extra;
 use super::wire::{self, ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind, PROTO};
 use cmd_wire::session::HolderWho;
@@ -28,6 +33,9 @@ use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 const ENTER_OUTER: &[u8] = b"\x1b[?1049h\x1b[H\x1b[2J";
 const LEAVE_OUTER: &[u8] =
     b"\x1b[?2004l\x1b[?1l\x1b>\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[m\x1b[?1049l";
+
+/// 滚轮一格翻几行（同 tmux 缺省）。
+const WHEEL_LINES: usize = 5;
 
 /// 外层终端此刻开着的输入模式（瘦客户端自己记：照「里面开了什么 × 是不是持有者」补齐 / 关掉）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -183,6 +191,16 @@ struct Client {
     typed_while_taking: Vec<u8>,
     /// 底行「排队 N 条」：会话那台写好的那一句（`history::session_queue::line_of_host`），照摆；没有 ⇒ 不盖。
     queued: Option<String>,
+    /// 外层送来的字节里认鼠标上报。
+    mice: Mice,
+    /// 已经出了外层备用屏（建时进，[`Client::leave`] 出一次；落地时还没出 ⇒ 那一下出）。
+    left: bool,
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.leave();
+    }
 }
 
 /// 接一个托管终端，直到断开 / 会话结束 / 切到另一个。外层终端的进出由调用方（[`stdio_outer`] 那一侧）管。
@@ -220,7 +238,6 @@ pub(crate) async fn session(
     )
     .await
     .map_err(|e| Said::with_raw(copy_text("beHost.attach.lost", &[]), &e))?;
-    put(&mut *outer.out, ENTER_OUTER);
     let in_tmux = outer.in_tmux;
     let mut c = Client::new(outer);
     let (ftx, mut frx) = tokio::sync::mpsc::unbounded_channel::<Option<Frame>>();
@@ -288,7 +305,7 @@ pub(crate) async fn session(
         send(&mut wr, &Frame::Ctl(Ctl::Bye)).await;
     }
     reader.abort();
-    put(&mut *c.outer.out, LEAVE_OUTER);
+    c.leave();
     if let Some(line) = left_line(&left, name) {
         put(&mut *c.outer.out, format!("{line}\r\n").as_bytes());
     }
@@ -353,9 +370,11 @@ async fn send<W: tokio::io::AsyncWrite + Unpin>(wr: &mut W, f: &Frame) -> bool {
 }
 
 impl Client {
-    fn new(outer: Outer) -> Self {
+    /// 建的那一下进外层备用屏。
+    fn new(mut outer: Outer) -> Self {
         let (prefix, vi) = (outer.prefix, outer.vi);
         let view = (outer.size)();
+        put(&mut *outer.out, ENTER_OUTER);
         Client {
             outer,
             parser: vt100::Parser::new_with_callbacks(24, 80, 0, Hooks::default()),
@@ -371,6 +390,15 @@ impl Client {
             taking: false,
             typed_while_taking: Vec::new(),
             queued: None,
+            mice: Mice::default(),
+            left: false,
+        }
+    }
+
+    /// 出外层备用屏、关掉开着的模式（鼠标上报在内）；只出一次。
+    fn leave(&mut self) {
+        if !std::mem::replace(&mut self.left, true) {
+            put(&mut *self.outer.out, LEAVE_OUTER);
         }
     }
 
@@ -414,25 +442,22 @@ impl Client {
         Some(s)
     }
 
-    /// 外层该开的输入模式：持有者照里面开的；只看的不开鼠标 · 括号粘贴 · 焦点（敲的不送，开了只会吞掉外层原生的选字）。
+    /// 外层该开的输入模式：持有者照里面开的；只看的不开括号粘贴 · 焦点（敲的不送）。
+    /// 鼠标上报恒开（SGR 1006 · 按键起落，滚轮要用）；持有者且里面要拖动 / 任意移动 ⇒ 外层跟着开那一档。
     fn wanted_modes(&self) -> Modes {
         let s = self.parser.screen();
         let x = &self.parser.callbacks().extra;
         let hold = self.holding();
+        let inner = s.mouse_protocol_mode();
         Modes {
             keypad: s.application_keypad(),
             cursor_keys: s.application_cursor(),
             paste: hold && s.bracketed_paste(),
-            mouse: if hold {
-                s.mouse_protocol_mode()
-            } else {
-                MouseProtocolMode::None
+            mouse: match inner {
+                MouseProtocolMode::ButtonMotion | MouseProtocolMode::AnyMotion if hold => inner,
+                _ => MouseProtocolMode::PressRelease,
             },
-            encoding: if hold {
-                s.mouse_protocol_encoding()
-            } else {
-                MouseProtocolEncoding::Default
-            },
+            encoding: MouseProtocolEncoding::Sgr,
             focus: hold && x.focus,
             shape: x.shape,
         }
@@ -647,19 +672,22 @@ impl Client {
                 }
             }
             Ctl::Captured { lines, .. } => {
-                let up = match &self.over {
-                    Over::Copy(v) => v.up,
-                    _ => 0,
+                // 历史回来之前已经退出翻看（`q` · 滚到底）⇒ 不再进。
+                let Over::Copy(v) = &self.over else {
+                    return None;
                 };
-                let mut v = CopyView {
+                let rows = usize::from(self.rows());
+                let up = if v.up == usize::MAX {
+                    rows.saturating_sub(1)
+                } else {
+                    v.up
+                };
+                let up = up.min(lines.len().saturating_sub(rows));
+                self.over = Over::Copy(CopyView {
                     lines,
                     up,
                     found: None,
-                };
-                if up == usize::MAX {
-                    v.up = usize::from(self.rows().saturating_sub(1));
-                }
-                self.over = Over::Copy(v);
+                });
                 self.draw_copy();
             }
             Ctl::ClientsAre { clients } => {
@@ -756,8 +784,88 @@ impl Client {
         }
     }
 
-    /// 外层敲了一块键：交回要发给托管的帧与（收了的话）怎么收的。
+    /// 外层送来一块字节（键与鼠标上报混着）：交回要发给托管的帧与（收了的话）怎么收的。
     fn key(
+        &mut self,
+        k: &[u8],
+        list: &(dyn Fn() -> Vec<(String, String)> + Sync),
+    ) -> (Vec<Frame>, Option<Left>) {
+        let mut sends = Vec::new();
+        for p in self.mice.split(k) {
+            match p {
+                Piece::Mouse(m) => sends.extend(self.mouse(m)),
+                Piece::Bytes(b) => {
+                    let (s, left) = self.keys_in(&b, list);
+                    sends.extend(s);
+                    if left.is_some() {
+                        return (sends, left);
+                    }
+                }
+            }
+        }
+        (sends, None)
+    }
+
+    /// 一次鼠标上报：翻看里滚轮翻；里面开了鼠标上报 ⇒ 持有者照里面的交进去；没开 ⇒ 滚轮往上进翻看。别的丢。
+    fn mouse(&mut self, m: Mouse) -> Option<Frame> {
+        match &self.over {
+            Over::Copy(_) => {
+                if let Some(w) = m.wheel() {
+                    self.wheel_in_copy(w);
+                }
+                return None;
+            }
+            Over::None | Over::Hint => {}
+            Over::Confirm | Over::Sheet | Over::Choose(_) => return None,
+        }
+        let s = self.parser.screen();
+        let mode = s.mouse_protocol_mode();
+        if mode != MouseProtocolMode::None {
+            if !self.holding() {
+                return None;
+            }
+            return m
+                .encode(mode, s.mouse_protocol_encoding(), s.size())
+                .map(Frame::In);
+        }
+        (m.wheel() == Some(Wheel::Up)).then(|| self.enter_copy(WHEEL_LINES))
+    }
+
+    /// 进翻看、先上翻 `up` 行（`usize::MAX` ⇒ 一页）；交回要历史的那一帧。
+    fn enter_copy(&mut self, up: usize) -> Frame {
+        self.over = Over::Copy(CopyView {
+            lines: Vec::new(),
+            up,
+            found: None,
+        });
+        Frame::Ctl(Ctl::Capture {
+            back: super::screen::SCROLLBACK,
+            color: true,
+        })
+    }
+
+    /// 翻看里滚一格；往下滚到底 ⇒ 退回实时。历史还没回来 ⇒ 照记着，回来时落在那儿。
+    fn wheel_in_copy(&mut self, w: Wheel) {
+        let rows = usize::from(self.rows());
+        let Over::Copy(v) = &mut self.over else {
+            return;
+        };
+        let got = !v.lines.is_empty();
+        v.up = match w {
+            Wheel::Up if got => (v.up + WHEEL_LINES).min(v.lines.len().saturating_sub(rows)),
+            Wheel::Up => v.up.saturating_add(WHEEL_LINES),
+            Wheel::Down => v.up.saturating_sub(WHEEL_LINES),
+        };
+        if v.up == 0 && w == Wheel::Down {
+            self.over = Over::None;
+            self.redraw();
+        } else if got {
+            self.draw_copy();
+        }
+    }
+
+    /// 外层敲的一段键（鼠标上报已经挑出去）。
+    fn keys_in(
         &mut self,
         k: &[u8],
         list: &(dyn Fn() -> Vec<(String, String)> + Sync),
@@ -826,19 +934,12 @@ impl Client {
                     self.sheet(&lines);
                 }
                 Act::CopyMode | Act::CopyModePageUp => {
-                    self.over = Over::Copy(CopyView {
-                        lines: Vec::new(),
-                        up: if a == Act::CopyModePageUp {
-                            usize::MAX
-                        } else {
-                            0
-                        },
-                        found: None,
-                    });
-                    sends.push(Frame::Ctl(Ctl::Capture {
-                        back: super::screen::SCROLLBACK,
-                        color: true,
-                    }));
+                    let up = if a == Act::CopyModePageUp {
+                        usize::MAX
+                    } else {
+                        0
+                    };
+                    sends.push(self.enter_copy(up));
                 }
                 Act::AskEnd => {
                     self.over = Over::Confirm;

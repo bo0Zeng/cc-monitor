@@ -30,10 +30,27 @@ class RecordUnits {
     /** 工具调用 id ⇒ 那张调用卡在哪一条的第几块（结果后到时只换它）。 */
     private val calls = HashMap<String, MutableList<Pair<Row, Int>>>()
 
+    /** 上次交出去的那一份；之后有变 ⇒ `null`（下次再拼）。 */
+    private var last: List<RenderUnit>? = null
+
     fun isEmpty(): Boolean = rows.isEmpty()
 
-    /** 此刻的整张单元表（只拼，不排）。 */
-    fun units(): List<RenderUnit> = rows.flatMapTo(ArrayList(rows.size * 2)) { it.units }
+    /** 手上几条记录。 */
+    val size: Int get() = rows.size
+
+    /** 此刻的整张单元表（只拼，不排）；没变 ⇒ 上次那一份原样（同一个实例）。拼是 O(手上的行数)：手上留多少由持有者截（见手机端按页丢）。 */
+    fun units(): List<RenderUnit> = last ?: rows.flatMapTo(ArrayList(rows.size * 2)) { it.units }.also { last = it }
+
+    /** 丢最前面 [n] 条（往上翻读进来、离视口远了的那几页）：它们的调用卡与结果一并忘掉；后面那几条原样留着。 */
+    fun dropFirst(n: Int) {
+        val gone = rows.subList(0, n.coerceAtMost(rows.size))
+        for (row in gone) {
+            resultsOf(row.record).forEach { (id, _) -> results.remove(id) }
+            (row.record as? LineRecord.Reply)?.blocks?.forEach { b -> if (b is Block.ToolUse) calls.remove(b.id) }
+        }
+        gone.clear()
+        last = null
+    }
 
     /** 接在后面。 */
     fun append(rs: List<LineRecord>) = place(rs, rows.size)
@@ -46,6 +63,7 @@ class RecordUnits {
         rows.clear()
         results.clear()
         calls.clear()
+        last = null
         append(rs)
     }
 
@@ -54,6 +72,8 @@ class RecordUnits {
         rs: List<LineRecord>,
         at: Int,
     ) {
+        if (rs.isEmpty()) return
+        last = null
         for ((id, res) in rs.flatMap(::resultsOf)) {
             results[id] = res
             calls[id]?.forEach { (row, i) ->

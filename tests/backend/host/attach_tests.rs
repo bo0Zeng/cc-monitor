@@ -157,6 +157,8 @@ async fn detaching_leaves_the_terminal_running_and_reattaching_shows_the_same_sc
             copy_text("beHost.attach.detached", &[("name", NAME)])
         )
     );
+    // 外层的鼠标上报：接上时开了，断开后最后一次开关是关（A3-3-33）。
+    mouse_left_off(&a.screen);
     // 托管与子进程照跑。
     assert_eq!(super::super::home::alive(&own).len(), 1);
     assert!(!a.screen.raw().ends_with("\x02"), "前缀没送进去");
@@ -476,7 +478,7 @@ fn the_holder_mirrors_paste_and_focus_and_a_viewer_does_not() {
     let (mut v, vs) = bare(24, 80);
     welcome(&mut v, 24, 80, false);
     out(&mut v, b"\x1b[?2004h\x1b[?1004h\x1b[?1000h\x1b[?1006h");
-    for seq in ["\x1b[?2004h", "\x1b[?1004h", "\x1b[?1000h"] {
+    for seq in ["\x1b[?2004h", "\x1b[?1004h"] {
         assert!(!vs.raw().contains(seq), "只看的不开 {seq:?}");
     }
     assert!(v
@@ -559,4 +561,174 @@ fn output_during_copy_mode_is_kept_and_quitting_shows_the_latest_screen() {
     let _ = c.key(b"q", &no_list);
     assert!(s.text().contains("late line"), "退出翻看是最新一屏");
     assert!(s.text().contains("first"));
+}
+
+// ── 鼠标滚轮（A3-3-33）──
+
+/// 外层收到过鼠标上报的开（SGR 1006 · 按键起落），而且每一样最后一次是关。
+fn mouse_left_off(s: &Screen) {
+    let raw = s.raw();
+    for n in ["1000", "1006"] {
+        let on = raw
+            .rfind(&format!("\x1b[?{n}h"))
+            .unwrap_or_else(|| panic!("外层开过 ?{n}"));
+        assert!(
+            raw[on..].contains(&format!("\x1b[?{n}l")),
+            "?{n} 最后一次是关：{:?}",
+            &raw[on..]
+        );
+    }
+    for n in ["1002", "1003"] {
+        if let Some(on) = raw.rfind(&format!("\x1b[?{n}h")) {
+            assert!(
+                raw[on..].contains(&format!("\x1b[?{n}l")),
+                "?{n} 最后一次是关"
+            );
+        }
+    }
+}
+
+const WHEEL_UP: &[u8] = b"\x1b[<64;10;5M";
+const WHEEL_DOWN: &[u8] = b"\x1b[<65;10;5M";
+
+fn rows_1_to_60(c: &mut Client) -> Vec<String> {
+    let lines: Vec<String> = (1..=60).map(|i| format!("row {i}")).collect();
+    out(c, lines.join("\r\n").as_bytes());
+    lines
+}
+
+fn captured(c: &mut Client, lines: Vec<String>) {
+    assert!(c
+        .frame(Frame::Ctl(Ctl::Captured {
+            lines,
+            capped: false,
+            size: Size { rows: 24, cols: 80 },
+            cursor: [23, 6],
+        }))
+        .is_none());
+}
+
+fn first_row(s: &Screen) -> String {
+    s.seen().screen().rows(0, 80).next().unwrap_or_default()
+}
+
+/// ★ 里面没开鼠标：滚轮往上 ⇒ 进翻看、外层第一行往上挪 5 行；再上 5 行；往下滚到底 ⇒ 退回实时。外层开着鼠标上报。
+#[test]
+fn the_wheel_scrolls_into_history_and_back_out_to_live() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    let lines = rows_1_to_60(&mut c);
+    assert!(s.raw().contains("\x1b[?1006h"), "外层开 SGR 鼠标上报");
+    assert!(s.raw().contains("\x1b[?1000h"), "外层开按键起落上报");
+    assert!(first_row(&s).starts_with("row 37"), "{:?}", first_row(&s));
+    let (sends, left) = c.key(WHEEL_UP, &no_list);
+    assert!(left.is_none());
+    assert!(
+        sends
+            .iter()
+            .any(|f| matches!(f, Frame::Ctl(Ctl::Capture { .. }))),
+        "{sends:?}"
+    );
+    assert!(
+        !sends.iter().any(|f| matches!(f, Frame::In(_))),
+        "滚轮没送进去"
+    );
+    captured(&mut c, lines);
+    assert!(first_row(&s).starts_with("row 32"), "{:?}", first_row(&s));
+    let (sends, _) = c.key(WHEEL_UP, &no_list);
+    assert!(sends.is_empty());
+    assert!(first_row(&s).starts_with("row 27"), "{:?}", first_row(&s));
+    let _ = c.key(WHEEL_DOWN, &no_list);
+    assert!(first_row(&s).starts_with("row 32"), "{:?}", first_row(&s));
+    let _ = c.key(WHEEL_DOWN, &no_list);
+    assert_eq!(c.over, Over::None, "滚到底退回实时");
+    assert!(first_row(&s).starts_with("row 37"), "{:?}", first_row(&s));
+    assert!(s.text().contains("row 60"));
+}
+
+/// 翻看还没回来就滚了几格：照记着，回来时落在那儿。
+#[test]
+fn wheel_ticks_before_the_history_arrives_are_kept() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    let lines = rows_1_to_60(&mut c);
+    let _ = c.key(WHEEL_UP, &no_list);
+    let (sends, _) = c.key(WHEEL_UP, &no_list);
+    assert!(sends.is_empty(), "只要一次历史");
+    captured(&mut c, lines);
+    assert!(first_row(&s).starts_with("row 27"), "{:?}", first_row(&s));
+}
+
+/// 里面自己开了鼠标上报 ⇒ 持有者照里面的编码原样交进去，不进翻看。
+#[test]
+fn the_wheel_goes_to_the_inside_when_it_asked_for_the_mouse() {
+    let (mut c, _s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"\x1b[?1000h\x1b[?1006h");
+    let (sends, _) = c.key(WHEEL_UP, &no_list);
+    assert_eq!(sends, vec![Frame::In(WHEEL_UP.to_vec())]);
+    assert_eq!(c.over, Over::None);
+    out(&mut c, b"\x1b[?1006l");
+    let (sends, _) = c.key(b"\x1b[<0;3;4M", &no_list);
+    assert_eq!(
+        sends,
+        vec![Frame::In(vec![0x1b, b'[', b'M', 32, 3 + 32, 4 + 32])],
+        "里面没开 SGR ⇒ 老编码"
+    );
+}
+
+/// 里面要拖动 ⇒ 持有者的外层也开拖动上报；关了退回只报按键起落。
+#[test]
+fn the_outer_reports_drags_only_while_the_inside_wants_them() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"\x1b[?1002h");
+    assert!(s.raw().contains("\x1b[?1002h"));
+    out(&mut c, b"\x1b[?1002l");
+    let raw = s.raw();
+    let on = raw.rfind("\x1b[?1002h").unwrap();
+    assert!(raw[on..].contains("\x1b[?1002l"));
+    assert!(raw[on..].contains("\x1b[?1000h"));
+}
+
+/// 里面没开鼠标时点一下 ⇒ 什么都不送（不把上报的字节当键送进去）。
+#[test]
+fn a_click_is_dropped_when_the_inside_did_not_ask_for_the_mouse() {
+    let (mut c, _s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    let (sends, _) = c.key(b"a\x1b[<0;3;4Mb\x1b[<0;3;4m", &no_list);
+    assert_eq!(
+        sends,
+        vec![Frame::In(b"a".to_vec()), Frame::In(b"b".to_vec())]
+    );
+}
+
+/// 只看的一端：滚轮照样进翻看；里面要鼠标时不交、也不弹「回车接管」那一行。
+#[test]
+fn a_viewer_scrolls_history_but_never_sends_the_mouse() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, false);
+    out(&mut c, b"x");
+    assert!(s.raw().contains("\x1b[?1006h"), "只看的外层也开鼠标上报");
+    let (sends, _) = c.key(WHEEL_UP, &no_list);
+    assert!(sends
+        .iter()
+        .any(|f| matches!(f, Frame::Ctl(Ctl::Capture { .. }))));
+    let (mut v, _vs) = bare(24, 80);
+    welcome(&mut v, 24, 80, false);
+    out(&mut v, b"\x1b[?1000h\x1b[?1006h");
+    let (sends, _) = v.key(WHEEL_UP, &no_list);
+    assert!(sends.is_empty());
+    assert_eq!(v.over, Over::None);
+}
+
+/// 瘦客户端半路没了（出错 · panic · 任务被丢）⇒ 落地那一下照样离开备用屏、关鼠标上报。
+#[test]
+fn dropping_the_client_turns_the_mouse_off_and_leaves_the_alternate_screen() {
+    let (mut c, s) = bare(24, 80);
+    welcome(&mut c, 24, 80, true);
+    out(&mut c, b"x");
+    drop(c);
+    mouse_left_off(&s);
+    assert!(s.raw().ends_with("\x1b[?1049l"), "{:?}", s.raw());
 }

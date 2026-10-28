@@ -337,6 +337,160 @@ impl CopyKeys {
     }
 }
 
+/// 外层终端送来的一次鼠标上报（SGR 1006 那一形：`ESC[<b;x;yM` 按下 · `m` 松开；坐标从 1 起）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Mouse {
+    pub(crate) code: u16,
+    pub(crate) col: u16,
+    pub(crate) row: u16,
+    pub(crate) press: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Wheel {
+    Up,
+    Down,
+}
+
+impl Mouse {
+    /// 滚轮的一格（修饰键 Shift · Alt · Ctrl 那几位不看）。
+    pub(crate) fn wheel(&self) -> Option<Wheel> {
+        if !self.press {
+            return None;
+        }
+        match self.code & !(4 | 8 | 16) {
+            64 => Some(Wheel::Up),
+            65 => Some(Wheel::Down),
+            _ => None,
+        }
+    }
+
+    /// 照里面开的鼠标模式筛、照里面的编码重写成里面认的那一段；里面不要这一下 · 坐标在里面的屏外 · 老编码装不下 ⇒ `None`。
+    /// `inner` ＝ 里面那一屏的（行 · 列）。
+    pub(crate) fn encode(
+        &self,
+        mode: vt100::MouseProtocolMode,
+        enc: vt100::MouseProtocolEncoding,
+        inner: (u16, u16),
+    ) -> Option<Vec<u8>> {
+        use vt100::{MouseProtocolEncoding as E, MouseProtocolMode as M};
+        let motion = self.code & 32 != 0;
+        let button_held = self.code & 3 != 3;
+        let wanted = match mode {
+            M::None => false,
+            M::Press => self.press && !motion,
+            M::PressRelease => !motion,
+            M::ButtonMotion => !motion || button_held,
+            M::AnyMotion => true,
+        };
+        if !wanted || self.col == 0 || self.row == 0 || self.row > inner.0 || self.col > inner.1 {
+            return None;
+        }
+        if enc == E::Sgr {
+            let end = if self.press { 'M' } else { 'm' };
+            return Some(
+                format!("\x1b[<{};{};{}{end}", self.code, self.col, self.row).into_bytes(),
+            );
+        }
+        // 老的两种编码没有「松开的是哪一个键」：松开记成 3；滚轮没有松开。
+        if !self.press && self.code & 64 != 0 {
+            return None;
+        }
+        let code = if self.press {
+            self.code
+        } else {
+            (self.code & !3) | 3
+        };
+        let mut b = b"\x1b[M".to_vec();
+        for v in [code, self.col, self.row] {
+            let v = u32::from(v) + 32;
+            if enc == E::Utf8 {
+                let ch = char::from_u32(v)?;
+                let mut buf = [0u8; 4];
+                b.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+            } else {
+                b.push(u8::try_from(v).ok()?);
+            }
+        }
+        Some(b)
+    }
+}
+
+/// 外层送来的一块字节分成的一段：照原样的 · 一次鼠标上报。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Piece {
+    Bytes(Vec<u8>),
+    Mouse(Mouse),
+}
+
+/// 从外层送来的字节里认出鼠标上报（外层由瘦客户端开着 SGR 1006）。`ESC[<` 起头的跨块接着认；
+/// 块尾只剩 `ESC` / `ESC[` 照原样交（Esc 键不拖到下一块）。
+#[derive(Default)]
+pub(crate) struct Mice {
+    held: Vec<u8>,
+}
+
+impl Mice {
+    pub(crate) fn split(&mut self, bytes: &[u8]) -> Vec<Piece> {
+        let mut out: Vec<Piece> = Vec::new();
+        let mut plain: Vec<u8> = Vec::new();
+        for &b in bytes {
+            let h = &mut self.held;
+            let mouse = matches!(h.as_slice(), [0x1b, b'[', b'<', ..]);
+            match b {
+                0x1b if h.is_empty() => h.push(b),
+                b'[' if h.as_slice() == [0x1b] => h.push(b),
+                b'<' if h.as_slice() == [0x1b, b'['] => h.push(b),
+                b'0'..=b'9' | b';' if mouse => h.push(b),
+                b'M' | b'm' if mouse => match parse_sgr(&h[3..], b == b'M') {
+                    Some(m) => {
+                        if !plain.is_empty() {
+                            out.push(Piece::Bytes(std::mem::take(&mut plain)));
+                        }
+                        out.push(Piece::Mouse(m));
+                        h.clear();
+                    }
+                    None => {
+                        plain.append(h);
+                        plain.push(b);
+                    }
+                },
+                0x1b => {
+                    plain.append(h);
+                    h.push(b);
+                }
+                _ => {
+                    plain.append(h);
+                    plain.push(b);
+                }
+            }
+        }
+        if matches!(self.held.as_slice(), [0x1b] | [0x1b, b'[']) {
+            plain.append(&mut self.held);
+        }
+        if !plain.is_empty() {
+            out.push(Piece::Bytes(plain));
+        }
+        out
+    }
+}
+
+/// `b;x;y` 三个数。
+fn parse_sgr(body: &[u8], press: bool) -> Option<Mouse> {
+    let s = std::str::from_utf8(body).ok()?;
+    let mut it = s.split(';').map(|n| n.parse::<u16>().ok());
+    let (code, col, row) = (it.next()??, it.next()??, it.next()??);
+    if it.next().is_some() {
+        return None;
+    }
+    Some(Mouse {
+        code,
+        col,
+        row,
+        press,
+    })
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/host/keys_tests.rs"]
 mod tests;

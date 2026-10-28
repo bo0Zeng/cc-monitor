@@ -291,3 +291,48 @@ fn a_child_id_is_found_under_its_parent_and_mapped_to_the_parent_sid() {
     assert_eq!(crate::agents::child_parent_sid(&root, "nope"), None);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn the_spawn_note_says_the_call_the_label_the_kind_who_spawned_it_and_how() {
+    use crate::agents::ChildLink;
+    let d = std::env::temp_dir().join(format!("cc-runs-meta-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let child = d.join("agent-g1.jsonl");
+    std::fs::write(&child, "{}\n").unwrap();
+    assert_eq!(spawned(&child), None, "那一份还没落 ⇒ 不说");
+    let meta = d.join("agent-g1.meta.json");
+    std::fs::write(
+        &meta,
+        r#"{"agentType":"Explore","description":" 查一处 ","toolUseId":"t2","parentAgentId":"w1","spawnDepth":2,"requestShape":"background"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        spawned(&child),
+        Some(ChildLink {
+            tool: Some("t2".into()),
+            run: Some("g1".into()),
+            label: Some("查一处".into()),
+            kind: Some("Explore".into()),
+            from: Some("w1".into()),
+            background: true,
+            ..ChildLink::default()
+        })
+    );
+    std::fs::write(
+        &meta,
+        r#"{"agentType":"k","description":"","toolUseId":"t1","requestShape":"foreground"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        spawned(&child),
+        Some(ChildLink {
+            tool: Some("t1".into()),
+            run: Some("g1".into()),
+            kind: Some("k".into()),
+            ..ChildLink::default()
+        }),
+        "主运行前台派出的：没有派它的子运行、不是后台；空标签不算"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

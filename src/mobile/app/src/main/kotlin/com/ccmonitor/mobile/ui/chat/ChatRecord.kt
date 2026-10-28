@@ -51,11 +51,70 @@ internal class ChatRecord(
     /** 这条会话的记录文件；还没挂上 ⇒ `null`。 */
     var path: String? = null
 
-    /** 已读到的最早一行的字节起点；已有的最新一行之后那一行的行号；尾段要了几行。 */
+    /** 已读到的最早一行的字节起点；已有的最新一行之后那一行的行号。 */
     var head = 0L
         private set
     private var nextSeq = 0L
-    private var tailLines = ChatSession.PAGE_LINES
+
+    /** 手上的一页：从 [start] 字节起到 [end] 为止，几条记录（[body] 里几条）· 几行（尾段要几行照它数）。 */
+    private class Span(
+        val start: Long,
+        var end: Long,
+        var records: Int,
+        var lines: Int,
+    )
+
+    /** 手上那几页，从早到晚；跟着尾巴时最前面的整页丢（[trimLocked]）。 */
+    private val spans = ArrayDeque<Span>()
+
+    /** 缓存里最早那一页从哪个字节起（往上翻读回丢掉的那几页时缓存里已有，不再存）；还没存过 ⇒ `null`。 */
+    private var cachedFrom: Long? = null
+
+    /** 手上几行（尾段要几行、往上翻要几行照它；还没读 ⇒ 一屏）。 */
+    private fun tailLines(): Int = spans.sumOf { it.lines }.coerceAtLeast(ChatSession.PAGE_LINES)
+
+    private fun spansOf(pages: List<RawPage>): List<Span> =
+        pages.map { pg -> Span(pg.start, pg.end, pg.rows.count { (it as? Map<*, *>)?.get("record") != null }, pg.rows.count { (it as? Map<*, *>)?.get("end") != null }) }
+
+    /** 末尾接上几行（[end] 是接完之后的字节终点，不知道 ⇒ 照前一页的）：末页不满一屏就接在它上面，满了另起一页。 */
+    private fun appendSpan(
+        end: Long?,
+        records: Int,
+        lines: Int,
+    ) {
+        val last = spans.lastOrNull()
+        if (last != null && last.lines < ChatSession.PAGE_LINES) {
+            last.end = end ?: last.end
+            last.records += records
+            last.lines += lines
+        } else {
+            val start = last?.end ?: head
+            spans.addLast(Span(start, end ?: start, records, lines))
+        }
+    }
+
+    /** 整份换成 [pages] 那几页。 */
+    private fun resetSpans(pages: List<RawPage>) {
+        spans.clear()
+        spans.addAll(spansOf(pages))
+    }
+
+    /**
+     * 跟着尾巴（持有者判视口贴着底）：手上多过「留几页」⇒ 最前面的整页丢，已读到的最早一行挪到下一页的起点（往上翻照它读回）。
+     */
+    fun trimLocked() {
+        val keep = ChatSession.KEEP_PAGES * ChatSession.PAGE_LINES
+        var lines = spans.sumOf { it.lines }
+        var dropped = false
+        while (spans.size > 1 && lines - spans.first().lines >= keep) {
+            val gone = spans.removeFirst()
+            lines -= gone.lines
+            body.dropFirst(gone.records)
+            head = spans.first().start
+            dropped = true
+        }
+        if (dropped) state.value = state.value.copy(canLoadOlder = head > 0L)
+    }
 
     /** 已有最新一行之后的字节（续读从这里接）；不知道 ⇒ `null`（下次从头读）。手上的记录是哪份文件的（[anchorPath]）· 那台给的记号（[anchorMark]，原样交回）。 */
     private var anchorOffset: Long? = null
@@ -67,7 +126,8 @@ internal class ChatRecord(
         path = null
         head = 0L
         nextSeq = 0L
-        tailLines = ChatSession.PAGE_LINES
+        spans.clear()
+        cachedFrom = null
         anchorOffset = null
         anchorPath = null
     }
@@ -104,14 +164,14 @@ internal class ChatRecord(
      */
     private suspend fun freshPath(s: String): String = link.table.mapNotNull { it.live[s]?.path }.first()
 
-    /** 往上翻一段：尾段多要一屏，读到的接在前面。 */
+    /** 往上翻一段：尾段多要一屏，读到的接在前面（跟着尾巴时丢掉的那几页也照这样读回）。 */
     fun loadOlder() {
         val p = path ?: return
         val s = sid() ?: return
         if (state.value.loadingOlder || head <= 0L) return
         state.value = state.value.copy(loadingOlder = true, historyError = null)
         scope.launch {
-            val want = tailLines + ChatSession.PAGE_LINES
+            val want = lock.withLock { tailLines() } + ChatSession.PAGE_LINES
             val got =
                 reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, want))?.let { data ->
                     reads.parsed(HistoryTail.COMMAND, data, HistoryTail::of)?.let { t -> reads.range(p, t.splitAt, head, data)?.let { t to it } }
@@ -122,10 +182,15 @@ internal class ChatRecord(
                     return@withLock
                 }
                 val (t, read) = got
-                tailLines = want
-                head = t.splitAt
+                head = minOf(head, t.splitAt)
                 take(read.records) { body.prepend(it) }
-                cache.prepend(s, read.pages)
+                spans.addAll(0, spansOf(read.pages))
+                // 读回的是丢掉的那几页（缓存里已有）⇒ 只存比缓存最早那一页还早的。
+                val fresh = cachedFrom?.let { c -> read.pages.filter { it.end <= c } } ?: read.pages
+                if (fresh.isNotEmpty()) {
+                    cache.prepend(s, fresh)
+                    cachedFrom = fresh.first().start
+                }
                 state.value = state.value.copy(loadingOlder = false, canLoadOlder = head > 0L)
                 publishLocked()
             }
@@ -163,6 +228,8 @@ internal class ChatRecord(
         val got = cached.pages.map { HistoryRead.decodeRows(it.rows) ?: return publishLocked() }.flatten()
         take(got) { body.reset(it) }
         head = cached.pages.first().start
+        cachedFrom = head
+        resetSpans(cached.pages)
         cached.anchor?.let {
             anchorPath = it.path
             anchorOffset = it.offset
@@ -181,6 +248,7 @@ internal class ChatRecord(
         if (line.seq > nextSeq && !fillLocked(p, line.seq)) return false
         if (line.seq < nextSeq) return false
         line.record?.let { take(listOf(it)) { rs -> body.append(rs) } }
+        appendSpan(line.byteOffset, if (line.record != null) 1 else 0, 1)
         nextSeq = line.seq + 1
         anchorOffset = line.byteOffset
         sid()?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq, anchorMark) }) }
@@ -189,13 +257,16 @@ internal class ChatRecord(
 
     /**
      * 对齐那台：交手上那一份（续点）问 `history-tail`，怎么接那台判、第一页随回包来。续得上 ⇒ 从续点往下读到 `end`、接在后面；
-     * 没交 · 变短 · 被改写 ⇒ 读最后一屏（[tailLines] 行）、整份重来；缺得比一屏多 ⇒ 那台不读那一截，这里读最后一屏、整份重来。
+     * 没交 · 变短 · 被改写 ⇒ 读最后 [lines] 行（缺省：手上那几行）、整份重来；缺得比一屏多 ⇒ 那台不读那一截，这里读最后那几行、整份重来。
      * 没读成 ⇒ `false`（那一句已上屏），已有的不动。
      */
-    suspend fun reloadLocked(p: String): Boolean {
+    suspend fun reloadLocked(
+        p: String,
+        lines: Int = tailLines(),
+    ): Boolean {
         val s = sid() ?: return false
         val held = anchorOffset?.takeIf { !body.isEmpty() }?.let { o -> anchorPath?.let { Held(it, nextSeq, o, anchorMark) } }
-        val data = reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines, held)) ?: return false
+        val data = reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, lines, held)) ?: return false
         val t = reads.parsed(HistoryTail.COMMAND, data, HistoryTail::of) ?: return false
         val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
         val ok =
@@ -203,6 +274,7 @@ internal class ChatRecord(
                 t.how == TailHow.RESUME && held != null ->
                     reads.range(p, held.nextByte, t.end, data)?.also { read ->
                         take(read.records) { body.append(it) }
+                        spans.addAll(spansOf(read.pages))
                         cache.append(s, read.pages.flatMap { it.rows }, anchor)
                     } != null
                 // 缺得多那一形那台没读那一截：最后一屏这里自己读。
@@ -211,7 +283,10 @@ internal class ChatRecord(
                         head = t.splitAt
                         take(read.records) { body.reset(it) }
                         // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
-                        cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, anchor)
+                        val pages = read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }
+                        resetSpans(pages)
+                        cache.replace(s, pages, anchor)
+                        cachedFrom = t.splitAt
                     } != null
             }
         if (ok) heldLocked(anchor)
@@ -237,7 +312,7 @@ internal class ChatRecord(
     /**
      * 从一处命中读起：第一问 `history-read {at}` 读命中那一页、先上屏（落点是它的第一张卡）；再往下读到尾，交读到的行数问 `history-tail` 拿续点。
      * 尾段起点正好是 [at]、终点正好是读到的那里 ⇒ 读过的就是尾段，照它记续点、换缓存；对不上（这当中记录变了）⇒ 照那几行读尾段（[reloadLocked]）。
-     * 之后往上翻、跟流、断线重接都照旧：尾段就是从命中那一行起的那几行（[tailLines]）。没读成 ⇒ `false`（那一句已上屏）。
+     * 之后往上翻、跟流、断线重接都照旧：尾段就是从命中那一行起的那几行（手上那几页）。没读成 ⇒ `false`（那一句已上屏）。
      */
     private suspend fun jumpLocked(
         p: String,
@@ -257,14 +332,16 @@ internal class ChatRecord(
                 }
             } ?: return false
         // 读到的可计行（残尾那一行没有 `end`，不算）。
-        tailLines = read.pages.sumOf { page -> page.rows.count { (it as? Map<*, *>)?.get("end") != null } }
-        val t = reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, tailLines))?.let { reads.parsed(HistoryTail.COMMAND, it, HistoryTail::of) } ?: return false
+        resetSpans(read.pages)
+        val lines = spans.sumOf { it.lines }
+        val t = reads.ask(HistoryTail.COMMAND, HistoryTail.args(p, lines))?.let { reads.parsed(HistoryTail.COMMAND, it, HistoryTail::of) } ?: return false
         if (t.splitAt != at || t.end != read.pages.lastOrNull()?.end) {
             anchorOffset = null
-            return reloadLocked(p)
+            return reloadLocked(p, lines)
         }
         val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
         sid()?.let { cache.replace(it, read.pages, anchor) }
+        cachedFrom = at
         heldLocked(anchor)
         return true
     }
@@ -277,10 +354,7 @@ internal class ChatRecord(
         p: String,
         until: Long,
     ): Boolean {
-        if (until - nextSeq > ChatSession.PAGE_LINES) {
-            tailLines = ChatSession.PAGE_LINES
-            return reloadLocked(p)
-        }
+        if (until - nextSeq > ChatSession.PAGE_LINES) return reloadLocked(p, ChatSession.PAGE_LINES)
         var more = true
         while (more && nextSeq < until) {
             val r = link.call(HistoryLines.COMMAND, HistoryLines.args(p, nextSeq, until), READ_MS)
@@ -289,6 +363,7 @@ internal class ChatRecord(
                     ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND, link.offline.value)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
             take(page.records) { body.append(it) }
             more = page.next > nextSeq && !page.eof
+            appendSpan(page.end, page.records.size, (page.next - nextSeq).coerceAtLeast(0).toInt())
             nextSeq = maxOf(nextSeq, page.next)
             // 续点跟到这一段最后一个可计行之后；每格带它那一行之后的字节落末页。
             anchorOffset = page.end

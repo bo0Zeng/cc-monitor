@@ -565,12 +565,13 @@ async function standingProduct(origin: string, sids: string[], got: Promise<unkn
   if (v === undefined || (v === null && origin === "<local>")) throw NO_CHANNEL;
   const rows = (v ?? []) as Record<string, unknown>[];
   const results = sids.map((sid) => {
-    // 句柄由替身按名字造（不透明，界面只拿来回指）。
+    // 句柄由替身按名字造（不透明，界面只拿来回指）；`run` ＝ 这一条恢复默认放在哪：替身那台的偏好恒是默认（恢复不进 tmux）。
     const at = (standing: string, names: string[]) => ({
       sid,
       standing,
       names,
       terminals: names.map((n) => ({ host: "tmux", terminal: `tmux-${n}` })),
+      run: "direct",
     });
     if (v === null) return at("no_tmux", []);
     const agentOf = (r: Record<string, unknown>) => r.agent ?? (r.command === "claude" || r.command === "node");
@@ -581,8 +582,7 @@ async function standingProduct(origin: string, sids: string[], got: Promise<unkn
     if (idle.length > 0) return at("idle", [idle[0]]);
     return at("none", []);
   });
-  // 这台恢复默认放在哪：替身那台的偏好恒是默认（恢复不进 tmux）。
-  return chanReply({ results, run: "direct" });
+  return chanReply({ results });
 }
 
 /** 一发 `chan_call` 若是 `sessions-where` ⇒ 替身扮那台答（名单向判据手里的替身要）；否则 `null`。 */

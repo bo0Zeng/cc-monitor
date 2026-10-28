@@ -285,6 +285,9 @@ class ChatSession(
     private var landingKey: String? = null
     private var landingTool: String? = null
 
+    /** 视口贴着底（见 [follow]）：一开始是。 */
+    @Volatile private var following = true
+
     /**
      * 从搜内容的一处命中打开：[offset] 是命中那条记录那一行的字节起点，[tool] 是它落在哪次工具调用的卡里（缺 ⇒ 它自己那张卡）。
      * 还没挂上 ⇒ 挂上时从那里读；已经挂着 ⇒ 撤掉重挂一次，从那里读（见 [jumpLocked]）。
@@ -297,6 +300,7 @@ class ChatSession(
         jumpAt = offset
         landingTool = tool
         landingKey = null
+        following = false
         val old = follow ?: return
         old.cancel()
         attached = false
@@ -340,6 +344,7 @@ class ChatSession(
             folds.failOf(body.units(), after)?.let {
                 landingKey = it
                 landingTool = null
+                following = false
             }
         }
 
@@ -457,8 +462,17 @@ class ChatSession(
         }
     }
 
-    /** 往上翻（见 [ChatRecord.loadOlder]）。 */
-    fun loadOlder() = record.loadOlder()
+    /**
+     * 视口贴着底（屏上报，见 `ChatTranscript`）：贴着 ⇒ 手上只留最后 [KEEP_PAGES] 页，更早的按页丢（[ChatRecord.trimLocked]）；
+     * 人往上翻着 · 从命中打开 · 跳到第一处失败 · 往上翻读回 ⇒ 不贴底、一页不丢，人滚回底才又丢。
+     */
+    fun follow(on: Boolean) = underLock { following = on }
+
+    /** 往上翻（见 [ChatRecord.loadOlder]）：读回来的那一页人正要看，先不丢（屏上滚回底才又报贴着）。 */
+    fun loadOlder() {
+        following = false
+        record.loadOlder()
+    }
 
     /** 聊天屏进 / 出：进了名单这条会话的行才上流，退了就停（`stream-watch`）。 */
     fun visible(on: Boolean) {
@@ -676,14 +690,25 @@ class ChatSession(
         }
         // 回执到了（会话那台已落盘）的才进流；还在名单里的那几句只在名单那一排（[ChatUiState.queue]）；还没回执的在输入框上方（[ChatUiState.outbox]）。
         val (local, outbox) = box.view()
-        val units = body.units() + local.filterNot { queue.holds(it.key) }
-        val landing = landingTool?.let { t -> units.firstOrNull { it is RenderUnit.ToolCall && it.toolUseId == t }?.key } ?: landingKey
+        // 跟着尾巴：手上只留最后几页（单元表 · 流的长度都截在这里）。
+        if (following) record.trimLocked()
+        val shown = local.filterNot { queue.holds(it.key) }
+        val units = body.units().let { if (shown.isEmpty()) it else it + shown }
+        // 落在一次工具调用的卡里：那张卡读到了 ⇒ 记成落点，之后不再每次找。
+        landingTool?.let { t -> units.firstOrNull { it is RenderUnit.ToolCall && it.toolUseId == t }?.key }?.let {
+            landingKey = it
+            landingTool = null
+        }
+        val landing = landingKey
         _state.value = _state.value.copy(units = units, outbox = outbox, queue = queue.lines(), landing = landing, stream = folds.fold(units, landing))
     }
 
     companion object {
         /** 打开一条先读最后这么多行；往上翻一次再多读这么多。 */
         const val PAGE_LINES = 60
+
+        /** 跟着尾巴时手上留几页（[PAGE_LINES] 行一页；末页还没满的那一页另算）：手机视口的事，桌面不照它。 */
+        const val KEEP_PAGES = 3
 
         /** 输入框停手这么久才存草稿。 */
         private const val DRAFT_SAVE_MS = 500L
