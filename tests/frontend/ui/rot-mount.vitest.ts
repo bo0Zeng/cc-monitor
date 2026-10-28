@@ -44,7 +44,7 @@ const VIEW: RotationViewReply = {
   now: 1,
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
-  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [{ key: "caps", kind: "daySegments", window: "5h", label: "夹具·上限 5h", v: null, from: "own", segs: [{ from: 0, to: 1440, fromText: "00:00", toText: "24:00", v: 90, text: "夹具·90", tip: "夹具·全天 90" }] }], rules: [], marks: [] }] },
+  board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", row: 0, line: "", hover: "", cells: [{ key: "caps", kind: "daySegments", window: "5h", label: "夹具·上限 5h", v: null, from: "own", segs: [{ from: 0, to: 1440, fromText: "00:00", toText: "24:00", v: 90, text: "夹具·90", tip: "夹具·全天 90" }] }], rules: [], marks: [] }] },
   start: "",
   current: "",
   lineup: [],

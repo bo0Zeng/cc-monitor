@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.rotation
 import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotSegment
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.wire.gen.RotAccount
 import com.ccmonitor.mobile.core.wire.gen.RotCell
 import com.ccmonitor.mobile.core.wire.gen.RotFrom
 import com.ccmonitor.mobile.core.wire.gen.RotHint
@@ -18,13 +19,23 @@ import com.ccmonitor.mobile.core.wire.gen.RotationViewReply
 /** 一天的分钟。 */
 internal const val DAY_MIN = 1440L
 
-/** 视图里这个号那一行（号列表外 ⇒ `null`）。 */
+/** 视图里这个号那一行（号列表外 ⇒ `null`）；改设置 · 移出 · 拖动交它带的 `row`（不拿第几张号牌当行号）。 */
 internal fun rowOf(
     view: RotationViewReply,
     account: String,
-): RotRow? {
-    val i = view.accounts.indexOfFirst { it.account == account }
-    return if (i in 0 until view.listed) view.board.rows.getOrNull(i) else null
+): RotRow? = view.board.rows.firstOrNull { it.account == account }
+
+/** 拖第 [from] 张号牌松在第 [to] 张上 ⇒ 挪行的意图：两头都交那一行带的行号；同一张 · 认不出 ⇒ `null`（不交）。 */
+internal fun cardMove(
+    view: RotationViewReply,
+    listed: List<RotAccount>,
+    from: Int,
+    to: Int,
+): Map<String, Any?>? {
+    if (from == to) return null
+    val a = listed.getOrNull(from)?.let { rowOf(view, it.account) } ?: return null
+    val b = listed.getOrNull(to)?.let { rowOf(view, it.account) } ?: return null
+    return RotEdit.move(a.row.toInt(), b.row.toInt())
 }
 
 /** 号名旁的记号（那台照声明给的：字形 · 虚线框 · 那一句）。 */
