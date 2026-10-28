@@ -26,7 +26,7 @@ edition = "2021"
 # natively on the target.
 # It is the root of its own small workspace (see `[workspace]` at the end): the
 # dial core `ssh-dial/` (shared with the phone) is a member, so both share this
-# lock and the patched russh, and `cargo test --workspace` runs its tests too.
+# lock and the same russh, and `cargo test --workspace` runs its tests too.
 #
 # F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
 #   · `cargo build`  **真的独立**。把两条 backend→monitor 的 `include_str!` 路径打断，
@@ -94,7 +94,7 @@ shots = []
 [dependencies]
 # Versions pinned to whatever ../frontend/shell/Cargo.lock already resolved so the
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
-# tokio 1.52.x, notify 6.1.x, walkdir 2.5.x,
+# tokio 1.52.x, notify 8.2.x, walkdir 2.5.x,
 # tracing 0.1.x). Keep this list minimal.
 #
 # `rustls` / `webpki-roots` 也在 `../frontend/shell/Cargo.lock` 里：中转 crate `comms-outward` 是那个 workspace 的成员，
@@ -222,17 +222,15 @@ ring = "0.17"
 # ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
-# 版本与 feature 集**逐字照抄**当年 `../frontend/shell/Cargo.toml` 那一行（`0.61.1` · `default-features = false`
-# · `["ring", "flate2", "rsa"]`）—— 理由不是省事：**两侧握出来的必须是同一套算法集**，
-# 一侧多开一个 feature 就意味着「界面拨得通、代理拨不通」这种只在某台远端上才现形的分叉。
-# **界面那一侧的 `russh` / `russh-sftp` / `primefield` 三行已经删了**（界面进程零 SSH）
-# ⇒ 「两侧同一套」这句话今天没有第二侧了；本 crate 是唯一的 SSH 客户端。
-# `primefield` 那条钉（搬自 `../frontend/shell/Cargo.toml`，那一行随三行一起删了）：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
-# 它们要 primefield 0.14.0-rc.9；cargo 默认会在 0.14.0-rc.* 里取最新的 rc.10（改了 ff trait 拆分，与 rc.9 的
-# p256/p521 不兼容 ⇒ `E0277 FieldElement: elliptic_curve::Field`）。本 crate **没有**声明它，靠的是 lock 里锁着的
-# `0.14.0-rc.9`（从 monitor 那份 lock 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
+# 版本与 feature 集（`0.65` · `default-features = false` · `["ring", "flate2", "rsa"]`）与 `ssh-dial/Cargo.toml` ·
+# `../mobile/core-rs/rust/Cargo.toml` 那两行逐字相同：同一棵 workspace 里 russh 只许解析出一份
+# （`dial_compress_tests::russh_comes_from_crates_io_at_a_version_with_the_zlib_fix` 钉 lock 里恰好一块、来自 crates.io）。
+# 界面进程零 SSH（界面那一侧的 `russh` / `russh-sftp` / `primefield` 三行早删了）⇒ 本 workspace 是唯一的 SSH 客户端。
+# 0.61 那时靠 lock 播种绕过的两件（`primefield 0.14.0-rc.9` 钉 · yanked 的 `crypto-bigint 0.7.3`）随升级没了：
+# 0.65 重解析出的是 `primefield 0.14.0` 正式版与 `crypto-bigint 0.7.10`（未 yank，10-28 crates.io 实查）。
+# 0.62 → 0.65 跟着改的 API：`check_server_key` 收 `PublicKeyOrCertificate`（`ssh-dial/connect.rs`：证书不认）。
 #
-# ⚠⚠ **两条如实登记的代价，别读成「没问题」**：
+# ⚠ **如实登记**：
 #   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
 #      `KG1` 成功标准② 已因此重写成「静态 musl 二进制」）。russh 走的是**同一棵 `ring`**
 #      ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
@@ -240,58 +238,10 @@ ring = "0.17"
 #      「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」（现行版本是 `K30`）⇒ 今天**不是**「本 crate 破了一条还活着的规矩」，
 #      是**那条规矩已经不在了**。上面 tokio 那条 `net` feature 的注释同源同结论，
 #      **这份文件里关于 `C18` 的两处话从此不再打架**。
-#   ② 🔴 **musl 交叉编译本机没验**。CI（`.github/workflows/release.yml` 的 `build-backends`）
-#      要把本 crate `cargo zigbuild` 到 `x86_64-unknown-linux-musl` 与 `aarch64-unknown-linux-musl`，
-#      **而沙箱门禁只做本机 gnu 构建、不做交叉编译** ⇒ **门禁全绿也证不出这两个 target 编得过**。
-#      `ring` 在 musl 上要 `cc` 编汇编，zig 作 linker 这条路本 crate 已经走通过（`rustls` 那次），
-#      但**那次的依赖树里没有 russh**。**这一格是「没验」，不是「验过没事」。**
-#
-# ⚠⚠ **第三条如实登记：这一条今天离线解析不动，靠的是 lock 已经先播过种。**
-# `russh 0.61.1` 无条件依赖 `crypto-bigint ^0.7.1`，而现打：`crypto-bigint` 的
-# `0.7.0 … 0.7.4` **在 crates.io 上全部 yanked**（只有 `0.7.5` 没被 yank），
-# 而门禁那个断网沙箱的 crate 缓存里**只有** `crypto-bigint-0.7.3.crate` 一份
-# ⇒ `--offline` 把候选集限成「已下载的那几份」⇒ 唯一候选是 yanked 的那份
-# ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
-# `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
-# `../frontend/shell/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
-# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 是
-# 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
-# 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
-# （与 monitor 侧同一份）。哪天 `russh` 升到能用 `0.7.5` 的版本，两侧一起挪。
-#
-# ── 🔴 **今天的状态与后果** ───────────────────────────────
-# 上面「**第三条如实登记**」与「**代价写明**」那两段讲的是 `K-P6b` **当时怎么绕过去的**
-# （拿 monitor 那份 lock 播种）。这一段讲**今天**。
-#
-# ① **今天钉着哪个版本 —— 实测**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
-#    `grep -c '^name = "crypto-bigint"$' <lock>`）：`src/backend/Cargo.lock` ⇒ **1** 处、
-#    版本 **`0.7.3`**；`../frontend/shell/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
-#
-# ② 🔴 **后果一句话：「今天编得过」不等于「明天还编得过」。**
-#    今天编得过，**是因为 lock 里已经写着** —— `cargo` 只在**解析**那一步挡 yanked。
-#    凡是让 cargo **重走解析**的事：`cargo update` · 删掉 / 换掉 lock · 换一台没有这份 crate
-#    缓存的机器 · 加或改任何一条依赖 —— **都会撞上同一堵墙**。
-#    ⇒ 这**不是**「今天编不过」，是「**哪天要重解析就编不过**」。别把绿门禁读成这件事没了。
-#
-# ③ ⚠ **「那几个版本到底有没有被 yank」—— `K-R34` 没核，判不了。**
-#    上面「`0.7.0 … 0.7.4` 全部 yanked」那句是 `K-P6b` 那一轮写下的，当时的依据是
-#    **解析期报错**（住址就在上面同一段）—— 那是**转述，不是实测的读数**。
-#    要核它得**联网**查 crates.io，而门禁沙箱一律断网（`DEVBOX_NET=none`）
-#    ⇒ 本文件里关于 yank 的每一句（含上面「代价写明」那两行），读的时候都要带上这个口径。
-#
-# ④ 🔴 **两条出路 —— 这里只写「谁来决定」，不写「怎么做」；`K-R34` 不做决定**：
-#    · **升到 `crypto-bigint 0.7.5`**：它是跟着 `russh` 走的，而两侧的版本与 feature 集
-#      **必须同版同 feature**（理由见上面那段：一侧多开一个 feature 就是「界面拨得通、
-#      代理拨不通」）⇒ **本 crate 单方面决定不了**，是**一件同时动 monitor 与后端两侧的活**。
-#    · **砍掉 `rsa` feature**（`crypto-bigint` 就是它拉进来的）：要**先量**
-#      「有没有只认 RSA host key 的远端」—— 那是一次对**真实远端**的摸底，**今天没人量过**。
-#      **谁来决定：用户**（只有他知道要连哪些机器）。
-#    ⚠ 这两条都压着 ③ 那一问（**要联网**）。
-#
-# ⑤ ⚠ **别把这一段读成「已知问题、可接受」—— 没有人裁过那句话。**
-#    它今天的状态是「**登记在案、等着谁来决定**」，不是「批过了」。
+#   ② musl 交叉编译：沙箱门禁只做本机 gnu 构建、不做交叉编译（门禁全绿证不出 musl 编得过）；
+#      升 0.65 那一趟本机 `cargo zigbuild --target x86_64-unknown-linux-musl` 现打编过（A17-45-2-5）。
 # ─────────────────────────────────────────────────────────────────────────
-russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
 # ── SFTP 客户端：**SFTP 进本机常驻后端**（用户「进本机常驻后端，只写暂存区」）──
 #
 # 🔴 **它只服务 `src/dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
@@ -303,7 +253,7 @@ russh = { version = "0.61.1", default-features = false, features = ["ring", "fla
 # 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
 # 字节只能走 `dial/` 那条已鉴权的 SSH 连接。
 russh-sftp = "3"
-notify = "6.1"
+notify = "8.2"
 walkdir = "2.5"
 # ── 解压（`control/files_extract.rs`）──
 # 由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解。三条都纯 Rust、MIT / Apache-2.0：
@@ -346,9 +296,8 @@ comms-outward = { path = "../comms/outward", features = ["test-support"] }
 guard-core = { path = "../common/guard-core" }
 # `acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
 acct-core = { path = "../common/acct-core", features = ["fixtures"] }
-# vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：
-# 盘上每一份与 `VENDOR.md` 里取自 `.crate` 的 sha256 逐份相等。**只在测试期链接**；版本就是 lock 里 russh 那棵树
-# 早已解析的 `sha2 0.11.0`（离线可用、不新增包）。
+# 判据里异源算 sha256（夹具的摘要 · 传输与写盘的整份摘要对拍）。**只在测试期链接**；版本就是 lock 里 russh 那棵树
+# 早已解析的 `sha2 0.11`（不新增包）。
 sha2 = "0.11"
 # 〔C01 同一条理由〕记录解释进了后端（`agents/claudecode/schema.rs`）⇒ 界面收到的记录的线上形状从这里导出
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
@@ -356,19 +305,6 @@ sha2 = "0.11"
 ts-rs = "12.0.1"
 # 假时钟（停着的钟，`advance` 才走）：测「挂着的提问自己带的期限」· 保活几轮判死不按墙钟等。只在测试档开。
 tokio = { version = "1", features = ["test-util"] }
-
-# ── **打补丁版 russh** ─────────────
-#
-# 上面那一行依赖声明**一个字不动**（`russh = { version = "0.61.1", … }`）；这里把 crates.io 那份换成仓内副本。
-# 副本 = 本机缓存里那份 `russh-0.61.1.crate` 原样解开（其 sha256 == 本 lock 原先锁的 checksum）＋ 只改
-# `src/compression.rs::Decompress::decompress` 的收尾判断（用这一次调用**之后**的进度；上游用调用之前的 ⇒
-# 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 ——）。
-# 来历、改了哪几行、上游修好之后怎么撤：`../vendor/russh/VENDOR.md`。
-# 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。
-# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_core::addr::backend_src_root()` 递归收 `.rs`，
-#   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
-[patch.crates-io]
-russh = { path = "../vendor/russh" }
 
 # 发布档按体积编（size2 10-11）：后端在 monitor 里内嵌三份（本机一份 · 远端两份），每份小一截，包就小一大截。
 # · opt-level "s" 而不是 "z"：量过 "z" 冷扫一份 383 MB 会话 CPU 慢 1.3–1.9 倍；"s" 与默认的 3 一样快。
@@ -381,7 +317,7 @@ codegen-units = 1
 strip = true
 
 # ── 后端这一棵 workspace：本包 ＋ 拨号核心（`ssh-dial/`）＋ 手机嵌的 Rust 核心（`../mobile/core-rs/rust`，crate `mobcore`，只是拨号核心的 FFI 外壳）──
-# 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；两份的判据由 `cargo test --workspace` 跑。
+# 同一份 lock、同一个 russh（crates.io 上游那一份，各成员的版本声明对齐 ⇒ lock 里只一块）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
 members = [".", "ssh-dial", "deploy", "egress", "../mobile/core-rs/rust"]

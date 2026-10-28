@@ -144,7 +144,7 @@ uuid = { version = "1", features = ["v4"] }
 # `codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
 # `agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
 # `acct-core` 挪到 dev 侧（见下）：monitor 生产段零引用，只有生成器（`AUTH_KINDS` → `judgment-rules.ts`）用它。
-# 对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
+# 对外文案表的 Rust 取文口（唯一一份实现，调用方直接调）。常驻后端与 creds-core 也链它。
 copy-core = { path = "../../common/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
 # **不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（本机那份的状态
@@ -178,9 +178,7 @@ filewin-contract = { path = "../../common/filewin-contract" }
 # `search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
 # workspace 成员也出列、crate 删了：通用口径进后端 `observe/search_rules.rs`（今住 `history/search_rules.rs`），Claude 记录文本那一半进 `agents/claudecode/text.rs`。
 
-notify = "6"
-notify-debouncer-mini = "0.4"
-walkdir = "2"
+notify = "8"
 
 # **`russh` / `russh-sftp` / `primefield` 三行出了本清单：界面进程零 SSH**（用户
 # 「SFTP 进本机常驻后端」；SR1a 已把其余拨号搬进本机常驻后端）。那三行的来历（ring 后端 · 3.0.0 选型 ·
@@ -193,7 +191,6 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 parking_lot = "0.12"
 
-dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
