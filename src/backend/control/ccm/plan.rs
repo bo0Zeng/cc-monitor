@@ -652,14 +652,15 @@ pub(crate) fn qarg(s: &str) -> String {
     }
 }
 
-/// tmux 会话名里**一段**的净化（不含 `-cc` 后缀）：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`。
+/// tmux 会话名里**一段**的净化（不含 `-cc` 后缀）：取末段路径（`/` 与 Windows 的 `\` 都算分隔）→ 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`。
 /// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
 /// 全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
 /// 起会话要名字由这台铸（[`super::terminal_name_mint_with`]）。
 fn name_segment(raw: &str) -> String {
-    let trimmed = raw.trim_end_matches('/');
-    let base = trimmed.rsplit('/').next().unwrap_or("");
+    let sep = |c: char| c == '/' || c == '\\';
+    let trimmed = raw.trim_end_matches(sep);
+    let base = trimmed.rsplit(sep).next().unwrap_or("");
     let mut s = String::new();
     let mut last_dash = false;
     for c in base.chars() {

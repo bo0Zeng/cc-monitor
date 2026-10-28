@@ -2863,3 +2863,11 @@ fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
 fn every_platform_hosts_a_plain_cc_typed_in_a_new_terminal() {
     assert!(Env::for_preview_in("/home/pi".into()).can_host);
 }
+
+/// A3-3-34：Windows 的目录用反斜杠分段 ⇒ 名字取最后一段（同 `/` 那一形），不把整条路径揉成名字。
+#[test]
+fn a_windows_directory_names_the_terminal_after_its_last_segment() {
+    assert_eq!(derive_tmux_name(r"C:\Users\pi\proj"), "proj-cc");
+    assert_eq!(derive_tmux_name(r"C:\Users\pi\proj\"), "proj-cc");
+    assert_eq!(derive_tmux_name(r"C:\"), "C-cc");
+}
