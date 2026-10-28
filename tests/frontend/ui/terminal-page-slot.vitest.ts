@@ -11,7 +11,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "billing-2", title: "billing" };
 
 function row(over: Partial<TerminalRow>): TerminalRow {
-  return { terminal: "%1", tmuxName: "x", sid: null, clients: 0, input: "shared", programExited: false, inputNo: null, ...over };
+  return { terminal: "%1", name:"x", sid: null, clients: 0, input: "shared", programExited: false, inputNo: null, ...over };
 }
 
 const SHOT: TerminalShot = { lines: [], text: "$", screen: "fp", atText: "12:00:00" };
@@ -39,7 +39,7 @@ const flush = async (): Promise<void> => {
 
 describe("终端页看占位标签页的那个终端", () => {
   it("★ 按句柄认那一行（不按会话认）、抓那一屏、订实时；页头是占位的标题与那台", async () => {
-    const { page, reads } = rig([row({ terminal: "%3", tmuxName: "other" }), row({ terminal: "%7", tmuxName: "billing-2" })]);
+    const { page, reads } = rig([row({ terminal: "%3", name:"other" }), row({ terminal: "%7", name:"billing-2" })]);
     page.sessionChanged();
     page.setVisible(true);
     await flush();
@@ -65,7 +65,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
     [...page.el.querySelectorAll("button")].find((b) => b.textContent === label && b.style.display !== "none");
 
   it("★★ 别的一端持有 ⇒ 写后端那一句、给［接管输入］；点了交 `terminal-take-input`，回的那一格就地换上 ⇒［交还］", async () => {
-    const { page, holds } = rig([row({ terminal: "%7", tmuxName: "billing-2", input: "held", holder: { said: "S-in-phone", mine: false } })]);
+    const { page, holds } = rig([row({ terminal: "%7", name:"billing-2", input: "held", holder: { said: "S-in-phone", mine: false } })]);
     holds.take.mockResolvedValue({ kind: "held", holder: { who: "desktop", mine: true, said: "S-here" } });
     page.sessionChanged();
     page.setVisible(true);
@@ -84,7 +84,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
   });
 
   it("★ tmux 那一形不出［接管输入］/［交还］", async () => {
-    const { page } = rig([row({ terminal: "%7", tmuxName: "billing-2" })]);
+    const { page } = rig([row({ terminal: "%7", name:"billing-2" })]);
     page.sessionChanged();
     page.setVisible(true);
     await flush();
@@ -93,7 +93,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
   });
 
   it("★★ 送字被拒成「输入在另一端」（下一步带 take）⇒ 照那句说、给［接管再送］：同一份字带 take 再送", async () => {
-    const { page, reads } = rig([row({ terminal: "%7", tmuxName: "billing-2", input: "held", holder: { said: "S-in-phone", mine: false } })]);
+    const { page, reads } = rig([row({ terminal: "%7", name:"billing-2", input: "held", holder: { said: "S-in-phone", mine: false } })]);
     reads.send.mockResolvedValueOnce({ result: "refused", said: "S-held", screen: null, acts: ["take"] }).mockResolvedValue({ result: "delivered", acts: [] });
     page.sessionChanged();
     page.setVisible(true);

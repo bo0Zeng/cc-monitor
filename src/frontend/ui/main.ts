@@ -264,7 +264,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.switchTo(sid);
     },
     openWindow: (p) =>
-      void openTerminalWindow({ origin: p.origin, terminal: p.row.terminal, name: p.row.tmux_name, title: p.row.title, windowTitle: p.row.window_title }),
+      void openTerminalWindow({ origin: p.origin, terminal: p.row.terminal, name: p.row.name, title: p.row.title, windowTitle: p.row.window_title }),
     newSession: () => void openNewSession({}),
     newSessionOn: (origin) => void openNewSession({ origin }),
   });

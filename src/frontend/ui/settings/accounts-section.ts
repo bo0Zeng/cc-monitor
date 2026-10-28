@@ -717,7 +717,7 @@ export class AccountsSection {
         this.waiting.add(key);
       } else {
         // 开不了窗 ⇒ 问那台有没有 tmux（问不到 ⇒ 照给［在 tmux 里登录］，按下去那台照实说）。
-        this.noWindow.set(key, await askFacts(origin, null).then((f) => f.tmux, () => true));
+        this.noWindow.set(key, await askFacts(origin, null).then((f) => f.hosts.includes("tmux"), () => true));
       }
     } catch (e) {
       failToast(copyText("acctPage.login.failed", { name: a.name }), e, { level: "error" });
