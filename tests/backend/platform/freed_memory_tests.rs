@@ -87,7 +87,11 @@ fn split_kept(ps: Vec<usize>) -> (Vec<usize>, Vec<usize>) {
 
 /// 几条线程各分一批：放掉的一半自己放、一半递给主线程放；之后各自闲着（阻塞在收信上，不再分配），量完才走。
 /// 回（量到的峰 · 留下的块 · 闲着的线程：丢掉发端它就走）。
-fn threads_alloc_and_go_idle() -> (u64, Vec<usize>, Vec<(std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>)>) {
+fn threads_alloc_and_go_idle() -> (
+    u64,
+    Vec<usize>,
+    Vec<(std::sync::mpsc::Sender<()>, std::thread::JoinHandle<()>)>,
+) {
     let (done_tx, done_rx) = std::sync::mpsc::channel::<(Vec<usize>, Vec<usize>)>();
     let (freed_tx, freed_rx) = std::sync::mpsc::channel::<()>();
     let mut idle = Vec::new();
@@ -170,7 +174,11 @@ fn child_gives_freed_pages_back() {
         after <= start + SLACK_KB,
         "放掉的 {} MB 小块没还给系统（{}）：起点 {start} kB，峰 {peak} kB，还完之后 {after} kB",
         TOTAL >> 20,
-        if threads { "几条线程各分各放、放完闲着" } else { "一条线程" }
+        if threads {
+            "几条线程各分各放、放完闲着"
+        } else {
+            "一条线程"
+        }
     );
     free_blocks(kept);
     for (go, h) in idle {

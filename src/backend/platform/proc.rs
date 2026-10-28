@@ -343,7 +343,7 @@ pub(crate) fn return_freed_memory(read: u64) -> bool {
     true
 }
 
-/// mimalloc 两个选项在 `mi_option_t` 里的序号（锁里 `libmimalloc-sys 0.1.49` 带的 C 源 3.3.2，`mimalloc.h`）：
+/// mimalloc 两个选项在它的选项枚举里的序号（锁里 `libmimalloc-sys 0.1.49` 带的 C 源 3.3.2，`mimalloc.h`）：
 /// `purge_delay`（缺省 1000 ms）· `page_full_retain`（缺省 2）。升级之后序号挪了 ⇒ `freed_memory_tests` 读缺省值对不上 ⇒ 红。
 #[cfg(target_env = "musl")]
 pub(crate) const MI_OPTION_PURGE_DELAY: i32 = 15;
@@ -351,7 +351,7 @@ pub(crate) const MI_OPTION_PURGE_DELAY: i32 = 15;
 pub(crate) const MI_OPTION_PAGE_FULL_RETAIN: i32 = 36;
 
 /// 远端 musl 版：分配器放回来的空页当场还给系统。进程起来第一下调一次（`main.rs`）；别的版本什么都不做。
-/// mimalloc 缺省把空页记下、过 10 s（`purge_delay` 1 s × `arena_purge_mult` 10）之后**等下一次有分配或放回**才还，
+/// mimalloc 缺省把空页记下、过 10 s（`purge_delay` 1 s × 页区那一档的倍数 10）之后**等下一次有分配或放回**才还，
 /// 每条线程每种块大小还另留 2 页空的备用（`page_full_retain`）；大读之后各线程闲下来就一直占着，
 /// 主线程调 `mi_collect` 也只扫得到自己那条线程的堆。两样都设 0 ⇒ 页一空当场还，不等谁再来分配，哪条线程放的都一样
 /// （读数与选它不选「各线程收尾各还一次」的理由住 A17-45-4-13 的验收）。
