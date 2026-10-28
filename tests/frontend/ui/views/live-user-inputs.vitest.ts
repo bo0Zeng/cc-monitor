@@ -336,16 +336,16 @@ describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", (
     tm.onBatchEnd();
   }
 
-  it("🔴 索引里带了大纲 ⇒ `list_user_inputs` 一次都不发（从 0 那趟省掉），面板 == 索引给的", async () => {
+  it("🔴 索引里带了大纲 ⇒ 不从 0 要清单（只从索引的 end 接一截），面板 == 索引给的", async () => {
     indexStub.rows = indexWith(101, { 1: "很久以前那一句", 100: "最新那一句" });
-    // 反证台子：清单那条若被问到，会回一份**不同的**清单 —— 面板若长成它，就是没用上索引
-    outlineBackend.entries = [outlineEntry("list-only", "只有清单那条才会给")];
+    // 反证台子：清单那条若从 0 被问到，会回一份**不同的**清单 —— 面板若长成它，就是没用上索引（从 end=101 接的那一截是空的）
+    outlineBackend.entries = [outlineEntry("list-only", "只有清单那条才会给"), ...Array.from({ length: 100 }, (_, k) => outlineEntry(`pad${k}`))];
     replay();
     await settleOutline();
     expect(indexCalls(), "索引真的发了（从 0）").toEqual([
       { origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 },
     ]);
-    expect(outlineCalls()).toEqual([]);
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 101 }]);
     expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
     expect(rowsOf().map((r) => r.textContent)).toEqual(["1. 很久以前那一句", "2. 最新那一句"]);
     expect(toggleOf().textContent).toBe(`${copyText("userInputPanel.outline.label")} · 2`);
@@ -353,9 +353,11 @@ describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", (
 
   it("种上之后，真用户输入上屏 ⇒ 从索引的 end 接着要增量（不是从 0）", async () => {
     indexStub.rows = indexWith(101, { 1: "a", 100: "b" });
+    outlineBackend.entries = Array.from({ length: 101 }, (_, k) => outlineEntry(`z${k}`));
     replay();
     await settleOutline();
-    expect(outlineCalls()).toEqual([]);
+    expect(outlineCalls(), "种上之后从索引的 end 接的那一截").toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 101 }]);
+    vi.mocked(invoke).mockClear();
     outlineBackend.entries = Array.from({ length: 102 }, (_, k) => outlineEntry(`z${k}`));
     feed(userLine(101, "u101", "刚说的"));
     await settleOutline();

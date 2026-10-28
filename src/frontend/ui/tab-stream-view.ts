@@ -1332,9 +1332,15 @@ export class TabStreamView {
    * **按行号往后读一段**（`[from, until)`，`until` 缺 ＝ 到末尾）喂进这个 tab：一段 ≤ 1 MiB，接着取到头；
    * 取回的走 `feedHistoryRows`（批语义、不复活远端 tab），见过的由 `(sid, seq)` 去重吃掉。
    * 是**一件事**：开头造一次期限（{@link TabStreamView.GAP_FILL_BUDGET_MS}），每一问交剩下的；到点了还没取完 ⇒ 停、记一行。
+   * 补进来的行按批语义喂、不出「真用户输入上屏」⇒ 补完、真喂进了行、这个 tab 在眼前 ⇒ 大纲接着要一截（补进来的可能有人说的）。
    */
-  private readForward(tab: Tab, path: string, from: number, until: number | undefined, done: () => void = () => {}): void {
+  private readForward(tab: Tab, path: string, from: number, until: number | undefined, finish: () => void = () => {}): void {
     const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
+    let fed = false;
+    const done = (): void => {
+      if (fed && this.store.activeId === tab.sessionId && this.store.tabs.get(tab.sessionId) === tab) this.refreshOutline(tab);
+      finish();
+    };
     const step = (at: number): void => {
       const leftMs = remaining(budget);
       if (leftMs <= 0) {
@@ -1345,10 +1351,9 @@ export class TabStreamView {
       void readLines(tab.origin, path, at, until, leftMs)
         .then((page) => {
           if (this.store.tabs.get(tab.sessionId) !== tab) return done();
-          this.feedHistoryRows(
-            tab,
-            page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
-          );
+          const fresh = page.payloads.filter((p) => !tab.seenSeqs.has(p.seq));
+          if (fresh.length > 0) fed = true;
+          this.feedHistoryRows(tab, fresh);
           tab.seenSeqs.addRange(page.from, page.next); // 同上
           if (page.eof || page.next <= at || (until !== undefined && page.next >= until)) return done();
           step(page.next);
