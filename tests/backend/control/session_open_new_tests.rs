@@ -1,7 +1,7 @@
 //! `session-open` 新起那一形：每一格不行时说是哪一格、什么都不起不写；都过了才写分支记录、才起（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
-use crate::control::session_batch::TmuxEntry;
+use crate::control::session_batch::{Listed, TermEntry};
 use serde_json::json;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -14,8 +14,9 @@ const ENTRY: &str = "/h/.cc-monitor/bin/ccm";
 /// 新起时这台先定好的 sid（替身铸的）。
 const PRESET: &str = "dddddddd-1111-4222-8333-444444444444";
 
-fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
-    TmuxEntry {
+fn row(name: &str, sid: Option<&str>, agent: bool) -> TermEntry {
+    TermEntry {
+        host: crate::wire::TerminalHost::Tmux,
         name: name.into(),
         terminal: format!("tmux-{name}"),
         sid: sid.map(str::to_string),
@@ -24,7 +25,7 @@ fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
 }
 
 struct Rig {
-    rows: Option<Vec<TmuxEntry>>,
+    rows: Option<Vec<TermEntry>>,
     ccm_rc: i32,
     ccm: RefCell<Vec<Vec<String>>>,
     mints: RefCell<Vec<String>>,
@@ -38,7 +39,7 @@ struct Rig {
 }
 
 impl Rig {
-    fn new(rows: Option<Vec<TmuxEntry>>) -> Self {
+    fn new(rows: Option<Vec<TermEntry>>) -> Self {
         Self {
             rows,
             ccm_rc: 0,
@@ -56,8 +57,8 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
-            Ok(self.rows.clone())
+        let list = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+            Ok(Listed::of(self.rows.clone(), vec![]))
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
@@ -228,7 +229,7 @@ fn a_new_session_in_tmux_is_minted_from_the_directory_and_started_detached() {
 
 #[test]
 fn every_slot_that_fails_names_itself_and_nothing_is_started_or_written() {
-    let cases: Vec<(Value, Option<Vec<TmuxEntry>>, &str, Value)> = vec![
+    let cases: Vec<(Value, Option<Vec<TermEntry>>, &str, Value)> = vec![
         (
             json!({ "agent": "" }),
             Some(vec![]),
@@ -424,10 +425,14 @@ fn a_tilde_directory_is_read_under_this_machines_home() {
 #[test]
 fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint() {
     let caps = BTreeSet::new();
-    let none =
-        || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> { Ok(None) };
-    let some = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
-        Ok(Some(vec![row("orders-cc", Some(SRC), true)]))
+    let none = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+        Ok(Listed::of(None, vec![]))
+    };
+    let some = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+        Ok(Listed::of(
+            Some(vec![row("orders-cc", Some(SRC), true)]),
+            vec![],
+        ))
     };
     let mint = |b: NameBase| -> Result<String, crate::control::session_batch::CmdErr> {
         Ok(match b {
@@ -442,33 +447,31 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         library: &library,
         last: &|_| None,
     };
-    let run =
-        |list: &dyn Fn()
-            -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr>,
-         args: Value| {
-            let deps = Deps {
-                list,
-                record: &no,
-                end: &|_| unreachable!(),
-                send_into: &|_, _, _| unreachable!(),
-                run_ccm: &|_| unreachable!(),
-                mint: &mint,
-                caps: &caps,
-                host: crate::control::launch_render::Host {
-                    windows: false,
-                    is_dir: |p| p == "/h/srv",
-                    entry: || None,
-                },
-                accounts: &accounts,
-                writers: &|_| vec![],
-                pretrust: &|_, _| unreachable!("核目录不起会话"),
-                open_shell: &|_, _| unreachable!("不开空 shell"),
-                prefs: &crate::common::machine_prefs::Prefs::default(),
-            };
-            let req: OpenDirReq = serde_json::from_value(args).unwrap();
-            dir_answer(&req, &deps, Some(std::path::Path::new("/h")))
-                .map(|d| serde_json::to_value(d).unwrap())
+    let run = |list: &dyn Fn() -> Result<Listed, crate::control::session_batch::CmdErr>,
+               args: Value| {
+        let deps = Deps {
+            list,
+            record: &no,
+            end: &|_| unreachable!(),
+            send_into: &|_, _, _| unreachable!(),
+            run_ccm: &|_| unreachable!(),
+            mint: &mint,
+            caps: &caps,
+            host: crate::control::launch_render::Host {
+                windows: false,
+                is_dir: |p| p == "/h/srv",
+                entry: || None,
+            },
+            accounts: &accounts,
+            writers: &|_| vec![],
+            pretrust: &|_, _| unreachable!("核目录不起会话"),
+            open_shell: &|_, _| unreachable!("不开空 shell"),
+            prefs: &crate::common::machine_prefs::Prefs::default(),
         };
+        let req: OpenDirReq = serde_json::from_value(args).unwrap();
+        dir_answer(&req, &deps, Some(std::path::Path::new("/h")))
+            .map(|d| serde_json::to_value(d).unwrap())
+    };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
         json!({ "exists": true, "shown": "~/srv", "tmuxName": "cwd:/h/srv" })

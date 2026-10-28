@@ -6,7 +6,7 @@
 //!
 //! 句子不在这里：只回码，由各前端照码说。事实由入口（`faces/fork_face.rs`）收齐交进来。
 
-use super::session_batch::{carriers, Standing, TmuxEntry};
+use super::session_batch::{carriers, Standing, TermEntry};
 
 /// 起分叉会话要的三格的线上形：住 `cmd-wire::session`（号那一格在线上是「名字 · 账号 0 ⇒ `null`」）。
 pub(crate) use cmd_wire::session::{
@@ -108,7 +108,7 @@ fn account_of(r: &ProcessRow) -> Option<AccountFact> {
 /// 活着 ＝ 进程名单说它活着，或终端名单里有挂着它、前台是 agent 的（命中多个取第一个）；只剩 shell 的不算。
 pub(crate) fn source_of(
     processes: &[ProcessRow],
-    terminals: Option<&[TmuxEntry]>,
+    terminals: Option<&[TermEntry]>,
     sid: &str,
     cwd: Option<String>,
 ) -> Source {

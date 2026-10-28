@@ -22,22 +22,43 @@ pub(crate) const BATCH_CAP: Deadline = Deadline::secs(8 + 6 * MAX_BATCH as u64);
 /// 命令级错误：`(code, message)`。
 pub(crate) type CmdErr = (&'static str, String);
 
-/// 这台 tmux 里的一个会话（只要四格）。
+/// 终端名单里的一个终端（认会话只要这五格；tmux 与托管同一形）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TmuxEntry {
+pub(crate) struct TermEntry {
+    /// 住在哪种宿主里。
+    pub(crate) host: crate::wire::TerminalHost,
+    /// 终端名（tmux 会话名 · 托管终端的名字）。
     pub(crate) name: String,
     /// 终端句柄（同 `terminals-list` 那一行）。
     pub(crate) terminal: String,
-    /// `@ccm_sid`（没设 ⇒ `None`）。
+    /// 挂着的 sid（没设 ⇒ `None`）。
     pub(crate) sid: Option<String>,
     /// 前台是不是 agent 的进程。
     pub(crate) agent: bool,
 }
 
+/// 认会话的名单：`tmux` ＝ 这台装没装 tmux（恢复默认放在哪 · `no_tmux` 只看它，与有没有托管行无关）；
+/// `rows` ＝ 挂着 sid 的终端各一行（tmux 那几行在前，给了托管的家 ⇒ 托管那几行并在后）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Listed {
+    pub(crate) tmux: bool,
+    pub(crate) rows: Vec<TermEntry>,
+}
+
+impl Listed {
+    /// tmux 那一臂（`None` ＝ 没装 tmux）＋ 托管那几行。
+    pub(crate) fn of(tmux: Option<Vec<TermEntry>>, hosted: Vec<TermEntry>) -> Self {
+        Self {
+            tmux: tmux.is_some(),
+            rows: tmux.unwrap_or_default().into_iter().chain(hosted).collect(),
+        }
+    }
+}
+
 /// 做事要用到的几样。生产那一份由入口拼（`stream/inbound/mod.rs`），判据给替身。
 pub(crate) struct Deps<'a> {
-    /// 这台的 tmux 名单；`Ok(None)` = 这台没装 tmux；`Err` = 列不成（码照列名单那一发的：过了期限是 `child_timed_out`）。
-    pub(crate) list: &'a dyn Fn() -> Result<Option<Vec<TmuxEntry>>, CmdErr>,
+    /// 这台的终端名单（[`Listed`]）；`Err` = 列不成（码照列名单那一发的：过了期限是 `child_timed_out`）。
+    pub(crate) list: &'a dyn Fn() -> Result<Listed, CmdErr>,
     /// `(sid, 账号根)` ⇒ 记录在不在 ＋ 查的是哪棵树。
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// 名单句柄 ⇒ 结束那个终端（同 `terminal-end`）。
@@ -77,12 +98,12 @@ pub(crate) fn pretrust(account: &Settled, cwd: &str, deps: &Deps) {
 }
 
 /// 这台的终端名单 ⇒ 认会话用的那几格（挂着 sid 的窗格各一行）。`managed` ＝ 托管名单的家：给了 ⇒ 托管那一臂也认（停）；
-/// `None` ⇒ 只认 tmux 那一形（起会话 · 分叉 · 就地键入这几处只对 tmux 下手）。`Ok(None)` ＝ 这台没装 tmux、托管那一臂也没有一行；
+/// `None` ⇒ 只认 tmux 那一形（起会话 · 分叉 · 就地键入 · 换号重启这几处要往 tmux 会话里键入或新开 tmux 会话，托管那一形没有这几样）。
 /// `Err` 的码只留「过了期限」这一种（[`listed`] 按它整条回超时），别的列不成一律当看不见。
 pub(crate) fn listed_on(
     on: crate::host::tmux::On<'_>,
     managed: Option<&crate::platform::fs::Own>,
-) -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+) -> Result<Listed, CmdErr> {
     let tmux = crate::host::tmux::rows_found_on(on)
         .map(|got| got.map(|(rows, _, _)| rows))
         .map_err(|f| {
@@ -97,16 +118,14 @@ pub(crate) fn listed_on(
     let hosted = managed
         .map(crate::host::managed::rows_at)
         .unwrap_or_default();
-    let rows = match (tmux, hosted.is_empty()) {
-        (None, true) => return Ok(None),
-        (tmux, _) => tmux.unwrap_or_default().into_iter().chain(hosted),
-    };
-    Ok(Some(rows.map(entry_of).collect()))
+    let entries = |rows: Vec<crate::host::TermRow>| rows.into_iter().map(entry_of).collect();
+    Ok(Listed::of(tmux.map(entries), entries(hosted)))
 }
 
-/// 名单里一行 ⇒ 认会话用的四格。
-fn entry_of(r: crate::host::TermRow) -> TmuxEntry {
-    TmuxEntry {
+/// 名单里一行 ⇒ 认会话用的五格。
+fn entry_of(r: crate::host::TermRow) -> TermEntry {
+    TermEntry {
+        host: r.host,
         agent: crate::agents::is_agent_process(&r.program),
         terminal: r.handle(),
         sid: (!r.sid.is_empty()).then_some(r.sid),
@@ -116,7 +135,7 @@ fn entry_of(r: crate::host::TermRow) -> TmuxEntry {
 
 /// 这台的名单（一批一次）：列名单那一发过了期限（总期限用完了）⇒ 整条 `child_timed_out`（同别的装了总期限的命令）；
 /// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
-pub(crate) fn listed(deps: &Deps) -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+pub(crate) fn listed(deps: &Deps) -> Result<Listed, CmdErr> {
     (deps.list)().map_err(|(code, said)| {
         if code == crate::platform::child::TIMED_OUT {
             (code, said)
@@ -313,8 +332,8 @@ pub(crate) enum Standing<T = String> {
 }
 
 /// 名单 ⇒ 这个 sid 的样子（带着它的那几行）。
-pub(crate) fn carriers<'a>(rows: &'a [TmuxEntry], sid: &str) -> Standing<&'a TmuxEntry> {
-    let carrying = |agent: bool| -> Vec<&TmuxEntry> {
+pub(crate) fn carriers<'a>(rows: &'a [TermEntry], sid: &str) -> Standing<&'a TermEntry> {
+    let carrying = |agent: bool| -> Vec<&TermEntry> {
         rows.iter()
             .filter(|r| r.sid.as_deref() == Some(sid) && r.agent == agent)
             .collect()
@@ -331,7 +350,7 @@ pub(crate) fn carriers<'a>(rows: &'a [TmuxEntry], sid: &str) -> Standing<&'a Tmu
 }
 
 /// 名单 ⇒ 这个 sid 的样子（带着它的 tmux 会话名）。
-pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
+pub(crate) fn standing(rows: &[TermEntry], sid: &str) -> Standing {
     match carriers(rows, sid) {
         Standing::Running(e) => Standing::Running(e.name.clone()),
         Standing::Ambiguous(es) => Standing::Ambiguous(es.iter().map(|e| e.name.clone()).collect()),
@@ -354,21 +373,21 @@ pub(crate) struct SidsReq {
     pub(crate) client: Option<String>,
 }
 
-/// `sessions-where`：每个 sid 此刻在这台 tmux 里的样子（菜单就绪时问：这一项亮不亮、写哪个名字）。
-/// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`）。
+/// `sessions-where`：每个 sid 此刻在这台哪个终端里（菜单就绪时问：这一项亮不亮、写哪个名字）。
+/// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`，宿主照名单那一行）。
+/// 哪个终端都不带着它、这台又没装 tmux ⇒ `no_tmux`。
 pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> {
     let sids = sids_of(&req.sids)?;
-    let rows = listed(deps)?;
-    let host = crate::wire::TerminalHost::Tmux.as_wire();
+    let listed = listed(deps)?;
     let results = sids
         .iter()
         .map(|sid| {
-            let (standing, found) = match rows.as_deref().map(|r| carriers(r, sid)) {
-                None => (StandingWord::NoTmux, vec![]),
-                Some(Standing::Running(e)) => (StandingWord::Running, vec![e]),
-                Some(Standing::Ambiguous(es)) => (StandingWord::Ambiguous, es),
-                Some(Standing::Idle(e)) => (StandingWord::Idle, vec![e]),
-                Some(Standing::None) => (StandingWord::None, vec![]),
+            let (standing, found) = match carriers(&listed.rows, sid) {
+                Standing::Running(e) => (StandingWord::Running, vec![e]),
+                Standing::Ambiguous(es) => (StandingWord::Ambiguous, es),
+                Standing::Idle(e) => (StandingWord::Idle, vec![e]),
+                Standing::None if !listed.tmux => (StandingWord::NoTmux, vec![]),
+                Standing::None => (StandingWord::None, vec![]),
             };
             Whereabout {
                 sid: sid.clone(),
@@ -377,18 +396,14 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
                 terminals: found
                     .iter()
                     .map(|e| TerminalAt {
-                        host,
+                        host: e.host.as_wire(),
                         terminal: e.terminal.clone(),
                     })
                     .collect(),
             }
         })
         .collect();
-    let run = open::default_run(
-        open::Intent::Resume,
-        deps.prefs.resume_in_tmux,
-        rows.is_some(),
-    );
+    let run = open::default_run(open::Intent::Resume, deps.prefs.resume_in_tmux, listed.tmux);
     Ok(Whereabouts { results, run })
 }
 
@@ -405,20 +420,18 @@ fn stop_said(why: &str, a: &Answer) -> String {
 /// `sessions-stop`：逐个停，与入参同序答。
 pub(crate) fn stop(req: &SidsReq, deps: &Deps) -> Result<Batched, CmdErr> {
     let sids = sids_of(&req.sids)?;
-    let rows = listed(deps)?;
+    let listed = listed(deps)?;
     let results: Vec<Outcome> = sids
         .iter()
-        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_wire())
+        .map(|sid| stop_one(sid, &listed, deps).to_wire())
         .collect();
     Ok(Batched { results })
 }
 
-fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
-    let Some(rows) = rows else {
-        return Answer::skipped(sid, "no_tmux", String::new());
-    };
-    let at = match carriers(rows, sid) {
+fn stop_one(sid: &str, listed: &Listed, deps: &Deps) -> Answer {
+    let at = match carriers(&listed.rows, sid) {
         Standing::Running(e) | Standing::Idle(e) => e,
+        Standing::None if !listed.tmux => return Answer::skipped(sid, "no_tmux", String::new()),
         Standing::None => return Answer::skipped(sid, "not_in_tmux", String::new()),
         // 命中多个不结束（选错了不可逆）。
         Standing::Ambiguous(es) => {

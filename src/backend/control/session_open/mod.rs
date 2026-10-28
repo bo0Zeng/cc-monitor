@@ -10,7 +10,7 @@
 use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
 use super::launch_render::{self as lr, Act, Here, Launch};
 use super::session_batch::{
-    carriers, listed, pids_said, pretrust, CmdErr, Deps, NameBase, Standing, TmuxEntry,
+    carriers, listed, pids_said, pretrust, CmdErr, Deps, Listed, NameBase, Standing, TermEntry,
 };
 pub(crate) mod new;
 use crate::platform::child::{Child, Deadline};
@@ -412,19 +412,19 @@ fn dispatch(
 
 /// 恢复没说放在哪 ⇒ 照这台的偏好 × 有没有 tmux。
 fn resume_default(deps: &Deps) -> Result<Run, Failed> {
-    let rows = listed(deps).map_err(lower)?;
+    let listed = listed(deps).map_err(lower)?;
     Ok(default_run(
         Intent::Resume,
         deps.prefs.resume_in_tmux,
-        rows.is_some(),
+        listed.tmux,
     ))
 }
 
 /// 这台的名单；没 tmux ⇒ `place_unavailable`（给了 tmux 不悄悄改直路）。
-fn tmux_rows(deps: &Deps) -> Result<Vec<TmuxEntry>, Failed> {
+fn tmux_rows(deps: &Deps) -> Result<Vec<TermEntry>, Failed> {
     match listed(deps).map_err(lower)? {
-        Some(rows) => Ok(rows),
-        None => Err(fail(
+        Listed { tmux: true, rows } => Ok(rows),
+        Listed { tmux: false, .. } => Err(fail(
             "place_unavailable",
             copy_core::copy_text("beSessionNew.place.noTmux", &[]),
             Some(Field::Place),
@@ -719,7 +719,7 @@ fn start_in_tmux(
     it: &Item,
     b: &Batch,
     account: &Settled,
-    rows: &[TmuxEntry],
+    rows: &[TermEntry],
     here: Here,
     live: &[u32],
     deps: &Deps,
@@ -765,7 +765,7 @@ fn start_in_tmux(
 }
 
 /// 必铸新终端名：问这台铸，再核一遍不落在名单里任何一个上（父会话那个名字绝不复用）。落上了 ⇒ `tmux_taken`，不起。
-fn fresh_name(base: NameBase, rows: &[TmuxEntry], deps: &Deps) -> Result<String, Failed> {
+fn fresh_name(base: NameBase, rows: &[TermEntry], deps: &Deps) -> Result<String, Failed> {
     let name = (deps.mint)(base).map_err(lower)?;
     if rows.iter().any(|r| r.name == name) {
         return Err(taken(&name));
@@ -783,7 +783,7 @@ fn taken(name: &str) -> Failed {
     (c, s, d, Some(name.to_string()))
 }
 
-fn source_terminal<'a>(rows: &'a [TmuxEntry], sid: Option<&str>) -> Option<&'a str> {
+fn source_terminal<'a>(rows: &'a [TermEntry], sid: Option<&str>) -> Option<&'a str> {
     match carriers(rows, sid?) {
         Standing::Running(e) => Some(e.name.as_str()),
         Standing::Ambiguous(es) => es.first().map(|e| e.name.as_str()),
@@ -920,8 +920,8 @@ fn start_new(
         ));
     }
     // 放在哪：没说 ⇒ 这台定；说了 tmux 而这台没有 ⇒ 拒（下面铸名那一步说）。
-    let rows = listed(deps).map_err(lower)?;
-    let run = run.unwrap_or_else(|| default_run(Intent::New { fork_tmux }, false, rows.is_some()));
+    let listed = listed(deps).map_err(lower)?;
+    let run = run.unwrap_or_else(|| default_run(Intent::New { fork_tmux }, false, listed.tmux));
     // 第一句：只跟 tmux（直路那一形的终端在界面那一侧）；空的不收；那一家声明不认起的时候带 ⇒ 不收。
     let prompt = match req.prompt.as_deref().map(str::trim) {
         None => None,
@@ -1010,7 +1010,7 @@ fn start_new(
     let name = match run {
         Run::Direct => None,
         Run::Tmux => {
-            let Some(rows) = rows else {
+            let Listed { tmux: true, rows } = listed else {
                 return Err(fail(
                     "place_unavailable",
                     copy_core::copy_text("beSessionNew.place.noTmux", &[]),
@@ -1118,7 +1118,7 @@ fn strategy_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
 fn new_tmux_name(
     req: &NewOpen,
     cwd: &str,
-    rows: &[TmuxEntry],
+    rows: &[TermEntry],
     deps: &Deps,
 ) -> Result<String, Failed> {
     if let Some(n) = req

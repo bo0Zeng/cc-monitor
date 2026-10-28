@@ -461,7 +461,10 @@ pub(crate) fn facts(
             })
         }
     };
-    let tmux = !matches!(super::session_batch_face::tmux_rows(), Ok(None));
+    let tmux = !matches!(
+        super::session_batch_face::tmux_rows(),
+        Ok(crate::control::session_batch::Listed { tmux: false, .. })
+    );
     let run = facts_run(fork.as_ref().and_then(|f| hosted(&f.launch)), tmux);
     Ok(OpenFacts {
         recent: recent_dirs(

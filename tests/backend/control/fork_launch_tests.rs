@@ -165,8 +165,9 @@ fn proc(sid: &str, config_dir: Option<&str>, account: Option<&str>, alive: bool)
     }
 }
 
-fn term(name: &str, sid: &str, agent: bool) -> TmuxEntry {
-    TmuxEntry {
+fn term(name: &str, sid: &str, agent: bool) -> TermEntry {
+    TermEntry {
+        host: crate::wire::TerminalHost::Tmux,
         name: name.into(),
         terminal: format!("tmux-{name}"),
         sid: Some(sid.into()),
@@ -174,7 +175,7 @@ fn term(name: &str, sid: &str, agent: bool) -> TmuxEntry {
     }
 }
 
-fn src(p: &[ProcessRow], t: Option<&[TmuxEntry]>) -> Source {
+fn src(p: &[ProcessRow], t: Option<&[TermEntry]>) -> Source {
     source_of(p, t, SID, Some("/p".into()))
 }
 
