@@ -81,3 +81,13 @@ describe("〔S4〕预留位不留", () => {
     expect(reserved(ACTIONS)).toEqual([]);
   });
 });
+
+describe("新建会话快捷键（A2-17-8-1）", () => {
+  it("Ctrl+N 新建会话、任何时候都按得到；单键 N 仍是在新窗口打开", () => {
+    const a = ACTIONS.find((x) => x.id === "app.new-session");
+    expect(a?.default).toBe("Ctrl+KeyN");
+    expect(a?.scope).toBe("any");
+    expect(a?.available).toBe(true);
+    expect(ACTIONS.find((x) => x.id === "tab.pop-out")?.default).toBe("KeyN");
+  });
+});

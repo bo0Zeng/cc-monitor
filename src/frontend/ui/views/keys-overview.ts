@@ -29,6 +29,7 @@ function groups(): { title: string; rows: Row[] }[] {
         { label: copyText("keys.row.jump"), ids: ["tab.jump-1", "tab.jump-9"], range: true },
         { label: copyText("keys.row.nextPrev"), ids: ["tab.next", "tab.prev"] },
         { ids: ["needs.next"] },
+        { ids: ["app.new-session"] },
         { ids: ["app.open-command-bar"] },
       ],
     },

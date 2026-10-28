@@ -233,7 +233,7 @@ describe("会话内查找 · 搜索", () => {
     expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
     expect(rows[0].hasAttribute("data-id"), "命中行不许叫 data-id（那是消息卡的名字）").toBe(false);
-    expect(status(p)).toBe(copyText("sessionFind.status.count", { n: "3" }));
+    expect(status(p)).toBe(copyText("findStrip.status.count", { n: "3" }));
   });
 
   it("🔴 全量 > 条数 ⇒ 说出来，滚到底续下一页（skip ＝ 已列的条数）", async () => {
@@ -242,7 +242,7 @@ describe("会话内查找 · 搜索", () => {
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "x");
     await settleOutline();
-    expect(status(p)).toBe(copyText("sessionFind.status.truncated", { n: "2", total: "3" }));
+    expect(status(p)).toBe(copyText("findStrip.status.truncated", { n: "2", total: "3" }));
     const list = q(p, "[role=listbox]");
     Object.defineProperty(list, "scrollHeight", { value: 100, configurable: true });
     Object.defineProperty(list, "clientHeight", { value: 100, configurable: true });
@@ -250,7 +250,7 @@ describe("会话内查找 · 搜索", () => {
     await settleOutline();
     expect(search.mock.calls.at(-1)).toEqual(["x", false, 2]);
     expect(hitRows(p.el).map((r) => r.dataset.hitUuid)).toEqual(["a", "b", "c"]);
-    expect(status(p)).toBe(copyText("sessionFind.status.count", { n: "3" }));
+    expect(status(p)).toBe(copyText("findStrip.status.count", { n: "3" }));
     list.dispatchEvent(new Event("scroll"));
     await settleOutline();
     expect(search, "列完了不再要").toHaveBeenCalledTimes(2);

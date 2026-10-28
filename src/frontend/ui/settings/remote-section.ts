@@ -760,13 +760,14 @@ export class RemoteSection {
     return this.original.hosts.length;
   }
 
-  /** 页头［添加机器］与「开始用」第三步同一个口。 */
-  addMachine(): Promise<boolean> {
-    return this.openAdd();
+  /** 页头［添加机器］·「开始用」第三步 · 命令面板「加入机器表… · <名字>」同一个口（`prefill`：打的名字）。 */
+  addMachine(prefill?: string): Promise<boolean> {
+    return this.openAdd(prefill);
   }
 
-  private openAdd(): Promise<boolean> {
+  private openAdd(prefill?: string): Promise<boolean> {
     return openAddMachine({
+      prefill,
       tryAdd: (cfgs) => tryRemoteConfig({ upsert: cfgs.map((value) => ({ key: null, value })) }),
       imported: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
       add: async (cfgs) => {

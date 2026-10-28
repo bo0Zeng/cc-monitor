@@ -2,12 +2,11 @@
  * **改一个标签页的名**：名字住会话那台的注解（`history-annotate {customTitle}`，历史页「改标题」同一格），
  * 叫它什么由那台后端定（改过的名 ＞ agent 起的标题 ＞ 第一句）、随帧交来（`Tab.label`）—— 这里只交命令，tab 上的名字等推帧来了才换。
  *
- * 入口：标题双击 · 右键「改标题」· 命令面板「改标题」，都经 {@link renameTab}；历史页「改标题」经 {@link askRename}（交法 · 撤销 · 失败那一句同一处）。
- * 有标签页栏的窗口 ⇒ 栏上就地改（栏建起来时经 {@link mountInline} 登记自己）；没有（撕出来的查看窗）、或那一行此刻看不见 ⇒ 对话框。
+ * 入口：标题双击 · 右键「改标题」· 命令面板「改标题」，都经 {@link renameTab}；历史页「改标题」经 {@link renameOver}（交法 · 撤销 · 失败那一句同一处）。
+ * 只有就地一种样子：有标签页栏的窗口 ⇒ 栏上就地改（栏建起来时经 {@link mountInline} 登记自己）；没有（撕出来的查看窗）、或那一行此刻看不见 ⇒ 会话头标题上就地改。
  */
 import type { Tab } from "./tab-model";
 import { annotate } from "./history-reads";
-import { askText } from "./kit/dialog";
 import { failToast, undoToast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
@@ -26,22 +25,18 @@ export function mountInline(begin: Inline): () => void {
   };
 }
 
-/** 改这个标签页的名：栏上就地改；改不了 ⇒ 对话框。 */
+/** 改这个标签页的名：栏上就地改；这一行不在栏上（撕出来的查看窗 · 看不见）⇒ 在会话头的标题上就地改。 */
 export function renameTab(tab: Tab): void {
   if (inline?.(tab) === true) return;
-  void askRename(tab, tab.label ?? "");
+  const head = document.querySelector<HTMLElement>("[data-head-title]");
+  if (head !== null) renameOver(head, tab, tab.label ?? "");
 }
 
-/** 对话框里改名（历史页 · 没有栏的窗口）：`initial` 是框里的初值；取消 ⇒ 不交。 */
-export async function askRename(who: Renamed, initial: string): Promise<void> {
-  const next = await askText({
-    title: copyText("history.rename.title"),
-    label: copyText("history.rename.label"),
-    action: copyText("history.rename.action"),
-    note: copyText("history.rename.prompt"),
-    initial,
+/** 在 `over` 那一格上就地改名（历史页那一行 · 会话头标题）：`initial` 是框里的初值；取消 ⇒ 不交。 */
+export function renameOver(over: HTMLElement, who: Renamed, initial: string): void {
+  editOver(over, initial, (next) => {
+    if (next !== null) void commitRename(who, next);
   });
-  if (next !== null) await commitRename(who, next);
 }
 
 /** 改谁：会话那一台 · 会话 · 此刻的名（与它相同 ⇒ 不交）。 */

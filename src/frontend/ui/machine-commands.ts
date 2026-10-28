@@ -19,7 +19,7 @@ import { NoTerminalWindow, openLoginShell, sayNoTerminal } from "./terminal-open
 import { openNewSession } from "./new-session";
 import { openOnMachine } from "./file-window";
 import { openSettingsWindow } from "./open-settings";
-import { machineOf } from "./settings-dest";
+import { addMachineOf, machineOf } from "./settings-dest";
 import { toast } from "./kit/toast";
 import { detailOf, saidOf } from "./kit/detail";
 
@@ -127,7 +127,7 @@ export const machineActions: MachineActions = {
   // 落在那台的主目录（`dir` 空）。
   files: (origin) => void openOnMachine(origin, { dir: "" }).catch(sayFailed),
   status: (origin) => void openSettingsWindow(undefined, machineOf(origin)),
-  addMachine: () => void openSettingsWindow(undefined, { page: "machines" }),
+  addMachine: (origin) => void openSettingsWindow(undefined, addMachineOf(origin)),
 };
 
 /** `machine-find` · `machine-menu` · `machine-read` 等多久（本机后端读几份文件，不拨号）。 */
