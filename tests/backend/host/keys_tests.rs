@@ -171,3 +171,112 @@ fn a_bracketed_paste_split_across_chunks_is_still_one_paste() {
     assert_eq!(sent, b"x\x1b[200~a\x02d\x1b[201~".to_vec());
     assert_eq!(feed(&mut k, b"\x02d"), vec![Act::Detach]);
 }
+
+// ── 鼠标（A3-3-33）：外层开了 SGR 1006 上报，送来的 `ESC[<b;x;yM/m` 认出来，其余照原样 ──
+
+fn m(code: u16, col: u16, row: u16, press: bool) -> Mouse {
+    Mouse {
+        code,
+        col,
+        row,
+        press,
+    }
+}
+
+#[test]
+fn a_mouse_report_is_picked_out_of_the_bytes_around_it() {
+    let mut s = Mice::default();
+    assert_eq!(
+        s.split(b"ab\x1b[<64;10;5Mcd"),
+        vec![
+            Piece::Bytes(b"ab".to_vec()),
+            Piece::Mouse(m(64, 10, 5, true)),
+            Piece::Bytes(b"cd".to_vec())
+        ]
+    );
+}
+
+#[test]
+fn a_mouse_report_split_over_two_chunks_is_still_one_event() {
+    let mut s = Mice::default();
+    assert!(s.split(b"\x1b[<0;3").is_empty());
+    assert_eq!(s.split(b";4m"), vec![Piece::Mouse(m(0, 3, 4, false))]);
+}
+
+/// 块尾单独一个 Esc（Esc 键）不拖到下一块；别的转义序列照原样。
+#[test]
+fn a_lone_escape_and_other_sequences_pass_through_untouched() {
+    let mut s = Mice::default();
+    assert_eq!(s.split(b"\x1b"), vec![Piece::Bytes(b"\x1b".to_vec())]);
+    assert_eq!(s.split(b"\x1b[A"), vec![Piece::Bytes(b"\x1b[A".to_vec())]);
+    assert_eq!(s.split(b"x\x1b["), vec![Piece::Bytes(b"x\x1b[".to_vec())]);
+    assert_eq!(
+        s.split(b"\x1b[<1;2X"),
+        vec![Piece::Bytes(b"\x1b[<1;2X".to_vec())],
+        "不是鼠标上报的照原样"
+    );
+}
+
+#[test]
+fn the_wheel_is_told_apart_from_clicks_and_ignores_modifiers() {
+    assert_eq!(m(64, 1, 1, true).wheel(), Some(Wheel::Up));
+    assert_eq!(m(65, 1, 1, true).wheel(), Some(Wheel::Down));
+    assert_eq!(m(64 | 4, 1, 1, true).wheel(), Some(Wheel::Up), "Shift");
+    assert_eq!(m(65 | 16, 1, 1, true).wheel(), Some(Wheel::Down), "Ctrl");
+    assert_eq!(m(0, 1, 1, true).wheel(), None);
+    assert_eq!(m(64, 1, 1, false).wheel(), None, "松开不算一格");
+}
+
+/// 交给里面：照里面开的模式筛、照里面的编码重写；坐标在里面的屏外 ⇒ 不交。
+#[test]
+fn a_mouse_event_is_rewritten_for_what_the_inside_asked_for() {
+    use vt100::{MouseProtocolEncoding as E, MouseProtocolMode as M};
+    let inner = (24, 80);
+    let wheel = m(64, 10, 5, true);
+    assert_eq!(
+        wheel.encode(M::PressRelease, E::Sgr, inner),
+        Some(b"\x1b[<64;10;5M".to_vec())
+    );
+    assert_eq!(
+        wheel.encode(M::PressRelease, E::Default, inner),
+        Some(vec![0x1b, b'[', b'M', 64 + 32, 10 + 32, 5 + 32])
+    );
+    assert_eq!(
+        m(0, 3, 4, false).encode(M::PressRelease, E::Default, inner),
+        Some(vec![0x1b, b'[', b'M', 3 + 32, 3 + 32, 4 + 32]),
+        "老编码的松开是 3"
+    );
+    assert_eq!(wheel.encode(M::None, E::Sgr, inner), None);
+    assert_eq!(m(0, 3, 4, false).encode(M::Press, E::Sgr, inner), None);
+    assert_eq!(
+        m(32, 3, 4, true).encode(M::PressRelease, E::Sgr, inner),
+        None
+    );
+    assert_eq!(
+        m(32, 3, 4, true).encode(M::ButtonMotion, E::Sgr, inner),
+        Some(b"\x1b[<32;3;4M".to_vec()),
+        "按着拖"
+    );
+    assert_eq!(
+        m(35, 3, 4, true).encode(M::ButtonMotion, E::Sgr, inner),
+        None
+    );
+    assert_eq!(
+        m(35, 3, 4, true).encode(M::AnyMotion, E::Sgr, inner),
+        Some(b"\x1b[<35;3;4M".to_vec())
+    );
+    assert_eq!(
+        m(0, 81, 4, true).encode(M::PressRelease, E::Sgr, inner),
+        None,
+        "屏外"
+    );
+    assert_eq!(
+        m(0, 230, 4, true).encode(M::PressRelease, E::Default, (24, 300)),
+        None,
+        "老编码装不下"
+    );
+    assert_eq!(
+        m(0, 230, 4, true).encode(M::PressRelease, E::Utf8, (24, 300)),
+        Some([b"\x1b[M ".as_slice(), "\u{106}".as_bytes(), b"$"].concat())
+    );
+}
