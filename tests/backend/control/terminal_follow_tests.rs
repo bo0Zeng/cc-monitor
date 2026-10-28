@@ -139,7 +139,7 @@ fn eventually(mut f: impl FnMut() -> bool) -> bool {
 
 fn screen_of(f: &Frame) -> (String, u64, Value) {
     match f {
-        Frame::TerminalScreen(crate::wire::TerminalScreen { ticket, seq, view }) => {
+        Frame::TerminalScreen(crate::wire::TerminalScreen { ticket, seq, view, .. }) => {
             (ticket.clone(), *seq, serde_json::to_value(view).unwrap())
         }
         other => panic!("等的是一帧画面，来的是 {other:?}"),
@@ -755,4 +755,95 @@ fn a_one_shot_watch_wakes_on_output_and_gives_up_on_silence() {
         eventually(|| iso.control_clients() == 0),
         "放手之后控制模式客户端还连着"
     );
+}
+
+/// 托管那一形的那一格「输入」（帧里的 `input.holder`）。
+fn holder_of(f: &Frame) -> Value {
+    match f {
+        Frame::TerminalScreen(crate::wire::TerminalScreen { input, .. }) => {
+            serde_json::to_value(input).unwrap()["holder"].clone()
+        }
+        other => panic!("等的是一帧画面，来的是 {other:?}"),
+    }
+}
+
+/// 下一帧（异步那一侧：托管进程是同一进程里的任务）。
+async fn next_hosted(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Frame {
+    tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("等了 5 秒没来")
+        .expect("通道还开着")
+}
+
+/// ★ 托管终端订得上实时（A3-3-32-4）：真起托管进程（假子进程 `sh`，沙箱数据目录）。订上 ⇒ 第一帧当场到、带「输入」那一格（此刻无人持有）；
+/// 回执之后一个真终端接上抢走输入 ⇒ 画面一字未变也推下一帧，`input.holder.who` 是 `terminal-window`；子进程退了 ⇒ 结束帧 `gone`。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_hosted_terminal_follows_live_and_a_holder_change_pushes_a_frame() {
+    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::wire::{write_frame, Frame as HostFrame, Want};
+    let (own, _data) = sandbox_own("follow-hosted");
+    let (sock, task) = start(
+        &own,
+        spec("t-fol", "printf 'ready\\r\\n'; read x; printf 'bye\\r\\n'"),
+    )
+    .await;
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    let d = Desk::new(tx);
+    let (d2, s2) = (d.clone(), sock.clone());
+    tokio::task::spawn_blocking(move || d2.follow_hosted_at("t1", &s2, &Default::default()))
+        .await
+        .expect("没崩")
+        .expect("订上");
+    let f = next_hosted(&mut rx).await;
+    let (ticket, mut s1, mut view) = screen_of(&f);
+    assert_eq!((ticket.as_str(), s1), ("t1", 1));
+    assert_eq!(holder_of(&f)["who"], "none", "此刻无人持有");
+    // 子进程的 `ready` 可能晚于第一帧：回执、等到画着它的那一帧。
+    loop {
+        d.ack(&AckReq {
+            ticket: "t1".into(),
+            seq: s1,
+        })
+        .expect("回执");
+        if view["lines"].to_string().contains("ready") {
+            break;
+        }
+        (_, s1, view) = screen_of(&next_hosted(&mut rx).await);
+    }
+    // 真终端接上 ⇒ 输入归它；画面没变，持有者变了也推。
+    let mut t = hello(&sock, Want::Input).await;
+    read_until_out(&mut t, "ready").await;
+    let f = next_hosted(&mut rx).await;
+    let (_, s2, view2) = screen_of(&f);
+    assert_eq!(s2, s1 + 1);
+    assert_eq!(view2["screen"], view["screen"], "画面一字未变");
+    assert_eq!(holder_of(&f)["who"], "terminal-window");
+    assert_eq!(holder_of(&f)["mine"], false);
+    d.ack(&AckReq {
+        ticket: "t1".into(),
+        seq: s2,
+    })
+    .expect("回执");
+    // 子进程退了 ⇒ 结束帧 `gone`。
+    write_frame(&mut t, &HostFrame::In(b"\r".to_vec()))
+        .await
+        .expect("回车");
+    loop {
+        match next_hosted(&mut rx).await {
+            // 结束可能落在这一帧与它的回执之间：那时票已经不认了，回执被拒不算错。
+            Frame::TerminalScreen(s) => {
+                let _ = d.ack(&AckReq {
+                    ticket: "t1".into(),
+                    seq: s.seq,
+                });
+            }
+            Frame::TerminalFollowEnd(e) => {
+                assert_eq!(e.why, FollowEnd::Gone);
+                break;
+            }
+            other => panic!("来的是 {other:?}"),
+        }
+    }
+    drop(t);
+    task.await.expect("任务没崩").expect("跑完");
 }

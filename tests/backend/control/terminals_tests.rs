@@ -1299,3 +1299,24 @@ async fn a_queued_line_to_an_old_hosted_terminal_is_refused_as_outdated() {
     assert!(sent.acts.is_empty(), "再发一次也一样：不给［再发一次］");
     assert!(!host.await.expect("假托管没崩"), "那一句没说给它");
 }
+
+/// ★ 「这一端持有」与接管那一下同一个读法：桌面不自报 `client`（名单 · 接管 · 实时流都不带），后端替它持有时记的是 `desktop` ⇒
+/// 名单那一格 `mine` 真、那一句是「输入在此处」；手机持有 ⇒ 桌面那一问看来不是它。
+#[test]
+fn the_desktop_that_did_not_name_itself_sees_its_own_hold_as_mine() {
+    use crate::host::{HeldBy, Input as HostInput};
+    let held = |who: &str, requester: Option<&str>| match input_of_row(
+        &HostInput::Held(Some(HeldBy::Front(who.into()))),
+        requester,
+    ) {
+        TermInput::Held { holder } => (holder.mine, holder.said),
+        TermInput::Shared => panic!("托管那一行是 held"),
+    };
+    let here = copy_text("beTerminal.holder.here", &[]);
+    assert_eq!(held("desktop", None), (true, here.clone()));
+    assert_eq!(held("mobile", Some("mobile")), (true, here));
+    assert_eq!(
+        held("mobile", None),
+        (false, copy_text("beTerminal.holder.mobile", &[]))
+    );
+}

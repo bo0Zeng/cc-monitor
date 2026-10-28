@@ -1248,14 +1248,14 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         )),
         r#"{"acts":["retry","recapture"],"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
-    // 输入在别的一端手里：下一步是接管再送（界面照它给［接管再送］）。
+    // 输入在别的一端手里（画了之后才被抢走那一刻）：没有下一步 —— 按键照名单 / 实时流的 `mine` 灰着，接管走［接管输入］（A3-3-32-6）。
     assert_eq!(
         wire(&t::input_reply(
             SentResult::Refused,
             Some(t::Refused::HeldElsewhere),
             None
         )),
-        r#"{"acts":["take"],"result":"refused","said":"输入在另一端 · 没送","why":"held_elsewhere"}"#
+        r#"{"result":"refused","said":"输入在另一端 · 没送","why":"held_elsewhere"}"#
     );
     // terminal-end：手机那一份入参（`core-claude/.../link/Terminals.kt`）经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 名单里没有它）。
     assert_eq!(
@@ -1294,7 +1294,7 @@ mod erased_wire {
     }
 }
 
-/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 的 `take` 现在真用上了：托管终端的输入在别处时先接管再送，A3-3-5）。
+/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 不再收 `take`：「接管再送」那一支删了，A3-3-32-6）。
 /// 多送一格 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（碰 tmux 之前），
 /// 多出来的那一格诊断里点名（类型不对的那一种，解码器那一句不带格名，只比码）。
 #[test]
@@ -1302,8 +1302,8 @@ fn the_terminal_trio_refuses_fields_it_does_not_use() {
     for (cmd, args, named) in [
         (
             "terminal-input",
-            serde_json::json!({ "terminal": "tmux-1", "text": "x", "take": "yes" }),
-            "",
+            serde_json::json!({ "terminal": "tmux-1", "text": "x", "take": true }),
+            "take",
         ),
         (
             "terminal-input",

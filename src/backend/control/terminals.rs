@@ -70,10 +70,10 @@ pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
 }
 
 /// 结局与原因 ⇒ 送完之后出口可以做的下一步（出口照它摆，不按 `why` 自己挑）：
-/// 改得了的拒因（画面变了 · 一时认不出 · 不止一个终端）给再发一次；终端可能换了 · 没了 ⇒ 重读名单；画面可能变了 ⇒ 重抓一屏；
-/// 输入在别的一端手里 ⇒ 接管再送。
+/// 改得了的拒因（画面变了 · 一时认不出 · 不止一个终端）给再发一次；终端可能换了 · 没了 ⇒ 重读名单；画面可能变了 ⇒ 重抓一屏。
+/// 输入在别的一端手里 ⇒ 没有下一步：按键照名单 / 实时流的持有者灰着，接管只走［接管输入］。
 pub(crate) fn acts_of(result: SentResult, why: Option<Refused>) -> Vec<SentAct> {
-    use SentAct::{Recapture, Relist, Retry, Take};
+    use SentAct::{Recapture, Relist, Retry};
     match (result, why) {
         (SentResult::Delivered, _) => vec![],
         (SentResult::Unsure, _) => vec![Recapture],
@@ -81,7 +81,6 @@ pub(crate) fn acts_of(result: SentResult, why: Option<Refused>) -> Vec<SentAct> 
         (SentResult::Refused, Some(Refused::NotKnown)) => vec![Retry, Relist],
         (SentResult::Refused, Some(Refused::Ambiguous)) => vec![Retry],
         (SentResult::Refused, Some(Refused::Ended)) => vec![Relist],
-        (SentResult::Refused, Some(Refused::HeldElsewhere)) => vec![Take],
         (SentResult::Refused, _) => vec![],
     }
 }
@@ -111,9 +110,10 @@ pub(crate) fn input_of_row(input: &crate::host::Input, requester: Option<&str>) 
             let (who, mine) = match by {
                 None => (HolderWho::None, false),
                 Some(HeldBy::Terminal) => (hold::who_of(WhoKind::Terminal, None), false),
+                // 后端替谁持有与「这一问是谁」同一个读法（没报 ⇒ 桌面，同 [`front_of`]）。
                 Some(HeldBy::Front(f)) => (
                     hold::who_of(WhoKind::Backend, Some(f)),
-                    requester == Some(f.as_str()),
+                    front_of(requester) == *f,
                 ),
             };
             TermInput::Held {
@@ -903,8 +903,40 @@ fn managed_gone(e: &std::io::Error) -> CmdErr {
 
 /// 托管终端的一屏（托管口 `capture`）⇒ 与 tmux 那一形同一份 [`View`]（之后的成品 · 指纹同一套）。
 fn managed_view(id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
-    let got =
-        crate::host::managed::capture(id, back as usize, color).map_err(|e| managed_gone(&e))?;
+    view_of_captured(
+        crate::host::managed::capture(id, back as usize, color).map_err(|e| managed_gone(&e))?,
+    )
+}
+
+/// 名单里对上的托管那一行 ⇒ 它的托管口（实时预览经它开一条只看的连接）；不是托管那一形 ⇒ `None`（交 tmux 那一形）。
+pub(crate) fn hosted_sock_of(
+    terminal: Option<&str>,
+    sid: Option<&str>,
+) -> Result<Option<std::path::PathBuf>, CmdErr> {
+    let Some(row) = managed_row(&target(terminal, sid)?)? else {
+        return Ok(None);
+    };
+    let sock = crate::host::managed::installed()
+        .and_then(|own| crate::host::managed::home::sock_of(own, &row.id).ok());
+    sock.map(Some).ok_or_else(|| not_known("not_known"))
+}
+
+/// 托管口 `sock` 那个终端这一刻那一屏（带颜色、不往回要）：与 [`screen_view_on`] 同一份成品。
+pub(crate) fn hosted_screen_at(sock: &std::path::Path, tz: &crate::Tz) -> Result<Preview, CmdErr> {
+    let view = view_of_captured(
+        crate::host::managed::client::capture(sock, 0, true).map_err(|e| managed_gone(&e))?,
+    )?;
+    let at = now_secs();
+    Ok(preview_reply(
+        &view,
+        true,
+        false,
+        at,
+        &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
+    ))
+}
+
+fn view_of_captured(got: crate::host::managed::client::Captured) -> Result<View, CmdErr> {
     let mut text = got.lines.join("\n");
     text.push('\n');
     Ok(View {
@@ -998,7 +1030,7 @@ pub(crate) fn managed_bytes(input: &Input, pastes: &[String]) -> Vec<u8> {
 }
 
 /// [`send_on`] 的托管那一臂：过门（按行事实）→ `via` 收不收 → 投递那一句 ⇒ 经托管口 `say`（[`say_managed`]）；
-/// 人打字 ⇒ 输入在不在这个前端手里（不在：带了 `take` ⇒ 先接管，否则 `held_elsewhere`）→ 比画面 → 经持有的那一条送。
+/// 人打字 ⇒ 输入在不在这个前端手里（不在 ⇒ `held_elsewhere`）→ 比画面 → 经持有的那一条送。
 fn send_managed(
     row: &TermRow,
     req: &TerminalInputReq,
@@ -1020,12 +1052,7 @@ fn send_managed(
     let front = front_of(requester.as_deref());
     use crate::host::managed::hold;
     if hold::holder(&row.id).as_deref() != Some(front.as_str()) {
-        if req.take != Some(true) {
-            return Ok(refused(Refused::HeldElsewhere));
-        }
-        if crate::host::managed::take(&row.id, &front).is_err() {
-            return Ok(refused(Refused::Ended));
-        }
+        return Ok(refused(Refused::HeldElsewhere));
     }
     if let Some(seen) = &req.seen_screen {
         let v = managed_view(&row.id, false, 0)?;

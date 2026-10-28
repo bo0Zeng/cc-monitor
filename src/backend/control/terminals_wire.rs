@@ -78,10 +78,6 @@ pub(crate) struct TerminalInputReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
-    /// 托管终端的输入在别的一端手里时：`true` ⇒ 先替这个前端接管再送；缺省 ⇒ 不送、回 `refused` ＋ `held_elsewhere`。tmux 那一形不看它。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) take: Option<bool>,
     /// `text` 之前各单独粘一次的那几段（投递带附件那一句时的图片绝对路径，由那台按附件编号写好）。不上线：入参里写了它 ⇒ `bad_args`（`deny_unknown_fields`）。
     #[serde(skip)]
     #[cfg_attr(test, ts(skip))]

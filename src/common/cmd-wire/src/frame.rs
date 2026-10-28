@@ -803,6 +803,8 @@ pub struct TerminalScreen {
     pub seq: u64,
     /// 那一屏（同 `terminal-preview` 的回话）。
     pub view: crate::session::Preview,
+    /// 输入怎么进（同名单那一格）：托管那一形写此刻的持有者，持有者变了画面没变也推一帧；tmux 那一形恒 `shared`。
+    pub input: crate::session::TermInput,
 }
 
 /// **一条终端订阅停了**（不会再有画面）；后端已经忘掉这张票。客户端自己退订的不发这一帧。
