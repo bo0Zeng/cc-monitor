@@ -314,7 +314,7 @@ fn the_cli_entry_never_names_a_concrete_handler() {
 fn the_probe_reports_exactly_what_it_can_dispatch() {
     let raw = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
-        !raw.contains("\"--launch\"") && !raw.contains("\"--kill\""),
+        !raw.contains("\"--launch\"") && !raw.contains("\"--terminal-end\""),
         "`probe()` 里出现了硬编码的命令字面量 —— 清单必须从 `REGISTRY` 派生"
     );
     let reported: Vec<String> = REGISTRY
@@ -1061,7 +1061,7 @@ fn a_failure_reads_the_same_on_the_frame_face_and_the_cli_face() {
     let file = base.join("f.txt");
     std::fs::write(&file, b"x").unwrap();
     let cases = [
-        ("kill", serde_json::json!({})),
+        ("terminal-preview", serde_json::json!({})),
         (
             "files-ls",
             serde_json::json!({"path": file.to_str().unwrap()}),

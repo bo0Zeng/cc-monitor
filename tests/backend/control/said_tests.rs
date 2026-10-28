@@ -1,5 +1,5 @@
 //! 那几条命令被拒时的那一句（各条命令自己的「码 → 句」表）：金样里的每个码各一句、两两不同、句子里没有原话；
-//! 后端知道的对象（会话名 · 收件人）在句子里（处理器原来那句进复制详情的原话：`kill_tests.rs` 那条）。
+//! 后端知道的对象（会话名 · 收件人）在句子里。
 
 use super::{cc_bus_wire, kill, terminal_follow, terminals_wire};
 
@@ -24,14 +24,21 @@ fn codes(g: &serde_json::Value, cmd: &str) -> Vec<String> {
 
 #[test]
 fn every_golden_code_has_its_own_sentence_without_raw_words() {
-    let tmux = golden("tmux-control.golden.json");
     let term = golden("terminals.golden.json");
     type Table = Box<dyn Fn(&str) -> String>;
     let cases: Vec<(&str, Table, Vec<String>, Option<&str>)> = vec![
+        // 结束那一项（批量停 · 换号重启停旧）被门 · tmux 那一下拒成的码：取 `terminal-end` 的码表里门与 tmux 那几档。
         (
-            "kill",
+            "terminal-end",
             Box::new(|c| kill::said("demo-cc", c)),
-            codes(&tmux, "kill"),
+            ["no_such_session", "wrong_owner", "too_many_windows", "kill_failed", "child_timed_out"]
+                .into_iter()
+                .inspect(|c| assert!(
+                    <kill::TerminalEndErr as crate::wire::typed::Codes>::ALL.contains(c),
+                    "{c} 不在 terminal-end 的码表里"
+                ))
+                .map(str::to_string)
+                .collect(),
             Some("demo-cc"),
         ),
         (
@@ -93,7 +100,7 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
 #[test]
 fn the_wire_layer_keeps_the_handlers_sentence() {
     for (cmd, code) in [
-        ("kill", "kill_failed"),
+        ("terminal-end", "kill_failed"),
         ("bus-list", "failed"),
         ("accounts-add", "bad_args"),
     ] {

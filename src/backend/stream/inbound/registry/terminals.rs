@@ -1,4 +1,4 @@
-//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
+//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-window` · `session-terminals` · `launch*` · `terminal-end` · `sessions-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -68,10 +68,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalUnfollow>(
         "退订一个终端的画面（幂等，不发收尾帧）",
     ),
-    // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
-    // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
-    crate::wire::typed::blocking::<crate::control::kill::Kill>("杀一个 tmux 会话"),
-    // 一批会话的停：每一个同单个那一条（`kill`），逐个答结局。
+    // 一批会话的停：每一个同单个那一条（`terminal-end`，按名单句柄），逐个答结局。
     //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStop>(
         "停一批会话（逐个答，一个不成不挡下一个）",

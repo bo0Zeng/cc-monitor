@@ -10,6 +10,9 @@
  *   那台自己重连回来（机器状态推「已连上」，宿主转给 {@link TerminalPage.machineUp}）⇒ 自动重新订上、输入框跟着恢复。收起 / 换页 / 切标签页即退订。开着不轮询。
  * - 往上翻了不拽回：底部出「回到最新」。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
+ * - 托管那一形（输入只收持有者的）：「送往 …」那一行右边写后端那一句（输入在此处 · 在手机 · 在终端窗口 …）＋［接管输入］（不是这一端持有）/［交还］
+ *   （`terminal-take-input` · `terminal-release-input`，回的那一格就地换上）。送字被拒成「输入在另一端」⇒ 后端那一项下一步带 `take`，
+ *   照那句说、给［接管再送］（同一份字带 `take` 再送）。tmux 那一形不出这两颗。
  * - 送字带上看到的那一屏的指纹：画面已经变了 ⇒ 后端不送，这里重抓给人看。不知道送没送到 ⇒ 照实说、不重发。
  * - 输入框：回车说一句（投进输入队，见下）· Shift+回车换行 · Ctrl+回车只往终端里打字、不补回车（`terminal-input`）；组字时回车归输入法；
  *   Esc 只把焦点还给消息流（不清字、不收抽屉）。没送的字按会话各记一份，切回来还在。常用键一律往终端里送（按键不是说一句）。
@@ -29,7 +32,19 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { dotOf, fullTitle, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
-import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
+import {
+  holderOf,
+  listTerminals,
+  previewShot,
+  releaseInput,
+  sendToTerminal,
+  takeInput,
+  type TerminalRow,
+  type TerminalSend,
+  type TerminalSent,
+  type TerminalShot,
+} from "./terminal-reads";
+import type { TermInput } from "./generated/TermInput";
 import { AttachDraft, channelIo, type AttachIo } from "./attach-draft";
 import { AttachRow } from "./attach-row";
 import {
@@ -65,7 +80,7 @@ import s from "./terminal-page.module.css";
 export interface TerminalReads {
   list(origin: Origin): Promise<TerminalRow[]>;
   shot(origin: Origin, terminal: string): Promise<TerminalShot>;
-  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent>;
+  send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null, take?: boolean): Promise<TerminalSent>;
   /** 订实时画面。 */
   follow(origin: Origin, terminal: string, events: FollowEvents): Follow;
 }
@@ -76,6 +91,14 @@ export const CHANNEL_READS: TerminalReads = {
   send: sendToTerminal,
   follow: (origin, terminal, events) => startFollow(origin, terminal, events),
 };
+
+/** 托管终端的接管 · 交还（缺省走通道；测试换成假的）：回那一行此刻的输入那一格。 */
+export interface InputHolds {
+  take(origin: Origin, terminal: string): Promise<TermInput>;
+  release(origin: Origin, terminal: string): Promise<TermInput>;
+}
+
+export const CHANNEL_HOLDS: InputHolds = { take: takeInput, release: releaseInput };
 
 /** 说一句那一路要的几口（缺省走通道；测试换成假的）。 */
 export interface AttachReads {
@@ -142,8 +165,8 @@ const KEYS: readonly { label: string; what: TerminalSend }[] = [
   { label: "3", what: { text: "3", enter: false } },
 ];
 
-/** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
-type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; detail?: string };
+/** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试 · 接管再送）。 */
+type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; take?: TerminalSend; detail?: string };
 
 /** 页内元素 id 的流水号（「送往 …」那一行给输入框当名字）。 */
 let pageSeq = 0;
@@ -169,6 +192,8 @@ export class TerminalPage {
   /** 送字那一步的结局一句（`null` ＝ 没有）。 */
   private note: Note | null = null;
   private sending = false;
+  /** 接管 · 交还那一下在飞。 */
+  private holding = false;
   /** 没送的字，按会话各记一份。 */
   private readonly drafts = new Map<string, string>();
   /** 没送的附件，按会话各记一份（键 ＝ 那台 ＋ 会话 ID）。 */
@@ -217,6 +242,8 @@ export class TerminalPage {
   private readonly inputArea: HTMLElement;
   private readonly to: HTMLElement;
   private readonly owner: HTMLElement;
+  /** ［接管输入］/［交还］（托管那一形才出）。 */
+  private readonly holdBtn: HTMLButtonElement;
   private readonly box: HTMLTextAreaElement;
   private readonly sendBtn: HTMLButtonElement;
   private readonly keyBtns: HTMLButtonElement[] = [];
@@ -227,6 +254,7 @@ export class TerminalPage {
     private readonly host: TerminalPageHost,
     private readonly reads: TerminalReads = CHANNEL_READS,
     private readonly attachReads: AttachReads = CHANNEL_ATTACH,
+    private readonly holds: InputHolds = CHANNEL_HOLDS,
   ) {
     this.el = el("div");
     this.el.className = s.term;
@@ -283,7 +311,8 @@ export class TerminalPage {
     this.owner.className = s.termOwner;
     const toSp = el("span");
     toSp.className = s.termSp;
-    toRow.append(this.to, toSp, this.owner);
+    this.holdBtn = button({ label: copyText("terminal.input.take"), kind: "ghost", size: "compact", onClick: () => void this.hold() });
+    toRow.append(this.to, toSp, this.owner, this.holdBtn);
     const boxRow = el("div");
     boxRow.className = s.termBoxRow;
     this.box = el("textarea");
@@ -551,12 +580,36 @@ export class TerminalPage {
     this.paint();
   }
 
-  /** 送一段字或一颗键。能不能送由名单里后端那一格说了算；送完按回话说一句、该重抓就重抓。 */
-  async send(what: TerminalSend): Promise<boolean> {
+  /**
+   * 送一段字或一颗键。能不能送由名单里后端那一格说了算；送完按回话说一句、该重抓就重抓。
+   * `take` ＝［接管再送］：托管终端的输入在别的一端手里时先替这一端接管；送到了 ⇒ 重读名单（持有者换了）。
+   */
+  async send(what: TerminalSend, take = false): Promise<boolean> {
     const row = this.row;
     if (row === null) return false;
-    const sent = await this.deliver((origin) => this.reads.send(origin, row.terminal, what, this.shot?.screen ?? null), what);
+    const seen = this.shot?.screen ?? null;
+    const sent = await this.deliver((origin) => (take ? this.reads.send(origin, row.terminal, what, seen, true) : this.reads.send(origin, row.terminal, what, seen)), what);
+    if (take && sent?.result === "delivered") void this.refresh();
     return sent?.result === "delivered";
+  }
+
+  /** ［接管输入］/［交还］：交那台，回的那一格就地换上（不重读名单）。没做成 ⇒ 说那台写好的那一句。 */
+  private async hold(): Promise<void> {
+    const row = this.row;
+    const origin = this.origin;
+    const sid = this.sid;
+    if (row === null || row.holder === undefined || origin === undefined || this.holding) return;
+    const mine = row.holder.mine;
+    this.holding = true;
+    this.paint();
+    try {
+      const now = await (mine ? this.holds.release(origin, row.terminal) : this.holds.take(origin, row.terminal));
+      if (sid === this.sid && this.row?.terminal === row.terminal) this.row = { ...this.row, holder: holderOf(now) };
+    } catch (e) {
+      if (sid === this.sid) this.showNote({ text: saidOf(e), tone: "error", detail: detailOf(e) });
+    }
+    this.holding = false;
+    this.paint();
   }
 
   /**
@@ -593,7 +646,8 @@ export class TerminalPage {
       return sent;
     }
     const text = sent.result === "unsure" ? copyText("terminal.input.unsure", { machine: machineName(origin) }) : copyText("terminal.input.failed", { why: sent.said });
-    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? again : {}) });
+    const take = retry !== null && sent.acts.includes("take") ? { take: retry } : {};
+    this.showNote({ text, tone: "error", ...(sent.acts.includes("retry") ? again : {}), ...take });
     if (sent.acts.includes("recapture")) void this.recapture();
     if (sent.acts.includes("relist")) void this.refresh();
     return sent;
@@ -885,7 +939,20 @@ export class TerminalPage {
     this.screen.dataset.stale = String(this.shotError !== null || this.live.at === "stopped");
 
     this.to.textContent = copyText("terminal.input.to", { title: labelOf(w), machine: machineWord(w) });
-    this.owner.textContent = row.clients > 0 && row.input === "shared" ? copyText("terminal.input.shared", { n: row.clients }) : row.clients === 0 ? copyText("terminal.input.nobody") : "";
+    this.owner.textContent =
+      row.holder !== undefined
+        ? row.holder.said
+        : row.clients > 0 && row.input === "shared"
+          ? copyText("terminal.input.shared", { n: row.clients })
+          : row.clients === 0
+            ? copyText("terminal.input.nobody")
+            : "";
+    // 托管那一形才有［接管输入］/［交还］（看这一端持有没有）；名单说送不了的（别的前端的 · 不是我们起的）不给。
+    this.holdBtn.style.display = row.holder !== undefined ? "" : "none";
+    const holdLabel = row.holder?.mine === true ? copyText("terminal.input.release") : copyText("terminal.input.take");
+    setButtonLabel(this.holdBtn, holdLabel);
+    setDisabled(this.holdBtn, row.inputNo);
+    setBusy(this.holdBtn, this.holding ? holdLabel : null);
     const no = this.inputNo();
     this.box.disabled = no !== null || this.sending;
     this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("chat.input.placeholder");
@@ -906,6 +973,8 @@ export class TerminalPage {
       this.noteEl.appendChild(t);
       const retry = this.note.retry;
       if (retry) this.noteEl.appendChild(button({ label: copyText("terminal.input.retry"), kind: "ghost", size: "compact", onClick: () => void this.send(retry) }));
+      const take = this.note.take;
+      if (take) this.noteEl.appendChild(button({ label: copyText("terminal.input.takeSend"), kind: "ghost", size: "compact", onClick: () => void this.send(take, true) }));
       // 那一端写了详情 ⇒ 跟［复制详情］（与同一个原因的那条黄条同一颗）。
       const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
       if (copy) this.noteEl.appendChild(copy);

@@ -62,6 +62,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/platform/local_tz.rs", "#[cfg(unix)] let link = crate::platform::fs::Ro::read_link(\"/etc/localtime\").ok();", Why::NotAnError, "这台的 /etc/localtime 不是链（没有 · 是一份拷贝）是常态：说不出时区 ⇒ 调用方写「时区不明」"),
     ("src/backend/platform/watch_file.rs", "let _ = events.send(Some(p));", Why::PeerGone, "盯盘那一口把文件事件转给收的线程（轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜共用）：线程不在了就没人要这一下"),
     ("src/backend/platform/watch_file.rs", "let _ = self.tx.send(None);", Why::PeerGone, "踢收的线程一下（各号 MCP 同步做完加号 / 建库之后）：线程不在了就没人要这一下"),
+    ("src/backend/host/managed/attach.rs", "let _ = qtx.send(l);", Why::PeerGone, "瘦客户端底行那一句转给接着的那一趟：那一趟已经断开 ⇒ 没人要这一句"),
     ("src/backend/platform/watch_file.rs", "let _ = self.inner.unwatch(&gone.0);", Why::Reap, "名单里离开的目录卸掉 watch：目录已删时 unwatch 本来就会失败，名单照样摘"),
     ("src/backend/accounts/manage/exec.rs", "let _ = door::link(d, &home, &self.rel(at)?, target);", Why::CleanupAfterFailure, "私有化自检没过：删掉落位的那一份之后把原来那条链接建回去；主错误已在回、备份里有原件"),
     ("src/backend/accounts/manage/exec.rs", "let _ = door::remove(d, &home, &self.rel(&tmp)?, false);", Why::CleanupAfterFailure, "导入凭据的临时件：改权限 / 换名失败之后删它；主错误已在回，删不掉只剩一份 0600 的临时件"),

@@ -37,12 +37,25 @@ export interface TerminalRow {
   sid: string | null;
   /** 此刻连着它的终端窗口几个（0 ＝ 后台）。 */
   clients: number;
-  /** 输入怎么进：`shared` ＝ 各端都能打字（tmux）· `held` ＝ 托管那一形，只有持有者的进（谁持有在名单那一行的 `input.holder`）。 */
+  /** 输入怎么进：`shared` ＝ 各端都能打字（tmux）· `held` ＝ 托管那一形，只有持有者的进（谁持有在 `holder`）。 */
   input: TerminalsList["terminals"][number]["input"]["kind"];
+  /** 托管那一形：此刻谁在输入（后端写好的那一句 ＋ 是不是这一端持有）；tmux 那一形没有这一格。 */
+  holder?: TerminalHolder;
   /** Claude 已退出、终端还开着。 */
   programExited: boolean;
   /** 能不能送字 / 送键：`null` ＝ 能；否则为什么不能（后端写好的那一句）。 */
   inputNo: string | null;
+}
+
+/** 托管终端此刻的输入持有者：给人看的那一句（后端写好）· 是不是这一端。 */
+export interface TerminalHolder {
+  said: string;
+  mine: boolean;
+}
+
+/** 输入那一格 ⇒ 持有者（tmux 那一形 ⇒ 没有）。名单那一行与接管 · 交还的回包同一个读法。 */
+export function holderOf(input: TermInput): TerminalHolder | undefined {
+  return input.kind === "held" ? { said: input.holder.said, mine: input.holder.mine } : undefined;
 }
 
 /** 抓到的一屏：每一行（带颜色段）· 纯文字 · 指纹（送字时带回去）· 几点抓的（秒）。 */
@@ -81,6 +94,7 @@ export function rowsOf(v: TerminalsList): TerminalRow[] {
     sid: r.session?.sid ?? null,
     clients: r.clients.length,
     input: r.input.kind,
+    holder: holderOf(r.input),
     programExited: r.state === "program_exited",
     inputNo: r.can.input === true ? null : r.can.input.said,
   }));

@@ -69,9 +69,10 @@ pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
 }
 
 /// 结局与原因 ⇒ 送完之后出口可以做的下一步（出口照它摆，不按 `why` 自己挑）：
-/// 改得了的拒因（画面变了 · 一时认不出 · 不止一个终端）给再发一次；终端可能换了 · 没了 ⇒ 重读名单；画面可能变了 ⇒ 重抓一屏。
+/// 改得了的拒因（画面变了 · 一时认不出 · 不止一个终端）给再发一次；终端可能换了 · 没了 ⇒ 重读名单；画面可能变了 ⇒ 重抓一屏；
+/// 输入在别的一端手里 ⇒ 接管再送。
 pub(crate) fn acts_of(result: SentResult, why: Option<Refused>) -> Vec<SentAct> {
-    use SentAct::{Recapture, Relist, Retry};
+    use SentAct::{Recapture, Relist, Retry, Take};
     match (result, why) {
         (SentResult::Delivered, _) => vec![],
         (SentResult::Unsure, _) => vec![Recapture],
@@ -79,6 +80,7 @@ pub(crate) fn acts_of(result: SentResult, why: Option<Refused>) -> Vec<SentAct> 
         (SentResult::Refused, Some(Refused::NotKnown)) => vec![Retry, Relist],
         (SentResult::Refused, Some(Refused::Ambiguous)) => vec![Retry],
         (SentResult::Refused, Some(Refused::Ended)) => vec![Relist],
+        (SentResult::Refused, Some(Refused::HeldElsewhere)) => vec![Take],
         (SentResult::Refused, _) => vec![],
     }
 }
@@ -97,7 +99,7 @@ pub(crate) fn no_said(why: Refused) -> String {
     }
 }
 
-/// 输入那一格的成品：托管那一形写出此刻的持有者，`mine` ＝ 后端替这次请求自报的那个前端持有着。
+/// 输入那一格的成品：托管那一形写出此刻的持有者，`mine` ＝ 后端替这次请求自报的那个前端持有着，`said` 是给人看的那一句。
 fn input_of_row(input: &crate::host::Input, requester: Option<&str>) -> TermInput {
     use crate::host::{HeldBy, Input};
     match input {
@@ -115,8 +117,15 @@ fn input_of_row(input: &crate::host::Input, requester: Option<&str>) -> TermInpu
                     requester == Some(f.as_str()),
                 ),
             };
+            let said = match (who, mine) {
+                (_, true) => copy_text("beTerminal.holder.here", &[]),
+                (HolderWho::Desktop, _) => copy_text("beTerminal.holder.desktop", &[]),
+                (HolderWho::Mobile, _) => copy_text("beTerminal.holder.mobile", &[]),
+                (HolderWho::TerminalWindow, _) => copy_text("beTerminal.holder.terminalWindow", &[]),
+                (HolderWho::None, _) => copy_text("beTerminal.holder.none", &[]),
+            };
             TermInput::Held {
-                holder: InputHolder { who, mine },
+                holder: InputHolder { who, mine, said },
             }
         }
     }

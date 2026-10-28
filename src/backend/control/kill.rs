@@ -1,5 +1,5 @@
-//! 杀一个 tmux 会话（改状态的 tmux 命令一律归 `control/`）。argv 直传、不过 shell，三道门（Gate 1/2/3）由
-//! [`super::gate::admit_destructive`] 过；界面经通道直接说本命令（`src/frontend/ui/tmux-control.ts::killSession`）。
+//! 结束一个终端（改状态的 tmux 命令一律归 `control/`）：`terminal-end` 按名单里的句柄认那一行，tmux 那一形过三道门（Gate 1/2/3，
+//! [`super::gate::admit_destructive`]）、argv 直传不过 shell；托管那一形挂断子进程组。批量停（`sessions-stop`）· 换号重启停旧那一步同一条。
 //!
 //! # 杀的是句柄不是名字
 //!
@@ -8,7 +8,7 @@
 //!
 //! # 错误码
 //!
-//! 命令级（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
+//! 门与 tmux 那一下（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
 use crate::platform::child::Deadline;
@@ -17,77 +17,8 @@ use copy_core::copy_text;
 /// `kill-session` / `kill-pane` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
-/// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀共用）。
-pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
-
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
 type CmdErr = crate::wire::spec::Fail;
-
-/// `kill` 的入参（`deny_unknown_fields`）。会话名的**形状**在 [`admit_existing_name`] 判：
-/// 与 `launch` 同一条纪律，这**不是安全边界**（对端本来就能在这台机上跑任意命令），
-/// 而是「这组参数能不能构成一次有意义的 tmux 调用」。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct KillReq {
-    /// 要杀的 tmux 会话名。
-    pub(crate) name: String,
-    /// 自报的前端（过「哪个前端的会话」那一维）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) client: Option<String>,
-    /// 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（会话 id 的形状由 `Sid` 解码就判）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) sid: Option<cmd_wire::Sid>,
-}
-
-/// `kill` 的回包：线上形住 `cmd-wire::session`。
-pub(crate) use cmd_wire::session::Killed;
-
-crate::wire::typed::codes! {
-    /// `kill` 的码：三道门 · 杀那一发 tmux。
-    pub(crate) enum KillErr {
-        /// tmux 起不来。
-        NoTmux = "no_tmux",
-        /// 没有这个会话（或带了 `sid`、此刻没有窗格挂着它）。
-        NoSuchSession = "no_such_session",
-        /// 身份门不过（不是我们起的 · 别的前端的）。
-        WrongOwner = "wrong_owner",
-        /// 窗口门不过（那个会话里还有别的窗口）。
-        TooManyWindows = "too_many_windows",
-        /// tmux 起来了、但没杀成（tmux 原话进复制详情）。
-        KillFailed = "kill_failed",
-        /// 那一发 `tmux` 过了期限。
-        ChildTimedOut = "child_timed_out",
-    }
-}
-
-/// `kill`：杀一个 tmux 会话（破坏性：三道门在 `gate::admit_destructive`）。阻塞档（起 tmux）。
-pub(crate) struct Kill;
-
-impl crate::wire::typed::Command for Kill {
-    const NAME: &'static str = "kill";
-    type Req = KillReq;
-    type Reply = Killed;
-    type Err = KillErr;
-}
-
-impl crate::wire::typed::Handle for Kill {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: KillReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Killed, KillErr>> + Send + 'static {
-        async move { kill(&req).map_err(|f| refused(&req.name, f)) }
-    }
-}
-
-/// 下层那一份失败 ⇒ `kill` 的码，那一句换成给人看的（[`said`]）、下层那句进原话。
-pub(crate) fn refused(name: &str, f: CmdErr) -> KillErr {
-    crate::wire::typed::of_fail_said(f, KillErr::KillFailed, |c| Some(said(name, c)))
-}
 
 /// 结束会话被拒成 `code` 时给人看的那一句（批量停那一项也照它说）。`target` 是 tmux 会话名。
 pub(crate) fn said(target: &str, code: &str) -> String {
@@ -136,7 +67,7 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
     }
 }
 
-/// 真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
+/// tmux 那一形真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
 /// 带 `sid`：要求此刻有窗格挂着它（认完名字换了人 ⇒ 不杀）；那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
 fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Result<(), CmdErr> {
     let target = super::launch::exact_target(name);
@@ -148,7 +79,7 @@ fn run_expecting(name: &str, sid: Option<&str>, requester: Option<&str>) -> Resu
 /// 一发 tmux（`launch::run_with` 那一口的形状）。
 type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, CmdErr> + 'a;
 
-/// 结束会话的两种令牌：门放行的（`kill`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
+/// 结束会话的两种令牌：门放行的（`terminal-end`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
 pub(crate) enum Ending<'a> {
     Doomed(super::gate::Doomed),
     /// 只在仍是空壳时收；`tmux` 同 `launch::run_with` 那一口（判据交隔离 socket 上的）。
@@ -217,24 +148,6 @@ pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> CmdErr {
 pub(crate) fn kill_refused(stderr: &[u8]) -> CmdErr {
     CmdErr::new("kill_failed", copy_text("beKill.run.failed", &[]))
         .with_raw(Some(&String::from_utf8_lossy(stderr)))
-}
-
-/// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名（sid 的形状解入参时已判）⇒ 过门 ⇒ 杀 ⇒ 成品。
-pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {
-    admit_existing_name(&req.name)?;
-    let client = super::gate::requester(req.client.as_deref())?;
-    // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
-    run_expecting(&req.name, req.sid.as_deref(), client.as_deref())?;
-    Ok(reply(&req.name))
-}
-
-/// 帧面成品 `{session, killed}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍，
-/// 界面（`src/frontend/ui/tmux-control.ts::killSession`）直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn reply(name: &str) -> Killed {
-    Killed {
-        session: name.to_string(),
-        killed: true,
-    }
 }
 
 // ── `terminal-end`：按名单里的句柄结束一个终端，两种宿主同一条 ─────────────────────
@@ -351,7 +264,7 @@ pub(crate) fn end_terminal(
     };
     match row.host {
         crate::wire::TerminalHost::Tmux => {
-            // 挂着 sid 的窗格 ⇒ 只结束它（会话里还有别的 claude 窗格时不关整个会话），同 `kill {name, sid}`。
+            // 挂着 sid 的窗格 ⇒ 只结束它（会话里还有别的 claude 窗格时不关整个会话）。
             let sid = row.pane.as_ref().map(|_| row.sid.as_str());
             run_expecting(&row.name, sid, requester.as_deref()).map_err(|f| {
                 if f.code == "no_tmux" {

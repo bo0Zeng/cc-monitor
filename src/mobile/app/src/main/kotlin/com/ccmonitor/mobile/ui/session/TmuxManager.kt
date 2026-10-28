@@ -76,6 +76,12 @@ fun TmuxManagerDialog(
                 onNameChange = { newName = it },
                 onAttach = onAttach,
                 onKillRequested = { pendingKill = it },
+                onHold = { row, take ->
+                    scope.launch {
+                        terminals.hold(row, take)?.let { snackbar.show(Notice(it)) }
+                        refresh()
+                    }
+                },
                 onCreated = {
                     newName = ""
                     refresh()
@@ -95,7 +101,7 @@ fun TmuxManagerDialog(
             pendingKill = null
             scope.launch {
                 // 结果必须可见；结束会话不可逆，所以不给撤销
-                snackbar.show(terminals.kill(t.name))
+                snackbar.show(terminals.end(t))
                 refresh()
             }
         },
@@ -112,6 +118,7 @@ private fun TmuxManagerBody(
     onNameChange: (String) -> Unit,
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
+    onHold: (TerminalsList.Row, Boolean) -> Unit,
     onCreated: () -> Unit,
     onFailed: (String) -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
@@ -123,6 +130,7 @@ private fun TmuxManagerBody(
             sessions = sessions,
             onAttach = onAttach,
             onKillRequested = onKillRequested,
+            onHold = onHold,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
@@ -175,7 +183,7 @@ private fun KillConfirmDialog(
 
 /**
  * 会话列表段（加载 / 空态 / 各行）。
- * 行上点「杀」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈。
+ * 行上点「结束」只经 [onKillRequested] 交给父级，由父级做二次确认与结果反馈；托管那一行的［接管输入］/［交还］经 [onHold] 交父级。
  */
 @Composable
 private fun TmuxSessionList(
@@ -183,6 +191,7 @@ private fun TmuxSessionList(
     sessions: List<TerminalsList.Row>,
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
+    onHold: (TerminalsList.Row, Boolean) -> Unit,
 ) {
     when {
         loading -> Text(copyText("kit.state.reading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -193,17 +202,19 @@ private fun TmuxSessionList(
                     s = s,
                     onAttach = { onAttach(s.name) },
                     onKill = { onKillRequested(s) },
+                    onHold = { take -> onHold(s, take) },
                 )
             }
     }
 }
 
-/** 单个 tmux 会话行：名称、运行中命令，以及附着 / 杀。 */
+/** 单个终端行：名称、运行中命令、托管那一形谁在输入，以及附着 / 接管或交还 / 结束。 */
 @Composable
 private fun TmuxSessionRow(
     s: TerminalsList.Row,
     onAttach: () -> Unit,
     onKill: () -> Unit,
+    onHold: (Boolean) -> Unit,
 ) {
     val tokens = LocalAppTokens.current
     Row(
@@ -217,6 +228,7 @@ private fun TmuxSessionRow(
                 listOfNotNull(
                     s.title.takeIf { it.isNotBlank() }?.let { copyText("mobTmux.row.running", "command" to it) },
                     copyText("mobTmux.row.attached").takeIf { s.attached },
+                    s.holder?.said,
                 ).joinToString(copyText("kit.text.sep")),
                 style = monoSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -225,6 +237,9 @@ private fun TmuxSessionRow(
             )
         }
         SecondaryButton(onClick = onAttach) { Text(copyText("mobTmux.row.attach")) }
+        s.holder?.let { h ->
+            SecondaryButton(onClick = { onHold(!h.mine) }) { Text(if (h.mine) copyText("terminal.input.release") else copyText("terminal.input.take")) }
+        }
         SecondaryButton(danger = true, onClick = onKill) { Text(copyText("mobTmux.row.kill")) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)

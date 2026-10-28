@@ -94,8 +94,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
             "terminal-input",
             "session-model",
             "session-permission",
-            "terminal-follow",
-            "kill"
+            "terminal-follow"
         ],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
@@ -242,8 +241,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
             "terminal-input".to_string(),
             "session-model".to_string(),
             "session-permission".to_string(),
-            "terminal-follow".to_string(),
-            "kill".to_string()
+            "terminal-follow".to_string()
         ],
         "🔴 **Windows 上这张表又空了** —— 这一格就是这里的正题。\n\
              握手帧第四条面在动机平台上不说话 = 这一格什么都没买到。\n\

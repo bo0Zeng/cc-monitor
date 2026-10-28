@@ -1,88 +1,40 @@
 use super::*;
 use serde_json::json;
 
-// 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步），成品是写上线的那一份 JSON。
-fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
-    let req: KillReq = serde_json::from_value(args.clone()).map_err(|e| {
-        CmdErr::new(
-            "bad_args",
-            crate::common::contract::malformed(&e.to_string()),
-        )
-    })?;
-    admit_existing_name(&req.name)?;
-    Ok(req.name)
-}
-
-fn reply(name: &str) -> serde_json::Value {
-    serde_json::to_value(super::reply(name)).unwrap()
-}
-
+/// 已有会话名的 Gate 1（结束 · 抓屏 · 送键共用）：会坏掉 tmux 目标的形状一律 `bad_args`，`=` 放行。
 #[test]
 fn shape_validation_rejects_what_would_break_the_tmux_target() {
     for (bad, why) in [
-        (json!({}), "缺 name"),
-        (json!({ "name": "" }), "空"),
-        (json!({ "name": "a:b" }), "含 `:`（tmux 目标语法）"),
-        (json!({ "name": "a\nb" }), "含控制字符"),
-        (
-            json!({ "name": "a\u{202e}b" }),
-            "含视觉欺骗字符（`gate_rules` 那一格）",
-        ),
+        ("", "空"),
+        ("a:b", "含 `:`（tmux 目标语法）"),
+        ("a\nb", "含控制字符"),
+        ("a\u{202e}b", "含视觉欺骗字符（`gate_rules` 那一格）"),
     ] {
-        assert!(parse_name(&bad).is_err(), "{why} 应当被拒：{bad:?}");
+        assert_eq!(
+            admit_existing_name(bad).map_err(|f| f.code),
+            Err("bad_args".to_string()),
+            "{why} 应当被拒：{bad:?}"
+        );
     }
-    // 〔DUP3 §5 ③〕`=` 放行：`=a=b:` 精确命中名叫 `a=b` 的会话（attach 那一条同样放行）。
+    // `=` 放行：`=a=b:` 精确命中名叫 `a=b` 的会话（attach 那一条同样放行）。
     for good in ["proj-cc", "a=b", "=a"] {
-        assert_eq!(parse_name(&json!({ "name": good })).unwrap(), good);
+        assert!(admit_existing_name(good).is_ok(), "{good}");
     }
 }
 
-/// ★★**跨语言金样**：界面直接收的 `kill` 成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
-///
-/// 守的要求：「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。杀会话由界面经通道直接说（`src/frontend/ui/tmux-control.ts::killSession`），
-/// monitor 那一跳只搬字节 —— 成品的键、拒绝码的集合从此只有后端这一侧与金样说了算。
-///
-/// 三格各自异源：请求样例过**生产**入参类型与 Gate 1 的形状判（[`KillReq`] · [`admit_existing_name`]）· 成品 == 生产构造器 [`super::reply`] ·
-/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `stream/inbound/registry/terminals.rs`，不从本文件派生）。
+/// `terminal-end` 的入参：多一格 · 类型不对在解入参那一下就不收（同 typed 分派那一步）。
 #[test]
-fn the_kill_product_matches_the_cross_language_golden() {
-    let g: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
-            .expect("金样读不出来");
-    let k = &g["kill"];
-    let name = parse_name(&k["request"]).expect("金样的请求样例过不了生产解析器");
-    assert_eq!(
-        reply(&name),
-        k["reply"],
-        "后端出的 kill 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道结束了没有」"
-    );
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "kill")
-        .expect("后端登记表里没有 `kill`");
-    let mut want: Vec<&str> = spec.codes.to_vec();
-    want.sort_unstable();
-    let mut got: Vec<&str> = k["codes"]
-        .as_array()
-        .expect("金样缺 `codes`")
-        .iter()
-        .map(|v| v.as_str().expect("码不是字符串"))
-        .collect();
-    got.sort_unstable();
-    assert_eq!(
-        got, want,
-        "金样里的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
-    );
-}
-
-/// 杀会话的成品只说杀了哪个、杀成了：不顺手注销 cc-bus，也就没有那一格（期望值手写）。
-#[test]
-fn the_kill_reply_is_only_the_session_and_that_it_ended() {
-    assert_eq!(
-        reply("demo-cc"),
-        serde_json::json!({"session": "demo-cc", "killed": true})
-    );
+fn the_terminal_end_request_is_strict() {
+    for bad in [
+        json!({ "terminal": "t-1", "extra": 1 }),
+        json!({ "terminal": 1 }),
+        json!({ "name": "demo-cc" }),
+    ] {
+        assert!(
+            serde_json::from_value::<TerminalEndReq>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
 }
 
 /// 没杀成那两形：句子只带原因词，原话（tmux 的 stderr · 起不来时的系统报错）进复制详情、不上句子。
@@ -110,52 +62,6 @@ fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
         )
     );
     assert!(e.raw.is_some(), "系统原话丢了");
-}
-
-/// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
-#[test]
-fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
-    let f = crate::wire::spec::Fail::from((
-        "kill_failed".to_string(),
-        "tmux: can't find window: demo-cc:2".to_string(),
-    ));
-    let crate::wire::Frame::Reply(crate::wire::Reply {
-        message, detail, ..
-    }) = crate::wire::typed::Codes::into_fail(refused("demo-cc", f)).into_reply("i".into(), "kill")
-    else {
-        panic!("不是应答帧");
-    };
-    let message = message.unwrap();
-    let detail = detail.unwrap();
-    assert_eq!(
-        message,
-        copy_core::copy_text("tmuxControl.kill.failed", &[("target", "demo-cc")])
-    );
-    assert!(!message.contains("can't find window"), "{message}");
-    assert!(
-        detail.contains(&format!(
-            "{}：tmux: can't find window: demo-cc:2",
-            copy_core::copy_text("detail.label.raw", &[])
-        )),
-        "{detail}"
-    );
-}
-
-/// 带的 `sid` 是会话 id（`cmd_wire::Sid`）：形状不对在解入参那一下就是 `bad_args`，一发 tmux 都不起；真 sid 照收。
-#[test]
-fn an_off_shape_sid_does_not_decode() {
-    for bad in ["", "-x", "a_b", "a b", "../x"] {
-        let r = serde_json::from_value::<KillReq>(json!({"name": "w-cc", "sid": bad}));
-        assert!(r.is_err(), "坏形 sid 解开了：{bad:?}");
-    }
-    let ok: KillReq = serde_json::from_value(
-        json!({"name": "w-cc", "sid": "0473c3a0-1111-2222-3333-444455556666"}),
-    )
-    .unwrap();
-    assert_eq!(
-        ok.sid.as_deref(),
-        Some("0473c3a0-1111-2222-3333-444455556666")
-    );
 }
 
 // ── `terminal-end` ───────────────────────────────────────────────────

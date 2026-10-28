@@ -199,7 +199,7 @@ fn monitor_production_corpus() -> (usize, String) {
 /// ★★**monitor 里没有杀会话的第二条路**（零命中 ＋ 正控）。
 ///
 /// 守的要求：`INVARIANTS §34`（破坏性动作过三道门，门只住后端 `control/gate.rs`）与定框 `C5`
-/// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面经通道说后端的 `terminal-end`，
+/// 「任何改状态的 tmux 命令一律归 `control/`」—— 杀会话今天只剩一条路：界面 · 手机经通道说后端的 `terminal-end`，
 /// 后端先 `admit_destructive` 拿**句柄**再杀。monitor 里再长出一处自己拼 `kill-session` 的 shell 串，
 /// 就是 `K-R72` 删掉的那条对**名字**下手的回落回来了（TOCTOU 窗口）。
 /// 正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词。

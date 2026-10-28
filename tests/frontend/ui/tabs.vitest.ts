@@ -4465,8 +4465,10 @@ describe("〔U4b〕main.ts 接线", () => {
     expect([
       n("      tabs.onFace(sessionId, face);"),
       n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一刻「各台都报完」
-      n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一刻：收空组 · 交「启动时记住的那一格」
-    ]).toEqual([1, 1, 1]);
+      n("      tabs.markAllListed();\n    },"), // 只记下、不在这里判：落在某一台的流上，别的台可能还没报完
+      n("  tabs.onAllListed = () => startup?.onAllListed();"), // 那一刻由 TabManager 认（每台都在自己那条流上报完了）：交「启动时记住的那一格」
+      n("startup?.onAllListed()"), // 不许别处绕过那一刻直接判
+    ]).toEqual([1, 1, 1, 1, 1]);
   });
   // 机器离线条照各台的状态成品（离线 · 几条状态不明都是本机后端说的）主窗接一处；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
   it("★〔GP1〕机器状态接到栏：main.ts 恰一处 · entry-viewer.ts 零处（不建标签页）", () => {

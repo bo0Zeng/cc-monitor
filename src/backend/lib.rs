@@ -454,7 +454,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-user-inputs",
     // 帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--hooks-diag",
-    "--kill",
     // `--launch`（帧面 `launch` 派生的 CLI 面）随那条没人调的帧命令撤了。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ping",
     // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

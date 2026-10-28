@@ -549,7 +549,7 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
 
 /// ★ **不可取消的命令不许回一条撒谎的 `cancelled`。**
 ///
-/// D 设计审计（视角 A · P4）：`kill` 这类处理器是同步阻塞的，`abort()` 对
+/// D 设计审计（视角 A · P4）：`terminal-end` 这类处理器是同步阻塞的，`abort()` 对
 /// `spawn_blocking` 起的活是空操作 ⇒ 旧实现下客户端收到 `Cancelled`，
 /// 而远端的 tmux 会话照样建出来、载荷照样键入。**控制面在骗调用方。**
 #[tokio::test]
@@ -560,7 +560,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
 
     // 一条「在跑、且不可取消」的命令。
     spawn_handler(
-        req("blk", "kill"),
+        req("blk", "terminal-end"),
         tx.clone(),
         running.clone(),
         move |_r| async move {
@@ -749,7 +749,7 @@ async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
 #[tokio::test]
 async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
     let out =
-        one_line("{\"id\":\"a\",\"cmd\":\"rm-rf\"}\n{\"id\":\"b\",\"cmd\":\"kill\",\"args\":{}}\n")
+        one_line("{\"id\":\"a\",\"cmd\":\"rm-rf\"}\n{\"id\":\"b\",\"cmd\":\"terminal-end\",\"args\":{\"extra\":1}}\n")
             .await;
     let reply = |id: &str| -> serde_json::Value {
         let l = out
@@ -784,7 +784,7 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
     let b = reply("b");
     assert!(
         b["detail"].as_str().unwrap().contains(&format!(
-            "{}：kill",
+            "{}：terminal-end",
             copy_core::copy_text("detail.label.command", &[])
         )),
         "{b}"
@@ -1248,19 +1248,20 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         )),
         r#"{"acts":["retry","recapture"],"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
-    // kill：经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 没有这个会话），再拿纯构造器逐字节比换形之前那一版写出来的。
+    // 输入在别的一端手里：下一步是接管再送（界面照它给［接管再送］）。
+    assert_eq!(
+        wire(&t::input_reply(SentResult::Refused, Some(t::Refused::HeldElsewhere), None)),
+        r#"{"acts":["take"],"result":"refused","said":"输入在另一端 · 没送","why":"held_elsewhere"}"#
+    );
+    // terminal-end：手机那一份入参（`core-claude/.../link/Terminals.kt`）经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 名单里没有它）。
     assert_eq!(
         run_registered(
-            "kill",
-            serde_json::json!({ "name": "demo-cc", "client": "mobile" })
+            "terminal-end",
+            serde_json::json!({ "terminal": "t-none", "client": "mobile" })
         )
         .unwrap_err()
         .code,
-        "no_such_session"
-    );
-    assert_eq!(
-        wire(&crate::control::kill::reply("demo-cc")),
-        r##"{"killed":true,"session":"demo-cc"}"##
+        "not_known"
     );
     // session-open 新起那一形：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data`（哪一格 ＋ 选不了号那一形）。
     let e = run_registered(
@@ -1388,8 +1389,8 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "sid": "s-1", "model": "opus", "effort": "high" }),
         ),
         ("session-model", serde_json::json!({ "sid": "s-1" })),
-        ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
-        ("kill", serde_json::json!({ "name": 1 })),
+        ("terminal-end", serde_json::json!({ "terminal": "t-1", "extra": 1 })),
+        ("terminal-end", serde_json::json!({ "terminal": 1 })),
         (
             "session-open",
             serde_json::json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/x", "extra": 1 }, "local": false }),

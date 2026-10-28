@@ -179,13 +179,17 @@ struct Client {
     taking: bool,
     /// 那段时间里敲的键（换过来就送；没换过来 ⇒ 丢）。
     typed_while_taking: Vec<u8>,
+    /// 底行「排队 N 条」：会话那台写好的那一句（`history::session_queue::line_of_host`），照摆；没有 ⇒ 不盖。
+    queued: Option<String>,
 }
 
 /// 接一个托管终端，直到断开 / 会话结束 / 切到另一个。外层终端的进出由调用方（[`stdio_outer`] 那一侧）管。
+/// `queued`：底行那一句（[`QueueEars`] 说来的），来一句照摆一句。
 pub(crate) async fn session(
     sock: &std::path::Path,
     mut outer: Outer,
     list: &(dyn Fn() -> Vec<(String, String)> + Sync),
+    mut queued: UnboundedReceiver<Option<String>>,
 ) -> Result<Left, Said> {
     let stream = own_chan::connect(sock).await.map_err(|e| {
         Said::with_raw(
@@ -266,6 +270,7 @@ pub(crate) async fn session(
                     break l;
                 }
             }
+            Some(line) = queued.recv() => c.queued_now(line),
             r = c.outer.resized.recv() => {
                 if r.is_some() {
                     // 托管只认持有者的；只看的也报（接管那一下托管照它改），自己这边照新尺寸重裁。
@@ -320,6 +325,32 @@ impl Client {
             title: Vec::new(),
             taking: false,
             typed_while_taking: Vec::new(),
+            queued: None,
+        }
+    }
+
+    /// 底行那一句换了：没别的盖着 ⇒ 盖上新的；清了 ⇒ 整屏重画（那一行照里面）。盖着的那一层收掉时照此刻的画。
+    fn queued_now(&mut self, line: Option<String>) {
+        if line == self.queued {
+            return;
+        }
+        self.queued = line;
+        if self.over != Over::None {
+            return;
+        }
+        if self.queued.is_some() {
+            self.show_queued();
+        } else {
+            self.redraw();
+        }
+    }
+
+    /// 没别的盖着、有那一句 ⇒ 盖在最底一行。
+    fn show_queued(&mut self) {
+        if self.over == Over::None {
+            if let Some(l) = self.queued.clone() {
+                self.bottom_line(&l);
+            }
         }
     }
 
@@ -446,6 +477,7 @@ impl Client {
     fn redraw(&mut self) {
         self.paint(true);
         self.retitle(true);
+        self.show_queued();
         self.flush();
     }
 
@@ -453,10 +485,10 @@ impl Client {
         let inner = self.parser.callbacks().title.clone().unwrap_or_default();
         let mut t = Vec::new();
         if !self.holding() {
-            // 「[只看] 120×40 」：伪终端的尺寸（跟持有者），外层小于它时看到的是左上那一块。
+            // 「[只看 120×40] 」：伪终端的尺寸（跟持有者），外层小于它时看到的是左上那一块。
             let (rows, cols) = self.parser.screen().size();
-            t.extend_from_slice(copy_text("beHost.attach.viewOnly", &[]).as_bytes());
-            t.extend_from_slice(format!("{cols}×{rows} ").as_bytes());
+            let size = format!("{cols}×{rows}");
+            t.extend_from_slice(copy_text("beHost.attach.viewOnly", &[("size", &size)]).as_bytes());
         }
         t.extend_from_slice(&inner);
         if force || t != self.title {
@@ -521,6 +553,8 @@ impl Client {
                     if painted && self.over == Over::Hint {
                         let said = self.holder_said();
                         self.bottom_line(&said);
+                    } else if painted {
+                        self.show_queued();
                     }
                     self.flush();
                 }
@@ -893,8 +927,15 @@ pub(crate) fn stdio_outer(prefix: u8) -> Result<(Outer, crate::platform::term::R
     ))
 }
 
+/// 底行那一句的耳朵：盯 `id` 那个托管终端那条会话的队，那一句变了就说（`ccm` 入口交 `history::session_queue::host_line_ears`）。
+pub(crate) type QueueEars = fn(
+    &crate::platform::fs::Own,
+    &str,
+    Box<dyn Fn(Option<String>) + Send>,
+) -> Result<crate::platform::watch_file::Watching, String>;
+
 /// `ccm --attach <名|句柄>` 认到托管终端时走这里：接上、切换、直到断开或结束。交回进程退出码。
-pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str) -> i32 {
+pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str, ears: QueueEars) -> i32 {
     let mut id = first.to_string();
     loop {
         let sock = match super::home::sock_of(own, &id) {
@@ -917,7 +958,20 @@ pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str) -> i32 {
                 .map(|f| (f.id, f.name))
                 .collect::<Vec<_>>()
         };
-        let left = session(&sock, outer, &list).await;
+        // 底行那一句：盯不上 ⇒ 记一行、底行不显示，接照接。
+        let (qtx, qrx) = tokio::sync::mpsc::unbounded_channel();
+        let heard = ears(
+            own,
+            &id,
+            Box::new(move |l| {
+                let _ = qtx.send(l);
+            }),
+        );
+        if let Err(e) = &heard {
+            tracing::warn!("瘦客户端：托管终端 {id} 的队没盯上，底行不显示排队：{e}");
+        }
+        let left = session(&sock, outer, &list, qrx).await;
+        drop(heard);
         drop(raw);
         match left {
             Ok(Left::Switch(next)) => id = next,
