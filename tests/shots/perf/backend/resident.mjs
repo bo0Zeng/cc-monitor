@@ -21,7 +21,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function head(p, n) { const fd = openSync(p, "r"); const b = Buffer.alloc(n); const k = readSync(fd, b, 0, n, 0); closeSync(fd); return b.subarray(0, k).toString("utf8"); }
 function tail(p, n) { const sz = statSync(p).size; const fd = openSync(p, "r"); const b = Buffer.alloc(Math.min(n, sz)); readSync(fd, b, 0, b.length, sz - b.length); closeSync(fd); return b.toString("utf8"); }
-const cwdOf = (p) => { for (const l of head(p, 4 << 20).split("\n")) { try { const o = JSON.parse(l); if (o.cwd) return o.cwd; } catch {} } return "/"; };
+const cwdOf = (p) => { for (const l of head(p, 4 << 20).split("\n")) { try { const o = JSON.parse(l); if (o.cwd) return o.cwd; } catch { /* 读不出就跳过这一项 */ } } return "/"; };
 const sidOf = (p) => p.slice(p.lastIndexOf("/") + 1, -".jsonl".length);
 
 // 原长，量完截回去
@@ -51,14 +51,14 @@ let frames = 0, bytes = 0, hello = false;
 const kinds = {};
 createInterface({ input: child.stdout, crlfDelay: Infinity }).on("line", (raw) => {
   frames++; bytes += raw.length + 1;
-  try { const f = JSON.parse(raw); kinds[f.kind] = (kinds[f.kind] ?? 0) + 1; if (f.kind === "hello") hello = true; } catch {}
+  try { const f = JSON.parse(raw); kinds[f.kind] = (kinds[f.kind] ?? 0) + 1; if (f.kind === "hello") hello = true; } catch { /* 读不出就跳过这一项 */ }
 });
 
 const stat = () => { const r = readFileSync(`/proc/${pid}/stat`, "utf8"); const x = r.slice(r.lastIndexOf(")") + 2).split(" "); return +x[11] + +x[12]; };
 const status = () => { const s = readFileSync(`/proc/${pid}/status`, "utf8"); const g = (k) => Number((s.match(new RegExp(`${k}:\\s+(\\d+)`)) || [])[1] || 0); return { rssMb: +(g("VmRSS") / 1024).toFixed(1), hwmMb: +(g("VmHWM") / 1024).toFixed(1), anonMb: +(g("RssAnon") / 1024).toFixed(1), threads: g("Threads") }; };
-const ctx = () => { let v = 0, n = 0; for (const t of readdirSync(`/proc/${pid}/task`)) { try { const s = readFileSync(`/proc/${pid}/task/${t}/status`, "utf8"); v += +s.match(/^voluntary_ctxt_switches:\s+(\d+)/m)[1]; n += +s.match(/^nonvoluntary_ctxt_switches:\s+(\d+)/m)[1]; } catch {} } return v + n; };
-const fds = () => { const by = {}; let watches = 0; for (const fd of readdirSync(`/proc/${pid}/fd`)) { let l; try { l = readlinkSync(`/proc/${pid}/fd/${fd}`); } catch { continue; } const k = l.startsWith("/") ? "file" : l.replace(/[0-9]+/g, "N"); by[k] = (by[k] ?? 0) + 1; if (l === "anon_inode:inotify") { try { watches += (readFileSync(`/proc/${pid}/fdinfo/${fd}`, "utf8").match(/^inotify/gm) || []).length; } catch {} } } return { n: Object.values(by).reduce((a, b) => a + b, 0), watches, by }; };
-const threadNames = () => { const c = {}; for (const t of readdirSync(`/proc/${pid}/task`)) { try { const n = readFileSync(`/proc/${pid}/task/${t}/comm`, "utf8").trim().replace(/-?\d+$/, ""); c[n] = (c[n] ?? 0) + 1; } catch {} } return c; };
+const ctx = () => { let v = 0, n = 0; for (const t of readdirSync(`/proc/${pid}/task`)) { try { const s = readFileSync(`/proc/${pid}/task/${t}/status`, "utf8"); v += +s.match(/^voluntary_ctxt_switches:\s+(\d+)/m)[1]; n += +s.match(/^nonvoluntary_ctxt_switches:\s+(\d+)/m)[1]; } catch { /* 读不出就跳过这一项 */ } } return v + n; };
+const fds = () => { const by = {}; let watches = 0; for (const fd of readdirSync(`/proc/${pid}/fd`)) { let l; try { l = readlinkSync(`/proc/${pid}/fd/${fd}`); } catch { continue; } const k = l.startsWith("/") ? "file" : l.replace(/[0-9]+/g, "N"); by[k] = (by[k] ?? 0) + 1; if (l === "anon_inode:inotify") { try { watches += (readFileSync(`/proc/${pid}/fdinfo/${fd}`, "utf8").match(/^inotify/gm) || []).length; } catch { /* 读不出就跳过这一项 */ } } } return { n: Object.values(by).reduce((a, b) => a + b, 0), watches, by }; };
+const threadNames = () => { const c = {}; for (const t of readdirSync(`/proc/${pid}/task`)) { try { const n = readFileSync(`/proc/${pid}/task/${t}/comm`, "utf8").trim().replace(/-?\d+$/, ""); c[n] = (c[n] ?? 0) + 1; } catch { /* 读不出就跳过这一项 */ } } return c; };
 
 const t0 = performance.now();
 while (!hello) { await sleep(10); if (performance.now() - t0 > 60000) throw new Error("no hello: " + stderr.slice(-2000)); }
@@ -68,7 +68,7 @@ let searched = null;
 if (process.argv.includes("--search")) {
   const waiting = new Map(); let nid = 0;
   const rl2 = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  rl2.on("line", (raw) => { try { const f = JSON.parse(raw); if (f.kind === "reply" && waiting.has(f.id)) { waiting.get(f.id)(f); waiting.delete(f.id); } } catch {} });
+  rl2.on("line", (raw) => { try { const f = JSON.parse(raw); if (f.kind === "reply" && waiting.has(f.id)) { waiting.get(f.id)(f); waiting.delete(f.id); } } catch { /* 读不出就跳过这一项 */ } });
   const call = (cmd, args) => new Promise((res) => { const id = `s${++nid}`; waiting.set(id, res); child.stdin.write(JSON.stringify({ id, cmd, args, within_ms: 600000 }) + "\n"); });
   const before = status(); const cs = stat(); const ts = performance.now();
   const a = await call("history-search", { query: "游标分页" });
@@ -76,14 +76,14 @@ if (process.argv.includes("--search")) {
   await sleep(10000);
   searched = { ok: [a.ok, b.ok], ms: +(performance.now() - ts - 10000).toFixed(0), cpuS: +((stat() - cs) / 100).toFixed(1), rssBefore: before.rssMb, rssAfter10s: status().rssMb, hwm: status().hwmMb };
 }
-const tt = () => { const c = {}; for (const t of readdirSync(`/proc/${pid}/task`)) { try { const r = readFileSync(`/proc/${pid}/task/${t}/stat`, "utf8"); const x = r.slice(r.lastIndexOf(")") + 2).split(" "); c[t] = [readFileSync(`/proc/${pid}/task/${t}/comm`, "utf8").trim().replace(/-?\d+$/, ""), +x[11] + +x[12]]; } catch {} } return c; };
+const tt = () => { const c = {}; for (const t of readdirSync(`/proc/${pid}/task`)) { try { const r = readFileSync(`/proc/${pid}/task/${t}/stat`, "utf8"); const x = r.slice(r.lastIndexOf(")") + 2).split(" "); c[t] = [readFileSync(`/proc/${pid}/task/${t}/comm`, "utf8").trim().replace(/-?\d+$/, ""), +x[11] + +x[12]]; } catch { /* 读不出就跳过这一项 */ } } return c; };
 const tt0 = tt();
 const m0 = status(); const c0 = stat(); const x0 = ctx(); const f0 = frames, b0 = bytes;
 // 窗口里：live10 每会话每秒 RATE 行（照它自己尾巴上的行换 uuid）
 let appended = 0;
 const tpl = live.slice(0, nLive).map((p) => tail(p, 400000).split("\n").filter(Boolean).slice(-8));
 const FORK = process.argv.includes("--fork");
-const lastUuid = live.slice(0, nLive).map((p) => { const rows = tail(p, 400000).split("\n").filter(Boolean); for (let j = rows.length - 1; j >= 0; j--) { try { const o = JSON.parse(rows[j]); if (o.uuid) return o.uuid; } catch {} } return null; });
+const lastUuid = live.slice(0, nLive).map((p) => { const rows = tail(p, 400000).split("\n").filter(Boolean); for (let j = rows.length - 1; j >= 0; j--) { try { const o = JSON.parse(rows[j]); if (o.uuid) return o.uuid; } catch { /* 读不出就跳过这一项 */ } } return null; });
 const tw = performance.now();
 if (mode === "live10" || process.argv.includes("--append")) {
   const period = 1000 / (RATE * nLive);

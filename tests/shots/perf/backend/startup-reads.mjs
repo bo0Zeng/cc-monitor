@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const projects = join(home, ".claude", "projects");
 const live = JSON.parse(readFileSync(liveJson, "utf8")).map((r) => join(projects, r));
 const head = (p) => { const fd = openSync(p, "r"); const b = Buffer.alloc(4 << 20); const k = readSync(fd, b, 0, b.length, 0); closeSync(fd); return b.subarray(0, k).toString("utf8"); };
-const cwdOf = (p) => { for (const l of head(p).split("\n")) { try { const o = JSON.parse(l); if (o.cwd) return o.cwd; } catch {} } return "/"; };
+const cwdOf = (p) => { for (const l of head(p).split("\n")) { try { const o = JSON.parse(l); if (o.cwd) return o.cwd; } catch { /* 读不出就跳过这一项 */ } } return "/"; };
 const sessions = join(home, ".claude", "sessions");
 mkdirSync(sessions, { recursive: true });
 for (const f of readdirSync(sessions)) rmSync(join(sessions, f));
@@ -33,7 +33,7 @@ const framesOut = fi > 0 ? process.argv[fi + 1] : null;
 const runs = {};
 createInterface({ input: child.stdout, crlfDelay: Infinity }).on("line", (raw) => {
   if (!framesOut || !raw.includes('"session_runs"')) return;
-  try { const f = JSON.parse(raw); if (f.kind === "session_runs") runs[f.sid] = f; } catch {}
+  try { const f = JSON.parse(raw); if (f.kind === "session_runs") runs[f.sid] = f; } catch { /* 读不出就跳过这一项 */ }
 });
 child.stderr.on("data", () => {});
 const t0 = performance.now();
