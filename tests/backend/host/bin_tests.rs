@@ -34,7 +34,11 @@ fn other_versions_are_swept_by_the_next_start() {
     let me = fake_me(&data.join("fixture"), b"new");
     let old = data.join("hosts").join(".bin").join("1.0.0");
     std::fs::create_dir_all(&old).expect("建旧版本目录");
-    std::fs::write(old.join(format!("ccm{}", std::env::consts::EXE_SUFFIX)), b"old").expect("写旧副本");
+    std::fs::write(
+        old.join(format!("ccm{}", std::env::consts::EXE_SUFFIX)),
+        b"old",
+    )
+    .expect("写旧副本");
     versioned_copy(&own, "2.0.0", &me).expect("复制得了");
     assert!(!old.exists(), "没人用的旧版本删了");
     assert!(data.join("hosts").join(".bin").join("2.0.0").exists());

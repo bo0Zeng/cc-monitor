@@ -135,7 +135,11 @@ fn a_process_is_found_in_its_hosted_terminal_by_its_ancestors() {
     };
     let hosts = [("a".to_string(), 20), ("b".to_string(), 40)];
     assert_eq!(host_by_ancestry(10, &hosts, parent).as_deref(), Some("a"));
-    assert_eq!(host_by_ancestry(20, &hosts, parent).as_deref(), Some("a"), "它自己就是那个子进程");
+    assert_eq!(
+        host_by_ancestry(20, &hosts, parent).as_deref(),
+        Some("a"),
+        "它自己就是那个子进程"
+    );
     assert_eq!(host_by_ancestry(30, &hosts, parent).as_deref(), Some("b"));
     assert_eq!(host_by_ancestry(99, &hosts, parent), None);
     assert_eq!(host_by_ancestry(7, &hosts, parent), None, "父进程问不到");

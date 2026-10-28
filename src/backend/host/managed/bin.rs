@@ -14,6 +14,10 @@ use std::path::{Path, PathBuf};
 /// `hosts/` 底下放副本的那一层。
 const BIN: &str = ".bin";
 
+/// 副本那一份的声明：缓存（没有 · 坏了 ⇒ 起托管时照自己再复制一份；后端不读它，只交给系统去跑）。
+const PROGRAM_DOC: crate::common::own_state::Doc<Vec<u8>> =
+    crate::common::own_state::Doc::cache(".cc-monitor/hosts/.bin/<版本>/ccm.exe", 0);
+
 /// 副本的文件名（Windows `ccm.exe`）。
 fn program_name() -> String {
     format!("ccm{}", std::env::consts::EXE_SUFFIX)
@@ -49,6 +53,11 @@ pub(crate) fn versioned_copy(own: &Own, version: &str, me: &Path) -> Result<Path
                 let mut src = Ro::open(me)?;
                 std::io::copy(&mut src, out).map(|_| ())
             })?;
+            tracing::info!(
+                "托管进程的副本复制好了：{}（{}）",
+                program.as_path().display(),
+                PROGRAM_DOC.rel
+            );
         }
     }
     sweep_other_versions(own, &root, version);

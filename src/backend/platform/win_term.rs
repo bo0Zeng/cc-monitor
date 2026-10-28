@@ -109,15 +109,22 @@ pub(super) fn enter_raw() -> std::io::Result<Raw> {
     let raw_out = saved.1 | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
     set_mode(i, raw_in)?;
     if let Err(e) = set_mode(o, raw_out) {
-        let _ = set_mode(i, saved.0);
+        restore(i, saved.0, "输入");
         return Err(e);
     }
     Ok(Raw { saved })
 }
 
 pub(super) fn leave_raw(r: &Raw) {
-    let _ = set_mode(std_handle(STD_INPUT), r.saved.0);
-    let _ = set_mode(std_handle(STD_OUTPUT), r.saved.1);
+    restore(std_handle(STD_INPUT), r.saved.0, "输入");
+    restore(std_handle(STD_OUTPUT), r.saved.1, "输出");
+}
+
+/// 还原一个句柄进来之前的控制台模式；还原不了只能照实记一行（外层终端那一刻已经不归我们管）。
+fn restore(h: Handle, mode: u32, which: &str) {
+    if let Err(e) = set_mode(h, mode) {
+        tracing::warn!("外层控制台的{which}模式没还原回去：{e}");
+    }
 }
 
 pub(super) fn size() -> Option<(u16, u16)> {

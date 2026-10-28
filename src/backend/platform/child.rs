@@ -738,9 +738,6 @@ mod os {
     const EXTENDED_INFO_CLASS: i32 = 9;
     /// 标志位 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`：最后一个 Job 句柄关掉 ⇒ 系统终止 Job 里的每一个进程。
     const KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
-    /// 标志位 `JOB_OBJECT_LIMIT_BREAKAWAY_OK`：Job 里的进程起子进程时带 `CREATE_BREAKAWAY_FROM_JOB` ⇒ 那个子进程不进这个 Job。
-    #[cfg(test)]
-    const BREAKAWAY_OK: u32 = 0x0000_0800;
 
     /// `JOBOBJECT_BASIC_LIMIT_INFORMATION`（字段照 winnt.h 的次序与宽度）。
     #[repr(C)]
@@ -866,46 +863,6 @@ mod os {
             if let Some(j) = self.job {
                 unsafe { CloseHandle(j) };
             }
-        }
-    }
-
-    /// 判据用的一个「关句柄即杀」的 Job（许不许里面的进程脱离由判据定）：落地即关、里面还活着的全收。
-    #[cfg(test)]
-    pub(super) struct TestJob(RawHandle);
-
-    #[cfg(test)]
-    impl TestJob {
-        pub(super) fn new(breakaway_ok: bool) -> TestJob {
-            let job = unsafe { CreateJobObjectW(core::ptr::null_mut(), core::ptr::null()) };
-            assert!(!job.is_null(), "建不出 Job");
-            let info = ExtendedLimits {
-                basic: BasicLimits {
-                    limit_flags: KILL_ON_JOB_CLOSE | if breakaway_ok { BREAKAWAY_OK } else { 0 },
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            let ok = unsafe {
-                SetInformationJobObject(
-                    job,
-                    EXTENDED_INFO_CLASS,
-                    (&info as *const ExtendedLimits).cast(),
-                    std::mem::size_of::<ExtendedLimits>() as u32,
-                )
-            };
-            assert!(ok != 0, "Job 设不上");
-            TestJob(job)
-        }
-
-        pub(super) fn assign(&self, child: &std::process::Child) -> bool {
-            unsafe { AssignProcessToJobObject(self.0, child.as_raw_handle()) != 0 }
-        }
-    }
-
-    #[cfg(test)]
-    impl Drop for TestJob {
-        fn drop(&mut self) {
-            unsafe { CloseHandle(self.0) };
         }
     }
 

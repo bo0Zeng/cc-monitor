@@ -129,7 +129,8 @@ async fn read_until_ended(s: &mut own_chan::Stream) -> Option<i32> {
 async fn a_hosted_terminal_echoes_input_and_cleans_up_when_the_child_exits() {
     let (own, data) = sandbox_own("echo");
     let sh = r#"printf 'ready\r\n'; read x; printf 'got:%s\r\n' "$x"; printf 'host=%s term=%s\r\n' "$CCM_HOST" "$TERM"; read y; exit 3"#;
-    let cmd = "echo ready& set /p x=& echo got:!x!& echo host=!CCM_HOST! term=!TERM!& set /p y=& exit 3";
+    let cmd =
+        "echo ready& set /p x=& echo got:!x!& echo host=!CCM_HOST! term=!TERM!& set /p y=& exit 3";
     let (sock, task) = start(&own, spec_any("t-echo", sh, cmd)).await;
     let dir = data.join("hosts").join("t-echo");
     // 家：0700（Unix）、事实在、锁攥着（活着）。

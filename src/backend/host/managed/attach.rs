@@ -892,10 +892,7 @@ pub(crate) fn stdio_outer(prefix: u8) -> Result<(Outer, crate::platform::term::R
     }
     let raw = crate::platform::term::enter_raw()
         .map_err(|e| Said::with_raw(copy_text("beHost.attach.rawFailed", &[]), &e))?;
-    let crate::platform::term::Input {
-        keys: krx,
-        resized,
-    } = crate::platform::term::input()
+    let crate::platform::term::Input { keys: krx, resized } = crate::platform::term::input()
         .map_err(|e| Said::with_raw(copy_text("beHost.attach.rawFailed", &[]), &e))?;
     let get = |k: &str| std::env::var(k).ok();
     Ok((

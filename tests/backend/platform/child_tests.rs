@@ -761,6 +761,92 @@ fn win_alive(pid: &str) -> bool {
     String::from_utf8_lossy(&out.stdout).contains(&format!("\"{pid}\""))
 }
 
+/// 判据用的一个「关句柄即杀」的 Job（许不许里面的进程脱离由判据定）：落地即关、里面还活着的全收。
+/// 结构照 winnt.h（`JOBOBJECT_EXTENDED_LIMIT_INFORMATION`，64 位 144 字节）。
+#[cfg(windows)]
+struct TestJob(std::os::windows::io::RawHandle);
+
+#[cfg(windows)]
+mod test_job_ffi {
+    use std::os::windows::io::RawHandle;
+    #[repr(C)]
+    #[derive(Default)]
+    pub(super) struct Basic {
+        pub(super) a: i64,
+        pub(super) b: i64,
+        pub(super) flags: u32,
+        pub(super) c: usize,
+        pub(super) d: usize,
+        pub(super) e: u32,
+        pub(super) f: usize,
+        pub(super) g: u32,
+        pub(super) h: u32,
+    }
+    #[repr(C)]
+    #[derive(Default)]
+    pub(super) struct Extended {
+        pub(super) basic: Basic,
+        pub(super) io: [u64; 6],
+        pub(super) m: [usize; 4],
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub(super) fn CreateJobObjectW(
+            attrs: *mut core::ffi::c_void,
+            name: *const u16,
+        ) -> RawHandle;
+        pub(super) fn SetInformationJobObject(
+            job: RawHandle,
+            class: i32,
+            info: *const core::ffi::c_void,
+            len: u32,
+        ) -> i32;
+        pub(super) fn AssignProcessToJobObject(job: RawHandle, process: RawHandle) -> i32;
+        pub(super) fn CloseHandle(h: RawHandle) -> i32;
+    }
+}
+
+#[cfg(windows)]
+impl TestJob {
+    fn new(breakaway_ok: bool) -> TestJob {
+        use test_job_ffi::*;
+        // `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` · `JOB_OBJECT_LIMIT_BREAKAWAY_OK`；信息类 9 ＝ 扩展限制。
+        let flags = 0x2000 | if breakaway_ok { 0x0800 } else { 0 };
+        let job = unsafe { CreateJobObjectW(core::ptr::null_mut(), core::ptr::null()) };
+        assert!(!job.is_null(), "建不出 Job");
+        let info = Extended {
+            basic: Basic {
+                flags,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(std::mem::size_of::<Extended>(), 144);
+        let ok = unsafe {
+            SetInformationJobObject(
+                job,
+                9,
+                (&info as *const Extended).cast(),
+                std::mem::size_of::<Extended>() as u32,
+            )
+        };
+        assert!(ok != 0, "Job 设不上");
+        TestJob(job)
+    }
+
+    fn assign(&self, child: &std::process::Child) -> bool {
+        use std::os::windows::io::AsRawHandle as _;
+        unsafe { test_job_ffi::AssignProcessToJobObject(self.0, child.as_raw_handle()) != 0 }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for TestJob {
+    fn drop(&mut self) {
+        unsafe { test_job_ffi::CloseHandle(self.0) };
+    }
+}
+
 /// 下一条判据的帮手（只被它当子进程叫）：脱离起一个 `ping`，把它的 pid 写进 `CCM_T_DETACH_PIDFILE`。
 #[cfg(windows)]
 #[test]
@@ -787,7 +873,7 @@ fn a_detached_child_on_windows_outlives_the_job_that_started_it() {
     for (breakaway_ok, survives) in [(true, true), (false, false)] {
         let d = scratch(&format!("detach-win-{breakaway_ok}"));
         let f = d.join("pid");
-        let job = os::TestJob::new(breakaway_ok);
+        let job = TestJob::new(breakaway_ok);
         let mut inner = std::process::Command::new(std::env::current_exe().expect("本测试程序"))
             .args([
                 "platform::child::tests::detach_helper_inner",
