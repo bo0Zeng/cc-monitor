@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.core.claude.link.Busy
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Groups
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.HistorySearch
@@ -20,6 +21,8 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.wire.gen.CanDelete
 import com.ccmonitor.mobile.core.wire.gen.Changed
 import com.ccmonitor.mobile.core.wire.gen.ForkedFrom
+import com.ccmonitor.mobile.core.wire.gen.GroupMember
+import com.ccmonitor.mobile.core.wire.gen.GroupsRead
 import com.ccmonitor.mobile.core.wire.gen.HistoryGroup
 import com.ccmonitor.mobile.core.wire.gen.HistoryRow
 import com.ccmonitor.mobile.core.wire.gen.LinkLine
@@ -46,6 +49,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -63,6 +67,8 @@ class HostChats(
     val link: CoreLink,
     /** 清单该重问了（那台推的 `changed {history_list}`）。 */
     listChanged: Flow<Unit>,
+    /** 组那一片该重问了（那台推的 `changed {groups}`）。 */
+    groupsChanged: Flow<Unit>,
     deploying: StateFlow<Deploying?>,
     /** 给这台装 / 更新后端（判定与做法在核心）。 */
     val deploy: () -> Unit,
@@ -72,14 +78,15 @@ class HostChats(
     private val list = MutableStateFlow<Fetched<HistoryListPage>>(Fetched.Loading)
     private val cached = MutableStateFlow<HistoryListPage?>(null)
     private val asked = MutableStateFlow(ListAsk())
+    private val groups = MutableStateFlow(GroupsHeld())
 
     /** 没筛选那一问手上那一份（先从缓存读）；读 · 问 · 换 · 存一趟一趟来，不叠着（叠着就拿旧记号的答盖新的那一份）。 */
     private var hand: SyncHand? = null
     private val syncing = Mutex()
 
     val state: StateFlow<HostSnap> =
-        combine(link.state, link.table, list, link.offline, combine(cached, deploying, asked, ::Triple)) { l, t, got, off, (c, d, a) ->
-            HostSnap(hostId, machine, l, t, got, c, d, a, off)
+        combine(link.state, link.table, list, link.offline, combine(cached, deploying, asked, groups) { c, d, a, g -> Tail(c, d, a, g) }) { l, t, got, off, tail ->
+            HostSnap(hostId, machine, l, t, got, tail.cached, tail.deploying, tail.ask, off, tail.groups.read, tail.groups.problem)
         }.stateIn(scope, SharingStarted.Eagerly, HostSnap(hostId, machine, link.state.value, link.table.value, Fetched.Loading, null, null, ListAsk(), link.offline.value))
 
     init {
@@ -89,9 +96,25 @@ class HostChats(
                 .map { it is LinkLine.Up }
                 .distinctUntilChanged()
                 .filter { it }
-                .collect { fetch() }
+                .collect {
+                    fetch()
+                    fetchGroups()
+                }
         }
         scope.launch { listChanged.debounce(LIST_DEBOUNCE_MS).collect { fetch() } }
+        scope.launch { groupsChanged.debounce(LIST_DEBOUNCE_MS).collect { fetchGroups() } }
+    }
+
+    /** 问这台自己那一片组（[Groups]）：答了 ⇒ 换上；答了读不出 · 那台报错 ⇒ 留着上一份、记下那一句；没答（断着 · 无应答）⇒ 留着上一份（条上已说）。 */
+    fun fetchGroups() {
+        scope.launch {
+            val reply = link.call(Groups.COMMAND, Groups.ARGS)
+            when (val got = fetched(reply, Groups.COMMAND, Groups::of)) {
+                is Fetched.Got -> groups.value = GroupsHeld(got.value, null)
+                is Fetched.Failed -> if (reply !is Reply.TimedOut && reply !is Reply.LinkDown && reply !is Reply.Cancelled) groups.update { it.copy(problem = got.problem) }
+                Fetched.Loading -> Unit
+            }
+        }
     }
 
     /** 换筛选：换了才重问（问的路上又换了 ⇒ 那一份作废）。 */
@@ -103,7 +126,11 @@ class HostChats(
     }
 
     /** ［重试］：流断着 ⇒ 重接（接上了照上面那一份重问）；通着 ⇒ 重问（[CoreLink.retry]）。 */
-    fun retry() = link.retry(::fetch)
+    fun retry() =
+        link.retry {
+            fetch()
+            fetchGroups()
+        }
 
     fun fetch() {
         val wanted = asked.value
@@ -195,6 +222,24 @@ data class HostSnap(
     val ask: ListAsk,
     /** 那台成品写的离线那一句（[CoreLink.offline]；成品还没到 ⇒ `null`）。 */
     val offline: String?,
+    /** 这台自己那一片组（`groups-read` 最近答上的那一份）；还没答过 ⇒ `null`。 */
+    val groups: GroupsRead? = null,
+    /** 最近那一问组答了读不出 · 那台报错的那一句；答上了 ⇒ `null`。 */
+    val groupsProblem: Problem? = null,
+)
+
+/** 组那一问手上那一份：最近答上的 ＋ 之后那一问没成的那一句。 */
+private data class GroupsHeld(
+    val read: GroupsRead? = null,
+    val problem: Problem? = null,
+)
+
+/** [HostChats.state] 后半那几样（`combine` 只收五样）。 */
+private data class Tail(
+    val cached: HistoryListPage?,
+    val deploying: Deploying?,
+    val ask: ListAsk,
+    val groups: GroupsHeld,
 )
 
 /** 会话屏上的一行（各台并成一列之后，每行记着是哪台的）。 */
@@ -237,6 +282,12 @@ data class HostPart(
     val loading: Boolean,
     /** 装 / 更新后端这一趟的结局（条上没画它时单独一行；走到哪一步在成品里，见 [HostBar.busy]）。 */
     val deploying: Deploying? = null,
+    /** 这台固定的会话（照那台的先后）；断着 · 还没答过组 ⇒ 空。 */
+    val pinned: List<ChatRow> = emptyList(),
+    /** 这台的组，一组一段（照那台的先后）；断着 · 还没答过组 ⇒ 空。 */
+    val bands: List<GroupBand> = emptyList(),
+    /** 组那一问没读全 · 没成的那几句（那台写的）。 */
+    val groupLines: List<String> = emptyList(),
 )
 
 /**
@@ -276,16 +327,67 @@ internal fun hostPart(
             else -> null
         }
     val table = s.table.takeIf { down == null }
+    val rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, s.offline, r, table) }
+    // 断着 ⇒ 不画组：组员的脸会过时，那几条回到按天那几段。
+    val g = grouped(s, rows, table?.takeIf { ssh !is HostLink.Failed })
     return HostPart(
         hostId = s.hostId,
         machine = s.machine,
-        rows = answer?.rows.orEmpty().map { r -> rowOf(s.hostId, s.offline, r, table) },
+        rows = rows,
         groups = answer?.groups.orEmpty(),
         bar = bar,
         notice = answer?.notice,
         truncated = answer?.truncated == true,
         loading = down == null && ssh !is HostLink.Failed && s.list is Fetched.Loading && answer == null,
         deploying = s.deploying,
+        pinned = g.pinned,
+        bands = g.bands,
+        groupLines = g.lines,
+    )
+}
+
+/** 一台的固定 · 各组 · 组那一问没读全的那几句。 */
+private data class Grouped(
+    val pinned: List<ChatRow>,
+    val bands: List<GroupBand>,
+    val lines: List<String>,
+)
+
+/** 一台的组那一片 ⇒ 要画的（[table] 为 `null` ＝ 断着 ⇒ 不画组）。组员：清单里有的照清单那一行，没有的照组员那一行。 */
+private fun grouped(
+    s: HostSnap,
+    rows: List<ChatRow>,
+    table: SessionBook?,
+): Grouped {
+    val groups = s.groups?.takeIf { table != null } ?: return Grouped(emptyList(), emptyList(), listOfNotNull(s.groupsProblem?.text))
+    val byId = rows.associateBy { it.sessionId }
+    val member = { m: GroupMember -> byId[m.sid] ?: memberRow(s.hostId, m, table) }
+    return Grouped(
+        pinned = groups.pinned.map(member),
+        bands = groups.groups.map { g -> GroupBand(s.hostId, g.id, g.title, g.counts.map { it.text }, g.members.map(member)) },
+        lines = Groups.unread(groups) + listOfNotNull(s.groupsProblem?.text),
+    )
+}
+
+/** 组里那一条清单里没有（窗外 · 被筛掉）⇒ 照组员那一行：那台写的标题 · 脸（流上有它 ⇒ 流上那一份）；能不能删这里说不清。 */
+private fun memberRow(
+    hostId: String,
+    m: GroupMember,
+    table: SessionBook?,
+): ChatRow {
+    val face = table?.face(m.sid) ?: m.face
+    return ChatRow(
+        hostId = hostId,
+        sessionId = m.sid,
+        label = m.facts.title,
+        at = m.facts.at ?: 0L,
+        atText = null,
+        section = null,
+        agentTag = null,
+        status = Toned(face.name, face.tone),
+        dot = face.dot,
+        projectPath = m.facts.cwd.orEmpty(),
+        canDelete = CanDelete.UNSURE,
     )
 }
 
@@ -356,6 +458,8 @@ fun hostChats(
             link = feed,
             // 那台的会话清单动了（会话来去 · 名字 / 状态 · 记录长了 · 注解 · 隐藏规则，那台判的）。
             listChanged = feed.changed.filter { it is Changed.HistoryList }.map { },
+            // 那台的组那一片动了（注解里组 · 组员 · 固定变了，那台判的）。
+            groupsChanged = feed.changed.filter { it is Changed.Groups }.map { },
             deploying = feed.deploying,
             deploy = { backends.deploy(h.id) },
             cache = cache.list(h.id),
