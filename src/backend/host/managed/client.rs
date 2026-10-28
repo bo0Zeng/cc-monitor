@@ -166,7 +166,9 @@ pub(crate) fn interrupt(sock: &Path) -> std::io::Result<()> {
     let mut buf = Vec::new();
     speaks(&s, &mut buf, wire::INTERRUPT_SINCE, "interrupt")?;
     send(&s, &Frame::Ctl(Ctl::Interrupt))?;
-    upto(&s, &mut buf, |c| matches!(c, Ctl::Interrupted).then_some(()))?;
+    upto(&s, &mut buf, |c| {
+        matches!(c, Ctl::Interrupted).then_some(())
+    })?;
     bye(&s);
     Ok(())
 }

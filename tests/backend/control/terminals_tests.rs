@@ -1342,12 +1342,9 @@ async fn an_interrupt_reaches_a_hosted_terminal_held_elsewhere_with_a_half_typed
         .await
         .expect("没崩");
     assert_eq!(sent.result, SentResult::Delivered, "{sent:?}");
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        read_until_out(&mut t, "k:1b"),
-    )
-    .await
-    .expect("子进程 5 秒内没读到 ESC");
+    tokio::time::timeout(guard_core::wall::CEILING, read_until_out(&mut t, "k:1b"))
+        .await
+        .expect("子进程到兜底的期限也没读到 ESC");
     let s = sock.clone();
     let rows = tokio::task::spawn_blocking(move || crate::host::managed::client::clients(&s))
         .await

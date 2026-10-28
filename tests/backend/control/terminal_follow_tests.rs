@@ -139,9 +139,9 @@ fn eventually(mut f: impl FnMut() -> bool) -> bool {
 
 fn screen_of(f: &Frame) -> (String, u64, Value) {
     match f {
-        Frame::TerminalScreen(crate::wire::TerminalScreen { ticket, seq, view, .. }) => {
-            (ticket.clone(), *seq, serde_json::to_value(view).unwrap())
-        }
+        Frame::TerminalScreen(crate::wire::TerminalScreen {
+            ticket, seq, view, ..
+        }) => (ticket.clone(), *seq, serde_json::to_value(view).unwrap()),
         other => panic!("等的是一帧画面，来的是 {other:?}"),
     }
 }
@@ -769,9 +769,9 @@ fn holder_of(f: &Frame) -> Value {
 
 /// 下一帧（异步那一侧：托管进程是同一进程里的任务）。
 async fn next_hosted(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Frame {
-    tokio::time::timeout(Duration::from_secs(5), rx.recv())
+    tokio::time::timeout(guard_core::wall::CEILING, rx.recv())
         .await
-        .expect("等了 5 秒没来")
+        .expect("等到兜底的期限也没来")
         .expect("通道还开着")
 }
 

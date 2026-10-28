@@ -142,7 +142,7 @@ describe("托管那一形：谁在输入 · 接管 · 交还", () => {
   });
 });
 
-describe("A2-16 对稿留下的两处（托管那一形）", () => {
+describe("托管那一形：接管被拒的结局 · 页头的持有者", () => {
   it("★ 接管被拒 ⇒ 结局那一行是那台写好的那一句（不是空的、不是笼统的「被拒」）", async () => {
     const { page, holds } = rig([row({ terminal: "%7", name: "billing-2", input: "held", holder: { said: "S-in-window", mine: false } })]);
     holds.take.mockRejectedValue(new ControlError("S-take-refused", "raw detail"));

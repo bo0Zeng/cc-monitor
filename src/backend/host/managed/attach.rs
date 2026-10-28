@@ -13,9 +13,9 @@
 //! 终端模式（A3-3-15）：外层的输入模式由这里自己管（[`Modes`]），持有者照里面开的开；只看的不开鼠标 · 括号粘贴 · 焦点。
 //! 里面开着同步输出 `?2026` ⇒ 屏照算、先不画，关上那一下一次画完。
 
+use super::hold;
 use super::keys::{self, Act, Copy, CopyKeys, Keys};
 use super::screen::Extra;
-use super::hold;
 use super::wire::{self, ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind, PROTO};
 use cmd_wire::session::HolderWho;
 use copy_core::copy_text;

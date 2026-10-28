@@ -452,7 +452,8 @@ impl Desk {
     /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
     fn take_seat(&self, seat: &Seat, req: &FollowReq, tz: &crate::Tz) -> Result<(), CmdErr> {
         let me = &self.0;
-        if let Some(sock) = terminals::hosted_sock_of(req.terminal.as_deref(), req.sid.as_deref())? {
+        if let Some(sock) = terminals::hosted_sock_of(req.terminal.as_deref(), req.sid.as_deref())?
+        {
             return self.take_hosted(seat, &sock, tz);
         }
         let on = On {
@@ -493,9 +494,14 @@ impl Desk {
         Ok(())
     }
 
-    /// 托管那一形凭占位起（A3-3-32-4）：经托管口开一条只看的连接（`hello{want: view, who: backend}`），读线记「变了」；
-    /// 抓屏照旧走托管口 `capture`，帧里带此刻的持有者。连不上 ⇒ `not_known`（同 tmux 那一行不在）。零定时器（同 tmux 那一形一帧在途）。
-    fn take_hosted(&self, seat: &Seat, sock: &std::path::Path, tz: &crate::Tz) -> Result<(), CmdErr> {
+    /// 托管那一形凭占位起：经托管口开一条只看的连接（`hello{want: view, who: backend}`），读线记「变了」；
+    /// 抓屏照旧走托管口 `capture`，帧里带此刻的持有者。托管口连接失败 ⇒ `not_known`（同 tmux 那一行不在）。不设定时器：同 tmux 那一形，一次只有一帧在送。
+    fn take_hosted(
+        &self,
+        seat: &Seat,
+        sock: &std::path::Path,
+        tz: &crate::Tz,
+    ) -> Result<(), CmdErr> {
         let me = &self.0;
         let (conn, held, buf) = open_hosted(sock)?;
         let held = Arc::new(Mutex::new(held));

@@ -210,23 +210,26 @@ fn the_bottom_line_starts_with_the_same_holder_sentence_as_the_list() {
         pid: None,
         mine: false,
     };
-    let terminal = listed(crate::host::Input::Held(Some(crate::host::HeldBy::Terminal)));
+    let terminal = listed(crate::host::Input::Held(Some(
+        crate::host::HeldBy::Terminal,
+    )));
     assert!(held_line(Some(&other)).starts_with(&terminal));
 }
 
 /// `前缀 D` 单子：种类那一列是那几个短词，末行一次图例。
 #[test]
 fn the_clients_sheet_uses_the_short_words_and_ends_with_the_legend() {
-    let row = |client: u64, kind: WhoKind, front: Option<&str>, holder: bool, mine: bool| ClientRow {
-        client,
-        kind,
-        front: front.map(str::to_string),
-        pid: Some(7),
-        since_ms: 0,
-        last_ms: 0,
-        holder,
-        mine,
-    };
+    let row =
+        |client: u64, kind: WhoKind, front: Option<&str>, holder: bool, mine: bool| ClientRow {
+            client,
+            kind,
+            front: front.map(str::to_string),
+            pid: Some(7),
+            since_ms: 0,
+            last_ms: 0,
+            holder,
+            mine,
+        };
     let lines = client_lines(&[
         row(1, WhoKind::Terminal, None, true, false),
         row(2, WhoKind::Backend, Some("desktop"), false, false),
