@@ -1,7 +1,7 @@
 /**
  * 一台机器的页（本机与远端同一个形状）：卡头 ＋「账号 · 轮换 · 别名与配置文件」三栏。
  *
- * 卡头：名字 · 状态点与状态词 · 一行地址与系统 · 掉线时的问题行；右上「连接设置」（只远端）与 ⋯。
+ * 卡头：名字 · 状态点与状态词 · 一行地址与系统 · 怎么连过去的那一行（有才出）· 掉线时的问题行；右上「连接设置」（只远端）与 ⋯（成品有复制详情 ⇒ 末尾「复制详情」）。
  * 「连接设置」在卡头里就地展开；「这台上的 cc-monitor」是卡头里的一折（起停 · 退出时 · 恢复命令 · 输出）。
  * 状态由宿主照后端的回答喂进来（`setConnected`），本模块不判。
  */
@@ -13,7 +13,9 @@ import { statusDot, setDot } from "../kit/status-dot";
 import { copyText } from "../copy-table";
 import { SettingsRouter } from "./router";
 import { hostOs, type HostOs } from "./host-os";
-import { paintLinks, paintProblem, type MachineFace, type MachineFix } from "./machine-state";
+import { paintProblem, paintRoute, type MachineFace, type MachineFix } from "./machine-state";
+import { writeClipboard } from "../clipboard";
+import { failToast, toast } from "../kit/toast";
 import { CONFIG_SHOWN_EVENT } from "./events";
 
 const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
@@ -126,8 +128,11 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     top.appendChild(toggleBtn);
   }
   const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
+  /** 成品的复制详情（连着时是每条连接那一段；空 ⇒ ⋯ 里不出「复制详情」）。 */
+  let detail = "";
+  const copyItem: MenuItem = { label: copyText("detail.act.copy"), onClick: () => void copyDetail(detail) };
   more.addEventListener("click", () => {
-    openMenu({ el: more, align: "end" }, spec.menu());
+    openMenu({ el: more, align: "end" }, detail === "" ? spec.menu() : [...spec.menu(), copyItem]);
   });
   top.appendChild(more);
   head.appendChild(top);
@@ -137,16 +142,16 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   meta.textContent = spec.meta;
   head.appendChild(meta);
 
+  // 怎么连过去的（成品写好的那一句：经跳板 · 经代理）；直连不经代理 ⇒ 不出。每条连接的读数在 ⋯ ›「复制详情」里。
+  const route = document.createElement("div");
+  route.className = "machine-route";
+  route.hidden = true;
+  head.appendChild(route);
+
   const problem = document.createElement("div");
   problem.className = "machine-problem";
   problem.hidden = true;
   head.appendChild(problem);
-
-  // 每跳读数：到这台的每一条连接一行（成品写好的那一句；经跳板时跳板那一条另起一行）。
-  const links = document.createElement("div");
-  links.className = "machine-links";
-  links.hidden = true;
-  head.appendChild(links);
 
   if (connFold) head.appendChild(connFold.el);
 
@@ -232,7 +237,8 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
       setDot(dot, f.dot, f.word || copyText("settingsNav.dot.up", { machine: name }));
       word.textContent = f.word;
       paintProblem(problem, f, (fix) => (fix === "conn_settings" && connFold ? connFold.open() : spec.onFix?.(fix)));
-      paintLinks(links, f);
+      paintRoute(route, f);
+      detail = f.detail;
     },
     setCcSummary(text) {
       setFoldSummary(ccFold, text);
@@ -253,4 +259,14 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
       ccFold.scrollIntoView?.({ block: "nearest" });
     },
   };
+}
+
+/** ⋯ ›「复制详情」：成品那一份原样写进剪贴板；写成说一句已复制，写不进照壳那一句报。 */
+async function copyDetail(text: string): Promise<void> {
+  try {
+    await writeClipboard(text);
+    toast(copyText("detail.act.copied"), "", { level: "success" });
+  } catch (e) {
+    failToast(copyText("detail.act.failed"), e);
+  }
 }

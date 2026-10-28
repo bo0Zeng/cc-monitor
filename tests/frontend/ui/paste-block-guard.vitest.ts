@@ -45,6 +45,7 @@ const FAMILY_B = [
   "src/frontend/ui/views/plan-review.ts", // 退回框：送不了时［复制这一行］（给人自己去会话里贴，不贴进任何配置）
   "src/frontend/ui/views/plan-cell.ts", // 一格详情：复制「跟 agent 说时用」的编号（给人看，不贴进任何配置）
   "src/frontend/ui/login-drawer.ts", // 登录抽屉［复制链接］：把登录链接给别的设备用（不贴进任何配置）
+  "src/frontend/ui/settings/machine-page.ts", // 机器页卡头 ⋯ ›「复制详情」：那台成品的复制详情（每跳读数），复制给人看
 ];
 
 /**

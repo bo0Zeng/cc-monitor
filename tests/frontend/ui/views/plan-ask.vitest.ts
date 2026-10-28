@@ -13,7 +13,7 @@ vi.mock("../../../../src/frontend/ui/plan-reads", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   askPlan: (origin: string, a: Record<string, unknown>) => {
     asked.calls.push([origin, a]);
-    return Promise.resolve({ alias: a.alias ?? null, line: `line-of-${String(a.alias)}` });
+    return Promise.resolve({ alias: a.alias ?? null, line: `line-of-${String(a.alias)}`, runs: `runs-of-${String(a.alias)}` });
   },
 }));
 
@@ -66,28 +66,52 @@ describe("一格详情头的［问这一块…］", () => {
     const el = d.render(slice(), cell());
     const b = [...el.querySelectorAll("button")].find((x) => x.textContent?.includes("plan.ask.open"));
     expect(b, "没有［问这一块…］").toBeTruthy();
+    expect(b!.getAttribute("aria-disabled")).not.toBe("true");
     b!.click();
     expect(got).toEqual([["ledger", "A2-1-3"]]);
+  });
+
+  it("★ 计划页知道那台离线 ⇒［问图…］灰，悬停是那台成品的离线那一句；点了不交给宿主", () => {
+    const got: string[] = [];
+    const d = new CellDetail({
+      select: () => {},
+      who: () => document.createElement("span"),
+      origin: () => "devbox",
+      workspace: () => "/work/ledger",
+      switchTo: () => {},
+      returnCell: () => {},
+      takeover: () => {},
+      ask: (_sl, c) => got.push(c.id),
+      askOff: () => "devbox 离线（夹具）",
+    });
+    const el = d.render(slice(), cell());
+    const b = [...el.querySelectorAll("button")].find((x) => x.textContent?.includes("plan.ask.open"))!;
+    expect(b.getAttribute("aria-disabled")).toBe("true");
+    expect(b.title || b.dataset.kitTitle).toBe("devbox 离线（夹具）");
+    b.click();
+    expect(got).toEqual([]);
   });
 });
 
 describe("问图框交出的那一份", () => {
   it("那台 · 机器锁住 · 目录锁在工作区根 · 开口那句是那台拼的 · 别名预选那台回的那条 · 框顶那一句照那台写的", () => {
-    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "问图 · 编码探测", alias: "look", line: "读图。\n看 A2-1-3「编码探测」：" });
+    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "问图 · 编码探测", alias: "look", line: "读图。\n看 A2-1-3「编码探测」：", runs: "tmux 里 · 号 lab（夹具）" });
     expect(spec).toMatchObject({ origin: "gpu-box", lockMachine: true, cwd: "/work/ledger", lockCwd: true, prompt: "读图。\n看 A2-1-3「编码探测」：" });
     expect(spec.ask?.alias).toBe("look");
     expect(spec.ask?.title).toBe("问图 · 编码探测");
+    expect(spec.ask?.runs, "起在哪那一句照那台回的").toBe("tmux 里 · 号 lab（夹具）");
   });
 
-  it("没问过图（那台回 null）⇒ 别名不预选", () => {
-    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "t", alias: null, line: "看 A2-1-3「编码探测」：" });
+  it("没问过图（那台回 null）⇒ 别名不预选，起在哪那一句也没有", () => {
+    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "t", alias: null, line: "看 A2-1-3「编码探测」：", runs: null });
     expect(spec.ask?.alias).toBeNull();
+    expect(spec.ask?.runs).toBeNull();
   });
 
-  it("改选别名 ⇒ 带上那条再问那台一次，拿回新拼的那句", async () => {
+  it("改选别名 ⇒ 带上那条再问那台一次，拿回新拼的那句与起在哪那一句", async () => {
     asked.calls.length = 0;
-    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "t", alias: null, line: "x" });
-    await expect(spec.ask!.relined("look")).resolves.toBe("line-of-look");
+    const spec = askSpec("gpu-box", "/work/ledger", slice(), cell(), { title: "t", alias: null, line: "x", runs: null });
+    await expect(spec.ask!.relined("look")).resolves.toEqual({ line: "line-of-look", runs: "runs-of-look" });
     expect(asked.calls).toEqual([["gpu-box", { workspace: "/work/ledger", slice: "ledger", id: "A2-1-3", alias: "look" }]]);
   });
 });

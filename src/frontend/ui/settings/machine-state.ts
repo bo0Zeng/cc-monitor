@@ -29,8 +29,8 @@ export interface MachineFace {
   detail: string;
   /** 问题行下面那一句下一步（本机后端起的时候被拒，壳写好的；空 ＝ 不出那一行）。 */
   next: string;
-  /** 到那台的每一条连接一行（成品 `links[].said` 原样，先后照成品；没有 ⇒ 空）。 */
-  links: string[];
+  /** 怎么连过去的那一句（成品 `route` 原样；直连不经代理 ⇒ 空，不出那一行）。 */
+  route: string;
 }
 
 export function machineFace(m: MachineState): MachineFace {
@@ -45,21 +45,14 @@ export function machineFace(m: MachineState): MachineFace {
     fixes: m.fixes,
     detail: m.detail ?? "",
     next: "",
-    links: (m.links ?? []).map((l) => l.said),
+    route: m.route ?? "",
   };
 }
 
-/** 每跳读数那一块（机器单页卡头）：一条连接一行，字照 `face.links` 原样；没有 ⇒ 收起。 */
-export function paintLinks(el: HTMLElement, face: MachineFace): void {
-  el.replaceChildren(
-    ...face.links.map((said) => {
-      const row = document.createElement("div");
-      row.className = "machine-link";
-      row.textContent = said;
-      return row;
-    }),
-  );
-  el.hidden = face.links.length === 0;
+/** 怎么连过去的那一行（机器单页卡头）：字照 `face.route` 原样；没有 ⇒ 收起。 */
+export function paintRoute(el: HTMLElement, face: MachineFace): void {
+  el.textContent = face.route;
+  el.hidden = face.route === "";
 }
 
 /** 本机后端没起来那一格怎么画（壳的 `local-backend`；连着 ⇒ `null`，看本机后端那一台的成品）。字与修法照壳那一格，样子按那一样挑。 */
@@ -79,7 +72,7 @@ export function localBackendFace(l: LocalBackend): MachineFace | null {
     fixes: l.state === "starting" ? [] : l.fixes,
     detail: "",
     next: l.state === "starting" ? "" : (l.next ?? ""),
-    links: [],
+    route: "",
   };
 }
 

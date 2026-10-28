@@ -283,12 +283,12 @@ impl Facts {
 
     /// `state` 那一行：`state` 通没通（`connecting` · `up` 带第几条流 `epoch` · `down`）＋ `machine` 那台的状态成品
     /// （由 `deploy::machine` 定，同桌面那一份；这一端不自己装后端 ⇒ 没有后端那一轮给［安装］）。
-    /// 成品里的连接是这台手机自己那个池此刻到那台的（读数是出这一行那一刻的）。
+    /// 成品里怎么连过去的与每条连接那一句是这台手机自己那个池此刻到那台的（读数是出这一行那一刻的）。
     fn line(&self, machine: &str) -> String {
         self.line_in(machine, &ssh_dial::pool::ssh().links())
     }
 
-    /// [`Facts::line`] 的本体（池快照由调用方给）：连接照这台交的拨号请求的身份归（`ssh_dial::pool::rows_of`，后端归到机器表那一处同一份）；
+    /// [`Facts::line`] 的本体（池快照由调用方给）：照这台交的拨号请求写（`ssh_dial::pool::way_of`，后端归到机器表那一处同一份）；
     /// 没交过 · 读不动 ⇒ 不带。
     fn line_in(&self, machine: &str, snap: &[(String, Vec<ssh_dial::pool::LinkFacts>)]) -> String {
         let mut machine = product(&self.entry, machine, true, false);
@@ -299,7 +299,7 @@ impl Facts {
             .cloned();
         if let Some(req) = base.and_then(|b| PhoneLink::new(b).request(serde_json::json!({})).ok())
         {
-            machine.links = ssh_dial::pool::rows_of(snap, &req);
+            ssh_dial::pool::way_of(snap, &req).put(&mut machine);
         }
         let line = match &self.last {
             None | Some(State::Connecting) => LinkLine::Connecting { machine },
@@ -1007,10 +1007,11 @@ mod tests {
         assert!(!p.text.is_empty());
     }
 
-    /// ★ 手机自己那个池：这台交过拨号请求（[`ssh`]）⇒ 成品带上本进程池里那个身份的每一条连接，写法同后端那一份
-    /// （`ssh_dial::pool::rows_of`：经跳板时跳板那一项跟在后面）；没交过的那台、身份对不上的连接都不带。池快照是判据造的（不拨号）。
+    /// ★ 手机自己那个池：这台交过拨号请求（[`ssh`]）⇒ 成品带上怎么连过去的（`route`：跳板照请求里的跳板链，经代理照池里那几条）
+    /// 与每一条连接那一句（复制详情末尾），写法同后端那一份（`ssh_dial::pool::way_of`）；没交过的那台、身份对不上的连接都不带。
+    /// 池快照是判据造的（不拨号）。
     #[test]
-    fn the_product_carries_this_phones_own_links_to_that_machine() {
+    fn the_product_carries_how_this_phone_reaches_that_machine() {
         use ssh_dial::pool::{LinkFacts, Wire};
         let wire = |endpoint: &str, via_proxy: bool| Wire {
             endpoint: endpoint.to_string(),
@@ -1019,7 +1020,10 @@ mod tests {
             bytes_in: 4096,
             bytes_out: 300,
         };
-        let base = serde_json::json!({ "host": "box.test", "port": 22, "user": "u" });
+        let base = serde_json::json!({
+            "host": "box.test", "port": 22, "user": "u",
+            "jump": { "host": "edge.test", "port": 22, "user": "u", "label": "edge" },
+        });
         let req = PhoneLink::new(base.clone())
             .request(serde_json::json!({}))
             .unwrap_or_else(|p| panic!("组不成请求：{}", p.text));
@@ -1028,7 +1032,7 @@ mod tests {
             jumps: vec![wire("edge.test:22", true)],
         };
         let snap = vec![
-            (ssh_dial::pool::identity(&req), vec![facts.clone()]),
+            (ssh_dial::pool::identity(&req), vec![facts]),
             (
                 "[\"someone-else\"]".to_string(),
                 vec![LinkFacts {
@@ -1057,12 +1061,22 @@ mod tests {
         let got = machine_of(mine.line_in("box", &snap));
         let stranger = machine_of(Facts::default().line_in("box", &snap));
         bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
-        assert_eq!(got.links, facts.rows(), "这台那个身份的连接没进成品");
-        assert_eq!(got.links.len(), 2, "那台一项、跳板一项");
-        assert!(
-            stranger.links.is_empty(),
-            "没交过拨号请求的那台带上了连接：{:?}",
-            stranger.links
+        let way = ssh_dial::pool::way_of(&snap, &req);
+        assert_eq!(
+            got.route.as_deref(),
+            Some(copy_core::copy_text("beLinks.route.jumpProxy", &[("chain", "edge")]).as_str()),
+            "经跳板 edge、跳板那条经代理"
         );
+        assert_eq!(got.route, way.route, "同后端那一处写的");
+        assert_eq!(way.hops.len(), 2, "那台一句、跳板一句");
+        let detail = got.detail.clone().unwrap_or_default();
+        for said in &way.hops {
+            assert!(
+                detail.contains(said.as_str()),
+                "复制详情里没有「{said}」：{detail}"
+            );
+        }
+        assert_eq!(stranger.route, None, "没交过拨号请求的那台带上了 route");
+        assert_eq!(stranger.detail, None, "没交过拨号请求的那台带上了连接");
     }
 }

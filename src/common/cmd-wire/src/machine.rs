@@ -374,47 +374,17 @@ pub struct MachineState {
     pub seen_host_key: Option<String>,
     /// 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。拨号核心说的，不在这里算。
     pub expected_host_key: Option<String>,
-    /// 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+    /// 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
     pub detail: Option<String>,
     /// 这台此刻几条会话状态不明（连接断的那一刻本机后端说过说不清、那台还没重报的；没有 ⇒ 省略）。界面照它写「N 会话状态不明」，不自己数。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub unclear: Option<u32>,
-    /// 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
-    /// 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(optional, as = "Option<Vec<MachineLink>>")
-    )]
-    pub links: Vec<MachineLink>,
-}
-
-/// 到一台的一条 SSH 连接（或它经过的那台跳板那一条）此刻的读数。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MachineLink {
-    /// 连的是哪（`主机:口`；跳板那一项是那台跳板）。
-    pub endpoint: String,
-    /// 是不是经过的那台跳板那一条（只运隧道，不压）。
-    pub jump: bool,
-    /// 这一条上的字节压没压。
-    pub compressed: bool,
-    /// 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
-    pub via_proxy: bool,
-    /// 线上收到的字节（加密 · 压缩之后）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub bytes_in: u64,
-    /// 线上发出的字节。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub bytes_out: u64,
-    /// 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
-    pub said: String,
+    /// 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
+    /// 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub route: Option<String>,
 }
 
 /// 接常驻那一段的一轮结论（宿主把通信层交出的那一态原样转给后端，只有事实）。
