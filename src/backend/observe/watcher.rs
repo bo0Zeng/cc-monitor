@@ -1063,7 +1063,7 @@ pub fn spawn(
     crate::host::managed::install(&own);
     let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
     // 进程里第一份 watcher 的那一本记下来，给只读着用的那几处（[`run_book`]）。
-    let _ = RUN_BOOK.set(book.clone());
+    RUN_BOOK.get_or_init(|| book.clone());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
