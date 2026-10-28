@@ -169,11 +169,10 @@ export class OutlineSource {
    * **骨架索引在途：清单先不单独要，等它带回来。**
    *
    * 宿主发「从 0 起的骨架索引」的同一刻调它（`tab-stream-view.ts::requestSkeleton`）。`seed` 兑现成：
-   * - 一份清单 ⇒ 整表建好、续点接上它的 `end`（**这一趟不再单独要清单**）；
+   * - 一份清单 ⇒ 整表建好、续点接上它的 `end`（**不从 0 单独要清单**）；
    * - `null` / 抛了（老后端 / 真的零条 / 索引失败）⇒ 照旧自己从 0 要一份。
-   * 等的期间 `refresh()` 并进同一趟（沿用在途合并）。等完：没种上 ⇒ 补一趟从 0 的 `refresh()`；
-   * 种上了 ⇒ 只有「等的期间真有新行进来（`markStale`）**而且**有人叫过」才补一趟增量 ——
-   * 批结束那一下的 `refresh()` 只是「还没要过」，种上之后它已经不成立，不为它白发一次 IPC。
+   * 等的期间 `refresh()` 并进同一趟（沿用在途合并）。等完一律补一趟 `refresh()`：没种上 ⇒ 从 0；
+   * 种上了 ⇒ 从种子的 `end` 要增量 —— 首屏那一问只要到尾段之上（`want = floor`），正渲染着的尾段 `[end, EOF)` 不在种子里。
    * 已经要到过、在途、或已放弃 ⇒ 什么都不做（清单已经有了 / 正在要，索引那份不再用）。
    */
   awaitSeed(seed: Promise<OutlineSeed | null>): void {
@@ -182,7 +181,6 @@ export class OutlineSource {
       return;
     }
     const gen = this.gen;
-    let seeded = false;
     this.stale = false;
     const run = seed
       .then((s) => {
@@ -195,18 +193,15 @@ export class OutlineSource {
         for (const e of s.entries) this.uuids.add(e.uuid);
         this.rows = s.entries.length;
         this.end = s.end;
-        seeded = true;
       })
       .catch(() => {})
       .finally(() => {
         this.inflight = null;
         const again = this.again;
         this.again = false;
-        if (gen !== this.gen) {
-          if (again) void this.refresh(); // 换了会话之后有人叫过 ⇒ 那是新会话的，照要
-          return;
-        }
-        if (!seeded || (again && this.stale)) void this.refresh();
+        // 换了会话之后没人叫过 ⇒ 不要；有人叫过 ⇒ 那是新会话的，照要
+        if (gen !== this.gen && !again) return;
+        void this.refresh();
       });
     this.inflight = run;
   }
