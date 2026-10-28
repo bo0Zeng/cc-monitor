@@ -5,16 +5,14 @@
 //! 查询本体住 `observe/query/`，这里只有线上那三个类型和接线；家目录是参数（判据拿夹具喂 `*_at`）。
 //! 入方向不许出现 `observe::` 的那条线照旧：本文件住 `faces/`，与 `read_face` 同一层。
 
-use crate::observe::query::body::{RecordLine, RunRow};
+use crate::observe::query::body::{fold_unread, ReadRow, RecordLine, RunRow};
 use crate::observe::query::branch::{branch_page, Branch, BranchReq};
 use crate::observe::query::index::{index_page, HistoryIndex, HistoryIndexReq};
 use crate::observe::query::inputs::{user_inputs_page, UserInputs, UserInputsReq};
 use crate::observe::query::locate::{self, RecordProbe};
 use crate::observe::query::tail::TailPlan;
 use crate::observe::query::turns::{HistoryTurns, HistoryTurnsReq};
-#[cfg(test)]
-use crate::observe::query::ENVELOPE_BYTES;
-use crate::observe::query::{body, tail};
+use crate::observe::query::{body, jlen, tail, ENVELOPE_BYTES};
 use crate::wire::typed::{codes, of_pair, Command, NoArgs};
 use crate::wire::SessionFaceExt as _;
 pub(crate) use cmd_wire::needs::{AnsweredRow, NeedsList};
@@ -115,22 +113,81 @@ pub(crate) fn read_at(
     tz: &crate::Tz,
 ) -> Result<HistoryRead, HistoryReadErr> {
     let lower = of_pair(HistoryReadErr::Failed);
-    let offset = req.offset.unwrap_or(0);
-    let (_, face) = record_face(home, &req.path).map_err(&lower)?;
-    let page = body::read_page(
+    let fixed = jlen(&HistoryRead::<serde_json::Value> {
+        rows: Vec::new(),
+        next: u64::MAX,
+        eof: false,
+    });
+    let (rows, next, eof) = read_rows(
         home,
         &req.path,
-        offset,
+        req.offset.unwrap_or(0),
         req.until,
-        READ_PAGE_BYTES,
-        LINE_CAP_BYTES,
+        tz,
+        fixed,
     )
     .map_err(&lower)?;
-    Ok(HistoryRead {
-        rows: crate::observe::query::body::rows_of(&mut reader(&face, tz), offset, &page.bytes),
-        next: page.next,
-        eof: page.eof,
-    })
+    Ok(HistoryRead { rows, next, eof })
+}
+
+/// `history-read` · `history-tail` 的一页：从 `offset` 起往 `until`（缺 ⇒ 文件尾）读，回（行 · 续点 · 到头了没有）。
+///
+/// 一页按**交出去的字节**封顶：回包里不随行变的那一截（`fixed`）＋ 信封占住之后，一行一行加它序列化后的字节，
+/// 加满 [`READ_PAGE_BYTES`] 就停，装不下的那一行是下一页的头；一行单独比一页大 ⇒ 那一页只有它。
+/// 源字节照一页一块读、同一个读法接着解（相邻的认不出那几条跨块照样并成一条）；一页最多扫 [`LINE_CAP_BYTES`] 源字节：
+/// 一行超长时一页本来就要续读到这么多，最坏的一页不比按源字节封顶时更重。
+fn read_rows(
+    home: &Path,
+    path: &str,
+    offset: u64,
+    until: Option<u64>,
+    tz: &crate::Tz,
+    fixed: usize,
+) -> Result<(Vec<ReadRow>, u64, bool), (&'static str, String)> {
+    let (_, face) = record_face(home, path)?;
+    let mut reader = reader(&face, tz);
+    let room = READ_PAGE_BYTES.saturating_sub(fixed + ENVELOPE_BYTES);
+    let (mut rows, mut used, mut at) = (Vec::<ReadRow>::new(), 0usize, offset);
+    // 上一块里最后一条带记录的行：这一块第一条带记录的行可能要并进它。
+    let mut last: Option<usize> = None;
+    loop {
+        let chunk = body::read_page(home, path, at, until, READ_PAGE_BYTES, LINE_CAP_BYTES)?;
+        let mut first = true;
+        for mut row in body::rows_of(&mut reader, at, &chunk.bytes) {
+            // 块内的 `rows_of` 已经并过；只剩这一块第一条带记录的行与上一块最后一条之间那一处。
+            let mut folded = None;
+            if let (true, Some(r)) = (first, row.record.as_ref()) {
+                first = false;
+                if let Some(i) = last {
+                    let mut into = rows[i].clone();
+                    if into.record.as_mut().is_some_and(|p| fold_unread(p, r)) {
+                        let grow = jlen(&into).saturating_sub(jlen(&rows[i]));
+                        folded = Some((i, into, grow));
+                    }
+                }
+            }
+            if folded.is_some() {
+                (row.record, row.cwd) = (None, None);
+            }
+            let cost = jlen(&row) + 1 + folded.as_ref().map_or(0, |f| f.2);
+            if !rows.is_empty() && used + cost > room {
+                let next = rows.last().and_then(|r| r.end).unwrap_or(at);
+                return Ok((rows, next, false));
+            }
+            if let Some((i, into, _)) = folded {
+                rows[i] = into;
+            }
+            if row.record.is_some() {
+                last = Some(rows.len());
+            }
+            used += cost;
+            rows.push(row);
+        }
+        at = chunk.next;
+        if chunk.eof || at - offset >= LINE_CAP_BYTES as u64 {
+            return Ok((rows, at, chunk.eof));
+        }
+    }
 }
 
 // ───────────────────────── history-page ─────────────────────────
@@ -591,21 +648,12 @@ pub(crate) fn tail_at(
         (TailHow::Handoff, _) => (plan.total, plan.end),
         _ => (plan.tail_from, plan.split_at),
     };
-    let page = read_at(
-        home,
-        HistoryReadReq {
-            path: path.clone(),
-            offset: Some(at),
-            until: Some(plan.end),
-        },
-        tz,
-    )
-    .map_err(|e| failed(crate::wire::typed::Codes::into_fail(e).message))?;
     let mark = match tail.last {
         Some(last) => mark(last, plan.end)?.unwrap_or_default(),
         None => String::new(),
     };
-    Ok(HistoryTail {
+    let end = plan.end;
+    let mut reply = HistoryTail {
         held: Held {
             path,
             next: plan.total,
@@ -615,10 +663,14 @@ pub(crate) fn tail_at(
         plan,
         how,
         from,
-        rows: page.rows,
-        next: page.next,
-        eof: page.eof,
-    })
+        rows: Vec::new(),
+        next: u64::MAX,
+        eof: false,
+    };
+    (reply.rows, reply.next, reply.eof) =
+        read_rows(home, &reply.held.path, at, Some(end), tz, jlen(&reply))
+            .map_err(|(_, said)| failed(said))?;
+    Ok(reply)
 }
 
 // ───────────────────────── history-record ─────────────────────────
@@ -1453,6 +1505,10 @@ mod needs_merge_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_bytes_tests.rs"]
 mod bytes_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/history_read_cap_tests.rs"]
+mod read_cap_tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/history/facts_by_sid_tests.rs"]
