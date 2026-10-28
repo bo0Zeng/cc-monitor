@@ -18,7 +18,7 @@ Used by:
     crate: gl_generator 0.14.0
     crate: khronos_api 3.1.0
     crate: owned_ttf_parser 0.25.1
-    crate: pageant 0.2.1
+    crate: pageant 0.2.5
     crate: russh 0.61.1
     crate: russh-cryptovec 0.61.0
     crate: russh-util 0.52.0
@@ -2484,7 +2484,7 @@ express Statement of Purpose.
 
 -------- Community Data License Agreement Permissive 2.0 (CDLA-Permissive-2.0) --------
 Used by:
-    crate: webpki-roots 1.0.9
+    crate: webpki-roots 1.0.11
 
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -3077,7 +3077,7 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 -------- ISC License (ISC) --------
 Used by:
-    crate: rustls-webpki 0.103.15
+    crate: rustls-webpki 0.103.16
 
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
@@ -3240,7 +3240,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 -------- MIT License (MIT) --------
 Used by:
     crate: adler2 2.0.1
-    crate: anyhow 1.0.102
+    crate: anyhow 1.0.104
     crate: async-channel 2.5.0
     crate: async-executor 1.14.0
     crate: async-io 2.6.0
@@ -3263,7 +3263,7 @@ Used by:
     crate: dyn-clone 1.0.20
     crate: endi 1.1.1
     crate: erased-serde 0.4.10
-    crate: event-listener 5.4.1
+    crate: event-listener 5.4.2
     crate: event-listener-strategy 0.5.4
     crate: fastrand 2.4.1
     crate: futures-lite 2.6.1
@@ -4988,7 +4988,7 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: crypto-bigint 0.7.3
+    crate: crypto-bigint 0.7.10
     crate: pkcs5 0.8.0
     crate: scrypt 0.12.0
     crate: sec1 0.8.1
@@ -5116,7 +5116,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: ctutils 0.4.2
+    crate: ctutils 0.4.6
 
 Copyright (c) 2025-2026 The RustCrypto Project Developers
 
@@ -5637,8 +5637,8 @@ Used by:
     crate: either 1.18.0
     crate: itertools 0.15.0
     crate: petgraph 0.8.3
-    crate: serde_with 3.20.0
-    crate: serde_with_macros 3.20.0
+    crate: serde_with 3.21.0
+    crate: serde_with_macros 3.21.0
 
 Copyright (c) 2015
 
@@ -8701,7 +8701,7 @@ THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: rustls 0.23.43
+    crate: rustls 0.23.46
 
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
 
@@ -9759,7 +9759,7 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: tokio 1.52.3
+    crate: tokio 1.54.1
     crate: tokio-util 0.7.19
 
 MIT License
