@@ -375,6 +375,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
+  // 各台都报完了（壳说过、且每台都在自己那条流上报完了：`all-listed.ts`）⇒ 记住的那一格还没出现 ⇒ 明说。
+  tabs.onAllListed = () => startup?.onAllListed();
   // 「需手动」的入口跳过来 ⇒ 焦点进答题块（块自己出现时不抢焦点）。
   tabs.onAnswerJump = (sid) => answerBlock.focusFor(sid);
   usageHud.host = {
@@ -883,9 +885,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
       if (!all) return;
-      // 各台都报完了（壳说的那一刻）⇒ 没回来的组员收掉、空组头不留；记住的那一格还没出现 ⇒ 明说。
+      // 壳说各台都报完了：落在某一台那条流上，别的台的宣告可能还在它们自己的流上 ⇒ 那一刻由 TabManager 认（`tabs.onAllListed`，下面挂）。
       tabs.markAllListed();
-      startup?.onAllListed();
     },
     // 活卡（会话流 `session-live-card`，后端拼好的成品）照画；那台看不见了 ⇒ 活卡全撤。
     onLiveCard: (e) => tabs.onLiveCard(e),
@@ -1030,7 +1031,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }),
   });
   // 那一刻要是在它之前就到了（就绪点之前的重放）⇒ 当场补上。
-  if (tabs.everAllListed) startup.onAllListed();
+  if (tabs.allListed) startup.onAllListed();
 
   // 通知后端可以发了 —— 缓冲的行会被 flush 过来。payload 带上次所在 tab：后端重放按会话分组、那个 tab 的先发。
   window.__ccmPerf.frontendReadyEmit = performance.now();

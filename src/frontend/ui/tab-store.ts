@@ -72,8 +72,6 @@ export class TabStore {
   readonly tasksBySid = new Map<string, TaskEntry[]>();
   /** 脸早于建 Tab 到（那台说的会话还没有 Tab）⇒ 暂存，建 Tab 时落实；同一 sid 后到的覆盖先到的。 */
   readonly pendingFace = new Map<string, SessionFace>();
-  /** 已经把活会话清单报完了的机器（会话流的 `listed` 格）：「没回来的组员」等每台都报完了才认。 */
-  readonly seenOrigins = new Set<string>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
   readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();
 
