@@ -565,6 +565,7 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
             "claude-code",
             a,
             false,
+            false,
             relay_route_core::PORT,
             rows,
             &|p, _| l(p),

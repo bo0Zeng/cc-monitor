@@ -102,6 +102,7 @@ fn a_session_launched_with_a_proxy_reaches_the_upstream_through_that_proxy() {
             "HTTPS_PROXY".to_string(),
             format!("http://127.0.0.1:{}", proxy.port()),
         )],
+        base: None,
         pid: std::process::id(),
         at: 1,
     };

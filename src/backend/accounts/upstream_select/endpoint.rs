@@ -26,6 +26,9 @@
 //! 地址里没有会话段：会话 id 归 claude 自己，中转从它请求里自带的头认会话（`relay::Destinations::stream_label_headers`）。
 //!
 //! ① 与 ⑥ 的降级刻意不同（`whenDown`）：① 非它不可，⑥ 有它更好。
+//!
+//! 上游是用户自己的（`own_upstream`：继承来的上游地址不是我们那一形）⇒ ① ⑤ 不成立（表里的行与它无关），恒落到 ⑥：
+//! 中转按那条会话的上游描述直通到用户的地址，中转不在 ⇒ 直连用户的地址。
 
 use super::CREDENTIALS_FILE_AGENT;
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace};
@@ -77,15 +80,20 @@ pub(crate) enum Endpoint {
 
 /// ★★ **决策表的唯一实现**（纯函数）。`routed` = 这台表里有哪几行（[`super::file_face::rows_at`]）；
 /// `registered` = 这一家 agent 在适配层登记了默认上游没有。
+/// `own_upstream` = 这条会话的上游是用户自己的（继承来的上游地址不是我们那一形；中转按那条会话的上游描述走过去）。
 pub(crate) fn decide_launch(
     agent: &str,
     account: &LaunchAccount,
+    own_upstream: bool,
     all_sessions: bool,
     port: u16,
     routed: &[String],
     registered: bool,
 ) -> Endpoint {
-    let has_row = |id: &str| agent == CREDENTIALS_FILE_AGENT && routed.iter().any(|r| r == id);
+    // 上游是用户自己的 ⇒ 表里的行与这条会话无关（鉴权是用户网关的，中转按描述走过去、不查表）⇒ ① ⑤ 两格都不成立。
+    let has_row = |id: &str| {
+        !own_upstream && agent == CREDENTIALS_FILE_AGENT && routed.iter().any(|r| r == id)
+    };
     let id = match account {
         LaunchAccount::Named { config_dir } => acct_core::apikey_account_id_of_dir(config_dir),
         LaunchAccount::Base | LaunchAccount::Undeclared => None,
@@ -152,11 +160,13 @@ pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
 pub(crate) fn relay_for_exec(
     agent: &str,
     account: &LaunchAccount,
+    own_upstream: bool,
 ) -> Result<Option<String>, String> {
     let get = |k: &str| std::env::var(k).ok();
     relay_with(
         agent,
         account,
+        own_upstream,
         all_sessions_on(&get),
         relay_port(&get),
         &super::file_face::machine_rows(),
@@ -188,11 +198,13 @@ pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) ->
 pub(crate) fn relay_for_preview(
     agent: &str,
     account: &LaunchAccount,
+    own_upstream: bool,
 ) -> Result<Option<String>, String> {
     let get = |k: &str| std::env::var(k).ok();
     relay_with(
         agent,
         account,
+        own_upstream,
         all_sessions_on(&get),
         relay_port(&get),
         &super::file_face::machine_rows(),
@@ -205,6 +217,7 @@ pub(crate) fn relay_for_preview(
 pub(crate) fn relay_with(
     agent: &str,
     account: &LaunchAccount,
+    own_upstream: bool,
     all_sessions: bool,
     port: u16,
     routed: &[String],
@@ -212,7 +225,15 @@ pub(crate) fn relay_with(
 ) -> Result<Option<String>, String> {
     let registered =
         super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
-    match decide_launch(agent, account, all_sessions, port, routed, registered) {
+    match decide_launch(
+        agent,
+        account,
+        own_upstream,
+        all_sessions,
+        port,
+        routed,
+        registered,
+    ) {
         Endpoint::None => Ok(None),
         Endpoint::Inject { url, .. } if listening(port, &url) => Ok(Some(url)),
         Endpoint::Inject {
@@ -314,6 +335,7 @@ pub(crate) fn optin_report_at(
     let expected = match decide_launch(
         agent,
         &LaunchAccount::Undeclared,
+        false,
         true,
         PORT,
         routed,
