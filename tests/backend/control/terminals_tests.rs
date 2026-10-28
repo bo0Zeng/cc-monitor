@@ -1270,3 +1270,32 @@ async fn saying_to_an_old_hosted_terminal_is_turned_down_from_its_welcome_withou
     );
     assert!(!host.await.expect("假托管没崩"), "那一句没说给它");
 }
+
+/// ★ 投递那一句进旧托管进程：照实回一个码（`host_outdated`，那个托管终端要重开），不当「不知道送没送到」吞掉。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_queued_line_to_an_old_hosted_terminal_is_refused_as_outdated() {
+    let dir = test_home::sandbox_root().join("old-host-queued");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建沙箱目录");
+    let sock = dir.join("sock");
+    let host = old_host(sock.clone()).await;
+    let s = sock.clone();
+    let input = Input::Text {
+        text: "hi".into(),
+        enter: true,
+    };
+    let sent = tokio::task::spawn_blocking(move || say_managed_at(&s, &input, &[]))
+        .await
+        .expect("没崩");
+    assert_eq!(
+        (sent.result, sent.why, sent.said.as_deref()),
+        (
+            SentResult::Refused,
+            Some(Refused::HostOutdated),
+            Some(copy_text("beTerminal.no.hostOutdated", &[]).as_str())
+        ),
+        "{sent:?}"
+    );
+    assert!(sent.acts.is_empty(), "再发一次也一样：不给［再发一次］");
+    assert!(!host.await.expect("假托管没崩"), "那一句没说给它");
+}
