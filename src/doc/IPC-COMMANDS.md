@@ -372,12 +372,20 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `model` | Allow | 换模型（`session-model`） |
 | `permission` | Allow | 切权限档（`session-permission`） |
 | `stop` | Allow | 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能 |
+| `say` | CanSay | 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、 `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好 |
 
 #### `Allow`
 
 一样此刻能不能做：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
 
 - `can: "yes"`
+- `can: "no"`，带 `why` Words
+
+#### `CanSay`
+
+说不说得了一句：`{can: "yes", hint: 框里的占位那一句}` · `{can: "no", why: 写好的那一句}`。
+
+- `can: "yes"`，带 `hint` Words
 - `can: "no"`，带 `why` Words
 
 #### `CanClose`
@@ -2805,7 +2813,11 @@ type RotNote = { hint: RotHint, tone: Tone, text: string,
 detail?: string, };
 type RotOldFile = { name: string, path: string, };
 type RotPlate = { color: number, label: Words, text: Words, };
-type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
+type RotRow = { account: string, 
+/**
+ * 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
+ */
+row: number, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -4227,6 +4239,7 @@ removed: boolean, };
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type GroupsHere = { groups: Array<HereGroup>, members: Array<HereMember>, };
 type HereGroup = { id: string, name: string, made: number, named: number, };
@@ -4287,7 +4300,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4337,6 +4355,7 @@ type Words = string;
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
@@ -4437,7 +4456,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4504,6 +4528,7 @@ type HereGroup = { id: string, name: string, made: number, named: number, };
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type GroupCount = { dot: SessionDot, n: number, word: string, 
 /**
@@ -4590,7 +4615,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4669,6 +4699,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
@@ -4800,7 +4831,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -4874,6 +4910,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
@@ -5037,7 +5074,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -5193,6 +5235,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
@@ -5344,7 +5387,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -5414,6 +5462,7 @@ delete: CanDelete, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
@@ -5584,7 +5633,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -7332,6 +7386,7 @@ type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -7531,7 +7586,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -7583,6 +7643,7 @@ type AgentKind = string;
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -7774,7 +7835,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -7909,6 +7975,7 @@ cmd: string | null,
  */
 at: string | null, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type FactsBackground = { 
 /**
@@ -8314,7 +8381,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -15114,6 +15186,7 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
@@ -15446,7 +15519,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
@@ -15814,6 +15892,7 @@ key: string, };
 ```ts
 type Allow = { "can": "yes" } | { "can": "no", why: Words, };
 type CanClose = { "can": "quiet" } | { "can": "menu" } | { "can": "no", why: Words, };
+type CanSay = { "can": "yes", hint: Words, } | { "can": "no", why: Words, };
 type CanTerm = { "can": "yes", host: Run, } | { "can": "no", why: Words, };
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
@@ -15900,7 +15979,12 @@ permission: Allow,
 /**
  * 停下这一轮（往那条会话送 Esc）：只在一轮在跑时能。
  */
-stop: Allow, };
+stop: Allow, 
+/**
+ * 说一句（消息流底下那个输入框，`session-queue-put`）：在终端宿主里活着 · 那台看不见（成待发）· 已结束能恢复（先恢复再说）⇒ 能、
+ * `hint` 是框里那一句占位；不在任何宿主里（非 cc-monitor 起的）· 程序退了 · 记录已不在 · 说不清 ⇒ 不能、`why` 写好。界面照摆，不另判。
+ */
+say: CanSay, };
 type SessionDot = "running" | "needs-you" | "background" | "idle" | "exited" | "ended" | "gone" | "unknown";
 type SessionFace = { dot: SessionDot, 
 /**
