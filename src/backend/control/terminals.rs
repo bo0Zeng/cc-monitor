@@ -926,13 +926,13 @@ fn managed_view(id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
 
 /// 投递那一句进托管终端（[`Via::Queued`]）：经托管口 `say`，不持有输入、不换持有者。
 /// 写进去了 ⇒ 送到；持有者输入行里有没交的字 ⇒ `waiting`（投递照排着，别和人打到一半的字搅在一起）；
-/// 托管口不在 · 终端结束了 ⇒ 已经没了（投递照它恢复再送）；连上之后没等到回音（不认 `say` 的旧托管进程）⇒ 不知道送没送到。
+/// 托管口不在 · 终端结束了 ⇒ 已经没了（投递照它恢复再送）；连上之后没等到回音 · 是不认 `say` 的旧托管进程 ⇒ 不知道送没送到。
 pub(crate) fn say_managed_at(sock: &std::path::Path, input: &Input, pastes: &[String]) -> Sent {
     use std::io::ErrorKind as K;
     match crate::host::managed::client::say(sock, &managed_bytes(input, pastes)) {
         Ok(true) => input_reply(SentResult::Delivered, None, None),
         Ok(false) => refused(Refused::Waiting),
-        Err(e) if matches!(e.kind(), K::WouldBlock | K::TimedOut) => {
+        Err(e) if matches!(e.kind(), K::WouldBlock | K::TimedOut | K::Unsupported) => {
             input_reply(SentResult::Unsure, None, None)
         }
         Err(_) => refused(Refused::Ended),
