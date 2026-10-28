@@ -100,6 +100,8 @@ data class ChatUiState(
     val label: String? = null,
     /** 上次没发的草稿（本地存的）：输入框还空着时填进去；没有 ⇒ `null`。 */
     val draft: String? = null,
+    /** 编辑已发的那几句改到一半的字（记录里那一句的 uuid ⇒ 字，本地存的）：再长按编辑那一句时填进去。 */
+    val editDrafts: Map<String, String> = emptyMap(),
     /** 从一处命中打开的落点（那张卡的 key：滚到它、折着就展开）；不是从命中打开的 · 那张卡还没读到 ⇒ `null`。 */
     val landing: String? = null,
     /** 流里画的那几项：[units] 照那台 `history-turns` 的分段折好（[ChatTurns]）；分段还没问到 · 问不到 ⇒ 逐条摊开。 */
@@ -247,6 +249,7 @@ class ChatSession(
         if (!draftAsked) {
             draftAsked = true
             scope.launch { cache.draft(draftKey())?.let { _state.value = _state.value.copy(draft = it) } }
+            sid?.let { s -> scope.launch { edits.load(s) } }
         }
         attach?.open()
         if (!succeeding) {
@@ -388,10 +391,7 @@ class ChatSession(
 
     /** 再发一次那台拒了的那一句（只有能改的原因才有这颗）：同一个编号。 */
     fun retry(localId: String) {
-        val o = outgoing.firstOrNull { it.localId == localId && it.delivery == DeliveryState.FAILED } ?: return
-        o.delivery = DeliveryState.SENDING
-        o.deliveryText = copyText("mobChat.delivery.sending")
-        o.attempts++
+        val o = box.retrying(localId) ?: return
         publish()
         scope.launch {
             cache.settle(o.localId, PendingOutcome.PENDING, o.attempts)
@@ -399,13 +399,22 @@ class ChatSession(
         }
     }
 
-    /** 撤待发里一句（见 [ChatOutbox.cancel]）。 */
-    fun cancel(localId: String) = box.cancel(localId, sid)
+    /**
+     * 编辑已发的那几句（[SaidEdits]：草稿 · 问选项 · 确认那一下；聊天屏直接经它）。那几句进待发（确认那一下 · 开屏读回的）同普通那一句：
+     * 上屏、交出去；没回执 ⇒ 接上那台照同一个编号再交（[resend]）。
+     */
+    internal val edits =
+        SaidEdits(link, machine, cache, scope, { sid }, { os ->
+            box.adopt(os)
+            publish()
+            resend()
+        }) { _state.value = _state.value.copy(editDrafts = it) }
 
-    /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）。 */
-    fun cancelQueued(id: String) {
-        sid?.let { queue.cancel(id, it) }
-    }
+    /** 撤待发里一句（见 [ChatOutbox.cancel]）；是编辑的那一句 ⇒ 它的编辑草稿留着字、不再带待发编号。 */
+    fun cancel(localId: String) = box.cancel(localId, sid).also { edits.unsent(localId) }
+
+    /** 撤输入队名单里一条（哪一端投的都撤得了；照编号请会话那台撤，见 [ChatQueue.cancel]）；编辑的那一句同上。 */
+    fun cancelQueued(id: String) = sid?.let { queue.cancel(id, it) }.also { edits.unsent(id) }
 
     /** 待发里该再交的那几句照同一个编号再交一遍。 */
     private fun resend() {
@@ -497,9 +506,11 @@ class ChatSession(
 
     /** 交那一句（见 [ChatOutbox.put]）；新建会话还没起好 ⇒ 先起（头一句随起交）。 */
     private suspend fun deliver(o: Outgoing) {
-        if (o.inFlight) return
+        // 正在交 · 两次再交排到了同一句、前一次已拿到回执（又不是要刷新排第几）⇒ 不再交。
+        if (o.inFlight || o.receipt && !o.refresh) return
         val s = sid ?: started(o)?.also { if (o.handed) return } ?: return fail(o, permanent = false, text = null)
         box.put(o, s)
+        edits.landed(o)
     }
 
     private fun mark(

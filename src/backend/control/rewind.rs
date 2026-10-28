@@ -103,10 +103,6 @@ pub(crate) enum Walked {
 
 impl Walked {
     /// 给人看的那一句（成了 · 在等 ⇒ `None`）：投递那一下把它写进那一条的样子（未送达 · 说不准）。
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "投递那一下读它，合进来之前只有判据调")
-    )]
     pub(crate) fn said(&self) -> Option<String> {
         match self {
             Walked::Done | Walked::Wait => None,

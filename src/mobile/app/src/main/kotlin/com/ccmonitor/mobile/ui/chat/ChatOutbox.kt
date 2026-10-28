@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.core.wire.gen.QueuePut
+import com.ccmonitor.mobile.core.wire.gen.Rewind
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.attach.AttachTray
@@ -40,7 +41,7 @@ internal class ChatOutbox(
         sid: String,
     ) {
         o.inFlight = true
-        val r = link.call(SessionQueuePut.COMMAND, SessionQueuePut.args(sid, o.localId, o.text, System.currentTimeMillis(), o.attachments), INPUT_MS)
+        val r = link.call(SessionQueuePut.COMMAND, SessionQueuePut.args(sid, o.localId, o.text, System.currentTimeMillis(), o.attachments, o.rewind), INPUT_MS)
         o.inFlight = false
         if (lines.none { it === o }) return
         when {
@@ -87,6 +88,20 @@ internal class ChatOutbox(
             attach?.settled(o.localId)
             sid?.let { link.call(SessionQueueCancel.COMMAND, SessionQueueCancel.args(it, o.localId), INPUT_MS) }
         }
+    }
+
+    /** 再发一次那台拒了的那一句（能改的原因才有这颗）：同一个编号，标回「发送中」、次数加一；不是没送到的那一句 ⇒ `null`。 */
+    fun retrying(localId: String): Outgoing? {
+        val o = lines.firstOrNull { it.localId == localId && it.delivery == DeliveryState.FAILED } ?: return null
+        o.delivery = DeliveryState.SENDING
+        o.deliveryText = copyText("mobChat.delivery.sending")
+        o.attempts++
+        return o
+    }
+
+    /** 收进待发（编辑已发的那几句：确认那一下 · 开屏照编辑草稿读回的）；同一个编号已在 ⇒ 不再收。 */
+    fun adopt(os: List<Outgoing>) {
+        lines += os.filter { n -> lines.none { it.localId == n.localId } }
     }
 
     /** 该再交一遍的那几句：还没回执也没在交的 · 回执是上次开着时到的（拿此刻排第几）。 */
@@ -159,6 +174,8 @@ internal class Outgoing(
     var attempts: Int = 1,
     /** 随这一句发的附件编号（重发照带）。 */
     val attachments: List<String> = emptyList(),
+    /** 编辑已发的那一句（`SaidEdit.kt`）：会话那台投递时先退到 `rewind.to` 之前再说它（重发照带）；普通的一句 ⇒ `null`。 */
+    val rewind: Rewind? = null,
 ) {
     /** 这一句已随 `session-open` 交出去了（结局已标上）。 */
     var handed = false

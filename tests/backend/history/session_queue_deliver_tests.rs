@@ -34,6 +34,7 @@ fn put(o: &crate::platform::fs::Own, id: &str, now: i64) {
             at_ms: now,
             text: format!("text of {id}"),
             attachments: Vec::new(),
+            rewind: None,
         },
         now,
     )
@@ -55,6 +56,7 @@ fn the_line_sent_carries_its_attachments() {
             at_ms: T0,
             text: "看图".into(),
             attachments: vec!["1027-1200-a3f2".into()],
+            rewind: None,
         },
         T0,
     )
@@ -286,4 +288,84 @@ fn nothing_pending_means_no_wake_up() {
         None,
         "队是空的 ⇒ 一直睡到有事"
     );
+}
+
+/// 编辑已发的那一句（带 `rewind`）投进队。
+fn put_edit(o: &crate::platform::fs::Own, id: &str, when: cmd_wire::rewind::RewindWhen, now: i64) {
+    q::put(
+        o,
+        &SessionQueuePutReq {
+            machine: Machine::local(),
+            sid: SID.parse().unwrap(),
+            id: id.to_string(),
+            end: "mobile".to_string(),
+            n: None,
+            at_ms: now,
+            text: "改过的".to_string(),
+            attachments: Vec::new(),
+            rewind: Some(cmd_wire::rewind::Rewind {
+                to: "u2".to_string(),
+                how: cmd_wire::rewind::RewindHow::Conversation,
+                when,
+            }),
+        },
+        now,
+    )
+    .unwrap();
+}
+
+/// 在跑：等这一轮完的那一句照等；现在停的那一句当场送（停下这一轮是回退那一串的第一步）。
+#[test]
+fn an_edit_that_stops_now_is_sent_while_a_turn_runs_and_one_that_waits_is_not() {
+    use cmd_wire::rewind::RewindWhen;
+    let o = own("edit-now");
+    let rig = Rig::new(Some(Some(A::Working)), T0 - 1_000);
+    let mut memos = Memos::default();
+    put_edit(&o, "wait", RewindWhen::AfterTurn, T0);
+    rig.pass(&o, &mut memos, T0 + 1);
+    assert!(rig.said.borrow().is_empty(), "等这一轮完 ⇒ 在跑时不送");
+    q::cancel(&o, SID, "wait", T0 + 2).unwrap();
+    put_edit(&o, "now", RewindWhen::Now, T0 + 3);
+    rig.pass(&o, &mut memos, T0 + 4);
+    assert_eq!(*rig.said.borrow(), ["改过的"], "现在停 ⇒ 在跑也送");
+}
+
+/// 没退成 ⇒ 那一条标未送达、写上回退那一串说的为什么（不是笼统的「未送进会话」）。
+#[test]
+fn a_failed_rewind_is_undelivered_with_its_own_reason() {
+    use cmd_wire::rewind::RewindWhen;
+    let o = own("edit-no");
+    let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
+    *rig.answer.borrow_mut() = Delivery::No(Undeliverable::NotRewound("回退菜单对不上".into()));
+    let mut memos = Memos::default();
+    put_edit(&o, "e", RewindWhen::AfterTurn, T0);
+    rig.pass(&o, &mut memos, T0 + 1);
+    let list = q::read(&o, SID, T0 + 2).unwrap();
+    assert_eq!(list.items.len(), 1);
+    assert_eq!(list.items[0].state, S::Undelivered);
+    assert_eq!(list.items[0].said, "回退菜单对不上");
+    assert!(
+        list.items[0].rewind.is_some(),
+        "名单里那一条还带着怎么退（发件端据它重编辑）"
+    );
+}
+
+/// 回退那一串的结局 ⇒ 投递的结局：成了 · 送进了没读回 ⇒ 摘掉；等 ⇒ 照排着；没退成 · 退了没送进 ⇒ 未送达。
+#[test]
+fn rewind_outcomes_map_to_deliveries() {
+    use crate::control::rewind::{Walked, Why};
+    assert_eq!(rewound(Walked::Done), Delivery::In { resumed: false });
+    assert_eq!(
+        rewound(Walked::Unsure(Why::NotReadBack)),
+        Delivery::In { resumed: false }
+    );
+    assert_eq!(rewound(Walked::Wait), Delivery::Waiting);
+    assert!(matches!(
+        rewound(Walked::No(Why::MenuUnlike)),
+        Delivery::No(Undeliverable::NotRewound(_))
+    ));
+    assert!(matches!(
+        rewound(Walked::Unsure(Why::NotSent)),
+        Delivery::No(Undeliverable::NotRewound(_))
+    ));
 }

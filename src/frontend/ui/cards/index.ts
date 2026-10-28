@@ -26,6 +26,7 @@ import { buildAgentCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
 import { attachStrip } from "./attach-strip";
+import { markEditable } from "../said-edit";
 import type { Pasted } from "../generated/Pasted";
 import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
@@ -212,6 +213,8 @@ export interface RenderContext {
    * TabManager 在批里设 true；不传 ＝ 当场高亮。
    */
   lazy?: boolean;
+  /** 人说的那一句能就地编辑（标签页那一路给，带这条会话的 sid）：卡头出「编辑」（`said-edit.ts`）。只读窗口不给 ⇒ 不出。 */
+  editSaid?: { sid: string };
 }
 
 export type RenderResult =
@@ -409,7 +412,9 @@ function buildSaidCard(rec: Extract<LineRecord, { t: "said" }>, ctx: RenderConte
   const open = isRemoteOrigin(ctx.origin) && cwd ? (rel: string) => void openRemoteFileInSftp(ctx.origin, `${cwd.replace(/\/+$/, "")}/${rel}`) : undefined;
   const strip = attachStrip(rec.blocks, rec.attachments ?? [], open);
   if (!rec.who.text && strip === null) return null;
-  return buildUserCard(time, rec.who.text, rec.who.pasted, strip);
+  const card = buildUserCard(time, rec.who.text, rec.who.pasted, strip);
+  if (ctx.editSaid !== undefined && rec.who.text) markEditable(card, { origin: ctx.origin, sid: ctx.editSaid.sid, id: rec.id, text: rec.who.text });
+  return card;
 }
 
 function buildUserCard(

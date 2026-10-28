@@ -5,6 +5,9 @@ import com.ccmonitor.mobile.core.wire.gen.ArriveBy
 import com.ccmonitor.mobile.core.wire.gen.Held
 import com.ccmonitor.mobile.core.wire.gen.Hide
 import com.ccmonitor.mobile.core.wire.gen.LoginStartReq
+import com.ccmonitor.mobile.core.wire.gen.Rewind
+import com.ccmonitor.mobile.core.wire.gen.RewindHow
+import com.ccmonitor.mobile.core.wire.gen.RewindWhen
 import com.ccmonitor.mobile.core.wire.gen.Tab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,6 +45,7 @@ class SentRequestsTest {
             FilesRename.COMMAND to listOf(FilesRename.args(dir, bin, "b")),
             FilesStat.COMMAND to listOf(FilesStat.args(bin)),
             FilesWriteText.COMMAND to listOf(FilesWriteText.args(dir, bin, "x", SHA)),
+            Groups.COMMAND to listOf(Groups.ARGS),
             HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl"), HistoryFacts.bySid("0a1b2c3d-0000-4000-8000-000000000001")),
             HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
             HistoryAnnotate.COMMAND to
@@ -144,8 +148,14 @@ class SentRequestsTest {
                 ),
             SessionPermission.COMMAND to listOf(SessionPermission.args("s", "plan")),
             SessionQueueCancel.COMMAND to listOf(SessionQueueCancel.args("s", "m")),
-            SessionQueuePut.COMMAND to listOf(SessionQueuePut.args("s", "m", "hi", 1L), SessionQueuePut.args("s", "m", "hi", 1L, listOf("i"))),
+            SessionQueuePut.COMMAND to
+                listOf(
+                    SessionQueuePut.args("s", "m", "hi", 1L),
+                    SessionQueuePut.args("s", "m", "hi", 1L, listOf("i")),
+                    SessionQueuePut.args("s", "m", "hi", 1L, rewind = Rewind("u", RewindHow.CODE_AND_CONVERSATION, RewindWhen.NOW)),
+                ),
             SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
+            SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s")),
             SessionsNeeds.COMMAND to listOf(null),
             TerminalInput.COMMAND to listOf(TerminalInput.text("s", "hi"), TerminalInput.key("s", "esc")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),

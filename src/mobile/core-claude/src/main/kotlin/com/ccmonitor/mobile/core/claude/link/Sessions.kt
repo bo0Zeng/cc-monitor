@@ -17,6 +17,8 @@ import com.ccmonitor.mobile.core.wire.gen.Opened
 import com.ccmonitor.mobile.core.wire.gen.QueueCancelled
 import com.ccmonitor.mobile.core.wire.gen.QueueList
 import com.ccmonitor.mobile.core.wire.gen.QueuePut
+import com.ccmonitor.mobile.core.wire.gen.Rewind
+import com.ccmonitor.mobile.core.wire.gen.RewindOptions
 import com.ccmonitor.mobile.core.wire.gen.SentAct
 import com.ccmonitor.mobile.core.wire.gen.SentResult
 import com.ccmonitor.mobile.core.wire.gen.SessionCommands
@@ -224,18 +226,34 @@ object SessionCommandList {
 object SessionQueuePut {
     const val COMMAND: String = "session-queue-put"
 
-    /** [attachments]：随这一句发的附件编号（[SessionAttachmentCommit] 回的，按草稿里的先后）；没有 ⇒ 不带这一格。 */
+    /**
+     * [attachments]：随这一句发的附件编号（[SessionAttachmentCommit] 回的，按草稿里的先后）；没有 ⇒ 不带这一格。
+     * [rewind]：编辑已发的那一句（确认那一下）：会话那台投递时先退到 `rewind.to` 之前再说它；普通的一句 ⇒ 不带。
+     */
     fun args(
         sid: String,
         id: String,
         text: String,
         atMs: Long,
         attachments: List<String> = emptyList(),
+        rewind: Rewind? = null,
     ): Map<String, Any?> =
         mapOf("machine" to LOCAL, "sid" to sid, "id" to id, "end" to CLIENT, "atMs" to atMs, "text" to text) +
-            listOfNotNull(attachments.takeIf { it.isNotEmpty() }?.let { "attachments" to it })
+            listOfNotNull(
+                attachments.takeIf { it.isNotEmpty() }?.let { "attachments" to it },
+                rewind?.let { "rewind" to mapOf("to" to it.to, "how" to it.how.wire, "when" to it.`when`.wire) },
+            )
 
     fun of(data: Any?): QueuePut? = Wire.bind<QueuePut>(data)
+}
+
+/** `session-rewind-options`：编辑已发的一句、发送那一下给哪几项（会话那台照那一家申报的交出，界面照摆）。 */
+object SessionRewindOptions {
+    const val COMMAND: String = "session-rewind-options"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("machine" to LOCAL, "sid" to sid)
+
+    fun of(data: Any?): RewindOptions? = Wire.bind<RewindOptions>(data)
 }
 
 /** `session-queue-cancel`：撤队里一条还没送的（回撤完的整份名单）。 */

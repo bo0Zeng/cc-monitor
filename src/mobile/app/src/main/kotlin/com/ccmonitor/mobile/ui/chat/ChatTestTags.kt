@@ -94,4 +94,9 @@ object ChatTestTags {
 
     /** 输入队名单里的一条（会话那台那一份）。 */
     const val QUEUE = "chat-queue"
+
+    /** 编辑已发的那一句：就地编辑框 · 它的「发送」· 选项弹层的「回退并发送」。 */
+    const val SAID_EDIT_BOX = "chat-said-edit-box"
+    const val SAID_EDIT_SEND = "chat-said-edit-send"
+    const val SAID_EDIT_CONFIRM = "chat-said-edit-confirm"
 }

@@ -19,7 +19,6 @@ use copy_core::copy_text;
 
 codes! {
     /// `session-rewind-options` 的码。
-    #[allow(dead_code, reason = "同 `SessionRewindOptionsCmd`：命令表那一行合并时补")]
     pub(crate) enum SessionRewindOptionsErr {
         /// 那台找不到这条会话的记录。
         NoSuchSession = "no_such_session",
@@ -41,10 +40,6 @@ impl Aimed for SessionRewindOptionsReq {
 }
 
 /// `session-rewind-options`：发送那一下给哪几项（问会话所在那台）。
-#[allow(
-    dead_code,
-    reason = "命令表那一行在 `stream/inbound/registry/`（还没登记；登记的时候摘掉这一条）"
-)]
 pub(crate) struct SessionRewindOptionsCmd;
 
 impl Command for SessionRewindOptionsCmd {
@@ -96,13 +91,6 @@ pub(crate) fn face_here(sid: &str) -> Result<Option<RewindFace>, String> {
 }
 
 /// 这台那一份选项：记录在 ⇒ 那一家申报的几项 ＋ 此刻在不在干活。
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "同 `SessionRewindOptionsCmd`：命令表那一行合并时补"
-    )
-)]
 pub(crate) fn options_here(sid: &str) -> Result<RewindOptions, Fail> {
     let face = face_here(sid).map_err(|raw| {
         Fail::new(
@@ -116,13 +104,6 @@ pub(crate) fn options_here(sid: &str) -> Result<RewindOptions, Fail> {
 
 /// 输入队投递那一下的回退（随那一句带了 [`Rewind`] 的那一条）：这台 `sid` 那条会话里替人走一趟 [`walk`]。
 /// 在等人（批准 · 回答框开着）⇒ 等，同送字本体；这台没有它的记录 · 那一家没申报 ⇒ 不支持（一个键不按）。
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "接进输入队投递那几份在输入队那一路手里，合进来之前只有判据调它"
-    )
-)]
 pub(crate) fn walk_here(
     sid: &str,
     rewind: &Rewind,

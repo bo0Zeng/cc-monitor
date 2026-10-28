@@ -42,6 +42,10 @@ pub struct QueueItem {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
     pub attachments: Vec<String>,
+    /// 这一句是编辑已发的那一句（发送那一下选的怎么退）：投递时先退到那一句之前再说它；普通的一句 ⇒ 不在。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub rewind: Option<crate::rewind::Rewind>,
     #[cfg_attr(any(test, feature = "ts"), ts(inline))]
     pub state: QueueState,
     /// 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
@@ -86,6 +90,10 @@ pub struct SessionQueuePutReq {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
     pub attachments: Vec<String>,
+    /// 编辑已发的那一句（确认那一下才带）：投递时先在会话里退到 `rewind.to` 那一句之前，再说 `text`。普通的一句 ⇒ 不带。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub rewind: Option<crate::rewind::Rewind>,
 }
 
 /// `session-queue-put` 这一下的结局。

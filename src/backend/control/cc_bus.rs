@@ -39,6 +39,7 @@ pub(crate) fn knock(own: &crate::platform::Own, env: &BusEnvelope, now_ms: i64) 
         at_ms: now_ms,
         text: knock_text(&env.from),
         attachments: vec![],
+        rewind: None,
     };
     let put = crate::history::session_queue::put(own, &req, now_ms);
     crate::history::session_queue::moved();

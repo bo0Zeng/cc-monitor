@@ -108,6 +108,8 @@ import { NeedsTitle } from "./needs-bar";
 import { AnswerBlock } from "./answer-block";
 import { answerNeeds } from "./answer-reads";
 import { installQuitGuard } from "./quit-now";
+import { SAID_EDIT_EVENT, SaidEdit, type SaidAt } from "./said-edit";
+import { CHANNEL_REWIND_OPTIONS } from "./session-queue";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -233,6 +235,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (el.tabIndex < 0) el.tabIndex = -1;
       el.focus({ preventScroll: true });
     },
+  });
+  // 编辑已发的一句：卡上「编辑」冒上来的事件在这里接住；确认那一下交给终端页那一份待发（同编号重交 · 回执才算出去）。
+  const saidEdit = new SaidEdit({
+    options: CHANNEL_REWIND_OPTIONS,
+    send: (origin, sid, text, rewind) => terminalPage.sayEdited(origin, sid, text, rewind),
+  });
+  document.addEventListener(SAID_EDIT_EVENT, (ev) => {
+    const card = ev.target instanceof HTMLElement ? ev.target : null;
+    if (card !== null) saidEdit.open(card, (ev as CustomEvent<{ at: SaidAt }>).detail.at);
   });
   // 顶层「终端」视图：各台的终端名单（本机后端合好的成品）＋ 同一个终端面部件，看名单里选中的那个终端。
   let boardWatched: Watched | null = null;

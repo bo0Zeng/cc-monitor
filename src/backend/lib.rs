@@ -492,6 +492,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-queue-cancel",
     "--session-queue-put",
     "--session-queue-read",
+    // 编辑已发的一句、发送那一下的选项（`session-rewind-options`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--session-rewind-options",
     "--sessions-stop",
     "--sessions-where",
     // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。

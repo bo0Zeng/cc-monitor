@@ -108,6 +108,7 @@ pub(crate) fn return_with(
         at_ms: i64::try_from(now).unwrap_or(i64::MAX),
         text: line.clone(),
         attachments: Vec::new(),
+        rewind: None,
     })?;
     record(
         ws,

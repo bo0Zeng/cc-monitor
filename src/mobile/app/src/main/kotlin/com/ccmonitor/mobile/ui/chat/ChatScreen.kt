@@ -50,7 +50,7 @@ fun ChatScreen(
     attach: AttachUi? = null,
 ) {
     Column(modifier.fillMaxSize()) {
-        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting)
+        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, process = process, awaiting = awaiting, said = actions.said)
         needs()
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
         ChatInputArea(state = state, actions = actions, attach = attach)
@@ -70,9 +70,12 @@ fun ChatTranscript(
     onRetrySend: (String) -> Unit = {},
     process: ProcessActions = ProcessActions(),
     awaiting: AwaitingStep? = null,
+    /** 自己那句的长按与就地编辑（[SaidEdit]）；不给 ⇒ 不出。 */
+    said: SaidActions? = null,
 ) {
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
+    val hooks = saidHooks(state, said) { clipboard.setText(AnnotatedString(it)) }
 
     // 前面插入历史后滚动位置靠 Compose 按 key 自己恢复，前提是 `LazyColumn` 用内容派生的稳定 key。
 
@@ -137,6 +140,7 @@ fun ChatTranscript(
             trailer = { liveCards(state.live) },
             stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
             process = { ProcessRow(it, process) },
+            said = hooks,
         )
 
         state.failedWhy?.let {

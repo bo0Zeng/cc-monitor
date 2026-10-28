@@ -82,6 +82,8 @@ data class ChatInputActions(
     val editDraft: (String) -> Unit = {},
     /** 输入框上方那一排附件；这条会话没有那一排（新建会话）⇒ `null`。 */
     val attach: AttachActions? = null,
+    /** 流里自己那句的长按与就地编辑（[SaidEdit]）；新建会话还没起成 ⇒ `null`（没有可编辑的）。 */
+    val said: SaidActions? = null,
 )
 
 /**

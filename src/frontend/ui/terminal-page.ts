@@ -58,6 +58,7 @@ import {
   putOnce,
   savePending,
   type Outgoing,
+  type PutEnd,
   type QueueCancelFn,
   type QueueMoved,
   type QueuePutFn,
@@ -66,6 +67,7 @@ import {
 } from "./session-queue";
 import { QueueRow } from "./queue-row";
 import type { QueueList } from "./generated/QueueList";
+import type { Rewind } from "./generated/Rewind";
 import type { Origin } from "./ipc/origin";
 import { el } from "./kit/el";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -696,6 +698,24 @@ export class TerminalPage {
     await this.putWaiting(origin, key, o);
   }
 
+  /**
+   * 编辑已发的那一句（`said-edit.ts` 确认那一下）：带 `rewind` 进同一份待发、交一次，回这一次的结局。没回执 ⇒ 留在待发（队那一排「发送中」），
+   * 那台连上照同一个编号再交；待发里已有同一句同一个回退 ⇒ 照它的编号再交。输入框与附件草稿不动（那是另一句）。
+   */
+  async sayEdited(origin: Origin, sid: string, text: string, rewind: Rewind): Promise<PutEnd> {
+    const key = pendingKey(origin, sid);
+    const list = this.waiting.get(key) ?? [];
+    const same = (x: Outgoing): boolean => x.text === text && x.rewind?.to === rewind.to && x.rewind.how === rewind.how && x.rewind.when === rewind.when;
+    let o = list.find(same);
+    if (o === undefined) {
+      o = outgoing(sid, text, [], rewind);
+      this.waiting.set(key, [...list, o]);
+      savePending(this.waiting);
+    }
+    this.paint();
+    return (await this.putWaiting(origin, key, o)) ?? { at: "none", said: copyText("terminal.queue.sending") };
+  }
+
   /** 待发里拿掉那一句（落本地存储）。 */
   private dropWaiting(key: string, o: Outgoing): void {
     const left = (this.waiting.get(key) ?? []).filter((x) => x !== o);
@@ -782,20 +802,26 @@ export class TerminalPage {
   }
 
   /** 交待发里那一句一次（同一个编号交几次那台都只收一条），照结局清框或留着。 */
-  private async putWaiting(origin: Origin, key: string, o: Outgoing): Promise<void> {
+  private async putWaiting(origin: Origin, key: string, o: Outgoing): Promise<PutEnd | null> {
     this.tried.add(o.id);
     const end = await putOnce(this.attachReads.put, origin, o);
-    if (!(this.waiting.get(key) ?? []).includes(o)) return;
+    if (!(this.waiting.get(key) ?? []).includes(o)) return null;
     const here = this.origin === origin && this.sayingTo() === o.sid;
-    if (here) this.sending = false;
-    // 没回执 ⇒ 留在待发（那台连上再交）；那台拒了 ⇒ 不留。两样都照那一句说、字留着。
+    const edited = o.rewind !== undefined;
+    if (here && !edited) this.sending = false;
+    // 没回执 ⇒ 留在待发（那台连上再交）；那台拒了 ⇒ 不留。两样都照那一句说、字留着（编辑的那一句由编辑框说）。
     if (end.at !== "receipt") {
       if (end.at === "refused") this.dropWaiting(key, o);
-      if (here) this.showNote({ text: end.said, tone: "error" });
-      return;
+      if (here && !edited) this.showNote({ text: end.said, tone: "error" });
+      this.paint();
+      return end;
     }
     this.dropWaiting(key, o);
     if (here) void this.readQueue();
+    if (edited) {
+      this.paint();
+      return end;
+    }
     if (here && this.box.value === o.text) {
       this.box.value = "";
       if (this.sid !== null) this.drafts.delete(this.sid);
@@ -806,6 +832,7 @@ export class TerminalPage {
       this.showNote({ text: end.said, tone: "ok" });
       if (!this.isLive) this.schedule();
     }
+    return end;
   }
 
   /**

@@ -738,6 +738,11 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "tmux 只在那个会话本来就在 tmux 里时被问（`list-clients`，socket 取自那个进程自己的 `TMUX`）；\
          不在 tmux 里的会话读进程自己的环境，整条链上没有 tmux ⇒ 不是必需品，不声明 `no_tmux`",
     ),
+    (
+        "session-rewind-options",
+        "只因与投递那一下的回退（`walk_here`，看屏 · 按键）同住 `session_rewind_face.rs` 被连带；\
+         选项本身读记录（那一家申报的几项）与活会话表（在不在干活），不碰 tmux",
+    ),
 ];
 
 /// 🔴 帧面：够得着 tmux 的命令 == 声明 `no_tmux` 的 ∪ 登记的「tmux 可选」。

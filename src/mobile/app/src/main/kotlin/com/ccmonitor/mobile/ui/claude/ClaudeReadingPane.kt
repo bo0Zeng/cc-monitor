@@ -1,9 +1,11 @@
 package com.ccmonitor.mobile.ui.claude
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
@@ -74,6 +77,8 @@ fun ClaudeReadingPane(
     stepBadge: (String) -> String? = { null },
     // 一段过程的那一行（聊天屏画它）。
     process: @Composable (StreamItem.Process) -> Unit = {},
+    // 人说的那一句的长按与就地编辑（聊天屏给）；只读阅读面不给 ⇒ 不出。
+    said: SaidHooks? = null,
 ) {
     val tokens = LocalAppTokens.current
     // 整个面共享一个 Markwon 实例，避免每张卡重建解析器。
@@ -89,13 +94,16 @@ fun ClaudeReadingPane(
             // `contentType` 要给：卡片有好几种，不给的话 Compose 会试图把一种卡的组合复用到另一种上。
             // 更要紧的是它与 `AndroidView` 的 View 复用串联：Markwon 走 `AndroidView`，View 复用只在外层组合被复用时发生；
             // 没有 contentType 组合就不复用，每滑一屏都在重建 TextView、重跑 Markwon。
-            items(items, key = { it.key }, contentType = { (it as? StreamItem.Card)?.unit?.let { u -> u::class } ?: it::class }) { item ->
+            // 在就地编辑的那一句排第几：它后面的都淡掉（示意从这里往后会退掉）。
+            val editAt = said?.editing?.let { k -> items.indexOfFirst { (it as? StreamItem.Card)?.unit?.key == k } } ?: -1
+            itemsIndexed(items, key = { _, s -> s.key }, contentType = { _, s -> (s as? StreamItem.Card)?.unit?.let { u -> u::class } ?: s::class }) { i, item ->
+                val fade = if (editAt in 0 until i) Modifier.alpha(EDIT_FADE) else Modifier
                 when (item) {
-                    is StreamItem.Process -> process(item)
+                    is StreamItem.Process -> Box(fade) { process(item) }
                     // 点开着的那一段里的卡：左边一道 2dp 竖线标出「这是过程」。
                     is StreamItem.Card ->
-                        Box(if (item.fold != null) Modifier.foldRail() else Modifier) {
-                            UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, stepBadge)
+                        Box((if (item.fold != null) Modifier.foldRail() else Modifier).then(fade)) {
+                            UnitCard(item.unit, item.unit.key in matchedKeys, onCopyCode, onRetrySend, stepBadge, said)
                         }
                 }
             }
@@ -114,6 +122,16 @@ private fun Modifier.foldRail(): Modifier {
         .padding(start = tokens.spacing.sm)
 }
 
+/** 人说的那一句的长按与就地编辑（聊天屏给）：[editing] 是正在编辑的那张卡的 key；长按交 [onLongPress]；编辑中那张卡画 [editor]。 */
+class SaidHooks(
+    val editing: String?,
+    val onLongPress: (RenderUnit.UserText) -> Unit,
+    val editor: @Composable (RenderUnit.UserText) -> Unit,
+)
+
+/** 就地编辑时它后面那几项淡到多少。 */
+private const val EDIT_FADE = 0.35f
+
 /** 一张卡（照它今天的样子）。 */
 @Composable
 private fun UnitCard(
@@ -122,9 +140,10 @@ private fun UnitCard(
     onCopyCode: (String) -> Unit,
     onRetrySend: (String) -> Unit,
     stepBadge: (String) -> String?,
+    said: SaidHooks?,
 ) {
     when (unit) {
-        is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend)
+        is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend, said)
         is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
         is RenderUnit.Thinking -> ThinkingCard(unit, matched)
         is RenderUnit.ToolCall -> ToolCallCard(unit, matched, stepBadge(unit.toolUseId))
@@ -382,11 +401,13 @@ private fun Caret(expanded: Boolean) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class) // combinedClickable：长按自己那句 ⇒ 编辑 · 复制 / 撤回
 @Composable
 private fun UserTextCard(
     unit: RenderUnit.UserText,
     matched: Boolean,
     onRetrySend: (String) -> Unit = {},
+    said: SaidHooks? = null,
 ) {
     val tokens = LocalAppTokens.current
     Box(
@@ -395,8 +416,13 @@ private fun UserTextCard(
             .clip(RoundedCornerShape(tokens.radius.xl))
             .background(tokens.card)
             .matchHighlight(matched)
+            .then(if (said != null) Modifier.combinedClickable(onClick = {}, onLongClick = { said.onLongPress(unit) }) else Modifier)
             .padding(tokens.spacing.md),
     ) {
+        if (said != null && said.editing == unit.key) {
+            said.editor(unit)
+            return@Box
+        }
         Column {
             Text(unit.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             // 投递状态贴在这条消息下面：只有在送 · 排着（已到 · 排第 N · 已送进）· 送达未知 · 没送到才有。

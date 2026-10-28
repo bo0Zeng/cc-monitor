@@ -93,6 +93,8 @@ export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf
     // 出口省掉的正文展开那一下按骨架偏移取回那一行全文（查看器那一路同一处 `readRecordById`）。
     fullRecord: tab.fullRecord,
     lazy,
+    // 标签页里人说的那一句能就地编辑（`said-edit.ts`）；查看器 · 子运行窗不给。
+    editSaid: { sid: tab.sessionId },
   };
 }
 
