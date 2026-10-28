@@ -655,7 +655,7 @@ gate_lane 静态
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
 # 反空真：展开出的份数 > 0 且本文件在里面；某组 glob 一个都不匹配由 `shell_lint_registry` 接住。本地与 CI 的二进制版本可能不同。
-GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/shots/perf/*.sh tests/shots/perf/backend/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh tests/__fixtures__/*.sh tests/mobile-smoke/*.sh src/shared/cc-bus/scripts/* tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/shots/perf/*.sh tests/shots/perf/backend/*.sh tests/benches/transport/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
 gate_shellcheck() {
   local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
