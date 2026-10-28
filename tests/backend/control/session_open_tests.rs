@@ -46,6 +46,8 @@ struct Rig {
     fork_tmux: Option<bool>,
     /// 这台能托管（名单那一格 `managed`）。
     hosts: bool,
+    /// 启动台账记着那条会话起在哪种宿主里（恢复照起时那一种读它）。
+    started: Option<crate::wire::TerminalHost>,
     /// 起 ccm 那一趟的 stdout（托管那一形报 `ccm-session=<名>`）。
     ccm_out: String,
     ccm: RefCell<Vec<Vec<String>>>,
@@ -75,6 +77,7 @@ impl Rig {
             e2e: false,
             fork_tmux: None,
             hosts: false,
+            started: None,
             ccm_out: String::new(),
             ccm: RefCell::new(vec![]),
             sent: RefCell::new(vec![]),
@@ -218,6 +221,7 @@ impl Rig {
             pretrust: &pretrust,
             open_shell: &open_shell,
             prefs: &self.prefs,
+            started: &|sid| (sid == A).then_some(self.started).flatten(),
         })
     }
 }
@@ -460,14 +464,30 @@ fn resume_in_tmux_lands_where_the_session_can_be() {
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
 }
 
-/// 恢复没说放在哪 ⇒ 照这台的偏好（「恢复时进 tmux」开着才进）。
+/// 恢复没说放在哪 ⇒ 照这台的偏好（三选）：托管（这台不能托管 ⇒ 直路）· tmux · 照起时那一种（台账记着 tmux 才进 tmux）。
 #[test]
 fn resume_without_run_follows_this_machines_preference() {
+    use cmd_wire::session::ResumeWhere;
     let rig = Rig::new(Some(vec![]));
     assert_eq!(rig.open(resume(None)).unwrap().landed, Landed::Window);
     let mut rig = Rig::new(Some(vec![]));
-    rig.prefs.resume_in_tmux = true;
+    rig.prefs.resume_where = ResumeWhere::Tmux;
     assert_eq!(rig.open(resume(None)).unwrap().landed, Landed::Started);
+    // 照起时那一种：记着 tmux ⇒ 进 tmux（`--ccm-tmux`）；记着托管 · 记不着 ⇒ 托管（`--hosted`）。
+    for (started, want) in [
+        (Some(crate::wire::TerminalHost::Tmux), "--ccm-tmux="),
+        (Some(crate::wire::TerminalHost::Managed), "--hosted"),
+        (None, "--hosted"),
+    ] {
+        let mut rig = Rig::new(Some(vec![]));
+        rig.hosts = true;
+        rig.ccm_out = "ccm-session=p-cc\n".into();
+        rig.prefs.resume_where = ResumeWhere::AsStarted;
+        rig.started = started;
+        assert_eq!(rig.open(resume(None)).unwrap().landed, Landed::Started, "{started:?}");
+        let argv = rig.ccm.borrow()[0].join(" ");
+        assert!(argv.contains(want), "{started:?} ⇒ {argv}");
+    }
 }
 
 /// 本机「不用 tmux」就是直路（不先建 tmux）；本机那一行也带这台给那个号的模型偏好。

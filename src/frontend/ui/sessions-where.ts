@@ -17,7 +17,7 @@ import { copyText } from "./copy-table";
 /**
  * 一个会话的样子：`running` 恰好一个在跑（`names[0]`）· `ambiguous` 在跑的不止一个（按名单顺序）·
  * `idle` 没有在跑的、有带着它的空终端（`names[0]`）· `none` 没有哪个终端带着它 · `no_tmux` 哪个终端都不带着它、那台又没装 tmux。
- * `terminals` 与 `names` 同序同数：各自的宿主与终端句柄（预览按句柄指，不按名字）。`run` ＝ 这台恢复默认放在哪（恢复菜单的勾画在它上面）。
+ * `terminals` 与 `names` 同序同数：各自的宿主与终端句柄（预览按句柄指，不按名字）。`run` ＝ 这一条恢复默认放在哪（那台照偏好与它起在哪算；恢复菜单的勾画在它上面）。
  */
 export interface Standing {
   kind: StandingWord;
@@ -41,7 +41,7 @@ export function batchRefused(origin: Origin): (said: string) => string {
 
 /** 应答 ⇒ 逐个样子（类型从 Rust 生成，形状由握手指纹核过）。 */
 export function standingsFrom(reply: Whereabouts): Standing[] {
-  return reply.results.map((r) => ({ kind: r.standing, names: r.names, terminals: r.terminals, run: reply.run }));
+  return reply.results.map((r) => ({ kind: r.standing, names: r.names, terminals: r.terminals, run: r.run }));
 }
 
 /** 那台上这几个会话各自的样子（与 `sids` 同序）。问不到 ⇒ 抛（那一句已经说好）。 */

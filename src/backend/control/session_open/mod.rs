@@ -228,7 +228,8 @@ pub(crate) enum Intent {
 }
 
 /// **默认放在哪**（`run` 缺时照它；`sessions-where` · 起新会话框要画勾的那两处读它）。规则住这一处：
-/// 想进 tmux（新起：分叉的源会话在 tmux 里；不是分叉 ⇒ 这台不能托管时才想；恢复：偏好「恢复时进 tmux」开着）且有 tmux ⇒ tmux；
+/// 想进 tmux（新起：分叉的源会话在 tmux 里；不是分叉 ⇒ 这台不能托管时才想；恢复：偏好「恢复时放在哪」说的，
+/// `machine_prefs::Prefs::resume_wants_tmux`）且有 tmux ⇒ tmux；
 /// 否则这台能托管（`managed`）⇒ 托管；都不能 ⇒ 直路（A3-3-19：Windows 托管做完那一版删）。
 pub(crate) fn default_run(intent: Intent, resume_in_tmux: bool, tmux: bool, managed: bool) -> Run {
     let want_tmux = match intent {
@@ -395,7 +396,7 @@ fn dispatch(
                 model: r.model,
                 permission_mode: r.permission_mode,
             };
-            let run = req.run.map_or_else(|| resume_default(deps), Ok)?;
+            let run = req.run.map_or_else(|| resume_default(&it.sid, deps), Ok)?;
             start_one(&it, &Batch::of(&r.agent, deps.prefs), run, here, deps)
         }
         Open::Look { sid, session } => {
@@ -413,12 +414,12 @@ fn dispatch(
     }
 }
 
-/// 恢复没说放在哪 ⇒ 照这台的偏好 × 有没有 tmux。
-fn resume_default(deps: &Deps) -> Result<Run, Failed> {
+/// 恢复没说放在哪 ⇒ 照这台的偏好 × 那条起在哪 × 有没有 tmux。
+fn resume_default(sid: &str, deps: &Deps) -> Result<Run, Failed> {
     let listed = listed(deps).map_err(lower)?;
     Ok(default_run(
         Intent::Resume,
-        deps.prefs.resume_in_tmux,
+        deps.prefs.resume_wants_tmux((deps.started)(sid)),
         listed.tmux,
         listed.managed,
     ))
@@ -973,7 +974,7 @@ pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Result<Opene
         return Err((NO_FIRST_PROMPT, agent.to_string(), None, None));
     }
     // 这台后端自己起、不开窗 ⇒ 落在容器里：照恢复的缺省（偏好 × 有没有 tmux × 能不能托管），直路那一形改 tmux（没有 tmux 照拒）。
-    let run = match resume_default(deps)? {
+    let run = match resume_default(&it.sid, deps)? {
         Run::Direct => Run::Tmux,
         r => r,
     };
