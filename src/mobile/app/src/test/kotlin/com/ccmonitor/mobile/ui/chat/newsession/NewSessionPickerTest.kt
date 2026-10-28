@@ -36,7 +36,7 @@ class NewSessionPickerTest {
         agents: List<Map<String, Any?>> = listOf(agent("claude", "Claude Code"), agent("codex", "Codex")),
     ) = mapOf(
         "recent" to recent.mapIndexed { i, c -> mapOf("cwd" to c, "shown" to shown(c), "lastMs" to i.toDouble(), "lastText" to "19:0$i") },
-        "tmux" to true,
+        "hosts" to listOf("tmux", "direct"),
         "run" to "tmux",
         "agents" to agents,
         "fork" to null,

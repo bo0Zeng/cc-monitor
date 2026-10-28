@@ -5681,6 +5681,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryRun = { 
 /**
@@ -5752,7 +5753,15 @@ timeText?: string,
 /**
  * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
  */
-atMs?: number, } & ({ "t": "said", 
+atMs?: number, 
+/**
+ * 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+ */
+draw: Draw, 
+/**
+ * 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+ */
+human: boolean, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -6087,6 +6096,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryLines = { 
 /**
@@ -6142,7 +6152,15 @@ timeText?: string,
 /**
  * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
  */
-atMs?: number, } & ({ "t": "said", 
+atMs?: number, 
+/**
+ * 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+ */
+draw: Draw, 
+/**
+ * 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+ */
+human: boolean, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -6462,6 +6480,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryRead = { 
 /**
@@ -6509,7 +6528,15 @@ timeText?: string,
 /**
  * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
  */
-atMs?: number, } & ({ "t": "said", 
+atMs?: number, 
+/**
+ * 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+ */
+draw: Draw, 
+/**
+ * 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+ */
+human: boolean, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -6821,6 +6848,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type HistoryPage = { 
 /**
@@ -6876,7 +6904,15 @@ timeText?: string,
 /**
  * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
  */
-atMs?: number, } & ({ "t": "said", 
+atMs?: number, 
+/**
+ * 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+ */
+draw: Draw, 
+/**
+ * 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+ */
+human: boolean, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -8484,6 +8520,7 @@ type SearchScope = "user" | "assistant" | "report";
 入参 `HistoryIndexReq` · 回包 `HistoryIndex`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Draw = "card" | "steps" | "strip" | "none";
 type HistoryIndex = { 
 /**
  * 起点字节。
@@ -8504,7 +8541,15 @@ count: number,
 /**
  * 本份里出现过的记录类（`t` 列的号从 1 起指它）。
  */
-classes: Array<RecordClass>, o: Array<number>, n: Array<number>, t: Array<number>, fd: Array<number>, body: IndexBody, sp: IndexSpeaker, inputs: IndexInputs, };
+classes: Array<RecordClass>, 
+/**
+ * 本份里出现过的画法（`dr` 列的号从 1 起指它；不画 ⇒ 0）。
+ */
+draws: Array<Draw>, o: Array<number>, n: Array<number>, t: Array<number>, dr: Array<number>, fd: Array<number>, body: IndexBody, 
+/**
+ * 人说的那几行（行号差）。
+ */
+hu: Array<number>, inputs: IndexInputs, };
 type HistoryIndexReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
@@ -8532,11 +8577,6 @@ type IndexInputs = {
  * 行号差。
  */
 at: Array<number>, u: Array<string>, x: Array<string>, ts: Array<string>, };
-type IndexSpeaker = { 
-/**
- * 行号差。
- */
-at: Array<number>, v: Array<string>, };
 type RecordClass = "said" | "reply" | "retry" | "title" | "unread";
 ```
 
@@ -8667,6 +8707,7 @@ content: Array<Block>, isError: boolean, } | { "type": "image",
  */
 source: unknown, };
 type ChildRunTag = { label: string, kind?: string, };
+type Draw = "card" | "steps" | "strip" | "none";
 type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type Held = { 
 /**
@@ -8759,7 +8800,15 @@ timeText?: string,
 /**
  * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
  */
-atMs?: number, } & ({ "t": "said", 
+atMs?: number, 
+/**
+ * 这条在消息流里画成哪一形（后端从这条通用记录算一次；界面照它摆，不再判画不画）。
+ */
+draw: Draw, 
+/**
+ * 人在这条里说了话（人打的字 · 斜杠命令 · `!` 命令）：切 tab 那一道认它。
+ */
+human: boolean, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -11311,7 +11360,7 @@ prompt: Sent | null,
  * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
  */
 arrival: ArriveAsk | null, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
 type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, failed: Array<LaunchFail>, blocked: string | null, };
 type Sent = { 
 /**
@@ -11824,7 +11873,7 @@ window?: string, };
 
 #### `terminals-list`
 
-这台的终端名单（形状与宿主无关；这一版宿主是 tmux）。
+这台的终端名单（两种宿主同一形，每一行带宿主）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminals-list`
 
@@ -11989,9 +12038,9 @@ key: string,
  */
 terminal: string, 
 /**
- * tmux 会话名（结束没会话的那一行时交 `kill`）。
+ * 终端的名字（`terminals-list` 那一行的 `name`：tmux 是会话名，托管是 `ccm --attach <名>` 认的那个名）。
  */
-tmux_name: string, 
+name: string, 
 /**
  * 里面跑着的会话。
  */
@@ -12029,7 +12078,7 @@ at_text: Words,
  */
 tags: Array<BoardTag>, 
 /**
- * 找的时候比对的那一串（标题 · 目录 · tmux 会话名，已小写）。
+ * 找的时候比对的那一串（标题 · 目录 · 终端名，已小写）。
  */
 find: string, 
 /**
@@ -12078,9 +12127,9 @@ key: string,
  */
 terminal: string, 
 /**
- * tmux 会话名（结束没会话的那一行时交 `kill`）。
+ * 终端的名字（`terminals-list` 那一行的 `name`：tmux 是会话名，托管是 `ccm --attach <名>` 认的那个名）。
  */
-tmux_name: string, 
+name: string, 
 /**
  * 里面跑着的会话。
  */
@@ -12118,7 +12167,7 @@ at_text: Words,
  */
 tags: Array<BoardTag>, 
 /**
- * 找的时候比对的那一串（标题 · 目录 · tmux 会话名，已小写）。
+ * 找的时候比对的那一串（标题 · 目录 · 终端名，已小写）。
  */
 find: string, 
 /**
@@ -12269,7 +12318,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
 type Sent = { 
 /**
  * 结局。
@@ -12560,7 +12609,7 @@ why?: Refused,
  * 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
 type SessionModelReq = { 
 /**
  * 会话 id。
@@ -12610,7 +12659,7 @@ why?: Refused,
  * `unsure` · `refused` 时给人看的那一句。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
 type SessionPermissionReq = { 
 /**
  * 会话 id。
@@ -12631,7 +12680,7 @@ type Sid = string;
 
 #### `terminal-follow`
 
-订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）。
+订阅一个终端的画面（有变化推一整屏，一帧在途等回执；tmux 那一形订着时那台多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）。
 
 收 `args` · 连接内就地做完 · 只在流上 · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
@@ -12753,7 +12802,7 @@ client?: string, };
 入参 `SidsReq` · 回包 `Whereabouts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Run = "tmux" | "direct";
+type Run = "managed" | "tmux" | "direct";
 type Sid = string;
 type SidsReq = { 
 /**
@@ -12950,13 +12999,13 @@ prompt: Sent | null,
  * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
  */
 arrival: ArriveAsk | null, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
 type RotationPick = { 
 /**
  * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
  */
 strategy: string | null, };
-type Run = "tmux" | "direct";
+type Run = "managed" | "tmux" | "direct";
 type Sent = { 
 /**
  * 结局。
@@ -13051,7 +13100,7 @@ type Sid = string;
 
 #### `session-open-facts`
 
-起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法。
+起新会话那个框要的事实：最近目录 · 能放在哪几种 · 有哪几家 agent · 分叉时原会话的起法。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-open-facts`
 
@@ -13132,11 +13181,11 @@ type OpenFacts = {
  */
 recent: Array<RecentDir>, 
 /**
- * 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
+ * 这台能放在哪几种（`run` 那一格可选的值，照 `Run` 的序；只有 `direct` ⇒ 只能开终端窗口）。
  */
-tmux: boolean, 
+hosts: Array<Run>, 
 /**
- * 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（有 tmux 就 tmux，分叉照源会话那一种）。
+ * 新建框默认「运行于」：同 `session-open {what: new}` 不给 `run` 时落的那一形（能托管就托管，分叉的源会话在 tmux 里 ⇒ tmux）。
  */
 run: Run, 
 /**
@@ -13173,7 +13222,7 @@ lastMs: number,
  * 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
  */
 lastText: string, };
-type Run = "tmux" | "direct";
+type Run = "managed" | "tmux" | "direct";
 ```
 
 码：`bad_args` · `fork_failed`
@@ -13520,12 +13569,20 @@ type RewindChoiceRow = { how: "conversation" | "code_and_conversation",
  */
 text: string, 
 /**
- * 缺省选它。
+ * 缺省选它（只落在能选的那一项上）。
  */
-default: boolean, };
+default: boolean, 
+/**
+ * 这一刻能不能选；不能 ⇒ 界面灰着摆、写 [`Self::why`]。
+ */
+enabled: boolean, 
+/**
+ * 不能选的那一句（会话那台写好）；能选 ⇒ 不在。
+ */
+why?: string, };
 type RewindOptions = { 
 /**
- * 「怎么退」那几项；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
+ * 「怎么退」那几项（通用的几种都列，不能选的灰着带原因）；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
  */
 how: Array<RewindChoiceRow>, 
 /**
@@ -13533,11 +13590,15 @@ how: Array<RewindChoiceRow>,
  */
 when: Array<RewindWhenRow>, 
 /**
- * 不支持 · 这一刻退不了的那一句（会话那台写好）；能退 ⇒ 不在。
+ * 给人看的那一句（会话那台写好）：`how` 空 ⇒ 为什么退不了；有项 ⇒ 退之前要知道的（这句之后派出的子 agent 还在跑）；都没有 ⇒ 不在。
  */
 said?: string, };
 type RewindWhenRow = { when: "after_turn" | "now", text: string, default: boolean, };
-type SessionRewindOptionsReq = { machine: Origin, sid: Sid, };
+type SessionRewindOptionsReq = { machine: Origin, sid: Sid, 
+/**
+ * 被编辑的那一句在记录里的 id（同 [`Rewind::to`]）：哪一项能选按那一句之后的事判。
+ */
+to: string, };
 type Sid = string;
 ```
 
@@ -15864,6 +15925,49 @@ type Words = string;
 
 码：`bad_args` · `attachment_gone` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_such_cell` · `no_target` · `not_workspace` · `pb_unsupported` · `queue_full` · `queue_unreadable` · `review_unreadable` · `text_too_long`
 
+#### `plan-ask`
+
+问图开框前那一问：后端拼开口那句（别名的那句 ＋「看 {编号}「{标题}」：」），别名预选这台记着的问图用的那条；给了别名 ⇒ 记成问图用的。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-ask` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `PlanAskReq` · 回包 `PlanAsk`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanAsk = { 
+/**
+ * 框顶那一句（「问图 · {标题}」）。
+ */
+title: string, 
+/**
+ * 预选的别名（这一问给的，或记着的那条）；没有 ⇒ `null`（框里那一格空着，选了才能起）。
+ */
+alias: string | null, 
+/**
+ * 开口那句：别名的那句 ＋ 换行 ＋「看 {编号}「{标题}」这一格：」；没有别名 / 别名没写 ⇒ 只有后一半。
+ */
+line: string, };
+type PlanAskReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 格的编号。
+ */
+id: string, 
+/**
+ * 改选的那条别名（记成这台问图用的）；缺 ⇒ 用记着的。
+ */
+alias?: string | null, };
+```
+
+码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_such_alias` · `no_such_cell` · `no_tmux` · `not_workspace` · `pb_unsupported` · `refused` · `review_unreadable`
+
 ## 5. CLI 子命令
 
 一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。
@@ -15981,6 +16085,7 @@ type Words = string;
 | `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
+| `--plan-ask` | ＝ 帧命令 `plan-ask`：问图开框前那一问：后端拼开口那句（别名的那句 ＋「看 {编号}「{标题}」：」），别名预选这台记着的问图用的那条；给了别名 ⇒ 记成问图用的 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一个节点的 agent 视角（agent 站在那个节点时 pb 印给它的那一段，原样；点到才起 `pb dump --node`） |
 | `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动继续，管整个工作区）· `adopt`（接过 `slice` 那个仓库，不是当前仓库先切过去）· `render`（pb 画整张图写进系统临时目录，回页面路径）· `repo`（在 `workspace` 那个目录登记 `path` 那一片，带 `domain`；撞上已有的一片 ⇒ 只带名字切过去）；这一侧带着 agent 身份 ⇒ 用户命令不代敲 |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
@@ -16031,7 +16136,7 @@ type Words = string;
 | `--session-model` | ＝ 帧命令 `session-model`：换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-open` | ＝ 帧命令 `session-open`：起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行） |
 | `--session-open-dir` | ＝ 帧命令 `session-open-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
-| `--session-open-facts` | ＝ 帧命令 `session-open-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--session-open-facts` | ＝ 帧命令 `session-open-facts`：起新会话那个框要的事实：最近目录 · 能放在哪几种 · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：切权限档（开着 ⇒ 按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-queue-cancel` | ＝ 帧命令 `session-queue-cancel`：撤队里一条还没送的 |
 | `--session-queue-put` | ＝ 帧命令 `session-queue-put`：往一条会话投一句（排进那条会话的队；同 id 只入队一次，同一端按端序号保序） |
@@ -16057,7 +16162,7 @@ type Words = string;
 | `--terminal-take-input` | ＝ 帧命令 `terminal-take-input`：替自报的前端接管托管终端的输入 |
 | `--terminals-board` | ＝ 帧命令 `terminals-board`：「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数） |
 | `--terminals-board-here` | ＝ 帧命令 `terminals-board-here`：这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好） |
-| `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |
+| `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（两种宿主同一形，每一行带宿主） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 | `--unplace-self` | 卸载那一趟：暂存区里传上去的这一份删掉落点 `~/.cc-monitor/bin/ccm`（不认身份）、再删自己；回 `{removed: true\|false}`；不在暂存区 ⇒ `outside_staging` |
 
@@ -16096,10 +16201,11 @@ type Words = string;
 |---|---|---|
 | `o` | number | 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)` |
 | `n` | number | 行字节长（**含**结尾 `\n`） |
-| `t` | RecordClass? | 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title`，与读正文时那条记录的 `t` 同一个词）；不进界面（元数据 · 解析不出 · 认不出）⇒ 省略 |
+| `t` | RecordClass? | 这一行翻成的那条通用记录的类（`said` · `reply` · `retry` · `title` · `unread`，与读正文时那条记录的 `t` 同一个词）；不进界面（元数据 · 解析不出）⇒ 省略 |
 | `u` | string? | 只在用户输入那张小表里带；扫描图按它认一条记录在第几轮） |
 | `sc` | bool? | 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出） |
-| `sp` | string? | user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清） |
+| `dr` | Draw? | 画成哪一形（就是那条通用记录的 `draw`）；不画 ⇒ 省略 |
+| `hu` | bool? | 人在这条里说了话（就是那条通用记录的 `human`） |
 | `ch` | number? | 正文字符数（**代码块之外**；Unicode 标量计，不含换行） |
 | `cj` | number? | 其中 CJK/全宽字符数（口径 = `height-estimate.ts::fallbackTextHeight` 的 `> 0x2E80`） |
 | `pl` | number? | 正文**非空**硬行数（代码块之外） |

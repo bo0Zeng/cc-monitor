@@ -16,9 +16,9 @@ key: string,
  */
 terminal: string, 
 /**
- * tmux 会话名（结束没会话的那一行时交 `kill`）。
+ * 终端的名字（`terminals-list` 那一行的 `name`：tmux 是会话名，托管是 `ccm --attach <名>` 认的那个名）。
  */
-tmux_name: string, 
+name: string, 
 /**
  * 里面跑着的会话。
  */
@@ -56,7 +56,7 @@ at_text: Words,
  */
 tags: Array<BoardTag>, 
 /**
- * 找的时候比对的那一串（标题 · 目录 · tmux 会话名，已小写）。
+ * 找的时候比对的那一串（标题 · 目录 · 终端名，已小写）。
  */
 find: string, 
 /**

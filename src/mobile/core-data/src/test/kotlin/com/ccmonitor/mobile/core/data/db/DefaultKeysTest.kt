@@ -18,7 +18,8 @@ class DefaultKeysTest {
             listOf(KeyGroup(DEFAULT_GROUP_COMMON, "常用", 0), KeyGroup(DEFAULT_GROUP_SHELL, "shell", 1), KeyGroup(DEFAULT_GROUP_VIM, "vim", 2)),
             defaultKeyGroups(),
         )
-        assertEquals(listOf("⇌", "Esc", "Ctrl-C", "↑", "↓", "⏎", "Tab", "Shift-Tab", "粘贴"), capsOf(DEFAULT_GROUP_COMMON))
+        // Ctrl-B：托管终端与 tmux 共用的前缀（缺省 Ctrl+b）。
+        assertEquals(listOf("⇌", "Esc", "Ctrl-C", "Ctrl-B", "↑", "↓", "⏎", "Tab", "Shift-Tab", "粘贴"), capsOf(DEFAULT_GROUP_COMMON))
         assertEquals(
             listOf("⇌", "Ctrl", "Alt", "Tab", "←", "→", "Home", "End", "PgUp", "PgDn", "⌫", "Del"),
             capsOf(DEFAULT_GROUP_SHELL),

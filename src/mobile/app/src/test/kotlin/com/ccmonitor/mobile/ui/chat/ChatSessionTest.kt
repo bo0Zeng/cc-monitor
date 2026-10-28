@@ -472,7 +472,7 @@ class ChatSessionTest {
             val facts =
                 mapOf(
                     "recent" to emptyList<Any>(),
-                    "tmux" to true,
+                    "hosts" to listOf("tmux", "direct"),
                     "run" to "tmux",
                     "agents" to
                         listOf("codex", "claude").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
@@ -507,7 +507,7 @@ class ChatSessionTest {
                         ok(
                             mapOf(
                                 "recent" to listOf(mapOf("cwd" to "/h/orders", "shown" to "~/orders", "lastMs" to 1.0, "lastText" to "19:02")),
-                                "tmux" to true,
+                                "hosts" to listOf("tmux", "direct"),
                                 "run" to "tmux",
                                 "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                             ),

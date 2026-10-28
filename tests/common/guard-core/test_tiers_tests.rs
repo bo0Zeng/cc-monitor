@@ -218,6 +218,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::internal_families_inner" },
     ),
     (
+        "tests/backend/platform/child_tests.rs",
+        "detach_helper_inner",
+        Trigger::Filter { by: "tests/backend/platform/child_tests.rs", needle: "platform::child::tests::detach_helper_inner" },
+    ),
+    (
         "tests/backend/control/exit_policy_tests.rs",
         "wire_child",
         Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
@@ -435,6 +440,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/shots/pb-stand-in.vitest.ts",
         "process.platform===\"\"",
         Trigger::Manual("Windows 上让开：替身起 `python3`、PATH 照 Unix 给；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
+        "tests/shots/world-boxes.vitest.ts",
+        "!boxWorks",
+        Trigger::Manual("起不了 bwrap 的机器（Windows · 不许建命名空间的）让开：判的是台架自己起远端几台的沙箱；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
     ),
     (
         "tests/frontend/shell/deploy_tests.rs",

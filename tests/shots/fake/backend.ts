@@ -91,6 +91,14 @@ export const REAL_OPS = new Set([
   "plan-files",
   "plan-pb-check",
   "plan-new",
+  // 会话消息里的计划编号（认得的那几个画成链接）：真后端交 pb 替身的 `dump --refs` 认。
+  "plan-refs",
+  // 会话组（标签栏 · 手机按组分段）：本机后端问到各台、合一份。
+  "groups-read",
+  // 会话输入队此刻的名单（输入行底下那一行 · 排队名单）：真后端照台架盘上那份队答。
+  "session-queue-read",
+  // 命令面板打机器名（是不是恰好一台）：真后端读台架盘上的机器表与 `~/.ssh/config`。
+  "machine-find",
   // 机器表（本机后端读台架盘上的 `machines.json`）与远端各台的状态成品：本机后端那几条常驻流经台架那份假 ssh 真去接各台（[`reachOf`] 的 `fake`），
   // 名字旁的词 · 问题行 · 修法 · 复制详情都是本机后端照它接到的样子算的。
   "machines-read",

@@ -2353,7 +2353,7 @@ data class BoardReq(
 data class BoardRow(
     val key: String,
     val terminal: String,
-    val tmuxName: String,
+    val name: String,
     val sid: String? = null,
     val dot: SessionDot,
     val dotName: String,
@@ -2375,7 +2375,7 @@ data class BoardRow(
             listOf(
             Field("key", { Str }, optional = false, nullable = false),
             Field("terminal", { Str }, optional = false, nullable = false),
-            Field("tmux_name", { Str }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
             Field("sid", { opt(Str) }, optional = true, nullable = true),
             Field("dot", { SessionDot.ADAPTER }, optional = false, nullable = false),
             Field("dot_name", { Str }, optional = false, nullable = false),
@@ -2391,7 +2391,7 @@ data class BoardRow(
             Field("can_end", { BoardRowCanEnd.ADAPTER }, optional = false, nullable = false),
             ),
             { a -> BoardRow(a[0] as String, a[1] as String, a[2] as String, a[3] as String?, a[4] as SessionDot, a[5] as String, a[6] as String, a[7] as String, a[8] as Boolean, a[9] as String?, a[10] as String, a[11] as List<String>, a[12] as String, a[13] as List<BoardTag>, a[14] as String, a[15] as BoardRowCanEnd) },
-            { v -> arrayOf(v.key, v.terminal, v.tmuxName, v.sid, v.dot, v.dotName, v.title, v.windowTitle, v.mono, v.badge, v.meta, v.chips, v.atText, v.tags, v.find, v.canEnd) },
+            { v -> arrayOf(v.key, v.terminal, v.name, v.sid, v.dot, v.dotName, v.title, v.windowTitle, v.mono, v.badge, v.meta, v.chips, v.atText, v.tags, v.find, v.canEnd) },
         )
     }
 }
@@ -4956,6 +4956,18 @@ data class DownloadItem(
             { a -> DownloadItem(a[0] as String, a[1] as WirePath?) },
             { v -> arrayOf(v.remotePath, v.name) },
         )
+    }
+}
+
+enum class Draw(val wire: String) {
+    CARD("card"),
+    STEPS("steps"),
+    STRIP("strip"),
+    NONE("none"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<Draw> = enumOf(entries) { it.wire }
     }
 }
 
@@ -8508,12 +8520,14 @@ data class HistoryIndex(
     val next: Long?,
     val count: Long,
     val classes: List<RecordClass>,
+    val draws: List<Draw>,
     val o: List<Long>,
     val n: List<Long>,
     val t: List<Long>,
+    val dr: List<Long>,
     val fd: List<Long>,
     val body: IndexBody,
-    val sp: IndexSpeaker,
+    val hu: List<Long>,
     val inputs: IndexInputs,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -8526,16 +8540,18 @@ data class HistoryIndex(
             Field("next", { opt(Lng) }, optional = false, nullable = true),
             Field("count", { Lng }, optional = false, nullable = false),
             Field("classes", { arr(RecordClass.ADAPTER) }, optional = false, nullable = false),
+            Field("draws", { arr(Draw.ADAPTER) }, optional = false, nullable = false),
             Field("o", { arr(Lng) }, optional = false, nullable = false),
             Field("n", { arr(Lng) }, optional = false, nullable = false),
             Field("t", { arr(Lng) }, optional = false, nullable = false),
+            Field("dr", { arr(Lng) }, optional = false, nullable = false),
             Field("fd", { arr(Lng) }, optional = false, nullable = false),
             Field("body", { IndexBody.ADAPTER }, optional = false, nullable = false),
-            Field("sp", { IndexSpeaker.ADAPTER }, optional = false, nullable = false),
+            Field("hu", { arr(Lng) }, optional = false, nullable = false),
             Field("inputs", { IndexInputs.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> HistoryIndex(a[0] as Long, a[1] as Long, a[2] as Long?, a[3] as Long, a[4] as List<RecordClass>, a[5] as List<Long>, a[6] as List<Long>, a[7] as List<Long>, a[8] as List<Long>, a[9] as IndexBody, a[10] as IndexSpeaker, a[11] as IndexInputs) },
-            { v -> arrayOf(v.from, v.end, v.next, v.count, v.classes, v.o, v.n, v.t, v.fd, v.body, v.sp, v.inputs) },
+            { a -> HistoryIndex(a[0] as Long, a[1] as Long, a[2] as Long?, a[3] as Long, a[4] as List<RecordClass>, a[5] as List<Draw>, a[6] as List<Long>, a[7] as List<Long>, a[8] as List<Long>, a[9] as List<Long>, a[10] as List<Long>, a[11] as IndexBody, a[12] as List<Long>, a[13] as IndexInputs) },
+            { v -> arrayOf(v.from, v.end, v.next, v.count, v.classes, v.draws, v.o, v.n, v.t, v.dr, v.fd, v.body, v.hu, v.inputs) },
         )
     }
 }
@@ -9776,25 +9792,6 @@ data class IndexInputs(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class IndexSpeaker(
-    val at: List<Long>,
-    val v: List<String>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<IndexSpeaker> = obj(
-            listOf(
-            Field("at", { arr(Lng) }, optional = false, nullable = false),
-            Field("v", { arr(Str) }, optional = false, nullable = false),
-            ),
-            { a -> IndexSpeaker(a[0] as List<Long>, a[1] as List<String>) },
-            { v -> arrayOf(v.at, v.v) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class IndexStatusReply(
     val indexMissing: Boolean,
     val entries: Long,
@@ -10423,6 +10420,10 @@ sealed interface LineRecord {
 
     val atMs: Long?
 
+    val draw: Draw
+
+    val human: Boolean
+
     @Suppress("UNCHECKED_CAST")
     data class Said(
         override val agent: String,
@@ -10430,6 +10431,8 @@ sealed interface LineRecord {
         override val at: String? = null,
         override val timeText: String? = null,
         override val atMs: Long? = null,
+        override val draw: Draw,
+        override val human: Boolean,
         val who: UserText,
         val blocks: List<Block>,
         val results: Map<String, StepResult>? = null,
@@ -10446,6 +10449,8 @@ sealed interface LineRecord {
         override val at: String? = null,
         override val timeText: String? = null,
         override val atMs: Long? = null,
+        override val draw: Draw,
+        override val human: Boolean,
         val blocks: List<Block>,
         val model: String? = null,
         val autoReply: Boolean,
@@ -10464,6 +10469,8 @@ sealed interface LineRecord {
         override val at: String? = null,
         override val timeText: String? = null,
         override val atMs: Long? = null,
+        override val draw: Draw,
+        override val human: Boolean,
         val reason: ApiReason,
         val attempt: Int? = null,
         val max: Int? = null,
@@ -10478,6 +10485,8 @@ sealed interface LineRecord {
         override val at: String? = null,
         override val timeText: String? = null,
         override val atMs: Long? = null,
+        override val draw: Draw,
+        override val human: Boolean,
         val text: String,
         val by: TitleBy,
     ) : LineRecord, Ordered {
@@ -10491,6 +10500,8 @@ sealed interface LineRecord {
         override val at: String? = null,
         override val timeText: String? = null,
         override val atMs: Long? = null,
+        override val draw: Draw,
+        override val human: Boolean,
         val why: UnreadWhy,
         val `type`: String?,
         val text: String,
@@ -10514,6 +10525,8 @@ sealed interface LineRecord {
                         Field("at", { opt(Str) }, optional = true, nullable = true),
                         Field("timeText", { opt(Str) }, optional = true, nullable = true),
                         Field("atMs", { opt(Lng) }, optional = true, nullable = true),
+                        Field("draw", { Draw.ADAPTER }, optional = false, nullable = false),
+                        Field("human", { Bool }, optional = false, nullable = false),
                         Field("t", { tag("said") }, optional = false, nullable = false),
                         Field("who", { UserText.ADAPTER }, optional = false, nullable = false),
                         Field("blocks", { arr(Block.ADAPTER) }, optional = false, nullable = false),
@@ -10521,8 +10534,8 @@ sealed interface LineRecord {
                         Field("cwd", { opt(Str) }, optional = true, nullable = true),
                         Field("attachments", { opt(arr(Attachment.ADAPTER)) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecord.Said(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[6] as UserText, a[7] as List<Block>, a[8] as Map<String, StepResult>?, a[9] as String?, a[10] as List<Attachment>?) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, "said", v.who, v.blocks, v.results, v.cwd, v.attachments) },
+                        { a -> LineRecord.Said(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as UserText, a[9] as List<Block>, a[10] as Map<String, StepResult>?, a[11] as String?, a[12] as List<Attachment>?) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "said", v.who, v.blocks, v.results, v.cwd, v.attachments) },
                     )),
                 Variant("reply", LineRecord.Reply::class.java, obj(
                         listOf(
@@ -10531,6 +10544,8 @@ sealed interface LineRecord {
                         Field("at", { opt(Str) }, optional = true, nullable = true),
                         Field("timeText", { opt(Str) }, optional = true, nullable = true),
                         Field("atMs", { opt(Lng) }, optional = true, nullable = true),
+                        Field("draw", { Draw.ADAPTER }, optional = false, nullable = false),
+                        Field("human", { Bool }, optional = false, nullable = false),
                         Field("t", { tag("reply") }, optional = false, nullable = false),
                         Field("blocks", { arr(Block.ADAPTER) }, optional = false, nullable = false),
                         Field("model", { opt(Str) }, optional = true, nullable = true),
@@ -10540,8 +10555,8 @@ sealed interface LineRecord {
                         Field("runs", { opt(dict(ChildRunTag.ADAPTER)) }, optional = true, nullable = true),
                         Field("error", { opt(ReplyError.ADAPTER) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecord.Reply(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[6] as List<Block>, a[7] as String?, a[8] as Boolean, a[9] as Map<String, ToolCard>?, a[10] as Map<String, ToolStep>?, a[11] as Map<String, ChildRunTag>?, a[12] as ReplyError?) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, "reply", v.blocks, v.model, v.autoReply, v.cards, v.steps, v.runs, v.error) },
+                        { a -> LineRecord.Reply(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as List<Block>, a[9] as String?, a[10] as Boolean, a[11] as Map<String, ToolCard>?, a[12] as Map<String, ToolStep>?, a[13] as Map<String, ChildRunTag>?, a[14] as ReplyError?) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "reply", v.blocks, v.model, v.autoReply, v.cards, v.steps, v.runs, v.error) },
                     )),
                 Variant("retry", LineRecord.Retry::class.java, obj(
                         listOf(
@@ -10550,13 +10565,15 @@ sealed interface LineRecord {
                         Field("at", { opt(Str) }, optional = true, nullable = true),
                         Field("timeText", { opt(Str) }, optional = true, nullable = true),
                         Field("atMs", { opt(Lng) }, optional = true, nullable = true),
+                        Field("draw", { Draw.ADAPTER }, optional = false, nullable = false),
+                        Field("human", { Bool }, optional = false, nullable = false),
                         Field("t", { tag("retry") }, optional = false, nullable = false),
                         Field("reason", { ApiReason.ADAPTER }, optional = false, nullable = false),
                         Field("attempt", { opt(Int32) }, optional = true, nullable = true),
                         Field("max", { opt(Int32) }, optional = true, nullable = true),
                         ),
-                        { a -> LineRecord.Retry(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[6] as ApiReason, a[7] as Int?, a[8] as Int?) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, "retry", v.reason, v.attempt, v.max) },
+                        { a -> LineRecord.Retry(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as ApiReason, a[9] as Int?, a[10] as Int?) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "retry", v.reason, v.attempt, v.max) },
                     )),
                 Variant("title", LineRecord.Title::class.java, obj(
                         listOf(
@@ -10565,12 +10582,14 @@ sealed interface LineRecord {
                         Field("at", { opt(Str) }, optional = true, nullable = true),
                         Field("timeText", { opt(Str) }, optional = true, nullable = true),
                         Field("atMs", { opt(Lng) }, optional = true, nullable = true),
+                        Field("draw", { Draw.ADAPTER }, optional = false, nullable = false),
+                        Field("human", { Bool }, optional = false, nullable = false),
                         Field("t", { tag("title") }, optional = false, nullable = false),
                         Field("text", { Str }, optional = false, nullable = false),
                         Field("by", { TitleBy.ADAPTER }, optional = false, nullable = false),
                         ),
-                        { a -> LineRecord.Title(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[6] as String, a[7] as TitleBy) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, "title", v.text, v.by) },
+                        { a -> LineRecord.Title(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as String, a[9] as TitleBy) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "title", v.text, v.by) },
                     )),
                 Variant("unread", LineRecord.Unread::class.java, obj(
                         listOf(
@@ -10579,6 +10598,8 @@ sealed interface LineRecord {
                         Field("at", { opt(Str) }, optional = true, nullable = true),
                         Field("timeText", { opt(Str) }, optional = true, nullable = true),
                         Field("atMs", { opt(Lng) }, optional = true, nullable = true),
+                        Field("draw", { Draw.ADAPTER }, optional = false, nullable = false),
+                        Field("human", { Bool }, optional = false, nullable = false),
                         Field("t", { tag("unread") }, optional = false, nullable = false),
                         Field("why", { UnreadWhy.ADAPTER }, optional = false, nullable = false),
                         Field("type", { opt(Str) }, optional = false, nullable = true),
@@ -10587,8 +10608,8 @@ sealed interface LineRecord {
                         Field("excerpt", { Str }, optional = false, nullable = false),
                         Field("count", { Int32 }, optional = false, nullable = false),
                         ),
-                        { a -> LineRecord.Unread(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[6] as UnreadWhy, a[7] as String?, a[8] as String, a[9] as LineRecordUnreadTone, a[10] as String, a[11] as Int) },
-                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, "unread", v.why, v.`type`, v.text, v.tone, v.excerpt, v.count) },
+                        { a -> LineRecord.Unread(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Long?, a[5] as Draw, a[6] as Boolean, a[8] as UnreadWhy, a[9] as String?, a[10] as String, a[11] as LineRecordUnreadTone, a[12] as String, a[13] as Int) },
+                        { v -> arrayOf(v.agent, v.id, v.at, v.timeText, v.atMs, v.draw, v.human, "unread", v.why, v.`type`, v.text, v.tone, v.excerpt, v.count) },
                     )),
                 ),
             )
@@ -13700,7 +13721,7 @@ data class OpenDirReq(
 @Suppress("UNCHECKED_CAST")
 data class OpenFacts(
     val recent: List<RecentDir>,
-    val tmux: Boolean,
+    val hosts: List<Run>,
     val run: Run,
     val agents: List<AgentFacts>,
     val fork: ForkFacts?,
@@ -13711,13 +13732,13 @@ data class OpenFacts(
         val ADAPTER: JsonAdapter<OpenFacts> = obj(
             listOf(
             Field("recent", { arr(RecentDir.ADAPTER) }, optional = false, nullable = false),
-            Field("tmux", { Bool }, optional = false, nullable = false),
+            Field("hosts", { arr(Run.ADAPTER) }, optional = false, nullable = false),
             Field("run", { Run.ADAPTER }, optional = false, nullable = false),
             Field("agents", { arr(AgentFacts.ADAPTER) }, optional = false, nullable = false),
             Field("fork", { opt(ForkFacts.ADAPTER) }, optional = false, nullable = true),
             ),
-            { a -> OpenFacts(a[0] as List<RecentDir>, a[1] as Boolean, a[2] as Run, a[3] as List<AgentFacts>, a[4] as ForkFacts?) },
-            { v -> arrayOf(v.recent, v.tmux, v.run, v.agents, v.fork) },
+            { a -> OpenFacts(a[0] as List<RecentDir>, a[1] as List<Run>, a[2] as Run, a[3] as List<AgentFacts>, a[4] as ForkFacts?) },
+            { v -> arrayOf(v.recent, v.hosts, v.run, v.agents, v.fork) },
         )
     }
 }
@@ -14321,6 +14342,50 @@ data class PlanArchived(
             ),
             { a -> PlanArchived(a[0] as String, a[1] as String?, a[2] as String?, a[3] as String?) },
             { v -> arrayOf(v.id, v.title, v.kind, v.replacedBy) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanAsk(
+    val title: String,
+    val alias: String?,
+    val line: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanAsk> = obj(
+            listOf(
+            Field("title", { Str }, optional = false, nullable = false),
+            Field("alias", { opt(Str) }, optional = false, nullable = true),
+            Field("line", { Str }, optional = false, nullable = false),
+            ),
+            { a -> PlanAsk(a[0] as String, a[1] as String?, a[2] as String) },
+            { v -> arrayOf(v.title, v.alias, v.line) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class PlanAskReq(
+    val workspace: String,
+    val slice: String,
+    val id: String,
+    val alias: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<PlanAskReq> = obj(
+            listOf(
+            Field("workspace", { Str }, optional = false, nullable = false),
+            Field("slice", { Str }, optional = false, nullable = false),
+            Field("id", { Str }, optional = false, nullable = false),
+            Field("alias", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> PlanAskReq(a[0] as String, a[1] as String, a[2] as String, a[3] as String?) },
+            { v -> arrayOf(v.workspace, v.slice, v.id, v.alias) },
         )
     }
 }
@@ -18115,6 +18180,7 @@ enum class Refused(val wire: String) {
     SCREEN_CHANGED("screen_changed"),
     WAITING("waiting"),
     HELD_ELSEWHERE("held_elsewhere"),
+    HOST_OUTDATED("host_outdated"),
     ;
 
     companion object {
@@ -18372,6 +18438,8 @@ data class RewindChoiceRow(
     val how: RewindHow,
     val text: String,
     val default: Boolean,
+    val enabled: Boolean,
+    val why: String? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -18381,9 +18449,11 @@ data class RewindChoiceRow(
             Field("how", { RewindHow.ADAPTER }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
             Field("default", { Bool }, optional = false, nullable = false),
+            Field("enabled", { Bool }, optional = false, nullable = false),
+            Field("why", { opt(Str) }, optional = true, nullable = true),
             ),
-            { a -> RewindChoiceRow(a[0] as RewindHow, a[1] as String, a[2] as Boolean) },
-            { v -> arrayOf(v.how, v.text, v.default) },
+            { a -> RewindChoiceRow(a[0] as RewindHow, a[1] as String, a[2] as Boolean, a[3] as Boolean, a[4] as String?) },
+            { v -> arrayOf(v.how, v.text, v.default, v.enabled, v.why) },
         )
     }
 }
@@ -20185,6 +20255,7 @@ data class Rules(
 }
 
 enum class Run(val wire: String) {
+    MANAGED("managed"),
     TMUX("tmux"),
     DIRECT("direct"),
     ;
@@ -21607,6 +21678,7 @@ data class SessionQueueReadReq(
 data class SessionRewindOptionsReq(
     val machine: String,
     val sid: String,
+    val to: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21615,9 +21687,10 @@ data class SessionRewindOptionsReq(
             listOf(
             Field("machine", { Str }, optional = false, nullable = false),
             Field("sid", { Str }, optional = false, nullable = false),
+            Field("to", { Str }, optional = false, nullable = false),
             ),
-            { a -> SessionRewindOptionsReq(a[0] as String, a[1] as String) },
-            { v -> arrayOf(v.machine, v.sid) },
+            { a -> SessionRewindOptionsReq(a[0] as String, a[1] as String, a[2] as String) },
+            { v -> arrayOf(v.machine, v.sid, v.to) },
         )
     }
 }
