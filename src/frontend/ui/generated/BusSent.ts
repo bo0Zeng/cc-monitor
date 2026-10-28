@@ -2,6 +2,6 @@
 import type { BusEnvelope } from "./BusEnvelope";
 
 /**
- * `bus-send` 的应答：收进收件箱的那一封 ＋ 要不要敲门（tier 1 且这条会话去抖窗里没敲过）。
+ * `bus-send` 的应答：收进收件箱的那一封 ＋ 敲了门没有（tier 1、这条会话去抖窗里没敲过、投进了它的输入队；敲门是收件那台的后端投的）。
  */
 export type BusSent = { envelope: BusEnvelope, knock: boolean, };

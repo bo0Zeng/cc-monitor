@@ -200,7 +200,7 @@ pub(crate) struct BusEnvelopeReq {
     pub(crate) text: Option<String>,
 }
 
-/// `bus-send` 的应答：收进收件箱的那一封 ＋ 要不要敲门（tier 1 且这条会话去抖窗里没敲过）。
+/// `bus-send` 的应答：收进收件箱的那一封 ＋ 敲了门没有（tier 1、这条会话去抖窗里没敲过、投进了它的输入队；敲门是收件那台的后端投的）。
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -480,8 +480,8 @@ pub(crate) fn send_here(
 /// `bus-send` 的本体：照 `req.machine` 分。
 /// - 本机 ⇒ 读这台的组名单（`roster`）· [`send_here`]。
 /// - 别台 ⇒ 先在这台核信封各格（坏信封不出门），再经跨台那一跳（`dial::remote_ask::hop`，会话输入队那三条也走它）交给那台的常驻：
-///   范围照那台的名单判、收进那台的收件箱，那台答的码原样交回；够不到 ⇒ `offline`，这台一个字节不写、不攒。
-///   交回的 `knock` 一律 `false`：这台够不到那台的屏（敲门改投那台的会话输入队见 A13-8-3）。
+///   范围照那台的名单判、收进那台的收件箱、一档由那台敲门（投进那台那条会话的输入队），那台答的原样交回；
+///   够不到 ⇒ `offline`，这台一个字节不写、不攒。
 pub(crate) async fn send<R, F>(
     own: &crate::platform::Own,
     req: &BusEnvelopeReq,
@@ -505,7 +505,7 @@ where
         machine: cmd_wire::Machine::local(),
         ..req.clone()
     };
-    let sent = crate::dial::remote_ask::hop::<BusSendCmd>(
+    crate::dial::remote_ask::hop::<BusSendCmd>(
         &req.machine,
         &here,
         BusSendErr::ALL,
@@ -515,11 +515,7 @@ where
         remote,
     )
     .await
-    .map_err(|f| of(BusSendErr::BadArgs, send_said)((f.code, f.message)))?;
-    Ok(BusSent {
-        knock: false,
-        ..sent
-    })
+    .map_err(|f| of(BusSendErr::BadArgs, send_said)((f.code, f.message)))
 }
 
 #[cfg(test)]

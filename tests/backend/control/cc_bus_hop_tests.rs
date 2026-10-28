@@ -179,7 +179,7 @@ async fn a_letter_for_another_machine_lands_in_that_machines_inbox_once() {
         .unwrap();
     assert_eq!(owner.inbox(B).len(), 1, "那台收件箱多一封、只一封");
     assert_eq!(sent.envelope.to, B);
-    assert!(!sent.knock, "本机够不到那台的屏：跨台交回的不敲门");
+    assert!(sent.knock, "一档：那台敲了门，交回照实说");
     let asked = owner.asked.lock().unwrap();
     assert_eq!(asked.len(), 1, "只问一次");
     assert!(asked[0].0.contains("--resident-call"), "问的是那台的常驻");
