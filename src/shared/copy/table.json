@@ -31553,7 +31553,7 @@
     "rot.acct.missing": {
       "kind": "body",
       "role": "片段",
-      "zh": "这台没有这个号",
+      "zh": "账号库里无此号",
       "args": []
     },
     "rot.acct.reset": {
