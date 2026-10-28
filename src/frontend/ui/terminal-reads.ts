@@ -125,12 +125,9 @@ export function sentOf(v: Sent): TerminalSent {
   return { result: "refused", said: v.said ?? noSaid(), screen: v.screen ?? null, acts };
 }
 
-/**
- * 往那个终端送一段字或一颗键；带上看到的那一屏的指纹（画面已经变了 ⇒ 后端不送）。`take` ＝ 托管终端的输入在别的一端手里时先替这一端接管再送
- * （［接管再送］）。失败 ⇒ 抛 `ControlError`。
- */
-export async function sendToTerminal(origin: Origin, terminal: string, what: TerminalSend, seen: string | null, take = false): Promise<TerminalSent> {
-  const req = { terminal, ...what, ...(seen !== null ? { seen_screen: seen } : {}), ...(take ? { take: true } : {}) };
+/** 往那个终端送一段字或一颗键；带上看到的那一屏的指纹（画面已经变了 ⇒ 后端不送）。失败 ⇒ 抛 `ControlError`。 */
+export async function sendToTerminal(origin: Origin, terminal: string, what: TerminalSend, seen: string | null): Promise<TerminalSent> {
+  const req = { terminal, ...what, ...(seen !== null ? { seen_screen: seen } : {}) };
   const budget = budgetWithin(INPUT_BUDGET_MS);
   return sentOf(await settleTyped(origin, "terminal-input", callTyped(origin, "terminal-input", req, budget)));
 }

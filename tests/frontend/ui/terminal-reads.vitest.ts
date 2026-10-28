@@ -193,17 +193,17 @@ describe("结束 · 接管 · 交还：都按名单里的句柄说那台", () =>
     expect(e.detail).toContain("wrong_owner");
   });
 
-  it("★ 接管 · 交还交句柄，回那一行此刻的输入那一格；送字可带 `take`（接管再送）", async () => {
+  it("★ 接管 · 交还交句柄，回那一行此刻的输入那一格；送字不再带 `take`（「接管再送」那一支删了）", async () => {
     const held = { kind: "held", holder: { who: "desktop", mine: true } };
     answer({ "terminal-take-input": { ok: { input: held } }, "terminal-release-input": { ok: { input: { kind: "held", holder: { who: "none", mine: false } } } } });
     expect(await takeInput("devbox", "m-1")).toEqual(held);
     expect((await releaseInput("devbox", "m-1")).kind).toBe("held");
     answer({ "terminal-input": { ok: { result: "delivered" } } });
-    await sendToTerminal("devbox", "m-1", { text: "hi", enter: false }, null, true);
+    await sendToTerminal("devbox", "m-1", { text: "hi", enter: false }, null);
     expect(sentCalls()).toEqual([
       ["devbox", "terminal-take-input", { terminal: "m-1" }],
       ["devbox", "terminal-release-input", { terminal: "m-1" }],
-      ["devbox", "terminal-input", { terminal: "m-1", text: "hi", enter: false, take: true }],
+      ["devbox", "terminal-input", { terminal: "m-1", text: "hi", enter: false }],
     ]);
   });
 });
