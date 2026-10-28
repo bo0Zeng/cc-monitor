@@ -132,9 +132,9 @@ pub(crate) fn listed_on(
     Ok(Listed::of(tmux.map(entries), entries(hosted)).hosting(hosts_with(managed)))
 }
 
-/// 这台能不能托管终端：给了托管的家、平台能托管（[`crate::control::ccm::plan::HOSTS_HERE`]）。名单那一格与起会话框的 `hosts` 都问它。
+/// 这台能不能托管终端：给了托管的家（各平台都能托管）。名单那一格与起会话框的 `hosts` 都问它。
 pub(crate) fn hosts_with(managed: Option<&crate::platform::fs::Own>) -> bool {
-    managed.is_some() && crate::control::ccm::plan::HOSTS_HERE
+    managed.is_some()
 }
 
 /// 名单里一行 ⇒ 认会话用的五格。

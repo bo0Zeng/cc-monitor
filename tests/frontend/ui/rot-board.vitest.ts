@@ -32,7 +32,7 @@ const each = (fallback: boolean, from: RotCell["from"]): RotCell[] => [
   { key: "fallback", kind: "toggle", label: "夹具·开关", v: fallback, from },
   { key: "delay", kind: "minutes", label: "夹具·延迟", v: 0, num: 0, from: "default", min: 0, max: 1440 },
 ];
-const row = (account: string, cells: RotCell[], marks: RotRow["marks"] = []): RotRow => ({ account, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells, rules: [`夹具·${account} 的规则`], marks });
+const row = (account: string, cells: RotCell[], marks: RotRow["marks"] = [], at = ["work", "team", "lab"].indexOf(account)): RotRow => ({ account, row: at, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells, rules: [`夹具·${account} 的规则`], marks });
 const BOARD = {
   all: [
     { key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 },
@@ -388,6 +388,25 @@ describe("号牌与点开一个号", () => {
     expect(texts(lab, "[data-rot-mark]")).toEqual(["↺"]);
     expect(lab.dataset.dashed).toBe("true");
     expect(root.querySelector<HTMLElement>('[data-account="team"]')!.dataset.dashed).toBeUndefined();
+  });
+
+  it("★ 行号照那一行带的（不照第几张号牌）：号列表第 1 行这台没出 ⇒ lab 是第二张号牌、第 2 行；改 · 移出 · 拖都交第 2 行", () => {
+    const v = view({
+      board: { all: BOARD.all, rows: [row("work", each(false, "default"), [], 0), row("lab", each(true, "own"), [], 2)] },
+      accounts: [fact("work", 94, 40), fact("lab", 35, 20), fact("api", 0, 0)],
+      listed: 2,
+    });
+    const a = acts();
+    const root = draw(v, state({ open: "lab" }), a);
+    const pane = root.querySelector<HTMLElement>("[data-rot-editor]")!;
+    pane.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
+    button(pane, copyText("rot.acct.remove"))!.click();
+    const cards = [...root.querySelectorAll<HTMLElement>("button[data-rot-card]")];
+    cards.forEach((c, k) => (c.getBoundingClientRect = () => ({ left: k * 100, right: k * 100 + 90, top: 0, bottom: 30, width: 90, height: 30, x: k * 100, y: 0, toJSON: () => ({}) })));
+    cards[1].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 140, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 40, clientY: 10 }));
+    expect(a.edit.mock.calls).toEqual([[{ set: { key: "fallback", v: false, row: 2 } }], [{ remove: { row: 2 } }], [{ move: { from: 2, to: 0 } }]]);
   });
 
   it("★ 小窗的 ✕ ⇒ 收起；［移出这份策略］⇒ 交「移出那一行」", () => {

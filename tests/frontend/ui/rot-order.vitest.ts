@@ -40,7 +40,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     nowText: "14:30",
     title: "夹具会话",
     strategy: { id: "夹具策略", description: "夹具说明", summary: "夹具说明", rev: "h:1", inUse: [], forNew: false, wordsBad: false, tzUnknown: false, hand: false },
-    board: { all: [], rows: [{ account: "lab", line: "夹具·lab 那一行", hover: "", cells: [], rules: ["夹具·lab 的规则"], marks: [] }] },
+    board: { all: [], rows: [{ account: "lab", row: 0, line: "夹具·lab 那一行", hover: "", cells: [], rules: ["夹具·lab 的规则"], marks: [] }] },
     start: "team",
     current: "team",
     lineup: LINEUP,

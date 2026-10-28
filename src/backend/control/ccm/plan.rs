@@ -268,7 +268,7 @@ pub(crate) struct Env {
     pub(crate) pwd: String,
     /// `$TMUX` —— 只有**被 attach 的那个进程**才有它。
     pub(crate) tmux: Option<String>,
-    /// 不在 tmux 里敲 `cc` 落托管容器（[`HOSTS_HERE`] 且不在托管终端里：`CCM_HOST` 没设）；`false` ⇒ 直路。
+    /// 不在 tmux 里敲 `cc` 落托管容器（各平台都能托管；已在托管终端里 —— `CCM_HOST` 设了 —— 不再套一层）；`false` ⇒ 直路。
     pub(crate) can_host: bool,
     /// 调用方**继承来的**账号配置目录（`agents::claudecode::paths::CONFIG_DIR_ENV`
     /// 那个环境变量的值），**不是**本进程设的。
@@ -379,7 +379,7 @@ impl Env {
                 .unwrap_or_default(),
             tmux: get("TMUX"),
             // 托管进程给里面那一跳设了 `CCM_HOST` ⇒ 已在托管终端里：直路（不再套一层）。
-            can_host: HOSTS_HERE && get(crate::host::managed::run::HOST_ENV).is_none(),
+            can_host: get(crate::host::managed::run::HOST_ENV).is_none(),
             // 找上游那个变量名与它的继承值，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             base_url_env: String::new(),
             inherited_base_url: None,
@@ -432,8 +432,8 @@ impl Env {
         Env {
             pwd: home.clone(),
             tmux: None,
-            // 新终端里敲：不在 tmux、不在托管终端里 ⇒ 这台能托管就落托管（同真跑）。
-            can_host: HOSTS_HERE,
+            // 新终端里敲：不在 tmux、不在托管终端里 ⇒ 落托管（同真跑）。
+            can_host: true,
             base_url_env: String::new(),
             inherited_base_url: None,
             ccm_env: machine_env(get),
@@ -532,10 +532,6 @@ pub(crate) enum Plan {
 
 pub(crate) use crate::wire::TerminalHost;
 
-/// 这台能不能托管终端（不在 tmux 里敲 `cc` 落托管容器的前提）：Linux 能；Windows 等 ConPTY 那一形（A3-3-9）。
-/// 判只住这一处：ccm 的计划（[`Env::can_host`]）与起会话的缺省放在哪（`session_open::default_run`）都问它。
-pub(crate) const HOSTS_HERE: bool = cfg!(unix);
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Container {
     /// 住在哪种宿主里。
@@ -544,6 +540,9 @@ pub(crate) struct Container {
     pub(crate) name: String,
     /// 托管那一形：起托管进程的那一整串（[`host_run_argv`]；脱离起）。tmux 那一形空。
     pub(crate) host_run: Vec<String>,
+    /// 托管那一形：脱离起托管进程那一下从环境里摘掉的变量（会话血缘：外层没有父 ⇒ 全摘；有 ⇒ 只留那一个）。
+    /// tmux 那一形这件事写在载荷里（`env -u …`），这一格空。
+    pub(crate) unset: Vec<String>,
     pub(crate) cwd: String,
     pub(crate) agent: String,
     pub(crate) ccm_sid: String,
@@ -554,6 +553,8 @@ pub(crate) struct Container {
     /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
+    /// 同一个自检的 argv（内层那一串 ＋ `--ccm-print`）：托管那一形真跑时原生起它（不经 shell，环境与托管进程同一份）。
+    pub(crate) self_check_argv: Vec<String>,
     /// 送进容器那条内层命令到 `--` 之前的词（入口 ＋ 交给 agent 的那几个；不带 `env` / `export` 前缀）：只给短形（[`render_short`]）用，
     /// 载荷由同一串接上 `--` 与 ccm 自己的参数渲出。
     pub(crate) inner_head: Vec<String>,
@@ -651,14 +652,15 @@ pub(crate) fn qarg(s: &str) -> String {
     }
 }
 
-/// tmux 会话名里**一段**的净化（不含 `-cc` 后缀）：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`。
+/// tmux 会话名里**一段**的净化（不含 `-cc` 后缀）：取末段路径（`/` 与 Windows 的 `\` 都算分隔）→ 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`。
 /// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
 /// 全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
 /// 起会话要名字由这台铸（[`super::terminal_name_mint_with`]）。
 fn name_segment(raw: &str) -> String {
-    let trimmed = raw.trim_end_matches('/');
-    let base = trimmed.rsplit('/').next().unwrap_or("");
+    let sep = |c: char| c == '/' || c == '\\';
+    let trimmed = raw.trim_end_matches(sep);
+    let base = trimmed.rsplit(sep).next().unwrap_or("");
     let mut s = String::new();
     let mut last_dash = false;
     for c in base.chars() {
@@ -992,16 +994,17 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
     Ok(())
 }
 
-/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=ccm [size=宽x高] -- sh -c <载荷>`。
-/// 句柄就是名字（铸名时已避让过这台的 tmux 会话名与托管终端）；载荷与 tmux 那一形键进窗格的是同一串，经 `sh -c` 跑
-/// （那一家一退 `sh` 跟着退、托管终端收尾）。`client=ccm`：同 tmux 那一形 ccm 起的会话（`gate_rules::CLIENT_TERMINAL`）。
+/// 起托管进程的那一串：`<自己> -- --host-run <名> name=<名> cwd=<目录> agent=<那一家> client=ccm [size=宽x高] -- <里面那一跳>`。
+/// 句柄就是名字（铸名时已避让过这台的 tmux 会话名与托管终端）；里面那一跳与 tmux 那一形键进窗格的是同一串词（`inner`），
+/// 托管进程直接起它、不经 shell：托管进程是 ccm 自己脱离起的，环境原样往下传，用不着 tmux 那一形为跨 tmux 边界写的 `export`
+/// （那一家一退里面那一跳跟着退、托管终端收尾）。`client=ccm`：同 tmux 那一形 ccm 起的会话（`gate_rules::CLIENT_TERMINAL`）。
 fn host_run_argv(
     self_argv: &[String],
     name: &str,
     cwd: &str,
     agent: &str,
     size: Option<&(String, String)>,
-    payload: &str,
+    inner: &[String],
 ) -> Vec<String> {
     let mut v: Vec<String> = self_argv.to_vec();
     v.extend([
@@ -1016,13 +1019,18 @@ fn host_run_argv(
     if let Some((w, h)) = size {
         v.push(format!("size={w}x{h}"));
     }
-    v.extend([
-        flag::END.to_string(),
-        "sh".to_string(),
-        "-c".to_string(),
-        payload.to_string(),
-    ]);
+    v.push(flag::END.to_string());
+    v.extend(inner.iter().cloned());
     v
+}
+
+/// 外层没有父时摘掉的那几个会话血缘变量（`env -u` 那一形的词：tmux 窗格里那一跳 · 托管那一形的等价写法同一份）。
+fn unset_prefix(vars: &[impl AsRef<str>]) -> String {
+    if vars.is_empty() {
+        return String::new();
+    }
+    let us: Vec<String> = vars.iter().map(|k| format!("-u {}", k.as_ref())).collect();
+    format!("env {} ", us.join(" "))
 }
 
 /// 这一发进哪种容器（`None` ⇒ 直路）：`--hosted` ⇒ 托管；要 tmux 容器（`use_tmux`：已在 tmux 里且没给名的那一形已摘掉）⇒ tmux；
@@ -1299,15 +1307,7 @@ pub(crate) fn build_among(
         // 外层没有父 ⇒ 显式摘掉，窗格从 tmux server 全局环境里继承来的旧值（别的会话起 server 时留下的）读不到。
         let scoped = match &env.inherited_parent {
             Some((k, v)) => format!("{k}={} ", sq(v)),
-            None => {
-                let vars = crate::agents::self_sid_envs();
-                if vars.is_empty() {
-                    String::new()
-                } else {
-                    let us: Vec<String> = vars.iter().map(|k| format!("-u {k}")).collect();
-                    format!("env {} ", us.join(" "))
-                }
-            }
+            None => unset_prefix(&crate::agents::self_sid_envs()),
         };
         let mut payload = format!(
             "{scoped}{}",
@@ -1327,20 +1327,30 @@ pub(crate) fn build_among(
         );
 
         let size = parse_size(&o.tmux_size);
-        let host_run = match host {
-            TerminalHost::Tmux => Vec::new(),
-            TerminalHost::Managed => host_run_argv(
-                &env.self_argv,
-                &name,
-                &cwd,
-                &o.agent,
-                size.as_ref(),
-                &payload,
-            ),
+        let (host_run, unset, self_check) = match host {
+            TerminalHost::Tmux => (Vec::new(), Vec::new(), self_check),
+            // 托管那一形：环境由脱离起托管进程那一下交（摘 `unset` 那几个，余下原样继承）⇒ 自检那一形不带 `export` 前缀。
+            TerminalHost::Managed => {
+                let unset: Vec<String> = crate::agents::self_sid_envs()
+                    .into_iter()
+                    .filter(|k| env.inherited_parent.as_ref().is_none_or(|(p, _)| p != k))
+                    .map(str::to_string)
+                    .collect();
+                let check = format!(
+                    "{}{}",
+                    unset_prefix(&unset),
+                    dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
+                );
+                let run =
+                    host_run_argv(&env.self_argv, &name, &cwd, &o.agent, size.as_ref(), &inner);
+                (run, unset, check)
+            }
         };
         return Ok(Plan::Container(Container {
             host,
             host_run,
+            unset,
+            self_check_argv: dry,
             name,
             cwd,
             agent: o.agent.clone(),
@@ -1934,8 +1944,8 @@ fn attach_managed_line(who: &str, name: &str) -> String {
     format!("{who} {} {} {name}", flag::END, flag::ATTACH)
 }
 
-/// 托管那一形的等价 shell：脱离起托管进程（[`Container::host_run`]）→ 收尾（自检 · 接上，[`render_container_tail`]）。
-/// 真跑那条路上脱离起与等它起好在进程里做（`ccm::execute`），收尾那一段是同一份渲染。
+/// 托管那一形的等价 shell（只给人看）：脱离起托管进程（[`Container::host_run`]，摘 [`Container::unset`]）→ 收尾（自检 · 接上，
+/// [`render_container_tail`]）。真跑那条路上这几件都在进程里做（`ccm::execute_hosted`），不经 shell，起的是同几串 argv。
 fn render_managed(c: &Container) -> String {
     let run = c
         .host_run
@@ -1944,7 +1954,8 @@ fn render_managed(c: &Container) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        "setsid -f {run} </dev/null >/dev/null 2>&1{}",
+        "{}setsid -f {run} </dev/null >/dev/null 2>&1{}",
+        unset_prefix(&c.unset),
         render_container_tail(c)
     )
 }

@@ -2310,7 +2310,7 @@ DEALINGS IN THE SOFTWARE.
 
 -------- Creative Commons Zero v1.0 Universal (CC0-1.0) --------
 Used by:
-    crate: notify 6.1.1
+    crate: notify 8.2.1
 
 Creative Commons CC0 1.0 Universal
 
@@ -2551,8 +2551,8 @@ insights.
 
 -------- ISC License (ISC) --------
 Used by:
-    crate: inotify 0.9.6
-    crate: inotify-sys 0.1.5
+    crate: inotify 0.11.5
+    crate: inotify-sys 0.1.8
 
 Copyright (c) Hanno Braun and contributors
 
@@ -3197,23 +3197,19 @@ Used by:
     crate: windows-strings 0.4.2
     crate: windows-strings 0.5.1
     crate: windows-sys 0.45.0
-    crate: windows-sys 0.48.0
     crate: windows-sys 0.52.0
     crate: windows-sys 0.59.0
     crate: windows-sys 0.60.2
     crate: windows-sys 0.61.2
     crate: windows-targets 0.42.2
-    crate: windows-targets 0.48.5
     crate: windows-targets 0.52.6
     crate: windows-targets 0.53.5
     crate: windows-threading 0.1.0
     crate: windows-threading 0.2.1
     crate: windows-version 0.1.7
-    crate: windows_x86_64_gnu 0.48.5
     crate: windows_x86_64_gnu 0.52.6
     crate: windows_x86_64_gnu 0.53.1
     crate: windows_x86_64_msvc 0.42.2
-    crate: windows_x86_64_msvc 0.48.5
     crate: windows_x86_64_msvc 0.52.6
     crate: windows_x86_64_msvc 0.53.1
 
@@ -5368,9 +5364,7 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: dirs 5.0.1
     crate: dirs 6.0.0
-    crate: dirs-sys 0.4.1
     crate: dirs-sys 0.5.0
 
 Copyright (c) 2018-2019 dirs-rs contributors
@@ -7600,7 +7594,6 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: mio 0.8.11
     crate: mio 1.2.0
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -7823,7 +7816,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: notify-debouncer-mini 0.4.1
+    crate: notify-types 2.2.0
 
 Copyright (c) 2023 Notify Contributors
 
