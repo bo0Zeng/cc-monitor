@@ -1,8 +1,8 @@
 //! 旁路快照：排队、分发、拉取，以及撤销与两段编号。
 
 use super::*;
-use copy_core::copy_text;
 use crate::event_replay::EventReplay;
+use copy_core::copy_text;
 use std::sync::Arc;
 
 //
