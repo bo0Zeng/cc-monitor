@@ -29,10 +29,16 @@ class FilesRetryTest {
     @Test
     fun `两处［重试］都经 CoreLink retry（一处实现）`() {
         val vm = bodyOf(code("src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesViewModel.kt"), "fun retry(")
-        assertTrue("文件页的 retry 没经 feed.retry(…)：$vm", vm.contains("feed.retry("))
+        assertTrue("文件页的 retry 没经 feed.retry(…)：$vm", calls(vm, "feed.retry"))
         val chats = bodyOf(code("src/main/kotlin/com/ccmonitor/mobile/ui/chats/HostChats.kt"), "fun retry(")
-        assertTrue("会话列表的 retry 没经 link.retry(…)：$chats", chats.contains("link.retry("))
+        assertTrue("会话列表的 retry 没经 link.retry(…)：$chats", calls(chats, "link.retry"))
     }
+
+    /** [body] 里调了 [fn]：`fn(…)` 与尾随 lambda `fn { … }` 两种写法都算。 */
+    private fun calls(
+        body: String,
+        fn: String,
+    ): Boolean = Regex(Regex.escape(fn) + """\s*[({]""").containsMatchIn(body)
 
     /** 从 [head] 起到同一层下一个声明之前那一段（注释已剥）。 */
     private fun bodyOf(
