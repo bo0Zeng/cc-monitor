@@ -296,6 +296,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "「轮换」那一行 `rotRow.root`（`s.nsRow`）—— 建时收起（读得到那台的策略目录才出）",
   "src/frontend/ui/new-session.ts::note":
     "一格下那一行说明 / 错误 `note`（`s.nsNote`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::managedRadio.label":
+    "「托管终端」那一张单选 `managedRadio.label`（`s.nsPlace`）—— 那台不能托管时收起",
   "src/frontend/ui/new-session.ts::placeRow.root":
     "「运行于」那一行 `placeRow.root`（`s.nsRow`，它写了 display:grid，`.nsRow[hidden]` 收住）—— 问图开的框里收起",
   "src/frontend/ui/new-session.ts::moreRow":
