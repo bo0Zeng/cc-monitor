@@ -13,8 +13,8 @@
 //!   `"` 有历史畸变，拒绝后前端走剪贴板回退）· 裸词白名单。
 //! - **PowerShell 层**（本模块）：全命令体经 `-EncodedCommand`（base64）穿 wt.exe（`;` 分 tab 不会切碎）。
 
-use crate::copy_table::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
 const MAX_REMOTE_CMD: usize = 4096;

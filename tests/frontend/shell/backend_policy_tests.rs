@@ -23,7 +23,7 @@ fn the_monitor_keeps_no_copy_of_the_exit_value() {
          多出来的多半是那个值的副本回来了 ——：不缓存、不在启动时读一次存内存。"
     );
     assert!(
-        statics[0].contains("Health"),
+        statics[0].contains("DeathLedger"),
         "唯一那个 `static` 不是死亡账那张（正控失败）：{}",
         statics[0]
     );
@@ -280,10 +280,10 @@ fn a_broken_reader_is_never_counted_as_a_crash() {
         copy_core::copy_static!("rsBackendPolicy.death.misread"),
         "读端出错被判成了别的 —— 而这一维说的是**我们这一侧**，不是那个进程"
     );
-    let origin = "kp3-读坏了不算崩-甲";
+    let ledger = DeathLedger::default();
     let mut sink = CapturingSink::default();
-    record_death(origin, &ev, &mut sink).expect("要记一笔");
-    let h = health(origin);
+    record_death(&ledger, &ev, &mut sink).expect("要记一笔");
+    let h = ledger.health();
     assert_eq!(
         (h.crashed, h.misread),
         (0, 1),
@@ -309,10 +309,10 @@ fn a_clean_exit_is_not_a_death() {
         None,
         "`exit 0` + 说过话 + 干净 EOF 被判成了一次死亡 —— 那是一次正常收工"
     );
-    let origin = "kp3-正常收工-甲";
+    let ledger = DeathLedger::default();
     let mut sink = CapturingSink::default();
     assert!(
-        record_death(origin, &ev, &mut sink).is_none(),
+        record_death(&ledger, &ev, &mut sink).is_none(),
         "正常收工也上账了"
     );
     assert!(
@@ -320,7 +320,7 @@ fn a_clean_exit_is_not_a_death() {
         "正常收工往落点写了东西：{:?}",
         sink.lines
     );
-    assert_eq!(health(origin).seen(), 0, "正常收工被记进了读数");
+    assert_eq!(ledger.health().seen(), 0, "正常收工被记进了读数");
 }
 
 /// ★ 起不来那一支的原因**原样转来**，不另写一份
@@ -407,9 +407,9 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
     ];
     assert_eq!(cases.len(), 2, "夹具少了一形");
     for (what, ev, status) in &cases {
-        let origin = format!("kp3-账上留一行-{what}");
+        let ledger = DeathLedger::default();
         let mut sink = CapturingSink::default();
-        let rec = record_death(&origin, ev, &mut sink)
+        let rec = record_death(&ledger, ev, &mut sink)
             .unwrap_or_else(|| panic!("「{what}」没上账 —— 那就没有任何东西在记它"));
         assert_eq!(
             sink.lines.len(),
@@ -428,7 +428,7 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
             rec.line
         );
         assert!(
-            rec.line.contains(&origin),
+            rec.line.contains(crate::inbound_client::LOCAL_ORIGIN),
             "那一行没说是哪台机：{}",
             rec.line
         );
@@ -447,14 +447,14 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
 /// 否则「写不进去」会顺带把界面上「崩过几次」清成 0，那是第二次静默。
 #[test]
 fn a_refusing_ledger_is_never_silent() {
-    let origin = "kp3-写不进去-甲";
+    let ledger = DeathLedger::default();
     let ev = DeathEvidence {
         outcome: Outcome::Signalled(9),
         handshake: Handshake::Spoke,
         reader: ReaderEnd::CleanEof,
         start_failure: None,
     };
-    let rec = record_death(origin, &ev, &mut RefusingSink).expect("要记一笔");
+    let rec = record_death(&ledger, &ev, &mut RefusingSink).expect("要记一笔");
     let why = rec.sink_error.as_deref().unwrap_or("");
     assert!(
         why.contains("拒收"),
@@ -467,7 +467,7 @@ fn a_refusing_ledger_is_never_silent() {
         "拒收的时候连那一行本身都没给 —— 调用方连就地喊一声都做不到"
     );
     assert_eq!(
-        health(origin).crashed,
+        ledger.health().crashed,
         1,
         "落点坏了把读数也一起带走了 —— 那是同一件事上的第二次静默"
     );
@@ -479,19 +479,19 @@ fn a_refusing_ledger_is_never_silent() {
 /// 把默认档写成「没崩过」⇒ 本条当场红。
 #[test]
 fn the_reading_defaults_to_unknown_not_to_clean() {
-    let never_touched = health("kp3-从来没被记过的一台机");
+    let never_touched = DeathLedger::default().health();
     assert_eq!(never_touched.seen(), 0, "这台机的夹具串被别的测试用过了");
     let face = health_face(&never_touched);
     assert_eq!(face.state, HealthState::Unknown);
     assert_eq!(
         face.summary,
-        crate::copy_table::copy_text("rsBackendPolicy.health.unknown", &[]),
+        copy_core::copy_text("rsBackendPolicy.health.unknown", &[]),
         "一条记录都没有的机器被说成了别的 —— `§0-1` 逐字：\n\
              「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』…… \
              这两句话差得很远，不许混用」。"
     );
     // 崩过之后读数要跟着走，且带得出次数与最后那一行。
-    let origin = "kp3-读数跟着走-甲";
+    let ledger = DeathLedger::default();
     let ev = DeathEvidence {
         outcome: Outcome::Signalled(6),
         handshake: Handshake::Spoke,
@@ -499,9 +499,9 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
         start_failure: None,
     };
     let mut sink = CapturingSink::default();
-    record_death(origin, &ev, &mut sink).expect("要记一笔");
-    record_death(origin, &ev, &mut sink).expect("要记第二笔");
-    let face = health_face(&health(origin));
+    record_death(&ledger, &ev, &mut sink).expect("要记一笔");
+    record_death(&ledger, &ev, &mut sink).expect("要记第二笔");
+    let face = health_face(&ledger.health());
     let said = face.summary.clone();
     assert!(
         said.contains("×2") && said.contains("信号 6"),
@@ -524,14 +524,14 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
 /// 却证不了那个类型今天还在（报「有牙」要说清射程）。
 #[test]
 fn the_production_sink_takes_a_line_without_complaining() {
-    let origin = "kp3-生产落点-甲";
+    let ledger = DeathLedger::default();
     let ev = DeathEvidence {
         outcome: Outcome::Exited(3),
         handshake: Handshake::NeverSpoke,
         reader: ReaderEnd::CleanEof,
         start_failure: None,
     };
-    let rec = record_death(origin, &ev, &mut MonitorLog).expect("要记一笔");
+    let rec = record_death(&ledger, &ev, &mut MonitorLog).expect("要记一笔");
     assert!(
         rec.sink_error.is_none(),
         "生产落点拒收了：{:?}",
@@ -542,7 +542,7 @@ fn the_production_sink_takes_a_line_without_complaining() {
         "生产落点收到的那一行没带退出状态：{}",
         rec.line
     );
-    assert_eq!(health(origin).refused, 1, "读数没跟上");
+    assert_eq!(ledger.health().refused, 1, "读数没跟上");
 }
 
 /// ★ 落点那一半**真的把行交给了日志**（否则 `MonitorLog` 是个 no-op，
@@ -1099,7 +1099,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
         // 拼法走文案表（不在代码里写死「，」）。
         assert_eq!(
             brief,
-            crate::copy_table::copy_text(
+            copy_core::copy_text(
                 "rsBackendPolicy.death.brief",
                 &[
                     ("kind", death_kind(&d).as_str()),
@@ -1119,9 +1119,9 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
                 "「{what}」的短摘要带了裸码 {code}：{brief}"
             );
             assert!(
-                ledger_line("o", &d).contains(&format!("码={code}")),
+                ledger_line(&d).contains(&format!("码={code}")),
                 "「{what}」的码没进账行：{}",
-                ledger_line("o", &d)
+                ledger_line(&d)
             );
         }
         // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但要后端「停止产」）。
@@ -1132,7 +1132,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
         );
         // 反空真：日志那一行**就是**日志行格式。
         assert!(
-            ui_copy_violations(&ledger_line("o", &d)).contains(&"日志行格式"),
+            ui_copy_violations(&ledger_line(&d)).contains(&"日志行格式"),
             "账行不再是日志行格式了 —— 尺子或账行其一坏了"
         );
     }
@@ -1158,7 +1158,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
 /// 没有日志行格式（原来 `HEALTH_CRASHED` 的 `{last}` 被整条账行填满，截图 2 那一段就是它）。
 #[test]
 fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
-    let origin = "st2-读数接短摘要-甲";
+    let ledger = DeathLedger::default();
     // 一个闭集外的码（`0xC0000006`）：读数里说「原因不明」，裸码不上句子（它在账行 `码=` 与复制详情里）。
     let ev = DeathEvidence {
         outcome: Outcome::Exited(-1073741818),
@@ -1167,8 +1167,8 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
         start_failure: None,
     };
     let mut sink = CapturingSink::default();
-    let rec = record_death(origin, &ev, &mut sink).expect("要记一笔");
-    let h = health(origin);
+    let rec = record_death(&ledger, &ev, &mut sink).expect("要记一笔");
+    let h = ledger.health();
     assert_eq!(
         h.last.as_deref(),
         Some(rec.line.as_str()),
@@ -1193,14 +1193,15 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     );
 }
 
-/// ★★ 接线那一半：**真命令** `backend_status` 回的 `health` 就是 [`health_face`] 的成品，
+/// ★★ 接线那一半：`backend_status` 的本体回的 `health` 就是 [`health_face`] 的成品，
 /// 原料（四个计数 · 短摘要 · 账行）一格都不上线。
 ///
-/// 原来这里是一条钉拼 JSON 那一行的源码判据；远端 origin 那一支不碰通道也不碰进程，
-/// 真命令在测试里跑得动 ⇒ 换成行为判据。
+/// 账注入一份（生产那份是 [`local_ledger`]，并行的用例不互相记进对方的数）；本机那一支读这本账，
+/// 远端那一支恒是空账（远端的退出状态在别人机器上拿不到）。
 #[test]
 fn the_status_command_hands_the_panel_the_finished_face() {
-    let origin = "pb1-状态接成品-甲";
+    let ledger = DeathLedger::default();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let ev = DeathEvidence {
         outcome: Outcome::Signalled(9),
         handshake: Handshake::Spoke,
@@ -1208,11 +1209,14 @@ fn the_status_command_hands_the_panel_the_finished_face() {
         start_failure: None,
     };
     let mut sink = CapturingSink::default();
-    let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
-    let st = tauri::async_runtime::block_on(crate::backend_control::backend_status(origin.into()))
-        .expect("查状态");
+    let _ = record_death(&ledger, &ev, &mut sink).expect("要记一笔");
+    let st = crate::backend_control::backend_status_now(
+        crate::inbound_client::LOCAL_ORIGIN.into(),
+        &ledger,
+    )
+    .expect("查状态");
     let got = serde_json::to_value(&st.health).expect("成品序列化不了");
-    let want = serde_json::to_value(health_face(&health(origin))).expect("成品序列化不了");
+    let want = serde_json::to_value(health_face(&ledger.health())).expect("成品序列化不了");
     assert_eq!(
         got, want,
         "`backend_status` 交给界面的不是 `health_face` 的成品"
@@ -1232,12 +1236,11 @@ fn the_status_command_hands_the_panel_the_finished_face() {
         ["detail", "state", "summary", "why"].into_iter().collect(),
         "health 那一格的键不是成品那四个 —— 原料（计数 / 短摘要 / 账行）又上线了，界面就能再判一遍"
     );
-    // 没记过的那一台：同一条命令回「无记录」那一档（远端今天恒是这一档 —— 那是真话，不是缺席）。
-    let quiet = tauri::async_runtime::block_on(crate::backend_control::backend_status(
-        "pb1-没记过的一台".into(),
-    ))
-    .expect("查状态");
-    assert_eq!(quiet.health.state, HealthState::Unknown);
+    // 远端那一台：同一本账上记着崩溃，那一格照样是「无记录」—— 这本账是本机后端的，
+    //   远端的退出状态没人在记，那是真话，不是缺席。
+    let remote =
+        crate::backend_control::backend_status_now("pb1-远端一台".into(), &ledger).expect("查状态");
+    assert_eq!(remote.health.state, HealthState::Unknown);
 }
 
 // ── 死亡账说人话：`0xC000013A` ─────────────────────────
@@ -1255,7 +1258,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     };
     assert_eq!(
         last_brief(&crashed),
-        crate::copy_table::copy_text(
+        copy_core::copy_text(
             "rsBackendPolicy.death.brief",
             &[
                 (
@@ -1269,7 +1272,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     let refused = Death::Refused { code: -1073741510 };
     assert_eq!(
         last_brief(&refused),
-        crate::copy_table::copy_text(
+        copy_core::copy_text(
             "rsBackendPolicy.death.brief",
             &[
                 ("kind", copy_core::copy_static!("reason.code.refused")),
@@ -1290,9 +1293,9 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
         );
         // 日志那一行同一个来源：也说人话（码另起一格 `码=`）。
         assert!(
-            ledger_line("o", d).contains(&format!("退出状态={said}")),
+            ledger_line(d).contains(&format!("退出状态={said}")),
             "日志那一行没跟上：{}",
-            ledger_line("o", d)
+            ledger_line(d)
         );
     }
 }
@@ -1329,7 +1332,7 @@ fn only_the_known_codes_get_words_the_neighbours_say_unknown() {
     // 「signal N」那一截也走文案表（不在代码里写死英文）。
     assert_eq!(
         exit_status(&sig),
-        crate::copy_table::copy_text("rsBackendPolicy.status.signal", &[("sig", "9")])
+        copy_core::copy_text("rsBackendPolicy.status.signal", &[("sig", "9")])
     );
     assert_eq!(exit_status(&sig), "信号 9");
 }

@@ -34,13 +34,12 @@
 //!   它住文件窗口包自己名下（`src/frontend/filewin/Cargo.toml` 的 `[[bin]]`），不再是 monitor 包的第二个 bin
 //!   （打包器会把 monitor 包的每个 bin 都装进安装包，那一份与内嵌的逐字节相同；size2 10-11 撤了）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 // 种子 · 就绪那一行 · 指到窗口二进制的环境变量：monitor 与窗口进程两边对上的形状住 `filewin-contract`。
 pub use filewin_contract::{
-    decode_ready, decode_request, encode_ready, encode_request, is_ready_line, OpenRequest, Ready,
-    BIN_ENV,
+    decode_ready, encode_request, is_ready_line, OpenRequest, Ready, BIN_ENV,
 };
 
 /// 窗口进程那份二进制的**文件名主干**。

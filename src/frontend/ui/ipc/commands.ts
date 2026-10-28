@@ -197,9 +197,9 @@ export const commands = {
    */
   backend_machines: () => invoke<string[]>("backend_machines"),
 
-  /** 起这台机的后端。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
+  /** 起这台机的后端（已经在跑也算成）；起不来 ⇒ reject 带那一句 ⇒ **桶②**。 */
   backend_start: (args: { origin: string }) =>
-    invoke<string>("backend_start", args),
+    invoke<void>("backend_start", args),
 
   /**
    * 停这台机的后端 ⇒ **桶②**。本机远端同形：那台机器上的一次性 `--resident-stop` 做「请它收尾 → 宽限期内等 → 到点强杀」，

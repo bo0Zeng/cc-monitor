@@ -170,10 +170,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     status: "zero",
     defs: ["sanitizeRemoteLauncher"],
     needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
-    rustGone: ["src/frontend/shell/src/history.rs::sanitize_launcher"],
     rustNeedles: [
       { file: LAUNCH_RS, text: "';' | '|' | '&'", count: 0 },
-      { file: "src/frontend/shell/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       // 起会话的渲染住后端 `launch_render/mod.rs` ⇒ 私有那份最可能长回来的地方跟着挪。
       { file: "src/backend/control/launch_render/mod.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },

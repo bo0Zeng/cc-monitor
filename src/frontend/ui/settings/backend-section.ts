@@ -531,7 +531,7 @@ export class BackendSection {
         if (said && what === "stop") said.textContent = stopSaid(end);
         console.info(`[P2s] ${origin} stop: ${end.stopped} ${end.pid ?? ""}`);
       }
-      if (what !== "stop") console.info(`[P2s] ${origin} start: ${await commands.backend_start({ origin })}`);
+      if (what !== "stop") await commands.backend_start({ origin });
     } catch (e) {
       failToast(what === "stop" ? copyText("backend.stop.failed") : copyText("backend.start.failed"), e);
     }

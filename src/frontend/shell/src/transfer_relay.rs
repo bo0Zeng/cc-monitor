@@ -19,7 +19,7 @@
 //! - 本机那条流断了 ⇒ 后端的票表随它一起丢、在册的一律撤；这一侧开在那条流上的中继一律收场（`failed`，原因说清），
 //!   不让看的人干等（[`fail_owned_by`]，两条本机读循环结束时各调一次）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;

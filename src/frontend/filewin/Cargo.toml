@@ -40,10 +40,6 @@ futures = "0.3"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
-# 上传块形（SFTP 起始目录不是后端 home 时窗口经后端链路分块写）要窗口自己算整份摘要交给提交当 `expect`。
-# 已在 lockfile（`0.10.9`，别的依赖带进来的），此处提升为直接依赖、零新包。
-sha2 = "0.10"
-
 # 〔「原生选文件框」〕文件窗口（独立 egui 进程）的上传 / 存到哪儿那两问用操作系统自己的选择框。
 # 与 `tauri-plugin-dialog` 同一个版本、同一组 feature（它的缺省 `gtk3` ＋ `common-controls-v6`）⇒ 锁文件不多一个 crate。
 rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-controls-v6"] }
@@ -128,6 +124,8 @@ wgpu = { version = "30", default-features = false, features = ["std", "parking_l
 win-manifest = { path = "../../common/win-manifest" }
 
 [dev-dependencies]
+# 判据自己算一份整份摘要去对上传块形交给提交的 `expect`（`tests/frontend/filewin/chunk_upload_tests.rs`）；已在 lockfile。
+sha2 = "0.10"
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../../common/test-home" }
 guard-core = { path = "../../common/guard-core" }
