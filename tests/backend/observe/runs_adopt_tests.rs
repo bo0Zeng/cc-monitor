@@ -197,3 +197,59 @@ fn skipped_children_keep_the_table_in_write_order() {
     assert_eq!(order, vec!["w2".to_string(), "w1".to_string()]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 子运行派出的孙运行：派它的那一行只写在子运行（父侧已收场、早不写了，不读）的记录里；
+/// 标签 · 类别 · 谁派的 · 后台派出照孙运行旁边派出那一刻落的那一份来，不靠读它的上一层。
+#[test]
+fn a_grandchild_keeps_its_label_when_its_spawner_is_not_read() {
+    let dir = scratch("nested");
+    let parent = dir.join(format!("{SID}.jsonl"));
+    append(&parent, &[spawn("t1", "L1"), fg_done("t1", "w1")]);
+    child(&parent, "w1", "t1", old());
+    let w1 = child_of(&parent, "w1");
+    let as_w1 = |l: String| {
+        l.replacen(
+            r#"{"type":"#,
+            r#"{"isSidechain":true,"agentId":"w1","type":"#,
+            1,
+        )
+    };
+    append(
+        &w1,
+        &[as_w1(spawn("t2", "L2")), as_w1(launched("t2", "g1"))],
+    );
+    let f = std::fs::OpenOptions::new().append(true).open(&w1).unwrap();
+    f.set_modified(SystemTime::now() - old()).unwrap();
+    let g1 = child_of(&parent, "g1");
+    append(&g1, &[child_tool("g1", "g1-0")]);
+    std::fs::write(
+        g1.with_file_name("agent-g1.meta.json"),
+        r#"{"agentType":"kg","description":"L2","toolUseId":"t2","parentAgentId":"w1","spawnDepth":2,"requestShape":"background"}"#,
+    )
+    .unwrap();
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(faces(), book.clone());
+    adopt(&parent, &mut track);
+    assert_eq!(
+        track.child_bytes(),
+        std::fs::metadata(&g1).unwrap().len(),
+        "只读还在跑的孙运行；派它的那个子运行已收场、早不写了，不读"
+    );
+    let g = book
+        .runs(SID)
+        .into_iter()
+        .find(|r| r.run == "g1")
+        .expect("孙运行在表里");
+    assert_eq!(
+        (
+            g.label.as_deref(),
+            g.kind.as_deref(),
+            g.parent.as_deref(),
+            g.background,
+            g.tool.as_deref()
+        ),
+        (Some("L2"), Some("kg"), Some("w1"), true, Some("t2")),
+        "孙运行的标签 · 类别 · 谁派的 · 后台派出照派出那一刻落的那一份"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -328,7 +328,15 @@ impl Sess {
                     g.info.tool = Some(tool);
                     return changed;
                 }
-                let known = self.labels.get(&tool).cloned();
+                // 派出那一次没读到（派它的那份记录没读）⇒ 照对上那一形自己带的（子运行那一侧落盘的那一份）。
+                let known = self.labels.get(&tool).cloned().or_else(|| {
+                    (l.label.is_some() || l.kind.is_some() || l.from.is_some()).then(|| Spawn {
+                        label: l.label.clone(),
+                        kind: l.kind.clone(),
+                        parent: l.from.clone(),
+                        at: None,
+                    })
+                });
                 let r = self.slot(&run, at);
                 let before = r.info.clone();
                 r.info.tool = Some(tool);
