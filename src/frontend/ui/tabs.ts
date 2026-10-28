@@ -41,7 +41,7 @@ import { TabMenu } from "./tab-menu";
 import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
-import { TabStore, type ActiveView } from "./tab-store";
+import { AllListed, TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
@@ -1002,8 +1002,7 @@ export class TabManager {
    * 活的已经宣告过，别的由那台答（手上的 tab 随名单报给它，它不在说的答已结束）。
    */
   markOriginSeen(origin: Origin): void {
-    this.store.seenOrigins.add(origin);
-    this.settleUnarrivedOnce(); // 壳那一刻先到了、这一台的流后报完 ⇒ 到这时才认「没回来」
+    this.listed.reported(origin); // 壳那一刻先到了、这一台的流后报完 ⇒ 到这时才算那一刻
   }
 
   /** 从「需手动」的入口跳到一个会话之后（焦点进答题块；主窗口挂进来）。 */
@@ -1031,28 +1030,33 @@ export class TabManager {
     this.view.wantFacts(t);
   }
 
-  /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */
-  private allListed = false;
+  /**
+   * 「各台都报完了」那一刻（`tab-store.ts` 的 `AllListed`：壳说过、且订着的每台都在自己那条流上报完了）：迁旧分组 · 交 {@link onAllListed}。
+   */
+  private readonly listed = new AllListed(() => {
+    this.settleUnarrivedOnce();
+    this.onAllListed();
+  });
   private unarrivedSettled = false;
   /** 组的账（主窗口接上；撕离出来的查看窗没有）。 */
   private groupBook: GroupBook | null = null;
-  /** 这个窗口订了会话流的那几台（[`setMachines`]）；空 ⇒ 只等壳那一刻（查看窗等不订整台的）。 */
-  private machines: Origin[] = [];
 
-  /** 这个窗口订了哪几台的会话流（主窗口起步时交一次）：「没回来的组员」要等每台都在自己那条流上报完了才认。 */
+  /** 「各台都报完了」那一刻（只一次；主窗口挂「启动时记住的那一格」没等到就明说）。 */
+  onAllListed: () => void = () => {};
+
+  /** 这个窗口订了哪几台的会话流（主窗口起步 · 机器表变了）：那一刻要等每台都在自己那条流上报完了才算。 */
   setMachines(origins: readonly Origin[]): void {
-    this.machines = [...origins];
+    this.listed.setMachines(origins);
   }
 
-  /** 「各台都报完了」那一刻（壳给的，`listed` 格的 `all`）。 */
+  /** 壳说各台都报完了（`listed` 格的 `all`）。落在某一台那条流上 ⇒ 别的台还没在自己那条流上报完就还不算那一刻。 */
   markAllListed(): void {
-    this.allListed = true;
-    this.settleUnarrivedOnce();
+    this.listed.shellSays();
   }
 
-  /** 这一趟里壳说过「各台都报完了」没有。 */
-  get everAllListed(): boolean {
-    return this.allListed;
+  /** 「各台都报完了」那一刻到过没有。 */
+  get allListed(): boolean {
+    return this.listed.settled;
   }
 
   /**
@@ -1060,9 +1064,7 @@ export class TabManager {
    * 5.0.3 之后第一版带它，再下一版连同迁移一起删。
    */
   private settleUnarrivedOnce(): void {
-    if (this.unarrivedSettled || !this.allListed || this.groupBook === null) return;
-    // 壳那一刻是在最后报完的那一台的流上到的；别的台那条流上它自己的宣告（组员的 tab）可能还在路上 ⇒ 每台都在自己那条流上报完了才认。
-    if (!this.machines.every((o) => this.store.seenOrigins.has(o))) return;
+    if (this.unarrivedSettled || !this.listed.settled || this.groupBook === null) return;
     this.unarrivedSettled = true;
     void this.migrateOldGroups(this.groupBook);
   }
