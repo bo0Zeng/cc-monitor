@@ -1256,7 +1256,7 @@ fn watch_loop(
     // 运行簿：整台一本，与各连接的流归位共用（流按它定归哪个运行）。
     state.set_book(book);
     // 预读交线程池（各会话并行、上限按 CPU 数；同一会话内部照顺序读）：做完经事件通道交回本线程装回（[`primed`]）。
-    state.pool = Some(PrimePool::start(events_tx.clone(), state.scans));
+    state.pool = Some(PrimePool::start(events_tx.clone()));
     // All frames go out through a FrameSink: 整台一份会话账本 ＋ 每条连接一份有界通道（各自记丢帧、各自的名单）。
     // 连接经 `Join` / `Leave` 进出；没有连接时帧照算、发不出去（会话账本 · 打标照常）。Never blocks this reader.
     let mut sink = FrameSink::hub();
@@ -1822,8 +1822,8 @@ struct ReaderState {
     annotations: crate::history::history_annotations::Table,
     /// 这台的组那一半上一次是什么样（[`crate::history::groups::mark`]）：注解文件重读时变了 ⇒ 推 `changed {groups}`。`None` ＝ 还没读过（头一次只记下、不推）。
     groups_mark: Option<u64>,
-    /// 冷开扫描图（生产由 [`watch_loop`] 装上全进程那一份）：一份记录这一趟起步时它留着那张图、或盘上落过骨架 ⇒ 照它接着读；
-    /// 轻读了一遍的大记录读完交给它扫一遍（落骨架，下一次起步照它）。`None`（夹具）⇒ 只轻读、不交。
+    /// 冷开扫描图（生产由 [`watch_loop`] 装上全进程那一份）：一份记录头一次宣告时预读照它起步（[`prime_file_cursor`]）。
+    /// `None`（夹具）⇒ 预读自己按块数行。
     scans: Option<&'static crate::observe::record_scan::RecordScans>,
     /// 预读的线程池（生产由 [`watch_loop`] 装上）。`None`（夹具）⇒ 同一个任务就地跑、就地装回（[`announce`]）。
     pool: Option<PrimePool>,
@@ -3780,9 +3780,7 @@ fn start_prime(
             dispatch_primes(state, sink);
         }
         None => {
-            let (done, later) = run_prime(job);
-            primed(done, state, sink);
-            scan_later(state.scans, later);
+            primed(run_prime(job), state, sink);
         }
     }
 }
@@ -4279,25 +4277,8 @@ pub(crate) struct PrimeDone {
     facts: Option<crate::history::search_rules::LabelFacts>,
 }
 
-/// 轻读了一遍的大记录交给冷开扫描图从头扫一遍（交回之后再扫：整行解析那一遍不挡「读完了」那一帧）：
-/// 它落下骨架，下一次起步照它接着读；界面随后来问的那几样也就在图里了。
-fn scan_later(
-    scans: Option<&'static crate::observe::record_scan::RecordScans>,
-    later: Vec<PathBuf>,
-) {
-    let Some(scans) = scans else {
-        return;
-    };
-    for p in later {
-        if let Err(e) = scans.get(&p) {
-            tracing::debug!("scan after prime for {} failed: {e}", p.display());
-        }
-    }
-}
-
 /// 线程池里跑的那一趟（夹具没有池时就地跑同一个函数）：几份记录照顺序预读，再取名字。只读盘、不碰 watcher 的账。
-/// 另回轻读过的大记录（调用方先交回、再交给冷开扫描图扫：[`scan_later`]）。
-fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<PathBuf>) {
+fn run_prime(job: PrimeJob) -> PrimeDone {
     let PrimeJob {
         sid,
         gen,
@@ -4306,23 +4287,20 @@ fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<PathBuf>) {
     } = job;
     let mut activity = None;
     let mut out = Vec::with_capacity(files.len());
-    let mut later = Vec::new();
     for (i, f) in files.into_iter().enumerate() {
-        let (done, said, skel) = prime_file_cursor(&sid, f);
+        let (done, said) = prime_file_cursor(&sid, f);
         if i == 0 {
             activity = said;
         }
         out.push(done);
-        later.extend(skel);
     }
-    let done = PrimeDone {
+    PrimeDone {
         sid,
         gen,
         files: out,
         activity,
         facts: label.map(|p| crate::history::listing::label_facts_of(&p)),
-    };
-    (done, later)
+    }
 }
 
 /// Batch8-F25：宣告之后的预读——把 cursor 与 seq 计数器推进到当前
@@ -4333,11 +4311,7 @@ fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<PathBuf>) {
 fn prime_file_cursor(
     session_id: &str,
     job: FilePrime,
-) -> (
-    FileDone,
-    Option<crate::agents::SessionActivity>,
-    Option<PathBuf>,
-) {
+) -> (FileDone, Option<crate::agents::SessionActivity>) {
     let FilePrime {
         path,
         key,
@@ -4359,39 +4333,42 @@ fn prime_file_cursor(
         gone,
         bytes: 0,
     };
-    // 进程里还没有这份的游标（重启 · 头一次宣告）⇒ 冷开扫描图留着这一份的图、或盘上落过骨架 ⇒ 照那张图起步：
-    // 没变不读，变长了只读追加的那一截（读的那一截照样整行解析、骨架过门槛就重落）。
+    // 进程里还没有这份的游标（重启 · 头一次宣告）⇒ 照冷开扫描图起步（[`RecordScans::get`]）：游标 · 行数 · 链 · 子运行 · 活动全从那一张取，
+    // 界面随后问的那几样也在同一张里 —— 一份记录冷开只读一遍。留着那张图 · 盘上落过骨架 ⇒ 没变不读、变长了只读追加的那一截；
+    // 同一份正在扫 ⇒ 等它。
     let fresh = prev == ReadCursor::default() && probe.is_none();
     if let Some(scans) = scans.filter(|_| fresh) {
-        let before = scans.bytes_read();
-        if let Some(map) = scans.kept(&path) {
-            if let Some(r) = runs.as_ref() {
-                r.prime(session_id, &said_lines(map.runs()));
-            }
-            let done = FileDone {
-                path: path.clone(),
-                key,
-                read: Some(FileRead {
-                    cursor: ReadCursor {
-                        consumed: map.end,
-                        seen_len: map.seen().max(map.end),
-                    },
-                    tail: map.witness().to_vec(),
-                    seq: map.lines(),
-                    chain: chain.map(|_| map.chain().clone()),
-                }),
-                gone: false,
-                bytes: scans.bytes_read() - before,
-            };
-            return (done, map.activity(), None);
+        let map = match scans.get(&path) {
+            Ok(m) => m,
+            Err(e) => return (none(key, e.kind() == std::io::ErrorKind::NotFound), None),
+        };
+        if let Some(r) = runs.as_ref() {
+            r.prime(session_id, &said_lines(map.runs()));
         }
+        let done = FileDone {
+            path: path.clone(),
+            key,
+            read: Some(FileRead {
+                cursor: ReadCursor {
+                    consumed: map.end,
+                    seen_len: map.seen().max(map.end),
+                },
+                tail: map.witness().to_vec(),
+                seq: map.lines(),
+                chain: chain.map(|_| map.chain().clone()),
+            }),
+            gone: false,
+            // 扫描图读的记在它自己的账上（[`RecordScans::bytes_read`]）。
+            bytes: 0,
+        };
+        return (done, map.activity());
     }
-    // 冷接时游标在 0、而主记录可能上百 MB ⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
+    // 接着此刻的游标读（重新宣告；没有扫描图的夹具从 0 读）⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
     // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：那句话由之后的 `process_jsonl` 说。
     let mut reader = match PrimeReader::open(&path, prev, probe.as_deref()) {
         Ok(r) => r,
-        Err(Look::Gone) => return (none(key, true), None, None),
-        Err(_) => return (none(key, false), None, None),
+        Err(Look::Gone) => return (none(key, true), None),
+        Err(_) => return (none(key, false), None),
     };
     let from_zero = reader.from == 0;
     // 从 0 起 ⇒ 行号从 0 数、链从头记；否则接着此刻的计数与链。
@@ -4417,7 +4394,7 @@ fn prime_file_cursor(
     while let Some(block) = reader.next_block() {
         let Ok(block) = block else {
             // 读到一半出错：游标不装（至少一次语义，下一趟再来）；这一趟记的链一起扔掉。
-            return (none(key, false), None, None);
+            return (none(key, false), None);
         };
         // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行），不会有残行。
         let (n, next) = count_new_lines_at(
@@ -4474,10 +4451,6 @@ fn prime_file_cursor(
         c.walked()
     );
     let bytes = reader.probed + (reader.len - reader.from);
-    // 头一次接上的大记录（从 0 读完）⇒ 交回之后交给冷开扫描图扫一遍、落骨架（下一次起步照它）。
-    let later = scans
-        .filter(|s| fresh && s.would_keep(reader.len))
-        .map(|_| path.clone());
     (
         FileDone {
             path: path.clone(),
@@ -4492,7 +4465,6 @@ fn prime_file_cursor(
             bytes,
         },
         activity,
-        later,
     )
 }
 
@@ -4643,15 +4615,10 @@ pub(crate) struct PrimePool {
 }
 
 impl PrimePool {
-    fn start(
-        events: std::sync::mpsc::Sender<WatchEvent>,
-        scans: Option<&'static crate::observe::record_scan::RecordScans>,
-    ) -> Self {
+    fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
         PrimePool {
             pool: crate::common::par::Pool::new("record-prime", move |job| {
-                let (done, later) = run_prime(job);
-                let _ = events.send(WatchEvent::Primed(done));
-                scan_later(scans, later);
+                let _ = events.send(WatchEvent::Primed(run_prime(job)));
             }),
             queue: std::collections::VecDeque::new(),
             in_flight: 0,

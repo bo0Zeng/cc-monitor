@@ -468,11 +468,6 @@ impl RecordScans {
         self.read.load(Ordering::Relaxed)
     }
 
-    /// 这么长的记录扫完会不会落骨架（有家 ＋ 够大）。
-    pub(crate) fn would_keep(&self, len: u64) -> bool {
-        self.skeletons().is_some_and(|h| h.wants(len))
-    }
-
     fn skeletons(&self) -> Option<&Skeletons> {
         self.home.as_ref()
     }
@@ -494,22 +489,6 @@ impl RecordScans {
             .find(|s| s.path == path && s.stamp == stamp)?;
         s.used = tick;
         Some(s.map.clone())
-    }
-
-    /// 实时跟读起步用：这一份的图留着、或盘上落过骨架 ⇒ 照它接着扫到此刻的那一张（同 [`Self::get`]：没变不读，变长了只读追加的那一截）；
-    /// 都没有 · 正有人在从头扫它 ⇒ `None`（调用方自己轻读一遍行数与链，不在这里等一整遍解析）。
-    pub(crate) fn kept(&self, path: &Path) -> Option<Arc<ScanMap>> {
-        {
-            let g = self.lock();
-            if g.flights.iter().any(|(p, _)| p == path) {
-                return None;
-            }
-            let held = g.slots.iter().any(|s| s.path == path);
-            if !held && !self.skeletons().is_some_and(|h| h.has(path)) {
-                return None;
-            }
-        }
-        self.get(path).ok()
     }
 
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
