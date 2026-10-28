@@ -175,24 +175,24 @@ type AwaitEars = (
     std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
 );
 
-/// await 目录那道耳朵（notify 原生监听）：除「打开了」以外的每一声都递进 channel。notify 7 起 inotify 也报打开，
-/// 不滤的话 [`drain_await_dir`] 一读目录 · 读记录就又叫醒自己，空转不停。
+/// await 目录那道耳朵（notify 原生监听）：每一声原样进 channel，叫不叫醒由 [`wakes`] 判。
 fn await_ears(await_dir: &Path) -> notify::Result<AwaitEars> {
     use notify::Watcher as _;
     let (tx, rx) = std::sync::mpsc::channel();
-    let mut ears = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        let opened = res.as_ref().is_ok_and(|ev| {
-            matches!(
-                ev.kind,
-                notify::EventKind::Access(notify::event::AccessKind::Open(_))
-            )
-        });
-        if !opened {
-            let _ = tx.send(res);
-        }
-    })?;
+    let mut ears = notify::recommended_watcher(tx)?;
     ears.watch(await_dir, RecursiveMode::NonRecursive)?;
     Ok((ears, rx))
+}
+
+/// 这一声要不要再扫一遍 await 目录：「打开了」不算。notify 7 起 inotify 也报打开，不滤的话 [`drain_await_dir`]
+/// 一读目录 · 读记录就又叫醒自己，空转不停。
+fn wakes(res: &notify::Result<notify::Event>) -> bool {
+    !res.as_ref().is_ok_and(|ev| {
+        matches!(
+            ev.kind,
+            notify::EventKind::Access(notify::event::AccessKind::Open(_))
+        )
+    })
 }
 
 fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
@@ -207,10 +207,11 @@ fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
     // 启动时也扫一遍现有的（monitor 起来之前开的 shell 留下的那几份）
     drain_await_dir(&this, &await_dir);
 
-    while rx.recv().is_ok() {
-        // 落一份记录要响好几声：50ms 内连着来的并成一趟。
-        while rx.recv_timeout(Duration::from_millis(50)).is_ok() {}
-        drain_await_dir(&this, &await_dir);
+    // 记录由接入块先写 `.part` 再改名落成（不会读到半份）⇒ 不去抖，来一声扫一遍；扫是幂等的。
+    for res in rx.iter() {
+        if wakes(&res) {
+            drain_await_dir(&this, &await_dir);
+        }
     }
 }
 

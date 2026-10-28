@@ -1177,7 +1177,7 @@ fn a_registration_whose_shell_is_already_gone_is_dropped_on_load() {
 }
 
 /// await 目录那道耳朵：自己读一下目录 · 读一份记录，不算「有新记录」。notify 7 起 inotify 也报「打开了」，不滤的话
-/// `drain_await_dir` 一读目录就又叫醒自己，50ms 一趟空转不停。「没叫醒」是个没发生 ⇒ 读完紧跟着写一份收尾记号，
+/// `drain_await_dir` 一读目录就又叫醒自己，空转不停。「没叫醒」是个没发生 ⇒ 读完紧跟着写一份收尾记号，
 /// 记号那一声到了就停（排在它前面的都过完了）。
 #[cfg(target_os = "linux")]
 #[test]
@@ -1189,7 +1189,8 @@ fn reading_the_await_dir_does_not_wake_its_watcher() {
     std::fs::write(&rec, b"{}").unwrap();
     let (_ears, rx) = await_ears(&dir).expect("await 目录的耳朵起不来");
 
-    let _ = std::fs::read_dir(&dir).unwrap().count();
+    // 打开目录（扫目录头一步就是它）· 读一份记录。
+    drop(std::fs::File::open(&dir).unwrap());
     let _ = std::fs::read(&rec).unwrap();
     let settle = dir.join("zz-settle");
     std::fs::write(&settle, b"").unwrap();
@@ -1201,7 +1202,8 @@ fn reading_the_await_dir_does_not_wake_its_watcher() {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         match rx.recv_timeout(left) {
             Ok(Ok(ev)) if ev.paths.contains(&settle) => settled = true,
-            Ok(got) => before.push(format!("{got:?}")),
+            Ok(got) if wakes(&got) => before.push(format!("{got:?}")),
+            Ok(_) => {}
             Err(_) => break,
         }
     }
