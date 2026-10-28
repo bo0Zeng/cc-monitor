@@ -859,7 +859,7 @@ export class TabBarView {
    * `refreshTabBar` 的**帧末合批**入口。
    *
    * 排一次位（`tabBarRefreshScheduled`）+ 无 rAF 时 `setTimeout` 兜底，
-   * 范式与 `tab-stream-view.ts` 的 `scheduleIdleMaterialize` 一致（拆之前两者同住 `tabs.ts`）。
+   * 范式与 `tab-cold-reads.ts` 的 `IdleSlot` 一致（排一个；没有就兜底）。
    * ⚠ 只给 live 路那一处用，别把用户动作触发的调用点也改过来（理由写在调用处）。
    */
   private tabBarRefreshScheduled = false;
