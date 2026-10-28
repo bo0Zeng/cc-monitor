@@ -155,7 +155,7 @@ class SentRequestsTest {
                     SessionQueuePut.args("s", "m", "hi", 1L, rewind = Rewind("u", RewindHow.CODE_AND_CONVERSATION, RewindWhen.NOW)),
                 ),
             SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
-            SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s")),
+            SessionRewindOptions.COMMAND to listOf(SessionRewindOptions.args("s", "u")),
             SessionsNeeds.COMMAND to listOf(null),
             TerminalInput.COMMAND to listOf(TerminalInput.text("s", "hi"), TerminalInput.key("s", "esc")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),

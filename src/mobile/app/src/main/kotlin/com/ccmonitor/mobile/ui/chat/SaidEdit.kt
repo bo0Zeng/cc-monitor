@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.cache.ChatCache
@@ -162,10 +163,10 @@ internal class SaidEdits(
         keep()
     }
 
-    /** 发送那一下：问会话那台此刻给哪几项。 */
-    suspend fun options(): RewindPick {
+    /** 发送那一下：问会话那台，退到 [uuid] 那一句之前此刻给哪几项。 */
+    suspend fun options(uuid: String): RewindPick {
         val s = sid() ?: return RewindPick.Asking
-        return when (val r = link.call(SessionRewindOptions.COMMAND, SessionRewindOptions.args(s), INPUT_MS)) {
+        return when (val r = link.call(SessionRewindOptions.COMMAND, SessionRewindOptions.args(s, uuid), INPUT_MS)) {
             is Reply.Ok ->
                 SessionRewindOptions.of(r.data)?.let { RewindPick.Got(it) }
                     ?: RewindPick.Failed(unreadableReply(machine, SessionRewindOptions.COMMAND, r.data.toString()).text)
@@ -189,14 +190,15 @@ internal class SaidEdits(
 /** 聊天屏交给流的那几样：落编辑草稿 · 问选项 · 确认那一下 · 撤回还没送进的那一句（按编号）。 */
 data class SaidActions(
     val edit: (uuid: String, text: String) -> Unit,
-    val options: suspend () -> RewindPick,
+    val options: suspend (uuid: String) -> RewindPick,
     val send: (uuid: String, text: String, how: RewindHow, whn: RewindWhen) -> Unit,
     val recall: (id: String) -> Unit,
 )
 
-/** 选项里缺省那一项（「怎么退」没有 ⇒ `null`：那一家不支持）；「什么时候退」没给 ⇒ 等这一轮跑完。 */
+/** 选项里缺省那一项（只在能选的里挑；「怎么退」没有能选的 ⇒ `null`：退不了）；「什么时候退」没给 ⇒ 等这一轮跑完。 */
 internal fun defaultsOf(o: RewindOptions): Pair<RewindHow, RewindWhen>? {
-    val how = (o.how.firstOrNull { it.default } ?: o.how.firstOrNull())?.how ?: return null
+    val on = o.how.filter { it.enabled }
+    val how = (on.firstOrNull { it.default } ?: on.firstOrNull())?.how ?: return null
     val whn = (o.`when`.firstOrNull { it.default } ?: o.`when`.firstOrNull())?.`when` ?: RewindWhen.AFTER_TURN
     return how to whn
 }
@@ -228,7 +230,7 @@ internal fun saidHooks(
     asking?.let { (u, text) ->
         LaunchedEffect(u.key, text) {
             pick = RewindPick.Asking
-            pick = said.options()
+            u.sourceUuid?.let { pick = said.options(it) }
         }
         RewindSheet(
             pick = pick,
@@ -340,13 +342,15 @@ private fun Choices(
 ) {
     val first = defaultsOf(o)
     if (first == null) {
+        // 一项都不能选：各项为什么照写，不给确认。
+        o.how.forEach { r -> Choice(r.text, false, enabled = false, why = r.why) {} }
         Text(o.said.orEmpty())
         return
     }
     var how by remember(o) { mutableStateOf(first.first) }
     var whn by remember(o) { mutableStateOf(first.second) }
     Text(copyText("mobSaidEdit.pick.how"), style = MaterialTheme.typography.labelMedium)
-    o.how.forEach { r -> Choice(r.text, how == r.how) { how = r.how } }
+    o.how.forEach { r -> Choice(r.text, how == r.how, enabled = r.enabled, why = r.why) { how = r.how } }
     if (o.`when`.isNotEmpty()) {
         Text(copyText("mobSaidEdit.pick.when"), style = MaterialTheme.typography.labelMedium)
         o.`when`.forEach { r -> Choice(r.text, whn == r.`when`) { whn = r.`when` } }
@@ -359,10 +363,14 @@ private fun Choices(
 private fun Choice(
     text: String,
     selected: Boolean,
+    enabled: Boolean = true,
+    why: String? = null,
     onPick: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().selectable(selected = selected, onClick = onPick), verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected, onClick = onPick)
-        Text(text)
+    // 不能选：灰着、点不了，下面写那台那一句为什么。
+    Row(Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, onClick = onPick), verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onPick, enabled = enabled)
+        Text(text, color = if (enabled) Color.Unspecified else LocalAppTokens.current.textFaint)
     }
+    why?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
