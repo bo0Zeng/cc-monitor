@@ -849,6 +849,12 @@
   opacity: 1;
 }
 
+/* 人说的气泡本身就是流里的那一行：行上的 `content-visibility: auto`（`.stream-content > *`）自带绘制隔离，
+   贴在气泡左边、整颗落在行框外的「编辑」会被裁掉、也点不着 ⇒ 挂了「编辑」的那一行不做隔离（同过程行那一条；气泡短，代价可忽略）。 */
+.stream-content > .has-said-edit {
+  content-visibility: visible;
+}
+
 /* assistant 消息：full-width、无背景、无色条 */
 .card-assistant {
   background: transparent;

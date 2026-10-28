@@ -890,6 +890,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 进出「需手动」· 停了不在这里判：那台照它的活会话表推 `changed {needs}`（下面 `needs` 那一支）。
     onSessionFace: (sessionId, face) => {
       tabs.onFace(sessionId, face);
+      // 开着编辑框的那条会话忙闲一变 ⇒ 它再问一次退法（只交脸上那一格，在不在干活归那台判）。
+      saidEdit.activity(sessionId, face.life.is === "live" ? face.life.activity : undefined);
     },
     onSessionName: (sessionId, label, labelProject) => tabs.updateName(sessionId, label, labelProject),
     // 某台机器的活会话清单报完了。

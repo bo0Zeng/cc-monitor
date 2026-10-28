@@ -23353,6 +23353,12 @@
       "zh": "编辑",
       "args": []
     },
+    "saidEdit.card.pending": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已改一版在待发",
+      "args": []
+    },
     "saidEdit.bar.hint": {
       "kind": "body",
       "role": "说明",
@@ -23365,11 +23371,14 @@
       "zh": "取消",
       "args": []
     },
-    "saidEdit.bar.send": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "发送",
-      "args": []
+    "saidEdit.bar.keys": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "回车回退并发送 · Shift+回车换行 · Esc 取消",
+      "args": [],
+      "waive": {
+        "C-W12": "编辑框的固定键（不可改绑），同终端输入框那一句"
+      }
     },
     "saidEdit.pick.loading": {
       "kind": "body",
