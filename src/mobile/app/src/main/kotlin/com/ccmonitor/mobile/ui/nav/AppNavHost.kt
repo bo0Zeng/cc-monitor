@@ -55,7 +55,6 @@ import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
-import com.ccmonitor.mobile.ui.session.SessionsOverviewScreen
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorScreen
 import com.ccmonitor.mobile.ui.settings.AccountsScreen
 import com.ccmonitor.mobile.ui.settings.Here
@@ -98,17 +97,6 @@ private fun AppNavGraph(
         launchRoute(nav)
         hostsRoute(nav, tabManager, onConnect)
         chatRoutes(nav, tabManager, chatController)
-        composable(Screen.SessionsOverview.route) {
-            // 终端会话总览；「+新会话」进「新建会话 · 选主机」页。
-            SessionsOverviewScreen(
-                onOpen = { key -> nav.navigate("session/$key") },
-                onNewSession = { nav.navigate(Screen.NewSessionHostPicker.route) },
-                onBack = { nav.popBackStack() },
-            )
-        }
-        composable(Screen.NewSessionHostPicker.route) {
-            NewSessionHostPickerScreen(nav, tabManager)
-        }
         composable(Screen.Settings.route) {
             // 设置面上的去处住 `settingsEntries()`，这里只把路由交给 nav。
             HereOrNone { here -> SettingsScreen(here, onBack = { nav.popBackStack() }, onNavigate = { route -> nav.navigate(route) }, onUsage = { nav.navigate(Screen.Usage.route) }) }
@@ -220,36 +208,8 @@ private fun NavGraphBuilder.sessionRoute(
 }
 
 /**
- * 「新建会话 · 选主机」页：复用 [HostListScreen]，但终端连接一律 `forceNew = true`；「文件」照常去重。
- * 选中后 `popUpTo` 弹出本页，返回键不回到这里，也不留 force-new 状态。
- */
-@Composable
-private fun NewSessionHostPickerScreen(
-    nav: NavHostController,
-    tabManager: SessionTabManager,
-) {
-    // 选中即进会话并弹出本页。文件 tab 去重可能命中已在栈顶的 tab，所以加 launchSingleTop。
-    fun openAndLeave(key: String) {
-        nav.navigate("session/$key") {
-            launchSingleTop = true
-            popUpTo(Screen.NewSessionHostPicker.route) { inclusive = true }
-        }
-    }
-    HostListScreen(
-        // 本页只开终端 tab，与 agent 种类无关。
-        onConnect = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(), forceNew = true)) },
-        onAddHost = { nav.navigate("host/new") },
-        onIdentities = { nav.navigate(Screen.Identities.route) },
-        onFiles = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Files)) },
-        onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
-        newSessionMode = true,
-        title = copyText("mobNav.newTab.title"),
-    )
-}
-
-/**
  * 宿主一个 tab。VM 挂在 [SessionTabManager] 的 per-key store 上（覆盖 `LocalViewModelStoreOwner`），
- * 跨「总览 ↔ tab」导航保活；只有 `close(key)` 才清掉 store、释放连接。
+ * 跨 tab 导航保活；只有 `close(key)` 才清掉 store、释放连接。
  * tab 已关则 [onGone] 退回。按 [SessionTabManager.TabTarget] 分派终端屏或文件屏，并挂 tab 面板 [SessionTabsSheet]。
  */
 @Composable
