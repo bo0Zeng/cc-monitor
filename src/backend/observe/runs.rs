@@ -544,6 +544,26 @@ impl RunBook {
         })
     }
 
+    /// 这个子运行已经收场了（表里收过场的 · 被挤出的已收场的）⇒ 它最近一次动静记成 `seen`（它的记录最后写的那一刻），回真；
+    /// 没收场 · 簿里没有 ⇒ 假。
+    pub(crate) fn ended_at(&self, sid: &str, run: &str, seen: SystemTime) -> bool {
+        self.with(|m| {
+            let Some(s) = m.get_mut(sid) else {
+                return false;
+            };
+            if s.gone.contains_key(run) {
+                return true;
+            }
+            match s.find(run) {
+                Some(r) if r.closed.is_some() => {
+                    r.seen = seen;
+                    true
+                }
+                _ => false,
+            }
+        })
+    }
+
     /// 这个会话此刻有几个在跑的子运行。
     pub(crate) fn running(&self, sid: &str) -> usize {
         self.with(|m| {
@@ -715,6 +735,8 @@ pub(crate) struct RunTrack {
     pub(crate) book: Arc<RunBook>,
     parents: HashMap<String, Vec<PathBuf>>,
     children: HashMap<PathBuf, ChildCursor>,
+    /// 到此刻从子运行记录读了多少字节（判据数它；收下会话那一趟照它判要不要把放掉的内存还回去）。
+    child_read: u64,
 }
 
 impl RunTrack {
@@ -724,7 +746,13 @@ impl RunTrack {
             book,
             parents: HashMap::new(),
             children: HashMap::new(),
+            child_read: 0,
         }
+    }
+
+    /// 到此刻从子运行记录读了多少字节。
+    pub(crate) fn child_bytes(&self) -> u64 {
+        self.child_read
     }
 
     /// 这一家有没有子运行（没有 ⇒ 下面这些全是空转，watcher 直接跳过）。
@@ -775,7 +803,9 @@ impl RunTrack {
         changed
     }
 
-    /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来、从头读一遍。
+    /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来。
+    /// 簿里已经收场（父侧那一截在这之前补进来了，[`Self::prime`]）、记录又 [`STALE_AFTER`] 之内没再写的，只留游标、不读正文 ——
+    /// 没读的那几格（工具调用次数 · 最近一件事）只有它自己的记录说得出；它再被写 ⇒ 文件事件照旧从 0 读起。其余从头读一遍。
     /// 之后新长出来的子运行记录靠它自己的文件事件进来（[`Self::on_path`]）。回：运行表变没变。
     pub(crate) fn adopt(&mut self, sid: &str, parent: &Path) -> bool {
         if !self.has_children() {
@@ -790,22 +820,38 @@ impl RunTrack {
         self.discover_under(sid, parent)
     }
 
+    /// 收进 `parent` 底下此刻在盘上的子运行记录（已收进来的不动；收场又久未再写的不读，[`Self::adopt`]）。
     fn discover_under(&mut self, sid: &str, parent: &Path) -> bool {
         let mut changed = false;
+        let now = crate::common::time::now();
         for c in self.faces.sources(parent) {
             let key = path_key(&c);
-            if !self.children.contains_key(&key) {
-                self.children.insert(
-                    key.clone(),
-                    ChildCursor {
-                        sid: sid.to_string(),
-                        path: c,
-                        consumed: 0,
-                        linked: false,
-                    },
-                );
-                changed |= self.read_child(&key);
+            if self.children.contains_key(&key) {
+                continue;
             }
+            let mut cur = ChildCursor {
+                sid: sid.to_string(),
+                path: c,
+                consumed: 0,
+                linked: false,
+            };
+            let written = Ro::metadata(&cur.path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .filter(|w| now.duration_since(*w).unwrap_or_default() >= STALE_AFTER);
+            if let Some(written) = written {
+                if let Some(l) = self.faces.spawned(&cur.path) {
+                    let run = l.run.clone();
+                    cur.linked = true;
+                    changed |= self.book.spawned(sid, l, written);
+                    if run.is_some_and(|r| self.book.ended_at(sid, &r, written)) {
+                        self.children.insert(key, cur);
+                        continue;
+                    }
+                }
+            }
+            self.children.insert(key.clone(), cur);
+            changed |= self.read_child(&key);
         }
         changed
     }
@@ -872,6 +918,7 @@ impl RunTrack {
             crate::common::append_read::Blocks::new(f, crate::common::append_read::READ_BLOCK);
         while let Ok(Some(whole)) = blocks.next() {
             cur.consumed += whole.len() as u64;
+            self.child_read += whole.len() as u64;
             for line in whole[..whole.len() - 1].split(|&b| b == b'\n') {
                 if let Some(v) = super::lines::parse(line) {
                     changed |= self.book.record(&self.faces, &sid, &v, Some(written));
@@ -1122,6 +1169,11 @@ fn dressed(mut i: RunInfo, kids: usize) -> RunInfo {
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/runs_testing.rs"]
 pub(crate) mod testing;
+
+/// 收下会话时只为没收场、或最近还在写的子运行从头读。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/runs_adopt_tests.rs"]
+mod adopt_tests;
 
 /// 子运行的个数照实说（A2-11）。
 #[cfg(test)]
