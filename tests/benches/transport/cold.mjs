@@ -66,7 +66,9 @@ async function paged(name, cmd, mk, nextOf) {
   let at = 0, pages = 0, bytes = 0, ms = 0, last;
   for (;;) {
     last = await call(cmd, mk(at));
-    pages++, (bytes += last.bytes), (ms += last.ms);
+    pages++;
+    bytes += last.bytes;
+    ms += last.ms;
     if (!last.ok) break;
     const nx = nextOf(last.data);
     if (nx === null || nx === undefined || nx <= at) break;
@@ -87,10 +89,13 @@ if (t.ok) {
   const end = t.data.plan?.end ?? Infinity;
   while (!eof && at < end) {
     const r = await call("history-read", { path, offset: at, until: end });
-    tailPages++, (tailBytes += r.bytes), (tailMs += r.ms);
+    tailPages++;
+    tailBytes += r.bytes;
+    tailMs += r.ms;
     if (!r.ok || r.data.next <= at) break;
     rows.push(...r.data.rows);
-    (eof = r.data.eof), (at = r.data.next);
+    eof = r.data.eof;
+    at = r.data.next;
   }
 }
 note("history-tail(+read)", tailPages, tailBytes, tailMs, t);

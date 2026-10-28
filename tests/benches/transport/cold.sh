@@ -72,7 +72,7 @@ for i in $(seq 1 "$rounds"); do
     kill "$(cat "$k/backend.pid")" 2>/dev/null || true
     rm -f "$k/backend.pid"
   fi
-  echo "$out" | sed "s/^/[$i] /"
+  while IFS= read -r l; do printf '[%s] %s\n' "$i" "$l"; done <<<"$out"
   totals+=("$(echo "$out" | tail -1)")
 done
 printf '%s\n' "${totals[@]}" | node -e '
