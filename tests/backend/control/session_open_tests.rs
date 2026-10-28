@@ -23,6 +23,8 @@ fn row(name: &str, sid: Option<&str>, agent: bool) -> TermEntry {
 /// 替身：名单 · 记录 · 活进程是给定的；铸 · 建 · 键入 · 预标只记下来。
 struct Rig {
     rows: Option<Vec<TermEntry>>,
+    /// 托管那几行（名单并在 tmux 那几行后面）。
+    hosted: Vec<TermEntry>,
     list_err: Option<&'static str>,
     gone: bool,
     live: Vec<u32>,
@@ -52,6 +54,7 @@ impl Rig {
     fn new(rows: Option<Vec<TermEntry>>) -> Self {
         Self {
             rows,
+            hosted: vec![],
             list_err: None,
             gone: false,
             live: vec![],
@@ -127,7 +130,7 @@ impl Rig {
                 Some(c) => Err((c, "列不出".to_string())),
                 None => Ok(crate::control::session_batch::Listed::of(
                     self.rows.clone(),
-                    vec![],
+                    self.hosted.clone(),
                 )),
             }
         };
@@ -400,6 +403,44 @@ fn look_attaches_without_starting_anything() {
         .unwrap_err();
     assert_eq!(err.0, "not_in_tmux");
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
+}
+
+/// ★ 接回托管终端：按 sid · 按名认到托管那一行 ⇒ 那一行是瘦客户端 `-- --attach <句柄>`，`session` 报终端名；
+/// 这台没 tmux 也接得上；一个都没认到、又没 tmux ⇒ 照旧 `place_unavailable`。
+#[test]
+fn look_attaches_a_hosted_terminal_by_handle() {
+    let hosted = TermEntry {
+        host: crate::wire::TerminalHost::Managed,
+        name: "box-cc".into(),
+        terminal: "h-1".into(),
+        sid: Some(A.into()),
+        agent: true,
+    };
+    for tmux in [Some(vec![row("x", None, true)]), None] {
+        let rig = Rig {
+            hosted: vec![hosted.clone()],
+            ..Rig::new(tmux.clone())
+        };
+        let o = rig
+            .open(json!({ "what": { "kind": "look", "sid": A } }))
+            .unwrap();
+        assert_eq!(
+            (o.landed, o.session.as_deref()),
+            (Landed::Running, Some("box-cc")),
+            "tmux {tmux:?}"
+        );
+        let line = o.line.unwrap();
+        assert!(line.ends_with("-- --attach h-1"), "{line}");
+        let o = rig
+            .open(json!({ "what": { "kind": "look", "session": "box-cc" } }))
+            .unwrap();
+        assert!(o.line.unwrap().ends_with("-- --attach h-1"));
+        assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
+    }
+    let err = Rig::new(None)
+        .open(json!({ "what": { "kind": "look", "sid": A } }))
+        .unwrap_err();
+    assert_eq!(err.0, "place_unavailable");
 }
 
 /// 新起：放在 tmux ⇒ 后台起好、回会话名与接进去那一行；直路 ⇒ 回起会话那一行。

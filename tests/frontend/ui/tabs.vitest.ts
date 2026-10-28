@@ -1494,14 +1494,41 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "box-cc" }));
   });
 
-  it("★ 远端：会话在托管终端里 ⇒ 出［结束］；［在终端里打开］不出（接回只认 tmux 会话）", async () => {
+  it("★ 本机：会话在托管终端里 ⇒ 出［在终端里打开］，点了恰好一问 `session-open {look, sid, local}`（那一行由那台渲：瘦客户端接句柄）", async () => {
+    inHostedTerminal("k1abcdef", "running");
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
+    rightClick("k1abcdef");
+    expect(attachBtn()?.disabled, "还在问：先画出项、不可点").toBe(true);
+    await flush();
+    expect(attachBtn()?.disabled).toBe(false);
+    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "k1abcdef" }, local: true });
+    expect(opens()).toEqual([[LOCAL_ORIGIN, { what: { kind: "look", sid: "k1abcdef" }, local: true }]]);
+  });
+
+  it("本机：会话在 tmux 里跑着 ⇒ 不出［在终端里打开］（ccm 开的那个窗口 ·［切到终端］照旧）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_local_tmux"
+        ? Promise.resolve([{ name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true }])
+        : Promise.resolve(undefined),
+    ));
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
+    rightClick("k1abcdef");
+    await flush();
+    expect(attachBtn()).toBeNull();
+    expect(killBtn()?.disabled).toBe(false);
+  });
+
+  it("★ 远端：会话在托管终端里 ⇒ 出［结束］与［在终端里打开］（接回那一条那台两种宿主都认）", async () => {
     inHostedTerminal("A", "running");
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
     await flush();
-    expect(attachBtn()).toBeNull();
+    expect(attachBtn()?.disabled).toBe(false);
     expect(killBtn()?.disabled).toBe(false);
     expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "box-cc" }));
+    rightClick("A");
+    await flush();
+    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
   });
 
   it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
