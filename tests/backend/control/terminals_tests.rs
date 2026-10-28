@@ -1237,7 +1237,9 @@ async fn old_host(sock: std::path::PathBuf) -> tokio::task::JoinHandle<bool> {
                         holder: None,
                         screen: String::new(),
                     };
-                    write_frame(&mut s, &Frame::Ctl(welcome)).await.expect("回 welcome");
+                    write_frame(&mut s, &Frame::Ctl(welcome))
+                        .await
+                        .expect("回 welcome");
                 }
                 Frame::Ctl(Ctl::Say { .. }) => said = true,
                 Frame::Ctl(Ctl::Bye) => break,

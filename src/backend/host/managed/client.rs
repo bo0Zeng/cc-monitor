@@ -136,7 +136,10 @@ pub(crate) fn say(sock: &Path, bytes: &[u8]) -> std::io::Result<bool> {
         bye(&s);
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            format!("hosted terminal speaks proto {proto}, say needs {}", wire::SAY_SINCE),
+            format!(
+                "hosted terminal speaks proto {proto}, say needs {}",
+                wire::SAY_SINCE
+            ),
         ));
     }
     send(&s, &Frame::Ctl(Ctl::Say { text }))?;
