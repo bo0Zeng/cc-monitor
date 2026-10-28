@@ -9,6 +9,7 @@ import { ControlError } from "./control-said";
 import type { Origin } from "./ipc/origin";
 import type { PlanAckReply } from "./generated/PlanAckReply";
 import type { PlanArchived } from "./generated/PlanArchived";
+import type { PlanAsk } from "./generated/PlanAsk";
 import type { PlanReturnReply } from "./generated/PlanReturnReply";
 import type { PlanBlock } from "./generated/PlanBlock";
 import type { PlanCell } from "./generated/PlanCell";
@@ -49,6 +50,7 @@ const READ_BUDGET_MS = 25_000;
 // 线上形状由后端 `plan/wire.rs` 经 ts-rs 生成（不手写），原样交给画的那几处。
 export type {
   PlanAckReply,
+  PlanAsk,
   PlanReturnReply,
   PlanArchived,
   PlanBlock,
@@ -141,6 +143,14 @@ export async function ackNeed(origin: Origin, workspace: string, slice: string, 
   const req = { workspace, slice, key };
   const budget = budgetWithin(READ_BUDGET_MS);
   return on ? callTyped(origin, "plan-ack", req, budget) : callTyped(origin, "plan-unack", req, budget);
+}
+
+/**
+ * 问图开框前那一问：开口那句由那台拼（别名的那句 ＋ 这一格），别名预选那台记着的问图用的那条。
+ * 给了 `alias` ⇒ 那台把它记成问图用的、照它拼。
+ */
+export async function askPlan(origin: Origin, a: { workspace: string; slice: string; id: string; alias?: string }): Promise<PlanAsk> {
+  return callTyped(origin, "plan-ask", a, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 把人的话送给负责那一格的会话（后端拼那一行、判能不能送）。 */

@@ -106,7 +106,7 @@ describe("节点详情的交接说明照 takeover 出", () => {
     }) as unknown as PlanCell;
   const slice = (b: PlanBlock): PlanSlice => ({ name: "ledger", labels: { A2: "A2 导入 csv" }, cells: [cell()], blocks: [b], pendingSets: [], kinds: [] }) as unknown as PlanSlice;
   const detail = () =>
-    new CellDetail({ select: () => {}, who: () => document.createElement("span"), origin: () => "", workspace: () => "/work/ledger", switchTo: () => {}, returnCell: () => {}, takeover: () => {} });
+    new CellDetail({ select: () => {}, who: () => document.createElement("span"), origin: () => "", workspace: () => "/work/ledger", switchTo: () => {}, returnCell: () => {}, takeover: () => {}, ask: () => {} });
 
   it("负责人那条会话停了（open，owner 还在）⇒ 出交接说明", () => {
     const el = detail().render(slice(block({ owner: who("s-stopped"), takeover: "open" })), cell());
