@@ -463,6 +463,25 @@ fn the_name_taken_message_says_which_name() {
 
 /// 造一份**直路计划**，`tmux` 那一格由调用方给 —— 走的是生产那条链
 /// （`argv::parse` → `plan::build`），不是手搓一个 `Direct`。
+/// 便条那一格「起在哪种宿主里」：托管进程设的 `CCM_HOST` ⇒ 托管（压过 `TMUX`）；`TMUX` ⇒ tmux；都没有 · 空值 ⇒ 直路。
+#[test]
+fn the_last_hop_names_the_host_it_runs_in() {
+    use crate::wire::TerminalHost::{Managed, Tmux};
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        }
+    };
+    assert_eq!(host_here(env(&[("CCM_HOST", "h1")])), Some(Managed));
+    assert_eq!(host_here(env(&[("CCM_HOST", "h1"), ("TMUX", "/s,1,0")])), Some(Managed));
+    assert_eq!(host_here(env(&[("TMUX", "/s,1,0")])), Some(Tmux));
+    assert_eq!(host_here(env(&[("TMUX", ""), ("CCM_HOST", "")])), None);
+    assert_eq!(host_here(env(&[])), None);
+}
+
 fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
     let e = Env {
         home: "/home/pi".into(),

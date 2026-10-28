@@ -91,8 +91,10 @@ pub(crate) struct Deps<'a> {
     pub(crate) pretrust: &'a dyn Fn(&str, &str),
     /// `(会话名, 工作目录)` ⇒ 开一个空 shell 的 tmux 会话（不在才建）；回「这一趟建的」。失败带 tmux 原话。
     pub(crate) open_shell: &'a dyn Fn(&str, Option<&str>) -> Result<bool, crate::wire::spec::Fail>,
-    /// 这台的偏好（启动命令 · 模型表；一趟读一次 `prefs.json`）。
+    /// 这台的偏好（启动命令 · 模型表 · 恢复时放在哪；一趟读一次 `prefs.json`）。
     pub(crate) prefs: &'a crate::common::machine_prefs::Prefs,
+    /// sid ⇒ 那条会话上次起在哪种宿主里（启动台账；恢复照起时那一种读它）。
+    pub(crate) started: &'a dyn Fn(&str) -> Option<crate::wire::TerminalHost>,
 }
 
 /// 起之前那一下：用的是账号库里的号 ⇒ 工作目录标成那个号信任过（[`Deps::pretrust`]）。账号 0 / 不表态 ⇒ 不写
@@ -223,8 +225,6 @@ pub(crate) struct Outcome {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Whereabouts {
     pub(crate) results: Vec<Whereabout>,
-    /// 这台恢复默认放在哪（这台的偏好「恢复时进 tmux」× 有没有 tmux）。
-    pub(crate) run: open::Run,
 }
 
 /// 一个 sid 此刻在这台 tmux 里的样子（[`Standing`] 上线那一形 ＋ 这台没 tmux）。
@@ -253,6 +253,8 @@ pub(crate) struct Whereabout {
     pub(crate) names: Vec<String>,
     /// 与 `names` 同序同数：名单里那一行的句柄。
     pub(crate) terminals: Vec<TerminalAt>,
+    /// 这一条恢复默认放在哪（这台的偏好「恢复时放在哪」× 那条起在哪 × 有没有 tmux · 能不能托管）。
+    pub(crate) run: open::Run,
 }
 
 /// 名单里那一行（词同容器那一格与 `terminals-list`）。
@@ -413,16 +415,16 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
                         terminal: e.terminal.clone(),
                     })
                     .collect(),
+                run: open::default_run(
+                    open::Intent::Resume,
+                    deps.prefs.resume_wants_tmux((deps.started)(sid)),
+                    listed.tmux,
+                    listed.managed,
+                ),
             }
         })
         .collect();
-    let run = open::default_run(
-        open::Intent::Resume,
-        deps.prefs.resume_in_tmux,
-        listed.tmux,
-        listed.managed,
-    );
-    Ok(Whereabouts { results, run })
+    Ok(Whereabouts { results })
 }
 
 /// 停的那一项没做成的那一句：跳过的三种这里说，停了没成的与单条结束同一张表。

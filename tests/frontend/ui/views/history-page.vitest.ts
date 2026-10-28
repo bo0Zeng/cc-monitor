@@ -261,8 +261,8 @@ beforeEach(() => {
         down: per.filter((p) => p[1] === "down").map(([o]) => ({ origin: o, said: `${o} 问不到` })),
       });
     }
-    // 这台恢复默认放在哪（那台答的；勾画在它上面）。
-    if (c.op === "sessions-where") return chanReply({ results: (args.sids as string[]).map((sid) => ({ sid, standing: "none", names: [], terminals: [] })), run: "direct" });
+    // 这一条恢复默认放在哪（那台答的；勾画在它上面）。
+    if (c.op === "sessions-where") return chanReply({ results: (args.sids as string[]).map((sid) => ({ sid, standing: "none", names: [], terminals: [], run: "direct" })) });
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: null });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
     if (c.op === "history-forget") return chanReply({ removed: true, sid: "a" });

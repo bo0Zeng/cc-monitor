@@ -150,7 +150,7 @@ fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
     std::fs::write(&fine, lines(0..3)).unwrap();
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let mut state = rig.state();
-    state.pool = Some(PrimePool::start(ev_tx, None));
+    state.pool = Some(PrimePool::start(ev_tx));
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::hub();
     sink.subs.push(Sub::new(0, tx, crate::Tz::default()));
@@ -194,7 +194,7 @@ fn nothing_streams_before_the_prime_lands_and_then_it_streams_on_from_its_count(
     std::fs::write(&rec, lines(0..5)).unwrap();
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let mut state = rig.state();
-    state.pool = Some(PrimePool::start(ev_tx, None));
+    state.pool = Some(PrimePool::start(ev_tx));
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
@@ -230,7 +230,7 @@ fn no_more_primes_run_at_once_than_the_pool_has_threads() {
     let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("cap");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
-    let pool = PrimePool::start(ev_tx, None);
+    let pool = PrimePool::start(ev_tx);
     let (cap, load) = (pool.pool.size(), pool.pool.load());
     let mut ends = Vec::new();
     for i in 0..cap + 2 {
@@ -320,7 +320,7 @@ fn the_watched_session_is_primed_first() {
     let _iso = crate::control::identity_tag::door::isolate();
     let mut rig = Rig::new("watched");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
-    let pool = PrimePool::start(ev_tx, None);
+    let pool = PrimePool::start(ev_tx);
     let cap = pool.pool.size();
     let mut state = rig.state();
     state.pool = Some(pool);
@@ -390,7 +390,8 @@ fn chained(n: std::ops::Range<usize>) -> String {
     rows.join("\n") + "\n" + lines(n).as_str()
 }
 
-/// 一趟预读（夹具没有池 ⇒ 就地跑、就地装回）：回读了多少字节 · 读完那一帧的 `lines` · 主线外清单。
+/// 一趟预读（夹具没有池 ⇒ 就地跑、就地装回），读完之后界面问一次扫描图（骨架索引那几样）：
+/// 回这一趟从记录读了多少字节（预读自己读的 ＋ 扫描图读的）· 读完那一帧的 `lines` · 主线外清单。
 fn prime_once(
     rig: &Rig,
     home: &crate::observe::skeleton::Skeletons,
@@ -405,7 +406,9 @@ fn prime_once(
     let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
+    scans.get(rec).expect("界面问扫描图");
     scans.flush();
+    let read = state.prime_bytes + scans.bytes_read();
     let got: Vec<String> = brief(&drain(&mut rx))
         .into_iter()
         .filter(|s| s.starts_with("primed"))
@@ -415,10 +418,10 @@ fn prime_once(
         .get(&path_key(rec))
         .map(|c| c.off().to_vec())
         .unwrap_or_default();
-    (state.prime_bytes, got, off)
+    (read, got, off)
 }
 
-/// ⑥ 骨架落盘（数字节）：头一次接上读整份、读完交给冷开扫描图扫一遍落骨架（只这一份，预读不另落）；
+/// ⑥ 骨架落盘（数字节）：头一次接上照扫描图读整份、恰一遍（预读与之后界面那一问共用那一张；扫完落骨架，预读不另落）；
 /// 重启后（新的一份读者、同一个骨架的家）记录没变 ⇒ 预读读 0 字节、行数与主线外清单跟整份读的一样；
 /// 改写过（同长）⇒ 整份；之后追加 k 字节 ⇒ 读 k ＋ 见证。
 #[test]
@@ -494,7 +497,7 @@ fn a_prime_hands_back_the_record_path_as_written_beside_its_key() {
         runs: None,
         scans: None,
     };
-    let (done, _, _) = prime_file_cursor("p-Case", job);
+    let (done, _) = prime_file_cursor("p-Case", job);
     assert_eq!(done.key, key);
     assert_eq!(done.path, rec, "交回的路径是键那一形");
 }

@@ -1057,6 +1057,7 @@ fn exec_direct(
         plugin: d.plugin_dirs.is_some(),
         tab: d.tab.clone(),
         alias: d.alias.clone(),
+        host: host_here(|k| std::env::var(k).ok()),
         upstream,
     };
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
@@ -1141,14 +1142,15 @@ fn exec_direct(
     )
 }
 
-/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的；
-/// 另给那条会话留它的上游描述（[`egress::Taken`]，按来处存）。
+/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab` · 经哪条别名起的 ·
+/// 起在哪种宿主里；另给那条会话留它的上游描述（[`egress::Taken`]，按来处存）。
 #[derive(Clone)]
 struct Note<'a> {
     account: Option<&'a str>,
     plugin: bool,
     tab: Option<crate::control::launch_account::LaunchTab>,
     alias: Option<String>,
+    host: Option<crate::wire::TerminalHost>,
     upstream: Option<&'a egress::Taken>,
 }
 
@@ -1159,8 +1161,22 @@ impl Note<'_> {
         plugin: false,
         tab: None,
         alias: None,
+        host: None,
         upstream: None,
     };
+}
+
+/// 最终那一跳自己在哪种宿主里（便条那一格，恢复照起时那一种读它）：托管进程给里面设了 `CCM_HOST`（它同时摘掉 `TMUX`）⇒ 托管；
+/// `TMUX` ⇒ tmux；都没有（空值当没有）⇒ 直路。`get` ＝ 读环境。
+pub(crate) fn host_here(get: impl Fn(&str) -> Option<String>) -> Option<crate::wire::TerminalHost> {
+    let set = |k: &str| get(k).is_some_and(|v| !v.is_empty());
+    if set(crate::host::managed::run::HOST_ENV) {
+        Some(crate::wire::TerminalHost::Managed)
+    } else if set("TMUX") {
+        Some(crate::wire::TerminalHost::Tmux)
+    } else {
+        None
+    }
 }
 
 /// 把答题插件那几份写进我们的目录（内容一样就不动）。写不成 ⇒ 说一声，换成不交那个变量、标挂不上的那一份。
@@ -1289,7 +1305,11 @@ fn exec_or_spawn(
                 eprintln!("ccm: {}", e.logged());
             }
         }
-        if leave.account.is_none() && !leave.plugin && leave.tab.is_none() && leave.alias.is_none()
+        if leave.account.is_none()
+            && !leave.plugin
+            && leave.tab.is_none()
+            && leave.alias.is_none()
+            && leave.host.is_none()
         {
             return;
         }
@@ -1302,6 +1322,7 @@ fn exec_or_spawn(
                 plugin: leave.plugin,
                 tab: leave.tab.clone(),
                 alias: leave.alias.clone(),
+                host: leave.host,
             },
         );
         if let Err(e) = left {

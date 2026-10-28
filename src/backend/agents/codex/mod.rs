@@ -55,6 +55,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     project_dir: Some(history::project_dir),
     mcp_said: None,
     quiet_unread: None,
+    skim: None,
     beats: Some(beat::BEATS),
     fork: None,
 };

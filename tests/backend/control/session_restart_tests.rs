@@ -205,6 +205,7 @@ impl Rig {
                     .collect(),
                 ..Default::default()
             },
+            started: &|_| None,
         })
     }
 }

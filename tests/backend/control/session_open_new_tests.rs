@@ -132,6 +132,7 @@ impl Rig {
             pretrust: &pretrust,
             open_shell: &|_, _| unreachable!("不开空 shell"),
             prefs: &crate::common::machine_prefs::Prefs::default(),
+            started: &|_| None,
         };
         let sid = || PRESET.to_string();
         let write = |sid: &str, kind: &str, rule: &str| -> Result<(), (&'static str, String)> {
@@ -467,6 +468,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
             pretrust: &|_, _| unreachable!("核目录不起会话"),
             open_shell: &|_, _| unreachable!("不开空 shell"),
             prefs: &crate::common::machine_prefs::Prefs::default(),
+            started: &|_| None,
         };
         let req: OpenDirReq = serde_json::from_value(args).unwrap();
         dir_answer(&req, &deps, Some(std::path::Path::new("/h")))

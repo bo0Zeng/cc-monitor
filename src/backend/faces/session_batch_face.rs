@@ -103,7 +103,7 @@ fn with_deps_on<T>(
         .into_iter()
         .map(str::to_string)
         .collect();
-    // 这台的偏好（启动命令 · 模型表）：这一趟现读一次。
+    // 这台的偏好（启动命令 · 模型表 · 恢复时放在哪）：这一趟现读一次。
     let prefs = crate::common::machine_prefs::read_now().prefs();
     crate::faces::launch_account_face::with_facts(agent, |accounts| {
         f(&Deps {
@@ -120,6 +120,7 @@ fn with_deps_on<T>(
             pretrust: &pretrust,
             open_shell: &open_shell,
             prefs: &prefs,
+            started: &crate::faces::launch_account_face::host_of,
         })
     })
 }

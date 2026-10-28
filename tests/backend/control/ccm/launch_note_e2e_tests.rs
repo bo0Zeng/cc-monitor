@@ -111,15 +111,11 @@ fn launching_through_ccm_with_an_account_records_it_for_that_session() {
     );
     std::fs::remove_dir_all(&root).ok();
 
-    // 反向：账号 0 ⇒ 不留便条、不记；没有记录时跟随落默认号 y。
+    // 反向：账号 0 ⇒ 便条只带宿主（这一跳在托管终端里）、不记号；没有记录时跟随落默认号 y。
     let root = sandbox("base");
     let data = root.join("home/.cc-monitor");
     let (pid, _) = launch_in_child(&root, "{\"kind\":\"base\"}");
-    assert!(
-        !data.join(NOTES_DIR).join(format!("{pid}.json")).exists(),
-        "账号 0 也留了便条"
-    );
-    assert!(!adopt(
+    assert!(adopt(
         &crate::platform::fs::Own::issue_data_at(&data),
         pid,
         SID,
@@ -127,7 +123,12 @@ fn launching_through_ccm_with_an_account_records_it_for_that_session() {
         &|_| None
     )
     .unwrap());
-    assert_eq!(last_of(Some(&data), SID), None);
+    assert_eq!(last_of(Some(&data), SID), None, "账号 0 也记了号");
+    assert_eq!(
+        crate::history::launch_book::host_of(Some(&data), SID),
+        Some(crate::wire::TerminalHost::Managed),
+        "托管终端里那一跳没记宿主"
+    );
     let (_, dir) = launch_in_child(&root, "{\"kind\":\"follow\"}");
     assert_eq!(
         dir,
