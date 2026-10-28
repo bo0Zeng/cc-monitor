@@ -57,8 +57,8 @@ export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<Open
 }
 
 /**
- * 照 `landed` 开不开那一行：单个恢复 · 接回一律开（`window` 不跑就没起；`started` · `in_place` 开了是接进去；`running` · `idle` 本来就在、开了当场说接上）。
- * 后台起的（批量 · 新起）只开 `window`，不一个个接进去。
+ * 照 `landed` 开不开那一行：接回（［在终端里打开］）一律开（`started` · `in_place` 开了是接进去；`running` · `idle` 本来就在、开了当场说接上）。
+ * 新起 · 恢复 · 批量落后台，只开 `window`（不跑就没起）：恢复不另弹一个抢输入的终端窗口，要在终端里看走［在终端里打开］（A3-3-32-15）。
  */
 export const BACKGROUND_OPENS: ReadonlySet<Landed> = new Set<Landed>(["window"]);
 
@@ -148,7 +148,7 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
 /** 那台答了「成了」之后：说附带的那一句 · 照 `landed` 开那一行 · 起了一家就等它报到。回「成了没有」（要开的那一行开不出 ⇒ 已说过、`false`）。 */
 export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened, how: OpenHow = {}): Promise<boolean> {
   if (o.note !== null) toast(o.note, "", { level: "info" });
-  const open = o.line !== null && (req.what.kind !== "new" || BACKGROUND_OPENS.has(o.landed));
+  const open = o.line !== null && ((req.what.kind !== "new" && req.what.kind !== "resume") || BACKGROUND_OPENS.has(o.landed));
   if (open && !(await openLine(origin, o.line!, o.cwd))) return false;
   if (o.arrival !== null) {
     const done = how.onArrived;

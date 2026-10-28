@@ -227,3 +227,15 @@ describe("停", () => {
     }
   });
 });
+
+describe("持有者随帧", () => {
+  it("★ 帧里带的输入那一格（托管那一形的持有者）照交给页面；tmux 那一形（shared）⇒ 没有持有者（A3-3-32-4）", async () => {
+    const r = rig();
+    const holders: unknown[] = [];
+    startFollow("devbox", "t-1", { ...r.events, screen: (s, h) => void (r.screens.push(s), holders.push(h)) }, r.port);
+    await flush();
+    const held = { kind: "held", holder: { who: "terminal-window", mine: false, said: "S-held" } };
+    r.subs[0].sink([frame(0, { seq: 1, view: VIEW, input: held }), frame(1, { seq: 2, view: VIEW, input: { kind: "shared" } })]);
+    expect(holders).toEqual([{ said: "S-held", mine: false }, undefined]);
+  });
+});

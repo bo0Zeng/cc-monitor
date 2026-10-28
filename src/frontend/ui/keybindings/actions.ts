@@ -31,7 +31,7 @@ export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel" | "Acct";
  * - `main`：焦点在主区（消息流 · 会话头 · 没焦点）；
  * - `nav`：焦点在主区或标签页栏；
  * - `bare`：单键规则 —— 焦点在主区或标签页栏，且没有浮层 / 对话框 / 输入焦点。用户改成带修饰键的键 ⇒ 按 `any` 算；
- * - `bar`：焦点在标签页栏里（栏里的挪位 · 改分组名；带修饰键也只在栏里）。
+ * - `bar`：焦点在标签页栏里（栏里的挪位 · 改名；带修饰键也只在栏里）。
  *
  * 作用范围不相交的几个动作可以分到同一个键上（`Alt+↑`：主区上一轮 · 栏里往上挪），按下时按焦点在哪取放行的那一个。
  */
@@ -102,12 +102,12 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "session.prev-turn", label: copyText("keybindingActions.session.prevTurn"), category: "Tab", default: "Alt+ArrowUp", available: true, scope: "main" },
   { id: "session.next-turn", label: copyText("keybindingActions.session.nextTurn"), category: "Tab", default: "Alt+ArrowDown", available: true, scope: "main" },
   { id: "session.to-bottom", label: copyText("keybindingActions.session.toBottom"), category: "Tab", default: "End", available: true, scope: "main" },
-  // 标签页栏里（焦点在栏里时）：挪一格（跨过组边界就进 / 出那个组；组头上 ＝ 整组挪）· 出组 · 与上一个成组 · 改分组名。
+  // 标签页栏里（焦点在栏里时）：挪一格（跨过组边界就进 / 出那个组；组头上 ＝ 整组挪）· 出组 · 与上一个成组 · 改名（标签页上改它的名、组头上改组名）。
   { id: "tabBar.move-up", label: copyText("keybindingActions.tabBar.moveUp"), category: "Tab", default: "Alt+ArrowUp", available: true, scope: "bar" },
   { id: "tabBar.move-down", label: copyText("keybindingActions.tabBar.moveDown"), category: "Tab", default: "Alt+ArrowDown", available: true, scope: "bar" },
   { id: "tabBar.leave-group", label: copyText("keybindingActions.tabBar.leaveGroup"), category: "Tab", default: "Alt+ArrowLeft", available: true, scope: "bar" },
   { id: "tabBar.join-prev", label: copyText("keybindingActions.tabBar.joinPrev"), category: "Tab", default: "Alt+ArrowRight", available: true, scope: "bar" },
-  { id: "tabBar.rename-group", label: copyText("keybindingActions.tabBar.renameGroup"), category: "Tab", default: "F2", available: true, scope: "bar" },
+  { id: "tabBar.rename", label: copyText("keybindingActions.tabBar.rename"), category: "Tab", default: "F2", available: true, scope: "bar" },
   // 焦点在主区与标签页栏之间轮（输入框里也能跳出来）。
   { id: "tabBar.focus-cycle", label: copyText("keybindingActions.tabBar.focusCycle"), category: "Tab", default: "F6", available: true, scope: "any" },
 

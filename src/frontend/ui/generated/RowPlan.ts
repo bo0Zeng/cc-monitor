@@ -25,7 +25,7 @@ group: string,
  */
 blocked: string | null, 
 /**
- * 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单第二行里的一段）。
+ * 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单那一项悬停侧卡里的一行）。
  */
 said: string, 
 /**
@@ -35,4 +35,12 @@ haveSaid: string,
 /**
  * 右侧那一格：「再起 n」· 够了「—」· 起不了 ⇒ 原因。
  */
-moreSaid: string, };
+moreSaid: string, 
+/**
+ * 这一行的个数还能不能再加一（一行上限 · 一组合计上限都没到）。
+ */
+canMore: boolean, 
+/**
+ * 不能再加的那一句（能加 ⇒ `null`）。
+ */
+moreWhy: string | null, };

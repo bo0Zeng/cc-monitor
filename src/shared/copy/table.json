@@ -1630,7 +1630,7 @@
       "zh": "未恢复 · 进程 ×{n} 在写会话 · pid {pids}",
       "args": ["n", "pids"]
     },
-    "beSessionOpen.look.notInTmux": {
+    "beSessionOpen.look.notHosted": {
       "kind": "error",
       "role": "报错",
       "zh": "未接回 · 会话不在终端里",
@@ -4178,7 +4178,7 @@
       "args": [],
       "limited": ["tmux"]
     },
-    "tabBatch.why.notInTmux": {
+    "tabBatch.why.notHosted": {
       "kind": "error",
       "role": "报错",
       "zh": "未找到它的 tmux 会话",
@@ -7234,12 +7234,40 @@
       "zh": "命令",
       "args": []
     },
-    "settingsPanel.behavior.resumeInTmux": {
+    "settings.machine.resumeWhere": {
       "kind": "control",
       "role": "标签",
-      "zh": "恢复到 tmux 里",
+      "zh": "恢复时放在哪",
+      "args": []
+    },
+    "settings.machine.resumeWhereTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "恢复时未选位置的去处\n同启动时：无记录或无 tmux 的机器落托管终端",
+      "args": [],
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "说明这一格的效果，不是 tmux 缺失 / 启动失败那一族"
+      }
+    },
+    "settings.machine.resumeManaged": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "托管终端",
+      "args": []
+    },
+    "settings.machine.resumeTmux": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "tmux",
       "args": [],
       "limited": ["tmux"]
+    },
+    "settings.machine.resumeAsStarted": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "同启动时",
+      "args": []
     },
     "settings.machine.childTab": {
       "kind": "control",
@@ -7289,16 +7317,6 @@
       "role": "按钮",
       "zh": "隐藏",
       "args": []
-    },
-    "settingsPanel.behavior.resumeInTmuxHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "历史页与标签页「恢复」默认运行于 tmux · 无 tmux 的机器直接恢复",
-      "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "说明开关的效果（恢复到 tmux 里），不是 tmux 缺失 / 启动失败那一族"
-      }
     },
     "settingsPanel.behavior.autoFront": {
       "kind": "control",
@@ -11678,7 +11696,7 @@
     "beTerminal.no.hostOutdated": {
       "kind": "body",
       "role": "片段",
-      "zh": "托管终端版本过低 · 需重开",
+      "zh": "托管终端版本过低 · 结束后恢复即可",
       "args": []
     },
     "beTerminal.holder.here": {
@@ -11708,8 +11726,33 @@
     "beTerminal.holder.none": {
       "kind": "body",
       "role": "片段",
-      "zh": "输入无人持有",
+      "zh": "无人持有输入",
       "args": []
+    },
+    "beTerminal.who.terminalWindow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端窗口",
+      "args": []
+    },
+    "beTerminal.who.desktop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "桌面窗口",
+      "args": []
+    },
+    "beTerminal.who.mobile": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "手机",
+      "args": []
+    },
+    "mobTerms.row.tmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "tmux",
+      "args": [],
+      "limited": ["tmux"]
     },
     "beTerminal.refuse.empty": {
       "kind": "error",
@@ -12685,10 +12728,16 @@
       "zh": "选一条别名",
       "args": []
     },
-    "newSession.ask.note": {
+    "newSession.ask.runsNone": {
       "kind": "body",
       "role": "说明",
-      "zh": "号 · 哪一家 · 轮换随别名",
+      "zh": "先选别名",
+      "args": []
+    },
+    "newSession.ask.cwdTag": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "工作区根",
       "args": []
     },
     "newSessionSet.label.name": {
@@ -12713,6 +12762,24 @@
       "kind": "action",
       "role": "按钮",
       "zh": "换一组",
+      "args": []
+    },
+    "newSessionSet.set.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除",
+      "args": []
+    },
+    "newSessionSet.delete.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除该组",
+      "args": []
+    },
+    "newSessionSet.delete.undoFailed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "恢复失败",
       "args": []
     },
     "newSessionSet.row.add": {
@@ -13159,6 +13226,12 @@
       "kind": "control",
       "role": "占位",
       "zh": "留空 = 原标题",
+      "args": []
+    },
+    "history.rename.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "改为",
       "args": []
     },
     "history.list.noMatch": {
@@ -14714,6 +14787,37 @@
       "zh": "问图 · {title}",
       "args": ["title"]
     },
+    "bePlan.ask.runsTmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "tmux 里",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "bePlan.ask.runsAccount": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "号 {account}（来自 {from}）",
+      "args": ["account", "from"]
+    },
+    "bePlan.ask.runsBase": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不用账号（来自 {from}）",
+      "args": ["from"]
+    },
+    "bePlan.ask.runsGroup": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "进分组「{group}」",
+      "args": ["group"]
+    },
+    "bePlan.ask.runsSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
     "bePlan.face.noView": {
       "kind": "error",
       "role": "报错",
@@ -14849,32 +14953,27 @@
     "beHost.attach.heldBy": {
       "kind": "body",
       "role": "说明",
-      "zh": "输入在{who} · 回车接管",
-      "args": ["who"]
+      "zh": "{said} · 回车接管",
+      "args": ["said"]
     },
-    "beHost.attach.whoTerminal": {
+    "beHost.attach.clientsLegend": {
       "kind": "body",
-      "role": "片段",
-      "zh": "另一个终端",
+      "role": "说明",
+      "zh": "* 持有输入 · < 此处",
       "args": []
     },
-    "beHost.attach.whoDesktop": {
+    "beHost.attach.detached": {
       "kind": "body",
-      "role": "片段",
-      "zh": "桌面窗口",
-      "args": []
+      "role": "命令行",
+      "zh": "[已离开 · {name} 照跑 · ccm --attach {name} 接回]",
+      "args": ["name"],
+      "limited": ["ccm"]
     },
-    "beHost.attach.whoMobile": {
+    "beHost.attach.ended": {
       "kind": "body",
-      "role": "片段",
-      "zh": "手机",
-      "args": []
-    },
-    "beHost.attach.whoNobody": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无人",
-      "args": []
+      "role": "命令行",
+      "zh": "[已结束 · {name}]",
+      "args": ["name"]
     },
     "beHost.attach.confirmEnd": {
       "kind": "body",
@@ -16516,11 +16615,35 @@
       "zh": "{cwd} {why}",
       "args": ["cwd", "why"]
     },
-    "beSessionSet.row.sep": {
+    "beSessionSet.row.dup": {
       "kind": "body",
       "role": "片段",
-      "zh": " · ",
-      "args": []
+      "zh": "与行 {line} 重复 · 不计入",
+      "args": ["line"]
+    },
+    "beSessionSet.short.all": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录 {dirs} · 会话 {n}",
+      "args": ["dirs", "n"]
+    },
+    "beSessionSet.short.blocked": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录 {dirs} · 会话 {n} · 无法启动的行 {k}",
+      "args": ["dirs", "n", "k"]
+    },
+    "beSessionSet.more.rowMax": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "单行上限 {max}",
+      "args": ["max"]
+    },
+    "beSessionSet.more.setMax": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "一组合计上限 {max}",
+      "args": ["max"]
     },
     "beSessionSet.row.have": {
       "kind": "body",
@@ -17846,6 +17969,43 @@
       "role": "片段",
       "zh": "{endpoint} · 经代理",
       "args": ["endpoint"]
+    },
+    "beLinks.route.jump": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "经跳板 {chain}",
+      "args": ["chain"]
+    },
+    "beLinks.route.jumpProxy": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "经跳板 {chain} · 经代理",
+      "args": ["chain"]
+    },
+    "beLinks.route.proxyOnly": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "经代理",
+      "args": []
+    },
+    "beLinks.route.then": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " → ",
+      "args": []
+    },
+    "beLinks.detail.head": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "连接：",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "beLinks.detail.row": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "  {said}",
+      "args": ["said"]
     },
     "beConnect.jump.targetFailed": {
       "kind": "error",
@@ -23177,11 +23337,20 @@
       "zh": "交还",
       "args": []
     },
-    "terminal.input.takeSend": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "接管再送",
+    "terminal.input.afterTake": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "接管后可按键",
       "args": []
+    },
+    "terminal.input.placeholderHeld": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "回车说一句 · Shift+回车换行 · 直接打字需接管",
+      "args": [],
+      "waive": {
+        "C-W12": "终端输入框的固定键（不可改绑）"
+      }
     },
     "terminal.queue.sending": {
       "kind": "body",
@@ -23213,6 +23382,12 @@
       "zh": "编辑",
       "args": []
     },
+    "saidEdit.card.pending": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已改一版在待发",
+      "args": []
+    },
     "saidEdit.bar.hint": {
       "kind": "body",
       "role": "说明",
@@ -23225,11 +23400,14 @@
       "zh": "取消",
       "args": []
     },
-    "saidEdit.bar.send": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "发送",
-      "args": []
+    "saidEdit.bar.keys": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "回车回退并发送 · Shift+回车换行 · Esc 取消",
+      "args": [],
+      "waive": {
+        "C-W12": "编辑框的固定键（不可改绑），同终端输入框那一句"
+      }
     },
     "saidEdit.pick.loading": {
       "kind": "body",
@@ -23266,6 +23444,18 @@
       "role": "状态",
       "zh": "排队 · 第 {place}",
       "args": ["place"]
+    },
+    "beQueue.said.placeHalf": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "排队 · 第 {place} · 终端里有没交的半句 · 回车或清空后送进",
+      "args": ["place"]
+    },
+    "beQueue.said.waitingHalf": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "排队 · {n} 条 · 终端里有没交的半句 · 回车或清空后送进",
+      "args": ["n"]
     },
     "beQueue.said.held": {
       "kind": "body",
@@ -23396,29 +23586,15 @@
     "terminal.empty.notOurs": {
       "kind": "body",
       "role": "说明",
-      "zh": "非 cc-monitor 启动 · 画面 / 送字不可用",
+      "zh": "非 cc-monitor 起的 · 画面 / 送字不可用",
       "args": []
     },
     "terminal.empty.notOursHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "ccm / 别名启动的可用",
+      "zh": "经 ccm 或 cc-monitor 起的会话可用",
       "args": [],
       "limited": ["ccm"]
-    },
-    "terminal.empty.notInTmux": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "不在 tmux 里 · 画面 / 送字不可用",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "terminal.empty.notInTmuxHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在 tmux 里起的会话可用",
-      "args": [],
-      "limited": ["tmux"]
     },
     "terminal.empty.noSession": {
       "kind": "body",
@@ -25213,10 +25389,10 @@
       "zh": "与上一个成组",
       "args": []
     },
-    "keybindingActions.tabBar.renameGroup": {
+    "keybindingActions.tabBar.rename": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改分组名",
+      "zh": "改名",
       "args": []
     },
     "keybindingActions.tabBar.focusCycle": {
@@ -26105,12 +26281,6 @@
       "zh": "已移动分组「{name}」",
       "args": ["name"]
     },
-    "tabBar.group.sumRunning": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在跑 {n}",
-      "args": ["n"]
-    },
     "tabBar.group.more": {
       "kind": "aria",
       "role": "读屏",
@@ -26342,6 +26512,12 @@
       "role": "片段",
       "zh": "不用账号",
       "args": []
+    },
+    "beProfile.merge.from": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "来自 {from}",
+      "args": ["from"]
     },
     "beProfile.val.tmuxAuto": {
       "kind": "body",
@@ -29198,12 +29374,6 @@
       "zh": "上一级",
       "args": []
     },
-    "mobNav.newTab.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "新开标签页 · 选择机器",
-      "args": []
-    },
     "mobKeepAlive.notify.body": {
       "kind": "body",
       "role": "说明",
@@ -29469,24 +29639,6 @@
       "zh": "无匹配命令",
       "args": []
     },
-    "mobTabs.overview.closeAll": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "关闭全部",
-      "args": []
-    },
-    "mobTabs.overview.new": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新开标签页",
-      "args": []
-    },
-    "mobTabs.row.files": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文件",
-      "args": []
-    },
     "mobTabs.row.close": {
       "kind": "action",
       "role": "按钮",
@@ -29503,12 +29655,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "标签页",
-      "args": []
-    },
-    "mobOverview.screen.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "总览",
       "args": []
     },
     "mobTabs.list.title": {
@@ -30426,98 +30572,98 @@
       "zh": "恢复默认",
       "args": []
     },
-    "mobTmux.dialog.title": {
+    "mobTerms.dialog.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "终端",
       "args": []
     },
-    "mobTmux.dialog.refresh": {
+    "mobTerms.dialog.refresh": {
       "kind": "action",
       "role": "按钮",
       "zh": "刷新",
       "args": []
     },
-    "mobTmux.kill.done": {
+    "mobTerms.kill.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已结束「{name}」",
       "args": ["name"]
     },
-    "mobTmux.kill.title": {
+    "mobTerms.kill.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "结束「{name}」",
       "args": ["name"]
     },
-    "mobTmux.kill.bodyCmd": {
+    "mobTerms.kill.bodyCmd": {
       "kind": "body",
       "role": "确认框",
       "zh": "中断  {command}\n不可撤销",
       "args": ["command"]
     },
-    "mobTmux.kill.body": {
+    "mobTerms.kill.body": {
       "kind": "body",
       "role": "确认框",
       "zh": "中断  终端里运行的程序\n不可撤销",
       "args": []
     },
-    "mobTmux.kill.ok": {
+    "mobTerms.kill.ok": {
       "kind": "action",
       "role": "确认框",
       "zh": "结束",
       "args": []
     },
-    "mobTmux.list.empty": {
+    "mobTerms.list.empty": {
       "kind": "body",
       "role": "空态",
       "zh": "无终端",
       "args": []
     },
-    "mobTmux.row.running": {
+    "mobTerms.row.running": {
       "kind": "body",
       "role": "片段",
       "zh": "{command}",
       "args": ["command"]
     },
-    "mobTmux.row.attached": {
+    "mobTerms.row.attached": {
       "kind": "body",
       "role": "片段",
       "zh": "已有终端接入",
       "args": []
     },
-    "mobTmux.row.attach": {
+    "mobTerms.row.attach": {
       "kind": "action",
       "role": "按钮",
       "zh": "打开",
       "args": []
     },
-    "mobTmux.row.kill": {
+    "mobTerms.row.kill": {
       "kind": "action",
       "role": "按钮",
       "zh": "结束",
       "args": []
     },
-    "mobTmux.new.name": {
+    "mobTerms.new.name": {
       "kind": "control",
       "role": "标签",
       "zh": "tmux 会话名",
       "args": [],
       "limited": ["tmux"]
     },
-    "mobTmux.new.detached": {
+    "mobTerms.new.detached": {
       "kind": "action",
       "role": "按钮",
       "zh": "新建",
       "args": []
     },
-    "mobTmux.new.detachedCc": {
+    "mobTerms.new.detachedCc": {
       "kind": "action",
       "role": "按钮",
       "zh": "后台 agent",
       "args": []
     },
-    "mobTmux.new.attach": {
+    "mobTerms.new.attach": {
       "kind": "action",
       "role": "按钮",
       "zh": "新建并打开",
@@ -30681,12 +30827,6 @@
       "zh": "未分组",
       "args": []
     },
-    "mobHosts.newTab.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "选择机器 · 新开标签页 · 不复用已打开的标签页",
-      "args": []
-    },
     "mobHosts.import.action": {
       "kind": "action",
       "role": "按钮",
@@ -30721,12 +30861,6 @@
       "kind": "action",
       "role": "确认框",
       "zh": "导入",
-      "args": []
-    },
-    "mobHosts.list.tabs": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "标签页",
       "args": []
     },
     "mobHosts.fab.aria": {
@@ -31116,6 +31250,48 @@
       "zh": "本会话先不用 {acct}",
       "args": ["acct"]
     },
+    "beRotation.line.use": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在用",
+      "args": []
+    },
+    "beRotation.line.offUse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "先不用 · 下一个节点换下",
+      "args": []
+    },
+    "beRotation.line.next": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下一个",
+      "args": []
+    },
+    "beRotation.line.nextAt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下一个 · 约 {at}",
+      "args": ["at"]
+    },
+    "beRotation.line.spare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "备着",
+      "args": []
+    },
+    "beRotation.line.out": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "此刻不可用",
+      "args": []
+    },
+    "beRotation.line.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "先不用",
+      "args": []
+    },
     "beRotation.write.v1Pending": {
       "kind": "error",
       "role": "报错",
@@ -31144,6 +31320,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "编辑策略",
+      "args": []
+    },
+    "rot.top.about": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "说明",
+      "args": []
+    },
+    "rot.top.aboutClose": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "收起",
       "args": []
     },
     "rot.none.label": {
@@ -31243,17 +31431,71 @@
       "zh": "拖动改本会话先后 · 拖到第一格即换过去",
       "args": []
     },
-    "rot.order.use": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "本会话用 {account}",
-      "args": ["account"]
-    },
-    "rot.order.now": {
+    "rot.order.manual": {
       "kind": "body",
       "role": "片段",
-      "zh": "此刻 · {why}",
-      "args": ["why"]
+      "zh": "手动排过",
+      "args": []
+    },
+    "rot.order.reset": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "照策略排",
+      "args": []
+    },
+    "rot.order.groupOut": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "此刻不可用",
+      "args": []
+    },
+    "rot.order.groupOff": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "先不用",
+      "args": []
+    },
+    "rot.order.dropFirst": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "松手换到",
+      "args": []
+    },
+    "rot.order.unconfirmed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没确认",
+      "args": []
+    },
+    "rot.order.useNow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "立即用",
+      "args": []
+    },
+    "rot.order.lifted": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已拿起 · 上下键挪动 · 空格放下 · Esc 取消",
+      "args": []
+    },
+    "rot.order.atFirst": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "首格 · 放下即换过去",
+      "args": []
+    },
+    "rot.order.dropped": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已放下",
+      "args": []
+    },
+    "rot.order.cancel": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已取消 · 回到原位",
+      "args": []
     },
     "rot.order.on": {
       "kind": "body",
@@ -31302,12 +31544,6 @@
       "role": "片段",
       "zh": "↻{at}",
       "args": ["at"]
-    },
-    "rot.acct.useNow": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "立即用 {account}",
-      "args": ["account"]
     },
     "rot.acct.remove": {
       "kind": "action",
@@ -31397,18 +31633,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "24h",
-      "args": []
-    },
-    "rot.sim.manual": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "手动 {n} 段",
-      "args": ["n"]
-    },
-    "rot.sim.clear": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "清掉手动顺序",
       "args": []
     },
     "rot.sim.switch": {

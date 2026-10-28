@@ -4,4 +4,8 @@ import type { ProfileSlotId } from "./ProfileSlotId";
 /**
  * 合并表的一行：哪一项 · 归哪一格 · 标签 · 值与它的说法 · 来自哪一段 · 被哪一段盖掉（留下来的 ⇒ `null`）。
  */
-export type ProfileMergeRow = { key: string, slot: ProfileSlotId, label: string, vals: Array<string>, said: string, from: string, overriddenBy: string | null, };
+export type ProfileMergeRow = { key: string, slot: ProfileSlotId, label: string, vals: Array<string>, said: string, from: string, 
+/**
+ * 「来自 {from}」（新建框单个页那几格照摆）。
+ */
+fromSaid: string, overriddenBy: string | null, };

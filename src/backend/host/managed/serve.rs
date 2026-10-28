@@ -87,7 +87,8 @@ pub(crate) struct Hub {
     screen: Screen,
     clients: BTreeMap<u64, Client>,
     holder: Option<u64>,
-    /// 持有者自上次回车以来敲进、还没交的字数（[`typed_after`]）：不是 0 ⇒ 后端那一句（`say`）不写。换了持有者清零。
+    /// 伪终端输入行里自上次回车以来敲进、还没交的字数（[`typed_after`]，按持有者送进的字节记）：不是 0 ⇒ 后端那一句（`say`）不写。
+    /// 跟伪终端走、不跟持有者走：换持有者不清（那半句还在 Claude 的输入框里）。
     typed: usize,
     next: u64,
     ended: bool,
@@ -258,12 +259,22 @@ impl Hub {
                 Vec::new()
             }
             Ctl::Say { text } => self.say(id, text),
+            Ctl::Interrupt => self.interrupt(id),
             Ctl::Tag { sid, agent } => vec![Effect::Tag { sid, agent }],
             Ctl::End => vec![Effect::End],
             Ctl::Bye => vec![Effect::Drop(id)],
             // 下行的动词从上行来 · 认不出的 · 第二次 `hello`：不理。
             _ => Vec::new(),
         }
+    }
+
+    /// 后端中断这一轮（A3-3-32-10）：写一个 ESC、回 `interrupted`；不看持有者、不看半句、不换持有者。真终端说它 ⇒ 断它（它有自己的 `in`）。
+    fn interrupt(&mut self, id: u64) -> Vec<Effect> {
+        if self.clients.get(&id).map(|c| c.who.kind) != Some(WhoKind::Backend) {
+            return vec![Effect::Drop(id)];
+        }
+        self.push(id, Frame::Ctl(Ctl::Interrupted));
+        vec![Effect::Write(b"\x1b".to_vec())]
     }
 
     /// 后端说一句：不看谁持有，照写；持有者输入行里有没交的字 ⇒ 不写、回 `pending`。真终端说 `say` ⇒ 不是它该说的，断它。
@@ -320,7 +331,6 @@ impl Hub {
             return Vec::new();
         }
         self.holder = next;
-        self.typed = 0;
         for id in self.greeted_ids() {
             let holder = self.holder_for(id);
             self.push(id, Frame::Ctl(Ctl::Holder { holder }));

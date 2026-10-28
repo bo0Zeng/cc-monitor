@@ -284,6 +284,13 @@ object SessionQueueRead {
 /** 问的就是连着的那台自己（线上逐字 `<local>`）。 */
 private const val LOCAL = "<local>"
 
+/** `session-interrupt`：中断一条会话这一轮（■）。不进输入队、不靠持有输入；回包同 `terminal-input`（[TerminalInput.of] 解）。 */
+object SessionInterrupt {
+    const val COMMAND: String = "session-interrupt"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid, "client" to CLIENT)
+}
+
 /** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
 object TerminalInput {
     const val COMMAND: String = "terminal-input"
@@ -293,12 +300,6 @@ object TerminalInput {
         sid: String,
         text: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "text" to text)
-
-    /** 按名单里的句柄送字（终端屏：那个终端里不一定跑着会话）。 */
-    fun textInto(
-        terminal: String,
-        text: String,
-    ): Map<String, Any?> = mapOf("terminal" to terminal, "text" to text)
 
     /** 送键（`esc` 停这一轮 …）。 */
     fun key(

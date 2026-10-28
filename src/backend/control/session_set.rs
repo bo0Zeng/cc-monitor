@@ -38,12 +38,16 @@ pub(crate) struct RowPlan {
     pub(crate) group: String,
     /// 这一行起不了的原因（能起 ⇒ `null`）。
     pub(crate) blocked: Option<String>,
-    /// 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单第二行里的一段）。
+    /// 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单那一项悬停侧卡里的一行）。
     pub(crate) said: String,
     /// 「已有 n」。
     pub(crate) have_said: String,
     /// 右侧那一格：「再起 n」· 够了「—」· 起不了 ⇒ 原因。
     pub(crate) more_said: String,
+    /// 这一行的个数还能不能再加一（一行上限 · 一组合计上限都没到）。
+    pub(crate) can_more: bool,
+    /// 不能再加的那一句（能加 ⇒ `null`）。
+    pub(crate) more_why: Option<String>,
 }
 
 /// 整组补足的样子：每行 ＋ 合计再起几个，连同界面照摆的几句。
@@ -54,8 +58,8 @@ pub(crate) struct RowPlan {
 pub(crate) struct SetPlan {
     pub(crate) rows: Vec<RowPlan>,
     pub(crate) more: u32,
-    /// 几行连起来的那一句（组菜单那一项的第二行）。
-    pub(crate) said: String,
+    /// 组菜单那一项的第二行：「N 个目录 · M 个会话」（有起不了的行 ⇒ 再写「K 行起不了」）。
+    pub(crate) short: String,
     /// 右侧那一格：「再起 N」· 都够了「已齐」。
     pub(crate) more_said: String,
     /// 预览末行：合计再起几个。
@@ -160,11 +164,37 @@ pub(crate) fn plan_rows(
     home: Option<&std::path::Path>,
     is_dir: &dyn Fn(&str) -> bool,
 ) -> SetPlan {
+    let total: u32 = rows.iter().map(|r| u32::from(r.n)).sum();
     let out: Vec<RowPlan> = rows
         .iter()
-        .map(|r| {
+        .enumerate()
+        .map(|(i, r)| {
             let have = members(r, live, home).len() as u32;
-            let blocked = blocked_of(r, book, home, is_dir);
+            // 同一目录同一别名的第二行：当场起不了、指着头一行（存的时候配置文件那一侧照旧再判）。
+            let key = dir_key(&r.cwd, home);
+            let first = rows[..i]
+                .iter()
+                .position(|o| o.alias == r.alias && dir_key(&o.cwd, home) == key);
+            let blocked = match first {
+                Some(at) => Some(copy_text(
+                    "beSessionSet.row.dup",
+                    &[("line", &(at + 1).to_string())],
+                )),
+                None => blocked_of(r, book, home, is_dir),
+            };
+            let more_why = if r.n >= profile::ROW_MAX {
+                Some(copy_text(
+                    "beSessionSet.more.rowMax",
+                    &[("max", &profile::ROW_MAX.to_string())],
+                ))
+            } else if total >= profile::SET_MAX {
+                Some(copy_text(
+                    "beSessionSet.more.setMax",
+                    &[("max", &profile::SET_MAX.to_string())],
+                ))
+            } else {
+                None
+            };
             let more = match blocked {
                 Some(_) => 0,
                 None => u32::from(r.n).saturating_sub(have),
@@ -195,17 +225,32 @@ pub(crate) fn plan_rows(
                 have_said: copy_text("beSessionSet.row.have", &[("n", &have.to_string())]),
                 more_said: blocked.clone().unwrap_or_else(|| more_said(more, false)),
                 blocked,
+                can_more: more_why.is_none(),
+                more_why,
             }
         })
         .collect();
     let more: u32 = out.iter().map(|r| r.more).sum();
-    let sep = copy_text("beSessionSet.row.sep", &[]);
+    let dirs = {
+        let mut d: Vec<String> = rows.iter().map(|r| dir_key(&r.cwd, home)).collect();
+        d.sort();
+        d.dedup();
+        d.len()
+    };
+    let stuck = out.iter().filter(|r| r.blocked.is_some()).count();
+    let (dirs, total_s, stuck_s) = (dirs.to_string(), total.to_string(), stuck.to_string());
     SetPlan {
-        said: out
-            .iter()
-            .map(|r| r.said.as_str())
-            .collect::<Vec<_>>()
-            .join(&sep),
+        short: if stuck == 0 {
+            copy_text(
+                "beSessionSet.short.all",
+                &[("dirs", &dirs), ("n", &total_s)],
+            )
+        } else {
+            copy_text(
+                "beSessionSet.short.blocked",
+                &[("dirs", &dirs), ("n", &total_s), ("k", &stuck_s)],
+            )
+        },
         more_said: more_said(more, true),
         total_said: copy_text("beSessionSet.more.total", &[("n", &more.to_string())]),
         start_said: if more > 0 {

@@ -324,6 +324,7 @@ import type { SessionAttachmentDropReply } from "./SessionAttachmentDropReply";
 import type { SessionAttachmentDropReq } from "./SessionAttachmentDropReq";
 import type { SessionCommands } from "./SessionCommands";
 import type { SessionCommandsReq } from "./SessionCommandsReq";
+import type { SessionInterruptReq } from "./SessionInterruptReq";
 import type { SessionModelReq } from "./SessionModelReq";
 import type { SessionOpenReq } from "./SessionOpenReq";
 import type { SessionPermissionReq } from "./SessionPermissionReq";
@@ -561,6 +562,7 @@ export interface TypedCommands {
   "session-attachment-drop": { req: SessionAttachmentDropReq; reply: SessionAttachmentDropReply; code: "bad_args" | "no_session" | "not_writable" | "io_failed" | "refused" };
   "session-commands": { req: SessionCommandsReq; reply: SessionCommands; code: "bad_args" | "no_such_session" };
   "session-fork": { req: ForkReq; reply: Forked; code: "bad_args" | "fork_failed" };
+  "session-interrupt": { req: SessionInterruptReq; reply: Sent; code: "bad_args" | "bad_target" | "no_tmux" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
   "session-model": { req: SessionModelReq; reply: ModelSwitched; code: "bad_args" | "unsupported" | "no_such_session" | "no_tmux" | "unobservable" | "child_timed_out" };
   "session-open": { req: SessionOpenReq; reply: Opened; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "record_gone" | "already_live" | "not_hosted" | "wrong_owner" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_strategy" };
   "session-open-dir": { req: OpenDirReq; reply: DirChecked; code: "bad_args" };

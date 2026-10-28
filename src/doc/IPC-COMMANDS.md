@@ -227,6 +227,7 @@ A new session file appeared。
 | `ticket` | string | 订阅票（`terminal-follow` 时客户端给的，后端只当不透明的串回填） |
 | `seq` | number | 这条订阅里第几帧（从 1 连续） |
 | `view` | Preview | 那一屏（同 `terminal-preview` 的回话） |
+| `input` | TermInput | 输入怎么进（同名单那一格）：托管那一形写此刻的持有者，持有者变了画面没变也推一帧；tmux 那一形恒 `shared` |
 
 ### `terminal_follow_end`
 
@@ -2568,7 +2569,6 @@ tone: "plain" | "fail" | "warn", };
 
 ```ts
 type AgentKind = string;
-type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -2594,8 +2594,9 @@ fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: numbe
  * 策略这一判出错（走了兜底）：原话。
  */
 strategyError?: string, };
-type RotTryLane = { account: string, segs: Array<RotPastSeg>, };
+type RotTryLane = { account: string, segs: Array<RotTrySeg>, };
 type RotTryRow = { account: string, why: string, };
+type RotTrySeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotTrySwitch = { at: number, 
 /**
  * `at` 的钟面（`HH:MM`）。
@@ -2787,11 +2788,13 @@ type RotChoice = { v: string, label: string, };
 type RotDaySeg = { from: number, to: number, fromText: string, toText: string, v: number, text: string, tip: string, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
 type RotFrom = "own" | "all" | "default" | "same";
+type RotGroup = "use" | "next" | "out" | "off";
 type RotHint = { "k": "hold", until?: number, account?: string, 
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
  */
 untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "older", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+type RotLine = { account: string, group: RotGroup, state: string, why?: string, movable: boolean, stay?: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
 type RotMark = { glyph?: string, dashed: boolean, tip: string, };
@@ -2801,14 +2804,6 @@ type RotNote = { hint: RotHint, tone: Tone, text: string,
  */
 detail?: string, };
 type RotOldFile = { name: string, path: string, };
-type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane>, };
-type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
-type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
-type RotPastUse = { from: number, to: number, account?: string, 
-/**
- * 这一段写的字：号名 · 停发那一句；接着此刻、跟推演第一段同一个号的那一段 ⇒ 空（同一段只写一次，写在推演那一截）。
- */
-text: string, };
 type RotPlate = { color: number, label: Words, text: Words, };
 type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
 type RotStrategyError = { line?: number, msg: string, };
@@ -2863,8 +2858,9 @@ fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: numbe
  * 策略这一判出错（走了兜底）：原话。
  */
 strategyError?: string, };
-type RotTryLane = { account: string, segs: Array<RotPastSeg>, };
+type RotTryLane = { account: string, segs: Array<RotTrySeg>, };
 type RotTryRow = { account: string, why: string, };
+type RotTrySeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotTrySwitch = { at: number, 
 /**
  * `at` 的钟面（`HH:MM`）。
@@ -2899,7 +2895,7 @@ nowText: string,
  */
 title: string | null, 
 /**
- * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
+ * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` 也是 `null`、只用开会话的号。
  */
 strategy: RotStrategyItem | null, 
 /**
@@ -2913,7 +2909,11 @@ start: string, current: string,
 /**
  * 会话那一形的顺序（设置页 ⇒ 空）：第一格 ＝ 在用的号，往下是接下来先用谁（拖出来的 · 策略交的先后），此刻用不了的与先不用的沉底。
  */
-lineup: Array<string>, 
+lineup: Array<RotLine>, 
+/**
+ * 会话那一形：这个会话有拖出来的顺序（「照策略排」清掉它）。
+ */
+manual: boolean, 
 /**
  * 这个会话先不用的号。
  */
@@ -2925,18 +2925,18 @@ accounts: Array<RotAccount>,
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
-listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
+listed: number, decision: RotTryDecision | null, 
 /**
- * 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
+ * 推演（设置页那一形才有：改一格就看得到接下来怎么换；会话那一形 · 不轮换 ⇒ 缺）。
  */
-past: RotPast | null, 
+timeline?: RotTryTimeline, 
 /**
  * 换号记录（会话才有）。
  */
 log: Array<RotLogRow>, hints: Array<RotNote>, };
 type RotationViewReq = { target: RotTarget, 
 /**
- * 往后推几小时（1–48，缺 ⇒ 12）。
+ * 设置页那一形往后推几小时（1–48，缺 ⇒ 12）；会话那一形不画推演，不看它。
  */
 hours?: number, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
@@ -3039,7 +3039,7 @@ strategy: string | null, };
 
 ```ts
 type FactWhy = "refused" | "overage" | "used" | "login" | "key";
-type RotTempOp = { "place": { account: string, t: number, } } | { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };
+type RotTempOp = { "move": { account: string, to: number, } } | "clear" | { "off": { account: string, off: boolean, } };
 type RotUnusable = { why?: FactWhy, until?: number, };
 type RotationTempReply = { temp: Array<string>, off: Array<string>, };
 type RotationTempReq = { sid: string, op: RotTempOp, };
@@ -11048,7 +11048,11 @@ tabGroup: string | null,
  * 开口那句：落在 tmux 里起新会话时交给 agent（`null` ＝ 继承）。
  */
 say: string | null, };
-type ProfileMergeRow = { key: string, slot: ProfileSlotId, label: string, vals: Array<string>, said: string, from: string, overriddenBy: string | null, };
+type ProfileMergeRow = { key: string, slot: ProfileSlotId, label: string, vals: Array<string>, said: string, from: string, 
+/**
+ * 「来自 {from}」（新建框单个页那几格照摆）。
+ */
+fromSaid: string, overriddenBy: string | null, };
 type ProfileResolved = { 
 /**
  * 继承链（父 → 子）。
@@ -11264,7 +11268,7 @@ group: string,
  */
 blocked: string | null, 
 /**
- * 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单第二行里的一段）。
+ * 这一行写成一段：「目录 组名 已有/要的」，起不了 ⇒「目录 原因」（组菜单那一项悬停侧卡里的一行）。
  */
 said: string, 
 /**
@@ -11274,12 +11278,20 @@ haveSaid: string,
 /**
  * 右侧那一格：「再起 n」· 够了「—」· 起不了 ⇒ 原因。
  */
-moreSaid: string, };
+moreSaid: string, 
+/**
+ * 这一行的个数还能不能再加一（一行上限 · 一组合计上限都没到）。
+ */
+canMore: boolean, 
+/**
+ * 不能再加的那一句（能加 ⇒ `null`）。
+ */
+moreWhy: string | null, };
 type SetPlan = { rows: Array<RowPlan>, more: number, 
 /**
- * 几行连起来的那一句（组菜单那一项的第二行）。
+ * 组菜单那一项的第二行：「N 个目录 · M 个会话」（有起不了的行 ⇒ 再写「K 行起不了」）。
  */
-said: string, 
+short: string, 
 /**
  * 右侧那一格：「再起 N」· 都够了「已齐」。
  */
@@ -11393,7 +11405,7 @@ screen?: string,
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist" | "take";
+type SentAct = "retry" | "recapture" | "relist";
 type SentResult = "delivered" | "unsure" | "refused";
 type SetLaunchReq = { name: string, };
 type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, 
@@ -12350,7 +12362,7 @@ screen?: string,
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist" | "take";
+type SentAct = "retry" | "recapture" | "relist";
 type SentResult = "delivered" | "unsure" | "refused";
 type TerminalInputReq = { 
 /**
@@ -12380,11 +12392,7 @@ seen_screen?: string,
 /**
  * 自报的前端（过「哪个前端的会话」那一维）。
  */
-client?: string, 
-/**
- * 托管终端的输入在别的一端手里时：`true` ⇒ 先替这个前端接管再送；缺省 ⇒ 不送、回 `refused` ＋ `held_elsewhere`。tmux 那一形不看它。
- */
-take?: boolean, };
+client?: string, };
 ```
 
 码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
@@ -12464,6 +12472,52 @@ client?: string, };
 ```
 
 码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `not_managed` · `not_yours` · `no_such_session` · `unobservable` · `child_timed_out`
+
+#### `session-interrupt`
+
+中断一条会话这一轮（不进输入队、不换持有者）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --session-interrupt` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionInterruptReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere" | "host_outdated";
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, 
+/**
+ * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
+ */
+acts?: Array<SentAct>, };
+type SentAct = "retry" | "recapture" | "relist";
+type SentResult = "delivered" | "unsure" | "refused";
+type SessionInterruptReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 自报的前端。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-end`
 
@@ -12849,12 +12903,12 @@ names: Array<string>,
 /**
  * 与 `names` 同序同数：名单里那一行的句柄。
  */
-terminals: Array<TerminalAt>, };
-type Whereabouts = { results: Array<Whereabout>, 
+terminals: Array<TerminalAt>, 
 /**
- * 这台恢复默认放在哪（这台的偏好「恢复时进 tmux」× 有没有 tmux）。
+ * 这一条恢复默认放在哪（这台的偏好「恢复时放在哪」× 那条起在哪 × 有没有 tmux · 能不能托管）。
  */
 run: Run, };
+type Whereabouts = { results: Array<Whereabout>, };
 ```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -13037,7 +13091,7 @@ screen?: string,
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist" | "take";
+type SentAct = "retry" | "recapture" | "relist";
 type SentResult = "delivered" | "unsure" | "refused";
 type SessionOpenReq = { 
 /**
@@ -13777,35 +13831,6 @@ removed: boolean, said: string, };
 type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "session_denied" | "other";
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
-type MachineLink = { 
-/**
- * 连的是哪（`主机:口`；跳板那一项是那台跳板）。
- */
-endpoint: string, 
-/**
- * 是不是经过的那台跳板那一条（只运隧道，不压）。
- */
-jump: boolean, 
-/**
- * 这一条上的字节压没压。
- */
-compressed: boolean, 
-/**
- * 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
- */
-viaProxy: boolean, 
-/**
- * 线上收到的字节（加密 · 压缩之后）。
- */
-bytesIn: number, 
-/**
- * 线上发出的字节。
- */
-bytesOut: number, 
-/**
- * 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
- */
-said: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, };
 type MachineStage = "deploy" | "attach";
 type MachineState = { 
@@ -13858,7 +13883,7 @@ seenHostKey: string | null,
  */
 expectedHostKey: string | null, 
 /**
- * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ * 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
  */
 detail: string | null, 
 /**
@@ -13866,10 +13891,10 @@ detail: string | null,
  */
 unclear?: number, 
 /**
- * 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
- * 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
+ * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
+ * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
  */
-links?: Array<MachineLink>, };
+route?: string, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type NoArgs = Record<symbol, never>;
 type VersionRelation = "same" | "older" | "newer" | "incomparable";
@@ -13916,35 +13941,6 @@ type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "pa
 type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
 type MachineFixButton = { fix: MachineFix, label: string, };
 type MachineFrom = "local" | "table" | "ssh_config";
-type MachineLink = { 
-/**
- * 连的是哪（`主机:口`；跳板那一项是那台跳板）。
- */
-endpoint: string, 
-/**
- * 是不是经过的那台跳板那一条（只运隧道，不压）。
- */
-jump: boolean, 
-/**
- * 这一条上的字节压没压。
- */
-compressed: boolean, 
-/**
- * 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
- */
-viaProxy: boolean, 
-/**
- * 线上收到的字节（加密 · 压缩之后）。
- */
-bytesIn: number, 
-/**
- * 线上发出的字节。
- */
-bytesOut: number, 
-/**
- * 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
- */
-said: string, };
 type MachineMenu = { from: MachineFrom, 
 /**
  * 那台的机器状态成品（同设置 › 机器卡那一份）；只在 ssh 配置里的那一种没有。
@@ -14002,7 +13998,7 @@ seenHostKey: string | null,
  */
 expectedHostKey: string | null, 
 /**
- * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ * 复制详情：这一轮没连上 / 做不了时那一份（界面照原样跟在问题行那句后面）；连着时末尾接每条连接那一段（卡头 ⋯ 里复制）。
  */
 detail: string | null, 
 /**
@@ -14010,10 +14006,10 @@ detail: string | null,
  */
 unclear?: number, 
 /**
- * 本机后端此刻到这台的每一条 SSH 连接（经跳板时跳板那一条跟在它后面另起一项；没有 ⇒ 省略）。
- * 字节是这一份成品出的那一刻的读数（重问 `machine-read` 现读）。界面照摆每项的 `said`，不自己拼。
+ * 到这台怎么连过去的那一句（「经跳板 devbox · 经代理」；多跳外到内「经跳板 a → b」）：跳板照配置，经代理连上了才知道。
+ * 直连又不经代理 ⇒ 省略。界面有就摆一行，不拼字；每条连接的读数不上卡头，在 `detail` 末尾「连接：」那一段。
  */
-links?: Array<MachineLink>, };
+route?: string, };
 type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
 type MenuAct = "open_terminal" | "new_session" | "files" | "machine_status" | "add_machine";
 type MenuAction = { act: MenuAct, sub: string | null, blocked: string | null, note: string | null, };
@@ -14256,9 +14252,9 @@ type Prefs = {
  */
 launchers: { [key in string]: string }, 
 /**
- * 恢复会话默认进这台的 tmux。
+ * 恢复会话不说放在哪时落在哪：托管 · tmux · 照那条会话起时那一种。
  */
-resumeInTmux: boolean, 
+resumeWhere: ResumeWhere, 
 /**
  * 这台每个号默认用哪个模型（号 → 模型，原值）。
  */
@@ -14309,6 +14305,7 @@ path: string | null,
  * 照用的那一份。
  */
 prefs: Prefs, };
+type ResumeWhere = "managed" | "tmux" | "as_started";
 type Tab = "show" | "hide";
 ```
 
@@ -14330,9 +14327,9 @@ type Prefs = {
  */
 launchers: { [key in string]: string }, 
 /**
- * 恢复会话默认进这台的 tmux。
+ * 恢复会话不说放在哪时落在哪：托管 · tmux · 照那条会话起时那一种。
  */
-resumeInTmux: boolean, 
+resumeWhere: ResumeWhere, 
 /**
  * 这台每个号默认用哪个模型（号 → 模型，原值）。
  */
@@ -14387,7 +14384,11 @@ type PrefsSet = {
 /**
  * 某一家的启动命令：`{kind: 命令}`，空串 ⇒ 删掉那一家（回到它的默认）。只动点到的那几家。
  */
-launchers?: { [key in string]: string }, resumeInTmux?: boolean, 
+launchers?: { [key in string]: string }, 
+/**
+ * 恢复时放在哪（三选）。
+ */
+resumeWhere?: ResumeWhere, 
 /**
  * 某几个号的模型：`{号: 模型 | null}`，`null` ⇒ 删掉那一条。只动点到的那几个号。
  */
@@ -14416,6 +14417,7 @@ bgTab?: Tab,
  * pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
  */
 pbDir?: string, };
+type ResumeWhere = "managed" | "tmux" | "as_started";
 type Tab = "show" | "hide";
 ```
 
@@ -15958,7 +15960,11 @@ alias: string | null,
 /**
  * 开口那句：别名的那句 ＋ 换行 ＋「看 {编号}「{标题}」这一格：」；没有别名 / 别名没写 ⇒ 只有后一半。
  */
-line: string, };
+line: string, 
+/**
+ * 起在哪那一句（「tmux 里 · 号 lab（来自 look）· 进分组「看图」」，照别名合下来的写）；没有别名 ⇒ `null`。
+ */
+runs: string | null, };
 type PlanAskReq = { 
 /**
  * 工作区根。
@@ -16145,6 +16151,7 @@ alias?: string | null, };
 | `--session-attachment-drop` | ＝ 帧命令 `session-attachment-drop`：删掉会话工作目录下的一个附件目录（草稿上撤掉那一份） |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
+| `--session-interrupt` | ＝ 帧命令 `session-interrupt`：中断一条会话这一轮（不进输入队、不换持有者） |
 | `--session-model` | ＝ 帧命令 `session-model`：换模型（开着 ⇒ 送那一家的那一行、从记录里读回换成了什么；在等人不送；终端没了 ⇒ 记下、下次恢复照它起） |
 | `--session-open` | ＝ 帧命令 `session-open`：起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行） |
 | `--session-open-dir` | ＝ 帧命令 `session-open-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |

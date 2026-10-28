@@ -152,16 +152,21 @@ export class AttachDraft {
     return this.slots.flatMap((s) => (s.at.at === "done" ? [s.at.id] : []));
   }
 
-  /** 挡着送出的那一句：有失败 ⇒「附件失败」；有没传完的 ⇒「附件传输中」；都传完了 ⇒ `null`。 */
-  blocker(): string | null {
-    const { failed, pending } = this.tally();
+  /** 挡着送出的那一句（一句，不数个数）：有失败 ⇒「附件失败」；有断着的 ⇒ `offline`（连接层写好的离线那一句）；有没传完的 ⇒「附件传输中」；都传完了 ⇒ `null`。 */
+  blocker(offline: string): string | null {
+    const { failed, cut, pending } = this.tally();
     if (failed) return copyText("attach.blocked.failed");
+    if (cut) return offline;
     return pending ? copyText("attach.blocked.sending") : null;
   }
 
-  /** 有没有失败的 · 有没有还没传完的。 */
-  private tally(): { failed: boolean; pending: boolean } {
-    return { failed: this.slots.some((s) => s.at.at === "failed"), pending: this.slots.some((s) => s.at.at !== "done") };
+  /** 有没有失败的 · 有没有断着的 · 有没有还没传完的。 */
+  private tally(): { failed: boolean; cut: boolean; pending: boolean } {
+    return {
+      failed: this.slots.some((s) => s.at.at === "failed"),
+      cut: this.slots.some((s) => s.at.at === "offline"),
+      pending: this.slots.some((s) => s.at.at !== "done"),
+    };
   }
 
   private restart(s: Slot): void {

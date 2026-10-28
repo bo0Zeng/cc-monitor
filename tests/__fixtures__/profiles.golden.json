@@ -405,6 +405,7 @@
     "rows": [
       {
         "from": "mycc",
+        "fromSaid": "来自 mycc",
         "key": "cwd-if",
         "label": "按目录",
         "overriddenBy": null,
@@ -417,6 +418,7 @@
       },
       {
         "from": "mycct",
+        "fromSaid": "来自 mycct",
         "key": "ccm-tmux",
         "label": "在哪起",
         "overriddenBy": null,
@@ -426,6 +428,7 @@
       },
       {
         "from": "teamcct",
+        "fromSaid": "来自 teamcct",
         "key": "account",
         "label": "账号",
         "overriddenBy": null,

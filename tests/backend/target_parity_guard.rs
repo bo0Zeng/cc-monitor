@@ -78,6 +78,18 @@ const TARGET_GAPS: &[(&str, &str, Target, &str)] = &[
         Target::Windows,
         NO_TMUX_YET,
     ),
+    (
+        "wire-commands",
+        "session-interrupt",
+        Target::Windows,
+        NO_TMUX_YET,
+    ),
+    (
+        "cli-subcommands",
+        "--session-interrupt",
+        Target::Windows,
+        NO_TMUX_YET,
+    ),
     ("wire-commands", "set-plan", Target::Windows, NO_TMUX_YET),
     ("wire-commands", "set-launch", Target::Windows, NO_TMUX_YET),
     ("wire-commands", "plan-ask", Target::Windows, NO_TMUX_YET),

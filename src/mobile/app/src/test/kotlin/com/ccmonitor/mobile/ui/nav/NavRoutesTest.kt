@@ -11,15 +11,10 @@ import org.junit.Test
 /** 新界面的路由：命名空间、身份、落点与新/旧对话之分。 */
 class NavRoutesTest {
     /**
-     * 两条路由不许撞进 `sessions*` 那个命名空间。
-     *
-     * `Screen.SessionsOverview`（`"sessions"`）是终端 tab 总览，与 [Screen.Conversations]（Claude 对话总览）
-     * 完全是两件事，而它们的屏名只差一个字母（`SessionsOverviewScreen` vs `SessionOverviewScreen`）。
-     * 撞了的话 nav 会把两个毫不相干的屏当成同一条路由。
+     * 对话 · 聊天两条路由不许落进 `sessions*` 那个命名空间（终端 tab 那一族 `session/…` 在那里；名字只差一个字母，撞了 nav 会认成同一条）。
      */
     @Test
-    fun theNewRoutesDoNotCollideWithTheTerminalTabOverview() {
-        assertNotEquals(Screen.SessionsOverview.route, Screen.Conversations.route)
+    fun theNewRoutesStayOutOfTheSessionsNamespace() {
         assertFalse(
             "对话总览不许落进 `sessions` 前缀：${Screen.Conversations.route}",
             Screen.Conversations.route.startsWith("sessions"),

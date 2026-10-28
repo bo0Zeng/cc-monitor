@@ -99,18 +99,27 @@ fn a_first_version_prefs_file_is_reshaped_once() {
     assert!(keys.get("resumeInTmux").is_none(), "旧键留下了：{raw}");
     assert_eq!(keys["version"], 2);
     assert_eq!(reshape_prefs_in(&own), Reshaped::Nothing);
-    assert_eq!(std::fs::read_to_string(&at).unwrap(), raw, "第 2 版又被写了");
+    assert_eq!(
+        std::fs::read_to_string(&at).unwrap(),
+        raw,
+        "第 2 版又被写了"
+    );
     // 关着 ⇒ 托管。
     write_prefs_raw(&home, r#"{"version":1,"resumeInTmux":false}"#);
     assert_eq!(reshape_prefs_in(&own), Reshaped::Done);
     assert_eq!(
-        crate::common::machine_prefs::read_at(&at).prefs().resume_where,
+        crate::common::machine_prefs::read_at(&at)
+            .prefs()
+            .resume_where,
         ResumeWhere::Managed
     );
     // 读不懂（第 1 版里多一格 · 不是 JSON）⇒ 一个字节不动。
     for bad in [r#"{"version":1,"resumeInTmux":true,"more":1}"#, "{not json"] {
         write_prefs_raw(&home, bad);
-        assert!(matches!(reshape_prefs_in(&own), Reshaped::Unreadable(_)), "{bad}");
+        assert!(
+            matches!(reshape_prefs_in(&own), Reshaped::Unreadable(_)),
+            "{bad}"
+        );
         assert_eq!(std::fs::read_to_string(&at).unwrap(), bad);
     }
     let _ = std::fs::remove_dir_all(&home);

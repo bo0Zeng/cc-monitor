@@ -15,9 +15,10 @@ import { budgetWithin, callTyped, isOldBackend, offlineSaid, refusalIn } from ".
 import { copyText } from "./copy-table";
 import { tryDecodeJson } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
-import { shotOf, type TerminalShot } from "./terminal-reads";
+import { holderOf, shotOf, type TerminalHolder, type TerminalShot } from "./terminal-reads";
 import type { TerminalFollowEnd } from "./generated/TerminalFollowEnd";
 import type { TerminalScreen } from "./generated/TerminalScreen";
+import type { TermInput } from "./generated/TermInput";
 
 /** 那条画面流（与壳 `event_replay.rs::TERMINAL_SCREEN_KIND` 同一个串；后面跟 `/<票>`）。流名刻意不叫命令名（命令是 `terminal-follow`）。 */
 export const TERMINAL_SCREEN_KIND = "terminal-screen";
@@ -34,9 +35,9 @@ const INITIAL_WANT = 2;
 /** 订阅停了：只能快照（那台不支持实时）· 停了（`offline` ＝ 那台断开：输入框随之不可送）。`said` 是给人看的那一句，页面原样排。 */
 export type FollowStop = { kind: "snapshotOnly"; said: string } | { kind: "stopped"; said: string; offline: boolean };
 
-/** 页面收的两件事：一屏 · 停了（至多一次）。 */
+/** 页面收的两件事：一屏（连同此刻的输入持有者：托管那一形才有，持有者变了画面没变也来一帧）· 停了（至多一次）。 */
 export interface FollowEvents {
-  screen(shot: TerminalShot): void;
+  screen(shot: TerminalShot, holder?: TerminalHolder): void;
   stop(why: FollowStop): void;
 }
 
@@ -133,7 +134,8 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
           halt(stopOfEnd(cell) ?? lost());
           return;
         }
-        events.screen(shotOf(cell.view));
+        // 旧后端的帧不带「输入」那一格 ⇒ 不知道持有者，页面照名单那一份。
+        events.screen(shotOf(cell.view), (cell.input as TermInput | undefined) === undefined ? undefined : holderOf(cell.input));
         ack(cell.seq);
       } else if (it.t === "gap" || it.t === "closed" || it.t === "unseen") {
         halt(offline(origin));

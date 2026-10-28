@@ -85,6 +85,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    🔴 **+2**：起一组那两条（`set-plan` · `set-launch`，一组只起在 tmux 里，声明了 `no_tmux`）进表。
     //    🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队（不碰 tmux，送字归投递）。
     //    🔴 **+1**：问图 `plan-ask` 进表（开口那句只跟 tmux，声明了 `no_tmux`）。
+    //    🔴 **+1**：中断 `session-interrupt` 进表（同 `terminal-input` 按宿主送 Esc，声明了 `no_tmux`）。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
@@ -93,6 +94,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
             "set-launch",
             "terminal-preview",
             "terminal-input",
+            "session-interrupt",
             "session-model",
             "session-permission",
             "terminal-follow",
@@ -235,6 +237,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     // 🔴 **+2**：起一组那两条进表。
     // 🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队。
     // 🔴 **+1**：问图 `plan-ask` 进表。
+    // 🔴 **+1**：中断 `session-interrupt` 进表。
     assert_eq!(
         names,
         vec![
@@ -242,6 +245,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
             "set-launch".to_string(),
             "terminal-preview".to_string(),
             "terminal-input".to_string(),
+            "session-interrupt".to_string(),
             "session-model".to_string(),
             "session-permission".to_string(),
             "terminal-follow".to_string(),

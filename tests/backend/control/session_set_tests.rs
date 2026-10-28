@@ -316,7 +316,14 @@ fn the_plan_carries_the_written_lines_the_ui_shows_as_is() {
         t("beSessionSet.more.some", &[("n", "1")])
     );
     assert_eq!(p.rows[1].more_said, why);
-    assert_eq!(p.said, format!("{a}{}{b}", t("beSessionSet.row.sep", &[])));
+    // 组菜单第二行：一短句（几个目录 · 几个会话 · 几行起不了）。
+    assert_eq!(
+        p.short,
+        t(
+            "beSessionSet.short.blocked",
+            &[("dirs", "2"), ("n", "3"), ("k", "1")]
+        )
+    );
     assert_eq!(p.more_said, t("beSessionSet.more.some", &[("n", "1")]));
     assert_eq!(p.total_said, t("beSessionSet.more.total", &[("n", "1")]));
     assert_eq!(p.start_said, t("beSessionSet.start.some", &[("n", "1")]));
@@ -331,6 +338,67 @@ fn the_plan_carries_the_written_lines_the_ui_shows_as_is() {
     assert_eq!(full.more_said, t("beSessionSet.more.full", &[]));
     assert_eq!(full.start_said, t("beSessionSet.more.full", &[]));
     assert_eq!(full.rows[0].more_said, t("beSessionSet.more.none", &[]));
+    assert_eq!(
+        full.short,
+        t("beSessionSet.short.all", &[("dirs", "1"), ("n", "1")]),
+        "都起得了 ⇒ 不写几行起不了"
+    );
+}
+
+/// 「＋」能不能再点、为什么，那台当场判（界面不数 9 · 12）：一行到了上限 ⇒ 那一行；一组合计到了上限 ⇒ 每行。
+#[test]
+fn each_row_says_whether_one_more_fits_and_why_not() {
+    let book = parse_book(BOOK);
+    let t = |k: &str, a: &[(&str, &str)]| copy_core::copy_text(k, a);
+    let p = plan_rows(
+        &[row("/srv/a", "dev", 9), row("/srv/b", "dev", 2)],
+        &book,
+        &[],
+        home(),
+        &every_dir,
+    );
+    assert!(!p.rows[0].can_more);
+    assert_eq!(
+        p.rows[0].more_why.as_deref(),
+        Some(t("beSessionSet.more.rowMax", &[("max", "9")]).as_str())
+    );
+    assert!(p.rows[1].can_more);
+    assert_eq!(p.rows[1].more_why, None);
+    let full = plan_rows(
+        &[row("/srv/a", "dev", 7), row("/srv/b", "dev", 5)],
+        &book,
+        &[],
+        home(),
+        &every_dir,
+    );
+    let why = t("beSessionSet.more.setMax", &[("max", "12")]);
+    assert!(full.rows.iter().all(|r| !r.can_more));
+    assert!(full
+        .rows
+        .iter()
+        .all(|r| r.more_why.as_deref() == Some(why.as_str())));
+}
+
+/// 同一目录同一别名的第二行当场起不了、不算进再起，写「已在第 N 行」（存的时候那台照旧再判）。
+#[test]
+fn a_repeated_dir_and_alias_row_is_blocked_pointing_at_the_first() {
+    let book = parse_book(BOOK);
+    let p = plan_rows(
+        &[
+            row("~/work/notes", "dev", 2),
+            row("/home/pi/work/notes/", "dev", 1),
+        ],
+        &book,
+        &[],
+        home(),
+        &every_dir,
+    );
+    assert_eq!(
+        p.rows[1].blocked.as_deref(),
+        Some(copy_core::copy_text("beSessionSet.row.dup", &[("line", "1")]).as_str())
+    );
+    assert_eq!(p.rows[1].more, 0);
+    assert_eq!(p.more, 2);
 }
 
 /// 起完那一句也由这里写：全成「已启动 n」；有没成的「启动 成/全」＋ 逐条「别名 启动失败 · 原因」。

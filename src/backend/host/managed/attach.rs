@@ -13,9 +13,11 @@
 //! 终端模式（A3-3-15）：外层的输入模式由这里自己管（[`Modes`]），持有者照里面开的开；只看的不开鼠标 · 括号粘贴 · 焦点。
 //! 里面开着同步输出 `?2026` ⇒ 屏照算、先不画，关上那一下一次画完。
 
+use super::hold;
 use super::keys::{self, Act, Copy, CopyKeys, Keys};
 use super::screen::Extra;
 use super::wire::{self, ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind, PROTO};
+use cmd_wire::session::HolderWho;
 use copy_core::copy_text;
 use copy_core::said::Said;
 use std::io::Write;
@@ -184,9 +186,10 @@ struct Client {
 }
 
 /// 接一个托管终端，直到断开 / 会话结束 / 切到另一个。外层终端的进出由调用方（[`stdio_outer`] 那一侧）管。
-/// `queued`：底行那一句（[`QueueEars`] 说来的），来一句照摆一句。
+/// `queued`：底行那一句（[`QueueEars`] 说来的），来一句照摆一句。`name` ＝ 断开 · 结束之后那一行里的名（`ccm --attach` 认的那个）。
 pub(crate) async fn session(
     sock: &std::path::Path,
+    name: &str,
     mut outer: Outer,
     list: &(dyn Fn() -> Vec<(String, String)> + Sync),
     mut queued: UnboundedReceiver<Option<String>>,
@@ -286,7 +289,49 @@ pub(crate) async fn session(
     }
     reader.abort();
     put(&mut *c.outer.out, LEAVE_OUTER);
+    if let Some(line) = left_line(&left, name) {
+        put(&mut *c.outer.out, format!("{line}\r\n").as_bytes());
+    }
     Ok(left)
+}
+
+/// 不持有时底行那一句：名单那一句（[`hold::said_of`]，同一处写）＋「 · 回车接管」。
+pub(crate) fn held_line(holder: Option<&Holder>) -> String {
+    let said = match holder {
+        None => hold::said_of(HolderWho::None, false),
+        Some(h) => hold::said_of(hold::who_of(h.kind, h.front.as_deref()), h.mine),
+    };
+    copy_text("beHost.attach.heldBy", &[("said", &said)])
+}
+
+/// `前缀 D` 那张单子：一端一行（种类那一列是 [`hold::word_of`] 的短词），末行一次图例。
+pub(crate) fn client_lines(clients: &[ClientRow]) -> Vec<String> {
+    let mut lines: Vec<String> = clients
+        .iter()
+        .map(|r| {
+            let kind = hold::word_of(hold::who_of(r.kind, r.front.as_deref()));
+            let pid = r.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".into());
+            let mark = match (r.holder, r.mine) {
+                (true, true) => "* <",
+                (true, false) => "*",
+                (false, true) => "  <",
+                _ => "",
+            };
+            format!("{:>3}  {kind}  pid {pid}  {mark}", r.client)
+        })
+        .collect();
+    lines.push(copy_text("beHost.attach.clientsLegend", &[]));
+    lines
+}
+
+/// 还原外层之后往原屏印的那一行（同 tmux 的 `[detached …]` · `[exited]`）：断开 · 结束各一句；别的收法不印。
+fn left_line(left: &Left, name: &str) -> Option<String> {
+    match left {
+        Left::Detached => Some(copy_text("beHost.attach.detached", &[("name", name)])),
+        // 退出码不插进话里（C-Y5）：它是这个进程自己的退出码，外层 shell 照样拿得到。
+        Left::Ended(_) => Some(copy_text("beHost.attach.ended", &[("name", name)])),
+        Left::Lost | Left::Switch(_) | Left::OuterGone => None,
+    }
 }
 
 /// 往外层终端写一段并冲出去；写不进（终端没了）⇒ 记一行，这一趟由读键那一侧读到头收。
@@ -527,15 +572,7 @@ impl Client {
     }
 
     fn holder_said(&self) -> String {
-        let who = match &self.holder {
-            None => copy_text("beHost.attach.whoNobody", &[]),
-            Some(h) => match (h.kind, h.front.as_deref()) {
-                (WhoKind::Terminal, _) => copy_text("beHost.attach.whoTerminal", &[]),
-                (WhoKind::Backend, Some("mobile")) => copy_text("beHost.attach.whoMobile", &[]),
-                (WhoKind::Backend, _) => copy_text("beHost.attach.whoDesktop", &[]),
-            },
-        };
-        copy_text("beHost.attach.heldBy", &[("who", &who)])
+        held_line(self.holder.as_ref())
     }
 
     /// 托管那边来了一帧；交回 `Some` ⇒ 这一趟收了。
@@ -655,24 +692,7 @@ impl Client {
     }
 
     fn client_lines(&self, clients: &[ClientRow]) -> Vec<String> {
-        clients
-            .iter()
-            .map(|r| {
-                let kind = match (r.kind, r.front.as_deref()) {
-                    (WhoKind::Terminal, _) => copy_text("beHost.attach.whoTerminal", &[]),
-                    (WhoKind::Backend, Some("mobile")) => copy_text("beHost.attach.whoMobile", &[]),
-                    (WhoKind::Backend, _) => copy_text("beHost.attach.whoDesktop", &[]),
-                };
-                let pid = r.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".into());
-                let mark = match (r.holder, r.mine) {
-                    (true, true) => "* <",
-                    (true, false) => "*",
-                    (false, true) => "  <",
-                    _ => "",
-                };
-                format!("{:>3}  {kind}  pid {pid}  {mark}", r.client)
-            })
-            .collect()
+        client_lines(clients)
     }
 
     fn draw_copy(&mut self) {
@@ -954,7 +974,11 @@ pub(crate) async fn attach(own: &crate::platform::fs::Own, first: &str, ears: Qu
         if let Err(e) = &heard {
             tracing::warn!("瘦客户端：托管终端 {id} 的队没盯上，底行不显示排队：{e}");
         }
-        let left = session(&sock, outer, &list, qrx).await;
+        let name = list()
+            .into_iter()
+            .find(|(i, _)| *i == id)
+            .map_or_else(|| id.clone(), |(_, n)| n);
+        let left = session(&sock, &name, outer, &list, qrx).await;
         drop(heard);
         drop(raw);
         match left {

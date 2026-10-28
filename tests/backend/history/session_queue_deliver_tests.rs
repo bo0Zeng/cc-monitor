@@ -433,3 +433,44 @@ fn rewind_outcomes_map_to_deliveries() {
         Delivery::No(Undeliverable::NotRewound(_))
     ));
 }
+
+/// ★ 排队那一句说为什么在等（A3-3-32-12）：送那一下托管终端回「半句没交」⇒ 名单那一条与瘦客户端底行都多那半截；
+/// 再试时是别的等（框开着）⇒ 那半截没了；送进了 ⇒ 那一条摘掉。
+#[test]
+fn a_line_waiting_on_a_half_typed_terminal_line_says_why_until_it_goes() {
+    use copy_core::copy_text;
+    let o = own("half");
+    let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
+    *rig.answer.borrow_mut() = Delivery::of(crate::control::terminals::input_reply(
+        SentResult::Refused,
+        Some(crate::control::terminals::Refused::Waiting),
+        None,
+    ));
+    let mut memos = Memos::default();
+    put(&o, "a", T0);
+    rig.pass(&o, &mut memos, T0 + 1);
+    let said = |at: i64| q::read(&o, SID, at).unwrap().items[0].said.clone();
+    assert_eq!(
+        said(T0 + 2),
+        copy_text("beQueue.said.placeHalf", &[("place", "1")])
+    );
+    assert_eq!(
+        q::waiting_said(&o, SID, T0 + 2),
+        Some(copy_text("beQueue.said.waitingHalf", &[("n", "1")]))
+    );
+    // 到点再试：这回是框开着那种等 ⇒ 不再说半句。
+    *rig.answer.borrow_mut() = Delivery::Waiting;
+    let at = T0 + 1 + WAITING_RETRY_MS;
+    rig.pass(&o, &mut memos, at);
+    assert_eq!(
+        said(at + 1),
+        copy_text("beQueue.said.place", &[("place", "1")])
+    );
+    assert_eq!(
+        q::waiting_said(&o, SID, at + 1),
+        Some(copy_text("beQueue.said.waiting", &[("n", "1")]))
+    );
+    *rig.answer.borrow_mut() = sent(SentResult::Delivered);
+    rig.pass(&o, &mut memos, at + 1 + WAITING_RETRY_MS);
+    assert!(states(&o).is_empty(), "送进了 ⇒ 摘掉");
+}

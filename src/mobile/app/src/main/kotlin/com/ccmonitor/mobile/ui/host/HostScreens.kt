@@ -106,10 +106,6 @@ fun HostListScreen(
     onIdentities: () -> Unit,
     onFiles: (String) -> Unit = {},
     onEdit: (String) -> Unit = {},
-    // 「新建会话 · 选主机」页复用本屏：true 时显示对应的标题与提示。连接语义（forceNew）由调用方接，
-    // 本屏不感知；返回键取消由导航自然提供。
-    newSessionMode: Boolean = false,
-    title: String = HOSTS_SCREEN_TITLE,
 ) {
     val vm = koinViewModel<HostViewModel>()
     val hosts by vm.hosts.collectAsState()
@@ -125,7 +121,7 @@ fun HostListScreen(
     // 垫在最外层 Box 上，FAB 的 `BottomEnd` 也跟着让开。
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
-            HostListHeader(vm, title, newSessionMode, onIdentities)
+            HostListHeader(vm, onIdentities)
             if (hosts.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Text(copyText("mobHosts.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -178,12 +174,10 @@ fun HostListScreen(
     }
 }
 
-/** 列表头部：标题、动作行，以及新建会话模式下的提示。 */
+/** 列表头部：标题与动作行。 */
 @Composable
 private fun HostListHeader(
     vm: HostViewModel,
-    title: String,
-    newSessionMode: Boolean,
     onIdentities: () -> Unit,
 ) {
     Row(
@@ -191,17 +185,8 @@ private fun HostListHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(HOSTS_SCREEN_TITLE, style = MaterialTheme.typography.titleMedium)
         HostListActions(vm, onIdentities)
-    }
-    // 新建会话模式的提示：点主机即强制新建独立 tab（不复用已开会话），返回键取消。
-    if (newSessionMode) {
-        Text(
-            copyText("mobHosts.newTab.hint"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
     }
 }
 

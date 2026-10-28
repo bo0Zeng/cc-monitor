@@ -1729,13 +1729,92 @@ case "$a" in
 esac
 "#;
 
+    /// 假锁里那一个 registry 包：叫 [`VULN_DEP`] 的那个，假 OSV 给它一条有修复版的公告；别的都没公告。
+    const CLEAN_DEP: &str = "demo-dep";
+    const VULN_DEP: &str = "demo-vuln";
+    const VULN_ID: &str = "RUSTSEC-0000-0001";
+
+    fn fake_cargo_lock(dep: &str) -> String {
+        format!("version = 4\n\n[[package]]\nname = \"{dep}\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n")
+    }
+
+    /// 只听 127.0.0.1 的假 OSV：`/v1/querybatch` 问几个包就回几条，[`VULN_DEP`] 那条带 [`VULN_ID`]，别的空；
+    /// `/v1/vulns/<VULN_ID>` 回那条公告（1.0.1 修了）。返回它的根地址。
+    fn fake_osv() -> String {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for conn in listener.incoming() {
+                let Ok(mut conn) = conn else { continue };
+                let mut reader = BufReader::new(conn.try_clone().unwrap());
+                let mut first = String::new();
+                let _ = reader.read_line(&mut first);
+                let mut len = 0usize;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0u8; len];
+                let _ = reader.read_exact(&mut body);
+                let reply = if first.contains(&format!("/v1/vulns/{VULN_ID}")) {
+                    serde_json::json!({
+                        "id": VULN_ID,
+                        "summary": "fixture",
+                        "affected": [{
+                            "package": { "name": VULN_DEP, "ecosystem": "crates.io" },
+                            "ranges": [{ "type": "SEMVER", "events": [{ "introduced": "0" }, { "fixed": "1.0.1" }] }]
+                        }]
+                    })
+                } else {
+                    let queries = serde_json::from_slice::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| v["queries"].as_array().cloned())
+                        .unwrap_or_default();
+                    let results: Vec<_> = queries
+                        .iter()
+                        .map(|q| {
+                            if q["package"]["name"] == VULN_DEP {
+                                serde_json::json!({ "vulns": [{ "id": VULN_ID }] })
+                            } else {
+                                serde_json::json!({})
+                            }
+                        })
+                        .collect();
+                    serde_json::json!({ "results": results })
+                }
+                .to_string();
+                let _ = write!(
+                    conn,
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+                    reply.len()
+                );
+            }
+        });
+        format!("http://{addr}")
+    }
+
     /// 在假远端（本地裸仓）上跑一趟 push-candidate：主工作树在 main 上，要推的分支（脚本认的 `w8/<名>`，名取 `x`）比 main 多一个提交；gh 是上面那个假的。
     /// 返回（退出码是否 0 · 输出 · 跑完后 origin 上 main 的提交 · 要推的那个提交）。
     fn push_on_fake_remote(next: &str, main: &str) -> (bool, String, String, String) {
+        push_on_fake_remote_with(CLEAN_DEP, next, main)
+    }
+
+    /// 同上，要推的提交里那两份 Cargo.lock 各放一个叫 `dep` 的 registry 包。
+    fn push_on_fake_remote_with(
+        dep: &str,
+        next: &str,
+        main: &str,
+    ) -> (bool, String, String, String) {
         const NAME: &str = "x";
         let br = format!("w8/{NAME}");
         use std::os::unix::fs::PermissionsExt;
-        let d = scratch(&format!("push-{next}-{main}"));
+        let d = scratch(&format!("push-{dep}-{next}-{main}"));
         let git = |dir: &Path, args: &[&str]| -> String {
             let out = Command::new("git")
                 .args([
@@ -1774,7 +1853,24 @@ esac
         );
         git(&work, &["push", "-q", "origin", "main"]);
         git(&work, &["checkout", "-q", "-b", &br]);
-        git(&work, &["commit", "-q", "--allow-empty", "-m", "b"]);
+        // 推之前要过依赖漏洞判据（`dep-advisories.mjs --rev`）：要推的提交里放三份锁（各一个 registry 包）与空豁免表，
+        // OSV 换成本地假的，不出网。
+        let cargo_lock = fake_cargo_lock(dep);
+        for (rel, body) in [
+            ("src/backend/Cargo.lock", cargo_lock.as_str()),
+            ("src/frontend/shell/Cargo.lock", cargo_lock.as_str()),
+            (
+                "package-lock.json",
+                r#"{"lockfileVersion":3,"packages":{"":{},"node_modules/demo-dep":{"version":"1.0.0"}}}"#,
+            ),
+            ("tests/scripts/dep-advisories-waived.txt", ""),
+        ] {
+            let p = work.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        git(&work, &["add", "-A"]);
+        git(&work, &["commit", "-q", "-m", "b"]);
         git(&work, &["checkout", "-q", "main"]);
         let sha = git(&work, &["rev-parse", &br]);
         let bin = d.join("bin");
@@ -1797,6 +1893,7 @@ esac
             .env("HOME", &d)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GATE_STATE_DIR", d.join("state"))
+            .env("OSV_API", fake_osv())
             .env("FAKE_NEXT", next)
             .env("FAKE_MAIN", main)
             .env_remove("TMUX")
@@ -1809,6 +1906,8 @@ esac
             String::from_utf8_lossy(&out.stderr)
         );
         let remote_main = git(&d.join("origin.git"), &["rev-parse", "main"]);
+        let remote_next = git(&d.join("origin.git"), &["branch", "--list", "next"]);
+        let said = format!("{said}\n〔origin 上的 next：{remote_next:?}〕");
         let _ = std::fs::remove_dir_all(&d);
         (out.status.success(), said, remote_main, sha)
     }
@@ -1835,5 +1934,22 @@ esac
         let (ok, said, remote_main, sha) = push_on_fake_remote("failure", "success");
         assert!(!ok, "next 上 CI 红了却退 0：{said}");
         assert_ne!(remote_main, sha, "next 红了 main 却动了：{said}");
+    }
+
+    /// ★ 推之前先过依赖漏洞判据：要推的提交里的锁带一个有修复版、没登豁免的公告 ⇒ 拒推，next 与 main 都不动。
+    /// 正控是上面那条（同一假仓、锁干净 ⇒ 照常推）。
+    #[test]
+    fn push_refuses_a_commit_whose_lock_has_a_fixable_advisory() {
+        let (ok, said, remote_main, sha) = push_on_fake_remote_with(VULN_DEP, "success", "success");
+        assert!(!ok, "锁里有可修的公告，push-candidate 却退 0：{said}");
+        assert_ne!(remote_main, sha, "判据红了 main 却动了：{said}");
+        assert!(
+            said.contains(VULN_ID) && said.contains("依赖漏洞判据没过"),
+            "没点名那条公告、没说是依赖漏洞判据拦的：{said}"
+        );
+        assert!(
+            said.contains("origin 上的 next：\"\""),
+            "判据红了 next 却推出去了：{said}"
+        );
     }
 }

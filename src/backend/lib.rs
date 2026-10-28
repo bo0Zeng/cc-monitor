@@ -483,9 +483,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-open-facts",
     // 起会话 · 恢复 · 接回一个请求（`session-open`）派生的 CLI 面，理由同上。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-open",
-    // 会话那几条（`session-commands` · `-model` · `-attachment-*` · `-permission`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    // 会话那几条（`session-commands` · `-model` · `-interrupt` · `-attachment-*` · `-permission`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--session-commands",
     "--session-model",
+    "--session-interrupt",
     "--session-attachment-check",
     "--session-attachment-commit",
     "--session-attachment-drop",

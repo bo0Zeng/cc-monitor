@@ -484,7 +484,11 @@ fn resume_without_run_follows_this_machines_preference() {
         rig.ccm_out = "ccm-session=p-cc\n".into();
         rig.prefs.resume_where = ResumeWhere::AsStarted;
         rig.started = started;
-        assert_eq!(rig.open(resume(None)).unwrap().landed, Landed::Started, "{started:?}");
+        assert_eq!(
+            rig.open(resume(None)).unwrap().landed,
+            Landed::Started,
+            "{started:?}"
+        );
         let argv = rig.ccm.borrow()[0].join(" ");
         assert!(argv.contains(want), "{started:?} ⇒ {argv}");
     }

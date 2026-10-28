@@ -141,7 +141,9 @@ fn resume_where_defaults_to_managed_and_takes_only_the_three_words() {
         assert_eq!(patched(Prefs::default(), &set).resume_where, want, "{w}");
     }
     assert!(serde_json::from_value::<PrefsSet>(serde_json::json!({"resumeInTmux": true})).is_err());
-    assert!(serde_json::from_value::<PrefsSet>(serde_json::json!({"resumeWhere": "direct"})).is_err());
+    assert!(
+        serde_json::from_value::<PrefsSet>(serde_json::json!({"resumeWhere": "direct"})).is_err()
+    );
 }
 
 /// 恢复想不想进 tmux：三选 × 启动台账记着的宿主。照起时那一种只认记着 tmux 的；记着托管 / 记不着 ⇒ 不想。
@@ -161,7 +163,11 @@ fn resume_wants_tmux_follows_the_choice_and_where_the_session_started() {
         (ResumeWhere::AsStarted, Some(Managed), false),
         (ResumeWhere::AsStarted, None, false),
     ] {
-        assert_eq!(with(w).resume_wants_tmux(started), want, "{w:?} × {started:?}");
+        assert_eq!(
+            with(w).resume_wants_tmux(started),
+            want,
+            "{w:?} × {started:?}"
+        );
     }
 }
 

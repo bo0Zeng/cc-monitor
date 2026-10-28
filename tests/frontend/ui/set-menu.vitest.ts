@@ -30,9 +30,12 @@ const set = (name: string, problems: SetOut["problems"] = []): SetOut => ({ name
 
 /** 那台写好的几句用占位字：界面照摆，不拼。 */
 const plan = (more: number): SetPlan => ({
-  rows: [{ cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: null, said: "ROW", haveSaid: "HAVE", moreSaid: "RMORE" }],
+  rows: [
+    { cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: null, said: "ROW-1", haveSaid: "HAVE", moreSaid: "RMORE", canMore: true, moreWhy: null },
+    { cwd: "~/work/notes", alias: "look", want: 1, have: 1, more: 0, group: "看图", blocked: null, said: "ROW-2", haveSaid: "HAVE", moreSaid: "RMORE", canMore: true, moreWhy: null },
+  ],
   more,
-  said: "ROWS-SAID",
+  short: "SHORT",
   moreSaid: "MORE-SAID",
   totalSaid: "TOTAL",
   startSaid: "START",
@@ -63,17 +66,19 @@ afterEach(() => {
 });
 
 describe("组菜单那一项", () => {
-  it("能起的：右侧、第二行照那台写好的那两句；点了起", () => {
+  it("★ 能起的：右侧照那台那一句、第二行恒写那台的短句（不按行铺）；逐行在悬停侧卡里；点了起", () => {
     const start = vi.fn();
     const it = setItem(set("工具链"), { kind: "plan", plan: plan(1) }, start);
-    expect([it.label, it.detail, it.body, it.enabled]).toEqual(["工具链", "MORE-SAID", "ROWS-SAID", undefined]);
+    expect([it.label, it.detail, it.body, it.enabled]).toEqual(["工具链", "MORE-SAID", "SHORT", undefined]);
+    const card = it.peek!();
+    expect(Array.from(card.querySelectorAll('[data-role="set-peek-row"]'), (e) => e.textContent)).toEqual(["ROW-1", "ROW-2"]);
     it.onClick!();
     expect(start).toHaveBeenCalledTimes(1);
   });
 
   it("已齐的灰着、右侧照那一句；写错的 · 答不了的灰着、写为什么；还在问的转圈", () => {
     const full = setItem(set("周报"), { kind: "plan", plan: plan(0) }, vi.fn());
-    expect([full.enabled, full.detail, full.why, full.onClick]).toEqual([false, "MORE-SAID", "ROWS-SAID", undefined]);
+    expect([full.enabled, full.detail, full.why, full.onClick]).toEqual([false, "MORE-SAID", "SHORT", undefined]);
     const broken = setItem(set("坏", [{ section: null, line: 3, message: "行 3 写错", detail: null } as SetOut["problems"][number]]), { kind: "plan", plan: plan(1) }, vi.fn());
     expect([broken.enabled, broken.why]).toEqual([false, "行 3 写错"]);
     const failed = setItem(set("远"), { kind: "failed", said: "devbox 离线" }, vi.fn());
