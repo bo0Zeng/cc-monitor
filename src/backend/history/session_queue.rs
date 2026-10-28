@@ -487,6 +487,50 @@ pub(crate) fn waiting_said(list: &QueueList) -> Option<String> {
     (n > 0).then(|| copy_text("beQueue.said.waiting", &[("n", &n.to_string())]))
 }
 
+/// 托管终端 `id` 底行此刻那一句：没打标 · 没在等的 · 读不出 ⇒ `None`。
+/// 瘦客户端、托管终端与会话同在一台（托管口是本机套接字）⇒ 这台就是队的主人；sid 由后端打标写进 `hosts/<id>/facts.json`。
+pub(crate) fn line_of_host(own: &Own, id: &str) -> Option<String> {
+    use crate::host::managed::home;
+    let dir = home::dir_of(own, id).ok()?;
+    let sid = home::read_facts(dir.as_path())?.sid;
+    if sid.is_empty() {
+        return None;
+    }
+    let list = read(own, &sid, crate::common::time::now_ms()).ok()?;
+    waiting_said(&list)
+}
+
+/// 瘦客户端底行「排队 N 条」的耳朵：经 [`crate::platform::watch_file`] 盯 `hosts/<id>/`（打标那一下）与这台的队目录（队动了），
+/// 起来那一下先说一次 [`line_of_host`]，之后那一句变了才说（`tell`）。交回的那一份丢了 ⇒ 不再盯。
+/// 瘦客户端（`host::managed::attach`）只照说来的那一句摆，由 `ccm` 入口把这一个交给它（host 不引 history）。
+pub(crate) fn host_line_ears(
+    own: &Own,
+    id: &str,
+    tell: Box<dyn Fn(Option<String>) + Send>,
+) -> Result<crate::platform::watch_file::Watching, String> {
+    use crate::host::managed::home;
+    let host = home::dir_of(own, id).map_err(|s| s.logged())?;
+    let queue = made_dir(own).map_err(|s| s.logged())?;
+    let (host, queue) = (host.as_path().to_path_buf(), queue.as_path().to_path_buf());
+    let dirs = [(host.clone(), false), (queue.clone(), false)];
+    let concerns = move |p: &std::path::Path| {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        (p.parent() == Some(host.as_path()) && name == home::FACTS)
+            || (p.parent() == Some(queue.as_path()) && sid_of_name(name).is_some())
+    };
+    let first = line_of_host(own, id);
+    tell(first.clone());
+    let (own, id) = (own.clone(), id.to_string());
+    let mut last = first;
+    crate::platform::watch_file::watch(&dirs, concerns, "queue-line", move |_| {
+        let line = line_of_host(&own, &id);
+        if line != last {
+            tell(line.clone());
+            last = line;
+        }
+    })
+}
+
 /// 会话结束：没送的标未送达，回此刻的名单。
 pub(crate) fn end(own: &Own, sid: &str, now_ms: i64) -> Result<QueueList, Fail> {
     with_book(own, sid, |b| {

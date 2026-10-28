@@ -7,7 +7,6 @@ pub(crate) mod client;
 pub(crate) mod hold;
 pub(crate) mod home;
 pub(crate) mod keys;
-pub(crate) mod queue_line;
 pub(crate) mod run;
 pub(crate) mod screen;
 pub(crate) mod serve;
