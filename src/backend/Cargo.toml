@@ -94,7 +94,7 @@ shots = []
 [dependencies]
 # Versions pinned to whatever ../frontend/shell/Cargo.lock already resolved so the
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
-# tokio 1.52.x, notify 6.1.x, walkdir 2.5.x,
+# tokio 1.52.x, notify 8.2.x, walkdir 2.5.x,
 # tracing 0.1.x). Keep this list minimal.
 #
 # `rustls` / `webpki-roots` 也在 `../frontend/shell/Cargo.lock` 里：中转 crate `comms-outward` 是那个 workspace 的成员，
@@ -253,7 +253,7 @@ russh = { version = "0.65", default-features = false, features = ["ring", "flate
 # 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
 # 字节只能走 `dial/` 那条已鉴权的 SSH 连接。
 russh-sftp = "3"
-notify = "6.1"
+notify = "8.2"
 walkdir = "2.5"
 # ── 解压（`control/files_extract.rs`）──
 # 由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解。三条都纯 Rust、MIT / Apache-2.0：
