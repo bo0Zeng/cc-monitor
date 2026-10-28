@@ -124,7 +124,7 @@ pub(crate) fn hosted_argv_of(
 
 /// **唯一的映射**：[`Launch`] ＋ 判好的号 ⇒ 渲染器那份 spec。本机与远端只差三处，都写在这里：
 /// 不表态的号（本机继承 monitor 的环境 · 远端 ssh 过去的那台不是 monitor 的环境 ⇒ 落账号 0）·
-/// Windows 上没有 tmux（一律直路，接回做不到）· 本机直路不带 `--cwd`（终端的工作目录由 monitor 开窗口时给）。
+/// Windows 上没有 tmux（建进 tmux 的一律直路；接回只会是托管终端，`ccm -- --attach <名>` 先认托管名单）· 本机直路不带 `--cwd`（终端的工作目录由 monitor 开窗口时给）。
 fn spec_with<T>(
     l: &Launch,
     account: &Settled,
@@ -136,11 +136,12 @@ fn spec_with<T>(
 ) -> Result<T, String> {
     use ccm_invocation as ci;
     let windows = here == Here::Local { windows: true };
-    if windows && matches!(l.act, Act::Attach(_)) {
-        return Err(copy_core::copy_text("rsHistory.attach.windows", &[]));
-    }
+    let attach = matches!(l.act, Act::Attach(_));
     let launcher = checked_launcher(&l.launcher)?;
-    let tmux = l.tmux.as_deref().filter(|n| !n.is_empty() && !windows);
+    let tmux = l
+        .tmux
+        .as_deref()
+        .filter(|n| !n.is_empty() && (!windows || attach));
     // 远端那台不表态的号落账号 0（ssh 过去的那台不是 monitor 的环境，没有可继承的）。
     let base = Settled::Base;
     let (account, picked_model) = match (account, here) {
