@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.Turns
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.StreamItem
 import com.ccmonitor.mobile.core.claude.model.TurnFolds
+import com.ccmonitor.mobile.core.wire.gen.FoldSegment
 import com.ccmonitor.mobile.core.wire.gen.TurnRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -124,7 +125,20 @@ internal class ChatTurns(
         return key
     }
 
-    /** 流里画的那几项；落点收在折着的一段里 ⇒ 先展开那一段（记成手动开；之后人收起不再替他开）。 */
+    /** 上一次折的：拿哪份单元 · 哪份分段 · 什么开合折出来的流（开合以后变过 ⇒ 不能接着折）。 */
+    private var last: Folded? = null
+
+    private class Folded(
+        val units: List<RenderUnit>,
+        val folds: List<FoldSegment>,
+        val open: Set<String>,
+        val stream: List<StreamItem>,
+    )
+
+    /**
+     * 流里画的那几项；落点收在折着的一段里 ⇒ 先展开那一段（记成手动开；之后人收起不再替他开）。
+     * 开合没变 ⇒ 从上一份的最后一段过程起往下重折（[TurnFolds.foldTail]：那之前的单元与分段有变它自己整份折）。
+     */
     fun fold(
         units: List<RenderUnit>,
         landing: String?,
@@ -135,6 +149,9 @@ internal class ChatTurns(
                 openedFor = landing
             }
         }
-        return TurnFolds.fold(units, turns, opened)
+        val prev = last?.takeIf { it.open == opened }
+        val stream = prev?.let { TurnFolds.foldTail(it.stream, it.units, it.folds, units, turns, opened) } ?: TurnFolds.fold(units, turns, opened)
+        last = Folded(units, turns.flatMap { it.folds }, opened.toSet(), stream)
+        return stream
     }
 }

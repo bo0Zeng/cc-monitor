@@ -109,14 +109,13 @@ src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链�
 
 # ── 后端那棵 ─────────────────────────────────────────────────────────────────────────
 src/backend/**                  backendrs,e2e  后端 crate：e2e 全部套件的被测对象就是它编出来的二进制
-src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单（成员 · 手机那两份 profile · 打补丁版 russh）：手机那份 .so 也照它编
+src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单（成员 · 手机那两份 profile · russh 版本）：手机那份 .so 也照它编
 src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依赖版本也锁在这里
 src/backend/lib.rs              mobile  手机构建读 BUILD_ID 与子命令表
 src/frontend/shell/embedded-backends/**  mobile  手机打包时带上的远端后端字节
 src/frontend/ui/generated/**    mobile  线上类型的 TS 生成物：手机单测拿它对拍 Kotlin 那一份
 tests/copy/mobile-literal-exempt.json  mobile  手机生产源码不写死界面中文那条判据（MobileLiteralsTest.kt）读的豁免表
 tests/frontend/ui/exit-debt.json  mobile  出口扫描判据的欠账名单：手机的 detekt 规则（src/mobile/detekt-rules）照它逐格核
-src/vendor/**                   backendrs,e2e  后端链的 vendored russh
 tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
 src/backend/accounts/quota/rules/**  rotation500  轮换的判与推演：一致性大样本比的就是它
 tests/backend/accounts/quota/rules/**  rotation500  一致性判据本身

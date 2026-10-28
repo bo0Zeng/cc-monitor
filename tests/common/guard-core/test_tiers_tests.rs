@@ -248,6 +248,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/stream/drain_tests.rs", needle: "stream::inbound::drain_tests::d2_child_harness" },
     ),
     (
+        "tests/backend/platform/freed_memory_tests.rs",
+        "child_gives_freed_pages_back",
+        Trigger::Filter { by: "tests/backend/platform/freed_memory_tests.rs", needle: "platform::proc::freed_memory_tests::child_gives_freed_pages_back" },
+    ),
+    (
         "tests/backend/plugin_walk_fixture.rs",
         "a_plugin_started_here_never_sees_the_listen_port_or_token_inner",
         Trigger::Filter { by: "tests/backend/plugin_walk_fixture.rs", needle: "plugin_walk_fixture::tests::a_plugin_started_here_never_sees_the_listen_port_or_token_inner" },

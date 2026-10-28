@@ -22,7 +22,7 @@
 //! - **按行**（六条）：`{"lines": [...]}` —— 与 CLI 那条 stdout 逐行、trim 过、剔空行后一致；
 //!   整份输出超过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断：截断的清单会被当成完整的用）。
 //! - **按字节分页**（`history-read`）：一份会话可以是几百 MB，一帧装不下
-//!   ⇒ 调用方给 `[offset, until)`，回一页（切在行尾）＋ 续点，调用方循环到 `eof`。
+//!   ⇒ 调用方给 `[offset, until)`，回一页（整行，按交出去的字节封顶）＋ 续点，调用方循环到 `eof`。
 //!   `history-tail` 只回那张「尾段在哪」的图，正文仍走 `history-read`。
 //!
 //! # 它**不**做什么
@@ -32,10 +32,12 @@
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
 
-/// `history-read` 一页的目标字节数。
+/// `history-read` · `history-tail` 一页（一条应答）交出去的字节数；源字节照这个数一块一块读。
 ///
 /// 取 1 MiB：一页就是一帧应答，它在后端写出方向上与实时 `line` 帧**排同一条队** ——
 /// 页越大，实时行被挡住的时间越长；页越小，往返越多。1 MiB 在 1 Mbps 的弱网上约 8 秒一页。
+/// 量的是交出去的、不是读过的：不进界面的大行（请求体那一类）只占一个号，按源字节封顶会让尾段白白多出几页往返。
+/// 一页最多扫多少源字节见 `history_face::read_rows`（[`LINE_CAP_BYTES`]）。
 pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
