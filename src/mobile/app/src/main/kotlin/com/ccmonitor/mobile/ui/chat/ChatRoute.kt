@@ -56,6 +56,7 @@ import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
 import com.ccmonitor.mobile.ui.chats.RenameDialog
 import com.ccmonitor.mobile.ui.common.HostLink
+import com.ccmonitor.mobile.ui.common.MachineBar
 import com.ccmonitor.mobile.ui.common.chatHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
@@ -166,6 +167,8 @@ fun ChatRoute(
                     .consumeWindowInsets(inner)
                     .imePadding(),
             ) {
+                // 顶栏下那一格：那台的连接态（离线 · 正在连 · 要更新 …），空新会话与读一条会话同一条；通着无事不画。
+                MachineBar(hostId)
                 if (state.drafting && picker != null) {
                     NewSessionPane(hostId, host.machine, picker, onSwitchMachine = { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) })
                 }

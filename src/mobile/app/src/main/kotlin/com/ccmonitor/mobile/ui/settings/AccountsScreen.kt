@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -34,12 +35,19 @@ import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.wire.gen.AccountRow
+import com.ccmonitor.mobile.core.wire.gen.LinkLine
+import com.ccmonitor.mobile.core.wire.gen.MachineFix
+import com.ccmonitor.mobile.core.wire.gen.MachineFixButton
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.Sheet
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
+import com.ccmonitor.mobile.ui.common.BarLook
+import com.ccmonitor.mobile.ui.common.BarTone
+import com.ccmonitor.mobile.ui.common.MachineBar
+import com.ccmonitor.mobile.ui.common.MachineBarView
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.login.LoginFlow
 import com.ccmonitor.mobile.ui.login.LoginSheet
@@ -63,6 +71,7 @@ fun AccountsScreen(
     val scope = rememberCoroutineScope()
     val board = remember(here.hostId) { MachineSettings(feed, here.machine, feed.changed, scope) }
     val ui by board.state.collectAsState()
+    val line by feed.state.collectAsState()
     var open by remember { mutableStateOf<String?>(null) }
     var model by remember { mutableStateOf<String?>(null) }
     var login by remember { mutableStateOf<LoginFlow?>(null) }
@@ -75,6 +84,10 @@ fun AccountsScreen(
                     Text(here.machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            // 顶栏下那一格：那台的连接态（离线 · 正在连 · 要更新 …），各屏同一条。
+            MachineBar(here.hostId)
+            val look = accountsLook(ui, line)
+            look.failed?.let { MachineBarView(it, board::reloadAccounts) }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                 Text(
                     copyText("mobAccounts.list.section", "machine" to here.machine),
@@ -82,10 +95,11 @@ fun AccountsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                (ui.note ?: ui.accountsFailed?.text)?.let {
+                ui.note?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
                 }
-                ui.accounts.forEach { a -> AccountLine(a, a.name == ui.defaultAccount, ui) { open = a.name } }
+                if (look.loading) repeat(SKELETON_ROWS) { SkeletonRow() }
+                look.rows.forEach { a -> AccountLine(a, a.name == ui.defaultAccount, ui, look.stale) { open = a.name } }
             }
         }
     }
@@ -127,12 +141,48 @@ private fun LoginFor(
     LoginSheet(f, row?.plate, row?.color, machine, onClosed = onClosed)
 }
 
-/** 一个号一行：号牌 · 名 ·「默认」/ 要人动手的那一枚 · 类型；右边用量那一格（色照语气）。 */
+/** 账号屏此刻画哪几样：读中（骨架）· 行（手上那一份）· 行是不是上次所知（那台离线：用量格不出数）· 读不出那一条（那台通着时）。 */
+data class AccountsLook(
+    val loading: Boolean,
+    val rows: List<AccountRow>,
+    val stale: Boolean,
+    val failed: BarLook?,
+)
+
+/**
+ * 号列表那一问的结局 ＋ 核心交的那一行 ⇒ 账号屏（同用量屏）：离线那一句在机器条上（[MachineBar]），这里不另出红字；
+ * 行照手上那一份（这一屏开着时答过的，没有 ⇒ 没有行，不画假行）。
+ */
+fun accountsLook(
+    ui: MachineSettingsUi,
+    line: LinkLine?,
+): AccountsLook {
+    val down = line is LinkLine.Down
+    val failed =
+        ui.accountsFailed?.takeIf { !down }?.let {
+            BarLook(it.text, BarTone.FAULT, MachineFixButton(MachineFix.RETRY, copyText("front.act.retry")), detail = it.detail)
+        }
+    return AccountsLook(loading = !down && !ui.accountsRead && ui.accountsFailed == null, rows = ui.accounts, stale = down, failed = failed)
+}
+
+/** 读中那一行骨架（两条灰块，不转圈）。 */
+@Composable
+private fun SkeletonRow() {
+    val c = MaterialTheme.colorScheme.surfaceContainerHigh
+    val shape = RoundedCornerShape(LocalAppTokens.current.radius.s)
+    Column(Modifier.fillMaxWidth().heightIn(min = Touch.rowDouble).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Box(Modifier.fillMaxWidth(SKELETON_TITLE).height(12.dp).background(c, shape))
+        Box(Modifier.padding(top = 8.dp).fillMaxWidth(SKELETON_SUB).height(10.dp).background(c, shape))
+    }
+}
+
+/** 一个号一行：号牌 · 名 ·「默认」/ 要人动手的那一枚 · 类型；右边用量那一格（色照语气；上次所知 ⇒「—」）。 */
 @Composable
 private fun AccountLine(
     a: AccountRow,
     isDefault: Boolean,
     ui: MachineSettingsUi,
+    stale: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
@@ -154,7 +204,11 @@ private fun AccountLine(
             }
             Text(kindText(a.authKind), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        ui.usage(a.name)?.let { UsageText(it.text, it.tone) }
+        if (stale) {
+            Text(copyText("acct.val.none"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            ui.usage(a.name)?.let { UsageText(it.text, it.tone) }
+        }
     }
 }
 
@@ -254,3 +308,6 @@ object AccountsTags {
 
 private const val API_KEY = "api-key"
 private const val TAG_BG = 0.12f
+private const val SKELETON_ROWS = 3
+private const val SKELETON_TITLE = 0.5f
+private const val SKELETON_SUB = 0.3f
