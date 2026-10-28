@@ -20,7 +20,7 @@ import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
-import { copyText } from "./copy-table";
+import { copyText, type CopyKey } from "./copy-table";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName, offlineSaid } from "./control-said";
@@ -37,6 +37,7 @@ import { askDir, askFacts, type OpenFacts } from "./new-session-reads";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 import type { NewOpen } from "./generated/NewOpen";
 import type { ForkSlot } from "./generated/ForkSlot";
+import type { Run } from "./generated/Run";
 import { readMachines } from "./machine-feed";
 import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
@@ -258,8 +259,20 @@ interface PlaceRadio {
   note: HTMLElement;
 }
 
+/** 「运行于」的几张：托管终端 · tmux 里 · 新的终端窗口（直路）。 */
+type Place = "managed" | "tmux" | "window";
+
+const PLACE_LABEL: Record<Place, CopyKey> = {
+  managed: "newSession.place.managed",
+  tmux: "newSession.place.tmux",
+  window: "newSession.place.window",
+};
+
+/** 勾的那一张 ⇒ 线上 `run` 那一格。 */
+const PLACE_RUN: Record<Place, Run> = { managed: "managed", tmux: "tmux", window: "direct" };
+
 /** 「运行于」那一张：单选 ＋ 名字 ＋ 灰字。 */
-function placeRadio(places: HTMLElement, value: "tmux" | "window"): PlaceRadio {
+function placeRadio(places: HTMLElement, value: Place): PlaceRadio {
   const label = el("label");
   label.className = s.nsPlace;
   const input = el("input");
@@ -270,7 +283,7 @@ function placeRadio(places: HTMLElement, value: "tmux" | "window"): PlaceRadio {
   t.className = s.nsPlaceText;
   const note = el("div");
   note.className = s.nsPlaceNote;
-  t.append(el("div", "", value === "tmux" ? copyText("newSession.place.tmux") : copyText("newSession.place.window")), note);
+  t.append(el("div", "", copyText(PLACE_LABEL[value])), note);
   label.append(input, t);
   places.appendChild(label);
   return { label, input, note };
@@ -503,11 +516,15 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const placeRow = row(copyText("newSession.label.place"), places, false);
   placeRow.root.hidden = ask !== null;
   single.appendChild(placeRow.root);
+  // 只列那台答的 `hosts` 里有的（托管 · tmux；终端窗口恒在）。
+  const managedRadio = placeRadio(places, "managed");
   const tmuxRadio = placeRadio(places, "tmux");
   const windowRadio = placeRadio(places, "window");
+  managedRadio.note.textContent = copyText("newSession.place.managedNote");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
+  const radios: Record<Place, PlaceRadio> = { managed: managedRadio, tmux: tmuxRadio, window: windowRadio };
 
-  // 第一句（只跟 tmux：选了终端窗口 ⇒ 那一格灰着、不交，字留着，切回 tmux 照样交）
+  // 第一句（只跟容器：选了终端窗口 ⇒ 那一格灰着、不交，字留着，切回托管 / tmux 照样交）
   const promptInput = el("textarea");
   promptInput.className = s.nsInput;
   promptInput.rows = 3;
@@ -524,8 +541,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   single.appendChild(moreRow);
 
   /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
-  const place = (): "tmux" | "window" | null =>
-    tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : windowRadio.input.checked ? "window" : null;
+  const place = (): Place | null =>
+    (Object.keys(radios) as Place[]).find((p) => radios[p].input.checked && !radios[p].label.hidden) ?? null;
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
   // 断开时框顶那一句：照那台成品写的离线那一句；成品还没到 ⇒ 那台状态不明（未知不当离线）。
   const offlineLine = (): string => offlineSaid(origin) ?? copyText("settingsNav.dot.unknown", { machine: machineName(origin) });
@@ -569,9 +586,10 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintPlace = (): void => {
     const hasTmux = facts?.hosts.includes("tmux") ?? true;
     tmuxRadio.label.hidden = !hasTmux;
+    managedRadio.label.hidden = !(facts?.hosts.includes("managed") ?? false);
     windowRadio.note.textContent = windowNote(origin, hasTmux);
     tmuxRow.root.hidden = place() !== "tmux";
-    promptInput.disabled = place() !== "tmux";
+    promptInput.disabled = place() === "window";
   };
 
   const paintAgent = (): void => {
@@ -631,9 +649,10 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
     if (!cwdLocked && cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
-    // 默认「运行于」那台定（有 tmux 就 tmux，分叉照源会话那一种）。
-    // 问图定在 tmux（开口那句只跟 tmux；没有 tmux 的那台在开框之前就拒了，`plan-ask` 的 `no_tmux`）。
-    (f.run === "tmux" || ask !== null ? tmuxRadio : windowRadio).input.checked = true;
+    // 默认「运行于」那台定（能托管就托管，分叉的源会话在 tmux 里 ⇒ tmux）。
+    // 问图定在 tmux（没有 tmux 的那台在开框之前就拒了，`plan-ask` 的 `no_tmux`）。
+    const pick: Place = ask !== null ? "tmux" : f.run === "managed" ? "managed" : f.run === "tmux" ? "tmux" : "window";
+    radios[pick].input.checked = true;
   };
 
   const loadMachine = async (): Promise<void> => {
@@ -669,7 +688,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") what.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") what.command = cmdInput.value.trim();
     if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
-    if (place() === "tmux" && promptInput.value.trim() !== "") what.prompt = promptInput.value;
+    if (place() !== "window" && promptInput.value.trim() !== "") what.prompt = promptInput.value;
     if (!aliasRow.root.hidden && aliasSel.value() !== "") what.alias = aliasSel.value();
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
@@ -677,7 +696,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const p = place();
     const req: SessionOpenReq = {
       what: { kind: "new", ...what },
-      ...(p === null ? {} : { run: p === "tmux" ? "tmux" : "direct" }),
+      ...(p === null ? {} : { run: PLACE_RUN[p] }),
       local: isLocalOrigin(origin),
       ticket,
     };
@@ -823,7 +842,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       { label: copyText("newSession.recent.label"), onClose: () => cwdInput.focus() },
     );
   });
-  for (const r of [tmuxRadio, windowRadio]) r.input.addEventListener("change", paintPlace);
+  for (const r of Object.values(radios)) r.input.addEventListener("change", paintPlace);
   // 问图：打完问题 Enter 就起（Shift+Enter 换行）；光标先停在那台拼的那句末尾。
   if (ask) {
     promptInput.addEventListener("keydown", (ev) => {

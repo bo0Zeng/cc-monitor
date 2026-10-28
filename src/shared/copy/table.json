@@ -12830,6 +12830,18 @@
       "zh": "登录…",
       "args": []
     },
+    "newSession.place.managed": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "托管终端",
+      "args": []
+    },
+    "newSession.place.managedNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-monitor 托管 · 关终端不断 · 可接管输入",
+      "args": []
+    },
     "newSession.place.tmux": {
       "kind": "control",
       "role": "标签",
