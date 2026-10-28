@@ -31,16 +31,25 @@ class NeedsSource(
     val pushes: Flow<Changed>,
 )
 
-/** 板上一台此刻：那台最后一份整份（还没读到过 ⇒ `null`）· 流断着没有。断着的那台不进数。 */
+/**
+ * 板上一台此刻：那台最后一份整份（还没读到过 ⇒ `null`）· 流断着没有 · 最近那一问没问到的结局（问到了 ⇒ `null`）。断着的那台不进数。
+ */
 data class MachineNeeds(
     val list: NeedsList? = null,
     val down: Boolean = false,
+    val failed: Reply? = null,
 ) {
     /** 进数的那几项（断着 ⇒ 不进）。 */
     val counted: Int get() = if (down) 0 else list?.items?.size ?: 0
 
     /** 会外那一截读不出（那台那一句）；断着不说。 */
     val unreadable: String? get() = list?.manualUnreadable?.takeIf { !down }
+
+    /** 整份没问到（那台报错 · 回包解不开 · 无应答）；断着不说（断着那一句另有）。 */
+    val unread: Reply? get() = failed?.takeIf { !down }
+
+    /** 还在读：通着、还没问到过、也还没没问到过。 */
+    val reading: Boolean get() = !down && list == null && failed == null
 }
 
 /**
@@ -118,14 +127,18 @@ class NeedsBoard(
         }
     }
 
-    /** 问那一台一次：问到了 ⇒ 换上、`true`；读不出 ⇒ 旧的一份照留、`false`（退避再问）。 */
+    /** 问那一台一次：问到了 ⇒ 换上、`true`；读不出 ⇒ 旧的一份照留、记下那一问的结局、`false`（退避再问）。 */
     private suspend fun fetch(
         id: String,
         link: CoreLink,
     ): Boolean {
         val r = link.call(SessionsNeeds.COMMAND, null, READ_MS)
-        val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) } ?: return false
-        put(id) { it.copy(list = list) }
+        val list = (r as? Reply.Ok)?.let { SessionsNeeds.list(it.data) }
+        if (list == null) {
+            put(id) { it.copy(failed = if (r is Reply.Ok) Reply.Unreadable(r.data.toString()) else r) }
+            return false
+        }
+        put(id) { it.copy(list = list, failed = null) }
         return true
     }
 
