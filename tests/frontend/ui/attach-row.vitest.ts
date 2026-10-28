@@ -14,7 +14,7 @@ import type { AttachItem } from "../../../src/frontend/ui/generated/AttachItem";
 import type { SessionAttachmentCommitReq } from "../../../src/frontend/ui/generated/SessionAttachmentCommitReq";
 
 const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "web-1", title: "web-console" };
-const ROW: TerminalRow = { terminal: "%7", tmuxName: "web-1", sid: "s-1", clients: 0, input: "shared", programExited: false, inputNo: null };
+const ROW: TerminalRow = { terminal: "%7", name: "web-1", sid: "s-1", clients: 0, input: "shared", programExited: false, inputNo: null };
 const SHOT: TerminalShot = { lines: [], text: "$", screen: "fp", atText: "12:00:00" };
 
 const flush = async (): Promise<void> => {

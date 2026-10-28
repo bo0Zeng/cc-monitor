@@ -133,7 +133,7 @@ fn row_of(
         BoardRow {
             key: t.terminal.clone(),
             terminal: t.terminal.clone(),
-            tmux_name: t.name.clone(),
+            name: t.name.clone(),
             sid,
             dot,
             dot_name,

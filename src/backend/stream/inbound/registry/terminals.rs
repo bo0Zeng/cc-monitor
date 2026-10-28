@@ -23,7 +23,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 终端管理 L1 三条（`control/terminals.rs`）：只认名单里的终端（句柄 / sid），不收 tmux 目标串；送字送键过身份门。
     //   阻塞档（起 tmux）；只抓一次、只送一次，轮询归调用方。
     crate::wire::typed::blocking::<crate::control::terminals_wire::TerminalsListCmd>(
-        "这台的终端名单（形状与宿主无关；这一版宿主是 tmux）",
+        "这台的终端名单（两种宿主同一形，每一行带宿主）",
     ),
     // 「终端」视图那张名单（`faces/terminals_board_face.rs`）：这台那几行写成成品（阻塞档：起 tmux · 读活会话表）；
     //   本机后端问到各台合成一份（异步档：别的台经常驻问 `terminals-board-here`，没答的进那一组的 `down`）。
@@ -60,7 +60,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollow>(
-        "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
+        "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；tmux 那一形订着时那台多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
     ),
     crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollowAck>(
         "订阅的第 `seq` 帧画完了（画面有变化就推下一帧）",
@@ -82,9 +82,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 等起好的会话报到（`control/session_arrive.rs`）：`session-open` 回包的 `arrival` 原样交回，期限 ＝ 请求信封的期限；
     //   没见到 ⇒ 那一句（起在 tmux 里的带那一屏末几行）。
     crate::wire::typed::asynchronous::<crate::faces::session_arrive_face::SessionArrive>("等起好的会话报到"),
-    // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
+    // 起新会话框打开时问一次：这台最近用过的目录 · 能放在哪几种 · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
     crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenFacts>(
-        "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
+        "起新会话那个框要的事实：最近目录 · 能放在哪几种 · 有哪几家 agent · 分叉时原会话的起法",
     ),
     // 工作目录那一格失焦时问：在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
     crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpenDir>(

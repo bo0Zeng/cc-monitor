@@ -48,7 +48,7 @@ function tab(over: Partial<Tab> = {}): Tab {
 
 const FACTS: OpenFacts = {
   recent: [],
-  tmux: true,
+  hosts: ["tmux", "direct"],
   fork: null,
   agents: [
     {

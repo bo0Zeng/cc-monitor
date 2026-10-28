@@ -31,8 +31,8 @@ const LIST_BUDGET_MS = 15_000;
 export interface TerminalRow {
   /** 句柄（不透明，只拿来回指）。 */
   terminal: string;
-  /** 这一版宿主是 tmux：所在的 tmux 会话名。 */
-  tmuxName: string;
+  /** 终端的名字（tmux：会话名；托管：`ccm --attach <名>` 认的那个名）。 */
+  name: string;
   /** 里面跑着的会话（没有 ⇒ `null`）。 */
   sid: string | null;
   /** 此刻连着它的终端窗口几个（0 ＝ 后台）。 */
@@ -90,7 +90,7 @@ const noSaid = (): string => copyText("reason.code.refused");
 export function rowsOf(v: TerminalsList): TerminalRow[] {
   return v.terminals.map((r) => ({
     terminal: r.terminal,
-    tmuxName: r.name,
+    name: r.name,
     sid: r.session?.sid ?? null,
     clients: r.clients.length,
     input: r.input.kind,

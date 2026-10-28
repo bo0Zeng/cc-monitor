@@ -15,7 +15,7 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const SLOT: Watched = { kind: "slot", origin: "devbox", terminal: "%7", name: "web-1", title: "web-console" };
-const ROW: TerminalRow = { terminal: "%7", tmuxName: "web-1", sid: "s-1", clients: 0, input: "shared", programExited: false, inputNo: null };
+const ROW: TerminalRow = { terminal: "%7", name: "web-1", sid: "s-1", clients: 0, input: "shared", programExited: false, inputNo: null };
 const SHOT: TerminalShot = { lines: [], text: "$", screen: "fp", atText: "12:00:00" };
 
 const flush = async (): Promise<void> => {

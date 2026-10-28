@@ -934,8 +934,8 @@ export class TerminalPage {
     else setDot(this.dot, "unknown", copyText("launch.placeholder.title"));
     this.title.textContent = labelOf(w);
     this.where.textContent = tab?.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineOf(tab) }) : machineWord(w);
-    this.tag.textContent = row.tmuxName !== "" ? copyText("terminal.tag.tmux", { name: row.tmuxName }) : "";
-    this.tag.style.display = row.tmuxName !== "" ? "" : "none";
+    this.tag.textContent = row.name !== "" ? copyText("terminal.tag.tmux", { name: row.name }) : "";
+    this.tag.style.display = row.name !== "" ? "" : "none";
     this.tag2.textContent = row.clients > 0 ? copyText("terminal.tag.windows", { n: row.clients }) : copyText("terminal.tag.background");
     this.at.textContent = this.shot ? copyText("terminal.head.snapAt", { time: this.shot.atText }) : "";
     const live = this.isLive;

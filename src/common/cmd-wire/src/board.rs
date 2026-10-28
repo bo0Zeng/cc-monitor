@@ -34,8 +34,8 @@ pub struct BoardRow {
     pub key: String,
     /// 终端句柄（`terminals-list` 那一格；抓屏 · 订画面 · 送字时交回）。
     pub terminal: String,
-    /// tmux 会话名（结束没会话的那一行时交 `kill`）。
-    pub tmux_name: String,
+    /// 终端的名字（`terminals-list` 那一行的 `name`：tmux 是会话名，托管是 `ccm --attach <名>` 认的那个名）。
+    pub name: String,
     /// 里面跑着的会话。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -60,7 +60,7 @@ pub struct BoardRow {
     pub at_text: Words,
     /// 它算进哪几格筛选（不含 `all`）。
     pub tags: Vec<BoardTag>,
-    /// 找的时候比对的那一串（标题 · 目录 · tmux 会话名，已小写）。
+    /// 找的时候比对的那一串（标题 · 目录 · 终端名，已小写）。
     pub find: String,
     /// 能不能结束。
     #[cfg_attr(
