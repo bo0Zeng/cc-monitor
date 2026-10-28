@@ -2513,7 +2513,7 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "`K-P6b`：`--dial` 那条代理臂的 SSH 客户端（传输层握手 · publickey 鉴权 · \
-             开 channel）。与 monitor 侧**同版本同 feature 集**（`0.61.1` / `ring` / \
+             开 channel）。与 ssh-dial · 手机核心**同版本同 feature 集**（`0.65` / `ring` / \
              `flate2` / `rsa`），provider 就是本表上面 `rustls` 那条已经在用的 `ring`。\
              ⚠ **本档是「未量」不是「没写面」**：私钥由 `russh::keys::load_secret_key` \
              **读**一个路径（读不是写），而它建不建缓存 / 写不写 known_hosts \
@@ -2521,8 +2521,7 @@ mod g6_dependency_signoff {
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，还没做。\
-今天链的是仓内补过的副本（`[patch.crates-io]` → `src/vendor/russh`，只改了 \
-             `compression.rs` 解压收尾那一段、没碰任何 IO）⇒ 源码进了树、**可以**量了，但本档仍是「未量」：还没扫它的写面",
+             链的是 crates.io 上游那一份（仓内不留副本）",
         ),
         (
             "russh-sftp",
@@ -2567,9 +2566,9 @@ mod g6_dependency_signoff {
             "sha2",
             DEV_DEPS,
             UNMEASURED,
-            "只给 vendored russh 副本算指纹（`dial_compress_tests`：盘上每一份 == `VENDOR.md` 登记的 sha256）。\
+            "判据里异源算 sha256（夹具的摘要 · 传输与写盘的整份摘要对拍）。\
              **只在测试期链接**，不进发布二进制；版本是 russh 那棵树早已锁着的 `0.11.0`（不新增包）。纯内存摘要 —— 它不开文件，\
-             读副本的是判据自己（经 `guard_core::scan_tree_excluding`）",
+             读文件的是判据自己",
         ),
         (
             "ts-rs",

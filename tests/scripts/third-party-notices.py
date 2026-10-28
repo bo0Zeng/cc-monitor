@@ -4,11 +4,11 @@
 产出两份（都进仓，都由本脚本生成，不手改）：
   · `THIRD-PARTY-NOTICES.txt` —— 随安装包（`tauri.sidecar.conf.json` 的 `bundle.resources`）与 Release 资产分发；
   · `tests/evidence/third-party-not-shipped.txt` —— 锁文件里有、但不进产物的包（只在别的平台 / 只开发期用）。
-两份合起来 == 两份 `Cargo.lock` 的第三方包 ∪ `src/vendor/` 下的包；`package-lock.json` 的生产依赖全在声明里。
+两份合起来 == 两份 `Cargo.lock` 的第三方包；`package-lock.json` 的生产依赖全在声明里。
 门禁 `release-gate`（`tests/evidence/K-R124-ruler.py` ⑰）两向核这两句；发版那一趟（`release.yml`）跑 `--check`。
 
 来源：
-  · Rust（后端 `src/backend` ＋ 壳与文件窗口 `src/frontend/shell` 整个工作区 ＋ 手机嵌的 Rust 核心 `src/mobile/core-rs/rust`，含 `src/vendor/` 下放进仓的那几份）：
+  · Rust（后端 `src/backend` ＋ 壳与文件窗口 `src/frontend/shell` 整个工作区 ＋ 手机嵌的 Rust 核心 `src/mobile/core-rs/rust`）：
     cargo-about（版本钉在 `CARGO_ABOUT_VERSION`），离线读 cargo 注册表缓存里各包自带的许可文件；目标平台与收纳的许可住
     `tests/scripts/third-party-about.toml`；开发期依赖不收。
   · npm：`package-lock.json` 里不带 `dev` 的包，读 `node_modules/` 里各包自带的许可文件（要先 `npm ci`）。
@@ -36,7 +36,6 @@ CARGO_ABOUT_VERSION = "0.9.2"
 CONFIG = ROOT / "tests/scripts/third-party-about.toml"
 NOTICES = ROOT / "THIRD-PARTY-NOTICES.txt"
 NOT_SHIPPED = ROOT / "tests/evidence/third-party-not-shipped.txt"
-VENDOR = ROOT / "src/vendor"
 #: (清单, 是不是整个工作区)
 TREES = [("src/backend/Cargo.toml", False), ("src/frontend/shell/Cargo.toml", True),
          # 手机嵌的 Rust 核心（`libmobcore.so`，进 APK）：后端那一棵 workspace 的成员，依赖闭包单算（拨号核心 ＋ jni）。
@@ -109,12 +108,8 @@ def cargo_about():
 
 
 def is_ours(pkg):
-    """本仓自己的包：路径来源、且不在 `src/vendor/` 下。"""
-    if pkg.get("source") is not None:
-        return False
-    m = re.match(r"path\+file://(.+?)(#.*)?$", pkg.get("id", ""))
-    path = Path(m.group(1)) if m else None
-    return not (path and VENDOR.resolve() in path.resolve().parents)
+    """本仓自己的包：路径来源（锁里没有 `source`）。"""
+    return pkg.get("source") is None
 
 
 def rust_groups():
@@ -201,11 +196,6 @@ def lock_crates():
                 r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"\n(?:source = "([^"]+)")?', text):
             if src:
                 got.add("%s %s" % (name, ver))
-    for manifest in sorted(VENDOR.glob("*/Cargo.toml")):
-        text = manifest.read_text(encoding="utf-8")
-        name = re.search(r'^name\s*=\s*"([^"]+)"', text, re.M).group(1)
-        ver = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M).group(1)
-        got.add("%s %s" % (name, ver))
     return got
 
 
@@ -248,7 +238,7 @@ def render():
     rest = sorted(lock - declared)
     not_shipped = "\n".join([
         "# 锁文件里有、但不进产物的第三方包（只在别的平台 / 只开发期 / 没开的特性用）。",
-        "# 由 tests/scripts/third-party-notices.py 生成（== 两份 Cargo.lock 的第三方包 ∪ src/vendor − THIRD-PARTY-NOTICES.txt 里的），不手改。",
+        "# 由 tests/scripts/third-party-notices.py 生成（== 两份 Cargo.lock 的第三方包 − THIRD-PARTY-NOTICES.txt 里的），不手改。",
     ] + ["crate: %s" % c for c in rest]) + "\n"
     return notices, not_shipped
 
