@@ -108,7 +108,7 @@ fun MachineBarView(
                 }
             }
             val fix = look.fix
-            // 正在装 ⇒ 按钮灰着不消失（同「装后端」稿）。
+            // 正在装 ⇒ 按钮灰着不消失。
             if (fix != null && onFix != null) SecondaryButton(onClick = onFix, enabled = look.tone != BarTone.BUSY) { Text(fix.label) }
             CopyDetailButton(look.text, look.detail)
         }
