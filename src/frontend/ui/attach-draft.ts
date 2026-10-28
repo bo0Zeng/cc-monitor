@@ -154,10 +154,19 @@ export class AttachDraft {
 
   /** 挡着送出的那一句（一句，不数个数）：有失败 ⇒「附件失败」；有断着的 ⇒ `offline`（连接层写好的离线那一句）；有没传完的 ⇒「附件传输中」；都传完了 ⇒ `null`。 */
   blocker(offline: string): string | null {
-    const has = (at: ChipAt["at"]): boolean => this.slots.some((s) => s.at.at === at);
-    if (has("failed")) return copyText("attach.blocked.failed");
-    if (has("offline")) return offline;
-    return this.slots.some((s) => s.at.at !== "done") ? copyText("attach.blocked.sending") : null;
+    const { failed, cut, pending } = this.tally();
+    if (failed) return copyText("attach.blocked.failed");
+    if (cut) return offline;
+    return pending ? copyText("attach.blocked.sending") : null;
+  }
+
+  /** 有没有失败的 · 有没有断着的 · 有没有还没传完的。 */
+  private tally(): { failed: boolean; cut: boolean; pending: boolean } {
+    return {
+      failed: this.slots.some((s) => s.at.at === "failed"),
+      cut: this.slots.some((s) => s.at.at === "offline"),
+      pending: this.slots.some((s) => s.at.at !== "done"),
+    };
   }
 
   private restart(s: Slot): void {
@@ -182,10 +191,10 @@ export class AttachDraft {
         s.checked = true;
         s.class = v.class;
         s.classText = v.class_text;
-        if (!v.ok) s.at = { at: "failed", said: v.said || copyText("attach.chip.unknown"), retry: false, detail: "" };
+        if (!v.ok) s.at = { at: "failed", said: v.said ?? "", retry: false, detail: "" };
       });
     } catch (e) {
-      for (const s of fresh) s.at = this.io.offline(e) ? { at: "offline", done: 0 } : { at: "failed", said: saidOf(e) || copyText("attach.chip.unknown"), retry: true, detail: detailOf(e) };
+      for (const s of fresh) s.at = this.io.offline(e) ? { at: "offline", done: 0 } : { at: "failed", said: saidOf(e), retry: true, detail: detailOf(e) };
       for (const s of fresh) if (s.at.at === "failed") s.checked = false;
     } finally {
       this.checking = false;
@@ -242,7 +251,7 @@ export class AttachDraft {
       if (s.dropped) return;
       if (this.io.offline(e)) s.at = { at: "offline", done: Math.min(s.bytes, s.seq * CHUNK) };
       else {
-        s.at = { at: "failed", said: saidOf(e) || copyText("attach.chip.unknown"), retry: true, detail: detailOf(e) };
+        s.at = { at: "failed", said: saidOf(e), retry: true, detail: detailOf(e) };
         s.stash = "";
         s.seq = 0;
       }

@@ -321,7 +321,7 @@ export function setPage(refresh: () => void): SetPage {
           toast(copyText("newSessionSet.delete.undoFailed"), saidOf(e));
         }
       };
-      undoToast(copyText("newSessionSet.delete.done", { name: gone.name }), () => void undo(), () => {});
+      undoToast(copyText("newSessionSet.delete.done"), () => void undo(), () => {});
     })();
   });
 

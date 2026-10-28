@@ -174,7 +174,7 @@ describe("一组页", () => {
     expect(h.writeProfiles).toHaveBeenLastCalledWith("devbox", [{ op: "removeSet", name: "工具链" }], "fp-1");
     expect(p.el.querySelector<HTMLInputElement>('[data-role="set-name"]')!.value, "页换成新建").toBe("");
     expect(del.style.display, "新建那一页没有［删除］").toBe("none");
-    expect(h.undoToast).toHaveBeenCalledWith(copyText("newSessionSet.delete.done", { name: "工具链" }), expect.any(Function), expect.any(Function));
+    expect(h.undoToast).toHaveBeenCalledWith(copyText("newSessionSet.delete.done"), expect.any(Function), expect.any(Function));
     h.writeProfiles.mockResolvedValueOnce({ wrote: true, rev: "fp-3", reload: null });
     h.undoToast.mock.calls[0][1]();
     await vi.advanceTimersByTimeAsync(0);

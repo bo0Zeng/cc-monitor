@@ -1013,7 +1013,13 @@ pub(crate) struct MergeRow {
     vals: Vec<String>,
     said: String,
     from: String,
+    /// 「来自 {from}」（新建框单个页那几格照摆）。
+    from_said: String,
     overridden_by: Option<String>,
+}
+
+fn from_said(name: &str) -> String {
+    copy_text("beProfile.merge.from", &[("from", name)])
 }
 
 /// `name` 合下来的每一项（父 → 子，层内照写的顺序）：留下来的与被后来那一层盖掉的都在，盖掉的带 `overriddenBy`。
@@ -1047,6 +1053,7 @@ fn rows_of(book: &Book, chain: &[String], origins: &[Origin]) -> Vec<MergeRow> {
                 said: said_of(Some(f), &vals),
                 vals,
                 from: name.clone(),
+                from_said: from_said(name),
                 overridden_by,
             });
         }
@@ -1059,6 +1066,7 @@ fn rows_of(book: &Book, chain: &[String], origins: &[Origin]) -> Vec<MergeRow> {
                 said: said_of(None, &p.agent),
                 vals: p.agent.clone(),
                 from: name.clone(),
+                from_said: from_said(name),
                 overridden_by: None,
             });
         }

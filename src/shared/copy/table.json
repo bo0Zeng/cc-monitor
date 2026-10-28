@@ -12667,18 +12667,6 @@
       "zh": "不用别名",
       "args": []
     },
-    "newSession.alias.from": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "来自 {alias}",
-      "args": ["alias"]
-    },
-    "newSession.alias.unread": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "读取失败 · {alias} 合并值 · {why}",
-      "args": ["alias", "why"]
-    },
     "newSession.page.single": {
       "kind": "action",
       "role": "按钮",
@@ -12736,8 +12724,8 @@
     "newSessionSet.delete.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已删除 {name}",
-      "args": ["name"]
+      "zh": "已删除该组",
+      "args": []
     },
     "newSessionSet.delete.undoFailed": {
       "kind": "body",
@@ -17323,12 +17311,6 @@
       "kind": "body",
       "role": "状态",
       "zh": "失败",
-      "args": []
-    },
-    "attach.chip.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "原因未知",
       "args": []
     },
     "attach.chip.retry": {
@@ -26408,6 +26390,12 @@
       "role": "片段",
       "zh": "不用账号",
       "args": []
+    },
+    "beProfile.merge.from": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "来自 {from}",
+      "args": ["from"]
     },
     "beProfile.val.tmuxAuto": {
       "kind": "body",

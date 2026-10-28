@@ -78,7 +78,6 @@ import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import type { Watched } from "./terminal-page";
-import { renameTab } from "./tab-rename";
 import type { ActionId } from "./keybindings/actions";
 
 
@@ -271,13 +270,13 @@ export class TabManager {
     this.refocus(row);
   }
 
-  /** `F2`：改焦点那一行 —— 组头上 ⇒ 组名；标签页上 ⇒ 这个标签页的名（同双击 · 右键「改标题」那一口）。 */
+  /** `F2`：改焦点那一行 —— 组头上 ⇒ 组名；标签页上 ⇒ 这个标签页的名（栏上就地改，同双击 · 右键「改标题」那一口；焦点在那一行 ⇒ 它看得见）。 */
   renameFocused(): void {
     const row = this.bar.focusedRow();
     if (row === null) return;
     if (row.kind === "head") return void this.bar.renameGroupNow(row.gid);
     const tab = this.store.tabs.get(row.sid);
-    if (tab) renameTab(tab);
+    if (tab) this.bar.renameTabNow(tab);
   }
 
   /** `F6`：焦点在主区与标签页栏之间轮（进栏落在当前标签页那一行）。 */

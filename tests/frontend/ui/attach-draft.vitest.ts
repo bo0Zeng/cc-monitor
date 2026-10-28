@@ -74,13 +74,6 @@ describe("桌面附件草稿", () => {
     expect(draft.blocker("")).toBeNull();
   });
 
-  it("那台没说原因 ⇒ 失败那一句是「原因未知」，不留空", async () => {
-    const { draft } = rig({ check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map(() => ({ ok: false, class: "other", class_text: "kind-other" }))) });
-    draft.add([{ name: "x.bin", blob: blob(1) }]);
-    await flush();
-    expect(draft.chips()[0].at).toMatchObject({ at: "failed", said: copyText("attach.chip.unknown") });
-  });
-
   it("后加的那一批也把已在草稿里的列进那一问（按草稿里的先后）", async () => {
     const { draft, io } = rig();
     draft.add([{ name: "a.png", blob: blob(1) }]);

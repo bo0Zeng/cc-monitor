@@ -234,9 +234,9 @@ describe("单个 · 一组：页签与别名那一格", () => {
   const RESOLVED = {
     chain: ["look"],
     rows: [
-      { key: "account", slot: "account", label: "acct-label", vals: ["lab"], said: "lab", from: "look", overriddenBy: null },
-      { key: "ccm-tmux", slot: "tmux", label: "tmux-label", vals: [], said: "tmux-said", from: "look", overriddenBy: null },
-      { key: "say", slot: "say", label: "say-label", vals: ["读 pb 图（夹具）"], said: "读 pb 图（夹具）", from: "look", overriddenBy: null },
+      { key: "account", slot: "account", label: "acct-label", vals: ["lab"], said: "lab", from: "look", fromSaid: "FROM-look", overriddenBy: null },
+      { key: "ccm-tmux", slot: "tmux", label: "tmux-label", vals: [], said: "tmux-said", from: "look", fromSaid: "FROM-look", overriddenBy: null },
+      { key: "say", slot: "say", label: "say-label", vals: ["读 pb 图（夹具）"], said: "读 pb 图（夹具）", from: "look", fromSaid: "FROM-look", overriddenBy: null },
     ],
     line: null,
     lineShort: null,
@@ -261,7 +261,7 @@ describe("单个 · 一组：页签与别名那一格", () => {
     await flush();
     expect(sent.find((s) => s.op === "profiles-resolve")?.body).toMatchObject({ name: "look", edit: null });
     const acct = sel(copyText("newSession.label.account"));
-    const from = copyText("newSession.alias.from", { alias: "look" });
+    const from = "FROM-look";
     expect(acct.textContent, "账号格是别名合下来的号").toContain("lab");
     expect(rowOf(acct).textContent).toContain(from);
     const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
@@ -287,7 +287,7 @@ describe("单个 · 一组：页签与别名那一格", () => {
     await flush();
     const acct = sel(copyText("newSession.label.account"));
     choose(acct, "work");
-    const from = copyText("newSession.alias.from", { alias: "look" });
+    const from = "FROM-look";
     expect(rowOf(acct).textContent).not.toContain(from);
     const prompt = dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
     prompt.value = "";
@@ -305,7 +305,7 @@ describe("单个 · 一组：页签与别名那一格", () => {
     const alias = sel(copyText("newSession.label.alias"));
     choose(alias, "look");
     await flush();
-    expect(rowOf(alias).textContent).toContain(copyText("newSession.alias.unread", { alias: "look", why: "devbox 离线" }));
+    expect(rowOf(alias).textContent).toContain("devbox 离线");
     restore();
   });
 

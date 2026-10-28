@@ -541,7 +541,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   // 单个页选了别名：账号 · 运行于 · 开口那句写那台合下来的值（`profiles-resolve` 的合并表，同别名页一个读法）＋「来自 {别名}」。
   // 改一格 ⇒ 那一格盖过别名（灰字消失、照交）；开口那句清空 ⇒ 回到别名那一句。没改过的格不交（照别名起）。
-  let merged: { alias: string; say: string | null } | null = null;
+  let merged: { say: string; from: string } | null = null;
   let mergedProblem: string | null = null;
   let mergeSeq = 0;
   const fromAlias = { account: false, place: false, say: false };
@@ -562,8 +562,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       r = await resolveProfile(origin, alias, null, cwdInput.value.trim() || null);
     } catch (e) {
       if (my !== mergeSeq) return;
-      // 问不到：各格照缺省，不画成「别名没写」。
-      aliasRow.setNote(copyText("newSession.alias.unread", { alias, why: saidOf(e) }));
+      // 问不到：各格照缺省、别名格下写那台那一句（不画成「别名没写」）。
+      aliasRow.setNote(saidOf(e));
       return;
     }
     if (my !== mergeSeq || aliasSel.value() !== alias) return;
@@ -575,7 +575,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     }
     const kept = r.rows.filter((x) => x.overriddenBy === null);
     const at = (slot: string): ProfileMergeRow | undefined => kept.find((x) => x.slot === slot);
-    const from = (row: ProfileMergeRow): string => copyText("newSession.alias.from", { alias: row.from });
+    const from = (row: ProfileMergeRow): string => row.fromSaid;
     const acct = at("account");
     const name = acct?.key === "account" ? acct.vals[0] : undefined;
     if (acct && name !== undefined && accounts?.some((a) => a.name === name)) {
@@ -592,11 +592,11 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       paintPlace();
     }
     const say = at("say");
-    merged = { alias, say: say ? say.vals.join(" ") : null };
-    if (say && merged.say !== null) {
+    if (say) {
+      merged = { say: say.vals.join(" "), from: from(say) };
       promptInput.value = merged.say;
       fromAlias.say = true;
-      promptRow.setNote(from(say));
+      promptRow.setNote(merged.from);
     }
     handle.refresh();
   };
@@ -614,11 +614,10 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   });
   promptInput.addEventListener("blur", () => {
     // 清空那一格就是回到别名（不另放「回到别名」按钮）。
-    const say = merged?.say ?? null;
-    if (say === null || promptInput.value.trim() !== "") return;
-    promptInput.value = say;
+    if (merged === null || promptInput.value.trim() !== "") return;
+    promptInput.value = merged.say;
     fromAlias.say = true;
-    promptRow.setNote(copyText("newSession.alias.from", { alias: merged!.alias }));
+    promptRow.setNote(merged.from);
   });
 
   /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
