@@ -23,8 +23,10 @@ declare const classes: {
   readonly nsSetCwd: string;
   readonly nsSetLine: string;
   readonly nsSetMore: string;
+  readonly nsSetName: string;
   readonly nsSetPreview: string;
   readonly nsSetRow: string;
+  readonly nsSetRowWhy: string;
   readonly nsSetRows: string;
   readonly nsTab: string;
   readonly nsTabs: string;

@@ -7,11 +7,12 @@ const h = vi.hoisted(() => ({
   planSet: vi.fn(),
   startSet: vi.fn(),
   toast: vi.fn(),
+  undoToast: vi.fn(),
 }));
 vi.mock("../../../src/frontend/ui/profiles-reads", () => ({ readProfiles: h.readProfiles, writeProfiles: h.writeProfiles }));
 vi.mock("../../../src/frontend/ui/set-reads", () => ({ planSet: h.planSet }));
 vi.mock("../../../src/frontend/ui/set-start", () => ({ startSet: h.startSet }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: h.toast }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: h.toast, undoToast: h.undoToast }));
 
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { setPage } from "../../../src/frontend/ui/new-session-set";
@@ -39,11 +40,11 @@ const book = {
 /** 那台写好的几句用占位字（界面照摆、不拼）；都够了 ⇒ 主按钮那一句是「已齐」那一形。 */
 const plan = (more: number): SetPlan => ({
   rows: [
-    { cwd: "~/work/cc-monitor", alias: "dev", want: 2, have: 2, more: 0, group: "dev", blocked: null, said: "R1", haveSaid: "HAVE-2", moreSaid: "DASH" },
-    { cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: more ? null : "look 不存在", said: "R2", haveSaid: "HAVE-0", moreSaid: more ? "MORE-1" : "look 不存在" },
+    { cwd: "~/work/cc-monitor", alias: "dev", want: 2, have: 2, more: 0, group: "dev", blocked: null, said: "R1", haveSaid: "HAVE-2", moreSaid: "DASH", canMore: true, moreWhy: null },
+    { cwd: "~/work/cc-bus", alias: "look", want: 1, have: 0, more, group: "看图", blocked: more ? null : "look 不存在", said: "R2", haveSaid: "HAVE-0", moreSaid: more ? "MORE-1" : "look 不存在", canMore: true, moreWhy: null },
   ],
   more,
-  said: "R1 · R2",
+  short: "SHORT",
   moreSaid: more ? "MORE" : "FULL",
   totalSaid: `TOTAL-${more}`,
   startSaid: more ? "START-1" : "FULL",
@@ -146,6 +147,58 @@ describe("一组页", () => {
     const bad = await p.submit();
     expect(bad?.said).toBe("合计上限 12");
     expect(h.startSet).not.toHaveBeenCalled();
+  });
+
+  it("★「＋」照那台的 canMore 灰、悬停是 moreWhy；重行（blocked）淡掉、下面写那台那一句", async () => {
+    const p0 = plan(1);
+    p0.rows[0] = { ...p0.rows[0], canMore: false, moreWhy: "MAX-9" };
+    p0.rows[1] = { ...p0.rows[1], blocked: "DUP-1", more: 0 };
+    h.planSet.mockResolvedValue(p0);
+    const { p } = await mount("工具链");
+    const rows = [...p.el.querySelectorAll<HTMLElement>('[data-role="set-row"]')];
+    const plus = rows[0].querySelector<HTMLButtonElement>('[data-role="set-more"]')!;
+    expect(plus.getAttribute("aria-disabled") ?? String(plus.disabled), "到了上限「＋」灰").toMatch(/true/);
+    expect(plus.title).toBe("MAX-9");
+    expect(rows[1].querySelector<HTMLButtonElement>('[data-role="set-more"]')!.title, "能加的不挂那一句").not.toBe("MAX-9");
+    expect(rows[1].dataset.blocked).toBe("true");
+    expect(p.el.querySelector<HTMLElement>('[data-role="set-row-why"]')?.textContent).toBe("DUP-1");
+  });
+
+  it("★ 删组：组名格旁［删除］直接删（removeSet）、页换新建、toast［撤销］；撤销 ＝ saveSet 照读到的那份写回；那台拒 ⇒ toast 换成那一句", async () => {
+    h.planSet.mockResolvedValue(plan(1));
+    const { p } = await mount("工具链");
+    const del = p.el.querySelector<HTMLButtonElement>('[data-role="set-delete"]')!;
+    expect(del, "打开的是存好的一组才有［删除］").not.toBeNull();
+    del.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.writeProfiles).toHaveBeenLastCalledWith("devbox", [{ op: "removeSet", name: "工具链" }], "fp-1");
+    expect(p.el.querySelector<HTMLInputElement>('[data-role="set-name"]')!.value, "页换成新建").toBe("");
+    expect(del.style.display, "新建那一页没有［删除］").toBe("none");
+    expect(h.undoToast).toHaveBeenCalledWith(copyText("newSessionSet.delete.done", { name: "工具链" }), expect.any(Function), expect.any(Function));
+    h.writeProfiles.mockResolvedValueOnce({ wrote: true, rev: "fp-3", reload: null });
+    h.undoToast.mock.calls[0][1]();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.writeProfiles).toHaveBeenLastCalledWith(
+      "devbox",
+      [
+        {
+          op: "saveSet",
+          was: null,
+          set: {
+            name: "工具链",
+            rows: [
+              { cwd: "~/work/cc-monitor", alias: "dev", n: 2, tabGroup: null },
+              { cwd: "~/work/cc-bus", alias: "look", n: 1, tabGroup: "看图" },
+            ],
+          },
+        },
+      ],
+      "fp-2",
+    );
+    h.writeProfiles.mockRejectedValueOnce(new Error("别处改过（夹具）"));
+    h.undoToast.mock.calls[0][1]();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.toast).toHaveBeenLastCalledWith(copyText("newSessionSet.delete.undoFailed"), "别处改过（夹具）");
   });
 
   it("新建一组：一行空的，组名空着点不了；别名只列这台能用的", async () => {

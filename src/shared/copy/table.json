@@ -12715,6 +12715,24 @@
       "zh": "换一组",
       "args": []
     },
+    "newSessionSet.set.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除",
+      "args": []
+    },
+    "newSessionSet.delete.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除 {name}",
+      "args": ["name"]
+    },
+    "newSessionSet.delete.undoFailed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "恢复失败",
+      "args": []
+    },
     "newSessionSet.row.add": {
       "kind": "action",
       "role": "按钮",
@@ -16522,11 +16540,35 @@
       "zh": "{cwd} {why}",
       "args": ["cwd", "why"]
     },
-    "beSessionSet.row.sep": {
+    "beSessionSet.row.dup": {
       "kind": "body",
       "role": "片段",
-      "zh": " · ",
-      "args": []
+      "zh": "与行 {line} 重复 · 不计入",
+      "args": ["line"]
+    },
+    "beSessionSet.short.all": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录 {dirs} · 会话 {n}",
+      "args": ["dirs", "n"]
+    },
+    "beSessionSet.short.blocked": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录 {dirs} · 会话 {n} · 无法启动的行 {k}",
+      "args": ["dirs", "n", "k"]
+    },
+    "beSessionSet.more.rowMax": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "单行上限 {max}",
+      "args": ["max"]
+    },
+    "beSessionSet.more.setMax": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "一组合计上限 {max}",
+      "args": ["max"]
     },
     "beSessionSet.row.have": {
       "kind": "body",
