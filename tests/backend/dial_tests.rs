@@ -892,9 +892,11 @@ impl russh::server::Handler for OpenDoor {
     async fn channel_open_session(
         &mut self,
         _channel: russh::Channel<russh::server::Msg>,
+        reply: russh::server::ChannelOpenHandle,
         _session: &mut russh::server::Session,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
     }
 }
 
@@ -902,7 +904,10 @@ struct AnyKey;
 
 impl russh::client::Handler for AnyKey {
     type Error = russh::Error;
-    async fn check_server_key(&mut self, _: &russh::keys::PublicKey) -> Result<bool, Self::Error> {
+    async fn check_server_key(
+        &mut self,
+        _: &russh::keys::PublicKeyOrCertificate,
+    ) -> Result<bool, Self::Error> {
         Ok(true)
     }
 }

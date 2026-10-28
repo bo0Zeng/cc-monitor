@@ -35,7 +35,7 @@
    x86_64 / aarch64；每份校验和恰好一步生成、排在发布前，算的那几份 ↔ 登记里进它的资产两向一一对上。
    ⚠ 只认文件名；glob 那几样（deb · 安装器 · msi）真叫什么由打包器定，它判不了。
 8. **第三方许可声明 ↔ 现打的依赖**（⑰）：`THIRD-PARTY-NOTICES.txt` 里的 crate ∪ `tests/evidence/third-party-not-shipped.txt`
-   == 两份 `Cargo.lock` 的第三方包 ∪ `src/vendor/` 下的包（两向、两份不相交）；声明里的 npm 包 == `package-lock.json` 的生产依赖
+   == 两份 `Cargo.lock` 的第三方包（两向、两份不相交）；声明里的 npm 包 == `package-lock.json` 的生产依赖
    （两向）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
    （`tauri.sidecar.conf.json` 的 `bundle.resources`）。⚠ 「哪些包进产物」由 cargo-about 按目标平台算，本格不重算，只认生成器写下的那一分。
 
@@ -835,7 +835,7 @@ def listed(text, kind):
 
 
 def locked_third_party():
-    """两份 `Cargo.lock` 里有来源（注册表 / git）的包 ∪ `src/vendor/*/Cargo.toml` 的包；读不到给 `None`。"""
+    """两份 `Cargo.lock` 里有来源（注册表 / git）的包；读不到给 `None`。"""
     got = set()
     for rel in CARGO_LOCKS:
         text = read_rel(rel)
@@ -845,13 +845,6 @@ def locked_third_party():
                 r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"\n(?:source = "([^"]+)")?', text):
             if src:
                 got.add("%s %s" % (name, ver))
-    for manifest in sorted((ROOT / "src/vendor").glob("*/Cargo.toml")):
-        text = manifest.read_text(encoding="utf-8")
-        name = re.search(r'^name\s*=\s*"([^"]+)"', text, re.M)
-        ver = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
-        if not (name and ver):
-            return None
-        got.add("%s %s" % (name.group(1), ver.group(1)))
     return got
 
 
@@ -1591,7 +1584,7 @@ def run_checks(emit):
           "锁文件第三方 %d · 声明 %d · 不进产物 %d" % (len(lock or []), len(shipped), len(unshipped)))
     lock = lock or set()
     check(shipped | unshipped == lock and not (shipped & unshipped),
-          "⑰a Rust 依赖·声明 ∪ 不进产物 == 锁文件第三方 ∪ src/vendor，两向且不相交",
+          "⑰a Rust 依赖·声明 ∪ 不进产物 == 锁文件第三方，两向且不相交",
           "锁文件有而两份都没有 %s · 两份有而锁文件没有 %s · 两份都有 %s —— 跑 `python3 %s` 重新生成"
           % (sorted(lock - shipped - unshipped)[:8], sorted((shipped | unshipped) - lock)[:8],
              sorted(shipped & unshipped)[:8], NOTICES_GEN))
