@@ -1,7 +1,7 @@
 /**
  * **输入行上方那一排附件**（终端面板）：一颗颗 chip ＋ 输入框左边那颗［＋］，三个入口进同一排（［＋］系统文件框可多选 · 拖到面板上 · 输入框里粘贴文件 / 图片）。
  *
- * - chip：图片画本机那份的小图，别的画类别字（那台写好的 `class_text`）· 名字 · 状态（排队 · 传输中带字节与一条细进度 · 已完成 · 失败带那台那一句）· ✕。
+ * - chip：图片画本机那份的小图，别的画类别字（那台写好的 `class_text`）· 名字 · 状态（排队 · 传输中带一条细进度 · 已完成 · 失败带那台那一句）· ✕。
  *   离线那几颗画虚线、跟连接层写好的离线那一句；失败可重试的带［重试］；悬停看复制详情。
  * - 拖：面板上整块画目标框（放进哪条会话、哪台）；面板上没有可送的会话 ⇒ 不画、光标禁止。拖进来的目录照样进这一排，由那台判不收。
  * - 粘贴：剪贴板里只有文件 / 图片、没有字 ⇒ 进这一排（图片名 `image-<n>.<扩展名>`）；有字照旧贴字。
@@ -11,7 +11,6 @@
 import { copyText } from "./copy-table";
 import { el } from "./kit/el";
 import { button, setDisabled } from "./kit/button";
-import { sizeText } from "./format";
 import type { AttachDraft, AttachInput, Chip, ChipAt } from "./attach-draft";
 import s from "./attach-row.module.css";
 
@@ -35,10 +34,9 @@ const STATE_WORD: { readonly [K in ChipAt["at"]]: () => string } = {
   failed: () => copyText("attach.chip.failed"),
 };
 
-/** 词后面跟的那一格：传了多少 · 离线那一句 · 那台说的原因；别的态没有。 */
+/** 词后面跟的那一格：离线那一句 · 那台说的原因；别的态没有（传了多少只看进度条，不写字节）。 */
 function stateDetail(c: Chip, offline: string): string {
   const at = c.at;
-  if (at.at === "sending") return `${sizeText(at.done)} / ${sizeText(c.bytes)}`;
   if (at.at === "offline") return offline;
   if (at.at === "failed") return at.said;
   return "";
@@ -195,6 +193,7 @@ export class AttachRow {
     const sep = copyText("kit.text.sep");
     const detail = stateDetail(c, offline);
     const state = el("span", s.attachState, detail === "" ? word : `${word}${sep}${detail}`);
+    state.dataset.role = "attach-state";
     chip.append(name, state);
     const at = c.at;
     if (at.at === "failed") chip.title = at.detail === "" ? at.said : `${at.said}\n${at.detail}`;

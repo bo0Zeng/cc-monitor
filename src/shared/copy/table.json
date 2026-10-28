@@ -17265,6 +17265,12 @@
       "zh": "失败",
       "args": []
     },
+    "attach.chip.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "原因未知",
+      "args": []
+    },
     "attach.chip.retry": {
       "kind": "action",
       "role": "按钮",
