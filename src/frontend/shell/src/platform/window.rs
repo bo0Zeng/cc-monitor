@@ -1,7 +1,7 @@
 //! 窗口这一族的平台差异：壳里平台 cfg 的唯一住址（同 [`super::fs`]）：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（两个平台臂）。
 
-use copy_core::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 use tauri::Manager;
 
 /// nudge skip 判定的纯函数对。`pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。

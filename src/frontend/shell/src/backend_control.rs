@@ -3,8 +3,8 @@
 //! 它只认识 origin（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label），不认识 ssh、不认识进程监护
 //! （本机那一份住 `local_backend_host`；各台的常驻流归本机后端，起停经它的 `machine-wake` · `machine-stop`）。
 
-use copy_core::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 
 use crate::inbound_client::LOCAL_ORIGIN;
 
@@ -51,18 +51,21 @@ pub struct BackendStatus {
 #[tauri::command]
 pub async fn backend_status(origin: String) -> Result<BackendStatus, Said> {
     let r: Result<BackendStatus, Said> = async move {
-        Ok(
-            tauri::async_runtime::spawn_blocking(move || backend_status_now(origin))
-                .await
-                .map_err(Said::crashed)??,
-        )
+        Ok(tauri::async_runtime::spawn_blocking(move || {
+            backend_status_now(origin, crate::backend_policy::local_ledger())
+        })
+        .await
+        .map_err(Said::crashed)??)
     }
     .await;
     r.map_err(|s| s.named("backend_status"))
 }
 
-/// [`backend_status`] 的本体。
-fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
+/// [`backend_status`] 的本体。死亡账注入（生产那一本是 `backend_policy::local_ledger`；判据各持一本）。
+pub(crate) fn backend_status_now(
+    origin: String,
+    ledger: &crate::backend_policy::DeathLedger,
+) -> Result<BackendStatus, Said> {
     check_origin(&origin)?;
     let channel =
         crate::inbound_client::offer_of(&cmd_wire::Machine::named(origin.clone())).is_some();
@@ -70,7 +73,9 @@ fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
     // 不许拿 `channel` 或 `pid` 反推（假信号不报错，它只是一直说是）。远端那侧是 `null`（「它脱没脱离」在远端这条路上没有意义）。
     // 三格一起算：`the_three_ports_are_one_command_each_and_all_take_origin` 逐口只许有一处 `is_local(&origin)` 分派。
     // 本机后端起没起来同一处分派（按通道与手上这一版）；各台的状态成品在本机后端（`machine-read` · `changed {machine}`）⇒ 远端 `null`。
-    let (pid, attempts, detached, local) = if is_local(&origin) {
+    // 死亡账是本机后端的账，同一处分派：远端那一格是空账 —— 远端退出状态在别人机器上拿不到，「没人在记」正是实情，
+    //   那一格说「答不出来」（判定在 `backend_policy::health_face`）。不填 `null`：那与 `pid` / `attempts` 不是一件事。
+    let (pid, attempts, detached, local, h) = if is_local(&origin) {
         let (p, a) = crate::local_backend_host::local_pid_and_attempts()?;
         (
             p,
@@ -80,14 +85,17 @@ fn backend_status_now(origin: String) -> Result<BackendStatus, Said> {
                 channel,
                 crate::byte_table::my_backend_id(),
             )),
+            ledger.health(),
         )
     } else {
-        (None, None, None, None)
+        (
+            None,
+            None,
+            None,
+            None,
+            crate::backend_policy::Health::default(),
+        )
     };
-    // 死亡账的读数也从这一口出去。它不走 `is_local` 分派：那张账按 origin 存（`backend_policy::health(origin)`），远端那一格恒是「四个 0」——
-    // 远端退出状态在别人机器上拿不到，「没人在记」正是实情，那一格说「答不出来」（判定在 `backend_policy::health_face`）。
-    // 不填 `null`：那与 `pid` / `attempts` 不是一件事。再开一个 `is_local(&origin)` 分派会撞那条「逐口恰好一处」的判据。
-    let h = crate::backend_policy::health(&origin);
     Ok(BackendStatus {
         local,
         origin,

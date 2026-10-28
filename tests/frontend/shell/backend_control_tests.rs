@@ -18,7 +18,7 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
         guard_core::find_pinned(&src, &format!("pub async fn {p}(origin: String)"))
             .unwrap_or_else(|e| panic!("`{p}` 不是恰好一条 `async` 命令（{e}）"));
         let sig = if *p == "backend_status" {
-            "fn backend_status_now(origin: String)".to_string()
+            "fn backend_status_now(\n    origin: String,".to_string()
         } else {
             format!("pub async fn {p}(origin: String)")
         };

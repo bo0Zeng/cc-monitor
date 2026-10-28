@@ -980,7 +980,7 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         "../../../src/frontend/shell/src/backend_control.rs"
     ));
     // 命令本身是 `async`、本体在 `backend_status_now`（`spawn_blocking` 里跑）。
-    let status = body_of(&dc, "fn backend_status_now(origin: String)");
+    let status = body_of(&dc, "fn backend_status_now(\n    origin: String,");
     assert_eq!(
         status.matches("local_backend_host::is_detached()").count(),
         1,
@@ -3649,9 +3649,9 @@ fn the_stop_run_gives_up_at_its_deadline() {
 // **`record_death` 今天没有生产调用点**。下面这几条钉的就是那一格被补上了，
 // 而且**每一处判出来的是对的那一格**。
 
-/// 本机那台机的死亡账读数（三处接线都记在 `LOCAL_ORIGIN` 名下）。
+/// 本机后端那本死亡账的读数（三处接线都记在生产那一本 `local_ledger` 上）。
 fn local_health() -> crate::backend_policy::Health {
-    crate::backend_policy::health(crate::inbound_client::LOCAL_ORIGIN)
+    crate::backend_policy::local_ledger().health()
 }
 
 /// ★★ `KP3W2` 脱离路：**`Handshake` 那一维不是一个孤零零的字面量。**
@@ -3732,7 +3732,6 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
 #[test]
 fn the_never_started_reason_is_the_same_string_the_caller_gets() {
     let _guard = crate::inbound_client::local_origin_test_lock();
-    let origin = crate::inbound_client::LOCAL_ORIGIN;
     // 中性夹具串：**不取自任何路径或夹具名**。
     let reason = "那一份不在，旁边也没有 ⇒ 拒绝报「已起」".to_string();
     let looked_at = vec![
@@ -3787,7 +3786,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
     );
     assert_eq!(
         after.last.as_deref(),
-        Some(crate::backend_policy::ledger_line(origin, &d).as_str()),
+        Some(crate::backend_policy::ledger_line(&d).as_str()),
         "账上那一行与「拿同一份证据重算一遍」不是同一个串。\n\
              ⇒ 接线那一处对 `reason` / `looked_at` 动过手（本条是**逐字**比，不是「包含」）。"
     );

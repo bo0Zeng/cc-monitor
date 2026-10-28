@@ -21,8 +21,8 @@
 
 use super::router::{self, Backends, Ended, Terms};
 use super::wire::{Body, By, CallError, CancelToken, Cursor, Item, Kind, Op, Origin, OursFault};
-use copy_core::copy_text;
 use crate::{backend_route, inbound_client};
+use copy_core::copy_text;
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use std::sync::Arc;

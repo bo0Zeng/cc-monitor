@@ -39,8 +39,7 @@ use std::path::{Path, PathBuf};
 
 // 种子 · 就绪那一行 · 指到窗口二进制的环境变量：monitor 与窗口进程两边对上的形状住 `filewin-contract`。
 pub use filewin_contract::{
-    decode_ready, encode_request, is_ready_line, OpenRequest, Ready,
-    BIN_ENV,
+    decode_ready, encode_request, is_ready_line, OpenRequest, Ready, BIN_ENV,
 };
 
 /// 窗口进程那份二进制的**文件名主干**。

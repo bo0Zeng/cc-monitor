@@ -34,13 +34,12 @@
 //! 崩了不会自动重起（自愈整件摘出去成了 `K-P3`）。那是**如实登记的降级**，不是漏洞；
 //! 而如实登记的意思就是**说出口**，不是写在一条源码注释里。
 
-use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
-use copy_core::copy_text;
 use crate::inbound_client;
 use crate::origin::Origin;
+use copy_core::copy_text;
 use serde_json::{json, Value};
 
 // 这里原来有退出行为的四句（`EXIT_*`）、崩溃读数的四句（`HEALTH_*`）与它们的两张对拍表
@@ -439,7 +438,8 @@ pub fn last_brief(d: &Death) -> String {
 /// `~/.cc-monitor/bin/wrap.log` 的两行**只有时刻、没有日期**
 /// （现打逐字 `[21:14:36.212230477] exit rc=0 argv=[--with-bg --tail-only]`）
 /// ⇒ 「它上一次崩在哪一天」这句话在那本账上问不出来。**别把落点换成一个不打时刻的。**
-pub fn ledger_line(origin: &str, d: &Death) -> String {
+pub fn ledger_line(d: &Death) -> String {
+    let origin = inbound_client::LOCAL_ORIGIN;
     let code = exit_code(d).map(|c| format!(" 码={c}")).unwrap_or_default();
     format!(
         "[死亡账] origin={origin} 判定={} 退出状态={}{code} —— {}",
@@ -511,9 +511,23 @@ impl Health {
     }
 }
 
-fn ledger() -> &'static Mutex<HashMap<String, Health>> {
-    static L: OnceLock<Mutex<HashMap<String, Health>>> = OnceLock::new();
-    L.get_or_init(|| Mutex::new(HashMap::new()))
+/// 本机后端的死亡账。**一台机只许一个后端**（C8①）⇒ 一本账，不按机器分：
+/// 三处记账（`local_backend_host.rs`）记的都是本机后端，远端的退出状态在别人机器上拿不到。
+/// 生产只用 [`local_ledger`] 那一本；能另造一本只为判据各持各的（并行的用例不互相记进对方的数）。
+#[derive(Debug, Default)]
+pub struct DeathLedger(Mutex<Health>);
+
+impl DeathLedger {
+    /// 读数。**一笔都没记过 ⇒ 一条都没有**（而那一格说「答不出来」，不说「没崩过」）。
+    pub fn health(&self) -> Health {
+        self.0.lock().map(|h| h.clone()).unwrap_or_default()
+    }
+}
+
+/// 生产那一本账。
+pub fn local_ledger() -> &'static DeathLedger {
+    static L: OnceLock<DeathLedger> = OnceLock::new();
+    L.get_or_init(DeathLedger::default)
 }
 
 /// 记一笔。`None` = 那不是一次死亡（正常收工），不上账。
@@ -524,20 +538,20 @@ fn ledger() -> &'static Mutex<HashMap<String, Health>> {
 /// 3. **更新进程内那张表** —— ⚠ 这一步在第 2 步失败时**照样做**：
 ///    落点坏了不该把界面上的读数一起带走。
 pub fn record_death(
-    origin: &str,
+    ledger: &DeathLedger,
     ev: &DeathEvidence,
     sink: &mut dyn DeathSink,
 ) -> Option<Recorded> {
     let d = verdict(ev)?;
-    let line = ledger_line(origin, &d);
+    let line = ledger_line(&d);
     let sink_error = sink.write_line(&line).err();
     if let Some(why) = &sink_error {
+        let origin = inbound_client::LOCAL_ORIGIN;
         tracing::error!(
             "这台机（{origin}）的死亡账写不进去（{why}）—— 那一行没有落点，只能就地喊一声：{line}"
         );
     }
-    if let Ok(mut t) = ledger().lock() {
-        let h = t.entry(origin.to_string()).or_default();
+    if let Ok(mut h) = ledger.0.lock() {
         match &d {
             Death::NeverStarted { .. } => h.never_started += 1,
             Death::Refused { .. } => h.refused += 1,
@@ -552,15 +566,6 @@ pub fn record_death(
         line,
         sink_error,
     })
-}
-
-/// 这台机的读数。**未登记 ⇒ 一条都没有**（而那一格说「答不出来」，不说「没崩过」）。
-pub fn health(origin: &str) -> Health {
-    ledger()
-        .lock()
-        .ok()
-        .and_then(|t| t.get(origin).cloned())
-        .unwrap_or_default()
 }
 
 /// 「健康」那一格的三档。线上就是这三个词（`data-health`），界面原样挂、不枚举。

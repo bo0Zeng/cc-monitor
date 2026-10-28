@@ -68,8 +68,8 @@
 //! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
-use copy_core::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};

@@ -11,8 +11,8 @@
 //!
 //! 不搬、直接删的：`showBgSessions`（「显示分身会话」开关；改由各台偏好 `bgTab` 管，[`DROPPED_KEYS`]）。
 
-use copy_core::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::Path;
 

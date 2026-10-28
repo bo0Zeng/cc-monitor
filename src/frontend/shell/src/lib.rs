@@ -47,7 +47,6 @@ mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内
 mod bind;
 mod ui_contract;
 // 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
-mod ui_error;
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
 mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
@@ -55,10 +54,11 @@ mod config;
 mod data_paths;
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod event_replay;
-mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
-                      // 🔴原生文件管理窗口。进程形态＝**同进程**、
-                      // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-                      // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+mod footprint_client;
+mod ui_error; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
+              // 🔴原生文件管理窗口。进程形态＝**同进程**、
+              // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+              // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
 mod filewin;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。

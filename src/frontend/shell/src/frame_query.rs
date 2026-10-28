@@ -30,10 +30,10 @@
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::chan::said::machine as who;
-use copy_core::copy_text;
 use crate::detail::Said;
 use crate::inbound_client;
 use crate::origin::Origin;
+use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::time::Duration;
 

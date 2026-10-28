@@ -7,13 +7,13 @@
 //! 哪几种要告诉用户，由 [`UiError`] 的变体列全；每个变体的键在 [`UiError::payload`] 里写成字面量。
 
 use crate::backend_policy::Death;
+use crate::utils::now_ms;
 use copy_core::copy_text;
 use copy_core::detail::{Detail, Label};
 use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::utils::now_ms;
 use std::time::{Duration, Instant};
 
 /// 事件名（界面 `backend-errors.ts` 订的那一个）。
