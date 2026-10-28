@@ -49,17 +49,6 @@ pub(crate) struct IndexBody {
     pub(crate) cl: Vec<u32>,
 }
 
-/// 骨架索引的来源那一列（只有带来源的行）。
-#[derive(Debug, Default, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct IndexSpeaker {
-    /// 行号差。
-    #[cfg_attr(test, ts(type = "Array<number>"))]
-    pub(crate) at: Vec<u64>,
-    pub(crate) v: Vec<String>,
-}
-
 /// 骨架索引里用户输入的 uuid · 摘要 · 时刻（没有时刻 ⇒ 空串）：大纲清单从它出，跳过去时按 uuid 找卡、按行号物化。
 #[derive(Debug, Default, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -77,7 +66,8 @@ pub(crate) struct IndexInputs {
 ///
 /// - 每行都有的几格各一列：`o`（与上一行末尾的字节差，第一行与 `from` 比；连着 ＝ 0）· `n` · `t`（`classes` 里的号，
 ///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）。行号就是下标（第一行 ＝ 这一页从第几行起），不运每行的 uuid。
-/// - 稀疏的几格各一张小表（`body` · `sp` · `inputs`），`at` 是与上一项的行号差。
+///   `dr`（`draws` 里的号，从 1 起，0 ＝ 不画）。
+/// - 稀疏的几格各一张小表（`body` · `inputs`），`at` 是与上一项的行号差；`hu` 是人说的那几行，也按行号差。
 /// - `sc` 不上帧面（CLI 那一臂照旧逐行出 [`crate::observe::recognize::index_row::IndexRow`]）。
 ///
 /// 界面照列收进骨架账本（`live-window.ts::SkeletonLedger.append`），跨语言金样钉两侧。
@@ -99,16 +89,30 @@ pub(crate) struct HistoryIndex {
     pub(crate) count: usize,
     /// 本份里出现过的记录类（`t` 列的号从 1 起指它）。
     pub(crate) classes: Vec<crate::agents::record::RecordClass>,
+    /// 本份里出现过的画法（`dr` 列的号从 1 起指它；不画 ⇒ 0）。
+    pub(crate) draws: Vec<crate::agents::record::Draw>,
     #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) o: Vec<u64>,
     #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) n: Vec<u64>,
     #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) t: Vec<usize>,
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) dr: Vec<usize>,
     pub(crate) fd: Vec<u32>,
     pub(crate) body: IndexBody,
-    pub(crate) sp: IndexSpeaker,
+    /// 人说的那几行（行号差）。
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) hu: Vec<u64>,
     pub(crate) inputs: IndexInputs,
+}
+
+/// 字典列的号：`v` 在 `dict` 里排第几（从 1 起；第一次见 ⇒ 记进去）。
+fn code_of<T: PartialEq + Copy>(dict: &mut Vec<T>, v: T) -> usize {
+    dict.iter().position(|x| *x == v).unwrap_or_else(|| {
+        dict.push(v);
+        dict.len() - 1
+    }) + 1
 }
 
 /// 逐行的骨架 ⇒ 按列排的那一份（见 [`HistoryIndex`]）。
@@ -117,35 +121,33 @@ pub(crate) fn pack_index(
     end: u64,
     rows: &[crate::observe::recognize::index_row::IndexRow],
 ) -> HistoryIndex {
+    use crate::agents::record::Draw;
     let mut ix = HistoryIndex {
         from,
         end,
         next: None,
         count: rows.len(),
         classes: Vec::new(),
+        draws: Vec::new(),
         o: Vec::new(),
         n: Vec::new(),
         t: Vec::new(),
+        dr: Vec::new(),
         fd: Vec::new(),
         body: IndexBody::default(),
-        sp: IndexSpeaker::default(),
+        hu: Vec::new(),
         inputs: IndexInputs::default(),
     };
-    let (mut lb, mut ls, mut li) = (-1i64, -1i64, -1i64);
+    let (mut lb, mut lh, mut li) = (-1i64, -1i64, -1i64);
     let mut prev_end = from;
     for (i, r) in rows.iter().enumerate() {
         ix.o.push(r.o.saturating_sub(prev_end));
         ix.n.push(r.n);
         prev_end = r.o + r.n;
-        ix.t.push(match r.t {
-            Some(c) => {
-                let k = ix.classes.iter().position(|x| *x == c).unwrap_or_else(|| {
-                    ix.classes.push(c);
-                    ix.classes.len() - 1
-                });
-                k + 1
-            }
-            None => 0,
+        ix.t.push(r.t.map_or(0, |c| code_of(&mut ix.classes, c)));
+        ix.dr.push(match r.dr {
+            Draw::None => 0,
+            d => code_of(&mut ix.draws, d),
         });
         ix.fd.push(r.fd);
         if [r.ch, r.cj, r.pl, r.cb, r.cl].iter().any(|n| *n != 0) {
@@ -157,9 +159,8 @@ pub(crate) fn pack_index(
             b.cb.push(r.cb);
             b.cl.push(r.cl);
         }
-        if let Some(v) = r.sp {
-            ix.sp.at.push(gap(&mut ls, i));
-            ix.sp.v.push(v.to_string());
+        if r.hu {
+            ix.hu.push(gap(&mut lh, i));
         }
         if let Some(x) = &r.x {
             ix.inputs.at.push(gap(&mut li, i));
@@ -171,29 +172,44 @@ pub(crate) fn pack_index(
     ix
 }
 
-/// 一行骨架索引在按列排的那一份里至多占几个字节（`i` ＝ 它在这一页里排第几；行号差 ≤ `i`，偏移差 ≤ 偏移本身）。
-/// 记录类第一次出现那一行另算它在 `classes` 里那一项。
-fn index_row_cost(
-    r: &crate::observe::recognize::index_row::IndexRow,
-    i: usize,
-    seen: &mut Vec<crate::agents::record::RecordClass>,
-) -> usize {
-    let at = digits(i as u64) + 1;
-    let mut n = digits(r.o) + digits(r.n) + digits(r.fd.into()) + 3 + 4;
-    n += match r.t {
+/// 字典列（`classes` · `draws`）里已经见过的。
+#[derive(Default)]
+struct Seen {
+    classes: Vec<crate::agents::record::RecordClass>,
+    draws: Vec<crate::agents::record::Draw>,
+}
+
+/// 字典列一格至多几个字节：第一次见的那一行另算它在字典里那一项。
+fn dict_cost<T: PartialEq + Copy + serde::Serialize>(seen: &mut Vec<T>, v: Option<T>) -> usize {
+    match v {
         Some(c) if !seen.contains(&c) => {
             seen.push(c);
             jlen(&c) + 1 + digits(seen.len() as u64)
         }
         Some(_) => digits(seen.len() as u64),
         None => 1,
-    };
+    }
+}
+
+/// 一行骨架索引在按列排的那一份里至多占几个字节（`i` ＝ 它在这一页里排第几；行号差 ≤ `i`，偏移差 ≤ 偏移本身）。
+fn index_row_cost(
+    r: &crate::observe::recognize::index_row::IndexRow,
+    i: usize,
+    seen: &mut Seen,
+) -> usize {
+    let at = digits(i as u64) + 1;
+    let mut n = digits(r.o) + digits(r.n) + digits(r.fd.into()) + 4 + 5;
+    n += dict_cost(&mut seen.classes, r.t);
+    n += dict_cost(
+        &mut seen.draws,
+        Some(r.dr).filter(|d| *d != crate::agents::record::Draw::None),
+    );
     let body = [r.ch, r.cj, r.pl, r.cb, r.cl];
     if body.iter().any(|v| *v != 0) {
         n += at + body.iter().map(|v| digits((*v).into()) + 1).sum::<usize>();
     }
-    if let Some(v) = r.sp {
-        n += at + jlen(v) + 1;
+    if r.hu {
+        n += at;
     }
     if let Some(x) = &r.x {
         n += at
@@ -218,7 +234,7 @@ pub(crate) fn index_page(
     let offset = req.offset.unwrap_or(0);
     let fixed = jlen(&pack_index(u64::MAX, u64::MAX, &[])) + digits(u64::MAX);
     let mut pager = Pager::new(cap, fixed, req.limit);
-    let mut seen = Vec::new();
+    let mut seen = Seen::default();
     let mut rows: Vec<crate::observe::recognize::index_row::IndexRow> = Vec::new();
     let mut next = None;
     let map = locate::scan_from(home, &req.path, offset)?;

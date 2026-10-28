@@ -21,6 +21,8 @@ const use = {
   blocks: [{ type: "tool_use", id: "t1", name: "Bash" }],
   steps: { t1: { tool: "Bash", arg: "ls", known: true } },
   autoReply: false,
+  draw: "steps",
+  human: false,
 } as unknown as LineRecord;
 const result = (content: unknown, preview?: string): LineRecord =>
   ({
@@ -31,6 +33,8 @@ const result = (content: unknown, preview?: string): LineRecord =>
     who: { speaker: { kind: "toolResult" }, text: "" },
     blocks: [{ type: "tool_result", for: "t1", isError: false, ...(content === undefined ? {} : { content }) }],
     results: { t1: { ok: true, ...(preview === undefined ? {} : { preview }) } },
+    draw: "steps",
+    human: false,
   }) as unknown as LineRecord;
 
 function summaryOf(res: LineRecord): string {

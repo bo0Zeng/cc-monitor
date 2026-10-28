@@ -10,7 +10,9 @@ type Row = Record<string, unknown>;
 export function packIndex(from: number, end: number, rows: readonly Row[]): Record<string, unknown> {
   const num = (r: Row, k: string): number => (typeof r[k] === "number" ? (r[k] as number) : 0);
   const classes: string[] = [];
-  const [o, n, t, fd]: unknown[][] = [[], [], [], []];
+  const draws: string[] = [];
+  const [o, n, t, dr, fd, hu]: unknown[][] = [[], [], [], [], [], []];
+  let lastHu = -1;
   const table = (keys: string[]) => {
     const tb: Record<string, unknown[]> = { at: [] };
     for (const k of keys) tb[k] = [];
@@ -25,7 +27,7 @@ export function packIndex(from: number, end: number, rows: readonly Row[]): Reco
     };
   };
   const BODY = ["ch", "cj", "pl", "cb", "cl"];
-  const [body, sp, inputs] = [table(BODY), table(["v"]), table(["u", "x", "ts"])];
+  const [body, inputs] = [table(BODY), table(["u", "x", "ts"])];
   let prev = from;
   rows.forEach((r, i) => {
     o.push(num(r, "o") - prev);
@@ -35,12 +37,19 @@ export function packIndex(from: number, end: number, rows: readonly Row[]): Reco
       if (!classes.includes(r.t)) classes.push(r.t);
       t.push(classes.indexOf(r.t) + 1);
     } else t.push(0);
+    if (typeof r.dr === "string") {
+      if (!draws.includes(r.dr)) draws.push(r.dr);
+      dr.push(draws.indexOf(r.dr) + 1);
+    } else dr.push(0);
     fd.push(num(r, "fd"));
+    if (r.hu === true) {
+      hu.push(i - lastHu - 1);
+      lastHu = i;
+    }
     if (BODY.some((k) => num(r, k) !== 0)) body.push(i, BODY.map((k) => num(r, k)));
-    if (typeof r.sp === "string") sp.push(i, [r.sp]);
     if (typeof r.x === "string") inputs.push(i, [typeof r.u === "string" ? r.u : "", r.x, typeof r.ts === "string" ? r.ts : ""]);
   });
-  return { from, end, count: rows.length, classes, o, n, t, fd, body: body.tb, sp: sp.tb, inputs: inputs.tb };
+  return { from, end, count: rows.length, classes, draws, o, n, t, dr, fd, body: body.tb, hu, inputs: inputs.tb };
 }
 
 /** 逐行（判据写的骨架料）⇒ 骨架账本收的那几页（一页，从第一行的起点到最后一行的末尾）。 */

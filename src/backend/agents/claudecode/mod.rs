@@ -287,7 +287,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     }),
     // 此刻在干什么由进程状态文件说（`LocalFace.proc_of`），记录不说。
     activity: None,
-    class: Some(record_of::class_of),
     chain: Some(chain::chain_fact),
     find_session: branch::find_session_file,
     branch: Some(branch::build_branch_records),

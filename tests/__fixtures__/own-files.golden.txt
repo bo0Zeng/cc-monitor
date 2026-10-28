@@ -1,5 +1,5 @@
 == cache/skeleton/<digest>.json
-{"v":5,"path":"<home>/rec.jsonl","body":{"rows":[1,2,3],"tail":"x"}}
+{"v":6,"path":"<home>/rec.jsonl","body":{"rows":[1,2,3],"tail":"x"}}
 == chores.json
 {"declined":["agents"],"selfPaste":"/x/.bashrc","startSkipped":false}
 

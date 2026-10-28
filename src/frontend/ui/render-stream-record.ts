@@ -10,7 +10,6 @@ import { renderMessage, buildStepsCard, type LineRecord, type RenderContext } fr
 import { observeForEnhance } from "./render";
 import { askRefs } from "./plan-refs";
 import { applyIntrinsicSize } from "./height-estimate";
-import { saidByHuman } from "./speaker";
 import { isRetryBar, mergeRetry } from "./cards/api-error";
 import { buildInjectedLine, isNoticeLine, mergeNotice } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
@@ -199,8 +198,9 @@ export function renderContentRecord(
     case "skip": {
       // 系统注入：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
       // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
-      const injected = message.t === "said" && message.who.speaker.kind === "system" ? message.who.speaker.body : undefined;
-      if (typeof injected === "string" && injected !== "") {
+      const sp = message.draw === "strip" && message.t === "said" ? message.who.speaker : undefined;
+      const injected = sp !== undefined && "body" in sp ? sp.body : undefined;
+      if (typeof injected === "string") {
         const strip = buildInjectedLine(injected, message.timeText ?? "");
         markCardId(strip, message);
         sink.timeline.insert({ seq: payload.seq, element: strip, kind: "aside" });
@@ -256,7 +256,7 @@ export function renderContentRecord(
       // 真用户输入触发回调（让 TabManager 自动切 Tab）。一轮中途插的话也是 said：用户刚插了话，多半正等着看回应。
       // 只认**刚写进来的**：补历史带来的旧记录（载荷 `catch_up`，monitor 按会话宣告那一刻的行数分的）里人说过的话不是刚敲的。
       // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
-      if (payload.catch_up !== true && message.t === "said" && saidByHuman(message.who.speaker.kind)) {
+      if (payload.catch_up !== true && message.human) {
         sink.onRealUserInput?.(payload.session_id);
       }
       if (probe) {

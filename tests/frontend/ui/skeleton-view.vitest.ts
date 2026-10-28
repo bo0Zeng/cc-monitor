@@ -67,7 +67,7 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement): { scrollTop
   return state;
 }
 
-const asst = (): SkeletonFacts => ({ o: 0, n: 1, t: "reply", ch: 200, pl: 2 });
+const asst = (): SkeletonFacts => ({ o: 0, n: 1, t: "reply", dr: "card", ch: 200, pl: 2 });
 
 /** 宿主：建卡 = 往 timeline 里插一个带 `data-h`（真高）的 div；记下每次被要了哪一段。 */
 function makeHost(timeline: RecordTimeline, realH: (seq: number) => number, builds = (_s: number) => true) {
@@ -313,14 +313,14 @@ describe("🔴 视口外的卡交回占位", () => {
     const shape = (q: number): SkeletonFacts => {
       switch (q % 6) {
         case 0:
-          return { o: 0, n: 1, t: "said", ch: 80, pl: 1 };
+          return { o: 0, n: 1, t: "said", dr: "card", hu: true, ch: 80, pl: 1 };
         case 1:
-          return { o: 0, n: 1, t: "reply", ch: 200, pl: 2 };
+          return { o: 0, n: 1, t: "reply", dr: "card", ch: 200, pl: 2 };
         case 2:
         case 4:
-          return { o: 0, n: 1, t: "reply", fd: 1 };
+          return { o: 0, n: 1, t: "reply", dr: "steps", fd: 1 };
         default:
-          return { o: 0, n: 1, t: "said", fd: 1 };
+          return { o: 0, n: 1, t: "said", dr: "steps", fd: 1 };
       }
     };
     const rows = Array.from({ length: 1200 }, (_, q) => shape(q));
@@ -464,7 +464,7 @@ describe("大折叠：折着的过程不物化", () => {
 
   it("只剩不占高的行（工具结果注入进调用那一行那种）的占位落在视口里 ⇒ 照样物化（不因高 0 永远留着）；扣掉折着的那几段", () => {
     const s = setup(30, 20);
-    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "said", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "reply", fd: 1 } : asst()));
+    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "said", dr: "steps", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "reply", dr: "steps", fd: 1 } : asst()));
     const ledger = new SkeletonLedger(0, indexPages(rows));
     const view = new SkeletonView(ledger, s.scrollEl, s.timeline, s.host);
     view.attach(20);
@@ -561,7 +561,7 @@ describe("〔RENDER2〕第二级估高", () => {
     let x = 7;
     const rnd = (n: number): number => ((x = (x * 1103515245 + 12345) % 2147483648) % n);
     const rows: SkeletonFacts[] = Array.from({ length: 400 }, (_, i) =>
-      i % 5 === 0 ? { o: i, n: 1 } : { o: i, n: 1, t: "reply", ch: 30 + rnd(900), pl: 1 + rnd(4) },
+      i % 5 === 0 ? { o: i, n: 1 } : { o: i, n: 1, t: "reply", dr: "card", ch: 30 + rnd(900), pl: 1 + rnd(4) },
     );
     const ledger = new SkeletonLedger(0, indexPages(rows));
     const first = Array.from({ length: 400 }, (_, i) => ledger.heightOf(i, i + 1));
@@ -606,7 +606,7 @@ describe("〔RENDER2〕第二级估高", () => {
       s.view,
       asked.map((seq) => ({
         seq,
-        rec: { agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false } as never,
+        rec: { agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false, draw: "card", human: false } as never,
       })),
     );
     expect(seen).toEqual([asked.length]);
@@ -632,8 +632,8 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
     };
     const cases: Array<[unknown, SkeletonFacts]> = [
       [
-        { agent: "claude", t: "said", id: "a", who: { speaker: { kind: "human" }, text: "第一行abc\nsecond line" }, blocks: [{ type: "text", text: "第一行abc\nsecond line" }] },
-        { o: 0, n: 1, t: "said", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
+        { agent: "claude", t: "said", id: "a", who: { speaker: { kind: "human" }, text: "第一行abc\nsecond line" }, blocks: [{ type: "text", text: "第一行abc\nsecond line" }], draw: "card", human: true },
+        { o: 0, n: 1, t: "said", dr: "card", hu: true, ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
       ],
       [
         {
@@ -645,8 +645,10 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
             { type: "tool_use", id: "x", name: "Read", input: {} },
           ],
           autoReply: false,
+          draw: "card",
+          human: false,
         },
-        { o: 0, n: 1, t: "reply", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
+        { o: 0, n: 1, t: "reply", dr: "card", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
       ],
     ];
     for (const [rec, facts] of cases) {
@@ -660,7 +662,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
 // 要求：「列宽变化只重算已精算过的」＋「今天列宽只量一次（`COL_W`），列宽变了只重算精算过的那一步（`relayout`）还没有入口」；同一行。
 describe("〔P3〕列宽变了", () => {
   const rec = (seq: number) =>
-    ({ agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false }) as never;
+    ({ agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false, draw: "card", human: false }) as never;
 
   it("SkeletonView.relayout：每行高 == 新列宽下的第一级；精算过的那几行进待重交；占位改高、视口钉住；差不到 1px 不动", () => {
     const s = setup(3000, 2990);

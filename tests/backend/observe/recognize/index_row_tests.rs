@@ -8,9 +8,14 @@ use super::*;
 
 /// 一行原文 → [`IndexRow`]（判据从原文起；生产里扫描图逐行已解析过、直接走 [`index_row_of`]）。
 pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
+    let text = String::from_utf8_lossy(line);
+    let at = crate::agents::Line::new(&text, offset);
+    let rec = crate::agents::record_face(kind)
+        .and_then(|f| (f.parse)(&at).ok().flatten())
+        .and_then(|t| t.record);
     let v = crate::observe::lines::parse(line);
     let beat = v.as_ref().and_then(|v| crate::agents::beat_of(kind, v));
-    index_row_of(kind, v.as_ref(), beat.as_ref(), offset, len)
+    index_row_of(kind, v.as_ref(), beat.as_ref(), rec.as_ref(), offset, len)
 }
 
 /// 这几份夹具是记录树那一家的记录。
@@ -152,10 +157,14 @@ fn facts_count_prose_code_and_folded_units_separately() {
 
 #[test]
 fn facts_for_user_string_meta_sidechain_system_and_garbage() {
-    let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"agentId":"a1","message":{"role":"user","content":"两行\n第二行"}}"#;
+    let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"agentId":"a1","uuid":"m1","timestamp":"2026-10-09T00:00:00Z","message":{"role":"user","content":"两行\n第二行"}}"#;
     let r = index_row(tree(), u.as_bytes(), 0, 0);
     assert!(r.sc);
-    assert_eq!(r.sp, Some("system"), "isMeta ⇒ 系统注入");
+    assert_eq!(
+        (r.dr, r.hu),
+        (crate::agents::record::Draw::Strip, false),
+        "isMeta ⇒ 系统注入那条细条"
+    );
     assert_eq!((r.pl, r.ch, r.cj), (2, 5, 5));
     // tool_result 数组：只算折叠单元，正文 0
     let tr = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"大段输出"}]}}"#;
@@ -172,9 +181,14 @@ fn facts_for_user_string_meta_sidechain_system_and_garbage() {
 /// 零值不上线：索引每条一行，省下来的是乘以条数的字节。
 #[test]
 fn zero_facts_are_not_serialized() {
-    let r = index_row(tree(), br#"{"type":"attachment"}"#, 0, 22);
+    let r = index_row(
+        tree(),
+        br#"{"type":"permission-mode","permissionMode":"plan","sessionId":"s"}"#,
+        0,
+        22,
+    );
     let s = serde_json::to_string(&r).unwrap();
-    assert_eq!(s, r#"{"o":0,"n":22}"#, "不进界面的行连类都不带");
+    assert_eq!(s, r#"{"o":0,"n":22}"#, "不进界面的行连类 · 画法都不带");
 }
 
 /// **跨 crate 的 seq 空间对拍**：后端索引读同一份夹具，逐行对同一份金标准。
@@ -212,7 +226,7 @@ fn index_rows_match_the_shared_seq_space_golden() {
     assert_eq!(tail["end"].as_u64(), end);
 }
 
-/// `t` 那一格的说明（`IPC-COMMANDS.md` 由它生成）列的值域 ＝ `RecordClass` 去掉 `unread`（骨架不出认不出的行）。
+/// `t` 那一格的说明（`IPC-COMMANDS.md` 由它生成）列的值域 ＝ `RecordClass` 全部（骨架行取自整条翻译出的记录，认不出的那一条也出）。
 /// 多列一个不存在的类、漏列一个新加的类都红。
 #[test]
 fn the_t_doc_lists_exactly_the_skeleton_classes() {
@@ -220,10 +234,11 @@ fn the_t_doc_lists_exactly_the_skeleton_classes() {
     // 穷举：`RecordClass` 加一类不在这里补就编不过。
     fn every(c: RecordClass) -> bool {
         match c {
-            RecordClass::Said | RecordClass::Reply | RecordClass::Retry | RecordClass::Title => {
-                true
-            }
-            RecordClass::Unread => false,
+            RecordClass::Said
+            | RecordClass::Reply
+            | RecordClass::Retry
+            | RecordClass::Title
+            | RecordClass::Unread => true,
         }
     }
     let all = [
@@ -247,10 +262,10 @@ fn the_t_doc_lists_exactly_the_skeleton_classes() {
     let src = include_str!("../../../../src/backend/observe/recognize/index_row.rs");
     let line = src
         .lines()
-        .find(|l| l.contains("这一行会翻成哪一类通用记录（"))
+        .find(|l| l.contains("这一行翻成的那条通用记录的类（"))
         .expect("`t` 那一格的说明不见了");
     let list = line
-        .split_once("通用记录（")
+        .split_once("通用记录的类（")
         .and_then(|(_, r)| r.split_once('，'))
         .map(|(l, _)| l)
         .expect("说明里那一串值域没找到");

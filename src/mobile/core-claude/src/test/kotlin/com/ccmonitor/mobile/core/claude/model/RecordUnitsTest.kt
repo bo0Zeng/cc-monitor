@@ -51,7 +51,7 @@ class RecordUnitsTest {
 
     @Test
     fun `工具结果：正文 · 出错 · 核心给的 patch 原样带上`() {
-        val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
+        val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "draw" to "steps", "human" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
         val call = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(reply)), cases.getValue("said-full"))).first() as RenderUnit.ToolCall
         assertEquals("line a\nline b", call.resultText)
         assertEquals(false, call.pending)
@@ -62,13 +62,16 @@ class RecordUnitsTest {
 
     @Test
     fun `交互卡照核心判的卡型（reply_cards）认，不认工具名`() {
-        fun call(cards: Map<String, String>?) =
+        fun call(
+            cards: Map<String, String>?,
+            draw: String,
+        ) =
             RecordUnits
-                .of(listOf(requireNotNull(Wire.bind<LineRecord>(mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "cards" to cards, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "c", "name" to "Tool", "input" to emptyMap<String, Any>())))))))
+                .of(listOf(requireNotNull(Wire.bind<LineRecord>(mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "draw" to draw, "human" to false, "cards" to cards, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "c", "name" to "Tool", "input" to emptyMap<String, Any>())))))))
                 .single() as RenderUnit.ToolCall
-        assertTrue(call(mapOf("c" to "interactive")).interactive)
-        assertEquals(false, call(mapOf("c" to "diff")).interactive)
-        assertEquals(false, call(null).interactive)
+        assertTrue(call(mapOf("c" to "interactive"), "card").interactive)
+        assertEquals(false, call(mapOf("c" to "diff"), "steps").interactive)
+        assertEquals(false, call(null, "steps").interactive)
     }
 
     @Test

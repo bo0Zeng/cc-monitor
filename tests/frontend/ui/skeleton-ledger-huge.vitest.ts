@@ -15,7 +15,7 @@ const TURN = 10;
 
 function synthRows(): SkeletonFacts[] {
   const out: SkeletonFacts[] = [];
-  for (let i = 0; i < ROWS; i++) out.push(i % TURN === 0 ? { o: 0, n: 1, t: "said", ch: 20, pl: 1 } : { o: 0, n: 1, t: "reply", fd: 1 });
+  for (let i = 0; i < ROWS; i++) out.push(i % TURN === 0 ? { o: 0, n: 1, t: "said", dr: "card", hu: true, ch: 20, pl: 1 } : { o: 0, n: 1, t: "reply", dr: "steps", fd: 1 });
   return out;
 }
 
