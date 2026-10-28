@@ -8,9 +8,12 @@ import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.ui.Faces
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -84,7 +87,8 @@ class HostChatsSyncTest {
     private fun TestScope.chats(
         link: FakeCoreLink,
         cache: ListCache,
-    ) = HostChats("h1", "a", link, emptyFlow(), MutableStateFlow(null), {}, cache, backgroundScope)
+        groupsChanged: Flow<Unit> = emptyFlow(),
+    ) = HostChats("h1", "a", link, emptyFlow(), groupsChanged, MutableStateFlow(null), {}, cache, backgroundScope)
 
     private fun HostChats.labels() = ((state.value.list as? Fetched.Got)?.value?.rows ?: state.value.cached?.rows).orEmpty().map { it.label }
 
@@ -130,5 +134,32 @@ class HostChatsSyncTest {
             runCurrent()
             assertEquals(listOf("上次的 a"), c.labels())
             assertEquals(mapOf("held" to "e.9.4"), link.calls("history-list").single())
+        }
+
+    @Test
+    fun `接上问一次 groups-read（只问这台自己那一片）；那台连着推 changed {groups} ⇒ 合成一问重问`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                if (cmd == "groups-read") {
+                    Reply.Ok(mapOf("groups" to emptyList<Any>(), "pinned" to emptyList<Any>(), "machines" to emptyList<Any>()))
+                } else {
+                    patch("e.1.1", whole = true, order = emptyList(), head = head)
+                }
+            }
+            val pushed = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+            val c = chats(link, Kept(), pushed)
+            runCurrent()
+            assertEquals(listOf<Map<String, Any?>?>(mapOf("machines" to listOf("<local>"))), link.calls("groups-read"))
+            assertEquals(
+                emptyList<Any>(),
+                c.state.value.groups
+                    ?.groups,
+            )
+            pushed.emit(Unit)
+            pushed.emit(Unit)
+            advanceTimeBy(HostChats.LIST_DEBOUNCE_MS + 1)
+            runCurrent()
+            assertEquals("连着两帧合成一问", 2, link.calls("groups-read").size)
         }
 }
