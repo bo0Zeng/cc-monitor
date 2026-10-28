@@ -23,6 +23,16 @@ class LocalCache(
     fun list(hostId: String): ListCache = RoomListCache(dao, hostId)
 
     fun batches(hostId: String): KeptBatches = RoomKeptBatches(dao, hostId)
+
+    /** 这台名下该再交的待发（有会话 · 还没回执 · 没被拒），照落库的先后；那台一接上就照原编号重交（`PendingResend`）。 */
+    suspend fun due(hostId: String): List<Pending> = dao.duePending(hostId).map { Pending(it.id, it.sid, it.text, it.outcome, it.attempts) }
+
+    /** 记回一句交的结局（同 [ChatCache.settle]）。 */
+    suspend fun settle(
+        id: String,
+        outcome: String,
+        attempts: Int,
+    ) = dao.settle(id, outcome, attempts)
 }
 
 private class RoomKeptBatches(

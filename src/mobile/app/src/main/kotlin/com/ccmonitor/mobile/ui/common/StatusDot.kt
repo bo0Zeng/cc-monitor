@@ -58,18 +58,29 @@ fun StatusDot(
     Dot(Face(formOf(dot), color), label, breathing = dot == SessionDot.RUNNING, modifier)
 }
 
-/** 机器那一颗：已连接（实心 `--success`、不呼吸）· 连接失败（实心 `--error`）。 */
-enum class MachineDot { UP, FAILED }
+/**
+ * 机器那一颗（照那台的状态成品挑）：正在连 · 装 · 更新（空心环 `--text-2`、呼吸）· 在线（实心 `--success`、不呼吸）·
+ * 要更新（实心 `--warn`，照常能用）· 离线 · 做不了（实心 `--error`）。
+ */
+enum class MachineDot { CONNECTING, UP, WARN, FAILED }
 
-/** 机器那一颗点；[dot] 为 `null`（未连接 · 连接中）⇒ 只占位不画。 */
+/** 机器那一颗点；[dot] 为 `null`（核心还没交过那一行）⇒ 只占位不画。 */
 @Composable
 fun StatusDot(
     dot: MachineDot?,
     label: String?,
     modifier: Modifier = Modifier,
 ) {
-    val color = if (dot == MachineDot.FAILED) MaterialTheme.colorScheme.error else LocalAppTokens.current.success
-    Dot(dot?.let { Face(DotForm.SOLID, color) }, label, breathing = false, modifier)
+    val tokens = LocalAppTokens.current
+    val face =
+        when (dot) {
+            null -> null
+            MachineDot.CONNECTING -> Face(DotForm.RING, MaterialTheme.colorScheme.onSurfaceVariant)
+            MachineDot.UP -> Face(DotForm.SOLID, tokens.success)
+            MachineDot.WARN -> Face(DotForm.SOLID, tokens.warn)
+            MachineDot.FAILED -> Face(DotForm.SOLID, MaterialTheme.colorScheme.error)
+        }
+    Dot(face, label, breathing = dot == MachineDot.CONNECTING, modifier)
 }
 
 @Composable

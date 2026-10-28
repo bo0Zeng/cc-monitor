@@ -106,7 +106,6 @@ fun HostListScreen(
     onIdentities: () -> Unit,
     onFiles: (String) -> Unit = {},
     onEdit: (String) -> Unit = {},
-    onSessions: () -> Unit = {}, // 会话总览（多 tab）
     // 「新建会话 · 选主机」页复用本屏：true 时显示对应的标题与提示。连接语义（forceNew）由调用方接，
     // 本屏不感知；返回键取消由导航自然提供。
     newSessionMode: Boolean = false,
@@ -114,7 +113,7 @@ fun HostListScreen(
 ) {
     val vm = koinViewModel<HostViewModel>()
     val hosts by vm.hosts.collectAsState()
-    val linkDots by vm.linkDots.collectAsState()
+    val looks by vm.rowLooks.collectAsState()
     val tokens = LocalAppTokens.current
     val snackbar = LocalAppSnackbar.current
 
@@ -126,7 +125,7 @@ fun HostListScreen(
     // 垫在最外层 Box 上，FAB 的 `BottomEnd` 也跟着让开。
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
-            HostListHeader(vm, title, newSessionMode, onIdentities, onSessions)
+            HostListHeader(vm, title, newSessionMode, onIdentities)
             if (hosts.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Text(copyText("mobHosts.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -147,7 +146,7 @@ fun HostListScreen(
                         items(groupHosts, key = { it.id }) { host ->
                             HostRow(
                                 host,
-                                dot = linkDots[host.id],
+                                look = looks[host.id],
                                 // 种类跟着 hostId 一起交出去，见本屏头注。
                                 onClick = { onConnect(host.id) },
                                 onFiles = { onFiles(host.id) },
@@ -186,7 +185,6 @@ private fun HostListHeader(
     title: String,
     newSessionMode: Boolean,
     onIdentities: () -> Unit,
-    onSessions: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(16.dp),
@@ -194,7 +192,7 @@ private fun HostListHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium)
-        HostListActions(vm, onIdentities, onSessions)
+        HostListActions(vm, onIdentities)
     }
     // 新建会话模式的提示：点主机即强制新建独立 tab（不复用已开会话），返回键取消。
     if (newSessionMode) {
@@ -272,29 +270,27 @@ private fun groupHosts(hosts: List<Host>): List<Pair<String?, List<Host>>> {
     }
 }
 
-/** 主机列表头部动作（导入 ssh config / 钥匙）。设置从抽屉底行 ⚙ 进，这里不另给。 */
+/** 主机列表头部动作（导入 ssh config / 钥匙）。设置从抽屉底行 ⚙ 进；终端标签页从抽屉「终端」与终端工具条进，这里都不另给。 */
 @Composable
 private fun HostListActions(
     vm: HostViewModel,
     onIdentities: () -> Unit,
-    onSessions: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        // 顶栏三颗图标按钮：会话总览 · 导入 · 钥匙；字只当无障碍名。
-        PhIconButton(Ph.Chats, copyText("mobHosts.list.tabs"), onClick = onSessions, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 顶栏两颗图标按钮：导入 · 钥匙；字只当无障碍名。
         ImportSshConfigButton(vm)
         PhIconButton(Ph.Key, IDENTITY_SCREEN_TITLE, onClick = onIdentities, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-/** 行首那颗点的读屏名：已连接 ⇒ 在线，连接失败 ⇒ 离线（与桌面机器页同一句）。 */
-private fun hostDotLabel(dot: MachineDot): String = if (dot == MachineDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
+/** 行首那颗点的读屏名：成品那个词；通着时成品不写词 ⇒ 在线（与桌面机器页同一句）。 */
+private fun hostDotLabel(look: HostRowLook): String = look.word ?: copyText("machinePage.state.up")
 
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
 private fun HostRow(
     host: Host,
-    dot: MachineDot?,
+    look: HostRowLook?,
     onClick: () -> Unit,
     onFiles: () -> Unit,
     onEdit: () -> Unit,
@@ -316,10 +312,10 @@ private fun HostRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StatusDot(dot, dot?.let { hostDotLabel(it) })
+            StatusDot(look?.dot, look?.takeIf { it.dot != null }?.let(::hostDotLabel))
             Column(Modifier.weight(1f)) {
                 Text(host.label, style = MaterialTheme.typography.titleSmall)
-                // 主地址；有额外地址时标出数量；连接失败 ⇒ 后面跟一句红字
+                // 主地址；有额外地址时标出数量；成品有那个词（连接中 · 要更新 · 离线 …）⇒ 后面跟着它，颜色随点
                 val extraCount = host.addresses.size
                 Row {
                     Text(
@@ -330,8 +326,15 @@ private fun HostRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (dot == MachineDot.FAILED) {
-                        Text(copyText("kit.text.sep") + hostDotLabel(dot), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
+                    look?.word?.let { w ->
+                        val tokens = LocalAppTokens.current
+                        val ink =
+                            when (look.dot) {
+                                MachineDot.FAILED -> tokens.errorText
+                                MachineDot.WARN -> tokens.warn
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        Text(copyText("kit.text.sep") + w, style = MaterialTheme.typography.bodySmall, color = ink)
                     }
                 }
             }
@@ -616,11 +619,8 @@ object HostEditTags {
     const val DEPLOY = "host-edit-deploy"
 }
 
-/** 每跳读数：这台手机此刻到那台的每一条连接一行（核心写好的那一句原样，先后照成品：那台在前、跳板跟在后面）。 */
-internal fun linkLines(link: LinkLine?): List<String> {
-    val links = link?.machine?.links ?: return emptyList()
-    return links.map { it.said }
-}
+/** 怎么连过去的那一句（核心写好的 `route` 原样：经跳板 · 经代理）；直连不经代理 · 还没有那一行 ⇒ `null`，不画。 */
+internal fun routeLine(link: LinkLine?): String? = link?.machine?.route
 
 /** 主机设置里那一行：标题 ＋ 一颗按钮（成品给的那一颗：安装 / 更新；没给 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
 @Composable
@@ -640,7 +640,7 @@ private fun BackendRow(hostId: String) {
         modifier = Modifier.testTag(HostEditTags.DEPLOY),
     ) { Text(deployLabel(fix)) }
     (conn as? HostLink.Failed)?.let { Text(it.why, color = MaterialTheme.colorScheme.error) }
-    linkLines(link).forEach { Text(it, style = monoSmall, color = LocalAppTokens.current.textFaint) }
+    routeLine(link)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.textFaint) }
     busy?.let { return BusyLine(it) }
     when (val d = deploying) {
         is Deploying.Done -> Text(d.text, style = monoSmall, color = LocalAppTokens.current.textFaint)

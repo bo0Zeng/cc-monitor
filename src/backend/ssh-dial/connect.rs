@@ -971,7 +971,7 @@ fn inner(said: String, e: Said) -> Said {
 }
 
 /// 一台跳板在阶段行与报错里的名字（界面那边的配置标签；没有就 `host:port`）。
-fn hop_name(hop: &JumpHop) -> String {
+pub(crate) fn hop_name(hop: &JumpHop) -> String {
     if hop.label.is_empty() {
         format!("{}:{}", hop.host, hop.port)
     } else {
