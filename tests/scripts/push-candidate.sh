@@ -7,16 +7,18 @@
 #   ④ 同一个提交在 main 上还会再跑一遍 CI：也等它跑完，红了照样印红的 job 与日志、退非 0（main 已经推出去了）。
 # 主仓 = 这个仓的主工作树（`git worktree list` 的第一棵），它一直在 main 上，脚本不切分支。
 # 私人扫描（要推的那一段提交的说明与改动）：私人词表与扫描脚本都不进仓，只认 PATH 上的 private-scan.sh；找不到 ⇒ 拒推。
+# 依赖漏洞判据（`dep-advisories.mjs`，问 OSV）：判的是 w8/<名> 那个提交里的锁；红或判不了 ⇒ 拒推。
 # 环境变量（一般不用设）：PUSH_FIND_MIN 每一趟等 run 出现的分钟数（默认 10）· PUSH_WAIT_MIN 每一趟等跑完的分钟数（默认 60）·
 #   GATE_STATE_DIR 失败日志落在它下面的 logs/（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate）。
 set -euo pipefail
-case "${1:-}" in -h|--help) sed -n '2,11p' "$0"; exit 0 ;; esac
+case "${1:-}" in -h|--help) sed -n '2,12p' "$0"; exit 0 ;; esac
 name=${1:?用法：bash tests/scripts/push-candidate.sh <合并工作树名>（推的是 w8/<名>）}
 br="w8/$name"
 scan=$(command -v private-scan.sh) \
   || { echo "push: PATH 上没有 private-scan.sh —— 要推的提交扫不了私人标识，不推；扫描脚本放上 PATH 再来" >&2; exit 1; }
 find_min=${PUSH_FIND_MIN:-10}; wait_min=${PUSH_WAIT_MIN:-60}
 logdir=${GATE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate}/logs
+here=$(cd "$(dirname "$0")" && pwd)
 main_tree=$(git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
 [ -n "$main_tree" ] || { echo "push: 不在本仓的任一棵树里（git worktree list 没出主工作树）" >&2; exit 1; }
 cd "$main_tree"
@@ -30,6 +32,7 @@ git merge-base --is-ancestor origin/main "$sha" || die "$br 不是 origin/main �
 gh auth status >/dev/null 2>&1 || die "gh 没登录（gh auth status）"
 # 要推出去的这一段提交：说明与改动里不许有私人标识（树里干净不够——旧提交里的会跟着历史出去）
 bash "$scan" --history "origin/main..$sha" || die "要推的提交历史里有私人标识（见上）；main 没动"
+node "$here/dep-advisories.mjs" --rev "$sha" || die "依赖漏洞判据没过（见上：红 ⇒ 升锁或登记豁免，判不了 ⇒ OSV 问不到）；main 没动"
 short=${sha:0:9}
 
 # 等 <分支> 上 ci.yml 对 $sha 的那一趟 push 跑完；全部 job 绿 ⇒ 返回 0，否则印红的 job · 链接 · 失败日志并返回 1。

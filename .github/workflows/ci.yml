@@ -501,4 +501,5 @@ jobs:
 # 在 Windows 根本不编译/不打包），淹没了信号。已移除；已知 Rust 依赖 advisory 残留记入
 # SECURITY.md（rsa RUSTSEC-2023-0071 Marvin timing 侧信道——上游无修复版、本场景低风险；
 # gtk-rs unmaintained）。前端供应链门禁仍保留（上面 `npm audit --omit=dev`，审生产依赖）。
-# 需要时可本地 `cargo audit` 人工查（cargo install cargo-audit）。
+# Rust 那两份锁今天由 `tests/scripts/dep-advisories.mjs` 判（问 OSV；不再维护的只印，有修复版的才红，
+# 碰不到的逐条登在豁免表），`push-candidate.sh` 推之前跑它，不进 CI。
