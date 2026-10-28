@@ -1242,3 +1242,59 @@ fn the_editor_board_shows_cells_by_their_conditions_and_marks_by_the_choice() {
     );
     assert!(!v.strategy.as_ref().expect("那一份").hand);
 }
+
+/// ★ 号列表里有这台账号库没有的号（kun）⇒ 设置行照号列表逐个出、各带它在列表里的真行号：c 那一行画的是 c 的设置（不是 kun 的）；
+/// kun 照实出一行、头一句写「这台没有这个号」；不在策略里的号（b）不出设置格；`accounts` 前 `listed` 个与设置行一一对应。
+#[test]
+fn a_listed_account_missing_here_keeps_every_row_on_its_own_settings() {
+    let home = Home::new("missing-row");
+    let ctx = home.ctx();
+    shelf::write_file(
+        &home.own(),
+        "ed",
+        &setup::editor::fresh(&["a".into(), "b".into(), "c".into()], Some("UTC".into())),
+    )
+    .expect("写");
+    home.settings_of(
+        "ed",
+        json!({"accounts": [{"id": "a"}, {"id": "kun", "in": "delay"}, {"id": "c", "in": "force"}]}),
+    );
+    let v = strategy_view(&ctx, &home, "ed");
+    assert_eq!(
+        v.board
+            .rows
+            .iter()
+            .map(|r| (r.account.as_str(), r.row))
+            .collect::<Vec<_>>(),
+        [("a", 0), ("kun", 1), ("c", 2)],
+        "一个列表里的号一行、带它在列表里的行号；不在列表里的号不出设置格"
+    );
+    assert_eq!(v.listed, 3);
+    assert_eq!(
+        v.accounts[..v.listed]
+            .iter()
+            .map(|a| a.fact.account.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "kun", "c"]
+    );
+    let glyphs = |i: usize| -> Vec<Option<String>> {
+        v.board.rows[i]
+            .marks
+            .iter()
+            .map(|m| m.glyph.clone())
+            .collect()
+    };
+    assert_eq!(
+        glyphs(2),
+        [Some("↺".to_string())],
+        "c 那一行照 c 的强制切入画"
+    );
+    assert!(
+        v.board.rows[1].marks.iter().any(|m| m.dashed),
+        "kun 那一行照 kun 的延迟切入画"
+    );
+    assert_eq!(
+        v.board.rows[1].line,
+        copy_core::copy_text("rot.acct.missing", &[])
+    );
+}

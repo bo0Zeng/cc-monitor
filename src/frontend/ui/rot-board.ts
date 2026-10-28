@@ -333,16 +333,16 @@ export function markEls(row: RotRow | undefined, holder: HTMLElement): HTMLEleme
   return out;
 }
 
-/** 视图里这个号那一行（号列表外 ⇒ `undefined`）。 */
+/** 视图里这个号那一行（号列表外 ⇒ `undefined`）；改设置 · 移出 · 拖动交它带的 `row`。 */
 export function rowOf(view: RotationViewReply, account: string): RotRow | undefined {
-  const i = view.accounts.findIndex((f) => f.account === account);
-  return i >= 0 && i < view.listed ? view.board.rows[i] : undefined;
+  return view.board.rows.find((r) => r.account === account);
 }
 
 function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const wrap = el("div", s.rotCards);
   const listed = view.accounts.slice(0, view.listed);
   listed.forEach((f, i) => {
+    const row = rowOf(view, f.account);
     const c = el("button", s.rotCard);
     c.type = "button";
     c.dataset.account = f.account;
@@ -354,8 +354,8 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       el("span", s.rotCardIx, String(i + 1)),
       avatar(view, f.account, spec.origin),
       el("span", s.rotCardName, nameIn(view, f.account)),
-      ...markEls(view.board.rows[i], c),
-      meters(f, view.board.rows[i]),
+      ...markEls(row, c),
+      meters(f, row),
     );
     // 按下拖过 4px ⇒ 拖号牌改默认优先级（松在哪张号牌上 ⇒ 排到它前头）；没拖开 ⇒ 点：展开 / 收起这个号。
     c.addEventListener("pointerdown", (e) => {
@@ -382,8 +382,8 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
           const r = k.getBoundingClientRect();
           return u.clientX >= r.left && u.clientX <= r.right && u.clientY >= r.top && u.clientY <= r.bottom;
         });
-        const to = hit ? listed.findIndex((x) => x.account === hit.dataset.account) : -1;
-        if (to >= 0 && to !== i) spec.acts.edit({ move: { from: i, to } });
+        const to = hit?.dataset.account === undefined ? undefined : rowOf(view, hit.dataset.account)?.row;
+        if (row !== undefined && to !== undefined && to !== row.row) spec.acts.edit({ move: { from: row.row, to } });
       };
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);
@@ -425,9 +425,8 @@ function accountPane(
   view: RotationViewReply,
   account: string,
 ): HTMLElement | null {
-  const i = view.accounts.findIndex((f) => f.account === account);
-  if (i < 0 || i >= view.listed) return null;
-  const row = view.board.rows[i];
+  const row = rowOf(view, account);
+  if (!row) return null;
   const pane = el("div", s.rotPane);
   pane.dataset.account = account;
   pane.dataset.rotEditor = "";
@@ -435,13 +434,13 @@ function accountPane(
   top.append(
     avatar(view, account, spec.origin),
     el("b", s.rotPaneName, nameIn(view, account)),
-    el("span", s.rotPaneLine, row?.line ?? ""),
+    el("span", s.rotPaneLine, row.line),
     el("span", s.rotSpacer),
     button({ label: copyText("rot.pane.close"), kind: "icon", size: "compact", icon: "close", hint: copyText("rot.pane.close"), onClick: () => spec.acts.open(null) }),
   );
   pane.appendChild(top);
   const grid = el("div", s.rotCells);
-  for (const cell of row?.cells ?? []) grid.append(...cellRows(spec, cell, i));
+  for (const cell of row.cells) grid.append(...cellRows(spec, cell, row.row));
   pane.appendChild(grid);
   const foot = el("div", s.rotPaneFoot);
   const older = view.hints.find((n) => n.hint.k === "older");
@@ -455,7 +454,7 @@ function accountPane(
   }
   foot.append(
     el("span", s.rotSpacer),
-    button({ label: copyText("rot.acct.remove"), kind: "ghost", size: "compact", onClick: () => spec.acts.edit({ remove: { row: i } }) }),
+    button({ label: copyText("rot.acct.remove"), kind: "ghost", size: "compact", onClick: () => spec.acts.edit({ remove: { row: row.row } }) }),
   );
   pane.appendChild(foot);
   return pane;
@@ -587,7 +586,7 @@ function segments(spec: BoardSpec, cell: RotCell, inRow: { row?: number }): HTML
   const segs = cell.segs ?? [];
   box.appendChild(dayBar(segs, cell.from === "all"));
   // 草稿（「加时段」开出来还没交的那一行）住 `state.drafts`：重画照它补画，打的字不丢。
-  const account = inRow.row === undefined ? null : (spec.view?.board.rows[inRow.row]?.account ?? null);
+  const account = inRow.row === undefined ? null : (spec.view?.board.rows.find((r) => r.row === inRow.row)?.account ?? null);
   const dk = draftKey(account, cell.key, win);
   const drafts = (spec.state.drafts ??= {});
   drawnDrafts.get(spec.state)?.add(dk);
