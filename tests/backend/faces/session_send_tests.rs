@@ -22,7 +22,7 @@ fn say_with(
     waiting: &dyn Fn(&str) -> bool,
     send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
-) -> Result<Sent, CmdErr> {
+) -> Result<Delivery, CmdErr> {
     say_typed(say, &plain(&say.text), waiting, send, resume)
 }
 
@@ -63,7 +63,7 @@ fn not(code: &'static str) -> Reopened {
     Err((code, "那一句".into(), None, Some("stderr".into())))
 }
 
-/// ★ 那台说在等人（批准 · 回答）⇒ 一个字都不送，回被拒 ＋ `waiting` ＋ 那一句。
+/// ★ 那台说在等人（批准 · 回答）⇒ 一个字都不送，结局「在等人」（照排着）。
 #[test]
 fn a_session_that_waits_for_someone_gets_nothing_typed_into_it() {
     let sent = RefCell::new(Vec::<TerminalInputReq>::new());
@@ -72,12 +72,7 @@ fn a_session_that_waits_for_someone_gets_nothing_typed_into_it() {
         Ok(sent_as(SentResult::Delivered))
     };
     let got = say_with(&req(SID, "继续"), &|_| true, &send, &no_resume).unwrap();
-    assert_eq!(got.result, SentResult::Refused);
-    assert_eq!(got.why, Some(crate::control::terminals::Refused::Waiting));
-    assert_eq!(
-        got.said.as_deref(),
-        Some(copy_core::copy_text("beTerminal.no.waiting", &[]).as_str())
-    );
+    assert_eq!(got, Delivery::Waiting);
     assert!(sent.borrow().is_empty(), "在等人时送了字");
 }
 
@@ -90,7 +85,11 @@ fn a_session_that_does_not_wait_gets_the_line_with_enter() {
         Ok(sent_as(SentResult::Unsure))
     };
     let got = say_with(&req(SID, "/compact"), &|_| false, &send, &no_resume).unwrap();
-    assert_eq!(got.result, SentResult::Unsure);
+    assert_eq!(
+        got,
+        Delivery::In { resumed: false },
+        "不知道送没送到也算送进去了（不重发）"
+    );
     let sent = sent.borrow();
     assert_eq!(sent.len(), 1);
     let r = &sent[0];
@@ -101,7 +100,7 @@ fn a_session_that_does_not_wait_gets_the_line_with_enter() {
     assert!(r.terminal.is_none() && r.key.is_none() && r.seen_screen.is_none());
 }
 
-/// ★ 终端没了（名单里没有 · 送的那一刻没了）⇒ 按记下的号恢复，那一句当第一句交出去；成了 ⇒ 交到了 ＋ `resumed`。
+/// ★ 终端没了（名单里没有 · 送的那一刻没了）⇒ 按记下的号恢复，那一句当第一句交出去；成了 ⇒ 送进去了（恢复后交出去的）。
 #[test]
 fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
     for gone in [Refused::NotKnown, Refused::Ended] {
@@ -117,11 +116,7 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
             &resume,
         )
         .unwrap();
-        assert_eq!(got.result, SentResult::Delivered, "{gone:?}");
-        assert!(
-            got.resumed && got.why.is_none() && got.said.is_none(),
-            "{got:?}"
-        );
+        assert_eq!(got, Delivery::In { resumed: true }, "{gone:?}");
         assert_eq!(
             *asked.borrow(),
             vec![(SID.to_string(), "接着做".to_string())]
@@ -129,15 +124,15 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
     }
 }
 
-/// ★ 恢复没成：开在 tmux 之外的终端里（另有活进程在写）⇒ `elsewhere`；别的没成 ⇒ `not_resumed`；都带那一句、都不是交到了。
-/// 这台找不到那条记录（恢复那一支答不出）⇒ 照送的那一下原样回。
+/// ★ 恢复没成：开在 tmux 之外的终端里（另有活进程在写）⇒ 另有活进程；别的没成 ⇒ 恢复没成；都送不进去。
+/// 这台找不到那条记录（恢复那一支答不出）⇒ 照送的那一下原样（送字那一侧的被拒）。
 #[test]
 fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
     let cases = [
-        (Some(not("already_live")), Refused::Elsewhere),
-        (Some(not("place_unavailable")), Refused::NotResumed),
-        (Some(not("start_failed")), Refused::NotResumed),
-        (None, Refused::NotKnown),
+        (Some(not("already_live")), Undeliverable::Elsewhere),
+        (Some(not("place_unavailable")), Undeliverable::NotResumed),
+        (Some(not("start_failed")), Undeliverable::NotResumed),
+        (None, Undeliverable::Refused(refused(Refused::NotKnown))),
     ];
     for (a, want) in cases {
         let got = say_with(
@@ -147,13 +142,7 @@ fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
             &|_| a.clone(),
         )
         .unwrap();
-        assert_eq!(got.result, SentResult::Refused, "{want:?}");
-        assert_eq!(got.why, Some(want));
-        assert!(!got.resumed);
-        assert_eq!(
-            got.said.as_deref(),
-            Some(crate::control::terminals::no_said(want).as_str())
-        );
+        assert_eq!(got, Delivery::No(want));
     }
 }
 
@@ -168,7 +157,7 @@ fn other_refusals_are_passed_back_without_resuming() {
             &no_resume,
         )
         .unwrap();
-        assert_eq!(got.why, Some(why));
+        assert_eq!(got, Delivery::No(Undeliverable::Refused(refused(why))));
     }
 }
 
@@ -211,14 +200,14 @@ fn a_line_with_attachments_types_what_the_agent_adapter_wrote() {
         Ok(sent_as(SentResult::Delivered))
     };
     let got = say_typed(&r, &typed, &|_| false, &send, &no_resume).unwrap();
-    assert_eq!(got.result, SentResult::Delivered);
+    assert_eq!(got, Delivery::In { resumed: false });
     let s = &sent.borrow()[0];
     assert_eq!(s.pastes, [abs]);
     assert_eq!(s.text.as_deref(), Some(typed.text.as_str()));
     let _ = std::fs::remove_dir_all(&cwd);
 }
 
-/// 有一份那台已清掉 ⇒ 一个字都不送：`refused` ＋ `attachment_gone`，`gone` 列出那几个编号（与投进队那一刻同一份判法）。
+/// 有一份那台已清掉 ⇒ 一个字都不送：送不进去 ＋ 附件已不在，列出那几个编号（与投进队那一刻同一份判法）。
 #[test]
 fn a_cleared_attachment_refuses_the_whole_line_and_names_it() {
     let cwd = workdir("gone", &[("1023-1529-a3f2", "a.png")]);
@@ -226,14 +215,12 @@ fn a_cleared_attachment_refuses_the_whole_line_and_names_it() {
     r.attachments = vec!["1023-1529-a3f2".into(), "1023-1530-e95b".into()];
     let no = typed_of(&r, crate::agents::claudecode::AGENT_KIND, &cwd).expect_err("该拒");
     assert_eq!(
-        (no.result, no.why),
-        (SentResult::Refused, Some(Refused::AttachmentGone))
+        no,
+        Delivery::No(Undeliverable::AttachmentGone(vec!["1023-1530-e95b".into()]))
     );
-    assert_eq!(no.gone, ["1023-1530-e95b"]);
     assert_eq!(
         crate::common::attachment_dir::missing(&cwd, &r.attachments),
         ["1023-1530-e95b"]
     );
-    assert!(no.said.is_some());
     let _ = std::fs::remove_dir_all(&cwd);
 }

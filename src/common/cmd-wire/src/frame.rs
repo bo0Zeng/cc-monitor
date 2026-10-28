@@ -457,6 +457,13 @@ pub enum Changed {
     HistoryList {},
     /// 这台的组那一半动了。
     Groups {},
+    /// 某条会话的输入队（`key` ＝ sid；体 ＝ `session-queue-read` 的回包：整份名单）。
+    SessionQueue {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        body: Option<crate::queue::QueueList>,
+    },
 }
 
 /// `changed {plan}` 的体：这个工作区此刻要你看的数（没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
@@ -497,6 +504,7 @@ impl Changed {
             Changed::FilesDir { .. } => Topic::FilesDir,
             Changed::HistoryList {} => Topic::HistoryList,
             Changed::Groups {} => Topic::Groups,
+            Changed::SessionQueue { .. } => Topic::SessionQueue,
         }
     }
 
@@ -510,7 +518,8 @@ impl Changed {
             | Changed::Tasks { key, .. }
             | Changed::Login { key, .. }
             | Changed::Machine { key, .. }
-            | Changed::SessionHidden { key, .. } => Some(key),
+            | Changed::SessionHidden { key, .. }
+            | Changed::SessionQueue { key, .. } => Some(key),
             _ => None,
         }
     }
@@ -550,6 +559,10 @@ impl Changed {
             Topic::FilesDir => Changed::FilesDir { key: key? },
             Topic::HistoryList => Changed::HistoryList {},
             Topic::Groups => Changed::Groups {},
+            Topic::SessionQueue => Changed::SessionQueue {
+                key: key?,
+                body: None,
+            },
         })
     }
 
@@ -570,6 +583,7 @@ impl Changed {
             Changed::Login { body, .. } => cap_one(body, cap),
             Changed::Machine { body, .. } => cap_one(body, cap),
             Changed::SessionHidden { body, .. } => cap_one(body, cap),
+            Changed::SessionQueue { body, .. } => cap_one(body, cap),
             _ => {}
         }
     }
@@ -1114,6 +1128,9 @@ pub enum Topic {
     HistoryList,
     /// 这台的组那一片动了（这台有组员的组改名 · 解散，或这台会话进出组 · 固定变了）：看着组的那一屏重问本机后端 `groups-read`。
     Groups,
+    /// 这台某条会话的输入队动了（`key` ＝ sid；`body` ＝ 整份名单，同 `session-queue-read` 的回包）：投进 · 撤 · 送进 · 标未送达，
+    /// 哪一端投的都算。各端只照这一份画队，不各自记；超了上限不带体 ⇒ 重问 `session-queue-read`。
+    SessionQueue,
 }
 
 /// [`Frame::SessionFileReread`] 的「为什么从头重读」。线上两个字面量。

@@ -44,7 +44,13 @@ function rig(opts: { hold?: boolean; put?: () => Promise<QueuePut> } = {}) {
     send: vi.fn(async () => ({ result: "delivered" as const, acts: [] })),
     follow: vi.fn(() => ({ stop: () => {} })),
   };
-  const attach: AttachReads = { put: say, io: () => io };
+  const attach: AttachReads = {
+    put: say,
+    io: () => io,
+    read: async () => ({ items: [], sent: [] }),
+    cancel: async () => ({ cancelled: false, queue: { items: [], sent: [] } }),
+    watch: () => () => {},
+  };
   const page = new TerminalPage({ active: () => SLOT, front: () => {}, focusStream: () => {} }, reads as unknown as TerminalReads, attach);
   document.body.replaceChildren(page.el);
   return { page, reads, say, release };

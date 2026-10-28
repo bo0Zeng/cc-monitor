@@ -1031,14 +1031,7 @@ fn the_next_steps_after_a_send_are_judged_here() {
     );
     assert_eq!(acts("refused", Some("ambiguous")), json!(["retry"]));
     assert_eq!(acts("refused", Some("ended")), json!(["relist"]));
-    for no_retry in [
-        "not_yours",
-        "not_managed",
-        "other_windows",
-        "waiting",
-        "elsewhere",
-        "not_resumed",
-    ] {
+    for no_retry in ["not_yours", "not_managed", "other_windows", "waiting"] {
         assert_eq!(acts("refused", Some(no_retry)), json!([]), "{no_retry}");
     }
 }

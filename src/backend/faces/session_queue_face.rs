@@ -9,7 +9,7 @@ use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes as _, Command};
 use cmd_wire::queue::{
-    QueueCancelled, QueuePut, SessionQueue, SessionQueueCancelReq, SessionQueuePutReq,
+    QueueCancelled, QueueList, QueuePut, SessionQueueCancelReq, SessionQueuePutReq,
     SessionQueueReadReq,
 };
 use copy_core::copy_text;
@@ -170,7 +170,7 @@ pub(crate) struct SessionQueueReadCmd;
 impl Command for SessionQueueReadCmd {
     const NAME: &'static str = "session-queue-read";
     type Req = SessionQueueReadReq;
-    type Reply = SessionQueue;
+    type Reply = QueueList;
     type Err = SessionQueueReadErr;
 }
 
@@ -179,7 +179,7 @@ impl typed::Handle for SessionQueueReadCmd {
     fn run(
         req: SessionQueueReadReq,
         cx: typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<SessionQueue, SessionQueueReadErr>> + Send + 'static
+    ) -> impl std::future::Future<Output = Result<QueueList, SessionQueueReadErr>> + Send + 'static
     {
         let (cx, own) = cx.split();
         async move {

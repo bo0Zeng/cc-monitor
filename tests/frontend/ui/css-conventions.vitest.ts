@@ -256,6 +256,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "拖进来时的目标框（`s.attachDrop`）—— 它写了 display:flex，CSS 里另有 `.attachDrop[hidden]` 收住",
   "src/frontend/ui/attach-row.ts::this.row":
     "输入行上方那一排附件（`s.attachRow`）—— 它写了 display:flex，CSS 里另有 `.attachRow[hidden]` 收住",
+  "src/frontend/ui/queue-row.ts::this.el":
+    "输入框上方那一排输入队（`s.queueRow`）—— 它写了 display:flex，CSS 里另有 `.queueRow[hidden]` 收住",
   "src/frontend/ui/find-strip.ts::row.state":
     "命中行下那一句 `row.state`（`s.fsState`）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
   "src/frontend/ui/find-strip.ts::state":

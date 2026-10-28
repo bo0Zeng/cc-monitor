@@ -33,14 +33,8 @@ pub enum Refused {
     Ended,
     /// 画面变了（带新指纹）。
     ScreenChanged,
-    /// 那台说这条会话在等人（批准 · 回答）：此刻打的字会落进那个框里（输入队投递那一下才有：照排着、等它答完）。
+    /// 那台说这条会话在等人（批准 · 回答）：此刻换模型 · 权限档会落进那个框里（`session-model` · `session-permission` 被拒）。
     Waiting,
-    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个（投递那一下才有）。
-    Elsewhere,
-    /// 终端已经没了，按记下的号恢复这条会话没成（投递那一下才有；原话记日志）。
-    NotResumed,
-    /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过）：一个字都没送，`gone` 列出那几个编号（投递那一下才有）。
-    AttachmentGone,
     /// 托管终端的输入此刻在别的一端手里（`terminal-input` 没带 `take`）：没送。
     HeldElsewhere,
 }
@@ -67,14 +61,6 @@ pub struct Sent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub screen: Option<String>,
-    /// 投递那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
-    pub resumed: bool,
-    /// `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
-    pub gone: Vec<String>,
     /// 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<SentAct>>"))]

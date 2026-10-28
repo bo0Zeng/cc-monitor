@@ -143,6 +143,7 @@ class SentRequestsTest {
             SessionPermission.COMMAND to listOf(SessionPermission.args("s", "plan")),
             SessionQueueCancel.COMMAND to listOf(SessionQueueCancel.args("s", "m")),
             SessionQueuePut.COMMAND to listOf(SessionQueuePut.args("s", "m", "hi", 1L), SessionQueuePut.args("s", "m", "hi", 1L, listOf("i"))),
+            SessionQueueRead.COMMAND to listOf(SessionQueueRead.args("s")),
             SessionsNeeds.COMMAND to listOf(null),
             TerminalInput.COMMAND to listOf(TerminalInput.text("s", "hi"), TerminalInput.key("s", "esc")),
             TerminalPreview.COMMAND to listOf(TerminalPreview.args("t1")),

@@ -1,0 +1,80 @@
+package com.ccmonitor.mobile.ui.chat
+
+import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.wire.Wire
+import com.ccmonitor.mobile.core.wire.gen.Changed
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+/**
+ * 聊天屏的输入队那一份：只照会话那台推来的名单画（`changed {session_queue, key: 这条}`），不各自记；每条可撤（`session-queue-cancel`）。
+ * 名单里每一条的那一句（`said`）与发自哪一端（`from`）是会话那台写好的，这里照摆。
+ */
+class ChatQueueTest {
+    private fun item(
+        id: String,
+        said: String,
+    ) = mapOf("seq" to 1, "id" to id, "end" to "monitor", "atMs" to 1L, "text" to "text of $id", "state" to "queued", "said" to said, "from" to "from-word")
+
+    private fun list(vararg items: Map<String, Any?>) = mapOf("items" to items.toList(), "sent" to emptyList<String>())
+
+    private fun pushed(
+        sid: String,
+        body: Map<String, Any?>?,
+    ): Changed = Wire.bind<Changed>(mapOf("topic" to "session_queue", "key" to sid) + listOfNotNull(body?.let { "body" to it }))!!
+
+    @Test
+    fun `★ 桌面撤掉第 1 条 ⇒ 手机那份名单当场少一条、原第 2 条排第 1`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ -> if (cmd == "session-queue-read") Reply.Ok(list(item("a", "place-1"), item("b", "place-2"))) else Reply.LinkDown }
+            val changed = MutableSharedFlow<Changed>()
+            val q = ChatQueue(link, backgroundScope) {}
+            q.watch(changed) { "s1" }
+            q.read("s1")
+            assertEquals(listOf("a" to "place-1", "b" to "place-2"), q.lines().map { it.id to it.said })
+            changed.emit(pushed("s1", list(item("b", "place-1"))))
+            assertEquals(listOf("b" to "place-1"), q.lines().map { it.id to it.said })
+            assertEquals("text of b", q.lines().single().text)
+        }
+
+    @Test
+    fun `别的会话那一份不动；没带名单 ⇒ 重问`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ -> if (cmd == "session-queue-read") Reply.Ok(list(item("a", "place-1"))) else Reply.LinkDown }
+            val changed = MutableSharedFlow<Changed>()
+            val q = ChatQueue(link, backgroundScope) {}
+            q.watch(changed) { "s1" }
+            changed.emit(pushed("s-other", list()))
+            assertEquals(0, link.calls("session-queue-read").size)
+            changed.emit(pushed("s1", null))
+            assertEquals(listOf("a"), q.lines().map { it.id })
+            assertEquals(mapOf("machine" to "<local>", "sid" to "s1"), link.calls("session-queue-read").single())
+        }
+
+    @Test
+    fun `撤 ⇒ 照编号请那台撤，照回的整份名单画；见过、名单里没了也不在已送进 ⇒ 算撤掉了`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-queue-read" -> Reply.Ok(list(item("a", "place-1"), item("b", "place-2")))
+                    "session-queue-cancel" -> Reply.Ok(mapOf("cancelled" to true, "queue" to list(item("b", "place-1"))))
+                    else -> Reply.LinkDown
+                }
+            }
+            val q = ChatQueue(link, backgroundScope) {}
+            q.read("s1")
+            q.cancel("a", "s1")
+            assertEquals(mapOf("machine" to "<local>", "sid" to "s1", "id" to "a"), link.calls("session-queue-cancel").single())
+            assertEquals(listOf("b"), q.lines().map { it.id })
+            assertEquals(true, q.gone("a"))
+            assertEquals(false, q.gone("b"))
+            assertEquals(false, q.gone("never-seen"))
+            assertEquals(true, q.holds("b"))
+        }
+}

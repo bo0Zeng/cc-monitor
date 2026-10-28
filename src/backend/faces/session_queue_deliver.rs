@@ -13,14 +13,13 @@
 //!   （不重送）；在等人 ⇒ 照排着；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤）；命令级错 ⇒ 照排着，下一次醒再试。
 //! - 终端输入行里有没提交的字，tmux 判不出：这一道等托管那一形给事实；此刻不等。
 
+use super::session_send::Delivery;
 use crate::agents::SessionActivity;
-use crate::control::terminals_wire::{Sent, SentResult};
 use crate::history::session_queue as q;
 use crate::platform::fs::Own;
 use crate::wire::spec::Fail;
 use crate::wire::typed::Files;
 use cmd_wire::queue::QueueItem;
-use cmd_wire::session::Refused;
 use std::collections::BTreeMap;
 
 /// 送出一条之后，那一态一直没换（那一句没起一轮：`/clear` 一类）最多等多久就送下一条（毫秒，这台的钟）。
@@ -82,15 +81,15 @@ pub(crate) fn step(look: &Look, memo: &Memo, now_ms: i64) -> Step {
 pub(crate) struct Deps<'a> {
     pub(crate) own: &'a Own,
     pub(crate) look: &'a dyn Fn(&str) -> Look,
-    pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Sent, Fail>,
+    pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Delivery, Fail>,
 }
 
 /// 送的结局怎么落：摘掉 · 照排着 · 标未送达。
-fn landed(sent: &Sent) -> Option<bool> {
-    match sent.result {
-        SentResult::Delivered | SentResult::Unsure => Some(true),
-        SentResult::Refused if sent.why == Some(Refused::Waiting) => None,
-        SentResult::Refused => Some(false),
+fn landed(d: &Delivery) -> Option<bool> {
+    match d {
+        Delivery::In { .. } => Some(true),
+        Delivery::Waiting => None,
+        Delivery::No(_) => Some(false),
     }
 }
 
@@ -142,7 +141,7 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                     Some(false) => {
                         tracing::warn!(
                             "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
-                            sent.why
+                            sent
                         );
                         noted(q::give_up(deps.own, sid, &item.id), sid, After::GaveUp);
                     }
@@ -255,7 +254,7 @@ fn sleep_until(rx: &std::sync::mpsc::Receiver<()>, wake: Option<i64>) -> bool {
 
 /// 生产那一份送一条：照送字本体（[`super::session_send`]：在等人不送 · 只剩 shell 不送 · 终端没了按记下的号恢复、那一句当第一句 ·
 /// 附件照那一家的写法拼）。发自哪一端是合形状的前端名 ⇒ 当这次请求自报的前端过身份门；不是 ⇒ 不自报（照名字规则）。
-fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Sent, Fail> {
+fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Delivery, Fail> {
     let sid: cmd_wire::Sid = sid.parse().map_err(|e: cmd_wire::sid::NotASid| {
         Fail::new(
             "bad_args",

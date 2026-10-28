@@ -200,6 +200,51 @@ fn the_groups_half_moving_pushes_changed_groups_once() {
     assert_eq!(groups_pushed(&mut rx), 0, "没变不推");
 }
 
+/// ★ 队动了推的那一帧带整份名单（同 `session-queue-read`）：一端撤掉第 1 条 ⇒ 推出去的名单少一条、原第 2 条排第 1。
+/// 家目录是临时目录（`Own::issue_at`），真 `~/.cc-monitor/` 一个字节都不碰。
+#[test]
+fn cancelling_the_first_pushes_a_list_one_shorter_with_the_second_now_first() {
+    use crate::history::session_queue as q;
+    let home = std::env::temp_dir().join(format!("ccm-watch-queue-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    let own = crate::platform::fs::Own::issue_at(&home);
+    let put = |id: &str| {
+        let req = cmd_wire::queue::SessionQueuePutReq {
+            machine: cmd_wire::Machine::local(),
+            sid: "s1".parse().unwrap(),
+            id: id.to_string(),
+            end: "monitor".to_string(),
+            n: None,
+            at_ms: 1,
+            text: format!("text of {id}"),
+            attachments: Vec::new(),
+        };
+        q::put(&own, &req, 1).unwrap();
+    };
+    put("a");
+    put("b");
+    let ids = |c: crate::wire::Changed| match c {
+        crate::wire::Changed::SessionQueue { key, body } => {
+            assert_eq!(key, "s1");
+            body.expect("带整份名单")
+                .items
+                .into_iter()
+                .map(|i| i.id)
+                .collect::<Vec<_>>()
+        }
+        other => panic!("不是 session_queue 那一臂：{other:?}"),
+    };
+    assert_eq!(ids(queue_changed(&own, "s1", 2)), ["a", "b"]);
+    q::cancel(&own, "s1", "a", 3).unwrap();
+    assert_eq!(
+        ids(queue_changed(&own, "s1", 4)),
+        ["b"],
+        "撤掉第 1 条 ⇒ 少一条、原第 2 条排第 1"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
 
 /// 起一个**假**进程当靶子。**绝不起真实已认证的 claude/codex**——这里只要一个

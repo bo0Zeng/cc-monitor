@@ -91,4 +91,7 @@ object ChatTestTags {
 
     /** 输入框上方待发里的一句（还没回执）。 */
     const val OUTBOX = "chat-outbox"
+
+    /** 输入队名单里的一条（会话那台那一份）。 */
+    const val QUEUE = "chat-queue"
 }

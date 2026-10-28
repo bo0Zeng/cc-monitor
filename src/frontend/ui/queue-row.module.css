@@ -1,0 +1,38 @@
+/* 终端面板输入框上方那一排输入队：每条一行（那一句 · 谁发的几点 · 那一句开头 ·［撤回］）。 */
+@layer components {
+  .queueRow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .queueRow[hidden] {
+    display: none;
+  }
+
+  .queueLine {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    color: var(--text-2);
+  }
+
+  .queueState {
+    flex: none;
+    color: var(--text);
+  }
+
+  .queueLine[data-state="undelivered"] .queueState {
+    color: var(--error-text);
+  }
+
+  .queueFrom {
+    flex: none;
+  }
+
+  .queueText {
+    composes: one-line from global;
+    flex: 1;
+  }
+}

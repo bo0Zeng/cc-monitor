@@ -33,7 +33,9 @@ import { fakeNeedsBook, listOf, sessionItem } from "../../test-support/needs-fak
 import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
-import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
+import { TerminalPage, type AttachReads, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
+import type { AttachIo } from "../../../src/frontend/ui/attach-draft";
+import type { SessionQueuePutReq } from "../../../src/frontend/ui/generated/SessionQueuePutReq";
 import type { TerminalSend, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
 import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
@@ -413,10 +415,21 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       }),
     };
     const host = { active: () => (cur.t ? { kind: "tab" as const, tab: cur.t } : null), front: vi.fn(), focusStream: vi.fn() };
-    const page = new TerminalPage(host, reads);
+    const said: SessionQueuePutReq[] = [];
+    const attach: AttachReads = {
+      put: vi.fn(async (_o, req: SessionQueuePutReq) => {
+        said.push(req);
+        return { outcome: "queued" as const, seq: said.length, place: 1, said: "排队 · 第 1" };
+      }),
+      io: () => ({}) as AttachIo,
+      read: async () => ({ items: [], sent: [] }),
+      cancel: async () => ({ cancelled: false, queue: { items: [], sent: [] } }),
+      watch: () => () => {},
+    };
+    const page = new TerminalPage(host, reads, attach);
     document.body.appendChild(page.el);
     page.sessionChanged();
-    return { page, reads, host, sent, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r), failShots: (e: Error | null) => (shotFails = e) };
+    return { page, reads, host, sent, said, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r), failShots: (e: Error | null) => (shotFails = e) };
   }
   const box = (p: TerminalPage): HTMLTextAreaElement => p.el.querySelector("textarea")!;
   const key = (el: HTMLElement, k: string, o: KeyboardEventInit = {}): void => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
@@ -483,7 +496,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     }
   });
 
-  it("★ 回车送字并补回车、带上看到的那一屏的指纹；送到了清框、写「已送达」，0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字；Shift+回车与组字不送", async () => {
+  it("★ 回车说一句（投进那条会话的输入队、不往终端里打字），回执到了清框、0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字、带上看到的那一屏的指纹、送到了写「已送达」；Shift+回车与组字不送", async () => {
     vi.useFakeTimers();
     try {
       const r = rig([row("a")], { t: tab("a") });
@@ -494,12 +507,13 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       key(b, "Enter", { shiftKey: true });
       key(b, "Enter", { isComposing: true });
       await flush();
-      expect(r.sent).toEqual([]);
+      expect([r.sent, r.said]).toEqual([[], []]);
       key(b, "Enter");
       await flush();
-      expect(r.sent).toEqual([{ what: { text: "/usage", enter: true }, seen: "fp1" }]);
+      expect(r.sent, "回车是说一句：不往终端里打字").toEqual([]);
+      expect(r.said.map((q) => [q.sid, q.text])).toEqual([["a", "/usage"]]);
       expect(b.value).toBe("");
-      expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
+      expect(r.page.el.textContent, "照那台写的回执那一句说").toContain("排队 · 第 1");
       for (const ms of [500, 1000, 1500]) {
         vi.advanceTimersByTime(ms);
         await flush();
@@ -508,7 +522,9 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       b.value = "y";
       key(b, "Enter", { ctrlKey: true });
       await flush();
-      expect(r.sent[1].what).toEqual({ text: "y", enter: false });
+      expect(r.sent).toEqual([{ what: { text: "y", enter: false }, seen: "fp4" }]);
+      expect(b.value).toBe("");
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
       b.value = "字".repeat(2001);
       b.dispatchEvent(new Event("input"));
       const send = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent?.startsWith(copyText("terminal.input.send")))!;
@@ -525,19 +541,19 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     const b = box(r.page);
     b.value = "1";
     r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 画面", screen: "fp9", acts: ["recapture"] }));
-    key(b, "Enter");
+    key(b, "Enter", { ctrlKey: true });
     await flush();
     expect([b.value, r.shotCount()]).toEqual(["1", 2]);
     expect(r.page.el.textContent).toContain(copyText("terminal.input.failed", { why: "那台写的一句 · 画面" }));
     r.setReply(async () => ({ result: "unsure", acts: [] }));
-    key(b, "Enter");
+    key(b, "Enter", { ctrlKey: true });
     await flush();
     expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: copyText("control.machine.unsure") }));
     expect([r.sent.length, b.value]).toEqual([2, "1"]);
     r.setReply(async () => {
       throw new Error(copyText("beServer.words.cantConnect"));
     });
-    key(b, "Enter");
+    key(b, "Enter", { ctrlKey: true });
     await flush();
     expect(b.value).toBe("1");
     const retry = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("terminal.input.retry"));
@@ -553,14 +569,14 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     const retryButton = () => [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("terminal.input.retry"));
     r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 不在", screen: null, acts: ["relist"] }));
     const lists = vi.mocked(r.reads.list).mock.calls.length;
-    key(b, "Enter");
+    key(b, "Enter", { ctrlKey: true });
     await flush();
     expect(r.page.el.textContent).toContain(copyText("terminal.input.failed", { why: "那台写的一句 · 不在" }));
     expect(b.value).toBe("1");
     expect(vi.mocked(r.reads.list).mock.calls.length, "后端说重读 ⇒ 重问名单").toBe(lists + 1);
     expect(retryButton(), "没给 retry ⇒ 不出［重试］").toBeUndefined();
     r.setReply(async () => ({ result: "refused", said: "那台写的一句 · 认不出", screen: null, acts: ["retry"] }));
-    key(b, "Enter");
+    key(b, "Enter", { ctrlKey: true });
     await flush();
     expect(retryButton(), "给了 retry ⇒ 出［重试］").toBeDefined();
   });
@@ -574,7 +590,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     r.setReply(async () => {
       throw Object.assign(new Error("送不出去-甲"), { detail: "码：timeout\n原话：夹具原话-乙" });
     });
-    key(b, "Enter");
+    key(b, "Enter", { ctrlKey: true });
     await flush();
     const note = r.page.el.textContent ?? "";
     expect(note).toContain("送不出去-甲");
@@ -647,7 +663,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       r.follows[0].events.screen(liveShot("ok live"));
       const before = r.shotCount();
       box(r.page).value = "1";
-      key(box(r.page), "Enter");
+      key(box(r.page), "Enter", { ctrlKey: true });
       await flush();
       expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
       vi.advanceTimersByTime(5000);
@@ -754,7 +770,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       expect(tag.title, "悬停是那一句原样").toBe("tmux 3.1 不支持实时画面 · 需要 3.2 以上");
       const before = r.shotCount();
       box(r.page).value = "1";
-      key(box(r.page), "Enter");
+      key(box(r.page), "Enter", { ctrlKey: true });
       await flush();
       vi.advanceTimersByTime(3000);
       await flush();

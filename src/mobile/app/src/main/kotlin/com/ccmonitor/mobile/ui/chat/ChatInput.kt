@@ -74,6 +74,8 @@ data class ChatInputActions(
     val say: (String) -> Unit = {},
     /** 撤待发里还没回执的一句（按编号）。 */
     val cancel: (String) -> Unit = {},
+    /** 撤输入队名单里一条（按编号，哪一端投的都行）。 */
+    val cancelQueued: (String) -> Unit = {},
     /** 再交一次那台拒了的那一句（按编号）。 */
     val retry: (String) -> Unit = {},
     /** 输入框里的字变了（本地存草稿）。 */
@@ -104,6 +106,7 @@ internal fun ChatInputArea(
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
+            state.queue.forEach { QueueRow(it, actions) }
             state.outbox.forEach { OutboxRow(it, actions) }
             if (attach != null && actions.attach != null) {
                 AttachArea(attach, actions.attach) {
@@ -142,6 +145,26 @@ internal fun ChatInputArea(
     InputSheets(sheet, state, actions, pick, { sheet = it }) { text ->
         draft = TextFieldValue(text, TextRange(text.length))
         actions.editDraft(text)
+    }
+}
+
+/** 输入队名单里的一条（会话那台那一份）：那一句 · 那台写好的那一句（排队 · 第 N …）与发自哪一端 ·［撤回］。 */
+@Composable
+private fun QueueRow(
+    line: QueueLine,
+    actions: ChatInputActions,
+) {
+    val tokens = LocalAppTokens.current
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = tokens.spacing.xs).testTag(ChatTestTags.QUEUE),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(line.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${line.said} · ${line.from}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SecondaryButton(onClick = { actions.cancelQueued(line.id) }) { Text(copyText("mobChat.outbox.cancel")) }
     }
 }
 

@@ -37,7 +37,7 @@ fn req(id: &str, end: &str, n: Option<u64>, at_ms: i64) -> SessionQueuePutReq {
     }
 }
 
-fn ids(q: &SessionQueue) -> Vec<(&str, Option<u64>, S)> {
+fn ids(q: &QueueList) -> Vec<(&str, Option<u64>, S)> {
     q.items
         .iter()
         .map(|i| (i.id.as_str(), i.seq, i.state))
@@ -330,5 +330,36 @@ fn attachments_ride_with_the_line_and_sent_ids_are_listed() {
     assert_eq!(
         sent.last().map(String::as_str),
         Some(format!("m{}", SENT_KEEP + 2).as_str())
+    );
+}
+
+/// ★ 名单里每一条带会话那台写好的字：那一条此刻的样子（同回执那一句：排队 · 第 N · 排队（收着）· 失败 · 未送进会话）
+/// 与发自哪一端（认得的两端写名字，别的照原样）；撤掉第 1 条 ⇒ 原第 2 条那一句跟着变「第 1」。各端照摆，不按 `state` · `end` 自己挑字。
+#[test]
+fn each_item_carries_the_owner_written_words() {
+    let o = own(&home("words"));
+    put(&o, &req("a", "mobile", None, T0), T0).unwrap();
+    put(&o, &req("b", "monitor", None, T0), T0 + 1).unwrap();
+    put(&o, &req("c", "cc-bus", Some(2), T0), T0 + 2).unwrap();
+    let words = |q: &QueueList| -> Vec<(String, String)> {
+        q.items
+            .iter()
+            .map(|i| (i.said.clone(), i.from.clone()))
+            .collect()
+    };
+    let place = |n: u32| copy_text("beQueue.said.place", &[("place", &n.to_string())]);
+    assert_eq!(
+        words(&read(&o, &sid(), T0 + 3).unwrap()),
+        vec![
+            (place(1), copy_text("beQueue.from.phone", &[])),
+            (place(2), copy_text("beQueue.from.desktop", &[])),
+            (copy_text("beQueue.said.held", &[]), "cc-bus".to_string()),
+        ]
+    );
+    let after = cancel(&o, &sid(), "a", T0 + 4).unwrap().queue;
+    assert_eq!(
+        words(&after)[0].0,
+        place(1),
+        "撤掉第 1 条 ⇒ 原第 2 条写第 1"
     );
 }

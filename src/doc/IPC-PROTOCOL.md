@@ -142,6 +142,7 @@
 | `files_dir` | 是 | 带 | — | — | `files-ls` |
 | `history_list` | 是 | — | — | — | `history-list` |
 | `groups` | 否 | — | — | — | `groups-read` |
+| `session_queue` | 否 | 带 | — | 带（≤ 16384 B） | `session-queue-read` |
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：需手动可能变了，进程里只一个铃（`history/needs_changed.rs`），从 watcher 的出方向发、不可丢。带 `key` ＝ 那个会话（挂着的请求挂上 · 撤掉 · 答掉 · 「没人答时自动答」改了 · 那台说进出等人 · 离开「活」），重问 `sessions-needs` 与那个会话的 `history-facts`；不带 `key` ＝ 会话外那几项（账号清单动了 · 某个号记「MCP 要登录」的那份文件翻了 · 一份登录作业收了 · 续令牌没成）或计划要人看的数变了，重问 `sessions-needs`（会外那一截在它的整份里）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
@@ -152,6 +153,7 @@
 `files_dir`：这台某个正被浏览的目录（名单由 `files-browse` 交）里有了动静，`key` 是那个目录（UTF-8 ⇒ 路径本身；不是 ⇒ `\0` ＋ 十六进制小写）；正开着那个目录的那一屏带着手上的记号（`held`）重问 `files-ls`，回包只带变了的那几行。
 `history_list`：这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则）；同一个会话在这台答下一份清单之前只说一次（记录每长一行不是每行一帧），连着几下没取走也只一帧。正看着清单的那一屏带着手上的记号（`held`）重问 `history-list`，回包只带变了的那几行；看的是远端那台的，本机后端带 `fresh` 先去同步副本。
 `groups`：这台的组那一半动了（这台那几片的组建 · 改名 · 解散，这台的会话进出组 · 固定变了；注解文件重读时由 watcher 判，只改名字 · 星标不推）；看着组的那一屏重问本机后端 `groups-read`（它自己问到各台再并）。
+`session_queue`：这台某条会话的输入队动了（投进 · 撤 · 送进 · 标未送达，哪一端、哪个进程写的都算；watcher 盯 `~/.cc-monitor/session-queue/`，一批里动过的每条会话各推一次）；`key` 是会话 id，`body` 是整份名单（同 `session-queue-read` 问这条会话的应答，由那条命令在这台那一半现算）；各端只照这一份画队、不各自记，超了上限或读不出就不带、重问 `session-queue-read`。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_left`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。

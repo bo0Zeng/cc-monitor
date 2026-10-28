@@ -617,18 +617,32 @@ impl QueueEar {
         );
     }
 
-    /// 一批事件里队动没动：目录自己出现 / 消失 ⇒ 重挂，也算动了（重挂之前写进去的那几份听不见）；
-    /// 否则看动过的 `<sid>.json`。
+    /// 一批事件里动过的那几条会话的队（`None` ＝ 没动）：目录自己出现 / 消失 ⇒ 重挂，也算动了，盘上此刻有的每一条都算
+    /// （重挂之前写进去的那几份听不见）；否则是动过的那几份 `<sid>.json`。
     fn touched<'a>(
         &mut self,
         debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
         paths: impl Iterator<Item = &'a Path> + Clone,
-    ) -> bool {
+        own: Option<&crate::platform::fs::Own>,
+    ) -> Option<Vec<String>> {
         if paths.clone().any(|p| p == self.dir) {
             self.arm(debouncer);
-            return true;
+            return Some(
+                own.map(crate::history::session_queue::sids)
+                    .unwrap_or_default(),
+            );
         }
-        !crate::history::session_queue::sids_touched(paths, &self.dir).is_empty()
+        let sids = crate::history::session_queue::sids_touched(paths, &self.dir);
+        (!sids.is_empty()).then_some(sids)
+    }
+}
+
+/// 一条会话的队此刻那一帧 `changed {session_queue}`：体 ＝ `session-queue-read` 在这台那一半的回包
+/// （[`crate::history::session_queue::read`]，同一个处理器）；读不出 ⇒ 不带体（客户端重问）。
+fn queue_changed(own: &crate::platform::fs::Own, sid: &str, now_ms: i64) -> Changed {
+    Changed::SessionQueue {
+        key: sid.to_string(),
+        body: crate::history::session_queue::read(own, sid, now_ms).ok(),
     }
 }
 
@@ -1443,10 +1457,25 @@ fn watch_loop(
                 if rules_moved {
                     state.rejudge_hidden(&mut sink);
                 }
-                // 会话输入队动了（批内合并成一声）。
+                // 会话输入队动了 ⇒ 叫一声投递那一侧（批内合并成一声），动过的每条会话一帧 `changed {session_queue, key: sid}` 带整份名单。
                 if let Some(ear) = queue_ear.as_mut() {
-                    if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
+                    let own = state.launch.as_ref().map(|(_, own)| own.clone());
+                    if let Some(sids) = ear.touched(
+                        &mut debouncer,
+                        events.iter().map(|ev| ev.path.as_path()),
+                        own.as_ref(),
+                    ) {
                         crate::history::session_queue::moved();
+                        let now = crate::common::time::now_ms();
+                        for sid in sids {
+                            sink.send(Frame::changed(match own.as_ref() {
+                                Some(own) => queue_changed(own, &sid, now),
+                                None => Changed::SessionQueue {
+                                    key: sid,
+                                    body: None,
+                                },
+                            }));
+                        }
                     }
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
