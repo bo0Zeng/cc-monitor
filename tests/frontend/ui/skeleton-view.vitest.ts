@@ -889,9 +889,13 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
     return state;
   }
 
-  async function rig(late = false) {
+  /** `late` ⇒ 轮次那一问等测试放行；`slowIndex` ⇒ 骨架索引那一问等测试放行（整份读那一问比轮次慢那一形）。 */
+  async function rig(late = false, slowIndex = false) {
+    let letIndex!: () => void;
+    const indexGate = slowIndex ? new Promise<void>((res) => (letIndex = res)) : Promise.resolve();
     const { invoke } = await import("@tauri-apps/api/core");
-    const { isChanCall, chanArgsJson, chanReply, withSessionReads } = await import("../../test-support/chan-fake");
+    const { isChanCall, chanArgsJson, chanReply, withSessionReads, UNSUPPORTED } = await import("../../test-support/chan-fake");
+    let indexFails = false;
     const { packIndex } = await import("../../test-support/pack-index");
     const { TabStreamView } = await import("../../../src/frontend/ui/tab-stream-view");
     const { TabStore } = await import("../../../src/frontend/ui/tab-store");
@@ -907,6 +911,8 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
     );
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (isChanCall(cmd, args, "history-index")) {
+        await indexGate;
+        if (indexFails) throw UNSUPPORTED; // 那台后端比这一问老
         const b = chanArgsJson(args) as { offset: number; limit?: number };
         const lo = b.offset / 100;
         const hi = Math.min(rows.length, b.limit === undefined ? rows.length : lo + b.limit);
@@ -947,6 +953,7 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       facts: { reset() {}, markStale() {}, refresh: async () => {}, needsFetch: false },
     };
     store.tabs.set("c", tab as never);
+    tsv.wireTab(tab as never); // 滚动 · 视口变大的补批（同 `TabManager` 建 tab 那一下）
     const layout = layoutOf(dom.streamEl, dom.stream.contentElement);
     // 重放推来的尾巴：全收纳（后台 tab，还没建过卡）
     for (let s = 0; s < N; s++) {
@@ -970,7 +977,11 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       const p = payload(s) as never;
       if (tsv.admit(tab as never, p)) tsv.ingest(tab as never, p);
     };
-    return { tab, dom, layout, built, open, turns, letTurns: () => letTurns?.(), store, tsv, live };
+    const failIndex = (): void => {
+      indexFails = true;
+      letIndex?.();
+    };
+    return { tab, dom, layout, built, open, turns, letTurns: () => letTurns?.(), letIndex: () => letIndex?.(), failIndex, store, tsv, live };
   }
 
   /** 视口 ±`KEEP_SCREENS` 屏放得下几张卡。 */
@@ -1019,6 +1030,45 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
       return a + Math.max(0, Math.min(b.bottom, VIEW_H) - Math.max(b.top, 0));
     }, 0);
     expect(covered, "过程藏掉之后视口里露出的占位没补").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
+  });
+
+  // 真机里那一形（台架冷切长会话照样建满 489 个条目）：轮次先落地、过程藏成 0 高，屏不满、贴底那一下的 scroll 落进上翻触发区，
+  // 骨架索引（整份读）还在路上 ⇒ 尾部窗口一批 200 条往上补、rAF 自链补到弹尽，全是看不见的过程卡。
+  it("轮次先落地、骨架索引还在路上：滚动 · 下一帧都不从尾部窗口往上补；索引到了照账本补满视口", async () => {
+    const r = await rig(false, true);
+    r.open();
+    await vi.waitFor(() => expect(r.turns).toHaveBeenCalled(), UNTIL_CEILING);
+    await new Promise((res) => setTimeout(res, 0));
+    await new Promise((res) => setTimeout(res, 0));
+    for (let k = 0; k < 4; k++) {
+      r.dom.streamEl.dispatchEvent(new Event("scroll"));
+      await new Promise((res) => requestAnimationFrame(() => res(null)));
+    }
+    expect(r.tab.skeleton, "前置：骨架还没接上").toBeNull();
+    expect(r.built().length, `骨架还没来就从尾部窗口建了 ${r.built().length} 张`).toBeLessThanOrEqual(keepCards);
+    r.letIndex();
+    await vi.waitFor(() => expect(r.tab.skeleton, "骨架没接上").not.toBeNull(), UNTIL_CEILING);
+    await new Promise((res) => setTimeout(res, 0));
+    const ids = r.built();
+    expect(ids.length, `已建 ${ids.length} 张`).toBeLessThanOrEqual(keepCards);
+    const covered = ids.reduce((a, s) => {
+      const b = r.dom.stream.contentElement.querySelector<HTMLElement>(`[data-id="u${s}"]`)!.getBoundingClientRect();
+      return a + Math.max(0, Math.min(b.bottom, VIEW_H) - Math.max(b.top, 0));
+    }, 0);
+    expect(covered, "接上骨架之后视口里没补满").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
+  });
+
+  it("轮次先落地、骨架等不来（老后端答不了索引）⇒ 接着从尾部窗口补，视口不空着", async () => {
+    const r = await rig(false, true);
+    r.open();
+    await vi.waitFor(() => expect(r.turns).toHaveBeenCalled(), UNTIL_CEILING);
+    await new Promise((res) => setTimeout(res, 0));
+    await new Promise((res) => setTimeout(res, 0));
+    const before = r.tab.window.pendingCount;
+    r.failIndex();
+    await vi.waitFor(() => expect(r.tab.skeletonFetch).toBe("done"), UNTIL_CEILING);
+    await vi.waitFor(() => expect(r.tab.window.pendingCount, "骨架来不了也不接着补").toBeLessThan(before), UNTIL_CEILING);
+    expect(r.tab.skeleton).toBeNull();
   });
 
   // 〔A17-45-3-3〕收起的 tab 只留视口那一截：冷开建的那一截尾巴与接骨架之后建的都要交得回去

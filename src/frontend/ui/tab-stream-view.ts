@@ -1029,6 +1029,7 @@ export class TabStreamView {
     // 瞬时失败的第一次 ⇒ `again`；结构性（老后端）或已经重问过 ⇒ `done`。
     const failed = (transient: boolean): void => {
       tab.skeletonFetch = transient && !retry ? "again" : "done";
+      this.resumeTail(tab);
     };
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
@@ -1094,6 +1095,7 @@ export class TabStreamView {
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
         if (res && !res.available) {
           tab.skeletonFetch = "again";
+          this.resumeTail(tab);
           return;
         }
         if (res) ledger.append(res.pages);
@@ -1107,6 +1109,7 @@ export class TabStreamView {
       })
       .catch((e: unknown) => {
         tab.skeletonFetch = "again";
+        this.resumeTail(tab);
         console.warn(`[tabs] 骨架续传失败（${tab.sessionId.slice(0, 8)}）：`, e);
       });
   }
@@ -1145,6 +1148,7 @@ export class TabStreamView {
         console.warn(
           `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 是 ${p.record.t}，在索引里是 ${String(at)} —— seq 空间对不上`,
         );
+        this.resumeTail(tab);
         return;
       }
     }
@@ -1429,12 +1433,30 @@ export class TabStreamView {
    * 补偿：临时关原生锚定（免得与手动补偿叠加），测量 → 渲染 → scrollTop 回写在同一个同步任务里（不许 await / rAF 打断）。
    * rAF 自链：零高批 / 不足一屏时没有 scroll 事件，补完复检直到离开触发区或账尽。
    */
+  /** 〔骨架〕这个 tab 的骨架还会来：有记录路径、索引还没要或在途，或者要到了停着等切回来接（停着的 · 从上一代接过来的）。 */
+  private awaitingSkeleton(tab: Tab): boolean {
+    if (!tab.parentPath) return false;
+    return tab.skeletonFetch === "idle" || tab.skeletonFetch === "pending" || this.parkedSkeletons.has(tab) || this.carriedSkeletons.has(tab);
+  }
+
+  /**
+   * 〔骨架〕骨架来不了（要不到索引 · seq 空间对不上）：等骨架时停着的那一路（轮次已落地 ⇒ `fillAbove` 不补）可能拦下过补批，
+   * 还在眼前就接着走尾部窗口那一路补。轮次没落地 ⇒ 什么都没拦过，照旧等下一次滚动。
+   */
+  private resumeTail(tab: Tab): void {
+    if (tab.turnFold.all.length > 0 && this.inFront(tab)) this.fillAbove(tab);
+  }
+
   private fillAbove(tab: Tab): void {
     // 骨架接上了 ⇒ 不从尾巴往上一批批补，只物化与视口相交的那段占位
     if (tab.skeleton) {
       tab.skeleton.fillVisible();
       return;
     }
+    // 轮次已经落地、骨架还会来 ⇒ 尾部窗口不往上补：它扣不掉折着的过程，过程卡建出来就藏成 0 高、屏总不满，一批批建下去全是看不见的卡
+    // （冷切一条长会话照样建满 600 行）。接上之后照账本补可见区；要不到索引再接着走这一路（`resumeTail`）。
+    // 轮次还没到 ⇒ 照旧补（建出来的过程卡露着、占高，屏一满就停）。
+    if (tab.turnFold.all.length > 0 && this.awaitingSkeleton(tab)) return;
     if (this.renderingFill) return;
     if (tab.window.pendingCount === 0) {
       // 账本空了、渲染窗口最老那一条不是第 0 行 ⇒ 按行号往下问一批（`fetchBelow`）。
