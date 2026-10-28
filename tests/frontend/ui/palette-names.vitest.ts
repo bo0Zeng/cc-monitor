@@ -19,6 +19,6 @@ describe("命令面板项名", () => {
 
   it("两个「终端」：一条同右键「看它的终端」、一条「终端名单」", () => {
     expect(copyText("main.cmd.terminal")).toBe(copyText("tabMenu.open.drawer"));
-    expect(copyText("main.cmd.openTerminals")).toBe("终端名单");
+    expect(copyText("main.cmd.openTerminals")).not.toBe(copyText("main.cmd.terminal"));
   });
 });

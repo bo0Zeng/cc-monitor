@@ -75,7 +75,7 @@ import { toast } from "../../../../src/frontend/ui/kit/toast";
 import { openSession } from "../../../../src/frontend/ui/session-open";
 import { resumeAccounts } from "../../../../src/frontend/ui/resume-menu";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
-import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
+import { answerAskDialog, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { closeMenu } from "../../../../src/frontend/ui/kit/menu";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
@@ -633,7 +633,12 @@ describe("键盘与菜单", () => {
     expect(calls("history-annotate").at(-1)).toEqual({ sid: "b", patch: { hide: "rule" } });
     openMenuOn("a");
     menuItem(copyText("history.menu.rename"))!.click();
-    await answerAskText("新名字");
+    // 改标题只有就地一种样子（A2-17-7-2）：不开对话框，那一行上浮出输入框，Enter 定。
+    expect(noAskDialog(), "不开对话框").toBe(true);
+    const edit = document.querySelector<HTMLInputElement>(`input[aria-label="${copyText("history.rename.label")}"]`)!;
+    expect(edit, "那一行变输入框").toBeTruthy();
+    edit.value = "新名字";
+    edit.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(calls("history-annotate").at(-1)).toEqual({ sid: "a", patch: { customTitle: "新名字" } });
     document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -871,7 +876,9 @@ describe("键盘：列表里每个键做什么", () => {
     await flush();
     expect(invokeMock.mock.calls.filter((c) => c[0] === "open_session_in_new_window").map((c) => c[1])).toEqual([{ sessionId: "a", origin: "<local>", title: "标题 a" }]);
     key("F2", {}, rows()[0]);
-    await answerAskText(null);
+    const f2 = document.querySelector<HTMLInputElement>(`input[aria-label="${copyText("history.rename.label")}"]`)!;
+    expect(f2, "F2 ⇒ 那一行变输入框").toBeTruthy();
+    f2.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await flush();
     key("Delete", {}, rows()[0]);
     await answerAskDialog(false);

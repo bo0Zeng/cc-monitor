@@ -13229,9 +13229,9 @@
       "args": []
     },
     "history.rename.label": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "改为",
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "会话标题",
       "args": []
     },
     "history.list.noMatch": {
