@@ -4,9 +4,9 @@ use super::super::run::tests::{hello, read_until_out, sandbox_own, spec, start};
 use super::super::wire::{read_frame, write_frame, Ctl, Frame, Want};
 use super::*;
 
-/// 等读线把那一条摘掉（有界：真终端抢走输入后，托管进程推 `holder`，读线当场摘）。
+/// 等读线把那一条摘掉（真终端抢走输入后，托管进程推 `holder`，读线当场摘；上限是兜底的那一个数）。
 async fn until_released(id: &str) {
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         if holder(id).is_none() {
             return;
         }

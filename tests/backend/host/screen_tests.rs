@@ -146,3 +146,43 @@ fn resize_keeps_content_and_reports_the_new_size() {
     assert_eq!(s.size(), (10, 30));
     assert!(s.screen().contents().starts_with("abc"));
 }
+
+/// `vt100` 不记的那几样（焦点 · 光标形状 · 同步输出）由这里记；新接上的一端拿整屏字节也拿到它们。
+#[test]
+fn focus_cursor_shape_and_sync_are_kept_for_new_clients() {
+    let mut s = Screen::new(5, 20);
+    s.feed(b"\x1b[?1004h\x1b[5 q");
+    let mut fresh = Extra::default();
+    let mut p = vt100::Parser::new_with_callbacks(5, 20, 0, ExtraOnly(Extra::default()));
+    p.process(&s.full());
+    fresh.clone_from(&p.callbacks().0);
+    assert!(fresh.focus);
+    assert_eq!(fresh.shape, 5);
+    assert!(!fresh.sync);
+    // 清回滚换 parser 那一下也不丢。
+    s.feed(b"\x1b[3J");
+    let mut p = vt100::Parser::new_with_callbacks(5, 20, 0, ExtraOnly(Extra::default()));
+    p.process(&s.full());
+    assert!(p.callbacks().0.focus);
+    // 关掉 ⇒ 整屏字节里不再开；一条里几项一起开关也认（`?1004;2026h`）。
+    s.feed(b"\x1b[?1004l\x1b[0 q\x1b[?25;2026h");
+    let mut p = vt100::Parser::new_with_callbacks(5, 20, 0, ExtraOnly(Extra::default()));
+    p.process(&s.full());
+    assert!(!p.callbacks().0.focus);
+    assert_eq!(p.callbacks().0.shape, 0);
+    assert!(p.callbacks().0.sync, "开着同步输出时接上的一端也先不画");
+}
+
+struct ExtraOnly(Extra);
+impl vt100::Callbacks for ExtraOnly {
+    fn unhandled_csi(
+        &mut self,
+        _: &mut vt100::Screen,
+        i1: Option<u8>,
+        _: Option<u8>,
+        params: &[&[u16]],
+        c: char,
+    ) {
+        self.0.csi(i1, params, c);
+    }
+}

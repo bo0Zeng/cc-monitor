@@ -4,6 +4,7 @@
 //! 终端询问（DA1 · DA2 · 光标位置 · XTVERSION · 状态）由这里照屏的状态答，答的字节由 [`Screen::feed`] 交回、写回伪终端；
 //! 不转给哪一端（几端都接着时谁答都不对）。kitty 键盘询问不答（Claude Code 回落）。
 //! `ESC[3J`（清回滚）`vt100` 不认 ⇒ 这里补：重建 parser、只留当屏（与真终端一致：Claude Code 清屏重画时发它）。
+//! `vt100` 不记的几样模式（焦点 `?1004` · 同步输出 `?2026` · 光标形状）由 [`Extra`] 记，整屏字节里带上（A3-3-15）。
 
 /// 回滚行数：与终端页往回看的上限（`control::terminals::MAX_SCROLLBACK`）对齐，判据钉两边相等。
 pub(crate) const SCROLLBACK: usize = 2000;
@@ -24,12 +25,61 @@ pub(crate) struct Captured {
     pub(crate) cursor: (u16, u16),
 }
 
+/// `vt100` 不记、外层终端要跟着开关的那几样（托管这一屏与瘦客户端那一屏都记，同一份认法）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Extra {
+    /// 焦点上报 `?1004`。
+    pub(crate) focus: bool,
+    /// 同步输出 `?2026`（开着 ⇒ 屏照算、先不画）。
+    pub(crate) sync: bool,
+    /// 光标形状（`CSI n SP q` 的 n；0 ＝ 终端缺省）。
+    pub(crate) shape: u16,
+}
+
+impl Extra {
+    /// parser 没认的一条 CSI：是这几样就记下（`?1004;2026h` 一条里几项也认）。
+    pub(crate) fn csi(&mut self, i1: Option<u8>, params: &[&[u16]], c: char) {
+        match (i1, c) {
+            (Some(b'?'), 'h' | 'l') => {
+                let on = c == 'h';
+                for p in params {
+                    match p.first() {
+                        Some(1004) => self.focus = on,
+                        Some(2026) => self.sync = on,
+                        _ => {}
+                    }
+                }
+            }
+            (Some(b' '), 'q') => {
+                self.shape = params.first().and_then(|p| p.first()).copied().unwrap_or(0);
+            }
+            _ => {}
+        }
+    }
+
+    /// 让一个新终端也处在这几样里的字节（缺省的那几样不写）。
+    pub(crate) fn formatted(&self) -> Vec<u8> {
+        let mut v = Vec::new();
+        if self.focus {
+            v.extend_from_slice(b"\x1b[?1004h");
+        }
+        if self.shape != 0 {
+            v.extend_from_slice(format!("\x1b[{} q", self.shape).as_bytes());
+        }
+        if self.sync {
+            v.extend_from_slice(b"\x1b[?2026h");
+        }
+        v
+    }
+}
+
 /// parser 在处理字节时碰到的、屏本身不管的那几样。
 #[derive(Default)]
 struct Hooks {
     replies: Vec<u8>,
     clear_scrollback: bool,
     title: Vec<u8>,
+    extra: Extra,
 }
 
 impl vt100::Callbacks for Hooks {
@@ -59,7 +109,7 @@ impl vt100::Callbacks for Hooks {
                 .replies
                 .extend_from_slice(format!("\x1bP>|ccm {}\x1b\\", crate::BUILD_ID).as_bytes()),
             (None, 'J', 3) => self.clear_scrollback = true,
-            _ => {}
+            _ => self.extra.csi(i1, params, c),
         }
     }
 }
@@ -108,6 +158,7 @@ impl Screen {
             v.extend_from_slice(title);
             v.push(0x07);
         }
+        v.extend_from_slice(&self.parser.callbacks().extra.formatted());
         v
     }
 

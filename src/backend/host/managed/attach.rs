@@ -1,24 +1,86 @@
 //! 瘦客户端：用户真终端里的 `ccm --attach <名|句柄>`（A3-3-3）。
 //!
 //! 连托管口、`hello{want: input}`（最新连上的真终端持有输入）；进外层终端的备用屏、退出还原。
-//! 本地一个 `vt100` 照托管伪终端的尺寸跑：`welcome` / `resync` 整屏重来，`out` 接着算，只把变了的画出去（`state_diff`），
+//! 本地一个 `vt100` 照托管伪终端的尺寸跑：`welcome` / `resync` 整屏重来，`out` 接着算，只把变了的画出去（`contents_diff`），
 //! 拍子跟着 `out` 走，不用定时器。不持有时外层标题前加「[只看] 」，敲的键不送，底行提示「输入在 … · 回车接管」
 //! （这个回车不送进去），下一个键收掉提示。外层窗口改尺寸 ⇒ 发 `resize`（托管只认持有者的）。
 //! 关真终端窗口 · ssh 断 ⇒ 只算断开，会话照跑。退出码：断开 0，会话结束带子进程的码。
 //!
 //! 外层终端（键 · 尺寸 · 画）由 [`Outer`] 交进来：生产是本进程的 stdin / stdout（[`stdio_outer`]），判据交一个假的。
+//!
+//! 尺寸（A3-3-14）：伪终端的尺寸跟持有者；外层比它小（只看的一端 · 持有者刚改了尺寸、托管还没跟上）⇒ 只画左上那一块，
+//! 不缩放、不折行；外层大 ⇒ 多出来的空着。只看的一端标题前缀带伪终端的尺寸。
+//! 终端模式（A3-3-15）：外层的输入模式由这里自己管（[`Modes`]），持有者照里面开的开；只看的不开鼠标 · 括号粘贴 · 焦点。
+//! 里面开着同步输出 `?2026` ⇒ 屏照算、先不画，关上那一下一次画完。
 
 use super::keys::{self, Act, Copy, CopyKeys, Keys};
+use super::screen::Extra;
 use super::wire::{self, ClientRow, Ctl, Frame, Holder, Size, Want, Who, WhoKind, PROTO};
 use copy_core::copy_text;
 use copy_core::said::Said;
 use std::io::Write;
 use tokio::sync::mpsc::UnboundedReceiver;
+use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
-/// 进 / 出外层备用屏，出来时把里面可能开着的几样模式关掉（括号粘贴 · 光标键 · 小键盘 · 鼠标上报 · 焦点），光标显出来。
+/// 进 / 出外层备用屏，出来时把里面可能开着的几样模式关掉（括号粘贴 · 光标键 · 小键盘 · 鼠标上报 · 焦点 · 光标形状），光标显出来。
 const ENTER_OUTER: &[u8] = b"\x1b[?1049h\x1b[H\x1b[2J";
 const LEAVE_OUTER: &[u8] =
-    b"\x1b[?2004l\x1b[?1l\x1b>\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1004l\x1b[?25h\x1b[m\x1b[?1049l";
+    b"\x1b[?2004l\x1b[?1l\x1b>\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[m\x1b[?1049l";
+
+/// 外层终端此刻开着的输入模式（瘦客户端自己记：照「里面开了什么 × 是不是持有者」补齐 / 关掉）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Modes {
+    keypad: bool,
+    cursor_keys: bool,
+    paste: bool,
+    mouse: MouseProtocolMode,
+    encoding: MouseProtocolEncoding,
+    focus: bool,
+    shape: u16,
+}
+
+impl Modes {
+    /// 从 `prev` 变到这一份要写给外层的字节。
+    fn diff(&self, prev: &Modes) -> Vec<u8> {
+        let mut b = Vec::new();
+        let flag = |b: &mut Vec<u8>, n: u16, on: bool, was: bool| {
+            if on != was {
+                b.extend_from_slice(format!("\x1b[?{n}{}", if on { 'h' } else { 'l' }).as_bytes());
+            }
+        };
+        if self.keypad != prev.keypad {
+            b.extend_from_slice(if self.keypad { b"\x1b=" } else { b"\x1b>" });
+        }
+        flag(&mut b, 1, self.cursor_keys, prev.cursor_keys);
+        flag(&mut b, 2004, self.paste, prev.paste);
+        flag(&mut b, 1004, self.focus, prev.focus);
+        if self.mouse != prev.mouse {
+            b.extend_from_slice(b"\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l");
+            let on = match self.mouse {
+                MouseProtocolMode::None => None,
+                MouseProtocolMode::Press => Some(9),
+                MouseProtocolMode::PressRelease => Some(1000),
+                MouseProtocolMode::ButtonMotion => Some(1002),
+                MouseProtocolMode::AnyMotion => Some(1003),
+            };
+            if let Some(n) = on {
+                b.extend_from_slice(format!("\x1b[?{n}h").as_bytes());
+            }
+        }
+        if self.encoding != prev.encoding {
+            b.extend_from_slice(b"\x1b[?1005l\x1b[?1006l");
+            match self.encoding {
+                MouseProtocolEncoding::Default => {}
+                MouseProtocolEncoding::Utf8 => b.extend_from_slice(b"\x1b[?1005h"),
+                MouseProtocolEncoding::Sgr => b.extend_from_slice(b"\x1b[?1006h"),
+            }
+        }
+        if self.shape != prev.shape {
+            b.extend_from_slice(format!("\x1b[{} q", self.shape).as_bytes());
+        }
+        b
+    }
+}
 
 /// 外层终端：读到的键（一块一块）· 尺寸变了的信号 · 此刻的尺寸 · 往外画的那一头。
 pub(crate) struct Outer {
@@ -71,11 +133,12 @@ struct CopyView {
     found: Option<(String, bool)>,
 }
 
-/// parser 碰到的、屏本身不管的：标题 · 铃。
+/// parser 碰到的、屏本身不管的：标题 · 铃 · `vt100` 不记的那几样模式（焦点 · 同步输出 · 光标形状）。
 #[derive(Default)]
 struct Hooks {
     title: Option<Vec<u8>>,
     bells: u32,
+    extra: Extra,
 }
 
 impl vt100::Callbacks for Hooks {
@@ -85,11 +148,27 @@ impl vt100::Callbacks for Hooks {
     fn set_window_title(&mut self, _: &mut vt100::Screen, t: &[u8]) {
         self.title = Some(t.to_vec());
     }
+    fn unhandled_csi(
+        &mut self,
+        _: &mut vt100::Screen,
+        i1: Option<u8>,
+        _: Option<u8>,
+        params: &[&[u16]],
+        c: char,
+    ) {
+        self.extra.csi(i1, params, c);
+    }
 }
 
 struct Client {
     outer: Outer,
     parser: vt100::Parser<Hooks>,
+    /// 外层此刻的尺寸（问不出 ⇒ 当它与伪终端一样大）。
+    view: Option<Size>,
+    /// 上次画到外层的那一屏与当时外层的尺寸（`None` ⇒ 下一次整屏画）。
+    drawn: Option<(vt100::Screen, Size)>,
+    /// 外层此刻开着的输入模式。
+    modes: Modes,
     you: u64,
     holder: Option<Holder>,
     over: Over,
@@ -136,19 +215,7 @@ pub(crate) async fn session(
     .map_err(|e| Said::with_raw(copy_text("beHost.attach.lost", &[]), &e))?;
     put(&mut *outer.out, ENTER_OUTER);
     let in_tmux = outer.in_tmux;
-    let (prefix, vi) = (outer.prefix, outer.vi);
-    let mut c = Client {
-        outer,
-        parser: vt100::Parser::new_with_callbacks(24, 80, 0, Hooks::default()),
-        you: 0,
-        holder: None,
-        over: Over::None,
-        keys: Keys::new(prefix),
-        copy: CopyKeys::new(vi),
-        title: Vec::new(),
-        taking: false,
-        typed_while_taking: Vec::new(),
-    };
+    let mut c = Client::new(outer);
     let (ftx, mut frx) = tokio::sync::mpsc::unbounded_channel::<Option<Frame>>();
     let reader = tokio::spawn(async move {
         loop {
@@ -201,7 +268,8 @@ pub(crate) async fn session(
             }
             r = c.outer.resized.recv() => {
                 if r.is_some() {
-                    if let Some(s) = (c.outer.size)() {
+                    // 托管只认持有者的；只看的也报（接管那一下托管照它改），自己这边照新尺寸重裁。
+                    if let Some(s) = c.outer_resized() {
                         send(&mut wr, &Frame::Ctl(Ctl::Resize { rows: s.rows, cols: s.cols })).await;
                     }
                 }
@@ -235,8 +303,127 @@ async fn send<W: tokio::io::AsyncWrite + Unpin>(wr: &mut W, f: &Frame) -> bool {
 }
 
 impl Client {
+    fn new(outer: Outer) -> Self {
+        let (prefix, vi) = (outer.prefix, outer.vi);
+        let view = (outer.size)();
+        Client {
+            outer,
+            parser: vt100::Parser::new_with_callbacks(24, 80, 0, Hooks::default()),
+            view,
+            drawn: None,
+            modes: Modes::default(),
+            you: 0,
+            holder: None,
+            over: Over::None,
+            keys: Keys::new(prefix),
+            copy: CopyKeys::new(vi),
+            title: Vec::new(),
+            taking: false,
+            typed_while_taking: Vec::new(),
+        }
+    }
+
+    /// 盖在上面的那几层（底行 · 单子 · 翻看）按外层的行数摆。
     fn rows(&self) -> u16 {
-        self.parser.screen().size().0
+        self.view.map_or(self.parser.screen().size().0, |v| v.rows)
+    }
+
+    /// 外层改了尺寸：记下、照新尺寸重画；交回新尺寸（报给托管）。
+    fn outer_resized(&mut self) -> Option<Size> {
+        let s = (self.outer.size)()?;
+        self.view = Some(s);
+        if matches!(self.over, Over::None | Over::Hint) {
+            self.redraw();
+        }
+        Some(s)
+    }
+
+    /// 外层该开的输入模式：持有者照里面开的；只看的不开鼠标 · 括号粘贴 · 焦点（敲的不送，开了只会吞掉外层原生的选字）。
+    fn wanted_modes(&self) -> Modes {
+        let s = self.parser.screen();
+        let x = &self.parser.callbacks().extra;
+        let hold = self.holding();
+        Modes {
+            keypad: s.application_keypad(),
+            cursor_keys: s.application_cursor(),
+            paste: hold && s.bracketed_paste(),
+            mouse: if hold {
+                s.mouse_protocol_mode()
+            } else {
+                MouseProtocolMode::None
+            },
+            encoding: if hold {
+                s.mouse_protocol_encoding()
+            } else {
+                MouseProtocolEncoding::Default
+            },
+            focus: hold && x.focus,
+            shape: x.shape,
+        }
+    }
+
+    fn sync_modes(&mut self) {
+        let want = self.wanted_modes();
+        if want != self.modes {
+            let b = want.diff(&self.modes);
+            self.write(&b);
+            self.modes = want;
+        }
+    }
+
+    /// 把本地屏画到外层：`full` 或外层 / 伪终端尺寸变了 ⇒ 清屏整屏画，否则照上次画出去的那一屏 diff。
+    /// 外层装得下 ⇒ 整屏的字节；装不下 ⇒ 只画左上那一块（每行先定位、不折行），光标落在外面就藏起来。
+    /// 里面开着同步输出 ⇒ 这一回不画（下一回整屏画）。交回画了没有。
+    fn paint(&mut self, full: bool) -> bool {
+        if self.parser.callbacks().extra.sync {
+            if full {
+                self.drawn = None;
+            }
+            return false;
+        }
+        let now = self.parser.screen().clone();
+        let (prow, pcol) = now.size();
+        let view = self.view.unwrap_or(Size {
+            rows: prow,
+            cols: pcol,
+        });
+        let prev = match (&self.drawn, full) {
+            (Some((s, v)), false) if s.size() == now.size() && *v == view => Some(s),
+            _ => None,
+        };
+        let mut b = Vec::new();
+        if prev.is_none() {
+            b.extend_from_slice(b"\x1b[m\x1b[H\x1b[2J");
+        }
+        if view.rows >= prow && view.cols >= pcol {
+            match prev {
+                Some(p) => b.extend_from_slice(&now.contents_diff(p)),
+                None => b.extend_from_slice(&now.contents_formatted()),
+            }
+        } else {
+            let w = view.cols.min(pcol);
+            let rows: Vec<Vec<u8>> = match prev {
+                Some(p) => now.rows_diff(p, 0, w).collect(),
+                None => now.rows_formatted(0, w).collect(),
+            };
+            for (i, r) in rows.iter().enumerate().take(usize::from(view.rows)) {
+                if !r.is_empty() {
+                    b.extend_from_slice(format!("\x1b[{};1H\x1b[m", i + 1).as_bytes());
+                    b.extend_from_slice(r);
+                }
+            }
+            b.extend_from_slice(b"\x1b[m");
+            let (cr, cc) = now.cursor_position();
+            if !now.hide_cursor() && cr < view.rows && cc < view.cols {
+                b.extend_from_slice(format!("\x1b[{};{}H\x1b[?25h", cr + 1, cc + 1).as_bytes());
+            } else {
+                b.extend_from_slice(b"\x1b[?25l");
+            }
+        }
+        self.write(&b);
+        self.drawn = Some((now, view));
+        self.sync_modes();
+        true
     }
 
     fn holding(&self) -> bool {
@@ -257,9 +444,7 @@ impl Client {
 
     /// 整屏重画（当屏 ＋ 标题；盖着的那一层不画）。
     fn redraw(&mut self) {
-        let full = self.parser.screen().state_formatted();
-        self.write(b"\x1b[H\x1b[2J");
-        self.write(&full);
+        self.paint(true);
         self.retitle(true);
         self.flush();
     }
@@ -268,7 +453,10 @@ impl Client {
         let inner = self.parser.callbacks().title.clone().unwrap_or_default();
         let mut t = Vec::new();
         if !self.holding() {
+            // 「[只看] 120×40 」：伪终端的尺寸（跟持有者），外层小于它时看到的是左上那一块。
+            let (rows, cols) = self.parser.screen().size();
             t.extend_from_slice(copy_text("beHost.attach.viewOnly", &[]).as_bytes());
+            t.extend_from_slice(format!("{cols}×{rows} ").as_bytes());
         }
         t.extend_from_slice(&inner);
         if force || t != self.title {
@@ -322,17 +510,15 @@ impl Client {
     fn frame(&mut self, f: Frame) -> Option<Left> {
         match f {
             Frame::Out(b) => {
-                let prev = self.parser.screen().clone();
                 let bells = self.parser.callbacks().bells;
                 self.parser.process(&b);
                 if matches!(self.over, Over::None | Over::Hint) {
-                    let diff = self.parser.screen().state_diff(&prev);
-                    self.write(&diff);
+                    let painted = self.paint(false);
                     if self.parser.callbacks().bells > bells {
                         self.write(b"\x07");
                     }
                     self.retitle(false);
-                    if self.over == Over::Hint {
+                    if painted && self.over == Over::Hint {
                         let said = self.holder_said();
                         self.bottom_line(&said);
                     }
@@ -375,11 +561,14 @@ impl Client {
                     self.redraw();
                 } else {
                     self.retitle(false);
-                    self.flush();
                 }
+                // 持有者换了 ⇒ 外层的模式照新身份补齐 / 关掉。
+                self.sync_modes();
+                self.flush();
             }
             Ctl::HeldElsewhere { holder } => {
                 self.holder = holder;
+                self.sync_modes();
                 if self.over == Over::None {
                     self.over = Over::Hint;
                     let said = self.holder_said();
@@ -415,9 +604,17 @@ impl Client {
 
     fn reset(&mut self, size: Size, screen: &str) {
         let title = self.parser.callbacks().title.clone();
-        self.parser =
-            vt100::Parser::new_with_callbacks(size.rows, size.cols, 0, Hooks { title, bells: 0 });
+        self.parser = vt100::Parser::new_with_callbacks(
+            size.rows,
+            size.cols,
+            0,
+            Hooks {
+                title,
+                ..Hooks::default()
+            },
+        );
         self.parser.process(screen.as_bytes());
+        self.drawn = None;
         if matches!(self.over, Over::None | Over::Hint) {
             self.redraw();
         }

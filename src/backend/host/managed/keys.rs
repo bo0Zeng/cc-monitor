@@ -3,6 +3,7 @@
 //! - 前缀缺省 `Ctrl+b`（[`DEFAULT_PREFIX`]）；`前缀 前缀` 把一个前缀字节送进去（tmux `send-prefix`）。
 //!   前缀之后按了表里没有的键 ⇒ 什么都不做（同 tmux）。前缀由调用方交（[`Keys::new`]；机器偏好那一格还没接，今天恒是缺省），不读 `~/.tmux.conf`。
 //! - 翻看（`copy-mode`）里照 tmux 缺省 emacs 表；`VISUAL` / `EDITOR` 含 `vi` 时用 vi 表（[`vi_from`]，同 tmux）。选中复制这一版不做。
+//! - 括号粘贴（`ESC[200~ … ESC[201~`）整段原样送，里面的前缀不算；头尾拆在几块里也认（A3-3-15）。
 //!
 //! 这里只把字节变成动作，不碰终端、不碰托管口；送不送（只看的那一端不送）由 `attach.rs` 定。
 
@@ -95,10 +96,18 @@ enum State {
     Confirm,
 }
 
+/// 括号粘贴的头 · 尾（里面开了 `?2004` 时外层终端把粘进来的一段夹在这两样中间）。
+const PASTE_OPEN: &[u8] = b"\x1b[200~";
+const PASTE_CLOSE: &[u8] = b"\x1b[201~";
+
 /// 平常那一层：前缀与前缀之后那一个键。
 pub(crate) struct Keys {
     prefix: u8,
     state: State,
+    /// 在一段括号粘贴里：整段原样送，里面的前缀不算（A3-3-15）。
+    pasting: bool,
+    /// 头（不在粘贴里）或尾（在粘贴里）已经对上了几个字节（跨块也接着对）。
+    mark: usize,
 }
 
 impl Keys {
@@ -106,6 +115,26 @@ impl Keys {
         Self {
             prefix,
             state: State::Plain,
+            pasting: false,
+            mark: 0,
+        }
+    }
+
+    /// 平常那一层原样送的一个字节：顺手对括号粘贴的头 / 尾。
+    fn pass(&mut self, b: u8) {
+        let want = if self.pasting {
+            PASTE_CLOSE
+        } else {
+            PASTE_OPEN
+        };
+        self.mark = if want[self.mark] == b {
+            self.mark + 1
+        } else {
+            usize::from(want[0] == b)
+        };
+        if self.mark == want.len() {
+            self.pasting = !self.pasting;
+            self.mark = 0;
         }
     }
 
@@ -120,11 +149,15 @@ impl Keys {
         };
         for &b in bytes {
             match &mut self.state {
-                State::Plain if b == self.prefix => {
+                State::Plain if b == self.prefix && !self.pasting => {
                     flush(&mut plain, &mut acts);
+                    self.mark = 0;
                     self.state = State::Prefixed(Vec::new());
                 }
-                State::Plain => plain.push(b),
+                State::Plain => {
+                    plain.push(b);
+                    self.pass(b);
+                }
                 State::Confirm => {
                     self.state = State::Plain;
                     acts.push(if b == b'y' || b == b'Y' {
