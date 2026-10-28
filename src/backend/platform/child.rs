@@ -1038,14 +1038,9 @@ impl Child {
         let reaped_w = Arc::clone(&reaped);
         std::thread::spawn(move || {
             #[cfg(unix)]
-            if let Some(pid) = pid {
-                os::exited_unreaped_pid(pid);
-            }
-            let status = {
-                let mut r = reaped_w.lock().unwrap_or_else(|p| p.into_inner());
-                *r = true;
-                child.wait()
-            };
+            let status = reap_terminal_child(&mut child, pid, &reaped_w);
+            #[cfg(windows)]
+            let status = reap_terminal_child(&mut child, None, &reaped_w);
             // Windows 的伪终端它退了也不给读的那一端读到头 ⇒ 先关终端；Unix 上先读完再关（关早了会丢它最后那几行）。
             #[cfg(windows)]
             drop(master);
@@ -1208,7 +1203,6 @@ pub(crate) struct TerminalIo {
 pub(crate) struct TerminalChild {
     child: Box<dyn portable_pty::Child + Send + Sync>,
     /// 等它退那一下按 pid 不收尸地等（只 Unix 用；Windows 上句柄占着进程）。
-    #[cfg_attr(not(unix), allow(dead_code))]
     pid: Option<u32>,
     reaped: Arc<Mutex<bool>>,
 }
@@ -1216,17 +1210,36 @@ pub(crate) struct TerminalChild {
 impl TerminalChild {
     /// 等它退（阻塞）：交回退出码（被信号杀的 ⇒ 伪终端库给的那个数）。
     pub(crate) fn wait(mut self) -> Option<i32> {
-        #[cfg(unix)]
-        if let Some(pid) = self.pid {
-            os::exited_unreaped_pid(pid);
-        }
-        let mut r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
-        *r = true;
-        let status = self.child.wait();
-        drop(r);
-        status
+        reap_terminal_child(&mut self.child, self.pid, &self.reaped)
             .ok()
             .map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))
+    }
+}
+
+/// 等伪终端里的那个子进程退、收尸，记下「已收尸」（挂断 · 杀组那一下照它判还动不动手）。
+/// - Unix：先按 pid 不收尸地等它退（收尸之前组号一直归它），再在锁里收尸 —— 杀组与收尸互斥，不会杀到复用了那个号的别人。
+/// - Windows：句柄占着进程、Job 句柄占着那一组，没有复用之虞 ⇒ 不拿锁直接等（拿着锁等，挂断那一下就要等它自己退 —— 永远等不到），
+///   等完再记。
+fn reap_terminal_child(
+    child: &mut Box<dyn portable_pty::Child + Send + Sync>,
+    pid: Option<u32>,
+    reaped: &Mutex<bool>,
+) -> std::io::Result<portable_pty::ExitStatus> {
+    #[cfg(unix)]
+    {
+        if let Some(pid) = pid {
+            os::exited_unreaped_pid(pid);
+        }
+        let mut r = reaped.lock().unwrap_or_else(|p| p.into_inner());
+        *r = true;
+        child.wait()
+    }
+    #[cfg(windows)]
+    {
+        let _ = pid;
+        let status = child.wait();
+        *reaped.lock().unwrap_or_else(|p| p.into_inner()) = true;
+        status
     }
 }
 
