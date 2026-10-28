@@ -832,6 +832,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
         handle.submit();
       }
     });
+    // 调度：一次性 —— 框挂上之后的下一帧把光标放进开口那句末尾，只这一下
     requestAnimationFrame(() => {
       promptInput.focus();
       promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);

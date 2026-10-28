@@ -234,6 +234,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     // 🔴 **−1**：没人调的 `launch` 撤了。
     // 🔴 **+2**：起一组那两条进表。
     // 🔴 **−2**：`session-say` 撤了、`plan-return` 改成投进会话输入队。
+    // 🔴 **+1**：问图 `plan-ask` 进表。
     assert_eq!(
         names,
         vec![
@@ -243,7 +244,8 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
             "terminal-input".to_string(),
             "session-model".to_string(),
             "session-permission".to_string(),
-            "terminal-follow".to_string()
+            "terminal-follow".to_string(),
+            "plan-ask".to_string()
         ],
         "🔴 **Windows 上这张表又空了** —— 这一格就是这里的正题。\n\
              握手帧第四条面在动机平台上不说话 = 这一格什么都没买到。\n\
