@@ -30,7 +30,7 @@
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::chan::said::machine as who;
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::detail::Said;
 use crate::inbound_client;
 use crate::origin::Origin;

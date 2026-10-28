@@ -7,7 +7,7 @@
 //! 哪几种要告诉用户，由 [`UiError`] 的变体列全；每个变体的键在 [`UiError::payload`] 里写成字面量。
 
 use crate::backend_policy::Death;
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use copy_core::detail::{Detail, Label};
 use parking_lot::{Mutex, RwLock};
 use serde::Serialize;

@@ -485,7 +485,7 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
     assert_eq!(face.state, HealthState::Unknown);
     assert_eq!(
         face.summary,
-        crate::copy_table::copy_text("rsBackendPolicy.health.unknown", &[]),
+        copy_core::copy_text("rsBackendPolicy.health.unknown", &[]),
         "一条记录都没有的机器被说成了别的 —— `§0-1` 逐字：\n\
              「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』…… \
              这两句话差得很远，不许混用」。"
@@ -1099,7 +1099,7 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
         // 拼法走文案表（不在代码里写死「，」）。
         assert_eq!(
             brief,
-            crate::copy_table::copy_text(
+            copy_core::copy_text(
                 "rsBackendPolicy.death.brief",
                 &[
                     ("kind", death_kind(&d).as_str()),
@@ -1255,7 +1255,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     };
     assert_eq!(
         last_brief(&crashed),
-        crate::copy_table::copy_text(
+        copy_core::copy_text(
             "rsBackendPolicy.death.brief",
             &[
                 (
@@ -1269,7 +1269,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     let refused = Death::Refused { code: -1073741510 };
     assert_eq!(
         last_brief(&refused),
-        crate::copy_table::copy_text(
+        copy_core::copy_text(
             "rsBackendPolicy.death.brief",
             &[
                 ("kind", copy_core::copy_static!("reason.code.refused")),
@@ -1329,7 +1329,7 @@ fn only_the_known_codes_get_words_the_neighbours_say_unknown() {
     // 「signal N」那一截也走文案表（不在代码里写死英文）。
     assert_eq!(
         exit_status(&sig),
-        crate::copy_table::copy_text("rsBackendPolicy.status.signal", &[("sig", "9")])
+        copy_core::copy_text("rsBackendPolicy.status.signal", &[("sig", "9")])
     );
     assert_eq!(exit_status(&sig), "信号 9");
 }

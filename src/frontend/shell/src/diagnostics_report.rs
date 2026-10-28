@@ -6,7 +6,7 @@
 //! 键表住界面），条数在这里数。
 //! 日志页那一行「未识别数据 · …」读同一份答复里的数（不另起一个数）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::detail::Said;
 use serde::{Deserialize, Serialize};
 

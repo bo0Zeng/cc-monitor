@@ -36,7 +36,7 @@
 //! 给了但不是绝对路径 ⇒ 回 `None`，**不退回用户真 profile**，
 //! 逐条理由住 [`resolve_monitor_data_dir`]。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::detail::Said;
 use serde::Deserialize;
 use serde_json::{Map, Value};

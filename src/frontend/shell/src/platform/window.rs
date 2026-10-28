@@ -1,6 +1,6 @@
 //! 窗口这一族的平台差异：壳里平台 cfg 的唯一住址（同 [`super::fs`]）：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（两个平台臂）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::detail::Said;
 use tauri::Manager;
 

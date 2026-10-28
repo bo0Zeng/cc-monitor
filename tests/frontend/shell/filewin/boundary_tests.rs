@@ -187,7 +187,7 @@ fn window_crate_dir() -> PathBuf {
     repo_root().join("src/frontend/filewin/src")
 }
 
-/// 窗口包够到自己之外的**通道与文案**那两条前缀（从前是 `crate::chan::…` / `crate::copy_table::…`）。
+/// 窗口包够到自己之外的**通道与文案**那两条前缀（从前是 `crate::chan::…` / 壳里那层文案转发）。
 /// 别的共享 crate（开窗契约 · 宿主原语 · 家目录与暂存区两条常量）由 `contract_crate_guard` 按类钉，不进这张表。
 const WINDOW_REACH: &[&str] = &["comms_inward", "copy_core"];
 
@@ -262,7 +262,7 @@ enum Kind {
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
     // 「在此打开终端」那一类（`Terminal`：机器事实 · 开窗两条）清零删了：窗口经通道交意图，monitor 接下来补事实、开窗（`chan/host.rs::terminal_open`）。
     // 「monitor 自己的状态」那一类（`OwnState`：原子写 · 书签文件名）清零删了：原子写进 `host_core`，书签全路径由开窗入口算好随种子交来。
-    /// **对外文案表的取文口**（`copy_table::copy_text`）。它不是欠账：
+    /// **对外文案表的取文口**（`copy_core::copy_text`）。它不是欠账：
     /// 「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
     /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。同住那一家的公历换算（`civil_from_days`）同理。
     Copy,
@@ -297,7 +297,7 @@ enum Kind {
 ///
 /// 🔴 那句判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
 /// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；「后端缺命令」那一类清零删了）。
-/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `comms_inward::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`。
+/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `comms_inward::chan::…`，壳里那层文案转发 → `copy_core::copy_text`。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("comms_inward::chan::client::Client", Kind::Channel),
@@ -402,8 +402,6 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 视图文件（整窗缩放）的名字：全路径在这一侧拼好随种子交过去（窗口那一侧不引它）。
     ("data_paths::FILEWIN_VIEW_FILE", Kind::DataDir),
-    // monitor 那一侧（entry.rs）的报错也从文案表取。
-    ("copy_table::copy_text", Kind::Copy),
     // 问主窗所在显示器的工作区，放进种子。
     ("MAIN_WINDOW_LABEL", Kind::Geometry),
     // 类型搬进 `host_core`；问 Tauri 那一下留在壳里，改名 `work_area_of`。

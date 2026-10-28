@@ -11,7 +11,7 @@
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`：那台后端自己算、自己写（帧命令 `mcp-sync-apply` / `ext-uninstall-apply`）。
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`：本机常驻后端的帧命令 `pubkey-push`（不在本模块，登记于此备查）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::detail::Said;
 
 /// 本机常驻后端那两条命令的名字（命令表 `src/backend/stream/inbound/registry/machine.rs` 里那两行）。

@@ -3625,7 +3625,7 @@ fn the_stop_run_gives_up_at_its_deadline() {
     let got = run_resident_stop_within(&fake, std::time::Duration::from_millis(300));
     let took = t0.elapsed();
     let _ = std::fs::remove_dir_all(&dir);
-    let want = crate::copy_table::copy_text(
+    let want = copy_core::copy_text(
         "rsLocalBackendHost.stop.timedOut",
         &[(
             "dur",
@@ -4520,7 +4520,7 @@ fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
 
 /// 没起来那几样的字：名字旁那个词 · 问题行那一句照文案表；被拒的下一步只在没连着时带。
 #[test]
-fn the_local_backend_words_come_from_the_copy_table() {
+fn the_local_backend_words_come_from_the_words_table() {
     use crate::ui_contract::LocalBackend as L;
     let _g = crate::inbound_client::local_origin_test_lock();
     note_local_foreign(None);

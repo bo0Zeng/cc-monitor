@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::inbound_client;
 use crate::origin::Origin;
 use serde_json::{json, Value};

@@ -66,7 +66,6 @@ mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostSc
                       //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
                       //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
-mod history;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend_control;
@@ -96,7 +95,7 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
-mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
+mod copy_table; // 过渡：等 stream_source/snapshot.rs 改用 copy_core 再删
 /// 这一版的产品版本号（全产品一个源：monitor 那个包的版本，与安装包 · 界面同一个号）。
 pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
@@ -255,7 +254,7 @@ mod utils;
 #[path = "../../../../tests/frontend/shell/write_site_registry.rs"]
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 

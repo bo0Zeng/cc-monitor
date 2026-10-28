@@ -3,7 +3,7 @@
 //! 它只认识 origin（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label），不认识 ssh、不认识进程监护
 //! （本机那一份住 `local_backend_host`；各台的常驻流归本机后端，起停经它的 `machine-wake` · `machine-stop`）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use crate::detail::Said;
 
 use crate::inbound_client::LOCAL_ORIGIN;
