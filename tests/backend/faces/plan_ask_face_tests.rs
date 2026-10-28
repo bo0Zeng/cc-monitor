@@ -1,4 +1,4 @@
-//! 问图（`plan-ask`）：开口那句由这台拼（别名合下来的 `say` ＋「看 编号「标题」这一格：」）· 给了别名就记成这台问图用的 ·
+//! 问图（`plan-ask`）：开口那句由这台拼（别名合下来的 `say` ＋「看 编号「标题」：」）· 起在哪那一句（`runs`）也由这台照别名合下来的写 · 给了别名就记成这台问图用的 ·
 //! 没给就用记着的那条（那条没了 ⇒ 不预选）· 别名不在 ⇒ 拒、不记 · 格不在 ⇒ 拒。夹具是合成的中性例子。
 
 use super::*;
@@ -24,8 +24,17 @@ fn doc() -> PlanRead {
 
 fn book() -> crate::assets::aliases::profile::Book {
     parse_book(&format!(
-        "[look]\nccm-tmux = true\nsay = \"{SAY}\"\n\n[bare]\nccm-tmux = true\n"
+        "[base]\naccount = \"lab\"\n\n[look]\nfrom = \"base\"\nccm-tmux = true\nsay = \"{SAY}\"\ntab-group = \"看图\"\n\n[bare]\nccm-tmux = true\n\n[plain]\nbase = true\n"
     ))
+}
+
+/// 「起在哪」那一句里的几段，照这台的文案表连起来（期望逐段手写）。
+fn runs_of(parts: &[String]) -> String {
+    parts.join(&copy_core::copy_text("bePlan.ask.runsSep", &[]))
+}
+
+fn tmux_part() -> String {
+    copy_core::copy_text("bePlan.ask.runsTmux", &[])
 }
 
 fn cell_part() -> String {
@@ -163,4 +172,74 @@ fn the_kept_alias_round_trips_through_the_review_file() {
     assert_eq!(r.ask(), Some("look"));
     assert_eq!(serde_json::to_value(&r).unwrap()["ask"], "look");
     assert_eq!(crate::plan::review::Review::default().ask(), None);
+}
+
+#[test]
+fn runs_says_where_it_starts_from_what_the_alias_resolves_to() {
+    let (out, _) = ask(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1", "alias": "look"}),
+        None,
+    );
+    let out = out.expect("问得出");
+    let want = runs_of(&[
+        tmux_part(),
+        copy_core::copy_text(
+            "bePlan.ask.runsAccount",
+            &[("account", "lab"), ("from", "base")],
+        ),
+        copy_core::copy_text("bePlan.ask.runsGroup", &[("group", "看图")]),
+    ]);
+    assert_eq!(
+        out["runs"], want,
+        "号来自基于的那一层 · 进分组照别名写的：{out}"
+    );
+    let runs = out["runs"].as_str().unwrap_or_default();
+    for part in ["lab", "base", "看图"] {
+        assert!(runs.contains(part), "那一句「{runs}」里没有「{part}」");
+    }
+}
+
+#[test]
+fn runs_leaves_out_what_the_alias_does_not_say_and_names_base() {
+    let (bare, _) = ask(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1", "alias": "bare"}),
+        None,
+    );
+    assert_eq!(
+        bare.expect("问得出")["runs"],
+        tmux_part(),
+        "没写号 · 没写分组 ⇒ 只剩 tmux 里"
+    );
+    let (plain, _) = ask(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1", "alias": "plain"}),
+        None,
+    );
+    assert_eq!(
+        plain.expect("问得出")["runs"],
+        runs_of(&[
+            tmux_part(),
+            copy_core::copy_text("bePlan.ask.runsBase", &[("from", "plain")]),
+        ]),
+    );
+}
+
+#[test]
+fn no_alias_means_no_runs() {
+    let (out, _) = ask(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}),
+        None,
+    );
+    assert_eq!(
+        out.expect("问得出")["runs"],
+        Value::Null,
+        "没选别名 ⇒ runs 为 null"
+    );
+    let (kept, _) = ask(
+        json!({"workspace": "/w", "slice": "alpha", "id": "A1-1"}),
+        Some("look"),
+    );
+    assert!(
+        kept.expect("问得出")["runs"].is_string(),
+        "记着的那条预选上了 ⇒ 也写 runs"
+    );
 }

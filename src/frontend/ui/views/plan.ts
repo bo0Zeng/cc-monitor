@@ -29,7 +29,7 @@ import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { commands } from "../ipc/commands";
 import { ChanError } from "../../../comms/inward/chan";
-import { ControlError, machineName } from "../control-said";
+import { ControlError, machineName, offlineSaid } from "../control-said";
 import { saidOf } from "../kit/detail";
 import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
@@ -156,6 +156,13 @@ export class PlanView {
       ask: (slice, cell) => {
         const cur = this.current;
         if (cur) void openPlanAsk(cur.origin, cur.workspace, slice, cell);
+      },
+      // 那台离线（顶上那条［重新连接］那一态）⇒［问图…］灰，悬停照那台成品的离线那一句（成品没到 ⇒ 那台状态不明那一句）。
+      askOff: () => {
+        const cur = this.current;
+        const m = cur ? this.per.get(cur.origin) : undefined;
+        if (!cur || m?.state !== "failed" || !m.offline) return null;
+        return offlineSaid(cur.origin) ?? copyText("settingsNav.dot.unknown", { machine: machineName(cur.origin) });
       },
     });
     this.review = {
