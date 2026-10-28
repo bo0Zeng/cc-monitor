@@ -1153,3 +1153,64 @@ fn hosted_input_turns_into_the_bytes_a_terminal_would_send() {
         assert!(!managed_bytes(&Input::Key(k), &[]).is_empty(), "{wire}");
     }
 }
+
+/// ★ 投递那一句进托管终端（真起托管进程，假子进程 `sh`，沙箱数据目录）：输入在一个真终端手里、后端一下没持有 ⇒
+/// 照送到、子进程读到那一句，持有者还是那个真终端；那个真终端敲了半句没回车 ⇒ 回 `waiting`（投递照排着），
+/// 伪终端一个字节没多：它回车之后子进程读到的只是它自己那半句。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_queued_line_reaches_a_hosted_terminal_held_elsewhere_but_waits_out_a_half_typed_line() {
+    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::wire::{write_frame, Frame, Want, WhoKind};
+    let (own, _data) = sandbox_own("term-say");
+    let script = "printf 'ready\\r\\n'; read x; printf 'got:%s\\r\\n' \"$x\"; read y; printf 'got2:%s:\\r\\n' \"$y\"; read z";
+    let (sock, task) = start(&own, spec("t-say", script)).await;
+    let mut t = hello(&sock, Want::Input).await;
+    read_until_out(&mut t, "ready").await;
+    let say = |words: &str| {
+        let s = sock.clone();
+        let input = Input::Text {
+            text: words.into(),
+            enter: true,
+        };
+        tokio::task::spawn_blocking(move || say_managed_at(&s, &input, &[]))
+    };
+    let sent = say("hi").await.expect("没崩");
+    assert_eq!(sent.result, SentResult::Delivered, "{sent:?}");
+    read_until_out(&mut t, "got:hi").await;
+    let s = sock.clone();
+    let rows = tokio::task::spawn_blocking(move || crate::host::managed::client::clients(&s))
+        .await
+        .expect("没崩")
+        .expect("答了");
+    assert!(
+        rows.iter().any(|r| r.holder && r.kind == WhoKind::Terminal),
+        "持有者还是那个真终端：{rows:?}"
+    );
+    write_frame(&mut t, &Frame::In(b"ab".to_vec()))
+        .await
+        .expect("送字");
+    read_until_out(&mut t, "ab").await;
+    let sent = say("zz").await.expect("没崩");
+    assert_eq!(
+        (sent.result, sent.why),
+        (SentResult::Refused, Some(Refused::Waiting)),
+        "半句在 ⇒ 等"
+    );
+    write_frame(&mut t, &Frame::In(b"\r".to_vec()))
+        .await
+        .expect("回车");
+    let seen = read_until_out(&mut t, "got2:ab:").await;
+    let text: String = seen
+        .iter()
+        .filter_map(|f| match f {
+            Frame::Out(b) => Some(String::from_utf8_lossy(b).into_owned()),
+            _ => None,
+        })
+        .collect();
+    assert!(!text.contains("zz"), "那一句一个字节没进：{text:?}");
+    write_frame(&mut t, &Frame::In(b"\r".to_vec()))
+        .await
+        .expect("收尾");
+    drop(t);
+    task.await.expect("任务没崩").expect("跑完");
+}
