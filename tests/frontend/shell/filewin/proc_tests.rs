@@ -29,6 +29,7 @@
 mod theme_testing;
 
 use super::*;
+use filewin_contract::{decode_request, encode_ready};
 
 /// 改环境变量那几条**必须串行**：`std::env` 是进程级的，而 `cargo test` 默认并行。
 ///

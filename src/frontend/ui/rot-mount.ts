@@ -258,7 +258,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       const st = view?.strategy;
       if (!st) return;
       const seg = "seg" in edit && edit.seg.at === undefined && edit.seg.seg !== undefined ? edit.seg : null;
-      const account = seg?.row === undefined ? null : (view?.board.rows[seg.row]?.account ?? null);
+      const account = seg?.row === undefined ? null : (view?.board.rows.find((r) => r.row === seg.row)?.account ?? null);
       const done = seg ? () => void delete state.drafts?.[draftKey(account, seg.key, seg.window)] : undefined;
       void send(
         copyText("rot.fail.settings"),

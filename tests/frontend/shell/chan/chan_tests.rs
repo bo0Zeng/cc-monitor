@@ -18,7 +18,6 @@
 //! - 🔴 **「credit 用完就不再取」那一格证的是「一趟往返之内没多取」**（栅栏见 `round_trip`），
 //!   证明不了「永远不会多取」：哪天抽流改成按计时器隔一阵才取，一趟往返之内看不见它。
 
-use super::client::Client;
 use super::host::{self, InboundBackends};
 use super::router::{self, Backends, Terms};
 use super::wire::{
@@ -26,6 +25,7 @@ use super::wire::{
     Budget, By, CallError, CancelToken, Comms, Cursor, Head, HopFault, HopId, Item, Kind, Offer,
     Op, Origin, OursFault, PeerFault, Reach, Sub, HOP_TAGS,
 };
+use comms_inward::chan::client::Client;
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -742,7 +742,7 @@ fn the_client_implements_the_05_signature() {
     fn is_comms<C: Comms>() {}
     fn is_sub<S: Sub>() {}
     is_comms::<Client>();
-    is_sub::<super::client::Subscription>();
+    is_sub::<comms_inward::chan::client::Subscription>();
 }
 
 /// 回环客户端拿到那台的 `Offer`（经真路由器）之后，本地撤单的结果说清

@@ -513,8 +513,9 @@ fn this_crate() -> Vec<(String, String)> {
         })
         .collect();
     assert!(
-        files.iter().any(|(f, _)| f == "history.rs") && files.iter().any(|(f, _)| f == "lib.rs"),
-        "扫描面里连 `history.rs` / `lib.rs` 都没有 —— 根目录取歪了，本条此刻无效"
+        files.iter().any(|(f, _)| f == "backend_control.rs")
+            && files.iter().any(|(f, _)| f == "lib.rs"),
+        "扫描面里连 `backend_control.rs` / `lib.rs` 都没有 —— 根目录取歪了，本条此刻无效"
     );
     files
 }

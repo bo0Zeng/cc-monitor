@@ -90,7 +90,7 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
             tokio::time::sleep(std::time::Duration::from_millis(LOCAL_WAIT_INTERVAL_MS)).await;
         }
     }
-    Err(crate::copy_table::copy_text(
+    Err(copy_core::copy_text(
         "rsDialHost.local.absent",
         &[(
             "dur",

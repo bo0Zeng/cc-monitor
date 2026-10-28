@@ -48,8 +48,8 @@
 //! **这一刀没碰** —— `src/frontend/ui/main.ts` 这里不改。要把原生窗口接到顶栏上，
 //! 得连那颗按钮一起改，那是下一刀的事（而且那一刀正好是「旧面板退役」那一刀）。
 
-use crate::copy_table::copy_text;
 use crate::detail::Said;
+use copy_core::copy_text;
 
 use super::proc::{open_in_new_process, OpenRequest, ProcFail, Unopened};
 

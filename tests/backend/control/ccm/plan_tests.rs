@@ -2840,3 +2840,85 @@ fn resuming_a_session_running_in_a_managed_terminal_rejoins_it() {
         other => panic!("该接回那个托管终端：{other:?}"),
     }
 }
+
+/// A3-3-34：托管进程里那一跳不经 `sh`：`--host-run` 那一串第二个 `--` 之后就是里面那一跳的 argv（同 tmux 那一形键进窗格的
+/// 那一串命令的词，不是一段 POSIX 载荷）；外层没有父 ⇒ 会话血缘变量在脱离起托管进程那一下摘掉（`unset`）。
+#[test]
+fn a_managed_container_runs_the_inner_hop_as_argv_without_a_shell() {
+    let p = plan_of_with(
+        &["--cwd", "/x/proj"],
+        &hosting_env(),
+        &no_library,
+        Some(&snapshot_of(&[])),
+    );
+    let Plan::Container(c) = &p else {
+        panic!("该是托管容器：{p:?}")
+    };
+    let ends: Vec<usize> = c
+        .host_run
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.as_str() == flag::END)
+        .map(|(i, _)| i)
+        .collect();
+    let child = &c.host_run[ends[1] + 1..];
+    assert_eq!(
+        child.first().map(String::as_str),
+        Some("/usr/local/bin/ccm"),
+        "里面那一跳就是自己（不经 sh）：{:?}",
+        c.host_run
+    );
+    assert!(
+        !child.iter().any(|a| a == "sh" || a == "-c"),
+        "{:?}",
+        c.host_run
+    );
+    assert!(
+        child.windows(2).any(|w| w == ["--cwd", "/x/proj"]),
+        "{child:?}"
+    );
+    assert_eq!(
+        c.self_check_argv.last().map(String::as_str),
+        Some(flag::CCM_PRINT),
+        "自检同一串、末尾多 `--ccm-print`：{:?}",
+        c.self_check_argv
+    );
+    assert_eq!(&c.self_check_argv[..c.self_check_argv.len() - 1], child);
+    let want: Vec<String> = crate::agents::self_sid_envs()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(c.unset, want, "没有父 ⇒ 摘掉会话血缘变量");
+    let parent = crate::agents::self_sid_envs()[0];
+    let with_parent = Env {
+        inherited_parent: Some((parent.to_string(), "p1".into())),
+        ..hosting_env()
+    };
+    let Plan::Container(c) = plan_of_with(
+        &["--cwd", "/x/proj"],
+        &with_parent,
+        &no_library,
+        Some(&snapshot_of(&[])),
+    ) else {
+        panic!("该是托管容器")
+    };
+    assert!(
+        !c.unset.iter().any(|k| k == parent),
+        "父那一个留着：{:?}",
+        c.unset
+    );
+}
+
+/// A3-3-34：每个平台都能托管（托管进程 · 托管口 · 瘦客户端在 Unix 与 Windows 上都做实了）⇒ 新终端里敲 `cc` 那一份环境能托管。
+#[test]
+fn every_platform_hosts_a_plain_cc_typed_in_a_new_terminal() {
+    assert!(Env::for_preview_in("/home/pi".into()).can_host);
+}
+
+/// A3-3-34：Windows 的目录用反斜杠分段 ⇒ 名字取最后一段（同 `/` 那一形），不把整条路径揉成名字。
+#[test]
+fn a_windows_directory_names_the_terminal_after_its_last_segment() {
+    assert_eq!(derive_tmux_name(r"C:\Users\pi\proj"), "proj-cc");
+    assert_eq!(derive_tmux_name(r"C:\Users\pi\proj\"), "proj-cc");
+    assert_eq!(derive_tmux_name(r"C:\"), "C-cc");
+}

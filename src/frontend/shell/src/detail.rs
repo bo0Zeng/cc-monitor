@@ -4,7 +4,7 @@
 //! - 壳自己那几条命令失败（[`Said`]）⇒ 时刻 · 本机 · 命令 · 原话。
 
 use crate::chan::wire as w;
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use copy_core::detail::{os_word, stamp, Detail, Label};
 use serde::Serialize;
 

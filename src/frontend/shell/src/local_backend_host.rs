@@ -23,9 +23,9 @@
 //! （完全不同的事）。一次补审就是因为只读了后者的定框，把这里的引用判成了「引错 charter」。
 //! ⇒ 代码里引 charter **一律带工作区名**，裸编号在几个月后没人分得清指哪一条。
 
-use crate::copy_table::copy_text;
 use crate::detail::Said;
 use crate::local_backend::{self, Resolved, SuperviseHandle};
+use copy_core::copy_text;
 
 /// F05a：本机后端监护句柄。存起来是为了退出前按策略 `stop()`（`C8`）。
 ///
@@ -684,7 +684,7 @@ fn note_detached_death(
     // 脱离那条路没有监护：它走了就没人再起它 ⇒ 本机断开，等用户点［重新连接］。
     after_death(
         crate::backend_policy::record_death(
-            crate::inbound_client::LOCAL_ORIGIN,
+            crate::backend_policy::local_ledger(),
             &ev,
             &mut crate::backend_policy::MonitorLog,
         ),
@@ -1334,7 +1334,7 @@ fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseE
         };
         after_death(
             crate::backend_policy::record_death(
-                crate::inbound_client::LOCAL_ORIGIN,
+                crate::backend_policy::local_ledger(),
                 &ev,
                 &mut crate::backend_policy::MonitorLog,
             ),
@@ -1359,7 +1359,7 @@ fn note_never_started(out: StartOutcome) -> StartOutcome {
             start_failure: Some((reason.to_string(), looked_at.to_vec())),
         };
         shout_if_the_ledger_refused(crate::backend_policy::record_death(
-            crate::inbound_client::LOCAL_ORIGIN,
+            crate::backend_policy::local_ledger(),
             &ev,
             &mut crate::backend_policy::MonitorLog,
         ));

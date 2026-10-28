@@ -17,6 +17,10 @@
       "resume": {
         "can": "yes"
       },
+      "say": {
+        "can": "yes",
+        "hint": "会话已结束 · 发一句会先恢复它"
+      },
       "stop": {
         "can": "no",
         "why": "会话已结束"
@@ -55,6 +59,10 @@
         "why": "会话记录已不在"
       },
       "resume": {
+        "can": "no",
+        "why": "记录已不在 · 不可恢复"
+      },
+      "say": {
         "can": "no",
         "why": "记录已不在 · 不可恢复"
       },
@@ -98,6 +106,10 @@
         "can": "no",
         "why": "运行中"
       },
+      "say": {
+        "can": "yes",
+        "hint": "发消息…"
+      },
       "stop": {
         "can": "no",
         "why": "后台任务运行中"
@@ -138,6 +150,10 @@
       "resume": {
         "can": "no",
         "why": "运行中"
+      },
+      "say": {
+        "can": "yes",
+        "hint": "发消息…"
       },
       "stop": {
         "can": "no",
@@ -182,6 +198,10 @@
         "can": "no",
         "why": "运行中"
       },
+      "say": {
+        "can": "yes",
+        "hint": "发消息…"
+      },
       "stop": {
         "can": "no",
         "why": "需手动"
@@ -222,6 +242,10 @@
       "resume": {
         "can": "no",
         "why": "运行中"
+      },
+      "say": {
+        "can": "yes",
+        "hint": "发消息…"
       },
       "stop": {
         "can": "no",
@@ -264,6 +288,10 @@
         "can": "no",
         "why": "运行中"
       },
+      "say": {
+        "can": "no",
+        "why": "非 cc-monitor 起的 · 画面 / 送字不可用"
+      },
       "stop": {
         "can": "yes"
       },
@@ -304,6 +332,10 @@
         "can": "no",
         "why": "运行中"
       },
+      "say": {
+        "can": "yes",
+        "hint": "发消息…"
+      },
       "stop": {
         "can": "no",
         "why": "读记录中"
@@ -342,6 +374,10 @@
       "resume": {
         "can": "no",
         "why": "运行中"
+      },
+      "say": {
+        "can": "no",
+        "why": "Claude 已退出 · tmux 会话在"
       },
       "stop": {
         "can": "no",
@@ -385,6 +421,10 @@
         "can": "no",
         "why": "暂不恢复"
       },
+      "say": {
+        "can": "no",
+        "why": "状态不明"
+      },
       "stop": {
         "can": "no",
         "why": "状态不明"
@@ -412,38 +452,42 @@
       },
       "model": {
         "can": "no",
-        "why": "状态不明 · 机器离线"
+        "why": "gpu-01 离线"
       },
       "permission": {
         "can": "no",
-        "why": "状态不明 · 机器离线"
+        "why": "gpu-01 离线"
       },
       "reattach": {
         "can": "no",
-        "why": "状态不明 · 机器离线"
+        "why": "gpu-01 离线"
       },
       "resume": {
         "can": "no",
         "why": "暂不恢复"
       },
+      "say": {
+        "can": "yes",
+        "hint": "发出的这句连上后送"
+      },
       "stop": {
         "can": "no",
-        "why": "状态不明 · 机器离线"
+        "why": "gpu-01 离线"
       },
       "term": {
         "can": "no",
-        "why": "状态不明 · 机器离线"
+        "why": "gpu-01 离线"
       }
     },
     "dot": "unknown",
     "life": {
       "is": "unclear"
     },
-    "line": "状态不明 · 机器离线",
+    "line": "gpu-01 离线",
     "name": "状态不明",
     "order": 3,
     "settled": false,
-    "tip": "状态不明 · 机器离线",
+    "tip": "gpu-01 离线",
     "tone": "plain"
   }
 }

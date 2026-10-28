@@ -106,7 +106,7 @@ pub enum StderrSink {
     Null,
     /// **不接管**：跟着宿主进程的 stderr 走同一个地方。
     Inherit,
-    /// **接出来交给调用方**（`Stdio::piped()`，随后由 [`ManagedChild::wait_with_output`] 读）。
+    /// **接出来交给调用方**（`Stdio::piped()`，调用方经 `DerefMut` 拿 `stderr` 那根管子自己读）。
     /// 这是 `Command::output()` 那一族的表达方式 —— 错误不是被丢了，是**成了返回值**。
     Captured,
 }
@@ -147,18 +147,10 @@ impl std::ops::DerefMut for ManagedChild {
 }
 
 impl ManagedChild {
-    /// `Command::output()` 的对侧：等它退出、把两根管子读干净。
+    /// 等它退出。
     ///
     /// ⚠ **Job 句柄活到 `wait` 之后才丢** —— 反过来写（先 `into_inner` 再等）
     /// 会在 Windows 上把还没跑完的它当场收掉。
-    pub fn wait_with_output(self) -> std::io::Result<std::process::Output> {
-        let ManagedChild { _lifetime, child } = self;
-        let out = child.wait_with_output();
-        drop(_lifetime);
-        out
-    }
-
-    /// 等它退出。理由同上：句柄活到等完。
     pub fn wait_for_status(mut self) -> std::io::Result<std::process::ExitStatus> {
         let st = self.child.wait();
         drop(self);

@@ -298,7 +298,7 @@ impl LaunchFail {
             LaunchFail::Spawn(e) => {
                 tracing::warn!("launch: spawn terminal failed: {e}");
                 Said::with_raw(
-                    crate::copy_table::copy_text(
+                    copy_core::copy_text(
                         "rsLaunch.local.spawnFailed",
                         &[("why", &copy_core::spawn_reason(e.kind()))],
                     ),
@@ -513,7 +513,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     )
     .map_err(|e| {
         Said::with_raw(
-            crate::copy_table::copy_text(
+            copy_core::copy_text(
                 "rsLaunch.local.powershellFailed",
                 &[("why", &copy_core::spawn_reason(e.kind()))],
             ),

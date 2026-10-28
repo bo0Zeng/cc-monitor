@@ -1580,10 +1580,7 @@ fn dead_name_corpus() -> Vec<(String, String)> {
     const ME: &str = "tests/common/guard-core/rules/structural_scan.rs";
     let mut out: Vec<(String, String)> = Vec::new();
     for f in repo().with_rules().under(&["src", "tests"], &[]) {
-        if f.rel.starts_with("tests/evidence/")
-            || f.rel.contains("/vendor/")
-            || f.rel == "tests/__fixtures__/retired-names.tsv"
-        {
+        if f.rel.starts_with("tests/evidence/") || f.rel == "tests/__fixtures__/retired-names.tsv" {
             continue;
         }
         let text = if f.rel == ME {
@@ -2056,7 +2053,6 @@ fn src_holds_no_test_only_file() {
     let found: Vec<String> = repo()
         .under(&["src"], &["rs"])
         .into_iter()
-        .filter(|f| !f.rel.starts_with("src/vendor/"))
         .flat_map(|f| {
             test_only_files_in(f.text())
                 .into_iter()

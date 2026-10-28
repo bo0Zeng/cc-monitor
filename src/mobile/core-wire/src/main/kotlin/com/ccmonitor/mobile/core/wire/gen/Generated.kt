@@ -3152,6 +3152,51 @@ enum class CanResume(val wire: String) {
     }
 }
 
+sealed interface CanSay {
+    /** 判别格（`can`）那个词。 */
+    val can: String
+
+    @Suppress("UNCHECKED_CAST")
+    data class Yes(
+        val hint: String,
+    ) : CanSay, Ordered {
+        override val can: String get() = "yes"
+        override var wireOrder: IntArray? = null
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class No(
+        val why: String,
+    ) : CanSay, Ordered {
+        override val can: String get() = "no"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<CanSay> =
+            tagged<CanSay>(
+                "can",
+                listOf(
+                Variant("yes", CanSay.Yes::class.java, obj(
+                        listOf(
+                        Field("can", { tag("yes") }, optional = false, nullable = false),
+                        Field("hint", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> CanSay.Yes(a[1] as String) },
+                        { v -> arrayOf("yes", v.hint) },
+                    )),
+                Variant("no", CanSay.No::class.java, obj(
+                        listOf(
+                        Field("can", { tag("no") }, optional = false, nullable = false),
+                        Field("why", { Str }, optional = false, nullable = false),
+                        ),
+                        { a -> CanSay.No(a[1] as String) },
+                        { v -> arrayOf("no", v.why) },
+                    )),
+                ),
+            )
+    }
+}
+
 sealed interface CanTerm {
     /** 判别格（`can`）那个词。 */
     val can: String
@@ -19302,6 +19347,7 @@ data class RotRefused(
 @Suppress("UNCHECKED_CAST")
 data class RotRow(
     val account: String,
+    val row: Long,
     val line: String,
     val hover: String,
     val cells: List<RotCell>,
@@ -19314,14 +19360,15 @@ data class RotRow(
         val ADAPTER: JsonAdapter<RotRow> = obj(
             listOf(
             Field("account", { Str }, optional = false, nullable = false),
+            Field("row", { Lng }, optional = false, nullable = false),
             Field("line", { Str }, optional = false, nullable = false),
             Field("hover", { Str }, optional = false, nullable = false),
             Field("cells", { arr(RotCell.ADAPTER) }, optional = false, nullable = false),
             Field("rules", { arr(Str) }, optional = false, nullable = false),
             Field("marks", { arr(RotMark.ADAPTER) }, optional = false, nullable = false),
             ),
-            { a -> RotRow(a[0] as String, a[1] as String, a[2] as String, a[3] as List<RotCell>, a[4] as List<String>, a[5] as List<RotMark>) },
-            { v -> arrayOf(v.account, v.line, v.hover, v.cells, v.rules, v.marks) },
+            { a -> RotRow(a[0] as String, a[1] as Long, a[2] as String, a[3] as String, a[4] as List<RotCell>, a[5] as List<String>, a[6] as List<RotMark>) },
+            { v -> arrayOf(v.account, v.row, v.line, v.hover, v.cells, v.rules, v.marks) },
         )
     }
 }
@@ -21176,6 +21223,7 @@ data class SessionCan(
     val model: Allow,
     val permission: Allow,
     val stop: Allow,
+    val say: CanSay,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21189,9 +21237,10 @@ data class SessionCan(
             Field("model", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("permission", { Allow.ADAPTER }, optional = false, nullable = false),
             Field("stop", { Allow.ADAPTER }, optional = false, nullable = false),
+            Field("say", { CanSay.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> SessionCan(a[0] as CanClose, a[1] as Allow, a[2] as CanTerm, a[3] as Allow, a[4] as Allow, a[5] as Allow, a[6] as Allow) },
-            { v -> arrayOf(v.close, v.resume, v.term, v.reattach, v.model, v.permission, v.stop) },
+            { a -> SessionCan(a[0] as CanClose, a[1] as Allow, a[2] as CanTerm, a[3] as Allow, a[4] as Allow, a[5] as Allow, a[6] as Allow, a[7] as CanSay) },
+            { v -> arrayOf(v.close, v.resume, v.term, v.reattach, v.model, v.permission, v.stop, v.say) },
         )
     }
 }
