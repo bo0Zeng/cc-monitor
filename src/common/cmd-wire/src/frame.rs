@@ -973,13 +973,14 @@ pub enum CanClose {
     No { why: Words },
 }
 
-/// 还有没有终端可去：`yes` 带它在不在 tmux 里（终端窗口关了也能「在终端里打开」）。
+/// 还有没有终端可去：`yes` 带它住在哪种宿主里（`tmux` · `managed`；不在任何宿主里 ⇒ `direct`）。
+/// 在 tmux 里的，终端窗口关了也能「在终端里打开」。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(tag = "can", rename_all = "snake_case")]
 pub enum CanTerm {
-    Yes { tmux: bool },
+    Yes { host: crate::session::Run },
     No { why: Words },
 }
 

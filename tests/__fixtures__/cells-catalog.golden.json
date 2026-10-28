@@ -814,8 +814,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "children[].face.can.term.tmux",
-          "type": "bool"
+          "path": "children[].face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -1384,8 +1384,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "startedBy.face.can.term.tmux",
-          "type": "bool"
+          "path": "startedBy.face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -1671,8 +1671,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.tmux",
-          "type": "bool"
+          "path": "face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -2208,8 +2208,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.tmux",
-          "type": "bool"
+          "path": "face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": true,
@@ -2417,8 +2417,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.tmux",
-          "type": "bool"
+          "path": "face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": true,
@@ -2602,8 +2602,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "face.can.term.tmux",
-          "type": "bool"
+          "path": "face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -3566,8 +3566,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "up.*.face.can.term.tmux",
-          "type": "bool"
+          "path": "up.*.face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -3913,8 +3913,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "groups[].members[].face.can.term.tmux",
-          "type": "bool"
+          "path": "groups[].members[].face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -4159,8 +4159,8 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "pinned[].face.can.term.tmux",
-          "type": "bool"
+          "path": "pinned[].face.can.term.host",
+          "type": "enum"
         },
         {
           "frozen": false,

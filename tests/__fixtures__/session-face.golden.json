@@ -104,7 +104,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": false
+        "host": "direct"
       }
     },
     "dot": "background",
@@ -145,7 +145,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": false
+        "host": "direct"
       }
     },
     "dot": "idle",
@@ -188,7 +188,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": true
+        "host": "tmux"
       }
     },
     "dot": "needs-you",
@@ -229,7 +229,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": false
+        "host": "direct"
       }
     },
     "dot": "idle",
@@ -269,7 +269,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": false
+        "host": "direct"
       }
     },
     "dot": "running",
@@ -310,7 +310,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": true
+        "host": "tmux"
       }
     },
     "dot": "idle",
@@ -349,7 +349,7 @@
       },
       "term": {
         "can": "yes",
-        "tmux": true
+        "host": "tmux"
       }
     },
     "dot": "exited",

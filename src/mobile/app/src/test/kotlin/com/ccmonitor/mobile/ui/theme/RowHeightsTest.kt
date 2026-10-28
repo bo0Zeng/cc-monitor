@@ -28,7 +28,7 @@ class RowHeightsTest {
             "settings/AccountsScreen.kt" to mapOf("AccountLine" to "rowDouble"),
             "session/SessionTabsSheet.kt" to mapOf("SessionTabRowItem" to "rowSingle"),
             "session/CommandPalette.kt" to mapOf("PaletteRow" to "rowSingle"),
-            "session/TmuxManager.kt" to mapOf("TmuxSessionRow" to "rowDouble"),
+            "session/TerminalManager.kt" to mapOf("TerminalRow" to "rowDouble"),
             "session/keys/KeysEditorScreen.kt" to mapOf("KeyRow" to "rowDouble"),
             "session/keys/KeySheets.kt" to mapOf("SheetRow" to "rowSingle"),
         )
