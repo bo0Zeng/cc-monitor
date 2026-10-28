@@ -1401,14 +1401,12 @@ pub(crate) struct Translated {
 /// 起点字节 ＋ 惰性解析的 `Value`。头一个要整行的那一问解一次，之后的都吃这一份 —— 一行只从文本解一次（瓶颈 #8）。
 /// 只要几格的那几问（[`Line::read`]）在没人解过整行时直接从文本解那几格（预读那一路只要链事实，不必整行）。
 ///
-/// 按那一家建（[`Line::of`]）：那一家不读的行（[`RecordFace::skim`]）不整行建树，[`Line::value`] 给的是它只留下的身份那几格；
-/// [`Line::read`] 照旧从原文解。
+/// 按那一家建（[`Line::of`]）：那一家不读的行（[`RecordFace::skim`]）不整行建树，几问（[`Line::value`] · [`Line::read`]）
+/// 吃的都是它只留下的那几格。
 pub(crate) struct Line<'a> {
     text: &'a str,
     start: u64,
     value: std::cell::OnceCell<Option<serde_json::Value>>,
-    /// `value` 是那一家只留下的那几格，不是整行。
-    skimmed: bool,
 }
 
 impl<'a> Line<'a> {
@@ -1418,7 +1416,6 @@ impl<'a> Line<'a> {
             text: raw.trim_start_matches('\u{feff}').trim(),
             start,
             value: std::cell::OnceCell::new(),
-            skimmed: false,
         }
     }
 
@@ -1430,7 +1427,6 @@ impl<'a> Line<'a> {
             .and_then(|skim| skim(&line))
         {
             line.value = std::cell::OnceCell::from(Some(v));
-            line.skimmed = true;
         }
         line
     }
@@ -1475,10 +1471,10 @@ impl<'a> Line<'a> {
         self.value.into_inner().flatten()
     }
 
-    /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过（或手上只是那一家留下的几格）就从文本直接解那几格。
+    /// 只要几格：整行解过（或那一家只留下了几格）就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。
     pub(crate) fn read<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
         match self.value.get() {
-            Some(Some(v)) if !self.skimmed => T::deserialize(v),
+            Some(Some(v)) => T::deserialize(v),
             _ => {
                 count_parse();
                 serde_json::from_str(self.text)

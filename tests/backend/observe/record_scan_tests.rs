@@ -734,6 +734,7 @@ fn r11_lines_of_types_the_adapter_does_not_read_build_no_tree() {
     let (text, known, unread) = with_unread(3);
     let bytes = text.as_bytes();
     crate::agents::TREE_BUILDS.with(|c| c.set(0));
+    crate::agents::LINE_PARSES.with(|c| c.set(0));
     let map = ScanMap::scan_with(
         bytes,
         bytes.len() as u64,
@@ -743,6 +744,12 @@ fn r11_lines_of_types_the_adapter_does_not_read_build_no_tree() {
     .unwrap();
     let built = crate::agents::TREE_BUILDS.with(std::cell::Cell::get);
     assert_eq!(built as usize, known, "建树的该只有认得的那几类行");
+    let parsed = crate::agents::LINE_PARSES.with(std::cell::Cell::get);
+    assert_eq!(
+        parsed as usize,
+        known + unread,
+        "每行只从原文解一次（不读的那几行只解身份那几格，之后几问都吃那一份）"
+    );
     assert_eq!(map.index.len(), known + unread, "每行各占一行骨架索引");
     let bare: Vec<&super::super::recognize::index_row::IndexRow> = map
         .index
