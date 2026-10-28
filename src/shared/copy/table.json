@@ -13161,6 +13161,12 @@
       "zh": "留空 = 原标题",
       "args": []
     },
+    "history.rename.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "改为",
+      "args": []
+    },
     "history.list.noMatch": {
       "kind": "body",
       "role": "说明",
@@ -25219,10 +25225,10 @@
       "zh": "与上一个成组",
       "args": []
     },
-    "keybindingActions.tabBar.renameGroup": {
+    "keybindingActions.tabBar.rename": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改分组名",
+      "zh": "改名",
       "args": []
     },
     "keybindingActions.tabBar.focusCycle": {

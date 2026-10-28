@@ -6027,16 +6027,22 @@ describe("栏里的键盘 · 右键「分组 ▸」", () => {
     expect(document.activeElement?.tagName, "名字框打开").toBe("INPUT");
   });
 
-  it("F2：组员或组头上 ⇒ 改这个组的名字；散的上 ⇒ 不做事", () => {
-    rootOf("b").focus();
-    tm.renameFocusedGroup();
+  it("F2 改焦点那一行：组头上 ⇒ 组名；组员 · 散的标签页上 ⇒ 这个标签页的名（不是它所在组的名）", () => {
+    headEl().focus();
+    tm.renameFocused();
     expect(document.activeElement?.tagName).toBe("INPUT");
     expect((document.activeElement as HTMLInputElement).value).toBe("订单");
     press("Escape");
     expect(focused(), "Esc 收框 ⇒ 焦点回组头").toBe("H:g");
-    rootOf("y").focus();
-    tm.renameFocusedGroup();
-    expect(document.activeElement).toBe(rootOf("y"));
+    for (const sid of ["b", "y"]) {
+      rootOf(sid).focus();
+      tm.renameFocused();
+      const box = document.activeElement as HTMLInputElement;
+      expect(box.tagName, `${sid} 上开了框`).toBe("INPUT");
+      expect(box.value, `${sid} 上改的是标签页名`).toBe(home(tm).store.tabs.get(sid)!.label ?? "");
+      expect(box.placeholder).toBe(copyText("history.rename.prompt"));
+      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    }
   });
 
   it("Shift+F10 / 菜单键：开焦点那一行的菜单（组头 ⇒ 组的菜单）；焦点不在栏里 ⇒ 照旧当前标签页", () => {

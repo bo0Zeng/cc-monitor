@@ -197,7 +197,7 @@ export class TabMenu {
 
     // ② 改标题 · 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
     items.push({ label: "", divider: true });
-    if (t) items.push({ id: "rename", icon: "text", label: copyText("history.menu.rename"), onClick: () => renameTab(t) });
+    if (t) items.push({ id: "rename", icon: "text", label: copyText("history.menu.rename"), detail: keyOf("tabBar.rename"), onClick: () => renameTab(t) });
     const hidden = t?.hidden ?? null;
     if (t && hidden !== null) {
       items.push({

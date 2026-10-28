@@ -36,8 +36,9 @@ export function renameTab(tab: Tab): void {
 export async function askRename(who: Renamed, initial: string): Promise<void> {
   const next = await askText({
     title: copyText("history.rename.title"),
-    label: copyText("history.rename.prompt"),
+    label: copyText("history.rename.label"),
     action: copyText("history.rename.action"),
+    note: copyText("history.rename.prompt"),
     initial,
   });
   if (next !== null) await commitRename(who, next);
@@ -74,7 +75,8 @@ export function editOver(over: HTMLElement, initial: string, done: (next: string
   input.type = "text";
   input.className = `${rs.input} ${rs.floating}`;
   input.value = initial;
-  input.setAttribute("aria-label", copyText("history.rename.prompt"));
+  input.placeholder = copyText("history.rename.prompt");
+  input.setAttribute("aria-label", copyText("history.rename.label"));
   input.style.left = `${at.left}px`;
   input.style.top = `${at.top}px`;
   input.style.width = `${Math.max(at.width, 120)}px`;

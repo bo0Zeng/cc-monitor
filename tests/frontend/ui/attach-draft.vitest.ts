@@ -75,7 +75,7 @@ describe("桌面附件草稿", () => {
   });
 
   it("那台没说原因 ⇒ 失败那一句是「原因未知」，不留空", async () => {
-    const { draft } = rig({ check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map(() => ({ ok: false, class: "other", class_text: "文件" }))) });
+    const { draft } = rig({ check: vi.fn(async (_sid: string, items: AttachItem[]): Promise<AttachVerdict[]> => items.map(() => ({ ok: false, class: "other", class_text: "kind-other" }))) });
     draft.add([{ name: "x.bin", blob: blob(1) }]);
     await flush();
     expect(draft.chips()[0].at).toMatchObject({ at: "failed", said: copyText("attach.chip.unknown") });

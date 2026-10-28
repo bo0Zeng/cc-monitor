@@ -115,10 +115,14 @@ beforeEach(() => {
 describe("标签页改名：写那台注解里的 customTitle", () => {
   it("★ 双击标题 ⇒ 输入框初值是此刻的名；Enter ⇒ 交会话那台 `customTitle`，给可撤销的提示，撤销照 prev_title 交回", async () => {
     const r = bar([tab("a"), tab("b", { origin: "box-1" as Tab["origin"] })]);
+    // 名字那一格在标题格里靠右（前面是目录名）：框只盖名字那一格。
+    titleOf(r, "b").getBoundingClientRect = () => ({ left: 48, top: 6, width: 90, height: 18, right: 138, bottom: 24, x: 48, y: 6, toJSON: () => ({}) });
     titleOf(r, "b").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     const input = editor();
     expect(input, "双击标题该浮出输入框").not.toBeNull();
     expect(input!.value).toBe("名-b");
+    expect(input!.style.left, "框的左缘对齐名字那一格，不盖前面的目录名").toBe("48px");
+    expect(input!.placeholder, "留空回到原标题，摆在占位里").toBe(copyText("history.rename.prompt"));
     vi.mocked(annotate).mockResolvedValueOnce({ entry: {}, prev: null, prev_title: "旧名" } as never);
     input!.value = "修登录";
     key(input!, "Enter");
@@ -185,6 +189,7 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     new TabMenu(host, {} as TabSessionActions).open(new MouseEvent("contextmenu"), "a");
     const item = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((e) => e.textContent?.includes(copyText("history.menu.rename")));
     expect(item, "菜单里有「改标题」").toBeDefined();
+    expect(item!.textContent, "同菜单别的项一样写键").toContain("F2");
     item!.click();
     expect(editor()?.value).toBe("名-a");
   });
@@ -193,7 +198,7 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     vi.mocked(askText).mockResolvedValueOnce("修登录");
     renameTab(tab("z"));
     await settle();
-    expect(askText).toHaveBeenCalledWith(expect.objectContaining({ title: copyText("history.rename.title"), initial: "名-z" }));
+    expect(askText).toHaveBeenCalledWith(expect.objectContaining({ title: copyText("history.rename.title"), initial: "名-z", note: copyText("history.rename.prompt") }));
     expect(annotate).toHaveBeenCalledWith(LOCAL_ORIGIN, "z", { customTitle: "修登录" });
   });
 });
