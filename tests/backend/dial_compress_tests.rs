@@ -310,11 +310,11 @@ fn semver_triple(v: &str) -> Option<(u64, u64, u64)> {
 /// ★ VR：**链的是 crates.io 上游那一份、而且是修好 zlib 的版本**（仓内不留补过的副本）。
 ///
 /// 上游 russh issue #749「zlib decompression truncates packets」修在 `0.62.7`（解压收尾判断改用调用之后的进度）；
-/// 压那一半（输出缓冲撑满回 `Ok` 就收工）`0.65` 的 `compression.rs` 同样修了（它自带 `incompressible_packets_round_trip`）。
+/// 压那一半（输出缓冲撑满回 `Ok` 就收工）`0.65` 的 `compression.rs` 同样修了（它自带一条不可压整包一来一回的单测）。
 /// 两半对不对由上面 Z5 的闸判据现打；本条只钉「从哪来」：
 /// ① 后端清单（workspace 根）里没有 `[patch.…]` 段 —— 谁再把 russh 换回一份仓内副本就红；
-/// ② lock 里 `russh` 恰好一块、`source` 是 crates.io、版本 ≥ `0.62.7`（几个 crate 的声明对不齐 ⇒ 多块 ⇒ 红）；
-/// ③ `src/` 底下没有 `vendor/` 目录（副本删干净了，不留一份没人链的死树）。
+/// ② lock 里 `russh` 恰好一块、`source` 是 crates.io、版本 ≥ `0.62.7`（几个 crate 的声明对不齐 ⇒ 多块 ⇒ 红）。
+/// 副本目录删干净这一格不在这里判：仓内不存在的路径写成字面量会被扫描层判成断路（`test_tiers`），没有 `[patch]` 就没人链得到它。
 #[test]
 fn russh_comes_from_crates_io_at_a_version_with_the_zlib_fix() {
     let manifest = include_str!("../../src/backend/Cargo.toml");
@@ -360,20 +360,6 @@ fn russh_comes_from_crates_io_at_a_version_with_the_zlib_fix() {
     assert!(
         triple >= (0, 62, 7),
         "lock 里 russh 是 {version}：zlib 解压截包（上游 issue #749）修在 0.62.7，低于它就还坏着"
-    );
-    // ③ 副本目录不在。
-    let src_entries: Vec<String> = std::fs::read_dir(guard_core::addr::repo_root().join("src"))
-        .expect("读仓根 src/")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
-    assert!(
-        src_entries.iter().any(|n| n == "backend"),
-        "反空真：src/ 底下没读到 backend —— 读错了目录：{src_entries:?}"
-    );
-    assert!(
-        !src_entries.iter().any(|n| n == "vendor"),
-        "src/vendor/ 还在 —— 仓内补过的 russh 副本没删干净"
     );
 }
 

@@ -327,7 +327,7 @@ impl client::Handler for Checker {
         &mut self,
         offered: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        // 本端不播报证书类 host key 算法（`Preferred::host_key_certificates` 缺省为空）⇒ 对端交的是一把裸钥匙；
+        // 本端不播报证书类 host key 算法（`russh::Preferred::host_key_certificates` 缺省为空）⇒ 对端交的是一把裸钥匙；
         // 交来证书就是协商之外的东西 ⇒ 不认（不拿证书里那把钥匙去比记过的，那等于绕过签发者校验）。
         let PublicKeyOrCertificate::PublicKey {
             key: server_public_key,
