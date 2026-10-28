@@ -10270,7 +10270,7 @@
     "beCcm.relay.userBaseUrl": {
       "kind": "body",
       "role": "命令行",
-      "zh": "cc-monitor: 此会话用自设端点（ANTHROPIC_BASE_URL） · 不走中转 · 无实时显示",
+      "zh": "cc-monitor: 此会话上游是自设端点（ANTHROPIC_BASE_URL） · 经中转直通 · 额度与换号不适用",
       "args": []
     },
     "beCcm.relay.noKey": {
