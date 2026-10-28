@@ -832,10 +832,9 @@ def plate_of(name):
     return next((n for n in ui.nodes() if (n.get("content-desc") or "").startswith(head)), None)
 
 
-def lane_head(text):
-    """时间轴里号名那一列的 [text]（同名的号牌在上面，取最靠下、靠左的那一个）。"""
-    ns = [n for n in ui.nodes() if n.get("text") == text and ui.center(n)[0] < 300]
-    return max(ns, key=lambda n: ui.center(n)[1], default=None)
+def order_row(text):
+    """会话轮换屏顺序里号名是 [text] 的那一行（号名那一格；会话那一屏上只有顺序画号名）。"""
+    return next((n for n in ui.nodes() if n.get("text") == text), None)
 
 
 ROOT = os.path.join(here, "..", "..")
@@ -1879,22 +1878,23 @@ def report():
             raise Step.Fail("选了 smoke-b，那台记的那条会话没换过去")
         if not wait("smoke-b", 10):
             raise Step.Fail("换了策略，屏上没跟着换")
-        to_bottom()
         time.sleep(1)
-        head = lane_head("team")
-        top = next((n for n in ui.nodes() if n.get("content-desc") == t("rot.h.sim")), None)
-        if head is None or top is None:
-            raise Step.Fail("模拟里找不到 team 那一行或最上那条")
-        (x1, y1), (x2, y2) = ui.center(head), ui.center(top)
+        # 顺序里长按第 3 行拖到第 2 行上：那台记成拖出来的顺序，小标题出「手动排过」。
+        view = (frames("rotation-view", {"target": {"sid": sid}}).get("data") or {})
+        line = [x.get("account") for x in view.get("lineup") or []]
+        rows = [order_row(a) for a in line[1:3]]
+        if len(line) < 3 or None in rows:
+            raise Step.Fail(f"顺序里找不到第 2 · 3 行：{line}")
+        (x1, y1), (x2, y2) = ui.center(rows[1]), ui.center(rows[0])
         adb("shell", "input", "draganddrop", str(x1), str(y1), str(x2), str(y2), "1500")
         end = ui.within(20)
-        while time.time() < end and "team" not in (((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("decision") or {}).get("temp") or []):
+        while time.time() < end and not (frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("manual"):
             time.sleep(1)
         if time.time() >= end:
-            raise Step.Fail("拖了 team 到最上那条，那台没记成临时条目")
-        if not wait(t("rot.sim.manual", n=1), 10):
-            raise Step.Fail("排了临时条目，模拟的小标题没出「手动 1 段」")
-        shot("12b-临时条目")
+            raise Step.Fail(f"拖了 {line[2]} 到第 2 格，那台没记成拖出来的顺序")
+        if not wait(t("rot.order.manual"), 10):
+            raise Step.Fail("拖过之后，顺序的小标题没出「手动排过」")
+        shot("12b-手动排过")
         # 另一个进口：设置 → 机器与账号 → 轮换（这台新会话用的那份），点得到。
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)

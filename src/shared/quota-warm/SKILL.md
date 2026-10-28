@@ -93,5 +93,5 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 
 - `--quota-read`：这台额度账（每个号的状态 · `5h` / `7d` 用量与重置时刻 · 登录 · 从没出过数的号）；每号带写好的几行 `rows` 与开窗那一判 `warm`。给人看加 `--text`（所有命令通用：回包里写好的格拼成字）；回包里的「几点」按这台的钟写（看的人在别台 ⇒ `--tz <IANA 名>`）。
 - 轮换（策略文件 · 会话用哪份 · 拖出来的顺序 · 推演）：另一份 skill `src/shared/rotation/SKILL.md` 讲全；这里只列最常用的两条。
-- `--rotation-view {target: {sid}}`：一个会话此刻的轮换（这一判 `decision`：用哪个号 · 停发到几点；推演 `timeline`：将来每次换号的时刻）。
+- `--rotation-view {target: {sid}}`：一个会话此刻的轮换（这一判 `decision`：用哪个号 · 停发到几点；顺序 `lineup`：一号一行，第二格那一行写下一个、推得出就带「约 HH:MM」）。
 - `--rotation-use-now {sid, account}`：现在就换到这个号（只拿事实拦：被拒 · 没登录 · 没 key · 用满）。
