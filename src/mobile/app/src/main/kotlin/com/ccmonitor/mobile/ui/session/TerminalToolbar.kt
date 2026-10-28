@@ -31,12 +31,12 @@ import com.ccmonitor.mobile.ui.session.keys.KeysSheet
 import com.ccmonitor.mobile.ui.session.keys.SheetRow
 
 /**
- * 终端屏的工具条：App 自带的固定一行（标签页 · 命令 · tmux 会话 · ⋯），不是按键数据，键条怎么改都碰不到它。
- * tmux 会话在那台没有 tmux 时灰掉。⋯ 拉起底部抽屉：「切换组 ›」「编辑按键」。
+ * 终端屏的工具条：App 自带的固定一行（标签页 · 命令 · 终端名单 · ⋯），不是按键数据，键条怎么改都碰不到它。
+ * 终端名单在那台后端没连上时灰掉（两种宿主都列，不看有没有 tmux）。⋯ 拉起底部抽屉：「切换组 ›」「编辑按键」。
  */
 @Composable
 fun TerminalToolbar(
-    supportsTmux: Boolean,
+    terminalsReachable: Boolean,
     onShowTabs: () -> Unit,
     onCommandPalette: () -> Unit,
     onTmuxSessions: () -> Unit,
@@ -54,7 +54,7 @@ fun TerminalToolbar(
     ) {
         ToolChip(Ph.Tabs, copyText("mobKeys.action.tabs"), onShowTabs)
         ToolChip(Ph.Command, copyText("mobDefaultButtons.label.command"), onCommandPalette)
-        ToolChip(Ph.TerminalWindow, copyText("mobDefaultButtons.label.tmux"), onTmuxSessions, enabled = supportsTmux)
+        ToolChip(Ph.TerminalWindow, copyText("mobDefaultButtons.label.tmux"), onTmuxSessions, enabled = terminalsReachable)
         Spacer(Modifier.weight(1f))
         PhIconButton(Ph.DotsThree, copyText("mobKeys.tool.more"), onClick = onMore, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

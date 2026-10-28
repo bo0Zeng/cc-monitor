@@ -412,7 +412,7 @@ private fun ConnectedTerminal(
     onCaptured: (String) -> Unit,
     onShowTabs: () -> Unit,
 ) {
-    // tmux 会话 · 切模型 · 抓屏要那台有 tmux，推公钥要那台后端连着：都照那台说的（[Reach]）。
+    // 终端名单 · 切模型 · 抓屏 · 推公钥要那台后端连着（名单两种宿主都列）；新建那一排要那台有 tmux：都照那台说的（[Reach]）。
     val reach by vm.reach.collectAsState()
     // 本 tab 当前所在的 tmux 会话名（切模型 · 抓屏按它找那台名单里的终端）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
@@ -496,8 +496,10 @@ private fun ConnectedDialogs(
     onDismissKeyPush: () -> Unit,
 ) {
     if (showTmux) {
+        val reach by vm.reach.collectAsState()
         TmuxManagerDialog(
             terminals = vm.terminals,
+            noTmux = reach.noTmux,
             onAttach = { name ->
                 // 附着是新开终端 tab，由它的新 shell 敲那台渲出的那一行；不往当前前台 pty 注入
                 // （前台若是 Claude Code 会打进它的输入框）。
@@ -704,7 +706,6 @@ private fun TerminalBottomControls(
     val switchTo: (String) -> Unit = { id -> scope.launch { settings.setCurrentKeyGroup(id) } }
     val actions =
         KeyActions(
-            noTmux = reach.noTmux,
             noBackend = reach.noBackend,
             onShowTabs = onShowTabs,
             onCommandPalette = { showPalette = true },
@@ -718,7 +719,7 @@ private fun TerminalBottomControls(
             onGotoGroup = { id -> groups.any { it.id == id }.also { if (it) switchTo(id) } },
         )
     TerminalToolbar(
-        supportsTmux = reach.noTmux == null,
+        terminalsReachable = reach.noBackend == null,
         onShowTabs = onShowTabs,
         onCommandPalette = { showPalette = true },
         onTmuxSessions = onShowTmux,
@@ -788,7 +789,7 @@ private fun KeyBar(
 }
 
 /**
- * 命令面板的动作集：要 tmux 的（切模型 / 抓屏 / tmux 会话）那台没有 tmux 就不出；推公钥要那台后端，没连上 ⇒ 灰着、写原因。
+ * 命令面板的动作集：切模型 / 抓屏 / 终端名单要那台后端，没连上就不出（名单两种宿主都列，不看有没有 tmux）；推公钥没连上 ⇒ 灰着、写原因。
  */
 internal fun terminalPaletteActions(
     reach: Reach,
@@ -799,7 +800,7 @@ internal fun terminalPaletteActions(
     onPushKey: () -> Unit,
 ): List<PaletteAction> =
     buildList {
-        if (reach.noTmux == null) {
+        if (reach.noBackend == null) {
             // 那台给的可选模型（名字照那台写好的字，副标题是原值）。
             models.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m.text, m.value) { onModel(m.value) }) }
             add(PaletteAction(copyText("mobPalette.group.capture"), copyText("mobPalette.item.capture")) { onCapture() })

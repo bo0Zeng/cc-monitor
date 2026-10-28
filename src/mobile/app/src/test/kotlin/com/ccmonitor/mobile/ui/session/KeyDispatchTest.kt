@@ -55,15 +55,13 @@ class KeyDispatchTest {
     }
 
     @Test
-    fun appActionsRouteAndTmuxOnesSayUnavailableWithoutTmux() {
+    fun appActionsRouteAndBackendOnesSayUnavailableWithoutBackend() {
         val hit = mutableListOf<String>()
 
         fun actions(
-            noTmux: String? = null,
             noBackend: String? = null,
             groupExists: Boolean = true,
         ) = KeyActions(
-            noTmux = noTmux,
             noBackend = noBackend,
             onShowTabs = { hit += "tabs" },
             onCommandPalette = { hit += "palette" },
@@ -91,12 +89,13 @@ class KeyDispatchTest {
         assertNull("App 动作不出线字节", sent)
         assertEquals("App 动作不吃修饰键", 0, takes)
         hit.clear()
-        val noTmux = AppAction.entries.associateWith { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(noTmux = "box 无 tmux"), take) }
-        assertEquals(listOf("next", "goto:g1", "edit", "paste", "tabs", "palette", "keyboard", "pushKey"), hit)
-        assertEquals(AppAction.NEEDS_TMUX, noTmux.filterValues { it == KeyActionFail.Unavailable("box 无 tmux") }.keys)
-        hit.clear()
         val down = AppAction.entries.associateWith { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(noBackend = "后端未连上"), take) }
-        assertEquals("推公钥只要那台后端，不要 tmux", mapOf(AppAction.PUSH_KEY to KeyActionFail.Unavailable("后端未连上")), down.filterValues { it != null })
+        val gone = KeyActionFail.Unavailable("后端未连上")
+        assertEquals(
+            "终端名单 · 抓屏 · 推公钥要那台后端",
+            mapOf(AppAction.TMUX_SESSIONS to gone, AppAction.CAPTURE to gone, AppAction.PUSH_KEY to gone),
+            down.filterValues { it != null },
+        )
         hit.clear()
         assertEquals(KeyActionFail.GroupGone, dispatchBinding(KeyBinding.App(AppAction.GOTO_GROUP), { }, actions(), take))
         assertEquals("切到某一组没带组 ⇒ 不动", emptyList<String>(), hit)
@@ -131,7 +130,7 @@ class KeyDispatchTest {
     fun keyBarInputSendsWithWhatIsLitAtThatMoment() {
         var sent: ByteArray? = null
         val noop = {}
-        val a = KeyActions(null, null, noop, noop, noop, noop, noop, noop, noop, noop, noop, { true })
+        val a = KeyActions(null, noop, noop, noop, noop, noop, noop, noop, noop, noop, { true })
         dispatchBinding(KeyBinding.Input(listOf(sp(SpecialKey.RIGHT))), { sent = it }, a) { lit(KeyMod.CTRL, KeyMod.SHIFT) }
         assertEquals("\u001b[1;6C", String(sent!!, Charsets.ISO_8859_1))
     }
