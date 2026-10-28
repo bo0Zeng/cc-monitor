@@ -159,8 +159,8 @@ private fun TerminalManagerBody(
             // 先请那台建（在了就不动），再像附着已有的一样进去；没建成 ⇒ 那一句、不进。
             onNewAttach = { n ->
                 scope.launch {
-                    val failed = terminals.create(n)
-                    if (failed != null) onFailed(failed) else onAttach(n)
+                    val refused = terminals.create(n)
+                    if (refused != null) onFailed(refused) else onAttach(n)
                 }
             },
         )
