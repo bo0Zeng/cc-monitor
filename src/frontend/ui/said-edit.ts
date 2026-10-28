@@ -137,14 +137,13 @@ export class SaidEdit {
     const pick = el("div", s.pick);
     const refused = el("p", s.error);
     refused.dataset.role = "said-edit-refused";
-    refused.hidden = true;
     const cancel = button({ label: copyText("saidEdit.bar.cancel"), onClick: () => this.close() });
     cancel.dataset.role = "said-edit-cancel";
     const confirm = button({ label: copyText("saidEdit.pick.confirm"), kind: "primary", onClick: () => void this.submit(o) });
     confirm.dataset.role = "said-edit-confirm";
     const foot = el("div", s.foot);
     foot.append(el("span", s.keys, copyText("saidEdit.bar.keys")), cancel, confirm);
-    editor.append(el("p", s.hint, copyText("saidEdit.bar.hint")), box, pick, refused, foot);
+    editor.append(el("p", s.hint, copyText("saidEdit.bar.hint")), box, pick, foot);
     // 正文先摘下（收起时放回原处），编辑框占它的位置。
     if (body !== null) body.replaceWith(editor);
     else card.appendChild(editor);
@@ -261,26 +260,26 @@ export class SaidEdit {
     const how = o.how;
     if (this.open_ !== o || o.sending || how === undefined || o.confirm.getAttribute("aria-disabled") === "true") return;
     o.sending = true;
-    o.refused.hidden = true;
+    o.refused.remove();
     setBusy(o.confirm, copyText("terminal.queue.sending"));
     const locked = [...o.pick.querySelectorAll("input")].filter((i) => !i.disabled);
     for (const i of locked) i.disabled = true;
     const text = o.box.value;
+    // 没回执时气泡末尾那一行（先建好；交出去之后只决定挂不挂）。
+    const mark = el("p", s.pending, copyText("saidEdit.card.pending"));
+    mark.dataset.role = "said-edit-pending";
     const end = await this.io.send(o.at.origin, o.at.sid, text, { to: o.at.id, how, when: o.when });
     saveDraft(o.at, end.at === "receipt" ? null : text);
     o.sending = false;
     setBusy(o.confirm, null);
     for (const i of locked) i.disabled = false;
     if (end.at === "refused") {
+      // 那台那一句写在按钮上方。
       o.refused.textContent = end.said;
-      o.refused.hidden = false;
+      o.foot.before(o.refused);
       return;
     }
     if (this.open_ === o) this.close();
-    if (end.at === "none") {
-      const mark = el("p", s.pending, copyText("saidEdit.card.pending"));
-      mark.dataset.role = "said-edit-pending";
-      o.card.appendChild(mark);
-    }
+    if (end.at === "none") o.card.appendChild(mark);
   }
 }

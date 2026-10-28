@@ -47,12 +47,9 @@
 
   /* 灰项的原因：同一行、跟在那一项后面。 */
   .why {
+    margin-left: var(--space-2);
     font-size: var(--font-size-xs);
     color: var(--text-faint);
-  }
-
-  .why::before {
-    content: "· ";
   }
 
   .note {
