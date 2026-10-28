@@ -215,8 +215,8 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>)
             None,
         )
     };
-    match rows.as_deref().map(|r| batch::carriers(r, &req.item.sid)) {
-        Some(Standing::Running(at)) => {
+    match batch::carriers(&rows.rows, &req.item.sid) {
+        Standing::Running(at) => {
             let live = (deps.writers)(&req.item.sid);
             if live.len() > 1 {
                 let said = copy_core::copy_text(
@@ -230,18 +230,18 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, String, Vec<u32>)
             }
             Ok((account, at.name.clone(), at.terminal.clone(), live))
         }
-        Some(Standing::Ambiguous(es)) => {
+        Standing::Ambiguous(es) => {
             let names: Vec<String> = es.iter().map(|e| e.name.clone()).collect();
             Err((
-            "ambiguous",
-            copy_core::copy_text(
-                "beSessionRestart.locate.ambiguous",
-                &[("names", &names.join(", "))],
-            ),
-            Refused::Ambiguous { names }.data(),
-        ))
+                "ambiguous",
+                copy_core::copy_text(
+                    "beSessionRestart.locate.ambiguous",
+                    &[("names", &names.join(", "))],
+                ),
+                Refused::Ambiguous { names }.data(),
+            ))
         }
-        Some(Standing::Idle(_) | Standing::None) | None => Err(not_here()),
+        Standing::Idle(_) | Standing::None => Err(not_here()),
     }
 }
 

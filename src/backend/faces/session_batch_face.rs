@@ -1,28 +1,27 @@
 //! 帧面 `sessions-where` / `sessions-stop` 的宿主壳（`session-open` · 换号重启起会话要的那几样也由它拼）：把本体（`control/session_batch.rs`）要的那几样拼成生产那一份交进去。
 //!
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
-//! 名单 = 终端名单那一趟（`batch::listed_on`，挂着 sid 的窗格各一行；停两种宿主都认，别的只认 tmux）· 记录在不在 = `history-record` 那一问 · 结束 = `terminal-end` 那一条（按名单句柄）·
+//! 名单 = 终端名单那一趟（`batch::listed_on`，挂着 sid 的窗格各一行；问样子 · 停两种宿主都认，起会话 · 分叉 · 就地键入只认 tmux）· 记录在不在 = `history-record` 那一问 · 结束 = `terminal-end` 那一条（按名单句柄）·
 //! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `control::ccm::terminal_name_mint_with` · 起会话 = 这台后端自己当 ccm 跑那一行 ·
 //! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（活会话表 `history::live_table::LiveTable::writers`）。
 
-use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
+use crate::control::session_batch::{self as batch, Deps, Listed};
 use crate::faces::launch_account_face::{pretrust_with, Files};
 
 use crate::wire::typed::{self, Command};
 
 /// `client` ＝ 请求自报的前端（「哪个前端的会话」那一维）：结束与就地键入都带它过门。`agent` ＝ 批量起那一家（整批一格；停 / 问样子用不着挑号）。
-/// `list` ＝ 认会话的名单（问样子只认 tmux · 停两种宿主都认）。
+/// 名单两种宿主都认（问样子 · 停：托管那一行按句柄交 `terminal-end`）。
 fn with_deps<T>(
     client: Option<&str>,
-    list: Listing,
     f: impl FnOnce(&Deps) -> Result<T, batch::CmdErr>,
 ) -> Result<T, BatchErr> {
     let client = crate::control::gate::requester(client).map_err(BatchErr::from)?;
-    with_deps_on(list, client.as_deref(), "", None, f).map_err(BatchErr::from)
+    with_deps_on(both_hosts_rows, client.as_deref(), "", None, f).map_err(BatchErr::from)
 }
 
 /// 认会话的名单那一发。
-type Listing = fn() -> Result<Option<Vec<TmuxEntry>>, batch::CmdErr>;
+type Listing = fn() -> Result<Listed, batch::CmdErr>;
 
 /// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）；名单只认 tmux（起会话 · 就地键入只对 tmux 下手）。
 /// `files` ＝ 起之前预标信任经它写；`None` ＝ 这一趟不起会话（问样子 · 停 · 核目录）。
@@ -115,13 +114,13 @@ fn with_deps_on<T>(
     })
 }
 
-/// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Ok(None)` ＝ 这台没装 tmux；`Err` ＝ 看不见。分叉那一格也读它。
-pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, (&'static str, String)> {
+/// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Err` ＝ 看不见。分叉那一格也读它。
+pub(crate) fn tmux_rows() -> Result<Listed, (&'static str, String)> {
     batch::listed_on(crate::host::tmux::On::default(), None)
 }
 
-/// 停认的名单：两种宿主都认（托管那一行按句柄交 `terminal-end`）。
-fn both_hosts_rows() -> Result<Option<Vec<TmuxEntry>>, (&'static str, String)> {
+/// 问样子 · 停认的名单：两种宿主都认（托管那一行按句柄交 `terminal-end`）。
+fn both_hosts_rows() -> Result<Listed, (&'static str, String)> {
     batch::listed_on(
         crate::host::tmux::On::default(),
         crate::host::managed::installed(),
@@ -169,7 +168,7 @@ impl crate::wire::typed::Handle for SessionsWhere {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<batch::Whereabouts, BatchErr>> + Send + 'static
     {
-        async move { with_deps(req.client.as_deref(), tmux_rows, |d| batch::where_(&req, d)) }
+        async move { with_deps(req.client.as_deref(), |d| batch::where_(&req, d)) }
     }
 }
 
@@ -189,10 +188,6 @@ impl crate::wire::typed::Handle for SessionsStop {
         req: batch::SidsReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
-        async move {
-            with_deps(req.client.as_deref(), both_hosts_rows, |d| {
-                batch::stop(&req, d)
-            })
-        }
+        async move { with_deps(req.client.as_deref(), |d| batch::stop(&req, d)) }
     }
 }

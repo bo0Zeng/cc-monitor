@@ -40,8 +40,9 @@ const A: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const B: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const C: &str = "cccccccc-1111-2222-3333-444444444444";
 
-fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
-    TmuxEntry {
+fn row(name: &str, sid: Option<&str>, agent: bool) -> TermEntry {
+    TermEntry {
+        host: crate::wire::TerminalHost::Tmux,
         name: name.into(),
         terminal: format!("tmux-{name}"),
         sid: sid.map(str::to_string),
@@ -51,7 +52,10 @@ fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
 
 /// 替身那一套：名单是给定的，结束只记下来；别的几样停与问样子都用不着。
 struct Rig {
-    rows: Option<Vec<TmuxEntry>>,
+    /// tmux 那一臂（`None` ＝ 这台没装 tmux）。
+    rows: Option<Vec<TermEntry>>,
+    /// 托管那几行（并在 tmux 那几行后面）。
+    hosted: Vec<TermEntry>,
     calls: RefCell<Vec<String>>,
     end_err: Option<&'static str>,
     /// 列名单那一发失败的码（`None` ⇒ 照 `rows` 答）。
@@ -61,9 +65,10 @@ struct Rig {
 }
 
 impl Rig {
-    fn new(rows: Option<Vec<TmuxEntry>>) -> Self {
+    fn new(rows: Option<Vec<TermEntry>>) -> Self {
         Self {
             rows,
+            hosted: vec![],
             calls: RefCell::new(vec![]),
             end_err: None,
             list_err: None,
@@ -71,10 +76,10 @@ impl Rig {
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
-        let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+        let list = || -> Result<Listed, CmdErr> {
             match self.list_err {
                 Some(c) => Err((c, "said".to_string())),
-                None => Ok(self.rows.clone()),
+                None => Ok(Listed::of(self.rows.clone(), self.hosted.clone())),
             }
         };
         let end = |terminal: &str| -> Result<(), crate::wire::spec::Fail> {
@@ -90,7 +95,7 @@ impl Rig {
 
 /// 停与问样子要的那一套：名单与结束由调用方给，别的几样都用不着。
 fn deps_with<T>(
-    list: &dyn Fn() -> Result<Option<Vec<TmuxEntry>>, CmdErr>,
+    list: &dyn Fn() -> Result<Listed, CmdErr>,
     end: &dyn Fn(&str) -> Result<(), crate::wire::spec::Fail>,
     prefs: &crate::common::machine_prefs::Prefs,
     f: impl FnOnce(&Deps) -> T,
@@ -190,6 +195,88 @@ async fn stop_ends_a_session_living_in_a_hosted_terminal() {
         crate::host::managed::rows_at(&own).is_empty(),
         "名单里那一行没了"
     );
+}
+
+/// ★ 一条在托管终端里的会话 ⇒ `sessions-where` 回它 `terminals: [{host: managed, …}]`（标签页菜单照它出［结束］）。
+/// 生产那一份名单（`listed_on`：tmux 指向不存在的私有 socket ＋ 沙箱里的托管家）；假子进程（`sh`），不起真 claude。
+/// （这台装没装 tmux 随机器，另一个 sid 与 `run` 在下一条里用替身钉。）
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn where_names_the_hosted_terminal_a_session_lives_in() {
+    use crate::host::managed::run::tests::{hello, read_until_out, sandbox_own, spec, start};
+    use crate::host::managed::wire::Want;
+    let (own, data) = sandbox_own("batch-where");
+    let script = r#"printf 'ready\r\n'; while :; do read x; done"#;
+    let (sock, task) = start(&own, spec("t-batchwhere", script)).await;
+    let mut viewer = hello(&sock, Want::View).await;
+    read_until_out(&mut viewer, "ready").await;
+    crate::host::managed::client::tag(&sock, A).expect("打上 sid");
+    let handle = crate::host::managed::rows_at(&own)[0].handle();
+    let bogus = data.join("no-tmux-here").to_string_lossy().into_owned();
+    let o = own.clone();
+    let out = tokio::task::spawn_blocking(move || {
+        let list = || {
+            listed_on(
+                crate::host::tmux::On {
+                    socket: Some(&bogus),
+                },
+                Some(&o),
+            )
+        };
+        deps_with(
+            &list,
+            &|_| unreachable!("问样子不结束"),
+            &Default::default(),
+            |d| where_(&json!({ "sids": [A] }), d),
+        )
+    })
+    .await
+    .expect("线没崩")
+    .unwrap();
+    assert_eq!(
+        out["results"],
+        json!([
+            { "sid": A, "standing": "idle", "names": ["name-t-batchwhere"],
+              "terminals": [{ "host": "managed", "terminal": handle }] },
+        ])
+    );
+    let s = sock.clone();
+    tokio::task::spawn_blocking(move || crate::host::managed::client::end(&s))
+        .await
+        .expect("线没崩")
+        .expect("结束那个托管终端");
+    drop(viewer);
+    task.await.expect("任务没崩").expect("跑完");
+}
+
+/// ★ 这台没装 tmux、只有托管终端：带着它的那一行照答（宿主 `managed`）；哪个终端都不带着的照旧 `no_tmux`（问样子 · 停同一判法）；
+/// 恢复默认放在哪只看 tmux（偏好「恢复时进 tmux」开着也是直路）。
+#[test]
+fn without_tmux_a_hosted_terminal_still_answers_and_the_rest_say_no_tmux() {
+    let hosted = TermEntry {
+        host: crate::wire::TerminalHost::Managed,
+        terminal: "h-1".into(),
+        ..row("box-cc", Some(A), true)
+    };
+    let mut rig = Rig::new(None);
+    rig.hosted = vec![hosted];
+    rig.prefs.resume_in_tmux = true;
+    assert_eq!(
+        rig.run(|d| where_(&json!({ "sids": [A, B] }), d)).unwrap(),
+        json!({ "results": [
+            { "sid": A, "standing": "running", "names": ["box-cc"],
+              "terminals": [{ "host": "managed", "terminal": "h-1" }] },
+            { "sid": B, "standing": "no_tmux", "names": [], "terminals": [] },
+        ], "run": "direct" })
+    );
+    let out = rig.run(|d| stop(&json!({ "sids": [A, B] }), d)).unwrap();
+    assert_eq!(
+        outcomes(&out),
+        vec![
+            (A.into(), "done".into(), Value::Null),
+            (B.into(), "skipped".into(), json!("no_tmux")),
+        ]
+    );
+    assert_eq!(*rig.calls.borrow(), vec!["end h-1".to_string()]);
 }
 
 fn outcomes(v: &Value) -> Vec<(String, String, Value)> {
@@ -381,7 +468,7 @@ fn the_standing_of_a_sid_is_judged_once_for_menu_and_stop() {
 /// ★ `sessions-where` 顺带答这台恢复默认放在哪：偏好「恢复时进 tmux」× 有没有 tmux（同 `session-open` 恢复没说 `run` 时那一条）。
 #[test]
 fn where_also_says_where_a_resume_lands_by_default() {
-    let run = |rows: Option<Vec<TmuxEntry>>, pref: bool| {
+    let run = |rows: Option<Vec<TermEntry>>, pref: bool| {
         let mut rig = Rig::new(rows);
         rig.prefs.resume_in_tmux = pref;
         rig.run(|d| where_(&json!({ "sids": [A] }), d)).unwrap()["run"].clone()

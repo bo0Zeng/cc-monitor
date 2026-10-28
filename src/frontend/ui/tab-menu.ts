@@ -20,7 +20,7 @@ import { openSession } from "./session-open";
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { standingOf, type Standing } from "./sessions-where";
+import { inTmux, standingOf, type Standing } from "./sessions-where";
 import type { Run } from "./generated/Run";
 import {
   menuGeneration,
@@ -330,14 +330,17 @@ export class TabMenu {
     const name = s.names[0];
     if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "end");
     const ambiguous = s.kind === "ambiguous";
-    updateMenuItem("attach", {
-      id: "attach",
-      icon: "terminal",
-      label: copyText("tabMenu.attach.label"),
-      // 命中多个 ⇒ 那台接第一个（第二行先说了）。
-      why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
-      onClick: () => void this.attachRemote(sid),
-    });
+    // 接回走 `session-open look`，那一条只接 tmux 会话 ⇒ 托管终端那一行不出这一格。
+    if (inTmux(s)) {
+      updateMenuItem("attach", {
+        id: "attach",
+        icon: "terminal",
+        label: copyText("tabMenu.attach.label"),
+        // 命中多个 ⇒ 那台接第一个（第二行先说了）。
+        why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
+        onClick: () => void this.attachRemote(sid),
+      });
+    } else drop("attach");
     // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
     updateMenuItem("end", gateByOffer(origin, ambiguous
       ? { id: "end", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
@@ -357,8 +360,8 @@ export class TabMenu {
       return;
     }
     const name = s.names[0];
-    if (s.kind === "idle") {
-      // Claude 已退出、tmux 会话在：就地恢复（非破坏性）与结束并列。
+    if (s.kind === "idle" && inTmux(s)) {
+      // Claude 已退出、tmux 会话在：就地恢复（非破坏性）与结束并列。就地恢复往 tmux 会话里键入 ⇒ 托管终端那一行不出。
       updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, { id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), onClick: () => void this.actions.resume(sid, { run: "tmux" }) }));
     } else removeMenuItem("resume-into");
     updateMenuItem("end", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"

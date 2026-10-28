@@ -10,8 +10,9 @@ use std::collections::BTreeSet;
 const A: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const U: &str = "99999999-1111-2222-3333-444444444444";
 
-fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
-    TmuxEntry {
+fn row(name: &str, sid: Option<&str>, agent: bool) -> TermEntry {
+    TermEntry {
+        host: crate::wire::TerminalHost::Tmux,
         name: name.into(),
         terminal: format!("tmux-{name}"),
         sid: sid.map(str::to_string),
@@ -21,7 +22,7 @@ fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
 
 /// 替身：名单 · 记录 · 活进程是给定的；铸 · 建 · 键入 · 预标只记下来。
 struct Rig {
-    rows: Option<Vec<TmuxEntry>>,
+    rows: Option<Vec<TermEntry>>,
     list_err: Option<&'static str>,
     gone: bool,
     live: Vec<u32>,
@@ -48,7 +49,7 @@ struct Rig {
 }
 
 impl Rig {
-    fn new(rows: Option<Vec<TmuxEntry>>) -> Self {
+    fn new(rows: Option<Vec<TermEntry>>) -> Self {
         Self {
             rows,
             list_err: None,
@@ -121,10 +122,13 @@ impl Rig {
             .into_iter()
             .map(str::to_string)
             .collect();
-        let list = || -> Result<Option<Vec<TmuxEntry>>, CmdErr> {
+        let list = || -> Result<crate::control::session_batch::Listed, CmdErr> {
             match self.list_err {
                 Some(c) => Err((c, "列不出".to_string())),
-                None => Ok(self.rows.clone()),
+                None => Ok(crate::control::session_batch::Listed::of(
+                    self.rows.clone(),
+                    vec![],
+                )),
             }
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {

@@ -1,7 +1,7 @@
 //! 换号重启：停失败一定不起 · 压缩等摘要（真记录文件、真 inotify）· 等压缩时撤单不停不起 · 回复与各码（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
-use crate::control::session_batch::TmuxEntry;
+use crate::control::session_batch::{Listed, TermEntry};
 use crate::wire::SessionFaceExt as _;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -15,8 +15,9 @@ const SID: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 /// 一条压缩摘要（结构同那一家写的，正文是占位）。
 const SUMMARY: &str = r#"{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"S"},"uuid":"u-s"}"#;
 
-fn row(name: &str, sid: &str, agent: bool) -> TmuxEntry {
-    TmuxEntry {
+fn row(name: &str, sid: &str, agent: bool) -> TermEntry {
+    TermEntry {
+        host: crate::wire::TerminalHost::Tmux,
         name: name.into(),
         terminal: format!("tmux-{name}"),
         sid: Some(sid.to_string()),
@@ -62,7 +63,7 @@ enum Shows {
 /// 替身：名单给定；送字 / 结束 / 起只记下来。`summarize` ⇒ 收到压缩那一句时往记录里写一条摘要（像那一家压完了）。
 /// 报到那一本是真的（`observe::arrivals`）：起之前旧进程已报到过，结束 · 起按 `shows` 喂它。
 struct Rig {
-    rows: Vec<TmuxEntry>,
+    rows: Vec<TermEntry>,
     record: PathBuf,
     summarize: bool,
     end_err: Option<&'static str>,
@@ -118,8 +119,8 @@ impl Rig {
             .map(str::to_string)
             .collect();
         let note = |s: String| self.calls.lock().unwrap().push(s);
-        let list = || -> Result<Option<Vec<TmuxEntry>>, crate::control::session_batch::CmdErr> {
-            Ok(Some(self.rows.clone()))
+        let list = || -> Result<Listed, crate::control::session_batch::CmdErr> {
+            Ok(Listed::of(Some(self.rows.clone()), vec![]))
         };
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))

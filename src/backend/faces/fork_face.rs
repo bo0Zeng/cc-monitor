@@ -58,7 +58,7 @@ pub(crate) fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::L
                 })
             })
             .collect();
-    let terminals = super::session_batch_face::tmux_rows().ok().flatten();
+    let terminals = super::session_batch_face::tmux_rows().ok().map(|l| l.rows);
     fork_launch::infer(&fork_launch::source_of(
         &processes,
         terminals.as_deref(),

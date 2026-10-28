@@ -1474,6 +1474,36 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "i1-cc" }));
   });
 
+  /** 那台答这个会话在托管终端里（`sessions-where` 的 `terminals[].host` ＝ `managed`）。 */
+  const inHostedTerminal = (sid: string, standing: "running" | "idle"): void => {
+    const rest = withHistoryReads(() => Promise.resolve(undefined));
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) =>
+      isChanCall(cmd, args, "sessions-where")
+        ? chanReply({ results: [{ sid, standing, names: ["box-cc"], terminals: [{ host: "managed", terminal: "h-1" }] }], run: "direct" })
+        : rest(cmd, args),
+    );
+  };
+
+  it("★ 本机：会话在托管终端里 ⇒ 出［结束］（确认框点名那个终端）；［就地恢复］不出（它只往 tmux 会话里键入）", async () => {
+    inHostedTerminal("k1abcdef", "idle");
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
+    rightClick("k1abcdef");
+    await flush();
+    expect(resumeIntoBtn()).toBeNull();
+    expect(killBtn()?.disabled).toBe(false);
+    expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "box-cc" }));
+  });
+
+  it("★ 远端：会话在托管终端里 ⇒ 出［结束］；［在终端里打开］不出（接回只认 tmux 会话）", async () => {
+    inHostedTerminal("A", "running");
+    tm.ensureTab("A", "/a", "p", "hostA");
+    rightClick("A");
+    await flush();
+    expect(attachBtn()).toBeNull();
+    expect(killBtn()?.disabled).toBe(false);
+    expect(await killConfirmText()).toMatch(copyPattern("tabSessionActions.kill.cuts", { name: "box-cc" }));
+  });
+
   it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"

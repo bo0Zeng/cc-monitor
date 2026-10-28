@@ -123,7 +123,7 @@ pub(crate) fn dir_answer(
     let cwd = expand_home(req.cwd.trim(), home);
     let exists = !cwd.is_empty() && (deps.host.is_dir)(&cwd);
     let tmux_name = match (deps.list)() {
-        Ok(Some(rows)) => {
+        Ok(super::Listed { tmux: true, rows }) => {
             let base = match fork_of {
                 Some(sid) => NameBase::ForkOf(match carriers(&rows, sid) {
                     Standing::Running(e) => e.name.as_str(),
@@ -134,7 +134,7 @@ pub(crate) fn dir_answer(
             };
             (deps.mint)(base).ok()
         }
-        Ok(None) | Err(_) => None,
+        Ok(super::Listed { tmux: false, .. }) | Err(_) => None,
     };
     let shown = crate::platform::paths::home_short(&cwd, home);
     Ok(DirChecked {
