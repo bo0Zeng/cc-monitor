@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../../../src/frontend/ui/ipc/chan-caller", () => ({ budgetWithin: () => 0, callTyped: vi.fn() }));
+vi.mock("../../../src/frontend/ui/open-settings", () => ({ openSettingsWindow: vi.fn(async () => {}) }));
 
 import { machineBlock, machineRows, type MachineActions } from "../../../src/frontend/ui/machine-commands";
 import type { Command } from "../../../src/frontend/ui/views/command-bar";
@@ -101,5 +102,16 @@ describe("machineRows", () => {
       ["nas", undefined, "up", "nas", "machine"],
       ["lab", "w-fail", "failed", "lab", "machine"],
     ]);
+  });
+});
+
+describe("加入机器表…（A2-17-14-1）", () => {
+  it("开设置窗机器页、带上打的那个名字（添加框开着、名字预填）", async () => {
+    const { openSettingsWindow } = await import("../../../src/frontend/ui/open-settings");
+    const { machineActions } = await import("../../../src/frontend/ui/machine-commands");
+    const { addMachineOf } = await import("../../../src/frontend/ui/settings-dest");
+    machineActions.addMachine("backup");
+    expect(vi.mocked(openSettingsWindow)).toHaveBeenCalledWith(undefined, addMachineOf("backup"));
+    expect(addMachineOf("backup")).toEqual({ page: "machines", anchor: "add-machine:backup" });
   });
 });
