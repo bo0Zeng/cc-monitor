@@ -26034,13 +26034,6 @@
       "zh": "终端 ×{n} · 打开「{name}」",
       "args": ["n", "name"]
     },
-    "tabMenu.inPlace.label": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "在 tmux 会话里恢复",
-      "args": [],
-      "limited": ["tmux"]
-    },
     "tabMenu.close.live": {
       "kind": "body",
       "role": "片段",
