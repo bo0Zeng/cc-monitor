@@ -1091,4 +1091,20 @@ describe("〔A17-45-3-2〕冷开只建一屏", () => {
     }, 0);
     expect(covered, "切回来视口里空着").toBeGreaterThanOrEqual(VIEW_H - CARD_H);
   });
+
+  // 〔A17-45-3-4〕后台 tab 只进账本：冷切只建一屏之后不值得提前建，看不见的 tab 一张卡都不建（从前批结束后空闲时一截 20 条建满 150 条）。
+  it("〔A17-45-3-4〕重放批结束、过了好一阵：后台 tab（能开终端的活会话、还没建过卡）一张卡都不建", async () => {
+    const { goldenFace } = await import("../../test-support/session-faces");
+    const { hasTerminal } = await import("../../../src/frontend/ui/face-can");
+    const r = await rig();
+    (r.tab as { face: unknown }).face = goldenFace("live-idle");
+    expect(hasTerminal(r.tab.face as never), "前置：能开终端（从前进后台物化队列的那一类）").toBe(true);
+    r.store.activeId = "other";
+    vi.useFakeTimers();
+    onTestFinished(() => void vi.useRealTimers());
+    r.tsv.batchEnd();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(r.built(), "后台 tab 在空闲时建了卡").toEqual([]);
+    expect(r.tab.window.pendingCount, "账本照留").toBe(N);
+  });
 });

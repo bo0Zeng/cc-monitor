@@ -45,7 +45,6 @@ import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
-import { hasTerminal } from "./face-can";
 import type { TabStore } from "./tab-store";
 import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { noteColdFilled, noteHistoryArrived, noteHistoryFed } from "./startup-perf";
@@ -124,8 +123,6 @@ export type TabStreamDom = Pick<
 >;
 
 export class TabStreamView {
-  /** 后台 tab 空闲物化的尾段条数。 */
-  private static readonly MATERIALIZE_TAIL_K = 150;
   /**
    * 冷开（没建过卡的 tab）从尾部窗口一截建几条：自下而上一截一截建，建到 [`coldFilled`] 为止 ——
    * 只建视口那一截，更早的接上骨架之后照账本补可见区（折着的过程扣掉）。
@@ -630,7 +627,7 @@ export class TabStreamView {
 
   /**
    * 重放批结束：逐 tab 挂批期缓冲、折叠层 flush、孤儿 tool_result 对账；当前 tab 补到一屏，
-   * 其余 virgin 后台 tab 进空闲物化队列（原是 `onBatchEnd` 的主体，逐字）。返回当前 tab。
+   * 后台 tab 只进账本、一张卡不建（切进来时冷开只建视口那一截；看不见的 tab 提前建满只让常驻跟着胀）。返回当前 tab。
    */
   batchEnd(): Tab | undefined {
     for (const t of this.store.tabs.values()) {
@@ -642,7 +639,7 @@ export class TabStreamView {
       // 孤儿卡出 DOM 的同时出账，防悬空锚点
       for (const el of reconcilePendingToolResults(ctx)) t.timeline.removeByElement(el);
     }
-    // active tab 不足一屏（或还是 virgin）→ 立即物化到可见；其余后台 tab 进空闲物化队列（逐个串行，免得并发建卡风暴）。
+    // active tab 不足一屏（或还是 virgin）→ 立即物化到可见。
     const active = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (active && active.window.pendingCount > 0) {
       // 步 3：「够不够一屏」改读**真实布局**（见 `contentReachesBottom` 的头注）。
@@ -652,18 +649,6 @@ export class TabStreamView {
         active.stream.scrollToBottom();
       }
     }
-    // 已结束的会话不进后台物化队列（切过去时有同步物化兜底）。
-    // virgin 的、以及钉过水位而真实布局没满一屏的后台 tab 进队（后台 tab 是 `visibility:hidden`，几何照在）。
-    this.materializeQueue = [...this.store.tabs.entries()]
-      .filter(
-        ([sid, t]) =>
-          sid !== this.store.activeId &&
-          hasTerminal(t.face) &&
-          t.window.pendingCount > 0 &&
-          (t.window.floorSeq === null || !this.contentReachesBottom(t)),
-      )
-      .map(([sid]) => sid);
-    this.scheduleIdleMaterialize();
     // active tab 没走物化分支（尾块已可滚）时也要挂哨兵
     if (active) this.updateSentinel(active);
     // 〔骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
@@ -702,10 +687,10 @@ export class TabStreamView {
     if (routeMeta(payload) === "consumed") return;
 
     // 门控（单洞后缀不变量，纯按 seq）：
-    // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（批后空闲物化）；
+    // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（切进来时冷开只建视口那一截）；
     // - virgin ＋ 实时：新开 tab 直渲并钉 floor；
     // - seq ≥ floor：渲染；seq < floor：收纳（旧块 / 尾部优先回填 / 迟到块，与批哨兵无关）。
-    // 批后空闲物化还没轮到这个 tab 就来了实时行：先物化尾段（takeTail 顺带钉 floor），再照常收这一行 ——
+    // 账本里收着历史、还没建过卡的 tab 来了实时行：先物化一截尾段（takeTail 顺带钉 floor），再照常收这一行 ——
     //   直接按新行钉 floor 会把账本里整段历史钉死在下面。
     if (tab.window.floorSeq === null && !this.store.inBatch && tab.window.pendingCount > 0) {
       this.materializeTail(tab, TabStreamView.COLD_CHUNK);
@@ -1572,65 +1557,14 @@ export class TabStreamView {
     el.textContent = n > 0 ? copyText("tabStreamView.sentinel.moreCount", { n }) : (belowText ?? "");
   }
 
-  /** 后台 tab 的空闲物化队列（串行；没有 rIC 时 setTimeout 兜底） */
-  materializeQueue: string[] = [];
-  private materializeScheduled = false;
-  /** 空闲物化挂的那个空闲回调（主人拆掉时撤掉，`dispose`）。 */
-  private readonly idleSlot = new IdleSlot();
-
-  /** 后台空闲物化一截建几条（建完一截看一眼空闲期限还剩没剩）。 */
-  private static readonly IDLE_CHUNK = 20;
-  /** 没有 requestIdleCallback 的引擎（WebKitGTK）走 setTimeout 兜底：一次最多连着建这么久（ms）就让出来。 */
-  private static readonly IDLE_SLICE_MS = 8;
-  /** virgin 后台 tab 的尾段这一轮已经建了几条（分截建，凑满 `MATERIALIZE_TAIL_K` 为止）。 */
-  private readonly idleTaken = new WeakMap<Tab, number>();
-
-  private scheduleIdleMaterialize(): void {
-    if (this.materializeScheduled) return;
-    const sid = this.materializeQueue.shift();
-    if (sid === undefined) return;
-    this.materializeScheduled = true;
-    const run = (deadline?: IdleDeadline): void => {
-      this.materializeScheduled = false;
-      const tab = this.store.tabs.get(sid);
-      // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
-      // 账本继续收纳,批结束会重新排队。
-      // 钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
-      // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
-      // virgin 的尾段**分截建**：一截 `IDLE_CHUNK` 条，空闲期限用完（兜底那一路按 `IDLE_SLICE_MS`）就停、这个 tab 排回队首 ——
-      // 一口气建满 150 条就是开窗那几秒里的一串长任务（人一开窗就去点，点下去要等它跑完）。
-      if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
-        const virgin = tab.window.floorSeq === null || this.idleTaken.has(tab);
-        if (virgin) {
-          const until = performance.now() + (deadline ? deadline.timeRemaining() : TabStreamView.IDLE_SLICE_MS);
-          let taken = this.idleTaken.get(tab) ?? 0;
-          do {
-            const before = tab.window.pendingCount;
-            this.materializeTail(tab, Math.min(TabStreamView.IDLE_CHUNK, TabStreamView.MATERIALIZE_TAIL_K - taken));
-            taken += before - tab.window.pendingCount;
-          } while (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0 && performance.now() < until);
-          if (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0) {
-            this.idleTaken.set(tab, taken);
-            this.materializeQueue.unshift(sid); // 没建完：下一个空闲期接着建它
-          } else this.idleTaken.delete(tab);
-        } else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
-      }
-      this.scheduleIdleMaterialize();
-    };
-    // 后台标签页空闲物化队列：处理一个再排自己，队列空或主人拆掉即停。没有 rIC 时兜底：接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms。
-    this.idleSlot.schedule(run, this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
-  }
-
   /**
-   * 主人（`TabManager`）拆掉：冷读排班停、空闲物化撤掉挂着的回调，每个 tab 照关掉那样拆（在途的读回来后不许回写）。
+   * 主人（`TabManager`）拆掉：冷读排班停、改列宽之后的空闲补估撤掉挂着的回调，每个 tab 照关掉那样拆（在途的读回来后不许回写）。
    * 之后回来的读不再排下一趟、不碰 `window`。
    */
   dispose(): void {
     this.cold.stop();
-    this.idleSlot.stop();
-    this.settleSlot.stop(); // 改列宽之后的空闲补估同样撤掉
+    this.settleSlot.stop();
     this.settling = [];
-    this.materializeQueue = [];
     for (const t of [...this.store.tabs.values()]) this.disposeTab(t);
   }
 
