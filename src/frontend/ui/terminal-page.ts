@@ -335,7 +335,7 @@ export class TerminalPage {
         const w = this.host.active();
         return { title: w ? labelOf(w) : "", machine: w ? machineWord(w) : "" };
       },
-      offline: () => (this.origin === undefined ? "" : (offlineSaid(this.origin) ?? machineName(this.origin))),
+      offline: () => this.offlineLine(),
       blocked: () => this.inputNo(),
     });
     boxRow.append(this.attach.plus, this.box, this.sendBtn);
@@ -671,6 +671,11 @@ export class TerminalPage {
     return d;
   }
 
+  /** 那台断着时的那一句（连接层写好的离线那一句）：chip 上跟它，［送出］悬停也是它。 */
+  private offlineLine(): string {
+    return this.origin === undefined ? "" : (offlineSaid(this.origin) ?? machineName(this.origin));
+  }
+
   /** 输入此刻送不了的那一句（名单里后端那一格 · 实时停在那台断开）；送得了 ⇒ `null`。 */
   private inputNo(): string | null {
     const row = this.row;
@@ -846,7 +851,7 @@ export class TerminalPage {
     const origin = this.origin;
     const sid = this.sayingTo();
     if (chips || (say && origin !== undefined && sid !== null && this.row !== null)) {
-      if (chips && draft.blocker() !== null) return;
+      if (chips && draft.blocker(this.offlineLine()) !== null) return;
       if (text === "" && !chips) return;
       if (origin !== undefined && sid !== null) void this.say(origin, sid, text, chips ? draft.ids() : []);
       return;
@@ -986,7 +991,7 @@ export class TerminalPage {
     // 占位只写短的那句；快捷键说明挂悬停（送不了时键不起作用，不挂）。
     this.box.title = no !== null ? "" : copyText("terminal.input.keysHint");
     // 附件没传完 / 有失败 ⇒ 送出灰着、悬停说为什么（字照样能打）。
-    setDisabled(this.sendBtn, no ?? this.attachDraft()?.blocker() ?? null);
+    setDisabled(this.sendBtn, no ?? this.attachDraft()?.blocker(this.offlineLine()) ?? null);
     this.attach.paint();
     const to = this.sayingTo();
     const qKey = this.origin !== undefined && to !== null ? pendingKey(this.origin, to) : null;

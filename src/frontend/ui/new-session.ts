@@ -42,7 +42,9 @@ import { readMachines } from "./machine-feed";
 import type { MachineState } from "./generated/MachineState";
 import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
-import { readProfiles } from "./profiles-reads";
+import { readProfiles, resolveProfile, type Resolved } from "./profiles-reads";
+import type { ProfileMergeRow } from "./generated/ProfileMergeRow";
+import { saidOf } from "./kit/detail";
 import { pageTabs, setPage } from "./new-session-set";
 import s from "./new-session.module.css";
 
@@ -67,10 +69,11 @@ export interface NewSessionSpec {
   /** 开在「一组」页：存好的那一组的名字（`null` ＝ 新建一组）；缺 ⇒ 单个页。 */
   set?: string | null;
   /**
-   * 问图（计划页［问这一块…］，`plan-ask.ts`）：框里只别名 · 目录 · 开口那句；号 · 轮换 · 哪一家随别名，运行于定在 tmux（开口那句只跟 tmux）。
-   * `alias` 预选的那条（`null` ⇒ 空着，选了才能起）；改选 ⇒ `relined` 问那台新拼的那句，开口那句前一半跟着换、人打的留着。
+   * 问图（计划页［问图…］，`plan-ask.ts`）：框里只别名 · 目录（锁着，标工作区根）· 开口那句；机器锁那台、不出那一格；
+   * 号 · 轮换 · 哪一家随别名，运行于定在 tmux（开口那句只跟 tmux）。开口那句下那一行是那台写的 `runs`（`null` ⇒「先选别名」）。
+   * `alias` 预选的那条（`null` ⇒ 空着，选了才能起）；改选 ⇒ `relined` 问那台新拼的两句，开口那句前一半跟着换、人打的留着。
    */
-  ask?: { title: string; alias: string | null; relined: (alias: string) => Promise<string> };
+  ask?: { title: string; alias: string | null; runs: string | null; relined: (alias: string) => Promise<{ line: string; runs: string | null }> };
 }
 
 /** 一台机器那一项：连没连上。 */
@@ -233,7 +236,7 @@ function forkBox(title: string): { box: HTMLElement; fromLine: HTMLElement } {
 }
 
 /** 工作目录那一行：目录格 ＋「最近的」（那台最近用过的目录，点一项填进目录格）；锁定 ⇒ 只读、没有「最近的」。 */
-function cwdField(cwd: string, locked: boolean): { cwdInput: HTMLInputElement; recentBtn: HTMLButtonElement; cwdRow: Row } {
+function cwdField(cwd: string, locked: boolean, tag: string | null): { cwdInput: HTMLInputElement; recentBtn: HTMLButtonElement; cwdRow: Row } {
   const cwdInput = el("input");
   cwdInput.className = s.nsInput;
   cwdInput.type = "text";
@@ -250,6 +253,7 @@ function cwdField(cwd: string, locked: boolean): { cwdInput: HTMLInputElement; r
   cwdWrap.className = s.nsBox;
   cwdWrap.append(cwdInput);
   if (!locked) cwdWrap.append(recentBtn);
+  else if (tag !== null) cwdWrap.append(el("span", s.nsRecent, tag));
   return { cwdInput, recentBtn, cwdRow: row(copyText("newSession.label.cwd"), cwdWrap, false) };
 }
 
@@ -406,10 +410,13 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   // 问图：那一格总在，第一项是「选一条别名」（选了才能起），预选那台记着的那条；改选 ⇒ 问那台新拼的那句。
   const ask = spec.ask ?? null;
   const noAlias = { value: "", label: ask ? copyText("newSession.ask.pick") : copyText("newSession.alias.none") };
-  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [noAlias], value: "", onChange: (v) => void relineFor(v) });
+  // 单个页选了别名 ⇒ 各格写那台合下来的值（`mergeFor`）；问图 ⇒ 问那台新拼的那句（`relineFor`）。
+  const aliasSel = select({ label: copyText("newSession.label.alias"), options: [noAlias], value: "", onChange: (v) => void (ask ? relineFor(v) : mergeFor(v)) });
   const aliasRow = row(copyText("newSession.label.alias"), aliasSel.el, false);
   aliasRow.root.hidden = ask === null;
   single.appendChild(aliasRow.root);
+  // 问图：机器锁在计划页那台，不出那一格。
+  machineRow.root.hidden = ask !== null;
   const loadAliases = async (): Promise<void> => {
     let names: string[] = [];
     try {
@@ -424,28 +431,33 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   };
   /** 问图：开口那句里那台拼的那一截（改选别名时换掉它，人打的留着）。 */
   let askLine = spec.prompt ?? "";
+  /** 问图：开口那句下那一行（那台写的起在哪；没选别名 ⇒ 骨架字）。 */
+  const runsNone = copyText("newSession.ask.runsNone");
+  const paintRuns = (runs: string | null): void => promptRow.setNote(runs ?? runsNone);
   const relineFor = async (alias: string): Promise<void> => {
     if (!ask || alias === "") {
+      if (ask) paintRuns(null);
       handle.refresh();
       return;
     }
-    let line: string;
+    let got: { line: string; runs: string | null };
     try {
-      line = await ask.relined(alias);
+      got = await ask.relined(alias);
     } catch (e) {
       aliasRow.setNote(e instanceof Error ? e.message : String(e), "error");
       return;
     }
     if (aliasSel.value() !== alias) return;
     aliasRow.setNote("");
-    if (promptInput.value.startsWith(askLine)) promptInput.value = line + promptInput.value.slice(askLine.length);
-    askLine = line;
+    if (promptInput.value.startsWith(askLine)) promptInput.value = got.line + promptInput.value.slice(askLine.length);
+    askLine = got.line;
+    paintRuns(got.runs);
     handle.refresh();
   };
 
   // 工作目录 ＋「最近的」
   const cwdLocked = spec.lockCwd === true;
-  const { cwdInput, recentBtn, cwdRow } = cwdField(spec.cwd ?? "", cwdLocked);
+  const { cwdInput, recentBtn, cwdRow } = cwdField(spec.cwd ?? "", cwdLocked, ask ? copyText("newSession.ask.cwdTag") : null);
   single.appendChild(cwdRow.root);
 
   // agent（那台能起的多于一家才出）
@@ -468,6 +480,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     label: copyText("newSession.label.account"),
     options: [],
     onChange: () => {
+      // 人改了这一格 ⇒ 盖过别名。
+      fromAlias.account = false;
       paintAccountNote();
       handle.refresh();
     },
@@ -527,12 +541,93 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   promptInput.setAttribute("aria-label", copyText("newSession.label.prompt"));
   const promptRow = row(copyText("newSession.label.prompt"), promptInput);
   single.appendChild(promptRow.root);
-  if (ask) promptRow.setNote(copyText("newSession.ask.note"));
+  if (ask) paintRuns(ask.runs);
 
   // 更多
   const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
   moreRow.hidden = ask !== null;
   single.appendChild(moreRow);
+
+  // 单个页选了别名：账号 · 运行于 · 开口那句写那台合下来的值（`profiles-resolve` 的合并表，同别名页一个读法）＋「来自 {别名}」。
+  // 改一格 ⇒ 那一格盖过别名（灰字消失、照交）；开口那句清空 ⇒ 回到别名那一句。没改过的格不交（照别名起）。
+  let merged: { say: string; from: string } | null = null;
+  let mergedProblem: string | null = null;
+  let mergeSeq = 0;
+  const fromAlias = { account: false, place: false, say: false };
+  const clearMerged = (): void => {
+    merged = null;
+    mergedProblem = null;
+    fromAlias.account = fromAlias.place = fromAlias.say = false;
+    for (const r of [aliasRow, placeRow, promptRow]) r.setNote("");
+    paintAccountNote();
+  };
+  const mergeFor = async (alias: string): Promise<void> => {
+    const my = ++mergeSeq;
+    clearMerged();
+    handle.refresh();
+    if (alias === "") return;
+    let r: Resolved;
+    try {
+      r = await resolveProfile(origin, alias, null, cwdInput.value.trim() || null);
+    } catch (e) {
+      if (my !== mergeSeq) return;
+      // 问不到：各格照缺省、别名格下写那台那一句（不画成「别名没写」）。
+      aliasRow.setNote(saidOf(e));
+      return;
+    }
+    if (my !== mergeSeq || aliasSel.value() !== alias) return;
+    if (r.problem !== null) {
+      mergedProblem = r.problem;
+      aliasRow.setNote(r.problem, "error");
+      handle.refresh();
+      return;
+    }
+    const kept = r.rows.filter((x) => x.overriddenBy === null);
+    const at = (slot: string): ProfileMergeRow | undefined => kept.find((x) => x.slot === slot);
+    const from = (row: ProfileMergeRow): string => row.fromSaid;
+    const acct = at("account");
+    const name = acct?.key === "account" ? acct.vals[0] : undefined;
+    if (acct && name !== undefined && accounts?.some((a) => a.name === name)) {
+      accountSel.setValue(name);
+      paintAccountNote();
+      fromAlias.account = true;
+      if (chosenAccountOpt()?.ready !== false) accountRow.setNote(from(acct));
+    }
+    const tmux = at("tmux");
+    if (tmux && !tmuxRadio.label.hidden) {
+      tmuxRadio.input.checked = true;
+      fromAlias.place = true;
+      placeRow.setNote(from(tmux));
+      paintPlace();
+    }
+    const say = at("say");
+    if (say) {
+      merged = { say: say.vals.join(" "), from: from(say) };
+      promptInput.value = merged.say;
+      fromAlias.say = true;
+      promptRow.setNote(merged.from);
+    }
+    handle.refresh();
+  };
+  for (const p of Object.keys(radios) as Place[]) {
+    radios[p].input.addEventListener("change", () => {
+      if (!fromAlias.place) return;
+      fromAlias.place = false;
+      placeRow.setNote("");
+    });
+  }
+  promptInput.addEventListener("input", () => {
+    if (!fromAlias.say || promptInput.value === merged?.say) return;
+    fromAlias.say = false;
+    promptRow.setNote("");
+  });
+  promptInput.addEventListener("blur", () => {
+    // 清空那一格就是回到别名（不另放「回到别名」按钮）。
+    if (merged === null || promptInput.value.trim() !== "") return;
+    promptInput.value = merged.say;
+    fromAlias.say = true;
+    promptRow.setNote(merged.from);
+  });
 
   /** 勾的哪一张；那台的默认还没到、也没人勾 ⇒ `null`（请求不带 `run`，那台照自己的默认）。 */
   const place = (): Place | null =>
@@ -675,14 +770,15 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
 
   /** 点［新建］交的那一份：哪一家 · 目录 · 放在哪 · 点名的号（跟随 ⇒ 不带）· 改过的终端名与命令 · 分叉的两个 id。 */
   const buildRequest = (): SessionOpenReq => {
-    const accountValue = accountRow.root.hidden ? null : accountSel.value();
+    // 别名合下来、人没改过的那几格不交（照别名起）。
+    const accountValue = accountRow.root.hidden || fromAlias.account ? null : accountSel.value();
     const account: AccountAsk | undefined =
       accountValue === null || accountValue === ACCOUNT_FOLLOW ? undefined : chosenAccount(accountValue);
     const what: NewOpen = { agent, cwd: cwdInput.value.trim() };
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") what.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") what.command = cmdInput.value.trim();
     if (fork) what.fork = { sid: fork.sid, uuid: fork.uuid };
-    if (place() !== "window" && promptInput.value.trim() !== "") what.prompt = promptInput.value;
+    if (place() !== "window" && !fromAlias.say && promptInput.value.trim() !== "") what.prompt = promptInput.value;
     if (!aliasRow.root.hidden && aliasSel.value() !== "") what.alias = aliasSel.value();
     // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
     const rot = rotRow.root.hidden ? forNew : rotSel.value();
@@ -782,6 +878,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (onSet) return sets.blocked();
       if (facts === null) return copyText("kit.state.reading");
       if (ask && !aliasSel.value()) return copyText("newSession.ask.pick");
+      if (mergedProblem !== null) return mergedProblem;
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");

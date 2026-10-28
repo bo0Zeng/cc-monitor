@@ -16,7 +16,20 @@
     ],
     "tests/backend/control/machine_state_tests.rs": [
       { "text": "要更新", "use": "用例名" },
-      { "text": "无应答", "use": "用例名" }
+      { "text": "无应答", "use": "用例名" },
+      { "text": "说明", "use": "非文案" }
+    ],
+    "tests/backend/faces/quota_rows_tests.rs": [
+      { "text": "说明", "use": "非文案" }
+    ],
+    "tests/common/cmd-wire/reply_goldens_tests.rs": [
+      { "text": "说明", "use": "非文案" }
+    ],
+    "tests/common/guard-core/no_outside_refs_tests.rs": [
+      { "text": "说明", "use": "非文案" }
+    ],
+    "tests/frontend/ui/rot-mount.vitest.ts": [
+      { "text": "说明", "use": "输入" }
     ],
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
@@ -172,7 +185,8 @@
     ],
     "tests/frontend/ui/kit/tooltip.vitest.ts": [
       { "text": "下一个", "use": "输入" },
-      { "text": "刷新", "use": "输入" }
+      { "text": "刷新", "use": "输入" },
+      { "text": "说明", "use": "输入" }
     ],
     "tests/frontend/ui/main-window-fixes.vitest.ts": [
       { "text": "结束", "use": "输入" },

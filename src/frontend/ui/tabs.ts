@@ -270,11 +270,13 @@ export class TabManager {
     this.refocus(row);
   }
 
-  /** `F2`：组头或组员上 ⇒ 改这个组的名字。 */
-  renameFocusedGroup(): void {
+  /** `F2`：改焦点那一行 —— 组头上 ⇒ 组名；标签页上 ⇒ 这个标签页的名（栏上就地改，同双击 · 右键「改标题」那一口；焦点在那一行 ⇒ 它看得见）。 */
+  renameFocused(): void {
     const row = this.bar.focusedRow();
-    const gid = row === null ? null : row.kind === "head" ? row.gid : (this.store.tabs.get(row.sid)?.group ?? null);
-    if (gid !== null) this.bar.renameGroupNow(gid);
+    if (row === null) return;
+    if (row.kind === "head") return void this.bar.renameGroupNow(row.gid);
+    const tab = this.store.tabs.get(row.sid);
+    if (tab) this.bar.renameTabNow(tab);
   }
 
   /** `F6`：焦点在主区与标签页栏之间轮（进栏落在当前标签页那一行）。 */

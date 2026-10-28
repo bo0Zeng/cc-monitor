@@ -233,6 +233,11 @@ fn resolve_lists_every_item_with_label_origin_and_the_overridden_ones_struck() {
     let acct = row(&r, "account", "teamcct");
     assert_eq!(acct["label"], copy_text("beProfile.slot.account", &[]));
     assert_eq!(acct["vals"], json!(["team"]));
+    // 「来自哪一段」那一句也是这台写好的（新建框单个页那几格照摆）。
+    assert_eq!(
+        acct["fromSaid"],
+        copy_text("beProfile.merge.from", &[("from", "teamcct")])
+    );
     // 「等于」那一行是这台后端算的（同 `ccm @teamcct -- --ccm-print`）：这台没有 team 号 ⇒ 不给行、给 ccm 那一句。
     assert!(r["line"].is_null());
     assert!(r["lineError"].as_str().unwrap().contains("'team'"), "{r}");
@@ -757,7 +762,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     .unwrap();
     assert_eq!(
         wire_in(&normalized(&r, &home), &t),
-        r#"{"chain":["cc","cct2"],"line":"<LINE>","lineError":null,"lineShort":"<LINE_SHORT>","problem":null,"rows":[{"from":"cc","key":"cwd-if","label":"按目录","overriddenBy":null,"said":"在 ~ 敲进 ~/projects/notes","slot":"cwdIf","vals":["~","~/projects/notes"]},{"from":"cct2","key":"tmux-base","label":"在哪起","overriddenBy":null,"said":"tmux · 以 w 为底取名","slot":"tmux","vals":["w"]},{"from":"cct2","key":"detach","label":"起完不接进去","overriddenBy":null,"said":"开","slot":"detach","vals":[]}]}"#
+        r#"{"chain":["cc","cct2"],"line":"<LINE>","lineError":null,"lineShort":"<LINE_SHORT>","problem":null,"rows":[{"from":"cc","fromSaid":"来自 cc","key":"cwd-if","label":"按目录","overriddenBy":null,"said":"在 ~ 敲进 ~/projects/notes","slot":"cwdIf","vals":["~","~/projects/notes"]},{"from":"cct2","fromSaid":"来自 cct2","key":"tmux-base","label":"在哪起","overriddenBy":null,"said":"tmux · 以 w 为底取名","slot":"tmux","vals":["w"]},{"from":"cct2","fromSaid":"来自 cct2","key":"detach","label":"起完不接进去","overriddenBy":null,"said":"开","slot":"detach","vals":[]}]}"#
     );
 
     let r = answer_impact(

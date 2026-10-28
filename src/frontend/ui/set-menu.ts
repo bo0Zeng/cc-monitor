@@ -2,7 +2,7 @@
  * **起一组会话的入口**：栏顶拆分按钮「＋ ⌄」与它那张组菜单 · 命令面板「起一组…」开的同一张菜单。
  *
  * - 左半「＋」＝ 新建会话…（开全产品那一个框）；右半「⌄」＝ 这台存好的几组（`profiles-read` 的 `sets`）。窄栏只剩「＋」，点了开同一张菜单。
- * - 每组一项：名字 · 右侧「再起 N / 已齐」· 第二行按行写「目录 组名 已有/要的」（起不了的那行写原因）—— 这几句都是那台 `set-plan` 写好的，
+ * - 每组一项：名字 · 右侧「再起 N / 已齐」· 第二行那台的短句（几个目录 · 几个会话 · 几行起不了）· 悬停侧卡逐行「目录 组名 已有/要的」（起不了的那行写原因）—— 这几句都是那台 `set-plan` 写好的，
  *   答回来之前转圈。一组写错 · 那台答不了 ⇒ 那一项灰着、第二行写为什么。点一项 ＝ 起那一组（`set-start.ts`）：不弹框。
  * - 判定（已有几个 · 再起几个 · 组名 · 起不了的原因）与那几句全在那台后端，这里只排版。
  */
@@ -37,8 +37,22 @@ export function setItem(set: SetOut, state: PlanState, start: () => void): MenuI
   if (state.kind === "pending") return { ...base, pending: true };
   if (state.kind === "failed") return { ...base, enabled: false, why: state.said };
   const { plan } = state;
-  if (plan.more === 0) return { ...base, detail: plan.moreSaid, enabled: false, why: plan.said };
-  return { ...base, detail: plan.moreSaid, body: plan.said, onClick: start };
+  const peek = (): HTMLElement => rowsCard(plan);
+  if (plan.more === 0) return { ...base, detail: plan.moreSaid, enabled: false, why: plan.short, peek };
+  return { ...base, detail: plan.moreSaid, body: plan.short, peek, onClick: start };
+}
+
+/** 悬停侧卡：逐行一句（那台写好的「目录 组名 已有/要的」· 起不了的写原因）。 */
+function rowsCard(plan: SetPlan): HTMLElement {
+  const card = document.createElement("div");
+  for (const r of plan.rows) {
+    const line = document.createElement("div");
+    line.dataset.role = "set-peek-row";
+    if (r.blocked !== null) line.dataset.intent = "error";
+    line.textContent = r.said;
+    card.appendChild(line);
+  }
+  return card;
 }
 
 /** 开组菜单：先列「新建会话…」与这台存好的几组（各自转圈），每组的 `set-plan` 答回来就地换成那一项。 */

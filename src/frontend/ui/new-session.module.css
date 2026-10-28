@@ -239,6 +239,29 @@
     grid-column: 1 / -1;
   }
 
+  /* 那台说起不了的那一行（重行 · 别名不在 · 目录不在）：淡掉，下面一行写那一句。 */
+  .nsSetRow[data-blocked="true"] {
+    opacity: 0.55;
+  }
+
+  .nsSetRowWhy {
+    margin-top: calc(-1 * var(--space-1));
+    color: var(--error-text);
+    font-size: var(--font-size-small);
+  }
+
+  /* 组名那一格 ＋ 右边那颗［删除这一组］。 */
+  .nsSetName {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .nsSetName > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+
   .nsSetCount {
     text-align: center;
     font-variant-numeric: tabular-nums;

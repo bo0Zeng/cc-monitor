@@ -57,7 +57,7 @@ function groups(): { title: string; rows: Row[] }[] {
         { label: copyText("keys.row.move"), ids: ["tabBar.move-up", "tabBar.move-down"] },
         { ids: ["tabBar.leave-group"] },
         { ids: ["tabBar.join-prev"] },
-        { ids: ["tabBar.rename-group"] },
+        { ids: ["tabBar.rename"] },
       ],
     },
     {
