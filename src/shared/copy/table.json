@@ -12663,6 +12663,18 @@
       "zh": "一组",
       "args": []
     },
+    "newSession.ask.pick": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "选一条别名",
+      "args": []
+    },
+    "newSession.ask.note": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "号 · 哪一家 · 轮换随别名",
+      "args": []
+    },
     "newSessionSet.label.name": {
       "kind": "control",
       "role": "标签",
@@ -14621,6 +14633,37 @@
       "role": "片段",
       "zh": "人 · {id} {title}：{text}",
       "args": ["id", "title", "text"]
+    },
+    "bePlan.ask.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "看 {id}「{title}」：",
+      "args": ["id", "title"]
+    },
+    "bePlan.ask.lineBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "看 {id}：",
+      "args": ["id"]
+    },
+    "bePlan.ask.noSuchAlias": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "别名 {alias} 不可用 · {why}",
+      "args": ["alias", "why"]
+    },
+    "bePlan.ask.noTmux": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "问图只在 tmux 里起 · 无 tmux",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "bePlan.ask.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "问图 · {title}",
+      "args": ["title"]
     },
     "bePlan.face.noView": {
       "kind": "error",
@@ -28759,6 +28802,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "新会话接手…",
+      "args": []
+    },
+    "plan.ask.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "问图…",
+      "args": []
+    },
+    "plan.ask.failed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "问图框没打开",
       "args": []
     },
     "plan.takeover.unbuilt": {
