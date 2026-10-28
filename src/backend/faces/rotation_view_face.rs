@@ -382,9 +382,7 @@ pub(crate) fn lines_of(
                 RotGroup::Use if is_off(a) => copy_text("beRotation.line.offUse", &[]),
                 RotGroup::Use => copy_text("beRotation.line.use", &[]),
                 RotGroup::Next if i == 1 => match &next_at {
-                    Some((to, at)) if to == a => {
-                        copy_text("beRotation.line.nextAt", &[("at", at)])
-                    }
+                    Some((to, at)) if to == a => copy_text("beRotation.line.nextAt", &[("at", at)]),
                     _ => copy_text("beRotation.line.next", &[]),
                 },
                 RotGroup::Next => copy_text("beRotation.line.spare", &[]),

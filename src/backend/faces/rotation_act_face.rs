@@ -101,15 +101,9 @@ fn judged_session(ctx: &Ctx, sid: &str, s: &Session, now: u64, end: u64) -> Judg
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum RotTempOp {
-    Move {
-        account: String,
-        to: usize,
-    },
+    Move { account: String, to: usize },
     Clear,
-    Off {
-        account: String,
-        off: bool,
-    },
+    Off { account: String, off: bool },
 }
 
 /// `rotation-temp` 的入参。
