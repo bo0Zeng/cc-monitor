@@ -11551,28 +11551,10 @@
       "zh": "附件已不在：{ids} · 没排进队",
       "args": ["ids"]
     },
-    "beTerminal.no.attachmentGone": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "附件已不在 · 没送",
-      "args": []
-    },
     "beTerminal.no.heldElsewhere": {
       "kind": "body",
       "role": "片段",
       "zh": "输入在另一端 · 没送",
-      "args": []
-    },
-    "beTerminal.no.elsewhere": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "会话在别的终端里开着",
-      "args": []
-    },
-    "beTerminal.no.notResumed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "终端已关，恢复会话失败",
       "args": []
     },
     "beTerminal.refuse.empty": {

@@ -93,9 +93,6 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::Ambiguous => copy_text("beTerminal.no.ambiguous", &[]),
         Refused::ScreenChanged => copy_text("beTerminal.no.screenChanged", &[]),
         Refused::Waiting => copy_text("beTerminal.no.waiting", &[]),
-        Refused::Elsewhere => copy_text("beTerminal.no.elsewhere", &[]),
-        Refused::NotResumed => copy_text("beTerminal.no.notResumed", &[]),
-        Refused::AttachmentGone => copy_text("beTerminal.no.attachmentGone", &[]),
         Refused::HeldElsewhere => copy_text("beTerminal.no.heldElsewhere", &[]),
     }
 }
@@ -729,8 +726,6 @@ pub(crate) fn input_reply(result: SentResult, why: Option<Refused>, screen: Opti
         why,
         said: why.map(no_said),
         screen: screen.map(str::to_string),
-        resumed: false,
-        gone: Vec::new(),
         acts: acts_of(result, why),
     }
 }

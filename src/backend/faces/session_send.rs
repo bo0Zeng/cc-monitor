@@ -8,9 +8,43 @@
 
 use crate::control::launch_account::AccountAsk;
 use crate::control::session_open::{self as open, Item, Landed};
-use crate::control::terminals::{input_reply, CmdErr, Refused};
+use crate::control::terminals::CmdErr;
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::wire::typed::Files;
+
+/// 投递那一下送一句的结局：只投递内部用，不上线（送字那一侧回的线上形是 [`Sent`]，这里收成投递要分的那几样）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Delivery {
+    /// 送进去了（照 `terminal-input` 送到 · 不知道送没送到：都不重发）；`resumed` ＝ 终端没了、按记下的号恢复了这条会话、那一句当第一句交了出去。
+    In { resumed: bool },
+    /// 那台说这条会话在等人（批准 · 回答）：一个字没送，照排着、等它答完。
+    Waiting,
+    /// 送不进去：那一条标未送达（为什么记日志）。
+    No(Undeliverable),
+}
+
+/// 送不进去的那几种。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Undeliverable {
+    /// 送字那一侧被拒（那一份原样：别的前端的 · 不归我们管 · 不止一个终端 …）。
+    Refused(Sent),
+    /// 带的附件里有那台已经不在的（过了七天清掉 · 撤过）：一个字都没送，列出那几个编号。
+    AttachmentGone(Vec<String>),
+    /// 终端已经没了，按记下的号恢复这条会话没成（原话记日志）。
+    NotResumed,
+    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个。
+    Elsewhere,
+}
+
+impl Delivery {
+    /// 送字那一侧的回话 ⇒ 投递的结局：送到 · 不知道 ⇒ 送进去了；被拒 ⇒ 送不进去（那一份原样）。
+    pub(crate) fn of(sent: Sent) -> Delivery {
+        match sent.result {
+            SentResult::Delivered | SentResult::Unsure => Delivery::In { resumed: false },
+            SentResult::Refused => Delivery::No(Undeliverable::Refused(sent)),
+        }
+    }
+}
 
 /// 送进去的那一句。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +60,7 @@ pub(crate) struct Say {
 }
 
 /// 生产那一份送一句：会话工作目录与哪一家从会话记录读（同恢复那一支）；读不出 ⇒ 每一份附件都算不在。
-pub(crate) fn here(say: &Say, files: Files) -> Result<Sent, CmdErr> {
+pub(crate) fn here(say: &Say, files: Files) -> Result<Delivery, CmdErr> {
     let home = crate::history::listing::agent_home();
     let waiting = |sid: &str| crate::history::live_table::now(&home).waiting(sid);
     let words = if say.attachments.is_empty() {
@@ -89,12 +123,12 @@ pub(crate) fn plain(text: &str) -> crate::agents::Typed {
 }
 
 /// 带附件的那一句：编号 ⇒ 工作目录 `cwd` 下那一份（[`crate::common::attachment_dir::find`]），照 `agent` 那一家的写法拼（[`crate::agents::typed_with`]）。
-/// 有不在的 ⇒ 被拒的那一份（`attachment_gone`，`gone` 列出那几个编号），一个字都不送。
+/// 有不在的 ⇒ 送不进去（附件已不在，列出那几个编号），一个字都不送。
 pub(crate) fn typed_of(
     say: &Say,
     agent: &str,
     cwd: &std::path::Path,
-) -> Result<crate::agents::Typed, Sent> {
+) -> Result<crate::agents::Typed, Delivery> {
     use crate::common::attachment_dir as layout;
     let mut found = Vec::new();
     let mut missing = Vec::new();
@@ -108,10 +142,7 @@ pub(crate) fn typed_of(
         }
     }
     if !missing.is_empty() {
-        return Err(Sent {
-            gone: missing,
-            ..input_reply(SentResult::Refused, Some(Refused::AttachmentGone), None)
-        });
+        return Err(Delivery::No(Undeliverable::AttachmentGone(missing)));
     }
     let refs: Vec<crate::agents::AttachRef<'_>> = found
         .iter()
@@ -127,13 +158,9 @@ pub(crate) fn say_typed(
     waiting: &dyn Fn(&str) -> bool,
     send: &dyn Fn(&TerminalInputReq) -> Result<Sent, CmdErr>,
     resume: &dyn Fn(&Say) -> Option<Reopened>,
-) -> Result<Sent, CmdErr> {
+) -> Result<Delivery, CmdErr> {
     if waiting(&say.sid) {
-        return Ok(input_reply(
-            SentResult::Refused,
-            Some(Refused::Waiting),
-            None,
-        ));
+        return Ok(Delivery::Waiting);
     }
     let sent = send(&TerminalInputReq {
         sid: Some(say.sid.to_string()),
@@ -145,17 +172,14 @@ pub(crate) fn say_typed(
     })?;
     // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。
     if !crate::control::terminals::terminal_gone(sent.why) {
-        return Ok(sent);
+        return Ok(Delivery::of(sent));
     }
     let Some(a) = resume(say) else {
-        return Ok(sent);
+        return Ok(Delivery::of(sent));
     };
     let why = match &a {
         Ok(o) if matches!(o.landed, Landed::Started | Landed::InPlace) => {
-            return Ok(Sent {
-                resumed: true,
-                ..input_reply(SentResult::Delivered, None, None)
-            })
+            return Ok(Delivery::In { resumed: true })
         }
         Ok(o) => {
             tracing::warn!(
@@ -163,7 +187,7 @@ pub(crate) fn say_typed(
                 say.sid,
                 o.session
             );
-            Refused::NotResumed
+            Undeliverable::NotResumed
         }
         Err((code, said, _, raw)) => {
             tracing::warn!(
@@ -171,13 +195,13 @@ pub(crate) fn say_typed(
                 say.sid
             );
             if *code == "already_live" {
-                Refused::Elsewhere
+                Undeliverable::Elsewhere
             } else {
-                Refused::NotResumed
+                Undeliverable::NotResumed
             }
         }
     };
-    Ok(input_reply(SentResult::Refused, Some(why), None))
+    Ok(Delivery::No(why))
 }
 
 #[cfg(test)]

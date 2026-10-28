@@ -5,10 +5,11 @@
 
 use super::*;
 use crate::agents::SessionActivity as A;
-use crate::control::terminals_wire::{Sent, SentResult};
+use crate::control::terminals_wire::SentResult;
+use crate::faces::session_send::{Delivery, Undeliverable};
 use crate::history::session_queue as q;
 use cmd_wire::queue::{QueueItem, QueueState as S, SessionQueuePutReq};
-use cmd_wire::{session::Refused, Machine};
+use cmd_wire::Machine;
 use std::cell::RefCell;
 
 const SID: &str = "s1";
@@ -66,15 +67,16 @@ fn the_line_sent_carries_its_attachments() {
     );
 }
 
-fn sent(result: SentResult, why: Option<Refused>) -> Sent {
-    crate::control::terminals::input_reply(result, why, None)
+/// 送字那一侧回 `result`（没被拒）⇒ 投递那一下的结局。
+fn sent(result: SentResult) -> Delivery {
+    Delivery::of(crate::control::terminals::input_reply(result, None, None))
 }
 
 /// 一台假的：此刻那条会话在干什么（`None` ＝ 不活）· 那一态从何时起 · 送字回什么；记下送了哪几句。
 struct Rig {
     doing: RefCell<Option<Option<A>>>,
     since: RefCell<Option<u64>>,
-    answer: RefCell<Sent>,
+    answer: RefCell<Delivery>,
     said: RefCell<Vec<String>>,
 }
 
@@ -83,7 +85,7 @@ impl Rig {
         Rig {
             doing: RefCell::new(doing),
             since: RefCell::new(Some(since as u64)),
-            answer: RefCell::new(sent(SentResult::Delivered, None)),
+            answer: RefCell::new(sent(SentResult::Delivered)),
             said: RefCell::new(Vec::new()),
         }
     }
@@ -235,7 +237,7 @@ fn a_line_for_a_session_not_seen_alive_is_sent_to_resume_it() {
 fn a_refused_line_is_marked_undelivered_and_the_next_one_goes() {
     let o = own("refused");
     let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
-    *rig.answer.borrow_mut() = sent(SentResult::Refused, Some(Refused::NotResumed));
+    *rig.answer.borrow_mut() = Delivery::No(Undeliverable::NotResumed);
     let mut memos = Memos::default();
     put(&o, "a", T0);
     put(&o, "b", T0);
@@ -247,7 +249,7 @@ fn a_refused_line_is_marked_undelivered_and_the_next_one_goes() {
             ("a".to_string(), S::Undelivered)
         ]
     );
-    *rig.answer.borrow_mut() = sent(SentResult::Delivered, None);
+    *rig.answer.borrow_mut() = sent(SentResult::Delivered);
     rig.pass(&o, &mut memos, T0 + 2);
     assert_eq!(
         rig.said(),
@@ -260,7 +262,7 @@ fn a_refused_line_is_marked_undelivered_and_the_next_one_goes() {
 fn a_waiting_refusal_keeps_the_line_queued_and_unsure_is_not_resent() {
     let o = own("unsure");
     let rig = Rig::new(Some(Some(A::Idle)), T0 - 1_000);
-    *rig.answer.borrow_mut() = sent(SentResult::Refused, Some(Refused::Waiting));
+    *rig.answer.borrow_mut() = Delivery::Waiting;
     let mut memos = Memos::default();
     put(&o, "a", T0);
     rig.pass(&o, &mut memos, T0 + 1);
@@ -269,7 +271,7 @@ fn a_waiting_refusal_keeps_the_line_queued_and_unsure_is_not_resent() {
         vec![("a".to_string(), S::Queued)],
         "送的那一刻框开了 ⇒ 照排着"
     );
-    *rig.answer.borrow_mut() = sent(SentResult::Unsure, None);
+    *rig.answer.borrow_mut() = sent(SentResult::Unsure);
     rig.pass(&o, &mut memos, T0 + 2);
     assert!(states(&o).is_empty(), "不知道送没送到 ⇒ 摘掉、不重送");
 }

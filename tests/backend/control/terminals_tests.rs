@@ -1036,8 +1036,6 @@ fn the_next_steps_after_a_send_are_judged_here() {
         "not_managed",
         "other_windows",
         "waiting",
-        "elsewhere",
-        "not_resumed",
     ] {
         assert_eq!(acts("refused", Some(no_retry)), json!([]), "{no_retry}");
     }
