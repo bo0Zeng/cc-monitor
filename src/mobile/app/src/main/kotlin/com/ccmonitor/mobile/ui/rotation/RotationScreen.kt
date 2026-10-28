@@ -50,7 +50,7 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /**
- * 轮换屏：竖着排，顺序同桌面——第一行（策略下拉 ·「⋯」· 说明）· 提示，会话里接着顺序 · 模拟，设置页接着轮换账号 · 总体设置 · 模拟。
+ * 轮换屏：竖着排，顺序同桌面——第一行（策略下拉 ·「⋯」· 说明）· 提示，会话里接着顺序（没有模拟），设置页接着轮换账号 · 总体设置 · 模拟。
  * 两处进来是同一屏：聊天屏「⋯」→ 轮换（[sid]，那条会话）· 设置 → 机器与账号 → 轮换（[sid] 为 `null`：新会话用的那份；
  * 会话里［编辑策略］跳过来的带 [focus]：看那一份、开那个号的编辑小窗）。
  * 画的全是那台的回包（[RotationBoard]）；这里只排版、把手势交给它。
@@ -101,7 +101,7 @@ fun RotationScreen(
             when {
                 // 那台成品写的离线那一句；成品还没到 ⇒ 状态不明（未知不当离线）。
                 down != null -> DownBox(offline ?: copyText("sessionState.unseen.name"))
-                !ui.loaded -> Skeleton()
+                !ui.loaded -> Skeleton(sid != null)
                 else -> {
                     ui.readFailed?.let { ReadFailed(it.text, it.detail) { scope.launch { board.refresh() } } }
                     val edit = { account: String? ->
@@ -133,7 +133,8 @@ private fun BoardBody(
     Hints(ui, view, board, onOpenFile)
     if (view.strategy == null) return
     if (sid != null) {
-        Order(ui, view, board, onEditStrategy)
+        // 读不出 ⇒ 上次所知的照画、拿不起（红条在上面）。
+        Order(ui, view, board, offline = ui.readFailed != null, onEditStrategy)
     } else {
         Cards(ui, view, board)
         val all = view.board.all
@@ -141,8 +142,8 @@ private fun BoardBody(
             RotHeader(copyText("rot.h.all"))
             all.forEach { CellRows(ui, board, it, null) }
         }
+        Simulation(ui, view, board)
     }
-    if (view.timeline != null) Simulation(ui, view, board)
     Spacer(Modifier.height(24.dp))
 }
 
@@ -169,13 +170,14 @@ private fun RotTopBar(
     )
 }
 
-/** 头一回读：四块骨架占位，不转圈。 */
+/** 头一回读：骨架占位，不转圈（会话 ⇒ 顺序一块；设置页 ⇒ 号牌 · 总体设置 · 模拟）。 */
 @Composable
-private fun Skeleton() {
+private fun Skeleton(session: Boolean) {
     val c = MaterialTheme.colorScheme.surfaceContainerHigh
     Box(Modifier.fillMaxWidth().height(48.dp).background(c, RoundedCornerShape(6.dp)))
     Box(Modifier.fillMaxWidth(0.9f).height(12.dp).background(c, RoundedCornerShape(3.dp)))
-    listOf(copyText("rot.h.cards") to 72.dp, copyText("rot.h.all") to 72.dp, copyText("rot.h.sim") to 160.dp).forEach { (h, tall) ->
+    val blocks = if (session) listOf(copyText("rot.h.order") to 240.dp) else listOf(copyText("rot.h.cards") to 72.dp, copyText("rot.h.all") to 72.dp, copyText("rot.h.sim") to 160.dp)
+    blocks.forEach { (h, tall) ->
         RotHeader(h)
         Box(Modifier.fillMaxWidth().height(tall).background(c, RoundedCornerShape(6.dp)))
     }
@@ -265,4 +267,5 @@ object RotTags {
     const val CARD = "rot-card"
     const val LANE = "rot-lane"
     const val TOP = "rot-top"
+    const val FIRST = "rot-first"
 }

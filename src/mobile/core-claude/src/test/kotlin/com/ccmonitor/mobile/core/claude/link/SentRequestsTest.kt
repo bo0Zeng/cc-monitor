@@ -115,7 +115,7 @@ class SentRequestsTest {
             Rotation.DELETE to listOf(Rotation.delete("x")),
             Rotation.RENAME to listOf(Rotation.rename("x", "n", "r")),
             Rotation.TZ to listOf(Rotation.tz("x", "Asia/Shanghai", "r")),
-            Rotation.TEMP to listOf(Rotation.place("s", "a", 1_800_000_000L), Rotation.move("s", "b", 1), Rotation.clearTemp("s"), Rotation.off("s", "a", true)),
+            Rotation.TEMP to listOf(Rotation.move("s", "b", 1), Rotation.clearTemp("s"), Rotation.off("s", "a", true)),
             Rotation.USE to listOf(Rotation.use("s", "x"), Rotation.use("s", null)),
             Rotation.USE_NOW to listOf(Rotation.useNow("s", "a")),
             Rotation.VIEW to

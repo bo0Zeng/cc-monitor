@@ -23,12 +23,12 @@ export function readStrategies(
   return callTyped(origin, "rotation-strategies", {}, rotBudget());
 }
 
-/** 一个会话（或一份策略）的四块要画的全部；推 `hours` 小时。 */
+/** 一个会话（或一份策略）要画的全部；设置页那一形推 `hours` 小时（会话那一形不画推演，不带）。 */
 export function readView(
   origin: Origin,
   target: RotTarget,
-  hours: number,
+  hours?: number,
 ): Promise<RotationViewReply> {
-  return callTyped(origin, "rotation-view", { target, hours }, rotBudget());
+  return callTyped(origin, "rotation-view", hours === undefined ? { target } : { target, hours }, rotBudget());
 }
 

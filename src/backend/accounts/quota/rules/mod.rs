@@ -3,7 +3,6 @@
 //!
 //! - [`standing`]：事实上发不发得出去；
 //! - [`decide`]：一判 —— 叫策略、照它交的先后做动作（纯函数：不读钟、不写盘）；
-//! - [`past`]：已经发生的那一截（照换号记录与此刻的读数，说不出的空着）；
 //! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
 //! - [`code`]：策略的代码在沙箱里的 `decide(ctx)`（挂着积木库 `lib`）；
 //! - [`book`]：`rotation.json`（会话载入的策略副本 · 临时动作 · memo · 叫醒 · 换号记录）。
@@ -11,7 +10,6 @@
 pub(crate) mod book;
 pub(crate) mod code;
 pub(crate) mod decide;
-pub(crate) mod past;
 pub(crate) mod simulate;
 pub(crate) mod standing;
 
