@@ -608,16 +608,30 @@ pub(crate) fn view_with(
         });
     }
     let all_facts = ctx.hop.facts(&agent, &row, now, tz);
-    let listed_ids: Vec<String> = facts.iter().map(|a| a.id.clone()).collect();
-    let listed = plan
-        .settings
-        .get(form::ACCOUNTS)
-        .and_then(Value::as_array)
-        .map_or(0, Vec::len)
-        .min(listed_ids.len());
+    // 设置行：号列表里一个号一行（同号只认头一次，同判那一处），各带它在列表里的行号；这台账号库没有的号照出。
+    let mut rows: Vec<(usize, String)> = Vec::new();
+    for (i, id) in crate::accounts::quota::rules::listed_ids(&plan.settings, &session.start)
+        .into_iter()
+        .enumerate()
+    {
+        if !rows.iter().any(|(_, x)| x == id) {
+            rows.push((i, id.to_string()));
+        }
+    }
+    let listed = rows.len();
+    let ids: Vec<String> = rows
+        .iter()
+        .map(|(_, id)| id.clone())
+        .chain(
+            facts
+                .iter()
+                .map(|a| a.id.clone())
+                .filter(|id| !rows.iter().any(|(_, x)| x == id)),
+        )
+        .collect();
     let lib = ctx.hop.library();
     let colors = crate::observe::accounts_query::account_colors();
-    let accounts: Vec<RotAccount> = listed_ids
+    let accounts: Vec<RotAccount> = ids
         .iter()
         .map(|id| {
             account_of(
@@ -678,7 +692,15 @@ pub(crate) fn view_with(
         now_text: face(now, tz),
         title: title_of(&req.target),
         strategy: Some(item),
-        board: board_of(&form, &plan.settings, &accounts[..listed]),
+        board: board_of(
+            &form,
+            &plan.settings,
+            &rows
+                .iter()
+                .zip(&accounts)
+                .map(|((i, id), a)| (*i, a, facts.iter().any(|f| f.id == *id)))
+                .collect::<Vec<_>>(),
+        ),
         start: session.start.clone(),
         current: session.current.clone(),
         lineup,
@@ -844,7 +866,12 @@ fn rule_of(c: &RotCell) -> String {
 }
 
 /// 设置那几块：总体（`scope: all`）· 号列表每一行（字 ＋ `scope: each` 那几格 ＋ 写成的句子）。
-fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> RotBoard {
+/// `listed` 一项一行：它在号列表里的行号（格照这一行画）· 号牌 · 这台账号库里有没有这个号（没有 ⇒ 头一句照实说）。
+fn board_of(
+    form: &[form::Cell],
+    settings: &Value,
+    listed: &[(usize, &RotAccount, bool)],
+) -> RotBoard {
     let of = |scope: form::Scope, row: Option<usize>| -> Vec<RotCell> {
         form.iter()
             .filter(|c| c.scope == scope && form::shown(form, c, settings, row))
@@ -875,19 +902,26 @@ fn board_of(form: &[form::Cell], settings: &Value, listed: &[RotAccount]) -> Rot
         all: of(form::Scope::All, None),
         rows: listed
             .iter()
-            .enumerate()
-            .map(|(i, RotAccount { fact: f, .. })| {
+            .map(|&(i, RotAccount { fact: f, .. }, here)| {
                 let (u5, u7) = (pct(&f.w5h), pct(&f.w7d));
                 let mut line = copy_text("rot.acct.line", &[("u5", &u5), ("u7", &u7)]);
                 if let Some(at) = &f.w5h.resets_text {
                     line.push_str(&copy_text("kit.text.sep", &[]));
                     line.push_str(&copy_text("rot.acct.reset", &[("at", at)]));
                 }
+                let hover = copy_text("rot.card.hover", &[("u5", &u5), ("u7", &u7)]);
+                let (line, hover) = if here {
+                    (line, hover)
+                } else {
+                    let missing = copy_text("rot.acct.missing", &[]);
+                    (missing.clone(), missing)
+                };
                 let cells = of(form::Scope::Each, Some(i));
                 RotRow {
                     account: f.account.clone(),
+                    row: i,
                     line,
-                    hover: copy_text("rot.card.hover", &[("u5", &u5), ("u7", &u7)]),
+                    hover,
                     rules: cells.iter().map(rule_of).collect(),
                     cells,
                     marks: marks(i),

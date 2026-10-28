@@ -832,21 +832,43 @@ fn execute(plan: Plan, upstream: Option<&egress::Taken>, own: &crate::platform::
     }
 }
 
-/// 托管容器真跑：脱离起托管进程（[`plan::Container::host_run`]，stdio 全空、自成一组、不继承 `TMUX`）→ 等它的家出现 →
-/// `--detach` ⇒ 报名字；收尾（自检 · 接上）与 `--ccm-print` 那一段是同一份渲染（[`plan::render_container_tail`]）。
-/// 起不来 · 期限内没起来 ⇒ 退 4。名字是计划里铸好的那一个（同 tmux 那一形：这里一个字都不改它）。
+/// 托管容器真跑，各平台同一条、不经 shell：脱离起托管进程（[`plan::Container::host_run`]，stdio 全空、自成一组、不继承 `TMUX`、
+/// 摘 [`plan::Container::unset`]）→ 等它的家出现 → `--detach` ⇒ 报名字 → 自检（[`plan::Container::self_check_argv`] 原生跑一次）→
+/// 不带 `--detach` ⇒ 瘦客户端接上（同 `--attach`）。`--ccm-print` 那一行是这几步的 POSIX 等价写法。
+/// 起不来 · 期限内没起来 · 自检没过 ⇒ 退 4。名字是计划里铸好的那一个（同 tmux 那一形：这里一个字都不改它）。
+/// 托管进程与里面那一跳要一直跑着：跑着的程序文件盖不掉的平台上从按版本的副本跑（[`crate::host::managed::bin::host_program`]）。
 fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
-    let Some((exe, rest)) = c.host_run.split_first() else {
+    let Some((called, rest)) = c.host_run.split_first() else {
         return die(&copy_text(
             "beCcm.execute.hostSpawnFailed",
             &[("name", &c.name), ("why", "argv")],
         ));
     };
-    let spawned = Child::new(exe)
-        .args(rest)
+    let me = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from(called));
+    let program = match crate::host::managed::bin::host_program(own, called, &me) {
+        Ok(p) => p,
+        Err(s) => {
+            return die(&copy_text(
+                "beCcm.execute.hostSpawnFailed",
+                &[("name", &c.name), ("why", &s.logged())],
+            ))
+        }
+    };
+    // 里面那一跳（`--host-run` 那几格之后、第二个 `--` 之后）打头的也是自己 ⇒ 同一个程序。
+    let mut rest = rest.to_vec();
+    if let Some(i) = rest.iter().skip(1).position(|a| a == argv::flag::END) {
+        if rest.get(i + 2).is_some_and(|w| w == called) {
+            rest[i + 2] = program.clone();
+        }
+    }
+    let mut spawn = Child::new(&program)
+        .args(&rest)
         .env_remove("TMUX")
-        .env_remove("TMUX_PANE")
-        .detach();
+        .env_remove("TMUX_PANE");
+    for k in &c.unset {
+        spawn = spawn.env_remove(k);
+    }
+    let spawned = spawn.detach();
     let pid = match spawned {
         Ok(pid) => pid,
         Err(e) => {
@@ -870,7 +892,51 @@ fn execute_hosted(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
         );
         return 4;
     }
-    finish_container(c, own)
+    if c.detach {
+        println!("{SESSION_SAID}{}", c.name);
+    }
+    if let Err(said) = hosted_self_check(c) {
+        if !said.trim().is_empty() {
+            eprintln!("{}", said.trim_end());
+        }
+        eprint!(
+            "{}",
+            SELF_CHECK_FAILED_FMT
+                .replacen("%s", &c.name, 1)
+                .replace("\\n", "\n")
+        );
+        return 4;
+    }
+    if c.detach {
+        return 0;
+    }
+    let id =
+        crate::host::managed::home::find(own, &c.name).map_or_else(|| c.name.clone(), |f| f.id);
+    attach_managed(own, &id)
+}
+
+/// 托管那一形自检那一趟的期限（`--ccm-print` 只算计划；到点算没过）。
+const SELF_CHECK_WITHIN: crate::platform::child::Deadline =
+    crate::platform::child::Deadline::secs(30);
+
+/// 托管那一形的自检：里面那一跳的同一串加 `--ccm-print`，环境同托管进程那一份（摘同几个变量），原生跑一次。
+/// 没过 ⇒ 交回它自己的原话（stderr；起不来 ⇒ 起不来的那句）。
+fn hosted_self_check(c: &plan::Container) -> Result<(), String> {
+    let Some((exe, args)) = c.self_check_argv.split_first() else {
+        return Ok(());
+    };
+    let mut check = Child::new(exe)
+        .args(args)
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE");
+    for k in &c.unset {
+        check = check.env_remove(k);
+    }
+    match check.run(SELF_CHECK_WITHIN) {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(String::from_utf8_lossy(&out.stderr).into_owned()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// `--detach` 报名字那一行的前缀（[`finish_container`] 写、[`session_reported`] 读）。
@@ -886,7 +952,7 @@ pub(crate) fn session_reported(stdout: &str) -> Option<String> {
         .filter(|n| !n.is_empty())
 }
 
-/// 容器建好之后（两种宿主同一段）：`--detach` ⇒ 报名字；再跑收尾（自检 · 接进去）。
+/// tmux 容器建好之后：`--detach` ⇒ 报名字；再跑收尾（自检 · 接进去，同 `--ccm-print` 那一段渲染）。托管那一形在 [`execute_hosted`] 里原生做。
 fn finish_container(c: &plan::Container, own: &crate::platform::fs::Own) -> i32 {
     // 会话名必须由**建它的人**说出来（`--detach` 的既有契约）。
     if c.detach {

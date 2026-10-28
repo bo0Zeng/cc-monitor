@@ -94,12 +94,13 @@ internal object RotFixture {
 
     private val outTotal = mapOf("key" to "outTotal", "kind" to "percent", "label" to "夹具·切出条件", "lead" to "夹具·合计达到", "v" to null, "num" to 400.0, "from" to "default", "nullable" to "夹具·一有额度", "under" to "out")
 
-    private fun row(
+    fun row(
         account: String,
         line: String,
         cells: List<Map<String, Any?>>,
         marks: List<Map<String, Any?>> = emptyList(),
-    ) = mapOf("account" to account, "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells, "rules" to listOf("夹具·$account 的规则"), "marks" to marks)
+        at: Int = listOf("work", "team", "lab").indexOf(account),
+    ) = mapOf("account" to account, "row" to at.toDouble(), "line" to line, "hover" to "夹具·$account 悬停", "cells" to cells, "rules" to listOf("夹具·$account 的规则"), "marks" to marks)
 
     /**
      * 后端解好的那几格（合成的，格名照编辑器那份声明）：总体一个开关 ＋ 每号一行。只回此刻该出的格：

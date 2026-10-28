@@ -208,6 +208,26 @@ class RotationBoardTest {
     }
 
     @Test
+    fun `行号照那一行带的（不照第几张号牌）：号列表第 1 行这台没出 ⇒ lab 是第二张号牌、第 2 行；拖它到第一张交第 2 行挪到第 0 行`() {
+        val base = RotFixture.view()
+        val rows = (RotFixture.BOARD["rows"] as List<*>).map { it as Map<*, *> }
+        val v =
+            Rotation.ofView(
+                base +
+                    mapOf(
+                        "board" to mapOf("all" to RotFixture.BOARD["all"], "rows" to listOf(rows[0], rows[2] + ("row" to 2.0))),
+                        "accounts" to (base["accounts"] as List<*>).filter { (it as Map<*, *>)["account"] != "team" },
+                        "listed" to 2.0,
+                    ),
+            )!!
+        val listed = v.accounts.take(v.listed.toInt())
+        assertEquals(listOf("work", "lab"), listed.map { it.account })
+        assertEquals(2L, rowOf(v, "lab")?.row)
+        assertEquals(RotEdit.move(2, 0), cardMove(v, listed, 1, 0))
+        assertNull("松在自己身上不交", cardMove(v, listed, 1, 1))
+    }
+
+    @Test
     fun `编辑小窗照那台给的格画：显示条件不满足的格不在（挂着的缩进）· 7 天同第一窗只出那颗钮 · 号名旁的记号`() {
         val v = Rotation.ofView(RotFixture.view())!!
         val keys = { i: Int -> paneCells(v.board.rows[i]).map { (c, indent) -> c.key + (if (indent) ">" else "") } }
