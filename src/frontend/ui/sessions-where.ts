@@ -26,7 +26,7 @@ export interface Standing {
   run: Run;
 }
 
-/** 带着它的第一个终端是不是 tmux 会话（接回 · 就地恢复只对 tmux 会话下手）。 */
+/** 带着它的第一个终端是不是 tmux 会话（就地恢复只往 tmux 会话里键入；本机［在终端里打开］只给托管终端那一行）。 */
 export function inTmux(s: Standing): boolean {
   return s.terminals[0]?.host === "tmux";
 }
