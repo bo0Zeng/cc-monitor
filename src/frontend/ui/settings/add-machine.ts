@@ -24,6 +24,8 @@ export interface AddMachineDeps {
   imported: () => Promise<SshImported>;
   /** 写进去：成了 ⇒ `null`；没存上 ⇒ 一句原因。 */
   add: (cfgs: Host[]) => Promise<string | null>;
+  /** 带着打的名字开（命令面板「加入机器表… · <名字>」）：config 里有那一条 ⇒ 只勾它；没有 ⇒ 落在「自己填」、名字那一格是它。 */
+  prefill?: string;
 }
 
 const blank = (): Host => ({
@@ -174,8 +176,14 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   void deps
     .imported()
     .then(({ groups, partial }) => {
+      const named = deps.prefill === undefined ? undefined : groups.find((g) => !g.inList && g.label === deps.prefill);
       for (const g of groups) {
-        rows.push({ g, cfg: groupCfg(g), inList: g.inList, picked: !g.inList, split: false, name: null });
+        rows.push({ g, cfg: groupCfg(g), inList: g.inList, picked: !g.inList && (named === undefined || g === named), split: false, name: null });
+      }
+      if (deps.prefill !== undefined && named === undefined) {
+        // 打的名字不在 config 里 ⇒ 自己填那一栏、名字先填上。
+        fName.input.value = deps.prefill;
+        strip.querySelector<HTMLButtonElement>('[data-key="manual"]')?.click();
       }
       // 只读到一部分：说一句（没读到的别名不在下面）；一组都没读到也留在这一栏，不当成没有 config。
       if (partial) {
@@ -192,6 +200,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
       update();
     })
     .catch(() => {
+      if (deps.prefill !== undefined) fName.input.value = deps.prefill;
       sshNote.textContent = copyText("addMachine.ssh.none");
       strip.querySelector<HTMLButtonElement>('[data-key="manual"]')?.click();
     });

@@ -10,7 +10,7 @@
     { "dir": "src/frontend/filewin/src", "lang": "rs" },
     { "dir": "src/mobile", "lang": "kt" }
   ],
-  "ceiling": 1820,
+  "ceiling": 1816,
   "groups": [
     {
       "kind": "首登",
@@ -123,7 +123,7 @@
         ["src/frontend/ui/events.ts", "key", 5],
         ["src/frontend/ui/file-window.ts", "key", 1],
         ["src/frontend/ui/find-strip.ts", "branch", 2],
-        ["src/frontend/ui/find-strip.ts", "key", 9],
+        ["src/frontend/ui/find-strip.ts", "key", 7],
         ["src/frontend/ui/format.ts", "key", 5],
         ["src/frontend/ui/front-result.ts", "branch", 15],
         ["src/frontend/ui/front-result.ts", "key", 3],
@@ -234,7 +234,7 @@
         ["src/frontend/ui/tab-drop.ts", "key", 2],
         ["src/frontend/ui/tab-hide.ts", "branch", 2],
         ["src/frontend/ui/tab-hide.ts", "key", 4],
-        ["src/frontend/ui/tab-menu.ts", "branch", 8],
+        ["src/frontend/ui/tab-menu.ts", "branch", 6],
         ["src/frontend/ui/tab-menu.ts", "key", 9],
         ["src/frontend/ui/tab-rename.ts", "key", 1],
         ["src/frontend/ui/tab-session-actions.ts", "branch", 2],

@@ -194,11 +194,18 @@ describe("标签页改名：写那台注解里的 customTitle", () => {
     expect(editor()?.value).toBe("名-a");
   });
 
-  it("没有标签页栏的窗口 ⇒ 对话框（初值是此刻的名），交法相同", async () => {
-    vi.mocked(askText).mockResolvedValueOnce("修登录");
+  it("没有标签页栏的窗口 ⇒ 会话头标题上就地改（初值是此刻的名、不开对话框），交法相同", async () => {
+    const head = document.createElement("span");
+    head.dataset.headTitle = "";
+    document.body.append(head);
     renameTab(tab("z"));
+    const ed = editor()!;
+    expect(ed.value).toBe("名-z");
+    ed.value = "修登录";
+    ed.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await settle();
-    expect(askText).toHaveBeenCalledWith(expect.objectContaining({ title: copyText("history.rename.title"), initial: "名-z", note: copyText("history.rename.prompt") }));
+    expect(askText).not.toHaveBeenCalled();
     expect(annotate).toHaveBeenCalledWith(LOCAL_ORIGIN, "z", { customTitle: "修登录" });
+    head.remove();
   });
 });

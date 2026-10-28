@@ -695,6 +695,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         icon: "plus",
         title: copyText("main.cmd.newSession"),
         keywords: copyText("main.cmd.newSessionKeywords"),
+        hint: chordHint("app.new-session"),
         run: () => setHost.newSession(),
       },
       startSetCommand(() => newSplit, () => hereNow().origin, setHost),
@@ -811,6 +812,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // 开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
   dispatcher.bind("app.toggle-plan", () => overlays.toggle("plan"));
+  dispatcher.bind("app.new-session", () => setHost.newSession()); // Ctrl+N 新建会话（同栏顶「＋」）
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", toggleFullscreen);
