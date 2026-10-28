@@ -131,7 +131,7 @@
           },
           "term": {
             "can": "yes",
-            "tmux": false
+            "host": "direct"
           }
         },
         "dot": "running",

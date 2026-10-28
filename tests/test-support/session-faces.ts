@@ -42,10 +42,10 @@ const LIVE_KEY: Record<WireSessionActivity, FaceKey> = {
   background_work: "live-background",
 };
 
-/** 活着、在干那一态的那一张（`null` ＝ 判不出在干什么）；`tmux` 给了 ⇒ 终端那一格照它。 */
+/** 活着、在干那一态的那一张（`null` ＝ 判不出在干什么）；`tmux` 给了 ⇒ 终端那一格照它（在 tmux 里 ⇒ `tmux`，否则 `direct`）。 */
 export function liveFace(activity: WireSessionActivity | null, tmux?: boolean): SessionFace {
   const f = goldenFace(activity === null ? "live-unclear" : LIVE_KEY[activity]);
-  if (tmux !== undefined) f.can.term = { can: "yes", tmux };
+  if (tmux !== undefined) f.can.term = { can: "yes", host: tmux ? "tmux" : "direct" };
   return f;
 }
 

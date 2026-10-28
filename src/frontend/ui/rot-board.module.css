@@ -1,4 +1,4 @@
-/* 轮换（第五版）四块：第一行 · 说明 · 提示 · 号牌 · 点开一个号 · 总体设置 · 模拟。会话面板与设置窗「轮换」栏共用（`rot-board.ts`）。 */
+/* 设置窗「轮换」栏（`rot-board.ts`）：第一行 · 说明 · 提示 · 号牌 · 点开一个号 · 总体设置 · 模拟。策略一行与提示会话面板也用。 */
 @layer components {
   .rotBoard {
     display: flex;
@@ -114,21 +114,8 @@
     white-space: nowrap;
   }
 
-  .rotCard[data-blocked="true"],
-  .rotCard[data-left-out="true"] {
+  .rotCard[data-blocked="true"] {
     opacity: var(--state-disabled-opacity);
-  }
-
-  .rotCard[data-in-use="true"]::after {
-    position: absolute;
-    top: -3px;
-    right: -3px;
-    width: 8px;
-    height: 8px;
-    border: 2px solid var(--card);
-    border-radius: 50%;
-    background: var(--success);
-    content: "";
   }
 
   .rotCardIx {
@@ -251,14 +238,6 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     padding: 0 var(--space-3);
-  }
-
-  .rotRefused {
-    padding: var(--space-3) var(--space-5);
-    border-left: 3px solid var(--warn);
-    border-radius: 0 var(--radius-m) var(--radius-m) 0;
-    background: color-mix(in srgb, var(--warn) 10%, transparent);
-    color: var(--text);
   }
 
   /* —— 格 —— */
@@ -444,10 +423,6 @@
     white-space: nowrap;
   }
 
-  .rotSimHead[data-drag="true"] {
-    cursor: grab;
-  }
-
   .rotSimName {
     composes: one-line from global;
   }
@@ -593,17 +568,6 @@
     background: var(--rot-ink);
     vertical-align: 1px;
     content: "";
-  }
-
-  .rotSimNow {
-    position: absolute;
-    left: calc(var(--rot-x, 0) * 100%);
-    top: -2px;
-    bottom: -2px;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--accent);
-    pointer-events: none;
   }
 
   .rotSimSkip {

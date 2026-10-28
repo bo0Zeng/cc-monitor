@@ -7,7 +7,7 @@ use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::setup::{self, script};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotPastSeg, RotTryDecision, RotTryLane, RotTryRow, RotTrySwitch, RotTryTick, RotTryTimeline,
+    RotTryDecision, RotTryLane, RotTryRow, RotTrySeg, RotTrySwitch, RotTryTick, RotTryTimeline,
     RotTryUse, RotationTryReply,
 };
 
@@ -163,7 +163,7 @@ pub(crate) fn try_with(
         source,
         use_now_refused,
         decision: decision_of(&d),
-        timeline: timeline_of(&tl, now, now, now + hours * 3600, tz),
+        timeline: timeline_of(&tl, now, now + hours * 3600, tz),
     })
 }
 
@@ -194,12 +194,10 @@ pub(crate) fn decision_of(d: &decide::Decision) -> RotTryDecision {
     }
 }
 
-/// 推演写成线上的形（`rotation-try` · `rotation-view` 同用）。
-/// `[now, end)` 是推演的那一截；`tz` 是看的那一台的时区（钟面都按它写）。
-/// 刻度从 `ticks_from` 起（有过去那一截 ⇒ 它的开头；否则此刻），步长照往后推多久定。
+/// 推演写成线上的形（`rotation-try` · `rotation-view` 设置页那一形同用）。
+/// `[now, end)` 是推演的那一截；`tz` 是看的那一台的时区（钟面都按它写）。刻度从此刻起，步长照往后推多久定。
 pub(crate) fn timeline_of(
     tl: &simulate::Timeline,
-    ticks_from: u64,
     now: u64,
     end: u64,
     tz: &crate::Tz,
@@ -242,7 +240,7 @@ pub(crate) fn timeline_of(
                 segs: segs
                     .iter()
                     .enumerate()
-                    .map(|(k, s)| RotPastSeg {
+                    .map(|(k, s)| RotTrySeg {
                         from: s.from,
                         to: s.to,
                         sendable: s.sendable,
@@ -263,7 +261,7 @@ pub(crate) fn timeline_of(
             })
             .collect(),
         truncated: tl.truncated,
-        ticks: ticks_of(ticks_from, end, end.saturating_sub(now) <= 12 * 3600, tz)
+        ticks: ticks_of(now, end, end.saturating_sub(now) <= 12 * 3600, tz)
             .into_iter()
             .map(|at| RotTryTick { at, text: face(at) })
             .collect(),
@@ -271,7 +269,7 @@ pub(crate) fn timeline_of(
 }
 
 /// 最上那条一段写的字：用哪个号 ⇒ 它的号名（同号牌那一格）；停发 ⇒ 「停下」那一句。
-pub(crate) fn use_text(account: Option<&str>) -> String {
+fn use_text(account: Option<&str>) -> String {
     match account {
         Some(a) => crate::accounts::quota::name_words::account_text(a),
         None => copy_core::copy_text("rot.sim.hold", &[]),
@@ -279,7 +277,7 @@ pub(crate) fn use_text(account: Option<&str>) -> String {
 }
 
 /// 时间轴上一段写的字：发不出去 ⇒ 空；开头刚开了新窗 ⇒ `↻HH:MM`；此刻那段（`left` 有）⇒ 剩多少；别的空。
-pub(crate) fn seg_text(sendable: bool, reset: bool, at: &str, left: Option<f64>) -> String {
+fn seg_text(sendable: bool, reset: bool, at: &str, left: Option<f64>) -> String {
     match (sendable, reset, left) {
         (false, ..) => String::new(),
         (true, true, _) => copy_core::copy_text("rot.sim.reset", &[("at", at)]),

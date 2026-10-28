@@ -1,18 +1,12 @@
 /**
- * 轮换的接线（`rot-mount.ts`）：手势翻成哪条 typed 命令、发给谁。会话面板（目标 `{sid}`：载入一份 · 临时动作）与设置窗
- * （目标 `{strategy}`：改一格当场存成新版）。读写都经 `rot-reads.ts`（这里桩住）。期望手写。
+ * 设置窗「轮换」栏的接线（`rot-mount.ts`）：手势翻成哪条 typed 命令、发给谁（目标 `{strategy}`：改一格当场存成新版）。
+ * 读写都经 `rot-reads.ts`（这里桩住）。会话面板那一处的判据在 `rot-session.vitest.ts`。期望手写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChanError } from "../../../src/comms/inward/chan";
 
 const calls: { name: string; req: unknown }[] = [];
 const opened: { origin: string; at: unknown }[] = [];
-const settingsAt: unknown[] = [];
-vi.mock("../../../src/frontend/ui/open-settings", () => ({
-  openSettingsWindow: vi.fn(async (_t: unknown, at: unknown) => {
-    settingsAt.push(at);
-  }),
-}));
 vi.mock("../../../src/frontend/ui/file-window", () => ({
   openOnMachine: vi.fn(async (origin: string, at: unknown) => {
     opened.push({ origin, at });
@@ -51,15 +45,14 @@ const VIEW: RotationViewReply = {
   nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
   board: { all: [{ key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 }], rows: [{ account: "work", line: "", hover: "", cells: [{ key: "caps", kind: "daySegments", window: "5h", label: "夹具·上限 5h", v: null, from: "own", segs: [{ from: 0, to: 1440, fromText: "00:00", toText: "24:00", v: 90, text: "夹具·90", tip: "夹具·全天 90" }] }], rules: [], marks: [] }] },
-  start: "work",
-  current: "team",
-  lineup: ["team", "work"],
+  start: "",
+  current: "",
+  lineup: [],
+  manual: false,
   off: [],
   accounts: [{ account: "work", plate: { color: 0, label: "work", text: "wo" }, full: [], kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
   listed: 1,
   decision: null,
-  timeline: null,
-  past: null,
   log: [],
   hints: [],
 };
@@ -78,50 +71,18 @@ const editClose = (root: HTMLElement, v: string): void => {
 beforeEach(() => {
   calls.length = 0;
   opened.length = 0;
-  settingsAt.length = 0;
   refuse.clear();
   shown.view = VIEW;
 });
 
-describe("会话面板（目标 {sid}）", () => {
-  it("★ 下拉选一份 ⇒ rotation-use（载入它此刻的版本；选「不轮换」⇒ null）；编辑策略 ⇒ 开设置窗那台的「轮换」栏", async () => {
-    const m = mountRotation({ origin: "<local>", sid: "s1" });
-    await m.refresh();
-    // 下拉（kit 的 select：点开浮层、点一项）选「不轮换」。
-    m.root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.top.pick")}"]`)!.click();
-    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="option"]')].find((e) => e.textContent?.includes(copyText("rot.none.label")))!;
-    item.click();
-    await settle();
-    expect(calls.filter((c) => c.name === "rotation-use").map((c) => c.req)).toEqual([{ sid: "s1", strategy: null }]);
-    btn(m.root, copyText("rot.top.edit")).click();
-    expect(settingsAt).toEqual([{ machine: "<local>", tab: "rot", anchor: rotAnchor("按权重轮换", null) }]);
+describe("设置窗（目标 {strategy}）", () => {
+  it("★ 跳过来的那一格（看哪份 · 开哪个号）写得出也认得回", () => {
     expect(parseRotAnchor(rotAnchor("按权重轮换", "work"))).toEqual({ strategy: "按权重轮换", account: "work" });
     expect(parseRotAnchor("keybindings")).toBeNull();
   });
 
-  it("★ 勾 · 拖 ⇒ rotation-temp（这个会话的临时动作）；拖到第一格 ⇒ move 到第 0 格（后端当现在用），碰上用不了（unusable）⇒ 不换，顺序上方写那一句（为什么照后端写的）", async () => {
-    const m = mountRotation({ origin: "<local>", sid: "s1" });
-    document.body.replaceChildren(m.root);
-    await m.refresh();
-    let rows = [...m.root.querySelectorAll<HTMLElement>("[data-rot-row]")];
-    rows[1].querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
-    await settle();
-    expect(calls.find((c) => c.name === "rotation-temp")?.req).toEqual({ sid: "s1", op: { off: { account: "work", off: true } } });
-    rows = [...m.root.querySelectorAll<HTMLElement>("[data-rot-row]")];
-    rows.forEach((r, k) => (r.getBoundingClientRect = () => ({ left: 0, right: 300, top: k * 40, bottom: k * 40 + 30, width: 300, height: 30, x: 0, y: k * 40, toJSON: () => ({}) })));
-    refuse.set("rotation-temp", "unusable");
-    rows[1].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 50 }));
-    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10, clientY: 30 }));
-    document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 10, clientY: 10 }));
-    await settle();
-    expect(calls.filter((c) => c.name === "rotation-temp").at(-1)?.req).toEqual({ sid: "s1", op: { move: { account: "work", to: 0 } } });
-    expect(m.root.querySelector('[data-rot-order] [role="status"]')?.textContent).toBe(copyText("rot.acct.refused", { account: "work", why: "后端写的那一句" }));
-  });
-});
-
-describe("设置窗（目标 {strategy}）", () => {
   it("★ 改一格 ⇒ rotation-settings（那个意图 ＋ 文件此刻的版本，不带整份）⇒ 重读文件此刻的", async () => {
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机" });
     await m.refresh();
     expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换" } });
     editClose(m.root, "40");
@@ -134,7 +95,7 @@ describe("设置窗（目标 {strategy}）", () => {
 describe("设置窗：加时段那一行（草稿）", () => {
   /** 设置窗、开 work 的编辑小窗、点「加时段」、「从」填 20:00（交不出：还缺两格）。 */
   const started = async (): Promise<ReturnType<typeof mountRotation>> => {
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机" });
     document.body.replaceChildren(m.root);
     m.focus("按权重轮换", "work");
     await settle();
@@ -170,7 +131,7 @@ describe("设置窗：加时段那一行（草稿）", () => {
   });
 
   it("★ 已存的那一段改了一半（没交）来一次重读 ⇒ 那一格字还在、焦点还在", async () => {
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机" });
     document.body.replaceChildren(m.root);
     m.focus("按权重轮换", "work");
     await settle();
@@ -209,7 +170,7 @@ describe("设置窗：看哪份 · 新建", () => {
   };
 
   it("★ 下拉选一份 ⇒ 只换着看（不改新会话用哪份）；选「不轮换」⇒ rotation-for-new null", async () => {
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机" });
     document.body.replaceChildren(m.root);
     await m.refresh();
     pick(m.root, "夜里");
@@ -223,7 +184,7 @@ describe("设置窗：看哪份 · 新建", () => {
 
   it("★ 新建策略 ⇒ 问名字 ⇒ rotation-strategy-add 只带名字（照编辑器那一份建是后端的）⇒ 看新建的那份；跳过来的 focus ⇒ 看那份、开那个号", async () => {
     const asked: (string | undefined)[] = [];
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机", ask: async (_t, _i, note) => (asked.push(note), "新的") });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机", ask: async (_t, _i, note) => (asked.push(note), "新的") });
     document.body.replaceChildren(m.root);
     await m.refresh();
     m.root.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.more.label")}"]`)!.click();
@@ -252,14 +213,9 @@ describe("提示里的按钮", () => {
     ...over,
   });
 
-  it("★ 载入新版：会话 ⇒ rotation-use 同一份；设置页都载入新版 ⇒ rotation-reload", async () => {
+  it("★ 都载入新版 ⇒ rotation-reload", async () => {
     shown.view = withHints();
-    const m = mountRotation({ origin: "<local>", sid: "s1" });
-    await m.refresh();
-    btn(m.root, copyText("rot.hint.loadNew")).click();
-    await settle();
-    expect(calls.find((c) => c.name === "rotation-use")?.req).toEqual({ sid: "s1", strategy: "按权重轮换" });
-    const page = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    const page = mountRotation({ origin: "<local>", machine: "夹具机" });
     page.focus("按权重轮换", "work");
     await settle();
     btn(page.root, copyText("rot.hint.loadAll")).click();
@@ -269,7 +225,7 @@ describe("提示里的按钮", () => {
 
   it("★ 设时区 ⇒ rotation-strategy-tz（设成后端给的那个、带文件此刻的版本）；看代码 ⇒ 照「在文件窗口打开」那一路开那份文件", async () => {
     shown.view = withHints();
-    const m = mountRotation({ origin: "<local>", sid: "s1" });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机" });
     await m.refresh();
     btn(m.root, copyText("rot.hint.setTz")).click();
     await settle();
@@ -280,7 +236,7 @@ describe("提示里的按钮", () => {
   });
 
   it("★ 写撞上 stale ⇒ 不自己造提示（照后端那一句出失败 toast，见草稿那组），重读此刻的", async () => {
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    const m = mountRotation({ origin: "<local>", machine: "夹具机" });
     await m.refresh();
     calls.length = 0;
     refuse.set("rotation-settings", "stale");
