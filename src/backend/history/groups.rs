@@ -647,7 +647,11 @@ pub(crate) fn specimen() -> GroupsRead {
     // 上次所知那片的组员画成看不见那一张（灰的那几格 `can.*.why` 才露得出来）。
     let before = GroupsHere {
         groups: vec![rec("g2")],
-        members: vec![member("s3", &["g2"], crate::agents::SessionActivity::Working)],
+        members: vec![member(
+            "s3",
+            &["g2"],
+            crate::agents::SessionActivity::Working,
+        )],
     };
     let at = |m: &str| GroupsMachine {
         origin: Machine::named(m),

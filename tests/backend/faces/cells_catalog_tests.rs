@@ -587,7 +587,9 @@ fn corpus(name: &str) -> Vec<Value> {
 
 /// 照本机后端 `groups-read` 那一步真合的一份（[`corpus`] 用）：各台那一片照线上那一形造，机器名 · 标题是结构夹具。
 fn real_groups_read() -> crate::history::groups::GroupsRead {
-    use crate::history::groups::{merge, GroupsHere, GroupsMachine, Half, HereGroup, HereMember, MemberFacts};
+    use crate::history::groups::{
+        merge, GroupsHere, GroupsMachine, Half, HereGroup, HereMember, MemberFacts,
+    };
     use crate::history::history_browse::Read;
     use crate::wire::SessionFaceExt as _;
     let m = cmd_wire::Machine::named;
@@ -618,8 +620,18 @@ fn real_groups_read() -> crate::history::groups::GroupsRead {
     let here = GroupsHere {
         groups: vec![rec("g1", "前端")],
         members: vec![
-            member("a", &["g1", "g9"], true, live(crate::agents::SessionActivity::NeedsYou)),
-            member("b", &["g2"], false, live(crate::agents::SessionActivity::Working)),
+            member(
+                "a",
+                &["g1", "g9"],
+                true,
+                live(crate::agents::SessionActivity::NeedsYou),
+            ),
+            member(
+                "b",
+                &["g2"],
+                false,
+                live(crate::agents::SessionActivity::Working),
+            ),
         ],
     };
     let before = GroupsHere {
@@ -649,7 +661,9 @@ fn real_groups_read() -> crate::history::groups::GroupsRead {
             },
             GroupsMachine {
                 origin: m("f"),
-                read: Read::Failed { why: "读不到".into() },
+                read: Read::Failed {
+                    why: "读不到".into(),
+                },
             },
             GroupsMachine {
                 origin: m("u"),
