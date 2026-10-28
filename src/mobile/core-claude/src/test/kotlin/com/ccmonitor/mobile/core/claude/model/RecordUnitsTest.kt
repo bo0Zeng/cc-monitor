@@ -62,7 +62,10 @@ class RecordUnitsTest {
 
     @Test
     fun `交互卡照核心判的卡型（reply_cards）认，不认工具名`() {
-        fun call(cards: Map<String, String>?, draw: String) =
+        fun call(
+            cards: Map<String, String>?,
+            draw: String,
+        ) =
             RecordUnits
                 .of(listOf(requireNotNull(Wire.bind<LineRecord>(mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "draw" to draw, "human" to false, "cards" to cards, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "c", "name" to "Tool", "input" to emptyMap<String, Any>())))))))
                 .single() as RenderUnit.ToolCall
