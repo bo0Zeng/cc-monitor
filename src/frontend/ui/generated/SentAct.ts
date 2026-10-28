@@ -3,4 +3,4 @@
 /**
  * 送完之后的一步（闭集）。
  */
-export type SentAct = "retry" | "recapture" | "relist";
+export type SentAct = "retry" | "recapture" | "relist" | "take";

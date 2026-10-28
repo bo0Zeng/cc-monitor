@@ -13,6 +13,6 @@ name: string,
  */
 text: string | null, 
 /**
- * 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
+ * 点它时发进会话的那一句（后端写好，经 `session-queue-put` 投进队）。
  */
 say: string, };

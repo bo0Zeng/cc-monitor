@@ -415,6 +415,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 `session_added` 的 `container`：**这条活着的会话住在什么容器里**，词与 `terminals-list` 同一套。
 
 - `host: "tmux"`，带 `terminal` string? —— 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）
+- `host: "managed"`，带 `terminal` string? —— 在托管终端里（进程环境里的 `CCM_HOST` 认得那个托管终端，`terminal` 是它的句柄）
 - `host: "none"` —— 环境读得到、不在任何宿主里
 
 #### `Unavailable`
@@ -445,6 +446,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `files_dir` —— 这台某个正被浏览的目录里有了动静（`key` ＝ 那个目录的 `WirePath::key`；名单由 `files-browse` 交）：正开着那个目录的那一屏带着手上的记号重问 `files-ls`，只拿变了的那几行
 - `history_list` —— 这台的会话清单可能动了（会话来去 · 名字 / 状态变 · 记录长了 · 注解 · 隐藏规则；同一个会话在这台答下一份清单之前只说一次）：正看着清单的那一屏带着手上的记号重问 `history-list`（远端那台由本机后端带 `fresh` 去同步），只拿变了的那几行
 - `groups` —— 这台的组那一片动了（这台有组员的组改名 · 解散，或这台会话进出组 · 固定变了）：看着组的那一屏重问本机后端 `groups-read`
+- `session_queue` —— 这台某条会话的输入队动了（`key` ＝ sid；`body` ＝ 整份名单，同 `session-queue-read` 的回包）：投进 · 撤 · 送进 · 标未送达，哪一端投的都算
 
 #### `RereadWhy`
 
@@ -11309,7 +11311,7 @@ prompt: Sent | null,
  * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
  */
 arrival: ArriveAsk | null, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
 type RowLaunched = { cwd: string, alias: string, group: GroupRef | null, opened: Array<Opened>, failed: Array<LaunchFail>, blocked: string | null, };
 type Sent = { 
 /**
@@ -11329,18 +11331,10 @@ said?: string,
  */
 screen?: string, 
 /**
- * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
- */
-resumed?: boolean, 
-/**
- * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
- */
-gone?: Array<string>, 
-/**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist";
+type SentAct = "retry" | "recapture" | "relist" | "take";
 type SentResult = "delivered" | "unsure" | "refused";
 type SetLaunchReq = { name: string, };
 type SetLaunched = { rows: Array<RowLaunched>, started: number, failed: number, 
@@ -11851,6 +11845,20 @@ since: number,
  * 最近动静（秒）。
  */
 last_activity: number, };
+type HolderWho = "terminal-window" | "desktop" | "mobile" | "none";
+type InputHolder = { 
+/**
+ * 哪一端。
+ */
+who: HolderWho, 
+/**
+ * 是不是这次请求自报的那个前端。
+ */
+mine: boolean, 
+/**
+ * 给人看的那一句（「输入在此处」·「输入在手机」…，后端写好，出口照抄）。
+ */
+said: string, };
 type StartedBy = { 
 /**
  * 会话上的 `@ccm_client`（没声明 ⇒ `null`）。
@@ -11860,6 +11868,7 @@ client: string | null,
  * 这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`）。
  */
 mine: boolean, };
+type TermInput = { "kind": "shared" } | { "kind": "held", holder: InputHolder, };
 type TermSession = { 
 /**
  * 会话 id。
@@ -11885,13 +11894,13 @@ type TerminalItem = {
  */
 terminal: string, 
 /**
- * 终端宿主（这一版是 `tmux`）。
+ * 终端宿主。
  */
-host: "tmux", 
+host: WireTerminalHost, 
 /**
- * tmux 会话名。
+ * 给人看的名（tmux：会话名；托管：`ccm --attach <名>` 认的那个名）。
  */
-tmux_name: string, 
+name: string, 
 /**
  * 里面跑着会话、前台是 agent 时是窗格标题；否则是前台程序名。
  */
@@ -11917,9 +11926,9 @@ started_by: StartedBy,
  */
 clients: Array<Attached>, 
 /**
- * 输入方式：`shared`（tmux：各端都能打字）。
+ * 输入怎么进：`shared`（tmux：各端都能打字）· `held`（托管：只有持有者的进）。
  */
-input: "shared", 
+input: TermInput, 
 /**
  * 此刻的样子。
  */
@@ -11946,6 +11955,7 @@ type TerminalsListReq = {
  * 自报的前端（1–32 个 `[a-z0-9-]`）：决定每行的 `can` 与 `started_by.mine`。
  */
 client?: string, };
+type WireTerminalHost = "tmux" | "managed";
 ```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -12259,7 +12269,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
 type Sent = { 
 /**
  * 结局。
@@ -12278,18 +12288,10 @@ said?: string,
  */
 screen?: string, 
 /**
- * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
- */
-resumed?: boolean, 
-/**
- * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
- */
-gone?: Array<string>, 
-/**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist";
+type SentAct = "retry" | "recapture" | "relist" | "take";
 type SentResult = "delivered" | "unsure" | "refused";
 type TerminalInputReq = { 
 /**
@@ -12319,10 +12321,117 @@ seen_screen?: string,
 /**
  * 自报的前端（过「哪个前端的会话」那一维）。
  */
-client?: string, };
+client?: string, 
+/**
+ * 托管终端的输入在别的一端手里时：`true` ⇒ 先替这个前端接管再送；缺省 ⇒ 不送、回 `refused` ＋ `held_elsewhere`。tmux 那一形不看它。
+ */
+take?: boolean, };
 ```
 
 码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+
+#### `terminal-take-input`
+
+替自报的前端接管托管终端的输入。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-take-input`
+
+入参 `TerminalHoldReq` · 回包 `InputNow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HolderWho = "terminal-window" | "desktop" | "mobile" | "none";
+type InputHolder = { 
+/**
+ * 哪一端。
+ */
+who: HolderWho, 
+/**
+ * 是不是这次请求自报的那个前端。
+ */
+mine: boolean, 
+/**
+ * 给人看的那一句（「输入在此处」·「输入在手机」…，后端写好，出口照抄）。
+ */
+said: string, };
+type InputNow = { input: TermInput, };
+type TermInput = { "kind": "shared" } | { "kind": "held", holder: InputHolder, };
+type TerminalHoldReq = { 
+/**
+ * 名单里的不透明句柄（托管那一形）。
+ */
+terminal: string, 
+/**
+ * 自报的前端（`desktop` · `mobile`；缺省按桌面）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `not_managed` · `not_yours` · `no_such_session` · `unobservable` · `child_timed_out`
+
+#### `terminal-release-input`
+
+交还托管终端的输入。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-release-input`
+
+入参 `TerminalHoldReq` · 回包 `InputNow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HolderWho = "terminal-window" | "desktop" | "mobile" | "none";
+type InputHolder = { 
+/**
+ * 哪一端。
+ */
+who: HolderWho, 
+/**
+ * 是不是这次请求自报的那个前端。
+ */
+mine: boolean, 
+/**
+ * 给人看的那一句（「输入在此处」·「输入在手机」…，后端写好，出口照抄）。
+ */
+said: string, };
+type InputNow = { input: TermInput, };
+type TermInput = { "kind": "shared" } | { "kind": "held", holder: InputHolder, };
+type TerminalHoldReq = { 
+/**
+ * 名单里的不透明句柄（托管那一形）。
+ */
+terminal: string, 
+/**
+ * 自报的前端（`desktop` · `mobile`；缺省按桌面）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `not_managed` · `not_yours` · `no_such_session` · `unobservable` · `child_timed_out`
+
+#### `terminal-end`
+
+结束名单里的一个终端。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-end`
+
+入参 `TerminalEndReq` · 回包 `TerminalEnded`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TerminalEndReq = { 
+/**
+ * 目标：名单里的不透明句柄（与 `sid` 恰给一个）。
+ */
+terminal?: string, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维）。
+ */
+client?: string, };
+type TerminalEnded = { terminal: string, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `unobservable` · `child_timed_out`
 
 #### `session-commands`
 
@@ -12336,7 +12445,7 @@ client?: string, };
 type CommandScope = "builtin" | "project" | "user";
 type SessionAct = { 
 /**
- * 经 `session-say` 送进会话的那一句（那一家声明的）。
+ * 经 `session-queue-put` 投进会话的那一句（那一家声明的）。
  */
 say: string, 
 /**
@@ -12390,7 +12499,7 @@ skills: Array<SessionSkill>,
  */
 problems: Array<string>, 
 /**
- * ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+ * ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-queue-put` 投进队）；这一家没有 ⇒ `null`（那一行不画）。
  */
 compact: SessionAct | null, 
 /**
@@ -12412,7 +12521,7 @@ name: string,
  */
 text: string | null, 
 /**
- * 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
+ * 点它时发进会话的那一句（后端写好，经 `session-queue-put` 投进队）。
  */
 say: string, };
 type Sid = string;
@@ -12451,7 +12560,7 @@ why?: Refused,
  * 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
 type SessionModelReq = { 
 /**
  * 会话 id。
@@ -12501,7 +12610,7 @@ why?: Refused,
  * `unsure` · `refused` 时给人看的那一句。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
 type SessionPermissionReq = { 
 /**
  * 会话 id。
@@ -12519,79 +12628,6 @@ type Sid = string;
 ```
 
 码：`bad_args` · `unsupported` · `launch_only` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
-
-#### `session-say`
-
-往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-say` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
-
-入参 `SessionSayReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
-type Sent = { 
-/**
- * 结局。
- */
-result: SentResult, 
-/**
- * `refused` 的原因。
- */
-why?: Refused, 
-/**
- * `refused` 时给人看的那一句（后端写好）。
- */
-said?: string, 
-/**
- * `screen_changed` 时带的新指纹。
- */
-screen?: string, 
-/**
- * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
- */
-resumed?: boolean, 
-/**
- * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
- */
-gone?: Array<string>, 
-/**
- * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
- */
-acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist";
-type SentResult = "delivered" | "unsure" | "refused";
-type SessionSayReq = { 
-/**
- * 会话 id。
- */
-sid: Sid, 
-/**
- * 那一句（字面字，原样送；多行按粘贴送；后端补回车）。
- */
-text: string, 
-/**
- * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
- */
-client?: string, 
-/**
- * 送之前看到的那一屏的指纹（`terminal-preview` 的 `screen`）：画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`（同 `terminal-input`）。
- * 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
- */
-seen_screen?: string, 
-/**
- * `true` ⇒ 只在这条会话闲着（等下一句输入）时送；一轮在跑 · 后台在跑 · 判不出 ⇒ 不送、回 `refused` ＋ `not_idle`。缺 ⇒ 不要求。
- */
-idle_only?: boolean, 
-/**
- * 随这一句发的附件（`session-attachment-commit` 回的编号，按草稿里的先后）。那台按编号找到那一份、照那一家的写法拼进去
- * （[`crate::agents::typed_with`]）；有一份已不在 ⇒ 一个字都不送、回 `refused` ＋ `attachment_gone`。缺 ⇒ 不带。
- */
-attachments?: Array<string>, };
-type Sid = string;
-```
-
-码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
 
 #### `terminal-follow`
 
@@ -12659,42 +12695,6 @@ ticket: string, };
 
 码：`bad_args`
 
-#### `kill`
-
-杀一个 tmux 会话。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --kill` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
-
-入参 `KillReq` · 回包 `Killed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type KillReq = { 
-/**
- * 要杀的 tmux 会话名。
- */
-name: string, 
-/**
- * 自报的前端（过「哪个前端的会话」那一维）。
- */
-client?: string, 
-/**
- * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（会话 id 的形状由 `Sid` 解码就判）。
- */
-sid?: Sid, };
-type Killed = { 
-/**
- * 杀掉的 tmux 会话名。
- */
-session: string, 
-/**
- * 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
- */
-killed: true, };
-type Sid = string;
-```
-
-码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
-
 #### `sessions-stop`
 
 停一批会话（逐个答，一个不成不挡下一个）。
@@ -12719,7 +12719,7 @@ outcome: "done" | "skipped" | "failed",
  */
 why: string | null, 
 /**
- * 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 ⇒ `null`。
+ * 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
  */
 said: string | null, 
 /**
@@ -12737,7 +12737,7 @@ type SidsReq = {
  */
 sids: Array<Sid>, 
 /**
- * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+ * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
  */
 client?: string, };
 ```
@@ -12761,7 +12761,7 @@ type SidsReq = {
  */
 sids: Array<Sid>, 
 /**
- * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+ * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
  */
 client?: string, };
 type StandingWord = "running" | "ambiguous" | "idle" | "none" | "no_tmux";
@@ -12950,7 +12950,7 @@ prompt: Sent | null,
  * 起了一家（或开窗那一行跑起来就起）⇒ 等它报到那一问（`session-arrive` 的入参，原样交回）；没起 ⇒ `null`。
  */
 arrival: ArriveAsk | null, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed" | "not_idle" | "attachment_gone";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "held_elsewhere";
 type RotationPick = { 
 /**
  * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
@@ -12975,18 +12975,10 @@ said?: string,
  */
 screen?: string, 
 /**
- * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
- */
-resumed?: boolean, 
-/**
- * `attachment_gone` 时那台已经不在的那几个附件编号；别的结局 ⇒ 不带这一格。
- */
-gone?: Array<string>, 
-/**
  * 这一结局之后出口可以做的下一步（后端照结局与原因判好，出口照摆、不按 `why` 自己挑）；没有 ⇒ 不带这一格。
  */
 acts?: Array<SentAct>, };
-type SentAct = "retry" | "recapture" | "relist";
+type SentAct = "retry" | "recapture" | "relist" | "take";
 type SentResult = "delivered" | "unsure" | "refused";
 type SessionOpenReq = { 
 /**
@@ -13337,14 +13329,23 @@ seq?: number,
 /**
  * 排第几（排着的那几条里，从 1 数；不是排着 ⇒ 不在）。
  */
-place?: number, };
+place?: number, 
+/**
+ * 那一条此刻的样子，会话那台写好（排队 · 第几 · 已送进 · 已撤），发件端贴在那一句下面。
+ */
+said: string, };
+type Rewind = { 
+/**
+ * 被编辑的那一句在记录里的 id（`history-user-inputs` 那一行的 `uuid`）：退到它之前，改好的那句接在它原来的位置上。
+ */
+to: string, how: "conversation" | "code_and_conversation", when: "after_turn" | "now", };
 type SessionQueuePutReq = { 
 /**
  * 会话所在那台（本机 ⇒ `<local>`）。
  */
 machine: Origin, sid: Sid, 
 /**
- * 发件端给的唯一 id：同 id 再投只入队一次。
+ * 发件端给的唯一 id（这一端待发箱里那一句的编号）：同 id 再投只入队一次。
  */
 id: string, 
 /**
@@ -13358,11 +13359,19 @@ n?: number,
 /**
  * 几点发的（发件端的 unix 毫秒，只给人看）。
  */
-atMs: number, text: string, };
+atMs: number, text: string, 
+/**
+ * 随这一句发的附件编号（按先后）。会话那台当场按会话工作目录找：有一份不在 ⇒ 拒（`attachment_gone`），一个字节不写。缺 ⇒ 不带。
+ */
+attachments?: Array<string>, 
+/**
+ * 编辑已发的那一句（确认那一下才带）：投递时先在会话里退到 `rewind.to` 那一句之前，再说 `text`。普通的一句 ⇒ 不带。
+ */
+rewind?: Rewind, };
 type Sid = string;
 ```
 
-码：`bad_args` · `io_failed` · `queue_unreadable` · `queue_full` · `text_too_long` · `offline`
+码：`bad_args` · `io_failed` · `queue_unreadable` · `queue_full` · `text_too_long` · `attachment_gone` · `offline`
 
 #### `session-queue-cancel`
 
@@ -13378,7 +13387,7 @@ type QueueCancelled = {
 /**
  * `false` ⇒ 那一条已不在队里（送过 · 撤过 · 没有这一条），什么都没动。
  */
-cancelled: boolean, queue: SessionQueue, };
+cancelled: boolean, queue: QueueList, };
 type QueueItem = { 
 /**
  * 主人发的序号（收着的那几条还没有）。先后只看它。
@@ -13399,8 +13408,33 @@ atMs: number,
 /**
  * 那一句。
  */
-text: string, state: "queued" | "held" | "undelivered", };
-type SessionQueue = { items: Array<QueueItem>, };
+text: string, 
+/**
+ * 随这一句发的附件编号（`session-attachment-commit` 回的，按先后）；没有 ⇒ 不在。
+ */
+attachments?: Array<string>, 
+/**
+ * 这一句是编辑已发的那一句（发送那一下选的怎么退）：投递时先退到那一句之前再说它；普通的一句 ⇒ 不在。
+ */
+rewind?: Rewind, state: "queued" | "held" | "undelivered", 
+/**
+ * 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+ */
+said: string, 
+/**
+ * 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
+ */
+from: string, };
+type QueueList = { items: Array<QueueItem>, 
+/**
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+ */
+sent: Array<string>, };
+type Rewind = { 
+/**
+ * 被编辑的那一句在记录里的 id（`history-user-inputs` 那一行的 `uuid`）：退到它之前，改好的那句接在它原来的位置上。
+ */
+to: string, how: "conversation" | "code_and_conversation", when: "after_turn" | "now", };
 type SessionQueueCancelReq = { machine: Origin, sid: Sid, id: string, };
 type Sid = string;
 ```
@@ -13413,7 +13447,7 @@ type Sid = string;
 
 收 `args` · 可撤 · CLI：`ccm -- --session-queue-read`
 
-入参 `SessionQueueReadReq` · 回包 `SessionQueue`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `SessionQueueReadReq` · 回包 `QueueList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type Origin = string;
@@ -13437,13 +13471,77 @@ atMs: number,
 /**
  * 那一句。
  */
-text: string, state: "queued" | "held" | "undelivered", };
-type SessionQueue = { items: Array<QueueItem>, };
+text: string, 
+/**
+ * 随这一句发的附件编号（`session-attachment-commit` 回的，按先后）；没有 ⇒ 不在。
+ */
+attachments?: Array<string>, 
+/**
+ * 这一句是编辑已发的那一句（发送那一下选的怎么退）：投递时先退到那一句之前再说它；普通的一句 ⇒ 不在。
+ */
+rewind?: Rewind, state: "queued" | "held" | "undelivered", 
+/**
+ * 那一条此刻的样子，会话那台写好（排队 · 第 N · 排队 · 失败 · 未送进会话；同回执那一句）：各端照摆，不按 `state` 自己挑字。
+ */
+said: string, 
+/**
+ * 发自哪一端，会话那台写好的那个词（认得的端写名字，别的照 `end` 原样）。
+ */
+from: string, };
+type QueueList = { items: Array<QueueItem>, 
+/**
+ * 最近送进 agent 的那几条的 id（先送的在前，只留最近几条）：发件端据它把那一句标「已送进」；不在名单也不在这里 ⇒ 撤了。
+ */
+sent: Array<string>, };
+type Rewind = { 
+/**
+ * 被编辑的那一句在记录里的 id（`history-user-inputs` 那一行的 `uuid`）：退到它之前，改好的那句接在它原来的位置上。
+ */
+to: string, how: "conversation" | "code_and_conversation", when: "after_turn" | "now", };
 type SessionQueueReadReq = { machine: Origin, sid: Sid, };
 type Sid = string;
 ```
 
 码：`bad_args` · `io_failed` · `queue_unreadable` · `offline`
+
+#### `session-rewind-options`
+
+编辑已发的一句时，发送那一下给哪几项（怎么退 · 什么时候退）。
+
+收 `args` · 可撤 · CLI：`ccm -- --session-rewind-options`
+
+入参 `SessionRewindOptionsReq` · 回包 `RewindOptions`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Origin = string;
+type RewindChoiceRow = { how: "conversation" | "code_and_conversation", 
+/**
+ * 那一项的字（会话那台写好）。
+ */
+text: string, 
+/**
+ * 缺省选它。
+ */
+default: boolean, };
+type RewindOptions = { 
+/**
+ * 「怎么退」那几项；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
+ */
+how: Array<RewindChoiceRow>, 
+/**
+ * 「什么时候退」那几项；空 ⇒ 主 agent 此刻空着（只有后台子 agent 在跑也算空着），不给这一行。
+ */
+when: Array<RewindWhenRow>, 
+/**
+ * 不支持 · 这一刻退不了的那一句（会话那台写好）；能退 ⇒ 不在。
+ */
+said?: string, };
+type RewindWhenRow = { when: "after_turn" | "now", text: string, default: boolean, };
+type SessionRewindOptionsReq = { machine: Origin, sid: Sid, };
+type Sid = string;
+```
+
+码：`bad_args` · `no_such_session` · `offline`
 
 ### 4.10 机器
 
@@ -13622,6 +13720,10 @@ jump: boolean,
  */
 compressed: boolean, 
 /**
+ * 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
+ */
+viaProxy: boolean, 
+/**
  * 线上收到的字节（加密 · 压缩之后）。
  */
 bytesIn: number, 
@@ -13630,7 +13732,7 @@ bytesIn: number,
  */
 bytesOut: number, 
 /**
- * 写好的那一句（地址 · 压没压 · 进出字节）。
+ * 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
  */
 said: string, };
 type MachineRead = { machines: { [key in string]: MachineState }, };
@@ -13757,6 +13859,10 @@ jump: boolean,
  */
 compressed: boolean, 
 /**
+ * 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
+ */
+viaProxy: boolean, 
+/**
  * 线上收到的字节（加密 · 压缩之后）。
  */
 bytesIn: number, 
@@ -13765,7 +13871,7 @@ bytesIn: number,
  */
 bytesOut: number, 
 /**
- * 写好的那一句（地址 · 压没压 · 进出字节）。
+ * 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
  */
 said: string, };
 type MachineMenu = { from: MachineFrom, 
@@ -15625,9 +15731,9 @@ key: string, };
 
 #### `plan-return`
 
-把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回。
+把人的话投给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）照投（投递时在这台恢复它），能投就投进它的输入队；排进去了记一条已退回。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-return` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-return`
 
 入参 `PlanReturnReq` · 回包 `PlanReturnReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -15638,13 +15744,13 @@ type CanTerm = { "can": "yes", tmux: boolean, } | { "can": "no", why: Words, };
 type Life = { "is": "live", activity?: WireSessionActivity, } | { "is": "reconnectable" } | { "is": "ended", by?: string, } | { "is": "gone" } | { "is": "unclear" };
 type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
- * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
+ * `queued`（投进那条会话的输入队、那台已落盘；投递在它能收时送，已结束的先恢复它）· `copy`（投不了，只给这一行去复制）。
  */
-result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, 
+result: "queued" | "copy", 
 /**
- * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；负责人照旧是它。
+ * `copy` 的原因：`unknown`（认不出接手）· `ended`（已结束、没点恢复）。
  */
-resumed: boolean, };
+why: string | null, said: string | null, };
 type PlanReturnReq = { 
 /**
  * 工作区根。
@@ -15667,15 +15773,11 @@ text: string,
  */
 to?: "owner" | "signer", 
 /**
- * 自报的前端（过 `terminal-input` 那一道身份门）。
+ * 自报的前端（投进队的那一条记作发自它；投递时过 `terminal-input` 那一道身份门）。
  */
 client?: string | null, 
 /**
- * 送之前看到的那一屏的指纹（同 `terminal-input`）。
- */
-seen_screen?: string | null, 
-/**
- * `true` ⇒ 目标会话已结束时在这台恢复它、这一行当它的第一句（人点了［恢复并退回］）。
+ * `true` ⇒ 目标会话已结束时照投（投递时在这台恢复它、这一行当它的第一句；人点了［恢复并退回］）。
  */
 resume?: boolean | null, };
 type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
@@ -15760,7 +15862,7 @@ type WireSessionActivity = "working" | "needs_you" | "idle" | "background_work";
 type Words = string;
 ```
 
-码：`bad_args` · `bad_target` · `capture_failed` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_server` · `no_such_cell` · `no_such_session` · `no_target` · `no_tmux` · `not_workspace` · `pb_unsupported` · `review_unreadable` · `unobservable`
+码：`bad_args` · `attachment_gone` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_such_cell` · `no_target` · `not_workspace` · `pb_unsupported` · `queue_full` · `queue_unreadable` · `review_unreadable` · `text_too_long`
 
 ## 5. CLI 子命令
 
@@ -15864,7 +15966,6 @@ type Words = string;
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「人说过的话」清单 |
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
 | `--host-keys-forget` | ＝ 帧命令 `host-keys-forget`：忘掉一台记下的主机指纹，读回机器表、推 `changed {machines}` |
-| `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
 | `--machine-find` | ＝ 帧命令 `machine-find`：打的字是不是恰好一台（名字 · 本机 · ssh 配置的 Host · 名字后跟第几条） |
@@ -15888,7 +15989,7 @@ type Words = string;
 | `--plan-pb-check` | ＝ 帧命令 `plan-pb-check`：一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问 |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几个仓库的图 · 状态 · 权力范围 · 校验；负责人与 signer 对到会话；不带 agent_view） |
 | `--plan-refs` | ＝ 帧命令 `plan-refs`：会话消息里提到的格：照会话接手的那块（否则工作目录所在的那片）认片，几段正文一次交 pb 的 `dump --refs`，回每段的几处（UTF-16 下标 ＋ 跟在编号后面的标题）；认不出片 · pb 不在 ⇒ 每段空 |
-| `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回 |
+| `--plan-return` | ＝ 帧命令 `plan-return`：把人的话投给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）照投（投递时在这台恢复它），能投就投进它的输入队；排进去了记一条已退回 |
 | `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
 | `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |
@@ -15935,7 +16036,7 @@ type Words = string;
 | `--session-queue-cancel` | ＝ 帧命令 `session-queue-cancel`：撤队里一条还没送的 |
 | `--session-queue-put` | ＝ 帧命令 `session-queue-put`：往一条会话投一句（排进那条会话的队；同 id 只入队一次，同一端按端序号保序） |
 | `--session-queue-read` | ＝ 帧命令 `session-queue-read`：一条会话此刻的队列名单 |
-| `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
+| `--session-rewind-options` | ＝ 帧命令 `session-rewind-options`：编辑已发的一句时，发送那一下给哪几项（怎么退 · 什么时候退） |
 | `--session-self` | ＝ 帧命令 `session-self`：我是哪条会话 · 在哪几组 · 组员有谁 |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：问到各台的需手动、合成一个先后 |
@@ -15948,9 +16049,12 @@ type Words = string;
 | `--skill-read` | ＝ 帧命令 `skill-read`：读来源那台上的一个 skill |
 | `--ssh-config-import` | ＝ 帧命令 `ssh-config-import`：批量导入预览 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |
+| `--terminal-end` | ＝ 帧命令 `terminal-end`：结束名单里的一个终端 |
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
 | `--terminal-preview` | ＝ 帧命令 `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方） |
+| `--terminal-release-input` | ＝ 帧命令 `terminal-release-input`：交还托管终端的输入 |
 | `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
+| `--terminal-take-input` | ＝ 帧命令 `terminal-take-input`：替自报的前端接管托管终端的输入 |
 | `--terminals-board` | ＝ 帧命令 `terminals-board`：「终端」视图那张名单（问到各台、合成一份：每台一组 · 筛选四格的数） |
 | `--terminals-board-here` | ＝ 帧命令 `terminals-board-here`：这台「终端」视图那几行（只列 cc-monitor 起的，排好、字写好） |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |

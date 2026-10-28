@@ -17,7 +17,7 @@ outcome: "done" | "skipped" | "failed",
  */
 why: string | null, 
 /**
- * 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 ⇒ `null`。
+ * 停的那一项没做成的那一句（失败的与单个结束被拒同一张表）；做成了 ⇒ `null`。
  */
 said: string | null, 
 /**

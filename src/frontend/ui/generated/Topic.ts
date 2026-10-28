@@ -3,4 +3,4 @@
 /**
  * 推送主题（线上 `changed.topic`）。
  */
-export type Topic = "accounts" | "profiles" | "quota" | "rotation" | "rotation_strategies" | "plan" | "tasks" | "needs" | "login" | "machines" | "machine" | "session_hidden" | "files_dir" | "history_list" | "groups";
+export type Topic = "accounts" | "profiles" | "quota" | "rotation" | "rotation_strategies" | "plan" | "tasks" | "needs" | "login" | "machines" | "machine" | "session_hidden" | "files_dir" | "history_list" | "groups" | "session_queue";

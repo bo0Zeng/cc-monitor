@@ -10,6 +10,6 @@ export type SidsReq = {
  */
 sids: Array<Sid>, 
 /**
- * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+ * 自报的前端（「哪个前端的会话」那一维，同 `terminal-end`）。
  */
 client?: string, };

@@ -31,4 +31,8 @@ seen_screen?: string,
 /**
  * 自报的前端（过「哪个前端的会话」那一维）。
  */
-client?: string, };
+client?: string, 
+/**
+ * 托管终端的输入在别的一端手里时：`true` ⇒ 先替这个前端接管再送；缺省 ⇒ 不送、回 `refused` ＋ `held_elsewhere`。tmux 那一形不看它。
+ */
+take?: boolean, };

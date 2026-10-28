@@ -25,14 +25,10 @@ text: string,
  */
 to?: "owner" | "signer", 
 /**
- * 自报的前端（过 `terminal-input` 那一道身份门）。
+ * 自报的前端（投进队的那一条记作发自它；投递时过 `terminal-input` 那一道身份门）。
  */
 client?: string | null, 
 /**
- * 送之前看到的那一屏的指纹（同 `terminal-input`）。
- */
-seen_screen?: string | null, 
-/**
- * `true` ⇒ 目标会话已结束时在这台恢复它、这一行当它的第一句（人点了［恢复并退回］）。
+ * `true` ⇒ 目标会话已结束时照投（投递时在这台恢复它、这一行当它的第一句；人点了［恢复并退回］）。
  */
 resume?: boolean | null, };

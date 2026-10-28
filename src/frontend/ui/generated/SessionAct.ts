@@ -5,7 +5,7 @@
  */
 export type SessionAct = { 
 /**
- * 经 `session-say` 送进会话的那一句（那一家声明的）。
+ * 经 `session-queue-put` 投进会话的那一句（那一家声明的）。
  */
 say: string, 
 /**

@@ -2,6 +2,7 @@
 import type { HiddenNow } from "./HiddenNow";
 import type { MachineState } from "./MachineState";
 import type { PlanNeeds } from "./PlanNeeds";
+import type { QueueList } from "./QueueList";
 import type { QuotaRead } from "./QuotaRead";
 import type { RotationStrategiesReply } from "./RotationStrategiesReply";
 import type { SignInState } from "./SignInState";
@@ -13,4 +14,4 @@ import type { TasksList } from "./TasksList";
  * `key` 说是哪一个（会话 · 工作区 · 作业 · 机器 · 目录）；`rev` 说变成了哪一版；`body` 是那一样的小成品，类型就是那一臂的
  * （超了上限 · 断线之后补报 ⇒ 不带，客户端重问）。体换了形 ⇒ 整帧解不开（两端契约对不上），不交给读口去猜。
  */
-export type Changed = { "topic": "accounts", } | { "topic": "profiles", } | { "topic": "quota", body?: QuotaRead, } | { "topic": "rotation", key: string, } | { "topic": "rotation_strategies", body?: RotationStrategiesReply, } | { "topic": "plan", key: string, rev?: string, body?: PlanNeeds, } | { "topic": "tasks", key: string, body?: TasksList, } | { "topic": "needs", key?: string, } | { "topic": "login", key: string, body?: SignInState, } | { "topic": "machines", } | { "topic": "machine", key: string, body?: MachineState, } | { "topic": "session_hidden", key: string, body?: HiddenNow, } | { "topic": "files_dir", key: string, } | { "topic": "history_list", } | { "topic": "groups", };
+export type Changed = { "topic": "accounts", } | { "topic": "profiles", } | { "topic": "quota", body?: QuotaRead, } | { "topic": "rotation", key: string, } | { "topic": "rotation_strategies", body?: RotationStrategiesReply, } | { "topic": "plan", key: string, rev?: string, body?: PlanNeeds, } | { "topic": "tasks", key: string, body?: TasksList, } | { "topic": "needs", key?: string, } | { "topic": "login", key: string, body?: SignInState, } | { "topic": "machines", } | { "topic": "machine", key: string, body?: MachineState, } | { "topic": "session_hidden", key: string, body?: HiddenNow, } | { "topic": "files_dir", key: string, } | { "topic": "history_list", } | { "topic": "groups", } | { "topic": "session_queue", key: string, body?: QueueList, };

@@ -20,7 +20,7 @@ skills: Array<SessionSkill>,
  */
 problems: Array<string>, 
 /**
- * ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+ * ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-queue-put` 投进队）；这一家没有 ⇒ `null`（那一行不画）。
  */
 compact: SessionAct | null, 
 /**

@@ -17,6 +17,10 @@ jump: boolean,
  */
 compressed: boolean, 
 /**
+ * 这一条的 TCP 是不是经代理开的（出网口那一步说的；经跳板时只有最外那台跳板那一项可能是）。
+ */
+viaProxy: boolean, 
+/**
  * 线上收到的字节（加密 · 压缩之后）。
  */
 bytesIn: number, 
@@ -25,6 +29,6 @@ bytesIn: number,
  */
 bytesOut: number, 
 /**
- * 写好的那一句（地址 · 压没压 · 进出字节）。
+ * 写好的那一句（地址 · 经没经代理 · 压没压 · 进出字节）。
  */
 said: string, };

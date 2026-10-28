@@ -3642,6 +3642,14 @@ sealed interface Changed {
     data object Groups : Changed {
         override val topic: String get() = "groups"
     }
+    @Suppress("UNCHECKED_CAST")
+    data class SessionQueue(
+        val key: String,
+        val body: QueueList? = null,
+    ) : Changed, Ordered {
+        override val topic: String get() = "session_queue"
+        override var wireOrder: IntArray? = null
+    }
 
     companion object {
         val ADAPTER: JsonAdapter<Changed> =
@@ -3768,6 +3776,15 @@ sealed interface Changed {
                         ),
                         { Changed.Groups },
                         { arrayOf("groups") },
+                    )),
+                Variant("session_queue", Changed.SessionQueue::class.java, obj(
+                        listOf(
+                        Field("topic", { tag("session_queue") }, optional = false, nullable = false),
+                        Field("key", { Str }, optional = false, nullable = false),
+                        Field("body", { opt(QueueList.ADAPTER) }, optional = true, nullable = true),
+                        ),
+                        { a -> Changed.SessionQueue(a[1] as String, a[2] as QueueList?) },
+                        { v -> arrayOf("session_queue", v.key, v.body) },
                     )),
                 ),
             )
@@ -9329,6 +9346,18 @@ data class HistoryTurnsReq(
     }
 }
 
+enum class HolderWho(val wire: String) {
+    TERMINAL_WINDOW("terminal-window"),
+    DESKTOP("desktop"),
+    MOBILE("mobile"),
+    NONE("none"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<HolderWho> = enumOf(entries) { it.wire }
+    }
+}
+
 data object HomeReq {
     val ADAPTER: JsonAdapter<HomeReq> = obj(emptyList(), { HomeReq }, { emptyArray() })
 }
@@ -9811,6 +9840,44 @@ data object IndexStatusReq {
 }
 
 @Suppress("UNCHECKED_CAST")
+data class InputHolder(
+    val who: HolderWho,
+    val mine: Boolean,
+    val said: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<InputHolder> = obj(
+            listOf(
+            Field("who", { HolderWho.ADAPTER }, optional = false, nullable = false),
+            Field("mine", { Bool }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            ),
+            { a -> InputHolder(a[0] as HolderWho, a[1] as Boolean, a[2] as String) },
+            { v -> arrayOf(v.who, v.mine, v.said) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class InputNow(
+    val input: TermInput,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<InputNow> = obj(
+            listOf(
+            Field("input", { TermInput.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> InputNow(a[0] as TermInput) },
+            { v -> arrayOf(v.input) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class Installed(
     val action: DeployAct,
     val said: String,
@@ -9989,46 +10056,6 @@ data class KeySetReq(
             ),
             { a -> KeySetReq(a[0] as String, a[1] as String, a[2] as String?) },
             { v -> arrayOf(v.configDir, v.key, v.baseUrl) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class KillReq(
-    val name: String,
-    val client: String? = null,
-    val sid: String? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<KillReq> = obj(
-            listOf(
-            Field("name", { Str }, optional = false, nullable = false),
-            Field("client", { opt(Str) }, optional = true, nullable = true),
-            Field("sid", { opt(Str) }, optional = true, nullable = true),
-            ),
-            { a -> KillReq(a[0] as String, a[1] as String?, a[2] as String?) },
-            { v -> arrayOf(v.name, v.client, v.sid) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class Killed(
-    val session: String,
-    val killed: Boolean,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<Killed> = obj(
-            listOf(
-            Field("session", { Str }, optional = false, nullable = false),
-            Field("killed", { Bool }, optional = false, nullable = false),
-            ),
-            { a -> Killed(a[0] as String, a[1] as Boolean) },
-            { v -> arrayOf(v.session, v.killed) },
         )
     }
 }
@@ -12033,6 +12060,7 @@ data class MachineLink(
     val endpoint: String,
     val jump: Boolean,
     val compressed: Boolean,
+    val viaProxy: Boolean,
     val bytesIn: Long,
     val bytesOut: Long,
     val said: String,
@@ -12045,12 +12073,13 @@ data class MachineLink(
             Field("endpoint", { Str }, optional = false, nullable = false),
             Field("jump", { Bool }, optional = false, nullable = false),
             Field("compressed", { Bool }, optional = false, nullable = false),
+            Field("viaProxy", { Bool }, optional = false, nullable = false),
             Field("bytesIn", { U64 }, optional = false, nullable = false),
             Field("bytesOut", { U64 }, optional = false, nullable = false),
             Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> MachineLink(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as Long, a[4] as Long, a[5] as String) },
-            { v -> arrayOf(v.endpoint, v.jump, v.compressed, v.bytesIn, v.bytesOut, v.said) },
+            { a -> MachineLink(a[0] as String, a[1] as Boolean, a[2] as Boolean, a[3] as Boolean, a[4] as Long, a[5] as Long, a[6] as String) },
+            { v -> arrayOf(v.endpoint, v.jump, v.compressed, v.viaProxy, v.bytesIn, v.bytesOut, v.said) },
         )
     }
 }
@@ -15428,8 +15457,6 @@ data class PlanReturnReply(
     val result: PlanReturnReplyResult,
     val why: String?,
     val said: String?,
-    val screen: String?,
-    val resumed: Boolean,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -15441,19 +15468,15 @@ data class PlanReturnReply(
             Field("result", { PlanReturnReplyResult.ADAPTER }, optional = false, nullable = false),
             Field("why", { opt(Str) }, optional = false, nullable = true),
             Field("said", { opt(Str) }, optional = false, nullable = true),
-            Field("screen", { opt(Str) }, optional = false, nullable = true),
-            Field("resumed", { Bool }, optional = false, nullable = false),
             ),
-            { a -> PlanReturnReply(a[0] as String, a[1] as PlanWho?, a[2] as PlanReturnReplyResult, a[3] as String?, a[4] as String?, a[5] as String?, a[6] as Boolean) },
-            { v -> arrayOf(v.line, v.to, v.result, v.why, v.said, v.screen, v.resumed) },
+            { a -> PlanReturnReply(a[0] as String, a[1] as PlanWho?, a[2] as PlanReturnReplyResult, a[3] as String?, a[4] as String?) },
+            { v -> arrayOf(v.line, v.to, v.result, v.why, v.said) },
         )
     }
 }
 
 enum class PlanReturnReplyResult(val wire: String) {
-    DELIVERED("delivered"),
-    UNSURE("unsure"),
-    REFUSED("refused"),
+    QUEUED("queued"),
     COPY("copy"),
     ;
 
@@ -15470,7 +15493,6 @@ data class PlanReturnReq(
     val text: String,
     val to: PlanReturnReqTo? = null,
     val client: String? = null,
-    val seenScreen: String? = null,
     val resume: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -15484,11 +15506,10 @@ data class PlanReturnReq(
             Field("text", { Str }, optional = false, nullable = false),
             Field("to", { opt(PlanReturnReqTo.ADAPTER) }, optional = true, nullable = true),
             Field("client", { opt(Str) }, optional = true, nullable = true),
-            Field("seen_screen", { opt(Str) }, optional = true, nullable = true),
             Field("resume", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> PlanReturnReq(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as PlanReturnReqTo?, a[5] as String?, a[6] as String?, a[7] as Boolean?) },
-            { v -> arrayOf(v.workspace, v.slice, v.id, v.text, v.to, v.client, v.seenScreen, v.resume) },
+            { a -> PlanReturnReq(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as PlanReturnReqTo?, a[5] as String?, a[6] as Boolean?) },
+            { v -> arrayOf(v.workspace, v.slice, v.id, v.text, v.to, v.client, v.resume) },
         )
     }
 }
@@ -17091,7 +17112,7 @@ enum class PushVia(val wire: String) {
 @Suppress("UNCHECKED_CAST")
 data class QueueCancelled(
     val cancelled: Boolean,
-    val queue: SessionQueue,
+    val queue: QueueList,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17099,9 +17120,9 @@ data class QueueCancelled(
         val ADAPTER: JsonAdapter<QueueCancelled> = obj(
             listOf(
             Field("cancelled", { Bool }, optional = false, nullable = false),
-            Field("queue", { SessionQueue.ADAPTER }, optional = false, nullable = false),
+            Field("queue", { QueueList.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> QueueCancelled(a[0] as Boolean, a[1] as SessionQueue) },
+            { a -> QueueCancelled(a[0] as Boolean, a[1] as QueueList) },
             { v -> arrayOf(v.cancelled, v.queue) },
         )
     }
@@ -17114,22 +17135,49 @@ data class QueueItem(
     val end: String,
     val atMs: Long,
     val text: String,
+    val attachments: List<String>? = null,
+    val rewind: Rewind? = null,
     val state: QueueState,
+    val said: String,
+    val from: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
     companion object {
         val ADAPTER: JsonAdapter<QueueItem> = obj(
             listOf(
-            Field("seq", { opt(Lng) }, optional = true, nullable = true),
+            Field("seq", { opt(U64) }, optional = true, nullable = true),
             Field("id", { Str }, optional = false, nullable = false),
             Field("end", { Str }, optional = false, nullable = false),
             Field("atMs", { Lng }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
+            Field("attachments", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("rewind", { opt(Rewind.ADAPTER) }, optional = true, nullable = true),
             Field("state", { QueueState.ADAPTER }, optional = false, nullable = false),
+            Field("said", { Str }, optional = false, nullable = false),
+            Field("from", { Str }, optional = false, nullable = false),
             ),
-            { a -> QueueItem(a[0] as Long?, a[1] as String, a[2] as String, a[3] as Long, a[4] as String, a[5] as QueueState) },
-            { v -> arrayOf(v.seq, v.id, v.end, v.atMs, v.text, v.state) },
+            { a -> QueueItem(a[0] as Long?, a[1] as String, a[2] as String, a[3] as Long, a[4] as String, a[5] as List<String>?, a[6] as Rewind?, a[7] as QueueState, a[8] as String, a[9] as String) },
+            { v -> arrayOf(v.seq, v.id, v.end, v.atMs, v.text, v.attachments, v.rewind, v.state, v.said, v.from) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class QueueList(
+    val items: List<QueueItem>,
+    val sent: List<String>,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<QueueList> = obj(
+            listOf(
+            Field("items", { arr(QueueItem.ADAPTER) }, optional = false, nullable = false),
+            Field("sent", { arr(Str) }, optional = false, nullable = false),
+            ),
+            { a -> QueueList(a[0] as List<QueueItem>, a[1] as List<String>) },
+            { v -> arrayOf(v.items, v.sent) },
         )
     }
 }
@@ -17138,7 +17186,8 @@ data class QueueItem(
 data class QueuePut(
     val outcome: QueuePutOutcome,
     val seq: Long? = null,
-    val place: Long? = null,
+    val place: Int? = null,
+    val said: String,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -17146,11 +17195,12 @@ data class QueuePut(
         val ADAPTER: JsonAdapter<QueuePut> = obj(
             listOf(
             Field("outcome", { QueuePutOutcome.ADAPTER }, optional = false, nullable = false),
-            Field("seq", { opt(Lng) }, optional = true, nullable = true),
-            Field("place", { opt(Lng) }, optional = true, nullable = true),
+            Field("seq", { opt(U64) }, optional = true, nullable = true),
+            Field("place", { opt(Int32) }, optional = true, nullable = true),
+            Field("said", { Str }, optional = false, nullable = false),
             ),
-            { a -> QueuePut(a[0] as QueuePutOutcome, a[1] as Long?, a[2] as Long?) },
-            { v -> arrayOf(v.outcome, v.seq, v.place) },
+            { a -> QueuePut(a[0] as QueuePutOutcome, a[1] as Long?, a[2] as Int?, a[3] as String) },
+            { v -> arrayOf(v.outcome, v.seq, v.place, v.said) },
         )
     }
 }
@@ -18064,10 +18114,7 @@ enum class Refused(val wire: String) {
     ENDED("ended"),
     SCREEN_CHANGED("screen_changed"),
     WAITING("waiting"),
-    ELSEWHERE("elsewhere"),
-    NOT_RESUMED("not_resumed"),
-    NOT_IDLE("not_idle"),
-    ATTACHMENT_GONE("attachment_gone"),
+    HELD_ELSEWHERE("held_elsewhere"),
     ;
 
     companion object {
@@ -18295,6 +18342,110 @@ data class RetryRun(
             ),
             { a -> RetryRun(a[0] as String, a[1] as RetryOutcome) },
             { v -> arrayOf(v.id, v.outcome) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class Rewind(
+    val to: String,
+    val how: RewindHow,
+    val `when`: RewindWhen,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<Rewind> = obj(
+            listOf(
+            Field("to", { Str }, optional = false, nullable = false),
+            Field("how", { RewindHow.ADAPTER }, optional = false, nullable = false),
+            Field("when", { RewindWhen.ADAPTER }, optional = false, nullable = false),
+            ),
+            { a -> Rewind(a[0] as String, a[1] as RewindHow, a[2] as RewindWhen) },
+            { v -> arrayOf(v.to, v.how, v.`when`) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RewindChoiceRow(
+    val how: RewindHow,
+    val text: String,
+    val default: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RewindChoiceRow> = obj(
+            listOf(
+            Field("how", { RewindHow.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("default", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> RewindChoiceRow(a[0] as RewindHow, a[1] as String, a[2] as Boolean) },
+            { v -> arrayOf(v.how, v.text, v.default) },
+        )
+    }
+}
+
+enum class RewindHow(val wire: String) {
+    CONVERSATION("conversation"),
+    CODE_AND_CONVERSATION("code_and_conversation"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<RewindHow> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RewindOptions(
+    val how: List<RewindChoiceRow>,
+    val `when`: List<RewindWhenRow>,
+    val said: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RewindOptions> = obj(
+            listOf(
+            Field("how", { arr(RewindChoiceRow.ADAPTER) }, optional = false, nullable = false),
+            Field("when", { arr(RewindWhenRow.ADAPTER) }, optional = false, nullable = false),
+            Field("said", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> RewindOptions(a[0] as List<RewindChoiceRow>, a[1] as List<RewindWhenRow>, a[2] as String?) },
+            { v -> arrayOf(v.how, v.`when`, v.said) },
+        )
+    }
+}
+
+enum class RewindWhen(val wire: String) {
+    AFTER_TURN("after_turn"),
+    NOW("now"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<RewindWhen> = enumOf(entries) { it.wire }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class RewindWhenRow(
+    val `when`: RewindWhen,
+    val text: String,
+    val default: Boolean,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<RewindWhenRow> = obj(
+            listOf(
+            Field("when", { RewindWhen.ADAPTER }, optional = false, nullable = false),
+            Field("text", { Str }, optional = false, nullable = false),
+            Field("default", { Bool }, optional = false, nullable = false),
+            ),
+            { a -> RewindWhenRow(a[0] as RewindWhen, a[1] as String, a[2] as Boolean) },
+            { v -> arrayOf(v.`when`, v.text, v.default) },
         )
     }
 }
@@ -20614,8 +20765,6 @@ data class Sent(
     val why: Refused? = null,
     val said: String? = null,
     val screen: String? = null,
-    val resumed: Boolean? = null,
-    val gone: List<String>? = null,
     val acts: List<SentAct>? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
@@ -20627,12 +20776,10 @@ data class Sent(
             Field("why", { opt(Refused.ADAPTER) }, optional = true, nullable = true),
             Field("said", { opt(Str) }, optional = true, nullable = true),
             Field("screen", { opt(Str) }, optional = true, nullable = true),
-            Field("resumed", { opt(Bool) }, optional = true, nullable = true),
-            Field("gone", { opt(arr(Str)) }, optional = true, nullable = true),
             Field("acts", { opt(arr(SentAct.ADAPTER)) }, optional = true, nullable = true),
             ),
-            { a -> Sent(a[0] as SentResult, a[1] as Refused?, a[2] as String?, a[3] as String?, a[4] as Boolean?, a[5] as List<String>?, a[6] as List<SentAct>?) },
-            { v -> arrayOf(v.result, v.why, v.said, v.screen, v.resumed, v.gone, v.acts) },
+            { a -> Sent(a[0] as SentResult, a[1] as Refused?, a[2] as String?, a[3] as String?, a[4] as List<SentAct>?) },
+            { v -> arrayOf(v.result, v.why, v.said, v.screen, v.acts) },
         )
     }
 }
@@ -20641,6 +20788,7 @@ enum class SentAct(val wire: String) {
     RETRY("retry"),
     RECAPTURE("recapture"),
     RELIST("relist"),
+    TAKE("take"),
     ;
 
     companion object {
@@ -21383,23 +21531,6 @@ data class SessionPermissionReq(
 }
 
 @Suppress("UNCHECKED_CAST")
-data class SessionQueue(
-    val items: List<QueueItem>,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionQueue> = obj(
-            listOf(
-            Field("items", { arr(QueueItem.ADAPTER) }, optional = false, nullable = false),
-            ),
-            { a -> SessionQueue(a[0] as List<QueueItem>) },
-            { v -> arrayOf(v.items) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
 data class SessionQueueCancelReq(
     val machine: String,
     val sid: String,
@@ -21429,6 +21560,8 @@ data class SessionQueuePutReq(
     val n: Long? = null,
     val atMs: Long,
     val text: String,
+    val attachments: List<String>? = null,
+    val rewind: Rewind? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -21439,12 +21572,14 @@ data class SessionQueuePutReq(
             Field("sid", { Str }, optional = false, nullable = false),
             Field("id", { Str }, optional = false, nullable = false),
             Field("end", { Str }, optional = false, nullable = false),
-            Field("n", { opt(Lng) }, optional = true, nullable = true),
+            Field("n", { opt(U64) }, optional = true, nullable = true),
             Field("atMs", { Lng }, optional = false, nullable = false),
             Field("text", { Str }, optional = false, nullable = false),
+            Field("attachments", { opt(arr(Str)) }, optional = true, nullable = true),
+            Field("rewind", { opt(Rewind.ADAPTER) }, optional = true, nullable = true),
             ),
-            { a -> SessionQueuePutReq(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Long?, a[5] as Long, a[6] as String) },
-            { v -> arrayOf(v.machine, v.sid, v.id, v.end, v.n, v.atMs, v.text) },
+            { a -> SessionQueuePutReq(a[0] as String, a[1] as String, a[2] as String, a[3] as String, a[4] as Long?, a[5] as Long, a[6] as String, a[7] as List<String>?, a[8] as Rewind?) },
+            { v -> arrayOf(v.machine, v.sid, v.id, v.end, v.n, v.atMs, v.text, v.attachments, v.rewind) },
         )
     }
 }
@@ -21463,6 +21598,25 @@ data class SessionQueueReadReq(
             Field("sid", { Str }, optional = false, nullable = false),
             ),
             { a -> SessionQueueReadReq(a[0] as String, a[1] as String) },
+            { v -> arrayOf(v.machine, v.sid) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class SessionRewindOptionsReq(
+    val machine: String,
+    val sid: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<SessionRewindOptionsReq> = obj(
+            listOf(
+            Field("machine", { Str }, optional = false, nullable = false),
+            Field("sid", { Str }, optional = false, nullable = false),
+            ),
+            { a -> SessionRewindOptionsReq(a[0] as String, a[1] as String) },
             { v -> arrayOf(v.machine, v.sid) },
         )
     }
@@ -21489,33 +21643,6 @@ data class SessionRuns(
             ),
             { a -> SessionRuns(a[0] as String, a[1] as List<RunInfo>, a[2] as List<RunEnded>, a[3] as RunGroups, a[4] as String?) },
             { v -> arrayOf(v.sid, v.runs, v.ended, v.groups, v.summary) },
-        )
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-data class SessionSayReq(
-    val sid: String,
-    val text: String,
-    val client: String? = null,
-    val seenScreen: String? = null,
-    val idleOnly: Boolean? = null,
-    val attachments: List<String>? = null,
-) : Ordered {
-    override var wireOrder: IntArray? = null
-
-    companion object {
-        val ADAPTER: JsonAdapter<SessionSayReq> = obj(
-            listOf(
-            Field("sid", { Str }, optional = false, nullable = false),
-            Field("text", { Str }, optional = false, nullable = false),
-            Field("client", { opt(Str) }, optional = true, nullable = true),
-            Field("seen_screen", { opt(Str) }, optional = true, nullable = true),
-            Field("idle_only", { opt(Bool) }, optional = true, nullable = true),
-            Field("attachments", { opt(arr(Str)) }, optional = true, nullable = true),
-            ),
-            { a -> SessionSayReq(a[0] as String, a[1] as String, a[2] as String?, a[3] as String?, a[4] as Boolean?, a[5] as List<String>?) },
-            { v -> arrayOf(v.sid, v.text, v.client, v.seenScreen, v.idleOnly, v.attachments) },
         )
     }
 }
@@ -23536,6 +23663,46 @@ data class TasksListReq(
     }
 }
 
+sealed interface TermInput {
+    /** 判别格（`kind`）那个词。 */
+    val kind: String
+
+    data object Shared : TermInput {
+        override val kind: String get() = "shared"
+    }
+    @Suppress("UNCHECKED_CAST")
+    data class Held(
+        val holder: InputHolder,
+    ) : TermInput, Ordered {
+        override val kind: String get() = "held"
+        override var wireOrder: IntArray? = null
+    }
+
+    companion object {
+        val ADAPTER: JsonAdapter<TermInput> =
+            tagged<TermInput>(
+                "kind",
+                listOf(
+                Variant("shared", TermInput.Shared::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("shared") }, optional = false, nullable = false),
+                        ),
+                        { TermInput.Shared },
+                        { arrayOf("shared") },
+                    )),
+                Variant("held", TermInput.Held::class.java, obj(
+                        listOf(
+                        Field("kind", { tag("held") }, optional = false, nullable = false),
+                        Field("holder", { InputHolder.ADAPTER }, optional = false, nullable = false),
+                        ),
+                        { a -> TermInput.Held(a[1] as InputHolder) },
+                        { v -> arrayOf("held", v.holder) },
+                    )),
+                ),
+            )
+    }
+}
+
 @Suppress("UNCHECKED_CAST")
 data class TermSession(
     val sid: String,
@@ -23735,6 +23902,44 @@ data class TerminalChoices(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class TerminalEndReq(
+    val terminal: String? = null,
+    val sid: String? = null,
+    val client: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalEndReq> = obj(
+            listOf(
+            Field("terminal", { opt(Str) }, optional = true, nullable = true),
+            Field("sid", { opt(Str) }, optional = true, nullable = true),
+            Field("client", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> TerminalEndReq(a[0] as String?, a[1] as String?, a[2] as String?) },
+            { v -> arrayOf(v.terminal, v.sid, v.client) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+data class TerminalEnded(
+    val terminal: String,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalEnded> = obj(
+            listOf(
+            Field("terminal", { Str }, optional = false, nullable = false),
+            ),
+            { a -> TerminalEnded(a[0] as String) },
+            { v -> arrayOf(v.terminal) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class TerminalFollowEnd(
     val ticket: String,
     val why: FollowEnd,
@@ -23756,6 +23961,25 @@ data class TerminalFollowEnd(
 }
 
 @Suppress("UNCHECKED_CAST")
+data class TerminalHoldReq(
+    val terminal: String,
+    val client: String? = null,
+) : Ordered {
+    override var wireOrder: IntArray? = null
+
+    companion object {
+        val ADAPTER: JsonAdapter<TerminalHoldReq> = obj(
+            listOf(
+            Field("terminal", { Str }, optional = false, nullable = false),
+            Field("client", { opt(Str) }, optional = true, nullable = true),
+            ),
+            { a -> TerminalHoldReq(a[0] as String, a[1] as String?) },
+            { v -> arrayOf(v.terminal, v.client) },
+        )
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 data class TerminalInputReq(
     val terminal: String? = null,
     val sid: String? = null,
@@ -23764,6 +23988,7 @@ data class TerminalInputReq(
     val key: String? = null,
     val seenScreen: String? = null,
     val client: String? = null,
+    val take: Boolean? = null,
 ) : Ordered {
     override var wireOrder: IntArray? = null
 
@@ -23777,9 +24002,10 @@ data class TerminalInputReq(
             Field("key", { opt(Str) }, optional = true, nullable = true),
             Field("seen_screen", { opt(Str) }, optional = true, nullable = true),
             Field("client", { opt(Str) }, optional = true, nullable = true),
+            Field("take", { opt(Bool) }, optional = true, nullable = true),
             ),
-            { a -> TerminalInputReq(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?) },
-            { v -> arrayOf(v.terminal, v.sid, v.text, v.enter, v.key, v.seenScreen, v.client) },
+            { a -> TerminalInputReq(a[0] as String?, a[1] as String?, a[2] as String?, a[3] as Boolean?, a[4] as String?, a[5] as String?, a[6] as String?, a[7] as Boolean?) },
+            { v -> arrayOf(v.terminal, v.sid, v.text, v.enter, v.key, v.seenScreen, v.client, v.take) },
         )
     }
 }
@@ -23787,15 +24013,15 @@ data class TerminalInputReq(
 @Suppress("UNCHECKED_CAST")
 data class TerminalItem(
     val terminal: String,
-    val host: TerminalItemHost,
-    val tmuxName: String,
+    val host: WireTerminalHost,
+    val name: String,
     val title: String,
     val program: String,
     val cwd: String,
     val session: TermSession? = null,
     val startedBy: StartedBy,
     val clients: List<Attached>,
-    val input: TerminalItemInput,
+    val input: TermInput,
     val state: TermState,
     val lastActivity: Long,
     val can: TerminalCan,
@@ -23806,40 +24032,22 @@ data class TerminalItem(
         val ADAPTER: JsonAdapter<TerminalItem> = obj(
             listOf(
             Field("terminal", { Str }, optional = false, nullable = false),
-            Field("host", { TerminalItemHost.ADAPTER }, optional = false, nullable = false),
-            Field("tmux_name", { Str }, optional = false, nullable = false),
+            Field("host", { WireTerminalHost.ADAPTER }, optional = false, nullable = false),
+            Field("name", { Str }, optional = false, nullable = false),
             Field("title", { Str }, optional = false, nullable = false),
             Field("program", { Str }, optional = false, nullable = false),
             Field("cwd", { Str }, optional = false, nullable = false),
             Field("session", { opt(TermSession.ADAPTER) }, optional = true, nullable = true),
             Field("started_by", { StartedBy.ADAPTER }, optional = false, nullable = false),
             Field("clients", { arr(Attached.ADAPTER) }, optional = false, nullable = false),
-            Field("input", { TerminalItemInput.ADAPTER }, optional = false, nullable = false),
+            Field("input", { TermInput.ADAPTER }, optional = false, nullable = false),
             Field("state", { TermState.ADAPTER }, optional = false, nullable = false),
             Field("last_activity", { U64 }, optional = false, nullable = false),
             Field("can", { TerminalCan.ADAPTER }, optional = false, nullable = false),
             ),
-            { a -> TerminalItem(a[0] as String, a[1] as TerminalItemHost, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as TermSession?, a[7] as StartedBy, a[8] as List<Attached>, a[9] as TerminalItemInput, a[10] as TermState, a[11] as Long, a[12] as TerminalCan) },
-            { v -> arrayOf(v.terminal, v.host, v.tmuxName, v.title, v.program, v.cwd, v.session, v.startedBy, v.clients, v.input, v.state, v.lastActivity, v.can) },
+            { a -> TerminalItem(a[0] as String, a[1] as WireTerminalHost, a[2] as String, a[3] as String, a[4] as String, a[5] as String, a[6] as TermSession?, a[7] as StartedBy, a[8] as List<Attached>, a[9] as TermInput, a[10] as TermState, a[11] as Long, a[12] as TerminalCan) },
+            { v -> arrayOf(v.terminal, v.host, v.name, v.title, v.program, v.cwd, v.session, v.startedBy, v.clients, v.input, v.state, v.lastActivity, v.can) },
         )
-    }
-}
-
-enum class TerminalItemHost(val wire: String) {
-    TMUX("tmux"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<TerminalItemHost> = enumOf(entries) { it.wire }
-    }
-}
-
-enum class TerminalItemInput(val wire: String) {
-    SHARED("shared"),
-    ;
-
-    companion object {
-        val ADAPTER: JsonAdapter<TerminalItemInput> = enumOf(entries) { it.wire }
     }
 }
 
@@ -24152,6 +24360,7 @@ enum class Topic(val wire: String) {
     FILES_DIR("files_dir"),
     HISTORY_LIST("history_list"),
     GROUPS("groups"),
+    SESSION_QUEUE("session_queue"),
     ;
 
     companion object {
@@ -25119,6 +25328,13 @@ sealed interface WireSessionContainer {
         override val host: String get() = "tmux"
         override var wireOrder: IntArray? = null
     }
+    @Suppress("UNCHECKED_CAST")
+    data class Managed(
+        val terminal: String? = null,
+    ) : WireSessionContainer, Ordered {
+        override val host: String get() = "managed"
+        override var wireOrder: IntArray? = null
+    }
     data object None : WireSessionContainer {
         override val host: String get() = "none"
     }
@@ -25136,6 +25352,14 @@ sealed interface WireSessionContainer {
                         { a -> WireSessionContainer.Tmux(a[1] as String?) },
                         { v -> arrayOf("tmux", v.terminal) },
                     )),
+                Variant("managed", WireSessionContainer.Managed::class.java, obj(
+                        listOf(
+                        Field("host", { tag("managed") }, optional = false, nullable = false),
+                        Field("terminal", { opt(Str) }, optional = true, nullable = true),
+                        ),
+                        { a -> WireSessionContainer.Managed(a[1] as String?) },
+                        { v -> arrayOf("managed", v.terminal) },
+                    )),
                 Variant("none", WireSessionContainer.None::class.java, obj(
                         listOf(
                         Field("host", { tag("none") }, optional = false, nullable = false),
@@ -25145,6 +25369,16 @@ sealed interface WireSessionContainer {
                     )),
                 ),
             )
+    }
+}
+
+enum class WireTerminalHost(val wire: String) {
+    TMUX("tmux"),
+    MANAGED("managed"),
+    ;
+
+    companion object {
+        val ADAPTER: JsonAdapter<WireTerminalHost> = enumOf(entries) { it.wire }
     }
 }
 

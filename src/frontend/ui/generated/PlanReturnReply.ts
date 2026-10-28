@@ -2,14 +2,14 @@
 import type { PlanWho } from "./PlanWho";
 
 /**
- * `plan-return` 的回包：送出的那一行（后端拼）· 送给谁 · 结局 · 是不是先在这台恢复了它。
+ * `plan-return` 的回包：拼好的那一行（后端拼）· 给谁 · 结局。
  */
 export type PlanReturnReply = { line: string, to: PlanWho | null, 
 /**
- * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
+ * `queued`（投进那条会话的输入队、那台已落盘；投递在它能收时送，已结束的先恢复它）· `copy`（投不了，只给这一行去复制）。
  */
-result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, 
+result: "queued" | "copy", 
 /**
- * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；负责人照旧是它。
+ * `copy` 的原因：`unknown`（认不出接手）· `ended`（已结束、没点恢复）。
  */
-resumed: boolean, };
+why: string | null, said: string | null, };
