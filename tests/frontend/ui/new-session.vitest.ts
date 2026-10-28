@@ -825,3 +825,38 @@ describe("账号页［在 tmux 里登录］：不开框，同一个请求", () =
     expect(arriveAsks()).toEqual([]);
   });
 });
+
+describe("问图框：三格 ＋ 那台写的起在哪", () => {
+  const BOOK = { rev: "r", sets: [], profiles: [{ name: "look", usable: true }, { name: "dev", usable: true }] };
+  const textarea = (): HTMLTextAreaElement => dialog().querySelector<HTMLTextAreaElement>(`textarea[aria-label="${copyText("newSession.label.prompt")}"]`)!;
+  const askOf = (runs: string | null, relined = async (a: string) => ({ line: `L-${a}`, runs: `R-${a}` })) => ({
+    origin: "devbox",
+    lockMachine: true,
+    cwd: "/work/ledger",
+    lockCwd: true,
+    prompt: "L-look",
+    ask: { title: "问图 · 编码探测", alias: runs === null ? null : "look", runs, relined },
+  });
+
+  it("★ 框里没有机器那一格；目录锁着、格内标「工作区根」；开口那句下那一行是那台写的 runs", async () => {
+    replies.set("profiles-read", BOOK);
+    void openNewSession(askOf("tmux 里 · 号 lab（夹具）"));
+    await flush();
+    expect(rowOf(sel(copyText("newSession.label.machine"))).hidden, "机器那一格不出").toBe(true);
+    const cwd = input(copyText("newSession.label.cwd"));
+    expect(cwd.readOnly).toBe(true);
+    expect(rowOf(cwd).textContent).toContain(copyText("newSession.ask.cwdTag"));
+    expect(rowOf(textarea()).textContent).toContain("tmux 里 · 号 lab（夹具）");
+  });
+
+  it("★ 没选别名 ⇒ 那一行写「先选别名」；改选别名 ⇒ 换成那台新写的那一句", async () => {
+    replies.set("profiles-read", BOOK);
+    void openNewSession(askOf(null));
+    await flush();
+    expect(rowOf(textarea()).textContent).toContain(copyText("newSession.ask.runsNone"));
+    choose(sel(copyText("newSession.label.alias")), "dev");
+    await flush();
+    expect(rowOf(textarea()).textContent).toContain("R-dev");
+    expect(rowOf(textarea()).textContent).not.toContain(copyText("newSession.ask.runsNone"));
+  });
+});

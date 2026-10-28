@@ -12703,10 +12703,16 @@
       "zh": "选一条别名",
       "args": []
     },
-    "newSession.ask.note": {
+    "newSession.ask.runsNone": {
       "kind": "body",
       "role": "说明",
-      "zh": "号 · 哪一家 · 轮换随别名",
+      "zh": "先选别名",
+      "args": []
+    },
+    "newSession.ask.cwdTag": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "工作区根",
       "args": []
     },
     "newSessionSet.label.name": {
@@ -14755,6 +14761,37 @@
       "role": "标题",
       "zh": "问图 · {title}",
       "args": ["title"]
+    },
+    "bePlan.ask.runsTmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "tmux 里",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "bePlan.ask.runsAccount": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "号 {account}（来自 {from}）",
+      "args": ["account", "from"]
+    },
+    "bePlan.ask.runsBase": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不用账号（来自 {from}）",
+      "args": ["from"]
+    },
+    "bePlan.ask.runsGroup": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "进分组「{group}」",
+      "args": ["group"]
+    },
+    "bePlan.ask.runsSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
     },
     "bePlan.face.noView": {
       "kind": "error",
@@ -17912,6 +17949,43 @@
       "role": "片段",
       "zh": "{endpoint} · 经代理",
       "args": ["endpoint"]
+    },
+    "beLinks.route.jump": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "经跳板 {chain}",
+      "args": ["chain"]
+    },
+    "beLinks.route.jumpProxy": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "经跳板 {chain} · 经代理",
+      "args": ["chain"]
+    },
+    "beLinks.route.proxyOnly": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "经代理",
+      "args": []
+    },
+    "beLinks.route.then": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " → ",
+      "args": []
+    },
+    "beLinks.detail.head": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "连接：",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "beLinks.detail.row": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "  {said}",
+      "args": ["said"]
     },
     "beConnect.jump.targetFailed": {
       "kind": "error",
