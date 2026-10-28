@@ -1175,3 +1175,37 @@ fn a_registration_whose_shell_is_already_gone_is_dropped_on_load() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(gone, "起始时刻对不上的那条留下来了");
 }
+
+/// await 目录那道耳朵：自己读一下目录 · 读一份记录，不算「有新记录」。notify 7 起 inotify 也报「打开了」，不滤的话
+/// `drain_await_dir` 一读目录就又叫醒自己，50ms 一趟空转不停。「没叫醒」是个没发生 ⇒ 读完紧跟着写一份收尾记号，
+/// 记号那一声到了就停（排在它前面的都过完了）。
+#[cfg(target_os = "linux")]
+#[test]
+fn reading_the_await_dir_does_not_wake_its_watcher() {
+    let dir = std::env::temp_dir().join(format!("bind-ears-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let rec = dir.join("1.tty");
+    std::fs::write(&rec, b"{}").unwrap();
+    let (_ears, rx) = await_ears(&dir).expect("await 目录的耳朵起不来");
+
+    let _ = std::fs::read_dir(&dir).unwrap().count();
+    let _ = std::fs::read(&rec).unwrap();
+    let settle = dir.join("zz-settle");
+    std::fs::write(&settle, b"").unwrap();
+
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+    let mut before = Vec::new();
+    let mut settled = false;
+    while !settled {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(Ok(ev)) if ev.paths.contains(&settle) => settled = true,
+            Ok(got) => before.push(format!("{got:?}")),
+            Err(_) => break,
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(settled, "收尾记号那一声没听见");
+    assert!(before.is_empty(), "只读了一下就叫醒了：{before:?}");
+}

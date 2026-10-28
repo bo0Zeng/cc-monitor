@@ -230,3 +230,20 @@ fn a_monitor_superset_is_not_a_conflict() {
              「10 个不一致」误导性写法的翻版。"
     );
 }
+
+/// 两份 lock 里 `mio` 各只一份（A17-45-4-7）。`mio 0.8` 当年只因 `notify 6` 进来，`notify 8` 走 `mio 1`；
+/// 哪天又冒出第二份 ⇒ 有依赖把旧 mio 拉了回来，`cargo tree -i mio@<旧版>` 查是谁。
+#[test]
+fn each_lockfile_holds_a_single_mio() {
+    for rel in ["src/backend/Cargo.lock", "src/frontend/shell/Cargo.lock"] {
+        let lock = parse_lock(rel);
+        // 计数自检：抠不到包就别静默变绿。
+        assert!(
+            lock.len() > 100,
+            "{rel} 只抠到 {} 个包 —— lock 形状变了",
+            lock.len()
+        );
+        let mio = lock.get("mio").cloned().unwrap_or_default();
+        assert_eq!(mio.len(), 1, "{rel} 里 mio 有 {} 份：{mio:?}", mio.len());
+    }
+}
