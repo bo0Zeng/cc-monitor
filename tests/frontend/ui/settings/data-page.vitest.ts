@@ -76,7 +76,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
 }));
 // 各台「恢复到 tmux 里」那一格住那台后端（`prefs-read`）：桩成都开着。
 vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
-  readPrefs: async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: true, models: {}, permissionModes: {}, contextLimits: {} } }),
+  readPrefs: async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeWhere: "tmux", models: {}, permissionModes: {}, contextLimits: {} } }),
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: opened,

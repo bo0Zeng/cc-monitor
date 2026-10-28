@@ -95,7 +95,7 @@ internal object Wires {
     fun prefs(vararg set: Pair<String, Any?>): Map<String, Any?> =
         mapOf(
             "launchers" to emptyMap<String, Any>(),
-            "resumeInTmux" to true,
+            "resumeWhere" to "tmux",
             "models" to emptyMap<String, Any>(),
             "permissionModes" to emptyMap<String, Any>(),
             "contextLimits" to emptyMap<String, Any>(),

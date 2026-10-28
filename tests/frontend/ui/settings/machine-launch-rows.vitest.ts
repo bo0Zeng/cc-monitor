@@ -2,12 +2,12 @@
  * 每台「这台上的 cc-monitor」里「怎么起会话」那两格（本机远端同一个组件，按 origin 问那台后端 `prefs-read` / `prefs-set`）：
  * - 恢复会话的启动程序：下拉（空 ＝ 那一家的默认启动器 · 用过的 · 存着的 · 自定义…）；读回那台存的；选了只交 `launchers` 默认那一家那一格；
  *   用过的记进界面那份预设；存失败退回读回的值 ＋ 行下一句。
- * - 恢复到 tmux 里：开关，只交 `resumeInTmux`。
+ * - 恢复时放在哪：［托管｜tmux｜照起时那一种］，只交 `resumeWhere`；读回之前一段不选。
  * - 那台读不懂 ⇒ 两格禁用、行下是那台写好的那一句；那台问不到 ⇒ 禁用、说读不到。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-type P = { launchers: Record<string, string>; resumeInTmux: boolean; models: Record<string, string>; permissionModes: Record<string, string>; contextLimits: Record<string, number> };
+type P = { launchers: Record<string, string>; resumeWhere: "managed" | "tmux" | "as_started"; models: Record<string, string>; permissionModes: Record<string, string>; contextLimits: Record<string, number> };
 const { machines, sets, disk, emitted, modes } = vi.hoisted(() => ({
   machines: new Map<string, { prefs: P; state?: string; reason?: string } | Error>(),
   /** 那台 `session-open-facts` 里默认那一家的权限档。 */
@@ -37,7 +37,7 @@ vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
       if (v === "") delete m.prefs.launchers[k];
       else m.prefs.launchers[k] = v;
     }
-    if (patch.resumeInTmux !== undefined) m.prefs.resumeInTmux = patch.resumeInTmux;
+    if (patch.resumeWhere !== undefined) m.prefs.resumeWhere = patch.resumeWhere;
     for (const [k, v] of Object.entries((patch as { permissionModes?: Record<string, string | null> }).permissionModes ?? {})) {
       if (v === null) delete m.prefs.permissionModes[k];
       else m.prefs.permissionModes[k] = v;
@@ -86,12 +86,12 @@ const mount = (origin: string): HTMLElement => {
   m.load();
   return host;
 };
-const blank = (): P => ({ launchers: {}, resumeInTmux: false, models: {}, permissionModes: {}, contextLimits: {} });
+const blank = (): P => ({ launchers: {}, resumeWhere: "managed", models: {}, permissionModes: {}, contextLimits: {} });
 const launcher = AGENT_PROFILE_TABLE.find((r) => r.agent === DEFAULT_AGENT)!.defaultLauncher;
 
 beforeEach(() => {
   machines.clear();
-  machines.set("devbox", { prefs: { ...blank(), launchers: { [DEFAULT_AGENT]: "cc" }, resumeInTmux: true } });
+  machines.set("devbox", { prefs: { ...blank(), launchers: { [DEFAULT_AGENT]: "cc" }, resumeWhere: "tmux" } });
   machines.set("gpu", { prefs: blank() });
   sets.length = 0;
   emitted.length = 0;
@@ -164,16 +164,39 @@ describe("越层启动器诊断跟着那一格", () => {
   });
 });
 
-describe("每台那一格「恢复到 tmux 里」：问那台", () => {
-  it("★ 读回那台的；拨了只交 resumeInTmux", async () => {
+describe("每台那一格「恢复时放在哪」：问那台", () => {
+  const picked = (row: HTMLElement): string[] =>
+    [...row.querySelectorAll<HTMLElement>("[data-role=resume-where] [role=radio]")]
+      .filter((b) => b.getAttribute("aria-checked") === "true")
+      .map((b) => b.dataset.key ?? "");
+  const group = (row: HTMLElement): HTMLElement => row.querySelector<HTMLElement>("[data-role=resume-where] [role=radiogroup]")!;
+  it("★ 三段；读回之前一段不选、灰着；读回那台的那一段", async () => {
+    const row = mount("devbox");
+    const keys = [...row.querySelectorAll<HTMLElement>("[data-role=resume-where] [role=radio]")].map((b) => b.dataset.key);
+    expect(keys).toEqual(["managed", "tmux", "as_started"]);
+    expect(picked(row)).toEqual([]);
+    expect(group(row).getAttribute("aria-disabled")).toBe("true");
+    await settle();
+    expect(picked(row)).toEqual(["tmux"]);
+    expect(group(row).getAttribute("aria-disabled")).toBe("false");
+  });
+  it("★ 点「照起时那一种」只交 resumeWhere，画写完读回的那一段", async () => {
     const row = mount("devbox");
     await settle();
-    const sw = row.querySelector<HTMLButtonElement>("[data-role=resume-tmux] [role=switch]")!;
-    expect(sw.getAttribute("aria-checked")).toBe("true");
-    sw.click();
+    row.querySelector<HTMLButtonElement>("[data-role=resume-where] [data-key=as_started]")!.click();
     await settle();
-    expect(sets).toEqual([["devbox", { resumeInTmux: false }]]);
-    expect(sw.getAttribute("aria-checked")).toBe("false");
+    expect(sets).toEqual([["devbox", { resumeWhere: "as_started" }]]);
+    expect(picked(row)).toEqual(["as_started"]);
+    expect(emitted).toContain("settings-applied");
+  });
+  it("★ 存失败 ⇒ 退回读回的那一段 ＋ 行下一句", async () => {
+    const row = mount("devbox");
+    await settle();
+    disk.failSet = new Error("写不进-w");
+    row.querySelector<HTMLButtonElement>("[data-role=resume-where] [data-key=managed]")!.click();
+    await settle();
+    expect(picked(row)).toEqual(["tmux"]);
+    expect(row.querySelector("[data-role=resume-where]")!.textContent).toContain("写不进-w");
   });
 });
 
@@ -183,7 +206,7 @@ describe("那台读不懂 / 问不到", () => {
     const row = mount("bad");
     await settle();
     expect(row.querySelector<HTMLButtonElement>("[data-role=resume-select]")!.disabled).toBe(true);
-    expect(row.querySelector("[data-role=resume-tmux] [role=switch]")!.getAttribute("aria-disabled")).toBe("true");
+    expect(row.querySelector("[data-role=resume-where] [role=radiogroup]")!.getAttribute("aria-disabled")).toBe("true");
     expect(row.textContent).toContain("那份偏好读不懂-abc");
   });
 

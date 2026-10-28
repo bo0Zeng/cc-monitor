@@ -142,7 +142,7 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
     bringMonitorToFrontOnUserActive: false,
     resumeCommand: "",
     resumeCommandPresets: [],
-    resumeInTmux: false,
+    resumeWhere: "managed",
   }),
   setBehavior: vi.fn().mockResolvedValue(undefined),
 }));

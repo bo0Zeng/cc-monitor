@@ -139,9 +139,10 @@ pub(crate) struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) launchers: Option<BTreeMap<String, String>>,
+    /// 恢复时放在哪（三选）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) resume_in_tmux: Option<bool>,
+    pub(crate) resume_where: Option<cmd_wire::session::ResumeWhere>,
     /// 某几个号的模型：`{号: 模型 | null}`，`null` ⇒ 删掉那一条。只动点到的那几个号。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -177,7 +178,7 @@ impl From<&Prefs> for PrefsSet {
     fn from(p: &Prefs) -> Self {
         PrefsSet {
             launchers: Some(p.launchers.clone()),
-            resume_in_tmux: Some(p.resume_in_tmux),
+            resume_where: Some(p.resume_where),
             models: Some(
                 p.models
                     .iter()
@@ -207,8 +208,8 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
             t => p.launchers.insert(k.clone(), t.to_string()),
         };
     }
-    if let Some(t) = s.resume_in_tmux {
-        p.resume_in_tmux = t;
+    if let Some(w) = s.resume_where {
+        p.resume_where = w;
     }
     for (k, v) in s.models.iter().flatten() {
         match v.as_deref().map(str::trim).filter(|m| !m.is_empty()) {

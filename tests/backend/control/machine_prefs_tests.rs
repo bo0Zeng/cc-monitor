@@ -30,7 +30,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
     .unwrap();
     let r = set(
         &home,
-        serde_json::json!({"models": {"a": null}, "resumeInTmux": true, "launchers": {"codex": "cx"}, "agentHomes": {"codex": "/srv/x"}}),
+        serde_json::json!({"models": {"a": null}, "resumeWhere": "as_started", "launchers": {"codex": "cx"}, "agentHomes": {"codex": "/srv/x"}}),
     )
     .unwrap();
     assert_eq!(r.state, FileState::Ok);
@@ -38,7 +38,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
         serde_json::to_value(&r.prefs).unwrap(),
         serde_json::json!({
             "launchers": {"claude": "cc", "codex": "cx"},
-            "resumeInTmux": true,
+            "resumeWhere": "as_started",
             "models": {"b": "sonnet"},
             "permissionModes": {},
             "contextLimits": {"opus": 1000000},
@@ -90,14 +90,17 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     for body in [
         "{not json".to_string(),
-        r#"{"version":2,"launchers":{},"resumeInTmux":false,"models":{},"contextLimits":{}}"#.to_string(),
-        r#"{"version":1,"launchers":{},"resumeInTmux":false,"models":{},"contextLimits":{},"more":1}"#.to_string(),
+        r#"{"version":3,"launchers":{},"resumeWhere":"tmux","models":{},"contextLimits":{}}"#.to_string(),
+        r#"{"version":2,"launchers":{},"resumeWhere":"tmux","models":{},"contextLimits":{},"more":1}"#.to_string(),
+        // 旧那一格不留兼容：第 2 版里还写着它 ⇒ 读不懂；第 1 版由常驻那一位起来时换形（`prefs_migration.rs`），读口不认。
+        r#"{"version":2,"launchers":{},"resumeInTmux":true,"models":{},"contextLimits":{}}"#.to_string(),
+        r#"{"version":1,"launchers":{},"resumeInTmux":false,"models":{},"contextLimits":{}}"#.to_string(),
     ] {
         std::fs::write(&path, &body).unwrap();
         let r = answer_read_in(Some(&home));
         assert_eq!((r.state, r.prefs.clone()), (FileState::Unreadable, Prefs::default()), "{body}");
         assert!(r.reason.is_some(), "{body}");
-        let e = set(&home, serde_json::json!({"resumeInTmux": true})).unwrap_err();
+        let e = set(&home, serde_json::json!({"resumeWhere": "tmux"})).unwrap_err();
         assert!(matches!(e, PrefsSetErr::Unreadable(_)), "{body} ⇒ {e:?}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "读不懂的那份被盖了");
     }
@@ -111,7 +114,7 @@ fn the_two_tab_rules_default_child_hidden_bg_shown_and_patch_one_at_a_time() {
     let d = Prefs::default();
     assert_eq!((d.child_tab, d.bg_tab), (Tab::Hide, Tab::Show));
     let old: crate::common::machine_prefs::OnDisk =
-        serde_json::from_value(serde_json::json!({"version": 1, "resumeInTmux": true})).unwrap();
+        serde_json::from_value(serde_json::json!({"version": 2, "resumeWhere": "tmux"})).unwrap();
     assert_eq!(
         (old.prefs.child_tab, old.prefs.bg_tab),
         (Tab::Hide, Tab::Show)
@@ -122,6 +125,44 @@ fn the_two_tab_rules_default_child_hidden_bg_shown_and_patch_one_at_a_time() {
     let set: PrefsSet = serde_json::from_value(serde_json::json!({"childTab": "show"})).unwrap();
     assert_eq!(patched(p, &set).rules().child_tab, Tab::Show);
     assert!(serde_json::from_value::<PrefsSet>(serde_json::json!({"bgTab": "maybe"})).is_err());
+}
+
+/// 恢复时放在哪：缺省托管；三个值都收；旧那一格开关（`resumeInTmux`）补丁里不认，别的值不认。
+#[test]
+fn resume_where_defaults_to_managed_and_takes_only_the_three_words() {
+    use cmd_wire::session::ResumeWhere;
+    assert_eq!(Prefs::default().resume_where, ResumeWhere::Managed);
+    for (w, want) in [
+        ("managed", ResumeWhere::Managed),
+        ("tmux", ResumeWhere::Tmux),
+        ("as_started", ResumeWhere::AsStarted),
+    ] {
+        let set: PrefsSet = serde_json::from_value(serde_json::json!({"resumeWhere": w})).unwrap();
+        assert_eq!(patched(Prefs::default(), &set).resume_where, want, "{w}");
+    }
+    assert!(serde_json::from_value::<PrefsSet>(serde_json::json!({"resumeInTmux": true})).is_err());
+    assert!(serde_json::from_value::<PrefsSet>(serde_json::json!({"resumeWhere": "direct"})).is_err());
+}
+
+/// 恢复想不想进 tmux：三选 × 启动台账记着的宿主。照起时那一种只认记着 tmux 的；记着托管 / 记不着 ⇒ 不想。
+#[test]
+fn resume_wants_tmux_follows_the_choice_and_where_the_session_started() {
+    use cmd_wire::frame::TerminalHost::{Managed, Tmux};
+    use cmd_wire::session::ResumeWhere;
+    let with = |w| Prefs {
+        resume_where: w,
+        ..Prefs::default()
+    };
+    for (w, started, want) in [
+        (ResumeWhere::Managed, Some(Tmux), false),
+        (ResumeWhere::Tmux, None, true),
+        (ResumeWhere::Tmux, Some(Managed), true),
+        (ResumeWhere::AsStarted, Some(Tmux), true),
+        (ResumeWhere::AsStarted, Some(Managed), false),
+        (ResumeWhere::AsStarted, None, false),
+    ] {
+        assert_eq!(with(w).resume_wants_tmux(started), want, "{w:?} × {started:?}");
+    }
 }
 
 /// 上限表交给会话事实那一形：子串小写。
@@ -156,7 +197,7 @@ fn the_pb_dir_is_set_trimmed_kept_and_cleared_by_an_empty_string() {
     let home = scratch("pbdir");
     let r = set(&home, serde_json::json!({"pbDir": "  /opt/pb  "})).unwrap();
     assert_eq!(r.prefs.pb_dir.as_deref(), Some("/opt/pb"));
-    let r = set(&home, serde_json::json!({"resumeInTmux": true})).unwrap();
+    let r = set(&home, serde_json::json!({"resumeWhere": "tmux"})).unwrap();
     assert_eq!(r.prefs.pb_dir.as_deref(), Some("/opt/pb"));
     let r = set(&home, serde_json::json!({"pbDir": ""})).unwrap();
     assert_eq!(r.prefs.pb_dir, None);
