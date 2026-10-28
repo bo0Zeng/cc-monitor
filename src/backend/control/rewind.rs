@@ -141,22 +141,82 @@ fn how_text(how: RewindHow) -> String {
 }
 
 /// 发送那一下的选项（`session-rewind-options` 的本体）：那一家申报的几项照摆；`busy` ＝ 主 agent 此刻在干活（只有后台子 agent 在跑不算）。
-pub(crate) fn options_of(face: Option<&RewindFace>, busy: bool) -> RewindOptions {
+/// 被编辑那一句之后的事（发送那一下判哪一项能选 · 要不要多说一句）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct After {
+    /// 那一句起，主 agent 改过代码（[`code_after`]）。
+    pub(crate) code: bool,
+    /// 那一句之后派出、此刻还在跑的子 agent 几个（[`runs_after`]）。
+    pub(crate) runs: usize,
+}
+
+/// 运行表里「`since_ms` 之后派出、还在跑」的几个：起的时刻不知道的不数；那一句的时刻不知道 ⇒ 0（不照猜的说）。
+pub(crate) fn runs_after(runs: &[cmd_wire::frame::RunInfo], since_ms: Option<u64>) -> usize {
+    let Some(since) = since_ms else {
+        return 0;
+    };
+    runs.iter()
+        .filter(|r| r.state == cmd_wire::frame::RunState::Running)
+        .filter(|r| r.started_ms.is_some_and(|t| t >= since))
+        .count()
+}
+
+/// `kind` 那一家的这几条记录（那一句起，文件序）里，主线上有没有写文件的调用：那一家的一拍里认（[`crate::agents::beat_of`]）；
+/// 子运行的记录 · `off`（主线外，回退掉的那几条的 id）不算。
+pub(crate) fn code_after<'a>(
+    kind: &str,
+    records: impl IntoIterator<Item = &'a serde_json::Value>,
+    off: &[String],
+) -> bool {
+    records.into_iter().any(|v| {
+        crate::agents::run_of_record(kind, v).is_none()
+            && crate::agents::beat_of(kind, v).is_some_and(|b| {
+                b.id.as_deref()
+                    .is_none_or(|id| !off.iter().any(|o| o == id))
+                    && b.acts
+                        .iter()
+                        .any(|a| matches!(a, crate::agents::beat::Act::Call { edits: Some(_), .. }))
+            })
+    })
+}
+
+/// 一种退法这一刻能不能选：那一家没申报 ⇒ 不支持；要退代码、那一句之后没改过代码 ⇒ 没东西可退。
+fn off_why(declared: bool, how: RewindHow, after: After) -> Option<String> {
+    if !declared {
+        return Some(copy_text("beRewind.off.unsupported", &[]));
+    }
+    (how == RewindHow::CodeAndConversation && !after.code)
+        .then(|| copy_text("beRewind.off.noCodeChange", &[]))
+}
+
+/// 发送那一下的选项（`session-rewind-options` 的本体）：通用的几种退法都列，那一家申报的照它的字，不能选的灰着带原因；
+/// `busy` ＝ 主 agent 此刻在干活（只有后台子 agent 在跑不算）；`after` ＝ 被编辑那一句之后的事。
+pub(crate) fn options_of(face: Option<&RewindFace>, busy: bool, after: After) -> RewindOptions {
     let Some(face) = face.filter(|f| !f.choices.is_empty()) else {
         return RewindOptions {
             said: Some(copy_text("beRewind.no.unsupported", &[])),
             ..RewindOptions::default()
         };
     };
-    let how = face
-        .choices
+    let mut how: Vec<RewindChoiceRow> = RewindHow::ALL
         .iter()
-        .map(|c| RewindChoiceRow {
-            how: c.how,
-            text: (c.text)(),
-            default: c.default,
+        .map(|&h| {
+            let c = face.choices.iter().find(|c| c.how == h);
+            let why = off_why(c.is_some(), h, after);
+            RewindChoiceRow {
+                how: h,
+                text: c.map_or_else(|| how_text(h), |c| (c.text)()),
+                default: why.is_none() && c.is_some_and(|c| c.default),
+                enabled: why.is_none(),
+                why,
+            }
         })
         .collect();
+    if !how.iter().any(|r| r.default) {
+        if let Some(first) = how.iter_mut().find(|r| r.enabled) {
+            first.default = true;
+        }
+    }
     let mut when = Vec::new();
     if busy {
         when.push(RewindWhenRow {
@@ -172,11 +232,9 @@ pub(crate) fn options_of(face: Option<&RewindFace>, busy: bool) -> RewindOptions
             });
         }
     }
-    RewindOptions {
-        how,
-        when,
-        said: None,
-    }
+    let said = (after.runs > 0)
+        .then(|| copy_text("beRewind.note.runsAfter", &[("n", &after.runs.to_string())]));
+    RewindOptions { how, when, said }
 }
 
 /// 列表上那一行的字与记录里那一句是不是同一句：空白压成一个、去掉截短标之后，一方是另一方的开头（屏上 · 摘要都可能截短）。

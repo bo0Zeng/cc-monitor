@@ -7,15 +7,21 @@
 //!   那一道门，读回走冷开扫描图的用户输入（观测层），会话那一家与此刻在干什么读活会话表。控制面与观测层互不引用，接在这一层。
 
 use super::session_queue_hop::{route, Aimed};
-use crate::control::rewind::{options_of, walk, Plan, RewindFace, RewindIo, SaidLine, Walked, Why};
+use crate::control::rewind::{
+    code_after, options_of, runs_after, walk, After, Plan, RewindFace, RewindIo, SaidLine, Walked,
+    Why,
+};
 use crate::control::terminals::{self, CmdErr, On};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::dial::remote_ask::{DialRemote, REACH};
+use crate::platform::fs::Ro;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes as _, Command};
 use cmd_wire::rewind::{Rewind, RewindOptions, SessionRewindOptionsReq};
 use cmd_wire::Machine;
 use copy_core::copy_text;
+use std::io::{Read as _, Seek as _, SeekFrom};
+use std::path::Path;
 
 codes! {
     /// `session-rewind-options` 的码。
@@ -58,9 +64,10 @@ impl typed::Handle for SessionRewindOptionsCmd {
     {
         async move {
             let sid = req.sid.to_string();
+            let to = req.to.clone();
             route::<Self, _>(
                 &req,
-                move || options_here(&sid),
+                move || options_here(&sid, &to),
                 SessionRewindOptionsErr::ALL,
                 &cx.tz,
                 cx.until,
@@ -83,23 +90,75 @@ pub(crate) fn busy_here(sid: &str) -> bool {
 /// 这台 `sid` 那条会话那一家的回退菜单：这台没有它的记录 ⇒ `Err`；那一家没申报 ⇒ `Ok(None)`
 /// （记录认不出是哪一家 ⇒ 照缺省那一家，同 `session-permission`）。
 pub(crate) fn face_here(sid: &str) -> Result<Option<RewindFace>, String> {
-    let home = crate::history::listing::agent_home();
-    let record = crate::observe::query::locate::session_record(&home, sid)?;
-    Ok(crate::agents::rewind_face(crate::agents::record_kind_of(
-        &record,
-    )))
+    Ok(face_of(&record_here(sid)?))
 }
 
-/// 这台那一份选项：记录在 ⇒ 那一家申报的几项 ＋ 此刻在不在干活。
-pub(crate) fn options_here(sid: &str) -> Result<RewindOptions, Fail> {
-    let face = face_here(sid).map_err(|raw| {
+fn record_here(sid: &str) -> Result<std::path::PathBuf, String> {
+    let home = crate::history::listing::agent_home();
+    crate::observe::query::locate::session_record(&home, sid)
+}
+
+fn face_of(record: &Path) -> Option<RewindFace> {
+    crate::agents::rewind_face(crate::agents::record_kind_of(record))
+}
+
+/// 这台那一份选项：记录在 ⇒ 那一家申报的几项 ＋ 此刻在不在干活 ＋ 被编辑那一句之后的事；记录主线上没有那一句 ⇒ 只写为什么。
+pub(crate) fn options_here(sid: &str, to: &str) -> Result<RewindOptions, Fail> {
+    let no_record = |raw: &str| {
         Fail::new(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),
         )
-        .with_raw(Some(&raw))
-    })?;
-    Ok(options_of(face.as_ref(), busy_here(sid)))
+        .with_raw(Some(raw))
+    };
+    let record = record_here(sid).map_err(|raw| no_record(&raw))?;
+    let face = face_of(&record);
+    if face.is_none() {
+        return Ok(options_of(None, false, After::default()));
+    }
+    let runs = crate::stream::tap::hub().live().book().runs(sid);
+    let Some(after) = after_in(&record, to, &runs).map_err(|raw| no_record(&raw))? else {
+        return Ok(RewindOptions {
+            said: Some(copy_text("beRewind.no.noSuchLine", &[])),
+            ..RewindOptions::default()
+        });
+    };
+    Ok(options_of(face.as_ref(), busy_here(sid), after))
+}
+
+/// `record` 那份记录里、主线上 `to` 那一句之后的事：那一句起的主线记录里改没改过代码 · `runs` 里起于那一句之后、还在跑的几个。
+/// 主线上没有那一句 ⇒ `None`；读不了 ⇒ `Err`（原样）。
+pub(crate) fn after_in(
+    record: &Path,
+    to: &str,
+    runs: &[cmd_wire::frame::RunInfo],
+) -> Result<Option<After>, String> {
+    let map = crate::observe::record_scan::global()
+        .get(record)
+        .map_err(|e| e.to_string())?;
+    let Some(line) = map.inputs.iter().find(|r| r.uuid == to) else {
+        return Ok(None);
+    };
+    let mut file = Ro::open(record).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(line.at))
+        .map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    file.take(map.end.saturating_sub(line.at))
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    let records: Vec<serde_json::Value> = bytes
+        .split(|b| *b == b'\n')
+        .filter_map(|l| serde_json::from_slice::<serde_json::Value>(l).ok())
+        .collect();
+    let kind = crate::agents::pick_kind(crate::agents::record_kind_of(record))
+        .map(|(k, _)| k)
+        .map_err(|e| e.to_string())?;
+    let since =
+        crate::common::time::parse_iso8601_ms(&line.timestamp).and_then(|t| u64::try_from(t).ok());
+    Ok(Some(After {
+        code: code_after(kind, &records, &map.off),
+        runs: runs_after(runs, since),
+    }))
 }
 
 /// 输入队投递那一下的回退（随那一句带了 [`Rewind`] 的那一条）：这台 `sid` 那条会话里替人走一趟 [`walk`]。

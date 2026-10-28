@@ -41,9 +41,9 @@ const QUEUE_BUDGET_MS = 10_000;
 
 export const CHANNEL_READ: QueueReadFn = (origin, sid) => callTyped(origin, "session-queue-read", { machine: LOCAL_ORIGIN, sid }, budgetWithin(QUEUE_BUDGET_MS));
 
-/** 编辑已发的一句、发送那一下问会话那台给哪几项（`session-rewind-options`）。 */
-export const CHANNEL_REWIND_OPTIONS = (origin: Origin, sid: string): Promise<RewindOptions> =>
-  callTyped(origin, "session-rewind-options", { machine: LOCAL_ORIGIN, sid }, budgetWithin(QUEUE_BUDGET_MS));
+/** 编辑已发的一句、发送那一下问会话那台：退到 `to` 那一句之前给哪几项（`session-rewind-options`）。 */
+export const CHANNEL_REWIND_OPTIONS = (origin: Origin, sid: string, to: string): Promise<RewindOptions> =>
+  callTyped(origin, "session-rewind-options", { machine: LOCAL_ORIGIN, sid, to }, budgetWithin(QUEUE_BUDGET_MS));
 
 export const CHANNEL_CANCEL: QueueCancelFn = (origin, sid, id) =>
   callTyped(origin, "session-queue-cancel", { machine: LOCAL_ORIGIN, sid, id }, budgetWithin(QUEUE_BUDGET_MS));

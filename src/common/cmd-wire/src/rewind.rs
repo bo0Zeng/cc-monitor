@@ -19,6 +19,11 @@ pub enum RewindHow {
     CodeAndConversation,
 }
 
+impl RewindHow {
+    /// 通用的几种（发送那一下照这个先后都列出，那一家没申报的灰着）。
+    pub const ALL: [RewindHow; 2] = [RewindHow::Conversation, RewindHow::CodeAndConversation];
+}
+
 /// 主 agent 正在干活时什么时候退。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -45,7 +50,7 @@ pub struct Rewind {
     pub when: RewindWhen,
 }
 
-/// `session-rewind-options` 的入参：`machine` 那台 `sid` 那条会话此刻发送那一下给哪几项。
+/// `session-rewind-options` 的入参：`machine` 那台 `sid` 那条会话、退到 `to` 那一句之前，此刻发送那一下给哪几项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -53,6 +58,8 @@ pub struct Rewind {
 pub struct SessionRewindOptionsReq {
     pub machine: Machine,
     pub sid: Sid,
+    /// 被编辑的那一句在记录里的 id（同 [`Rewind::to`]）：哪一项能选按那一句之后的事判。
+    pub to: String,
 }
 
 /// 「怎么退」的一项。
@@ -65,8 +72,14 @@ pub struct RewindChoiceRow {
     pub how: RewindHow,
     /// 那一项的字（会话那台写好）。
     pub text: String,
-    /// 缺省选它。
+    /// 缺省选它（只落在能选的那一项上）。
     pub default: bool,
+    /// 这一刻能不能选；不能 ⇒ 界面灰着摆、写 [`Self::why`]。
+    pub enabled: bool,
+    /// 不能选的那一句（会话那台写好）；能选 ⇒ 不在。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub why: Option<String>,
 }
 
 /// 「什么时候退」的一项（只在主 agent 正在干活时给）。
@@ -87,11 +100,11 @@ pub struct RewindWhenRow {
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RewindOptions {
-    /// 「怎么退」那几项；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
+    /// 「怎么退」那几项（通用的几种都列，不能选的灰着带原因）；空 ⇒ 这一家不支持从这里回退（为什么见 `said`）。
     pub how: Vec<RewindChoiceRow>,
     /// 「什么时候退」那几项；空 ⇒ 主 agent 此刻空着（只有后台子 agent 在跑也算空着），不给这一行。
     pub when: Vec<RewindWhenRow>,
-    /// 不支持 · 这一刻退不了的那一句（会话那台写好）；能退 ⇒ 不在。
+    /// 给人看的那一句（会话那台写好）：`how` 空 ⇒ 为什么退不了；有项 ⇒ 退之前要知道的（这句之后派出的子 agent 还在跑）；都没有 ⇒ 不在。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub said: Option<String>,
