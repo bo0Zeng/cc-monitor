@@ -11,7 +11,7 @@
 //!   - 在跑 · 在等人（批准 · 回答框开着，打的字会落进框里）· 说不清 ⇒ 等。
 //!   - 编辑已发的那一句、选了「现在停」⇒ 在跑也送（停下这一轮是回退那一串的第一步，[`crate::control::rewind`]）。
 //! - **送**：照送字本体（`faces/session_send.rs`：同一道身份门 · 只剩 shell 不送 · 终端没了按记下的号恢复）。结局：送到 · 不知道送没送到 ⇒ 摘掉
-//!   （不重送）；在等人 · 托管终端里人敲了半句没回车 ⇒ 照排着，最晚 [`WAITING_RETRY_MS`] 再试（人把半句删回空行又不回车时没有事件来）；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤）；命令级错 ⇒ 照排着，下一次醒再试。
+//!   （不重送）；在等人 · 托管终端里人敲了半句没回车 ⇒ 照排着，最晚 [`WAITING_RETRY_MS`] 再试（人把半句删回空行又不回车时没有事件来）；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤；旧版托管进程不认「说一句」⇒ 那一条写明要重开那个终端）；命令级错 ⇒ 照排着，下一次醒再试。
 //!   编辑已发的那一句（带 `rewind`）⇒ 先在会话里退到那一句之前再说它（[`super::session_rewind_face::walk_here`]）：成了 ⇒ 摘掉；
 //!   等 ⇒ 照排着；没退成 · 退了没送进 ⇒ 标未送达、那一条写上为什么；送进了、记录里还没读到 ⇒ 摘掉（不重送）。
 //! - 终端输入行里有没提交的字：托管那一形由托管进程判（回「等」，见上）；tmux 那一形判不出，照送。
@@ -173,9 +173,13 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                             "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
                             sent
                         );
+                        use super::session_send::Undeliverable as U;
+                        use crate::control::terminals::Refused;
                         let why = match &sent {
-                            Delivery::No(super::session_send::Undeliverable::NotRewound(s)) => {
-                                Some(s.clone())
+                            Delivery::No(U::NotRewound(s)) => Some(s.clone()),
+                            // 旧托管进程：笼统的「未送进会话」说不出该做什么，写明要重开那个终端。
+                            Delivery::No(U::Refused(s)) if s.why == Some(Refused::HostOutdated) => {
+                                s.said.clone()
                             }
                             _ => None,
                         };
