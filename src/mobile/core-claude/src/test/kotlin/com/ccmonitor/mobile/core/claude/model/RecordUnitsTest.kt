@@ -119,6 +119,33 @@ class RecordUnitsTest {
     }
 
     @Test
+    fun `丢最前面几条 ⇒ 同只排剩下那几条；结果那一条还在 ⇒ 往上翻读回调用那一条时照样配上`() {
+        val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "draw" to "steps", "human" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
+        val call = requireNotNull(Wire.bind<LineRecord>(reply))
+        val rest = listOf(cases.getValue("said-full"), cases.getValue("said-min"))
+        val body = RecordUnits().also { it.append(listOf(call) + rest) }
+        body.dropFirst(1)
+        assertEquals(RecordUnits.of(rest), body.units())
+        body.prepend(listOf(call))
+        assertEquals("读回的调用卡配上了还在手上的结果", false, (body.units().first() as RenderUnit.ToolCall).pending)
+        assertEquals(RecordUnits.of(listOf(call) + rest), body.units())
+        body.dropFirst(3)
+        assertTrue(body.isEmpty())
+    }
+
+    @Test
+    fun `没变就交上一份（同一个实例）；接一行只排这一行，旧单元原样留着`() {
+        val body = RecordUnits().also { it.append(cases.values.toList()) }
+        val first = body.units()
+        assertTrue("没变 ⇒ 同一份", first === body.units())
+        body.append(listOf(cases.getValue("said-min")))
+        val next = body.units()
+        assertTrue("变了 ⇒ 另一份", first !== next)
+        assertEquals(first.size + 1, next.size)
+        first.forEachIndexed { i, u -> assertTrue("第 $i 个单元原样留着", u === next[i]) }
+    }
+
+    @Test
     fun `人说的那一句带的图片与附件照收进单元（画在气泡外）；只有附件没有字也成一个单元`() {
         val image = mapOf("type" to "image", "source" to mapOf("type" to "base64", "media_type" to "image/png", "data" to "AAAA"))
         val file = mapOf("name" to "login.css", "rel" to ".ccm-attach/1023-1529-7c01/login.css", "class" to "code", "classText" to "代码", "sizeText" to "1.3 KB")
