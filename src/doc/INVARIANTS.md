@@ -391,7 +391,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 本机那几形由本机后端出成品（`session-open`，渲在 `control/launch_render/mod.rs::line_of`）；Windows 那一格也只是一行 `ccm --resume <sid> -- …`（没有 tmux ⇒ 说了进 tmux 的走直路；起会话 · 恢复缺省落托管终端，接回那一行是 `ccm -- --attach <名>`）。**本地渲染器不渲任何清变量的代码**：清 Claude 自己的嵌套会话标记归 `ccm` 在最终 exec 那一处（进程内摘环境，不是一段 PowerShell 语法），本机远端、两个平台同一处。这一形要 `ccm` 在用户的 `PATH` 上。
 
-**谁在守**：`ccm_invocation_tests.rs::windows_launches_go_the_direct_way_and_attach_is_refused`。
+**谁在守**：`ccm_invocation_tests.rs::windows_launches_go_the_direct_way_and_attach_is_the_thin_client`。
 
 ## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
 
