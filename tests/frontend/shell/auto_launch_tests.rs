@@ -41,9 +41,9 @@ fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
     fs::write(&not_a_dir, b"x").unwrap();
     let e = set_enabled(&not_a_dir, true).expect_err("文件下面建不了文件");
     let _ = fs::remove_file(&not_a_dir);
-    let raw = crate::copy_table::copy_text("detail.label.raw", &[]);
+    let raw = copy_core::copy_text("detail.label.raw", &[]);
     assert!(
-        e.said.starts_with(&crate::copy_table::copy_text(
+        e.said.starts_with(&copy_core::copy_text(
             "rsShellCmd.autoLaunch.saveFailed",
             &[("why", "")]
         )),

@@ -1,7 +1,7 @@
 //! 后端→monitor 的帧：按 `cmd-wire` 的类型解（[`decode`]）· 进不来的每种说一次（[`UnreadNotes`]）。
 
 use super::*;
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 
 /// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。所有行都从后端的帧来（远端流 · 本机流 · 旁路快照）；
 /// `seq` 是后端给的行号（流不重放历史，与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。

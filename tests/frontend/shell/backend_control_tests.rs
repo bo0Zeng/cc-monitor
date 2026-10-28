@@ -18,7 +18,7 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
         guard_core::find_pinned(&src, &format!("pub async fn {p}(origin: String)"))
             .unwrap_or_else(|e| panic!("`{p}` 不是恰好一条 `async` 命令（{e}）"));
         let sig = if *p == "backend_status" {
-            "fn backend_status_now(origin: String)".to_string()
+            "fn backend_status_now(\n    origin: String,".to_string()
         } else {
             format!("pub async fn {p}(origin: String)")
         };
@@ -94,6 +94,13 @@ fn starting_reports_failure_as_failure() {
             || body.contains("Err(Said::"),
         "本机「起」的失败那一格不回 `Err` —— 那就是把失败说成了成功。"
     );
+}
+
+/// 「起」成了只回成功本身，不带一句话：那句话没有读者（界面只看成败），带了就是一句不进文案表的硬编码。
+#[test]
+fn starting_answers_success_without_a_sentence() {
+    let r: Result<(), Said> = tauri::async_runtime::block_on(backend_start(" ".into()));
+    assert!(r.is_err(), "空 origin 被放过了");
 }
 
 #[test]

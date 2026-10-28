@@ -1111,10 +1111,7 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
     let tmux_files: Vec<String> = String::from_utf8_lossy(&listing.stdout)
         .split('\0')
         .filter(|r| !r.is_empty())
-        .filter(|r| {
-            let b = r.as_bytes();
-            !b.starts_with(b"src/vendor/") && !has(r, "/node_modules/") && !has(r, "__fixtures__")
-        })
+        .filter(|r| !has(r, "/node_modules/") && !has(r, "__fixtures__"))
         .filter(|r| {
             let ext = r.rsplit('.').next().unwrap_or("");
             ["sh", "bash", "rs", "mjs", "js", "ts", "mts", "py"].contains(&ext)

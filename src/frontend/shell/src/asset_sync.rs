@@ -19,7 +19,7 @@
 //! - 🔴 真远端：本模块的判据只到「交出去的是什么」「答回来的认不认得」；本机后端那一趟在后端判据里用替身对面验。
 //! - 本机后端不在 ⇒ 报（`D11`，不回落）；连上那一刻它不在 ⇒ 这一次就没同步（下次连上 / 看机器页再来），只记一行 warn。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::time::Duration;
 
 use serde_json::{json, Value};

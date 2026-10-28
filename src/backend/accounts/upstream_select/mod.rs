@@ -537,6 +537,29 @@ impl Destinations for Accounts {
             });
             crate::lineage::relay_saw(l, &self.own, origin, ask.label, &key.seg1, (self.clock)());
         }
+        // 上游是那条会话自己的（`ccm` 起会话时留在上游描述里的用户地址）⇒ 直通过去：下游的鉴权头原样（用户网关自己的），
+        // 不查表、不问换号。只认 `/t/`：`/s/` 是「这一行的鉴权由表说了算」，那一路不改道。
+        if mode == Mode::Passthrough {
+            match ask
+                .origin
+                .and_then(|o| session_upstream::base_of(&self.own, &o.token))
+            {
+                Some(Ok(base)) => {
+                    return act(Destination::Passthrough {
+                        upstream: &base,
+                        tag: OWN_UPSTREAM_TAG,
+                    })
+                }
+                Some(Err(why)) => {
+                    return act(Destination::Refuse {
+                        status: NO_ROUTE,
+                        reason: "own-upstream-unusable",
+                        why,
+                    })
+                }
+                None => {}
+            }
+        }
         // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
         //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
         // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
@@ -571,7 +594,7 @@ impl Destinations for Accounts {
         tried: &[&str],
         act: &mut dyn FnMut(Destination<'_>),
     ) {
-        let Some(h) = &self.hop else {
+        let Some(h) = self.hop.as_ref().filter(|_| seen.tag != OWN_UPSTREAM_TAG) else {
             return;
         };
         let Some(read) =
@@ -600,6 +623,9 @@ impl Destinations for Accounts {
     }
 
     fn observe(&self, _mode: Mode, key: &RouteKey, ask: &Ask<'_>, seen: &Heard<'_>) {
+        if seen.tag == OWN_UPSTREAM_TAG {
+            return;
+        }
         let agent = key.seg1.as_str();
         if let Some(line) = auth_refusal_line(seen.tag, seen.status) {
             tracing::warn!("{line}");
@@ -626,6 +652,11 @@ impl Destinations for Accounts {
         }
     }
 }
+
+/// 上游是那条会话自己的（用户的地址）那个去处的标签。它不是任何一个号（号的 id 过段闸，带不了 `~`）⇒
+/// `observe` 不记额度账（鉴权是用户网关的，回包头就算长得像额度头，也说不出是哪个号的额度 ⇒ 照实是看不到），
+/// `retry` 不换号（换号要把我们的号的令牌发去默认上游，改了用户选的去处）。
+const OWN_UPSTREAM_TAG: &str = "~own";
 
 /// HTTP 通用的「几秒后再试」头（不是哪一家的）。
 const RETRY_AFTER: &str = "retry-after";

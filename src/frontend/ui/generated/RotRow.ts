@@ -3,6 +3,10 @@ import type { RotCell } from "./RotCell";
 import type { RotMark } from "./RotMark";
 
 /**
- * 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格（只回此刻该出的）· 那几格写成的句子（会话里只看的规则摘要，一格一句）· 号名旁的记号。
+ * 号列表的一行：号 · 它在设置号列表里是第几行 · 展开头一行（两窗用量 · 重置；这台账号库没有这个号 ⇒ 照实说）· 号牌悬停那一句 · `scope: each` 那几格（只回此刻该出的）· 那几格写成的句子（会话里只看的规则摘要，一格一句）· 号名旁的记号。
  */
-export type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };
+export type RotRow = { account: string, 
+/**
+ * 这一行在 `settings.accounts` 里的下标：改设置 · 移出 · 拖动一律交它（不拿显示的先后当行号）。
+ */
+row: number, line: string, hover: string, cells: Array<RotCell>, rules: Array<string>, marks: Array<RotMark>, };

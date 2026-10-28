@@ -37,12 +37,12 @@ fn budget(ms: u64) -> Budget {
 }
 
 /// 起一条挂着**生产句柄**的真通道（一对内存管子，生产里是窗口进程的 stdout / stdin），回窗口那一侧的客户端。
-async fn rig() -> crate::chan::client::Client {
+async fn rig() -> comms_inward::chan::client::Client {
     let (ours, theirs) = tokio::io::duplex(1 << 16);
     let (rd, wr) = tokio::io::split(theirs);
     serve_with(rd, wr, Arc::new(InboundBackends));
     let (rd, wr) = tokio::io::split(ours);
-    crate::chan::client::Client::over(rd, wr, FRAME)
+    comms_inward::chan::client::Client::over(rd, wr, FRAME)
 }
 
 /// 收一条订阅直到 `Closed`（或期限到）。

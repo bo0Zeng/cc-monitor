@@ -362,10 +362,9 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
 //   一律经那台机器的后端（`user_files` → `files-peek` / `files-put` / `files-rename` / `files-chmod` /
 //   `files-delete-session`，本机分叉 `--fork-session`）。
 //
-// 两道，各治一形：
-//   ① **分类闭集**（人的答案）：`WRITE_SITES` 里每一个落点在 [`SITE_CLASS`] 里恰好一行，类别是闭集，
-//      **闭集里没有「用户文件」这一档** —— 新落点要么证明它不是用户文件，要么指名谁来收（待收）。两向相等。
-//   ② **零命中**（机器的答案）：搬走写盘的那几份文件，生产段里一个写原语都不许再有（带正控：往一份副本里塞一处，必须数得出来）。
+// **分类闭集**：`WRITE_SITES` 里每一个落点在 [`SITE_CLASS`] 里恰好一行，类别是闭集，
+//   **闭集里没有「用户文件」这一档** —— 新落点要么证明它不是用户文件，要么指名谁来收（待收）。两向相等。
+//   （原先还有第二道「搬走写盘的那几份文件里零写原语」：那几份文件全删了，那一道随之删。）
 
 /// 一个写盘落点写的是什么。**闭集，而且刻意没有「用户文件」这一档。**
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -433,8 +432,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     // 「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
     //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，写经帧面交来的 `Face`；当时写「先过会话文件围栏」，
     //    FN1 之后只过路径解析）。
-    // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
-    // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
+    // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件）。
     ("atomic.rs", "atomic_write_json", Lands::OwnState),
     ("atomic.rs", "atomic_replace_path", Lands::OwnState),
     // monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
@@ -492,79 +490,5 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
         u,
         vec!["mod.rs::write_alias_file".to_string()],
         "正控没过 —— 本条空转"
-    );
-}
-
-/// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
-const MOVED_OUT: &[&str] = &[
-    // `account_aliases.rs` · `fenced_block.rs` · `profile_installer.rs` 整份搬进了那台后端 ⇒ 出名单。
-    // `mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
-    // `skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
-    // `cc_bus_deploy.rs` 整份删了（装前那道本机 `ccm` 预检随它删）⇒ 出名单。
-    "history.rs",
-    // `remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
-    // `user_files.rs` 整份删了（最后一个用户「认出旧入口并删」随那条迁移链删了）⇒ 出名单。
-];
-
-/// ② 的针：本机写原语（`WRITE_CALLS`）＋ 委托出去的写（通用原子写 / 旧的回读回滚写入器）＋ SFTP 上传原语。
-/// **运行时拼**（写成字面量会被别的判据当成靶子）。
-/// ⚠ SFTP 会话上的 `.rename(` / `.remove_file(` 那一族**不在这里**：monitor 拿不到 SFTP 会话（依赖清单里没有 SSH crate），
-///   数它们只会与 `Door::rename` 这种经后端的调用撞名。
-fn moved_out_needles() -> Vec<String> {
-    let mut v: Vec<String> = WRITE_CALLS.iter().map(|s| s.to_string()).collect();
-    // ⚠ 名字也**运行时拼**：其中两个是已删的旧名，写成字面量会让死名普查把它们当成活名。
-    for (a, b) in [
-        ("atomic_write_", "json"),
-        ("atomic_write_", "string"),
-        ("upload_", "atomic"),
-        ("verify_and_", "rollback"),
-    ] {
-        v.push(format!("{a}{b}("));
-    }
-    v
-}
-
-fn moved_out_hits(prod: &str) -> Vec<String> {
-    let needles = moved_out_needles();
-    prod.lines()
-        .map(str::trim)
-        .filter(|l| needles.iter().any(|n| l.contains(n.as_str())))
-        .map(str::to_string)
-        .collect()
-}
-
-#[test]
-fn the_files_that_used_to_write_users_files_write_nothing_now() {
-    let root = src_root();
-    let mut scanned = 0usize;
-    let mut offenders: Vec<String> = Vec::new();
-    for f in MOVED_OUT {
-        let raw = std::fs::read_to_string(root.join(f))
-            .unwrap_or_else(|e| panic!("读不到 {f}：{e} —— 搬家了就把名单一起改"));
-        let prod = guard_core::production_code(&raw);
-        guard_core::assert_no_test_code(f, &prod);
-        scanned += 1;
-        for hit in moved_out_hits(&prod) {
-            offenders.push(format!("  {f}: {hit}"));
-        }
-    }
-    assert_eq!(scanned, MOVED_OUT.len());
-    assert!(
-        offenders.is_empty(),
-        "这些文件的写已经交给那台机器的后端了，生产段却又长出了写原语：\n{}\n\n\
-         用户逐字「现在只允许后端的文件管理部分写文件」（也管本机）。\n\
-         ⇒ 写经那台后端（文件管理面），别在 monitor 进程里落盘。",
-        offenders.join("\n")
-    );
-    // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
-    let raw = std::fs::read_to_string(root.join("history.rs")).expect("读");
-    let poisoned = format!(
-        "{}\nfn sneaky(p: &std::path::Path) {{ let _ = std::fs::write(p, b\"x\"); }}\n",
-        guard_core::production_code(&raw)
-    );
-    assert_eq!(
-        moved_out_hits(&poisoned).len(),
-        1,
-        "正控没过 —— 针或剥法坏了，本条空转"
     );
 }
