@@ -164,7 +164,7 @@ private fun QueueRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(line.text, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${line.said} · ${line.from}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(listOf(line.said, line.from).joinToString(copyText("kit.text.sep")), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SecondaryButton(onClick = { actions.cancelQueued(line.id) }) { Text(copyText("mobChat.outbox.cancel")) }
     }
