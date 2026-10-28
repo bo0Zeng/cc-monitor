@@ -81,7 +81,13 @@ struct Entry {
     text: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     attachments: Vec<String>,
+    /// 编辑已发的那一句：投递时先退到那一句之前（`control/rewind.rs`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rewind: Option<cmd_wire::rewind::Rewind>,
     state: QueueState,
+    /// 标未送达时投递那一下说的为什么（没退成 · 退了没送进）；没有 ⇒ 照「未送进会话」那一句。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    why: Option<String>,
 }
 
 impl Default for Book {
@@ -196,7 +202,9 @@ impl Book {
             arrived_ms: now_ms,
             text: req.text.clone(),
             attachments: req.attachments.clone(),
+            rewind: req.rewind.clone(),
             state: QueueState::Held,
+            why: None,
         });
         let i = self.items.len() - 1;
         if req.n.is_none() {
@@ -228,7 +236,10 @@ impl Book {
             (QueueState::Queued, Some(p)) => {
                 copy_text("beQueue.said.place", &[("place", &p.to_string())])
             }
-            (QueueState::Undelivered, _) => copy_text("beQueue.said.undelivered", &[]),
+            (QueueState::Undelivered, _) => e
+                .why
+                .clone()
+                .unwrap_or_else(|| copy_text("beQueue.said.undelivered", &[])),
             _ => copy_text("beQueue.said.held", &[]),
         };
         (place, said)
@@ -243,6 +254,7 @@ impl Book {
             at_ms: e.at_ms,
             text: e.text.clone(),
             attachments: e.attachments.clone(),
+            rewind: e.rewind.clone(),
             state: e.state,
             said: self.said_of(e).1,
             from: from_word(&e.end),
@@ -289,8 +301,8 @@ impl Book {
             .map(|e| self.item(e))
     }
 
-    /// 那一条送不进去（恢复没成 · 附件没了 · 不归我们）：标未送达、留给发件人看。不在排着 ⇒ `false`。
-    pub(crate) fn give_up(&mut self, id: &str) -> bool {
+    /// 那一条送不进去（恢复没成 · 附件没了 · 不归我们 · 没退成）：标未送达、留给发件人看；`why` ＝ 投递那一下说的为什么。不在排着 ⇒ `false`。
+    pub(crate) fn give_up(&mut self, id: &str, why: Option<String>) -> bool {
         let Some(e) = self
             .items
             .iter_mut()
@@ -299,6 +311,7 @@ impl Book {
             return false;
         };
         e.state = QueueState::Undelivered;
+        e.why = why;
         true
     }
 
@@ -557,9 +570,9 @@ pub(crate) struct Due {
     pub(crate) held_until: Option<i64>,
 }
 
-/// 投递口：那一条送不进去 ⇒ 标未送达（不在排着 ⇒ `false`）。
-pub(crate) fn give_up(own: &Own, sid: &str, id: &str) -> Result<bool, Fail> {
-    with_book(own, sid, |b| Ok(b.give_up(id)))
+/// 投递口：那一条送不进去 ⇒ 标未送达，`why` 是投递那一下说的为什么（不在排着 ⇒ `false`）。
+pub(crate) fn give_up(own: &Own, sid: &str, id: &str, why: Option<String>) -> Result<bool, Fail> {
+    with_book(own, sid, |b| Ok(b.give_up(id, why)))
 }
 
 /// 投递口：这台此刻有队的那几条会话（`session-queue/` 里每一份 `<sid>.json`，照名排；目录不在 · 读不了 ⇒ 空）。

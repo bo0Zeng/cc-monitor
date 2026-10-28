@@ -219,6 +219,7 @@ fn cancelling_the_first_pushes_a_list_one_shorter_with_the_second_now_first() {
             at_ms: 1,
             text: format!("text of {id}"),
             attachments: Vec::new(),
+            rewind: None,
         };
         q::put(&own, &req, 1).unwrap();
     };

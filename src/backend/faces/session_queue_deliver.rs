@@ -9,8 +9,11 @@
 //!   - 闲着 · 一轮停了、后台在跑 ⇒ 送；但上一条送出之后那一态没换过（那一态起始不晚于送出那一刻）、又没过 [`CONFIRM_MS`] ⇒ 等，
 //!     那一轮还没起来（不往 agent 自己的排队里塞：那一队看不见也撤不了）。
 //!   - 在跑 · 在等人（批准 · 回答框开着，打的字会落进框里）· 说不清 ⇒ 等。
+//!   - 编辑已发的那一句、选了「现在停」⇒ 在跑也送（停下这一轮是回退那一串的第一步，[`crate::control::rewind`]）。
 //! - **送**：照送字本体（`faces/session_send.rs`：同一道身份门 · 只剩 shell 不送 · 终端没了按记下的号恢复）。结局：送到 · 不知道送没送到 ⇒ 摘掉
 //!   （不重送）；在等人 ⇒ 照排着；别的被拒 ⇒ 那一条标未送达（留给发件人看、撤）；命令级错 ⇒ 照排着，下一次醒再试。
+//!   编辑已发的那一句（带 `rewind`）⇒ 先在会话里退到那一句之前再说它（[`super::session_rewind_face::walk_here`]）：成了 ⇒ 摘掉；
+//!   等 ⇒ 照排着；没退成 · 退了没送进 ⇒ 标未送达、那一条写上为什么；送进了、记录里还没读到 ⇒ 摘掉（不重送）。
 //! - 终端输入行里有没提交的字，tmux 判不出：这一道等托管那一形给事实；此刻不等。
 
 use super::session_send::Delivery;
@@ -84,6 +87,13 @@ pub(crate) struct Deps<'a> {
     pub(crate) send: &'a dyn Fn(&str, &QueueItem) -> Result<Delivery, Fail>,
 }
 
+/// 编辑已发的那一句、选了现在停：主 agent 在跑也送（[`step`] 照它让路）。
+pub(crate) fn urgent(item: &QueueItem) -> bool {
+    item.rewind
+        .as_ref()
+        .is_some_and(|r| r.when == cmd_wire::rewind::RewindWhen::Now)
+}
+
 /// 送的结局怎么落：摘掉 · 照排着 · 标未送达。
 fn landed(d: &Delivery) -> Option<bool> {
     match d {
@@ -119,7 +129,13 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
             memo.live = false;
             continue;
         };
-        match step(&look, memo, now_ms) {
+        let now_step = match step(&look, memo, now_ms) {
+            Step::Wait if urgent(&item) && look.doing == Some(Some(SessionActivity::Working)) => {
+                Step::Send
+            }
+            s => s,
+        };
+        match now_step {
             Step::Wait => {}
             Step::End => {
                 if let Err(f) = q::end(deps.own, sid, now_ms) {
@@ -143,7 +159,13 @@ pub(crate) fn pass(deps: &Deps<'_>, memos: &mut Memos, now_ms: i64) -> Option<i6
                             "[session-queue] {sid} 那一条送不进去（{:?}），标未送达",
                             sent
                         );
-                        noted(q::give_up(deps.own, sid, &item.id), sid, After::GaveUp);
+                        let why = match &sent {
+                            Delivery::No(super::session_send::Undeliverable::NotRewound(s)) => {
+                                Some(s.clone())
+                            }
+                            _ => None,
+                        };
+                        noted(q::give_up(deps.own, sid, &item.id, why), sid, After::GaveUp);
                     }
                     None => {}
                 },
@@ -262,7 +284,24 @@ fn send_here(sid: &str, item: &QueueItem, files: Files) -> Result<Delivery, Fail
         )
     })?;
     let client = crate::control::gate_rules::client_name_ok(&item.end).then(|| item.end.clone());
+    if let Some(r) = &item.rewind {
+        return super::session_rewind_face::walk_here(sid.as_str(), r, &item.text, client)
+            .map(rewound);
+    }
     super::session_send::here(&say_of(sid, item, client), files)
+}
+
+/// 回退那一串的结局 ⇒ 投递的结局（见头注）。
+pub(crate) fn rewound(w: crate::control::rewind::Walked) -> Delivery {
+    use super::session_send::Undeliverable;
+    use crate::control::rewind::{Walked, Why};
+    match w {
+        Walked::Done | Walked::Unsure(Why::NotReadBack) => Delivery::In { resumed: false },
+        Walked::Wait => Delivery::Waiting,
+        Walked::No(_) | Walked::Unsure(_) => {
+            Delivery::No(Undeliverable::NotRewound(w.said().unwrap_or_default()))
+        }
+    }
 }
 
 /// 队里那一条 ⇒ 送进去的那一句（字 · 附件原样带上）。

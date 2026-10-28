@@ -34,6 +34,8 @@ pub(crate) enum Undeliverable {
     NotResumed,
     /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个。
     Elsewhere,
+    /// 编辑已发的那一句没退成 · 退了没送进（那一句照回退那一串写好的，标在那一条上）。
+    NotRewound(String),
 }
 
 impl Delivery {

@@ -15,4 +15,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::faces::session_queue_face::SessionQueueReadCmd>(
         "一条会话此刻的队列名单",
     ),
+    // 编辑已发的一句、发送那一下的选项：只读，问会话所在那台（同上，经输入队那一跳）⇒ 异步档。
+    crate::wire::typed::asynchronous::<crate::faces::session_rewind_face::SessionRewindOptionsCmd>(
+        "编辑已发的一句时，发送那一下给哪几项（怎么退 · 什么时候退）",
+    ),
 ];

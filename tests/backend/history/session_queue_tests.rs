@@ -34,6 +34,7 @@ fn req(id: &str, end: &str, n: Option<u64>, at_ms: i64) -> SessionQueuePutReq {
         at_ms,
         text: format!("text of {id}"),
         attachments: Vec::new(),
+        rewind: None,
     }
 }
 
@@ -282,8 +283,8 @@ fn the_delivery_side_lists_queues_and_names_touched_ones() {
 fn a_refused_line_is_kept_as_undelivered_and_a_held_one_says_when_it_is_due() {
     let o = own(&home("giveup"));
     put(&o, &req("a", "desk", None, T0), T0).unwrap();
-    assert!(give_up(&o, SID, "a").unwrap());
-    assert!(!give_up(&o, SID, "a").unwrap(), "不在排着 ⇒ 不动");
+    assert!(give_up(&o, SID, "a", None).unwrap());
+    assert!(!give_up(&o, SID, "a", None).unwrap(), "不在排着 ⇒ 不动");
     assert_eq!(
         ids(&read(&o, &sid(), T0).unwrap()),
         vec![("a", Some(1), S::Undelivered)]
