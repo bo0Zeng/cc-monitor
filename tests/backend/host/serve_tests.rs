@@ -273,3 +273,80 @@ fn clients_lists_everyone_with_holder_and_mine() {
         .iter()
         .any(|c| c.client == b && !c.holder && !c.mine));
 }
+
+/// 一个真终端持有、一个后端只看着（后端接上、说过 hello，队列已取空）。
+fn held_by_a_terminal_with_a_backend_viewer() -> (Hub, u64, u64, Outbox) {
+    let mut hub = Hub::new("h", sz(80, 24));
+    let (t, _t_out) = hub.connect(Some(10), 0);
+    hub.frame(
+        t,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        0,
+    );
+    let (b, b_out) = hub.connect(Some(11), 0);
+    hub.frame(b, hello(Want::View, WhoKind::Backend, None), 0);
+    take(&b_out);
+    (hub, t, b, b_out)
+}
+
+fn say(text: &str) -> Frame {
+    Frame::Ctl(Ctl::Say { text: text.into() })
+}
+
+/// ★ 投递那一句：输入在真终端手里，后端只看着说一句 ⇒ 照写进伪终端，持有者不换、谁都不收 `holder`。
+#[test]
+fn a_backend_saying_a_line_writes_it_into_the_pty_without_changing_the_holder() {
+    let (mut hub, t, b, b_out) = held_by_a_terminal_with_a_backend_viewer();
+    let eff = hub.frame(b, say("hi\r"), 1);
+    assert_eq!(eff, vec![Effect::Write(b"hi\r".to_vec())]);
+    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Said { pending: false })]);
+    assert_eq!(hub.holder, Some(t), "持有者还是那个真终端");
+    assert_eq!(
+        hub.frame(t, Frame::In(b"x".to_vec()), 2),
+        vec![Effect::Write(b"x".to_vec())],
+        "真终端照旧打字"
+    );
+    // 真终端不说 `say`：它有自己的 `in`。
+    assert_eq!(hub.frame(t, say("no\r"), 3), vec![Effect::Drop(t)]);
+}
+
+/// ★ 持有者敲了半句没回车 ⇒ 这一句拒（`pending`），伪终端一个字节没多；回车之后 · 删回空行之后照写。
+#[test]
+fn a_say_while_the_holder_has_typed_half_a_line_is_refused_and_writes_nothing() {
+    let (mut hub, t, b, b_out) = held_by_a_terminal_with_a_backend_viewer();
+    hub.frame(t, Frame::In("半句".as_bytes().to_vec()), 1);
+    assert!(hub.frame(b, say("hi\r"), 2).is_empty(), "一个字节没多");
+    assert_eq!(take(&b_out), vec![Frame::Ctl(Ctl::Said { pending: true })]);
+    // 删两个字 ⇒ 行空了。
+    hub.frame(t, Frame::In(b"\x7f\x7f".to_vec()), 3);
+    assert_eq!(
+        hub.frame(b, say("a\r"), 4),
+        vec![Effect::Write(b"a\r".to_vec())]
+    );
+    // 再敲 ⇒ 拒；回车交了 ⇒ 照写。
+    hub.frame(t, Frame::In(b"ls".to_vec()), 5);
+    assert!(hub.frame(b, say("b\r"), 6).is_empty());
+    hub.frame(t, Frame::In(b"\r".to_vec()), 7);
+    assert_eq!(
+        hub.frame(b, say("b\r"), 8),
+        vec![Effect::Write(b"b\r".to_vec())]
+    );
+    // 方向键 · 焦点这类转义序列不算敲字。
+    hub.frame(t, Frame::In(b"\x1b[A\x1b[I\x1bOB".to_vec()), 9);
+    assert_eq!(
+        hub.frame(b, say("c\r"), 10),
+        vec![Effect::Write(b"c\r".to_vec())]
+    );
+    // 换了持有者 ⇒ 新的那一端还没敲过。
+    hub.frame(t, Frame::In(b"half".to_vec()), 11);
+    let (t2, _o) = hub.connect(Some(12), 12);
+    hub.frame(
+        t2,
+        hello(Want::Input, WhoKind::Terminal, Some(sz(80, 24))),
+        12,
+    );
+    assert_eq!(
+        hub.frame(b, say("d\r"), 13),
+        vec![Effect::Write(b"d\r".to_vec())]
+    );
+}
