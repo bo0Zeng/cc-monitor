@@ -631,7 +631,7 @@ pub(crate) fn specimen() -> GroupsRead {
         facts: MemberFacts {
             title: w("t"),
             cwd: Some("/w".to_string()),
-            record: Some("/w/s.jsonl".to_string()),
+            record: Some("/w/s".to_string()),
             account: Some("a".to_string()),
             bg: false,
             at: Some(1),

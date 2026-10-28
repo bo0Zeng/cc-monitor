@@ -599,7 +599,7 @@ fn real_groups_read() -> crate::history::groups::GroupsRead {
         pinned,
         face: crate::wire::SessionFace::of(life),
         facts: MemberFacts {
-            title: crate::common::cells::Words(format!("标题-{sid}")),
+            title: crate::common::cells::Words(format!("t-{sid}")),
             cwd: Some(format!("/w/{sid}")),
             record: Some(format!("/r/{sid}.jsonl")),
             account: Some("work".into()),
@@ -618,7 +618,7 @@ fn real_groups_read() -> crate::history::groups::GroupsRead {
         host: None,
     };
     let here = GroupsHere {
-        groups: vec![rec("g1", "前端")],
+        groups: vec![rec("g1", "front")],
         members: vec![
             member(
                 "a",
@@ -635,34 +635,34 @@ fn real_groups_read() -> crate::history::groups::GroupsRead {
         ],
     };
     let before = GroupsHere {
-        groups: vec![rec("g2", "后端")],
+        groups: vec![rec("g2", "back")],
         members: vec![member("c", &["g2"], true, crate::wire::Life::Ended)],
     };
     let w = |s: &str| crate::common::cells::Words(s.into());
     merge(
         &[
             (m("c"), Half::Now(here)),
-            (m("e"), Half::Before(before, w("1 小时前"))),
+            (m("e"), Half::Before(before, w("1h"))),
             (m("f"), Half::None),
         ],
         vec![
             GroupsMachine {
                 origin: m("c"),
                 read: Read::Ok {
-                    notice: Some("注解没并上".into()),
+                    notice: Some("note".into()),
                 },
             },
             GroupsMachine {
                 origin: m("e"),
                 read: Read::Stale {
-                    why: "连不上".into(),
-                    at: w("1 小时前"),
+                    why: "down".into(),
+                    at: w("1h"),
                 },
             },
             GroupsMachine {
                 origin: m("f"),
                 read: Read::Failed {
-                    why: "读不到".into(),
+                    why: "unreadable".into(),
                 },
             },
             GroupsMachine {
