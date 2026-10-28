@@ -213,6 +213,7 @@ The "Data locations" page in Settings shows the full path of every file.
 - ↗ only brings the window forward (and says why) when the tab name does not follow the program title (renamed by hand, or "suppress title changes" is set) or the tabs cannot be read; terminals connected through a jump host or port translation cannot be matched.
 - The signed Android app ships with each Release (`cc-monitor-<version>.apk`) under the same version number as the desktop; the backend on a machine it connects to must be the same version, otherwise it says the machine needs an update and installs only when asked.
 - Sessions started through a custom launcher (`--launcher` and the like) can answer approvals in the message stream on Linux only; on Windows they still answer in the terminal.
+- Hosted terminals do not handle OSC 8 links, OSC 9 / 777 notifications or the kitty keyboard protocol. Synchronized output has no timeout: a program that turns it on and never turns it off leaves the screen unpainted.
 
 ---
 

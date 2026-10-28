@@ -40,6 +40,9 @@ writes on that machine. By kind:
 
 ## Scope notes
 
+- **Hosted terminals** are reachable by any process running as the same user: such a process
+  can connect to a hosted terminal and take over its input. The socket sits in a directory
+  only you can open, and connections from another user are refused.
 - **SSH host keys** use trust-on-first-use (TOFU) by default; the first connection is
   MITM-capable. The UI warns loudly and offers one-click fingerprint pinning — pre-share
   or pin a `SHA256:` fingerprint for sensitive setups.
